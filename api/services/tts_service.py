@@ -17,7 +17,7 @@ from utils.logger import logger
 
 
 # 清理动作描述文本 例如 (笑) （叹气）
-ACTION_REMOVE_REGEX = re.compile(r"（[^）]*）|\([^)]*\)", flags=re.DOTALL)
+ACTION_REMOVE_REGEX = re.compile(r"（[^）]*）|\([^)]*\)|\*[^*]*\*", flags=re.DOTALL)
 # 合并后延迟删除分段文件 避免首播时 404
 CHUNK_DELETE_DELAY_SECONDS = 180
 

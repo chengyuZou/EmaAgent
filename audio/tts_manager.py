@@ -22,7 +22,7 @@ from typing import Optional
 SENTENCE_SPLIT_REGEX = re.compile(r'[。！？!?；;\n]')
 
 # ✅ 清洗正则：匹配括号内容（动作描写）
-ACTION_REMOVE_REGEX = re.compile(r'（[^）]*）|\([^)]*\)', flags=re.DOTALL)
+ACTION_REMOVE_REGEX = re.compile(r'（[^）]*）|\([^)]*\)|\*[^*]*\*', flags=re.DOTALL)
 
 # 默认参考音频文本（如果未提供）
 DEFAULT_REFERENCE_TEXT = "我就是担心这种伤风败俗的东西如果被身心尚幼的小朋友们看到了会造成不好的影响,所以我想提前为小朋友们做好预防措施。"
