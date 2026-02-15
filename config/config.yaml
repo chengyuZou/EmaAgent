@@ -1,0 +1,101 @@
+﻿llm:
+  provider: "deepseek"
+  model: "deepseek-chat"
+  base_url: "https://api.deepseek.com/v1"
+  api_key_env: "DEEPSEEK_API_KEY"
+  max_tokens: 4096
+  temperature: 0.7
+  top_p: 1.0
+  timeout: 60
+
+llm_models:
+  deepseek-chat:
+    label: "DeepSeek Chat"
+    provider: "deepseek"
+    base_url: "https://api.deepseek.com/v1"
+    api_key_env: "DEEPSEEK_API_KEY"
+  deepseek-reasoner:
+    label: "DeepSeek Reasoner"
+    provider: "deepseek"
+    base_url: "https://api.deepseek.com/v1"
+    api_key_env: "DEEPSEEK_API_KEY"
+  qwen3-max:
+    label: "Qwen3 Max"
+    provider: "qwen"
+    base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    api_key_env: "QWEN_API_KEY"
+  qwen-plus:
+    label: "Qwen Plus"
+    provider: "qwen"
+    base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    api_key_env: "QWEN_API_KEY"
+  qwen-flash:
+    label: "Qwen Flash"
+    provider: "qwen"
+    base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    api_key_env: "QWEN_API_KEY"
+  qwen-max:
+    label: "Qwen Max"
+    provider: "qwen"
+    base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    api_key_env: "QWEN_API_KEY"
+  qwen3-coder-plus:
+    label: "Qwen3 Coder Plus"
+    provider: "qwen"
+    base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    api_key_env: "QWEN_API_KEY"
+  qwen3-coder-flash:
+    label: "Qwen3 Coder Flash"
+    provider: "qwen"
+    base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    api_key_env: "QWEN_API_KEY"
+  gpt-4o:
+    label: "GPT-4o"
+    provider: "openai"
+    base_url: "https://api.openai.com/v1"
+    api_key_env: "OPENAI_API_KEY"
+  gpt-5-mini:
+    label: "GPT-5 mini"
+    provider: "openai"
+    base_url: "https://api.openai.com/v1"
+    api_key_env: "OPENAI_API_KEY"
+  gpt-5.1:
+    label: "GPT-5.1"
+    provider: "openai"
+    base_url: "https://api.openai.com/v1"
+    api_key_env: "OPENAI_API_KEY"
+  gpt-5.2:
+    label: "GPT-5.2"
+    provider: "openai"
+    base_url: "https://api.openai.com/v1"
+    api_key_env: "OPENAI_API_KEY"
+  gpt-5.3:
+    label: "GPT-5.3"
+    provider: "openai"
+    base_url: "https://api.openai.com/v1"
+    api_key_env: "OPENAI_API_KEY"
+  gpt-5.2-codex:
+    label: "GPT-5.2-Codex"
+    provider: "openai"
+    base_url: "https://api.openai.com/v1"
+    api_key_env: "OPENAI_API_KEY"
+  gpt-5.3-codex:
+    label: "GPT-5.3-Codex"
+    provider: "openai"
+    base_url: "https://api.openai.com/v1"
+    api_key_env: "OPENAI_API_KEY"
+
+embeddings:
+  provider: "siliconflow"
+  base_url: "https://api.siliconflow.cn/v1"
+  api_key_env: "SILICONFLOW_API_KEY"
+  model: "Pro/BAAI/bge-m3"
+  embedding_dim: 1024
+
+tts:
+  provider: "siliconflow"
+  base_url: "https://api.siliconflow.cn/v1"
+  api_key_env: "SILICONFLOW_API_KEY"
+  model: "FunAudioLLM/CosyVoice2-0.5B"
+  reference_audio_name: "ema1.MP3"
+  reference_text: "我就是担心这种伤风败俗的东西如果被身心尚幼的小朋友们看到会造成不好的影响，所以我想提前为小朋友们做好预防措施。"

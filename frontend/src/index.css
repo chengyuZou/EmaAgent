@@ -1,0 +1,130 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --color-ema: 139 92 246;
+    --color-ema-dark: 109 40 217;
+    --color-ema-light: 196 181 253;
+    --color-accent: 59 130 246;
+    --color-bg: 250 250 252;
+    --color-panel: 255 255 255;
+    --color-text: 30 41 59;
+    --color-text-muted: 100 116 139;
+    --color-input-bg: 248 250 252;
+    --font-family-custom: 'Microsoft YaHei', 'PingFang SC', sans-serif;
+    --font-size-scale: 1;
+    --font-weight-custom: 400;
+  }
+
+  .theme-dark {
+    --color-ema: 167 139 250;
+    --color-ema-dark: 139 92 246;
+    --color-ema-light: 196 181 253;
+    --color-accent: 96 165 250;
+    --color-bg: 15 23 42;
+    --color-panel: 30 41 59;
+    --color-text: 248 250 252;
+    --color-text-muted: 148 163 184;
+    --color-input-bg: 51 65 85;
+  }
+
+  body {
+    @apply bg-tech-bg text-theme-text overflow-hidden transition-colors duration-300;
+    font-family: var(--font-family-custom);
+    font-size: calc(16px * var(--font-size-scale, 1));
+    font-weight: var(--font-weight-custom);
+  }
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgb(var(--color-bg));
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgb(var(--color-ema));
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgb(var(--color-ema-dark));
+}
+
+.glass-panel {
+  background: rgba(var(--color-panel), var(--glass-opacity, 0.6));
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(var(--color-ema-dark), 0.2);
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+  transition: all 0.3s ease;
+}
+
+.message-user {
+  @apply bg-ema text-white rounded-2xl rounded-br-sm shadow-sm;
+}
+
+.message-assistant {
+  @apply bg-slate-100 dark:bg-slate-700 text-theme-text rounded-2xl rounded-bl-sm border border-slate-200 dark:border-slate-600;
+}
+
+.typing-indicator {
+  display: flex;
+  gap: 4px;
+}
+
+.typing-indicator span {
+  width: 8px;
+  height: 8px;
+  background: rgb(var(--color-ema));
+  border-radius: 50%;
+  animation: typing 1.4s infinite ease-in-out;
+}
+
+.typing-indicator span:nth-child(1) {
+  animation-delay: 0s;
+}
+
+.typing-indicator span:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.typing-indicator span:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes typing {
+  0%,
+  60%,
+  100% {
+    transform: translateY(0);
+  }
+  30% {
+    transform: translateY(-8px);
+  }
+}
+
+.status-online {
+  @apply relative;
+}
+
+.status-online::before {
+  content: '';
+  @apply absolute w-3 h-3 bg-green-500 rounded-full -top-1 -right-1;
+  animation: pulse-status 2s infinite;
+}
+
+@keyframes pulse-status {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.2);
+    opacity: 0.7;
+  }
+}

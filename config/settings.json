@@ -1,0 +1,52 @@
+{
+  "api": {
+    "selected_model": "deepseek-chat",
+    "openai_model": "deepseek-chat",
+    "openai_base_url": "https://api.deepseek.com/v1",
+    "provider_keys": {
+      "deepseek": "",
+      "openai": "",
+      "qwen": "sk-44b4106ad6844fa9b06c16b7d70443b8"
+    },
+    "embeddings_model": "Pro/BAAI/bge-m3",
+    "embeddings_base_url": "https://api.siliconflow.cn/v1",
+    "tts_model": "FunAudioLLM/CosyVoice2-0.5B",
+    "tts_voice": "Alex_zh",
+    "temperature": 0.7,
+    "max_tokens": 4096,
+    "top_p": 1.0,
+    "timeout": 60
+  },
+  "paths": {
+    "data_dir": "./data",
+    "audio_dir": "./data/audio",
+    "log_dir": "./logs",
+    "music_dir": "./data/music"
+  },
+  "ui": {
+    "theme": {
+      "mode": "light",
+      "ema_rgb": [
+        139,
+        92,
+        159
+      ],
+      "accent_rgb": [
+        59,
+        123,
+        135
+      ],
+      "panel_rgb": [
+        255,
+        255,
+        255
+      ],
+      "panel_alpha": 0.45
+    },
+    "font": {
+      "family": "'Microsoft YaHei', 'PingFang SC', sans-serif",
+      "size_scale": 1.0,
+      "weight": 400
+    }
+  }
+}

@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ema Live2D Viewer</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { 
+      width: 100%; height: 100%; overflow: hidden; 
+      background: radial-gradient(circle at 50% 80%, #1e293b 0%, #0f172a 100%);
+    }
+    #canvas { width: 100%; height: 100%; display: block; }
+    #loading {
+      position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+      color: #94a3b8; font-family: sans-serif; font-size: 14px; pointer-events: none;
+      font-weight: bold; letter-spacing: 1px;
+    }
+  </style>
+  
+  <script src="https://cubism.live2d.com/sdk-web/cubismcore/live2dcubismcore.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pixi.js/6.5.9/browser/pixi.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/pixi-live2d-display@0.4.0/dist/cubism4.min.js"></script>
+</head>
+<body>
+  <canvas id="canvas"></canvas>
+  <div id="loading">Live2D加载中...</div>
+
+  <script>
+    const { Application } = PIXI;
+    const { Live2DModel } = PIXI.live2d;
+
+    const MODEL_URL = '/live2d/ema/ema.model3.json';
+
+    const app = new Application({
+      view: document.getElementById('canvas'),
+      autoStart: true,
+      resizeTo: window,
+      transparent: true,
+      backgroundAlpha: 0,
+      resolution: window.devicePixelRatio || 1,
+      autoDensity: true
+    });
+
+    let model = null;
+    let currentViewMode = 'half';
+
+    // ======== 鼠标跟随 ========
+    let targetX = 0, targetY = 0;
+    let currentX = 0, currentY = 0;
+
+    // ======== 说话状态 ========
+    let isSpeaking = false;
+    let currentMouthValue = 0;
+    let speakingTimer = null;
+    let speakingIntensity = 0;
+
+    // ======== 眨眼 ========
+    let blinkState = {
+      eyeOpenL: 1, eyeOpenR: 1,
+      nextBlinkTime: 0, blinking: false,
+      blinkPhase: 0, blinkStart: 0
+    };
+
+    // ======== 情感系统 ========
+    // 基于模型实际参数，不依赖 expression 文件
+    const EMOTION_PRESETS = {
+      normal: {
+        ParamEyeLSmile: 0, ParamEyeRSmile: 0,
+        ParamMouthForm: 0, ParamBrowLY: 0, ParamBrowRY: 0,
+        Param: 0, Param2: 0, Param23: 0,
+        Param93: 0, Param82: 0, Param94: 0, Param84: 0
+      },
+      happy: {
+        ParamEyeLSmile: 0.8, ParamEyeRSmile: 0.8,
+        ParamMouthForm: 0.6, ParamBrowLY: 0.3, ParamBrowRY: 0.3,
+        Param: 0, Param2: 0, Param23: 0,
+        Param93: 0, Param82: 0, Param94: 0, Param84: 0
+      },
+      sad: {
+        ParamEyeLSmile: 0, ParamEyeRSmile: 0,
+        ParamMouthForm: -0.5, ParamBrowLY: -0.5, ParamBrowRY: -0.5,
+        Param: 1, Param2: 0, Param23: 0,       // 流泪
+        Param93: 0, Param82: 0, Param94: 0, Param84: 0
+      },
+      angry: {
+        ParamEyeLSmile: 0, ParamEyeRSmile: 0,
+        ParamMouthForm: -0.8, ParamBrowLY: -1.0, ParamBrowRY: -1.0,
+        Param: 0, Param2: 0, Param23: 0,
+        Param93: 0, Param82: 0, Param94: 1, Param84: 0  // 生气符号
+      },
+      surprised: {
+        ParamEyeLSmile: 0, ParamEyeRSmile: 0,
+        ParamMouthForm: 0, ParamBrowLY: 1.0, ParamBrowRY: 1.0,
+        Param: 0, Param2: 0, Param23: 0,
+        Param93: 0, Param82: 0, Param94: 0, Param84: 0
+      },
+      shy: {
+        ParamEyeLSmile: 0.5, ParamEyeRSmile: 0.5,
+        ParamMouthForm: 0.3, ParamBrowLY: 0.0, ParamBrowRY: 0.0,
+        Param: 0, Param2: 0, Param23: 1,       // 抬手遮脸
+        Param93: 0, Param82: 0, Param94: 0, Param84: 0
+      },
+      thinking: {
+        ParamEyeLSmile: 0, ParamEyeRSmile: 0,
+        ParamMouthForm: -0.2, ParamBrowLY: 0.5, ParamBrowRY: -0.3,
+        Param: 0, Param2: 0, Param23: 0,
+        Param93: 0, Param82: 0, Param94: 0, Param84: 0
+      },
+      dark: {
+        ParamEyeLSmile: 0, ParamEyeRSmile: 0,
+        ParamMouthForm: -0.5, ParamBrowLY: -0.8, ParamBrowRY: -0.8,
+        Param: 0, Param2: 1, Param23: 0,       // 魔女化
+        Param93: 0, Param82: 1, Param94: 0, Param84: 1  // 失去高光 + 阴沉
+      },
+      pout: {
+        ParamEyeLSmile: 0, ParamEyeRSmile: 0,
+        ParamMouthForm: -0.3, ParamBrowLY: -0.3, ParamBrowRY: -0.3,
+        Param: 0, Param2: 0, Param23: 0,
+        Param93: 1, Param82: 0, Param94: 0, Param84: 0  // 嘟嘴
+      }
+    };
+
+    // 当前情感参数（用于平滑过渡）
+    let emotionCurrent = { ...EMOTION_PRESETS.normal };
+    let emotionTransition = {
+      active: false, startTime: 0,
+      from: {}, to: {}
+    };
+    const EMOTION_TRANSITION_MS = 600;
+
+    function easeInOut(t) {
+      return t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
+    }
+
+    // ======== 加载模型 ========
+    async function loadModel() {
+      try {
+        console.log('🔄 Loading Model:', MODEL_URL);
+        
+        model = await Live2DModel.from(MODEL_URL, { 
+          autoInteract: false,
+          autoUpdate: false,
+          autoHitTest: false
+        });
+        
+        app.stage.addChild(model);
+        resizeModel(currentViewMode);
+        startTicker();
+        
+        document.getElementById('loading').style.display = 'none';
+        console.log('✅ Model Loaded');
+        printModelParameters();
+        window.parent.postMessage({ type: 'live2d_ready' }, '*');
+
+      } catch (e) {
+        console.error('❌ Load Failed:', e);
+        document.getElementById('loading').innerText = 'ERROR: ' + (e.message || 'Unknown');
+        window.parent.postMessage({ type: 'live2d_error', message: e.message }, '*');
+      }
+    }
+
+    function printModelParameters() {
+      try {
+        const cm = model.internalModel.coreModel;
+        const count = cm._model.parameters.count;
+        console.log('📋 模型参数列表:');
+        for (let i = 0; i < count; i++) {
+          const id = cm._model.parameters.ids[i];
+          const val = cm._model.parameters.values[i];
+          const min = cm._model.parameters.minimumValues[i];
+          const max = cm._model.parameters.maximumValues[i];
+          console.log(`  [${i}] ${id}: ${val.toFixed(2)} (${min} ~ ${max})`);
+        }
+      } catch(e) { console.warn('参数列表获取失败', e); }
+    }
+
+    function resizeModel(mode) {
+      if (!model) return;
+      currentViewMode = mode;
+
+      const sw = window.innerWidth;
+      const sh = window.innerHeight;
+
+      model.anchor.set(0.5, 0.5);
+
+      if (mode === 'full') {
+        model.scale.set(0.1);
+        model.x = sw * 0.5;
+        model.y = sh * 0.55;
+        console.log('📐 视图: 全身, scale: 0.1');
+      } else {
+        model.scale.set(0.15);
+        model.x = sw * 0.5;
+        model.y = sh * 0.8;
+        console.log('📐 视图: 半身, scale: 0.15');
+      }
+    }
+
+    // ======== 主循环 ========
+    function startTicker() {
+      if (!model) return;
+
+      let t = 0;
+      blinkState.nextBlinkTime = performance.now() + 2000 + Math.random() * 3000;
+
+      app.ticker.add((delta) => {
+        if (!model?.internalModel?.coreModel) return;
+        const cm = model.internalModel.coreModel;
+        const now = performance.now();
+
+        t += 0.05 * delta;
+
+        // ===== 1. 呼吸 =====
+        try { cm.setParameterValueById('ParamBreath', (Math.sin(t * 0.6) + 1) * 0.5); } catch(e) {}
+
+        // ===== 2. 情感过渡 =====
+        if (emotionTransition.active) {
+          const elapsed = now - emotionTransition.startTime;
+          const tRaw = Math.min(1, elapsed / EMOTION_TRANSITION_MS);
+          const tEase = easeInOut(tRaw);
+
+          for (const key of Object.keys(emotionCurrent)) {
+            const from = emotionTransition.from[key] || 0;
+            const to = emotionTransition.to[key] || 0;
+            emotionCurrent[key] = from + (to - from) * tEase;
+          }
+
+          if (tRaw >= 1) {
+            emotionTransition.active = false;
+            emotionCurrent = { ...emotionTransition.to };
+          }
+        }
+
+        // 应用情感参数
+        for (const [paramId, value] of Object.entries(emotionCurrent)) {
+          try { cm.setParameterValueById(paramId, value); } catch(e) {}
+        }
+
+        // ===== 3. 眨眼 =====
+        updateBlink(cm, now);
+
+        // ===== 4. 鼠标平滑跟随 =====
+        currentX += (targetX - currentX) * 0.08;
+        currentY += (targetY - currentY) * 0.08;
+
+        // ===== 5. 说话强度 =====
+        const targetIntensity = isSpeaking ? 1.0 : 0.0;
+        speakingIntensity += (targetIntensity - speakingIntensity) * 0.08;
+
+        // ===== 6. 待机/说话晃动 =====
+        const idleSwayX = Math.sin(t * 0.7) * 3 + Math.sin(t * 1.3) * 1.5;
+        const idleSwayZ = Math.cos(t * 0.5) * 2;
+
+        const speakSwayX = Math.sin(t * 1.8) * 8 + Math.sin(t * 3.1) * 3;
+        const speakSwayZ = Math.sin(t * 1.3) * 5;
+
+        const swayX = idleSwayX + speakSwayX * speakingIntensity;
+        const swayZ = idleSwayZ + speakSwayZ * speakingIntensity;
+
+        // ===== 7. 写入 Param85/86/87（输入参数） =====
+        // 这是关键！物理引擎会从这三个参数计算出头部、身体、头发、裙子等所有联动
+        const inputX = currentX * 20 + swayX;    // 左右
+        const inputY = currentY * 15;             // 上下
+        const inputZ = currentX * 5 + swayZ;      // 倾斜
+
+        try {
+          cm.setParameterValueById('Param85', Math.max(-30, Math.min(30, inputX)));
+          cm.setParameterValueById('Param86', Math.max(-30, Math.min(30, inputY)));
+          cm.setParameterValueById('Param87', Math.max(-30, Math.min(30, inputZ)));
+        } catch(e) {}
+
+        // ===== 8. 眼球跟随（直接控制，不经过物理） =====
+        try {
+          cm.setParameterValueById('ParamEyeBallX', Math.max(-1, Math.min(1, currentX * 0.8)));
+          cm.setParameterValueById('ParamEyeBallY', Math.max(-1, Math.min(1, currentY * 0.5)));
+        } catch(e) {}
+
+        // ===== 9. 手动触发 SDK 更新 =====
+        try {
+          model.update(app.ticker.deltaMS);
+        } catch(e) {}
+      });
+    }
+
+    // ======== 眨眼 ========
+    function updateBlink(cm, now) {
+      const BLINK_CLOSE_MS = 80;
+      const BLINK_OPEN_MS  = 120;
+
+      if (!blinkState.blinking && now >= blinkState.nextBlinkTime) {
+        blinkState.blinking = true;
+        blinkState.blinkPhase = 1;
+        blinkState.blinkStart = now;
+      }
+
+      if (blinkState.blinking) {
+        if (blinkState.blinkPhase === 1) {
+          const p = Math.min(1, (now - blinkState.blinkStart) / BLINK_CLOSE_MS);
+          blinkState.eyeOpenL = 1 - p;
+          blinkState.eyeOpenR = 1 - p;
+          if (p >= 1) { blinkState.blinkPhase = 2; blinkState.blinkStart = now; }
+        } else if (blinkState.blinkPhase === 2) {
+          const p = Math.min(1, (now - blinkState.blinkStart) / BLINK_OPEN_MS);
+          blinkState.eyeOpenL = p;
+          blinkState.eyeOpenR = p;
+          if (p >= 1) {
+            blinkState.blinking = false;
+            blinkState.eyeOpenL = 1;
+            blinkState.eyeOpenR = 1;
+            blinkState.nextBlinkTime = now + (Math.random() < 0.2 ? 200 + Math.random() * 300 : 2000 + Math.random() * 3000);
+          }
+        }
+      }
+
+      try {
+        cm.setParameterValueById('ParamEyeLOpen', blinkState.eyeOpenL);
+        cm.setParameterValueById('ParamEyeROpen', blinkState.eyeOpenR);
+      } catch(e) {}
+    }
+
+    // ======== 情感切换 ========
+    function setEmotion(name) {
+      if (!model) return;
+      const target = EMOTION_PRESETS[name];
+      if (!target) {
+        console.warn('⚠️ 未知情感:', name);
+        return;
+      }
+
+      console.log('😊 切换情感:', name);
+
+      emotionTransition.active = true;
+      emotionTransition.startTime = performance.now();
+      emotionTransition.from = { ...emotionCurrent };
+      emotionTransition.to = { ...target };
+    }
+
+    // ======== 嘴部控制 ========
+    function setMouth(value) {
+      if (!model?.internalModel?.coreModel) return;
+      currentMouthValue = value;
+
+      try {
+        model.internalModel.coreModel.setParameterValueById('ParamMouthOpenY', value);
+      } catch(e) {}
+
+      if (value > 0.1) {
+        if (!isSpeaking) console.log('🎤 开始说话');
+        isSpeaking = true;
+        clearTimeout(speakingTimer);
+        speakingTimer = setTimeout(() => {
+          isSpeaking = false;
+          console.log('🔇 停止说话');
+        }, 400);
+      }
+    }
+
+    // ======== 消息监听 ========
+    window.addEventListener('message', (event) => {
+      if (!event.data || typeof event.data !== 'object') return;
+      const { type, value, x, y } = event.data;
+
+      if (type === 'mouth') {
+        setMouth(value);
+      } else if (type === 'expression') {
+        // 兼容旧接口：映射到情感
+        const expressionToEmotion = {
+          normal: 'normal', taishou: 'shy',
+          liulei: 'sad', monvhua: 'dark'
+        };
+        setEmotion(expressionToEmotion[value] || 'normal');
+      } else if (type === 'emotion') {
+        setEmotion(value);
+      } else if (type === 'view_mode') {
+        resizeModel(value);
+      } else if (type === 'pointer_move') {
+        targetX = x;
+        targetY = y;
+      }
+    });
+
+    window.addEventListener('resize', () => resizeModel(currentViewMode));
+
+    loadModel();
+  </script>
+</body>
+</html>
