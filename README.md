@@ -167,13 +167,13 @@ flowchart TB
 
 ## 快速启动
 
-## 1. 环境准备
+### 1. 环境准备
 
 - Python 3.12+
 - Node.js 18+
 - AnaConda(可选)
 
-## 2. 下载并安装依赖包
+### 2. 下载并安装依赖包
 
 你可以二选一：
 
@@ -207,7 +207,7 @@ npm install
 cd ..
 ```
 
-## 3. 配置API Key
+### 3. 配置API Key
 基础LLM模型可选`DeepSeek` `Qwen` `OpenAI` 三类接入 三选一即可
 - `DeepSeek` [API](https://platform.deepseek.com/api_keys)
 - `Qwen` [API](https://bailian.console.aliyun.com/cn-beijing?tab=model&utm_content=se_1023046479#/api-key)
@@ -234,16 +234,16 @@ SILICONFLOW_API_KEY=your_siliconflow_key_here
 
 ---
 
-## 4. 启动
+### 4. 启动
 进入文件根目录
 
-Backend:
+后端:
 
 ```bash
 uvicorn api.main:app --host 0.0.0.0 --port 8000
 ```
 
-Frontend:
+前端:
 
 ```bash
 cd frontend
@@ -255,10 +255,80 @@ npm run dev
 
 一键启动后续会更新
 
-## 5. 访问地址
+### 5. 访问地址
 
 - Frontend: `http://localhost:5173`
 - Backend: `http://localhost:8000`
+
+---
+
+## 演示
+
+### Chat
+可选择三个模式 
+- `agent`智能体模式 目前工具较为单一
+- `chat`日常聊天模式 
+- `narrative`剧情模式 支持不含BE的三个周目剧情问答
+
+目前支持 `DeepSeek` `Qwen` `OpenAI` 三类模型接入
+![llm](./images/chat/chat_llm.png)
+
+由衷感谢B站UP主[露姆娅](https://space.bilibili.com/1384755?spm_id_from=333.788.upinfo.head.click)提供的艾玛Live2D
+
+--- 
+
+### News
+从`B站` `百度` `Google`三个网站进行内容爬取
+
+方法为事先写入`魔法少女的魔女审判`作为默认关键字再进行爬取
+
+目前爬取Google的代码似乎有小Bug
+
+![news](./images/news/news.png)
+
+---
+
+### Music
+音乐播放
+
+上传自己的音乐文件进行播放
+
+支持`收藏` `文件格式转换` `更改歌手 封面`功能
+
+![music](./images/music/music.png)
+
+---
+
+### Game
+拼图游戏 玩到一半nnk会来开你盒
+
+上传你自己的图片就可以玩
+
+可选`3x3` `4x4` `10x10` `20x20`等模式
+
+![nnk](./images/game/puzzle.jpg)
+
+![Puzzle Game](./images/game/game.png)
+
+---
+
+### Setting
+
+配置你的`API Key` 修改配色 
+
+更改文件路径(这个不建议)
+
+![api](./images/setting/api.png)
+![font](./images/setting/font.png)
+![theme](./images/setting/theme.png)
+
+在`EmaAgent`的`data`文件夹下
+- `audio`存放`chat`页面中TTS合成的音频
+- `font`存放`setting`页面中的字体样式
+- `music`存放`music`页面下的音乐
+- `puzzle_images`存放`game`页面下的拼图图片
+- `sessions`存放`chat`侧栏的会话数据
+- `theme`存放`setting`页面中的主题设置
 
 ---
 
@@ -538,73 +608,10 @@ EmaAgent/
 
 ---
 
-## 演示
+## 共犯名单
+感谢所有的贡献者与项目的支持者
 
-### Chat
-可选择三个模式 
-- `agent`智能体模式 目前工具较为单一
-- `chat`日常聊天模式 
-- `narrative`剧情模式 支持不含BE的三个周目剧情问答
-
-目前支持 `DeepSeek` `Qwen` `OpenAI` 三类模型接入
-![llm](./images/chat/chat_llm.png)
-
-由衷感谢B站UP主[露姆娅](https://space.bilibili.com/1384755?spm_id_from=333.788.upinfo.head.click)提供的艾玛Live2D
-
---- 
-
-### News
-从`B站` `百度` `Google`三个网站进行内容爬取
-
-方法为事先写入`魔法少女的魔女审判`作为默认关键字再进行爬取
-
-目前爬取Google的代码似乎有小Bug
-
-![news](./images/news/news.png)
-
----
-
-### Music
-音乐播放
-
-上传自己的音乐文件进行播放
-
-支持`收藏` `文件格式转换` `更改歌手 封面`功能
-
-![music](./images/music/music.png)
-
----
-
-### Game
-拼图游戏 玩到一半nnk会来开你盒
-
-上传你自己的图片就可以玩
-
-可选`3x3` `4x4` `10x10` `20x20`等模式
-
-![nnk](./images/game/puzzle.jpg)
-
-![Puzzle Game](./images/game/game.png)
-
----
-
-### Setting
-
-配置你的`API Key` 修改配色 
-
-更改文件路径(这个不建议)
-
-![api](./images/setting/api.png)
-![font](./images/setting/font.png)
-![theme](./images/setting/theme.png)
-
-在`EmaAgent`的`data`文件夹下
-- `audio`存放`chat`页面中TTS合成的音频
-- `font`存放`setting`页面中的字体样式
-- `music`存放`music`页面下的音乐
-- `puzzle_images`存放`game`页面下的拼图图片
-- `sessions`存放`chat`侧栏的会话数据
-- `theme`存放`setting`页面中的主题设置
+[![Contributors](https://contrib.rocks/image?repo=chengyuZou/EmaAgent)](https://github.com/chengyuZou/EmaAgent/graphs/contributors)
 
 ---
 
