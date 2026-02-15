@@ -1,7 +1,7 @@
 # EmaAgent 
 
 ![Version](https://img.shields.io/badge/version-v0.2-blue?style=for-the-badge)
-![Python](https://img.shields.io/badge/Python-3.11+-3776AB?style=for-the-badge&logo=python&logoColor=white)
+![Python](https://img.shields.io/badge/Python-3.12+-3776AB?style=for-the-badge&logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-Backend-009688?style=for-the-badge&logo=fastapi&logoColor=white)
 ![React](https://img.shields.io/badge/React-Frontend-61DAFB?style=for-the-badge&logo=react&logoColor=black)
 ![License](https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge)
@@ -15,6 +15,10 @@ EmaAgent 是一个多模式智能助手系统，核心包含：
 - 会话持久化与上下文压缩
 - Live2D 状态联动
 
+![mode](./images/chat/chat_mode.png)
+
+---
+
 ## AI使用情况
 ### 后端
 `api`文件夹的全部文件
@@ -23,6 +27,11 @@ EmaAgent 是一个多模式智能助手系统，核心包含：
 
 ### 前端
 全部
+
+---
+
+## 更新计划
+总之有很多要更新
 
 ---
 
@@ -194,7 +203,7 @@ npm run dev
 
 一键启动后续会更新
 
-## 4. 访问地址
+## 5. 访问地址
 
 - Frontend: `http://localhost:5173`
 - Backend: `http://localhost:8000`
@@ -204,18 +213,172 @@ npm run dev
 ## 项目结构
 
 ```text
-EmaAgent-v0.2/
-├─ agent/                # EmaAgent 与 ReAct
-├─ api/                  # FastAPI 入口 路由 服务
-├─ config/               # 路径 配置 设置
-├─ llm/                  # 模型配置与统一客户端
-├─ memory/               # 会话模型 持久化 压缩
-├─ narrative/            # 叙事路由与多周目 RAG
-├─ tools/                # 工具系统
-├─ frontend/             # 前端界面
-└─ data/                 # 运行时数据 会话 音频 上传
-
-原audio文件夹已不在使用 后续更新会处理
+EmaAgent/
+├─ README.md # 项目总览、启动说明、架构图、模块说明与演示文档
+├─ requirements.txt # 后端 Python 依赖清单
+├─ .env # API Key 与模型相关环境变量配置
+├─ main.py # 旧版 CLI 启动入口（v0.2 已迁移到 api/main.py）
+│
+├─ agent/ # Agent 编排层
+│ ├─ EmaAgent.py # 统一调度 chat/agent/narrative 模式的核心入口
+│ └─ react.py # ReAct 思考-行动循环与工具调用流程
+│
+├─ api/ # FastAPI 接口层与服务层
+│ ├─ main.py # FastAPI 应用入口、路由注册、静态资源挂载
+| |
+│ ├─ routes/ # HTTP/WS 路由层
+│ │ ├─ audio.py # 音频相关路由
+│ │ ├─ chat.py # 聊天/流式输出相关路由
+│ │ ├─ game.py # 拼图游戏资源管理路由
+│ │ ├─ live2d.py # Live2D 状态与资源路由
+│ │ ├─ music.py # 音乐上传、列表、转换等路由
+│ │ ├─ news.py # 资讯抓取与聚合路由
+│ │ ├─ sessions.py # 会话生命周期管理路由
+│ │ └─ settings.py # 系统配置与模型配置路由
+| | 
+│ └─ services/ # 业务服务层
+│ ├─ game_service.py # 拼图图片与游戏资源业务逻辑
+│ ├─ live2d_service.py # Live2D 业务处理逻辑
+│ ├─ music_service.py # 音乐文件管理/元数据处理/转换逻辑
+│ ├─ news_service.py # 多来源资讯抓取与清洗逻辑
+│ ├─ session_service.py # 会话增删改查与历史读取逻辑
+│ └─ tts_service.py # 文本转语音业务封装
+│
+├─ audio/ # TTS 相关模块与参考音频(audio文件夹已不打算 后续更新会处理)
+│ ├─ tts_manager.py # TTS 生成与管理逻辑
+│ └─ Reference_audio/ # 参考音频素材目录
+│
+├─ config/ # 配置与路径管理
+│ ├─ config.json # JSON 格式项目配置
+│ ├─ config.yaml # YAML 格式项目配置
+│ ├─ paths.py # 项目路径初始化与路径工具
+│ ├─ settings.json # 运行参数/设置项持久化配置
+│ └─ README.md # config 模块说明文档
+│
+├─ data/ # 运行时数据目录
+| |
+│ ├─ audio/ # TTS 运行时音频数据
+│ │ ├─ cache/ # 音频缓存目录
+│ │ ├─ output/ # 生成音频输出目录
+│ │ └─ Reference_audio/ # 参考音频目录
+| |
+│ ├─ covers/ # 音乐封面资源目录
+│ ├─ font/ # 字体配置目录
+│ │ └─ font.json # 字体设置持久化文件
+| |
+│ ├─ music/ # 音乐文件存储目录
+│ ├─ puzzle_images/ # 拼图游戏图片目录
+│ ├─ sessions/ # 会话数据持久化目录
+│ └─ theme/ # 主题配置目录
+│ └─ theme.json # 主题设置持久化文件
+│
+├─ frontend/ # React + Vite 前端工程
+│ ├─ index.html # 前端入口 HTML
+│ ├─ package.json # 前端依赖与脚本配置
+│ ├─ public/ # 静态资源目录
+│ │ ├─ live2d-viewer.html # Live2D Viewer 页面
+│ │ ├─ live2dcubismcore.min.js # Live2D Cubism Core 脚本
+│ │ └─ live2d/
+│ │ └─ ema/ # 艾玛 Live2D 模型资源
+| |
+│ └─ src/ # 前端源码
+| |
+│ ├─ App.tsx # 前端应用根组件
+│ ├─ index.css # 全局样式
+│ ├─ main.tsx # React 挂载入口
+│ ├─ components/
+│ │ ├─ ChatInterface.tsx # 聊天主界面组件
+│ │ ├─ DashboardLayout.tsx # 主布局组件
+│ │ ├─ EmaLive2D.tsx # Live2D 展示组件
+│ │ ├─ GamePage.tsx # 游戏页面组件
+│ │ ├─ MusicPlayer.tsx # 音乐播放器组件
+│ │ ├─ NavigationRail.tsx # 导航栏组件
+│ │ ├─ NewsPage.tsx # 新闻页面组件
+│ │ ├─ PuzzleGame.tsx # 拼图游戏核心组件
+│ │ ├─ Settings.tsx # 设置页面组件
+│ │ └─ Sidebar.tsx # 侧边栏组件
+| |
+│ └─ styles/
+│ ├─ GamePage.css # 游戏页样式
+│ ├─ NewsPage.css # 新闻页样式
+│ └─ PuzzleGame.css # 拼图组件样式
+│
+├─ images/ # README 演示图片资源
+│ ├─ chat/ # 聊天演示图
+│ │ └─ live2d/ # Live2D 截图目录
+| |
+│ ├─ game/ # 游戏演示图
+│ ├─ music/ # 音乐演示图
+│ ├─ news/ # 新闻演示图
+│ └─ setting/ # 设置页面演示图
+│
+├─ llm/ # 模型配置与统一客户端
+│ ├─ client.py # LLM 统一调用入口
+│ ├─ config.py # 模型参数与提供商配置
+| |
+│ └─ clients/
+│ ├─ deepseek_client.py # DeepSeek 客户端实现
+│ ├─ openai_client.py # OpenAI 客户端实现
+│ └─ qwen_client.py # Qwen 客户端实现
+│
+├─ logs/ # 运行日志目录（当前为空）
+│
+├─ memory/ # 会话模型、压缩与持久化
+│ ├─ compressor.py # 对话上下文压缩逻辑
+│ ├─ manager.py # 会话读写与管理逻辑
+│ └─ schema.py # 会话/消息数据结构定义
+│
+├─ narrative/ # 叙事检索与多周目 RAG
+│ ├─ core.py # NarrativeMemory 统一入口（Router + RAGManager）
+│ ├─ embedding.py # 嵌入向量生成/适配逻辑
+│ ├─ exceptions.py # narrative 相关异常定义
+│ ├─ llm_function.py # 叙事模块内 LLM 调用函数封装
+│ ├─ rag_manager.py # 多 RAG 实例并发查询与聚合
+│ ├─ router.py # 问题拆分与周目路由逻辑
+| |
+│ └─ memory/ # LightRAG 持久化数据
+│ ├─ 1st_Loop/ # 一周目剧情检索文件
+│ ├─ 2nd_Loop/ # 二周目剧情检索文件
+│ └─ 3rd_Loop/ # 三周目剧情检索文件
+│
+├─ Parser/ # 剧情数据清洗与重排流程
+│ ├─ build_dataset.py # 原始脚本提取、清洗、结构化
+│ ├─ merger.py # 滑窗合并为可检索 chunk
+│ ├─ NaninovelParser.py # Naninovel 脚本解析器
+│ ├─ new.py # 特定周目章节重映射与修正脚本
+│ ├─ norm_merged_cleaned.json # 清洗合并后的标准化数据集
+│ └─ timeline_distribution.json # 周目/章节分布统计结果
+│
+├─ prompts/ # 提示词模板
+│ ├─ agent_system_prompt.py # Agent 系统提示词模板
+│ ├─ ema_prompt.py # Ema 角色/对话提示词模板
+│ └─ story_summary_prompt.py # 剧情摘要提示词模板
+│
+├─ tools/ # 工具系统
+│ ├─ base.py # 工具抽象基类与通用接口
+│ ├─ time.py # 时间工具实现
+│ ├─ tool_collection.py # 工具注册与集合管理
+│ ├─ tool_error.py # 工具异常封装与错误定义
+│ ├─ webscraper.py # 网页抓取工具实现
+| |
+│ ├─ builtin/ # 内置工具
+│ │ ├─ code_exec.py # 代码执行工具
+│ │ ├─ file_ops.py # 文件操作工具
+│ │ ├─ terminal_exec.py # 终端命令执行工具
+│ │ └─ weather.py # 天气查询工具
+| |
+│ ├─ file_analysis/ # 文件分析工具
+│ │ ├─ CodeAnalyzer.py # 代码文件分析器
+│ │ └─ DocumentAnalyzer.py # 文档文件分析器
+| |
+│ └─ search/ # 搜索工具
+│ ├─ arxiv_paper.py # Arxiv 论文检索工具
+│ ├─ baidusearch.py # 百度搜索工具
+│ ├─ base.py # 搜索工具基类
+│ └─ googlesearch.py # Google 搜索工具
+│
+└─ utils/ # 通用工具模块
+└─ logger.py # 全局日志器与日志格式配置
 ```
 
 ---
@@ -331,9 +494,6 @@ EmaAgent-v0.2/
 - `chat`日常聊天模式 
 - `narrative`剧情模式 支持不含BE的三个周目剧情问答
 
-![mode](./images/chat/chat_mode.png)
-
-
 目前支持 `DeepSeek` `Qwen` `OpenAI` 三类模型接入
 ![llm](./images/chat/chat_llm.png)
 
@@ -407,8 +567,8 @@ EmaAgent-v0.2/
 | [貳階堂希罗](https://space.bilibili.com/434748403?spm_id_from=333.788.upinfo.head.click) | [魔法少女的魔女审判 CG/PV/美术/音声资源提取解包](https://www.bilibili.com/video/BV1Zu4czJENM/?spm_id_from=333.1007.top_right_bar_window_history.content.click&vd_source=3151b98d67ade6395736508def783435) |
 | [OpenManus](https://github.com/FoundationAgents/OpenManus) | 参考Tool架构 |
 | [LightRAG](https://github.com/HKUDS/LightRAG) | Simple and Fast Retrieval-Augmented Generation |
-| [Acacia](https://acacia-create.com/) |  |
-| [Serism_official](https://space.bilibili.com/1050531840?spm_id_from=333.788.upinfo.detail.click) | 你猜艾玛的参考音频哪来的?[请输入文本](https://www.bilibili.com/video/BV1NCqqBuE9M/?buvid=XXC3D36CA77C347443C8E1BE9ABDA72C8EE56&from_spmid=search.search-result.0.0&is_story_h5=false&mid=SCkMrA1jFnwwFjYh6jhhHg%3D%3D&plat_id=116&share_from=ugc&share_medium=android&share_plat=android&share_session_id=73cd231c-acfa-4a3c-a6d0-2e3e162b4b12&share_source=WEIXIN&share_tag=s_i&spmid=united.player-video-detail.0.0&timestamp=1771042359&unique_k=LuTRc12&up_id=1050531840&vd_source=3151b98d67ade6395736508def783435) |
+| [Acacia](https://acacia-create.com/) | - |
+| [Serism_official](https://space.bilibili.com/1050531840?spm_id_from=333.788.upinfo.detail.click) | 你猜艾玛的[参考音频](https://www.bilibili.com/video/BV1NCqqBuE9M/?buvid=XXC3D36CA77C347443C8E1BE9ABDA72C8EE56&from_spmid=search.search-result.0.0&is_story_h5=false&mid=SCkMrA1jFnwwFjYh6jhhHg%3D%3D&plat_id=116&share_from=ugc&share_medium=android&share_plat=android&share_session_id=73cd231c-acfa-4a3c-a6d0-2e3e162b4b12&share_source=WEIXIN&share_tag=s_i&spmid=united.player-video-detail.0.0&timestamp=1771042359&unique_k=LuTRc12&up_id=1050531840&vd_source=3151b98d67ade6395736508def783435)哪来的? |
 
 ## 免责声明
 仅供个人、爱好者之间的学习、研究与技术交流用
