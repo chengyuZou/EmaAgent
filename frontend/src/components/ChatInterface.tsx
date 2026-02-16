@@ -1,4 +1,4 @@
-﻿import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import type { ChangeEvent, DragEvent } from 'react'
 import { Send, Volume2, VolumeX, PlayCircle, Paperclip, X, Square, Copy, Check, ChevronDown } from 'lucide-react'
 import EmaLive2D from './EmaLive2D'
@@ -449,6 +449,8 @@ export default function ChatInterface({
 
   const handleReplay = async (url: string) => {
     if (!url || !audioEnabledRef.current) return
+    // 重播前先停止当前播报与队列 避免出现二重音
+    stopAudioPlayback()
     await playAudio(normalizeAudioUrl(url), true)
   }
 
@@ -730,10 +732,14 @@ export default function ChatInterface({
                         : 'bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 rounded-bl-none border border-slate-100 dark:border-slate-700'
                     } ${msg.isTyping ? 'animate-pulse opacity-80 italic text-slate-500' : ''}`}
                   >
-                    {isAssistant && !msg.isTyping && (
+                    {!msg.isTyping && (
                       <button
                         onClick={() => void copyText(fullCopyKey, msg.text)}
-                        className="absolute top-2 right-2 p-1.5 rounded-md text-slate-400 hover:text-ema hover:bg-slate-100 dark:hover:bg-slate-700 opacity-0 group-hover:opacity-100 transition-opacity"
+                        className={`absolute top-2 right-2 p-1.5 rounded-md opacity-0 group-hover:opacity-100 transition-opacity ${
+                          msg.sender === 'user'
+                            ? 'text-white/80 hover:text-white hover:bg-white/20'
+                            : 'text-slate-400 hover:text-ema hover:bg-slate-100 dark:hover:bg-slate-700'
+                        }`}
                         title="复制全文"
                       >
                         {copiedKeys[fullCopyKey] ? <Check size={14} /> : <Copy size={14} />}
