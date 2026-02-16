@@ -1,4 +1,4 @@
-﻿import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
+import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Check,
   ChevronDown,
@@ -186,9 +186,23 @@ export default function Settings({
       if (!response.ok) return
       const data = await response.json()
       setStatus(data)
+      return data as SystemStatus
     } catch {
       setStatus({ backend: false, websocket: false, tts: false, embeddings: false, llm: false })
+      return { backend: false, websocket: false, tts: false, embeddings: false, llm: false } as SystemStatus
     }
+  }
+
+  const refreshStatusWithRetry = async (retry = 3, delayMs = 250) => {
+    let last: SystemStatus | undefined
+    for (let i = 0; i < retry; i++) {
+      last = await refreshStatus()
+      if (last?.backend) {
+        return last
+      }
+      await new Promise((resolve) => setTimeout(resolve, delayMs))
+    }
+    return last
   }
 
   const handleSave = async () => {
@@ -212,9 +226,11 @@ export default function Settings({
         const err = await response.json().catch(() => ({}))
         throw new Error(err?.detail || '保存失败')
       }
+      await fetchSettings()
+      await fetchModels()
+      await refreshStatusWithRetry()
       setSaveSuccess(true)
       setTimeout(() => setSaveSuccess(false), 2000)
-      refreshStatus()
     } catch (error: any) {
       setSaveError(error?.message || '保存失败')
     } finally {
@@ -586,16 +602,32 @@ export default function Settings({
         {activeTab === 'paths' && (
           <>
             <CollapseCard title="数据目录" open={openPanels.pData} onToggle={() => togglePanel('pData')}>
-              <PathRow value={pathConfig.data_dir} onChange={() => changePath('data_dir', '数据目录')} />
+              <PathRow
+                value={pathConfig.data_dir}
+                onValueChange={(v) => setPathConfig((prev) => ({ ...prev, data_dir: v }))}
+                onChange={() => changePath('data_dir', '数据目录')}
+              />
             </CollapseCard>
             <CollapseCard title="音频目录" open={openPanels.pAudio} onToggle={() => togglePanel('pAudio')}>
-              <PathRow value={pathConfig.audio_dir} onChange={() => changePath('audio_dir', '音频目录')} />
+              <PathRow
+                value={pathConfig.audio_dir}
+                onValueChange={(v) => setPathConfig((prev) => ({ ...prev, audio_dir: v }))}
+                onChange={() => changePath('audio_dir', '音频目录')}
+              />
             </CollapseCard>
             <CollapseCard title="日志目录" open={openPanels.pLog} onToggle={() => togglePanel('pLog')}>
-              <PathRow value={pathConfig.log_dir} onChange={() => changePath('log_dir', '日志目录')} />
+              <PathRow
+                value={pathConfig.log_dir}
+                onValueChange={(v) => setPathConfig((prev) => ({ ...prev, log_dir: v }))}
+                onChange={() => changePath('log_dir', '日志目录')}
+              />
             </CollapseCard>
             <CollapseCard title="音乐目录" open={openPanels.pMusic} onToggle={() => togglePanel('pMusic')}>
-              <PathRow value={pathConfig.music_dir} onChange={() => changePath('music_dir', '音乐目录')} />
+              <PathRow
+                value={pathConfig.music_dir}
+                onValueChange={(v) => setPathConfig((prev) => ({ ...prev, music_dir: v }))}
+                onChange={() => changePath('music_dir', '音乐目录')}
+              />
             </CollapseCard>
           </>
         )}
@@ -686,10 +718,23 @@ function RgbEditor({
   )
 }
 
-function PathRow({ value, onChange }: { value: string; onChange: () => void }) {
+function PathRow({
+  value,
+  onValueChange,
+  onChange,
+}: {
+  value: string
+  onValueChange: (v: string) => void
+  onChange: () => void
+}) {
   return (
     <div className="rounded-xl bg-slate-900 text-white px-4 py-3 flex items-center justify-between gap-3">
-      <div className="min-w-0 text-blue-200 truncate">{value}</div>
+      <input
+        value={value}
+        onChange={(e) => onValueChange(e.target.value)}
+        className="min-w-0 flex-1 px-3 py-2 rounded-lg bg-slate-800 text-blue-200 border border-slate-700 focus:outline-none focus:ring-2 focus:ring-ema/40"
+        placeholder="请输入路径"
+      />
       <button onClick={onChange} className="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 flex items-center gap-1.5 text-sm">
         <Folder size={14} />
         更改
