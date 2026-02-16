@@ -9,6 +9,7 @@ import re
 import uuid
 from pathlib import Path
 from typing import Optional, List, Dict, Any
+from urllib.parse import quote
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException, UploadFile, File, Form
 from pydantic import BaseModel
@@ -25,6 +26,7 @@ _agent: Optional[EmaAgent] = None
 SENTENCE_SPLIT_REGEX = re.compile(r"[。！？?!\n]")
 # 支持的文件文本预览扩展名
 TEXT_EXTENSIONS = {".txt", ".md", ".py", ".json", ".yaml", ".yml", ".csv", ".log", ".ini"}
+ATTACHMENT_EXCERPT_LIMIT = 12000
 # 代码块标记 用于分离可见文本与代码内容 避免 TTS 朗读代码
 FENCE_MARKER = "```"
 # 动作描述标记 例如 （微笑） (叹气) *nod* **smile**
@@ -112,9 +114,9 @@ def _to_audio_url(file_path: str) -> str:
 
 def _sanitize_segment(value: str) -> str:
     """
-    清洗路径片段字符 清洗规则为
-    
-    仅保留字母数字下划线和连字符 其他字符替换为下划线
+    清洗路径片段字符
+
+    保留中文与常见可见字符 仅替换 Windows 非法字符
 
     Args:
         value (str): 原始路径片段
@@ -122,7 +124,53 @@ def _sanitize_segment(value: str) -> str:
     Returns:
         str: 安全路径片段
     """
-    return re.sub(r"[^a-zA-Z0-9_\-]", "_", value or "")
+    segment = (value or "").strip()
+    segment = re.sub(r'[<>:"/\\|?*\x00-\x1F]', "_", segment)
+    segment = segment.rstrip(" .")
+    if not segment:
+        return ""
+    # Windows 设备保留名避免冲突
+    if segment.upper() in {
+        "CON", "PRN", "AUX", "NUL",
+        "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
+        "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+    }:
+        return f"{segment}_"
+    return segment
+
+
+def _extract_pdf_excerpt(file_bytes: bytes) -> str:
+    """
+    提取 PDF 文本预览
+    """
+    try:
+        import fitz  # type: ignore
+    except Exception:
+        return ""
+
+    doc = None
+    try:
+        doc = fitz.open(stream=file_bytes, filetype="pdf")
+        chunks: List[str] = []
+        total = 0
+        for page in doc:
+            text = (page.get_text("text") or "").strip()
+            if not text:
+                continue
+            remain = ATTACHMENT_EXCERPT_LIMIT - total
+            if remain <= 0:
+                break
+            if len(text) > remain:
+                chunks.append(text[:remain])
+                break
+            chunks.append(text)
+            total += len(text)
+        return "\n\n".join(chunks).strip()
+    except Exception:
+        return ""
+    finally:
+        if doc is not None:
+            doc.close()
 
 
 def _extract_text_excerpt(file_bytes: bytes, filename: str, content_type: str) -> str:
@@ -139,6 +187,9 @@ def _extract_text_excerpt(file_bytes: bytes, filename: str, content_type: str) -
     """
     # 根据扩展名和 MIME 类型判断是否为文本文件 仅对文本文件进行预览提取
     ext = Path(filename or "").suffix.lower()
+    if ext == ".pdf" or content_type == "application/pdf":
+        return _extract_pdf_excerpt(file_bytes)
+
     is_text_like = ext in TEXT_EXTENSIONS or content_type.startswith("text/")
     if not is_text_like:
         return ""
@@ -149,7 +200,7 @@ def _extract_text_excerpt(file_bytes: bytes, filename: str, content_type: str) -
             text = file_bytes.decode(encoding)
             text = text.strip()
             # 预览文本限制长度
-            return text[:4000]
+            return text[:ATTACHMENT_EXCERPT_LIMIT]
         except Exception:
             continue
     return ""
@@ -419,7 +470,7 @@ async def upload_attachments(
         content_type = upload.content_type or "application/octet-stream"
         excerpt = _extract_text_excerpt(raw, original_name, content_type)
         relative_path = str(saved_path.relative_to(paths.root)).replace("\\", "/")
-        url = f"/uploads/{safe_session}/{saved_name}"
+        url = f"/uploads/{quote(safe_session)}/{quote(saved_name)}"
 
         # 记录上传结果 包含原始文件名 安全文件名 存储路径 访问 URL 文件大小 MIME 类型 与文本预览
         uploaded.append(
