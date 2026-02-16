@@ -60,6 +60,7 @@ EmaAgent 是一个多模式智能助手系统 也是我的第一个智能体项�
 
 ### v0.2 - 2026-02-16
 - 使用 `uv` 进行快速部署
+- 新增 `react.py` 同一错误连续出现的检测
 
 ### v0.2 - 2026-02-15
 - 开源
@@ -195,9 +196,23 @@ SILICONFLOW_API_KEY=your_siliconflow_key_here
 
 ---
 
+## 一键启动
+目前只测试了 Windows 环境 Linux 环境还没测试
+
+### Windows 系统
+
+进入根目录下
+
+点击 `install.bat` 执行安装命令 会自动执行[uv 启动](#uv-启动)的 `setup.ps1` 命令
+
+安装完毕后 再点击 `start.bat` 一键启动 会自动执行[uv 启动](#uv-启动)的 `start.ps1` 命令
+
+---
+
 ## uv 启动
 目前只测试了 Windows 环境 Linux 环境还没测试
 
+### Windows系统
 进入到根目录下
 
 先安装环境
