@@ -6,7 +6,6 @@ EmaAgent 主入口模块
 """
 import asyncio
 from datetime import datetime
-from pathlib import Path
 from typing import Optional, TYPE_CHECKING, List, Dict, Any, Callable, Awaitable
 
 from agent.react import ReActAgent
@@ -25,11 +24,12 @@ if TYPE_CHECKING:
 
 
 VALID_MODES = {"chat", "agent", "narrative", "finish"}
-TEXT_ATTACHMENT_EXTENSIONS = {
-    ".txt", ".md", ".py", ".json", ".yaml", ".yml", ".csv", ".log",
-    ".ini", ".toml", ".xml", ".html", ".js", ".ts", ".tsx", ".jsx",
-    ".java", ".cpp", ".c", ".h", ".hpp", ".go", ".rs", ".sql",
-}
+
+
+MAX_ATTACHMENT_EXCERPT_CHARS = 12000
+MAX_MERGED_INPUT_CHARS = 20000
+MAX_SINGLE_MESSAGE_CHARS = 32000
+MAX_TOTAL_CONTEXT_CHARS = 180000
 
 
 class EmaAgent:
@@ -212,103 +212,48 @@ class EmaAgent:
             return base_text
         
         # 遍历附件列表 构建每个附件的描述文本
-        # 注意 仅写入附件元信息 不写入正文 避免会话历史被文件内容污染
+        # 恢复为将附件提取文本写入历史消息 便于重开页面后保持可见
         lines: List[str] = []
         for index, item in enumerate(attachments, start=1):
             name = item.get("name", f"file_{index}")
             content_type = item.get("content_type", "application/octet-stream")
             size = item.get("size", 0)
             saved_path = item.get("saved_path", "")
+            text_excerpt = str(item.get("text_excerpt", "") or "").strip()
 
             line = f"{index}. {name} ({content_type}, {size} bytes)"
             if saved_path:
                 line += f"\npath: {saved_path}"
+            if text_excerpt:
+                excerpt = self._truncate_text(text_excerpt, MAX_ATTACHMENT_EXCERPT_CHARS)
+                line += f"\ncontent:\n{excerpt}"
             lines.append(line)
 
         attachment_block = "[User Attachments]\n" + "\n\n".join(lines)
+        attachment_block = self._truncate_text(attachment_block, MAX_ATTACHMENT_EXCERPT_CHARS)
         if base_text:
-            return f"{base_text}\n\n{attachment_block}"
-        return attachment_block
+            merged = f"{base_text}\n\n{attachment_block}"
+        else:
+            merged = attachment_block
+        return self._truncate_text(merged, MAX_MERGED_INPUT_CHARS)
 
-    def _is_text_attachment(self, item: Dict[str, Any]) -> bool:
+    def _truncate_text(self, text: str, limit: int) -> str:
         """
-        判断附件是否为可读文本
+        以字符数限制文本长度 超长时保留前后关键片段
         """
-        content_type = str(item.get("content_type") or "").lower()
-        if content_type.startswith("text/"):
-            return True
-
-        name = str(item.get("name") or "")
-        suffix = Path(name).suffix.lower()
-        return suffix in TEXT_ATTACHMENT_EXTENSIONS
-
-    def _resolve_attachment_file_path(self, saved_path: str) -> Optional[Path]:
-        """
-        将附件相对路径解析为安全绝对路径
-        """
-        if not saved_path:
-            return None
-        root = self.paths.root.resolve()
-        path = (root / saved_path).resolve()
-        try:
-            path.relative_to(root)
-        except ValueError:
-            return None
-        if not path.exists() or not path.is_file():
-            return None
-        return path
-
-    def _decode_attachment_bytes(self, raw: bytes) -> Optional[str]:
-        """
-        按常见编码解码附件字节
-        """
-        for encoding in ("utf-8", "gb18030", "latin-1"):
-            try:
-                return raw.decode(encoding)
-            except Exception:
-                continue
-        return None
-
-    def _compose_attachment_context(self, attachments: Optional[List[Dict[str, Any]]]) -> str:
-        """
-        生成仅用于本次推理的附件全文上下文
-
-        该上下文不会写入会话历史 仅用于让模型读取附件正文
-        """
-        if not attachments:
+        if limit <= 0:
             return ""
+        if len(text) <= limit:
+            return text
 
-        lines: List[str] = []
-        for index, item in enumerate(attachments, start=1):
-            name = str(item.get("name") or f"file_{index}")
-            content_type = str(item.get("content_type") or "application/octet-stream")
-            size = item.get("size", 0)
-            saved_path = str(item.get("saved_path") or "")
-
-            line = f"{index}. {name} ({content_type}, {size} bytes)"
-            if saved_path:
-                line += f"\npath: {saved_path}"
-
-            if self._is_text_attachment(item):
-                resolved_path = self._resolve_attachment_file_path(saved_path)
-                if resolved_path:
-                    try:
-                        decoded = self._decode_attachment_bytes(resolved_path.read_bytes())
-                        if decoded is not None:
-                            # 按用户要求 不截断正文
-                            line += f"\ncontent:\n{decoded}"
-                    except Exception as e:
-                        line += f"\n[read_error]: {e}"
-                else:
-                    excerpt = str(item.get("text_excerpt") or "").strip()
-                    if excerpt:
-                        line += f"\ncontent:\n{excerpt}"
-
-            lines.append(line)
-
-        if not lines:
-            return ""
-        return "[User Attachments - Full Content]\n" + "\n\n".join(lines)
+        head_len = max(limit // 2, 1)
+        tail_len = max(limit - head_len, 1)
+        omitted = len(text) - (head_len + tail_len)
+        return (
+            f"{text[:head_len]}\n\n"
+            f"[...已截断 {omitted} 个字符...]\n\n"
+            f"{text[-tail_len:]}"
+        )
 
     async def run(
         self,
@@ -345,8 +290,6 @@ class EmaAgent:
         intent = self._normalize_mode(mode)
         # 合并用户上传的附件
         merged_input = self._compose_user_input(user_input, attachments)
-        # 附件全文上下文仅用于本次推理 不写入会话
-        attachment_context = self._compose_attachment_context(attachments)
 
         await self._set_emotion_by_intent(intent)
 
@@ -363,7 +306,7 @@ class EmaAgent:
             session.add_message(AssistantMessage(content=answer))
             await self._speak(answer)
         else:
-            answer = await self._handle_chat(session, merged_input, attachment_context=attachment_context)
+            answer = await self._handle_chat(session, merged_input)
 
         # 每次调用结束后 将 total_runs 计数器加1 并保存会话状态 以便后续分析和监控
         session.total_runs += 1
@@ -418,8 +361,6 @@ class EmaAgent:
         intent = self._normalize_mode(mode)
         # 合并用户上传的附件
         merged_input = self._compose_user_input(user_input, attachments)
-        # 附件全文上下文仅用于本次推理 不写入会话
-        attachment_context = self._compose_attachment_context(attachments)
 
         await self._set_emotion_by_intent(intent)
 
@@ -448,7 +389,6 @@ class EmaAgent:
                 merged_input,
                 on_token=on_token,
                 should_stop=should_stop,
-                attachment_context=attachment_context,
             )
 
         session.total_runs += 1
@@ -662,7 +602,7 @@ class EmaAgent:
         )
         return await self._chat_stream(messages, session, on_token=on_token, should_stop=should_stop)
 
-    async def _handle_chat(self, session: Session, user_input: str, attachment_context: str = "") -> str:
+    async def _handle_chat(self, session: Session, user_input: str) -> str:
         """
         处理 chat 模式非流式请求
 
@@ -674,7 +614,7 @@ class EmaAgent:
             str: 回复文本
         """
         session.add_message(UserMessage(content=user_input))
-        messages = await self._build_chat_messages(session=session, extra_user=attachment_context)
+        messages = await self._build_chat_messages(session=session)
         return await self._chat_with_tts(messages, session)
 
     async def _handle_chat_stream(
@@ -683,7 +623,6 @@ class EmaAgent:
         user_input: str,
         on_token: Optional[Callable[[str], Awaitable[None]]] = None,
         should_stop: Optional[Callable[[], bool]] = None,
-        attachment_context: str = "",
     ) -> tuple[str, bool]:
         """
         处理 chat 模式流式请求
@@ -698,7 +637,7 @@ class EmaAgent:
             tuple[str, bool]: 回复文本 与 是否中断标记
         """
         session.add_message(UserMessage(content=user_input))
-        messages = await self._build_chat_messages(session=session, extra_user=attachment_context)
+        messages = await self._build_chat_messages(session=session)
         return await self._chat_stream(messages, session, on_token=on_token, should_stop=should_stop)
 
     async def _build_chat_messages(
@@ -727,7 +666,7 @@ class EmaAgent:
         if extra_system:
             system_prompt += f"\n\n{extra_system}"
 
-        # 构建消息列表 首先是系统提示 然后是会话上下文中的消息 
+        # 构建消息列表 首先是系统提示 然后是会话上下文中的消息
         # 这些消息会按照时间顺序排列 以便 LLM 理解对话历史
         messages: List[Dict[str, Any]] = [{"role": "system", "content": system_prompt}]
         # 遍历会话上下文中的消息 将它们转换为字典格式并添加到消息列表中
@@ -740,6 +679,29 @@ class EmaAgent:
                 messages[-1]["content"] = f"{extra_user}\n\n{messages[-1]['content']}"
             else:
                 messages.append({"role": "user", "content": extra_user})
+
+        # 单条消息保护 避免附件正文或历史单条过长
+        for msg in messages:
+            content = msg.get("content")
+            if isinstance(content, str):
+                msg["content"] = self._truncate_text(content, MAX_SINGLE_MESSAGE_CHARS)
+
+        # 总上下文保护 保留 system 与最近消息
+        total_chars = sum(len(str(m.get("content", ""))) for m in messages)
+        if total_chars > MAX_TOTAL_CONTEXT_CHARS:
+            system_msg = messages[0] if messages else {"role": "system", "content": system_prompt}
+            kept: List[Dict[str, Any]] = []
+            used = len(str(system_msg.get("content", "")))
+
+            for msg in reversed(messages[1:]):
+                length = len(str(msg.get("content", "")))
+                if used + length > MAX_TOTAL_CONTEXT_CHARS:
+                    continue
+                kept.append(msg)
+                used += length
+
+            kept.reverse()
+            messages = [system_msg] + kept
 
         return messages
 
