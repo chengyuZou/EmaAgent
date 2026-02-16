@@ -5,8 +5,9 @@ ReAct Agent 核心模块
 """
 
 import json
+import re
 from datetime import datetime
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from llm.client import LLMClient
 from memory.schema import (
@@ -40,6 +41,8 @@ class ReActAgent:
     该类围绕 AgentRuntimeState 执行思考与行动循环
     不直接负责会话生命周期与持久化
     """
+    # 定义一个常量 用于限制连续重复错误的次数 避免在工具调用失败时陷入无限循环从而消耗大量Token
+    REPEATED_ERROR_LIMIT = 3
 
     def __init__(self, llm_client: LLMClient, max_steps: int = 20):
         """
@@ -101,6 +104,7 @@ class ReActAgent:
         )
 
         logger.info(f"开始执行任务: {state.user_input[:100]}...")
+        repeated_error_guard = {"last_signature": None, "count": 0}
 
         try:
             # 主循环：思考 -> 行动 -> 更新状态 直到完成或达到步数限制
@@ -116,7 +120,7 @@ class ReActAgent:
                 # 行动阶段：执行工具调用并写回结果
                 if state.current_action and state.status != AgentStatus.FINISHED:
                     state.status = AgentStatus.ACTING
-                    state = await self._act(state)
+                    state = await self._act(state, repeated_error_guard)
 
                 # 如果没有工具调用 但也未生成最终答案 则认为任务完成
                 else:
@@ -212,7 +216,11 @@ class ReActAgent:
 
         return state
 
-    async def _act(self, state: AgentRuntimeState) -> AgentRuntimeState:
+    async def _act(
+        self,
+        state: AgentRuntimeState,
+        repeated_error_guard: Dict[str, Optional[str] | int],
+    ) -> AgentRuntimeState:
         """
         执行动作阶段
 
@@ -222,6 +230,7 @@ class ReActAgent:
 
         Args:
             state (AgentRuntimeState): 当前运行状态
+            repeated_error_guard (Dict[str, Optional[str] | int]): 用于跟踪连续重复错误的状态字典 包含 last_signature 和 count 两个字段
 
         Returns:
             AgentRuntimeState: 更新后的运行状态
@@ -255,8 +264,16 @@ class ReActAgent:
                     err = result.error.strip()
                     result_content = f"[工具执行失败]\n{err}" if err else "[工具执行失败]"
                     logger.warning(f"工具执行返回错误: {tool_name} - {result.error}")
+                    if self._check_repeated_error_limit(
+                        state=state,
+                        tool_name=tool_name,
+                        error_text=err or result_content,
+                        repeated_error_guard=repeated_error_guard,
+                    ):
+                        return state
                 else:
                     logger.info(f"工具执行成功: {tool_name}")
+                    self._reset_repeated_error_guard(repeated_error_guard)
 
                 # 将工具输出写入消息历史与工具结果列表 供后续思考阶段使用
                 tool_msg = ToolMessage(content=result_content, name=tool_name, tool_call_id=tool_id)
@@ -289,8 +306,95 @@ class ReActAgent:
                         "error": str(e),
                     }
                 )
+                if self._check_repeated_error_limit(
+                    state=state,
+                    tool_name=tool_name,
+                    error_text=str(e),
+                    repeated_error_guard=repeated_error_guard,
+                ):
+                    return state
 
         return state
+
+    def _reset_repeated_error_guard(self, repeated_error_guard: Dict[str, Optional[str] | int]) -> None:
+        """
+        重置连续重复错误跟踪器
+
+        Args:
+            repeated_error_guard (Dict[str, Optional[str] | int]): 包含 last_signature 和 count 两个字段的错误跟踪字典
+        """
+        repeated_error_guard["last_signature"] = None
+        repeated_error_guard["count"] = 0
+
+    def _normalize_error_signature(self, tool_name: str, error_text: str) -> str:
+        """
+        压缩空白并截断长度 避免动态噪声导致签名不稳定
+
+        Args:
+            tool_name (str): 工具名称
+            error_text (str): 错误文本
+
+        Returns:
+            str: 规范化后的错误签名字符串
+        """
+        normalized = re.sub(r"\s+", " ", (error_text or "").strip())
+        return f"{tool_name}:{normalized[:500]}"
+
+    def _check_repeated_error_limit(
+        self,
+        state: AgentRuntimeState,
+        tool_name: str,
+        error_text: str,
+        repeated_error_guard: Dict[str, Optional[str] | int],
+    ) -> bool:
+        """
+        检查是否连续出现同一错误超过限制次数 如果超过 则写入提示并结束任务
+
+        Args:
+            state (AgentRuntimeState): 当前运行状态
+            tool_name (str): 发生错误的工具名称
+            error_text (str): 错误文本内容
+            repeated_error_guard (Dict[str, Optional[str] | int]): 包含 last_signature 和 count 两个字段的错误跟踪字典
+
+        Returns:
+            bool: 是否触发重复错误限制
+        """
+        # 生成当前错误的签名 通过规范化工具名称和错误文本来避免动态噪声导致签名不稳定
+        signature = self._normalize_error_signature(tool_name=tool_name, error_text=error_text)
+
+        # 获取上一次错误的签名和当前计数 
+        last_signature = repeated_error_guard.get("last_signature")
+        current_count = int(repeated_error_guard.get("count", 0))
+
+        # 如果当前错误与上一次相同 则计数加一 否则重置计数并更新上一次签名
+        if signature == last_signature:
+            current_count += 1
+
+        # 如果当前错误与上一次不同 则重置计数并更新上一次签名
+        else:
+            current_count = 1
+            repeated_error_guard["last_signature"] = signature
+
+        # 更新当前计数到跟踪器中
+        repeated_error_guard["count"] = current_count
+
+        # 如果当前计数未超过限制 则继续执行 否则写入提示并结束任务 以避免在工具调用失败时陷入无限循环从而消耗大量Token
+        if current_count < self.REPEATED_ERROR_LIMIT:
+            return False
+        
+        # 超过限制 构建提示信息 包含最后错误来源 错误信息 以及建议调整命令/参数或改用低风险工具后再继续
+        fallback = (
+            "检测到同一错误连续多次出现 立即停止调用工具以避免无效 token 消耗。\n"
+            f"最后错误来源: {tool_name}\n"
+            f"错误信息: {error_text}\n"
+            "建议: 请调整命令/参数，或改用 file_operations、analyze_code 等低风险工具后再继续。"
+        )
+
+        # 记录警告日志 包含错误签名以便排查问题
+        logger.warning(f"触发重复错误熔断: {signature}")
+        state.final_answer = fallback
+        state.status = AgentStatus.FINISHED
+        return True
 
     def _parse_tool_call(self, tool_calls: Any) -> List[Dict[str, Any]]:
         """
