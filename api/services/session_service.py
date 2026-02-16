@@ -231,21 +231,29 @@ class SessionService:
         try:
             # 加载会话后转换为前端所需字段
             session = self.manager.get_or_create_session(session_id)
-            return [
-                {
-                    # role 用于前端区分消息气泡方向
-                    "role": msg.role,
-                    # content 保留原始文本 不做摘要压缩
-                    "content": msg.content,
-                    # timestamp 统一输出字符串 兼容多种时间类型
-                    "timestamp": (msg.timestamp.isoformat()
-                                  if hasattr(msg.timestamp, 'isoformat')
-                                  else str(msg.timestamp)),
-                }
-                for msg in session.messages
-                # 过滤系统消息 避免前端出现内部提示内容
-                if msg.role in ["user", "assistant"]
-            ]
+            filtered_messages: List[Dict[str, Any]] = []
+            for msg in session.messages:
+                # 仅输出 user 与 assistant
+                if msg.role not in ["user", "assistant"]:
+                    continue
+
+                # 跳过带 tool_calls 的 assistant 思考片段 避免前端显示内部推理
+                if msg.role == "assistant" and getattr(msg, "tool_calls", None):
+                    continue
+
+                filtered_messages.append(
+                    {
+                        # role 用于前端区分消息气泡方向
+                        "role": msg.role,
+                        # content 保留原始文本 不做摘要压缩
+                        "content": msg.content,
+                        # timestamp 统一输出字符串 兼容多种时间类型
+                        "timestamp": (msg.timestamp.isoformat()
+                                      if hasattr(msg.timestamp, 'isoformat')
+                                      else str(msg.timestamp)),
+                    }
+                )
+            return filtered_messages
         except Exception:
             # 任意异常时返回空列表 保持接口稳定
             return []
