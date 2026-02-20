@@ -11,7 +11,7 @@
     "embeddings_model": "Pro/BAAI/bge-m3",
     "embeddings_base_url": "https://api.siliconflow.cn/v1",
     "tts":{
-      "provider": "vits_simple_api",
+      "provider": "siliconflow",
       "providers" : {
           "siliconflow": {
             "base_url": "https://api.siliconflow.cn/v1",
