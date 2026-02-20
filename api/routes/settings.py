@@ -170,6 +170,15 @@ class UpdateSettingsRequest(BaseModel):
     tts: Optional[TtsConfigModel] = None
 
 
+class SwitchTtsProviderRequest(BaseModel):
+    """
+    切换 TTS provider 请求模型
+
+    - provider (str): 目标 TTS 提供商名称
+    """
+    provider: str
+
+
 class SwitchModelRequest(BaseModel):
     """
     切换模型请求模型
@@ -1174,14 +1183,14 @@ async def get_tts_settings():
 
 
 @router.post("/settings/tts/switch")
-async def switch_tts_provider(body: dict = Body(...)):
+async def switch_tts_provider(body: SwitchTtsProviderRequest):
     """
     切换当前 TTS 提供商
     
     Args:
-        body (dict): 请求体，包含 "provider" 字段指定目标提供商
+        body (SwitchTtsProviderRequest): 请求体，包含 "provider" 字段指定目标提供商
     """
-    provider = body.get("provider")
+    provider = body.provider
     if not provider:
         raise HTTPException(400, "provider required")
     settings = _load_settings()
