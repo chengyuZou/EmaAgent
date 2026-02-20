@@ -69,10 +69,6 @@ EmaAgent 是一个多模式智能助手系统 也是我的第一个智能体项�
 
 <details>
 
-### v0.2 - 2026-02-20
-- 上传 `./Parser/output.json` 是我自己清洗的魔裁全剧情(不含BE)文本
-
-
 ### v0.2 - 2026-02-16
 - 使用 `uv` 进行快速部署
 - 新增 `react.py` 同一错误连续出现的检测
@@ -600,7 +596,17 @@ EmaAgent/
 ## 共犯名单 (Contributors Stargazers Forks)
 感谢所有卷入这场 `审判` 的人员 排名不分先后
 
-[![Contributors](https://contrib.rocks/image?repo=chengyuZou/EmaAgent)](https://github.com/chengyuZou/EmaAgent/graphs/contributors)
+
+### Contributor
+<a href="https://github.com/chengyuZou/EmaAgent/graphs/contributors">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://contrib.rocks/image?repo=chengyuZou/EmaAgent&antml=dark" />
+    <source media="(prefers-color-scheme: light)" srcset="https://contrib.rocks/image?repo=chengyuZou/EmaAgent" />
+    <img alt="Contributors" src="https://contrib.rocks/image?repo=chengyuZou/EmaAgent" />
+  </picture>
+</a>
+
+---
 
 <a href="https://github.com/chengyuZou/EmaAgent/stargazers">
   <picture>
