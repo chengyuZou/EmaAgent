@@ -13,7 +13,10 @@ from utils.logger import logger
 class SiliconflowTTSProvider(BaseTTSProvider):
     def __init__(self, config: dict):
         self.base_url = config.get("base_url", "https://api.siliconflow.cn/v1")
+        # 优先使用 api_key，否则从环境变量读取
         self.api_key = config.get("api_key", "")
+        if not self.api_key and config.get("api_key_env"):
+            self.api_key = os.getenv(config["api_key_env"], "")
         self.default_model = config.get("model", "FunAudioLLM/CosyVoice2-0.5B")
         # 上传后返回的音色 URI 缓存
         self._voice_uri = None
