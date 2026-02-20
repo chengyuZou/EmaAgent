@@ -1075,12 +1075,14 @@ async def get_system_status():
 
     llm_key = _resolve_selected_model_key(selected_meta)
     embeddings_key = os.getenv("EMBEDDINGS_API_KEY", "") or os.getenv("SILICONFLOW_API_KEY", "")
-    tts_key = os.getenv("TTS_API_KEY", "") or os.getenv("SILICONFLOW_API_KEY", "")
+    tts_provider = settings.get("api", {}).get("tts", {}).get("provider", "") or os.getenv("TTS_PROVIDER", "") or "siliconflow"
+    tts_key = settings.get("api", {}).get("tts", {}).get("providers", {}).get(tts_provider, {}).get("api_key", "") or os.getenv(f"TTS_{tts_provider.upper()}_API_KEY", "") or os.getenv("TTS_SILICONFLOW_API_KEY", "")
 
     # 判定各服务是否已经配置有效密钥
     llm_ready = bool(llm_key and not llm_key.lower().startswith("your_"))
     embeddings_ready = bool(embeddings_key and not embeddings_key.lower().startswith("your_"))
-    tts_ready = bool(tts_key and not tts_key.lower().startswith("your_"))
+    # TODO 目前对于本地 tts 引擎的存活检测仅通过特殊值 "not_required" 来实现 需要后续改进为更合理的机制
+    tts_ready = bool(tts_key and (not tts_key.lower().startswith("your_") or tts_key.lower() == "not_required"))
 
     return SystemStatusResponse(
         backend=True,
