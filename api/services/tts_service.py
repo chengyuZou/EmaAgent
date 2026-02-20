@@ -91,7 +91,7 @@ class APITTSService:
             logger.debug(f"[TTS Service] settings.json 中未找到 provider 配置，尝试从 config.json 加载")
             config = paths.load_config()
             tts_full_config = config.get("tts", {})
-            provider_name = tts_full_config.get("provider_name", "")
+            provider_name = tts_full_config.get("provider", "")
             tts_config = tts_full_config.get("providers", {}).get(provider_name, {})
 
         return {"provider_name": provider_name, "tts_config": tts_config}
