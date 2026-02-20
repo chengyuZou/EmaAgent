@@ -4,22 +4,34 @@ API TTS 服务模块
 该模块负责参考音频上传 分段语音生成 合并输出 与缓存清理
 """
 
+import os
 import re
 import time
 from pathlib import Path
 from threading import Lock, Thread
-from typing import List, Optional
-
-import requests
+from typing import Dict, List, Any, Optional
+from pydub import AudioSegment
 
 from config.paths import get_paths
 from utils.logger import logger
 
+from api.services.tts import TTSFactory
+from api.services.tts import BaseTTSProvider
+from api.services.tts import SiliconflowTTSProvider
+from api.services.tts import VitsSimpleApiTTSProvider
 
 # 清理动作描述文本 例如 (笑) （叹气）
 ACTION_REMOVE_REGEX = re.compile(r"（[^）]*）|\([^)]*\)|\*[^*]*\*", flags=re.DOTALL)
 # 合并后延迟删除分段文件 避免首播时 404
 CHUNK_DELETE_DELAY_SECONDS = 180
+
+
+# 支持的输入音频文件格式列表（根据 pydub 支持的格式进行扩展）
+SUPPORTED_INPUT_FORMATS = [".mp3", ".wav", ".flac", ".ogg", ".m4a", ".aac"]
+# 统一输出的音频文件目标格式
+TARGET_FORMAT = "mp3"
+TARGET_FORMAT_MIME = "audio/mpeg"
+
 
 class APITTSService:
     """
@@ -52,155 +64,140 @@ class APITTSService:
         """
         初始化服务默认配置
         """
-        # 单例重复构造时不重复初始化
         if self._initialized:
             return
+        
+        # 当前 provider 实例
+        self._provider: Optional[BaseTTSProvider] = None
+        # 当前 provider 名称
+        self._provider_name: Optional[str] = None
 
-        # 固定 API 网关地址
-        self.base_url = "https://api.siliconflow.cn/v1"
-        # 默认语音模型
-        self.default_model = "FunAudioLLM/CosyVoice2-0.5B"
-        # 上传后返回的音色 URI 缓存
-        self._voice_uri: Optional[str] = None
-        # 标记是否已尝试上传过音色
-        self._voice_uploaded = False
-        # 上传过程互斥锁 防止并发重复上传
-        self._upload_lock = Lock()
+        # 切换 provider 时的互斥锁, 防止并发切换导致状态不一致
+        # 根据 AI 似乎用 asyncio.Lock 更合适并发场景, 但是这意味着 config 等相关操作也要改成 async 版本
+        # 目前先保持简单的线程锁
+        self._provider_lock = Lock()
+
+        # 首次加载配置并初始化 Provider
+        self._load_provider()
         self._initialized = True
 
-    def _get_config(self) -> dict:
-        """
-        读取最新运行配置
-        """
-        # 先获取统一路径对象
-        paths = get_paths()
-        # 每次动态读取 避免热更新后配置过期
-        return paths.load_config()
-
-    def _get_api_key(self) -> str:
-        """
-        获取 TTS API Key
-        """
-        # 从配置中读取 tts.api_key
-        config = self._get_config()
-        # 未配置时返回空字符串
-        return config.get("tts", {}).get("api_key", "")
-
-    def _get_reference_audio_path(self) -> Optional[str]:
-        """
-        获取参考音频路径
-
-        优先读取新路径 不存在时回退旧目录
-        """
-        paths = get_paths()
-        ref_audio = paths.default_reference_audio
-        # 优先使用当前路径配置
-        if ref_audio.exists():
-            return str(ref_audio)
-
-        # 兼容旧版本目录结构
-        legacy_ref_audio = paths.root / "audio" / "Reference_audio" / "ema1.mp3"
-        if legacy_ref_audio.exists():
-            return str(legacy_ref_audio)
-
-        return None
-
-    def _get_reference_text(self) -> str:
-        """
-        获取参考音频对应文本
-        """
-        # 读取配置中的参考文本
-        config = self._get_config()
-        # 未配置时返回默认参考句
-        return config.get(
-            "tts",
-            {},
-        ).get(
-            "reference_text",
-            "我就是担心这种伤风败俗的东西如果被身心尚幼的小朋友们看到了 会造成不好的影响 所以想提前做好预防措施",
-        )
-
-    def _upload_reference_audio(self) -> Optional[str]:
-        """
-        上传参考音频并返回音色 URI
-        """
-        # 获取鉴权信息
-        api_key = self._get_api_key()
-        # 未配置 Key 直接返回
-        if not api_key:
-            logger.warning("TTS API Key 未配置")
-            return None
-
-        # 获取参考音频文件路径
-        ref_audio_path = self._get_reference_audio_path()
-        # 无参考音频时回退默认音色
-        if not ref_audio_path:
-            logger.warning("未找到参考音频 使用默认音色")
-            return f"{self.default_model}:claire"
-
-        # 构建上传接口地址与请求头
-        url = f"{self.base_url}/uploads/audio/voice"
-        headers = {"Authorization": f"Bearer {api_key}"}
-
-        try:
-            # 以 multipart form 上传参考音频与文本
-            with open(ref_audio_path, "rb") as f:
-                files = {"file": f}
-                data = {
-                    "model": self.default_model,
-                    "customName": "ema_api_voice",
-                    "text": self._get_reference_text(),
-                }
-                # 发送上传请求
-                response = requests.post(url, headers=headers, files=files, data=data, timeout=30)
-
-            # 成功时读取返回 URI
-            if response.status_code == 200:
-                result = response.json()
-                voice_uri = result.get("uri")
-                logger.info(f"✅ [API TTS] 音色上传成功: {voice_uri}")
-                return voice_uri
-
-            # 失败时打印状态码与响应
-            logger.warning(f"❌ [API TTS] 音色上传失败: {response.status_code} - {response.text}")
-            return None
-        except Exception as e:
-            logger.warning(f"❌ [API TTS] 音色上传异常: {e}")
-            return None
-
-    def _ensure_voice_uploaded(self) -> Optional[str]:
-        """
-        确保音色已上传并可用
+    def _load_tts_settings(self) -> dict:
+        """加载 TTS 相关配置
 
         Returns:
-            Optional[str]: 已上传音色 URI 可用于 TTS 请求 失败返回 None
+            dict: 包含 provider_name 和 tts_config 的字典
         """
-        # 已有缓存时直接返回
-        if self._voice_uploaded and self._voice_uri:
-            return self._voice_uri
+        paths = get_paths()
+        settings = paths.load_settings()
+        
+        tts_full_config = settings.get("api", {}).get("tts", {})
+        print(settings)
+        provider_name = tts_full_config.get("provider", "")
+        tts_config = tts_full_config.get("providers", {}).get(provider_name, {})
+        
+        # 如果 settings 中没有，从主配置加载
+        if not tts_config:
+            logger.debug(f"[TTS Service] settings.json 中未找到 provider 配置，尝试从 config.json 加载")
+            config = paths.load_config()
+            tts_full_config = config.get("tts", {})
+            provider_name = tts_full_config.get("provider", "")
+            tts_config = tts_full_config.get("providers", {}).get(provider_name, {})
 
-        with self._upload_lock:
-            # 加锁后二次检查 避免重复上传
-            if self._voice_uploaded and self._voice_uri:
-                return self._voice_uri
+        return {"provider_name": provider_name, "tts_config": tts_config}
 
-            # 执行上传并记录状态
-            self._voice_uri = self._upload_reference_audio()
-            # 无论上传成功与否都标记已尝试 避免频繁重复请求
-            self._voice_uploaded = True
-            return self._voice_uri
+    def _load_provider(self):
+        """
+        从配置加载当前 TTS provider
+        """
+        
+        loaded_settings = self._load_tts_settings()
+        provider_name, tts_config = loaded_settings["provider_name"], loaded_settings["tts_config"]
+        logger.debug(f"[TTS Service] 加载 TTS 配置: provider={provider_name} config={tts_config}")
+
+        with self._provider_lock:
+            # 已经是当前 provider 无需重新加载
+            if self._provider and self._provider_name == provider_name:
+                return
+
+            logger.info(f"[TTS Service] 正在加载 TTS provider: {provider_name}")
+            new_provider = TTSFactory.create_provider(provider_name, tts_config)
+            if new_provider:
+                self._provider = new_provider
+                self._provider_name = provider_name
+                logger.info(f"[TTS Service] TTS provider 已加载: {provider_name}")
+            else:
+                # TODO fallback 机制
+                logger.error(f"[TTS Service] TTS provider 加载失败: {provider_name}")
+                self._provider = None
+                self._provider_name = None
+
+    def get_current_provider_name(self) -> str:
+        """
+        获取当前 Provider 名称
+        """
+        return self._provider_name or ""
+
+    def reload_service(self):
+        """
+        重新加载配置并更新 Provider
+        """
+        self._load_provider()
 
     def reset_voice(self):
         """
-        重置音色缓存状态
-
-        常用于配置变更后强制重新上传
+        重置音色上传状态 使下次生成时重新上传参考音频
         """
-        with self._upload_lock:
-            # 清空已上传音色 URI
-            self._voice_uri = None
-            # 清空上传状态 下次调用重新上传
-            self._voice_uploaded = False
+        with self._provider_lock:
+            if self._provider:
+                self._provider.reset()
+
+    # NOTE 切换 provider 的接口, 暂时保留
+    # 目前暂定为前端在setting/tts put 新设置后直接调用 reload_service 来刷新配置
+    # 之后如果有更复杂的切换需求再完善该接口
+    '''def switch_provider(self, name: str):
+        """
+        切换当前 provider 并持久化配置
+
+        Args:
+            name (str): provider 名称
+            config (Optional[Dict], optional): provider 配置 dict. Defaults to None.
+        """
+        self._state = APITTSServiceStatus.SWITCHING
+        # 若未提供 config，则从 settings 中读取该 provider 的现有配置
+        with self._provider_lock:
+            # 读取配置、创建新 provider、赋值
+            if config is None:
+                paths = get_paths()
+                settings = paths.load_settings()
+                providers_config = settings.get("tts", {}).get("providers", {})
+                config = providers_config.get(name, {})
+                
+                """# 解析环境变量
+                if config.get("api_key_env"):
+                    config["api_key"] = os.getenv(config["api_key_env"], "")"""
+            self._provider = self._create_provider(name, config)
+            self._provider_name = name
+
+            # 更新 settings.json 中的当前 provider 名称
+            self._save_current_provider_to_settings(name)
+            self._state = APITTSServiceStatus.READY
+            logger.info(f"[TTS Service] TTS provider switched to: {name}")
+
+    def _save_current_provider_to_settings(self, name: str):
+        """
+        将当前 provider 名称写入 settings.json
+
+        Args:
+            name (str): provider 名称
+        """
+        paths = get_paths()
+        settings = paths.load_settings()
+        if "api" not in settings:
+            settings["api"] = {}
+        if "tts" not in settings["api"]:
+            settings["api"]["tts"] = {}
+        settings["api"]["tts"]["provider"] = name
+        paths.save_settings(settings)'''
 
     def _clean_text(self, text: str) -> str:
         """
@@ -239,9 +236,57 @@ class APITTSService:
         check_text = re.sub(r"[^\w\u4e00-\u9fff]", "", text or "")
         return len(check_text) > 0
 
+
+    def _convert_to_target_format(self, input_path: Path) -> Optional[Path]:
+        """
+        将音频文件转换为目标格式 (MP3)
+
+        Args:
+            input_path: 输入音频文件路径
+
+        Returns:
+            Optional[Path]: 转换后的文件路径，失败返回 None
+        """
+        try:
+            # 如果已经是目标格式，直接返回
+            if input_path.suffix.lower() == f".{TARGET_FORMAT}":
+                return input_path
+
+            logger.info(f"🔄 [TTS Service] 转换音频格式: {input_path.suffix} -> .{TARGET_FORMAT}")
+
+            # 生成输出文件路径（在 cache 目录下）
+            output_path = input_path.parent / f"{input_path.stem}.{TARGET_FORMAT}"
+
+            # 使用 pydub 转换格式
+            audio = AudioSegment.from_file(input_path)
+            audio.export(output_path, format=TARGET_FORMAT)
+
+            # 验证转换结果
+            if output_path.exists() and output_path.stat().st_size > 10:
+                logger.info(f"✅ [TTS Service] 格式转换成功: {output_path}")
+
+                # 如果输入文件不是目标格式且与输出文件不同，删除原始文件
+                if input_path != output_path and input_path.exists():
+                    try:
+                        input_path.unlink()
+                        logger.debug(f"[TTS Service] 格式转换-已删除原始文件: {input_path}")
+                    except Exception as e:
+                        logger.warning(f"[TTS Service] 格式转换-删除原始文件失败: {e}")
+
+                return output_path
+            else:
+                logger.warning(f"❌ [TTS Service] 格式转换失败: 输出文件无效")
+                return input_path  # 返回原文件作为 fallback
+
+        except Exception as e:
+            logger.warning(f"❌ [TTS Service] 格式转换异常: {e}")
+            # 转换失败时返回原文件，让上层决定如何处理
+            return input_path
+
+
     def generate(self, text: str) -> Optional[str]:
         """
-        生成单段语音并保存到 cache 目录
+        生成单段语音并保存到 cache 目录, provider 对外接口
 
         Args:
             text (str): 待合成文本
@@ -249,20 +294,15 @@ class APITTSService:
         Returns:
             Optional[str]: 生成文件绝对路径 失败返回 None
         """
-        # 文本清洗与有效性检查
+        # NOTE 或者可以移入 provider 内部, 但此处先统一处理文本保证可用性最大化, 后续有需求时再进行更改
         clean_text = self._clean_text(text)
         if not self._is_valid_text(clean_text):
-            logger.warning(f"无效文本: {text}")
+            logger.warning(f"[TTS Service] 无效文本: {text}")
             return None
 
-        # 获取 API Key 为空则停止
-        api_key = self._get_api_key()
-        if not api_key:
-            logger.warning("TTS API Key 为空")
+        if not self._provider:
+            logger.error("[TTS Service] 未加载 TTS provider")
             return None
-
-        # 优先使用上传音色 失败回退默认音色
-        voice = self._ensure_voice_uploaded() or f"{self.default_model}:claire"
 
         # 获取 cache 目录路径
         paths = get_paths()
@@ -270,56 +310,12 @@ class APITTSService:
         # 确保输出目录存在
         output_dir.mkdir(parents=True, exist_ok=True)
 
-        try:
-            url = f"{self.base_url}/audio/speech"
-            headers = {
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-            }
-            # 构建请求体 限制输入长度避免超限
-            payload = {
-                "model": self.default_model,
-                "input": clean_text[:700],
-                "voice": voice,
-                "response_format": "mp3",
-                "speed": 1.0,
-                "gain": 0.0,
-            }
-
-            # 请求云端合成接口
-            response = requests.post(url, headers=headers, json=payload, timeout=30)
-            if response.status_code != 200:
-                logger.warning(f"❌ [API TTS] 生成失败: {response.status_code} - {response.text[:200]}")
-                return None
-
-            # 防止接口返回错误 JSON 造成伪音频保存
-            content_type = response.headers.get("Content-Type", "")
-            if "application/json" in content_type:
-                logger.warning(f"❌ [API TTS] 返回 JSON 而非音频: {response.text[:200]}")
-                return None
-
-            # 生成文件名并写入磁盘
-            filename = f"speech_{int(time.time() * 1000)}.mp3"
-            output_path = output_dir / filename
-            output_path.write_bytes(response.content)
-
-            # 小文件通常表示失败响应 直接删除
-            # 读取文件大小用于质量判断
-            file_size = output_path.stat().st_size
-            if file_size < 10:
-                logger.warning(f"❌ [TTS] 音频文件太小 ({file_size} bytes) 删除")
-                output_path.unlink(missing_ok=True)
-                return None
-
-            logger.info("✅ [TTS] 音频生成成功")
-            logger.info(f"   📝 文本: {clean_text[:50]}...")
-            logger.info(f"   📁 文件: {output_path}")
-            logger.info(f"   📦 大小: {file_size} bytes")
-            logger.info(f"   🌐 URL: /audio/cache/{filename}")
-            return str(output_path)
-        except Exception as e:
-            logger.warning(f"❌ [API TTS] 异常: {e}")
+        generate_dir = self._provider.generate(clean_text)
+        if not generate_dir:
             return None
+        generated_path = Path(generate_dir)
+        converted_path = self._convert_to_target_format(generated_path)
+        return str(converted_path)
 
     def merge_audio_files(self, file_paths: List[str]) -> Optional[str]:
         """
@@ -360,10 +356,12 @@ class APITTSService:
                 return None
 
             # 延迟删除分段文件 避免首播期间请求失败
-            self._delete_files_later(valid_files, delay_seconds=CHUNK_DELETE_DELAY_SECONDS)
+            self._delete_files_later(
+                valid_files, delay_seconds=CHUNK_DELETE_DELAY_SECONDS
+            )
             return str(merged_path)
         except Exception as e:
-            logger.warning(f"❌ [API TTS] 合并失败: {e}")
+            logger.warning(f"❌ [TTS Service] 合并失败: {e}")
             # 失败时删除可能残留的半成品文件
             merged_path.unlink(missing_ok=True)
             return None

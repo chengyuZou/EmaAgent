@@ -93,9 +93,20 @@ embeddings:
   embedding_dim: 1024
 
 tts:
-  provider: "siliconflow"
-  base_url: "https://api.siliconflow.cn/v1"
-  api_key_env: "SILICONFLOW_API_KEY"
-  model: "FunAudioLLM/CosyVoice2-0.5B"
-  reference_audio_name: "ema1.MP3"
-  reference_text: "我就是担心这种伤风败俗的东西如果被身心尚幼的小朋友们看到会造成不好的影响，所以我想提前为小朋友们做好预防措施。"
+  provider: siliconflow
+  providers:
+    siliconflow:
+      api_key: SILICONFLOW_API_KEY
+      base_url: https://api.siliconflow.cn/v1
+      label: 硅基流动 TTS
+      model: FunAudioLLM/CosyVoice2-0.5B
+      support_clone_voice: true
+    vits_simple_api:
+      base_url: http://localhost:23456/voice/vits
+      api_key: NOT_REQUIRED
+      id: '0'
+      label: VITS Simple API
+      model: vits
+      support_clone_voice: false
+  reference_audio_name: ema1.MP3
+  reference_text: 我就是担心这种伤风败俗的东西如果被身心尚幼的小朋友们看到会造成不好的影响，所以我想提前为小朋友们做好预防措施。
