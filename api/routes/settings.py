@@ -9,7 +9,7 @@ import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Body
 from pydantic import BaseModel, Field
 
 from config.paths import get_paths
@@ -23,6 +23,35 @@ PROVIDER_ENV_MAP = {
     "openai": "OPENAI_API_KEY",
     "qwen": "QWEN_API_KEY",
 }
+
+
+class TtsProviderConfig(BaseModel):
+    """
+    单个 TTS 提供商的配置。
+    允许任意额外字段，以应对不同 provider 的多样化参数。
+    主要处理 `api_key` 的脱敏和环境变量写入。
+    
+    - api_key (Optional[str]): 明文 API Key（前端传递时可能是明文或脱敏值）
+    - api_key_env (Optional[str]): 存储时使用的环境变量名
+    """
+    api_key: Optional[str] = None # 前端传递时可能是明文或脱敏值
+    api_key_env: Optional[str] = None # 存储时使用的环境变量名
+    # 允许任意其他字段
+    class Config:
+        extra = "allow"
+
+class TtsConfigModel(BaseModel):
+    """
+    完整的 TTS 配置
+    
+    - provider (str): 当前选中的 provider 名称
+    - providers (Dict[str, TtsProviderConfig]): 各 provider 配置字典
+    """
+    provider: str = "siliconflow" # 当前选中的 provider 名称
+    providers: Dict[str, TtsProviderConfig] = Field(default_factory=dict)
+    # 允许任意其他字段
+    class Config:
+        extra = "allow"
 
 
 class ApiConfigModel(BaseModel):
@@ -52,13 +81,17 @@ class ApiConfigModel(BaseModel):
     openai_model: str = "gpt-4o"
     provider_keys: Dict[str, str] = Field(default_factory=dict)
 
+    # 保留siliconflow相关字段 用于 embedding 等
     silicon_api_key: str = ""
     embeddings_api_key: str = ""
-    tts_api_key: str = ""
     embeddings_model: str = "Pro/BAAI/bge-m3"
     embeddings_base_url: str = "https://api.siliconflow.cn/v1"
-    tts_model: str = "FunAudioLLM/CosyVoice2-0.5B"
-    tts_voice: str = "Alex_zh"
+    # 现在由统一的 tts 对象管理
+    tts_api_key: str = Field(default="", deprecated=True)
+    tts_model: str = Field(default="FunAudioLLM/CosyVoice2-0.5B", deprecated=True)
+    tts_voice: str = Field(default="Alex_zh", deprecated=True)
+    # 新的 tts 对象
+    tts: Optional[TtsConfigModel] = None
 
     temperature: float = 0.7
     max_tokens: int = 4096
@@ -129,10 +162,12 @@ class UpdateSettingsRequest(BaseModel):
     - api (Optional[ApiConfigModel]): API 配置
     - paths (Optional[PathConfigModel]): 路径配置
     - ui (Optional[UiConfigModel]): UI 配置
+    - tts (Optional[TtsConfigModel]): TTS 配置
     """
     api: Optional[ApiConfigModel] = None
     paths: Optional[PathConfigModel] = None
     ui: Optional[UiConfigModel] = None
+    tts: Optional[TtsConfigModel] = None
 
 
 class SwitchModelRequest(BaseModel):
@@ -187,6 +222,35 @@ def _mask_key(key: str) -> str:
     if len(key) < 12:
         return key
     return key[:8] + "•" * (len(key) - 12) + key[-4:]
+
+
+def _mask_tts_config(tts_cfg: dict) -> dict:
+    """
+    对 TTS 配置中的 api_key 进行脱敏
+    
+    Args:
+        tts_cfg (dict): 原始 TTS 配置字典
+    
+    Returns:
+        dict: 脱敏后的 TTS 配置字典
+    """
+    if not tts_cfg:
+        return tts_cfg
+    providers = tts_cfg.get("providers", {})
+    for provider in providers.values():
+        if isinstance(provider, dict) and "api_key" in provider:
+            provider["api_key"] = _mask_key(provider["api_key"])
+    return tts_cfg
+
+
+def deep_merge(base: Dict, update: Dict) -> Dict:
+    """递归合并两个字典, update 中的值会覆盖 base 中的值"""
+    for key, value in update.items():
+        if isinstance(value, dict) and key in base and isinstance(base[key], dict):
+            deep_merge(base[key], value)
+        else:
+            base[key] = value
+    return base
 
 
 def _get_config_file() -> Path:
@@ -625,17 +689,21 @@ async def get_settings():
         if _ensure_paths_settings(settings):
             _save_settings(settings)
 
+        # 获取原始 api 字典并创建副本以避免修改原数据
+        raw_api = settings.get("api", {}).copy()
+
+        # 对 TTS 配置进行脱敏处理
+        raw_api["tts"] = _mask_tts_config(raw_api.get("tts", {}).copy())
+        
         # 解析当前模型与密钥信息
         selected_model = _resolve_selected_model(settings, config)
         selected_meta = _get_selected_model_meta(config, selected_model)
         provider_keys = _resolve_provider_keys(config)
-        api_settings = settings.get("api", {})
-        path_settings = settings.get("paths", {})
+        api_settings = raw_api  # 使用脱敏后的 raw_api
         ui_settings = _load_ui_settings(settings)
 
         # embeddings 与 tts 支持独立 key 与 silicon 回退
         embeddings_key = os.getenv("EMBEDDINGS_API_KEY", "") or os.getenv("SILICONFLOW_API_KEY", "")
-        tts_key = os.getenv("TTS_API_KEY", "") or os.getenv("SILICONFLOW_API_KEY", "")
 
         # 组装 API 响应模型
         api_config = ApiConfigModel(
@@ -646,18 +714,20 @@ async def get_settings():
             provider_keys={k: _mask_key(v) for k, v in provider_keys.items()},
             silicon_api_key=_mask_key(os.getenv("SILICONFLOW_API_KEY", "")),
             embeddings_api_key=_mask_key(embeddings_key),
-            tts_api_key=_mask_key(tts_key),
             embeddings_model=api_settings.get("embeddings_model", config.get("embeddings", {}).get("model", "Pro/BAAI/bge-m3")),
             embeddings_base_url=api_settings.get("embeddings_base_url", config.get("embeddings", {}).get("base_url", "https://api.siliconflow.cn/v1")),
-            tts_model=api_settings.get("tts_model", config.get("tts", {}).get("model", "FunAudioLLM/CosyVoice2-0.5B")),
-            tts_voice=api_settings.get("tts_voice", "Alex_zh"),
             temperature=float(api_settings.get("temperature", config.get("llm", {}).get("temperature", 0.7))),
             max_tokens=int(api_settings.get("max_tokens", config.get("llm", {}).get("max_tokens", 4096))),
             top_p=float(api_settings.get("top_p", config.get("llm", {}).get("top_p", 1.0))),
             timeout=int(api_settings.get("timeout", config.get("llm", {}).get("timeout", 60))),
+            # tts_api_key=_mask_key(tts_key),
+            # tts_model=api_settings.get("tts_model", config.get("tts", {}).get("model", "FunAudioLLM/CosyVoice2-0.5B")),
+            # tts_voice=api_settings.get("tts_voice", "Alex_zh"),
+            tts=raw_api.get("tts") # 使用脱敏后的 TTS 配置
         )
 
         # 组装路径响应模型
+        path_settings = settings.get("paths", {})
         path_config = PathConfigModel(
             data_dir=path_settings.get("data_dir", str(paths.data_dir)),
             audio_dir=path_settings.get("audio_dir", str(paths.audio_output_dir)),
@@ -677,10 +747,11 @@ async def get_settings():
                 "model": config.get("embeddings", {}).get("model"),
                 "base_url": config.get("embeddings", {}).get("base_url"),
             },
-            "tts": {
+            "tts": { # XXX 这一部分不清楚前端是怎么运作的 暂时保留了老字段 需要修改前端以适配新的 TTS 配置结构
                 "provider": config.get("tts", {}).get("provider"),
-                "model": config.get("tts", {}).get("model"),
-                "base_url": config.get("tts", {}).get("base_url", "https://api.siliconflow.cn/v1"),
+                "providers": raw_api.get("tts", {}).get("providers", {}),
+                "model": config.get("tts", {}).get("model", ""), # deprecated
+                "base_url": config.get("tts", {}).get("base_url", "https://api.siliconflow.cn/v1"), # deprecated
             },
         }
 
@@ -711,6 +782,7 @@ async def update_settings(request: UpdateSettingsRequest):
     try:
         settings = _load_settings()
         config = get_paths().load_config()
+        env_updates: Dict[str, str] = {}
 
         if request.api:
             # 读取新旧 API 配置
@@ -764,12 +836,30 @@ async def update_settings(request: UpdateSettingsRequest):
                 env_updates["EMBEDDINGS_API_KEY"] = embeddings_key
                 os.environ["EMBEDDINGS_API_KEY"] = embeddings_key
 
-            tts_key = incoming.get("tts_api_key", "")
+            """tts_key = incoming.get("tts_api_key", "")
             if tts_key and "•" not in tts_key:
                 env_updates["TTS_API_KEY"] = tts_key
                 os.environ["TTS_API_KEY"] = tts_key
                 env_updates["SILICONFLOW_API_KEY"] = tts_key
-                os.environ["SILICONFLOW_API_KEY"] = tts_key
+                os.environ["SILICONFLOW_API_KEY"] = tts_key"""
+            if "tts" in incoming and isinstance(incoming["tts"], dict):
+                incoming_tts = incoming["tts"]
+                providers = incoming_tts.get("providers", {})
+                
+                for providers_name, provider_cfg in providers.items():
+                    if not isinstance(provider_cfg, dict):
+                        continue
+                    api_key = provider_cfg.pop("api_key", None)
+                    if api_key and "•" not in api_key:
+                        env_var = f"TTS_{providers_name.upper()}_API_KEY"
+                        env_updates[env_var] = api_key
+                        provider_cfg["api_key_env"] = env_var
+                    # 其他字段保留在 provider_cfg 中
+                
+                # 合并新的 tts 配置到 incoming 中
+                current_tts = settings.get("api", {}).get("tts", {})
+                merged_tts = deep_merge(current_tts.copy(), incoming_tts)
+                settings.setdefault("api", {})["tts"] = merged_tts
 
             if env_updates:
                 # 合并并写回 .env
@@ -783,8 +873,9 @@ async def update_settings(request: UpdateSettingsRequest):
                 "provider_keys": provider_keys,
                 "embeddings_model": incoming.get("embeddings_model", current_api.get("embeddings_model", "Pro/BAAI/bge-m3")),
                 "embeddings_base_url": incoming.get("embeddings_base_url", current_api.get("embeddings_base_url", "https://api.siliconflow.cn/v1")),
-                "tts_model": incoming.get("tts_model", current_api.get("tts_model", "FunAudioLLM/CosyVoice2-0.5B")),
-                "tts_voice": incoming.get("tts_voice", current_api.get("tts_voice", "Alex_zh")),
+                #"tts_model": incoming.get("tts_model", current_api.get("tts_model", "FunAudioLLM/CosyVoice2-0.5B")),
+                #"tts_voice": incoming.get("tts_voice", current_api.get("tts_voice", "Alex_zh")),
+                "tts": settings["api"].get("tts", {}) if isinstance(settings["api"].get("tts"), dict) and "tts" in settings["api"] else current_api.get("tts"),
                 "temperature": incoming.get("temperature", current_api.get("temperature", 0.7)),
                 "max_tokens": incoming.get("max_tokens", current_api.get("max_tokens", 4096)),
                 "top_p": incoming.get("top_p", current_api.get("top_p", 1.0)),
@@ -821,6 +912,13 @@ async def update_settings(request: UpdateSettingsRequest):
 
             # 更新后重载代理配置
             reload_agent()
+        except Exception:
+            pass
+
+        try:
+            from api.services.tts_service import get_tts_service
+            get_tts_service().reload_service()
+            # 更新后重载 TTS 服务以应用新的密钥与配置
         except Exception:
             pass
 
@@ -1061,3 +1159,39 @@ async def update_font_settings(font: UiFontModel):
     _save_ui_files(ui)
     _save_settings(settings)
     return {"success": True, "font": ui["font"]}
+
+
+@router.get("/settings/tts", response_model=TtsConfigModel)
+async def get_tts_settings():
+    """
+    获取当前 TTS 配置
+    """
+    settings = _load_settings()
+    tts = settings.get("api", {}).get("tts", {})
+    return _mask_tts_config(tts)
+
+
+@router.post("/settings/tts/switch")
+async def switch_tts_provider(body: dict = Body(...)):
+    """
+    切换当前 TTS 提供商
+    
+    Args:
+        body (dict): 请求体，包含 "provider" 字段指定目标提供商
+    """
+    provider = body.get("provider")
+    if not provider:
+        raise HTTPException(400, "provider required")
+    settings = _load_settings()
+    if "api" not in settings:
+        settings["api"] = {}
+    if "tts" not in settings["api"]:
+        settings["api"]["tts"] = {"provider": provider, "providers": {}}
+    else:
+        settings["api"]["tts"]["provider"] = provider
+    _save_settings(settings)
+
+    from api.services.tts_service import get_tts_service
+    get_tts_service().reload_service()
+
+    return {"success": True, "provider": provider}
