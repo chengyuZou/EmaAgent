@@ -10,8 +10,22 @@
     },
     "embeddings_model": "Pro/BAAI/bge-m3",
     "embeddings_base_url": "https://api.siliconflow.cn/v1",
-    "tts_model": "FunAudioLLM/CosyVoice2-0.5B",
-    "tts_voice": "Alex_zh",
+    "tts":{
+      "provider": "siliconflow",
+      "providers" : {
+          "siliconflow": {
+            "base_url": "https://api.siliconflow.cn/v1",
+            "api_key": "YOUR_SILICONFLOW_API_KEY",
+            "model": "FunAudioLLM/CosyVoice2-0.5B"
+          },
+          "vits_simple_api": {
+            "base_url": "http://localhost:23456/voice/vits",
+            "api_key": "NOT_REQUIRED",
+            "model": "vits",
+            "id": "0"
+          }
+      }
+    },
     "temperature": 0.7,
     "max_tokens": 4096,
     "top_p": 1.0,
