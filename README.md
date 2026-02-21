@@ -6,7 +6,6 @@
 ![React](https://img.shields.io/badge/React-Frontend-61DAFB?style=for-the-badge&logo=react&logoColor=black)
 ![License](https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge)
 
-目前正在**更新**(前端)中，请从Release中获取稳定版本
 
 始于 EmaAgent 但不止于只有 Ema 的 Agent
 
@@ -70,6 +69,10 @@ EmaAgent 是一个多模式智能助手系统 也是我的第一个智能体项�
 ## 更新日志
 
 <details>
+
+### v0.2 - 2026-02-21
+- TTS模块改为Factory模式 感谢[CodeCCsky](https://github.com/CodeCCsky)
+- 修复narrative中莫名显示周目剧情查询内容无效的部分bug
 
 ### v0.2 - 2026-02-16
 - 使用 `uv` 进行快速部署
