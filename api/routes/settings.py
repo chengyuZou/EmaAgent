@@ -162,12 +162,10 @@ class UpdateSettingsRequest(BaseModel):
     - api (Optional[ApiConfigModel]): API 配置
     - paths (Optional[PathConfigModel]): 路径配置
     - ui (Optional[UiConfigModel]): UI 配置
-    - tts (Optional[TtsConfigModel]): TTS 配置
     """
     api: Optional[ApiConfigModel] = None
     paths: Optional[PathConfigModel] = None
     ui: Optional[UiConfigModel] = None
-    tts: Optional[TtsConfigModel] = None
 
 
 class SwitchTtsProviderRequest(BaseModel):
@@ -711,7 +709,7 @@ async def get_settings():
         api_settings = raw_api  # 使用脱敏后的 raw_api
         ui_settings = _load_ui_settings(settings)
 
-        # embeddings 与 tts 支持独立 key 与 silicon 回退
+        # embeddings 支持独立 key 与 silicon 回退
         embeddings_key = os.getenv("EMBEDDINGS_API_KEY", "") or os.getenv("SILICONFLOW_API_KEY", "")
 
         # 组装 API 响应模型
@@ -729,10 +727,10 @@ async def get_settings():
             max_tokens=int(api_settings.get("max_tokens", config.get("llm", {}).get("max_tokens", 4096))),
             top_p=float(api_settings.get("top_p", config.get("llm", {}).get("top_p", 1.0))),
             timeout=int(api_settings.get("timeout", config.get("llm", {}).get("timeout", 60))),
-            # tts_api_key=_mask_key(tts_key),
-            # tts_model=api_settings.get("tts_model", config.get("tts", {}).get("model", "FunAudioLLM/CosyVoice2-0.5B")),
-            # tts_voice=api_settings.get("tts_voice", "Alex_zh"),
-            tts=raw_api.get("tts") # 使用脱敏后的 TTS 配置
+            tts=raw_api.get("tts"), # 使用脱敏后的 TTS 配置
+            tts_api_key= raw_api.get("tts").get("providers", {}).get(raw_api.get("tts", {}).get("provider", ""), {}).get("api_key", ""), # DEPRECATED
+            tts_model=raw_api.get("tts").get("providers", {}).get(raw_api.get("tts", {}).get("provider", ""), {}).get("model", ""), # DEPRECATED
+            tts_voice=raw_api.get("tts").get("providers", {}).get(raw_api.get("tts", {}).get("provider", ""), {}).get("voice", ""), # DEPRECATED
         )
 
         # 组装路径响应模型
@@ -759,8 +757,8 @@ async def get_settings():
             "tts": { # XXX 这一部分不清楚前端是怎么运作的 暂时保留了老字段 需要修改前端以适配新的 TTS 配置结构
                 "provider": config.get("tts", {}).get("provider"),
                 "providers": raw_api.get("tts", {}).get("providers", {}),
-                "model": config.get("tts", {}).get("model", ""), # deprecated
-                "base_url": config.get("tts", {}).get("base_url", "https://api.siliconflow.cn/v1"), # deprecated
+                "model": config.get("tts", {}).get("providers", {}).get(config.get("tts", {}).get("provider", ""), {}).get("model", ""), # DEPRECATED
+                "base_url": config.get("tts", {}).get("providers", {}).get(config.get("tts", {}).get("provider", ""), {}).get("base_url", "https://api.siliconflow.cn/v1"), # DEPRECATED
             },
         }
 
