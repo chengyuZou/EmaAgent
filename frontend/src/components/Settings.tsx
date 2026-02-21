@@ -42,11 +42,28 @@ interface ApiConfig {
   selected_model: string
   provider_keys: Record<string, string>
   embeddings_api_key: string
-  tts_api_key: string
   embeddings_model: string
   embeddings_base_url: string
-  tts_model: string
-  tts_voice: string
+  tts: TtsConfig
+  tts_api_key?: string
+  tts_model?: string
+  tts_voice?: string
+}
+
+interface TtsProviderConfig {
+  api_key?: string
+  api_key_env?: string
+  base_url?: string
+  model?: string
+  voice?: string
+  id?: string
+  label?: string
+  [key: string]: any
+}
+
+interface TtsConfig {
+  provider: string
+  providers: Record<string, TtsProviderConfig>
 }
 
 interface PathConfig {
@@ -70,15 +87,33 @@ interface ModelItem {
   enabled: boolean
 }
 
+const DEFAULT_TTS_CONFIG: TtsConfig = {
+  provider: 'siliconflow',
+  providers: {
+    siliconflow: {
+      label: '硅基流动 TTS',
+      base_url: 'https://api.siliconflow.cn/v1',
+      api_key: '',
+      model: 'FunAudioLLM/CosyVoice2-0.5B',
+      voice: '',
+    },
+    vits_simple_api: {
+      label: 'VITS Simple API',
+      base_url: 'http://localhost:23456/voice/vits',
+      api_key: 'NOT_REQUIRED',
+      model: 'vits',
+      id: '0',
+    },
+  },
+}
+
 const DEFAULT_API_CONFIG: ApiConfig = {
   selected_model: 'deepseek-chat',
   provider_keys: { deepseek: '', openai: '', qwen: '' },
   embeddings_api_key: '',
-  tts_api_key: '',
   embeddings_model: 'Pro/BAAI/bge-m3',
   embeddings_base_url: 'https://api.siliconflow.cn/v1',
-  tts_model: 'FunAudioLLM/CosyVoice2-0.5B',
-  tts_voice: 'Alex_zh',
+  tts: DEFAULT_TTS_CONFIG,
 }
 
 const API_PORTAL_LINKS = [
@@ -93,6 +128,34 @@ const DEFAULT_PATH_CONFIG: PathConfig = {
   audio_dir: './data/audio',
   log_dir: './logs',
   music_dir: './data/music',
+}
+
+function normalizeTtsConfig(input: any): TtsConfig {
+  const providers: Record<string, TtsProviderConfig> = {
+    ...DEFAULT_TTS_CONFIG.providers,
+  }
+
+  if (input && typeof input === 'object' && input.providers && typeof input.providers === 'object') {
+    Object.entries(input.providers).forEach(([name, cfg]) => {
+      if (cfg && typeof cfg === 'object') {
+        providers[name] = {
+          ...(providers[name] || {}),
+          ...(cfg as TtsProviderConfig),
+        }
+      }
+    })
+  }
+
+  let provider = DEFAULT_TTS_CONFIG.provider
+  if (input && typeof input === 'object' && typeof input.provider === 'string' && input.provider.trim()) {
+    provider = input.provider.trim()
+  }
+
+  if (!providers[provider]) {
+    providers[provider] = {}
+  }
+
+  return { provider, providers }
 }
 
 export default function Settings({
@@ -116,6 +179,7 @@ export default function Settings({
   const [models, setModels] = useState<ModelItem[]>([])
   const [showApiKey, setShowApiKey] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
+  const [isSwitchingTts, setIsSwitchingTts] = useState(false)
   const [saveSuccess, setSaveSuccess] = useState(false)
   const [saveError, setSaveError] = useState('')
 
@@ -139,6 +203,7 @@ export default function Settings({
 
   useEffect(() => {
     fetchSettings()
+    fetchTtsSettings()
     fetchModels()
     refreshStatus()
   }, [])
@@ -148,6 +213,14 @@ export default function Settings({
     [models],
   )
 
+  const ttsProviderNames = useMemo(
+    () => Object.keys(apiConfig.tts?.providers || {}),
+    [apiConfig.tts],
+  )
+
+  const currentTtsProvider = apiConfig.tts?.provider || 'siliconflow'
+  const currentTtsProviderConfig = apiConfig.tts?.providers?.[currentTtsProvider] || {}
+
   const togglePanel = (id: string) => setOpenPanels((prev) => ({ ...prev, [id]: !prev[id] }))
 
   const fetchSettings = async () => {
@@ -156,13 +229,35 @@ export default function Settings({
       if (!response.ok) return
       const data = await response.json()
       if (data.api) {
-        setApiConfig((prev) => ({ ...prev, ...data.api }))
+        setApiConfig((prev) => ({
+          ...prev,
+          ...data.api,
+          provider_keys: {
+            ...prev.provider_keys,
+            ...(data.api.provider_keys || {}),
+          },
+          tts: normalizeTtsConfig(data.api.tts ?? prev.tts),
+        }))
       }
       if (data.paths) {
         setPathConfig(data.paths)
       }
     } catch (error) {
       console.error('Failed to fetch settings:', error)
+    }
+  }
+
+  const fetchTtsSettings = async () => {
+    try {
+      const response = await fetch('/api/settings/tts')
+      if (!response.ok) return
+      const data = await response.json()
+      setApiConfig((prev) => ({
+        ...prev,
+        tts: normalizeTtsConfig(data),
+      }))
+    } catch (error) {
+      console.error('Failed to fetch TTS settings:', error)
     }
   }
 
@@ -210,11 +305,16 @@ export default function Settings({
     setSaveSuccess(false)
     setSaveError('')
     try {
+      const apiPayload: ApiConfig = {
+        ...apiConfig,
+        tts: normalizeTtsConfig(apiConfig.tts),
+      }
+
       const response = await fetch('/api/settings', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          api: apiConfig,
+          api: apiPayload,
           paths: pathConfig,
           ui: {
             theme: { ...themeConfig, mode: themeMode },
@@ -227,6 +327,7 @@ export default function Settings({
         throw new Error(err?.detail || '保存失败')
       }
       await fetchSettings()
+      await fetchTtsSettings()
       await fetchModels()
       await refreshStatusWithRetry()
       setSaveSuccess(true)
@@ -246,6 +347,64 @@ export default function Settings({
         [provider]: value,
       },
     }))
+  }
+
+  const setTtsProvider = (providerName: string) => {
+    setApiConfig((prev) => {
+      const nextProviders = { ...(prev.tts?.providers || {}) }
+      if (!nextProviders[providerName]) {
+        nextProviders[providerName] = {}
+      }
+      return {
+        ...prev,
+        tts: {
+          provider: providerName,
+          providers: nextProviders,
+        },
+      }
+    })
+  }
+
+  const updateCurrentTtsProviderField = (field: string, value: string) => {
+    setApiConfig((prev) => {
+      const providerName = prev.tts?.provider || 'siliconflow'
+      const nextProviders = { ...(prev.tts?.providers || {}) }
+      nextProviders[providerName] = {
+        ...(nextProviders[providerName] || {}),
+        [field]: value,
+      }
+      return {
+        ...prev,
+        tts: {
+          provider: providerName,
+          providers: nextProviders,
+        },
+      }
+    })
+  }
+
+  const handleSwitchTtsProvider = async () => {
+    const provider = currentTtsProvider
+    if (!provider) return
+    setSaveError('')
+    setIsSwitchingTts(true)
+    try {
+      const response = await fetch('/api/settings/tts/switch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ provider }),
+      })
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}))
+        throw new Error(err?.detail || 'TTS Provider 切换失败')
+      }
+      await fetchTtsSettings()
+      await refreshStatusWithRetry()
+    } catch (error: any) {
+      setSaveError(error?.message || 'TTS Provider 切换失败')
+    } finally {
+      setIsSwitchingTts(false)
+    }
   }
 
   const updateThemeRgb = (field: 'ema_rgb' | 'accent_rgb' | 'panel_rgb', index: number, value: number) => {
@@ -455,24 +614,68 @@ export default function Settings({
               </div>
             </CollapseCard>
 
-            <CollapseCard title="TTS Key 与音色" open={openPanels.tts} onToggle={() => togglePanel('tts')}>
+            <CollapseCard title="TTS Provider 配置" open={openPanels.tts} onToggle={() => togglePanel('tts')}>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-xs text-theme-muted">TTS Provider</label>
+                  <select
+                    value={currentTtsProvider}
+                    onChange={(e) => setTtsProvider(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg bg-white/90 dark:bg-slate-800 border border-ema/20 focus:outline-none"
+                  >
+                    {ttsProviderNames.map((provider) => {
+                      const cfg = apiConfig.tts.providers[provider] || {}
+                      const label = cfg.label || provider
+                      return (
+                        <option key={provider} value={provider}>
+                          {label}
+                        </option>
+                      )
+                    })}
+                  </select>
+                </div>
+
+                <div className="flex items-end">
+                  <button
+                    onClick={handleSwitchTtsProvider}
+                    disabled={isSwitchingTts || !currentTtsProvider}
+                    className="w-full px-3 py-2 rounded-lg border border-ema/20 text-sm flex items-center justify-center gap-2 disabled:opacity-60"
+                  >
+                    {isSwitchingTts ? <RefreshCw size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+                    立即切换 Provider
+                  </button>
+                </div>
+
                 <Field
                   label="TTS API Key"
                   type={showApiKey ? 'text' : 'password'}
-                  value={apiConfig.tts_api_key}
-                  onChange={(v) => setApiConfig({ ...apiConfig, tts_api_key: v })}
+                  value={String(currentTtsProviderConfig.api_key || '')}
+                  onChange={(v) => updateCurrentTtsProviderField('api_key', v)}
+                />
+                <Field
+                  label="TTS Base URL"
+                  value={String(currentTtsProviderConfig.base_url || '')}
+                  onChange={(v) => updateCurrentTtsProviderField('base_url', v)}
                 />
                 <Field
                   label="TTS Model"
-                  value={apiConfig.tts_model}
-                  onChange={(v) => setApiConfig({ ...apiConfig, tts_model: v })}
+                  value={String(currentTtsProviderConfig.model || '')}
+                  onChange={(v) => updateCurrentTtsProviderField('model', v)}
                 />
-                <Field
-                  label="TTS Voice"
-                  value={apiConfig.tts_voice}
-                  onChange={(v) => setApiConfig({ ...apiConfig, tts_voice: v })}
-                />
+
+                {currentTtsProvider === 'vits_simple_api' ? (
+                  <Field
+                    label="VITS Speaker ID"
+                    value={String(currentTtsProviderConfig.id || '0')}
+                    onChange={(v) => updateCurrentTtsProviderField('id', v)}
+                  />
+                ) : (
+                  <Field
+                    label="TTS Voice（可选）"
+                    value={String(currentTtsProviderConfig.voice || '')}
+                    onChange={(v) => updateCurrentTtsProviderField('voice', v)}
+                  />
+                )}
               </div>
             </CollapseCard>
           </>
