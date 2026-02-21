@@ -87,11 +87,29 @@ class APITTSService:
         Returns:
             dict: 包含 provider_name 和 tts_config 的字典
         """
+        def _looks_like_env_key_name(value: str) -> bool:
+            raw = str(value or "").strip()
+            return bool(raw and raw.upper().endswith("_API_KEY") and raw.upper() == raw)
+
+        def _resolve_provider_api_key(cfg: dict) -> str:
+            if not isinstance(cfg, dict):
+                return ""
+            env_name = str(cfg.get("api_key_env") or "").strip()
+            raw_key = str(cfg.get("api_key") or "").strip()
+            if env_name:
+                env_val = os.getenv(env_name, "")
+                if env_val:
+                    return env_val
+            if _looks_like_env_key_name(raw_key):
+                env_val = os.getenv(raw_key, "")
+                if env_val:
+                    return env_val
+            return raw_key
+
         paths = get_paths()
         settings = paths.load_settings()
         
         tts_full_config = settings.get("api", {}).get("tts", {})
-        print(settings)
         provider_name = tts_full_config.get("provider", "")
         tts_config = tts_full_config.get("providers", {}).get(provider_name, {})
         
@@ -103,7 +121,13 @@ class APITTSService:
             provider_name = tts_full_config.get("provider", "")
             tts_config = tts_full_config.get("providers", {}).get(provider_name, {})
 
-        return {"provider_name": provider_name, "tts_config": tts_config}
+        resolved_cfg = dict(tts_config) if isinstance(tts_config, dict) else {}
+        raw_key = str(resolved_cfg.get("api_key") or "").strip()
+        if raw_key and not resolved_cfg.get("api_key_env") and _looks_like_env_key_name(raw_key):
+            resolved_cfg["api_key_env"] = raw_key
+        resolved_cfg["api_key"] = _resolve_provider_api_key(resolved_cfg)
+
+        return {"provider_name": provider_name, "tts_config": resolved_cfg}
 
     def _load_provider(self):
         """
