@@ -4,6 +4,7 @@
 该模块提供模型配置 路径配置 UI 主题字体配置 与系统状态查询接口
 """
 
+import copy
 import json
 import os
 from pathlib import Path
@@ -231,6 +232,86 @@ def _mask_key(key: str) -> str:
     return key[:8] + "•" * (len(key) - 12) + key[-4:]
 
 
+def _looks_like_env_key_name(value: str) -> bool:
+    """
+    判断字符串是否看起来像环境变量名（如 XXX_API_KEY）。
+    """
+    v = str(value or "").strip()
+    return bool(v and v.upper().endswith("_API_KEY") and v.upper() == v)
+
+
+def _resolve_tts_api_key_value(provider_cfg: Dict[str, Any]) -> str:
+    """
+    解析单个 TTS provider 的实际 api_key 值。
+
+    优先级：
+    1. api_key_env 对应环境变量
+    2. api_key 若是环境变量名（如 SILICONFLOW_API_KEY）则读取对应环境变量
+    3. api_key 原值（用于 NOT_REQUIRED / 本地 provider）
+    """
+    if not isinstance(provider_cfg, dict):
+        return ""
+
+    env_name = str(provider_cfg.get("api_key_env") or "").strip()
+    raw_key = str(provider_cfg.get("api_key") or "").strip()
+
+    if env_name:
+        env_value = os.getenv(env_name, "")
+        if env_value:
+            return env_value
+
+    if _looks_like_env_key_name(raw_key):
+        env_value = os.getenv(raw_key, "")
+        if env_value:
+            return env_value
+
+    return raw_key
+
+
+def _resolve_tts_config_keys(tts_cfg: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    将 TTS 配置中的 api_key 解析为实际运行值。
+    """
+    resolved = copy.deepcopy(tts_cfg or {})
+    providers = resolved.get("providers", {})
+    if not isinstance(providers, dict):
+        resolved["providers"] = {}
+        return resolved
+
+    for provider_name, provider_cfg in providers.items():
+        if not isinstance(provider_cfg, dict):
+            continue
+
+        raw_key = str(provider_cfg.get("api_key") or "").strip()
+        if not provider_cfg.get("api_key_env") and _looks_like_env_key_name(raw_key):
+            provider_cfg["api_key_env"] = raw_key
+
+        provider_cfg["api_key"] = _resolve_tts_api_key_value(provider_cfg)
+        providers[provider_name] = provider_cfg
+
+    resolved["providers"] = providers
+    return resolved
+
+
+def _merge_tts_from_settings_and_config(settings: Dict[str, Any], config: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    合并 settings 与 config 的 tts 配置，settings 优先。
+    """
+    config_tts = config.get("tts", {})
+    merged: Dict[str, Any] = copy.deepcopy(config_tts) if isinstance(config_tts, dict) else {}
+
+    settings_tts = settings.get("api", {}).get("tts", {})
+    if isinstance(settings_tts, dict):
+        merged = deep_merge(merged, copy.deepcopy(settings_tts))
+
+    if not isinstance(merged.get("providers"), dict):
+        merged["providers"] = {}
+    if not isinstance(merged.get("provider"), str) or not merged.get("provider"):
+        merged["provider"] = "siliconflow"
+
+    return merged
+
+
 def _mask_tts_config(tts_cfg: dict) -> dict:
     """
     对 TTS 配置中的 api_key 进行脱敏
@@ -243,11 +324,13 @@ def _mask_tts_config(tts_cfg: dict) -> dict:
     """
     if not tts_cfg:
         return tts_cfg
-    providers = tts_cfg.get("providers", {})
-    for provider in providers.values():
-        if isinstance(provider, dict) and "api_key" in provider:
-            provider["api_key"] = _mask_key(provider["api_key"])
-    return tts_cfg
+    masked = copy.deepcopy(tts_cfg)
+    providers = masked.get("providers", {})
+    if isinstance(providers, dict):
+        for provider in providers.values():
+            if isinstance(provider, dict) and "api_key" in provider:
+                provider["api_key"] = _mask_key(str(provider.get("api_key") or ""))
+    return masked
 
 
 def deep_merge(base: Dict, update: Dict) -> Dict:
@@ -699,8 +782,10 @@ async def get_settings():
         # 获取原始 api 字典并创建副本以避免修改原数据
         raw_api = settings.get("api", {}).copy()
 
-        # 对 TTS 配置进行脱敏处理
-        raw_api["tts"] = _mask_tts_config(raw_api.get("tts", {}).copy())
+        # TTS 使用 settings+config 合并后解析，再返回脱敏值
+        merged_tts = _merge_tts_from_settings_and_config(settings, config)
+        resolved_tts = _resolve_tts_config_keys(merged_tts)
+        raw_api["tts"] = _mask_tts_config(resolved_tts)
         
         # 解析当前模型与密钥信息
         selected_model = _resolve_selected_model(settings, config)
@@ -849,24 +934,49 @@ async def update_settings(request: UpdateSettingsRequest):
                 os.environ["TTS_API_KEY"] = tts_key
                 env_updates["SILICONFLOW_API_KEY"] = tts_key
                 os.environ["SILICONFLOW_API_KEY"] = tts_key"""
+            next_tts = current_api.get("tts", {})
             if "tts" in incoming and isinstance(incoming["tts"], dict):
-                incoming_tts = incoming["tts"]
+                incoming_tts = copy.deepcopy(incoming["tts"])
                 providers = incoming_tts.get("providers", {})
                 
                 for providers_name, provider_cfg in providers.items():
                     if not isinstance(provider_cfg, dict):
                         continue
-                    api_key = provider_cfg.pop("api_key", None)
-                    if api_key and "•" not in api_key:
-                        env_var = f"TTS_{providers_name.upper()}_API_KEY"
-                        env_updates[env_var] = api_key
-                        provider_cfg["api_key_env"] = env_var
-                    # 其他字段保留在 provider_cfg 中
+                    api_key = str(provider_cfg.get("api_key") or "").strip()
+                    if api_key:
+                        # 脱敏值视为“未修改”，不覆盖已有配置
+                        if "•" in api_key:
+                            provider_cfg.pop("api_key", None)
+                        # 支持直接传环境变量名（如 SILICONFLOW_API_KEY）
+                        elif _looks_like_env_key_name(api_key):
+                            provider_cfg["api_key_env"] = provider_cfg.get("api_key_env") or api_key
+                        # 本地 provider 不需要 key 的特殊值
+                        elif api_key.lower() == "not_required":
+                            pass
+                        # 明文 key：写入 .env，并仅持久化 env 名称
+                        else:
+                            env_var = str(provider_cfg.get("api_key_env") or f"TTS_{providers_name.upper()}_API_KEY")
+                            env_updates[env_var] = api_key
+                            os.environ[env_var] = api_key
+                            provider_cfg["api_key_env"] = env_var
+                            provider_cfg["api_key"] = env_var
+                    else:
+                        # 空值不覆盖已有 key 配置
+                        provider_cfg.pop("api_key", None)
                 
                 # 合并新的 tts 配置到 incoming 中
-                current_tts = settings.get("api", {}).get("tts", {})
-                merged_tts = deep_merge(current_tts.copy(), incoming_tts)
-                settings.setdefault("api", {})["tts"] = merged_tts
+                current_tts = _merge_tts_from_settings_and_config(settings, config)
+                merged_tts = deep_merge(copy.deepcopy(current_tts), incoming_tts)
+
+                # 自动补齐 api_key_env，避免只存占位符字符串导致歧义
+                for provider_name, provider_cfg in merged_tts.get("providers", {}).items():
+                    if not isinstance(provider_cfg, dict):
+                        continue
+                    raw_key = str(provider_cfg.get("api_key") or "").strip()
+                    if raw_key and _looks_like_env_key_name(raw_key) and not provider_cfg.get("api_key_env"):
+                        provider_cfg["api_key_env"] = raw_key
+
+                next_tts = merged_tts
 
             if env_updates:
                 # 合并并写回 .env
@@ -882,7 +992,7 @@ async def update_settings(request: UpdateSettingsRequest):
                 "embeddings_base_url": incoming.get("embeddings_base_url", current_api.get("embeddings_base_url", "https://api.siliconflow.cn/v1")),
                 #"tts_model": incoming.get("tts_model", current_api.get("tts_model", "FunAudioLLM/CosyVoice2-0.5B")),
                 #"tts_voice": incoming.get("tts_voice", current_api.get("tts_voice", "Alex_zh")),
-                "tts": settings["api"].get("tts", {}) if isinstance(settings["api"].get("tts"), dict) and "tts" in settings["api"] else current_api.get("tts"),
+                "tts": next_tts,
                 "temperature": incoming.get("temperature", current_api.get("temperature", 0.7)),
                 "max_tokens": incoming.get("max_tokens", current_api.get("max_tokens", 4096)),
                 "top_p": incoming.get("top_p", current_api.get("top_p", 1.0)),
@@ -1082,8 +1192,10 @@ async def get_system_status():
 
     llm_key = _resolve_selected_model_key(selected_meta)
     embeddings_key = os.getenv("EMBEDDINGS_API_KEY", "") or os.getenv("SILICONFLOW_API_KEY", "")
-    tts_provider = settings.get("api", {}).get("tts", {}).get("provider", "") or os.getenv("TTS_PROVIDER", "") or "siliconflow"
-    tts_key = settings.get("api", {}).get("tts", {}).get("providers", {}).get(tts_provider, {}).get("api_key", "") or os.getenv(f"TTS_{tts_provider.upper()}_API_KEY", "") or os.getenv("TTS_SILICONFLOW_API_KEY", "")
+    merged_tts = _merge_tts_from_settings_and_config(settings, config)
+    resolved_tts = _resolve_tts_config_keys(merged_tts)
+    tts_provider = resolved_tts.get("provider", "") or os.getenv("TTS_PROVIDER", "") or "siliconflow"
+    tts_key = str(resolved_tts.get("providers", {}).get(tts_provider, {}).get("api_key", "") or "")
 
     # 判定各服务是否已经配置有效密钥
     llm_ready = bool(llm_key and not llm_key.lower().startswith("your_"))
@@ -1176,8 +1288,10 @@ async def get_tts_settings():
     获取当前 TTS 配置
     """
     settings = _load_settings()
-    tts = settings.get("api", {}).get("tts", {})
-    return _mask_tts_config(tts)
+    config = get_paths().load_config()
+    merged_tts = _merge_tts_from_settings_and_config(settings, config)
+    resolved_tts = _resolve_tts_config_keys(merged_tts)
+    return _mask_tts_config(resolved_tts)
 
 
 @router.post("/settings/tts/switch")
