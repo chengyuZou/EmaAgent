@@ -6,6 +6,8 @@
 ![React](https://img.shields.io/badge/React-Frontend-61DAFB?style=for-the-badge&logo=react&logoColor=black)
 ![License](https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge)
 
+目前正在**更新**(前端)中，请从Release中获取稳定版本
+
 始于 EmaAgent 但不止于只有 Ema 的 Agent
 
 换上其他角色的 `人设Prompt` `Live2D` `参考音频` 并更改少部分文件内容 就可以是任何角色的Agent
