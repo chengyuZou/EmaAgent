@@ -51,6 +51,8 @@ class SessionService:
             return
         # 管理器延迟初始化 用于支持配置重载
         self._manager: Optional[SessionManager] = None
+        # 记录重命名映射，解决流式回复过程中改名后写回旧 ID 的并发问题
+        self._renamed_ids: Dict[str, str] = {}
         self._initialized = True
 
     @property
@@ -80,6 +82,17 @@ class SessionService:
         # 清空 manager 引用 强制后续请求重新绑定路径
         self._manager = None
 
+    def _resolve_session_id(self, session_id: str) -> str:
+        """
+        解析会话最新 ID（处理重命名链）。
+        """
+        current = session_id
+        visited = set()
+        while current in self._renamed_ids and current not in visited:
+            visited.add(current)
+            current = self._renamed_ids[current]
+        return current
+
     def get_or_create_session(self, session_id: str) -> Session:
         """
         获取或创建会话
@@ -90,6 +103,7 @@ class SessionService:
         Returns:
             Session: 会话对象
         """
+        session_id = self._resolve_session_id(session_id)
         # 直接委托底层管理器处理缓存与落盘逻辑
         # 由 manager 统一处理 不在服务层重复实现
         return self.manager.get_or_create_session(session_id)
@@ -104,6 +118,17 @@ class SessionService:
         Returns:
             None
         """
+        # 若会话在运行中被重命名，统一写回到新 ID，避免生成旧目录造成重复会话
+        original_id = session.session_id
+        resolved_id = self._resolve_session_id(original_id)
+        if resolved_id != original_id:
+            session.session_id = resolved_id
+            if original_id in self.manager._cache:
+                del self.manager._cache[original_id]
+            self.manager._cache[resolved_id] = session
+            # 重定向完成后清理一次性映射，避免长期占用旧 ID
+            self._renamed_ids.pop(original_id, None)
+
         # 统一走 manager 保存
         # 调用底层保存接口 触发 session 与 messages 落盘
         self.manager.save_session(session)
@@ -147,6 +172,7 @@ class SessionService:
         Returns:
             bool: 是否删除成功
         """
+        session_id = self._resolve_session_id(session_id)
         # 解析会话目录路径
         paths = get_paths()
         session_path = paths.sessions_dir / session_id
@@ -229,6 +255,7 @@ class SessionService:
             List[Dict[str Any]]: 消息字典列表
         """
         try:
+            session_id = self._resolve_session_id(session_id)
             # 加载会话后转换为前端所需字段
             session = self.manager.get_or_create_session(session_id)
             filtered_messages: List[Dict[str, Any]] = []
@@ -270,6 +297,7 @@ class SessionService:
             bool: 是否重命名成功
         """
         try:
+            session_id = self._resolve_session_id(session_id)
             # 计算旧目录与新目录
             paths = get_paths()
             old_dir = paths.sessions_dir / session_id
@@ -278,6 +306,9 @@ class SessionService:
             # 原目录不存在直接失败
             if not old_dir.exists():
                 return False
+            # 同名改名视为成功
+            if session_id == new_name:
+                return True
             # 新名称冲突直接失败
             if new_dir.exists():
                 return False
@@ -300,9 +331,18 @@ class SessionService:
                 with open(session_file, "w", encoding="utf-8") as f:
                     json.dump(data, f, ensure_ascii=False, indent=2)
 
-            # 3 清理旧缓存项 避免脏数据
-            if session_id in self.manager._cache:
-                del self.manager._cache[session_id]
+            # 3 更新缓存与重命名映射
+            cached_session = self.manager._cache.pop(session_id, None)
+            if cached_session is not None:
+                cached_session.session_id = new_name
+                self.manager._cache[new_name] = cached_session
+
+            # 记录 old -> new，确保流式中的旧 session 对象保存时回写到新目录
+            self._renamed_ids[session_id] = new_name
+            # 压扁映射链条
+            for old_id, current_id in list(self._renamed_ids.items()):
+                if current_id == session_id:
+                    self._renamed_ids[old_id] = new_name
 
             return True
         except Exception as e:
