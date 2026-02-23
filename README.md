@@ -70,6 +70,19 @@ EmaAgent 是一个多模式智能助手系统 也是我的第一个智能体项�
 
 <details>
 
+### v0.2 - 2026-02-22
+感谢B站用户[Jason1044](https://space.bilibili.com/668402457?spm_id_from=333.40164.0.0)汇报bug
+```shell
+Command not found: npm. Install Node.js (managed by nvm-windows in .\setup.ps1).
+所在位置 E:\EmaAgent-main\start.ps1:27 字符: 9
++         throw "Command not found: $Name. $Hint"
++         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+         + CategoryInfo          : OperationStopped: (Command not fou...n .\setup.ps1).:String) [], RuntimeException
+          + FullyQualifiedErrorId : Command not found: npm. Install Node.js (managed by nvm-windows in .\setup.ps1).
+```
+
+原因为 `start.ps1` 脚本中  PATH 修改只存在于 `setup.ps1` 运行的那个 PowerShell 会话，它是临时的。
+
 ### v0.2 - 2026-02-21
 - TTS模块改为Factory模式 感谢[CodeCCsky](https://github.com/CodeCCsky)
 - 修复narrative中莫名显示周目剧情查询内容无效的部分bug
