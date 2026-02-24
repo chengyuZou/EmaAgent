@@ -6,6 +6,7 @@
 ![React](https://img.shields.io/badge/React-Frontend-61DAFB?style=for-the-badge&logo=react&logoColor=black)
 ![License](https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge)
 
+重构中
 
 始于 EmaAgent 但不止于只有 Ema 的 Agent
 
