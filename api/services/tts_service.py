@@ -3,7 +3,7 @@ API TTS 服务模块
 
 该模块负责参考音频上传 分段语音生成 合并输出 与缓存清理
 """
-
+import os
 import time
 from pathlib import Path
 from threading import Lock, Thread
@@ -125,15 +125,9 @@ class APITTSService:
 
         resolved_cfg = dict(tts_config) if isinstance(tts_config, dict) else {}
         raw_key = str(resolved_cfg.get("api_key") or "").strip()
-<<<<<<< HEAD
-        if raw_key and not resolved_cfg.get("api_key_env") and _looks_like_env_key_name(raw_key):
-            resolved_cfg["api_key_env"] = raw_key
-        resolved_cfg["api_key"] = _resolve_provider_api_key(resolved_cfg)
-=======
         if raw_key and not resolved_cfg.get("api_key_env") and looks_like_env_key_name(raw_key):
             resolved_cfg["api_key_env"] = raw_key
         resolved_cfg["api_key"] = resolve_provider_api_key(resolved_cfg)
->>>>>>> fb00116 (refactor(api,audio): update backend and audio modules)
 
         return {"provider_name": provider_name, "tts_config": resolved_cfg}
 
