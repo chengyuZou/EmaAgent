@@ -806,6 +806,24 @@ class EmaAgent:
         if self.tts_manager:
             self.tts_manager.stop()
 
+_ema_agent: Optional["EmaAgent"] = None
+
+
+def get_agent(server_mode: bool = True) -> EmaAgent:
+    """
+    获取 EmaAgent 实例的工厂函数
+
+    Args:
+        server_mode (bool): 是否启用服务模式 服务模式下不初始化本地 TTS
+
+    Returns:
+        EmaAgent: 代理实例
+    """
+    global _ema_agent
+    if _ema_agent is None:
+        _ema_agent = EmaAgent(server_mode=server_mode)
+    return _ema_agent
+
 
 async def main():
     """
