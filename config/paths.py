@@ -156,6 +156,46 @@ class PathConfig:
         return self.root / "utils"
 
     @property
+    def frontend_dir(self) -> Path:
+        """
+        获取前端根目录路径
+
+        Returns:
+            ./EmaAgent/frontend
+        """
+        return self.root / "frontend"
+
+    @property
+    def frontend_public_dir(self) -> Path:
+        """
+        获取前端 public 目录路径
+
+        Returns:
+            ./EmaAgent/frontend/public
+        """
+        return self.frontend_dir / "public"
+
+    @property
+    def frontend_dist_dir(self) -> Path:
+        """
+        获取前端构建产物目录路径
+
+        Returns:
+            ./EmaAgent/frontend/dist
+        """
+        return self.frontend_dir / "dist"
+
+    @property
+    def live2d_ema_dir(self) -> Path:
+        """
+        获取 Live2D ema 模型目录路径
+
+        Returns:
+            ./EmaAgent/frontend/public/live2d/ema
+        """
+        return self.frontend_public_dir / "live2d" / "ema"
+
+    @property
     def data_dir(self) -> Path:
         """
         获取 data 目录路径
@@ -178,6 +218,16 @@ class PathConfig:
             ./EmaAgent/data/puzzle_images
         """
         return self.data_dir / "puzzle_images"
+
+    @property
+    def uploads_dir(self) -> Path:
+        """
+        获取上传文件目录路径
+
+        Returns:
+            ./EmaAgent/data/uploads
+        """
+        return self.data_dir / "uploads"
 
     @property
     def music_dir(self) -> Path:
@@ -445,11 +495,13 @@ class PathConfig:
         dirs = [
             self.sessions_dir,
             self.data_dir,
+            self.uploads_dir,
             self.memory_dir,
             self.narrative_memory_dir,
             self.audio_output_dir,
             self.audio_cache_dir,
             self.reference_audio_dir,
+            self.frontend_dist_dir,
             self.logs_dir,
         ]
         # 逐个创建目录 已存在时忽略
