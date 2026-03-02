@@ -1,6 +1,6 @@
 # api/routes 模块
 
-`api/routes/` 负责 HTTP/WS 协议适配，请求参数解析与响应模型组织
+`api/routes/` 负责协议适配：参数校验、请求分发、响应结构组织。
 
 ---
 
@@ -8,43 +8,37 @@
 
 | 文件 | 主要路径 | 说明 |
 |---|---|---|
-| `chat.py` | `/api/chat` `/api/ws/chat` | 聊天主入口 附件上传 流式输出 |
-| `sessions.py` | `/api/sessions*` | 会话列表 创建 删除 重命名 |
-| `settings.py` | `/api/settings*` | 模型设置 路径设置 主题字体设置 |
-| `audio.py` | `/api/audio*` | cache/output 音频访问与清理 |
+| `chat.py` | `/api/chat` `/api/ws/chat` | 聊天主入口、流式输出、附件上传 |
+| `sessions.py` | `/api/sessions*` | 会话管理（列表/创建/删除/重命名） |
+| `settings.py` | `/api/settings*` | 设置读取、分区保存、状态查询 |
+| `audio.py` | `/api/audio*` | 音频缓存与输出访问 |
 | `news.py` | `/api/news*` | 新闻聚合检索 |
-| `music.py` | `/api/music*` | 播放列表 上传 搜索 转换 |
-| `live2d.py` | `/api/live2d*` | 表情状态控制 + WS |
-| `game.py` | `/api/game/*` | 拼图资源接口 |
+| `music.py` | `/api/music*` | 本地音乐播放与管理 |
+| `live2d.py` | `/api/live2d*` | Live2D 状态与口型控制 |
+| `game.py` | `/api/game/*` | 拼图资源相关接口 |
 
 ---
 
-## `chat.py` WS 链路
+## `settings.py` 主要端点
 
-```mermaid
-sequenceDiagram
-    participant FE as Frontend
-    participant WS as websocket_chat
-    participant AG as EmaAgent.run_stream
-    participant TTS as tts_service
-
-    FE->>WS: type=message
-    WS->>AG: run_stream(on_token should_stop)
-    AG-->>WS: token
-    WS-->>FE: token
-    WS->>WS: split sentence strip code
-    WS->>TTS: generate(sentence)
-    TTS-->>WS: chunk path
-    WS-->>FE: audio
-    WS->>TTS: merge_audio_files
-    WS-->>FE: done(full_audio_url)
-```
+- `GET /api/settings`
+- `PUT /api/settings`（兼容全量保存）
+- `PUT /api/settings/api`
+- `PUT /api/settings/mcp`
+- `PUT /api/settings/theme`
+- `PUT /api/settings/font`
+- `PUT /api/settings/paths`
+- `GET /api/settings/models`
+- `PUT /api/settings/model`
+- `GET /api/settings/tts`
+- `POST /api/settings/tts/switch`
+- `GET /api/settings/status`
+- `POST /api/settings/pick-directory`
 
 ---
 
 ## 设计约束
 
-- 路由层尽量薄：业务逻辑下沉到 `api/services`
-- 统一使用 `config.paths` 获取路径，不硬编码目录
-- 对外返回结构稳定，减少前端耦合
-
+- 路由层保持“薄”：不承载复杂业务逻辑。
+- 复杂逻辑统一下沉 `api/services/`。
+- 请求/响应数据结构通过 `api/routes/schemas/` 统一约束。
