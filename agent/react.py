@@ -110,12 +110,15 @@ class ReActAgent:
             # 主循环：思考 -> 行动 -> 更新状态 直到完成或达到步数限制
             while not state.is_finished and state.current_step < state.max_steps:
                 state.current_step += 1
+                logger.info(f"\n{'-'*55}")
                 logger.info(f"步骤 {state.current_step}/{state.max_steps}")
+                logger.info(f"{'-'*55}")
 
                 # 思考阶段：请求 LLM 输出下一步行动或最终答案
+                logger.info("[思考阶段] 请求 LLM 输出下一步行动...")
                 state = await self._think(state)
                 if state.current_thought:
-                    logger.info(f"思考: {state.current_thought}")
+                    logger.info(f"[思考结果]: {state.current_thought}")
 
                 # 行动阶段：执行工具调用并写回结果
                 if state.current_action and state.status != AgentStatus.FINISHED:
