@@ -15,6 +15,7 @@ from memory.compressor import Compressor
 from memory.schema import AssistantMessage, AgentRuntimeState, Session, UserMessage
 from narrative.core import NarrativeMemory
 from prompts import PERSONA_PROFILE_PROMPT, STORY_SUMMARY_PROMPT
+from ema_mcp.manager import MCPManager
 from utils.logger import logger
 
 from api.services.live2d_service import get_live2d_service, EmaEmotion
@@ -99,6 +100,15 @@ class EmaAgent:
         self._config_cache = self.paths.load_config()
         self._config_version += 1
 
+    def _load_mcp_config(self) -> Dict[str, Any]:
+        """
+        加载 MCP 配置
+
+        Returns:
+            Dict[str, Any]: MCP 配置字典
+        """
+        return self.paths.load_mcp_config()
+
     def _init_components(self):
         """
         初始化全部核心组件
@@ -134,8 +144,47 @@ class EmaAgent:
             self.tts_manager = None
 
         self.narrative: Optional[NarrativeMemory] = None
+        self.mcp_manager: Optional[MCPManager] = None
+        self._mcp_init_lock = asyncio.Lock()
         self.system_prompt = PERSONA_PROFILE_PROMPT
         self.live2d_service = get_live2d_service()
+
+    async def initialize_mcp(self) -> None:
+        """
+        异步初始化 MCP 工具
+
+        从 config.json 的 mcp_servers 字段读取配置，
+        启动所有 enabled 的 MCP Server，
+        将远程工具以 MCPToolBridge 形式注入 ReAct Agent 的 ToolCollection。
+
+        该方法带并发锁，可安全重复调用。
+        """
+        if self.mcp_manager is not None:
+            return
+
+        async with self._mcp_init_lock:
+            if self.mcp_manager is not None:
+                return
+
+            mcp_config = self._load_mcp_config().get("mcp_servers", [])
+            if not mcp_config:
+                logger.info("[MCP] mcp.json 中无 mcp_servers 配置，跳过 MCP 初始化")
+                return
+
+            project_root = str(self.paths.root)
+            self.mcp_manager = MCPManager(mcp_config, project_root)
+
+            try:
+                tools = await self.mcp_manager.start_all()
+                if tools:
+                    self.agent.tools.add_tools(*tools)
+                    tool_names = [t.name for t in tools]
+                    logger.info(f"[MCP] 已注入 {len(tools)} 个 MCP 工具到 ReAct Agent: {tool_names}")
+                else:
+                    logger.info("[MCP] 无可用 MCP 工具")
+            except Exception as e:
+                logger.error(f"[MCP] 初始化失败: {e}", exc_info=True)
+                self.mcp_manager = None
 
     def reload_config(self):
         """
@@ -793,7 +842,7 @@ class EmaAgent:
         """
         释放代理持有的资源
 
-        包括 narrative 资源与 tts 资源
+        包括 MCP Server、narrative 资源与 tts 资源
 
         Args:
             None
@@ -801,6 +850,8 @@ class EmaAgent:
         Returns:
             None
         """
+        if self.mcp_manager:
+            await self.mcp_manager.stop_all()
         if self.narrative:
             await self.narrative.finalize()
         if self.tts_manager:
