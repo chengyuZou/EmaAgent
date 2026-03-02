@@ -13,7 +13,7 @@ import {
   Upload,
 } from 'lucide-react'
 
-type TabId = 'api' | 'theme' | 'font' | 'paths'
+type TabId = 'api' | 'mcp' | 'theme' | 'font' | 'paths'
 
 interface UiThemeConfig {
   mode: 'light' | 'dark'
@@ -87,6 +87,29 @@ interface ModelItem {
   enabled: boolean
 }
 
+interface McpRequiredKey {
+  config_key: string
+  env_name: string
+  template: string
+  value: string
+}
+
+interface McpServerMetadata {
+  description: string
+  tools: string[]
+  required_keys: McpRequiredKey[]
+}
+
+interface McpSettingsData {
+  mcp_servers: Record<string, Record<string, any>>
+  metadata: Record<string, McpServerMetadata>
+}
+
+const DEFAULT_MCP_SETTINGS: McpSettingsData = {
+  mcp_servers: {},
+  metadata: {},
+}
+
 const DEFAULT_TTS_CONFIG: TtsConfig = {
   provider: 'siliconflow',
   providers: {
@@ -118,7 +141,7 @@ const DEFAULT_API_CONFIG: ApiConfig = {
 
 const API_PORTAL_LINKS = [
   { label: 'DeepSeek API', url: 'https://platform.deepseek.com/api_keys' },
-  { label: '阿里云百炼 API', url: 'https://bailian.console.aliyun.com/cn-beijing?tab=model&utm_content=se_1023046479#/api-key' },
+  { label: '阿里百炼 API', url: 'https://bailian.console.aliyun.com/cn-beijing?tab=model&utm_content=se_1023046479#/api-key' },
   { label: 'OpenAI API', url: 'https://platform.openai.com/settings/organization/api-keys' },
   { label: '硅基流动 API', url: 'https://cloud.siliconflow.cn/me/account/ak' },
 ]
@@ -177,11 +200,14 @@ export default function Settings({
     llm: false,
   })
   const [models, setModels] = useState<ModelItem[]>([])
-  const [showApiKey, setShowApiKey] = useState(false)
-  const [isSaving, setIsSaving] = useState(false)
+  const [mcpSettings, setMcpSettings] = useState<McpSettingsData>(DEFAULT_MCP_SETTINGS)
+  const [expandedMcpServers, setExpandedMcpServers] = useState<Record<string, boolean>>({})
+  // 按分区跟踪保存状态，避免“全局保存”耦合。
+  const [savingSection, setSavingSection] = useState<TabId | null>(null)
   const [isSwitchingTts, setIsSwitchingTts] = useState(false)
-  const [saveSuccess, setSaveSuccess] = useState(false)
+  const [saveSuccessSection, setSaveSuccessSection] = useState<TabId | null>(null)
   const [saveError, setSaveError] = useState('')
+  const [showApiKey, setShowApiKey] = useState(false)
 
   const [openPanels, setOpenPanels] = useState<Record<string, boolean>>({
     status: true,
@@ -205,6 +231,7 @@ export default function Settings({
     fetchSettings()
     fetchTtsSettings()
     fetchModels()
+    fetchMcpSettings()
     refreshStatus()
   }, [])
 
@@ -220,6 +247,12 @@ export default function Settings({
 
   const currentTtsProvider = apiConfig.tts?.provider || 'siliconflow'
   const currentTtsProviderConfig = apiConfig.tts?.providers?.[currentTtsProvider] || {}
+  const mcpServerEntries = useMemo(
+    () => Object.entries(mcpSettings.mcp_servers || {}),
+    [mcpSettings.mcp_servers],
+  )
+  const maskSecret = () => '...'
+  const formatSecret = (value: string) => (showApiKey ? value : maskSecret())
 
   const togglePanel = (id: string) => setOpenPanels((prev) => ({ ...prev, [id]: !prev[id] }))
 
@@ -275,6 +308,61 @@ export default function Settings({
     }
   }
 
+  const fetchMcpSettings = async () => {
+    try {
+      const response = await fetch('/api/settings/mcp')
+      if (!response.ok) return
+      const data = await response.json()
+      const nextSettings: McpSettingsData = {
+        mcp_servers: data?.mcp_servers && typeof data.mcp_servers === 'object' ? data.mcp_servers : {},
+        metadata: data?.metadata && typeof data.metadata === 'object' ? data.metadata : {},
+      }
+      setMcpSettings(nextSettings)
+      const nextExpanded: Record<string, boolean> = {}
+      Object.keys(nextSettings.mcp_servers).forEach((name) => {
+        nextExpanded[name] = false
+      })
+      setExpandedMcpServers(nextExpanded)
+    } catch (error) {
+      console.error('Failed to fetch MCP settings:', error)
+    }
+  }
+
+  const saveMcpSettings = async (nextSettings: McpSettingsData) => {
+    const response = await fetch('/api/settings/mcp', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        mcp_servers: nextSettings.mcp_servers,
+      }),
+    })
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}))
+      throw new Error(err?.detail || 'MCP 配置保存失败')
+    }
+  }
+
+  const toggleMcpServerExpanded = (serverName: string) => {
+    setExpandedMcpServers((prev) => ({ ...prev, [serverName]: !prev[serverName] }))
+  }
+
+  const toggleMcpServerEnabled = (serverName: string) => {
+    const server = mcpSettings.mcp_servers[serverName] || {}
+    const enabled = server.enabled !== false
+    const nextSettings: McpSettingsData = {
+      ...mcpSettings,
+      mcp_servers: {
+        ...mcpSettings.mcp_servers,
+        [serverName]: {
+          ...server,
+          enabled: !enabled,
+        },
+      },
+    }
+    // 仅更新前端状态，实际写回由“保存 MCP 分区”按钮统一提交。
+    setMcpSettings(nextSettings)
+  }
+
   const refreshStatus = async () => {
     try {
       const response = await fetch('/api/settings/status')
@@ -300,42 +388,124 @@ export default function Settings({
     return last
   }
 
-  const handleSave = async () => {
-    setIsSaving(true)
-    setSaveSuccess(false)
+  const markSectionSaved = (section: TabId) => {
+    setSaveSuccessSection(section)
+    setTimeout(() => {
+      setSaveSuccessSection((current) => (current === section ? null : current))
+    }, 2000)
+  }
+
+  const handleSaveApi = async () => {
+    setSavingSection('api')
     setSaveError('')
+    setSaveSuccessSection(null)
     try {
+      // API 分区只提交 API 字段。
       const apiPayload: ApiConfig = {
         ...apiConfig,
         tts: normalizeTtsConfig(apiConfig.tts),
       }
-
-      const response = await fetch('/api/settings', {
+      const response = await fetch('/api/settings/api', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          api: apiPayload,
-          paths: pathConfig,
-          ui: {
-            theme: { ...themeConfig, mode: themeMode },
-            font: fontConfig,
-          },
-        }),
+        body: JSON.stringify(apiPayload),
       })
       if (!response.ok) {
         const err = await response.json().catch(() => ({}))
-        throw new Error(err?.detail || '保存失败')
+        throw new Error(err?.detail || 'API 配置保存失败')
       }
       await fetchSettings()
       await fetchTtsSettings()
       await fetchModels()
       await refreshStatusWithRetry()
-      setSaveSuccess(true)
-      setTimeout(() => setSaveSuccess(false), 2000)
+      markSectionSaved('api')
     } catch (error: any) {
-      setSaveError(error?.message || '保存失败')
+      setSaveError(error?.message || 'API 配置保存失败')
     } finally {
-      setIsSaving(false)
+      setSavingSection(null)
+    }
+  }
+
+  const handleSaveMcp = async () => {
+    setSavingSection('mcp')
+    setSaveError('')
+    setSaveSuccessSection(null)
+    try {
+      await saveMcpSettings(mcpSettings)
+      await fetchMcpSettings()
+      markSectionSaved('mcp')
+    } catch (error: any) {
+      setSaveError(error?.message || 'MCP 配置保存失败')
+    } finally {
+      setSavingSection(null)
+    }
+  }
+
+  const handleSaveTheme = async () => {
+    setSavingSection('theme')
+    setSaveError('')
+    setSaveSuccessSection(null)
+    try {
+      const response = await fetch('/api/settings/theme', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...themeConfig, mode: themeMode }),
+      })
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}))
+        throw new Error(err?.detail || '主题配置保存失败')
+      }
+      markSectionSaved('theme')
+    } catch (error: any) {
+      setSaveError(error?.message || '主题配置保存失败')
+    } finally {
+      setSavingSection(null)
+    }
+  }
+
+  const handleSaveFont = async () => {
+    setSavingSection('font')
+    setSaveError('')
+    setSaveSuccessSection(null)
+    try {
+      const response = await fetch('/api/settings/font', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(fontConfig),
+      })
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}))
+        throw new Error(err?.detail || '字体配置保存失败')
+      }
+      markSectionSaved('font')
+    } catch (error: any) {
+      setSaveError(error?.message || '字体配置保存失败')
+    } finally {
+      setSavingSection(null)
+    }
+  }
+
+  const handleSavePaths = async () => {
+    setSavingSection('paths')
+    setSaveError('')
+    setSaveSuccessSection(null)
+    try {
+      const response = await fetch('/api/settings/paths', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(pathConfig),
+      })
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}))
+        throw new Error(err?.detail || '路径配置保存失败')
+      }
+      await fetchSettings()
+      await refreshStatusWithRetry()
+      markSectionSaved('paths')
+    } catch (error: any) {
+      setSaveError(error?.message || '路径配置保存失败')
+    } finally {
+      setSavingSection(null)
     }
   }
 
@@ -488,7 +658,8 @@ export default function Settings({
   }
 
   const tabs: { id: TabId; label: string; icon: any }[] = [
-    { id: 'api', label: 'API配置', icon: KeyRound },
+    { id: 'api', label: 'API 配置', icon: KeyRound },
+    { id: 'mcp', label: 'MCP 工具', icon: KeyRound },
     { id: 'theme', label: '主题样式', icon: Palette },
     { id: 'font', label: '字体样式', icon: Type },
     { id: 'paths', label: '路径设置', icon: Folder },
@@ -496,22 +667,10 @@ export default function Settings({
 
   return (
     <div className="h-full min-h-0 flex flex-col glass-panel rounded-2xl border border-ema/20">
-      <div className="px-6 py-4 border-b border-ema/15 flex items-center justify-between">
+      <div className="px-6 py-4 border-b border-ema/15">
         <div>
           <h2 className="text-xl font-semibold">设置</h2>
-          <p className="text-xs text-theme-muted">导航栏保持可见，设置仅在内容区域打开</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={handleSave}
-            disabled={isSaving}
-            className={`px-4 py-2 rounded-xl text-white flex items-center gap-2 ${
-              saveSuccess ? 'bg-green-600' : 'bg-ema hover:bg-ema/90'
-            } disabled:opacity-60`}
-          >
-            {saveSuccess ? <Check size={16} /> : isSaving ? <RefreshCw size={16} className="animate-spin" /> : <Save size={16} />}
-            {saveSuccess ? '已保存' : isSaving ? '保存中' : '保存设置'}
-          </button>
+          <p className="text-xs text-theme-muted">导航栏保持可见，设置仅在内容区域展开</p>
         </div>
       </div>
 
@@ -552,27 +711,38 @@ export default function Settings({
                 <StatusTag label="EBD" ok={status.embeddings} />
                 <StatusTag label="TTS" ok={status.tts} />
               </div>
-              <button onClick={refreshStatus} className="mt-3 px-3 py-2 rounded-lg border border-ema/20 text-sm flex items-center gap-2">
-                <RefreshCw size={14} />
-                刷新状态
-              </button>
+              <div className="mt-3 flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowApiKey((prev) => !prev)}
+                  className="px-3 py-2 rounded-lg border border-ema/20 text-sm bg-white/80 dark:bg-slate-900/70 hover:bg-white"
+                >
+                  {showApiKey ? '隐藏 Key' : '显示 Key'}
+                </button>
+                <button onClick={refreshStatus} className="px-3 py-2 rounded-lg border border-ema/20 text-sm flex items-center gap-2">
+                  <RefreshCw size={14} />
+                  刷新状态
+                </button>
+              </div>
             </CollapseCard>
 
             <CollapseCard title="LLM Keys" open={openPanels.llm} onToggle={() => togglePanel('llm')}>
-              <div className="mb-3">
-                <button onClick={() => setShowApiKey((v) => !v)} className="px-3 py-1.5 rounded-lg border border-ema/20 text-sm">
-                  {showApiKey ? '隐藏Key' : '显示Key'}
-                </button>
+              <div className="text-xs text-theme-muted mb-3">
+                {showApiKey ? '当前为明文显示，可直接编辑。' : '当前为隐藏模式，所有 Key 显示为 ...'}
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 {['deepseek', 'qwen', 'openai'].map((provider) => (
                   <Field
                     key={provider}
                     label={provider.toUpperCase()}
-                    type={showApiKey ? 'text' : 'password'}
-                    value={apiConfig.provider_keys?.[provider] || ''}
-                    onChange={(v) => updateProviderKey(provider, v)}
+                    type="text"
+                    value={formatSecret(apiConfig.provider_keys?.[provider] || '')}
+                    onChange={(v) => {
+                      if (!showApiKey) return
+                      updateProviderKey(provider, v)
+                    }}
                     placeholder={`输入 ${provider} API Key`}
+                    disabled={!showApiKey}
                   />
                 ))}
               </div>
@@ -597,9 +767,13 @@ export default function Settings({
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <Field
                   label="Embedding API Key"
-                  type={showApiKey ? 'text' : 'password'}
-                  value={apiConfig.embeddings_api_key}
-                  onChange={(v) => setApiConfig({ ...apiConfig, embeddings_api_key: v })}
+                  type="text"
+                  value={formatSecret(apiConfig.embeddings_api_key)}
+                  onChange={(v) => {
+                    if (!showApiKey) return
+                    setApiConfig({ ...apiConfig, embeddings_api_key: v })
+                  }}
+                  disabled={!showApiKey}
                 />
                 <Field
                   label="Embedding Base URL"
@@ -648,9 +822,13 @@ export default function Settings({
 
                 <Field
                   label="TTS API Key"
-                  type={showApiKey ? 'text' : 'password'}
-                  value={String(currentTtsProviderConfig.api_key || '')}
-                  onChange={(v) => updateCurrentTtsProviderField('api_key', v)}
+                  type="text"
+                  value={formatSecret(String(currentTtsProviderConfig.api_key || ''))}
+                  onChange={(v) => {
+                    if (!showApiKey) return
+                    updateCurrentTtsProviderField('api_key', v)
+                  }}
+                  disabled={!showApiKey}
                 />
                 <Field
                   label="TTS Base URL"
@@ -678,12 +856,148 @@ export default function Settings({
                 )}
               </div>
             </CollapseCard>
+            <SectionSaveBar
+              label="保存 API 配置"
+              onClick={handleSaveApi}
+              saving={savingSection === 'api'}
+              saved={saveSuccessSection === 'api'}
+              disabled={savingSection !== null}
+            />
+          </>
+        )}
+
+        {activeTab === 'mcp' && (
+          <>
+            {mcpServerEntries.length === 0 ? (
+              <div className="rounded-2xl border border-ema/15 bg-white/70 dark:bg-slate-900/60 px-4 py-6 text-sm text-theme-muted">
+                暂无 MCP 服务配置，请检查 `config/mcp.json`。
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {mcpServerEntries.map(([serverName, serverCfg]) => {
+                  const cfg = serverCfg || {}
+                  const enabled = cfg.enabled !== false
+                  const expanded = !!expandedMcpServers[serverName]
+                  const metadata = mcpSettings.metadata?.[serverName]
+                  const description = metadata?.description || cfg.description || ''
+                  const tools = Array.isArray(metadata?.tools) ? metadata.tools : []
+                  const requiredKeys = Array.isArray(metadata?.required_keys) ? metadata.required_keys : []
+                  const command = String(cfg.command || '')
+                  const args = Array.isArray(cfg.args) ? cfg.args : []
+
+                  return (
+                    <section
+                      key={serverName}
+                      className={`rounded-2xl border transition-colors ${
+                        enabled
+                          ? 'border-emerald-300/60 bg-emerald-50/50 dark:bg-emerald-950/20'
+                          : 'border-rose-300/50 bg-rose-50/50 dark:bg-rose-950/20'
+                      }`}
+                    >
+                      <div
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => toggleMcpServerExpanded(serverName)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault()
+                            toggleMcpServerExpanded(serverName)
+                          }
+                        }}
+                        className="w-full px-4 py-4 flex items-center justify-between text-left gap-3"
+                      >
+                        <div className="min-w-0">
+                          <div className="font-semibold truncate">{serverName}</div>
+                          <div className="text-xs text-theme-muted mt-1 truncate">
+                            {command ? `${command} ${args.join(' ')}` : 'No command'}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          {expanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              void toggleMcpServerEnabled(serverName)
+                            }}
+                            className={`min-w-[96px] px-3 py-1.5 rounded-2xl border text-sm font-medium ${
+                              enabled
+                                ? 'border-emerald-500 bg-emerald-500 text-white'
+                                : 'border-slate-300 bg-white/80 text-slate-700 dark:bg-slate-900/80 dark:text-slate-200'
+                            }`}
+                          >
+                            {enabled ? '✅ 已启用' : '⬜ 已禁用'}
+                          </button>
+                        </div>
+                      </div>
+
+                      {expanded ? (
+                        <div className="px-4 pb-4 space-y-3">
+                          <div>
+                            <div className="text-xs uppercase tracking-wide text-theme-muted mb-1">Describe</div>
+                            <div className="text-sm">{description || '（未填写）'}</div>
+                          </div>
+
+                          <div>
+                            <div className="text-xs uppercase tracking-wide text-theme-muted mb-1">Tools</div>
+                            {tools.length > 0 ? (
+                              <div className="flex flex-wrap gap-2">
+                                {tools.map((tool) => (
+                                  <span
+                                    key={`${serverName}-${tool}`}
+                                    className="px-2 py-1 rounded-lg text-xs border border-ema/20 bg-white/80 dark:bg-slate-900/70"
+                                  >
+                                    {tool}
+                                  </span>
+                                ))}
+                              </div>
+                            ) : (
+                              <div className="text-sm text-theme-muted">（暂无 tool 列表）</div>
+                            )}
+                          </div>
+
+                          <div>
+                            <div className="text-xs uppercase tracking-wide text-theme-muted mb-1">Required Keys</div>
+                            {requiredKeys.length > 0 ? (
+                              <div className="space-y-2">
+                                {requiredKeys.map((keyItem) => (
+                                  <div
+                                    key={`${serverName}-${keyItem.config_key}-${keyItem.env_name}`}
+                                    className="rounded-xl border border-ema/15 bg-white/80 dark:bg-slate-900/70 px-3 py-2"
+                                  >
+                                    <div className="text-xs text-theme-muted mb-1">
+                                      {keyItem.config_key} → {keyItem.env_name || '(literal)'}
+                                    </div>
+                                    <div className="font-mono text-sm break-all">
+                                      {keyItem.value || '(empty)'}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <div className="text-sm text-theme-muted">（无额外 Key 需求）</div>
+                            )}
+                          </div>
+                        </div>
+                      ) : null}
+                    </section>
+                  )
+                })}
+              </div>
+            )}
+            <SectionSaveBar
+              label="保存 MCP 配置"
+              onClick={handleSaveMcp}
+              saving={savingSection === 'mcp'}
+              saved={saveSuccessSection === 'mcp'}
+              disabled={savingSection !== null}
+            />
           </>
         )}
 
         {activeTab === 'theme' && (
           <>
-            <CollapseCard title="颜色设置" open={openPanels.colors} onToggle={() => togglePanel('colors')}>
+            <CollapseCard title="色彩设置" open={openPanels.colors} onToggle={() => togglePanel('colors')}>
               <div className="flex gap-2 mb-4">
                 <button
                   onClick={() => setThemeMode('light')}
@@ -743,6 +1057,13 @@ export default function Settings({
                 <input ref={themeImportRef} type="file" accept="application/json,.json" className="hidden" onChange={(e) => importTheme(e.target.files?.[0])} />
               </div>
             </CollapseCard>
+            <SectionSaveBar
+              label="保存主题配置"
+              onClick={handleSaveTheme}
+              saving={savingSection === 'theme'}
+              saved={saveSuccessSection === 'theme'}
+              disabled={savingSection !== null}
+            />
           </>
         )}
 
@@ -778,7 +1099,7 @@ export default function Settings({
             <CollapseCard title="预览 / JSON" open={openPanels.fontPreview} onToggle={() => togglePanel('fontPreview')}>
               <div className="rounded-xl border border-ema/15 p-4 mb-3">
                 <div style={{ fontFamily: fontConfig.family, fontWeight: fontConfig.weight, fontSize: `${fontConfig.size_scale}rem` }}>
-                  EmaAgent 字体预览 / 魔裁字体预览
+                  EmaAgent 字体预览 / 示例文字预览
                 </div>
               </div>
               <div className="flex gap-2">
@@ -799,6 +1120,13 @@ export default function Settings({
                 <input ref={fontImportRef} type="file" accept="application/json,.json" className="hidden" onChange={(e) => importFont(e.target.files?.[0])} />
               </div>
             </CollapseCard>
+            <SectionSaveBar
+              label="保存字体配置"
+              onClick={handleSaveFont}
+              saving={savingSection === 'font'}
+              saved={saveSuccessSection === 'font'}
+              disabled={savingSection !== null}
+            />
           </>
         )}
 
@@ -832,6 +1160,13 @@ export default function Settings({
                 onChange={() => changePath('music_dir', '音乐目录')}
               />
             </CollapseCard>
+            <SectionSaveBar
+              label="保存路径配置"
+              onClick={handleSavePaths}
+              saving={savingSection === 'paths'}
+              saved={saveSuccessSection === 'paths'}
+              disabled={savingSection !== null}
+            />
           </>
         )}
       </div>
@@ -876,12 +1211,14 @@ function Field({
   onChange,
   type = 'text',
   placeholder,
+  disabled = false,
 }: {
   label: string
   value: string
   onChange: (v: string) => void
   type?: string
   placeholder?: string
+  disabled?: boolean
 }) {
   return (
     <div className="space-y-1">
@@ -891,7 +1228,8 @@ function Field({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className="w-full px-3 py-2 rounded-lg bg-white/90 dark:bg-slate-800 border border-ema/20 focus:outline-none"
+        disabled={disabled}
+        className="w-full px-3 py-2 rounded-lg bg-white/90 dark:bg-slate-800 border border-ema/20 focus:outline-none disabled:opacity-60 disabled:cursor-not-allowed"
       />
     </div>
   )
@@ -946,6 +1284,36 @@ function PathRow({
   )
 }
 
+function SectionSaveBar({
+  label,
+  onClick,
+  saving,
+  saved,
+  disabled,
+}: {
+  label: string
+  onClick: () => void
+  saving: boolean
+  saved: boolean
+  disabled: boolean
+}) {
+  return (
+    <div className="pt-1 flex justify-end">
+      <button
+        type="button"
+        onClick={onClick}
+        disabled={disabled}
+        className={`px-4 py-2 rounded-xl text-white flex items-center gap-2 ${
+          saved ? 'bg-green-600' : 'bg-ema hover:bg-ema/90'
+        } disabled:opacity-60`}
+      >
+        {saved ? <Check size={16} /> : saving ? <RefreshCw size={16} className="animate-spin" /> : <Save size={16} />}
+        {saved ? '已保存' : saving ? '保存中' : label}
+      </button>
+    </div>
+  )
+}
+
 function normalizeRgb(input: any, fallback: [number, number, number]): [number, number, number] {
   if (!Array.isArray(input) || input.length !== 3) return fallback
   return [0, 1, 2].map((i) => {
@@ -972,4 +1340,5 @@ function normalizeWeight(input: any, fallback: number): number {
   if (Number.isNaN(num)) return fallback
   return Math.max(300, Math.min(800, Math.round(num / 100) * 100))
 }
+
 
