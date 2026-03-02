@@ -65,6 +65,8 @@ class PathConfig:
             return paths_cfg
         return {}
 
+
+
     @property
     def config_dir(self) -> Path:
         """
@@ -104,6 +106,16 @@ class PathConfig:
             ./EmaAgent/config/settings.json
         """
         return self.config_dir / "settings.json"
+    
+    @property
+    def mcp_json(self) -> Path:
+        """
+        获取 mcp.json 路径
+
+        Returns:
+            ./EmaAgent/config/mcp.json
+        """
+        return self.config_dir / "mcp.json"
 
     @property
     def agent_dir(self) -> Path:
@@ -208,6 +220,26 @@ class PathConfig:
             self._settings_paths().get("data_dir"),
             defaults,
         )
+    
+    @property
+    def font_file(self) -> Path:
+        """
+        获取字体文件路径
+
+        Returns:
+            ./EmaAgent/data/font/font.json
+        """
+        return self.data_dir / "font" / "font.json"
+    
+    @property
+    def theme_file(self) -> Path:
+        """
+        获取主题文件路径
+
+        Returns:
+            ./EmaAgent/data/theme/theme.json
+        """
+        return self.data_dir / "theme" / "theme.json"
     
     @property
     def puzzle_dir(self) -> Path:
@@ -464,6 +496,14 @@ class PathConfig:
             return self._resolve_api_keys(data)
 
         raise FileNotFoundError(f"Config 文件无法找到: {self.config_json}")
+    
+    def load_mcp_config(self) -> Dict[str, Any]:
+        """
+        加载 MCP 配置文件 mcp.json
+        """
+        if self.mcp_json.exists():
+            return json.loads(self.mcp_json.read_text(encoding="utf-8"))
+        raise FileNotFoundError(f"MCP Config 文件无法找到: {self.mcp_json}")
 
     def load_settings(self) -> Dict[str, Any]:
         """
