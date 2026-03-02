@@ -3,6 +3,7 @@ EmaAgent FastAPI 服务入口
 
 提供 REST API 和 WebSocket 接口
 """
+import asyncio
 import sys
 from pathlib import Path
 
@@ -56,14 +57,37 @@ app.include_router(live2d.router, prefix="/api")
 app.include_router(game.router, prefix="/api/game", tags=["Game"])
 
 @app.on_event("startup")
-async def warmup_narrative_rag():
-    """预热 Narrative LightRAG 模块，减少首次请求的延迟"""
+async def warmup_on_startup():
+    """预热 Narrative LightRAG + MCP 工具，减少首次请求的延迟"""
+    _ema_agent = get_agent(server_mode=True)
+
+    # 预热 Narrative
     try:
-        _ema_agent = get_agent(server_mode=True)
         await _ema_agent.initialize_narrative()
         logger.info("✅ [Startup] Narrative LightRAG 预热完成")
     except Exception as exc:
         logger.error(f"❌ [Startup] Narrative 预热失败: {exc}")
+
+    # 启动 MCP Server 并注入工具
+    try:
+        await _ema_agent.initialize_mcp()
+        logger.info("✅ [Startup] MCP 工具初始化完成")
+    except Exception as exc:
+        logger.error(f"❌ [Startup] MCP 工具初始化失败: {exc}")
+
+
+@app.on_event("shutdown")
+async def shutdown_cleanup():
+    """关闭时释放 MCP Server 等资源"""
+    try:
+        _ema_agent = get_agent(server_mode=True)
+        await _ema_agent.close()
+        logger.info("✅ [Shutdown] 资源清理完成")
+    except asyncio.CancelledError as exc:
+        logger.warning(f"⚠️ [Shutdown] 资源清理被取消，继续退出: {exc}")
+    except Exception as exc:
+        logger.error(f"❌ [Shutdown] 资源清理失败: {exc}")
+
 
 # ==================== 音频文件服务（核心路由，优先级最高）====================
 audio_output = paths.audio_output_dir
