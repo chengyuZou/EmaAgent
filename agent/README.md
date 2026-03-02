@@ -1,6 +1,6 @@
 # agent 模块
 
-`agent/` 是系统编排核心，负责把会话、模型、工具、叙事检索、TTS 和 Live2D 联动起来
+`agent/` 是智能体编排层，负责把会话、模型、工具、Narrative 与 MCP 工具注入串成统一执行流。
 
 ---
 
@@ -8,67 +8,39 @@
 
 | 文件 | 作用 |
 |---|---|
-| `EmaAgent.py` | 总调度器 统一入口 `run` 与 `run_stream` |
-| `react.py` | ReAct 推理执行器 负责工具调用循环 |
+| `EmaAgent.py` | 主调度器，统一入口：`run` / `run_stream` |
+| `react.py` | ReAct 推理循环与工具调用逻辑 |
 | `__init__.py` | 模块导出 |
 
 ---
 
-## 核心调用链
+## 核心职责
 
-```mermaid
-flowchart TD
-    IN[api/routes/chat] --> EA[EmaAgent.run or run_stream]
-    EA --> SS[session_service]
-    EA --> CMP[Compressor]
-    EA --> MODE{mode}
-    MODE --> CHAT[chat]
-    MODE --> AG[agent]
-    MODE --> NAR[narrative]
+### `EmaAgent.py`
 
-    CHAT --> LLM[LLMClient]
-    AG --> REACT[ReActAgent]
-    REACT --> TOOLS[ToolCollection]
-    NAR --> NM[NarrativeMemory]
+- 初始化并持有 `LLMClient`、`Session`、`NarrativeMemory`、`ReActAgent`。
+- 统一分发三种模式：`chat` / `agent` / `narrative`。
+- 在启动期懒加载 Narrative（带并发锁，避免重复初始化）。
+- 通过 `initialize_mcp()` 读取 `config/mcp.json`，启动 MCP Server 并把工具注入 ReAct。
+- 在关闭阶段统一释放资源（MCP、Narrative、TTS）。
 
-    EA --> SAVE[save_session]
-```
+### `react.py`
+
+- 负责 `think -> act` 循环。
+- 解析 LLM `tool_calls` 并调用 `ToolCollection.execute(...)`。
+- 将工具结果回写上下文，驱动下一轮推理。
 
 ---
 
-## `EmaAgent` 主要职责
+## 与 `ema_mcp` 的关系
 
-- 加载运行配置并初始化依赖
-- 管理会话生命周期与压缩触发
-- 模式分发：`chat` `agent` `narrative` `finish`
-- 流式 token 回调和中断控制
-- 根据回复意图和文本驱动 Live2D 情绪
+`EmaAgent` 通过 `from ema_mcp.manager import MCPManager` 接入 MCP 生态：
 
-关键方法：
+1. `MCPManager.start_all()` 启动所有启用的 MCP Server。
+2. `MCPToolBridge` 把远程 MCP Tool 适配为本地 `BaseTool`。
+3. `self.agent.tools.add_tools(*tools)` 完成动态注入。
 
-- `run(...)`
-- `run_stream(...)`
-- `_handle_chat[_stream](...)`
-- `_handle_agent[_stream](...)`
-- `_handle_narrative[_stream](...)`
-- `_build_chat_messages(...)`
-
----
-
-## `ReActAgent` 主要职责
-
-- 执行 `think -> act` 循环
-- 调用 `LLMClient.chat_with_tools(...)` 解析工具请求
-- 通过 `ToolCollection.execute(...)` 执行工具
-- 回写 `ToolMessage` 到会话，形成下一步上下文
-
-关键方法：
-
-- `run(...)`
-- `_think(...)`
-- `_act(...)`
-- `_parse_tool_call(...)`
-- `_parse_arguments(...)`
+这样可以在不改 `ReAct` 主流程的前提下，扩展任意 MCP 工具。
 
 ---
 
@@ -77,12 +49,13 @@ flowchart TD
 上游调用：
 
 - `api/routes/chat.py`
+- `api/main.py`（startup/shutdown 生命周期）
 
 下游依赖：
 
 - `llm/`
 - `memory/`
 - `narrative/`
+- `ema_mcp/`
 - `api/services/live2d_service.py`
 - `api/services/session_service.py`
-
