@@ -2,7 +2,7 @@
 设置路由相关的数据模型。
 """
 
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
@@ -118,6 +118,14 @@ class UpdateSettingsRequest(BaseModel):
     api: Optional[ApiConfigModel] = None
     paths: Optional[PathConfigModel] = None
     ui: Optional[UiConfigModel] = None
+
+
+class UpdateMcpSettingsRequest(BaseModel):
+    """
+    PUT /api/settings/mcp 请求体。
+    """
+
+    mcp_servers: Dict[str, Dict[str, Any]] = Field(default_factory=dict)
 
 
 class SwitchTtsProviderRequest(BaseModel):
