@@ -1,0 +1,24 @@
+{
+  "mcp_servers": {
+    "amap": {
+      "enabled": true,
+      "command": "npx",
+      "args": [
+        "-y",
+        "@amap/amap-maps-mcp-server"
+      ],
+      "env": {
+        "AMAP_MAPS_API_KEY": "${AMAP_MAPS_API_KEY}"
+      },
+      "description": "高德地图 MCP 服务 — 地理编码、路线规划、天气、POI 搜索等"
+    },
+    "howtocook-mcp": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "howtocook-mcp"
+      ],
+      "enabled": true
+    }
+  }
+}
