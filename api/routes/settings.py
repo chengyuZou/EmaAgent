@@ -7,13 +7,16 @@
 from fastapi import APIRouter
 
 from api.routes.schemas.settings import (
+    ApiConfigModel,
     DirectoryPickerRequest,
+    PathConfigModel,
     SwitchModelRequest,
     SwitchTtsProviderRequest,
     SystemStatusResponse,
     TtsConfigModel,
     UiFontModel,
     UiThemeModel,
+    UpdateMcpSettingsRequest,
     UpdateSettingsRequest,
 )
 from api.services.settings_service import get_settings_service
@@ -32,6 +35,11 @@ async def update_settings(request: UpdateSettingsRequest):
     return await _settings_service.update_settings(request)
 
 
+@router.put("/settings/api")
+async def update_api_settings(api: ApiConfigModel):
+    return await _settings_service.update_api_settings(api)
+
+
 @router.get("/settings/models")
 async def list_models():
     return await _settings_service.list_models()
@@ -45,6 +53,11 @@ async def switch_model(request: SwitchModelRequest):
 @router.get("/settings/paths")
 async def get_paths_info():
     return await _settings_service.get_paths_info()
+
+
+@router.put("/settings/paths")
+async def update_paths_settings(paths: PathConfigModel):
+    return await _settings_service.update_paths_settings(paths)
 
 
 @router.post("/settings/pick-directory")
@@ -85,3 +98,13 @@ async def get_tts_settings():
 @router.post("/settings/tts/switch")
 async def switch_tts_provider(body: SwitchTtsProviderRequest):
     return await _settings_service.switch_tts_provider(body)
+
+
+@router.get("/settings/mcp")
+async def get_mcp_settings():
+    return await _settings_service.get_mcp_settings()
+
+
+@router.put("/settings/mcp")
+async def update_mcp_settings(request: UpdateMcpSettingsRequest):
+    return await _settings_service.update_mcp_settings(request)
