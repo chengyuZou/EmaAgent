@@ -8,7 +8,10 @@ from fastapi import APIRouter
 
 from api.routes.schemas.settings import (
     ApiConfigModel,
+    DeleteMcpServerResponse,
     DirectoryPickerRequest,
+    ImportMcpPasteRequest,
+    ImportMcpPasteResponse,
     PathConfigModel,
     SwitchModelRequest,
     SwitchTtsProviderRequest,
@@ -16,6 +19,8 @@ from api.routes.schemas.settings import (
     TtsConfigModel,
     UiFontModel,
     UiThemeModel,
+    UpdateMcpServerEnvRequest,
+    UpdateMcpServerEnvResponse,
     UpdateMcpSettingsRequest,
     UpdateSettingsRequest,
 )
@@ -108,3 +113,17 @@ async def get_mcp_settings():
 @router.put("/settings/mcp")
 async def update_mcp_settings(request: UpdateMcpSettingsRequest):
     return await _settings_service.update_mcp_settings(request)
+
+@router.post("/settings/mcp/import-paste", response_model=ImportMcpPasteResponse)
+async def import_mcp_from_paste(request: ImportMcpPasteRequest):
+    return await _settings_service.import_mcp_from_paste(request)
+
+
+@router.patch("/settings/mcp/server/{server_name}/env", response_model=UpdateMcpServerEnvResponse)
+async def update_mcp_server_env(server_name: str, request: UpdateMcpServerEnvRequest):
+    return await _settings_service.update_mcp_server_env(server_name, request)
+
+
+@router.delete("/settings/mcp/server/{server_name}", response_model=DeleteMcpServerResponse)
+async def delete_mcp_server(server_name: str):
+    return await _settings_service.delete_mcp_server(server_name)

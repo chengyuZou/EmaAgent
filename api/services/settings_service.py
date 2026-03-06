@@ -13,13 +13,17 @@ from fastapi import HTTPException
 
 from api.routes.schemas.settings import (
     ApiConfigModel,
+    DeleteMcpServerResponse,
     DirectoryPickerRequest,
+    ImportMcpPasteRequest,
     PathConfigModel,
     SwitchModelRequest,
     SwitchTtsProviderRequest,
     SystemStatusResponse,
     UiFontModel,
     UiThemeModel,
+    UpdateMcpServerEnvRequest,
+    UpdateMcpServerEnvResponse,
     UpdateMcpSettingsRequest,
     UpdateSettingsRequest,
 )
@@ -36,6 +40,9 @@ DEFAULT_SELECTED_MODEL = "deepseek-chat"
 DEFAULT_TTS_PROVIDER = "siliconflow"
 MASK_CHAR = "*"
 MCP_ENV_VAR_PATTERN = re.compile(r"\$\{([^}]+)\}")
+MCP_PASTE_KEY_CANDIDATES = ("mcp_servers", "mcpServers")
+MCP_SERVER_HINT_KEYS = {"command", "args", "env", "enabled", "description", "cwd", "tools", "url", "transport"}
+MCP_PLACEHOLDER_PATTERN = re.compile(r"^<[^>]+>$")
 
 
 def _deep_merge(base: Dict[str, Any], update: Dict[str, Any]) -> Dict[str, Any]:
@@ -198,6 +205,45 @@ class SettingsRuntime:
         merged.update(env_updates)
         self._write_env_file(merged)
 
+    def remove_env_keys(self, keys: List[str]) -> List[str]:
+        """
+        从 `.env` 中删除指定键，并同步清理当前进程环境变量。
+
+        Args:
+            keys (List[str]): 待删除键列表。
+
+        Returns:
+            List[str]: 实际删除的键列表（去重后）。
+        """
+        target_keys = {str(item or "").strip() for item in keys if str(item or "").strip()}
+        if not target_keys:
+            return []
+
+        for key in target_keys:
+            os.environ.pop(key, None)
+
+        env_file = self.paths.env_file
+        if not env_file.exists():
+            return []
+
+        new_lines: List[str] = []
+        removed: List[str] = []
+        for raw_line in env_file.read_text(encoding="utf-8").splitlines():
+            line = raw_line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                new_lines.append(raw_line)
+                continue
+            key, _ = line.split("=", 1)
+            key = key.strip()
+            if key in target_keys:
+                removed.append(key)
+                continue
+            new_lines.append(raw_line)
+
+        content = "\n".join(new_lines).strip()
+        env_file.write_text((content + "\n") if content else "", encoding="utf-8")
+        return sorted(set(removed))
+
     def save_ui_files(self, ui: Dict[str, Any]) -> None:
         """
         保存 UI 配置到独立文件（theme/font）。
@@ -250,6 +296,20 @@ class SettingsRuntime:
             get_tts_service().reload_service()
         except Exception:
             pass
+
+    async def reload_agent_with_mcp(self) -> None:
+        """
+        异步重载 Agent，并重新挂载 MCP 工具。
+
+        Returns:
+            None
+        """
+        try:
+            from agent.EmaAgent import get_agent
+
+            await get_agent().reload_config_async(reload_mcp=True)
+        except Exception as exc:
+            logger.warning(f"[SettingsRuntime] 重载 Agent/MCP 失败: {exc}")
 
     def load_mcp_file(self) -> Dict[str, Any]:
         """
@@ -1337,7 +1397,7 @@ class McpSettingsModule:
             "metadata": self._build_mcp_metadata(mcp_servers),
         }
 
-    def update(self, request: UpdateMcpSettingsRequest) -> Dict[str, Any]:
+    async def update(self, request: UpdateMcpSettingsRequest) -> Dict[str, Any]:
         """
         更新 MCP 配置并刷新运行时。
 
@@ -1352,8 +1412,260 @@ class McpSettingsModule:
         next_servers = self._normalize_mcp_servers(request.mcp_servers or {})
         current["mcp_servers"] = next_servers
         self.runtime.save_mcp_file(current)
-        self.runtime.reload_runtime_services(paths_changed=False)
+        await self.runtime.reload_agent_with_mcp()
         return {"success": True, "message": "MCP settings updated successfully"}
+
+    def _extract_env_names_from_cfg(self, env_cfg: Dict[str, Any]) -> List[str]:
+        """
+        从 MCP 的 `env` 配置中提取环境变量名。
+
+        支持三种写法：
+        1. `{"KEY": "${ENV_NAME}"}`
+        2. `{"KEY": "ENV_NAME"}`
+        3. `{"ENV_NAME": "literal-value"}`
+        """
+        names: set[str] = set()
+        if not isinstance(env_cfg, dict):
+            return []
+
+        for key, value in env_cfg.items():
+            key_name = str(key or "").strip()
+            text = str(value or "").strip()
+            env_name = ""
+
+            match = MCP_ENV_VAR_PATTERN.fullmatch(text)
+            if match:
+                env_name = match.group(1).strip()
+            elif looks_like_env_key_name(text):
+                env_name = text
+            elif looks_like_env_key_name(key_name):
+                env_name = key_name
+
+            if env_name:
+                names.add(env_name)
+
+        return sorted(names)
+
+    async def update_server_env(self, server_name: str, request: UpdateMcpServerEnvRequest) -> Dict[str, Any]:
+        """
+        更新单个 MCP Server 的环境变量，并立即重载 MCP。
+        """
+        name = str(server_name or "").strip()
+        if not name:
+            raise ValueError("server_name 不能为空")
+
+        current_data = self.runtime.load_mcp_file()
+        current_servers = self._normalize_mcp_servers(current_data.get("mcp_servers", {}))
+        if name not in current_servers:
+            raise ValueError(f"MCP Server '{name}' 不存在")
+
+        allowed_env_names = set(self._extract_env_names_from_cfg(current_servers[name].get("env", {})))
+        incoming = request.values or {}
+        env_updates: Dict[str, str] = {}
+
+        for raw_key, raw_value in incoming.items():
+            env_name = str(raw_key or "").strip()
+            if not env_name:
+                continue
+            if allowed_env_names and env_name not in allowed_env_names:
+                continue
+            env_updates[env_name] = str(raw_value or "").strip()
+
+        if not env_updates:
+            raise ValueError("没有可更新的 Key")
+
+        self.runtime.apply_env_updates(env_updates)
+        await self.runtime.reload_agent_with_mcp()
+        return UpdateMcpServerEnvResponse(
+            success=True,
+            message="MCP Key 更新成功",
+            server_name=name,
+            updated_env_keys=sorted(env_updates.keys()),
+            mcp_servers=current_servers,
+            metadata=self._build_mcp_metadata(current_servers),
+        ).model_dump()
+
+    async def delete_server(self, server_name: str) -> Dict[str, Any]:
+        """
+        删除单个 MCP Server，并清理其独占的 `.env` 键。
+        """
+        name = str(server_name or "").strip()
+        if not name:
+            raise ValueError("server_name 不能为空")
+
+        current_data = self.runtime.load_mcp_file()
+        current_servers = self._normalize_mcp_servers(current_data.get("mcp_servers", {}))
+        if name not in current_servers:
+            raise ValueError(f"MCP Server '{name}' 不存在")
+
+        target_cfg = current_servers.get(name) or {}
+        target_env_names = set(self._extract_env_names_from_cfg(target_cfg.get("env", {})))
+
+        current_servers.pop(name, None)
+        current_data["mcp_servers"] = current_servers
+        self.runtime.save_mcp_file(current_data)
+
+        remaining_env_names: set[str] = set()
+        for cfg in current_servers.values():
+            remaining_env_names.update(self._extract_env_names_from_cfg(cfg.get("env", {})))
+
+        cleanup_keys = sorted(target_env_names - remaining_env_names)
+        removed_env_keys = self.runtime.remove_env_keys(cleanup_keys)
+
+        await self.runtime.reload_agent_with_mcp()
+        return DeleteMcpServerResponse(
+            success=True,
+            message="MCP 服务删除成功",
+            deleted_server=name,
+            removed_env_keys=removed_env_keys,
+            mcp_servers=current_servers,
+            metadata=self._build_mcp_metadata(current_servers),
+        ).model_dump()
+
+    def _load_paste_json(self, raw_text: str) -> Dict[str, Any]:
+        """
+        解析前端粘贴的 JSON 文本。
+        """
+        text = str(raw_text or "").strip()
+        if not text:
+            raise ValueError("粘贴内容不能为空")
+        try:
+            payload = json.loads(text)
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"JSON 解析失败: {exc}") from exc
+        if not isinstance(payload, dict):
+            raise ValueError("粘贴内容必须是 JSON 对象")
+        return payload
+
+    def _extract_servers_from_payload(self, payload: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+        """
+        从粘贴 JSON 中提取 MCP Server 映射。
+        """
+        for key in MCP_PASTE_KEY_CANDIDATES:
+            candidate = payload.get(key)
+            if isinstance(candidate, dict):
+                return {str(k): v for k, v in candidate.items() if isinstance(v, dict)}
+
+        if all(isinstance(v, dict) for v in payload.values()):
+            extracted: Dict[str, Dict[str, Any]] = {}
+            for name, cfg in payload.items():
+                hint = set(cfg.keys())
+                if hint & MCP_SERVER_HINT_KEYS:
+                    extracted[str(name)] = cfg
+            if extracted:
+                return extracted
+        return {}
+
+    def _normalize_env_for_import(
+        self, env_cfg: Dict[str, Any], existing_env: Dict[str, str]
+    ) -> tuple[Dict[str, str], Dict[str, str]]:
+        """
+        规范化导入的 env 配置，输出：
+        - mcp.json 存储形态：`{"KEY": "ENV_NAME"}`
+        - `.env` 待更新项：`{"ENV_NAME": "value"}`
+        """
+        normalized_env: Dict[str, str] = {}
+        env_updates: Dict[str, str] = {}
+        if not isinstance(env_cfg, dict):
+            return normalized_env, env_updates
+
+        for raw_key, raw_value in env_cfg.items():
+            config_key = str(raw_key or "").strip()
+            if not config_key:
+                continue
+
+            value_text = str(raw_value or "").strip()
+            env_name = config_key if looks_like_env_key_name(config_key) else config_key.upper()
+            normalized_env[config_key] = env_name
+
+            match = MCP_ENV_VAR_PATTERN.fullmatch(value_text)
+            if match:
+                env_name = match.group(1).strip() or env_name
+                normalized_env[config_key] = env_name
+                if env_name not in existing_env:
+                    env_updates.setdefault(env_name, "")
+                continue
+
+            if looks_like_env_key_name(value_text):
+                env_name = value_text
+                normalized_env[config_key] = env_name
+                if env_name not in existing_env:
+                    env_updates.setdefault(env_name, "")
+                continue
+
+            if not value_text or MCP_PLACEHOLDER_PATTERN.fullmatch(value_text):
+                env_updates.setdefault(env_name, "")
+                continue
+
+            if env_name not in existing_env:
+                env_updates[env_name] = value_text
+
+        return normalized_env, env_updates
+
+    async def import_from_paste(self, request: ImportMcpPasteRequest) -> Dict[str, Any]:
+        """
+        从粘贴文本导入 MCP 配置，并写入 `mcp.json` 与 `.env`。
+        """
+        payload = self._load_paste_json(request.raw_text)
+        incoming_servers = self._extract_servers_from_payload(payload)
+        if not incoming_servers:
+            raise ValueError("未解析到可导入的 MCP Server")
+
+        current_data = self.runtime.load_mcp_file()
+        current_servers = self._normalize_mcp_servers(current_data.get("mcp_servers", {}))
+        existing_env = self.runtime._read_env_file()
+
+        imported_servers: List[str] = []
+        skipped_servers: List[str] = []
+        merged_env_updates: Dict[str, str] = {}
+
+        for server_name, raw_cfg in incoming_servers.items():
+            name = str(server_name or "").strip()
+            if not name:
+                continue
+
+            if not request.overwrite_existing and name in current_servers:
+                skipped_servers.append(name)
+                continue
+
+            cfg = copy.deepcopy(raw_cfg) if isinstance(raw_cfg, dict) else {}
+            cfg["enabled"] = bool(cfg.get("enabled", True))
+            cfg["command"] = str(cfg.get("command", "")).strip()
+            cfg["url"] = str(cfg.get("url", "")).strip()
+            cfg["transport"] = str(cfg.get("transport", "stdio")).strip() or "stdio"
+
+            raw_args = cfg.get("args", [])
+            cfg["args"] = [str(arg).strip() for arg in raw_args] if isinstance(raw_args, list) else []
+            cfg["args"] = [arg for arg in cfg["args"] if arg]
+
+            if not cfg["command"] and not cfg["url"]:
+                skipped_servers.append(name)
+                continue
+
+            normalized_env, env_updates = self._normalize_env_for_import(cfg.get("env", {}), existing_env)
+            cfg["env"] = normalized_env
+            merged_env_updates.update(env_updates)
+            current_servers[name] = cfg
+            imported_servers.append(name)
+
+        if not imported_servers:
+            raise ValueError("没有可导入的 MCP Server（可能都被跳过）")
+
+        current_data["mcp_servers"] = current_servers
+        self.runtime.save_mcp_file(current_data)
+        if merged_env_updates:
+            self.runtime.apply_env_updates(merged_env_updates)
+
+        await self.runtime.reload_agent_with_mcp()
+        return {
+            "success": True,
+            "message": "MCP 配置导入成功",
+            "imported_servers": imported_servers,
+            "skipped_servers": skipped_servers,
+            "updated_env_keys": sorted(merged_env_updates.keys()),
+            "mcp_servers": current_servers,
+            "metadata": self._build_mcp_metadata(current_servers),
+        }
 
 
 class SettingsService:
@@ -1649,9 +1961,42 @@ class SettingsService:
             Dict[str, Any]: 更新结果。
         """
         try:
-            return self.mcp_module.update(request)
+            return await self.mcp_module.update(request)
         except Exception as exc:
             raise HTTPException(status_code=500, detail=f"Failed to update mcp settings: {exc}")
+
+    async def import_mcp_from_paste(self, request: ImportMcpPasteRequest) -> Dict[str, Any]:
+        """
+        粘贴导入 MCP 配置。
+        """
+        try:
+            return await self.mcp_module.import_from_paste(request)
+        except HTTPException:
+            raise
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=f"Failed to import mcp settings: {exc}")
+
+    async def update_mcp_server_env(self, server_name: str, request: UpdateMcpServerEnvRequest) -> Dict[str, Any]:
+        """
+        更新单个 MCP Server 的 Key（`.env` 值）。
+        """
+        try:
+            return await self.mcp_module.update_server_env(server_name, request)
+        except HTTPException:
+            raise
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=f"Failed to update mcp server key: {exc}")
+
+    async def delete_mcp_server(self, server_name: str) -> Dict[str, Any]:
+        """
+        删除单个 MCP Server，并清理对应 `.env` 键。
+        """
+        try:
+            return await self.mcp_module.delete_server(server_name)
+        except HTTPException:
+            raise
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=f"Failed to delete mcp server: {exc}")
 
     async def switch_tts_provider(self, body: SwitchTtsProviderRequest) -> Dict[str, Any]:
         """

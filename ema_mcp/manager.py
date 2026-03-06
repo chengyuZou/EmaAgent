@@ -118,11 +118,24 @@ class MCPManager:
             logger.info("[MCPManager] 无 MCP Server 配置，跳过")
             return []
 
-        enabled_servers = {
-            name: cfg
-            for name, cfg in self._config.items()
-            if cfg.get("enabled", True)  # 默认 enabled
-        }
+        enabled_servers: Dict[str, Dict[str, Any]] = {}
+        for name, cfg in self._config.items():
+            if not isinstance(cfg, dict):
+                logger.warning(f"[MCPManager] 跳过无效配置项: {name}")
+                continue
+            if not cfg.get("enabled", True):
+                continue
+
+            # 当前实现仅支持 stdio(command/args) 类型 MCP。
+            command = str(cfg.get("command", "")).strip()
+            if not command:
+                if str(cfg.get("url", "")).strip():
+                    logger.warning(f"[MCPManager] {name} 为 URL 类型 MCP，当前版本暂不支持启动，已跳过")
+                else:
+                    logger.warning(f"[MCPManager] {name} 缺少 command 字段，已跳过")
+                continue
+
+            enabled_servers[name] = cfg
 
         if not enabled_servers:
             logger.info("[MCPManager] 所有 MCP Server 均已禁用，跳过")
@@ -164,6 +177,8 @@ class MCPManager:
                 logger.info(f"[MCPManager] {name} 已停止")
             except asyncio.CancelledError as e:
                 logger.warning(f"[MCPManager] 停止 {name} 时被取消: {e}")
+            except BaseException as e:
+                logger.warning(f"[MCPManager] 停止 {name} 时 BaseException: {e}")
             except Exception as e:
                 logger.warning(f"[MCPManager] 停止 {name} 时异常: {e}")
 
@@ -213,6 +228,8 @@ class MCPManager:
                 await client.stop()
             except asyncio.CancelledError as e:
                 logger.warning(f"[MCPManager] 停止 {name} 时被取消: {e}")
+            except BaseException as e:
+                logger.warning(f"[MCPManager] 停止 {name} 时 BaseException: {e}")
             self._bridges = [b for b in self._bridges if b._server_name != name]
 
     # ── 工具访问 ────────────────────────────────────────────────────
@@ -236,10 +253,13 @@ class MCPManager:
           2. 展开 env 中的 ${VAR} 引用
           3. 创建 MCPClient 并启动
         """
-        command = cfg.get("command", "")
+        command = str(cfg.get("command", "")).strip()
         args = cfg.get("args", [])
         env_template = cfg.get("env", {})
         cwd = cfg.get("cwd", self._project_root)
+
+        if not command:
+            raise ValueError(f"MCP Server '{name}' 缺少 command 字段")
 
         # 自动解析 npx 路径
         if command in ("npx", "npx.cmd"):
@@ -263,18 +283,78 @@ class MCPManager:
 #  辅助函数
 # ════════════════════════════════════════════════════════════════════
 
-# 匹配 ${VAR_NAME} 模板变量
-_ENV_VAR_PATTERN = re.compile(r"\$\{([^}]+)\}")
+# 替换辅助常量与 _expand_env（兼容旧 ${VAR} + 新 VAR 写法）
 
+# 匹配 ${VAR_NAME} 模板变量（旧格式）
+_ENV_VAR_PATTERN = re.compile(r"\$\{([^}]+)\}")
+# 匹配 ENV_NAME（新格式）
+_ENV_NAME_PATTERN = re.compile(r"^[A-Z][A-Z0-9_]*$")
+
+def _looks_like_env_name(value: str) -> bool:
+    """
+    判断文本是否像环境变量名。
+
+    Args:
+        value (str): 待判断文本。
+
+    Returns:
+        bool: 是否为环境变量名。
+    """
+    return bool(_ENV_NAME_PATTERN.fullmatch(str(value or "").strip()))
+
+def _resolve_env_name(config_key: str, raw_value: str) -> str:
+    """
+    从 env 模板值中提取环境变量名。
+
+    支持：
+    1. "${ENV_NAME}"（旧格式）
+    2. "ENV_NAME"（新格式）
+    3. "KEY" 且与 config_key 同名（兼容写法）
+
+    Args:
+        config_key (str): env 字典中的键名。
+        raw_value (str): env 字典中的原始值。
+
+    Returns:
+        str: 解析出的环境变量名；若为空表示字面值。
+    """
+    # 先判断是否为空
+    text = str(raw_value or "").strip()
+    if not text:
+        return ""
+    
+    # 1. "${ENV_NAME}" 模式
+    match = _ENV_VAR_PATTERN.fullmatch(text)
+    if match:
+        return match.group(1).strip()
+    
+    # 2. "ENV_NAME" 模式
+    if _looks_like_env_name(text):
+        return text
+
+    # 3. 兼容写法：KEY 与 value 同名 或直接取Key的名字（如 "AMAP_MAPS_API_KEY": "AMAP_MAPS_API_KEY"）
+    if config_key == text:
+        return text
+    elif _looks_like_env_name(config_key):
+        return config_key
+    
+    # 4. 其他情况按字面值处理（不返回环境变量名）
+    return ""
 
 def _expand_env(env_template: Dict[str, str]) -> Dict[str, str]:
     """
-    展开环境变量模板
+    展开 MCP env 配置。
 
-    将 {"KEY": "${VAR_NAME}"} 中的 ${VAR_NAME} 替换为实际环境变量值。
-    同时继承当前进程的全部环境变量（MCP Server 通常需要 PATH 等）。
+    支持以下三类值：
+    1. "${ENV_NAME}"：读取对应环境变量
+    2. "ENV_NAME"：读取对应环境变量（推荐）
+    3. "literal-value"：按字面值透传
 
-    未定义的变量会被替换为空字符串并记录警告。
+    Args:
+        env_template (Dict[str, str]): MCP server 的 env 模板配置。
+
+    Returns:
+        Dict[str, str]: 可直接传入子进程的完整环境变量映射。
     """
     # 以当前进程环境为基础
     result = dict(os.environ)
@@ -284,13 +364,13 @@ def _expand_env(env_template: Dict[str, str]) -> Dict[str, str]:
             result[key] = str(value)
             continue
 
-        def _replace(match: re.Match) -> str:
-            var_name = match.group(1)
-            env_value = os.environ.get(var_name, "")
+        env_name = _resolve_env_name(key, value)
+        if env_name:
+            env_value = os.environ.get(env_name, "")
             if not env_value:
-                logger.warning(f"[MCPManager] 环境变量 {var_name} 未设置，使用空值")
-            return env_value
-
-        result[key] = _ENV_VAR_PATTERN.sub(_replace, value)
-
+                logger.warning(f"[MCPManager] 环境变量 '{env_name}' 未设置，使用空值")
+            result[key] = env_value
+        else:
+            # 按字面值透传
+            result[key] = value
     return result

@@ -128,6 +128,69 @@ class UpdateMcpSettingsRequest(BaseModel):
     mcp_servers: Dict[str, Dict[str, Any]] = Field(default_factory=dict)
 
 
+class ImportMcpPasteRequest(BaseModel):
+    """
+    POST /api/settings/mcp/import-paste 请求体。
+
+    支持两种粘贴格式：
+    1. {"mcpServers": {...}} 或 {"mcp_servers": {...}}
+    2. {"MiniMax": {...}}（直接贴单个或多个 server 映射）
+    """
+
+    raw_text: str = Field(default="", description="前端粘贴的 MCP JSON 文本")
+    overwrite_existing: bool = Field(default=True, description="是否覆盖同名 MCP server")
+
+
+class ImportMcpPasteResponse(BaseModel):
+    """
+    POST /api/settings/mcp/import-paste 响应体。
+    """
+
+    success: bool = True
+    message: str = "MCP 配置导入成功"
+    imported_servers: List[str] = Field(default_factory=list)
+    skipped_servers: List[str] = Field(default_factory=list)
+    updated_env_keys: List[str] = Field(default_factory=list)
+
+    # 返回最新数据，前端可直接刷新显示。
+    mcp_servers: Dict[str, Dict[str, Any]] = Field(default_factory=dict)
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
+
+class UpdateMcpServerEnvRequest(BaseModel):
+    """
+    PATCH /api/settings/mcp/server/{server_name}/env 请求体。
+    """
+
+    values: Dict[str, str] = Field(default_factory=dict, description="需要更新的环境变量键值对")
+
+
+class UpdateMcpServerEnvResponse(BaseModel):
+    """
+    PATCH /api/settings/mcp/server/{server_name}/env 响应体。
+    """
+
+    success: bool = True
+    message: str = "MCP Key 更新成功"
+    server_name: str = ""
+    updated_env_keys: List[str] = Field(default_factory=list)
+    mcp_servers: Dict[str, Dict[str, Any]] = Field(default_factory=dict)
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
+
+class DeleteMcpServerResponse(BaseModel):
+    """
+    DELETE /api/settings/mcp/server/{server_name} 响应体。
+    """
+
+    success: bool = True
+    message: str = "MCP 服务删除成功"
+    deleted_server: str = ""
+    removed_env_keys: List[str] = Field(default_factory=list)
+    mcp_servers: Dict[str, Dict[str, Any]] = Field(default_factory=dict)
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
+
 class SwitchTtsProviderRequest(BaseModel):
     """
     POST /api/settings/tts/switch 请求体。

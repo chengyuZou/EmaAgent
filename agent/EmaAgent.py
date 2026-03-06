@@ -55,6 +55,7 @@ class EmaAgent:
         self._config_version = 0
         # narrative 组件可能涉及较重的资源加载 因此采用懒加载方式 并使用锁保护初始化过程 防止并发请求导致重复初始化
         self._narrative_init_lock = asyncio.Lock()
+        self._reload_lock = asyncio.Lock()
         self._init_components()
 
     @property
@@ -188,12 +189,88 @@ class EmaAgent:
 
     def reload_config(self):
         """
-        对外暴露的配置重载入口
+        对外暴露的配置重载入口。
         """
-        logger.info("重载 agent config...")
-        self._config_cache = None
-        self._init_components()
-        logger.info("Agent config reloaded.")
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            asyncio.run(self.reload_config_async(reload_mcp=True))
+            return
+
+        task = loop.create_task(self.reload_config_async(reload_mcp=True))
+        task.add_done_callback(self._on_reload_task_done)
+
+    def _on_reload_task_done(self, task: "asyncio.Task[Any]") -> None:
+        """
+        处理后台重载任务异常，避免 "Task exception was never retrieved"。
+
+        Args:
+            task (asyncio.Task[Any]): 后台重载任务。
+
+        Returns:
+            None
+        """
+        try:
+            task.result()
+        except Exception as exc:
+            logger.error(f"[Reload] 后台重载失败: {exc}", exc_info=True)
+
+    async def _shutdown_runtime_components(self) -> None:
+        """
+        关闭当前已加载的运行时组件，避免资源泄漏与悬空句柄。
+
+        Returns:
+            None
+        """
+        old_mcp_manager: MCPManager = getattr(self, "mcp_manager", None)
+        old_narrative: NarrativeMemory = getattr(self, "narrative", None)
+        old_tts_manager = getattr(self, "tts_manager", None)
+
+        # 先清空引用，防止并发路径重复关闭。
+        self.mcp_manager = None
+        self.narrative = None
+        self.tts_manager = None
+
+        if old_mcp_manager is not None:
+            try:
+                await old_mcp_manager.stop_all()
+            except asyncio.CancelledError as exc:
+                logger.warning(f"[Reload] MCP 停止时被取消: {exc}")
+            except Exception as exc:
+                logger.warning(f"[Reload] MCP 停止异常: {exc}")
+
+        if old_narrative is not None:
+            try:
+                await old_narrative.finalize()
+            except Exception as exc:
+                logger.warning(f"[Reload] Narrative finalize 异常: {exc}")
+
+        if old_tts_manager is not None:
+            try:
+                old_tts_manager.stop()
+            except Exception as exc:
+                logger.warning(f"[Reload] TTS stop 异常: {exc}")
+
+    async def reload_config_async(self, reload_mcp: bool = True) -> None:
+        """
+        异步重载 Agent 配置，并可选重新加载 MCP 工具。
+
+        Args:
+            reload_mcp (bool): 是否在重载后重新初始化 MCP。
+
+        Returns:
+            None
+        """
+        async with self._reload_lock:
+            logger.info("重载 agent config...")
+            await self._shutdown_runtime_components()
+            self._config_cache = None
+            self._init_components()
+
+            if reload_mcp:
+                await self.initialize_mcp()
+
+            logger.info("Agent config reloaded.")
 
     async def initialize_narrative(self):
         """

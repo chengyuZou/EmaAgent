@@ -132,10 +132,18 @@ class MCPClient:
 
         logger.info(f"✅️[MCP:{self.name}] 关闭连接")
         try:
+            # 在原任务中直接关闭，避免 shield 触发跨任务退出 cancel scope。
             await stack.aclose()
         except asyncio.CancelledError as e:
             # Ctrl+C 触发 shutdown 时，底层 anyio 可能抛出取消异常，这里吞掉避免中断整体退出流程
             logger.warning(f"[MCP:{self.name}] 关闭被取消: {e}")
+        except BaseException as e:
+            # Python 3.11 下 anyio 可能抛出 BaseExceptionGroup（不属于 Exception）。
+            text = str(e)
+            if "cancel scope" in text.lower():
+                logger.warning(f"[MCP:{self.name}] 忽略关闭阶段 cancel scope 异常: {text}")
+            else:
+                logger.warning(f"[MCP:{self.name}] 关闭时 BaseException: {text}")
         except Exception as e:
             logger.warning(f"[MCP:{self.name}] 关闭时异常: {e}")
 

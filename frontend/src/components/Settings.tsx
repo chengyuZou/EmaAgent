@@ -9,6 +9,7 @@ import {
   Palette,
   RefreshCw,
   Save,
+  Trash2,
   Type,
   Upload,
 } from 'lucide-react'
@@ -209,11 +210,17 @@ export default function Settings({
   const [saveError, setSaveError] = useState('')
   const [showApiKey, setShowApiKey] = useState(false)
 
+  const [mcpPasteText, setMcpPasteText] = useState('')
+  const [isImportingMcp, setIsImportingMcp] = useState(false)
+  const [mcpKeyDrafts, setMcpKeyDrafts] = useState<Record<string, Record<string, string>>>({})
+  const [pendingMcpServers, setPendingMcpServers] = useState<Record<string, boolean>>({})
+
   const [openPanels, setOpenPanels] = useState<Record<string, boolean>>({
     status: true,
     llm: true,
     ebd: true,
     tts: true,
+    mcpImport: true,
     colors: true,
     preview: true,
     fontBasic: true,
@@ -319,10 +326,21 @@ export default function Settings({
       }
       setMcpSettings(nextSettings)
       const nextExpanded: Record<string, boolean> = {}
+      const nextDrafts: Record<string, Record<string, string>> = {}
       Object.keys(nextSettings.mcp_servers).forEach((name) => {
         nextExpanded[name] = false
+        const requiredKeys = nextSettings.metadata?.[name]?.required_keys || []
+        const keyMap: Record<string, string> = {}
+        requiredKeys.forEach((item) => {
+          const envName = String(item?.env_name || '').trim()
+          if (!envName) return
+          keyMap[envName] = String(item?.value || '')
+        })
+        nextDrafts[name] = keyMap
       })
       setExpandedMcpServers(nextExpanded)
+      setMcpKeyDrafts(nextDrafts)
+      setPendingMcpServers({})
     } catch (error) {
       console.error('Failed to fetch MCP settings:', error)
     }
@@ -341,12 +359,48 @@ export default function Settings({
       throw new Error(err?.detail || 'MCP 配置保存失败')
     }
   }
+  const handleImportMcpFromPaste = async () => {
+    const raw = mcpPasteText.trim()
+    if (!raw) {
+      setSaveError('请先粘贴 MCP 配置 JSON')
+      return
+    }
+
+    setSaveError('')
+    setSaveSuccessSection(null)
+    setIsImportingMcp(true)
+
+    try {
+      const response = await fetch('/api/settings/mcp/import-paste', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          raw_text: raw,
+          overwrite_existing: true,
+        }),
+      })
+
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}))
+        throw new Error(err?.detail || 'MCP 粘贴导入失败')
+      }
+
+      // 自动刷新 MCP 区块
+      await fetchMcpSettings()
+      setMcpPasteText('')
+      markSectionSaved('mcp')
+    } catch (error: any) {
+      setSaveError(error?.message || 'MCP 粘贴导入失败')
+    } finally {
+      setIsImportingMcp(false)
+    }
+  }
 
   const toggleMcpServerExpanded = (serverName: string) => {
     setExpandedMcpServers((prev) => ({ ...prev, [serverName]: !prev[serverName] }))
   }
 
-  const toggleMcpServerEnabled = (serverName: string) => {
+  const toggleMcpServerEnabled = async (serverName: string) => {
     const server = mcpSettings.mcp_servers[serverName] || {}
     const enabled = server.enabled !== false
     const nextSettings: McpSettingsData = {
@@ -359,8 +413,91 @@ export default function Settings({
         },
       },
     }
-    // 仅更新前端状态，实际写回由“保存 MCP 分区”按钮统一提交。
     setMcpSettings(nextSettings)
+    setSaveError('')
+    setSaveSuccessSection(null)
+    setPendingMcpServers((prev) => ({ ...prev, [serverName]: true }))
+    try {
+      await saveMcpSettings(nextSettings)
+      await fetchMcpSettings()
+      markSectionSaved('mcp')
+    } catch (error: any) {
+      setSaveError(error?.message || 'MCP 启用状态更新失败')
+      await fetchMcpSettings()
+    } finally {
+      setPendingMcpServers((prev) => ({ ...prev, [serverName]: false }))
+    }
+  }
+
+  const updateMcpServerKeyDraft = (serverName: string, envName: string, value: string) => {
+    setMcpKeyDrafts((prev) => ({
+      ...prev,
+      [serverName]: {
+        ...(prev[serverName] || {}),
+        [envName]: value,
+      },
+    }))
+  }
+
+  const handleUpdateMcpServerKeys = async (serverName: string, requiredKeys: McpRequiredKey[]) => {
+    const draftMap = mcpKeyDrafts[serverName] || {}
+    const values: Record<string, string> = {}
+
+    requiredKeys.forEach((item) => {
+      const envName = String(item?.env_name || '').trim()
+      if (!envName) return
+      values[envName] = String(draftMap[envName] ?? item?.value ?? '')
+    })
+
+    if (Object.keys(values).length === 0) {
+      setSaveError('当前 MCP 没有可更新的 Key')
+      return
+    }
+
+    setSaveError('')
+    setSaveSuccessSection(null)
+    setPendingMcpServers((prev) => ({ ...prev, [serverName]: true }))
+    try {
+      const response = await fetch(`/api/settings/mcp/server/${encodeURIComponent(serverName)}/env`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ values }),
+      })
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}))
+        throw new Error(err?.detail || 'MCP Key 更新失败')
+      }
+      await fetchMcpSettings()
+      markSectionSaved('mcp')
+    } catch (error: any) {
+      setSaveError(error?.message || 'MCP Key 更新失败')
+    } finally {
+      setPendingMcpServers((prev) => ({ ...prev, [serverName]: false }))
+    }
+  }
+
+  const handleDeleteMcpServer = async (serverName: string) => {
+    const shouldDelete = window.confirm(`确认删除 MCP 服务 "${serverName}" 吗？`)
+    if (!shouldDelete) return
+
+    setSaveError('')
+    setSaveSuccessSection(null)
+    setPendingMcpServers((prev) => ({ ...prev, [serverName]: true }))
+    try {
+      const response = await fetch(`/api/settings/mcp/server/${encodeURIComponent(serverName)}`, {
+        method: 'DELETE',
+      })
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}))
+        throw new Error(err?.detail || '删除 MCP 服务失败')
+      }
+      await fetchMcpSettings()
+      markSectionSaved('mcp')
+    } catch (error: any) {
+      setSaveError(error?.message || '删除 MCP 服务失败')
+    } finally {
+      setPendingMcpServers((prev) => ({ ...prev, [serverName]: false }))
+    }
   }
 
   const refreshStatus = async () => {
@@ -425,22 +562,6 @@ export default function Settings({
       setSavingSection(null)
     }
   }
-
-  const handleSaveMcp = async () => {
-    setSavingSection('mcp')
-    setSaveError('')
-    setSaveSuccessSection(null)
-    try {
-      await saveMcpSettings(mcpSettings)
-      await fetchMcpSettings()
-      markSectionSaved('mcp')
-    } catch (error: any) {
-      setSaveError(error?.message || 'MCP 配置保存失败')
-    } finally {
-      setSavingSection(null)
-    }
-  }
-
   const handleSaveTheme = async () => {
     setSavingSection('theme')
     setSaveError('')
@@ -699,13 +820,13 @@ export default function Settings({
         {activeTab === 'api' && (
           <>
             <CollapseCard
-              title="状态检测"
+              title="Status"
               open={openPanels.status}
               onToggle={() => togglePanel('status')}
-              subtitle={`当前模型: ${apiConfig.selected_model} | 可用模型: ${enabledModels}`}
+              subtitle={`Current model: ${apiConfig.selected_model} | Enabled models: ${enabledModels}`}
             >
               <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
-                <StatusTag label="后端" ok={status.backend} />
+                <StatusTag label="Backend" ok={status.backend} />
                 <StatusTag label="WebSocket" ok={status.websocket} />
                 <StatusTag label="LLM" ok={status.llm} />
                 <StatusTag label="EBD" ok={status.embeddings} />
@@ -717,18 +838,18 @@ export default function Settings({
                   onClick={() => setShowApiKey((prev) => !prev)}
                   className="px-3 py-2 rounded-lg border border-ema/20 text-sm bg-white/80 dark:bg-slate-900/70 hover:bg-white"
                 >
-                  {showApiKey ? '隐藏 Key' : '显示 Key'}
+                  {showApiKey ? 'Hide Key' : 'Show Key'}
                 </button>
                 <button onClick={refreshStatus} className="px-3 py-2 rounded-lg border border-ema/20 text-sm flex items-center gap-2">
                   <RefreshCw size={14} />
-                  刷新状态
+                  Refresh Status
                 </button>
               </div>
             </CollapseCard>
 
             <CollapseCard title="LLM Keys" open={openPanels.llm} onToggle={() => togglePanel('llm')}>
               <div className="text-xs text-theme-muted mb-3">
-                {showApiKey ? '当前为明文显示，可直接编辑。' : '当前为隐藏模式，所有 Key 显示为 ...'}
+                {showApiKey ? 'Keys are shown in plain text.' : 'Keys are hidden as ...'}
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 {['deepseek', 'qwen', 'openai'].map((provider) => (
@@ -741,13 +862,13 @@ export default function Settings({
                       if (!showApiKey) return
                       updateProviderKey(provider, v)
                     }}
-                    placeholder={`输入 ${provider} API Key`}
+                    placeholder={`Input ${provider} API Key`}
                     disabled={!showApiKey}
                   />
                 ))}
               </div>
               <div className="mt-3">
-                <div className="text-sm text-theme-muted mb-2">API 官网快捷入口</div>
+                <div className="text-sm text-theme-muted mb-2">API Portal Links</div>
                 <div className="flex flex-wrap gap-2">
                   {API_PORTAL_LINKS.map((item) => (
                     <button
@@ -763,7 +884,7 @@ export default function Settings({
               </div>
             </CollapseCard>
 
-            <CollapseCard title="EBD Key 与模型" open={openPanels.ebd} onToggle={() => togglePanel('ebd')}>
+            <CollapseCard title="EBD Key and Model" open={openPanels.ebd} onToggle={() => togglePanel('ebd')}>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <Field
                   label="Embedding API Key"
@@ -788,7 +909,7 @@ export default function Settings({
               </div>
             </CollapseCard>
 
-            <CollapseCard title="TTS Provider 配置" open={openPanels.tts} onToggle={() => togglePanel('tts')}>
+            <CollapseCard title="TTS Provider Config" open={openPanels.tts} onToggle={() => togglePanel('tts')}>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div className="space-y-1">
                   <label className="text-xs text-theme-muted">TTS Provider</label>
@@ -816,7 +937,7 @@ export default function Settings({
                     className="w-full px-3 py-2 rounded-lg border border-ema/20 text-sm flex items-center justify-center gap-2 disabled:opacity-60"
                   >
                     {isSwitchingTts ? <RefreshCw size={14} className="animate-spin" /> : <RefreshCw size={14} />}
-                    立即切换 Provider
+                    Switch Provider Now
                   </button>
                 </div>
 
@@ -849,7 +970,7 @@ export default function Settings({
                   />
                 ) : (
                   <Field
-                    label="TTS Voice（可选）"
+                    label="TTS Voice (Optional)"
                     value={String(currentTtsProviderConfig.voice || '')}
                     onChange={(v) => updateCurrentTtsProviderField('voice', v)}
                   />
@@ -857,7 +978,7 @@ export default function Settings({
               </div>
             </CollapseCard>
             <SectionSaveBar
-              label="保存 API 配置"
+              label="Save API Settings"
               onClick={handleSaveApi}
               saving={savingSection === 'api'}
               saved={saveSuccessSection === 'api'}
@@ -868,16 +989,61 @@ export default function Settings({
 
         {activeTab === 'mcp' && (
           <>
-            {mcpServerEntries.length === 0 ? (
-              <div className="rounded-2xl border border-ema/15 bg-white/70 dark:bg-slate-900/60 px-4 py-6 text-sm text-theme-muted">
-                暂无 MCP 服务配置，请检查 `config/mcp.json`。
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {mcpServerEntries.map(([serverName, serverCfg]) => {
+            <div className="space-y-3">
+              <CollapseCard title="Add MCP (Paste Import)" open={openPanels.mcpImport} onToggle={() => togglePanel('mcpImport')}>
+                <div className="text-xs text-theme-muted mb-2">
+                  Supports both {"{ \"mcpServers\": { ... } }"} and {"{ \"MiniMax\": { ... } }"}.
+                </div>
+
+                <textarea
+                  value={mcpPasteText}
+                  onChange={(e) => setMcpPasteText(e.target.value)}
+                  placeholder={`Example:
+                {
+                  "mcpServers": {
+                    "MiniMax": {
+                      "command": "uvx",
+                      "args": ["minimax-mcp"],
+                      "env": {
+                        "MINIMAX_API_KEY": "<insert-your-api-key-here>"
+                      }
+                    }
+                  }
+                }`}
+                  className="w-full min-h-[180px] px-3 py-2 rounded-xl border border-ema/20 bg-white/85 dark:bg-slate-900/70 text-sm font-mono"
+                />
+
+                <div className="mt-3 flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleImportMcpFromPaste}
+                    disabled={isImportingMcp || savingSection !== null}
+                    className="px-3 py-2 rounded-lg border border-emerald-500 text-sm bg-emerald-500 text-white disabled:opacity-60"
+                  >
+                    {isImportingMcp ? '导入中...' : '导入'}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setMcpPasteText('')}
+                    disabled={isImportingMcp || savingSection !== null}
+                    className="px-3 py-2 rounded-lg border border-ema/20 text-sm disabled:opacity-60"
+                  >
+                    清空
+                  </button>
+                </div>
+              </CollapseCard>
+
+              {mcpServerEntries.length === 0 ? (
+                <div className="rounded-2xl border border-ema/15 bg-white/70 dark:bg-slate-900/60 px-4 py-6 text-sm text-theme-muted">
+                  No MCP server configured. Check `config/mcp.json` or import from paste above.
+                </div>
+              ) : (
+                mcpServerEntries.map(([serverName, serverCfg]) => {
                   const cfg = serverCfg || {}
                   const enabled = cfg.enabled !== false
                   const expanded = !!expandedMcpServers[serverName]
+                  const pending = !!pendingMcpServers[serverName]
                   const metadata = mcpSettings.metadata?.[serverName]
                   const description = metadata?.description || cfg.description || ''
                   const tools = Array.isArray(metadata?.tools) ? metadata.tools : []
@@ -918,15 +1084,40 @@ export default function Settings({
                             type="button"
                             onClick={(e) => {
                               e.stopPropagation()
+                              void handleUpdateMcpServerKeys(serverName, requiredKeys)
+                            }}
+                            disabled={pending || requiredKeys.length === 0}
+                            className="min-w-[96px] px-3 py-1.5 rounded-2xl border text-sm font-medium border-blue-500 bg-blue-500 text-white disabled:opacity-60"
+                          >
+                            更新 Key
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation()
                               void toggleMcpServerEnabled(serverName)
                             }}
+                            disabled={pending}
                             className={`min-w-[96px] px-3 py-1.5 rounded-2xl border text-sm font-medium ${
                               enabled
                                 ? 'border-emerald-500 bg-emerald-500 text-white'
                                 : 'border-slate-300 bg-white/80 text-slate-700 dark:bg-slate-900/80 dark:text-slate-200'
-                            }`}
+                            } disabled:opacity-60`}
                           >
                             {enabled ? '✅ 已启用' : '⬜ 已禁用'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              void handleDeleteMcpServer(serverName)
+                            }}
+                            disabled={pending}
+                            className="ml-1 w-9 h-9 inline-flex items-center justify-center rounded-xl border border-rose-400 bg-rose-500 text-white hover:bg-rose-600 disabled:opacity-60"
+                            title="删除 MCP 服务"
+                            aria-label="删除 MCP 服务"
+                          >
+                            <Trash2 size={15} />
                           </button>
                         </div>
                       </div>
@@ -935,7 +1126,7 @@ export default function Settings({
                         <div className="px-4 pb-4 space-y-3">
                           <div>
                             <div className="text-xs uppercase tracking-wide text-theme-muted mb-1">Describe</div>
-                            <div className="text-sm">{description || '（未填写）'}</div>
+                            <div className="text-sm">{description || 'N/A'}</div>
                           </div>
 
                           <div>
@@ -952,7 +1143,7 @@ export default function Settings({
                                 ))}
                               </div>
                             ) : (
-                              <div className="text-sm text-theme-muted">（暂无 tool 列表）</div>
+                              <div className="text-sm text-theme-muted">No tools found</div>
                             )}
                           </div>
 
@@ -960,38 +1151,42 @@ export default function Settings({
                             <div className="text-xs uppercase tracking-wide text-theme-muted mb-1">Required Keys</div>
                             {requiredKeys.length > 0 ? (
                               <div className="space-y-2">
-                                {requiredKeys.map((keyItem) => (
-                                  <div
-                                    key={`${serverName}-${keyItem.config_key}-${keyItem.env_name}`}
-                                    className="rounded-xl border border-ema/15 bg-white/80 dark:bg-slate-900/70 px-3 py-2"
-                                  >
-                                    <div className="text-xs text-theme-muted mb-1">
-                                      {keyItem.config_key} → {keyItem.env_name || '(literal)'}
+                                {requiredKeys.map((keyItem) => {
+                                  const envName = String(keyItem.env_name || '').trim()
+                                  if (!envName) return null
+                                  const displayValue = String(mcpKeyDrafts?.[serverName]?.[envName] ?? keyItem.value ?? '')
+                                  return (
+                                    <div
+                                      key={`${serverName}-${keyItem.config_key}-${envName}`}
+                                      className="rounded-xl border border-ema/15 bg-white/80 dark:bg-slate-900/70 px-3 py-2"
+                                    >
+                                      <div className="text-xs text-theme-muted mb-1">
+                                        {keyItem.config_key} {'->'} {envName}
+                                      </div>
+                                      {/* Edit MCP key and click update button to persist */}
+                                      <input
+                                        type="text"
+                                        value={displayValue}
+                                        onClick={(e) => e.stopPropagation()}
+                                        onChange={(e) => updateMcpServerKeyDraft(serverName, envName, e.target.value)}
+                                        disabled={pending}
+                                        className="w-full font-mono text-sm px-2 py-1 rounded-lg border border-ema/20 bg-white dark:bg-slate-900"
+                                      />
                                     </div>
-                                    <div className="font-mono text-sm break-all">
-                                      {keyItem.value || '(empty)'}
-                                    </div>
-                                  </div>
-                                ))}
+                                  )
+                                })}
                               </div>
                             ) : (
-                              <div className="text-sm text-theme-muted">（无额外 Key 需求）</div>
+                              <div className="text-sm text-theme-muted">No extra keys required</div>
                             )}
                           </div>
                         </div>
                       ) : null}
                     </section>
                   )
-                })}
-              </div>
-            )}
-            <SectionSaveBar
-              label="保存 MCP 配置"
-              onClick={handleSaveMcp}
-              saving={savingSection === 'mcp'}
-              saved={saveSuccessSection === 'mcp'}
-              disabled={savingSection !== null}
-            />
+                })
+              )}
+            </div>
           </>
         )}
 
