@@ -9,7 +9,7 @@
 > 项目正在重点针对api文件夹重构
 
 孩子们最近先别PR 我正在被代码肘击
-![ema2](./images/others/ema2.png)
+<img src="./images/others/ema2.png" alt="ema" width="400" />
 
 始于 EmaAgent 但不止于只有 Ema 的 Agent
 
