@@ -8,6 +8,9 @@
 
 > 项目正在重点针对api文件夹重构
 
+孩子们最近先别PR 我正在被代码肘击
+![ema2](./images/others/ema2.png)
+
 始于 EmaAgent 但不止于只有 Ema 的 Agent
 
 换上其他角色的 `人设Prompt` `Live2D` `参考音频` 并更改少部分文件内容 就可以是任何角色的Agent
