@@ -1,0 +1,44 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build outputs
+dist/
+build/
+.next/
+.turbo/
+
+# Testing
+coverage/
+*.log
+work/llm-runtime-smoke-dist/
+work/llm-runtime-smoke.tsbuildinfo
+work/llm-runtime-typecheck.tsbuildinfo
+
+# Environment
+.env
+.env.*.local
+
+# IDE
+.vscode/settings.json
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Tauri
+src-tauri/target/
+src-tauri/gen/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+
+# Misc
+*.local

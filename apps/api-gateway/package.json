@@ -1,0 +1,33 @@
+{
+  "name": "@ema-agent/api-gateway",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx watch src/server.ts",
+    "start": "node dist/server.js",
+    "test": "vitest run --pool=threads --passWithNoTests",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@ema-agent/constants-core": "workspace:*",
+    "@ema-agent/core-types": "workspace:*",
+    "@ema-agent/config-kernel": "workspace:*",
+    "@ema-agent/session-runtime": "workspace:*",
+    "@ema-agent/llm-runtime": "workspace:*",
+    "@ema-agent/tool-runtime": "workspace:*",
+    "@ema-agent/orchestrator-runtime": "workspace:*",
+    "@ema-agent/storage-sql": "workspace:*",
+    "fastify": "^5.0.0",
+    "@fastify/websocket": "^10.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.0",
+    "vitest": "^2.0.0",
+    "tsx": "^4.0.0",
+    "@types/node": "^20.0.0"
+  }
+}

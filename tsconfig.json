@@ -1,0 +1,37 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "types": ["node"],
+    "lib": ["ES2022"],
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "paths": {
+      "@ema-agent/constants-core": ["./packages/constants-core/src/index.ts"],
+      "@ema-agent/core-types": ["./packages/core-types/src/index.ts"],
+      "@ema-agent/config-kernel": ["./packages/config-kernel/src/index.ts"],
+      "@ema-agent/session-runtime": ["./packages/session-runtime/src/index.ts"],
+      "@ema-agent/llm-runtime": ["./packages/llm-runtime/src/index.ts"],
+      "@ema-agent/orchestrator-runtime": ["./packages/orchestrator-runtime/src/index.ts"],
+      "@ema-agent/storage-sql": ["./packages/storage-sql/src/index.ts"],
+      "@ema-agent/tool-runtime": ["./packages/tool-runtime/src/index.ts"],
+      "@ema-agent/memory-runtime": ["./packages/memory-runtime/src/index.ts"],
+      "@ema-agent/narrative-runtime": ["./packages/narrative-runtime/src/index.ts"],
+      "@ema-agent/attachment-runtime": ["./packages/attachment-runtime/src/index.ts"],
+      "@ema-agent/multimodal-runtime": ["./packages/multimodal-runtime/src/index.ts"],
+      "@ema-agent/sandbox-runtime": ["./packages/sandbox-runtime/src/index.ts"]
+    }
+  },
+  "exclude": ["node_modules", "dist", ".turbo"]
+}
