@@ -220,6 +220,12 @@ EmaAgent 全栈共享的类型契约层。前端、BFF、Runtime、仓储实现�
 
 ---
 
+## 🌊 数据流转架构 (Data Flow)
+
+下图展示了一次完整的 Agent Turn 从前端发起、流式执行 (SSE)、到最后拆分落盘 (`messages`, `turns`, `artifacts`) 的全生命周期：
+
+![一次完整 Agent Turn 的数据流转流程图](./docs/agent-turn-data-flow.png)
+
 ### 场景设定
 
 用户在 EmaAgent 中做一次 Agent 模式操作：**"分析这张架构截图，把里面提到的 Provider 接口重构为 TypeScript，生成产物"**。用户上传了 1 张图片附件 + 1 个 CSV 文件。
