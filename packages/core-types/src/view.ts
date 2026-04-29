@@ -9,14 +9,13 @@
  * - 视图只做"拼装"，不做业务计算。
  */
 
-import type { ArtifactSummary } from "./artifact.js"
+import type { ArtifactSummary, ArtifactPage } from "./artifact.js"
 import type { EmaMode } from "./mode.js"
-import type { ChatMessage } from "./message.js"
+import type { MessagePage } from "./message.js" 
 import type { SessionSummary } from "./session.js"
 import type { TurnRecord } from "./turn.js"
 import type { ModelDescriptor } from "./model.js"
 import type {
-  MessageId,
   ModelId,
   ProviderId,
   RequestId,
@@ -41,11 +40,7 @@ export interface SessionDetailView {
     updatedAt: UnixMs
   }
   /** 首屏消息（通常最新 20 条）。 */
-  messages: ChatMessage[]
-  /** 消息列表是否还有更多可翻页。 */
-  hasMoreMessages: boolean
-  /** 下一页游标。 */
-  nextBeforeMessageId?: MessageId
+  initialMessages: MessagePage
   /** 最近一次 turn 的请求 ID（用于恢复 SSE 或重试）。 */
   lastRequestId?: RequestId
   /** 该会话绑定的默认模型。 */
@@ -79,8 +74,7 @@ export interface SessionListItem {
  */
 export interface ArtifactListPanel {
   sessionId: SessionId
-  items: ArtifactSummary[]
-  hasMore: boolean
+  page: ArtifactPage
 }
 
 // ==========================================
@@ -93,7 +87,7 @@ export interface ArtifactListPanel {
 export interface TurnDetailView {
   turn: TurnRecord
   /** 该 turn 产生的消息列表。 */
-  messages: ChatMessage[]
+  messages: MessagePage
   /** 该 turn 产生的所有产物。 */
   artifacts: ArtifactSummary[]
 }

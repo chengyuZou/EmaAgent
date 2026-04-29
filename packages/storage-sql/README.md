@@ -15,7 +15,7 @@ SQLite 持久化层，实现 `@ema-agent/core-types` 中定义的 `SessionReposi
 src/
   index.ts          # barrel export: createSqliteStorage(dbPath) 工厂函数
   connection.ts     # SQLite 连接管理，单例，启用 WAL
-  schema.ts         # DDL + 版本化 migration（schema_version 表）
+  schema.ts         # DDL + 版本化 migration（基于 user_version PRAGMA）
   sessions.ts       # SessionRepository 实现
   messages.ts       # 消息 CRUD（SessionRepository 内部委托）
   turns.ts          # TurnRepository 实现
@@ -134,8 +134,8 @@ try {
 | `target_paths` | `TEXT` | JSON 数组，文件路径列表 |
 | `params` | `TEXT` | JSON，`ArtifactParams` |
 | `status` | `TEXT NOT NULL DEFAULT 'draft'` | `ArtifactStatus` |
-| `content` | `TEXT NOT NULL DEFAULT ''` | 产物文本内容 |
 | `payload_type` | `TEXT NOT NULL DEFAULT 'inline'` | `"inline"` / `"file"` / `"db"` |
+| `payload_content` | `TEXT` | 具体内容或路径 |
 | `binary_base64` | `TEXT` | 二进制内容 base64 |
 | `content_hash` | `TEXT` | 内容哈希 |
 | `created_at` | `INTEGER NOT NULL` | `UnixMs` |
@@ -145,30 +145,32 @@ try {
 
 ---
 
-### schema_version
-
-| 列 | 类型 | 说明 |
-|---|---|---|
-| `version` | `INTEGER PRIMARY KEY` | 当前 schema 版本号 |
-| `applied_at` | `INTEGER NOT NULL` | 迁移执行时间 |
-
 ## 迁移策略
 
-采用**版本化正向迁移**：`schema.ts` 导出一个 `migrate(db)` 函数，对比 `schema_version` 表与代码中硬编码的 `LATEST_VERSION`，按顺序执行缺失的 DDL。不生成 `.sql` 文件，DDL 直接写在 TypeScript 中，保证类型安全。
+采用**版本化正向迁移**：`schema.ts` 导出一个 `migrate(db)` 函数，利用 SQLite 原生的 `user_version` PRAGMA 来追踪当前 Schema 版本号（抛弃低效的中间表）。对比当前版本与代码中硬编码的 `LATEST_VERSION`，按顺序开启事务执行缺失的 DDL。不生成 `.sql` 文件，DDL 直接写在 TypeScript 中，保证类型安全与原子性。
 
 ```typescript
 // schema.ts 伪代码
+const LATEST_VERSION = 1;
+
 const MIGRATIONS: Record<number, (db: Database) => void> = {
-  1: createV1Tables,
+  1: (db) => {
+    // db.exec("CREATE TABLE ...")
+  },
   // 未来新增版本在此追加
 }
 
 export function migrate(db: Database): void {
-  const current = db.pragma("user_version", { simple: true }) as number
-  for (let v = current + 1; v <= LATEST_VERSION; v++) {
-    MIGRATIONS[v]?.(db)
-    db.pragma(`user_version = ${v}`)
-  }
+  const currentVersion = db.pragma("user_version", { simple: true }) as number;
+  
+  const transaction = db.transaction(() => {
+    for (let v = currentVersion + 1; v <= LATEST_VERSION; v++) {
+      MIGRATIONS[v]?.(db);
+      db.pragma(`user_version = ${v}`);
+    }
+  });
+  
+  transaction();
 }
 ```
 

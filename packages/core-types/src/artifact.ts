@@ -93,6 +93,31 @@ export interface ArtifactSummary {
   updatedAt: UnixMs
 }
 
+export interface ListArtifactsOptions {
+  limit?: number
+  /** 下一页游标：基于 createdAt 的时间戳分页。 */
+  beforeCreatedAt?: UnixMs
+  
+  /** 
+   * 按产物类型过滤。如果不传，则返回所有类型。
+   * 比如只想要代码和图表：["code", "chart"]
+   */
+  kinds?: ArtifactKind[]
+  
+  /** 
+   * 按产物状态过滤。
+   * 比如只看已准备好或被采纳的：["ready", "applied"]
+   */
+  statuses?: ArtifactStatus[]
+}
+
+export interface ArtifactPage {
+  items: ArtifactSummary[]
+  hasMore: boolean
+  /** 下一页游标：beforeCreatedAt（基于 createdAt 的时间戳分页）。 */
+  nextBeforeCreatedAt?: UnixMs
+}
+
 // ==========================================
 // 内容详情载荷（右侧面板完整渲染）
 // ==========================================
@@ -127,8 +152,8 @@ export interface ArtifactRepository {
   getById(id: ArtifactId): Promise<ArtifactDetail | null>
   listBySession(
     sessionId: SessionId,
-    options?: { limit?: number; beforeCreatedAt?: UnixMs }
-  ): Promise<{ items: ArtifactSummary[]; hasMore: boolean; nextBeforeCreatedAt?: UnixMs }>
+    options?: ListArtifactsOptions
+  ): Promise<ArtifactPage>
   listByRequest(requestId: RequestId): Promise<ArtifactSummary[]>
   create(summary: ArtifactSummary, content: string, binaryBase64?: string): Promise<ArtifactDetail>
   updateStatus(id: ArtifactId, status: ArtifactStatus): Promise<void>
