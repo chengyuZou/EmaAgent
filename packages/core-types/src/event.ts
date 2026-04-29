@@ -57,6 +57,14 @@ export type SseEvent =
   | StepProgressEvent
   | StepEndEvent
 
+  // --- 检索 ---
+  | RetrievalStartEvent
+  | RetrievalDeltaEvent
+  | RetrievalEndEvent
+
+  // --- 压缩 ---
+  | CompressionNotifyEvent
+
   // --- 产物 ---
   | ArtifactCreateEvent
   | ArtifactDeltaEvent
@@ -79,6 +87,17 @@ export interface BaseEvent {
 }
 
 // ==========================================
+// 压缩事件
+// ==========================================
+export interface CompressionNotifyEvent extends BaseEvent {
+  type: "compression_notify"
+  messageId: MessageId
+  originalTokens: number
+  compressedTokens: number
+  content: string
+}
+
+// ==========================================
 // 文本事件
 // ==========================================
 
@@ -96,6 +115,32 @@ export interface TextDoneEvent extends BaseEvent {
   /** 完整文本（用于落盘校验）。 */
   fullText: string
   blockId: string
+}
+
+// ==========================================
+// 召回事件
+// ==========================================
+
+export interface RetrievalStartEvent extends BaseEvent {
+  type: "retrieval_start"
+  messageId: MessageId
+  source: string
+}
+
+export interface RetrievalDeltaEvent extends BaseEvent {
+  type: "retrieval_delta"
+  messageId: MessageId
+  source: string
+  /** 增量召回内容。 */
+  delta: string
+}
+
+export interface RetrievalEndEvent extends BaseEvent {
+  type: "retrieval_end"
+  messageId: MessageId
+  /** 召回内容。 */
+  content: string
+  source: string
 }
 
 // ==========================================

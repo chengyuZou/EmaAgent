@@ -5,7 +5,7 @@
  * 前端按顺序 map 渲染即可，无需正则解析。
  */
 import type { ArtifactSummary } from "./artifact.js";
-import type { ArtifactId, AttachmentId, MessageId, RequestId, ToolCallId, UnixMs } from "./ids.js"
+import type { AttachmentId, MessageId, RequestId, ToolCallId, UnixMs } from "./ids.js"
 
 // ==========================================
 // 消息正文块（Discriminated Union）
@@ -44,6 +44,22 @@ export type MessageContentBlock =
       summary: string
       /** 风险级别，前端据此改变确认按钮颜色。 */
       risk: "low" | "medium" | "high"
+    }
+  | {
+      type: "step"
+      stepId: string
+      detail: string
+    }
+  | {
+      type: "retrieval"
+      source: string  
+      content: string
+    }
+  | {
+      type: "compression"
+      originalTokens: number
+      compressedTokens: number
+      content: string
     }
   | {
       type: "error"

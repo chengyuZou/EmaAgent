@@ -16,7 +16,6 @@ import type { SessionSummary } from "./session.js"
 import type { TurnRecord } from "./turn.js"
 import type { ModelDescriptor } from "./model.js"
 import type {
-  ArtifactId,
   MessageId,
   ModelId,
   ProviderId,
