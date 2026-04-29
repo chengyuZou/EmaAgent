@@ -81,6 +81,11 @@ export interface ModelDescriptor {
   id: ModelId
   displayName: string
   providerId: ProviderId
+  /** 一个模型可以有多个角色
+   * @example
+   * GPT-4 可以同时支持 chat、agent、narrative 和 title 角色，前端可以根据不同角色的需求选择性展示。
+   */
+  roles: ModelRole[]
   capabilities: ModelCapabilities
   contextWindow: number
   maxOutputTokens: number
