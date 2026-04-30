@@ -20,10 +20,12 @@ export type UiErrorCode =
   | "permission_required"
   | "bridge_unavailable"
   | "session_not_found"
+  | "turn_in_progress"
   | "artifact_not_found"
   | "storage_migration_failed"
   | "bad_request"
   | "internal_error"
+  | "unknown_error"
 
 /** 前端决定提示样式与是否展示重试按钮时使用的严重级别。 */
 export type UiErrorSeverity = "info" | "warning" | "error"

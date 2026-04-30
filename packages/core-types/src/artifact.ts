@@ -1,9 +1,11 @@
 /**
- * Agent Workspace 产物与变动差异协议。
+ * Agent Workspace 产物协议。
  *
- * Artifact 既可以是前端通过解析带注释的 Markdown 块提取出来的视图展现
- * （例如独立代码块、架构图），也可以是底层 Agent 调用工具系统经过持久化
- * 生成的实体（例如产生的安全补丁、执行后生成的数据集）。
+ * Artifact 是 Agent 生成的结构化产出物——代码、表格、图表、Patch 等。
+ * 轻量摘要用于聊天流卡片，Detail 用于右侧画布/弹窗完整渲染。
+ *
+ * 注意：Repository 接口不放在 core-types，
+ * 它属于 storage-sql 或 session-runtime 内部。
  */
 
 import type { ArtifactId, RequestId, SessionId, UnixMs } from "./ids.js"
@@ -145,17 +147,14 @@ export interface ArtifactDetail {
 }
 
 // ==========================================
-// 仓储接口
+// 产物面板视图
 // ==========================================
 
-export interface ArtifactRepository {
-  getById(id: ArtifactId): Promise<ArtifactDetail | null>
-  listBySession(
-    sessionId: SessionId,
-    options?: ListArtifactsOptions
-  ): Promise<ArtifactPage>
-  listByRequest(requestId: RequestId): Promise<ArtifactSummary[]>
-  create(summary: ArtifactSummary, content: string, binaryBase64?: string): Promise<ArtifactDetail>
-  updateStatus(id: ArtifactId, status: ArtifactStatus): Promise<void>
-  supersede(oldId: ArtifactId, newSummary: ArtifactSummary, newContent: string): Promise<ArtifactDetail>
+/**
+ * 在当前 session/turn 中打开"产物列表"面板时展示的视图。
+ * 对应 Panel ⑧ 模型组件列表（胶囊形卡片 + 打开按钮）。
+ */
+export interface ArtifactListPanel {
+  sessionId: SessionId
+  page: ArtifactPage
 }

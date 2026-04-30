@@ -1,13 +1,17 @@
 /**
- * 会话实体与仓储接口。
+ * 会话实体、摘要与前端的聚合视图。
  *
  * 会话是对话的容器，持有标题、模式偏好、技能配置等元数据。
- * 消息体定义在 message.ts，聚合视图定义在 view.ts。
+ * 消息体定义在 message.ts，Turn 定义在 turn.ts。
+ *
+ * 注意：Repository 接口不放在 core-types，
+ * 它属于 storage-sql 或 session-runtime 内部。
  */
 
-import type { EmaMode } from "./mode.js" 
-import type { ChatMessage, ListMessagesOptions, MessagePage } from "./message.js"
-import type { SessionId, UnixMs } from "./ids.js"
+import type { EmaMode } from "./mode.js"
+import type { MessagePage } from "./message.js"
+import type { ArtifactPage } from "./artifact.js"
+import type { RequestId, SessionId, UnixMs } from "./ids.js"
 
 // ==========================================
 // 会话实体
@@ -51,27 +55,38 @@ export interface SessionSummary {
   messageCount: number
   updatedAt: UnixMs
   lastMode: EmaMode
+  /** 最新一条用户消息的纯文本截断（用于侧边栏预览）。 */
+  lastMessagePreview?: string
 }
 
 // ==========================================
-// 仓储接口
+// 会话详情页聚合视图
 // ==========================================
 
-export interface SessionRepository {
-  getById(sessionId: SessionId): Promise<SessionState | null>
-  create(input: CreateSessionInput): Promise<SessionState>
-  save(session: SessionState): Promise<void>
-  list(): Promise<SessionSummary[]>
-  listMessages(
-    sessionId: SessionId,
-    options?: ListMessagesOptions
-  ): Promise<MessagePage>
-  appendMessage(sessionId: SessionId, message: ChatMessage): Promise<void>
-  updateTitle(
-    sessionId: SessionId,
-    title: string,
-    status?: SessionTitleStatus
-  ): Promise<void>
-  updateLastMode(sessionId: SessionId, mode: EmaMode): Promise<void>
-  delete(sessionId: SessionId): Promise<void>
+/**
+ * 打开一个会话时，前端需要的完整视图。
+ * 包含会话元数据 + 首屏消息分页 + 产物摘要 + 最近 turn 状态。
+ */
+export interface SessionDetailView {
+  session: SessionState
+  /** 首屏消息（通常最新 20 条）。 */
+  initialMessages: MessagePage
+  /** 最近一次 turn 的请求 ID（用于恢复 SSE 或重试）。 */
+  lastRequestId?: RequestId
+  /** 该 session 下的产物摘要（第一版可选）。 */
+  artifacts?: ArtifactPage
+}
+
+// ==========================================
+// 会话列表项（侧边栏）
+// ==========================================
+
+/**
+ * 侧边栏会话列表聚合。
+ * 列表摘要 + 可选的最新消息预览（用于 hover 气泡）。
+ */
+export interface SessionListItem {
+  summary: SessionSummary
+  /** 最新一条用户消息的纯文本截断（用于侧边栏预览）。 */
+  lastMessagePreview?: string
 }

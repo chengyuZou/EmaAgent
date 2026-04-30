@@ -1,7 +1,7 @@
 import type { Database } from "better-sqlite3";
 
 // 我们使用 SQLite 原生的 user_version pragma 追踪版本
-const LATEST_VERSION = 1;
+const LATEST_VERSION = 2;
 
 const MIGRATIONS: Record<number, (db: Database) => void> = {
   1: (db) => {
@@ -42,6 +42,8 @@ const MIGRATIONS: Record<number, (db: Database) => void> = {
         started_at INTEGER NOT NULL,
         ended_at INTEGER,
         usage_json TEXT,
+        error_code TEXT,
+        error_message TEXT,
         FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
       );
       CREATE INDEX IF NOT EXISTS idx_turns_session_id_started_at ON turns(session_id, started_at DESC);

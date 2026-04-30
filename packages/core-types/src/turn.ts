@@ -2,10 +2,14 @@
  * Turn 是 EmaAgent 的主执行单位。
  *
  * Session 承载上下文；Turn 记录本轮使用的 mode、模型、步骤、产物和用量。
+ *
+ * 注意：Repository 接口不放在 core-types，
+ * 它属于 storage-sql 或 session-runtime 内部。
  */
 
 import type { ArtifactSummary } from "./artifact.js"
 import type { EmaMode } from "./mode.js"
+import type { MessagePage } from "./message.js"
 import type {
   ArtifactId,
   AttachmentId,
@@ -111,10 +115,10 @@ export interface UsageView {
 }
 
 // ==========================================
-// Turn 持久化
+// Turn 持久化实体
 // ==========================================
 
-/** Turn 持久化实体。 */
+/** Turn 持久化实体——storage-sql 落盘 & session-runtime 读写的唯一结构。 */
 export interface TurnRecord {
   requestId: RequestId
   sessionId: SessionId
@@ -126,48 +130,23 @@ export interface TurnRecord {
   endedAt?: UnixMs
   usage?: UsageView
   artifacts?: ArtifactSummary[]
+  /** status === "failed" 时的稳定错误码。 */
+  errorCode?: string
+  /** status === "failed" 时的用户可读错误消息。 */
+  errorMessage?: string
 }
 
 // ==========================================
-// 仓储
+// Turn 调试/审计视图
 // ==========================================
 
-export interface CreateTurnInput {
-  requestId: RequestId
-  sessionId: SessionId
-  mode: EmaMode
-  status?: TurnStatus
-  modelId?: ModelId
-  providerId?: ProviderId
-  startedAt?: UnixMs
-}
-
-export interface UpdateTurnInput {
-  requestId: RequestId
-  status?: TurnStatus
-  modelId?: ModelId
-  providerId?: ProviderId
-  endedAt?: UnixMs
-  usage?: UsageView
-}
-
-export interface ListTurnsOptions {
-  limit?: number
-  beforeStartedAt?: UnixMs
-}
-
-export interface TurnPage {
-  items: TurnRecord[]
-  hasMore: boolean
-  nextBeforeStartedAt?: UnixMs
-}
-
-export interface TurnRepository {
-  createTurn(input: CreateTurnInput): Promise<TurnRecord>
-  getTurnById(requestId: RequestId): Promise<TurnRecord | null>
-  updateTurn(input: UpdateTurnInput): Promise<void>
-  listTurnsBySession(
-    sessionId: SessionId,
-    options?: ListTurnsOptions
-  ): Promise<TurnPage>
+/**
+ * 查看某个 turn 的完整执行记录（调试/审计用），前端 Turn 详情面板使用。
+ */
+export interface TurnDetailView {
+  turn: TurnRecord
+  /** 该 turn 产生的消息列表。 */
+  messages: MessagePage
+  /** 该 turn 产生的所有产物。 */
+  artifacts: ArtifactSummary[]
 }
