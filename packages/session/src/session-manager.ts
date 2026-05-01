@@ -111,6 +111,7 @@ export class SessionManager {
         requestId: abortedRequestId,
         reason: "superseded_by_new_turn",
       })
+      activeSession.abortCurrentTurn("superseded_by_new_turn")
     }
     const turn = activeSession.beginTurnInMemory(input.requestId, input.mode)
     try {
@@ -126,7 +127,18 @@ export class SessionManager {
         message: input.userMessage,
       })
     } catch (error) {
-      activeSession.failTurnInMemory(input.requestId, toEmaError(error))
+      const emaError = toEmaError(error)
+      try {
+        await this.writer.markTurnFailed({
+          sessionId: input.sessionId,
+          requestId: input.requestId,
+          error: emaError,
+        })
+      } catch {
+        // Preserve the original beginTurn failure. markTurnStarted may have failed
+        // before the DB row existed, or storage may still be unavailable.
+      }
+      activeSession.failTurnInMemory(input.requestId, emaError)
       throw error
     }
     return {

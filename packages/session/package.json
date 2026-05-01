@@ -1,5 +1,5 @@
 {
-  "name": "@ema-agent/storage-sql",
+  "name": "@ema-agent/session",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -12,15 +12,13 @@
     }
   },
   "scripts": {
-    "build": "tsc",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit -p ../../tsconfig.json"
   },
   "dependencies": {
     "@ema-agent/core-types": "workspace:*",
-    "better-sqlite3": "^12.9.0"
+    "@ema-agent/storage-sql": "workspace:*"
   },
   "devDependencies": {
-    "@types/better-sqlite3": "^7.6.12",
     "typescript": "^5.7.0"
   }
 }

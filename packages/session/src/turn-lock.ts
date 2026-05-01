@@ -24,6 +24,9 @@ export interface TurnLockResult {
 /**
  * 尝试为新的请求获取 Turn 执行锁。
  *
+ * 这个函数只做决策，不修改 ActiveSession。调用方负责在持久化状态成功后
+ * 再执行内存态 abort，避免 DB 与内存状态不一致。
+ *
  * V1 不实现 queue。原因是 queue 需要处理上下文过期、附件状态、用户取消、
  * 权限弹窗等额外状态，容易让 session 层变复杂。
  *
@@ -52,7 +55,6 @@ export function acquireTurnLock(
 
     case "abort-previous": {
       const abortedRequestId = currentTurn.requestId
-      activeSession.abortCurrentTurn("superseded_by_new_turn")
 
       return {
         allowed: true,

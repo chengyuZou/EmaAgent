@@ -182,8 +182,13 @@ export function createArtifactRepository(db: Database): ArtifactRepository {
       const params: any[] = [sessionId];
 
       if (options?.beforeCreatedAt) {
-        sql += ` AND created_at < ?`;
-        params.push(options.beforeCreatedAt);
+        if (options.beforeArtifactId) {
+          sql += ` AND (created_at < ? OR (created_at = ? AND id < ?))`;
+          params.push(options.beforeCreatedAt, options.beforeCreatedAt, options.beforeArtifactId);
+        } else {
+          sql += ` AND created_at < ?`;
+          params.push(options.beforeCreatedAt);
+        }
       }
 
       if (options?.kinds && options.kinds.length > 0) {
@@ -196,7 +201,7 @@ export function createArtifactRepository(db: Database): ArtifactRepository {
         params.push(...options.statuses);
       }
 
-      sql += ` ORDER BY created_at DESC LIMIT ?`;
+      sql += ` ORDER BY created_at DESC, id DESC LIMIT ?`;
       params.push(limit + 1);
 
       const rows = db.prepare(sql).all(...params) as any[];
@@ -207,6 +212,7 @@ export function createArtifactRepository(db: Database): ArtifactRepository {
         items: items.map(rowToSummary),
         hasMore,
         nextBeforeCreatedAt: hasMore ? items[items.length - 1].created_at : undefined,
+        nextBeforeArtifactId: hasMore ? items[items.length - 1].id : undefined,
       };
     },
 

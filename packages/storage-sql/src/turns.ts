@@ -46,12 +46,14 @@ export interface UpdateTurnInput {
 export interface ListTurnsOptions {
   limit?: number;
   beforeStartedAt?: UnixMs;
+  beforeRequestId?: RequestId;
 }
 
 export interface TurnPage {
   items: TurnRecord[];
   hasMore: boolean;
   nextBeforeStartedAt?: UnixMs;
+  nextBeforeRequestId?: RequestId;
 }
 
 // ==========================================
@@ -164,11 +166,16 @@ export function createTurnRepository(db: Database): TurnRepository {
       const params: any[] = [sessionId];
 
       if (options?.beforeStartedAt) {
-        sql += ` AND started_at < ?`;
-        params.push(options.beforeStartedAt);
+        if (options.beforeRequestId) {
+          sql += ` AND (started_at < ? OR (started_at = ? AND request_id < ?))`;
+          params.push(options.beforeStartedAt, options.beforeStartedAt, options.beforeRequestId);
+        } else {
+          sql += ` AND started_at < ?`;
+          params.push(options.beforeStartedAt);
+        }
       }
 
-      sql += ` ORDER BY started_at DESC LIMIT ?`;
+      sql += ` ORDER BY started_at DESC, request_id DESC LIMIT ?`;
       params.push(limit + 1);
 
       const rows = db.prepare(sql).all(...params) as any[];
@@ -180,6 +187,7 @@ export function createTurnRepository(db: Database): TurnRepository {
         items: records,
         hasMore,
         nextBeforeStartedAt: hasMore ? records[records.length - 1].startedAt : undefined,
+        nextBeforeRequestId: hasMore ? records[records.length - 1].requestId : undefined,
       };
     },
   };

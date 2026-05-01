@@ -3,6 +3,11 @@ import type { Database } from "better-sqlite3";
 // 我们使用 SQLite 原生的 user_version pragma 追踪版本
 const LATEST_VERSION = 2;
 
+function hasColumn(db: Database, table: string, column: string): boolean {
+  const rows = db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+  return rows.some((row) => row.name === column);
+}
+
 const MIGRATIONS: Record<number, (db: Database) => void> = {
   1: (db) => {
     db.exec(`
@@ -70,7 +75,16 @@ const MIGRATIONS: Record<number, (db: Database) => void> = {
       CREATE INDEX IF NOT EXISTS idx_artifacts_session_id_created_at ON artifacts(session_id, created_at DESC);
       CREATE INDEX IF NOT EXISTS idx_artifacts_request_id ON artifacts(request_id);
     `);
-  }
+  },
+
+  2: (db) => {
+    if (!hasColumn(db, "turns", "error_code")) {
+      db.exec(`ALTER TABLE turns ADD COLUMN error_code TEXT;`);
+    }
+    if (!hasColumn(db, "turns", "error_message")) {
+      db.exec(`ALTER TABLE turns ADD COLUMN error_message TEXT;`);
+    }
+  },
 };
 
 export function migrate(db: Database): void {
@@ -82,8 +96,8 @@ export function migrate(db: Database): void {
       const migration = MIGRATIONS[v];
       if (migration) {
         migration(db);
-        db.pragma(`user_version = ${v}`);
       }
+      db.pragma(`user_version = ${v}`);
     }
   });
   

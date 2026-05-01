@@ -71,6 +71,10 @@ function rowToChatMessage(row: any): ChatMessage {
   }
 }
 
+function touchSession(db: Database, sessionId: SessionId): void {
+  db.prepare(`UPDATE sessions SET updated_at = ? WHERE id = ?`).run(Date.now(), sessionId)
+}
+
 // ==========================================
 // 工厂函数
 // ==========================================
@@ -84,56 +88,52 @@ export function createMessageRepository(db: Database): MessageRepository {
     },
 
     async appendMessage(sessionId, message) {
-      // TODO:
-      // 1. INSERT INTO messages
-      // 2. content_blocks 用 JSON.stringify
-      // 3. 更新 sessions.updated_at 可以放到 SessionWriter 或 storage 事务里决定
       const contentBlocksStr = JSON.stringify(message.contentBlocks)
-      db.prepare(`
-        INSERT INTO messages (id, session_id, role, content_blocks, request_id, status, error_code, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(
-        message.id,
-        sessionId,
-        message.role,
-        contentBlocksStr,
-        message.requestId ?? null,
-        message.status,
-        message.errorCode ?? null,
-        message.createdAt,
-      )
+      const write = db.transaction(() => {
+        db.prepare(`
+          INSERT INTO messages (id, session_id, role, content_blocks, request_id, status, error_code, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(
+          message.id,
+          sessionId,
+          message.role,
+          contentBlocksStr,
+          message.requestId ?? null,
+          message.status,
+          message.errorCode ?? null,
+          message.createdAt,
+        )
+        touchSession(db, sessionId)
+      })
+      write()
     },
 
     async upsertMessage(sessionId, message) {
-      // TODO:
-      // 1. INSERT INTO messages
-      // 2. ON CONFLICT(id) DO UPDATE
-      // 3. 用于 assistant 流式快照
-        const contentBlocksStr = JSON.stringify(message.contentBlocks)
+      const contentBlocksStr = JSON.stringify(message.contentBlocks)
+      const write = db.transaction(() => {
         db.prepare(`
-        INSERT INTO messages (id, session_id, role, content_blocks, request_id, status, error_code, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(id) DO UPDATE SET
+          INSERT INTO messages (id, session_id, role, content_blocks, request_id, status, error_code, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(id) DO UPDATE SET
             content_blocks = excluded.content_blocks,
             status = excluded.status,
             error_code = excluded.error_code
-      `).run(
-        message.id,
-        sessionId,
-        message.role,
-        contentBlocksStr,
-        message.requestId ?? null,
-        message.status,
-        message.errorCode ?? null,
-        message.createdAt,
-      )
+        `).run(
+          message.id,
+          sessionId,
+          message.role,
+          contentBlocksStr,
+          message.requestId ?? null,
+          message.status,
+          message.errorCode ?? null,
+          message.createdAt,
+        )
+        touchSession(db, sessionId)
+      })
+      write()
     },
 
     async listMessagesBySession(sessionId, options = {}) {
-      // TODO:
-      // 1. WHERE session_id = ?
-      // 2. 支持 beforeMessageId / limit
-      // 3. limit + 1 判断 hasMore
       const limit = options.limit ?? 50
 
       let sql = `
@@ -144,19 +144,23 @@ export function createMessageRepository(db: Database): MessageRepository {
 
       const params: unknown[] = [sessionId]
 
+      if (options.includeSystem !== true) {
+        sql += ` AND role != 'system'`
+      }
+
       if (options.beforeMessageId) {
         const cursorRow = db
-          .prepare(`SELECT created_at FROM messages WHERE id = ?`)
-          .get(options.beforeMessageId) as { created_at: number } | undefined
+          .prepare(`SELECT created_at, id FROM messages WHERE id = ?`)
+          .get(options.beforeMessageId) as { created_at: number; id: MessageId } | undefined
 
         if (cursorRow) {
-          sql += ` AND created_at < ?`
-          params.push(cursorRow.created_at)
+          sql += ` AND (created_at < ? OR (created_at = ? AND id < ?))`
+          params.push(cursorRow.created_at, cursorRow.created_at, cursorRow.id)
         }
       }
 
       sql += `
-        ORDER BY created_at DESC
+        ORDER BY created_at DESC, id DESC
         LIMIT ?
       `
 
@@ -178,11 +182,10 @@ export function createMessageRepository(db: Database): MessageRepository {
     },
 
     async listMessagesByRequest(requestId) {
-      // TODO:
-      // 1. WHERE request_id = ?
-      // 2. ORDER BY created_at ASC
-        const rows = db.prepare(`SELECT * FROM messages WHERE request_id = ? ORDER BY created_at ASC`).all(requestId)
-        return rows.map(rowToChatMessage)
+      const rows = db
+        .prepare(`SELECT * FROM messages WHERE request_id = ? ORDER BY created_at ASC, id ASC`)
+        .all(requestId)
+      return rows.map(rowToChatMessage)
     },
 
     async deleteMessagesBySession(sessionId) {

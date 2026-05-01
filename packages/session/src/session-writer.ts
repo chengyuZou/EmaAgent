@@ -27,6 +27,7 @@ import type {
   RequestId,
   SessionId,
   SessionState,
+  SessionTitleStatus,
   TurnRecord,
   UsageView,
 } from "@ema-agent/core-types"
@@ -165,11 +166,12 @@ export class SessionWriter {
     })
   }
 
-  async updateTitle(sessionId: SessionId, title: string): Promise<void> {
-    // TODO:
-    // 1. 调用 storage.sessions.updateTitle(...)
-    // 2. 注意不要覆盖 manual title 的规则可以放更上层判断
-    await this.storage.sessions.updateTitle(sessionId, title)
+  async updateTitle(
+    sessionId: SessionId,
+    title: string,
+    status: SessionTitleStatus = "manual",
+  ): Promise<void> {
+    await this.storage.sessions.updateTitle(sessionId, title, status)
   }
 }
 

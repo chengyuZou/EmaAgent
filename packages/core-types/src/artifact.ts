@@ -99,6 +99,8 @@ export interface ListArtifactsOptions {
   limit?: number
   /** 下一页游标：基于 createdAt 的时间戳分页。 */
   beforeCreatedAt?: UnixMs
+  /** 与 beforeCreatedAt 配套的稳定游标，避免同毫秒产物翻页丢项。 */
+  beforeArtifactId?: ArtifactId
   
   /** 
    * 按产物类型过滤。如果不传，则返回所有类型。
@@ -118,6 +120,7 @@ export interface ArtifactPage {
   hasMore: boolean
   /** 下一页游标：beforeCreatedAt（基于 createdAt 的时间戳分页）。 */
   nextBeforeCreatedAt?: UnixMs
+  nextBeforeArtifactId?: ArtifactId
 }
 
 // ==========================================
