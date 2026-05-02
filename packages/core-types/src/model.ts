@@ -24,9 +24,9 @@ export type ProviderCategory =
 
 /** Provider 的接入协议方式。 */
 export type ProviderKind =
-  | "openai-native"
-  | "anthropic-native"
-  | "gemini-native"
+  | "openai"
+  | "anthropic"
+  | "gemini"
   | "openai-compatible"
   | "anthropic-compatible"
   | "ollama"

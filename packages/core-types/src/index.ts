@@ -30,5 +30,6 @@ export type * from "./view.js"
 export type * from "./metadata.js"
 
 // ---- 运行时值（函数/常量）----
+export { asId } from "./ids.js"
 export { EMA_MODES, isEmaMode } from "./mode.js"
 export { EmaError, toUiErrorView } from "./errors.js"
