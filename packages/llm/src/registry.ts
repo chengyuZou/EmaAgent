@@ -1,3 +1,4 @@
+import { EmaError } from "@ema-agent/core-types"
 import type {
   ChatCompletionChunk,
   ModelDescriptor,
@@ -5,15 +6,19 @@ import type {
   ProviderDescriptor,
   ProviderHealthView,
   ProviderId,
+  ProviderKind,
 } from "@ema-agent/core-types"
 
 import { createAnthropicAdapter } from "./adapters/anthropic.js"
 import { createGeminiAdapter } from "./adapters/gemini.js"
 import { createOpenAiCompatibleAdapter } from "./adapters/openai-compatible.js"
 import { createOpenAiAdapter } from "./adapters/openai.js"
+import { ModelCatalog } from "./catalog.js"
 import type {
+  FetchLike,
   LlmAdapter,
   LlmConfigSnapshot,
+  LlmProviderConfig,
   LlmRegistryOptions,
   LlmStreamRequest,
   ModelBinding,
@@ -21,64 +26,124 @@ import type {
 } from "./types.js"
 
 /**
- * LLM 注册中心骨架。
+ * LLM 注册中心。
  *
- * V1 这里会负责 provider 注册、模型目录、健康检查和角色绑定。
- * 当前先不写实际状态管理逻辑，只固定对外方法和返回类型。
+ * 职责边界：
+ * - 保存 provider 配置。
+ * - 保存 adapter 实例。
+ * - 维护模型目录和角色绑定。
+ * - 按 providerId 找到正确 adapter 执行 listModels / health / streamChat。
+ *
+ * 不做的事：
+ * - 不保存密钥到磁盘。
+ * - 不拼 prompt。
+ * - 不做 turn/session 生命周期。
  */
 export class LlmRegistry {
+  private readonly adapters = new Map<ProviderKind, LlmAdapter>()
+  private readonly providers = new Map<string, LlmProviderConfig>()
+  private readonly catalog = new ModelCatalog()
+  private readonly fetchLike?: FetchLike
+
   constructor(options: LlmRegistryOptions = {}) {
-    void options
-  }
+    this.fetchLike = options.fetch
 
-  registerAdapter(adapter: LlmAdapter): void {
-    void adapter
-  }
+    for (const adapter of options.adapters ?? createDefaultAdapters()) {
+      this.registerAdapter(adapter)
+    }
 
-  upsertProvider(config: LlmConfigSnapshot["providers"][number]): void {
-    void config
-  }
-
-  applyConfig(config: LlmConfigSnapshot): void {
-    void config
-  }
-
-  listProviders(): ProviderDescriptor[] {
-    return []
-  }
-
-  listKnownModels(providerId?: ProviderId): ModelDescriptor[] {
-    void providerId
-    return []
-  }
-
-  async refreshModels(providerId: ProviderId): Promise<ModelDescriptor[]> {
-    void providerId
-    return []
-  }
-
-  async checkHealth(providerId: ProviderId): Promise<ProviderHealthView> {
-    void providerId
-    return {
-      status: "unknown",
+    for (const provider of options.providers ?? []) {
+      this.upsertProvider(provider)
     }
   }
 
+  registerAdapter(adapter: LlmAdapter): void {
+    this.adapters.set(adapter.kind, adapter)
+  }
+
+  upsertProvider(config: LlmProviderConfig): void {
+    const provider = this.withInjectedFetch(config)
+    this.providers.set(provider.id, provider)
+    this.catalog.upsertMany(provider.staticModels ?? [])
+  }
+
+  applyConfig(config: LlmConfigSnapshot): void {
+    for (const provider of config.providers) {
+      this.upsertProvider(provider)
+    }
+
+    for (const binding of Object.values(config.bindings)) {
+      if (binding) {
+        this.bindRole(binding)
+      }
+    }
+  }
+
+  listProviders(): ProviderDescriptor[] {
+    return [...this.providers.values()].map((provider) => {
+      return this.getAdapter(provider.kind).createDescriptor(provider)
+    })
+  }
+
+  listKnownModels(providerId?: ProviderId): ModelDescriptor[] {
+    return this.catalog.list(providerId)
+  }
+
+  async refreshModels(providerId: ProviderId): Promise<ModelDescriptor[]> {
+    const provider = this.getProvider(providerId)
+    const models = await this.getAdapter(provider.kind).listModels(provider)
+    this.catalog.upsertMany(models)
+    return models
+  }
+
+  async checkHealth(providerId: ProviderId): Promise<ProviderHealthView> {
+    const provider = this.getProvider(providerId)
+    return this.getAdapter(provider.kind).checkHealth(provider)
+  }
+
   bindRole(binding: ModelBinding): void {
-    void binding
+    this.catalog.bindRole(binding)
   }
 
   getBinding(role: ModelRole): ModelBinding | undefined {
-    void role
-    return undefined
+    return this.catalog.getBinding(role)
   }
 
   getBindingsSnapshot(): ModelBindingConfig {
-    return {}
+    return this.catalog.snapshotBindings()
   }
 
-  async *streamChat(request: LlmStreamRequest): AsyncIterable<ChatCompletionChunk> {
-    void request
+  streamChat(request: LlmStreamRequest): AsyncIterable<ChatCompletionChunk> {
+    const provider = this.getProvider(request.providerId)
+
+    if (!provider.enabled) {
+      throw new EmaError("provider_unavailable", `Provider ${provider.displayName} is disabled.`, true)
+    }
+
+    return this.getAdapter(provider.kind).streamChat(provider, request)
+  }
+
+  private getProvider(providerId: ProviderId): LlmProviderConfig {
+    const provider = this.providers.get(providerId)
+    if (!provider) {
+      throw new EmaError("provider_unavailable", `Provider ${providerId} is not registered.`, false)
+    }
+    return provider
+  }
+
+  private getAdapter(kind: ProviderKind): LlmAdapter {
+    const adapter = this.adapters.get(kind)
+    if (!adapter) {
+      throw new EmaError("provider_unavailable", `Provider adapter ${kind} is not registered.`, false)
+    }
+    return adapter
+  }
+
+  private withInjectedFetch(config: LlmProviderConfig): LlmProviderConfig {
+    return {
+      ...config,
+      fetch: config.fetch ?? this.fetchLike,
+    }
   }
 }
 

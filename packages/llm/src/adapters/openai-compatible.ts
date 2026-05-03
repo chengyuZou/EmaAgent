@@ -1,8 +1,8 @@
-import { createLlmAdapterSkeleton } from "./common.js"
+import { createOpenAiLikeAdapter } from "./common.js"
 
-/** OpenAI compatible adapter 骨架，DeepSeek / OpenRouter / Ollama 先共用这里。 */
+/** OpenAI-compatible adapter，DeepSeek / OpenRouter / Ollama 先共用这套实现。 */
 export function createOpenAiCompatibleAdapter() {
-  return createLlmAdapterSkeleton({
+  return createOpenAiLikeAdapter({
     kind: "openai-compatible",
     displayName: "OpenAI Compatible",
   })

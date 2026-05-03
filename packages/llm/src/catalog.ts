@@ -3,35 +3,47 @@ import type { ModelDescriptor, ModelId, ModelRole, ProviderId } from "@ema-agent
 import type { ModelBinding, ModelBindingConfig } from "./types.js"
 
 /**
- * 模型目录骨架。
+ * 模型目录。
  *
- * 这里先只保留调用面。具体的内存索引、远端刷新合并、持久化策略后面再写。
+ * 这一层只管理“本进程内可见的模型快照”和“角色绑定”，不直接访问 provider。
+ * 远端刷新由 LlmRegistry 调 adapter 完成，然后把结果写回这里。
  */
 export class ModelCatalog {
+  private readonly models = new Map<string, ModelDescriptor>()
+  private bindings: ModelBindingConfig = {}
+
   upsertMany(models: ModelDescriptor[]): void {
-    void models
+    for (const model of models) {
+      this.models.set(model.id, model)
+    }
   }
 
   list(providerId?: ProviderId): ModelDescriptor[] {
-    void providerId
-    return []
+    const models = [...this.models.values()]
+
+    if (!providerId) {
+      return models
+    }
+
+    return models.filter((model) => model.providerId === providerId)
   }
 
   get(modelId: ModelId): ModelDescriptor | undefined {
-    void modelId
-    return undefined
+    return this.models.get(modelId)
   }
 
   bindRole(binding: ModelBinding): void {
-    void binding
+    this.bindings = {
+      ...this.bindings,
+      [binding.role]: binding,
+    }
   }
 
   getBinding(role: ModelRole): ModelBinding | undefined {
-    void role
-    return undefined
+    return this.bindings[role]
   }
 
   snapshotBindings(): ModelBindingConfig {
-    return {}
+    return { ...this.bindings }
   }
 }

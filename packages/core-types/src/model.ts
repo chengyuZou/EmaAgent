@@ -33,7 +33,7 @@ export type ProviderKind =
   | "local-dev"
 
 export interface ProviderHealthView {
-  status: "unknown" | "ok" | "degraded" | "down"
+  status: "unknown" | "ok" | "degraded" | "down" | "disabled"
   checkedAt?: UnixMs
   latencyMs?: number
   message?: string
@@ -121,6 +121,7 @@ export interface ToolCallChunk {
   toolName: string
   /** 参数 JSON 字符串的增量片段（流式）或完整字符串（非流式）。 */
   argumentsDelta: string
+  index?: number
 }
 
 // ---- Discriminated Unions ----
@@ -180,7 +181,8 @@ export interface ChatCompletionChunk {
   delta: { content?: string }
   toolCalls?: ToolCallChunk[]
   usage?: { inputTokens: number; outputTokens: number; totalTokens: number }
-  finishReason?: "stop" | "length" | "tool_calls" | "content_filter" | null
+  finishReason?: "stop" | "length" | "tool_calls" | "content_filter" | "error" | null
+  raw?: unknown
 }
 
 // ==========================================

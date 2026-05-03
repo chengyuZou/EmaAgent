@@ -31,6 +31,8 @@ export interface LlmProviderConfig {
   staticModels?: ModelDescriptor[]
   /** 内部 modelId 到远端真实 model 名的映射。 */
   modelAliases?: Record<string, string>
+  /** 测试或特殊运行环境注入 fetch；正常运行使用 globalThis.fetch。 */
+  fetch?: FetchLike
 }
 
 export interface LlmStreamRequest extends ChatCompletionRequest {
