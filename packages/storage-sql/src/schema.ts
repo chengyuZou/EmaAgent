@@ -1,11 +1,23 @@
-import type { Database } from "better-sqlite3";
+/**
+ * SQLite 正向迁移 — user_version PRAGMA 追踪。
+ *
+ * 无 ORM、无 down 迁移。每次只追加新 migration 函数。
+ */
 
-// 我们使用 SQLite 原生的 user_version pragma 追踪版本
-const LATEST_VERSION = 4;
+import type { Database } from "better-sqlite3"
+
+const LATEST_VERSION = 5
 
 function hasColumn(db: Database, table: string, column: string): boolean {
-  const rows = db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
-  return rows.some((row) => row.name === column);
+  const rows = db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>
+  return rows.some((row) => row.name === column)
+}
+
+function tableExists(db: Database, table: string): boolean {
+  const row = db.prepare(
+    "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?"
+  ).get(table) as { name: string } | undefined
+  return row !== undefined
 }
 
 const MIGRATIONS: Record<number, (db: Database) => void> = {
@@ -74,15 +86,15 @@ const MIGRATIONS: Record<number, (db: Database) => void> = {
       );
       CREATE INDEX IF NOT EXISTS idx_artifacts_session_id_created_at ON artifacts(session_id, created_at DESC);
       CREATE INDEX IF NOT EXISTS idx_artifacts_request_id ON artifacts(request_id);
-    `);
+    `)
   },
 
   2: (db) => {
     if (!hasColumn(db, "turns", "error_code")) {
-      db.exec(`ALTER TABLE turns ADD COLUMN error_code TEXT;`);
+      db.exec("ALTER TABLE turns ADD COLUMN error_code TEXT;")
     }
     if (!hasColumn(db, "turns", "error_message")) {
-      db.exec(`ALTER TABLE turns ADD COLUMN error_message TEXT;`);
+      db.exec("ALTER TABLE turns ADD COLUMN error_message TEXT;")
     }
   },
 
@@ -116,7 +128,7 @@ const MIGRATIONS: Record<number, (db: Database) => void> = {
         FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
       );
       CREATE INDEX IF NOT EXISTS idx_attachment_chunks_attachment_id ON attachment_chunks(attachment_id, chunk_index);
-    `);
+    `)
   },
 
   4: (db) => {
@@ -156,23 +168,101 @@ const MIGRATIONS: Record<number, (db: Database) => void> = {
       );
       CREATE INDEX IF NOT EXISTS idx_telemetry_events_created_at ON telemetry_events(created_at DESC);
       CREATE INDEX IF NOT EXISTS idx_telemetry_events_request_id ON telemetry_events(request_id);
-    `);
+    `)
   },
-};
+
+  5: (db) => {
+    // ReAct 步骤追踪
+    if (!tableExists(db, "steps")) {
+      db.exec(`
+        CREATE TABLE steps (
+          id TEXT PRIMARY KEY,
+          request_id TEXT NOT NULL,
+          session_id TEXT NOT NULL,
+          step_type TEXT NOT NULL,
+          title TEXT NOT NULL,
+          status TEXT NOT NULL DEFAULT 'pending',
+          detail TEXT,
+          tool_call_id TEXT,
+          tool_name TEXT,
+          artifact_ids TEXT,
+          started_at INTEGER NOT NULL,
+          ended_at INTEGER,
+          FOREIGN KEY (request_id) REFERENCES turns(request_id) ON DELETE CASCADE,
+          FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_steps_request_id ON steps(request_id);
+      `)
+    }
+
+    // Provider 配置
+    if (!tableExists(db, "provider_configs")) {
+      db.exec(`
+        CREATE TABLE provider_configs (
+          id TEXT PRIMARY KEY,
+          display_name TEXT NOT NULL,
+          category TEXT NOT NULL,
+          kind TEXT NOT NULL,
+          enabled INTEGER NOT NULL DEFAULT 1,
+          configured INTEGER NOT NULL DEFAULT 1,
+          credential_id TEXT,
+          base_url TEXT,
+          api_key_encrypted TEXT,
+          headers_json TEXT,
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL
+        );
+      `)
+    }
+
+    // Model 角色绑定（每个 role 唯一）
+    if (!tableExists(db, "model_bindings")) {
+      db.exec(`
+        CREATE TABLE model_bindings (
+          id TEXT PRIMARY KEY,
+          role TEXT NOT NULL UNIQUE,
+          provider_id TEXT NOT NULL,
+          model_id TEXT NOT NULL,
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_model_bindings_role ON model_bindings(role);
+      `)
+    }
+
+    // 权限授予持久化
+    if (!tableExists(db, "permission_grants")) {
+      db.exec(`
+        CREATE TABLE permission_grants (
+          id TEXT PRIMARY KEY,
+          session_id TEXT NOT NULL,
+          tool_name TEXT NOT NULL,
+          decision TEXT NOT NULL,
+          scope TEXT NOT NULL DEFAULT 'once',
+          risk TEXT NOT NULL,
+          path_pattern TEXT,
+          decided_at INTEGER NOT NULL,
+          expires_at INTEGER,
+          FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_permission_grants_session_tool ON permission_grants(session_id, tool_name);
+      `)
+    }
+  },
+}
 
 export function migrate(db: Database): void {
-  const currentVersion = db.pragma("user_version", { simple: true }) as number;
-  
-  // 采用事务包裹迁移，失败自动回滚
+  const currentVersion = db.pragma("user_version", { simple: true }) as number
+
   const transaction = db.transaction(() => {
     for (let v = currentVersion + 1; v <= LATEST_VERSION; v++) {
-      const migration = MIGRATIONS[v];
+      const migration = MIGRATIONS[v]
       if (migration) {
-        migration(db);
+        migration(db)
       }
-      db.pragma(`user_version = ${v}`);
+      db.pragma(`user_version = ${v}`)
     }
-  });
-  
-  transaction();
+  })
+
+  transaction()
 }

@@ -1,18 +1,29 @@
-import { createDatabaseConnection } from "./connection.js";
-import { createSessionRepository } from "./sessions.js";
-import { createTurnRepository } from "./turns.js";
-import { createMessageRepository } from "./messages.js";
-import { createArtifactRepository } from "./artifacts.js";
-import { createAttachmentRepository } from "./attachments.js";
-import { createMemoryRepository } from "./memory.js";
-import { createTelemetryRepository } from "./telemetry.js";
-
 /**
- * 组装 SQLite 本地存储引擎
- * @param dbPath 本地数据库的绝对路径（由外层根据 app.getPath('userData') 注入）
+ * EmaAgent SQLite 存储引擎 — 统一导出入口。
+ *
+ * ```
+ * import { createSqliteStorage } from "@ema-agent/storage-sql"
+ *
+ * const storage = createSqliteStorage("/path/to/ema.db")
+ * const session = await storage.sessions.getById(sid)
+ * ```
  */
+
+import { createDatabaseConnection } from "./connection.js"
+import { createSessionRepository } from "./repos/session-repo.js"
+import { createTurnRepository } from "./repos/turn-repo.js"
+import { createMessageRepository } from "./repos/message-repo.js"
+import { createArtifactRepository } from "./repos/artifact-repo.js"
+import { createAttachmentRepository } from "./repos/attachment-repo.js"
+import { createMemoryRepository } from "./repos/memory-fact-repo.js"
+import { createTelemetryRepository } from "./repos/telemetry-repo.js"
+import { createStepRepository } from "./repos/step-repo.js"
+import { createProviderConfigRepository } from "./repos/provider-config-repo.js"
+import { createModelBindingRepository } from "./repos/model-binding-repo.js"
+import { createPermissionGrantRepository } from "./repos/permission-grant-repo.js"
+
 export function createSqliteStorage(dbPath: string) {
-  const db = createDatabaseConnection(dbPath);
+  const db = createDatabaseConnection(dbPath)
 
   return {
     sessions: createSessionRepository(db),
@@ -22,14 +33,32 @@ export function createSqliteStorage(dbPath: string) {
     attachments: createAttachmentRepository(db),
     memory: createMemoryRepository(db),
     telemetry: createTelemetryRepository(db),
-    
-    // Tauri 应用退出或 sidecar 关闭时调用
+    steps: createStepRepository(db),
+    providerConfigs: createProviderConfigRepository(db),
+    modelBindings: createModelBindingRepository(db),
+    permissionGrants: createPermissionGrantRepository(db),
+
     close: () => {
-      // 在 WAL 模式关闭前，可以强制打一次 checkpoint 缩小 shm/wal 体积（可选）
-      db.pragma('wal_checkpoint(TRUNCATE)');
-      db.close();
-    }
-  };
+      db.pragma("wal_checkpoint(TRUNCATE)")
+      db.close()
+    },
+  }
 }
 
-export type SqliteStorage = ReturnType<typeof createSqliteStorage>;
+export type SqliteStorage = ReturnType<typeof createSqliteStorage>
+
+// 仓储接口（供类型引用）
+export type { SessionRepository } from "./repos/session-repo.js"
+export type { TurnRepository, CreateTurnInput, UpdateTurnInput, ListTurnsOptions, TurnPage } from "./repos/turn-repo.js"
+export type { MessageRepository } from "./repos/message-repo.js"
+export type { ArtifactRepository, CreateArtifactInput, UpdateArtifactInput } from "./repos/artifact-repo.js"
+export type { AttachmentRepository, CreateAttachmentInput, UpsertAttachmentChunkInput } from "./repos/attachment-repo.js"
+export type { MemoryRepository, MemoryFactRecord, MemoryFactKind, SessionSummaryRecord } from "./repos/memory-fact-repo.js"
+export type { TelemetryRepository, TelemetryEventRecord } from "./repos/telemetry-repo.js"
+export type { StepRepository, CreateStepInput, UpdateStepInput } from "./repos/step-repo.js"
+export type { ProviderConfigRepository, CreateProviderConfigInput, UpdateProviderConfigInput } from "./repos/provider-config-repo.js"
+export type { ModelBindingRepository, CreateModelBindingInput, UpdateModelBindingInput } from "./repos/model-binding-repo.js"
+export type { PermissionGrantRepository, CreatePermissionGrantInput } from "./repos/permission-grant-repo.js"
+
+// FTS5 辅助
+export { createFtsIndexes, rebuildFtsIndexes, searchMemoryFactsFts, searchAttachmentChunksFts, escapeLike } from "./fts.js"
