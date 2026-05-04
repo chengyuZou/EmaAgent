@@ -415,7 +415,9 @@ export interface TtsRequest {
   sessionId: SessionId
   modelId: ModelId
   text: string
+  voiceId?: string
   speed?: number
+  pitch?: number
   responseFormat?: "mp3" | "wav" | "ogg" | "opus" | "pcm"
   stream?: boolean
   includePhonemes?: boolean
@@ -530,3 +532,34 @@ export interface ModerationResponse {
   }>
   modelVersion?: string
 }
+
+// ═══════════════════════════════════════════════════════════════
+// 持久化实体（storage-sql 表行投影）
+// ═══════════════════════════════════════════════════════════════
+
+/** Provider 配置持久化行——`provider_configs` 表。 */
+export interface ProviderConfigRecord {
+  id: ProviderId
+  displayName: string
+  category: ProviderCategory
+  kind: ProviderKind
+  enabled: boolean
+  configured: boolean
+  credentialId?: CredentialId
+  baseUrl?: string
+  apiKeyEncrypted?: string
+  headersJson?: string
+  createdAt: UnixMs
+  updatedAt: UnixMs
+}
+
+/** Model 角色绑定持久化行——`model_bindings` 表。 */
+export interface ModelBindingRecord {
+  id: string
+  role: ModelRole
+  providerId: ProviderId
+  modelId: ModelId
+  createdAt: UnixMs
+  updatedAt: UnixMs
+}
+

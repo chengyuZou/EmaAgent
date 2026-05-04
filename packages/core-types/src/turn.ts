@@ -14,6 +14,7 @@ import type { ArtifactSummary } from "./artifact.js"
 import type { EmaMode } from "./mode.js"
 import type { UsageView } from "./model.js"
 import type { MessagePage } from "./message.js"
+import type { ReActStepType } from "./agent.js"
 import type {
   ArtifactId,
   AttachmentId,
@@ -22,6 +23,8 @@ import type {
   ProviderId,
   RequestId,
   SessionId,
+  StepId,
+  ToolCallId,
   UnixMs,
 } from "./ids.js"
 
@@ -125,6 +128,22 @@ export type StepStatus =
   | "completed"
   | "failed"
   | "skipped"
+
+/** 单个 ReAct 步骤的持久化行——`steps` 表。 */
+export interface StepRecord {
+  id: StepId
+  requestId: RequestId
+  sessionId: SessionId
+  stepType: ReActStepType
+  title: string
+  status: StepStatus
+  detail?: string
+  toolCallId?: ToolCallId
+  toolName?: string
+  artifactIds?: string
+  startedAt: UnixMs
+  endedAt?: UnixMs
+}
 
 // ═══════════════════════════════════════════════════════════════
 // Turn 持久化实体

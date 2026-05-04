@@ -1,14 +1,6 @@
 import { describe, expect, it } from "vitest"
 
 import type { AgentRiskLevel, ReActStatus, ReActStepType, ToolIntent, RiskClassification, ReActState, ErrorGuardState } from "../src/agent.js"
-import {
-  REPEATED_ERROR_LIMIT,
-  DEFAULT_REACT_MAX_STEPS,
-  READ_ONLY_TOOL_PATTERNS,
-  DANGEROUS_TOOL_NAMES,
-  DANGEROUS_FILE_OPERATIONS,
-  MAX_PARALLEL_READONLY_TOOLS,
-} from "../src/agent.js"
 
 import { asId } from "../src/ids.js"
 import type { RequestId, SessionId, ToolCallId, UnixMs } from "../src/ids.js"
@@ -17,7 +9,6 @@ describe("AgentRiskLevel", () => {
   it("四档风险值域正确", () => {
     const levels: AgentRiskLevel[] = ["low", "medium", "high", "critical"]
     expect(levels).toHaveLength(4)
-    // 每个值都是合法的
     for (const level of levels) {
       expect(["low", "medium", "high", "critical"]).toContain(level)
     }
@@ -87,7 +78,7 @@ describe("ReActState", () => {
       mode: "agent",
       userInput: "帮我找文件",
       currentStep: 0,
-      maxSteps: DEFAULT_REACT_MAX_STEPS,
+      maxSteps: 20,
       currentThought: "",
       currentToolCalls: [],
       toolResults: [],
@@ -100,10 +91,6 @@ describe("ReActState", () => {
     expect(state.currentToolCalls).toHaveLength(0)
   })
 
-  it("maxSteps 达到默认上限 20", () => {
-    expect(DEFAULT_REACT_MAX_STEPS).toBe(20)
-  })
-
   it("error 状态携带错误描述", () => {
     const state: ReActState = {
       sessionId,
@@ -111,7 +98,7 @@ describe("ReActState", () => {
       mode: "agent",
       userInput: "test",
       currentStep: 3,
-      maxSteps: DEFAULT_REACT_MAX_STEPS,
+      maxSteps: 20,
       currentThought: "",
       currentToolCalls: [],
       toolResults: [],
@@ -133,33 +120,8 @@ describe("ErrorGuardState", () => {
     expect(guard.lastSignature).toBeUndefined()
   })
 
-  it("连续相同错误 3 次触发熔断", () => {
+  it("count >= 3 时触发熔断（REPEATED_ERROR_LIMIT 定义在 @ema-agent/constants-core）", () => {
     const guard: ErrorGuardState = { lastSignature: "read_file:ENOENT", count: 3 }
-    expect(guard.count).toBeGreaterThanOrEqual(REPEATED_ERROR_LIMIT)
-  })
-})
-
-describe("工具分类常量（来自 v0.4）", () => {
-  it("READ_ONLY_TOOL_PATTERNS 包含常见的只读工具", () => {
-    expect(READ_ONLY_TOOL_PATTERNS).toContain("read_file")
-    expect(READ_ONLY_TOOL_PATTERNS).toContain("search_text")
-    expect(READ_ONLY_TOOL_PATTERNS).toContain("list_dir")
-  })
-
-  it("DANGEROUS_TOOL_NAMES 包含 shell 和代码执行", () => {
-    expect(DANGEROUS_TOOL_NAMES).toContain("run_command")
-    expect(DANGEROUS_TOOL_NAMES).toContain("run_python")
-    expect(DANGEROUS_TOOL_NAMES).toContain("write_file")
-  })
-
-  it("DANGEROUS_FILE_OPERATIONS 包含写类文件操作", () => {
-    expect(DANGEROUS_FILE_OPERATIONS).toContain("delete")
-    expect(DANGEROUS_FILE_OPERATIONS).toContain("write")
-    // read 不在危险列表中
-    expect(DANGEROUS_FILE_OPERATIONS).not.toContain("read")
-  })
-
-  it("MAX_PARALLEL_READONLY_TOOLS 为 3（v0.4 Semaphore 值）", () => {
-    expect(MAX_PARALLEL_READONLY_TOOLS).toBe(3)
+    expect(guard.count).toBeGreaterThanOrEqual(3)
   })
 })

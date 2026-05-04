@@ -4,18 +4,20 @@ EmaAgent 全栈共享的类型契约层。前端、BFF、能力模块、仓储�
 
 ---
 
-## 文件地图（13 文件）
+## 文件地图（16 文件）
 
 | 文件 | 职责 | 产出物 |
 |------|------|--------|
 | `ids.ts` | 12 个 Brand 字符串 ID + `UnixMs` + `IsoDateTime` + `asId()` | 全包引用的基础类型 |
 | `mode.ts` | 3 种执行模式 `chat \| agent \| narrative` + 选择状态 | `EmaMode`, `ModeSelectionState` |
-| `session.ts` | 会话实体（已去除 messages[]）+ 摘要 + 仓储接口 | `SessionState`, `SessionSummary`, `SessionRepository` |
+| `session.ts` | 会话实体（已去除 messages[]）+ 摘要 | `SessionState`, `SessionSummary`, `SessionListItem`, `SessionDetailView` |
 | `message.ts` | "一切皆区块"聊天流协议：10 种 `MessageContentBlock` | `ChatMessage`, `MessagePage` |
-| `turn.ts` | 单轮回合发起/执行/持久化 + 仓储 | `StartTurnRequest`, `TurnRecord`, `TurnRepository` |
-| `artifact.ts` | 产物类型/摘要/详情 + 仓储（代码、表格、diff、图表等） | `ArtifactSummary`, `ArtifactDetail`, `ArtifactRepository` |
+| `turn.ts` | 单轮回合发起/执行/持久化 | `StartTurnRequest`, `StartTurnResponse`, `TurnRecord`, `TurnDetailView` |
+| `agent.ts` | Agent/ReAct 类型：状态机、风险分级、工具意图、熔断器 | `AgentRiskLevel`, `ReActState`, `ToolIntent`, `ErrorGuardState`, `PermissionGrantRecord` |
+| `artifact.ts` | 产物类型/摘要/详情（代码、表格、diff、图表等） | `ArtifactSummary`, `ArtifactDetail` |
 | `event.ts` | 17 种 SSE 流事件 + `BaseEvent` | `SseEvent` 联合，`TurnStartedEvent` … `ImageEvent` |
 | `memory.ts` | 四层记忆模型（L1-L4）+ Python Bridge + GraphRAG 占位 | `RecallResult`, `RollingSummary`, `ReflectionMemo` … |
+| `multimodal.ts` | 多模态类型：音频/图片/情感/Live2D/口型同步枚举 | `AudioCodec`, `VoiceEmotion`, `Live2DExpression`, `PhonemeSymbol` … |
 | `model.ts` | Provider/Model 目录 + LLM ChatCompletion 底层协议 | `ProviderDescriptor`, `ModelDescriptor`, `ChatCompletionRequest` |
 | `view.ts` | 8 个聚合视图（跨实体 join 的只读投影） | `DashboardView`, `SessionDetailView`, `ModelPickerView` … |
 | `errors.ts` | UI 可理解的错误协议 + `EmaError` 基类 | `UiErrorView`, `toUiErrorView()` |
@@ -208,7 +210,7 @@ EmaAgent 全栈共享的类型契约层。前端、BFF、能力模块、仓储�
 
 1. **Brand ID 管控所有标识符** — `SessionId` / `TurnId` / `ArtifactId` 等 12 种，杜绝 `string` 误用
 2. **`UnixMs` 标注所有时间字段** — `number` 只用于纯计数（token 数、优先级）
-3. **实体与仓储分离** — `SessionState` 是数据，`SessionRepository` 是契约
+3. **实体与仓储分离** — `SessionState` / `TurnRecord` 是数据实体，Repository 接口和实现在 `storage-sql` 包内，不由 core-types 承载
 4. **聚合视图不进实体** — `DashboardView` 等只在 `view.ts`，消费方不需要知道 join 逻辑
 5. **"一切皆区块"** — `ChatMessage.contentBlocks[]` 的 `MessageContentBlock` 联合体是前端渲染的唯一数据源
 6. **事件自包含** — 每个 `SseEvent` 携带全部渲染所需字段，前端无需二次 fetch
@@ -386,8 +388,26 @@ StartTurnRequest {
 
 ### 后端处理
 
-1. 后端生成 `requestId: "req_007"`
-2. 创建 `TurnRecord` 写入 `turns` 表：
+1. 后端生成三方 ID：`requestId: "req_007"`、`userMessageId: "msg_user_007"`、`assistantMessageId: "msg_assist_007"`
+2. 创建 **user** `ChatMessage` 并写入 `messages` 表——来自 `StartTurnRequest.input` 的 `TurnInputBlock[]` 直接映射为 `contentBlocks`：
+
+```typescript
+ChatMessage {
+  id: "msg_user_007",
+  role: "user",
+  contentBlocks: [
+    { type: "text", text: "分析这张架构图，重构 Provider 接口" },
+    { type: "image_ref", attachmentId: "attach_img_01" },
+    { type: "file_ref", attachmentId: "attach_csv_02" },
+    { type: "artifact_ref", artifactId: "art_001" }
+  ],
+  requestId: "req_007",
+  status: "complete",    // 用户消息直接完成，无需流式填充
+  createdAt: 1714000100000
+}
+```
+
+3. 创建 `TurnRecord` 写入 `turns` 表：
 
 ```typescript
 TurnRecord {
@@ -402,7 +422,7 @@ TurnRecord {
 }
 ```
 
-3. 后端同时创建一条 assistant `ChatMessage`（初始空壳）：
+4. 创建 **assistant** `ChatMessage`（空壳，等待 SSE 流填充）：
 
 ```typescript
 ChatMessage {
@@ -415,16 +435,16 @@ ChatMessage {
 }
 ```
 
-写入 `messages` 表。
-
-4. 返回 `StartTurnResponse`：
+5. 返回 `StartTurnResponse`（携带两方 messageId 供前端定位气泡）：
 
 ```typescript
 StartTurnResponse {
   requestId: "req_007",
   sessionId: "ses_abc123",
+  userMessageId: "msg_user_007",        // 前端立即渲染用户气泡
+  assistantMessageId: "msg_assist_007",  // 前端预留动画占位
   acceptedAt: 1714000100000,
-  streamUrl: "/api/sse/turns/req_007"
+  streamUrl: "/api/turns/req_007/events"
 }
 ```
 
@@ -981,9 +1001,8 @@ SessionDetailView {
 | 创建会话 | 后端→DB | `sessions` 表 | `SessionState` | id, title, messages:[], modeLast |
 | 选模型 | HTTP GET | 后端→前端 | `ModelPickerView` | providers, modelsByRole（按 chat/agent/narrative/title 分组） |
 | 发起 Turn | HTTP POST | 前端→后端 | `StartTurnRequest` | input: [text, image_ref, file_ref, **artifact_ref**]; modelOverrides; client |
-| Turn 落盘 | 后端→DB | `turns` 表 | `TurnRecord` | requestId, status:"queued", modelId, startedAt |
-| 创建消息壳 | 后端→DB | `messages` 表 | `ChatMessage` | contentBlocks:[], status:"generating" |
-| 返回流地址 | HTTP | 后端→前端 | `StartTurnResponse` | requestId, streamUrl |
+| Turn 落盘 | 后端→DB | `messages`→`turns`→`messages` | 先写 user `ChatMessage`（input 直接映射 contentBlocks），再写 `TurnRecord`，再写 assistant 空壳 | — |
+| 返回流地址 | HTTP | 后端→前端 | `StartTurnResponse` | userMessageId, assistantMessageId, streamUrl |
 | SSE 生命周期 | SSE | 后端→前端 | `TurnStartedEvent` | messageId |
 | SSE 步骤 | SSE | 后端→前端 | `StepStartEvent` → `StepProgressEvent` → `StepEndEvent` | stepType, title, status |
 | SSE 文本流 | SSE | 后端→前端 | `TextDeltaEvent` × N → `TextDoneEvent` | delta 增量拼接 |

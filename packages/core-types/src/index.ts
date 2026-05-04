@@ -20,6 +20,9 @@ export type * from "./attachment.js"
 export type * from "./model.js"
 export type * from "./multimodal.js"
 
+// ---- 桌面通知 ----
+export type * from "./notification.js"
+
 // ---- Agent 模式 ----
 export type * from "./agent.js"
 
@@ -49,12 +52,5 @@ export { EMA_MODES, isEmaMode } from "./mode.js"
 // errors
 export { EmaError, toUiErrorView } from "./errors.js"
 
-// agent
-export {
-  REPEATED_ERROR_LIMIT,
-  DEFAULT_REACT_MAX_STEPS,
-  READ_ONLY_TOOL_PATTERNS,
-  DANGEROUS_TOOL_NAMES,
-  DANGEROUS_FILE_OPERATIONS,
-  MAX_PARALLEL_READONLY_TOOLS,
-} from "./agent.js"
+// agent runtime constants → use @ema-agent/constants-core instead
+

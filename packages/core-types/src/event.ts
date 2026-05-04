@@ -47,6 +47,7 @@ import type {
   GeneratedImage,
   PhonemeTiming,
 } from "./multimodal.js"
+import type { TurnNotification } from "./notification.js"
 
 // ═══════════════════════════════════════════════════════════════
 // 用户回传协议（HTTP POST，非 SSE）
@@ -150,6 +151,9 @@ export type SseEvent =
 
   // --- 音频可视化 ---
   | AudioSpectrumEvent
+
+  // --- 桌面通知 ---
+  | NotificationEvent
 
   // --- 错误 ---
   | ErrorEvent
@@ -598,6 +602,23 @@ export interface AudioSpectrumEvent extends BaseEvent {
   rms: number
   /** 峰值音量（0~1）。 */
   peak: number
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 桌面通知事件
+
+/**
+ * 桌面通知——BFF 在执行关键动作时同步推送。
+ *
+ * 与 content block 渲染解耦：
+ * - 同一动作既产生 tool_start / rag_done / image_gen 等 render block
+ * - 也产生一条 NotificationEvent 用于 OS 原生 toast
+ *
+ * 前端 EventSource 收到后调用 Tauri notification API 弹桌面提示。
+ */
+export interface NotificationEvent extends BaseEvent {
+  type: "notification"
+  notification: TurnNotification
 }
 
 // ═══════════════════════════════════════════════════════════════

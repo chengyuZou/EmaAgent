@@ -78,7 +78,7 @@ describe("toUiErrorView", () => {
     const view = toUiErrorView("一段字符串错误", undefined, undefined)
 
     expect(view.code).toBe("internal_error")
-    expect(view.message).toBe("未知内部错误")
+    expect(view.message).toBe("Unknown internal error")
     expect(view.details?.raw).toBe("一段字符串错误")
   })
 
@@ -86,7 +86,7 @@ describe("toUiErrorView", () => {
     const view = toUiErrorView(null)
 
     expect(view.code).toBe("internal_error")
-    expect(view.message).toBe("未知内部错误")
+    expect(view.message).toBe("Unknown internal error")
   })
 
   it("traceId 为可选参数", () => {

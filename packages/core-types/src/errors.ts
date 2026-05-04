@@ -158,7 +158,7 @@ export function toUiErrorView(
     requestId,
     traceId,
     code: "internal_error",
-    message: isError ? error.message : "未知内部错误",
+    message: isError ? error.message : "Unknown internal error",
     severity: "error",
     details: {
       stack: isError ? error.stack : undefined,

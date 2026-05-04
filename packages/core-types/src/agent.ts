@@ -248,7 +248,7 @@ export interface ExecutionStepView {
  * ## 工作方式
  *
  * 每次工具调用失败后，将 `(toolName, errorText)` 哈希为 signature。
- * 若连续 `REPEATED_ERROR_LIMIT`（默认 3）次签名相同，触发熔断：
+ * 若连续 `REPEATED_ERROR_LIMIT`（默认 3，定义在 @ema-agent/constants-core）次签名相同，触发熔断：
  * Agent 终止执行并返回 fallback 消息，避免无限消耗 token。
  */
 export interface ErrorGuardState {
@@ -258,69 +258,20 @@ export interface ErrorGuardState {
   count: number
 }
 
-/** 熔断常量。 */
-export const REPEATED_ERROR_LIMIT = 3
-/** ReAct 循环默认最大步数。 */
-export const DEFAULT_REACT_MAX_STEPS = 20
-
 // ═══════════════════════════════════════════════════════════════
-// v0.4 工具分类常量（TypeScript 版本）
+// 持久化实体（storage-sql 表行投影）
 // ═══════════════════════════════════════════════════════════════
 
-/**
- * 无需用户确认的只读工具集合——这些工具不修改系统状态。
- *
- * 来自 v0.4 `constants/agent.py:READ_ONLY_TOOL_NAMES`，
- * 在 `RiskClassifier` 实现中用于 `_is_read_only_tool_call()` 逻辑。
- */
-export const READ_ONLY_TOOL_PATTERNS = [
-  "search_text",       // v0.4: baidu_search
-  "read_file",         // v0.4: file_operations[read]
-  "list_dir",          // v0.4: file_operations[list]
-  "analyze_document",  // v0.4: analyze_document
-  "analyze_code",      // v0.4: analyze_code
-  "get_weather",       // v0.4: get_weather
-  "get_current_time",  // v0.4: get_current_time
-  "read_webpage",      // v0.4: read_webpage
-  "arxiv_paper",       // v0.4: arxiv_paper
-  // 多模态（只读）
-  "analyze_image",     // 视觉分析——识别/描述图片
-  "analyze_audio",     // 音频分析——识别/描述音频
-  "transcribe_audio",  // STT——语音转文字
-  "search_image",      // 图片搜索——以图搜图
-  "capture_screenshot",// 截图——捕获屏幕内容
-] as const
+/** 权限授予持久化行——`permission_grants` 表。 */
+export interface PermissionGrantRecord {
+  id: string
+  sessionId: SessionId
+  toolName: string
+  decision: "allow" | "deny"
+  scope: "once" | "session" | "always"
+  risk: string
+  pathPattern?: string
+  decidedAt: UnixMs
+  expiresAt?: UnixMs
+}
 
-/**
- * 高风险工具名称——执行前必须获得用户确认。
- *
- * 来自 v0.4 `constants/agent.py:DANGEROUS_TOOL_NAMES`。
- */
-export const DANGEROUS_TOOL_NAMES = [
-  "run_command",   // v0.4: run_terminal
-  "run_python",    // v0.4: execute_code
-  "write_file",    // v0.4: file_operations[write]（通过 operation 细分）
-  // 多模态（高风险——生成内容/外发数据）
-  "generate_speech",  // TTS——文本转语音（消耗 quota）
-  "generate_image",   // 图片生成——文本转图片（消耗 quota / 内容安全）
-  "upload_file",      // 文件上传——可能外发敏感数据
-  "record_audio",     // 录音——可能捕获隐私
-] as const
-
-/**
- * 文件操作中需要确认的操作类型。
- *
- * 来自 v0.4 `constants/agent.py:DANGEROUS_FILE_OPERATIONS`。
- * 注意：file_operations 工具自身不是 always dangerous，
- * read/list 是安全的——危险的是 delete/move/copy/rename 操作。
- */
-export const DANGEROUS_FILE_OPERATIONS = [
-  "delete",
-  "move",
-  "copy",
-  "rename",
-  "write",
-] as const
-
-/** 只读工具的最大并发数（Semaphore 限流）。 */
-export const MAX_PARALLEL_READONLY_TOOLS = 3
