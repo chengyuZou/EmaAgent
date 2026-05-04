@@ -1,18 +1,14 @@
 /**
- * Provider / Model / LLM Adapter 的核心类型。
+ * Provider / Model / LLM Adapter / 多模态 的核心类型。
  *
- * ## V1 实现范围
+ * ## 实现范围
  *
  * - `ProviderDescriptor` — Provider 配置与健康检查
  * - `ModelDescriptor` / `ModelCapabilities` — 模型元数据与能力矩阵
- * - `ChatCompletionMessage` 联合类型 — LLM 底层消息协议（非前端渲染用）
+ * - `ChatCompletionMessage` 联合类型 — LLM 底层消息协议
  * - `ChatCompletionRequest` / `ChatCompletionChunk` — 请求/流式响应协议
  * - `ToolSpec` / `ToolCallChunk` — 工具声明与流式工具调用
- *
- * ## V2 规划
- *
- * - TTS / STT / Embedding / Rerank / ImageGen / Moderation 的完整请求响应协议
- * - V1 只保留类型骨架（接口已定义，实现侧暂时 throw NO_IMPLEMENTATION）
+ * - TTS / STT / ImageGen / Vision / Embedding / Moderation — 完整多模态协议
  */
 
 import type { CredentialId, ModelId, ProviderId, RequestId, SessionId, ToolCallId, UnixMs } from "./ids.js"
@@ -113,7 +109,18 @@ export interface ProviderDescriptor {
  *   title: "gpt-4o-mini",
  * }
  */
-export type ModelRole = "chat" | "agent" | "narrative" | "title" | "embedding" | "rerank"
+export type ModelRole =
+  | "chat"
+  | "agent"
+  | "narrative"
+  | "title"
+  | "embedding"
+  | "rerank"
+  | "tts"
+  | "stt"
+  | "image_gen"
+  | "vision"
+  | "moderation"
 
 /** 模型能力矩阵——前端据此显示/隐藏功能按钮。 */
 export interface ModelCapabilities {
@@ -123,6 +130,16 @@ export interface ModelCapabilities {
   structuredOutput: boolean
   promptCache: boolean
   listModels: boolean
+  /** TTS 语音合成。 */
+  tts: boolean
+  /** STT 语音识别。 */
+  stt: boolean
+  /** 图片生成。 */
+  imageGen: boolean
+  /** 视频生成（V2+）。 */
+  videoGen: boolean
+  /** 内容审核。 */
+  moderation: boolean
 }
 
 /**
@@ -318,7 +335,7 @@ export interface ChatCompletionChunk {
 }
 
 /**
- * 标准用量视图——所有 LLM 调用的统一 tokens 统计。
+ * 标准用量视图——所有 LLM / 多模态调用的统一 tokens 统计。
  *
  * LLM adapter 返回此结构，`estimateUsageCost()` 在其基础上追加 cost 估算。
  *
@@ -339,66 +356,177 @@ export interface UsageView {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// V2 预留：多模态协议（V1 不实现）
+// 多模态协议——完整请求/响应类型
 // ═══════════════════════════════════════════════════════════════
 
-/**
- * V2 — TTS 请求协议。
- *
- * @deprecated V1 不实现，仅保留类型骨架供 V2 对齐。
- */
+// ---- Embedding / Rerank ----
+
+/** Embedding 向量化请求。 */
+export interface EmbeddingRequest {
+  requestId: RequestId
+  sessionId: SessionId
+  modelId: ModelId
+  /** 单条或多条输入文本——批量向量化。 */
+  input: string | string[]
+  /** 向量维度（部分模型支持截断，如 OpenAI text-embedding-3）。 */
+  dimensions?: number
+  providerOptions?: Record<string, unknown>
+}
+
+/** Embedding 向量化响应。 */
+export interface EmbeddingResponse {
+  /** 向量列表（与 input 顺序一致）。 */
+  embeddings: number[][]
+  /** 模型实际输出的向量维度。 */
+  dimensions?: number
+  usage?: { inputTokens: number; totalTokens: number }
+}
+
+/** Rerank 重排序请求——对候选文档按语义相关性重新排序。 */
+export interface RerankRequest {
+  requestId: RequestId
+  sessionId: SessionId
+  modelId: ModelId
+  query: string
+  /** 候选文档列表。 */
+  documents: string[]
+  /** 返回前 N 条（默认全部）。 */
+  topN?: number
+  providerOptions?: Record<string, unknown>
+}
+
+/** Rerank 重排序响应。 */
+export interface RerankResponse {
+  /** 按相关性降序排列的结果。 */
+  results: Array<{
+    index: number
+    document: string
+    relevanceScore: number
+  }>
+  usage?: { totalTokens: number }
+}
+
+// ---- TTS（Text-to-Speech）----
+// 详细类型定义在 multimodal.ts，此处仅保留 model.ts 自身需要的骨干
+
+/** TTS 非流式请求（简版——完整版在 multimodal.ts）。 */
 export interface TtsRequest {
   requestId: RequestId
   sessionId: SessionId
   modelId: ModelId
   text: string
   speed?: number
-  responseFormat?: "mp3" | "wav" | "ogg"
+  responseFormat?: "mp3" | "wav" | "ogg" | "opus" | "pcm"
   stream?: boolean
+  includePhonemes?: boolean
   providerOptions?: Record<string, unknown>
 }
 
-/** @deprecated V1 不实现。 */
-export interface TtsChunk {
-  id?: string
-  index: number
-  audioData: ArrayBuffer | Blob
-  latencyMs?: number
-}
-
-/** @deprecated V1 不实现。 */
+/** TTS 非流式响应。 */
 export interface TtsResponse {
-  audioData: ArrayBuffer | Blob
+  /** 完整音频（base64 编码）。 */
+  audioBase64: string
   durationMs?: number
+  format?: string
 }
 
-/** @deprecated V1 不实现。 */
+// ---- STT（Speech-to-Text）----
+
+/** STT 非流式请求。 */
 export interface SttRequest {
   requestId: RequestId
   sessionId: SessionId
   modelId: ModelId
-  audioData: ArrayBuffer | Blob
+  /** 音频数据（base64 编码）。 */
+  audioBase64: string
+  audioFormat?: string
   languageHint?: string
   providerOptions?: Record<string, unknown>
 }
 
-/** @deprecated V1 不实现。 */
+/** STT 非流式响应。 */
 export interface SttResponse {
   text: string
+  confidence?: number
+  detectedLanguage?: string
   durationMs?: number
 }
 
-/** @deprecated V1 不实现。 */
-export interface EmbeddingRequest {
+// ---- Image Generation ----
+
+/** 图片生成请求。 */
+export interface ImageGenRequest {
   requestId: RequestId
   sessionId: SessionId
   modelId: ModelId
-  input: string | string[]
+  prompt: string
+  negativePrompt?: string
+  size?: string
+  quality?: "standard" | "hd" | "ultra"
+  n?: number
+  seed?: number
   providerOptions?: Record<string, unknown>
 }
 
-/** @deprecated V1 不实现。 */
-export interface EmbeddingResponse {
-  embeddings: number[][]
-  usage?: { inputTokens: number; totalTokens: number }
+/** 图片生成响应。 */
+export interface ImageGenResponse {
+  images: Array<{
+    url?: string
+    base64?: string
+    mimeType: string
+    width: number
+    height: number
+    revisedPrompt?: string
+  }>
+  durationMs: number
+  usage?: { imageCount: number; costUsd?: number }
+}
+
+// ---- Vision ----
+
+/** 视觉分析请求。 */
+export interface VisionRequest {
+  requestId: RequestId
+  sessionId: SessionId
+  modelId: ModelId
+  images: Array<{
+    url?: string
+    base64?: string
+    mimeType?: string
+    detail?: "low" | "high" | "auto"
+  }>
+  question?: string
+  maxTokens?: number
+  providerOptions?: Record<string, unknown>
+}
+
+/** 视觉分析响应。 */
+export interface VisionResponse {
+  text: string
+  moderationFlags?: string[]
+  usage?: { inputTokens: number; outputTokens: number; totalTokens: number }
+}
+
+// ---- Moderation ----
+
+/** 内容审核请求。 */
+export interface ModerationRequest {
+  requestId: RequestId
+  sessionId: SessionId
+  modelId: ModelId
+  text?: string
+  imageBase64?: string
+  imageUrl?: string
+  providerOptions?: Record<string, unknown>
+}
+
+/** 内容审核响应。 */
+export interface ModerationResponse {
+  flagged: boolean
+  flags: Array<{
+    category: string
+    flagged: boolean
+    confidence: number
+  }>
+  modelVersion?: string
 }

@@ -31,15 +31,22 @@
 
 import type {
   ArtifactId,
+  ImageGenTaskId,
   MessageId,
   RequestId,
   SessionId,
   StepId,
+  SttSessionId,
   ToolCallId,
   UnixMs,
 } from "./ids.js"
 import type { EmaMode } from "./mode.js"
 import type { ArtifactSummary } from "./artifact.js"
+import type {
+  EmotionTransition,
+  GeneratedImage,
+  PhonemeTiming,
+} from "./multimodal.js"
 
 // ═══════════════════════════════════════════════════════════════
 // 用户回传协议（HTTP POST，非 SSE）
@@ -120,6 +127,29 @@ export type SseEvent =
 
   // --- 舞台提示（Live2D 表情/动作）---
   | StageCueEvent
+
+  // --- TTS（语音合成）---
+  | TtsStartedEvent
+  | TtsAudioDeltaEvent
+  | TtsPhonemeEvent
+  | TtsCompletedEvent
+
+  // --- STT（语音识别）---
+  | SttStartedEvent
+  | SttInterimEvent
+  | SttCompletedEvent
+  | VadEvent
+
+  // --- 图片生成 ---
+  | ImageGenStartedEvent
+  | ImageGenProgressEvent
+  | ImageGenCompletedEvent
+
+  // --- 情感 ---
+  | EmotionChangedEvent
+
+  // --- 音频可视化 ---
+  | AudioSpectrumEvent
 
   // --- 错误 ---
   | ErrorEvent
@@ -393,6 +423,181 @@ export interface StageCueEvent extends BaseEvent {
     /** 持续时间（毫秒），0 表示一次性触发。 */
     durationMs?: number
   }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// TTS 事件（语音合成流）
+// ═══════════════════════════════════════════════════════════════
+
+/** TTS 合成开始——前端初始化音频播放队列和口型调度器。 */
+export interface TtsStartedEvent extends BaseEvent {
+  type: "tts_started"
+  messageId: MessageId
+  /** 音频总时长预估值（毫秒），如果 TTS 引擎能提前返回。 */
+  estimatedDurationMs?: number
+  /** 音频格式——前端据此初始化 AudioContext。 */
+  codec: string
+  sampleRate: number
+  channels: number
+}
+
+/** TTS 音频增量块——前端追加到音频缓冲队列并开始解码播放。 */
+export interface TtsAudioDeltaEvent extends BaseEvent {
+  type: "tts_audio_delta"
+  messageId: MessageId
+  /** 音频数据（base64 编码）。 */
+  audioBase64: string
+  /** 块序号（从 0 开始）。 */
+  index: number
+  /** 该块的时长（毫秒）。 */
+  durationMs: number
+  /** 该块对应的文本片段（前端可同步高亮字幕）。 */
+  textFragment?: string
+}
+
+/** TTS 口型时间点——前端调度到 Web Audio 时间线驱动 Live2D 唇形。 */
+export interface TtsPhonemeEvent extends BaseEvent {
+  type: "tts_phoneme"
+  messageId: MessageId
+  /** 该批次包含的音素列表（按 startMs 升序）。 */
+  phonemes: PhonemeTiming[]
+}
+
+/** TTS 合成完成——前端标记语音播放结束。 */
+export interface TtsCompletedEvent extends BaseEvent {
+  type: "tts_completed"
+  messageId: MessageId
+  /** 音频总时长（毫秒）。 */
+  totalDurationMs: number
+}
+
+// ═══════════════════════════════════════════════════════════════
+// STT 事件（语音识别流）
+// ═══════════════════════════════════════════════════════════════
+
+/** STT 识别开始——前端显示麦克风激活状态。 */
+export interface SttStartedEvent extends BaseEvent {
+  type: "stt_started"
+  sttSessionId: SttSessionId
+  /** 前端可据此决定语音输入气泡的样式。 */
+  languageHint?: string
+}
+
+/** STT 中间识别结果——前端实时展示临时文本（灰色/斜体）。 */
+export interface SttInterimEvent extends BaseEvent {
+  type: "stt_interim"
+  sttSessionId: SttSessionId
+  /** 当前临时文本。 */
+  text: string
+  /** 置信度（0~1）。 */
+  confidence: number
+  /** 是否为句子开头。 */
+  isSentenceStart?: boolean
+}
+
+/** STT 最终识别结果——前端替换临时文本为确认文本，提交 turn。 */
+export interface SttCompletedEvent extends BaseEvent {
+  type: "stt_completed"
+  sttSessionId: SttSessionId
+  /** 最终确认文本。 */
+  text: string
+  /** 置信度（0~1）。 */
+  confidence: number
+  /** 备选结果。 */
+  alternatives?: Array<{ text: string; confidence: number }>
+  /** 检测到的语言。 */
+  detectedLanguage?: string
+  /** 音频时长（毫秒）。 */
+  audioDurationMs: number
+}
+
+/** VAD 事件——语音活动检测状态变化（前端据此切换麦克风图标）。 */
+export interface VadEvent extends BaseEvent {
+  type: "vad"
+  sttSessionId: SttSessionId
+  /** VAD 状态：speech_start / speech_end / silence_timeout。 */
+  vadStatus: "speech_start" | "speech_end" | "silence_timeout"
+  /** 触发时的音频位置（毫秒）。 */
+  audioPositionMs: number
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 图片生成事件
+// ═══════════════════════════════════════════════════════════════
+
+/** 图片生成开始——前端在消息气泡中插入生成卡片（状态: generating）。 */
+export interface ImageGenStartedEvent extends BaseEvent {
+  type: "image_gen_started"
+  messageId: MessageId
+  taskId: ImageGenTaskId
+  /** 原始提示词（前端展示用）。 */
+  prompt: string
+}
+
+/** 图片生成进度——前端更新进度条或预览图。 */
+export interface ImageGenProgressEvent extends BaseEvent {
+  type: "image_gen_progress"
+  messageId: MessageId
+  taskId: ImageGenTaskId
+  progress: number
+  stage?: string
+  /** 中间预览图（base64，低分辨率）。 */
+  previewBase64?: string
+}
+
+/** 图片生成完成——前端展示完整图片。 */
+export interface ImageGenCompletedEvent extends BaseEvent {
+  type: "image_gen_completed"
+  messageId: MessageId
+  taskId: ImageGenTaskId
+  images: GeneratedImage[]
+  /** 修正后的提示词。 */
+  revisedPrompt?: string
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 情感事件
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * 情感变化事件——Ema 的情感状态发生改变。
+ *
+ * 前端 Live2D 控制器收到后：
+ * 1. 根据 from/to 做表情平滑过渡
+ * 2. 在对话气泡旁显示情感变化提示（可选）
+ * 3. 更新角色姿态（兴奋→前倾，害羞→低头，自信→挺胸）
+ */
+export interface EmotionChangedEvent extends BaseEvent {
+  type: "emotion_changed"
+  /** VAD 过渡数据。 */
+  transition: EmotionTransition
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 音频可视化事件
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * 音频频谱快照——驱动 Live2D 舞台背景 EQ 效果。
+ *
+ * 在 TTS 播放期间按 ~30fps 推送，前端用于：
+ * - 舞台背景柔和光效（低频驱动）
+ * - 粒子系统（中频驱动）
+ * - 高亮闪烁（高频驱动）
+ */
+export interface AudioSpectrumEvent extends BaseEvent {
+  type: "audio_spectrum"
+  messageId: MessageId
+  /** 低频能量（20~250Hz）。 */
+  low: number
+  /** 中频能量（250~2000Hz）。 */
+  mid: number
+  /** 高频能量（2000~20000Hz）。 */
+  high: number
+  /** 总体音量 RMS（0~1）。 */
+  rms: number
+  /** 峰值音量（0~1）。 */
+  peak: number
 }
 
 // ═══════════════════════════════════════════════════════════════

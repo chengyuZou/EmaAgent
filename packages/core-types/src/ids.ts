@@ -97,6 +97,19 @@ export type CredentialId = Brand<string, "CredentialId">
 export type MemoryFactId = Brand<string, "MemoryFactId">
 
 // ═══════════════════════════════════════════════════════════════
+// 多模态域
+// ═══════════════════════════════════════════════════════════════
+
+/** TTS 语音配置文件的标识。 */
+export type VoiceId = Brand<string, "VoiceId">
+
+/** 图片生成任务的标识。 */
+export type ImageGenTaskId = Brand<string, "ImageGenTaskId">
+
+/** 单次 STT 识别会话的标识。 */
+export type SttSessionId = Brand<string, "SttSessionId">
+
+// ═══════════════════════════════════════════════════════════════
 // 工厂函数
 // ═══════════════════════════════════════════════════════════════
 

@@ -824,8 +824,16 @@ function contentBlocksToPlainText(blocks: readonly MessageContentBlock[]): strin
           return `[retrieval:${block.source} ${block.content}]`
         case "compression":
           return `[compression:${block.content}]`
+        case "audio":
+          return `[audio:${block.transcript ?? block.url}]`
+        case "image_gen":
+          return `[image_gen:${block.prompt}]`
+        case "emotion":
+          return `[emotion:${block.label} ${block.reason}]`
         case "error":
           return `[error:${block.code} ${block.message}]`
+        default:
+          return ""
       }
     })
     .join("\n")

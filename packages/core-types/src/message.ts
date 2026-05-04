@@ -74,6 +74,40 @@ export type MessageContentBlock =
       compressedTokens: number
       content: string
     }
+  // --- 多模态 ---
+  | {
+      type: "audio"
+      /** 音频 URL 或 base64 DataURL。 */
+      url: string
+      mimeType: string
+      /** 音频时长（毫秒）。 */
+      durationMs: number
+      /** 语音对应的文本（字幕）。 */
+      transcript?: string
+      /** 是否为 TTS 生成的语音（false = 用户录音）。 */
+      generated?: boolean
+    }
+  | {
+      type: "image_gen"
+      /** 图片 URL 或 base64 DataURL。 */
+      url: string
+      mimeType: string
+      width: number
+      height: number
+      /** 生成用的提示词。 */
+      prompt: string
+      /** 模型修正后的提示词（如 DALL-E 改写）。 */
+      revisedPrompt?: string
+    }
+  | {
+      type: "emotion"
+      /** 情感标签。 */
+      label: string
+      /** VAD 坐标。 */
+      vad: { valence: number; arousal: number; dominance: number }
+      /** 人类可读的触发原因。 */
+      reason: string
+    }
   | {
       type: "error"
       code: string

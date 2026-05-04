@@ -84,6 +84,11 @@ export const TEXT_MODEL_CAPABILITIES: ModelCapabilities = {
   structuredOutput: false,
   promptCache: false,
   listModels: true,
+  tts: false,
+  stt: false,
+  imageGen: false,
+  videoGen: false,
+  moderation: false,
 }
 
 export const TOOL_MODEL_CAPABILITIES: ModelCapabilities = {

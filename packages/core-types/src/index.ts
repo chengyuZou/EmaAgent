@@ -18,6 +18,7 @@ export type * from "./turn.js"
 export type * from "./artifact.js"
 export type * from "./attachment.js"
 export type * from "./model.js"
+export type * from "./multimodal.js"
 
 // ---- Agent 模式 ----
 export type * from "./agent.js"

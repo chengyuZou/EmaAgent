@@ -180,6 +180,11 @@ function createDefaultBindings(env: Env = {}): Record<ModelRole, ModelBinding> {
     title: binding("title", defaultProvider, `${defaultProvider}/default-title`),
     embedding: binding("embedding", defaultProvider, `${defaultProvider}/default-chat`),
     rerank: binding("rerank", defaultProvider, `${defaultProvider}/default-chat`),
+    tts: binding("tts", defaultProvider, `${defaultProvider}/default-chat`),
+    stt: binding("stt", defaultProvider, `${defaultProvider}/default-chat`),
+    image_gen: binding("image_gen", defaultProvider, `${defaultProvider}/default-chat`),
+    vision: binding("vision", defaultProvider, `${defaultProvider}/default-chat`),
+    moderation: binding("moderation", defaultProvider, `${defaultProvider}/default-chat`),
   }
 }
 

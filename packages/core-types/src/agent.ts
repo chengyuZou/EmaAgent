@@ -283,6 +283,12 @@ export const READ_ONLY_TOOL_PATTERNS = [
   "get_current_time",  // v0.4: get_current_time
   "read_webpage",      // v0.4: read_webpage
   "arxiv_paper",       // v0.4: arxiv_paper
+  // 多模态（只读）
+  "analyze_image",     // 视觉分析——识别/描述图片
+  "analyze_audio",     // 音频分析——识别/描述音频
+  "transcribe_audio",  // STT——语音转文字
+  "search_image",      // 图片搜索——以图搜图
+  "capture_screenshot",// 截图——捕获屏幕内容
 ] as const
 
 /**
@@ -294,6 +300,11 @@ export const DANGEROUS_TOOL_NAMES = [
   "run_command",   // v0.4: run_terminal
   "run_python",    // v0.4: execute_code
   "write_file",    // v0.4: file_operations[write]（通过 operation 细分）
+  // 多模态（高风险——生成内容/外发数据）
+  "generate_speech",  // TTS——文本转语音（消耗 quota）
+  "generate_image",   // 图片生成——文本转图片（消耗 quota / 内容安全）
+  "upload_file",      // 文件上传——可能外发敏感数据
+  "record_audio",     // 录音——可能捕获隐私
 ] as const
 
 /**
