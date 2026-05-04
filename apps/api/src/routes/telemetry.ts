@@ -15,11 +15,6 @@ interface TelemetryQuery {
   requestId?: string
 }
 
-/**
- * Telemetry API。
- *
- * Developer 面板读取最近事件，也允许测试/调试时写入一条结构化事件。
- */
 export function registerTelemetryRoutes(app: FastifyInstance, options: TelemetryRouteOptions): void {
   const recorder = new TelemetryRecorder(options.storage)
 

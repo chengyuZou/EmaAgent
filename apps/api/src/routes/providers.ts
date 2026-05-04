@@ -29,17 +29,6 @@ interface BindingBody {
   modelId?: string
 }
 
-/**
- * Provider / Model API 路由。
- *
- * 这层只负责 HTTP 协议转换：
- * - 读 provider 列表和模型目录。
- * - 刷新远端模型与健康检查。
- * - 保存单个 provider 的进程内设置。
- * - 保存 role -> model 的绑定。
- *
- * 注意：API Key 现在只进内存 registry，不写 SQLite；后续桌面端接系统密钥链。
- */
 export function registerProviderRoutes(app: FastifyInstance, registry: LlmRegistry): void {
   app.get("/api/providers", async () => {
     return {

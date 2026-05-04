@@ -8,11 +8,6 @@ export interface EbdRouteOptions {
   bridgeToken?: string
 }
 
-/**
- * Embedding / rerank API。
- *
- * 这里是 TS sidecar 到 Python compute bridge 的薄封装。
- */
 export function registerEbdRoutes(app: FastifyInstance, options: EbdRouteOptions = {}): void {
   const client = new EbdBridgeClient({
     baseUrl: options.bridgeBaseUrl,

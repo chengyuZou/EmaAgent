@@ -18,11 +18,6 @@ export interface MockTurnInput {
   abortSignal: AbortSignal
 }
 
-/**
- * 临时 turn 事件源骨架。
- *
- * 真实实现接入 LLM、tool、narrative 后，这个文件可以删除或改成测试 fixture。
- */
 export async function* createMockTurnEvents(input: MockTurnInput): AsyncIterable<SseEvent> {
   const stepId = asId<StepId>(`step_${crypto.randomUUID()}`)
   const startedAt = Date.now()

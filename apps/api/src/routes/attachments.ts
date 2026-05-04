@@ -13,7 +13,6 @@ interface UploadAttachmentBody {
   sessionId?: string
   fileName?: string
   mime?: string
-  /** base64 编码的文件内容；桌面端后续可以换成本地文件路径/流式上传。 */
   base64?: string
 }
 
@@ -26,11 +25,6 @@ interface RecallQuery {
   limit?: string
 }
 
-/**
- * Attachment API。
- *
- * 当前先用 JSON + base64 跑通桌面侧闭环；真实大文件上传后续再换 multipart 或 Tauri 文件句柄。
- */
 export function registerAttachmentRoutes(app: FastifyInstance, options: AttachmentRouteOptions): void {
   const processor = new AttachmentProcessor(options.storage)
 

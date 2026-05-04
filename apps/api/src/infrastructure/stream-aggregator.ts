@@ -9,8 +9,8 @@ import type {
 } from "@ema-agent/core-types"
 import type { SessionWriter } from "@ema-agent/session"
 
-import { isTerminalEvent } from "./turn-events.js"
-import type { TurnEventStore } from "./turn-events.js"
+import { isTerminalEvent } from "./turn-event-store.js"
+import type { TurnEventStore } from "./turn-event-store.js"
 
 export interface StreamAggregatorInput {
   sessionId: SessionId
@@ -20,12 +20,6 @@ export interface StreamAggregatorInput {
   events: AsyncIterable<SseEvent>
 }
 
-/**
- * 流聚合器骨架。
- *
- * 后续这里负责把 provider/tool/narrative 的内部流转换成 SSE，
- * 并在 text delta 期间 upsert assistant message。
- */
 export class StreamAggregator {
   constructor(
     private readonly writer: SessionWriter,

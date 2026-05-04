@@ -46,8 +46,186 @@ importers:
         specifier: ^2.0.0
         version: 2.1.9(@types/node@20.19.39)
 
+  apps/api:
+    dependencies:
+      '@ema-agent/attachment':
+        specifier: workspace:*
+        version: link:../../packages/attachment
+      '@ema-agent/core-types':
+        specifier: workspace:*
+        version: link:../../packages/core-types
+      '@ema-agent/ebd':
+        specifier: workspace:*
+        version: link:../../packages/ebd
+      '@ema-agent/llm':
+        specifier: workspace:*
+        version: link:../../packages/llm
+      '@ema-agent/memory':
+        specifier: workspace:*
+        version: link:../../packages/memory
+      '@ema-agent/narrative':
+        specifier: workspace:*
+        version: link:../../packages/narrative
+      '@ema-agent/permission':
+        specifier: workspace:*
+        version: link:../../packages/permission
+      '@ema-agent/prompts':
+        specifier: workspace:*
+        version: link:../../packages/prompts
+      '@ema-agent/sandbox':
+        specifier: workspace:*
+        version: link:../../packages/sandbox
+      '@ema-agent/session':
+        specifier: workspace:*
+        version: link:../../packages/session
+      '@ema-agent/storage-sql':
+        specifier: workspace:*
+        version: link:../../packages/storage-sql
+      '@ema-agent/telemetry':
+        specifier: workspace:*
+        version: link:../../packages/telemetry
+      '@ema-agent/tool':
+        specifier: workspace:*
+        version: link:../../packages/tool
+      '@fastify/cors':
+        specifier: ^11.2.0
+        version: 11.2.0
+      fastify:
+        specifier: ^5.8.5
+        version: 5.8.5
+      zod:
+        specifier: ^4.4.1
+        version: 4.4.1
+    devDependencies:
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.39
+      tsx:
+        specifier: ^4.21.0
+        version: 4.21.0
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
+
+  apps/web:
+    dependencies:
+      '@ema-agent/core-types':
+        specifier: workspace:*
+        version: link:../../packages/core-types
+      '@ema-agent/llm':
+        specifier: workspace:*
+        version: link:../../packages/llm
+      '@ema-agent/memory':
+        specifier: workspace:*
+        version: link:../../packages/memory
+      '@ema-agent/permission':
+        specifier: workspace:*
+        version: link:../../packages/permission
+    devDependencies:
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
+
+  packages/attachment:
+    dependencies:
+      '@ema-agent/core-types':
+        specifier: workspace:*
+        version: link:../core-types
+      '@ema-agent/storage-sql':
+        specifier: workspace:*
+        version: link:../storage-sql
+    devDependencies:
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.39
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
+
   packages/core-types:
     devDependencies:
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
+
+  packages/ebd:
+    dependencies:
+      '@ema-agent/core-types':
+        specifier: workspace:*
+        version: link:../core-types
+    devDependencies:
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.39
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
+
+  packages/llm:
+    dependencies:
+      '@ema-agent/core-types':
+        specifier: workspace:*
+        version: link:../core-types
+    devDependencies:
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.39
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
+
+  packages/memory:
+    dependencies:
+      '@ema-agent/core-types':
+        specifier: workspace:*
+        version: link:../core-types
+      '@ema-agent/storage-sql':
+        specifier: workspace:*
+        version: link:../storage-sql
+    devDependencies:
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
+
+  packages/narrative:
+    dependencies:
+      '@ema-agent/core-types':
+        specifier: workspace:*
+        version: link:../core-types
+    devDependencies:
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
+
+  packages/permission:
+    dependencies:
+      '@ema-agent/core-types':
+        specifier: workspace:*
+        version: link:../core-types
+    devDependencies:
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
+
+  packages/prompts:
+    dependencies:
+      '@ema-agent/core-types':
+        specifier: workspace:*
+        version: link:../core-types
+    devDependencies:
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
+
+  packages/sandbox:
+    dependencies:
+      '@ema-agent/core-types':
+        specifier: workspace:*
+        version: link:../core-types
+    devDependencies:
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.39
       typescript:
         specifier: ^5.7.0
         version: 5.9.3
@@ -77,6 +255,32 @@ importers:
       '@types/better-sqlite3':
         specifier: ^7.6.12
         version: 7.6.13
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
+
+  packages/telemetry:
+    dependencies:
+      '@ema-agent/core-types':
+        specifier: workspace:*
+        version: link:../core-types
+      '@ema-agent/storage-sql':
+        specifier: workspace:*
+        version: link:../storage-sql
+    devDependencies:
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
+
+  packages/tool:
+    dependencies:
+      '@ema-agent/core-types':
+        specifier: workspace:*
+        version: link:../core-types
+      '@ema-agent/sandbox':
+        specifier: workspace:*
+        version: link:../sandbox
+    devDependencies:
       typescript:
         specifier: ^5.7.0
         version: 5.9.3

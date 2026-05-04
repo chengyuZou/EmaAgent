@@ -5,15 +5,16 @@ import { EmaError, toUiErrorView } from "@ema-agent/core-types"
 import { LlmRegistry, createDefaultLlmConfig } from "@ema-agent/llm"
 import type { SqliteStorage } from "@ema-agent/storage-sql"
 
-import { registerArtifactRoutes } from "./artifacts.js"
-import { registerAttachmentRoutes } from "./attachments.js"
-import { registerEbdRoutes } from "./ebd.js"
-import { registerMemoryRoutes } from "./memory.js"
-import { registerNarrativeRoutes } from "./narrative.js"
-import { registerProviderRoutes } from "./providers.js"
-import { registerTelemetryRoutes } from "./telemetry.js"
-import { TurnEventStore } from "./turn-events.js"
-import { registerTurnRoutes, TurnService } from "./turns.js"
+import { TurnEventStore } from "./infrastructure/turn-event-store.js"
+import { registerArtifactRoutes } from "./routes/artifacts.js"
+import { registerAttachmentRoutes } from "./routes/attachments.js"
+import { registerEbdRoutes } from "./routes/ebd.js"
+import { registerMemoryRoutes } from "./routes/memory.js"
+import { registerNarrativeRoutes } from "./routes/narrative.js"
+import { registerProviderRoutes } from "./routes/providers.js"
+import { registerTelemetryRoutes } from "./routes/telemetry.js"
+import { registerTurnRoutes } from "./routes/turns.js"
+import { TurnService } from "./services/turn-service.js"
 
 export interface ApiServerOptions {
   storage: SqliteStorage
@@ -26,11 +27,6 @@ export interface ApiServerOptions {
   narrativeBridgeToken?: string
 }
 
-/**
- * API server 骨架。
- *
- * 后续这里接入本地 token、错误拦截、trace、真实服务实例生命周期。
- */
 export async function buildApiServer(options: ApiServerOptions) {
   const app = Fastify({
     logger: options.logger ?? true,

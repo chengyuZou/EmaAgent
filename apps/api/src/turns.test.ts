@@ -5,8 +5,8 @@ import type { RequestId, SessionId } from "@ema-agent/core-types"
 import { LlmRegistry, createDefaultLlmConfig } from "@ema-agent/llm"
 import { createSqliteStorage } from "@ema-agent/storage-sql"
 
-import { TurnEventStore } from "./turn-events.js"
-import { TurnService } from "./turns.js"
+import { TurnEventStore } from "./infrastructure/turn-event-store.js"
+import { TurnService } from "./services/turn-service.js"
 
 describe("TurnService chat 闭环", () => {
   it("发起 chat turn 后流式生成助手消息并落盘", async () => {

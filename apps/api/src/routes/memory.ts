@@ -26,11 +26,6 @@ interface ContextRadarQuery {
   maxTokens?: string
 }
 
-/**
- * Memory API。
- *
- * 提供 durable facts 写入、列表读取和 ContextRadar 预算视图。
- */
 export function registerMemoryRoutes(app: FastifyInstance, options: MemoryRouteOptions): void {
   const planner = new MemoryPlanner(options.storage)
 

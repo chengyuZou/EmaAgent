@@ -2,7 +2,9 @@
  * EmaAgent Core Types — 统一导出入口。
  *
  * 消费方（前端、BFF、能力模块、仓储实现）只需要：
- *   import { ... } from "@ema-agent/core-types"
+ * ```
+ * import { ... } from "@ema-agent/core-types"
+ * ```
  */
 
 // ---- 基础类型工具 ----
@@ -17,6 +19,9 @@ export type * from "./artifact.js"
 export type * from "./attachment.js"
 export type * from "./model.js"
 
+// ---- Agent 模式 ----
+export type * from "./agent.js"
+
 // ---- 记忆系统 ----
 export type * from "./memory.js"
 
@@ -30,7 +35,25 @@ export type * from "./view.js"
 // ---- 元数据 ----
 export type * from "./metadata.js"
 
-// ---- 运行时值（函数/常量）----
+// ═══════════════════════════════════════════════════════════════
+// 运行时值（函数/常量）
+// ═══════════════════════════════════════════════════════════════
+
+// ids
 export { asId } from "./ids.js"
+
+// mode
 export { EMA_MODES, isEmaMode } from "./mode.js"
+
+// errors
 export { EmaError, toUiErrorView } from "./errors.js"
+
+// agent
+export {
+  REPEATED_ERROR_LIMIT,
+  DEFAULT_REACT_MAX_STEPS,
+  READ_ONLY_TOOL_PATTERNS,
+  DANGEROUS_TOOL_NAMES,
+  DANGEROUS_FILE_OPERATIONS,
+  MAX_PARALLEL_READONLY_TOOLS,
+} from "./agent.js"

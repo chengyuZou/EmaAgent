@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest"
 import { asId } from "@ema-agent/core-types"
 import type { RequestId, SessionId, SseEvent } from "@ema-agent/core-types"
 
-import { TurnEventStore, formatSseEvent, isTerminalEvent } from "./turn-events.js"
+import { TurnEventStore, formatSseEvent, isTerminalEvent } from "./infrastructure/turn-event-store.js"
 
 describe("TurnEventStore", () => {
   it("保存 replay、通知订阅者并记录终态事件", () => {

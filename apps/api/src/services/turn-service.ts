@@ -1,7 +1,5 @@
 import { randomUUID } from "node:crypto"
 
-import type { FastifyInstance, FastifyReply } from "fastify"
-
 import { EmaError, asId, isEmaMode } from "@ema-agent/core-types"
 import type {
   ChatCompletionChunk,
@@ -34,13 +32,8 @@ import type { SqliteStorage } from "@ema-agent/storage-sql"
 import { TelemetryRecorder } from "@ema-agent/telemetry"
 import { BuiltinToolExecutor, ToolRegistry } from "@ema-agent/tool"
 
-import { StreamAggregator } from "./stream-aggregator.js"
-import { formatSseEvent, isTerminalEvent } from "./turn-events.js"
-import type { TurnEventStore } from "./turn-events.js"
-
-interface TurnRouteParams {
-  requestId: string
-}
+import { StreamAggregator } from "../infrastructure/stream-aggregator.js"
+import type { TurnEventStore } from "../infrastructure/turn-event-store.js"
 
 interface BackgroundTurnInput {
   sessionId: StartTurnRequest["sessionId"]
@@ -68,21 +61,11 @@ interface ToolCallDraft {
   argsText: string
 }
 
-interface TurnServiceOptions {
+export interface TurnServiceOptions {
   narrativeBridgeBaseUrl?: string
   narrativeBridgeToken?: string
 }
 
-/**
- * TurnService 是 POST /api/turns 的应用服务。
- *
- * 它只负责把一次 HTTP 请求翻译成 turn 生命周期：
- * 1. 校验输入并生成 request/message ID。
- * 2. 确保 session 存在。
- * 3. 调 SessionManager.beginTurn() 写入 turn 与用户消息。
- * 4. 发布 turn_started。
- * 5. 后台启动 turn 执行，并立刻把 streamUrl 返回给前端。
- */
 export class TurnService {
   private readonly sessionManager: SessionManager
   private readonly sessionWriter: SessionWriter
@@ -107,9 +90,6 @@ export class TurnService {
     this.telemetry = new TelemetryRecorder(storage)
   }
 
-  /**
-   * 处理 POST /api/turns 请求，启动一个新的聊天 turn。
-   */
   async startTurn(input: StartTurnRequest): Promise<StartTurnResponse> {
     const acceptedAt = Date.now()
     const normalizedInput = normalizeTurnInput(input)
@@ -141,7 +121,6 @@ export class TurnService {
       mode: input.mode,
       userMessageId,
       assistantMessageId,
-      messageId: assistantMessageId,
     })
     this.startBackgroundTurn({
       sessionId: input.sessionId,
@@ -225,7 +204,7 @@ export class TurnService {
     queueMicrotask(() => {
       void this.runTurn(input).catch((error: unknown) => {
         void this.failBackgroundTurn(input, error).catch(() => {
-          // 后台兜底失败不能再向 HTTP 请求抛出；后续接入 logger/trace 后在这里记录。
+          // 后台兜底失败不能再向 HTTP 请求抛出
         })
       })
     })
@@ -280,7 +259,7 @@ export class TurnService {
 
     if (input.shouldGenerateTitle) {
       await this.generateSessionTitle(input).catch(() => {
-        // 标题生成是附加体验，失败不能反向影响已经完成的聊天 turn。
+        // 标题生成是附加体验，失败不能反向影响已经完成的聊天 turn
       })
     }
   }
@@ -702,101 +681,7 @@ export class TurnService {
   }
 }
 
-/**
- * 在 Fastify 应用上注册 Turn 相关 HTTP 路由。
- *
- * 这不是注册全局变量，而是把 handler 挂到 app 的路由表上：
- * - POST /api/turns
- * - GET /api/turns/:requestId/events
- */
-export function registerTurnRoutes(
-  app: FastifyInstance,
-  service: TurnService,
-  eventStore: TurnEventStore,
-): void {
-  app.post<{ Body: StartTurnRequest }>("/api/turns", async (request, reply) => {
-    reply.code(202)
-    return service.startTurn(request.body)
-  })
-
-  app.get<{ Params: TurnRouteParams }>("/api/turns/:requestId/events", (request, reply) => {
-    openSseStream(reply, eventStore, asId<RequestId>(request.params.requestId))
-  })
-}
-
-// 开启 SSE 连接：先 replay 历史事件，再订阅后续事件。
-function openSseStream(reply: FastifyReply, eventStore: TurnEventStore, requestId: RequestId): void {
-  reply.hijack()
-  reply.raw.writeHead(200, {
-    "Content-Type": "text/event-stream; charset=utf-8",
-    "Cache-Control": "no-cache, no-transform",
-    Connection: "keep-alive",
-  })
-  reply.raw.write(": connected\n\n")
-
-  let replaying = true
-  let closed = false
-  const pendingEvents: SseEvent[] = []
-
-  const cleanup = eventStore.subscribe(requestId, (event) => {
-    if (replaying) {
-      pendingEvents.push(event)
-      return
-    }
-
-    writeEventAndMaybeClose(reply, event, () => {
-      closed = true
-      cleanup()
-    })
-  })
-
-  reply.raw.on("close", () => {
-    closed = true
-    cleanup()
-  })
-
-  for (const event of eventStore.getReplayEvents(requestId)) {
-    if (closed) {
-      return
-    }
-    writeEventAndMaybeClose(reply, event, () => {
-      closed = true
-      cleanup()
-    })
-  }
-
-  replaying = false
-
-  for (const event of pendingEvents) {
-    if (closed) {
-      return
-    }
-    writeEventAndMaybeClose(reply, event, () => {
-      closed = true
-      cleanup()
-    })
-  }
-
-  if (!closed && eventStore.getTerminalEvent(requestId)) {
-    closed = true
-    cleanup()
-    reply.raw.end()
-  }
-}
-
-function writeEventAndMaybeClose(reply: FastifyReply, event: SseEvent, close: () => void): void {
-  if (reply.raw.destroyed || reply.raw.closed) {
-    close()
-    return
-  }
-
-  reply.raw.write(formatSseEvent(event))
-
-  if (isTerminalEvent(event)) {
-    close()
-    reply.raw.end()
-  }
-}
+// ─── helper functions ───────────────────────────────────────────
 
 function normalizeTurnInput(input: StartTurnRequest): TurnInputBlock[] {
   if (!input.sessionId) {
@@ -946,6 +831,7 @@ function contentBlocksToPlainText(blocks: readonly MessageContentBlock[]): strin
     .join("\n")
     .trim()
 }
+
 function inputToPlainText(input: readonly TurnInputBlock[]): string {
   return input
     .map((block) => {
@@ -1050,7 +936,7 @@ function parseToolArgs(value: string): Record<string, unknown> {
 }
 
 function normalizeGeneratedTitle(value: string, fallbackTitle: string): string {
-  const title = value.trim().replace(/^["'“”]+|["'“”]+$/g, "").replace(/\s+/g, " ")
+  const title = value.trim().replace(/^["'""]+|["'""]+$/g, "").replace(/\s+/g, " ")
   if (!title) {
     return fallbackTitle
   }

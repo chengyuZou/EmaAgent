@@ -40,5 +40,15 @@ __pycache__/
 .venv/
 venv/
 
+# 忽略 TypeScript 编译产物
+*.js
+*.js.map
+*.d.ts
+*.d.ts.map
+
 # Misc
 *.local
+
+CLAUDE.md
+install.cmd
+.claude

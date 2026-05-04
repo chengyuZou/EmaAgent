@@ -46,12 +46,6 @@ interface ApplyArtifactBody {
   expectedSha256ByPath?: Record<string, string>
 }
 
-/**
- * Artifact / Workspace API。
- *
- * Artifact 是 Agent 产出的结构化文件、代码、图表或 diff。
- * 这里提供最小可用的 Workspace 后端：列表、详情、创建、采纳、拒绝。
- */
 export function registerArtifactRoutes(app: FastifyInstance, options: ArtifactRouteOptions): void {
   app.get<{ Params: SessionArtifactsParams }>("/api/sessions/:sessionId/artifacts", async (request) => {
     const page = await options.storage.artifacts.listArtifactsBySession(asId<SessionId>(request.params.sessionId), {

@@ -2,11 +2,6 @@ import type { RequestId, SseEvent } from "@ema-agent/core-types"
 
 export type TurnEventListener = (event: SseEvent) => void
 
-/**
- * Turn 事件存储骨架。
- *
- * 后续这里负责 SSE replay、订阅、终态事件保存和内存清理。
- */
 export class TurnEventStore {
   private readonly replayEvents = new Map<RequestId, SseEvent[]>()
   private readonly listeners = new Map<RequestId, Set<TurnEventListener>>()
@@ -49,9 +44,6 @@ export class TurnEventStore {
   }
 }
 
-/**
- * 判断是否为结束事件 并非为调用终端事件
- */
 export function isTerminalEvent(event: SseEvent): boolean {
   return event.type === "turn_completed" || event.type === "error"
 }

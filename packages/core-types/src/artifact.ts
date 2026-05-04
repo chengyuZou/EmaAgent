@@ -1,20 +1,17 @@
 /**
  * Agent Workspace 产物协议。
  *
- * Artifact 是 Agent 生成的结构化产出物——代码、表格、图表、Patch 等。
- * 轻量摘要用于聊天流卡片，Detail 用于右侧画布/弹窗完整渲染。
- *
- * 注意：Repository 接口不放在 core-types，
- * 它属于 storage-sql 或 session 包内部。
+ * Artifact 是 Agent 生成的结构化产出物——代码、表格、图表、Diff 等。
+ * 轻量 `ArtifactSummary` 用于聊天流卡片，`ArtifactDetail` 用于右侧面板完整渲染。
  */
 
 import type { ArtifactId, RequestId, SessionId, UnixMs } from "./ids.js"
 
-// ==========================================
+// ═══════════════════════════════════════════════════════════════
 // 基础枚举
-// ==========================================
+// ═══════════════════════════════════════════════════════════════
 
-/** Workspace 中可管理的产物类型。 */
+/** Workspace 中可管理的产物类型——UI 据此选择渲染器。 */
 export type ArtifactKind =
   | "code"
   | "table"
@@ -29,18 +26,18 @@ export type ArtifactKind =
   | "notebook"
   | "log"
 
-/** 产物当前的生命周期状态。 */
+/** 产物生命周期状态——前端据此显示"草稿/就绪/已应用"等标签。 */
 export type ArtifactStatus =
-  | "draft"
-  | "ready"
-  | "applied"
-  | "rejected"
-  | "superseded"
-  | "failed"
+  | "draft"       // 生成中，未完成
+  | "ready"       // 已完成，等待用户操作
+  | "applied"     // 已应用到工作区（patch 被 accept）
+  | "rejected"    // 被拒绝（patch 被 reject）
+  | "superseded"  // 被更新的版本替代
+  | "failed"      // 生成失败
 
-// ==========================================
-// 文件差异元数据
-// ==========================================
+// ═══════════════════════════════════════════════════════════════
+// 文件差异
+// ═══════════════════════════════════════════════════════════════
 
 export interface FileDiffSummary {
   path: string
@@ -60,35 +57,29 @@ export interface DiffMeta {
   commitHash?: string
 }
 
-/** 产物杂项特征参数，供列表摘要快速渲染。 */
+/** 产物杂项特征参数——供列表摘要快速渲染，无需加载完整 content。 */
 export interface ArtifactParams {
   language?: string
   diff?: DiffMeta
-  /** 收拢未知属性，防止与官方字段冲突。 */
   extra?: Record<string, unknown>
 }
 
-// ==========================================
-// 列表摘要层（聊天流轻量卡片）
-// ==========================================
+// ═══════════════════════════════════════════════════════════════
+// 列表摘要（聊天流轻量卡片）
+// ═══════════════════════════════════════════════════════════════
 
+/** 产物摘要——聊天流中的轻量卡片，足够渲染列表但不含完整内容。 */
 export interface ArtifactSummary {
   id: ArtifactId
-  /** 会话级追踪 ID（用于全链路）。 */
   sessionId: SessionId
-  /** 产生此产物的 API Request ID。 */
   requestId: RequestId
-  /** 产物类型，UI 据此派发渲染器。 */
   kind: ArtifactKind
-  /** 用户友好的标题，如 "重新设计 Router 错误拦截"。 */
+  /** 用户友好的标题，如"重新设计 Router 错误拦截"。 */
   title: string
-  /** 一句话描述，用于卡片列表副标题。 */
   description?: string
-  /** MIME 类型。 */
   mime: string
-  /** 当产物涉及本地文件时，目标路径列表。 */
+  /** 产物涉及的本地文件路径（patch / code 类型）。 */
   targetPaths?: string[]
-  /** 轻量结构化参数，无需加载完整 content。 */
   params?: ArtifactParams
   status: ArtifactStatus
   createdAt: UnixMs
@@ -97,66 +88,46 @@ export interface ArtifactSummary {
 
 export interface ListArtifactsOptions {
   limit?: number
-  /** 下一页游标：基于 createdAt 的时间戳分页。 */
+  /** 基于 createdAt 的游标分页。 */
   beforeCreatedAt?: UnixMs
-  /** 与 beforeCreatedAt 配套的稳定游标，避免同毫秒产物翻页丢项。 */
+  /** 与 beforeCreatedAt 配套的稳定游标——避免同毫秒产物翻页丢项。 */
   beforeArtifactId?: ArtifactId
-  
-  /** 
-   * 按产物类型过滤。如果不传，则返回所有类型。
-   * 比如只想要代码和图表：["code", "chart"]
-   */
   kinds?: ArtifactKind[]
-  
-  /** 
-   * 按产物状态过滤。
-   * 比如只看已准备好或被采纳的：["ready", "applied"]
-   */
   statuses?: ArtifactStatus[]
 }
 
 export interface ArtifactPage {
   items: ArtifactSummary[]
   hasMore: boolean
-  /** 下一页游标：beforeCreatedAt（基于 createdAt 的时间戳分页）。 */
   nextBeforeCreatedAt?: UnixMs
   nextBeforeArtifactId?: ArtifactId
 }
 
-// ==========================================
-// 内容详情载荷（右侧面板完整渲染）
-// ==========================================
+// ═══════════════════════════════════════════════════════════════
+// 内容详情（右侧面板完整渲染）
+// ═══════════════════════════════════════════════════════════════
 
+/** 产物内容的引用方式：内联文本、本地文件路径、或 DB key。 */
 export type ArtifactPayloadRef =
   | { type: "inline"; content: string }
   | { type: "file"; path: string }
   | { type: "db"; key: string }
 
+/** 产物完整详情——右侧面板渲染所需的所有数据。 */
 export interface ArtifactDetail {
-  /** 关联的摘要数据。 */
   summary: ArtifactSummary
-  /**
-   * 产物的原始文本内容。
-   * 大量源码、Unified Diff、MathJax 字符都在此字段。
-   */
   payload: ArtifactPayloadRef
-  /**
-   * 二进制内容，必须是 base64 DataURL 或本地可访问地址。
-   * 禁止使用 ArrayBuffer（不可序列化）。
-   */
+  /** 二进制内容（base64 DataURL 或本地地址——不可序列化 ArrayBuffer）。 */
   binaryBase64?: string
-  /** 内容哈希签名，防止串流时数据过期。 */
+  /** 内容哈希——前端用于检测数据是否过期。 */
   contentHash?: string
 }
 
-// ==========================================
+// ═══════════════════════════════════════════════════════════════
 // 产物面板视图
-// ==========================================
+// ═══════════════════════════════════════════════════════════════
 
-/**
- * 在当前 session/turn 中打开"产物列表"面板时展示的视图。
- * 对应 Panel ⑧ 模型组件列表（胶囊形卡片 + 打开按钮）。
- */
+/** 产物列表面板——对应 WorkspacePane 中的产物列表（胶囊形卡片 + 打开按钮）。 */
 export interface ArtifactListPanel {
   sessionId: SessionId
   page: ArtifactPage
