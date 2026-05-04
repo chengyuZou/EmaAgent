@@ -3,29 +3,64 @@
  *
  * 来源：EmaAgent v0.4 `constants/agent.py` + CLAUDE.md 架构红线。
  * 所有 ReAct 循环和权限管线的硬编码阈值集中于此。
- *
- * 与 core-types 绑定的常量（如工具分类列表、熔断阈值）直接从
- * `@ema-agent/core-types` 导入并重导出，本文件不重复定义。
  */
 
 import type { AgentRiskLevel, ReActStatus, ReActStepType } from "@ema-agent/core-types"
-import {
-  REPEATED_ERROR_LIMIT,
-  DEFAULT_REACT_MAX_STEPS,
-  MAX_PARALLEL_READONLY_TOOLS,
-  READ_ONLY_TOOL_PATTERNS,
-  DANGEROUS_TOOL_NAMES,
-  DANGEROUS_FILE_OPERATIONS,
-} from "@ema-agent/core-types"
 
-export {
-  REPEATED_ERROR_LIMIT,
-  DEFAULT_REACT_MAX_STEPS,
-  MAX_PARALLEL_READONLY_TOOLS,
-  READ_ONLY_TOOL_PATTERNS,
-  DANGEROUS_TOOL_NAMES,
-  DANGEROUS_FILE_OPERATIONS,
-}
+// ═══════════════════════════════════════════════════════════════
+// 熔断 & 循环限制（来自 v0.4 `react.py`）
+// ═══════════════════════════════════════════════════════════════
+
+/** 连续同一错误触发熔断的阈值。 */
+export const REPEATED_ERROR_LIMIT = 3
+
+/** ReAct 循环默认最大步数。 */
+export const DEFAULT_REACT_MAX_STEPS = 20
+
+/** 只读工具的最大并发数（Semaphore 限流）。 */
+export const MAX_PARALLEL_READONLY_TOOLS = 3
+
+// ═══════════════════════════════════════════════════════════════
+// 工具分类（来自 v0.4 `constants/agent.py`）
+// ═══════════════════════════════════════════════════════════════
+
+/** 无需用户确认的只读工具名称——这些工具不修改系统状态。 */
+export const READ_ONLY_TOOL_PATTERNS = [
+  "search_text",
+  "read_file",
+  "list_dir",
+  "analyze_document",
+  "analyze_code",
+  "get_weather",
+  "get_current_time",
+  "read_webpage",
+  "arxiv_paper",
+  "analyze_image",
+  "analyze_audio",
+  "transcribe_audio",
+  "search_image",
+  "capture_screenshot",
+] as const
+
+/** 高风险工具名称——执行前必须获得用户确认。 */
+export const DANGEROUS_TOOL_NAMES = [
+  "run_command",
+  "run_python",
+  "write_file",
+  "generate_speech",
+  "generate_image",
+  "upload_file",
+  "record_audio",
+] as const
+
+/** 文件操作中需要确认的操作类型。 */
+export const DANGEROUS_FILE_OPERATIONS = [
+  "delete",
+  "move",
+  "copy",
+  "rename",
+  "write",
+] as const
 
 // ═══════════════════════════════════════════════════════════════
 // 风险级别 & 状态枚举
