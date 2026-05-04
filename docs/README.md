@@ -1,4 +1,4 @@
-# EmaAgent V1 全栈 TypeScript 生产级架构蓝图
+﻿# EmaAgent V1 全栈 TypeScript 生产级架构蓝图
 
 ## 执行摘要
 
@@ -8,7 +8,7 @@ EmaAgent V1 不应该继续沿着“把 Python v0.4 逐块翻译成 TypeScript�
 
 1. **桌面形态**：Tauri 壳 + React 前端 + TypeScript 本地 sidecar（Fastify BFF）+ Python compute sidecar。
 2. **统一交互主线**：所有模式不再走“chat 专属路由”，而是收敛为**Turn/Execution 模型**：`POST /api/turns` 发起一次回合，SSE 流输出统一事件，工具确认、Diff 应用、停止、重试都围绕 turn 做。
-3. **运行时分层**：把能力拆为 `session-runtime`、`llm-runtime`、`ebd-runtime`、`memory-runtime`、`tool-runtime`、`sandbox-runtime`、`narrative-runtime`、`attachment-runtime`、`config-kernel`、`storage-sql` 和 `orchestrator-runtime`。每个 runtime 只暴露单一 façade，内部使用少量必要类，其余保持函数式模块，避免过度封装。
+3. **运行时分层**：把能力拆为 `session`、`llm`、`ebd`、`memory`、`tool`、`sandbox`、`narrative`、`attachment`、`config-kernel`、`storage-sql` 和 `orchestrator`。每个 能力模块 只暴露单一 façade，内部使用少量必要类，其余保持函数式模块，避免过度封装。
 4. **记忆策略**：V1 **不做通用 GraphRAG**。通用记忆走“近期上下文 + 会话摘要 + 向量召回 + SQLite FTS5 词法回退 + 轻量 rerank”，Narrative 单独继续用 LightRAG，互不污染。
 5. **Agent 工具主线**：参考 Claude Code / Codex 的思路，但不复制其产品表面；你的 Agent 模式必须具备**工具确认、沙箱约束、结构化步骤流、Artifact 工作区、Monaco Diff、Apply/Reject**，且**禁止把 patch 只当聊天文本展示**。Claude Code 明确把“权限”和“沙箱”视为互补安全层，Codex 则把 approval policy 与 sandbox 分开，并提供结构化 patch/diff 工作流，这正是 EmaAgent 应借鉴的生产级基线。citeturn0search3turn19search0turn19search1turn19search2turn19search13
 6. **Provider 体系**：不能只做“一个 OpenAI-compatible fetch 封装”。必须建立**Provider Registry + Model Catalog + Capability Probe + Health + Model Role Binding**。OpenAI、Anthropic、Gemini 三家应该优先走原生适配器；DeepSeek、OpenRouter、Ollama 走 OpenAI-compatible / Anthropic-compatible 适配层，且能力标记必须是“探测出来或文档确认过的”，不能想当然。OpenAI、Anthropic、Gemini、DeepSeek 都提供官方模型/流式/工具接口文档；OpenRouter 和 Ollama 也明确提供兼容层与模型元数据能力。citeturn13search0turn1search0turn1search0turn17search0turn4search0turn0search2turn4search1turn15search2turn2search0turn16search5turn14search0turn16search0turn26search5turn26search3turn26search6turn23view0turn23view1turn23view2turn6search0turn6search5turn6search7
@@ -19,7 +19,7 @@ EmaAgent V1 不应该继续沿着“把 Python v0.4 逐块翻译成 TypeScript�
 
 - 用 `/api/chat` 和 `/api/chat/stream` 作为“一切主入口”的设计，改成统一的 **turn API**。
 - 把 provider 与 model 简单一一绑定的思路，改成 **provider registry + model catalog + role binding**。
-- 把 ebd/rerank 混在 llm-runtime 里的倾向，改成独立 `ebd-runtime`。
+- 把 ebd/rerank 混在 llm 里的倾向，改成独立 `ebd`。
 - 把 memory 未来默认走图的倾向，改成 V1 **vector-first**。
 - 把“日志字符串给前端解析”的残余习惯，改成**结构化事件协议**。
 - 把 Python 逻辑直接耦合到前端/路由的方式，改成**TS sidecar 管控 + Python bridge 隔离**。
@@ -63,17 +63,17 @@ flowchart LR
   FE -->|REST + SSE| BFF[API Gateway / BFF<br/>Fastify]
   FE -->|Tauri Commands| HOST[Tauri Host]
 
-  BFF --> ORC[orchestrator-runtime]
-  ORC --> SES[session-runtime]
-  ORC --> LLM[llm-runtime]
-  ORC --> MEM[memory-runtime]
-  ORC --> ATT[attachment-runtime]
-  ORC --> NAR[narrative-runtime]
-  ORC --> TOOL[tool-runtime]
+  BFF --> ORC[orchestrator]
+  ORC --> SES[session]
+  ORC --> LLM[llm]
+  ORC --> MEM[memory]
+  ORC --> ATT[attachment]
+  ORC --> NAR[narrative]
+  ORC --> TOOL[tool]
 
-  MEM --> EBD[ebd-runtime]
+  MEM --> EBD[ebd]
   ATT --> EBD
-  TOOL --> SBOX[sandbox-runtime]
+  TOOL --> SBOX[sandbox]
   NAR --> PY[Python Compute Bridge<br/>FastAPI + LightRAG]
   EBD --> PY
 
@@ -304,33 +304,33 @@ packages/
   core-types/                          # 全局类型、事件、错误码、接口约束
   config-kernel/                       # 配置分层、默认值、解析器、密钥引用
   storage-sql/                         # Drizzle schema、repo、migrations、FTS5
-  session-runtime/                     # sessions/messages/turns/title/context window
-  llm-runtime/                         # provider registry, adapters, stream controller, usage, fallback
-  ebd-runtime/                         # embedding / rerank 抽象与 bridge
-  memory-runtime/                      # summary / durable memory / recall planner
-  attachment-runtime/                  # 上传、解析、分块、索引、召回
-  tool-runtime/                        # builtin tools / MCP / skills / permission preview
-  sandbox-runtime/                     # workspace scope / command runner / diff apply
-  narrative-runtime/                   # Python bridge client + narrative context builder
-  orchestrator-runtime/                # chat/agent/narrative 三模式编排入口
+  session/                     # sessions/messages/turns/title/context window
+  llm/                         # provider registry, adapters, stream controller, usage, fallback
+  ebd/                         # embedding / rerank 抽象与 bridge
+  memory/                      # summary / durable memory / recall planner
+  attachment/                  # 上传、解析、分块、索引、召回
+  tool/                        # builtin tools / MCP / skills / permission preview
+  sandbox/                     # workspace scope / command runner / diff apply
+  narrative/                   # Python bridge client + narrative context builder
+  orchestrator/                # chat/agent/narrative 三模式编排入口
 ```
 
-这个结构刻意避免继续把包拆得更细。你需要的是**少而稳的 runtime 包**，不是几十个“感觉很先进”的 micro-package。
+这个结构刻意避免继续把包拆得更细。你需要的是**少而稳的 能力模块 包**，不是几十个“感觉很先进”的 micro-package。
 
-### 每个 runtime 的 façade 与职责
+### 每个 能力模块 的 façade 与职责
 
-| runtime | façade | 只做什么 | 不做什么 |
+| 能力模块 | façade | 只做什么 | 不做什么 |
 |---|---|---|---|
-| session-runtime | `SessionFacade` | 会话、消息、turn、标题、上下文窗口 | provider、工具、附件解析 |
-| llm-runtime | `ExecutionFacade` | 模型调用、流归一化、usage/cost、fallback | 记忆规划、工具权限 |
-| ebd-runtime | `EmbeddingFacade` | embed/rerank 路由、缓存、bridge | 会话逻辑 |
-| memory-runtime | `MemoryFacade` | durable memory 读写、summary、recall planning | narrative corpus |
-| attachment-runtime | `AttachmentFacade` | ingest、chunk、索引、召回 | 通用用户画像记忆 |
-| tool-runtime | `ToolFacade` | tool registry、MCP/Skill 加载、permission preview | shell 隔离 |
-| sandbox-runtime | `SandboxFacade` | 文件与命令边界、patch apply | tool 选择 |
-| narrative-runtime | `NarrativeFacade` | narrative query、timeline route、context build | 通用 memory |
+| session | `SessionFacade` | 会话、消息、turn、标题、上下文窗口 | provider、工具、附件解析 |
+| llm | `ExecutionFacade` | 模型调用、流归一化、usage/cost、fallback | 记忆规划、工具权限 |
+| ebd | `EmbeddingFacade` | embed/rerank 路由、缓存、bridge | 会话逻辑 |
+| memory | `MemoryFacade` | durable memory 读写、summary、recall planning | narrative corpus |
+| attachment | `AttachmentFacade` | ingest、chunk、索引、召回 | 通用用户画像记忆 |
+| tool | `ToolFacade` | tool registry、MCP/Skill 加载、permission preview | shell 隔离 |
+| sandbox | `SandboxFacade` | 文件与命令边界、patch apply | tool 选择 |
+| narrative | `NarrativeFacade` | narrative query、timeline route、context build | 通用 memory |
 | config-kernel | `ConfigFacade` | 配置分层与解析 | 执行模型调用 |
-| orchestrator-runtime | `OrchestratorFacade` | 三模式回合编排 | DB 细节 |
+| orchestrator | `OrchestratorFacade` | 三模式回合编排 | DB 细节 |
 
 ### 关键接口示例
 
@@ -436,14 +436,14 @@ export interface ToolAdapter {
 }
 ```
 
-### `llm-runtime` 的真正缺口与最终文件设计
+### `llm` 的真正缺口与最终文件设计
 
 你现在的 `provider.ts`、`router.ts`、`model.ts` 方向是对的，但还缺完整的**四块关键能力**：配置状态、能力探测、错误归一化、流控制。
 
 推荐文件树：
 
 ```text
-packages/llm-runtime/src/
+packages/llm/src/
   index.ts                             # 对外只暴露 facade
   types.ts                             # LLM 请求/响应/usage/cost/error 类型
   provider.ts                          # ProviderDescriptor / LlmProvider / config state
@@ -475,12 +475,12 @@ packages/llm-runtime/src/
 | `errors.ts` | `classifyProviderError` | 统一错误码 |
 | `fallback.ts` | `chooseFallbackModel` | 自动或显式回退 |
 
-### `orchestrator-runtime` 的文件设计
+### `orchestrator` 的文件设计
 
-`orchestrator-runtime` 是唯一“知道三模式差异”的地方：
+`orchestrator` 是唯一“知道三模式差异”的地方：
 
 ```text
-packages/orchestrator-runtime/src/
+packages/orchestrator/src/
   index.ts                             # runTurn facade
   types.ts                             # TurnInput / TurnHandle / mode contracts
   run-turn.ts                          # mode dispatch + AbortController
@@ -513,9 +513,9 @@ sequenceDiagram
   participant FE as Frontend
   participant BFF as API Gateway
   participant ORC as Orchestrator
-  participant LLM as LLM Runtime
-  participant TOOL as Tool Runtime
-  participant BOX as Sandbox Runtime
+  participant LLM as LLM 能力模块
+  participant TOOL as Tool 能力模块
+  participant BOX as Sandbox 能力模块
 
   U->>FE: 发送 agent 请求
   FE->>BFF: POST /api/turns
@@ -539,10 +539,10 @@ sequenceDiagram
   ORC-->>FE: artifact_upserted / diff_ready / turn_completed
 ```
 
-#### `tool-runtime` 文件树
+#### `tool` 文件树
 
 ```text
-packages/tool-runtime/src/
+packages/tool/src/
   index.ts
   types.ts                             # ToolDescriptor / preview / result / permission request
   registry.ts                          # builtin + MCP + skills 注册中心
@@ -563,10 +563,10 @@ packages/tool-runtime/src/
   preview.ts                           # execute 前影响预览
 ```
 
-#### `sandbox-runtime` 文件树
+#### `sandbox` 文件树
 
 ```text
-packages/sandbox-runtime/src/
+packages/sandbox/src/
   index.ts
   types.ts
   workspace-scope.ts                   # 允许路径、工作目录边界
@@ -738,21 +738,21 @@ SQLite FTS5 本身就适合在本地桌面产品中做低成本词法回退；SQ
 - agent 成功完成某类任务，且具备可复用性（如固定导出格式/路径偏好）。
 - narrative 不产生 durable world fact；只记录 session analytics。
 
-### `ebd-runtime` 的定位
+### `ebd` 的定位
 
-你之前问过“ebd 与 rerank 放 llm 还是多模态”。最终答案是：**都不要**，应该独立成 `ebd-runtime`。
+你之前问过“ebd 与 rerank 放 llm 还是多模态”。最终答案是：**都不要**，应该独立成 `ebd`。
 
 职责：
 
 | 子能力 | 所属 |
 |---|---|
-| text embedding | ebd-runtime |
-| multimodal embedding | ebd-runtime（通过 capability 标记） |
-| rerank | ebd-runtime |
-| content-hash 缓存 | ebd-runtime |
-| memory / attachment / narrative 的召回服务 | 分别在各 runtime 内调用 ebd-runtime |
+| text embedding | ebd |
+| multimodal embedding | ebd（通过 capability 标记） |
+| rerank | ebd |
+| content-hash 缓存 | ebd |
+| memory / attachment / narrative 的召回服务 | 分别在各 能力模块 内调用 ebd |
 
-官方文档层面，Gemini 已明确提供 embeddings，并且最新 embedding 模型是跨模态统一嵌入空间；这意味着未来如果你想扩到图像/文档跨模态召回，依旧应该落在 `ebd-runtime`，而不是 llm-runtime。citeturn14search1turn14search11
+官方文档层面，Gemini 已明确提供 embeddings，并且最新 embedding 模型是跨模态统一嵌入空间；这意味着未来如果你想扩到图像/文档跨模态召回，依旧应该落在 `ebd`，而不是 llm。citeturn14search1turn14search11
 
 ### 数据库与存储设计
 
@@ -872,7 +872,7 @@ sequenceDiagram
   participant UI as Providers UI
   participant BFF as API Gateway
   participant CFG as Config Kernel
-  participant LLM as LLM Runtime
+  participant LLM as LLM 能力模块
   participant SEC as Secret Store
 
   UI->>BFF: PATCH /api/providers/:id
@@ -1044,8 +1044,8 @@ Fastify、Drizzle、SQLite FTS5、MCP SDK、Tauri sidecar/stronghold 都有成�
 
 覆盖：
 
-- `llm-runtime/errors.ts`
-- `llm-runtime/fallback.ts`
+- `llm/errors.ts`
+- `llm/fallback.ts`
 - `stream-aggregator.ts`
 - `permission-engine.ts`
 - `diff-builder.ts`
@@ -1129,30 +1129,30 @@ Fastify、Drizzle、SQLite FTS5、MCP SDK、Tauri sidecar/stronghold 都有成�
 | 04-27 | 建立 pnpm workspace / turbo / Tauri / Fastify 基础工程；清空无用骨架 |
 | 04-28 | 完成 `core-types`：modes、events、artifacts、provider/model、errors |
 | 04-29 | 完成 `storage-sql` schema 与 Drizzle migrations |
-| 04-30 | 完成 `session-runtime`：sessions/messages/turns 基础 repo |
+| 04-30 | 完成 `session`：sessions/messages/turns 基础 repo |
 | 05-01 | 完成统一 `POST /api/turns` 与 SSE 路由骨架 |
 | 05-02 | 完成 `stream-aggregator` 与前端 `useTurnStream` |
 | 05-03 | 完成 `openai-native` adapter |
 | 05-04 | 完成 `anthropic-native` adapter |
 | 05-05 | 完成 `gemini-native` adapter |
 | 05-06 | 完成 `openai-compatible` adapter（DeepSeek/OpenRouter/Ollama） |
-| 05-07 | 完成 `llm-runtime` provider registry / catalog / health / config |
+| 05-07 | 完成 `llm` provider registry / catalog / health / config |
 | 05-08 | 完成 provider settings UI 与 model binding UI |
 | 05-09 | 跑通 chat 模式闭环：发消息、流式输出、保存消息 |
 | 05-10 | 补 chat 模式测试与 session title 生成 |
-| 05-11 | 完成 `tool-runtime` registry / builtin tool descriptor |
+| 05-11 | 完成 `tool` registry / builtin tool descriptor |
 | 05-12 | 完成 `permission-engine` 与确认弹窗 UI |
-| 05-13 | 完成 `sandbox-runtime`：workspace scope / command runner |
+| 05-13 | 完成 `sandbox`：workspace scope / command runner |
 | 05-14 | 完成 read/write/list/search/shell/python tools |
 | 05-15 | 完成 `artifacts` 表与 WorkspacePane 基础 UI |
 | 05-16 | 完成 Monaco Editor + DiffEditor + Apply/Reject |
 | 05-17 | 完成 `agent-flow` 首个可用闭环 |
 | 05-18 | 完成 StepTimeline、tool output、artifact event 流 |
-| 05-19 | 完成 `attachment-runtime`：上传、解析、分块、召回 |
-| 05-20 | 完成 `ebd-runtime` 与 Python bridge embed/rerank 接口 |
-| 05-21 | 完成 `memory-runtime` durable facts + summary + recall planner |
+| 05-19 | 完成 `attachment`：上传、解析、分块、召回 |
+| 05-20 | 完成 `ebd` 与 Python bridge embed/rerank 接口 |
+| 05-21 | 完成 `memory` durable facts + summary + recall planner |
 | 05-22 | 完成 ContextRadar 与 compaction/budget inspector |
-| 05-23 | 完成 Python narrative bridge API 与 TS `narrative-runtime` |
+| 05-23 | 完成 Python narrative bridge API 与 TS `narrative` |
 | 05-24 | 跑通 narrative 模式闭环与前端 recall panel |
 | 05-25 | 完成 Live2D stage cue 通道与 ACT fallback |
 | 05-26 | 完成 usage/cost accounting、fallback chain、error normalization |
@@ -1168,14 +1168,14 @@ Fastify、Drizzle、SQLite FTS5、MCP SDK、Tauri sidecar/stronghold 都有成�
 
 1. **桌面端是否首发只支持 Windows**。如果是，sidecar 打包和权限策略可以简化很多。
 2. **Python bridge 的封装方式**：你是用 PyInstaller/uv tool/conda 打包，还是开发期先裸 Python，发布期再封装。
-3. **是否需要首发 TTS/STT**。如果不做，先不要引入多模态 runtime；否则架构复杂度会明显上升。
+3. **是否需要首发 TTS/STT**。如果不做，先不要引入多模态 能力模块；否则架构复杂度会明显上升。
 4. **是否要首发远端同步**。如果没有强需求，V1 保持纯本地，数据库与 artifact 不做云同步。
 5. **Narrative corpus 的构建频率**。如果数据基本稳定，可把 `/narrative/index` 放 P2。
 
 ### 最终结论
 
 如果用一句话概括这份架构：  
-**EmaAgent V1 应该是一个以 turn 为核心、以 runtime façade 为边界、以 SQLite 为本地事实源、以 SSE 为文本流协议、以 Artifact/Diff 为 Agent 结果面板、以 LightRAG 为 narrative 差异化、以 Tauri + TS sidecar + Python bridge 为部署形态的桌面产品。**
+**EmaAgent V1 应该是一个以 turn 为核心、以 能力模块 façade 为边界、以 SQLite 为本地事实源、以 SSE 为文本流协议、以 Artifact/Diff 为 Agent 结果面板、以 LightRAG 为 narrative 差异化、以 Tauri + TS sidecar + Python bridge 为部署形态的桌面产品。**
 
 它不像 AIRI 那样追求能力宽度，也不像 Claude Code / Codex 那样只服务代码工作流，而是把它们的长处抽出来，收敛到你真正要做的 Ema 个人伴侣式产品上：  
 **前端像 AIRI 一样有舞台与设置中枢，后端像 Claude Code/Codex 一样有工具和权限骨架，Narrative 继承你现有 Python/LightRAG 资产，通用 memory 则坚持 V1 的 vector-first 简洁路线。**

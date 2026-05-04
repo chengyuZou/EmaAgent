@@ -5,7 +5,7 @@
  * 轻量摘要用于聊天流卡片，Detail 用于右侧画布/弹窗完整渲染。
  *
  * 注意：Repository 接口不放在 core-types，
- * 它属于 storage-sql 或 session-runtime 内部。
+ * 它属于 storage-sql 或 session 包内部。
  */
 
 import type { ArtifactId, RequestId, SessionId, UnixMs } from "./ids.js"

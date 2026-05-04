@@ -22,16 +22,17 @@
       "@ema-agent/core-types": ["./packages/core-types/src/index.ts"],
       "@ema-agent/session": ["./packages/session/src/index.ts"],
       "@ema-agent/llm": ["./packages/llm/src/index.ts"],
-      "@ema-agent/config-kernel": ["./packages/config-kernel/src/index.ts"],
-      "@ema-agent/session-runtime": ["./packages/session-runtime/src/index.ts"],
-      "@ema-agent/orchestrator-runtime": ["./packages/orchestrator-runtime/src/index.ts"],
+      "@ema-agent/config": ["./packages/config/src/index.ts"],
       "@ema-agent/storage-sql": ["./packages/storage-sql/src/index.ts"],
-      "@ema-agent/tool-runtime": ["./packages/tool-runtime/src/index.ts"],
-      "@ema-agent/memory-runtime": ["./packages/memory-runtime/src/index.ts"],
-      "@ema-agent/narrative-runtime": ["./packages/narrative-runtime/src/index.ts"],
-      "@ema-agent/attachment-runtime": ["./packages/attachment-runtime/src/index.ts"],
-      "@ema-agent/multimodal-runtime": ["./packages/multimodal-runtime/src/index.ts"],
-      "@ema-agent/sandbox-runtime": ["./packages/sandbox-runtime/src/index.ts"]
+      "@ema-agent/tool": ["./packages/tool/src/index.ts"],
+      "@ema-agent/permission": ["./packages/permission/src/index.ts"],
+      "@ema-agent/sandbox": ["./packages/sandbox/src/index.ts"],
+      "@ema-agent/attachment": ["./packages/attachment/src/index.ts"],
+      "@ema-agent/ebd": ["./packages/ebd/src/index.ts"],
+      "@ema-agent/memory": ["./packages/memory/src/index.ts"],
+      "@ema-agent/narrative": ["./packages/narrative/src/index.ts"],
+      "@ema-agent/telemetry": ["./packages/telemetry/src/index.ts"],
+      "@ema-agent/multimodal": ["./packages/multimodal/src/index.ts"]
     }
   },
   "exclude": ["node_modules", "dist", ".turbo"]

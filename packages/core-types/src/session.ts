@@ -5,7 +5,7 @@
  * 消息体定义在 message.ts，Turn 定义在 turn.ts。
  *
  * 注意：Repository 接口不放在 core-types，
- * 它属于 storage-sql 或 session-runtime 内部。
+ * 它属于 storage-sql 或 session 包内部。
  */
 
 import type { EmaMode } from "./mode.js"

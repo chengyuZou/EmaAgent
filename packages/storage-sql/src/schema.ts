@@ -1,7 +1,7 @@
 import type { Database } from "better-sqlite3";
 
 // 我们使用 SQLite 原生的 user_version pragma 追踪版本
-const LATEST_VERSION = 2;
+const LATEST_VERSION = 4;
 
 function hasColumn(db: Database, table: string, column: string): boolean {
   const rows = db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
@@ -84,6 +84,79 @@ const MIGRATIONS: Record<number, (db: Database) => void> = {
     if (!hasColumn(db, "turns", "error_message")) {
       db.exec(`ALTER TABLE turns ADD COLUMN error_message TEXT;`);
     }
+  },
+
+  3: (db) => {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS attachments (
+        id TEXT PRIMARY KEY,
+        session_id TEXT NOT NULL,
+        file_name TEXT NOT NULL,
+        mime TEXT NOT NULL,
+        size_bytes INTEGER NOT NULL,
+        sha256 TEXT NOT NULL,
+        status TEXT NOT NULL,
+        text_preview TEXT,
+        error_message TEXT,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+      );
+      CREATE INDEX IF NOT EXISTS idx_attachments_session_id_created_at ON attachments(session_id, created_at DESC);
+
+      CREATE TABLE IF NOT EXISTS attachment_chunks (
+        id TEXT PRIMARY KEY,
+        attachment_id TEXT NOT NULL,
+        session_id TEXT NOT NULL,
+        chunk_index INTEGER NOT NULL,
+        text TEXT NOT NULL,
+        token_count INTEGER NOT NULL,
+        created_at INTEGER NOT NULL,
+        FOREIGN KEY (attachment_id) REFERENCES attachments(id) ON DELETE CASCADE,
+        FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+      );
+      CREATE INDEX IF NOT EXISTS idx_attachment_chunks_attachment_id ON attachment_chunks(attachment_id, chunk_index);
+    `);
+  },
+
+  4: (db) => {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS memory_facts (
+        id TEXT PRIMARY KEY,
+        session_id TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        content TEXT NOT NULL,
+        confidence REAL NOT NULL,
+        source TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        last_used_at INTEGER,
+        FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+      );
+      CREATE INDEX IF NOT EXISTS idx_memory_facts_session_kind ON memory_facts(session_id, kind);
+
+      CREATE TABLE IF NOT EXISTS session_summaries (
+        session_id TEXT PRIMARY KEY,
+        summary_text TEXT NOT NULL,
+        token_count INTEGER NOT NULL,
+        covered_message_count INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+      );
+
+      CREATE TABLE IF NOT EXISTS telemetry_events (
+        id TEXT PRIMARY KEY,
+        trace_id TEXT,
+        request_id TEXT,
+        session_id TEXT,
+        type TEXT NOT NULL,
+        level TEXT NOT NULL,
+        payload_json TEXT NOT NULL,
+        created_at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_telemetry_events_created_at ON telemetry_events(created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_telemetry_events_request_id ON telemetry_events(request_id);
+    `);
   },
 };
 

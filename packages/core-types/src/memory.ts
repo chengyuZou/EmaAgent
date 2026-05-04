@@ -9,7 +9,7 @@
  *
  * 关键原则：
  * 1. 所有记忆最终都必须转换成 ContextBlock，按 priority 排序后注入 system prompt。
- * 2. 原始 user query 永远不被污染（RuntimeInputEnvelope.rawQuery 隔离）。
+ * 2. 原始 user query 永远不被污染（输入信封 rawQuery 隔离）。
  * 3. Agent 的 Working Memory 是结构化的，回合结束可丢弃。
  * 4. Narrative 走 Python Bridge（lightrag），TS 侧只做统一格式转换。
  * 5. GraphRAG 模块保留为 P2 占位，V1 不实现检索逻辑。
@@ -98,7 +98,7 @@ export interface RecallSourceStat {
  * - layer 越大，摘要越老，粒度越粗
  * - 组装 context 时按 layer 从新到旧拼接
  *
- * 压缩触发：按 token 数（而非消息数），由 session-runtime/tokenizer.ts 计算。
+ * 压缩触发：按 token 数（而非消息数），由 session/tokenizer.ts 计算。
  */
 export interface RollingSummary {
   sessionId: SessionId;
@@ -276,7 +276,7 @@ export interface UserProfile {
  * 视觉记忆块。
  *
  * 视频不做，只做单帧分析和图库聚合描述。
- * 视觉内容通过 vision-runtime 分析后，提取文本描述写入记忆。
+ * 视觉内容通过 vision 模块分析后，提取文本描述写入记忆。
  */
 export interface VisionMemoryBlock {
   /** 视觉内容 ID（图片 hash 或截图编号） */
@@ -290,7 +290,7 @@ export interface VisionMemoryBlock {
 }
 
 // ═══════════════════════════════════════════════════════════════
-//  第七节：写入请求（MemoryRuntime.write 用）
+//  第七节：写入请求（memory 模块写入用）
 // ═══════════════════════════════════════════════════════════════
 
 /** 记忆写入请求 */
@@ -311,7 +311,7 @@ export interface MemoryWriteRequest {
 /**
  * GraphRAG 节点定义（P2 占位）。
  *
- * V1 保留 schema 以便后续无缝升级，但 memory-runtime 不调用 GraphRAG 检索。
+ * V1 保留 schema 以便后续无缝升级，但 memory 模块不调用 GraphRAG 检索。
  */
 export interface GraphNodePlaceholder {
   key: string;

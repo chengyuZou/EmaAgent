@@ -4,7 +4,7 @@
  * Session 承载上下文；Turn 记录本轮使用的 mode、模型、步骤、产物和用量。
  *
  * 注意：Repository 接口不放在 core-types，
- * 它属于 storage-sql 或 session-runtime 内部。
+ * 它属于 storage-sql 或 session 包内部。
  */
 
 import type { ArtifactSummary } from "./artifact.js"
@@ -13,6 +13,7 @@ import type { MessagePage } from "./message.js"
 import type {
   ArtifactId,
   AttachmentId,
+  MessageId,
   ModelId,
   ProviderId,
   RequestId,
@@ -61,6 +62,10 @@ export interface StartTurnRequest {
 export interface StartTurnResponse {
   requestId: RequestId
   sessionId: SessionId
+  /** 本轮用户消息 ID，前端可立即插入用户消息占位。 */
+  userMessageId: MessageId
+  /** 本轮助手消息 ID，后续 text_delta / tool 事件都归到这条消息。 */
+  assistantMessageId: MessageId
   acceptedAt: UnixMs
   /** SSE 流地址，前端连接此 URL 接收实时事件。 */
   streamUrl: string
@@ -118,7 +123,7 @@ export interface UsageView {
 // Turn 持久化实体
 // ==========================================
 
-/** Turn 持久化实体——storage-sql 落盘 & session-runtime 读写的唯一结构。 */
+/** Turn 持久化实体——storage-sql 落盘 & session 包读写的唯一结构。 */
 export interface TurnRecord {
   requestId: RequestId
   sessionId: SessionId

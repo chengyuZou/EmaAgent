@@ -50,29 +50,90 @@ export interface TurnStreamController {
 }
 
 /**
- * 前端 turn stream hook 骨架。
+ * 前端 turn stream 控制器。
  *
- * 真实实现后续再处理 EventSource、事件合并、文本拼接和错误状态。
+ * 这里不依赖 React hook API，名字保留 useTurnStream 是为了之后页面层直接接入。
+ * 它负责：
+ * - 用 StartTurnResponse 连接 SSE。
+ * - 累积事件列表。
+ * - 拼接 text_delta / text_done。
+ * - 在 turn_completed / error 后关闭连接。
  */
 export function useTurnStream(options: UseTurnStreamOptions = {}): TurnStreamController {
-  void options
+  let state = createInitialState()
+  let eventSource: EventSourceLike | undefined
+  const listeners = new Set<(state: TurnStreamState) => void>()
 
-  const state = createInitialState()
+  const setState = (patch: Partial<TurnStreamState>) => {
+    state = { ...state, ...patch }
+    for (const listener of listeners) {
+      listener(state)
+    }
+  }
+
+  const applyEvent = (event: SseEvent) => {
+    const nextState = reduceEvent(state, event)
+    state = nextState
+    options.onEvent?.(event, state)
+    for (const listener of listeners) {
+      listener(state)
+    }
+    if (event.type === "turn_completed" || event.type === "error") {
+      eventSource?.close()
+      eventSource = undefined
+    }
+  }
 
   return {
     getState: () => state,
     subscribe(listener) {
-      void listener
-      return () => {}
+      listeners.add(listener)
+      listener(state)
+      return () => {
+        listeners.delete(listener)
+      }
     },
     start(response) {
-      void response
+      this.connect(response.streamUrl, response.requestId)
     },
     connect(streamUrl, requestId) {
-      void streamUrl
-      void requestId
+      eventSource?.close()
+      const EventSourceCtor = resolveEventSource(options.EventSource)
+      const url = resolveStreamUrl(options.apiBaseUrl, streamUrl)
+
+      setState({
+        status: "connecting",
+        requestId,
+        events: [],
+        textByMessageId: {},
+        lastEvent: undefined,
+        error: undefined,
+      })
+
+      eventSource = new EventSourceCtor(url)
+      eventSource.onerror = (event) => {
+        setState({
+          status: "failed",
+          error: {
+            code: "stream_error",
+            message: event instanceof Error ? event.message : "SSE 连接失败。",
+          },
+        })
+        eventSource?.close()
+        eventSource = undefined
+      }
+
+      for (const eventType of SSE_EVENT_TYPES) {
+        eventSource.addEventListener(eventType, (message) => {
+          applyEvent(parseSseEvent(message.data))
+        })
+      }
     },
-    close() {},
+    close() {
+      eventSource?.close()
+      eventSource = undefined
+      setState({ status: state.status === "completed" ? "completed" : "idle" })
+    },
   }
 }
 
@@ -85,6 +146,81 @@ function createInitialState(): TurnStreamState {
 }
 
 export function getLatestAssistantText(state: TurnStreamState): string {
-  void state
-  return ""
+  const entries = Object.entries(state.textByMessageId)
+  return entries[entries.length - 1]?.[1] ?? ""
 }
+
+function reduceEvent(state: TurnStreamState, event: SseEvent): TurnStreamState {
+  const nextTextByMessageId = { ...state.textByMessageId }
+
+  if (event.type === "text_delta") {
+    nextTextByMessageId[event.messageId] = `${nextTextByMessageId[event.messageId] ?? ""}${event.delta}`
+  }
+
+  if (event.type === "text_done") {
+    nextTextByMessageId[event.messageId] = event.fullText
+  }
+
+  return {
+    ...state,
+    status: event.type === "turn_completed" ? "completed" : event.type === "error" ? "failed" : "streaming",
+    requestId: event.requestId,
+    events: [...state.events, event],
+    textByMessageId: nextTextByMessageId,
+    lastEvent: event,
+    error: event.type === "error"
+      ? {
+          code: event.code,
+          message: event.message,
+        }
+      : state.error,
+  }
+}
+
+function parseSseEvent(data: string): SseEvent {
+  return JSON.parse(data) as SseEvent
+}
+
+function resolveStreamUrl(apiBaseUrl: string | undefined, streamUrl: string): string {
+  if (/^https?:\/\//i.test(streamUrl)) {
+    return streamUrl
+  }
+  return `${apiBaseUrl?.replace(/\/+$/, "") ?? ""}${streamUrl}`
+}
+
+function resolveEventSource(ctor: EventSourceConstructor | undefined): EventSourceConstructor {
+  if (ctor) {
+    return ctor
+  }
+
+  const globalEventSource = (globalThis as unknown as { EventSource?: EventSourceConstructor }).EventSource
+  if (!globalEventSource) {
+    throw new Error("当前环境没有可用 EventSource。")
+  }
+  return globalEventSource
+}
+
+const SSE_EVENT_TYPES = [
+  "turn_started",
+  "text_delta",
+  "text_done",
+  "tool_call_start",
+  "tool_call_args",
+  "tool_call_end",
+  "tool_result",
+  "permission_request",
+  "step_start",
+  "step_progress",
+  "step_end",
+  "retrieval_start",
+  "retrieval_delta",
+  "retrieval_end",
+  "compression_notify",
+  "artifact_create",
+  "artifact_delta",
+  "artifact_finalize",
+  "image",
+  "stage_cue",
+  "turn_completed",
+  "error",
+] as const

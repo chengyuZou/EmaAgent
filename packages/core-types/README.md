@@ -1,6 +1,6 @@
 # @ema-agent/core-types
 
-EmaAgent 全栈共享的类型契约层。前端、BFF、Runtime、仓储实现统一 `import type` 此包，保证接口一致性。
+EmaAgent 全栈共享的类型契约层。前端、BFF、能力模块、仓储实现统一 `import type` 此包，保证接口一致性。
 
 ---
 
@@ -19,7 +19,7 @@ EmaAgent 全栈共享的类型契约层。前端、BFF、Runtime、仓储实现�
 | `model.ts` | Provider/Model 目录 + LLM ChatCompletion 底层协议 | `ProviderDescriptor`, `ModelDescriptor`, `ChatCompletionRequest` |
 | `view.ts` | 8 个聚合视图（跨实体 join 的只读投影） | `DashboardView`, `SessionDetailView`, `ModelPickerView` … |
 | `errors.ts` | UI 可理解的错误协议 + `EmaError` 基类 | `UiErrorView`, `toUiErrorView()` |
-| `metadata.ts` | 版本信息 + 运行时环境 | `PackageVersion`, `RuntimeEnv` |
+| `metadata.ts` | 版本信息 + 应用环境 | `PackageVersion`, `AppEnvironment` |
 | `index.ts` | barrel 统一导出入口 | — |
 
 ---
@@ -49,7 +49,7 @@ EmaAgent 全栈共享的类型契约层。前端、BFF、Runtime、仓储实现�
 │                     ┌────────┴────────┐                                      │
 │                     │                 │                                      │
 │              ┌──────┴───────┐  ┌──────┴───────┐                              │
-│              │  Runtime 层   │  │  仓储实现层   │                              │
+│              │  能力模块层   │  │  仓储实现层   │                              │
 │              │               │  │              │                              │
 │              │ 消费:         │  │ 消费:        │                              │
 │              │  model.ts     │  │  session.ts  │                              │

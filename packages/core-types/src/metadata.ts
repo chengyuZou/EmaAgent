@@ -1,5 +1,5 @@
 /**
- * 运行时环境与静态元数据。
+ * 应用环境与静态元数据。
  *
  * 用于前端/后端共享的版本信息、环境标识、构建信息等。
  */
@@ -18,10 +18,10 @@ export interface PackageVersion {
 }
 
 // ==========================================
-// 运行时环境
+// 应用环境
 // ==========================================
 
-export interface RuntimeEnv {
+export interface AppEnvironment {
   /** 运行平台：桌面、浏览器或 CI。 */
   platform: "darwin" | "linux" | "windows" | "browser" | "unknown"
   /** 是否在 Electron 壳中。 */

@@ -1,7 +1,7 @@
 /**
  * EmaAgent Core Types — 统一导出入口。
  *
- * 消费方（前端、BFF、Runtime、仓储实现）只需要：
+ * 消费方（前端、BFF、能力模块、仓储实现）只需要：
  *   import { ... } from "@ema-agent/core-types"
  */
 
@@ -14,6 +14,7 @@ export type * from "./session.js"
 export type * from "./message.js"
 export type * from "./turn.js"
 export type * from "./artifact.js"
+export type * from "./attachment.js"
 export type * from "./model.js"
 
 // ---- 记忆系统 ----

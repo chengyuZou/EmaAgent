@@ -3,6 +3,9 @@ import { createSessionRepository } from "./sessions.js";
 import { createTurnRepository } from "./turns.js";
 import { createMessageRepository } from "./messages.js";
 import { createArtifactRepository } from "./artifacts.js";
+import { createAttachmentRepository } from "./attachments.js";
+import { createMemoryRepository } from "./memory.js";
+import { createTelemetryRepository } from "./telemetry.js";
 
 /**
  * 组装 SQLite 本地存储引擎
@@ -16,6 +19,9 @@ export function createSqliteStorage(dbPath: string) {
     turns: createTurnRepository(db),
     messages: createMessageRepository(db),
     artifacts: createArtifactRepository(db),
+    attachments: createAttachmentRepository(db),
+    memory: createMemoryRepository(db),
+    telemetry: createTelemetryRepository(db),
     
     // Tauri 应用退出或 sidecar 关闭时调用
     close: () => {

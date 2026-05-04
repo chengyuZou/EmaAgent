@@ -16,6 +16,7 @@ type Env = Record<string, string | undefined>
  */
 export function createDefaultLlmConfig(env: Env = {}): LlmConfigSnapshot {
   const providers = [
+    createLocalDevConfig(env),
     createOpenAiConfig(env),
     createAnthropicConfig(env),
     createGeminiConfig(env),
@@ -26,7 +27,27 @@ export function createDefaultLlmConfig(env: Env = {}): LlmConfigSnapshot {
 
   return {
     providers,
-    bindings: createDefaultBindings(),
+    bindings: createDefaultBindings(env),
+  }
+}
+
+export function createLocalDevConfig(env: Env = {}): LlmProviderConfig {
+  return {
+    id: providerId("local-dev"),
+    kind: "local-dev",
+    displayName: "Local Dev",
+    enabled: env.EMA_LOCAL_DEV_PROVIDER !== "0",
+    baseUrl: "local://ema-agent",
+    staticModels: [
+      model("local-dev/ema-local-chat", "Ema Local Chat", "local-dev", ["chat", "agent", "narrative"], "text", 16_000, 2_048),
+      model("local-dev/ema-local-title", "Ema Local Title", "local-dev", ["title"], "text", 4_000, 256),
+    ],
+    modelAliases: {
+      "local-dev/default-chat": "ema-local-chat",
+      "local-dev/default-agent": "ema-local-chat",
+      "local-dev/default-narrative": "ema-local-chat",
+      "local-dev/default-title": "ema-local-title",
+    },
   }
 }
 
@@ -63,6 +84,7 @@ export function createAnthropicConfig(env: Env = {}): LlmProviderConfig {
     modelAliases: {
       "anthropic/default-chat": env.ANTHROPIC_CHAT_MODEL ?? "claude-3-5-sonnet-latest",
       "anthropic/default-agent": env.ANTHROPIC_AGENT_MODEL ?? env.ANTHROPIC_CHAT_MODEL ?? "claude-3-5-sonnet-latest",
+      "anthropic/default-title": env.ANTHROPIC_TITLE_MODEL ?? env.ANTHROPIC_CHAT_MODEL ?? "claude-3-5-sonnet-latest",
     },
   }
 }
@@ -81,6 +103,7 @@ export function createGeminiConfig(env: Env = {}): LlmProviderConfig {
     modelAliases: {
       "gemini/default-chat": env.GEMINI_CHAT_MODEL ?? "gemini-1.5-pro",
       "gemini/default-agent": env.GEMINI_AGENT_MODEL ?? env.GEMINI_CHAT_MODEL ?? "gemini-1.5-pro",
+      "gemini/default-title": env.GEMINI_TITLE_MODEL ?? env.GEMINI_CHAT_MODEL ?? "gemini-1.5-pro",
     },
   }
 }
@@ -98,6 +121,8 @@ export function createDeepSeekConfig(env: Env = {}): LlmProviderConfig {
     ],
     modelAliases: {
       "deepseek/default-chat": env.DEEPSEEK_CHAT_MODEL ?? "deepseek-chat",
+      "deepseek/default-agent": env.DEEPSEEK_AGENT_MODEL ?? env.DEEPSEEK_CHAT_MODEL ?? "deepseek-chat",
+      "deepseek/default-title": env.DEEPSEEK_TITLE_MODEL ?? env.DEEPSEEK_CHAT_MODEL ?? "deepseek-chat",
     },
   }
 }
@@ -120,6 +145,7 @@ export function createOpenRouterConfig(env: Env = {}): LlmProviderConfig {
     modelAliases: {
       "openrouter/default-chat": env.OPENROUTER_CHAT_MODEL ?? "openai/gpt-4o-mini",
       "openrouter/default-agent": env.OPENROUTER_AGENT_MODEL ?? env.OPENROUTER_CHAT_MODEL ?? "openai/gpt-4o-mini",
+      "openrouter/default-title": env.OPENROUTER_TITLE_MODEL ?? env.OPENROUTER_CHAT_MODEL ?? "openai/gpt-4o-mini",
     },
   }
 }
@@ -138,19 +164,33 @@ export function createOllamaConfig(env: Env = {}): LlmProviderConfig {
     modelAliases: {
       "ollama/default-chat": env.OLLAMA_CHAT_MODEL ?? "llama3.1",
       "ollama/default-agent": env.OLLAMA_AGENT_MODEL ?? env.OLLAMA_CHAT_MODEL ?? "llama3.1",
+      "ollama/default-title": env.OLLAMA_TITLE_MODEL ?? env.OLLAMA_CHAT_MODEL ?? "llama3.1",
     },
   }
 }
 
-function createDefaultBindings(): Record<ModelRole, ModelBinding> {
+function createDefaultBindings(env: Env = {}): Record<ModelRole, ModelBinding> {
+  const defaultProvider = chooseDefaultTextProvider(env)
+  const narrativeProvider = env.DEEPSEEK_API_KEY ? "deepseek" : defaultProvider
+
   return {
-    chat: binding("chat", "openai", "openai/default-chat"),
-    agent: binding("agent", "openai", "openai/default-agent"),
-    narrative: binding("narrative", "deepseek", "deepseek/default-chat"),
-    title: binding("title", "openai", "openai/default-title"),
-    embedding: binding("embedding", "openai", "openai/default-chat"),
-    rerank: binding("rerank", "openai", "openai/default-chat"),
+    chat: binding("chat", defaultProvider, `${defaultProvider}/default-chat`),
+    agent: binding("agent", defaultProvider, `${defaultProvider}/default-agent`),
+    narrative: binding("narrative", narrativeProvider, `${narrativeProvider}/default-chat`),
+    title: binding("title", defaultProvider, `${defaultProvider}/default-title`),
+    embedding: binding("embedding", defaultProvider, `${defaultProvider}/default-chat`),
+    rerank: binding("rerank", defaultProvider, `${defaultProvider}/default-chat`),
   }
+}
+
+function chooseDefaultTextProvider(env: Env): string {
+  if (env.OPENAI_API_KEY) return "openai"
+  if (env.ANTHROPIC_API_KEY) return "anthropic"
+  if (env.GEMINI_API_KEY) return "gemini"
+  if (env.DEEPSEEK_API_KEY) return "deepseek"
+  if (env.OPENROUTER_API_KEY) return "openrouter"
+  if (env.OLLAMA_ENABLED === "1") return "ollama"
+  return "local-dev"
 }
 
 function binding(role: ModelRole, provider: string, modelIdValue: string): ModelBinding {

@@ -3,6 +3,7 @@ import type {
   ChatCompletionChunk,
   ModelDescriptor,
   ModelRole,
+  ModelId,
   ProviderDescriptor,
   ProviderHealthView,
   ProviderId,
@@ -11,6 +12,7 @@ import type {
 
 import { createAnthropicAdapter } from "./adapters/anthropic.js"
 import { createGeminiAdapter } from "./adapters/gemini.js"
+import { createLocalDevAdapter } from "./adapters/local-dev.js"
 import { createOpenAiCompatibleAdapter } from "./adapters/openai-compatible.js"
 import { createOpenAiAdapter } from "./adapters/openai.js"
 import { ModelCatalog } from "./catalog.js"
@@ -24,6 +26,7 @@ import type {
   ModelBinding,
   ModelBindingConfig,
 } from "./types.js"
+import { normalizeProviderError } from "./usage.js"
 
 /**
  * LLM 注册中心。
@@ -65,6 +68,28 @@ export class LlmRegistry {
     const provider = this.withInjectedFetch(config)
     this.providers.set(provider.id, provider)
     this.catalog.upsertMany(provider.staticModels ?? [])
+  }
+
+  updateProvider(providerId: ProviderId, patch: Partial<LlmProviderConfig>): LlmProviderConfig {
+    const current = this.getProvider(providerId)
+    const next = this.withInjectedFetch({
+      ...current,
+      ...patch,
+      id: current.id,
+      kind: patch.kind ?? current.kind,
+    })
+
+    this.providers.set(providerId, next)
+    this.catalog.upsertMany(next.staticModels ?? [])
+    return this.redactProviderSecret(next)
+  }
+
+  getProviderConfig(providerId: ProviderId): LlmProviderConfig {
+    return this.redactProviderSecret(this.getProvider(providerId))
+  }
+
+  listProviderConfigs(): LlmProviderConfig[] {
+    return [...this.providers.values()].map((provider) => this.redactProviderSecret(provider))
   }
 
   applyConfig(config: LlmConfigSnapshot): void {
@@ -113,6 +138,13 @@ export class LlmRegistry {
     return this.catalog.snapshotBindings()
   }
 
+  getConfigSnapshot(): LlmConfigSnapshot {
+    return {
+      providers: this.listProviderConfigs(),
+      bindings: this.getBindingsSnapshot(),
+    }
+  }
+
   streamChat(request: LlmStreamRequest): AsyncIterable<ChatCompletionChunk> {
     const provider = this.getProvider(request.providerId)
 
@@ -121,6 +153,25 @@ export class LlmRegistry {
     }
 
     return this.getAdapter(provider.kind).streamChat(provider, request)
+  }
+
+  async *streamChatWithFallback(request: LlmStreamRequest, fallbackModelIds: readonly ModelId[] = []): AsyncIterable<ChatCompletionChunk> {
+    const candidates = [request.modelId, ...fallbackModelIds]
+    let lastError: unknown
+
+    for (const modelId of candidates) {
+      try {
+        yield* this.streamChat({
+          ...request,
+          modelId,
+        })
+        return
+      } catch (error) {
+        lastError = error
+      }
+    }
+
+    throw normalizeProviderError(lastError)
   }
 
   private getProvider(providerId: ProviderId): LlmProviderConfig {
@@ -145,10 +196,19 @@ export class LlmRegistry {
       fetch: config.fetch ?? this.fetchLike,
     }
   }
+
+  private redactProviderSecret(config: LlmProviderConfig): LlmProviderConfig {
+    return {
+      ...config,
+      apiKey: config.apiKey ? "********" : undefined,
+      fetch: undefined,
+    }
+  }
 }
 
 export function createDefaultAdapters(): LlmAdapter[] {
   return [
+    createLocalDevAdapter(),
     createOpenAiAdapter(),
     createAnthropicAdapter(),
     createGeminiAdapter(),

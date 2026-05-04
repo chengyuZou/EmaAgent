@@ -16,7 +16,9 @@
   },
   "dependencies": {
     "@ema-agent/core-types": "workspace:*",
-    "@ema-agent/llm": "workspace:*"
+    "@ema-agent/llm": "workspace:*",
+    "@ema-agent/memory": "workspace:*",
+    "@ema-agent/permission": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^5.7.0"

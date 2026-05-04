@@ -76,6 +76,9 @@ export type SseEvent =
   // --- 图片 ---
   | ImageEvent
 
+  // --- 舞台提示 ---
+  | StageCueEvent
+
   // --- 生命周期 ---
   | TurnStartedEvent
   | TurnCompletedEvent
@@ -279,7 +282,28 @@ export interface ImageEvent extends BaseEvent {
 export interface TurnStartedEvent extends BaseEvent {
   type: "turn_started"
   mode: EmaMode
+  /** 用户输入已落盘的消息 ID。 */
+  userMessageId: MessageId
+  /** 后续流式输出要写入的助手消息 ID。 */
+  assistantMessageId: MessageId
+  /** 兼容早期事件消费者；语义等同于 assistantMessageId。 */
   messageId: MessageId
+}
+
+// ==========================================
+// 舞台提示
+// ==========================================
+
+export interface StageCueEvent extends BaseEvent {
+  type: "stage_cue"
+  cue: {
+    source: "act" | "step" | "tool" | "artifact" | "system"
+    expression?: "neutral" | "curious" | "happy" | "thinking" | "sad" | "surprised"
+    motion?: "idle" | "lean_forward" | "nod" | "look_left" | "look_right"
+    mouth?: "idle" | "speaking"
+    priority?: number
+    durationMs?: number
+  }
 }
 
 export interface TurnCompletedEvent extends BaseEvent {
