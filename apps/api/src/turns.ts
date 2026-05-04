@@ -27,6 +27,7 @@ import { estimateUsageCost } from "@ema-agent/llm"
 import type { LlmRegistry } from "@ema-agent/llm"
 import { NarrativeBridgeClient, narrativeResultToContext } from "@ema-agent/narrative"
 import { PermissionEngine, createDefaultPermissionPolicy } from "@ema-agent/permission"
+import { buildSystemPrompt } from "@ema-agent/prompts"
 import { createWorkspaceScope } from "@ema-agent/sandbox"
 import { SessionManager, SessionWriter, createFallbackTitle } from "@ema-agent/session"
 import type { SqliteStorage } from "@ema-agent/storage-sql"
@@ -106,6 +107,9 @@ export class TurnService {
     this.telemetry = new TelemetryRecorder(storage)
   }
 
+  /**
+   * 处理 POST /api/turns 请求，启动一个新的聊天 turn。
+   */
   async startTurn(input: StartTurnRequest): Promise<StartTurnResponse> {
     const acceptedAt = Date.now()
     const normalizedInput = normalizeTurnInput(input)
@@ -139,7 +143,6 @@ export class TurnService {
       assistantMessageId,
       messageId: assistantMessageId,
     })
-
     this.startBackgroundTurn({
       sessionId: input.sessionId,
       requestId,
@@ -616,9 +619,10 @@ export class TurnService {
     return [
       {
         role: "system",
-        content: extraSystemContext
-          ? `${createSystemPrompt(mode)}\n\n【召回上下文】\n${extraSystemContext}`
-          : createSystemPrompt(mode),
+        content: buildSystemPrompt({
+          mode,
+          recalledContext: extraSystemContext,
+        }),
       },
       ...history.items.map(toChatCompletionMessage).filter((message): message is ChatCompletionMessage => Boolean(message)),
     ]
@@ -884,36 +888,6 @@ function getModeModelOverride(mode: EmaMode, overrides: StartTurnRequest["modelO
   return overrides.chatModelId
 }
 
-function createSystemPrompt(mode: EmaMode): string {
-  const basePrompt = [
-    "你是 EmaAgent 中固定角色 Ema。",
-    "你说中文时自然、清楚、带一点温柔的陪伴感，但不要撒娇过度。",
-    "你要先解决用户的问题，再用简短句子保持 Ema 的语气。",
-    "不知道的事情要直接说明，不要编造。",
-  ].join("\n")
-
-  if (mode === "agent") {
-    return [
-      basePrompt,
-      "当前模式是 agent。你仍然保持 Ema 的语气，但要以完成任务为第一目标。",
-      "需要工具时先表达计划和风险，等待系统工具链与权限确认，不要把未执行的操作说成已经完成。",
-    ].join("\n")
-  }
-
-  if (mode === "narrative") {
-    return [
-      basePrompt,
-      "当前模式是 narrative。你要更重视剧情语境、情绪连续性和角色沉浸感。",
-      "没有检索到剧情事实时，只能按用户提供的信息继续，不要补写世界设定。",
-    ].join("\n")
-  }
-
-  return [
-    basePrompt,
-    "当前模式是 chat。你要像日常对话一样回应，回答要有信息量，但不要把普通聊天变成任务报告。",
-  ].join("\n")
-}
-
 function toChatCompletionMessage(message: ChatMessage): ChatCompletionMessage | undefined {
   const text = contentBlocksToPlainText(message.contentBlocks)
 
@@ -972,7 +946,6 @@ function contentBlocksToPlainText(blocks: readonly MessageContentBlock[]): strin
     .join("\n")
     .trim()
 }
-
 function inputToPlainText(input: readonly TurnInputBlock[]): string {
   return input
     .map((block) => {
