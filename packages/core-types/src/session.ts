@@ -47,6 +47,8 @@ export interface CreateSessionInput {
   title?: string
   lastMode?: EmaMode
   createdAt?: UnixMs
+  fullAccess?: boolean
+  activeSkills?: string[]
 }
 
 // ═══════════════════════════════════════════════════════════════

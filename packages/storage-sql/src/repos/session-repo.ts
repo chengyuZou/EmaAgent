@@ -60,11 +60,13 @@ export function createSessionRepository(db: Database): SessionRepository {
       const now = input.createdAt ?? Date.now()
       const title = input.title ?? "New Chat"
       const lastMode = input.lastMode ?? "chat"
+      const fullAccess = input.fullAccess ?? true
+      const activeSkills = input.activeSkills ?? []
 
       db.prepare(`
-        INSERT INTO sessions (id, title, last_mode, active_skills, created_at, updated_at)
-        VALUES (?, ?, ?, '[]', ?, ?)
-      `).run(input.id, title, lastMode, now, now)
+        INSERT INTO sessions (id, title, last_mode, full_access, active_skills, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run(input.id, title, lastMode, fullAccess ? 1 : 0, JSON.stringify(activeSkills), now, now)
 
       return (await this.getById(input.id))!
     },
