@@ -1,6 +1,6 @@
 # @ema-agent/storage-sql
 
-SQLite 持久化层。11 个仓储实现 + FTS5 全文索引 + WAL 模式迁移。所有 Repository 接口和实现均位于此包内，不由 `@ema-agent/core-types` 承载。
+SQLite 持久化层。10 个仓储实现 + FTS5 全文索引 + WAL 模式迁移。所有 Repository 接口和实现均位于此包内，不由 `@ema-agent/core-types` 承载。
 
 ## 设计原则
 
@@ -26,13 +26,12 @@ src/
     attachment-repo.ts        # AttachmentRepository
     memory-fact-repo.ts       # MemoryRepository (facts + session_summaries)
     telemetry-repo.ts         # TelemetryRepository
-    step-repo.ts              # StepRepository (ReAct 步骤追踪)
     provider-config-repo.ts   # ProviderConfigRepository
     model-binding-repo.ts     # ModelBindingRepository
     permission-grant-repo.ts  # PermissionGrantRepository
 ```
 
-## 表设计（13 表 + 2 FTS5 虚拟表）
+## 表设计（12 表 + 2 FTS5 虚拟表）
 
 ### sessions
 
@@ -232,25 +231,6 @@ try {
 
 ---
 
-### steps（v5 迁移）
-
-| 列 | 类型 | 说明 |
-|---|---|---|
-| `id` | `TEXT PK` | `StepId` |
-| `request_id` | `TEXT NOT NULL` | FK → turns |
-| `session_id` | `TEXT NOT NULL` | FK → sessions |
-| `step_type` | `TEXT NOT NULL` | `ReActStepType` |
-| `title` | `TEXT NOT NULL` | 步骤标题 |
-| `status` | `TEXT NOT NULL DEFAULT 'pending'` | `StepStatus` |
-| `detail` | `TEXT` | 详细信息 |
-| `tool_call_id` | `TEXT` | 关联工具调用的 `ToolCallId` |
-| `tool_name` | `TEXT` | 关联工具名称 |
-| `artifact_ids` | `TEXT` | JSON 数组，产物 ID 列表 |
-| `started_at` | `INTEGER NOT NULL` | `UnixMs` |
-| `ended_at` | `INTEGER` | `UnixMs` |
-
-索引：`(request_id)`
-
 ### provider_configs（v5 迁移）
 
 | 列 | 类型 | 说明 |
@@ -311,7 +291,7 @@ const MIGRATIONS: Record<number, (db: Database) => void> = {
   2: (db) => { /* turns 新增 error_code / error_message */ },
   3: (db) => { /* attachments + attachment_chunks */ },
   4: (db) => { /* memory_facts + session_summaries + telemetry_events */ },
-  5: (db) => { /* steps + provider_configs + model_bindings + permission_grants */ },
+  5: (db) => { /* provider_configs + model_bindings + permission_grants */ },
 }
 
 export function migrate(db: Database): void {
@@ -335,7 +315,7 @@ import { createSqliteStorage } from "@ema-agent/storage-sql"
 
 const storage = createSqliteStorage("~/.ema-agent/data.db")
 
-// 11 个仓储 + 关闭 + FTS 辅助
+// 10 个仓储 + 关闭 + FTS 辅助
 const {
   sessions,          // SessionRepository
   turns,             // TurnRepository
@@ -344,7 +324,6 @@ const {
   attachments,       // AttachmentRepository
   memory,            // MemoryRepository
   telemetry,         // TelemetryRepository
-  steps,             // StepRepository
   providerConfigs,   // ProviderConfigRepository
   modelBindings,     // ModelBindingRepository
   permissionGrants,  // PermissionGrantRepository
@@ -382,7 +361,6 @@ export function createSqliteStorage(dbPath: string): {
   attachments: AttachmentRepository
   memory: MemoryRepository
   telemetry: TelemetryRepository
-  steps: StepRepository
   providerConfigs: ProviderConfigRepository
   modelBindings: ModelBindingRepository
   permissionGrants: PermissionGrantRepository

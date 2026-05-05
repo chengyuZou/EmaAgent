@@ -3,27 +3,23 @@
  *
  * 它负责：
  * - 创建 / 删除 Session。
- * - 写入 User Message。
- * - upsert Assistant Message 快照。
- * - 标记 Turn started / completed / failed / aborted。
- * - 更新 lastMode。
- * - 提供 fallback title 的纯函数。
+ * - 写入 User Message / Assistant Message Shell / upsert Assistant Message。
+ * - 标记 Turn queued → running → completed / failed / aborted。
+ * - 更新 lastMode 和 title。
  *
  * 它不负责：
  * - ActiveSession 内存态。
  * - Turn 并发锁。
- * - Prompt 组装。
- * - LLM 调用。
- * - Tool 执行。
- * - SSE 事件转换。
+ * - Prompt 组装 / LLM 调用 / Tool 执行 / SSE 事件转换。
  */
+import { SESSION_TITLE_MAX_LENGTH, TITLE_TRUNCATION_SUFFIX } from "@ema-agent/constants-core"
 import type { SqliteStorage } from "@ema-agent/storage-sql"
 
+import { EmaError } from "@ema-agent/core-types"
 import type {
   ChatMessage,
   CreateSessionInput,
   EmaMode,
-  EmaError,
   RequestId,
   SessionId,
   SessionState,
@@ -32,23 +28,15 @@ import type {
   UsageView,
 } from "@ema-agent/core-types"
 
-export interface MarkTurnStartedInput {
+// ═══════════════════════════════════════════════════════════════
+// 输入类型
+// ═══════════════════════════════════════════════════════════════
+
+export interface MarkTurnInput {
   sessionId: SessionId
   requestId: RequestId
   mode: EmaMode
   startedAt: number
-}
-
-export interface AppendUserMessageInput {
-  sessionId: SessionId
-  requestId: RequestId
-  message: ChatMessage
-}
-
-export interface UpsertAssistantMessageInput {
-  sessionId: SessionId
-  requestId: RequestId
-  message: ChatMessage
 }
 
 export interface MarkTurnCompletedInput {
@@ -69,56 +57,49 @@ export interface MarkTurnAbortedInput {
   reason?: string
 }
 
+// ═══════════════════════════════════════════════════════════════
+// SessionWriter
+// ═══════════════════════════════════════════════════════════════
+
 export class SessionWriter {
   constructor(private readonly storage: SqliteStorage) {}
 
+  // ---- Session CRUD ----
+
   async createSession(input: CreateSessionInput): Promise<SessionState> {
-    // TODO:
-    // 1. 调用 storage.sessions.create(...)
-    // 2. 返回创建后的 SessionState
-    const session = await this.storage.sessions.create(input)
-    return session
+    return await this.storage.sessions.create(input)
   }
 
   async deleteSession(sessionId: SessionId): Promise<void> {
-    // TODO:
-    // 1. 调用 storage.sessions.delete(sessionId)
-    // 2. 注意：具体级联删除由 storage-sql / SQLite 外键负责
     await this.storage.sessions.delete(sessionId)
   }
 
-  async markTurnStarted(input: MarkTurnStartedInput): Promise<TurnRecord> {
-    // 1. 创建 turns 记录，状态 running
-    // 2. 更新 session.lastMode
+  async getSession(sessionId: SessionId): Promise<SessionState | null> {
+    return await this.storage.sessions.getById(sessionId)
+  }
+
+  // ---- Turn 状态标记 ----
+
+  async markTurnQueued(input: MarkTurnInput): Promise<TurnRecord> {
     const turn = await this.storage.turns.createTurn({
-        sessionId: input.sessionId,
-        requestId: input.requestId,
-        mode: input.mode,
-        status: "running",
-        startedAt: input.startedAt,
+      requestId: input.requestId,
+      sessionId: input.sessionId,
+      mode: input.mode,
+      status: "queued",
+      startedAt: input.startedAt,
     })
     await this.storage.sessions.updateLastMode(input.sessionId, input.mode)
     return turn
   }
 
-  async appendUserMessage(input: AppendUserMessageInput): Promise<void> {
-    // 1. 将用户消息写入 storage
-    await this.storage.messages.appendMessage(input.sessionId, input.message)
-  }
-
-  async upsertAssistantMessage(input: UpsertAssistantMessageInput): Promise<void> {
-    // 流式更新：幂等覆盖，不会产生重复行
-    await this.storage.messages.upsertMessage(input.sessionId, input.message)
+  async markTurnRunning(_sessionId: SessionId, requestId: RequestId): Promise<void> {
+    await this.storage.turns.updateTurn({ requestId, status: "running" })
   }
 
   async markTurnCompleted(input: MarkTurnCompletedInput): Promise<void> {
-    // TODO:
-    // 1. 更新 turn.status = completed
-    // 2. 写入 endedAt
-    // 3. 写入 usage
     const turn = await this.storage.turns.getTurnById(input.requestId)
     if (!turn) {
-      throw new Error(`Turn with requestId ${input.requestId} not found`)
+      throw new EmaError("turn_not_found", `Turn ${input.requestId} not found`, false)
     }
     await this.storage.turns.updateTurn({
       requestId: input.requestId,
@@ -126,38 +107,26 @@ export class SessionWriter {
       usage: input.usage,
       endedAt: Date.now(),
     })
-
   }
 
   async markTurnFailed(input: MarkTurnFailedInput): Promise<void> {
-    // TODO:
-    // 1. 更新 turn.status = failed
-    // 2. 写入 endedAt
-    // 3. 写入 errorCode / errorMessage
     const turn = await this.storage.turns.getTurnById(input.requestId)
     if (!turn) {
-      throw new Error(`Turn with requestId ${input.requestId} not found`)
+      throw new EmaError("turn_not_found", `Turn ${input.requestId} not found`, false)
     }
     await this.storage.turns.updateTurn({
       requestId: input.requestId,
       status: "failed",
       endedAt: Date.now(),
       errorCode: input.error.code,
-      errorMessage: input.error.message
+      errorMessage: input.error.message,
     })
   }
 
   async markTurnAborted(input: MarkTurnAbortedInput): Promise<void> {
-    // TODO:
-    // 1. 更新 turn.status = cancelled
-    // 2. 写入 endedAt
-    // 3. 写入 reason
-    //
-    // 这个函数主要服务于 abort-previous 策略：
-    // 旧 turn 被内存中止后，数据库也必须同步为 cancelled。
     const turn = await this.storage.turns.getTurnById(input.requestId)
     if (!turn) {
-      throw new Error(`Turn with requestId ${input.requestId} not found`)
+      throw new EmaError("turn_not_found", `Turn ${input.requestId} not found`, false)
     }
     await this.storage.turns.updateTurn({
       requestId: input.requestId,
@@ -165,6 +134,22 @@ export class SessionWriter {
       endedAt: Date.now(),
     })
   }
+
+  // ---- 消息写入 ----
+
+  async appendUserMessage(sessionId: SessionId, message: ChatMessage): Promise<void> {
+    await this.storage.messages.appendMessage(sessionId, message)
+  }
+
+  async appendAssistantMessageShell(sessionId: SessionId, message: ChatMessage): Promise<void> {
+    await this.storage.messages.appendMessage(sessionId, message)
+  }
+
+  async upsertAssistantMessage(sessionId: SessionId, message: ChatMessage): Promise<void> {
+    await this.storage.messages.upsertMessage(sessionId, message)
+  }
+
+  // ---- 标题 ----
 
   async updateTitle(
     sessionId: SessionId,
@@ -175,29 +160,21 @@ export class SessionWriter {
   }
 }
 
-/**
- * 生成 fallback 标题。
- *
- * 这是纯函数，不访问数据库，不调用 LLM。
- */
-export function createFallbackTitle(userText: string, maxLength = 24): string {
-    const cleaned = userText.trim().replace(/\s+/g, " ")
-    if (cleaned === "") {
-        return "新对话"
-    }
-    if (cleaned.length <= maxLength) {
-        return cleaned
-    }
-    return `${cleaned.substring(0, maxLength)}...`
+// ═══════════════════════════════════════════════════════════════
+// 纯函数（不访问 DB）
+// ═══════════════════════════════════════════════════════════════
+
+export function createFallbackTitle(userText: string, maxLength = SESSION_TITLE_MAX_LENGTH): string {
+  const cleaned = userText.trim().replace(/\s+/g, " ")
+  if (cleaned === "") {
+    return "新对话"
+  }
+  if (cleaned.length <= maxLength) {
+    return cleaned
+  }
+  return `${cleaned.substring(0, maxLength)}${TITLE_TRUNCATION_SUFFIX}`
 }
-/**
- * 判断当前 session 是否适合写入 fallback title。
- *
- * 这是纯函数，不访问数据库。
- */
+
 export function shouldUseFallbackTitle(session: SessionState): boolean {
-  // TODO:
-  // 1. titleStatus 是 default / failed 时可以 fallback
-  // 2. manual / generated 不应该覆盖
   return session.titleStatus === "default" || session.titleStatus === "failed"
 }

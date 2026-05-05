@@ -1,130 +1,115 @@
 # @ema-agent/session
 
-负责 session 生命周期、历史读取、turn 状态和活跃 session 内存态的领域核心。
-
-明确边界：本模块**不**负责 mode 编排、skill 合并、prompt 组装、LLM 调用或 SSE 转换。这些职责分别属于 `@ema-agent/orchestrator`, `@ema-agent/tool`, `@ema-agent/llm` 等上层或远端模块。
-
-所有公共实体协议（跨模块或被前端复用的事实源数据）皆定义于 `@ema-agent/core-types`。本包只提供操作 API 并封装独有的内存运行状态。
+会话生命周期、并发控制、持久化读写的领域核心。不负责 mode 编排、prompt 组装、LLM 调用、SSE 转换。
 
 ---
 
-## 职责边界
+## 文件地图
 
-### 只管
-
-| 职责 | 对应文件 |
-|---|---|
-| Session 生命周期（create / load / delete / unload） | `session-manager.ts` |
-| 内存中活跃 session 的轻量状态（currentTurn、abortController） | `active-session.ts` |
-| 同一 session 下的 turn 并发控制锁 | `turn-lock.ts` |
-| 历史消息与实体数据的只读分页查询 | `session-reader.ts` |
-| 消息与 turn 状态的落盘（数据库写入映射） | `session-writer.ts` |
-
-### 不管（这些属于其他包）
-
-| 职责 | 归属 |
-|---|---|
-| skill 合并与解析 | `@ema-agent/tool` |
-| system prompt 与 RAG 上下文拼装 | `@ema-agent/orchestrator` |
-| Agent 思考与执行的 loop 编排 | `@ema-agent/orchestrator` |
-| LLM API 网络请求详情 | `@ema-agent/llm` |
-| 打字机 SSE 转换为 Block 格式 | `@ema-agent/orchestrator` 内部 |
+| 文件 | 职责 | 产出物 |
+|------|------|--------|
+| `session-manager.ts` | Façade：组合 ActiveSession + TurnLock + SessionWriter 为统一入口 | `SessionManager` |
+| `session-writer.ts` | 纯 DB 写入：创建/删除 session，落盘 turn 状态，写入/upsert 消息，更新标题 | `SessionWriter` |
+| `session-reader.ts` | 纯 DB 只读：会话列表、详情聚合、历史消息分页 | `SessionReader` |
+| `active-session.ts` | 进程内内存态：currentTurn、AbortController、生命周期事件订阅 | `ActiveSession` |
+| `turn-lock.ts` | Turn 并发锁：同 session 同时最多一个 running turn | `acquireTurnLock` |
+| `index.ts` | barrel 统一导出 | — |
 
 ---
 
-## 目录结构
+## 核心设计
 
-第一版极简主义结构：
+### 1. 组合而非上帝类
 
-```text
-packages/session/src/
-  index.ts              # 模块导出入口
-  session-manager.ts    # 业务外观: 提供 beginTurn 等动作组合内存态与数据库
-  active-session.ts     # ActiveSession: 仅限内存态（currentTurn、Aborts），不碰 DB
-  turn-lock.ts          # turn 并发锁：保证同一 session 同时最多一个 running turn
-  session-reader.ts     # SessionReader: 只读查询聚合查询
-  session-writer.ts     # SessionWriter: 仅纯 DB 写入，含 fallback title（纯函数）
+- `ActiveSession` 是纯内存状态机，**不碰数据库**。
+- `SessionWriter` 是纯 DB 写映射，**不管内存**。
+- `SessionManager` 组合两者，用 try/catch 确保 DB 写失败时回滚内存态。
+- `SessionReader` 是独立只读通道，不依赖 ActiveSession。
+
+### 2. 按需加载
+
+仅在用户打开 Session 或发起 Turn 时才实例化 `ActiveSession` 放入 `activeSessions` 映射。长时间闲置由 `unloadSession()` 清理。
+
+### 3. 内存态不进协议包
+
+`AbortController` 不可 JSON 序列化，`currentTurn` 是进程内临时状态。绝对禁止将此类对象定义在 `@ema-agent/core-types`。
+
+---
+
+## 完整流转
+
+```
+上层 (turn-service / orchestrator)
+  │
+  ├─ ensureSession(sessionId)
+  │    → SessionWriter.createSession 或 no-op（已存在）
+  │
+  ├─ beginTurn({ sessionId, requestId, mode, userInputBlocks })
+  │    ├─ ActiveSession.beginTurnInMemory  → 创建 AbortController + currentTurn
+  │    ├─ SessionWriter.markTurnQueued     → turns 表: status = "queued"
+  │    ├─ SessionWriter.appendUserMessage  → messages 表: user ChatMessage
+  │    ├─ SessionWriter.appendAssistantMessageShell → messages 表: assistant 空壳（status = "generating"）
+  │    └─ SessionWriter.markTurnRunning    → turns 表: status = "running"
+  │    └─ 返回 { turnRecord, abortSignal, userMessageId, assistantMessageId }
+  │
+  ├─ [SSE 流式循环]
+  │    └─ SessionWriter.upsertAssistantMessage → contentBlocks 增量落盘
+  │
+  ├─ completeTurn({ sessionId, requestId, usage })
+  │    ├─ SessionWriter.markTurnCompleted  → turns 表: status = "completed"
+  │    └─ ActiveSession.completeTurnInMemory
+  │
+  └─ failTurn({ sessionId, requestId, error })
+       ├─ SessionWriter.markTurnFailed     → turns 表: status = "failed"
+       └─ ActiveSession.failTurnInMemory
 ```
 
 ---
 
-## 核心实现笔记
+## 导出的核心 API
 
-1. **组合而非上帝类 (Facade over Gods)**：
-   `ActiveSession` 是纯内存状态机，**不会注入 SQLite 存储**。`SessionWriter` 是纯 DB 映射写手，不管内存。`SessionManager` 提供如 `beginTurn()` 这样面向上层的统一方法，利用 `try...catch` 实现内存对持久化失败的级联回滚。这样既不让调用方繁琐，也不让某一个类越界成为上帝类。
-
-2. **按需加载 (Lazy Allocation)**：
-   仅在用户打开具体 Session、订阅其运行状态，或向该 Session 发起 Turn 时，才实例化 `ActiveSession` 并放进 `activeSessions` 映射。此内存储备专用来抵挡高并发请求及其打断，并防范产生脏的 SQLite 数据。长时间闲置即触发 `unloadSession()` 被 GC 垃圾回收。
-
-3. **Title 计算与状态**：
-   目前的 Fallback title（取首句、是否该写 Title 的规则特征判断）作为普通的纯函数存在于 `session-writer.ts` 或 `manager` 内。等以后接入更复杂的模型提取或重试机制时再去单独拆分专用服务。
-
-4. **绝不放纵内存态进协议包**：
-   `AbortController` 是 Javascript 引擎层的异步中断对象，`currentTurn` 表示内存流转的临时断点。因为其无法被 JSON 序列化为跨进程信息，绝对禁止将此类非真实存储特质的内容定义引入共用的 `@ema-agent/core-types`。它仅属于本包内部私域机制。
-
----
-
-## 核心流转图
-
-上层模块无需再零碎地拼装状态机制，直接统一呼叫 `SessionManager`：
-
-```mermaid
-sequenceDiagram
-    participant OC as @ema-agent/orchestrator
-    participant SM as SessionManager
-    participant AS as ActiveSession (Memory)
-    participant WRT as SessionWriter (Database)
-    participant LLM as @ema-agent/llm
-
-    OC->>SM: beginTurn({ requestId, mode, userMessage })
-    
-    SM->>AS: getOrCreate().beginTurnInMemory()
-    Note over AS: 初始化 AbortController & currentTurn
-    SM->>WRT: markTurnStarted() & appendUserMessage()
-    
-    alt 写入成功
-        SM-->>OC: 返回 abortSignal, TurnRecord
-    else 写入抛出异常
-        SM->>AS: 回滚状态 (failTurnInMemory)
-        SM-->>OC: 向上抛出对应 Error 
-    end
-
-    Note over OC,LLM: prompt assembly, skill合并, invoke stream 等动作
-
-    loop 流式响应中每一个打字块
-        LLM-->>OC: 返回块事件
-        OC->>WRT: upsertAssistantMessage({ sessionId, requestId, messageId, blocks, status })
-    end
-    
-    alt 成功完结
-        OC->>SM: completeTurn( { sessionId, requestId, usage } )
-        SM->>WRT: markTurnCompleted()
-        SM->>AS: completeTurnInMemory()
-    else 请求中断/报错
-        OC->>SM: failTurn( { sessionId, requestId, errorCode, errorMessage } )
-        SM->>WRT: markTurnFailed()
-        SM->>AS: failTurnInMemory()
-    end
-```
-
----
-
-## 导出的核心 API (Orchestrator 视角)
-
-提供给外部模块的接口遵循严谨的聚合设计：
+### SessionManager（Façade）
 
 ```typescript
+export class SessionManager {
+  constructor(storage: SqliteStorage)
+
+  /** 确保 session 存在——不存在则创建，返回是否新建。 */
+  ensureSession(sessionId: SessionId, opts?: {
+    title?: string
+    mode?: EmaMode
+  }): Promise<EnsureSessionResult>
+
+  /** 开始一个 Turn：获取锁 → 内存注册 → 落盘 queued → 写 user 消息 → 写 assistant 空壳 → 标 running。 */
+  beginTurn(input: BeginTurnInput): Promise<BeginTurnResult>
+
+  /** 正常完成 Turn。 */
+  completeTurn(input: CompleteTurnInput): Promise<void>
+
+  /** Turn 执行失败。 */
+  failTurn(input: FailTurnInput): Promise<void>
+
+  /** 用户主动打断当前 Turn。 */
+  abortTurn(sessionId: SessionId): void
+
+  /** 卸载闲置 session 的内存态。 */
+  unloadSession(sessionId: SessionId): void
+}
+
 export interface BeginTurnInput {
   sessionId: SessionId
   requestId: RequestId
   mode: EmaMode
-  userMessage: ChatMessage
-  lockStrategy?: "reject" | "abort-previous"
+  /** 用户原始输入块——SessionManager 内部构建 ChatMessage。 */
+  userInputBlocks: TurnInputBlock[]
+  lockStrategy?: TurnLockStrategy  // 默认 "abort-previous"
 }
 
 export interface BeginTurnResult {
   turn: TurnRecord
   abortSignal: AbortSignal
+  userMessageId: MessageId
+  assistantMessageId: MessageId
 }
 
 export interface CompleteTurnInput {
@@ -136,64 +121,123 @@ export interface CompleteTurnInput {
 export interface FailTurnInput {
   sessionId: SessionId
   requestId: RequestId
-  errorCode: string
-  errorMessage?: string
+  error: EmaError
 }
 
-export class SessionManager {
-  constructor(storage: SqliteStorage)
-
-  beginTurn(input: BeginTurnInput): Promise<BeginTurnResult>
-  completeTurn(input: CompleteTurnInput): Promise<void>
-  failTurn(input: FailTurnInput): Promise<void>
-  abortTurn(sessionId: SessionId): void
-  unloadSession(sessionId: SessionId): void
+export interface EnsureSessionResult {
+  created: boolean
 }
 ```
 
-**使用代码样例：**
+### SessionWriter（纯 DB 写入）
 
 ```typescript
-import { createSqliteStorage } from "@ema-agent/storage-sql";
-import { SessionManager, SessionReader } from "@ema-agent/session";
+export class SessionWriter {
+  constructor(storage: SqliteStorage)
 
-const storage = createSqliteStorage("...");
-const manager = new SessionManager(storage);
-// 读取器亦可直接提供给前台展示聚合页面使用
-const reader = new SessionReader(storage); 
+  createSession(input: CreateSessionInput): Promise<SessionState>
+  deleteSession(sessionId: SessionId): Promise<void>
 
-// --- 例如：在外部路由入口的调用 ---
-async function handleUserChat(req) {
-    // 保证 requestId 由服务端安全生成可溯源
-    const requestId = createRequestId();
-    
-    // 1. 自动执行锁保护、内存建立、落盘记录与消息回存
-    const { turn, abortSignal } = await manager.beginTurn({
-        sessionId: req.sessionId,
-        requestId,
-        mode: req.mode,
-        userMessage: req.msg,
-        lockStrategy: "abort-previous" // 打断该 session 当前正在运行的 turn
-    });
+  markTurnQueued(input: MarkTurnInput): Promise<TurnRecord>
+  markTurnRunning(input: MarkTurnInput): Promise<void>
+  markTurnCompleted(input: MarkTurnCompletedInput): Promise<void>
+  markTurnFailed(input: MarkTurnFailedInput): Promise<void>
+  markTurnAborted(input: MarkTurnAbortedInput): Promise<void>
 
-    try {
-        // 2. 将安全打点发给大模型调度器
-        const res = await runOrchestratorLLMStream({ ...turn, abortSignal });
-        
-        // 3. 正常结束封账
-        await manager.completeTurn({ 
-            sessionId: req.sessionId, 
-            requestId, 
-            usage: res.usage 
-        });
-    } catch(err) {
-        // 4. 用户手动打断或网络崩溃的统一善后机制
-        await manager.failTurn({ 
-            sessionId: req.sessionId, 
-            requestId, 
-            errorCode: "llm_stream_failed",
-            errorMessage: String(err instanceof Error ? err.message : err)
-        });
-    }
+  appendUserMessage(sessionId: SessionId, message: ChatMessage): Promise<void>
+  /** 写 assistant 消息空壳（contentBlocks: [], status: "generating"）——beginTurn 时调用。 */
+  appendAssistantMessageShell(sessionId: SessionId, message: ChatMessage): Promise<void>
+  upsertAssistantMessage(sessionId: SessionId, message: ChatMessage): Promise<void>
+
+  updateTitle(sessionId: SessionId, title: string, status?: SessionTitleStatus): Promise<void>
 }
 ```
+
+### SessionReader（纯 DB 只读）
+
+```typescript
+export class SessionReader {
+  constructor(storage: SqliteStorage)
+
+  listSessions(): Promise<SessionSummary[]>
+  loadSessionDetail(sessionId: SessionId): Promise<SessionDetailView | null>
+  loadSessionHistory(input: LoadSessionHistoryInput): Promise<MessagePage>
+}
+```
+
+### TurnLock（纯函数）
+
+```typescript
+export type TurnLockStrategy = "reject" | "abort-previous"
+
+export interface TurnLockResult {
+  allowed: boolean
+  reason?: "turn_in_progress"
+  abortedRequestId?: RequestId
+}
+
+export function acquireTurnLock(
+  activeSession: ActiveSession,
+  newRequestId: RequestId,
+  strategy: TurnLockStrategy,
+): TurnLockResult
+```
+
+### ActiveSession（内存态）
+
+```typescript
+export interface ActiveTurn {
+  requestId: RequestId
+  sessionId: SessionId
+  mode: EmaMode
+  startedAt: UnixMs
+  status: TurnStatus
+  error?: EmaError
+  abortController: AbortController
+}
+
+export class ActiveSession {
+  constructor(sessionId: SessionId)
+
+  getCurrentTurn(): ActiveTurn | null
+  isIdle(): boolean
+
+  beginTurnInMemory(requestId: RequestId, mode: EmaMode): ActiveTurn
+  completeTurnInMemory(requestId: RequestId): void
+  failTurnInMemory(requestId: RequestId, error: EmaError): void
+  abortCurrentTurn(reason?: string): void
+
+  subscribe(callback: SessionEventCallback): UnsubscribeFn
+  publish(event: SessionLifecycleEvent): void
+}
+```
+
+---
+
+## Turn 状态机
+
+```
+queued → running → completed
+              ↘ failed
+              ↘ cancelled (aborted)
+```
+
+- `markTurnQueued` 写 `status = "queued"`
+- `beginTurn` 在完成用户消息 + assistant 空壳落盘后，调用 `markTurnRunning` 推进到 `"running"`
+- 区分 `queued` 和 `running` 的目的：前端可根据 `queued` 状态显示"排队中"动画，`running` 后切换为"思考中"
+
+---
+
+## 依赖
+
+- `@ema-agent/core-types` — 实体类型（`SessionState`、`TurnRecord`、`ChatMessage`、`EmaError` 等）
+- `@ema-agent/constants-core` — 运行时常量（`SESSION_TITLE_MAX_LENGTH`、`TITLE_TRUNCATION_SUFFIX`）
+- `@ema-agent/storage-sql` — 数据访问（只通过 `SqliteStorage` 接口注入）
+
+## 不做什么
+
+- 不负责 mode 编排、prompt 组装 — 属于 orchestrator
+- 不调用 LLM — 属于 `@ema-agent/llm`
+- 不转换 SSE — 属于 orchestrator 内的 StreamAggregator
+- 不决策 tool 执行 — 属于 `@ema-agent/tool`
+- 不管理 API key — 属于 config 包

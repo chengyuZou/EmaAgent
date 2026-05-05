@@ -14,6 +14,7 @@
  * - 调用 LLM。
  * - 组装 Prompt。
  */
+import { RECENT_MESSAGES_PAGE_SIZE } from "@ema-agent/constants-core"
 import type { SqliteStorage } from "@ema-agent/storage-sql"
 
 import type {
@@ -21,7 +22,8 @@ import type {
   SessionDetailView,
   SessionId,
   SessionSummary,
-  MessageId
+  MessageId,
+  RequestId,
 } from "@ema-agent/core-types"
 
 
@@ -43,10 +45,20 @@ export class SessionReader {
     if (!sessionState) {
       return null
     }
-    const recentMessages = await this.storage.messages.listMessagesBySession(sessionId, { limit: 20 })
+
+    const [recentMessages, recentTurns, artifacts] = await Promise.all([
+      this.storage.messages.listMessagesBySession(sessionId, { limit: RECENT_MESSAGES_PAGE_SIZE }),
+      this.storage.turns.listTurnsBySession(sessionId, { limit: 1 }),
+      this.storage.artifacts.listArtifactsBySession(sessionId),
+    ])
+
+    const lastRequestId = recentTurns.items[0]?.requestId as RequestId | undefined
+
     return {
-        session: sessionState,
-        initialMessages: recentMessages,
+      session: sessionState,
+      initialMessages: recentMessages,
+      lastRequestId,
+      artifacts,
     }
   }
 

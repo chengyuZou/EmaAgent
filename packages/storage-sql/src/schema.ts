@@ -172,29 +172,6 @@ const MIGRATIONS: Record<number, (db: Database) => void> = {
   },
 
   5: (db) => {
-    // ReAct 步骤追踪
-    if (!tableExists(db, "steps")) {
-      db.exec(`
-        CREATE TABLE steps (
-          id TEXT PRIMARY KEY,
-          request_id TEXT NOT NULL,
-          session_id TEXT NOT NULL,
-          step_type TEXT NOT NULL,
-          title TEXT NOT NULL,
-          status TEXT NOT NULL DEFAULT 'pending',
-          detail TEXT,
-          tool_call_id TEXT,
-          tool_name TEXT,
-          artifact_ids TEXT,
-          started_at INTEGER NOT NULL,
-          ended_at INTEGER,
-          FOREIGN KEY (request_id) REFERENCES turns(request_id) ON DELETE CASCADE,
-          FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
-        );
-        CREATE INDEX IF NOT EXISTS idx_steps_request_id ON steps(request_id);
-      `)
-    }
-
     // Provider 配置
     if (!tableExists(db, "provider_configs")) {
       db.exec(`

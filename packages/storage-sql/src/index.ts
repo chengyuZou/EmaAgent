@@ -17,7 +17,6 @@ import { createArtifactRepository } from "./repos/artifact-repo.js"
 import { createAttachmentRepository } from "./repos/attachment-repo.js"
 import { createMemoryRepository } from "./repos/memory-fact-repo.js"
 import { createTelemetryRepository } from "./repos/telemetry-repo.js"
-import { createStepRepository } from "./repos/step-repo.js"
 import { createProviderConfigRepository } from "./repos/provider-config-repo.js"
 import { createModelBindingRepository } from "./repos/model-binding-repo.js"
 import { createPermissionGrantRepository } from "./repos/permission-grant-repo.js"
@@ -33,7 +32,6 @@ export function createSqliteStorage(dbPath: string) {
     attachments: createAttachmentRepository(db),
     memory: createMemoryRepository(db),
     telemetry: createTelemetryRepository(db),
-    steps: createStepRepository(db),
     providerConfigs: createProviderConfigRepository(db),
     modelBindings: createModelBindingRepository(db),
     permissionGrants: createPermissionGrantRepository(db),
@@ -55,7 +53,6 @@ export type { ArtifactRepository, CreateArtifactInput, UpdateArtifactInput } fro
 export type { AttachmentRepository, CreateAttachmentInput, UpsertAttachmentChunkInput } from "./repos/attachment-repo.js"
 export type { MemoryRepository, MemoryFactRecord, MemoryFactKind, SessionSummaryRecord } from "./repos/memory-fact-repo.js"
 export type { TelemetryRepository, TelemetryEventRecord } from "./repos/telemetry-repo.js"
-export type { StepRepository, CreateStepInput, UpdateStepInput } from "./repos/step-repo.js"
 export type { ProviderConfigRepository, CreateProviderConfigInput, UpdateProviderConfigInput } from "./repos/provider-config-repo.js"
 export type { ModelBindingRepository, CreateModelBindingInput, UpdateModelBindingInput } from "./repos/model-binding-repo.js"
 export type { PermissionGrantRepository, CreatePermissionGrantInput } from "./repos/permission-grant-repo.js"

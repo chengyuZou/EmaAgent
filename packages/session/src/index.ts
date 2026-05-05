@@ -5,6 +5,7 @@ export {
   createFallbackTitle,
   shouldUseFallbackTitle,
 } from "./session-writer.js"
+export { SessionReader } from "./session-reader.js"
 export { acquireTurnLock } from "./turn-lock.js"
 
 export type {
@@ -17,14 +18,16 @@ export type {
   BeginTurnInput,
   BeginTurnResult,
   CompleteTurnInput,
+  EnsureSessionResult,
   FailTurnInput,
 } from "./session-manager.js"
 export type {
-  AppendUserMessageInput,
   MarkTurnAbortedInput,
   MarkTurnCompletedInput,
   MarkTurnFailedInput,
-  MarkTurnStartedInput,
-  UpsertAssistantMessageInput,
+  MarkTurnInput,
 } from "./session-writer.js"
+export type {
+  LoadSessionHistoryInput,
+} from "./session-reader.js"
 export type { TurnLockResult, TurnLockStrategy } from "./turn-lock.js"

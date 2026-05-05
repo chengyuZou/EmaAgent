@@ -15,6 +15,7 @@
     "typecheck": "tsc --noEmit -p ../../tsconfig.json"
   },
   "dependencies": {
+    "@ema-agent/constants-core": "workspace:*",
     "@ema-agent/core-types": "workspace:*",
     "@ema-agent/storage-sql": "workspace:*"
   },
