@@ -59,9 +59,15 @@ export type MessageContentBlock =
       risk: "low" | "medium" | "high" | "critical"
     }
   | {
-      type: "step"
-      stepId: string
-      detail: string
+      type: "phase"
+      phaseId: string
+      phase: import("./agent.js").AgentPhase
+      title: string
+      status: "running" | "completed" | "failed" | "skipped"
+      detail?: string
+      artifactIds?: string[]
+      startedAt: number
+      endedAt?: number
     }
   | {
       type: "retrieval"

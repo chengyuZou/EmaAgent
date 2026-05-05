@@ -63,8 +63,8 @@ export type MessageId = Brand<string, "MessageId">
 /** LLM 发起的单次工具调用标识——在一次 turn 内唯一。 */
 export type ToolCallId = Brand<string, "ToolCallId">
 
-/** ReAct think→act 循环中单个步骤的标识。 */
-export type StepId = Brand<string, "StepId">
+/** Agent 认知循环中单个阶段的标识（plan / think / act / debug / reflect）。 */
+export type PhaseId = Brand<string, "PhaseId">
 
 // ═══════════════════════════════════════════════════════════════
 // 产物与附件域

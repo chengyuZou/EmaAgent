@@ -4,9 +4,9 @@ import { asId } from "../src/ids.js"
 import type {
   ArtifactId,
   MessageId,
+  PhaseId,
   RequestId,
   SessionId,
-  StepId,
   ToolCallId,
   UnixMs,
 } from "../src/ids.js"
@@ -19,9 +19,9 @@ import type {
   TextDeltaEvent,
   TextDoneEvent,
   PermissionRequestEvent,
-  StepStartEvent,
-  StepProgressEvent,
-  StepEndEvent,
+  PhaseStartEvent,
+  PhaseProgressEvent,
+  PhaseEndEvent,
   RetrievalStartEvent,
   RetrievalEndEvent,
   CompressionNotifyEvent,
@@ -37,7 +37,7 @@ const sessionId = asId<SessionId>("ses_evt")
 const now: UnixMs = 1700000000000
 const messageId = asId<MessageId>("msg_evt")
 const toolCallId = asId<ToolCallId>("tc_evt")
-const stepId = asId<StepId>("step_evt")
+const phaseId = asId<PhaseId>("phase_evt")
 
 describe("SseEvent — 事件联合类型", () => {
   it("TurnStartedEvent 满足 SseEvent 约束", () => {
@@ -88,15 +88,15 @@ describe("SseEvent — 事件联合类型", () => {
     expect(event.retryable).toBe(true)
   })
 
-  it("TurnCancelledEvent 记录取消前的最后步骤", () => {
+  it("TurnCancelledEvent 记录取消前的最后阶段", () => {
     const event: TurnCancelledEvent = {
       type: "turn_cancelled",
       requestId,
       sessionId,
       at: now,
-      lastStepId: stepId,
+      lastPhaseId: phaseId,
     }
-    expect(event.lastStepId).toBe(stepId)
+    expect(event.lastPhaseId).toBe(phaseId)
   })
 })
 
@@ -198,46 +198,46 @@ describe("权限请求事件", () => {
   })
 })
 
-describe("ReAct 步骤事件", () => {
-  it("StepStartEvent 的 stepType 包含所有 ReAct 阶段", () => {
-    const validTypes = ["context", "thinking", "tool", "diff", "artifact", "response", "narrative_recall"] as const
+describe("Agent 认知阶段事件", () => {
+  it("PhaseStartEvent 的 phase 覆盖五阶段", () => {
+    const phases = ["plan", "think", "act", "debug", "reflect"] as const
 
-    for (const stepType of validTypes) {
-      const event: StepStartEvent = {
-        type: "step_start",
+    for (const phase of phases) {
+      const event: PhaseStartEvent = {
+        type: "phase_start",
         requestId,
         sessionId,
         at: now,
-        stepId,
-        stepType,
-        title: `${stepType} 阶段`,
+        phaseId,
+        phase,
+        title: `${phase} 阶段`,
       }
-      expect(event.stepType).toBe(stepType)
+      expect(event.phase).toBe(phase)
     }
   })
 
-  it("StepEndEvent 有三种结束状态", () => {
+  it("PhaseEndEvent 有三种结束状态", () => {
     const statuses = ["completed", "failed", "skipped"] as const
     for (const status of statuses) {
-      const event: StepEndEvent = {
-        type: "step_end",
+      const event: PhaseEndEvent = {
+        type: "phase_end",
         requestId,
         sessionId,
         at: now,
-        stepId,
+        phaseId,
         status,
       }
       expect(event.status).toBe(status)
     }
   })
 
-  it("StepProgressEvent 携带进度描述", () => {
-    const event: StepProgressEvent = {
-      type: "step_progress",
+  it("PhaseProgressEvent 携带进度描述", () => {
+    const event: PhaseProgressEvent = {
+      type: "phase_progress",
       requestId,
       sessionId,
       at: now,
-      stepId,
+      phaseId,
       detail: "已读取 3/5 个文件",
     }
     expect(event.detail).toBe("已读取 3/5 个文件")

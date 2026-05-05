@@ -13,18 +13,21 @@
  * 3. **终态关闭** — 收到 `turn_completed` / `turn_failed` / `turn_cancelled` 后 SSE 连接关闭
  * 4. **严禁日志解析** — 前端永远只消费结构化 event，绝对禁止从日志字符串提取信息
  *
- * ## 事件时序（agent 模式典型流程）
+ * ## 事件时序（agent full 策略典型流程）
  *
  * ```
  * turn_started
- *   → step_start(thinking) → text_delta* → text_done → step_end(thinking)
- *   → step_start(tool)
+ *   → phase_start(plan) → phase_end(plan)
+ *   → phase_start(think)
+ *     → text_delta* → text_done
  *     → tool_call_start → tool_call_args* → tool_call_end
  *     → [permission_request]  // 仅高风险工具
  *     → tool_result
- *   → step_end(tool)
- *   → tool_call_start → ... → tool_result  // 串行工具逐个执行
- *   → step_start(thinking) → ... (下一轮 ReAct)
+ *   → phase_end(think)
+ *   → phase_start(act) → ... → phase_end(act)
+ *   → phase_start(debug) → ... → phase_end(debug)
+ *   → phase_start(reflect) → ... → phase_end(reflect)
+ *   → phase_start(think) → ... (下一轮循环)
  * turn_completed
  * ```
  */
@@ -33,9 +36,9 @@ import type {
   ArtifactId,
   ImageGenTaskId,
   MessageId,
+  PhaseId,
   RequestId,
   SessionId,
-  StepId,
   SttSessionId,
   ToolCallId,
   UnixMs,
@@ -105,10 +108,10 @@ export type SseEvent =
   // --- 权限请求 ---
   | PermissionRequestEvent
 
-  // --- ReAct 步骤（Agent 模式专用）---
-  | StepStartEvent
-  | StepProgressEvent
-  | StepEndEvent
+  // --- Agent 认知阶段（Plan / Think / Act / Debug / Reflect）---
+  | PhaseStartEvent
+  | PhaseProgressEvent
+  | PhaseEndEvent
 
   // --- 检索（Narrative / Attachment）---
   | RetrievalStartEvent
@@ -197,8 +200,8 @@ export interface TurnFailedEvent extends BaseEvent {
 /** turn 被用户取消——前端停止动画，不显示重试按钮。 */
 export interface TurnCancelledEvent extends BaseEvent {
   type: "turn_cancelled"
-  /** 取消前最后一步的 stepId（用于 UI 高亮）。 */
-  lastStepId?: StepId
+  /** 取消前最后一个阶段的 phaseId（用于 UI 高亮）。 */
+  lastPhaseId?: PhaseId
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -291,38 +294,31 @@ export interface PermissionRequestEvent extends BaseEvent {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// ReAct 步骤事件（Agent 模式专用）
+// Agent 认知阶段事件（Plan / Think / Act / Debug / Reflect）
 // ═══════════════════════════════════════════════════════════════
 
-/** ReAct 步骤开始——前端在时间线中插入步骤节点。 */
-export interface StepStartEvent extends BaseEvent {
-  type: "step_start"
-  stepId: StepId
-  /** 步骤语义类型——前端据此选择图标和颜色。 */
-  stepType:
-    | "context"           // 上下文组装
-    | "thinking"          // LLM 推理（think 阶段）
-    | "tool"              // 工具执行（act 阶段）
-    | "diff"              // 差异生成
-    | "artifact"          // 产物创建
-    | "response"          // 最终回复生成
-    | "narrative_recall"  // 剧情召回
+/** 认知阶段开始——前端在时间线中插入阶段节点。 */
+export interface PhaseStartEvent extends BaseEvent {
+  type: "phase_start"
+  phaseId: PhaseId
+  /** 当前认知阶段——前端据此选择图标和颜色。 */
+  phase: import("./agent.js").AgentPhase
   title: string
 }
 
-/** ReAct 步骤进度——前端更新步骤节点的副文本。 */
-export interface StepProgressEvent extends BaseEvent {
-  type: "step_progress"
-  stepId: StepId
+/** 认知阶段进度——前端更新阶段节点的副文本。 */
+export interface PhaseProgressEvent extends BaseEvent {
+  type: "phase_progress"
+  phaseId: PhaseId
   detail: string
 }
 
-/** ReAct 步骤完成——前端标记步骤节点状态。 */
-export interface StepEndEvent extends BaseEvent {
-  type: "step_end"
-  stepId: StepId
+/** 认知阶段完成——前端标记阶段节点状态。 */
+export interface PhaseEndEvent extends BaseEvent {
+  type: "phase_end"
+  phaseId: PhaseId
   status: "completed" | "failed" | "skipped"
-  /** 该步骤产出的产物 ID 列表。 */
+  /** 该阶段产出的产物 ID 列表。 */
   artifactIds?: ArtifactId[]
 }
 

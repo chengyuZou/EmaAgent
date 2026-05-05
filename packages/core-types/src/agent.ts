@@ -1,41 +1,84 @@
 /**
- * Agent 模式核心类型 — ReAct think→act 循环的状态机定义。
+ * Agent 模式核心类型 — 认知循环（Plan → Think → Act → Debug → Reflect）状态机定义。
  *
- * ## 架构来源
+ * ## 三种策略
  *
- * 本文件的类型直接继承自 EmaAgent v0.4 的 `agent/react.py` 和
- * `agent/runtime_types.py`，并针对 TypeScript 的全栈类型安全做了适配。
+ * | 策略    | 走哪些阶段                              | 工具权限            |
+ * |---------|----------------------------------------|--------------------|
+ * | `plan`  | Plan → Reflect                         | 无（纯推理）        |
+ * | `debug` | Think → Act(只读) → Debug → Reflect    | 只读工具            |
+ * | `full`  | Plan → Think → Act → Debug → Reflect   | 全部工具（含写/shell）|
  *
- * ## ReAct 循环概要
+ * ## 认知循环概要
  *
  * ```
- * idle → thinking (LLM 返回 thought + tool_calls)
- *      → acting   (按风险分批执行工具)
- *        ├─ readonly 工具 → 并发执行 (asyncio.gather)
- *        └─ dangerous 工具 → 串行执行 (逐个确认)
- *      → thinking (下一轮，直到 FINISHED 或 maxSteps)
- *      → finished | error
+ * Plan (分解任务、确定策略)
+ *   → Think (分析当前子任务，决定具体工具调用)
+ *     → Act (执行工具——低风险并发、高风险串行 + 确认)
+ *       → Debug (检查结果、修复错误、重试)
+ *         → Reflect (总结进展、决定继续还是结束)
+ *           → Think (下一轮，或结束)
  * ```
  *
- * ## 与 Claude Code 的关键差异
+ * ## 来源
  *
- * Claude Code 依赖 API 原生 `tool_use` 并行块，tool 执行和 LLM 流式输出交织。
- * EmaAgent 采用严格的 think→act 两阶段：
- * 1. think：完整收集 LLM 响应（含全部 tool_calls），不边想边做
- * 2. act：按风险分类后分批执行，低风险并发、高风险串行
- *
- * 代价：牺牲了流式交织的体验。
- * 收益：跨 provider 兼容（OpenAI / DeepSeek / Ollama），权限拦截点更清晰。
+ * 继承自 EmaAgent v0.4 的 think/act 双阶段模型，并扩展为五阶段认知循环。
+ * v0.4 的 `react.py` 对应：`_think()` → Think 阶段，`_act()` → Act + Debug 阶段。
  */
 
 import type {
   RequestId,
   SessionId,
-  StepId,
+  PhaseId,
   ToolCallId,
   UnixMs,
 } from "./ids.js"
 import type { EmaMode } from "./mode.js"
+
+// ═══════════════════════════════════════════════════════════════
+// Agent 策略
+// ═══════════════════════════════════════════════════════════════
+
+/** Agent 模式下的执行策略——决定走哪些认知阶段。 */
+export type AgentStrategy = "plan" | "debug" | "full"
+
+// ═══════════════════════════════════════════════════════════════
+// 认知阶段
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * Agent 认知循环的五个阶段。
+ *
+ * | phase     | 做什么                                                 |
+ * |-----------|-------------------------------------------------------|
+ * | `plan`    | 分解用户请求为子任务，确定工具策略，产出结构化计划        |
+ * | `think`   | 针对当前子任务分析具体操作，产出 thought + tool_calls    |
+ * | `act`     | 执行工具调用（低风险并发、高风险串行 + 权限确认）         |
+ * | `debug`   | 检查工具结果，发现错误时诊断并修复，触发重试或换策略      |
+ * | `reflect` | 总结本轮进展，判断任务完成度，决定继续循环还是结束        |
+ */
+export type AgentPhase = "plan" | "think" | "act" | "debug" | "reflect"
+
+// ═══════════════════════════════════════════════════════════════
+// 循环内部状态
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * Agent 认知循环的内部状态枚举。
+ *
+ * ```
+ * idle ──→ thinking ──→ acting ──→ thinking (循环)
+ *   │                      │
+ *   │                      └──→ finished
+ *   └──→ error
+ * ```
+ */
+export type AgentLoopStatus =
+  | "idle"
+  | "thinking"
+  | "acting"
+  | "finished"
+  | "error"
 
 // ═══════════════════════════════════════════════════════════════
 // 风险级别 — tool & permission 包的共享契约
@@ -47,64 +90,13 @@ import type { EmaMode } from "./mode.js"
  * ## 分级规则（来自 v0.4 `constants/agent.py`）
  *
  * | 级别      | 含义                         | 示例工具                      | 默认行为        |
- * |-----------|------------------------------|------------------------------|-----------------|
+ * |-----------|-----------------------------|------------------------------|-----------------|
  * | `low`     | 纯读取、无副作用               | search, read_file, list_dir  | 自动执行        |
  * | `medium`  | 读取 + 有限计算                | analyze_document, web_fetch  | 自动执行        |
  * | `high`    | 写入文件、执行代码             | write_file, run_command      | 需用户确认      |
  * | `critical`| 系统级操作、网络外发           | rm -rf, sudo, curl to unknown| 需用户确认 + 警告|
- *
- * ## 与 PermissionRisk 的关系
- *
- * `AgentRiskLevel` 和 `PermissionRisk`（permission 包）是同一个概念的两种表达：
- * - `AgentRiskLevel`：从工具能力角度描述"这个工具有多危险"
- * - `PermissionRisk`：从权限决策角度描述"这个操作需要多严格的审批"
- *
- * 两者值域相同，可以互相赋值。统一在此定义，避免 tool 和 permission 包各定义一套。
  */
 export type AgentRiskLevel = "low" | "medium" | "high" | "critical"
-
-// ═══════════════════════════════════════════════════════════════
-// ReAct 状态机
-// ═══════════════════════════════════════════════════════════════
-
-/**
- * ReAct 循环的状态枚举。
- *
- * ```
- * idle ──→ thinking ──→ acting ──→ thinking (循环)
- *   │                      │
- *   │                      └──→ finished
- *   └──→ error
- * ```
- */
-export type ReActStatus =
-  | "idle"       // 初始/等待
-  | "thinking"   // LLM 推理中（think 阶段）
-  | "acting"     // 工具执行中（act 阶段）
-  | "finished"   // 正常结束
-  | "error"      // 异常终止
-
-/**
- * ReAct 单步的类型标签——对应 `step_start` / `step_end` SSE 事件的 stepType。
- *
- * | stepType         | 阶段   | 含义                                 |
- * |------------------|--------|--------------------------------------|
- * | `context`        | think  | 组装本轮上下文（召回、压缩、system prompt）|
- * | `thinking`       | think  | LLM 推理，生成 thought + tool_calls   |
- * | `tool`           | act    | 执行工具调用（单个或并行批次）          |
- * | `diff`           | act    | 生成/应用代码差异                      |
- * | `artifact`       | act    | 创建结构化产物（文件、图表、表格）       |
- * | `response`       | think  | 生成最终用户回复                       |
- * | `narrative_recall`| think | 查询 Narrative 剧情记忆               |
- */
-export type ReActStepType =
-  | "context"
-  | "thinking"
-  | "tool"
-  | "diff"
-  | "artifact"
-  | "response"
-  | "narrative_recall"
 
 // ═══════════════════════════════════════════════════════════════
 // 工具意图与结果
@@ -113,15 +105,8 @@ export type ReActStepType =
 /**
  * LLM 输出的单条工具调用意图。
  *
- * ## 与 ToolCallChunk 的区别
- *
- * `ToolCallChunk`（model.ts）是底层 LLM 协议的流式片段（argsDelta 增量）。
- * `ToolIntent` 是解析完整后的结构化意图，供 PermissionEngine 和 ToolRegistry 消费。
- *
- * ## 与 Claude Code ToolIntent 的对应
- *
- * Claude Code 的 Tool 系统也使用 `{ tool, args }` 结构。
- * EmaAgent 额外携带 `toolCallId` 和 `risk` 预标注，减少后续查找。
+ * 与 Claude Code 的 ToolIntent 对应：`{ tool, args }` 结构。
+ * EmaAgent 额外携带 `toolCallId` 和 `defaultRisk` 预标注。
  */
 export interface ToolIntent {
   toolCallId: ToolCallId
@@ -135,7 +120,7 @@ export interface ToolIntent {
 /**
  * 工具执行结果——act 阶段的原子产出。
  */
-export interface ReActToolResult {
+export interface AgentToolResult {
   toolCallId: ToolCallId
   toolName: string
   success: boolean
@@ -149,67 +134,60 @@ export interface ReActToolResult {
 // 风险分类
 // ═══════════════════════════════════════════════════════════════
 
-/**
- * 工具调用的风险分类结果——由 `RiskClassifier` 产出。
- *
- * ## 分类逻辑（来自 v0.4 `react.py:_is_read_only_tool_call`）
- *
- * 1. 工具名在 `READ_ONLY_TOOL_NAMES` 中 → risk=low, needConfirm=false
- * 2. 工具名在 `DANGEROUS_TOOL_NAMES` 中（run_terminal, execute_code）
- *    → risk=high/critical, needConfirm=true
- * 3. file_operations 按 operation 细分：
- *    read/list → low, delete/move/copy/rename → high
- * 4. 其余 → risk=medium, needConfirm=false（可配置）
- */
+/** 工具调用的风险分类结果——由 `RiskClassifier` 产出。 */
 export interface RiskClassification {
-  /** 分级后的风险级别。 */
   risk: AgentRiskLevel
-  /** 是否需要用户确认后才能执行。 */
   needConfirm: boolean
-  /** 人类可读的理由——用于前端确认对话框。 */
   reason: string
 }
 
 // ═══════════════════════════════════════════════════════════════
-// ReAct 运行时状态
+// Agent 循环运行时状态
 // ═══════════════════════════════════════════════════════════════
 
 /**
- * ReAct think→act 循环的完整运行时状态。
+ * Agent 认知循环的完整运行时状态。
  *
  * ## 生命周期
  *
- * 1. 初始化：`{ status: "idle", currentStep: 0, currentThought: "", ... }`
- * 2. think 阶段：`status` 变为 `"thinking"`，LLM 返回 `currentThought` + `currentToolCalls`
- * 3. act 阶段：`status` 变为 `"acting"`，逐个执行 `currentToolCalls`，追加到 `toolResults`
- * 4. 循环回到 think 或结束：`status` 变为 `"finished"` 或 `"error"`
+ * 1. 初始化：`{ status: "idle", iteration: 0, currentThought: "", strategy: "full", ... }`
+ * 2. plan（仅 full 策略）：分解任务，产出子任务列表
+ * 3. think 阶段：`status` 变为 `"thinking"`，LLM 返回 `currentThought` + `currentToolCalls`
+ * 4. act 阶段：`status` 变为 `"acting"`，执行工具调用，追加到 `toolResults`
+ * 5. debug 阶段：检查结果，发现错误时尝试修复或重试
+ * 6. reflect 阶段：总结进展，判断是否完成
+ * 7. 循环回到 think 或结束：`status` 变为 `"finished"` 或 `"error"`
  *
  * 此状态不持久化——它是内存级对象，turn 结束后即销毁。
- * 持久化的 turn 记录使用 `TurnRecord`（turn.ts）。
  */
-export interface ReActState {
+export interface AgentLoopState {
   sessionId: SessionId
   requestId: RequestId
   mode: EmaMode
 
-  /** 原始用户输入（未被 context 改写）。 */
+  /** 本轮使用的执行策略。 */
+  strategy: AgentStrategy
+
+  /** 原始用户输入。 */
   userInput: string
 
-  /** 当前是第几步（从 1 开始）。 */
-  currentStep: number
-  /** 最大允许步数，超过则强制结束。 */
-  maxSteps: number
+  /** 当前是第几次循环迭代（从 1 开始）。 */
+  iteration: number
+  /** 最大允许迭代次数，超过则强制结束。 */
+  maxIterations: number
 
   /** 最近一次 think 产出的推理文本。 */
   currentThought: string
   /** 最近一次 think 产出的工具调用列表——空数组表示无工具调用。 */
   currentToolCalls: ToolIntent[]
   /** 本轮所有已执行的工具结果（按执行顺序）。 */
-  toolResults: ReActToolResult[]
+  toolResults: AgentToolResult[]
+  /** Plan 阶段产出的子任务列表（仅 full 策略）。 */
+  planTasks: string[]
   /** 最终回复文本——仅 status=finished 时有效。 */
   finalAnswer: string
 
-  status: ReActStatus
+  status: AgentLoopStatus
   /** status=error 时的错误描述。 */
   error?: string
 
@@ -221,18 +199,19 @@ export interface ReActState {
 // 执行追踪（前端时间线渲染用）
 // ═══════════════════════════════════════════════════════════════
 
-/** 前端时间线中单个步骤的状态。 */
-export interface ExecutionStepView {
-  id: StepId
+/** 前端时间线中单个阶段的视图。 */
+export interface AgentPhaseView {
+  id: PhaseId
   requestId: RequestId
-  stepType: ReActStepType
-  /** 步骤标题——前端在时间线节点上直接展示。 */
+  /** 当前所处的认知阶段。 */
+  phase: AgentPhase
+  /** 阶段标题——前端在时间线节点上直接展示。 */
   title: string
-  /** 步骤状态。 */
+  /** 阶段状态。 */
   status: "running" | "completed" | "failed" | "skipped"
   /** 详细信息——前端悬停时展开。 */
   detail?: string
-  /** 该步骤产出的 artifact ID 列表。 */
+  /** 该阶段产出的 artifact ID 列表。 */
   artifactIds?: string[]
   startedAt: UnixMs
   endedAt?: UnixMs
@@ -245,10 +224,8 @@ export interface ExecutionStepView {
 /**
  * 重复错误熔断器的状态——检测 Agent 是否陷入死循环。
  *
- * ## 工作方式
- *
  * 每次工具调用失败后，将 `(toolName, errorText)` 哈希为 signature。
- * 若连续 `REPEATED_ERROR_LIMIT`（默认 3，定义在 @ema-agent/constants-core）次签名相同，触发熔断：
+ * 若连续 `REPEATED_ERROR_LIMIT`（默认 3）次签名相同，触发熔断：
  * Agent 终止执行并返回 fallback 消息，避免无限消耗 token。
  */
 export interface ErrorGuardState {
@@ -274,4 +251,3 @@ export interface PermissionGrantRecord {
   decidedAt: UnixMs
   expiresAt?: UnixMs
 }
-

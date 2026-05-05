@@ -10,11 +10,11 @@
  * 一个 Session 包含多个 Turn，一个 Turn 产生若干条 Message。
  */
 
+import type { AgentStrategy } from "./agent.js"
 import type { ArtifactSummary } from "./artifact.js"
 import type { EmaMode } from "./mode.js"
 import type { UsageView } from "./model.js"
 import type { MessagePage } from "./message.js"
-import type { ReActStepType } from "./agent.js"
 import type {
   ArtifactId,
   AttachmentId,
@@ -23,8 +23,6 @@ import type {
   ProviderId,
   RequestId,
   SessionId,
-  StepId,
-  ToolCallId,
   UnixMs,
 } from "./ids.js"
 
@@ -64,6 +62,8 @@ export interface StartTurnRequest {
   sessionId: SessionId
   mode: EmaMode
   input: TurnInputBlock[]
+  /** Agent 模式下的执行策略——不传默认 "full"。仅 mode="agent" 时生效。 */
+  agentStrategy?: AgentStrategy
   /** 兼容旧前端的单文本入口——BFF 会将其转换为 input[0]（text 类型）。 */
   rawUserQuery?: string
   /** 参与本轮上下文构建的附件 ID 列表。 */
@@ -119,31 +119,6 @@ export type TurnStatus =
   | "completed"           // 执行成功
   | "failed"              // 执行失败
   | "cancelled"           // 用户取消
-
-/** 单个步骤的执行状态。 */
-export type StepStatus =
-  | "pending"
-  | "running"
-  | "waiting_permission"
-  | "completed"
-  | "failed"
-  | "skipped"
-
-/** 单个 ReAct 步骤的持久化行——`steps` 表。 */
-export interface StepRecord {
-  id: StepId
-  requestId: RequestId
-  sessionId: SessionId
-  stepType: ReActStepType
-  title: string
-  status: StepStatus
-  detail?: string
-  toolCallId?: ToolCallId
-  toolName?: string
-  artifactIds?: string
-  startedAt: UnixMs
-  endedAt?: UnixMs
-}
 
 // ═══════════════════════════════════════════════════════════════
 // Turn 持久化实体

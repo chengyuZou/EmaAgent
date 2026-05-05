@@ -47,6 +47,7 @@ export type UiErrorCode =
 
   // --- Session / Turn ---
   | "session_not_found"
+  | "turn_not_found"
   | "turn_in_progress"
   | "turn_cancelled"
 
