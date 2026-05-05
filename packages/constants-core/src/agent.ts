@@ -1,11 +1,11 @@
 /**
- * Agent 模式常量 — ReAct 循环、风险分级、工具分类。
+ * Agent 模式常量 — 认知循环、风险分级、工具分类。
  *
- * 来源：EmaAgent v0.4 `constants/agent.py` + CLAUDE.md 架构红线。
- * 所有 ReAct 循环和权限管线的硬编码阈值集中于此。
+ * 来源：EmaAgent v0.4 `constants/agent.py` + Plan/Think/Act/Debug/Reflect 五阶段模型。
+ * 所有 Agent 循环和权限管线的硬编码阈值集中于此。
  */
 
-import type { AgentRiskLevel, ReActStatus, ReActStepType } from "@ema-agent/core-types"
+import type { AgentRiskLevel, AgentLoopStatus, AgentPhase, AgentStrategy } from "@ema-agent/core-types"
 
 // ═══════════════════════════════════════════════════════════════
 // 熔断 & 循环限制（来自 v0.4 `react.py`）
@@ -14,8 +14,8 @@ import type { AgentRiskLevel, ReActStatus, ReActStepType } from "@ema-agent/core
 /** 连续同一错误触发熔断的阈值。 */
 export const REPEATED_ERROR_LIMIT = 3
 
-/** ReAct 循环默认最大步数。 */
-export const DEFAULT_REACT_MAX_STEPS = 20
+/** 认知循环默认最大迭代次数。 */
+export const DEFAULT_MAX_ITERATIONS = 15
 
 /** 只读工具的最大并发数（Semaphore 限流）。 */
 export const MAX_PARALLEL_READONLY_TOOLS = 3
@@ -63,25 +63,20 @@ export const DANGEROUS_FILE_OPERATIONS = [
 ] as const
 
 // ═══════════════════════════════════════════════════════════════
-// 风险级别 & 状态枚举
+// 策略 & 阶段 & 风险级别枚举
 // ═══════════════════════════════════════════════════════════════
+
+/** Agent 执行策略全集。 */
+export const AGENT_STRATEGIES = ["plan", "debug", "full"] as const satisfies readonly AgentStrategy[]
+
+/** 认知五阶段全集。 */
+export const AGENT_PHASES = ["plan", "think", "act", "debug", "reflect"] as const satisfies readonly AgentPhase[]
 
 /** 全部风险级别（升序）。 */
 export const AGENT_RISK_LEVELS = ["low", "medium", "high", "critical"] as const satisfies readonly AgentRiskLevel[]
 
-/** ReAct 状态机的全部合法状态。 */
-export const REACT_STATUSES = ["idle", "thinking", "acting", "finished", "error"] as const satisfies readonly ReActStatus[]
-
-/** ReAct 步骤类型全集。 */
-export const REACT_STEP_TYPES = [
-  "context",
-  "thinking",
-  "tool",
-  "diff",
-  "artifact",
-  "response",
-  "narrative_recall",
-] as const satisfies readonly ReActStepType[]
+/** Agent 认知循环内部状态全集。 */
+export const AGENT_LOOP_STATUSES = ["idle", "thinking", "acting", "finished", "error"] as const satisfies readonly AgentLoopStatus[]
 
 // ═══════════════════════════════════════════════════════════════
 // 工具注册

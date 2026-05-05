@@ -2,14 +2,15 @@ import { describe, expect, it } from "vitest"
 
 import {
   REPEATED_ERROR_LIMIT,
-  DEFAULT_REACT_MAX_STEPS,
+  DEFAULT_MAX_ITERATIONS,
   READ_ONLY_TOOL_PATTERNS,
   DANGEROUS_TOOL_NAMES,
   DANGEROUS_FILE_OPERATIONS,
   MAX_PARALLEL_READONLY_TOOLS,
+  AGENT_STRATEGIES,
+  AGENT_PHASES,
   AGENT_RISK_LEVELS,
-  REACT_STATUSES,
-  REACT_STEP_TYPES,
+  AGENT_LOOP_STATUSES,
   BUILTIN_TOOL_NAMES,
 } from "../src/agent.js"
 
@@ -18,8 +19,8 @@ describe("Agent 熔断常量", () => {
     expect(REPEATED_ERROR_LIMIT).toBe(3)
   })
 
-  it("DEFAULT_REACT_MAX_STEPS 为 20", () => {
-    expect(DEFAULT_REACT_MAX_STEPS).toBe(20)
+  it("DEFAULT_MAX_ITERATIONS 为 15", () => {
+    expect(DEFAULT_MAX_ITERATIONS).toBe(15)
   })
 
   it("MAX_PARALLEL_READONLY_TOOLS 为 3（v0.4 Semaphore 值）", () => {
@@ -48,19 +49,20 @@ describe("工具分类常量（来自 v0.4）", () => {
 })
 
 describe("枚举值域全集", () => {
+  it("AGENT_STRATEGIES 为三种策略", () => {
+    expect(AGENT_STRATEGIES).toEqual(["plan", "debug", "full"])
+  })
+
+  it("AGENT_PHASES 为五阶段认知循环", () => {
+    expect(AGENT_PHASES).toEqual(["plan", "think", "act", "debug", "reflect"])
+  })
+
   it("AGENT_RISK_LEVELS 为四档升序", () => {
     expect(AGENT_RISK_LEVELS).toEqual(["low", "medium", "high", "critical"])
   })
 
-  it("REACT_STATUSES 覆盖完整 think→act 循环", () => {
-    expect(REACT_STATUSES).toEqual(["idle", "thinking", "acting", "finished", "error"])
-  })
-
-  it("REACT_STEP_TYPES 包含 7 种步骤类型", () => {
-    expect(REACT_STEP_TYPES).toHaveLength(7)
-    expect(REACT_STEP_TYPES).toContain("context")
-    expect(REACT_STEP_TYPES).toContain("thinking")
-    expect(REACT_STEP_TYPES).toContain("tool")
+  it("AGENT_LOOP_STATUSES 覆盖完整认知循环", () => {
+    expect(AGENT_LOOP_STATUSES).toEqual(["idle", "thinking", "acting", "finished", "error"])
   })
 
   it("BUILTIN_TOOL_NAMES 包含 12 个内置工具", () => {
