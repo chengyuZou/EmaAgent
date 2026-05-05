@@ -104,7 +104,7 @@ export class SessionManager {
 
   async ensureSession(
     sessionId: SessionId,
-    opts?: { title?: string; mode?: EmaMode },
+    opts?: { title?: string; mode?: EmaMode; fullAccess?: boolean; activeSkills?: string[] },
   ): Promise<EnsureSessionResult> {
     const existing = await this.writer.getSession(sessionId)
     if (existing) {
@@ -115,6 +115,8 @@ export class SessionManager {
       id: sessionId,
       title: opts?.title ?? "New Chat",
       lastMode: opts?.mode ?? "chat",
+      fullAccess: opts?.fullAccess,
+      activeSkills: opts?.activeSkills,
     })
 
     return { created: true }
