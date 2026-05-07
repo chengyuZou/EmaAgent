@@ -411,7 +411,7 @@ export interface StageCueEvent extends BaseEvent {
   type: "stage_cue"
   cue: {
     /** 触发源——用于前端决定 cue 的视觉优先级。 */
-    source: "act" | "step" | "tool" | "artifact" | "system"
+    source: "act" | "phase" | "tool" | "artifact" | "system"
     /** 表情：neutral（默认）、happy（愉悦）、thinking（思考）、sad（悲伤）、surprised（惊讶）、curious（好奇）。 */
     expression?: "neutral" | "curious" | "happy" | "thinking" | "sad" | "surprised"
     /** 动作：idle（待机）、lean_forward（前倾）、nod（点头）、look_left/right（左右看）。 */

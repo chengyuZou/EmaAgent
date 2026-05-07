@@ -33,14 +33,19 @@ export type ProviderCategory =
   | "image_gen"    // V2
   | "moderation"   // V2
 
-/** Provider 的接入协议方式。 */
+/**
+ * Provider 的接入协议方式——决定走哪个 LlmEngine 实现。
+ *
+ * 注意：这是"协议归类"，不是"产品身份"。
+ * - DeepSeek / OpenRouter / Ollama 都用 OpenAI 协议，所以 kind 都是 `openai-compatible`，
+ *   但它们的 ProviderId 仍然各自独立（`deepseek` / `openrouter` / `ollama`）。
+ * - 不再保留 `anthropic-compatible`（生态太小）和 `ollama`（已合并到 openai-compatible）。
+ */
 export type ProviderKind =
   | "openai"
   | "anthropic"
   | "gemini"
   | "openai-compatible"
-  | "anthropic-compatible"
-  | "ollama"
   | "local-dev"
 
 /** Provider 健康检查快照。 */
@@ -98,16 +103,8 @@ export interface ProviderDescriptor {
 // ═══════════════════════════════════════════════════════════════
 
 /**
- * 模型的业务角色——决定该模型在哪种 mode 下被选用。
- *
- * @example
- * // binding 配置示例
- * const bindings = {
- *   chat: "gpt-4o",
- *   agent: "claude-sonnet-4-6",
- *   narrative: "deepseek-v4",
- *   title: "gpt-4o-mini",
- * }
+ * 模型的业务角色——编排层用于绑定"某个 mode 用哪个模型"的配置概念。
+ * LLM 执行层（LlmClient）不感知此类型，仅数据库实体和编排层使用。
  */
 export type ModelRole =
   | "chat"
@@ -144,39 +141,33 @@ export interface ModelCapabilities {
 
 /**
  * 模型描述符——ModelCatalog 中的单个条目。
+ * 描述模型本身的能力与规格，不含业务角色（角色绑定由编排层负责）。
  *
  * @example
- * // GPT-4o 静态预设
  * const gpt4o: ModelDescriptor = {
  *   id: asId<ModelId>("gpt-4o"),
  *   displayName: "GPT-4o",
- *   providerId: asId<ProviderId>("prov_openai"),
- *   roles: ["chat", "agent", "narrative", "title"],
- *   capabilities: {
- *     streaming: true, tools: true, vision: true,
- *     structuredOutput: true, promptCache: false, listModels: false,
- *   },
+ *   providerId: asId<ProviderId>("openai"),
+ *   capabilities: { streaming: true, tools: true, vision: true, ... },
  *   contextWindow: 128_000,
  *   maxOutputTokens: 16_384,
  *   pricing: { inputPer1M: 2.5, outputPer1M: 10 },
- *   source: "static",
+ *   source: "remote",
  * }
  */
 export interface ModelDescriptor {
   id: ModelId
   displayName: string
   providerId: ProviderId
-  /** 一个模型可以有多个角色。如 GPT-4o 同时支持 chat、agent、narrative、title。 */
-  roles: ModelRole[]
-  capabilities: ModelCapabilities
+  capabilities?: Partial<ModelCapabilities>
   contextWindow: number
   maxOutputTokens: number
   pricing?: {
     inputPer1M?: number
     outputPer1M?: number
   }
-  /** 模型来源：static（系统预设）、remote（Provider 动态获取）、user（用户自定义）。 */
-  source?: "static" | "remote" | "user"
+  /** 模型来源：remote（Provider 动态拉取）、user（用户自定义添加）。 */
+  source?: "remote" | "user"
   updatedAt?: UnixMs
 }
 
@@ -562,4 +553,5 @@ export interface ModelBindingRecord {
   createdAt: UnixMs
   updatedAt: UnixMs
 }
+
 

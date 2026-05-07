@@ -31,8 +31,6 @@ export const PROVIDER_KINDS = [
   "anthropic",
   "gemini",
   "openai-compatible",
-  "anthropic-compatible",
-  "ollama",
   "local-dev",
 ] as const satisfies readonly ProviderKind[]
 
@@ -45,8 +43,6 @@ export const PROVIDER_PRIORITY: readonly ProviderKind[] = [
   "anthropic",
   "gemini",
   "openai-compatible",
-  "anthropic-compatible",
-  "ollama",
   "local-dev",
 ] as const
 
@@ -114,7 +110,7 @@ export const DEFAULT_MODEL_IDS: Record<string, string> = {
   deepseek: "deepseek-chat",
   openrouter: "openai/gpt-4o-mini",
   ollama: "llama3.1",
-  "local-dev": "local-dev/default-chat",
+  "local-dev": "ema-local-chat",
 }
 
 // ═══════════════════════════════════════════════════════════════
