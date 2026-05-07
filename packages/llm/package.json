@@ -12,14 +12,18 @@
     }
   },
   "scripts": {
-    "typecheck": "tsc --noEmit -p ../../tsconfig.json",
-    "test": "vitest run"
+    "typecheck": "tsc --noEmit -p ./tsconfig.json",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
-    "@ema-agent/core-types": "workspace:*"
+    "@ema-agent/constants-core": "workspace:*",
+    "@ema-agent/core-types": "workspace:*",
+    "@xsai-ext/providers": "^0.4.0",
+    "@xsai/stream-text": "^0.4.0"
   },
   "devDependencies": {
-    "@types/node": "^20.0.0",
-    "typescript": "^5.7.0"
+    "typescript": "^5.7.0",
+    "vitest": "^2.0.0"
   }
 }

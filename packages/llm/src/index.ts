@@ -1,29 +1,24 @@
-export { ModelCatalog } from "./catalog.js"
-export { createDefaultLlmConfig } from "./config.js"
-export { LlmRegistry, createDefaultAdapters } from "./registry.js"
-export {
-  estimateUsageCost,
-  normalizeProviderError,
-} from "./usage.js"
-export { createAnthropicAdapter } from "./adapters/anthropic.js"
-export { createGeminiAdapter } from "./adapters/gemini.js"
-export { createLocalDevAdapter } from "./adapters/local-dev.js"
-export { createOpenAiCompatibleAdapter } from "./adapters/openai-compatible.js"
-export { createOpenAiAdapter } from "./adapters/openai.js"
+// ── 클라이언트 (唯一对外门面) ──
+export { LlmClient } from "./client.js"
+export type { LlmChatRequest } from "./client.js"
 
-export type {
-  FetchLike,
-  LlmAdapter,
-  LlmAdapterContext,
-  LlmConfigSnapshot,
-  LlmFailure,
-  LlmProviderConfig,
-  LlmRegistryOptions,
-  LlmStreamRequest,
-  ModelBinding,
-  ModelBindingConfig,
-} from "./types.js"
-export type {
-  ModelPrice,
-  UsageCostResult,
-} from "./usage.js"
+// ── Provider 配置 ──
+export type { LlmConfig, LlmProviderSpec } from "./providers/spec.js"
+export { ProviderCatalog } from "./providers/catalog.js"
+export {
+  createDefaultConfig,
+  createOpenAiSpec,
+  createAnthropicSpec,
+  createGeminiSpec,
+  createDeepSeekSpec,
+  createOpenRouterSpec,
+  createOllamaSpec,
+} from "./providers/presets.js"
+
+// ── 模型目录 ──
+export { ModelCatalog } from "./models/catalog.js"
+export { fetchModels } from "./models/fetch.js"
+
+// ── 用量与错误 ──
+export { estimateUsageCost } from "./usage/cost.js"
+export { isToolUnsupportedError, normalizeProviderError, TOOL_UNSUPPORTED_PATTERNS } from "./usage/errors.js"
