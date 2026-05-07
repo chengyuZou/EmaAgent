@@ -17,7 +17,7 @@ describe.only("Live API - DeepSeek", () => {
       displayName: "DeepSeek",
       enabled: true,
       baseUrl: "https://api.deepseek.com/v1", // 或者 "https://api.deepseek.com/v1"，请根据 DeepSeek 文档确认
-      apiKey: "sk-1d68690a08aa42eeb38ea38d88b1855c", // <-- 🔑 修改这里
+      apiKey: "sk-1dxx", // <-- 🔑 修改这里
     })
 
     console.log("\n🚀 开始请求 DeepSeek...")
