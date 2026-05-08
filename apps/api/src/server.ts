@@ -3,7 +3,10 @@ import Fastify from "fastify"
 
 import { EmaError, toUiErrorView } from "@ema-agent/core-types"
 import { LlmRegistry, createDefaultLlmConfig } from "@ema-agent/llm"
+import { NarrativeBridgeClient } from "@ema-agent/narrative"
+import { PermissionEngine, createDefaultPermissionPolicy } from "@ema-agent/permission"
 import type { SqliteStorage } from "@ema-agent/storage-sql"
+import { ToolRegistry } from "@ema-agent/tool"
 
 import { TurnEventStore } from "./infrastructure/turn-event-store.js"
 import { registerArtifactRoutes } from "./routes/artifacts.js"
@@ -47,10 +50,24 @@ export async function buildApiServer(options: ApiServerOptions) {
     llmRegistry.applyConfig(createDefaultLlmConfig(process.env))
   }
   const workspaceRoot = options.workspaceRoot ?? process.cwd()
-  const turnService = new TurnService(options.storage, eventStore, llmRegistry, workspaceRoot, {
-    narrativeBridgeBaseUrl: options.narrativeBridgeBaseUrl ?? process.env.EMA_NARRATIVE_BRIDGE_URL,
-    narrativeBridgeToken: options.narrativeBridgeToken ?? process.env.EMA_NARRATIVE_BRIDGE_TOKEN,
+
+  // ── Façade dependencies (injected, not internally instantiated) ──
+  const toolRegistry = new ToolRegistry()
+  const permissionEngine = new PermissionEngine(createDefaultPermissionPolicy())
+  const narrativeClient = new NarrativeBridgeClient({
+    baseUrl: options.narrativeBridgeBaseUrl ?? process.env.EMA_NARRATIVE_BRIDGE_URL,
+    token: options.narrativeBridgeToken ?? process.env.EMA_NARRATIVE_BRIDGE_TOKEN,
   })
+
+  const turnService = new TurnService(
+    options.storage,
+    eventStore,
+    llmRegistry,
+    toolRegistry,
+    permissionEngine,
+    narrativeClient,
+    workspaceRoot,
+  )
 
   app.get("/api/health", async () => ({
     ok: true,

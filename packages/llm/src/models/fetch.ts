@@ -1,4 +1,4 @@
-import { asId } from "@ema-agent/core-types"
+import { asId, EmaError } from "@ema-agent/core-types"
 import type { ModelDescriptor, ModelId } from "@ema-agent/core-types"
 import {
   FALLBACK_CONTEXT_WINDOW,
@@ -16,7 +16,7 @@ export async function fetchModels(
   spec: LlmProviderSpec,
   signal?: AbortSignal,
 ): Promise<ModelDescriptor[]> {
-  if (spec.kind === "anthropic") return []
+  if (spec.kind === "anthropic") return getAnthropicModels(spec)
   if (spec.kind === "local-dev") return []
 
   const url = `${spec.baseUrl.replace(/\/$/, "")}/models`
@@ -28,7 +28,7 @@ export async function fetchModels(
 
   const res = await fetch(url, { method: "GET", headers, signal })
   if (!res.ok) {
-    throw new Error(`fetchModels failed for ${spec.id}: ${res.status} ${res.statusText}`)
+    throw new EmaError("provider_unavailable", `fetchModels failed for ${spec.id}: ${res.status} ${res.statusText}`, true)
   }
 
   const json = await res.json() as { data?: unknown[]; models?: unknown[] }
@@ -53,22 +53,26 @@ function parseModelItem(item: unknown, spec: LlmProviderSpec): ModelDescriptor[]
     id: asId<ModelId>(id),
     displayName: String(obj.displayName ?? obj.display_name ?? id),
     providerId: spec.id,
-    capabilities: {
-      streaming: true,
-      tools: true,
-      vision: false,
-      structuredOutput: false,
-      promptCache: false,
-      listModels: false,
-      tts: false,
-      stt: false,
-      imageGen: false,
-      videoGen: false,
-      moderation: false,
-    },
     contextWindow: Number(obj.context_window ?? obj.contextWindow ?? FALLBACK_CONTEXT_WINDOW),
     maxOutputTokens: Number(obj.max_output_tokens ?? obj.maxOutputTokens ?? FALLBACK_MAX_OUTPUT_TOKENS),
     source: "remote",
     updatedAt: Date.now(),
   }]
+}
+
+/**
+ * Anthropic 没有公开的模型列表接口，只有通过 API 调用时才会返回模型信息。
+ */
+function getAnthropicModels(spec: LlmProviderSpec): ModelDescriptor[] {
+  return [
+    {
+      id: asId<ModelId>("claude-sonnet-4.6"),
+      displayName: "Claude Sonnet 4.6",
+      providerId: spec.id,
+      contextWindow: 200000,
+      maxOutputTokens: 4096,
+      source: "user",
+      updatedAt: Date.now(),
+    }
+  ]
 }

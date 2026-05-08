@@ -3,7 +3,10 @@ import { describe, expect, it } from "vitest"
 import { asId } from "@ema-agent/core-types"
 import type { RequestId, SessionId } from "@ema-agent/core-types"
 import { LlmRegistry, createDefaultLlmConfig } from "@ema-agent/llm"
+import { NarrativeBridgeClient } from "@ema-agent/narrative"
+import { PermissionEngine, createDefaultPermissionPolicy } from "@ema-agent/permission"
 import { createSqliteStorage } from "@ema-agent/storage-sql"
+import { ToolRegistry } from "@ema-agent/tool"
 
 import { TurnEventStore } from "./infrastructure/turn-event-store.js"
 import { TurnService } from "./services/turn-service.js"
@@ -14,7 +17,13 @@ describe("TurnService chat 闭环", () => {
     const eventStore = new TurnEventStore()
     const registry = new LlmRegistry()
     registry.applyConfig(createDefaultLlmConfig({ EMA_LOCAL_DEV_PROVIDER: "1" }))
-    const service = new TurnService(storage, eventStore, registry)
+    const toolRegistry = new ToolRegistry()
+    const permissionEngine = new PermissionEngine(createDefaultPermissionPolicy())
+    const narrativeClient = new NarrativeBridgeClient({})
+    const service = new TurnService(
+      storage, eventStore, registry,
+      toolRegistry, permissionEngine, narrativeClient,
+    )
 
     const response = await service.startTurn({
       sessionId: asId<SessionId>("ses_chat_loop"),

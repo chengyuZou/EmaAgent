@@ -142,6 +142,16 @@ importers:
         specifier: ^5.7.0
         version: 5.9.3
 
+  packages/constants-core:
+    dependencies:
+      '@ema-agent/core-types':
+        specifier: workspace:*
+        version: link:../core-types
+    devDependencies:
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
+
   packages/core-types:
     devDependencies:
       typescript:
@@ -163,16 +173,25 @@ importers:
 
   packages/llm:
     dependencies:
+      '@ema-agent/constants-core':
+        specifier: workspace:*
+        version: link:../constants-core
       '@ema-agent/core-types':
         specifier: workspace:*
         version: link:../core-types
+      '@xsai-ext/providers':
+        specifier: ^0.4.0
+        version: 0.4.4
+      '@xsai/stream-text':
+        specifier: ^0.4.0
+        version: 0.4.4
     devDependencies:
-      '@types/node':
-        specifier: ^20.0.0
-        version: 20.19.39
       typescript:
         specifier: ^5.7.0
         version: 5.9.3
+      vitest:
+        specifier: ^2.0.0
+        version: 2.1.9(@types/node@20.19.39)
 
   packages/memory:
     dependencies:
@@ -182,6 +201,16 @@ importers:
       '@ema-agent/storage-sql':
         specifier: workspace:*
         version: link:../storage-sql
+    devDependencies:
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
+
+  packages/multimodal:
+    dependencies:
+      '@ema-agent/core-types':
+        specifier: workspace:*
+        version: link:../core-types
     devDependencies:
       typescript:
         specifier: ^5.7.0
@@ -232,6 +261,9 @@ importers:
 
   packages/session:
     dependencies:
+      '@ema-agent/constants-core':
+        specifier: workspace:*
+        version: link:../constants-core
       '@ema-agent/core-types':
         specifier: workspace:*
         version: link:../core-types
@@ -243,8 +275,21 @@ importers:
         specifier: ^5.7.0
         version: 5.9.3
 
+  packages/skill:
+    dependencies:
+      '@ema-agent/core-types':
+        specifier: workspace:*
+        version: link:../core-types
+    devDependencies:
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
+
   packages/storage-sql:
     dependencies:
+      '@ema-agent/constants-core':
+        specifier: workspace:*
+        version: link:../constants-core
       '@ema-agent/core-types':
         specifier: workspace:*
         version: link:../core-types
@@ -1099,6 +1144,18 @@ packages:
 
   '@vitest/utils@2.1.9':
     resolution: {integrity: sha512-v0psaMSkNJ3A2NMrUEHFRzJtDPFn+/VWZ5WxImB21T9fjucJRmS7xCS3ppEnARb9y11OAzaD+P2Ps+b+BGX5iQ==}
+
+  '@xsai-ext/providers@0.4.4':
+    resolution: {integrity: sha512-PVk3IFOPzPyvss9zY6IO6pJ890F5B6LWGWuhU6DzofWMTnqcUzm0hR2Ml/Qo8kZa3Qy/DZkUT0O1T+5g/fZkWw==}
+
+  '@xsai/shared-chat@0.4.4':
+    resolution: {integrity: sha512-R/lJDt6SnENVaJcUCO1USVuO/G6qtCbJqopPqARF1n20KWDbchLwW/nvkuZH1TM9vMxaywVNmO9sNJ+uoWJEPA==}
+
+  '@xsai/shared@0.4.4':
+    resolution: {integrity: sha512-ZrOeRJ0fqV8YRDwyQbYJx1N8Fe2UTl2psjV7ucYJ+gMr3oWzrmNfTX9zrpV9zwzBMUe6VvqhK/iJzz8p4jYlsw==}
+
+  '@xsai/stream-text@0.4.4':
+    resolution: {integrity: sha512-NaJF7PrZzlAtSGP5fIWuTOY5mc4LymwrRvTfdUR+0paJRu66qIP7CGCsDJGpKRBcRdpLakb4/8qn3vqeKG9r8A==}
 
   abstract-logging@2.0.1:
     resolution: {integrity: sha512-2BjRTZxTPvheOvGbBslFSYOUkr+SjPtOnrLP33f+VIWLzezQpZcqVg7ja3L4dBXmzzgwT+a029jRx5PCi3JuiA==}
@@ -2176,6 +2233,21 @@ snapshots:
       '@vitest/pretty-format': 2.1.9
       loupe: 3.2.1
       tinyrainbow: 1.2.0
+
+  '@xsai-ext/providers@0.4.4':
+    dependencies:
+      '@xsai/shared': 0.4.4
+
+  '@xsai/shared-chat@0.4.4':
+    dependencies:
+      '@xsai/shared': 0.4.4
+
+  '@xsai/shared@0.4.4': {}
+
+  '@xsai/stream-text@0.4.4':
+    dependencies:
+      '@xsai/shared': 0.4.4
+      '@xsai/shared-chat': 0.4.4
 
   abstract-logging@2.0.1: {}
 

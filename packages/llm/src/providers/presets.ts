@@ -6,8 +6,11 @@ import type { LlmConfig, LlmProviderSpec } from "./spec.js"
 type Env = Record<string, string | undefined>
 
 /**
- * 从环境变量生成默认配置，仅用于本地开发。
- * 生产环境走数据库读取，不经过此函数。
+ * 从环境变量生成本地开发兜底配置。
+ *
+ * 最终版本的主路径不是 env，而是：
+ * SQLite provider_configs -> 解密 credential -> LlmProviderSpec -> LlmClient.applyConfig()。
+ * 这个函数只用于新机器、测试或没有数据库配置时快速跑通 LLM 管线。
  */
 export function createDefaultConfig(env: Env = {}): LlmConfig {
   return {

@@ -34,7 +34,8 @@
       "@ema-agent/narrative": ["./packages/narrative/src/index.ts"],
       "@ema-agent/prompts": ["./packages/prompts/src/index.ts"],
       "@ema-agent/telemetry": ["./packages/telemetry/src/index.ts"],
-      "@ema-agent/multimodal": ["./packages/multimodal/src/index.ts"]
+      "@ema-agent/multimodal": ["./packages/multimodal/src/index.ts"],
+      "@ema-agent/skill": ["./packages/skill/src/index.ts"]
     }
   },
   "exclude": ["node_modules", "dist", ".turbo"]

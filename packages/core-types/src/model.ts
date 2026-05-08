@@ -119,36 +119,15 @@ export type ModelRole =
   | "vision"
   | "moderation"
 
-/** 模型能力矩阵——前端据此显示/隐藏功能按钮。 */
-export interface ModelCapabilities {
-  streaming: boolean
-  tools: boolean
-  vision: boolean
-  structuredOutput: boolean
-  promptCache: boolean
-  listModels: boolean
-  /** TTS 语音合成。 */
-  tts: boolean
-  /** STT 语音识别。 */
-  stt: boolean
-  /** 图片生成。 */
-  imageGen: boolean
-  /** 视频生成（V2+）。 */
-  videoGen: boolean
-  /** 内容审核。 */
-  moderation: boolean
-}
 
 /**
  * 模型描述符——ModelCatalog 中的单个条目。
- * 描述模型本身的能力与规格，不含业务角色（角色绑定由编排层负责）。
  *
  * @example
  * const gpt4o: ModelDescriptor = {
  *   id: asId<ModelId>("gpt-4o"),
  *   displayName: "GPT-4o",
  *   providerId: asId<ProviderId>("openai"),
- *   capabilities: { streaming: true, tools: true, vision: true, ... },
  *   contextWindow: 128_000,
  *   maxOutputTokens: 16_384,
  *   pricing: { inputPer1M: 2.5, outputPer1M: 10 },
@@ -159,7 +138,6 @@ export interface ModelDescriptor {
   id: ModelId
   displayName: string
   providerId: ProviderId
-  capabilities?: Partial<ModelCapabilities>
   contextWindow: number
   maxOutputTokens: number
   pricing?: {
@@ -318,7 +296,7 @@ export interface ChatCompletionRequest {
 export interface ChatCompletionChunk {
   id?: string
   index: number
-  delta: { content?: string }
+  delta: { content?: string; reasoning?: string }
   toolCalls?: ToolCallChunk[]
   usage?: { inputTokens: number; outputTokens: number; totalTokens: number }
   finishReason?: "stop" | "length" | "tool_calls" | "content_filter" | "error" | null

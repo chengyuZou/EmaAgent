@@ -1,3 +1,4 @@
+import { EmaError } from "@ema-agent/core-types"
 import type {
   ChatCompletionChunk,
   ChatCompletionMessage,
@@ -13,12 +14,15 @@ import { ProviderCatalog } from "./providers/catalog.js"
 import type { LlmConfig, LlmProviderSpec } from "./providers/spec.js"
 import { streamChat } from "./stream/chat.js"
 
+export type ToolPolicy = "auto" | "required" | "disabled"
+
 export interface LlmChatRequest {
   providerId: ProviderId
   /** 远端模型名（直接传给 API，如 "gpt-4o-mini"、"deepseek-chat"）。 */
   modelId: ModelId
   messages: ChatCompletionMessage[]
   tools?: ToolSpec[]
+  toolPolicy?: ToolPolicy
   temperature?: number
   maxTokens?: number
   signal?: AbortSignal
@@ -79,7 +83,7 @@ export class LlmClient {
   async *streamChat(request: LlmChatRequest): AsyncIterable<ChatCompletionChunk> {
     const spec = this.requireSpec(request.providerId)
     if (!spec.enabled) {
-      throw new Error(`Provider "${request.providerId}" is disabled.`)
+      throw new EmaError("provider_unavailable", `Provider "${request.providerId}" is disabled.`)
     }
     yield* streamChat({
       spec,
@@ -96,7 +100,7 @@ export class LlmClient {
 
   private requireSpec(providerId: ProviderId): LlmProviderSpec {
     const spec = this.providers.get(providerId)
-    if (!spec) throw new Error(`Provider not found: "${providerId}"`)
+    if (!spec) throw new EmaError("provider_unavailable", `Provider not found: "${providerId}"`)
     return spec
   }
 }

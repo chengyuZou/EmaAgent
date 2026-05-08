@@ -2,41 +2,40 @@ import { randomUUID } from "node:crypto"
 
 import { EmaError, asId, isEmaMode } from "@ema-agent/core-types"
 import type {
-  ChatCompletionChunk,
-  ChatCompletionMessage,
-  ChatMessage,
   EmaMode,
-  MessageContentBlock,
   MessageId,
-  ModelId,
-  ModelRole,
-  ProviderId,
+  PhaseId,
   RequestId,
   SessionId,
   StartTurnRequest,
   StartTurnResponse,
-  StepId,
   SseEvent,
-  ToolCallId,
   TurnInputBlock,
-  UsageView,
 } from "@ema-agent/core-types"
-import { estimateUsageCost } from "@ema-agent/llm"
 import type { LlmRegistry } from "@ema-agent/llm"
-import { NarrativeBridgeClient, narrativeResultToContext } from "@ema-agent/narrative"
-import { PermissionEngine, createDefaultPermissionPolicy } from "@ema-agent/permission"
-import { buildSystemPrompt } from "@ema-agent/prompts"
-import { createWorkspaceScope } from "@ema-agent/sandbox"
+import type { NarrativeBridgeClient } from "@ema-agent/narrative"
+import type { PermissionEngine } from "@ema-agent/permission"
 import { SessionManager, SessionWriter, createFallbackTitle } from "@ema-agent/session"
 import type { SqliteStorage } from "@ema-agent/storage-sql"
 import { TelemetryRecorder } from "@ema-agent/telemetry"
-import { BuiltinToolExecutor, ToolRegistry } from "@ema-agent/tool"
+import type { ToolRegistry } from "@ema-agent/tool"
 
 import { StreamAggregator } from "../infrastructure/stream-aggregator.js"
 import type { TurnEventStore } from "../infrastructure/turn-event-store.js"
+import { runChatFlow } from "./chat-flow.js"
+import { runAgentFlow } from "./agent-flow.js"
+import { runNarrativeFlow } from "./narrative-flow.js"
+import {
+  inputToPlainText,
+  resolveModelBinding,
+} from "./flow-helpers.js"
+
+// ═══════════════════════════════════════════════════════════════
+// Internal types
+// ═══════════════════════════════════════════════════════════════
 
 interface BackgroundTurnInput {
-  sessionId: StartTurnRequest["sessionId"]
+  sessionId: SessionId
   requestId: RequestId
   assistantMessageId: MessageId
   mode: EmaMode
@@ -46,71 +45,51 @@ interface BackgroundTurnInput {
   shouldGenerateTitle: boolean
 }
 
-interface EnsureSessionResult {
-  created: boolean
-}
-
-interface ResolvedModelBinding {
-  role: ModelRole
-  providerId: ProviderId
-  modelId: ModelId
-}
-
-interface ToolCallDraft {
-  toolName: string
-  argsText: string
-}
-
 export interface TurnServiceOptions {
   narrativeBridgeBaseUrl?: string
   narrativeBridgeToken?: string
 }
 
+// ═══════════════════════════════════════════════════════════════
+// TurnService — pure orchestration, delegates flows
+// ═══════════════════════════════════════════════════════════════
+
 export class TurnService {
   private readonly sessionManager: SessionManager
   private readonly sessionWriter: SessionWriter
-  private readonly toolRegistry = new ToolRegistry()
-  private readonly permissionEngine = new PermissionEngine(createDefaultPermissionPolicy())
-  private readonly narrativeClient: NarrativeBridgeClient
   private readonly telemetry: TelemetryRecorder
 
   constructor(
     private readonly storage: SqliteStorage,
     private readonly eventStore: TurnEventStore,
     private readonly llmRegistry: LlmRegistry,
+    private readonly toolRegistry: ToolRegistry,
+    private readonly permissionEngine: PermissionEngine,
+    private readonly narrativeClient: NarrativeBridgeClient,
     private readonly workspaceRoot: string = process.cwd(),
-    options: TurnServiceOptions = {},
   ) {
     this.sessionManager = new SessionManager(storage)
     this.sessionWriter = new SessionWriter(storage)
-    this.narrativeClient = new NarrativeBridgeClient({
-      baseUrl: options.narrativeBridgeBaseUrl,
-      token: options.narrativeBridgeToken,
-    })
     this.telemetry = new TelemetryRecorder(storage)
   }
+
+  // ── Public API ─────────────────────────────────────────────
 
   async startTurn(input: StartTurnRequest): Promise<StartTurnResponse> {
     const acceptedAt = Date.now()
     const normalizedInput = normalizeTurnInput(input)
     const requestId = createRequestId()
-    const userMessageId = createMessageId()
-    const assistantMessageId = createMessageId()
 
-    const ensureSessionResult = await this.ensureSession(input, normalizedInput, acceptedAt)
-
-    const userMessage = await this.createUserMessage({
-      requestId,
-      messageId: userMessageId,
-      input: normalizedInput,
-      createdAt: acceptedAt,
+    const ensureResult = await this.sessionManager.ensureSession(input.sessionId, {
+      title: createFallbackTitle(inputToPlainText(normalizedInput)),
+      mode: input.mode,
     })
 
     const beginResult = await this.sessionManager.beginTurn({
       sessionId: input.sessionId,
       requestId,
       mode: input.mode,
-      userMessage,
+      userInputBlocks: normalizedInput,
     })
 
     this.eventStore.publish({
@@ -119,93 +98,37 @@ export class TurnService {
       sessionId: input.sessionId,
       at: acceptedAt,
       mode: input.mode,
-      userMessageId,
-      assistantMessageId,
+      userMessageId: beginResult.userMessageId,
+      assistantMessageId: beginResult.assistantMessageId,
     })
+
     this.startBackgroundTurn({
       sessionId: input.sessionId,
       requestId,
-      assistantMessageId,
+      assistantMessageId: beginResult.assistantMessageId,
       mode: input.mode,
       input: normalizedInput,
       modelOverrides: input.modelOverrides,
       abortSignal: beginResult.abortSignal,
-      shouldGenerateTitle: ensureSessionResult.created,
+      shouldGenerateTitle: ensureResult.created,
     })
 
     return {
       requestId,
       sessionId: input.sessionId,
-      userMessageId,
-      assistantMessageId,
+      userMessageId: beginResult.userMessageId,
+      assistantMessageId: beginResult.assistantMessageId,
       acceptedAt,
       streamUrl: `/api/turns/${encodeURIComponent(requestId)}/events`,
     }
   }
 
-  private async ensureSession(input: StartTurnRequest, normalizedInput: readonly TurnInputBlock[], createdAt: number): Promise<EnsureSessionResult> {
-    const existingSession = await this.storage.sessions.getById(input.sessionId)
-    if (existingSession) {
-      return { created: false }
-    }
-
-    await this.storage.sessions.create({
-      id: input.sessionId,
-      title: createInitialTitle(normalizedInput),
-      lastMode: input.mode,
-      createdAt,
-    })
-
-    return { created: true }
-  }
-
-  private async createUserMessage(input: {
-    requestId: RequestId
-    messageId: MessageId
-    input: readonly TurnInputBlock[]
-    createdAt: number
-  }): Promise<ChatMessage> {
-    return {
-      id: input.messageId,
-      role: "user",
-      contentBlocks: await this.createUserContentBlocks(input.input),
-      requestId: input.requestId,
-      status: "complete",
-      createdAt: input.createdAt,
-    }
-  }
-
-  private async createUserContentBlocks(input: readonly TurnInputBlock[]): Promise<MessageContentBlock[]> {
-    const blocks: MessageContentBlock[] = []
-
-    for (const block of input) {
-      if (block.type === "text") {
-        blocks.push({ type: "text", text: block.text })
-        continue
-      }
-
-      if (block.type === "image_ref" || block.type === "file_ref") {
-        blocks.push({ type: "attachment_ref", attachmentId: block.attachmentId })
-        continue
-      }
-
-      const artifact = await this.storage.artifacts.getArtifactById(block.artifactId)
-      if (artifact) {
-        blocks.push({ type: "artifact_ref", artifact: artifact.summary })
-      } else {
-        blocks.push({ type: "text", text: `[artifact:${block.artifactId}]` })
-      }
-    }
-
-    return blocks
-  }
+  // ── Background execution ───────────────────────────────────
 
   private startBackgroundTurn(input: BackgroundTurnInput): void {
     queueMicrotask(() => {
       void this.runTurn(input).catch((error: unknown) => {
-        void this.failBackgroundTurn(input, error).catch(() => {
-          // 后台兜底失败不能再向 HTTP 请求抛出
-        })
+        void this.failBackgroundTurn(input, error).catch(() => {})
       })
     })
   }
@@ -224,15 +147,7 @@ export class TurnService {
       requestId: input.requestId,
       assistantMessageId: input.assistantMessageId,
       abortSignal: input.abortSignal,
-      events: this.createLlmTurnEvents({
-        sessionId: input.sessionId,
-        requestId: input.requestId,
-        messageId: input.assistantMessageId,
-        mode: input.mode,
-        input: input.input,
-        modelOverrides: input.modelOverrides,
-        abortSignal: input.abortSignal,
-      }),
+      events: this.createLlmTurnEvents(input),
     })
 
     if (terminalEvent?.type === "error") {
@@ -258,354 +173,59 @@ export class TurnService {
     })
 
     if (input.shouldGenerateTitle) {
-      await this.generateSessionTitle(input).catch(() => {
-        // 标题生成是附加体验，失败不能反向影响已经完成的聊天 turn
-      })
+      await this.generateSessionTitle(input).catch(() => {})
     }
   }
 
-  private async *createLlmTurnEvents(input: {
-    sessionId: SessionId
-    requestId: RequestId
-    messageId: MessageId
-    mode: EmaMode
-    input: readonly TurnInputBlock[]
-    modelOverrides?: StartTurnRequest["modelOverrides"]
-    abortSignal: AbortSignal
-  }): AsyncIterable<SseEvent> {
+  // ── Flow dispatch ──────────────────────────────────────────
+
+  private async *createLlmTurnEvents(input: BackgroundTurnInput): AsyncIterable<SseEvent> {
     const startedAt = Date.now()
-    const stepId = createStepId()
-    const binding = resolveModelBinding(this.llmRegistry, mapModeToRole(input.mode), getModeModelOverride(input.mode, input.modelOverrides))
-    const userText = inputToPlainText(input.input)
-    const narrativeContext = input.mode === "narrative"
-      ? await this.loadNarrativeContext({
-          requestId: input.requestId,
-          sessionId: input.sessionId,
-          messageId: input.messageId,
-          query: userText,
-        })
-      : undefined
-    const messages = await this.createChatCompletionMessages(input.sessionId, input.mode, narrativeContext)
-    const toolExecutor = new BuiltinToolExecutor({
-      scope: createWorkspaceScope({
-        rootDir: this.workspaceRoot,
-        allowWrite: true,
-        allowedCommands: ["node", "npm", "pnpm", "python", "python3", "conda"],
-      }),
-    })
+    const phaseId = createPhaseId()
+    const flowInput = {
+      sessionId: input.sessionId,
+      requestId: input.requestId,
+      messageId: input.assistantMessageId,
+      phaseId,
+      mode: input.mode,
+      input: input.input,
+      modelOverrides: input.modelOverrides,
+      abortSignal: input.abortSignal,
+    }
 
     yield {
-      type: "step_start",
+      type: "phase_start" as const,
       requestId: input.requestId,
       sessionId: input.sessionId,
       at: startedAt,
-      stepId,
-      stepType: "response",
-      title: "生成回复",
+      phaseId,
+      phase: input.mode === "agent" ? "think" as const : "think" as const,
+      title: input.mode === "agent" ? "Agent 执行" : input.mode === "narrative" ? "剧情生成" : "生成回复",
     }
 
-    yield createStageCueEvent(input.requestId, input.sessionId, "step", {
-      expression: input.mode === "agent" ? "thinking" : input.mode === "narrative" ? "curious" : "neutral",
-      mouth: "idle",
-      priority: 20,
-    })
-
-    let fullText = ""
-    let lastUsage: UsageView | undefined
-    const toolCalls = new Map<ToolCallId, ToolCallDraft>()
-    const assistantToolCalls: NonNullable<Extract<ChatCompletionMessage, { role: "assistant" }>["toolCalls"]> = []
-    const toolResultMessages: ChatCompletionMessage[] = []
-
-    for await (const chunk of this.llmRegistry.streamChat({
-      providerId: binding.providerId,
-      requestId: input.requestId,
-      sessionId: input.sessionId,
-      modelId: binding.modelId,
-      messages,
-      stream: true,
-      tools: input.mode === "agent" ? this.toolRegistry.toToolSpecs() : undefined,
-      temperature: input.mode === "agent" ? 0.2 : 0.7,
-      maxTokens: input.mode === "agent" ? 4096 : 2048,
-    })) {
-      throwIfAborted(input.abortSignal)
-
-      for (const event of mapLlmChunkToEvents({
-        chunk,
-        requestId: input.requestId,
-        sessionId: input.sessionId,
-        messageId: input.messageId,
-        toolCalls,
-      })) {
-        if (event.type === "text_delta") {
-          fullText += event.delta
-        }
-        yield event
-
-        if (event.type === "tool_call_end") {
-          const draft = toolCalls.get(event.toolCallId)
-          assistantToolCalls.push({
-            id: event.toolCallId,
-            toolName: draft?.toolName ?? "tool",
-            argumentsDelta: JSON.stringify(event.args),
-          })
-
-          for (const toolEvent of await this.executeAgentTool({
-            requestId: input.requestId,
-            sessionId: input.sessionId,
-            messageId: input.messageId,
-            toolCallId: event.toolCallId,
-            toolName: draft?.toolName ?? "tool",
-            args: event.args,
-            executor: toolExecutor,
-          })) {
-            yield toolEvent
-
-            if (toolEvent.type === "tool_result") {
-              toolResultMessages.push({
-                role: "tool",
-                toolCallId: toolEvent.toolCallId,
-                toolName: toolEvent.toolName,
-                content: toolEvent.resultStr,
-              })
-            }
-          }
-        }
-      }
-
-      if (chunk.usage) {
-        lastUsage = chunk.usage
-      }
-    }
-
-    if (toolResultMessages.length > 0) {
-      for await (const event of this.createToolFollowupEvents({
-        requestId: input.requestId,
-        sessionId: input.sessionId,
-        messageId: input.messageId,
-        model: binding,
-        messages,
-        assistantText: fullText,
-        assistantToolCalls,
-        toolResultMessages,
-        abortSignal: input.abortSignal,
-      })) {
-        if (event.type === "text_delta") {
-          fullText += event.delta
-        }
-        yield event
-      }
+    switch (input.mode) {
+      case "chat":
+        yield* runChatFlow(this.storage, this.llmRegistry, flowInput)
+        break
+      case "agent":
+        yield* runAgentFlow(this.storage, this.llmRegistry, this.toolRegistry, this.permissionEngine, this.workspaceRoot, flowInput)
+        break
+      case "narrative":
+        yield* runNarrativeFlow(this.storage, this.llmRegistry, this.narrativeClient, this.eventStore, flowInput)
+        break
     }
 
     yield {
-      type: "text_done",
+      type: "phase_end" as const,
       requestId: input.requestId,
       sessionId: input.sessionId,
       at: Date.now(),
-      messageId: input.messageId,
-      blockId: `text_${input.messageId}`,
-      fullText,
-    }
-
-    yield createStageCueEvent(input.requestId, input.sessionId, "system", {
-      expression: "happy",
-      motion: "nod",
-      mouth: "idle",
-      priority: 10,
-      durationMs: 1_200,
-    })
-
-    yield {
-      type: "step_end",
-      requestId: input.requestId,
-      sessionId: input.sessionId,
-      at: Date.now(),
-      stepId,
+      phaseId,
       status: "completed",
     }
-
-    yield {
-      type: "turn_completed",
-      requestId: input.requestId,
-      sessionId: input.sessionId,
-      at: Date.now(),
-      usage: lastUsage
-        ? estimateUsageCost({
-            providerId: binding.providerId,
-            modelId: binding.modelId,
-            usage: lastUsage,
-          })
-        : undefined,
-    }
   }
 
-  private async loadNarrativeContext(input: {
-    requestId: RequestId
-    sessionId: SessionId
-    messageId: MessageId
-    query: string
-  }): Promise<string | undefined> {
-    this.eventStore.publish({
-      type: "retrieval_start",
-      requestId: input.requestId,
-      sessionId: input.sessionId,
-      at: Date.now(),
-      messageId: input.messageId,
-      source: "narrative",
-    })
-
-    const result = await this.narrativeClient.query({
-      worldId: "default",
-      sceneContext: "",
-      query: input.query,
-    })
-    const context = narrativeResultToContext(result)
-
-    this.eventStore.publish({
-      type: "retrieval_end",
-      requestId: input.requestId,
-      sessionId: input.sessionId,
-      at: Date.now(),
-      messageId: input.messageId,
-      source: "narrative",
-      content: context || "未召回到剧情片段。",
-    })
-
-    return context || undefined
-  }
-
-  private async executeAgentTool(input: {
-    requestId: RequestId
-    sessionId: SessionId
-    messageId: MessageId
-    toolCallId: ToolCallId
-    toolName: string
-    args: Record<string, unknown>
-    executor: BuiltinToolExecutor
-  }): Promise<SseEvent[]> {
-    const descriptor = this.toolRegistry.get(input.toolName)
-    const evaluation = this.permissionEngine.evaluate({
-      requestId: input.requestId,
-      sessionId: input.sessionId,
-      toolCallId: input.toolCallId,
-      toolName: input.toolName,
-      summary: `${descriptor.displayName}：${summarizeToolArgs(input.args)}`,
-      risk: descriptor.risk === "critical" ? "critical" : descriptor.risk,
-      paths: extractPathArgs(input.args),
-      writesFiles: descriptor.writesFiles,
-      needsNetwork: descriptor.needsNetwork,
-      params: input.args,
-    })
-
-    const events: SseEvent[] = []
-    if (evaluation.decision !== "allow") {
-      events.push({
-        type: "permission_request",
-        requestId: input.requestId,
-        sessionId: input.sessionId,
-        at: Date.now(),
-        messageId: input.messageId,
-        toolCallId: input.toolCallId,
-        toolName: input.toolName,
-        summary: evaluation.reason,
-        risk: evaluation.risk === "critical" ? "high" : evaluation.risk,
-      })
-      events.push({
-        type: "tool_result",
-        requestId: input.requestId,
-        sessionId: input.sessionId,
-        at: Date.now(),
-        messageId: input.messageId,
-        toolCallId: input.toolCallId,
-        toolName: input.toolName,
-        success: false,
-        resultStr: `工具需要用户确认：${evaluation.reason}`,
-        durationMs: 0,
-      })
-      return events
-    }
-
-    const result = await input.executor.execute(input.toolName, input.args)
-    events.push({
-      type: "tool_result",
-      requestId: input.requestId,
-      sessionId: input.sessionId,
-      at: Date.now(),
-      messageId: input.messageId,
-      toolCallId: input.toolCallId,
-      toolName: input.toolName,
-      success: result.success,
-      resultStr: result.resultStr,
-      durationMs: result.durationMs,
-    })
-    return events
-  }
-
-  private async *createToolFollowupEvents(input: {
-    requestId: RequestId
-    sessionId: SessionId
-    messageId: MessageId
-    model: ResolvedModelBinding
-    messages: ChatCompletionMessage[]
-    assistantText: string
-    assistantToolCalls: NonNullable<Extract<ChatCompletionMessage, { role: "assistant" }>["toolCalls"]>
-    toolResultMessages: ChatCompletionMessage[]
-    abortSignal: AbortSignal
-  }): AsyncIterable<SseEvent> {
-    const followupMessages: ChatCompletionMessage[] = [
-      ...input.messages,
-      {
-        role: "assistant",
-        content: input.assistantText || null,
-        toolCalls: input.assistantToolCalls,
-      },
-      ...input.toolResultMessages,
-    ]
-
-    for await (const chunk of this.llmRegistry.streamChat({
-      providerId: input.model.providerId,
-      requestId: input.requestId,
-      sessionId: input.sessionId,
-      modelId: input.model.modelId,
-      messages: followupMessages,
-      stream: true,
-      temperature: 0.2,
-      maxTokens: 2048,
-    })) {
-      throwIfAborted(input.abortSignal)
-      const delta = chunk.delta.content
-      if (!delta) {
-        continue
-      }
-
-      yield {
-        type: "text_delta",
-        requestId: input.requestId,
-        sessionId: input.sessionId,
-        at: Date.now(),
-        messageId: input.messageId,
-        blockId: `text_${input.messageId}`,
-        delta,
-      }
-    }
-  }
-
-  private async createChatCompletionMessages(sessionId: SessionId, mode: EmaMode, extraSystemContext?: string): Promise<ChatCompletionMessage[]> {
-    const history = await this.storage.messages.listMessagesBySession(sessionId, {
-      limit: 30,
-      includeSystem: false,
-    })
-
-    return [
-      {
-        role: "system",
-        content: buildSystemPrompt({
-          mode,
-          recalledContext: extraSystemContext,
-        }),
-      },
-      ...history.items.map(toChatCompletionMessage).filter((message): message is ChatCompletionMessage => Boolean(message)),
-    ]
-  }
+  // ── Title generation ───────────────────────────────────────
 
   private async generateSessionTitle(input: BackgroundTurnInput): Promise<void> {
     const userText = inputToPlainText(input.input)
@@ -626,14 +246,8 @@ export class TurnService {
         sessionId: input.sessionId,
         modelId: binding.modelId,
         messages: [
-          {
-            role: "system",
-            content: "你负责给中文聊天会话生成短标题。只输出标题，不要解释。",
-          },
-          {
-            role: "user",
-            content: `请为这段用户首轮输入生成 4 到 18 个字的标题：\n${userText}`,
-          },
+          { role: "system", content: "你负责给中文聊天会话生成短标题。只输出标题，不要解释。" },
+          { role: "user", content: `请为这段用户首轮输入生成 4 到 18 个字的标题：\n${userText}` },
         ],
         stream: true,
         temperature: 0.2,
@@ -649,6 +263,8 @@ export class TurnService {
     }
   }
 
+  // ── Error handling ─────────────────────────────────────────
+
   private async failBackgroundTurn(input: BackgroundTurnInput, error: unknown): Promise<void> {
     const emaError = toEmaError(error)
 
@@ -657,10 +273,7 @@ export class TurnService {
       sessionId: input.sessionId,
       type: "turn_failed",
       level: "error",
-      payload: {
-        code: emaError.code,
-        message: emaError.message,
-      },
+      payload: { code: emaError.code, message: emaError.message },
     })
 
     this.eventStore.publish({
@@ -681,7 +294,9 @@ export class TurnService {
   }
 }
 
-// ─── helper functions ───────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════
+// Pure helpers (no DB, no I/O)
+// ═══════════════════════════════════════════════════════════════
 
 function normalizeTurnInput(input: StartTurnRequest): TurnInputBlock[] {
   if (!input.sessionId) {
@@ -707,297 +322,28 @@ function normalizeTurnInput(input: StartTurnRequest): TurnInputBlock[] {
 }
 
 function isNonEmptyInputBlock(block: TurnInputBlock): boolean {
-  if (block.type === "text") {
-    return block.text.trim().length > 0
-  }
+  if (block.type === "text") return block.text.trim().length > 0
   return true
-}
-
-function createInitialTitle(input: readonly TurnInputBlock[]): string {
-  const firstText = input.find((block): block is Extract<TurnInputBlock, { type: "text" }> => block.type === "text")?.text.trim()
-  return createFallbackTitle(firstText ?? "")
 }
 
 function createRequestId(): RequestId {
   return asId<RequestId>(`req_${randomUUID()}`)
 }
 
-function createMessageId(): MessageId {
-  return asId<MessageId>(`msg_${randomUUID()}`)
-}
-
-function createStepId(): StepId {
-  return asId<StepId>(`step_${randomUUID()}`)
-}
-
-function resolveModelBinding(registry: LlmRegistry, role: ModelRole, modelOverride: ModelId | undefined): ResolvedModelBinding {
-  const binding = registry.getBinding(role)
-
-  if (modelOverride) {
-    return {
-      role,
-      providerId: binding?.providerId ?? inferProviderIdFromModelId(modelOverride),
-      modelId: modelOverride,
-    }
-  }
-
-  if (!binding) {
-    throw new EmaError("model_not_found", `没有为 ${role} 绑定模型。`, false)
-  }
-
-  return binding
-}
-
-function inferProviderIdFromModelId(modelId: ModelId): ProviderId {
-  const [provider] = String(modelId).split("/")
-  if (!provider) {
-    throw new EmaError("bad_request", "临时模型覆盖必须使用 provider/model 格式，或先配置 role binding。", false)
-  }
-  return asId<ProviderId>(provider)
-}
-
-function mapModeToRole(mode: EmaMode): ModelRole {
-  return mode
-}
-
-function getModeModelOverride(mode: EmaMode, overrides: StartTurnRequest["modelOverrides"] | undefined): ModelId | undefined {
-  if (!overrides) {
-    return undefined
-  }
-  if (mode === "agent") {
-    return overrides.agentModelId
-  }
-  if (mode === "narrative") {
-    return overrides.narrativeModelId
-  }
-  return overrides.chatModelId
-}
-
-function toChatCompletionMessage(message: ChatMessage): ChatCompletionMessage | undefined {
-  const text = contentBlocksToPlainText(message.contentBlocks)
-
-  if (text.trim() === "") {
-    return undefined
-  }
-
-  if (message.role === "assistant") {
-    return {
-      role: "assistant",
-      content: text,
-    }
-  }
-
-  if (message.role === "system") {
-    return {
-      role: "system",
-      content: text,
-    }
-  }
-
-  return {
-    role: "user",
-    content: text,
-  }
-}
-
-function contentBlocksToPlainText(blocks: readonly MessageContentBlock[]): string {
-  return blocks
-    .map((block) => {
-      switch (block.type) {
-        case "text":
-          return block.text
-        case "image":
-          return `[image:${block.alt ?? block.url}]`
-        case "attachment_ref":
-          return `[attachment:${block.attachmentId}]`
-        case "artifact_ref":
-          return `[artifact:${block.artifact.title}]`
-        case "tool_call":
-          return `[tool_call:${block.toolName} ${JSON.stringify(block.args)}]`
-        case "tool_result":
-          return `[tool_result:${block.toolName} ${block.resultStr}]`
-        case "permission_request":
-          return `[permission_request:${block.toolName} ${block.summary}]`
-        case "step":
-          return `[step:${block.detail}]`
-        case "retrieval":
-          return `[retrieval:${block.source} ${block.content}]`
-        case "compression":
-          return `[compression:${block.content}]`
-        case "audio":
-          return `[audio:${block.transcript ?? block.url}]`
-        case "image_gen":
-          return `[image_gen:${block.prompt}]`
-        case "emotion":
-          return `[emotion:${block.label} ${block.reason}]`
-        case "error":
-          return `[error:${block.code} ${block.message}]`
-        default:
-          return ""
-      }
-    })
-    .join("\n")
-    .trim()
-}
-
-function inputToPlainText(input: readonly TurnInputBlock[]): string {
-  return input
-    .map((block) => {
-      if (block.type === "text") {
-        return block.text
-      }
-      if (block.type === "image_ref") {
-        return `[image:${block.attachmentId}]`
-      }
-      if (block.type === "file_ref") {
-        return `[file:${block.attachmentId}]`
-      }
-      return `[artifact:${block.artifactId}]`
-    })
-    .join("\n")
-    .trim()
-}
-
-function* mapLlmChunkToEvents(input: {
-  chunk: ChatCompletionChunk
-  requestId: RequestId
-  sessionId: SessionId
-  messageId: MessageId
-  toolCalls: Map<ToolCallId, ToolCallDraft>
-}): Iterable<SseEvent> {
-  const at = Date.now()
-  const delta = input.chunk.delta.content
-
-  if (delta) {
-    yield {
-      type: "text_delta",
-      requestId: input.requestId,
-      sessionId: input.sessionId,
-      at,
-      messageId: input.messageId,
-      blockId: `text_${input.messageId}`,
-      delta,
-    }
-  }
-
-  for (const toolCall of input.chunk.toolCalls ?? []) {
-    const current = input.toolCalls.get(toolCall.id)
-    if (!current) {
-      input.toolCalls.set(toolCall.id, {
-        toolName: toolCall.toolName,
-        argsText: toolCall.argumentsDelta,
-      })
-      yield {
-        type: "tool_call_start",
-        requestId: input.requestId,
-        sessionId: input.sessionId,
-        at,
-        messageId: input.messageId,
-        toolCallId: toolCall.id,
-        toolName: toolCall.toolName,
-      }
-    } else {
-      current.argsText += toolCall.argumentsDelta
-    }
-
-    if (toolCall.argumentsDelta) {
-      yield {
-        type: "tool_call_args",
-        requestId: input.requestId,
-        sessionId: input.sessionId,
-        at,
-        messageId: input.messageId,
-        toolCallId: toolCall.id,
-        argsDelta: toolCall.argumentsDelta,
-      }
-    }
-  }
-
-  if (input.chunk.finishReason === "tool_calls") {
-    for (const [toolCallId, draft] of input.toolCalls) {
-      yield {
-        type: "tool_call_end",
-        requestId: input.requestId,
-        sessionId: input.sessionId,
-        at,
-        messageId: input.messageId,
-        toolCallId,
-        args: parseToolArgs(draft.argsText),
-      }
-    }
-    input.toolCalls.clear()
-  }
-}
-
-function parseToolArgs(value: string): Record<string, unknown> {
-  if (!value.trim()) {
-    return {}
-  }
-
-  try {
-    return JSON.parse(value) as Record<string, unknown>
-  } catch {
-    return {
-      raw: value,
-    }
-  }
+function createPhaseId(): PhaseId {
+  return asId<PhaseId>(`phase_${randomUUID()}`)
 }
 
 function normalizeGeneratedTitle(value: string, fallbackTitle: string): string {
   const title = value.trim().replace(/^["'""]+|["'""]+$/g, "").replace(/\s+/g, " ")
-  if (!title) {
-    return fallbackTitle
-  }
+  if (!title) return fallbackTitle
   return title.length <= 24 ? title : `${title.slice(0, 24)}...`
 }
 
-function createStageCueEvent(
-  requestId: RequestId,
-  sessionId: SessionId,
-  source: Extract<Extract<SseEvent, { type: "stage_cue" }>["cue"]["source"], string>,
-  cue: Omit<Extract<SseEvent, { type: "stage_cue" }>["cue"], "source">,
-): SseEvent {
-  return {
-    type: "stage_cue",
-    requestId,
-    sessionId,
-    at: Date.now(),
-    cue: {
-      source,
-      ...cue,
-    },
-  }
-}
-
-function summarizeToolArgs(args: Record<string, unknown>): string {
-  const text = JSON.stringify(args)
-  return text.length <= 180 ? text : `${text.slice(0, 180)}...`
-}
-
-function extractPathArgs(args: Record<string, unknown>): string[] {
-  const paths = [args.path, args.cwd, ...(Array.isArray(args.paths) ? args.paths : [])]
-  return paths.filter((item): item is string => typeof item === "string")
-}
-
-function throwIfAborted(signal: AbortSignal): void {
-  if (signal.aborted) {
-    throw new EmaError("internal_error", "Turn aborted.", true)
-  }
-}
-
 function toEmaError(error: unknown): EmaError {
-  if (error instanceof EmaError) {
-    return error
-  }
-
+  if (error instanceof EmaError) return error
   if (error instanceof Error) {
-    return new EmaError("internal_error", error.message, true, {
-      name: error.name,
-      stack: error.stack,
-    })
+    return new EmaError("internal_error", error.message, true, { name: error.name, stack: error.stack })
   }
-
-  return new EmaError("unknown_error", "未知后台 Turn 错误", true, {
-    raw: String(error),
-  })
+  return new EmaError("unknown_error", "未知后台 Turn 错误", true, { raw: String(error) })
 }

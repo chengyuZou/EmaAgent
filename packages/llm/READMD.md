@@ -9,7 +9,7 @@
 这个包负责：
 
 - Provider 配置的内存级 CRUD。
-- 从环境变量生成本地开发默认配置。
+- 从环境变量生成本地开发兜底配置。
 - 远端模型列表拉取与模型目录缓存。
 - 调用 `@xsai/stream-text` 发起流式聊天。
 - 将 xsai 事件归一化为 `ChatCompletionChunk`。
@@ -32,8 +32,8 @@ packages/llm/
     client.ts              # LlmClient：唯一运行时入口
     index.ts               # 对外导出
     providers/
-      spec.ts              # Provider 配置类型
-      presets.ts           # 从 env 生成默认 Provider 配置
+      spec.ts              # Provider 运行时配置类型
+      presets.ts           # 从 env 生成本地开发兜底 Provider 配置
       catalog.ts           # ProviderCatalog 内存注册表
     models/
       catalog.ts           # ModelCatalog 模型目录缓存
@@ -85,9 +85,21 @@ import type {
 } from "@ema-agent/llm"
 ```
 
-## Provider 配置
+## Provider 配置来源
 
-Provider 配置使用 `LlmProviderSpec`，可以存入 SQLite，也可以通过 HTTP 传输。
+最终版本的主配置源是 SQLite，而不是环境变量。
+
+数据流应该是：
+
+```text
+provider_configs 表
+  -> API / storage 层读取 ProviderConfigRecord
+  -> 解密 api_key_encrypted 或通过 credentialId 取 key
+  -> 组装 LlmProviderSpec
+  -> LlmClient.applyConfig()
+```
+
+`LlmProviderSpec` 是 LLM 调用层使用的运行时配置。它可以通过 HTTP 传给本进程内部服务，也可以由 API 层临时构造，但不要把它当作 SQLite 表结构。
 
 ```ts
 interface LlmProviderSpec {
@@ -96,18 +108,34 @@ interface LlmProviderSpec {
   displayName: string
   enabled: boolean
   baseUrl: string
+  // 只允许存在于运行时内存；SQLite 里存 api_key_encrypted 或 credentialId。
   apiKey?: string
   headers?: Record<string, string>
 }
 ```
 
-默认配置来自环境变量：
+生产路径示例：
 
 ```ts
-const config = createDefaultConfig(process.env)
 const client = new LlmClient()
-client.applyConfig(config)
+client.applyConfig({
+  providers: [
+    {
+      id: providerRecord.id,
+      kind: providerRecord.kind,
+      displayName: providerRecord.displayName,
+      enabled: providerRecord.enabled,
+      baseUrl: providerRecord.baseUrl ?? "",
+      apiKey: decryptedApiKey,
+      headers: providerRecord.headersJson
+        ? JSON.parse(providerRecord.headersJson)
+        : undefined,
+    },
+  ],
+})
 ```
+
+`createDefaultConfig(process.env)` 只用于本地开发兜底，例如第一次启动还没有 SQLite provider 配置时临时跑通链路。它不是最终生产配置入口。
 
 当前预置 Provider：
 
@@ -120,7 +148,7 @@ client.applyConfig(config)
 | `createOpenRouterSpec()` | `openai-compatible` | `https://openrouter.ai/api/v1` |
 | `createOllamaSpec()` | `openai-compatible` | `http://127.0.0.1:11434/v1` |
 
-常用环境变量：
+本地开发兜底环境变量：
 
 ```text
 OPENAI_API_KEY
@@ -144,11 +172,13 @@ OLLAMA_API_KEY
 
 ```ts
 import { asId } from "@ema-agent/core-types"
-import { LlmClient, createDefaultConfig } from "@ema-agent/llm"
+import { LlmClient } from "@ema-agent/llm"
 import type { ModelId, ProviderId } from "@ema-agent/core-types"
 
 const client = new LlmClient()
-client.applyConfig(createDefaultConfig(process.env))
+client.applyConfig({
+  providers: await loadRuntimeProviderSpecsFromSqlite(),
+})
 
 const stream = client.streamChat({
   providerId: asId<ProviderId>("openai"),

@@ -2,11 +2,7 @@
   "extends": "../../tsconfig.json",
   "compilerOptions": {
     "lib": ["ESNext"],
-    "outDir": "./dist",
-    "paths": {
-      "@ema-agent/constants-core": ["../constants-core/src/index.ts"],
-      "@ema-agent/core-types": ["../core-types/src/index.ts"]
-    }
+    "outDir": "./dist"
   },
   "include": ["src/**/*", "test/**/*"],
   "exclude": ["node_modules", "dist"]

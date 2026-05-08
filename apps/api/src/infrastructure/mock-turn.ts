@@ -3,7 +3,7 @@ import type {
   MessageId,
   RequestId,
   SessionId,
-  StepId,
+  PhaseId,
   SseEvent,
   TurnInputBlock,
 } from "@ema-agent/core-types"
@@ -19,18 +19,18 @@ export interface MockTurnInput {
 }
 
 export async function* createMockTurnEvents(input: MockTurnInput): AsyncIterable<SseEvent> {
-  const stepId = asId<StepId>(`step_${crypto.randomUUID()}`)
+  const phaseId = asId<PhaseId>(`phase_${crypto.randomUUID()}`)
   const startedAt = Date.now()
   const userText = inputToPlainText(input.input)
   const reply = createMockReply(input.mode, userText)
 
   yield {
-    type: "step_start",
+    type: "phase_start",
     requestId: input.requestId,
     sessionId: input.sessionId,
     at: startedAt,
-    stepId,
-    stepType: "response",
+    phaseId,
+    phase: "think",
     title: "生成临时回复",
   }
 
@@ -59,11 +59,11 @@ export async function* createMockTurnEvents(input: MockTurnInput): AsyncIterable
   }
 
   yield {
-    type: "step_end",
+    type: "phase_end",
     requestId: input.requestId,
     sessionId: input.sessionId,
     at: Date.now(),
-    stepId,
+    phaseId,
     status: "completed",
   }
 

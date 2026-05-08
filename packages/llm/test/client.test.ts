@@ -137,7 +137,7 @@ describe("LlmClient", () => {
             messages: [],
           }),
         )
-      }).rejects.toThrow('Provider not found: "nonexistent"')
+      }).rejects.toThrow("Provider not found: \"nonexistent\"")
     })
 
     it("throws when provider is disabled", async () => {
@@ -150,7 +150,7 @@ describe("LlmClient", () => {
             messages: [],
           }),
         )
-      }).rejects.toThrow('Provider "openai" is disabled.')
+      }).rejects.toThrow("Provider \"openai\" is disabled.")
     })
   })
 })

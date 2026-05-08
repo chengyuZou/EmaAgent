@@ -33,33 +33,17 @@ export function normalizeEvent(
     case "text-delta":
       return { index, delta: { content: event.text }, finishReason: null }
 
+    case "reasoning-delta":
+      return { index, delta: { reasoning: event.text }, finishReason: null }
+
     case "tool-call-streaming-start":
-      return {
-        index,
-        delta: {},
-        toolCalls: [
-          {
-            id: asId<ToolCallId>(event.toolCallId),
-            toolName: event.toolName,
-            argumentsDelta: "",
-          } satisfies ToolCallChunk,
-        ],
-        finishReason: null,
-      }
+      return createToolChunk(index, event.toolCallId, event.toolName, "")
 
     case "tool-call-delta":
-      return {
-        index,
-        delta: {},
-        toolCalls: [
-          {
-            id: asId<ToolCallId>(event.toolCallId),
-            toolName: event.toolName,
-            argumentsDelta: event.argsTextDelta,
-          } satisfies ToolCallChunk,
-        ],
-        finishReason: null,
-      }
+      return createToolChunk(index, event.toolCallId, event.toolName, event.argsTextDelta)
+
+    case "tool-call":
+      return createToolChunk(index, event.toolCallId, event.toolName, stringifyToolArgs(event.args))
 
     case "finish":
       return {
@@ -77,6 +61,28 @@ export function normalizeEvent(
     // tool-call（完整）、tool-result、reasoning-delta 暂不向上层暴露
     default:
       return null
+  }
+}
+
+function createToolChunk(index: number, id: string, toolName: string, argumentsDelta: string): ChatCompletionChunk {
+  return {
+    index,
+    delta: {},
+    toolCalls: [{
+      id: asId<ToolCallId>(id),
+      toolName,
+      argumentsDelta,
+    }],
+    finishReason: null,
+  }
+}
+
+function stringifyToolArgs(args: unknown): string {
+  if (typeof args === "string") return args
+  try {
+    return JSON.stringify(args ?? {})
+  } catch {
+    return "{}"
   }
 }
 

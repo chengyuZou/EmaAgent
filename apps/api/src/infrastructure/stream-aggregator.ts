@@ -1,10 +1,12 @@
 import type {
+  AgentPhase,
   ChatMessage,
   MessageContentBlock,
   MessageId,
   RequestId,
   SessionId,
   SseEvent,
+  PhaseId,
   ToolCallId,
 } from "@ema-agent/core-types"
 import type { SessionWriter } from "@ema-agent/session"
@@ -20,6 +22,13 @@ export interface StreamAggregatorInput {
   events: AsyncIterable<SseEvent>
 }
 
+interface PhaseAccumulator {
+  phase: string
+  title: string
+  detail?: string
+  startedAt: number
+}
+
 export class StreamAggregator {
   constructor(
     private readonly writer: SessionWriter,
@@ -29,6 +38,7 @@ export class StreamAggregator {
   async run(input: StreamAggregatorInput): Promise<SseEvent | undefined> {
     const blocks: MessageContentBlock[] = []
     const toolNamesById = new Map<ToolCallId, string>()
+    const phaseById = new Map<PhaseId, PhaseAccumulator>()
     let textBlockIndex: number | undefined
     let terminalEvent: SseEvent | undefined
 
@@ -41,7 +51,20 @@ export class StreamAggregator {
       if (event.type === "tool_call_start") {
         toolNamesById.set(event.toolCallId, event.toolName)
       }
-      applyEventToAssistantBlocks(blocks, event, toolNamesById, (text) => {
+      if (event.type === "phase_start") {
+        phaseById.set(event.phaseId, {
+          phase: event.phase,
+          title: event.title,
+          startedAt: event.at,
+        })
+      }
+      if (event.type === "phase_progress") {
+        const acc = phaseById.get(event.phaseId)
+        if (acc) {
+          acc.detail = event.detail
+        }
+      }
+      applyEventToAssistantBlocks(blocks, event, toolNamesById, phaseById, (text) => {
         if (textBlockIndex === undefined) {
           textBlockIndex = blocks.length
           blocks.push({ type: "text", text })
@@ -51,17 +74,16 @@ export class StreamAggregator {
       })
 
       if (blocks.length > 0 || isTerminalEvent(event)) {
-        await this.writer.upsertAssistantMessage({
-          sessionId: input.sessionId,
-          requestId: input.requestId,
-          message: createAssistantMessage({
+        await this.writer.upsertAssistantMessage(
+          input.sessionId,
+          createAssistantMessage({
             messageId: input.assistantMessageId,
             requestId: input.requestId,
             blocks,
             status: event.type === "error" ? "error" : event.type === "turn_completed" ? "complete" : "generating",
             errorCode: event.type === "error" ? event.code : undefined,
           }),
-        })
+        )
       }
 
       if (isTerminalEvent(event)) {
@@ -96,6 +118,7 @@ function applyEventToAssistantBlocks(
   blocks: MessageContentBlock[],
   event: SseEvent,
   toolNamesById: ReadonlyMap<ToolCallId, string>,
+  phaseById: ReadonlyMap<PhaseId, PhaseAccumulator>,
   updateText: (text: string) => void,
 ): void {
   if (event.type === "text_delta") {
@@ -179,12 +202,21 @@ function applyEventToAssistantBlocks(
     return
   }
 
-  if (event.type === "step_progress") {
-    blocks.push({
-      type: "step",
-      stepId: event.stepId,
-      detail: event.detail,
-    })
+  if (event.type === "phase_end") {
+    const acc = phaseById.get(event.phaseId)
+    if (acc) {
+      blocks.push({
+        type: "phase",
+        phaseId: event.phaseId,
+        phase: acc.phase as AgentPhase,
+        title: acc.title,
+        status: event.status,
+        detail: acc.detail,
+        artifactIds: event.artifactIds as string[] | undefined,
+        startedAt: acc.startedAt,
+        endedAt: event.at,
+      })
+    }
     return
   }
 

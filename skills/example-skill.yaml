@@ -1,0 +1,55 @@
+# Example skill manifest — EmaAgent Skill 模板
+# 每个 skill 是一个独立目录，包含 skill.yaml + 可选的 prompts/scripts 文件。
+# 放在 skills/<skill-name>/ 下，EmaAgent 启动时自动加载。
+
+name: example-skill
+displayName: 示例技能
+version: 0.1.0
+description: 一个示例技能，展示 skill.yaml 的结构。
+instructions: |
+  这个技能展示了 skill 的基本结构。
+  你可以在 instructions 中写详细的 markdown 使用说明。
+
+author:
+  name: EmaAgent
+  url: https://github.com/ema-agent
+
+tags: [example, demo]
+
+# 依赖的 MCP server（可选）
+# requiresMcpServers:
+#   - filesystem
+
+# 需要的权限（可选）
+# permissions:
+#   - type: network
+#     rule: api.example.com
+#     read: true
+#     write: false
+
+# 禁用的内置工具（可选）
+# disabledTools:
+#   - web_search
+
+# Prompt 注入（可选）
+# prompts:
+#   system: system-prompt.md
+#   userPrefix: user-prefix.md
+
+# 自定义工具（可选）
+# tools:
+#   - name: example_tool
+#     description: 一个示例工具
+#     parameters:
+#       type: object
+#       properties:
+#         query:
+#           type: string
+#           description: 查询参数
+#       required: [query]
+#     timeoutMs: 30000
+#     inline:
+#       language: python
+#       code: |
+#         import json
+#         print(json.dumps({"result": "hello"}))

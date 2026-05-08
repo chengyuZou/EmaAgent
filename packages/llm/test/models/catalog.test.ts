@@ -4,26 +4,13 @@ import type { ModelId, ProviderId } from "@ema-agent/core-types"
 import type { ModelDescriptor } from "@ema-agent/core-types"
 import { ModelCatalog } from "../../src/models/catalog.js"
 
-const DEFAULT_CAPS: ModelDescriptor["capabilities"] = {
-  streaming: true,
-  tools: true,
-  vision: false,
-  structuredOutput: false,
-  promptCache: false,
-  listModels: false,
-  tts: false,
-  stt: false,
-  imageGen: false,
-  videoGen: false,
-  moderation: false,
-}
+
 
 function makeModel(providerId: string, modelId: string): ModelDescriptor {
   return {
     id: asId<ModelId>(modelId),
     displayName: modelId,
     providerId: asId<ProviderId>(providerId),
-    capabilities: DEFAULT_CAPS,
     contextWindow: 128_000,
     maxOutputTokens: 4_096,
     source: "remote",

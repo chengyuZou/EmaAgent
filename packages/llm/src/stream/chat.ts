@@ -46,10 +46,10 @@ export async function* streamChat(input: ChatStreamInput): AsyncIterable<ChatCom
   } as unknown as Parameters<typeof streamText>[0])
 
   // 消费 hanging promise，防止 unhandled rejection
-  void result.messages.catch(() => {})
-  void result.usage.catch(() => {})
-  void result.steps.catch(() => {})
-  void result.totalUsage.catch(() => {})
+  void result.messages?.catch(() => {})
+  void result.usage?.catch(() => {})
+  void result.steps?.catch(() => {})
+  void result.totalUsage?.catch(() => {})
 
   const reader = result.fullStream.getReader()
   let index = 0
