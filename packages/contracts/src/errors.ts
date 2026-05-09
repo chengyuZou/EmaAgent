@@ -1,0 +1,33 @@
+export type ErrorCode =
+  | 'auth/api_key_missing'
+  | 'auth/api_key_invalid'
+  | 'auth/sidecar_secret_mismatch'
+  | 'provider/rate_limit'
+  | 'provider/server_error'
+  | 'provider/timeout'
+  | 'provider/context_too_long'
+  | 'provider/model_unavailable'
+  | 'tool/permission_denied'
+  | 'tool/sandbox_violation'
+  | 'tool/timeout'
+  | 'tool/output_too_large'
+  | 'tool/breaker_tripped'
+  | 'memory/embedding_failed'
+  | 'narrative/bridge_unavailable'
+  | 'narrative/loop_disabled'
+  | 'storage/disk_full'
+  | 'storage/locked'
+  | 'storage/migration_failed'
+  | 'tts/synthesize_failed'
+  | 'stt/transcribe_failed'
+  | 'turn/aborted_by_user'
+  | 'turn/max_iterations'
+  | 'turn/hook_aborted'
+  | 'system/bridge_crashed'
+  | 'system/sidecar_crashed';
+
+export interface EmaError {
+    code: ErrorCode;
+    message: string;
+    cause?: unknown;
+}

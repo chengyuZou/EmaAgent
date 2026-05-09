@@ -2,7 +2,7 @@
   "name": "ema-agent",
   "version": "1.0.0",
   "private": true,
-  "description": "EmaAgent V1 - AI Character Role-Play Engine (TypeScript First)",
+  "description": "EmaAgent V1 — local-first anime companion + desktop agent",
   "scripts": {
     "build": "turbo run build",
     "dev": "turbo run dev",
@@ -10,12 +10,11 @@
     "test:watch": "turbo run test:watch",
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
-    "clean": "turbo run clean && rm -rf node_modules .turbo"
+    "clean": "turbo run clean"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^20.0.0",
-    "drizzle-kit": "^0.31.10",
     "tsx": "^4.21.0",
     "turbo": "^2.0.0",
     "typescript": "^5.9.3",
@@ -24,12 +23,5 @@
   "packageManager": "pnpm@9.0.0",
   "engines": {
     "node": ">=20.0.0"
-  },
-  "dependencies": {
-    "@fastify/cors": "^11.2.0",
-    "better-sqlite3": "^12.9.0",
-    "drizzle-orm": "^0.45.2",
-    "fastify": "^5.8.5",
-    "zod": "^4.4.1"
   }
 }
