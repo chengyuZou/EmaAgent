@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { Database } from '@ema-agent/storage';
-import { SessionStore } from './store.js';
+import { SessionStore } from '../src/store.js';
 import type { SessionId, TurnId, MessageId } from '@ema-agent/contracts';
 
 function makeStore() {
