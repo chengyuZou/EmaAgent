@@ -1,5 +1,5 @@
 {
-  "name": "@ema-agent/storage",
+  "name": "@ema-agent/session",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -13,22 +13,19 @@
   "types": "./dist/index.d.ts",
   "files": ["dist"],
   "scripts": {
-    "build": "tsc -p tsconfig.json && node --input-type=module -e \"import{cpSync}from'fs';cpSync('src/migrations','dist/migrations',{recursive:true})\"",
+    "build": "tsc -p tsconfig.json",
     "dev": "tsc -p tsconfig.json --watch",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "migrate": "tsx src/migrate-cli.ts",
-    "migrate:status": "tsx src/migrate-cli.ts --status",
+    "test": "vitest run",
     "clean": "rimraf dist"
   },
   "dependencies": {
     "@ema-agent/contracts": "workspace:*",
-    "better-sqlite3": "^12.9.0"
+    "@ema-agent/storage": "workspace:*"
   },
   "devDependencies": {
-    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^20.0.0",
     "rimraf": "^5.0.0",
-    "tsx": "^4.21.0",
     "typescript": "^5.9.3",
     "vitest": "^2.0.0"
   }

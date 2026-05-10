@@ -3,12 +3,9 @@ import { MigrationsRunner } from './migrations.js';
 
 export type SqliteDb = BetterSqlite3.Database;
 
-export interface DatabaseOptions {
-  /** Absolute path to the .db file */
-  path: string;
-  /** Set to true in tests for in-memory DB */
-  memory?: boolean;
-}
+export type DatabaseOptions =
+  | { path: string; memory?: false }
+  | { memory: true; path?: never };
 
 export class Database {
   readonly sqlite: SqliteDb;

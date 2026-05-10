@@ -39,12 +39,12 @@ export class SessionsRepo {
       .get(id) as SessionRow | undefined;
   }
 
-  listActive(limit = 50): SessionRow[] {
+  listActive(limit = 50, offset = 0): SessionRow[] {
     return this.db
       .prepare(
-        'SELECT * FROM sessions WHERE archived_at IS NULL ORDER BY updated_at DESC LIMIT ?',
+        'SELECT * FROM sessions WHERE archived_at IS NULL ORDER BY updated_at DESC, rowid DESC LIMIT ? OFFSET ?',
       )
-      .all(limit) as SessionRow[];
+      .all(limit, offset) as SessionRow[];
   }
 
   updateTitle(id: SessionId, title: string, updatedAt: number): void {

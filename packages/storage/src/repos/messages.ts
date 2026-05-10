@@ -81,6 +81,18 @@ export class MessagesRepo {
     this.db.prepare('DELETE FROM messages WHERE turn_id = ?').run(turnId);
   }
 
+  /** Cursor pagination: rows with created_at < before, newest-first. */
+  listBefore(sessionId: SessionId, before: number, limit: number): MessageRow[] {
+    return this.db
+      .prepare(
+        `SELECT * FROM messages
+         WHERE session_id = ? AND created_at < ?
+         ORDER BY created_at DESC
+         LIMIT ?`,
+      )
+      .all(sessionId, before, limit) as MessageRow[];
+  }
+
   countForSession(sessionId: SessionId): number {
     const row = this.db
       .prepare('SELECT COUNT(*) as n FROM messages WHERE session_id = ?')
