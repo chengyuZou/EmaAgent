@@ -1,19 +1,18 @@
+import type { MessageContentPart } from '@ema-agent/contracts';
+
 // ── Provider config ───────────────────────────────────────────────────────────
 
 export type LlmProvider = 'openai' | 'anthropic' | 'gemini' | 'openai-compat';
 
 /**
  * Configuration for one LLM provider endpoint.
- * Stored in the DB by the orchestrator and injected into LlmRouter at startup.
+ * One config per provider type — keyed by `provider` in the router.
  */
 export interface ProviderConfig {
-  /** Unique label for this config, e.g. "openai-main", "local-ollama".
-   *  Used as the first segment of the model string: "<id>/<model-name>". */
-  id: string;
   provider: LlmProvider;
   /** API key — plain text for V1; replaced by Stronghold in V2. */
   apiKey: string;
-  /** Only for openai-compat: base URL of the compatible server (e.g. Ollama). */
+  /** Base URL override — required for openai-compat (Ollama, LM Studio, DeepSeek, …). */
   baseUrl?: string;
   defaultModel?: string;
 }
@@ -33,6 +32,13 @@ export interface LlmToolCall {
   args: unknown;
 }
 
+// Re-exported from contracts so both `session` and `llm` share the same type
+// without creating a circular dependency.
+export type { MessageContentPart as LlmContentPart } from '@ema-agent/contracts';
+
+// Local alias used within this file only
+type LlmContentPart = MessageContentPart;
+
 /**
  * Normalized message format — adapters translate to/from provider-specific wire formats.
  *
@@ -44,16 +50,14 @@ export interface LlmToolCall {
  */
 export type LlmMessage =
   | { role: 'system';    content: string }
-  | { role: 'user';      content: string }
+  | { role: 'user';      content: string | LlmContentPart[] }
   | { role: 'assistant'; content: string | null; toolCalls?: LlmToolCall[] }
   | { role: 'tool';      toolCallId: string; content: string };
 
 export interface LlmRequest {
-  /**
-   * Provider-qualified model identifier: "<providerId>/<model-name>"
-   * Examples: "openai-main/gpt-4o", "anthropic-main/claude-opus-4-5",
-   *           "local-ollama/llama3.2"
-   */
+  /** Which provider to use — must match a registered ProviderConfig. */
+  provider: LlmProvider;
+  /** Model name as the provider expects it, e.g. "gpt-4o", "claude-opus-4-5". */
   model: string;
   messages: LlmMessage[];
   tools?: LlmToolDef[];

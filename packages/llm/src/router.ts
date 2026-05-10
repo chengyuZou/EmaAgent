@@ -2,21 +2,19 @@ import { OpenAiAdapter }    from './adapters/openai.js';
 import { AnthropicAdapter } from './adapters/anthropic.js';
 import { GeminiAdapter }    from './adapters/gemini.js';
 import type { LlmAdapter }  from './adapters/base.js';
-import type { ProviderConfig, LlmRequest, LlmStreamChunk } from './types.js';
+import type { ProviderConfig, LlmProvider, LlmRequest, LlmStreamChunk } from './types.js';
 
 // ── Internal factory ──────────────────────────────────────────────────────────
 
 function createAdapter(config: ProviderConfig): LlmAdapter {
   switch (config.provider) {
     case 'openai':
-      return new OpenAiAdapter(config.apiKey);
     case 'openai-compat':
-      // Same adapter — just point at a different base URL (Ollama, LM Studio, …).
-      return new OpenAiAdapter(config.apiKey, config.baseUrl);
+      return new OpenAiAdapter(config);
     case 'anthropic':
-      return new AnthropicAdapter(config.apiKey, config.baseUrl);
+      return new AnthropicAdapter(config);
     case 'gemini':
-      return new GeminiAdapter(config.apiKey);
+      return new GeminiAdapter(config);
   }
 }
 
@@ -24,75 +22,48 @@ function createAdapter(config: ProviderConfig): LlmAdapter {
 
 /**
  * Single Façade for all LLM access.
- *
- * Routing: model strings use the format "<providerId>/<model-name>".
- *   "openai-main/gpt-4o"              → OpenAI adapter, model "gpt-4o"
- *   "anthropic-main/claude-opus-4-5"  → Anthropic adapter, model "claude-opus-4-5"
- *   "local-ollama/llama3.2"           → OpenAI-compat adapter, model "llama3.2"
- *
- * The `providerId` must match the `id` field of a ProviderConfig passed at construction.
+ * One ProviderConfig per provider type — keyed by `provider` field.
  */
 export class LlmRouter {
-  private readonly adapters = new Map<string, LlmAdapter>();
+  private readonly adapters = new Map<LlmProvider, LlmAdapter>();
 
   /**
-   * @param configs         Provider configurations (from DB / settings).
-   * @param adapterOverrides  Pre-built adapter instances keyed by providerId.
+   * @param configs         Provider configurations — one per provider type.
+   * @param adapterOverrides  Pre-built adapters keyed by provider type.
    *                          Used in tests to inject mocks without real API keys.
    */
   constructor(
     configs: ProviderConfig[],
-    adapterOverrides?: ReadonlyMap<string, LlmAdapter>,
+    adapterOverrides?: ReadonlyMap<LlmProvider, LlmAdapter>,
   ) {
     for (const config of configs) {
-      const override = adapterOverrides?.get(config.id);
-      this.adapters.set(config.id, override ?? createAdapter(config));
+      const override = adapterOverrides?.get(config.provider);
+      this.adapters.set(config.provider, override ?? createAdapter(config));
     }
-    // Also register overrides that have no matching config (pure test stubs).
     if (adapterOverrides) {
-      for (const [id, adapter] of adapterOverrides) {
-        if (!this.adapters.has(id)) {
-          this.adapters.set(id, adapter);
+      for (const [provider, adapter] of adapterOverrides) {
+        if (!this.adapters.has(provider)) {
+          this.adapters.set(provider, adapter);
         }
       }
     }
   }
 
-  /**
-   * Stream a completion.
-   *
-   * Throws synchronously for configuration errors (unknown provider, bad model
-   * string) so the engine can fail the turn immediately without entering the
-   * async loop.
-   */
+  /** Stream a completion from the specified provider. */
   stream(request: LlmRequest): AsyncIterable<LlmStreamChunk> {
-    const slashIdx = request.model.indexOf('/');
-    if (slashIdx === -1) {
-      throw new Error(
-        `invalid_model: model must be "<providerId>/<model-name>", got "${request.model}"`,
-      );
-    }
-
-    const providerId = request.model.slice(0, slashIdx);
-    const modelName  = request.model.slice(slashIdx + 1);
-
-    const adapter = this.adapters.get(providerId);
+    const adapter = this.adapters.get(request.provider);
     if (!adapter) {
-      throw new Error(`unknown_provider: no provider configured for "${providerId}"`);
+      throw new Error(`unknown_provider: no config registered for "${request.provider}"`);
     }
-
-    return adapter.stream(request, modelName);
+    return adapter.stream(request, request.model);
   }
 
-  // ── Hot-reload ───────────────────────────────────────────────────────────────
-
-  /** Add or replace a provider config (e.g. user updated API key in settings). */
+  /** Add or replace a provider config at runtime (e.g. user updated API key). */
   upsertConfig(config: ProviderConfig): void {
-    this.adapters.set(config.id, createAdapter(config));
+    this.adapters.set(config.provider, createAdapter(config));
   }
 
-  /** Remove a provider. Subsequent stream() calls for that providerId will throw. */
-  removeConfig(id: string): void {
-    this.adapters.delete(id);
+  removeConfig(provider: LlmProvider): void {
+    this.adapters.delete(provider);
   }
 }

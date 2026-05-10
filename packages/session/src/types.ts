@@ -8,6 +8,7 @@ import type {
   TurnStatus,
   MessageRole,
   MessageKind,
+  MessageContentPart,
 } from '@ema-agent/contracts';
 
 // ── Domain objects (camelCase, parsed) ───────────────────────────────────────
@@ -54,7 +55,8 @@ export interface Message {
   turnId: TurnId | null;
   role: MessageRole;
   kind: MessageKind;
-  content: string;
+  /** Plain string for text-only messages; part array for multimodal (image) messages. */
+  content: string | MessageContentPart[];
   toolCalls: ToolCall[] | null;
   toolCallId: string | null;
   interrupted: boolean;
@@ -89,7 +91,7 @@ export interface AppendMessageInput {
   sessionId: SessionId;
   role: MessageRole;
   kind?: MessageKind;
-  content: string;
+  content: string | MessageContentPart[];
   toolCalls?: ToolCall[];
   toolCallId?: string;
   interrupted?: boolean;

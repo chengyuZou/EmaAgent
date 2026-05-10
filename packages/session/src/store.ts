@@ -17,6 +17,7 @@ import {
   asMessageId,
 } from '@ema-agent/contracts';
 import type { Database } from '@ema-agent/storage';
+import type { MessageContentPart } from '@ema-agent/contracts';
 import { RunRegistry } from './run-registry.js';
 import type {
   Session,
@@ -75,13 +76,24 @@ function toMessage(row: MessageRow): Message {
       toolCalls = null;
     }
   }
+
+  // content is stored as plain text for normal messages,
+  // or as JSON-serialized MessageContentPart[] for multimodal messages.
+  let content: string | MessageContentPart[];
+  try {
+    const parsed = JSON.parse(row.content);
+    content = Array.isArray(parsed) ? (parsed as MessageContentPart[]) : row.content;
+  } catch {
+    content = row.content;
+  }
+
   return {
     id: row.id as MessageId,
     sessionId: row.session_id as SessionId,
     turnId: row.turn_id as TurnId | null,
     role: row.role,
     kind: row.kind,
-    content: row.content,
+    content,
     toolCalls,
     toolCallId: row.tool_call_id,
     interrupted: row.interrupted === 1,
@@ -264,13 +276,17 @@ export class SessionStore {
   appendMessage(input: AppendMessageInput): Message {
     const id  = asMessageId(crypto.randomUUID());
     const now = this.nextTs();
+    // Serialize multimodal content arrays to JSON for TEXT column storage.
+    const content = Array.isArray(input.content)
+      ? JSON.stringify(input.content)
+      : input.content;
     this.messagesRepo.insert({
       id,
       sessionId:    input.sessionId,
       turnId:       input.turnId,
       role:         input.role,
       kind:         input.kind ?? 'normal',
-      content:      input.content,
+      content,
       toolCallsJson: input.toolCalls ? JSON.stringify(input.toolCalls) : undefined,
       toolCallId:   input.toolCallId,
       interrupted:  input.interrupted ?? false,

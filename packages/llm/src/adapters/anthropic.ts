@@ -6,6 +6,7 @@ import type {
   LlmMessage,
   LlmToolDef,
   StopReason,
+  ProviderConfig,
 } from '../types.js';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -43,7 +44,64 @@ function toAnthropicMessages(msgs: LlmMessage[]): NormalizedMessages {
     }
 
     if (msg.role === 'user') {
-      messages.push({ role: 'user', content: msg.content });
+      if (typeof msg.content === 'string') {
+        messages.push({ role: 'user', content: msg.content });
+      } else {
+        // Multimodal: map LlmContentPart[] → Anthropic content block array
+        // SDK types:
+        //   ImageBlockParam = { type: 'image', source: Base64ImageSource | URLImageSource }
+        //   Base64ImageSource = { type: 'base64', media_type: '...', data: string }
+        //   URLImageSource    = { type: 'url', url: string }
+        //
+        // Unsupported types (audio_data) are silently skipped.
+        // Call validateContentParts() before startTurn() to surface these to the user.
+        const content: Anthropic.ContentBlockParam[] = [];
+        for (const part of msg.content) {
+          if (part.type === 'text') {
+            content.push({ type: 'text', text: part.text });
+            continue;
+          }
+          if (part.type === 'image_url') {
+            content.push({
+              type:   'image',
+              source: { type: 'url', url: part.url } satisfies Anthropic.URLImageSource,
+            } satisfies Anthropic.ImageBlockParam);
+            continue;
+          }
+          if (part.type === 'image_data') {
+            content.push({
+              type:   'image',
+              source: {
+                type:       'base64',
+                media_type: part.mimeType as Anthropic.Base64ImageSource['media_type'],
+                data:       part.data,
+              },
+            } satisfies Anthropic.ImageBlockParam);
+            continue;
+          }
+          if (part.type === 'file_data') {
+            // Anthropic document block — supports PDF and plain text
+            content.push({
+              type:   'document',
+              source: {
+                type:       'base64',
+                media_type: part.mimeType as 'application/pdf' | 'text/plain',
+                data:       part.data,
+              },
+            } as Anthropic.ContentBlockParam);
+            continue;
+          }
+          if (part.type === 'file_url') {
+            content.push({
+              type:   'document',
+              source: { type: 'url', url: part.url },
+            } as Anthropic.ContentBlockParam);
+            continue;
+          }
+          // audio_data — Anthropic does not support audio input; skip silently
+        }
+        messages.push({ role: 'user', content });
+      }
       continue;
     }
 
@@ -94,8 +152,8 @@ function toAnthropicTool(tool: LlmToolDef): Anthropic.Tool {
 export class AnthropicAdapter implements LlmAdapter {
   private readonly client: Anthropic;
 
-  constructor(apiKey: string, baseURL?: string) {
-    this.client = new Anthropic({ apiKey, baseURL });
+  constructor(config: ProviderConfig) {
+    this.client = new Anthropic({ apiKey: config.apiKey, baseURL: config.baseUrl });
   }
 
   async *stream(request: LlmRequest, modelName: string): AsyncIterable<LlmStreamChunk> {

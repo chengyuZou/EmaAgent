@@ -4,9 +4,11 @@ import type {
   LlmRequest,
   LlmStreamChunk,
   LlmMessage,
+  LlmContentPart,
   LlmToolDef,
   LlmToolCall,
   StopReason,
+  ProviderConfig,
 } from '../types.js';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -26,7 +28,43 @@ function toOpenAiMessages(messages: LlmMessage[]): OpenAI.ChatCompletionMessageP
       return { role: 'system', content: msg.content };
     }
     if (msg.role === 'user') {
-      return { role: 'user', content: msg.content };
+      if (typeof msg.content === 'string') {
+        return { role: 'user', content: msg.content };
+      }
+      // Multimodal: map LlmContentPart[] → OpenAI.ChatCompletionContentPart[]
+      //
+      // Unsupported types (audio_data on older models, file_data, file_url) are
+      // silently skipped here. Call validateContentParts() before startTurn() to
+      // surface incompatibilities to the user before the request is made.
+      const content: OpenAI.ChatCompletionContentPart[] = [];
+      for (const part of msg.content) {
+        if (part.type === 'text') {
+          content.push({ type: 'text', text: part.text });
+          continue;
+        }
+        if (part.type === 'image_url') {
+          // SDK: { type: 'image_url', image_url: { url } }  — note the nested object
+          content.push({ type: 'image_url', image_url: { url: part.url } });
+          continue;
+        }
+        if (part.type === 'image_data') {
+          // OpenAI accepts base64 images as data URLs inside the image_url field
+          content.push({ type: 'image_url', image_url: { url: `data:${part.mimeType};base64,${part.data}` } });
+          continue;
+        }
+        if (part.type === 'audio_data') {
+          // Only wav and mp3 are accepted; other formats are silently skipped
+          const fmt = part.mimeType === 'audio/wav' ? 'wav'
+                    : part.mimeType === 'audio/mpeg' || part.mimeType === 'audio/mp3' ? 'mp3'
+                    : null;
+          if (fmt) {
+            content.push({ type: 'input_audio', input_audio: { data: part.data, format: fmt } } as OpenAI.ChatCompletionContentPart);
+          }
+          continue;
+        }
+        // file_data / file_url — OpenAI requires the Files API; skip silently
+      }
+      return { role: 'user', content };
     }
     if (msg.role === 'tool') {
       return { role: 'tool', tool_call_id: msg.toolCallId, content: msg.content };
@@ -62,8 +100,8 @@ function toOpenAiTool(tool: LlmToolDef): OpenAI.ChatCompletionTool {
 export class OpenAiAdapter implements LlmAdapter {
   private readonly client: OpenAI;
 
-  constructor(apiKey: string, baseURL?: string) {
-    this.client = new OpenAI({ apiKey, baseURL });
+  constructor(config: ProviderConfig) {
+    this.client = new OpenAI({ apiKey: config.apiKey, baseURL: config.baseUrl });
   }
 
   async *stream(request: LlmRequest, modelName: string): AsyncIterable<LlmStreamChunk> {

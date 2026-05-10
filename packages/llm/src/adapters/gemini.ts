@@ -7,6 +7,7 @@ import type {
   LlmMessage,
   LlmToolDef,
   StopReason,
+  ProviderConfig,
 } from '../types.js';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -51,7 +52,43 @@ function toGeminiContents(msgs: LlmMessage[]): { system: string | undefined; con
     }
 
     if (msg.role === 'user') {
-      contents.push({ role: 'user', parts: [{ text: msg.content }] });
+      if (typeof msg.content === 'string') {
+        contents.push({ role: 'user', parts: [{ text: msg.content }] });
+      } else {
+        // Multimodal: map LlmContentPart[] → Gemini Part[]
+        // SDK types:
+        //   InlineDataPart = { inlineData: { mimeType, data } }   ← base64, any format
+        //   FileDataPart   = { fileData:   { mimeType, fileUri } } ← GCS / Files API URI only
+        //
+        // ⚠️  image_url with plain https:// is passed as fileData; Gemini will error
+        //     at runtime. Callers should pre-download and use image_data instead,
+        //     or use validateContentParts() to warn the user first.
+        //
+        // Unsupported types are silently skipped (none for Gemini — it handles
+        // audio/video/PDF all via inlineData).
+        const parts: Part[] = [];
+        for (const part of msg.content) {
+          if (part.type === 'text') {
+            parts.push({ text: part.text });
+            continue;
+          }
+          if (part.type === 'image_url') {
+            // fileData requires GCS/Files API URI — pass through, let API surface the error
+            parts.push({ fileData: { mimeType: 'image/jpeg', fileUri: part.url } });
+            continue;
+          }
+          if (part.type === 'image_data' || part.type === 'audio_data' || part.type === 'file_data') {
+            // All base64 content goes through inlineData — Gemini handles all mimeTypes
+            parts.push({ inlineData: { mimeType: part.mimeType, data: part.data } });
+            continue;
+          }
+          if (part.type === 'file_url') {
+            parts.push({ fileData: { mimeType: part.mimeType, fileUri: part.url } });
+            continue;
+          }
+        }
+        contents.push({ role: 'user', parts });
+      }
       continue;
     }
 
@@ -107,8 +144,8 @@ function toGeminiTools(tools: LlmToolDef[]): Tool[] {
 export class GeminiAdapter implements LlmAdapter {
   private readonly genAI: GoogleGenerativeAI;
 
-  constructor(apiKey: string) {
-    this.genAI = new GoogleGenerativeAI(apiKey);
+  constructor(config: ProviderConfig) {
+    this.genAI = new GoogleGenerativeAI(config.apiKey);
   }
 
   async *stream(request: LlmRequest, modelName: string): AsyncIterable<LlmStreamChunk> {
