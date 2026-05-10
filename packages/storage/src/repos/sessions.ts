@@ -5,7 +5,7 @@ export interface SessionRow {
   id: string;
   title: string;
   character_card_id: string;
-  workspace_root: string | null;
+  workspace_roots_json: string;   // JSON-serialised string[]
   created_at: number;
   updated_at: number;
   archived_at: number | null;
@@ -16,7 +16,7 @@ export interface SessionInsert {
   id: SessionId;
   title: string;
   characterCardId: CharacterCardId;
-  workspaceRoot?: string;
+  workspaceRoots?: string[];
   createdAt: number;
   updatedAt: number;
 }
@@ -27,10 +27,10 @@ export class SessionsRepo {
   insert(s: SessionInsert): void {
     this.db
       .prepare(
-        `INSERT INTO sessions (id, title, character_card_id, workspace_root, created_at, updated_at)
+        `INSERT INTO sessions (id, title, character_card_id, workspace_roots_json, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?)`,
       )
-      .run(s.id, s.title, s.characterCardId, s.workspaceRoot ?? null, s.createdAt, s.updatedAt);
+      .run(s.id, s.title, s.characterCardId, JSON.stringify(s.workspaceRoots ?? []), s.createdAt, s.updatedAt);
   }
 
   findById(id: SessionId): SessionRow | undefined {

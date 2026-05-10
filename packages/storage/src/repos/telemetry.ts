@@ -1,5 +1,5 @@
 ﻿import type { SqliteDb } from '../database.js';
-import type { SessionId, TurnId } from '@ema-agent/contracts';
+import type { SessionId, TurnId, LlmProvider } from '@ema-agent/contracts';
 
 export interface TelemetryEventRow {
   id: string;
@@ -12,7 +12,7 @@ export interface TelemetryEventRow {
 
 export interface TurnUsageRow {
   turn_id: string;
-  provider_id: string;
+  llm_provider: LlmProvider;
   model_id: string;
   input_tokens: number;
   output_tokens: number;
@@ -37,11 +37,11 @@ export class TelemetryRepo {
     this.db
       .prepare(
         `INSERT OR REPLACE INTO turn_usage
-           (turn_id, provider_id, model_id, input_tokens, output_tokens, cost_usd, duration_ms, created_at)
+           (turn_id, llm_provider, model_id, input_tokens, output_tokens, cost_usd, duration_ms, created_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
-        row.turn_id, row.provider_id, row.model_id,
+        row.turn_id, row.llm_provider, row.model_id,
         row.input_tokens, row.output_tokens, row.cost_usd, row.duration_ms, row.created_at,
       );
   }

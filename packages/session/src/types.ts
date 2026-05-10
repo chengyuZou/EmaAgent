@@ -17,7 +17,7 @@ export interface Session {
   id: SessionId;
   title: string;
   characterCardId: CharacterCardId;
-  workspaceRoot: string | null;
+  workspaceRoots: string[];
   createdAt: number;
   updatedAt: number;
   archivedAt: number | null;
@@ -69,7 +69,7 @@ export interface Message {
 export interface CreateSessionInput {
   title?: string;
   characterCardId?: CharacterCardId;
-  workspaceRoot?: string;
+  workspaceRoots?: string[];
 }
 
 export interface StartTurnInput {

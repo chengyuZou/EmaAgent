@@ -1,20 +1,12 @@
 ﻿import { describe, it, expect, vi } from 'vitest';
-import { HookBus } from '../src/bus.js';
-import { PRIORITY } from '../src/priority.js';
+import { HookBus } from './bus.js';
+import { PRIORITY } from './priority.js';
 import type { TurnId, SessionId } from '@ema-agent/contracts';
 
 const turnId = 'turn-1' as TurnId;
 const sessionId = 'session-1' as SessionId;
-const noop = () => {};
-
 function baseCtx() {
-  return {
-    turnId,
-    sessionId,
-    emit: noop as never,
-    abort: noop,
-    meta: {},
-  };
+  return { turnId, sessionId, meta: {} };
 }
 
 describe('HookBus', () => {
@@ -63,6 +55,17 @@ describe('HookBus', () => {
     const bus = new HookBus();
     const result = await bus.trigger('onTurnAbort', { ...baseCtx(), payload: { reason: 'user_stop' } });
     expect(result).toEqual({ kind: 'continue' });
+  });
+
+  it('replace updates payload for subsequent handlers', async () => {
+    const bus = new HookBus();
+    let seen = '';
+
+    bus.register('afterLlmDelta', async () => ({ kind: 'replace', payload: { delta: 'X', accumulated: 'X' } }), { priority: PRIORITY.FIRST });
+    bus.register('afterLlmDelta', async (ctx) => { seen = ctx.payload.delta; return { kind: 'continue' }; });
+
+    await bus.trigger('afterLlmDelta', { ...baseCtx(), payload: { delta: 'original', accumulated: 'original' } });
+    expect(seen).toBe('X');
   });
 
   it('lists all registered hooks', () => {

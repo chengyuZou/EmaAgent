@@ -39,7 +39,7 @@ function toSession(row: SessionRow): Session {
     id: row.id as SessionId,
     title: row.title,
     characterCardId: row.character_card_id as CharacterCardId,
-    workspaceRoot: row.workspace_root,
+    workspaceRoots: JSON.parse(row.workspace_roots_json) as string[],
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     archivedAt: row.archived_at,
@@ -151,9 +151,9 @@ export class SessionStore {
     const now = this.nextTs();
     this.sessionsRepo.insert({
       id,
-      title:           input.title           ?? '新对话',
-      characterCardId: input.characterCardId ?? ('ema' as CharacterCardId),
-      workspaceRoot:   input.workspaceRoot,
+      title:           input.title            ?? '新对话',
+      characterCardId: input.characterCardId  ?? ('ema' as CharacterCardId),
+      workspaceRoots:  input.workspaceRoots,
       createdAt:       now,
       updatedAt:       now,
     });

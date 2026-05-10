@@ -6,8 +6,8 @@
 CREATE TABLE IF NOT EXISTS sessions (
   id                TEXT PRIMARY KEY,
   title             TEXT NOT NULL,
-  character_card_id TEXT NOT NULL DEFAULT 'ema',
-  workspace_root    TEXT,
+  character_card_id    TEXT NOT NULL DEFAULT 'ema',
+  workspace_roots_json TEXT NOT NULL DEFAULT '[]',
   created_at        INTEGER NOT NULL,
   updated_at        INTEGER NOT NULL,
   archived_at       INTEGER,
@@ -67,7 +67,8 @@ CREATE TABLE IF NOT EXISTS provider_configs (
 
 CREATE TABLE IF NOT EXISTS model_catalog (
   id                TEXT PRIMARY KEY,
-  provider_id       TEXT NOT NULL REFERENCES provider_configs(id) ON DELETE CASCADE,
+  llm_provider      TEXT NOT NULL
+                    CHECK(llm_provider IN ('openai','anthropic','gemini','openai-compat')),
   display_name      TEXT NOT NULL,
   capabilities_json TEXT NOT NULL,
   context_window    INTEGER NOT NULL,
@@ -200,7 +201,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_character_cards_active
 -- ============ Provider Health ============
 
 CREATE TABLE IF NOT EXISTS provider_health (
-  provider_id       TEXT PRIMARY KEY REFERENCES provider_configs(id) ON DELETE CASCADE,
+  llm_provider      TEXT PRIMARY KEY
+                    CHECK(llm_provider IN ('openai','anthropic','gemini','openai-compat')),
   status            TEXT NOT NULL CHECK(status IN ('ok','failed','probing','unknown')),
   last_probed_at    INTEGER,
   latency_ms        INTEGER,
@@ -230,7 +232,7 @@ CREATE INDEX IF NOT EXISTS idx_telemetry_kind ON telemetry_events(kind, created_
 
 CREATE TABLE IF NOT EXISTS turn_usage (
   turn_id      TEXT PRIMARY KEY REFERENCES turns(id) ON DELETE CASCADE,
-  provider_id  TEXT NOT NULL,
+  llm_provider TEXT NOT NULL,
   model_id     TEXT NOT NULL,
   input_tokens INTEGER NOT NULL,
   output_tokens INTEGER NOT NULL,

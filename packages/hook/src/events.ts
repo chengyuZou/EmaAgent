@@ -1,4 +1,7 @@
-﻿export type HookEvent =
+﻿import type { TurnMode, MessageId, CharacterCardId } from '@ema-agent/contracts';
+import type { LlmMessage } from '@ema-agent/llm';
+
+export type HookEvent =
   | 'beforeLlm'
   | 'afterLlmDelta'
   | 'afterLlmComplete'
@@ -19,7 +22,7 @@
 export interface HookPayload {
   beforeLlm: {
     systemPrompt: string;
-    messages: unknown[];
+    messages: LlmMessage[];
   };
   afterLlmDelta: {
     delta: string;
@@ -30,7 +33,7 @@ export interface HookPayload {
     toolCalls?: unknown[];
   };
   afterMessage: {
-    messageId: string;
+    messageId: MessageId;
     role: string;
     content: string;
   };
@@ -59,7 +62,7 @@ export interface HookPayload {
     method: string;
   };
   onTurnStart: {
-    mode: string;
+    mode: TurnMode;
     subMode?: string;
   };
   onTurnEnd: {
@@ -69,8 +72,8 @@ export interface HookPayload {
     reason: string;
   };
   onCharacterCardSwitch: {
-    previousCardId: string;
-    nextCardId: string;
+    previousCardId: CharacterCardId;
+    nextCardId: CharacterCardId;
   };
   onEmotionChange: {
     primary: string;

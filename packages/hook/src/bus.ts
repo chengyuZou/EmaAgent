@@ -1,4 +1,4 @@
-﻿import type { TurnId, SessionId, EmaStreamEvent } from '@ema-agent/contracts';
+﻿import type { TurnId, SessionId } from '@ema-agent/contracts';
 import type { HookEvent, HookPayload } from './events.js';
 import { PRIORITY_DEFAULT } from './priority.js';
 
@@ -9,10 +9,6 @@ export interface HookContext<E extends HookEvent> {
   turnId: TurnId;
   sessionId: SessionId;
   payload: HookPayload[E];
-  /** Push an SSE event downstream without waiting for the turn to end. */
-  emit: (event: EmaStreamEvent) => void;
-  /** Abort the current turn immediately. Subsequent handlers are skipped. */
-  abort: (reason: string) => void;
   /** Scratchpad shared between handlers within a single trigger() call. Not persisted. */
   meta: Record<string, unknown>;
 }
@@ -23,7 +19,7 @@ export type HookHandler<E extends HookEvent> = (
 
 export type HookResult =
   | { kind: 'continue' }
-  | { kind: 'replace'; payload: unknown }
+  | { kind: 'replace'; payload: HookPayload[HookEvent] }
   | { kind: 'abort'; reason: string };
 
 export interface RegisteredHook {
