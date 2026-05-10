@@ -1,8 +1,8 @@
 ﻿import type { SqliteDb } from '../database.js';
-import type { ProviderId } from '@ema-agent/contracts';
+import type { LlmProvider } from '@ema-agent/contracts';
 
 export interface ProviderHealthRow {
-  provider_id: string;
+  llm_provider: LlmProvider;
   status: 'ok' | 'failed' | 'probing' | 'unknown';
   last_probed_at: number | null;
   latency_ms: number | null;
@@ -14,16 +14,16 @@ export class ProviderHealthRepo {
   constructor(private readonly db: SqliteDb) {}
 
   upsert(
-    providerId: ProviderId,
+    llmProvider: LlmProvider,
     status: ProviderHealthRow['status'],
     opts: { latencyMs?: number; lastError?: string; lastProbedAt?: number } = {},
   ): void {
     const now = opts.lastProbedAt ?? Date.now();
     this.db
       .prepare(
-        `INSERT INTO provider_health (provider_id, status, last_probed_at, latency_ms, last_error, consecutive_fails)
+        `INSERT INTO provider_health (llm_provider, status, last_probed_at, latency_ms, last_error, consecutive_fails)
          VALUES (?, ?, ?, ?, ?, ?)
-         ON CONFLICT(provider_id) DO UPDATE SET
+         ON CONFLICT(llm_provider) DO UPDATE SET
            status            = excluded.status,
            last_probed_at    = excluded.last_probed_at,
            latency_ms        = excluded.latency_ms,
@@ -34,7 +34,7 @@ export class ProviderHealthRepo {
            END`,
       )
       .run(
-        providerId,
+        llmProvider as string,
         status,
         now,
         opts.latencyMs ?? null,
@@ -43,10 +43,10 @@ export class ProviderHealthRepo {
       );
   }
 
-  find(providerId: ProviderId): ProviderHealthRow | undefined {
+  find(llmProvider: LlmProvider): ProviderHealthRow | undefined {
     return this.db
-      .prepare('SELECT * FROM provider_health WHERE provider_id = ?')
-      .get(providerId) as ProviderHealthRow | undefined;
+      .prepare('SELECT * FROM provider_health WHERE llm_provider = ?')
+      .get(llmProvider as string) as ProviderHealthRow | undefined;
   }
 
   listAll(): ProviderHealthRow[] {

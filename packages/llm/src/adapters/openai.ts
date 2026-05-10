@@ -91,6 +91,15 @@ function toOpenAiTool(tool: LlmToolDef): OpenAI.ChatCompletionTool {
   };
 }
 
+function toOpenAiToolChoice(
+  tc: LlmRequest['toolChoice'],
+): OpenAI.ChatCompletionToolChoiceOption | undefined {
+  if (tc === undefined) return undefined;
+  if (tc === 'auto')    return 'auto';
+  if (tc === 'none')    return 'none';
+  return { type: 'function', function: { name: tc.name } };
+}
+
 // ── Adapter ───────────────────────────────────────────────────────────────────
 
 /**
@@ -113,6 +122,7 @@ export class OpenAiAdapter implements LlmAdapter {
         model:          modelName,
         messages,
         tools:          tools?.length ? tools : undefined,
+        tool_choice:    tools?.length ? toOpenAiToolChoice(request.toolChoice) : undefined,
         max_tokens:     request.maxTokens,
         temperature:    request.temperature,
         stream:         true,

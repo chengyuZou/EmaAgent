@@ -139,6 +139,16 @@ function toAnthropicMessages(msgs: LlmMessage[]): NormalizedMessages {
   return { system, messages };
 }
 
+function toAnthropicToolChoice(
+  tc: LlmRequest['toolChoice'],
+): Anthropic.ToolChoiceAuto | Anthropic.ToolChoiceAny | Anthropic.ToolChoiceTool | undefined {
+  if (tc === undefined) return undefined;
+  if (tc === 'auto')    return { type: 'auto' };
+  // Anthropic has no 'none' — caller should omit tools entirely; fall back to auto.
+  if (tc === 'none')    return { type: 'auto' };
+  return { type: 'tool', name: tc.name };
+}
+
 function toAnthropicTool(tool: LlmToolDef): Anthropic.Tool {
   return {
     name:         tool.name,
@@ -158,17 +168,20 @@ export class AnthropicAdapter implements LlmAdapter {
 
   async *stream(request: LlmRequest, modelName: string): AsyncIterable<LlmStreamChunk> {
     const { system, messages } = toAnthropicMessages(request.messages);
-    const tools = request.tools?.map(toAnthropicTool);
+    // toolChoice 'none' → strip tools entirely (Anthropic has no 'none' mode)
+    const tools      = request.toolChoice === 'none' ? undefined : request.tools?.map(toAnthropicTool);
+    const toolChoice = tools?.length ? toAnthropicToolChoice(request.toolChoice) : undefined;
 
     // The second argument to .stream() is RequestOptions — this is where signal goes.
     const anthropicStream = this.client.messages.stream(
       {
-        model:       modelName,
+        model:        modelName,
         system,
         messages,
-        tools:       tools?.length ? tools : undefined,
-        max_tokens:  request.maxTokens ?? 4096,
-        temperature: request.temperature,
+        tools:        tools?.length ? tools : undefined,
+        tool_choice:  toolChoice,
+        max_tokens:   request.maxTokens ?? 4096,
+        temperature:  request.temperature,
       },
       { signal: request.signal },
     );

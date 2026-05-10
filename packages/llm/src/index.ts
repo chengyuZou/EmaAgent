@@ -1,8 +1,11 @@
-export { LlmRouter } from './router.js';
-export { validateContentParts } from './validate.js';
+export { LlmRouter }                                      from './router.js';
+export { ModelCatalog }                                   from './catalog.js';
+export { validateContentParts }                           from './validate.js';
+export { withRetry, RetryOptions } from './retry.js';
 
-export type { LlmAdapter } from './adapters/base.js';
-export type { UnsupportedPart } from './validate.js';
+export type { LlmAdapter }                   from './adapters/base.js';
+export type { UnsupportedPart }              from './validate.js';
+export type { ModelEntry, ModelCapabilities } from './catalog.js';
 
 export type {
   LlmProvider,
@@ -14,4 +17,6 @@ export type {
   LlmRequest,
   LlmStreamChunk,
   LlmContentPart,
+  LlmCompletion,
+  ProbeResult,
 } from './types.js';

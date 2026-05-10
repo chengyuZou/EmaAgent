@@ -7,6 +7,7 @@ export type ErrorCode =
   | 'provider/timeout'
   | 'provider/context_too_long'
   | 'provider/model_unavailable'
+  | 'provider/not_configured'
   | 'tool/permission_denied'
   | 'tool/sandbox_violation'
   | 'tool/timeout'
@@ -26,8 +27,3 @@ export type ErrorCode =
   | 'system/bridge_crashed'
   | 'system/sidecar_crashed';
 
-export interface EmaError {
-    code: ErrorCode;
-    message: string;
-    cause?: unknown;
-}

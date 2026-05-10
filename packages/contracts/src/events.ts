@@ -4,7 +4,7 @@
   AgentSubMode,
   ArtifactId,
   CharacterCardId,
-  ProviderId,
+  LlmProvider,
 } from './ids.js';
 import type { UsageSummary } from './turns.js';
 
@@ -99,7 +99,7 @@ export type EmaStreamEvent =
   // Provider health
   | {
       type: 'provider_health_changed';
-      providerId: ProviderId;
+      provider: LlmProvider;
       status: 'ok' | 'failed' | 'probing' | 'unknown';
       latencyMs?: number;
       error?: string;

@@ -125,6 +125,18 @@ function toGeminiContents(msgs: LlmMessage[]): { system: string | undefined; con
   return { system, contents };
 }
 
+// Gemini function-calling modes (string literals to avoid importing the enum at runtime)
+type GeminiFcMode = 'AUTO' | 'ANY' | 'NONE';
+
+function toGeminiToolConfig(
+  tc: LlmRequest['toolChoice'],
+): { functionCallingConfig: { mode: GeminiFcMode; allowedFunctionNames?: string[] } } | undefined {
+  if (tc === undefined) return undefined;
+  if (tc === 'auto')    return { functionCallingConfig: { mode: 'AUTO' } };
+  if (tc === 'none')    return { functionCallingConfig: { mode: 'NONE' } };
+  return { functionCallingConfig: { mode: 'ANY', allowedFunctionNames: [tc.name] } };
+}
+
 function toGeminiTools(tools: LlmToolDef[]): Tool[] {
   return [
     {
@@ -150,12 +162,16 @@ export class GeminiAdapter implements LlmAdapter {
 
   async *stream(request: LlmRequest, modelName: string): AsyncIterable<LlmStreamChunk> {
     const { system, contents } = toGeminiContents(request.messages);
-    const tools = request.tools?.length ? toGeminiTools(request.tools) : undefined;
+    const tools      = request.toolChoice === 'none' ? undefined
+                     : request.tools?.length ? toGeminiTools(request.tools) : undefined;
+    const toolConfig = toGeminiToolConfig(request.toolChoice);
 
     const model = this.genAI.getGenerativeModel({
       model:             modelName,
       systemInstruction: system,
       tools,
+      // Cast needed: Gemini SDK's ToolConfig type mirrors this shape exactly
+      toolConfig:        toolConfig as Parameters<typeof this.genAI.getGenerativeModel>[0]['toolConfig'],
       generationConfig: {
         maxOutputTokens: request.maxTokens,
         temperature:     request.temperature,

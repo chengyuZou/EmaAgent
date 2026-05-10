@@ -1307,55 +1307,70 @@ V2 探索 Windows AppContainer 或 WSL bubblewrap。
 ```
 packages/llm/
 ├── src/
-│   ├── index.ts                    # LlmRouter Façade
-│   ├── router.ts
-│   ├── adapters/
-│   │   ├── openai-native.ts        # /v1/chat/completions + Responses API
-│   │   ├── anthropic-native.ts     # Messages API
-│   │   ├── gemini-native.ts
-│   │   └── openai-compatible.ts    # DeepSeek / OpenRouter / Ollama / LM Studio / 302.AI / AIHubMix
-│   ├── stream-adapter.ts           # 归一化为 EmaLlmEvent
-│   ├── catalog.ts                  # ModelCatalog
-│   ├── usage.ts                    # token + cost 计算
-│   ├── retry.ts                    # 重试策略
-│   └── types.ts
+│   ├── index.ts          # 统一导出
+│   ├── router.ts         # LlmRouter Façade
+│   ├── catalog.ts        # ModelCatalog + 静态预置列表
+│   ├── retry.ts          # 指数退避，LlmAuthError / LlmContextTooLongError
+│   ├── validate.ts       # validateContentParts() 前置检查
+│   ├── types.ts          # 所有类型（LlmProvider 从 contracts 导入）
+│   └── adapters/
+│       ├── base.ts       # LlmAdapter 接口
+│       ├── openai.ts     # openai + openai-compat 共用（baseURL 切换）
+│       ├── anthropic.ts  # Messages API（含 baseURL 支持，DeepSeek compat）
+│       └── gemini.ts     # Gemini API
 ```
 
 ### 9.2 LlmRouter
 
 ```ts
+// LlmProvider 定义在 contracts/ids.ts，此处 re-export
+export type LlmProvider = 'openai' | 'anthropic' | 'gemini' | 'openai-compat';
+
 export interface LlmRequest {
-  model: ModelId;
-  systemPrompt?: string;
-  messages: LlmMessage[];
-  tools?: LlmFunction[];
-  toolChoice?: 'auto' | 'none' | { name: string };
+  provider:     LlmProvider;
+  model:        string;        // 直接传给 adapter，如 'gpt-4o'
+  messages:     LlmMessage[];
+  tools?:       LlmToolDef[];
+  toolChoice?:  'auto' | 'none' | { name: string };
+  maxTokens?:   number;
   temperature?: number;
-  maxTokens?: number;
-  stream: boolean;
-  signal?: AbortSignal;
+  signal?:      AbortSignal;
 }
 
-export interface LlmStreamEvent {
-  kind:
-    | 'message_start'
-    | 'content_delta'                // text token
-    | 'tool_call_partial'            // tool args 增量
-    | 'tool_call_complete'
-    | 'message_complete'
-    | 'usage'
-    | 'error';
-  data: unknown;
+export type LlmStreamChunk =
+  | { type: 'text_delta';        delta: string }
+  | { type: 'tool_use_delta';    callId: string; name: string; argsDelta: string }
+  | { type: 'tool_use_complete'; callId: string; name: string; args: unknown }
+  | { type: 'usage';             inputTokens: number; outputTokens: number }
+  | { type: 'done';              stopReason: StopReason };
+
+export interface LlmCompletion {
+  text:       string | null;
+  toolCalls:  LlmToolCall[];
+  stopReason: StopReason;
+  usage:      { inputTokens: number; outputTokens: number };
+}
+
+export interface ProbeResult {
+  ok:         boolean;
+  latencyMs?: number;
+  error?:     string;
 }
 
 export class LlmRouter {
-  constructor(deps: { db: Database; catalog: ModelCatalog });
-  
-  stream(req: LlmRequest): AsyncIterable<LlmStreamEvent>;
-  complete(req: Omit<LlmRequest, 'stream'>): Promise<LlmCompletion>;
-  
-  // 探测 provider 可用性（设置页用）
-  probe(providerId: string): Promise<ProbeResult>;
+  constructor(configs: ProviderConfig[], adapterOverrides?: ReadonlyMap<LlmProvider, LlmAdapter>);
+
+  // 流式 — 引擎主循环，不重试（出错由引擎决定是否重发 turn）
+  stream(req: LlmRequest): AsyncIterable<LlmStreamChunk>;
+
+  // 非流式 — 内部调用（compaction / emotion 抽取 / plan 解析），带重试
+  complete(req: LlmRequest): Promise<LlmCompletion>;
+
+  // 设置页验证 key / endpoint 可用性
+  probe(provider: LlmProvider, model: string): Promise<ProbeResult>;
+
+  upsertConfig(config: ProviderConfig): void;
+  removeConfig(provider: LlmProvider): void;
 }
 ```
 
@@ -1363,58 +1378,47 @@ export class LlmRouter {
 
 ```ts
 export interface ModelEntry {
-  id: ModelId;                       // 'openai:gpt-4o'
-  providerId: string;                // 'openai'
-  displayName: string;
-  capabilities: {
-    chat: boolean;
-    tools: boolean;
-    vision: boolean;
-    jsonMode: boolean;
-    streaming: boolean;
-    promptCache: boolean;
-  };
+  provider:      LlmProvider;   // 对应 LlmRequest.provider
+  model:         string;        // 对应 LlmRequest.model，如 'gpt-4o'
+  displayName:   string;
+  capabilities:  ModelCapabilities;
   contextWindow: number;
   pricing?: { inputUsdPerMillion: number; outputUsdPerMillion: number };
-  isStatic: boolean;                 // 静态预置 vs 远程拉取
+  isStatic:      boolean;       // true = 静态预置；false = 远程拉取
 }
 
 export class ModelCatalog {
   list(): ModelEntry[];
-  get(id: ModelId): ModelEntry | undefined;
-  
-  // 远程拉取（OpenRouter / Ollama 等支持）
-  refresh(providerId: string): Promise<void>;
+  get(provider: LlmProvider, model: string): ModelEntry | undefined;
+  upsert(entries: ModelEntry[]): void;
+  refresh(provider: LlmProvider): Promise<void>;  // OpenRouter / Ollama 动态列表
 }
 ```
 
-### 9.4 Provider 列表（V1，对照 AIRI 截图）
+### 9.4 Provider 列表（V1）
 
-| Provider | Adapter | 主要场景 |
+| Provider | adapter 文件 | 主要场景 |
 |---|---|---|
-| OpenAI | openai-native | chat / tools / vision |
-| Anthropic | anthropic-native | chat / tools |
-| Google Gemini | gemini-native | chat / vision |
-| DeepSeek | openai-compatible | chat（便宜，用于 narrative） |
-| OpenRouter | openai-compatible | 模型聚合 |
-| Ollama | openai-compatible | 本地推理 |
-| LM Studio | openai-compatible | 本地推理 |
-| Azure OpenAI | openai-native (派生) | 企业 |
-| AIHubMix | openai-compatible | 国内代理 |
-| 302.AI | openai-compatible | 国内代理 |
-| Cerebras | openai-compatible | 高速推理 |
+| OpenAI | openai.ts | chat / tools / vision |
+| Anthropic | anthropic.ts | chat / tools，支持 baseURL（DeepSeek compat） |
+| Google Gemini | gemini.ts | chat / vision |
+| DeepSeek | openai.ts（openai-compat） | chat，便宜，用于 narrative |
+| OpenRouter | openai.ts（openai-compat） | 模型聚合 |
+| Ollama | openai.ts（openai-compat） | 本地推理 |
+| LM Studio | openai.ts（openai-compat） | 本地推理 |
+| AIHubMix / 302.AI / Cerebras | openai.ts（openai-compat） | 国内代理 / 高速推理 |
 
-### 9.5 使用场景路由（参考 AIRI 设置）
+### 9.5 使用场景路由
 
 不同 module 可以绑不同 provider/model：
 
 | Module | 推荐 model |
 |---|---|
-| Chat（角色卡主驱动） | Anthropic Claude / GPT-4 / DeepSeek |
+| Chat（角色卡主驱动） | Anthropic Claude / GPT-4o / DeepSeek |
 | Narrative（情绪价值，量大） | DeepSeek / 国产代理 |
-| Agent | Claude / GPT-4（tool 能力强） |
+| Agent | Claude / GPT-4o（tool 能力强） |
 | Compaction | 便宜模型（DeepSeek / Haiku） |
-| Emotion 抽取 | 小模型（Haiku / DeepSeek-tiny） |
+| Emotion 抽取 | 小模型（Haiku / DeepSeek） |
 | Plan parsing | 同 Compaction |
 
 `model_bindings` 表（见 § 15）配置每 module 的绑定。
@@ -1426,15 +1430,16 @@ export class ModelCatalog {
 | 429 rate limit | 指数退避（1s/2s/4s），最多 3 次 |
 | 5xx | 同上 |
 | 408 / network timeout | 同上 |
-| 401 / 403 | 不重试，emit `auth_failed` |
-| 413 context_too_long | 不在 router 重试，由 engine 触发 compaction |
+| 401 / 403 | 不重试，throw LlmAuthError |
+| 413 context_too_long | 不在 router 重试，throw LlmContextTooLongError，由 engine 触发 compaction |
+
+重试只包裹 `complete()`；`stream()` 不重试（前端已看到 UI，重发整个 turn 由 engine 决定）。
 
 ### 9.7 Usage 与成本
 
-- 每个 LlmStreamEvent.usage 落 `turn_usage` 表
+- 每个 LlmStreamChunk.usage 落 `turn_usage` 表
 - 累计到 session.usage 字段
 - 设置页显示当月成本（基于 catalog.pricing 估算，实际以 provider 账单为准）
-
 ---
 
 ## 10. Multimodal

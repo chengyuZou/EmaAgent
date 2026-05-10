@@ -1,8 +1,9 @@
-import type { MessageContentPart } from '@ema-agent/contracts';
+import type { MessageContentPart, LlmProvider } from '@ema-agent/contracts';
+
+// Re-export so callers only need one import
+export type { LlmProvider } from '@ema-agent/contracts';
 
 // ── Provider config ───────────────────────────────────────────────────────────
-
-export type LlmProvider = 'openai' | 'anthropic' | 'gemini' | 'openai-compat';
 
 /**
  * Configuration for one LLM provider endpoint.
@@ -61,9 +62,11 @@ export interface LlmRequest {
   model: string;
   messages: LlmMessage[];
   tools?: LlmToolDef[];
+  /** Override model tool-call behaviour for this request. */
+  toolChoice?: 'auto' | 'none' | { name: string };
   maxTokens?: number;
   temperature?: number;
-  /** Wired through from SessionStore.startTurn() — fires when user clicks Stop. */
+  /** Wired through from the engine — fires when user clicks Stop. */
   signal?: AbortSignal;
 }
 
@@ -89,8 +92,27 @@ export type StopReason = 'end_turn' | 'tool_use' | 'max_tokens' | 'stop_sequence
  * The engine only needs to switch on `type`; it never sees raw provider SSE.
  */
 export type LlmStreamChunk =
-  | { type: 'text_delta';       delta: string }
-  | { type: 'tool_use_delta';   callId: string; name: string; argsDelta: string }
+  | { type: 'text_delta';        delta: string }
+  | { type: 'tool_use_delta';    callId: string; name: string; argsDelta: string }
   | { type: 'tool_use_complete'; callId: string; name: string; args: unknown }
-  | { type: 'usage';            inputTokens: number; outputTokens: number }
-  | { type: 'done';             stopReason: StopReason };
+  | { type: 'usage';             inputTokens: number; outputTokens: number }
+  | { type: 'done';              stopReason: StopReason };
+
+// ── Non-streaming output ──────────────────────────────────────────────────────
+
+/** Collected result of a complete() call — all chunks folded into one object. */
+export interface LlmCompletion {
+  text:      string | null;
+  toolCalls: LlmToolCall[];
+  stopReason: StopReason;
+  usage: { inputTokens: number; outputTokens: number };
+}
+
+// ── Probe result ──────────────────────────────────────────────────────────────
+
+/** Result of LlmRouter.probe() — used by the settings page to verify a key/endpoint. */
+export interface ProbeResult {
+  ok:          boolean;
+  latencyMs?:  number;
+  error?:      string;
+}
