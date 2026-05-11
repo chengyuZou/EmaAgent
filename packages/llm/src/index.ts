@@ -1,7 +1,8 @@
 export { LlmRouter }                                      from './router.js';
 export { ModelCatalog }                                   from './catalog.js';
 export { validateContentParts }                           from './validate.js';
-export { withRetry, RetryOptions } from './retry.js';
+export { withRetry }         from './retry.js';
+export type { RetryOptions } from './retry.js';
 
 export type { LlmAdapter }                   from './adapters/base.js';
 export type { UnsupportedPart }              from './validate.js';

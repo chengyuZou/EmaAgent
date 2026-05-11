@@ -65,7 +65,11 @@ export class LlmRouter {
   /** Stream a completion from the specified provider. Throws synchronously on unknown provider. */
   stream(request: LlmRequest): AsyncIterable<LlmStreamChunk> {
     const adapter = this.adapters.get(request.provider);
-    if (!adapter) throw new Error(`provider/not_configured: no config registered for "${request.provider}"`);
+    if (!adapter) {
+      const err = new Error('provider/not_configured');
+      err.cause = request.provider;
+      throw err;
+    }
     return adapter.stream(request, request.model);
   }
 
