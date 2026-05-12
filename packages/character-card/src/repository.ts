@@ -1,10 +1,10 @@
-import { randomUUID } from 'node:crypto';
+﻿import { randomUUID } from 'node:crypto';
 import type { CharacterCardsRepo, CharacterCardRow } from '@ema-agent/storage';
 import { asCharacterCardId } from '@ema-agent/contracts';
 import type { CharacterCardId } from '@ema-agent/contracts';
-import type { CharacterCard, CharacterCardInput, ModuleBindings } from './types.js';
+import type { CharacterCard, CharacterCardInput } from './types.js';
 
-// ── Row → Domain ──────────────────────────────────────────────────────────────
+// ── Row -> Domain ────────────────────────────────────────────────────────────
 
 function fromRow(row: CharacterCardRow): CharacterCard {
   return {
@@ -17,7 +17,6 @@ function fromRow(row: CharacterCardRow): CharacterCard {
     forbiddenTopics:  JSON.parse(row.forbidden_topics_json) as string[],
     emotionVocabulary: JSON.parse(row.emotion_vocab_json) as string[],
     motionVocabulary:  JSON.parse(row.motion_vocab_json) as string[],
-    moduleBindings:   JSON.parse(row.module_bindings_json) as ModuleBindings,
     live2dModelId:    row.live2d_model_id,
     isActive:         row.is_active === 1,
     isBuiltin:        row.is_builtin === 1,
@@ -26,9 +25,9 @@ function fromRow(row: CharacterCardRow): CharacterCard {
   };
 }
 
-// ── CharacterCardRepository ───────────────────────────────────────────────────
+// ── CharacterCardRepository ──────────────────────────────────────────────────
 
-/** Thin domain adapter over CharacterCardsRepo — maps domain types ↔ DB rows. */
+/** Thin domain adapter over CharacterCardsRepo — maps domain types -> DB rows. */
 export class CharacterCardRepository {
   constructor(private readonly repo: CharacterCardsRepo) {}
 
@@ -63,7 +62,7 @@ export class CharacterCardRepository {
       forbiddenTopicsJson:  JSON.stringify(input.forbiddenTopics ?? []),
       emotionVocabJson:     JSON.stringify(input.emotionVocabulary ?? []),
       motionVocabJson:      JSON.stringify(input.motionVocabulary ?? []),
-      moduleBindingsJson:   JSON.stringify(input.moduleBindings ?? {}),
+      moduleBindingsJson:   '{}', // Compatibility with DB schema
       live2dModelId:        input.live2dModelId,
       isActive:             opts.isActive ?? false,
       isBuiltin:            opts.isBuiltin ?? false,
@@ -88,8 +87,6 @@ export class CharacterCardRepository {
                               ? JSON.stringify(patch.emotionVocabulary) : undefined,
       motionVocabJson:      patch.motionVocabulary !== undefined
                               ? JSON.stringify(patch.motionVocabulary) : undefined,
-      moduleBindingsJson:   patch.moduleBindings !== undefined
-                              ? JSON.stringify(patch.moduleBindings) : undefined,
       live2dModelId:        patch.live2dModelId,
       updatedAt:            Date.now(),
     });
@@ -104,3 +101,4 @@ export class CharacterCardRepository {
     this.repo.delete(id);
   }
 }
+

@@ -1,4 +1,4 @@
-import type { CharacterCard } from './types.js';
+﻿import type { CharacterCard } from './types.js';
 
 /**
  * Assembles the system-prompt block for a character card:

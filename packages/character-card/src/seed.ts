@@ -1,4 +1,4 @@
-import type { CharacterCardInput } from './types.js';
+﻿import type { CharacterCardInput } from './types.js';
 
 export const EMA_CARD_ID = 'ema' as const;
 
@@ -98,6 +98,4 @@ determined: 「一定有办法的！」「我不会放弃！」
     'bow',
     'scared',
   ],
-
-  moduleBindings: {},
 };

@@ -29,7 +29,6 @@ export interface CharacterCardInsert {
   forbiddenTopicsJson?: string;
   emotionVocabJson?: string;
   motionVocabJson?: string;
-  moduleBindingsJson?: string;
   live2dModelId?: string;
   isActive?: boolean;
   isBuiltin?: boolean;
@@ -46,9 +45,9 @@ export class CharacterCardsRepo {
         `INSERT INTO character_cards
            (id, name, version, description, system_prompt, speech_patterns_json,
             forbidden_topics_json, emotion_vocab_json, motion_vocab_json,
-            module_bindings_json, live2d_model_id, is_active, is_builtin,
+            live2d_model_id, is_active, is_builtin,
             created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, '{}', ?, ?, ?, ?)`
       )
       .run(
         c.id,
@@ -60,7 +59,6 @@ export class CharacterCardsRepo {
         c.forbiddenTopicsJson ?? '[]',
         c.emotionVocabJson ?? '[]',
         c.motionVocabJson ?? '[]',
-        c.moduleBindingsJson ?? '{}',
         c.live2dModelId ?? null,
         c.isActive ? 1 : 0,
         c.isBuiltin ? 1 : 0,
@@ -112,7 +110,6 @@ export class CharacterCardsRepo {
     if (patch.forbiddenTopicsJson !== undefined) { fields.push('forbidden_topics_json = ?'); values.push(patch.forbiddenTopicsJson); }
     if (patch.emotionVocabJson !== undefined)    { fields.push('emotion_vocab_json = ?'); values.push(patch.emotionVocabJson); }
     if (patch.motionVocabJson !== undefined)     { fields.push('motion_vocab_json = ?'); values.push(patch.motionVocabJson); }
-    if (patch.moduleBindingsJson !== undefined)  { fields.push('module_bindings_json = ?'); values.push(patch.moduleBindingsJson); }
     if (patch.live2dModelId !== undefined)       { fields.push('live2d_model_id = ?'); values.push(patch.live2dModelId); }
 
     if (fields.length === 0) return;
