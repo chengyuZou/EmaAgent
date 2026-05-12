@@ -1377,7 +1377,7 @@ Gemini:
 **Provider 配置**：
 ```typescript
 provider: 'openai-compat'
-apiKey: 'sk-44b4106ad6844fa9b06c16b7d70443b8'
+apiKey: 'sk-44b4x'
 baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1'
 ```
 
