@@ -1,4 +1,4 @@
-﻿import type { TurnId, SessionId } from '@ema-agent/contracts';
+﻿import type { TurnId, SessionId, EmaStreamEvent } from '@ema-agent/contracts';
 import type { HookEvent, HookPayload } from './events.js';
 import { PRIORITY_DEFAULT } from './priority.js';
 
@@ -9,7 +9,7 @@ export interface HookContext<E extends HookEvent> {
   turnId: TurnId;
   sessionId: SessionId;
   payload: HookPayload[E];
-
+  emit?: (event: EmaStreamEvent) => void;
   /**
    * Caller-owned scratchpad shared by handlers.
    *
