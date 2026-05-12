@@ -10,5 +10,9 @@ export type {
   HookContext,
   HookHandler,
   HookResult,
+  HookTriggerResult,
+  HookWarning,
+  HookOptions,
+  HookBusOptions,
   RegisteredHook,
 } from './bus.js';
