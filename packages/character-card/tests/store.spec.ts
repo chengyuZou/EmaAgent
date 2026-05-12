@@ -38,7 +38,6 @@ describe('CharacterCardStore', () => {
     const newCard = store.create(input);
     expect(newCard.id).toBeDefined();
     expect(newCard.name).toBe('Test Character');
-    expect(newCard.moduleBindings).toBeUndefined(); // Should not exist on type or be exposed.
 
     const retrieved = store.get(newCard.id);
     expect(retrieved).toEqual(newCard);

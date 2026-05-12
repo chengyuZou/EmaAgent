@@ -47,6 +47,8 @@ export class CharacterCardStore {
     const next = this.repository.findById(id);
     if (!next) throw new Error(`character card not found: ${id}`);
 
+    // TODO: character-card switching is app-level, not turn-level.
+    // Revisit HookContext shape or route this through a settings event later.
     await this.bus?.trigger('onCharacterCardSwitch', {
       turnId: '' as never,
       sessionId: '' as never,
@@ -99,6 +101,7 @@ export class CharacterCardStore {
     return buildSystemBlock(this.current());
   }
 
+  /** Registers lifecycle hooks on the HookBus. Currently only `beforeLlm` (system block injection). */
   registerHooks(bus: HookBus): void {
     this.bus = bus;
 

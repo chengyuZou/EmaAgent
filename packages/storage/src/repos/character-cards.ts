@@ -11,7 +11,6 @@ export interface CharacterCardRow {
   forbidden_topics_json: string;
   emotion_vocab_json: string;
   motion_vocab_json: string;
-  module_bindings_json: string;
   live2d_model_id: string | null;
   is_active: number;
   is_builtin: number;
@@ -44,10 +43,10 @@ export class CharacterCardsRepo {
       .prepare(
         `INSERT INTO character_cards
            (id, name, version, description, system_prompt, speech_patterns_json,
-            forbidden_topics_json, emotion_vocab_json, motion_vocab_json,
+            forbidden_topics_json, emotion_vocab_json, motion_vocab_json, 
             live2d_model_id, is_active, is_builtin,
             created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, '{}', ?, ?, ?, ?)`
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         c.id,

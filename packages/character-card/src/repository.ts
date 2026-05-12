@@ -62,7 +62,6 @@ export class CharacterCardRepository {
       forbiddenTopicsJson:  JSON.stringify(input.forbiddenTopics ?? []),
       emotionVocabJson:     JSON.stringify(input.emotionVocabulary ?? []),
       motionVocabJson:      JSON.stringify(input.motionVocabulary ?? []),
-      moduleBindingsJson:   '{}', // Compatibility with DB schema
       live2dModelId:        input.live2dModelId,
       isActive:             opts.isActive ?? false,
       isBuiltin:            opts.isBuiltin ?? false,

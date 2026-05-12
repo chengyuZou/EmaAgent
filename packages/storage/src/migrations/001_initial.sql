@@ -188,7 +188,6 @@ CREATE TABLE IF NOT EXISTS character_cards (
   forbidden_topics_json TEXT NOT NULL DEFAULT '[]',
   emotion_vocab_json    TEXT NOT NULL DEFAULT '[]',
   motion_vocab_json     TEXT NOT NULL DEFAULT '[]',
-  module_bindings_json  TEXT NOT NULL DEFAULT '{}',
   live2d_model_id       TEXT REFERENCES live2d_models(id) ON DELETE SET NULL,
   is_active             INTEGER NOT NULL DEFAULT 0,
   is_builtin            INTEGER NOT NULL DEFAULT 0,
