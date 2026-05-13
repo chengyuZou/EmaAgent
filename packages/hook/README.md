@@ -1,6 +1,7 @@
 # @ema-agent/hook
 
-EmaAgent 的 Hook 事件系统 —— 基于优先级的、可扩展的事件总线，支持串行/并行分批执行处理器。
+> EmaAgent 的 Hook 事件系统 —— 基于优先级的、可扩展的事件总线，支持串行/并行分批执行处理器。
+> 更新时间 2026-5-13 11:49
 
 ---
 
@@ -85,6 +86,31 @@ type HookEvent =
   | 'onTurnStart' | 'onTurnEnd' | 'onTurnAbort'
   | 'onCharacterCardSwitch' | 'onEmotionChange';
 ```
+
+并区分为 `AppHookEvent` 与 `TurnHookEvent`
+```ts
+export type TurnHookEvent =
+  | 'beforeLlm'
+  | 'afterLlmDelta'
+  | 'afterLlmComplete'
+  | 'afterMessage'
+  | 'beforeToolUse'
+  | 'afterToolUse'
+  | 'onToolFailure'
+  | 'beforeCompact'
+  | 'afterCompact'
+  | 'onTurnStart'
+  | 'onTurnEnd'
+  | 'onTurnAbort';
+
+export type AppHookEvent = 
+  | 'onCharacterCardSwitch'
+  | 'onEmotionChange';
+
+export type HookEvent = TurnHookEvent | AppHookEvent;
+```
+
+原因为:有些Hook是APP层级(比如角色卡),并非用于一次对话下
 
 ### `HookPayload` 接口
 

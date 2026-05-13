@@ -1,24 +1,37 @@
 ﻿import type { TurnId, SessionId, EmaStreamEvent } from '@ema-agent/contracts';
-import type { HookEvent, HookPayload } from './events.js';
+import type { AppHookEvent, TurnHookEvent, HookEvent, HookPayload } from './events.js';
 import { PRIORITY_DEFAULT } from './priority.js';
 
 // ── Context & Result types ────────────────────────────────────────────────────
 
-export interface HookContext<E extends HookEvent> {
+export interface BaseHookContext<E extends HookEvent> {
   event: E;
+  payload: HookPayload[E];
+  meta: Record<string, unknown>;
+  emit?: (event: EmaStreamEvent) => void;
+}
+
+export interface TurnHookContext<E extends TurnHookEvent> 
+  extends BaseHookContext<E> {
+  scope: 'turn';
   turnId: TurnId;
   sessionId: SessionId;
-  payload: HookPayload[E];
-  emit?: (event: EmaStreamEvent) => void;
-  /**
-   * Caller-owned scratchpad shared by handlers.
-   *
-   * HookBus does not decide its lifecycle:
-   * - Reuse the same object across multiple trigger() calls for turn-level meta.
-   * - Pass a fresh object for every trigger() call for trigger-level meta.
-   */
-  meta: Record<string, unknown>;
 }
+
+export interface AppHookContext<E extends AppHookEvent>
+  extends BaseHookContext<E> {
+  scope: 'app';
+}
+
+export type HookContext<E extends HookEvent> =
+  E extends TurnHookEvent
+    ? TurnHookContext<E>
+    : E extends AppHookEvent
+      ? AppHookContext<E>
+      : never;
+
+export type HookTriggerContext<E extends HookEvent> =
+  Omit<HookContext<E>, 'event'>;
 
 /** Result returned by a single hook handler. */
 export type HookResult<E extends HookEvent> =
@@ -53,44 +66,12 @@ export interface HookWarning {
 export interface HookOptions {
   priority?: number;
   name?: string;
-
-  /**
-   * Whether this hook failure should abort the trigger chain.
-   *
-   * This only handles thrown/rejected errors.
-   * A handler returning { kind: 'abort' } always aborts the trigger chain.
-   *
-   * Default: true
-   */
   critical?: boolean;
-
-  /**
-   * Whether this hook wants to run in parallel when the event supports it.
-   *
-   * If the event does not support parallel execution, this option is ignored.
-   * Parallel hooks must be observer-style hooks and must not return replace.
-   *
-   * Default: false
-   */
   parallel?: boolean;
 }
 
 export interface HookBusOptions {
-  /**
-   * Maximum number of parallel handlers running at once.
-   *
-   * Only applies to events that support parallel execution and hooks that set
-   * parallel: true.
-   *
-   * Default: Infinity
-   */
   maxConcurrency?: number;
-
-  /**
-   * Events that allow parallel execution.
-   *
-   * If omitted, HookBus uses DEFAULT_PARALLEL_EVENTS.
-   */
   parallelEvents?: ReadonlySet<HookEvent>;
 }
 
@@ -140,6 +121,10 @@ function errorToReason(err: unknown): string {
 function chunkArray<T>(items: T[], size: number): T[][] {
   if (size <= 0) {
     throw new Error(`chunk size must be greater than 0, got ${size}`);
+  }
+
+  if (size === Number.POSITIVE_INFINITY) {
+    return [items];
   }
 
   const chunks: T[][] = [];
@@ -253,12 +238,12 @@ export class HookBus {
    */
   async trigger<E extends HookEvent>(
     event: E,
-    ctx: Omit<HookContext<E>, 'event'>,
+    ctx: Omit<HookTriggerContext<E>, 'event'>,
   ): Promise<HookTriggerResult<E>> {
     const entries =
       (this.registry.get(event) ?? []) as unknown as HandlerEntry<E>[];
 
-    let currentPayload = ctx.payload;
+    let currentPayload = ctx.payload as HookPayload[E];
     const warnings: HookWarning[] = [];
 
     if (entries.length === 0) {
@@ -273,7 +258,7 @@ export class HookBus {
       ...ctx,
       event,
       payload: currentPayload,
-    };
+    } as HookContext<E>;
 
     const eventAllowsParallel = this.parallelEvents.has(event);
     const batches = buildBatches(entries, eventAllowsParallel);
@@ -341,7 +326,7 @@ export class HookBus {
     const handlerCtx: HookContext<E> = {
       ...baseCtx,
       payload,
-    };
+    } as HookContext<E>;
 
     try {
       return await entry.handler(handlerCtx);
@@ -383,7 +368,6 @@ export class HookBus {
 
       for (const [i, item] of settled.entries()) {
         const entry = chunk[i]!;
-        const item = settled[i]!;
 
         if (item.status === 'rejected') {
           // runOne catches handler errors, so this is only a defensive fallback.

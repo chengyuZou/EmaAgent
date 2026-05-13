@@ -1,7 +1,7 @@
 ﻿import type { TurnMode, MessageId, CharacterCardId } from '@ema-agent/contracts';
 import type { LlmMessage } from '@ema-agent/llm';
 
-export type HookEvent =
+export type TurnHookEvent =
   | 'beforeLlm'
   | 'afterLlmDelta'
   | 'afterLlmComplete'
@@ -14,8 +14,12 @@ export type HookEvent =
   | 'onTurnStart'
   | 'onTurnEnd'
   | 'onTurnAbort'
-  | 'onCharacterCardSwitch'
   | 'onEmotionChange';
+
+export type AppHookEvent = 
+  | 'onCharacterCardSwitch';
+
+export type HookEvent = TurnHookEvent | AppHookEvent;
 
 // ── Per-event payload shapes ──────────────────────────────────────────────────
 

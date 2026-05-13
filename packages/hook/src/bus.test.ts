@@ -7,7 +7,7 @@ const turnId = 'turn-1' as TurnId;
 const sessionId = 'session-1' as SessionId;
 
 function baseCtx(meta: Record<string, unknown> = {}) {
-  return { turnId, sessionId, meta };
+  return { scope: 'turn' as const, turnId, sessionId, meta };
 }
 
 function sleep(ms: number): Promise<void> {
