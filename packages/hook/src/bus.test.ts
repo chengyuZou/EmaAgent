@@ -783,4 +783,28 @@ describe('HookBus', () => {
       'maxConcurrency must be greater than 0, got -1',
     );
   });
+
+  it('runs app-scoped hooks without turn/session context', async () => {
+    const bus = new HookBus();
+    const seen = vi.fn();
+
+    bus.register('onCharacterCardSwitch', async (ctx) =>  {
+      seen(ctx.payload.previousCardId, ctx.payload.nextCardId);
+      return { kind: 'continue' };
+    });
+
+    const result = await bus.trigger('onCharacterCardSwitch', {
+      scope: 'app',
+      meta: {},
+      payload: { previousCardId: 'card-1' as any, nextCardId: 'card-2' as any },
+    });
+
+    expect(seen).toHaveBeenCalledWith('card-1', 'card-2');
+
+    expect(result).toEqual({
+      kind: 'continue',
+      payload: { previousCardId: 'card-1', nextCardId: 'card-2' },
+      warnings: [],
+    });
+  });
 });
