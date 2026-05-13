@@ -1,34 +1,17 @@
 ﻿import type { TurnId, SessionId, EmaStreamEvent } from '@ema-agent/contracts';
-import type { AppHookEvent, TurnHookEvent, HookEvent, HookPayload } from './events.js';
+import type { HookEvent, HookPayload } from './events.js';
 import { PRIORITY_DEFAULT } from './priority.js';
 
 // ── Context & Result types ────────────────────────────────────────────────────
 
-export interface BaseHookContext<E extends HookEvent> {
+export interface HookContext<E extends HookEvent> {
   event: E;
   payload: HookPayload[E];
+  turnId: TurnId;
+  sessionId: SessionId;
   meta: Record<string, unknown>;
   emit?: (event: EmaStreamEvent) => void;
 }
-
-export interface TurnHookContext<E extends TurnHookEvent> 
-  extends BaseHookContext<E> {
-  scope: 'turn';
-  turnId: TurnId;
-  sessionId: SessionId;
-}
-
-export interface AppHookContext<E extends AppHookEvent>
-  extends BaseHookContext<E> {
-  scope: 'app';
-}
-
-export type HookContext<E extends HookEvent> =
-  E extends TurnHookEvent
-    ? TurnHookContext<E>
-    : E extends AppHookEvent
-      ? AppHookContext<E>
-      : never;
 
 export type HookTriggerContext<E extends HookEvent> =
   Omit<HookContext<E>, 'event'>;
@@ -109,7 +92,6 @@ const DEFAULT_PARALLEL_EVENTS = new Set<HookEvent>([
   'afterCompact',
   'onTurnEnd',
   'onTurnAbort',
-  'onEmotionChange',
 ]);
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

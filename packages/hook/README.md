@@ -28,7 +28,7 @@
 
 模块提供：
 
-- **14 个生命周期事件**，覆盖 LLM 调用、工具使用、回合、角色状态。
+- **12 个生命周期事件**，覆盖 LLM 调用、工具使用、回合。
 - **优先级排序执行**（数字越小越先执行）。
 - **串行与并行批次**：同一事件下的处理器可被分为串行块和并行块执行。
 - **Payload 修改**：串行处理器可以替换 payload，下游处理器将收到修改后的值。
@@ -76,41 +76,17 @@ src/
 
 ### `HookEvent` 类型
 
-定义了全部 14 个事件名称的联合类型：
+定义了全部 12 个事件名称的联合类型：
 
 ```ts
 type HookEvent =
   | 'beforeLlm' | 'afterLlmDelta' | 'afterLlmComplete'
   | 'afterMessage' | 'beforeToolUse' | 'afterToolUse'
   | 'onToolFailure' | 'beforeCompact' | 'afterCompact'
-  | 'onTurnStart' | 'onTurnEnd' | 'onTurnAbort'
-  | 'onCharacterCardSwitch' | 'onEmotionChange';
+  | 'onTurnStart' | 'onTurnEnd' | 'onTurnAbort';
 ```
 
-并区分为 `AppHookEvent` 与 `TurnHookEvent`
-```ts
-export type TurnHookEvent =
-  | 'beforeLlm'
-  | 'afterLlmDelta'
-  | 'afterLlmComplete'
-  | 'afterMessage'
-  | 'beforeToolUse'
-  | 'afterToolUse'
-  | 'onToolFailure'
-  | 'beforeCompact'
-  | 'afterCompact'
-  | 'onTurnStart'
-  | 'onTurnEnd'
-  | 'onTurnAbort';
-
-export type AppHookEvent = 
-  | 'onCharacterCardSwitch'
-  | 'onEmotionChange';
-
-export type HookEvent = TurnHookEvent | AppHookEvent;
-```
-
-原因为:有些Hook是APP层级(比如角色卡),并非用于一次对话下
+所有事件均为 turn（回合）级别。App 层级的通知（角色卡切换、情绪变化）由各自 package 通过简单回调/emitter 处理，不经过 HookBus。
 
 ### `HookPayload` 接口
 
@@ -152,26 +128,19 @@ export type HookEvent = TurnHookEvent | AppHookEvent;
 | `onTurnEnd` | `{ durationMs: number }` | 回合结束时 | **支持并行**。用于记录回合耗时、统计。 |
 | `onTurnAbort` | `{ reason: string }` | 回合被中止时 | **支持并行**。用于清理资源、记录中止原因。 |
 
-#### 角色与情感
-
-| 事件 | Payload | 触发时机 | 说明 |
-|---|---|---|---|
-| `onCharacterCardSwitch` | `{ previousCardId: CharacterCardId; nextCardId: CharacterCardId }` | 切换角色卡时 | **串行专用事件**。可在此加载新角色卡的上下文。 |
-| `onEmotionChange` | `{ primary: string; secondary?: string; intensity: number }` | 角色情感状态变化时 | **支持并行**。用于更新 UI、触发 TTS 情感标记。 |
-
 ---
 
 ### 并行支持情况总结
 
-**支持并行的事件（9 个）**：
+**支持并行的事件（8 个）**：
 
-`afterLlmDelta`、`afterLlmComplete`、`afterMessage`、`afterToolUse`、`onToolFailure`、`afterCompact`、`onTurnEnd`、`onTurnAbort`、`onEmotionChange`
+`afterLlmDelta`、`afterLlmComplete`、`afterMessage`、`afterToolUse`、`onToolFailure`、`afterCompact`、`onTurnEnd`、`onTurnAbort`
 
 这些都是**观察者风格**的事件（事后通知），处理器通常不需要修改状态。
 
-**仅支持串行的事件（5 个）**：
+**仅支持串行的事件（4 个）**：
 
-`beforeLlm`、`beforeToolUse`、`beforeCompact`、`onTurnStart`、`onCharacterCardSwitch`
+`beforeLlm`、`beforeToolUse`、`beforeCompact`、`onTurnStart`
 
 这些都是**前置事件**，处理器需要能够修改 payload（返回 `replace`）来影响后续流程。
 
@@ -296,7 +265,7 @@ type HookBatch<E extends HookEvent> =
 
 #### 默认并行事件集
 
-硬编码了 9 个支持并行的事件：
+硬编码了 8 个支持并行的事件：
 
 ```ts
 const DEFAULT_PARALLEL_EVENTS = new Set<HookEvent>([
@@ -308,7 +277,6 @@ const DEFAULT_PARALLEL_EVENTS = new Set<HookEvent>([
   'afterCompact',
   'onTurnEnd',
   'onTurnAbort',
-  'onEmotionChange',
 ]);
 ```
 
@@ -494,7 +462,7 @@ export type {
 
 ## 五、`bus.test.ts` —— 测试文件分析
 
-使用 **Vitest** 测试框架，共 **18 个测试用例**，覆盖以下场景：
+使用 **Vitest** 测试框架，共 **17 个测试用例**，覆盖以下场景：
 
 ### 基础功能测试
 

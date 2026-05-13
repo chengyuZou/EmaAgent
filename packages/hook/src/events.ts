@@ -1,7 +1,13 @@
-﻿import type { TurnMode, MessageId, CharacterCardId } from '@ema-agent/contracts';
+﻿import type { TurnMode, MessageId } from '@ema-agent/contracts';
 import type { LlmMessage } from '@ema-agent/llm';
 
-export type TurnHookEvent =
+/**
+ * All hook events are turn-scoped.
+ * App-level notifications (character-card switch, emotion change) are
+ * handled by simple callbacks / emitters in their respective packages,
+ * not by the HookBus.
+ */
+export type HookEvent =
   | 'beforeLlm'
   | 'afterLlmDelta'
   | 'afterLlmComplete'
@@ -13,13 +19,7 @@ export type TurnHookEvent =
   | 'afterCompact'
   | 'onTurnStart'
   | 'onTurnEnd'
-  | 'onTurnAbort'
-  | 'onEmotionChange';
-
-export type AppHookEvent = 
-  | 'onCharacterCardSwitch';
-
-export type HookEvent = TurnHookEvent | AppHookEvent;
+  | 'onTurnAbort';
 
 // ── Per-event payload shapes ──────────────────────────────────────────────────
 
@@ -74,14 +74,5 @@ export interface HookPayload {
   };
   onTurnAbort: {
     reason: string;
-  };
-  onCharacterCardSwitch: {
-    previousCardId: CharacterCardId;
-    nextCardId: CharacterCardId;
-  };
-  onEmotionChange: {
-    primary: string;
-    secondary?: string;
-    intensity: number;
   };
 }
