@@ -39,10 +39,10 @@ export class CharacterCardStore {
   }
 
   activate(id: CharacterCardId): CharacterCardId {
-    const previous = this.current();
+    const card = this.repository.findById(id);
+    if (!card) throw new Error(`character card not found: ${id}`);
     this.repository.activate(id);
-    const next = this.repository.findById(id);
-    return next?.id ?? previous.id;
+    return id;
   }
 
   create(input: CharacterCardInput): CharacterCard {
