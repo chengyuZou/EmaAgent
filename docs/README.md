@@ -411,8 +411,6 @@ export type HookEvent =
   | 'onTurnStart'         // turn 开始
   | 'onTurnEnd'           // turn 正常结束
   | 'onTurnAbort'         // turn 中断（用户 stop / 异常）
-  | 'onCharacterCardSwitch' // 角色卡切换（V1 不触发，V1.5 用）
-  | 'onEmotionChange';    // emotion 状态变化
 ```
 
 ### 4.3 Façade
@@ -501,7 +499,7 @@ new TelemetryRecorder(db).registerHooks(hookBus);
 
 ### 4.7 与 Claude Code 27 hook 的差异
 
-V1 14 个事件，砍掉 `SessionStart/End`、`Notification`、`SubagentStart/Stop`、`Setup` 等。理由：
+V1 12 个事件，砍掉 `SessionStart/End`、`Notification`、`SubagentStart/Stop`、`Setup` 以及 app 级通知（角色卡切换、情绪变化走各自 package 的简单 emitter）。理由：
 
 - session 生命周期不是高价值扩展点（V1 单用户）
 - subagent V1.5 才做
@@ -1613,7 +1611,7 @@ export class StageController {
   current(): StageCue;
   
   registerHooks(bus: HookBus): void;
-  // 监听 onEmotionChange + tts_chunk → 合成 stage_cue
+  // 订阅 EmotionEngine 的 emitter + afterLlmDelta tts_chunk → 合成 stage_cue
 }
 ```
 
@@ -1768,7 +1766,7 @@ export class CharacterCardStore {
   current(): Promise<CharacterCard>;
   list(): Promise<CharacterCard[]>;
   get(id: CharacterCardId): Promise<CharacterCard | undefined>;
-  activate(id: CharacterCardId): Promise<void>;          // 触发 onCharacterCardSwitch
+  activate(id: CharacterCardId): Promise<void>;          // 触发 onSwitch 回调（简单 emitter，不经过 HookBus）
   create(input: CharacterCardInput): Promise<CharacterCard>;
   update(id: CharacterCardId, patch: Partial<CharacterCardInput>): Promise<CharacterCard>;
   duplicate(id: CharacterCardId): Promise<CharacterCard>;

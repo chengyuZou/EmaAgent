@@ -2,15 +2,12 @@ import type { Database, CharacterCardsRepo } from '@ema-agent/storage';
 import { CharacterCardsRepo as Repo } from '@ema-agent/storage';
 import type { CharacterCardId } from '@ema-agent/contracts';
 import { asCharacterCardId } from '@ema-agent/contracts';
-import type { HookBus } from '@ema-agent/hook';
 import type { CharacterCard, CharacterCardInput } from './types.js';
 import { CharacterCardRepository } from './repository.js';
-import { buildSystemBlock } from './system-block.js';
 import { EMA_CARD_ID, EMA_CARD_INPUT } from './seed.js';
 
 export class CharacterCardStore {
   private readonly repository: CharacterCardRepository;
-  private bus?: HookBus;
 
   constructor({ db }: { db: Database }) {
     const repo: CharacterCardsRepo = new Repo(db.sqlite);
@@ -41,20 +38,11 @@ export class CharacterCardStore {
     return this.repository.findById(id);
   }
 
-  async activate(id: CharacterCardId): Promise<void> {
+  activate(id: CharacterCardId): CharacterCardId {
     const previous = this.current();
     this.repository.activate(id);
     const next = this.repository.findById(id);
-    if (!next) throw new Error(`character card not found: ${id}`);
-
-    // TODO: character-card switching is app-level, not turn-level.
-    // Revisit HookContext shape or route this through a settings event later.
-    await this.bus?.trigger('onCharacterCardSwitch', {
-      turnId: '' as never,
-      sessionId: '' as never,
-      meta: {},
-      payload: { previousCardId: previous.id, nextCardId: next.id },
-    });
+    return next?.id ?? previous.id;
   }
 
   create(input: CharacterCardInput): CharacterCard {
@@ -95,30 +83,5 @@ export class CharacterCardStore {
 
   exportToFile(_id: CharacterCardId): Promise<Uint8Array> {
     return Promise.reject(new Error('exportToFile not implemented in V1'));
-  }
-
-  buildSystemBlock(): string {
-    return buildSystemBlock(this.current());
-  }
-
-  /** Registers lifecycle hooks on the HookBus. Currently only `beforeLlm` (system block injection). */
-  registerHooks(bus: HookBus): void {
-    this.bus = bus;
-
-    bus.register(
-      'beforeLlm',
-      (ctx) => {
-        const block = buildSystemBlock(this.current());
-        const existing = ctx.payload.systemPrompt;
-        return {
-          kind: 'replace',
-          payload: {
-            ...ctx.payload,
-            systemPrompt: existing ? `${block}\n\n${existing}` : block,
-          },
-        };
-      },
-      { name: 'character-card/inject-system-block', priority: 10 },
-    );
   }
 }
