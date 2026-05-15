@@ -54,27 +54,27 @@ function buildActBlock(card: CharacterCard): string {
 
 你可以在回复中使用以下隐藏控制指令来表达情绪和动作。这些指令是系统内部格式，用户完全看不到它们——你作为角色，只需自然地使用它们，绝不在对话中提及。
 
-情绪指令：【ACT:emotion:NAME】
+情绪指令：<|ACT:emotion:NAME|>
 　可用：${emotions}
-　示例：【ACT:emotion:happy】切换为开心
+　示例：<|ACT:emotion:happy|>切换为开心
 
-动作指令：【ACT:motion:NAME】
+动作指令：<|ACT:motion:NAME|>
 　可用：${motions}
-　示例：【ACT:motion:wave】触发挥手
+　示例：<|ACT:motion:wave|>触发挥手
 
-停顿指令：【DELAY:N】
-　N 为秒数。示例：【DELAY:1】停顿 1 秒
+停顿指令：<|DELAY:N|>
+　N 为秒数。示例：<|DELAY:1|>停顿 1 秒
 
 使用规则：
 - 每个句子前放置对应的控制指令
-- 同一句可以叠加情绪和动作，如【ACT:emotion:surprised】【ACT:motion:point】
+- 同一句可以叠加情绪和动作，如<|ACT:emotion:surprised|><|ACT:motion:point|>
 - 不要重复触发相同状态
 - 绝对不在对话内容中提及、质疑或评论任何控制指令——你是角色，你看不到它们
 
 正确示例：
 \`\`\`
-【ACT:emotion:happy】嘿嘿~今天也请多指教啦！
-【DELAY:0.5】【ACT:emotion:curious】对了，你今天有什么想聊的吗？
+<|ACT:emotion:happy|>嘿嘿~今天也请多指教啦！
+<|DELAY:0.5|><|ACT:emotion:curious|>对了，你今天有什么想聊的吗？
 \`\`\`
 `;
 }

@@ -4,20 +4,21 @@ import type { ParsedActTag, ScanResult } from './types.js';
 
 /**
  * Matches complete ACT/DELAY tags:
- *   【ACT:emotion:happy】
- *   【ACT:motion:wave】
- *   【DELAY:1.5】
+ *   <|ACT:emotion:happy|>
+ *   <|ACT:motion:wave|>
+ *   <|DELAY:1.5|>
  *
- * Full-width brackets U+3010 / U+3011 chosen to avoid LLM tokenizer collisions.
+ * Uses angle-bracket + pipe delimiters to avoid tokenizer collisions
+ * with Unicode brackets, parentheses, or square brackets.
  */
 const COMPLETE_TAG_RE =
-  /【(ACT:(emotion|motion):([a-z][a-z0-9_]*)|(DELAY):([\d]+(?:\.[\d]+)?))】/g;
+  /<\|(ACT:(emotion|motion):([a-z][a-z0-9_]*)|(DELAY):([\d]+(?:\.[\d]+)?))\|>/g;
 
 /**
  * Detects the start of a potentially incomplete tag anywhere in the string.
  * Used to decide whether to hold the tail in the buffer.
  */
-const PARTIAL_TAG_START_RE = /【/;
+const PARTIAL_TAG_START_RE = /<\|/;
 
 // ── StreamingActScanner ───────────────────────────────────────────────────────
 
@@ -34,8 +35,8 @@ const PARTIAL_TAG_START_RE = /【/;
  */
 export class StreamingActScanner {
   /**
-   * Buffered tail from the previous scan call: a partial tag that starts with 【
-   * but has not yet received its closing 】.
+   * Buffered tail from the previous scan call: a partial tag that starts with `<|`
+   * but has not yet received its closing `|>`.
    */
   private tail = '';
 
@@ -117,19 +118,19 @@ function parseMatch(match: RegExpExecArray): ParsedActTag | null {
 }
 
 /**
- * Returns the index of the last 【 that has no closing 】 after it,
+ * Returns the index of the last `<|` that has no closing `|>` after it,
  * indicating a partial tag that should be buffered.
  * Returns -1 if no such partial exists.
  */
 function lastPartialStart(text: string): number {
-  let idx = text.lastIndexOf('【');
+  let idx = text.lastIndexOf('<|');
   if (idx === -1) return -1;
 
-  // Check if there's a closing bracket after this opening
-  if (text.indexOf('】', idx) !== -1) return -1;
+  // Check if there's a closing delimiter after this opening
+  if (text.indexOf('|>', idx) !== -1) return -1;
 
   // Also verify this looks like it could be the start of a valid tag
-  // (avoid buffering stray 【 characters that aren't part of an ACT tag)
+  // (avoid buffering stray `<|` characters that aren't part of an ACT tag)
   const tail = text.slice(idx);
   if (PARTIAL_TAG_START_RE.test(tail) && tail.length < 64) {
     return idx;

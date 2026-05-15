@@ -6,7 +6,7 @@ export interface ParsedActTag {
   kind: ActTagKind;
   /** Emotion/motion name, or delay seconds as a numeric string. */
   value: string;
-  /** The full tag text, e.g. 【ACT:emotion:happy】 */
+  /** The full tag text, e.g. <|ACT:emotion:happy|> */
   raw: string;
 }
 
