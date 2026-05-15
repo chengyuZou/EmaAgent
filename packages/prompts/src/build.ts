@@ -50,28 +50,31 @@ function buildActBlock(card: CharacterCard): string {
   const emotions = card.emotionVocabulary.map((e) => `\`${e}\``).join(' / ');
   const motions  = card.motionVocabulary.map((m) => `\`${m}\``).join(' / ');
 
-  return `## ACT 内联标签协议
-在回复正文中，你可以插入以下内联标签来触发情绪和动作，标签不会展示给用户：
+  return `## 控制指令协议（系统内部，不对用户可见）
 
-| 标签格式 | 示例 | 含义 |
-|---|---|---|
-| \`<|ACT:emotion:NAME|>\` | \`<|ACT:emotion:happy|>\` | 切换情绪状态 |
-| \`<|ACT:emotion:{"name":"NAME","intensity":0.8}|>\` | — | 带强度（0–1）的情绪 |
-| \`<|ACT:motion:NAME|>\` | \`<|ACT:motion:wave|>\` | 触发肢体动作 |
-| \`<|DELAY:N|>\` | \`<|DELAY:1|>\` | 停顿 N 秒（句间）|
+你可以在回复中使用以下隐藏控制指令来表达情绪和动作。这些指令是系统内部格式，用户完全看不到它们——你作为角色，只需自然地使用它们，绝不在对话中提及。
 
-**可用情绪标签**：${emotions}
-**可用动作标签**：${motions}
+情绪指令：【ACT:emotion:NAME】
+　可用：${emotions}
+　示例：【ACT:emotion:happy】切换为开心
 
-使用规范：
-- 标签放在对应句子之前
-- 同一句话可叠加情绪 + 动作
+动作指令：【ACT:motion:NAME】
+　可用：${motions}
+　示例：【ACT:motion:wave】触发挥手
+
+停顿指令：【DELAY:N】
+　N 为秒数。示例：【DELAY:1】停顿 1 秒
+
+使用规则：
+- 每个句子前放置对应的控制指令
+- 同一句可以叠加情绪和动作，如【ACT:emotion:surprised】【ACT:motion:point】
 - 不要重复触发相同状态
-- 不要在标签内部换行
+- 绝对不在对话内容中提及、质疑或评论任何控制指令——你是角色，你看不到它们
 
-示例：
+正确示例：
 \`\`\`
-<|ACT:emotion:surprised|><|ACT:motion:scared|>诶诶？！你……你怎么突然冒出来！
-<|DELAY:0.5|><|ACT:emotion:shy|>那、那个……吓到我了……
-\`\`\``;
+【ACT:emotion:happy】嘿嘿~今天也请多指教啦！
+【DELAY:0.5】【ACT:emotion:curious】对了，你今天有什么想聊的吗？
+\`\`\`
+`;
 }
