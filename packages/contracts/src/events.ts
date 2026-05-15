@@ -81,8 +81,9 @@ export type EmaStreamEvent =
   | { type: 'artifact_applied'; id: ArtifactId }
 
   // Stage / Emotion
-  | { type: 'stage_cue'; cue: StageCue }
-  | { type: 'emotion_changed'; state: EmotionState }
+  // turnId lets the frontend ignore cues from a preempted turn (concurrent sends).
+  | { type: 'stage_cue'; turnId: TurnId; cue: StageCue }
+  | { type: 'emotion_changed'; turnId: TurnId; state: EmotionState }
 
   // TTS — audio is base64-encoded string over SSE
   | { type: 'tts_chunk'; audio: string; lipsync?: LipSyncFrame[]; sentenceId: string }
@@ -110,4 +111,11 @@ export type EmaStreamEvent =
 
   // System
   | { type: 'system_warning'; level: 'info' | 'warn' | 'error'; message: string }
+
+  // NOTE: heartbeat is NOT pushed through TurnEventStore.
+  // It is sent as a raw `event: heartbeat\ndata: {}\n\n` SSE frame directly
+  // by the GET /events handler's setInterval via encodePing(). This keeps
+  // keep-alive frames out of the replay buffer. The frontend must listen on
+  // the `heartbeat` SSE event name (addEventListener('heartbeat', ...)), not
+  // parse this as a JSON EmaStreamEvent.
   | { type: 'heartbeat'; ts: number };

@@ -24,7 +24,7 @@ const PARTIAL_TAG_START_RE = /<\|/;
 
 /**
  * Stateful scanner that handles ACT tags split across streaming deltas.
- *
+ *```
  * Usage:
  *   const scanner = new StreamingActScanner();
  *   for await (const chunk of stream) {
@@ -32,6 +32,7 @@ const PARTIAL_TAG_START_RE = /<\|/;
  *     // use cleaned for SSE output, tags for state updates
  *   }
  *   const { cleaned } = scanner.flush(); // release any buffered tail
+ * ```
  */
 export class StreamingActScanner {
   /**
@@ -123,17 +124,25 @@ function parseMatch(match: RegExpExecArray): ParsedActTag | null {
  * Returns -1 if no such partial exists.
  */
 function lastPartialStart(text: string): number {
+  // Match the two-character opening delimiter `<|` that hasn't been closed.
   let idx = text.lastIndexOf('<|');
-  if (idx === -1) return -1;
+  if (idx !== -1) {
+    // Check if there's a closing delimiter after this opening
+    if (text.indexOf('|>', idx) !== -1) return -1;
 
-  // Check if there's a closing delimiter after this opening
-  if (text.indexOf('|>', idx) !== -1) return -1;
+    // Also verify this looks like it could be the start of a valid tag
+    // (avoid buffering stray `<|` characters that aren't part of an ACT tag)
+    const tail2 = text.slice(idx);
+    if (PARTIAL_TAG_START_RE.test(tail2) && tail2.length < 64) {
+      return idx;
+    }
+  }
 
-  // Also verify this looks like it could be the start of a valid tag
-  // (avoid buffering stray `<|` characters that aren't part of an ACT tag)
-  const tail = text.slice(idx);
-  if (PARTIAL_TAG_START_RE.test(tail) && tail.length < 64) {
-    return idx;
+  // The two bytes of `<|` may arrive in separate chunks — `<` first,
+  // `|` next.  Detect a bare `<` at the end of the remainder.
+  const bareIdx = text.lastIndexOf('<');
+  if (bareIdx !== -1 && bareIdx === text.length - 1) {
+    return bareIdx;
   }
 
   return -1;
