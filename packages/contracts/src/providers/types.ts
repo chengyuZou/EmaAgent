@@ -32,6 +32,18 @@ export type ProtocolFamily =
   // Rerank protocols
   | 'cohere-rerank';    // /rerank, { model, query, documents, top_n } — Cohere/Jina/SiliconFlow all use this
 
+/**
+ * LLM-specific subset of ProtocolFamily — the adapter dispatch key
+ * used by `LlmRouter`. Derived so `LlmProtocol` automatically stays in sync
+ * if a new `*-llm` is added to ProtocolFamily.
+ */
+export type LlmProtocol = Extract<ProtocolFamily, `${string}-llm`>;
+
+/** Type guard for narrowing ProtocolFamily down to LlmProtocol. */
+export function isLlmProtocol(p: ProtocolFamily | undefined): p is LlmProtocol {
+  return p === 'openai-llm' || p === 'anthropic-llm' || p === 'gemini-llm';
+}
+
 // ── Onboarding fields ────────────────────────────────────────────────────────
 
 /**

@@ -19,7 +19,7 @@ const gsFileUrl:  LlmContentPart = { type: 'file_url',   url: 'gs://my-bucket/do
 
 // ── OpenAI / openai-compat ────────────────────────────────────────────────────
 
-for (const provider of ['openai', 'openai-compat'] as const) {
+for (const provider of ['openai-llm', 'openai-llm'] as const) {
   describe(`validateContentParts — ${provider}`, () => {
     it('accepts text',         () => expect(validateContentParts([text],      provider)).toHaveLength(0));
     it('accepts image_url',    () => expect(validateContentParts([imageUrl],  provider)).toHaveLength(0));

@@ -1,5 +1,5 @@
 import type { MessageContentPart } from '@ema-agent/contracts';
-import type { LlmProvider } from './types.js';
+import type { LlmProtocol } from './types.js';
 
 export interface UnsupportedPart {
   index: number;
@@ -18,7 +18,7 @@ export interface UnsupportedPart {
  */
 export function validateContentParts(
   parts: MessageContentPart[],
-  provider: LlmProvider,
+  provider: LlmProtocol,
 ): UnsupportedPart[] {
   const issues: UnsupportedPart[] = [];
 
@@ -31,15 +31,11 @@ export function validateContentParts(
   return issues;
 }
 
-function checkPart(part: MessageContentPart, provider: LlmProvider): string | null {
+function checkPart(part: MessageContentPart, provider: LlmProtocol): string | null {
   switch (provider) {
-    case 'openai':
-    case 'openai-compat':
-      return checkOpenAi(part);
-    case 'anthropic':
-      return checkAnthropic(part);
-    case 'gemini':
-      return checkGemini(part);
+    case 'openai-llm':    return checkOpenAi(part);
+    case 'anthropic-llm': return checkAnthropic(part);
+    case 'gemini-llm':    return checkGemini(part);
   }
 }
 

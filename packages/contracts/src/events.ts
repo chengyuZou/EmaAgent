@@ -4,8 +4,8 @@
   AgentSubMode,
   ArtifactId,
   CharacterCardId,
-  LlmProvider,
 } from './ids.js';
+import type { LlmProtocol } from './providers/types.js';
 import type { UsageSummary } from './turns.js';
 
 // ── Shared sub-types ──────────────────────────────────────────────────────────
@@ -100,7 +100,7 @@ export type EmaStreamEvent =
   // Provider health
   | {
       type: 'provider_health_changed';
-      provider: LlmProvider;
+      provider: LlmProtocol;
       status: 'ok' | 'failed' | 'probing' | 'unknown';
       latencyMs?: number;
       error?: string;

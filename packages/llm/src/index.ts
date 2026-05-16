@@ -9,7 +9,7 @@ export type { UnsupportedPart }              from './validate.js';
 export type { ModelEntry, ModelCapabilities } from './catalog.js';
 
 export type {
-  LlmProvider,
+  LlmProtocol,
   StopReason,
   ProviderConfig,
   LlmToolDef,

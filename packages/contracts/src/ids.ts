@@ -16,9 +16,6 @@ export function asCharacterCardId(s: string): CharacterCardId { return s as Char
 export function asArtifactId(s: string): ArtifactId     { return s as ArtifactId; }
 export function asModelId(s: string): ModelId           { return s as ModelId; }
 
-/** Closed union of supported LLM provider adapters. Single source of truth — imported by llm, session, engine packages. */
-export type LlmProvider = 'openai' | 'anthropic' | 'gemini' | 'openai-compat';
-
 export type TurnMode      = 'chat' | 'narrative' | 'agent';
 export type AgentSubMode  = 'plan' | 'debug' | 'full';
 export type TurnStatus    = 'pending' | 'running' | 'completed' | 'failed' | 'aborted';

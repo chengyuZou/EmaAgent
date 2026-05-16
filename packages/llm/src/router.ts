@@ -6,7 +6,7 @@ import type { LlmAdapter }  from './adapters/base.js';
 import { withRetry }        from './retry.js';
 import type {
   ProviderConfig,
-  LlmProvider,
+  LlmProtocol,
   LlmRequest,
   LlmStreamChunk,
   LlmToolCall,
@@ -19,13 +19,9 @@ import type {
 
 function createAdapter(config: ProviderConfig): LlmAdapter {
   switch (config.provider) {
-    case 'openai':
-    case 'openai-compat':
-      return new OpenAiAdapter(config);
-    case 'anthropic':
-      return new AnthropicAdapter(config);
-    case 'gemini':
-      return new GeminiAdapter(config);
+    case 'openai-llm':    return new OpenAiAdapter(config);
+    case 'anthropic-llm': return new AnthropicAdapter(config);
+    case 'gemini-llm':    return new GeminiAdapter(config);
   }
 }
 
@@ -36,8 +32,8 @@ function createAdapter(config: ProviderConfig): LlmAdapter {
  * One ProviderConfig per provider type — keyed by `provider` field.
  */
 export class LlmRouter {
-  private readonly adapters = new Map<LlmProvider, LlmAdapter>();
-  private readonly configs  = new Map<LlmProvider, ProviderConfig>();
+  private readonly adapters = new Map<LlmProtocol, LlmAdapter>();
+  private readonly configs  = new Map<LlmProtocol, ProviderConfig>();
 
   /**
    * @param configs           Provider configurations — one per provider type.
@@ -45,7 +41,7 @@ export class LlmRouter {
    */
   constructor(
     configs: ProviderConfig[],
-    adapterOverrides?: ReadonlyMap<LlmProvider, LlmAdapter>,
+    adapterOverrides?: ReadonlyMap<LlmProtocol, LlmAdapter>,
   ) {
     for (const config of configs) {
       this.configs.set(config.provider, config);
@@ -107,7 +103,7 @@ export class LlmRouter {
    * Verify a provider endpoint is reachable and the API key is valid.
    * Used by the settings page when the user saves a new key.
    */
-  async probe(provider: LlmProvider, model: string): Promise<ProbeResult> {
+  async probe(provider: LlmProtocol, model: string): Promise<ProbeResult> {
     const adapter = this.adapters.get(provider);
     if (!adapter) return { ok: false, error: `provider/not_configured: no config registered for "${provider}"` };
 
@@ -133,7 +129,7 @@ export class LlmRouter {
     this.adapters.set(config.provider, createAdapter(config));
   }
 
-  removeConfig(provider: LlmProvider): void {
+  removeConfig(provider: LlmProtocol): void {
     this.configs.delete(provider);
     this.adapters.delete(provider);
   }

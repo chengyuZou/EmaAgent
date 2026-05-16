@@ -1,9 +1,9 @@
 import type { SqliteDb } from '../database.js';
-import type { SessionId, TurnId, LlmProvider } from '@ema-agent/contracts';
+import type { SessionId, TurnId, LlmProtocol } from '@ema-agent/contracts';
 
 export interface TurnUsageRow {
   turn_id: string;
-  llm_provider: LlmProvider;
+  llm_provider: LlmProtocol;
   model_id: string;
   input_tokens: number;
   output_tokens: number;

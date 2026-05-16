@@ -1,7 +1,7 @@
-import type { MessageContentPart, LlmProvider } from '@ema-agent/contracts';
+import type { MessageContentPart, LlmProtocol } from '@ema-agent/contracts';
 
 // Re-export so callers only need one import
-export type { LlmProvider } from '@ema-agent/contracts';
+export type { LlmProtocol } from '@ema-agent/contracts';
 
 // ── Provider config ───────────────────────────────────────────────────────────
 
@@ -10,7 +10,7 @@ export type { LlmProvider } from '@ema-agent/contracts';
  * One config per provider type — keyed by `provider` in the router.
  */
 export interface ProviderConfig {
-  provider: LlmProvider;
+  provider: LlmProtocol;
   /** API key — plain text for V1; replaced by Stronghold in V2. */
   apiKey: string;
   /** Base URL override — required for openai-compat (Ollama, LM Studio, DeepSeek, …). */
@@ -57,7 +57,7 @@ export type LlmMessage =
 
 export interface LlmRequest {
   /** Which provider to use — must match a registered ProviderConfig. */
-  provider: LlmProvider;
+  provider: LlmProtocol;
   /** Model name as the provider expects it, e.g. "gpt-4o", "claude-opus-4-5". */
   model: string;
   messages: LlmMessage[];
