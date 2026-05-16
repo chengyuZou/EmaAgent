@@ -3,7 +3,8 @@ import { LlmRouter } from '../src/router.js';
 import type { LlmRequest, ProviderConfig, LlmMessage } from '../src/types.js';
 
 const ALIYUN_CONFIG: ProviderConfig = {
-  provider: 'openai-compat',
+  id: 'aliyun',
+  provider: 'openai-llm',
   apiKey: 'sk-44b410',
   baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
 };
@@ -29,7 +30,7 @@ describe.only('Advanced Live Tests: True Streaming Loops & Concurrency', () => {
     }];
 
     const request: LlmRequest = {
-      provider: 'openai-compat', 
+      providerId: 'aliyun', 
       model: 'qwen-plus', 
       messages, 
       tools,
@@ -108,11 +109,11 @@ describe.only('Advanced Live Tests: True Streaming Loops & Concurrency', () => {
     // 同时启动三个截然不同的请求（不使用阻断的 await，让事件循环自由交织）
     const promises = [
       runTask('User1:苹果复读', {
-        provider: 'openai-compat', model: 'qwen-plus', maxTokens: 50,
-        messages: [{ role: 'user', content: '一直重复输出“苹果”这个词。' }]
+        providerId: 'aliyun', model: 'qwen-plus', maxTokens: 50,
+        messages: [{ role: 'user', content: '一直重复输出"苹果"这个词。' }]
       }),
       runTask('User2:图片识别', {
-        provider: 'openai-compat', model: 'qwen-vl-plus', maxTokens: 50,
+        providerId: 'aliyun', model: 'qwen-vl-plus', maxTokens: 50,
         messages: [{
           role: 'user',
           content: [
@@ -122,7 +123,7 @@ describe.only('Advanced Live Tests: True Streaming Loops & Concurrency', () => {
         }]
       }),
       runTask('User3:算术计算', {
-        provider: 'openai-compat', model: 'qwen-plus', maxTokens: 50,
+        providerId: 'aliyun', model: 'qwen-plus', maxTokens: 50,
         messages: [{ role: 'user', content: '1+1等于几？详细论述。' }]
       })
     ];

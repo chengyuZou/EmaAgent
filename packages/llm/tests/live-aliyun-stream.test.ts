@@ -4,14 +4,16 @@ import type { LlmRequest, ProviderConfig } from '../src/types.js';
 
 // 1. OpenAI 兼容配置
 const OPENAI_COMPAT_CONFIG: ProviderConfig = {
-  provider: 'openai-compat',
+  id: 'aliyun-llm',
+  provider: 'openai-llm',
   apiKey: 'sk-44b',
   baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
 };
 
 // 2. Anthropic 兼容配置
 const ANTHROPIC_COMPAT_CONFIG: ProviderConfig = {
-  provider: 'anthropic',
+  id: 'aliyun-anthropic',
+  provider: 'anthropic-llm',
   apiKey: 'sk-44b4106ad6844fa9b06c16b7d70443b8', 
   // ‼️ 注意这里：不要带 /v1/messages 后缀，因为 Anthropic SDK 会在底层自动追加
   baseUrl: 'https://dashscope.aliyuncs.com/apps/anthropic',
@@ -23,8 +25,8 @@ describe.only('Live Tool Streaming & Multi-Provider Tests', () => {
 
   it('should stream tool arguments chunk by chunk (打字机式输出工具参数)', async () => {
     const request: LlmRequest = {
-      // 在这里随时可以切成 'anthropic' 来验证 Anthropic 下的工具调用
-      provider: 'openai-compat', 
+      // 在这里随时可以切成 'aliyun-anthropic' 来验证 Anthropic 下的工具调用
+      providerId: 'aliyun-llm', 
       model: 'qwen-plus',
       messages: [{ role: 'user', content: '查询北京和上海的天气' }],
       tools: [{
@@ -59,7 +61,7 @@ describe.only('Live Tool Streaming & Multi-Provider Tests', () => {
 
   it('should request via Anthropic format if adapter is supported', async () => {
     const request: LlmRequest = {
-      provider: 'anthropic',
+      providerId: 'aliyun-anthropic',
       // 指定使用百炼中支持 Anthropic 协议的模型
       model: 'qwen3.6-plus', 
       messages: [

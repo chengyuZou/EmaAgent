@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { LlmRouter } from '../src/router.js';
 import type { LlmAdapter } from '../src/adapters/base.js';
-import type { LlmRequest, LlmStreamChunk, ProviderConfig, LlmProvider } from '../src/types.js';
+import type { LlmRequest, LlmStreamChunk, ProviderConfig } from '../src/types.js';
 
 // ── Mock adapter ──────────────────────────────────────────────────────────────
 
@@ -24,8 +24,9 @@ async function collect(iter: AsyncIterable<LlmStreamChunk>): Promise<LlmStreamCh
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
-const OPENAI_CONFIG: ProviderConfig = { provider: 'openai-llm', apiKey: 'sk-test' };
-const ANTHROPIC_CONFIG: ProviderConfig = { provider: 'anthropic-llm', apiKey: 'sk-test' };
+const DS_CONFIG: ProviderConfig  = { id: 'ds-001',  provider: 'openai-llm',    apiKey: 'sk-ds' };
+const SF_CONFIG: ProviderConfig  = { id: 'sf-001',  provider: 'openai-llm',    apiKey: 'sk-sf' };
+const CL_CONFIG: ProviderConfig  = { id: 'cl-001',  provider: 'anthropic-llm', apiKey: 'sk-cl' };
 
 const TEXT_CHUNKS: LlmStreamChunk[] = [
   { type: 'text_delta', delta: 'Hello' },
@@ -37,12 +38,12 @@ const TEXT_CHUNKS: LlmStreamChunk[] = [
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 describe('LlmRouter — routing', () => {
-  it('routes to the correct adapter and streams all chunks', async () => {
+  it('routes to the correct adapter by provider id and streams all chunks', async () => {
     const mock   = new MockAdapter(TEXT_CHUNKS);
-    const router = new LlmRouter([OPENAI_CONFIG], new Map<LlmProvider, LlmAdapter>([['openai-llm', mock]]));
+    const router = new LlmRouter([DS_CONFIG], new Map<string, LlmAdapter>([['ds-001', mock]]));
 
     const chunks = await collect(
-      router.stream({ provider: 'openai-llm', model: 'gpt-4o', messages: [{ role: 'user', content: 'Hi' }] }),
+      router.stream({ providerId: 'ds-001', model: 'gpt-4o', messages: [{ role: 'user', content: 'Hi' }] }),
     );
 
     expect(chunks).toEqual(TEXT_CHUNKS);
@@ -50,50 +51,50 @@ describe('LlmRouter — routing', () => {
 
   it('passes the model name directly to the adapter', async () => {
     const mock   = new MockAdapter();
-    const router = new LlmRouter([OPENAI_CONFIG], new Map<LlmProvider, LlmAdapter>([['openai-llm', mock]]));
+    const router = new LlmRouter([DS_CONFIG], new Map<string, LlmAdapter>([['ds-001', mock]]));
 
-    await collect(router.stream({ provider: 'openai-llm', model: 'gpt-4o-mini', messages: [] }));
+    await collect(router.stream({ providerId: 'ds-001', model: 'gpt-4o-mini', messages: [] }));
 
     expect(mock.calls[0]?.modelName).toBe('gpt-4o-mini');
   });
 
   it('passes the full request (including signal) through to the adapter', async () => {
     const mock   = new MockAdapter();
-    const router = new LlmRouter([OPENAI_CONFIG], new Map<LlmProvider, LlmAdapter>([['openai-llm', mock]]));
+    const router = new LlmRouter([DS_CONFIG], new Map<string, LlmAdapter>([['ds-001', mock]]));
     const signal = AbortSignal.abort();
 
-    await collect(router.stream({ provider: 'openai-llm', model: 'gpt-4o', messages: [], signal }));
+    await collect(router.stream({ providerId: 'ds-001', model: 'gpt-4o', messages: [], signal }));
 
     expect(mock.calls[0]?.request.signal).toBe(signal);
   });
 
-  it('routes two different providers independently', async () => {
-    const mockA = new MockAdapter([{ type: 'done', stopReason: 'end_turn' }]);
-    const mockB = new MockAdapter([{ type: 'done', stopReason: 'end_turn' }]);
+  it('routes two providers with the same protocol independently by id', async () => {
+    const mockDS = new MockAdapter([{ type: 'done', stopReason: 'end_turn' }]);
+    const mockSF = new MockAdapter([{ type: 'done', stopReason: 'end_turn' }]);
 
     const router = new LlmRouter(
-      [OPENAI_CONFIG, ANTHROPIC_CONFIG],
-      new Map<LlmProvider, LlmAdapter>([['openai-llm', mockA], ['anthropic-llm', mockB]]),
+      [DS_CONFIG, SF_CONFIG],
+      new Map<string, LlmAdapter>([['ds-001', mockDS], ['sf-001', mockSF]]),
     );
 
-    await collect(router.stream({ provider: 'openai-llm',    model: 'gpt-4o',            messages: [] }));
-    await collect(router.stream({ provider: 'anthropic-llm', model: 'claude-opus-4-5',   messages: [] }));
+    await collect(router.stream({ providerId: 'ds-001', model: 'deepseek-chat',     messages: [] }));
+    await collect(router.stream({ providerId: 'sf-001', model: 'Qwen2.5-72B',       messages: [] }));
 
-    expect(mockA.calls).toHaveLength(1);
-    expect(mockB.calls).toHaveLength(1);
+    expect(mockDS.calls).toHaveLength(1);
+    expect(mockSF.calls).toHaveLength(1);
   });
 });
 
 describe('LlmRouter — error cases', () => {
-  it('throws unknown_provider when provider is not registered', () => {
+  it('throws provider/not_configured when provider id is not registered', () => {
     const router = new LlmRouter([]);
-    expect(() => router.stream({ provider: 'openai-llm', model: 'gpt-4o', messages: [] }))
-      .toThrow('unknown_provider');
+    expect(() => router.stream({ providerId: 'unknown', model: 'gpt-4o', messages: [] }))
+      .toThrow('provider/not_configured');
   });
 
   it('throws synchronously so the engine can fail-fast', () => {
     const router = new LlmRouter([]);
-    expect(() => router.stream({ provider: 'gemini-llm', model: 'gemini-2.0-flash', messages: [] }))
+    expect(() => router.stream({ providerId: 'unknown', model: 'gemini-2.0-flash', messages: [] }))
       .toThrow();
   });
 });

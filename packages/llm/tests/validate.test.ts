@@ -17,9 +17,9 @@ const fileUrl:    LlmContentPart = { type: 'file_url',   url:  'https://example.
 const gsImageUrl: LlmContentPart = { type: 'image_url',  url: 'gs://my-bucket/img.jpg' };
 const gsFileUrl:  LlmContentPart = { type: 'file_url',   url: 'gs://my-bucket/doc.pdf', mimeType: 'application/pdf' };
 
-// ── OpenAI / openai-compat ────────────────────────────────────────────────────
+// ── OpenAI ────────────────────────────────────────────────────────────────────
 
-for (const provider of ['openai-llm', 'openai-llm'] as const) {
+for (const provider of ['openai-llm'] as const) {
   describe(`validateContentParts — ${provider}`, () => {
     it('accepts text',         () => expect(validateContentParts([text],      provider)).toHaveLength(0));
     it('accepts image_url',    () => expect(validateContentParts([imageUrl],  provider)).toHaveLength(0));
@@ -47,38 +47,38 @@ for (const provider of ['openai-llm', 'openai-llm'] as const) {
 
 // ── Anthropic ─────────────────────────────────────────────────────────────────
 
-describe('validateContentParts — anthropic', () => {
-  it('accepts text',          () => expect(validateContentParts([text],      'anthropic')).toHaveLength(0));
-  it('accepts image_url',     () => expect(validateContentParts([imageUrl],  'anthropic')).toHaveLength(0));
-  it('accepts image/jpeg',    () => expect(validateContentParts([imageJpeg], 'anthropic')).toHaveLength(0));
-  it('accepts image/png',     () => expect(validateContentParts([imageData], 'anthropic')).toHaveLength(0));
-  it('accepts image/gif',     () => expect(validateContentParts([imageGif],  'anthropic')).toHaveLength(0));
-  it('accepts image/webp',    () => expect(validateContentParts([imageWebp], 'anthropic')).toHaveLength(0));
-  it('rejects image/bmp',     () => expect(validateContentParts([imageBmp],  'anthropic')).toHaveLength(1));
-  it('rejects audio_data',    () => expect(validateContentParts([audioWav],  'anthropic')).toHaveLength(1));
-  it('rejects ogg audio',     () => expect(validateContentParts([audioOgg],  'anthropic')).toHaveLength(1));
-  it('accepts file_data',     () => expect(validateContentParts([fileData],  'anthropic')).toHaveLength(0));
-  it('accepts file_url',      () => expect(validateContentParts([fileUrl],   'anthropic')).toHaveLength(0));
+describe('validateContentParts — anthropic-llm', () => {
+  it('accepts text',          () => expect(validateContentParts([text],      'anthropic-llm')).toHaveLength(0));
+  it('accepts image_url',     () => expect(validateContentParts([imageUrl],  'anthropic-llm')).toHaveLength(0));
+  it('accepts image/jpeg',    () => expect(validateContentParts([imageJpeg], 'anthropic-llm')).toHaveLength(0));
+  it('accepts image/png',     () => expect(validateContentParts([imageData], 'anthropic-llm')).toHaveLength(0));
+  it('accepts image/gif',     () => expect(validateContentParts([imageGif],  'anthropic-llm')).toHaveLength(0));
+  it('accepts image/webp',    () => expect(validateContentParts([imageWebp], 'anthropic-llm')).toHaveLength(0));
+  it('rejects image/bmp',     () => expect(validateContentParts([imageBmp],  'anthropic-llm')).toHaveLength(1));
+  it('rejects audio_data',    () => expect(validateContentParts([audioWav],  'anthropic-llm')).toHaveLength(1));
+  it('rejects ogg audio',     () => expect(validateContentParts([audioOgg],  'anthropic-llm')).toHaveLength(1));
+  it('accepts file_data',     () => expect(validateContentParts([fileData],  'anthropic-llm')).toHaveLength(0));
+  it('accepts file_url',      () => expect(validateContentParts([fileUrl],   'anthropic-llm')).toHaveLength(0));
 
   it('includes reason in issue', () => {
-    const issues = validateContentParts([audioWav], 'anthropic');
+    const issues = validateContentParts([audioWav], 'anthropic-llm');
     expect(issues[0]?.reason).toContain('audio');
   });
 });
 
 // ── Gemini ────────────────────────────────────────────────────────────────────
 
-describe('validateContentParts — gemini', () => {
-  it('accepts text',              () => expect(validateContentParts([text],       'gemini')).toHaveLength(0));
-  it('accepts image_data',        () => expect(validateContentParts([imageData],  'gemini')).toHaveLength(0));
-  it('accepts file_data',         () => expect(validateContentParts([fileData],   'gemini')).toHaveLength(0));
-  it('accepts gs:// image_url',   () => expect(validateContentParts([gsImageUrl], 'gemini')).toHaveLength(0));
-  it('accepts gs:// file_url',    () => expect(validateContentParts([gsFileUrl],  'gemini')).toHaveLength(0));
-  it('rejects https:// image_url',() => expect(validateContentParts([imageUrl],   'gemini')).toHaveLength(1));
-  it('rejects https:// file_url', () => expect(validateContentParts([fileUrl],    'gemini')).toHaveLength(1));
+describe('validateContentParts — gemini-llm', () => {
+  it('accepts text',              () => expect(validateContentParts([text],       'gemini-llm')).toHaveLength(0));
+  it('accepts image_data',        () => expect(validateContentParts([imageData],  'gemini-llm')).toHaveLength(0));
+  it('accepts file_data',         () => expect(validateContentParts([fileData],   'gemini-llm')).toHaveLength(0));
+  it('accepts gs:// image_url',   () => expect(validateContentParts([gsImageUrl], 'gemini-llm')).toHaveLength(0));
+  it('accepts gs:// file_url',    () => expect(validateContentParts([gsFileUrl],  'gemini-llm')).toHaveLength(0));
+  it('rejects https:// image_url',() => expect(validateContentParts([imageUrl],   'gemini-llm')).toHaveLength(1));
+  it('rejects https:// file_url', () => expect(validateContentParts([fileUrl],    'gemini-llm')).toHaveLength(1));
 
   it('includes gs:// hint in reason', () => {
-    const issues = validateContentParts([imageUrl], 'gemini');
+    const issues = validateContentParts([imageUrl], 'gemini-llm');
     expect(issues[0]?.reason).toContain('gs://');
   });
 });
@@ -87,11 +87,11 @@ describe('validateContentParts — gemini', () => {
 
 describe('validateContentParts — edge cases', () => {
   it('empty array returns no issues', () => {
-    expect(validateContentParts([], 'openai')).toHaveLength(0);
+    expect(validateContentParts([], 'openai-llm')).toHaveLength(0);
   });
 
   it('includes the offending part in the issue object', () => {
-    const issues = validateContentParts([fileData], 'openai');
+    const issues = validateContentParts([fileData], 'openai-llm');
     expect(issues[0]?.part).toBe(fileData);
   });
 });
