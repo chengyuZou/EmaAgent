@@ -7,13 +7,6 @@
 export type Capability = 'llm' | 'embed' | 'rerank' | 'vision' | 'tts' | 'stt';
 
 /**
- * Capabilities that go through `capability_bindings` (singleton per capability).
- * 'llm' is excluded because it's bound via `model_bindings` per module
- * (chat / narrative / agent / etc.) instead.
- */
-export type BindableCapability = Exclude<Capability, 'llm'>;
-
-/**
  * Wire-format protocol families. Names follow the pattern
  *   `{capability}-{format-origin}`
  * to stay honest about which capability uses which body/response shape.

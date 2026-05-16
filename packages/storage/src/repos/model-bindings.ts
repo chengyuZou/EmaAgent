@@ -4,10 +4,13 @@ import type { SqliteDb } from '../database.js';
 
 /** All modules that can be bound to a specific provider instance + model. */
 export type BindingModule =
+  // LLM modules — routed through LlmRouter (TS sidecar)
   | 'chat' | 'narrative' | 'agent'
   | 'compaction' | 'emotion'
-  | 'tts' | 'stt' | 'vision' | 'imagegen'
-  | 'router' | 'plan-parse' | 'title';
+  | 'router' | 'plan-parse' | 'title'
+  // Bridge-side capabilities — configured via Python FastAPI
+  | 'embed' | 'rerank'
+  | 'tts' | 'stt' | 'vision' | 'imagegen';
 
 export interface ModelBindingRow {
   module:             BindingModule;

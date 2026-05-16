@@ -9,7 +9,6 @@ export { SettingsRepo } from './repos/settings.js';
 export { TelemetryRepo } from './repos/telemetry.js';
 export { UsageRepo } from './repos/usage.js';
 export { Live2DModelsRepo } from './repos/live2d-models.js';
-export { CapabilityBindingsRepo } from './repos/capability-bindings.js';
 export { ProvidersRepo } from './repos/providers.js';
 export { ModelBindingsRepo } from './repos/model-bindings.js';
 
@@ -22,12 +21,6 @@ export type { SettingRow } from './repos/settings.js';
 export type { TelemetryEventRow } from './repos/telemetry.js';
 export type { TurnUsageRow } from './repos/usage.js';
 export type { Live2DModelRow } from './repos/live2d-models.js';
-export type {
-  CapabilityBindingRow,
-  CapabilityBindingUpsert,
-  ResolvedBinding,
-  Capability,
-} from './repos/capability-bindings.js';
 export type {
   ProviderConfigRow,
   ProviderConfigInsert,
