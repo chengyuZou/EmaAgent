@@ -14,7 +14,7 @@ const OPENAI_COMPAT_CONFIG: ProviderConfig = {
 const ANTHROPIC_COMPAT_CONFIG: ProviderConfig = {
   id: 'aliyun-anthropic',
   provider: 'anthropic-llm',
-  apiKey: 'sk-44b4106ad6844fa9b06c16b7d70443b8', 
+  apiKey: 'sk-44bxxx70443b8', 
   // ‼️ 注意这里：不要带 /v1/messages 后缀，因为 Anthropic SDK 会在底层自动追加
   baseUrl: 'https://dashscope.aliyuncs.com/apps/anthropic',
 };
