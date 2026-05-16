@@ -2,6 +2,7 @@
 import { cors } from 'hono/cors';
 import { emaAuth } from './auth.js';
 import { healthRoute } from './routes/health.js';
+import { turnsRoute } from './routes/turns.js';
 import type { AppBindings } from './wiring.js';
 
 export function buildServer(bindings: AppBindings): Hono {
@@ -30,10 +31,7 @@ export function buildServer(bindings: AppBindings): Hono {
 
   // Routes
   app.route('/health', healthRoute());
-
-  // TODO (Phase 2+): mount turns, sessions, providers, models, memory, etc.
-  // app.route('/api/turns', turnsRoute(bindings));
-  // app.route('/api/sessions', sessionsRoute(bindings));
+  app.route('/api/turns', turnsRoute(bindings));
 
   // 404 fallback
   app.notFound((c) => c.json({ error: 'not_found' }, 404));

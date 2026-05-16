@@ -1,64 +1,63 @@
 ﻿import type { AppBindings } from '../wiring.js';
-import type { TurnMode, AgentSubMode, EmaStreamEvent } from '@ema-agent/contracts';
+import type { TurnMode, AgentSubMode, EmaStreamEvent, TurnId } from '@ema-agent/contracts';
+import type { LlmContentPart } from '@ema-agent/llm'
+import { asSessionId} from '@ema-agent/contracts';
+import { runChatTurn } from './conversation-flow.js';
+
+export interface TurnResult {
+  turnId: TurnId;
+  events: AsyncIterable<EmaStreamEvent>;
+}
 
 export interface TurnRequest {
-  turnId: string;
   sessionId: string;
   mode: TurnMode;
   subMode?: AgentSubMode;
   userInput: string;
-  attachments?: unknown[];
+  contentParts?: LlmContentPart[];
   model?: string;
 }
 
 /**
  * Orchestrator: picks the right engine for the requested mode and wires it.
- *
- * Phase 1 skeleton — returns a stub async generator.
- * ConversationEngine and AgentEngine will be plugged in during Phase 2.
  */
 export class Orchestrator {
   constructor(private readonly bindings: AppBindings) {}
 
-  // eslint-disable-next-line @typescript-eslint/require-await
-  async *run(turn: TurnRequest): AsyncIterable<EmaStreamEvent> {
-    // Trigger onTurnStart hooks
-    await this.bindings.hooks.trigger('onTurnStart', {
-      turnId: turn.turnId as never,
-      sessionId: turn.sessionId as never,
-      payload: { mode: turn.mode, subMode: turn.subMode },
-      emit: () => {},
-      abort: () => {},
-      meta: {},
-    });
+  run(request: TurnRequest): TurnResult {
+    const sessionId = asSessionId(request.sessionId);
+    const { turn, signal } = this.bindings.session.startTurn({
+      sessionId,
+      mode: request.mode,
+      agentSubMode: request.subMode,
+      userInput: request.userInput,
+    })
+    const turnId = turn.id;
 
-    yield {
-      type: 'turn_started',
-      turnId: turn.turnId as never,
-      mode: turn.mode,
-      subMode: turn.subMode,
-    };
+    const self = this;
+    const events = (async function* () {
+      switch (request.mode) {
+        case 'chat':
+          yield* runChatTurn(self.bindings, {
+            turn,
+            signal,
+            sessionId,
+            userInput: request.userInput,
+            contentParts: request.contentParts,
+            model: request.model,
+          });
+          break;
 
-    // Placeholder — engine implementations will replace this
-    yield {
-      type: 'system_warning',
-      level: 'info',
-      message: 'Engine not yet implemented (Phase 1 skeleton)',
-    };
-
-    yield {
-      type: 'turn_completed',
-      turnId: turn.turnId as never,
-      usage: { inputTokens: 0, outputTokens: 0, costUsd: 0, durationMs: 0 },
-    };
-
-    await this.bindings.hooks.trigger('onTurnEnd', {
-      turnId: turn.turnId as never,
-      sessionId: turn.sessionId as never,
-      payload: { durationMs: 0 },
-      emit: () => {},
-      abort: () => {},
-      meta: {},
-    });
+        case 'narrative':
+        case 'agent':
+          yield {
+            type: 'system_warning',
+            level: 'info',
+            message: `${request.mode} mode not yet implemented`,
+          } satisfies EmaStreamEvent;
+          break;
+      }
+    })();
+    return { turnId, events };
   }
 }

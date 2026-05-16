@@ -1,7 +1,8 @@
 ﻿import { serve } from '@hono/node-server';
 import { Database } from '@ema-agent/storage';
 import { buildServer } from './server.js';
-import { wire } from './wiring.js';
+import { wire, configureBridge } from './wiring.js';
+import { createServer } from 'node:net';
 import path from 'node:path';
 import os from 'node:os';
 import fs from 'node:fs';
@@ -19,8 +20,7 @@ function resolveDbPath(): string {
 async function findOpenPort(start: number, max: number): Promise<number> {
   for (let port = start; port <= max; port++) {
     const available = await new Promise<boolean>((resolve) => {
-      const net = require('net') as typeof import('net');
-      const server = net.createServer();
+      const server = createServer();
       server.once('error', () => resolve(false));
       server.once('listening', () => { server.close(); resolve(true); });
       server.listen(port, '127.0.0.1');
@@ -40,6 +40,10 @@ async function main() {
   const app = buildServer(bindings);
 
   const port = await findOpenPort(PORT_DEFAULT, PORT_MAX);
+
+  // Fire-and-forget: push provider config to bridge after server is up.
+  // Bridge may not be running in dev — failures are logged as warnings.
+  void configureBridge(db, bindings.retrieval);
 
   const server = serve({ fetch: app.fetch, port, hostname: '127.0.0.1' }, (info) => {
     console.log(`[core] ema-core listening on http://127.0.0.1:${info.port}`);

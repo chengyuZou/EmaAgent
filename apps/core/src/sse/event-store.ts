@@ -9,6 +9,7 @@
  */
 export class TurnEventStore {
   private readonly store = new Map<string, { events: EmaStreamEvent[]; done: boolean; doneAt?: number }>();
+  private readonly cancelled = new Map<string, number>();
   private readonly ttlMs: number;
 
   constructor(ttlMs = 60_000) {
@@ -17,6 +18,7 @@ export class TurnEventStore {
 
   push(turnId: TurnId, event: EmaStreamEvent): void {
     const key = turnId as string;
+    if (this.cancelled.has(key)) return;
     if (!this.store.has(key)) {
       this.store.set(key, { events: [], done: false });
     }
@@ -52,9 +54,23 @@ export class TurnEventStore {
         this.store.delete(key);
       }
     }
+    for (const [key, cancelledAt] of this.cancelled.entries()) {
+      if (now - cancelledAt > this.ttlMs) {
+        this.cancelled.delete(key);
+      }
+    }
+  }
+
+
+  cancel(turnId: TurnId): void {
+    const key = turnId as string;
+    this.cancelled.set(key, Date.now());
+    this.store.delete(key);
   }
 
   clear(turnId: TurnId): void {
-    this.store.delete(turnId as string);
+    const key = turnId as string;
+    this.cancelled.delete(key);
+    this.store.delete(key);
   }
 }

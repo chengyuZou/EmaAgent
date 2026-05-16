@@ -48,6 +48,7 @@ venv/
 
 # Misc
 *.local
+uv.lock
 
 CLAUDE.md
 install.cmd

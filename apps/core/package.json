@@ -15,6 +15,12 @@
     "@ema-agent/contracts": "workspace:*",
     "@ema-agent/storage": "workspace:*",
     "@ema-agent/hook": "workspace:*",
+    "@ema-agent/llm": "workspace:*",
+    "@ema-agent/prompts": "workspace:*",
+    "@ema-agent/character-card": "workspace:*",
+    "@ema-agent/session": "workspace:*",
+    "@ema-agent/emotion": "workspace:*",
+    "@ema-agent/retrieval": "workspace:*",
     "@hono/node-server": "^1.14.3",
     "hono": "^4.7.10",
     "zod": "^3.24.4"
