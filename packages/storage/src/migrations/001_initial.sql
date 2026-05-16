@@ -55,14 +55,17 @@ CREATE INDEX IF NOT EXISTS idx_messages_turn ON messages(turn_id);
 -- ============ Provider / Model ============
 
 CREATE TABLE IF NOT EXISTS provider_configs (
-  id            TEXT PRIMARY KEY,
-  display_name  TEXT NOT NULL,
-  api_key_plain TEXT,
-  base_url      TEXT,
-  enabled       INTEGER NOT NULL DEFAULT 0,
-  config_json   TEXT NOT NULL DEFAULT '{}',
-  created_at    INTEGER NOT NULL,
-  updated_at    INTEGER NOT NULL
+  id                TEXT PRIMARY KEY,
+  display_name      TEXT NOT NULL,
+  provider_type     TEXT NOT NULL DEFAULT 'openai-compat'
+                    CHECK(provider_type IN ('openai','anthropic','gemini','openai-compat')),
+  api_key_plain     TEXT,
+  base_url          TEXT,
+  enabled           INTEGER NOT NULL DEFAULT 0,
+  config_json       TEXT NOT NULL DEFAULT '{}',
+  capabilities_json TEXT NOT NULL DEFAULT '["llm"]',
+  created_at        INTEGER NOT NULL,
+  updated_at        INTEGER NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS model_catalog (
@@ -199,14 +202,16 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_character_cards_active
 
 -- ============ Provider Health ============
 
+-- Health record per provider_config instance.
+-- Solves the "two openai-compat providers share one health record" bug
+-- and naturally extends to embed/rerank/vision providers.
 CREATE TABLE IF NOT EXISTS provider_health (
-  llm_provider      TEXT PRIMARY KEY
-                    CHECK(llm_provider IN ('openai','anthropic','gemini','openai-compat')),
-  status            TEXT NOT NULL CHECK(status IN ('ok','failed','probing','unknown')),
-  last_probed_at    INTEGER,
-  latency_ms        INTEGER,
-  last_error        TEXT,
-  consecutive_fails INTEGER NOT NULL DEFAULT 0
+  provider_config_id TEXT PRIMARY KEY REFERENCES provider_configs(id) ON DELETE CASCADE,
+  status             TEXT NOT NULL CHECK(status IN ('ok','failed','probing','unknown')),
+  last_probed_at     INTEGER,
+  latency_ms         INTEGER,
+  last_error         TEXT,
+  consecutive_fails  INTEGER NOT NULL DEFAULT 0
 );
 
 -- ============ Settings ============
