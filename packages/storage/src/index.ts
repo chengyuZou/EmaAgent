@@ -11,6 +11,7 @@ export { UsageRepo } from './repos/usage.js';
 export { Live2DModelsRepo } from './repos/live2d-models.js';
 export { CapabilityBindingsRepo } from './repos/capability-bindings.js';
 export { ProvidersRepo } from './repos/providers.js';
+export { ModelBindingsRepo } from './repos/model-bindings.js';
 
 export type { DatabaseOptions, SqliteDb } from './database.js';
 export type { SessionRow, SessionInsert } from './repos/sessions.js';
@@ -34,3 +35,9 @@ export type {
   ProviderWithHealth,
   HealthStatus,
 } from './repos/providers.js';
+export type {
+  BindingModule,
+  ModelBindingRow,
+  ModelBindingUpsert,
+  ResolvedModelBinding,
+} from './repos/model-bindings.js';

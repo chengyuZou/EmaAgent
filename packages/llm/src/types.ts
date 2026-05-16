@@ -6,10 +6,14 @@ export type { LlmProtocol } from '@ema-agent/contracts';
 // ── Provider config ───────────────────────────────────────────────────────────
 
 /**
- * Configuration for one LLM provider endpoint.
- * One config per provider type — keyed by `provider` in the router.
+ * Configuration for one LLM provider instance.
+ * Keyed by `id` in the router — multiple instances can share the same `provider`
+ * (e.g. DeepSeek + SiliconFlow are both 'openai-llm').
  */
 export interface ProviderConfig {
+  /** Stable identifier — maps to provider_configs.id in the DB. */
+  id: string;
+  /** Wire-format protocol — determines which adapter class is used. */
   provider: LlmProtocol;
   /** API key — plain text for V1; replaced by Stronghold in V2. */
   apiKey: string;
@@ -56,8 +60,8 @@ export type LlmMessage =
   | { role: 'tool';      toolCallId: string; content: string };
 
 export interface LlmRequest {
-  /** Which provider to use — must match a registered ProviderConfig. */
-  provider: LlmProtocol;
+  /** Which provider instance to use — must match a registered ProviderConfig.id. */
+  providerId: string;
   /** Model name as the provider expects it, e.g. "gpt-4o", "claude-opus-4-5". */
   model: string;
   messages: LlmMessage[];

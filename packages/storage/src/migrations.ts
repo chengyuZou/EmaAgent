@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const MIGRATIONS_DIR = path.join(__dirname, 'migrations');
-const LATEST_VERSION = 2;
+const LATEST_VERSION = 3;
 
 export class MigrationsRunner {
   constructor(private readonly db: Database.Database) {}

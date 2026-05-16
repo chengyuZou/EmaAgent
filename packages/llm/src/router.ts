@@ -1,4 +1,3 @@
-import type { ErrorCode } from '@ema-agent/contracts';
 import { OpenAiAdapter }    from './adapters/openai.js';
 import { AnthropicAdapter } from './adapters/anthropic.js';
 import { GeminiAdapter }    from './adapters/gemini.js';
@@ -6,7 +5,6 @@ import type { LlmAdapter }  from './adapters/base.js';
 import { withRetry }        from './retry.js';
 import type {
   ProviderConfig,
-  LlmProtocol,
   LlmRequest,
   LlmStreamChunk,
   LlmToolCall,
@@ -29,41 +27,46 @@ function createAdapter(config: ProviderConfig): LlmAdapter {
 
 /**
  * Single Façade for all LLM access.
- * One ProviderConfig per provider type — keyed by `provider` field.
+ *
+ * Keyed by ProviderConfig.id (the provider_configs UUID from the DB), NOT by
+ * protocol — multiple providers can share the same protocol (e.g. DeepSeek +
+ * SiliconFlow are both 'openai-llm') and each deserves its own adapter entry.
  */
 export class LlmRouter {
-  private readonly adapters = new Map<LlmProtocol, LlmAdapter>();
-  private readonly configs  = new Map<LlmProtocol, ProviderConfig>();
+  /** id → adapter instance */
+  private readonly adapters = new Map<string, LlmAdapter>();
+  /** id → config (kept for hot-reload and probe) */
+  private readonly configs  = new Map<string, ProviderConfig>();
 
   /**
-   * @param configs           Provider configurations — one per provider type.
-   * @param adapterOverrides  Pre-built adapters keyed by provider (tests inject mocks here).
+   * @param configs           Provider configurations.
+   * @param adapterOverrides  Pre-built adapters keyed by provider id (tests inject mocks here).
    */
   constructor(
     configs: ProviderConfig[],
-    adapterOverrides?: ReadonlyMap<LlmProtocol, LlmAdapter>,
+    adapterOverrides?: ReadonlyMap<string, LlmAdapter>,
   ) {
     for (const config of configs) {
-      this.configs.set(config.provider, config);
-      const override = adapterOverrides?.get(config.provider);
-      this.adapters.set(config.provider, override ?? createAdapter(config));
+      this.configs.set(config.id, config);
+      const override = adapterOverrides?.get(config.id);
+      this.adapters.set(config.id, override ?? createAdapter(config));
     }
-    // Allow overrides for providers that have no ProviderConfig (pure mock injection)
+    // Allow overrides for provider ids that have no ProviderConfig (pure mock injection)
     if (adapterOverrides) {
-      for (const [provider, adapter] of adapterOverrides) {
-        if (!this.adapters.has(provider)) this.adapters.set(provider, adapter);
+      for (const [id, adapter] of adapterOverrides) {
+        if (!this.adapters.has(id)) this.adapters.set(id, adapter);
       }
     }
   }
 
   // ── Streaming ───────────────────────────────────────────────────────────────
 
-  /** Stream a completion from the specified provider. Throws synchronously on unknown provider. */
+  /** Stream a completion from the specified provider instance. Throws synchronously on unknown id. */
   stream(request: LlmRequest): AsyncIterable<LlmStreamChunk> {
-    const adapter = this.adapters.get(request.provider);
+    const adapter = this.adapters.get(request.providerId);
     if (!adapter) {
       const err = new Error('provider/not_configured');
-      err.cause = request.provider;
+      err.cause = request.providerId;
       throw err;
     }
     return adapter.stream(request, request.model);
@@ -102,15 +105,18 @@ export class LlmRouter {
   /**
    * Verify a provider endpoint is reachable and the API key is valid.
    * Used by the settings page when the user saves a new key.
+   *
+   * @param providerId  The provider_configs.id to probe.
+   * @param model       A model known to exist on this provider.
    */
-  async probe(provider: LlmProtocol, model: string): Promise<ProbeResult> {
-    const adapter = this.adapters.get(provider);
-    if (!adapter) return { ok: false, error: `provider/not_configured: no config registered for "${provider}"` };
+  async probe(providerId: string, model: string): Promise<ProbeResult> {
+    const adapter = this.adapters.get(providerId);
+    if (!adapter) return { ok: false, error: `provider/not_configured: no config registered for "${providerId}"` };
 
     const start = Date.now();
     try {
       for await (const chunk of adapter.stream(
-        { provider, model, messages: [{ role: 'user', content: 'hi' }], maxTokens: 1 },
+        { providerId, model, messages: [{ role: 'user', content: 'hi' }], maxTokens: 1 },
         model,
       )) {
         if (chunk.type === 'done') break;
@@ -125,12 +131,22 @@ export class LlmRouter {
 
   /** Add or replace a provider config at runtime (e.g. user updated API key). */
   upsertConfig(config: ProviderConfig): void {
-    this.configs.set(config.provider, config);
-    this.adapters.set(config.provider, createAdapter(config));
+    this.configs.set(config.id, config);
+    this.adapters.set(config.id, createAdapter(config));
   }
 
-  removeConfig(provider: LlmProtocol): void {
-    this.configs.delete(provider);
-    this.adapters.delete(provider);
+  removeConfig(providerId: string): void {
+    this.configs.delete(providerId);
+    this.adapters.delete(providerId);
+  }
+
+  /** Returns the first registered config id, or undefined if none. Used as a last-resort fallback. */
+  firstProviderId(): string | undefined {
+    return this.configs.keys().next().value;
+  }
+
+  /** Returns the defaultModel for a given provider id, or undefined. */
+  defaultModelFor(providerId: string): string | undefined {
+    return this.configs.get(providerId)?.defaultModel;
   }
 }
