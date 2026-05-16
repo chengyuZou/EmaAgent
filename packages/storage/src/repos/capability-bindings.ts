@@ -2,7 +2,10 @@ import type { SqliteDb } from '../database.js';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-export type Capability = 'embed' | 'rerank' | 'vision';
+import type { BindableCapability } from '@ema-agent/contracts';
+
+/** Re-export for backward compat — the canonical name lives in `contracts`. */
+export type Capability = BindableCapability;
 
 export interface CapabilityBindingRow {
   capability: Capability;

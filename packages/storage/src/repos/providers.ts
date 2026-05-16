@@ -1,17 +1,17 @@
 import type { SqliteDb } from '../database.js';
+import type { Capability } from '@ema-agent/contracts';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
-
-/** Mirrors the provider_type CHECK constraint in the schema. */
-export type ProviderType = 'openai' | 'anthropic' | 'gemini' | 'openai-compat';
 
 export type HealthStatus = 'ok' | 'failed' | 'probing' | 'unknown';
 
 export interface ProviderConfigRow {
   id: string;
+  /** Key into the TS registry (e.g. "siliconflow", "deepseek"). */
+  definition_id: string;
   display_name: string;
-  provider_type: ProviderType;
   api_key_plain: string | null;
+  /** Optional override of registry's defaultBaseUrl. */
   base_url: string | null;
   enabled: number;
   /** JSON object — provider-specific extras (e.g. { defaultModel: "..." }). */
@@ -24,15 +24,16 @@ export interface ProviderConfigRow {
 
 export interface ProviderConfigInsert {
   id: string;
+  definitionId: string;
   displayName: string;
-  providerType: ProviderType;
   apiKey?: string;
+  /** Leave undefined to fall back to the registry's defaultBaseUrl. */
   baseUrl?: string;
   enabled?: boolean;
   /** Provider-specific extras — stored as JSON. */
   config?: Record<string, unknown>;
-  /** Which capabilities this provider supports. */
-  capabilities?: string[];
+  /** Which capabilities the user wants enabled (subset of the definition's capabilities). */
+  capabilities?: Capability[];
 }
 
 export interface ProviderHealthRow {
@@ -73,12 +74,12 @@ export class ProvidersRepo {
     this.db
       .prepare(
         `INSERT INTO provider_configs
-           (id, display_name, provider_type, api_key_plain, base_url,
+           (id, definition_id, display_name, api_key_plain, base_url,
             enabled, config_json, capabilities_json, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(id) DO UPDATE SET
+           definition_id     = excluded.definition_id,
            display_name      = excluded.display_name,
-           provider_type     = excluded.provider_type,
            api_key_plain     = excluded.api_key_plain,
            base_url          = excluded.base_url,
            enabled           = excluded.enabled,
@@ -88,8 +89,8 @@ export class ProvidersRepo {
       )
       .run(
         data.id,
+        data.definitionId,
         data.displayName,
-        data.providerType,
         data.apiKey ?? null,
         data.baseUrl ?? null,
         data.enabled !== false ? 1 : 0,
@@ -234,8 +235,8 @@ export class ProvidersRepo {
     return rows.map(r => ({
       config: {
         id: r.id,
+        definition_id: r.definition_id,
         display_name: r.display_name,
-        provider_type: r.provider_type,
         api_key_plain: r.api_key_plain,
         base_url: r.base_url,
         enabled: r.enabled,

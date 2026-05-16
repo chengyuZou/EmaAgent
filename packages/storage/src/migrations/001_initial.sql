@@ -54,11 +54,13 @@ CREATE INDEX IF NOT EXISTS idx_messages_turn ON messages(turn_id);
 
 -- ============ Provider / Model ============
 
+-- `definition_id` is a free-form string keyed into the TS registry
+-- (packages/contracts/src/providers.ts). No CHECK constraint here —
+-- the registry is the source of truth, SQL only stores raw bytes.
 CREATE TABLE IF NOT EXISTS provider_configs (
   id                TEXT PRIMARY KEY,
+  definition_id     TEXT NOT NULL,
   display_name      TEXT NOT NULL,
-  provider_type     TEXT NOT NULL DEFAULT 'openai-compat'
-                    CHECK(provider_type IN ('openai','anthropic','gemini','openai-compat')),
   api_key_plain     TEXT,
   base_url          TEXT,
   enabled           INTEGER NOT NULL DEFAULT 0,

@@ -32,6 +32,5 @@ export type {
   ProviderConfigInsert,
   ProviderHealthRow,
   ProviderWithHealth,
-  ProviderType,
   HealthStatus,
 } from './repos/providers.js';

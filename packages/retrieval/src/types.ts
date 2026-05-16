@@ -30,14 +30,25 @@ export interface RerankResponse {
 
 // ── Configure ─────────────────────────────────────────────────────────────────
 
+/**
+ * Embed-side provider config sent to bridge.
+ *
+ * `protocol` selects which embedder implementation to instantiate.
+ * Currently only `'openai-embed'` is supported.
+ */
 export interface EmbedProviderCfg {
-  provider?: string;   // default: "openai-compat"
+  protocol: 'openai-embed';
   apiKey: string;
   baseUrl: string;
   model: string;
   dim?: number;        // default: 1024
 }
 
+/**
+ * Rerank-side provider config sent to bridge.
+ * All major rerank vendors (Cohere, Jina, SiliconFlow) share one wire format,
+ * so no `protocol` field is needed.
+ */
 export interface RerankProviderCfg {
   apiKey: string;
   baseUrl: string;
