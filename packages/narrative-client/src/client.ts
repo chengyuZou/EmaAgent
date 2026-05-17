@@ -33,7 +33,7 @@ export interface NarrativeClientOptions {
  * narrative is not yet configured (503). Catch this to degrade gracefully.
  */
 export class NarrativeClient {
-  private readonly baseUrl: string;
+  private baseUrl: string;
   private readonly headers: Record<string, string>;
   private readonly timeoutMs: number;
 
@@ -85,6 +85,17 @@ export class NarrativeClient {
     } catch {
       return false;
     }
+  }
+
+  // ── URL hot-update ────────────────────────────────────────────────────────
+
+  /**
+   * Update the base URL at runtime.
+   * Called by apps/core before each configureBridge() so the client always
+   * points at the port the bridge actually chose (read from bridge.port file).
+   */
+  updateBaseUrl(url: string): void {
+    this.baseUrl = url.replace(/\/$/, '');
   }
 
   // ── Bridge admin ───────────────────────────────────────────────────────────

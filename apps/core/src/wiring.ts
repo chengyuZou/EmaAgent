@@ -1,3 +1,6 @@
+import fs   from 'node:fs';
+import path from 'node:path';
+import os   from 'node:os';
 import type { Database } from '@ema-agent/storage';
 import { ModelBindingsRepo, ProvidersRepo } from '@ema-agent/storage';
 import type { ProviderConfigRow } from '@ema-agent/storage';
@@ -19,6 +22,29 @@ import {
   isRerankProtocol,
   type TurnMode,
 } from '@ema-agent/contracts';
+
+// ── Bridge URL discovery ──────────────────────────────────────────────────────
+
+/**
+ * Resolve the bridge base URL at call time (not at process start).
+ *
+ * Priority:
+ *   1. EMA_BRIDGE_URL env var — full override, useful in dev / CI
+ *   2. {EMA_DATA_DIR}/bridge.port — written by bridge/__main__.py on startup
+ *   3. Hardcoded fallback http://127.0.0.1:7421
+ */
+export function resolveBridgeUrl(): string {
+  if (process.env['EMA_BRIDGE_URL']) return process.env['EMA_BRIDGE_URL'];
+
+  const dataDir  = process.env['EMA_DATA_DIR'] ?? path.join(os.homedir(), '.ema-agent');
+  const portFile = path.join(dataDir, 'bridge.port');
+  try {
+    const port = fs.readFileSync(portFile, 'utf8').trim();
+    if (port) return `http://127.0.0.1:${port}`;
+  } catch { /* bridge not running yet — fall through */ }
+
+  return 'http://127.0.0.1:7421';
+}
 
 // ── App-wide bindings ─────────────────────────────────────────────────────────
 
@@ -148,6 +174,9 @@ export async function configureBridge(
   db: Database,
   narrative: NarrativeClient,
 ): Promise<void> {
+  // Re-resolve at call time: bridge may have started after core and picked a
+  // different port than what was read during wire().
+  narrative.updateBaseUrl(resolveBridgeUrl());
   const providersRepo = new ProvidersRepo(db.sqlite);
   const bindings      = new ModelBindingsRepo(db.sqlite);
 
@@ -201,7 +230,7 @@ export function wire(db: Database): AppBindings {
   const ebd   = new EbdRouter(loadEmbedConfigs(db), loadRerankConfigs(db));
 
   const narrative = new NarrativeClient({
-    baseUrl:   process.env['EMA_BRIDGE_URL'] ?? 'http://127.0.0.1:7421',
+    baseUrl:   resolveBridgeUrl(),
     secret:    process.env['EMA_SHARED_SECRET'],
     timeoutMs: 60_000,
   });

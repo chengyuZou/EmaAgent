@@ -18,7 +18,7 @@ const BINDING_MODULES = [
 ] as const;
 
 // Modules whose changes must be pushed to the Python bridge (LightRAG config).
-const BRIDGE_MODULES = new Set<string>(['embed', 'rerank', 'lightrag-llm']);
+const BRIDGE_MODULES = new Set<string>(['embed', 'lightrag-llm']);
 
 const moduleSchema = z.enum(BINDING_MODULES);
 
@@ -61,7 +61,7 @@ export function modelBindingsRoute(bindings: AppBindings): Hono {
       config:           bodyParsed.data.config,
     });
 
-    // Bridge only cares about its three internal config modules.
+    // Bridge only cares about its two internal config modules.
     if (BRIDGE_MODULES.has(module)) {
       void configureBridge(bindings.db, bindings.narrative);
     }
