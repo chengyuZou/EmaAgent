@@ -59,6 +59,11 @@ export function registerConversationHooks(bus: HookBus, deps: ConversationDeps):
 
         if (recallParts.length === 0) return { kind: 'continue' };
 
+        // Preserve the deterministic order the router returned — Promise.allSettled
+        // resolves in completion order (fastest wins), not route order.
+        const routeOrder = Object.keys(routeResp.routes);
+        recallParts.sort(([a], [b]) => routeOrder.indexOf(a) - routeOrder.indexOf(b));
+
         const sections = recallParts
           .map(([timeline, text]) => `## ${timeline}\n${text}`)
           .join('\n\n');
