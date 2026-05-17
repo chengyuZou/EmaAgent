@@ -3,10 +3,11 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from bridge.routes.health   import router as health_router
-from bridge.routes.internal import router as internal_router
-from bridge.routes.embed    import router as embed_router
-from bridge.routes.rerank   import router as rerank_router
+from bridge.routes.health     import router as health_router
+from bridge.routes.internal   import router as internal_router
+from bridge.routes.embed      import router as embed_router
+from bridge.routes.rerank     import router as rerank_router
+from bridge.routes.narrative  import router as narrative_router
 
 
 @asynccontextmanager
@@ -36,6 +37,7 @@ def build_app() -> FastAPI:
     app.include_router(internal_router)
     app.include_router(embed_router)
     app.include_router(rerank_router)
+    app.include_router(narrative_router)
 
     @app.exception_handler(Exception)
     async def _unhandled(_req: Request, exc: Exception) -> JSONResponse:

@@ -3,11 +3,14 @@ import os
 
 from bridge.config import ConfigureRequest
 from bridge.embed import CohereStyleReranker, OpenAICompatEmbedder
+from bridge.narrative.manager import NarrativeManager
+from bridge.narrative.router import NarrativeRouter
 from bridge.state import state
 
 router = APIRouter(prefix="/internal")
 
 _SECRET = os.environ.get("EMA_SHARED_SECRET", "")
+_NARRATIVE_DIR = os.environ.get("EMA_NARRATIVE_DIR", "./data/narrative")
 
 
 def _check_secret(x_ema_secret: str | None) -> None:
@@ -48,3 +51,8 @@ async def configure(
         state.llm_api_key  = body.llm.api_key
         state.llm_base_url = body.llm.base_url
         state.llm_model    = body.llm.model
+
+    # Rebuild narrative components whenever embed or llm config changes and both are ready.
+    if state.embed_ready and state.llm_ready:
+        state.narrative_manager = NarrativeManager(state, _NARRATIVE_DIR)
+        state.narrative_router  = NarrativeRouter(state)
