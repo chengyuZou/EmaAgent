@@ -70,9 +70,10 @@ export interface BridgeConfigurePayload {
 // ── Health ────────────────────────────────────────────────────────────────────
 
 export interface BridgeCapabilities {
-  embed:  boolean;
-  rerank: boolean;
-  llm:    boolean;
+  embed:     boolean;
+  rerank:    boolean;
+  llm:       boolean;
+  narrative: boolean;
 }
 
 export interface BridgeHealthResponse {
