@@ -8,8 +8,12 @@ export type BindingModule =
   | 'chat' | 'narrative' | 'agent'
   | 'compaction' | 'emotion'
   | 'router' | 'plan-parse' | 'title'
-  // Bridge-side capabilities — configured via Python FastAPI
-  | 'embed' | 'rerank'
+  // LightRAG internal config — pushed to Python bridge
+  // 'embed'        : document embedding model for LightRAG graph construction
+  // 'rerank'       : post-retrieval reranker for LightRAG recall pipeline
+  // 'lightrag-llm' : LLM used by LightRAG for entity extraction / relation building
+  | 'embed' | 'rerank' | 'lightrag-llm'
+  // Future TS-side clients (not bridge) — reserved for later
   | 'tts' | 'stt' | 'vision' | 'imagegen';
 
 export interface ModelBindingRow {

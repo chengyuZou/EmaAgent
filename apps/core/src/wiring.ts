@@ -1,5 +1,6 @@
 import type { Database } from '@ema-agent/storage';
 import { ModelBindingsRepo, ProvidersRepo } from '@ema-agent/storage';
+import type { ProviderConfigRow } from '@ema-agent/storage';
 import { HookBus } from '@ema-agent/hook';
 import { LlmRouter } from '@ema-agent/llm';
 import type { ProviderConfig } from '@ema-agent/llm';
@@ -21,6 +22,38 @@ export interface AppBindings {
   card: CharacterCardStore;
   emotion: EmotionEngine;
   retrieval: RetrievalClient;
+}
+
+// ── LlmRouter config builder ──────────────────────────────────────────────────
+
+/**
+ * Convert one DB row into a ProviderConfig for LlmRouter.
+ * Returns null when the row should be skipped (unknown def, non-LLM protocol,
+ * llm not in enabled capabilities, missing required key).
+ *
+ * Exported so provider routes can call it for hot-reload after PATCH/DELETE.
+ */
+export function buildLlmProviderConfig(row: ProviderConfigRow): ProviderConfig | null {
+  const def = getProviderDefinition(row.definition_id);
+  if (!def) return null;
+
+  const capabilities: string[] = JSON.parse(row.capabilities_json);
+  if (!capabilities.includes('llm')) return null;
+
+  const protocol = def.protocols.llm;
+  if (!isLlmProtocol(protocol)) return null;
+
+  const needsKey = def.requiresCredentials !== false;
+  if (needsKey && !row.api_key_plain) return null;
+
+  const extra = JSON.parse(row.config_json) as Record<string, unknown>;
+  return {
+    id:           row.id,
+    provider:     protocol,
+    apiKey:       row.api_key_plain ?? '',
+    baseUrl:      row.base_url ?? def.defaultBaseUrl,
+    defaultModel: typeof extra['defaultModel'] === 'string' ? extra['defaultModel'] : undefined,
+  };
 }
 
 // ── Provider config loader ────────────────────────────────────────────────────
@@ -65,38 +98,40 @@ function loadProviderConfigs(db: Database): ProviderConfig[] {
 // ── Bridge configure ──────────────────────────────────────────────────────────
 
 /**
- * Push embed / rerank / llm config to the bridge process.
+ * Push LightRAG's internal model config to the bridge.
  *
- * Called fire-and-forget after wire() — bridge may not be up yet,
- * so failures are logged as warnings rather than crashing core.
- * Re-call this whenever provider settings change in the UI.
+ * The bridge only needs three things — all read from model_bindings:
+ *   'embed'        → which provider/model LightRAG uses to embed documents
+ *   'rerank'       → which provider/model LightRAG uses to rerank recall results
+ *   'lightrag-llm' → which provider/model LightRAG uses for entity extraction
+ *
+ * Called fire-and-forget on startup and after any relevant binding changes.
+ * Safe if bridge is down — logs a warning and returns without crashing.
  */
 export async function configureBridge(
   db: Database,
   retrieval: RetrievalClient,
 ): Promise<void> {
-  const providersRepo  = new ProvidersRepo(db.sqlite);
-  const modelBindings  = new ModelBindingsRepo(db.sqlite);
+  const providersRepo = new ProvidersRepo(db.sqlite);
+  const bindings      = new ModelBindingsRepo(db.sqlite);
 
   const payload: Parameters<RetrievalClient['configure']>[0] = {};
 
-  // ── LLM config for LightRAG's internal calls ─────────────────────────────
-  // Take the first enabled provider whose LLM protocol is openai-llm
-  // (LightRAG's llm_func is openai-compat in our setup).
-  for (const row of providersRepo.listByCapability('llm')) {
-    const def = getProviderDefinition(row.definition_id);
-    if (!def || def.protocols.llm !== 'openai-llm' || !row.api_key_plain) continue;
-    const extra = JSON.parse(row.config_json) as Record<string, unknown>;
-    payload.llm = {
-      apiKey:  row.api_key_plain,
-      baseUrl: row.base_url ?? def.defaultBaseUrl ?? '',
-      model:   typeof extra['defaultModel'] === 'string' ? extra['defaultModel'] : '',
-    };
-    break;
+  // ── LightRAG's internal LLM (entity extraction / graph building) ──────────
+  const llmBinding = bindings.get('lightrag-llm');
+  if (llmBinding) {
+    const row = providersRepo.get(llmBinding.providerConfigId);
+    if (row?.api_key_plain) {
+      payload.llm = {
+        apiKey:  row.api_key_plain,
+        baseUrl: row.base_url ?? getProviderDefinition(row.definition_id)?.defaultBaseUrl ?? '',
+        model:   llmBinding.model,
+      };
+    }
   }
 
-  // ── Embed config ─────────────────────────────────────────────────────────
-  const embedBinding = modelBindings.get('embed');
+  // ── LightRAG's embed model (document + query vectorisation) ──────────────
+  const embedBinding = bindings.get('embed');
   if (embedBinding) {
     const row = providersRepo.get(embedBinding.providerConfigId);
     const def = row ? getProviderDefinition(row.definition_id) : undefined;
@@ -110,12 +145,12 @@ export async function configureBridge(
         dim:     (embedBinding.config['dim'] as number | undefined) ?? 1024,
       };
     } else if (protocol) {
-      console.warn(`[wiring] embed protocol "${protocol}" not implemented in bridge`);
+      console.warn(`[bridge] embed protocol "${protocol}" not yet supported in bridge`);
     }
   }
 
-  // ── Rerank config ────────────────────────────────────────────────────────
-  const rerankBinding = modelBindings.get('rerank');
+  // ── LightRAG's reranker (post-retrieval scoring) ──────────────────────────
+  const rerankBinding = bindings.get('rerank');
   if (rerankBinding) {
     const row = providersRepo.get(rerankBinding.providerConfigId);
     if (row) {
@@ -131,9 +166,9 @@ export async function configureBridge(
 
   const ok = await retrieval.configure(payload);
   if (ok) {
-    console.log('[bridge] configured successfully');
+    console.log('[bridge] configured');
   } else {
-    console.warn('[bridge] not reachable, skipping configure (bridge-dependent features degraded)');
+    console.warn('[bridge] not reachable — narrative / RAG features degraded');
   }
 }
 
