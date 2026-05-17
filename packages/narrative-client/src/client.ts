@@ -50,24 +50,35 @@ export class NarrativeClient {
    * Route a user query to relevant timelines and rewrite sub-queries.
    * Involves one LLM call on the bridge side.
    */
-  async route(query: string): Promise<NarrativeRouteResponse> {
+  async route(query: string, signal?: AbortSignal): Promise<NarrativeRouteResponse> {
     const body: NarrativeRouteRequest = { query };
-    const res = await this.post('/narrative/route', body);
+    const res = await this.post('/narrative/route', body, signal);
     await this.assertOk(res, 'route');
     return res.json() as Promise<NarrativeRouteResponse>;
   }
 
   /**
    * Run LightRAG retrieval for each timeline sub-query in parallel.
+   * All timelines are sent in one request; Python bridge gathers them.
    */
   async query(
     queries: Record<string, string>,
     mode = 'hybrid',
+    signal?: AbortSignal,
   ): Promise<NarrativeQueryResponse> {
     const body: NarrativeQueryRequest = { queries, mode };
-    const res = await this.post('/narrative/query', body);
+    const res = await this.post('/narrative/query', body, signal);
     await this.assertOk(res, 'query');
     return res.json() as Promise<NarrativeQueryResponse>;
+  }
+
+  /**
+   * Run LightRAG retrieval for a single timeline.
+   * Call this concurrently per-timeline so results stream back as each finishes.
+   */
+  async queryOne(timeline: string, query: string, signal?: AbortSignal): Promise<string> {
+    const resp = await this.query({ [timeline]: query }, 'hybrid', signal);
+    return resp.results[timeline] ?? '';
   }
 
   /**
@@ -128,12 +139,16 @@ export class NarrativeClient {
 
   // ── Internals ──────────────────────────────────────────────────────────────
 
-  private post(path: string, body: unknown): Promise<Response> {
+  private post(path: string, body: unknown, externalSignal?: AbortSignal): Promise<Response> {
+    const timeoutSignal = AbortSignal.timeout(this.timeoutMs);
+    const signal = externalSignal
+      ? AbortSignal.any([timeoutSignal, externalSignal])
+      : timeoutSignal;
     return fetch(`${this.baseUrl}${path}`, {
       method:  'POST',
       headers: this.headers,
       body:    JSON.stringify(body),
-      signal:  AbortSignal.timeout(this.timeoutMs),
+      signal,
     });
   }
 

@@ -89,6 +89,10 @@ export type EmaStreamEvent =
   | { type: 'tts_chunk'; audio: string; lipsync?: LipSyncFrame[]; sentenceId: string }
   | { type: 'tts_sentence_complete'; sentenceId: string }
 
+  // Narrative
+  | { type: 'narrative_route_resolved'; routes: Record<string, string> }
+  | { type: 'narrative_timeline_complete'; timeline: string }
+
   // Memory
   | { type: 'context_compacted'; before: number; after: number; method: string }
   | { type: 'recall_evidence'; sources: string[]; itemCount: number }

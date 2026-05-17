@@ -35,6 +35,9 @@ importers:
       '@ema-agent/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@ema-agent/conversation':
+        specifier: workspace:*
+        version: link:../../packages/conversation
       '@ema-agent/ebd-client':
         specifier: workspace:*
         version: link:../../packages/ebd-client
@@ -115,6 +118,43 @@ importers:
       typescript:
         specifier: ^5.9.3
         version: 5.9.3
+
+  packages/conversation:
+    dependencies:
+      '@ema-agent/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@ema-agent/emotion':
+        specifier: workspace:*
+        version: link:../emotion
+      '@ema-agent/hook':
+        specifier: workspace:*
+        version: link:../hook
+      '@ema-agent/llm':
+        specifier: workspace:*
+        version: link:../llm
+      '@ema-agent/narrative-client':
+        specifier: workspace:*
+        version: link:../narrative-client
+      '@ema-agent/session':
+        specifier: workspace:*
+        version: link:../session
+      '@ema-agent/storage':
+        specifier: workspace:*
+        version: link:../storage
+    devDependencies:
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.39
+      rimraf:
+        specifier: ^5.0.0
+        version: 5.0.10
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: ^2.0.0
+        version: 2.1.9(@types/node@20.19.39)
 
   packages/ebd-client:
     dependencies:

@@ -15,6 +15,7 @@ import { CharacterCardStore } from '@ema-agent/character-card';
 import { SessionStore } from '@ema-agent/session';
 import { buildSystemPrompt } from '@ema-agent/prompts';
 import { EmotionEngine } from '@ema-agent/emotion';
+import { registerConversationHooks } from '@ema-agent/conversation';
 import {
   getProviderDefinition,
   isLlmProtocol,
@@ -259,6 +260,8 @@ export function wire(db: Database): AppBindings {
   }, { priority: 10, name: 'prompts:buildSystem' });
 
   const modelBindings = new ModelBindingsRepo(db.sqlite);
+
+  registerConversationHooks(hooks, { session, hooks, llm, emotion, narrative, modelBindings });
 
   return { db, hooks, llm, ebd, narrative, modelBindings, session, card, emotion };
 }
