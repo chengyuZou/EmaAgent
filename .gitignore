@@ -55,4 +55,4 @@ install.cmd
 .claude
 
 # narrative
-# apps/bridge/data/**
+apps/bridge/data/**
