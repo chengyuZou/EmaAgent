@@ -90,8 +90,8 @@ export type EmaStreamEvent =
   | { type: 'tts_sentence_complete'; sentenceId: string }
 
   // Narrative
-  | { type: 'narrative_route_resolved'; routes: Record<string, string> }
-  | { type: 'narrative_timeline_complete'; timeline: string }
+  | { type: 'narrative_route_resolved'; timelines: string[] }
+  | { type: 'narrative_timeline_complete'; timeline: string; charCount: number; snippet: string }
 
   // Memory
   | { type: 'context_compacted'; before: number; after: number; method: string }

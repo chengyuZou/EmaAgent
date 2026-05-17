@@ -2,6 +2,7 @@ import type { EmaStreamEvent } from '@ema-agent/contracts';
 import type { LlmMessage, LlmToolCall, LlmContentPart } from '@ema-agent/llm';
 import { validateContentParts } from '@ema-agent/llm';
 import type { Message, ToolCall } from '@ema-agent/session';
+import type { HookBus, HookContext, HookTriggerResult } from '@ema-agent/hook';
 import type { ConversationDeps, ConversationRunInput } from './types.js';
 
 // ── ConversationEngine ────────────────────────────────────────────────────────
@@ -84,23 +85,20 @@ async function* runTurn(
       }
     }
 
-    // ── beforeLlm hook ────────────────────────────────────────────────────────
-    // narrative:recall hook fires here (mode=narrative only), injecting RAG
-    // context via replace + emitting narrative_route_resolved / recall_evidence.
-    // signal + userInput are passed via meta so the hook can abort the HTTP call
-    // if the user stops mid-recall (Bug #1 fix lives in the hook + NarrativeClient).
-    const emitBuffer: EmaStreamEvent[] = [];
-    const llmHookResult = await hooks.trigger('beforeLlm', {
+    // ── beforeLlm hook (concurrent drain) ────────────────────────────────────
+    // narrative:recall fires per-timeline queries in parallel and emits
+    // `narrative_timeline_complete` as each one finishes. We must yield each
+    // emitted event immediately — not buffer-then-drain — so the frontend sees
+    // progressive timeline completion instead of all results at once.
+    //
+    // Pattern: run trigger() as a background task, yield events as emit() is
+    // called, wait for the task to finish, then inspect the result.
+    const llmHookResult = yield* streamingBeforeLlm(hooks, {
       turnId,
       sessionId: input.sessionId,
       payload: { systemPrompt: '', messages },
       meta: { mode, userInput: input.userInput, signal },
-      emit: (ev) => emitBuffer.push(ev),
     });
-
-    // Bug #4: drain buffer BEFORE checking abort — events already happened and
-    // the frontend needs them even if we're about to fail the turn.
-    for (const ev of emitBuffer) yield ev;
 
     if (llmHookResult.kind === 'abort') {
       session.failTurn(turnId, 'turn/hook_aborted', llmHookResult.reason);
@@ -223,6 +221,51 @@ async function* runTurn(
       yield { type: 'turn_failed', turnId, code: 'provider/server_error', message: reason };
     }
   }
+}
+
+// ── streamingBeforeLlm ────────────────────────────────────────────────────────
+
+/**
+ * Run the beforeLlm hook chain as a background task and yield emitted SSE
+ * events immediately as they arrive — not after the whole chain finishes.
+ *
+ * This is what enables per-timeline progressive rendering: the narrative:recall
+ * hook emits `narrative_timeline_complete` as each queryOne() resolves, and
+ * this function forwards each one to the SSE stream without waiting for the
+ * slower timelines to finish.
+ *
+ * Usage:  const result = yield* streamingBeforeLlm(hooks, ctx);
+ * `yield*` propagates emitted events to the outer generator and captures the
+ * HookTriggerResult as the expression value.
+ */
+async function* streamingBeforeLlm(
+  hooks: HookBus,
+  ctx: Omit<HookContext<'beforeLlm'>, 'event' | 'emit'>,
+): AsyncGenerator<EmaStreamEvent, HookTriggerResult<'beforeLlm'>> {
+  const queue: EmaStreamEvent[] = [];
+  let notify: (() => void) | null = null;
+  let done = false;
+  let result!: HookTriggerResult<'beforeLlm'>;
+  let error: unknown;
+
+  const emit = (ev: EmaStreamEvent) => {
+    queue.push(ev);
+    notify?.();
+    notify = null;
+  };
+
+  hooks.trigger('beforeLlm', { ...ctx, emit }).then(
+    (r) => { result = r; done = true; notify?.(); notify = null; },
+    (e: unknown) => { error = e; done = true; notify?.(); notify = null; },
+  );
+
+  while (!done || queue.length > 0) {
+    while (queue.length > 0) yield queue.shift()!;
+    if (!done) await new Promise<void>((r) => { notify = r; });
+  }
+
+  if (error !== undefined) throw error as Error;
+  return result;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

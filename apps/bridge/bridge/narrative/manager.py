@@ -66,8 +66,25 @@ class NarrativeManager:
             )
             return timeline, result or ""
 
-        pairs = await asyncio.gather(*(_one(t, q) for t, q in valid.items()))
-        return dict(pairs)
+        settled = await asyncio.gather(
+            *(_one(t, q) for t, q in valid.items()),
+            return_exceptions=True,
+        )
+        results: dict[str, str] = {}
+        errors: list[BaseException] = []
+        for item in settled:
+            if isinstance(item, BaseException):
+                errors.append(item)
+                continue
+            timeline, text = item
+            results[timeline] = text
+
+        # If every timeline failed, surface the first error so the caller gets
+        # a 500 (and TS can emit system_warning) rather than a silent empty result.
+        if errors and not results:
+            raise errors[0]
+
+        return results
 
     async def finalize(self) -> None:
         """Release LightRAG storage handles. Call on bridge shutdown."""

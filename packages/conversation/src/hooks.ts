@@ -5,15 +5,14 @@ import type { ConversationDeps } from './types.js';
 
 /**
  * Register all conversation-layer hooks onto the provided bus.
- *
- * Call once during app/CLI wiring. Returns an unregister function for cleanup
- * (useful in tests).
+ * Returns an unregister function (useful in tests).
  *
  * Registered hooks:
- *   - `narrative:recall` (beforeLlm, priority 5) — runs only when mode=narrative;
- *     calls the bridge to route + query RAG, injects recall context into messages,
- *     and emits narrative_route_resolved / recall_evidence SSE events.
- *     Falls back gracefully when the bridge is unavailable.
+ *   - `narrative:recall` (beforeLlm, priority 5)
+ *     Fires only when mode=narrative. Queries each timeline independently and
+ *     in parallel — each completion emits `narrative_timeline_complete`
+ *     immediately so the frontend can update its per-timeline status block
+ *     without waiting for slower timelines.
  */
 export function registerConversationHooks(bus: HookBus, deps: ConversationDeps): () => void {
   return bus.register(
@@ -22,33 +21,56 @@ export function registerConversationHooks(bus: HookBus, deps: ConversationDeps):
       if (ctx.meta['mode'] !== 'narrative') return { kind: 'continue' };
 
       const userInput = ctx.meta['userInput'] as string | undefined;
-      // Bug #1: signal from engine meta lets us abort the HTTP call immediately
-      // when the user clicks Stop, instead of waiting up to 60 s for timeout.
-      const signal = ctx.meta['signal'] as AbortSignal | undefined;
-
+      const signal    = ctx.meta['signal']    as AbortSignal | undefined;
       if (!userInput) return { kind: 'continue' };
 
       try {
         const routeResp = await deps.narrative.route(userInput, signal);
-        ctx.emit?.({ type: 'narrative_route_resolved', routes: routeResp.routes });
+        ctx.emit?.({ type: 'narrative_route_resolved', timelines: Object.keys(routeResp.routes) });
 
-        const queryResp = await deps.narrative.query(routeResp.routes, 'hybrid', signal);
-        const sections = Object.entries(queryResp.results)
-          .filter(([, text]) => text.trim().length > 0)
+        // ── Per-timeline parallel queries ─────────────────────────────────────
+        // Each timeline gets its own HTTP request to the bridge so it can emit
+        // `narrative_timeline_complete` the moment ITS query returns, without
+        // being blocked by slower timelines.
+        // Promise.allSettled ensures one bad timeline never kills the others.
+        const recallParts: Array<[string, string]> = [];
+
+        await Promise.allSettled(
+          Object.entries(routeResp.routes).map(async ([timeline, query]) => {
+            try {
+              const text = await deps.narrative.queryOne(timeline, query, signal);
+              ctx.emit?.({
+                type: 'narrative_timeline_complete',
+                timeline,
+                charCount: text.length,
+                snippet: text.length > 100 ? text.slice(0, 100) + '…' : text,
+              });
+              if (text.trim().length > 0) recallParts.push([timeline, text]);
+            } catch (err) {
+              if (err instanceof NarrativeUnavailableError) throw err; // re-throw to outer catch
+              ctx.emit?.({
+                type: 'system_warning',
+                level: 'warn',
+                message: `Timeline ${timeline} recall failed — excluded from context`,
+              });
+            }
+          }),
+        );
+
+        if (recallParts.length === 0) return { kind: 'continue' };
+
+        const sections = recallParts
           .map(([timeline, text]) => `## ${timeline}\n${text}`)
           .join('\n\n');
 
-        if (sections.length === 0) return { kind: 'continue' };
-
         ctx.emit?.({
           type: 'recall_evidence',
-          sources: Object.keys(queryResp.results),
-          itemCount: Object.keys(queryResp.results).length,
+          sources: recallParts.map(([t]) => t),
+          itemCount: recallParts.length,
         });
 
         // Inject recall context as a user message immediately before the latest
-        // user turn so it stays in-context but doesn't pollute the system prefix
-        // (preserves prompt-cache reuse).
+        // user turn — doesn't touch system prefix, preserves prompt-cache reuse.
         const msgs = ctx.payload.messages;
         const last = msgs[msgs.length - 1]!;
         const recallMsg: LlmMessage = {
