@@ -6,11 +6,14 @@ from fastapi.responses import JSONResponse
 from bridge.routes.health    import router as health_router
 from bridge.routes.internal  import router as internal_router
 from bridge.routes.narrative import router as narrative_router
+from bridge.state import state
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     yield
+    if state.narrative_manager is not None:
+        await state.narrative_manager.finalize()
 
 
 def build_app() -> FastAPI:

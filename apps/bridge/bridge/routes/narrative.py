@@ -43,7 +43,8 @@ class QueryRequest(BaseModel):
         ...,
         description="timeline → sub-query (as returned by /narrative/route).",
     )
-    mode: str = Field(default="hybrid")
+    mode:   str = Field(default="hybrid")
+    top_k:  int = Field(default=40, ge=1, le=200)
 
 
 class QueryResponse(BaseModel):
@@ -57,5 +58,5 @@ async def query_narrative(body: QueryRequest) -> QueryResponse:
     """
     if state.narrative_manager is None:
         raise _NOT_READY
-    results = await state.narrative_manager.query_batch(body.queries, mode=body.mode)
+    results = await state.narrative_manager.query_batch(body.queries, mode=body.mode, top_k=body.top_k)
     return QueryResponse(results=results)

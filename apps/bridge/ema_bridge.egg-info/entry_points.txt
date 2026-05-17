@@ -1,0 +1,2 @@
+[console_scripts]
+ema-bridge = bridge.__main__:main

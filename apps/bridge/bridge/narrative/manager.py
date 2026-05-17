@@ -24,7 +24,7 @@ class NarrativeManager:
     def __init__(self, state: BridgeState, data_dir: str) -> None:
         embed_func = make_embedding_func(state)
         llm_func   = make_llm_func(state)
-        dim        = state.embedder.dim if state.embedder else 1024
+        dim        = state.embed_dim
 
         self._instances: dict[str, LightRAG] = {}
         for timeline in TIMELINES:
@@ -40,20 +40,39 @@ class NarrativeManager:
                 ),
             )
 
+    async def initialize(self) -> None:
+        """Must be called once before any query — required by lightrag-hku >=1.4."""
+        for rag in self._instances.values():
+            await rag.initialize_storages()
+
     async def query_batch(
         self,
         queries: dict[str, str],
         mode: str = "hybrid",
+        top_k: int = 40,
     ) -> dict[str, str]:
-        """Query multiple timelines in parallel. Unknown timelines are silently skipped."""
+        """Query multiple timelines in parallel. Unknown timelines are silently skipped.
+
+        only_need_context=True: LightRAG returns raw retrieved context without
+        calling the LLM for a synthesised answer — the main ConversationEngine
+        LLM does that instead.
+        """
         valid = {t: q for t, q in queries.items() if t in self._instances}
 
         async def _one(timeline: str, query: str) -> tuple[str, str]:
             result = await self._instances[timeline].aquery(
                 query,
-                param=QueryParam(mode=mode),
+                param=QueryParam(mode=mode, only_need_context=True, top_k=top_k),
             )
             return timeline, result or ""
 
         pairs = await asyncio.gather(*(_one(t, q) for t, q in valid.items()))
         return dict(pairs)
+
+    async def finalize(self) -> None:
+        """Release LightRAG storage handles. Call on bridge shutdown."""
+        for timeline, rag in self._instances.items():
+            try:
+                await rag.finalize_storages()
+            except Exception as exc:  # noqa: BLE001
+                pass  # best-effort; don't block shutdown

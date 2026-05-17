@@ -50,10 +50,23 @@ def make_llm_func(state: BridgeState):
             messages.extend(history_messages)
         messages.append({"role": "user", "content": prompt})
 
+        # Whitelist only kwargs the OpenAI Chat Completions API actually accepts.
+        # LightRAG 1.4+ passes many internal keys (hashing_kv, keyword_extraction,
+        # enable_cot, …) that vary by version — safer to allow-list than block-list.
+        _OPENAI_CHAT_KWARGS = {
+            "temperature", "max_tokens", "max_completion_tokens",
+            "top_p", "n", "stop", "stream",
+            "presence_penalty", "frequency_penalty",
+            "logit_bias", "seed", "user",
+            "tools", "tool_choice", "functions", "function_call",
+            "response_format", "logprobs", "top_logprobs",
+        }
+        clean_kwargs = {k: v for k, v in kwargs.items() if k in _OPENAI_CHAT_KWARGS}
+
         response = await client.chat.completions.create(
             model=state.llm_model,
             messages=messages,
-            **{k: v for k, v in kwargs.items() if k not in ("hashing_kv",)},
+            **clean_kwargs,
         )
         return response.choices[0].message.content or ""
 

@@ -40,5 +40,7 @@ async def configure(
         state.llm_model    = body.llm.model
 
     if state.embed_ready and state.llm_ready:
-        state.narrative_manager = NarrativeManager(state, _NARRATIVE_DIR)
+        manager = NarrativeManager(state, _NARRATIVE_DIR)
+        await manager.initialize()
+        state.narrative_manager = manager
         state.narrative_router  = NarrativeRouter(state)
