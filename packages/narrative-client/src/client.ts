@@ -5,6 +5,8 @@ import type {
   NarrativeRouteResponse,
   NarrativeQueryRequest,
   NarrativeQueryResponse,
+  NarrativeIngestRequest,
+  NarrativeIngestResponse,
 } from './types.js';
 
 export interface NarrativeClientOptions {
@@ -70,6 +72,22 @@ export class NarrativeClient {
     const res = await this.post('/narrative/query', body, signal);
     await this.assertOk(res, 'query');
     return res.json() as Promise<NarrativeQueryResponse>;
+  }
+
+  /**
+   * Ingest documents into a specific timeline's LightRAG knowledge graph.
+   * LightRAG deduplicates by content hash — safe to call repeatedly.
+   * Throws NarrativeUnavailableError if bridge is not ready.
+   */
+  async ingest(
+    timeline: string,
+    documents: string[],
+    signal?: AbortSignal,
+  ): Promise<NarrativeIngestResponse> {
+    const body: NarrativeIngestRequest = { timeline, documents };
+    const res = await this.post('/narrative/ingest', body, signal);
+    await this.assertOk(res, 'ingest');
+    return res.json() as Promise<NarrativeIngestResponse>;
   }
 
   /**

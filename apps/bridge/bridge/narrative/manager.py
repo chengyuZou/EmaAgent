@@ -86,6 +86,18 @@ class NarrativeManager:
 
         return results
 
+    async def ingest(self, timeline: str, documents: list[str]) -> int:
+        """Insert documents into a single timeline's LightRAG graph.
+
+        Returns the number of documents accepted (0 if timeline unknown).
+        LightRAG deduplicates by content hash, so re-ingesting is safe.
+        """
+        rag = self._instances.get(timeline)
+        if rag is None:
+            return 0
+        await rag.ainsert(documents)
+        return len(documents)
+
     async def finalize(self) -> None:
         """Release LightRAG storage handles. Call on bridge shutdown."""
         for timeline, rag in self._instances.items():

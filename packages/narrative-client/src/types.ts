@@ -63,3 +63,17 @@ export interface NarrativeQueryResponse {
   /** timeline → recalled narrative text. */
   results: Record<string, string>;
 }
+
+// ── Ingest ────────────────────────────────────────────────────────────────────
+
+export interface NarrativeIngestRequest {
+  /** Must be one of: 1st_Loop, 2nd_Loop, 3rd_Loop */
+  timeline: string;
+  /** Raw text documents to push into LightRAG. */
+  documents: string[];
+}
+
+export interface NarrativeIngestResponse {
+  /** Number of documents accepted by this call. */
+  accepted: number;
+}

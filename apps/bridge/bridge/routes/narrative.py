@@ -60,3 +60,34 @@ async def query_narrative(body: QueryRequest) -> QueryResponse:
         raise _NOT_READY
     results = await state.narrative_manager.query_batch(body.queries, mode=body.mode, top_k=body.top_k)
     return QueryResponse(results=results)
+
+
+# ── /narrative/ingest ─────────────────────────────────────────────────────────
+
+VALID_TIMELINES = frozenset({"1st_Loop", "2nd_Loop", "3rd_Loop"})
+
+
+class IngestRequest(BaseModel):
+    timeline:  str       = Field(..., description="One of: 1st_Loop, 2nd_Loop, 3rd_Loop")
+    documents: list[str] = Field(..., min_length=1, description="Raw text documents to ingest")
+
+
+class IngestResponse(BaseModel):
+    accepted: int
+
+
+@router.post("/ingest", response_model=IngestResponse)
+async def ingest_narrative(body: IngestRequest) -> IngestResponse:
+    """
+    Insert documents into a specific timeline's LightRAG knowledge graph.
+    LightRAG deduplicates by content hash — safe to call repeatedly.
+    """
+    if state.narrative_manager is None:
+        raise _NOT_READY
+    if body.timeline not in VALID_TIMELINES:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Invalid timeline '{body.timeline}'. Must be one of: {sorted(VALID_TIMELINES)}",
+        )
+    accepted = await state.narrative_manager.ingest(body.timeline, body.documents)
+    return IngestResponse(accepted=accepted)
