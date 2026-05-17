@@ -1,5 +1,5 @@
 {
-  "name": "@ema-agent/retrieval",
+  "name": "@ema-agent/ebd-client",
   "version": "0.1.0",
   "private": true,
   "type": "module",

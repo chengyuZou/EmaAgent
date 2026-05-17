@@ -10,7 +10,12 @@ import {
   type Capability,
 } from '@ema-agent/contracts';
 import type { AppBindings } from '../wiring.js';
-import { buildLlmProviderConfig, configureBridge } from '../wiring.js';
+import {
+  buildLlmProviderConfig,
+  buildEmbedProviderConfig,
+  buildRerankProviderConfig,
+  configureBridge,
+} from '../wiring.js';
 
 // ── Response shaping ──────────────────────────────────────────────────────────
 
@@ -89,26 +94,47 @@ function hotReload(
   row: ProviderConfigRow,
   deleted = false,
 ): void {
-  // ── LlmRouter sync ────────────────────────────────────────────────────────
   const capabilities: string[] = JSON.parse(row.capabilities_json);
+
+  // ── LlmRouter sync ────────────────────────────────────────────────────────
   if (capabilities.includes('llm')) {
     if (deleted) {
       bindings.llm.removeConfig(row.id);
     } else {
       const cfg = buildLlmProviderConfig(row);
       if (cfg) bindings.llm.upsertConfig(cfg);
-      else     bindings.llm.removeConfig(row.id); // key cleared or disabled
+      else     bindings.llm.removeConfig(row.id);
+    }
+  }
+
+  // ── EbdRouter sync ────────────────────────────────────────────────────────
+  if (capabilities.includes('embed')) {
+    if (deleted) {
+      bindings.ebd.removeEmbedConfig(row.id);
+    } else {
+      const cfg = buildEmbedProviderConfig(row);
+      if (cfg) bindings.ebd.upsertEmbedConfig(cfg);
+      else     bindings.ebd.removeEmbedConfig(row.id);
+    }
+  }
+
+  if (capabilities.includes('rerank')) {
+    if (deleted) {
+      bindings.ebd.removeRerankConfig(row.id);
+    } else {
+      const cfg = buildRerankProviderConfig(row);
+      if (cfg) bindings.ebd.upsertRerankConfig(cfg);
+      else     bindings.ebd.removeRerankConfig(row.id);
     }
   }
 
   // ── Bridge sync ───────────────────────────────────────────────────────────
-  // Only reconfigure bridge if this provider is actually used by a bridge binding.
   const mbRepo = new ModelBindingsRepo(bindings.db.sqlite);
   const bridgeUsesThisProvider = BRIDGE_MODULES.some(
     mod => mbRepo.get(mod)?.providerConfigId === row.id,
   );
   if (bridgeUsesThisProvider) {
-    void configureBridge(bindings.db, bindings.retrieval);
+    void configureBridge(bindings.db, bindings.narrative);
   }
 }
 

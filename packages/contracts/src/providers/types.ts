@@ -22,6 +22,7 @@ export type ProtocolFamily =
   | 'gemini-llm'        // /generateContent, parts structure
   // Embedding protocols
   | 'openai-embed'      // /v1/embeddings, { model, input: string[] }
+  | 'gemini-embed'      // /v1beta/models/{model}:batchEmbedContents, Google format
   // Rerank protocols
   | 'cohere-rerank';    // /rerank, { model, query, documents, top_n } — Cohere/Jina/SiliconFlow all use this
 
@@ -30,11 +31,21 @@ export type ProtocolFamily =
  * used by `LlmRouter`. Derived so `LlmProtocol` automatically stays in sync
  * if a new `*-llm` is added to ProtocolFamily.
  */
-export type LlmProtocol = Extract<ProtocolFamily, `${string}-llm`>;
+export type LlmProtocol    = Extract<ProtocolFamily, `${string}-llm`>;
+export type EmbedProtocol  = Extract<ProtocolFamily, `${string}-embed`>;
+export type RerankProtocol = Extract<ProtocolFamily, `${string}-rerank`>;
 
 /** Type guard for narrowing ProtocolFamily down to LlmProtocol. */
 export function isLlmProtocol(p: ProtocolFamily | undefined): p is LlmProtocol {
   return p === 'openai-llm' || p === 'anthropic-llm' || p === 'gemini-llm';
+}
+
+export function isEmbedProtocol(p: ProtocolFamily | undefined): p is EmbedProtocol {
+  return p === 'openai-embed' || p === 'gemini-embed';
+}
+
+export function isRerankProtocol(p: ProtocolFamily | undefined): p is RerankProtocol {
+  return p === 'cohere-rerank';
 }
 
 // ── Onboarding fields ────────────────────────────────────────────────────────

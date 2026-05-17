@@ -10,18 +10,28 @@ if TYPE_CHECKING:
 
 
 def make_embedding_func(state: BridgeState):
-    """Wrap BridgeState.embedder as a LightRAG-compatible async embedding function."""
+    """Return a LightRAG-compatible async embedding function backed by state's embed config."""
 
     async def _embed(texts: list[str]) -> np.ndarray:
-        if state.embedder is None:
-            raise RuntimeError("Embed provider not configured")
-        return await state.embedder.embed(texts)
+        if not state.embed_ready:
+            raise RuntimeError("Embed not configured")
+        client = AsyncOpenAI(api_key=state.embed_api_key, base_url=state.embed_base_url)
+        response = await client.embeddings.create(
+            model=state.embed_model,
+            input=texts,
+            encoding_format="float",
+        )
+        vectors = np.array(
+            [item.embedding for item in sorted(response.data, key=lambda x: x.index)],
+            dtype=np.float32,
+        )
+        return vectors
 
     return _embed
 
 
 def make_llm_func(state: BridgeState):
-    """Wrap BridgeState LLM config as a LightRAG-compatible async LLM function."""
+    """Return a LightRAG-compatible async LLM function backed by state's llm config."""
 
     async def _llm(
         prompt: str,

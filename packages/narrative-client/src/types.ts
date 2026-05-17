@@ -1,3 +1,39 @@
+// ── Bridge admin ──────────────────────────────────────────────────────────────
+
+/** Embed config pushed to bridge for LightRAG's internal use. */
+export interface BridgeEmbedCfg {
+  protocol: 'openai-embed';   // LightRAG bridge only supports openai-compat embed
+  apiKey: string;
+  baseUrl: string;
+  model: string;
+  dim?: number;
+}
+
+/** LLM config pushed to bridge for LightRAG's entity extraction. */
+export interface BridgeLlmCfg {
+  apiKey: string;
+  baseUrl: string;
+  model: string;
+}
+
+/** Payload for POST /internal/configure — no rerank (LightRAG doesn't use it). */
+export interface BridgeConfigurePayload {
+  embed?: BridgeEmbedCfg;
+  llm?:   BridgeLlmCfg;
+}
+
+export interface BridgeCapabilities {
+  embed:     boolean;
+  llm:       boolean;
+  narrative: boolean;
+}
+
+export interface BridgeHealthResponse {
+  status:       'ok';
+  version:      string;
+  capabilities: BridgeCapabilities;
+}
+
 // ── Route ─────────────────────────────────────────────────────────────────────
 
 export interface NarrativeRouteRequest {

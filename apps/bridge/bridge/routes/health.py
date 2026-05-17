@@ -11,7 +11,6 @@ async def health() -> dict:
         "version": "0.1.0",
         "capabilities": {
             "embed":     state.embed_ready,
-            "rerank":    state.rerank_ready,
             "llm":       state.llm_ready,
             "narrative": state.narrative_ready,
         },

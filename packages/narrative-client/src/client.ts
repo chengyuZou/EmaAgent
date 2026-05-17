@@ -1,4 +1,6 @@
 import type {
+  BridgeConfigurePayload,
+  BridgeHealthResponse,
   NarrativeRouteRequest,
   NarrativeRouteResponse,
   NarrativeQueryRequest,
@@ -82,6 +84,34 @@ export class NarrativeClient {
       return data.capabilities?.narrative === true;
     } catch {
       return false;
+    }
+  }
+
+  // ── Bridge admin ───────────────────────────────────────────────────────────
+
+  /**
+   * Push LightRAG config (embed + llm) to the bridge.
+   * Called by apps/core on startup and whenever relevant bindings change.
+   * Returns false if the bridge is unreachable — safe to ignore.
+   */
+  async configure(payload: BridgeConfigurePayload): Promise<boolean> {
+    try {
+      const res = await this.post('/internal/configure', payload);
+      return res.ok;
+    } catch {
+      return false;
+    }
+  }
+
+  async health(): Promise<BridgeHealthResponse | null> {
+    try {
+      const res = await fetch(`${this.baseUrl}/health`, {
+        signal: AbortSignal.timeout(5_000),
+      });
+      if (!res.ok) return null;
+      return res.json() as Promise<BridgeHealthResponse>;
+    } catch {
+      return null;
     }
   }
 

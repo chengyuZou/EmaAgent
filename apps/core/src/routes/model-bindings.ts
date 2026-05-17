@@ -63,7 +63,7 @@ export function modelBindingsRoute(bindings: AppBindings): Hono {
 
     // Bridge only cares about its three internal config modules.
     if (BRIDGE_MODULES.has(module)) {
-      void configureBridge(bindings.db, bindings.retrieval);
+      void configureBridge(bindings.db, bindings.narrative);
     }
 
     return c.json(repo.get(module));
@@ -81,7 +81,7 @@ export function modelBindingsRoute(bindings: AppBindings): Hono {
     repo.delete(module);
 
     if (BRIDGE_MODULES.has(module)) {
-      void configureBridge(bindings.db, bindings.retrieval);
+      void configureBridge(bindings.db, bindings.narrative);
     }
 
     return c.body(null, 204);

@@ -20,7 +20,8 @@
     "@ema-agent/character-card": "workspace:*",
     "@ema-agent/session": "workspace:*",
     "@ema-agent/emotion": "workspace:*",
-    "@ema-agent/retrieval": "workspace:*",
+    "@ema-agent/ebd-client": "workspace:*",
+    "@ema-agent/narrative-client": "workspace:*",
     "@hono/node-server": "^1.14.3",
     "hono": "^4.7.10",
     "zod": "^3.24.4"

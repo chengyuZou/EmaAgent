@@ -4,35 +4,38 @@ import type { ProviderConfigRow } from '@ema-agent/storage';
 import { HookBus } from '@ema-agent/hook';
 import { LlmRouter } from '@ema-agent/llm';
 import type { ProviderConfig } from '@ema-agent/llm';
+import { EbdRouter } from '@ema-agent/ebd-client';
+import type { EmbedProviderConfig, RerankProviderConfig } from '@ema-agent/ebd-client';
+import { NarrativeClient } from '@ema-agent/narrative-client';
+import type { BridgeConfigurePayload } from '@ema-agent/narrative-client';
 import { CharacterCardStore } from '@ema-agent/character-card';
 import { SessionStore } from '@ema-agent/session';
 import { buildSystemPrompt } from '@ema-agent/prompts';
 import { EmotionEngine } from '@ema-agent/emotion';
-import { RetrievalClient } from '@ema-agent/retrieval';
-import { getProviderDefinition, isLlmProtocol, type TurnMode } from '@ema-agent/contracts';
+import {
+  getProviderDefinition,
+  isLlmProtocol,
+  isEmbedProtocol,
+  isRerankProtocol,
+  type TurnMode,
+} from '@ema-agent/contracts';
 
 // ── App-wide bindings ─────────────────────────────────────────────────────────
 
 export interface AppBindings {
-  db: Database;
-  hooks: HookBus;
-  llm: LlmRouter;
+  db:            Database;
+  hooks:         HookBus;
+  llm:           LlmRouter;
+  ebd:           EbdRouter;
+  narrative:     NarrativeClient;
   modelBindings: ModelBindingsRepo;
-  session: SessionStore;
-  card: CharacterCardStore;
-  emotion: EmotionEngine;
-  retrieval: RetrievalClient;
+  session:       SessionStore;
+  card:          CharacterCardStore;
+  emotion:       EmotionEngine;
 }
 
 // ── LlmRouter config builder ──────────────────────────────────────────────────
 
-/**
- * Convert one DB row into a ProviderConfig for LlmRouter.
- * Returns null when the row should be skipped (unknown def, non-LLM protocol,
- * llm not in enabled capabilities, missing required key).
- *
- * Exported so provider routes can call it for hot-reload after PATCH/DELETE.
- */
 export function buildLlmProviderConfig(row: ProviderConfigRow): ProviderConfig | null {
   const def = getProviderDefinition(row.definition_id);
   if (!def) return null;
@@ -56,41 +59,81 @@ export function buildLlmProviderConfig(row: ProviderConfigRow): ProviderConfig |
   };
 }
 
-// ── Provider config loader ────────────────────────────────────────────────────
+// ── EbdRouter config builders ─────────────────────────────────────────────────
 
-/**
- * Read enabled LLM providers from `provider_configs`, resolve their metadata
- * via the TS registry, and emit `ProviderConfig` objects for `LlmRouter`.
- *
- * Rows whose definition_id is unknown OR whose declared protocol is not
- * an LLM protocol are silently skipped (with a console warning).
- */
+export function buildEmbedProviderConfig(row: ProviderConfigRow): EmbedProviderConfig | null {
+  const def = getProviderDefinition(row.definition_id);
+  if (!def) return null;
+
+  const capabilities: string[] = JSON.parse(row.capabilities_json);
+  if (!capabilities.includes('embed')) return null;
+
+  const protocol = def.protocols.embed;
+  if (!isEmbedProtocol(protocol)) return null;
+
+  if (def.requiresCredentials !== false && !row.api_key_plain) return null;
+
+  const extra = JSON.parse(row.config_json) as Record<string, unknown>;
+  return {
+    id:           row.id,
+    protocol,
+    apiKey:       row.api_key_plain ?? '',
+    baseUrl:      row.base_url ?? def.defaultBaseUrl,
+    dim:          typeof extra['dim'] === 'number' ? extra['dim'] : 1024,
+    defaultModel: typeof extra['defaultModel'] === 'string' ? extra['defaultModel'] : undefined,
+  };
+}
+
+export function buildRerankProviderConfig(row: ProviderConfigRow): RerankProviderConfig | null {
+  const def = getProviderDefinition(row.definition_id);
+  if (!def) return null;
+
+  const capabilities: string[] = JSON.parse(row.capabilities_json);
+  if (!capabilities.includes('rerank')) return null;
+
+  const protocol = def.protocols.rerank;
+  if (!isRerankProtocol(protocol)) return null;
+
+  if (def.requiresCredentials !== false && !row.api_key_plain) return null;
+
+  const extra = JSON.parse(row.config_json) as Record<string, unknown>;
+  return {
+    id:           row.id,
+    protocol,
+    apiKey:       row.api_key_plain ?? '',
+    baseUrl:      row.base_url ?? def.defaultBaseUrl,
+    defaultModel: typeof extra['defaultModel'] === 'string' ? extra['defaultModel'] : undefined,
+  };
+}
+
+// ── Provider config loaders ───────────────────────────────────────────────────
+
 function loadProviderConfigs(db: Database): ProviderConfig[] {
   const repo = new ProvidersRepo(db.sqlite);
   const out: ProviderConfig[] = [];
-
   for (const row of repo.listByCapability('llm')) {
-    const def = getProviderDefinition(row.definition_id);
-    if (!def) {
-      console.warn(`[wiring] unknown provider definition: ${row.definition_id}`);
-      continue;
-    }
-    const protocol = def.protocols.llm;
-    if (!isLlmProtocol(protocol)) continue;
+    const cfg = buildLlmProviderConfig(row);
+    if (cfg) out.push(cfg);
+  }
+  return out;
+}
 
-    const needsKey = def.requiresCredentials !== false;
-    if (needsKey && !row.api_key_plain) continue;
+function loadEmbedConfigs(db: Database): EmbedProviderConfig[] {
+  const repo = new ProvidersRepo(db.sqlite);
+  const out: EmbedProviderConfig[] = [];
+  for (const row of repo.listByCapability('embed')) {
+    const cfg = buildEmbedProviderConfig(row);
+    if (cfg) out.push(cfg);
+  }
+  return out;
+}
 
-    const extra = JSON.parse(row.config_json) as Record<string, unknown>;
-    out.push({
-      id:           row.id,
-      provider:     protocol,
-      apiKey:       row.api_key_plain ?? '',
-      baseUrl:      row.base_url ?? def.defaultBaseUrl,
-      defaultModel: typeof extra['defaultModel'] === 'string'
-        ? extra['defaultModel']
-        : undefined,
-    });
+function loadRerankConfigs(db: Database): RerankProviderConfig[] {
+  const repo = new ProvidersRepo(db.sqlite);
+  const out: RerankProviderConfig[] = [];
+  for (const row of repo.listByCapability('rerank')) {
+    const cfg = buildRerankProviderConfig(row);
+    if (cfg) out.push(cfg);
   }
   return out;
 }
@@ -98,26 +141,18 @@ function loadProviderConfigs(db: Database): ProviderConfig[] {
 // ── Bridge configure ──────────────────────────────────────────────────────────
 
 /**
- * Push LightRAG's internal model config to the bridge.
- *
- * The bridge only needs three things — all read from model_bindings:
- *   'embed'        → which provider/model LightRAG uses to embed documents
- *   'rerank'       → which provider/model LightRAG uses to rerank recall results
- *   'lightrag-llm' → which provider/model LightRAG uses for entity extraction
- *
- * Called fire-and-forget on startup and after any relevant binding changes.
- * Safe if bridge is down — logs a warning and returns without crashing.
+ * Push LightRAG's internal model config (embed + llm) to the bridge.
+ * Called fire-and-forget on startup and after relevant binding changes.
  */
 export async function configureBridge(
   db: Database,
-  retrieval: RetrievalClient,
+  narrative: NarrativeClient,
 ): Promise<void> {
   const providersRepo = new ProvidersRepo(db.sqlite);
   const bindings      = new ModelBindingsRepo(db.sqlite);
 
-  const payload: Parameters<RetrievalClient['configure']>[0] = {};
+  const payload: BridgeConfigurePayload = {};
 
-  // ── LightRAG's internal LLM (entity extraction / graph building) ──────────
   const llmBinding = bindings.get('lightrag-llm');
   if (llmBinding) {
     const row = providersRepo.get(llmBinding.providerConfigId);
@@ -130,7 +165,6 @@ export async function configureBridge(
     }
   }
 
-  // ── LightRAG's embed model (document + query vectorisation) ──────────────
   const embedBinding = bindings.get('embed');
   if (embedBinding) {
     const row = providersRepo.get(embedBinding.providerConfigId);
@@ -149,22 +183,9 @@ export async function configureBridge(
     }
   }
 
-  // ── LightRAG's reranker (post-retrieval scoring) ──────────────────────────
-  const rerankBinding = bindings.get('rerank');
-  if (rerankBinding) {
-    const row = providersRepo.get(rerankBinding.providerConfigId);
-    if (row) {
-      payload.rerank = {
-        apiKey:  row.api_key_plain ?? '',
-        baseUrl: row.base_url ?? '',
-        model:   rerankBinding.model,
-      };
-    }
-  }
-
   if (Object.keys(payload).length === 0) return;
 
-  const ok = await retrieval.configure(payload);
+  const ok = await narrative.configure(payload);
   if (ok) {
     console.log('[bridge] configured');
   } else {
@@ -174,12 +195,17 @@ export async function configureBridge(
 
 // ── wire ──────────────────────────────────────────────────────────────────────
 
-/**
- * Assemble all dependencies and register hooks.
- */
 export function wire(db: Database): AppBindings {
   const hooks = new HookBus();
   const llm   = new LlmRouter(loadProviderConfigs(db));
+  const ebd   = new EbdRouter(loadEmbedConfigs(db), loadRerankConfigs(db));
+
+  const narrative = new NarrativeClient({
+    baseUrl:   process.env['EMA_BRIDGE_URL'] ?? 'http://127.0.0.1:7421',
+    secret:    process.env['EMA_SHARED_SECRET'],
+    timeoutMs: 60_000,
+  });
+
   const session = new SessionStore({ db });
   const card    = new CharacterCardStore({ db });
   card.ensureSeed();
@@ -187,13 +213,6 @@ export function wire(db: Database): AppBindings {
   const activeCard = card.current();
   const emotion = new EmotionEngine({ vocabulary: activeCard.emotionVocabulary });
 
-  const retrieval = new RetrievalClient({
-    baseUrl:   process.env['EMA_BRIDGE_URL'] ?? 'http://127.0.0.1:7421',
-    secret:    process.env['EMA_SHARED_SECRET'],
-    timeoutMs: 30_000,
-  });
-
-  // ── beforeLlm hook: inject system prompt from active character card ──────
   hooks.register('beforeLlm', async (ctx) => {
     const currentCard = card.current();
     const mode = (ctx.meta['mode'] as TurnMode) ?? 'chat';
@@ -212,5 +231,5 @@ export function wire(db: Database): AppBindings {
 
   const modelBindings = new ModelBindingsRepo(db.sqlite);
 
-  return { db, hooks, llm, modelBindings, session, card, emotion, retrieval };
+  return { db, hooks, llm, ebd, narrative, modelBindings, session, card, emotion };
 }

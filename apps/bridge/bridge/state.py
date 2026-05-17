@@ -4,7 +4,6 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from bridge.embed.protocols import EmbedProvider, RerankProvider
     from bridge.narrative.manager import NarrativeManager
     from bridge.narrative.router import NarrativeRouter
 
@@ -15,29 +14,27 @@ class BridgeState:
     Runtime state for the bridge process.
 
     Populated by POST /internal/configure after apps/core starts.
-    All fields are None until configured — routes return 503 when unconfigured.
+    All fields are empty until configured — narrative routes return 503 when unready.
     """
 
-    embedder: EmbedProvider | None = field(default=None)
-    reranker: RerankProvider | None = field(default=None)
+    # Raw embed config — stored so LightRAG adapters can build their own client.
+    embed_api_key:  str = field(default="")
+    embed_base_url: str = field(default="")
+    embed_model:    str = field(default="")
+    embed_dim:      int = field(default=1024)
 
-    # LLM client used by LightRAG for entity extraction + query routing.
-    # Shares the same openai-compat provider as apps/core's chat LLM.
-    llm_api_key: str = field(default="")
+    # LLM used by LightRAG for entity extraction + query routing.
+    llm_api_key:  str = field(default="")
     llm_base_url: str = field(default="")
-    llm_model: str = field(default="")
+    llm_model:    str = field(default="")
 
     # Built by /internal/configure once both embed + llm are ready.
     narrative_manager: NarrativeManager | None = field(default=None)
-    narrative_router: NarrativeRouter | None = field(default=None)
+    narrative_router:  NarrativeRouter  | None = field(default=None)
 
     @property
     def embed_ready(self) -> bool:
-        return self.embedder is not None
-
-    @property
-    def rerank_ready(self) -> bool:
-        return self.reranker is not None
+        return bool(self.embed_api_key and self.embed_model)
 
     @property
     def llm_ready(self) -> bool:
