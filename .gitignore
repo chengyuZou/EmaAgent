@@ -53,6 +53,3 @@ uv.lock
 CLAUDE.md
 install.cmd
 .claude
-
-# narrative
-apps/bridge/data/**
