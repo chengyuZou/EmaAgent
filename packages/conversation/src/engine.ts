@@ -1,7 +1,8 @@
 import type { EmaStreamEvent } from '@ema-agent/contracts';
-import type { LlmMessage, LlmToolCall, LlmContentPart } from '@ema-agent/llm';
+import type { LlmMessage, LlmContentPart, AssistantBlock, UserBlock } from '@ema-agent/llm';
 import { validateContentParts } from '@ema-agent/llm';
-import type { Message, ToolCall } from '@ema-agent/session';
+import type { Message } from '@ema-agent/session';
+import type { MessageBlocks } from '@ema-agent/session';
 import type { HookBus, HookContext, HookTriggerResult } from '@ema-agent/hook';
 import type { ConversationDeps, ConversationRunInput } from './types.js';
 
@@ -62,18 +63,30 @@ async function* runTurn(
 
     // ── Context + user message ────────────────────────────────────────────────
     const history = session.loadHistory(input.sessionId);
-    const userContent = input.contentParts && input.contentParts.length > 0
-      ? input.contentParts
-      : input.userInput;
 
-    session.appendMessage({ turnId, sessionId: input.sessionId, role: 'user', content: userContent });
+    // userBlocks: plain string for text-only, or LlmContentPart[] for multimodal
+    const userBlocks: string | LlmContentPart[] =
+      input.contentParts && input.contentParts.length > 0
+        ? input.contentParts
+        : input.userInput;
+
+    session.appendMessage({
+      turnId,
+      sessionId: input.sessionId,
+      role: 'user',
+      // LlmContentPart (= MessageContentPart) is a subtype of UserBlock — safe cast
+      blocks: userBlocks as MessageBlocks,
+    });
 
     const messages: LlmMessage[] = [
       ...historyToLlmMessages(history),
-      { role: 'user', content: userContent } as LlmMessage,
+      {
+        role: 'user',
+        content: userBlocks as string | UserBlock[],
+      },
     ];
 
-    const partsToCheck = Array.isArray(userContent) ? userContent : [];
+    const partsToCheck = Array.isArray(userBlocks) ? userBlocks : [];
     if (partsToCheck.length > 0) {
       const issues = validateContentParts(partsToCheck, 'openai-llm');
       if (issues.length > 0) {
@@ -136,7 +149,8 @@ async function* runTurn(
         case 'text_delta': {
           const { cleaned, events } = emotion.processChunk(chunk.delta, turnId);
           fullText += cleaned;
-          if (cleaned) yield { type: 'output_text_delta', delta: cleaned };
+          // blockIndex: 0 — conversation engine always produces a single text block
+          if (cleaned) yield { type: 'output_text_delta', blockIndex: 0, delta: cleaned };
           for (const ev of events) yield ev;
           deltaPromises.push(
             hooks.trigger('afterLlmDelta', {
@@ -161,7 +175,10 @@ async function* runTurn(
 
     // Flush scanner tail (model may have stopped mid-tag)
     const { cleaned: tail } = emotion.flush(turnId);
-    if (tail) { fullText += tail; yield { type: 'output_text_delta', delta: tail }; }
+    if (tail) {
+      fullText += tail;
+      yield { type: 'output_text_delta', blockIndex: 0, delta: tail };
+    }
 
     // Bug #3: drain all delta hooks before afterLlmComplete fires
     await Promise.allSettled(deltaPromises);
@@ -174,13 +191,14 @@ async function* runTurn(
       meta: {},
     });
 
-    yield { type: 'output_text_complete', text: fullText };
+    yield { type: 'output_text_complete', blockIndex: 0, text: fullText };
 
     const msg = session.appendMessage({
       turnId,
       sessionId: input.sessionId,
       role: 'assistant',
-      content: fullText,
+      // Store as AssistantBlock[] — the canonical block format for assistant messages
+      blocks: [{ type: 'text', text: fullText }] satisfies AssistantBlock[],
     });
 
     await hooks.trigger('afterMessage', {
@@ -268,43 +286,37 @@ async function* streamingBeforeLlm(
   return result;
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// ── History → LlmMessage conversion ──────────────────────────────────────────
 
+/**
+ * Converts stored Message[] to LlmMessage[] for the LLM adapter.
+ *
+ * Block format contract (from contracts/messages.ts):
+ *   system    → blocks: string
+ *   user      → blocks: string | UserBlock[]  (UserBlock[] when has media or tool_results)
+ *   assistant → blocks: AssistantBlock[]
+ *
+ * Tool results are stored as role:'user' + kind:'tool_results' with
+ * UserBlock[] containing ToolResultBlock entries — no role:'tool' exists.
+ */
 function historyToLlmMessages(history: Message[]): LlmMessage[] {
   const out: LlmMessage[] = [];
   for (const msg of history) {
     switch (msg.role) {
-      case 'user':
-        out.push(Array.isArray(msg.content)
-          ? { role: 'user', content: msg.content as LlmContentPart[] }
-          : { role: 'user', content: extractText(msg.content) });
-        break;
-      case 'assistant': {
-        const toolCalls: LlmToolCall[] | undefined = msg.toolCalls
-          ? msg.toolCalls.map((tc: ToolCall) => ({ id: tc.id, name: tc.name, args: tc.args }))
-          : undefined;
-        out.push({ role: 'assistant', content: extractText(msg.content) || null, toolCalls });
-        break;
-      }
       case 'system':
-        out.push({ role: 'system', content: extractText(msg.content) });
+        out.push({ role: 'system', content: typeof msg.blocks === 'string' ? msg.blocks : '' });
         break;
-      case 'tool':
-        out.push({ role: 'tool', toolCallId: msg.toolCallId ?? '', content: extractText(msg.content) });
+      case 'user':
+        // blocks is string (plain text) or UserBlock[] (multimodal + tool_results)
+        out.push({ role: 'user', content: msg.blocks as string | UserBlock[] });
+        break;
+      case 'assistant':
+        // blocks is AssistantBlock[] — preserves text/thinking/tool_use interleaving
+        if (Array.isArray(msg.blocks)) {
+          out.push({ role: 'assistant', content: msg.blocks as AssistantBlock[] });
+        }
         break;
     }
   }
   return out;
-}
-
-function extractText(content: string | unknown[]): string {
-  if (typeof content === 'string') return content;
-  if (Array.isArray(content)) {
-    return content
-      .filter((p): p is { type: 'text'; text: string } =>
-        typeof p === 'object' && p !== null && (p as { type: string }).type === 'text')
-      .map((p) => p.text)
-      .join('');
-  }
-  return '';
 }
