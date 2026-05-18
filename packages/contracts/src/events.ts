@@ -59,18 +59,18 @@ export type EmaStreamEvent =
   | { type: 'turn_failed'; turnId: TurnId; code: string; message: string }
   | { type: 'turn_aborted'; turnId: TurnId; reason: string }
 
-  // Text streaming
-  | { type: 'output_text_delta'; delta: string }
-  | { type: 'output_text_complete'; text: string }
+  // Text streaming — blockIndex tracks position within the assistant's block array
+  | { type: 'output_text_delta';    blockIndex: number; delta: string }
+  | { type: 'output_text_complete'; blockIndex: number; text: string }
 
-  // Reasoning (agent debug sub-mode)
-  | { type: 'reasoning_delta'; delta: string }
-  | { type: 'reasoning_complete' }
+  // Reasoning / thinking blocks (DeepSeek-R1, Claude extended thinking)
+  | { type: 'reasoning_delta';    blockIndex: number; delta: string }
+  | { type: 'reasoning_complete'; blockIndex: number }
 
-  // Tool calls
-  | { type: 'tool_call_partial'; callId: string; name: string; argsDelta: string }
-  | { type: 'tool_call_complete'; callId: string; name: string; args: unknown }
-  | { type: 'tool_result'; callId: string; output?: unknown; error?: ToolError }
+  // Tool calls — blockIndex lets the frontend know where in the block list this tool sits
+  | { type: 'tool_call_partial';  blockIndex: number; callId: string; name: string; argsDelta: string }
+  | { type: 'tool_call_complete'; blockIndex: number; callId: string; name: string; args: unknown }
+  | { type: 'tool_result';        callId: string; output?: unknown; error?: ToolError }
 
   // Permission
   | { type: 'permission_required'; promptId: string; tool: string; args: unknown; hint: string }

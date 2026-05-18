@@ -12,18 +12,17 @@ import {
   type TurnId,
   type MessageId,
   type CharacterCardId,
+  type MessageBlocks,
   asSessionId,
   asTurnId,
   asMessageId,
 } from '@ema-agent/contracts';
 import type { Database } from '@ema-agent/storage';
-import type { MessageContentPart } from '@ema-agent/contracts';
 import { RunRegistry } from './run-registry.js';
 import type {
   Session,
   Turn,
   Message,
-  ToolCall,
   CreateSessionInput,
   StartTurnInput,
   CompleteTurnInput,
@@ -68,37 +67,23 @@ function toTurn(row: TurnRow): Turn {
 }
 
 function toMessage(row: MessageRow): Message {
-  let toolCalls: ToolCall[] | null = null;
-  if (row.tool_calls_json) {
-    try {
-      toolCalls = JSON.parse(row.tool_calls_json) as ToolCall[];
-    } catch {
-      toolCalls = null;
-    }
-  }
-
-  // content is stored as plain text for normal messages,
-  // or as JSON-serialized MessageContentPart[] for multimodal messages.
-  let content: string | MessageContentPart[];
+  let blocks: MessageBlocks;
   try {
-    const parsed = JSON.parse(row.content);
-    content = Array.isArray(parsed) ? (parsed as MessageContentPart[]) : row.content;
+    blocks = JSON.parse(row.blocks_json) as MessageBlocks;
   } catch {
-    content = row.content;
+    // Fallback: treat malformed JSON as a plain string (defensive)
+    blocks = row.blocks_json;
   }
-
   return {
-    id: row.id as MessageId,
-    sessionId: row.session_id as SessionId,
-    turnId: row.turn_id as TurnId | null,
-    role: row.role,
-    kind: row.kind,
-    content,
-    toolCalls,
-    toolCallId: row.tool_call_id,
+    id:          row.id as MessageId,
+    sessionId:   row.session_id as SessionId,
+    turnId:      row.turn_id as TurnId | null,
+    role:        row.role,
+    kind:        row.kind,
+    blocks,
     interrupted: row.interrupted === 1,
-    createdAt: row.created_at,
-    meta: JSON.parse(row.meta_json) as Record<string, unknown>,
+    createdAt:   row.created_at,
+    meta:        JSON.parse(row.meta_json) as Record<string, unknown>,
   };
 }
 
@@ -276,21 +261,20 @@ export class SessionStore {
   appendMessage(input: AppendMessageInput): Message {
     const id  = asMessageId(crypto.randomUUID());
     const now = this.nextTs();
-    // Serialize multimodal content arrays to JSON for TEXT column storage.
-    const content = Array.isArray(input.content)
-      ? JSON.stringify(input.content)
-      : input.content;
+    // blocks is always serialized to JSON for the TEXT column.
+    // Simple string content is stored as a JSON string: "\"hello world\""
+    const blocksJson = typeof input.blocks === 'string'
+      ? JSON.stringify(input.blocks)
+      : JSON.stringify(input.blocks);
     this.messagesRepo.insert({
       id,
-      sessionId:    input.sessionId,
-      turnId:       input.turnId,
-      role:         input.role,
-      kind:         input.kind ?? 'normal',
-      content,
-      toolCallsJson: input.toolCalls ? JSON.stringify(input.toolCalls) : undefined,
-      toolCallId:   input.toolCallId,
-      interrupted:  input.interrupted ?? false,
-      createdAt:    now,
+      sessionId:   input.sessionId,
+      turnId:      input.turnId,
+      role:        input.role,
+      kind:        input.kind ?? 'normal',
+      blocksJson,
+      interrupted: input.interrupted ?? false,
+      createdAt:   now,
     });
     return this.requireMessage(id);
   }

@@ -13,11 +13,12 @@ export type {
   StopReason,
   ProviderConfig,
   LlmToolDef,
-  LlmToolCall,
   LlmMessage,
   LlmRequest,
   LlmStreamChunk,
   LlmContentPart,
   LlmCompletion,
+  AssistantBlock,
+  UserBlock,
   ProbeResult,
 } from './types.js';

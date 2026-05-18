@@ -7,10 +7,10 @@ import type {
   ProviderConfig,
   LlmRequest,
   LlmStreamChunk,
-  LlmToolCall,
   LlmCompletion,
   ProbeResult,
   StopReason,
+  AssistantBlock,
 } from './types.js';
 
 // ── Internal factory ──────────────────────────────────────────────────────────
@@ -79,24 +79,56 @@ export class LlmRouter {
    * Wraps stream() with exponential-backoff retry (429/5xx → up to 3 attempts).
    * Use for internal calls: compaction, emotion extraction, plan parsing.
    */
+  /**
+   * Collect the full completion into a single object.
+   * Wraps stream() with exponential-backoff retry (429/5xx → up to 3 attempts).
+   * Use for internal calls: compaction, emotion extraction, plan parsing.
+   *
+   * Blocks are sorted by blockIndex so text/tool_use order is preserved even
+   * though thinking_delta and tool_use_complete may arrive interleaved.
+   */
   async complete(request: LlmRequest): Promise<LlmCompletion> {
     return withRetry(async () => {
-      let text                    = '';
       let stopReason: StopReason  = 'end_turn';
       let inputTokens             = 0;
       let outputTokens            = 0;
-      const toolCalls: LlmToolCall[] = [];
+
+      // Accumulate by blockIndex so we can sort at the end
+      const textBufs     = new Map<number, string>();
+      const thinkingBufs = new Map<number, string>();
+      // tool_use_complete arrives once per block with final args
+      const toolUseMap   = new Map<number, AssistantBlock & { type: 'tool_use' }>();
 
       for await (const chunk of this.stream(request)) {
         switch (chunk.type) {
-          case 'text_delta':        text         += chunk.delta; break;
-          case 'tool_use_complete': toolCalls.push({ id: chunk.callId, name: chunk.name, args: chunk.args }); break;
-          case 'usage':             inputTokens   = chunk.inputTokens; outputTokens = chunk.outputTokens; break;
-          case 'done':              stopReason    = chunk.stopReason; break;
+          case 'text_delta':
+            textBufs.set(chunk.blockIndex, (textBufs.get(chunk.blockIndex) ?? '') + chunk.delta);
+            break;
+          case 'thinking_delta':
+            thinkingBufs.set(chunk.blockIndex, (thinkingBufs.get(chunk.blockIndex) ?? '') + chunk.delta);
+            break;
+          case 'tool_use_complete':
+            toolUseMap.set(chunk.blockIndex, { type: 'tool_use', id: chunk.callId, name: chunk.name, args: chunk.args });
+            break;
+          case 'usage':
+            inputTokens  = chunk.inputTokens;
+            outputTokens = chunk.outputTokens;
+            break;
+          case 'done':
+            stopReason = chunk.stopReason;
+            break;
         }
       }
 
-      return { text: text || null, toolCalls, stopReason, usage: { inputTokens, outputTokens } };
+      // Merge all block maps, sort by blockIndex to preserve original order
+      const blockEntries: Array<[number, AssistantBlock]> = [];
+      for (const [idx, text] of textBufs)     blockEntries.push([idx, { type: 'text', text }]);
+      for (const [idx, thinking] of thinkingBufs) blockEntries.push([idx, { type: 'thinking', thinking }]);
+      for (const [idx, block] of toolUseMap)  blockEntries.push([idx, block]);
+      blockEntries.sort((a, b) => a[0] - b[0]);
+      const blocks: AssistantBlock[] = blockEntries.map(([, block]) => block);
+
+      return { blocks, stopReason, usage: { inputTokens, outputTokens } };
     });
   }
 

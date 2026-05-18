@@ -36,18 +36,17 @@ CREATE INDEX IF NOT EXISTS idx_turns_session ON turns(session_id, started_at);
 CREATE INDEX IF NOT EXISTS idx_turns_status ON turns(status);
 
 CREATE TABLE IF NOT EXISTS messages (
-  id              TEXT PRIMARY KEY,
-  session_id      TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
-  turn_id         TEXT REFERENCES turns(id) ON DELETE SET NULL,
-  role            TEXT NOT NULL CHECK(role IN ('system','user','assistant','tool')),
-  kind            TEXT NOT NULL DEFAULT 'normal'
-                  CHECK(kind IN ('normal','context','compact_boundary','summary')),
-  content         TEXT NOT NULL,
-  tool_calls_json TEXT,
-  tool_call_id    TEXT,
-  interrupted     INTEGER NOT NULL DEFAULT 0,
-  created_at      INTEGER NOT NULL,
-  meta_json       TEXT NOT NULL DEFAULT '{}'
+  id          TEXT PRIMARY KEY,
+  session_id  TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  turn_id     TEXT REFERENCES turns(id) ON DELETE SET NULL,
+  role        TEXT NOT NULL CHECK(role IN ('system','user','assistant')),
+  kind        TEXT NOT NULL DEFAULT 'normal'
+              CHECK(kind IN ('normal','context','tool_results','compact_boundary','summary','persona_reminder')),
+  -- JSON-encoded MessageBlocks: string for plain text, AssistantBlock[] or UserBlock[] for structured content.
+  blocks_json TEXT NOT NULL,
+  interrupted INTEGER NOT NULL DEFAULT 0,
+  created_at  INTEGER NOT NULL,
+  meta_json   TEXT NOT NULL DEFAULT '{}'
 );
 CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_messages_turn ON messages(turn_id);

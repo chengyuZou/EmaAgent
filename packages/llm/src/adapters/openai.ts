@@ -6,10 +6,12 @@ import type {
   LlmMessage,
   LlmContentPart,
   LlmToolDef,
-  LlmToolCall,
   StopReason,
   ProviderConfig,
+  AssistantBlock,
+  UserBlock,
 } from '../types.js';
+import type { ToolResultBlock } from '@ema-agent/contracts';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -22,62 +24,102 @@ function mapStopReason(reason: string | null | undefined): StopReason {
   }
 }
 
+/**
+ * Convert normalized LlmMessage[] to OpenAI's ChatCompletion wire format.
+ *
+ * OpenAI still uses a flat protocol:
+ * - assistant: { content: string | null, tool_calls: [...] }
+ * - tool results: separate `role: 'tool'` messages (one per call)
+ *
+ * We unpack our block arrays back to the flat form here.
+ */
 function toOpenAiMessages(messages: LlmMessage[]): OpenAI.ChatCompletionMessageParam[] {
-  return messages.map((msg): OpenAI.ChatCompletionMessageParam => {
+  const out: OpenAI.ChatCompletionMessageParam[] = [];
+
+  for (const msg of messages) {
     if (msg.role === 'system') {
-      return { role: 'system', content: msg.content };
+      out.push({ role: 'system', content: msg.content });
+      continue;
     }
+
     if (msg.role === 'user') {
       if (typeof msg.content === 'string') {
-        return { role: 'user', content: msg.content };
+        out.push({ role: 'user', content: msg.content });
+        continue;
       }
-      // Multimodal: map LlmContentPart[] → OpenAI.ChatCompletionContentPart[]
-      //
-      // Unsupported types (audio_data on older models, file_data, file_url) are
-      // silently skipped here. Call validateContentParts() before startTurn() to
-      // surface incompatibilities to the user before the request is made.
-      const content: OpenAI.ChatCompletionContentPart[] = [];
-      for (const part of msg.content) {
-        if (part.type === 'text') {
-          content.push({ type: 'text', text: part.text });
+
+      // UserBlock[] — split into multimodal user message + individual tool messages.
+      // ToolResultBlock entries become separate `role: 'tool'` messages (OpenAI protocol).
+      // Non-tool blocks become one `role: 'user'` multimodal message.
+      const mediaParts: OpenAI.ChatCompletionContentPart[] = [];
+
+      for (const block of msg.content as UserBlock[]) {
+        if (block.type === 'tool_result') {
+          const tb = block as ToolResultBlock;
+          // Tool result content: OpenAI only accepts strings here
+          const content = typeof tb.content === 'string'
+            ? tb.content
+            : tb.content.map(p => (p.type === 'text' ? p.text : '[non-text content]')).join('\n');
+          out.push({ role: 'tool', tool_call_id: tb.toolUseId, content });
           continue;
         }
-        if (part.type === 'image_url') {
-          // SDK: { type: 'image_url', image_url: { url } }  — note the nested object
-          content.push({ type: 'image_url', image_url: { url: part.url } });
-          continue;
-        }
-        if (part.type === 'image_data') {
-          // OpenAI accepts base64 images as data URLs inside the image_url field
-          content.push({ type: 'image_url', image_url: { url: `data:${part.mimeType};base64,${part.data}` } });
-          continue;
-        }
-        if (part.type === 'audio_data') {
-          // Only wav and mp3 are accepted; other formats are silently skipped
-          const fmt = part.mimeType === 'audio/wav' ? 'wav'
-                    : part.mimeType === 'audio/mpeg' || part.mimeType === 'audio/mp3' ? 'mp3'
-                    : null;
-          if (fmt) {
-            content.push({ type: 'input_audio', input_audio: { data: part.data, format: fmt } } as OpenAI.ChatCompletionContentPart);
+
+        // Media part — map to OpenAI content part
+        const part = block as LlmContentPart;
+        switch (part.type) {
+          case 'text':
+            mediaParts.push({ type: 'text', text: part.text });
+            break;
+          case 'image_url':
+            mediaParts.push({ type: 'image_url', image_url: { url: part.url } });
+            break;
+          case 'image_data':
+            mediaParts.push({ type: 'image_url', image_url: { url: `data:${part.mimeType};base64,${part.data}` } });
+            break;
+          case 'audio_data': {
+            const fmt = part.mimeType === 'audio/wav'  ? 'wav'
+                      : part.mimeType === 'audio/mpeg' || part.mimeType === 'audio/mp3' ? 'mp3'
+                      : null;
+            if (fmt) {
+              mediaParts.push({ type: 'input_audio', input_audio: { data: part.data, format: fmt } } as OpenAI.ChatCompletionContentPart);
+            }
+            break;
           }
-          continue;
+          // file_data / file_url — OpenAI requires the Files API; skip silently
         }
-        // file_data / file_url — OpenAI requires the Files API; skip silently
       }
-      return { role: 'user', content };
+
+      if (mediaParts.length > 0) {
+        out.push({ role: 'user', content: mediaParts });
+      }
+      continue;
     }
-    if (msg.role === 'tool') {
-      return { role: 'tool', tool_call_id: msg.toolCallId, content: msg.content };
+
+    // assistant — unpack blocks to flat OpenAI shape
+    let textContent = '';
+    const toolCalls: OpenAI.ChatCompletionMessageToolCall[] = [];
+
+    for (const block of msg.content as AssistantBlock[]) {
+      if (block.type === 'text') {
+        textContent += block.text;
+      } else if (block.type === 'tool_use') {
+        toolCalls.push({
+          id:       block.id,
+          type:     'function',
+          function: { name: block.name, arguments: JSON.stringify(block.args) },
+        });
+      }
+      // thinking blocks have no OpenAI equivalent; skip silently
     }
-    // assistant
-    const toolCalls: OpenAI.ChatCompletionMessageToolCall[] | undefined =
-      msg.toolCalls?.map((tc: LlmToolCall) => ({
-        id:       tc.id,
-        type:     'function' as const,
-        function: { name: tc.name, arguments: JSON.stringify(tc.args) },
-      }));
-    return { role: 'assistant', content: msg.content ?? null, tool_calls: toolCalls };
-  });
+
+    out.push({
+      role:       'assistant',
+      content:    textContent || null,
+      tool_calls: toolCalls.length ? toolCalls : undefined,
+    });
+  }
+
+  return out;
 }
 
 function toOpenAiTool(tool: LlmToolDef): OpenAI.ChatCompletionTool {
@@ -126,59 +168,95 @@ export class OpenAiAdapter implements LlmAdapter {
         max_tokens:     request.maxTokens,
         temperature:    request.temperature,
         stream:         true,
-        // Append usage as the very last SSE chunk instead of inside the stream body.
         stream_options: { include_usage: true },
       },
       { signal: request.signal },
     );
 
-    // Tool call args arrive in pieces across many chunks, keyed by index.
+    // Tool call buffers keyed by OpenAI's delta index (not the same as blockIndex).
+    // blockIndex for tool calls = TEXT_BLOCK_COUNT + tool_delta_index, approximated as:
+    // we use a synthetic blockIndex = 1000 + tc.index so text (index 0) always sorts before tools.
     const toolBufs = new Map<number, { id: string; name: string; argsJson: string }>();
     let stopReason: StopReason = 'end_turn';
+    let lastToolIndex = -1;
 
     for await (const chunk of completion) {
       const choice = chunk.choices[0];
       const delta  = choice?.delta;
 
-      // ── Text delta ──────────────────────────────────────────────────────────
-      if (delta?.content) {
-        yield { type: 'text_delta', delta: delta.content };
+      // DeepSeek-reasoner (and compatible models) expose chain-of-thought in
+      // `reasoning_content` — a non-standard field not in the OpenAI SDK types.
+      // blockIndex 0 = thinking, blockIndex 1 = final text, so they sort correctly.
+      const deltaAny = delta as Record<string, unknown> | undefined;
+      if (typeof deltaAny?.reasoning_content === 'string' && deltaAny.reasoning_content) {
+        yield { type: 'thinking_delta', blockIndex: 0, delta: deltaAny.reasoning_content };
       }
 
-      // ── Tool call args streaming ─────────────────────────────────────────
+      if (delta?.content) {
+        // Text lives at blockIndex 1 so it always sorts after any thinking (blockIndex 0).
+        yield { type: 'text_delta', blockIndex: 1, delta: delta.content };
+      }
+
       if (delta?.tool_calls) {
         for (const tc of delta.tool_calls) {
           const idx = tc.index;
+
+          // Index jump: OpenAI moved to a new tool. The previous tool at (idx-1) is complete.
+          // Emit tool_use_complete early so the engine can stream-execute it.
+          if (idx > lastToolIndex && lastToolIndex >= 0) {
+            const prevBuf = toolBufs.get(lastToolIndex);
+            if (prevBuf) {
+              let args: unknown = {};
+              try { args = JSON.parse(prevBuf.argsJson); } catch { /* keep {} */ }
+              yield {
+                type:       'tool_use_complete',
+                blockIndex: 1000 + lastToolIndex,
+                callId:     prevBuf.id,
+                name:       prevBuf.name,
+                args,
+              };
+              toolBufs.delete(lastToolIndex);
+            }
+          }
+          lastToolIndex = Math.max(lastToolIndex, idx);
+
           if (!toolBufs.has(idx)) {
             toolBufs.set(idx, { id: '', name: '', argsJson: '' });
           }
           const buf = toolBufs.get(idx)!;
-          if (tc.id)                buf.id       = tc.id;
-          if (tc.function?.name)    buf.name      = tc.function.name;
+          if (tc.id)                  buf.id       = tc.id;
+          if (tc.function?.name)      buf.name      = tc.function.name;
           if (tc.function?.arguments) {
             buf.argsJson += tc.function.arguments;
             yield {
-              type:      'tool_use_delta',
-              callId:    buf.id,
-              name:      buf.name,
-              argsDelta: tc.function.arguments,
+              type:       'tool_use_delta',
+              blockIndex: 1000 + idx,
+              callId:     buf.id,
+              name:       buf.name,
+              argsDelta:  tc.function.arguments,
             };
           }
         }
       }
 
-      // ── finish_reason — emit completed tool calls ────────────────────────
+      // finish_reason — flush any remaining tool buffers
       if (choice?.finish_reason) {
         stopReason = mapStopReason(choice.finish_reason);
-        for (const buf of toolBufs.values()) {
+        for (const [idx, buf] of toolBufs) {
           let args: unknown = {};
-          try { args = JSON.parse(buf.argsJson); } catch { /* keep {} on malformed */ }
-          yield { type: 'tool_use_complete', callId: buf.id, name: buf.name, args };
+          try { args = JSON.parse(buf.argsJson); } catch { /* keep {} */ }
+          yield {
+            type:       'tool_use_complete',
+            blockIndex: 1000 + idx,
+            callId:     buf.id,
+            name:       buf.name,
+            args,
+          };
         }
         toolBufs.clear();
+        lastToolIndex = -1;
       }
 
-      // ── Usage (final chunk when include_usage: true) ─────────────────────
       if (chunk.usage) {
         yield {
           type:         'usage',

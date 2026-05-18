@@ -7,7 +7,9 @@ import type {
   LlmToolDef,
   StopReason,
   ProviderConfig,
+  AssistantBlock,
 } from '../types.js';
+import type { UserBlock, ToolResultBlock, MessageContentPart } from '@ema-agent/contracts';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -26,18 +28,60 @@ interface NormalizedMessages {
 }
 
 /**
- * Anthropic differences from our normalized format:
+ * Map a MessageContentPart (media) to an Anthropic content block param.
+ * Returns undefined for unsupported types (audio_data — Anthropic has no audio input).
+ */
+function mediaPartToAnthropicBlock(
+  part: MessageContentPart,
+): Anthropic.ContentBlockParam | undefined {
+  switch (part.type) {
+    case 'text':
+      return { type: 'text', text: part.text };
+    case 'image_url':
+      return { type: 'image', source: { type: 'url', url: part.url } satisfies Anthropic.URLImageSource };
+    case 'image_data':
+      return {
+        type:   'image',
+        source: {
+          type:       'base64',
+          media_type: part.mimeType as Anthropic.Base64ImageSource['media_type'],
+          data:       part.data,
+        },
+      };
+    case 'file_data':
+      return {
+        type:   'document',
+        source: {
+          type:       'base64',
+          media_type: part.mimeType as 'application/pdf' | 'text/plain',
+          data:       part.data,
+        },
+      } as Anthropic.ContentBlockParam;
+    case 'file_url':
+      return {
+        type:   'document',
+        source: { type: 'url', url: part.url },
+      } as Anthropic.ContentBlockParam;
+    case 'audio_data':
+      // Anthropic does not support audio input; callers should use validateContentParts() first.
+      return undefined;
+  }
+}
+
+/**
+ * Convert our normalized LlmMessage[] to Anthropic's wire format.
+ *
+ * Key differences from the old flat format:
  * 1. `system` is a top-level field, not a message.
- * 2. assistant messages are content arrays (text + tool_use blocks).
- * 3. tool results must be grouped into one user turn per assistant turn.
+ * 2. assistant content is an ordered block array — text + thinking + tool_use interleaved.
+ * 3. tool results are already inside `role: 'user'` messages as ToolResultBlock[].
+ *    No grouping loop needed — the normalized format already matches Anthropic's requirements.
  */
 function toAnthropicMessages(msgs: LlmMessage[]): NormalizedMessages {
   let system: string | undefined;
   const messages: Anthropic.MessageParam[] = [];
 
-  for (let i = 0; i < msgs.length; i++) {
-    const msg = msgs[i]!;
-
+  for (const msg of msgs) {
     if (msg.role === 'system') {
       system = msg.content;
       continue;
@@ -46,94 +90,63 @@ function toAnthropicMessages(msgs: LlmMessage[]): NormalizedMessages {
     if (msg.role === 'user') {
       if (typeof msg.content === 'string') {
         messages.push({ role: 'user', content: msg.content });
-      } else {
-        // Multimodal: map LlmContentPart[] → Anthropic content block array
-        // SDK types:
-        //   ImageBlockParam = { type: 'image', source: Base64ImageSource | URLImageSource }
-        //   Base64ImageSource = { type: 'base64', media_type: '...', data: string }
-        //   URLImageSource    = { type: 'url', url: string }
-        //
-        // Unsupported types (audio_data) are silently skipped.
-        // Call validateContentParts() before startTurn() to surface these to the user.
-        const content: Anthropic.ContentBlockParam[] = [];
-        for (const part of msg.content) {
-          if (part.type === 'text') {
-            content.push({ type: 'text', text: part.text });
-            continue;
-          }
-          if (part.type === 'image_url') {
-            content.push({
-              type:   'image',
-              source: { type: 'url', url: part.url } satisfies Anthropic.URLImageSource,
-            } satisfies Anthropic.ImageBlockParam);
-            continue;
-          }
-          if (part.type === 'image_data') {
-            content.push({
-              type:   'image',
-              source: {
-                type:       'base64',
-                media_type: part.mimeType as Anthropic.Base64ImageSource['media_type'],
-                data:       part.data,
-              },
-            } satisfies Anthropic.ImageBlockParam);
-            continue;
-          }
-          if (part.type === 'file_data') {
-            // Anthropic document block — supports PDF and plain text
-            content.push({
-              type:   'document',
-              source: {
-                type:       'base64',
-                media_type: part.mimeType as 'application/pdf' | 'text/plain',
-                data:       part.data,
-              },
-            } as Anthropic.ContentBlockParam);
-            continue;
-          }
-          if (part.type === 'file_url') {
-            content.push({
-              type:   'document',
-              source: { type: 'url', url: part.url },
-            } as Anthropic.ContentBlockParam);
-            continue;
-          }
-          // audio_data — Anthropic does not support audio input; skip silently
-        }
-        messages.push({ role: 'user', content });
+        continue;
       }
+
+      // UserBlock[] — may contain media parts and/or ToolResultBlock entries
+      const content: Anthropic.ContentBlockParam[] = [];
+      for (const block of msg.content as UserBlock[]) {
+        if (block.type === 'tool_result') {
+          const tb = block as ToolResultBlock;
+          // Anthropic's ToolResultBlockParam.content only accepts string or
+          // (TextBlockParam | ImageBlockParam)[] — cast after filtering.
+          const resultContent: Anthropic.ToolResultBlockParam['content'] =
+            typeof tb.content === 'string'
+              ? tb.content
+              : (tb.content as MessageContentPart[])
+                  .map(mediaPartToAnthropicBlock)
+                  .filter((b): b is Anthropic.ContentBlockParam => b !== undefined) as
+                  (Anthropic.TextBlockParam | Anthropic.ImageBlockParam)[];
+          content.push({
+            type:        'tool_result',
+            tool_use_id: tb.toolUseId,
+            content:     resultContent,
+            is_error:    tb.isError,
+          });
+        } else {
+          const mapped = mediaPartToAnthropicBlock(block as MessageContentPart);
+          if (mapped) content.push(mapped);
+        }
+      }
+      messages.push({ role: 'user', content });
       continue;
     }
 
-    if (msg.role === 'assistant') {
-      const content: Anthropic.ContentBlockParam[] = [];
-      if (msg.content) {
-        content.push({ type: 'text', text: msg.content });
-      }
-      for (const tc of msg.toolCalls ?? []) {
+    // assistant — blocks preserve text/thinking/tool_use interleaving
+    const content: Anthropic.ContentBlockParam[] = [];
+    for (const block of msg.content as AssistantBlock[]) {
+      if (block.type === 'text') {
+        content.push({ type: 'text', text: block.text });
+      } else if (block.type === 'thinking') {
+        // Round-trip requires the original signature Anthropic issued.
+        // If missing (e.g. injected by us), omit — Anthropic will re-generate thinking.
+        if (block.signature) {
+          content.push({
+            type:      'thinking',
+            thinking:  block.thinking,
+            signature: block.signature,
+          } as Anthropic.ContentBlockParam);
+        }
+      } else if (block.type === 'tool_use') {
         content.push({
           type:  'tool_use',
-          id:    tc.id,
-          name:  tc.name,
-          input: tc.args as Record<string, unknown>,
+          id:    block.id,
+          name:  block.name,
+          input: block.args as Record<string, unknown>,
         });
       }
-      messages.push({ role: 'assistant', content });
-      continue;
     }
-
-    if (msg.role === 'tool') {
-      // Consecutive tool messages → one user turn with multiple tool_result blocks.
-      // Anthropic requires all results from the same assistant turn to be batched.
-      const results: Anthropic.ToolResultBlockParam[] = [];
-      while (i < msgs.length && msgs[i]!.role === 'tool') {
-        const toolMsg = msgs[i] as Extract<LlmMessage, { role: 'tool' }>;
-        results.push({ type: 'tool_result', tool_use_id: toolMsg.toolCallId, content: toolMsg.content });
-        i++;
-      }
-      i--; // outer for-loop will increment
-      messages.push({ role: 'user', content: results });
-    }
+    messages.push({ role: 'assistant', content });
   }
 
   return { system, messages };
@@ -168,11 +181,9 @@ export class AnthropicAdapter implements LlmAdapter {
 
   async *stream(request: LlmRequest, modelName: string): AsyncIterable<LlmStreamChunk> {
     const { system, messages } = toAnthropicMessages(request.messages);
-    // toolChoice 'none' → strip tools entirely (Anthropic has no 'none' mode)
     const tools      = request.toolChoice === 'none' ? undefined : request.tools?.map(toAnthropicTool);
     const toolChoice = tools?.length ? toAnthropicToolChoice(request.toolChoice) : undefined;
 
-    // The second argument to .stream() is RequestOptions — this is where signal goes.
     const anthropicStream = this.client.messages.stream(
       {
         model:        modelName,
@@ -186,8 +197,11 @@ export class AnthropicAdapter implements LlmAdapter {
       { signal: request.signal },
     );
 
-    // Track in-progress tool-use blocks by content block index.
+    // Track in-progress blocks keyed by Anthropic content_block index.
     const toolBlocks = new Map<number, { id: string; name: string; argsJson: string }>();
+    // Track whether index is a thinking block (vs. tool_use) so we can emit the right chunk type.
+    const thinkingIndices = new Set<number>();
+
     let inputTokens  = 0;
     let outputTokens = 0;
     let stopReason: StopReason = 'end_turn';
@@ -201,22 +215,27 @@ export class AnthropicAdapter implements LlmAdapter {
         case 'content_block_start':
           if (event.content_block.type === 'tool_use') {
             toolBlocks.set(event.index, {
-              id:      event.content_block.id,
-              name:    event.content_block.name,
+              id:       event.content_block.id,
+              name:     event.content_block.name,
               argsJson: '',
             });
+          } else if (event.content_block.type === 'thinking') {
+            thinkingIndices.add(event.index);
           }
           break;
 
         case 'content_block_delta':
           if (event.delta.type === 'text_delta') {
-            yield { type: 'text_delta', delta: event.delta.text };
+            yield { type: 'text_delta', blockIndex: event.index, delta: event.delta.text };
+          } else if (event.delta.type === 'thinking_delta') {
+            yield { type: 'thinking_delta', blockIndex: event.index, delta: event.delta.thinking };
           } else if (event.delta.type === 'input_json_delta') {
             const block = toolBlocks.get(event.index);
             if (block) {
               block.argsJson += event.delta.partial_json;
               yield {
                 type:      'tool_use_delta',
+                blockIndex: event.index,
                 callId:    block.id,
                 name:      block.name,
                 argsDelta: event.delta.partial_json,
@@ -230,9 +249,16 @@ export class AnthropicAdapter implements LlmAdapter {
           if (block) {
             let args: unknown = {};
             try { args = JSON.parse(block.argsJson); } catch { /* keep {} */ }
-            yield { type: 'tool_use_complete', callId: block.id, name: block.name, args };
+            yield {
+              type:       'tool_use_complete',
+              blockIndex: event.index,
+              callId:     block.id,
+              name:       block.name,
+              args,
+            };
             toolBlocks.delete(event.index);
           }
+          thinkingIndices.delete(event.index);
           break;
         }
 
@@ -241,7 +267,6 @@ export class AnthropicAdapter implements LlmAdapter {
           stopReason   = mapStopReason(event.delta.stop_reason);
           break;
 
-        // 'ping', 'message_stop' — nothing to do
         default:
           break;
       }

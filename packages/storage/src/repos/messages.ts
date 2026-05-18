@@ -1,32 +1,30 @@
-﻿import type { SqliteDb } from '../database.js';
+import type { SqliteDb } from '../database.js';
 import type { MessageId, SessionId, TurnId, MessageRole, MessageKind } from '@ema-agent/contracts';
 
 export interface MessageRow {
-  id: string;
-  session_id: string;
-  turn_id: string | null;
-  role: MessageRole;
-  kind: MessageKind;
-  content: string;
-  tool_calls_json: string | null;
-  tool_call_id: string | null;
+  id:          string;
+  session_id:  string;
+  turn_id:     string | null;
+  role:        MessageRole;
+  kind:        MessageKind;
+  /** JSON-encoded MessageBlocks — string literal, AssistantBlock[], or UserBlock[]. */
+  blocks_json: string;
   interrupted: number;
-  created_at: number;
-  meta_json: string;
+  created_at:  number;
+  meta_json:   string;
 }
 
 export interface MessageInsert {
-  id: MessageId;
-  sessionId: SessionId;
-  turnId?: TurnId;
-  role: MessageRole;
-  kind?: MessageKind;
-  content: string;
-  toolCallsJson?: string;
-  toolCallId?: string;
+  id:         MessageId;
+  sessionId:  SessionId;
+  turnId?:    TurnId;
+  role:       MessageRole;
+  kind?:      MessageKind;
+  /** Pre-serialized JSON string (call JSON.stringify(blocks) before passing). */
+  blocksJson: string;
   interrupted?: boolean;
-  createdAt: number;
-  metaJson?: string;
+  createdAt:  number;
+  metaJson?:  string;
 }
 
 export class MessagesRepo {
@@ -36,9 +34,8 @@ export class MessagesRepo {
     this.db
       .prepare(
         `INSERT INTO messages
-           (id, session_id, turn_id, role, kind, content, tool_calls_json, tool_call_id,
-            interrupted, created_at, meta_json)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           (id, session_id, turn_id, role, kind, blocks_json, interrupted, created_at, meta_json)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         m.id,
@@ -46,9 +43,7 @@ export class MessagesRepo {
         m.turnId ?? null,
         m.role,
         m.kind ?? 'normal',
-        m.content,
-        m.toolCallsJson ?? null,
-        m.toolCallId ?? null,
+        m.blocksJson,
         m.interrupted ? 1 : 0,
         m.createdAt,
         m.metaJson ?? '{}',

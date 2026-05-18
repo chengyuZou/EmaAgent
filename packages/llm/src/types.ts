@@ -1,122 +1,107 @@
-import type { MessageContentPart, LlmProtocol } from '@ema-agent/contracts';
+import type {
+  MessageContentPart,
+  AssistantBlock,
+  UserBlock,
+  LlmProtocol,
+} from '@ema-agent/contracts';
 
 // Re-export so callers only need one import
-export type { LlmProtocol } from '@ema-agent/contracts';
+export type { LlmProtocol }     from '@ema-agent/contracts';
+export type { AssistantBlock, UserBlock, MessageContentPart as LlmContentPart } from '@ema-agent/contracts';
 
 // ── Provider config ───────────────────────────────────────────────────────────
 
-/**
- * Configuration for one LLM provider instance.
- * Keyed by `id` in the router — multiple instances can share the same `provider`
- * (e.g. DeepSeek + SiliconFlow are both 'openai-llm').
- */
 export interface ProviderConfig {
-  /** Stable identifier — maps to provider_configs.id in the DB. */
   id: string;
-  /** Wire-format protocol — determines which adapter class is used. */
   provider: LlmProtocol;
-  /** API key — plain text for V1; replaced by Stronghold in V2. */
   apiKey: string;
-  /** Base URL override — required for openai-compat (Ollama, LM Studio, DeepSeek, …). */
   baseUrl?: string;
   defaultModel?: string;
 }
 
-// ── Request types ─────────────────────────────────────────────────────────────
+// ── Tool definitions ──────────────────────────────────────────────────────────
 
 export interface LlmToolDef {
   name: string;
   description: string;
-  /** JSON Schema describing the tool's parameters. */
   parameters: Record<string, unknown>;
 }
 
-export interface LlmToolCall {
-  id: string;
-  name: string;
-  args: unknown;
-}
-
-// Re-exported from contracts so both `session` and `llm` share the same type
-// without creating a circular dependency.
-export type { MessageContentPart as LlmContentPart } from '@ema-agent/contracts';
-
-// Local alias used within this file only
-type LlmContentPart = MessageContentPart;
+// ── Normalized message format ─────────────────────────────────────────────────
 
 /**
- * Normalized message format — adapters translate to/from provider-specific wire formats.
+ * Internal wire-format for LLM conversations.
  *
- * Design notes:
- * - 'system' role: OpenAI passes as a message; Anthropic takes it as a separate field.
- *   Adapters handle the extraction.
- * - 'tool' role: consecutive tool messages are grouped into one provider turn where
- *   the API requires it (Anthropic, Gemini).
+ * Uses Anthropic's content-block model as the canonical shape:
+ * - system:    plain string (adapters extract it to a top-level field when needed)
+ * - user:      plain string OR UserBlock[] (multimodal input + tool results)
+ * - assistant: AssistantBlock[] — preserves text/thinking/tool_use interleaving order
+ *
+ * Adapters translate FROM this format to provider wire protocol.
+ * There is no `role: 'tool'` — tool results live as ToolResultBlock inside
+ * a `role: 'user'` message so the history exactly mirrors what Anthropic expects.
  */
 export type LlmMessage =
   | { role: 'system';    content: string }
-  | { role: 'user';      content: string | LlmContentPart[] }
-  | { role: 'assistant'; content: string | null; toolCalls?: LlmToolCall[] }
-  | { role: 'tool';      toolCallId: string; content: string };
+  | { role: 'user';      content: string | UserBlock[] }
+  | { role: 'assistant'; content: AssistantBlock[] };
 
 export interface LlmRequest {
-  /** Which provider instance to use — must match a registered ProviderConfig.id. */
   providerId: string;
-  /** Model name as the provider expects it, e.g. "gpt-4o", "claude-opus-4-5". */
   model: string;
   messages: LlmMessage[];
   tools?: LlmToolDef[];
-  /** Override model tool-call behaviour for this request. */
   toolChoice?: 'auto' | 'none' | { name: string };
   maxTokens?: number;
   temperature?: number;
-  /** Wired through from the engine — fires when user clicks Stop. */
   signal?: AbortSignal;
 }
 
 // ── Stream output ─────────────────────────────────────────────────────────────
 
-/**
- * Why the LLM stopped generating.
- *
- * The engine uses this to decide what to do after the stream ends:
- * - end_turn      → normal text reply, write to DB and finish turn
- * - tool_use      → execute the tool calls, then continue the agent loop
- * - max_tokens    → ran out of budget, may need compaction before retry
- * - stop_sequence → a custom stop token was hit (rare in V1)
- */
 export type StopReason = 'end_turn' | 'tool_use' | 'max_tokens' | 'stop_sequence';
 
 /**
- * Unified stream chunk — every provider adapter emits this same shape.
+ * Unified stream chunk emitted by every adapter.
  *
- * Sequence guarantees:
- *   text_delta*  →  (tool_use_delta* → tool_use_complete)*  →  usage  →  done
+ * `blockIndex` appears on all content-bearing chunks and reflects the position
+ * of the block within the assistant's content array. The engine uses it to:
+ *   1. Reconstruct the correct interleaving order for storage.
+ *   2. Detect when an OpenAI index jump signals a completed tool call.
  *
- * The engine only needs to switch on `type`; it never sees raw provider SSE.
+ * Sequence per stream:
+ *   (text_delta | thinking_delta | tool_use_delta | tool_use_complete)*
+ *   → usage → done
+ *
+ * A single stream may interleave text and tool blocks at different indices,
+ * matching exactly how Claude delivers them.
  */
 export type LlmStreamChunk =
-  | { type: 'text_delta';        delta: string }
-  | { type: 'tool_use_delta';    callId: string; name: string; argsDelta: string }
-  | { type: 'tool_use_complete'; callId: string; name: string; args: unknown }
+  | { type: 'text_delta';        blockIndex: number; delta: string }
+  | { type: 'thinking_delta';    blockIndex: number; delta: string }
+  | { type: 'tool_use_delta';    blockIndex: number; callId: string; name: string; argsDelta: string }
+  | { type: 'tool_use_complete'; blockIndex: number; callId: string; name: string; args: unknown }
   | { type: 'usage';             inputTokens: number; outputTokens: number }
   | { type: 'done';              stopReason: StopReason };
 
 // ── Non-streaming output ──────────────────────────────────────────────────────
 
-/** Collected result of a complete() call — all chunks folded into one object. */
+/**
+ * Collected result of a complete() call.
+ * `blocks` is the full AssistantBlock[] in original order — text, thinking, and
+ * tool_use blocks interleaved exactly as the model produced them.
+ */
 export interface LlmCompletion {
-  text:      string | null;
-  toolCalls: LlmToolCall[];
+  blocks: AssistantBlock[];
   stopReason: StopReason;
   usage: { inputTokens: number; outputTokens: number };
 }
 
 // ── Probe result ──────────────────────────────────────────────────────────────
 
-/** Result of LlmRouter.probe() — used by the settings page to verify a key/endpoint. */
 export interface ProbeResult {
-  ok:          boolean;
-  latencyMs?:  number;
-  error?:      string;
+  ok:         boolean;
+  latencyMs?: number;
+  error?:     string;
 }
+

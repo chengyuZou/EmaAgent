@@ -8,7 +8,10 @@ import type {
   LlmToolDef,
   StopReason,
   ProviderConfig,
+  AssistantBlock,
+  UserBlock,
 } from '../types.js';
+import type { ToolResultBlock, MessageContentPart } from '@ema-agent/contracts';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -24,28 +27,39 @@ function mapStopReason(reason: string | undefined): StopReason {
  * Gemini differences from our normalized format:
  * 1. `system` goes to `systemInstruction`, not `contents`.
  * 2. assistant role is 'model', not 'assistant'.
- * 3. Tool call IDs don't exist — Gemini uses the function name as the identifier.
- *    We build a reverse map (callId → name) from prior assistant messages so that
- *    `role: 'tool'` entries can emit `functionResponse` with the correct name.
- * 4. Function calls are delivered complete, not streamed — no tool_use_delta.
+ * 3. Tool results are `functionResponse` parts inside a user turn.
+ * 4. Function calls are delivered complete (not streamed) — we emit synthetic
+ *    tool_use_complete events with index-based callIds.
+ *
+ * callId fix: Gemini has no call IDs. We synthesize them as `gemini-call-{index}`
+ * within each assistant turn. A lookup map built from the assistant messages lets
+ * us correlate ToolResultBlock.toolUseId back to the function name.
  */
 function toGeminiContents(msgs: LlmMessage[]): { system: string | undefined; contents: Content[] } {
   let system: string | undefined;
   const contents: Content[] = [];
 
   // Pre-build callId → name lookup from all assistant messages.
+  // Synthetic IDs are "gemini-call-{turnIndex}-{blockIndex}".
+  // We need to match these up to function names when we see tool_result blocks.
   const callIdToName = new Map<string, string>();
+  let assistantTurnCount = 0;
   for (const msg of msgs) {
     if (msg.role === 'assistant') {
-      for (const tc of msg.toolCalls ?? []) {
-        callIdToName.set(tc.id, tc.name);
+      let toolBlockIdx = 0;
+      for (const block of msg.content as AssistantBlock[]) {
+        if (block.type === 'tool_use') {
+          // block.id was set by us during stream parsing (see stream() below)
+          callIdToName.set(block.id, block.name);
+          toolBlockIdx++;
+        }
       }
+      assistantTurnCount++;
     }
   }
+  void assistantTurnCount; // used implicitly via callIdToName
 
-  for (let i = 0; i < msgs.length; i++) {
-    const msg = msgs[i]!;
-
+  for (const msg of msgs) {
     if (msg.role === 'system') {
       system = msg.content;
       continue;
@@ -54,78 +68,70 @@ function toGeminiContents(msgs: LlmMessage[]): { system: string | undefined; con
     if (msg.role === 'user') {
       if (typeof msg.content === 'string') {
         contents.push({ role: 'user', parts: [{ text: msg.content }] });
-      } else {
-        // Multimodal: map LlmContentPart[] → Gemini Part[]
-        // SDK types:
-        //   InlineDataPart = { inlineData: { mimeType, data } }   ← base64, any format
-        //   FileDataPart   = { fileData:   { mimeType, fileUri } } ← GCS / Files API URI only
-        //
-        // ⚠️  image_url with plain https:// is passed as fileData; Gemini will error
-        //     at runtime. Callers should pre-download and use image_data instead,
-        //     or use validateContentParts() to warn the user first.
-        //
-        // Unsupported types are silently skipped (none for Gemini — it handles
-        // audio/video/PDF all via inlineData).
-        const parts: Part[] = [];
-        for (const part of msg.content) {
-          if (part.type === 'text') {
-            parts.push({ text: part.text });
-            continue;
+        continue;
+      }
+
+      // UserBlock[] — split into functionResponse parts + media parts
+      const parts: Part[] = [];
+      for (const block of msg.content as UserBlock[]) {
+        if (block.type === 'tool_result') {
+          const tb = block as ToolResultBlock;
+          const name = callIdToName.get(tb.toolUseId) ?? tb.toolUseId;
+          let response: Record<string, unknown>;
+          try {
+            response = typeof tb.content === 'string'
+              ? JSON.parse(tb.content) as Record<string, unknown>
+              : { content: tb.content };
+          } catch {
+            response = { content: tb.content };
           }
-          if (part.type === 'image_url') {
+          parts.push({ functionResponse: { name, response } });
+          continue;
+        }
+
+        const part = block as MessageContentPart;
+        switch (part.type) {
+          case 'text':
+            parts.push({ text: part.text });
+            break;
+          case 'image_url':
             // fileData requires GCS/Files API URI — pass through, let API surface the error
             parts.push({ fileData: { mimeType: 'image/jpeg', fileUri: part.url } });
-            continue;
-          }
-          if (part.type === 'image_data' || part.type === 'audio_data' || part.type === 'file_data') {
-            // All base64 content goes through inlineData — Gemini handles all mimeTypes
+            break;
+          case 'image_data':
+          case 'audio_data':
+          case 'file_data':
             parts.push({ inlineData: { mimeType: part.mimeType, data: part.data } });
-            continue;
-          }
-          if (part.type === 'file_url') {
+            break;
+          case 'file_url':
             parts.push({ fileData: { mimeType: part.mimeType, fileUri: part.url } });
-            continue;
-          }
+            break;
         }
+      }
+
+      if (parts.length > 0) {
         contents.push({ role: 'user', parts });
       }
       continue;
     }
 
-    if (msg.role === 'assistant') {
-      const parts: Part[] = [];
-      if (msg.content) parts.push({ text: msg.content });
-      for (const tc of msg.toolCalls ?? []) {
-        parts.push({ functionCall: { name: tc.name, args: tc.args as Record<string, unknown> } });
+    // assistant → model
+    const parts: Part[] = [];
+    for (const block of msg.content as AssistantBlock[]) {
+      if (block.type === 'text') {
+        parts.push({ text: block.text });
+      } else if (block.type === 'tool_use') {
+        parts.push({ functionCall: { name: block.name, args: block.args as Record<string, unknown> } });
       }
-      contents.push({ role: 'model', parts });
-      continue;
+      // thinking has no Gemini equivalent; skip
     }
-
-    if (msg.role === 'tool') {
-      // Group consecutive tool messages into one user turn (same as Anthropic).
-      const parts: Part[] = [];
-      while (i < msgs.length && msgs[i]!.role === 'tool') {
-        const toolMsg = msgs[i] as Extract<LlmMessage, { role: 'tool' }>;
-        const name    = callIdToName.get(toolMsg.toolCallId) ?? toolMsg.toolCallId;
-        let response: Record<string, unknown>;
-        try {
-          response = JSON.parse(toolMsg.content) as Record<string, unknown>;
-        } catch {
-          response = { content: toolMsg.content };
-        }
-        parts.push({ functionResponse: { name, response } });
-        i++;
-      }
-      i--; // outer for-loop will increment
-      contents.push({ role: 'user', parts });
-    }
+    contents.push({ role: 'model', parts });
   }
 
   return { system, contents };
 }
 
-// Gemini function-calling modes (string literals to avoid importing the enum at runtime)
+// Gemini function-calling modes
 type GeminiFcMode = 'AUTO' | 'ANY' | 'NONE';
 
 function toGeminiToolConfig(
@@ -143,9 +149,7 @@ function toGeminiTools(tools: LlmToolDef[]): Tool[] {
       functionDeclarations: tools.map(t => ({
         name:        t.name,
         description: t.description,
-        // JSON Schema and Gemini's FunctionDeclarationSchema are structurally compatible
-        // for the common subset we use (object + string/number/boolean properties).
-        parameters: t.parameters as Parameters<typeof Object>[0],
+        parameters:  t.parameters as Parameters<typeof Object>[0],
       })),
     },
   ];
@@ -170,8 +174,7 @@ export class GeminiAdapter implements LlmAdapter {
       model:             modelName,
       systemInstruction: system,
       tools,
-      // Cast needed: Gemini SDK's ToolConfig type mirrors this shape exactly
-      toolConfig:        toolConfig as Parameters<typeof this.genAI.getGenerativeModel>[0]['toolConfig'],
+      toolConfig: toolConfig as Parameters<typeof this.genAI.getGenerativeModel>[0]['toolConfig'],
       generationConfig: {
         maxOutputTokens: request.maxTokens,
         temperature:     request.temperature,
@@ -181,27 +184,33 @@ export class GeminiAdapter implements LlmAdapter {
     const result = await model.generateContentStream({ contents });
     let stopReason: StopReason = 'end_turn';
 
+    // Gemini delivers all function calls at once (no partial streaming).
+    // We assign a synthetic blockIndex per function call: text = 0, tools = 1000+n.
+    let toolBlockIdx = 0;
+
     for await (const chunk of result.stream) {
-      // Respect AbortSignal — Gemini SDK doesn't natively thread it through.
       if (request.signal?.aborted) break;
 
       const parts = chunk.candidates?.[0]?.content?.parts ?? [];
       for (const part of parts) {
-        // Part is a discriminated union — check presence of each field.
         if ('text' in part && typeof part.text === 'string' && part.text) {
-          yield { type: 'text_delta', delta: part.text };
+          yield { type: 'text_delta', blockIndex: 0, delta: part.text };
         }
-        // Gemini delivers function calls complete (not streamed), so we emit
-        // tool_use_complete directly — no tool_use_delta for this provider.
         if ('functionCall' in part && part.functionCall) {
           const { name, args } = part.functionCall;
-          yield { type: 'tool_use_complete', callId: name, name, args: args ?? {} };
+          // Synthesize a stable callId: Gemini has no IDs, so we use name+index.
+          // Two calls to the same tool get different indices → different callIds.
+          const callId = `gemini-call-${toolBlockIdx}`;
+          const blockIndex = 1000 + toolBlockIdx;
+          toolBlockIdx++;
+
+          // Emit synthetic start (no args delta — Gemini delivers complete)
+          yield { type: 'tool_use_complete', blockIndex, callId, name, args: args ?? {} };
           stopReason = 'tool_use';
         }
       }
     }
 
-    // Usage and final stop reason come from the resolved response object.
     const finalResponse = await result.response;
     const usage         = finalResponse.usageMetadata;
     if (usage) {

@@ -8,7 +8,9 @@ import type {
   TurnStatus,
   MessageRole,
   MessageKind,
-  MessageContentPart,
+  MessageBlocks,
+  AssistantBlock,
+  UserBlock,
 } from '@ema-agent/contracts';
 
 // ── Domain objects (camelCase, parsed) ───────────────────────────────────────
@@ -42,23 +44,19 @@ export interface Turn {
   meta: Record<string, unknown>;
 }
 
-/** Parsed tool_call entry stored inside a Message. */
-export interface ToolCall {
-  id: string;
-  name: string;
-  args: unknown;
-}
-
 export interface Message {
   id: MessageId;
   sessionId: SessionId;
   turnId: TurnId | null;
   role: MessageRole;
   kind: MessageKind;
-  /** Plain string for text-only messages; part array for multimodal (image) messages. */
-  content: string | MessageContentPart[];
-  toolCalls: ToolCall[] | null;
-  toolCallId: string | null;
+  /**
+   * Parsed content blocks:
+   * - system:    plain string
+   * - user:      plain string | UserBlock[]  (UserBlock[] when has media or tool_results)
+   * - assistant: AssistantBlock[]            (text / thinking / tool_use in original order)
+   */
+  blocks: MessageBlocks;
   interrupted: boolean;
   createdAt: number;
   meta: Record<string, unknown>;
@@ -91,9 +89,7 @@ export interface AppendMessageInput {
   sessionId: SessionId;
   role: MessageRole;
   kind?: MessageKind;
-  content: string | MessageContentPart[];
-  toolCalls?: ToolCall[];
-  toolCallId?: string;
+  blocks: MessageBlocks;
   interrupted?: boolean;
 }
 
@@ -107,3 +103,6 @@ export interface ListMessagesInput {
   before?: number;
   limit?: number;
 }
+
+// Re-export for consumers who build block arrays
+export type { MessageBlocks, AssistantBlock, UserBlock };
