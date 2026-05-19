@@ -1,8 +1,9 @@
-import { spawn }      from 'node:child_process';
+import { existsSync, rmSync } from 'node:fs';
+import { spawnProcess }        from '@ema-agent/tool';
 import type { PermissionEngine } from '@ema-agent/permission';
 import type { SandboxBackend, SandboxConfig, RunOptions, RunResult } from './types.js';
 import { detectBackend }           from './detect.js';
-import { buildSandboxConfig, scrubPlantedFiles } from './config-builder.js';
+import { buildSandboxConfig }      from './config-builder.js';
 import { AppLayerBackend }         from './backends/app-layer.js';
 import { BubblewrapBackend }       from './backends/bubblewrap.js';
 import { SandboxExecBackend }      from './backends/sandbox-exec.js';
@@ -12,7 +13,6 @@ import type { ConfigContext }      from './config-builder.js';
 
 const DEFAULT_TIMEOUT_MS = 120_000;
 const MAX_TIMEOUT_MS     = 600_000;
-const MAX_OUTPUT_CHARS   = 200_000;
 
 // ── CommandRunner ─────────────────────────────────────────────────────────────
 
@@ -66,7 +66,7 @@ export class CommandRunner {
     const timeoutMs = Math.min(opts.timeout ?? DEFAULT_TIMEOUT_MS, MAX_TIMEOUT_MS);
 
     const { executable, args } = this.backend.wrap(command, shell, this.config);
-    return spawnAndCapture(executable, args, cwd, timeoutMs, opts.signal);
+    return spawnProcess(executable, args, cwd, timeoutMs, opts.signal);
   }
 
   /**
@@ -75,7 +75,10 @@ export class CommandRunner {
    * tool might indirectly spawn a shell.
    */
   cleanup(): void {
-    scrubPlantedFiles(this.scrubPaths);
+    for (const p of this.scrubPaths) {
+      if (!existsSync(p)) continue;
+      try { rmSync(p, { recursive: true }); } catch { /* ENOENT or permission error — already cleaned */ }
+    }
   }
 
   /**
@@ -129,72 +132,3 @@ function getShell(): string {
   return process.platform === 'win32' ? 'bash' : '/bin/bash';
 }
 
-// ── Process spawner ───────────────────────────────────────────────────────────
-
-/**
- * Spawn `executable args` and collect stdout/stderr.
- * Mirrors tool-builtin/bash.ts runShell — kept separate so sandbox has no
- * dependency on tool-builtin.
- */
-function spawnAndCapture(
-  executable: string,
-  args:       string[],
-  cwd:        string,
-  timeoutMs:  number,
-  signal:     AbortSignal | undefined,
-): Promise<RunResult> {
-  return new Promise((resolve, reject) => {
-    const proc = spawn(executable, args, {
-      cwd,
-      stdio: ['ignore', 'pipe', 'pipe'],
-      env:   { ...process.env, TERM: 'dumb' },
-    });
-
-    let stdout   = '';
-    let stderr   = '';
-    let timedOut = false;
-
-    const timer = setTimeout(() => {
-      timedOut = true;
-      proc.kill('SIGTERM');
-      setTimeout(() => {
-        try { proc.kill('SIGKILL'); } catch { /* already gone */ }
-      }, 3_000);
-    }, timeoutMs);
-
-    const onAbort = () => {
-      clearTimeout(timer);
-      proc.kill('SIGTERM');
-    };
-    signal?.addEventListener('abort', onAbort, { once: true });
-
-    proc.stdout.on('data', (chunk: Buffer) => { stdout += chunk.toString(); });
-    proc.stderr.on('data', (chunk: Buffer) => { stderr += chunk.toString(); });
-
-    proc.on('error', (err) => {
-      clearTimeout(timer);
-      signal?.removeEventListener('abort', onAbort);
-      reject(err);
-    });
-
-    proc.on('close', (code) => {
-      clearTimeout(timer);
-      signal?.removeEventListener('abort', onAbort);
-
-      const truncated = (stdout + stderr).length > MAX_OUTPUT_CHARS;
-      if (truncated) {
-        const keep = MAX_OUTPUT_CHARS / 2;
-        stdout = stdout.slice(0, keep);
-        stderr = stderr.slice(0, keep);
-      }
-
-      resolve({
-        stdout:   stdout.trimEnd(),
-        stderr:   stderr.trimEnd(),
-        exitCode: code ?? -1,
-        timedOut,
-        truncated,
-      });
-    });
-  });
-}

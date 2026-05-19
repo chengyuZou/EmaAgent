@@ -63,14 +63,11 @@ function buildProfile(config: SandboxConfig): string {
     rules.push(`(deny file-write* (subpath "${p}"))`);
   }
 
-  // Network
-  // Always allow localhost and Unix sockets (needed by npm, git, etc.)
-  rules.push('(allow network-outbound (remote unix-socket))');
-  rules.push('(allow network-outbound (remote tcp "localhost:*"))');
-  rules.push('(allow network-outbound (remote tcp "127.0.0.1:*"))');
-
+  // Network — deny first, then carve out what's always needed.
+  // Writing deny BEFORE the specific allows makes the intent explicit and does not
+  // rely on SBPL's "most specific wins" priority being stable across macOS versions.
   if (config.network.allowedDomains.length === 0) {
-    // No allowed domains → full network isolation
+    // No permitted domains → full outbound isolation
     rules.push('(deny network-outbound)');
     rules.push('(deny network-inbound)');
   } else {
@@ -84,6 +81,13 @@ function buildProfile(config: SandboxConfig): string {
       rules.push(`(deny network-outbound (remote tcp "*.${domain}:*"))`);
     }
   }
+
+  // Always allow localhost and Unix domain sockets — required by npm, git, many tools.
+  // These come AFTER any global deny so they form explicit overrides regardless of
+  // whether SBPL evaluates by first-match or most-specific-match semantics.
+  rules.push('(allow network-outbound (remote unix-socket))');
+  rules.push('(allow network-outbound (remote tcp "localhost:*"))');
+  rules.push('(allow network-outbound (remote tcp "127.0.0.1:*"))');
 
   return rules.join('\n');
 }

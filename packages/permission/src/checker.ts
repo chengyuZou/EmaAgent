@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { checkPathSafety, getDangerousPathReason, getPathsForPermissionCheck } from './path-safety.js';
+import { checkPathSafety, getDangerousPathReason, getPathsForPermissionCheck, normalizeCaseForComparison } from './path-safety.js';
 import { findDenyRule, findAskRule, findAllowRule, upsertRule } from './rules.js';
 import { pathInAnyWorkingDir } from './workspace.js';
 import { checkEditableInternalPath, checkReadableInternalPath } from './internal-paths.js';
@@ -13,6 +13,7 @@ import type {
   PermissionUpdate,
   ToolPermissionMeta,
   DecisionReason,
+  RuleScope,
 } from './types.js';
 
 // ── Suggestion helpers ────────────────────────────────────────────────────────
@@ -269,6 +270,21 @@ export class PermissionEngine {
     this.rules = upsertRule(this.rules, rule);
   }
 
+  /**
+   * Remove a rule by its unique (tool, pathGlob, scope) key.
+   * Used when the user deletes a persisted rule from the settings UI.
+   * No-op if the rule does not exist.
+   */
+  removeRule(tool: string, pathGlob: string | undefined, scope: RuleScope): void {
+    this.rules = this.rules.filter(
+      r => !(
+        normalizeCaseForComparison(r.tool)     === normalizeCaseForComparison(tool) &&
+        r.pathGlob === pathGlob &&
+        r.scope    === scope
+      ),
+    );
+  }
+
   // ── Private helpers ───────────────────────────────────────────────────────
 
   private async promptUser(
@@ -350,15 +366,27 @@ export class PermissionEngine {
     // path is extracted correctly (empty object would always yield undefined).
     const extractedPath = meta.extractPath?.(input);
     let pathGlob: string | undefined;
+
     if (extractedPath) {
       const dir = path.dirname(path.resolve(extractedPath));
       const rel = path.relative(context.workspaceRoot, dir);
-      // Guard: skip glob if target is outside workspace root (rel starts with '..'
-      // or is absolute — e.g. different drive on Windows).
+
       if (rel && !rel.startsWith('..') && !path.isAbsolute(rel)) {
+        // Inside workspace — use workspace-relative /rel/** glob.
         pathGlob = `/${rel.replace(/\\/g, '/')}/**`;
+      } else if (!path.isAbsolute(rel)) {
+        // Outside workspace, same drive (rel starts with '..').
+        // Use // prefix to anchor to filesystem root — avoids a pathGlob:undefined
+        // rule which would silently allow the tool on ALL paths.
+        const posixDir = dir.replace(/\\/g, '/');
+        const withoutLeadingSlash = posixDir.startsWith('/') ? posixDir.slice(1) : posixDir;
+        pathGlob = `//${withoutLeadingSlash}/**`;
       }
+      // Windows cross-drive: path.relative returns the absolute target path.
+      // We cannot express a cross-drive scope in the current glob convention,
+      // so pathGlob remains undefined (broad allow). Acceptable edge-case for V1.
     }
+
     return { action, tool: toolName, pathGlob, scope };
   }
 }

@@ -83,6 +83,11 @@ export const powershellTool = buildTool<PowerShellInput, BashResult>({
     }
 
     const timeoutMs = Math.min(timeout ?? DEFAULT_TIMEOUT_MS, MAX_TIMEOUT_MS);
+
+    if (ctx.commandRunner) {
+      return ctx.commandRunner.run(command, { cwd: ctx.workspaceRoot, timeout: timeoutMs, signal: ctx.signal });
+    }
+
     return runShell(
       'powershell.exe',
       ['-NonInteractive', '-Command', command],

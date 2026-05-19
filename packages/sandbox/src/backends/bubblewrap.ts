@@ -43,28 +43,27 @@ export class BubblewrapBackend implements SandboxBackend {
 
 function buildBwrapArgs(config: SandboxConfig): string[] {
   const args: string[] = [
-    '--ro-bind', '/', '/',     // Entire FS read-only
-    '--dev', '/dev',           // Devices (needed by many tools)
-    '--proc', '/proc',         // /proc (needed by ps, etc.)
-    '--die-with-parent',       // Kill sandboxed process if parent dies
+    '--ro-bind', qp('/'), qp('/'),   // Entire FS read-only
+    '--dev',     qp('/dev'),         // Devices (needed by many tools)
+    '--proc',    qp('/proc'),        // /proc (needed by ps, etc.)
+    '--die-with-parent',             // Kill sandboxed process if parent dies
   ];
 
   // Writable directories (override the ro root bind)
   for (const p of config.filesystem.allowWrite) {
-    const resolved = path.resolve(p);
-    args.push('--bind-try', resolved, resolved);
+    const r = qp(path.resolve(p));
+    args.push('--bind-try', r, r);
   }
 
   // Explicitly read-only paths (sandwich on top of any allowWrite parent)
   for (const p of config.filesystem.denyWrite) {
-    const resolved = path.resolve(p);
-    args.push('--ro-bind-try', resolved, resolved);
+    const r = qp(path.resolve(p));
+    args.push('--ro-bind-try', r, r);
   }
 
   // Hidden paths (mount /dev/null over them)
   for (const p of config.filesystem.denyRead) {
-    const resolved = path.resolve(p);
-    args.push('--bind-try', '/dev/null', resolved);
+    args.push('--bind-try', qp('/dev/null'), qp(path.resolve(p)));
   }
 
   // Network isolation
@@ -93,7 +92,7 @@ function wrapViaWsl(command: string, shell: string, config: SandboxConfig): Wrap
 
   const bwrapArgs = buildBwrapArgs(translatedConfig);
   const escaped   = escapeForShell(command);
-  // shell inside WSL is always bash
+  // shell inside WSL is always bash; path args already quoted by buildBwrapArgs via qp()
   const wslShell  = 'bash';
 
   return {
@@ -124,4 +123,13 @@ function toWslPath(winPath: string): string {
 /** Wrap command in single quotes, escaping any embedded single quotes. */
 function escapeForShell(command: string): string {
   return `'${command.replace(/'/g, "'\\''")}'`;
+}
+
+/**
+ * Quote a filesystem path for embedding inside a shell -c string.
+ * Prevents spaces or special characters in paths (e.g. workspace at
+ * "/home/user/My Projects/foo") from being mis-tokenised by the outer shell.
+ */
+function qp(p: string): string {
+  return `'${p.replace(/'/g, "'\\''")}'`;
 }

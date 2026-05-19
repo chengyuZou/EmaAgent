@@ -20,7 +20,8 @@
     "clean": "rimraf dist"
   },
   "dependencies": {
-    "@ema-agent/permission": "workspace:*"
+    "@ema-agent/permission": "workspace:*",
+    "@ema-agent/tool": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

@@ -6,7 +6,7 @@ export {
   getPathsForPermissionCheck, normalizeCaseForComparison, normalizeMacOsSymlinks,
   DANGEROUS_FILES, DANGEROUS_DIRS,
 }                                                      from './path-safety.js';
-export { ruleMatches, findAllowRule, findDenyRule, findAskRule, upsertRule } from './rules.js';
+export { ruleMatches, findAllowRule, findDenyRule, findAskRule, upsertRule, clearIgnoreCache } from './rules.js';
 export { pathInWorkingDir, pathInAnyWorkingDir }      from './workspace.js';
 export {
   checkEditableInternalPath, checkReadableInternalPath,

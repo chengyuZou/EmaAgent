@@ -1,14 +1,12 @@
 import { spawn } from 'node:child_process';
-import path from 'node:path';
 import { z } from 'zod';
-import { buildTool } from '@ema-agent/tool';
+import { buildTool, spawnProcess } from '@ema-agent/tool';
 import type { ToolExecutionContext } from '@ema-agent/tool';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const DEFAULT_TIMEOUT_MS = 120_000; // 2 minutes
 const MAX_TIMEOUT_MS = 600_000; // 10 minutes
-const MAX_OUTPUT_CHARS = 200_000;
 
 /**
  * Commands that must never execute — even in bypass mode.
@@ -124,6 +122,10 @@ Safety rules:
 
 // ── runShell ─────────────────────────────────────────────────────────────────
 
+/**
+ * Thin wrapper kept for backward-compat (powershell.ts imports it).
+ * Real implementation lives in @ema-agent/tool spawnProcess.
+ */
 export function runShell(
   shell: string,
   args: string[],
@@ -131,62 +133,5 @@ export function runShell(
   timeoutMs: number,
   signal: AbortSignal,
 ): Promise<BashResult> {
-  return new Promise((resolve, reject) => {
-    const proc = spawn(shell, args, {
-      cwd,
-      stdio: ['ignore', 'pipe', 'pipe'],
-      env: { ...process.env, TERM: 'dumb' },
-    });
-
-    let stdout = '';
-    let stderr = '';
-    let timedOut = false;
-
-    const timer = setTimeout(() => {
-      timedOut = true;
-      proc.kill('SIGTERM');
-      setTimeout(() => { try { proc.kill('SIGKILL'); } catch { /* ignore */ } }, 3000);
-    }, timeoutMs);
-
-    const onAbort = () => {
-      clearTimeout(timer);
-      proc.kill('SIGTERM');
-    };
-    signal.addEventListener('abort', onAbort, { once: true });
-
-    proc.stdout.on('data', (chunk: Buffer) => {
-      stdout += chunk.toString();
-    });
-    proc.stderr.on('data', (chunk: Buffer) => {
-      stderr += chunk.toString();
-    });
-
-    proc.on('error', (err) => {
-      clearTimeout(timer);
-      signal.removeEventListener('abort', onAbort);
-      reject(err);
-    });
-
-    proc.on('close', (code) => {
-      clearTimeout(timer);
-      signal.removeEventListener('abort', onAbort);
-
-      const combined = stdout + stderr;
-      const truncated = combined.length > MAX_OUTPUT_CHARS;
-
-      if (truncated) {
-        const keep = MAX_OUTPUT_CHARS / 2;
-        stdout = stdout.slice(0, keep);
-        stderr = stderr.slice(0, keep);
-      }
-
-      resolve({
-        stdout: stdout.trimEnd(),
-        stderr: stderr.trimEnd(),
-        exitCode: code ?? -1,
-        timedOut,
-        truncated,
-      });
-    });
-  });
+  return spawnProcess(shell, args, cwd, timeoutMs, signal);
 }

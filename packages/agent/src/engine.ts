@@ -272,15 +272,13 @@ async function* runTurn(
         });
 
         // Permission gate
-        let toolEntry: ReturnType<typeof tools.get> | undefined;
-        try { toolEntry = tools.get(block.name); } catch { /* not registered */ }
-
-        if (!toolEntry) {
+        if (!tools.has(block.name)) {
           const msg = `Unknown tool: "${block.name}"`;
           resultBlocks.push({ type: 'tool_result', toolUseId: block.id, content: msg, isError: true });
           yield { type: 'tool_result', callId: block.id, error: { code: 'tool/not_found', message: msg } };
           continue;
         }
+        const toolEntry = tools.get(block.name);
 
         const outcome = await permission.gate(block.name, block.args, toolEntry.permissionMeta, permCtx);
 

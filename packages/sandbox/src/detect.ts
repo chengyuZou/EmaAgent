@@ -78,17 +78,22 @@ function detectBwrap(
 }
 
 function detectWindowsBackend(): DetectResult {
-  // Try wsl.exe — if present and WSL2 is default, we can use bwrap inside it
-  const wslStatus = spawnSync('wsl.exe', ['--status'], { encoding: 'utf8', timeout: 8_000 });
+  // Use --list instead of --status: --list is supported on every wsl.exe since
+  // the first public WSL release, whereas --status was added later and silently
+  // returns non-zero on some older builds even when WSL is functional.
+  // Distinguish "binary not found" (ENOENT) from "binary present but errored".
+  const wslList = spawnSync('wsl.exe', ['--list'], { encoding: 'utf8', timeout: 5_000 });
+  const notFound = (wslList.error as NodeJS.ErrnoException | undefined)?.code === 'ENOENT';
 
-  if (wslStatus.status !== 0) {
+  if (notFound) {
     return {
       backend: 'app-layer',
       degradeReason: 'WSL not found; install WSL2 (wsl --install) and bubblewrap for OS-level sandboxing',
     };
   }
 
-  // WSL is installed — check for bwrap inside it
+  // wsl.exe is present (even if --list returned non-zero — e.g. no distros yet).
+  // Probe for bwrap inside WSL to determine final backend.
   return detectBwrap(
     'wsl.exe',
     ['bash', '-c'],

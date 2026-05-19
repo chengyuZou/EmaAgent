@@ -47,6 +47,11 @@ export interface ICommandRunner {
   refreshConfig(): void;
   /** Human-readable reason if OS sandboxing degraded to app-layer. */
   getSandboxUnavailableReason(): string | undefined;
+  /**
+   * Teardown any persistent sandbox resources (e.g. a long-lived bwrap namespace).
+   * No-op in V1 (process-per-command model). Reserved for V2 persistent sandbox.
+   */
+  destroy?(): void;
 }
 
 // ── ToolExecutionContext ───────────────────────────────────────────────────────

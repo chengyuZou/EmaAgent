@@ -15,6 +15,26 @@ if (typeof createIgnore !== 'function') {
   throw new Error('@ema-agent/permission: failed to load the "ignore" package — is it installed?');
 }
 
+// ── Ignore-instance cache ─────────────────────────────────────────────────────
+// Building an Ignore instance for the same pattern on every tool call is wasteful
+// when a session has many calls. Cache by normalised pattern string (module-level,
+// shared across sessions — safe because patterns are deterministic pure strings).
+const _ignoreCache = new Map<string, Ignore>();
+
+function getIgnore(pattern: string): Ignore {
+  let ig = _ignoreCache.get(pattern);
+  if (!ig) {
+    ig = createIgnore().add([pattern]);
+    _ignoreCache.set(pattern, ig);
+  }
+  return ig;
+}
+
+/** Clear ignore cache — exposed for unit tests that mutate patterns. */
+export function clearIgnoreCache(): void {
+  _ignoreCache.clear();
+}
+
 // ── POSIX path conversion ─────────────────────────────────────────────────────
 // NOTE: workspace.ts has an identical helper — kept separate intentionally so
 // each file remains independently importable without cross-dependencies.
@@ -105,7 +125,7 @@ function pathMatchesGlob(
   const normalised = pattern.endsWith('/**') ? pattern.slice(0, -3) : pattern;
   if (!normalised) return false;
 
-  return createIgnore().add([normalised]).ignores(relative);
+  return getIgnore(normalised).ignores(relative);
 }
 
 // ── Rule matching ─────────────────────────────────────────────────────────────

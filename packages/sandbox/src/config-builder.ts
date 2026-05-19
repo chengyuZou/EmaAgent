@@ -1,9 +1,9 @@
 import { statSync } from 'node:fs';
-import { rmSync, existsSync } from 'node:fs';
 import os   from 'node:os';
 import path from 'node:path';
 import type { PermissionRule } from '@ema-agent/permission';
 import type { SandboxConfig } from './types.js';
+import { getPlatform } from './platform.js';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -40,9 +40,14 @@ export function buildSandboxConfig(
   rules:   ReadonlyArray<PermissionRule>,
   ctx:     ConfigContext,
 ): BuildResult {
+  // macOS: os.tmpdir() returns /var/folders/… but tools often write to /tmp → /private/tmp.
+  // Include both so sandbox doesn't block legitimate temp file usage.
+  const macOsTmpExtras = process.platform === 'darwin' ? ['/tmp', '/private/tmp'] : [];
+
   const allowWrite: string[] = [
     path.resolve(ctx.workspaceRoot),
     os.tmpdir(),
+    ...macOsTmpExtras,
     ...(ctx.additionalWorkingDirs ?? []).map(d => path.resolve(d)),
   ];
   const denyWrite:  string[] = [];
@@ -52,21 +57,34 @@ export function buildSandboxConfig(
   const allowedDomains: string[] = [];
   const deniedDomains:  string[] = [];
 
-  // Always deny writes to EmaAgent settings to prevent sandbox escape
-  denyWrite.push(path.join(os.homedir(), '.ema-agent', 'settings.json'));
+  // Protect EmaAgent settings — deny both read and write.
+  // settings.json stores api_key_plain; a sandboxed process must not exfiltrate it.
+  const settingsPath = path.join(os.homedir(), '.ema-agent', 'settings.json');
+  denyWrite.push(settingsPath);
+  denyRead.push(settingsPath);
 
   // Bare-repo attack prevention ───────────────────────────────────────────────
+  // Cover workspaceRoot AND every additionalWorkingDir — a sandboxed command
+  // could plant HEAD/objects/refs/hooks/config in any of them to trigger the
+  // bare-repo escape on the next git call.
+  //
   // For files that already exist: add to denyWrite so sandbox mounts them ro.
   // For files that don't exist: record in scrubPaths so cleanup() can delete
   // anything planted during a sandboxed command.
+  const allWorkingRoots = [
+    ctx.workspaceRoot,
+    ...(ctx.additionalWorkingDirs ?? []),
+  ];
   const scrubPaths: string[] = [];
-  for (const file of BARE_REPO_FILES) {
-    const p = path.resolve(ctx.workspaceRoot, file);
-    try {
-      statSync(p);            // throws ENOENT if absent
-      denyWrite.push(p);      // exists → make it read-only inside sandbox
-    } catch {
-      scrubPaths.push(p);     // absent → delete if it appears after command
+  for (const root of allWorkingRoots) {
+    for (const file of BARE_REPO_FILES) {
+      const p = path.resolve(root, file);
+      try {
+        statSync(p);            // throws ENOENT if absent
+        denyWrite.push(p);      // exists → make it read-only inside sandbox
+      } catch {
+        scrubPaths.push(p);     // absent → delete if it appears after command
+      }
     }
   }
 
@@ -104,24 +122,6 @@ export function buildSandboxConfig(
   };
 }
 
-// ── Post-command cleanup ──────────────────────────────────────────────────────
-
-/**
- * Delete any bare-repo files that were planted during a sandboxed command.
- * Must be called synchronously after every sandboxed command completes,
- * before the next (potentially unsandboxed) git call.
- */
-export function scrubPlantedFiles(scrubPaths: string[]): void {
-  for (const p of scrubPaths) {
-    if (!existsSync(p)) continue;
-    try {
-      rmSync(p, { recursive: true });
-    } catch {
-      // ENOENT or permission error — not planted or already cleaned
-    }
-  }
-}
-
 // ── Path resolution ───────────────────────────────────────────────────────────
 
 /**
@@ -137,7 +137,16 @@ export function scrubPlantedFiles(scrubPaths: string[]): void {
 function resolveGlobBase(glob: string, workspaceRoot: string): string {
   const stripped = glob.endsWith('/**') ? glob.slice(0, -3) : glob;
 
-  if (stripped.startsWith('//')) return stripped.slice(1);   // //abs → /abs
+  if (stripped.startsWith('//')) {
+    // Filesystem-root-anchored — mirrors resolvePatternRoot() in permission/rules.ts.
+    // On Windows the drive letter comes from the workspace root (same convention).
+    if (getPlatform() === 'windows') {
+      const drive = workspaceRoot.slice(0, 3) || (process.env['SystemDrive'] ?? 'C:') + '\\';
+      return path.join(drive, stripped.slice(2).replace(/\//g, path.sep));
+    }
+    return stripped.slice(1);   // //abs/path → /abs/path on Linux/macOS
+  }
+
   if (stripped.startsWith('~/')) return path.join(os.homedir(), stripped.slice(2));
   if (stripped.startsWith('/'))  return path.resolve(workspaceRoot, stripped.slice(1));
 
