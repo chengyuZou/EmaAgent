@@ -168,7 +168,7 @@ export class PermissionEngine {
     }
 
     // ── Step 5: internal editable path carve-outs (write / execute) ───────
-    // Must run BEFORE dangerous-dir check; .ema/ is in DANGEROUS_DIRS.
+    // Must run BEFORE dangerous-dir check; .ema-agent/ is in DANGEROUS_DIRS.
     // BUG-06 fix: check ALL resolved paths, not just the raw extractedPath.
     if (allPaths.length > 0 && meta.accessType !== 'read') {
       const allInternal = allPaths.every(
