@@ -30,12 +30,21 @@ function toPosix(p: string): string {
  * and returns the pattern root-relative (no leading slash) so `ignore` can
  * match it correctly.
  *
+ * ```
  * Pattern prefixes:
  *   //abs/path/**  → anchored to filesystem root (/ on Unix, drive root on Windows)
  *   ~/rel/**       → anchored to home directory
  *   /rel/**        → anchored to scope root (workspaceRoot for session/project, ~ for global)
  *   rel/**         → same as /rel (relative to scope root)
  *   ./rel/**       → normalised to rel
+ * ```
+ * @example
+ * resolvePatternRoot("/src/**", "session", "/Users/abc/project")
+ * => {
+ *   root: "/Users/abc/project",
+ *   pattern: "src/**"
+ * }
+ * 
  */
 function resolvePatternRoot(
   glob:          string,
@@ -46,7 +55,9 @@ function resolvePatternRoot(
 
   if (glob.startsWith('//')) {
     // BUG-01 fix: strip both leading slashes so pattern is root-relative
-    const fsRoot = getPlatform() === 'windows' ? workspaceRoot.slice(0, 3) || 'C:\\' : '/';
+    const fsRoot = getPlatform() === 'windows'
+      ? workspaceRoot.slice(0, 3) || (process.env['SystemDrive'] ?? 'C:') + '\\'
+      : '/';
     return { root: fsRoot, pattern: glob.slice(2) };
   }
 

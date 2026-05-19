@@ -13,7 +13,7 @@ export type PermissionMode = 'ask' | 'auto' | 'bypass'
 
 // ── Rule Scopes ───────────────────────────────────────────────────────────────
 
-/** session → in-memory only | project → .ema/settings.json | global → ~/.ema/settings.json */
+/** session → in-memory only | project → .ema-agent/settings.json | global → ~/.ema-agent/settings.json */
 export type RuleScope = 'session' | 'project' | 'global'
 
 // ── Risk & Access ─────────────────────────────────────────────────────────────
@@ -86,25 +86,35 @@ export interface PermissionContext {
 
 // ── Ask flow ──────────────────────────────────────────────────────────────────
 
-export interface PermissionRequest {
+/**
+ * Everything the UI needs to render the permission dialog.
+ * Sent engine → UI when a tool call requires user confirmation.
+ */
+export interface PermissionPrompt {
   toolName:         string
   toolDescription?: string
   input:            unknown
   riskLevel:        RiskLevel
   accessType?:      AccessType
-  /** Human-readable reason why this call is being gated. */
-  reason?:          string
-  /** Suggested rule changes to show alongside the dialog. */
+  /** Human-readable reason why this call is being gated (shown in the dialog). */
+  gateReason?:      string
+  /** Suggested rule changes to show as quick-action buttons in the dialog. */
   suggestions?:     PermissionUpdate[]
 }
 
 export type PermissionResponse =
+  /** Allow this one call. */
   | { action: 'allow' }
-  | { action: 'deny' }
+  /** Allow ALL tools for the rest of this session without asking again. */
+  | { action: 'allow_session' }
+  /** Permanently allow this tool (persist rule at given scope). */
   | { action: 'always_allow'; scope: RuleScope }
+  /** Permanently deny this tool (persist rule at given scope). */
   | { action: 'always_deny';  scope: RuleScope }
+  /** Deny this call. User may optionally provide a reason. */
+  | { action: 'deny'; reason?: string }
 
-export type AskPermissionFn = (req: PermissionRequest) => Promise<PermissionResponse>
+export type AskPermissionFn = (prompt: PermissionPrompt) => Promise<PermissionResponse>
 
 // ── Per-tool metadata ─────────────────────────────────────────────────────────
 

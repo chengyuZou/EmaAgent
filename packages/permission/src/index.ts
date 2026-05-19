@@ -19,7 +19,7 @@ export type {
   PermissionConfig,
   PermissionRule,
   PermissionOutcome,
-  PermissionRequest,
+  PermissionPrompt,
   PermissionResponse,
   PermissionUpdate,
   PermissionContext,

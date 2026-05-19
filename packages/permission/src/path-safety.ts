@@ -1,4 +1,5 @@
 import fs   from 'node:fs';
+import os   from 'node:os';
 import path from 'node:path';
 import { getPlatform } from './platform.js';
 
@@ -37,7 +38,7 @@ export function normalizeMacOsSymlinks(p: string): string {
  */
 export function getPathsForPermissionCheck(rawPath: string): string[] {
   const expanded = rawPath.startsWith('~')
-    ? path.join(process.env['HOME'] ?? process.env['USERPROFILE'] ?? '~', rawPath.slice(1))
+    ? path.join(os.homedir(), rawPath.slice(1))
     : rawPath;
 
   const paths = new Set<string>([expanded]);
@@ -62,7 +63,7 @@ export const DANGEROUS_FILES: ReadonlySet<string> = new Set([
   '.gitconfig', '.gitcredentials', '.git-credentials',
   '.npmrc', '.yarnrc', '.yarnrc.yml', '.pnpmfile.cjs',
   '.env', '.env.local', '.env.production', '.env.development',
-  '.mcp.json', '.ema/settings.json',
+  '.mcp.json', '.ema-agent/settings.json',
   // Unix shell configs — relevant on Windows too via WSL / Git Bash
   '.bashrc', '.bash_profile', '.bash_logout',
   '.zshrc', '.zprofile', '.zshenv', '.zlogin', '.zlogout',
@@ -75,7 +76,7 @@ export const DANGEROUS_FILES: ReadonlySet<string> = new Set([
 export const DANGEROUS_DIRS: ReadonlySet<string> = new Set([
   '.git', '.ssh', '.gnupg', '.gpg',
   '.aws', '.azure', '.kube',
-  '.ema', 'node_modules',
+  '.ema-agent', 'node_modules',
   '__pycache__', '.venv', 'venv',
 ]);
 

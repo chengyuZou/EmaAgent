@@ -6,9 +6,10 @@ import { checkEditableInternalPath, checkReadableInternalPath } from './internal
 import type {
   PermissionConfig,
   PermissionContext,
+  PermissionMode,
   PermissionOutcome,
   PermissionRule,
-  PermissionRequest,
+  PermissionPrompt,
   PermissionUpdate,
   ToolPermissionMeta,
   DecisionReason,
@@ -71,9 +72,20 @@ function suggestionsForPath(
  */
 export class PermissionEngine {
   private rules: PermissionRule[];
+  /** Current permission mode — mutable so allow_session can escalate to bypass. */
+  private mode: PermissionMode;
 
   constructor(private readonly config: PermissionConfig) {
     this.rules = [...config.rules];
+    this.mode  = config.mode;
+  }
+
+  /**
+   * Overrides the active permission mode for the lifetime of this engine instance.
+   * Used by the allow_session response to switch to bypass for the rest of the session.
+   */
+  setMode(mode: PermissionMode): void {
+    this.mode = mode;
   }
 
   // ── Public API ────────────────────────────────────────────────────────────
@@ -151,7 +163,7 @@ export class PermissionEngine {
     }
 
     // ── Step 4: bypass mode ────────────────────────────────────────────────
-    if (this.config.mode === 'bypass') {
+    if (this.mode === 'bypass') {
       return { granted: true, decisionReason: { type: 'mode', mode: 'bypass' } };
     }
 
@@ -233,7 +245,7 @@ export class PermissionEngine {
     }
 
     // ── Step 11: auto mode decisions ───────────────────────────────────────
-    if (this.config.mode === 'auto') {
+    if (this.mode === 'auto') {
       // Writes / executes in workspace in auto mode
       if (allPaths.length > 0 && allPaths.every(p => pathInAnyWorkingDir(p, context))) {
         return { granted: true, decisionReason: { type: 'workingDir' } };
@@ -277,23 +289,32 @@ export class PermissionEngine {
       };
     }
 
-    const req: PermissionRequest = {
+    const prompt: PermissionPrompt = {
       toolName,
       input,
-      riskLevel:  meta.riskLevel,
-      accessType: meta.accessType,
-      reason,
+      riskLevel:   meta.riskLevel,
+      accessType:  meta.accessType,
+      gateReason:  reason,
       suggestions: suggestions.length > 0 ? suggestions : undefined,
     };
 
-    const response = await askFn(req);
+    const response = await askFn(prompt);
 
     switch (response.action) {
       case 'allow':
         return { granted: true };
 
+      case 'allow_session':
+        // Switch to bypass for the rest of this session — no further prompts.
+        this.setMode('bypass');
+        return { granted: true, decisionReason: { type: 'mode', mode: 'bypass' } };
+
       case 'deny':
-        return { granted: false, reason: 'denied by user', decisionReason: { type: 'other', reason: 'user denied' } };
+        return {
+          granted:        false,
+          reason:         response.reason ?? 'denied by user',
+          decisionReason: { type: 'other', reason: response.reason ?? 'user denied' },
+        };
 
       case 'always_allow': {
         // BUG-04 fix: pass real input so extractPath can derive the correct path.

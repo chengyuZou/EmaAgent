@@ -6,7 +6,7 @@ import type { PermissionContext } from './types.js';
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function emaHome(): string {
-  return path.join(os.homedir(), '.ema');
+  return path.join(os.homedir(), '.ema-agent');
 }
 
 function normalize(p: string): string {
@@ -22,7 +22,7 @@ function underDir(normalizedPath: string, dir: string): boolean {
 // ── Internal path definitions ─────────────────────────────────────────────────
 
 /**
- * Session memory: ~/.ema/sessions/{sessionId}/memory/
+ * Session memory: ~/.ema-agent/sessions/{sessionId}/memory/
  * The agent writes summaries and notes here across turns.
  */
 function sessionMemoryDir(sessionId: string): string {
@@ -30,7 +30,7 @@ function sessionMemoryDir(sessionId: string): string {
 }
 
 /**
- * Artifact output directory: ~/.ema/sessions/{sessionId}/artifacts/
+ * Artifact output directory: ~/.ema-agent/sessions/{sessionId}/artifacts/
  * Tools write generated files (images, PPT, code) here.
  */
 function artifactDir(sessionId: string): string {
@@ -38,7 +38,7 @@ function artifactDir(sessionId: string): string {
 }
 
 /**
- * Scratchpad: ~/.ema/sessions/{sessionId}/scratch/
+ * Scratchpad: ~/.ema-agent/sessions/{sessionId}/scratch/
  * Temporary files for the agent's own use during a session.
  */
 function scratchpadDir(sessionId: string): string {
@@ -46,7 +46,7 @@ function scratchpadDir(sessionId: string): string {
 }
 
 /**
- * Project-level sessions directory: ~/.ema/sessions/
+ * Project-level sessions directory: ~/.ema-agent/sessions/
  * Readable by the agent for cross-session memory recall.
  */
 function sessionsRoot(): string {
@@ -61,7 +61,7 @@ function sessionsRoot(): string {
  * Returns 'passthrough' to continue normal permission evaluation.
  *
  * Must be called BEFORE the dangerous-dir check so that paths under
- * .ema/ (which is in DANGEROUS_DIRS) are not blocked.
+ * .ema-agent/ (which is in DANGEROUS_DIRS) are not blocked.
  */
 export function checkEditableInternalPath(
   absolutePath: string,
