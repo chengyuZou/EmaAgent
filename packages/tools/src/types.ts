@@ -19,6 +19,36 @@ export interface ReadFileEntry {
 /** Keyed by absolute, normalized file path. */
 export type ReadFileState = Map<string, ReadFileEntry>;
 
+// ── ICommandRunner — interface only (implemented by @ema-agent/sandbox) ───────
+
+/**
+ * Thin interface so tools can call the sandbox runner without importing the
+ * sandbox package directly (avoids circular deps: tools ↛ sandbox ↛ permission).
+ */
+export interface RunOptions {
+  cwd?:     string;
+  timeout?: number;
+  signal?:  AbortSignal;
+}
+
+export interface RunResult {
+  stdout:    string;
+  stderr:    string;
+  exitCode:  number;
+  timedOut:  boolean;
+  truncated: boolean;
+}
+
+export interface ICommandRunner {
+  run(command: string, opts?: RunOptions): Promise<RunResult>;
+  /** Remove bare-repo attack files planted by the previous command. */
+  cleanup(): void;
+  /** Re-derive sandbox config after permission rules change. */
+  refreshConfig(): void;
+  /** Human-readable reason if OS sandboxing degraded to app-layer. */
+  getSandboxUnavailableReason(): string | undefined;
+}
+
 // ── ToolExecutionContext ───────────────────────────────────────────────────────
 
 export interface ToolExecutionContext {
@@ -40,6 +70,11 @@ export interface ToolExecutionContext {
    * Optional: not all call-sites provide a streaming channel.
    */
   emit?: (event: EmaStreamEvent) => void;
+  /**
+   * Sandbox-backed shell runner. When present, bash tool delegates execution
+   * here instead of spawning directly — gets OS-level sandboxing for free.
+   */
+  commandRunner?: ICommandRunner;
 }
 
 // ── ToolDescriptor — what the LLM sees ───────────────────────────────────────

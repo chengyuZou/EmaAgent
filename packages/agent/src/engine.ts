@@ -62,7 +62,8 @@ async function* runTurn(
     additionalWorkingDirs: input.additionalWorkingDirs,
     signal,
     readFileState,
-    emit: toolEmit,
+    emit:          toolEmit,
+    commandRunner: deps.commandRunner,
   };
 
   try {
@@ -321,6 +322,10 @@ async function* runTurn(
             payload: { callId: block.id, name: block.name, error: err },
             meta: {},
           });
+        } finally {
+          // Scrub any bare-repo attack files planted during this tool's execution
+          // before the next git call can see them. Must run regardless of outcome.
+          deps.commandRunner?.cleanup();
         }
 
         const serialized = typeof output === 'string' ? output : JSON.stringify(output, null, 2);

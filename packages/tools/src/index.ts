@@ -1,6 +1,9 @@
 export type {
   ReadFileEntry,
   ReadFileState,
+  RunOptions,
+  RunResult,
+  ICommandRunner,
   ToolExecutionContext,
   ToolDescriptor,
   ToolDef,

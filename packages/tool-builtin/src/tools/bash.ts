@@ -113,6 +113,11 @@ Safety rules:
       return { stdout: '', stderr: '', exitCode: 0, timedOut: false, truncated: false };
     }
 
+    // Delegate to sandbox CommandRunner when available — gets OS-level sandboxing
+    if (ctx.commandRunner) {
+      return ctx.commandRunner.run(command, { cwd, timeout: timeoutMs, signal: ctx.signal });
+    }
+
     return runShell(shell, ['-c', command], cwd, timeoutMs, ctx.signal);
   },
 });
