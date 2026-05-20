@@ -373,6 +373,9 @@ importers:
       '@ema-agent/contracts':
         specifier: workspace:*
         version: link:../contracts
+      '@ema-agent/hook':
+        specifier: workspace:*
+        version: link:../hook
     devDependencies:
       '@types/node':
         specifier: ^20.0.0

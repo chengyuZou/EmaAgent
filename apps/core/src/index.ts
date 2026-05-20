@@ -7,6 +7,19 @@ import path from 'node:path';
 import os from 'node:os';
 import fs from 'node:fs';
 
+// ── Public re-exports (for embedding cores: CLI, tests, future hosts) ────────
+// The HTTP sidecar (this file's main()) is only one of several possible
+// consumers of the assembled runtime. Exposing `wire` and `Orchestrator`
+// lets a CLI import them directly and consume the AsyncIterable<EmaStreamEvent>
+// without any Hono dependency.
+export { wire, configureBridge, resolveBridgeUrl } from './wiring.js';
+export type { AppBindings } from './wiring.js';
+export { Orchestrator }     from './orchestrator/orchestrator.js';
+export type {
+  TurnRequest as OrchestratorTurnRequest,
+  TurnResult  as OrchestratorTurnResult,
+} from './orchestrator/orchestrator.js';
+
 const PORT_DEFAULT = 3421;
 const PORT_MAX     = 3430;
 
