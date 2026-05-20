@@ -6,7 +6,9 @@ export type BackgroundTaskKind =
   | 'extraction'
   | 'consolidation'
   | 'compaction'
-  | 'embedding_refresh';
+  | 'embedding_refresh'
+  /** V1.5 — runtime not implemented; CHECK is open so future runs can enqueue. */
+  | 'subagent_run';
 
 export type BackgroundTaskStatus =
   | 'pending'

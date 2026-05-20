@@ -101,6 +101,15 @@ export type EmaStreamEvent =
   | { type: 'agent_iteration'; n: number }
   | { type: 'agent_breaker_tripped'; reason: string }
 
+  // Sub-agent (V1.5 — events reserved now so the frontend bubble system can
+  // plug in without a contracts migration later). The runtime that spawns
+  // sub-agents is not implemented in V1; the subagent tool stays a stub.
+  | { type: 'subagent_started';   subagentId: string; parentTurnId: TurnId; description?: string; promptExcerpt: string }
+  | { type: 'subagent_progress';  subagentId: string; iteration: number; lastTool?: string }
+  | { type: 'subagent_completed'; subagentId: string; outputExcerpt: string; usage: UsageSummary; durationMs: number }
+  | { type: 'subagent_failed';    subagentId: string; error: string }
+  | { type: 'subagent_aborted';   subagentId: string; reason: string }
+
   // Provider health
   | {
       type: 'provider_health_changed';

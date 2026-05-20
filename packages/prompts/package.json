@@ -21,7 +21,8 @@
   },
   "dependencies": {
     "@ema-agent/character-card": "workspace:*",
-    "@ema-agent/contracts": "workspace:*"
+    "@ema-agent/contracts": "workspace:*",
+    "@ema-agent/hook": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
