@@ -1,0 +1,37 @@
+{
+  "name": "@ema-agent/memory",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsc -p tsconfig.json --watch",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "clean": "rimraf dist"
+  },
+  "dependencies": {
+    "@ema-agent/contracts":        "workspace:*",
+    "@ema-agent/storage":          "workspace:*",
+    "@ema-agent/session":          "workspace:*",
+    "@ema-agent/llm":              "workspace:*",
+    "@ema-agent/ebd-client":       "workspace:*",
+    "@ema-agent/narrative-client": "workspace:*",
+    "@ema-agent/hook":             "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node":  "^20.0.0",
+    "rimraf":       "^5.0.0",
+    "typescript":   "^5.9.3",
+    "vitest":       "^2.0.0"
+  }
+}

@@ -7,6 +7,9 @@ export type BindingModule =
   // LLM modules — routed through LlmRouter (TS sidecar)
   | 'chat' | 'narrative' | 'agent'
   | 'compaction' | 'emotion'
+  // 'memory' powers extraction / consolidation / mode-specific compaction.
+  // Intentionally one binding for all three — keeps a cheap model on the slot.
+  | 'memory'
   | 'router' | 'plan-parse' | 'title'
   // LightRAG internal config — pushed to Python bridge
   // 'embed'        : document embedding model for LightRAG graph construction

@@ -10,6 +10,7 @@ export interface SessionRow {
   updated_at: number;
   archived_at: number | null;
   meta_json: string;
+  pending_fragments_json: string; // JSON-serialised PendingFragment[]
 }
 
 export interface SessionInsert {
@@ -67,5 +68,41 @@ export class SessionsRepo {
 
   delete(id: SessionId): void {
     this.db.prepare('DELETE FROM sessions WHERE id = ?').run(id);
+  }
+
+  // ── pending_fragments_json ──────────────────────────────────────────────────
+  // Used by memory extraction: every turn appends raw user/assistant text into
+  // this buffer, and extraction drains + clears it when the trigger fires.
+  // Read-modify-write is safe because the SessionStore RunRegistry serialises
+  // turns within a single session — only one writer per session at a time.
+
+  getPendingFragmentsRaw(id: SessionId): string {
+    const row = this.db
+      .prepare('SELECT pending_fragments_json FROM sessions WHERE id = ?')
+      .get(id) as { pending_fragments_json: string } | undefined;
+    return row?.pending_fragments_json ?? '[]';
+  }
+
+  setPendingFragmentsRaw(id: SessionId, json: string, updatedAt: number): void {
+    this.db
+      .prepare(
+        'UPDATE sessions SET pending_fragments_json = ?, updated_at = ? WHERE id = ?',
+      )
+      .run(json, updatedAt, id);
+  }
+
+  clearPendingFragments(id: SessionId, updatedAt: number): void {
+    this.setPendingFragmentsRaw(id, '[]', updatedAt);
+  }
+
+  /** Sessions whose pending buffer is non-empty — used by startup recovery. */
+  listSessionsWithPending(): string[] {
+    const rows = this.db
+      .prepare(
+        `SELECT id FROM sessions WHERE pending_fragments_json IS NOT NULL
+           AND pending_fragments_json != '[]'`,
+      )
+      .all() as Array<{ id: string }>;
+    return rows.map(r => r.id);
   }
 }

@@ -12,6 +12,14 @@ export { Live2DModelsRepo } from './repos/live2d-models.js';
 export { ProvidersRepo } from './repos/providers.js';
 export { ModelBindingsRepo } from './repos/model-bindings.js';
 
+// ── Memory subsystem (migration 006) ──────────────────────────────────────────
+export { MemoryNodesRepo }       from './repos/memory-nodes.js';
+export { MemoryEdgesRepo }       from './repos/memory-edges.js';
+export { MemoryLazyUpdatesRepo } from './repos/memory-lazy-updates.js';
+export { MemoryItemsRepo }       from './repos/memory-items.js';
+export { SessionNotesRepo }      from './repos/session-notes.js';
+export { BackgroundTasksRepo }   from './repos/background-tasks.js';
+
 export type { DatabaseOptions, SqliteDb } from './database.js';
 export type { SessionRow, SessionInsert } from './repos/sessions.js';
 export type { TurnRow, TurnInsert, TurnCompletion } from './repos/turns.js';
@@ -34,3 +42,36 @@ export type {
   ModelBindingUpsert,
   ResolvedModelBinding,
 } from './repos/model-bindings.js';
+
+// ── Memory subsystem types ────────────────────────────────────────────────────
+export type {
+  MemoryNodeRow,
+  MemoryNodeInsert,
+  MemoryNodeType,
+  MemoryNodeDescriptionUpdate,
+  MemoryNodeEmbeddingUpdate,
+} from './repos/memory-nodes.js';
+export type {
+  MemoryEdgeRow,
+  MemoryEdgeUpsert,
+} from './repos/memory-edges.js';
+export type {
+  MemoryNodeLazyUpdateRow,
+  MemoryNodeLazyUpdateInsert,
+} from './repos/memory-lazy-updates.js';
+export type {
+  MemoryItemRow,
+  MemoryItemInsert,
+  MemoryItemKind,
+  MemoryItemEmbeddingUpdate,
+} from './repos/memory-items.js';
+export type {
+  SessionNoteRow,
+  SessionNoteUpsert,
+} from './repos/session-notes.js';
+export type {
+  BackgroundTaskRow,
+  BackgroundTaskEnqueue,
+  BackgroundTaskKind,
+  BackgroundTaskStatus,
+} from './repos/background-tasks.js';
