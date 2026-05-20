@@ -29,6 +29,9 @@ importers:
 
   apps/core:
     dependencies:
+      '@ema-agent/agent':
+        specifier: workspace:*
+        version: link:../../packages/agent
       '@ema-agent/character-card':
         specifier: workspace:*
         version: link:../../packages/character-card
@@ -50,18 +53,33 @@ importers:
       '@ema-agent/llm':
         specifier: workspace:*
         version: link:../../packages/llm
+      '@ema-agent/memory':
+        specifier: workspace:*
+        version: link:../../packages/memory
       '@ema-agent/narrative-client':
         specifier: workspace:*
         version: link:../../packages/narrative-client
+      '@ema-agent/permission':
+        specifier: workspace:*
+        version: link:../../packages/permission
       '@ema-agent/prompts':
         specifier: workspace:*
         version: link:../../packages/prompts
+      '@ema-agent/sandbox':
+        specifier: workspace:*
+        version: link:../../packages/sandbox
       '@ema-agent/session':
         specifier: workspace:*
         version: link:../../packages/session
       '@ema-agent/storage':
         specifier: workspace:*
         version: link:../../packages/storage
+      '@ema-agent/tool':
+        specifier: workspace:*
+        version: link:../../packages/tools
+      '@ema-agent/tool-builtin':
+        specifier: workspace:*
+        version: link:../../packages/tool-builtin
       '@hono/node-server':
         specifier: ^1.14.3
         version: 1.19.14(hono@4.12.18)

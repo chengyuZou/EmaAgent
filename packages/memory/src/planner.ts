@@ -35,6 +35,10 @@ import {
   runMaintenance, deleteNode, deleteItem, hardDeleteZeroImportance,
   type MaintenanceOptions, type MaintenanceReport,
 } from './maintenance/decay.js';
+import {
+  runStartupRecovery as doStartupRecovery,
+  type RecoveryReport,
+} from './tasks/recovery.js';
 
 // ── alreadySurfaced bookkeeping ──────────────────────────────────────────────
 
@@ -500,6 +504,16 @@ export class MemoryPlanner {
   /** Drain all in-flight session work — called at graceful shutdown. */
   async drain(): Promise<void> {
     await this.queue.drainAll();
+  }
+
+  /**
+   * Run all post-crash hygiene checks: reset stuck tasks, clean orphan
+   * lazy_updates, count stale embeddings, list sessions with pending
+   * fragments. Sync — safe to call from sidecar bootstrap before tick starts.
+   * Returns a small report the caller can log or surface to the UI.
+   */
+  runStartupRecovery(): RecoveryReport {
+    return doStartupRecovery(this.deps, this.embed);
   }
 
   // ── Compaction ──────────────────────────────────────────────────────────────

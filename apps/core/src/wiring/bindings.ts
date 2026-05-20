@@ -2,6 +2,9 @@ import type { Database } from '@ema-agent/storage';
 import {
   ModelBindingsRepo,
   ProvidersRepo,
+  SessionsRepo,
+  MemoryNodesRepo, MemoryEdgesRepo, MemoryLazyUpdatesRepo,
+  MemoryItemsRepo, SessionNotesRepo, BackgroundTasksRepo,
   type ProviderConfigRow,
 } from '@ema-agent/storage';
 import { HookBus }       from '@ema-agent/hook';
@@ -19,25 +22,74 @@ import {
   getProviderDefinition,
   isLlmProtocol, isEmbedProtocol, isRerankProtocol,
 } from '@ema-agent/contracts';
+import { PermissionEngine } from '@ema-agent/permission';
+import type {
+  PermissionPrompt, PermissionResponse,
+} from '@ema-agent/permission';
+import { ToolRegistry } from '@ema-agent/tool';
+import { registerBuiltinTools } from '@ema-agent/tool-builtin';
+import { MemoryPlanner } from '@ema-agent/memory';
+import { CommandRunner } from '@ema-agent/sandbox';
+import type { ICommandRunner } from '@ema-agent/tool';
+import type { SessionId } from '@ema-agent/contracts';
 import { resolveBridgeUrl } from './bridge.js';
 
 // ── App-wide bindings (Façade set passed everywhere) ─────────────────────────
 
 /**
- * Flat bundle for now. When this grows past ~12 fields we'll re-shape into
- * nested groups (core / ai / character / agent / memory). For Round 5A the
- * flat layout keeps all consumers (routes, orchestrator) untouched.
+ * The complete dependency surface for all routes / orchestrator / engines.
+ *
+ * Kept flat — sub-bundles were considered but would force a refactor of every
+ * route handler that already reads `bindings.session`, `bindings.llm`, etc.
+ * Twelve fields is still readable; we revisit when it crosses ~16.
  */
 export interface AppBindings {
+  // Core infra
   db:            Database;
   hooks:         HookBus;
+  session:       SessionStore;
+
+  // AI clients
   llm:           LlmRouter;
   ebd:           EbdRouter;
   narrative:     NarrativeClient;
-  modelBindings: ModelBindingsRepo;
-  session:       SessionStore;
+
+  // Per-card runtime
   card:          CharacterCardStore;
   emotion:       EmotionEngine;
+
+  // Agent stack
+  permission:    PermissionEngine;
+  tools:         ToolRegistry;
+  /**
+   * Per-session sandbox runner. Workspace root differs across sessions so we
+   * cache one runner per sessionId — the factory builds + memoises on demand.
+   */
+  getCommandRunner: (sessionId: SessionId) => ICommandRunner;
+
+  // Memory subsystem
+  memory:        MemoryPlanner;
+
+  // Repos kept on the binding for route convenience
+  modelBindings: ModelBindingsRepo;
+}
+
+// ── askPermission stub (5B placeholder) ──────────────────────────────────────
+//
+// In V1 prod the orchestrator wires this to its SSE pipeline:
+//   - emit `permission_required` event
+//   - hold the resolver in a Map keyed by promptId
+//   - frontend POSTs /api/permission/:promptId/respond → resolver fires
+//   - timeout default-deny
+//
+// For now we deny everything (safe default). Round 5C wires the real flow.
+
+async function denyAllAskCallback(prompt: PermissionPrompt): Promise<PermissionResponse> {
+  console.warn(
+    `[permission] askPermission stub: denying ${prompt.toolName} ` +
+    `(real ask callback wires up in Round 5C)`,
+  );
+  return { action: 'deny', reason: 'ask callback not yet wired' };
 }
 
 // ── Provider config builders (exported — providers route reuses them) ───────
@@ -154,9 +206,13 @@ function loadRerankConfigs(db: Database): RerankProviderConfig[] {
  *   registerAllEmitters(...)
  */
 export function buildBindings(db: Database): AppBindings {
-  const hooks = new HookBus();
-  const llm   = new LlmRouter(loadLlmConfigs(db));
-  const ebd   = new EbdRouter(loadEmbedConfigs(db), loadRerankConfigs(db));
+  // ── Core infra ──────────────────────────────────────────────────────────────
+  const hooks   = new HookBus();
+  const session = new SessionStore({ db });
+
+  // ── AI clients ──────────────────────────────────────────────────────────────
+  const llm = new LlmRouter(loadLlmConfigs(db));
+  const ebd = new EbdRouter(loadEmbedConfigs(db), loadRerankConfigs(db));
 
   const narrative = new NarrativeClient({
     baseUrl:   resolveBridgeUrl(),
@@ -164,14 +220,70 @@ export function buildBindings(db: Database): AppBindings {
     timeoutMs: 60_000,
   });
 
-  const session = new SessionStore({ db });
-  const card    = new CharacterCardStore({ db });
+  // ── Character + emotion ────────────────────────────────────────────────────
+  const card = new CharacterCardStore({ db });
   card.ensureSeed();
+  const emotion = new EmotionEngine({ vocabulary: card.current().emotionVocabulary });
 
-  const activeCard = card.current();
-  const emotion = new EmotionEngine({ vocabulary: activeCard.emotionVocabulary });
-
+  // ── Repos ───────────────────────────────────────────────────────────────────
   const modelBindings = new ModelBindingsRepo(db.sqlite);
+  const sessionsRepo  = new SessionsRepo(db.sqlite);
 
-  return { db, hooks, llm, ebd, narrative, modelBindings, session, card, emotion };
+  // ── Permission + tools ─────────────────────────────────────────────────────
+  const permission = new PermissionEngine({
+    mode:  'ask',                       // default to safe; user can flip in settings
+    rules: [],                          // V1 starts empty; rules accrete as user grants
+    ask:   denyAllAskCallback,          // Round 5C will swap this for SSE-backed asker
+  });
+
+  const tools = new ToolRegistry();
+  registerBuiltinTools(tools);
+
+  // ── Sandbox: per-session command runner cache ──────────────────────────────
+  //
+  // workspaceRoot differs per session, so each session gets its own runner.
+  // We memoise to avoid rebuilding the SandboxConfig on every turn (re-running
+  // detectBackend() and re-stat'ing bare-repo files would be wasteful).
+  const runnerCache = new Map<string, ICommandRunner>();
+  const getCommandRunner = (sessionId: SessionId): ICommandRunner => {
+    let runner = runnerCache.get(sessionId);
+    if (runner) return runner;
+    const s = session.getSession(sessionId);
+    const workspaceRoot = s.workspaceRoots[0] ?? process.cwd();
+    runner = new CommandRunner({
+      workspaceRoot,
+      additionalWorkingDirs: s.workspaceRoots.slice(1),
+      sessionId,
+      permission,
+    });
+    runnerCache.set(sessionId, runner);
+    return runner;
+  };
+
+  // ── Memory ─────────────────────────────────────────────────────────────────
+  // Deps shape mirrors what MemoryPlanner expects — see packages/memory/src/deps.ts.
+  const memory = new MemoryPlanner({
+    db,
+    session,
+    llm,
+    ebd,
+    narrative,
+    modelBindings,
+    nodes:           new MemoryNodesRepo(db.sqlite),
+    edges:           new MemoryEdgesRepo(db.sqlite),
+    lazyUpdates:     new MemoryLazyUpdatesRepo(db.sqlite),
+    items:           new MemoryItemsRepo(db.sqlite),
+    sessionNotes:    new SessionNotesRepo(db.sqlite),
+    backgroundTasks: new BackgroundTasksRepo(db.sqlite),
+    sessions:        sessionsRepo,
+  });
+
+  return {
+    db, hooks, session,
+    llm, ebd, narrative,
+    card, emotion,
+    permission, tools, getCommandRunner,
+    memory,
+    modelBindings,
+  };
 }

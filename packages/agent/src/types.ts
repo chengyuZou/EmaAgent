@@ -22,8 +22,15 @@ export interface AgentDeps {
   permission:     PermissionEngine;
   modelBindings:  ModelBindingsRepo;
   /**
-   * Per-session sandbox runner. When provided, bash tool execution is routed
-   * through it for OS-level sandboxing. Optional so tests can omit it.
+   * Per-session sandbox runner factory. Returning undefined disables sandboxing
+   * (bash will spawn directly via spawnProcess). The orchestrator caches one
+   * CommandRunner per sessionId — workspaceRoot differs across sessions so a
+   * singleton wouldn't work. Optional so tests can omit it entirely.
+   */
+  getCommandRunner?: (sessionId: SessionId) => ICommandRunner | undefined;
+  /**
+   * Direct command-runner pass-through. Used by simple/single-session embedders
+   * (tests, CLI one-shot). Takes precedence over getCommandRunner when set.
    */
   commandRunner?: ICommandRunner;
 }

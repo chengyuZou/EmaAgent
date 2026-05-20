@@ -1,5 +1,6 @@
 import { registerPromptsHooks }      from '@ema-agent/prompts';
 import { registerConversationHooks } from '@ema-agent/conversation';
+import { registerMemoryHooks }       from '@ema-agent/memory';
 import type { AppBindings } from './bindings.js';
 
 // ── Aggregated hook registration ─────────────────────────────────────────────
@@ -11,7 +12,8 @@ import type { AppBindings } from './bindings.js';
  *
  *   priority 5   conversation:narrative (narrative-mode RAG recall)
  *   priority 10  prompts:buildSystem    (build + prepend system message)
- *   priority 20  memory:beforeLlm       (compaction + recall injection)  [5B]
+ *   priority 20  memory:beforeLlm       (compaction + recall injection)
+ *   priority 50  memory:onTurnEnd       (extract pending fragments)
  *
  * Each register function returns its own unregister; the aggregate returns a
  * single function that unregisters ALL of them — handy for tests and hot
@@ -33,8 +35,14 @@ export function registerAllHooks(bindings: AppBindings): () => void {
     modelBindings: bindings.modelBindings,
   }));
 
-  // ── memory (5B) ───────────────────────────────────────────────────────────
-  // registerMemoryHooks(bindings.hooks, { planner: bindings.memory, ... });
+  // ── memory: compaction + recall + post-turn extraction ────────────────────
+  offs.push(registerMemoryHooks(bindings.hooks, {
+    planner: bindings.memory,
+    llm:     bindings.llm,
+    // recentFiles: future — agent engine will populate readFileState into a
+    // per-session bucket the planner can read. V1: undefined → restore step
+    // skips files (re-reads on demand).
+  }));
 
   return () => {
     for (const off of offs) {

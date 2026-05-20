@@ -55,6 +55,10 @@ async function* runTurn(
     sessionId,
   };
 
+  // Resolve sandbox runner: explicit override > per-session factory > none.
+  const resolvedRunner = deps.commandRunner
+    ?? deps.getCommandRunner?.(sessionId);
+
   const toolCtx: ToolExecutionContext = {
     sessionId,
     turnId,
@@ -63,7 +67,7 @@ async function* runTurn(
     signal,
     readFileState,
     emit:          toolEmit,
-    commandRunner: deps.commandRunner,
+    commandRunner: resolvedRunner,
   };
 
   try {
@@ -93,7 +97,10 @@ async function* runTurn(
       blocks: userBlocks as MessageBlocks,
     });
 
-    // Conversation history for the LLM (rebuilt each iteration from stored messages)
+    // Conversation history for the LLM. The caller-provided systemPrompt is
+    // prepended as a sensible default — the prompts:buildSystem hook (priority
+    // 10) will REPLACE it in-place when registered. Embedders without that
+    // hook (tests, minimal hosts) still get a working system message.
     const messages: LlmMessage[] = [
       { role: 'system', content: systemPrompt },
       ...historyToLlmMessages(history),
@@ -323,7 +330,7 @@ async function* runTurn(
         } finally {
           // Scrub any bare-repo attack files planted during this tool's execution
           // before the next git call can see them. Must run regardless of outcome.
-          deps.commandRunner?.cleanup();
+          resolvedRunner?.cleanup();
         }
 
         const serialized = typeof output === 'string' ? output : JSON.stringify(output, null, 2);

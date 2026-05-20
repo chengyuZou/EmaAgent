@@ -5,11 +5,11 @@ import type { BindingModule } from '@ema-agent/storage';
 import type { AppBindings } from '../wiring.js';
 import { configureBridge } from '../wiring.js';
 
-// Keep in sync with BindingModule and migration CHECK constraints.
+// Keep in sync with BindingModule type and migration 006 CHECK constraint.
 const BINDING_MODULES = [
   // TS-side LLM modules
   'chat', 'narrative', 'agent',
-  'compaction', 'emotion',
+  'compaction', 'emotion', 'memory',
   'router', 'plan-parse', 'title',
   // LightRAG internal config — changes here trigger bridge re-push
   'embed', 'rerank', 'lightrag-llm',
