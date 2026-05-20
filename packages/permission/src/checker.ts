@@ -21,9 +21,10 @@ import type {
 function suggestionsForPath(
   toolName:    string,
   targetPath:  string | undefined,
-  context:     Pick<PermissionContext, 'workspaceRoot'>,
+  context:     Pick<PermissionContext, 'workspaceRoot' | 'additionalWorkingDirs'>,
 ): PermissionUpdate[] {
   const suggestions: PermissionUpdate[] = [];
+  const allRoots = [context.workspaceRoot, ...(context.additionalWorkingDirs ?? [])];
 
   if (!targetPath) {
     // Non-file tool: suggest always-allow for this tool in session scope
@@ -46,13 +47,16 @@ function suggestionsForPath(
   // RESP-03: only suggest a path-scoped rule when the directory is inside the
   // workspace root (path.relative returns an absolute path or starts with '..'
   // when they are on different drives or the target is above the root).
-  const rel = path.relative(context.workspaceRoot, dir);
-  if (rel && !rel.startsWith('..') && !path.isAbsolute(rel)) {
-    suggestions.push({
-      type:        'addRules',
-      rules:       [{ tool: toolName, pathGlob: `/${rel.replace(/\\/g, '/')}/**`, action: 'allow' }],
-      destination: 'session',
-    });
+  for (const root of allRoots) {
+    const rel = path.relative(root, dir);
+    if (rel && !rel.startsWith('..') && !path.isAbsolute(rel)) {
+      suggestions.push({
+        type:        'addRules',
+        rules:       [{ tool: toolName, pathGlob: `/${rel.replace(/\\/g, '/')}/**`, action: 'allow' }],
+        destination: 'session',
+      });
+      break;
+    }
   }
 
   return suggestions;
@@ -369,22 +373,37 @@ export class PermissionEngine {
 
     if (extractedPath) {
       const dir = path.dirname(path.resolve(extractedPath));
-      const rel = path.relative(context.workspaceRoot, dir);
 
-      if (rel && !rel.startsWith('..') && !path.isAbsolute(rel)) {
-        // Inside workspace — use workspace-relative /rel/** glob.
-        pathGlob = `/${rel.replace(/\\/g, '/')}/**`;
-      } else if (!path.isAbsolute(rel)) {
-        // Outside workspace, same drive (rel starts with '..').
-        // Use // prefix to anchor to filesystem root — avoids a pathGlob:undefined
-        // rule which would silently allow the tool on ALL paths.
-        const posixDir = dir.replace(/\\/g, '/');
-        const withoutLeadingSlash = posixDir.startsWith('/') ? posixDir.slice(1) : posixDir;
-        pathGlob = `//${withoutLeadingSlash}/**`;
+      // Check primary workspace root first, then additional working dirs.
+      // The first root that contains the dir wins — this produces a tidy
+      // workspace-relative /rel/** glob instead of a raw //absolute/** one.
+      const allRoots = [
+        context.workspaceRoot,
+        ...(context.additionalWorkingDirs ?? []),
+      ];
+
+      for (const root of allRoots) {
+        const rel = path.relative(root, dir);
+        if (rel && !rel.startsWith('..') && !path.isAbsolute(rel)) {
+          pathGlob = `/${rel.replace(/\\/g, '/')}/**`;
+          break;
+        }
       }
-      // Windows cross-drive: path.relative returns the absolute target path.
-      // We cannot express a cross-drive scope in the current glob convention,
-      // so pathGlob remains undefined (broad allow). Acceptable edge-case for V1.
+
+      if (!pathGlob) {
+        // Outside every working dir, same drive — anchor to filesystem root.
+        // This avoids a pathGlob:undefined rule silently allowing the tool on
+        // ALL paths.
+        const primaryRel = path.relative(context.workspaceRoot, dir);
+        if (!path.isAbsolute(primaryRel)) {
+          const posixDir = dir.replace(/\\/g, '/');
+          const withoutLeadingSlash = posixDir.startsWith('/') ? posixDir.slice(1) : posixDir;
+          pathGlob = `//${withoutLeadingSlash}/**`;
+        }
+        // Windows cross-drive: path.relative returns the absolute target path.
+        // We cannot express a cross-drive scope in the current glob convention,
+        // so pathGlob remains undefined (broad allow). Acceptable edge-case for V1.
+      }
     }
 
     return { action, tool: toolName, pathGlob, scope };
