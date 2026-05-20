@@ -22,6 +22,19 @@ import { microCompact } from './compact/micro.js';
 import { runMacroCompaction } from './compact/macro.js';
 import { buildPostCompactRestore } from './compact/restore.js';
 import { estimateMessagesTokens } from './tokens/estimate.js';
+import {
+  readOverrides, writeOverrides,
+  type MemorySessionOverrides, type ResolvedSessionOverrides,
+} from './maintenance/overrides.js';
+import { collectStats, type MemoryStats } from './maintenance/stats.js';
+import {
+  browseNodes, browseItems, browseEdgesForNodes,
+  type BrowseNodesOptions, type BrowseItemsOptions,
+} from './maintenance/inspection.js';
+import {
+  runMaintenance, deleteNode, deleteItem, hardDeleteZeroImportance,
+  type MaintenanceOptions, type MaintenanceReport,
+} from './maintenance/decay.js';
 
 // ── alreadySurfaced bookkeeping ──────────────────────────────────────────────
 
@@ -157,7 +170,8 @@ export class MemoryPlanner {
       return { layer0: null, layer1: null, layer2: null, narrative: null };
     }
 
-    const surfaced = this.loadAlreadySurfaced(ctx.sessionId);
+    const overrides = this.getSessionOverrides(ctx.sessionId);
+    const surfaced  = this.loadAlreadySurfaced(ctx.sessionId);
 
     // Embed the user message once and pass both representations downstream
     const embedded = this.embed.isAvailable()
@@ -166,27 +180,33 @@ export class MemoryPlanner {
     const queryVec   = embedded?.queryVec ?? null;
     const queryEmbed = embedded?.embedded ?? null;
 
-    // ── Layer 0: always run ───────────────────────────────────────────────────
-    const layer0 = safeCall(() => recallGraph(this.deps, {
-      queryVec,
-      queryEmbed,
-      index:           this.nodesIndex,
-      alreadySurfaced: new Set(surfaced.nodes),
-      settings:        this.settings,
-    }));
+    // ── Layer 0 ─ subject to override ─────────────────────────────────────────
+    const layer0 = overrides.layer0
+      ? safeCall(() => recallGraph(this.deps, {
+          queryVec,
+          queryEmbed,
+          index:           this.nodesIndex,
+          alreadySurfaced: new Set(surfaced.nodes),
+          settings:        this.settings,
+        }))
+      : null;
 
-    // ── Layer 1: always run ───────────────────────────────────────────────────
-    const layer1 = safeCall(() => recallSessionNote(this.deps, ctx.sessionId));
+    // ── Layer 1 ─ subject to override ─────────────────────────────────────────
+    const layer1 = overrides.layer1
+      ? safeCall(() => recallSessionNote(this.deps, ctx.sessionId))
+      : null;
 
-    // ── Layer 2: chat / agent only; narrative mode replaces with LightRAG ─────
+    // ── Layer 2 / narrative ─ subject to override ─────────────────────────────
     let layer2: RecallBundle['layer2']    = null;
     let narrative: RecallBundle['narrative'] = null;
 
     if (ctx.mode === 'narrative') {
-      narrative = await safeAsync(() =>
-        recallNarrative(this.deps, ctx.userInput, ctx.signal),
-      );
-    } else {
+      if (overrides.narrative) {
+        narrative = await safeAsync(() =>
+          recallNarrative(this.deps, ctx.userInput, ctx.signal),
+        );
+      }
+    } else if (overrides.layer2) {
       const layer2Mode: 'chat' | 'agent' = ctx.mode;
       layer2 = await safeAsync(() => recallEpisodic(this.deps, {
         query:           ctx.userInput,

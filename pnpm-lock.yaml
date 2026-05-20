@@ -290,6 +290,47 @@ importers:
         specifier: ^2.0.0
         version: 2.1.9(@types/node@20.19.39)
 
+  packages/memory:
+    dependencies:
+      '@ema-agent/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@ema-agent/ebd-client':
+        specifier: workspace:*
+        version: link:../ebd-client
+      '@ema-agent/hook':
+        specifier: workspace:*
+        version: link:../hook
+      '@ema-agent/llm':
+        specifier: workspace:*
+        version: link:../llm
+      '@ema-agent/narrative-client':
+        specifier: workspace:*
+        version: link:../narrative-client
+      '@ema-agent/session':
+        specifier: workspace:*
+        version: link:../session
+      '@ema-agent/storage':
+        specifier: workspace:*
+        version: link:../storage
+    optionalDependencies:
+      usearch:
+        specifier: ^2.25.1
+        version: 2.25.1
+    devDependencies:
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.39
+      rimraf:
+        specifier: ^5.0.0
+        version: 5.0.10
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: ^2.0.0
+        version: 2.1.9(@types/node@20.19.39)
+
   packages/narrative-client:
     devDependencies:
       '@types/node':
@@ -1353,6 +1394,10 @@ packages:
     resolution: {integrity: sha512-6u9UwL0HlAl21+agMN3YAMXcKByMqwGx+pq+P76vii5f7hTPtKDp08/H9py6DY+cfDw7kQNTGEj/rly3IgbNQA==}
     engines: {node: '>=10'}
 
+  node-addon-api@8.7.0:
+    resolution: {integrity: sha512-9MdFxmkKaOYVTV+XVRG8ArDwwQ77XIgIPyKASB1k3JPq3M8fGQQQE3YpMOrKm6g//Ktx8ivZr8xo1Qmtqub+GA==}
+    engines: {node: ^18 || ^20 || >= 21}
+
   node-domexception@1.0.0:
     resolution: {integrity: sha512-/jKZoMpw0F8GRwl4/eLROPA3cfcXtLApP0QzLmUT/HuPCZWyB7IY9ZrMeKw2O/nFIqPQB3PVM9aYm0F312AXDQ==}
     engines: {node: '>=10.5.0'}
@@ -1366,6 +1411,10 @@ packages:
     peerDependenciesMeta:
       encoding:
         optional: true
+
+  node-gyp-build@4.8.4:
+    resolution: {integrity: sha512-LA4ZjwlnUblHVgq0oBF3Jl/6h/Nvs5fzBLwdEF4nuxnFdsfajde4WfxtJr3CaiH+F6ewcIB/q4jQ4UzPyid+CQ==}
+    hasBin: true
 
   once@1.4.0:
     resolution: {integrity: sha512-lNaJgI+2Q5URQBkccEKHTQOPaXdUxnZZElQTZY0MFUAuaEqe1E+Nyvgdz/aIyNi6Z9MzO5dv1H8n58/GELp3+w==}
@@ -1552,6 +1601,10 @@ packages:
 
   undici-types@6.21.0:
     resolution: {integrity: sha512-iwDZqg0QAGrg9Rav5H4n0M64c3mkR59cJ6wQp+7C4nI0gsmExaedaYLNO44eT4AtBBwjbTiGPMlt2Md0T9H9JQ==}
+
+  usearch@2.25.1:
+    resolution: {integrity: sha512-IC3+5urpt5+dlnSpM8kNATrmvWhQSJp7ywhgZkNwwLdFcMptKtaU1y53+PE4YGQIVtKVsME/N+B56bn1A59mUQ==}
+    engines: {node: '>=20'}
 
   util-deprecate@1.0.2:
     resolution: {integrity: sha512-EPD5q1uXyFxJpCrLnCc1nHnq3gOa6DZBocAIiI2TaSCA7VCJ1UJDMagCzIkXNsUYfD1daK//LTEQ8xiIbrHtcw==}
@@ -2351,11 +2404,17 @@ snapshots:
     dependencies:
       semver: 7.7.4
 
+  node-addon-api@8.7.0:
+    optional: true
+
   node-domexception@1.0.0: {}
 
   node-fetch@2.7.0:
     dependencies:
       whatwg-url: 5.0.0
+
+  node-gyp-build@4.8.4:
+    optional: true
 
   once@1.4.0:
     dependencies:
@@ -2577,6 +2636,13 @@ snapshots:
   undici-types@5.26.5: {}
 
   undici-types@6.21.0: {}
+
+  usearch@2.25.1:
+    dependencies:
+      bindings: 1.5.0
+      node-addon-api: 8.7.0
+      node-gyp-build: 4.8.4
+    optional: true
 
   util-deprecate@1.0.2: {}
 
