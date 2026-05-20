@@ -4,9 +4,10 @@ import type { Message } from '@ema-agent/session';
 import type { MessageBlocks } from '@ema-agent/session';
 import type { ToolResultBlock } from '@ema-agent/contracts';
 import type { ToolExecutionContext, ReadFileState } from '@ema-agent/tool';
-import type { PermissionContext } from '@ema-agent/permission';
+import type { PermissionContext, PermissionOutcome } from '@ema-agent/permission';
 import type { AgentDeps, AgentRunInput } from './types.js';
 import { AgentPolicy } from './policy.js';
+import { gateWithEvents } from './permission-gate.js';
 
 // ── AgentEngine ───────────────────────────────────────────────────────────────
 
@@ -287,7 +288,23 @@ async function* runTurn(
         }
         const toolEntry = tools.get(block.name);
 
-        const outcome = await permission.gate(block.name, block.args, toolEntry.permissionMeta, permCtx);
+        // gateWithEvents yields permission_required events while waiting for
+        // the user to respond. Falls back to engine-level config.ask when
+        // deps.buildAsk is not provided (tests / minimal embedders).
+        const outcome: PermissionOutcome = deps.buildAsk
+          ? yield* gateWithEvents({
+              permission,
+              toolName: block.name,
+              args:     block.args,
+              meta:     toolEntry.permissionMeta,
+              context:  permCtx,
+              buildAsk: (emit) => deps.buildAsk!({
+                sessionId,
+                turnId,
+                emit,
+              }),
+            })
+          : await permission.gate(block.name, block.args, toolEntry.permissionMeta, permCtx);
 
         if (!outcome.granted) {
           const reason = `Permission denied: ${(outcome as { reason: string }).reason}`;

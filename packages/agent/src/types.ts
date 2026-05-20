@@ -1,10 +1,10 @@
-import type { SessionId, AgentSubMode } from '@ema-agent/contracts';
+import type { SessionId, AgentSubMode, EmaStreamEvent } from '@ema-agent/contracts';
 import type { LlmRouter, LlmContentPart } from '@ema-agent/llm';
 import type { SessionStore, Turn } from '@ema-agent/session';
 import type { HookBus } from '@ema-agent/hook';
 import type { EmotionEngine } from '@ema-agent/emotion';
 import type { ICommandRunner, ToolRegistry } from '@ema-agent/tool';
-import type { PermissionEngine } from '@ema-agent/permission';
+import type { PermissionEngine, AskPermissionFn } from '@ema-agent/permission';
 import type { ModelBindingsRepo } from '@ema-agent/storage';
 
 // ── Dependency surface ────────────────────────────────────────────────────────
@@ -33,6 +33,22 @@ export interface AgentDeps {
    * (tests, CLI one-shot). Takes precedence over getCommandRunner when set.
    */
   commandRunner?: ICommandRunner;
+  /**
+   * Factory that builds a per-turn askPermission callback wired to the turn's
+   * SSE event stream. The orchestrator passes its PermissionPromptRegistry-
+   * backed factory here; tests can omit it (PermissionEngine then falls back
+   * to its constructor `ask` config — typically a deny-all stub).
+   *
+   * The factory receives an `emit` function that pushes events into the
+   * agent engine's generator yield channel. See `gateWithEvents` for the
+   * mechanism that runs gate() as a background promise while draining
+   * emitted events.
+   */
+  buildAsk?: (args: {
+    sessionId: SessionId;
+    turnId:    string;
+    emit:      (ev: EmaStreamEvent) => void;
+  }) => AskPermissionFn;
 }
 
 // ── Run input ─────────────────────────────────────────────────────────────────

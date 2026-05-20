@@ -81,6 +81,17 @@ export function turnsRoute(bindings: AppBindings): Hono {
     (async () => {
       for await (const event of events) {
         eventStore.push(turnId, event);
+        // Auto-cancel any in-flight permission prompts when the turn ends.
+        // Otherwise an aborted turn leaves the prompt hanging in the
+        // registry — and on the frontend — until the 120 s timeout fires.
+        if (
+          event.type === 'turn_aborted' ||
+          event.type === 'turn_failed'  ||
+          event.type === 'turn_completed'
+        ) {
+          const n = bindings.permissionPrompts.cancelForTurn(turnId, `turn ${event.type}`);
+          if (n > 0) console.log(`[permission] cancelled ${n} prompt(s) on ${event.type}`);
+        }
       }
     })().catch((err) => {
       console.error('[turns] event fan-out error', err);

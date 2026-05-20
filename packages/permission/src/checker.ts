@@ -299,7 +299,9 @@ export class PermissionEngine {
     suggestions: PermissionUpdate[],
     context:     PermissionContext,
   ): Promise<PermissionOutcome> {
-    const askFn = this.config.ask;
+    // Per-call override wins (lets each turn route the prompt through its
+    // own SSE event stream). Falls back to engine-level config.
+    const askFn = context.ask ?? this.config.ask;
     if (!askFn) {
       // Headless / daemon mode — no callback → deny rather than hang
       return {

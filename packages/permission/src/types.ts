@@ -82,6 +82,12 @@ export interface PermissionContext {
   additionalWorkingDirs?: string[]
   /** Current session ID — used for internal path carve-outs (e.g. session memory). */
   sessionId?:             string
+  /**
+   * Per-call askPermission override. When set, takes precedence over
+   * `PermissionConfig.ask`. AgentEngine injects this so each turn can route
+   * the prompt through its own SSE event stream (see gateWithEvents helper).
+   */
+  ask?:                   AskPermissionFn
 }
 
 // ── Ask flow ──────────────────────────────────────────────────────────────────

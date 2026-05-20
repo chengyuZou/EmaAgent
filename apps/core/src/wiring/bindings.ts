@@ -23,9 +23,9 @@ import {
   isLlmProtocol, isEmbedProtocol, isRerankProtocol,
 } from '@ema-agent/contracts';
 import { PermissionEngine } from '@ema-agent/permission';
-import type {
-  PermissionPrompt, PermissionResponse,
-} from '@ema-agent/permission';
+import type { AskPermissionFn } from '@ema-agent/permission';
+import { PermissionPromptRegistry } from '../permissions/registry.js';
+import type { EmaStreamEvent } from '@ema-agent/contracts';
 import { ToolRegistry } from '@ema-agent/tool';
 import { registerBuiltinTools } from '@ema-agent/tool-builtin';
 import { MemoryPlanner } from '@ema-agent/memory';
@@ -59,8 +59,18 @@ export interface AppBindings {
   emotion:       EmotionEngine;
 
   // Agent stack
-  permission:    PermissionEngine;
-  tools:         ToolRegistry;
+  permission:        PermissionEngine;
+  permissionPrompts: PermissionPromptRegistry;
+  tools:             ToolRegistry;
+  /**
+   * Per-turn factory that yields an askPermission callback wired to the
+   * provided SSE emit. Passed into AgentEngine.deps.buildAsk.
+   */
+  buildAskForTurn: (args: {
+    sessionId: string;
+    turnId:    string;
+    emit:      (ev: EmaStreamEvent) => void;
+  }) => AskPermissionFn;
   /**
    * Per-session sandbox runner. Workspace root differs across sessions so we
    * cache one runner per sessionId — the factory builds + memoises on demand.
@@ -72,24 +82,6 @@ export interface AppBindings {
 
   // Repos kept on the binding for route convenience
   modelBindings: ModelBindingsRepo;
-}
-
-// ── askPermission stub (5B placeholder) ──────────────────────────────────────
-//
-// In V1 prod the orchestrator wires this to its SSE pipeline:
-//   - emit `permission_required` event
-//   - hold the resolver in a Map keyed by promptId
-//   - frontend POSTs /api/permission/:promptId/respond → resolver fires
-//   - timeout default-deny
-//
-// For now we deny everything (safe default). Round 5C wires the real flow.
-
-async function denyAllAskCallback(prompt: PermissionPrompt): Promise<PermissionResponse> {
-  console.warn(
-    `[permission] askPermission stub: denying ${prompt.toolName} ` +
-    `(real ask callback wires up in Round 5C)`,
-  );
-  return { action: 'deny', reason: 'ask callback not yet wired' };
 }
 
 // ── Provider config builders (exported — providers route reuses them) ───────
@@ -230,11 +222,49 @@ export function buildBindings(db: Database): AppBindings {
   const sessionsRepo  = new SessionsRepo(db.sqlite);
 
   // ── Permission + tools ─────────────────────────────────────────────────────
+  //
+  // The PermissionEngine's `config.ask` is a deny-all fallback used only when
+  // no per-call override is set (i.e. when something other than AgentEngine
+  // calls gate() — currently nothing). AgentEngine injects its turn-bound
+  // askCallback via PermissionContext.ask on every gate() invocation; that
+  // path routes through the SSE event stream + PermissionPromptRegistry.
+  const permissionPrompts = new PermissionPromptRegistry();
+
   const permission = new PermissionEngine({
     mode:  'ask',                       // default to safe; user can flip in settings
     rules: [],                          // V1 starts empty; rules accrete as user grants
-    ask:   denyAllAskCallback,          // Round 5C will swap this for SSE-backed asker
+    ask:   async () => ({ action: 'deny', reason: 'no per-turn ask wired' }),
   });
+
+  const buildAskForTurn = (args: {
+    sessionId: string;
+    turnId:    string;
+    emit:      (ev: EmaStreamEvent) => void;
+  }): AskPermissionFn => {
+    return async (prompt) => {
+      const { promptId, promise } = permissionPrompts.create({
+        sessionId: args.sessionId,
+        turnId:    args.turnId,
+      });
+      args.emit({
+        type:     'permission_required',
+        promptId,
+        tool:     prompt.toolName,
+        args:     prompt.input,
+        hint:     prompt.gateReason ?? '',
+      });
+      const response = await promise;
+      args.emit({
+        type:     'permission_resolved',
+        promptId,
+        decision: response.action === 'allow'    ? 'allow'
+                : response.action === 'allow_session' ? 'allow'
+                : response.action === 'always_allow'  ? 'allow'
+                : 'deny',
+      });
+      return response;
+    };
+  };
 
   const tools = new ToolRegistry();
   registerBuiltinTools(tools);
@@ -282,7 +312,7 @@ export function buildBindings(db: Database): AppBindings {
     db, hooks, session,
     llm, ebd, narrative,
     card, emotion,
-    permission, tools, getCommandRunner,
+    permission, permissionPrompts, tools, buildAskForTurn, getCommandRunner,
     memory,
     modelBindings,
   };

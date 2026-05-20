@@ -6,6 +6,8 @@ import { turnsRoute } from './routes/turns.js';
 import { providersRoute } from './routes/providers.js';
 import { modelBindingsRoute } from './routes/model-bindings.js';
 import { sessionsRoute } from './routes/sessions.js';
+import { permissionRoute } from './routes/permission.js';
+import { memoryRoute } from './routes/memory.js';
 import type { AppBindings } from './wiring.js';
 
 export function buildServer(bindings: AppBindings): Hono {
@@ -38,6 +40,8 @@ export function buildServer(bindings: AppBindings): Hono {
   app.route('/api/providers',      providersRoute(bindings));
   app.route('/api/model-bindings', modelBindingsRoute(bindings));
   app.route('/api/sessions',       sessionsRoute(bindings));
+  app.route('/api/permission',     permissionRoute(bindings));
+  app.route('/api/memory',         memoryRoute(bindings));
 
   // 404 fallback
   app.notFound((c) => c.json({ error: 'not_found' }, 404));

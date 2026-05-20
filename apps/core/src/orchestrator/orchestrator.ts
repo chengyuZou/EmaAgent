@@ -44,6 +44,7 @@ export class Orchestrator {
       permission:       bindings.permission,
       modelBindings:    bindings.modelBindings,
       getCommandRunner: bindings.getCommandRunner,
+      buildAsk:         bindings.buildAskForTurn,
     });
   }
 
