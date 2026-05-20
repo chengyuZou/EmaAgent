@@ -19,6 +19,34 @@ export type {
 export { DEFAULT_MEMORY_SETTINGS } from './types.js';
 
 // ── Sub-utilities (exported for testing / advanced wiring) ───────────────────
-export { EmbedService }                      from './embed/service.js';
-export { cosineSim, packEmbedding, unpackEmbedding } from './embed/similarity.js';
+export { EmbedService } from './embed/service.js';
+export {
+  normalize,
+  dotProduct,
+  cosineSim,
+  packEmbedding,
+  unpackEmbedding,
+  normalizeQueryVector,
+} from './embed/similarity.js';
 export { estimateTextTokens, estimateMessagesTokens } from './tokens/estimate.js';
+
+// ── Vector index ─────────────────────────────────────────────────────────────
+export { createVectorIndex }                  from './index/factory.js';
+export { BruteForceIndex }                    from './index/brute-force.js';
+export { UsearchIndex }                       from './index/usearch.js';
+export { rebuildNodesIndex, rebuildItemsIndex } from './index/builder.js';
+export type { VectorIndex, SearchHit }        from './index/vector-index.js';
+
+// ── Extraction pipeline ──────────────────────────────────────────────────────
+export { runExtractionPipeline }              from './extract/pipeline.js';
+export type { PipelineResult }                from './extract/pipeline.js';
+export type {
+  ExtractedNode, ExtractedEdge, ExtractedItem, ExtractionOutput,
+  ConsolidationOutput, PendingFragment,
+} from './extract/types.js';
+
+// ── Background tasks + recovery ──────────────────────────────────────────────
+export { SessionTaskQueue }                   from './tasks/session-queue.js';
+export { BackgroundTaskRunner }               from './tasks/runner.js';
+export { runStartupRecovery }                 from './tasks/recovery.js';
+export type { RecoveryReport }                from './tasks/recovery.js';

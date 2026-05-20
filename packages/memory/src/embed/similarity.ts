@@ -1,48 +1,79 @@
-// ── Cosine similarity ────────────────────────────────────────────────────────
+// ── L2 normalization ─────────────────────────────────────────────────────────
 
 /**
- * Cosine similarity between two same-dimension vectors.
- * Returns a number in [-1, 1]; 1 = identical direction, 0 = orthogonal.
+ * Returns the L2-normalized copy of `vec` (unit length).
+ * After normalization, cosine similarity reduces to plain dot product, which is
+ *   a) ~3× faster than computing two norms + sqrt per pair, and
+ *   b) directly compatible with usearch's `ip` (inner-product) metric.
  *
- * Mismatched lengths or zero-norm vectors return 0 — the planner treats this
- * as "no match" and skips the row, rather than throwing mid-recall.
+ * Zero-vector input is returned unchanged — caller's responsibility to handle.
  */
-export function cosineSim(a: Float32Array, b: Float32Array): number {
-  if (a.length !== b.length || a.length === 0) return 0;
-  let dot = 0;
-  let normA = 0;
-  let normB = 0;
-  for (let i = 0; i < a.length; i++) {
-    const av = a[i]!;
-    const bv = b[i]!;
-    dot   += av * bv;
-    normA += av * av;
-    normB += bv * bv;
+export function normalize(vec: Float32Array): Float32Array {
+  let sumSq = 0;
+  for (let i = 0; i < vec.length; i++) {
+    const v = vec[i]!;
+    sumSq += v * v;
   }
-  if (normA === 0 || normB === 0) return 0;
-  return dot / (Math.sqrt(normA) * Math.sqrt(normB));
+  if (sumSq === 0) return vec;
+  const inv = 1 / Math.sqrt(sumSq);
+  const out = new Float32Array(vec.length);
+  for (let i = 0; i < vec.length; i++) out[i] = vec[i]! * inv;
+  return out;
 }
 
-// ── Buffer ↔ Float32Array packing ─────────────────────────────────────────────
+// ── Dot product ──────────────────────────────────────────────────────────────
 
 /**
- * Pack a JS number[] (provider response) into a Buffer suitable for the BLOB
- * column. The reverse `unpackEmbedding` reads it back as a Float32Array view.
+ * Inner product of two same-length vectors.
+ * For L2-normalized vectors this equals cosine similarity in [-1, 1].
+ *
+ * Mismatched lengths or empty input return 0 — the planner treats this as
+ * "no match" and skips the row rather than throwing mid-recall.
+ */
+export function dotProduct(a: Float32Array, b: Float32Array): number {
+  if (a.length !== b.length || a.length === 0) return 0;
+  let sum = 0;
+  for (let i = 0; i < a.length; i++) sum += a[i]! * b[i]!;
+  return sum;
+}
+
+/**
+ * Kept for backward compatibility / clarity at call sites that haven't been
+ * updated yet. Identical to dotProduct() since all stored embeddings are now
+ * normalized at pack time.
+ */
+export const cosineSim = dotProduct;
+
+// ── Buffer ↔ Float32Array packing ────────────────────────────────────────────
+
+/**
+ * Normalize-then-pack a JS number[] into a Buffer suitable for the BLOB column.
+ *
+ * IMPORTANT: every embedding written to the DB goes through this function, so
+ * we maintain the invariant "all stored embeddings are unit-length". Recall
+ * code can then use dotProduct() and skip per-query normalization too.
  */
 export function packEmbedding(vec: number[]): Buffer {
-  const f32 = new Float32Array(vec);
+  const f32 = normalize(new Float32Array(vec));
   return Buffer.from(f32.buffer, f32.byteOffset, f32.byteLength);
 }
 
 /**
- * Read a stored BLOB back as a Float32Array view.
- * `dim` is required because better-sqlite3 returns Buffers without dimension info.
- * Mismatched byte length → returns an empty Float32Array (similarity-safe).
+ * Read a stored BLOB back as a Float32Array. Copies out so the resulting view
+ * is independent of the SQLite-owned buffer (better-sqlite3 may reclaim it).
+ * Mismatched byte length → empty Float32Array (similarity-safe).
  */
 export function unpackEmbedding(buf: Buffer, dim: number): Float32Array {
   if (buf.byteLength !== dim * 4) return new Float32Array(0);
-  // Copy out so the view is independent of the underlying SQLite-owned buffer
   const out = new Float32Array(dim);
   out.set(new Float32Array(buf.buffer, buf.byteOffset, dim));
   return out;
+}
+
+/**
+ * Normalize a raw query embedding (returned by the embed provider before we
+ * pack it). Used when computing a per-turn query vector for index search.
+ */
+export function normalizeQueryVector(vec: number[]): Float32Array {
+  return normalize(new Float32Array(vec));
 }

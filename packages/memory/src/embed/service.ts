@@ -1,5 +1,5 @@
 import type { EbdRouter } from '@ema-agent/ebd-client';
-import { packEmbedding } from './similarity.js';
+import { packEmbedding, normalizeQueryVector } from './similarity.js';
 import type { EmbeddedText } from '../types.js';
 
 /**
@@ -43,10 +43,41 @@ export class EmbedService {
     const resp = await this.ebd.embed({ providerId, model, texts });
 
     return resp.embeddings.map((vec) => ({
-      embedding:  packEmbedding(vec),
+      embedding:  packEmbedding(vec),     // normalized + packed for DB storage
       providerId,
       model,
       dim:        resp.dim,
     }));
+  }
+
+  /**
+   * Embed a single query and return both the packed BLOB (for stamping the
+   * EmbeddedText provenance fields) and the normalized Float32Array view
+   * suitable for index.search() / dotProduct(). Saves one unpack round-trip
+   * compared to embedOne() + unpackEmbedding().
+   */
+  async embedQuery(text: string): Promise<{
+    queryVec: Float32Array;
+    embedded: EmbeddedText;
+  } | null> {
+    const providerId = this.ebd.firstEmbedId();
+    if (!providerId) return null;
+    const model = this.ebd.defaultEmbedModelFor(providerId);
+    if (!model) return null;
+
+    const resp = await this.ebd.embed({ providerId, model, texts: [text] });
+    const raw  = resp.embeddings[0];
+    if (!raw) return null;
+
+    const queryVec = normalizeQueryVector(raw);
+    return {
+      queryVec,
+      embedded: {
+        embedding:  Buffer.from(queryVec.buffer, queryVec.byteOffset, queryVec.byteLength),
+        providerId,
+        model,
+        dim:        resp.dim,
+      },
+    };
   }
 }

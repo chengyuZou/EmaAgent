@@ -4,88 +4,73 @@ import type {
   GraphRecallResult, RecalledNode, RecalledEdge,
   MemorySettings, EmbeddedText,
 } from '../types.js';
-import { cosineSim, unpackEmbedding } from '../embed/similarity.js';
+import { dotProduct, unpackEmbedding } from '../embed/similarity.js';
+import type { VectorIndex } from '../index/vector-index.js';
 
 // ── Layer 0 recall ────────────────────────────────────────────────────────────
 
 interface Layer0Args {
-  queryEmbed:      EmbeddedText | null;
+  queryVec:        Float32Array | null;    // normalized; null if embed unavailable
+  queryEmbed:      EmbeddedText | null;    // provider provenance + dim
+  index:           VectorIndex | null;     // null → fall back to DB scan
   alreadySurfaced: Set<string>;
   settings:        MemorySettings;
 }
 
 /**
- * Layer-0 entity graph recall. Steps:
+ * Layer-0 entity graph recall.
  *
- *   1. Anchor selection — cosine sim against the user message; take top
- *      `layer0AnchorTopK`, excluding recently surfaced.
- *   2. BFS expansion — 1 hop first; if budget not filled, 2 hop.
- *      Never beyond 2 hops (empirically too noisy). Neighbours are ordered
- *      by edge weight (log(1 + mention_count)) descending.
+ *   1. Anchor selection — ANN via VectorIndex when available, otherwise a DB
+ *      scan with brute-force cosine sim. Excludes alreadySurfaced.
+ *   2. BFS expansion — 1 hop first; if budget not yet filled, 2 hops; never
+ *      beyond 2 (noisy). Neighbours ordered by edge weight = log(1 + count).
  *   3. Cap total at `layer0TotalBudget`.
  *
- * Returns empty result when no embed provider is configured AND no anchor
- * detection fallback is implemented yet (V1 only does embedding-based anchors).
+ * Returns an empty result when no anchors can be found (no embed provider AND
+ * no LLM-NER anchor strategy implemented yet).
  */
 export function recallGraph(
   deps: MemoryDeps,
   args: Layer0Args,
 ): GraphRecallResult {
-  const { queryEmbed, alreadySurfaced, settings } = args;
+  const { queryVec, queryEmbed, index, alreadySurfaced, settings } = args;
   const totalBudget = settings.recall.layer0TotalBudget;
   const anchorK     = settings.recall.layer0AnchorTopK;
   const maxHop      = settings.recall.maxHopDistance;
 
-  // ── 1. Anchors ──────────────────────────────────────────────────────────────
-  // For V1 we only implement the embedding-based anchor strategy. Hybrid
-  // (LLM-NER + embedding) lands in a later pass; until then the planner can
-  // pre-select using LLM-NER and stuff anchors into a future override field.
-  if (!queryEmbed) return { nodes: [], edges: [] };
+  if (!queryVec || !queryEmbed) return { nodes: [], edges: [] };
 
-  const candidates = deps.nodes.listEmbeddable(queryEmbed.providerId);
-  const queryVec   = unpackEmbedding(queryEmbed.embedding, queryEmbed.dim);
+  // ── 1. Anchors via index (fast path) or DB scan (fallback) ────────────────
+  const anchorIds = findAnchors(
+    deps, queryVec, queryEmbed, index, alreadySurfaced, anchorK,
+  );
+  if (anchorIds.length === 0) return { nodes: [], edges: [] };
 
-  type Scored = { node: MemoryNodeRow; score: number };
-  const scored: Scored[] = [];
-  for (const node of candidates) {
-    if (alreadySurfaced.has(node.id)) continue;
-    if (!node.embedding) continue;
-    if (node.embedding_dim !== queryEmbed.dim) continue;
-    const vec   = unpackEmbedding(node.embedding, queryEmbed.dim);
-    const score = cosineSim(queryVec, vec);
-    if (score <= 0) continue;
-    scored.push({ node, score });
-  }
-  scored.sort((a, b) => b.score - a.score);
-
-  const anchors = scored.slice(0, anchorK).map(s => s.node);
-  if (anchors.length === 0) return { nodes: [], edges: [] };
-
-  // ── 2. BFS expansion ───────────────────────────────────────────────────────
+  // Load anchor rows in one go
   const visited = new Map<string, RecalledNode>();
-  const collectedEdges = new Map<string, RecalledEdge>();
-
-  for (const anchor of anchors) {
-    visited.set(anchor.id, toRecalledNode(anchor, 0));
+  for (const id of anchorIds) {
+    const row = deps.nodes.findById(id);
+    if (row) visited.set(id, toRecalledNode(row, 0));
   }
+  if (visited.size === 0) return { nodes: [], edges: [] };
 
-  let frontier = anchors.map(a => a.id);
+  // ── 2. BFS expansion ──────────────────────────────────────────────────────
+  const collectedEdges = new Map<string, RecalledEdge>();
+  let frontier: string[] = [...visited.keys()];
+
   for (let hop = 1; hop <= maxHop; hop++) {
     if (visited.size >= totalBudget) break;
-    if (frontier.length === 0) break;
+    if (frontier.length === 0)       break;
 
-    const edges       = deps.edges.listForNodes(frontier);
+    const edges      = deps.edges.listForNodes(frontier);
     const nextFrontier: string[] = [];
 
-    // Sort edges by weight DESC so high-importance neighbours arrive first
     const weighted = edges.map(e => ({ edge: e, weight: edgeWeight(e) }));
     weighted.sort((a, b) => b.weight - a.weight);
 
     for (const { edge, weight } of weighted) {
       if (visited.size >= totalBudget) break;
 
-      // Always remember the edge if both ends are or will be in the recall set,
-      // so the rendered graph shows connections.
       const edgeKey = `${edge.from_node_id}|${edge.relation}|${edge.to_node_id}`;
       if (!collectedEdges.has(edgeKey)) {
         collectedEdges.set(edgeKey, {
@@ -110,27 +95,63 @@ export function recallGraph(
       visited.set(newId, toRecalledNode(row, hop));
       nextFrontier.push(newId);
     }
-
     frontier = nextFrontier;
   }
 
-  // Strip edges whose both endpoints didn't end up in the visited set —
-  // happens when budget filled before neighbour was added.
+  // Strip dangling edges (other end didn't make the budget cut)
   const finalEdges: RecalledEdge[] = [];
   for (const e of collectedEdges.values()) {
     if (visited.has(e.from) && visited.has(e.to)) finalEdges.push(e);
   }
 
-  return {
-    nodes: [...visited.values()],
-    edges: finalEdges,
-  };
+  return { nodes: [...visited.values()], edges: finalEdges };
+}
+
+// ── Anchor finding ───────────────────────────────────────────────────────────
+
+function findAnchors(
+  deps: MemoryDeps,
+  queryVec: Float32Array,
+  queryEmbed: EmbeddedText,
+  index: VectorIndex | null,
+  alreadySurfaced: Set<string>,
+  k: number,
+): string[] {
+  // Fast path: vector index ANN search
+  if (index && index.dim === queryEmbed.dim) {
+    // Search a few extra results so we have room to filter alreadySurfaced
+    const overscan = Math.max(k * 3, k + 10);
+    const hits = index.search(queryVec, overscan);
+    const out: string[] = [];
+    for (const hit of hits) {
+      if (alreadySurfaced.has(hit.id)) continue;
+      if (hit.score <= 0)              continue;
+      out.push(hit.id);
+      if (out.length >= k) break;
+    }
+    return out;
+  }
+
+  // Fallback: scan DB rows + brute-force cosine
+  const rows = deps.nodes.listEmbeddable(queryEmbed.providerId);
+  type Scored = { row: MemoryNodeRow; score: number };
+  const scored: Scored[] = [];
+  for (const row of rows) {
+    if (alreadySurfaced.has(row.id)) continue;
+    if (!row.embedding)              continue;
+    if (row.embedding_dim !== queryEmbed.dim) continue;
+    const vec = unpackEmbedding(row.embedding, queryEmbed.dim);
+    const score = dotProduct(queryVec, vec);
+    if (score <= 0) continue;
+    scored.push({ row, score });
+  }
+  scored.sort((a, b) => b.score - a.score);
+  return scored.slice(0, k).map(s => s.row.id);
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 function edgeWeight(edge: MemoryEdgeRow): number {
-  // log1p(mention_count). Recent edges get a tiny tiebreaker boost via floor.
   return Math.log1p(edge.mention_count);
 }
 
