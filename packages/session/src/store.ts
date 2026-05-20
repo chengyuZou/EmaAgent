@@ -285,10 +285,20 @@ export class SessionStore {
 
   /**
    * Load message history for LLM context — chronological order, last N messages.
-   * Phase 2: simple limit. Phase 3+: MemoryPlanner handles token budgeting.
+   *
+   * Summary-aware: when a kind='summary' message exists in this session, the
+   * returned list begins at that summary (inclusive). Older messages are
+   * implicitly omitted — they were compacted by MemoryPlanner.
+   *
+   * For UI rendering, use listMessages() instead — it ignores summary slicing.
    */
-  loadHistory(sessionId: SessionId, limit = 100): Message[] {
-    return this.messagesRepo.listForSession(sessionId, limit).map(toMessage);
+  loadHistory(sessionId: SessionId, limit = 500): Message[] {
+    return this.messagesRepo.listForSessionFromSummary(sessionId, limit).map(toMessage);
+  }
+
+  /** All messages belonging to one turn — used by post-turn extraction. */
+  loadMessagesForTurn(turnId: TurnId): Message[] {
+    return this.messagesRepo.listForTurn(turnId).map(toMessage);
   }
 
   /**

@@ -1,4 +1,5 @@
-import type { SessionId, TurnMode } from '@ema-agent/contracts';
+import type { SessionId, TurnId, TurnMode } from '@ema-agent/contracts';
+import type { LlmMessage } from '@ema-agent/llm';
 import type { MemoryDeps } from './deps.js';
 import type {
   PlanContext, RecallBundle, MemorySettings, AlreadySurfaced,
@@ -17,6 +18,10 @@ import {
 } from './extract/pending.js';
 import { SessionTaskQueue } from './tasks/session-queue.js';
 import { BackgroundTaskRunner } from './tasks/runner.js';
+import { microCompact } from './compact/micro.js';
+import { runMacroCompaction } from './compact/macro.js';
+import { buildPostCompactRestore } from './compact/restore.js';
+import { estimateMessagesTokens } from './tokens/estimate.js';
 
 // ── alreadySurfaced bookkeeping ──────────────────────────────────────────────
 
@@ -204,6 +209,92 @@ export class MemoryPlanner {
     };
   }
 
+  // ── Single hook entry point ─────────────────────────────────────────────────
+
+  /**
+   * Combined operation for the beforeLlm hook:
+   *   1. Token-budget check → maybe compact
+   *   2. Recall via plan()
+   *   3. Inject a single kind='context' message just before the LAST user turn
+   *
+   * Returns the new messages array. Caller (the hook) replaces payload.messages
+   * with this result.
+   */
+  async applyToBeforeLlm(args: {
+    sessionId:          SessionId;
+    turnId:             TurnId;
+    mode:               TurnMode;
+    userInput:          string;
+    messages:           LlmMessage[];
+    modelContextWindow: number;
+    recentFiles?:       ReadonlyArray<{ path: string; content: string; mtimeMs: number }>;
+    signal?:            AbortSignal;
+  }): Promise<{
+    messages:        LlmMessage[];
+    compactionRan:   boolean;
+    microCleared:    number;
+    recallSummary:   { layer0: number; layer1: boolean; layer2: number; narrative: boolean };
+  }> {
+    if (!this.settings.enabled) {
+      return {
+        messages:      args.messages,
+        compactionRan: false,
+        microCleared:  0,
+        recallSummary: { layer0: 0, layer1: false, layer2: 0, narrative: false },
+      };
+    }
+
+    // 1. Compact
+    const compactRes = await this.compact({
+      sessionId:           args.sessionId,
+      turnId:              args.turnId,
+      mode:                args.mode,
+      messages:            args.messages,
+      modelContextWindow:  args.modelContextWindow,
+      recentFiles:         args.recentFiles,
+      signal:              args.signal,
+    });
+    let working = compactRes.messages;
+
+    // 2. Recall
+    const bundle = await this.plan({
+      sessionId: args.sessionId,
+      turnId:    args.turnId,
+      mode:      args.mode,
+      userInput: args.userInput,
+      signal:    args.signal,
+    });
+
+    // 3. Inject context message right BEFORE the trailing user message.
+    // The engine always appends the current user turn last; we slot the
+    // recall context between history-tail and the user turn so the model
+    // sees: history → context → current user.
+    const ctxMsg = buildContextMessage(bundle);
+    if (ctxMsg) {
+      const lastIdx = working.length - 1;
+      const lastIsUser =
+        lastIdx >= 0 && working[lastIdx]?.role === 'user';
+      if (lastIsUser) {
+        working = [...working.slice(0, lastIdx), ctxMsg, working[lastIdx]!];
+      } else {
+        working = [...working, ctxMsg];
+      }
+    }
+
+    return {
+      messages:      working,
+      compactionRan: compactRes.macroRan,
+      microCleared:  compactRes.microCleared,
+      recallSummary: {
+        layer0:    bundle.layer0?.nodes.length ?? 0,
+        layer1:    bundle.layer1 !== null,
+        layer2:    (bundle.layer2?.currentMode.length ?? 0)
+                 + (bundle.layer2?.otherModes.length ?? 0),
+        narrative: bundle.narrative !== null,
+      },
+    };
+  }
+
   // ── Index mutation hooks (used by Round 3 extraction pipeline) ──────────────
 
   /**
@@ -314,9 +405,121 @@ export class MemoryPlanner {
     await this.queue.drainAll();
   }
 
-  /** Round 4: micro + macro compaction with mode-specific prompts. */
-  async compact(_ctx: { sessionId: SessionId }): Promise<{ compacted: boolean }> {
-    return { compacted: false };
+  // ── Compaction ──────────────────────────────────────────────────────────────
+
+  /**
+   * Run the two-stage compaction pipeline against an in-flight messages array.
+   *
+   *   Stage A — Microcompaction (free, fast)
+   *     Replaces stale tool_result content with a cleared placeholder.
+   *     Only meaningfully reduces tokens in agent mode with many tool calls.
+   *
+   *   Stage B — Macrocompaction (LLM-driven)
+   *     Triggered only when post-micro token estimate is still over the
+   *     model's context window minus `bufferTokens`. Calls the memory LLM
+   *     binding with a mode-specific summary template, persists a single
+   *     `kind: 'summary'` message (doubles as boundary), and rebuilds the
+   *     messages array as [summary, ...tail, ...post-compact restore].
+   *
+   * Returns the (possibly-new) message array and a flag indicating whether
+   * macrocompaction ran. The hook caller uses this to update payload.messages.
+   *
+   * Failure-safe: any failure inside macro returns the post-micro messages
+   * unchanged and `succeeded: false`. Memory must never block a turn.
+   */
+  async compact(args: {
+    sessionId:           SessionId;
+    turnId:              TurnId;
+    mode:                TurnMode;
+    messages:            LlmMessage[];
+    modelContextWindow:  number;
+    recentFiles?:        ReadonlyArray<{ path: string; content: string; mtimeMs: number }>;
+    signal?:             AbortSignal;
+  }): Promise<{
+    messages: LlmMessage[];
+    macroRan: boolean;
+    microCleared: number;
+    succeeded: boolean;
+  }> {
+    if (!this.settings.enabled) {
+      return { messages: args.messages, macroRan: false, microCleared: 0, succeeded: true };
+    }
+
+    const buffer = this.settings.compaction.bufferTokens;
+    const threshold = args.modelContextWindow - buffer;
+
+    // Stage A: micro
+    const micro = microCompact(args.messages, { keepRecent: 6 });
+    let working = micro.messages;
+    let estimated = estimateMessagesTokens(working);
+
+    if (estimated <= threshold) {
+      return {
+        messages:     working,
+        macroRan:     false,
+        microCleared: micro.cleared,
+        succeeded:    true,
+      };
+    }
+
+    // Stage B: macro. Decide the split: preserve the LAST `tailSize` messages,
+    // compact everything before.
+    const tailSize = Math.max(8, Math.ceil(working.length * 0.25));
+    if (working.length <= tailSize) {
+      // Not enough older messages to compact — accept the micro result and proceed
+      return {
+        messages:     working,
+        macroRan:     false,
+        microCleared: micro.cleared,
+        succeeded:    true,
+      };
+    }
+    const head = working.slice(0, working.length - tailSize);
+    const tail = working.slice(working.length - tailSize);
+
+    const result = await runMacroCompaction({
+      llm:                this.deps.llm,
+      modelBindings:      this.deps.modelBindings,
+      session:            this.deps.session,
+      sessionId:          args.sessionId,
+      turnId:             args.turnId,
+      mode:               args.mode,
+      toCompact:          head,
+      modelContextWindow: args.modelContextWindow,
+      signal:             args.signal,
+    });
+
+    if (!result.succeeded || !result.summary) {
+      // Macro failed — fall through with what we have. Caller still proceeds.
+      return {
+        messages:     working,
+        macroRan:     false,
+        microCleared: micro.cleared,
+        succeeded:    false,
+      };
+    }
+
+    // Build the rebuilt message array: summary + restore + tail
+    const summaryMsg: LlmMessage = {
+      role: 'user',
+      content: `<context-summary mode="${args.mode}">
+${result.summary}
+</context-summary>`,
+    };
+    const restore = buildPostCompactRestore(this.deps, {
+      sessionId:    args.sessionId,
+      mode:         args.mode,
+      recentFiles:  args.recentFiles,
+    });
+
+    working = [summaryMsg, ...restore, ...tail];
+
+    return {
+      messages:     working,
+      macroRan:     true,
+      microCleared: micro.cleared,
+      succeeded:    true,
+    };
   }
 
   // ── Internals ───────────────────────────────────────────────────────────────
@@ -371,6 +574,58 @@ export class MemoryPlanner {
       .prepare('UPDATE sessions SET meta_json = ? WHERE id = ?')
       .run(JSON.stringify(meta), sessionId);
   }
+}
+
+// ── Context message builder ──────────────────────────────────────────────────
+
+function buildContextMessage(bundle: RecallBundle): LlmMessage | null {
+  const parts: string[] = [];
+
+  if (bundle.layer0 && bundle.layer0.nodes.length > 0) {
+    const nodes = bundle.layer0.nodes
+      .map(n => `- (${n.nodeType}) ${n.label}: ${n.description}`)
+      .join('\n');
+    const edges = bundle.layer0.edges.length === 0 ? '' :
+      '\n\n关系:\n' + bundle.layer0.edges
+        .map(e => `- ${e.from} —${e.relation}→ ${e.to}`)
+        .join('\n');
+    parts.push(`## 我对你的了解\n${nodes}${edges}`);
+  }
+
+  if (bundle.layer1) {
+    parts.push(`## 当前会话摘要\n${bundle.layer1}`);
+  }
+
+  if (bundle.layer2) {
+    const blob: string[] = [];
+    if (bundle.layer2.currentMode.length > 0) {
+      blob.push('当前模式相关:');
+      for (const i of bundle.layer2.currentMode) {
+        blob.push(`- [${i.kind}] ${i.title}: ${i.body}`);
+      }
+    }
+    if (bundle.layer2.otherModes.length > 0) {
+      blob.push('\n其他模式相关:');
+      for (const i of bundle.layer2.otherModes) {
+        blob.push(`- [${i.kind}] ${i.title}: ${i.body}`);
+      }
+    }
+    if (blob.length > 0) parts.push(`## 相关的过往\n${blob.join('\n')}`);
+  }
+
+  if (bundle.narrative) {
+    const sections = Object.entries(bundle.narrative.sections)
+      .map(([t, body]) => `### ${t}\n${body}`)
+      .join('\n\n');
+    parts.push(`## 故事召回\n${sections}`);
+  }
+
+  if (parts.length === 0) return null;
+
+  return {
+    role:    'user',
+    content: `<memory>\n${parts.join('\n\n')}\n</memory>`,
+  };
 }
 
 // ── Tiny helpers ─────────────────────────────────────────────────────────────

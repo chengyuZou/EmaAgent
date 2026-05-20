@@ -94,4 +94,39 @@ export class MessagesRepo {
       .get(sessionId) as { n: number };
     return row.n;
   }
+
+  // ── Summary / compaction boundary helpers ──────────────────────────────────
+
+  /** Most recent message with kind='summary' for this session, if any. */
+  findLastSummary(sessionId: SessionId): MessageRow | undefined {
+    return this.db
+      .prepare(
+        `SELECT * FROM messages
+          WHERE session_id = ? AND kind = 'summary'
+          ORDER BY created_at DESC
+          LIMIT 1`,
+      )
+      .get(sessionId) as MessageRow | undefined;
+  }
+
+  /**
+   * Returns all messages from the last `summary` row onward (inclusive of the
+   * summary itself), capped at `limit`. When no summary exists this is
+   * equivalent to listForSession(). Used by the LLM-facing history loader so
+   * engines automatically see only post-compaction history.
+   */
+  listForSessionFromSummary(sessionId: SessionId, limit = 500): MessageRow[] {
+    return this.db
+      .prepare(
+        `SELECT * FROM messages
+          WHERE session_id = ?
+            AND created_at >= COALESCE((
+              SELECT MAX(created_at) FROM messages
+               WHERE session_id = ? AND kind = 'summary'
+            ), 0)
+          ORDER BY created_at ASC
+          LIMIT ?`,
+      )
+      .all(sessionId, sessionId, limit) as MessageRow[];
+  }
 }
