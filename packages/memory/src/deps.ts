@@ -1,0 +1,39 @@
+import type { Database } from '@ema-agent/storage';
+import type {
+  MemoryNodesRepo,
+  MemoryEdgesRepo,
+  MemoryLazyUpdatesRepo,
+  MemoryItemsRepo,
+  SessionNotesRepo,
+  BackgroundTasksRepo,
+  SessionsRepo,
+  ModelBindingsRepo,
+} from '@ema-agent/storage';
+import type { SessionStore } from '@ema-agent/session';
+import type { LlmRouter } from '@ema-agent/llm';
+import type { EbdRouter } from '@ema-agent/ebd-client';
+import type { NarrativeClient } from '@ema-agent/narrative-client';
+
+// ── External dependencies ─────────────────────────────────────────────────────
+
+/**
+ * Every MemoryPlanner instance receives the full set of repos + clients it
+ * needs. The orchestrator builds these once per process and passes them in.
+ */
+export interface MemoryDeps {
+  db:             Database;
+  session:        SessionStore;
+  llm:            LlmRouter;
+  ebd:            EbdRouter;
+  narrative:      NarrativeClient;
+  modelBindings:  ModelBindingsRepo;
+
+  // Storage repos owned by the memory subsystem
+  nodes:          MemoryNodesRepo;
+  edges:          MemoryEdgesRepo;
+  lazyUpdates:    MemoryLazyUpdatesRepo;
+  items:          MemoryItemsRepo;
+  sessionNotes:   SessionNotesRepo;
+  backgroundTasks: BackgroundTasksRepo;
+  sessions:       SessionsRepo;
+}
