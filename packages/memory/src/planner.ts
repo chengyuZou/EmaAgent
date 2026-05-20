@@ -100,12 +100,13 @@ export class MemoryPlanner {
 
     this.queue  = new SessionTaskQueue();
     this.runner = new BackgroundTaskRunner({
-      memory:        deps,
-      embed:         this.embed,
-      settings:      this.settings,
-      queue:         this.queue,
-      getNodesIndex: () => this.nodesIndex,
-      getItemsIndex: () => this.itemsIndex,
+      memory:              deps,
+      embed:               this.embed,
+      settings:            this.settings,
+      queue:               this.queue,
+      getNodesIndex:       () => this.nodesIndex,
+      getItemsIndex:       () => this.itemsIndex,
+      getSessionOverrides: (sid) => this.getSessionOverrides(sid),
     });
   }
 
@@ -353,6 +354,77 @@ export class MemoryPlanner {
     };
   }
 
+  // ── Per-session overrides ───────────────────────────────────────────────────
+
+  /**
+   * Read the active overrides for a session. Always returns a fully-resolved
+   * object — defaults to all-on when no override has been persisted.
+   * Used by the UI memory panel to populate its toggle state.
+   */
+  getSessionOverrides(sessionId: SessionId): ResolvedSessionOverrides {
+    return readOverrides(this.deps.sessions, sessionId);
+  }
+
+  /**
+   * Persist per-session overrides. Partial input — only the keys you set are
+   * stored; remaining keys keep their default behaviour. Called by the UI
+   * when a user toggles a memory layer for one specific conversation.
+   */
+  setSessionOverrides(sessionId: SessionId, overrides: MemorySessionOverrides): void {
+    writeOverrides(this.deps.sessions, sessionId, overrides, this.deps.db.sqlite);
+  }
+
+  // ── Stats / Inspection (UI memory panel) ────────────────────────────────────
+
+  /** Aggregate counts + sizes for the memory dashboard. */
+  getStats(): MemoryStats {
+    return collectStats(
+      this.deps,
+      { nodesIndex: this.nodesIndex, itemsIndex: this.itemsIndex },
+      this.embed.currentProviderId() ?? null,
+    );
+  }
+
+  listNodes(opts?: BrowseNodesOptions) {
+    return browseNodes(this.deps, opts);
+  }
+
+  listItems(opts?: BrowseItemsOptions) {
+    return browseItems(this.deps, opts);
+  }
+
+  listEdgesForNodes(nodeIds: string[]) {
+    return browseEdgesForNodes(this.deps, nodeIds);
+  }
+
+  // ── Maintenance (decay + user-initiated delete) ─────────────────────────────
+
+  /**
+   * Run an importance-decay pass over un-referenced rows. UI calls this first
+   * with `dryRun: true` to show a preview, then again with `dryRun: false`
+   * after the user confirms. Protected node types are never decayed.
+   */
+  runMaintenance(opts: Partial<MaintenanceOptions> = {}): MaintenanceReport {
+    return runMaintenance(this.deps, opts);
+  }
+
+  /** Hard-delete one node (and cascading edges + lazy_updates). */
+  deleteNode(nodeId: string): void {
+    deleteNode(this.deps, nodeId);
+    this.indexRemoveNode(nodeId);
+  }
+
+  /** Hard-delete one memory item. */
+  deleteItem(itemId: string): void {
+    deleteItem(this.deps, itemId);
+    this.indexRemoveItem(itemId);
+  }
+
+  /** Cleanup: hard-delete every zero-importance row older than N days. */
+  hardDeleteZeroImportance(thresholdDays: number) {
+    return hardDeleteZeroImportance(this.deps, thresholdDays);
+  }
+
   // ── afterTurn: append fragments + maybe enqueue extraction ──────────────────
 
   /**
@@ -371,6 +443,11 @@ export class MemoryPlanner {
     assistantText: string;
   }): Promise<void> {
     if (!this.settings.enabled) return;
+
+    // Per-session override: extraction off → don't even buffer this turn.
+    // The user is explicitly saying "this conversation should not feed memory".
+    const overrides = this.getSessionOverrides(ctx.sessionId);
+    if (!overrides.extraction) return;
 
     const fragments = buildFragmentsFromTurn({
       turnId:        ctx.turnId as never,
@@ -462,6 +539,13 @@ export class MemoryPlanner {
     succeeded: boolean;
   }> {
     if (!this.settings.enabled) {
+      return { messages: args.messages, macroRan: false, microCleared: 0, succeeded: true };
+    }
+
+    // Per-session override: compaction off → caller takes responsibility for
+    // staying under the context window. We still pass-through the messages.
+    const overrides = this.getSessionOverrides(args.sessionId);
+    if (!overrides.compaction) {
       return { messages: args.messages, macroRan: false, microCleared: 0, succeeded: true };
     }
 

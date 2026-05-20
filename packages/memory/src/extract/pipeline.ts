@@ -52,7 +52,13 @@ export interface PipelineResult {
  */
 export async function runExtractionPipeline(
   deps: ExtractionPipelineDeps,
-  args: { sessionId: SessionId; mode: TurnMode; signal?: AbortSignal },
+  args: {
+    sessionId:           SessionId;
+    mode:                TurnMode;
+    signal?:             AbortSignal;
+    /** Skip the LLM-driven consolidation pass — used when overrides.consolidation = false. */
+    skipConsolidation?:  boolean;
+  },
 ): Promise<PipelineResult> {
   const empty: PipelineResult = {
     extractedNodes:    0,
@@ -111,7 +117,12 @@ export async function runExtractionPipeline(
   }
 
   // ── 3. Consolidate any nodes with lazy_updates ────────────────────────────
-  stats.consolidatedNodes = await consolidatePendingNodes(deps, args.signal);
+  // When the session opts out of consolidation, lazy_updates are still queued
+  // by step 2; they just stay pending until a future extraction (with
+  // consolidation re-enabled) drains them. No data loss.
+  if (!args.skipConsolidation) {
+    stats.consolidatedNodes = await consolidatePendingNodes(deps, args.signal);
+  }
 
   // ── 4. Clear pending fragments — extraction is fully drained ──────────────
   clearPending(deps.memory.sessions, args.sessionId, Date.now());

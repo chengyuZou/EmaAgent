@@ -1,5 +1,5 @@
 import type { SessionId } from '@ema-agent/contracts';
-import type { SessionsRepo } from '@ema-agent/storage';
+import type { SessionsRepo, SqliteDb } from '@ema-agent/storage';
 
 // ── Per-session memory overrides ─────────────────────────────────────────────
 
@@ -70,7 +70,7 @@ export function writeOverrides(
   repo: SessionsRepo,
   sessionId: SessionId,
   overrides: MemorySessionOverrides,
-  db: { prepare: (sql: string) => { run: (...args: unknown[]) => unknown } },
+  db: SqliteDb,
 ): void {
   const row = repo.findById(sessionId);
   if (!row) return;

@@ -9,6 +9,7 @@ import { EmbedService }     from '../embed/service.js';
 import { SessionTaskQueue } from './session-queue.js';
 import { runExtractionPipeline } from '../extract/pipeline.js';
 import type { VectorIndex } from '../index/vector-index.js';
+import type { ResolvedSessionOverrides } from '../maintenance/overrides.js';
 
 // ── Background task runner ───────────────────────────────────────────────────
 
@@ -24,6 +25,8 @@ export interface BackgroundTaskRunnerDeps {
    */
   getNodesIndex: () => VectorIndex | null;
   getItemsIndex: () => VectorIndex | null;
+  /** Resolves per-session overrides — used to skip consolidation when off. */
+  getSessionOverrides: (sessionId: SessionId) => ResolvedSessionOverrides;
 }
 
 /**
@@ -107,6 +110,11 @@ export class BackgroundTaskRunner {
     if (!payload.sessionId || !payload.mode) return;
     const sid = payload.sessionId as SessionId;
 
+    // Honour per-session override: consolidation can be skipped without
+    // breaking extraction — lazy_updates simply stay buffered.
+    const overrides = this.deps.getSessionOverrides(sid);
+    const skipConsolidation = !overrides.consolidation;
+
     await this.deps.queue.enqueue(sid, async () => {
       await runExtractionPipeline(
         {
@@ -116,7 +124,7 @@ export class BackgroundTaskRunner {
           nodesIndex: this.deps.getNodesIndex(),
           itemsIndex: this.deps.getItemsIndex(),
         },
-        { sessionId: sid, mode: payload.mode! },
+        { sessionId: sid, mode: payload.mode!, skipConsolidation },
       );
     });
   }
