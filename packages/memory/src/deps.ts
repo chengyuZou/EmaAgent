@@ -13,6 +13,7 @@ import type { SessionStore } from '@ema-agent/session';
 import type { LlmRouter } from '@ema-agent/llm';
 import type { EbdRouter } from '@ema-agent/ebd-client';
 import type { NarrativeClient } from '@ema-agent/narrative-client';
+import type { EmaStreamEvent } from '@ema-agent/contracts';
 
 // ── External dependencies ─────────────────────────────────────────────────────
 
@@ -36,4 +37,11 @@ export interface MemoryDeps {
   sessionNotes:   SessionNotesRepo;
   backgroundTasks: BackgroundTasksRepo;
   sessions:       SessionsRepo;
+
+  /**
+   * Observability hook — pipeline / runner / maintenance push lifecycle
+   * events here. The orchestrator wires this to the SystemEventBus so the
+   * frontend can render them as bubbles. Optional: tests omit it.
+   */
+  emit?:          (ev: EmaStreamEvent) => void;
 }

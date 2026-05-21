@@ -121,7 +121,20 @@ export async function runExtractionPipeline(
   // by step 2; they just stay pending until a future extraction (with
   // consolidation re-enabled) drains them. No data loss.
   if (!args.skipConsolidation) {
-    stats.consolidatedNodes = await consolidatePendingNodes(deps, args.signal);
+    const pendingNodeIds = deps.memory.lazyUpdates.listNodesWithPending();
+    if (pendingNodeIds.length > 0) {
+      deps.memory.emit?.({
+        type:      'memory_consolidation_started',
+        nodeCount: pendingNodeIds.length,
+      });
+      const t0 = Date.now();
+      stats.consolidatedNodes = await consolidatePendingNodes(deps, args.signal);
+      deps.memory.emit?.({
+        type:          'memory_consolidation_completed',
+        consolidated:  stats.consolidatedNodes,
+        durationMs:    Date.now() - t0,
+      });
+    }
   }
 
   // ── 4. Clear pending fragments — extraction is fully drained ──────────────

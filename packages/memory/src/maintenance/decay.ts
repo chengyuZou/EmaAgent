@@ -60,6 +60,7 @@ export function runMaintenance(
   const cfg = { ...DEFAULT_MAINTENANCE, ...opts };
   const cutoff = Date.now() - cfg.decayAfterDays * 24 * 60 * 60 * 1000;
   const db = deps.db.sqlite;
+  const t0 = Date.now();
 
   // ── Candidate selection ───────────────────────────────────────────────────
   const protectedClause = cfg.protectedNodeTypes.length === 0
@@ -99,6 +100,13 @@ export function runMaintenance(
   };
 
   if (cfg.dryRun) {
+    deps.emit?.({
+      type:         'memory_maintenance_completed',
+      decayedNodes: 0,
+      decayedItems: 0,
+      dryRun:       true,
+      durationMs:   Date.now() - t0,
+    });
     return {
       dryRun:       true,
       decayedNodes: 0,
@@ -130,6 +138,13 @@ export function runMaintenance(
   });
   txn();
 
+  deps.emit?.({
+    type:         'memory_maintenance_completed',
+    decayedNodes: preview.nodes.length,
+    decayedItems: preview.items.length,
+    dryRun:       false,
+    durationMs:   Date.now() - t0,
+  });
   return {
     dryRun:       false,
     decayedNodes: preview.nodes.length,

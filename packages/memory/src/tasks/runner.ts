@@ -78,6 +78,18 @@ export class BackgroundTaskRunner {
   // ── Dispatch ────────────────────────────────────────────────────────────────
 
   private async dispatch(row: BackgroundTaskRow): Promise<void> {
+    const t0 = Date.now();
+    const payload = (() => {
+      try { return JSON.parse(row.payload_json) as { sessionId?: string }; }
+      catch { return {} as { sessionId?: string }; }
+    })();
+    this.deps.memory.emit?.({
+      type:      'background_task_started',
+      taskId:    row.id,
+      kind:      row.kind,
+      sessionId: payload.sessionId as SessionId | undefined,
+    });
+
     try {
       switch (row.kind) {
         case 'extraction':
@@ -92,11 +104,26 @@ export class BackgroundTaskRunner {
         case 'embedding_refresh':
           // Reserved — runs when ebd provider changes; Round 4.5
           break;
+        case 'subagent_run':
+          // Reserved — V1.5 multi-agent collaboration. No-op for now.
+          break;
       }
       this.deps.memory.backgroundTasks.markCompleted(row.id, Date.now());
+      this.deps.memory.emit?.({
+        type:       'background_task_completed',
+        taskId:     row.id,
+        kind:       row.kind,
+        durationMs: Date.now() - t0,
+      });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       this.deps.memory.backgroundTasks.markFailed(row.id, msg, Date.now(), 3);
+      this.deps.memory.emit?.({
+        type:   'background_task_failed',
+        taskId: row.id,
+        kind:   row.kind,
+        error:  msg,
+      });
     }
   }
 
@@ -116,16 +143,43 @@ export class BackgroundTaskRunner {
     const skipConsolidation = !overrides.consolidation;
 
     await this.deps.queue.enqueue(sid, async () => {
-      await runExtractionPipeline(
-        {
-          memory:     this.deps.memory,
-          embed:      this.deps.embed,
-          settings:   this.deps.settings,
-          nodesIndex: this.deps.getNodesIndex(),
-          itemsIndex: this.deps.getItemsIndex(),
-        },
-        { sessionId: sid, mode: payload.mode!, skipConsolidation },
-      );
+      const queueDepth = this.deps.memory.backgroundTasks
+        .listByStatus('pending', 1000).length;
+      this.deps.memory.emit?.({
+        type:       'memory_extraction_started',
+        sessionId:  sid,
+        queueDepth,
+      });
+
+      const t0 = Date.now();
+      try {
+        const result = await runExtractionPipeline(
+          {
+            memory:     this.deps.memory,
+            embed:      this.deps.embed,
+            settings:   this.deps.settings,
+            nodesIndex: this.deps.getNodesIndex(),
+            itemsIndex: this.deps.getItemsIndex(),
+          },
+          { sessionId: sid, mode: payload.mode!, skipConsolidation },
+        );
+        this.deps.memory.emit?.({
+          type:       'memory_extraction_completed',
+          sessionId:  sid,
+          nodes:      result.extractedNodes,
+          edges:      result.extractedEdges,
+          items:      result.extractedItems,
+          lazyQueued: result.lazyUpdatesQueued,
+          durationMs: Date.now() - t0,
+        });
+      } catch (err) {
+        this.deps.memory.emit?.({
+          type:      'memory_extraction_failed',
+          sessionId: sid,
+          error:     err instanceof Error ? err.message : String(err),
+        });
+        throw err;
+      }
     });
   }
 
