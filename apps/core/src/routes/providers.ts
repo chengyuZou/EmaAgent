@@ -129,12 +129,12 @@ function hotReload(
   }
 
   // ── Bridge sync ───────────────────────────────────────────────────────────
-  const mbRepo = new ModelBindingsRepo(bindings.db.sqlite);
+  const mbRepo = new ModelBindingsRepo(bindings.profileDb.sqlite);
   const bridgeUsesThisProvider = BRIDGE_MODULES.some(
     mod => mbRepo.get(mod)?.providerConfigId === row.id,
   );
   if (bridgeUsesThisProvider) {
-    void configureBridge(bindings.db, bindings.narrative);
+    void configureBridge(bindings.profileDb, bindings.narrative);
   }
 }
 
@@ -162,7 +162,7 @@ export function providersRoute(bindings: AppBindings): Hono {
 
   // GET /api/providers
   app.get('/', (c) => {
-    const repo = new ProvidersRepo(bindings.db.sqlite);
+    const repo = new ProvidersRepo(bindings.profileDb.sqlite);
     const rows = repo.listWithHealth();
     return c.json(rows.map(({ config, health }) =>
       shapeProvider(config, health, getProviderDefinition(config.definition_id)),
@@ -186,7 +186,7 @@ export function providersRoute(bindings: AppBindings): Hono {
       cap => (def.capabilities as readonly string[]).includes(cap),
     );
 
-    const repo = new ProvidersRepo(bindings.db.sqlite);
+    const repo = new ProvidersRepo(bindings.profileDb.sqlite);
     const id = randomUUID();
     repo.upsert({
       id,
@@ -207,7 +207,7 @@ export function providersRoute(bindings: AppBindings): Hono {
 
   // GET /api/providers/:id
   app.get('/:id', (c) => {
-    const repo = new ProvidersRepo(bindings.db.sqlite);
+    const repo = new ProvidersRepo(bindings.profileDb.sqlite);
     const result = repo.getWithHealth(c.req.param('id'));
     if (!result) return c.json({ error: 'not_found' }, 404);
     const { config, health } = result;
@@ -217,7 +217,7 @@ export function providersRoute(bindings: AppBindings): Hono {
   // PATCH /api/providers/:id
   app.patch('/:id', async (c) => {
     const id = c.req.param('id');
-    const repo = new ProvidersRepo(bindings.db.sqlite);
+    const repo = new ProvidersRepo(bindings.profileDb.sqlite);
 
     const existing = repo.get(id);
     if (!existing) return c.json({ error: 'not_found' }, 404);
@@ -260,7 +260,7 @@ export function providersRoute(bindings: AppBindings): Hono {
   // DELETE /api/providers/:id
   app.delete('/:id', (c) => {
     const id = c.req.param('id');
-    const repo = new ProvidersRepo(bindings.db.sqlite);
+    const repo = new ProvidersRepo(bindings.profileDb.sqlite);
 
     const existing = repo.get(id);
     if (!existing) return c.json({ error: 'not_found' }, 404);
@@ -280,7 +280,7 @@ export function providersRoute(bindings: AppBindings): Hono {
       return c.json({ error: 'invalid_request', details: parsed.error.flatten() }, 400);
     }
 
-    const repo = new ProvidersRepo(bindings.db.sqlite);
+    const repo = new ProvidersRepo(bindings.profileDb.sqlite);
     const existing = repo.get(id);
     if (!existing) return c.json({ error: 'not_found' }, 404);
 

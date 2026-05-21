@@ -1,13 +1,15 @@
-﻿import { serve } from '@hono/node-server';
+import { serve } from '@hono/node-server';
 import { Database } from '@ema-agent/storage';
 import { buildServer } from './server.js';
 import { wire, configureBridge } from './wiring.js';
 import { startBackgroundWork } from './wiring/index.js';
+import {
+  profileDbPath, dataDbPathFor, loadRegistry, activeDirEntry,
+  ensureDataDirLayout, acquireLock,
+} from './storage-locations/index.js';
 import { createServer } from 'node:net';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import os from 'node:os';
-import fs from 'node:fs';
 
 // ── Public re-exports (for embedding cores: CLI, tests, future hosts) ────────
 // The HTTP sidecar (this file's main()) is only one of several possible
@@ -16,7 +18,7 @@ import fs from 'node:fs';
 // AsyncIterable<EmaStreamEvent> without any Hono dependency.
 export { wire, configureBridge, resolveBridgeUrl } from './wiring.js';
 export { startBackgroundWork } from './wiring/index.js';
-export type { AppBindings, BackgroundHandle } from './wiring/index.js';
+export type { AppBindings, BuildBindingsArgs, BackgroundHandle } from './wiring/index.js';
 export { Orchestrator }     from './orchestrator/orchestrator.js';
 export type {
   TurnRequest as OrchestratorTurnRequest,
@@ -25,13 +27,6 @@ export type {
 
 const PORT_DEFAULT = 3421;
 const PORT_MAX     = 3430;
-
-function resolveDbPath(): string {
-  const dataDir = process.env['EMA_DATA_DIR']
-    ?? path.join(os.homedir(), '.ema-agent');
-  fs.mkdirSync(dataDir, { recursive: true });
-  return path.join(dataDir, 'ema.db');
-}
 
 async function findOpenPort(start: number, max: number): Promise<number> {
   for (let port = start; port <= max; port++) {
@@ -47,12 +42,36 @@ async function findOpenPort(start: number, max: number): Promise<number> {
 }
 
 async function main() {
-  const dbPath = resolveDbPath();
-  const db = new Database({ path: dbPath });
-  db.migrate();
-  console.log(`[storage] DB v${db.currentVersion()} at ${dbPath}`);
+  // ── 1. Resolve storage locations ───────────────────────────────────────────
+  const registry  = loadRegistry();
+  const activeDir = activeDirEntry(registry);
+  ensureDataDirLayout(activeDir.path);
 
-  const bindings = wire(db);
+  const profilePath = profileDbPath();
+  const dataPath    = dataDbPathFor(activeDir.path);
+
+  // ── 2. Lockfile (refuse to start if another instance has same dataDir) ─────
+  const lock = acquireLock(activeDir.path);
+  if (!lock.acquired) {
+    console.error(
+      `[core] another EmaAgent instance is already using "${activeDir.path}".\n` +
+      `       conflict: hostname=${lock.conflict.hostname} pid=${lock.conflict.pid}\n` +
+      `       refusing to start to avoid SQLite write conflicts.`,
+    );
+    process.exit(1);
+  }
+
+  // ── 3. Open + migrate both DBs ─────────────────────────────────────────────
+  const profileDb = new Database({ path: profilePath, kind: 'profile' });
+  const dataDb    = new Database({ path: dataPath,    kind: 'data' });
+  profileDb.migrate();
+  dataDb.migrate();
+  console.log(`[storage] profile v${profileDb.currentVersion()} at ${profilePath}`);
+  console.log(`[storage] data    v${dataDb.currentVersion()} at ${dataPath}`);
+  console.log(`[storage] active dataDir: ${activeDir.name} (${activeDir.path})`);
+
+  // ── 4. Wire + start ────────────────────────────────────────────────────────
+  const bindings = wire({ profileDb, dataDb, activeDataDir: activeDir.path });
   const bgWork   = startBackgroundWork(bindings);
   const app = buildServer(bindings);
 
@@ -60,13 +79,13 @@ async function main() {
 
   // Fire-and-forget: push provider config to bridge after server is up.
   // Bridge may not be running in dev — failures are logged as warnings.
-  void configureBridge(db, bindings.narrative);
+  void configureBridge(profileDb, bindings.narrative);
 
   const server = serve({ fetch: app.fetch, port, hostname: '127.0.0.1' }, (info) => {
     console.log(`[core] ema-core listening on http://127.0.0.1:${info.port}`);
   });
 
-  // Graceful shutdown — drain memory work, stop accepting requests, close DB.
+  // Graceful shutdown — drain memory work, stop accepting requests, close DBs.
   let shuttingDown = false;
   const shutdown = () => {
     if (shuttingDown) return;
@@ -74,8 +93,10 @@ async function main() {
     console.log('[core] shutting down...');
     void (async () => {
       try { await bgWork.shutdown(); } catch { /* swallow */ }
+      lock.release();
       server.close(() => {
-        db.close();
+        profileDb.close();
+        dataDb.close();
         process.exit(0);
       });
     })();

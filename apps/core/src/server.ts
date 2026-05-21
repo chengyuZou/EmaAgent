@@ -8,6 +8,8 @@ import { modelBindingsRoute } from './routes/model-bindings.js';
 import { sessionsRoute } from './routes/sessions.js';
 import { permissionRoute } from './routes/permission.js';
 import { memoryRoute } from './routes/memory.js';
+import { systemEventsRoute } from './routes/system-events.js';
+import { settingsRoute } from './routes/settings.js';
 import type { AppBindings } from './wiring.js';
 
 export function buildServer(bindings: AppBindings): Hono {
@@ -42,6 +44,8 @@ export function buildServer(bindings: AppBindings): Hono {
   app.route('/api/sessions',       sessionsRoute(bindings));
   app.route('/api/permission',     permissionRoute(bindings));
   app.route('/api/memory',         memoryRoute(bindings));
+  app.route('/api/system/events',  systemEventsRoute(bindings));
+  app.route('/api/settings',       settingsRoute(bindings));
 
   // 404 fallback
   app.notFound((c) => c.json({ error: 'not_found' }, 404));

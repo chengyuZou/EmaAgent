@@ -1,4 +1,5 @@
 ﻿import type {
+  SessionId,
   TurnId,
   TurnMode,
   AgentSubMode,
@@ -93,9 +94,26 @@ export type EmaStreamEvent =
   | { type: 'narrative_route_resolved'; timelines: string[] }
   | { type: 'narrative_timeline_complete'; timeline: string; charCount: number; snippet: string }
 
-  // Memory
+  // Memory — turn-scoped (emitted via beforeLlm hook + compaction)
   | { type: 'context_compacted'; before: number; after: number; method: string }
   | { type: 'recall_evidence'; sources: string[]; itemCount: number }
+
+  // Memory — pipeline observability (cross-turn, emitted on the system bus)
+  | { type: 'memory_extraction_started';    sessionId: SessionId; turnId?: TurnId; queueDepth: number }
+  | { type: 'memory_extraction_completed';
+      sessionId: SessionId; nodes: number; edges: number; items: number;
+      lazyQueued: number; durationMs: number }
+  | { type: 'memory_extraction_failed';     sessionId: SessionId; error: string }
+  | { type: 'memory_consolidation_started'; nodeCount: number }
+  | { type: 'memory_consolidation_completed'; consolidated: number; durationMs: number }
+  | { type: 'memory_maintenance_completed'; decayedNodes: number; decayedItems: number; dryRun: boolean; durationMs: number }
+  | { type: 'memory_node_merged';           nodeId: string; label: string; fragmentCount: number }
+  | { type: 'memory_index_rebuilt';         backend: string; nodes: number; items: number; durationMs: number }
+
+  // Background tasks — system-scoped (memory queue worker telemetry)
+  | { type: 'background_task_started';   taskId: string; kind: string; sessionId?: SessionId }
+  | { type: 'background_task_completed'; taskId: string; kind: string; durationMs: number }
+  | { type: 'background_task_failed';    taskId: string; kind: string; error: string }
 
   // Agent
   | { type: 'agent_iteration'; n: number }

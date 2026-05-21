@@ -29,8 +29,16 @@ interface PendingPrompt {
  */
 export class PermissionPromptRegistry {
   private readonly prompts = new Map<string, PendingPrompt>();
+  private defaultTimeoutMs: number;
 
-  constructor(private readonly defaultTimeoutMs = 120_000) {}
+  constructor(defaultTimeoutMs = 120_000) {
+    this.defaultTimeoutMs = defaultTimeoutMs;
+  }
+
+  /** Live-update the default timeout (used by /api/settings/permission-timeout). */
+  setDefaultTimeout(ms: number): void {
+    this.defaultTimeoutMs = ms;
+  }
 
   /**
    * Reserve a new prompt slot. Returns the generated `promptId` and a Promise

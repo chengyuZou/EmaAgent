@@ -1,5 +1,5 @@
 import type { Database } from '@ema-agent/storage';
-import { buildBindings, type AppBindings } from './bindings.js';
+import { buildBindings, type AppBindings, type BuildBindingsArgs } from './bindings.js';
 import { registerAllHooks }    from './register-hooks.js';
 import { registerAllEmitters } from './register-emitters.js';
 
@@ -22,8 +22,8 @@ const BACKGROUND_TICK_MS = 5_000;       // poll background_tasks every 5 s
  *
  * Caller is responsible for: db.migrate() before this, db.close() at shutdown.
  */
-export function wire(db: Database): AppBindings {
-  const bindings = buildBindings(db);
+export function wire(args: BuildBindingsArgs): AppBindings {
+  const bindings = buildBindings(args);
   registerAllHooks(bindings);
   registerAllEmitters(bindings);
   return bindings;
@@ -91,7 +91,7 @@ export function startBackgroundWork(bindings: AppBindings): BackgroundHandle {
 
 // ── Public re-exports (back-compat for existing routes / orchestrator) ──────
 
-export type { AppBindings } from './bindings.js';
+export type { AppBindings, BuildBindingsArgs } from './bindings.js';
 export {
   buildLlmProviderConfig,
   buildEmbedProviderConfig,

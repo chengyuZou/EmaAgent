@@ -34,7 +34,7 @@ export function modelBindingsRoute(bindings: AppBindings): Hono {
 
   // GET /api/model-bindings
   app.get('/', (c) => {
-    const repo = new ModelBindingsRepo(bindings.db.sqlite);
+    const repo = new ModelBindingsRepo(bindings.profileDb.sqlite);
     return c.json(repo.list());
   });
 
@@ -51,7 +51,7 @@ export function modelBindingsRoute(bindings: AppBindings): Hono {
     }
 
     const module = moduleParsed.data as BindingModule;
-    const repo = new ModelBindingsRepo(bindings.db.sqlite);
+    const repo = new ModelBindingsRepo(bindings.profileDb.sqlite);
 
     repo.upsert({
       module,
@@ -63,7 +63,7 @@ export function modelBindingsRoute(bindings: AppBindings): Hono {
 
     // Bridge only cares about its two internal config modules.
     if (BRIDGE_MODULES.has(module)) {
-      void configureBridge(bindings.db, bindings.narrative);
+      void configureBridge(bindings.profileDb, bindings.narrative);
     }
 
     return c.json(repo.get(module));
@@ -77,11 +77,11 @@ export function modelBindingsRoute(bindings: AppBindings): Hono {
     }
 
     const module = moduleParsed.data as BindingModule;
-    const repo = new ModelBindingsRepo(bindings.db.sqlite);
+    const repo = new ModelBindingsRepo(bindings.profileDb.sqlite);
     repo.delete(module);
 
     if (BRIDGE_MODULES.has(module)) {
-      void configureBridge(bindings.db, bindings.narrative);
+      void configureBridge(bindings.profileDb, bindings.narrative);
     }
 
     return c.body(null, 204);

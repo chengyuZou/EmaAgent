@@ -3,6 +3,7 @@ import {
   ModelBindingsRepo,
   ProvidersRepo,
   SessionsRepo,
+  SettingsRepo,
   MemoryNodesRepo, MemoryEdgesRepo, MemoryLazyUpdatesRepo,
   MemoryItemsRepo, SessionNotesRepo, BackgroundTasksRepo,
   type ProviderConfigRow,
@@ -33,6 +34,7 @@ import { CommandRunner } from '@ema-agent/sandbox';
 import type { ICommandRunner } from '@ema-agent/tool';
 import type { SessionId } from '@ema-agent/contracts';
 import { resolveBridgeUrl } from './bridge.js';
+import { SystemEventBus } from '../sse/system-bus.js';
 
 // ── App-wide bindings (Façade set passed everywhere) ─────────────────────────
 
@@ -44,8 +46,16 @@ import { resolveBridgeUrl } from './bridge.js';
  * Twelve fields is still readable; we revisit when it crosses ~16.
  */
 export interface AppBindings {
-  // Core infra
-  db:            Database;
+  // ── Storage: two SQLite DBs ─────────────────────────────────────────────────
+  // profileDb: ~/.ema-agent/profile.db — provider configs, model bindings,
+  //   character cards, app settings. Shared across all registered data dirs.
+  // dataDb:    {activeDataDir}/data.db — sessions, memory, audio, artifacts.
+  //   Swapped (sidecar restart required) when the user switches active dataDir.
+  profileDb:     Database;
+  dataDb:        Database;
+  /** Absolute path of the currently-active data dir — used for file storage. */
+  activeDataDir: string;
+
   hooks:         HookBus;
   session:       SessionStore;
 
@@ -79,6 +89,10 @@ export interface AppBindings {
 
   // Memory subsystem
   memory:        MemoryPlanner;
+
+  // System-wide pub/sub for cross-turn events (memory pipeline, background
+  // tasks, card switches, provider health). Backs GET /api/system/events.
+  systemBus:     SystemEventBus;
 
   // Repos kept on the binding for route convenience
   modelBindings: ModelBindingsRepo;
@@ -197,14 +211,23 @@ function loadRerankConfigs(db: Database): RerankProviderConfig[] {
  *   registerAllHooks(...)
  *   registerAllEmitters(...)
  */
-export function buildBindings(db: Database): AppBindings {
-  // ── Core infra ──────────────────────────────────────────────────────────────
-  const hooks   = new HookBus();
-  const session = new SessionStore({ db });
+export interface BuildBindingsArgs {
+  profileDb:     Database;
+  dataDb:        Database;
+  activeDataDir: string;
+}
 
-  // ── AI clients ──────────────────────────────────────────────────────────────
-  const llm = new LlmRouter(loadLlmConfigs(db));
-  const ebd = new EbdRouter(loadEmbedConfigs(db), loadRerankConfigs(db));
+export function buildBindings(args: BuildBindingsArgs): AppBindings {
+  const { profileDb, dataDb, activeDataDir } = args;
+
+  // ── Core infra ──────────────────────────────────────────────────────────────
+  // Sessions / turns / messages live in dataDb.
+  const hooks   = new HookBus();
+  const session = new SessionStore({ db: dataDb });
+
+  // ── AI clients (provider configs live in profileDb) ────────────────────────
+  const llm = new LlmRouter(loadLlmConfigs(profileDb));
+  const ebd = new EbdRouter(loadEmbedConfigs(profileDb), loadRerankConfigs(profileDb));
 
   const narrative = new NarrativeClient({
     baseUrl:   resolveBridgeUrl(),
@@ -212,23 +235,23 @@ export function buildBindings(db: Database): AppBindings {
     timeoutMs: 60_000,
   });
 
-  // ── Character + emotion ────────────────────────────────────────────────────
-  const card = new CharacterCardStore({ db });
+  // ── Character + emotion (character cards live in profileDb) ────────────────
+  const card = new CharacterCardStore({ db: profileDb });
   card.ensureSeed();
   const emotion = new EmotionEngine({ vocabulary: card.current().emotionVocabulary });
 
   // ── Repos ───────────────────────────────────────────────────────────────────
-  const modelBindings = new ModelBindingsRepo(db.sqlite);
-  const sessionsRepo  = new SessionsRepo(db.sqlite);
+  const modelBindings = new ModelBindingsRepo(profileDb.sqlite);
+  const sessionsRepo  = new SessionsRepo(dataDb.sqlite);
 
   // ── Permission + tools ─────────────────────────────────────────────────────
   //
-  // The PermissionEngine's `config.ask` is a deny-all fallback used only when
-  // no per-call override is set (i.e. when something other than AgentEngine
-  // calls gate() — currently nothing). AgentEngine injects its turn-bound
-  // askCallback via PermissionContext.ask on every gate() invocation; that
-  // path routes through the SSE event stream + PermissionPromptRegistry.
-  const permissionPrompts = new PermissionPromptRegistry();
+  // settings.permission.askTimeoutMs lives in profileDb (app-level setting).
+  const settingsRepo = new SettingsRepo(profileDb.sqlite);
+  const storedTimeout = settingsRepo.get('permission.askTimeoutMs');
+  const permissionPrompts = new PermissionPromptRegistry(
+    typeof storedTimeout === 'number' ? storedTimeout : 120_000,
+  );
 
   const permission = new PermissionEngine({
     mode:  'ask',                       // default to safe; user can flip in settings
@@ -290,30 +313,39 @@ export function buildBindings(db: Database): AppBindings {
     return runner;
   };
 
-  // ── Memory ─────────────────────────────────────────────────────────────────
-  // Deps shape mirrors what MemoryPlanner expects — see packages/memory/src/deps.ts.
+  // ── System event bus (cross-turn observability) ────────────────────────────
+  // Built before memory so we can wire memory's `emit` into it.
+  const systemBus = new SystemEventBus();
+
+  // ── Memory (all tables live in dataDb) ─────────────────────────────────────
+  // MemoryDeps.db is used as a context handle in a few places that need the
+  // underlying sqlite handle — we hand over dataDb, since that's where every
+  // memory table actually lives.
   const memory = new MemoryPlanner({
-    db,
+    db:              dataDb,
     session,
     llm,
     ebd,
     narrative,
     modelBindings,
-    nodes:           new MemoryNodesRepo(db.sqlite),
-    edges:           new MemoryEdgesRepo(db.sqlite),
-    lazyUpdates:     new MemoryLazyUpdatesRepo(db.sqlite),
-    items:           new MemoryItemsRepo(db.sqlite),
-    sessionNotes:    new SessionNotesRepo(db.sqlite),
-    backgroundTasks: new BackgroundTasksRepo(db.sqlite),
+    nodes:           new MemoryNodesRepo(dataDb.sqlite),
+    edges:           new MemoryEdgesRepo(dataDb.sqlite),
+    lazyUpdates:     new MemoryLazyUpdatesRepo(dataDb.sqlite),
+    items:           new MemoryItemsRepo(dataDb.sqlite),
+    sessionNotes:    new SessionNotesRepo(dataDb.sqlite),
+    backgroundTasks: new BackgroundTasksRepo(dataDb.sqlite),
     sessions:        sessionsRepo,
+    emit:            (ev) => systemBus.emit(ev),
   });
 
   return {
-    db, hooks, session,
+    profileDb, dataDb, activeDataDir,
+    hooks, session,
     llm, ebd, narrative,
     card, emotion,
     permission, permissionPrompts, tools, buildAskForTurn, getCommandRunner,
     memory,
+    systemBus,
     modelBindings,
   };
 }

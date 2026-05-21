@@ -34,16 +34,18 @@ export function resolveBridgeUrl(): string {
 /**
  * Push LightRAG's internal model config (embed + llm) to the bridge.
  * Called fire-and-forget on startup and after relevant binding changes.
+ *
+ * Reads from profile.db (provider configs and model bindings live there).
  */
 export async function configureBridge(
-  db: Database,
+  profileDb: Database,
   narrative: NarrativeClient,
 ): Promise<void> {
   // Re-resolve at call time: bridge may have started after core and picked a
   // different port than what was read during wire().
   narrative.updateBaseUrl(resolveBridgeUrl());
-  const providersRepo = new ProvidersRepo(db.sqlite);
-  const bindings      = new ModelBindingsRepo(db.sqlite);
+  const providersRepo = new ProvidersRepo(profileDb.sqlite);
+  const bindings      = new ModelBindingsRepo(profileDb.sqlite);
 
   const payload: BridgeConfigurePayload = {};
 
