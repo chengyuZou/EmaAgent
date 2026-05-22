@@ -7,21 +7,27 @@ import type { SidecarStatus } from './api/sidecar-status.js';
 
 // ── Main window ─────────────────────────────────────────────────────────────
 //
-// Layout:
-//   - Live2DStage fills the entire transparent window
-//   - FloatingDock pinned to right edge, vertically centered
-//   - SidecarBadge in top-left, tiny dot + tooltip showing port/error
+// Layout (all positioned absolute over a transparent window):
+//   - <DragLayer>             — invisible full-window drag region (Tauri)
+//   - <GlowBorder>            — pink-white breathing ring around the window
+//   - <Live2DStage>           — character (half-body framing in component)
+//   - <FloatingDock>          — right edge, fades in on cursor-in-window
+//   - <SidecarBadge>          — top-left dot, tooltip on hover
 //
-// The window itself is transparent + frameless (configured in tauri.conf.json),
-// so the only visible pixels come from Live2D, the dock, and the badge.
+// Dock visibility: tracks DOM mouseenter / mouseleave on the body. On enter,
+// dock fades in (opacity 0 → 1). On leave with a 600 ms grace, fades out.
+// Grace keeps the dock visible while you move along its right edge briefly.
 
 const EMA_MODEL_PATH = '/live2d/ema/ema.model3.json';
+const DOCK_FADE_GRACE_MS = 600;
 
 export function App(): React.JSX.Element {
   const stageRef = useRef<Live2DStageHandle>(null);
   const [stageError, setStageError] = useState<string | null>(null);
-  const [sidecar, setSidecar] = useState<SidecarStatus>({ kind: 'pending' });
+  const [sidecar, setSidecar]       = useState<SidecarStatus>({ kind: 'pending' });
+  const [dockVisible, setDockVisible] = useState(false);
 
+  // Sidecar health polling
   useEffect(() => {
     let cancelled = false;
     const tick = async (): Promise<void> => {
@@ -35,15 +41,42 @@ export function App(): React.JSX.Element {
     return () => { cancelled = true; };
   }, []);
 
+  // Dock visibility tracking (cursor in / out of the window body)
+  useEffect(() => {
+    let leaveTimer: ReturnType<typeof setTimeout> | null = null;
+    const onEnter = (): void => {
+      if (leaveTimer) { clearTimeout(leaveTimer); leaveTimer = null; }
+      setDockVisible(true);
+    };
+    const onLeave = (): void => {
+      if (leaveTimer) clearTimeout(leaveTimer);
+      leaveTimer = setTimeout(() => setDockVisible(false), DOCK_FADE_GRACE_MS);
+    };
+    document.body.addEventListener('mouseenter', onEnter);
+    document.body.addEventListener('mouseleave', onLeave);
+    return () => {
+      document.body.removeEventListener('mouseenter', onEnter);
+      document.body.removeEventListener('mouseleave', onLeave);
+      if (leaveTimer) clearTimeout(leaveTimer);
+    };
+  }, []);
+
   return (
     <>
+      {/*  Drag region — covers the whole window underneath everything else.
+           Anything that should NOT drag (dock buttons, Live2D, future text
+           inputs) sets `data-tauri-drag-region={false}` on itself.          */}
+      <div style={dragLayerStyle} data-tauri-drag-region />
+
+      <GlowBorder />
+
       <Live2DStage
         ref={stageRef}
         modelPath={EMA_MODEL_PATH}
         onError={(err) => setStageError(err.message)}
       />
 
-      <FloatingDock />
+      <FloatingDock visible={dockVisible} />
 
       <SidecarBadge status={sidecar} />
 
@@ -54,7 +87,54 @@ export function App(): React.JSX.Element {
   );
 }
 
-// ── Sidecar status badge (small, unobtrusive) ───────────────────────────────
+// ── Pink-white breathing glow border ────────────────────────────────────────
+//
+// Two layered box-shadows on an empty positioned div:
+//   - inner ring     (subtle, always on)
+//   - outer pulse    (animated opacity, slow breathing)
+// pointer-events: none so it never blocks dock/drag.
+
+function GlowBorder(): React.JSX.Element {
+  return (
+    <>
+      <style>{`
+        @keyframes ema-breathe {
+          0%, 100% { opacity: 0.35; }
+          50%      { opacity: 0.78; }
+        }
+      `}</style>
+      <div style={glowStyle} />
+    </>
+  );
+}
+
+const PINK_WHITE        = 'rgba(255, 214, 230, 0.55)';
+const PINK_WHITE_BRIGHT = 'rgba(255, 192, 214, 0.85)';
+
+const glowStyle: React.CSSProperties = {
+  position:      'fixed',
+  inset:         0,
+  borderRadius:  16,
+  pointerEvents: 'none',
+  zIndex:        1,
+  // Inset glow lives on the border itself, outset glow softens outward
+  boxShadow:     [
+    `inset 0 0 12px 1px ${PINK_WHITE}`,
+    `inset 0 0 28px 4px rgba(255, 214, 230, 0.18)`,
+    `0 0 24px 2px ${PINK_WHITE_BRIGHT}`,
+  ].join(', '),
+  animation:     'ema-breathe 2.6s ease-in-out infinite',
+};
+
+const dragLayerStyle: React.CSSProperties = {
+  position:      'fixed',
+  inset:         0,
+  zIndex:        0,
+  // Drag region needs to be opaque to mouse events, so no pointer-events: none.
+  // Stays underneath dock/stage which set their own zIndex.
+};
+
+// ── Sidecar status badge ────────────────────────────────────────────────────
 
 function SidecarBadge({ status }: { status: SidecarStatus }): React.JSX.Element {
   const [hover, setHover] = useState(false);
@@ -72,6 +152,7 @@ function SidecarBadge({ status }: { status: SidecarStatus }): React.JSX.Element 
       style={badgeStyle}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
+      data-tauri-drag-region={false}
     >
       <span style={{ ...dotStyle, background: dotColor }} />
       {hover && <span style={badgeTooltipStyle}>{detail}</span>}
@@ -107,7 +188,7 @@ const badgeTooltipStyle: React.CSSProperties = {
   fontSize:       12,
   padding:        '4px 8px',
   background:     'rgba(20, 22, 30, 0.95)',
-  border:         '1px solid rgba(255,255,255,0.1)',
+  border:         '1px solid rgba(255, 214, 230, 0.18)',
   borderRadius:   6,
   pointerEvents:  'none',
 };

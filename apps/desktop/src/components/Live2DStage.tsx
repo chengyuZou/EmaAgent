@@ -82,15 +82,23 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
           app.stage.addChild(model);
           modelRef.current = model;
 
-          // Center + fit to container
+          // Half-body framing — only the head + shoulders visible. The model
+          // is sized so the top of its bounding box lines up with the top of
+          // the window, then we let the bottom flow off-screen. This matches
+          // AIRI's overlay pet look (not standing on a virtual floor).
+          //
+          // Scale strategy: fit width × 1.55 — wide enough that hair flows
+          // out of the frame, body cut at roughly mid-torso.
           const fit = (): void => {
             const w = app.renderer.width;
             const h = app.renderer.height;
-            const scale = Math.min(w / model.width, h / model.height) * 0.95;
+            const scale = (w / model.width) * 1.55;
             model.scale.set(scale);
             model.x = (w - model.width) / 2;
-            // Anchor to bottom-ish so feet sit on the lower portion of canvas
-            model.y = h - model.height - 12;
+            // Negative offset so head touches the top edge, torso fills middle
+            model.y = -model.height * 0.05;
+            // Keep position even when window resizes
+            void h;
           };
           fit();
           window.addEventListener('resize', fit);
@@ -135,7 +143,11 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
 const containerStyle: React.CSSProperties = {
   position: 'absolute',
   inset:    0,
-  pointerEvents: 'auto',
+  // Let the drag region underneath receive mouse events. Pixi canvas itself
+  // doesn't need interaction (no click-to-interact yet) and the dock/badge
+  // are higher z-index siblings that opt-out of drag.
+  pointerEvents: 'none',
+  zIndex:        2,
 };
 
 const errorStyle: React.CSSProperties = {

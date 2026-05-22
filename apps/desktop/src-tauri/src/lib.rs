@@ -37,6 +37,26 @@ fn quit_app(app: tauri::AppHandle) {
     app.exit(0);
 }
 
+/// Show + focus a pre-declared sub-window by its label (chat / settings /
+/// voice). The window is defined in tauri.conf.json with `visible: false`;
+/// this command flips it to visible and brings it forward. Idempotent.
+///
+/// Returns Err if the label is not in the configured windows list. The frontend
+/// surfaces this as a noop with a console warning rather than UI failure.
+#[tauri::command]
+fn open_window(app: tauri::AppHandle, label: String) -> Result<(), String> {
+    use tauri::Manager;
+
+    match app.get_webview_window(&label) {
+        Some(window) => {
+            window.show().map_err(|e| e.to_string())?;
+            window.set_focus().map_err(|e| e.to_string())?;
+            Ok(())
+        }
+        None => Err(format!("unknown window label: {label}")),
+    }
+}
+
 // ── App entry ───────────────────────────────────────────────────────────────
 
 pub fn run() {
@@ -52,6 +72,7 @@ pub fn run() {
             set_always_on_top,
             set_passthrough,
             quit_app,
+            open_window,
         ])
         .setup(move |app| {
             let app_handle = app.handle().clone();

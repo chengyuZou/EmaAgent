@@ -23,4 +23,12 @@ export const invokeWindow = {
   async quit(): Promise<void> {
     await tauriInvoke('quit_app');
   },
+  /**
+   * Show / focus a pre-declared sub-window by label. Available labels match
+   * tauri.conf.json windows[] — chat / settings / voice. Rust side toggles
+   * the window's visible state and focuses it. Idempotent.
+   */
+  async openWindow(label: string): Promise<void> {
+    await tauriInvoke('open_window', { label });
+  },
 };

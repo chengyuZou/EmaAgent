@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite';
 import react           from '@vitejs/plugin-react';
+import { resolve }     from 'node:path';
 
 // Tauri 2 conventions:
 //   - dev server on port 1420
@@ -25,5 +26,13 @@ export default defineConfig({
     sourcemap:    true,
     outDir:       'dist',
     emptyOutDir:  true,
+    rollupOptions: {
+      input: {
+        main:     resolve(__dirname, 'index.html'),
+        chat:     resolve(__dirname, 'chat.html'),
+        settings: resolve(__dirname, 'settings.html'),
+        voice:    resolve(__dirname, 'voice.html'),
+      },
+    },
   },
 });
