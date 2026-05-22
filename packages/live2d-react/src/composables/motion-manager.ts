@@ -125,7 +125,11 @@ export function createMotionManagerUpdate(
     }
   }
 
-  function hookUpdate(model, now, originalUpdate) {
+  function hookUpdate(
+    model:          CubismCoreLike,
+    now:            number,
+    originalUpdate?: (model: CubismCoreLike, now: number) => boolean,
+  ): boolean {
     const timeDelta = lastUpdateTime ? now - lastUpdateTime : 0;
     const mm = options.internalModel.motionManager;
     const idleGroupName = mm.groups.idle;
