@@ -28,8 +28,8 @@ work/llm-runtime-typecheck.tsbuildinfo
 Thumbs.db
 
 # Tauri
-src-tauri/target/
-src-tauri/gen/
+**/src-tauri/target/
+**/src-tauri/gen/
 
 # Python
 __pycache__/
