@@ -2,6 +2,7 @@ export {
   profileDir, profileDbPath, registryPath, lockfilePath,
   dataDbPathFor, audioDirFor, artifactsDirFor, trashDirFor,
   ensureDataDirLayout,
+  voiceRefsDir, voiceRefsForCard, resolveVoiceRefPath, ensureProfileLayout,
 } from './paths.js';
 
 export {

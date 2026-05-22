@@ -12,6 +12,7 @@ export interface CharacterCardRow {
   emotion_vocab_json: string;
   motion_vocab_json: string;
   live2d_model_id: string | null;
+  voice_profile_json: string;
   is_active: number;
   is_builtin: number;
   created_at: number;
@@ -29,6 +30,7 @@ export interface CharacterCardInsert {
   emotionVocabJson?: string;
   motionVocabJson?: string;
   live2dModelId?: string;
+  voiceProfileJson?: string;
   isActive?: boolean;
   isBuiltin?: boolean;
   createdAt: number;
@@ -43,10 +45,10 @@ export class CharacterCardsRepo {
       .prepare(
         `INSERT INTO character_cards
            (id, name, version, description, system_prompt, speech_patterns_json,
-            forbidden_topics_json, emotion_vocab_json, motion_vocab_json, 
-            live2d_model_id, is_active, is_builtin,
+            forbidden_topics_json, emotion_vocab_json, motion_vocab_json,
+            live2d_model_id, voice_profile_json, is_active, is_builtin,
             created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         c.id,
@@ -59,6 +61,7 @@ export class CharacterCardsRepo {
         c.emotionVocabJson ?? '[]',
         c.motionVocabJson ?? '[]',
         c.live2dModelId ?? null,
+        c.voiceProfileJson ?? '{}',
         c.isActive ? 1 : 0,
         c.isBuiltin ? 1 : 0,
         c.createdAt,
@@ -110,6 +113,7 @@ export class CharacterCardsRepo {
     if (patch.emotionVocabJson !== undefined)    { fields.push('emotion_vocab_json = ?'); values.push(patch.emotionVocabJson); }
     if (patch.motionVocabJson !== undefined)     { fields.push('motion_vocab_json = ?'); values.push(patch.motionVocabJson); }
     if (patch.live2dModelId !== undefined)       { fields.push('live2d_model_id = ?'); values.push(patch.live2dModelId); }
+    if (patch.voiceProfileJson !== undefined)    { fields.push('voice_profile_json = ?'); values.push(patch.voiceProfileJson); }
 
     if (fields.length === 0) return;
     fields.push('updated_at = ?');

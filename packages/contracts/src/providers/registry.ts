@@ -17,6 +17,8 @@ import { provider as ollama }      from './ollama/index.js';
 import { provider as lmstudio }    from './lmstudio/index.js';
 import { provider as siliconflow } from './siliconflow/index.js';
 import { provider as jina }        from './jina/index.js';
+import { provider as dashscope }   from './dashscope/index.js';
+import { provider as gptSovits }   from './gpt-sovits/index.js';
 
 // ── Registry ──────────────────────────────────────────────────────────────────
 
@@ -32,6 +34,7 @@ const ALL_DEFINITIONS: readonly ProviderDefinition[] = [
   deepseek, moonshot, zhipu, openrouter, groq, mistral, xai, perplexity,
   together, fireworks, ollama, lmstudio,
   siliconflow, jina,
+  dashscope, gptSovits,
 ];
 
 export const PROVIDER_DEFINITIONS: Readonly<Record<string, ProviderDefinition>> =

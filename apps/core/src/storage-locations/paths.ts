@@ -27,6 +27,33 @@ export function lockfilePath(): string {
   return path.join(profileDir(), 'lockfile.json');
 }
 
+// ── Voice reference audio (profile-scoped) ───────────────────────────────────
+
+/**
+ * Root for character reference audio. Profile-scoped so a card's voice survives
+ * dataDir swaps; see memory:project-tts-scope. Per-card sub-folder:
+ *   `<profileDir>/voiceRefs/<cardId>/<filename>`
+ *
+ * `CharacterRefAudio.refAudioPath` stores the relative form `<cardId>/<filename>`;
+ * the TTS service resolves it against this root.
+ */
+export function voiceRefsDir(): string {
+  return path.join(profileDir(), 'voiceRefs');
+}
+
+export function voiceRefsForCard(cardId: string): string {
+  return path.join(voiceRefsDir(), cardId);
+}
+
+export function resolveVoiceRefPath(relPath: string): string {
+  return path.join(voiceRefsDir(), relPath);
+}
+
+/** Create the profile-side directories that aren't part of profile.db itself. */
+export function ensureProfileLayout(): void {
+  fs.mkdirSync(voiceRefsDir(), { recursive: true });
+}
+
 // ── Data dir helpers ─────────────────────────────────────────────────────────
 
 export function dataDbPathFor(dataDir: string): string {

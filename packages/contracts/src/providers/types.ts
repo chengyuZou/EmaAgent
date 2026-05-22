@@ -24,7 +24,13 @@ export type ProtocolFamily =
   | 'openai-embed'      // /v1/embeddings, { model, input: string[] }
   | 'gemini-embed'      // /v1beta/models/{model}:batchEmbedContents, Google format
   // Rerank protocols
-  | 'cohere-rerank';    // /rerank, { model, query, documents, top_n } — Cohere/Jina/SiliconFlow all use this
+  | 'cohere-rerank'     // /rerank, { model, query, documents, top_n } — Cohere/Jina/SiliconFlow all use this
+  // TTS protocols
+  | 'openai-tts'        // POST /v1/audio/speech — OpenAI / SiliconFlow / Groq / OpenAI 兼容
+  | 'dashscope-tts'     // 阿里百炼 WS — adapter routes by model prefix (cosyvoice-* | qwen*-tts*)
+  | 'gpt-sovits-tts'    // POST /tts on a locally-running GPT-SoVITS api_v2.py server
+  // STT protocols
+  | 'openai-stt';       // POST /v1/audio/transcriptions — Whisper protocol
 
 /**
  * LLM-specific subset of ProtocolFamily — the adapter dispatch key
@@ -34,6 +40,8 @@ export type ProtocolFamily =
 export type LlmProtocol    = Extract<ProtocolFamily, `${string}-llm`>;
 export type EmbedProtocol  = Extract<ProtocolFamily, `${string}-embed`>;
 export type RerankProtocol = Extract<ProtocolFamily, `${string}-rerank`>;
+export type TtsProtocol    = Extract<ProtocolFamily, `${string}-tts`>;
+export type SttProtocol    = Extract<ProtocolFamily, `${string}-stt`>;
 
 /** Type guard for narrowing ProtocolFamily down to LlmProtocol. */
 export function isLlmProtocol(p: ProtocolFamily | undefined): p is LlmProtocol {
@@ -46,6 +54,14 @@ export function isEmbedProtocol(p: ProtocolFamily | undefined): p is EmbedProtoc
 
 export function isRerankProtocol(p: ProtocolFamily | undefined): p is RerankProtocol {
   return p === 'cohere-rerank';
+}
+
+export function isTtsProtocol(p: ProtocolFamily | undefined): p is TtsProtocol {
+  return p === 'openai-tts' || p === 'dashscope-tts' || p === 'gpt-sovits-tts';
+}
+
+export function isSttProtocol(p: ProtocolFamily | undefined): p is SttProtocol {
+  return p === 'openai-stt';
 }
 
 // ── Onboarding fields ────────────────────────────────────────────────────────

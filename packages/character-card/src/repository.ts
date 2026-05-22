@@ -1,10 +1,23 @@
 ﻿import { randomUUID } from 'node:crypto';
 import type { CharacterCardsRepo, CharacterCardRow } from '@ema-agent/storage';
-import { asCharacterCardId } from '@ema-agent/contracts';
-import type { CharacterCardId } from '@ema-agent/contracts';
+import { asCharacterCardId, emptyVoiceProfile } from '@ema-agent/contracts';
+import type { CharacterCardId, CharacterVoiceProfile } from '@ema-agent/contracts';
 import type { CharacterCard, CharacterCardInput } from './types.js';
 
 // ── Row -> Domain ────────────────────────────────────────────────────────────
+
+function parseVoiceProfile(json: string): CharacterVoiceProfile {
+  if (!json) return emptyVoiceProfile();
+  try {
+    const parsed = JSON.parse(json) as Partial<CharacterVoiceProfile>;
+    return {
+      refAudios: Array.isArray(parsed.refAudios) ? parsed.refAudios : [],
+      primaryId: typeof parsed.primaryId === 'string' ? parsed.primaryId : null,
+    };
+  } catch {
+    return emptyVoiceProfile();
+  }
+}
 
 function fromRow(row: CharacterCardRow): CharacterCard {
   return {
@@ -18,6 +31,7 @@ function fromRow(row: CharacterCardRow): CharacterCard {
     emotionVocabulary: JSON.parse(row.emotion_vocab_json) as string[],
     motionVocabulary:  JSON.parse(row.motion_vocab_json) as string[],
     live2dModelId:    row.live2d_model_id,
+    voiceProfile:     parseVoiceProfile(row.voice_profile_json),
     isActive:         row.is_active === 1,
     isBuiltin:        row.is_builtin === 1,
     createdAt:        row.created_at,
@@ -63,6 +77,7 @@ export class CharacterCardRepository {
       emotionVocabJson:     JSON.stringify(input.emotionVocabulary ?? []),
       motionVocabJson:      JSON.stringify(input.motionVocabulary ?? []),
       live2dModelId:        input.live2dModelId,
+      voiceProfileJson:     JSON.stringify(input.voiceProfile ?? emptyVoiceProfile()),
       isActive:             opts.isActive ?? false,
       isBuiltin:            opts.isBuiltin ?? false,
       createdAt:            now,
@@ -87,6 +102,8 @@ export class CharacterCardRepository {
       motionVocabJson:      patch.motionVocabulary !== undefined
                               ? JSON.stringify(patch.motionVocabulary) : undefined,
       live2dModelId:        patch.live2dModelId,
+      voiceProfileJson:     patch.voiceProfile !== undefined
+                              ? JSON.stringify(patch.voiceProfile) : undefined,
       updatedAt:            Date.now(),
     });
   }

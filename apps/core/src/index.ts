@@ -5,7 +5,7 @@ import { wire, configureBridge } from './wiring.js';
 import { startBackgroundWork } from './wiring/index.js';
 import {
   profileDbPath, dataDbPathFor, loadRegistry, activeDirEntry,
-  ensureDataDirLayout, acquireLock,
+  ensureDataDirLayout, ensureProfileLayout, acquireLock,
 } from './storage-locations/index.js';
 import { createServer } from 'node:net';
 import { fileURLToPath } from 'node:url';
@@ -45,6 +45,7 @@ async function main() {
   // ── 1. Resolve storage locations ───────────────────────────────────────────
   const registry  = loadRegistry();
   const activeDir = activeDirEntry(registry);
+  ensureProfileLayout();
   ensureDataDirLayout(activeDir.path);
 
   const profilePath = profileDbPath();

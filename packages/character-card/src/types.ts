@@ -1,4 +1,4 @@
-﻿import type { CharacterCardId } from '@ema-agent/contracts';
+﻿import type { CharacterCardId, CharacterVoiceProfile } from '@ema-agent/contracts';
 
 export interface CharacterCard {
   id:               CharacterCardId;
@@ -11,6 +11,7 @@ export interface CharacterCard {
   emotionVocabulary: string[];
   motionVocabulary:  string[];
   live2dModelId:    string | null;
+  voiceProfile:     CharacterVoiceProfile;
   isActive:         boolean;
   isBuiltin:        boolean;
   createdAt:        number;
@@ -27,4 +28,5 @@ export interface CharacterCardInput {
   emotionVocabulary?: string[];
   motionVocabulary?:  string[];
   live2dModelId?:   string;
+  voiceProfile?:    CharacterVoiceProfile;
 }
