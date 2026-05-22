@@ -18,7 +18,9 @@ import type {
 import { NarrativeClient } from '@ema-agent/narrative-client';
 import { CharacterCardStore } from '@ema-agent/character-card';
 import { TtsClient, FsAudioArchive, type AudioArchive } from '@ema-agent/tts';
+import { SttClient } from '@ema-agent/stt';
 import { buildTtsClient } from './tts.js';
+import { buildSttClient } from './stt.js';
 import { audioDirFor } from '../storage-locations/index.js';
 import { SessionStore }   from '@ema-agent/session';
 import { EmotionEngine }  from '@ema-agent/emotion';
@@ -81,6 +83,10 @@ export interface AppBindings {
   // {activeDataDir}/audio. The TtsCoordinator pipes synthesized chunks here
   // so a completed turn can be played back later via /api/turns/:id/audio.
   audioArchive:  AudioArchive;
+
+  // STT façade — converts user audio → text. One binding (no per-mode split
+  // for STT in V1). Reads model_bindings.stt + corresponding provider config.
+  stt:           SttClient;
 
   // Agent stack
   permission:        PermissionEngine;
@@ -263,6 +269,9 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
   // ── Audio archive (lives under {activeDataDir}/audio) ──────────────────────
   const audioArchive = new FsAudioArchive(audioDirFor(activeDataDir));
 
+  // ── STT façade ─────────────────────────────────────────────────────────────
+  const stt = buildSttClient({ profileDb });
+
   // ── Repos ───────────────────────────────────────────────────────────────────
   const modelBindings = new ModelBindingsRepo(profileDb.sqlite);
   const sessionsRepo  = new SessionsRepo(dataDb.sqlite);
@@ -366,7 +375,7 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
     hooks, session,
     llm, ebd, narrative,
     card, emotion,
-    tts, audioArchive,
+    tts, audioArchive, stt,
     permission, permissionPrompts, tools, buildAskForTurn, getCommandRunner,
     memory,
     systemBus,

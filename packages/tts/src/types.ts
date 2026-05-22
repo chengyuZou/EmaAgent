@@ -65,13 +65,17 @@ export interface TtsAdapter {
 /**
  * Which TtsVoiceRef kinds each protocol can handle.
  *
- *   - openai-tts:     catalog only (provider voice library)
- *   - dashscope-tts:  both — catalog for system voices, clone for CosyVoice 复刻
- *   - gpt-sovits-tts: clone only (refAudio is the only identity)
+ *   - openai-tts:     catalog only — provider voice library (alloy / Cherry / etc.)
+ *   - dashscope-tts:  catalog only in V1. Aliyun 声音复刻 needs a separate
+ *                     "register refAudio → get voice_id" call (paid + stateful);
+ *                     once registered the voice_id behaves like a catalog voice
+ *                     anyway, so for V1 we accept only catalog. Auto-registration
+ *                     from CharacterRefAudio is V1.5 (settings page button).
+ *   - gpt-sovits-tts: clone only — refAudio is the entire identity, no catalog
  */
 export const TTS_PROTOCOL_VOICE_SUPPORT: Readonly<Record<TtsProtocol, ReadonlyArray<TtsVoiceRef['kind']>>> = {
   'openai-tts':     ['catalog'],
-  'dashscope-tts':  ['catalog', 'clone'],
+  'dashscope-tts':  ['catalog'],
   'gpt-sovits-tts': ['clone'],
 };
 

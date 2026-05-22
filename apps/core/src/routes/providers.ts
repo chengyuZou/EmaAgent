@@ -16,6 +16,8 @@ import {
   buildRerankProviderConfig,
   configureBridge,
 } from '../wiring.js';
+import { reloadTtsClient } from '../wiring/tts.js';
+import { reloadSttClient } from '../wiring/stt.js';
 
 // ── Response shaping ──────────────────────────────────────────────────────────
 
@@ -136,6 +138,13 @@ function hotReload(
   if (bridgeUsesThisProvider) {
     void configureBridge(bindings.profileDb, bindings.narrative);
   }
+
+  // ── TTS / STT sync ─────────────────────────────────────────────────────────
+  // Rebuild the whole Façade rather than per-provider upsert — TTS adapters
+  // are cheap to instantiate and the binding-lookup tables make targeted
+  // updates not worth the complexity.
+  if (capabilities.includes('tts')) reloadTtsClient(bindings.tts, bindings.profileDb);
+  if (capabilities.includes('stt')) reloadSttClient(bindings.stt, bindings.profileDb);
 }
 
 // ── Route factory ─────────────────────────────────────────────────────────────

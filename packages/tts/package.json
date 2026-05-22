@@ -17,6 +17,7 @@
     "dev": "tsc -p tsconfig.json --watch",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
+    "test:siliconflow": "tsx scripts/test-siliconflow.ts",
     "clean": "rimraf dist"
   },
   "dependencies": {
@@ -28,6 +29,7 @@
     "@types/node": "^20.0.0",
     "@types/ws": "^8.5.13",
     "rimraf": "^5.0.0",
+    "tsx": "^4.21.0",
     "typescript": "^5.9.3",
     "vitest": "^2.0.0"
   }

@@ -142,3 +142,18 @@ export function buildTtsClient(args: BuildTtsClientArgs): TtsClient {
     refPathResolver:  buildRefPathResolver(),
   });
 }
+
+/**
+ * Re-fetch all TTS-relevant state from the DB and swap into the live
+ * TtsClient. Idempotent. Call after:
+ *   - PUT /api/providers/:id        (when row has tts capability)
+ *   - PUT /api/model-bindings/:module  (when module is tts_chat | tts_narrative | tts_agent)
+ *   - PUT /api/settings/tts-fallback
+ */
+export function reloadTtsClient(client: TtsClient, profileDb: Database): void {
+  client.reload({
+    providers:        loadTtsProviderConfigs(profileDb),
+    primaryBindings:  loadPrimaryBindings(profileDb),
+    fallbackBinding:  loadFallbackBinding(profileDb),
+  });
+}

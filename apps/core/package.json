@@ -39,6 +39,7 @@
     "@ema-agent/sandbox": "workspace:*",
     "@ema-agent/memory": "workspace:*",
     "@ema-agent/tts": "workspace:*",
+    "@ema-agent/stt": "workspace:*",
     "@hono/node-server": "^1.14.3",
     "hono": "^4.7.10",
     "zod": "^3.24.4"

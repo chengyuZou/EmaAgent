@@ -1,3 +1,5 @@
+import fs from 'node:fs';
+import { Readable } from 'node:stream';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { Orchestrator } from '../orchestrator/orchestrator.js';
@@ -185,6 +187,29 @@ export function turnsRoute(bindings: AppBindings): Hono {
         },
       },
     );
+  });
+
+  // ── GET /api/turns/:turnId/audio ───────────────────────────────────────────
+  //
+  // Returns the merged audio for a turn. Files written by TtsCoordinator after
+  // its finalize step; the route just streams from disk. 404 if no audio:
+  //   - turn ran without ttsEnabled=true
+  //   - turn aborted before any TTS sentence completed
+  //   - turn predates the audio archive feature
+  app.get('/:turnId/audio', async (c) => {
+    const turnId = c.req.param('turnId');
+    const found  = bindings.audioArchive.findMergedFor(turnId);
+    if (!found) return c.json({ error: 'audio_not_found' }, 404);
+
+    const stat = await fs.promises.stat(found.path);
+    const stream = fs.createReadStream(found.path);
+    return new Response(Readable.toWeb(stream) as ReadableStream<Uint8Array>, {
+      headers: {
+        'Content-Type':   found.mime,
+        'Content-Length': String(stat.size),
+        'Cache-Control':  'private, max-age=0',
+      },
+    });
   });
 
   return app;

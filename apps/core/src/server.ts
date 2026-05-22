@@ -10,6 +10,8 @@ import { permissionRoute } from './routes/permission.js';
 import { memoryRoute } from './routes/memory.js';
 import { systemEventsRoute } from './routes/system-events.js';
 import { settingsRoute } from './routes/settings.js';
+import { transcribeRoute } from './routes/transcribe.js';
+import { voiceRefsRoute } from './routes/voice-refs.js';
 import type { AppBindings } from './wiring.js';
 
 export function buildServer(bindings: AppBindings): Hono {
@@ -46,6 +48,8 @@ export function buildServer(bindings: AppBindings): Hono {
   app.route('/api/memory',         memoryRoute(bindings));
   app.route('/api/system/events',  systemEventsRoute(bindings));
   app.route('/api/settings',       settingsRoute(bindings));
+  app.route('/api/transcribe',     transcribeRoute(bindings));
+  app.route('/api/cards',          voiceRefsRoute(bindings));
 
   // 404 fallback
   app.notFound((c) => c.json({ error: 'not_found' }, 404));

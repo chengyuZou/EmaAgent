@@ -70,12 +70,18 @@ export interface TtsClientArgs {
  * No cycling through secondary refAudios — that is deferred to a later round.
  */
 export class TtsClient {
-  private readonly providers:        ReadonlyMap<string, TtsProviderConfig>;
-  private readonly primary:          ReadonlyMap<TtsModule, TtsModuleBinding>;
-  private readonly fallback:         TtsModuleBinding | undefined;
+  // Mutable state — swapped wholesale by reload(). The Façade instance is
+  // stable (orchestrator + coordinator hold a long-lived reference); only
+  // the internals change when provider configs / bindings / fallback edit.
+  private providers:        ReadonlyMap<string, TtsProviderConfig>;
+  private primary:          ReadonlyMap<TtsModule, TtsModuleBinding>;
+  private fallback:         TtsModuleBinding | undefined;
+  private adapters          = new Map<string, TtsAdapter>();
+
+  // Read-only — these never change between reloads (card store and path
+  // resolver are stable for the lifetime of the process).
   private readonly voiceProfiles:    VoiceProfileLookup;
   private readonly refPathResolver:  VoiceRefPathResolver;
-  private readonly adapters          = new Map<string, TtsAdapter>();
 
   constructor(args: TtsClientArgs) {
     this.providers       = args.providers;
@@ -83,9 +89,34 @@ export class TtsClient {
     this.fallback        = args.fallbackBinding;
     this.voiceProfiles   = args.voiceProfiles;
     this.refPathResolver = args.refPathResolver;
+    this.rebuildAdapters(args.adapterOverrides);
+  }
 
+  /**
+   * Replace provider configs + bindings + fallback at runtime. Called from
+   * route handlers after PUT /api/providers, PUT /api/model-bindings/:module
+   * (when module is tts_*), or PUT /api/settings/tts-fallback. Long-lived
+   * references (orchestrator, TtsCoordinator) keep working — they see the
+   * new state on the next synthesize() call.
+   *
+   * In-flight syntheses are NOT aborted — they finish on the adapter they
+   * started with. New requests use the new adapters.
+   */
+  reload(args: {
+    providers:        ReadonlyMap<string, TtsProviderConfig>;
+    primaryBindings:  ReadonlyMap<TtsModule, TtsModuleBinding>;
+    fallbackBinding?: TtsModuleBinding;
+  }): void {
+    this.providers = args.providers;
+    this.primary   = args.primaryBindings;
+    this.fallback  = args.fallbackBinding;
+    this.adapters  = new Map<string, TtsAdapter>();
+    this.rebuildAdapters();
+  }
+
+  private rebuildAdapters(overrides?: ReadonlyMap<string, TtsAdapter>): void {
     for (const [id, cfg] of this.providers) {
-      const override = args.adapterOverrides?.get(id);
+      const override = overrides?.get(id);
       this.adapters.set(id, override ?? this.createAdapter(cfg));
     }
   }

@@ -24,6 +24,13 @@ export interface AudioArchive {
 
   /** Forget a turn's audio (called on turn_aborted / turn_failed). */
   discardTurn(turnId: string): void;
+
+  /**
+   * Look up the merged audio for a turn, regardless of extension. Returns
+   * { path, mime } for the route handler to stream, or null if no merged
+   * file exists yet (turn aborted before finalize, or no TTS happened).
+   */
+  findMergedFor(turnId: string): { path: string; mime: string } | null;
 }
 
 export interface SegmentWriter {
@@ -87,6 +94,29 @@ export class FsAudioArchive implements AudioArchive {
         if (f.startsWith(turnId + '.')) fs.rmSync(path.join(merged, f), { force: true });
       }
     }
+  }
+
+  findMergedFor(turnId: string): { path: string; mime: string } | null {
+    const dir = path.join(this.audioRoot, 'merged');
+    if (!fs.existsSync(dir)) return null;
+    for (const f of fs.readdirSync(dir)) {
+      if (!f.startsWith(turnId + '.')) continue;
+      const ext = path.extname(f).slice(1).toLowerCase();
+      return { path: path.join(dir, f), mime: mimeForExt(ext) };
+    }
+    return null;
+  }
+}
+
+function mimeForExt(ext: string): string {
+  switch (ext) {
+    case 'mp3':  return 'audio/mpeg';
+    case 'wav':  return 'audio/wav';
+    case 'ogg':
+    case 'opus': return 'audio/ogg';
+    case 'pcm':  return 'audio/L16';
+    case 'aac':  return 'audio/aac';
+    default:     return 'application/octet-stream';
   }
 }
 

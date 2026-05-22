@@ -22,16 +22,30 @@ export interface SttClientArgs {
 }
 
 export class SttClient {
-  private readonly providers: ReadonlyMap<string, SttProviderConfig>;
-  private readonly binding:   SttBinding | null;
-  private readonly adapters   = new Map<string, SttAdapter>();
+  // Mutable — see TtsClient.reload() doc for rationale.
+  private providers: ReadonlyMap<string, SttProviderConfig>;
+  private binding:   SttBinding | null;
+  private adapters   = new Map<string, SttAdapter>();
 
   constructor(args: SttClientArgs) {
     this.providers = args.providers;
     this.binding   = args.binding;
+    this.rebuildAdapters(args.adapterOverrides);
+  }
 
+  reload(args: {
+    providers: ReadonlyMap<string, SttProviderConfig>;
+    binding:   SttBinding | null;
+  }): void {
+    this.providers = args.providers;
+    this.binding   = args.binding;
+    this.adapters  = new Map<string, SttAdapter>();
+    this.rebuildAdapters();
+  }
+
+  private rebuildAdapters(overrides?: ReadonlyMap<string, SttAdapter>): void {
     for (const [id, cfg] of this.providers) {
-      const override = args.adapterOverrides?.get(id);
+      const override = overrides?.get(id);
       this.adapters.set(id, override ?? this.createAdapter(cfg));
     }
   }
