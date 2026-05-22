@@ -42,6 +42,7 @@ const turnBodySchema = z.object({
   userInput: z.string().optional(),
   contentParts: z.array(contentPartSchema).optional(),
   model: z.string().optional(),
+  ttsEnabled: z.boolean().optional(),
 }).refine(
   (data) => data.userInput || (data.contentParts && data.contentParts.length > 0),
   { message: 'either userInput or contentParts is required' },
@@ -51,8 +52,14 @@ const turnBodySchema = z.object({
 
 export function turnsRoute(bindings: AppBindings): Hono {
   const app = new Hono();
-  const orchestrator = new Orchestrator(bindings);
   const eventStore = new TurnEventStore(60_000);
+  const orchestrator = new Orchestrator(bindings, {
+    onAudioFinalized: (turnId) => {
+      // Drop the streamed base64 audio from in-memory replay — it's now
+      // reconstructible from the merged file via /api/turns/:id/audio.
+      eventStore.evictAudioChunks(turnId);
+    },
+  });
   // Evict completed / cancelled turns every 30 s to prevent unbounded memory growth.
   setInterval(() => eventStore.evictExpired(), 30_000).unref?.();
 
@@ -63,7 +70,7 @@ export function turnsRoute(bindings: AppBindings): Hono {
       return c.json({ error: 'invalid_request', details: parsed.error.flatten() }, 400);
     }
 
-    const { sessionId, mode, subMode, userInput, contentParts, model } = parsed.data;
+    const { sessionId, mode, subMode, userInput, contentParts, model, ttsEnabled } = parsed.data;
 
     const effectiveSessionId = sessionId
       ?? bindings.session.createSession().id;
@@ -75,6 +82,7 @@ export function turnsRoute(bindings: AppBindings): Hono {
       userInput: userInput ?? '',
       contentParts: contentParts,
       model: model,
+      ttsEnabled: ttsEnabled ?? false,
     });
 
     // ── Fan-out: push every event into TurnEventStore for replay ──────────

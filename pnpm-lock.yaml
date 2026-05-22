@@ -80,6 +80,9 @@ importers:
       '@ema-agent/tool-builtin':
         specifier: workspace:*
         version: link:../../packages/tool-builtin
+      '@ema-agent/tts':
+        specifier: workspace:*
+        version: link:../../packages/tts
       '@hono/node-server':
         specifier: ^1.14.3
         version: 1.19.14(hono@4.12.18)
@@ -566,6 +569,9 @@ importers:
       '@ema-agent/contracts':
         specifier: workspace:*
         version: link:../contracts
+      '@ema-agent/hook':
+        specifier: workspace:*
+        version: link:../hook
       ws:
         specifier: ^8.18.0
         version: 8.20.1

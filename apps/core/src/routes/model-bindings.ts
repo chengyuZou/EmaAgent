@@ -5,7 +5,7 @@ import type { BindingModule } from '@ema-agent/storage';
 import type { AppBindings } from '../wiring.js';
 import { configureBridge } from '../wiring.js';
 
-// Keep in sync with BindingModule type and migration 006 CHECK constraint.
+// Keep in sync with BindingModule type and migration 001 CHECK constraint.
 const BINDING_MODULES = [
   // TS-side LLM modules
   'chat', 'narrative', 'agent',
@@ -13,8 +13,10 @@ const BINDING_MODULES = [
   'router', 'plan-parse', 'title',
   // LightRAG internal config — changes here trigger bridge re-push
   'embed', 'rerank', 'lightrag-llm',
-  // Future TS-side clients (reserved, not bridge)
-  'tts', 'stt', 'vision', 'imagegen',
+  // TTS — per-mode, voice identity always from character card
+  'tts_chat', 'tts_narrative', 'tts_agent',
+  // Other TS-side clients (reserved)
+  'stt', 'vision', 'imagegen',
 ] as const;
 
 // Modules whose changes must be pushed to the Python bridge (LightRAG config).

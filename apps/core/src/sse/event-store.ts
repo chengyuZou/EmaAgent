@@ -73,4 +73,21 @@ export class TurnEventStore {
     this.cancelled.delete(key);
     this.store.delete(key);
   }
+
+  /**
+   * Drop all `tts_chunk` events for a turn while keeping every other event
+   * (sentence boundaries, text deltas, lifecycle). Called by the TtsCoordinator
+   * after `archive.finalizeTurn()` writes a merged audio file — at that point
+   * the streamed audio is reconstructable from the file via the audio route,
+   * so holding hundreds of KB of base64 in memory for SSE replay is wasteful.
+   *
+   * Reconnecting clients can still see which sentences played
+   * (`tts_sentence_complete`) and fetch the full merged audio via
+   * `GET /api/turns/:turnId/audio` for replay.
+   */
+  evictAudioChunks(turnId: TurnId): void {
+    const entry = this.store.get(turnId as string);
+    if (!entry) return;
+    entry.events = entry.events.filter((e) => e.type !== 'tts_chunk');
+  }
 }

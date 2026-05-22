@@ -38,10 +38,12 @@ export type {
 } from './repos/providers.js';
 export type {
   BindingModule,
+  TtsBindingModule,
   ModelBindingRow,
   ModelBindingUpsert,
   ResolvedModelBinding,
 } from './repos/model-bindings.js';
+export { ttsBindingModuleFor } from './repos/model-bindings.js';
 
 // ── Memory subsystem types ────────────────────────────────────────────────────
 export type {

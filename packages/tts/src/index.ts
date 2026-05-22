@@ -7,6 +7,9 @@ export type {
   VoiceRefPathResolver,
 } from './service.js';
 
+export { TtsCoordinator } from './coordinator.js';
+export type { TtsCoordinatorArgs } from './coordinator.js';
+
 export type {
   TtsAdapter,
   TtsAdapterCall,
@@ -31,6 +34,11 @@ export { filterTextForTts } from './streaming/text-filter.js';
 
 export { FsAudioArchive } from './archive.js';
 export type { AudioArchive, SegmentWriter } from './archive.js';
+
+export {
+  ttsEventToEma, makeSentenceId, parseSentenceId,
+} from './bridge.js';
+export type { BridgeContext } from './bridge.js';
 
 export { OpenAiTtsAdapter }    from './adapters/openai-tts.js';
 export { GptSoVitsTtsAdapter } from './adapters/gpt-sovits-tts.js';

@@ -17,6 +17,9 @@ import type {
 } from '@ema-agent/ebd-client';
 import { NarrativeClient } from '@ema-agent/narrative-client';
 import { CharacterCardStore } from '@ema-agent/character-card';
+import { TtsClient, FsAudioArchive, type AudioArchive } from '@ema-agent/tts';
+import { buildTtsClient } from './tts.js';
+import { audioDirFor } from '../storage-locations/index.js';
 import { SessionStore }   from '@ema-agent/session';
 import { EmotionEngine }  from '@ema-agent/emotion';
 import {
@@ -67,6 +70,17 @@ export interface AppBindings {
   // Per-card runtime
   card:          CharacterCardStore;
   emotion:       EmotionEngine;
+
+  // TTS façade — synthesizes assistant text. Voice identity always reads
+  // from the active card; provider/model/voiceId reads from model_bindings
+  // rows tts_chat / tts_narrative / tts_agent. Fallback voice lives in
+  // settings.tts.fallback. STT lives in a separate package (apps/stt).
+  tts:           TtsClient;
+
+  // Audio storage — per-segment write + per-turn merge. Lives under
+  // {activeDataDir}/audio. The TtsCoordinator pipes synthesized chunks here
+  // so a completed turn can be played back later via /api/turns/:id/audio.
+  audioArchive:  AudioArchive;
 
   // Agent stack
   permission:        PermissionEngine;
@@ -240,6 +254,15 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
   card.ensureSeed();
   const emotion = new EmotionEngine({ vocabulary: card.current().emotionVocabulary });
 
+  // ── TTS façade (depends on card + profileDb) ───────────────────────────────
+  // Built once; provider configs / bindings can be hot-reloaded later via
+  // routes (provider POST/PUT and model-bindings PUT), at which point we
+  // either rebuild or expose upsert methods on TtsClient (deferred to 6B-3).
+  const tts = buildTtsClient({ profileDb, card });
+
+  // ── Audio archive (lives under {activeDataDir}/audio) ──────────────────────
+  const audioArchive = new FsAudioArchive(audioDirFor(activeDataDir));
+
   // ── Repos ───────────────────────────────────────────────────────────────────
   const modelBindings = new ModelBindingsRepo(profileDb.sqlite);
   const sessionsRepo  = new SessionsRepo(dataDb.sqlite);
@@ -343,6 +366,7 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
     hooks, session,
     llm, ebd, narrative,
     card, emotion,
+    tts, audioArchive,
     permission, permissionPrompts, tools, buildAskForTurn, getCommandRunner,
     memory,
     systemBus,

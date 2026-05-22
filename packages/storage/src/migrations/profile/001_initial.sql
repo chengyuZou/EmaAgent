@@ -60,8 +60,15 @@ CREATE TABLE model_bindings (
                        'router', 'plan-parse', 'title',
                        -- LightRAG internal config (Python bridge)
                        'embed', 'rerank', 'lightrag-llm',
-                       -- Future TS-side clients
-                       'tts', 'stt', 'vision', 'imagegen'
+                       -- TTS modules — split by user-facing mode so chat /
+                       -- narrative / agent can each pick a different provider
+                       -- (e.g. fast cheap chat, high-quality narrative,
+                       -- local agent). Voice identity always comes from the
+                       -- active character card's voice_profile_json refAudios,
+                       -- not from these bindings.
+                       'tts_chat', 'tts_narrative', 'tts_agent',
+                       -- Other TS-side clients
+                       'stt', 'vision', 'imagegen'
                      )),
   provider_config_id TEXT    NOT NULL REFERENCES provider_configs(id) ON DELETE RESTRICT,
   model              TEXT    NOT NULL,
