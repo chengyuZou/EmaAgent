@@ -8,6 +8,7 @@ import { ConversationEngine } from '@ema-agent/conversation';
 import { AgentEngine }        from '@ema-agent/agent';
 import { buildSystemPrompt }  from '@ema-agent/prompts';
 import { TtsCoordinator }     from '@ema-agent/tts';
+import { ttsBindingModuleFor } from '@ema-agent/storage';
 import type { Turn }           from '@ema-agent/session';
 
 export interface TurnResult {
@@ -184,12 +185,21 @@ export class Orchestrator {
   ): TtsCoordinator | null {
     if (!request.ttsEnabled) return null;
 
+    // Resolve TTS binding from model_bindings. Caller (route handler) may have
+    // passed an explicit model; otherwise we read the bound provider+model.
+    const bindingRow = this.bindings.modelBindings.get(
+      ttsBindingModuleFor(request.mode),
+    );
+    if (!bindingRow) return null;
+
     const card = this.bindings.card.current();
     return new TtsCoordinator({
       turnId,
       sessionId,
       characterId: card.id,
-      module:      request.mode,    // chat | narrative | agent
+      providerId:  bindingRow.providerConfigId,
+      model:       request.model ?? bindingRow.model,
+      turnMode:    request.mode,
       ttsClient:   this.bindings.tts,
       hooks:       this.bindings.hooks,
       emit,

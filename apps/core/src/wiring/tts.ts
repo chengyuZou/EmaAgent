@@ -1,10 +1,10 @@
-import type { Database, ProviderConfigRow, ResolvedModelBinding } from '@ema-agent/storage';
-import { ProvidersRepo, ModelBindingsRepo, SettingsRepo, ttsBindingModuleFor } from '@ema-agent/storage';
+import type { Database, ProviderConfigRow } from '@ema-agent/storage';
+import { ProvidersRepo, SettingsRepo } from '@ema-agent/storage';
 
 import {
   TtsClient,
+  type TtsClientArgs,
   type TtsProviderConfig,
-  type TtsModuleBinding,
   type VoiceProfileLookup,
   type VoiceRefPathResolver,
 } from '@ema-agent/tts';
@@ -14,20 +14,13 @@ import {
   isTtsProtocol,
   type CharacterCardId,
   type CharacterVoiceProfile,
-  type TtsModule,
 } from '@ema-agent/contracts';
 
 import type { CharacterCardStore } from '@ema-agent/character-card';
 import { resolveVoiceRefPath } from '../storage-locations/index.js';
 
-// ── Settings key for the system fallback voice binding ──────────────────────
-//
-// The fallback binding fires when the primary TTS attempt fails for a turn
-// (e.g. character has no refAudio AND its primary mode binding is
-// clone-only, or the primary adapter errored before any audio went out).
-// Lives in `settings.tts.fallback` rather than as a 4th model_bindings row,
-// so it doesn't need a migration to add and the user can't accidentally
-// confuse it with a per-mode binding in the UI.
+// ── Fallback settings key ───────────────────────────────────────────────────
+
 export const TTS_FALLBACK_SETTINGS_KEY = 'tts.fallback';
 
 interface FallbackSettings {
@@ -37,7 +30,7 @@ interface FallbackSettings {
   config?:          Record<string, unknown>;
 }
 
-// ── Provider config builder (mirrors buildLlmProviderConfig in bindings.ts) ─
+// ── Provider config builder ─────────────────────────────────────────────────
 
 export function buildTtsProviderConfig(row: ProviderConfigRow): TtsProviderConfig | null {
   const def = getProviderDefinition(row.definition_id);
@@ -49,7 +42,6 @@ export function buildTtsProviderConfig(row: ProviderConfigRow): TtsProviderConfi
   const protocol = def.protocols.tts;
   if (!isTtsProtocol(protocol)) return null;
 
-  // Local runtimes (GPT-SoVITS) declare requiresCredentials: false → empty key is fine.
   if (def.requiresCredentials !== false && !row.api_key_plain) return null;
 
   return {
@@ -70,44 +62,18 @@ function loadTtsProviderConfigs(profileDb: Database): Map<string, TtsProviderCon
   return out;
 }
 
-// ── Binding loaders (one per TtsModule + the optional fallback) ─────────────
-
-function toBinding(resolved: ResolvedModelBinding): TtsModuleBinding {
-  return {
-    providerConfigId: resolved.providerConfigId,
-    model:            resolved.model,
-    voiceId:          resolved.voiceId,
-    config:           resolved.config,
-  };
-}
-
-function loadPrimaryBindings(profileDb: Database): Map<TtsModule, TtsModuleBinding> {
-  const repo = new ModelBindingsRepo(profileDb.sqlite);
-  const out  = new Map<TtsModule, TtsModuleBinding>();
-  for (const mode of ['chat', 'narrative', 'agent'] as const) {
-    const row = repo.get(ttsBindingModuleFor(mode));
-    if (row) out.set(mode, toBinding(row));
-  }
-  return out;
-}
-
-function loadFallbackBinding(profileDb: Database): TtsModuleBinding | undefined {
+function loadFallback(profileDb: Database): TtsClientArgs['fallback'] {
   const settings = new SettingsRepo(profileDb.sqlite);
   const stored   = settings.get(TTS_FALLBACK_SETTINGS_KEY) as FallbackSettings | undefined;
   if (!stored || typeof stored !== 'object') return undefined;
   return {
-    providerConfigId: stored.providerConfigId,
-    model:            stored.model,
-    voiceId:          stored.voiceId,
-    config:           stored.config ?? {},
+    providerId: stored.providerConfigId,
+    model:      stored.model,
+    voiceId:    stored.voiceId,
   };
 }
 
-// ── Voice profile + ref-path Façades (decouple service from card/storage) ───
-//
-// `TtsClient` accepts thin Façade interfaces so the package doesn't need to
-// import `@ema-agent/character-card` or `apps/core/storage-locations`. We
-// build the concrete adapters here at wire time.
+// ── Voice profile + ref-path Façades ────────────────────────────────────────
 
 function buildVoiceProfileLookup(card: CharacterCardStore): VoiceProfileLookup {
   return {
@@ -126,7 +92,7 @@ function buildRefPathResolver(): VoiceRefPathResolver {
   };
 }
 
-// ── Top-level builder (called once from buildBindings) ──────────────────────
+// ── Top-level builder ───────────────────────────────────────────────────────
 
 export interface BuildTtsClientArgs {
   profileDb: Database;
@@ -135,25 +101,22 @@ export interface BuildTtsClientArgs {
 
 export function buildTtsClient(args: BuildTtsClientArgs): TtsClient {
   return new TtsClient({
-    providers:        loadTtsProviderConfigs(args.profileDb),
-    primaryBindings:  loadPrimaryBindings(args.profileDb),
-    fallbackBinding:  loadFallbackBinding(args.profileDb),
-    voiceProfiles:    buildVoiceProfileLookup(args.card),
-    refPathResolver:  buildRefPathResolver(),
+    providers:       loadTtsProviderConfigs(args.profileDb),
+    fallback:        loadFallback(args.profileDb),
+    voiceProfiles:   buildVoiceProfileLookup(args.card),
+    refPathResolver: buildRefPathResolver(),
   });
 }
 
 /**
- * Re-fetch all TTS-relevant state from the DB and swap into the live
- * TtsClient. Idempotent. Call after:
- *   - PUT /api/providers/:id        (when row has tts capability)
- *   - PUT /api/model-bindings/:module  (when module is tts_chat | tts_narrative | tts_agent)
- *   - PUT /api/settings/tts-fallback
+ * Re-fetch TTS-relevant state from DB and swap into the live TtsClient.
+ * Idempotent. Call after PUT /api/providers/:id (tts capability),
+ * PUT /api/model-bindings/:module (tts_* rows),
+ * or PUT /api/settings/tts-fallback.
  */
 export function reloadTtsClient(client: TtsClient, profileDb: Database): void {
   client.reload({
-    providers:        loadTtsProviderConfigs(profileDb),
-    primaryBindings:  loadPrimaryBindings(profileDb),
-    fallbackBinding:  loadFallbackBinding(profileDb),
+    providers: loadTtsProviderConfigs(profileDb),
+    fallback:  loadFallback(profileDb),
   });
 }

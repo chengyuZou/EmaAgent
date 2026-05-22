@@ -37,16 +37,32 @@ const upsertSchema = z.object({
   config:           z.record(z.unknown()).default({}),
 });
 
+const deleteQuerySchema = z.object({
+  providerConfigId: z.string(),
+  model:            z.string(),
+});
+
 export function modelBindingsRoute(bindings: AppBindings): Hono {
   const app = new Hono();
 
-  // GET /api/model-bindings
+  // GET /api/model-bindings — list all bindings across all modules
   app.get('/', (c) => {
     const repo = new ModelBindingsRepo(bindings.profileDb.sqlite);
     return c.json(repo.list());
   });
 
-  // PUT /api/model-bindings/:module
+  // GET /api/model-bindings/:module — list bindings for one module
+  app.get('/:module', (c) => {
+    const moduleParsed = moduleSchema.safeParse(c.req.param('module'));
+    if (!moduleParsed.success) {
+      return c.json({ error: 'invalid_module', validModules: BINDING_MODULES }, 400);
+    }
+    const module = moduleParsed.data as BindingModule;
+    const repo = new ModelBindingsRepo(bindings.profileDb.sqlite);
+    return c.json(repo.listByModule(module));
+  });
+
+  // PUT /api/model-bindings/:module — upsert one binding
   app.put('/:module', async (c) => {
     const moduleParsed = moduleSchema.safeParse(c.req.param('module'));
     if (!moduleParsed.success) {
@@ -76,19 +92,25 @@ export function modelBindingsRoute(bindings: AppBindings): Hono {
     if (TTS_MODULES.has(module)) reloadTtsClient(bindings.tts, bindings.profileDb);
     if (STT_MODULES.has(module)) reloadSttClient(bindings.stt, bindings.profileDb);
 
-    return c.json(repo.get(module));
+    // Return the updated list for this module
+    return c.json(repo.listByModule(module));
   });
 
-  // DELETE /api/model-bindings/:module
+  // DELETE /api/model-bindings/:module?providerConfigId=...&model=...
   app.delete('/:module', (c) => {
     const moduleParsed = moduleSchema.safeParse(c.req.param('module'));
     if (!moduleParsed.success) {
       return c.json({ error: 'invalid_module', validModules: BINDING_MODULES }, 400);
     }
 
+    const queryParsed = deleteQuerySchema.safeParse(c.req.query());
+    if (!queryParsed.success) {
+      return c.json({ error: 'invalid_request', details: queryParsed.error.flatten() }, 400);
+    }
+
     const module = moduleParsed.data as BindingModule;
     const repo = new ModelBindingsRepo(bindings.profileDb.sqlite);
-    repo.delete(module);
+    repo.delete(module, queryParsed.data.providerConfigId, queryParsed.data.model);
 
     if (BRIDGE_MODULES.has(module)) {
       void configureBridge(bindings.profileDb, bindings.narrative);

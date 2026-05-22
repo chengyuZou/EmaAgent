@@ -11,6 +11,7 @@ export { Card }       from './Card.js';
 export { Skeleton } from './Skeleton.js';
 export { Spinner }  from './Spinner.js';
 export { Callout }  from './Callout.js';
+export { Progress } from './Progress.js';
 
 // Indicators
 export { Badge }   from './Badge.js';
@@ -22,10 +23,12 @@ export { Popover }      from './Popover.js';
 export { Tooltip, TooltipProvider } from './Tooltip.js';
 export { DropdownMenu } from './DropdownMenu.js';
 export { Select }       from './Select.js';
+export { Combobox }     from './Combobox.js';
 export { Tabs }         from './Tabs.js';
 export { ScrollArea }   from './ScrollArea.js';
 
 // Form controls
+export { Field }  from './Field.js';
 export { Switch } from './Switch.js';
 export { Slider } from './Slider.js';
 
@@ -38,6 +41,7 @@ export type { CardProps, CardVariant, CardPadding } from './Card.js';
 export type { SkeletonProps, SkeletonAnimation } from './Skeleton.js';
 export type { SpinnerProps, SpinnerSize } from './Spinner.js';
 export type { CalloutProps, CalloutVariant } from './Callout.js';
+export type { ProgressProps } from './Progress.js';
 export type { BadgeProps, BadgeVariant } from './Badge.js';
 export type { DividerProps } from './Divider.js';
 export type { DialogProps } from './Dialog.js';
@@ -45,7 +49,9 @@ export type { PopoverProps } from './Popover.js';
 export type { TooltipProps } from './Tooltip.js';
 export type { DropdownMenuProps, MenuItem } from './DropdownMenu.js';
 export type { SelectProps, SelectOption } from './Select.js';
+export type { ComboboxProps, ComboboxOption } from './Combobox.js';
 export type { TabsProps, TabItem } from './Tabs.js';
 export type { ScrollAreaProps } from './ScrollArea.js';
+export type { FieldProps } from './Field.js';
 export type { SwitchProps } from './Switch.js';
 export type { SliderProps, SliderStep } from './Slider.js';

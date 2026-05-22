@@ -155,6 +155,20 @@ export function emaSharedPreset(): Preset[] {
         'code': { 'border-radius': RADIUS_SCALE.sm },
       },
     }),
+    // -- Custom animations (preflight keyframes) --
+    {
+      name: 'ema-animations',
+      preflights: [
+        {
+          getCSS: () => `
+@keyframes progress-shine {
+  0%   { opacity: 0.4; transform: scale(0, 1); }
+  100% { opacity: 0;   transform: scale(1, 1); }
+}
+          `.trim(),
+        },
+      ],
+    },
   ];
 }
 

@@ -52,7 +52,7 @@ CREATE TABLE model_catalog (
 );
 
 CREATE TABLE model_bindings (
-  module             TEXT    PRIMARY KEY
+  module             TEXT    NOT NULL
                      CHECK(module IN (
                        -- TS-side LLM modules
                        'chat', 'narrative', 'agent',
@@ -73,7 +73,8 @@ CREATE TABLE model_bindings (
   provider_config_id TEXT    NOT NULL REFERENCES provider_configs(id) ON DELETE RESTRICT,
   model              TEXT    NOT NULL,
   voice_id           TEXT,
-  config_json        TEXT    NOT NULL DEFAULT '{}'
+  config_json        TEXT    NOT NULL DEFAULT '{}',
+  PRIMARY KEY (module, provider_config_id, model)
 );
 
 -- ============ Character cards + Live2D models ============

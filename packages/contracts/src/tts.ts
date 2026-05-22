@@ -34,17 +34,10 @@ export function emptyVoiceProfile(): CharacterVoiceProfile {
   return { refAudios: [], primaryId: null };
 }
 
-// ── Module routing (which model_bindings row to read) ────────────────────────
+// ── Turn-modes that drive TTS (used for text filtering / logging only) ──────
 
-/**
- * Which business module is requesting TTS. Maps directly to a `model_bindings`
- * row. `agent` is required even though agent-output gets heavily filtered
- * (code blocks stripped) — users still want agent narration when not in a
- * code-heavy reply.
- *
- * Distinct from `LlmModule` because TTS only cares about user-facing modes.
- */
-export type TtsModule = 'chat' | 'narrative' | 'agent';
+/** Business mode that triggered this TTS request — kept for observability. */
+export type TtsTurnMode = 'chat' | 'narrative' | 'agent';
 
 // ── Internal voice ref (constructed by service, consumed by adapter) ─────────
 
@@ -65,18 +58,26 @@ export type TtsVoiceRef =
 // ── Public TTS request ──────────────────────────────────────────────────────
 
 /**
- * The TtsClient Façade entry point. Upper layers (conversation/agent engine,
- * route handlers) only pass `characterId` + text; the service resolves the
- * card, picks the binding for `module`, and constructs the adapter call.
+ * The TtsClient Façade entry point. Callers (orchestrator) resolve the
+ * providerId + model from model_bindings before calling. The client is a
+ * thin adapter dispatcher — it does NOT look up bindings itself.
+ *
+ * Symmetric with `LlmRouter.stream(LlmRequest)`: the request carries its own
+ * provider routing key.
  *
  * `characterId` may be `null` for system-originated narration (boot greeting,
  * error notices). In that case the service skips the card lookup and goes
  * straight to fallback catalog voice.
  */
 export interface TtsRequest {
+  /** provider_configs.id UUID — which adapter instance to use. */
+  providerId:  string;
+  /** Model name as the provider expects it (e.g. "tts-1", "cosyvoice-v1"). */
+  model:       string;
   text:         string;
   characterId:  CharacterCardId | null;
-  module:       TtsModule;
+  /** Business mode that triggered this — used for text filtering + logging. */
+  turnMode?:    TtsTurnMode;
   format?:      TtsAudioFormat;
   sampleRate?:  number;
   speed?:       number;
