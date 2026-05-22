@@ -1,0 +1,41 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Ema",
+  "version":     "0.1.0",
+  "identifier":  "com.emaagent.desktop",
+  "build": {
+    "beforeDevCommand":   "pnpm --filter @ema-agent/desktop dev",
+    "beforeBuildCommand": "pnpm --filter @ema-agent/desktop build",
+    "devUrl":             "http://127.0.0.1:1420",
+    "frontendDist":       "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label":         "main",
+        "title":         "Ema",
+        "url":           "/",
+        "width":         400,
+        "height":        720,
+        "transparent":   true,
+        "decorations":   false,
+        "alwaysOnTop":   true,
+        "resizable":     true,
+        "shadow":        false,
+        "skipTaskbar":   false,
+        "visible":       true
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active":     false,
+    "targets":    "all",
+    "icon":       ["icons/icon.png"],
+    "category":   "Utility",
+    "shortDescription": "Ema desktop pet + agent",
+    "longDescription":  "Local-first desktop pet + agent — three modes, character-driven."
+  }
+}

@@ -1,0 +1,27 @@
+[package]
+name        = "ema-desktop"
+version     = "0.1.0"
+description = "EmaAgent desktop shell"
+edition     = "2021"
+rust-version = "1.77"
+
+[lib]
+name       = "ema_desktop_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2.0", features = [] }
+
+[dependencies]
+tauri              = { version = "2.0", features = [] }
+serde              = { version = "1", features = ["derive"] }
+serde_json         = "1"
+tokio              = { version = "1", features = ["process", "io-util", "macros", "rt-multi-thread", "sync", "signal", "time"] }
+which              = "6"
+regex              = "1"
+tracing            = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[features]
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]

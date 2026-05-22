@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Ema</title>
+    <style>
+      /* Transparent root — the Tauri window itself is transparent, so the
+         html/body need to match or you'll see opaque rectangles. */
+      html, body, #root {
+        margin:           0;
+        padding:          0;
+        height:           100%;
+        background:       transparent;
+        overflow:         hidden;
+        font-family:      'Microsoft YaHei', 'PingFang SC', system-ui, sans-serif;
+        color:            #f5f5f5;
+        -webkit-font-smoothing: antialiased;
+      }
+      /* Disable right-click context menu in production app */
+      body { user-select: none; }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
