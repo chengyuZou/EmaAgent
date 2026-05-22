@@ -1,5 +1,5 @@
 import type {
-  EmaStreamEvent, TurnId, SessionId, CharacterCardId, TtsModule,
+  EmaStreamEvent, TurnId, SessionId, CharacterCardId, TtsTurnMode,
 } from '@ema-agent/contracts';
 import type { HookBus, HookContext, HookResult } from '@ema-agent/hook';
 import { PRIORITY } from '@ema-agent/hook';
@@ -35,7 +35,12 @@ export interface TtsCoordinatorArgs {
   sessionId:     SessionId;
   /** null for system-originated turns (no card → fallback voice). */
   characterId:   CharacterCardId | null;
-  module:        TtsModule;
+  /** provider_configs.id — which TTS provider to use for this turn. */
+  providerId:    string;
+  /** Model name for the provider (e.g. "tts-1", "cosyvoice-v1"). */
+  model:         string;
+  /** Business mode ('chat' | 'narrative' | 'agent') — for text filtering only. */
+  turnMode?:     TtsTurnMode;
   ttsClient:     TtsClient;
   hooks:         HookBus;
   /** Push an EmaStreamEvent into the merged turn SSE queue. */
@@ -50,7 +55,9 @@ export class TtsCoordinator {
   private readonly turnId:      TurnId;
   private readonly sessionId:   SessionId;
   private readonly characterId: CharacterCardId | null;
-  private readonly module:      TtsModule;
+  private readonly providerId:  string;
+  private readonly model:       string;
+  private readonly turnMode?:   TtsTurnMode;
   private readonly ttsClient:   TtsClient;
   private readonly hooks:       HookBus;
   private readonly emit:        (event: EmaStreamEvent) => void;
@@ -67,7 +74,9 @@ export class TtsCoordinator {
     this.turnId      = args.turnId;
     this.sessionId   = args.sessionId;
     this.characterId = args.characterId;
-    this.module      = args.module;
+    this.providerId  = args.providerId;
+    this.model       = args.model;
+    this.turnMode    = args.turnMode;
     this.ttsClient   = args.ttsClient;
     this.hooks       = args.hooks;
     this.emit        = args.emit;
@@ -161,8 +170,10 @@ export class TtsCoordinator {
     try {
       for await (const ev of this.ttsClient.synthesize({
         text,
+        providerId:  this.providerId,
+        model:       this.model,
         characterId: this.characterId,
-        module:      this.module,
+        turnMode:    this.turnMode,
         format:      this.format,
       })) {
         if (ev.type === 'audio_chunk') {

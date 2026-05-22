@@ -1,7 +1,6 @@
 import type {
   TtsRequest,
   TtsStreamEvent,
-  TtsModule,
   TtsVoiceRef,
   CharacterVoiceProfile,
   CharacterCardId,
@@ -9,7 +8,6 @@ import type {
 import type {
   TtsAdapter,
   TtsProviderConfig,
-  TtsModuleBinding,
 } from './types.js';
 import { protocolSupportsVoiceKind } from './types.js';
 
@@ -40,16 +38,16 @@ export interface TtsClientArgs {
   /** All registered TTS provider configs (id → creds). */
   providers: ReadonlyMap<string, TtsProviderConfig>;
   /**
-   * Primary binding per module. Reads `model_bindings` for module IN
-   * ('chat','narrative','agent') where capability is tts.
+   * Optional fallback. When the primary attempt fails AND no audio has been
+   * emitted yet, the service retries with this fallback providerId+model.
+   * Resolved by the wiring layer from settings or a special model_bindings row.
    */
-  primaryBindings:  ReadonlyMap<TtsModule, TtsModuleBinding>;
-  /**
-   * Optional fallback binding per module. Reads `model_bindings` where module
-   * is a future synthetic `chat_fallback` / `narrative_fallback` / etc. — for
-   * V1 we share a single binding key `__tts_fallback__` across all modules.
-   */
-  fallbackBinding?: TtsModuleBinding;
+  fallback?: {
+    providerId: string;
+    model:      string;
+    voiceId:    string | null;
+    config?:    Record<string, unknown>;
+  };
   voiceProfiles:    VoiceProfileLookup;
   refPathResolver:  VoiceRefPathResolver;
   /** For tests: pre-built adapters keyed by providerConfigId. */
@@ -59,66 +57,71 @@ export interface TtsClientArgs {
 // ── TtsClient ───────────────────────────────────────────────────────────────
 
 /**
- * Single Façade for all TTS access. Upper layers pass `characterId` + `module`
- * + text; the client resolves voice, picks the adapter, and on failure of the
- * primary attempt falls through to the configured system fallback voice.
+ * Single Façade for all TTS access. Pattern aligned with LlmRouter:
+ *   - adapters: Map<providerId, TtsAdapter>     (id → instance)
+ *   - configs:  Map<providerId, TtsProviderConfig> (id → config)
+ *
+ * synthesize(request) uses request.providerId to look up the adapter —
+ * NO binding lookup inside the client. Callers resolve providerId + model
+ * from model_bindings before calling.
  *
  * V1 failover model (memory:project-tts-scope):
- *   primary refAudio fails  → system fallback voice (catalog, different binding)
+ *   primary refAudio fails  → system fallback voice (catalog, different provider)
  *   fallback also fails     → emit error, stream ends without audio
- *
- * No cycling through secondary refAudios — that is deferred to a later round.
  */
 export class TtsClient {
-  // Mutable state — swapped wholesale by reload(). The Façade instance is
-  // stable (orchestrator + coordinator hold a long-lived reference); only
-  // the internals change when provider configs / bindings / fallback edit.
-  private providers:        ReadonlyMap<string, TtsProviderConfig>;
-  private primary:          ReadonlyMap<TtsModule, TtsModuleBinding>;
-  private fallback:         TtsModuleBinding | undefined;
-  private adapters          = new Map<string, TtsAdapter>();
+  /** providerId → adapter instance (hot-reloadable) */
+  private adapters = new Map<string, TtsAdapter>();
+  /** providerId → config (kept for capability checks) */
+  private configs  = new Map<string, TtsProviderConfig>();
 
-  // Read-only — these never change between reloads (card store and path
-  // resolver are stable for the lifetime of the process).
+  // Read-only across reloads
   private readonly voiceProfiles:    VoiceProfileLookup;
   private readonly refPathResolver:  VoiceRefPathResolver;
+  private fallback:                  TtsClientArgs['fallback'];
 
   constructor(args: TtsClientArgs) {
-    this.providers       = args.providers;
-    this.primary         = args.primaryBindings;
-    this.fallback        = args.fallbackBinding;
     this.voiceProfiles   = args.voiceProfiles;
     this.refPathResolver = args.refPathResolver;
-    this.rebuildAdapters(args.adapterOverrides);
-  }
-
-  /**
-   * Replace provider configs + bindings + fallback at runtime. Called from
-   * route handlers after PUT /api/providers, PUT /api/model-bindings/:module
-   * (when module is tts_*), or PUT /api/settings/tts-fallback. Long-lived
-   * references (orchestrator, TtsCoordinator) keep working — they see the
-   * new state on the next synthesize() call.
-   *
-   * In-flight syntheses are NOT aborted — they finish on the adapter they
-   * started with. New requests use the new adapters.
-   */
-  reload(args: {
-    providers:        ReadonlyMap<string, TtsProviderConfig>;
-    primaryBindings:  ReadonlyMap<TtsModule, TtsModuleBinding>;
-    fallbackBinding?: TtsModuleBinding;
-  }): void {
-    this.providers = args.providers;
-    this.primary   = args.primaryBindings;
-    this.fallback  = args.fallbackBinding;
-    this.adapters  = new Map<string, TtsAdapter>();
-    this.rebuildAdapters();
-  }
-
-  private rebuildAdapters(overrides?: ReadonlyMap<string, TtsAdapter>): void {
-    for (const [id, cfg] of this.providers) {
-      const override = overrides?.get(id);
+    this.fallback        = args.fallback;
+    for (const [id, cfg] of args.providers) {
+      this.configs.set(id, cfg);
+      const override = args.adapterOverrides?.get(id);
       this.adapters.set(id, override ?? this.createAdapter(cfg));
     }
+  }
+
+  // ── Hot-reload ─────────────────────────────────────────────────────────────
+
+  /**
+   * Replace provider configs at runtime. Called from routes after
+   * PUT /api/providers or PUT /api/model-bindings/:module (tts_* rows).
+   * Long-lived references (TtsCoordinator) keep working — they see
+   * the new state on the next synthesize() call.
+   */
+  reload(args: {
+    providers: ReadonlyMap<string, TtsProviderConfig>;
+    fallback?: TtsClientArgs['fallback'];
+  }): void {
+    this.adapters = new Map<string, TtsAdapter>();
+    this.configs  = new Map<string, TtsProviderConfig>();
+    this.fallback = args.fallback;
+    for (const [id, cfg] of args.providers) {
+      this.configs.set(id, cfg);
+      this.adapters.set(id, this.createAdapter(cfg));
+    }
+  }
+
+  /** Symmetric with LlmRouter.upsertConfig(). */
+  upsertConfig(config: TtsProviderConfig): void {
+    this.configs.set(config.id, config);
+    this.adapters.set(config.id, this.createAdapter(config));
+  }
+
+  /** Symmetric with LlmRouter.removeConfig(). */
+  removeConfig(providerId: string): void {
+    this.configs.delete(providerId);
+    this.adapters.delete(providerId);
   }
 
   private createAdapter(cfg: TtsProviderConfig): TtsAdapter {
@@ -129,81 +132,84 @@ export class TtsClient {
     }
   }
 
+  /** Symmetric with LlmRouter.firstProviderId(). */
+  firstProviderId(): string | undefined {
+    return this.configs.keys().next().value;
+  }
+
   // ── Public API ────────────────────────────────────────────────────────────
 
   /**
    * Synthesize text into a stream of audio chunks. Sentence-level streaming:
-   * the input text is split into sentences, each synthesized in turn. The
-   * service emits `sentence_started` / `sentence_done` around each.
+   * the input text is split into sentences, each synthesized in turn.
    *
-   * If the first sentence fails on the primary binding AND no audio has been
-   * emitted yet, the service retries from scratch with the fallback binding.
-   * If audio has already streamed, errors abort the stream (no swap mid-flight).
+   * Uses request.providerId directly to find the adapter — symmetric with
+   * LlmRouter.stream(request). No binding lookup inside the client.
+   *
+   * If the first sentence fails on the primary provider AND no audio has been
+   * emitted yet, the service retries from scratch with the fallback provider.
+   * If audio has already streamed, errors abort (no swap mid-flight).
    */
   async *synthesize(req: TtsRequest): AsyncIterable<TtsStreamEvent> {
-    const cleaned = filterTextForTts(req.text, { module: req.module });
+    const cleaned = filterTextForTts(req.text, { turnMode: req.turnMode });
     if (cleaned.length === 0) {
       yield { type: 'done', totalBytes: 0, firstByteMs: 0 };
       return;
     }
 
-    const primaryBinding = this.primary.get(req.module);
-    if (!primaryBinding) {
+    const adapter = this.adapters.get(req.providerId);
+    const cfg     = this.configs.get(req.providerId);
+    if (!adapter || !cfg) {
       yield { type: 'error', code: 'permanent_bad_request',
-              message: `no model_bindings.tts row for module "${req.module}"` };
+              message: `tts/provider not registered: "${req.providerId}"` };
       return;
     }
 
-    // ── Attempt 1: primary binding ────────────────────────────────────────
-    const primaryVoice = this.resolveVoice(req.characterId, primaryBinding);
+    const primaryVoice = this.resolveVoice(req.characterId, req.providerId, cfg);
     if (primaryVoice) {
-      const result = yield* this.streamAllSentences(cleaned, primaryBinding, primaryVoice, req);
+      const result = yield* this.streamAllSentences(cleaned, adapter, cfg, primaryVoice, req);
       if (result.ok) return;
-      // Only fall back if NO audio went out — see service docstring
+      // Only fall back if NO audio went out
       if (result.bytesEmitted > 0) return;
     }
 
-    // ── Attempt 2: fallback binding (system voice) ────────────────────────
+    // ── Attempt 2: fallback ───────────────────────────────────────────────
     if (!this.fallback) {
       yield { type: 'error', code: 'unknown',
-              message: 'primary tts failed and no fallback binding configured' };
+              message: 'primary tts failed and no fallback provider configured' };
       return;
     }
 
-    const fallbackVoice = this.resolveVoice(null, this.fallback);
+    const fbAdapter = this.adapters.get(this.fallback.providerId);
+    const fbCfg     = this.configs.get(this.fallback.providerId);
+    if (!fbAdapter || !fbCfg) {
+      yield { type: 'error', code: 'permanent_bad_request',
+              message: `tts/fallback provider not registered: "${this.fallback.providerId}"` };
+      return;
+    }
+
+    const fallbackVoice = this.resolveVoice(null, this.fallback.providerId, fbCfg);
     if (!fallbackVoice) {
       yield { type: 'error', code: 'permanent_bad_request',
-              message: 'fallback binding has no voiceId — cannot synthesize' };
+              message: 'fallback provider has no voice — cannot synthesize' };
       return;
     }
 
-    const result = yield* this.streamAllSentences(cleaned, this.fallback, fallbackVoice, req);
+    const result = yield* this.streamAllSentences(cleaned, fbAdapter, fbCfg, fallbackVoice, req);
     if (!result.ok) {
-      yield { type: 'error', code: 'unknown',
-              message: 'fallback tts also failed' };
+      yield { type: 'error', code: 'unknown', message: 'fallback tts also failed' };
     }
   }
 
   // ── Internals ─────────────────────────────────────────────────────────────
 
-  /**
-   * Resolve voice from a binding + optional character. Returns null when:
-   *   - cardId points at a card whose refAudios are empty / primary missing
-   *     AND the binding's protocol cannot do catalog voices
-   *
-   * Voice resolution priority:
-   *   1. If binding.protocol supports `clone` AND character has a primary
-   *      refAudio → use clone
-   *   2. Else if binding.protocol supports `catalog` AND binding.voiceId set
-   *      → use catalog
-   *   3. Else → null (caller falls through to next binding)
-   */
   private resolveVoice(
     characterId: CharacterCardId | null,
-    binding:     TtsModuleBinding,
+    providerId:  string,
+    cfg:         TtsProviderConfig,
   ): TtsVoiceRef | null {
-    const cfg = this.providers.get(binding.providerConfigId);
-    if (!cfg) return null;
+    // Read voiceId from the config (wiring layer pushes binding.voiceId into config)
+    const voiceId = (cfg as unknown as { voiceId?: string | null }).voiceId ?? null;
 
     if (characterId && protocolSupportsVoiceKind(cfg.protocol, 'clone')) {
       const profile = this.voiceProfiles.getVoiceProfile(characterId);
@@ -218,34 +224,21 @@ export class TtsClient {
       }
     }
 
-    if (binding.voiceId && protocolSupportsVoiceKind(cfg.protocol, 'catalog')) {
-      return { kind: 'catalog', voiceId: binding.voiceId };
+    if (voiceId && protocolSupportsVoiceKind(cfg.protocol, 'catalog')) {
+      return { kind: 'catalog', voiceId };
     }
 
     return null;
   }
 
-  /**
-   * Sentence-by-sentence synthesis against one binding. Returns whether all
-   * sentences succeeded and how many bytes were emitted (needed by the
-   * fallback decision in `synthesize`).
-   */
   private async *streamAllSentences(
-    text:    string,
-    binding: TtsModuleBinding,
-    voice:   TtsVoiceRef,
-    req:     TtsRequest,
+    text:      string,
+    adapter:   TtsAdapter,
+    cfg:       TtsProviderConfig,
+    voice:     TtsVoiceRef,
+    req:       TtsRequest,
   ): AsyncGenerator<TtsStreamEvent, { ok: boolean; bytesEmitted: number }> {
-    const cfg     = this.providers.get(binding.providerConfigId);
-    const adapter = this.adapters.get(binding.providerConfigId);
-    if (!cfg || !adapter) {
-      yield { type: 'error', code: 'permanent_bad_request',
-              message: `provider "${binding.providerConfigId}" not registered` };
-      return { ok: false, bytesEmitted: 0 };
-    }
-
-    // Sanity: capability matrix should have been enforced by resolveVoice,
-    // but guard anyway in case of misconfig
+    // Sanity: capability matrix guard
     if (!protocolSupportsVoiceKind(cfg.protocol, voice.kind)) {
       yield { type: 'error', code: 'permanent_unsupported_voice_kind',
               message: `protocol ${cfg.protocol} cannot use ${voice.kind} voice` };
@@ -268,14 +261,11 @@ export class TtsClient {
 
       const stream = adapter.stream({
         text:        sentence.text,
-        model:       binding.model,
+        model:       req.model,
         voice,
         format:      req.format ?? 'mp3',
         sampleRate:  req.sampleRate,
         speed:       req.speed,
-        instructions: typeof binding.config['instructions'] === 'string'
-          ? binding.config['instructions'] as string
-          : undefined,
         abortSignal: req.abortSignal,
       });
 

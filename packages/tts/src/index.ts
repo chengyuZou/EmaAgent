@@ -14,7 +14,6 @@ export type {
   TtsAdapter,
   TtsAdapterCall,
   TtsProviderConfig,
-  TtsModuleBinding,
   TtsResolution,
   TtsRequest,
   TtsStreamEvent,

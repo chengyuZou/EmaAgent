@@ -86,28 +86,11 @@ export function protocolSupportsVoiceKind(
   return TTS_PROTOCOL_VOICE_SUPPORT[protocol].includes(kind);
 }
 
-// ── Service-level binding (one per TtsModule) ───────────────────────────────
-
-/**
- * The TtsClient is constructed with a per-module binding map. Each module
- * (chat / narrative / agent) has its own primary binding plus an optional
- * fallback binding. If the primary fails, the service immediately switches
- * to the fallback. If no fallback is configured, the service emits a
- * system_warning and goes silent (no audio).
- */
-export interface TtsModuleBinding {
-  providerConfigId: string;
-  model:            string;
-  /** When voice is `catalog`, this is the voiceId passed to the adapter. */
-  voiceId:          string | null;
-  /** Adapter-specific extras (e.g. dashscope `instructions` text). */
-  config:           Record<string, unknown>;
-}
-
 // ── Request resolution result (debugging / telemetry) ───────────────────────
 
 export interface TtsResolution {
-  module:           string;
+  /** Business mode that triggered TTS ('chat' | 'narrative' | 'agent'). */
+  turnMode:        string;
   characterId:      string | null;
   attemptedClone:   boolean;
   usedFallback:     boolean;

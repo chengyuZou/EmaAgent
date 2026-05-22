@@ -14,10 +14,10 @@
 //   - agent:            heavy filtering (strip ALL code; user-said agent code blocks
 //                       shouldn't be read aloud)
 
-import type { TtsModule } from '@ema-agent/contracts';
+import type { TtsTurnMode } from '@ema-agent/contracts';
 
 export interface TtsFilterOptions {
-  module: TtsModule;
+  turnMode?: TtsTurnMode;
 }
 
 const RE_FENCED_CODE = /```[\s\S]*?```/g;
@@ -39,7 +39,7 @@ export function filterTextForTts(text: string, opts: TtsFilterOptions): string {
   out = out.replace(RE_MD_IMAGE,   '');
   out = out.replace(RE_MD_LINK,    '$1');
 
-  if (opts.module === 'agent') {
+  if (opts.turnMode === 'agent') {
     out = out.replace(RE_FENCED_CODE, ' （代码段已省略） ');
     out = out.replace(RE_INLINE_CODE, '');
   } else {
