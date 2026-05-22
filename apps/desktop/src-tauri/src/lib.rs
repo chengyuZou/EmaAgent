@@ -18,6 +18,25 @@ async fn get_sidecar_port(state: tauri::State<'_, SidecarState>) -> Result<u16, 
         .ok_or_else(|| "sidecar port not yet available".to_string())
 }
 
+#[tauri::command]
+fn set_always_on_top(window: tauri::Window, value: bool) -> Result<(), String> {
+    window.set_always_on_top(value).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn set_passthrough(window: tauri::Window, value: bool) -> Result<(), String> {
+    // When passthrough is on, mouse events go through the transparent window
+    // to whatever is behind it (desktop / other apps). The character pixels
+    // and dock both become non-interactive. Frontend hides the dock when
+    // toggling on, otherwise the user has no way to toggle it back off.
+    window.set_ignore_cursor_events(value).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn quit_app(app: tauri::AppHandle) {
+    app.exit(0);
+}
+
 // ── App entry ───────────────────────────────────────────────────────────────
 
 pub fn run() {
@@ -28,7 +47,12 @@ pub fn run() {
 
     tauri::Builder::default()
         .manage(sidecar_state)
-        .invoke_handler(tauri::generate_handler![get_sidecar_port])
+        .invoke_handler(tauri::generate_handler![
+            get_sidecar_port,
+            set_always_on_top,
+            set_passthrough,
+            quit_app,
+        ])
         .setup(move |app| {
             let app_handle = app.handle().clone();
             let handle = handle_for_setup.clone();
