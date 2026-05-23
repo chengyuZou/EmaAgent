@@ -24,10 +24,14 @@ CREATE TABLE sessions (
   created_at             INTEGER NOT NULL,
   updated_at             INTEGER NOT NULL,
   archived_at            INTEGER,
+  pinned                 INTEGER NOT NULL DEFAULT 0,
+  pinned_at              INTEGER,
+  group_label            TEXT,
+  parent_session_id      TEXT REFERENCES sessions(id) ON DELETE SET NULL,
   meta_json              TEXT NOT NULL DEFAULT '{}',
   pending_fragments_json TEXT NOT NULL DEFAULT '[]'
 );
-CREATE INDEX idx_sessions_updated ON sessions(updated_at DESC);
+CREATE INDEX idx_sessions_list ON sessions(pinned DESC, group_label, updated_at DESC);
 
 CREATE TABLE turns (
   id                   TEXT PRIMARY KEY,

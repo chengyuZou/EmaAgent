@@ -21,7 +21,7 @@ export { SessionNotesRepo }      from './repos/session-notes.js';
 export { BackgroundTasksRepo }   from './repos/background-tasks.js';
 
 export type { DatabaseOptions, SqliteDb } from './database.js';
-export type { SessionRow, SessionInsert } from './repos/sessions.js';
+export type { SessionRow, SessionInsert, SessionsGrouped } from './repos/sessions.js';
 export type { TurnRow, TurnInsert, TurnCompletion } from './repos/turns.js';
 export type { MessageRow, MessageInsert } from './repos/messages.js';
 export type { CharacterCardRow, CharacterCardInsert } from './repos/character-cards.js';

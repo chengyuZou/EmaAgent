@@ -14,5 +14,6 @@ export type {
   CompleteTurnInput,
   AppendMessageInput,
   ListSessionsInput,
+  ListSessionsOutput,
   ListMessagesInput,
 } from './types.js';

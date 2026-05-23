@@ -28,6 +28,7 @@ import type {
   CompleteTurnInput,
   AppendMessageInput,
   ListSessionsInput,
+  ListSessionsOutput,
   ListMessagesInput,
 } from './types.js';
 
@@ -42,6 +43,11 @@ function toSession(row: SessionRow): Session {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     archivedAt: row.archived_at,
+    pinned:        row.pinned === 1,
+    pinnedAt:      row.pinned_at,
+    groupLabel:    row.group_label,
+    parentSessionId: row.parent_session_id as SessionId | null,
+    runningTurnCount: 0,    // populated by caller
     meta: JSON.parse(row.meta_json) as Record<string, unknown>,
   };
 }
@@ -134,13 +140,15 @@ export class SessionStore {
   createSession(input: CreateSessionInput = {}): Session {
     const id  = asSessionId(crypto.randomUUID());
     const now = this.nextTs();
+    const title = (input.title?.trim() || '新对话');
     this.sessionsRepo.insert({
       id,
-      title:           input.title            ?? '新对话',
-      characterCardId: input.characterCardId  ?? ('ema' as CharacterCardId),
-      workspaceRoots:  input.workspaceRoots,
-      createdAt:       now,
-      updatedAt:       now,
+      title,
+      characterCardId:  input.characterCardId  ?? ('ema' as CharacterCardId),
+      workspaceRoots:   input.workspaceRoots,
+      parentSessionId:  input.parentSessionId,
+      createdAt:        now,
+      updatedAt:        now,
     });
     return this.requireSession(id);
   }
@@ -149,18 +157,90 @@ export class SessionStore {
     return this.requireSession(id);
   }
 
-  listSessions(input: ListSessionsInput = {}): Session[] {
-    const rows = this.sessionsRepo.listActive(input.limit ?? 50, input.offset ?? 0);
-    return rows.map(toSession);
+  listSessions(input: ListSessionsInput = {}): ListSessionsOutput {
+    const limit = input.limit ?? 50;
+    // Fetch one extra row to know if there's a next page
+    const rows = this.sessionsRepo.listActive(limit + 1, input.cursor);
+    const hasMore = rows.length > limit;
+    const visible = hasMore ? rows.slice(0, limit) : rows;
+    const sessions = visible.map(r => {
+      const s = toSession(r);
+      s.runningTurnCount = this.sessionsRepo.runningTurnCount(s.id);
+      return s;
+    });
+    const nextCursor = hasMore
+      ? visible[visible.length - 1]!.updated_at
+      : undefined;
+    return { sessions, nextCursor };
+  }
+
+  /** Grouped listing for sidebar UI. */
+  listSessionsGrouped(): {
+    pinned:   Session[];
+    byGroup:  Array<{ label: string; sessions: Session[] }>;
+    recent:   Session[];
+    archived: Session[];
+  } {
+    const grouped = this.sessionsRepo.listGrouped();
+    const map = (rows: SessionRow[]) => rows.map(r => {
+      const s = toSession(r);
+      s.runningTurnCount = this.sessionsRepo.runningTurnCount(s.id);
+      return s;
+    });
+    return {
+      pinned:   map(grouped.pinned),
+      byGroup:  grouped.byGroup.map(g => ({ label: g.label, sessions: map(g.sessions) })),
+      recent:   map(grouped.recent),
+      archived: map(grouped.archived),
+    };
   }
 
   updateTitle(id: SessionId, title: string): void {
-    this.sessionsRepo.updateTitle(id, title, Date.now());
+    const trimmed = title.trim();
+    if (!trimmed) return;   // empty → no-op, keep current title
+    this.sessionsRepo.updateTitle(id, trimmed, Date.now());
   }
+
+  // ── Pin / Unpin ───────────────────────────────────────────────────────────
+
+  pinSession(id: SessionId): void {
+    this.sessionsRepo.pin(id, Date.now());
+  }
+
+  unpinSession(id: SessionId): void {
+    this.sessionsRepo.unpin(id);
+  }
+
+  // ── Group ──────────────────────────────────────────────────────────────────
+
+  setSessionGroup(id: SessionId, label: string | null): void {
+    // Normalise empty string → null (no group)
+    const normalised = label?.trim() || null;
+    this.sessionsRepo.setGroup(id, normalised);
+  }
+
+  // ── Archive / Unarchive ────────────────────────────────────────────────────
 
   archiveSession(id: SessionId): void {
     this.sessionsRepo.archive(id, Date.now());
   }
+
+  unarchiveSession(id: SessionId): void {
+    this.sessionsRepo.unarchive(id);
+  }
+
+  // ── Fork ───────────────────────────────────────────────────────────────────
+
+  forkSession(srcId: SessionId): { sessionId: SessionId; messageCount: number } {
+    const newId = asSessionId(crypto.randomUUID());
+    const src   = this.requireSession(srcId);
+    const title = `${src.title} (fork)`;
+    const now   = this.nextTs();
+    const count = this.sessionsRepo.forkInto(srcId, newId, title, now);
+    return { sessionId: newId, messageCount: count };
+  }
+
+  // ── Delete ─────────────────────────────────────────────────────────────────
 
   deleteSession(id: SessionId): void {
     this.registry.clear(id);

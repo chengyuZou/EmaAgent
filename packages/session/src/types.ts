@@ -23,6 +23,11 @@ export interface Session {
   createdAt: number;
   updatedAt: number;
   archivedAt: number | null;
+  pinned:        boolean;
+  pinnedAt:      number | null;
+  groupLabel:    string | null;
+  parentSessionId: string | null;
+  runningTurnCount: number;
   meta: Record<string, unknown>;
 }
 
@@ -68,6 +73,7 @@ export interface CreateSessionInput {
   title?: string;
   characterCardId?: CharacterCardId;
   workspaceRoots?: string[];
+  parentSessionId?: string;
 }
 
 export interface StartTurnInput {
@@ -94,8 +100,16 @@ export interface AppendMessageInput {
 }
 
 export interface ListSessionsInput {
+  /** Max results per page. */
   limit?: number;
-  offset?: number;
+  /** Cursor: return sessions with updated_at earlier than this timestamp. */
+  cursor?: number;
+}
+
+export interface ListSessionsOutput {
+  sessions: Session[];
+  /** Present when there are more results. Pass as cursor to the next request. */
+  nextCursor?: number;
 }
 
 export interface ListMessagesInput {
