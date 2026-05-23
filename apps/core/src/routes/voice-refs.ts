@@ -7,10 +7,12 @@ import { Hono } from 'hono';
 import type { AppBindings } from '../wiring.js';
 import {
   asCharacterCardId,
+  emptyVoiceProfile,
   type CharacterRefAudio,
   type CharacterVoiceProfile,
 } from '@ema-agent/contracts';
 import { voiceRefsForCard, resolveVoiceRefPath } from '../storage-locations/index.js';
+import { z } from 'zod';
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -19,6 +21,52 @@ function getCardOr404(bindings: AppBindings, idStr: string) {
   const card = bindings.card.get(id);
   return card ? { id, card } : null;
 }
+
+// ── Card CRUD schemas ──────────────────────────────────────────────────────
+
+const createCardSchema = z.object({
+  name:             z.string().min(1).max(200),
+  version:          z.string().max(50).optional(),
+  description:      z.string().max(1000).optional().nullable(),
+  systemPrompt:     z.string().min(1),
+  speechPatterns:   z.array(z.string()).optional(),
+  forbiddenTopics:  z.array(z.string()).optional(),
+  emotionVocabulary: z.array(z.string()).optional(),
+  motionVocabulary:  z.array(z.string()).optional(),
+  live2dModelId:    z.string().optional().nullable(),
+  voiceProfile:     z.object({
+    refAudios: z.array(z.object({
+      id:           z.string(),
+      label:        z.string(),
+      refAudioPath: z.string(),
+      promptText:   z.string(),
+      promptLang:   z.string(),
+    })),
+    primaryId: z.string().nullable(),
+  }).optional(),
+});
+
+const patchCardSchema = z.object({
+  name:             z.string().min(1).max(200).optional(),
+  version:          z.string().max(50).optional(),
+  description:      z.string().max(1000).optional().nullable(),
+  systemPrompt:     z.string().min(1).optional(),
+  speechPatterns:   z.array(z.string()).optional(),
+  forbiddenTopics:  z.array(z.string()).optional(),
+  emotionVocabulary: z.array(z.string()).optional(),
+  motionVocabulary:  z.array(z.string()).optional(),
+  live2dModelId:    z.string().optional().nullable(),
+  voiceProfile:     z.object({
+    refAudios: z.array(z.object({
+      id:           z.string(),
+      label:        z.string(),
+      refAudioPath: z.string(),
+      promptText:   z.string(),
+      promptLang:   z.string(),
+    })).optional(),
+    primaryId: z.string().nullable().optional(),
+  }).optional(),
+});
 
 function extForMime(mime: string): string {
   if (mime.includes('wav'))  return 'wav';
@@ -50,13 +98,80 @@ function mimeForExt(ext: string): string {
  *   GET    /:cardId/voice-refs/:refId     stream audio bytes
  *   DELETE /:cardId/voice-refs/:refId     remove ref entry + file
  *   PUT    /:cardId/voice-refs/primary    body: { refId } — switch primary
- *
- * Files live at `<profileDir>/voiceRefs/<cardId>/<refId>.<ext>` (profile-scope
- * so refAudio survives dataDir swaps). The card's voice_profile_json stores
- * the relative path `<cardId>/<refId>.<ext>`.
  */
 export function voiceRefsRoute(bindings: AppBindings): Hono {
   const app = new Hono();
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // Card CRUD
+  // ═══════════════════════════════════════════════════════════════════════
+
+  // ── GET / — list all cards ──────────────────────────────────────────
+  app.get('/', (c) => {
+    return c.json(bindings.card.list());
+  });
+
+  // ── GET /:id — get one card ─────────────────────────────────────────
+  app.get('/:id', (c) => {
+    const card = bindings.card.get(asCharacterCardId(c.req.param('id')));
+    if (!card) return c.json({ error: 'card_not_found' }, 404);
+    return c.json(card);
+  });
+
+  // ── POST / — create card ────────────────────────────────────────────
+  app.post('/', async (c) => {
+    const body = createCardSchema.safeParse(await c.req.json().catch(() => null));
+    if (!body.success) {
+      return c.json({ error: 'invalid_request', details: body.error.flatten() }, 400);
+    }
+    const card = bindings.card.create({
+      ...body.data,
+      description:   body.data.description ?? undefined,
+      live2dModelId: body.data.live2dModelId ?? undefined,
+      voiceProfile:  body.data.voiceProfile ?? emptyVoiceProfile(),
+      version:       body.data.version ?? '1.0',
+    });
+    return c.json(card, 201);
+  });
+
+  // ── PATCH /:id — update card ────────────────────────────────────────
+  app.patch('/:id', async (c) => {
+    const id = asCharacterCardId(c.req.param('id'));
+    const body = patchCardSchema.safeParse(await c.req.json().catch(() => null));
+    if (!body.success) {
+      return c.json({ error: 'invalid_request', details: body.error.flatten() }, 400);
+    }
+    const { voiceProfile: _vp, ...rest } = body.data;
+    const card = bindings.card.update(id, {
+      ...rest,
+      description:   body.data.description ?? undefined,
+      live2dModelId: body.data.live2dModelId ?? undefined,
+    });
+    return c.json(card);
+  });
+
+  // ── DELETE /:id — delete card ───────────────────────────────────────
+  app.delete('/:id', (c) => {
+    const id = asCharacterCardId(c.req.param('id'));
+    const card = bindings.card.get(id);
+    if (!card) return c.json({ error: 'card_not_found' }, 404);
+    if (card.isBuiltin) return c.json({ error: 'cannot_delete_builtin_card' }, 403);
+    bindings.card.delete(id);
+    return c.body(null, 204);
+  });
+
+  // ── PUT /:id/activate — set as active ───────────────────────────────
+  app.put('/:id/activate', (c) => {
+    const id = asCharacterCardId(c.req.param('id'));
+    const card = bindings.card.get(id);
+    if (!card) return c.json({ error: 'card_not_found' }, 404);
+    bindings.card.activate(id);
+    return c.json({ activeCardId: id as string });
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // Voice-refs
+  // ═══════════════════════════════════════════════════════════════════════
 
   // ── list ─────────────────────────────────────────────────────────────────
   app.get('/:cardId/voice-refs', (c) => {
