@@ -3,6 +3,7 @@ import {
   SessionsRepo,
   TurnsRepo,
   MessagesRepo,
+  nextCursorFor,
   type SessionRow,
   type TurnRow,
   type MessageRow,
@@ -169,7 +170,7 @@ export class SessionStore {
       return s;
     });
     const nextCursor = hasMore
-      ? visible[visible.length - 1]!.updated_at
+      ? nextCursorFor(visible[visible.length - 1]!)
       : undefined;
     return { sessions, nextCursor };
   }
@@ -199,6 +200,46 @@ export class SessionStore {
     const trimmed = title.trim();
     if (!trimmed) return;   // empty → no-op, keep current title
     this.sessionsRepo.updateTitle(id, trimmed, Date.now());
+  }
+
+  /**
+   * Apply a partial session update atomically. All listed fields move in one
+   * SQLite transaction — if any sub-update would fail the whole patch rolls
+   * back, leaving the row untouched.
+   *
+   * Use this from `PUT /api/sessions/:id` instead of calling
+   * `updateTitle` + `pinSession` + `setSessionGroup` separately (those are
+   * three independent transactions and can leave half-applied state).
+   *
+   * `groupLabel === null` is the explicit "move out of group" signal.
+   * `groupLabel === undefined` leaves the existing group untouched.
+   * Empty-string title is silently dropped (no rename).
+   */
+  patchSession(
+    id: SessionId,
+    patch: {
+      title?:      string;
+      pinned?:     boolean;
+      groupLabel?: string | null;
+    },
+  ): void {
+    const cleaned: typeof patch = {};
+
+    if (patch.title !== undefined) {
+      const trimmed = patch.title.trim();
+      if (trimmed) cleaned.title = trimmed;
+    }
+    if (patch.pinned !== undefined)     cleaned.pinned     = patch.pinned;
+    if (patch.groupLabel !== undefined) {
+      const normalised = patch.groupLabel === null
+        ? null
+        : patch.groupLabel.trim() || null;
+      cleaned.groupLabel = normalised;
+    }
+
+    if (Object.keys(cleaned).length === 0) return;
+
+    this.sessionsRepo.patch(id, cleaned, Date.now());
   }
 
   // ── Pin / Unpin ───────────────────────────────────────────────────────────

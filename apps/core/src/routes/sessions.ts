@@ -7,7 +7,12 @@ import type { AppBindings } from '../wiring.js';
 
 const listSessionsSchema = z.object({
   limit:  z.coerce.number().int().min(1).max(100).default(50),
-  cursor: z.coerce.number().int().optional(),
+  /**
+   * Opaque cursor returned by the previous response. Internal format
+   * (`"<pinned>.<updated_at>"`); the repo parses it and silently falls back
+   * to "first page" if malformed.
+   */
+  cursor: z.string().min(1).max(64).optional(),
 });
 
 const listMessagesSchema = z.object({
@@ -66,18 +71,15 @@ export function sessionsRoute(bindings: AppBindings): Hono {
       return c.json({ error: 'invalid_request', details: body.error.flatten() }, 400);
     }
 
-    if (body.data.title !== undefined) {
-      bindings.session.updateTitle(sessionId, body.data.title);
-    }
-    if (body.data.pinned === true) {
-      bindings.session.pinSession(sessionId);
-    } else if (body.data.pinned === false) {
-      bindings.session.unpinSession(sessionId);
-    }
-    // groupLabel may be null (explicit "move out of group")
-    if ('groupLabel' in body.data) {
-      bindings.session.setSessionGroup(sessionId, body.data.groupLabel ?? null);
-    }
+    // Transactional partial update — one round-trip to SQLite, no
+    // half-applied state if a later sub-update were to fail.
+    bindings.session.patchSession(sessionId, {
+      title:      body.data.title,
+      pinned:     body.data.pinned,
+      // 'groupLabel' may be null (explicit "move out of group") or absent.
+      // Preserve the distinction so unspecified means "don't touch".
+      groupLabel: 'groupLabel' in body.data ? body.data.groupLabel ?? null : undefined,
+    });
 
     return c.json(bindings.session.getSession(sessionId));
   });

@@ -56,17 +56,31 @@ export class SessionsRepo {
       .get(id) as SessionRow | undefined;
   }
 
-  /** Cursor-based listing. Pass `cursor` from previous response's `nextCursor`. */
-  listActive(limit: number, cursor?: number): SessionRow[] {
-    if (cursor != null) {
+  /**
+   * Cursor-based listing. Pass `cursor` from previous response's `nextCursor`.
+   *
+   * Cursor format: `"<pinned>.<updated_at>"` (opaque to client; encoded by
+   * `nextCursorFor` below). This composite cursor is required because the
+   * sort key is `(pinned DESC, updated_at DESC)` — a single-field cursor on
+   * `updated_at` would skip items across the pinned/unpinned boundary when
+   * a pinned item has an older timestamp than the last unpinned item shown.
+   *
+   * SQL keyset condition: "give me items strictly AFTER (lastPinned, lastTs)
+   * in the sort order", which is:
+   *   pinned < lastPinned   OR   (pinned = lastPinned AND updated_at < lastTs)
+   */
+  listActive(limit: number, cursor?: string): SessionRow[] {
+    const parsed = parseCursor(cursor);
+    if (parsed) {
       return this.db
         .prepare(
           `SELECT * FROM sessions
-           WHERE archived_at IS NULL AND updated_at < ?
+           WHERE archived_at IS NULL
+             AND (pinned < ? OR (pinned = ? AND updated_at < ?))
            ORDER BY pinned DESC, updated_at DESC
            LIMIT ?`,
         )
-        .all(cursor, limit) as SessionRow[];
+        .all(parsed.pinned, parsed.pinned, parsed.updatedAt, limit) as SessionRow[];
     }
     return this.db
       .prepare(
@@ -258,4 +272,89 @@ export class SessionsRepo {
       .all() as Array<{ id: string }>;
     return rows.map(r => r.id);
   }
+
+  // ── Patch (transactional partial update) ───────────────────────────────────
+
+  /**
+   * Apply a partial update atomically. Used by `PUT /api/sessions/:id` where
+   * the client can change `title` + `pinned` + `groupLabel` in one request.
+   *
+   * All sub-updates run inside a single SQLite transaction; any failure rolls
+   * back the whole patch so the row never sits in a half-changed state.
+   *
+   * `groupLabel === null` is the explicit "move out of group" signal; the
+   * caller must distinguish that from `undefined` (don't touch).
+   */
+  patch(
+    id: SessionId,
+    patch: {
+      title?:      string;
+      pinned?:     boolean;
+      groupLabel?: string | null;
+    },
+    now: number,
+  ): void {
+    const setClauses: string[] = [];
+    const values:     unknown[] = [];
+
+    if (patch.title !== undefined) {
+      setClauses.push('title = ?');
+      values.push(patch.title);
+    }
+    if (patch.pinned === true) {
+      setClauses.push('pinned = 1', 'pinned_at = ?');
+      values.push(now);
+    } else if (patch.pinned === false) {
+      setClauses.push('pinned = 0', 'pinned_at = NULL');
+    }
+    if (patch.groupLabel !== undefined) {
+      setClauses.push('group_label = ?');
+      values.push(patch.groupLabel);
+    }
+
+    if (setClauses.length === 0) return;
+
+    setClauses.push('updated_at = ?');
+    values.push(now);
+    values.push(id);
+
+    this.db.transaction(() => {
+      this.db
+        .prepare(`UPDATE sessions SET ${setClauses.join(', ')} WHERE id = ?`)
+        .run(...values);
+    })();
+  }
+}
+
+// ── Cursor helpers ──────────────────────────────────────────────────────────
+
+interface ParsedCursor {
+  pinned:    number;     // 0 | 1
+  updatedAt: number;
+}
+
+/**
+ * Parse the opaque cursor string `"<pinned>.<updatedAt>"`. Returns `null`
+ * when the cursor is absent or malformed (callers fall back to "first page").
+ *
+ * @example parseCursor("1.1700000000")  // { pinned: 1, updatedAt: 1700000000 }
+ * @example parseCursor(undefined)       // null
+ */
+function parseCursor(cursor: string | undefined): ParsedCursor | null {
+  if (!cursor) return null;
+  const [pinnedStr, tsStr] = cursor.split('.');
+  if (pinnedStr === undefined || tsStr === undefined) return null;
+  const pinned    = parseInt(pinnedStr, 10);
+  const updatedAt = parseInt(tsStr, 10);
+  if (!Number.isFinite(pinned) || !Number.isFinite(updatedAt)) return null;
+  if (pinned !== 0 && pinned !== 1) return null;
+  return { pinned, updatedAt };
+}
+
+/**
+ * Build a cursor from a session row. Pass the LAST row of the current page;
+ * the next page query will use this to keyset-skip into the right spot.
+ */
+export function nextCursorFor(row: SessionRow): string {
+  return `${row.pinned}.${row.updated_at}`;
 }

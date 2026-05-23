@@ -102,14 +102,21 @@ export interface AppendMessageInput {
 export interface ListSessionsInput {
   /** Max results per page. */
   limit?: number;
-  /** Cursor: return sessions with updated_at earlier than this timestamp. */
-  cursor?: number;
+  /**
+   * Opaque cursor from the previous page's `nextCursor`. Format is internal
+   * (`"<pinned>.<updated_at>"`), callers should NOT parse or construct it.
+   *
+   * Composite keyset cursor is required because the sort key is
+   * `(pinned DESC, updated_at DESC)` — a single-field cursor would skip
+   * items across the pinned/unpinned boundary.
+   */
+  cursor?: string;
 }
 
 export interface ListSessionsOutput {
   sessions: Session[];
-  /** Present when there are more results. Pass as cursor to the next request. */
-  nextCursor?: number;
+  /** Present when there are more results. Pass as `cursor` to the next request. */
+  nextCursor?: string;
 }
 
 export interface ListMessagesInput {

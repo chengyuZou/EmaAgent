@@ -1,7 +1,7 @@
 export { Database } from './database.js';
 export { MigrationsRunner } from './migrations.js';
 
-export { SessionsRepo } from './repos/sessions.js';
+export { SessionsRepo, nextCursorFor } from './repos/sessions.js';
 export { TurnsRepo } from './repos/turns.js';
 export { MessagesRepo } from './repos/messages.js';
 export { CharacterCardsRepo } from './repos/character-cards.js';
