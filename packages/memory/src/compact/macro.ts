@@ -23,10 +23,11 @@ function resolveCompactionBinding(
   llm: LlmRouter,
   modelBindings: ModelBindingsRepo,
 ): BindingRef | null {
-  // 'memory' binding doubles for compaction in V1 — same cheap model serves both.
-  const memBinding = modelBindings.get('memory') ?? modelBindings.get('compaction');
-  if (memBinding) {
-    return { providerId: memBinding.providerConfigId, model: memBinding.model };
+  // Prefer a dedicated 'compaction' binding; fall back to 'memory' (same cheap
+  // model commonly serves both extraction and compaction in V1).
+  const binding = modelBindings.get('compaction') ?? modelBindings.get('memory');
+  if (binding) {
+    return { providerId: binding.providerConfigId, model: binding.model };
   }
   const providerId = llm.firstProviderId();
   if (!providerId) return null;
@@ -214,7 +215,7 @@ function persistSummary(
   turnId: TurnId,
   summary: string,
 ): string {
-  const id = crypto.randomUUID();
+  // appendMessage returns its own id (uuid); we relay it for telemetry
   const msg = session.appendMessage({
     turnId,
     sessionId,
@@ -222,7 +223,6 @@ function persistSummary(
     kind:  'summary',
     blocks: summary satisfies MessageBlocks,
   });
-  // appendMessage returns its own id (uuid); we relay it for telemetry
-  void id;
+  
   return msg.id;
 }
