@@ -31,7 +31,6 @@ export default defineConfig({
         main:     resolve(__dirname, 'index.html'),
         chat:     resolve(__dirname, 'chat.html'),
         settings: resolve(__dirname, 'settings.html'),
-        voice:    resolve(__dirname, 'voice.html'),
       },
     },
   },
