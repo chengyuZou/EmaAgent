@@ -9,6 +9,7 @@ import { PermissionPrompt } from './PermissionPrompt.js';
 import { AskConfirmPrompt } from './AskConfirmPrompt.js';
 import { AskTextPrompt } from './AskTextPrompt.js';
 import { AskChoicePrompt } from './AskChoicePrompt.js';
+import { AskUserBatchPrompt } from './AskUserBatchPrompt.js';
 
 // ── Prompt router ─────────────────────────────────────────────────────────────
 
@@ -68,6 +69,21 @@ function PromptRouter({ prompt }: { prompt: DecisionPrompt }): JSX.Element {
           allowCustom={prompt.allowCustom}
           onResolve={(answers, customText) => {
             useDecisionStore.getState().resolve({ kind: 'choice', answers, customText });
+          }}
+          onCancel={() => {
+            useDecisionStore.getState().cancel();
+          }}
+        />
+      );
+
+    case 'ask_user':
+      return (
+        <AskUserBatchPrompt
+          promptId={prompt.promptId}
+          questions={prompt.questions}
+          humanDescription={prompt.humanDescription}
+          onResolve={(answers) => {
+            useDecisionStore.getState().resolve({ kind: 'ask_user', answers });
           }}
           onCancel={() => {
             useDecisionStore.getState().cancel();

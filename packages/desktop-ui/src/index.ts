@@ -126,6 +126,7 @@ export { PermissionPrompt }        from './decision/PermissionPrompt.js';
 export { AskConfirmPrompt }        from './decision/AskConfirmPrompt.js';
 export { AskTextPrompt }           from './decision/AskTextPrompt.js';
 export { AskChoicePrompt }         from './decision/AskChoicePrompt.js';
+export { AskUserBatchPrompt }      from './decision/AskUserBatchPrompt.js';
 
 // Settings
 export { SettingsPanel }           from './settings/SettingsPanel.js';
@@ -140,3 +141,18 @@ export { BehaviorTab }             from './settings/BehaviorTab.js';
 export { VoiceTab }                from './settings/VoiceTab.js';
 export { Live2DTab }               from './settings/Live2DTab.js';
 export { ShortcutsTab }            from './settings/ShortcutsTab.js';
+
+// Chat
+export { ChatPanel }               from './chat/ChatPanel.js';
+export { SessionSwitcher }         from './chat/SessionSwitcher.js';
+export { ChatHistory }             from './chat/ChatHistory.js';
+export { UserBubble }              from './chat/UserBubble.js';
+export { AssistantBubble }         from './chat/AssistantBubble.js';
+export { ThinkingBlock }           from './chat/ThinkingBlock.js';
+export { ToolCallBlock }           from './chat/ToolCallBlock.js';
+export { ChatInput }               from './chat/ChatInput.js';
+export { ModeSelector }            from './chat/ModeSelector.js';
+export { useChatHistoryScroll }    from './chat/use-chat-history-scroll.js';
+
+// Floating dock
+export { FloatingDock }            from './floating-dock/FloatingDock.js';

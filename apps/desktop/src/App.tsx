@@ -1,9 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
-import { Live2DStage }  from './components/Live2DStage.js';
-import type { Live2DStageHandle } from './components/Live2DStage.js';
-import { FloatingDock } from './components/FloatingDock.js';
-import { getSidecarStatus } from './api/sidecar-status.js';
-import type { SidecarStatus } from './api/sidecar-status.js';
+import { useEffect, useState } from 'react';
+import { EmaStageView } from './components/EmaStageView.js';
+import { FloatingDock } from '@ema-agent/desktop-ui';
+import { DecisionLayer } from '@ema-agent/desktop-ui';
+import { useSidecarStore } from '@ema-agent/desktop-ui';
 
 // ── Main window ─────────────────────────────────────────────────────────────
 //
@@ -22,23 +21,13 @@ const EMA_MODEL_PATH = '/live2d/ema/ema.model3.json';
 const DOCK_FADE_GRACE_MS = 600;
 
 export function App(): React.JSX.Element {
-  const stageRef = useRef<Live2DStageHandle>(null);
-  const [stageError, setStageError] = useState<string | null>(null);
-  const [sidecar, setSidecar]       = useState<SidecarStatus>({ kind: 'pending' });
+  const sidecarStatus = useSidecarStore((s) => s.status);
   const [dockVisible, setDockVisible] = useState(false);
 
   // Sidecar health polling
   useEffect(() => {
-    let cancelled = false;
-    const tick = async (): Promise<void> => {
-      if (cancelled) return;
-      const next = await getSidecarStatus();
-      if (cancelled) return;
-      setSidecar(next);
-      if (next.kind !== 'ok') setTimeout(() => { void tick(); }, 2_000);
-    };
-    void tick();
-    return () => { cancelled = true; };
+    const stop = useSidecarStore.getState().startPolling();
+    return stop;
   }, []);
 
   // Dock visibility tracking (cursor in / out of the window body)
@@ -70,19 +59,13 @@ export function App(): React.JSX.Element {
 
       <GlowBorder />
 
-      <Live2DStage
-        ref={stageRef}
-        modelPath={EMA_MODEL_PATH}
-        onError={(err) => setStageError(err.message)}
-      />
+      <EmaStageView modelPath={EMA_MODEL_PATH} />
 
       <FloatingDock visible={dockVisible} />
 
-      <SidecarBadge status={sidecar} />
+      <SidecarBadge status={sidecarStatus} />
 
-      {stageError && (
-        <div style={errorOverlayStyle}>Live2D 加载失败: {stageError}</div>
-      )}
+      <DecisionLayer />
     </>
   );
 }
@@ -136,16 +119,18 @@ const dragLayerStyle: React.CSSProperties = {
 
 // ── Sidecar status badge ────────────────────────────────────────────────────
 
-function SidecarBadge({ status }: { status: SidecarStatus }): React.JSX.Element {
+function SidecarBadge({ status }: { status: import('@ema-agent/desktop-ui').SidecarStatus }): React.JSX.Element {
   const [hover, setHover] = useState(false);
 
   const dotColor = status.kind === 'ok'      ? '#22c55e'
                  : status.kind === 'pending' ? '#f59e0b'
-                 :                              '#ef4444';
+                 : status.kind === 'error'   ? '#ef4444'
+                 :                              '#6b7280';
 
   const detail = status.kind === 'ok'      ? `sidecar @ port ${status.port}`
                : status.kind === 'pending' ? '等待 sidecar 启动 …'
-               :                              `sidecar 错误：${status.reason}`;
+               : status.kind === 'error'   ? `sidecar 错误：${status.reason}`
+               :                              'sidecar 状态未知';
 
   return (
     <div
@@ -191,16 +176,4 @@ const badgeTooltipStyle: React.CSSProperties = {
   border:         '1px solid rgba(255, 214, 230, 0.18)',
   borderRadius:   6,
   pointerEvents:  'none',
-};
-
-const errorOverlayStyle: React.CSSProperties = {
-  position:       'fixed',
-  bottom:         20,
-  left:           20,
-  right:          20,
-  padding:        '8px 12px',
-  background:     'rgba(220, 50, 50, 0.85)',
-  borderRadius:   6,
-  fontSize:       12,
-  zIndex:         200,
 };
