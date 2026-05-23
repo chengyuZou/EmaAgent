@@ -547,10 +547,12 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
     });
   },
 
-  finalizeStream(usage) {
+  finalizeStream(_usage) {
     set((s) => {
       const sm = s.streamingMessage;
-      if (!sm) return { streamingMessage: null };
+      // Even on the "no streamingMessage" path we clear activeTurnId — the
+      // turn lifecycle has ended one way or another.
+      if (!sm) return { streamingMessage: null, activeTurnId: null };
 
       const historyItem: ChatHistoryItem = {
         role:      'assistant',
@@ -564,12 +566,15 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
       const existing = next.get(sid) ?? [];
       next.set(sid, [...existing, historyItem]);
 
-      // Refresh sessions to get updated runningTurnCount etc.
-      void get().loadSessions();
+      // Refresh sessions to get updated runningTurnCount etc. Fire-and-forget
+      // — UI consumers don't await this. We swallow errors so a fetch failure
+      // during a unit test doesn't crash the action.
+      void get().loadSessions().catch(() => { /* non-fatal */ });
 
       return {
         messages: next,
         streamingMessage: null,
+        activeTurnId: null,
       };
     });
   },
