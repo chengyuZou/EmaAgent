@@ -30,6 +30,14 @@ export type {
   AssistantSlice,
 } from './stores/chat-store.js';
 
+export { useDecisionStore }  from './stores/decision-store.js';
+export type {
+  DecisionStoreState,
+  DecisionPrompt,
+  PermissionResponse,
+  AskResponse,
+} from './stores/decision-store.js';
+
 // ── Lib ───────────────────────────────────────────────────────────────────────
 
 export { tauriBridge }       from './lib/tauri-bridge.js';
@@ -40,6 +48,14 @@ export type { SendQueue, SendQueueOptions, QueueEvent } from './lib/send-queue.j
 
 export { sseConsumer, createSseConsumer } from './lib/sse-consumer.js';
 export type { SseStartOptions, SseHandle } from './lib/sse-consumer.js';
+
+export { startSystemSse, stopSystemSse } from './lib/system-sse.js';
+
+export { ErrorBoundary } from './lib/error-boundary.js';
+export type { ErrorBoundaryProps } from './lib/error-boundary.js';
+
+export { showToast } from './lib/toast.js';
+export type { ToastOptions } from './lib/toast.js';
 
 // ── API ───────────────────────────────────────────────────────────────────────
 
@@ -101,3 +117,26 @@ export {
   clearProcessorCache,
 } from './markdown/processor-cache.js';
 export type { MarkdownProcessor } from './markdown/processor-cache.js';
+
+// ── Components ────────────────────────────────────────────────────────────────
+
+// Decision
+export { DecisionLayer }           from './decision/DecisionLayer.js';
+export { PermissionPrompt }        from './decision/PermissionPrompt.js';
+export { AskConfirmPrompt }        from './decision/AskConfirmPrompt.js';
+export { AskTextPrompt }           from './decision/AskTextPrompt.js';
+export { AskChoicePrompt }         from './decision/AskChoicePrompt.js';
+
+// Settings
+export { SettingsPanel }           from './settings/SettingsPanel.js';
+export { ProvidersTab }            from './settings/ProvidersTab.js';
+export { ProviderCard }            from './settings/ProviderCard.js';
+export { ProviderForm }            from './settings/ProviderForm.js';
+export { BindingsTab }             from './settings/BindingsTab.js';
+export { CardsTab }                from './settings/CardsTab.js';
+export { CharacterCardEditor }     from './settings/CharacterCardEditor.js';
+export { IdentityTab }             from './settings/IdentityTab.js';
+export { BehaviorTab }             from './settings/BehaviorTab.js';
+export { VoiceTab }                from './settings/VoiceTab.js';
+export { Live2DTab }               from './settings/Live2DTab.js';
+export { ShortcutsTab }            from './settings/ShortcutsTab.js';
