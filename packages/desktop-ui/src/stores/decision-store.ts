@@ -8,6 +8,7 @@
  * Only one prompt is visible at a time (top of queue).
  */
 import { create } from 'zustand';
+import type { AskUserQuestionSpec } from '@ema-agent/contracts';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -42,6 +43,14 @@ export type DecisionPrompt =
       options: Array<{ label: string; humanDescription?: string }>;
       multiSelect: boolean;
       allowCustom?: boolean;
+    }
+  // Batched ask-user from the built-in `ask_user` tool. The UI walks the
+  // questions array one at a time and resolves once with the full answers map.
+  | {
+      kind: 'ask_user';
+      promptId: string;
+      questions: AskUserQuestionSpec[];
+      humanDescription?: string;
     };
 
 export type PermissionResponse =
@@ -51,7 +60,8 @@ export type PermissionResponse =
 export type AskResponse =
   | { kind: 'confirm'; confirmed: boolean }
   | { kind: 'text'; text: string }
-  | { kind: 'choice'; answers: string[]; customText?: string };
+  | { kind: 'choice'; answers: string[]; customText?: string }
+  | { kind: 'ask_user'; answers: Record<string, string> };
 
 // ── State ─────────────────────────────────────────────────────────────────────
 

@@ -1,8 +1,9 @@
 import * as readline from 'node:readline/promises';
+import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { buildTool } from '@ema-agent/tool';
 import type { ToolExecutionContext } from '@ema-agent/tool';
-import type { EmaStreamEvent } from '@ema-agent/contracts';
+import type { AskUserQuestionSpec, EmaStreamEvent } from '@ema-agent/contracts';
 
 // ── Input schema ──────────────────────────────────────────────────────────────
 
@@ -73,7 +74,24 @@ export const askUserTool = buildTool<AskUserInput, AskUserResult>({
       // The orchestrator injects an `askUser` resolver into ctx for this purpose.
       const askFn = (ctx as unknown as { askUser?: AskFn }).askUser;
       if (askFn) {
-        return askFn(questions);
+        const promptId = randomUUID();
+        const specs: AskUserQuestionSpec[] = questions.map((q, i) => ({
+          id:          `q${i}`,
+          question:    q.question,
+          header:      q.header,
+          options:     q.options,
+          multiSelect: q.multiSelect,
+        }));
+        ctx.emit({ type: 'ask_user_required', promptId, questions: specs });
+        try {
+          const result = await askFn(promptId, specs);
+          ctx.emit({ type: 'ask_user_resolved', promptId, answers: result.answers });
+          return result;
+        } catch (err: unknown) {
+          // Surface a resolved event so the frontend can clear the modal even on abort.
+          ctx.emit({ type: 'ask_user_resolved', promptId, answers: {} });
+          throw err;
+        }
       }
     }
 
@@ -85,7 +103,12 @@ export const askUserTool = buildTool<AskUserInput, AskUserResult>({
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 type QuestionDef = AskUserInput['questions'][number];
-type AskFn = (questions: QuestionDef[]) => Promise<AskUserResult>;
+/**
+ * Resolver injected by the orchestrator. The orchestrator parks this Promise
+ * keyed by `promptId` and resolves it when POST /api/permission/:promptId/respond
+ * arrives carrying the user's answers.
+ */
+type AskFn = (promptId: string, questions: AskUserQuestionSpec[]) => Promise<AskUserResult>;
 
 // ── CLI stdin path ────────────────────────────────────────────────────────────
 

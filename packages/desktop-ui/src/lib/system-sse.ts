@@ -61,14 +61,31 @@ function dispatchSystemEvent(event: EmaStreamEvent): void {
     // ── Decision prompts ───────────────────────────────────────────────────
     case 'permission_required':
       useDecisionStore.getState().push({
-        kind:                     'permission',
-        promptId:                 event.promptId,
-        toolName:                 event.tool,
-        args:                     event.args,
-        hint:                     event.hint,
-        humanDescription:         event.hint,      // backend doesn't produce humanDescription yet
-        humanDescriptionPending:   false,
+        kind:                    'permission',
+        promptId:                event.promptId,
+        toolName:                event.tool,
+        args:                    event.args,
+        hint:                    event.hint,
+        // Prefer the backend-generated humanDescription (tool-explainer LLM,
+        // V1.5). Fall back to `hint` so the modal is never blank in V1.
+        humanDescription:        event.humanDescription ?? event.hint,
+        humanDescriptionPending: event.humanDescription === undefined,
       });
+      break;
+
+    case 'ask_user_required':
+      useDecisionStore.getState().push({
+        kind:             'ask_user',
+        promptId:         event.promptId,
+        questions:        event.questions,
+        humanDescription: event.humanDescription,
+      });
+      break;
+
+    case 'ask_user_resolved':
+      // Backend confirms the answer arrived; if the modal is still showing
+      // this promptId for any reason (e.g. timeout retry), clear it.
+      useDecisionStore.getState().dismiss(event.promptId);
       break;
 
     // ── Live2D / Stage ─────────────────────────────────────────────────────
