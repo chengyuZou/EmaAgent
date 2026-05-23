@@ -7,6 +7,7 @@
  */
 import { sseConsumer, type SseHandle } from './sse-consumer.js';
 import { sidecarClient } from '../api/sidecar-client.js';
+import { tauriBridge } from './tauri-bridge.js';
 import { useDecisionStore } from '../stores/decision-store.js';
 import type { EmaStreamEvent } from '@ema-agent/contracts';
 
@@ -88,11 +89,13 @@ function dispatchSystemEvent(event: EmaStreamEvent): void {
       useDecisionStore.getState().dismiss(event.promptId);
       break;
 
-    // ── Live2D / Stage ─────────────────────────────────────────────────────
+    // ── Live2D / Stage → forwarded via Tauri events to EmaStageView ──────
     case 'emotion_changed':
+      void tauriBridge.emit('stage:emotion-changed', event.state);
+      break;
+
     case 'stage_cue':
-      // Dispatched by EmaStageView which has a direct import of live2d-react.
-      // system-sse does NOT directly import live2d-react (avoids hard dep).
+      void tauriBridge.emit('stage:cue', event.cue);
       break;
 
     // ── Context / memory — observed by ContextWindowPopover ────────────────

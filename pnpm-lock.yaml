@@ -117,6 +117,12 @@ importers:
       '@ema-agent/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@ema-agent/desktop-ui':
+        specifier: workspace:*
+        version: link:../../packages/desktop-ui
+      '@ema-agent/ui':
+        specifier: workspace:*
+        version: link:../../packages/ui
       '@tauri-apps/api':
         specifier: ^2.4.0
         version: 2.11.0

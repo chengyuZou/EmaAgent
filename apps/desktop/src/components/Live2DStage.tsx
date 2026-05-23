@@ -23,6 +23,8 @@ export interface Live2DStageHandle {
   setExpression: (name: string) => void;
   /** Play one motion from a group (defaults to random in group). */
   playMotion: (group: string, index?: number) => void;
+  /** Cycle to the next expression in the model's expression list. */
+  cycleExpression: () => void;
   /** Returns true if the model has finished loading. */
   isReady: () => boolean;
 }
@@ -46,6 +48,15 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
     useImperativeHandle(ref, () => ({
       setExpression(name) { modelRef.current?.expression(name); },
       playMotion(group, index) { void modelRef.current?.motion(group, index); },
+      cycleExpression() {
+        const m = modelRef.current;
+        if (!m) return;
+        const exps = (m as unknown as { expressions?: Map<string, unknown> }).expressions;
+        if (!exps || exps.size === 0) return;
+        const keys = Array.from(exps.keys());
+        const name = keys[Math.floor(Math.random() * keys.length)];
+        m.expression(name!);
+      },
       isReady() { return modelRef.current !== null; },
     }), []);
 

@@ -24,6 +24,18 @@ export interface TauriBridge {
 
   /** Whether the Tauri runtime is available. */
   isTauri(): boolean;
+
+  /** Show / focus a pre-declared sub-window by label (chat / settings). */
+  openWindow(label: string): Promise<void>;
+
+  /** Quit the entire application. */
+  quit(): Promise<void>;
+
+  /** Toggle always-on-top for the current window. */
+  setAlwaysOnTop(value: boolean): Promise<void>;
+
+  /** Toggle mouse passthrough for the current window. */
+  setPassthrough(value: boolean): Promise<void>;
 }
 
 // ── Detection ────────────────────────────────────────────────────────────────
@@ -100,5 +112,29 @@ export const tauriBridge: TauriBridge = {
     if (!event) return () => {};
     const unlisten = await event.listen<T>(eventName, handler);
     return () => unlisten();
+  },
+
+  async openWindow(label: string): Promise<void> {
+    const core = await getCore();
+    if (!core) return;
+    await core.invoke('open_window', { label });
+  },
+
+  async quit(): Promise<void> {
+    const core = await getCore();
+    if (!core) return;
+    await core.invoke('quit_app');
+  },
+
+  async setAlwaysOnTop(value: boolean): Promise<void> {
+    const core = await getCore();
+    if (!core) return;
+    await core.invoke('set_always_on_top', { value });
+  },
+
+  async setPassthrough(value: boolean): Promise<void> {
+    const core = await getCore();
+    if (!core) return;
+    await core.invoke('set_passthrough', { value });
   },
 };
