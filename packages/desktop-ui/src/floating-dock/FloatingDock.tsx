@@ -55,6 +55,7 @@ export function FloatingDock({ visible }: FloatingDockProps): JSX.Element {
 
   return (
     <div
+      data-tauri-drag-region="false"
       className={`absolute right-3 top-1/2 -translate-y-1/2 z-10 flex flex-col gap-2 transition-opacity duration-200 ${
         show ? 'opacity-100' : 'opacity-0 pointer-events-none'
       }`}
@@ -62,6 +63,7 @@ export function FloatingDock({ visible }: FloatingDockProps): JSX.Element {
       {buttons.map((btn) => (
         <button
           key={btn.id}
+          data-tauri-drag-region="false"
           className={[
             'w-10 h-10 rounded-full backdrop-blur border flex items-center justify-center text-sm transition-all group relative',
             btn.active

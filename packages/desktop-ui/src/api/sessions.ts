@@ -54,6 +54,14 @@ export interface ForkResult {
 // ── API object ────────────────────────────────────────────────────────────────
 
 export const sessionsApi = {
+  /** POST /api/sessions — create a new empty session. */
+  async create(opts?: { title?: string; characterCardId?: string }): Promise<SessionWire> {
+    return sidecarClient.request<SessionWire>('/api/sessions', {
+      method: 'POST',
+      json: opts ?? {},
+    });
+  },
+
   /** GET /api/sessions — cursor-paginated flat list. */
   async list(opts?: { limit?: number; cursor?: string }): Promise<SessionsListResult> {
     const params = new URLSearchParams();

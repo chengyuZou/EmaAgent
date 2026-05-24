@@ -5,6 +5,8 @@
  * them sequentially, collecting answers, then resolves once at the end.
  */
 import { useState } from 'react';
+import { sidecarClient } from '../api/sidecar-client.js';
+import { useChatStore } from '../stores/chat-store.js';
 import { HumanDescriptionPanel } from './HumanDescriptionPanel.js';
 
 export interface AskUserBatchPromptProps {
@@ -20,7 +22,7 @@ export interface AskUserBatchPromptProps {
   onCancel(): void;
 }
 
-export function AskUserBatchPrompt({ questions, humanDescription, onResolve, onCancel }: AskUserBatchPromptProps): JSX.Element {
+export function AskUserBatchPrompt({ promptId, questions, humanDescription, onResolve, onCancel }: AskUserBatchPromptProps): JSX.Element {
   const [step, setStep] = useState(0);
   const [answers, setAnswers] = useState<Record<string, string>>({});
 
@@ -31,8 +33,18 @@ export function AskUserBatchPrompt({ questions, humanDescription, onResolve, onC
     setAnswers((prev) => ({ ...prev, [current!.header]: value }));
   }
 
-  function handleNext(): void {
+  async function handleNext(): Promise<void> {
     if (isLast) {
+      // POST answers to backend, then resolve locally
+      const activeTurnId = useChatStore.getState().activeTurnId;
+      if (activeTurnId) {
+        try {
+          await sidecarClient.request(
+            `/api/turns/${activeTurnId}/ask-user/${promptId}/respond`,
+            { method: 'POST', json: { answers } },
+          );
+        } catch { /* timeout / sidecar down — continue local cleanup */ }
+      }
       onResolve(answers);
     } else {
       setStep((s) => s + 1);

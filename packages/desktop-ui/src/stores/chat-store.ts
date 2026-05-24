@@ -19,6 +19,7 @@ import type {
   AgentSubMode,
   EmaStreamEvent,
   UsageSummary,
+  AssistantBlock,
 } from '@ema-agent/contracts';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -176,6 +177,24 @@ function dispatchSseEvent(
       store.abortStream(event.reason);
       break;
 
+    // ── Ask-user prompts (forwarded to decision-store) ─────────────────────
+    case 'ask_user_required':
+      void import('./decision-store.js').then((m) => {
+        m.useDecisionStore.getState().push({
+          kind:             'ask_user',
+          promptId:         event.promptId,
+          questions:        event.questions,
+          humanDescription: event.humanDescription,
+        });
+      }).catch(() => {});
+      break;
+
+    case 'ask_user_resolved':
+      void import('./decision-store.js').then((m) => {
+        m.useDecisionStore.getState().dismiss(event.promptId);
+      }).catch(() => {});
+      break;
+
     // Ignored events (handled by other stores or system-events stream)
     case 'permission_required':
     case 'permission_resolved':
@@ -327,7 +346,7 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
         const msgs = await sessionsApi.listMessages(id);
         const history: ChatHistoryItem[] = msgs.map((m) => ({
           role:      m.role as ChatHistoryItem['role'],
-          content:   typeof m.blocks === 'string' ? m.blocks : JSON.stringify(m.blocks),
+          ...blocksToHistoryFields(m.role, m.blocks),
           createdAt: m.createdAt,
           messageId: m.id as MessageId,
         }));
@@ -352,12 +371,16 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
   },
 
   async createSession() {
-    // Create via turns API with empty input will auto-create a session
-    // Actually, let's call sessions API directly... but there's no "create session" endpoint!
-    // The backend creates sessions on first turn. For now, just reload.
-    // V1.5: add POST /api/sessions endpoint.
-    await get().loadSessions();
-    return get().activeSessionId ?? '' as SessionId;
+    try {
+      const session = await sessionsApi.create();
+      await get().loadSessions();
+      set({ activeSessionId: session.id as SessionId });
+      return session.id as SessionId;
+    } catch {
+      // Fallback: just clear active session; first turn will auto-create one.
+      set({ activeSessionId: null });
+      return null as unknown as SessionId;
+    }
   },
 
   async renameSession(id, title) {
@@ -448,9 +471,12 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
       set({ error: null });
     }
 
-    // Push optimistic user message
+    // Push optimistic user message — only when we already have a session so
+    // the message lands in the right bucket. On first-message (no active session)
+    // the backend round-trip is fast; selectSession() will load the real persisted
+    // message instead, avoiding an orphaned entry under the null key.
     const userText = input.text ?? '';
-    if (userText) {
+    if (userText && state.activeSessionId) {
       const optimistic = optimisticUserMessage(userText);
       set((s) => {
         const next = new Map(s.messages);
@@ -605,6 +631,49 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
 }));
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+/**
+ * Reconstruct `content` + `slices` from the persisted MessageBlocks format
+ * so historical messages render identically to freshly-streamed ones.
+ *
+ * Parsing rules match the contracts/messages.ts comment:
+ *   string          → plain text (system / simple user)
+ *   AssistantBlock[] → role='assistant' rich blocks
+ *   UserBlock[]     → role='user' with media / tool_results
+ */
+function blocksToHistoryFields(
+  role: string,
+  blocks: import('@ema-agent/contracts').MessageBlocks,
+): Pick<ChatHistoryItem, 'content' | 'slices'> {
+  if (typeof blocks === 'string') {
+    return { content: blocks };
+  }
+
+  if (role === 'assistant' && Array.isArray(blocks)) {
+    const ab = blocks as AssistantBlock[];
+    const slices: AssistantSlice[] = ab.map((b) => {
+      if (b.type === 'text')     return { type: 'text'      as const, text: b.text };
+      if (b.type === 'thinking') return { type: 'thinking'  as const, text: b.thinking };
+      // tool_use — no result yet (result is injected via tool_result events during streaming)
+      return { type: 'tool_call' as const, callId: b.id, name: b.name, args: b.args };
+    });
+    const content = ab
+      .filter((b): b is { type: 'text'; text: string } => b.type === 'text')
+      .map((b) => b.text)
+      .join('');
+    return { content, slices };
+  }
+
+  // User message with multimodal content or tool_result blocks
+  if (Array.isArray(blocks)) {
+    const textParts = (blocks as Array<{ type: string; text?: string }>)
+      .filter((b) => b.type === 'text' && typeof b.text === 'string')
+      .map((b) => b.text as string);
+    return { content: textParts.join('') || '[multimodal]' };
+  }
+
+  return { content: JSON.stringify(blocks) };
+}
 
 function appendTextSlice(slices: AssistantSlice[], delta: string): AssistantSlice[] {
   const last = slices[slices.length - 1];

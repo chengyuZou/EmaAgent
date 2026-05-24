@@ -3,6 +3,7 @@
  */
 
 import { useState } from 'react';
+import { sidecarClient } from '../api/sidecar-client.js';
 import { HumanDescriptionPanel } from './HumanDescriptionPanel.js';
 import { RawCommandPanel } from './RawCommandPanel.js';
 
@@ -17,6 +18,7 @@ export interface PermissionPromptProps {
 }
 
 export function PermissionPrompt({
+  promptId,
   toolName,
   args,
   hint,
@@ -43,13 +45,29 @@ export function PermissionPrompt({
       <div className="flex gap-3 mt-4 justify-end">
         <button
           className="px-4 py-2 rounded-xl bg-red-500/20 text-red-300 hover:bg-red-500/30 transition-colors"
-          onClick={() => onResolve('deny')}
+          onClick={async () => {
+            try {
+              await sidecarClient.request(`/api/permission/${promptId}/respond`, {
+                method: 'POST',
+                json: { action: 'deny' },
+              });
+            } catch { /* timeout / sidecar down — continue local cleanup */ }
+            onResolve('deny');
+          }}
         >
           拒绝
         </button>
         <button
           className="px-4 py-2 rounded-xl bg-green-500/20 text-green-300 hover:bg-green-500/30 transition-colors"
-          onClick={() => onResolve('allow')}
+          onClick={async () => {
+            try {
+              await sidecarClient.request(`/api/permission/${promptId}/respond`, {
+                method: 'POST',
+                json: { action: 'allow' },
+              });
+            } catch { /* timeout / sidecar down — continue local cleanup */ }
+            onResolve('allow');
+          }}
         >
           允许
         </button>
