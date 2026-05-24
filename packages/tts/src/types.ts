@@ -1,19 +1,46 @@
+import type { CharacterCardId } from '@ema-agent/contracts';
 import type {
-  TtsRequest,
   TtsStreamEvent,
   TtsVoiceRef,
   TtsAudioFormat,
+  TtsTurnMode,
   TtsProtocol,
 } from '@ema-agent/contracts';
 
-// Re-export contract types so consumers only import from this package
+// Re-export shared contract types so consumers only import from this package
 export type {
-  TtsRequest,
   TtsStreamEvent,
   TtsVoiceRef,
   TtsAudioFormat,
+  TtsTurnMode,
   TtsProtocol,
 } from '@ema-agent/contracts';
+
+// ── Public TTS request (Façade entry point) ───────────────────────────────────
+//
+// Defined here (not in contracts) — symmetric with LlmRequest in @ema-agent/llm.
+// Callers (orchestrator) resolve providerId + model from model_bindings before
+// calling TtsClient. The client is a thin adapter dispatcher only.
+
+/**
+ * `characterId` may be `null` for system-originated narration (boot greeting,
+ * error notices). In that case the service skips the card lookup and goes
+ * straight to fallback catalog voice.
+ */
+export interface TtsRequest {
+  /** provider_configs.id UUID — which adapter instance to use. */
+  providerId:   string;
+  /** Model name as the provider expects it (e.g. "tts-1", "cosyvoice-v1"). */
+  model:        string;
+  text:         string;
+  characterId:  CharacterCardId | null;
+  /** Business mode that triggered this — used for text filtering + logging. */
+  turnMode?:    TtsTurnMode;
+  format?:      TtsAudioFormat;
+  sampleRate?:  number;
+  speed?:       number;
+  abortSignal?: AbortSignal;
+}
 
 // ── Provider config (per-protocol credentials & endpoint) ────────────────────
 
@@ -34,14 +61,14 @@ export interface TtsProviderConfig {
  * this only happens on programmer error, not user-config error.
  */
 export interface TtsAdapterCall {
-  text:         string;
-  model:        string;
-  voice:        TtsVoiceRef;
-  format:       TtsAudioFormat;
-  sampleRate?:  number;
-  speed?:       number;
+  text:          string;
+  model:         string;
+  voice:         TtsVoiceRef;
+  format:        TtsAudioFormat;
+  sampleRate?:   number;
+  speed?:        number;
   instructions?: string;
-  abortSignal?: AbortSignal;
+  abortSignal?:  AbortSignal;
 }
 
 // ── Adapter contract ────────────────────────────────────────────────────────
@@ -90,7 +117,7 @@ export function protocolSupportsVoiceKind(
 
 export interface TtsResolution {
   /** Business mode that triggered TTS ('chat' | 'narrative' | 'agent'). */
-  turnMode:        string;
+  turnMode:         string;
   characterId:      string | null;
   attemptedClone:   boolean;
   usedFallback:     boolean;

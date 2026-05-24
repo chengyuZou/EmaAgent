@@ -1,11 +1,8 @@
+import type { CharacterVoiceProfile, CharacterCardId } from '@ema-agent/contracts';
 import type {
   TtsRequest,
   TtsStreamEvent,
   TtsVoiceRef,
-  CharacterVoiceProfile,
-  CharacterCardId,
-} from '@ema-agent/contracts';
-import type {
   TtsAdapter,
   TtsProviderConfig,
 } from './types.js';
