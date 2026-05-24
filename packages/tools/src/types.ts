@@ -80,6 +80,13 @@ export interface ToolExecutionContext {
    * here instead of spawning directly — gets OS-level sandboxing for free.
    */
   commandRunner?: ICommandRunner;
+  /**
+   * Ask the user a set of questions mid-tool and await their answers.
+   * Provided by the engine when an AskUserRegistry is wired up; absent in
+   * tests and minimal embedders that don't support interactive prompts.
+   * `promptId` must match the id already broadcast in `ask_user_required`.
+   */
+  askUser?: (promptId: string, questions: unknown[]) => Promise<{ answers: Record<string, string> }>;
 }
 
 // ── ToolDescriptor — what the LLM sees ───────────────────────────────────────
