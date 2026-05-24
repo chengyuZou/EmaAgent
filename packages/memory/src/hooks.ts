@@ -4,6 +4,7 @@ import type {
 } from '@ema-agent/contracts';
 import type { LlmRouter } from '@ema-agent/llm';
 import type { ModelCatalog } from '@ema-agent/llm';
+import type { SessionStore } from '@ema-agent/session';
 import type { MemoryPlanner } from './planner.js';
 
 // ── Recent files extractor (agent restore) ───────────────────────────────────
@@ -21,6 +22,7 @@ export type RecentFilesProvider = (
 
 export interface MemoryHooksDeps {
   planner:        MemoryPlanner;
+  session:        SessionStore;
   llm:            LlmRouter;
   modelCatalog?:  ModelCatalog;
   /** Defaults to 128_000 — most common modern context size. */
@@ -95,7 +97,7 @@ export function registerMemoryHooks(
     'onTurnEnd',
     async (ctx) => {
       try {
-        await runOnTurnEnd(planner, ctx.sessionId, ctx.turnId);
+        await runOnTurnEnd(deps.session, planner, ctx.sessionId, ctx.turnId);
       } catch {
         /* best-effort */
       }
@@ -123,15 +125,12 @@ function resolveContextWindow(
 }
 
 async function runOnTurnEnd(
+  session: SessionStore,
   planner: MemoryPlanner,
   sessionId: SessionId,
   turnId: TurnId,
 ): Promise<void> {
-  // Pull the just-completed turn from the session store and assemble the
-  // user/assistant text. Importing the SessionStore reference would be
-  // cleaner — but the planner already holds deps.session.
-  const session = (planner as unknown as { deps: { session: import('@ema-agent/session').SessionStore } }).deps.session;
-  const turn    = session.getTurn(turnId);
+  const turn = session.getTurn(turnId);
   if (!turn) return;
 
   const messages = session.loadMessagesForTurn(turnId);
