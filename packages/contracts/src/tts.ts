@@ -1,4 +1,3 @@
-import type { CharacterCardId } from './ids.js';
 import type { TtsProtocol } from './providers/types.js';
 
 // ── Character voice profile (lives in character_cards.voice_profile_json) ────
@@ -55,35 +54,6 @@ export type TtsVoiceRef =
   | { kind: 'catalog'; voiceId: string }
   | { kind: 'clone';   refAudioPath: string; promptText: string; promptLang: string };
 
-// ── Public TTS request ──────────────────────────────────────────────────────
-
-/**
- * The TtsClient Façade entry point. Callers (orchestrator) resolve the
- * providerId + model from model_bindings before calling. The client is a
- * thin adapter dispatcher — it does NOT look up bindings itself.
- *
- * Symmetric with `LlmRouter.stream(LlmRequest)`: the request carries its own
- * provider routing key.
- *
- * `characterId` may be `null` for system-originated narration (boot greeting,
- * error notices). In that case the service skips the card lookup and goes
- * straight to fallback catalog voice.
- */
-export interface TtsRequest {
-  /** provider_configs.id UUID — which adapter instance to use. */
-  providerId:  string;
-  /** Model name as the provider expects it (e.g. "tts-1", "cosyvoice-v1"). */
-  model:       string;
-  text:         string;
-  characterId:  CharacterCardId | null;
-  /** Business mode that triggered this — used for text filtering + logging. */
-  turnMode?:    TtsTurnMode;
-  format?:      TtsAudioFormat;
-  sampleRate?:  number;
-  speed?:       number;
-  abortSignal?: AbortSignal;
-}
-
 export type TtsAudioFormat = 'mp3' | 'pcm' | 'wav' | 'opus';
 
 // ── TTS stream events (adapter → service → route → frontend) ────────────────
@@ -116,26 +86,6 @@ export type TtsErrorCode =
   | 'transient_timeout'
   | 'transient_server'
   | 'unknown';
-
-// ── STT — symmetric, simpler (no streaming for V1) ──────────────────────────
-
-export interface SttRequest {
-  audio:        Uint8Array;
-  mime:         string;
-  language?:    string;
-  abortSignal?: AbortSignal;
-}
-
-export interface SttResponse {
-  text:      string;
-  segments?: SttSegment[];
-}
-
-export interface SttSegment {
-  startMs: number;
-  endMs:   number;
-  text:    string;
-}
 
 // ── Re-exports of protocol unions for convenience ───────────────────────────
 
