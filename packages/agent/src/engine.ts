@@ -4,20 +4,27 @@ import type { Message } from '@ema-agent/session';
 import type { MessageBlocks } from '@ema-agent/session';
 import type { ToolResultBlock } from '@ema-agent/contracts';
 import type { ToolExecutionContext, ReadFileState } from '@ema-agent/tool';
-import type { PermissionContext, PermissionOutcome } from '@ema-agent/permission';
+import type { PermissionContext } from '@ema-agent/permission';
 import type { AgentDeps, AgentRunInput } from './types.js';
 import { AgentPolicy } from './policy.js';
-import { gateWithEvents } from './permission-gate.js';
+import { TurnToolExecutor } from './tool-executor.js';
 
 // ── AgentEngine ───────────────────────────────────────────────────────────────
 
 /**
- * Handles agent turns via a think→act multi-round loop.
+ * Handles agent turns via a streaming think→act multi-round loop.
  *
  * Contract:
  *  - Caller must have called session.startTurn() and passes the resulting turn + signal.
  *  - Engine is transport-agnostic: returns AsyncIterable<EmaStreamEvent>.
  *  - All cross-cutting concerns (memory, TTS, OOC) live in hooks — engine has none.
+ *
+ * Tool execution pattern (mirrors Claude Code's StreamingToolExecutor):
+ *  - addTool() is called immediately on each tool_use_complete event — tools start
+ *    executing while the LLM is still streaming the rest of its response.
+ *  - Concurrent-safe tools (isConcurrencySafe() === true) run in parallel.
+ *  - Non-concurrent tools run sequentially behind a serial fence.
+ *  - The engine drains pending tool events between LLM chunks and after stream end.
  */
 export class AgentEngine {
   constructor(private readonly deps: AgentDeps) {}
@@ -33,9 +40,10 @@ async function* runTurn(
   deps: AgentDeps,
   input: AgentRunInput,
 ): AsyncIterable<EmaStreamEvent> {
-  const { session, hooks, llm, emotion, tools, permission } = deps;
-  const { turn, signal, sessionId, subMode, userInput, systemPrompt, workspaceRoot } = input;
-  const turnId   = turn.id;
+  const { session, hooks, llm, emotion, tools, permission, askUserRegistry } = deps;
+  const { turn, signal, subMode, userInput, systemPrompt, workspaceRoot, providerId, model } = input;
+  const sessionId = turn.sessionId;
+  const turnId    = turn.id;
   const startedAt = Date.now();
 
   // Per-turn state
@@ -44,21 +52,23 @@ async function* runTurn(
   let totalInput      = 0;
   let totalOutput     = 0;
   let iterations      = 0;
-  let llmDone         = false;
 
-  // Mid-execution events emitted by tools (todo_write, etc.)
+  // ── Event queue shared between executor and main loop ────────────────────────
+  // Tools push events here; the main loop yields them between LLM chunks and
+  // after the stream ends. wakeUp resolves the drain-loop's wait promise.
   const pendingToolEvents: EmaStreamEvent[] = [];
-  const toolEmit = (ev: EmaStreamEvent) => pendingToolEvents.push(ev);
+  let   wakeUp: (() => void) | null = null;
+  const signal_ = () => { wakeUp?.(); wakeUp = null; };
+  const toolEmit = (ev: EmaStreamEvent) => { pendingToolEvents.push(ev); signal_(); };
 
+  // ── ToolExecutionContext (stable across iterations) ───────────────────────────
   const permCtx: PermissionContext = {
     workspaceRoot,
     additionalWorkingDirs: input.additionalWorkingDirs,
     sessionId,
   };
 
-  // Resolve sandbox runner: explicit override > per-session factory > none.
-  const resolvedRunner = deps.commandRunner
-    ?? deps.getCommandRunner?.(sessionId);
+  const resolvedRunner = deps.getCommandRunner?.(sessionId);
 
   const toolCtx: ToolExecutionContext = {
     sessionId,
@@ -69,12 +79,38 @@ async function* runTurn(
     readFileState,
     emit:          toolEmit,
     commandRunner: resolvedRunner,
+    askUser: askUserRegistry
+      ? async (promptId, _questions) => {
+          // IMPORTANT: use createWithId so the registry is keyed to the same
+          // promptId the tool already broadcast in `ask_user_required`. The
+          // frontend will POST back that exact promptId; a mismatched key means
+          // respond() returns false and the promise never resolves.
+          const { promise } = askUserRegistry.createWithId(promptId);
+          return { answers: await promise };
+        }
+      : undefined,
   };
+
+  // ── Streaming executor (shared, reset each iteration) ────────────────────────
+  const executor = new TurnToolExecutor({
+    sessionId,
+    turnId,
+    allows:     (name) => policy.allows(name),
+    tools,
+    permission,
+    permCtx,
+    hooks,
+    toolCtx,
+    buildAsk:   deps.buildAsk,
+    runner:     resolvedRunner,
+    pushEv:     toolEmit,
+    signal:     signal_,
+  });
 
   try {
     emotion.beginTurn();
 
-    // ── onTurnStart ───────────────────────────────────────────────────────────
+    // ── onTurnStart hook ──────────────────────────────────────────────────────
     const startResult = await hooks.trigger('onTurnStart', {
       turnId, sessionId,
       payload: { mode: 'agent', subMode },
@@ -90,8 +126,8 @@ async function* runTurn(
 
     // ── Build initial message history ─────────────────────────────────────────
     const history = session.loadHistory(sessionId);
-    const userBlocks: string | UserBlock[] =
-      input.contentParts?.length ? input.contentParts : userInput;
+    // userInput is already string | LlmContentPart[] — no further unpacking needed.
+    const userBlocks = userInput;
 
     session.appendMessage({
       turnId, sessionId, role: 'user',
@@ -107,18 +143,6 @@ async function* runTurn(
       ...historyToLlmMessages(history),
       { role: 'user', content: userBlocks as string | UserBlock[] },
     ];
-
-    // ── Provider resolution ───────────────────────────────────────────────────
-    const binding      = deps.modelBindings.get('agent');
-    const providerId   = binding?.providerConfigId ?? llm.firstProviderId();
-    const resolvedModel = input.model ?? binding?.model
-      ?? (providerId ? llm.defaultModelFor(providerId) : undefined);
-
-    if (!providerId || !resolvedModel) {
-      session.failTurn(turnId, 'provider/not_configured', 'No LLM provider configured for agent mode');
-      yield { type: 'turn_failed', turnId, code: 'provider/not_configured', message: 'No LLM provider configured for agent mode' };
-      return;
-    }
 
     // ── beforeLlm hook (initial) ──────────────────────────────────────────────
     const preLlm = await hooks.trigger('beforeLlm', {
@@ -140,14 +164,18 @@ async function* runTurn(
 
       iterations++;
       yield { type: 'agent_iteration', n: iterations };
+      executor.reset();
 
       // ── THINK: stream one LLM response ─────────────────────────────────────
-      const assistantBlocks: AssistantBlock[] = [];
-      let   textByIndex   = new Map<number, string>();
-      let   stopReason    = 'end_turn';
+      // All three maps are keyed by blockIndex so the final assembly honours
+      // the exact interleaving order the model produced.
+      const textByIndex     = new Map<number, string>();
+      const thinkingByIndex = new Map<number, string>();
+      const toolUseByIndex  = new Map<number, AssistantBlock & { type: 'tool_use' }>();
+      let   stopReason      = 'end_turn';
 
       const stream = llm.stream({
-        providerId, model: resolvedModel,
+        providerId, model,
         messages,
         tools:      policy.toolDefs(),
         toolChoice: 'auto',
@@ -157,6 +185,10 @@ async function* runTurn(
       const deltaPromises: Promise<unknown>[] = [];
 
       for await (const chunk of stream) {
+        // Drain any tool events that arrived since the last chunk.
+        // Tools may already be executing concurrently (started by prior tool_use_complete).
+        while (pendingToolEvents.length > 0) yield pendingToolEvents.shift()!;
+
         switch (chunk.type) {
           case 'text_delta': {
             const { cleaned, events } = emotion.processChunk(chunk.delta, turnId);
@@ -174,9 +206,12 @@ async function* runTurn(
             );
             break;
           }
+
           case 'thinking_delta':
+            thinkingByIndex.set(chunk.blockIndex, (thinkingByIndex.get(chunk.blockIndex) ?? '') + chunk.delta);
             yield { type: 'reasoning_delta', blockIndex: chunk.blockIndex, delta: chunk.delta };
             break;
+
           case 'tool_use_delta':
             yield {
               type: 'tool_call_partial',
@@ -184,26 +219,35 @@ async function* runTurn(
               callId: chunk.callId, name: chunk.name, argsDelta: chunk.argsDelta,
             };
             break;
+
           case 'tool_use_complete':
-            assistantBlocks.push({ type: 'tool_use', id: chunk.callId, name: chunk.name, args: chunk.args });
+            // Record for blockMap assembly
+            toolUseByIndex.set(chunk.blockIndex, {
+              type: 'tool_use', id: chunk.callId, name: chunk.name, args: chunk.args,
+            });
             yield {
               type: 'tool_call_complete',
               blockIndex: chunk.blockIndex,
               callId: chunk.callId, name: chunk.name, args: chunk.args,
             };
+            // ── START EXECUTING IMMEDIATELY ────────────────────────────────
+            // Don't wait for the rest of the LLM stream. Concurrent-safe tools
+            // run in parallel; non-concurrent tools queue behind a serial fence.
+            executor.addTool(chunk.blockIndex, chunk.callId, chunk.name, chunk.args);
             break;
+
           case 'usage':
             totalInput  += chunk.inputTokens;
             totalOutput += chunk.outputTokens;
             break;
+
           case 'done':
             stopReason = chunk.stopReason;
             break;
         }
       }
-      llmDone = true;
 
-      // Flush emotion scanner tail
+      // Flush emotion scanner tail (handles partial ACT tags at end of stream)
       const { cleaned: tail } = emotion.flush(turnId);
       if (tail) {
         const idx = 1; // text lives at blockIndex 1 in OpenAI adapter
@@ -219,26 +263,27 @@ async function* runTurn(
         .map(([, t]) => t)
         .join('');
 
-      // Build final AssistantBlock[] (text + tool_use, in blockIndex order)
-      const allBlocks: AssistantBlock[] = [];
-      for (const [idx, text] of [...textByIndex.entries()].sort(([a], [b]) => a - b)) {
-        allBlocks.push({ type: 'text', text });
-        void idx;
-      }
-      for (const b of assistantBlocks) allBlocks.push(b);
+      // Build final AssistantBlock[] in blockIndex order: text + thinking + tool_use.
+      // Using a single blockMap ensures the exact interleaving the model produced
+      // is preserved (critical for Anthropic's API which requires thinking blocks
+      // to be echoed back alongside their assistant turn).
+      const blockMap = new Map<number, AssistantBlock>();
+      for (const [idx, text]    of textByIndex)     blockMap.set(idx, { type: 'text', text });
+      for (const [idx, thinking] of thinkingByIndex) blockMap.set(idx, { type: 'thinking', thinking });
+      for (const [idx, b]        of toolUseByIndex)  blockMap.set(idx, b);
+      const allBlocks = [...blockMap.entries()].sort(([a], [b]) => a - b).map(([, b]) => b);
 
       await hooks.trigger('afterLlmComplete', {
         turnId, sessionId,
-        payload: { content: fullText, toolCalls: assistantBlocks },
+        payload: { content: fullText, toolCalls: [...toolUseByIndex.values()] },
         meta: {},
       });
 
-      const toolUseBlocks = assistantBlocks.filter(
-        (b): b is AssistantBlock & { type: 'tool_use' } => b.type === 'tool_use',
-      );
-
       // ── End condition: no tool calls or model said stop ─────────────────────
-      if (stopReason === 'end_turn' || toolUseBlocks.length === 0) {
+      if (stopReason === 'end_turn' || toolUseByIndex.size === 0) {
+        // Drain any tool events that slipped in during the final hook await
+        while (pendingToolEvents.length > 0) yield pendingToolEvents.shift()!;
+
         for (const [idx, text] of [...textByIndex.entries()].sort(([a], [b]) => a - b)) {
           yield { type: 'output_text_complete', blockIndex: idx, text };
         }
@@ -254,110 +299,30 @@ async function* runTurn(
         break;
       }
 
-      // Persist mid-loop assistant turn (has tool_use blocks)
+      // ── ACT: drain tool events and wait for all tools to complete ───────────
+      // Tools were already started by executor.addTool() during the LLM stream.
+      // Here we just wait for the remaining ones and collect results.
+      while (!executor.allDone() || pendingToolEvents.length > 0) {
+        // Yield events as they arrive (tool results, permission dialogs, progress)
+        while (pendingToolEvents.length > 0) yield pendingToolEvents.shift()!;
+        if (!executor.allDone()) {
+          // Park until a tool pushes an event or signals completion
+          await new Promise<void>(r => { wakeUp = r; });
+        }
+      }
+
+      const resultBlocks: ToolResultBlock[] = executor.getResults();
+
+      // Persist mid-loop assistant turn (has tool_use blocks) and inject results
       session.appendMessage({
         turnId, sessionId, role: 'assistant',
         blocks: allBlocks as MessageBlocks,
       });
       messages.push({ role: 'assistant', content: allBlocks });
 
-      // ── ACT: execute all tool_use blocks in order ───────────────────────────
-      const resultBlocks: ToolResultBlock[] = [];
-
-      for (const block of toolUseBlocks) {
-        // Policy check (plan mode blocks write tools)
-        if (!policy.allows(block.name)) {
-          const denied = `Tool "${block.name}" is not available in "${subMode}" mode`;
-          resultBlocks.push({ type: 'tool_result', toolUseId: block.id, content: denied, isError: true });
-          yield { type: 'tool_result', callId: block.id, error: { code: 'policy/denied', message: denied } };
-          continue;
-        }
-
-        await hooks.trigger('beforeToolUse', {
-          turnId, sessionId,
-          payload: { callId: block.id, name: block.name, args: block.args },
-          meta: {},
-        });
-
-        // Permission gate
-        if (!tools.has(block.name)) {
-          const msg = `Unknown tool: "${block.name}"`;
-          resultBlocks.push({ type: 'tool_result', toolUseId: block.id, content: msg, isError: true });
-          yield { type: 'tool_result', callId: block.id, error: { code: 'tool/not_found', message: msg } };
-          continue;
-        }
-        const toolEntry = tools.get(block.name);
-
-        // gateWithEvents yields permission_required events while waiting for
-        // the user to respond. Falls back to engine-level config.ask when
-        // deps.buildAsk is not provided (tests / minimal embedders).
-        const outcome: PermissionOutcome = deps.buildAsk
-          ? yield* gateWithEvents({
-              permission,
-              toolName: block.name,
-              args:     block.args,
-              meta:     toolEntry.permissionMeta,
-              context:  permCtx,
-              buildAsk: (emit) => deps.buildAsk!({
-                sessionId,
-                turnId,
-                emit,
-              }),
-            })
-          : await permission.gate(block.name, block.args, toolEntry.permissionMeta, permCtx);
-
-        if (!outcome.granted) {
-          const reason = `Permission denied: ${(outcome as { reason: string }).reason}`;
-          resultBlocks.push({ type: 'tool_result', toolUseId: block.id, content: reason, isError: true });
-          yield { type: 'tool_result', callId: block.id, error: { code: 'permission/denied', message: reason } };
-          await hooks.trigger('onToolFailure', {
-            turnId, sessionId,
-            payload: { callId: block.id, name: block.name, error: reason },
-            meta: {},
-          });
-          continue;
-        }
-
-        // Execute
-        let output: unknown;
-        let isError = false;
-
-        try {
-          output = await tools.dispatch(block.name, block.args, toolCtx);
-
-          // Drain any events the tool emitted via ctx.emit
-          while (pendingToolEvents.length > 0) yield pendingToolEvents.shift()!;
-
-          yield { type: 'tool_result', callId: block.id, output };
-          await hooks.trigger('afterToolUse', {
-            turnId, sessionId,
-            payload: { callId: block.id, name: block.name, output },
-            meta: {},
-          });
-        } catch (err) {
-          isError = true;
-          output = (err as Error).message;
-          while (pendingToolEvents.length > 0) yield pendingToolEvents.shift()!;
-          yield { type: 'tool_result', callId: block.id, error: { code: 'tool/error', message: output as string } };
-          await hooks.trigger('onToolFailure', {
-            turnId, sessionId,
-            payload: { callId: block.id, name: block.name, error: err },
-            meta: {},
-          });
-        } finally {
-          // Scrub any bare-repo attack files planted during this tool's execution
-          // before the next git call can see them. Must run regardless of outcome.
-          resolvedRunner?.cleanup();
-        }
-
-        const serialized = typeof output === 'string' ? output : JSON.stringify(output, null, 2);
-        resultBlocks.push({ type: 'tool_result', toolUseId: block.id, content: serialized, isError });
-      }
-
-      // Persist tool results + inject into LLM history
       session.appendMessage({
         turnId, sessionId, role: 'user',
-        kind: 'tool_results',
+        kind:   'tool_results',
         blocks: resultBlocks as MessageBlocks,
       });
       messages.push({ role: 'user', content: resultBlocks });
@@ -389,7 +354,7 @@ async function* runTurn(
 
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
-    if (signal.aborted && !llmDone) {
+    if (signal.aborted) {
       await hooks.trigger('onTurnAbort', {
         turnId, sessionId,
         payload: { reason: 'user_stop' },
@@ -404,7 +369,15 @@ async function* runTurn(
   }
 }
 
-// ── History → LlmMessage (mirrors conversation/engine.ts — no shared import) ──
+// ── History → LlmMessage conversion ──────────────────────────────────────────
+//
+// SYNC: identical logic lives in conversation/engine.ts. Update both when the
+// block format contract in contracts/messages.ts changes.
+//
+// Block format contract:
+//   system    → blocks: string
+//   user      → blocks: string | UserBlock[]  (UserBlock[] for media + tool_results)
+//   assistant → blocks: AssistantBlock[]      (text / thinking / tool_use interleaved)
 
 function historyToLlmMessages(history: Message[]): LlmMessage[] {
   const out: LlmMessage[] = [];

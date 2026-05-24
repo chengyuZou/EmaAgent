@@ -22,7 +22,6 @@ import { ToolRegistry } from '@ema-agent/tool';
 import { registerBuiltinTools } from '@ema-agent/tool-builtin';
 import type { Message, Turn } from '@ema-agent/session';
 import type { SessionId, TurnId, MessageId } from '@ema-agent/contracts';
-import type { ResolvedModelBinding } from '@ema-agent/storage';
 
 import { AgentEngine } from './engine.js';
 import type { AgentDeps } from './types.js';
@@ -74,16 +73,6 @@ function makeSessionStore() {
   };
 }
 
-// ── ModelBindingsRepo mock ────────────────────────────────────────────────────
-
-function makeModelBindings(providerId: string, model: string) {
-  return {
-    get(_module: string): ResolvedModelBinding | undefined {
-      return { module: 'agent', providerConfigId: providerId, model, voiceId: null, config: {} };
-    },
-  };
-}
-
 // ── Turn stub ─────────────────────────────────────────────────────────────────
 
 function makeTurn(id = 'turn-1'): Turn {
@@ -114,7 +103,7 @@ let sessionStore: ReturnType<typeof makeSessionStore>;
 beforeAll(() => {
   const llm = new LlmRouter([{
     id:           PROVIDER_ID,
-    provider:     'openai-llm',
+    protocol:     'openai-llm',
     apiKey:       DS_KEY,
     baseUrl:      'https://api.deepseek.com',
     defaultModel: MODEL,
@@ -135,13 +124,12 @@ beforeAll(() => {
   sessionStore = makeSessionStore();
 
   deps = {
-    session:       sessionStore as unknown as AgentDeps['session'],
+    session:   sessionStore as unknown as AgentDeps['session'],
     hooks,
     llm,
     emotion,
     tools,
     permission,
-    modelBindings: makeModelBindings(PROVIDER_ID, MODEL) as unknown as AgentDeps['modelBindings'],
   };
 });
 
@@ -160,11 +148,12 @@ function makeInput(overrides: Partial<Parameters<AgentEngine['run']>[0]> = {}) {
   return {
     turn:          makeTurn(),
     signal:        AbortSignal.timeout(60_000),
-    sessionId:     'session-1' as SessionId,
     subMode:       'full' as const,
     userInput:     'Hello',
     systemPrompt:  'You are a helpful assistant.',
     workspaceRoot: WORKSPACE,
+    providerId:    PROVIDER_ID,
+    model:         MODEL,
     ...overrides,
   };
 }
