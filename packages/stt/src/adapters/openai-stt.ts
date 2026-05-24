@@ -1,5 +1,4 @@
-import type { SttAdapter, SttProviderConfig } from '../types.js';
-import type { SttRequest, SttResponse } from '@ema-agent/contracts';
+import type { SttAdapter, SttAdapterCall, SttProviderConfig, SttResponse } from '../types.js';
 
 // ── OpenAI-compatible /v1/audio/transcriptions (Whisper) ────────────────────
 //
@@ -16,20 +15,20 @@ export class OpenAiSttAdapter implements SttAdapter {
 
   constructor(private readonly config: SttProviderConfig) {}
 
-  async transcribe(req: SttRequest, model: string): Promise<SttResponse> {
+  async transcribe(call: SttAdapterCall): Promise<SttResponse> {
     const url = `${this.config.baseUrl.replace(/\/$/, '')}/audio/transcriptions`;
 
     const form = new FormData();
-    form.append('file', new Blob([toArrayBuffer(req.audio)], { type: req.mime }), filenameFor(req.mime));
-    form.append('model', model);
+    form.append('file', new Blob([toArrayBuffer(call.audio)], { type: call.mime }), filenameFor(call.mime));
+    form.append('model', call.model);
     form.append('response_format', 'verbose_json');
-    if (req.language) form.append('language', req.language);
+    if (call.language) form.append('language', call.language);
 
     const response = await fetch(url, {
       method:  'POST',
       headers: { 'Authorization': `Bearer ${this.config.apiKey}` },
       body:    form,
-      signal:  req.abortSignal,
+      signal:  call.abortSignal,
     });
 
     if (!response.ok) {

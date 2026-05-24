@@ -1,73 +1,73 @@
-import type { SttAdapter, SttProviderConfig } from './types.js';
-import type { SttRequest, SttResponse } from '@ema-agent/contracts';
+import type { SttAdapter, SttAdapterCall, SttProviderConfig, SttRequest, SttResponse } from './types.js';
 import { OpenAiSttAdapter } from './adapters/openai-stt.js';
 
 // ── SttClient Façade ────────────────────────────────────────────────────────
 //
-// Symmetric to TtsClient but radically simpler:
-//   - One binding (no per-module differentiation; users transcribe with one
-//     STT setting regardless of which mode they're in).
-//   - Synchronous one-shot (no streaming for V1 — full audio in, full text out).
-//   - No failover (no concept of "primary" vs "fallback" for STT in V1).
+// Symmetric to TtsClient / LlmRouter:
+//   - Holds provider configs + adapters, keyed by provider_configs.id.
+//   - Routing (which providerId + model to use) is always decided by the
+//     caller (route handler reads model_bindings.get('stt')).
+//   - No binding stored here — binding is a business-layer concern.
 
-export interface SttBinding {
-  providerConfigId: string;
-  model:            string;
-}
-
-export interface SttClientArgs {
-  providers: ReadonlyMap<string, SttProviderConfig>;
-  binding:   SttBinding | null;
-  adapterOverrides?: ReadonlyMap<string, SttAdapter>;
+function createAdapter(cfg: SttProviderConfig): SttAdapter {
+  switch (cfg.protocol) {
+    case 'openai-stt': return new OpenAiSttAdapter(cfg);
+  }
 }
 
 export class SttClient {
-  // Mutable — see TtsClient.reload() doc for rationale.
-  private providers: ReadonlyMap<string, SttProviderConfig>;
-  private binding:   SttBinding | null;
-  private adapters   = new Map<string, SttAdapter>();
+  private readonly adapters = new Map<string, SttAdapter>();
+  private readonly configs  = new Map<string, SttProviderConfig>();
 
-  constructor(args: SttClientArgs) {
-    this.providers = args.providers;
-    this.binding   = args.binding;
-    this.rebuildAdapters(args.adapterOverrides);
-  }
-
-  reload(args: {
-    providers: ReadonlyMap<string, SttProviderConfig>;
-    binding:   SttBinding | null;
-  }): void {
-    this.providers = args.providers;
-    this.binding   = args.binding;
-    this.adapters  = new Map<string, SttAdapter>();
-    this.rebuildAdapters();
-  }
-
-  private rebuildAdapters(overrides?: ReadonlyMap<string, SttAdapter>): void {
-    for (const [id, cfg] of this.providers) {
-      const override = overrides?.get(id);
-      this.adapters.set(id, override ?? this.createAdapter(cfg));
+  constructor(
+    configs: SttProviderConfig[],
+    adapterOverrides?: ReadonlyMap<string, SttAdapter>,
+  ) {
+    for (const config of configs) {
+      this.configs.set(config.id, config);
+      const override = adapterOverrides?.get(config.id);
+      this.adapters.set(config.id, override ?? createAdapter(config));
+    }
+    if (adapterOverrides) {
+      for (const [id, adapter] of adapterOverrides) {
+        if (!this.adapters.has(id)) this.adapters.set(id, adapter);
+      }
     }
   }
 
-  private createAdapter(cfg: SttProviderConfig): SttAdapter {
-    switch (cfg.protocol) {
-      case 'openai-stt': return new OpenAiSttAdapter(cfg);
-    }
-  }
-
+  /** True when at least one STT provider is registered. */
   isAvailable(): boolean {
-    return this.binding !== null && this.adapters.has(this.binding.providerConfigId);
+    return this.adapters.size > 0;
   }
 
+  /** Transcribe audio. providerId + model are routing fields embedded in the request. */
   async transcribe(req: SttRequest): Promise<SttResponse> {
-    if (!this.binding) {
-      throw new Error('stt/not_configured: no STT binding set');
-    }
-    const adapter = this.adapters.get(this.binding.providerConfigId);
+    const adapter = this.adapters.get(req.providerId);
     if (!adapter) {
-      throw new Error(`stt/not_configured: provider "${this.binding.providerConfigId}" not registered`);
+      throw new Error(`stt/not_configured: provider "${req.providerId}" not registered`);
     }
-    return adapter.transcribe(req, this.binding.model);
+    const call: SttAdapterCall = {
+      audio:       req.audio,
+      mime:        req.mime,
+      model:       req.model,
+      language:    req.language,
+      abortSignal: req.abortSignal,
+    };
+    return adapter.transcribe(call);
+  }
+
+  /** Hot-reload: add or replace a provider config. */
+  upsertConfig(config: SttProviderConfig): void {
+    this.configs.set(config.id, config);
+    this.adapters.set(config.id, createAdapter(config));
+  }
+
+  removeConfig(id: string): void {
+    this.configs.delete(id);
+    this.adapters.delete(id);
+  }
+
+  firstProviderId(): string | undefined {
+    return this.configs.keys().next().value;
   }
 }
