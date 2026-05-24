@@ -88,7 +88,7 @@ async function* runTurn(
 
     const partsToCheck = Array.isArray(userBlocks) ? userBlocks : [];
     if (partsToCheck.length > 0) {
-      const issues = validateContentParts(partsToCheck, 'openai-llm');
+      const issues = validateContentParts(partsToCheck, input.protocol ?? 'openai-llm');
       if (issues.length > 0) {
         yield {
           type: 'system_warning',
