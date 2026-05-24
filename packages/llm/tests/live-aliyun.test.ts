@@ -4,7 +4,7 @@ import type { LlmRequest, ProviderConfig } from '../src/types.js';
 
 // 阿里云百炼 OpenAI 兼容配置
 const ALIYUN_CONFIG: ProviderConfig = {
-  provider: 'openai-llm',
+  protocol: 'openai-llm',
   apiKey: 'sk-4',
   baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
 };
@@ -17,7 +17,7 @@ describe.only('Live Aliyun Provider Tests (Qwen Models)', () => {
   // 1. 测试基础多轮对话与普通流式输出
   it('should stream text chunks for basic conversation', async () => {
     const request: LlmRequest = {
-      provider: 'openai-llm',
+      protocol: 'openai-llm',
       model: 'qwen-plus',
       messages: [
         { role: 'system', content: '你是一个乐于助人的AI助手，请用中文回答。' },
@@ -46,7 +46,7 @@ describe.only('Live Aliyun Provider Tests (Qwen Models)', () => {
   // 2. 测试 complete 包装器与 Function Calling（工具调用）
   it('should successfully trigger a tool call', async () => {
     const request: LlmRequest = {
-      provider: 'openai-llm',
+      protocol: 'openai-llm',
       model: 'qwen-plus',
       messages: [
         { role: 'user', content: '查询一下北京今天的天气如何。' },
@@ -95,7 +95,7 @@ describe.only('Live Aliyun Provider Tests (Qwen Models)', () => {
     const imageUrl = 'https://fc1tn.baidu.com/it/u=1839792386,3938688859&fm=202&src=1024&fc_m=pc_3_2&mola=new&crop=v1';
     
     const request: LlmRequest = {
-      provider: 'openai-llm',
+      protocol: 'openai-llm',
       // 请注意：阿里云具有视觉能力的模型以 -vl- 结尾
       model: 'qwen-vl-plus', 
       messages: [

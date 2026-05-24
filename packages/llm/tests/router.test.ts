@@ -24,9 +24,9 @@ async function collect(iter: AsyncIterable<LlmStreamChunk>): Promise<LlmStreamCh
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
-const DS_CONFIG: ProviderConfig  = { id: 'ds-001',  provider: 'openai-llm',    apiKey: 'sk-ds' };
-const SF_CONFIG: ProviderConfig  = { id: 'sf-001',  provider: 'openai-llm',    apiKey: 'sk-sf' };
-const CL_CONFIG: ProviderConfig  = { id: 'cl-001',  provider: 'anthropic-llm', apiKey: 'sk-cl' };
+const DS_CONFIG: ProviderConfig  = { id: 'ds-001',  protocol: 'openai-llm',    apiKey: 'sk-ds' };
+const SF_CONFIG: ProviderConfig  = { id: 'sf-001',  protocol: 'openai-llm',    apiKey: 'sk-sf' };
+const CL_CONFIG: ProviderConfig  = { id: 'cl-001',  protocol: 'anthropic-llm', apiKey: 'sk-cl' };
 
 const TEXT_CHUNKS: LlmStreamChunk[] = [
   { type: 'text_delta', delta: 'Hello' },
@@ -106,7 +106,7 @@ describe('LlmRouter — hot-reload', () => {
 
     router.removeConfig('openai');
 
-    expect(() => router.stream({ provider: 'openai-llm', model: 'gpt-4o', messages: [] }))
+    expect(() => router.stream({ protocol: 'openai-llm', model: 'gpt-4o', messages: [] }))
       .toThrow('unknown_provider');
   });
 });
@@ -120,7 +120,7 @@ describe('LlmRouter — chunk shapes', () => {
     const mock   = new MockAdapter(toolChunks);
     const router = new LlmRouter([OPENAI_CONFIG], new Map<LlmProvider, LlmAdapter>([['openai-llm', mock]]));
 
-    const chunks = await collect(router.stream({ provider: 'openai-llm', model: 'gpt-4o', messages: [] }));
+    const chunks = await collect(router.stream({ protocol: 'openai-llm', model: 'gpt-4o', messages: [] }));
     expect(chunks).toEqual(toolChunks);
   });
 });

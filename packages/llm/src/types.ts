@@ -13,7 +13,7 @@ export type { AssistantBlock, UserBlock, MessageContentPart as LlmContentPart } 
 
 export interface ProviderConfig {
   id: string;
-  provider: LlmProtocol;
+  protocol: LlmProtocol;
   apiKey: string;
   baseUrl?: string;
   defaultModel?: string;

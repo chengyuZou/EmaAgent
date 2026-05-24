@@ -5,7 +5,7 @@ import type { LlmRequest, ProviderConfig } from '../src/types.js';
 // 1. OpenAI 兼容配置
 const OPENAI_COMPAT_CONFIG: ProviderConfig = {
   id: 'aliyun-llm',
-  provider: 'openai-llm',
+  protocol: 'openai-llm',
   apiKey: 'sk-44b',
   baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
 };
@@ -13,7 +13,7 @@ const OPENAI_COMPAT_CONFIG: ProviderConfig = {
 // 2. Anthropic 兼容配置
 const ANTHROPIC_COMPAT_CONFIG: ProviderConfig = {
   id: 'aliyun-anthropic',
-  provider: 'anthropic-llm',
+  protocol: 'anthropic-llm',
   apiKey: 'sk-44bxxx70443b8', 
   // ‼️ 注意这里：不要带 /v1/messages 后缀，因为 Anthropic SDK 会在底层自动追加
   baseUrl: 'https://dashscope.aliyuncs.com/apps/anthropic',

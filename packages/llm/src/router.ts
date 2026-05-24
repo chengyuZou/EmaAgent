@@ -16,7 +16,7 @@ import type {
 // ── Internal factory ──────────────────────────────────────────────────────────
 
 function createAdapter(config: ProviderConfig): LlmAdapter {
-  switch (config.provider) {
+  switch (config.protocol) {
     case 'openai-llm':    return new OpenAiAdapter(config);
     case 'anthropic-llm': return new AnthropicAdapter(config);
     case 'gemini-llm':    return new GeminiAdapter(config);

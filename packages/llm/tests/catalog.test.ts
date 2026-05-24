@@ -49,20 +49,20 @@ describe('ModelCatalog — static preset', () => {
 describe('ModelCatalog — upsert', () => {
   it('adds a new model', () => {
     const cat = new ModelCatalog();
-    cat.upsert([makeEntry({ provider: 'openai-llm', model: 'my-model', displayName: 'My Model' })]);
+    cat.upsert([makeEntry({ protocol: 'openai-llm', model: 'my-model', displayName: 'My Model' })]);
     expect(cat.get('openai-llm', 'my-model')?.displayName).toBe('My Model');
   });
 
   it('overwrites an existing model', () => {
     const cat = new ModelCatalog();
-    cat.upsert([makeEntry({ provider: 'openai-llm', model: 'gpt-4o', displayName: 'Overridden' })]);
+    cat.upsert([makeEntry({ protocol: 'openai-llm', model: 'gpt-4o', displayName: 'Overridden' })]);
     expect(cat.get('openai-llm', 'gpt-4o')?.displayName).toBe('Overridden');
   });
 
   it('same model name under different providers is independent', () => {
     const cat = new ModelCatalog([
-      makeEntry({ provider: 'openai-llm',     model: 'shared', displayName: 'OpenAI' }),
-      makeEntry({ provider: 'anthropic-llm',  model: 'shared', displayName: 'Anthropic' }),
+      makeEntry({ protocol: 'openai-llm',     model: 'shared', displayName: 'OpenAI' }),
+      makeEntry({ protocol: 'anthropic-llm',  model: 'shared', displayName: 'Anthropic' }),
     ]);
     expect(cat.get('openai-llm',    'shared')?.displayName).toBe('OpenAI');
     expect(cat.get('anthropic-llm', 'shared')?.displayName).toBe('Anthropic');
@@ -71,8 +71,8 @@ describe('ModelCatalog — upsert', () => {
   it('list() includes upserted entries', () => {
     const cat = new ModelCatalog([]);
     cat.upsert([
-      makeEntry({ provider: 'gemini-llm', model: 'a' }),
-      makeEntry({ provider: 'gemini-llm', model: 'b' }),
+      makeEntry({ protocol: 'gemini-llm', model: 'a' }),
+      makeEntry({ protocol: 'gemini-llm', model: 'b' }),
     ]);
     expect(cat.list()).toHaveLength(2);
   });
@@ -84,7 +84,7 @@ describe('ModelCatalog — custom initial list', () => {
   });
 
   it('constructor accepts partial list', () => {
-    const cat = new ModelCatalog([makeEntry({ provider: 'gemini-llm', model: 'test' })]);
+    const cat = new ModelCatalog([makeEntry({ protocol: 'gemini-llm', model: 'test' })]);
     expect(cat.list()).toHaveLength(1);
     expect(cat.get('gemini-llm', 'test')).toBeDefined();
   });

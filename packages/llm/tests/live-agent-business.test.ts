@@ -4,7 +4,7 @@ import type { LlmRequest, ProviderConfig, LlmMessage, LlmToolDef } from '../src/
 
 const ALIYUN_CONFIG: ProviderConfig = {
   id: 'aliyun',
-  provider: 'openai-llm',
+  protocol: 'openai-llm',
   apiKey: 'sk-44',
   baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
 };
