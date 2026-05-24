@@ -73,7 +73,8 @@ export class BackgroundTasksRepo {
    */
   claimNext(now: number, kind?: BackgroundTaskKind): BackgroundTaskRow | undefined {
     const whereKind = kind ? 'AND kind = ?' : '';
-    const params: Array<string | number> = kind ? [now, kind, now] : [now, now];
+    // SQL has exactly 1 `?` (updated_at) when no kind, 2 when kind is provided.
+    const params: Array<string | number> = kind ? [now, kind] : [now];
     const row = this.db
       .prepare(
         `UPDATE background_tasks
