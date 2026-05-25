@@ -1,7 +1,7 @@
-import { randomUUID } from 'node:crypto';
+﻿import { randomUUID } from 'node:crypto';
 import WebSocket from 'ws';
 
-import type { TtsAdapter, TtsAdapterCall, TtsProviderConfig } from '../types.js';
+import type { TtsAdapter, TtsProviderConfig, TtsRequest } from '../types.js';
 import type { TtsStreamEvent, TtsErrorCode } from '@ema-agent/contracts';
 
 // ── DashScope (Aliyun百炼) TTS ──────────────────────────────────────────────
@@ -31,16 +31,16 @@ export class DashscopeTtsAdapter implements TtsAdapter {
 
   constructor(private readonly config: TtsProviderConfig) {}
 
-  stream(call: TtsAdapterCall): AsyncIterable<TtsStreamEvent> {
-    const family = dashscopeModelFamily(call.model);
+  stream(req: TtsRequest): AsyncIterable<TtsStreamEvent> {
+    const family = dashscopeModelFamily(req.model);
     if (family === 'cosyvoice') {
-      return new CosyVoiceSession(this.config, call).run();
+      return new CosyVoiceSession(this.config, req).run();
     }
     if (family === 'qwen-tts') {
-      return new QwenTtsRealtimeSession(this.config, call).run();
+      return new QwenTtsRealtimeSession(this.config, req).run();
     }
     return errorOnce('permanent_unsupported_model',
-      `dashscope-tts: unknown model "${call.model}" (expected cosyvoice-* or qwen*-tts*)`);
+      `dashscope-tts: unknown model "${req.model}" (expected cosyvoice-* or qwen*-tts*)`);
   }
 }
 
@@ -153,13 +153,13 @@ class CosyVoiceSession {
 
   constructor(
     private readonly config: TtsProviderConfig,
-    private readonly call:   TtsAdapterCall,
+    private readonly req:    TtsRequest,
   ) {
-    this.mime = mimeForFormat(call.format);
+    this.mime = mimeForFormat(req.format ?? 'mp3');
   }
 
   async *run(): AsyncGenerator<TtsStreamEvent> {
-    if (!this.call.voice.voiceUri) {
+    if (!this.req.voice.voiceUri) {
       yield { type: 'error', code: 'permanent_unsupported_voice_kind',
               message: 'cosyvoice (dashscope) requires voiceUri (voice not yet uploaded)' };
       return;
@@ -193,9 +193,9 @@ class CosyVoiceSession {
       try { ws.close(1000, 'aborted'); } catch { /* ignore */ }
       queue.close();
     };
-    this.call.abortSignal?.addEventListener('abort', abortHandler);
+    this.req.abortSignal?.addEventListener('abort', abortHandler);
 
-    const voice = this.call.voice;
+    const voice = this.req.voice;
 
     ws.on('open', () => {
       ws.send(JSON.stringify({
@@ -204,17 +204,16 @@ class CosyVoiceSession {
           task_group: 'audio',
           task:       'tts',
           function:   'SpeechSynthesizer',
-          model:      this.call.model,
+          model:      this.req.model,
           parameters: {
             text_type:   'PlainText',
             voice:       voice.voiceUri,
-            format:      this.call.format,
-            sample_rate: this.call.sampleRate ?? defaultSampleRate(this.call.format),
+            format:      this.req.format,
+            sample_rate: this.req.sampleRate ?? defaultSampleRate(this.req.format ?? 'mp3'),
             volume:      50,
-            rate:        this.call.speed ?? 1.0,
+            rate:        this.req.speed ?? 1.0,
             pitch:       1.0,
             enable_ssml: false,
-            ...(this.call.instructions ? { instruction: this.call.instructions } : {}),
           },
           input: {},
         },
@@ -245,7 +244,7 @@ class CosyVoiceSession {
           // Send continue-task with full text (single segment for V1 — coordinator already split sentences)
           ws.send(JSON.stringify({
             header:  { action: 'continue-task', task_id: taskId, streaming: 'duplex' },
-            payload: { input: { text: this.call.text } },
+            payload: { input: { text: this.req.text } },
           }));
           ws.send(JSON.stringify({
             header:  { action: 'finish-task', task_id: taskId, streaming: 'duplex' },
@@ -293,7 +292,7 @@ class CosyVoiceSession {
     try {
       yield* queue.iterate();
     } finally {
-      this.call.abortSignal?.removeEventListener('abort', abortHandler);
+      this.req.abortSignal?.removeEventListener('abort', abortHandler);
       if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
         try { ws.close(); } catch { /* ignore */ }
       }
@@ -316,24 +315,21 @@ class QwenTtsRealtimeSession {
 
   constructor(
     private readonly config: TtsProviderConfig,
-    private readonly call:   TtsAdapterCall,
+    private readonly req:    TtsRequest,
   ) {
-    // Qwen Realtime only returns PCM mono. For consumers that want mp3/wav,
-    // we wrap PCM frames as raw L16 and let the frontend / archive deal with
-    // the container. V1 simplification — could transcode in V1.5.
-    this.pcmSr = call.sampleRate ?? 24000;
+    this.pcmSr = req.sampleRate ?? 24000;
     this.mime  = `audio/L16; rate=${this.pcmSr}; channels=1`;
   }
 
   async *run(): AsyncGenerator<TtsStreamEvent> {
-    if (!this.call.voice.voiceUri) {
+    if (!this.req.voice.voiceUri) {
       yield { type: 'error', code: 'permanent_unsupported_voice_kind',
               message: 'qwen-tts (dashscope) requires voiceUri (voice not yet uploaded)' };
       return;
     }
 
     const url = wsHostFromConfig(this.config.baseUrl).replace(/\/$/, '')
-              + `/api-ws/v1/realtime?model=${encodeURIComponent(this.call.model)}`;
+              + `/api-ws/v1/realtime?model=${encodeURIComponent(this.req.model)}`;
     const queue = new EventQueue<TtsStreamEvent>();
     const startedAt = Date.now();
     let firstByteMs = 0;
@@ -355,9 +351,9 @@ class QwenTtsRealtimeSession {
       try { ws.close(1000, 'aborted'); } catch { /* ignore */ }
       queue.close();
     };
-    this.call.abortSignal?.addEventListener('abort', abortHandler);
+    this.req.abortSignal?.addEventListener('abort', abortHandler);
 
-    const voice = this.call.voice;
+    const voice = this.req.voice;
 
     const audioFormat = audioFormatForSampleRate(this.pcmSr);
 
@@ -368,10 +364,6 @@ class QwenTtsRealtimeSession {
         sample_rate:     this.pcmSr,
         mode:            'commit',
       };
-      if (this.call.instructions) {
-        sessionConfig['instructions']       = this.call.instructions;
-        sessionConfig['optimize_instructions'] = true;
-      }
 
       ws.send(JSON.stringify({
         type:    'session.update',
@@ -381,7 +373,7 @@ class QwenTtsRealtimeSession {
       ws.send(JSON.stringify({
         type:     'input_text_buffer.append',
         event_id: makeEventId(),
-        text:     this.call.text,
+        text:     this.req.text,
       }));
       ws.send(JSON.stringify({
         type:     'input_text_buffer.commit',
@@ -452,7 +444,7 @@ class QwenTtsRealtimeSession {
     try {
       yield* queue.iterate();
     } finally {
-      this.call.abortSignal?.removeEventListener('abort', abortHandler);
+      this.req.abortSignal?.removeEventListener('abort', abortHandler);
       if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
         try { ws.close(); } catch { /* ignore */ }
       }

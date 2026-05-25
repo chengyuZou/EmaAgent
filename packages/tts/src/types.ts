@@ -1,4 +1,3 @@
-import type { CharacterCardId } from '@ema-agent/contracts';
 import type {
   TtsStreamEvent,
   TtsVoiceRef,
@@ -18,26 +17,28 @@ export type {
 
 // ── Public TTS request (Façade entry point) ───────────────────────────────────
 //
-// Defined here (not in contracts) — symmetric with LlmRequest in @ema-agent/llm.
-// Callers (orchestrator) resolve providerId + model from model_bindings before
-// calling TtsClient. The client is a thin adapter dispatcher only.
+// Pattern-aligned with LlmRequest: pure data, no business semantics.
+// The caller (TtsCoordinator / apps/core orchestrator) is responsible for
+// resolving the voice from the character card and ensuring voiceUri is
+// populated before calling synthesize.
 
 /**
- * `characterId` may be `null` for system-originated narration (boot greeting,
- * error notices). In that case TTS is skipped — system messages are text-only.
+ * `voice` must carry a populated `voiceUri` — the caller (apps/core) is
+ * responsible for resolveVoice + ensureVoiceUri before calling synthesize.
+ * TtsClient will reject requests without a voiceUri.
+ *
+ * `turnMode` is an optional hint for the text filter: 'agent' strips code
+ * blocks more aggressively than 'chat'/'narrative'.
  */
 export interface TtsRequest {
-  /** provider_configs.id UUID — which adapter instance to use. */
-  providerId:   string;
-  /** Model name as the provider expects it (e.g. "tts-1", "cosyvoice-v1"). */
-  model:        string;
-  text:         string;
-  characterId:  CharacterCardId | null;
-  /** Business mode that triggered this — used for text filtering + logging. */
-  turnMode?:    TtsTurnMode;
-  format?:      TtsAudioFormat;
-  sampleRate?:  number;
-  speed?:       number;
+  providerId:  string;
+  model:       string;
+  text:        string;
+  voice:       TtsVoiceRef;
+  turnMode?:   TtsTurnMode;
+  format?:     TtsAudioFormat;
+  sampleRate?: number;
+  speed?:      number;
   abortSignal?: AbortSignal;
 }
 
@@ -51,24 +52,6 @@ export interface TtsProviderConfig {
   baseUrl:  string;
 }
 
-// ── Adapter call arguments (constructed by TtsClient, consumed by adapter) ──
-
-/**
- * What an adapter actually receives. `voice` is already resolved from the
- * character card's voiceProfile — it always carries refAudioPath + promptText
- * + promptLang. V1 is clone-only (no catalog/system-voice path).
- */
-export interface TtsAdapterCall {
-  text:          string;
-  model:         string;
-  voice:         TtsVoiceRef;
-  format:        TtsAudioFormat;
-  sampleRate?:   number;
-  speed?:        number;
-  instructions?: string;
-  abortSignal?:  AbortSignal;
-}
-
 // ── Adapter contract ────────────────────────────────────────────────────────
 
 export interface TtsAdapter {
@@ -76,8 +59,9 @@ export interface TtsAdapter {
 
   /**
    * Stream audio for a single text segment.
+   * Receives the full TtsRequest — symmetric with LlmAdapter.stream(LlmRequest).
    */
-  stream(call: TtsAdapterCall): AsyncIterable<TtsStreamEvent>;
+  stream(req: TtsRequest): AsyncIterable<TtsStreamEvent>;
 
   /**
    * Upload a reference audio file for voice cloning.

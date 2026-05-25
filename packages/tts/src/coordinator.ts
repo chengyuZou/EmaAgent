@@ -1,10 +1,11 @@
 import type {
-  EmaStreamEvent, TurnId, SessionId, CharacterCardId, TtsTurnMode,
+  EmaStreamEvent, TurnId, SessionId, TtsTurnMode,
 } from '@ema-agent/contracts';
 import type { HookBus, HookContext, HookResult } from '@ema-agent/hook';
 import { PRIORITY } from '@ema-agent/hook';
 
 import { TtsClient } from './service.js';
+import type { TtsVoiceRef } from './types.js';
 import { SentenceSplitter } from './streaming/sentence-splitter.js';
 import { ttsEventToEma, makeSentenceId } from './bridge.js';
 import type { AudioArchive } from './archive.js';
@@ -33,8 +34,8 @@ import type { AudioArchive } from './archive.js';
 export interface TtsCoordinatorArgs {
   turnId:        TurnId;
   sessionId:     SessionId;
-  /** null for system-originated turns (no card → fallback voice). */
-  characterId:   CharacterCardId | null;
+  /** Pre-resolved voice spec (apps/core resolves from character card + binding). */
+  voice:         TtsVoiceRef;
   /** provider_configs.id — which TTS provider to use for this turn. */
   providerId:    string;
   /** Model name for the provider (e.g. "tts-1", "cosyvoice-v1"). */
@@ -54,7 +55,7 @@ export interface TtsCoordinatorArgs {
 export class TtsCoordinator {
   private readonly turnId:      TurnId;
   private readonly sessionId:   SessionId;
-  private readonly characterId: CharacterCardId | null;
+  private readonly voice:       TtsVoiceRef;
   private readonly providerId:  string;
   private readonly model:       string;
   private readonly turnMode?:   TtsTurnMode;
@@ -73,7 +74,7 @@ export class TtsCoordinator {
   constructor(args: TtsCoordinatorArgs) {
     this.turnId      = args.turnId;
     this.sessionId   = args.sessionId;
-    this.characterId = args.characterId;
+    this.voice       = args.voice;
     this.providerId  = args.providerId;
     this.model       = args.model;
     this.turnMode    = args.turnMode;
@@ -170,11 +171,11 @@ export class TtsCoordinator {
     try {
       for await (const ev of this.ttsClient.synthesize({
         text,
-        providerId:  this.providerId,
-        model:       this.model,
-        characterId: this.characterId,
-        turnMode:    this.turnMode,
-        format:      this.format,
+        providerId: this.providerId,
+        model:      this.model,
+        voice:      this.voice,
+        turnMode:   this.turnMode,
+        format:     this.format,
       })) {
         if (ev.type === 'audio_chunk') {
           writer?.write(ev.bytes);

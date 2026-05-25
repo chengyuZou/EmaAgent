@@ -1,4 +1,4 @@
-import type { TtsAdapter, TtsAdapterCall, TtsProviderConfig } from '../types.js';
+import type { TtsAdapter, TtsProviderConfig, TtsRequest } from '../types.js';
 import type { TtsStreamEvent, TtsErrorCode } from '@ema-agent/contracts';
 import { readFile } from 'node:fs/promises';
 import { basename } from 'node:path';
@@ -20,27 +20,27 @@ export class OpenAiTtsAdapter implements TtsAdapter {
 
   constructor(private readonly config: TtsProviderConfig) {}
 
-  async *stream(call: TtsAdapterCall): AsyncIterable<TtsStreamEvent> {
-    if (!call.voice.voiceUri) {
+  async *stream(req: TtsRequest): AsyncIterable<TtsStreamEvent> {
+    if (!req.voice.voiceUri) {
       yield errorEvent('permanent_unsupported_voice_kind',
         'openai-tts adapter requires voiceUri (voice not yet uploaded)');
       return;
     }
 
-    const voiceParam = call.voice.voiceUri;
+    const voiceParam = req.voice.voiceUri;
     // Clone path always skips speed/gain (CosyVoice2 doesn't accept them).
     const skipSpeedGain = true;
 
     const url = `${this.config.baseUrl.replace(/\/$/, '')}/audio/speech`;
     const body: Record<string, unknown> = {
-      model:           call.model,
+      model:           req.model,
       voice:           voiceParam,
-      input:           call.text,
-      response_format: call.format,
+      input:           req.text,
+      response_format: req.format,
       stream:          true,
     };
     if (!skipSpeedGain) {
-      body.speed = call.speed ?? 1.0;
+      body.speed = req.speed ?? 1.0;
     }
 
     const startedAt = Date.now();
@@ -56,7 +56,7 @@ export class OpenAiTtsAdapter implements TtsAdapter {
           'Authorization': `Bearer ${this.config.apiKey}`,
         },
         body:   JSON.stringify(body),
-        signal: call.abortSignal,
+        signal: req.abortSignal,
       });
     } catch (err) {
       yield errorEvent(classifyFetchError(err), (err as Error).message);
@@ -75,7 +75,7 @@ export class OpenAiTtsAdapter implements TtsAdapter {
       return;
     }
 
-    const mime = response.headers.get('content-type') ?? mimeForFormat(call.format);
+    const mime = response.headers.get('content-type') ?? mimeForFormat(req.format ?? 'mp3');
 
     try {
       let pending: Uint8Array<ArrayBufferLike> = new Uint8Array(0);

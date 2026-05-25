@@ -1,18 +1,12 @@
 // ── Public API ──────────────────────────────────────────────────────────────
 
 export { TtsClient } from './service.js';
-export type {
-  TtsClientArgs,
-  VoiceProfileLookup,
-  VoiceRefPathResolver,
-} from './service.js';
 
 export { TtsCoordinator } from './coordinator.js';
 export type { TtsCoordinatorArgs } from './coordinator.js';
 
 export type {
   TtsAdapter,
-  TtsAdapterCall,
   TtsProviderConfig,
   TtsRequest,
   TtsStreamEvent,

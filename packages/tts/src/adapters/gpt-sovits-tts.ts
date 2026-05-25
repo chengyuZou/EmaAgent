@@ -1,4 +1,4 @@
-import type { TtsAdapter, TtsAdapterCall, TtsProviderConfig } from '../types.js';
+import type { TtsAdapter, TtsProviderConfig, TtsRequest } from '../types.js';
 import type { TtsStreamEvent, TtsErrorCode } from '@ema-agent/contracts';
 
 // ── GPT-SoVITS local server (api_v2.py) ─────────────────────────────────────
@@ -29,19 +29,19 @@ export class GptSoVitsTtsAdapter implements TtsAdapter {
 
   constructor(private readonly config: TtsProviderConfig) {}
 
-  async *stream(call: TtsAdapterCall): AsyncIterable<TtsStreamEvent> {
+  async *stream(req: TtsRequest): AsyncIterable<TtsStreamEvent> {
     const url = `${this.config.baseUrl.replace(/\/$/, '')}/tts`;
-    const mediaType = mapFormatToGptSovits(call.format);
+    const mediaType = mapFormatToGptSovits(req.format ?? 'mp3');
 
     const body = {
-      text:           call.text,
-      text_lang:      detectLangHint(call.text, call.voice.promptLang),
-      ref_audio_path: call.voice.refAudioPath,
-      prompt_text:    call.voice.promptText,
-      prompt_lang:    call.voice.promptLang,
+      text:           req.text,
+      text_lang:      detectLangHint(req.text, req.voice.promptLang),
+      ref_audio_path: req.voice.refAudioPath,
+      prompt_text:    req.voice.promptText,
+      prompt_lang:    req.voice.promptLang,
       media_type:     mediaType,
       streaming_mode: true,
-      speed_factor:   call.speed ?? 1.0,
+      speed_factor:   req.speed ?? 1.0,
     };
 
     const startedAt = Date.now();
@@ -54,7 +54,7 @@ export class GptSoVitsTtsAdapter implements TtsAdapter {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify(body),
-        signal:  call.abortSignal,
+        signal:  req.abortSignal,
       });
     } catch (err) {
       yield errorEvent(classifyFetchError(err), (err as Error).message);
@@ -78,7 +78,7 @@ export class GptSoVitsTtsAdapter implements TtsAdapter {
       return;
     }
 
-    const mime = response.headers.get('content-type') ?? mimeForFormat(call.format);
+    const mime = response.headers.get('content-type') ?? mimeForFormat(req.format ?? 'mp3');
 
     try {
       let pending: Uint8Array<ArrayBufferLike> = new Uint8Array(0);
