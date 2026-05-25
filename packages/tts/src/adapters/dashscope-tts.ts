@@ -145,7 +145,8 @@ class EventQueue<T> {
 //   3. Send continue-task with text → server sends binary audio frames
 //   4. Send finish-task → wait for task-finished → close
 //
-// Capability matrix says catalog only — `voice.kind` must be 'catalog'.
+// V1 clone-only: voice.voiceUri carries the provider-side voice ID from
+// voice enrollment (声音复刻). uploadVoice() will be implemented later.
 
 class CosyVoiceSession {
   private readonly mime: string;
@@ -158,9 +159,9 @@ class CosyVoiceSession {
   }
 
   async *run(): AsyncGenerator<TtsStreamEvent> {
-    if (this.call.voice.kind !== 'catalog') {
+    if (!this.call.voice.voiceUri) {
       yield { type: 'error', code: 'permanent_unsupported_voice_kind',
-              message: 'cosyvoice (dashscope) accepts catalog voices only in V1' };
+              message: 'cosyvoice (dashscope) requires voiceUri (voice not yet uploaded)' };
       return;
     }
 
@@ -194,8 +195,7 @@ class CosyVoiceSession {
     };
     this.call.abortSignal?.addEventListener('abort', abortHandler);
 
-    const voice = this.call.voice;       // narrowed catalog above
-    if (voice.kind !== 'catalog') return; // re-narrow for TS
+    const voice = this.call.voice;
 
     ws.on('open', () => {
       ws.send(JSON.stringify({
@@ -207,7 +207,7 @@ class CosyVoiceSession {
           model:      this.call.model,
           parameters: {
             text_type:   'PlainText',
-            voice:       voice.voiceId,
+            voice:       voice.voiceUri,
             format:      this.call.format,
             sample_rate: this.call.sampleRate ?? defaultSampleRate(this.call.format),
             volume:      50,
@@ -326,9 +326,9 @@ class QwenTtsRealtimeSession {
   }
 
   async *run(): AsyncGenerator<TtsStreamEvent> {
-    if (this.call.voice.kind !== 'catalog') {
+    if (!this.call.voice.voiceUri) {
       yield { type: 'error', code: 'permanent_unsupported_voice_kind',
-              message: 'qwen-tts (dashscope) accepts catalog voices only' };
+              message: 'qwen-tts (dashscope) requires voiceUri (voice not yet uploaded)' };
       return;
     }
 
@@ -358,13 +358,12 @@ class QwenTtsRealtimeSession {
     this.call.abortSignal?.addEventListener('abort', abortHandler);
 
     const voice = this.call.voice;
-    if (voice.kind !== 'catalog') return; // re-narrow
 
     const audioFormat = audioFormatForSampleRate(this.pcmSr);
 
     ws.on('open', () => {
       const sessionConfig: Record<string, unknown> = {
-        voice:           voice.voiceId,
+        voice:           voice.voiceUri,
         response_format: audioFormat,
         sample_rate:     this.pcmSr,
         mode:            'commit',

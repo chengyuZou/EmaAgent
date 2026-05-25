@@ -6,7 +6,6 @@ import type {
   TtsAdapter,
   TtsProviderConfig,
 } from './types.js';
-import { protocolSupportsVoiceKind } from './types.js';
 
 import { OpenAiTtsAdapter }   from './adapters/openai-tts.js';
 import { GptSoVitsTtsAdapter } from './adapters/gpt-sovits-tts.js';
@@ -34,17 +33,6 @@ export interface VoiceRefPathResolver {
 export interface TtsClientArgs {
   /** All registered TTS provider configs (id → creds). */
   providers: ReadonlyMap<string, TtsProviderConfig>;
-  /**
-   * Optional fallback. When the primary attempt fails AND no audio has been
-   * emitted yet, the service retries with this fallback providerId+model.
-   * Resolved by the wiring layer from settings or a special model_bindings row.
-   */
-  fallback?: {
-    providerId: string;
-    model:      string;
-    voiceId:    string | null;
-    config?:    Record<string, unknown>;
-  };
   voiceProfiles:    VoiceProfileLookup;
   refPathResolver:  VoiceRefPathResolver;
   /** For tests: pre-built adapters keyed by providerConfigId. */
@@ -62,9 +50,10 @@ export interface TtsClientArgs {
  * NO binding lookup inside the client. Callers resolve providerId + model
  * from model_bindings before calling.
  *
- * V1 failover model (memory:project-tts-scope):
- *   primary refAudio fails  → system fallback voice (catalog, different provider)
- *   fallback also fails     → emit error, stream ends without audio
+ * V1 is clone-only: each character must have a reference audio. If a card
+ * has no refAudio, resolveVoice returns null and synthesize emits an error.
+ * There is no system-voice fallback — the frontend is responsible for
+ * disabling TTS when a character lacks voice configuration.
  */
 export class TtsClient {
   /** providerId → adapter instance (hot-reloadable) */
@@ -75,12 +64,10 @@ export class TtsClient {
   // Read-only across reloads
   private readonly voiceProfiles:    VoiceProfileLookup;
   private readonly refPathResolver:  VoiceRefPathResolver;
-  private fallback:                  TtsClientArgs['fallback'];
 
   constructor(args: TtsClientArgs) {
     this.voiceProfiles   = args.voiceProfiles;
     this.refPathResolver = args.refPathResolver;
-    this.fallback        = args.fallback;
     for (const [id, cfg] of args.providers) {
       this.configs.set(id, cfg);
       const override = args.adapterOverrides?.get(id);
@@ -98,11 +85,9 @@ export class TtsClient {
    */
   reload(args: {
     providers: ReadonlyMap<string, TtsProviderConfig>;
-    fallback?: TtsClientArgs['fallback'];
   }): void {
     this.adapters = new Map<string, TtsAdapter>();
     this.configs  = new Map<string, TtsProviderConfig>();
-    this.fallback = args.fallback;
     for (const [id, cfg] of args.providers) {
       this.configs.set(id, cfg);
       this.adapters.set(id, this.createAdapter(cfg));
@@ -143,9 +128,10 @@ export class TtsClient {
    * Uses request.providerId directly to find the adapter — symmetric with
    * LlmRouter.stream(request). No binding lookup inside the client.
    *
-   * If the first sentence fails on the primary provider AND no audio has been
-   * emitted yet, the service retries from scratch with the fallback provider.
-   * If audio has already streamed, errors abort (no swap mid-flight).
+   * V1 is clone-only, single-attempt. If the character has no refAudio,
+   * resolveVoice returns null → emit error. If uploadVoice fails → emit
+   * error. No fallback — the frontend handles the UX (disabled button,
+   * upload prompt).
    */
   async *synthesize(req: TtsRequest): AsyncIterable<TtsStreamEvent> {
     const cleaned = filterTextForTts(req.text, { turnMode: req.turnMode });
@@ -162,70 +148,59 @@ export class TtsClient {
       return;
     }
 
-    const primaryVoice = this.resolveVoice(req.characterId, req.providerId, cfg);
-    if (primaryVoice) {
-      const result = yield* this.streamAllSentences(cleaned, adapter, cfg, primaryVoice, req);
-      if (result.ok) return;
-      // Only fall back if NO audio went out
-      if (result.bytesEmitted > 0) return;
-    }
-
-    // ── Attempt 2: fallback ───────────────────────────────────────────────
-    if (!this.fallback) {
-      yield { type: 'error', code: 'unknown',
-              message: 'primary tts failed and no fallback provider configured' };
+    const voice = this.resolveVoice(req.characterId);
+    if (!voice) {
+      yield { type: 'error', code: 'permanent_refaudio_missing',
+              message: 'character has no reference audio — TTS disabled' };
       return;
     }
 
-    const fbAdapter = this.adapters.get(this.fallback.providerId);
-    const fbCfg     = this.configs.get(this.fallback.providerId);
-    if (!fbAdapter || !fbCfg) {
-      yield { type: 'error', code: 'permanent_bad_request',
-              message: `tts/fallback provider not registered: "${this.fallback.providerId}"` };
-      return;
+    // ── Lazy upload: if voice has no URI yet, upload now ───────────────
+    if (!voice.voiceUri) {
+      try {
+        voice.voiceUri = await this.ensureVoiceUri(adapter, voice, req.model);
+      } catch (err) {
+        yield { type: 'error', code: 'permanent_refaudio_missing',
+                message: `voice upload failed: ${(err as Error).message}` };
+        return;
+      }
     }
 
-    const fallbackVoice = this.resolveVoice(null, this.fallback.providerId, fbCfg);
-    if (!fallbackVoice) {
-      yield { type: 'error', code: 'permanent_bad_request',
-              message: 'fallback provider has no voice — cannot synthesize' };
-      return;
-    }
-
-    const result = yield* this.streamAllSentences(cleaned, fbAdapter, fbCfg, fallbackVoice, req);
-    if (!result.ok) {
-      yield { type: 'error', code: 'unknown', message: 'fallback tts also failed' };
-    }
+    yield* this.streamAllSentences(cleaned, adapter, cfg, voice, req);
   }
 
   // ── Internals ─────────────────────────────────────────────────────────────
 
+  private async ensureVoiceUri(
+    adapter: TtsAdapter,
+    voice:   TtsVoiceRef,
+    model:   string,
+  ): Promise<string> {
+    if (!adapter.uploadVoice) {
+      throw new Error(`adapter ${adapter.protocol} does not support voice upload`);
+    }
+    return adapter.uploadVoice(
+      voice.refAudioPath,
+      voice.promptText,
+      voice.promptLang,
+      model,
+    );
+  }
+
   private resolveVoice(
     characterId: CharacterCardId | null,
-    providerId:  string,
-    cfg:         TtsProviderConfig,
   ): TtsVoiceRef | null {
-    // Read voiceId from the config (wiring layer pushes binding.voiceId into config)
-    const voiceId = (cfg as unknown as { voiceId?: string | null }).voiceId ?? null;
+    if (!characterId) return null;
 
-    if (characterId && protocolSupportsVoiceKind(cfg.protocol, 'clone')) {
-      const profile = this.voiceProfiles.getVoiceProfile(characterId);
-      const primary = pickPrimaryRefAudio(profile);
-      if (primary) {
-        return {
-          kind:         'clone',
-          refAudioPath: this.refPathResolver.resolve(primary.refAudioPath),
-          promptText:   primary.promptText,
-          promptLang:   primary.promptLang,
-        };
-      }
-    }
+    const profile = this.voiceProfiles.getVoiceProfile(characterId);
+    const primary = pickPrimaryRefAudio(profile);
+    if (!primary) return null;
 
-    if (voiceId && protocolSupportsVoiceKind(cfg.protocol, 'catalog')) {
-      return { kind: 'catalog', voiceId };
-    }
-
-    return null;
+    return {
+      refAudioPath: this.refPathResolver.resolve(primary.refAudioPath),
+      promptText:   primary.promptText,
+      promptLang:   primary.promptLang,
+    };
   }
 
   private async *streamAllSentences(
@@ -235,13 +210,6 @@ export class TtsClient {
     voice:     TtsVoiceRef,
     req:       TtsRequest,
   ): AsyncGenerator<TtsStreamEvent, { ok: boolean; bytesEmitted: number }> {
-    // Sanity: capability matrix guard
-    if (!protocolSupportsVoiceKind(cfg.protocol, voice.kind)) {
-      yield { type: 'error', code: 'permanent_unsupported_voice_kind',
-              message: `protocol ${cfg.protocol} cannot use ${voice.kind} voice` };
-      return { ok: false, bytesEmitted: 0 };
-    }
-
     const splitter  = new SentenceSplitter();
     const sentences = [...splitter.feed(text), ...splitter.flush()];
     if (sentences.length === 0) {

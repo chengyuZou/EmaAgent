@@ -18,7 +18,7 @@ import type { TtsStreamEvent, TtsErrorCode } from '@ema-agent/contracts';
 // Response: chunked audio body, content-type matches media_type.
 // On error, body is JSON: { "message": "..." }.
 //
-// Voice MUST be `clone` — GPT-SoVITS has no concept of catalog voices.
+// V1 clone-only: voice carries refAudioPath, promptText, promptLang.
 // `model` field is informational only (GPT-SoVITS doesn't switch weights
 // per-request; users restart the server with different weights).
 
@@ -30,12 +30,6 @@ export class GptSoVitsTtsAdapter implements TtsAdapter {
   constructor(private readonly config: TtsProviderConfig) {}
 
   async *stream(call: TtsAdapterCall): AsyncIterable<TtsStreamEvent> {
-    if (call.voice.kind !== 'clone') {
-      yield errorEvent('permanent_unsupported_voice_kind',
-        'gpt-sovits-tts requires clone voice (refAudio)');
-      return;
-    }
-
     const url = `${this.config.baseUrl.replace(/\/$/, '')}/tts`;
     const mediaType = mapFormatToGptSovits(call.format);
 

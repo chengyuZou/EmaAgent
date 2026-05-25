@@ -1,5 +1,7 @@
 import type { TtsAdapter, TtsAdapterCall, TtsProviderConfig } from '../types.js';
 import type { TtsStreamEvent, TtsErrorCode } from '@ema-agent/contracts';
+import { readFile } from 'node:fs/promises';
+import { basename } from 'node:path';
 
 // ── OpenAI-compatible /v1/audio/speech ──────────────────────────────────────
 //
@@ -8,8 +10,8 @@ import type { TtsStreamEvent, TtsErrorCode } from '@ema-agent/contracts';
 // sentence-level streaming (OpenAI doesn't expose it), but the response starts
 // arriving faster than waiting for the full body.
 //
-// Voice is always `catalog` for this protocol — clone kinds are rejected
-// upstream by the service via the capability matrix.
+// V1 is clone-only: voice must carry a voiceUri (lazy-uploaded by service).
+// CosyVoice2 models skip speed/gain parameters on the clone path.
 
 const CHUNK_BYTES = 8 * 1024;
 
@@ -19,21 +21,27 @@ export class OpenAiTtsAdapter implements TtsAdapter {
   constructor(private readonly config: TtsProviderConfig) {}
 
   async *stream(call: TtsAdapterCall): AsyncIterable<TtsStreamEvent> {
-    if (call.voice.kind !== 'catalog') {
+    if (!call.voice.voiceUri) {
       yield errorEvent('permanent_unsupported_voice_kind',
-        'openai-tts adapter only accepts catalog voices');
+        'openai-tts adapter requires voiceUri (voice not yet uploaded)');
       return;
     }
 
+    const voiceParam = call.voice.voiceUri;
+    // Clone path always skips speed/gain (CosyVoice2 doesn't accept them).
+    const skipSpeedGain = true;
+
     const url = `${this.config.baseUrl.replace(/\/$/, '')}/audio/speech`;
-    const body = {
+    const body: Record<string, unknown> = {
       model:           call.model,
-      voice:           call.voice.voiceId,
+      voice:           voiceParam,
       input:           call.text,
       response_format: call.format,
-      speed:           call.speed ?? 1.0,
       stream:          true,
     };
+    if (!skipSpeedGain) {
+      body.speed = call.speed ?? 1.0;
+    }
 
     const startedAt = Date.now();
     let totalBytes  = 0;
@@ -96,6 +104,47 @@ export class OpenAiTtsAdapter implements TtsAdapter {
 
     yield { type: 'done', totalBytes, firstByteMs };
   }
+
+  /**
+   * Upload a reference audio file for voice cloning.
+   *
+   * SiliconFlow / OpenAI-compatible flow:
+   *   POST /v1/uploads/audio/voice
+   *   multipart/form-data: file, model, customName, text
+   *   Response: { uri: "speech:xxx:xxx" }
+   */
+  async uploadVoice(
+    refAudioPath: string,
+    promptText:   string,
+    promptLang:   string,
+    model:        string,
+  ): Promise<string> {
+    const bytes = await readFile(refAudioPath);
+    const blob  = new Blob([bytes], { type: mimeFromExt(refAudioPath) });
+    const form  = new FormData();
+    form.set('file', blob, basename(refAudioPath));
+    form.set('model', model);
+    form.set('customName', `ema-${basename(refAudioPath, '.mp3')}`);
+    form.set('text', promptText);
+
+    const url = `${this.config.baseUrl.replace(/\/$/, '')}/uploads/audio/voice`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${this.config.apiKey}` },
+      body: form,
+    });
+
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      throw new Error(`Voice upload failed: HTTP ${res.status} ${text.slice(0, 200)}`);
+    }
+
+    const data = await res.json() as { uri?: string };
+    if (!data.uri) {
+      throw new Error(`Voice upload response missing uri: ${JSON.stringify(data)}`);
+    }
+    return data.uri;
+  }
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -138,4 +187,17 @@ function concat(a: Uint8Array<ArrayBufferLike>, b: Uint8Array<ArrayBufferLike>):
   out.set(a, 0);
   out.set(b, a.length);
   return out;
+}
+
+function mimeFromExt(filePath: string): string {
+  const ext = basename(filePath).split('.').pop()?.toLowerCase();
+  switch (ext) {
+    case 'mp3':  return 'audio/mpeg';
+    case 'wav':  return 'audio/wav';
+    case 'flac': return 'audio/flac';
+    case 'ogg':
+    case 'opus': return 'audio/ogg';
+    case 'm4a':  return 'audio/mp4';
+    default:     return 'audio/mpeg';
+  }
 }

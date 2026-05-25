@@ -14,17 +14,11 @@ export type {
   TtsAdapter,
   TtsAdapterCall,
   TtsProviderConfig,
-  TtsResolution,
   TtsRequest,
   TtsStreamEvent,
   TtsVoiceRef,
   TtsAudioFormat,
   TtsProtocol,
-} from './types.js';
-
-export {
-  TTS_PROTOCOL_VOICE_SUPPORT,
-  protocolSupportsVoiceKind,
 } from './types.js';
 
 export { SentenceSplitter } from './streaming/sentence-splitter.js';

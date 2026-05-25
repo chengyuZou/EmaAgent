@@ -15,13 +15,6 @@ import type { TtsStreamEvent } from './types.js';
 
 export interface BridgeContext {
   turnId:         TurnId;
-  /**
-   * If set, `audio_chunk` and `sentence_done` events for sentence indices
-   * starting from this number will be tagged with `?` to indicate they are
-   * coming from a fallback voice (not the primary). Used by frontend to
-   * show a discreet "fallback voice" hint. Defaults to never tag.
-   */
-  fallbackFromIndex?: number;
 }
 
 /**
