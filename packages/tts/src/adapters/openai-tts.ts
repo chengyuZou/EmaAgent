@@ -121,11 +121,13 @@ export class OpenAiTtsAdapter implements TtsAdapter {
   ): Promise<string> {
     const bytes = await readFile(refAudioPath);
     const blob  = new Blob([bytes], { type: mimeFromExt(refAudioPath) });
+    const name  = basename(refAudioPath).replace(/\.[^.]+$/, '');
     const form  = new FormData();
     form.set('file', blob, basename(refAudioPath));
     form.set('model', model);
-    form.set('customName', `ema-${basename(refAudioPath, '.mp3')}`);
+    form.set('customName', `ema-${name}`);
     form.set('text', promptText);
+    form.set('language', promptLang || 'zh');
 
     const url = `${this.config.baseUrl.replace(/\/$/, '')}/uploads/audio/voice`;
     const res = await fetch(url, {
