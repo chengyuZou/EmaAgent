@@ -41,18 +41,21 @@ export type TtsTurnMode = 'chat' | 'narrative' | 'agent';
 // ── Internal voice ref (constructed by service, consumed by adapter) ─────────
 
 /**
- * The shape an adapter actually sees. The service decides whether to send a
- * `catalog` lookup or `clone` parameters based on the binding + card state.
+ * Resolved voice spec passed from the TTS service to adapters.
  *
- * - `catalog`: provider's built-in voice library (OpenAI alloy, Qwen Cherry,
- *   CosyVoice longanyang). Adapter passes voiceId straight through.
- * - `clone`:   user-supplied reference audio. Only GPT-SoVITS and CosyVoice
- *   声音复刻 / 声音设计 understand this. Other adapters reject with
- *   `unsupported_voice_kind` — service must check capability matrix first.
+ * V1 is clone-only: every character MUST have a reference audio. There is no
+ * catalog/system-voice fallback — if a card has no refAudio, TTS is disabled
+ * for that character (frontend shows a disabled button + prompt to upload).
+ *
+ * `voiceUri` is set lazily on first synthesize() via adapter.uploadVoice().
+ * Once set, subsequent turns reuse the cached URI without re-uploading.
  */
-export type TtsVoiceRef =
-  | { kind: 'catalog'; voiceId: string }
-  | { kind: 'clone';   refAudioPath: string; promptText: string; promptLang: string };
+export interface TtsVoiceRef {
+  refAudioPath: string;
+  promptText:   string;
+  promptLang:   string;
+  voiceUri?:    string;
+}
 
 export type TtsAudioFormat = 'mp3' | 'pcm' | 'wav' | 'opus';
 
