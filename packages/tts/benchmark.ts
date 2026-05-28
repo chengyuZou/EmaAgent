@@ -324,30 +324,78 @@ function benchComparison(): void {
     console.log(`  快速路径命中率（纯中文）: ${((fastPathHits / pureZh.length) * 100).toFixed(1)}%`);
   }
 
-  // 5b. 批量扫描 vs 逐字符（模拟对比）
+  // 5b. 批量扫描 vs 逐函数调用（真实开销对比）
+  //
+  // 旧路径：normal 状态非行首时，每个字符调用 step() → onNormal()，
+  //         onNormal 对普通字符做 identity return。开销 = 函数调用 × 字符数。
+  // 新路径：indexOf('\n') 批量定位换行，中间字符直接 slice 拼接，
+  //         只在换行符处触发一次 step()。开销 = indexOf + 一次函数调用。
   {
-    const line = '这是一段很长的没有任何特殊字符的普通中文对话文本用于测试批量扫描性能提升效果。'.repeat(10);
-    // 逐字符方式（旧）
-    const startOld = performance.now();
-    for (let i = 0; i < 50000; i++) {
-      let result = '';
-      for (let j = 0; j < line.length; j++) {
-        result += line[j];
-      }
+    // 模拟旧路径：每个字符走 dispatch 链
+    function identityFilter(ch: string): string {
+      if (ch === '\n') return '\n';
+      return ch; // onNormal 非行首时的实际行为
     }
+
+    function oldStylePerChar(text: string): string {
+      let out = '';
+      for (let i = 0; i < text.length; i++) {
+        out += identityFilter(text[i]!); // step() → onNormal() 调用链
+      }
+      return out;
+    }
+
+    // 模拟新路径：indexOf 批量扫描，只在换行处触发函数
+    function newStyleBatch(text: string): string {
+      let out = '';
+      let pos = 0;
+      while (pos < text.length) {
+        const nl = text.indexOf('\n', pos);
+        if (nl === -1) {
+          out += text.slice(pos);
+          break;
+        }
+        out += text.slice(pos, nl);
+        out += identityFilter(text[nl]!); // 仅 \n 触发函数调用
+        pos = nl + 1;
+      }
+      return out;
+    }
+
+    // 典型中文对话行长度（含标点），模拟 1 万行
+    const lines: string[] = [];
+    const templates = [
+      '你好！我是艾玛，很高兴认识你。',
+      '今天我们来聊一个很有趣的话题吧。',
+      '当然可以，让我来帮你分析一下这个问题。',
+      '根据我的理解，这个方案有三个主要优点。',
+      '嗯…让我再想想，这个问题确实有点复杂呢。',
+    ];
+    for (let i = 0; i < 10000; i++) {
+      lines.push(templates[i % templates.length]!);
+    }
+    const text = lines.join('\n');
+    const totalChars = text.length;
+
+    // 预热
+    oldStylePerChar(text);
+    newStyleBatch(text);
+
+    const startOld = performance.now();
+    for (let i = 0; i < 200; i++) oldStylePerChar(text);
     const oldMs = performance.now() - startOld;
 
-    // 批量方式（新）
     const startNew = performance.now();
-    for (let i = 0; i < 50000; i++) {
-      const nl = line.indexOf('\n');
-      // 模拟：如果没找到 \n，直接 slice 整行
-      const _result = nl === -1 ? line : line.slice(0, nl);
-    }
+    for (let i = 0; i < 200; i++) newStyleBatch(text);
     const newMs = performance.now() - startNew;
 
     const speedup = (oldMs / newMs).toFixed(1);
-    console.log(`  批量扫描 vs 逐字符: ${speedup}x 加速（旧 ${oldMs.toFixed(0)}ms → 新 ${newMs.toFixed(0)}ms）`);
+    const oldMBs = ((totalChars * 200) / (1024 * 1024) / (oldMs / 1000)).toFixed(1);
+    const newMBs = ((totalChars * 200) / (1024 * 1024) / (newMs / 1000)).toFixed(1);
+
+    console.log(`  批量扫描 vs 逐函数调用: ${speedup}x 加速`);
+    console.log(`    旧（逐字符 step 调用）: ${oldMBs} MB/s  |  新（indexOf 批量）: ${newMBs} MB/s`);
+    console.log(`    原理: 每行仅 \\n 触发函数调用，普通字符直接 slice（边际开销约 2%）`);
   }
 
   // 5c. 正则合并效果（行前缀 4→1）
