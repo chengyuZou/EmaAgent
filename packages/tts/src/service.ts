@@ -3,13 +3,14 @@ import type {
   TtsStreamEvent,
   TtsAdapter,
   TtsProviderConfig,
+  TtsHealthResult,
 } from './types.js';
 
 import { OpenAiTtsAdapter }   from './adapters/openai-tts.js';
 import { GptSoVitsTtsAdapter } from './adapters/gpt-sovits-tts.js';
 import { DashscopeTtsAdapter } from './adapters/dashscope-tts.js';
 
-import { filterTextForTts } from './streaming/text-filter.js';
+import { filterSentenceForTts } from './streaming/text-filter.js';
 
 // ── TtsClient ───────────────────────────────────────────────────────────────
 
@@ -87,6 +88,26 @@ export class TtsClient {
     return this.adapters.get(providerId);
   }
 
+  /**
+   * Health check — verifies that at least one TTS provider is configured.
+   *
+   * V1 is a configuration check only (no live API call). A provider is
+   * considered healthy when its adapter was successfully registered (i.e.
+   * its config passed `buildTtsProviderConfig` validation in the wiring layer).
+   * Actual API key validity is verified on first synthesis call.
+   */
+  healthCheck(): TtsHealthResult {
+    const providers = [...this.configs.entries()].map(([id, cfg]) => ({
+      providerId: id,
+      protocol:   cfg.protocol,
+      ok:         this.adapters.has(id),
+    }));
+    return {
+      ok: providers.length > 0 && providers.every((p) => p.ok),
+      providers,
+    };
+  }
+
   private createAdapter(cfg: TtsProviderConfig): TtsAdapter {
     switch (cfg.protocol) {
       case 'openai-tts':     return new OpenAiTtsAdapter(cfg);
@@ -113,7 +134,7 @@ export class TtsClient {
    *   3. Delegates to adapter.stream().
    */
   async *synthesize(req: TtsRequest): AsyncIterable<TtsStreamEvent> {
-    const cleaned = filterTextForTts(req.text, { turnMode: req.turnMode });
+    const cleaned = filterSentenceForTts(req.text, { turnMode: req.turnMode });
     if (cleaned.length === 0) {
       yield { type: 'done', totalBytes: 0, firstByteMs: 0 };
       return;
@@ -123,12 +144,6 @@ export class TtsClient {
     if (!adapter) {
       yield { type: 'error', code: 'permanent_bad_request',
               message: `tts/provider not registered: "${req.providerId}"` };
-      return;
-    }
-
-    if (!req.voice.voiceUri) {
-      yield { type: 'error', code: 'permanent_refaudio_missing',
-              message: 'voice has no voiceUri — caller must resolve before synthesize' };
       return;
     }
 

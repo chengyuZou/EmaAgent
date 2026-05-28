@@ -52,6 +52,21 @@ export interface TtsProviderConfig {
   baseUrl:  string;
 }
 
+// ── Health check ─────────────────────────────────────────────────────────────
+
+export interface TtsProviderHealth {
+  providerId: string;
+  protocol:   TtsProtocol;
+  ok:         boolean;
+  /** Present when ok=false. */
+  reason?:    string;
+}
+
+export interface TtsHealthResult {
+  ok:        boolean;
+  providers: TtsProviderHealth[];
+}
+
 // ── Adapter contract ────────────────────────────────────────────────────────
 
 export interface TtsAdapter {

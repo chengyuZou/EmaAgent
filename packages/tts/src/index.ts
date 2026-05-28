@@ -13,11 +13,14 @@ export type {
   TtsVoiceRef,
   TtsAudioFormat,
   TtsProtocol,
+  TtsHealthResult,
+  TtsProviderHealth,
 } from './types.js';
 
 export { SentenceSplitter } from './streaming/sentence-splitter.js';
 export type { SentenceChunk } from './streaming/sentence-splitter.js';
-export { filterTextForTts } from './streaming/text-filter.js';
+export { TextFilterStream, filterSentenceForTts, filterTextForTts } from './streaming/text-filter.js';
+export type { TtsFilterOptions } from './streaming/text-filter.js';
 
 export { FsAudioArchive } from './archive.js';
 export type { AudioArchive, SegmentWriter } from './archive.js';

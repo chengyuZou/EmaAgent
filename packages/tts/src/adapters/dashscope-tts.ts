@@ -1,4 +1,6 @@
 ﻿import { randomUUID } from 'node:crypto';
+import fs   from 'node:fs/promises';
+import path from 'node:path';
 import WebSocket from 'ws';
 
 import type { TtsAdapter, TtsProviderConfig, TtsRequest } from '../types.js';
@@ -42,6 +44,82 @@ export class DashscopeTtsAdapter implements TtsAdapter {
     return errorOnce('permanent_unsupported_model',
       `dashscope-tts: unknown model "${req.model}" (expected cosyvoice-* or qwen*-tts*)`);
   }
+
+  /**
+   * Upload a local reference audio file to DashScope for voice cloning.
+   * Returns the provider-assigned voice ID to store in VoiceUriCache.
+   *
+   * Protocol routing:
+   *   cosyvoice-*  → model=voice-enrollment,      input.url
+   *   qwen*-tts*   → model=qwen-voice-enrollment,  input.audio.data
+   *
+   * Audio transport: the file is base64-encoded and sent as a data URI.
+   * DashScope docs show https:// URLs, but data URIs work in practice.
+   * If a future DashScope update rejects data URIs, switch to a two-step
+   * approach: first upload the file via the compatible-mode Files API
+   * (POST /compatible-mode/v1/files) to get a hosted URL, then use that URL.
+   */
+  async uploadVoice(
+    refAudioPath: string,
+    _promptText:  string,
+    _promptLang:  string,
+    model:        string,
+  ): Promise<string> {
+    const family = dashscopeModelFamily(model);
+    if (family === 'unknown') {
+      throw new Error(`dashscope-tts: uploadVoice not supported for model "${model}"`);
+    }
+
+    // Read local file and encode as data URI for API transport.
+    const audioBytes = await fs.readFile(refAudioPath);
+    const ext  = path.extname(refAudioPath).slice(1).toLowerCase() || 'wav';
+    const mime = ext === 'mp3' ? 'audio/mpeg' : ext === 'm4a' ? 'audio/mp4' : `audio/${ext}`;
+    const dataUri = `data:${mime};base64,${audioBytes.toString('base64')}`;
+
+    const httpBase   = httpHostFromConfig(this.config.baseUrl).replace(/\/$/, '');
+    const enrollUrl  = `${httpBase}/api/v1/services/audio/tts/customization`;
+
+    const body: Record<string, unknown> = family === 'cosyvoice'
+      ? {
+          model: 'voice-enrollment',
+          input: { action: 'create_voice', target_model: model, prefix: 'ema', url: dataUri },
+        }
+      : {
+          model: 'qwen-voice-enrollment',
+          input: {
+            action: 'create', target_model: model, preferred_name: 'ema',
+            audio: { data: dataUri },
+          },
+        };
+
+    const resp = await fetch(enrollUrl, {
+      method:  'POST',
+      headers: {
+        'Authorization': `Bearer ${this.config.apiKey}`,
+        'Content-Type':  'application/json',
+      },
+      body: JSON.stringify(body),
+    });
+
+    if (!resp.ok) {
+      const text = await resp.text().catch(() => '');
+      throw new Error(`dashscope voice enrollment failed (${resp.status}): ${text}`);
+    }
+
+    // CosyVoice response: { output: { voice_id: "prefix-xxxx" } }
+    // Qwen-TTS response:  { output: { voice: "name-xxxx" } }
+    const json   = await resp.json() as Record<string, unknown>;
+    const output = json['output'] as Record<string, unknown> | undefined;
+    const voiceId = (output?.['voice_id'] ?? output?.['voice']) as string | undefined;
+
+    if (!voiceId) {
+      throw new Error(
+        `dashscope voice enrollment: unexpected response shape — ${JSON.stringify(json)}`,
+      );
+    }
+
+    return voiceId;
+  }
 }
 
 // ── Model family detection ──────────────────────────────────────────────────
@@ -61,6 +139,14 @@ function wsHostFromConfig(baseUrl: string): string {
   if (baseUrl.startsWith('https://')) return 'wss://' + baseUrl.slice('https://'.length);
   if (baseUrl.startsWith('http://')) return 'ws://' + baseUrl.slice('http://'.length);
   return HOST_DEFAULT;
+}
+
+function httpHostFromConfig(baseUrl: string): string {
+  // Inverse of wsHostFromConfig — needed for REST enrollment API calls.
+  if (baseUrl.startsWith('https://') || baseUrl.startsWith('http://')) return baseUrl;
+  if (baseUrl.startsWith('wss://')) return 'https://' + baseUrl.slice('wss://'.length);
+  if (baseUrl.startsWith('ws://')) return 'http://' + baseUrl.slice('ws://'.length);
+  return 'https://dashscope.aliyuncs.com';
 }
 
 async function* errorOnce(code: TtsErrorCode, message: string): AsyncGenerator<TtsStreamEvent> {

@@ -51,6 +51,9 @@ apps/bridge/data/narrative/memory/*/kv_store_*.json
 *.d.ts
 *.d.ts.map
 
+# TTS live-test output (generated audio + voice URIs)
+packages/tts/test-output/
+
 # Misc
 *.local
 uv.lock

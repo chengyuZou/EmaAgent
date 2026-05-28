@@ -7,6 +7,7 @@ import { PRIORITY } from '@ema-agent/hook';
 import { TtsClient } from './service.js';
 import type { TtsVoiceRef } from './types.js';
 import { SentenceSplitter } from './streaming/sentence-splitter.js';
+import { TextFilterStream } from './streaming/text-filter.js';
 import { ttsEventToEma, makeSentenceId } from './bridge.js';
 import type { AudioArchive } from './archive.js';
 
@@ -65,6 +66,7 @@ export class TtsCoordinator {
   private readonly archive:     AudioArchive | undefined;
   private readonly format:      'mp3' | 'pcm' | 'wav' | 'opus';
 
+  private readonly textFilter: TextFilterStream;
   private readonly splitter = new SentenceSplitter();
   private unregister: (() => void) | null = null;
   private chain:      Promise<void>       = Promise.resolve();
@@ -83,6 +85,7 @@ export class TtsCoordinator {
     this.emit        = args.emit;
     this.archive     = args.archive;
     this.format      = args.format ?? 'mp3';
+    this.textFilter  = new TextFilterStream(args.turnMode ?? 'chat');
   }
 
   /** Register the afterLlmDelta hook. Call once at turn start. */
@@ -92,9 +95,11 @@ export class TtsCoordinator {
     const handler = async (
       ctx: HookContext<'afterLlmDelta'>,
     ): Promise<HookResult<'afterLlmDelta'>> => {
-      const sentences = this.splitter.feed(ctx.payload.delta);
-      for (const s of sentences) {
-        this.enqueue(s.index, s.text);
+      const filtered = this.textFilter.feed(ctx.payload.delta);
+      if (filtered) {
+        for (const s of this.splitter.feed(filtered)) {
+          this.enqueue(s.index, s.text);
+        }
       }
       return { kind: 'continue' };
     };
@@ -118,7 +123,14 @@ export class TtsCoordinator {
     this.unregister?.();
     this.unregister = null;
 
-    for (const s of this.splitter.flush()) {
+    // Flush the text filter first — it may emit a code-replacement string for
+    // an unclosed block. Then flush the sentence splitter for any trailing text.
+    const filterRemnant = this.textFilter.flush();
+    const tail = [
+      ...(filterRemnant ? this.splitter.feed(filterRemnant) : []),
+      ...this.splitter.flush(),
+    ];
+    for (const s of tail) {
       this.enqueue(s.index, s.text);
     }
 

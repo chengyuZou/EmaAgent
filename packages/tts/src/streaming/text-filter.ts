@@ -45,7 +45,9 @@ export class TextFilterStream {
    *
    * 代码块 / 数学块内容被丢弃，在关闭时 emit 一个替换词。
    * 替换词包含语言标识（如有）：`(python代码)` / `(代码)` / `(数学公式)`。
-   * 普通文本零延迟直通（最多 2 字符行首 lookahead）。
+   *
+   * 性能：normal 状态非行首时批量扫描到下一个 \n，避免逐字符 step() 调用。
+   * 对于典型的对话文本（每行 20-60 字符），此优化将函数调用次数减少约 95%。
    */
   feed(chunk: string): string {
     let out = '';
@@ -54,6 +56,25 @@ export class TextFilterStream {
 
     while (pos < len) {
       switch (this.state) {
+
+        // ── normal 非行首：批量扫描到换行符 ──────────────────────────────
+        case 'normal': {
+          if (!this.atLineStart) {
+            const nl = chunk.indexOf('\n', pos);
+            if (nl === -1) {
+              // 整个 chunk 剩余都是行内普通文本，直接拼接
+              out += chunk.slice(pos);
+              return out;
+            }
+            // 批量复制到换行符之前，然后逐字符处理 \n
+            out += chunk.slice(pos, nl);
+            pos = nl;
+            out += this.step(chunk[pos]!);
+            pos++;
+            continue;
+          }
+          break;
+        }
 
         // ── in_opener：快速跳行，同时收集语言标识 ─────────────────────────
         case 'in_opener': {
@@ -257,26 +278,27 @@ export class TextFilterStream {
 // 无状态过滤，作用于 SentenceSplitter 已切出的完整句子。
 // 此时块级结构已由 TextFilterStream 处理完毕，只需清理行内 markdown 与 URL/路径。
 // 处理顺序很重要——详见 docs/streaming-pipeline.md §filterSentenceForTts。
+//
+// 注意：ACT 标签（<|ACT:...|>）由 @ema-agent/emotion 包在更高优先级处理，
+// TTS 到达此函数时输入已不含 ACT 标签，故不再重复清理。
 
-const RE_ACT_MARKER    = /<\|(?:ACT|DELAY)[^|]*\|>/g;
 const RE_HTML_TAG      = /<\/?[a-zA-Z][^>]*>/g;
 const RE_MD_IMAGE      = /!\[[^\]]*\]\([^)]+\)/g;
 const RE_MD_LINK       = /\[([^\]]*)\]\([^)]+\)/g;
 
-const RE_HEADING       = /^#{1,6}\s+/gm;
-const RE_BLOCKQUOTE    = /^>\s*/gm;
+// 行前缀合并：heading / blockquote / 无序列表 / 有序列表 → 一次 replace
+const RE_LINE_PREFIX   = /^(?:#{1,6}\s+|>\s*|[-*+]\s+|\d+\.\s+)/gm;
 const RE_HR            = /^[-*_]{3,}\s*$/gm;
 const RE_TABLE_SEP     = /^[|:\- ]+\|[|:\- ]*$/gm;
 const RE_TABLE_PIPE    = /\|/g;
-const RE_LIST_BULLET   = /^[-*+]\s+/gm;
-const RE_LIST_ORDERED  = /^\d+\.\s+/gm;
 
-const RE_BOLD_STAR     = /\*\*([^*\n]+)\*\*/g;
-const RE_BOLD_UNDER    = /__([^_\n]+)__/g;
+// 粗体合并：**text** 和 __text__ → 一次 replace + 函数选择捕获组
+const RE_BOLD          = /\*\*([^*\n]+)\*\*|__([^_\n]+)__/g;
 const RE_ITALIC_STAR   = /(?<!\*)\*(?!\*)([^*\n]+)(?<!\*)\*(?!\*)/g;
 const RE_ITALIC_UNDER  = /(?<!_)_(?!_)([^_\n]+)(?<!_)_(?!_)/g;
 const RE_STRIKETHROUGH = /~~([^~\n]+)~~/g;
-const RE_INLINE_CODE   = /(\`{1,2})([^\`\n]+)\1/g;
+// 限制行内代码内容最长 500 字符，防止不成对反引号导致灾难性回溯
+const RE_INLINE_CODE   = /(`{1,2})([^`\n]{1,500}?)\1/g;
 const RE_MATH_INLINE   = /\$(?!\d)([^$\n]+)\$/g;
 const RE_MATH_LATEX_I  = /\\\([^)]*\\\)/g;
 
@@ -289,21 +311,20 @@ export interface TtsFilterOptions {
 }
 
 export function filterSentenceForTts(text: string, opts: TtsFilterOptions): string {
+  // 快速路径：纯文本不含任何 markdown / URL / 路径特征字符，直接返回
+  // 覆盖大部分正常对话句子（中文全角标点不触发此检查）
+  if (!/[<![\]*_`$#>\-~|:\\/]/.test(text)) return text.trim();
+
   let out = text;
 
-  out = out.replace(RE_ACT_MARKER,    '');
   out = out.replace(RE_MD_IMAGE,      '(图片)');
   out = out.replace(RE_MD_LINK,       '$1');
   out = out.replace(RE_HTML_TAG,      '');
-  out = out.replace(RE_HEADING,       '');
-  out = out.replace(RE_BLOCKQUOTE,    '');
+  out = out.replace(RE_LINE_PREFIX,   '');
   out = out.replace(RE_HR,            '');
   out = out.replace(RE_TABLE_SEP,     '');
   out = out.replace(RE_TABLE_PIPE,    ' ');
-  out = out.replace(RE_LIST_BULLET,   '');
-  out = out.replace(RE_LIST_ORDERED,  '');
-  out = out.replace(RE_BOLD_STAR,     '$1');
-  out = out.replace(RE_BOLD_UNDER,    '$1');
+  out = out.replace(RE_BOLD,          (_m, s1, s2) => s1 || s2);
   out = out.replace(RE_ITALIC_STAR,   '$1');
   out = out.replace(RE_ITALIC_UNDER,  '$1');
   out = out.replace(RE_STRIKETHROUGH, '$1');
