@@ -351,7 +351,7 @@ function filterSentenceForTts(text: string, opts: { turnMode?: TtsTurnMode }): s
 
 ## 性能
 
-测试环境：Node.js 20，Intel Core i7-12700H，Windows 11
+测试环境：Node.js 20，Intel Core i9，Windows 11
 
 | 场景 | 结果 |
 |---|---|
