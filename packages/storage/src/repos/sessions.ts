@@ -288,9 +288,10 @@ export class SessionsRepo {
   patch(
     id: SessionId,
     patch: {
-      title?:      string;
-      pinned?:     boolean;
-      groupLabel?: string | null;
+      title?:          string;
+      pinned?:         boolean;
+      groupLabel?:     string | null;
+      workspaceRoots?: string[];
     },
     now: number,
   ): void {
@@ -310,6 +311,10 @@ export class SessionsRepo {
     if (patch.groupLabel !== undefined) {
       setClauses.push('group_label = ?');
       values.push(patch.groupLabel);
+    }
+    if (patch.workspaceRoots !== undefined) {
+      setClauses.push('workspace_roots_json = ?');
+      values.push(JSON.stringify(patch.workspaceRoots));
     }
 
     if (setClauses.length === 0) return;

@@ -218,9 +218,10 @@ export class SessionStore {
   patchSession(
     id: SessionId,
     patch: {
-      title?:      string;
-      pinned?:     boolean;
-      groupLabel?: string | null;
+      title?:          string;
+      pinned?:         boolean;
+      groupLabel?:     string | null;
+      workspaceRoots?: string[];
     },
   ): void {
     const cleaned: typeof patch = {};
@@ -235,6 +236,9 @@ export class SessionStore {
         ? null
         : patch.groupLabel.trim() || null;
       cleaned.groupLabel = normalised;
+    }
+    if (patch.workspaceRoots !== undefined) {
+      cleaned.workspaceRoots = patch.workspaceRoots;
     }
 
     if (Object.keys(cleaned).length === 0) return;

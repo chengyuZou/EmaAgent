@@ -57,7 +57,7 @@ export class MessagesRepo {
   listForSession(sessionId: SessionId, limit = 500): MessageRow[] {
     return this.db
       .prepare(
-        'SELECT * FROM messages WHERE session_id = ? ORDER BY created_at ASC LIMIT ?',
+        'SELECT * FROM messages WHERE session_id = ? ORDER BY created_at DESC LIMIT ?',
       )
       .all(sessionId, limit) as MessageRow[];
   }
