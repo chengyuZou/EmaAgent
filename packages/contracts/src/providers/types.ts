@@ -88,15 +88,26 @@ export interface ProviderDefinition {
   id: string;
   /** Display name in the settings UI. */
   name: string;
-  /** Pre-filled base URL; user can override per provider_config. */
+  /**
+   * Default base URL for the primary protocol. When a provider uses different
+   * endpoints per protocol, use `protocolBaseUrls` instead.
+   */
   defaultBaseUrl?: string;
+  /**
+   * Per-protocol base URLs. Takes precedence over `defaultBaseUrl` when the
+   * user selects a specific protocol. Useful when a provider exposes the same
+   * models at different endpoints for different wire formats (e.g. DeepSeek
+   * has `/v1/...` for OpenAI and `/anthropic/...` for Anthropic).
+   */
+  protocolBaseUrls?: Partial<Record<ProtocolFamily, string>>;
   /** Maximum set of capabilities this provider offers. */
   capabilities: readonly Capability[];
   /**
-   * Protocol used for each capability. Only declare capabilities you intend
-   * to expose AND have an adapter for.
+   * Protocol(s) supported for each capability. A single value means only one
+   * protocol is available; an array lets the user pick when adding a config.
+   * Only declare capabilities you intend to expose AND have an adapter for.
    */
-  protocols: Partial<Record<Capability, ProtocolFamily>>;
+  protocols: Partial<Record<Capability, ProtocolFamily | readonly ProtocolFamily[]>>;
   /** Recommended models per capability — shown in the model picker. */
   defaultModels?: Partial<Record<Capability, readonly string[]>>;
   /** Icon hint, e.g. `i-lobe-icons:deepseek`. Frontend maps to actual asset. */
@@ -133,4 +144,35 @@ export interface ProviderDefinition {
  */
 export function defineProvider<const T extends ProviderDefinition>(def: T): T {
   return def;
+}
+
+/**
+ * Normalise a protocol declaration to an array.
+ * Single value → [value]; array → array; undefined → [].
+ *
+ * @example
+ *   resolveProtocols(def.protocols.llm)
+ *   // 'openai-llm'                      → ['openai-llm']
+ *   // ['openai-llm', 'anthropic-llm']   → ['openai-llm', 'anthropic-llm']
+ *   // undefined                          → []
+ */
+export function resolveProtocols(
+  proto: ProtocolFamily | readonly ProtocolFamily[] | undefined,
+): ProtocolFamily[] {
+  if (!proto) return [];
+  return Array.isArray(proto) ? [...proto] : [proto as ProtocolFamily];
+}
+
+/**
+ * Resolve the default base URL for a given protocol choice.
+ * Checks `protocolBaseUrls` first, falls back to `defaultBaseUrl`.
+ */
+export function resolveBaseUrl(
+  def: ProviderDefinition,
+  protocol?: ProtocolFamily,
+): string | undefined {
+  if (protocol && def.protocolBaseUrls?.[protocol]) {
+    return def.protocolBaseUrls[protocol];
+  }
+  return def.defaultBaseUrl;
 }

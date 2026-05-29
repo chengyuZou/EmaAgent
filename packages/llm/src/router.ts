@@ -3,11 +3,14 @@ import { AnthropicAdapter } from './adapters/anthropic.js';
 import { GeminiAdapter }    from './adapters/gemini.js';
 import type { LlmAdapter }  from './adapters/base.js';
 import { withRetry }        from './retry.js';
+import { validateContentParts } from './validate.js';
+import type { UnsupportedPart } from './validate.js';
 import type {
   ProviderConfig,
   LlmRequest,
   LlmStreamChunk,
   LlmCompletion,
+  LlmContentPart,
   ProbeResult,
   StopReason,
   AssistantBlock,
@@ -180,5 +183,16 @@ export class LlmRouter {
   /** Returns the defaultModel for a given provider id, or undefined. */
   defaultModelFor(providerId: string): string | undefined {
     return this.configs.get(providerId)?.defaultModel;
+  }
+
+  /**
+   * Check which content parts are incompatible with the given provider.
+   * Looks up the provider's protocol internally — callers never need to know
+   * which wire format the provider uses.
+   * Returns an empty array when everything is compatible.
+   */
+  warnUnsupportedParts(providerId: string, parts: LlmContentPart[]): UnsupportedPart[] {
+    const protocol = this.configs.get(providerId)?.protocol ?? 'openai-llm';
+    return validateContentParts(parts, protocol);
   }
 }
