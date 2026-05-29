@@ -4,12 +4,18 @@ export const provider = defineProvider({
   id: 'openai',
   name: 'OpenAI',
   defaultBaseUrl: 'https://api.openai.com/v1',
+  protocolBaseUrls: {
+    'openai-llm':   'https://api.openai.com/v1',
+    'openai-embed': 'https://api.openai.com/v1',
+    'openai-tts':   'https://api.openai.com/v1',
+    'openai-stt':   'https://api.openai.com/v1',
+  },
   capabilities: ['llm', 'embed', 'tts', 'stt'],
   protocols: {
-    llm:   'openai-llm',
-    embed: 'openai-embed',
-    tts:   'openai-tts',
-    stt:   'openai-stt',
+    llm:   ['openai-llm'],
+    embed: ['openai-embed'],
+    tts:   ['openai-tts'],
+    stt:   ['openai-stt'],
   },
   defaultModels: {
     llm:   ['gpt-4o', 'gpt-4o-mini', 'gpt-4.1'],
@@ -18,4 +24,5 @@ export const provider = defineProvider({
     stt:   ['whisper-1', 'gpt-4o-transcribe', 'gpt-4o-mini-transcribe'],
   },
   iconKey: 'i-lobe-icons:openai',
+  iconColor: 'i-lobe-icons:openai-color',
 });

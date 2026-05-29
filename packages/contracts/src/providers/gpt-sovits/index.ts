@@ -19,11 +19,13 @@ export const provider = defineProvider({
   id: 'gpt-sovits',
   name: 'GPT-SoVITS (本地)',
   defaultBaseUrl: 'http://127.0.0.1:9880',
+  protocolBaseUrls: { 'gpt-sovits-tts': 'http://127.0.0.1:9880' },
   capabilities: ['tts'],
-  protocols: { tts: 'gpt-sovits-tts' },
+  protocols: { tts: ['gpt-sovits-tts'] },
   requiresCredentials: false,
   defaultModels: {
     tts: ['default'],
   },
   iconKey: 'i-lobe-icons:huggingface',
+  iconColor: 'i-lobe-icons:huggingface-color',
 });

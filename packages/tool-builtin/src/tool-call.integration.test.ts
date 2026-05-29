@@ -157,7 +157,7 @@ async function agentLoop(
 beforeAll(() => {
   router = new LlmRouter([{
     id:           PROVIDER_ID,
-    provider:     'openai-llm',
+    protocol:     'openai-llm',
     apiKey:       DS_KEY,
     baseUrl:      'https://api.deepseek.com',
     defaultModel: MODEL,

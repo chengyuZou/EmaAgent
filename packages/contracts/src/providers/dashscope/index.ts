@@ -17,10 +17,9 @@ export const provider = defineProvider({
   id: 'dashscope',
   name: '阿里云百炼 (DashScope)',
   defaultBaseUrl: 'https://dashscope.aliyuncs.com',
+  protocolBaseUrls: { 'dashscope-tts': 'https://dashscope.aliyuncs.com' },
   capabilities: ['tts'],
-  protocols: {
-    tts: 'dashscope-tts',
-  },
+  protocols: { tts: ['dashscope-tts'] },
   defaultModels: {
     tts: [
       // CosyVoice 系列
