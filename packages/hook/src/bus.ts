@@ -54,8 +54,23 @@ export interface HookOptions {
 }
 
 export interface HookBusOptions {
-  maxConcurrency?: number;
-  parallelEvents?: ReadonlySet<HookEvent>;
+  maxConcurrency?:   number;
+  parallelEvents?:   ReadonlySet<HookEvent>;
+  /**
+   * Called after EVERY handler execution (success or error).
+   * Use for structured logging, telemetry, or test assertions.
+   *
+   * In production, wire this to emit `system_warning` for slow/errored
+   * handlers AND to a ring buffer so the settings diagnostics panel
+   * can display recent hook activity.
+   */
+  traceSink?:        (entry: HookTraceEntry) => void;
+  /**
+   * When true, registering a handler without `opts.name` AND whose
+   * function has no `.name` property prints a console warning.
+   * Defaults to false — set true in dev / debug builds.
+   */
+  warnAnonymous?:    boolean;
 }
 
 export interface RegisteredHook {
@@ -64,6 +79,20 @@ export interface RegisteredHook {
   priority: number;
   critical: boolean;
   parallel: boolean;
+}
+
+// ── Trace ────────────────────────────────────────────────────────────────────
+
+/** Emitted by traceSink after every handler run (success or error). */
+export interface HookTraceEntry {
+  event:          HookEvent;
+  handlerName:    string;
+  durationMs:     number;
+  result:         'continue' | 'replace' | 'abort' | 'error';
+  /** Reason string for abort / error; absent for continue / replace. */
+  reason?:        string;
+  /** True when the handler returned `kind: 'replace'`. */
+  payloadReplaced: boolean;
 }
 
 // ── Internal registration entry ───────────────────────────────────────────────
@@ -151,14 +180,13 @@ function buildBatches<E extends HookEvent>(
 // ── HookBus ───────────────────────────────────────────────────────────────────
 
 export class HookBus {
-  // TypeScript cannot preserve the generic correlation between HookEvent and
-  // HandlerEntry<E> inside a plain Map, so entries are stored erased internally
-  // and recovered at trigger() time.
   private readonly registry = new Map<HookEvent, HandlerEntry<HookEvent>[]>();
+  private readonly options: HookBusOptions;
   private readonly maxConcurrency: number;
   private readonly parallelEvents: ReadonlySet<HookEvent>;
 
   constructor(options: HookBusOptions = {}) {
+    this.options        = options;
     this.maxConcurrency = options.maxConcurrency ?? Number.POSITIVE_INFINITY;
     this.parallelEvents = options.parallelEvents ?? DEFAULT_PARALLEL_EVENTS;
 
@@ -187,6 +215,10 @@ export class HookBus {
       critical: opts.critical ?? true,
       parallel: opts.parallel ?? false,
     };
+
+    if (this.options.warnAnonymous && entry.name === '<anonymous>') {
+      console.warn(`[HookBus] anonymous handler registered for "${event}" — pass opts.name for traceability`);
+    }
 
     if (!this.registry.has(event)) {
       this.registry.set(event, []);
@@ -305,15 +337,32 @@ export class HookBus {
     payload: HookPayload[E],
     warnings: HookWarning[],
   ): Promise<HookResult<E>> {
-    const handlerCtx: HookContext<E> = {
-      ...baseCtx,
-      payload,
-    } as HookContext<E>;
+    const handlerCtx: HookContext<E> = { ...baseCtx, payload } as HookContext<E>;
+    const t0 = performance.now();
 
     try {
-      return await entry.handler(handlerCtx);
+      const result = await entry.handler(handlerCtx);
+      this.options.traceSink?.({
+        event:           event,
+        handlerName:     entry.name,
+        durationMs:      performance.now() - t0,
+        result:          result.kind,
+        reason:          result.kind === 'abort' ? result.reason : undefined,
+        payloadReplaced: result.kind === 'replace',
+      });
+      return result;
     } catch (err) {
       const reason = errorToReason(err);
+      const durationMs = performance.now() - t0;
+
+      this.options.traceSink?.({
+        event:           event,
+        handlerName:     entry.name,
+        durationMs,
+        result:          'error',
+        reason,
+        payloadReplaced: false,
+      });
 
       if (entry.critical) {
         return {

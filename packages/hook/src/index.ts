@@ -15,4 +15,5 @@ export type {
   HookOptions,
   HookBusOptions,
   RegisteredHook,
+  HookTraceEntry,
 } from './bus.js';

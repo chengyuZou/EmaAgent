@@ -1,7 +1,7 @@
 # @ema-agent/hook
 
 > EmaAgent 的 Hook 事件系统 —— 基于优先级的、可扩展的事件总线，支持串行/并行分批执行处理器。
-> 更新时间 2026-5-13 11:49
+> 更新时间 2026-5-30 10:00
 
 ---
 
@@ -227,6 +227,21 @@ type HookHandler<E extends HookEvent> = (
 |---|---|---|---|
 | `maxConcurrency` | `number` | `Infinity` | 并行处理器的最大并发数。必须 ≥ 1 |
 | `parallelEvents` | `ReadonlySet<HookEvent>` | `DEFAULT_PARALLEL_EVENTS` | 允许并行执行的事件集合 |
+| `traceSink` | `(entry: HookTraceEntry) => void` | `undefined` | 每次 handler 执行完毕后回调（无论成功/失败）。用于结构化日志、遥测、诊断面板。 |
+| `warnAnonymous` | `boolean` | `false` | 为 `true` 时，注册匿名 handler 会在控制台打印警告。建议 dev 环境开启。 |
+
+#### `HookTraceEntry`
+
+`traceSink` 回调收到的单次执行记录：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `event` | `HookEvent` | 触发的事件名 |
+| `handlerName` | `string` | 处理器名称 |
+| `durationMs` | `number` | 执行耗时（毫秒） |
+| `result` | `'continue' \| 'replace' \| 'abort' \| 'error'` | 执行结果 |
+| `reason` | `string?` | 仅在 abort/error 时有值，描述原因 |
+| `payloadReplaced` | `boolean` | handler 是否返回了 `replace` |
 
 #### `RegisteredHook`
 
@@ -453,6 +468,7 @@ export type { HookEvent, HookPayload } from './events.js';
 export type {
   HookContext, HookHandler, HookResult, HookTriggerResult,
   HookWarning, HookOptions, HookBusOptions, RegisteredHook,
+  HookTraceEntry,
 } from './bus.js';
 ```
 
