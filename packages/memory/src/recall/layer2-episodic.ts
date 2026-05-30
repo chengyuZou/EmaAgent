@@ -100,13 +100,13 @@ function rankByVector(
   }
 
   // Fallback: DB scan + brute-force dot product
-  const rows = deps.items.listEmbeddable(queryEmbed.providerId);
+  const rows = deps.items.listEmbeddable(queryEmbed.model);
   type Scored = { row: MemoryItemRow; score: number };
   const scored: Scored[] = [];
   for (const row of rows) {
-    if (alreadySurfaced.has(row.id)) continue;
-    if (!row.embedding)              continue;
-    if (row.embedding_dim !== queryEmbed.dim) continue;
+    if (alreadySurfaced.has(row.id))            continue;
+    if (!row.embedding)                         continue;
+    if (row.embedding_dim !== queryEmbed.dim)   continue;  // guard against malformed data
     const vec = unpackEmbedding(row.embedding, queryEmbed.dim);
     const score = dotProduct(queryVec, vec);
     if (score <= 0) continue;

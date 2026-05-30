@@ -138,8 +138,11 @@ export class MemoryPlanner {
     const providerId = this.embed.currentProviderId();
     if (!providerId) return { nodes: 0, items: 0, backend: null };
 
-    const dim = this.deps.ebd.embedDimFor(providerId);
+    const dim   = this.deps.ebd.embedDimFor(providerId);
     if (!dim) return { nodes: 0, items: 0, backend: null };
+
+    const model = this.deps.ebd.defaultEmbedModelFor(providerId);
+    if (!model) return { nodes: 0, items: 0, backend: null };
 
     const t0 = Date.now();
     this.indexProviderId = providerId;
@@ -147,8 +150,8 @@ export class MemoryPlanner {
     this.nodesIndex      = await createVectorIndex(dim);
     this.itemsIndex      = await createVectorIndex(dim);
 
-    const nodes = rebuildNodesIndex(this.nodesIndex, this.deps.nodes, providerId);
-    const items = rebuildItemsIndex(this.itemsIndex, this.deps.items, providerId);
+    const nodes = rebuildNodesIndex(this.nodesIndex, this.deps.nodes, model);
+    const items = rebuildItemsIndex(this.itemsIndex, this.deps.items, model);
 
     this.deps.emit?.({
       type:       'memory_index_rebuilt',

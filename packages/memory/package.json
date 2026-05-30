@@ -17,6 +17,8 @@
     "dev": "tsc -p tsconfig.json --watch",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
+    "bench": "npx tsx bench/index.ts",
+    "bench:convert": "npx tsx bench/scripts/convert-oracle.ts",
     "clean": "rimraf dist"
   },
   "dependencies": {

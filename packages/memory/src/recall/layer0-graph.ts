@@ -133,13 +133,13 @@ function findAnchors(
   }
 
   // Fallback: scan DB rows + brute-force cosine
-  const rows = deps.nodes.listEmbeddable(queryEmbed.providerId);
+  const rows = deps.nodes.listEmbeddable(queryEmbed.model);
   type Scored = { row: MemoryNodeRow; score: number };
   const scored: Scored[] = [];
   for (const row of rows) {
-    if (alreadySurfaced.has(row.id)) continue;
-    if (!row.embedding)              continue;
-    if (row.embedding_dim !== queryEmbed.dim) continue;
+    if (alreadySurfaced.has(row.id))            continue;
+    if (!row.embedding)                         continue;
+    if (row.embedding_dim !== queryEmbed.dim)   continue;  // guard against malformed data
     const vec = unpackEmbedding(row.embedding, queryEmbed.dim);
     const score = dotProduct(queryVec, vec);
     if (score <= 0) continue;

@@ -1,0 +1,47 @@
+{
+  "generatedAt": "2026-05-29T13:46:50.378Z",
+  "topK": 6,
+  "sampleN": 120,
+  "overall": {
+    "n": 120,
+    "answerHitRate": 0.925,
+    "answerHitAt1": 0.8916666666666667,
+    "extractionRecall": 0.9666666666666667,
+    "mrr": 0.90375,
+    "avgItemsPerCase": 8.1
+  },
+  "byType": {
+    "temporal": {
+      "n": 29,
+      "answerHitRate": 0.896551724137931,
+      "answerHitAt1": 0.8620689655172413,
+      "extractionRecall": 0.9655172413793104,
+      "mrr": 0.8689655172413793,
+      "avgItemsPerCase": 8.482758620689655
+    },
+    "knowledge_update": {
+      "n": 17,
+      "answerHitRate": 0.8235294117647058,
+      "answerHitAt1": 0.7647058823529411,
+      "extractionRecall": 0.8823529411764706,
+      "mrr": 0.7941176470588235,
+      "avgItemsPerCase": 7.9411764705882355
+    },
+    "multi_session": {
+      "n": 33,
+      "answerHitRate": 0.9090909090909091,
+      "answerHitAt1": 0.8787878787878788,
+      "extractionRecall": 0.9696969696969697,
+      "mrr": 0.8939393939393939,
+      "avgItemsPerCase": 7.96969696969697
+    },
+    "single_hop": {
+      "n": 41,
+      "answerHitRate": 1,
+      "answerHitAt1": 0.975609756097561,
+      "extractionRecall": 1,
+      "mrr": 0.9817073170731707,
+      "avgItemsPerCase": 8
+    }
+  }
+}
