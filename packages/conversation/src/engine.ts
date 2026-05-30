@@ -1,6 +1,5 @@
 import type { EmaStreamEvent } from '@ema-agent/contracts';
 import type { LlmMessage, LlmContentPart, AssistantBlock, UserBlock } from '@ema-agent/llm';
-import { validateContentParts } from '@ema-agent/llm';
 import type { Message } from '@ema-agent/session';
 import type { MessageBlocks } from '@ema-agent/session';
 import type { HookBus, HookContext, HookTriggerResult } from '@ema-agent/hook';
@@ -61,6 +60,19 @@ async function* runTurn(
 
     yield { type: 'turn_started', turnId, mode };
 
+    // ── Provider resolution (early — needed for content-part validation) ─────
+    const binding = deps.modelBindings.get(mode as 'chat' | 'narrative');
+    const providerId = binding?.providerConfigId ?? llm.firstProviderId();
+    const resolvedModel = input.model
+      ?? binding?.model
+      ?? (providerId ? llm.defaultModelFor(providerId) : undefined);
+
+    if (!providerId || !resolvedModel) {
+      session.failTurn(turnId, 'provider/not_configured', 'No LLM provider configured for this mode');
+      yield { type: 'turn_failed', turnId, code: 'provider/not_configured', message: 'No LLM provider configured for this mode' };
+      return;
+    }
+
     // ── Context + user message ────────────────────────────────────────────────
     const history = session.loadHistory(input.sessionId);
 
@@ -86,9 +98,11 @@ async function* runTurn(
       },
     ];
 
+    // Warn about attachments the resolved provider can't handle.
+    // LlmRouter looks up the protocol internally — engine never needs to know it.
     const partsToCheck = Array.isArray(userBlocks) ? userBlocks : [];
     if (partsToCheck.length > 0) {
-      const issues = validateContentParts(partsToCheck, input.protocol ?? 'openai-llm');
+      const issues = llm.warnUnsupportedParts(providerId, partsToCheck);
       if (issues.length > 0) {
         yield {
           type: 'system_warning',
@@ -119,19 +133,6 @@ async function* runTurn(
       return;
     }
     const finalMessages = llmHookResult.payload.messages;
-
-    // ── Provider resolution ───────────────────────────────────────────────────
-    const binding = deps.modelBindings.get(mode as 'chat' | 'narrative');
-    const providerId = binding?.providerConfigId ?? llm.firstProviderId();
-    const resolvedModel = input.model
-      ?? binding?.model
-      ?? (providerId ? llm.defaultModelFor(providerId) : undefined);
-
-    if (!providerId || !resolvedModel) {
-      session.failTurn(turnId, 'provider/not_configured', 'No LLM provider configured for this mode');
-      yield { type: 'turn_failed', turnId, code: 'provider/not_configured', message: 'No LLM provider configured for this mode' };
-      return;
-    }
 
     // ── LLM stream ────────────────────────────────────────────────────────────
     let fullText = '';

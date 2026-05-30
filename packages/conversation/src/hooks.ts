@@ -33,7 +33,14 @@ export function registerConversationHooks(bus: HookBus, deps: ConversationDeps):
         // `narrative_timeline_complete` the moment ITS query returns, without
         // being blocked by slower timelines.
         // Promise.allSettled ensures one bad timeline never kills the others.
+        //
+        // NOTE: NarrativeUnavailableError must NOT be re-thrown inside the
+        // allSettled callback — allSettled swallows all rejections and records
+        // them as { status: 'rejected' }, so a throw there never reaches the
+        // outer catch.  Use a flag instead: set it when the bridge is down,
+        // then throw after allSettled so the outer catch can handle it.
         const recallParts: Array<[string, string]> = [];
+        let bridgeDown = false;
 
         await Promise.allSettled(
           Object.entries(routeResp.routes).map(async ([timeline, query]) => {
@@ -47,7 +54,10 @@ export function registerConversationHooks(bus: HookBus, deps: ConversationDeps):
               });
               if (text.trim().length > 0) recallParts.push([timeline, text]);
             } catch (err) {
-              if (err instanceof NarrativeUnavailableError) throw err; // re-throw to outer catch
+              if (err instanceof NarrativeUnavailableError) {
+                bridgeDown = true;
+                return; // let allSettled finish; throw below
+              }
               ctx.emit?.({
                 type: 'system_warning',
                 level: 'warn',
@@ -56,6 +66,8 @@ export function registerConversationHooks(bus: HookBus, deps: ConversationDeps):
             }
           }),
         );
+
+        if (bridgeDown) throw new NarrativeUnavailableError('bridge unavailable');
 
         if (recallParts.length === 0) return { kind: 'continue' };
 

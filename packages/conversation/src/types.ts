@@ -1,4 +1,4 @@
-import type { SessionId, TurnMode, AgentSubMode, LlmProtocol } from '@ema-agent/contracts';
+import type { SessionId, TurnMode, AgentSubMode } from '@ema-agent/contracts';
 import type { LlmRouter } from '@ema-agent/llm';
 import type { LlmContentPart } from '@ema-agent/llm';
 import type { SessionStore, Turn } from '@ema-agent/session';
@@ -37,6 +37,4 @@ export interface ConversationRunInput {
   contentParts?: LlmContentPart[];
   /** Explicit model override; falls back to model_bindings for the mode. */
   model?:        string;
-  /** LLM protocol for content-part validation. Defaults to 'openai-llm'. */
-  protocol?:     LlmProtocol;
 }
