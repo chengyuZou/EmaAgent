@@ -13,6 +13,8 @@ import {
   type TurnId,
   type MessageId,
   type CharacterCardId,
+  type TurnMode,
+  type AgentSubMode,
   type MessageBlocks,
   asSessionId,
   asTurnId,
@@ -50,6 +52,8 @@ function toSession(row: SessionRow): Session {
     parentSessionId: row.parent_session_id as SessionId | null,
     runningTurnCount: 0,    // populated by caller
     meta: JSON.parse(row.meta_json) as Record<string, unknown>,
+    lastMode:    (row.last_mode    ?? null) as TurnMode    | null,
+    lastSubMode: (row.last_sub_mode ?? null) as AgentSubMode | null,
   };
 }
 
@@ -222,9 +226,11 @@ export class SessionStore {
       pinned?:         boolean;
       groupLabel?:     string | null;
       workspaceRoots?: string[];
+      lastMode?:       TurnMode | null;
+      lastSubMode?:    AgentSubMode | null;
     },
   ): void {
-    const cleaned: typeof patch = {};
+    const cleaned: Parameters<SessionsRepo['patch']>[1] = {};
 
     if (patch.title !== undefined) {
       const trimmed = patch.title.trim();
@@ -240,6 +246,8 @@ export class SessionStore {
     if (patch.workspaceRoots !== undefined) {
       cleaned.workspaceRoots = patch.workspaceRoots;
     }
+    if (patch.lastMode !== undefined)    cleaned.lastMode    = patch.lastMode;
+    if (patch.lastSubMode !== undefined) cleaned.lastSubMode = patch.lastSubMode;
 
     if (Object.keys(cleaned).length === 0) return;
 

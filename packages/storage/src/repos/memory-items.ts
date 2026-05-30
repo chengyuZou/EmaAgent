@@ -132,16 +132,33 @@ export class MemoryItemsRepo {
       .all(mode, Date.now(), limit) as MemoryItemRow[];
   }
 
-  /** Items that have an embedding compatible with the active provider. */
-  listEmbeddable(providerId: string, limit = 5000): MemoryItemRow[] {
+  /** Non-expired items embedded with the given model — dim guard is done in the capability layer. */
+  listEmbeddable(model: string, limit = 5000): MemoryItemRow[] {
     return this.db
       .prepare(
         `SELECT * FROM memory_items
-          WHERE embedding IS NOT NULL AND embedding_provider_id = ?
+          WHERE embedding IS NOT NULL AND embedding_model = ?
             AND (expires_at IS NULL OR expires_at > ?)
           LIMIT ?`,
       )
-      .all(providerId, Date.now(), limit) as MemoryItemRow[];
+      .all(model, Date.now(), limit) as MemoryItemRow[];
+  }
+
+  /**
+   * Cursor page for bulk index building.
+   * Returns non-expired rows with updated_at > afterUpdatedAt, ordered ascending, up to limit.
+   * Start with afterUpdatedAt = 0; advance cursor to last row's updated_at each page.
+   */
+  listEmbeddablePage(model: string, afterUpdatedAt: number, limit: number): MemoryItemRow[] {
+    return this.db
+      .prepare(
+        `SELECT * FROM memory_items
+          WHERE embedding IS NOT NULL AND embedding_model = ? AND updated_at > ?
+            AND (expires_at IS NULL OR expires_at > ?)
+          ORDER BY updated_at ASC
+          LIMIT ?`,
+      )
+      .all(model, afterUpdatedAt, Date.now(), limit) as MemoryItemRow[];
   }
 
   // ── Update ──────────────────────────────────────────────────────────────────

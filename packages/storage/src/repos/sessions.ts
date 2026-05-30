@@ -15,6 +15,8 @@ export interface SessionRow {
   parent_session_id: string | null;
   meta_json: string;
   pending_fragments_json: string;
+  last_mode:     string | null;
+  last_sub_mode: string | null;
 }
 
 export interface SessionInsert {
@@ -292,6 +294,8 @@ export class SessionsRepo {
       pinned?:         boolean;
       groupLabel?:     string | null;
       workspaceRoots?: string[];
+      lastMode?:       string | null;
+      lastSubMode?:    string | null;
     },
     now: number,
   ): void {
@@ -315,6 +319,14 @@ export class SessionsRepo {
     if (patch.workspaceRoots !== undefined) {
       setClauses.push('workspace_roots_json = ?');
       values.push(JSON.stringify(patch.workspaceRoots));
+    }
+    if (patch.lastMode !== undefined) {
+      setClauses.push('last_mode = ?');
+      values.push(patch.lastMode);
+    }
+    if (patch.lastSubMode !== undefined) {
+      setClauses.push('last_sub_mode = ?');
+      values.push(patch.lastSubMode);
     }
 
     if (setClauses.length === 0) return;

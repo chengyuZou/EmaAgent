@@ -111,15 +111,31 @@ export class MemoryNodesRepo {
       .all(nodeType, limit) as MemoryNodeRow[];
   }
 
-  /** Compatible nodes: have embedding AND match the active embed provider. */
-  listEmbeddable(providerId: string, limit = 5000): MemoryNodeRow[] {
+  /** Nodes embedded with the given model — dim guard is done in the capability layer. */
+  listEmbeddable(model: string, limit = 5000): MemoryNodeRow[] {
     return this.db
       .prepare(
         `SELECT * FROM memory_nodes
-         WHERE embedding IS NOT NULL AND embedding_provider_id = ?
+         WHERE embedding IS NOT NULL AND embedding_model = ?
          LIMIT ?`,
       )
-      .all(providerId, limit) as MemoryNodeRow[];
+      .all(model, limit) as MemoryNodeRow[];
+  }
+
+  /**
+   * Cursor page for bulk index building.
+   * Returns rows with updated_at > afterUpdatedAt, ordered ascending, up to limit.
+   * Start with afterUpdatedAt = 0; advance cursor to last row's updated_at each page.
+   */
+  listEmbeddablePage(model: string, afterUpdatedAt: number, limit: number): MemoryNodeRow[] {
+    return this.db
+      .prepare(
+        `SELECT * FROM memory_nodes
+         WHERE embedding IS NOT NULL AND embedding_model = ? AND updated_at > ?
+         ORDER BY updated_at ASC
+         LIMIT ?`,
+      )
+      .all(model, afterUpdatedAt, limit) as MemoryNodeRow[];
   }
 
   // ── Update ──────────────────────────────────────────────────────────────────

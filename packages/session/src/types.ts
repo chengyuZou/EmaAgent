@@ -29,6 +29,8 @@ export interface Session {
   parentSessionId: string | null;
   runningTurnCount: number;
   meta: Record<string, unknown>;
+  lastMode:     TurnMode | null;
+  lastSubMode:  AgentSubMode | null;
 }
 
 export interface Turn {
