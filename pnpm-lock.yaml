@@ -129,6 +129,15 @@ importers:
       '@tauri-apps/plugin-shell':
         specifier: ^2.2.0
         version: 2.3.5
+      '@unocss/preset-attributify':
+        specifier: ^66.0.0
+        version: 66.7.0
+      '@unocss/preset-uno':
+        specifier: ^66.7.0
+        version: 66.7.0
+      '@unocss/preset-wind':
+        specifier: ^66.7.0
+        version: 66.7.0
       pixi-live2d-display:
         specifier: 0.5.0-beta
         version: 0.5.0-beta(pixi.js@7.4.3)
@@ -141,6 +150,9 @@ importers:
       react-dom:
         specifier: ^18.3.1
         version: 18.3.1(react@18.3.1)
+      unocss:
+        specifier: ^66.0.0
+        version: 66.7.0(vite@5.4.21(@types/node@20.19.39))
     devDependencies:
       '@tauri-apps/cli':
         specifier: ^2.4.0

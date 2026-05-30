@@ -2,6 +2,9 @@
 node_modules/
 .pnpm-store/
 
+# Memory bench — embedding cache (large, regenerated on demand)
+packages/memory/bench/cache/
+
 # Build outputs
 dist/
 build/
