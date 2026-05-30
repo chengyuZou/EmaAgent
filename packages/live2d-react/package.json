@@ -11,6 +11,10 @@
     "./store": {
       "import": "./dist/stores/live2d-store.js",
       "types": "./dist/stores/live2d-store.d.ts"
+    },
+    "./tools": {
+      "import": "./dist/tools/expression-tools.js",
+      "types": "./dist/tools/expression-tools.d.ts"
     }
   },
   "main": "./dist/index.js",
