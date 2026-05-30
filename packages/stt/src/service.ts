@@ -1,4 +1,4 @@
-import type { SttAdapter, SttAdapterCall, SttProviderConfig, SttRequest, SttResponse } from './types.js';
+import type { SttAdapter, SttAdapterCall, SttProviderConfig, SttRequest, SttResponse, SttHealthResult } from './types.js';
 import { OpenAiSttAdapter } from './adapters/openai-stt.js';
 
 // ── SttClient Façade ────────────────────────────────────────────────────────
@@ -38,6 +38,29 @@ export class SttClient {
   /** True when at least one STT provider is registered. */
   isAvailable(): boolean {
     return this.adapters.size > 0;
+  }
+
+  /** Health check — verifies that at least one STT provider is configured. V1 is config-only, no live API call. */
+  healthCheck(): SttHealthResult {
+    const providers = [...this.configs.entries()].map(([id, cfg]) => ({
+      providerId: id,
+      protocol:   cfg.protocol,
+      ok:         this.adapters.has(id),
+    }));
+    return {
+      ok: providers.length > 0 && providers.every((p) => p.ok),
+      providers,
+    };
+  }
+
+  /** Hot-reload: replace all provider configs atomically. */
+  reload(configs: SttProviderConfig[]): void {
+    this.configs.clear();
+    this.adapters.clear();
+    for (const config of configs) {
+      this.configs.set(config.id, config);
+      this.adapters.set(config.id, createAdapter(config));
+    }
   }
 
   /** Transcribe audio. providerId + model are routing fields embedded in the request. */

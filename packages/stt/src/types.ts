@@ -57,6 +57,20 @@ export interface SttAdapterCall {
   abortSignal?: AbortSignal;
 }
 
+// ── Health check ─────────────────────────────────────────────────────────────
+
+export interface SttProviderHealth {
+  providerId: string;
+  protocol:   SttProtocol;
+  ok:         boolean;
+  reason?:    string;
+}
+
+export interface SttHealthResult {
+  ok:        boolean;
+  providers: SttProviderHealth[];
+}
+
 // ── Adapter contract ──────────────────────────────────────────────────────────
 
 export interface SttAdapter {
