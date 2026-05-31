@@ -138,8 +138,8 @@ export type EmaStreamEvent =
   | { type: 'emotion_changed'; turnId: TurnId; state: EmotionState }
 
   // TTS — audio is base64-encoded string over SSE
-  | { type: 'tts_chunk'; audio: string; lipsync?: LipSyncFrame[]; sentenceId: string }
-  | { type: 'tts_sentence_complete'; sentenceId: string }
+  | { type: 'tts_chunk'; audio: string; lipsync?: LipSyncFrame[]; sentenceId: string; sessionId: string }
+  | { type: 'tts_sentence_complete'; sentenceId: string; sessionId: string }
 
   // Narrative
   | { type: 'narrative_route_resolved'; timelines: string[] }
