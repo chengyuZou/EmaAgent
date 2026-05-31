@@ -5,12 +5,13 @@ import { Live2DModel as PixiLive2DModel } from 'pixi-live2d-display/cubism4';
 import type { Live2DStageHandle, Live2DFraming, Live2DError } from '../types.js';
 import { useLive2DStore } from '../stores/live2d-store.js';
 import { useExpressionStore } from '../stores/expression-store.js';
-import { createIdleEyeFocus } from '../composables/animation.js';
+import { createMouseEyeTrackPlugin } from '../composables/mouse-track.js';
+import { createIdleBeatPlugin } from '../composables/idle-beat.js';
+import { createAudioLipSyncPlugin } from '../composables/audio-lipsync.js';
+import { startRandomIdleScheduler } from '../composables/random-idle.js';
 import { createExpressionController, type CoreModelLike } from '../composables/expression-controller.js';
 import {
   createMotionManagerUpdate,
-  createIdleDisablePlugin,
-  createIdleFocusPlugin,
   createAutoEyeBlinkPlugin,
   createExpressionPlugin,
   type CubismCoreLike,
@@ -125,7 +126,6 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
           const coreModel     = internalModel.coreModel as unknown as CoreModelLike;
           const modelIdHint   = deriveModelId(modelPath);
 
-          const idleEyeFocus = createIdleEyeFocus();
           const expressionController = createExpressionController({
             getCoreModel: () => coreModel,
             modelId:      modelIdHint,
@@ -145,11 +145,20 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
             },
           });
 
-          // Pre stage: idle-disable then idle-focus
-          pipeline.register(createIdleDisablePlugin(idleEyeFocus), 'pre');
-          pipeline.register(createIdleFocusPlugin(idleEyeFocus),   'pre');
-          // Final stage: auto-blink then expression (order matters — blink
-          // writes base eye values, expression overlays on top)
+          // Pre stage: mouse-track (runs before idle motions, sets eye params)
+          pipeline.register(
+            createMouseEyeTrackPlugin(() => appRef.current?.view as HTMLCanvasElement ?? null),
+            'pre',
+          );
+          // Final stage: idle-beat → auto-blink → expression
+          // idle-beat MUST be final-stage — the model's idle.motion3.json
+          // already animates ParamBodyAngle + ParamBreath. If we set them in
+          // the pre stage, the original motionManager.update overwrites ours.
+          // Final stage runs AFTER the original update, so our values win.
+          pipeline.register(
+            createIdleBeatPlugin(() => useLive2DStore.getState().idleBeatEnabled),
+            'final',
+          );
           pipeline.register(
             createAutoEyeBlinkPlugin({
               readExpressionEnabled: () => useLive2DStore.getState().expressionEnabled,
@@ -157,6 +166,10 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
             'final',
           );
           pipeline.register(createExpressionPlugin(expressionController), 'final');
+          // Audio-lip-sync: reads speech-store RMS, drives ParamMouthOpenY.
+          // Runs AFTER expression so mouth shape overlays on top of any
+          // active expression (e.g. smile + talking at the same time).
+          pipeline.register(createAudioLipSyncPlugin(), 'final');
 
           // Hook the motionManager.update method. We capture the original so
           // the pipeline can call back into it when no plugin handles the frame.
@@ -222,6 +235,14 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
             try { await model.motion(candidate); break; }
             catch { /* try next */ }
           }
+
+          // Start random idle motion scheduler (12–35 s, skips when speaking)
+          const idleMotionCount = (extractMotionGroups(model)['Idle'] ?? 0) as number;
+          const stopIdleScheduler = startRandomIdleScheduler(
+            (group, index) => { void model.motion(group, index); },
+            idleMotionCount,
+          );
+          cleanupTasks.push(stopIdleScheduler);
 
           onReady?.();
         } catch (cause) {

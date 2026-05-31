@@ -68,6 +68,8 @@ export interface Live2DStoreState {
   modelParameters:  ModelParameters;
   /** User toggle: allow idle motions to play. */
   idleAnimationEnabled:  boolean;
+  /** User toggle: autonomous gentle head sway when no TTS/interaction. */
+  idleBeatEnabled:       boolean;
   /** User toggle: auto-eye-blink globally on. */
   autoBlinkEnabled:      boolean;
   /**
@@ -88,6 +90,7 @@ export interface Live2DStoreActions {
   playMotion(group: string, index?: number): void;
   setModelParameters(patch: Partial<ModelParameters>): void;
   setIdleAnimationEnabled(value: boolean): void;
+  setIdleBeatEnabled(value: boolean): void;
   setAutoBlinkEnabled(value: boolean): void;
   setForceAutoBlinkEnabled(value: boolean): void;
   setExpressionEnabled(value: boolean): void;
@@ -106,6 +109,7 @@ const initial: Live2DStoreState = {
   currentMotion:        null,
   modelParameters:      { ...DEFAULT_MODEL_PARAMETERS },
   idleAnimationEnabled:  true,
+  idleBeatEnabled:       true,
   autoBlinkEnabled:      true,
   forceAutoBlinkEnabled: false,
   expressionEnabled:     true,
@@ -179,6 +183,7 @@ export const useLive2DStore = create<Live2DStore>((set, get) => ({
     set((s) => ({ modelParameters: { ...s.modelParameters, ...patch } }));
   },
   setIdleAnimationEnabled(value)   { set({ idleAnimationEnabled:  value }); },
+  setIdleBeatEnabled(value)        { set({ idleBeatEnabled:       value }); },
   setAutoBlinkEnabled(value)       { set({ autoBlinkEnabled:      value }); },
   setForceAutoBlinkEnabled(value)  { set({ forceAutoBlinkEnabled: value }); },
   setExpressionEnabled(value)      { set({ expressionEnabled:     value }); },

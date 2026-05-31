@@ -6,6 +6,7 @@ export { Live2DStage } from './components/Live2DStage.js';
 
 export { useLive2DStore } from './stores/live2d-store.js';
 export { useExpressionStore } from './stores/expression-store.js';
+export { useSpeechStore } from './stores/speech-store.js';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
