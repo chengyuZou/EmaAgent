@@ -1,4 +1,4 @@
-import type { EmaStreamEvent, TurnId } from '@ema-agent/contracts';
+import type { EmaStreamEvent, TurnId, SessionId } from '@ema-agent/contracts';
 import type { TtsStreamEvent } from './types.js';
 
 // ── TtsStreamEvent → EmaStreamEvent bridge ──────────────────────────────────
@@ -12,9 +12,14 @@ import type { TtsStreamEvent } from './types.js';
 // sentence's audio within a turn so the frontend can group chunks. After
 // reconnect, the frontend can dedupe by sentenceId to avoid replaying
 // already-played audio.
+//
+// sessionId is carried so the frontend's Live2D routing can filter TTS
+// events to only the active session. Without it, multi-session TTS would
+// all drive the same character simultaneously.
 
 export interface BridgeContext {
-  turnId:         TurnId;
+  turnId:    TurnId;
+  sessionId: SessionId;
 }
 
 /**
@@ -38,12 +43,14 @@ export function ttsEventToEma(
         type:       'tts_chunk',
         audio:      base64Encode(ev.bytes),
         sentenceId: makeSentenceId(ctx.turnId, currentSentenceIndex),
+        sessionId:  ctx.sessionId as string,
       };
 
     case 'sentence_done':
       return {
         type:       'tts_sentence_complete',
         sentenceId: makeSentenceId(ctx.turnId, ev.index),
+        sessionId:  ctx.sessionId as string,
       };
 
     case 'error':

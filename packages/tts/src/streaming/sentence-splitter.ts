@@ -18,8 +18,10 @@
 //     when the model emits long un-punctuated text.
 
 const TERMINATORS = new Set<string>([
-  '.', '!', '?', '。', '！', '？', '…',
-  // Chinese closing quotes are NOT terminators on their own (they follow one)
+  '.', '!', '?', '。', '！', '？',
+  // '…' intentionally omitted — single ellipsis is a pause, not a sentence
+  // boundary. Chinese ellipsis is always paired "……" and should accumulate
+  // to the next real terminator.
 ]);
 
 const ABBREVIATIONS = new Set<string>([

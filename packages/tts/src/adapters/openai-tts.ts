@@ -37,7 +37,6 @@ export class OpenAiTtsAdapter implements TtsAdapter {
       voice:           voiceParam,
       input:           req.text,
       response_format: req.format,
-      stream:          true,
     };
     if (!skipSpeedGain) {
       body.speed = req.speed ?? 1.0;

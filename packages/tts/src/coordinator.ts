@@ -95,11 +95,20 @@ export class TtsCoordinator {
     const handler = async (
       ctx: HookContext<'afterLlmDelta'>,
     ): Promise<HookResult<'afterLlmDelta'>> => {
-      const filtered = this.textFilter.feed(ctx.payload.delta);
+      const raw = ctx.payload.delta;
+      const filtered = this.textFilter.feed(raw);
       if (filtered) {
-        for (const s of this.splitter.feed(filtered)) {
+        const sentences = this.splitter.feed(filtered);
+        for (const s of sentences) {
+          console.log(`[tts:sent] idx=${s.index} text="${s.text.slice(0,40)}"`);
           this.enqueue(s.index, s.text);
         }
+        if (sentences.length === 0) {
+          console.log(`[tts:buf] splitter buffered "${filtered.slice(0, 40)}"`);
+        }
+      } else if (filtered === '') {
+        // Distinguish between "truly empty" and "state machine consumed it"
+        console.log(`[tts:skip] filter consumed "${raw.slice(0, 30)}" (state machine absorbed it)`);
       }
       return { kind: 'continue' };
     };
@@ -193,14 +202,14 @@ export class TtsCoordinator {
           writer?.write(ev.bytes);
           wroteAny = true;
         }
-        const transformed = ttsEventToEma(ev, { turnId: this.turnId }, index);
+        const transformed = ttsEventToEma(ev, { turnId: this.turnId, sessionId: this.sessionId }, index);
         if (transformed) this.emit(transformed);
       }
 
       // Always send a sentence_complete marker, even if the adapter produced
       // no audio (e.g. all-error path). The frontend uses it to detect that
       // the sentence is "done attempting" and won't get more chunks.
-      this.emit({ type: 'tts_sentence_complete', sentenceId });
+      this.emit({ type: 'tts_sentence_complete', sentenceId, sessionId: this.sessionId as string });
     } finally {
       writer?.close();
       if (!wroteAny) {
