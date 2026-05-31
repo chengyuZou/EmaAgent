@@ -13,15 +13,12 @@
 //   ParamBreath: 0–1
 
 import type { MotionPlugin } from './motion-manager.js';
-
-const SWAY_AMP = 15;
-const SWAY_FREQ_X = 0.8;
-const SWAY_FREQ_Y = 0.56;
-const SWAY_FREQ_Z = 0.62;
-const BREATH_FREQ = 0.6;
+import type { Live2DIdleBeatRuntimeConfig, Live2DParameterRuntimeConfig } from '../model-config.js';
 
 export function createIdleBeatPlugin(
   readEnabled: () => boolean,
+  readParameters: () => Live2DParameterRuntimeConfig,
+  readIdleBeat: () => Live2DIdleBeatRuntimeConfig,
 ): MotionPlugin {
   let elapsed = 0;
 
@@ -30,14 +27,16 @@ export function createIdleBeatPlugin(
 
     elapsed += ctx.timeDelta;
 
-    const swayX = SWAY_AMP * Math.sin(elapsed * SWAY_FREQ_X);
-    const swayY = SWAY_AMP * 0.5 * Math.sin(elapsed * SWAY_FREQ_Y);
-    const swayZ = SWAY_AMP * 0.3 * Math.sin(elapsed * SWAY_FREQ_Z);
-    const breath = (Math.sin(elapsed * BREATH_FREQ) + 1) * 0.5;
+    const params = readParameters();
+    const idle = readIdleBeat();
+    const swayX = idle.swayAmplitude * Math.sin(elapsed * idle.swayFrequencyX);
+    const swayY = idle.swayAmplitude * 0.5 * Math.sin(elapsed * idle.swayFrequencyY);
+    const swayZ = idle.swayAmplitude * 0.3 * Math.sin(elapsed * idle.swayFrequencyZ);
+    const breath = (Math.sin(elapsed * idle.breathFrequency) + 1) * 0.5;
 
-    ctx.model.setParameterValueById('Param85', Math.max(-30, Math.min(30, swayX)));
-    ctx.model.setParameterValueById('Param86', Math.max(-30, Math.min(30, swayY)));
-    ctx.model.setParameterValueById('Param87', Math.max(-30, Math.min(30, swayZ)));
-    ctx.model.setParameterValueById('ParamBreath', breath);
+    ctx.model.setParameterValueById(params.headInputX, Math.max(-30, Math.min(30, swayX)));
+    ctx.model.setParameterValueById(params.headInputY, Math.max(-30, Math.min(30, swayY)));
+    ctx.model.setParameterValueById(params.headInputZ, Math.max(-30, Math.min(30, swayZ)));
+    ctx.model.setParameterValueById(params.breathParam, breath);
   };
 }

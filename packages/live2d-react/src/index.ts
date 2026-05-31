@@ -21,4 +21,20 @@ export type {
   Live2DStoreState,
   Live2DStoreActions,
   ModelParameters,
+  ActiveExpressionIntent,
+  ExpressionIntentOptions,
+  ExpressionIntentSource,
 } from './stores/live2d-store.js';
+
+export type {
+  Live2DModelRuntimeConfig,
+  ResolvedLive2DModelRuntimeConfig,
+  Live2DStageTarget,
+  Live2DMotionTarget,
+  Live2DParameterRuntimeConfig,
+} from './model-config.js';
+
+export {
+  DEFAULT_LIVE2D_RUNTIME_CONFIG,
+  resolveLive2DModelRuntimeConfig,
+} from './model-config.js';

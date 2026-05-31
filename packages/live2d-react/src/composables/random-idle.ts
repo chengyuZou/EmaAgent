@@ -6,29 +6,30 @@
 // Not a pipeline plugin — runs on a setInterval outside the per-frame loop.
 // Initialised from Live2DStage after the model is ready.
 
-import { useSpeechStore } from '../stores/speech-store.js';
-
 /**
  * Start the idle-motion scheduler. Returns a cleanup function.
- *
- * @param playMotion  Callback that triggers a motion group + optional index.
- *                    Typically `model.motion(group, index)` from pixi-live2d-display.
- * @param motionCount Number of motions in the Idle group (used for random index).
  */
-export function startRandomIdleScheduler(
-  playMotion: (group: string, index?: number) => void,
-  motionCount: number,
-): () => void {
+export interface RandomIdleSchedulerOptions {
+  playMotion(group: string, index?: number): void;
+  motionCount: number;
+  group: string;
+  minDelayMs: number;
+  maxDelayMs: number;
+  readEnabled(): boolean;
+}
+
+export function startRandomIdleScheduler(options: RandomIdleSchedulerOptions): () => void {
+  const { playMotion, motionCount, group, minDelayMs, maxDelayMs, readEnabled } = options;
   if (motionCount === 0) return () => {};
 
   let timer: ReturnType<typeof setTimeout> | null = null;
 
   function schedule(): void {
-    const ms = 12_000 + Math.random() * 23_000; // 12–35 seconds
+    const ms = minDelayMs + Math.random() * Math.max(0, maxDelayMs - minDelayMs);
     timer = setTimeout(() => {
-      if (!useSpeechStore.getState().speaking) {
+      if (readEnabled()) {
         const idx = Math.floor(Math.random() * motionCount);
-        playMotion('Idle', idx);
+        playMotion(group, idx);
       }
       schedule(); // next
     }, ms);

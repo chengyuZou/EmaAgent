@@ -1,5 +1,4 @@
 import { clamp01 } from '../utils/math.js';
-import type { IdleEyeFocusController, InternalModelLike } from './animation.js';
 import type { ExpressionController } from './expression-controller.js';
 
 // ── Live2D motion-manager update pipeline ───────────────────────────────────
@@ -24,7 +23,8 @@ export interface CubismCoreLike {
 }
 
 /** Subset of pixi-live2d-display's InternalModel needed by plugins. */
-export interface InternalModelForPlugins extends InternalModelLike {
+export interface InternalModelForPlugins {
+  coreModel: CubismCoreLike;
   motionManager: {
     state:    { currentGroup: string | undefined };
     groups:   { idle?: string };
@@ -176,7 +176,7 @@ export function createMotionManagerUpdate(
 // Each is a factory returning a MotionPlugin closure. Order to register
 // (matches AIRI):
 //
-//   pre:   idleDisable, idleFocus(opt)
+//   pre:   optional short-circuit plugins
 //   post:  (none by default)
 //   final: autoEyeBlink, expression
 //
@@ -186,14 +186,11 @@ export function createMotionManagerUpdate(
  * If idle animations are disabled, stop motions during idle and apply manual
  * eye parameter overrides instead. Used to "freeze" Ema in a specific pose.
  */
-export function createIdleDisablePlugin(
-  idleEyeFocus: IdleEyeFocusController = { update: () => { /* noop */ } },
-): MotionPlugin {
+export function createIdleDisablePlugin(): MotionPlugin {
   return (ctx) => {
     if (ctx.handled) return;
     if (!ctx.idleAnimationEnabled && ctx.isIdleMotion) {
       ctx.motionManager.stopAllMotions();
-      idleEyeFocus.update(ctx.internalModel, ctx.now);
       if (ctx.internalModel.eyeBlink) {
         ctx.internalModel.eyeBlink.updateParameters(ctx.model, ctx.timeDelta / 1000);
       }
@@ -201,19 +198,6 @@ export function createIdleDisablePlugin(
       ctx.model.setParameterValueById('ParamEyeROpen', ctx.modelParameters.rightEyeOpen);
       ctx.markHandled();
     }
-  };
-}
-
-/**
- * During idle motion, run the eye-focus updater so eyes saccade around.
- * Skipped when a non-idle motion is playing (motion drives the eyes).
- */
-export function createIdleFocusPlugin(
-  idleEyeFocus: IdleEyeFocusController,
-): MotionPlugin {
-  return (ctx) => {
-    if (!ctx.isIdleMotion || ctx.handled) return;
-    idleEyeFocus.update(ctx.internalModel, ctx.now);
   };
 }
 

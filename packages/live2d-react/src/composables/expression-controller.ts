@@ -164,7 +164,7 @@ export function createExpressionController(opts: ExpressionControllerOptions): E
       for (const paramId of activeLastFrame) {
         if (!activeThisFrame.has(paramId)) {
           const entry = findEntryByParameterId(paramId);
-          if (entry) coreModel.setParameterValueById(paramId, entry.modelDefault);
+          if (entry) coreModel.setParameterValueById(paramId, entry.defaultValue);
         }
       }
 

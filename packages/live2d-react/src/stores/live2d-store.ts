@@ -2,25 +2,9 @@ import { create } from 'zustand';
 
 // ── Live2D runtime store ────────────────────────────────────────────────────
 //
-// External state for the currently-mounted Live2D model. Two roles:
-//
-//   1. **Desired state** — set by callers (SSE emotion_changed, UI buttons,
-//      LLM tools):
-//        activeExpressions[], currentMotion, idle/blink flags, modelParameters
-//
-//   2. **Discovered state** — populated by the model on load:
-//        availableExpressions, availableMotions, ready
-//
-// Expression management follows AIRI's design: multiple expressions can be
-// active simultaneously (e.g. Smile + Blush at the same time). Each expression
-// writes to different Live2D parameters; the expression-store's Map
-// deduplicates by parameterId. The activeExpressions[] array is the
-// **high-level intent** — Live2DStage reconciles it against the
-// expression-store every time it changes.
-//
-// modelParameters is intentionally a runtime override layer (eye open base,
-// future: brows / mouth / cheek). Defaults to "neutral" — modify to "pose"
-// the character without playing a motion.
+// This store is an intent layer, not the Cubism parameter store. Real Live2D
+// parameters live inside the Cubism coreModel and are written during the
+// per-frame pipeline. The store keeps "what the app wants the model to do".
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -28,8 +12,6 @@ import { create } from 'zustand';
 export interface ModelParameters {
   leftEyeOpen:  number;
   rightEyeOpen: number;
-  // Reserved for future expansion (brows / cheek / mouth) — kept flat for
-  // cheap reads inside the per-frame plugin loop.
 }
 
 export const DEFAULT_MODEL_PARAMETERS: ModelParameters = {
@@ -37,45 +19,57 @@ export const DEFAULT_MODEL_PARAMETERS: ModelParameters = {
   rightEyeOpen: 1,
 };
 
+export type ExpressionIntentSource = 'emotion' | 'ui' | 'agent' | 'system';
+
+export interface ExpressionIntentOptions {
+  value?: boolean | number;
+  durationSec?: number;
+  source?: ExpressionIntentSource;
+}
+
+export interface ActiveExpressionIntent {
+  name: string;
+  value: boolean | number;
+  source: ExpressionIntentSource;
+  requestId: string;
+  createdAt: number;
+  durationSec?: number;
+}
+
+export interface MotionIntent {
+  group: string;
+  requestId: string;
+  createdAt: number;
+  index?: number;
+}
+
 export interface Live2DStoreState {
   // ── Desired state ──────────────────────────────────────────────────────
   /**
-   * Currently-active expression group names. Multiple expressions can be
-   * active at once (e.g. ["Smile", "Blush"]). An empty array means all
-   * expressions are at their default/modelDefault values.
-   *
-   * Order matters — later entries overlay on top of earlier ones if they
-   * touch the same parameter.
+   * High-level expression intents. Multiple expressions may be active at once.
+   * The stage reconciles these intents into ExpressionStore values.
    */
-  activeExpressions: string[];
-  /**
-   * Convenience setter: replace all active expressions with a single name.
-   * @deprecated Prefer addExpression/removeExpression/toggleExpression for
-   * multi-expression control. This exists for Live2DStageHandle backward
-   * compatibility and simple single-expression callers.
-   */
-  setExpression(name: string | null): void;
-  /** Activate an expression. No-op if already active. */
-  addExpression(name: string, durationSec?: number): void;
-  /** Deactivate an expression (restore its parameters to default). No-op if not active. */
+  activeExpressions: ActiveExpressionIntent[];
+  /** Replace all active expressions with a single expression, or clear all. */
+  setExpression(name: string | null, options?: ExpressionIntentOptions): void;
+  /** Activate or refresh one expression intent. */
+  addExpression(name: string, options?: ExpressionIntentOptions): void;
+  /** Deactivate an expression intent. */
   removeExpression(name: string): void;
-  /** Toggle an expression on/off. Returns the new state. */
-  toggleExpression(name: string, durationSec?: number): boolean;
-  /** Deactivate all expressions. */
+  /** Toggle one expression intent. Returns true when now active. */
+  toggleExpression(name: string, options?: ExpressionIntentOptions): boolean;
+  /** Deactivate all expression intents. */
   clearExpressions(): void;
 
-  currentMotion:    { group: string; index?: number } | null;
+  currentMotion:    MotionIntent | null;
   modelParameters:  ModelParameters;
-  /** User toggle: allow idle motions to play. */
+  /** User toggle: allow scheduled idle motions to play. */
   idleAnimationEnabled:  boolean;
-  /** User toggle: autonomous gentle head sway when no TTS/interaction. */
+  /** User toggle: autonomous gentle head sway. */
   idleBeatEnabled:       boolean;
   /** User toggle: auto-eye-blink globally on. */
   autoBlinkEnabled:      boolean;
-  /**
-   * Force the state-machine blink even when the model has its own idle blink
-   * curves. Useful for testing or for models with broken curves. Default off.
-   */
+  /** Force the state-machine blink even when the model has native blink. */
   forceAutoBlinkEnabled: boolean;
   /** Expression overlay active (gates auto-blink path selection). */
   expressionEnabled:     boolean;
@@ -118,7 +112,7 @@ const initial: Live2DStoreState = {
   availableMotions:     {},
   ready: false,
 
-  // Methods are assigned below
+  // Methods are assigned below.
   setExpression: () => { /* assigned */ },
   addExpression: () => { /* assigned */ },
   removeExpression: () => { /* assigned */ },
@@ -126,70 +120,104 @@ const initial: Live2DStoreState = {
   clearExpressions: () => { /* assigned */ },
 };
 
+let expressionSeq = 0;
+let motionSeq = 0;
+
+function createExpressionIntent(
+  name: string,
+  options: ExpressionIntentOptions = {},
+): ActiveExpressionIntent {
+  expressionSeq += 1;
+  const source = options.source ?? 'system';
+  const createdAt = Date.now();
+  const intent: ActiveExpressionIntent = {
+    name,
+    value: options.value ?? true,
+    source,
+    requestId: `${source}:expr:${name}:${createdAt}:${expressionSeq}`,
+    createdAt,
+  };
+  if (options.durationSec !== undefined) intent.durationSec = options.durationSec;
+  return intent;
+}
+
+function createMotionIntent(group: string, index?: number): MotionIntent {
+  motionSeq += 1;
+  const createdAt = Date.now();
+  const intent: MotionIntent = {
+    group,
+    requestId: `motion:${group}:${createdAt}:${motionSeq}`,
+    createdAt,
+  };
+  if (index !== undefined) intent.index = index;
+  return intent;
+}
+
 export const useLive2DStore = create<Live2DStore>((set, get) => ({
   ...initial,
 
   // ── Expression management ──────────────────────────────────────────────
 
-  /**
-   * Replace all active expressions with a single name (or none).
-   * This is both a state setter AND a method — callers write
-   * `useLive2DStore.getState().setExpression("Smile")` to activate one,
-   * or `setExpression(null)` to clear all.
-   */
-  setExpression(name) {
+  setExpression(name, options) {
     if (name === null) {
       set({ activeExpressions: [] });
-    } else {
-      set({ activeExpressions: [name] });
+      return;
     }
+    set({ activeExpressions: [createExpressionIntent(name, options)] });
   },
 
-  /** Activate an expression. Duplicate names are ignored. */
-  addExpression(name, _durationSec) {
+  addExpression(name, options) {
     const current = get().activeExpressions;
-    if (current.includes(name)) return;
-    set({ activeExpressions: [...current, name] });
+    const nextIntent = createExpressionIntent(name, options);
+    const idx = current.findIndex((intent) => intent.name === name);
+    if (idx >= 0) {
+      const next = [...current];
+      next[idx] = nextIntent;
+      set({ activeExpressions: next });
+      return;
+    }
+    set({ activeExpressions: [...current, nextIntent] });
   },
 
-  /** Deactivate an expression. Missing names are silently ignored. */
   removeExpression(name) {
     set((s) => ({
-      activeExpressions: s.activeExpressions.filter((e) => e !== name),
+      activeExpressions: s.activeExpressions.filter((intent) => intent.name !== name),
     }));
   },
 
-  /** Toggle an expression. Returns true if it's now active. */
-  toggleExpression(name, _durationSec): boolean {
+  toggleExpression(name, options): boolean {
     const current = get().activeExpressions;
-    const idx = current.indexOf(name);
+    const idx = current.findIndex((intent) => intent.name === name);
     if (idx >= 0) {
-      set({ activeExpressions: current.filter((e) => e !== name) });
+      set({ activeExpressions: current.filter((intent) => intent.name !== name) });
       return false;
     }
-    set({ activeExpressions: [...current, name] });
+    set({ activeExpressions: [...current, createExpressionIntent(name, options)] });
     return true;
   },
 
-  /** Deactivate all expressions. */
   clearExpressions() {
     set({ activeExpressions: [] });
   },
 
   // ── Motion / parameters / flags ───────────────────────────────────────
 
-  playMotion(group, index)         { set({ currentMotion: { group, index } }); },
+  playMotion(group, index) {
+    set({ currentMotion: createMotionIntent(group, index) });
+  },
+
   setModelParameters(patch) {
     set((s) => ({ modelParameters: { ...s.modelParameters, ...patch } }));
   },
-  setIdleAnimationEnabled(value)   { set({ idleAnimationEnabled:  value }); },
-  setIdleBeatEnabled(value)        { set({ idleBeatEnabled:       value }); },
-  setAutoBlinkEnabled(value)       { set({ autoBlinkEnabled:      value }); },
-  setForceAutoBlinkEnabled(value)  { set({ forceAutoBlinkEnabled: value }); },
-  setExpressionEnabled(value)      { set({ expressionEnabled:     value }); },
 
-  _setReady(ready)                 { set({ ready }); },
-  _setExpressionsAvailable(names)  { set({ availableExpressions: names }); },
-  _setMotionsAvailable(groups)     { set({ availableMotions: groups }); },
-  reset()                          { set({ ...initial }); },
+  setIdleAnimationEnabled(value)  { set({ idleAnimationEnabled:  value }); },
+  setIdleBeatEnabled(value)       { set({ idleBeatEnabled:       value }); },
+  setAutoBlinkEnabled(value)      { set({ autoBlinkEnabled:      value }); },
+  setForceAutoBlinkEnabled(value) { set({ forceAutoBlinkEnabled: value }); },
+  setExpressionEnabled(value)     { set({ expressionEnabled:     value }); },
+
+  _setReady(ready)                { set({ ready }); },
+  _setExpressionsAvailable(names) { set({ availableExpressions: names }); },
+  _setMotionsAvailable(groups)    { set({ availableMotions: groups }); },
+  reset()                         { set({ ...initial }); },
 }));

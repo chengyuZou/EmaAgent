@@ -39,34 +39,10 @@ export interface Live2DError {
 export interface Live2DStageHandle {
   /** Replace all active expressions with a single one (or null = clear). */
   setExpression(name: string | null): void;
-  playMotion(group: string, index?: number): Promise<void>;
+  /**
+   * Fire-and-forget motion command. It means "request this motion now", not
+   * "wait until the motion has completed".
+   */
+  playMotion(group: string, index?: number): void;
   isReady(): boolean;
-}
-
-// ── Plugin pipeline types (used by Live2DModel internally) ──────────────────
-
-/**
- * MotionManager update pipeline plugin. Plugins run in three stages — pre /
- * post / final. See AIRI's design for rationale:
- *   - pre   : may short-circuit the original update (handled=true to skip)
- *   - post  : runs after original update; can also short-circuit follow-ons
- *   - final : ALWAYS runs (expression / auto-blink); ignores `handled` flag
- *
- * V1 ships no plugins by default. V1.5 will add beat-sync, auto-blink,
- * eye-tracking. The pipeline is implemented in src/composables/useMotionManager.ts
- * even though we don't ship plugins yet — adding them later doesn't change the
- * pipeline shape.
- */
-export interface MotionUpdatePlugin {
-  name:  string;
-  stage: 'pre' | 'post' | 'final';
-  run(ctx: MotionUpdateContext): { handled: boolean };
-}
-
-export interface MotionUpdateContext {
-  model:      unknown;       // pixi-live2d-display Live2DModel instance
-  now:        number;
-  deltaMs:    number;
-  /** Set true to signal subsequent same-stage plugins to skip. */
-  handled:    boolean;
 }

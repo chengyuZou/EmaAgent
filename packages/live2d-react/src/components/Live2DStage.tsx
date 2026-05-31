@@ -5,6 +5,7 @@ import { Live2DModel as PixiLive2DModel } from 'pixi-live2d-display/cubism4';
 import type { Live2DStageHandle, Live2DFraming, Live2DError } from '../types.js';
 import { useLive2DStore } from '../stores/live2d-store.js';
 import { useExpressionStore } from '../stores/expression-store.js';
+import { useSpeechStore } from '../stores/speech-store.js';
 import { createMouseEyeTrackPlugin } from '../composables/mouse-track.js';
 import { createIdleBeatPlugin } from '../composables/idle-beat.js';
 import { createAudioLipSyncPlugin } from '../composables/audio-lipsync.js';
@@ -14,9 +15,12 @@ import {
   createMotionManagerUpdate,
   createAutoEyeBlinkPlugin,
   createExpressionPlugin,
-  type CubismCoreLike,
   type InternalModelForPlugins,
 } from '../composables/motion-manager.js';
+import {
+  resolveLive2DModelRuntimeConfig,
+  type Live2DModelRuntimeConfig,
+} from '../model-config.js';
 
 // ── Live2DStage ─────────────────────────────────────────────────────────────
 //
@@ -24,12 +28,13 @@ import {
 //   1. Creates a PIXI.Application with transparent background + render guard
 //   2. Loads the Live2D model
 //   3. Applies half-body / full-body framing
-//   4. Wires the motion-manager pipeline + 4 plugins:
-//        - idle-disable (pre)
-//        - idle-focus   (pre)
+//   4. Wires the motion-manager pipeline:
+//        - mouse-track  (pre)
+//        - idle-beat    (final)
 //        - auto-blink   (final, before expression)
 //        - expression   (final, after blink)
-//   5. Subscribes to useLive2DStore for expression / motion swaps
+//        - audio-sync   (final, after expression)
+//   5. Subscribes to useLive2DStore for expression / motion intents
 //
 // Cubism 4 (.moc3) only. Cubism 2 is intentionally not bundled.
 //
@@ -42,6 +47,7 @@ import {
 export interface Live2DStageProps {
   modelPath: string;
   framing?:  Live2DFraming;
+  runtimeConfig?: Live2DModelRuntimeConfig;
   onReady?:  () => void;
   onError?:  (err: Live2DError) => void;
   className?: string;
@@ -49,22 +55,28 @@ export interface Live2DStageProps {
 
 export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
   function Live2DStage(props, ref) {
-    const { modelPath, framing = 'halfbody', onReady, onError, className } = props;
+    const { modelPath, framing = 'halfbody', runtimeConfig, onReady, onError, className } = props;
 
     const containerRef = useRef<HTMLDivElement | null>(null);
     const appRef       = useRef<PIXI.Application | null>(null);
     const modelRef     = useRef<InstanceType<typeof PixiLive2DModel> | null>(null);
+    const callbacksRef = useRef({ onReady, onError, runtimeConfig });
     const [error, setError] = useState<Live2DError | null>(null);
+
+    useEffect(() => {
+      callbacksRef.current = { onReady, onError, runtimeConfig };
+    }, [onReady, onError, runtimeConfig]);
 
     useImperativeHandle(ref, () => ({
       setExpression(name) { useLive2DStore.getState().setExpression(name); },
-      async playMotion(group, index) { useLive2DStore.getState().playMotion(group, index); },
+      playMotion(group, index) { useLive2DStore.getState().playMotion(group, index); },
       isReady() { return useLive2DStore.getState().ready; },
     }), []);
 
     useEffect(() => {
       const host = containerRef.current;
       if (!host) return;
+      setError(null);
 
       if (typeof window.Live2DCubismCore === 'undefined') {
         const err: Live2DError = {
@@ -72,7 +84,7 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
           message: 'window.Live2DCubismCore not found. Load live2dcubismcore.min.js before React mounts.',
         };
         setError(err);
-        onError?.(err);
+        callbacksRef.current.onError?.(err);
         return;
       }
 
@@ -91,7 +103,7 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
           cause,
         };
         setError(err);
-        onError?.(err);
+        callbacksRef.current.onError?.(err);
         return;
       }
       appRef.current = app;
@@ -124,7 +136,10 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
           // ── Wire motion-manager pipeline + plugins ────────────────────
           const internalModel = model.internalModel as unknown as InternalModelForPlugins;
           const coreModel     = internalModel.coreModel as unknown as CoreModelLike;
-          const modelIdHint   = deriveModelId(modelPath);
+          const readRuntimeConfig = () =>
+            resolveLive2DModelRuntimeConfig(callbacksRef.current.runtimeConfig);
+          const runtimeModelId = readRuntimeConfig().modelId;
+          const modelIdHint = runtimeModelId === 'unknown' ? deriveModelId(modelPath) : runtimeModelId;
 
           const expressionController = createExpressionController({
             getCoreModel: () => coreModel,
@@ -146,17 +161,22 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
           });
 
           // Pre stage: mouse-track (runs before idle motions, sets eye params)
-          pipeline.register(
-            createMouseEyeTrackPlugin(() => appRef.current?.view as HTMLCanvasElement ?? null),
-            'pre',
+          const mousePlugin = createMouseEyeTrackPlugin(
+            () => appRef.current?.view as HTMLCanvasElement ?? null,
           );
+          pipeline.register(mousePlugin, 'pre');
+          cleanupTasks.push(() => mousePlugin.dispose());
           // Final stage: idle-beat → auto-blink → expression
           // idle-beat MUST be final-stage — the model's idle.motion3.json
           // already animates ParamBodyAngle + ParamBreath. If we set them in
           // the pre stage, the original motionManager.update overwrites ours.
           // Final stage runs AFTER the original update, so our values win.
           pipeline.register(
-            createIdleBeatPlugin(() => useLive2DStore.getState().idleBeatEnabled),
+            createIdleBeatPlugin(
+              () => useLive2DStore.getState().idleBeatEnabled,
+              () => readRuntimeConfig().parameters,
+              () => readRuntimeConfig().idleBeat,
+            ),
             'final',
           );
           pipeline.register(
@@ -169,7 +189,7 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
           // Audio-lip-sync: reads speech-store RMS, drives ParamMouthOpenY.
           // Runs AFTER expression so mouth shape overlays on top of any
           // active expression (e.g. smile + talking at the same time).
-          pipeline.register(createAudioLipSyncPlugin(), 'final');
+          pipeline.register(createAudioLipSyncPlugin(() => readRuntimeConfig().parameters), 'final');
 
           // Hook the motionManager.update method. We capture the original so
           // the pipeline can call back into it when no plugin handles the frame.
@@ -202,49 +222,64 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
 
           // Subscribe to motion changes (expression now flows through plugin)
           const unsubMotion = store.subscribe((s, prev) => {
-            if (s.currentMotion !== prev.currentMotion && s.currentMotion) {
+            if (s.currentMotion?.requestId !== prev.currentMotion?.requestId && s.currentMotion) {
               void model.motion(s.currentMotion.group, s.currentMotion.index);
             }
           });
           cleanupTasks.push(unsubMotion);
 
           // Subscribe to activeExpressions CHANGES — reconcile against
-          // the expression-store. Added names are activated, removed names
-          // are deactivated (restored to modelDefault).
+          // the expression-store. Added/changed intents are activated, removed
+          // intents are deactivated deterministically.
           //
           // This follows AIRI's design: the expression-store holds
           // per-parameter runtime values; activeExpressions[] is the
           // high-level intent that the stage reconciles.
           const unsubExpr = store.subscribe((s, prev) => {
-            const added   = s.activeExpressions.filter((e) => !prev.activeExpressions.includes(e));
-            const removed = prev.activeExpressions.filter((e) => !s.activeExpressions.includes(e));
+            const prevByName = new Map(prev.activeExpressions.map((intent) => [intent.name, intent]));
+            const nextByName = new Map(s.activeExpressions.map((intent) => [intent.name, intent]));
 
-            if (added.length === 0 && removed.length === 0) return;
+            const removed = prev.activeExpressions.filter((intent) => !nextByName.has(intent.name));
+            const changed = s.activeExpressions.filter((intent) => {
+              const before = prevByName.get(intent.name);
+              return !before || before.requestId !== intent.requestId;
+            });
 
-            for (const name of removed) {
-              useExpressionStore.getState().toggle(name);
+            if (changed.length === 0 && removed.length === 0) return;
+
+            for (const intent of removed) {
+              useExpressionStore.getState().deactivate(intent.name);
             }
-            for (const name of added) {
-              useExpressionStore.getState().set(name, true);
+            for (const intent of changed) {
+              useExpressionStore.getState().set(intent.name, intent.value, intent.durationSec);
             }
           });
           cleanupTasks.push(unsubExpr);
 
+          const runtime = readRuntimeConfig();
+
           // Best-effort idle motion
-          for (const candidate of ['Idle', 'idle', '']) {
+          for (const candidate of [runtime.randomIdle.group, 'Idle', 'idle', '']) {
             try { await model.motion(candidate); break; }
             catch { /* try next */ }
           }
 
-          // Start random idle motion scheduler (12–35 s, skips when speaking)
-          const idleMotionCount = (extractMotionGroups(model)['Idle'] ?? 0) as number;
-          const stopIdleScheduler = startRandomIdleScheduler(
-            (group, index) => { void model.motion(group, index); },
-            idleMotionCount,
-          );
+          // Start random idle motion scheduler (configurable, skips when speaking)
+          const idleMotionCount = (extractMotionGroups(model)[runtime.randomIdle.group] ?? 0) as number;
+          const stopIdleScheduler = startRandomIdleScheduler({
+            playMotion: (group, index) => { void model.motion(group, index); },
+            motionCount: idleMotionCount,
+            group: runtime.randomIdle.group,
+            minDelayMs: runtime.randomIdle.minDelayMs,
+            maxDelayMs: runtime.randomIdle.maxDelayMs,
+            readEnabled: () => {
+              const live2d = useLive2DStore.getState();
+              return live2d.idleAnimationEnabled && !useSpeechStore.getState().speaking;
+            },
+          });
           cleanupTasks.push(stopIdleScheduler);
 
-          onReady?.();
+          callbacksRef.current.onReady?.();
         } catch (cause) {
           if (cancelled) return;
           const err: Live2DError = {
@@ -253,7 +288,7 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
             cause,
           };
           setError(err);
-          onError?.(err);
+          callbacksRef.current.onError?.(err);
         }
       })();
 
@@ -272,7 +307,7 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
         }
         useLive2DStore.getState().reset();
       };
-    }, [modelPath, framing, onReady, onError]);
+    }, [modelPath, framing]);
 
     return (
       <div

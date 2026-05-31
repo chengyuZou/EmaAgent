@@ -11,33 +11,33 @@
 
 import type { MotionPlugin } from './motion-manager.js';
 import { useSpeechStore } from '../stores/speech-store.js';
+import type { Live2DParameterRuntimeConfig } from '../model-config.js';
 
-/** Matches ema.vtube.json: MouthOpen output range upper bound. */
-const MOUTH_MAX = 2.1;
-/** Max additive degrees for speech-emphasis head nod. */
-const NOD_AMPLITUDE = 3.0;
 /** Per-frame release speed when not speaking (exponential decay). */
 const RELEASE = 0.12;
 
-export function createAudioLipSyncPlugin(): MotionPlugin {
+export function createAudioLipSyncPlugin(
+  readParameters: () => Live2DParameterRuntimeConfig,
+): MotionPlugin {
   let currentMouth = 0;
 
   return (ctx) => {
     const { speaking, rms, energy } = useSpeechStore.getState();
+    const params = readParameters();
 
     if (speaking && rms > 0.01) {
-      currentMouth += (rms * MOUTH_MAX - currentMouth) * 0.35;
+      currentMouth += (rms * params.mouthOpenMax - currentMouth) * 0.35;
     } else {
       currentMouth += (0 - currentMouth) * RELEASE;
     }
 
-    ctx.model.setParameterValueById('ParamMouthOpenY', currentMouth);
+    ctx.model.setParameterValueById(params.mouthOpenParam, currentMouth);
 
     // Subtle speech-emphasis head nod — additive on top of idle-beat
-    if (energy > 0.02) {
-      const nod = energy * NOD_AMPLITUDE;
-      const current = ctx.model.getParameterValueById('Param86');
-      ctx.model.setParameterValueById('Param86', current + nod);
+    if (params.speechNodParam && energy > 0.02) {
+      const nod = energy * params.speechNodAmplitude;
+      const current = ctx.model.getParameterValueById(params.speechNodParam);
+      ctx.model.setParameterValueById(params.speechNodParam, current + nod);
     }
   };
 }

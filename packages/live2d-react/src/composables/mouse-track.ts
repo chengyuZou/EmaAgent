@@ -17,20 +17,26 @@ const SMOOTH      = 0.08;
 
 // ── Factory ──────────────────────────────────────────────────────────────────
 
+export interface DisposableMotionPlugin extends MotionPlugin {
+  dispose(): void;
+}
+
 export function createMouseEyeTrackPlugin(
   getCanvas: () => HTMLCanvasElement | null,
-): MotionPlugin {
+  readEnabled: () => boolean = () => true,
+): DisposableMotionPlugin {
   let targetX = 0;
   let targetY = 0;
   let mouseInBounds = false;
 
   let bound = false;
+  let onMouseMove: ((e: MouseEvent) => void) | null = null;
 
   function bind(): void {
     if (bound) return;
     bound = true;
 
-    window.addEventListener('mousemove', (e: MouseEvent) => {
+    onMouseMove = (e: MouseEvent) => {
       const canvas = getCanvas();
       if (!canvas) return;
 
@@ -48,14 +54,28 @@ export function createMouseEyeTrackPlugin(
         targetX = 0;
         targetY = 0;
       }
-    });
+    };
+
+    window.addEventListener('mousemove', onMouseMove);
+  }
+
+  function dispose(): void {
+    if (onMouseMove) window.removeEventListener('mousemove', onMouseMove);
+    onMouseMove = null;
+    bound = false;
   }
 
   let currentX = 0;
   let currentY = 0;
 
-  return (ctx) => {
+  const plugin = ((ctx) => {
     bind();
+
+    if (!readEnabled()) {
+      targetX = 0;
+      targetY = 0;
+      mouseInBounds = false;
+    }
 
     if (mouseInBounds) {
       currentX += (targetX - currentX) * SMOOTH;
@@ -67,5 +87,8 @@ export function createMouseEyeTrackPlugin(
 
     ctx.model.setParameterValueById('ParamEyeBallX', currentX);
     ctx.model.setParameterValueById('ParamEyeBallY', currentY);
-  };
+  }) as DisposableMotionPlugin;
+
+  plugin.dispose = dispose;
+  return plugin;
 }
