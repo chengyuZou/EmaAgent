@@ -8,6 +8,7 @@
 } from './ids.js';
 import type { LlmProtocol } from './providers/types.js';
 import type { UsageSummary } from './turns.js';
+import type { Artifact } from './artifact.js';
 
 // ── Shared sub-types ──────────────────────────────────────────────────────────
 
@@ -16,20 +17,6 @@ export type { UsageSummary };
 export interface ToolError {
   code: string;
   message: string;
-}
-
-export interface Artifact {
-  id: ArtifactId;
-  type: string;
-  title: string;
-  content: string | null;
-  contentLocation: 'inline' | 'file';
-  contentPath?: string;
-  meta: Record<string, unknown>;
-  createdAt: number;
-  updatedAt: number;
-  appliedAt?: number;
-  rejectedAt?: number;
 }
 
 export interface StageCue {
