@@ -251,7 +251,8 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
               useExpressionStore.getState().deactivate(intent.name);
             }
             for (const intent of changed) {
-              useExpressionStore.getState().set(intent.name, intent.value, intent.durationSec);
+              // durationSec is owned by live2dStore timers — do not pass it here.
+              useExpressionStore.getState().set(intent.name, intent.value);
             }
           });
           cleanupTasks.push(unsubExpr);

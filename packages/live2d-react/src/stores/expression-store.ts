@@ -2,21 +2,27 @@ import { create } from 'zustand';
 
 // ── Live2D expression store ─────────────────────────────────────────────────
 //
+// Internal runtime store — do NOT call set/activate/deactivate/toggle from
+// UI or Agent tools directly. All intent changes must go through useLive2DStore.
+// Live2DStage is the only reconciler from intent → expression runtime values.
+//
 // Stores expression data after .exp3.json has been parsed. It does not fetch
-// model files and it does not render. Live2DStage owns parsing and the
-// expression-controller applies these values to Cubism every frame.
+// model files and it does not render. expressionController reads this store
+// every frame and applies currentValue to the Cubism coreModel.
+//
+// Duration/lifecycle: owned entirely by live2dStore (via expressionTimers).
+// This store only tracks the current parameter values — no timers here.
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
 export type ExpressionBlendMode = 'Add' | 'Multiply' | 'Overwrite';
 
 export interface ExpressionEntry {
-  /** Human-readable name. In current code this is the same as parameterId. */
-  name: string;
+  /** Human-readable name (same as parameterId in current usage). */
+  name:         string;
   /** Live2D parameter ID, e.g. ParamMouthForm. */
-  parameterId: string;
-  /** Blend mode used when applying this parameter. */
-  blend: ExpressionBlendMode;
+  parameterId:  string;
+  blend:        ExpressionBlendMode;
   /** Runtime value applied by expression-controller every frame. */
   currentValue: number;
   /** Application-level default; may be persisted per model. */
@@ -24,60 +30,57 @@ export interface ExpressionEntry {
   /** Model-baked default read from Cubism when possible. */
   modelDefault: number;
   /** Activation value from exp3. */
-  targetValue: number;
-  resetTimer?: ReturnType<typeof setTimeout>;
-  resetAt?: number;
+  targetValue:  number;
 }
 
 export interface ExpressionGroupParam {
   parameterId: string;
-  blend: ExpressionBlendMode;
-  value: number;
+  blend:       ExpressionBlendMode;
+  value:       number;
 }
 
 export interface ExpressionGroupDefinition {
-  name: string;
+  name:       string;
   parameters: ExpressionGroupParam[];
 }
 
 export interface ExpressionState {
-  name: string;
-  value: number;
+  name:    string;
+  value:   number;
   default: number;
-  active: boolean;
-  autoResetAt?: number;
+  active:  boolean;
 }
 
 export interface ExpressionToolResult {
-  success: boolean;
-  error?: string;
-  state?: ExpressionState | ExpressionState[];
+  success:    boolean;
+  error?:     string;
+  state?:     ExpressionState | ExpressionState[];
   available?: string[];
 }
 
 interface ExpressionStoreState {
   /** Map<parameterId, entry>. */
-  expressions: Map<string, ExpressionEntry>;
+  expressions:      Map<string, ExpressionEntry>;
   /** Map<expressionName, groupDef>. */
   expressionGroups: Map<string, ExpressionGroupDefinition>;
-  modelId: string;
+  modelId:          string;
 }
 
 interface ExpressionStoreActions {
   registerExpressions(
     modelId: string,
-    groups: ExpressionGroupDefinition[],
+    groups:  ExpressionGroupDefinition[],
     entries: ExpressionEntry[],
   ): void;
   resolve(name: string):
     | { kind: 'group'; group: ExpressionGroupDefinition }
     | { kind: 'param'; entry: ExpressionEntry }
     | null;
-  set(name: string, value: boolean | number, durationSec?: number): ExpressionToolResult;
-  activate(name: string, value?: boolean | number, durationSec?: number): ExpressionToolResult;
+  set(name: string, value: boolean | number): ExpressionToolResult;
+  activate(name: string, value?: boolean | number): ExpressionToolResult;
   deactivate(name: string): ExpressionToolResult;
   get(name?: string): ExpressionToolResult;
-  toggle(name: string, durationSec?: number): ExpressionToolResult;
+  toggle(name: string): ExpressionToolResult;
   saveDefaults(): ExpressionToolResult;
   resetAll(): ExpressionToolResult;
   dispose(): void;
@@ -124,31 +127,15 @@ export const useExpressionStore = create<ExpressionStore>((set, get) => {
     set((s) => ({ expressions: new Map(s.expressions) }));
   };
 
-  const applyEntryValue = (
-    entry: ExpressionEntry,
-    value: number,
-    durationSec?: number,
-  ): void => {
-    clearTimer(entry);
+  // Set entry.currentValue and trigger a re-render. No timer logic —
+  // duration is owned by live2dStore.
+  const applyEntryValue = (entry: ExpressionEntry, value: number): void => {
     entry.currentValue = value;
-    entry.resetAt = undefined;
-
-    if (durationSec !== undefined && durationSec > 0) {
-      const resetTo = entry.defaultValue;
-      entry.resetAt = Date.now() + durationSec * 1000;
-      entry.resetTimer = setTimeout(() => {
-        entry.currentValue = resetTo;
-        entry.resetTimer = undefined;
-        entry.resetAt = undefined;
-        bump();
-      }, durationSec * 1000);
-    }
   };
 
   const applyGroup = (
     group: ExpressionGroupDefinition,
     value: boolean | number,
-    durationSec?: number,
   ): ExpressionState[] => {
     const states: ExpressionState[] = [];
     for (const param of group.parameters) {
@@ -162,7 +149,7 @@ export const useExpressionStore = create<ExpressionStore>((set, get) => {
         nextValue = param.value * value;
       }
 
-      applyEntryValue(entry, nextValue, durationSec);
+      applyEntryValue(entry, nextValue);
       states.push(toState(entry));
     }
     return states;
@@ -172,8 +159,6 @@ export const useExpressionStore = create<ExpressionStore>((set, get) => {
     ...initial,
 
     registerExpressions(modelId, groups, entries) {
-      clearAllTimers(get().expressions);
-
       const expressionGroups = new Map<string, ExpressionGroupDefinition>();
       for (const group of groups) expressionGroups.set(group.name, group);
 
@@ -203,27 +188,27 @@ export const useExpressionStore = create<ExpressionStore>((set, get) => {
       return null;
     },
 
-    set(name, value, durationSec) {
+    set(name, value) {
       const resolved = get().resolve(name);
       if (!resolved) return notFound(name, get());
 
       if (resolved.kind === 'group') {
-        const states = applyGroup(resolved.group, value, durationSec);
+        const states = applyGroup(resolved.group, value);
         bump();
         return { success: true, state: states };
       }
 
-      const entry = resolved.entry;
+      const entry     = resolved.entry;
       const nextValue = typeof value === 'boolean'
         ? (value ? entry.targetValue : entry.defaultValue)
         : value;
-      applyEntryValue(entry, nextValue, durationSec);
+      applyEntryValue(entry, nextValue);
       bump();
       return { success: true, state: toState(entry) };
     },
 
-    activate(name, value = true, durationSec) {
-      return get().set(name, value, durationSec);
+    activate(name, value = true) {
+      return get().set(name, value);
     },
 
     deactivate(name) {
@@ -268,7 +253,7 @@ export const useExpressionStore = create<ExpressionStore>((set, get) => {
       return { success: true, state: toState(resolved.entry) };
     },
 
-    toggle(name, durationSec) {
+    toggle(name) {
       const resolved = get().resolve(name);
       if (!resolved) return notFound(name, get());
 
@@ -277,12 +262,12 @@ export const useExpressionStore = create<ExpressionStore>((set, get) => {
           const entry = get().expressions.get(param.parameterId);
           return entry !== undefined && entry.currentValue !== entry.defaultValue;
         });
-        return isActive ? get().deactivate(name) : get().activate(name, true, durationSec);
+        return isActive ? get().deactivate(name) : get().activate(name, true);
       }
 
-      const entry = resolved.entry;
+      const entry  = resolved.entry;
       const active = entry.currentValue !== entry.defaultValue;
-      return active ? get().deactivate(name) : get().activate(name, true, durationSec);
+      return active ? get().deactivate(name) : get().activate(name, true);
     },
 
     saveDefaults() {
@@ -292,7 +277,7 @@ export const useExpressionStore = create<ExpressionStore>((set, get) => {
       const defaults: Record<string, number> = {};
       for (const [name, entry] of state.expressions) {
         entry.defaultValue = entry.currentValue;
-        defaults[name] = entry.currentValue;
+        defaults[name]     = entry.currentValue;
       }
       savePersistedDefaults(state.modelId, defaults);
       bump();
@@ -310,7 +295,6 @@ export const useExpressionStore = create<ExpressionStore>((set, get) => {
     },
 
     dispose() {
-      clearAllTimers(get().expressions);
       set({ ...initial });
     },
   };
@@ -318,27 +302,13 @@ export const useExpressionStore = create<ExpressionStore>((set, get) => {
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
-function clearTimer(entry: ExpressionEntry): void {
-  if (entry.resetTimer !== undefined) {
-    clearTimeout(entry.resetTimer);
-    entry.resetTimer = undefined;
-  }
-  entry.resetAt = undefined;
-}
-
-function clearAllTimers(map: Map<string, ExpressionEntry>): void {
-  for (const entry of map.values()) clearTimer(entry);
-}
-
 function toState(entry: ExpressionEntry): ExpressionState {
-  const state: ExpressionState = {
-    name: entry.name,
-    value: entry.currentValue,
+  return {
+    name:    entry.name,
+    value:   entry.currentValue,
     default: entry.defaultValue,
-    active: entry.currentValue !== entry.defaultValue,
+    active:  entry.currentValue !== entry.defaultValue,
   };
-  if (entry.resetAt !== undefined) state.autoResetAt = entry.resetAt;
-  return state;
 }
 
 function availableNames(state: ExpressionStoreState): string[] {
@@ -350,8 +320,8 @@ function availableNames(state: ExpressionStoreState): string[] {
 
 function notFound(name: string, state: ExpressionStoreState): ExpressionToolResult {
   return {
-    success: false,
-    error: `Expression "${name}" not found`,
+    success:   false,
+    error:     `Expression "${name}" not found`,
     available: availableNames(state),
   };
 }
