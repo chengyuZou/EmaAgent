@@ -1,5 +1,9 @@
 import { Client }             from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
+// SSEClientTransport is deprecated in the MCP SDK (prefer StreamableHTTPClientTransport),
+// but many published servers (e.g. Zhipu, Baidu) still use the legacy SSE protocol.
+// We keep it for backward compatibility during the migration period.
+// eslint-disable-next-line @typescript-eslint/no-deprecated
 import { SSEClientTransport }   from '@modelcontextprotocol/sdk/client/sse.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import type { McpServerConfig } from './types.js';

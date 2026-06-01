@@ -14,6 +14,9 @@ export const McpStdioConfigSchema = z.object({
   env:     z.record(z.string(), z.string()).optional(),
 });
 
+// 'sse' uses the legacy SSEClientTransport (deprecated in MCP SDK ≥1.x).
+// Many servers on mcp.so (Zhipu, Baidu, etc.) still publish SSE endpoints.
+// Keep registering new servers with 'http' when the server supports it.
 export const McpSseConfigSchema = z.object({
   type:    z.literal('sse'),
   url:     z.string().url(),
