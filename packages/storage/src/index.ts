@@ -11,6 +11,7 @@ export { UsageRepo } from './repos/usage.js';
 export { Live2DModelsRepo } from './repos/live2d-models.js';
 export { ProvidersRepo } from './repos/providers.js';
 export { ModelBindingsRepo } from './repos/model-bindings.js';
+export { ArtifactRepo } from './repos/artifact.js';
 
 // ── Memory subsystem (migration 006) ──────────────────────────────────────────
 export { MemoryNodesRepo }       from './repos/memory-nodes.js';
