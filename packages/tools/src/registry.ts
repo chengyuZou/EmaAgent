@@ -33,7 +33,9 @@ export class ToolInputError extends Error {
  */
 export class ToolRegistry {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private readonly tools = new Map<string, BuiltTool<any, any>>();
+  private readonly tools    = new Map<string, BuiltTool<any, any>>();
+  /** Separate set tracks MCP-registered names for safe hot-swap. */
+  private readonly mcpNames = new Set<string>();
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   register(tool: BuiltTool<any, any>): void {
@@ -41,6 +43,27 @@ export class ToolRegistry {
       throw new ToolRegistryError(`Tool "${tool.name}" is already registered`);
     }
     this.tools.set(tool.name, tool);
+  }
+
+  /**
+   * Register an MCP-sourced tool. Unlike register(), this is idempotent:
+   * registering the same name replaces the existing entry without throwing.
+   * Used by McpRegistry when a server (re)connects.
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  registerMcp(tool: BuiltTool<any, any>): void {
+    this.tools.set(tool.name, tool);
+    this.mcpNames.add(tool.name);
+  }
+
+  /**
+   * Remove an MCP-sourced tool. No-op if not registered.
+   * Used by McpRegistry when a server disconnects.
+   */
+  unregisterMcp(name: string): void {
+    if (!this.mcpNames.has(name)) return;
+    this.tools.delete(name);
+    this.mcpNames.delete(name);
   }
 
   /** Throws ToolRegistryError if the tool is not registered. */
