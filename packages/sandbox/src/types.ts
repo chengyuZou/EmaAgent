@@ -46,11 +46,13 @@ export interface SandboxBackend {
 
 export interface RunOptions {
   /** Override working directory (defaults to workspaceRoot). */
-  cwd?:     string
+  cwd?:        string
   /** Milliseconds before SIGTERM + SIGKILL. */
-  timeout?: number
+  timeout?:    number
   /** AbortSignal for turn cancellation. */
-  signal?:  AbortSignal
+  signal?:     AbortSignal
+  /** Fire-and-forget: spawn detached through the sandbox backend, return immediately. */
+  background?: boolean
 }
 
 export interface RunResult {

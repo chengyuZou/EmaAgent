@@ -148,7 +148,9 @@ export const fsReadTool = buildTool<FsReadInput, FsReadResult>({
     if (!stat.isFile()) {
       throw new Error(`Path is not a regular file: ${fullPath}`);
     }
-    if (stat.size > TEXT_SIZE_LIMIT) {
+    const isPartialView = offset !== undefined || limit !== undefined;
+
+    if (stat.size > TEXT_SIZE_LIMIT && !isPartialView) {
       throw new Error(
         `File is too large to read as text (${(stat.size / 1024 / 1024).toFixed(1)} MiB > 10 MiB). ` +
           `Use offset/limit to read a section.`,
@@ -156,7 +158,6 @@ export const fsReadTool = buildTool<FsReadInput, FsReadResult>({
     }
 
     const mtimeMs = stat.mtimeMs;
-    const isPartialView = offset !== undefined || limit !== undefined;
 
     // ── Dedup check ───────────────────────────────────────────────────────────
     const existing = ctx.readFileState.get(fullPath);

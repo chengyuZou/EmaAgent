@@ -26,9 +26,11 @@ export type ReadFileState = Map<string, ReadFileEntry>;
  * sandbox package directly (avoids circular deps: tools ↛ sandbox ↛ permission).
  */
 export interface RunOptions {
-  cwd?:     string;
-  timeout?: number;
-  signal?:  AbortSignal;
+  cwd?:        string;
+  timeout?:    number;
+  signal?:     AbortSignal;
+  /** Fire-and-forget: spawn detached, return immediately with empty result. */
+  background?: boolean;
 }
 
 export interface RunResult {

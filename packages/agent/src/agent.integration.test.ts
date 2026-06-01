@@ -28,7 +28,7 @@ import type { AgentDeps } from './types.js';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const DS_KEY       = 'sk-xxx9fb976f5d59';
+const DS_KEY       = process.env['DS_API_KEY'] ?? 'sk-xxx';
 const PROVIDER_ID  = 'deepseek-test';
 const MODEL        = 'deepseek-chat';
 const WORKSPACE    = path.resolve('D:/Github/EmaAgent');

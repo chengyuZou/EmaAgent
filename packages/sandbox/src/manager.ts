@@ -1,4 +1,5 @@
 import { existsSync, rmSync } from 'node:fs';
+import { spawn }               from 'node:child_process';
 import { spawnProcess }        from '@ema-agent/tool';
 import type { PermissionEngine } from '@ema-agent/permission';
 import type { SandboxBackend, SandboxConfig, RunOptions, RunResult } from './types.js';
@@ -8,6 +9,7 @@ import { AppLayerBackend }         from './backends/app-layer.js';
 import { BubblewrapBackend }       from './backends/bubblewrap.js';
 import { SandboxExecBackend }      from './backends/sandbox-exec.js';
 import type { ConfigContext }      from './config-builder.js';
+import { getPlatform }            from './platform.js';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -66,6 +68,12 @@ export class CommandRunner {
     const timeoutMs = Math.min(opts.timeout ?? DEFAULT_TIMEOUT_MS, MAX_TIMEOUT_MS);
 
     const { executable, args } = this.backend.wrap(command, shell, this.config);
+
+    if (opts.background) {
+      spawn(executable, args, { cwd, stdio: 'ignore', detached: true }).unref();
+      return { stdout: '', stderr: '', exitCode: 0, timedOut: false, truncated: false };
+    }
+
     return spawnProcess(executable, args, cwd, timeoutMs, opts.signal);
   }
 
@@ -129,6 +137,9 @@ function selectBackend(kind: ReturnType<typeof detectBackend>['backend']): Sandb
 // ── Shell selection ───────────────────────────────────────────────────────────
 
 function getShell(): string {
-  return process.platform === 'win32' ? 'bash' : '/bin/bash';
+  const platform = getPlatform();
+  // wsl1/wsl2 run inside Linux — /bin/bash is correct.
+  // 'windows' means native Win32; bash requires Git Bash or WSL in PATH.
+  return platform === 'windows' ? 'bash' : '/bin/bash';
 }
 

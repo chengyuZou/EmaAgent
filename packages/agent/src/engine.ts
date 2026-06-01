@@ -200,7 +200,7 @@ async function* runTurn(
             deltaPromises.push(
               hooks.trigger('afterLlmDelta', {
                 turnId, sessionId,
-                payload: { delta: chunk.delta, accumulated: textByIndex.get(chunk.blockIndex) ?? '' },
+                payload: { delta: cleaned, accumulated: textByIndex.get(chunk.blockIndex) ?? '' },
                 meta: {},
               }),
             );
@@ -247,12 +247,15 @@ async function* runTurn(
         }
       }
 
-      // Flush emotion scanner tail (handles partial ACT tags at end of stream)
+      // Flush emotion scanner tail (handles partial ACT tags at end of stream).
+      // Use the actual blockIndex for text: OpenAI always emits text at 1 (so
+      // thinking 0 < text 1 < tools 1000+), Anthropic without thinking uses 0.
+      // Reading from textByIndex avoids hardcoding adapter-specific constants.
       const { cleaned: tail } = emotion.flush(turnId);
       if (tail) {
-        const idx = 1; // text lives at blockIndex 1 in OpenAI adapter
-        textByIndex.set(idx, (textByIndex.get(idx) ?? '') + tail);
-        yield { type: 'output_text_delta', blockIndex: idx, delta: tail };
+        const textIdx = textByIndex.size > 0 ? Math.min(...textByIndex.keys()) : 0;
+        textByIndex.set(textIdx, (textByIndex.get(textIdx) ?? '') + tail);
+        yield { type: 'output_text_delta', blockIndex: textIdx, delta: tail };
       }
 
       await Promise.allSettled(deltaPromises);

@@ -604,8 +604,9 @@ export class MemoryPlanner {
         succeeded:    true,
       };
     }
-    const head = working.slice(0, working.length - tailSize);
-    const tail = working.slice(working.length - tailSize);
+    const safeCut = findSafeCutPoint(working, working.length - tailSize);
+    const head = working.slice(0, safeCut);
+    const tail = working.slice(safeCut);
 
     const result = await runMacroCompaction({
       llm:                this.deps.llm,
@@ -778,4 +779,40 @@ function safeCall<T>(fn: () => T): T | null {
 
 async function safeAsync<T>(fn: () => Promise<T>): Promise<T | null> {
   try { return await fn(); } catch { return null; }
+}
+
+// ── Compaction safe-cut helpers ───────────────────────────────────────────────
+//
+// The Anthropic / OpenAI APIs require tool_use blocks in an assistant message
+// to be immediately followed by a user message containing the matching
+// tool_result blocks. A naive slice can land between that pair, producing an
+// orphaned tool_result at the start of `tail` — which the API rejects.
+//
+// findSafeCutPoint walks backward from the desired cut index until it reaches
+// a boundary that does not split a tool_use/tool_result pair:
+//   - Skip user messages whose content is entirely tool_result blocks.
+//   - Skip the assistant message preceding them (which contains tool_use).
+// The returned index is the first message that belongs in `tail`.
+
+function findSafeCutPoint(messages: LlmMessage[], desiredCut: number): number {
+  for (let i = desiredCut; i > 0; i--) {
+    const msg = messages[i]!;
+    if (msg.role === 'user' && Array.isArray(msg.content) && isAllToolResults(msg.content)) {
+      continue; // tool_result msg — can't start a tail here, skip
+    }
+    if (msg.role === 'assistant' && Array.isArray(msg.content) && hasAnyToolUse(msg.content)) {
+      continue; // tool_use msg whose results are at i+1 — keep both in tail
+    }
+    return i;
+  }
+  return 0;
+}
+
+function isAllToolResults(blocks: unknown[]): boolean {
+  return blocks.length > 0 &&
+    blocks.every((b) => (b as { type?: string }).type === 'tool_result');
+}
+
+function hasAnyToolUse(blocks: unknown[]): boolean {
+  return blocks.some((b) => (b as { type?: string }).type === 'tool_use');
 }

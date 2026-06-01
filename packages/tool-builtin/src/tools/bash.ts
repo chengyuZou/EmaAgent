@@ -1,4 +1,3 @@
-import { spawn } from 'node:child_process';
 import { z } from 'zod';
 import { buildTool, spawnProcess } from '@ema-agent/tool';
 import type { ToolExecutionContext } from '@ema-agent/tool';
@@ -102,18 +101,23 @@ Safety rules:
     const cwd = ctx.workspaceRoot;
     const timeoutMs = Math.min(timeout ?? DEFAULT_TIMEOUT_MS, MAX_TIMEOUT_MS);
 
-    if (run_in_background) {
-      spawn(shell, ['-c', command], {
+    // Delegate to sandbox CommandRunner when available — gets OS-level sandboxing.
+    // run_in_background also goes through CommandRunner so it respects sandbox
+    // rules and produces a trackable task rather than a detached orphan process.
+    if (ctx.commandRunner) {
+      return ctx.commandRunner.run(command, {
         cwd,
-        stdio: 'ignore',
-        detached: true,
-      }).unref();
-      return { stdout: '', stderr: '', exitCode: 0, timedOut: false, truncated: false };
+        timeout: run_in_background ? 0 : timeoutMs,
+        signal: ctx.signal,
+        background: run_in_background,
+      });
     }
 
-    // Delegate to sandbox CommandRunner when available — gets OS-level sandboxing
-    if (ctx.commandRunner) {
-      return ctx.commandRunner.run(command, { cwd, timeout: timeoutMs, signal: ctx.signal });
+    if (run_in_background) {
+      // No CommandRunner — fall back to detached spawn, but only as last resort.
+      const { spawn } = await import('node:child_process');
+      spawn(shell, ['-c', command], { cwd, stdio: 'ignore', detached: true }).unref();
+      return { stdout: '', stderr: '', exitCode: 0, timedOut: false, truncated: false };
     }
 
     return runShell(shell, ['-c', command], cwd, timeoutMs, ctx.signal);
