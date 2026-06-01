@@ -79,6 +79,7 @@ async function* runTurn(
     readFileState,
     emit:          toolEmit,
     commandRunner: resolvedRunner,
+    artifactStore: deps.artifactStore,
     askUser: askUserRegistry
       ? async (promptId, _questions) => {
           // IMPORTANT: use createWithId so the registry is keyed to the same

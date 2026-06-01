@@ -4,6 +4,8 @@ export type {
   RunOptions,
   RunResult,
   ICommandRunner,
+  IArtifactStore,
+  ArtifactUpsertArgs,
   ToolExecutionContext,
   ToolDescriptor,
   ToolDef,

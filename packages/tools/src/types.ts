@@ -1,5 +1,7 @@
 import type { z } from 'zod';
-import type { EmaStreamEvent } from '@ema-agent/contracts';
+import type {
+  EmaStreamEvent, Artifact, ArtifactId, ArtifactType, SessionId, TurnId,
+} from '@ema-agent/contracts';
 import type { ToolPermissionMeta } from '@ema-agent/permission';
 
 // ── ReadFileState — shared dedup cache across tool calls within a turn ────────
@@ -18,6 +20,33 @@ export interface ReadFileEntry {
 
 /** Keyed by absolute, normalized file path. */
 export type ReadFileState = Map<string, ReadFileEntry>;
+
+// ── IArtifactStore — interface only (implemented by @ema-agent/artifact) ───────
+//
+// Thin interface so tools can write artifacts without importing the artifact
+// package directly (avoids a tools → artifact → storage cycle).
+
+export interface ArtifactUpsertArgs {
+  id?:       ArtifactId;
+  sessionId: SessionId;
+  turnId?:   TurnId;
+  type:      ArtifactType;
+  title:     string;
+  content:   string;
+  meta?:     Record<string, unknown>;
+}
+
+export interface IArtifactStore {
+  upsert(args: ArtifactUpsertArgs): Artifact;
+  get(id: ArtifactId): Artifact | null;
+  /** Metadata-only list — content field omitted for efficiency. */
+  list(sessionId: SessionId, opts?: { type?: string }): Omit<Artifact, 'content'>[];
+  apply(id: ArtifactId, targetPath: string): Artifact;
+  reject(id: ArtifactId): Artifact;
+  delete(id: ArtifactId): void;
+  /** Returns true when session has >100 artifacts — tool should surface a warning. */
+  countWarning(sessionId: SessionId): boolean;
+}
 
 // ── ICommandRunner — interface only (implemented by @ema-agent/sandbox) ───────
 
@@ -89,6 +118,11 @@ export interface ToolExecutionContext {
    * `promptId` must match the id already broadcast in `ask_user_required`.
    */
   askUser?: (promptId: string, questions: unknown[]) => Promise<{ answers: Record<string, string> }>;
+  /**
+   * Persistent artifact store. When present, artifact_write/read/list delegate
+   * here instead of the in-process memory fallback.
+   */
+  artifactStore?: IArtifactStore;
 }
 
 // ── ToolDescriptor — what the LLM sees ───────────────────────────────────────

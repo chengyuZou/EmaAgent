@@ -3,7 +3,7 @@ import type { LlmRouter, LlmContentPart } from '@ema-agent/llm';
 import type { SessionStore, Turn } from '@ema-agent/session';
 import type { HookBus } from '@ema-agent/hook';
 import type { EmotionEngine } from '@ema-agent/emotion';
-import type { ICommandRunner, ToolRegistry } from '@ema-agent/tool';
+import type { ICommandRunner, IArtifactStore, ToolRegistry } from '@ema-agent/tool';
 import type { PermissionEngine, AskPermissionFn } from '@ema-agent/permission';
 
 /** Minimal interface for the AskUser registry — avoids importing from core. */
@@ -53,6 +53,8 @@ export interface AgentDeps {
    * toolCtx that the ask_user tool awaits.
    */
   askUserRegistry?: AskUserRegistryLike;
+  /** Persistent artifact store — injected so artifact_write/read/list persist across turns. */
+  artifactStore?: IArtifactStore;
 }
 
 // ── Run input ─────────────────────────────────────────────────────────────────
