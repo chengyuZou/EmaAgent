@@ -5,13 +5,33 @@ import type { ToolResultBlock } from '@ema-agent/contracts';
 
 const CLEARED_PLACEHOLDER = '[Old tool result content cleared — call the tool again if needed]';
 
+// Only these tools' results are safe to clear: their output can be
+// re-fetched by calling the tool again. Tools whose results carry
+// irreversible side-effect records or self-managed storage are excluded:
+//   - artifact_*  → ArtifactStore owns the content; result is a slim ref
+//   - ask_user    → user's answer is unique, cannot re-fetch
+//   - skill_*     → may carry one-shot state
+//   - mcp_call    → external side effects, not safely replayable in general
+//
+// Mirrors Claude Code's COMPACTABLE_TOOLS whitelist (microCompact.ts).
+const COMPACTABLE_TOOLS = new Set<string>([
+  'fs_read',
+  'glob',
+  'grep',
+  'bash',
+  'powershell',
+  'web_fetch',
+  'web_search',
+]);
+
 /**
  * Walk through the message array and replace stale tool_result content with a
  * short stub. Reduces context size without calling any LLM.
  *
  * Strategy:
- *   - Operate only on tool_result blocks (agent mode artifacts)
- *   - Preserve the most recent `keepRecent` tool_results untouched
+ *   - Operate only on tool_result blocks whose originating tool is in
+ *     COMPACTABLE_TOOLS (re-fetchable output)
+ *   - Preserve the most recent `keepRecent` compactable tool_results untouched
  *   - Everything older than the recency window gets its content replaced
  *
  * Returns a NEW messages array — does not mutate the input.
@@ -21,7 +41,18 @@ export function microCompact(
   messages: LlmMessage[],
   opts: { keepRecent: number } = { keepRecent: 6 },
 ): { messages: LlmMessage[]; cleared: number } {
-  // First pass: find tool_result indices (per-block, in chronological order)
+  // Build toolUseId → toolName from assistant tool_use blocks.
+  // tool_use always precedes its tool_result, so the map is complete by the
+  // time we scan results.
+  const toolNameById = new Map<string, string>();
+  for (const msg of messages) {
+    if (msg.role !== 'assistant' || typeof msg.content === 'string') continue;
+    for (const blk of msg.content) {
+      if (isToolUse(blk)) toolNameById.set(blk.id, blk.name);
+    }
+  }
+
+  // First pass: find COMPACTABLE tool_result indices in chronological order.
   type ResultLoc = { msgIdx: number; blockIdx: number };
   const locs: ResultLoc[] = [];
   for (let m = 0; m < messages.length; m++) {
@@ -29,9 +60,10 @@ export function microCompact(
     if (msg.role !== 'user' || typeof msg.content === 'string') continue;
     for (let b = 0; b < msg.content.length; b++) {
       const blk = msg.content[b]!;
-      if (isToolResult(blk)) {
-        locs.push({ msgIdx: m, blockIdx: b });
-      }
+      if (!isToolResult(blk)) continue;
+      const toolName = toolNameById.get(blk.toolUseId);
+      if (!toolName || !COMPACTABLE_TOOLS.has(toolName)) continue; // skip non-compactable
+      locs.push({ msgIdx: m, blockIdx: b });
     }
   }
 
@@ -70,4 +102,8 @@ export function microCompact(
 
 function isToolResult(blk: UserBlock | AssistantBlock): blk is ToolResultBlock {
   return (blk as { type?: string }).type === 'tool_result';
+}
+
+function isToolUse(blk: AssistantBlock): blk is AssistantBlock & { type: 'tool_use'; id: string; name: string } {
+  return (blk as { type?: string }).type === 'tool_use';
 }
