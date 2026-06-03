@@ -7,7 +7,8 @@ import type { EmbedAdapter } from './base.js';
  *
  * API reference:
  *   POST https://generativelanguage.googleapis.com/v1beta/models/{model}:batchEmbedContents
- *   ?key={apiKey}
+ *   Authorization is sent with x-goog-api-key so credentials do not appear in
+ *   URLs, logs, or devtool network query strings.
  */
 export class GeminiEmbedAdapter implements EmbedAdapter {
   private readonly config: EmbedProviderConfig;
@@ -21,11 +22,14 @@ export class GeminiEmbedAdapter implements EmbedAdapter {
       this.config.baseUrl ?? 'https://generativelanguage.googleapis.com/v1beta'
     ).replace(/\/$/, '');
 
-    const url = `${baseUrl}/models/${model}:batchEmbedContents?key=${this.config.apiKey}`;
+    const url = `${baseUrl}/models/${model}:batchEmbedContents`;
 
     const res = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'x-goog-api-key': this.config.apiKey,
+      },
       body: JSON.stringify({
         requests: texts.map(text => ({
           model: `models/${model}`,

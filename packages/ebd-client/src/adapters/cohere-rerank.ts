@@ -10,6 +10,14 @@ import type { RerankAdapter } from './base.js';
  *   { model, query, documents: string[], top_n }
  *   → { results: [{ index, relevance_score }] }
  */
+function normalizeBaseUrl(baseUrl: string | undefined): string {
+  const clean = baseUrl?.trim().replace(/\/+$/, '');
+  if (!clean) {
+    throw new Error('cohere-rerank: baseUrl is required for the Cohere rerank protocol');
+  }
+  return clean;
+}
+
 export class CohereRerankAdapter implements RerankAdapter {
   private readonly config: RerankProviderConfig;
 
@@ -23,7 +31,7 @@ export class CohereRerankAdapter implements RerankAdapter {
     topK: number,
     model: string,
   ): Promise<RerankResponse> {
-    const baseUrl = (this.config.baseUrl ?? '').replace(/\/$/, '');
+    const baseUrl = normalizeBaseUrl(this.config.baseUrl);
     const res = await fetch(`${baseUrl}/rerank`, {
       method: 'POST',
       headers: {
