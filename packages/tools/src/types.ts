@@ -21,6 +21,25 @@ export interface ReadFileEntry {
 /** Keyed by absolute, normalized file path. */
 export type ReadFileState = Map<string, ReadFileEntry>;
 
+// ── IFileStateStore — interface only (implemented by @ema-agent/agent-context) ──
+//
+// Defined here so tools (fs_read, fs_edit) can call it without importing the
+// agent-context package (avoids tools → agent-context → … cycle).
+
+export interface IFileStateStoreEntry {
+  content:       string;
+  mtimeMs:       number;
+  offset?:       number;
+  limit?:        number;
+  isPartialView: boolean;
+}
+
+export interface IFileStateStore {
+  record(path: string, entry: IFileStateStoreEntry): void;
+  get(path: string): (IFileStateStoreEntry & { lastAccessMs: number }) | undefined;
+  recentEntries(limit: number): ReadonlyArray<{ path: string; content: string; mtimeMs: number }>;
+}
+
 // ── IArtifactStore — interface only (implemented by @ema-agent/artifact) ───────
 //
 // Thin interface so tools can write artifacts without importing the artifact
@@ -101,6 +120,12 @@ export interface ToolExecutionContext {
    * Persists across tool calls so fs_edit can verify the file was read first.
    */
   readFileState: ReadFileState;
+  /**
+   * Per-session persistent file state store (AgentFileStateStore).
+   * Survives across turns — used for cross-turn stale-edit detection and
+   * post-compact restore. Absent in tests and non-agent callers.
+   */
+  fileStateStore?: IFileStateStore;
   /**
    * Emit a structured SSE event mid-execution (e.g. tool_result from sub-steps).
    * Optional: not all call-sites provide a streaming channel.

@@ -181,7 +181,7 @@ export const fsReadTool = buildTool<FsReadInput, FsReadResult>({
     const slicedLines = allLines.slice(startLine - 1, endLine);
     const content = formatWithLineNumbers(slicedLines, startLine);
 
-    // ── Update dedup cache ────────────────────────────────────────────────────
+    // ── Update dedup caches ───────────────────────────────────────────────────
     ctx.readFileState.set(fullPath, {
       content: raw,
       timestamp: mtimeMs,
@@ -189,6 +189,7 @@ export const fsReadTool = buildTool<FsReadInput, FsReadResult>({
       limit,
       isPartialView,
     });
+    ctx.fileStateStore?.record(fullPath, { content: raw, mtimeMs, offset, limit, isPartialView });
 
     return {
       type: 'file_content',

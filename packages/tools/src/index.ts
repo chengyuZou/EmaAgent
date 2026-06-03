@@ -1,6 +1,8 @@
 export type {
   ReadFileEntry,
   ReadFileState,
+  IFileStateStoreEntry,
+  IFileStateStore,
   RunOptions,
   RunResult,
   ICommandRunner,

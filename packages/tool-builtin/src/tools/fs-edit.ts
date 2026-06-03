@@ -159,7 +159,7 @@ Rules:
 
     const newMtime = fs.statSync(fullPath).mtimeMs;
 
-    // Update cache with post-edit content
+    // Update caches with post-edit content
     ctx.readFileState.set(fullPath, {
       content: newContent,
       timestamp: newMtime,
@@ -167,6 +167,7 @@ Rules:
       limit: undefined,
       isPartialView: false,
     });
+    ctx.fileStateStore?.record(fullPath, { content: newContent, mtimeMs: newMtime, offset: undefined, limit: undefined, isPartialView: false });
 
     return {
       filePath: file_path,
