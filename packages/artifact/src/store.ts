@@ -46,59 +46,72 @@ export class ArtifactStore implements IArtifactStore {
 
     const isLarge = args.content.length > INLINE_SIZE_LIMIT;
 
-    let contentLocation: 'inline' | 'file';
-    let contentForDb:    string;
-    let contentPath:     string | undefined;
+    // ── Determine storage location ─────────────────────────────────────────
+    // For file-backed content: .tmp write → DB write → rename (atomic).
+    // file-backed content: contractually requires content: null (not '').
 
-    if (isLarge) {
-      // Large content → write to managed file, DB column stays empty
-      contentLocation = 'file';
-      contentPath     = path.join(this.artifactsDir, id);
-      contentForDb    = '';
-      fs.writeFileSync(contentPath, args.content, 'utf8');
-    } else if (existing?.contentLocation === 'file' && existing.contentPath) {
-      // Previously large, now small → switch to inline, delete old file
-      contentLocation = 'inline';
-      contentForDb    = args.content;
-      contentPath     = undefined;
-      fs.rmSync(existing.contentPath, { force: true });
-    } else {
-      contentLocation = 'inline';
-      contentForDb    = args.content;
-    }
+    let tmpPath: string | undefined;
 
-    const artifactForDb: Artifact = {
+    // Base fields shared by both branches
+    const base = {
       id,
-      sessionId:       args.sessionId,
-      turnId:          args.turnId,
-      type:            args.type,
-      title:           args.title,
-      content:         contentForDb,   // '' when file mode
-      contentLocation,
-      contentPath,
-      meta:            args.meta ?? {},
-      appliedAt:       existing?.appliedAt,
-      rejectedAt:      existing?.rejectedAt,
-      createdAt:       existing?.createdAt ?? now,
-      updatedAt:       now,
+      sessionId: args.sessionId,
+      turnId:    args.turnId,
+      type:      args.type,
+      title:     args.title,
+      meta:      args.meta ?? {},
+      createdAt: existing?.createdAt ?? now,
+      updatedAt: now,
+      // Status fields — forward existing values, never clear them here.
+      // appliedAt/rejectedAt live in the ArtifactStatus discriminant so cast via unknown.
+      ...((existing as unknown as { appliedAt?: number } | null)?.appliedAt  != null
+        ? { appliedAt:  (existing as unknown as { appliedAt: number }).appliedAt  } : {}),
+      ...((existing as unknown as { rejectedAt?: number } | null)?.rejectedAt != null
+        ? { rejectedAt: (existing as unknown as { rejectedAt: number }).rejectedAt } : {}),
     };
 
+    let artifactForDb: Artifact;
+
+    if (isLarge) {
+      const contentPath = path.join(this.artifactsDir, id);
+      tmpPath = contentPath + '.tmp';
+      // 1. Write to .tmp — DB is untouched yet
+      fs.writeFileSync(tmpPath, args.content, 'utf8');
+      artifactForDb = { ...base, contentLocation: 'file', content: null, contentPath } as Artifact;
+    } else {
+      artifactForDb = { ...base, contentLocation: 'inline', content: args.content } as Artifact;
+    }
+
+    // 2. DB write (may throw — .tmp file stays unlinked from DB, safe to GC)
     if (existing) {
       this.repo.update(id, {
-        content:         artifactForDb.content,
+        content:         isLarge ? null : args.content,
         contentLocation: artifactForDb.contentLocation,
-        contentPath:     artifactForDb.contentPath,
-        title:           artifactForDb.title,
-        type:            artifactForDb.type,
-        meta:            artifactForDb.meta,
+        contentPath:     isLarge ? (artifactForDb as { contentPath: string }).contentPath : undefined,
+        title:           args.title,
+        type:            args.type,
+        meta:            args.meta ?? {},
         updatedAt:       now,
       });
     } else {
       this.repo.insert(artifactForDb);
     }
 
-    // Always return full content to caller — never expose the empty-string sentinel
-    return { ...artifactForDb, content: args.content };
+    // 3. Atomic rename — only reached when DB write succeeded
+    if (tmpPath) {
+      const contentPath = (artifactForDb as { contentPath: string }).contentPath;
+      fs.renameSync(tmpPath, contentPath);
+    }
+
+    // 4. Clean up old file after DB update confirmed (file→inline transition)
+    if (!isLarge && existing?.contentLocation === 'file' && existing.contentPath) {
+      try { fs.rmSync(existing.contentPath, { force: true }); } catch { /* tolerated orphan */ }
+    }
+
+    // Return full content to caller — callers never see null for content
+    return isLarge
+      ? { ...artifactForDb, content: args.content } as Artifact
+      : artifactForDb;
   }
 
   // ── get ─────────────────────────────────────────────────────────────────────
@@ -128,11 +141,19 @@ export class ArtifactStore implements IArtifactStore {
 
     const filled = this.fillContent(artifact);
     fs.mkdirSync(path.dirname(targetPath), { recursive: true });
-    fs.writeFileSync(targetPath, filled.content ?? '', 'utf8');
+
+    // Write to .tmp first so a crash between file write and DB update
+    // leaves no user-visible half-written workspace file.
+    const tmpPath = targetPath + '.ema-tmp';
+    fs.writeFileSync(tmpPath, filled.content ?? '', 'utf8');
 
     const now = Date.now();
     this.repo.update(id, { appliedAt: now, updatedAt: now });
-    return { ...filled, appliedAt: now, updatedAt: now };
+
+    // DB succeeded — atomically place the file
+    fs.renameSync(tmpPath, targetPath);
+
+    return { ...filled, appliedAt: now, updatedAt: now } as Artifact;
   }
 
   // ── reject ──────────────────────────────────────────────────────────────────
@@ -142,7 +163,7 @@ export class ArtifactStore implements IArtifactStore {
     if (!artifact) throw new Error(`Artifact not found: ${id}`);
     const now = Date.now();
     this.repo.update(id, { rejectedAt: now, updatedAt: now });
-    return this.fillContent({ ...artifact, rejectedAt: now, updatedAt: now });
+    return this.fillContent({ ...artifact, rejectedAt: now, updatedAt: now } as Artifact);
   }
 
   // ── delete ──────────────────────────────────────────────────────────────────
@@ -150,10 +171,13 @@ export class ArtifactStore implements IArtifactStore {
   delete(id: ArtifactId): void {
     const artifact = this.repo.findById(id);
     if (!artifact) return;
-    if (artifact.contentLocation === 'file' && artifact.contentPath) {
-      fs.rmSync(artifact.contentPath, { force: true });
-    }
+    // DB row first — if the file cleanup fails the artifact is already gone
+    // from the DB (no dangling reference). The orphaned file can be swept
+    // later by a garbage-collection pass.
     this.repo.deleteById(id);
+    if (artifact.contentLocation === 'file' && artifact.contentPath) {
+      try { fs.rmSync(artifact.contentPath, { force: true }); } catch { /* tolerated orphan */ }
+    }
   }
 
   // ── countWarning ────────────────────────────────────────────────────────────
@@ -167,11 +191,12 @@ export class ArtifactStore implements IArtifactStore {
   private fillContent(artifact: Artifact): Artifact {
     if (artifact.contentLocation !== 'file') return artifact;
     const filePath = artifact.contentPath;
-    if (!filePath) return { ...artifact, content: '' };
+    // Spread replaces content: null with a real string — use unknown cast to satisfy TS.
+    if (!filePath) return { ...artifact, content: '' } as unknown as Artifact;
     try {
-      return { ...artifact, content: fs.readFileSync(filePath, 'utf8') };
+      return { ...artifact, content: fs.readFileSync(filePath, 'utf8') } as unknown as Artifact;
     } catch {
-      return { ...artifact, content: '' }; // file missing — degrade gracefully
+      return { ...artifact, content: '' } as unknown as Artifact;
     }
   }
 }
