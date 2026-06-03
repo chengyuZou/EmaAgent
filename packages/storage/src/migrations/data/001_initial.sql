@@ -1,18 +1,23 @@
--- ── Data DB initial schema ───────────────────────────────────────────────────
+-- ── Data DB schema ────────────────────────────────────────────────────────────
 --
--- data.db lives in `{dataDir}/data.db` and holds everything that's specific
--- to the active workspace context:
+-- data.db lives in `{dataDir}/data.db`.
+-- "dataDir" = where the user chose to store their data, not a workspace
+-- boundary (workspace = Permission/sandbox scope, stored in sessions.workspace_roots_json).
 --
---   - sessions / turns / messages
---   - memory (Layer 0 entity graph, Layer 1 notes, Layer 2 items)
---   - background tasks queue
---   - audio segments + merged
---   - attachments + artifacts
---   - permission grants (session-scoped)
---   - telemetry + usage
+-- Contains everything scoped to this data directory:
+--   sessions / turns / messages
+--   memory L1 (session notes — per-session rolling summary)
+--   background tasks queue
+--   audio metadata (files at sessions/<sessionId>/audio/)
+--   attachments + artifacts metadata (files at sessions/<sessionId>/artifacts/)
+--   permission grants
+--   telemetry + usage
 --
--- Switching dataDir = switching all of this in one shot. Profile (providers,
--- bindings, settings, cards) stays the same across dirs.
+-- Memory L0 (entity graph) and L2 (episodic items) live in profile.db
+-- because they are global memories that must survive dataDir switches.
+--
+-- Development note: single consolidated migration. New schema changes are
+-- made here directly during development.
 
 -- ============ Sessions / turns / messages ============
 
@@ -28,6 +33,8 @@ CREATE TABLE sessions (
   pinned_at              INTEGER,
   group_label            TEXT,
   parent_session_id      TEXT REFERENCES sessions(id) ON DELETE SET NULL,
+  last_mode              TEXT,
+  last_sub_mode          TEXT,
   meta_json              TEXT NOT NULL DEFAULT '{}',
   pending_fragments_json TEXT NOT NULL DEFAULT '[]'
 );
@@ -68,82 +75,10 @@ CREATE TABLE messages (
 CREATE INDEX idx_messages_session ON messages(session_id, created_at);
 CREATE INDEX idx_messages_turn    ON messages(turn_id);
 
--- ============ Memory Layer 0: entity graph ============
-
-CREATE TABLE memory_nodes (
-  id                     TEXT PRIMARY KEY,
-  label                  TEXT NOT NULL,
-  node_type              TEXT NOT NULL CHECK(node_type IN (
-                           'user_fact', 'entity', 'event',
-                           'emotion', 'preference', 'relationship'
-                         )),
-  description            TEXT NOT NULL,
-  embedding              BLOB,
-  embedding_provider_id  TEXT,
-  embedding_model        TEXT,
-  embedding_dim          INTEGER,
-  importance             INTEGER NOT NULL DEFAULT 50
-                         CHECK(importance BETWEEN 0 AND 100),
-  created_at             INTEGER NOT NULL,
-  updated_at             INTEGER NOT NULL,
-  last_referenced_at     INTEGER NOT NULL,
-  meta_json              TEXT NOT NULL DEFAULT '{}'
-);
-CREATE UNIQUE INDEX idx_memory_nodes_label_type ON memory_nodes(label, node_type);
-CREATE INDEX        idx_memory_nodes_type       ON memory_nodes(node_type);
-CREATE INDEX        idx_memory_nodes_lastref    ON memory_nodes(last_referenced_at DESC);
-CREATE INDEX        idx_memory_nodes_importance ON memory_nodes(importance DESC);
-
-CREATE TABLE memory_edges (
-  id                  TEXT PRIMARY KEY,
-  from_node_id        TEXT NOT NULL REFERENCES memory_nodes(id) ON DELETE CASCADE,
-  to_node_id          TEXT NOT NULL REFERENCES memory_nodes(id) ON DELETE CASCADE,
-  relation            TEXT NOT NULL,
-  mention_count       INTEGER NOT NULL DEFAULT 1,
-  created_at          INTEGER NOT NULL,
-  last_referenced_at  INTEGER NOT NULL,
-  UNIQUE(from_node_id, to_node_id, relation)
-);
-CREATE INDEX idx_memory_edges_from ON memory_edges(from_node_id);
-CREATE INDEX idx_memory_edges_to   ON memory_edges(to_node_id);
-
-CREATE TABLE memory_node_lazy_updates (
-  id                 TEXT PRIMARY KEY,
-  node_id            TEXT NOT NULL REFERENCES memory_nodes(id) ON DELETE CASCADE,
-  fragment           TEXT NOT NULL,
-  source_session_id  TEXT,
-  source_turn_id     TEXT,
-  created_at         INTEGER NOT NULL
-);
-CREATE INDEX idx_lazy_updates_node ON memory_node_lazy_updates(node_id, created_at);
-
--- ============ Memory Layer 2: episodic items ============
-
-CREATE TABLE memory_items (
-  id                     TEXT PRIMARY KEY,
-  kind                   TEXT NOT NULL CHECK(kind IN ('user','feedback','project','reference')),
-  title                  TEXT NOT NULL,
-  body                   TEXT NOT NULL,
-  embedding              BLOB,
-  source_session_id      TEXT REFERENCES sessions(id) ON DELETE SET NULL,
-  source_turn_id         TEXT REFERENCES turns(id) ON DELETE SET NULL,
-  created_at             INTEGER NOT NULL,
-  updated_at             INTEGER NOT NULL,
-  expires_at             INTEGER,
-  importance             INTEGER NOT NULL DEFAULT 50,
-  meta_json              TEXT NOT NULL DEFAULT '{}',
-  modes_json             TEXT NOT NULL DEFAULT '["chat","agent"]',
-  last_referenced_at     INTEGER NOT NULL DEFAULT 0,
-  embedding_provider_id  TEXT,
-  embedding_model        TEXT,
-  embedding_dim          INTEGER
-);
-CREATE INDEX idx_memory_items_kind       ON memory_items(kind);
-CREATE INDEX idx_memory_items_updated    ON memory_items(updated_at DESC);
-CREATE INDEX idx_memory_items_importance ON memory_items(importance DESC);
-CREATE INDEX idx_memory_items_lastref    ON memory_items(last_referenced_at DESC);
-
 -- ============ Memory Layer 1: session notes ============
+--
+-- Per-session rolling summary. Scoped to this dataDir; unlike L0/L2, these
+-- summaries describe what was discussed in a specific session, not global facts.
 
 CREATE TABLE session_notes (
   session_id             TEXT PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE,
@@ -177,13 +112,17 @@ CREATE INDEX idx_bgtasks_status_created ON background_tasks(status, created_at);
 CREATE INDEX idx_bgtasks_session        ON background_tasks(session_id);
 
 -- ============ Audio (TTS output) ============
+--
+-- Files live at: {dataDir}/sessions/{session_id}/audio/segments/{turn_id}/{n}.{ext}
+--                {dataDir}/sessions/{session_id}/audio/merged/{turn_id}.{ext}
+-- storage_path is relative to dataDir.
 
 CREATE TABLE turn_audio_segments (
   id              TEXT PRIMARY KEY,
   turn_id         TEXT NOT NULL REFERENCES turns(id) ON DELETE CASCADE,
   session_id      TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
   sentence_index  INTEGER NOT NULL,
-  storage_path    TEXT NOT NULL,      -- relative to dataDir
+  storage_path    TEXT NOT NULL,
   mime_type       TEXT NOT NULL,
   byte_size       INTEGER NOT NULL,
   duration_ms     INTEGER,
@@ -193,7 +132,6 @@ CREATE TABLE turn_audio_segments (
 );
 CREATE INDEX idx_audio_seg_turn    ON turn_audio_segments(turn_id, sentence_index);
 CREATE INDEX idx_audio_seg_session ON turn_audio_segments(session_id, created_at DESC);
-CREATE INDEX idx_audio_seg_ttl     ON turn_audio_segments(created_at);
 
 CREATE TABLE turn_audio_merged (
   turn_id        TEXT PRIMARY KEY REFERENCES turns(id) ON DELETE CASCADE,
@@ -232,7 +170,10 @@ CREATE TABLE attachment_chunks (
 );
 CREATE INDEX idx_chunks_attachment ON attachment_chunks(attachment_id, chunk_index);
 
--- ============ Artifact ============
+-- ============ Artifacts ============
+--
+-- Files > 64 KB live at: {dataDir}/sessions/{session_id}/artifacts/{id}
+-- content_path is relative to dataDir.
 
 CREATE TABLE artifacts (
   id               TEXT PRIMARY KEY,
@@ -252,7 +193,7 @@ CREATE TABLE artifacts (
 CREATE INDEX idx_artifacts_session ON artifacts(session_id, created_at DESC);
 CREATE INDEX idx_artifacts_turn    ON artifacts(turn_id);
 
--- ============ Permission grants (session-scoped) ============
+-- ============ Permission grants ============
 
 CREATE TABLE permission_grants (
   id           TEXT PRIMARY KEY,
@@ -269,22 +210,22 @@ CREATE INDEX idx_grants_tool ON permission_grants(tool_pattern);
 -- ============ Telemetry + usage ============
 
 CREATE TABLE telemetry_events (
-  id          TEXT PRIMARY KEY,
-  session_id  TEXT,
-  turn_id     TEXT,
-  kind        TEXT NOT NULL,
+  id           TEXT PRIMARY KEY,
+  session_id   TEXT,
+  turn_id      TEXT,
+  kind         TEXT NOT NULL,
   payload_json TEXT NOT NULL,
-  created_at  INTEGER NOT NULL
+  created_at   INTEGER NOT NULL
 );
 CREATE INDEX idx_telemetry_kind ON telemetry_events(kind, created_at);
 
 CREATE TABLE turn_usage (
-  turn_id      TEXT PRIMARY KEY REFERENCES turns(id) ON DELETE CASCADE,
-  llm_provider TEXT NOT NULL,
-  model_id     TEXT NOT NULL,
-  input_tokens INTEGER NOT NULL,
+  turn_id       TEXT PRIMARY KEY REFERENCES turns(id) ON DELETE CASCADE,
+  llm_provider  TEXT NOT NULL,
+  model_id      TEXT NOT NULL,
+  input_tokens  INTEGER NOT NULL,
   output_tokens INTEGER NOT NULL,
-  cost_usd     REAL NOT NULL,
-  duration_ms  INTEGER NOT NULL,
-  created_at   INTEGER NOT NULL
+  cost_usd      REAL NOT NULL,
+  duration_ms   INTEGER NOT NULL,
+  created_at    INTEGER NOT NULL
 );

@@ -1,16 +1,20 @@
--- ── Profile DB initial schema ────────────────────────────────────────────────
+-- ── Profile DB schema ─────────────────────────────────────────────────────────
 --
--- profile.db lives in `~/.ema-agent/profile.db` and holds data that's shared
--- across all registered data dirs:
+-- profile.db lives in `~/.ema-agent/profile.db`.
+-- Holds everything that is global and survives dataDir switches:
 --
---   - API keys & provider configs (one set for the whole app)
---   - Model catalog + bindings (one model preference set)
---   - Character cards (built-in + user-uploaded)
---   - Live2D models (referenced by character cards)
---   - App-level settings (UI theme, event display, etc.)
+--   provider_configs / bindings / character_cards / live2d_models / settings
+--   mcp_servers / skills
+--   memory L0 (entity graph) + L2 (episodic items)
 --
--- Switching the active data dir does NOT touch this DB. Sessions / memory /
--- audio all live in {dataDir}/data.db instead.
+-- Memory L0 and L2 are global memories — they describe the user's identity,
+-- relationships, and long-term facts and must not be lost when the active
+-- dataDir changes. Only L1 (session_notes) lives in data.db because it is
+-- a per-session rolling summary.
+--
+-- Development note: this is a single consolidated migration. New schema
+-- changes during development are made here directly; versioned incremental
+-- migrations are added only once the schema is stable for a shipped build.
 
 -- ============ Provider configs ============
 
@@ -36,38 +40,20 @@ CREATE TABLE provider_health (
   consecutive_fails  INTEGER NOT NULL DEFAULT 0
 );
 
--- ============ Model catalog + bindings ============
-
-CREATE TABLE model_catalog (
-  id                TEXT PRIMARY KEY,
-  llm_provider      TEXT NOT NULL
-                    CHECK(llm_provider IN ('openai','anthropic','gemini','openai-compat')),
-  display_name      TEXT NOT NULL,
-  capabilities_json TEXT NOT NULL,
-  context_window    INTEGER NOT NULL,
-  pricing_json      TEXT,
-  is_static         INTEGER NOT NULL DEFAULT 0,
-  enabled           INTEGER NOT NULL DEFAULT 1,
-  fetched_at        INTEGER
-);
+-- ============ Model bindings ============
 
 CREATE TABLE model_bindings (
   module             TEXT    NOT NULL
                      CHECK(module IN (
-                       -- TS-side LLM modules
+                       -- LLM
                        'chat', 'narrative', 'agent',
                        'compaction', 'emotion', 'memory',
                        'router', 'plan-parse', 'title',
-                       -- LightRAG internal config (Python bridge)
+                       -- Python bridge
                        'embed', 'rerank', 'lightrag-llm',
-                       -- TTS modules — split by user-facing mode so chat /
-                       -- narrative / agent can each pick a different provider
-                       -- (e.g. fast cheap chat, high-quality narrative,
-                       -- local agent). Voice identity always comes from the
-                       -- active character card's voice_profile_json refAudios,
-                       -- not from these bindings.
-                       'tts_chat', 'tts_narrative', 'tts_agent',
-                       -- Other TS-side clients
+                       -- TTS (single binding for all modes)
+                       'tts',
+                       -- Other clients
                        'stt', 'vision', 'imagegen'
                      )),
   provider_config_id TEXT    NOT NULL REFERENCES provider_configs(id) ON DELETE RESTRICT,
@@ -101,9 +87,6 @@ CREATE TABLE character_cards (
   emotion_vocab_json    TEXT NOT NULL DEFAULT '[]',
   motion_vocab_json     TEXT NOT NULL DEFAULT '[]',
   live2d_model_id       TEXT REFERENCES live2d_models(id) ON DELETE SET NULL,
-  -- Voice profile: refAudioPath / promptText / promptLang for voice-clone TTS.
-  -- Catalog providers (OpenAI / ElevenLabs) ignore this and read voice from
-  -- model_bindings.voice_id instead.
   voice_profile_json    TEXT NOT NULL DEFAULT '{}',
   is_active             INTEGER NOT NULL DEFAULT 0,
   is_builtin            INTEGER NOT NULL DEFAULT 0,
@@ -113,10 +96,118 @@ CREATE TABLE character_cards (
 CREATE UNIQUE INDEX idx_character_cards_active
   ON character_cards(is_active) WHERE is_active = 1;
 
--- ============ Settings (app-level, cross-data-dir) ============
+-- ============ App settings ============
 
 CREATE TABLE settings (
   key        TEXT PRIMARY KEY,
   value_json TEXT NOT NULL,
   updated_at INTEGER NOT NULL
 );
+
+-- ============ MCP server configurations ============
+
+CREATE TABLE mcp_servers (
+  id           TEXT PRIMARY KEY,
+  name         TEXT NOT NULL UNIQUE,
+  source_url   TEXT,
+  config_json  TEXT NOT NULL,
+  enabled      INTEGER NOT NULL DEFAULT 1,
+  installed_at INTEGER NOT NULL
+);
+
+-- ============ Skills ============
+
+CREATE TABLE skills (
+  id             TEXT PRIMARY KEY,
+  name           TEXT NOT NULL UNIQUE,
+  version        TEXT NOT NULL DEFAULT '1.0.0',
+  description    TEXT NOT NULL DEFAULT '',
+  source_url     TEXT,
+  content_md     TEXT NOT NULL,
+  activates_json TEXT NOT NULL DEFAULT '["agent"]',
+  enabled        INTEGER NOT NULL DEFAULT 1,
+  installed_at   INTEGER NOT NULL
+);
+
+-- ============ Memory Layer 0: entity graph (global) ============
+--
+-- Entities, relationships, and user facts that persist across all dataDirs.
+-- source_session_id / source_turn_id are informational only — plain TEXT,
+-- no FK because the referenced rows live in whichever data.db was active
+-- at extraction time.
+
+CREATE TABLE memory_nodes (
+  id                     TEXT PRIMARY KEY,
+  label                  TEXT NOT NULL,
+  node_type              TEXT NOT NULL CHECK(node_type IN (
+                           'user_fact', 'entity', 'event',
+                           'emotion', 'preference', 'relationship'
+                         )),
+  description            TEXT NOT NULL,
+  embedding              BLOB,
+  embedding_provider_id  TEXT,
+  embedding_model        TEXT,
+  embedding_dim          INTEGER,
+  importance             INTEGER NOT NULL DEFAULT 50
+                         CHECK(importance BETWEEN 0 AND 100),
+  created_at             INTEGER NOT NULL,
+  updated_at             INTEGER NOT NULL,
+  last_referenced_at     INTEGER NOT NULL,
+  meta_json              TEXT NOT NULL DEFAULT '{}'
+);
+CREATE UNIQUE INDEX idx_memory_nodes_label_type ON memory_nodes(label, node_type);
+CREATE INDEX        idx_memory_nodes_type       ON memory_nodes(node_type);
+CREATE INDEX        idx_memory_nodes_lastref    ON memory_nodes(last_referenced_at DESC);
+CREATE INDEX        idx_memory_nodes_importance ON memory_nodes(importance DESC);
+
+CREATE TABLE memory_edges (
+  id                  TEXT PRIMARY KEY,
+  from_node_id        TEXT NOT NULL REFERENCES memory_nodes(id) ON DELETE CASCADE,
+  to_node_id          TEXT NOT NULL REFERENCES memory_nodes(id) ON DELETE CASCADE,
+  relation            TEXT NOT NULL,
+  mention_count       INTEGER NOT NULL DEFAULT 1,
+  created_at          INTEGER NOT NULL,
+  last_referenced_at  INTEGER NOT NULL,
+  UNIQUE(from_node_id, to_node_id, relation)
+);
+CREATE INDEX idx_memory_edges_from ON memory_edges(from_node_id);
+CREATE INDEX idx_memory_edges_to   ON memory_edges(to_node_id);
+
+CREATE TABLE memory_node_lazy_updates (
+  id                 TEXT PRIMARY KEY,
+  node_id            TEXT NOT NULL REFERENCES memory_nodes(id) ON DELETE CASCADE,
+  fragment           TEXT NOT NULL,
+  source_session_id  TEXT,   -- informational; no FK (data.db cross-reference)
+  source_turn_id     TEXT,   -- informational; no FK
+  created_at         INTEGER NOT NULL
+);
+CREATE INDEX idx_lazy_updates_node ON memory_node_lazy_updates(node_id, created_at);
+
+-- ============ Memory Layer 2: episodic items (global) ============
+--
+-- Extracted facts, preferences, projects, and references that apply across
+-- all sessions and dataDirs. source_* fields are informational (no FK).
+
+CREATE TABLE memory_items (
+  id                     TEXT PRIMARY KEY,
+  kind                   TEXT NOT NULL CHECK(kind IN ('user','feedback','project','reference')),
+  title                  TEXT NOT NULL,
+  body                   TEXT NOT NULL,
+  embedding              BLOB,
+  source_session_id      TEXT,   -- informational; no FK
+  source_turn_id         TEXT,   -- informational; no FK
+  created_at             INTEGER NOT NULL,
+  updated_at             INTEGER NOT NULL,
+  expires_at             INTEGER,
+  importance             INTEGER NOT NULL DEFAULT 50,
+  meta_json              TEXT NOT NULL DEFAULT '{}',
+  modes_json             TEXT NOT NULL DEFAULT '["chat","agent"]',
+  last_referenced_at     INTEGER NOT NULL DEFAULT 0,
+  embedding_provider_id  TEXT,
+  embedding_model        TEXT,
+  embedding_dim          INTEGER
+);
+CREATE INDEX idx_memory_items_kind       ON memory_items(kind);
+CREATE INDEX idx_memory_items_updated    ON memory_items(updated_at DESC);
+CREATE INDEX idx_memory_items_importance ON memory_items(importance DESC);
+CREATE INDEX idx_memory_items_lastref    ON memory_items(last_referenced_at DESC);

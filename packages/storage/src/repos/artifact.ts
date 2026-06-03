@@ -20,21 +20,24 @@ interface ArtifactRow {
 }
 
 function rowToArtifact(row: ArtifactRow): Artifact {
-  return {
-    id:              row.id              as ArtifactId,
-    sessionId:       row.session_id      as SessionId,
-    turnId:          row.turn_id         ? (row.turn_id as TurnId) : undefined,
-    type:            row.type            as ArtifactType,
-    title:           row.title,
-    content:         row.content,                           // file 时是 ''，Store 负责填
-    contentLocation: row.content_location as 'inline' | 'file',
-    contentPath:     row.content_path    ?? undefined,
-    meta:            JSON.parse(row.meta_json) as Record<string, unknown>,
-    appliedAt:       row.applied_at      ?? undefined,
-    rejectedAt:      row.rejected_at     ?? undefined,
-    createdAt:       row.created_at,
-    updatedAt:       row.updated_at,
+  const base = {
+    id:        row.id        as ArtifactId,
+    sessionId: row.session_id as SessionId,
+    turnId:    row.turn_id ? (row.turn_id as TurnId) : undefined,
+    type:      row.type      as ArtifactType,
+    title:     row.title,
+    meta:      JSON.parse(row.meta_json) as Record<string, unknown>,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    ...(row.applied_at  != null ? { appliedAt:  row.applied_at  } : {}),
+    ...(row.rejected_at != null ? { rejectedAt: row.rejected_at } : {}),
   };
+
+  // file-backed: content stored as null in DB, Store fills it on read
+  if (row.content_location === 'file') {
+    return { ...base, contentLocation: 'file', content: null, contentPath: row.content_path! } as Artifact;
+  }
+  return { ...base, contentLocation: 'inline', content: row.content } as Artifact;
 }
 
 // camelCase patch 键 → DB 列名（明确映射，不用 regex）
@@ -65,22 +68,28 @@ export class ArtifactRepo {
       artifact.turnId      ?? null,
       artifact.type,
       artifact.title,
-      artifact.content,
+      artifact.contentLocation === 'file' ? null : artifact.content,
       artifact.contentLocation,
-      artifact.contentPath ?? null,
+      artifact.contentLocation === 'file' ? (artifact as { contentPath: string }).contentPath : null,
       JSON.stringify(artifact.meta),
       artifact.createdAt,
       artifact.updatedAt,
-      artifact.appliedAt   ?? null,
-      artifact.rejectedAt  ?? null,
+      (artifact as { appliedAt?: number }).appliedAt   ?? null,
+      (artifact as { rejectedAt?: number }).rejectedAt  ?? null,
     );
   }
 
-  update(id: ArtifactId, patch: Partial<Pick<
-    Artifact,
-    'content' | 'contentLocation' | 'contentPath' | 'title' |
-    'type' | 'meta' | 'appliedAt' | 'rejectedAt' | 'updatedAt'
-  >>): void {
+  update(id: ArtifactId, patch: {
+    content?:         string | null;
+    contentLocation?: 'inline' | 'file';
+    contentPath?:     string | undefined;
+    title?:           string;
+    type?:            ArtifactType;
+    meta?:            Record<string, unknown>;
+    appliedAt?:       number;
+    rejectedAt?:      number;
+    updatedAt?:       number;
+  }): void {
     const cols:   string[] = [];
     const values: unknown[] = [];
 

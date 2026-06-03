@@ -1,5 +1,5 @@
 ﻿import type { SqliteDb } from '../database.js';
-import type { SessionId, CharacterCardId } from '@ema-agent/contracts';
+import type { SessionId, TurnId, CharacterCardId } from '@ema-agent/contracts';
 
 export interface SessionRow {
   id: string;
@@ -196,15 +196,28 @@ export class SessionsRepo {
   // ── Fork ───────────────────────────────────────────────────────────────────
 
   /**
-   * Clone a session's messages (NOT turns) into a new session row.
+   * Clone a session's messages into a new session row.
+   *
+   * Each copied message gets a fresh random ID so there are no primary-key
+   * collisions. turn_id is set to NULL because turns belong to the source
+   * session and cross-session turn references are dangling references.
+   *
+   * `untilTurnId` — when provided, only messages whose created_at is ≤ the
+   * latest message in that turn are copied (branch-at-point semantics).
+   *
    * Returns the number of messages copied.
    */
-  forkInto(srcId: SessionId, newId: SessionId, title: string, createdAt: number): number {
+  forkInto(
+    srcId:       SessionId,
+    newId:       SessionId,
+    title:       string,
+    createdAt:   number,
+    untilTurnId?: TurnId,
+  ): number {
     const src = this.findById(srcId);
     if (!src) throw new Error(`Source session not found: ${srcId}`);
 
     this.db.transaction(() => {
-      // Insert the new session row
       this.db.prepare(
         `INSERT INTO sessions
            (id, title, character_card_id, workspace_roots_json,
@@ -213,13 +226,34 @@ export class SessionsRepo {
       ).run(newId, title, src.character_card_id, src.workspace_roots_json,
         srcId, createdAt, createdAt);
 
-      // Copy messages (keep original timestamps + ordering)
-      this.db.prepare(
-        `INSERT INTO messages
-           (id, session_id, turn_id, role, kind, blocks_json, interrupted, created_at, meta_json)
-         SELECT id, ?, turn_id, role, kind, blocks_json, interrupted, created_at, meta_json
-         FROM messages WHERE session_id = ?`,
-      ).run(newId, srcId);
+      if (untilTurnId) {
+        // Copy messages up to and including the last message of the cutoff turn.
+        this.db.prepare(
+          `INSERT INTO messages
+             (id, session_id, turn_id, role, kind, blocks_json, interrupted, created_at, meta_json)
+           SELECT lower(hex(randomblob(16))), ?, NULL,
+                  role, kind, blocks_json, interrupted, created_at, meta_json
+           FROM messages
+           WHERE session_id = ?
+             AND created_at <= (
+               SELECT COALESCE(MAX(created_at), 0)
+               FROM messages
+               WHERE turn_id = ?
+             )
+           ORDER BY created_at ASC`,
+        ).run(newId, srcId, untilTurnId);
+      } else {
+        // Copy all messages with new IDs; null out turn_id (turns stay in source).
+        this.db.prepare(
+          `INSERT INTO messages
+             (id, session_id, turn_id, role, kind, blocks_json, interrupted, created_at, meta_json)
+           SELECT lower(hex(randomblob(16))), ?, NULL,
+                  role, kind, blocks_json, interrupted, created_at, meta_json
+           FROM messages
+           WHERE session_id = ?
+           ORDER BY created_at ASC`,
+        ).run(newId, srcId);
+      }
     })();
 
     const count = this.db

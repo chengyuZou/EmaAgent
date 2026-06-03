@@ -284,12 +284,15 @@ export class SessionStore {
 
   // ── Fork ───────────────────────────────────────────────────────────────────
 
-  forkSession(srcId: SessionId): { sessionId: SessionId; messageCount: number } {
+  forkSession(
+    srcId:       SessionId,
+    untilTurnId?: TurnId,
+  ): { sessionId: SessionId; messageCount: number } {
     const newId = asSessionId(crypto.randomUUID());
     const src   = this.requireSession(srcId);
     const title = `${src.title} (fork)`;
     const now   = this.nextTs();
-    const count = this.sessionsRepo.forkInto(srcId, newId, title, now);
+    const count = this.sessionsRepo.forkInto(srcId, newId, title, now, untilTurnId);
     return { sessionId: newId, messageCount: count };
   }
 
@@ -374,6 +377,16 @@ export class SessionStore {
     this.registry.clear(sessionId);
   }
 
+  /**
+   * Process-crash startup recovery: any turn still in 'running'/'pending' state
+   * across ALL sessions was orphaned by a crash — mark it aborted so future
+   * startTurn() calls aren't blocked. Called once at process start.
+   */
+  recoverStuckTurns(): { healed: number } {
+    const healed = this.turnsRepo.abortAllStale(Date.now());
+    return { healed };
+  }
+
   getTurn(id: TurnId): Turn | undefined {
     const row = this.turnsRepo.findById(id);
     return row ? toTurn(row) : undefined;
@@ -439,14 +452,21 @@ export class SessionStore {
    * Returns messages newest-first; pass the last item's createdAt as `before`
    * to load older messages (scroll-up pagination).
    */
+  /**
+   * Cursor-based list for the frontend chat UI.
+   * Both first page and older pages return messages **newest-first**.
+   * Pass the last returned message's `createdAt` as `before` to load
+   * the next (older) page (scroll-up pagination).
+   */
   listMessages(sessionId: SessionId, input: ListMessagesInput = {}): Message[] {
     const limit = input.limit ?? 50;
 
     if (input.before === undefined) {
-      // First page: most recent N messages, reversed to newest-first
-      return this.messagesRepo.listForSession(sessionId, limit).reverse().map(toMessage);
+      // First page: listForSession already orders DESC (newest-first).
+      return this.messagesRepo.listForSession(sessionId, limit).map(toMessage);
     }
 
+    // Cursor page: listBefore also orders DESC — consistent with first page.
     return this.messagesRepo.listBefore(sessionId, input.before, limit).map(toMessage);
   }
 

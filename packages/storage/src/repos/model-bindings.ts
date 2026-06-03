@@ -13,20 +13,11 @@ export type BindingModule =
   | 'router' | 'plan-parse' | 'title'
   // LightRAG internal config — pushed to Python bridge
   | 'embed' | 'rerank' | 'lightrag-llm'
-  // TTS — split per mode (see migration 001 CHECK rationale). Voice identity
-  // always reads from the active character card; these rows decide which
-  // provider/model do the actual synthesis for each mode.
-  | 'tts_chat' | 'tts_narrative' | 'tts_agent'
+  // TTS — single binding for all modes. Voice identity always reads from the
+  // active character card's voice_profile_json refAudios.
+  | 'tts'
   // Other TS-side clients (reserved)
   | 'stt' | 'vision' | 'imagegen';
-
-/** TTS sub-set of BindingModule — used by tts wiring + coordinator. */
-export type TtsBindingModule = 'tts_chat' | 'tts_narrative' | 'tts_agent';
-
-/** Map a user-facing TurnMode-style key to the BindingModule that drives it. */
-export function ttsBindingModuleFor(mode: 'chat' | 'narrative' | 'agent'): TtsBindingModule {
-  return `tts_${mode}` as TtsBindingModule;
-}
 
 export interface ModelBindingRow {
   module:             BindingModule;

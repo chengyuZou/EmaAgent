@@ -103,4 +103,15 @@ export class TurnsRepo {
       )
       .run(now, sessionId);
   }
+
+  /** Process-crash recovery: mark every still-running turn across ALL sessions as aborted. */
+  abortAllStale(now: number): number {
+    const result = this.db
+      .prepare(
+        `UPDATE turns SET status = 'aborted', completed_at = ?
+         WHERE status IN ('pending','running')`,
+      )
+      .run(now);
+    return result.changes;
+  }
 }
