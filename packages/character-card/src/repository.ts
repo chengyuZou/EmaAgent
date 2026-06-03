@@ -1,8 +1,9 @@
 ﻿import { randomUUID } from 'node:crypto';
 import type { CharacterCardsRepo, CharacterCardRow } from '@ema-agent/storage';
-import { asCharacterCardId, emptyVoiceProfile } from '@ema-agent/contracts';
-import type { CharacterCardId, CharacterVoiceProfile } from '@ema-agent/contracts';
-import type { CharacterCard, CharacterCardInput } from './types.js';
+import { asCharacterCardId } from '@ema-agent/contracts';
+import type { CharacterCardId } from '@ema-agent/contracts';
+import type { CharacterCard, CharacterCardInput, CharacterVoiceProfile } from './types.js';
+import { emptyVoiceProfile } from './types.js';
 
 // ── Row -> Domain ────────────────────────────────────────────────────────────
 

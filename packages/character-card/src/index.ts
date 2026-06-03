@@ -6,4 +6,8 @@ export { EMA_CARD_ID, EMA_CARD_INPUT } from './seed.js';
 export type {
   CharacterCard,
   CharacterCardInput,
+  CharacterVoiceProfile,
+  CharacterRefAudio,
 } from './types.js';
+
+export { emptyVoiceProfile } from './types.js';

@@ -1,4 +1,28 @@
-﻿import type { CharacterCardId, CharacterVoiceProfile } from '@ema-agent/contracts';
+﻿import type { CharacterCardId } from '@ema-agent/contracts';
+
+// ── Voice profile ─────────────────────────────────────────────────────────────
+// Defined here (character-card package) rather than contracts because it's a
+// character-card domain type. Consumers outside this package import from
+// @ema-agent/character-card, not contracts.
+
+export interface CharacterRefAudio {
+  id:           string;
+  label:        string;
+  /** Profile-scoped relative path: <cardId>/<filename> */
+  refAudioPath: string;
+  promptText:   string;
+  promptLang:   string;
+}
+
+export interface CharacterVoiceProfile {
+  refAudios: CharacterRefAudio[];
+  /** Which refAudio is active. null = use first entry. */
+  primaryId: string | null;
+}
+
+export function emptyVoiceProfile(): CharacterVoiceProfile {
+  return { refAudios: [], primaryId: null };
+}
 
 export interface CharacterCard {
   id:               CharacterCardId;
