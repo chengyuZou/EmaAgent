@@ -94,7 +94,6 @@ export { settingsApi }       from './api/settings.js';
 export type {
   EventDisplayConfig,
   EventDisplayResult,
-  TtsFallbackSettings,
 } from './api/settings.js';
 
 export { cardsApi }          from './api/cards.js';

@@ -9,8 +9,11 @@ export interface ProviderDefinitionWire {
   id:                  string;
   name:                string;
   defaultBaseUrl?:     string;
+  /** Per-protocol base URLs, e.g. { 'openai-llm': '...', 'anthropic-llm': '...' } */
+  protocolBaseUrls?:   Record<string, string>;
   capabilities:        string[];
-  protocols:           Record<string, string>;
+  /** Each capability maps to a protocol or array of protocols. */
+  protocols:           Record<string, string | string[]>;
   defaultModels?:      Record<string, string[]>;
   iconKey?:            string;
   iconColor?:          string;
@@ -106,7 +109,7 @@ export const providersApi = {
   async probe(id: string, model?: string): Promise<ProbeResultWire> {
     return sidecarClient.request<ProbeResultWire>(`/api/providers/${id}/probe`, {
       method: 'POST',
-      json: { model: model ?? 'gpt-4o-mini' },
+      json: { model },  // undefined → backend picks definition's first LLM model
     });
   },
 };

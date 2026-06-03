@@ -38,11 +38,18 @@ export function registerAllHooks(bindings: AppBindings): () => void {
   // ── memory: compaction + recall + post-turn extraction ────────────────────
   offs.push(registerMemoryHooks(bindings.hooks, {
     planner: bindings.memory,
+    session: bindings.session,
     llm:     bindings.llm,
-    // recentFiles: future — agent engine will populate readFileState into a
-    // per-session bucket the planner can read. V1: undefined → restore step
-    // skips files (re-reads on demand).
+    // Agent sessions: supply the 20 most recently touched files so the post-compact
+    // restore step can re-inject their content without a redundant LLM round-trip.
+    // Conversation sessions have no file state — the store simply returns [].
+    recentFiles: (sessionId) =>
+      bindings.getContextStores(sessionId).fileStateStore.recentEntries(20),
   }));
+
+  // ── skill: system prompt injection ───────────────────────────────────────
+  bindings.skillRunner.start();
+  offs.push(() => bindings.skillRunner.stop());
 
   return () => {
     for (const off of offs) {

@@ -2,7 +2,7 @@
  * Sessions API — session CRUD + message loading.
  */
 import { sidecarClient } from './sidecar-client.js';
-import type { SessionId, MessageId, MessageRole, MessageKind, MessageBlocks } from '@ema-agent/contracts';
+import type { SessionId, MessageId, MessageRole, MessageKind, MessageBlocks, TurnMode, AgentSubMode } from '@ema-agent/contracts';
 
 // ── Wire-format types (match backend JSON shapes) ────────────────────────────
 
@@ -20,6 +20,8 @@ export interface SessionWire {
   parentSessionId:  string | null;
   runningTurnCount: number;
   meta:             Record<string, unknown>;
+  lastMode:         TurnMode | null;
+  lastSubMode:      AgentSubMode | null;
 }
 
 export interface MessageWire {
@@ -79,7 +81,14 @@ export const sessionsApi = {
   /** PUT /api/sessions/:id — partial update. Returns updated session. */
   async patch(
     id: SessionId,
-    patch: { title?: string; pinned?: boolean; groupLabel?: string | null },
+    patch: {
+      title?: string;
+      pinned?: boolean;
+      groupLabel?: string | null;
+      workspaceRoots?: string[];
+      lastMode?: TurnMode | null;
+      lastSubMode?: AgentSubMode | null;
+    },
   ): Promise<SessionWire> {
     return sidecarClient.request<SessionWire>(`/api/sessions/${id}`, {
       method: 'PUT',

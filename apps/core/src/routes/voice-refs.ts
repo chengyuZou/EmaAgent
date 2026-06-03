@@ -5,12 +5,12 @@ import { randomUUID } from 'node:crypto';
 import { Hono } from 'hono';
 
 import type { AppBindings } from '../wiring.js';
+import { asCharacterCardId } from '@ema-agent/contracts';
 import {
-  asCharacterCardId,
   emptyVoiceProfile,
   type CharacterRefAudio,
   type CharacterVoiceProfile,
-} from '@ema-agent/contracts';
+} from '@ema-agent/character-card';
 import { voiceRefsForCard, resolveVoiceRefPath } from '../storage-locations/index.js';
 import { z } from 'zod';
 
@@ -189,7 +189,7 @@ export function voiceRefsRoute(bindings: AppBindings): Hono {
     try { form = await c.req.formData(); }
     catch { return c.json({ error: 'invalid_multipart' }, 400); }
 
-    const file = form.get('file');
+    const file = form.get('file') as unknown;
     if (!(file instanceof File) && !(file instanceof Blob)) {
       return c.json({ error: 'missing_file_field' }, 400);
     }

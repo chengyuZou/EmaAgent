@@ -4,7 +4,7 @@
 import { create } from 'zustand';
 import { providersApi, type ProviderConfigWire, type ProviderConfigInput, type ProviderDefinitionWire, type ProbeResultWire } from '../api/providers.js';
 import { modelBindingsApi, type BindingModule, type ResolvedModelBinding, type BindingUpsertInput } from '../api/model-bindings.js';
-import { settingsApi, type TtsFallbackSettings } from '../api/settings.js';
+import { settingsApi } from '../api/settings.js';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -12,7 +12,6 @@ export interface SettingsStoreState {
   providers:           ProviderConfigWire[];
   providerDefinitions: ProviderDefinitionWire[];
   bindings:            Partial<Record<BindingModule, ResolvedModelBinding[]>>;
-  ttsFallback:         TtsFallbackSettings | null;
   permissionTimeoutMs: number;
   loading:             boolean;
   error:               string | null;
@@ -28,7 +27,6 @@ export interface SettingsStoreState {
   upsertBinding(module: BindingModule, input: BindingUpsertInput): Promise<void>;
   deleteBinding(module: BindingModule, providerConfigId: string, model: string): Promise<void>;
 
-  putTtsFallback(payload: TtsFallbackSettings | null): Promise<void>;
   putPermissionTimeout(ms: number):                    Promise<void>;
 }
 
@@ -38,7 +36,6 @@ export const useSettingsStore = create<SettingsStoreState>((set, get) => ({
   providers:           [],
   providerDefinitions: [],
   bindings:            {},
-  ttsFallback:         null,
   permissionTimeoutMs: 120_000,
   loading:             false,
   error:               null,
@@ -46,16 +43,14 @@ export const useSettingsStore = create<SettingsStoreState>((set, get) => ({
   async loadAll() {
     set({ loading: true, error: null });
     try {
-      const [definitions, providers, ttsResult, permResult] = await Promise.all([
+      const [definitions, providers, permResult] = await Promise.all([
         providersApi.listDefinitions(),
         providersApi.list(),
-        settingsApi.getTtsFallback().catch(() => ({ fallback: null })),
         settingsApi.getPermissionTimeout().catch(() => ({ timeoutMs: 120_000 })),
       ]);
       set({
         providerDefinitions: definitions,
         providers,
-        ttsFallback: ttsResult.fallback,
         permissionTimeoutMs: permResult.timeoutMs,
         loading: false,
       });
@@ -129,21 +124,6 @@ export const useSettingsStore = create<SettingsStoreState>((set, get) => ({
       await get().refreshBindings(module);
     } catch (err: unknown) {
       set({ error: err instanceof Error ? err.message : 'Failed to delete binding' });
-      throw err;
-    }
-  },
-
-  async putTtsFallback(payload) {
-    try {
-      if (payload === null) {
-        await settingsApi.deleteTtsFallback();
-        set({ ttsFallback: null });
-      } else {
-        await settingsApi.putTtsFallback(payload);
-        set({ ttsFallback: payload });
-      }
-    } catch (err: unknown) {
-      set({ error: err instanceof Error ? err.message : 'Failed to save TTS fallback' });
       throw err;
     }
   },

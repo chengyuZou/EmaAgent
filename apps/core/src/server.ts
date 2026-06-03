@@ -12,6 +12,10 @@ import { systemEventsRoute } from './routes/system-events.js';
 import { settingsRoute } from './routes/settings.js';
 import { transcribeRoute } from './routes/transcribe.js';
 import { voiceRefsRoute } from './routes/voice-refs.js';
+import { diagnosticRoute } from './routes/diagnostic.js';
+import { createArtifactsRouter } from './routes/artifacts.js';
+import { createSkillsRouter }   from './routes/skills.js';
+import { createMcpRouter }       from './routes/mcp.js';
 import type { AppBindings } from './wiring.js';
 
 export function buildServer(bindings: AppBindings): Hono {
@@ -48,8 +52,12 @@ export function buildServer(bindings: AppBindings): Hono {
   app.route('/api/memory',         memoryRoute(bindings));
   app.route('/api/system/events',  systemEventsRoute(bindings));
   app.route('/api/settings',       settingsRoute(bindings));
+  app.route('/api/diagnostics',    diagnosticRoute());
   app.route('/api/transcribe',     transcribeRoute(bindings));
   app.route('/api/cards',          voiceRefsRoute(bindings));
+  app.route('/api',                createArtifactsRouter(bindings));
+  app.route('/api',                createSkillsRouter(bindings));
+  app.route('/api/mcp',            createMcpRouter(bindings));
 
   // 404 fallback
   app.notFound((c) => c.json({ error: 'not_found' }, 404));

@@ -12,15 +12,20 @@
     "tauri:build": "tauri build"
   },
   "dependencies": {
-    "@ema-agent/contracts":    "workspace:*",
-    "@ema-agent/desktop-ui":   "workspace:*",
-    "@ema-agent/ui":           "workspace:*",
+    "@ema-agent/contracts": "workspace:*",
+    "@ema-agent/desktop-ui": "workspace:*",
+    "@ema-agent/live2d-react": "workspace:*",
+    "@ema-agent/ui": "workspace:*",
     "@tauri-apps/api": "^2.4.0",
     "@tauri-apps/plugin-shell": "^2.2.0",
+    "@unocss/preset-attributify": "^66.0.0",
+    "@unocss/preset-uno": "^66.7.0",
+    "@unocss/preset-wind": "^66.7.0",
     "pixi-live2d-display": "0.5.0-beta",
     "pixi.js": "^7.4.3",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "unocss": "^66.0.0"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.4.0",

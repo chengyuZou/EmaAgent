@@ -16,14 +16,15 @@ export class TurnEventStore {
     this.ttlMs = ttlMs;
   }
 
-  push(turnId: TurnId, event: EmaStreamEvent): void {
+  push(turnId: TurnId, event: EmaStreamEvent): number | null {
     const key = turnId as string;
-    if (this.cancelled.has(key)) return;
+    if (this.cancelled.has(key)) return null;
     if (!this.store.has(key)) {
       this.store.set(key, { events: [], done: false });
     }
     const entry = this.store.get(key)!;
     entry.events.push(event);
+    const cursor = entry.events.length;
 
     if (
       event.type === 'turn_completed' ||
@@ -33,6 +34,8 @@ export class TurnEventStore {
       entry.done = true;
       entry.doneAt = Date.now();
     }
+
+    return cursor;
   }
 
   /** Returns events after `sinceIndex` (0-based). Used for reconnect replay. */

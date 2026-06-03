@@ -18,6 +18,12 @@ export function useChatHistoryScroll(
   containerRef: RefObject<HTMLDivElement | null>,
   /** Dependencies that trigger auto-scroll (e.g. messages, streamingMessage). */
   deps: unknown[],
+  /**
+   * When these change (e.g. activeSessionId), force-reset the user-scroll flag
+   * and jump to bottom — regardless of whether the user had scrolled away.
+   * Must be listed BEFORE the auto-scroll effect so the reset happens first.
+   */
+  resetDeps?: unknown[],
 ): ChatHistoryScrollResult {
   // ref for use inside event handlers (avoids stale closures)
   const userScrolledRef = useRef(false);
@@ -48,6 +54,15 @@ export function useChatHistoryScroll(
     el.addEventListener('scroll', handler, { passive: true });
     return () => el.removeEventListener('scroll', handler);
   }, [containerRef, isNearBottom]);
+
+  // Force-reset user-scroll state on session switch (or any resetDeps change).
+  // Runs BEFORE the auto-scroll effect so the flag is clear when auto-scroll fires.
+  useEffect(() => {
+    if (!resetDeps || resetDeps.length === 0) return;
+    userScrolledRef.current = false;
+    isNearBottomRef.current = true;
+    setUserScrolled(false);
+  }, resetDeps); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-scroll when deps change (new message or streaming delta)
   useEffect(() => {

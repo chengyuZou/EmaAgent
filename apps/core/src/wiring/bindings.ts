@@ -6,9 +6,16 @@ import {
   SettingsRepo,
   MemoryNodesRepo, MemoryEdgesRepo, MemoryLazyUpdatesRepo,
   MemoryItemsRepo, SessionNotesRepo, BackgroundTasksRepo,
+  ArtifactRepo,
   type ProviderConfigRow,
 } from '@ema-agent/storage';
+import { ArtifactStore } from '@ema-agent/artifact';
+import { McpRegistry, McpServerStore }           from '@ema-agent/mcp';
+import { SkillStore, SkillRunner, SkillInstaller } from '@ema-agent/skill';
+import { McpServersRepo, SkillsRepo }              from '@ema-agent/storage';
+import * as nodePath from 'node:path';
 import { HookBus }       from '@ema-agent/hook';
+import { createTraceSink } from './diagnostic-sink.js';
 import { LlmRouter }     from '@ema-agent/llm';
 import type { ProviderConfig } from '@ema-agent/llm';
 import { EbdRouter }     from '@ema-agent/ebd-client';
@@ -27,10 +34,13 @@ import { EmotionEngine }  from '@ema-agent/emotion';
 import {
   getProviderDefinition,
   isLlmProtocol, isEmbedProtocol, isRerankProtocol,
+  resolveProtocols, resolveBaseUrl,
+  type ProtocolFamily,
 } from '@ema-agent/contracts';
 import { PermissionEngine } from '@ema-agent/permission';
 import type { AskPermissionFn } from '@ema-agent/permission';
 import { PermissionPromptRegistry } from '../permissions/registry.js';
+import { AskUserRegistry } from '../ask-user/registry.js';
 import type { EmaStreamEvent } from '@ema-agent/contracts';
 import { ToolRegistry } from '@ema-agent/tool';
 import { registerBuiltinTools } from '@ema-agent/tool-builtin';
@@ -38,6 +48,9 @@ import { MemoryPlanner } from '@ema-agent/memory';
 import { CommandRunner } from '@ema-agent/sandbox';
 import type { ICommandRunner } from '@ema-agent/tool';
 import type { SessionId } from '@ema-agent/contracts';
+import {
+  AgentFileStateStore, AgentToolResultStore, ToolResultCleaner,
+} from '@ema-agent/agent-context';
 import { resolveBridgeUrl } from './bridge.js';
 import { SystemEventBus } from '../sse/system-bus.js';
 
@@ -91,6 +104,9 @@ export interface AppBindings {
   // Agent stack
   permission:        PermissionEngine;
   permissionPrompts: PermissionPromptRegistry;
+  /** In-memory registry for pending ask_user prompts — the tool awaits a
+   *  Promise; this registry resolves it when the frontend posts answers. */
+  askUserRegistry:   AskUserRegistry;
   tools:             ToolRegistry;
   /**
    * Per-turn factory that yields an askPermission callback wired to the
@@ -107,6 +123,17 @@ export interface AppBindings {
    */
   getCommandRunner: (sessionId: SessionId) => ICommandRunner;
 
+  /**
+   * Per-session file-state + tool-result store factory. Creates + memoises on
+   * first call per sessionId. Used by AgentEngine and the memory hooks (recentFiles).
+   */
+  getContextStores: (sessionId: SessionId) => {
+    fileStateStore:  AgentFileStateStore;
+    toolResultStore: AgentToolResultStore;
+  };
+  /** Sweeps offloaded tool-result files — called by background tick. */
+  toolResultCleaner: ToolResultCleaner;
+
   // Memory subsystem
   memory:        MemoryPlanner;
 
@@ -115,7 +142,12 @@ export interface AppBindings {
   systemBus:     SystemEventBus;
 
   // Repos kept on the binding for route convenience
-  modelBindings: ModelBindingsRepo;
+  modelBindings:   ModelBindingsRepo;
+  artifactStore:   ArtifactStore;
+  mcpRegistry:     McpRegistry;
+  skillStore:      SkillStore;
+  skillRunner:     SkillRunner;
+  skillInstaller:  SkillInstaller;
 }
 
 // ── Provider config builders (exported — providers route reuses them) ───────
@@ -127,18 +159,25 @@ export function buildLlmProviderConfig(row: ProviderConfigRow): ProviderConfig |
   const capabilities: string[] = JSON.parse(row.capabilities_json);
   if (!capabilities.includes('llm')) return null;
 
-  const protocol = def.protocols.llm;
+  // config_json may carry a user-selected protocol (when the definition offers
+  // multiple choices). Fall back to the first declared protocol.
+  const extra    = JSON.parse(row.config_json) as Record<string, unknown>;
+  const choices  = resolveProtocols(def.protocols.llm);
+  const stored   = typeof extra['protocol'] === 'string' ? extra['protocol'] : undefined;
+  // Cast to ProtocolFamily so the type guard can narrow to LlmProtocol.
+  const protocol = (stored && choices.includes(stored as never) ? stored : choices[0]) as ProtocolFamily | undefined;
   if (!isLlmProtocol(protocol)) return null;
+  // After guard, protocol: LlmProtocol
 
   const needsKey = def.requiresCredentials !== false;
   if (needsKey && !row.api_key_plain) return null;
 
-  const extra = JSON.parse(row.config_json) as Record<string, unknown>;
   return {
     id:           row.id,
-    provider:     protocol,
+    protocol,
     apiKey:       row.api_key_plain ?? '',
-    baseUrl:      row.base_url ?? def.defaultBaseUrl,
+    // Prefer explicit row base_url, then per-protocol default, then global default
+    baseUrl:      row.base_url ?? resolveBaseUrl(def, protocol),
     defaultModel: typeof extra['defaultModel'] === 'string' ? extra['defaultModel'] : undefined,
   };
 }
@@ -150,7 +189,7 @@ export function buildEmbedProviderConfig(row: ProviderConfigRow): EmbedProviderC
   const capabilities: string[] = JSON.parse(row.capabilities_json);
   if (!capabilities.includes('embed')) return null;
 
-  const protocol = def.protocols.embed;
+  const protocol = resolveProtocols(def.protocols.embed)[0] as ProtocolFamily | undefined;
   if (!isEmbedProtocol(protocol)) return null;
 
   if (def.requiresCredentials !== false && !row.api_key_plain) return null;
@@ -173,7 +212,7 @@ export function buildRerankProviderConfig(row: ProviderConfigRow): RerankProvide
   const capabilities: string[] = JSON.parse(row.capabilities_json);
   if (!capabilities.includes('rerank')) return null;
 
-  const protocol = def.protocols.rerank;
+  const protocol = resolveProtocols(def.protocols.rerank)[0] as ProtocolFamily | undefined;
   if (!isRerankProtocol(protocol)) return null;
 
   if (def.requiresCredentials !== false && !row.api_key_plain) return null;
@@ -242,7 +281,10 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
 
   // ── Core infra ──────────────────────────────────────────────────────────────
   // Sessions / turns / messages live in dataDb.
-  const hooks   = new HookBus();
+  const hooks   = new HookBus({
+    traceSink:     createTraceSink(),   // ring buffer + console, SSE layer added by orchestrator
+    warnAnonymous: process.env['NODE_ENV'] !== 'production',
+  });
   const session = new SessionStore({ db: dataDb });
 
   // ── AI clients (provider configs live in profileDb) ────────────────────────
@@ -264,7 +306,7 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
   // Built once; provider configs / bindings can be hot-reloaded later via
   // routes (provider POST/PUT and model-bindings PUT), at which point we
   // either rebuild or expose upsert methods on TtsClient (deferred to 6B-3).
-  const tts = buildTtsClient({ profileDb, card });
+  const tts = buildTtsClient({ profileDb });
 
   // ── Audio archive (lives under {activeDataDir}/audio) ──────────────────────
   const audioArchive = new FsAudioArchive(audioDirFor(activeDataDir));
@@ -285,10 +327,25 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
     typeof storedTimeout === 'number' ? storedTimeout : 120_000,
   );
 
+  // Dev mode: 5 s timeout so a missing frontend doesn't stall the turn for 2 min.
+  // Production keeps 120 s so the user has time to read and answer.
+  const askUserTimeoutMs = process.env['NODE_ENV'] === 'development' ? 5_000 : 120_000;
+  const askUserRegistry = new AskUserRegistry(askUserTimeoutMs);
+
+  // Always 'ask' — every write/execute tool surfaces a confirmation dialog.
+  // AGEN_PERMISSION_BYPASS=1 lets automated tests or power users skip prompts.
+  const permissionMode = process.env['AGEN_PERMISSION_BYPASS'] === '1' ? 'bypass' : 'ask';
   const permission = new PermissionEngine({
-    mode:  'ask',                       // default to safe; user can flip in settings
-    rules: [],                          // V1 starts empty; rules accrete as user grants
-    ask:   async () => ({ action: 'deny', reason: 'no per-turn ask wired' }),
+    mode: permissionMode,
+    // Read-only tools are always allowed — no side effects, no prompt fatigue.
+    // Write/execute tools remain gated by `permissionMode`.
+    rules: [
+      { tool: 'fs_read',     action: 'allow', scope: 'global' },
+      { tool: 'fs_list_dir', action: 'allow', scope: 'global' },
+      { tool: 'fs_stat',     action: 'allow', scope: 'global' },
+      { tool: 'fs_grep',     action: 'allow', scope: 'global' },
+    ],
+    ask: async () => ({ action: 'deny', reason: 'no per-turn ask wired' }),
   });
 
   const buildAskForTurn = (args: {
@@ -345,6 +402,28 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
     return runner;
   };
 
+  // ── Agent context stores (per-session file state + tool result offload) ────
+  //
+  // Mirrors the getCommandRunner cache pattern: each session gets its own pair
+  // of stores. sessionsDir layout: {activeDataDir}/.ema-agent/sessions/{sessionId}/
+  const sessionsDir = nodePath.join(activeDataDir, '.ema-agent', 'sessions');
+  const contextStoresCache = new Map<string, {
+    fileStateStore:  AgentFileStateStore;
+    toolResultStore: AgentToolResultStore;
+  }>();
+  const getContextStores = (sessionId: SessionId) => {
+    let stores = contextStoresCache.get(sessionId);
+    if (stores) return stores;
+    const toolResultsDir = nodePath.join(sessionsDir, sessionId, 'tool-results');
+    stores = {
+      fileStateStore:  new AgentFileStateStore(),
+      toolResultStore: new AgentToolResultStore(toolResultsDir),
+    };
+    contextStoresCache.set(sessionId, stores);
+    return stores;
+  };
+  const toolResultCleaner = new ToolResultCleaner(sessionsDir);
+
   // ── System event bus (cross-turn observability) ────────────────────────────
   // Built before memory so we can wire memory's `emit` into it.
   const systemBus = new SystemEventBus();
@@ -370,15 +449,37 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
     emit:            (ev) => systemBus.emit(ev),
   });
 
+  // ── Artifact store ─────────────────────────────────────────────────────────
+  const artifactRepo  = new ArtifactRepo(dataDb.sqlite);
+  const artifactsDir  = nodePath.join(activeDataDir, '.ema-agent', 'artifacts');
+  const artifactStore = new ArtifactStore(artifactRepo, artifactsDir);
+
+  // ── MCP registry ────────────────────────────────────────────────────────────
+  const mcpServersRepo = new McpServersRepo(profileDb.sqlite);
+  const mcpServerStore = new McpServerStore(mcpServersRepo);
+  const mcpRegistry    = new McpRegistry(mcpServerStore, tools);
+
+  // ── Skill ────────────────────────────────────────────────────────────────────
+  const skillsRepo     = new SkillsRepo(profileDb.sqlite);
+  const skillStore     = new SkillStore(skillsRepo);
+  const skillRunner    = new SkillRunner(skillStore, hooks);
+  const skillInstaller = new SkillInstaller(skillStore);
+
   return {
     profileDb, dataDb, activeDataDir,
     hooks, session,
     llm, ebd, narrative,
     card, emotion,
     tts, audioArchive, stt,
-    permission, permissionPrompts, tools, buildAskForTurn, getCommandRunner,
+    permission, permissionPrompts, askUserRegistry, tools, buildAskForTurn, getCommandRunner,
+    getContextStores, toolResultCleaner,
     memory,
     systemBus,
     modelBindings,
+    artifactStore,
+    mcpRegistry,
+    skillStore,
+    skillRunner,
+    skillInstaller,
   };
 }

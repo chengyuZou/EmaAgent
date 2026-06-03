@@ -2,27 +2,100 @@
  * EmaStageView — Live2D model wrapper with SSE event bridge.
  *
  * Listens to Tauri events (emitted by system-sse) for emotion/stage cues
- * and dispatches them to the Live2D model.
- *
- * Lives in apps/desktop because it imports the local Live2DStage component.
+ * and dispatches them to the Live2D model via live2d-react.
  */
 import { useEffect, useRef, type JSX } from 'react';
-import { Live2DStage, type Live2DStageHandle } from './Live2DStage.js';
+import {
+  Live2DStage,
+  useLive2DStore,
+  useSpeechStore,
+  type Live2DModelRuntimeConfig,
+  type Live2DStageHandle,
+} from '@ema-agent/live2d-react';
 import { tauriBridge } from '@ema-agent/desktop-ui';
 
 export interface EmaStageViewProps {
   modelPath?: string;
 }
 
+const EMA_LIVE2D_RUNTIME_CONFIG: Live2DModelRuntimeConfig = {
+  modelId: 'ema',
+  parameters: {
+    mouthOpenParam: 'ParamMouthOpenY',
+    mouthOpenMax: 2.1,
+    speechNodParam: 'Param86',
+    speechNodAmplitude: 3,
+    headInputX: 'Param85',
+    headInputY: 'Param86',
+    headInputZ: 'Param87',
+    breathParam: 'ParamBreath',
+  },
+  idleBeat: {
+    swayAmplitude: 15,
+    swayFrequencyX: 0.8,
+    swayFrequencyY: 0.56,
+    swayFrequencyZ: 0.62,
+    breathFrequency: 0.6,
+  },
+  randomIdle: {
+    group: 'Idle',
+    minDelayMs: 12_000,
+    maxDelayMs: 35_000,
+  },
+  emotionMap: {
+    neutral: {},
+    happy: {},
+    curious: {},
+    shy: {},
+    sad: { expression: 'liulei' },
+    scared: { expression: 'liulei' },
+    determined: { expression: 'taishou' },
+    focused: { expression: 'taishou' },
+    surprised: { expression: 'taishou' },
+    angry: { expression: 'monvhua' },
+  },
+  motionMap: {
+    idle: { group: 'Idle', index: 0 },
+    think: { group: 'Idle', index: 0 },
+  },
+};
+
 export function EmaStageView({ modelPath = '/live2d/ema/ema.model3.json' }: EmaStageViewProps): JSX.Element {
   const stageRef = useRef<Live2DStageHandle>(null);
 
   useEffect(() => {
+    const applySpeechState = (payload: { speaking: boolean; rms: number }): void => {
+      if (!payload.speaking) {
+        useSpeechStore.getState().reset();
+        return;
+      }
+      useSpeechStore.getState().setSpeaking(true);
+      useSpeechStore.getState().setRms(payload.rms);
+    };
+
+    const applyEmotion = (primary: string): void => {
+      const target = EMA_LIVE2D_RUNTIME_CONFIG.emotionMap?.[primary];
+      if (target?.expression) {
+        stageRef.current?.setExpression(target.expression);
+      } else {
+        stageRef.current?.setExpression(null);
+      }
+      if (target?.motion) {
+        stageRef.current?.playMotion(target.motion.group, target.motion.index);
+      }
+    };
+
+    const applyMotion = (motion: string): void => {
+      const target = EMA_LIVE2D_RUNTIME_CONFIG.motionMap?.[motion];
+      if (!target) return;
+      stageRef.current?.playMotion(target.group, target.index);
+    };
+
     // Listen for stage:emotion-changed events from system-sse
     const unlistenEmotion = tauriBridge.listen<{ primary: string }>(
       'stage:emotion-changed',
       (event) => {
-        stageRef.current?.setExpression(event.payload.primary);
+        applyEmotion(event.payload.primary);
       },
     );
 
@@ -31,28 +104,66 @@ export function EmaStageView({ modelPath = '/live2d/ema/ema.model3.json' }: EmaS
       'stage:cue',
       (event) => {
         if (event.payload.expression) {
-          stageRef.current?.setExpression(event.payload.expression);
+          const target = EMA_LIVE2D_RUNTIME_CONFIG.emotionMap?.[event.payload.expression];
+          stageRef.current?.setExpression(target?.expression ?? event.payload.expression);
         }
         if (event.payload.motion) {
-          stageRef.current?.playMotion(event.payload.motion);
+          applyMotion(event.payload.motion);
         }
       },
     );
 
+    // Speech RMS can originate in another webview (chat.html owns TTS
+    // playback), so bridge it into the stage window's own speech store.
+    const unlistenSpeech = tauriBridge.listen<{ speaking: boolean; rms: number }>(
+      'stage:speech-state',
+      (event) => applySpeechState(event.payload),
+    );
+
+    const speechChannel = typeof BroadcastChannel === 'undefined'
+      ? null
+      : new BroadcastChannel('ema-stage-speech');
+    if (speechChannel) {
+      speechChannel.onmessage = (event: MessageEvent<{ speaking: boolean; rms: number }>) => {
+        applySpeechState(event.data);
+      };
+    }
+
     // Listen for stage:cycle-expression (from FloatingDock)
+    // live2d-react handle doesn't expose cycleExpression — use store directly.
     const unlistenCycle = tauriBridge.listen<{}>(
       'stage:cycle-expression',
       () => {
-        stageRef.current?.cycleExpression();
+        const store = useLive2DStore.getState();
+        const exps = store.availableExpressions;
+        if (exps.length === 0) return;
+        // Clear current and pick next in rotation (or random if only one).
+        store.clearExpressions();
+        if (exps.length === 1) {
+          store.addExpression(exps[0]!, { source: 'ui' });
+        } else {
+          const current = store.activeExpressions[0]?.name;
+          const idx = current ? exps.indexOf(current) : -1;
+          const next = exps[(idx + 1) % exps.length]!;
+          store.addExpression(next, { source: 'ui' });
+        }
       },
     );
 
     return () => {
       void unlistenEmotion.then((fn) => fn());
       void unlistenCue.then((fn) => fn());
+      void unlistenSpeech.then((fn) => fn());
       void unlistenCycle.then((fn) => fn());
+      speechChannel?.close();
     };
   }, []);
 
-  return <Live2DStage ref={stageRef} modelPath={modelPath} />;
+  return (
+    <Live2DStage
+      ref={stageRef}
+      modelPath={modelPath}
+      runtimeConfig={EMA_LIVE2D_RUNTIME_CONFIG}
+    />
+  );
 }

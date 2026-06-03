@@ -40,6 +40,10 @@
     "@ema-agent/memory": "workspace:*",
     "@ema-agent/tts": "workspace:*",
     "@ema-agent/stt": "workspace:*",
+    "@ema-agent/artifact": "workspace:*",
+    "@ema-agent/agent-context": "workspace:*",
+    "@ema-agent/skill":    "workspace:*",
+    "@ema-agent/mcp": "workspace:*",
     "@hono/node-server": "^1.14.3",
     "hono": "^4.7.10",
     "zod": "^3.24.4"

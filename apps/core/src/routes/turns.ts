@@ -3,10 +3,11 @@ import { Readable } from 'node:stream';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { Orchestrator } from '../orchestrator/orchestrator.js';
+import { TurnEventHub } from '../sse/event-hub.js';
 import { TurnEventStore } from '../sse/event-store.js';
 import { encodeEvent, encodePing } from '../sse/writer.js';
 import type { AppBindings } from '../wiring.js';
-import type { TurnId } from '@ema-agent/contracts';
+import type { EmaStreamEvent, TurnId } from '@ema-agent/contracts';
 import { asTurnId } from '@ema-agent/contracts';
 
 // ── UTF-8 safe body decoder ───────────────────────────────────────────────────
@@ -50,16 +51,23 @@ const turnBodySchema = z.object({
   { message: 'either userInput or contentParts is required' },
 );
 
+function isTerminalTurnEvent(event: EmaStreamEvent): boolean {
+  return (
+    event.type === 'turn_aborted' ||
+    event.type === 'turn_failed' ||
+    event.type === 'turn_completed'
+  );
+}
+
 // ── Route factory ─────────────────────────────────────────────────────────────
 
 export function turnsRoute(bindings: AppBindings): Hono {
   const app = new Hono();
   const eventStore = new TurnEventStore(60_000);
+  const eventHub = new TurnEventHub();
   const orchestrator = new Orchestrator(bindings, {
-    onAudioFinalized: (turnId) => {
-      // Drop the streamed base64 audio from in-memory replay — it's now
-      // reconstructible from the merged file via /api/turns/:id/audio.
-      eventStore.evictAudioChunks(turnId);
+    onAudioFinalized: (turnId, audioPath) => {
+      if (audioPath) eventStore.evictAudioChunks(turnId);
     },
   });
   // Evict completed / cancelled turns every 30 s to prevent unbounded memory growth.
@@ -77,7 +85,7 @@ export function turnsRoute(bindings: AppBindings): Hono {
     const effectiveSessionId = sessionId
       ?? bindings.session.createSession().id;
 
-    const { turnId, events } = orchestrator.run({
+    const { turnId, events } = await orchestrator.run({
       sessionId: effectiveSessionId,
       mode: mode,
       subMode: subMode,
@@ -90,15 +98,14 @@ export function turnsRoute(bindings: AppBindings): Hono {
     // ── Fan-out: push every event into TurnEventStore for replay ──────────
     (async () => {
       for await (const event of events) {
-        eventStore.push(turnId, event);
+        const cursor = eventStore.push(turnId, event);
+        if (cursor !== null) {
+          eventHub.publish(turnId, { cursor, event });
+        }
         // Auto-cancel any in-flight permission prompts when the turn ends.
         // Otherwise an aborted turn leaves the prompt hanging in the
         // registry — and on the frontend — until the 120 s timeout fires.
-        if (
-          event.type === 'turn_aborted' ||
-          event.type === 'turn_failed'  ||
-          event.type === 'turn_completed'
-        ) {
+        if (isTerminalTurnEvent(event)) {
           const n = bindings.permissionPrompts.cancelForTurn(turnId, `turn ${event.type}`);
           if (n > 0) console.log(`[permission] cancelled ${n} prompt(s) on ${event.type}`);
         }
@@ -115,67 +122,76 @@ export function turnsRoute(bindings: AppBindings): Hono {
     const turnId = asTurnId(c.req.param('turnId'));
     const lastEventId = parseInt(c.req.query('lastEventId') ?? '0', 10) || 0;
 
-    // Replay missed events from the store
-    const missed = eventStore.replay(turnId, lastEventId);
-    const isDone = eventStore.isDone(turnId);
-
-    let eventIndex = lastEventId + missed.length;
-
     let heartbeat: ReturnType<typeof setInterval> | undefined;
-    let poll: ReturnType<typeof setInterval> | undefined;
+    let unsubscribe: (() => void) | null = null;
+    const cleanup = (): void => {
+      unsubscribe?.();
+      unsubscribe = null;
+      if (heartbeat) clearInterval(heartbeat);
+      heartbeat = undefined;
+    };
 
     return new Response(
       new ReadableStream({
         start(controller) {
           const encoder = new TextEncoder();
           let closed = false;
+          let cursor = lastEventId;
+
+          const close = (): void => {
+            if (closed) return;
+            closed = true;
+            cleanup();
+            try { controller.close(); } catch { /* ignore */ }
+          };
+
+          const writeEncoded = (payload: string): void => {
+            if (closed) return;
+            try {
+              controller.enqueue(encoder.encode(payload));
+            } catch {
+              close();
+            }
+          };
+
+          const writeEvent = (event: EmaStreamEvent): void => {
+            writeEncoded(encodeEvent(event));
+            if (isTerminalTurnEvent(event)) close();
+          };
+
+          unsubscribe = eventHub.subscribe(turnId, (published) => {
+            if (published.cursor <= cursor) return;
+            cursor = published.cursor;
+            writeEvent(published.event);
+          });
 
           // ── Send missed events immediately ──────────────────────────────
+          const missed = eventStore.replay(turnId, cursor);
           for (const event of missed) {
             if (closed) break;
-            controller.enqueue(encoder.encode(encodeEvent(event)));
+            cursor += 1;
+            writeEvent(event);
           }
 
-          // If the turn is already done, close immediately
-          if (isDone) {
-            controller.close();
-            eventStore.clear(turnId);
+          if (closed || eventStore.isDone(turnId)) {
+            close();
             return;
           }
 
           // ── Heartbeat ───────────────────────────────────────────────────
           heartbeat = setInterval(() => {
-            if (!closed) {
-              try { controller.enqueue(encoder.encode(encodePing())); } catch { /* ignore */ }
-            }
+            writeEncoded(encodePing());
           }, 15_000);
-
-          // ── Poll TurnEventStore for new events ──────────────────────────
-          poll = setInterval(() => {
-            if (closed) return;
-            const newEvents = eventStore.replay(turnId, eventIndex);
-            for (const event of newEvents) {
-              controller.enqueue(encoder.encode(encodeEvent(event)));
-            }
-            eventIndex += newEvents.length;
-
-            if (eventStore.isDone(turnId)) {
-              closed = true;
-              if (heartbeat) clearInterval(heartbeat);
-              if (poll) clearInterval(poll);
-              try { controller.close(); } catch { /* ignore */ }
-              eventStore.clear(turnId);
-            }
-          }, 200); // poll every 200ms
         },
         cancel() {
           // Client disconnected — mark turn as cancelled so further push() calls
           // are dropped. Do NOT call clear() here: that would erase the cancelled
           // entry and let the background fan-out IIFE silently re-create the store
           // entry with no reader on the other end.
-          eventStore.cancel(turnId);
-          if (heartbeat) clearInterval(heartbeat);
-          if (poll) clearInterval(poll);
+          cleanup();
+          if (!eventStore.isDone(turnId) && eventHub.subscriberCount(turnId) === 0) {
+            eventStore.cancel(turnId);
+          }
         },
       }),
       {
@@ -210,6 +226,21 @@ export function turnsRoute(bindings: AppBindings): Hono {
         'Cache-Control':  'private, max-age=0',
       },
     });
+  });
+
+  // ── POST /api/turns/:turnId/ask-user/:promptId/respond ─────────────────────
+  //
+  // Resolves a pending ask_user prompt. The tool awaits a Promise stored in
+  // AskUserRegistry; this POST resolves it with the user's answers map.
+  app.post('/:turnId/ask-user/:promptId/respond', async (c) => {
+    const promptId = c.req.param('promptId');
+    const body = await c.req.json().catch(() => null) as { answers?: Record<string, string> } | null;
+    if (!body || typeof body.answers !== 'object') {
+      return c.json({ error: 'invalid_request' }, 400);
+    }
+    const ok = bindings.askUserRegistry.respond(promptId, body.answers);
+    if (!ok) return c.json({ error: 'not_found_or_expired', promptId }, 404);
+    return c.json({ ok: true });
   });
 
   return app;

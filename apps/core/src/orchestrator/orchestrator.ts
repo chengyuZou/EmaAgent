@@ -8,7 +8,8 @@ import { ConversationEngine } from '@ema-agent/conversation';
 import { AgentEngine }        from '@ema-agent/agent';
 import { buildSystemPrompt }  from '@ema-agent/prompts';
 import { TtsCoordinator }     from '@ema-agent/tts';
-import { ttsBindingModuleFor } from '@ema-agent/storage';
+import { SettingsRepo } from '@ema-agent/storage';
+import { resolveVoice, ensureVoiceUri, VoiceUriCache } from '../wiring/tts.js';
 import type { Turn }           from '@ema-agent/session';
 
 export interface TurnResult {
@@ -74,19 +75,21 @@ export class Orchestrator {
     this.callbacks    = callbacks;
     this.conversation = new ConversationEngine(bindings);
     this.agent = new AgentEngine({
-      session:          bindings.session,
-      hooks:            bindings.hooks,
-      llm:              bindings.llm,
-      emotion:          bindings.emotion,
-      tools:            bindings.tools,
-      permission:       bindings.permission,
-      modelBindings:    bindings.modelBindings,
-      getCommandRunner: bindings.getCommandRunner,
-      buildAsk:         bindings.buildAskForTurn,
+      session:           bindings.session,
+      hooks:             bindings.hooks,
+      llm:               bindings.llm,
+      emotion:           bindings.emotion,
+      tools:             bindings.tools,
+      permission:        bindings.permission,
+      getCommandRunner:  bindings.getCommandRunner,
+      buildAsk:          bindings.buildAskForTurn,
+      askUserRegistry:   bindings.askUserRegistry,
+      artifactStore:     bindings.artifactStore,
+      getContextStores:  bindings.getContextStores,
     });
   }
 
-  run(request: TurnRequest): TurnResult {
+  async run(request: TurnRequest): Promise<TurnResult> {
     const sessionId = asSessionId(request.sessionId);
     const { turn, signal } = this.bindings.session.startTurn({
       sessionId,
@@ -107,7 +110,7 @@ export class Orchestrator {
       notifyTts = null;
     };
 
-    const coordinator = this.maybeBuildCoordinator(request, turnId, sessionId, pushTts);
+    const coordinator = await this.maybeBuildCoordinator(request, turnId, sessionId, pushTts);
     coordinator?.start();
 
     const engineEvents = this.engineStreamFor(request, turn, signal, sessionId);
@@ -115,15 +118,33 @@ export class Orchestrator {
     const self = this;
     const events = (async function* () {
       try {
-        yield* mergeStreams(engineEvents, coordinator, ttsQueue, () => {
+        let pendingTurnDone: EmaStreamEvent | null = null;
+
+        for await (const ev of mergeStreams(engineEvents, coordinator, ttsQueue, () => {
           const w = new Promise<void>((r) => { notifyTts = r; });
           return w;
-        });
+        })) {
+          // turn_completed / turn_failed / turn_aborted must be yielded LAST
+          // so that the SSE store doesn't mark the turn done before TTS audio
+          // chunks are drained. Hold them until finish() completes.
+          if (
+            ev.type === 'turn_completed' ||
+            ev.type === 'turn_failed'  ||
+            ev.type === 'turn_aborted'
+          ) {
+            pendingTurnDone = ev;
+            continue;
+          }
+          yield ev;
+        }
 
         if (coordinator) {
           const { audioPath } = await coordinator.finish();
+          while (ttsQueue.length > 0) yield ttsQueue.shift()!;
           self.callbacks.onAudioFinalized?.(turnId, audioPath);
         }
+
+        if (pendingTurnDone) yield pendingTurnDone;
       } catch (err) {
         if (coordinator) {
           await coordinator.abort();
@@ -155,56 +176,81 @@ export class Orchestrator {
 
       case 'agent': {
         const subMode = request.subMode ?? 'full';
-        const session = this.bindings.session.getSession(sessionId);
-        const workspaceRoot = session.workspaceRoots[0] ?? process.cwd();
+        const sess    = this.bindings.session.getSession(sessionId);
+        const workspaceRoot = sess.workspaceRoots[0] ?? process.cwd();
         const systemPrompt  = buildSystemPrompt(
           this.bindings.card.current(),
           'agent',
-          { agentSubMode: subMode, workspaceRoots: session.workspaceRoots },
+          { agentSubMode: subMode, workspaceRoots: sess.workspaceRoots },
         );
 
+        // Resolve provider + model here — AgentEngine is binding-unaware.
+        const binding    = this.bindings.modelBindings.get('agent');
+        const providerId = binding?.providerConfigId ?? this.bindings.llm.firstProviderId();
+        const model      = request.model ?? binding?.model
+          ?? (providerId ? this.bindings.llm.defaultModelFor(providerId) : undefined);
+
+        if (!providerId || !model) {
+          return (async function* () {
+            yield { type: 'turn_failed' as const, turnId: turn.id, code: 'provider/not_configured', message: 'No LLM provider configured for agent mode' };
+          })();
+        }
+
         return this.agent.run({
-          turn, signal, sessionId,
+          turn, signal,
           subMode,
-          userInput:             request.userInput,
-          contentParts:          request.contentParts,
+          providerId,
+          model,
+          // Merge contentParts + userInput into the unified field.
+          userInput:             request.contentParts?.length ? request.contentParts : (request.userInput ?? ''),
           systemPrompt,
           workspaceRoot,
-          additionalWorkingDirs: session.workspaceRoots.slice(1),
-          model:                 request.model,
+          additionalWorkingDirs: sess.workspaceRoots.slice(1),
         });
       }
     }
   }
 
-  private maybeBuildCoordinator(
+  private async maybeBuildCoordinator(
     request:   TurnRequest,
     turnId:    TurnId,
     sessionId: ReturnType<typeof asSessionId>,
     emit:      (ev: EmaStreamEvent) => void,
-  ): TtsCoordinator | null {
+  ): Promise<TtsCoordinator | null> {
     if (!request.ttsEnabled) return null;
 
-    // Resolve TTS binding from model_bindings. Caller (route handler) may have
-    // passed an explicit model; otherwise we read the bound provider+model.
-    const bindingRow = this.bindings.modelBindings.get(
-      ttsBindingModuleFor(request.mode),
-    );
+    const bindingRow = this.bindings.modelBindings.get('tts');
     if (!bindingRow) return null;
 
-    const card = this.bindings.card.current();
+    const card  = this.bindings.card.current();
+    const voice = resolveVoice(card.id, this.bindings.card);
+    if (!voice) return null;
+
+    // Ensure voiceUri (cache hit → skip upload; cache miss → upload + persist)
+    const adapter = this.bindings.tts.getAdapter(bindingRow.providerConfigId);
+    const model   = request.model ?? bindingRow.model;
+    if (adapter) {
+      const cache = new VoiceUriCache(
+        new SettingsRepo(this.bindings.profileDb.sqlite),
+      );
+      await ensureVoiceUri(voice, adapter, model, card.id, bindingRow.providerConfigId, cache);
+    }
+
+    // GPT-SoVITS uses refAudioPath directly and never sets voiceUri.
+    // Cloud adapters (DashScope, OpenAI-TTS) require voiceUri — reject if absent.
+    if (!voice.voiceUri && adapter?.protocol !== 'gpt-sovits-tts') return null;
+
     return new TtsCoordinator({
       turnId,
       sessionId,
-      characterId: card.id,
-      providerId:  bindingRow.providerConfigId,
-      model:       request.model ?? bindingRow.model,
-      turnMode:    request.mode,
-      ttsClient:   this.bindings.tts,
-      hooks:       this.bindings.hooks,
+      voice,
+      providerId: bindingRow.providerConfigId,
+      model,
+      ttsClient:  this.bindings.tts,
+      hooks:      this.bindings.hooks,
       emit,
-      archive:     this.bindings.audioArchive,
-      format:      'mp3',
+      archive:    this.bindings.audioArchive,
+      format:     'mp3',
     });
   }
 }

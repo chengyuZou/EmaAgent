@@ -24,6 +24,12 @@ export function ChatPanel(): JSX.Element {
     void startSystemSse();
   }, []);
 
+  // Start sidecar health polling on mount (chat is a separate webview)
+  useEffect(() => {
+    const stop = useSidecarStore.getState().startPolling();
+    return stop;
+  }, []);
+
   // Load sessions on mount
   useEffect(() => {
     void useChatStore.getState().loadSessions();

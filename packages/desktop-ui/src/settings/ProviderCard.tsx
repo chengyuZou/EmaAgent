@@ -2,14 +2,21 @@
 import type { ProviderDefinitionWire } from '../api/providers.js';
 
 export interface ProviderCardProps {
-  def:           ProviderDefinitionWire;
-  instanceCount: number;
-  healthyCount:  number;
-  selected?:     boolean;
-  onClick():     void;
+  def:              ProviderDefinitionWire;
+  instanceCount:    number;
+  healthyCount:     number;
+  selected?:        boolean;
+  /** If set, show this capability's default models on the card. */
+  activeCapability?: string | null;
+  onClick():        void;
 }
 
-export function ProviderCard({ def, instanceCount, healthyCount, selected, onClick }: ProviderCardProps): JSX.Element {
+export function ProviderCard({ def, instanceCount, healthyCount, selected, activeCapability, onClick }: ProviderCardProps): JSX.Element {
+  // When filtered by capability, show the relevant protocol and model
+  const capInfo = activeCapability && def.capabilities.includes(activeCapability)
+    ? { proto: def.protocols?.[activeCapability], models: def.defaultModels?.[activeCapability] }
+    : null;
+
   return (
     <button
       className={`w-full text-left px-4 py-3 rounded-xl border transition-colors ${
@@ -26,7 +33,12 @@ export function ProviderCard({ def, instanceCount, healthyCount, selected, onCli
           <span className="text-gray-500">{instanceCount} 个实例</span>
         </div>
       </div>
-      {def.defaultBaseUrl && (
+      {capInfo && Array.isArray(capInfo.models) && capInfo.models.length > 0 && (
+        <div className="text-[11px] text-gray-500 mt-0.5 truncate">
+          {capInfo.models[0]}
+        </div>
+      )}
+      {!capInfo && def.defaultBaseUrl && (
         <div className="text-xs text-gray-500 mt-1 truncate">{def.defaultBaseUrl}</div>
       )}
     </button>

@@ -10,11 +10,19 @@ import { useChatHistoryScroll } from './use-chat-history-scroll.js';
 import { UserBubble } from './UserBubble.js';
 import { AssistantBubble } from './AssistantBubble.js';
 
+// Stable empty array ref — Zustand selectors must return referentially-stable
+// values to avoid triggering infinite re-renders.
+const EMPTY_MSGS: ChatHistoryItem[] = [];
+
 export function ChatHistory(): JSX.Element {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const activeId = useChatStore((s) => s.activeSessionId);
-  const messages = useChatStore((s) => (activeId ? s.messages.get(activeId as string) ?? [] : []));
-  const streaming = useChatStore((s) => s.streamingMessage);
+  const messages = useChatStore((s) => {
+    if (!activeId) return EMPTY_MSGS;
+    return s.messages.get(activeId as string) ?? EMPTY_MSGS;
+  });
+  const streaming  = useChatStore((s) => s.streamingMessage);
+  const stopReason = useChatStore((s) => s.stopReason);
 
   // Load messages when switching sessions (selectSession triggers listMessages internally)
   useEffect(() => {
@@ -28,6 +36,7 @@ export function ChatHistory(): JSX.Element {
   const { userScrolled, resetUserScrolled } = useChatHistoryScroll(
     containerRef,
     [messages, streaming],
+    [activeId], // force-reset scroll position on every session switch
   );
 
   if (!activeId) {
@@ -50,7 +59,7 @@ export function ChatHistory(): JSX.Element {
           </div>
         )}
 
-        <div className="flex flex-col gap-4 max-w-2xl mx-auto">
+        <div className="flex flex-col gap-2 max-w-2xl mx-auto">
           {messages.map((msg, i) => (
             <BubbleRouter key={getKey(msg, i)} message={msg} />
           ))}
@@ -65,6 +74,15 @@ export function ChatHistory(): JSX.Element {
               }}
               isStreaming
             />
+          )}
+
+          {/* Transient stop banner — auto-dismissed by the store after ~3 s */}
+          {stopReason && !streaming && (
+            <div className="flex justify-center">
+              <div className="bg-gray-800/80 border border-gray-600/50 rounded-full px-4 py-1.5 text-xs text-gray-400">
+                {stopReason}
+              </div>
+            </div>
           )}
         </div>
       </div>

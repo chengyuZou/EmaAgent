@@ -1,14 +1,12 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { SettingsRepo, ProvidersRepo } from '@ema-agent/storage';
+import { SettingsRepo } from '@ema-agent/storage';
 import type { AppBindings } from '../wiring.js';
-import { reloadTtsClient } from '../wiring/tts.js';
 
 // ── Settings keys (typed) ────────────────────────────────────────────────────
 
 const SETTINGS_KEY_EVENT_DISPLAY      = 'frontend.eventDisplay';
 const SETTINGS_KEY_PERMISSION_TIMEOUT = 'permission.askTimeoutMs';
-const SETTINGS_KEY_TTS_FALLBACK       = 'tts.fallback';
 
 // ── Event-display defaults ───────────────────────────────────────────────────
 //
@@ -100,18 +98,6 @@ const permissionTimeoutBodySchema = z.object({
   timeoutMs: z.number().int().min(5_000).max(600_000),
 });
 
-// tts.fallback — system bottom-line voice when a turn's primary TTS path
-// fails (no audio emitted yet). voiceId is required because all fallback
-// candidates must be catalog voices — clone refAudio is per-character, not a
-// system-wide bottom line. Use `null` for voiceId only if you explicitly
-// want to disable the fallback (TtsClient will go silent on primary failure).
-const ttsFallbackBodySchema = z.object({
-  providerConfigId: z.string().min(1),
-  model:            z.string().min(1),
-  voiceId:          z.string().min(1).nullable(),
-  config:           z.record(z.unknown()).optional(),
-});
-
 // ── Route factory ────────────────────────────────────────────────────────────
 
 /**
@@ -163,38 +149,6 @@ export function settingsRoute(bindings: AppBindings): Hono {
     repo.set(SETTINGS_KEY_PERMISSION_TIMEOUT, parsed.data.timeoutMs);
     bindings.permissionPrompts.setDefaultTimeout(parsed.data.timeoutMs);
     return c.json({ ok: true });
-  });
-
-  // ── TTS fallback voice ────────────────────────────────────────────────────
-  app.get('/tts-fallback', (c) => {
-    const stored = repo.get(SETTINGS_KEY_TTS_FALLBACK);
-    return c.json({ fallback: stored ?? null });
-  });
-
-  app.put('/tts-fallback', async (c) => {
-    const parsed = ttsFallbackBodySchema.safeParse(await c.req.json().catch(() => null));
-    if (!parsed.success) {
-      return c.json({ error: 'invalid_request', details: parsed.error.flatten() }, 400);
-    }
-
-    // Validate referenced provider exists AND has 'tts' capability.
-    const providers = new ProvidersRepo(bindings.profileDb.sqlite);
-    const row = providers.get(parsed.data.providerConfigId);
-    if (!row) return c.json({ error: 'provider_not_found' }, 400);
-    const caps: string[] = JSON.parse(row.capabilities_json);
-    if (!caps.includes('tts')) {
-      return c.json({ error: 'provider_missing_tts_capability' }, 400);
-    }
-
-    repo.set(SETTINGS_KEY_TTS_FALLBACK, parsed.data);
-    reloadTtsClient(bindings.tts, bindings.profileDb);
-    return c.json({ ok: true });
-  });
-
-  app.delete('/tts-fallback', (c) => {
-    repo.delete(SETTINGS_KEY_TTS_FALLBACK);
-    reloadTtsClient(bindings.tts, bindings.profileDb);
-    return c.body(null, 204);
   });
 
   return app;

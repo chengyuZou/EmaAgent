@@ -152,6 +152,86 @@ function Section({
   );
 }
 
+// ── WorkspaceEditor — inline path list for a session ─────────────────────────
+
+function WorkspaceEditor({ session, onClose }: {
+  session:  SessionWire;
+  onClose(): void;
+}): JSX.Element {
+  const [paths, setPaths] = useState<string[]>(session.workspaceRoots ?? []);
+  const [input, setInput] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  function addPath(): void {
+    const p = input.trim();
+    if (!p || paths.includes(p)) return;
+    setPaths([...paths, p]);
+    setInput('');
+  }
+
+  async function save(): Promise<void> {
+    setSaving(true);
+    try {
+      await useChatStore.getState().setWorkspaceRoots(session.id as any, paths);
+      onClose();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div
+      className="absolute right-0 top-6 z-50 bg-gray-800 border border-gray-600 rounded-xl p-3 shadow-xl w-72"
+      onClick={(e) => e.stopPropagation()}
+    >
+      <p className="text-xs text-gray-400 mb-2 font-medium">工作区目录</p>
+
+      {/* Current paths */}
+      <div className="flex flex-col gap-1 mb-2 max-h-36 overflow-y-auto">
+        {paths.length === 0 && (
+          <p className="text-xs text-gray-500 py-1">暂无工作区（使用 sidecar 启动目录）</p>
+        )}
+        {paths.map((p) => (
+          <div key={p} className="flex items-center justify-between bg-gray-900 rounded-lg px-2 py-1 gap-2">
+            <span className="text-xs text-gray-300 font-mono truncate flex-1" title={p}>{p}</span>
+            <button
+              className="text-gray-500 hover:text-red-400 text-xs flex-shrink-0"
+              onClick={() => setPaths(paths.filter((x) => x !== p))}
+            >✕</button>
+          </div>
+        ))}
+      </div>
+
+      {/* Add path input */}
+      <div className="flex gap-1 mb-3">
+        <input
+          className="flex-1 bg-gray-900 border border-gray-600 rounded-lg px-2 py-1.5 text-xs text-gray-200 font-mono placeholder-gray-600 focus:outline-none focus:border-pink-400/50"
+          placeholder="D:\path\to\project"
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') addPath(); }}
+        />
+        <button
+          className="px-2 py-1.5 rounded-lg bg-gray-700 text-gray-300 text-xs hover:bg-gray-600"
+          onClick={addPath}
+        >+</button>
+      </div>
+
+      <div className="flex gap-2">
+        <button
+          className="px-3 py-1.5 rounded-lg bg-pink-400/20 text-pink-300 text-xs hover:bg-pink-400/30 transition-colors disabled:opacity-50"
+          disabled={saving}
+          onClick={() => void save()}
+        >{saving ? '保存中…' : '保存'}</button>
+        <button
+          className="px-3 py-1.5 rounded-lg text-gray-400 text-xs hover:text-gray-200"
+          onClick={onClose}
+        >取消</button>
+      </div>
+    </div>
+  );
+}
+
 /** A single session row with context menu. */
 function SessionRow({ session, isActive, onSelect }: {
   session:  SessionWire;
@@ -159,6 +239,7 @@ function SessionRow({ session, isActive, onSelect }: {
   onSelect(): void;
 }): JSX.Element {
   const [menu, setMenu] = useState(false);
+  const [showWorkspace, setShowWorkspace] = useState(false);
 
   return (
     <div
@@ -181,9 +262,21 @@ function SessionRow({ session, isActive, onSelect }: {
       <div className="relative" onClick={(e) => e.stopPropagation()}>
         <button
           className="opacity-0 group-hover:opacity-100 px-1 text-gray-500 hover:text-gray-200 text-xs"
-          onClick={() => setMenu(!menu)}
+          onClick={() => { setMenu(!menu); setShowWorkspace(false); }}
         >⋯</button>
-        {menu && (
+
+        {/* Workspace editor popover — shown instead of the context menu */}
+        {showWorkspace && (
+          <>
+            <div className="fixed inset-0 z-50" onClick={() => setShowWorkspace(false)} />
+            <WorkspaceEditor
+              session={session}
+              onClose={() => setShowWorkspace(false)}
+            />
+          </>
+        )}
+
+        {menu && !showWorkspace && (
           <>
             <div className="fixed inset-0 z-50" onClick={() => setMenu(false)} />
             <div className="absolute right-0 top-6 z-50 bg-gray-800 border border-gray-600 rounded-xl py-1 shadow-xl min-w-28">
@@ -199,6 +292,17 @@ function SessionRow({ session, isActive, onSelect }: {
               <MenuItem label="🔀 Fork"   onClick={() => {
                 void useChatStore.getState().forkSession(session.id as any);
                 setMenu(false);
+              }} />
+              <MenuItem label="🏷️ 分组"  onClick={() => {
+                const label = prompt('分组名称（留空取消分组）', session.groupLabel ?? '');
+                if (label !== null) {
+                  void useChatStore.getState().setSessionGroup(session.id as any, label.trim() || null);
+                }
+                setMenu(false);
+              }} />
+              <MenuItem label="📁 工作区" onClick={() => {
+                setMenu(false);
+                setShowWorkspace(true);
               }} />
               <MenuItem label="📦 归档"   onClick={() => {
                 void useChatStore.getState().archiveSession(session.id as any);

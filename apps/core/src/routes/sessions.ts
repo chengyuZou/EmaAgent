@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { asSessionId } from '@ema-agent/contracts';
+import { asSessionId, asCharacterCardId } from '@ema-agent/contracts';
 import type { AppBindings } from '../wiring.js';
 
 // ── Schemas ─────────────────────────────────────────────────────────────────
@@ -21,9 +21,12 @@ const listMessagesSchema = z.object({
 });
 
 const patchSessionSchema = z.object({
-  title:      z.string().min(1).max(200).optional(),
-  pinned:     z.boolean().optional(),
-  groupLabel: z.string().max(100).nullable().optional(),
+  title:          z.string().min(1).max(200).optional(),
+  pinned:         z.boolean().optional(),
+  groupLabel:     z.string().max(100).nullable().optional(),
+  workspaceRoots: z.array(z.string().max(500)).max(20).optional(),
+  lastMode:       z.enum(['chat', 'narrative', 'agent']).nullable().optional(),
+  lastSubMode:    z.enum(['plan', 'debug', 'full']).nullable().optional(),
 });
 
 const forkSchema = z.object({
@@ -32,8 +35,30 @@ const forkSchema = z.object({
 
 // ── Route factory ────────────────────────────────────────────────────────────
 
+const createSessionSchema = z.object({
+  title:          z.string().min(1).max(200).optional(),
+  characterCardId: z.string().optional(),
+});
+
 export function sessionsRoute(bindings: AppBindings): Hono {
   const app = new Hono();
+
+  // ── POST /api/sessions — explicit session creation ─────────────────────────
+  // Used by the "New chat" button. Sessions are also created implicitly on the
+  // first POST /api/turns when no sessionId is supplied.
+  app.post('/', async (c) => {
+    const body = createSessionSchema.safeParse(await c.req.json().catch(() => ({})));
+    if (!body.success) {
+      return c.json({ error: 'invalid_request', details: body.error.flatten() }, 400);
+    }
+    const session = bindings.session.createSession({
+      title:           body.data.title,
+      characterCardId: body.data.characterCardId
+        ? asCharacterCardId(body.data.characterCardId)
+        : undefined,
+    });
+    return c.json(session, 201);
+  });
 
   // ── GET /api/sessions — flat list (back-compat) ────────────────────────────
   app.get('/', (c) => {
@@ -74,11 +99,12 @@ export function sessionsRoute(bindings: AppBindings): Hono {
     // Transactional partial update — one round-trip to SQLite, no
     // half-applied state if a later sub-update were to fail.
     bindings.session.patchSession(sessionId, {
-      title:      body.data.title,
-      pinned:     body.data.pinned,
-      // 'groupLabel' may be null (explicit "move out of group") or absent.
-      // Preserve the distinction so unspecified means "don't touch".
-      groupLabel: 'groupLabel' in body.data ? body.data.groupLabel ?? null : undefined,
+      title:          body.data.title,
+      pinned:         body.data.pinned,
+      groupLabel:     'groupLabel' in body.data ? body.data.groupLabel ?? null : undefined,
+      workspaceRoots: body.data.workspaceRoots,
+      lastMode:       body.data.lastMode,
+      lastSubMode:    body.data.lastSubMode,
     });
 
     return c.json(bindings.session.getSession(sessionId));

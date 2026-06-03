@@ -50,7 +50,7 @@
         "resizable":     true,
         "visible":       false,
         "center":        true
-      },
+      }
     ],
     "security": {
       "csp": null

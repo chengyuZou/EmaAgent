@@ -11,6 +11,7 @@ import { createSendQueue, type SendQueue } from '../lib/send-queue.js';
 import { sseConsumer } from '../lib/sse-consumer.js';
 import { sessionsApi, type SessionWire, type MessageWire } from '../api/sessions.js';
 import { turnsApi } from '../api/turns.js';
+import { handleTtsChunk, handleTtsSentenceComplete } from '../lib/tts-playback.js';
 import type {
   SessionId,
   TurnId,
@@ -62,16 +63,27 @@ export interface ChatStoreState {
   sessions:        SessionsState;
   activeSessionId: SessionId | null;
 
+  // Per-session mode memory — keyed by session id
+  sessionModes:    Map<string, { mode: TurnMode; subMode?: AgentSubMode }>;
+
   // Messages — lazy-loaded per session
   messages:        Map<string, ChatHistoryItem[]>;
 
   // Streaming
-  streamingMessage: StreamingAssistantMessage | null;
-  activeTurnId:     TurnId | null;
+  streamingMessage:   StreamingAssistantMessage | null;
+  activeTurnId:       TurnId | null;
+  /** Which session owns the current stream — used to scope the stop button. */
+  streamingSessionId: string | null;
 
   // Loading
   loading:          { sessions: boolean; messages: Set<string> };
   error:            string | null;
+
+  /**
+   * Transient stop message shown briefly after abort — NOT stored in messages[].
+   * Automatically cleared ~3 s after abortStream() sets it.
+   */
+  stopReason:       string | null;
 
   // ── Actions ──────────────────────────────────────────────────────────────
 
@@ -81,6 +93,8 @@ export interface ChatStoreState {
   renameSession(id: SessionId, title: string):      Promise<void>;
   pinSession(id: SessionId, pinned: boolean):       Promise<void>;
   setSessionGroup(id: SessionId, label: string | null): Promise<void>;
+  setWorkspaceRoots(id: SessionId, paths: string[]): Promise<void>;
+  setSessionMode(id: SessionId, mode: TurnMode, subMode?: AgentSubMode): Promise<void>;
   forkSession(id: SessionId):                       Promise<SessionId>;
   archiveSession(id: SessionId):                    Promise<void>;
   unarchiveSession(id: SessionId):                  Promise<void>;
@@ -94,6 +108,9 @@ export interface ChatStoreState {
     model?:       string;
     ttsEnabled?:  boolean;
   }): Promise<void>;
+
+  /** Client-side stop: cancels the SSE fetch and pushes an abort message. */
+  stopStreaming(): void;
 
   beginStream(turnId: TurnId): void;
   appendDelta(slice: 'text' | 'thinking' | 'tool_call' | 'tool_result', delta: string | { callId: string; name: string; args: unknown } | { callId: string; output?: unknown; error?: { code: string; message: string } }): void;
@@ -195,13 +212,44 @@ function dispatchSseEvent(
       }).catch(() => {});
       break;
 
-    // Ignored events (handled by other stores or system-events stream)
+    // Permission prompts — forwarded to decision-store so the UI can gate tool use
     case 'permission_required':
+      void import('./decision-store.js').then((m) => {
+        m.useDecisionStore.getState().push({
+          kind:                    'permission',
+          promptId:                event.promptId,
+          toolName:                event.tool,
+          args:                    event.args,
+          hint:                    event.hint,
+          humanDescription:        event.humanDescription ?? event.hint,
+          humanDescriptionPending: event.humanDescription === undefined,
+        });
+      }).catch(() => {});
+      break;
+
     case 'permission_resolved':
+      void import('./decision-store.js').then((m) => {
+        m.useDecisionStore.getState().dismiss(event.promptId);
+      }).catch(() => {});
+      break;
+
+    // ── TTS audio → routed to playback manager (drives Live2D lip-sync) ──
+    case 'tts_chunk':
+      handleTtsChunk(event);
+      break;
+    case 'tts_sentence_complete':
+      handleTtsSentenceComplete(event);
+      break;
+
+    case 'system_warning':
+      // Surface TTS / system errors to the console so they're never silent.
+      // eslint-disable-next-line no-console
+      console.warn('[sse] system_warning:', event.level, event.message);
+      break;
+
+    // Ignored events (handled by other stores or system-events stream)
     case 'stage_cue':
     case 'emotion_changed':
-    case 'tts_chunk':
-    case 'tts_sentence_complete':
     case 'artifact_upserted':
     case 'artifact_applied':
     case 'narrative_route_resolved':
@@ -219,6 +267,10 @@ function dispatchSseEvent(
       break;
   }
 }
+
+// ── Active SSE handle (module-level — lets stopStreaming() cancel the fetch) ──
+
+let _activeSseHandle: { stop(): void } | null = null;
 
 // ── Send queue (module-level singleton — survives store re-renders) ───────────
 
@@ -255,15 +307,15 @@ function getSendQueue(): SendQueue<SendInput> {
           await useChatStore.getState().selectSession(sessionId);
         }
 
-        // 3. Set active turn
-        useChatStore.setState({ activeTurnId: turnId });
+        // 3. Set active turn + streaming session (scopes the stop button)
+        useChatStore.setState({ activeTurnId: turnId, streamingSessionId: sessionId as string });
 
         // 4. Start SSE consumption
         const url = await turnsApi.eventsUrl(turnId);
 
         // Create a promise that resolves when the turn ends
         await new Promise<void>((resolve) => {
-          const handle = sseConsumer.start({
+          _activeSseHandle = sseConsumer.start({
             url,
             onEvent: (event) => {
               dispatchSseEvent(event, {
@@ -291,7 +343,8 @@ function getSendQueue(): SendQueue<SendInput> {
           });
         });
 
-        useChatStore.setState({ activeTurnId: null });
+        _activeSseHandle = null;
+        useChatStore.setState({ activeTurnId: null, streamingSessionId: null });
       },
       continueOnError: true,
     });
@@ -304,11 +357,14 @@ function getSendQueue(): SendQueue<SendInput> {
 export const useChatStore = create<ChatStoreState>((set, get) => ({
   sessions:        emptySessions(),
   activeSessionId: null,
+  sessionModes:    new Map(),
   messages:        new Map(),
-  streamingMessage: null,
-  activeTurnId:    null,
-  loading:         { sessions: false, messages: new Set() },
-  error:           null,
+  streamingMessage:   null,
+  activeTurnId:       null,
+  streamingSessionId: null,
+  loading:            { sessions: false, messages: new Set() },
+  error:              null,
+  stopReason:         null,
 
   // ── Session management ──────────────────────────────────────────────────
 
@@ -337,6 +393,18 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
     if (get().activeSessionId === id) return; // no-op
     set({ activeSessionId: id });
 
+    // Restore last-used mode from the session object (already loaded by listGrouped).
+    // Falls back to 'chat' if this is a brand-new session with no saved mode.
+    const session = get().sessions.byId.get(id as string);
+    if (session?.lastMode) {
+      set((s) => ({
+        sessionModes: new Map(s.sessionModes).set(id as string, {
+          mode:    session.lastMode!,
+          subMode: session.lastSubMode ?? undefined,
+        }),
+      }));
+    }
+
     // Lazy-load messages
     if (!get().messages.has(id as string)) {
       set((s) => ({
@@ -344,12 +412,16 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
       }));
       try {
         const msgs = await sessionsApi.listMessages(id);
-        const history: ChatHistoryItem[] = msgs.map((m) => ({
-          role:      m.role as ChatHistoryItem['role'],
-          ...blocksToHistoryFields(m.role, m.blocks),
-          createdAt: m.createdAt,
-          messageId: m.id as MessageId,
-        }));
+        const history: ChatHistoryItem[] = msgs
+          .map((m) => ({
+            role:      m.role as ChatHistoryItem['role'],
+            ...blocksToHistoryFields(m.role, m.blocks),
+            createdAt: m.createdAt,
+            messageId: m.id as MessageId,
+          }))
+          // Drop internal-plumbing messages with no displayable text
+          // (e.g. agent tool-result user messages that only contain tool_result blocks)
+          .filter((item) => item.content !== '' || item.role === 'assistant');
         set((s) => {
           const next = new Map(s.messages);
           next.set(id as string, history);
@@ -407,6 +479,36 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
       await get().loadSessions();
     } catch (err: unknown) {
       set({ error: err instanceof Error ? err.message : 'Failed to set group' });
+    }
+  },
+
+  async setWorkspaceRoots(id, paths) {
+    try {
+      await sessionsApi.patch(id, { workspaceRoots: paths });
+      await get().loadSessions();
+    } catch (err: unknown) {
+      set({ error: err instanceof Error ? err.message : 'Failed to set workspace roots' });
+    }
+  },
+
+  async setSessionMode(id, mode, subMode) {
+    // Optimistic update — UI should feel instant.
+    set((s) => ({
+      sessionModes: new Map(s.sessionModes).set(id as string, { mode, subMode }),
+    }));
+    // Persist silently — mode preference is not critical; don't surface errors.
+    try {
+      await sessionsApi.patch(id, { lastMode: mode, lastSubMode: subMode ?? null });
+      // Keep byId in sync so the next selectSession() restores correctly.
+      set((s) => {
+        const existing = s.sessions.byId.get(id as string);
+        if (!existing) return {};
+        const byId = new Map(s.sessions.byId);
+        byId.set(id as string, { ...existing, lastMode: mode, lastSubMode: subMode ?? null });
+        return { sessions: { ...s.sessions, byId } };
+      });
+    } catch {
+      // silent
     }
   },
 
@@ -501,6 +603,12 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
 
   // ── Stream lifecycle ─────────────────────────────────────────────────────
 
+  stopStreaming() {
+    _activeSseHandle?.stop();
+    _activeSseHandle = null;
+    get().abortStream('已停止');
+  },
+
   beginStream(turnId) {
     set({
       activeTurnId: turnId,
@@ -562,7 +670,8 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
             ...sm,
             slices: sm.slices.map((sl) =>
               sl.type === 'tool_call' && sl.callId === tr.callId
-                ? { ...sl, result: tr.output, error: tr.error }
+                // Use null (not undefined) as "completed with no output" so hasResult stays true
+                ? { ...sl, result: tr.output ?? null, error: tr.error }
                 : sl,
             ),
           },
@@ -599,34 +708,42 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
 
       return {
         messages: next,
-        streamingMessage: null,
-        activeTurnId: null,
+        streamingMessage:   null,
+        activeTurnId:       null,
+        streamingSessionId: null,
       };
     });
   },
 
   abortStream(reason) {
     set((s) => {
-      if (!s.streamingMessage) return { streamingMessage: null, activeTurnId: null };
+      const sm = s.streamingMessage;
+      if (!sm) return { streamingMessage: null, activeTurnId: null, streamingSessionId: null, stopReason: reason };
 
-      // Push an error item
-      const errorItem: ChatHistoryItem = {
-        role:      'error',
-        content:   reason,
-        createdAt: Date.now(),
-      };
+      // Keep the partial message if there's any visible content OR any tool
+      // call slices (agent turns that only called tools have no text content).
+      if (sm.content.trim() || sm.slices.length > 0) {
+        const partialItem: ChatHistoryItem = {
+          role:      'assistant',
+          content:   sm.content,
+          slices:    sm.slices,
+          createdAt: sm.startedAt,
+        };
+        const next = new Map(s.messages);
+        const sid = s.activeSessionId as string;
+        const existing = next.get(sid) ?? [];
+        next.set(sid, [...existing, partialItem]);
+        return { messages: next, streamingMessage: null, activeTurnId: null, streamingSessionId: null, stopReason: reason };
+      }
 
-      const next = new Map(s.messages);
-      const sid = s.activeSessionId as string;
-      const existing = next.get(sid) ?? [];
-      next.set(sid, [...existing, errorItem]);
-
-      return {
-        messages: next,
-        streamingMessage: null,
-        activeTurnId: null,
-      };
+      // No partial content — just clear stream state and show the banner
+      return { streamingMessage: null, activeTurnId: null, streamingSessionId: null, stopReason: reason };
     });
+
+    // Auto-dismiss the stop banner after 3 s
+    setTimeout(() => {
+      useChatStore.setState({ stopReason: null });
+    }, 3000);
   },
 }));
 
@@ -664,12 +781,15 @@ function blocksToHistoryFields(
     return { content, slices };
   }
 
-  // User message with multimodal content or tool_result blocks
+  // User message with multimodal content or pure tool_result blocks.
+  // Extract any visible text; if there's none (e.g. agent tool-result injections)
+  // return empty string so the caller can filter the item out instead of showing
+  // a confusing "[multimodal]" placeholder.
   if (Array.isArray(blocks)) {
     const textParts = (blocks as Array<{ type: string; text?: string }>)
       .filter((b) => b.type === 'text' && typeof b.text === 'string')
       .map((b) => b.text as string);
-    return { content: textParts.join('') || '[multimodal]' };
+    return { content: textParts.join('') };
   }
 
   return { content: JSON.stringify(blocks) };

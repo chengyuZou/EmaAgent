@@ -44,6 +44,7 @@ function shapeProvider(
     definition: def ? {
       name:                def.name,
       defaultBaseUrl:      def.defaultBaseUrl,
+      protocolBaseUrls:    def.protocolBaseUrls,
       protocols:           def.protocols,
       defaultModels:       def.defaultModels,
       iconKey:             def.iconKey,
@@ -76,7 +77,7 @@ const patchSchema = z.object({
 });
 
 const probeSchema = z.object({
-  model: z.string(),
+  model: z.string().optional(),
 });
 
 // ── Hot-reload ────────────────────────────────────────────────────────────────
@@ -158,6 +159,7 @@ export function providersRoute(bindings: AppBindings): Hono {
       id:                  def.id,
       name:                def.name,
       defaultBaseUrl:      def.defaultBaseUrl,
+      protocolBaseUrls:    def.protocolBaseUrls,
       capabilities:        def.capabilities,
       protocols:           def.protocols,
       defaultModels:       def.defaultModels,
@@ -293,7 +295,11 @@ export function providersRoute(bindings: AppBindings): Hono {
     const existing = repo.get(id);
     if (!existing) return c.json({ error: 'not_found' }, 404);
 
-    const result = await bindings.llm.probe(id, parsed.data.model);
+    const def = getProviderDefinition(existing.definition_id);
+    const model = parsed.data.model
+      ?? def?.defaultModels?.llm?.[0]
+      ?? 'gpt-4o-mini';
+    const result = await bindings.llm.probe(id, model);
 
     repo.recordHealth(id, result.ok ? 'ok' : 'failed', {
       latencyMs: result.latencyMs,

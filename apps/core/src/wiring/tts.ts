@@ -3,32 +3,21 @@ import { ProvidersRepo, SettingsRepo } from '@ema-agent/storage';
 
 import {
   TtsClient,
-  type TtsClientArgs,
   type TtsProviderConfig,
-  type VoiceProfileLookup,
-  type VoiceRefPathResolver,
+  type TtsAdapter,
+  type TtsVoiceRef,
 } from '@ema-agent/tts';
 
 import {
   getProviderDefinition,
   isTtsProtocol,
+  resolveProtocols,
+  type ProtocolFamily,
   type CharacterCardId,
-  type CharacterVoiceProfile,
 } from '@ema-agent/contracts';
 
-import type { CharacterCardStore } from '@ema-agent/character-card';
+import type { CharacterCardStore, CharacterVoiceProfile } from '@ema-agent/character-card';
 import { resolveVoiceRefPath } from '../storage-locations/index.js';
-
-// ── Fallback settings key ───────────────────────────────────────────────────
-
-export const TTS_FALLBACK_SETTINGS_KEY = 'tts.fallback';
-
-interface FallbackSettings {
-  providerConfigId: string;
-  model:            string;
-  voiceId:          string | null;
-  config?:          Record<string, unknown>;
-}
 
 // ── Provider config builder ─────────────────────────────────────────────────
 
@@ -39,7 +28,7 @@ export function buildTtsProviderConfig(row: ProviderConfigRow): TtsProviderConfi
   const capabilities: string[] = JSON.parse(row.capabilities_json);
   if (!capabilities.includes('tts')) return null;
 
-  const protocol = def.protocols.tts;
+  const protocol = resolveProtocols(def.protocols.tts)[0] as ProtocolFamily | undefined;
   if (!isTtsProtocol(protocol)) return null;
 
   if (def.requiresCredentials !== false && !row.api_key_plain) return null;
@@ -52,71 +41,144 @@ export function buildTtsProviderConfig(row: ProviderConfigRow): TtsProviderConfi
   };
 }
 
-function loadTtsProviderConfigs(profileDb: Database): Map<string, TtsProviderConfig> {
+function loadTtsProviderConfigs(profileDb: Database): TtsProviderConfig[] {
   const repo = new ProvidersRepo(profileDb.sqlite);
-  const out  = new Map<string, TtsProviderConfig>();
+  const out: TtsProviderConfig[] = [];
   for (const row of repo.listByCapability('tts')) {
     const cfg = buildTtsProviderConfig(row);
-    if (cfg) out.set(cfg.id, cfg);
+    if (cfg) out.push(cfg);
   }
   return out;
 }
 
-function loadFallback(profileDb: Database): TtsClientArgs['fallback'] {
-  const settings = new SettingsRepo(profileDb.sqlite);
-  const stored   = settings.get(TTS_FALLBACK_SETTINGS_KEY) as FallbackSettings | undefined;
-  if (!stored || typeof stored !== 'object') return undefined;
+// ── Voice URI cache ─────────────────────────────────────────────────────────
+//
+// Persisted in profile.db → settings table. Key format:
+//   tts.voiceUri.<cardId>.<providerConfigId>
+// Value is the provider-specific voice URI string.
+//
+// This prevents cross-provider URI pollution: switching a character from
+// SiliconFlow to DashScope won't accidentally send a SiliconFlow URI to Ali.
+
+const VOICE_URI_KEY_PREFIX = 'tts.voiceUri';
+
+export class VoiceUriCache {
+  constructor(private readonly settings: SettingsRepo) {}
+
+  // Key includes model because DashScope voice IDs are model-bound:
+  // cosyvoice-v3.5-plus and cosyvoice-v3-flash need separate enrollments.
+  private key(cardId: CharacterCardId, providerConfigId: string, model: string): string {
+    return `${VOICE_URI_KEY_PREFIX}.${cardId}.${providerConfigId}.${model}`;
+  }
+
+  get(cardId: CharacterCardId, providerConfigId: string, model: string): string | null {
+    const val = this.settings.get(this.key(cardId, providerConfigId, model));
+    return typeof val === 'string' ? val : null;
+  }
+
+  set(cardId: CharacterCardId, providerConfigId: string, model: string, uri: string): void {
+    this.settings.set(this.key(cardId, providerConfigId, model), uri);
+  }
+
+  delete(cardId: CharacterCardId, providerConfigId: string, model: string): void {
+    this.settings.delete(this.key(cardId, providerConfigId, model));
+  }
+}
+
+// ── Voice resolution (orchestrator-layer concern) ───────────────────────────
+
+/**
+ * Resolve a TtsVoiceRef from a character card.
+ * Returns null if the card has no reference audio → TTS disabled.
+ */
+export function resolveVoice(
+  card:  CharacterCardId,
+  store: CharacterCardStore,
+): TtsVoiceRef | null {
+  const c = store.get(card);
+  if (!c) return null;
+
+  const profile: CharacterVoiceProfile = c.voiceProfile;
+  const primary = pickPrimaryRefAudio(profile);
+  if (!primary) return null;
+
   return {
-    providerId: stored.providerConfigId,
-    model:      stored.model,
-    voiceId:    stored.voiceId,
+    refAudioPath: resolveVoiceRefPath(primary.refAudioPath),
+    promptText:   primary.promptText,
+    promptLang:   primary.promptLang,
+    // voiceUri is populated later by ensureVoiceUri (lazy upload or cache hit)
   };
 }
 
-// ── Voice profile + ref-path Façades ────────────────────────────────────────
+/**
+ * Populate voiceUri on a TtsVoiceRef.
+ *
+ * Priority:
+ *   1. VoiceUriCache (persisted per card+provider) — skip re-upload
+ *   2. adapter.uploadVoice() — upload reference audio to provider
+ *   3. If adapter has no uploadVoice (e.g. DashScope in V1), leave voiceUri
+ *      empty — caller must handle (the voice was manually configured).
+ *
+ * On success, writes the URI to the cache so subsequent turns skip upload.
+ */
+export async function ensureVoiceUri(
+  voice:             TtsVoiceRef,
+  adapter:           TtsAdapter,
+  model:             string,
+  cardId:            CharacterCardId,
+  providerConfigId:  string,
+  cache:             VoiceUriCache,
+): Promise<TtsVoiceRef> {
+  if (voice.voiceUri) return voice;
 
-function buildVoiceProfileLookup(card: CharacterCardStore): VoiceProfileLookup {
-  return {
-    getVoiceProfile(cardId: CharacterCardId): CharacterVoiceProfile | null {
-      const c = card.get(cardId);
-      return c ? c.voiceProfile : null;
-    },
-  };
+  // 1. Check cache (keyed by card + provider + model — DashScope is model-bound)
+  const cached = cache.get(cardId, providerConfigId, model);
+  if (cached) {
+    voice.voiceUri = cached;
+    return voice;
+  }
+
+  // 2. Upload
+  if (!adapter.uploadVoice) {
+    return voice; // adapter doesn't support upload (e.g. gpt-sovits-tts uses refAudioPath)
+  }
+
+  const uri = await adapter.uploadVoice(
+    voice.refAudioPath,
+    voice.promptText,
+    voice.promptLang,
+    model,
+  );
+  voice.voiceUri = uri;
+  cache.set(cardId, providerConfigId, model, uri);
+  return voice;
 }
 
-function buildRefPathResolver(): VoiceRefPathResolver {
-  return {
-    resolve(relPath: string): string {
-      return resolveVoiceRefPath(relPath);
-    },
-  };
+function pickPrimaryRefAudio(profile: CharacterVoiceProfile | null) {
+  if (!profile || profile.refAudios.length === 0) return null;
+  if (profile.primaryId) {
+    const found = profile.refAudios.find((r) => r.id === profile.primaryId);
+    if (found) return found;
+  }
+  return profile.refAudios[0]!;
 }
 
 // ── Top-level builder ───────────────────────────────────────────────────────
 
 export interface BuildTtsClientArgs {
   profileDb: Database;
-  card:      CharacterCardStore;
 }
 
 export function buildTtsClient(args: BuildTtsClientArgs): TtsClient {
-  return new TtsClient({
-    providers:       loadTtsProviderConfigs(args.profileDb),
-    fallback:        loadFallback(args.profileDb),
-    voiceProfiles:   buildVoiceProfileLookup(args.card),
-    refPathResolver: buildRefPathResolver(),
-  });
+  return new TtsClient(loadTtsProviderConfigs(args.profileDb));
 }
 
 /**
- * Re-fetch TTS-relevant state from DB and swap into the live TtsClient.
- * Idempotent. Call after PUT /api/providers/:id (tts capability),
- * PUT /api/model-bindings/:module (tts_* rows),
- * or PUT /api/settings/tts-fallback.
+ * Re-fetch TTS configs from DB and swap into the live TtsClient.
+ * Call after PUT /api/providers/:id (tts capability) or
+ * PUT /api/model-bindings/:module (tts_* rows).
  */
 export function reloadTtsClient(client: TtsClient, profileDb: Database): void {
-  client.reload({
-    providers: loadTtsProviderConfigs(profileDb),
-    fallback:  loadFallback(profileDb),
-  });
+  client.reload(loadTtsProviderConfigs(profileDb));
 }
+

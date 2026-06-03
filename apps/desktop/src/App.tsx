@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { EmaStageView } from './components/EmaStageView.js';
+import { useSpeechStore } from '@ema-agent/live2d-react';
 import { FloatingDock } from '@ema-agent/desktop-ui';
 import { DecisionLayer } from '@ema-agent/desktop-ui';
 import { useSidecarStore } from '@ema-agent/desktop-ui';
@@ -23,6 +24,8 @@ const DOCK_FADE_GRACE_MS = 600;
 export function App(): React.JSX.Element {
   const sidecarStatus = useSidecarStore((s) => s.status);
   const [dockVisible, setDockVisible] = useState(false);
+
+  useDevTtsPlaybackFromUrl();
 
   // Sidecar health polling
   useEffect(() => {
@@ -52,6 +55,9 @@ export function App(): React.JSX.Element {
 
   return (
     <>
+      {/* UnoCSS test — remove after confirming scanning works */}
+      <div className="hidden flex-col absolute right-3 top-1/2 -translate-y-1/2 z-10 opacity-0 pointer-events-none rounded-full w-10 h-10 gap-2 backdrop-blur border" />
+
       {/*  Drag region — covers the whole window underneath everything else.
            Anything that should NOT drag (dock buttons, Live2D, future text
            inputs) sets `data-tauri-drag-region={false}` on itself.          */}
@@ -68,6 +74,40 @@ export function App(): React.JSX.Element {
       <DecisionLayer />
     </>
   );
+}
+
+function useDevTtsPlaybackFromUrl(): void {
+  useEffect(() => {
+    if (!import.meta.env.DEV) return;
+
+    const turnId = new URLSearchParams(window.location.search).get('ttsTestTurnId');
+    if (!turnId) return;
+
+    let disposed = false;
+    const play = async (): Promise<void> => {
+      if (disposed) return;
+      window.removeEventListener('pointerdown', play);
+      try {
+        const response = await fetch(
+          `http://127.0.0.1:3421/api/turns/${encodeURIComponent(turnId)}/audio`,
+        );
+        if (!response.ok) {
+          throw new Error(`audio fetch failed: ${response.status} ${response.statusText}`);
+        }
+        await testTtsPlayback(await response.arrayBuffer());
+      } catch (err) {
+        console.error('[live2d-test] failed to play turn audio', err);
+      }
+    };
+
+    console.info('[live2d-test] click the stage to play turn audio', turnId);
+    window.addEventListener('pointerdown', play, { once: true });
+
+    return () => {
+      disposed = true;
+      window.removeEventListener('pointerdown', play);
+    };
+  }, []);
 }
 
 // ── Pink-white breathing glow border ────────────────────────────────────────
@@ -177,3 +217,50 @@ const badgeTooltipStyle: React.CSSProperties = {
   borderRadius:   6,
   pointerEvents:  'none',
 };
+
+// ── Test harness: play audio through the Live2D lip-sync pipeline ─────────
+
+let _testAudioCtx: AudioContext | null = null;
+let _testAnalyser: AnalyserNode | null = null;
+
+async function testTtsPlayback(arrayBuffer: ArrayBuffer): Promise<void> {
+  if (!_testAudioCtx) {
+    _testAudioCtx = new AudioContext();
+    _testAnalyser = _testAudioCtx.createAnalyser();
+    _testAnalyser.fftSize = 256;
+    _testAnalyser.smoothingTimeConstant = 0.4;
+    _testAnalyser.connect(_testAudioCtx.destination);
+  }
+  const ctx = _testAudioCtx!;
+  const analyser = _testAnalyser!;
+
+  let raf = 0;
+  const rmsData = new Uint8Array(analyser.frequencyBinCount) as unknown as Uint8Array<ArrayBuffer>;
+  const loop = (): void => {
+    analyser.getByteTimeDomainData(rmsData);
+    let sum = 0;
+    for (let i = 0; i < rmsData.length; i++) {
+      const v = (rmsData[i]! - 128) / 128;
+      sum += v * v;
+    }
+    useSpeechStore.getState().setRms(Math.sqrt(sum / rmsData.length));
+    raf = requestAnimationFrame(loop);
+  };
+
+  useSpeechStore.getState().setSpeaking(true);
+  loop();
+
+  try {
+    const audioBuffer = await ctx.decodeAudioData(arrayBuffer.slice(0) as ArrayBuffer);
+    const source = ctx.createBufferSource();
+    source.buffer = audioBuffer;
+    source.connect(analyser);
+    source.connect(ctx.destination);
+    await new Promise<void>((r) => { source.onended = () => r(); source.start(); });
+  } finally {
+    cancelAnimationFrame(raf);
+    useSpeechStore.getState().reset();
+  }
+}
+
+(window as any).__testTtsPlayback = testTtsPlayback;

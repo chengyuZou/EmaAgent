@@ -1,5 +1,5 @@
 /**
- * Settings API — event-display / permission-timeout / tts-fallback KV.
+ * Settings API — event-display / permission-timeout KV.
  */
 import { sidecarClient } from './sidecar-client.js';
 
@@ -20,13 +20,6 @@ export interface EventDisplayResult {
 
 export interface PermissionTimeoutResult {
   timeoutMs: number;
-}
-
-export interface TtsFallbackSettings {
-  providerConfigId: string;
-  model:            string;
-  voiceId:          string | null;
-  config?:          Record<string, unknown>;
 }
 
 // ── API object ────────────────────────────────────────────────────────────────
@@ -56,23 +49,5 @@ export const settingsApi = {
       method: 'PUT',
       json: payload,
     });
-  },
-
-  /** GET /api/settings/tts-fallback */
-  async getTtsFallback(): Promise<{ fallback: TtsFallbackSettings | null }> {
-    return sidecarClient.request<{ fallback: TtsFallbackSettings | null }>('/api/settings/tts-fallback');
-  },
-
-  /** PUT /api/settings/tts-fallback */
-  async putTtsFallback(payload: TtsFallbackSettings): Promise<void> {
-    await sidecarClient.request('/api/settings/tts-fallback', {
-      method: 'PUT',
-      json: payload,
-    });
-  },
-
-  /** DELETE /api/settings/tts-fallback */
-  async deleteTtsFallback(): Promise<void> {
-    await sidecarClient.request('/api/settings/tts-fallback', { method: 'DELETE' });
   },
 };
