@@ -3,8 +3,8 @@ import { defineProvider } from '../types.js';
 export const provider = defineProvider({
   id: 'gemini',
   name: 'Google Gemini',
-  defaultBaseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
-  protocolBaseUrls: { 'gemini-llm': 'https://generativelanguage.googleapis.com/v1beta/openai' },
+  defaultBaseUrl: 'https://generativelanguage.googleapis.com',
+  protocolBaseUrls: { 'gemini-llm': 'https://generativelanguage.googleapis.com' },
   capabilities: ['llm'],
   protocols: { llm: ['gemini-llm'] },
   defaultModels: {
