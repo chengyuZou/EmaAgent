@@ -15,12 +15,40 @@ import type { ToolResultBlock } from '@ema-agent/contracts';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+type CompatThinkingParam = { type: 'enabled' | 'disabled' };
+
+type OpenAiChatParamsWithCompatThinking =
+  Omit<OpenAI.ChatCompletionCreateParamsStreaming, 'reasoning_effort'> & {
+    /**
+     * OpenAI-compatible providers can expose non-OpenAI thinking controls while
+     * still using the Chat Completions wire format. DeepSeek accepts this field.
+     */
+    thinking?: CompatThinkingParam;
+    /** DeepSeek accepts `max`; OpenAI's SDK type only includes OpenAI-native values. */
+    reasoning_effort?: 'high' | 'max';
+  };
+
 function mapStopReason(reason: string | null | undefined): StopReason {
   switch (reason) {
     case 'tool_calls':      return 'tool_use';
     case 'length':          return 'max_tokens';
     case 'content_filter':  return 'stop_sequence';
     default:                return 'end_turn';
+  }
+}
+
+function applyCompatThinkingParams(
+  params: OpenAiChatParamsWithCompatThinking,
+  thinking: LlmRequest['thinking'],
+): void {
+  if (!thinking) return;
+
+  if (thinking.enabled !== 'auto') {
+    params.thinking = { type: thinking.enabled ? 'enabled' : 'disabled' };
+  }
+
+  if (thinking.enabled !== false && thinking.effort) {
+    params.reasoning_effort = thinking.effort;
   }
 }
 
@@ -159,17 +187,20 @@ export class OpenAiAdapter implements LlmAdapter {
     const messages = toOpenAiMessages(request.messages);
     const tools    = request.tools?.map(toOpenAiTool);
 
+    const params: OpenAiChatParamsWithCompatThinking = {
+      model:          modelName,
+      messages,
+      tools:          tools?.length ? tools : undefined,
+      tool_choice:    tools?.length ? toOpenAiToolChoice(request.toolChoice) : undefined,
+      max_tokens:     request.maxTokens,
+      temperature:    request.temperature,
+      stream:         true,
+      stream_options: { include_usage: true },
+    };
+    applyCompatThinkingParams(params, request.thinking);
+
     const completion = await this.client.chat.completions.create(
-      {
-        model:          modelName,
-        messages,
-        tools:          tools?.length ? tools : undefined,
-        tool_choice:    tools?.length ? toOpenAiToolChoice(request.toolChoice) : undefined,
-        max_tokens:     request.maxTokens,
-        temperature:    request.temperature,
-        stream:         true,
-        stream_options: { include_usage: true },
-      },
+      params as unknown as OpenAI.ChatCompletionCreateParamsStreaming,
       { signal: request.signal },
     );
 

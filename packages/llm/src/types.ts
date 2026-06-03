@@ -27,6 +27,33 @@ export interface LlmToolDef {
   parameters: Record<string, unknown>;
 }
 
+// ── Thinking control ─────────────────────────────────────────────────────────
+
+export type ThinkingEffort = 'high' | 'max';
+
+export type ThinkingMode =
+  | {
+      /**
+       * Leave the provider/model default intact. `effort` may still be sent when
+       * a provider supports effort control without an explicit on/off flag.
+       */
+      enabled: 'auto';
+      effort?: ThinkingEffort;
+      budgetTokens?: number;
+      includeThoughts?: boolean;
+    }
+  | {
+      /** Force provider-side thinking on for this request. */
+      enabled: true;
+      effort?: ThinkingEffort;
+      budgetTokens?: number;
+      includeThoughts?: boolean;
+    }
+  | {
+      /** Force provider-side thinking off for this request when supported. */
+      enabled: false;
+    };
+
 // ── Normalized message format ─────────────────────────────────────────────────
 
 /**
@@ -52,6 +79,7 @@ export interface LlmRequest {
   messages: LlmMessage[];
   tools?: LlmToolDef[];
   toolChoice?: 'auto' | 'none' | { name: string };
+  thinking?: ThinkingMode;
   maxTokens?: number;
   temperature?: number;
   signal?: AbortSignal;
@@ -105,4 +133,3 @@ export interface ProbeResult {
   latencyMs?: number;
   error?:     string;
 }
-

@@ -2,9 +2,9 @@ import { describe, it, expect } from 'vitest';
 import { ModelCatalog } from '../src/catalog.js';
 import type { ModelEntry } from '../src/catalog.js';
 
-const makeEntry = (overrides: Partial<ModelEntry> & Pick<ModelEntry, 'provider' | 'model'>): ModelEntry => ({
+const makeEntry = (overrides: Partial<ModelEntry> & Pick<ModelEntry, 'protocol' | 'model'>): ModelEntry => ({
   displayName: overrides.model,
-  capabilities: { chat: true, tools: false, vision: false, jsonMode: false, streaming: true, promptCache: false },
+  capabilities: { thinking: false, tools: false, vision: false, jsonMode: false, streaming: true, promptCache: false },
   contextWindow: 4096,
   isStatic: true,
   ...overrides,
@@ -18,7 +18,7 @@ describe('ModelCatalog — static preset', () => {
 
   it('every entry has required fields', () => {
     for (const e of new ModelCatalog().list()) {
-      expect(e.provider).toBeTruthy();
+      expect(e.protocol).toBeTruthy();
       expect(e.model).toBeTruthy();
       expect(e.displayName).toBeTruthy();
       expect(e.contextWindow).toBeGreaterThan(0);
@@ -37,11 +37,17 @@ describe('ModelCatalog — static preset', () => {
     expect(e?.capabilities.promptCache).toBe(true);
   });
 
+  it('get() finds OpenAI Responses API reasoning models', () => {
+    const e = new ModelCatalog().get('openai-responses-llm', 'o4-mini');
+    expect(e?.displayName).toBe('o4-mini');
+    expect(e?.capabilities.thinking).toBe(true);
+  });
+
   it('get() returns undefined for unknown model', () => {
     expect(new ModelCatalog().get('openai-llm', 'gpt-3')).toBeUndefined();
   });
 
-  it('get() returns undefined for wrong provider', () => {
+  it('get() returns undefined for wrong protocol', () => {
     expect(new ModelCatalog().get('anthropic-llm', 'gpt-4o')).toBeUndefined();
   });
 });
@@ -59,7 +65,7 @@ describe('ModelCatalog — upsert', () => {
     expect(cat.get('openai-llm', 'gpt-4o')?.displayName).toBe('Overridden');
   });
 
-  it('same model name under different providers is independent', () => {
+  it('same model name under different protocols is independent', () => {
     const cat = new ModelCatalog([
       makeEntry({ protocol: 'openai-llm',     model: 'shared', displayName: 'OpenAI' }),
       makeEntry({ protocol: 'anthropic-llm',  model: 'shared', displayName: 'Anthropic' }),

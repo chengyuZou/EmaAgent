@@ -29,6 +29,12 @@ function createAdapter(config: ProviderConfig): LlmAdapter {
   }
 }
 
+function notConfigured(providerId: string): Error {
+  const err = new Error('provider/not_configured');
+  err.cause = providerId;
+  return err;
+}
+
 // ── LlmRouter ─────────────────────────────────────────────────────────────────
 
 /**
@@ -43,37 +49,39 @@ export class LlmRouter {
   private readonly adapters = new Map<string, LlmAdapter>();
   /** id → config (kept for hot-reload and probe) */
   private readonly configs  = new Map<string, ProviderConfig>();
+  /** Test-only adapter replacements keyed by ProviderConfig.id. */
+  private readonly adapterOverrides?: ReadonlyMap<string, LlmAdapter>;
 
   /**
    * @param configs           Provider configurations.
-   * @param adapterOverrides  Pre-built adapters keyed by provider id (tests inject mocks here).
+   * @param adapterOverrides  Pre-built adapters keyed by provider id. Ignored until
+   *                          a matching ProviderConfig is registered.
    */
   constructor(
     configs: ProviderConfig[],
     adapterOverrides?: ReadonlyMap<string, LlmAdapter>,
   ) {
+    this.adapterOverrides = adapterOverrides;
     for (const config of configs) {
       this.configs.set(config.id, config);
-      const override = adapterOverrides?.get(config.id);
-      this.adapters.set(config.id, override ?? createAdapter(config));
+      this.adapters.set(config.id, this.createAdapterFor(config));
     }
-    // Allow overrides for provider ids that have no ProviderConfig (pure mock injection)
-    if (adapterOverrides) {
-      for (const [id, adapter] of adapterOverrides) {
-        if (!this.adapters.has(id)) this.adapters.set(id, adapter);
-      }
-    }
+  }
+
+  private createAdapterFor(config: ProviderConfig): LlmAdapter {
+    return this.adapterOverrides?.get(config.id) ?? createAdapter(config);
   }
 
   // ── Streaming ───────────────────────────────────────────────────────────────
 
   /** Stream a completion from the specified provider instance. Throws synchronously on unknown id. */
   stream(request: LlmRequest): AsyncIterable<LlmStreamChunk> {
+    if (!this.configs.has(request.providerId)) {
+      throw notConfigured(request.providerId);
+    }
     const adapter = this.adapters.get(request.providerId);
     if (!adapter) {
-      const err = new Error('provider/not_configured');
-      err.cause = request.providerId;
-      throw err;
+      throw notConfigured(request.providerId);
     }
     return adapter.stream(request, request.model);
   }
@@ -211,7 +219,7 @@ export class LlmRouter {
   /** Add or replace a provider config at runtime (e.g. user updated API key). */
   upsertConfig(config: ProviderConfig): void {
     this.configs.set(config.id, config);
-    this.adapters.set(config.id, createAdapter(config));
+    this.adapters.set(config.id, this.createAdapterFor(config));
   }
 
   removeConfig(providerId: string): void {
@@ -236,7 +244,8 @@ export class LlmRouter {
    * Returns an empty array when everything is compatible.
    */
   warnUnsupportedParts(providerId: string, parts: LlmContentPart[]): UnsupportedPart[] {
-    const protocol = this.configs.get(providerId)?.protocol ?? 'openai-llm';
+    const protocol = this.configs.get(providerId)?.protocol;
+    if (!protocol) throw notConfigured(providerId);
     return validateContentParts(parts, protocol);
   }
 }

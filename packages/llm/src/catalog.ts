@@ -147,14 +147,15 @@ const STATIC_MODELS: ModelEntry[] = [
   },
 
   // ── OpenAI-compat presets (user-configured providers: DeepSeek, SiliconFlow…) ─
+  // deepseek-chat / deepseek-reasoner are deprecated 2026-07-24; use the new names.
   {
-    protocol: 'openai-llm', model: 'deepseek-chat', displayName: 'DeepSeek V3',
-    capabilities: cap({ jsonMode: true }),
+    protocol: 'openai-llm', model: 'deepseek-v4-flash', displayName: 'DeepSeek V4 Flash',
+    capabilities: cap({ thinking: true, jsonMode: true }),
     contextWindow: 64_000, isStatic: true,
     pricing: { inputUsdPerMillion: 0.27, outputUsdPerMillion: 1.1 },
   },
   {
-    protocol: 'openai-llm', model: 'deepseek-reasoner', displayName: 'DeepSeek R1',
+    protocol: 'openai-llm', model: 'deepseek-v4-pro', displayName: 'DeepSeek V4 Pro',
     capabilities: cap({ thinking: true, jsonMode: true }),
     contextWindow: 64_000, isStatic: true,
     pricing: { inputUsdPerMillion: 0.55, outputUsdPerMillion: 2.19 },
