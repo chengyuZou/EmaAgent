@@ -1,8 +1,9 @@
-import { OpenAiAdapter }    from './adapters/openai.js';
-import { AnthropicAdapter } from './adapters/anthropic.js';
-import { GeminiAdapter }    from './adapters/gemini.js';
-import type { LlmAdapter }  from './adapters/base.js';
-import { withRetry }        from './retry.js';
+import { OpenAiAdapter }         from './adapters/openai.js';
+import { OpenAiResponsesAdapter } from './adapters/openai-responses.js';
+import { AnthropicAdapter }       from './adapters/anthropic.js';
+import { GeminiAdapter }          from './adapters/gemini.js';
+import type { LlmAdapter }        from './adapters/base.js';
+import { sleep, httpStatus, isRetryable, rethrowAs } from './retry.js';
 import { validateContentParts } from './validate.js';
 import type { UnsupportedPart } from './validate.js';
 import type {
@@ -15,14 +16,16 @@ import type {
   StopReason,
   AssistantBlock,
 } from './types.js';
+import type { LlmProtocol } from '@ema-agent/contracts';
 
 // ── Internal factory ──────────────────────────────────────────────────────────
 
 function createAdapter(config: ProviderConfig): LlmAdapter {
   switch (config.protocol) {
-    case 'openai-llm':    return new OpenAiAdapter(config);
-    case 'anthropic-llm': return new AnthropicAdapter(config);
-    case 'gemini-llm':    return new GeminiAdapter(config);
+    case 'openai-llm':           return new OpenAiAdapter(config);
+    case 'openai-responses-llm': return new OpenAiResponsesAdapter(config);
+    case 'anthropic-llm':        return new AnthropicAdapter(config);
+    case 'gemini-llm':           return new GeminiAdapter(config);
   }
 }
 
@@ -79,60 +82,97 @@ export class LlmRouter {
 
   /**
    * Collect the full completion into a single object.
-   * Wraps stream() with exponential-backoff retry (429/5xx → up to 3 attempts).
    * Use for internal calls: compaction, emotion extraction, plan parsing.
-   */
-  /**
-   * Collect the full completion into a single object.
-   * Wraps stream() with exponential-backoff retry (429/5xx → up to 3 attempts).
-   * Use for internal calls: compaction, emotion extraction, plan parsing.
+   *
+   * Retry policy:
+   *   - Only retries when the connection fails BEFORE any chunk arrives
+   *     (401/429/5xx thrown by the adapter before the first yield).
+   *   - Never retries a mid-stream failure: if we already received tokens,
+   *     retrying would double the token cost and might produce different output.
    *
    * Blocks are sorted by blockIndex so text/tool_use order is preserved even
    * though thinking_delta and tool_use_complete may arrive interleaved.
    */
   async complete(request: LlmRequest): Promise<LlmCompletion> {
-    return withRetry(async () => {
-      let stopReason: StopReason  = 'end_turn';
+    const MAX_ATTEMPTS = 3;
+    const BASE_DELAY_MS = 1_000;
+    let lastErr: unknown;
+
+    for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+      // Reset accumulation state for each attempt.
+      let stopReason: StopReason = 'end_turn';
       let inputTokens             = 0;
       let outputTokens            = 0;
+      const textBufs             = new Map<number, string>();
+      const thinkingBufs         = new Map<number, string>();
+      const thinkingSignatureMap = new Map<number, string>();
+      const toolUseMap           = new Map<number, AssistantBlock & { type: 'tool_use' }>();
 
-      // Accumulate by blockIndex so we can sort at the end
-      const textBufs     = new Map<number, string>();
-      const thinkingBufs = new Map<number, string>();
-      // tool_use_complete arrives once per block with final args
-      const toolUseMap   = new Map<number, AssistantBlock & { type: 'tool_use' }>();
+      // Tracks whether the provider sent at least one chunk.
+      // When true, the HTTP connection succeeded and tokens are already in flight —
+      // retrying would double-charge the caller, so we propagate the error directly.
+      let hasStartedStreaming = false;
 
-      for await (const chunk of this.stream(request)) {
-        switch (chunk.type) {
-          case 'text_delta':
-            textBufs.set(chunk.blockIndex, (textBufs.get(chunk.blockIndex) ?? '') + chunk.delta);
-            break;
-          case 'thinking_delta':
-            thinkingBufs.set(chunk.blockIndex, (thinkingBufs.get(chunk.blockIndex) ?? '') + chunk.delta);
-            break;
-          case 'tool_use_complete':
-            toolUseMap.set(chunk.blockIndex, { type: 'tool_use', id: chunk.callId, name: chunk.name, args: chunk.args });
-            break;
-          case 'usage':
-            inputTokens  = chunk.inputTokens;
-            outputTokens = chunk.outputTokens;
-            break;
-          case 'done':
-            stopReason = chunk.stopReason;
-            break;
+      try {
+        for await (const chunk of this.stream(request)) {
+          hasStartedStreaming = true;
+          switch (chunk.type) {
+            case 'text_delta':
+              textBufs.set(chunk.blockIndex, (textBufs.get(chunk.blockIndex) ?? '') + chunk.delta);
+              break;
+            case 'thinking_delta':
+              thinkingBufs.set(chunk.blockIndex, (thinkingBufs.get(chunk.blockIndex) ?? '') + chunk.delta);
+              break;
+            case 'thinking_complete':
+              thinkingSignatureMap.set(chunk.blockIndex, chunk.signature);
+              break;
+            case 'tool_use_complete':
+              toolUseMap.set(chunk.blockIndex, { type: 'tool_use', id: chunk.callId, name: chunk.name, args: chunk.args });
+              break;
+            case 'usage':
+              inputTokens  = chunk.inputTokens;
+              outputTokens = chunk.outputTokens;
+              break;
+            case 'done':
+              stopReason = chunk.stopReason;
+              break;
+          }
         }
+
+        // Stream completed normally — build result.
+        const blockEntries: Array<[number, AssistantBlock]> = [];
+        for (const [idx, text] of textBufs) {
+          blockEntries.push([idx, { type: 'text', text }]);
+        }
+        for (const [idx, thinking] of thinkingBufs) {
+          const signature = thinkingSignatureMap.get(idx);
+          blockEntries.push([idx, { type: 'thinking', thinking, ...(signature ? { signature } : {}) }]);
+        }
+        for (const [idx, block] of toolUseMap) {
+          blockEntries.push([idx, block]);
+        }
+        blockEntries.sort((a, b) => a[0] - b[0]);
+        const blocks: AssistantBlock[] = blockEntries.map(([, block]) => block);
+
+        return { blocks, stopReason, usage: { inputTokens, outputTokens } };
+
+      } catch (e) {
+        lastErr = e;
+
+        // Mid-stream failure: tokens were already consumed, no retry.
+        if (hasStartedStreaming) throw e;
+
+        // Connection failure: classify and maybe retry.
+        const s = httpStatus(e);
+        if (s === 401 || s === 403) rethrowAs('auth/api_key_invalid',     e);
+        if (s === 413)              rethrowAs('provider/context_too_long', e);
+        if (!isRetryable(e) || attempt === MAX_ATTEMPTS - 1) throw e;
+
+        await sleep(BASE_DELAY_MS * 2 ** attempt);
       }
+    }
 
-      // Merge all block maps, sort by blockIndex to preserve original order
-      const blockEntries: Array<[number, AssistantBlock]> = [];
-      for (const [idx, text] of textBufs)     blockEntries.push([idx, { type: 'text', text }]);
-      for (const [idx, thinking] of thinkingBufs) blockEntries.push([idx, { type: 'thinking', thinking }]);
-      for (const [idx, block] of toolUseMap)  blockEntries.push([idx, block]);
-      blockEntries.sort((a, b) => a[0] - b[0]);
-      const blocks: AssistantBlock[] = blockEntries.map(([, block]) => block);
-
-      return { blocks, stopReason, usage: { inputTokens, outputTokens } };
-    });
+    throw lastErr;
   }
 
   // ── Health check ─────────────────────────────────────────────────────────────
@@ -151,7 +191,7 @@ export class LlmRouter {
     const start = Date.now();
     try {
       for await (const chunk of adapter.stream(
-        { providerId, model, messages: [{ role: 'user', content: 'hi' }], maxTokens: 1 },
+        { providerId, model, messages: [{ role: 'user', content: 'hi' }], maxTokens: 8 },
         model,
       )) {
         if (chunk.type === 'done') break;
@@ -160,6 +200,10 @@ export class LlmRouter {
     } catch (e) {
       return { ok: false, latencyMs: Date.now() - start, error: (e as Error).message };
     }
+  }
+
+  getProtocol(providerId: string): LlmProtocol | undefined {
+    return this.configs.get(providerId)?.protocol;
   }
 
   // ── Hot-reload ───────────────────────────────────────────────────────────────

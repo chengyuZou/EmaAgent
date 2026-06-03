@@ -1,19 +1,19 @@
 import type { ErrorCode } from '@ema-agent/contracts';
 
-const sleep = (ms: number): Promise<void> => new Promise(r => setTimeout(r, ms));
+export const sleep = (ms: number): Promise<void> => new Promise(r => setTimeout(r, ms));
 
-function httpStatus(e: unknown): number {
+export function httpStatus(e: unknown): number {
   return (e as { status?: number; statusCode?: number })?.status
       ?? (e as { status?: number; statusCode?: number })?.statusCode
       ?? 0;
 }
 
-function isRetryable(e: unknown): boolean {
+export function isRetryable(e: unknown): boolean {
   const s = httpStatus(e);
   return s === 429 || s === 408 || (s >= 500 && s < 600);
 }
 
-function rethrowAs(code: ErrorCode, cause: unknown): never {
+export function rethrowAs(code: ErrorCode, cause: unknown): never {
   const err = new Error(code);
   err.cause = cause;
   throw err;

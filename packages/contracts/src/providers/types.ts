@@ -17,9 +17,10 @@ export type Capability = 'llm' | 'embed' | 'rerank' | 'vision' | 'tts' | 'stt';
  */
 export type ProtocolFamily =
   // LLM protocols
-  | 'openai-llm'        // /v1/chat/completions, { messages: [...] }
-  | 'anthropic-llm'     // /messages, system extracted
-  | 'gemini-llm'        // /generateContent, parts structure
+  | 'openai-llm'            // /v1/chat/completions, { messages: [...] }
+  | 'openai-responses-llm'  // /v1/responses — per-tool done events, o-series reasoning
+  | 'anthropic-llm'         // /messages, system extracted
+  | 'gemini-llm'            // /generateContent, parts structure
   // Embedding protocols
   | 'openai-embed'      // /v1/embeddings, { model, input: string[] }
   | 'gemini-embed'      // /v1beta/models/{model}:batchEmbedContents, Google format
@@ -45,7 +46,10 @@ export type SttProtocol    = Extract<ProtocolFamily, `${string}-stt`>;
 
 /** Type guard for narrowing ProtocolFamily down to LlmProtocol. */
 export function isLlmProtocol(p: ProtocolFamily | undefined): p is LlmProtocol {
-  return p === 'openai-llm' || p === 'anthropic-llm' || p === 'gemini-llm';
+  return p === 'openai-llm'
+      || p === 'openai-responses-llm'
+      || p === 'anthropic-llm'
+      || p === 'gemini-llm';
 }
 
 export function isEmbedProtocol(p: ProtocolFamily | undefined): p is EmbedProtocol {

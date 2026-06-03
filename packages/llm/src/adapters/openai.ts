@@ -173,12 +173,15 @@ export class OpenAiAdapter implements LlmAdapter {
       { signal: request.signal },
     );
 
-    // Tool call buffers keyed by OpenAI's delta index (not the same as blockIndex).
-    // blockIndex for tool calls = TEXT_BLOCK_COUNT + tool_delta_index, approximated as:
-    // we use a synthetic blockIndex = 1000 + tc.index so text (index 0) always sorts before tools.
+    // Tool call buffers keyed by OpenAI's delta index.
+    // OpenAI Chat Completions has no per-tool-call end event — only finish_reason marks
+    // the end of all tool calls. We accumulate every tool's args here and flush all at
+    // finish_reason time. This is slower than early-complete (tools only execute after
+    // the full round-trip) but correct for both serial and parallel tool calls.
     const toolBufs = new Map<number, { id: string; name: string; argsJson: string }>();
     let stopReason: StopReason = 'end_turn';
-    let lastToolIndex = -1;
+    // Track whether reasoning_content ever arrived so text blockIndex stays consistent.
+    let hasThinking = false;
 
     for await (const chunk of completion) {
       const choice = chunk.choices[0];
@@ -186,39 +189,20 @@ export class OpenAiAdapter implements LlmAdapter {
 
       // DeepSeek-reasoner (and compatible models) expose chain-of-thought in
       // `reasoning_content` — a non-standard field not in the OpenAI SDK types.
-      // blockIndex 0 = thinking, blockIndex 1 = final text, so they sort correctly.
       const deltaAny = delta as Record<string, unknown> | undefined;
       if (typeof deltaAny?.reasoning_content === 'string' && deltaAny.reasoning_content) {
+        hasThinking = true;
         yield { type: 'thinking_delta', blockIndex: 0, delta: deltaAny.reasoning_content };
       }
 
       if (delta?.content) {
-        // Text lives at blockIndex 1 so it always sorts after any thinking (blockIndex 0).
-        yield { type: 'text_delta', blockIndex: 1, delta: delta.content };
+        // If thinking arrived, text is blockIndex 1; otherwise it is blockIndex 0.
+        yield { type: 'text_delta', blockIndex: hasThinking ? 1 : 0, delta: delta.content };
       }
 
       if (delta?.tool_calls) {
         for (const tc of delta.tool_calls) {
           const idx = tc.index;
-
-          // Index jump: OpenAI moved to a new tool. The previous tool at (idx-1) is complete.
-          // Emit tool_use_complete early so the engine can stream-execute it.
-          if (idx > lastToolIndex && lastToolIndex >= 0) {
-            const prevBuf = toolBufs.get(lastToolIndex);
-            if (prevBuf) {
-              let args: unknown = {};
-              try { args = JSON.parse(prevBuf.argsJson); } catch { /* keep {} */ }
-              yield {
-                type:       'tool_use_complete',
-                blockIndex: 1000 + lastToolIndex,
-                callId:     prevBuf.id,
-                name:       prevBuf.name,
-                args,
-              };
-              toolBufs.delete(lastToolIndex);
-            }
-          }
-          lastToolIndex = Math.max(lastToolIndex, idx);
 
           if (!toolBufs.has(idx)) {
             toolBufs.set(idx, { id: '', name: '', argsJson: '' });
@@ -239,7 +223,8 @@ export class OpenAiAdapter implements LlmAdapter {
         }
       }
 
-      // finish_reason — flush any remaining tool buffers
+      // finish_reason — flush all tool buffers at once.
+      // This is the only reliable completion boundary in Chat Completions streaming.
       if (choice?.finish_reason) {
         stopReason = mapStopReason(choice.finish_reason);
         for (const [idx, buf] of toolBufs) {
@@ -254,7 +239,6 @@ export class OpenAiAdapter implements LlmAdapter {
           };
         }
         toolBufs.clear();
-        lastToolIndex = -1;
       }
 
       if (chunk.usage) {

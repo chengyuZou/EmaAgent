@@ -5,6 +5,7 @@ export { withRetry }         from './retry.js';
 export type { RetryOptions } from './retry.js';
 
 export type { LlmAdapter }                   from './adapters/base.js';
+export { OpenAiResponsesAdapter }            from './adapters/openai-responses.js';
 export type { UnsupportedPart }              from './validate.js';
 export type { ModelEntry, ModelCapabilities } from './catalog.js';
 

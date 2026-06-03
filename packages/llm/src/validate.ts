@@ -33,7 +33,12 @@ export function validateContentParts(
 
 function checkPart(part: MessageContentPart, provider: LlmProtocol): string | null {
   switch (provider) {
-    case 'openai-llm':    return checkOpenAi(part);
+    case 'openai-llm':
+    case 'openai-responses-llm':
+      // Responses API shares the same content-part rules as Chat Completions.
+      // audio_data is technically supported (mp3/wav) but the adapter silently
+      // drops it — warn the caller so they can handle it at a higher level.
+      return checkOpenAi(part);
     case 'anthropic-llm': return checkAnthropic(part);
     case 'gemini-llm':    return checkGemini(part);
   }

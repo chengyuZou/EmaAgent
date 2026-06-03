@@ -3,7 +3,8 @@ import type { LlmProtocol } from '@ema-agent/contracts';
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 export interface ModelCapabilities {
-  chat:        boolean;
+  /** Extended reasoning / chain-of-thought (DeepSeek-R1, Claude thinking, o-series, Gemini 2.5). */
+  thinking:    boolean;
   tools:       boolean;
   vision:      boolean;
   jsonMode:    boolean;
@@ -13,7 +14,7 @@ export interface ModelCapabilities {
 
 export interface ModelEntry {
   protocol:      LlmProtocol;
-  model:         string;          // raw API name, e.g. 'gpt-4o' — passed directly to adapter
+  model:         string;          // raw API name — passed directly to adapter
   displayName:   string;
   capabilities:  ModelCapabilities;
   contextWindow: number;
@@ -53,14 +54,29 @@ export class ModelCatalog {
 
 // ── Static preset ─────────────────────────────────────────────────────────────
 
-/** Shorthand: start from all-false and apply overrides. */
+/**
+ * Shorthand: start from sensible defaults and apply overrides.
+ * All models can chat — `thinking` flags models with exposed reasoning traces.
+ */
 const cap = (o: Partial<ModelCapabilities>): ModelCapabilities => ({
-  chat: true, tools: true, vision: false, jsonMode: false, streaming: true, promptCache: false,
+  thinking: false, tools: true, vision: false, jsonMode: false, streaming: true, promptCache: false,
   ...o,
 });
 
 const STATIC_MODELS: ModelEntry[] = [
-  // ── OpenAI ──────────────────────────────────────────────────────────────────
+  // ── OpenAI — Chat Completions (openai-llm) ───────────────────────────────────
+  {
+    protocol: 'openai-llm', model: 'gpt-4.1', displayName: 'GPT-4.1',
+    capabilities: cap({ vision: true, jsonMode: true }),
+    contextWindow: 1_047_576, isStatic: true,
+    pricing: { inputUsdPerMillion: 2, outputUsdPerMillion: 8 },
+  },
+  {
+    protocol: 'openai-llm', model: 'gpt-4.1-mini', displayName: 'GPT-4.1 mini',
+    capabilities: cap({ vision: true, jsonMode: true }),
+    contextWindow: 1_047_576, isStatic: true,
+    pricing: { inputUsdPerMillion: 0.4, outputUsdPerMillion: 1.6 },
+  },
   {
     protocol: 'openai-llm', model: 'gpt-4o', displayName: 'GPT-4o',
     capabilities: cap({ vision: true, jsonMode: true }),
@@ -73,9 +89,19 @@ const STATIC_MODELS: ModelEntry[] = [
     contextWindow: 128_000, isStatic: true,
     pricing: { inputUsdPerMillion: 0.15, outputUsdPerMillion: 0.6 },
   },
+
+  // ── OpenAI — Responses API (openai-responses-llm) ────────────────────────────
+  // o-series reasoning models work best with the Responses API:
+  // reasoning summaries are exposed via response.reasoning_summary_text.delta.
   {
-    protocol: 'openai-llm', model: 'o3-mini', displayName: 'o3-mini',
-    capabilities: cap({ jsonMode: true }),
+    protocol: 'openai-responses-llm', model: 'o3', displayName: 'o3',
+    capabilities: cap({ thinking: true, jsonMode: true }),
+    contextWindow: 200_000, isStatic: true,
+    pricing: { inputUsdPerMillion: 10, outputUsdPerMillion: 40 },
+  },
+  {
+    protocol: 'openai-responses-llm', model: 'o4-mini', displayName: 'o4-mini',
+    capabilities: cap({ thinking: true, vision: true, jsonMode: true }),
     contextWindow: 200_000, isStatic: true,
     pricing: { inputUsdPerMillion: 1.1, outputUsdPerMillion: 4.4 },
   },
@@ -83,18 +109,18 @@ const STATIC_MODELS: ModelEntry[] = [
   // ── Anthropic ────────────────────────────────────────────────────────────────
   {
     protocol: 'anthropic-llm', model: 'claude-opus-4-5', displayName: 'Claude Opus 4.5',
-    capabilities: cap({ vision: true, promptCache: true }),
+    capabilities: cap({ thinking: true, vision: true, promptCache: true }),
     contextWindow: 200_000, isStatic: true,
     pricing: { inputUsdPerMillion: 15, outputUsdPerMillion: 75 },
   },
   {
     protocol: 'anthropic-llm', model: 'claude-sonnet-4-5', displayName: 'Claude Sonnet 4.5',
-    capabilities: cap({ vision: true, promptCache: true }),
+    capabilities: cap({ thinking: true, vision: true, promptCache: true }),
     contextWindow: 200_000, isStatic: true,
     pricing: { inputUsdPerMillion: 3, outputUsdPerMillion: 15 },
   },
   {
-    protocol: 'anthropic-llm', model: 'claude-haiku-3-5', displayName: 'Claude Haiku 3.5',
+    protocol: 'anthropic-llm', model: 'claude-haiku-4-5', displayName: 'Claude Haiku 4.5',
     capabilities: cap({ vision: true, promptCache: true }),
     contextWindow: 200_000, isStatic: true,
     pricing: { inputUsdPerMillion: 0.8, outputUsdPerMillion: 4 },
@@ -102,28 +128,34 @@ const STATIC_MODELS: ModelEntry[] = [
 
   // ── Gemini ───────────────────────────────────────────────────────────────────
   {
+    protocol: 'gemini-llm', model: 'gemini-2.5-pro', displayName: 'Gemini 2.5 Pro',
+    capabilities: cap({ thinking: true, vision: true, jsonMode: true }),
+    contextWindow: 1_048_576, isStatic: true,
+    pricing: { inputUsdPerMillion: 1.25, outputUsdPerMillion: 10 },
+  },
+  {
+    protocol: 'gemini-llm', model: 'gemini-2.5-flash', displayName: 'Gemini 2.5 Flash',
+    capabilities: cap({ thinking: true, vision: true, jsonMode: true }),
+    contextWindow: 1_048_576, isStatic: true,
+    pricing: { inputUsdPerMillion: 0.15, outputUsdPerMillion: 0.6 },
+  },
+  {
     protocol: 'gemini-llm', model: 'gemini-2.0-flash', displayName: 'Gemini 2.0 Flash',
     capabilities: cap({ vision: true, jsonMode: true }),
     contextWindow: 1_000_000, isStatic: true,
     pricing: { inputUsdPerMillion: 0.1, outputUsdPerMillion: 0.4 },
   },
-  {
-    protocol: 'gemini-llm', model: 'gemini-2.5-pro', displayName: 'Gemini 2.5 Pro',
-    capabilities: cap({ vision: true, jsonMode: true }),
-    contextWindow: 1_000_000, isStatic: true,
-    pricing: { inputUsdPerMillion: 1.25, outputUsdPerMillion: 10 },
-  },
 
-  // ── openai-compat (representative presets — user adds more via settings) ─────
+  // ── OpenAI-compat presets (user-configured providers: DeepSeek, SiliconFlow…) ─
   {
-    protocol: 'openai-llm', model: 'deepseek-chat', displayName: 'DeepSeek Chat',
+    protocol: 'openai-llm', model: 'deepseek-chat', displayName: 'DeepSeek V3',
     capabilities: cap({ jsonMode: true }),
     contextWindow: 64_000, isStatic: true,
-    pricing: { inputUsdPerMillion: 0.14, outputUsdPerMillion: 0.28 },
+    pricing: { inputUsdPerMillion: 0.27, outputUsdPerMillion: 1.1 },
   },
   {
     protocol: 'openai-llm', model: 'deepseek-reasoner', displayName: 'DeepSeek R1',
-    capabilities: cap({ jsonMode: true }),
+    capabilities: cap({ thinking: true, jsonMode: true }),
     contextWindow: 64_000, isStatic: true,
     pricing: { inputUsdPerMillion: 0.55, outputUsdPerMillion: 2.19 },
   },

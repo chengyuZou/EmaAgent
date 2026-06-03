@@ -199,8 +199,10 @@ export class AnthropicAdapter implements LlmAdapter {
 
     // Track in-progress blocks keyed by Anthropic content_block index.
     const toolBlocks = new Map<number, { id: string; name: string; argsJson: string }>();
-    // Track whether index is a thinking block (vs. tool_use) so we can emit the right chunk type.
-    const thinkingIndices = new Set<number>();
+    // Track Anthropic thinking signatures.
+    // Anthropic streams signature via content_block_delta.signature_delta,
+    // not on content_block_stop.
+    const thinkingSignatures = new Map<number, string>();
 
     let inputTokens  = 0;
     let outputTokens = 0;
@@ -220,7 +222,7 @@ export class AnthropicAdapter implements LlmAdapter {
               argsJson: '',
             });
           } else if (event.content_block.type === 'thinking') {
-            thinkingIndices.add(event.index);
+            thinkingSignatures.set(event.index, '');
           }
           break;
 
@@ -229,6 +231,9 @@ export class AnthropicAdapter implements LlmAdapter {
             yield { type: 'text_delta', blockIndex: event.index, delta: event.delta.text };
           } else if (event.delta.type === 'thinking_delta') {
             yield { type: 'thinking_delta', blockIndex: event.index, delta: event.delta.thinking };
+          } else if (event.delta.type === 'signature_delta') {
+            const prev = thinkingSignatures.get(event.index) ?? '';
+            thinkingSignatures.set(event.index, prev + event.delta.signature);
           } else if (event.delta.type === 'input_json_delta') {
             const block = toolBlocks.get(event.index);
             if (block) {
@@ -258,7 +263,15 @@ export class AnthropicAdapter implements LlmAdapter {
             };
             toolBlocks.delete(event.index);
           }
-          thinkingIndices.delete(event.index);
+          if (thinkingSignatures.has(event.index)) {
+            const signature = thinkingSignatures.get(event.index)!;
+            yield {
+              type: 'thinking_complete',
+              blockIndex: event.index,
+              signature: signature,
+            };
+          }
+          thinkingSignatures.delete(event.index);
           break;
         }
 

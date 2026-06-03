@@ -79,6 +79,7 @@ export type StopReason = 'end_turn' | 'tool_use' | 'max_tokens' | 'stop_sequence
 export type LlmStreamChunk =
   | { type: 'text_delta';        blockIndex: number; delta: string }
   | { type: 'thinking_delta';    blockIndex: number; delta: string }
+  | { type: 'thinking_complete';  blockIndex: number; signature: string }
   | { type: 'tool_use_delta';    blockIndex: number; callId: string; name: string; argsDelta: string }
   | { type: 'tool_use_complete'; blockIndex: number; callId: string; name: string; args: unknown }
   | { type: 'usage';             inputTokens: number; outputTokens: number }
