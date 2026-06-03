@@ -73,8 +73,11 @@ Results are capped at \`head_limit\` lines (default 250).`,
   isConcurrencySafe: () => true,
 
   permissionMeta: {
-    riskLevel: 'low',
-    accessType: 'read',
+    riskLevel:   'low',
+    accessType:  'read',
+    // Same rationale as glob: explicit path is workspace-boundary-checked;
+    // absent path defaults to workspaceRoot (always in-bounds).
+    extractPath: (input) => (input as { path?: string }).path,
   },
 
   async execute(input: GrepInput, ctx: ToolExecutionContext): Promise<GrepResult> {

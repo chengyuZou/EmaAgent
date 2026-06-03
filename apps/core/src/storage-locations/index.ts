@@ -1,7 +1,9 @@
 export {
   profileDir, profileDbPath, registryPath, lockfilePath,
-  dataDbPathFor, audioDirFor, artifactsDirFor, trashDirFor,
+  dataDbPathFor, trashDirFor,
   ensureDataDirLayout,
+  sessionDirFor, sessionAudioDirFor, sessionArtifactsDirFor,
+  ensureSessionLayout, removeSessionDir,
   voiceRefsDir, voiceRefsForCard, resolveVoiceRefPath, ensureProfileLayout,
 } from './paths.js';
 

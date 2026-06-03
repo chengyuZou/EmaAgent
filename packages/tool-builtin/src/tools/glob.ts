@@ -48,8 +48,13 @@ export const globTool = buildTool<GlobInput, GlobResult>({
   isConcurrencySafe: () => true,
 
   permissionMeta: {
-    riskLevel: 'low',
-    accessType: 'read',
+    riskLevel:   'low',
+    accessType:  'read',
+    // When `path` is provided the search root is passed to PermissionEngine so
+    // it can enforce workspace boundary checks. When absent the tool defaults
+    // to ctx.workspaceRoot, which is always in-bounds, so we pass undefined and
+    // let the standard workspace-read fast-path apply.
+    extractPath: (input) => (input as { path?: string }).path,
   },
 
   async execute(input: GlobInput, ctx: ToolExecutionContext): Promise<GlobResult> {

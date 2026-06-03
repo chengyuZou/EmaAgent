@@ -10,12 +10,33 @@ import { McpServerNotFoundError }                        from './errors.js';
 
 // ── McpRegistry ───────────────────────────────────────────────────────────────
 
+/**
+ * Optional callback injected by apps/core to gate stdio MCP server spawning
+ * through PermissionEngine before the subprocess is created.
+ *
+ * Return true to allow the connection, false to block it.
+ * Only called for `type === 'stdio'` configs; HTTP/SSE servers connect freely
+ * (they don't spawn local subprocesses under the sidecar's privileges).
+ */
+export type McpStdioPermissionGate = (
+  serverName: string,
+  command:    string,
+  args?:      string[],
+) => Promise<boolean>;
+
 export class McpRegistry {
   private connections = new Map<string, OpenedConnection & { info: McpConnection }>();
 
   constructor(
     private readonly store:        McpServerStore,
     private readonly toolRegistry: ToolRegistry,
+    /**
+     * When provided, stdio server connections are gated through this callback.
+     * Apps/core wires a PermissionEngine.gate() call here so that enabling a
+     * stdio MCP server requires explicit user approval — identical to how
+     * shell tool calls are gated.
+     */
+    private readonly stdioGate?:   McpStdioPermissionGate,
   ) {}
 
   // ── Connection management ─────────────────────────────────────────────────
@@ -27,6 +48,19 @@ export class McpRegistry {
   }
 
   async connectConfig(serverName: string, config: McpServerConfig): Promise<McpConnection> {
+    // Gate stdio connections through PermissionEngine BEFORE spawning.
+    // stdio servers run as subprocesses with the sidecar's full OS privileges;
+    // they must be treated as execute-class actions, not passive config.
+    if (config.type === 'stdio' && this.stdioGate) {
+      const allowed = await this.stdioGate(serverName, config.command, config.args);
+      if (!allowed) {
+        throw new Error(
+          `MCP stdio server "${serverName}" was blocked by the permission system. ` +
+          `Approve it from Settings → MCP Servers to connect.`,
+        );
+      }
+    }
+
     await this.disconnect(serverName);
 
     const opened = await openConnection(serverName, config);

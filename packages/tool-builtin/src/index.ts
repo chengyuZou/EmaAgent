@@ -90,14 +90,29 @@ const ALL_BUILTIN_TOOLS: BuiltTool<any, any>[] = [
   subagentTool,
 ];
 
+/** Tools that require a physical OS-level sandbox to be safely exposed. */
+const EXECUTE_TOOLS: ReadonlySet<string> = new Set(['bash', 'powershell']);
+
+export interface RegisterOptions {
+  /**
+   * When true, shell execution tools (bash, powershell) are omitted from the
+   * registry. Set this when `CommandRunner.backendName === 'app-layer'` —
+   * i.e. no physical sandbox is available. The tools can be re-enabled by
+   * setting AGEN_UNSAFE_SHELL=1 for development.
+   */
+  disableExecuteTools?: boolean;
+}
+
 /**
  * Register all builtin tools into a ToolRegistry.
  *
- * Called once at app startup by apps/core before the first turn is processed.
- * On Windows, powershell is always registered (it will throw at runtime on non-Windows).
+ * Called once at app startup by apps/core. Pass `disableExecuteTools: true`
+ * when the active sandbox backend is `app-layer` (no OS-level isolation) to
+ * prevent the LLM from invoking shell tools without a physical sandbox.
  */
-export function registerBuiltinTools(registry: ToolRegistry): void {
+export function registerBuiltinTools(registry: ToolRegistry, opts: RegisterOptions = {}): void {
   for (const tool of ALL_BUILTIN_TOOLS) {
+    if (opts.disableExecuteTools && EXECUTE_TOOLS.has(tool.name)) continue;
     registry.register(tool);
   }
 }

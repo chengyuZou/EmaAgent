@@ -77,8 +77,23 @@ function suggestionsForPath(
  */
 export class PermissionEngine {
   private rules: PermissionRule[];
-  /** Current permission mode — mutable so allow_session can escalate to bypass. */
+  /** Global default mode (used when no session-specific override applies). */
   private mode: PermissionMode;
+  /**
+   * Per-session mode overrides.
+   * When `allow_session` is approved, only the requesting session is promoted
+   * to bypass — other sessions keep their own mode.
+   */
+  private readonly sessionModes = new Map<string, PermissionMode>();
+
+  /**
+   * Per-session denial counters for loop detection.
+   * Resets the consecutive counter on any successful grant.
+   */
+  private readonly denialCounters = new Map<string, { consecutive: number; total: number }>();
+
+  private static readonly MAX_CONSECUTIVE_DENIALS = 3;
+  private static readonly MAX_TOTAL_DENIALS        = 20;
 
   constructor(private readonly config: PermissionConfig) {
     this.rules = [...config.rules];
@@ -86,11 +101,40 @@ export class PermissionEngine {
   }
 
   /**
-   * Overrides the active permission mode for the lifetime of this engine instance.
-   * Used by the allow_session response to switch to bypass for the rest of the session.
+   * Override the global default mode (affects sessions with no per-session override).
+   * Prefer setSessionMode() for session-scoped escalation.
    */
   setMode(mode: PermissionMode): void {
     this.mode = mode;
+  }
+
+  /**
+   * Override the permission mode for a single session.
+   * Used by `allow_session` so that approving in session A does not bypass
+   * permission checks in session B.
+   */
+  setSessionMode(sessionId: string, mode: PermissionMode): void {
+    this.sessionModes.set(sessionId, mode);
+  }
+
+  /**
+   * Returns true when a session has accumulated enough denials to suggest
+   * the model is stuck in a loop. The AgentEngine should inject a hint into
+   * the system prompt and consider interrupting rather than retrying.
+   */
+  isLooping(sessionId: string): boolean {
+    const c = this.denialCounters.get(sessionId);
+    if (!c) return false;
+    return (
+      c.consecutive >= PermissionEngine.MAX_CONSECUTIVE_DENIALS ||
+      c.total       >= PermissionEngine.MAX_TOTAL_DENIALS
+    );
+  }
+
+  /** Reset the consecutive denial counter for a session on a successful grant. */
+  recordSuccess(sessionId: string): void {
+    const c = this.denialCounters.get(sessionId);
+    if (c) c.consecutive = 0;
   }
 
   // ── Public API ────────────────────────────────────────────────────────────
@@ -168,7 +212,13 @@ export class PermissionEngine {
     }
 
     // ── Step 4: bypass mode ────────────────────────────────────────────────
-    if (this.mode === 'bypass') {
+    // Use session-specific mode when available; fall back to global default.
+    const effectiveMode = context.sessionId
+      ? (this.sessionModes.get(context.sessionId) ?? this.mode)
+      : this.mode;
+
+    if (effectiveMode === 'bypass') {
+      if (context.sessionId) this.recordSuccess(context.sessionId);
       return { granted: true, decisionReason: { type: 'mode', mode: 'bypass' } };
     }
 
@@ -250,7 +300,7 @@ export class PermissionEngine {
     }
 
     // ── Step 11: auto mode decisions ───────────────────────────────────────
-    if (this.mode === 'auto') {
+    if (effectiveMode === 'auto') {
       // Writes / executes in workspace in auto mode
       if (allPaths.length > 0 && allPaths.every(p => pathInAnyWorkingDir(p, context))) {
         return { granted: true, decisionReason: { type: 'workingDir' } };
@@ -324,19 +374,28 @@ export class PermissionEngine {
 
     switch (response.action) {
       case 'allow':
+        if (context.sessionId) this.recordSuccess(context.sessionId);
         return { granted: true };
 
       case 'allow_session':
-        // Switch to bypass for the rest of this session — no further prompts.
-        this.setMode('bypass');
+        // Promote THIS session to bypass — other sessions are unaffected.
+        if (context.sessionId) {
+          this.setSessionMode(context.sessionId, 'bypass');
+        } else {
+          // Headless / no session context — fall back to global mutation.
+          this.setMode('bypass');
+        }
+        if (context.sessionId) this.recordSuccess(context.sessionId);
         return { granted: true, decisionReason: { type: 'mode', mode: 'bypass' } };
 
-      case 'deny':
+      case 'deny': {
+        this.trackDenial(context.sessionId);
         return {
           granted:        false,
           reason:         response.reason ?? 'denied by user',
           decisionReason: { type: 'other', reason: response.reason ?? 'user denied' },
         };
+      }
 
       case 'always_allow': {
         // BUG-04 fix: pass real input so extractPath can derive the correct path.
@@ -409,6 +468,14 @@ export class PermissionEngine {
     }
 
     return { action, tool: toolName, pathGlob, scope };
+  }
+
+  private trackDenial(sessionId: string | undefined): void {
+    if (!sessionId) return;
+    const c = this.denialCounters.get(sessionId) ?? { consecutive: 0, total: 0 };
+    c.consecutive++;
+    c.total++;
+    this.denialCounters.set(sessionId, c);
   }
 }
 

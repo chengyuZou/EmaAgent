@@ -28,7 +28,7 @@ import { TtsClient, FsAudioArchive, type AudioArchive } from '@ema-agent/tts';
 import { SttClient } from '@ema-agent/stt';
 import { buildTtsClient } from './tts.js';
 import { buildSttClient } from './stt.js';
-import { audioDirFor } from '../storage-locations/index.js';
+import { sessionAudioDirFor } from '../storage-locations/index.js';
 import { SessionStore }   from '@ema-agent/session';
 import { EmotionEngine }  from '@ema-agent/emotion';
 import {
@@ -44,6 +44,7 @@ import { AskUserRegistry } from '../ask-user/registry.js';
 import type { EmaStreamEvent } from '@ema-agent/contracts';
 import { ToolRegistry } from '@ema-agent/tool';
 import { registerBuiltinTools } from '@ema-agent/tool-builtin';
+import { detectBackend }        from '@ema-agent/sandbox';
 import { MemoryPlanner } from '@ema-agent/memory';
 import { CommandRunner } from '@ema-agent/sandbox';
 import type { ICommandRunner } from '@ema-agent/tool';
@@ -308,8 +309,15 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
   // either rebuild or expose upsert methods on TtsClient (deferred to 6B-3).
   const tts = buildTtsClient({ profileDb });
 
-  // ── Audio archive (lives under {activeDataDir}/audio) ──────────────────────
-  const audioArchive = new FsAudioArchive(audioDirFor(activeDataDir));
+  // ── Audio archive ───────────────────────────────────────────────────────────
+  // TODO(wiring): FsAudioArchive should be per-session, using
+  //   sessionAudioDirFor(activeDataDir, sessionId)
+  // so files land under sessions/<sessionId>/audio/.
+  // For now we keep a shared root; the session-scoped path helpers are in place
+  // for when the orchestrator is wired up with per-session archives.
+  const audioArchive = new FsAudioArchive(
+    nodePath.join(activeDataDir, 'audio'),
+  );
 
   // ── STT façade ─────────────────────────────────────────────────────────────
   const stt = buildSttClient({ profileDb });
@@ -339,11 +347,12 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
     mode: permissionMode,
     // Read-only tools are always allowed — no side effects, no prompt fatigue.
     // Write/execute tools remain gated by `permissionMode`.
+    // Always allow read-only tools — no side effects, no prompt fatigue.
+    // Tool names must match the registered tool name strings exactly.
     rules: [
-      { tool: 'fs_read',     action: 'allow', scope: 'global' },
-      { tool: 'fs_list_dir', action: 'allow', scope: 'global' },
-      { tool: 'fs_stat',     action: 'allow', scope: 'global' },
-      { tool: 'fs_grep',     action: 'allow', scope: 'global' },
+      { tool: 'fs_read', action: 'allow', scope: 'global' },
+      { tool: 'glob',    action: 'allow', scope: 'global' },
+      { tool: 'grep',    action: 'allow', scope: 'global' },
     ],
     ask: async () => ({ action: 'deny', reason: 'no per-turn ask wired' }),
   });
@@ -378,8 +387,18 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
     };
   };
 
+  // Detect sandbox capability once — cached for the process lifetime.
+  // On Windows native without WSL2+bubblewrap, backend = 'app-layer' (no
+  // physical OS isolation). Exposing shell tools without a real sandbox is a
+  // security boundary failure, so we omit them unless the operator opts in
+  // via AGEN_UNSAFE_SHELL=1 (dev/test use only).
+  const sandboxDetection = detectBackend();
+  const disableExecuteTools =
+    sandboxDetection.backend === 'app-layer' &&
+    process.env['AGEN_UNSAFE_SHELL'] !== '1';
+
   const tools = new ToolRegistry();
-  registerBuiltinTools(tools);
+  registerBuiltinTools(tools, { disableExecuteTools });
 
   // ── Sandbox: per-session command runner cache ──────────────────────────────
   //
@@ -457,7 +476,19 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
   // ── MCP registry ────────────────────────────────────────────────────────────
   const mcpServersRepo = new McpServersRepo(profileDb.sqlite);
   const mcpServerStore = new McpServerStore(mcpServersRepo);
-  const mcpRegistry    = new McpRegistry(mcpServerStore, tools);
+  // Gate stdio MCP server spawning through PermissionEngine.
+  // HTTP/SSE servers connect freely (no local subprocess spawned).
+  const mcpStdioGate = async (serverName: string, command: string): Promise<boolean> => {
+    const outcome = await permission.gate(
+      'mcp_stdio_connect',
+      { serverName, command },
+      { riskLevel: 'high', accessType: 'execute' },
+      { workspaceRoot: process.cwd() },
+    );
+    return outcome.granted;
+  };
+
+  const mcpRegistry = new McpRegistry(mcpServerStore, tools, mcpStdioGate);
 
   // ── Skill ────────────────────────────────────────────────────────────────────
   const skillsRepo     = new SkillsRepo(profileDb.sqlite);

@@ -1,4 +1,5 @@
 export { McpRegistry }               from './registry.js';
+export type { McpStdioPermissionGate } from './registry.js';
 export { McpServerStore }            from './store.js';
 export {
   McpServerConfigSchema,
