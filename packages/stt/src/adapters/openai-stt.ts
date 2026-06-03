@@ -1,4 +1,4 @@
-import type { SttAdapter, SttAdapterCall, SttProviderConfig, SttResponse } from '../types.js';
+import type { SttAdapter, SttAdapterCall, SttProviderConfig, SttProbeResult, SttResponse } from '../types.js';
 
 // ── OpenAI-compatible /v1/audio/transcriptions (Whisper) ────────────────────
 //
@@ -14,6 +14,32 @@ export class OpenAiSttAdapter implements SttAdapter {
   readonly protocol = 'openai-stt' as const;
 
   constructor(private readonly config: SttProviderConfig) {}
+
+  /**
+   * Live probe via GET /v1/models — a lightweight auth check that works on
+   * all OpenAI-compatible providers without needing to upload audio.
+   * Returns ok=true when the provider responds with any 2xx status.
+   */
+  async probe(): Promise<Omit<SttProbeResult, 'providerId'>> {
+    const url = `${this.config.baseUrl.replace(/\/$/, '')}/models`;
+    const startedAt = Date.now();
+    try {
+      const res = await fetch(url, {
+        headers: { 'Authorization': `Bearer ${this.config.apiKey}` },
+        signal: AbortSignal.timeout(10_000),
+      });
+      const latencyMs = Date.now() - startedAt;
+      if (res.ok) return { ok: true, latencyMs };
+      const text = await safeReadText(res);
+      return {
+        ok:        false,
+        latencyMs,
+        error:     `HTTP ${res.status}: ${text.slice(0, 120)}`,
+      };
+    } catch (err) {
+      return { ok: false, error: (err as Error).message };
+    }
+  }
 
   async transcribe(call: SttAdapterCall): Promise<SttResponse> {
     const url = `${this.config.baseUrl.replace(/\/$/, '')}/audio/transcriptions`;

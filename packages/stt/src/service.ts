@@ -1,4 +1,4 @@
-import type { SttAdapter, SttAdapterCall, SttProviderConfig, SttRequest, SttResponse, SttHealthResult } from './types.js';
+import type { SttAdapter, SttAdapterCall, SttProviderConfig, SttRequest, SttResponse, SttHealthResult, SttProbeResult } from './types.js';
 import { OpenAiSttAdapter } from './adapters/openai-stt.js';
 
 // ── SttClient Façade ────────────────────────────────────────────────────────
@@ -16,8 +16,8 @@ function createAdapter(cfg: SttProviderConfig): SttAdapter {
 }
 
 export class SttClient {
-  private readonly adapters = new Map<string, SttAdapter>();
-  private readonly configs  = new Map<string, SttProviderConfig>();
+  private adapters = new Map<string, SttAdapter>();
+  private configs  = new Map<string, SttProviderConfig>();
 
   constructor(
     configs: SttProviderConfig[],
@@ -55,12 +55,32 @@ export class SttClient {
 
   /** Hot-reload: replace all provider configs atomically. */
   reload(configs: SttProviderConfig[]): void {
-    this.configs.clear();
-    this.adapters.clear();
+    this.adapters = new Map();
+    this.configs  = new Map();
     for (const config of configs) {
       this.configs.set(config.id, config);
       this.adapters.set(config.id, createAdapter(config));
     }
+  }
+
+  /**
+   * Live probe — makes a real API call to verify credentials.
+   * Symmetric with LlmRouter.probe() / TtsClient equivalent.
+   *
+   * Delegates to adapter.probe() when available; falls back to
+   * ok=false + "probe not supported" when the adapter has no probe
+   * (should not happen in V1 since openai-stt implements it).
+   */
+  async probe(providerId: string): Promise<SttProbeResult> {
+    const adapter = this.adapters.get(providerId);
+    if (!adapter) {
+      return { providerId, ok: false, error: `provider "${providerId}" not registered` };
+    }
+    if (!adapter.probe) {
+      return { providerId, ok: false, error: 'probe not supported by this adapter' };
+    }
+    const result = await adapter.probe();
+    return { providerId, ...result };
   }
 
   /** Transcribe audio. providerId + model are routing fields embedded in the request. */

@@ -71,6 +71,16 @@ export interface SttHealthResult {
   providers: SttProviderHealth[];
 }
 
+// ── Live probe ────────────────────────────────────────────────────────────────
+
+export interface SttProbeResult {
+  providerId: string;
+  ok:         boolean;
+  latencyMs?: number;
+  /** Present when ok=false. */
+  error?:     string;
+}
+
 // ── Adapter contract ──────────────────────────────────────────────────────────
 
 export interface SttAdapter {
@@ -80,4 +90,10 @@ export interface SttAdapter {
    * provider errors as thrown Errors with a descriptive message.
    */
   transcribe(call: SttAdapterCall): Promise<SttResponse>;
+  /**
+   * Live probe — verifies credentials with a lightweight real API call
+   * (no audio upload required). Used by the settings page "Test connection"
+   * button. Optional; SttClient.probe() returns ok=false when not implemented.
+   */
+  probe?(): Promise<Omit<SttProbeResult, 'providerId'>>;
 }
