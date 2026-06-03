@@ -5,6 +5,7 @@ import type { HookBus } from '@ema-agent/hook';
 import type { EmotionEngine } from '@ema-agent/emotion';
 import type { ICommandRunner, IArtifactStore, ToolRegistry } from '@ema-agent/tool';
 import type { PermissionEngine, AskPermissionFn } from '@ema-agent/permission';
+import type { AgentFileStateStore, AgentToolResultStore } from '@ema-agent/agent-context';
 
 /** Minimal interface for the AskUser registry — avoids importing from core. */
 export interface AskUserRegistryLike {
@@ -55,6 +56,15 @@ export interface AgentDeps {
   askUserRegistry?: AskUserRegistryLike;
   /** Persistent artifact store — injected so artifact_write/read/list persist across turns. */
   artifactStore?: IArtifactStore;
+  /**
+   * Per-session context store factory. Returns the file-state and tool-result
+   * stores for a given session, creating them on first call and caching.
+   * Optional so tests and non-agent callers can omit it.
+   */
+  getContextStores?: (sessionId: SessionId) => {
+    fileStateStore:  AgentFileStateStore;
+    toolResultStore: AgentToolResultStore;
+  };
 }
 
 // ── Run input ─────────────────────────────────────────────────────────────────

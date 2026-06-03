@@ -85,6 +85,14 @@ export class AgentFileStateStore {
     return entries.slice(0, limit).map(([path]) => path);
   }
 
+  /** Full entries for the N most recently accessed files. Used by memory hooks for compact restore. */
+  recentEntries(limit: number): ReadonlyArray<{ path: string; content: string; mtimeMs: number }> {
+    return [...this.map.entries()]
+      .sort(([, a], [, b]) => b.lastAccessMs - a.lastAccessMs)
+      .slice(0, limit)
+      .map(([path, entry]) => ({ path, content: entry.content, mtimeMs: entry.mtimeMs }));
+  }
+
   clear(): void {
     this.map.clear();
     this.totalBytes = 0;

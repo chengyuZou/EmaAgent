@@ -49,6 +49,10 @@ async function* runTurn(
   // Per-turn state
   const policy        = new AgentPolicy(subMode, tools.list());
   const readFileState = new Map() as ReadFileState;
+
+  // Per-session context stores (file state + tool result offload).
+  // Absent when getContextStores is not wired (tests / non-agent hosts).
+  const contextStores = deps.getContextStores?.(sessionId);
   let totalInput      = 0;
   let totalOutput     = 0;
   let iterations      = 0;
@@ -77,6 +81,7 @@ async function* runTurn(
     additionalWorkingDirs: input.additionalWorkingDirs,
     signal,
     readFileState,
+    fileStateStore: contextStores?.fileStateStore,
     emit:          toolEmit,
     commandRunner: resolvedRunner,
     artifactStore: deps.artifactStore,
@@ -96,16 +101,17 @@ async function* runTurn(
   const executor = new TurnToolExecutor({
     sessionId,
     turnId,
-    allows:     (name) => policy.allows(name),
+    allows:          (name) => policy.allows(name),
     tools,
     permission,
     permCtx,
     hooks,
     toolCtx,
-    buildAsk:   deps.buildAsk,
-    runner:     resolvedRunner,
-    pushEv:     toolEmit,
-    signal:     signal_,
+    buildAsk:        deps.buildAsk,
+    runner:          resolvedRunner,
+    pushEv:          toolEmit,
+    signal:          signal_,
+    toolResultStore: contextStores?.toolResultStore,
   });
 
   try {

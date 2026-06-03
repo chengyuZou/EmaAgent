@@ -16,6 +16,7 @@ import type { EmaStreamEvent, ToolResultBlock, SessionId, TurnId } from '@ema-ag
 import type { ToolExecutionContext, ICommandRunner } from '@ema-agent/tool';
 import type { PermissionEngine, PermissionContext } from '@ema-agent/permission';
 import type { HookBus } from '@ema-agent/hook';
+import type { AgentToolResultStore } from '@ema-agent/agent-context';
 import type { AgentDeps } from './types.js';
 
 // ── Internal per-tool state ───────────────────────────────────────────────────
@@ -55,6 +56,12 @@ export interface TurnToolExecutorOpts {
    * track.done flips to true (so the loop can check allDone() even without a new event).
    */
   signal:      () => void;
+  /**
+   * Per-session tool-result store. When present, large outputs are offloaded to
+   * disk and the tool_result block receives a preview + file reference instead.
+   * Absent in tests and non-agent callers — falls back to full inline content.
+   */
+  toolResultStore?: AgentToolResultStore;
 }
 
 // ── TurnToolExecutor ──────────────────────────────────────────────────────────
@@ -214,7 +221,13 @@ export class TurnToolExecutor {
       }
 
       const serialized = typeof output === 'string' ? output : JSON.stringify(output, null, 2);
-      track.result     = { type: 'tool_result', toolUseId: id, content: serialized, isError };
+      const { toolResultStore } = this.opts;
+      let content = serialized;
+      if (toolResultStore) {
+        const norm = toolResultStore.maybeNormalize(id, name, serialized);
+        if (norm.kind !== 'unchanged') content = norm.blockContent;
+      }
+      track.result = { type: 'tool_result', toolUseId: id, content, isError };
 
     } finally {
       // Always mark done and signal the drain loop — even if an unexpected error

@@ -28,7 +28,8 @@
     "@ema-agent/emotion": "workspace:*",
     "@ema-agent/tool": "workspace:*",
     "@ema-agent/storage": "workspace:*",
-    "@ema-agent/sandbox": "workspace:*"
+    "@ema-agent/sandbox": "workspace:*",
+    "@ema-agent/agent-context": "workspace:*"
   },
   "devDependencies": {
     "@ema-agent/tool-builtin": "workspace:*",
