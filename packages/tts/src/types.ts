@@ -1,44 +1,79 @@
-import type {
-  TtsStreamEvent,
-  TtsVoiceRef,
-  TtsAudioFormat,
-  TtsTurnMode,
-  TtsProtocol,
-} from '@ema-agent/contracts';
+import type { TtsProtocol } from '@ema-agent/contracts';
 
-// Re-export shared contract types so consumers only import from this package
-export type {
-  TtsStreamEvent,
-  TtsVoiceRef,
-  TtsAudioFormat,
-  TtsTurnMode,
-  TtsProtocol,
-} from '@ema-agent/contracts';
+// Re-export TtsProtocol — it lives in contracts because it's derived from
+// ProtocolFamily (the provider registry needs it). Everything else is
+// TTS-package–internal.
+export type { TtsProtocol } from '@ema-agent/contracts';
+
+// ── TTS-internal types ────────────────────────────────────────────────────────
+
+/** Resolved voice reference passed into every synthesize call. */
+export interface TtsVoiceRef {
+  /** Profile-scoped relative path to the reference audio file. */
+  refAudioPath: string;
+  /** Prompt text used for voice cloning (empty ok for some providers). */
+  promptText:   string;
+  /** Language code, e.g. 'zh', 'en'. */
+  promptLang:   string;
+  /**
+   * Provider-assigned voice URI.
+   * Required by openai-tts and dashscope-tts — those adapters check and yield
+   * a `permanent_unsupported_voice_kind` error when absent.
+   * gpt-sovits-tts ignores this field and uses `refAudioPath` directly.
+   *
+   * Populated lazily by `ensureVoiceUri()` in apps/core before the coordinator
+   * starts. Never hardcode a value here.
+   */
+  voiceUri?: string;
+}
+
+/** Output audio format requested from the adapter. */
+export type TtsAudioFormat = 'mp3' | 'pcm' | 'wav' | 'opus';
+
+/** Coarse error classes emitted by adapters. */
+export type TtsErrorCode =
+  | 'permanent_refaudio_missing'
+  | 'permanent_credentials'
+  | 'permanent_unsupported_voice_kind'
+  | 'permanent_unsupported_model'
+  | 'permanent_bad_request'
+  | 'transient_network'
+  | 'transient_timeout'
+  | 'transient_server'
+  | 'unknown';
+
+/** Wire events emitted by adapters. */
+export type TtsStreamEvent =
+  | { type: 'audio_chunk';     bytes: Uint8Array<ArrayBufferLike>; mime: string }
+  | { type: 'sentence_started'; index: number; text: string }
+  | { type: 'sentence_done';    index: number; durationMs?: number }
+  | { type: 'done';             totalBytes: number; firstByteMs: number }
+  | { type: 'error';            code: TtsErrorCode; message: string };
 
 // ── Public TTS request (Façade entry point) ───────────────────────────────────
 //
 // Pattern-aligned with LlmRequest: pure data, no business semantics.
 // The caller (TtsCoordinator / apps/core orchestrator) is responsible for
 // resolving the voice from the character card and ensuring voiceUri is
-// populated before calling synthesize.
+// populated before calling synthesize for cloud adapters.
 
 /**
- * `voice` must carry a populated `voiceUri` — the caller (apps/core) is
- * responsible for resolveVoice + ensureVoiceUri before calling synthesize.
- * TtsClient will reject requests without a voiceUri.
+ * Fully-resolved synthesis request.
  *
- * `turnMode` is an optional hint for the text filter: 'agent' strips code
- * blocks more aggressively than 'chat'/'narrative'.
+ * `voice` is resolved from the active character card by apps/core.
+ * For openai-tts and dashscope-tts protocols `voice.voiceUri` must be
+ * populated before calling `synthesize()`; the adapter will yield
+ * `permanent_unsupported_voice_kind` otherwise.
+ * gpt-sovits-tts reads `voice.refAudioPath` directly and never needs voiceUri.
  */
 export interface TtsRequest {
-  providerId:  string;
-  model:       string;
-  text:        string;
-  voice:       TtsVoiceRef;
-  turnMode?:   TtsTurnMode;
-  format?:     TtsAudioFormat;
-  sampleRate?: number;
-  speed?:      number;
+  providerId:   string;
+  model:        string;
+  text:         string;
+  voice:        TtsVoiceRef;
+  format?:      TtsAudioFormat;
+  sampleRate?:  number;
+  speed?:       number;
   abortSignal?: AbortSignal;
 }
 

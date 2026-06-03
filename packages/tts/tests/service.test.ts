@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { TtsClient } from '../src/service.js';
-import type { TtsAdapter, TtsProviderConfig, TtsRequest } from '../src/types.js';
-import type { TtsStreamEvent, TtsVoiceRef } from '@ema-agent/contracts';
+import type { TtsAdapter, TtsProviderConfig, TtsRequest, TtsStreamEvent, TtsVoiceRef } from '../src/types.js';
 
 // ── Mocks ─────────────────────────────────────────────────────────────────────
 
@@ -71,7 +70,9 @@ describe('TtsClient (dumb dispatcher)', () => {
     expect((events[0] as { message: string }).message).toContain('not registered');
   });
 
-  it('3. errors when voiceUri is missing', async () => {
+  it('3. adapter rejects missing voiceUri (not TtsClient)', async () => {
+    // TtsClient is a dumb dispatcher — voiceUri validation lives in each adapter.
+    // The real OpenAiTtsAdapter (created for 'openai-tts' protocol) checks it.
     const client = new TtsClient([mockConfig('p1')]);
     const events = await collect(client, 'p1', 'hello', mockVoiceNoUri());
 
@@ -94,18 +95,21 @@ describe('TtsClient (dumb dispatcher)', () => {
     expect(events[1]!.type).toBe('done');
   });
 
-  it('5. filters text (strips markdown / ACT markers)', async () => {
+  it('5. filters text (strips markdown, URLs, inline code)', async () => {
+    // ACT tags are stripped upstream by @ema-agent/emotion; TTS receives clean text.
     const ad = mockAdapter([{ type: 'done', totalBytes: 0, firstByteMs: 0 }]);
     const client = new TtsClient([mockConfig('p1')], new Map([['p1', ad]]));
 
-    await collect(client, 'p1', '<|ACT:emotion:happy|> 你好 [click](https://x.com) 世界');
+    await collect(client, 'p1', '你好 [click](https://x.com) 世界');
 
     expect(ad.calls[0]!.text).toBe('你好 click 世界');
   });
 
   it('6. returns empty done when text filters to nothing', async () => {
     const client = new TtsClient([mockConfig('p1')]);
-    const events = await collect(client, 'p1', '<|ACT:emotion:happy|>');
+    // A pure URL string filters to the replacement word "链接" — not empty.
+    // Use a string that becomes empty after stripping: only markdown punctuation.
+    const events = await collect(client, 'p1', '---');
 
     expect(events).toHaveLength(1);
     expect(events[0]!.type).toBe('done');

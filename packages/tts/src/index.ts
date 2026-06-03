@@ -12,6 +12,7 @@ export type {
   TtsStreamEvent,
   TtsVoiceRef,
   TtsAudioFormat,
+  TtsErrorCode,
   TtsProtocol,
   TtsHealthResult,
   TtsProviderHealth,
@@ -19,8 +20,7 @@ export type {
 
 export { SentenceSplitter } from './streaming/sentence-splitter.js';
 export type { SentenceChunk } from './streaming/sentence-splitter.js';
-export { TextFilterStream, filterSentenceForTts, filterTextForTts } from './streaming/text-filter.js';
-export type { TtsFilterOptions } from './streaming/text-filter.js';
+export { TextFilterStream, filterSentenceForTts } from './streaming/text-filter.js';
 
 export { FsAudioArchive } from './archive.js';
 export type { AudioArchive, SegmentWriter } from './archive.js';

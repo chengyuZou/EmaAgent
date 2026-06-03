@@ -1,5 +1,5 @@
 import type {
-  EmaStreamEvent, TurnId, SessionId, TtsTurnMode,
+  EmaStreamEvent, TurnId, SessionId,
 } from '@ema-agent/contracts';
 import type { HookBus, HookContext, HookResult } from '@ema-agent/hook';
 import { PRIORITY } from '@ema-agent/hook';
@@ -41,15 +41,18 @@ export interface TtsCoordinatorArgs {
   providerId:    string;
   /** Model name for the provider (e.g. "tts-1", "cosyvoice-v1"). */
   model:         string;
-  /** Business mode ('chat' | 'narrative' | 'agent') — for text filtering only. */
-  turnMode?:     TtsTurnMode;
   ttsClient:     TtsClient;
   hooks:         HookBus;
   /** Push an EmaStreamEvent into the merged turn SSE queue. */
   emit:          (event: EmaStreamEvent) => void;
   /** If set, segments + merged file are persisted via this archive. */
   archive?:      AudioArchive;
-  /** Default 'mp3'. */
+  /**
+   * Preferred output format. Defaults to 'mp3'. The actual segment extension
+   * is inferred from the first audio_chunk MIME emitted by the adapter, so
+   * Qwen-TTS (which always delivers WAV after PCM→WAV wrapping) writes .wav
+   * segments regardless of this hint.
+   */
   format?:       'mp3' | 'pcm' | 'wav' | 'opus';
 }
 
@@ -59,7 +62,6 @@ export class TtsCoordinator {
   private readonly voice:       TtsVoiceRef;
   private readonly providerId:  string;
   private readonly model:       string;
-  private readonly turnMode?:   TtsTurnMode;
   private readonly ttsClient:   TtsClient;
   private readonly hooks:       HookBus;
   private readonly emit:        (event: EmaStreamEvent) => void;
@@ -72,20 +74,24 @@ export class TtsCoordinator {
   private chain:      Promise<void>       = Promise.resolve();
   private finishing                       = false;
   private finalAudioPath: string | null   = null;
+  /**
+   * Actual archive extension detected from the first audio_chunk MIME.
+   * Set once on the first synthesized sentence; used by finish() for finalizeTurn.
+   */
+  private effectiveExt: string | null = null;
 
   constructor(args: TtsCoordinatorArgs) {
-    this.turnId      = args.turnId;
-    this.sessionId   = args.sessionId;
-    this.voice       = args.voice;
-    this.providerId  = args.providerId;
-    this.model       = args.model;
-    this.turnMode    = args.turnMode;
-    this.ttsClient   = args.ttsClient;
-    this.hooks       = args.hooks;
-    this.emit        = args.emit;
-    this.archive     = args.archive;
-    this.format      = args.format ?? 'mp3';
-    this.textFilter  = new TextFilterStream(args.turnMode ?? 'chat');
+    this.turnId     = args.turnId;
+    this.sessionId  = args.sessionId;
+    this.voice      = args.voice;
+    this.providerId = args.providerId;
+    this.model      = args.model;
+    this.ttsClient  = args.ttsClient;
+    this.hooks      = args.hooks;
+    this.emit       = args.emit;
+    this.archive    = args.archive;
+    this.format     = args.format ?? 'mp3';
+    this.textFilter = new TextFilterStream();
   }
 
   /** Register the afterLlmDelta hook. Call once at turn start. */
@@ -147,7 +153,10 @@ export class TtsCoordinator {
 
     if (this.archive) {
       try {
-        this.finalAudioPath = await this.archive.finalizeTurn(this.turnId as string, this.format);
+        this.finalAudioPath = await this.archive.finalizeTurn(
+          this.turnId as string,
+          this.effectiveExt ?? this.format,
+        );
       } catch {
         // archive failure is non-fatal — audio already streamed live
         this.finalAudioPath = null;
@@ -186,8 +195,10 @@ export class TtsCoordinator {
 
   private async synthesizeOne(index: number, text: string): Promise<void> {
     const sentenceId = makeSentenceId(this.turnId, index);
-    const writer    = this.archive?.openSegment(this.turnId as string, index, this.format);
-    let wroteAny    = false;
+    // Segment is opened lazily on the first audio_chunk so we can infer the
+    // actual file extension from the chunk's MIME (e.g. Qwen-TTS delivers WAV).
+    let writer: ReturnType<NonNullable<typeof this.archive>['openSegment']> | undefined;
+    let wroteAny = false;
 
     try {
       for await (const ev of this.ttsClient.synthesize({
@@ -195,10 +206,14 @@ export class TtsCoordinator {
         providerId: this.providerId,
         model:      this.model,
         voice:      this.voice,
-        turnMode:   this.turnMode,
         format:     this.format,
       })) {
         if (ev.type === 'audio_chunk') {
+          if (!writer && this.archive) {
+            const ext = mimeToExt(ev.mime) ?? this.format;
+            this.effectiveExt ??= ext;
+            writer = this.archive.openSegment(this.turnId as string, index, ext);
+          }
           writer?.write(ev.bytes);
           wroteAny = true;
         }
@@ -209,15 +224,22 @@ export class TtsCoordinator {
       // Always send a sentence_complete marker, even if the adapter produced
       // no audio (e.g. all-error path). The frontend uses it to detect that
       // the sentence is "done attempting" and won't get more chunks.
-      this.emit({ type: 'tts_sentence_complete', sentenceId, sessionId: this.sessionId as string });
+      this.emit({ type: 'tts_sentence_complete', turnId: this.turnId, sentenceId, sessionId: this.sessionId as string });
     } finally {
       writer?.close();
-      if (!wroteAny) {
-        // empty segment — clean up to keep the segments dir tidy
-        // (archive's discardTurn is for whole turns; per-segment cleanup
-        // is not exposed yet — leave the empty file, finalize will skip it
-        // because mergeMp3SegmentsByConcat ignores empty buffers).
-      }
     }
   }
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function mimeToExt(mime: string): string | null {
+  if (mime.startsWith('audio/mpeg'))                     return 'mp3';
+  if (mime.startsWith('audio/wav'))                      return 'wav';
+  if (mime.startsWith('audio/ogg') ||
+      mime.startsWith('audio/opus'))                     return 'ogg';
+  if (mime.startsWith('audio/aac'))                      return 'aac';
+  if (mime.startsWith('audio/L16') ||
+      mime.startsWith('audio/pcm'))                      return 'pcm';
+  return null;
 }

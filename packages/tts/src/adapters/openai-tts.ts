@@ -1,5 +1,4 @@
-import type { TtsAdapter, TtsProviderConfig, TtsRequest } from '../types.js';
-import type { TtsStreamEvent, TtsErrorCode } from '@ema-agent/contracts';
+import type { TtsAdapter, TtsProviderConfig, TtsRequest, TtsStreamEvent, TtsErrorCode } from '../types.js';
 import { readFile } from 'node:fs/promises';
 import { basename } from 'node:path';
 

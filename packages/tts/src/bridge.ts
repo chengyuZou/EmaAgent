@@ -41,6 +41,7 @@ export function ttsEventToEma(
     case 'audio_chunk':
       return {
         type:       'tts_chunk',
+        turnId:     ctx.turnId,
         audio:      base64Encode(ev.bytes),
         sentenceId: makeSentenceId(ctx.turnId, currentSentenceIndex),
         sessionId:  ctx.sessionId as string,
@@ -49,6 +50,7 @@ export function ttsEventToEma(
     case 'sentence_done':
       return {
         type:       'tts_sentence_complete',
+        turnId:     ctx.turnId,
         sentenceId: makeSentenceId(ctx.turnId, ev.index),
         sessionId:  ctx.sessionId as string,
       };

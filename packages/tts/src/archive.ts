@@ -68,9 +68,14 @@ export class FsAudioArchive implements AudioArchive {
       .map((f) => path.join(segDir, f));
 
     if (segments.length === 0) return null;
-    if (segments.length === 1) return segments[0]!;
 
     const target = path.join(this.audioRoot, 'merged', `${turnId}.${ext}`);
+
+    if (segments.length === 1) {
+      fs.mkdirSync(path.dirname(target), { recursive: true });
+      fs.copyFileSync(segments[0]!, target);
+      return target;
+    }
 
     if (ext === 'mp3') {
       const merged = mergeMp3SegmentsByConcat(segments);

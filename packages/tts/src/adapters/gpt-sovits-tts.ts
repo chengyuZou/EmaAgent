@@ -1,5 +1,4 @@
-import type { TtsAdapter, TtsProviderConfig, TtsRequest } from '../types.js';
-import type { TtsStreamEvent, TtsErrorCode } from '@ema-agent/contracts';
+import type { TtsAdapter, TtsProviderConfig, TtsRequest, TtsStreamEvent, TtsErrorCode } from '../types.js';
 
 // ── GPT-SoVITS local server (api_v2.py) ─────────────────────────────────────
 //

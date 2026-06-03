@@ -3,8 +3,7 @@ import fs   from 'node:fs/promises';
 import path from 'node:path';
 import WebSocket from 'ws';
 
-import type { TtsAdapter, TtsProviderConfig, TtsRequest } from '../types.js';
-import type { TtsStreamEvent, TtsErrorCode } from '@ema-agent/contracts';
+import type { TtsAdapter, TtsProviderConfig, TtsRequest, TtsStreamEvent, TtsErrorCode } from '../types.js';
 
 // ── DashScope (Aliyun百炼) TTS ──────────────────────────────────────────────
 //
@@ -151,6 +150,37 @@ function httpHostFromConfig(baseUrl: string): string {
 
 async function* errorOnce(code: TtsErrorCode, message: string): AsyncGenerator<TtsStreamEvent> {
   yield { type: 'error', code, message };
+}
+
+// ── PCM → WAV conversion ──────────────────────────────────────────────────────
+//
+// Wraps raw 16-bit signed LE mono PCM into a standard RIFF/WAV container so
+// browsers can play it without additional codec negotiation.
+// Only called for Qwen-TTS which always delivers audio/L16 over its WS protocol.
+
+function pcmToWav(pcm: Buffer, sampleRate: number): Buffer {
+  const numChannels  = 1;
+  const bitsPerSample = 16;
+  const byteRate     = sampleRate * numChannels * (bitsPerSample / 8);
+  const blockAlign   = numChannels * (bitsPerSample / 8);
+  const dataSize     = pcm.length;
+  const header       = Buffer.alloc(44);
+
+  header.write('RIFF',  0);                                   // ChunkID
+  header.writeUInt32LE(36 + dataSize, 4);                     // ChunkSize
+  header.write('WAVE',  8);                                   // Format
+  header.write('fmt ',  12);                                  // Subchunk1ID
+  header.writeUInt32LE(16,            16);                    // Subchunk1Size (PCM)
+  header.writeUInt16LE(1,             20);                    // AudioFormat (PCM = 1)
+  header.writeUInt16LE(numChannels,   22);                    // NumChannels
+  header.writeUInt32LE(sampleRate,    24);                    // SampleRate
+  header.writeUInt32LE(byteRate,      28);                    // ByteRate
+  header.writeUInt16LE(blockAlign,    32);                    // BlockAlign
+  header.writeUInt16LE(bitsPerSample, 34);                    // BitsPerSample
+  header.write('data',  36);                                  // Subchunk2ID
+  header.writeUInt32LE(dataSize,      40);                    // Subchunk2Size
+
+  return Buffer.concat([header, pcm]);
 }
 
 function mimeForFormat(format: string): string {
@@ -396,15 +426,13 @@ class CosyVoiceSession {
 //   5. Send session.finish → wait for session.finished → close
 
 class QwenTtsRealtimeSession {
-  private readonly mime:    string;
-  private readonly pcmSr:   number;
+  private readonly pcmSr: number;
 
   constructor(
     private readonly config: TtsProviderConfig,
     private readonly req:    TtsRequest,
   ) {
     this.pcmSr = req.sampleRate ?? 24000;
-    this.mime  = `audio/L16; rate=${this.pcmSr}; channels=1`;
   }
 
   async *run(): AsyncGenerator<TtsStreamEvent> {
@@ -419,7 +447,10 @@ class QwenTtsRealtimeSession {
     const queue = new EventQueue<TtsStreamEvent>();
     const startedAt = Date.now();
     let firstByteMs = 0;
-    let totalBytes  = 0;
+    // Accumulate raw PCM so we can wrap it in a WAV header after all deltas arrive.
+    // Qwen-TTS always delivers audio/L16 (raw PCM) — we convert to WAV so the
+    // frontend can play it without a custom decoder.
+    const pcmChunks: Buffer[] = [];
 
     let ws: WebSocket;
     try {
@@ -439,22 +470,23 @@ class QwenTtsRealtimeSession {
     };
     this.req.abortSignal?.addEventListener('abort', abortHandler);
 
-    const voice = this.req.voice;
+    const voice  = this.req.voice;
+    const pcmSr  = this.pcmSr;
 
-    const audioFormat = audioFormatForSampleRate(this.pcmSr);
+    const audioFormat = audioFormatForSampleRate(pcmSr);
 
     ws.on('open', () => {
       const sessionConfig: Record<string, unknown> = {
         voice:           voice.voiceUri,
         response_format: audioFormat,
-        sample_rate:     this.pcmSr,
+        sample_rate:     pcmSr,
         mode:            'commit',
       };
 
       ws.send(JSON.stringify({
-        type:    'session.update',
+        type:     'session.update',
         event_id: makeEventId(),
-        session: sessionConfig,
+        session:  sessionConfig,
       }));
       ws.send(JSON.stringify({
         type:     'input_text_buffer.append',
@@ -478,10 +510,9 @@ class QwenTtsRealtimeSession {
       switch (msg.type) {
         case 'response.audio.delta': {
           if (typeof msg.delta !== 'string') break;
-          const buf = Buffer.from(msg.delta, 'base64');
+          const chunk = Buffer.from(msg.delta, 'base64');
           if (firstByteMs === 0) firstByteMs = Date.now() - startedAt;
-          totalBytes += buf.length;
-          queue.push({ type: 'audio_chunk', bytes: new Uint8Array(buf), mime: this.mime });
+          pcmChunks.push(chunk);
           break;
         }
         case 'response.done': {
@@ -490,7 +521,12 @@ class QwenTtsRealtimeSession {
           break;
         }
         case 'session.finished': {
-          queue.push({ type: 'done', totalBytes, firstByteMs });
+          // Wrap accumulated PCM into a WAV container and emit as one chunk.
+          const pcm    = Buffer.concat(pcmChunks);
+          const wav    = pcmToWav(pcm, pcmSr);
+          const bytes  = new Uint8Array(wav.buffer, wav.byteOffset, wav.byteLength);
+          queue.push({ type: 'audio_chunk', bytes, mime: 'audio/wav' });
+          queue.push({ type: 'done', totalBytes: pcm.length, firstByteMs });
           queue.close();
           try { ws.close(1000, 'bye'); } catch { /* ignore */ }
           break;

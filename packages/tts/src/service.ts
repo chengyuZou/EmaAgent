@@ -134,7 +134,7 @@ export class TtsClient {
    *   3. Delegates to adapter.stream().
    */
   async *synthesize(req: TtsRequest): AsyncIterable<TtsStreamEvent> {
-    const cleaned = filterSentenceForTts(req.text, { turnMode: req.turnMode });
+    const cleaned = filterSentenceForTts(req.text);
     if (cleaned.length === 0) {
       yield { type: 'done', totalBytes: 0, firstByteMs: 0 };
       return;
@@ -147,11 +147,9 @@ export class TtsClient {
       return;
     }
 
-    // Ensure format has a default for adapters that consume it
-    req.format ??= 'mp3';
-    // Replace text with cleaned version (adapter reads req.text directly)
-    req.text = cleaned;
+    // Build a normalized copy — never mutate the caller's request object.
+    const normalized: TtsRequest = { ...req, text: cleaned, format: req.format ?? 'mp3' };
 
-    yield* adapter.stream(req);
+    yield* adapter.stream(normalized);
   }
 }

@@ -1,5 +1,3 @@
-import type { TtsTurnMode } from '@ema-agent/contracts';
-
 // ── 状态说明 ───────────────────────────────────────────────────────────────────
 //
 //  normal       正常文本，行首监控 fence / $$ 开头
@@ -38,7 +36,7 @@ export class TextFilterStream {
   private lineStartBuf = ''; // ≤ 2 字符，跨 chunk 保留
   private langTag = '';      // opener 行收集的语言标识（如 "python"），跨 chunk 保留
 
-  constructor(private readonly turnMode: TtsTurnMode) {}
+  constructor() {}
 
   /**
    * 喂入 LLM delta chunk，返回清洗后的文本。
@@ -258,18 +256,10 @@ export class TextFilterStream {
     return '';
   }
 
-  // 有语言标识时：(python代码) / (python代码已省略)
-  // 无语言标识时：(代码)       / (代码已省略)
   private codeReplacement(): string {
     const lang = this.langTag.trim();
     this.langTag = '';
-
-    if (lang) {
-      return this.turnMode === 'agent'
-        ? ` (${lang}代码已省略) `
-        : ` (${lang}代码) `;
-    }
-    return this.turnMode === 'agent' ? ' (代码已省略) ' : ' (代码) ';
+    return lang ? ` (${lang}代码) ` : ' (代码) ';
   }
 }
 
@@ -279,8 +269,8 @@ export class TextFilterStream {
 // 此时块级结构已由 TextFilterStream 处理完毕，只需清理行内 markdown 与 URL/路径。
 // 处理顺序很重要——详见 docs/streaming-pipeline.md §filterSentenceForTts。
 //
-// 注意：ACT 标签（<|ACT:...|>）由 @ema-agent/emotion 包在更高优先级处理，
-// TTS 到达此函数时输入已不含 ACT 标签，故不再重复清理。
+// 注意：ACT 标签（<|ACT:...|>）由 @ema-agent/emotion 包在 afterLlmDelta 更早的
+// 优先级处理，TTS 收到的文本已不含 ACT 标签，此处不做任何 ACT 清理。
 
 const RE_HTML_TAG      = /<\/?[a-zA-Z][^>]*>/g;
 const RE_MD_IMAGE      = /!\[[^\]]*\]\([^)]+\)/g;
@@ -306,11 +296,7 @@ const RE_URL           = /https?:\/\/[^\s)>\]]+/g;
 const RE_WIN_PATH      = /[A-Za-z]:\\[^\s,;)]+/g;
 const RE_NIX_PATH      = /(?<=^|\s)\/[a-zA-Z0-9_.\/-]{8,}(?=\s|$)/g;
 
-export interface TtsFilterOptions {
-  turnMode?: TtsTurnMode;
-}
-
-export function filterSentenceForTts(text: string, opts: TtsFilterOptions): string {
+export function filterSentenceForTts(text: string): string {
   // 快速路径：纯文本不含任何 markdown / URL / 路径特征字符，直接返回
   // 覆盖大部分正常对话句子（中文全角标点不触发此检查）
   if (!/[<![\]*_`$#>\-~|:\\/]/.test(text)) return text.trim();
@@ -329,12 +315,7 @@ export function filterSentenceForTts(text: string, opts: TtsFilterOptions): stri
   out = out.replace(RE_ITALIC_UNDER,  '$1');
   out = out.replace(RE_STRIKETHROUGH, '$1');
 
-  if (opts.turnMode === 'agent') {
-    out = out.replace(RE_INLINE_CODE, '');
-  }
-  else {
-    out = out.replace(RE_INLINE_CODE, '$2');
-  }
+  out = out.replace(RE_INLINE_CODE, '$2');
 
   out = out.replace(RE_MATH_INLINE,   '(公式)');
   out = out.replace(RE_MATH_LATEX_I,  '(公式)');
