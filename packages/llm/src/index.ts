@@ -13,6 +13,8 @@ export type {
   LlmProtocol,
   StopReason,
   ProviderConfig,
+  ThinkingEffort,
+  ThinkingMode,
   LlmToolDef,
   LlmMessage,
   LlmRequest,
