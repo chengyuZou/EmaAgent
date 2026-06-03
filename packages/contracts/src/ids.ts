@@ -20,10 +20,4 @@ export type TurnMode      = 'chat' | 'narrative' | 'agent';
 export type AgentSubMode  = 'plan' | 'debug' | 'full';
 export type TurnStatus    = 'pending' | 'running' | 'completed' | 'failed' | 'aborted';
 export type MessageRole   = 'system' | 'user' | 'assistant';
-export type MessageKind   =
-  | 'normal'            // ordinary chat or assistant turn
-  | 'context'           // injected context (recall bundle, workspace snapshot)
-  | 'tool_results'      // user-role message carrying ToolResultBlock[] — merges into agent bubble in UI
-  | 'compact_boundary'  // marks the slice point; LLM sees only messages after the last boundary
-  | 'summary'           // compaction output; replaces the summarised window in LLM context
-  | 'persona_reminder'; // periodic user+assistant pair that re-anchors character voice
+

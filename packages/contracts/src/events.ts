@@ -6,7 +6,8 @@
   ArtifactId,
   CharacterCardId,
 } from './ids.js';
-import type { LlmProtocol } from './providers/types.js';
+import type { ErrorCode } from './errors.js';
+import type { ProtocolFamily } from './providers/types.js';
 import type { UsageSummary } from './turns.js';
 import type { Artifact } from './artifact.js';
 
@@ -22,7 +23,6 @@ export interface ToolError {
 export interface StageCue {
   motion?: string;
   expression?: string;
-  lipsync?: LipSyncFrame[];
   durationMs?: number;
   priority: number;
 }
@@ -68,12 +68,11 @@ export type EmaStreamEvent =
   // Turn lifecycle
   | { type: 'turn_started'; turnId: TurnId; mode: TurnMode; subMode?: AgentSubMode }
   | { type: 'turn_completed'; turnId: TurnId; usage: UsageSummary }
-  | { type: 'turn_failed'; turnId: TurnId; code: string; message: string }
+  | { type: 'turn_failed'; turnId: TurnId; code: ErrorCode; message: string }
   | { type: 'turn_aborted'; turnId: TurnId; reason: string }
 
   // Text streaming — blockIndex tracks position within the assistant's block array
   | { type: 'output_text_delta';    blockIndex: number; delta: string }
-  | { type: 'output_text_complete'; blockIndex: number; text: string }
 
   // Reasoning / thinking blocks (DeepSeek-R1, Claude extended thinking)
   | { type: 'reasoning_delta';    blockIndex: number; delta: string }
@@ -125,8 +124,8 @@ export type EmaStreamEvent =
   | { type: 'emotion_changed'; turnId: TurnId; state: EmotionState }
 
   // TTS — audio is base64-encoded string over SSE
-  | { type: 'tts_chunk'; audio: string; lipsync?: LipSyncFrame[]; sentenceId: string; sessionId: string }
-  | { type: 'tts_sentence_complete'; sentenceId: string; sessionId: string }
+  | { type: 'tts_chunk'; turnId: TurnId; audio: string; lipsync?: LipSyncFrame[]; sentenceId: string; sessionId: string }
+  | { type: 'tts_sentence_complete'; turnId: TurnId; sentenceId: string; sessionId: string }
 
   // Narrative
   | { type: 'narrative_route_resolved'; timelines: string[] }
@@ -169,7 +168,9 @@ export type EmaStreamEvent =
   // Provider health
   | {
       type: 'provider_health_changed';
-      provider: LlmProtocol;
+      providerId:   string;          // provider_configs.id (UUID)
+      definitionId: string;          // 'openai' / 'dashscope' 等，用于显示名
+      protocol:     ProtocolFamily;  // 这个供应商用的协议
       status: 'ok' | 'failed' | 'probing' | 'unknown';
       latencyMs?: number;
       error?: string;
@@ -180,11 +181,3 @@ export type EmaStreamEvent =
 
   // System
   | { type: 'system_warning'; level: 'info' | 'warn' | 'error'; message: string }
-
-  // NOTE: heartbeat is NOT pushed through TurnEventStore.
-  // It is sent as a raw `event: heartbeat\ndata: {}\n\n` SSE frame directly
-  // by the GET /events handler's setInterval via encodePing(). This keeps
-  // keep-alive frames out of the replay buffer. The frontend must listen on
-  // the `heartbeat` SSE event name (addEventListener('heartbeat', ...)), not
-  // parse this as a JSON EmaStreamEvent.
-  | { type: 'heartbeat'; ts: number };

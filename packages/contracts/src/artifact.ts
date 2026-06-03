@@ -16,29 +16,39 @@ export type ArtifactType =
   | 'application/vnd.ema.chart'
   | (string & {}); // 允许自定义类型，但必须是字符串
 
-export interface Artifact {
-  id:              ArtifactId;
-  sessionId:       SessionId;       // 补上
-  turnId?:         TurnId;          // 补上
-  type:            ArtifactType;
-  title:           string;
-  content:         string | null;   // null when contentLocation='file'
-  /**
-   * - contentLocation: `inline` → 内容就存在 SQLite 的 content 列里，content 有值，contentPath 是 undefined
-   * - contentLocation: `file` → 内容写到磁盘文件，content 是 null，contentPath 是文件绝对路径
-   * 
-   * 为什么要分两种：SQLite 存大文本（几百KB的代码、CSV、JSON）会让整个 DB 文件膨胀，查询也变慢。内容超 64KB 时写文件更合理。
-   * 前端调 GET /api/artifacts/:id 时，后端透明地把文件内容读回来填进 content，前端永远看到非 null 的 content，不感知这个分支。
-   */
-  contentLocation: 'inline' | 'file';
-  contentPath?:    string;
-  /**
-   * 如果是代码的话可以提供一些原数据
-   * 比如: `{ language: 'python' }` 给 Monaco 设语言模式。未知 type 降级到 Monaco 纯文本，不崩溃。
-   */
-  meta:            Record<string, unknown>;
-  createdAt:       number;
-  updatedAt:       number;
-  appliedAt?:      number;
-  rejectedAt?:     number;
+// ── 内容存储位置的区分联合 ─────────────────────────────────────
+
+type ArtifactContentInline = {
+  contentLocation: 'inline';
+  content: string;          // 必填，存于 SQLite
+  contentPath?: never;      // 禁止出现
+};
+
+type ArtifactContentFile = {
+  contentLocation: 'file';
+  content: null;            // 明确为 null，不是 undefined
+  contentPath: string;      // 必填，磁盘绝对路径
+};
+
+// ── 应用/拒绝状态的互斥联合 ─────────────────────────────────────
+type ArtifactStatus = 
+  | { appliedAt: number; rejectedAt?: never }
+  | { rejectedAt: number; appliedAt?: never }
+  | { appliedAt?: never; rejectedAt?: never };  // 可简化为 {}
+
+// ── 最终 Artifact 类型 ─────────────────────────────────────────
+
+export interface ArtifactBase {
+  id: ArtifactId;
+  sessionId: SessionId;      // 必须明确所属会话
+  turnId?: TurnId;           // 可选：属于哪个 turn
+  type: ArtifactType;
+  title: string;
+  meta: Record<string, unknown>;
+  createdAt: number;
+  updatedAt: number;
 }
+
+export type Artifact = ArtifactBase
+  & (ArtifactContentInline | ArtifactContentFile)
+  & ({ appliedAt: number } | { rejectedAt: number } | Record<never, never>);
