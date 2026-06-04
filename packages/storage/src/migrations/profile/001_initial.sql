@@ -201,7 +201,7 @@ CREATE TABLE memory_items (
   expires_at             INTEGER,
   importance             INTEGER NOT NULL DEFAULT 50,
   meta_json              TEXT NOT NULL DEFAULT '{}',
-  modes_json             TEXT NOT NULL DEFAULT '["chat","agent"]',
+  modes_json             TEXT NOT NULL DEFAULT '["chat","agent","narrative"]',
   last_referenced_at     INTEGER NOT NULL DEFAULT 0,
   embedding_provider_id  TEXT,
   embedding_model        TEXT,

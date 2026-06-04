@@ -13,7 +13,6 @@ import type { MessageId, MessageRole } from './ids.js';
  * | context          | ✅        | ❌ 隐藏            |
  * | tool_results     | ✅        | ❌ 合并进助手气泡  |
  * | persona_reminder | ✅        | ❌ 隐藏            |
- * | compact_boundary | ❌        | ❌ 只是切割标记    |
  */
 export type MessageKind =
   | 'normal'

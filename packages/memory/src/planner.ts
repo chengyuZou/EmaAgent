@@ -9,7 +9,6 @@ import { EmbedService }     from './embed/service.js';
 import { recallGraph }      from './recall/layer0-graph.js';
 import { recallSessionNote } from './recall/layer1-notes.js';
 import { recallEpisodic }   from './recall/layer2-episodic.js';
-import { recallNarrative }  from './recall/narrative.js';
 import { createVectorIndex } from './index/factory.js';
 import { rebuildNodesIndex, rebuildItemsIndex } from './index/builder.js';
 import type { VectorIndex } from './index/vector-index.js';
@@ -21,7 +20,7 @@ import { BackgroundTaskRunner } from './tasks/runner.js';
 import { microCompact } from './compact/micro.js';
 import { runMacroCompaction } from './compact/macro.js';
 import { buildPostCompactRestore } from './compact/restore.js';
-import { estimateMessagesTokens } from './tokens/estimate.js';
+import { estimateMessagesTokens, estimateTextTokens } from './tokens/estimate.js';
 import {
   readOverrides, writeOverrides,
   type MemorySessionOverrides, type ResolvedSessionOverrides,
@@ -184,7 +183,7 @@ export class MemoryPlanner {
    */
   async plan(ctx: PlanContext): Promise<RecallBundle> {
     if (!this.settings.enabled) {
-      return { layer0: null, layer1: null, layer2: null, narrative: null };
+      return { layer0: null, layer1: null, layer2: null };
     }
 
     const overrides = this.getSessionOverrides(ctx.sessionId);
@@ -215,13 +214,18 @@ export class MemoryPlanner {
 
     // ── Layer 2 / narrative ─ subject to override ─────────────────────────────
     let layer2: RecallBundle['layer2']    = null;
-    let narrative: RecallBundle['narrative'] = null;
 
     if (ctx.mode === 'narrative') {
-      if (overrides.narrative) {
-        narrative = await safeAsync(() =>
-          recallNarrative(this.deps, ctx.userInput, ctx.signal),
-        );
+      if (overrides.layer2) {
+        layer2 = await safeAsync(() => recallEpisodic(this.deps, {
+          query:           ctx.userInput,
+          queryVec,
+          queryEmbed,
+          index:           this.itemsIndex,
+          mode:            'narrative',
+          alreadySurfaced: new Set(surfaced.items),
+          settings:        this.settings,
+        }));
       }
     } else if (overrides.layer2) {
       const layer2Mode: 'chat' | 'agent' = ctx.mode;
@@ -242,7 +246,6 @@ export class MemoryPlanner {
       layer0:    layer0    ?? null,
       layer1:    layer1    ?? null,
       layer2:    layer2    ?? null,
-      narrative: narrative ?? null,
     };
   }
 
@@ -270,14 +273,16 @@ export class MemoryPlanner {
     messages:        LlmMessage[];
     compactionRan:   boolean;
     microCleared:    number;
-    recallSummary:   { layer0: number; layer1: boolean; layer2: number; narrative: boolean };
+    recallSummary:   { layer0: number; layer1: boolean; layer2: number };
+    tokenEstimate:   number;
   }> {
     if (!this.settings.enabled) {
       return {
         messages:      args.messages,
         compactionRan: false,
         microCleared:  0,
-        recallSummary: { layer0: 0, layer1: false, layer2: 0, narrative: false },
+        recallSummary: { layer0: 0, layer1: false, layer2: 0 },
+        tokenEstimate: 0,
       };
     }
 
@@ -307,7 +312,11 @@ export class MemoryPlanner {
     // recall context between history-tail and the user turn so the model
     // sees: history → context → current user.
     const ctxMsg = buildContextMessage(bundle);
+    let tokenEstimate = 0;
     if (ctxMsg) {
+      tokenEstimate = typeof ctxMsg.content === 'string'
+        ? estimateTextTokens(ctxMsg.content)
+        : 0;
       const lastIdx = working.length - 1;
       const lastIsUser =
         lastIdx >= 0 && working[lastIdx]?.role === 'user';
@@ -322,12 +331,12 @@ export class MemoryPlanner {
       messages:      working,
       compactionRan: compactRes.macroRan,
       microCleared:  compactRes.microCleared,
+      tokenEstimate,
       recallSummary: {
         layer0:    bundle.layer0?.nodes.length ?? 0,
         layer1:    bundle.layer1 !== null,
         layer2:    (bundle.layer2?.currentMode.length ?? 0)
                  + (bundle.layer2?.otherModes.length ?? 0),
-        narrative: bundle.narrative !== null,
       },
     };
   }
@@ -742,13 +751,6 @@ function buildContextMessage(bundle: RecallBundle): LlmMessage | null {
       }
     }
     if (blob.length > 0) parts.push(`## 相关的过往\n${blob.join('\n')}`);
-  }
-
-  if (bundle.narrative) {
-    const sections = Object.entries(bundle.narrative.sections)
-      .map(([t, body]) => `### ${t}\n${body}`)
-      .join('\n\n');
-    parts.push(`## 故事召回\n${sections}`);
   }
 
   if (parts.length === 0) return null;

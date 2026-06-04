@@ -63,7 +63,6 @@ export interface RecallBundle {
   layer0:    GraphRecallResult     | null;
   layer1:    string                | null;     // session_notes.body
   layer2:    EpisodicRecallResult  | null;
-  narrative: NarrativeRecallResult | null;
 }
 
 // ── Settings ──────────────────────────────────────────────────────────────────

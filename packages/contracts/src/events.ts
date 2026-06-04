@@ -133,7 +133,15 @@ export type EmaStreamEvent =
 
   // Memory — turn-scoped (emitted via beforeLlm hook + compaction)
   | { type: 'context_compacted'; before: number; after: number; method: string }
-  | { type: 'recall_evidence'; sources: string[]; itemCount: number }
+  | { type: 'recall_evidence'; 
+      sources: string[]; itemCount: number;
+      tokenEstimate: number; durationMs: number;
+      layers?: {
+        layer0: number;
+        layer1: boolean;
+        layer2: number;
+      };
+    }
 
   // Memory — pipeline observability (cross-turn, emitted on the system bus)
   | { type: 'memory_extraction_started';    sessionId: SessionId; turnId?: TurnId; queueDepth: number }

@@ -13,7 +13,7 @@ interface RecallLayer2Args {
   queryVec:        Float32Array | null;
   queryEmbed:      EmbeddedText | null;
   index:           VectorIndex | null;
-  mode:            'chat' | 'agent';
+  mode:            'chat' | 'agent' | 'narrative';
   alreadySurfaced: Set<string>;
   settings:        MemorySettings;
 }
@@ -37,11 +37,17 @@ export async function recallEpisodic(
   args: RecallLayer2Args,
 ): Promise<EpisodicRecallResult> {
   const { mode, queryVec, queryEmbed, index, alreadySurfaced, settings } = args;
-  const K       = settings.recall.layer2TopK;
+  const K       = mode === 'narrative' ? Math.max(1, Math.ceil(settings.recall.layer2TopK / 2)) : settings.recall.layer2TopK;
   const w       = settings.recall.currentModeWeight;
   const curSlot = Math.max(1, Math.ceil(K * w));
   const othSlot = Math.max(0, K - curSlot);
-  const otherMode: 'chat' | 'agent' = mode === 'chat' ? 'agent' : 'chat';
+  /**
+   * otherMode is the "opposite" of mode: 
+   * - if mode=chat, otherMode=agent; 
+   * - if mode=agent, otherMode=chat; 
+   * - if mode=narrative, otherMode=chat
+   */
+  const otherMode: 'chat' | 'agent' | 'narrative' = mode === 'chat' ? 'agent' : mode === 'agent' ? 'chat' : 'chat';
 
   // ── Vector path ──────────────────────────────────────────────────────────
   if (queryVec && queryEmbed) {
