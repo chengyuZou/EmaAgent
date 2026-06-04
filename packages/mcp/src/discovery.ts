@@ -28,9 +28,10 @@ export async function discoverServerTools(
   return result.tools.map((tool) => {
     const desc = tool.description ?? '';
     return {
-      serverToolName: tool.name,
-      qualifiedName:  buildMcpToolName(serverName, tool.name),
-      description:    desc.length > MAX_DESCRIPTION_LEN
+      serverToolName:     tool.name,
+      qualifiedName:      buildMcpToolName(serverName, tool.name),
+      originalServerName: serverName,   // preserved verbatim for connection lookup
+      description:        desc.length > MAX_DESCRIPTION_LEN
         ? desc.slice(0, MAX_DESCRIPTION_LEN) + '… [truncated]'
         : desc,
       inputSchema:   (tool.inputSchema ?? { type: 'object', properties: {} }) as Record<string, unknown>,
@@ -51,7 +52,11 @@ export function buildMcpBuiltTool(
   info:     McpToolInfo,
   registry: McpRegistry,
 ): BuiltTool {
-  const serverName    = info.qualifiedName.split('__')[1] ?? info.serverToolName;
+  // Use the original (non-sanitized) server name to look up the connection.
+  // qualifiedName has hyphens/dots replaced with underscores; the connection
+  // map is keyed by the original name, so splitting qualifiedName would break
+  // any server whose name contains non-alphanumeric characters.
+  const serverName = info.originalServerName;
   const inputZod      = z.record(z.unknown()); // permissive — MCP server validates
 
   const permissionMeta: ToolPermissionMeta = {

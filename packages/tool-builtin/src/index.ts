@@ -93,6 +93,16 @@ const ALL_BUILTIN_TOOLS: BuiltTool<any, any>[] = [
 /** Tools that require a physical OS-level sandbox to be safely exposed. */
 const EXECUTE_TOOLS: ReadonlySet<string> = new Set(['bash', 'powershell']);
 
+/**
+ * Tools gated on a runtime bridge being available.
+ * Key = tool name, value = which RegisterOptions flag enables it.
+ */
+const BRIDGE_GATED: ReadonlyMap<string, keyof RegisterOptions> = new Map([
+  ['mcp_call',  'hasMcpBridge'],
+  ['skill_call', 'hasSkillBridge'],
+  ['subagent',   'hasSubagentBridge'],
+]);
+
 export interface RegisterOptions {
   /**
    * When true, shell execution tools (bash, powershell) are omitted from the
@@ -101,6 +111,20 @@ export interface RegisterOptions {
    * setting AGEN_UNSAFE_SHELL=1 for development.
    */
   disableExecuteTools?: boolean;
+
+  /**
+   * Runtime bridge availability flags. Tools whose bridge is absent are
+   * omitted from the registry so the LLM never sees tools it cannot call.
+   * All default to false (tool hidden) — set to true only when the bridge
+   * is wired up in apps/core.
+   *
+   * mcp_call   — generic MCP dispatcher (distinct from auto-registered MCP tools)
+   * skill_call — SkillRunner bridge
+   * subagent   — subagent spawner bridge
+   */
+  hasMcpBridge?:      boolean;
+  hasSkillBridge?:    boolean;
+  hasSubagentBridge?: boolean;
 }
 
 /**
@@ -112,7 +136,14 @@ export interface RegisterOptions {
  */
 export function registerBuiltinTools(registry: ToolRegistry, opts: RegisterOptions = {}): void {
   for (const tool of ALL_BUILTIN_TOOLS) {
+    // Skip execute-class tools when no physical sandbox is available.
     if (opts.disableExecuteTools && EXECUTE_TOOLS.has(tool.name)) continue;
+
+    // Skip bridge-gated tools when their runtime bridge is not wired up.
+    // This prevents the LLM from seeing tools it cannot actually use.
+    const bridgeFlag = BRIDGE_GATED.get(tool.name);
+    if (bridgeFlag !== undefined && !opts[bridgeFlag]) continue;
+
     registry.register(tool);
   }
 }

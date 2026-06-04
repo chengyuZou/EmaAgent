@@ -62,13 +62,21 @@ export type McpConnectionStatus = 'connecting' | 'connected' | 'failed' | 'disco
 
 export interface McpToolInfo {
   /** Unqualified tool name as the server reports it, e.g. "search". */
-  serverToolName: string;
-  /** Qualified name registered in ToolRegistry, e.g. "mcp__brave-search__search". */
-  qualifiedName:  string;
-  description:    string;
-  inputSchema:    Record<string, unknown>;
-  isReadOnly:     boolean;
-  isDestructive:  boolean;
+  serverToolName:     string;
+  /** Qualified name registered in ToolRegistry, e.g. "mcp__brave_search__search". */
+  qualifiedName:      string;
+  /**
+   * Original server name as configured by the user, e.g. "brave-search".
+   * Used as the key into McpRegistry.connections — must NOT be sanitized.
+   * Kept separate from qualifiedName because buildMcpToolName() replaces
+   * hyphens/dots/spaces with underscores for the LLM-visible identifier,
+   * but the connection map is keyed by the original name.
+   */
+  originalServerName: string;
+  description:        string;
+  inputSchema:        Record<string, unknown>;
+  isReadOnly:         boolean;
+  isDestructive:      boolean;
 }
 
 export interface McpConnection {

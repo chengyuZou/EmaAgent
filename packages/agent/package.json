@@ -16,7 +16,8 @@
     "build": "tsc -p tsconfig.json",
     "dev": "tsc -p tsconfig.json --watch",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "vitest run",
+    "test": "vitest run --exclude '**/*.integration.test.ts'",
+    "test:integration": "DS_API_KEY=${DS_API_KEY} RUN_LIVE_LLM_TESTS=1 vitest run --include '**/*.integration.test.ts'",
     "clean": "rimraf dist"
   },
   "dependencies": {
