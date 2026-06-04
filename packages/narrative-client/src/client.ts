@@ -1,11 +1,8 @@
 import type {
   BridgeConfigurePayload,
   BridgeHealthResponse,
-  NarrativeRouteRequest,
   NarrativeRouteResponse,
-  NarrativeQueryRequest,
   NarrativeQueryResponse,
-  NarrativeIngestRequest,
   NarrativeIngestResponse,
 } from './types.js';
 
@@ -53,10 +50,7 @@ export class NarrativeClient {
    * Involves one LLM call on the bridge side.
    */
   async route(query: string, signal?: AbortSignal): Promise<NarrativeRouteResponse> {
-    const body: NarrativeRouteRequest = { query };
-    const res = await this.post('/narrative/route', body, signal);
-    await this.assertOk(res, 'route');
-    return res.json() as Promise<NarrativeRouteResponse>;
+    return this.post<NarrativeRouteResponse>('/narrative/route', { query }, signal);
   }
 
   /**
@@ -68,10 +62,7 @@ export class NarrativeClient {
     mode = 'hybrid',
     signal?: AbortSignal,
   ): Promise<NarrativeQueryResponse> {
-    const body: NarrativeQueryRequest = { queries, mode };
-    const res = await this.post('/narrative/query', body, signal);
-    await this.assertOk(res, 'query');
-    return res.json() as Promise<NarrativeQueryResponse>;
+    return this.post<NarrativeQueryResponse>('/narrative/query', { queries, mode }, signal);
   }
 
   /**
@@ -84,10 +75,7 @@ export class NarrativeClient {
     documents: string[],
     signal?: AbortSignal,
   ): Promise<NarrativeIngestResponse> {
-    const body: NarrativeIngestRequest = { timeline, documents };
-    const res = await this.post('/narrative/ingest', body, signal);
-    await this.assertOk(res, 'ingest');
-    return res.json() as Promise<NarrativeIngestResponse>;
+    return this.post<NarrativeIngestResponse>('/narrative/ingest', { timeline, documents }, signal);
   }
 
   /**
@@ -136,8 +124,8 @@ export class NarrativeClient {
    */
   async configure(payload: BridgeConfigurePayload): Promise<boolean> {
     try {
-      const res = await this.post('/internal/configure', payload);
-      return res.ok;
+      await this.post('/internal/configure', payload);
+      return true;
     } catch {
       return false;
     }
@@ -157,28 +145,33 @@ export class NarrativeClient {
 
   // ── Internals ──────────────────────────────────────────────────────────────
 
-  private post(path: string, body: unknown, externalSignal?: AbortSignal): Promise<Response> {
+  private async post<T>(path: string, body: unknown, externalSignal?: AbortSignal): Promise<T> {
     const timeoutSignal = AbortSignal.timeout(this.timeoutMs);
     const signal = externalSignal
       ? AbortSignal.any([timeoutSignal, externalSignal])
       : timeoutSignal;
-    return fetch(`${this.baseUrl}${path}`, {
-      method:  'POST',
-      headers: this.headers,
-      body:    JSON.stringify(body),
-      signal,
-    });
-  }
+    try {
+      const res = await fetch(`${this.baseUrl}${path}`, {
+        method:  'POST',
+        headers: this.headers,
+        body:    JSON.stringify(body),
+        signal,
+      });
+      if (!res.ok) {
+        throw new NarrativeUnavailableError(
+          `Bridge narrative not configured or unavailable (HTTP ${res.status}).`,
+        );
+      }
+      return await res.json() as T;
+    } catch (err) {
+      if (err instanceof NarrativeUnavailableError) throw err;
+      if (err instanceof Error && err.name === 'AbortError')  throw err;
+      if (err instanceof DOMException && err.name === 'AbortError') throw err;
 
-  private async assertOk(res: Response, op: string): Promise<void> {
-    if (res.ok) return;
-    if (res.status === 503) {
       throw new NarrativeUnavailableError(
-        `Bridge narrative not configured (503). POST /internal/configure with llm + embed first.`,
+        `Failed to ${path} on bridge: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
-    const text = await res.text().catch(() => '');
-    throw new Error(`Bridge narrative/${op} failed: HTTP ${res.status} — ${text}`);
   }
 }
 
