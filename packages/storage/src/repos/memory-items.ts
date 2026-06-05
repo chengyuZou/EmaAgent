@@ -103,6 +103,18 @@ export class MemoryItemsRepo {
       .get(id) as MemoryItemRow | undefined;
   }
 
+  /** Idempotency check: same session + same title = same item. Used to skip
+   *  duplicate inserts when the extraction pipeline retries. */
+  findBySourceAndTitle(sourceSessionId: string, title: string): MemoryItemRow | undefined {
+    return this.db
+      .prepare(
+        `SELECT * FROM memory_items
+          WHERE source_session_id = ? AND title = ?
+          LIMIT 1`,
+      )
+      .get(sourceSessionId, title) as MemoryItemRow | undefined;
+  }
+
   listByKind(kind: MemoryItemKind, limit = 500): MemoryItemRow[] {
     return this.db
       .prepare(

@@ -124,7 +124,7 @@ async function* runTurn(
       turnId,
       sessionId: input.sessionId,
       payload: { systemPrompt: '', messages },
-      meta: { mode, userInput: input.userInput, signal },
+      meta: { mode, userInput: input.userInput, signal, providerId, model: resolvedModel },
     });
 
     if (llmHookResult.kind === 'abort') {

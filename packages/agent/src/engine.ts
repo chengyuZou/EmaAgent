@@ -155,7 +155,7 @@ async function* runTurn(
     const preLlm = await hooks.trigger('beforeLlm', {
       turnId, sessionId,
       payload: { systemPrompt, messages },
-      meta: { mode: 'agent', subMode, userInput, signal },
+      meta: { mode: 'agent', subMode, userInput, signal, providerId, model },
     });
     if (preLlm.kind === 'abort') {
       session.failTurn(turnId, 'turn/hook_aborted', preLlm.reason);
