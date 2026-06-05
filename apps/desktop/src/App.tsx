@@ -263,4 +263,6 @@ async function testTtsPlayback(arrayBuffer: ArrayBuffer): Promise<void> {
   }
 }
 
-(window as any).__testTtsPlayback = testTtsPlayback;
+if (import.meta.env.DEV) {
+  (window as any).__testTtsPlayback = testTtsPlayback;
+}

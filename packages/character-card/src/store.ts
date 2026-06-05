@@ -126,6 +126,7 @@ export class CharacterCardStore {
         emotionVocabulary: original.emotionVocabulary,
         motionVocabulary: original.motionVocabulary,
         live2dModelId: original.live2dModelId ?? undefined,
+        voiceProfile: original.voiceProfile,
       },
       { isBuiltin: false },
     );

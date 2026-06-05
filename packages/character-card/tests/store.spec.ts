@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { Database } from '@ema-agent/storage';
 import { CharacterCardStore } from '../src/store.js';
 import { EMA_CARD_ID } from '../src/seed.js';
@@ -20,10 +20,14 @@ describe('CharacterCardStore', () => {
   let store: CharacterCardStore;
 
   beforeEach(() => {
-    db = new Database({ memory: true });
+    db = new Database({ memory: true, kind: 'profile' });
     db.migrate();
     store = new CharacterCardStore({ db });
     store.ensureSeed();
+  });
+
+  afterEach(() => {
+    db.close();
   });
 
   // ─── seed & init ──────────────────────────────────────────────────────────
@@ -53,11 +57,12 @@ describe('CharacterCardStore', () => {
 
     it('throws when no card is active', () => {
       // deactivate the only card by activating nothing (simulate corrupted state)
-      const db2 = new Database({ memory: true });
+      const db2 = new Database({ memory: true, kind: 'profile' });
       db2.migrate();
       const emptyStore = new CharacterCardStore({ db: db2 });
       // never called ensureSeed
       expect(() => emptyStore.current()).toThrow('no active character card');
+      db2.close();
     });
   });
 
@@ -179,6 +184,25 @@ describe('CharacterCardStore', () => {
       expect(dup.emotionVocabulary).toEqual(ema.emotionVocabulary);
       expect(dup.motionVocabulary).toEqual(ema.motionVocabulary);
       expect(dup.speechPatterns).toEqual(ema.speechPatterns);
+    });
+
+    it('copies voice profile', () => {
+      const card = store.create(minimalInput({
+        voiceProfile: {
+          primaryId: 'ref-1',
+          refAudios: [{
+            id: 'ref-1',
+            label: 'Main',
+            refAudioPath: 'card/ref.wav',
+            promptText: 'hello',
+            promptLang: 'en',
+          }],
+        },
+      }));
+
+      const dup = store.duplicate(card.id);
+
+      expect(dup.voiceProfile).toEqual(card.voiceProfile);
     });
 
     it('throws when duplicating a non-existent card', () => {
