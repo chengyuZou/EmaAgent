@@ -82,6 +82,13 @@ export class PendingFragmentsRepo {
     return rows.map(r => r.session_id);
   }
 
+  countSessionsWithPending(): number {
+    const row = this.db
+      .prepare('SELECT COUNT(DISTINCT session_id) AS n FROM pending_fragments')
+      .get() as { n: number };
+    return row.n;
+  }
+
   countBySession(sessionId: SessionId): number {
     const row = this.db
       .prepare('SELECT COUNT(*) AS n FROM pending_fragments WHERE session_id = ?')

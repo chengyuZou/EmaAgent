@@ -20,6 +20,12 @@ export interface MemoryEdgeUpsert {
   at:           number;
 }
 
+export interface MemoryEdgeStats {
+  total: number;
+  avg_mention_count: number | null;
+  max_mention_count: number | null;
+}
+
 // ── Repo ──────────────────────────────────────────────────────────────────────
 
 /**
@@ -87,6 +93,17 @@ export class MemoryEdgesRepo {
     this.db
       .prepare(`UPDATE memory_edges SET last_referenced_at = ? WHERE id IN (${placeholders})`)
       .run(at, ...ids);
+  }
+
+  stats(): MemoryEdgeStats {
+    return this.db
+      .prepare(
+        `SELECT COUNT(*) AS total,
+                AVG(mention_count) AS avg_mention_count,
+                MAX(mention_count) AS max_mention_count
+           FROM memory_edges`,
+      )
+      .get() as MemoryEdgeStats;
   }
 
   // ── Delete ──────────────────────────────────────────────────────────────────

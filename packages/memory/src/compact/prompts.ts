@@ -116,28 +116,30 @@ export function buildNoteCompactionPrompt(args: {
                                  AGENT_TEMPLATE
   );
 
-  return `You are compressing a session note that has grown too long.
-Re-write it using the structured template below. Follow these rules strictly:
+  return `You are compressing a Layer-1 session note that has grown too long.
+The persisted Layer-1 body is JSON owned by the application, but the content
+below is rendered markdown deltas. Rewrite only the markdown content.
 
-1. Merge duplicate or redundant entries into a single entry.
+Follow these rules strictly:
+
+1. Merge duplicate or redundant entries into a single compact summary.
 2. Drop clearly stale facts that have been superseded by newer ones.
-3. Weigh newer entries (at the bottom) more than older ones.
-4. **Every retained fact MUST keep its original <!-- YYYY-MM-DD HH:MM --> timestamp**
-   from the HTML comment that precedes it. Do not invent or alter timestamps.
-5. For sections that represent a "current state" (e.g. Current Emotional State,
-   Current Scene), keep only the most recent entry but preserve its timestamp.
+3. Newer entries appear closer to the bottom; use that only to judge recency.
+4. Do NOT output JSON.
+5. Do NOT output HTML comments, timestamp headers, markdown fences, or preface text.
+6. Do NOT fabricate facts not present in the input.
 
 ${template.trim()}
 
 ${SHARED_FOOTER.trim()}
 
-Session note to compress (newest entries at the bottom, timestamps are HTML comments):
+Session note markdown to compress:
 ${args.body}`.trim();
 }
 
 export function buildCompactionPrompt(args: {
   mode:    TurnMode;
-  history: string;     // pre-formatted text of the conversation slice
+  history: string;
 }): string {
   const template = (
     args.mode === 'chat'      ? CHAT_TEMPLATE      :
@@ -146,8 +148,9 @@ export function buildCompactionPrompt(args: {
   );
 
   return `You are a conversation compaction agent. Read the slice below and
-produce a structured summary that will REPLACE this slice in the model's
-context. Future turns will see only your summary, not the original.
+produce a structured markdown summary that will replace this slice in the
+model context. Future turns will see only your summary, not the original
+messages.
 
 ${template.trim()}
 

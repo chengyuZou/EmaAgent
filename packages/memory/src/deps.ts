@@ -1,4 +1,3 @@
-import type { Database } from '@ema-agent/storage';
 import type {
   MemoryNodesRepo,
   MemoryEdgesRepo,
@@ -23,7 +22,6 @@ import type { EmaStreamEvent } from '@ema-agent/contracts';
  * needs. The orchestrator builds these once per process and passes them in.
  */
 export interface MemoryDeps {
-  db:             Database;
   session:        SessionStore;
   llm:            LlmRouter;
   ebd:            EbdRouter;

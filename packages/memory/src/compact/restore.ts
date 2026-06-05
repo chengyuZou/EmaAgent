@@ -1,3 +1,4 @@
+import { recallSessionNote } from '../recall/layer1-notes.js';
 import type { LlmMessage } from '@ema-agent/llm';
 import type { TurnMode } from '@ema-agent/contracts';
 import type { MemoryDeps } from '../deps.js';
@@ -101,12 +102,10 @@ ${sections.join('\n\n')}
 // ── Chat: re-inject current emotion / mood snapshot ──────────────────────────
 
 function restoreChat(deps: MemoryDeps, ctx: RestoreContext): LlmMessage[] {
-  // V1: lean on session_notes.body — emotion engine integration is a future round.
-  // We pluck the "Current Emotional State" section if the body has one, else skip.
-  const notes = deps.sessionNotes.findBySession(ctx.sessionId);
-  if (!notes || !notes.body.trim()) return [];
+  const noteMarkdown = recallSessionNote(deps, ctx.sessionId);
+  if (!noteMarkdown) return [];
 
-  const emotionSection = extractMarkdownSection(notes.body, 'Current Emotional State');
+  const emotionSection = extractLatestMarkdownSection(noteMarkdown, 'Current Emotional State');
   if (!emotionSection) return [];
 
   return [{
@@ -119,14 +118,12 @@ ${emotionSection}
   }];
 }
 
-// ── Narrative: re-inject active scene/timeline ───────────────────────────────
-
 function restoreNarrative(deps: MemoryDeps, ctx: RestoreContext): LlmMessage[] {
-  const notes = deps.sessionNotes.findBySession(ctx.sessionId);
-  if (!notes || !notes.body.trim()) return [];
+  const noteMarkdown = recallSessionNote(deps, ctx.sessionId);
+  if (!noteMarkdown) return [];
 
-  const scene = extractMarkdownSection(notes.body, 'Current Scene')
-             ?? extractMarkdownSection(notes.body, 'Active Timeline');
+  const scene = extractLatestMarkdownSection(noteMarkdown, 'Current Scene')
+             ?? extractLatestMarkdownSection(noteMarkdown, 'Active Timeline');
   if (!scene) return [];
 
   return [{
@@ -139,27 +136,29 @@ ${scene}
   }];
 }
 
-// ── Markdown section extractor ───────────────────────────────────────────────
-
-/**
- * Pull text under a `## <heading>` until the next `## ` heading. Used to
- * surgically lift one section out of the session notes body.
- */
-function extractMarkdownSection(body: string, heading: string): string | null {
+function extractLatestMarkdownSection(body: string, heading: string): string | null {
   const lines = body.split('\n');
+  const matches: string[] = [];
   let inSection = false;
-  const captured: string[] = [];
+  let captured: string[] = [];
+
+  const flush = (): void => {
+    const text = captured.join('\n').trim();
+    if (text) matches.push(text);
+    captured = [];
+  };
+
   for (const line of lines) {
     const isHeading = /^##\s+/.test(line);
     if (isHeading) {
-      if (inSection) break;
-      if (line.replace(/^##\s+/, '').trim() === heading) {
-        inSection = true;
-        continue;
-      }
+      if (inSection) flush();
+      inSection = line.replace(/^##\s+/, '').trim() === heading;
+      continue;
     }
+
     if (inSection) captured.push(line);
   }
-  const text = captured.join('\n').trim();
-  return text || null;
+
+  if (inSection) flush();
+  return matches.length > 0 ? matches[matches.length - 1]! : null;
 }

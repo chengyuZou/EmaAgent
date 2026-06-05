@@ -59,6 +59,13 @@ export class MemoryLazyUpdatesRepo {
     return rows.map(r => r.node_id);
   }
 
+  countAll(): number {
+    const row = this.db
+      .prepare('SELECT COUNT(*) AS n FROM memory_node_lazy_updates')
+      .get() as { n: number };
+    return row.n;
+  }
+
   /**
    * Delete a specific set of update rows. Use the ids returned from listByNode
    * — fragments arriving between listByNode and this call survive.

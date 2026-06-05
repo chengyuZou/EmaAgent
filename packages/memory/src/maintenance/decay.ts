@@ -131,17 +131,9 @@ export function hardDeleteZeroImportance(
   hardDeleteAfterDays: number,
 ): { deletedNodes: number; deletedItems: number } {
   const cutoff = Date.now() - hardDeleteAfterDays * 24 * 60 * 60 * 1000;
-  const db = deps.db.sqlite;
-
-  const delNodes = db.prepare(
-    `DELETE FROM memory_nodes WHERE importance = 0 AND last_referenced_at < ?`,
-  ).run(cutoff);
-  const delItems = db.prepare(
-    `DELETE FROM memory_items WHERE importance = 0 AND last_referenced_at < ?`,
-  ).run(cutoff);
 
   return {
-    deletedNodes: delNodes.changes,
-    deletedItems: delItems.changes,
+    deletedNodes: deps.nodes.deleteZeroImportanceOlderThan(cutoff),
+    deletedItems: deps.items.deleteZeroImportanceOlderThan(cutoff),
   };
 }

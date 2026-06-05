@@ -155,7 +155,7 @@ export type EmaStreamEvent =
 
   // Memory — pipeline observability (cross-turn, emitted on the system bus)
   | { type: 'memory_compaction_started'; sessionId: SessionId; turnId: TurnId; mode: TurnMode; beforeTokens: number }
-  | { type: 'memory_compaction_completed'; sessionId: SessionId; turnId: TurnId; mode: TurnMode; beforeTokens: number; afterTokens: number; durationMs: number }
+  | { type: 'memory_compaction_completed'; sessionId: SessionId; turnId: TurnId; mode: TurnMode; beforeTokens: number; afterTokens: number; savedTokens: number; durationMs: number }
   | { type: 'memory_compaction_failed'; sessionId: SessionId; turnId: TurnId; mode: TurnMode; error: string; beforeTokens: number; afterTokens: number; durationMs: number }
   | { type: 'memory_extraction_started';    sessionId: SessionId; turnId?: TurnId; queueDepth: number }
   | { type: 'memory_extraction_completed';

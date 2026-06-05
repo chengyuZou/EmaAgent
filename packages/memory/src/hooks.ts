@@ -80,6 +80,7 @@ export function registerMemoryHooks(
         modelContextWindow: window,
         recentFiles:        recent,
         signal,
+        emit:               ctx.emit,
       });
 
       return {

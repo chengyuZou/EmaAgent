@@ -802,6 +802,7 @@ ${result.summary}
       mode:       args.mode,
       beforeTokens,
       afterTokens: afterTokens,
+      savedTokens: Math.max(0, beforeTokens - afterTokens),
       durationMs: Date.now() - now,
     })
 
@@ -812,7 +813,7 @@ ${result.summary}
       succeeded:    true,
       beforeTokens,
       afterTokens: afterTokens,
-      savedTokens: beforeTokens - afterTokens,
+      savedTokens: Math.max(0, beforeTokens - afterTokens),
     };
   }
 

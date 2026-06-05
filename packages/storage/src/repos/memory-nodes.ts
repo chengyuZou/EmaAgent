@@ -64,6 +64,23 @@ export interface MemoryReferenceBoostOptions {
   saturationSlope: number;
 }
 
+export interface MemoryNodeStatsRow {
+  node_type: MemoryNodeType;
+  total: number;
+  avg_importance: number | null;
+  oldest_ref_at: number | null;
+  newest_ref_at: number | null;
+  embedded_count: number;
+}
+
+export interface MemoryNodesBrowseOptions {
+  limit?: number;
+  nodeType?: MemoryNodeType;
+  minImportance?: number;
+  orderBy?: 'lastRef' | 'importance' | 'created';
+  search?: string;
+}
+
 // ── Repo ──────────────────────────────────────────────────────────────────────
 
 /**
@@ -149,6 +166,36 @@ export class MemoryNodesRepo {
          LIMIT ?`,
       )
       .all(model, afterUpdatedAt, limit) as MemoryNodeRow[];
+  }
+
+  browse(opts: MemoryNodesBrowseOptions = {}): MemoryNodeRow[] {
+    const where: string[] = [];
+    const params: Array<string | number> = [];
+
+    if (opts.nodeType) {
+      where.push('node_type = ?');
+      params.push(opts.nodeType);
+    }
+    if (typeof opts.minImportance === 'number') {
+      where.push('importance >= ?');
+      params.push(opts.minImportance);
+    }
+    if (opts.search) {
+      where.push('(label LIKE ? OR description LIKE ?)');
+      const pattern = `%${opts.search}%`;
+      params.push(pattern, pattern);
+    }
+
+    const orderBy = opts.orderBy === 'importance' ? 'importance DESC'
+                  : opts.orderBy === 'created'    ? 'created_at DESC'
+                  :                                  'last_referenced_at DESC';
+    const sql =
+      `SELECT * FROM memory_nodes` +
+      (where.length > 0 ? ` WHERE ${where.join(' AND ')}` : '') +
+      ` ORDER BY ${orderBy} LIMIT ?`;
+    params.push(opts.limit ?? 100);
+
+    return this.db.prepare(sql).all(...params) as MemoryNodeRow[];
   }
 
   // ── Update ──────────────────────────────────────────────────────────────────
@@ -257,6 +304,16 @@ export class MemoryNodesRepo {
     txn();
   }
 
+  deleteZeroImportanceOlderThan(cutoff: number): number {
+    const info = this.db
+      .prepare(
+        `DELETE FROM memory_nodes
+          WHERE importance = 0 AND last_referenced_at < ?`,
+      )
+      .run(cutoff);
+    return info.changes;
+  }
+
   // ── Counts (startup recovery + diagnostics) ─────────────────────────────────
 
   countStaleEmbeddings(currentProviderId: string): number {
@@ -267,6 +324,21 @@ export class MemoryNodesRepo {
       )
       .get(currentProviderId) as { n: number };
     return row.n;
+  }
+
+  statsByType(): MemoryNodeStatsRow[] {
+    return this.db
+      .prepare(
+        `SELECT node_type,
+                COUNT(*) AS total,
+                AVG(importance) AS avg_importance,
+                MIN(last_referenced_at) AS oldest_ref_at,
+                MAX(last_referenced_at) AS newest_ref_at,
+                SUM(CASE WHEN embedding IS NOT NULL THEN 1 ELSE 0 END) AS embedded_count
+           FROM memory_nodes
+          GROUP BY node_type`,
+      )
+      .all() as MemoryNodeStatsRow[];
   }
 
   // ── Delete ──────────────────────────────────────────────────────────────────

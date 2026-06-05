@@ -19,12 +19,17 @@ export interface SessionNoteUpsert {
   updatedAt:           number;
 }
 
+export interface SessionNotesStats {
+  total_sessions: number;
+  total_chars: number | null;
+}
+
 // ── Repo ──────────────────────────────────────────────────────────────────────
 
 /**
- * Layer-1 session summary — one row per session. Body is mode-specific
- * markdown, maintained incrementally by the extraction pipeline using
- * last_message_id as a cursor so subsequent updates only see new messages.
+ * Layer-1 session note - one row per session. Body is a JSON-encoded
+ * SessionNoteEntry[] owned by the memory package. Each entry.delta is markdown;
+ * callers must render the JSON body before injecting it into an LLM context.
  */
 export class SessionNotesRepo {
   constructor(private readonly db: SqliteDb) {}
@@ -53,6 +58,16 @@ export class SessionNotesRepo {
     return this.db
       .prepare('SELECT * FROM session_notes WHERE session_id = ?')
       .get(sessionId) as SessionNoteRow | undefined;
+  }
+
+  stats(): SessionNotesStats {
+    return this.db
+      .prepare(
+        `SELECT COUNT(*) AS total_sessions,
+                SUM(LENGTH(body)) AS total_chars
+           FROM session_notes`,
+      )
+      .get() as SessionNotesStats;
   }
 
   delete(sessionId: SessionId): void {

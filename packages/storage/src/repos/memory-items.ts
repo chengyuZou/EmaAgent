@@ -64,6 +64,22 @@ export interface MemoryReferenceBoostOptions {
   saturationSlope: number;
 }
 
+export interface MemoryItemStatsRow {
+  kind: MemoryItemKind;
+  total: number;
+  avg_importance: number | null;
+  embedded_count: number;
+}
+
+export interface MemoryItemsBrowseOptions {
+  limit?: number;
+  kind?: MemoryItemKind;
+  mode?: string;
+  minImportance?: number;
+  orderBy?: 'lastRef' | 'importance' | 'created';
+  search?: string;
+}
+
 // ── Repo ──────────────────────────────────────────────────────────────────────
 
 /**
@@ -186,6 +202,39 @@ export class MemoryItemsRepo {
       .all(model, afterUpdatedAt, Date.now(), limit) as MemoryItemRow[];
   }
 
+  browse(opts: MemoryItemsBrowseOptions = {}, now = Date.now()): MemoryItemRow[] {
+    const where: string[] = ['(expires_at IS NULL OR expires_at > ?)'];
+    const params: Array<string | number> = [now];
+
+    if (opts.kind) {
+      where.push('kind = ?');
+      params.push(opts.kind);
+    }
+    if (typeof opts.minImportance === 'number') {
+      where.push('importance >= ?');
+      params.push(opts.minImportance);
+    }
+    if (opts.search) {
+      where.push('(title LIKE ? OR body LIKE ?)');
+      const pattern = `%${opts.search}%`;
+      params.push(pattern, pattern);
+    }
+    if (opts.mode) {
+      where.push('EXISTS (SELECT 1 FROM json_each(modes_json) WHERE json_each.value = ?)');
+      params.push(opts.mode);
+    }
+
+    const orderBy = opts.orderBy === 'importance' ? 'importance DESC'
+                  : opts.orderBy === 'created'    ? 'created_at DESC'
+                  :                                  'last_referenced_at DESC';
+    const sql =
+      `SELECT * FROM memory_items WHERE ${where.join(' AND ')}` +
+      ` ORDER BY ${orderBy} LIMIT ?`;
+    params.push(opts.limit ?? 100);
+
+    return this.db.prepare(sql).all(...params) as MemoryItemRow[];
+  }
+
   // ── Update ──────────────────────────────────────────────────────────────────
 
   /**
@@ -298,7 +347,8 @@ export class MemoryItemsRepo {
     const stmt = this.db.prepare(
       `UPDATE memory_items
           SET importance = ?,
-              last_referenced_at = ?
+              last_referenced_at = ?,
+              updated_at = ?
         WHERE id = ?`,
     );
 
@@ -310,7 +360,7 @@ export class MemoryItemsRepo {
           at,
           boost,
         );
-        stmt.run(newImportance, at, row.id);
+        stmt.run(newImportance, at, at, row.id);
       }
     });
     txn();
@@ -326,6 +376,30 @@ export class MemoryItemsRepo {
       )
       .get(currentProviderId) as { n: number };
     return row.n;
+  }
+
+  statsByKind(now: number): MemoryItemStatsRow[] {
+    return this.db
+      .prepare(
+        `SELECT kind,
+                COUNT(*) AS total,
+                AVG(importance) AS avg_importance,
+                SUM(CASE WHEN embedding IS NOT NULL THEN 1 ELSE 0 END) AS embedded_count
+           FROM memory_items
+          WHERE expires_at IS NULL OR expires_at > ?
+          GROUP BY kind`,
+      )
+      .all(now) as MemoryItemStatsRow[];
+  }
+
+  deleteZeroImportanceOlderThan(cutoff: number): number {
+    const info = this.db
+      .prepare(
+        `DELETE FROM memory_items
+          WHERE importance = 0 AND last_referenced_at < ?`,
+      )
+      .run(cutoff);
+    return info.changes;
   }
 
   // ── Delete ──────────────────────────────────────────────────────────────────
