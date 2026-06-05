@@ -39,7 +39,7 @@ export interface MemoryTaskEnqueue {
 
 /**
  * Durable queue for fire-and-forget memory work (extraction, consolidation,
- * compaction, embedding refresh). The lifecycle is:
+ * maintenance, embedding refresh). The lifecycle is:
  *
  *   enqueue() → pending
  *   claimNext() → running (atomic UPDATE … RETURNING)

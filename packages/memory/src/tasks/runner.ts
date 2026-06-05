@@ -127,7 +127,7 @@ export class MemoryTaskRunner {
       sessionId?: string;
       mode?:      TurnMode;
     };
-    if (!payload.sessionId || !payload.mode) return;
+    if (!payload.sessionId || !payload.mode) throw new Error('Invalid task payload: missing sessionId or mode');
     const sid = payload.sessionId as SessionId;
 
     // Honour per-session override: consolidation can be skipped without
