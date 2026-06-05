@@ -1,6 +1,6 @@
 import type { HookBus } from '@ema-agent/hook';
 import type {
-  TurnMode, AgentSubMode, SessionId, TurnId,
+  TurnMode, SessionId, TurnId,
 } from '@ema-agent/contracts';
 import type { LlmRouter } from '@ema-agent/llm';
 import type { ModelCatalog } from '@ema-agent/llm';
@@ -25,8 +25,15 @@ export interface MemoryHooksDeps {
   session:        SessionStore;
   llm:            LlmRouter;
   modelCatalog?:  ModelCatalog;
-  /** Defaults to 128_000 — most common modern context size. */
+  /** Fallback when the engine doesn't pass providerId+model in meta. */
   defaultContextWindow?: number;
+  /**
+   * Look up the context window for a specific provider+model pair.
+   * Orchestrator implements this using ModelCatalog.
+   * Called at hook-fire time with the actual values from engine meta,
+   * so it always reflects the current turn's real model.
+   */
+  getContextWindow: (providerId: string, model: string) => number;
   recentFiles?:   RecentFilesProvider;
 }
 
@@ -48,17 +55,19 @@ export function registerMemoryHooks(
   deps: MemoryHooksDeps,
 ): () => void {
   const { planner } = deps;
-  const defaultWindow = deps.defaultContextWindow ?? 128_000;
 
   // ── beforeLlm ───────────────────────────────────────────────────────────────
   const offBeforeLlm = bus.register(
     'beforeLlm',
     async (ctx) => {
-      const mode = (ctx.meta['mode'] as TurnMode | undefined) ?? 'chat';
-      const userInput = (ctx.meta['userInput'] as string | undefined) ?? '';
-      const signal    = ctx.meta['signal']    as AbortSignal | undefined;
+      const mode       = (ctx.meta['mode']       as TurnMode | undefined) ?? 'chat';
+      const userInput  = (ctx.meta['userInput']  as string   | undefined) ?? '';
+      const signal     = ctx.meta['signal']      as AbortSignal | undefined;
+      // Engine sets these in meta so context window is always per-turn accurate.
+      const providerId = ctx.meta['providerId']  as string | undefined;
+      const model      = ctx.meta['model']       as string | undefined;
 
-      const window = resolveContextWindow(deps, mode, ctx.meta['subMode'] as AgentSubMode | undefined);
+      const window = resolveContextWindow(deps, providerId, model);
       const recent = deps.recentFiles?.(ctx.sessionId);
 
       const t0 = Date.now();
@@ -128,11 +137,13 @@ export function registerMemoryHooks(
 
 function resolveContextWindow(
   deps: MemoryHooksDeps,
-  _mode: TurnMode,
-  _subMode: AgentSubMode | undefined,
+  providerId: string | undefined,
+  model:      string | undefined,
 ): number {
-  // V1: use the configured default. Future work can look up the bound model
-  // through ModelCatalog and return its actual context window.
+  if (providerId && model) {
+    const fromCatalog = deps.getContextWindow(providerId, model);
+    if (fromCatalog > 0) return fromCatalog;
+  }
   return deps.defaultContextWindow ?? 128_000;
 }
 
@@ -146,11 +157,16 @@ async function runOnTurnEnd(
   if (!turn) return;
 
   const messages = session.loadMessagesForTurn(turnId);
-  const userMsg     = messages.find(m => m.role === 'user'      && m.kind === 'normal');
-  const assistantMsg = messages.find(m => m.role === 'assistant' && m.kind === 'normal');
+  // First user message = actual user query; subsequent user messages are tool results.
+  const userMsg = messages.find(m => m.role === 'user' && m.kind === 'normal');
+  // Collect ALL assistant messages — agent turns can have multiple (think→act→think→respond).
+  const assistantTexts = messages
+    .filter(m => m.role === 'assistant' && m.kind === 'normal')
+    .map(m => extractText(m.blocks))
+    .filter(t => t.length > 0);
 
   const userText      = extractText(userMsg?.blocks);
-  const assistantText = extractText(assistantMsg?.blocks);
+  const assistantText = assistantTexts.join('\n\n');
 
   await planner.afterTurn({
     sessionId,

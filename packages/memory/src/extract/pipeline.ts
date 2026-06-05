@@ -13,9 +13,11 @@ import { runExtraction, runConsolidation } from './llm-call.js';
 import {
   buildExtractionPrompt, buildConsolidationPrompt,
 } from './prompts.js';
+import { buildNoteCompactionPrompt } from '../compact/prompts.js';
 import { readPending, clearPending } from './pending.js';
 import { EmbedService } from '../embed/service.js';
 import { unpackEmbedding } from '../embed/similarity.js';
+import { estimateTextTokens } from '../tokens/estimate.js';
 import type { VectorIndex } from '../index/vector-index.js';
 
 // ── Configuration knobs (mode-dependent) ─────────────────────────────────────
@@ -60,7 +62,7 @@ export async function runExtractionPipeline(
     skipConsolidation?:  boolean;
   },
 ): Promise<PipelineResult> {
-  const empty: PipelineResult = {
+  const stats: PipelineResult = {
     extractedNodes:    0,
     extractedEdges:    0,
     extractedItems:    0,
@@ -69,7 +71,20 @@ export async function runExtractionPipeline(
   };
 
   const fragments = readPending(deps.memory.sessions, args.sessionId);
-  if (fragments.length === 0) return empty;
+  const hasPending = fragments.length > 0;
+
+  if (!hasPending) {
+    // Pending was already cleared by a prior run that failed AFTER clearPending.
+    // Still check for unconsolidated lazy_updates and finish the work.
+    if (!args.skipConsolidation) {
+      const lazyIds = deps.memory.lazyUpdates.listNodesWithPending();
+      if (lazyIds.length > 0) {
+        // This can throw: the task runner will retry until consolidation succeeds.
+        stats.consolidatedNodes = await consolidatePendingNodes(deps, args.signal);
+      }
+    }
+    return stats;
+  }
 
   // ── 1. Build prompt + run LLM ─────────────────────────────────────────────
   const existingNodes = deps.memory.nodes.listAll(500);
@@ -90,11 +105,10 @@ export async function runExtractionPipeline(
   if (!output) {
     // No memory model configured — clear buffer to avoid permanent build-up.
     clearPending(deps.memory.sessions, args.sessionId, Date.now());
-    return empty;
+    return stats;
   }
 
   // ── 2. Route outputs ──────────────────────────────────────────────────────
-  const stats = { ...empty };
 
   // Track labels of nodes that exist (existing + newly created) so edges can
   // resolve their endpoints. Keyed by label string.
@@ -116,10 +130,23 @@ export async function runExtractionPipeline(
     appendSessionNote(deps, args.sessionId, output.session_note_delta);
   }
 
-  // ── 3. Consolidate any nodes with lazy_updates ────────────────────────────
-  // When the session opts out of consolidation, lazy_updates are still queued
-  // by step 2; they just stay pending until a future extraction (with
-  // consolidation re-enabled) drains them. No data loss.
+  // ── 3. Clear pending fragments ───────────────────────────────────────────
+  // Moved BEFORE consolidation: if consolidation fails, pending is already
+  // cleared so a retry won't re-append the same session_note_delta or
+  // re-insert duplicate nodes/items. Consolidation failure is non-fatal —
+  // lazy_updates stay buffered and drain on the next extraction run.
+  clearPending(deps.memory.sessions, args.sessionId, Date.now());
+
+  // ── 4. Compact L1 note if it has grown over budget ────────────────────────
+  try {
+    await compactSessionNoteIfNeeded(deps, args.sessionId, args.mode, args.signal);
+  } catch { /* non-fatal — note stays verbose, next run may compact */ }
+
+  // ── 5. Consolidate any nodes with lazy_updates ───────────────────────────
+  // NOT wrapped in try/catch: if this throws, the task runner marks the task
+  // failed and retries. Because clearPending already ran (step 3), the retry
+  // sees empty fragments, falls into the early-return path above, and runs
+  // ONLY consolidation — no duplicate extraction, no double session_note append.
   if (!args.skipConsolidation) {
     const pendingNodeIds = deps.memory.lazyUpdates.listNodesWithPending();
     if (pendingNodeIds.length > 0) {
@@ -136,9 +163,6 @@ export async function runExtractionPipeline(
       });
     }
   }
-
-  // ── 4. Clear pending fragments — extraction is fully drained ──────────────
-  clearPending(deps.memory.sessions, args.sessionId, Date.now());
 
   return stats;
 }
@@ -201,28 +225,41 @@ async function routeCandidateNode(
     }
   }
 
-  // 3. Insert as new node
+  // 3. Insert as new node — handle concurrent session race on UNIQUE(label, node_type)
   const id  = crypto.randomUUID();
   const now = Date.now();
-  deps.memory.nodes.insert({
-    id,
-    label:       candidate.label,
-    nodeType:    candidate.nodeType,
-    description: candidate.description,
-    embedding:           embedded?.embedding,
-    embeddingProviderId: embedded?.providerId,
-    embeddingModel:      embedded?.model,
-    embeddingDim:        embedded?.dim,
-    importance:  candidate.importance,
-    createdAt:   now,
-  });
-  // Update in-memory vector index too
-  if (embedded && deps.nodesIndex && deps.nodesIndex.dim === embedded.dim) {
-    const view = unpackEmbedding(embedded.embedding, embedded.dim);
-    deps.nodesIndex.add(id, view);
+  try {
+    deps.memory.nodes.insert({
+      id,
+      label:       candidate.label,
+      nodeType:    candidate.nodeType,
+      description: candidate.description,
+      embedding:           embedded?.embedding,
+      embeddingProviderId: embedded?.providerId,
+      embeddingModel:      embedded?.model,
+      embeddingDim:        embedded?.dim,
+      importance:  candidate.importance,
+      createdAt:   now,
+    });
+    // Update in-memory vector index too
+    if (embedded && deps.nodesIndex && deps.nodesIndex.dim === embedded.dim) {
+      const view = unpackEmbedding(embedded.embedding, embedded.dim);
+      deps.nodesIndex.add(id, view);
+    }
+    labelToNodeId.set(candidate.label, id);
+    stats.extractedNodes++;
+  } catch (err) {
+    // Another session concurrently inserted the same (label, node_type).
+    // Re-route to lazy_update against the winner instead of crashing.
+    const isUnique = err instanceof Error &&
+      (err.message.includes('UNIQUE') || err.message.includes('SQLITE_CONSTRAINT'));
+    if (!isUnique) throw err;
+    const existing = deps.memory.nodes.findByLabelAndType(candidate.label, candidate.nodeType);
+    if (existing) {
+      enqueueLazyUpdate(deps, existing.id, candidate, fragments, sessionId, stats);
+      labelToNodeId.set(candidate.label, existing.id);
+    }
   }
-  labelToNodeId.set(candidate.label, id);
-  stats.extractedNodes++;
 }
 
 function enqueueLazyUpdate(
@@ -291,9 +328,13 @@ async function processItems(
   for (let i = 0; i < output.memory_items.length; i++) {
     const item = output.memory_items[i]!;
     const e    = embeddings?.[i] ?? null;
-    const id   = crypto.randomUUID();
     const now  = Date.now();
 
+    // Idempotency: same session + same title = same item. Skip on retry.
+    const duplicate = deps.memory.items.findBySourceAndTitle(sessionId, item.title);
+    if (duplicate) continue;
+
+    const id = crypto.randomUUID();
     deps.memory.items.insert({
       id,
       kind:                item.kind,
@@ -336,12 +377,15 @@ function appendSessionNote(
 ): void {
   const existing = deps.memory.sessionNotes.findBySession(sessionId);
   const now = Date.now();
+  // ISO timestamp prefix so the model knows when each delta was written
+  const ts = new Date(now).toISOString().replace('T', ' ').slice(0, 16);
+  const timedDelta = `<!-- ${ts} -->\n${delta.trim()}`;
   const sep = existing && existing.body.trim() ? '\n\n' : '';
-  const body = (existing?.body ?? '') + sep + delta.trim();
+  const body = (existing?.body ?? '') + sep + timedDelta;
   deps.memory.sessionNotes.upsert({
     sessionId,
     body,
-    tokensAtLastUpdate: 0,    // updated by compaction pipeline
+    tokensAtLastUpdate: estimateTextTokens(body),
     updatedAt:          now,
   });
 }
@@ -415,6 +459,71 @@ async function consolidatePendingNodes(
   }
 
   return consolidated;
+}
+
+// ── L1 session note self-compaction ─────────────────────────────────────────
+
+/**
+ * When the session note body exceeds settings.recall.layer1MaxTokens, run a
+ * cheap LLM call to re-summarise it in-place using the mode-specific template.
+ * This prevents unbounded L1 growth while preserving all currently-relevant state.
+ *
+ * Non-fatal: caller wraps in try/catch. Failure leaves the note verbose until
+ * the next extraction has another chance to compact it.
+ */
+async function compactSessionNoteIfNeeded(
+  deps: ExtractionPipelineDeps,
+  sessionId: SessionId,
+  mode: TurnMode,
+  signal?: AbortSignal,
+): Promise<void> {
+  const note = deps.memory.sessionNotes.findBySession(sessionId);
+  if (!note || !note.body.trim()) return;
+
+  const tokenEst = estimateTextTokens(note.body);
+  if (tokenEst <= deps.settings.recall.layer1MaxTokens) return;
+
+  const binding = resolveMemoryBindingLocal(deps);
+  if (!binding) return;
+
+  const prompt = buildNoteCompactionPrompt({ mode, body: note.body });
+  const completion = await deps.memory.llm.complete({
+    providerId:  binding.providerId,
+    model:       binding.model,
+    messages:    [{ role: 'user', content: prompt }],
+    maxTokens:   1500,
+    temperature: 0.2,
+    signal,
+  });
+
+  const compacted = completion.blocks
+    .filter((b): b is typeof b & { type: 'text' } => b.type === 'text')
+    .map(b => b.text)
+    .join('')
+    .trim();
+
+  if (!compacted) return;
+
+  const now = Date.now();
+  const ts = new Date(now).toISOString().replace('T', ' ').slice(0, 16);
+  deps.memory.sessionNotes.upsert({
+    sessionId,
+    body: `<!-- compacted ${ts} -->\n${compacted}`,
+    tokensAtLastUpdate: estimateTextTokens(compacted),
+    updatedAt: now,
+  });
+}
+
+function resolveMemoryBindingLocal(
+  deps: ExtractionPipelineDeps,
+): { providerId: string; model: string } | null {
+  const binding = deps.memory.modelBindings.get('memory') ?? deps.memory.modelBindings.get('compaction');
+  if (binding) return { providerId: binding.providerConfigId, model: binding.model };
+  const providerId = deps.memory.llm.firstProviderId();
+  if (!providerId) return null;
+  const model = deps.memory.llm.defaultModelFor(providerId);
+  if (!model) return null;
+  return { providerId, model };
 }
 
 // Surface the type for orchestrators wanting to type the result

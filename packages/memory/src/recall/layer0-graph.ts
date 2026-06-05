@@ -41,10 +41,23 @@ export function recallGraph(
   if (!queryVec || !queryEmbed) return { nodes: [], edges: [] };
 
   // ── 1. Anchors via index (fast path) or DB scan (fallback) ────────────────
-  const anchorIds = findAnchors(
+  const anchorHits = findAnchors(
     deps, queryVec, queryEmbed, index, alreadySurfaced, anchorK,
   );
-  if (anchorIds.length === 0) return { nodes: [], edges: [] };
+  if (anchorHits.length === 0) return { nodes: [], edges: [] };
+
+  const topScore = anchorHits[0]!.score;
+
+  // Skip L0 entirely when the query is semantically distant from all nodes
+  // (social noise, cold start, greetings). Threshold from settings.
+  if (topScore < settings.recall.layer0AnchorMinScore) return { nodes: [], edges: [] };
+
+  // Reduce TopK when relevance is borderline — fewer anchors, less noise.
+  const effectiveBudget = topScore < settings.recall.layer0AnchorConfidentScore
+    ? Math.max(1, Math.ceil(totalBudget / 2))
+    : totalBudget;
+
+  const anchorIds = anchorHits.map(h => h.id);
 
   // Load anchor rows in one go
   const visited = new Map<string, RecalledNode>();
@@ -59,7 +72,7 @@ export function recallGraph(
   let frontier: string[] = [...visited.keys()];
 
   for (let hop = 1; hop <= maxHop; hop++) {
-    if (visited.size >= totalBudget) break;
+    if (visited.size >= effectiveBudget) break;
     if (frontier.length === 0)       break;
 
     const edges      = deps.edges.listForNodes(frontier);
@@ -69,7 +82,7 @@ export function recallGraph(
     weighted.sort((a, b) => b.weight - a.weight);
 
     for (const { edge, weight } of weighted) {
-      if (visited.size >= totalBudget) break;
+      if (visited.size >= effectiveBudget) break;
 
       const edgeKey = `${edge.from_node_id}|${edge.relation}|${edge.to_node_id}`;
       if (!collectedEdges.has(edgeKey)) {
@@ -109,6 +122,8 @@ export function recallGraph(
 
 // ── Anchor finding ───────────────────────────────────────────────────────────
 
+interface AnchorHit { id: string; score: number }
+
 function findAnchors(
   deps: MemoryDeps,
   queryVec: Float32Array,
@@ -116,17 +131,16 @@ function findAnchors(
   index: VectorIndex | null,
   alreadySurfaced: Set<string>,
   k: number,
-): string[] {
+): AnchorHit[] {
   // Fast path: vector index ANN search
   if (index && index.dim === queryEmbed.dim) {
-    // Search a few extra results so we have room to filter alreadySurfaced
     const overscan = Math.max(k * 3, k + 10);
     const hits = index.search(queryVec, overscan);
-    const out: string[] = [];
+    const out: AnchorHit[] = [];
     for (const hit of hits) {
       if (alreadySurfaced.has(hit.id)) continue;
       if (hit.score <= 0)              continue;
-      out.push(hit.id);
+      out.push({ id: hit.id, score: hit.score });
       if (out.length >= k) break;
     }
     return out;
@@ -134,19 +148,19 @@ function findAnchors(
 
   // Fallback: scan DB rows + brute-force cosine
   const rows = deps.nodes.listEmbeddable(queryEmbed.model);
-  type Scored = { row: MemoryNodeRow; score: number };
+  type Scored = { id: string; score: number };
   const scored: Scored[] = [];
   for (const row of rows) {
-    if (alreadySurfaced.has(row.id))            continue;
-    if (!row.embedding)                         continue;
-    if (row.embedding_dim !== queryEmbed.dim)   continue;  // guard against malformed data
+    if (alreadySurfaced.has(row.id))          continue;
+    if (!row.embedding)                       continue;
+    if (row.embedding_dim !== queryEmbed.dim) continue;
     const vec = unpackEmbedding(row.embedding, queryEmbed.dim);
     const score = dotProduct(queryVec, vec);
     if (score <= 0) continue;
-    scored.push({ row, score });
+    scored.push({ id: row.id, score });
   }
   scored.sort((a, b) => b.score - a.score);
-  return scored.slice(0, k).map(s => s.row.id);
+  return scored.slice(0, k);
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────

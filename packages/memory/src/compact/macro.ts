@@ -80,20 +80,30 @@ function formatBlock(blk: UserBlock | AssistantBlock): string {
 
 // ── Image stripping (preserve order, replace with placeholder text) ──────────
 
+const MEDIA_TYPES = new Set(['image_url', 'image_data', 'audio_data', 'file_url', 'file_data']);
+
 function stripImages(messages: LlmMessage[]): LlmMessage[] {
   return messages.map((msg) => {
-    if (msg.role === 'user' && Array.isArray(msg.content)) {
-      const next: UserBlock[] = msg.content.map((blk) => {
-        const t = (blk as { type?: string }).type;
-        if (t === 'image_url' || t === 'image_data' || t === 'audio_data'
-            || t === 'file_url' || t === 'file_data') {
-          return { type: 'text', text: `[${t}]` };
+    if (msg.role !== 'user' || !Array.isArray(msg.content)) return msg;
+    const next: UserBlock[] = msg.content.map((blk) => {
+      const t = (blk as { type?: string }).type;
+      if (t && MEDIA_TYPES.has(t)) return { type: 'text', text: `[${t}]` };
+      // Also strip media nested inside tool_result content arrays
+      if (t === 'tool_result') {
+        const tr = blk as { type: 'tool_result'; toolUseId: string; content: string | unknown[]; isError?: boolean };
+        if (Array.isArray(tr.content)) {
+          const stripped = tr.content.map((part) => {
+            const pt = (part as { type?: string }).type;
+            return (pt && MEDIA_TYPES.has(pt))
+              ? { type: 'text' as const, text: `[${pt}]` }
+              : part;
+          });
+          return { type: 'tool_result', toolUseId: tr.toolUseId, content: stripped, isError: tr.isError ?? false } as UserBlock;
         }
-        return blk;
-      });
-      return { role: 'user', content: next };
-    }
-    return msg;
+      }
+      return blk;
+    });
+    return { role: 'user', content: next };
   });
 }
 

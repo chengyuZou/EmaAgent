@@ -97,6 +97,44 @@ work). Use the structured template below. Be thorough but compact.
 
 // ── Public builder ───────────────────────────────────────────────────────────
 
+/**
+ * Prompt for compressing an over-grown session note in-place.
+ * Unlike macrocompaction (which summarises a message slice), this takes the
+ * existing note body and produces a tighter version in the same structure —
+ * merging redundant entries, removing clearly stale facts, keeping the
+ * latest state sections updated.
+ *
+ * Newest deltas are at the bottom; they carry more recency weight.
+ */
+export function buildNoteCompactionPrompt(args: {
+  mode:   TurnMode;
+  body:   string;
+}): string {
+  const template = (
+    args.mode === 'chat'      ? CHAT_TEMPLATE      :
+    args.mode === 'narrative' ? NARRATIVE_TEMPLATE :
+                                 AGENT_TEMPLATE
+  );
+
+  return `You are compressing a session note that has grown too long.
+Re-write it using the structured template below. Follow these rules strictly:
+
+1. Merge duplicate or redundant entries into a single entry.
+2. Drop clearly stale facts that have been superseded by newer ones.
+3. Weigh newer entries (at the bottom) more than older ones.
+4. **Every retained fact MUST keep its original <!-- YYYY-MM-DD HH:MM --> timestamp**
+   from the HTML comment that precedes it. Do not invent or alter timestamps.
+5. For sections that represent a "current state" (e.g. Current Emotional State,
+   Current Scene), keep only the most recent entry but preserve its timestamp.
+
+${template.trim()}
+
+${SHARED_FOOTER.trim()}
+
+Session note to compress (newest entries at the bottom, timestamps are HTML comments):
+${args.body}`.trim();
+}
+
 export function buildCompactionPrompt(args: {
   mode:    TurnMode;
   history: string;     // pre-formatted text of the conversation slice

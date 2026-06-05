@@ -150,5 +150,6 @@ function toRecalledItem(row: MemoryItemRow): RecalledItem {
     title:      row.title,
     body:       row.body,
     importance: row.importance,
+    updatedAt:  row.updated_at,
   };
 }

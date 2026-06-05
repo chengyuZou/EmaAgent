@@ -721,6 +721,9 @@ ${result.summary}
 function buildContextMessage(bundle: RecallBundle): LlmMessage | null {
   const parts: string[] = [];
 
+  const fmtDate = (ms: number) =>
+    new Date(ms).toISOString().replace('T', ' ').slice(0, 16);
+
   if (bundle.layer0 && bundle.layer0.nodes.length > 0) {
     const nodes = bundle.layer0.nodes
       .map(n => `- (${n.nodeType}) ${n.label}: ${n.description}`)
@@ -741,13 +744,15 @@ function buildContextMessage(bundle: RecallBundle): LlmMessage | null {
     if (bundle.layer2.currentMode.length > 0) {
       blob.push('当前模式相关:');
       for (const i of bundle.layer2.currentMode) {
-        blob.push(`- [${i.kind}] ${i.title}: ${i.body}`);
+        const ts = i.updatedAt ? ` (${fmtDate(i.updatedAt)})` : '';
+        blob.push(`- [${i.kind}]${ts} ${i.title}: ${i.body}`);
       }
     }
     if (bundle.layer2.otherModes.length > 0) {
       blob.push('\n其他模式相关:');
       for (const i of bundle.layer2.otherModes) {
-        blob.push(`- [${i.kind}] ${i.title}: ${i.body}`);
+        const ts = i.updatedAt ? ` (${fmtDate(i.updatedAt)})` : '';
+        blob.push(`- [${i.kind}]${ts} ${i.title}: ${i.body}`);
       }
     }
     if (blob.length > 0) parts.push(`## 相关的过往\n${blob.join('\n')}`);

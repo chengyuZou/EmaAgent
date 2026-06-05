@@ -16,6 +16,8 @@ const CLEARED_PLACEHOLDER = '[Old tool result content cleared — call the tool 
 // Mirrors Claude Code's COMPACTABLE_TOOLS whitelist (microCompact.ts).
 const COMPACTABLE_TOOLS = new Set<string>([
   'fs_read',
+  'fs_edit',   // edit result is a diff summary — safe to discard
+  'fs_write',  // write result is a confirmation — safe to discard
   'glob',
   'grep',
   'bash',

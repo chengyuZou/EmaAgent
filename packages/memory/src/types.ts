@@ -47,6 +47,8 @@ export interface RecalledItem {
   title:       string;
   body:        string;
   importance:  number;
+  /** unix ms — injected as absolute timestamp in the context message */
+  updatedAt:   number;
 }
 
 export interface EpisodicRecallResult {
@@ -87,6 +89,23 @@ export interface MemorySettings {
      * 2 = also 2-hop. We never go beyond 2 — empirically noisy.
      */
     maxHopDistance:    1 | 2;
+
+    /**
+     * Embedding similarity thresholds for adaptive L0 TopK.
+     * When the top anchor score < minScore → skip L0 entirely (query is semantically
+     * distant from all stored nodes — likely social noise or a cold start).
+     * When score is between minScore and confidentScore → halve anchorTopK to
+     * reduce noise from borderline-relevant anchors.
+     */
+    layer0AnchorMinScore:       number;
+    layer0AnchorConfidentScore: number;
+
+    /**
+     * Maximum token budget for a session's L1 note before it is auto-compacted.
+     * When the note exceeds this after an extraction append, a cheap LLM call
+     * re-summarises it in-place using the mode-specific template.
+     */
+    layer1MaxTokens: number;
   };
 
   compaction: {
@@ -108,6 +127,9 @@ export const DEFAULT_MEMORY_SETTINGS: MemorySettings = {
     useReranker:       true,
     anchorDetection:   'embedding',
     maxHopDistance:    2,
+    layer0AnchorMinScore:       0.15,
+    layer0AnchorConfidentScore: 0.45,
+    layer1MaxTokens:            2000,
   },
   compaction: {
     bufferTokens: 10000,
