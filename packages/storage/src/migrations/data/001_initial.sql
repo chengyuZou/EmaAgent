@@ -22,23 +22,44 @@
 -- ============ Sessions / turns / messages ============
 
 CREATE TABLE sessions (
-  id                     TEXT PRIMARY KEY,
-  title                  TEXT NOT NULL,
-  character_card_id      TEXT NOT NULL DEFAULT 'ema',
-  workspace_roots_json   TEXT NOT NULL DEFAULT '[]',
-  created_at             INTEGER NOT NULL,
-  updated_at             INTEGER NOT NULL,
-  archived_at            INTEGER,
-  pinned                 INTEGER NOT NULL DEFAULT 0,
-  pinned_at              INTEGER,
-  group_label            TEXT,
-  parent_session_id      TEXT REFERENCES sessions(id) ON DELETE SET NULL,
-  last_mode              TEXT,
-  last_sub_mode          TEXT,
-  meta_json              TEXT NOT NULL DEFAULT '{}',
-  pending_fragments_json TEXT NOT NULL DEFAULT '[]'
+  id                   TEXT PRIMARY KEY,
+  title                TEXT NOT NULL,
+  character_card_id    TEXT NOT NULL DEFAULT 'ema',
+  workspace_roots_json TEXT NOT NULL DEFAULT '[]',
+  created_at           INTEGER NOT NULL,
+  updated_at           INTEGER NOT NULL,
+  archived_at          INTEGER,
+  pinned               INTEGER NOT NULL DEFAULT 0,
+  pinned_at            INTEGER,
+  group_label          TEXT,
+  parent_session_id    TEXT REFERENCES sessions(id) ON DELETE SET NULL,
+  last_mode            TEXT,
+  last_sub_mode        TEXT,
+  meta_json            TEXT NOT NULL DEFAULT '{}'
 );
 CREATE INDEX idx_sessions_list ON sessions(pinned DESC, group_label, updated_at DESC);
+
+-- ── Pending extraction fragments ──────────────────────────────────────────────
+--
+-- Accumulates raw conversation text (user + assistant turns) that has not yet
+-- been processed by the extraction LLM. Fragments are appended onTurnEnd and
+-- consumed (then deleted) by the background extraction pipeline.
+--
+-- Separated from sessions so we can:
+--   • query "which sessions have pending work" with a simple SELECT DISTINCT
+--   • delete individual fragments without rewriting the whole sessions row
+--   • track per-fragment turn lineage for idempotent retry logic
+--
+CREATE TABLE pending_fragments (
+  id         TEXT    PRIMARY KEY,
+  session_id TEXT    NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  turn_id    TEXT    NOT NULL REFERENCES turns(id)    ON DELETE CASCADE,
+  role       TEXT    NOT NULL CHECK(role IN ('user', 'assistant')),
+  content    TEXT    NOT NULL,
+  at         INTEGER NOT NULL,   -- unix ms: when this side of the turn happened
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX idx_pending_fragments_session ON pending_fragments(session_id, created_at ASC);
 
 CREATE TABLE turns (
   id                   TEXT PRIMARY KEY,

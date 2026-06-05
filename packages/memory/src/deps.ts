@@ -7,6 +7,7 @@ import type {
   SessionNotesRepo,
   BackgroundTasksRepo,
   SessionsRepo,
+  PendingFragmentsRepo,
   ModelBindingsRepo,
 } from '@ema-agent/storage';
 import type { SessionStore } from '@ema-agent/session';
@@ -34,9 +35,10 @@ export interface MemoryDeps {
   edges:          MemoryEdgesRepo;
   lazyUpdates:    MemoryLazyUpdatesRepo;
   items:          MemoryItemsRepo;
-  sessionNotes:   SessionNotesRepo;
-  backgroundTasks: BackgroundTasksRepo;
-  sessions:       SessionsRepo;
+  sessionNotes:      SessionNotesRepo;
+  backgroundTasks:   BackgroundTasksRepo;
+  sessions:          SessionsRepo;         // meta_json, overrides, turn concurrency
+  pendingFragments:  PendingFragmentsRepo; // extraction input queue
 
   /**
    * Observability hook — pipeline / runner / maintenance push lifecycle

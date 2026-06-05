@@ -41,7 +41,7 @@ export function runStartupRecovery(
   catch { /* ignore */ }
 
   try {
-    const sessions = deps.sessions.listSessionsWithPending();
+    const sessions = deps.pendingFragments.listSessionsWithPending();
     report.pendingSessions = sessions.length;
   } catch { /* ignore */ }
 

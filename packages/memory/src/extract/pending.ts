@@ -1,41 +1,46 @@
+import crypto from 'node:crypto';
 import type { SessionId, TurnId } from '@ema-agent/contracts';
-import type { SessionsRepo } from '@ema-agent/storage';
+import type { PendingFragmentsRepo } from '@ema-agent/storage';
 import { estimateTextTokens } from '../tokens/estimate.js';
 import type { PendingFragment } from './types.js';
 
-// ── Read / write pending fragments buffer ────────────────────────────────────
+// ── Read / write pending fragments ───────────────────────────────────────────
 
-function parse(json: string): PendingFragment[] {
-  try {
-    const arr = JSON.parse(json);
-    return Array.isArray(arr) ? (arr as PendingFragment[]) : [];
-  } catch {
-    return [];
-  }
-}
-
-export function readPending(repo: SessionsRepo, sessionId: SessionId): PendingFragment[] {
-  return parse(repo.getPendingFragmentsRaw(sessionId));
+export function readPending(
+  repo: PendingFragmentsRepo,
+  sessionId: SessionId,
+): PendingFragment[] {
+  return repo.listBySession(sessionId).map(row => ({
+    turnId:  row.turn_id as TurnId,
+    role:    row.role,
+    content: row.content,
+    at:      row.at,
+  }));
 }
 
 export function appendPending(
-  repo: SessionsRepo,
+  repo: PendingFragmentsRepo,
   sessionId: SessionId,
   fragment: PendingFragment,
   now: number,
-): PendingFragment[] {
-  const arr = readPending(repo, sessionId);
-  arr.push(fragment);
-  repo.setPendingFragmentsRaw(sessionId, JSON.stringify(arr), now);
-  return arr;
+): void {
+  repo.insert({
+    id:        crypto.randomUUID(),
+    sessionId,
+    turnId:    fragment.turnId as TurnId,
+    role:      fragment.role,
+    content:   fragment.content,
+    at:        fragment.at,
+    createdAt: now,
+  });
 }
 
 export function clearPending(
-  repo: SessionsRepo,
+  repo: PendingFragmentsRepo,
   sessionId: SessionId,
-  now: number,
+  _now: number,   // kept for call-site compat; DELETE doesn't need a timestamp
 ): void {
-  repo.clearPendingFragments(sessionId, now);
+  repo.clearBySession(sessionId);
 }
 
 // ── Trigger evaluation ───────────────────────────────────────────────────────
@@ -46,7 +51,7 @@ export function clearPending(
  *   - turn-secondary : raw turn count exceeds `turnThreshold` (safety net for
  *                      long sessions of low-density turns)
  *
- * Per-session storage of "turn count since last extraction" is implicit —
+ * Per-session "turn count since last extraction" is implicit —
  * we count distinct turnIds in the current pending buffer.
  */
 export function shouldExtract(
@@ -61,7 +66,7 @@ export function shouldExtract(
     tokens += estimateTextTokens(f.content);
     turnSet.add(f.turnId);
   }
-  if (tokens >= thresholds.tokenThreshold)   return true;
+  if (tokens >= thresholds.tokenThreshold)    return true;
   if (turnSet.size >= thresholds.turnThreshold) return true;
   return false;
 }
@@ -74,14 +79,14 @@ export function shouldExtract(
  * can see Ema's perspective too ("I'll remember that you said X").
  */
 export function buildFragmentsFromTurn(args: {
-  turnId:      TurnId;
-  userText:    string;
+  turnId:        TurnId;
+  userText:      string;
   assistantText: string;
-  at:          number;
+  at:            number;
 }): PendingFragment[] {
   const out: PendingFragment[] = [];
   if (args.userText.trim()) {
-    out.push({ turnId: args.turnId, role: 'user',      content: args.userText.trim(),    at: args.at });
+    out.push({ turnId: args.turnId, role: 'user',      content: args.userText.trim(),      at: args.at });
   }
   if (args.assistantText.trim()) {
     out.push({ turnId: args.turnId, role: 'assistant', content: args.assistantText.trim(), at: args.at + 1 });

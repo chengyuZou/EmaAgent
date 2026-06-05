@@ -5,7 +5,7 @@ import type {
   MemoryNodeRow,
 } from '@ema-agent/storage';
 import type { MemoryDeps } from '../deps.js';
-import type { MemorySettings } from '../types.js';
+import type { MemorySettings, EmbeddedText } from '../types.js';
 import type {
   ExtractionOutput, ExtractedNode, PendingFragment,
 } from './types.js';
@@ -70,7 +70,7 @@ export async function runExtractionPipeline(
     consolidatedNodes: 0,
   };
 
-  const fragments = readPending(deps.memory.sessions, args.sessionId);
+  const fragments = readPending(deps.memory.pendingFragments, args.sessionId);
   const hasPending = fragments.length > 0;
 
   if (!hasPending) {
@@ -104,26 +104,40 @@ export async function runExtractionPipeline(
   );
   if (!output) {
     // No memory model configured — clear buffer to avoid permanent build-up.
-    clearPending(deps.memory.sessions, args.sessionId, Date.now());
+    clearPending(deps.memory.pendingFragments, args.sessionId, Date.now());
     return stats;
   }
 
-  // ── 2. Route outputs ──────────────────────────────────────────────────────
+  // ── 2. Pre-batch ALL external I/O (embed) ────────────────────────────────
+  // All async/fallible calls happen here, BEFORE any DB write.
+  // If embedding times out, no DB state has changed → safe to retry from scratch.
+  const nodeEmbeddings = output.new_nodes.length > 0
+    ? await deps.embed.embedMany(output.new_nodes.map(n => `${n.label}: ${n.description}`))
+    : null;
+
+  const itemEmbeddings = output.memory_items.length > 0
+    ? await deps.embed.embedMany(output.memory_items.map(i => `${i.title}: ${i.body}`))
+    : null;
+
+  // Derive a per-extraction turnId from the first fragment so items can be
+  // deduped by (session, title, turn) rather than (session, title) alone.
+  const extractionTurnId = fragments[0]?.turnId;
+
+  // ── 3. Route outputs (pure DB writes, no async) ───────────────────────────
 
   // Track labels of nodes that exist (existing + newly created) so edges can
   // resolve their endpoints. Keyed by label string.
   const labelToNodeId = new Map<string, string>();
   for (const n of existingNodes) labelToNodeId.set(n.label, n.id);
 
-  // Process new_nodes — embed, dedup, route to either lazy_updates or insert
-  await processNodes(deps, args.sessionId, output, fragments, stats, labelToNodeId, args.signal);
+  // Process new_nodes — dedup, route to either lazy_updates or insert
+  processNodes(deps, args.sessionId, output, fragments, stats, labelToNodeId, nodeEmbeddings);
 
   // Process new_edges using the now-fresh labelToNodeId map
   processEdges(deps, output, stats, labelToNodeId);
 
-  // Process memory_items — embed + insert (no dedup in V1; future round may
-  // add it once we have a clear signal of "same item")
-  await processItems(deps, args.sessionId, args.mode, output, stats, args.signal);
+  // Process memory_items — upsert with turn-scoped idempotency
+  processItems(deps, args.sessionId, args.mode, output, stats, itemEmbeddings, extractionTurnId);
 
   // Process session_note_delta — append to session_notes.body
   if (output.session_note_delta.trim()) {
@@ -135,7 +149,7 @@ export async function runExtractionPipeline(
   // cleared so a retry won't re-append the same session_note_delta or
   // re-insert duplicate nodes/items. Consolidation failure is non-fatal —
   // lazy_updates stay buffered and drain on the next extraction run.
-  clearPending(deps.memory.sessions, args.sessionId, Date.now());
+  clearPending(deps.memory.pendingFragments, args.sessionId, Date.now());
 
   // ── 4. Compact L1 note if it has grown over budget ────────────────────────
   try {
@@ -169,39 +183,31 @@ export async function runExtractionPipeline(
 
 // ── Node processing (dedup via embedding + lazy_updates) ─────────────────────
 
-async function processNodes(
+function processNodes(
   deps: ExtractionPipelineDeps,
   sessionId: SessionId,
   output: ExtractionOutput,
   fragments: PendingFragment[],
   stats: PipelineResult,
   labelToNodeId: Map<string, string>,
-  _signal?: AbortSignal,
-): Promise<void> {
-  if (output.new_nodes.length === 0) return;
-
-  // Batch-embed the candidate node descriptions to save round-trips
-  const texts = output.new_nodes.map(n => `${n.label}: ${n.description}`);
-  const embeddings = await deps.embed.embedMany(texts);
-
+  precomputedEmbeddings: EmbeddedText[] | null,
+): void {
   for (let i = 0; i < output.new_nodes.length; i++) {
     const candidate = output.new_nodes[i]!;
-    const embedded  = embeddings?.[i] ?? null;
-    await routeCandidateNode(
-      deps, sessionId, candidate, embedded, fragments, stats, labelToNodeId,
-    );
+    const embedded  = precomputedEmbeddings?.[i] ?? null;
+    routeCandidateNode(deps, sessionId, candidate, embedded, fragments, stats, labelToNodeId);
   }
 }
 
-async function routeCandidateNode(
+function routeCandidateNode(
   deps: ExtractionPipelineDeps,
   sessionId: SessionId,
   candidate: ExtractedNode,
-  embedded: { embedding: Buffer; providerId: string; model: string; dim: number } | null,
+  embedded: EmbeddedText | null,
   fragments: PendingFragment[],
   stats: PipelineResult,
   labelToNodeId: Map<string, string>,
-): Promise<void> {
+): void {
   // 1. Cheap label match first
   const labelHit = deps.memory.nodes.findByLabelAndType(candidate.label, candidate.nodeType);
   if (labelHit) {
@@ -311,29 +317,52 @@ function processEdges(
 
 // ── Item processing ─────────────────────────────────────────────────────────
 
-async function processItems(
+function processItems(
   deps: ExtractionPipelineDeps,
   sessionId: SessionId,
   mode: TurnMode,
   output: ExtractionOutput,
   stats: PipelineResult,
-  _signal?: AbortSignal,
-): Promise<void> {
+  precomputedEmbeddings: EmbeddedText[] | null,
+  extractionTurnId: string | undefined,
+): void {
   if (output.memory_items.length === 0) return;
-
-  const texts = output.memory_items.map(i => `${i.title}: ${i.body}`);
-  const embeddings = await deps.embed.embedMany(texts);
 
   const modes = inferModesForMode(mode);
   for (let i = 0; i < output.memory_items.length; i++) {
     const item = output.memory_items[i]!;
-    const e    = embeddings?.[i] ?? null;
+    const e    = precomputedEmbeddings?.[i] ?? null;
     const now  = Date.now();
 
-    // Idempotency: same session + same title = same item. Skip on retry.
-    const duplicate = deps.memory.items.findBySourceAndTitle(sessionId, item.title);
-    if (duplicate) continue;
+    const existing = deps.memory.items.findBySourceAndTitle(sessionId, item.title);
 
+    if (existing) {
+      // Same session + same title: distinguish retry from legitimate update.
+      //   - Same turnId → retry of the same extraction → skip entirely.
+      //   - Different turnId → knowledge evolved in a new turn → update body.
+      if (existing.source_turn_id === (extractionTurnId ?? null)) continue;
+
+      deps.memory.items.updateBody({
+        id:                  existing.id,
+        body:                item.body,
+        importance:          item.importance,
+        sourceTurnId:        extractionTurnId,
+        updatedAt:           now,
+        embedding:           e?.embedding,
+        embeddingProviderId: e?.providerId,
+        embeddingModel:      e?.model,
+        embeddingDim:        e?.dim,
+      });
+      if (e && deps.itemsIndex && deps.itemsIndex.dim === e.dim) {
+        const view = unpackEmbedding(e.embedding, e.dim);
+        deps.itemsIndex.update(existing.id, view);
+      }
+      // Count as extracted so the telemetry reflects the update
+      stats.extractedItems++;
+      continue;
+    }
+
+    // New item — insert fresh
     const id = crypto.randomUUID();
     deps.memory.items.insert({
       id,
@@ -346,6 +375,7 @@ async function processItems(
       embeddingModel:      e?.model,
       embeddingDim:        e?.dim,
       sourceSessionId:     sessionId,
+      sourceTurnId:        extractionTurnId as never,
       importance:          item.importance,
       createdAt:           now,
     });
@@ -503,6 +533,12 @@ async function compactSessionNoteIfNeeded(
     .trim();
 
   if (!compacted) return;
+
+  // Validate the LLM preserved at least one timestamp.
+  // If it stripped all <!-- YYYY-MM-DD HH:MM --> markers, the temporal
+  // ordering of facts is lost — discard and keep the original note.
+  const TIMESTAMP_RE = /<!--\s*\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}\s*-->/;
+  if (!TIMESTAMP_RE.test(compacted)) return;
 
   const now = Date.now();
   const ts = new Date(now).toISOString().replace('T', ' ').slice(0, 16);

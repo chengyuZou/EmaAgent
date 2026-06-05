@@ -175,6 +175,48 @@ export class MemoryItemsRepo {
 
   // ── Update ──────────────────────────────────────────────────────────────────
 
+  /**
+   * Merge an updated extraction result into an existing item.
+   * Called when the same title is re-extracted in a DIFFERENT turn — the knowledge
+   * has evolved, so we overwrite body + importance and replace the embedding.
+   * `sourceTurnId` is updated to the new turn so the next retry recognises it.
+   */
+  updateBody(u: {
+    id:                  string;
+    body:                string;
+    importance:          number;
+    sourceTurnId?:       string;
+    updatedAt:           number;
+    embedding?:          Buffer;
+    embeddingProviderId?: string;
+    embeddingModel?:     string;
+    embeddingDim?:       number;
+  }): void {
+    this.db
+      .prepare(
+        `UPDATE memory_items
+            SET body               = ?,
+                importance         = ?,
+                source_turn_id     = COALESCE(?, source_turn_id),
+                updated_at         = ?,
+                embedding          = COALESCE(?, embedding),
+                embedding_provider_id = COALESCE(?, embedding_provider_id),
+                embedding_model    = COALESCE(?, embedding_model),
+                embedding_dim      = COALESCE(?, embedding_dim)
+          WHERE id = ?`,
+      )
+      .run(
+        u.body, u.importance,
+        u.sourceTurnId ?? null,
+        u.updatedAt,
+        u.embedding          ?? null,
+        u.embeddingProviderId ?? null,
+        u.embeddingModel      ?? null,
+        u.embeddingDim        ?? null,
+        u.id,
+      );
+  }
+
   updateEmbedding(u: MemoryItemEmbeddingUpdate): void {
     this.db
       .prepare(

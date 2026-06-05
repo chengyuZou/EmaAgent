@@ -483,14 +483,14 @@ export class MemoryPlanner {
 
     try {
       for (const f of fragments) {
-        appendPending(this.deps.sessions, ctx.sessionId, f, Date.now());
+        appendPending(this.deps.pendingFragments, ctx.sessionId, f, Date.now());
       }
     } catch { /* ignore — extraction will retry next time */ }
 
     // Trigger evaluation
     let pending;
     try {
-      pending = readPending(this.deps.sessions, ctx.sessionId);
+      pending = readPending(this.deps.pendingFragments, ctx.sessionId);
     } catch {
       return;
     }

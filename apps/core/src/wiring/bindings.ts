@@ -5,7 +5,7 @@ import {
   SessionsRepo,
   SettingsRepo,
   MemoryNodesRepo, MemoryEdgesRepo, MemoryLazyUpdatesRepo,
-  MemoryItemsRepo, SessionNotesRepo, BackgroundTasksRepo,
+  MemoryItemsRepo, SessionNotesRepo, BackgroundTasksRepo, PendingFragmentsRepo,
   ArtifactRepo,
   type ProviderConfigRow,
 } from '@ema-agent/storage';
@@ -173,13 +173,16 @@ export function buildLlmProviderConfig(row: ProviderConfigRow): ProviderConfig |
   const needsKey = def.requiresCredentials !== false;
   if (needsKey && !row.api_key_plain) return null;
 
+  const rawCw = extra['contextWindow'];
   return {
-    id:           row.id,
+    id:            row.id,
     protocol,
-    apiKey:       row.api_key_plain ?? '',
-    // Prefer explicit row base_url, then per-protocol default, then global default
-    baseUrl:      row.base_url ?? resolveBaseUrl(def, protocol),
-    defaultModel: typeof extra['defaultModel'] === 'string' ? extra['defaultModel'] : undefined,
+    apiKey:        row.api_key_plain ?? '',
+    baseUrl:       row.base_url ?? resolveBaseUrl(def, protocol),
+    defaultModel:  typeof extra['defaultModel'] === 'string' ? extra['defaultModel'] : undefined,
+    // User-configured context window for custom/Ollama/OpenRouter models.
+    // Takes precedence over ModelCatalog in register-hooks.ts.
+    contextWindow: typeof rawCw === 'number' && rawCw > 0 ? rawCw : undefined,
   };
 }
 
@@ -458,12 +461,13 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
     ebd,
     narrative,
     modelBindings,
-    nodes:           new MemoryNodesRepo(dataDb.sqlite),
-    edges:           new MemoryEdgesRepo(dataDb.sqlite),
-    lazyUpdates:     new MemoryLazyUpdatesRepo(dataDb.sqlite),
-    items:           new MemoryItemsRepo(dataDb.sqlite),
-    sessionNotes:    new SessionNotesRepo(dataDb.sqlite),
-    backgroundTasks: new BackgroundTasksRepo(dataDb.sqlite),
+    nodes:            new MemoryNodesRepo(dataDb.sqlite),
+    edges:            new MemoryEdgesRepo(dataDb.sqlite),
+    lazyUpdates:      new MemoryLazyUpdatesRepo(dataDb.sqlite),
+    items:            new MemoryItemsRepo(dataDb.sqlite),
+    sessionNotes:     new SessionNotesRepo(dataDb.sqlite),
+    backgroundTasks:  new BackgroundTasksRepo(dataDb.sqlite),
+    pendingFragments: new PendingFragmentsRepo(dataDb.sqlite),
     sessions:        sessionsRepo,
     emit:            (ev) => systemBus.emit(ev),
   });

@@ -145,7 +145,7 @@ export function collectStats(
   }
 
   // ── Pending fragments ───────────────────────────────────────────────────────
-  const pendingSessions = deps.sessions.listSessionsWithPending().length;
+  const pendingSessions = deps.pendingFragments.listSessionsWithPending().length;
 
   return {
     nodes: {

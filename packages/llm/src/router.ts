@@ -238,6 +238,16 @@ export class LlmRouter {
   }
 
   /**
+   * Returns the user-configured context window for a provider if set in
+   * `ProviderConfig.contextWindow`. Callers should prefer this over catalog
+   * lookup for non-static / custom models (Ollama, OpenRouter, etc.).
+   */
+  configuredContextWindowFor(providerId: string): number | undefined {
+    const cw = this.configs.get(providerId)?.contextWindow;
+    return cw && cw > 0 ? cw : undefined;
+  }
+
+  /**
    * Check which content parts are incompatible with the given provider.
    * Looks up the provider's protocol internally — callers never need to know
    * which wire format the provider uses.

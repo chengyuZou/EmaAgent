@@ -17,6 +17,12 @@ export interface ProviderConfig {
   apiKey: string;
   baseUrl?: string;
   defaultModel?: string;
+  /**
+   * User-configured context window for this provider (e.g. a custom Ollama or
+   * OpenRouter model not in the static catalog). When set, takes precedence over
+   * the ModelCatalog lookup. Omit to rely on catalog / protocol-based fallback.
+   */
+  contextWindow?: number;
 }
 
 // ── Tool definitions ──────────────────────────────────────────────────────────
