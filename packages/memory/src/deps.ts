@@ -5,7 +5,7 @@ import type {
   MemoryLazyUpdatesRepo,
   MemoryItemsRepo,
   SessionNotesRepo,
-  BackgroundTasksRepo,
+  MemoryTasksRepo,
   SessionsRepo,
   PendingFragmentsRepo,
   ModelBindingsRepo,
@@ -36,7 +36,7 @@ export interface MemoryDeps {
   lazyUpdates:    MemoryLazyUpdatesRepo;
   items:          MemoryItemsRepo;
   sessionNotes:      SessionNotesRepo;
-  backgroundTasks:   BackgroundTasksRepo;
+  memoryTasks:   MemoryTasksRepo;
   sessions:          SessionsRepo;         // meta_json, overrides, turn concurrency
   pendingFragments:  PendingFragmentsRepo; // extraction input queue
 

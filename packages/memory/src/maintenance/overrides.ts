@@ -1,5 +1,5 @@
 import type { SessionId } from '@ema-agent/contracts';
-import type { SessionsRepo, SqliteDb } from '@ema-agent/storage';
+import type { SessionsRepo } from '@ema-agent/storage';
 
 // ── Per-session memory overrides ─────────────────────────────────────────────
 
@@ -11,7 +11,6 @@ import type { SessionsRepo, SqliteDb } from '@ema-agent/storage';
  *   layer0       — global identity graph
  *   layer1       — session summary
  *   layer2       — episodic items
- *   narrative    — LightRAG narrative recall (narrative mode only)
  *
  * Write controls (whether this session feeds back into memory):
  *   extraction    — append to pending_fragments + run extraction LLM
@@ -24,7 +23,6 @@ export interface MemorySessionOverrides {
   layer0?:        boolean;
   layer1?:        boolean;
   layer2?:        boolean;
-  narrative?:     boolean;
   extraction?:    boolean;
   consolidation?: boolean;
   compaction?:    boolean;
@@ -34,7 +32,6 @@ export interface ResolvedSessionOverrides {
   layer0:        boolean;
   layer1:        boolean;
   layer2:        boolean;
-  narrative:     boolean;
   extraction:    boolean;
   consolidation: boolean;
   compaction:    boolean;
@@ -46,7 +43,6 @@ export const DEFAULT_OVERRIDES: ResolvedSessionOverrides = {
   layer0:        true,
   layer1:        true,
   layer2:        true,
-  narrative:     true,
   extraction:    true,
   consolidation: true,
   compaction:    true,
@@ -70,14 +66,12 @@ export function writeOverrides(
   repo: SessionsRepo,
   sessionId: SessionId,
   overrides: MemorySessionOverrides,
-  db: SqliteDb,
 ): void {
   const row = repo.findById(sessionId);
   if (!row) return;
   const meta = safeParseMeta(row.meta_json);
   meta[OVERRIDES_META_KEY] = overrides;
-  db.prepare('UPDATE sessions SET meta_json = ? WHERE id = ?')
-    .run(JSON.stringify(meta), sessionId);
+  repo.setMeta(sessionId, meta);
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -87,7 +81,6 @@ function resolveOverrides(partial: MemorySessionOverrides): ResolvedSessionOverr
     layer0:        partial.layer0        ?? DEFAULT_OVERRIDES.layer0,
     layer1:        partial.layer1        ?? DEFAULT_OVERRIDES.layer1,
     layer2:        partial.layer2        ?? DEFAULT_OVERRIDES.layer2,
-    narrative:     partial.narrative     ?? DEFAULT_OVERRIDES.narrative,
     extraction:    partial.extraction    ?? DEFAULT_OVERRIDES.extraction,
     consolidation: partial.consolidation ?? DEFAULT_OVERRIDES.consolidation,
     compaction:    partial.compaction    ?? DEFAULT_OVERRIDES.compaction,

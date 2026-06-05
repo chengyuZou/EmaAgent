@@ -81,26 +81,6 @@ export function registerMemoryHooks(
         recentFiles:        recent,
         signal,
       });
-      const durationMs = Date.now() - t0;
-
-      const s = result.recallSummary;
-      const sources: string[] = [];
-      if (s.layer0 > 0) sources.push('layer0');
-      if (s.layer1)     sources.push('layer1');
-      if (s.layer2 > 0) sources.push('layer2');
-
-      ctx.emit?.({
-        type:          'recall_evidence',
-        sources,
-        itemCount:     s.layer0 + (s.layer1 ? 1 : 0) + s.layer2,
-        tokenEstimate: result.tokenEstimate,
-        durationMs,
-        layers: {
-          layer0: s.layer0,
-          layer1: s.layer1,
-          layer2: s.layer2,
-        },
-      });
 
       return {
         kind: 'replace',

@@ -1,7 +1,23 @@
 import type {
-  SessionId, TurnId, TurnMode, AgentSubMode,
+  SessionId,
+  TurnId,
+  TurnMode,
+  AgentSubMode,
+  EmaStreamEvent,
 } from '@ema-agent/contracts';
+import type { LlmMessage } from '@ema-agent/llm';
 import type { MemoryNodeType, MemoryItemKind } from '@ema-agent/storage';
+
+
+export interface CompactResult {
+  messages: LlmMessage[];
+  macroRan: boolean;
+  microCleared: number;
+  succeeded: boolean;
+  beforeTokens: number;
+  afterTokens: number;
+  savedTokens: number;
+}
 
 // ── Plan context (what the planner receives at beforeLlm) ────────────────────
 
@@ -14,6 +30,7 @@ export interface PlanContext {
   userInput:    string;
   /** Optional abort signal — long recall paths (narrative) honour it. */
   signal?:      AbortSignal;
+  emit?:        (event: EmaStreamEvent) => void;
 }
 
 // ── Recall results ────────────────────────────────────────────────────────────
@@ -80,7 +97,9 @@ export interface MemorySettings {
   recall: {
     currentModeWeight: number;         // 0.5 – 0.9, default 0.7
     layer0AnchorTopK:  number;         // default 5
-    layer0TotalBudget: number;         // anchors + neighbours, default 12
+    layer0TotalBudget: number;
+    layer1KeepRecentEntries:  number;         // default 5
+    layer1EntryExpiryDays:  number;         // default 30
     layer2TopK:        number;         // default 6
     useReranker:       boolean;        // default true
     anchorDetection:   'embedding' | 'llm-ner' | 'hybrid';
@@ -111,6 +130,23 @@ export interface MemorySettings {
   compaction: {
     bufferTokens: number;              // default 10000
   };
+
+  maintenance: {
+    idleThresholdMs:       number;   // 空闲多久才触发（默认 3600_000 = 1h）
+    maintenanceIntervalMs: number;   // 两次 maintenance 最小间隔（默认 259200_000 = 3天）
+    decayAmount:           number;   // 每次衰减减多少分（默认 5）
+    decayAfterDays:        number;   // N 天未引用才衰减（默认 30）
+    deleteThreshold:       number;   // importance 低于这个值（默认 15）
+    deleteAfterDays:       number;   // 且超过这么久未引用（默认 30）才删除
+    /** Maximum points a stale memory can regain when re-referenced. */
+    reReferenceBoostMax: number;
+    /** How many stale days it takes to reach the middle of the boost curve. */
+    reReferenceHalfLifeDays: number;
+    /** Above this importance, boost starts saturating hard. */
+    boostSaturationStart: number;
+    /** Larger = softer saturation; smaller = sharper cap. */
+    boostSaturationSlope: number;
+  };
 }
 
 export const DEFAULT_MEMORY_SETTINGS: MemorySettings = {
@@ -123,6 +159,8 @@ export const DEFAULT_MEMORY_SETTINGS: MemorySettings = {
     currentModeWeight: 0.7,
     layer0AnchorTopK:  5,
     layer0TotalBudget: 12,
+    layer1KeepRecentEntries: 5,
+    layer1EntryExpiryDays: 30,
     layer2TopK:        6,
     useReranker:       true,
     anchorDetection:   'embedding',
@@ -133,6 +171,19 @@ export const DEFAULT_MEMORY_SETTINGS: MemorySettings = {
   },
   compaction: {
     bufferTokens: 10000,
+  },
+
+  maintenance: {
+    idleThresholdMs:       3600_000,   // 1h
+    maintenanceIntervalMs: 259200_000, // 3 days
+    decayAmount:           5,
+    decayAfterDays:        30,
+    deleteThreshold:       15,
+    deleteAfterDays:       30,
+    reReferenceBoostMax:   12,
+    reReferenceHalfLifeDays: 30,
+    boostSaturationStart:  75,
+    boostSaturationSlope:  8,
   },
 };
 

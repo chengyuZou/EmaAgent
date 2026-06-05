@@ -8,8 +8,6 @@ export interface MaintenanceOptions {
   decayAfterDays:     number;
   /** Importance points removed per maintenance run on candidates. */
   decayAmount:        number;
-  /** Node types that are NEVER auto-decayed (identity is sacred). */
-  protectedNodeTypes: MemoryNodeType[];
   /** Whether to also decay memory_items along with nodes. */
   decayItems:         boolean;
   /**
@@ -17,15 +15,9 @@ export interface MaintenanceOptions {
    * UI surfaces this before letting the user click "Run maintenance".
    */
   dryRun:             boolean;
+  nowMs:              number;   // for testing only, defaults to Date.now()
 }
 
-export const DEFAULT_MAINTENANCE: MaintenanceOptions = {
-  decayAfterDays:     30,
-  decayAmount:        5,
-  protectedNodeTypes: ['user_fact', 'preference', 'relationship'],
-  decayItems:         true,
-  dryRun:             true,
-};
 
 export interface MaintenancePreview {
   nodes: { id: string; label: string; nodeType: MemoryNodeType; currentImportance: number; newImportance: number }[];
@@ -55,100 +47,62 @@ export interface MaintenanceReport {
  */
 export function runMaintenance(
   deps: MemoryDeps,
-  opts: Partial<MaintenanceOptions> = {},
+  opts: MaintenanceOptions,
 ): MaintenanceReport {
-  const cfg = { ...DEFAULT_MAINTENANCE, ...opts };
-  const cutoff = Date.now() - cfg.decayAfterDays * 24 * 60 * 60 * 1000;
-  const db = deps.db.sqlite;
   const t0 = Date.now();
+  const cutoff = opts.nowMs - opts.decayAfterDays * 24 * 60 * 60 * 1000;
 
-  // ── Candidate selection ───────────────────────────────────────────────────
-  const protectedClause = cfg.protectedNodeTypes.length === 0
-    ? ''
-    : `AND node_type NOT IN (${cfg.protectedNodeTypes.map(() => '?').join(',')})`;
-  const nodeCandidates = db.prepare(
-    `SELECT id, label, node_type, importance
-       FROM memory_nodes
-      WHERE last_referenced_at < ? AND importance > 0 ${protectedClause}`,
-  ).all(cutoff, ...cfg.protectedNodeTypes) as Array<{
-    id: string; label: string; node_type: MemoryNodeType; importance: number;
-  }>;
-
-  const itemCandidates = cfg.decayItems
-    ? db.prepare(
-        `SELECT id, title, importance
-           FROM memory_items
-          WHERE last_referenced_at < ? AND importance > 0
-            AND (expires_at IS NULL OR expires_at > ?)`,
-      ).all(cutoff, Date.now()) as Array<{
-        id: string; title: string; importance: number;
-      }>
+  const nodeCandidates = deps.nodes.listDecayCandidates(cutoff);
+  const itemCandidates = opts.decayItems
+    ? deps.items.listDecayCandidates(cutoff, opts.nowMs)
     : [];
 
   const preview: MaintenancePreview = {
-    nodes: nodeCandidates.map(n => ({
-      id: n.id, label: n.label, nodeType: n.node_type,
+    nodes: nodeCandidates.map((n) => ({
+      id: n.id,
+      label: n.label,
+      nodeType: n.node_type,
       currentImportance: n.importance,
-      newImportance:     Math.max(0, n.importance - cfg.decayAmount),
+      newImportance: Math.max(0, n.importance - opts.decayAmount),
     })),
-    items: itemCandidates.map(i => ({
-      id: i.id, title: i.title,
+    items: itemCandidates.map((i) => ({
+      id: i.id,
+      title: i.title,
       currentImportance: i.importance,
-      newImportance:     Math.max(0, i.importance - cfg.decayAmount),
+      newImportance: Math.max(0, i.importance - opts.decayAmount),
     })),
-    decayedAt: Date.now(),
+    decayedAt: opts.nowMs,
   };
 
-  if (cfg.dryRun) {
-    deps.emit?.({
-      type:         'memory_maintenance_completed',
-      decayedNodes: 0,
-      decayedItems: 0,
-      dryRun:       true,
-      durationMs:   Date.now() - t0,
-    });
-    return {
-      dryRun:       true,
-      decayedNodes: 0,
-      decayedItems: 0,
-      preview,
-    };
+  if (!opts.dryRun) {
+    deps.nodes.applyImportanceUpdates(
+      preview.nodes.map((n) => ({
+        id: n.id,
+        importance: n.newImportance,
+        updatedAt: opts.nowMs,
+      })),
+    );
+    deps.items.applyImportanceUpdates(
+      preview.items.map((i) => ({
+        id: i.id,
+        importance: i.newImportance,
+        updatedAt: opts.nowMs,
+      })),
+    );
   }
 
-  // ── Apply ──────────────────────────────────────────────────────────────────
-  const txn = db.transaction(() => {
-    if (preview.nodes.length > 0) {
-      const stmt = db.prepare(
-        `UPDATE memory_nodes
-            SET importance = MAX(0, importance - ?), updated_at = ?
-          WHERE id = ?`,
-      );
-      const now = Date.now();
-      for (const n of preview.nodes) stmt.run(cfg.decayAmount, now, n.id);
-    }
-    if (preview.items.length > 0) {
-      const stmt = db.prepare(
-        `UPDATE memory_items
-            SET importance = MAX(0, importance - ?), updated_at = ?
-          WHERE id = ?`,
-      );
-      const now = Date.now();
-      for (const i of preview.items) stmt.run(cfg.decayAmount, now, i.id);
-    }
-  });
-  txn();
-
   deps.emit?.({
-    type:         'memory_maintenance_completed',
-    decayedNodes: preview.nodes.length,
-    decayedItems: preview.items.length,
-    dryRun:       false,
-    durationMs:   Date.now() - t0,
+    type: 'memory_maintenance_completed',
+    decayedNodes: opts.dryRun ? 0 : preview.nodes.length,
+    decayedItems: opts.dryRun ? 0 : preview.items.length,
+    dryRun: opts.dryRun,
+    durationMs: Date.now() - t0,
   });
+
   return {
-    dryRun:       false,
-    decayedNodes: preview.nodes.length,
-    decayedItems: preview.items.length,
+    dryRun: opts.dryRun,
+    decayedNodes: opts.dryRun ? 0 : preview.nodes.length,
+    decayedItems: opts.dryRun ? 0 : preview.items.length,
     preview,
   };
 }

@@ -62,6 +62,18 @@ export interface AskUserQuestionSpec {
   placeholder?: string;
 }
 
+export type MemoryRecallLayer = 'layer0' | 'layer1' | 'layer2';
+export type MemoryRecallLayerStatus = 'succeeded' | 'skipped' | 'failed';
+
+export interface MemoryRecallLayerReport {
+  status: MemoryRecallLayerStatus;
+  itemCount: number;
+  tokenEstimate: number;
+  durationMs: number;
+  error?: string;
+  skippedReason?: string;
+}
+
 // ── EmaStreamEvent union ──────────────────────────────────────────────────────
 
 export type EmaStreamEvent =
@@ -131,19 +143,20 @@ export type EmaStreamEvent =
   | { type: 'narrative_route_resolved'; timelines: string[] }
   | { type: 'narrative_timeline_complete'; timeline: string; charCount: number; snippet: string }
 
-  // Memory — turn-scoped (emitted via beforeLlm hook + compaction)
-  | { type: 'context_compacted'; before: number; after: number; method: string }
-  | { type: 'recall_evidence'; 
-      sources: string[]; itemCount: number;
-      tokenEstimate: number; durationMs: number;
-      layers?: {
-        layer0: number;
-        layer1: boolean;
-        layer2: number;
-      };
+  // Memory — turn-scoped. One event per recall layer; emitted as soon as that layer settles.
+  | {
+      type: 'memory_recall_evidence';
+      sessionId: SessionId;
+      turnId: TurnId;
+      mode: TurnMode;
+      layer: MemoryRecallLayer;
+      report: MemoryRecallLayerReport;
     }
 
   // Memory — pipeline observability (cross-turn, emitted on the system bus)
+  | { type: 'memory_compaction_started'; sessionId: SessionId; turnId: TurnId; mode: TurnMode; beforeTokens: number }
+  | { type: 'memory_compaction_completed'; sessionId: SessionId; turnId: TurnId; mode: TurnMode; beforeTokens: number; afterTokens: number; durationMs: number }
+  | { type: 'memory_compaction_failed'; sessionId: SessionId; turnId: TurnId; mode: TurnMode; error: string; beforeTokens: number; afterTokens: number; durationMs: number }
   | { type: 'memory_extraction_started';    sessionId: SessionId; turnId?: TurnId; queueDepth: number }
   | { type: 'memory_extraction_completed';
       sessionId: SessionId; nodes: number; edges: number; items: number;
@@ -151,14 +164,16 @@ export type EmaStreamEvent =
   | { type: 'memory_extraction_failed';     sessionId: SessionId; error: string }
   | { type: 'memory_consolidation_started'; nodeCount: number }
   | { type: 'memory_consolidation_completed'; consolidated: number; durationMs: number }
+  | { type: 'memory_consolidation_failed';  error: string }
   | { type: 'memory_maintenance_completed'; decayedNodes: number; decayedItems: number; dryRun: boolean; durationMs: number }
+  | { type: 'memory_maintenance_failed';  error: string }
   | { type: 'memory_node_merged';           nodeId: string; label: string; fragmentCount: number }
   | { type: 'memory_index_rebuilt';         backend: string; nodes: number; items: number; durationMs: number }
 
   // Background tasks — system-scoped (memory queue worker telemetry)
-  | { type: 'background_task_started';   taskId: string; kind: string; sessionId?: SessionId }
-  | { type: 'background_task_completed'; taskId: string; kind: string; durationMs: number }
-  | { type: 'background_task_failed';    taskId: string; kind: string; error: string }
+  | { type: 'memory_task_started';   taskId: string; kind: string; sessionId?: SessionId }
+  | { type: 'memory_task_completed'; taskId: string; kind: string; durationMs: number }
+  | { type: 'memory_task_failed';    taskId: string; kind: string; error: string }
 
   // Agent
   | { type: 'agent_iteration'; n: number }

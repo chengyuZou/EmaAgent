@@ -7,7 +7,7 @@ import type {
 import type { MemoryDeps } from '../deps.js';
 import type { MemorySettings, EmbeddedText } from '../types.js';
 import type {
-  ExtractionOutput, ExtractedNode, PendingFragment,
+  ExtractionOutput, ExtractedNode, PendingFragment, SessionNoteEntry,
 } from './types.js';
 import { runExtraction, runConsolidation } from './llm-call.js';
 import {
@@ -22,7 +22,7 @@ import type { VectorIndex } from '../index/vector-index.js';
 
 // ── Configuration knobs (mode-dependent) ─────────────────────────────────────
 
-const NODE_DEDUP_THRESHOLD = 0.85;   // cosine sim above this → treat as duplicate
+const NODE_DEDUP_THRESHOLD = 0.85; // cosine sim above this → treat as duplicate
 
 // ── Pipeline ─────────────────────────────────────────────────────────────────
 
@@ -111,13 +111,21 @@ export async function runExtractionPipeline(
   // ── 2. Pre-batch ALL external I/O (embed) ────────────────────────────────
   // All async/fallible calls happen here, BEFORE any DB write.
   // If embedding times out, no DB state has changed → safe to retry from scratch.
-  const nodeEmbeddings = output.new_nodes.length > 0
-    ? await deps.embed.embedMany(output.new_nodes.map(n => `${n.label}: ${n.description}`))
-    : null;
+  const [nodeResult, itemResult] = await Promise.allSettled([
+    output.new_nodes.length > 0
+      ? deps.embed.embedMany(output.new_nodes.map(n => `${n.label}: ${n.description}`))
+      : Promise.resolve(null),
+    output.memory_items.length > 0
+      ? deps.embed.embedMany(output.memory_items.map(i => `${i.title}: ${i.body}`))
+      : Promise.resolve(null),
+  ]);
 
-  const itemEmbeddings = output.memory_items.length > 0
-    ? await deps.embed.embedMany(output.memory_items.map(i => `${i.title}: ${i.body}`))
-    : null;
+  // 任一失败就整体抛出，不做部分写入
+  if (nodeResult.status === 'rejected') throw nodeResult.reason;
+  if (itemResult.status === 'rejected') throw itemResult.reason;
+
+  const nodeEmbeddings = nodeResult.value;
+  const itemEmbeddings = itemResult.value;
 
   // Derive a per-extraction turnId from the first fragment so items can be
   // deduped by (session, title, turn) rather than (session, title) alone.
@@ -141,7 +149,7 @@ export async function runExtractionPipeline(
 
   // Process session_note_delta — append to session_notes.body
   if (output.session_note_delta.trim()) {
-    appendSessionNote(deps, args.sessionId, output.session_note_delta);
+    appendSessionNote(deps, args.sessionId, output.session_note_delta, extractionTurnId!);
   }
 
   // ── 3. Clear pending fragments ───────────────────────────────────────────
@@ -404,18 +412,20 @@ function appendSessionNote(
   deps: ExtractionPipelineDeps,
   sessionId: SessionId,
   delta: string,
+  turnId: string,
 ): void {
   const existing = deps.memory.sessionNotes.findBySession(sessionId);
   const now = Date.now();
-  // ISO timestamp prefix so the model knows when each delta was written
-  const ts = new Date(now).toISOString().replace('T', ' ').slice(0, 16);
-  const timedDelta = `<!-- ${ts} -->\n${delta.trim()}`;
-  const sep = existing && existing.body.trim() ? '\n\n' : '';
-  const body = (existing?.body ?? '') + sep + timedDelta;
+
+  const entries: SessionNoteEntry[] = existing?.body
+    ? safeParseEntries(existing.body)
+    : [];
+  entries.push({ at: now, turnId, delta: delta.trim() });
+  const body = JSON.stringify(entries);
   deps.memory.sessionNotes.upsert({
     sessionId,
     body,
-    tokensAtLastUpdate: estimateTextTokens(body),
+    tokensAtLastUpdate: estimateTextTokens(entries.map(e => e.delta).join('\n')),
     updatedAt:          now,
   });
 }
@@ -507,47 +517,75 @@ async function compactSessionNoteIfNeeded(
   mode: TurnMode,
   signal?: AbortSignal,
 ): Promise<void> {
-  const note = deps.memory.sessionNotes.findBySession(sessionId);
-  if (!note || !note.body.trim()) return;
+  const row = deps.memory.sessionNotes.findBySession(sessionId);
+  if (!row) return;
 
-  const tokenEst = estimateTextTokens(note.body);
-  if (tokenEst <= deps.settings.recall.layer1MaxTokens) return;
+  const entries = safeParseEntries(row.body);
+  if (entries.length === 0) return;
+
+  const totalTokens = estimateTextTokens(entries.map(e => e.delta).join('\n'));
+  if (totalTokens <= deps.settings.recall.layer1MaxTokens) return;
+
+  // 策略：
+  // 1. 超过 30 天的 entry 直接丢弃（时效性极低）
+  // 2. 其余旧 entries（超过 layer1MaxTokens 一半以上的部分）
+  //    用 LLM 摘要成一条 merged entry
+  // 3. 保留最近 keepRecent 条不压缩
+  const expiry_days = deps.settings.recall.layer1EntryExpiryDays;
+  const keep_recent = deps.settings.recall.layer1KeepRecentEntries;
+
+  const cutoff = Date.now() - expiry_days * 86400_000;
+
+  const fresh = entries.filter(e => e.at > cutoff);
+  const tail  = fresh.slice(-keep_recent);
+  const toMerge = fresh.slice(0, -keep_recent);
+
+  if (toMerge.length === 0) return;
 
   const binding = resolveMemoryBindingLocal(deps);
   if (!binding) return;
 
-  const prompt = buildNoteCompactionPrompt({ mode, body: note.body });
+  const mergeText = toMerge.map(e => e.delta).join('\n\n');
+  const prompt = buildNoteCompactionPrompt({ mode, body: mergeText });
   const completion = await deps.memory.llm.complete({
-    providerId:  binding.providerId,
-    model:       binding.model,
-    messages:    [{ role: 'user', content: prompt }],
-    maxTokens:   1500,
+    providerId: binding.providerId,
+    model: binding.model,
+    messages: [{ role: 'user', content: prompt }],
+    maxTokens: 800,
     temperature: 0.2,
     signal,
   });
-
-  const compacted = completion.blocks
+  const merged = completion.blocks
     .filter((b): b is typeof b & { type: 'text' } => b.type === 'text')
-    .map(b => b.text)
-    .join('')
-    .trim();
+    .map(b => b.text).join('').trim();
 
-  if (!compacted) return;
+  if (!merged) return;
 
-  // Validate the LLM preserved at least one timestamp.
-  // If it stripped all <!-- YYYY-MM-DD HH:MM --> markers, the temporal
-  // ordering of facts is lost — discard and keep the original note.
-  const TIMESTAMP_RE = /<!--\s*\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}\s*-->/;
-  if (!TIMESTAMP_RE.test(compacted)) return;
+  // 把摘要放成一条最早时间的 entry，后面跟上保留的 tail
+  const mergedEntry: SessionNoteEntry = {
+    at:     toMerge[0]!.at,
+    turnId: 'compacted',
+    delta:  merged,
+  };
+  const compacted = [mergedEntry, ...tail];
 
   const now = Date.now();
-  const ts = new Date(now).toISOString().replace('T', ' ').slice(0, 16);
   deps.memory.sessionNotes.upsert({
     sessionId,
-    body: `<!-- compacted ${ts} -->\n${compacted}`,
-    tokensAtLastUpdate: estimateTextTokens(compacted),
+    body: JSON.stringify(compacted),
+    tokensAtLastUpdate: estimateTextTokens(compacted.map(e => e.delta).join('\n')),
     updatedAt: now,
   });
+}
+
+function safeParseEntries(body: string): SessionNoteEntry[] {
+  try {
+    const arr = JSON.parse(body);
+    return Array.isArray(arr) ? arr as SessionNoteEntry[] : [];
+  } catch {
+    // 兼容旧的纯文本 body：迁移成单条 entry
+    return body.trim() ? [{ at: Date.now(), turnId: 'legacy', delta: body }] : [];
+  }
 }
 
 function resolveMemoryBindingLocal(

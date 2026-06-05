@@ -1,8 +1,8 @@
-import type { SessionId, TurnId, TurnMode } from '@ema-agent/contracts';
+import type { SessionId, TurnId, TurnMode, EmaStreamEvent } from '@ema-agent/contracts';
 import type { LlmMessage } from '@ema-agent/llm';
 import type { MemoryDeps } from './deps.js';
 import type {
-  PlanContext, RecallBundle, MemorySettings, AlreadySurfaced,
+  PlanContext, RecallBundle, MemorySettings, AlreadySurfaced,  CompactResult
 } from './types.js';
 import { DEFAULT_MEMORY_SETTINGS } from './types.js';
 import { EmbedService }     from './embed/service.js';
@@ -16,7 +16,7 @@ import {
   appendPending, readPending, shouldExtract, buildFragmentsFromTurn,
 } from './extract/pending.js';
 import { SessionTaskQueue } from './tasks/session-queue.js';
-import { BackgroundTaskRunner } from './tasks/runner.js';
+import { MemoryTaskRunner } from './tasks/runner.js';
 import { microCompact } from './compact/micro.js';
 import { runMacroCompaction } from './compact/macro.js';
 import { buildPostCompactRestore } from './compact/restore.js';
@@ -60,7 +60,7 @@ function loadSurfaced(meta: Record<string, unknown>): AlreadySurfaced {
   };
 }
 
-// ── MemoryPlanner Façade ─────────────────────────────────────────────────────
+// ── MemoryPlanner Facade ─────────────────────────────────────────────────────
 
 /**
  * The single entry point into the memory subsystem.
@@ -86,7 +86,7 @@ export class MemoryPlanner {
 
   // Background work
   private readonly queue:  SessionTaskQueue;
-  private readonly runner: BackgroundTaskRunner;
+  private readonly runner: MemoryTaskRunner;
 
   constructor(
     private readonly deps: MemoryDeps,
@@ -99,10 +99,11 @@ export class MemoryPlanner {
       triggers:   { ...DEFAULT_MEMORY_SETTINGS.triggers,   ...overrides.triggers },
       recall:     { ...DEFAULT_MEMORY_SETTINGS.recall,     ...overrides.recall },
       compaction: { ...DEFAULT_MEMORY_SETTINGS.compaction, ...overrides.compaction },
+      maintenance: { ...DEFAULT_MEMORY_SETTINGS.maintenance, ...overrides.maintenance },
     };
 
     this.queue  = new SessionTaskQueue();
-    this.runner = new BackgroundTaskRunner({
+    this.runner = new MemoryTaskRunner({
       memory:              deps,
       embed:               this.embed,
       settings:            this.settings,
@@ -183,70 +184,172 @@ export class MemoryPlanner {
    */
   async plan(ctx: PlanContext): Promise<RecallBundle> {
     if (!this.settings.enabled) {
+      emitRecallLayer(ctx, 'layer0', {
+        status: 'skipped',
+        itemCount: 0,
+        tokenEstimate: 0,
+        durationMs: 0,
+        skippedReason: 'memory_disabled',
+      });
+      emitRecallLayer(ctx, 'layer1', {
+        status: 'skipped',
+        itemCount: 0,
+        tokenEstimate: 0,
+        durationMs: 0,
+        skippedReason: 'memory_disabled',
+      });
+      emitRecallLayer(ctx, 'layer2', {
+        status: 'skipped',
+        itemCount: 0,
+        tokenEstimate: 0,
+        durationMs: 0,
+        skippedReason: 'memory_disabled',
+      });
       return { layer0: null, layer1: null, layer2: null };
     }
 
     const overrides = this.getSessionOverrides(ctx.sessionId);
-    const surfaced  = this.loadAlreadySurfaced(ctx.sessionId);
+    const surfaced = this.loadAlreadySurfaced(ctx.sessionId);
 
-    // Embed the user message once and pass both representations downstream
     const embedded = this.embed.isAvailable()
       ? await this.safeEmbedQuery(ctx.userInput)
       : null;
-    const queryVec   = embedded?.queryVec ?? null;
+    const queryVec = embedded?.queryVec ?? null;
     const queryEmbed = embedded?.embedded ?? null;
 
-    // ── Layer 0 ─ subject to override ─────────────────────────────────────────
-    const layer0 = overrides.layer0
-      ? safeCall(() => recallGraph(this.deps, {
-          queryVec,
-          queryEmbed,
-          index:           this.nodesIndex,
-          alreadySurfaced: new Set(surfaced.nodes),
-          settings:        this.settings,
-        }))
-      : null;
+    let layer0: RecallBundle['layer0'] = null;
+    let layer1: RecallBundle['layer1'] = null;
+    let layer2: RecallBundle['layer2'] = null;
 
-    // ── Layer 1 ─ subject to override ─────────────────────────────────────────
-    const layer1 = overrides.layer1
-      ? safeCall(() => recallSessionNote(this.deps, ctx.sessionId))
-      : null;
-
-    // ── Layer 2 / narrative ─ subject to override ─────────────────────────────
-    let layer2: RecallBundle['layer2']    = null;
-
-    if (ctx.mode === 'narrative') {
-      if (overrides.layer2) {
-        layer2 = await safeAsync(() => recallEpisodic(this.deps, {
-          query:           ctx.userInput,
-          queryVec,
-          queryEmbed,
-          index:           this.itemsIndex,
-          mode:            'narrative',
-          alreadySurfaced: new Set(surfaced.items),
-          settings:        this.settings,
-        }));
+    const layer0Task = async (): Promise<void> => {
+      const t0 = Date.now();
+      if (!overrides.layer0) {
+        emitRecallLayer(ctx, 'layer0', {
+          status: 'skipped',
+          itemCount: 0,
+          tokenEstimate: 0,
+          durationMs: Date.now() - t0,
+          skippedReason: 'layer_disabled',
+        });
+        return;
       }
-    } else if (overrides.layer2) {
-      const layer2Mode: 'chat' | 'agent' = ctx.mode;
-      layer2 = await safeAsync(() => recallEpisodic(this.deps, {
-        query:           ctx.userInput,
-        queryVec,
-        queryEmbed,
-        index:           this.itemsIndex,
-        mode:            layer2Mode,
-        alreadySurfaced: new Set(surfaced.items),
-        settings:        this.settings,
-      }));
-    }
+      if (!queryVec || !queryEmbed) {
+        emitRecallLayer(ctx, 'layer0', {
+          status: 'skipped',
+          itemCount: 0,
+          tokenEstimate: 0,
+          durationMs: Date.now() - t0,
+          skippedReason: 'embedding_unavailable',
+        });
+        return;
+      }
+
+      try {
+        layer0 = recallGraph(this.deps, {
+          queryVec,
+          queryEmbed,
+          index: this.nodesIndex,
+          alreadySurfaced: new Set(surfaced.nodes),
+          settings: this.settings,
+        });
+        emitRecallLayer(ctx, 'layer0', {
+          status: 'succeeded',
+          itemCount: layer0.nodes.length,
+          tokenEstimate: estimateGraphRecallTokens(layer0),
+          durationMs: Date.now() - t0,
+        });
+      } catch (err) {
+        layer0 = null;
+        emitRecallLayer(ctx, 'layer0', {
+          status: 'failed',
+          itemCount: 0,
+          tokenEstimate: 0,
+          durationMs: Date.now() - t0,
+          error: errorMessage(err),
+        });
+      }
+    };
+
+    const layer1Task = async (): Promise<void> => {
+      const t0 = Date.now();
+      if (!overrides.layer1) {
+        emitRecallLayer(ctx, 'layer1', {
+          status: 'skipped',
+          itemCount: 0,
+          tokenEstimate: 0,
+          durationMs: Date.now() - t0,
+          skippedReason: 'layer_disabled',
+        });
+        return;
+      }
+
+      try {
+        layer1 = recallSessionNote(this.deps, ctx.sessionId);
+        emitRecallLayer(ctx, 'layer1', {
+          status: 'succeeded',
+          itemCount: layer1 ? 1 : 0,
+          tokenEstimate: layer1 ? estimateTextTokens(layer1) : 0,
+          durationMs: Date.now() - t0,
+        });
+      } catch (err) {
+        layer1 = null;
+        emitRecallLayer(ctx, 'layer1', {
+          status: 'failed',
+          itemCount: 0,
+          tokenEstimate: 0,
+          durationMs: Date.now() - t0,
+          error: errorMessage(err),
+        });
+      }
+    };
+
+    const layer2Task = async (): Promise<void> => {
+      const t0 = Date.now();
+      if (!overrides.layer2) {
+        emitRecallLayer(ctx, 'layer2', {
+          status: 'skipped',
+          itemCount: 0,
+          tokenEstimate: 0,
+          durationMs: Date.now() - t0,
+          skippedReason: 'layer_disabled',
+        });
+        return;
+      }
+
+      try {
+        const mode = ctx.mode === 'narrative' ? 'narrative' : ctx.mode;
+        layer2 = await recallEpisodic(this.deps, {
+          query: ctx.userInput,
+          queryVec,
+          queryEmbed,
+          index: this.itemsIndex,
+          mode,
+          alreadySurfaced: new Set(surfaced.items),
+          settings: this.settings,
+        });
+        emitRecallLayer(ctx, 'layer2', {
+          status: 'succeeded',
+          itemCount: countEpisodicItems(layer2),
+          tokenEstimate: estimateEpisodicRecallTokens(layer2),
+          durationMs: Date.now() - t0,
+        });
+      } catch (err) {
+        layer2 = null;
+        emitRecallLayer(ctx, 'layer2', {
+          status: 'failed',
+          itemCount: 0,
+          tokenEstimate: 0,
+          durationMs: Date.now() - t0,
+          error: errorMessage(err),
+        });
+      }
+    };
+
+    await Promise.allSettled([layer0Task(), layer1Task(), layer2Task()]);
 
     this.recordSurfaced(ctx.sessionId, surfaced, { layer0, layer2 });
 
-    return {
-      layer0:    layer0    ?? null,
-      layer1:    layer1    ?? null,
-      layer2:    layer2    ?? null,
-    };
+    return { layer0, layer1, layer2 };
   }
 
   // ── Single hook entry point ─────────────────────────────────────────────────
@@ -269,6 +372,7 @@ export class MemoryPlanner {
     modelContextWindow: number;
     recentFiles?:       ReadonlyArray<{ path: string; content: string; mtimeMs: number }>;
     signal?:            AbortSignal;
+    emit?:              (event: EmaStreamEvent) => void;
   }): Promise<{
     messages:        LlmMessage[];
     compactionRan:   boolean;
@@ -295,6 +399,7 @@ export class MemoryPlanner {
       modelContextWindow:  args.modelContextWindow,
       recentFiles:         args.recentFiles,
       signal:              args.signal,
+      emit:                args.emit,
     });
     let working = compactRes.messages;
 
@@ -305,6 +410,7 @@ export class MemoryPlanner {
       mode:      args.mode,
       userInput: args.userInput,
       signal:    args.signal,
+      emit:      args.emit,
     });
 
     // 3. Inject context message right BEFORE the trailing user message.
@@ -396,7 +502,7 @@ export class MemoryPlanner {
    * when a user toggles a memory layer for one specific conversation.
    */
   setSessionOverrides(sessionId: SessionId, overrides: MemorySessionOverrides): void {
-    writeOverrides(this.deps.sessions, sessionId, overrides, this.deps.db.sqlite);
+    writeOverrides(this.deps.sessions, sessionId, overrides);
   }
 
   // ── Stats / Inspection (UI memory panel) ────────────────────────────────────
@@ -430,7 +536,13 @@ export class MemoryPlanner {
    * after the user confirms. Protected node types are never decayed.
    */
   runMaintenance(opts: Partial<MaintenanceOptions> = {}): MaintenanceReport {
-    return runMaintenance(this.deps, opts);
+    return runMaintenance(this.deps, {
+      decayAfterDays: opts.decayAfterDays ?? this.settings.maintenance.decayAfterDays,
+      decayAmount:    opts.decayAmount    ?? this.settings.maintenance.decayAmount,
+      decayItems:     opts.decayItems     ?? true,
+      dryRun:         opts.dryRun         ?? true,
+      nowMs:          opts.nowMs          ?? Date.now(),
+    });
   }
 
   /** Hard-delete one node (and cascading edges + lazy_updates). */
@@ -567,21 +679,20 @@ export class MemoryPlanner {
     modelContextWindow:  number;
     recentFiles?:        ReadonlyArray<{ path: string; content: string; mtimeMs: number }>;
     signal?:             AbortSignal;
-  }): Promise<{
-    messages: LlmMessage[];
-    macroRan: boolean;
-    microCleared: number;
-    succeeded: boolean;
-  }> {
+    emit?:               (event: EmaStreamEvent) => void;
+  }): Promise<CompactResult> {
+    const now = Date.now();
+    const beforeTokens = estimateMessagesTokens(args.messages);
+
     if (!this.settings.enabled) {
-      return { messages: args.messages, macroRan: false, microCleared: 0, succeeded: true };
+      return { messages: args.messages, macroRan: false, microCleared: 0, succeeded: true, beforeTokens, afterTokens: beforeTokens, savedTokens: 0 };
     }
 
     // Per-session override: compaction off → caller takes responsibility for
     // staying under the context window. We still pass-through the messages.
     const overrides = this.getSessionOverrides(args.sessionId);
     if (!overrides.compaction) {
-      return { messages: args.messages, macroRan: false, microCleared: 0, succeeded: true };
+      return { messages: args.messages, macroRan: false, microCleared: 0, succeeded: true, beforeTokens, afterTokens: beforeTokens, savedTokens: 0 };
     }
 
     const buffer = this.settings.compaction.bufferTokens;
@@ -598,6 +709,9 @@ export class MemoryPlanner {
         macroRan:     false,
         microCleared: micro.cleared,
         succeeded:    true,
+        beforeTokens,
+        afterTokens: estimated,
+        savedTokens: beforeTokens - estimated,
       };
     }
 
@@ -611,11 +725,22 @@ export class MemoryPlanner {
         macroRan:     false,
         microCleared: micro.cleared,
         succeeded:    true,
+        beforeTokens,
+        afterTokens: estimated,
+        savedTokens: beforeTokens - estimated,
       };
     }
     const safeCut = findSafeCutPoint(working, working.length - tailSize);
     const head = working.slice(0, safeCut);
     const tail = working.slice(safeCut);
+
+    args.emit?.({
+      type:       'memory_compaction_started',
+      sessionId:  args.sessionId,
+      turnId:     args.turnId,
+      mode:       args.mode,
+      beforeTokens,
+    })
 
     const result = await runMacroCompaction({
       llm:                this.deps.llm,
@@ -630,12 +755,26 @@ export class MemoryPlanner {
     });
 
     if (!result.succeeded || !result.summary) {
+
+      args.emit?.({
+        type:       'memory_compaction_failed',
+        sessionId:  args.sessionId,
+        turnId:     args.turnId,
+        mode:       args.mode,
+        beforeTokens,
+        afterTokens: estimated,
+        error:      macroFailureReason(result.attempts),
+        durationMs: Date.now() - now,
+      })
       // Macro failed — fall through with what we have. Caller still proceeds.
       return {
         messages:     working,
         macroRan:     false,
         microCleared: micro.cleared,
         succeeded:    false,
+        beforeTokens,
+        afterTokens: estimated,
+        savedTokens: beforeTokens - estimated,
       };
     }
 
@@ -654,11 +793,26 @@ ${result.summary}
 
     working = [summaryMsg, ...restore, ...tail];
 
+    const afterTokens = estimateMessagesTokens(working);
+
+    args.emit?.({
+      type:       'memory_compaction_completed',
+      sessionId:  args.sessionId,
+      turnId:     args.turnId,
+      mode:       args.mode,
+      beforeTokens,
+      afterTokens: afterTokens,
+      durationMs: Date.now() - now,
+    })
+
     return {
       messages:     working,
       macroRan:     true,
       microCleared: micro.cleared,
       succeeded:    true,
+      beforeTokens,
+      afterTokens: afterTokens,
+      savedTokens: beforeTokens - afterTokens,
     };
   }
 
@@ -692,8 +846,15 @@ ${result.summary}
       for (const i of bundle.layer2.otherModes)  newItems.push(i.id);
     }
 
-    try { this.deps.nodes.touchReferenced(newNodes, nowMs); } catch { /* ignore */ }
-    try { this.deps.items.touchReferenced(newItems, nowMs); } catch { /* ignore */ }
+    const boost = {
+      maxBoost: this.settings.maintenance.reReferenceBoostMax,
+      halfLifeDays: this.settings.maintenance.reReferenceHalfLifeDays,
+      saturationStart: this.settings.maintenance.boostSaturationStart,
+      saturationSlope: this.settings.maintenance.boostSaturationSlope,
+    };
+
+    try { this.deps.nodes.touchReferenced(newNodes, nowMs, boost); } catch { /* ignore */ }
+    try { this.deps.items.touchReferenced(newItems, nowMs, boost); } catch { /* ignore */ }
 
     const merged: AlreadySurfaced = {
       nodes:     dedupTail([...prior.nodes, ...newNodes], 200),
@@ -710,9 +871,7 @@ ${result.summary}
     if (!row) return;
     const meta = JSON.parse(row.meta_json) as Record<string, unknown>;
     meta[SURFACED_META_KEY] = surfaced;
-    this.deps.db.sqlite
-      .prepare('UPDATE sessions SET meta_json = ? WHERE id = ?')
-      .run(JSON.stringify(meta), sessionId);
+    this.deps.sessions.setMeta(sessionId, meta);
   }
 }
 
@@ -822,4 +981,56 @@ function isAllToolResults(blocks: unknown[]): boolean {
 
 function hasAnyToolUse(blocks: unknown[]): boolean {
   return blocks.some((b) => (b as { type?: string }).type === 'tool_use');
+}
+
+function emitRecallLayer(
+  ctx: PlanContext,
+  layer: 'layer0' | 'layer1' | 'layer2',
+  report: {
+    status: 'succeeded' | 'skipped' | 'failed';
+    itemCount: number;
+    tokenEstimate: number;
+    durationMs: number;
+    error?: string;
+    skippedReason?: string;
+  },
+): void {
+  ctx.emit?.({
+    type: 'memory_recall_evidence',
+    sessionId: ctx.sessionId,
+    turnId: ctx.turnId,
+    mode: ctx.mode,
+    layer,
+    report,
+  });
+}
+
+function estimateGraphRecallTokens(result: NonNullable<RecallBundle['layer0']>): number {
+  const nodes = result.nodes
+    .map((n) => `${n.nodeType} ${n.label}: ${n.description}`)
+    .join('\n');
+  const edges = result.edges
+    .map((e) => `${e.from} ${e.relation} ${e.to}`)
+    .join('\n');
+  return estimateTextTokens([nodes, edges].filter(Boolean).join('\n'));
+}
+
+function countEpisodicItems(result: NonNullable<RecallBundle['layer2']>): number {
+  return result.currentMode.length + result.otherModes.length;
+}
+
+function estimateEpisodicRecallTokens(result: NonNullable<RecallBundle['layer2']>): number {
+  const items = [...result.currentMode, ...result.otherModes]
+    .map((i) => `${i.kind} ${i.title}: ${i.body}`)
+    .join('\n');
+  return estimateTextTokens(items);
+}
+
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
+function macroFailureReason(attempts: number): string {
+  if (attempts <= 0) return 'Macro compaction did not run: no compaction binding or empty compaction slice';
+  return `Macro compaction failed after ${attempts} attempt(s)`;
 }

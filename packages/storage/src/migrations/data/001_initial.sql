@@ -109,28 +109,26 @@ CREATE TABLE session_notes (
   updated_at             INTEGER NOT NULL
 );
 
--- ============ Background tasks ============
+-- ============ Memory tasks ============
 
-CREATE TABLE background_tasks (
+CREATE TABLE memory_tasks (
   id            TEXT PRIMARY KEY,
   kind          TEXT NOT NULL CHECK(kind IN (
-                  'extraction', 'consolidation', 'compaction',
-                  'embedding_refresh',
-                  'subagent_run',
-                  'audio_merge', 'audio_cleanup'
+                  'extraction', 'maintenance',
+                  'embedding_refresh', 'consolidation'
                 )),
   status        TEXT NOT NULL CHECK(status IN (
                   'pending', 'running', 'completed', 'failed'
                 )),
-  session_id    TEXT,
+  session_id    TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
   payload_json  TEXT NOT NULL,
   attempts      INTEGER NOT NULL DEFAULT 0,
   last_error    TEXT,
   created_at    INTEGER NOT NULL,
   updated_at    INTEGER NOT NULL
 );
-CREATE INDEX idx_bgtasks_status_created ON background_tasks(status, created_at);
-CREATE INDEX idx_bgtasks_session        ON background_tasks(session_id);
+CREATE INDEX idx_memorytasks_status_created ON memory_tasks(status, created_at);
+CREATE INDEX idx_memorytasks_session        ON memory_tasks(session_id);
 
 -- ============ Audio (TTS output) ============
 --

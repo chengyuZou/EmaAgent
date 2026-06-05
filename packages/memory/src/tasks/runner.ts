@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import type { SessionId, TurnMode } from '@ema-agent/contracts';
 import type {
-  BackgroundTaskKind, BackgroundTaskRow,
+  MemoryTaskKind, MemoryTaskRow,
 } from '@ema-agent/storage';
 import type { MemoryDeps } from '../deps.js';
 import type { MemorySettings } from '../types.js';
@@ -13,7 +13,7 @@ import type { ResolvedSessionOverrides } from '../maintenance/overrides.js';
 
 // ── Background task runner ───────────────────────────────────────────────────
 
-export interface BackgroundTaskRunnerDeps {
+export interface MemoryTaskRunnerDeps {
   memory:     MemoryDeps;
   embed:      EmbedService;
   settings:   MemorySettings;
@@ -30,25 +30,25 @@ export interface BackgroundTaskRunnerDeps {
 }
 
 /**
- * Drains the background_tasks table using a polling loop. The orchestrator
+ * Drains the memory_tasks table using a polling loop. The orchestrator
  * is expected to invoke `tick()` periodically (e.g. every 5 s) AND ad-hoc
  * after enqueueing a task via the planner.
  *
  * Cross-session concurrency is allowed — only same-session work is serialised
  * via SessionTaskQueue.
  */
-export class BackgroundTaskRunner {
+export class MemoryTaskRunner {
   private running = false;
 
-  constructor(private readonly deps: BackgroundTaskRunnerDeps) {}
+  constructor(private readonly deps: MemoryTaskRunnerDeps) {}
 
   /** Enqueue a fresh task. Returns the task id so callers can correlate. */
-  enqueue(kind: BackgroundTaskKind, sessionId: SessionId | null, payload: Record<string, unknown>): string {
+  enqueue(kind: MemoryTaskKind, sessionId: SessionId, payload: Record<string, unknown>): string {
     const id = crypto.randomUUID();
-    this.deps.memory.backgroundTasks.enqueue({
+    this.deps.memory.memoryTasks.enqueue({
       id,
       kind,
-      sessionId: sessionId ?? undefined,
+      sessionId: sessionId,
       payload,
       createdAt: Date.now(),
     });
@@ -66,7 +66,7 @@ export class BackgroundTaskRunner {
     this.running = true;
     try {
       while (true) {
-        const row = this.deps.memory.backgroundTasks.claimNext(Date.now());
+        const row = this.deps.memory.memoryTasks.claimNext(Date.now());
         if (!row) break;
         await this.dispatch(row);
       }
@@ -77,14 +77,14 @@ export class BackgroundTaskRunner {
 
   // ── Dispatch ────────────────────────────────────────────────────────────────
 
-  private async dispatch(row: BackgroundTaskRow): Promise<void> {
+  private async dispatch(row: MemoryTaskRow): Promise<void> {
     const t0 = Date.now();
     const payload = (() => {
       try { return JSON.parse(row.payload_json) as { sessionId?: string }; }
       catch { return {} as { sessionId?: string }; }
     })();
     this.deps.memory.emit?.({
-      type:      'background_task_started',
+      type:      'memory_task_started',
       taskId:    row.id,
       kind:      row.kind,
       sessionId: payload.sessionId as SessionId | undefined,
@@ -95,31 +95,24 @@ export class BackgroundTaskRunner {
         case 'extraction':
           await this.handleExtraction(row);
           break;
-        case 'consolidation':
-          await this.handleConsolidation(row);
-          break;
-        case 'compaction':
-          // Reserved for Round 4 — short-circuit for now
-          break;
+        case 'maintenance':
         case 'embedding_refresh':
+        case 'consolidation':
           // Reserved — runs when ebd provider changes; Round 4.5
           break;
-        case 'subagent_run':
-          // Reserved — V1.5 multi-agent collaboration. No-op for now.
-          break;
       }
-      this.deps.memory.backgroundTasks.markCompleted(row.id, Date.now());
+      this.deps.memory.memoryTasks.markCompleted(row.id, Date.now());
       this.deps.memory.emit?.({
-        type:       'background_task_completed',
+        type:       'memory_task_completed',
         taskId:     row.id,
         kind:       row.kind,
         durationMs: Date.now() - t0,
       });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      this.deps.memory.backgroundTasks.markFailed(row.id, msg, Date.now(), 3);
+      this.deps.memory.memoryTasks.markFailed(row.id, msg, Date.now(), 3);
       this.deps.memory.emit?.({
-        type:   'background_task_failed',
+        type:   'memory_task_failed',
         taskId: row.id,
         kind:   row.kind,
         error:  msg,
@@ -129,7 +122,7 @@ export class BackgroundTaskRunner {
 
   // ── Extraction handler ─────────────────────────────────────────────────────
 
-  private async handleExtraction(row: BackgroundTaskRow): Promise<void> {
+  private async handleExtraction(row: MemoryTaskRow): Promise<void> {
     const payload = JSON.parse(row.payload_json) as {
       sessionId?: string;
       mode?:      TurnMode;
@@ -143,8 +136,8 @@ export class BackgroundTaskRunner {
     const skipConsolidation = !overrides.consolidation;
 
     await this.deps.queue.enqueue(sid, async () => {
-      const queueDepth = this.deps.memory.backgroundTasks
-        .listByStatus('pending', 1000).length;
+      const queueDepth = this.deps.memory.memoryTasks
+        .countByStatus('pending');
       this.deps.memory.emit?.({
         type:       'memory_extraction_started',
         sessionId:  sid,
@@ -185,9 +178,4 @@ export class BackgroundTaskRunner {
 
   // ── Consolidation handler (rare standalone case) ──────────────────────────
 
-  private async handleConsolidation(_row: BackgroundTaskRow): Promise<void> {
-    // Consolidation usually runs inline at the end of extraction. A standalone
-    // consolidation task can be useful for periodic maintenance — kept as a
-    // no-op for V1 until we wire a maintenance scheduler.
-  }
 }

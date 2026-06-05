@@ -47,7 +47,7 @@ export type {
 
 // ── Background tasks + recovery ──────────────────────────────────────────────
 export { SessionTaskQueue }                   from './tasks/session-queue.js';
-export { BackgroundTaskRunner }               from './tasks/runner.js';
+export { MemoryTaskRunner }               from './tasks/runner.js';
 export { runStartupRecovery }                 from './tasks/recovery.js';
 export type { RecoveryReport }                from './tasks/recovery.js';
 
@@ -76,8 +76,7 @@ export type {
   BrowseItemsOptions,
 } from './maintenance/inspection.js';
 
-// ── Maintenance: decay + delete ──────────────────────────────────────────────
-export { DEFAULT_MAINTENANCE }                from './maintenance/decay.js';
+// ── Maintenance: decay + delete ──────────────────────────────────────────────           from './maintenance/decay.js';
 export type {
   MaintenanceOptions,
   MaintenanceReport,

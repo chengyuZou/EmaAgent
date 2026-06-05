@@ -23,7 +23,7 @@ export { MemoryEdgesRepo }       from './repos/memory-edges.js';
 export { MemoryLazyUpdatesRepo } from './repos/memory-lazy-updates.js';
 export { MemoryItemsRepo }       from './repos/memory-items.js';
 export { SessionNotesRepo }      from './repos/session-notes.js';
-export { BackgroundTasksRepo }   from './repos/background-tasks.js';
+export { MemoryTasksRepo }   from './repos/memory-tasks.js';
 export { PendingFragmentsRepo }  from './repos/pending-fragments.js';
 
 export type { DatabaseOptions, SqliteDb } from './database.js';
@@ -76,11 +76,11 @@ export type {
   SessionNoteUpsert,
 } from './repos/session-notes.js';
 export type {
-  BackgroundTaskRow,
-  BackgroundTaskEnqueue,
-  BackgroundTaskKind,
-  BackgroundTaskStatus,
-} from './repos/background-tasks.js';
+  MemoryTaskRow,
+  MemoryTaskEnqueue,
+  MemoryTaskKind,
+  MemoryTaskStatus,
+} from './repos/memory-tasks.js';
 export type {
   PendingFragmentRow,
   PendingFragmentInsert,

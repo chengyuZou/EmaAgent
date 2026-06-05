@@ -22,6 +22,13 @@ export interface ExtractedItem {
   importance: number;
 }
 
+// packages/memory/src/extract/types.ts 里加
+export interface SessionNoteEntry {
+  at:     number;    // unix ms — 写入时间，不依赖 LLM 保留
+  turnId: string;    // 来源 turn
+  delta:  string;    // 这条 entry 的 markdown 内容
+}
+
 export interface ExtractionOutput {
   new_nodes:           ExtractedNode[];
   new_edges:           ExtractedEdge[];

@@ -34,7 +34,7 @@ export function runStartupRecovery(
     orphanLazyUpdates: 0,
   };
 
-  try { report.resetTasks = deps.backgroundTasks.resetStuckRunning(now); }
+  try { report.resetTasks = deps.memoryTasks.resetStuckRunning(now); }
   catch { /* ignore */ }
 
   try { report.orphanLazyUpdates = deps.lazyUpdates.cleanOrphans(); }
