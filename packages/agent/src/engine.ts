@@ -1,5 +1,5 @@
 import type { EmaStreamEvent } from '@ema-agent/contracts';
-import type { LlmMessage, AssistantBlock, UserBlock } from '@ema-agent/llm';
+import type { LlmMessage, LlmContentPart, AssistantBlock, UserBlock } from '@ema-agent/llm';
 import type { Message } from '@ema-agent/session';
 import type { MessageBlocks } from '@ema-agent/session';
 import type { ToolResultBlock } from '@ema-agent/contracts';
@@ -262,10 +262,9 @@ async function* runTurn(
         .map(([, t]) => t)
         .join('');
 
-      // Build final AssistantBlock[] in blockIndex order: text + thinking + tool_use.
-      // Using a single blockMap ensures the exact interleaving the model produced
-      // is preserved (critical for Anthropic's API which requires thinking blocks
-      // to be echoed back alongside their assistant turn).
+      // Persist the original block order for UI/debug history. Replay into the
+      // next LLM request is handled by historyToLlmMessages(), which deliberately
+      // filters thinking/tool blocks out for provider safety.
       const blockMap = new Map<number, AssistantBlock>();
       for (const [idx, text]    of textByIndex)     blockMap.set(idx, { type: 'text', text });
       for (const [idx, thinking] of thinkingByIndex) blockMap.set(idx, { type: 'thinking', thinking });
@@ -374,6 +373,11 @@ async function* runTurn(
 //   system    → blocks: string
 //   user      → blocks: string | UserBlock[]  (UserBlock[] for media + tool_results)
 //   assistant → blocks: AssistantBlock[]      (text / thinking / tool_use interleaved)
+//
+// Persisted history may contain provider-specific thinking blocks and prior
+// tool_use/tool_result protocol blocks. Those are useful for UI/debug history,
+// but unsafe to replay blindly across providers, so this projection keeps only
+// visible assistant text plus ordinary user content parts.
 
 function historyToLlmMessages(history: Message[]): LlmMessage[] {
   const out: LlmMessage[] = [];
@@ -383,14 +387,33 @@ function historyToLlmMessages(history: Message[]): LlmMessage[] {
         out.push({ role: 'system', content: typeof msg.blocks === 'string' ? msg.blocks : '' });
         break;
       case 'user':
-        out.push({ role: 'user', content: msg.blocks as string | UserBlock[] });
+        if (typeof msg.blocks === 'string') {
+          out.push({ role: 'user', content: msg.blocks });
+        } else if (Array.isArray(msg.blocks)) {
+          const userBlocks = msg.blocks.filter(isReplayableUserBlock);
+          if (userBlocks.length > 0) out.push({ role: 'user', content: userBlocks });
+        }
         break;
       case 'assistant':
         if (Array.isArray(msg.blocks)) {
-          out.push({ role: 'assistant', content: msg.blocks as AssistantBlock[] });
+          const assistantBlocks = msg.blocks.filter(isTextAssistantBlock);
+          if (assistantBlocks.length > 0) out.push({ role: 'assistant', content: assistantBlocks });
         }
         break;
     }
   }
   return out;
+}
+
+function isTextAssistantBlock(block: unknown): block is AssistantBlock & { type: 'text' } {
+  return !!block
+    && typeof block === 'object'
+    && (block as { type?: unknown }).type === 'text'
+    && typeof (block as { text?: unknown }).text === 'string';
+}
+
+function isReplayableUserBlock(block: unknown): block is LlmContentPart {
+  return !!block
+    && typeof block === 'object'
+    && (block as { type?: unknown }).type !== 'tool_result';
 }

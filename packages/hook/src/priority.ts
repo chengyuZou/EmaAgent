@@ -3,9 +3,9 @@ export const PRIORITY_DEFAULT = 100;
 
 /** Well-known priority slots — use these instead of magic numbers. */
 export const PRIORITY = {
-  /** Runs before most handlers — character-card injection, permission gate */
+  /** Runs before most handlers — system prompt construction, routing context */
   FIRST: 10,
-  /** Runs early — memory recall, emotion delta parsing, TTS accumulation */
+  /** Runs early — skills, memory recall, contextual augmentation */
   EARLY: 20,
   /** Default slot */
   DEFAULT: 100,

@@ -84,11 +84,10 @@ export const powershellTool = buildTool<PowerShellInput, BashResult>({
 
     const timeoutMs = Math.min(timeout ?? DEFAULT_TIMEOUT_MS, MAX_TIMEOUT_MS);
 
-    // Always use powershell.exe directly — never route through CommandRunner.
-    // CommandRunner selects bash as the shell on Windows, which causes PowerShell
-    // commands to be interpreted by the wrong interpreter. The sandbox backends
-    // (bubblewrap/sandbox-exec) don't support native PowerShell anyway, so
-    // bypassing CommandRunner doesn't reduce the security posture.
+    // Native PowerShell currently cannot be wrapped by CommandRunner: the V1
+    // sandbox backends are Unix-shell oriented, and CommandRunner selects bash
+    // on Windows. apps/core therefore hides this tool whenever shell execution
+    // would degrade to the app-layer backend.
     return runShell(
       'powershell.exe',
       ['-NonInteractive', '-Command', command],

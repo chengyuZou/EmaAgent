@@ -495,7 +495,7 @@ describe('HookBus', () => {
     ]);
   });
 
-  it('parallel hook returning replace aborts when critical', async () => {
+  it('observer hook returning replace records warning even when critical', async () => {
     const bus = new HookBus({
       parallelEvents: new Set(['afterLlmComplete']),
     });
@@ -505,7 +505,7 @@ describe('HookBus', () => {
       async () => ({
         kind: 'replace',
         payload: { content: 'illegal' },
-      }),
+      }) as never,
       {
         name: 'bad-parallel-replace',
         parallel: true,
@@ -519,15 +519,20 @@ describe('HookBus', () => {
     });
 
     expect(result).toEqual({
-      kind: 'abort',
-      reason:
-        'Parallel hook "bad-parallel-replace" returned replace, but parallel hooks cannot replace payload',
+      kind: 'continue',
       payload: { content: 'original' },
-      warnings: [],
+      warnings: [
+        {
+          event: 'afterLlmComplete',
+          hook: 'bad-parallel-replace',
+          reason:
+            'Observer hook "bad-parallel-replace" returned replace, but observer hooks cannot alter control flow',
+        },
+      ],
     });
   });
 
-  it('parallel hook returning replace records warning when non-critical', async () => {
+  it('observer hook returning replace records warning when non-critical', async () => {
     const bus = new HookBus({
       parallelEvents: new Set(['afterLlmComplete']),
     });
@@ -537,7 +542,7 @@ describe('HookBus', () => {
       async () => ({
         kind: 'replace',
         payload: { content: 'illegal' },
-      }),
+      }) as never,
       {
         name: 'bad-parallel-replace',
         parallel: true,
@@ -558,13 +563,13 @@ describe('HookBus', () => {
           event: 'afterLlmComplete',
           hook: 'bad-parallel-replace',
           reason:
-            'Parallel hook "bad-parallel-replace" returned replace, but parallel hooks cannot replace payload',
+            'Observer hook "bad-parallel-replace" returned replace, but observer hooks cannot alter control flow',
         },
       ],
     });
   });
 
-  it('parallel hook returning abort aborts trigger even when non-critical', async () => {
+  it('observer hook returning abort records warning and continues', async () => {
     const bus = new HookBus({
       parallelEvents: new Set(['afterLlmComplete']),
     });
@@ -573,7 +578,7 @@ describe('HookBus', () => {
 
     bus.register(
       'afterLlmComplete',
-      async () => ({ kind: 'abort', reason: 'parallel abort' }),
+      async () => ({ kind: 'abort', reason: 'parallel abort' }) as never,
       {
         name: 'parallel-abort',
         parallel: true,
@@ -600,10 +605,16 @@ describe('HookBus', () => {
     });
 
     expect(result).toEqual({
-      kind: 'abort',
-      reason: 'parallel abort',
+      kind: 'continue',
       payload: { content: 'done' },
-      warnings: [],
+      warnings: [
+        {
+          event: 'afterLlmComplete',
+          hook: 'parallel-abort',
+          reason:
+            'Observer hook "parallel-abort" returned abort (parallel abort), but observer hooks cannot alter control flow',
+        },
+      ],
     });
 
     // Because this is a parallel batch, the other hook may already have run.
@@ -612,11 +623,11 @@ describe('HookBus', () => {
 
   it('parallel critical throw aborts trigger', async () => {
     const bus = new HookBus({
-      parallelEvents: new Set(['afterLlmComplete']),
+      parallelEvents: new Set(['beforeLlm']),
     });
 
     bus.register(
-      'afterLlmComplete',
+      'beforeLlm',
       async () => {
         throw new Error('parallel boom');
       },
@@ -627,15 +638,15 @@ describe('HookBus', () => {
       },
     );
 
-    const result = await bus.trigger('afterLlmComplete', {
+    const result = await bus.trigger('beforeLlm', {
       ...baseCtx(),
-      payload: { content: 'done' },
+      payload: { systemPrompt: 'done', messages: [] },
     });
 
     expect(result).toEqual({
       kind: 'abort',
       reason: 'parallel boom',
-      payload: { content: 'done' },
+      payload: { systemPrompt: 'done', messages: [] },
       warnings: [],
     });
   });
@@ -693,13 +704,13 @@ describe('HookBus', () => {
 
   it('serial hook after parallel batch sees unchanged payload', async () => {
     const bus = new HookBus({
-      parallelEvents: new Set(['afterLlmComplete']),
+      parallelEvents: new Set(['beforeLlm']),
     });
 
     let seen = '';
 
     bus.register(
-      'afterLlmComplete',
+      'beforeLlm',
       async () => ({ kind: 'continue' }),
       {
         name: 'parallel-observer',
@@ -709,12 +720,12 @@ describe('HookBus', () => {
     );
 
     bus.register(
-      'afterLlmComplete',
+      'beforeLlm',
       async (ctx) => {
-        seen = ctx.payload.content;
+        seen = ctx.payload.systemPrompt;
         return {
           kind: 'replace',
-          payload: { content: `${ctx.payload.content}-serial` },
+          payload: { ...ctx.payload, systemPrompt: `${ctx.payload.systemPrompt}-serial` },
         };
       },
       {
@@ -724,15 +735,15 @@ describe('HookBus', () => {
       },
     );
 
-    const result = await bus.trigger('afterLlmComplete', {
+    const result = await bus.trigger('beforeLlm', {
       ...baseCtx(),
-      payload: { content: 'original' },
+      payload: { systemPrompt: 'original', messages: [] },
     });
 
     expect(seen).toBe('original');
     expect(result).toEqual({
       kind: 'continue',
-      payload: { content: 'original-serial' },
+      payload: { systemPrompt: 'original-serial', messages: [] },
       warnings: [],
     });
   });

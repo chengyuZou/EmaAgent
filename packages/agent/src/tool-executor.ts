@@ -166,7 +166,9 @@ export class TurnToolExecutor {
     const { id, name, args } = track;
 
     try {
-      // ── beforeToolUse hook ────────────────────────────────────────────────
+      // ── Tool observer hook ────────────────────────────────────────────────
+      // Tool lifecycle hooks are UI/audit observers only. PermissionEngine is
+      // the execution gate, and the sandbox runner is the isolation boundary.
       await hooks.trigger('beforeToolUse', {
         turnId, sessionId,
         payload: { callId: id, name, args },

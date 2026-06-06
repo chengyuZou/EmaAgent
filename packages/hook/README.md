@@ -1,7 +1,7 @@
 # @ema-agent/hook
 
 > EmaAgent 的 Hook 事件系统 —— 基于优先级的、可扩展的事件总线，支持串行/并行分批执行处理器。
-> 更新时间 2026-5-30 10:00
+> 更新时间 2026-06-06
 
 ---
 
@@ -31,8 +31,9 @@
 - **11 个生命周期事件**，覆盖 LLM 调用、工具使用、回合。
 - **优先级排序执行**（数字越小越先执行）。
 - **串行与并行批次**：同一事件下的处理器可被分为串行块和并行块执行。
-- **Payload 修改**：串行处理器可以替换 payload，下游处理器将收到修改后的值。
-- **中止与警告语义**：处理器可中止整个链条；非关键处理器的失败只记录警告，不中断执行。
+- **受控 Payload 修改**：只有控制型事件可以替换 payload，下游处理器将收到修改后的值。
+- **观察型事件**：工具生命周期和事后通知只用于 UI、遥测、审计，不参与权限放行或参数改写。
+- **中止与警告语义**：控制型处理器可中止链条；非关键处理器的失败只记录警告，不中断执行。
 - **共享上下文 (`meta`)**：调用者拥有的暂存对象，在同一个 `trigger()` 调用中的所有处理器之间共享。
 
 ---
@@ -63,8 +64,8 @@ src/
 
 | 常量 | 值 | 用途 |
 |---|---|---|
-| `PRIORITY.FIRST` | `10` | 最先执行，用于角色卡注入、权限门禁 |
-| `PRIORITY.EARLY` | `20` | 较早执行，用于记忆召回、情感解析、TTS 累积 |
+| `PRIORITY.FIRST` | `10` | 最先执行，用于系统提示词构建、路由上下文 |
+| `PRIORITY.EARLY` | `20` | 较早执行，用于技能注入、记忆召回、上下文增强 |
 | `PRIORITY.DEFAULT` | `100` | 默认值，大多数处理器使用此级别 |
 | `PRIORITY.LATE` | `200` | 最后执行，用于遥测、审计日志 |
 
@@ -109,9 +110,11 @@ type HookEvent =
 
 | 事件 | Payload | 触发时机 | 说明 |
 |---|---|---|---|
-| `beforeToolUse` | `{ callId: string; name: string; args: unknown }` | 工具调用之前 | **串行专用事件**。可以在此修改工具参数或阻止调用（返回 abort）。 |
-| `afterToolUse` | `{ callId: string; name: string; output: unknown }` | 工具调用成功之后 | **支持并行**。用于记录、后处理工具输出。 |
-| `onToolFailure` | `{ callId: string; name: string; error: unknown }` | 工具调用抛出错误时 | **支持并行**。用于错误处理、日志记录。 |
+| `beforeToolUse` | `{ callId: string; name: string; args: unknown }` | 工具调用之前 | **观察型事件**。只用于 UI 展示、审计、trace；不得修改参数或决定放行。 |
+| `afterToolUse` | `{ callId: string; name: string; output: unknown }` | 工具调用成功之后 | **观察型事件，支持并行**。用于记录、后处理工具输出、UI 展示。 |
+| `onToolFailure` | `{ callId: string; name: string; error: unknown }` | 工具调用失败时 | **观察型事件，支持并行**。用于错误展示、日志记录、审计。 |
+
+工具调用的安全链路固定为：`Agent ToolExecutor → PermissionEngine.gate() → ToolRegistry.dispatch() → Tool execute() → CommandRunner/Sandbox`。HookBus 不承担权限拦截、参数改写或沙箱隔离职责。
 
 #### 消息与压缩
 
@@ -137,13 +140,13 @@ type HookEvent =
 
 `afterLlmComplete`、`afterMessage`、`afterToolUse`、`onToolFailure`、`afterCompact`、`onTurnEnd`、`onTurnAbort`
 
-这些都是**观察者风格**的事件（事后通知），处理器通常不需要修改状态。
+这些都是**观察型事件**，处理器只能返回 `{ kind: 'continue' }`。其中 Tool 生命周期事件同样只用于 UI/遥测/审计，不能作为安全边界。
 
 **仅支持串行的事件（4 个）**：
 
 `beforeLlm`、`beforeToolUse`、`beforeCompact`、`onTurnStart`
 
-这些都是**前置事件**，处理器需要能够修改 payload（返回 `replace`）来影响后续流程。
+其中只有 `beforeLlm`、`beforeCompact`、`onTurnStart` 是控制型事件，可以返回 `replace` 或 `abort`。`beforeToolUse` 虽然发生在工具调用前，但仍是观察型事件。
 
 ---
 
@@ -175,8 +178,10 @@ type HookEvent =
 | 变体 | 含义 |
 |---|---|
 | `{ kind: 'continue' }` | 处理完成，继续下一个处理器 |
-| `{ kind: 'replace'; payload: HookPayload[E] }` | 替换当前 payload（仅串行处理器可用） |
-| `{ kind: 'abort'; reason: string }` | 立即中止整个触发链 |
+| `{ kind: 'replace'; payload: HookPayload[E] }` | 替换当前 payload（仅控制型串行事件可用） |
+| `{ kind: 'abort'; reason: string }` | 立即中止触发链（仅控制型事件可用） |
+
+观察型事件（包括 `beforeToolUse`、`afterToolUse`、`onToolFailure`）的 handler 类型只允许返回 `{ kind: 'continue' }`。运行时遇到非法 `replace` / `abort` 会记录 warning 并继续，防止外部未按类型接入时污染主流程。
 
 #### `HookTriggerResult<E>`
 
@@ -375,8 +380,8 @@ constructor(options: HookBusOptions = {}) {
 5. **逐一处理批次**：
    - **串行批次**：
      - 逐个调用 `runOne()`。
-     - 如果返回 `abort` → 立即返回，携带中止原因和当前 payload。
-     - 如果返回 `replace` → 更新 `currentPayload` 为新的 payload。
+     - 如果控制型事件返回 `abort` → 立即返回，携带中止原因和当前 payload。
+     - 如果控制型事件返回 `replace` → 更新 `currentPayload` 为新的 payload。
      - 如果返回 `continue` → 处理下一个。
    - **并行批次**：
      - 调用 `runParallelBatch()`。
@@ -386,9 +391,9 @@ constructor(options: HookBusOptions = {}) {
 6. **全部完成**：返回 `{ kind: 'continue', payload: currentPayload, warnings }`。
 
 **关键规则**：
-- ✅ 串行处理器可以 `replace` payload，下游处理器会看到修改后的值。
-- ❌ 并行处理器不能返回 `replace`（返回则根据 `critical` 中止或警告）。
-- 🛑 任何处理器返回 `abort` 都立即中止整个链条（无论 `critical` 设置）。
+- ✅ 控制型串行处理器可以 `replace` payload，下游处理器会看到修改后的值。
+- ❌ 观察型处理器不能返回 `replace` / `abort`；并行处理器也不能返回 `replace`。
+- 🛑 控制型处理器返回 `abort` 会立即中止整个链条（无论 `critical` 设置）。
 - ⚠️ `critical: false` 的处理器抛出错误，记录为 `HookWarning` 并继续执行。
 - 💥 `critical: true`（默认）的处理器抛出错误，中止链条。
 
@@ -447,9 +452,10 @@ constructor(options: HookBusOptions = {}) {
 |---|---|
 | **优先级排序** | 处理器按优先级升序执行。同优先级内保持注册顺序。 |
 | **批次构建** | 连续的 `parallel: true` 处理器（且事件支持并行）合并为一个并行批次；否则各自形成串行批次。 |
-| **串行可修改 payload** | 串行处理器返回 `replace` 会更新 payload，下游处理器均可见。 |
-| **并行不可修改 payload** | 并行处理器返回 `replace` 被视为错误（critical 则中止，否则警告）。 |
-| **abort 是终局** | 任何处理器返回 `abort` 立即中止整个链条，不论 `critical` 设置。 |
+| **控制型事件可修改 payload** | 控制型串行处理器返回 `replace` 会更新 payload，下游处理器均可见。 |
+| **观察型事件只能观察** | 观察型处理器只允许返回 `continue`；Tool 生命周期事件不能修改参数或决定放行。 |
+| **并行不可修改 payload** | 控制型并行处理器返回 `replace` 被视为错误（critical 则中止，否则警告）；观察型事件统一只记录 warning。 |
+| **abort 是控制型语义** | 控制型处理器返回 `abort` 立即中止整个链条，不论 `critical` 设置。 |
 | **critical 错误中止** | `critical: true`（默认）的处理器抛出异常，中止链条。 |
 | **非 critical 错误警告** | `critical: false` 的处理器抛出异常，记录 `HookWarning` 并继续。 |
 | **并发控制** | 并行批次按 `maxConcurrency` 分块执行，块内并发，块间串行。 |
@@ -533,10 +539,10 @@ export type {
 
 | 测试用例 | 测试内容 |
 |---|---|
-| `parallel hook returning replace aborts when critical` | 关键并行处理器返回 `replace`（不允许的操作），验证触发结果为 `abort`，reason 包含明确说明。 |
-| `parallel hook returning replace records warning when non-critical` | 非关键并行处理器返回 `replace`，验证触发结果为 `continue`（成功 continuation），但有 warning 记录。 |
-| `parallel hook returning abort aborts trigger even when non-critical` | 非关键并行处理器返回 `abort`，验证整个触发链中止。注意：因为是并行批，其他处理器可能已经执行（`reached` 被调用 1 次）。 |
-| `parallel critical throw aborts trigger` | 关键并行处理器抛出错误，验证触发结果中止，reason 为错误消息。 |
+| `observer hook returning replace records warning even when critical` | 观察型处理器非法返回 `replace`，即使 critical 也只记录 warning 并继续。 |
+| `observer hook returning replace records warning when non-critical` | 非关键观察型处理器非法返回 `replace`，验证触发结果为 `continue` 且有 warning。 |
+| `observer hook returning abort records warning and continues` | 观察型处理器非法返回 `abort`，验证不会中止主流程，其他并行观察者仍可完成。 |
+| `parallel critical throw aborts trigger` | 控制型并行处理器抛出错误，验证触发结果中止，reason 为错误消息。 |
 | `parallel non-critical throw records warning and continues` | 非关键并行处理器抛出错误，验证：(1) 其他并行处理器正常执行，(2) 有 warning 记录，(3) 触发结果为 `continue`。 |
 
 ### 列表与校验测试
@@ -552,7 +558,7 @@ export type {
 
 1. **类型擦除是刻意的**：由于 TypeScript 不支持在 `Map<K, V>` 中保持 `K` 和 `V` 之间的泛型关联（即不支持 "correlated generics"），`HookBus` 在存储时擦除 `HandlerEntry<E>` 为 `HandlerEntry<HookEvent>`，在 `trigger()` 时通过断言恢复。这已通过全面的测试保证类型安全。
 
-2. **并行处理器只能观察**：并行事件（如 `afterLlmComplete`）通常用于遥测、日志、多个观察者。由于这些处理器并发运行，它们不能安全地修改共享 payload，因此返回 `replace` 被禁止。
+2. **观察型处理器只能观察**：并行事件和 Tool 生命周期事件用于 UI、遥测、日志、审计。它们不能安全或合法地修改主流程 payload，因此 handler 类型只允许返回 `continue`。
 
 3. **`meta` 生命周期由调用者决定**：`HookBus` 完全透传 `meta` 对象，不创建、不复制、不清理。这给予调用者最大的灵活性来管理跨回合或单次调用的中间状态。
 

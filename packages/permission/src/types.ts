@@ -69,7 +69,7 @@ export type PermissionUpdate =
 // ── Outcome ───────────────────────────────────────────────────────────────────
 
 export type PermissionOutcome =
-  | { granted: true;  updatedInput?: unknown;  decisionReason?: DecisionReason }
+  | { granted: true;  decisionReason?: DecisionReason }
   | { granted: false; reason: string;          decisionReason?: DecisionReason }
 
 // ── Context ───────────────────────────────────────────────────────────────────

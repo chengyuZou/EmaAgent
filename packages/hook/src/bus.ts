@@ -16,11 +16,33 @@ export interface HookContext<E extends HookEvent> {
 export type HookTriggerContext<E extends HookEvent> =
   Omit<HookContext<E>, 'event'>;
 
-/** Result returned by a single hook handler. */
-export type HookResult<E extends HookEvent> =
+/**
+ * Events whose handlers are allowed to alter control flow.
+ *
+ * Tool lifecycle events are intentionally absent: tool safety is owned by
+ * PermissionEngine + Sandbox, while hooks are observation/UI extension points.
+ */
+export type ControlHookEvent =
+  | 'beforeLlm'
+  | 'beforeCompact'
+  | 'onTurnStart';
+
+export type ObserverHookEvent = Exclude<HookEvent, ControlHookEvent>;
+
+export type HookControlResult<E extends HookEvent> =
   | { kind: 'continue' }
   | { kind: 'replace'; payload: HookPayload[E] }
   | { kind: 'abort'; reason: string };
+
+export type HookObserverResult = { kind: 'continue' };
+
+/** Result returned by a single hook handler. */
+export type HookResult<E extends HookEvent> =
+  E extends ControlHookEvent
+    ? HookControlResult<E>
+    : HookObserverResult;
+
+type HookRuntimeResult<E extends HookEvent> = HookControlResult<E>;
 
 /** Result returned by a whole trigger() chain. */
 export type HookTriggerResult<E extends HookEvent> =
@@ -122,10 +144,30 @@ const DEFAULT_PARALLEL_EVENTS = new Set<HookEvent>([
   'onTurnAbort',
 ]);
 
+const CONTROL_HOOK_EVENTS: ReadonlySet<HookEvent> = new Set<ControlHookEvent>([
+  'beforeLlm',
+  'beforeCompact',
+  'onTurnStart',
+]);
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function errorToReason(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
+}
+
+function isControlHookEvent(event: HookEvent): event is ControlHookEvent {
+  return CONTROL_HOOK_EVENTS.has(event);
+}
+
+function observerControlFlowWarning(
+  hookName: string,
+  result: Exclude<HookRuntimeResult<HookEvent>, HookObserverResult>,
+): string {
+  if (result.kind === 'abort') {
+    return `Observer hook "${hookName}" returned abort (${result.reason}), but observer hooks cannot alter control flow`;
+  }
+  return `Observer hook "${hookName}" returned replace, but observer hooks cannot alter control flow`;
 }
 
 function chunkArray<T>(items: T[], size: number): T[][] {
@@ -287,6 +329,15 @@ export class HookBus {
             warnings,
           );
 
+          if (!isControlHookEvent(event) && result.kind !== 'continue') {
+            warnings.push({
+              event,
+              hook: entry.name,
+              reason: observerControlFlowWarning(entry.name, result),
+            });
+            continue;
+          }
+
           if (result.kind === 'abort') {
             return {
               kind: 'abort',
@@ -297,7 +348,7 @@ export class HookBus {
           }
 
           if (result.kind === 'replace') {
-            currentPayload = result.payload;
+            currentPayload = result.payload as HookPayload[E];
           }
         }
 
@@ -335,12 +386,12 @@ export class HookBus {
     baseCtx: HookContext<E>,
     payload: HookPayload[E],
     warnings: HookWarning[],
-  ): Promise<HookResult<E>> {
+  ): Promise<HookRuntimeResult<E>> {
     const handlerCtx: HookContext<E> = { ...baseCtx, payload } as HookContext<E>;
     const t0 = performance.now();
 
     try {
-      const result = await entry.handler(handlerCtx);
+      const result = await entry.handler(handlerCtx) as HookRuntimeResult<E>;
       this.options.traceSink?.({
         event:           event,
         handlerName:     entry.name,
@@ -420,6 +471,15 @@ export class HookBus {
         }
 
         const result = item.value;
+
+        if (!isControlHookEvent(event) && result.kind !== 'continue') {
+          warnings.push({
+            event,
+            hook: entry.name,
+            reason: observerControlFlowWarning(entry.name, result),
+          });
+          continue;
+        }
 
         if (result.kind === 'abort') {
           return {
