@@ -1,8 +1,5 @@
-import type { EmaStreamEvent } from '@ema-agent/contracts';
-import type { LlmMessage, LlmContentPart, AssistantBlock, UserBlock } from '@ema-agent/llm';
-import type { Message } from '@ema-agent/session';
+import type { EmaStreamEvent, LlmMessage, AssistantBlock, UserBlock, ToolResultBlock, MessageContentPart as LlmContentPart } from '@ema-agent/contracts';
 import type { MessageBlocks } from '@ema-agent/session';
-import type { ToolResultBlock } from '@ema-agent/contracts';
 import type { ToolExecutionContext, ReadFileState } from '@ema-agent/tool';
 import type { PermissionContext } from '@ema-agent/permission';
 import type { AgentDeps, AgentRunInput } from './types.js';

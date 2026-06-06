@@ -85,3 +85,15 @@ export type {
   PendingFragmentRow,
   PendingFragmentInsert,
 } from './repos/pending-fragments.js';
+
+// ── Model catalogs ────────────────────────────────────────────────────────────
+export { LlmModelCatalogRepo }   from './repos/llm-model-catalog.js';
+export { EmbedModelCatalogRepo } from './repos/embed-model-catalog.js';
+export { RerankModelCatalogRepo } from './repos/rerank-model-catalog.js';
+export { TtsModelCatalogRepo }   from './repos/tts-model-catalog.js';
+export { SttModelCatalogRepo }   from './repos/stt-model-catalog.js';
+export type { LlmModelRow }   from './repos/llm-model-catalog.js';
+export type { EmbedModelRow } from './repos/embed-model-catalog.js';
+export type { RerankModelRow } from './repos/rerank-model-catalog.js';
+export type { TtsModelRow }   from './repos/tts-model-catalog.js';
+export type { SttModelRow }   from './repos/stt-model-catalog.js';

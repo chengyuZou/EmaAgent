@@ -242,6 +242,9 @@ importers:
       '@ema-agent/contracts':
         specifier: workspace:*
         version: link:../contracts
+      '@ema-agent/tool':
+        specifier: workspace:*
+        version: link:../tools
     devDependencies:
       '@types/node':
         specifier: ^20.0.0

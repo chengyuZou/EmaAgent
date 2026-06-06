@@ -104,7 +104,7 @@ function hotReload(
     if (deleted) {
       bindings.llm.removeConfig(row.id);
     } else {
-      const cfg = buildLlmProviderConfig(row);
+      const cfg = buildLlmProviderConfig(row, bindings.llmCatalog);
       if (cfg) bindings.llm.upsertConfig(cfg);
       else     bindings.llm.removeConfig(row.id);
     }
@@ -115,7 +115,7 @@ function hotReload(
     if (deleted) {
       bindings.ebd.removeEmbedConfig(row.id);
     } else {
-      const cfg = buildEmbedProviderConfig(row);
+      const cfg = buildEmbedProviderConfig(row, bindings.embedCatalog);
       if (cfg) bindings.ebd.upsertEmbedConfig(cfg);
       else     bindings.ebd.removeEmbedConfig(row.id);
     }

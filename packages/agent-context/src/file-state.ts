@@ -1,4 +1,5 @@
 import { normalize } from 'node:path';
+import type { IFileStateStore, IFileStateStoreEntry } from '@ema-agent/tool';
 
 // ── AgentFileStateStore ───────────────────────────────────────────────────────
 //
@@ -15,16 +16,7 @@ import { normalize } from 'node:path';
 // Bounded by entry count AND total byte size (LRU eviction). Caching file
 // contents means an unbounded Map would grow without limit on long sessions.
 
-export interface FileStateEntry {
-  /** File content at time of read (for stale-edit content comparison). */
-  content: string;
-  /** mtime in milliseconds at time of read. */
-  mtimeMs: number;
-  /** undefined when the whole file was read. */
-  offset?: number;
-  limit?: number;
-  /** True when only a slice was read — fs_edit must require a full read first. */
-  isPartialView: boolean;
+export interface FileStateEntry extends IFileStateStoreEntry {
   /** Last access timestamp (for LRU + recency-based restore). */
   lastAccessMs: number;
 }
@@ -32,7 +24,7 @@ export interface FileStateEntry {
 const DEFAULT_MAX_ENTRIES    = 100;
 const DEFAULT_MAX_BYTES      = 25 * 1024 * 1024; // 25 MB
 
-export class AgentFileStateStore {
+export class AgentFileStateStore implements IFileStateStore {
   private readonly map = new Map<string, FileStateEntry>(); // insertion-order = LRU order
   private totalBytes = 0;
 

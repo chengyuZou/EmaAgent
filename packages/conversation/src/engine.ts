@@ -1,5 +1,4 @@
-import type { EmaStreamEvent } from '@ema-agent/contracts';
-import type { LlmMessage, LlmContentPart, AssistantBlock, UserBlock } from '@ema-agent/llm';
+import type { EmaStreamEvent, LlmMessage, AssistantBlock, UserBlock, MessageContentPart as LlmContentPart } from '@ema-agent/contracts';
 import type { MessageBlocks } from '@ema-agent/session';
 import type { HookBus, HookContext, HookTriggerResult } from '@ema-agent/hook';
 import type { ConversationDeps, ConversationRunInput } from './types.js';

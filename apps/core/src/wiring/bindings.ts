@@ -7,6 +7,7 @@ import {
   MemoryNodesRepo, MemoryEdgesRepo, MemoryLazyUpdatesRepo,
   MemoryItemsRepo, SessionNotesRepo, MemoryTasksRepo, PendingFragmentsRepo,
   ArtifactRepo,
+  LlmModelCatalogRepo, EmbedModelCatalogRepo,
   type ProviderConfigRow,
 } from '@ema-agent/storage';
 import { ArtifactStore } from '@ema-agent/artifact';
@@ -144,6 +145,8 @@ export interface AppBindings {
 
   // Repos kept on the binding for route convenience
   modelBindings:   ModelBindingsRepo;
+  llmCatalog:      LlmModelCatalogRepo;
+  embedCatalog:    EmbedModelCatalogRepo;
   artifactStore:   ArtifactStore;
   mcpRegistry:     McpRegistry;
   skillStore:      SkillStore;
@@ -153,7 +156,10 @@ export interface AppBindings {
 
 // ── Provider config builders (exported — providers route reuses them) ───────
 
-export function buildLlmProviderConfig(row: ProviderConfigRow): ProviderConfig | null {
+export function buildLlmProviderConfig(
+  row: ProviderConfigRow,
+  llmCatalog: LlmModelCatalogRepo,
+): ProviderConfig | null {
   const def = getProviderDefinition(row.definition_id);
   if (!def) return null;
 
@@ -173,20 +179,21 @@ export function buildLlmProviderConfig(row: ProviderConfigRow): ProviderConfig |
   const needsKey = def.requiresCredentials !== false;
   if (needsKey && !row.api_key_plain) return null;
 
-  const rawCw = extra['contextWindow'];
+  const defaultModel = typeof extra['defaultModel'] === 'string' ? extra['defaultModel'] : undefined;
+
   return {
-    id:            row.id,
+    id:           row.id,
     protocol,
-    apiKey:        row.api_key_plain ?? '',
-    baseUrl:       row.base_url ?? resolveBaseUrl(def, protocol),
-    defaultModel:  typeof extra['defaultModel'] === 'string' ? extra['defaultModel'] : undefined,
-    // User-configured context window for custom/Ollama/OpenRouter models.
-    // Takes precedence over ModelCatalog in register-hooks.ts.
-    contextWindow: typeof rawCw === 'number' && rawCw > 0 ? rawCw : undefined,
+    apiKey:       row.api_key_plain ?? '',
+    baseUrl:      row.base_url ?? resolveBaseUrl(def, protocol),
+    defaultModel,
   };
 }
 
-export function buildEmbedProviderConfig(row: ProviderConfigRow): EmbedProviderConfig | null {
+export function buildEmbedProviderConfig(
+  row: ProviderConfigRow,
+  embedCatalog: EmbedModelCatalogRepo,
+): EmbedProviderConfig | null {
   const def = getProviderDefinition(row.definition_id);
   if (!def) return null;
 
@@ -199,13 +206,17 @@ export function buildEmbedProviderConfig(row: ProviderConfigRow): EmbedProviderC
   if (def.requiresCredentials !== false && !row.api_key_plain) return null;
 
   const extra = JSON.parse(row.config_json) as Record<string, unknown>;
+  const defaultModel = typeof extra['defaultModel'] === 'string' ? extra['defaultModel'] : undefined;
+  // Vector dimension comes from embed_model_catalog (model property, not provider property).
+  const dim = defaultModel ? embedCatalog.dim(defaultModel) : 0;
+
   return {
     id:           row.id,
     protocol,
     apiKey:       row.api_key_plain ?? '',
     baseUrl:      row.base_url ?? def.defaultBaseUrl,
-    dim:          typeof extra['dim'] === 'number' ? extra['dim'] : 1024,
-    defaultModel: typeof extra['defaultModel'] === 'string' ? extra['defaultModel'] : undefined,
+    dim,
+    defaultModel,
   };
 }
 
@@ -233,21 +244,21 @@ export function buildRerankProviderConfig(row: ProviderConfigRow): RerankProvide
 
 // ── Provider list loaders (private — used by buildBindings) ──────────────────
 
-function loadLlmConfigs(db: Database): ProviderConfig[] {
+function loadLlmConfigs(db: Database, llmCatalog: LlmModelCatalogRepo): ProviderConfig[] {
   const repo = new ProvidersRepo(db.sqlite);
   const out: ProviderConfig[] = [];
   for (const row of repo.listByCapability('llm')) {
-    const cfg = buildLlmProviderConfig(row);
+    const cfg = buildLlmProviderConfig(row, llmCatalog);
     if (cfg) out.push(cfg);
   }
   return out;
 }
 
-function loadEmbedConfigs(db: Database): EmbedProviderConfig[] {
+function loadEmbedConfigs(db: Database, embedCatalog: EmbedModelCatalogRepo): EmbedProviderConfig[] {
   const repo = new ProvidersRepo(db.sqlite);
   const out: EmbedProviderConfig[] = [];
   for (const row of repo.listByCapability('embed')) {
-    const cfg = buildEmbedProviderConfig(row);
+    const cfg = buildEmbedProviderConfig(row, embedCatalog);
     if (cfg) out.push(cfg);
   }
   return out;
@@ -291,9 +302,13 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
   });
   const session = new SessionStore({ db: dataDb });
 
+  // ── Model catalogs (profileDb — model capabilities, not provider properties) ─
+  const llmCatalog   = new LlmModelCatalogRepo(profileDb.sqlite);
+  const embedCatalog = new EmbedModelCatalogRepo(profileDb.sqlite);
+
   // ── AI clients (provider configs live in profileDb) ────────────────────────
-  const llm = new LlmRouter(loadLlmConfigs(profileDb));
-  const ebd = new EbdRouter(loadEmbedConfigs(profileDb), loadRerankConfigs(profileDb));
+  const llm = new LlmRouter(loadLlmConfigs(profileDb, llmCatalog));
+  const ebd = new EbdRouter(loadEmbedConfigs(profileDb, embedCatalog), loadRerankConfigs(profileDb));
 
   const narrative = new NarrativeClient({
     baseUrl:   resolveBridgeUrl(),
@@ -453,7 +468,6 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
   // underlying sqlite handle — we hand over dataDb, since that's where every
   // memory table actually lives.
   const memory = new MemoryPlanner({
-    db:              dataDb,
     session,
     llm,
     ebd,
@@ -509,6 +523,8 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
     memory,
     systemBus,
     modelBindings,
+    llmCatalog,
+    embedCatalog,
     artifactStore,
     mcpRegistry,
     skillStore,

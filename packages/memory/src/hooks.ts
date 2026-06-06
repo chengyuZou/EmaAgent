@@ -3,7 +3,6 @@ import type {
   TurnMode, SessionId, TurnId,
 } from '@ema-agent/contracts';
 import type { LlmRouter } from '@ema-agent/llm';
-import type { ModelCatalog } from '@ema-agent/llm';
 import type { SessionStore } from '@ema-agent/session';
 import type { MemoryPlanner } from './planner.js';
 
@@ -21,20 +20,18 @@ export type RecentFilesProvider = (
 // ── Hook deps ────────────────────────────────────────────────────────────────
 
 export interface MemoryHooksDeps {
-  planner:        MemoryPlanner;
-  session:        SessionStore;
-  llm:            LlmRouter;
-  modelCatalog?:  ModelCatalog;
-  /** Fallback when the engine doesn't pass providerId+model in meta. */
+  planner:       MemoryPlanner;
+  session:       SessionStore;
+  llm:           LlmRouter;
+  /** Fallback when the engine doesn't pass model in meta. Defaults to 128K. */
   defaultContextWindow?: number;
   /**
-   * Look up the context window for a specific provider+model pair.
-   * Orchestrator implements this using ModelCatalog.
-   * Called at hook-fire time with the actual values from engine meta,
-   * so it always reflects the current turn's real model.
+   * Look up the context window for a model name.
+   * Implemented by the orchestrator via llm_model_catalog (DB).
+   * Returns 0 when the model is unknown → falls back to defaultContextWindow.
    */
-  getContextWindow: (providerId: string, model: string) => number;
-  recentFiles?:   RecentFilesProvider;
+  getContextWindow: (model: string) => number;
+  recentFiles?:  RecentFilesProvider;
 }
 
 // ── Hook registration ────────────────────────────────────────────────────────
@@ -63,11 +60,10 @@ export function registerMemoryHooks(
       const mode       = (ctx.meta['mode']       as TurnMode | undefined) ?? 'chat';
       const userInput  = (ctx.meta['userInput']  as string   | undefined) ?? '';
       const signal     = ctx.meta['signal']      as AbortSignal | undefined;
-      // Engine sets these in meta so context window is always per-turn accurate.
-      const providerId = ctx.meta['providerId']  as string | undefined;
-      const model      = ctx.meta['model']       as string | undefined;
+      // Engine sets model in meta so context window is always per-turn accurate.
+      const model  = ctx.meta['model'] as string | undefined;
 
-      const window = resolveContextWindow(deps, providerId, model);
+      const window = resolveContextWindow(deps, model);
       const recent = deps.recentFiles?.(ctx.sessionId);
 
       const t0 = Date.now();
@@ -117,12 +113,11 @@ export function registerMemoryHooks(
 // ── Internals ────────────────────────────────────────────────────────────────
 
 function resolveContextWindow(
-  deps: MemoryHooksDeps,
-  providerId: string | undefined,
-  model:      string | undefined,
+  deps:  MemoryHooksDeps,
+  model: string | undefined,
 ): number {
-  if (providerId && model) {
-    const fromCatalog = deps.getContextWindow(providerId, model);
+  if (model) {
+    const fromCatalog = deps.getContextWindow(model);
     if (fromCatalog > 0) return fromCatalog;
   }
   return deps.defaultContextWindow ?? 128_000;

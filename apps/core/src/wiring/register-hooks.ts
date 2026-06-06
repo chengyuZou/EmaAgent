@@ -1,12 +1,7 @@
 import { registerPromptsHooks }      from '@ema-agent/prompts';
 import { registerConversationHooks } from '@ema-agent/conversation';
 import { registerMemoryHooks }       from '@ema-agent/memory';
-import { ModelCatalog }              from '@ema-agent/llm';
 import type { AppBindings } from './bindings.js';
-
-// Shared catalog instance — holds static model definitions and any runtime-
-// fetched entries. Created once per process; hot-reload upserts into it.
-const modelCatalog = new ModelCatalog();
 
 // ── Aggregated hook registration ─────────────────────────────────────────────
 
@@ -45,20 +40,11 @@ export function registerAllHooks(bindings: AppBindings): () => void {
     planner:      bindings.memory,
     session:      bindings.session,
     llm:          bindings.llm,
-    modelCatalog,
-    // Three-tier context window resolution (highest priority first):
-    //   1. User-configured value on the provider itself  (Ollama, custom OpenRouter, etc.)
-    //   2. Static ModelCatalog entry for known model names
-    //   3. Return 0 → hooks.ts falls back to defaultContextWindow (128K)
-    getContextWindow: (providerId, model) => {
-      // Tier 1: explicit user config
-      const configured = bindings.llm.configuredContextWindowFor(providerId);
-      if (configured) return configured;
-      // Tier 2: catalog lookup
-      const protocol = bindings.llm.getProtocol(providerId);
-      if (!protocol) return 0;
-      return modelCatalog.get(protocol, model)?.contextWindow ?? 0;
-    },
+    // Context window: single source of truth is llm_model_catalog (DB).
+    // model_name is the key — model capabilities are model properties, not
+    // provider properties. Returns 0 when unknown → hooks.ts falls back to
+    // defaultContextWindow (128K).
+    getContextWindow: (model) => bindings.llmCatalog.contextWindow(model),
     // Agent sessions: supply the 20 most recently touched files so the post-compact
     // restore step can re-inject their content without a redundant LLM round-trip.
     // Conversation sessions have no file state — the store simply returns [].
