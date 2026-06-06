@@ -1,7 +1,7 @@
 # @ema-agent/conversation
 
 > Chat / Narrative 回合引擎 —— 单次 LLM 调用的统一 turn 流，与 agent 包平行。
-> 更新时间 2026-5-30
+> 更新时间 2026-6-6
 
 ---
 
@@ -83,15 +83,15 @@ ConversationEngine.run(input)
   │     ↑ memory:beforeLlm 在此注入记忆片段
   │
   ├─ LLM stream
-  │     ├─ text_delta → emotion.processChunk() → output_text_delta + 情绪事件
-  │     └─ afterLlmDelta hook (收集 promise，后续 drain)
+  │     ├─ text_delta     → emotion.processChunk() → output_text_delta + 情绪事件
+  │     ├─ thinking_delta → reasoning_delta（只给 UI 临时/历史展示）
+  │     └─ usage/done     → 记录 token / 结束流
   │
   ├─ emotion.flush()       扫描残尾（模型可能在 ACT 标签中间停）
   ├─ drain delta promises  等所有 afterLlmDelta 完成
   │
   ├─ afterLlmComplete hook
-  ├─ output_text_complete
-  ├─ 持久化 assistant 消息 + afterMessage hook
+  ├─ 持久化 assistant 消息（text + thinking）+ afterMessage hook
   │
   └─ onTurnEnd hook → completeTurn → turn_completed
 
@@ -107,6 +107,8 @@ ConversationEngine.run(input)
 | `llmStreamDone` 标志 | 区分"用户中途停止"和"流结束后 hook 报错"。只有流未完成时 abort 才算用户主动停止。 |
 | `deltaPromises` drain | 所有 `afterLlmDelta` promise `allSettled` 之后才触发 `afterLlmComplete`，防止慢 hook（如 TTS）与 turn 拆解竞速。 |
 | `yield* streamingBeforeLlm` | 见下方详解——这是整个引擎最精巧的部分。 |
+| Thinking 处理 | `thinking_delta` 会 emit 为 `reasoning_delta`；provider 没有显式 `thinking_complete` 时，stream 正常结束会补发 `reasoning_complete`。持久化时保存 thinking/signature 供 UI 与调试使用，但 `historyToLlmMessages()` 不会把 thinking 回灌给下一次 LLM。 |
+| Provider-safe replay | 历史回放只保留 system 文本、普通 user content parts、assistant text blocks；assistant thinking/tool_use 与 user tool_result 都不会进入 conversation 的下一次 LLM 调用。 |
 
 ---
 
@@ -173,13 +175,13 @@ narrative:recall (beforeLlm, priority 5)
   ├─ bridge 全挂 → throw NarrativeUnavailableError → 外层 catch → fallback chat 模式
   │
   ├─ 按路由顺序排序 recallParts（Promise.allSettled 按完成顺序，需重排）
-  ├─ ctx.emit({ recall_evidence, sources })
-  │
   └─ return { kind: 'replace',
        payload: { messages: [..., recallMsg, lastUserMsg] } }
        ↑ 叙事上下文作为 user 消息注入到最后一条用户消息之前
        ↑ 不碰 system prompt，保留 prompt-cache 复用
 ```
+
+`ctx.emit` 是当前 turn 的共享 `EmaStreamEvent` 出口，不属于 conversation 独占。叙事召回只 emit contracts 中已有的 `narrative_route_resolved`、`narrative_timeline_complete` 和必要的 `system_warning`；不 emit 未命名空间的泛用 recall 事件，避免和 memory/知识库等其他 recall 域混淆。
 
 ---
 
@@ -191,7 +193,7 @@ narrative:recall (beforeLlm, priority 5)
 | LLM 调用 | 单次 stream | 多轮 think→act loop |
 | 工具执行 | 无 | TurnToolExecutor 并发执行 |
 | 迭代上限 | 1 次 | 10 / 15 / 30 次 |
-| blockIndex | 始终为 0 | 多 block（text + thinking + tool_use 交错） |
+| blockIndex | 跟随 provider chunk；支持 text/thinking 交错，但不执行工具 | 多 block（text + thinking + tool_use 交错） |
 | 共享的事件 | beforeLlm, afterLlmDelta, afterLlmComplete, afterMessage, onTurnStart, onTurnEnd, onTurnAbort | 同左 |
 
 两个引擎**完全独立**，互不 import，只是挂在同一套 HookBus 事件上。

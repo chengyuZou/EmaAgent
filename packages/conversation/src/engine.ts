@@ -138,6 +138,11 @@ async function* runTurn(
     let fullText = '';
     let inputTokens = 0;
     let outputTokens = 0;
+    let lastTextBlockIndex = 0;
+    const textByIndex = new Map<number, string>();
+    const thinkingByIndex = new Map<number, string>();
+    const thinkingSignatureByIndex = new Map<number, string>();
+    const completedThinkingIndexes = new Set<number>();
 
     // Bug #3: collect afterLlmDelta promises so we can drain them before
     // afterLlmComplete — prevents slow hooks (TTS) from racing with turn teardown.
@@ -150,8 +155,11 @@ async function* runTurn(
         case 'text_delta': {
           const { cleaned, events } = emotion.processChunk(chunk.delta, turnId);
           fullText += cleaned;
-          // blockIndex: 0 — conversation engine always produces a single text block
-          if (cleaned) yield { type: 'output_text_delta', blockIndex: 0, delta: cleaned };
+          lastTextBlockIndex = chunk.blockIndex;
+          if (cleaned) {
+            textByIndex.set(chunk.blockIndex, (textByIndex.get(chunk.blockIndex) ?? '') + cleaned);
+            yield { type: 'output_text_delta', blockIndex: chunk.blockIndex, delta: cleaned };
+          }
           for (const ev of events) yield ev;
           deltaPromises.push(
             hooks.trigger('afterLlmDelta', {
@@ -163,10 +171,30 @@ async function* runTurn(
           );
           break;
         }
+        case 'thinking_delta':
+          thinkingByIndex.set(chunk.blockIndex, (thinkingByIndex.get(chunk.blockIndex) ?? '') + chunk.delta);
+          yield { type: 'reasoning_delta', blockIndex: chunk.blockIndex, delta: chunk.delta };
+          break;
+        case 'thinking_complete':
+          thinkingSignatureByIndex.set(chunk.blockIndex, chunk.signature);
+          completedThinkingIndexes.add(chunk.blockIndex);
+          yield { type: 'reasoning_complete', blockIndex: chunk.blockIndex };
+          break;
         case 'usage':
           inputTokens = chunk.inputTokens;
           outputTokens = chunk.outputTokens;
           break;
+        case 'done':
+        case 'tool_use_delta':
+        case 'tool_use_complete':
+          break;
+      }
+    }
+
+    for (const blockIndex of thinkingByIndex.keys()) {
+      if (!completedThinkingIndexes.has(blockIndex)) {
+        completedThinkingIndexes.add(blockIndex);
+        yield { type: 'reasoning_complete', blockIndex };
       }
     }
 
@@ -178,7 +206,8 @@ async function* runTurn(
     const { cleaned: tail } = emotion.flush(turnId);
     if (tail) {
       fullText += tail;
-      yield { type: 'output_text_delta', blockIndex: 0, delta: tail };
+      textByIndex.set(lastTextBlockIndex, (textByIndex.get(lastTextBlockIndex) ?? '') + tail);
+      yield { type: 'output_text_delta', blockIndex: lastTextBlockIndex, delta: tail };
     }
 
     // Bug #3: drain all delta hooks before afterLlmComplete fires
@@ -192,14 +221,19 @@ async function* runTurn(
       meta: {},
     });
 
-    yield { type: 'output_text_complete', blockIndex: 0, text: fullText };
-
     const msg = session.appendMessage({
       turnId,
       sessionId: input.sessionId,
       role: 'assistant',
-      // Store as AssistantBlock[] — the canonical block format for assistant messages
-      blocks: [{ type: 'text', text: fullText }] satisfies AssistantBlock[],
+      // Persist visible text and provider reasoning for UI/debug history.
+      // Replay to the next LLM call is handled by historyToLlmMessages(), which
+      // deliberately filters thinking/tool blocks out for provider safety.
+      blocks: buildAssistantBlocks(
+        textByIndex,
+        thinkingByIndex,
+        thinkingSignatureByIndex,
+        fullText,
+      ) as MessageBlocks,
     });
 
     await hooks.trigger('afterMessage', {
@@ -289,16 +323,49 @@ async function* streamingBeforeLlm(
 
 // ── History → LlmMessage conversion ──────────────────────────────────────────
 
+function buildAssistantBlocks(
+  textByIndex: Map<number, string>,
+  thinkingByIndex: Map<number, string>,
+  thinkingSignatureByIndex: Map<number, string>,
+  fallbackText: string,
+): AssistantBlock[] {
+  const blockEntries: Array<[number, AssistantBlock]> = [];
+
+  for (const [idx, text] of textByIndex) {
+    if (text.length > 0) blockEntries.push([idx, { type: 'text', text }]);
+  }
+
+  for (const [idx, thinking] of thinkingByIndex) {
+    if (thinking.length === 0) continue;
+    const signature = thinkingSignatureByIndex.get(idx);
+    blockEntries.push([
+      idx,
+      { type: 'thinking', thinking, ...(signature ? { signature } : {}) },
+    ]);
+  }
+
+  blockEntries.sort((a, b) => a[0] - b[0]);
+
+  if (blockEntries.length === 0) {
+    return [{ type: 'text', text: fallbackText }];
+  }
+
+  return blockEntries.map(([, block]) => block);
+}
+
 /**
- * Converts stored Message[] to LlmMessage[] for the LLM adapter.
+ * Converts stored Message[] to provider-safe LlmMessage[] for the LLM adapter.
  *
  * Block format contract (from contracts/messages.ts):
  *   system    → blocks: string
  *   user      → blocks: string | UserBlock[]  (UserBlock[] when has media or tool_results)
  *   assistant → blocks: AssistantBlock[]
  *
- * Tool results are stored as role:'user' + kind:'tool_results' with
- * UserBlock[] containing ToolResultBlock entries — no role:'tool' exists.
+ * Conversation turns are single-shot chat/narrative calls, not tool loops.
+ * Persisted history may contain provider-specific thinking signatures or
+ * agent tool blocks. Those are useful for UI/debug history, but unsafe to
+ * replay blindly across providers, so this projection only keeps visible text
+ * plus ordinary user content parts.
  */
 function historyToLlmMessages(history: Message[]): LlmMessage[] {
   const out: LlmMessage[] = [];
@@ -308,16 +375,33 @@ function historyToLlmMessages(history: Message[]): LlmMessage[] {
         out.push({ role: 'system', content: typeof msg.blocks === 'string' ? msg.blocks : '' });
         break;
       case 'user':
-        // blocks is string (plain text) or UserBlock[] (multimodal + tool_results)
-        out.push({ role: 'user', content: msg.blocks as string | UserBlock[] });
+        if (typeof msg.blocks === 'string') {
+          out.push({ role: 'user', content: msg.blocks });
+        } else if (Array.isArray(msg.blocks)) {
+          const userBlocks = msg.blocks.filter(isReplayableUserBlock);
+          if (userBlocks.length > 0) out.push({ role: 'user', content: userBlocks });
+        }
         break;
       case 'assistant':
-        // blocks is AssistantBlock[] — preserves text/thinking/tool_use interleaving
         if (Array.isArray(msg.blocks)) {
-          out.push({ role: 'assistant', content: msg.blocks as AssistantBlock[] });
+          const assistantBlocks = msg.blocks.filter(isTextAssistantBlock);
+          if (assistantBlocks.length > 0) out.push({ role: 'assistant', content: assistantBlocks });
         }
         break;
     }
   }
   return out;
+}
+
+function isTextAssistantBlock(block: unknown): block is AssistantBlock & { type: 'text' } {
+  return !!block
+    && typeof block === 'object'
+    && (block as { type?: unknown }).type === 'text'
+    && typeof (block as { text?: unknown }).text === 'string';
+}
+
+function isReplayableUserBlock(block: unknown): block is LlmContentPart {
+  return !!block
+    && typeof block === 'object'
+    && (block as { type?: unknown }).type !== 'tool_result';
 }

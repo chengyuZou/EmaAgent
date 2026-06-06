@@ -147,4 +147,12 @@ describe('sidecarClient', () => {
     const body = await res.json();
     expect(body).toEqual({ data: [1, 2, 3] });
   });
+
+  it('requestRaw throws SidecarApiError on non-2xx responses', async () => {
+    mockFetch(404, { error: 'audio_not_found' });
+
+    await expect(
+      sidecarClient.requestRaw('/api/turns/t1/audio'),
+    ).rejects.toThrow(SidecarApiError);
+  });
 });

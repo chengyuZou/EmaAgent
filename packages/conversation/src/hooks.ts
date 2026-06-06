@@ -1,7 +1,12 @@
 import type { HookBus } from '@ema-agent/hook';
+import type { EmaStreamEvent } from '@ema-agent/contracts';
 import type { LlmMessage } from '@ema-agent/llm';
 import { NarrativeUnavailableError } from '@ema-agent/narrative-client';
 import type { ConversationDeps } from './types.js';
+
+interface NarrativeRecallContext {
+  message: LlmMessage;
+}
 
 /**
  * Register all conversation-layer hooks onto the provided bus.
@@ -25,84 +30,29 @@ export function registerConversationHooks(bus: HookBus, deps: ConversationDeps):
       if (!userInput) return { kind: 'continue' };
 
       try {
-        const routeResp = await deps.narrative.route(userInput, signal);
-        ctx.emit?.({ type: 'narrative_route_resolved', timelines: Object.keys(routeResp.routes) });
-
-        // ── Per-timeline parallel queries ─────────────────────────────────────
-        // Each timeline gets its own HTTP request to the bridge so it can emit
-        // `narrative_timeline_complete` the moment ITS query returns, without
-        // being blocked by slower timelines.
-        // Promise.allSettled ensures one bad timeline never kills the others.
-        //
-        // NOTE: NarrativeUnavailableError must NOT be re-thrown inside the
-        // allSettled callback — allSettled swallows all rejections and records
-        // them as { status: 'rejected' }, so a throw there never reaches the
-        // outer catch.  Use a flag instead: set it when the bridge is down,
-        // then throw after allSettled so the outer catch can handle it.
-        const recallParts: Array<[string, string]> = [];
-        let bridgeDown = false;
-
-        await Promise.allSettled(
-          Object.entries(routeResp.routes).map(async ([timeline, query]) => {
-            try {
-              const text = await deps.narrative.queryOne(timeline, query, signal);
-              ctx.emit?.({
-                type: 'narrative_timeline_complete',
-                timeline,
-                charCount: text.length,
-                snippet: text.length > 100 ? text.slice(0, 100) + '…' : text,
-              });
-              if (text.trim().length > 0) recallParts.push([timeline, text]);
-            } catch (err) {
-              if (err instanceof NarrativeUnavailableError) {
-                bridgeDown = true;
-                return; // let allSettled finish; throw below
-              }
-              ctx.emit?.({
-                type: 'system_warning',
-                level: 'warn',
-                message: `Timeline ${timeline} recall failed — excluded from context`,
-              });
-            }
-          }),
-        );
-
-        if (bridgeDown) throw new NarrativeUnavailableError('bridge unavailable');
-
-        if (recallParts.length === 0) return { kind: 'continue' };
-
-        // Preserve the deterministic order the router returned — Promise.allSettled
-        // resolves in completion order (fastest wins), not route order.
-        const routeOrder = Object.keys(routeResp.routes);
-        recallParts.sort(([a], [b]) => routeOrder.indexOf(a) - routeOrder.indexOf(b));
-
-        const sections = recallParts
-          .map(([timeline, text]) => `## ${timeline}\n${text}`)
-          .join('\n\n');
-
-        ctx.emit?.({
-          type: 'recall_evidence',
-          sources: recallParts.map(([t]) => t),
-          itemCount: recallParts.length,
+        const recalled = await recallNarrativeContext(deps, {
+          userInput,
+          signal,
+          emit: ctx.emit,
         });
+        if (!recalled) return { kind: 'continue' };
 
-        // Inject recall context as a user message immediately before the latest
-        // user turn — doesn't touch system prefix, preserves prompt-cache reuse.
+        // Inject narrative context as a user message immediately before the latest
+        // user turn. This leaves system prompt construction and memory recall to
+        // their own hooks; ctx.emit is only the current turn's event outlet.
         const msgs = ctx.payload.messages;
-        const last = msgs[msgs.length - 1]!;
-        const recallMsg: LlmMessage = {
-          role: 'user',
-          content: `[NARRATIVE CONTEXT — do not quote verbatim; use as background]\n\n${sections}`,
-        };
+        const last = msgs[msgs.length - 1];
+        if (!last) return { kind: 'continue' };
 
         return {
           kind: 'replace',
           payload: {
             ...ctx.payload,
-            messages: [...msgs.slice(0, -1), recallMsg, last],
+            messages: [...msgs.slice(0, -1), recalled.message, last],
           },
         };
       } catch (err) {
+        if (isAbortLike(err, signal)) throw err;
         if (err instanceof NarrativeUnavailableError) {
           ctx.emit?.({
             type: 'system_warning',
@@ -116,4 +66,70 @@ export function registerConversationHooks(bus: HookBus, deps: ConversationDeps):
     },
     { name: 'narrative:recall', priority: 5 },
   );
+}
+
+async function recallNarrativeContext(
+  deps: ConversationDeps,
+  args: {
+    userInput: string;
+    signal?: AbortSignal;
+    emit?: (event: EmaStreamEvent) => void;
+  },
+): Promise<NarrativeRecallContext | null> {
+  const routeResp = await deps.narrative.route(args.userInput, args.signal);
+  const routeOrder = Object.keys(routeResp.routes);
+  args.emit?.({ type: 'narrative_route_resolved', timelines: routeOrder });
+
+  if (routeOrder.length === 0) return null;
+
+  const recallParts: Array<[string, string]> = [];
+  let fatalError: unknown;
+
+  await Promise.allSettled(
+    routeOrder.map(async (timeline) => {
+      const query = routeResp.routes[timeline] ?? '';
+      try {
+        const text = await deps.narrative.queryOne(timeline, query, args.signal);
+        args.emit?.({
+          type: 'narrative_timeline_complete',
+          timeline,
+          charCount: text.length,
+          snippet: text.length > 100 ? text.slice(0, 100) + '…' : text,
+        });
+        if (text.trim().length > 0) recallParts.push([timeline, text]);
+      } catch (err) {
+        if (isAbortLike(err, args.signal) || err instanceof NarrativeUnavailableError) {
+          fatalError ??= err;
+          return;
+        }
+        args.emit?.({
+          type: 'system_warning',
+          level: 'warn',
+          message: `Timeline ${timeline} recall failed — excluded from context`,
+        });
+      }
+    }),
+  );
+
+  if (fatalError !== undefined) throw fatalError;
+  if (recallParts.length === 0) return null;
+
+  recallParts.sort(([a], [b]) => routeOrder.indexOf(a) - routeOrder.indexOf(b));
+
+  const sections = recallParts
+    .map(([timeline, text]) => `## ${timeline}\n${text}`)
+    .join('\n\n');
+
+  return {
+    message: {
+      role: 'user',
+      content: `[NARRATIVE CONTEXT — do not quote verbatim; use as background]\n\n${sections}`,
+    },
+  };
+}
+
+function isAbortLike(err: unknown, signal?: AbortSignal): boolean {
+  if (signal?.aborted) return true;
+  if (err instanceof DOMException && err.name === 'AbortError') return true;
+  return err instanceof Error && err.name === 'AbortError';
 }

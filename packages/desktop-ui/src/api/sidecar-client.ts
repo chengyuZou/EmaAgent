@@ -70,7 +70,10 @@ async function discoverPort(): Promise<number> {
 
 function getPortPromise(): Promise<number> {
   if (!portPromise) {
-    portPromise = discoverPort();
+    portPromise = discoverPort().catch((err: unknown) => {
+      portPromise = null;
+      throw err;
+    });
   }
   return portPromise;
 }
@@ -95,20 +98,15 @@ async function doRequest<T>(
   init?: RequestInit & { json?: unknown },
 ): Promise<T> {
   const url = await buildUrl(path);
-  const headers = new Headers(init?.headers);
-  let body: BodyInit | undefined = init?.body ?? undefined;
-
-  if (init?.json !== undefined && !body) {
-    body = JSON.stringify(init.json);
-    headers.set('Content-Type', 'application/json');
-  }
+  const requestInit = prepareRequestInit(init);
 
   let res: Response;
   try {
-    res = await fetch(url, { ...init, headers, body });
+    res = await fetch(url, requestInit);
   } catch (err: unknown) {
     const error = new Error(`Sidecar unreachable: ${url}`);
-    (error as Error & { cause: string }).cause = 'sidecar_unreachable';
+    (error as Error & { cause?: unknown; code?: string }).cause = err;
+    (error as Error & { cause?: unknown; code?: string }).code = 'sidecar_unreachable';
     throw error;
   }
 
@@ -128,6 +126,27 @@ async function doRequestRaw(
   init?: RequestInit & { json?: unknown },
 ): Promise<Response> {
   const url = await buildUrl(path);
+  const requestInit = prepareRequestInit(init);
+
+  let res: Response;
+  try {
+    res = await fetch(url, requestInit);
+  } catch (err: unknown) {
+    const error = new Error(`Sidecar unreachable: ${url}`);
+    (error as Error & { cause?: unknown; code?: string }).cause = err;
+    (error as Error & { cause?: unknown; code?: string }).code = 'sidecar_unreachable';
+    throw error;
+  }
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new SidecarApiError(res.status, text);
+  }
+
+  return res;
+}
+
+function prepareRequestInit(init?: RequestInit & { json?: unknown }): RequestInit {
   const headers = new Headers(init?.headers);
   let body: BodyInit | undefined = init?.body ?? undefined;
 
@@ -136,13 +155,7 @@ async function doRequestRaw(
     headers.set('Content-Type', 'application/json');
   }
 
-  try {
-    return await fetch(url, { ...init, headers, body });
-  } catch (err: unknown) {
-    const error = new Error(`Sidecar unreachable: ${url}`);
-    (error as Error & { cause: string }).cause = 'sidecar_unreachable';
-    throw error;
-  }
+  return { ...init, headers, body };
 }
 
 // ── Exported singleton ───────────────────────────────────────────────────────
