@@ -9,6 +9,13 @@ export interface HookContext<E extends HookEvent> {
   payload: HookPayload[E];
   turnId: TurnId;
   sessionId: SessionId;
+  /**
+   * Shared mutable bag for intra-turn handler communication.
+   * All handlers within a single trigger() call — including parallel ones —
+   * receive the same reference. Concurrent writes from parallel handlers are
+   * safe in Node.js (single-threaded event loop), but would not be safe with
+   * Worker Threads. Do not store promises or large objects here.
+   */
   meta: Record<string, unknown>;
   emit?: (event: EmaStreamEvent) => void;
 }
@@ -134,6 +141,9 @@ type HookBatch<E extends HookEvent> =
 
 // ── Defaults ──────────────────────────────────────────────────────────────────
 
+// All ObserverHookEvents except beforeToolUse run in parallel by default.
+// beforeToolUse is intentionally serial: UI renderers need ordered delivery
+// (show "pending" before "running") and audit logs need call-order guarantees.
 const DEFAULT_PARALLEL_EVENTS = new Set<HookEvent>([
   'afterLlmComplete',
   'afterMessage',
@@ -493,6 +503,10 @@ export class HookBus {
         }
 
         if (result.kind === 'replace') {
+          // Reachable only when a ControlHookEvent is placed in a parallel batch
+          // via a custom parallelEvents config — not possible with the default set.
+          // Parallel batches structurally cannot propagate payload replacements,
+          // so treat it as a protocol violation.
           const reason = `Parallel hook "${entry.name}" returned replace, but parallel hooks cannot replace payload`;
 
           if (entry.critical) {

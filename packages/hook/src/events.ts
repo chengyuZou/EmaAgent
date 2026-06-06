@@ -1,4 +1,4 @@
-﻿import type { TurnMode, MessageId, LlmMessage } from '@ema-agent/contracts';
+﻿import type { TurnMode, MessageId, MessageRole, AssistantBlock, LlmMessage } from '@ema-agent/contracts';
 
 /**
  * All hook events are turn-scoped internal engine lifecycle events.
@@ -40,13 +40,22 @@ export interface HookPayload {
   };
   afterLlmComplete: {
     content: string;
-    toolCalls?: unknown[];
+    /** Tool-use blocks produced by this LLM response, in block order. */
+    toolCalls?: Array<Extract<AssistantBlock, { type: 'tool_use' }>>;
   };
   afterMessage: {
     messageId: MessageId;
-    role: string;
+    role: MessageRole;
     content: string;
   };
+  /**
+   * Fires immediately before a tool executes — for UI and audit only.
+   *
+   * Tool permission decisions (allow / ask / deny) are made by PermissionEngine
+   * before this hook fires. The sandbox execution boundary is enforced by
+   * CommandRunner. This hook cannot intercept, modify, or cancel tool execution.
+   * Use it to update the UI (show "running tool…") or record audit logs.
+   */
   beforeToolUse: {
     callId: string;
     name: string;
