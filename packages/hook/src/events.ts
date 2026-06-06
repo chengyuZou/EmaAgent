@@ -12,7 +12,6 @@ import type { LlmMessage } from '@ema-agent/llm';
  */
 export type HookEvent =
   | 'beforeLlm'
-  | 'afterLlmDelta'
   | 'afterLlmComplete'
   | 'afterMessage'
   | 'beforeToolUse'
@@ -39,10 +38,6 @@ export interface HookPayload {
      */
     systemPrompt: string;
     messages: LlmMessage[];
-  };
-  afterLlmDelta: {
-    delta: string;
-    accumulated: string;
   };
   afterLlmComplete: {
     content: string;

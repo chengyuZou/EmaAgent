@@ -189,8 +189,6 @@ async function* runTurn(
         signal,
       });
 
-      const deltaPromises: Promise<unknown>[] = [];
-
       for await (const chunk of stream) {
         // Drain any tool events that arrived since the last chunk.
         // Tools may already be executing concurrently (started by prior tool_use_complete).
@@ -204,13 +202,6 @@ async function* runTurn(
               yield { type: 'output_text_delta', blockIndex: chunk.blockIndex, delta: cleaned };
             }
             for (const ev of events) yield ev;
-            deltaPromises.push(
-              hooks.trigger('afterLlmDelta', {
-                turnId, sessionId,
-                payload: { delta: cleaned, accumulated: textByIndex.get(chunk.blockIndex) ?? '' },
-                meta: {},
-              }),
-            );
             break;
           }
 
@@ -265,8 +256,6 @@ async function* runTurn(
         yield { type: 'output_text_delta', blockIndex: textIdx, delta: tail };
       }
 
-      await Promise.allSettled(deltaPromises);
-
       // Reconstruct full text from indexed buffers
       const fullText = [...textByIndex.entries()]
         .sort(([a], [b]) => a - b)
@@ -294,9 +283,6 @@ async function* runTurn(
         // Drain any tool events that slipped in during the final hook await
         while (pendingToolEvents.length > 0) yield pendingToolEvents.shift()!;
 
-        for (const [idx, text] of [...textByIndex.entries()].sort(([a], [b]) => a - b)) {
-          yield { type: 'output_text_complete', blockIndex: idx, text };
-        }
         const msg = session.appendMessage({
           turnId, sessionId, role: 'assistant',
           blocks: allBlocks as MessageBlocks,

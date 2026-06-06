@@ -39,7 +39,7 @@ export class TextFilterStream {
   constructor() {}
 
   /**
-   * 喂入 LLM delta chunk，返回清洗后的文本。
+   * 喂入 engine 已清洗后的可见 text delta，返回 TTS 可继续分句的文本。
    *
    * 代码块 / 数学块内容被丢弃，在关闭时 emit 一个替换词。
    * 替换词包含语言标识（如有）：`(python代码)` / `(代码)` / `(数学公式)`。
@@ -269,8 +269,8 @@ export class TextFilterStream {
 // 此时块级结构已由 TextFilterStream 处理完毕，只需清理行内 markdown 与 URL/路径。
 // 处理顺序很重要——详见 docs/streaming-pipeline.md §filterSentenceForTts。
 //
-// 注意：ACT 标签（<|ACT:...|>）由 @ema-agent/emotion 包在 afterLlmDelta 更早的
-// 优先级处理，TTS 收到的文本已不含 ACT 标签，此处不做任何 ACT 清理。
+// 注意：ACT 标签（<|ACT:...|>）由 @ema-agent/emotion 包在 engine 内先处理。
+// TTS 只接收 apps/core 转发的可见 output_text_delta，此处不做任何 ACT 清理。
 
 const RE_HTML_TAG      = /<\/?[a-zA-Z][^>]*>/g;
 const RE_MD_IMAGE      = /!\[[^\]]*\]\([^)]+\)/g;

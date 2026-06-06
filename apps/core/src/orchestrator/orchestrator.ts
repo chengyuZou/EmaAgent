@@ -58,10 +58,10 @@ export interface OrchestratorCallbacks {
  *     system_warning on TTS failure)
  *
  * Engine and coordinator run concurrently — engine drives the LLM stream
- * and triggers afterLlmDelta hooks, the coordinator (subscribed to those
- * hooks) accumulates sentences and synthesizes them, pushing audio events
- * into a shared queue that the merged generator drains alongside engine
- * events.
+ * and yields output_text_delta events, the coordinator receives a copy of
+ * those visible deltas, accumulates sentences, and synthesizes them. Audio
+ * events are pushed into a shared queue that the merged generator drains
+ * alongside engine events.
  */
 export class Orchestrator {
   private readonly conversation: ConversationEngine;
@@ -99,9 +99,8 @@ export class Orchestrator {
     });
     const turnId = turn.id;
 
-    // Build the TTS queue + coordinator BEFORE the engine starts so the
-    // coordinator's afterLlmDelta hook is registered when the first delta
-    // fires. Queue is shared between coordinator.emit and the merge loop.
+    // Build the TTS queue + coordinator before the engine stream is consumed.
+    // Queue is shared between coordinator.emit and the merge loop.
     const ttsQueue: EmaStreamEvent[] = [];
     let notifyTts: (() => void) | null = null;
     const pushTts = (ev: EmaStreamEvent): void => {
@@ -110,8 +109,7 @@ export class Orchestrator {
       notifyTts = null;
     };
 
-    const coordinator = await this.maybeBuildCoordinator(request, turnId, sessionId, pushTts);
-    coordinator?.start();
+    const coordinator = await this.maybeBuildCoordinator(request, turnId, sessionId, signal, pushTts);
 
     const engineEvents = this.engineStreamFor(request, turn, signal, sessionId);
 
@@ -124,9 +122,9 @@ export class Orchestrator {
           const w = new Promise<void>((r) => { notifyTts = r; });
           return w;
         })) {
-          // turn_completed / turn_failed / turn_aborted must be yielded LAST
-          // so that the SSE store doesn't mark the turn done before TTS audio
-          // chunks are drained. Hold them until finish() completes.
+          // Terminal turn events must be yielded LAST. For completed turns we
+          // drain/finalize TTS first; for failed/aborted turns we cancel TTS and
+          // discard any archive segments before surfacing the terminal event.
           if (
             ev.type === 'turn_completed' ||
             ev.type === 'turn_failed'  ||
@@ -138,10 +136,14 @@ export class Orchestrator {
           yield ev;
         }
 
-        if (coordinator) {
+        if (coordinator && pendingTurnDone?.type === 'turn_completed') {
           const { audioPath } = await coordinator.finish();
           while (ttsQueue.length > 0) yield ttsQueue.shift()!;
           self.callbacks.onAudioFinalized?.(turnId, audioPath);
+        } else if (coordinator) {
+          await coordinator.abort();
+          ttsQueue.length = 0;
+          self.callbacks.onAudioFinalized?.(turnId, null);
         }
 
         if (pendingTurnDone) yield pendingTurnDone;
@@ -215,6 +217,7 @@ export class Orchestrator {
     request:   TurnRequest,
     turnId:    TurnId,
     sessionId: ReturnType<typeof asSessionId>,
+    signal:    AbortSignal,
     emit:      (ev: EmaStreamEvent) => void,
   ): Promise<TtsCoordinator | null> {
     if (!request.ttsEnabled) return null;
@@ -247,10 +250,10 @@ export class Orchestrator {
       providerId: bindingRow.providerConfigId,
       model,
       ttsClient:  this.bindings.tts,
-      hooks:      this.bindings.hooks,
       emit,
       archive:    this.bindings.audioArchive,
       format:     'mp3',
+      signal,
     });
   }
 }
@@ -295,6 +298,9 @@ async function* mergeStreams(
       if (winner.r.done) {
         engineDone = true;
       } else {
+        if (winner.r.value.type === 'output_text_delta') {
+          coordinator.acceptTextDelta(winner.r.value.delta);
+        }
         yield winner.r.value;
       }
     }

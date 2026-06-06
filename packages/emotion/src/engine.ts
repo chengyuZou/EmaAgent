@@ -44,9 +44,9 @@ export interface EmotionEngineOptions {
  * ## Why not HookBus
  *
  *   ACT tag stripping is a mid-stream data transform (one delta in → cleaned
- *   delta + N events out). HookBus `replace` requires the caller to await and
- *   consume the result, which breaks if any engine fires afterLlmDelta
- *   fire-and-forget. Direct call is the correct pattern here.
+ *   delta + N events out). Engines must apply it inline before yielding
+ *   output_text_delta; sidecar consumers such as TTS only see the cleaned
+ *   visible text. Direct call is the correct pattern here.
  */
 export class EmotionEngine {
   private vocabulary: readonly string[];

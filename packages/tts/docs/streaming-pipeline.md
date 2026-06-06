@@ -8,12 +8,12 @@
 
 LLM 以 delta chunk 的形式输出文本，代码块的开头（` ``` `）和结尾可能分散在不同的 chunk 里。无状态 regex 无法跨 chunk 匹配，所以需要一个有状态的流处理器在前。完整句子内的行内 markdown（`**bold**`、`` `code` ``、URL 等）不跨句，无状态 regex 足够，在后处理。
 
-> **ACT 标签**（`<|ACT:emotion:happy|>`）由 `@ema-agent/emotion` 包在更高优先级处理。
-> EmotionEngine 在 TTS 之前拦截 LLM delta，剥离 ACT 标签后才将 cleaned text 传给 TTS。
+> **ACT 标签**（`<|ACT:emotion:happy|>`）由 `@ema-agent/emotion` 包在 engine 内先处理。
+> apps/core 只把已经剥离 ACT 标签的可见 `output_text_delta` 喂给 TTS。
 > 因此 filterSentenceForTts 不再包含 ACT 清理逻辑。
 
 ```
-LLM delta chunk
+visible output_text_delta
     │
     ▼  (EmotionEngine 剥离 ACT 标签，高优先级)
     │
@@ -39,7 +39,7 @@ TTS adapter（GPT-SoVITS / OpenAI / DashScope）
 
 ### 职责
 
-接收原始 LLM delta chunks，识别并丢弃块级结构（fenced code block、`$$` 数学块），在块关闭时 emit 一个简短的替换词，普通文本直通。
+接收 engine 已清洗后的可见 text delta，识别并丢弃块级结构（fenced code block、`$$` 数学块），在块关闭时 emit 一个简短的替换词，普通文本直通。
 
 ### FSM 状态
 

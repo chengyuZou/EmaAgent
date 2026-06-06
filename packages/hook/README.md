@@ -28,7 +28,7 @@
 
 模块提供：
 
-- **12 个生命周期事件**，覆盖 LLM 调用、工具使用、回合。
+- **11 个生命周期事件**，覆盖 LLM 调用、工具使用、回合。
 - **优先级排序执行**（数字越小越先执行）。
 - **串行与并行批次**：同一事件下的处理器可被分为串行块和并行块执行。
 - **Payload 修改**：串行处理器可以替换 payload，下游处理器将收到修改后的值。
@@ -76,11 +76,11 @@ src/
 
 ### `HookEvent` 类型
 
-定义了全部 12 个事件名称的联合类型：
+定义了全部 11 个事件名称的联合类型：
 
 ```ts
 type HookEvent =
-  | 'beforeLlm' | 'afterLlmDelta' | 'afterLlmComplete'
+  | 'beforeLlm' | 'afterLlmComplete'
   | 'afterMessage' | 'beforeToolUse' | 'afterToolUse'
   | 'onToolFailure' | 'beforeCompact' | 'afterCompact'
   | 'onTurnStart' | 'onTurnEnd' | 'onTurnAbort';
@@ -101,8 +101,9 @@ type HookEvent =
 | 事件 | Payload | 触发时机 | 说明 |
 |---|---|---|---|
 | `beforeLlm` | `{ systemPrompt: string; messages: LlmMessage[] }` | 发送请求给 LLM 之前 | **串行专用事件**（不支持并行）。处理器可以修改 system prompt 和消息列表。典型用途：注入角色卡、记忆、上下文。 |
-| `afterLlmDelta` | `{ delta: string; accumulated: string }` | 每次收到 LLM 流式增量 | **支持并行**。每次 delta 都会触发。`delta` 是本次增量文本，`accumulated` 是完整的累积文本。 |
 | `afterLlmComplete` | `{ content: string; toolCalls?: unknown[] }` | LLM 响应完全接收后 | **支持并行**。`content` 是完整响应文本，`toolCalls` 可选，包含任何工具调用请求。 |
+
+流式文本 delta 不走 HookBus。需要消费 `output_text_delta` 的长生命周期 sidecar（例如 TTS）由 apps/core orchestrator 直接订阅 engine event stream，避免高频、有状态、需保序的管线被 HookBus 并行语义打乱。
 
 #### 工具生命周期
 
@@ -132,9 +133,9 @@ type HookEvent =
 
 ### 并行支持情况总结
 
-**支持并行的事件（8 个）**：
+**支持并行的事件（7 个）**：
 
-`afterLlmDelta`、`afterLlmComplete`、`afterMessage`、`afterToolUse`、`onToolFailure`、`afterCompact`、`onTurnEnd`、`onTurnAbort`
+`afterLlmComplete`、`afterMessage`、`afterToolUse`、`onToolFailure`、`afterCompact`、`onTurnEnd`、`onTurnAbort`
 
 这些都是**观察者风格**的事件（事后通知），处理器通常不需要修改状态。
 
@@ -280,11 +281,10 @@ type HookBatch<E extends HookEvent> =
 
 #### 默认并行事件集
 
-硬编码了 8 个支持并行的事件：
+硬编码了 7 个支持并行的事件：
 
 ```ts
 const DEFAULT_PARALLEL_EVENTS = new Set<HookEvent>([
-  'afterLlmDelta',
   'afterLlmComplete',
   'afterMessage',
   'afterToolUse',
@@ -478,7 +478,7 @@ export type {
 
 ## 五、`bus.test.ts` —— 测试文件分析
 
-使用 **Vitest** 测试框架，共 **17 个测试用例**，覆盖以下场景：
+使用 **Vitest** 测试框架，共 **21 个测试用例**，覆盖以下场景：
 
 ### 基础功能测试
 
@@ -552,7 +552,7 @@ export type {
 
 1. **类型擦除是刻意的**：由于 TypeScript 不支持在 `Map<K, V>` 中保持 `K` 和 `V` 之间的泛型关联（即不支持 "correlated generics"），`HookBus` 在存储时擦除 `HandlerEntry<E>` 为 `HandlerEntry<HookEvent>`，在 `trigger()` 时通过断言恢复。这已通过全面的测试保证类型安全。
 
-2. **并行处理器只能观察**：并行事件（如 `afterLlmDelta`）通常用于遥测、日志、多个观察者。由于这些处理器并发运行，它们不能安全地修改共享 payload，因此返回 `replace` 被禁止。
+2. **并行处理器只能观察**：并行事件（如 `afterLlmComplete`）通常用于遥测、日志、多个观察者。由于这些处理器并发运行，它们不能安全地修改共享 payload，因此返回 `replace` 被禁止。
 
 3. **`meta` 生命周期由调用者决定**：`HookBus` 完全透传 `meta` 对象，不创建、不复制、不清理。这给予调用者最大的灵活性来管理跨回合或单次调用的中间状态。
 

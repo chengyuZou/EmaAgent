@@ -144,10 +144,6 @@ async function* runTurn(
     const thinkingSignatureByIndex = new Map<number, string>();
     const completedThinkingIndexes = new Set<number>();
 
-    // Bug #3: collect afterLlmDelta promises so we can drain them before
-    // afterLlmComplete — prevents slow hooks (TTS) from racing with turn teardown.
-    const deltaPromises: Promise<unknown>[] = [];
-
     const stream = llm.stream({ providerId, model: resolvedModel, messages: finalMessages, signal });
 
     for await (const chunk of stream) {
@@ -161,14 +157,6 @@ async function* runTurn(
             yield { type: 'output_text_delta', blockIndex: chunk.blockIndex, delta: cleaned };
           }
           for (const ev of events) yield ev;
-          deltaPromises.push(
-            hooks.trigger('afterLlmDelta', {
-              turnId,
-              sessionId: input.sessionId,
-              payload: { delta: cleaned, accumulated: fullText },
-              meta: {},
-            }),
-          );
           break;
         }
         case 'thinking_delta':
@@ -209,9 +197,6 @@ async function* runTurn(
       textByIndex.set(lastTextBlockIndex, (textByIndex.get(lastTextBlockIndex) ?? '') + tail);
       yield { type: 'output_text_delta', blockIndex: lastTextBlockIndex, delta: tail };
     }
-
-    // Bug #3: drain all delta hooks before afterLlmComplete fires
-    await Promise.allSettled(deltaPromises);
 
     // ── Post-stream hooks + persist ───────────────────────────────────────────
     await hooks.trigger('afterLlmComplete', {

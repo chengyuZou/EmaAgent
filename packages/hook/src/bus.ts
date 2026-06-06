@@ -113,7 +113,6 @@ type HookBatch<E extends HookEvent> =
 // ── Defaults ──────────────────────────────────────────────────────────────────
 
 const DEFAULT_PARALLEL_EVENTS = new Set<HookEvent>([
-  'afterLlmDelta',
   'afterLlmComplete',
   'afterMessage',
   'afterToolUse',

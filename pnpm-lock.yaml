@@ -846,9 +846,6 @@ importers:
       '@ema-agent/contracts':
         specifier: workspace:*
         version: link:../contracts
-      '@ema-agent/hook':
-        specifier: workspace:*
-        version: link:../hook
       ws:
         specifier: ^8.18.0
         version: 8.20.1

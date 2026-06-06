@@ -39,7 +39,7 @@ LLM 流式输出文本时，TTS 面临三个问题：
 ## 处理管道
 
 ```
-LLM delta chunk
+output_text_delta
       │
       ▼  (上游：@ema-agent/emotion 剥离 ACT 标签)
       │
@@ -203,7 +203,7 @@ const voice: TtsVoiceRef = {
 
 ## TtsCoordinator（流式场景）
 
-`TtsCoordinator` 是面向 LLM 流式输出场景的高层封装。它订阅 LLM delta hook，内部完成文本过滤 → 分句 → 串行合成的全流程，并将 `tts_chunk` / `tts_sentence_complete` 事件推入外部队列与 LLM 事件合并输出。
+`TtsCoordinator` 是面向 LLM 流式输出场景的高层封装。它由 apps/core orchestrator 喂入可见的 `output_text_delta`，内部完成文本过滤 → 分句 → 串行合成的全流程，并将 `tts_chunk` / `tts_sentence_complete` 事件推入外部队列与 LLM 事件合并输出。
 
 ```typescript
 import { TtsCoordinator, TtsClient } from '@ema-agent/tts';
@@ -211,19 +211,23 @@ import { TtsCoordinator, TtsClient } from '@ema-agent/tts';
 const coordinator = new TtsCoordinator({
   turnId:     'turn-001',
   sessionId:  'sess-001',
-  voice:      { voiceUri: 'speech:ema-ema1:abc123' },
+  voice:      {
+    refAudioPath: '/voices/ema.wav',
+    promptText:   '你好，我是艾玛。',
+    promptLang:   'zh',
+    voiceUri:     'speech:ema-ema1:abc123',
+  },
   providerId: 'siliconflow',
   model:      'FunAudioLLM/CosyVoice2-0.5B',
-  turnMode:   'chat',
   ttsClient:  client,
-  hooks,                    // HookBus 实例
   emit:       (ev) => queue.push(ev),
   format:     'mp3',
+  signal,
 });
 
-coordinator.start();       // 开始监听 afterLlmDelta hook
-
-// ... LLM 流式输出期间，coordinator 自动处理 delta
+// ... apps/core 合并 engine stream 时喂入可见文本
+coordinator.acceptTextDelta('你好，');
+coordinator.acceptTextDelta('今天想聊什么？');
 
 const { audioPath } = await coordinator.finish(); // 等待所有句子合成完成
 ```
