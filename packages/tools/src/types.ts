@@ -109,10 +109,8 @@ export interface ICommandRunner {
 export interface ToolExecutionContext {
   sessionId: string;
   turnId: string;
-  /** Absolute path to the user's active workspace / project root. */
-  workspaceRoot: string;
-  /** Additional dirs the agent may read/write (beyond workspaceRoot). */
-  additionalWorkingDirs?: string[];
+  /** All workspace roots. First entry is the primary cwd for shell tools. */
+  workspaceRoots: string[];
   /** Per-turn cancellation signal — tools must honour this for long-running ops. */
   signal: AbortSignal;
   /**

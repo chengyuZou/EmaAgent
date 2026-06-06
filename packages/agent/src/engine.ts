@@ -8,6 +8,7 @@ import type { PermissionContext } from '@ema-agent/permission';
 import type { AgentDeps, AgentRunInput } from './types.js';
 import { AgentPolicy } from './policy.js';
 import { TurnToolExecutor } from './tool-executor.js';
+import { historyToLlmMessages } from '@ema-agent/session';
 
 // ── AgentEngine ───────────────────────────────────────────────────────────────
 
@@ -41,7 +42,7 @@ async function* runTurn(
   input: AgentRunInput,
 ): AsyncIterable<EmaStreamEvent> {
   const { session, hooks, llm, emotion, tools, permission, askUserRegistry } = deps;
-  const { turn, signal, subMode, userInput, systemPrompt, workspaceRoot, providerId, model } = input;
+  const { turn, signal, subMode, userInput, systemPrompt, workspaceRoots, providerId, model } = input;
   const sessionId = turn.sessionId;
   const turnId    = turn.id;
   const startedAt = Date.now();
@@ -67,8 +68,7 @@ async function* runTurn(
 
   // ── ToolExecutionContext (stable across iterations) ───────────────────────────
   const permCtx: PermissionContext = {
-    workspaceRoot,
-    additionalWorkingDirs: input.additionalWorkingDirs,
+    workspaceRoots,
     sessionId,
   };
 
@@ -77,8 +77,7 @@ async function* runTurn(
   const toolCtx: ToolExecutionContext = {
     sessionId,
     turnId,
-    workspaceRoot,
-    additionalWorkingDirs: input.additionalWorkingDirs,
+    workspaceRoots,
     signal,
     readFileState,
     fileStateStore: contextStores?.fileStateStore,
@@ -155,7 +154,7 @@ async function* runTurn(
     const preLlm = await hooks.trigger('beforeLlm', {
       turnId, sessionId,
       payload: { systemPrompt, messages },
-      meta: { mode: 'agent', subMode, userInput, signal, providerId, model },
+      meta: { mode: 'agent', subMode, userInput, signal, providerId, model, workspaceRoots },
     });
     if (preLlm.kind === 'abort') {
       session.failTurn(turnId, 'turn/hook_aborted', preLlm.reason);
@@ -364,56 +363,4 @@ async function* runTurn(
   }
 }
 
-// ── History → LlmMessage conversion ──────────────────────────────────────────
-//
-// SYNC: identical logic lives in conversation/engine.ts. Update both when the
-// block format contract in contracts/messages.ts changes.
-//
-// Block format contract:
-//   system    → blocks: string
-//   user      → blocks: string | UserBlock[]  (UserBlock[] for media + tool_results)
-//   assistant → blocks: AssistantBlock[]      (text / thinking / tool_use interleaved)
-//
-// Persisted history may contain provider-specific thinking blocks and prior
-// tool_use/tool_result protocol blocks. Those are useful for UI/debug history,
-// but unsafe to replay blindly across providers, so this projection keeps only
-// visible assistant text plus ordinary user content parts.
-
-function historyToLlmMessages(history: Message[]): LlmMessage[] {
-  const out: LlmMessage[] = [];
-  for (const msg of history) {
-    switch (msg.role) {
-      case 'system':
-        out.push({ role: 'system', content: typeof msg.blocks === 'string' ? msg.blocks : '' });
-        break;
-      case 'user':
-        if (typeof msg.blocks === 'string') {
-          out.push({ role: 'user', content: msg.blocks });
-        } else if (Array.isArray(msg.blocks)) {
-          const userBlocks = msg.blocks.filter(isReplayableUserBlock);
-          if (userBlocks.length > 0) out.push({ role: 'user', content: userBlocks });
-        }
-        break;
-      case 'assistant':
-        if (Array.isArray(msg.blocks)) {
-          const assistantBlocks = msg.blocks.filter(isTextAssistantBlock);
-          if (assistantBlocks.length > 0) out.push({ role: 'assistant', content: assistantBlocks });
-        }
-        break;
-    }
-  }
-  return out;
-}
-
-function isTextAssistantBlock(block: unknown): block is AssistantBlock & { type: 'text' } {
-  return !!block
-    && typeof block === 'object'
-    && (block as { type?: unknown }).type === 'text'
-    && typeof (block as { text?: unknown }).text === 'string';
-}
-
-function isReplayableUserBlock(block: unknown): block is LlmContentPart {
-  return !!block
-    && typeof block === 'object'
-    && (block as { type?: unknown }).type !== 'tool_result';
-}
+// historyToLlmMessages is shared with ConversationEngine — defined in @ema-agent/session.

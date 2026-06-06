@@ -177,13 +177,13 @@ export class Orchestrator {
         });
 
       case 'agent': {
-        const subMode = request.subMode ?? 'full';
-        const sess    = this.bindings.session.getSession(sessionId);
-        const workspaceRoot = sess.workspaceRoots[0] ?? process.cwd();
-        const systemPrompt  = buildSystemPrompt(
+        const subMode        = request.subMode ?? 'full';
+        const sess           = this.bindings.session.getSession(sessionId);
+        const workspaceRoots = sess.workspaceRoots.length > 0 ? sess.workspaceRoots : [process.cwd()];
+        const systemPrompt   = buildSystemPrompt(
           this.bindings.card.current(),
           'agent',
-          { agentSubMode: subMode, workspaceRoots: sess.workspaceRoots },
+          { agentSubMode: subMode, workspaceRoots },
         );
 
         // Resolve provider + model here — AgentEngine is binding-unaware.
@@ -203,11 +203,9 @@ export class Orchestrator {
           subMode,
           providerId,
           model,
-          // Merge contentParts + userInput into the unified field.
-          userInput:             request.contentParts?.length ? request.contentParts : (request.userInput ?? ''),
+          userInput:      request.contentParts?.length ? request.contentParts : (request.userInput ?? ''),
           systemPrompt,
-          workspaceRoot,
-          additionalWorkingDirs: sess.workspaceRoots.slice(1),
+          workspaceRoots,
         });
       }
     }

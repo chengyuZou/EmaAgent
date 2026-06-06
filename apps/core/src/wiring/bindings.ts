@@ -413,10 +413,8 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
     let runner = runnerCache.get(sessionId);
     if (runner) return runner;
     const s = session.getSession(sessionId);
-    const workspaceRoot = s.workspaceRoots[0] ?? process.cwd();
     runner = new CommandRunner({
-      workspaceRoot,
-      additionalWorkingDirs: s.workspaceRoots.slice(1),
+      workspaceRoots: s.workspaceRoots.length > 0 ? s.workspaceRoots : [process.cwd()],
       sessionId,
       permission,
     });
@@ -487,7 +485,7 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
       'mcp_stdio_connect',
       { serverName, command },
       { riskLevel: 'high', accessType: 'execute' },
-      { workspaceRoot: process.cwd() },
+      { workspaceRoots: [process.cwd()] },
     );
     return outcome.granted;
   };

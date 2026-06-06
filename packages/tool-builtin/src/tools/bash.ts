@@ -98,7 +98,7 @@ Safety rules:
     }
 
     const shell = process.platform === 'win32' ? 'bash' : '/bin/bash';
-    const cwd = ctx.workspaceRoot;
+    const cwd = ctx.workspaceRoots[0] ?? process.cwd();
     const timeoutMs = Math.min(timeout ?? DEFAULT_TIMEOUT_MS, MAX_TIMEOUT_MS);
 
     // Delegate to sandbox CommandRunner when available — gets OS-level sandboxing.

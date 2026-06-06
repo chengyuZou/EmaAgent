@@ -42,7 +42,7 @@ function makeCtx(overrides: Partial<ToolExecutionContext> = {}): ToolExecutionCo
   return {
     sessionId:     'test-session',
     turnId:        'test-turn',
-    workspaceRoot: WORKSPACE,
+    workspaceRoots: [WORKSPACE],
     signal:        AbortSignal.timeout(30_000),
     readFileState: new Map() as ReadFileState,
     emit:          (ev) => { /* noop for tests */ },
@@ -51,7 +51,7 @@ function makeCtx(overrides: Partial<ToolExecutionContext> = {}): ToolExecutionCo
 }
 
 function makePermCtx(): PermissionContext {
-  return { workspaceRoot: WORKSPACE, sessionId: 'test-session' };
+  return { workspaceRoots: [WORKSPACE], sessionId: 'test-session' };
 }
 
 /** Convert our ToolDescriptor to the LlmToolDef shape the LLM adapter expects. */

@@ -92,7 +92,6 @@ export interface AgentRunInput {
   providerId:            string;
   /** Resolved model name — orchestrator responsibility. */
   model:                 string;
-  /** Absolute path to the user's active workspace root. */
-  workspaceRoot:         string;
-  additionalWorkingDirs?: string[];
+  /** All workspace roots. First entry is the primary cwd for shell tools. */
+  workspaceRoots: string[];
 }

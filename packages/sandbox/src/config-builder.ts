@@ -17,9 +17,8 @@ const BARE_REPO_FILES = ['HEAD', 'objects', 'refs', 'hooks', 'config'] as const;
 // ── Context ───────────────────────────────────────────────────────────────────
 
 export interface ConfigContext {
-  workspaceRoot:         string;
-  additionalWorkingDirs?: string[];
-  sessionId?:            string;
+  workspaceRoots: string[];
+  sessionId?:     string;
 }
 
 // ── Builder output ────────────────────────────────────────────────────────────
@@ -45,10 +44,9 @@ export function buildSandboxConfig(
   const macOsTmpExtras = process.platform === 'darwin' ? ['/tmp', '/private/tmp'] : [];
 
   const allowWrite: string[] = [
-    path.resolve(ctx.workspaceRoot),
+    ...ctx.workspaceRoots.map(r => path.resolve(r)),
     os.tmpdir(),
     ...macOsTmpExtras,
-    ...(ctx.additionalWorkingDirs ?? []).map(d => path.resolve(d)),
   ];
   const denyWrite:  string[] = [];
   const denyRead:   string[] = [];
@@ -71,10 +69,7 @@ export function buildSandboxConfig(
   // For files that already exist: add to denyWrite so sandbox mounts them ro.
   // For files that don't exist: record in scrubPaths so cleanup() can delete
   // anything planted during a sandboxed command.
-  const allWorkingRoots = [
-    ctx.workspaceRoot,
-    ...(ctx.additionalWorkingDirs ?? []),
-  ];
+  const allWorkingRoots = ctx.workspaceRoots;
   const scrubPaths: string[] = [];
   for (const root of allWorkingRoots) {
     for (const file of BARE_REPO_FILES) {
@@ -100,7 +95,7 @@ export function buildSandboxConfig(
       continue;
     }
 
-    const base = resolveGlobBase(rule.pathGlob, ctx.workspaceRoot);
+    const base = resolveGlobBase(rule.pathGlob, ctx.workspaceRoots[0] ?? '');
 
     if (rule.tool === 'fs-edit' || rule.tool === 'fs-write') {
       if (rule.action === 'allow') allowWrite.push(base);

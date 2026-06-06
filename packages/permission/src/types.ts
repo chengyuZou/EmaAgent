@@ -76,12 +76,10 @@ export type PermissionOutcome =
 
 /** Runtime context passed to every gate() call. */
 export interface PermissionContext {
-  /** Absolute path to the user's workspace/project root. */
-  workspaceRoot:          string
-  /** Additional directories the agent is allowed to operate in. */
-  additionalWorkingDirs?: string[]
+  /** All workspace roots the agent is allowed to operate in. First entry is the primary cwd. */
+  workspaceRoots:  string[]
   /** Current session ID — used for internal path carve-outs (e.g. session memory). */
-  sessionId?:             string
+  sessionId?:      string
   /**
    * Per-call askPermission override. When set, takes precedence over
    * `PermissionConfig.ask`. AgentEngine injects this so each turn can route

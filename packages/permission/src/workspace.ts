@@ -70,17 +70,12 @@ export function pathInWorkingDir(targetPath: string, workingDir: string): boolea
  */
 export function pathInAnyWorkingDir(
   targetPath: string,
-  context:    Pick<PermissionContext, 'workspaceRoot' | 'additionalWorkingDirs'>,
+  context:    Pick<PermissionContext, 'workspaceRoots'>,
 ): boolean {
   const allPaths = getPathsForPermissionCheck(targetPath);
 
-  const workingDirs = [
-    context.workspaceRoot,
-    ...(context.additionalWorkingDirs ?? []),
-  ];
-
   // Every resolved form must be inside some working dir
   return allPaths.every(p =>
-    workingDirs.some(wd => pathInWorkingDir(p, wd)),
+    context.workspaceRoots.some(wd => pathInWorkingDir(p, wd)),
   );
 }

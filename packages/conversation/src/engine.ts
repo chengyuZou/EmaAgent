@@ -1,9 +1,9 @@
 import type { EmaStreamEvent } from '@ema-agent/contracts';
 import type { LlmMessage, LlmContentPart, AssistantBlock, UserBlock } from '@ema-agent/llm';
-import type { Message } from '@ema-agent/session';
 import type { MessageBlocks } from '@ema-agent/session';
 import type { HookBus, HookContext, HookTriggerResult } from '@ema-agent/hook';
 import type { ConversationDeps, ConversationRunInput } from './types.js';
+import { historyToLlmMessages } from '@ema-agent/session';
 
 // ── ConversationEngine ────────────────────────────────────────────────────────
 
@@ -338,55 +338,4 @@ function buildAssistantBlocks(
   return blockEntries.map(([, block]) => block);
 }
 
-/**
- * Converts stored Message[] to provider-safe LlmMessage[] for the LLM adapter.
- *
- * Block format contract (from contracts/messages.ts):
- *   system    → blocks: string
- *   user      → blocks: string | UserBlock[]  (UserBlock[] when has media or tool_results)
- *   assistant → blocks: AssistantBlock[]
- *
- * Conversation turns are single-shot chat/narrative calls, not tool loops.
- * Persisted history may contain provider-specific thinking signatures or
- * agent tool blocks. Those are useful for UI/debug history, but unsafe to
- * replay blindly across providers, so this projection only keeps visible text
- * plus ordinary user content parts.
- */
-function historyToLlmMessages(history: Message[]): LlmMessage[] {
-  const out: LlmMessage[] = [];
-  for (const msg of history) {
-    switch (msg.role) {
-      case 'system':
-        out.push({ role: 'system', content: typeof msg.blocks === 'string' ? msg.blocks : '' });
-        break;
-      case 'user':
-        if (typeof msg.blocks === 'string') {
-          out.push({ role: 'user', content: msg.blocks });
-        } else if (Array.isArray(msg.blocks)) {
-          const userBlocks = msg.blocks.filter(isReplayableUserBlock);
-          if (userBlocks.length > 0) out.push({ role: 'user', content: userBlocks });
-        }
-        break;
-      case 'assistant':
-        if (Array.isArray(msg.blocks)) {
-          const assistantBlocks = msg.blocks.filter(isTextAssistantBlock);
-          if (assistantBlocks.length > 0) out.push({ role: 'assistant', content: assistantBlocks });
-        }
-        break;
-    }
-  }
-  return out;
-}
-
-function isTextAssistantBlock(block: unknown): block is AssistantBlock & { type: 'text' } {
-  return !!block
-    && typeof block === 'object'
-    && (block as { type?: unknown }).type === 'text'
-    && typeof (block as { text?: unknown }).text === 'string';
-}
-
-function isReplayableUserBlock(block: unknown): block is LlmContentPart {
-  return !!block
-    && typeof block === 'object'
-    && (block as { type?: unknown }).type !== 'tool_result';
-}
+// historyToLlmMessages is shared with AgentEngine — defined in @ema-agent/session.

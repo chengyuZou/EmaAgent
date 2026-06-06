@@ -91,7 +91,9 @@ Results are capped at \`head_limit\` lines (default 250).`,
       head_limit,
     } = input;
 
-    const searchTarget = inputPath ? path.resolve(inputPath) : ctx.workspaceRoot;
+    const searchTargets = inputPath
+      ? [path.resolve(inputPath)]
+      : (ctx.workspaceRoots.length > 0 ? ctx.workspaceRoots : [process.cwd()]);
 
     const args: string[] = [pattern];
 
@@ -110,7 +112,7 @@ Results are capped at \`head_limit\` lines (default 250).`,
     if (output_mode === 'content') args.push('--line-number');
 
     args.push('--no-heading', '--color=never');
-    args.push(searchTarget);
+    args.push(...searchTargets);
 
     let stdout: string;
     try {

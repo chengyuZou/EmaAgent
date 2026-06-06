@@ -151,7 +151,7 @@ function makeInput(overrides: Partial<Parameters<AgentEngine['run']>[0]> = {}) {
     subMode:       'full' as const,
     userInput:     'Hello',
     systemPrompt:  'You are a helpful assistant.',
-    workspaceRoot: WORKSPACE,
+    workspaceRoots: [WORKSPACE],
     providerId:    PROVIDER_ID,
     model:         MODEL,
     ...overrides,

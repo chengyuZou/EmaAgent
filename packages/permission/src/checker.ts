@@ -21,10 +21,10 @@ import type {
 function suggestionsForPath(
   toolName:    string,
   targetPath:  string | undefined,
-  context:     Pick<PermissionContext, 'workspaceRoot' | 'additionalWorkingDirs'>,
+  context:     Pick<PermissionContext, 'workspaceRoots'>,
 ): PermissionUpdate[] {
   const suggestions: PermissionUpdate[] = [];
-  const allRoots = [context.workspaceRoot, ...(context.additionalWorkingDirs ?? [])];
+  const allRoots = context.workspaceRoots;
 
   if (!targetPath) {
     // Non-file tool: suggest always-allow for this tool in session scope
@@ -438,12 +438,7 @@ export class PermissionEngine {
       // Check primary workspace root first, then additional working dirs.
       // The first root that contains the dir wins — this produces a tidy
       // workspace-relative /rel/** glob instead of a raw //absolute/** one.
-      const allRoots = [
-        context.workspaceRoot,
-        ...(context.additionalWorkingDirs ?? []),
-      ];
-
-      for (const root of allRoots) {
+      for (const root of context.workspaceRoots) {
         const rel = path.relative(root, dir);
         if (rel && !rel.startsWith('..') && !path.isAbsolute(rel)) {
           pathGlob = `/${rel.replace(/\\/g, '/')}/**`;
@@ -455,7 +450,7 @@ export class PermissionEngine {
         // Outside every working dir, same drive — anchor to filesystem root.
         // This avoids a pathGlob:undefined rule silently allowing the tool on
         // ALL paths.
-        const primaryRel = path.relative(context.workspaceRoot, dir);
+        const primaryRel = path.relative(context.workspaceRoots[0] ?? '', dir);
         if (!path.isAbsolute(primaryRel)) {
           const posixDir = dir.replace(/\\/g, '/');
           const withoutLeadingSlash = posixDir.startsWith('/') ? posixDir.slice(1) : posixDir;

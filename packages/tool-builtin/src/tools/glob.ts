@@ -58,19 +58,21 @@ export const globTool = buildTool<GlobInput, GlobResult>({
   },
 
   async execute(input: GlobInput, ctx: ToolExecutionContext): Promise<GlobResult> {
-    const searchDir = input.path
-      ? path.resolve(input.path)
-      : ctx.workspaceRoot;
+    const searchDirs = input.path
+      ? [path.resolve(input.path)]
+      : (ctx.workspaceRoots.length > 0 ? ctx.workspaceRoots : [process.cwd()]);
 
-    // Use ripgrep --files for fast glob matching.
-    // rg is expected on PATH (ships with many dev setups; we'll add to our binary dist).
-    // Fall back to Node glob if rg is absent.
-    let rawPaths: string[];
-    try {
-      rawPaths = await rgGlob(input.pattern, searchDir, ctx.signal);
-    } catch {
-      rawPaths = await nodeGlob(input.pattern, searchDir, ctx.signal);
+    // Search each root independently, then merge. rg is preferred; Node glob is fallback.
+    const allPaths: string[] = [];
+    for (const searchDir of searchDirs) {
+      try {
+        allPaths.push(...await rgGlob(input.pattern, searchDir, ctx.signal));
+      } catch {
+        allPaths.push(...await nodeGlob(input.pattern, searchDir, ctx.signal));
+      }
     }
+    // Deduplicate in case roots overlap
+    const rawPaths = [...new Set(allPaths)];
 
     // Sort by mtime descending
     const withMtime = rawPaths.map((p) => {
