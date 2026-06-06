@@ -104,7 +104,7 @@ function hotReload(
     if (deleted) {
       bindings.llm.removeConfig(row.id);
     } else {
-      const cfg = buildLlmProviderConfig(row, bindings.llmCatalog);
+      const cfg = buildLlmProviderConfig(row);
       if (cfg) bindings.llm.upsertConfig(cfg);
       else     bindings.llm.removeConfig(row.id);
     }
