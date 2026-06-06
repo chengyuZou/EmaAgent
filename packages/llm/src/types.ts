@@ -2,12 +2,14 @@ import type {
   MessageContentPart,
   AssistantBlock,
   UserBlock,
+  LlmMessage,
   LlmProtocol,
 } from '@ema-agent/contracts';
 
 // Re-export so callers only need one import
-export type { LlmProtocol }     from '@ema-agent/contracts';
+export type { LlmProtocol }                                                     from '@ema-agent/contracts';
 export type { AssistantBlock, UserBlock, MessageContentPart as LlmContentPart } from '@ema-agent/contracts';
+export type { LlmMessage }                                                       from '@ema-agent/contracts';
 
 // ── Provider config ───────────────────────────────────────────────────────────
 
@@ -61,23 +63,8 @@ export type ThinkingMode =
     };
 
 // ── Normalized message format ─────────────────────────────────────────────────
-
-/**
- * Internal wire-format for LLM conversations.
- *
- * Uses Anthropic's content-block model as the canonical shape:
- * - system:    plain string (adapters extract it to a top-level field when needed)
- * - user:      plain string OR UserBlock[] (multimodal input + tool results)
- * - assistant: AssistantBlock[] — preserves text/thinking/tool_use interleaving order
- *
- * Adapters translate FROM this format to provider wire protocol.
- * There is no `role: 'tool'` — tool results live as ToolResultBlock inside
- * a `role: 'user'` message so the history exactly mirrors what Anthropic expects.
- */
-export type LlmMessage =
-  | { role: 'system';    content: string }
-  | { role: 'user';      content: string | UserBlock[] }
-  | { role: 'assistant'; content: AssistantBlock[] };
+// LlmMessage is defined in @ema-agent/contracts and re-exported above.
+// Adapters translate FROM that format to provider wire protocol.
 
 export interface LlmRequest {
   providerId: string;

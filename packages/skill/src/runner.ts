@@ -68,7 +68,7 @@ export class SkillRunner {
     };
 
     this.unregister = this.hooks.register('beforeLlm', handler, {
-      priority: PRIORITY.DEFAULT - 10,  // after prompts:buildSystem (PRIORITY.FIRST = 10), before memory
+      priority: PRIORITY.NORMAL,  // after memory recall (EARLY=20), before default handlers (DEFAULT=100)
       name:     'skill:inject-prompts',
       parallel: false,
     });

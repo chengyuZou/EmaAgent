@@ -113,15 +113,8 @@ export class TtsCoordinator {
     if (filtered) {
       const sentences = this.splitter.feed(filtered);
       for (const s of sentences) {
-        console.log(`[tts:sent] idx=${s.index} text="${s.text.slice(0,40)}"`);
         this.enqueue(s.index, s.text);
       }
-      if (sentences.length === 0) {
-        console.log(`[tts:buf] splitter buffered "${filtered.slice(0, 40)}"`);
-      }
-    } else if (filtered === '') {
-      // Distinguish between "truly empty" and "state machine consumed it"
-      console.log(`[tts:skip] filter consumed "${delta.slice(0, 30)}" (state machine absorbed it)`);
     }
   }
 
@@ -165,12 +158,15 @@ export class TtsCoordinator {
 
   /** Discard everything. Used when the turn aborts before completion. */
   async abort(): Promise<void> {
-    if (this.finishing && this.abortController.signal.aborted) return;
+    if (this.abortController.signal.aborted) return;
+    const finishAlreadyStarted = this.finishing;
     this.abortController.abort();
     this.disposeExternalAbort?.();
-    this.finishing  = true;
-    try { await this.chain; } catch { /* swallow */ }
-    this.archive?.discardTurn(this.turnId as string);
+    if (!finishAlreadyStarted) {
+      this.finishing = true;
+      try { await this.chain; } catch { /* swallow */ }
+      this.archive?.discardTurn(this.turnId as string);
+    }
   }
 
   // ── Internals ─────────────────────────────────────────────────────────────

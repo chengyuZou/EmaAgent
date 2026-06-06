@@ -113,7 +113,7 @@ export class Orchestrator {
 
     const engineEvents = this.engineStreamFor(request, turn, signal, sessionId);
 
-    const self = this;
+    const { callbacks } = this;
     const events = (async function* () {
       try {
         let pendingTurnDone: EmaStreamEvent | null = null;
@@ -139,18 +139,18 @@ export class Orchestrator {
         if (coordinator && pendingTurnDone?.type === 'turn_completed') {
           const { audioPath } = await coordinator.finish();
           while (ttsQueue.length > 0) yield ttsQueue.shift()!;
-          self.callbacks.onAudioFinalized?.(turnId, audioPath);
+          callbacks.onAudioFinalized?.(turnId, audioPath);
         } else if (coordinator) {
           await coordinator.abort();
           ttsQueue.length = 0;
-          self.callbacks.onAudioFinalized?.(turnId, null);
+          callbacks.onAudioFinalized?.(turnId, null);
         }
 
         if (pendingTurnDone) yield pendingTurnDone;
       } catch (err) {
         if (coordinator) {
           await coordinator.abort();
-          self.callbacks.onAudioFinalized?.(turnId, null);
+          callbacks.onAudioFinalized?.(turnId, null);
         }
         throw err;
       }

@@ -1,14 +1,13 @@
-﻿/** Default priority for hook handlers. Lower numbers run first. */
-export const PRIORITY_DEFAULT = 100;
-
-/** Well-known priority slots — use these instead of magic numbers. */
+/** Well-known priority slots — use these instead of magic numbers. Lower numbers run first. */
 export const PRIORITY = {
-  /** Runs before most handlers — system prompt construction, routing context */
-  FIRST: 10,
-  /** Runs early — skills, memory recall, contextual augmentation */
-  EARLY: 20,
-  /** Default slot */
+  /** System-level: character card injection, system prompt base construction. */
+  FIRST:   10,
+  /** Recall phase: memory recall, narrative context, contextual augmentation. */
+  EARLY:   20,
+  /** Augmentation phase: skill prompt injection, mode-specific additions. */
+  NORMAL:  50,
+  /** Default slot for general-purpose handlers. */
   DEFAULT: 100,
-  /** Runs after most handlers — telemetry, audit */
-  LATE: 200,
+  /** Post-processing: audit, telemetry, cleanup. */
+  LATE:    200,
 } as const;

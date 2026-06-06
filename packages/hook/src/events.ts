@@ -1,5 +1,4 @@
-﻿import type { TurnMode, MessageId } from '@ema-agent/contracts';
-import type { LlmMessage } from '@ema-agent/llm';
+﻿import type { TurnMode, MessageId, LlmMessage } from '@ema-agent/contracts';
 
 /**
  * All hook events are turn-scoped internal engine lifecycle events.

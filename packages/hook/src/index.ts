@@ -1,5 +1,5 @@
 ﻿export { HookBus } from './bus.js';
-export { PRIORITY, PRIORITY_DEFAULT } from './priority.js';
+export { PRIORITY } from './priority.js';
 
 export type {
   HookEvent,

@@ -1,6 +1,6 @@
 ﻿import type { TurnId, SessionId, EmaStreamEvent } from '@ema-agent/contracts';
 import type { HookEvent, HookPayload } from './events.js';
-import { PRIORITY_DEFAULT } from './priority.js';
+import { PRIORITY } from './priority.js';
 
 // ── Context & Result types ────────────────────────────────────────────────────
 
@@ -251,7 +251,7 @@ export class HookBus {
     const entry: HandlerEntry<E> = {
       event,
       handler,
-      priority: opts.priority ?? PRIORITY_DEFAULT,
+      priority: opts.priority ?? PRIORITY.DEFAULT,
       name: opts.name ?? (handler.name || '<anonymous>'),
       critical: opts.critical ?? true,
       parallel: opts.parallel ?? false,
@@ -392,27 +392,31 @@ export class HookBus {
 
     try {
       const result = await entry.handler(handlerCtx) as HookRuntimeResult<E>;
-      this.options.traceSink?.({
-        event:           event,
-        handlerName:     entry.name,
-        durationMs:      performance.now() - t0,
-        result:          result.kind,
-        reason:          result.kind === 'abort' ? result.reason : undefined,
-        payloadReplaced: result.kind === 'replace',
-      });
+      try {
+        this.options.traceSink?.({
+          event:           event,
+          handlerName:     entry.name,
+          durationMs:      performance.now() - t0,
+          result:          result.kind,
+          reason:          result.kind === 'abort' ? result.reason : undefined,
+          payloadReplaced: result.kind === 'replace',
+        });
+      } catch { /* diagnostic sink must not affect turn flow */ }
       return result;
     } catch (err) {
       const reason = errorToReason(err);
       const durationMs = performance.now() - t0;
 
-      this.options.traceSink?.({
-        event:           event,
-        handlerName:     entry.name,
-        durationMs,
-        result:          'error',
-        reason,
-        payloadReplaced: false,
-      });
+      try {
+        this.options.traceSink?.({
+          event:           event,
+          handlerName:     entry.name,
+          durationMs,
+          result:          'error',
+          reason,
+          payloadReplaced: false,
+        });
+      } catch { /* diagnostic sink must not affect turn flow */ }
 
       if (entry.critical) {
         return {
