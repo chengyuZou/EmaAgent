@@ -1,6 +1,6 @@
 import type { HookBus } from '@ema-agent/hook';
 import type { EmaStreamEvent } from '@ema-agent/contracts';
-import type { LlmMessage } from '@ema-agent/llm';
+import type { LlmMessage } from '@ema-agent/contracts';
 import { NarrativeUnavailableError } from '@ema-agent/narrative-client';
 import type { ConversationDeps } from './types.js';
 
