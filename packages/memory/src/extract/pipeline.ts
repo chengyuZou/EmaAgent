@@ -9,6 +9,7 @@ import type { MemorySettings, EmbeddedText } from '../types.js';
 import type {
   ExtractionOutput, ExtractedNode, PendingFragment, SessionNoteEntry,
 } from './types.js';
+import { safeParseEntries } from './types.js';
 import { runExtraction, runConsolidation } from './llm-call.js';
 import {
   buildExtractionPrompt, buildConsolidationPrompt,
@@ -576,16 +577,6 @@ async function compactSessionNoteIfNeeded(
     tokensAtLastUpdate: estimateTextTokens(compacted.map(e => e.delta).join('\n')),
     updatedAt: now,
   });
-}
-
-function safeParseEntries(body: string): SessionNoteEntry[] {
-  try {
-    const arr = JSON.parse(body);
-    return Array.isArray(arr) ? arr as SessionNoteEntry[] : [];
-  } catch {
-    // 兼容旧的纯文本 body：迁移成单条 entry
-    return body.trim() ? [{ at: Date.now(), turnId: 'legacy', delta: body }] : [];
-  }
 }
 
 function resolveMemoryBindingLocal(

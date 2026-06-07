@@ -940,14 +940,6 @@ function dedupTail<T>(arr: T[], maxLen: number): T[] {
   return out;
 }
 
-function safeCall<T>(fn: () => T): T | null {
-  try { return fn(); } catch { return null; }
-}
-
-async function safeAsync<T>(fn: () => Promise<T>): Promise<T | null> {
-  try { return await fn(); } catch { return null; }
-}
-
 // ── Compaction safe-cut helpers ───────────────────────────────────────────────
 //
 // The Anthropic / OpenAI APIs require tool_use blocks in an assistant message

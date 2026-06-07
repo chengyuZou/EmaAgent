@@ -1,6 +1,7 @@
 import type { SessionId } from '@ema-agent/contracts';
 import type { MemoryDeps } from '../deps.js';
 import type { SessionNoteEntry } from '../extract/types.js';
+import { safeParseEntries } from '../extract/types.js';
 
 /**
  * Layer-1 recall: load the session's current summary note.
@@ -23,12 +24,3 @@ export function recallSessionNote(deps: MemoryDeps, sessionId: SessionId): strin
   return rendered;
 }
 
-function safeParseEntries(body: string): SessionNoteEntry[] {
-  try {
-    const arr = JSON.parse(body);
-    return Array.isArray(arr) ? arr as SessionNoteEntry[] : [];
-  } catch {
-    // 兼容旧的纯文本 body：迁移成单条 entry
-    return body.trim() ? [{ at: Date.now(), turnId: 'legacy', delta: body }] : [];
-  }
-}

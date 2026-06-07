@@ -51,3 +51,12 @@ export interface PendingFragment {
   content:  string;
   at:       number;
 }
+
+export function safeParseEntries(body: string): SessionNoteEntry[] {
+  try {
+    const arr = JSON.parse(body);
+    return Array.isArray(arr) ? arr as SessionNoteEntry[] : [];
+  } catch {
+    return body.trim() ? [{ at: Date.now(), turnId: 'legacy', delta: body }] : [];
+  }
+}

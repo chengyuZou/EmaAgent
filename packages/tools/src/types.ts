@@ -113,13 +113,12 @@ export interface SubagentSpawnOpts {
   description?: string;
 }
 
-export interface SubagentSpawnResult {
-  output: string;
-  usage:  { inputTokens: number; outputTokens: number };
-}
-
 export interface ISubagentSpawner {
-  spawn(prompt: string, opts: SubagentSpawnOpts, signal: AbortSignal): Promise<SubagentSpawnResult>;
+  spawn(
+    prompt:  string,
+    opts:    SubagentSpawnOpts,
+    signal:  AbortSignal,
+  ): Promise<{ output: string; usage: { inputTokens: number; outputTokens: number } }>;
 }
 
 export interface IMcpClientBridge {
