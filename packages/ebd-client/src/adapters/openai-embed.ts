@@ -34,9 +34,10 @@ export class OpenAIEmbedAdapter implements EmbedAdapter {
 
     // Sort by index to guarantee order matches input.
     const sorted = [...data.data].sort((a, b) => a.index - b.index);
+    const embeddings = sorted.map(d => d.embedding);
     return {
-      embeddings: sorted.map(d => d.embedding),
-      dim: this.config.dim,
+      embeddings,
+      dim: embeddings[0]?.length ?? 0,
     };
   }
 }

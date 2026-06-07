@@ -10,8 +10,6 @@ export interface EmbedProviderConfig {
   protocol: EmbedProtocol;
   apiKey: string;
   baseUrl?: string;
-  /** Output vector dimension — required for downstream consumers (e.g. LightRAG). */
-  dim: number;
   defaultModel?: string;
 }
 

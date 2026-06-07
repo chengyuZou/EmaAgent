@@ -160,7 +160,7 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
 
   // ── AI clients (provider configs live in profileDb) ────────────────────────
   const llm = new LlmRouter(loadLlmConfigs(profileDb));
-  const ebd = new EbdRouter(loadEmbedConfigs(profileDb, embedCatalog), loadRerankConfigs(profileDb));
+  const ebd = new EbdRouter(loadEmbedConfigs(profileDb), loadRerankConfigs(profileDb));
 
   const narrative = new NarrativeClient({
     baseUrl:   resolveBridgeUrl(),
@@ -258,6 +258,7 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
     memoryTasks:      new MemoryTasksRepo(dataDb.sqlite),
     pendingFragments: new PendingFragmentsRepo(dataDb.sqlite),
     sessions:         sessionsRepo,
+    getEmbedDim:      (model) => embedCatalog.dim(model),
     emit:             (ev) => systemBus.emit(ev),
   });
 

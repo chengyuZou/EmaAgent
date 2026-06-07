@@ -138,11 +138,11 @@ export class MemoryPlanner {
     const providerId = this.embed.currentProviderId();
     if (!providerId) return { nodes: 0, items: 0, backend: null };
 
-    const dim   = this.deps.ebd.embedDimFor(providerId);
-    if (!dim) return { nodes: 0, items: 0, backend: null };
-
     const model = this.deps.ebd.defaultEmbedModelFor(providerId);
     if (!model) return { nodes: 0, items: 0, backend: null };
+
+    const dim = this.deps.getEmbedDim(model);
+    if (!dim) return { nodes: 0, items: 0, backend: null };
 
     const t0 = Date.now();
     this.indexProviderId = providerId;

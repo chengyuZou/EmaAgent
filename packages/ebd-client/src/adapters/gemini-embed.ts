@@ -47,9 +47,10 @@ export class GeminiEmbedAdapter implements EmbedAdapter {
       embeddings: { values: number[] }[];
     };
 
+    const embeddings = data.embeddings.map(e => e.values);
     return {
-      embeddings: data.embeddings.map(e => e.values),
-      dim: this.config.dim,
+      embeddings,
+      dim: embeddings[0]?.length ?? 0,
     };
   }
 }

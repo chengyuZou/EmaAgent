@@ -45,9 +45,8 @@ export const BENCH_MODEL       = 'Pro/BAAI/bge-m3';
 function makeBenchEbdRouter(cache: EmbedCache): MemoryDeps['ebd'] {
   return {
     // ── identity queries (used by EmbedService + planner initialize) ─────────
-    firstEmbedId:          ()  => BENCH_PROVIDER_ID,
-    defaultEmbedModelFor:  (id: string) => id === BENCH_PROVIDER_ID ? BENCH_MODEL : undefined,
-    embedDimFor:           (id: string) => id === BENCH_PROVIDER_ID ? EMBED_DIM  : undefined,
+    firstEmbedId:         ()  => BENCH_PROVIDER_ID,
+    defaultEmbedModelFor: (id: string) => id === BENCH_PROVIDER_ID ? BENCH_MODEL : undefined,
 
     // ── embed ─────────────────────────────────────────────────────────────────
     embed: async ({ texts }: { texts: string[]; providerId: string; model: string }) => ({
@@ -145,6 +144,7 @@ export function createBenchDeps(embedCache: EmbedCache): BenchDeps {
     sessionNotes,
     backgroundTasks,
     sessions,
+    getEmbedDim:     (model) => model === BENCH_MODEL ? EMBED_DIM : 0,
   };
 
   return { deps, items, close: () => db.close() };

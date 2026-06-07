@@ -73,10 +73,6 @@ export class EbdRouter {
     return this.embedConfigs.get(providerId)?.defaultModel;
   }
 
-  embedDimFor(providerId: string): number | undefined {
-    return this.embedConfigs.get(providerId)?.dim;
-  }
-
   // ── Rerank ─────────────────────────────────────────────────────────────────
 
   async rerank(req: RerankRequest): Promise<RerankResponse> {

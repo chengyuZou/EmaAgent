@@ -115,7 +115,7 @@ function hotReload(
     if (deleted) {
       bindings.ebd.removeEmbedConfig(row.id);
     } else {
-      const cfg = buildEmbedProviderConfig(row, bindings.embedCatalog);
+      const cfg = buildEmbedProviderConfig(row);
       if (cfg) bindings.ebd.upsertEmbedConfig(cfg);
       else     bindings.ebd.removeEmbedConfig(row.id);
     }

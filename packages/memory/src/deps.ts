@@ -39,6 +39,13 @@ export interface MemoryDeps {
   pendingFragments:  PendingFragmentsRepo; // extraction input queue
 
   /**
+   * Returns the vector dimension for a given embed model name.
+   * Looks up embed_model_catalog in profileDb — kept as a callback so the
+   * memory package does not depend on @ema-agent/storage directly.
+   */
+  getEmbedDim:    (model: string) => number;
+
+  /**
    * Observability hook — pipeline / runner / maintenance push lifecycle
    * events here. The orchestrator wires this to the SystemEventBus so the
    * frontend can render them as bubbles. Optional: tests omit it.
