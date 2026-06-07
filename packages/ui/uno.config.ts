@@ -20,64 +20,29 @@
 
 import { defineConfig, presetAttributify, presetIcons, presetTypography, type Preset } from 'unocss';
 import presetWind3 from '@unocss/preset-wind3';
+import {
+  createPresetChromatic,
+  EMA_PRIMARY_HUE,
+  EMA_VIOLET_OFFSET,
+  VAR_HUE,
+} from './src/uno-preset-chromatic.js';
 
-// ── Design tokens ───────────────────────────────────────────────────────────
-
-/**
- * Ema's signature pink-white (her hair main color). Used for:
- *   - Main window glow border breathing animation
- *   - Active button highlights
- *   - Focus rings
- *   - Primary brand accents
- *
- * 50-950 scale follows Tailwind convention so existing utilities like
- * `bg-primary-500/20` work out of the box.
- */
-export const PINK_WHITE_SCALE = {
-  50:  '#fff5f9',
-  100: '#ffe9f1',
-  200: '#ffd6e6',   // ← the signature shade users see in the glow
-  300: '#ffbed4',
-  400: '#ff9eba',
-  500: '#ff7aa1',
-  600: '#ef5582',
-  700: '#cf3a66',
-  800: '#a82a52',
-  900: '#7c1f3e',
-  950: '#4a0f24',
-} as const;
+/** CSS variable that scales all rounded-* values at runtime. */
+export const VAR_RADIUS = '--ema-radius';
 
 /**
- * Cool pink-violet accent (secondary). Used for narrative-mode bubbles,
- * memory recall indicators — anything that needs to differ visually from
- * the warm primary without going full opposite color.
- */
-export const VIOLET_SCALE = {
-  50:  '#f6f3ff',
-  100: '#ece6ff',
-  200: '#dcceff',
-  300: '#c6a8ff',
-  400: '#aa7eff',
-  500: '#9b5eff',
-  600: '#8347e8',
-  700: '#6b35bf',
-  800: '#552a96',
-  900: '#3e1f6c',
-  950: '#241140',
-} as const;
-
-/**
- * Universal rounding scale. All visual rectangles MUST use one of these.
- * Square corners (border-radius: 0) are forbidden per design rules.
+ * Universal rounding scale driven by --ema-radius (default 1).
+ * Set --ema-radius: 0 for sharp UI, 1.5 for softer look.
+ * pill/full are fixed — they never scale with the radius var.
  */
 export const RADIUS_SCALE = {
-  sm:      '6px',     // tags, dot badges, small chips
-  DEFAULT: '8px',     // buttons, inputs, dropdowns
-  md:      '10px',    // cards
-  lg:      '14px',    // dialogs, popovers, sub-window panels
-  xl:      '20px',    // main window itself, hero containers
-  pill:    '9999px',  // pill buttons
-  full:    '50%',     // circular icon buttons, dots, avatars
+  sm:      `calc(6px  * var(${VAR_RADIUS}))`,  // tags, dot badges, small chips
+  DEFAULT: `calc(8px  * var(${VAR_RADIUS}))`,  // buttons, inputs, dropdowns
+  md:      `calc(10px * var(${VAR_RADIUS}))`,  // cards
+  lg:      `calc(14px * var(${VAR_RADIUS}))`,  // dialogs, popovers, sub-window panels
+  xl:      `calc(20px * var(${VAR_RADIUS}))`,  // main window itself, hero containers
+  pill:    '9999px',                            // pill buttons — always full pill
+  full:    '50%',                               // circular icon buttons, dots, avatars
 } as const;
 
 /** Default text font stack — mixed CJK + Latin */
@@ -134,12 +99,22 @@ function buildSafelist(): string[] {
  * `content` globs and additional presets.
  */
 export function emaSharedPreset(): Preset[] {
+  const chromatic = createPresetChromatic();
   return [
     presetWind3({
       // Tailwind v3 compatibility. We keep `prefersColor: 'media'` off so
       // dark mode is class-driven (toggled via root `.dark` class).
       dark: 'class',
     }),
+    // OKLCH dynamic color system — primary (pink) + violet derived from one hue var.
+    // Changing --chromatic-hue at runtime shifts both palettes simultaneously.
+    chromatic({
+      baseHue: EMA_PRIMARY_HUE,
+      colors: {
+        primary: 0,                // stays at EMA_PRIMARY_HUE (350 = pink)
+        violet:  EMA_VIOLET_OFFSET, // 350 + (-65) = 285 = violet
+      },
+    }) as unknown as Preset,
     presetAttributify(),
     presetIcons({
       scale: 1.2,
@@ -155,6 +130,15 @@ export function emaSharedPreset(): Preset[] {
         'code': { 'border-radius': RADIUS_SCALE.sm },
       },
     }),
+    // -- Shape system: --ema-radius scales all rounded-* values at runtime --
+    {
+      name: 'ema-shape',
+      preflights: [
+        {
+          getCSS: () => `:root { ${VAR_RADIUS}: 1; }`,
+        },
+      ],
+    },
     // -- Custom animations (preflight keyframes) --
     {
       name: 'ema-animations',
@@ -178,10 +162,9 @@ export function emaSharedPreset(): Preset[] {
  */
 export function emaSharedTheme() {
   return {
-    colors: {
-      primary: PINK_WHITE_SCALE,
-      violet:  VIOLET_SCALE,
-    },
+    // primary + violet colors are injected by the chromatic preset in emaSharedPreset().
+    // Do NOT re-declare them here — explicit theme keys override preset theme keys in
+    // UnoCSS, which would shadow the CSS-variable-based oklch() expressions.
     borderRadius: RADIUS_SCALE,
     fontFamily:   FONT_FAMILY,
   };
