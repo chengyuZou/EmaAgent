@@ -82,15 +82,15 @@ const probeSchema = z.object({
 
 // ── Hot-reload ────────────────────────────────────────────────────────────────
 
-// The three model_bindings modules that feed LightRAG's internal config.
+// The two model_bindings modules that feed LightRAG's internal config.
 // When a provider referenced by any of these changes, bridge must be re-pushed.
-const BRIDGE_MODULES = ['embed', 'rerank', 'lightrag-llm'] as const;
+const BRIDGE_MODULES = ['embed', 'lightrag-llm'] as const;
 
 /**
  * After any provider write:
  *  1. Sync LlmRouter (only if this provider has the 'llm' capability).
  *  2. Re-push bridge config (only if this provider is referenced by a
- *     bridge-relevant model_binding: embed / rerank / lightrag-llm).
+ *     bridge-relevant model_binding: embed / lightrag-llm).
  */
 function hotReload(
   bindings: AppBindings,

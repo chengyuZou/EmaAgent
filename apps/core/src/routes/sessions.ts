@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { asSessionId, asCharacterCardId } from '@ema-agent/contracts';
+import { asSessionId, asTurnId } from '@ema-agent/contracts';
 import type { AppBindings } from '../wiring.js';
 
 // ── Schemas ─────────────────────────────────────────────────────────────────
@@ -36,8 +36,7 @@ const forkSchema = z.object({
 // ── Route factory ────────────────────────────────────────────────────────────
 
 const createSessionSchema = z.object({
-  title:          z.string().min(1).max(200).optional(),
-  characterCardId: z.string().optional(),
+  title: z.string().min(1).max(200).optional(),
 });
 
 export function sessionsRoute(bindings: AppBindings): Hono {
@@ -52,10 +51,7 @@ export function sessionsRoute(bindings: AppBindings): Hono {
       return c.json({ error: 'invalid_request', details: body.error.flatten() }, 400);
     }
     const session = bindings.session.createSession({
-      title:           body.data.title,
-      characterCardId: body.data.characterCardId
-        ? asCharacterCardId(body.data.characterCardId)
-        : undefined,
+      title: body.data.title,
     });
     return c.json(session, 201);
   });
@@ -117,7 +113,10 @@ export function sessionsRoute(bindings: AppBindings): Hono {
     if (!body.success) {
       return c.json({ error: 'invalid_request', details: body.error.flatten() }, 400);
     }
-    const result = bindings.session.forkSession(sessionId);
+    const result = bindings.session.forkSession(
+      sessionId,
+      body.data.untilTurnId ? asTurnId(body.data.untilTurnId) : undefined,
+    );
     return c.json(result, 201);
   });
 

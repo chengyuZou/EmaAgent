@@ -25,16 +25,16 @@ function getCardOr404(bindings: AppBindings, idStr: string) {
 // ── Card CRUD schemas ──────────────────────────────────────────────────────
 
 const createCardSchema = z.object({
-  name:             z.string().min(1).max(200),
-  version:          z.string().max(50).optional(),
-  description:      z.string().max(1000).optional().nullable(),
-  systemPrompt:     z.string().min(1),
-  speechPatterns:   z.array(z.string()).optional(),
-  forbiddenTopics:  z.array(z.string()).optional(),
+  name:              z.string().min(1).max(200),
+  version:           z.string().max(50).optional(),
+  description:       z.string().max(1000).optional().nullable(),
+  systemPrompt:      z.string().min(1),
+  speechPatterns:    z.array(z.string()).optional(),
+  forbiddenTopics:   z.array(z.string()).optional(),
   emotionVocabulary: z.array(z.string()).optional(),
   motionVocabulary:  z.array(z.string()).optional(),
-  live2dModelId:    z.string().optional().nullable(),
-  voiceProfile:     z.object({
+  live2dModelId:     z.string().optional().nullable(),
+  voiceProfile:      z.object({
     refAudios: z.array(z.object({
       id:           z.string(),
       label:        z.string(),
@@ -46,26 +46,18 @@ const createCardSchema = z.object({
   }).optional(),
 });
 
+// voiceProfile is intentionally absent — voice-refs are managed via
+// /:cardId/voice-refs/* endpoints after card creation.
 const patchCardSchema = z.object({
-  name:             z.string().min(1).max(200).optional(),
-  version:          z.string().max(50).optional(),
-  description:      z.string().max(1000).optional().nullable(),
-  systemPrompt:     z.string().min(1).optional(),
-  speechPatterns:   z.array(z.string()).optional(),
-  forbiddenTopics:  z.array(z.string()).optional(),
+  name:              z.string().min(1).max(200).optional(),
+  version:           z.string().max(50).optional(),
+  description:       z.string().max(1000).optional().nullable(),
+  systemPrompt:      z.string().min(1).optional(),
+  speechPatterns:    z.array(z.string()).optional(),
+  forbiddenTopics:   z.array(z.string()).optional(),
   emotionVocabulary: z.array(z.string()).optional(),
   motionVocabulary:  z.array(z.string()).optional(),
-  live2dModelId:    z.string().optional().nullable(),
-  voiceProfile:     z.object({
-    refAudios: z.array(z.object({
-      id:           z.string(),
-      label:        z.string(),
-      refAudioPath: z.string(),
-      promptText:   z.string(),
-      promptLang:   z.string(),
-    })).optional(),
-    primaryId: z.string().nullable().optional(),
-  }).optional(),
+  live2dModelId:     z.string().optional().nullable(),
 });
 
 function extForMime(mime: string): string {
@@ -93,32 +85,39 @@ function mimeForExt(ext: string): string {
 
 /**
  * Mounted at `/api/cards`. Endpoints:
+ *
+ * Card CRUD:
+ *   GET    /                          list all cards
+ *   GET    /:id                       get one card
+ *   POST   /                          create card
+ *   PATCH  /:id                       update card metadata (not voiceProfile)
+ *   DELETE /:id                       delete card
+ *   PUT    /:id/activate              set as globally active card
+ *
+ * Voice-refs (sub-resource of card):
  *   GET    /:cardId/voice-refs            list refs (no audio bytes)
  *   POST   /:cardId/voice-refs            multipart upload — adds a new ref
  *   GET    /:cardId/voice-refs/:refId     stream audio bytes
  *   DELETE /:cardId/voice-refs/:refId     remove ref entry + file
  *   PUT    /:cardId/voice-refs/primary    body: { refId } — switch primary
  */
-export function voiceRefsRoute(bindings: AppBindings): Hono {
+export function cardsRoute(bindings: AppBindings): Hono {
   const app = new Hono();
 
   // ═══════════════════════════════════════════════════════════════════════
   // Card CRUD
   // ═══════════════════════════════════════════════════════════════════════
 
-  // ── GET / — list all cards ──────────────────────────────────────────
   app.get('/', (c) => {
     return c.json(bindings.card.list());
   });
 
-  // ── GET /:id — get one card ─────────────────────────────────────────
   app.get('/:id', (c) => {
     const card = bindings.card.get(asCharacterCardId(c.req.param('id')));
     if (!card) return c.json({ error: 'card_not_found' }, 404);
     return c.json(card);
   });
 
-  // ── POST / — create card ────────────────────────────────────────────
   app.post('/', async (c) => {
     const body = createCardSchema.safeParse(await c.req.json().catch(() => null));
     if (!body.success) {
@@ -134,23 +133,20 @@ export function voiceRefsRoute(bindings: AppBindings): Hono {
     return c.json(card, 201);
   });
 
-  // ── PATCH /:id — update card ────────────────────────────────────────
   app.patch('/:id', async (c) => {
     const id = asCharacterCardId(c.req.param('id'));
     const body = patchCardSchema.safeParse(await c.req.json().catch(() => null));
     if (!body.success) {
       return c.json({ error: 'invalid_request', details: body.error.flatten() }, 400);
     }
-    const { voiceProfile: _vp, ...rest } = body.data;
     const card = bindings.card.update(id, {
-      ...rest,
+      ...body.data,
       description:   body.data.description ?? undefined,
       live2dModelId: body.data.live2dModelId ?? undefined,
     });
     return c.json(card);
   });
 
-  // ── DELETE /:id — delete card ───────────────────────────────────────
   app.delete('/:id', (c) => {
     const id = asCharacterCardId(c.req.param('id'));
     const card = bindings.card.get(id);
@@ -160,7 +156,6 @@ export function voiceRefsRoute(bindings: AppBindings): Hono {
     return c.body(null, 204);
   });
 
-  // ── PUT /:id/activate — set as active ───────────────────────────────
   app.put('/:id/activate', (c) => {
     const id = asCharacterCardId(c.req.param('id'));
     const card = bindings.card.get(id);
@@ -173,14 +168,12 @@ export function voiceRefsRoute(bindings: AppBindings): Hono {
   // Voice-refs
   // ═══════════════════════════════════════════════════════════════════════
 
-  // ── list ─────────────────────────────────────────────────────────────────
   app.get('/:cardId/voice-refs', (c) => {
     const found = getCardOr404(bindings, c.req.param('cardId'));
     if (!found) return c.json({ error: 'card_not_found' }, 404);
     return c.json(found.card.voiceProfile);
   });
 
-  // ── upload ───────────────────────────────────────────────────────────────
   app.post('/:cardId/voice-refs', async (c) => {
     const found = getCardOr404(bindings, c.req.param('cardId'));
     if (!found) return c.json({ error: 'card_not_found' }, 404);
@@ -208,12 +201,12 @@ export function voiceRefsRoute(bindings: AppBindings): Hono {
     const setPrimary = form.get('setPrimary') === 'true'
                     || form.get('setPrimary') === '1';
 
-    const refId    = `ra_${randomUUID().slice(0, 8)}`;
-    const ext      = extForMime(file.type || mimeForExt(path.extname(label).slice(1)));
-    const cardDir  = voiceRefsForCard(found.id);
+    const refId   = `ra_${randomUUID().slice(0, 8)}`;
+    const ext     = extForMime(file.type || mimeForExt(path.extname(label).slice(1)));
+    const cardDir = voiceRefsForCard(found.id);
     fs.mkdirSync(cardDir, { recursive: true });
-    const relPath  = `${found.id as string}/${refId}.${ext}`;
-    const absPath  = path.join(cardDir, `${refId}.${ext}`);
+    const relPath = `${found.id as string}/${refId}.${ext}`;
+    const absPath = path.join(cardDir, `${refId}.${ext}`);
 
     const bytes = new Uint8Array(await file.arrayBuffer());
     await fs.promises.writeFile(absPath, bytes);
@@ -238,7 +231,6 @@ export function voiceRefsRoute(bindings: AppBindings): Hono {
     return c.json({ ref: newRef, primaryId: nextProfile.primaryId }, 201);
   });
 
-  // ── download ─────────────────────────────────────────────────────────────
   app.get('/:cardId/voice-refs/:refId', async (c) => {
     const found = getCardOr404(bindings, c.req.param('cardId'));
     if (!found) return c.json({ error: 'card_not_found' }, 404);
@@ -262,7 +254,6 @@ export function voiceRefsRoute(bindings: AppBindings): Hono {
     });
   });
 
-  // ── delete ───────────────────────────────────────────────────────────────
   app.delete('/:cardId/voice-refs/:refId', (c) => {
     const found = getCardOr404(bindings, c.req.param('cardId'));
     if (!found) return c.json({ error: 'card_not_found' }, 404);
@@ -271,7 +262,6 @@ export function voiceRefsRoute(bindings: AppBindings): Hono {
     const ref = found.card.voiceProfile.refAudios.find((r) => r.id === refId);
     if (!ref) return c.json({ error: 'ref_not_found' }, 404);
 
-    // Remove file (tolerate already-gone files)
     const absPath = resolveVoiceRefPath(ref.refAudioPath);
     try { fs.rmSync(absPath, { force: true }); } catch { /* ignore */ }
 
@@ -286,7 +276,6 @@ export function voiceRefsRoute(bindings: AppBindings): Hono {
     return c.body(null, 204);
   });
 
-  // ── set primary ──────────────────────────────────────────────────────────
   app.put('/:cardId/voice-refs/primary', async (c) => {
     const found = getCardOr404(bindings, c.req.param('cardId'));
     if (!found) return c.json({ error: 'card_not_found' }, 404);

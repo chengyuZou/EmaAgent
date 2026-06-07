@@ -11,7 +11,7 @@ import { memoryRoute } from './routes/memory.js';
 import { systemEventsRoute } from './routes/system-events.js';
 import { settingsRoute } from './routes/settings.js';
 import { transcribeRoute } from './routes/transcribe.js';
-import { voiceRefsRoute } from './routes/voice-refs.js';
+import { cardsRoute } from './routes/cards.js';
 import { diagnosticRoute } from './routes/diagnostic.js';
 import { createArtifactsRouter } from './routes/artifacts.js';
 import { createSkillsRouter }   from './routes/skills.js';
@@ -54,7 +54,7 @@ export function buildServer(bindings: AppBindings): Hono {
   app.route('/api/settings',       settingsRoute(bindings));
   app.route('/api/diagnostics',    diagnosticRoute());
   app.route('/api/transcribe',     transcribeRoute(bindings));
-  app.route('/api/cards',          voiceRefsRoute(bindings));
+  app.route('/api/cards',          cardsRoute(bindings));
   app.route('/api',                createArtifactsRouter(bindings));
   app.route('/api',                createSkillsRouter(bindings));
   app.route('/api/mcp',            createMcpRouter(bindings));
