@@ -28,9 +28,13 @@ export { Tabs }         from './Tabs.js';
 export { ScrollArea }   from './ScrollArea.js';
 
 // Form controls
-export { Field }  from './Field.js';
-export { Switch } from './Switch.js';
-export { Slider } from './Slider.js';
+export { Field }    from './Field.js';
+export { Switch }   from './Switch.js';
+export { Slider }   from './Slider.js';
+export { Checkbox } from './Checkbox.js';
+
+// Notifications
+export { Toaster, toast } from './Toast.js';
 
 // Types
 export type { ButtonProps, ButtonVariant, ButtonSize, ButtonShape } from './Button.js';
@@ -55,3 +59,5 @@ export type { ScrollAreaProps } from './ScrollArea.js';
 export type { FieldProps } from './Field.js';
 export type { SwitchProps } from './Switch.js';
 export type { SliderProps, SliderStep } from './Slider.js';
+export type { CheckboxProps } from './Checkbox.js';
+export type { ToasterProps, ToastItem, ToastVariant } from './Toast.js';
