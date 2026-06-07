@@ -123,11 +123,11 @@ async function* runTurn(
     });
     if (startResult.kind === 'abort') {
       session.failTurn(turnId, 'turn/hook_aborted', startResult.reason);
-      yield { type: 'turn_failed', turnId, code: 'turn/hook_aborted', message: startResult.reason };
+      yield { type: 'turn_failed', sessionId, turnId, code: 'turn/hook_aborted', message: startResult.reason };
       return;
     }
 
-    yield { type: 'turn_started', turnId, mode: 'agent', subMode };
+    yield { type: 'turn_started', sessionId, turnId, mode: 'agent', agentSubMode: subMode };
 
     // ── Build initial message history ─────────────────────────────────────────
     const history = session.loadHistory(sessionId);
@@ -157,7 +157,7 @@ async function* runTurn(
     });
     if (preLlm.kind === 'abort') {
       session.failTurn(turnId, 'turn/hook_aborted', preLlm.reason);
-      yield { type: 'turn_failed', turnId, code: 'turn/hook_aborted', message: preLlm.reason };
+      yield { type: 'turn_failed', sessionId, turnId, code: 'turn/hook_aborted', message: preLlm.reason };
       return;
     }
     // Splice hook-updated messages in-place (e.g. memory recall injected by a hook)
@@ -168,7 +168,7 @@ async function* runTurn(
       if (signal.aborted) break;
 
       iterations++;
-      yield { type: 'agent_iteration', n: iterations };
+      yield { type: 'agent_iteration', sessionId, n: iterations };
       executor.reset();
 
       // ── THINK: stream one LLM response ─────────────────────────────────────
@@ -197,7 +197,7 @@ async function* runTurn(
             const { cleaned, events } = emotion.processChunk(chunk.delta, turnId);
             if (cleaned) {
               textByIndex.set(chunk.blockIndex, (textByIndex.get(chunk.blockIndex) ?? '') + cleaned);
-              yield { type: 'output_text_delta', blockIndex: chunk.blockIndex, delta: cleaned };
+              yield { type: 'output_text_delta', sessionId, blockIndex: chunk.blockIndex, delta: cleaned };
             }
             for (const ev of events) yield ev;
             break;
@@ -205,12 +205,13 @@ async function* runTurn(
 
           case 'thinking_delta':
             thinkingByIndex.set(chunk.blockIndex, (thinkingByIndex.get(chunk.blockIndex) ?? '') + chunk.delta);
-            yield { type: 'reasoning_delta', blockIndex: chunk.blockIndex, delta: chunk.delta };
+            yield { type: 'reasoning_delta', sessionId, blockIndex: chunk.blockIndex, delta: chunk.delta };
             break;
 
           case 'tool_use_delta':
             yield {
               type: 'tool_call_partial',
+              sessionId,
               blockIndex: chunk.blockIndex,
               callId: chunk.callId, name: chunk.name, argsDelta: chunk.argsDelta,
             };
@@ -223,6 +224,7 @@ async function* runTurn(
             });
             yield {
               type: 'tool_call_complete',
+              sessionId,
               blockIndex: chunk.blockIndex,
               callId: chunk.callId, name: chunk.name, args: chunk.args,
             };
@@ -251,7 +253,7 @@ async function* runTurn(
       if (tail) {
         const textIdx = textByIndex.size > 0 ? Math.min(...textByIndex.keys()) : 0;
         textByIndex.set(textIdx, (textByIndex.get(textIdx) ?? '') + tail);
-        yield { type: 'output_text_delta', blockIndex: textIdx, delta: tail };
+        yield { type: 'output_text_delta', sessionId, blockIndex: textIdx, delta: tail };
       }
 
       // Reconstruct full text from indexed buffers
@@ -323,7 +325,7 @@ async function* runTurn(
 
       // ── Circuit breaker ─────────────────────────────────────────────────────
       if (iterations >= policy.maxIterations()) {
-        yield { type: 'agent_breaker_tripped', reason: `max iterations (${policy.maxIterations()}) reached` };
+        yield { type: 'agent_breaker_tripped', sessionId, reason: `max iterations (${policy.maxIterations()}) reached` };
         break;
       }
     }
@@ -342,7 +344,7 @@ async function* runTurn(
       iterations,
     });
     yield {
-      type: 'turn_completed', turnId,
+      type: 'turn_completed', sessionId, turnId,
       usage: { inputTokens: totalInput, outputTokens: totalOutput, costUsd: 0, durationMs },
     };
 
@@ -355,10 +357,10 @@ async function* runTurn(
         meta: {},
       });
       session.abortTurn(sessionId, turnId);
-      yield { type: 'turn_aborted', turnId, reason: 'user_stop' };
+      yield { type: 'turn_aborted', sessionId, turnId, reason: 'user_stop' };
     } else {
       session.failTurn(turnId, 'provider/server_error', reason);
-      yield { type: 'turn_failed', turnId, code: 'provider/server_error', message: reason };
+      yield { type: 'turn_failed', sessionId, turnId, code: 'provider/server_error', message: reason };
     }
   }
 }

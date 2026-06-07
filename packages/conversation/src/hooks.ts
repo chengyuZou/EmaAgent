@@ -1,5 +1,5 @@
 import type { HookBus } from '@ema-agent/hook';
-import type { EmaStreamEvent } from '@ema-agent/contracts';
+import type { EmaStreamEvent, SessionId } from '@ema-agent/contracts';
 import type { LlmMessage } from '@ema-agent/contracts';
 import { NarrativeUnavailableError } from '@ema-agent/narrative-client';
 import type { ConversationDeps } from './types.js';
@@ -31,6 +31,7 @@ export function registerConversationHooks(bus: HookBus, deps: ConversationDeps):
 
       try {
         const recalled = await recallNarrativeContext(deps, {
+          sessionId: ctx.sessionId,
           userInput,
           signal,
           emit: ctx.emit,
@@ -71,6 +72,7 @@ export function registerConversationHooks(bus: HookBus, deps: ConversationDeps):
 async function recallNarrativeContext(
   deps: ConversationDeps,
   args: {
+    sessionId: string;
     userInput: string;
     signal?: AbortSignal;
     emit?: (event: EmaStreamEvent) => void;
@@ -78,7 +80,7 @@ async function recallNarrativeContext(
 ): Promise<NarrativeRecallContext | null> {
   const routeResp = await deps.narrative.route(args.userInput, args.signal);
   const routeOrder = Object.keys(routeResp.routes);
-  args.emit?.({ type: 'narrative_route_resolved', timelines: routeOrder });
+  args.emit?.({ type: 'narrative_route_resolved', sessionId: args.sessionId as SessionId, timelines: routeOrder });
 
   if (routeOrder.length === 0) return null;
 
@@ -92,6 +94,7 @@ async function recallNarrativeContext(
         const text = await deps.narrative.queryOne(timeline, query, args.signal);
         args.emit?.({
           type: 'narrative_timeline_complete',
+          sessionId: args.sessionId as SessionId,
           timeline,
           charCount: text.length,
           snippet: text.length > 100 ? text.slice(0, 100) + '…' : text,

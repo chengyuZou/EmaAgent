@@ -53,11 +53,11 @@ async function* runTurn(
     });
     if (startResult.kind === 'abort') {
       session.failTurn(turnId, 'turn/hook_aborted', startResult.reason);
-      yield { type: 'turn_failed', turnId, code: 'turn/hook_aborted', message: startResult.reason };
+      yield { type: 'turn_failed', sessionId: input.sessionId, turnId, code: 'turn/hook_aborted', message: startResult.reason };
       return;
     }
 
-    yield { type: 'turn_started', turnId, mode };
+    yield { type: 'turn_started', sessionId: input.sessionId, turnId, mode };
 
     // ── Provider resolution (early — needed for content-part validation) ─────
     const binding = deps.modelBindings.get(mode as 'chat' | 'narrative');
@@ -68,7 +68,7 @@ async function* runTurn(
 
     if (!providerId || !resolvedModel) {
       session.failTurn(turnId, 'provider/not_configured', 'No LLM provider configured for this mode');
-      yield { type: 'turn_failed', turnId, code: 'provider/not_configured', message: 'No LLM provider configured for this mode' };
+      yield { type: 'turn_failed', sessionId: input.sessionId, turnId, code: 'provider/not_configured', message: 'No LLM provider configured for this mode' };
       return;
     }
 
@@ -128,7 +128,7 @@ async function* runTurn(
 
     if (llmHookResult.kind === 'abort') {
       session.failTurn(turnId, 'turn/hook_aborted', llmHookResult.reason);
-      yield { type: 'turn_failed', turnId, code: 'turn/hook_aborted', message: llmHookResult.reason };
+      yield { type: 'turn_failed', sessionId: input.sessionId, turnId, code: 'turn/hook_aborted', message: llmHookResult.reason };
       return;
     }
     const finalMessages = llmHookResult.payload.messages;
@@ -153,19 +153,19 @@ async function* runTurn(
           lastTextBlockIndex = chunk.blockIndex;
           if (cleaned) {
             textByIndex.set(chunk.blockIndex, (textByIndex.get(chunk.blockIndex) ?? '') + cleaned);
-            yield { type: 'output_text_delta', blockIndex: chunk.blockIndex, delta: cleaned };
+            yield { type: 'output_text_delta', sessionId: input.sessionId, blockIndex: chunk.blockIndex, delta: cleaned };
           }
           for (const ev of events) yield ev;
           break;
         }
         case 'thinking_delta':
           thinkingByIndex.set(chunk.blockIndex, (thinkingByIndex.get(chunk.blockIndex) ?? '') + chunk.delta);
-          yield { type: 'reasoning_delta', blockIndex: chunk.blockIndex, delta: chunk.delta };
+          yield { type: 'reasoning_delta', sessionId: input.sessionId, blockIndex: chunk.blockIndex, delta: chunk.delta };
           break;
         case 'thinking_complete':
           thinkingSignatureByIndex.set(chunk.blockIndex, chunk.signature);
           completedThinkingIndexes.add(chunk.blockIndex);
-          yield { type: 'reasoning_complete', blockIndex: chunk.blockIndex };
+          yield { type: 'reasoning_complete', sessionId: input.sessionId, blockIndex: chunk.blockIndex };
           break;
         case 'usage':
           inputTokens = chunk.inputTokens;
@@ -181,7 +181,7 @@ async function* runTurn(
     for (const blockIndex of thinkingByIndex.keys()) {
       if (!completedThinkingIndexes.has(blockIndex)) {
         completedThinkingIndexes.add(blockIndex);
-        yield { type: 'reasoning_complete', blockIndex };
+        yield { type: 'reasoning_complete', sessionId: input.sessionId, blockIndex };
       }
     }
 
@@ -194,7 +194,7 @@ async function* runTurn(
     if (tail) {
       fullText += tail;
       textByIndex.set(lastTextBlockIndex, (textByIndex.get(lastTextBlockIndex) ?? '') + tail);
-      yield { type: 'output_text_delta', blockIndex: lastTextBlockIndex, delta: tail };
+      yield { type: 'output_text_delta', sessionId: input.sessionId, blockIndex: lastTextBlockIndex, delta: tail };
     }
 
     // ── Post-stream hooks + persist ───────────────────────────────────────────
@@ -236,7 +236,7 @@ async function* runTurn(
     });
 
     session.completeTurn(turnId, { usageInputTokens: inputTokens, usageOutputTokens: outputTokens });
-    yield { type: 'turn_completed', turnId, usage: { inputTokens, outputTokens, costUsd: 0, durationMs } };
+    yield { type: 'turn_completed', sessionId: input.sessionId, turnId, usage: { inputTokens, outputTokens, costUsd: 0, durationMs } };
 
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
@@ -252,10 +252,10 @@ async function* runTurn(
         meta: {},
       });
       session.abortTurn(input.sessionId, turnId);
-      yield { type: 'turn_aborted', turnId, reason: 'user_stop' };
+      yield { type: 'turn_aborted', sessionId: input.sessionId, turnId, reason: 'user_stop' };
     } else {
       session.failTurn(turnId, 'provider/server_error', reason);
-      yield { type: 'turn_failed', turnId, code: 'provider/server_error', message: reason };
+      yield { type: 'turn_failed', sessionId: input.sessionId, turnId, code: 'provider/server_error', message: reason };
     }
   }
 }

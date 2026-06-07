@@ -207,7 +207,7 @@ export class Orchestrator {
 
         if (!providerId || !model) {
           return (async function* () {
-            yield { type: 'turn_failed' as const, turnId: turn.id, code: 'provider/not_configured', message: 'No LLM provider configured for agent mode' };
+            yield { type: 'turn_failed' as const, sessionId, turnId: turn.id, code: 'provider/not_configured', message: 'No LLM provider configured for agent mode' };
           })();
         }
 

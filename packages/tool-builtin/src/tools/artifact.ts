@@ -76,7 +76,7 @@ After writing, an artifact_upserted event opens WorkspacePane automatically.`,
         meta:      input.meta,
       });
 
-      ctx.emit?.({ type: 'artifact_upserted', artifact } satisfies EmaStreamEvent);
+      ctx.emit?.({ type: 'artifact_upserted', sessionId: asSessionId(ctx.sessionId), artifact } satisfies EmaStreamEvent);
 
       if (ctx.artifactStore.countWarning(asSessionId(ctx.sessionId))) {
         ctx.emit?.({
@@ -113,7 +113,7 @@ After writing, an artifact_upserted event opens WorkspacePane automatically.`,
       artifacts.push(artifact);
     }
 
-    ctx.emit?.({ type: 'artifact_upserted', artifact } satisfies EmaStreamEvent);
+    ctx.emit?.({ type: 'artifact_upserted', sessionId: asSessionId(ctx.sessionId), artifact } satisfies EmaStreamEvent);
     return artifact;
   },
 });

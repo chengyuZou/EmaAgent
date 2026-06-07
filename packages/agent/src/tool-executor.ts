@@ -100,7 +100,7 @@ export class TurnToolExecutor {
         blockIndex, id, name, args, isConcurrencySafe: true, done: true,
         result: { type: 'tool_result', toolUseId: id, content: msg, isError: true },
       });
-      pushEv({ type: 'tool_result', callId: id, error: { code: 'policy/denied', message: msg } });
+      pushEv({ type: 'tool_result', sessionId: this.opts.sessionId, callId: id, error: { code: 'policy/denied', message: msg } });
       return;
     }
 
@@ -110,7 +110,7 @@ export class TurnToolExecutor {
         blockIndex, id, name, args, isConcurrencySafe: true, done: true,
         result: { type: 'tool_result', toolUseId: id, content: msg, isError: true },
       });
-      pushEv({ type: 'tool_result', callId: id, error: { code: 'tool/not_found', message: msg } });
+      pushEv({ type: 'tool_result', sessionId: this.opts.sessionId, callId: id, error: { code: 'tool/not_found', message: msg } });
       return;
     }
 
@@ -188,7 +188,7 @@ export class TurnToolExecutor {
       if (!outcome.granted) {
         const reason = `Permission denied: ${outcome.reason}`;
         track.result = { type: 'tool_result', toolUseId: id, content: reason, isError: true };
-        pushEv({ type: 'tool_result', callId: id, error: { code: 'permission/denied', message: reason } });
+        pushEv({ type: 'tool_result', sessionId: this.opts.sessionId, callId: id, error: { code: 'permission/denied', message: reason } });
         await hooks.trigger('onToolFailure', {
           turnId, sessionId,
           payload: { callId: id, name, error: reason },
@@ -205,7 +205,7 @@ export class TurnToolExecutor {
         output = await tools.dispatch(name, args, toolCtx);
         // Push result event BEFORE await-ing hooks so the engine can yield it
         // immediately. track.done is set in finally after hooks complete.
-        pushEv({ type: 'tool_result', callId: id, output });
+        pushEv({ type: 'tool_result', sessionId: this.opts.sessionId, callId: id, output });
         await hooks.trigger('afterToolUse', {
           turnId, sessionId,
           payload: { callId: id, name, output },
@@ -214,7 +214,7 @@ export class TurnToolExecutor {
       } catch (err) {
         isError = true;
         output  = (err as Error).message;
-        pushEv({ type: 'tool_result', callId: id, error: { code: 'tool/error', message: output as string } });
+        pushEv({ type: 'tool_result', sessionId: this.opts.sessionId, callId: id, error: { code: 'tool/error', message: output as string } });
         await hooks.trigger('onToolFailure', {
           turnId, sessionId,
           payload: { callId: id, name, error: err },
@@ -238,7 +238,7 @@ export class TurnToolExecutor {
         if (!track.result) {
           const msg = 'Tool execution failed unexpectedly';
           track.result = { type: 'tool_result', toolUseId: id, content: msg, isError: true };
-          pushEv({ type: 'tool_result', callId: id, error: { code: 'tool/error', message: msg } });
+          pushEv({ type: 'tool_result', sessionId: this.opts.sessionId, callId: id, error: { code: 'tool/error', message: msg } });
         }
       }
       track.done = true;

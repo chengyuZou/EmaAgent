@@ -7,7 +7,7 @@
 
 import { PermissionEngine } from '@ema-agent/permission';
 import type { AskPermissionFn } from '@ema-agent/permission';
-import type { EmaStreamEvent } from '@ema-agent/contracts';
+import type { EmaStreamEvent, SessionId } from '@ema-agent/contracts';
 import { PermissionPromptRegistry } from '../permissions/registry.js';
 import { AskUserRegistry } from '../ask-user/registry.js';
 import type { SettingsRepo } from '@ema-agent/storage';
@@ -72,15 +72,17 @@ export function buildPermissionSubsystem(settingsRepo: SettingsRepo): Permission
         turnId:    args.turnId,
       });
       args.emit({
-        type:     'permission_required',
+        type:      'permission_required',
+        sessionId: args.sessionId as SessionId,
         promptId,
-        tool:     prompt.toolName,
-        args:     prompt.input,
-        hint:     prompt.gateReason ?? '',
+        tool:      prompt.toolName,
+        args:      prompt.input,
+        hint:      prompt.gateReason ?? '',
       });
       const response = await promise;
       args.emit({
-        type:     'permission_resolved',
+        type:      'permission_resolved',
+        sessionId: args.sessionId as SessionId,
         promptId,
         decision: response.action === 'allow'
                 || response.action === 'allow_session'

@@ -62,12 +62,9 @@ function isTerminalTurnEvent(event: EmaStreamEvent): boolean {
 function enrichTurnEvent(
   event: EmaStreamEvent,
   sessionId: string,
-  turnId: TurnId,
+  _turnId: TurnId,
 ): EmaStreamEvent {
-  if ('sessionId' in event) return event;
-  if (event.type === 'ask_user_required') {
-    return { ...event, sessionId, turnId } as EmaStreamEvent;
-  }
+  if ('sessionId' in event && (event as Record<string, unknown>).sessionId !== undefined) return event;
   return { ...event, sessionId } as EmaStreamEvent;
 }
 

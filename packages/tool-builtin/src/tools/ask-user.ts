@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { buildTool } from '@ema-agent/tool';
 import type { ToolExecutionContext } from '@ema-agent/tool';
-import type { AskUserQuestionSpec, EmaStreamEvent } from '@ema-agent/contracts';
+import type { AskUserQuestionSpec, EmaStreamEvent, SessionId, TurnId } from '@ema-agent/contracts';
 
 // ── Input schema ──────────────────────────────────────────────────────────────
 
@@ -82,14 +82,14 @@ export const askUserTool = buildTool<AskUserInput, AskUserResult>({
           options:     q.options,
           multiSelect: q.multiSelect,
         }));
-        ctx.emit({ type: 'ask_user_required', promptId, questions: specs });
+        ctx.emit({ type: 'ask_user_required', sessionId: ctx.sessionId as SessionId, turnId: ctx.turnId as TurnId, promptId, questions: specs });
         try {
           const result = await askFn(promptId, specs);
-          ctx.emit({ type: 'ask_user_resolved', promptId, answers: result.answers });
+          ctx.emit({ type: 'ask_user_resolved', sessionId: ctx.sessionId as SessionId, promptId, answers: result.answers });
           return result;
         } catch (err: unknown) {
           // Surface a resolved event so the frontend can clear the modal even on abort.
-          ctx.emit({ type: 'ask_user_resolved', promptId, answers: {} });
+          ctx.emit({ type: 'ask_user_resolved', sessionId: ctx.sessionId as SessionId, promptId, answers: {} });
           throw err;
         }
       }
