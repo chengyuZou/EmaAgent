@@ -68,9 +68,10 @@ export function createMouseEyeTrackPlugin(
   let currentX = 0;
   let currentY = 0;
 
-  const plugin = ((ctx) => {
-    bind();
+  // Bind once at creation time — no need to call every frame.
+  bind();
 
+  const plugin = ((ctx) => {
     if (!readEnabled()) {
       targetX = 0;
       targetY = 0;

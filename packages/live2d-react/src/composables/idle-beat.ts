@@ -23,7 +23,7 @@ export function createIdleBeatPlugin(
   let elapsed = 0;
 
   return (ctx) => {
-    if (!readEnabled()) { elapsed = 0; return; }
+    if (!readEnabled()) return;
 
     elapsed += ctx.timeDelta;
 
