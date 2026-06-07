@@ -8,12 +8,14 @@ import type { AppBindings } from './bindings.js';
 /**
  * Register every package's hooks on the shared HookBus.
  *
- * Order matters because hooks run in ascending priority order:
+ * beforeLlm hooks (run in priority order before each LLM call):
+ *   priority  5   narrative:recall       (RAG recall for narrative mode)
+ *   priority 10   prompts:buildSystem    (build + prepend system message)
+ *   priority 20   memory:beforeLlm       (compaction check + recall injection)
+ *   priority 50   skill:inject-prompts   (append active skill bodies to system)
  *
- *   priority 5   conversation:narrative (narrative-mode RAG recall)
- *   priority 10  prompts:buildSystem    (build + prepend system message)
- *   priority 20  memory:beforeLlm       (compaction + recall injection)
- *   priority 50  memory:onTurnEnd       (extract pending fragments)
+ * onTurnEnd hooks (run after the turn stream closes):
+ *   priority 50   memory:onTurnEnd       (append pending fragments, maybe enqueue extraction)
  *
  * Each register function returns its own unregister; the aggregate returns a
  * single function that unregisters ALL of them — handy for tests and hot

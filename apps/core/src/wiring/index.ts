@@ -115,6 +115,10 @@ export function startBackgroundWork(bindings: AppBindings): BackgroundHandle {
       catch (err) {
         console.warn('[memory] drain() failed during shutdown:', err);
       }
+      try { await bindings.mcpRegistry.disconnectAll(); }
+      catch (err) {
+        console.warn('[mcp] disconnectAll() failed during shutdown:', err);
+      }
     },
   };
 }
