@@ -17,7 +17,7 @@ import {
 } from '@ema-agent/contracts';
 
 import type { CharacterCardStore, CharacterVoiceProfile } from '@ema-agent/character-card';
-import { resolveVoiceRefPath } from '../storage-locations/index.js';
+import { resolveVoiceRefPath } from '../../storage-locations/index.js';
 
 // ── Provider config builder ─────────────────────────────────────────────────
 
@@ -34,10 +34,10 @@ export function buildTtsProviderConfig(row: ProviderConfigRow): TtsProviderConfi
   if (def.requiresCredentials !== false && !row.api_key_plain) return null;
 
   return {
-    id:       row.id,
+    id:      row.id,
     protocol,
-    apiKey:   row.api_key_plain ?? '',
-    baseUrl:  row.base_url ?? def.defaultBaseUrl ?? '',
+    apiKey:  row.api_key_plain ?? '',
+    baseUrl: row.base_url ?? def.defaultBaseUrl ?? '',
   };
 }
 
@@ -54,7 +54,7 @@ function loadTtsProviderConfigs(profileDb: Database): TtsProviderConfig[] {
 // ── Voice URI cache ─────────────────────────────────────────────────────────
 //
 // Persisted in profile.db → settings table. Key format:
-//   tts.voiceUri.<cardId>.<providerConfigId>
+//   tts.voiceUri.<cardId>.<providerConfigId>.<model>
 // Value is the provider-specific voice URI string.
 //
 // This prevents cross-provider URI pollution: switching a character from
@@ -122,12 +122,12 @@ export function resolveVoice(
  * On success, writes the URI to the cache so subsequent turns skip upload.
  */
 export async function ensureVoiceUri(
-  voice:             TtsVoiceRef,
-  adapter:           TtsAdapter,
-  model:             string,
-  cardId:            CharacterCardId,
-  providerConfigId:  string,
-  cache:             VoiceUriCache,
+  voice:            TtsVoiceRef,
+  adapter:          TtsAdapter,
+  model:            string,
+  cardId:           CharacterCardId,
+  providerConfigId: string,
+  cache:            VoiceUriCache,
 ): Promise<TtsVoiceRef> {
   if (voice.voiceUri) return voice;
 
@@ -181,4 +181,3 @@ export function buildTtsClient(args: BuildTtsClientArgs): TtsClient {
 export function reloadTtsClient(client: TtsClient, profileDb: Database): void {
   client.reload(loadTtsProviderConfigs(profileDb));
 }
-

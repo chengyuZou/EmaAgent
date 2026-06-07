@@ -4,8 +4,8 @@ import { ModelBindingsRepo } from '@ema-agent/storage';
 import type { BindingModule } from '@ema-agent/storage';
 import type { AppBindings } from '../wiring.js';
 import { configureBridge } from '../wiring.js';
-import { reloadTtsClient } from '../wiring/tts.js';
-import { reloadSttClient } from '../wiring/stt.js';
+import { reloadTtsClient } from '../wiring/providers/tts.js';
+import { reloadSttClient } from '../wiring/providers/stt.js';
 
 // Keep in sync with BindingModule type and migration 001 CHECK constraint.
 const BINDING_MODULES = [

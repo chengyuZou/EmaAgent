@@ -9,7 +9,7 @@ import { AgentEngine }        from '@ema-agent/agent';
 import { buildSystemPrompt }  from '@ema-agent/prompts';
 import { TtsCoordinator }     from '@ema-agent/tts';
 import { SettingsRepo } from '@ema-agent/storage';
-import { resolveVoice, ensureVoiceUri, VoiceUriCache } from '../wiring/tts.js';
+import { resolveVoice, ensureVoiceUri, VoiceUriCache } from '../wiring/providers/tts.js';
 import type { Turn }           from '@ema-agent/session';
 
 export interface TurnResult {

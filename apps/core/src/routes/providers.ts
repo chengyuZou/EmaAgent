@@ -16,8 +16,8 @@ import {
   buildRerankProviderConfig,
   configureBridge,
 } from '../wiring.js';
-import { reloadTtsClient } from '../wiring/tts.js';
-import { reloadSttClient } from '../wiring/stt.js';
+import { reloadTtsClient } from '../wiring/providers/tts.js';
+import { reloadSttClient } from '../wiring/providers/stt.js';
 
 // ── Response shaping ──────────────────────────────────────────────────────────
 

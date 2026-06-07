@@ -18,10 +18,10 @@ export function buildSttProviderConfig(row: ProviderConfigRow): SttProviderConfi
   if (def.requiresCredentials !== false && !row.api_key_plain) return null;
 
   return {
-    id:       row.id,
+    id:      row.id,
     protocol,
-    apiKey:   row.api_key_plain ?? '',
-    baseUrl:  row.base_url ?? def.defaultBaseUrl ?? '',
+    apiKey:  row.api_key_plain ?? '',
+    baseUrl: row.base_url ?? def.defaultBaseUrl ?? '',
   };
 }
 

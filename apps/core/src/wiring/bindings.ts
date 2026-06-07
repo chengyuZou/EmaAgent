@@ -21,9 +21,11 @@ import { NarrativeClient } from '@ema-agent/narrative-client';
 import { CharacterCardStore } from '@ema-agent/character-card';
 import { TtsClient, FsAudioArchive, type AudioArchive } from '@ema-agent/tts';
 import { SttClient }     from '@ema-agent/stt';
-import { buildTtsClient } from './tts.js';
-import { buildSttClient } from './stt.js';
-import { loadLlmConfigs, loadEmbedConfigs, loadRerankConfigs } from './llm-providers.js';
+import { buildTtsClient } from './providers/tts.js';
+import { buildSttClient } from './providers/stt.js';
+import { loadLlmConfigs }   from './providers/llm.js';
+import { loadEmbedConfigs }  from './providers/embed.js';
+import { loadRerankConfigs } from './providers/rerank.js';
 import { buildPermissionSubsystem } from './permission-bootstrap.js';
 import { SessionStore }  from '@ema-agent/session';
 import { EmotionEngine } from '@ema-agent/emotion';
@@ -304,8 +306,6 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
 }
 
 // ── Re-exports for routes that import directly from this module ───────────────
-export {
-  buildLlmProviderConfig,
-  buildEmbedProviderConfig,
-  buildRerankProviderConfig,
-} from './llm-providers.js';
+export { buildLlmProviderConfig }   from './providers/llm.js';
+export { buildEmbedProviderConfig } from './providers/embed.js';
+export { buildRerankProviderConfig } from './providers/rerank.js';
