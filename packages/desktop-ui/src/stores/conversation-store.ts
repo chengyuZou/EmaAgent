@@ -4,6 +4,7 @@ import { sseConsumer } from '../lib/sse-consumer.js';
 import { sessionsApi } from '../api/sessions.js';
 import { turnsApi } from '../api/turns.js';
 import { handleTtsChunk, handleTtsSentenceComplete } from '../lib/tts-playback.js';
+import { tauriBridge } from '../lib/tauri-bridge.js';
 import { useSessionStore } from './session-store.js';
 import { useDecisionStore } from './decision-store.js';
 import type {
@@ -13,6 +14,7 @@ import type {
   TurnMode,
   AgentSubMode,
   EmaStreamEvent,
+  EmotionState,
   UsageSummary,
   AssistantBlock,
   MessageBlocks,
@@ -141,11 +143,18 @@ function dispatchSseEvent(
   cb: StreamCallbacks,
 ): void {
   switch (event.type) {
-    case 'turn_started':
+    case 'turn_started': {
       cb.beginStream(sessionId, event.turnId);
-      // Update which session owns TTS/Live2D output
-      useConversationStore.setState({ ttsOwnerSessionId: sessionId });
+      const prev = useConversationStore.getState().ttsOwnerSessionId;
+      if ((prev as string) !== (sessionId as string)) {
+        useConversationStore.setState({ ttsOwnerSessionId: sessionId });
+        // Restore the new owner's last known emotion so Live2D doesn't show the
+        // previous session's expression after switching.
+        const saved = useConversationStore.getState().emotionStateMap.get(sessionId as string);
+        if (saved) void tauriBridge.emit('stage:emotion-changed', saved);
+      }
       break;
+    }
 
     case 'output_text_delta':
       cb.appendDelta(sessionId, 'text', event.delta);
@@ -217,9 +226,26 @@ function dispatchSseEvent(
       console.warn('[sse] system_warning:', event.level, event.message);
       break;
 
-    // Handled by system-sse / other stores; or reserved for V1.5
+    case 'emotion_changed': {
+      // Cache per-session so we can restore Live2D expression on ttsOwner switch.
+      useConversationStore.setState((s) => {
+        const m = new Map(s.emotionStateMap);
+        m.set(event.sessionId as string, event.state);
+        return { emotionStateMap: m };
+      });
+      if ((event.sessionId as string) === (useConversationStore.getState().ttsOwnerSessionId as string)) {
+        void tauriBridge.emit('stage:emotion-changed', event.state);
+      }
+      break;
+    }
+
     case 'stage_cue':
-    case 'emotion_changed':
+      if ((event.sessionId as string) === (useConversationStore.getState().ttsOwnerSessionId as string)) {
+        void tauriBridge.emit('stage:cue', event.cue);
+      }
+      break;
+
+    // Reserved for V1.5
     case 'artifact_upserted':
     case 'artifact_applied':
     case 'narrative_route_resolved':
@@ -241,6 +267,8 @@ function dispatchSseEvent(
 export interface ConversationStoreState {
   viewedSessionId:   SessionId | null;
   ttsOwnerSessionId: SessionId | null;
+  /** Last known emotion state per session — restored when ttsOwner switches. */
+  emotionStateMap:   Map<string, EmotionState>;
   messages:          Map<string, ChatHistoryItem[]>;
   streamingMap:      Map<string, StreamingAssistantMessage>;
   stopReasonMap:     Map<string, string>;
@@ -266,6 +294,7 @@ export interface ConversationStoreState {
 export const useConversationStore = create<ConversationStoreState>((set, get) => ({
   viewedSessionId:   null,
   ttsOwnerSessionId: null,
+  emotionStateMap:   new Map(),
   messages:          new Map(),
   streamingMap:      new Map(),
   stopReasonMap:     new Map(),
@@ -395,7 +424,9 @@ export const useConversationStore = create<ConversationStoreState>((set, get) =>
       stops.delete(id as string);
       const drafts = new Map(s.draftMap);
       drafts.delete(id as string);
-      return { messages: msgs, streamingMap: streaming, stopReasonMap: stops, draftMap: drafts };
+      const emotions = new Map(s.emotionStateMap);
+      emotions.delete(id as string);
+      return { messages: msgs, streamingMap: streaming, stopReasonMap: stops, draftMap: drafts, emotionStateMap: emotions };
     });
   },
 
@@ -436,7 +467,7 @@ export const useConversationStore = create<ConversationStoreState>((set, get) =>
         const streaming = new Map(s.streamingMap);
         streaming.set(sessionId as string, {
           ...sm,
-          slices: [...sm.slices, { type: 'thinking', text: delta }],
+          slices: appendThinkingSlice(sm.slices, delta),
         });
         return { streamingMap: streaming };
       }
@@ -559,4 +590,12 @@ function appendTextSlice(slices: AssistantSlice[], delta: string): AssistantSlic
     return [...slices.slice(0, -1), { ...last, text: (last.text ?? '') + delta }];
   }
   return [...slices, { type: 'text', text: delta }];
+}
+
+function appendThinkingSlice(slices: AssistantSlice[], delta: string): AssistantSlice[] {
+  const last = slices[slices.length - 1];
+  if (last?.type === 'thinking') {
+    return [...slices.slice(0, -1), { ...last, text: (last.text ?? '') + delta }];
+  }
+  return [...slices, { type: 'thinking', text: delta }];
 }

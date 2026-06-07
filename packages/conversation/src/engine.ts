@@ -148,7 +148,7 @@ async function* runTurn(
     for await (const chunk of stream) {
       switch (chunk.type) {
         case 'text_delta': {
-          const { cleaned, events } = emotion.processChunk(chunk.delta, turnId);
+          const { cleaned, events } = emotion.processChunk(chunk.delta, turnId, input.sessionId);
           fullText += cleaned;
           lastTextBlockIndex = chunk.blockIndex;
           if (cleaned) {
@@ -190,7 +190,7 @@ async function* runTurn(
     llmStreamDone = true;
 
     // Flush scanner tail (model may have stopped mid-tag)
-    const { cleaned: tail } = emotion.flush(turnId);
+    const { cleaned: tail } = emotion.flush(turnId, input.sessionId);
     if (tail) {
       fullText += tail;
       textByIndex.set(lastTextBlockIndex, (textByIndex.get(lastTextBlockIndex) ?? '') + tail);

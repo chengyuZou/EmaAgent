@@ -194,7 +194,7 @@ async function* runTurn(
 
         switch (chunk.type) {
           case 'text_delta': {
-            const { cleaned, events } = emotion.processChunk(chunk.delta, turnId);
+            const { cleaned, events } = emotion.processChunk(chunk.delta, turnId, sessionId);
             if (cleaned) {
               textByIndex.set(chunk.blockIndex, (textByIndex.get(chunk.blockIndex) ?? '') + cleaned);
               yield { type: 'output_text_delta', sessionId, blockIndex: chunk.blockIndex, delta: cleaned };
@@ -249,7 +249,7 @@ async function* runTurn(
       // Use the actual blockIndex for text: OpenAI always emits text at 1 (so
       // thinking 0 < text 1 < tools 1000+), Anthropic without thinking uses 0.
       // Reading from textByIndex avoids hardcoding adapter-specific constants.
-      const { cleaned: tail } = emotion.flush(turnId);
+      const { cleaned: tail } = emotion.flush(turnId, sessionId);
       if (tail) {
         const textIdx = textByIndex.size > 0 ? Math.min(...textByIndex.keys()) : 0;
         textByIndex.set(textIdx, (textByIndex.get(textIdx) ?? '') + tail);

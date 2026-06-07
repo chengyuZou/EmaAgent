@@ -1,15 +1,18 @@
 /**
- * System SSE — subscribe to /api/system/events for global events
- * (permission_required, emotion_changed, stage_cue, etc.).
+ * System SSE — subscribe to /api/system/events for global events.
  *
- * This is SEPARATE from the per-turn SSE stream in chat-store. System events
- * are broadcast to all windows, not scoped to a single turn.
+ * System bus carries: character_card_switched, provider_health_changed,
+ * memory pipeline telemetry, background task events.
+ *
+ * NOT on the system bus (handled by per-turn SSE in conversation-store):
+ *   permission_required / permission_resolved
+ *   ask_user_required / ask_user_resolved
+ *   emotion_changed / stage_cue
+ *   tts_chunk / tts_sentence_complete
  */
 import { sseConsumer, type SseHandle } from './sse-consumer.js';
 import { sidecarClient } from '../api/sidecar-client.js';
 import { tauriBridge } from './tauri-bridge.js';
-import { useDecisionStore } from '../stores/decision-store.js';
-import { useConversationStore } from '../stores/conversation-store.js';
 import type { EmaStreamEvent } from '@ema-agent/contracts';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -21,6 +24,15 @@ export interface SystemSseListener {
 // ── Singleton ─────────────────────────────────────────────────────────────────
 
 let _handle: SseHandle | null = null;
+let _reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+
+function scheduleReconnect(delayMs: number): void {
+  if (_reconnectTimer !== null) clearTimeout(_reconnectTimer);
+  _reconnectTimer = setTimeout(() => {
+    _reconnectTimer = null;
+    void startSystemSse();
+  }, delayMs);
+}
 
 /**
  * Start listening to /api/system/events.
@@ -38,18 +50,21 @@ export async function startSystemSse(): Promise<void> {
     onError: (err) => {
       console.error('[system-sse] error, will retry in 5s', err.message);
       _handle = null;
-      setTimeout(() => { void startSystemSse(); }, 5000);
+      scheduleReconnect(5000);
     },
     onComplete: () => {
-      // System stream should never end; if it does, reconnect
       _handle = null;
-      setTimeout(() => { void startSystemSse(); }, 3000);
+      scheduleReconnect(3000);
     },
   });
 }
 
-/** Stop the system SSE subscription. */
+/** Stop the system SSE subscription and cancel any pending reconnect. */
 export function stopSystemSse(): void {
+  if (_reconnectTimer !== null) {
+    clearTimeout(_reconnectTimer);
+    _reconnectTimer = null;
+  }
   if (_handle) {
     _handle.stop();
     _handle = null;
@@ -60,69 +75,42 @@ export function stopSystemSse(): void {
 
 function dispatchSystemEvent(event: EmaStreamEvent): void {
   switch (event.type) {
-    // ── Decision prompts ───────────────────────────────────────────────────
-    case 'permission_required':
-      useDecisionStore.getState().push({
-        kind:                    'permission',
-        promptId:                event.promptId,
-        toolName:                event.tool,
-        args:                    event.args,
-        hint:                    event.hint,
-        // Prefer the backend-generated humanDescription (tool-explainer LLM,
-        // V1.5). Fall back to `hint` so the modal is never blank in V1.
-        humanDescription:        event.humanDescription ?? event.hint,
-        humanDescriptionPending: event.humanDescription === undefined,
-      });
+    // ── Character card ─────────────────────────────────────────────────────
+    case 'character_card_switched':
+      void tauriBridge.emit('card:switched', { cardId: event.cardId, name: event.name });
       break;
 
-    case 'ask_user_required':
-      useDecisionStore.getState().push({
-        kind:             'ask_user',
-        promptId:         event.promptId,
-        turnId:           event.turnId,
-        questions:        event.questions,
-        humanDescription: event.humanDescription,
-      });
+    // ── Provider health ────────────────────────────────────────────────────
+    case 'provider_health_changed':
+      // Settings store refreshes on this event (V1.5 — polling covers V1).
       break;
 
-    case 'ask_user_resolved':
-      // Backend confirms the answer arrived; if the modal is still showing
-      // this promptId for any reason (e.g. timeout retry), clear it.
-      useDecisionStore.getState().dismiss(event.promptId);
-      break;
-
-    // ── Live2D / Stage → forwarded via Tauri events only for the TTS-owning session ──
-    case 'emotion_changed':
-      if (event.sessionId === (useConversationStore.getState().ttsOwnerSessionId as string)) {
-        void tauriBridge.emit('stage:emotion-changed', event.state);
-      }
-      break;
-
-    case 'stage_cue':
-      if (event.sessionId === (useConversationStore.getState().ttsOwnerSessionId as string)) {
-        void tauriBridge.emit('stage:cue', event.cue);
-      }
-      break;
-
-    // ── Memory observability — ignored here; ContextWindowPopover reads store state ──
+    // ── Memory observability ───────────────────────────────────────────────
     case 'memory_recall_evidence':
+    case 'memory_compaction_started':
+    case 'memory_compaction_completed':
+    case 'memory_compaction_failed':
+    case 'memory_extraction_started':
+    case 'memory_extraction_completed':
+    case 'memory_extraction_failed':
+    case 'memory_consolidation_started':
+    case 'memory_consolidation_completed':
+    case 'memory_consolidation_failed':
+    case 'memory_maintenance_completed':
+    case 'memory_maintenance_failed':
+    case 'memory_node_merged':
+    case 'memory_index_rebuilt':
+    case 'memory_task_started':
+    case 'memory_task_completed':
+    case 'memory_task_failed':
       break;
 
     // ── Artifacts ──────────────────────────────────────────────────────────
     case 'artifact_upserted':
     case 'artifact_applied':
-      // V1.5: push to artifact store
-      break;
-
-    // ── Turn lifecycle (system-level) — ignore, handled per-turn ──────────
-    case 'turn_started':
-    case 'turn_completed':
-    case 'turn_failed':
-    case 'turn_aborted':
       break;
 
     default:
-      // Unknown events silently ignored
       break;
   }
 }

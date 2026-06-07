@@ -94,6 +94,11 @@ export const useDecisionStore = create<DecisionStoreState>((set, get) => ({
 
   push(prompt) {
     const state = get();
+    // Deduplicate — backend may occasionally emit the same promptId twice
+    // (e.g. permission_required arriving on both per-turn and system SSE).
+    if (state.current?.promptId === prompt.promptId) return;
+    if (state.queue.some((p) => p.promptId === prompt.promptId)) return;
+
     if (!state.current) {
       set({ current: prompt });
     } else {

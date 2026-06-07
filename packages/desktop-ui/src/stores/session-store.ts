@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { sessionsApi, type SessionWire } from '../api/sessions.js';
+import { useConversationStore } from './conversation-store.js';
 import type { SessionId, TurnMode, AgentSubMode } from '@ema-agent/contracts';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -149,6 +150,7 @@ export const useSessionStore = create<SessionStoreState>((set, get) => ({
   async archiveSession(id) {
     try {
       await sessionsApi.archive(id);
+      useConversationStore.getState().evictSession(id);
       await get().loadSessions();
     } catch (err: unknown) {
       set({ error: err instanceof Error ? err.message : 'Failed to archive session' });
@@ -167,6 +169,7 @@ export const useSessionStore = create<SessionStoreState>((set, get) => ({
   async deleteSession(id) {
     try {
       await sessionsApi.delete(id);
+      useConversationStore.getState().evictSession(id);
       await get().loadSessions();
     } catch (err: unknown) {
       set({ error: err instanceof Error ? err.message : 'Failed to delete session' });

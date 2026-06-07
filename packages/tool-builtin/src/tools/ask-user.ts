@@ -52,7 +52,7 @@ export const askUserTool = buildTool<AskUserInput, AskUserResult>({
   name: 'ask_user',
   description: `Ask the user one or more questions and wait for their responses.
 
-- In desktop (Tauri) mode: emits a \`permission_required\`-style SSE event; the frontend shows a dialog and the response is delivered back via the SSE channel.
+- In desktop (Tauri) mode: emits an \`ask_user_required\` SSE event; the frontend shows a dialog and the response is delivered back via the per-turn SSE channel.
 - In CLI mode: reads answers from stdin.
 - Up to 4 questions per call. For multiple-choice questions, provide 2–4 options.`,
 
@@ -103,12 +103,6 @@ export const askUserTool = buildTool<AskUserInput, AskUserResult>({
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 type QuestionDef = AskUserInput['questions'][number];
-/**
- * Resolver injected by the orchestrator. The orchestrator parks this Promise
- * keyed by `promptId` and resolves it when POST /api/permission/:promptId/respond
- * arrives carrying the user's answers.
- */
-type AskFn = (promptId: string, questions: AskUserQuestionSpec[]) => Promise<AskUserResult>;
 
 // ── CLI stdin path ────────────────────────────────────────────────────────────
 
