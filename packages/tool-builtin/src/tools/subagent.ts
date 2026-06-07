@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { buildTool } from '@ema-agent/tool';
-import type { ToolExecutionContext } from '@ema-agent/tool';
+import type { ToolExecutionContext, ISubagentSpawner } from '@ema-agent/tool';
 
 // ── Input schema ──────────────────────────────────────────────────────────────
 
@@ -37,16 +37,6 @@ export interface SubagentResult {
   usage: { inputTokens: number; outputTokens: number };
 }
 
-// ── Sub-agent spawner interface (injected via ctx) ────────────────────────────
-
-export interface SubagentSpawner {
-  spawn(
-    prompt: string,
-    opts: { model?: string; subMode?: string; description?: string },
-    signal: AbortSignal,
-  ): Promise<SubagentResult>;
-}
-
 // ── Tool definition ───────────────────────────────────────────────────────────
 
 export const subagentTool = buildTool<SubagentInput, SubagentResult>({
@@ -69,7 +59,7 @@ The sub-agent:
   },
 
   async execute(input: SubagentInput, ctx: ToolExecutionContext): Promise<SubagentResult> {
-    const spawner = (ctx as unknown as { subagentSpawner?: SubagentSpawner }).subagentSpawner;
+    const spawner: ISubagentSpawner | undefined = ctx.subagentSpawner;
     if (!spawner) {
       throw new Error(
         'Sub-agent spawner is not configured. The AgentEngine must inject a subagentSpawner into the execution context.',

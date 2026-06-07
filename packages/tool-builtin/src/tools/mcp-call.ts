@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { buildTool } from '@ema-agent/tool';
-import type { ToolExecutionContext } from '@ema-agent/tool';
+import type { ToolExecutionContext, IMcpClientBridge } from '@ema-agent/tool';
 
 // ── Input schema ──────────────────────────────────────────────────────────────
 
@@ -18,12 +18,6 @@ export interface McpCallResult {
   server: string;
   tool: string;
   result: unknown;
-}
-
-// ── MCP client interface (injected via ctx) ───────────────────────────────────
-
-export interface McpClientBridge {
-  call(server: string, tool: string, args: Record<string, unknown>): Promise<unknown>;
 }
 
 // ── Tool definition ───────────────────────────────────────────────────────────
@@ -44,7 +38,7 @@ The MCP server must be configured in settings before use. Arguments are passed t
   },
 
   async execute(input: McpCallInput, ctx: ToolExecutionContext): Promise<McpCallResult> {
-    const mcpClient = (ctx as unknown as { mcpClient?: McpClientBridge }).mcpClient;
+    const mcpClient: IMcpClientBridge | undefined = ctx.mcpClient;
     if (!mcpClient) {
       throw new Error(
         'MCP client bridge is not configured. Ensure an MCP server is connected before using mcp_call.',

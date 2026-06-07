@@ -40,13 +40,16 @@ export type { PlanModeResult } from './tools/plan-mode.js';
 export { artifactWriteTool, artifactReadTool, artifactListTool } from './tools/artifact.js';
 
 export { mcpCallTool } from './tools/mcp-call.js';
-export type { McpCallResult, McpClientBridge } from './tools/mcp-call.js';
+export type { McpCallResult } from './tools/mcp-call.js';
+export type { IMcpClientBridge } from '@ema-agent/tool';
 
 export { skillCallTool } from './tools/skill-call.js';
-export type { SkillCallResult, SkillRunner } from './tools/skill-call.js';
+export type { SkillCallResult } from './tools/skill-call.js';
+export type { ISkillRunner } from '@ema-agent/tool';
 
 export { subagentTool } from './tools/subagent.js';
-export type { SubagentResult, SubagentSpawner } from './tools/subagent.js';
+export type { SubagentResult } from './tools/subagent.js';
+export type { ISubagentSpawner, SubagentSpawnOpts } from '@ema-agent/tool';
 
 // ── Registration ──────────────────────────────────────────────────────────────
 

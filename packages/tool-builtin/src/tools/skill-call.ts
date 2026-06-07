@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { buildTool } from '@ema-agent/tool';
-import type { ToolExecutionContext } from '@ema-agent/tool';
+import type { ToolExecutionContext, ISkillRunner } from '@ema-agent/tool';
 
 // ── Input schema ──────────────────────────────────────────────────────────────
 
@@ -16,12 +16,6 @@ type SkillCallInput = z.infer<typeof inputSchema>;
 export interface SkillCallResult {
   skill: string;
   output: string;
-}
-
-// ── Skill runner interface (injected via ctx) ─────────────────────────────────
-
-export interface SkillRunner {
-  run(skill: string, args: string | undefined, ctx: ToolExecutionContext): Promise<string>;
 }
 
 // ── Tool definition ───────────────────────────────────────────────────────────
@@ -42,7 +36,7 @@ Skills are pre-defined prompt templates or automation sequences registered in se
   },
 
   async execute(input: SkillCallInput, ctx: ToolExecutionContext): Promise<SkillCallResult> {
-    const skillRunner = (ctx as unknown as { skillRunner?: SkillRunner }).skillRunner;
+    const skillRunner: ISkillRunner | undefined = ctx.skillRunner;
     if (!skillRunner) {
       throw new Error(
         'Skill runner is not configured. Ensure skills are loaded before using skill_call.',
