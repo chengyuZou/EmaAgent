@@ -22,7 +22,8 @@
     "react-dom": "^18.3.0"
   },
   "dependencies": {
-    "@ema-agent/contracts":     "workspace:*",
+    "@ema-agent/contracts":      "workspace:*",
+    "@ema-agent/character-card": "workspace:*",
     "@ema-agent/ui":            "workspace:*",
     "@ema-agent/live2d-react":  "workspace:*",
     "@tauri-apps/api":          "^2.4.0",

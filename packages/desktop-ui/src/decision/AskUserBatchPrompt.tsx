@@ -6,23 +6,19 @@
  */
 import { useState } from 'react';
 import { sidecarClient } from '../api/sidecar-client.js';
-import { useChatStore } from '../stores/chat-store.js';
 import { HumanDescriptionPanel } from './HumanDescriptionPanel.js';
+import type { AskUserQuestionSpec } from '@ema-agent/contracts';
 
 export interface AskUserBatchPromptProps {
   promptId:          string;
-  questions:         Array<{
-    question:    string;
-    header:      string;
-    options?:    Array<{ label: string; description?: string }>;
-    multiSelect?: boolean;
-  }>;
+  turnId:            string;
+  questions:         AskUserQuestionSpec[];
   humanDescription?: string;
   onResolve(answers: Record<string, string>): void;
   onCancel(): void;
 }
 
-export function AskUserBatchPrompt({ promptId, questions, humanDescription, onResolve, onCancel }: AskUserBatchPromptProps): JSX.Element {
+export function AskUserBatchPrompt({ promptId, turnId, questions, humanDescription, onResolve, onCancel }: AskUserBatchPromptProps): JSX.Element {
   const [step, setStep] = useState(0);
   const [answers, setAnswers] = useState<Record<string, string>>({});
 
@@ -30,21 +26,17 @@ export function AskUserBatchPrompt({ promptId, questions, humanDescription, onRe
   const isLast = step === questions.length - 1;
 
   function handleAnswer(value: string): void {
-    setAnswers((prev) => ({ ...prev, [current!.header]: value }));
+    setAnswers((prev) => ({ ...prev, [current!.id]: value }));
   }
 
   async function handleNext(): Promise<void> {
     if (isLast) {
-      // POST answers to backend, then resolve locally
-      const activeTurnId = useChatStore.getState().activeTurnId;
-      if (activeTurnId) {
-        try {
-          await sidecarClient.request(
-            `/api/turns/${activeTurnId}/ask-user/${promptId}/respond`,
-            { method: 'POST', json: { answers } },
-          );
-        } catch { /* timeout / sidecar down — continue local cleanup */ }
-      }
+      try {
+        await sidecarClient.request(
+          `/api/turns/${turnId}/ask-user/${promptId}/respond`,
+          { method: 'POST', json: { answers } },
+        );
+      } catch { /* timeout / sidecar down — continue local cleanup */ }
       onResolve(answers);
     } else {
       setStep((s) => s + 1);
@@ -76,7 +68,7 @@ export function AskUserBatchPrompt({ promptId, questions, humanDescription, onRe
   const hasOptions = current.options && current.options.length > 0;
   const canAdvance = hasOptions
     ? choiceSelected.size > 0
-    : (answers[current.header] ?? '').trim().length > 0;
+    : (answers[current.id] ?? '').trim().length > 0;
 
   return (
     <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 shadow-2xl max-w-lg">
@@ -130,7 +122,7 @@ export function AskUserBatchPrompt({ promptId, questions, humanDescription, onRe
           className="w-full bg-gray-800 border border-gray-600 rounded-xl p-3 text-sm text-gray-200 resize-none focus:outline-none focus:border-pink-400/50 mb-4"
           rows={3}
           placeholder="输入你的回答…"
-          value={answers[current.header] ?? ''}
+          value={answers[current.id] ?? ''}
           onChange={(e) => handleAnswer(e.target.value)}
         />
       )}

@@ -345,6 +345,9 @@ importers:
 
   packages/desktop-ui:
     dependencies:
+      '@ema-agent/character-card':
+        specifier: workspace:*
+        version: link:../character-card
       '@ema-agent/contracts':
         specifier: workspace:*
         version: link:../contracts

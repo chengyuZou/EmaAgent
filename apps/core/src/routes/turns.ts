@@ -41,7 +41,7 @@ const contentPartSchema = z.discriminatedUnion('type', [
 const turnBodySchema = z.object({
   sessionId: z.string().optional(),
   mode: z.enum(['chat', 'narrative', 'agent']).default('chat'),
-  subMode: z.enum(['plan', 'debug', 'full']).optional(),
+  agentSubMode: z.enum(['plan', 'debug', 'full']).optional(),
   userInput: z.string().optional(),
   contentParts: z.array(contentPartSchema).optional(),
   model: z.string().optional(),
@@ -57,6 +57,18 @@ function isTerminalTurnEvent(event: EmaStreamEvent): boolean {
     event.type === 'turn_failed' ||
     event.type === 'turn_completed'
   );
+}
+
+function enrichTurnEvent(
+  event: EmaStreamEvent,
+  sessionId: string,
+  turnId: TurnId,
+): EmaStreamEvent {
+  if ('sessionId' in event) return event;
+  if (event.type === 'ask_user_required') {
+    return { ...event, sessionId, turnId } as EmaStreamEvent;
+  }
+  return { ...event, sessionId } as EmaStreamEvent;
 }
 
 // ── Route factory ─────────────────────────────────────────────────────────────
@@ -80,7 +92,7 @@ export function turnsRoute(bindings: AppBindings): Hono {
       return c.json({ error: 'invalid_request', details: parsed.error.flatten() }, 400);
     }
 
-    const { sessionId, mode, subMode, userInput, contentParts, model, ttsEnabled } = parsed.data;
+    const { sessionId, mode, agentSubMode, userInput, contentParts, model, ttsEnabled } = parsed.data;
 
     const effectiveSessionId = sessionId
       ?? bindings.session.createSession().id;
@@ -88,7 +100,7 @@ export function turnsRoute(bindings: AppBindings): Hono {
     const { turnId, events } = await orchestrator.run({
       sessionId: effectiveSessionId,
       mode: mode,
-      subMode: subMode,
+      agentSubMode: agentSubMode,
       userInput: userInput ?? '',
       contentParts: contentParts,
       model: model,
@@ -98,18 +110,21 @@ export function turnsRoute(bindings: AppBindings): Hono {
     // ── Fan-out: push every event into TurnEventStore for replay ──────────
     (async () => {
       for await (const event of events) {
-        const cursor = eventStore.push(turnId, event);
+        // Inject sessionId (and turnId for ask_user_required) into events that
+        // come from engines which don't carry session context themselves.
+        const enriched = enrichTurnEvent(event, effectiveSessionId, turnId);
+        const cursor = eventStore.push(turnId, enriched);
         if (cursor !== null) {
-          eventHub.publish(turnId, { cursor, event });
+          eventHub.publish(turnId, { cursor, event: enriched });
         }
         // Auto-cancel any in-flight permission prompts when the turn ends.
         // Otherwise an aborted turn leaves the prompt hanging in the
         // registry — and on the frontend — until the 120 s timeout fires.
-        if (isTerminalTurnEvent(event)) {
-          const n = bindings.permissionPrompts.cancelForTurn(turnId, `turn ${event.type}`);
-          if (n > 0) console.log(`[permission] cancelled ${n} prompt(s) on ${event.type}`);
+        if (isTerminalTurnEvent(enriched)) {
+          const n = bindings.permissionPrompts.cancelForTurn(turnId, `turn ${enriched.type}`);
+          if (n > 0) console.log(`[permission] cancelled ${n} prompt(s) on ${enriched.type}`);
           const m = bindings.askUserRegistry.cancelForTurn(turnId as string);
-          if (m > 0) console.log(`[ask_user] cancelled ${m} prompt(s) on ${event.type}`);
+          if (m > 0) console.log(`[ask_user] cancelled ${m} prompt(s) on ${enriched.type}`);
         }
       }
     })().catch((err) => {

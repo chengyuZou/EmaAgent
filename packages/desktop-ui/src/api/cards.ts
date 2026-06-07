@@ -2,7 +2,8 @@
  * Cards API — character card CRUD + voice-refs sub-resource.
  */
 import { sidecarClient } from './sidecar-client.js';
-import type { CharacterCardId, CharacterVoiceProfile } from '@ema-agent/contracts';
+import type { CharacterCardId } from '@ema-agent/contracts';
+import type { CharacterVoiceProfile } from '@ema-agent/character-card';
 
 // ── Wire-format types (match backend CharacterCard domain) ───────────────────
 

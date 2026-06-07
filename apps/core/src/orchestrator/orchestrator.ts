@@ -18,12 +18,12 @@ export interface TurnResult {
 }
 
 export interface TurnRequest {
-  sessionId:    string;
-  mode:         TurnMode;
-  subMode?:     AgentSubMode;
-  userInput:    string;
+  sessionId:     string;
+  mode:          TurnMode;
+  agentSubMode?: AgentSubMode;
+  userInput:     string;
   contentParts?: LlmContentPart[];
-  model?:       string;
+  model?:        string;
   /**
    * Whether to spawn a TtsCoordinator for this turn. Defaults to false —
    * the frontend opts in per turn (after the user toggles the speaker icon).
@@ -103,7 +103,7 @@ export class Orchestrator {
     const { turn, signal } = this.bindings.session.startTurn({
       sessionId,
       mode:         request.mode,
-      agentSubMode: request.subMode,
+      agentSubMode: request.agentSubMode,
       userInput:    request.userInput,
     });
     const turnId = turn.id;
@@ -190,7 +190,7 @@ export class Orchestrator {
         });
 
       case 'agent': {
-        const subMode        = request.subMode ?? 'full';
+        const subMode        = request.agentSubMode ?? 'full';
         const sess           = this.bindings.session.getSession(sessionId);
         const workspaceRoots = sess.workspaceRoots.length > 0 ? sess.workspaceRoots : [process.cwd()];
         const systemPrompt   = buildSystemPrompt(

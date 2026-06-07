@@ -9,6 +9,7 @@ import { sseConsumer, type SseHandle } from './sse-consumer.js';
 import { sidecarClient } from '../api/sidecar-client.js';
 import { tauriBridge } from './tauri-bridge.js';
 import { useDecisionStore } from '../stores/decision-store.js';
+import { useConversationStore } from '../stores/conversation-store.js';
 import type { EmaStreamEvent } from '@ema-agent/contracts';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -78,6 +79,7 @@ function dispatchSystemEvent(event: EmaStreamEvent): void {
       useDecisionStore.getState().push({
         kind:             'ask_user',
         promptId:         event.promptId,
+        turnId:           event.turnId,
         questions:        event.questions,
         humanDescription: event.humanDescription,
       });
@@ -89,20 +91,21 @@ function dispatchSystemEvent(event: EmaStreamEvent): void {
       useDecisionStore.getState().dismiss(event.promptId);
       break;
 
-    // ── Live2D / Stage → forwarded via Tauri events to EmaStageView ──────
+    // ── Live2D / Stage → forwarded via Tauri events only for the TTS-owning session ──
     case 'emotion_changed':
-      void tauriBridge.emit('stage:emotion-changed', event.state);
+      if (event.sessionId === (useConversationStore.getState().ttsOwnerSessionId as string)) {
+        void tauriBridge.emit('stage:emotion-changed', event.state);
+      }
       break;
 
     case 'stage_cue':
-      void tauriBridge.emit('stage:cue', event.cue);
+      if (event.sessionId === (useConversationStore.getState().ttsOwnerSessionId as string)) {
+        void tauriBridge.emit('stage:cue', event.cue);
+      }
       break;
 
-    // ── Context / memory — observed by ContextWindowPopover ────────────────
-    case 'context_compacted':
-    case 'recall_evidence':
-      // These are also carried on turn SSE; system-level versions are ignored
-      // for now — ContextWindowPopover reads from chat-store state.
+    // ── Memory observability — ignored here; ContextWindowPopover reads store state ──
+    case 'memory_recall_evidence':
       break;
 
     // ── Artifacts ──────────────────────────────────────────────────────────

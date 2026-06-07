@@ -1,212 +1,186 @@
 /**
- * chat-store.test.ts — state machine (beginStream → appendDelta → finalizeStream)
- * + SSE dispatch routing table contract test.
+ * conversation-store.test.ts — per-session stream state machine tests.
+ *
+ * Covers: beginStream → appendDelta → finalizeStream / abortStream
+ * All operations are scoped to a SessionId; parallel sessions don't interfere.
  */
-import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
-import { useChatStore, type ChatHistoryItem } from './chat-store.js';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+
+// tts-playback → live2d-react → pixi-live2d-display requires a browser DOM.
+// Mock it so the store can be imported in a Node test environment.
+vi.mock('../lib/tts-playback.js', () => ({
+  handleTtsChunk: vi.fn(),
+  handleTtsSentenceComplete: vi.fn(),
+}));
+
+import { useConversationStore } from './conversation-store.js';
 import type { TurnId, SessionId } from '@ema-agent/contracts';
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+const S1 = 'sess_1' as SessionId;
+const S2 = 'sess_2' as SessionId;
+const T1 = 'turn_1' as TurnId;
+const T2 = 'turn_2' as TurnId;
 
 function resetStore(): void {
-  useChatStore.setState({
-    sessions: {
-      pinned: [],
-      byGroup: [],
-      recent: [],
-      archived: [],
-      byId: new Map(),
-    },
-    activeSessionId: 'sess_1' as SessionId,
-    messages: new Map(),
-    streamingMessage: null,
-    activeTurnId: null,
-    loading: { sessions: false, messages: new Set() },
-    error: null,
+  useConversationStore.setState({
+    viewedSessionId:   null,
+    ttsOwnerSessionId: null,
+    messages:          new Map(),
+    streamingMap:      new Map(),
+    stopReasonMap:     new Map(),
+    draftMap:          new Map(),
+    loading:           { messages: new Set() },
+    error:             null,
   });
 }
 
-// ── Tests ─────────────────────────────────────────────────────────────────────
-
-describe('chat-store', () => {
-  beforeEach(() => {
-    resetStore();
-  });
-
-  afterEach(() => {
-    resetStore();
-  });
+describe('conversation-store', () => {
+  beforeEach(resetStore);
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // State machine: beginStream → appendDelta → finalizeStream
+  // Stream lifecycle: beginStream → appendDelta → finalizeStream
   // ═══════════════════════════════════════════════════════════════════════════
 
   describe('stream lifecycle', () => {
-    it('beginStream creates an empty streamingMessage', () => {
-      const turnId = 'turn_1' as TurnId;
+    it('beginStream creates an empty streaming entry for the session', () => {
+      useConversationStore.getState().beginStream(S1, T1);
 
-      useChatStore.getState().beginStream(turnId);
-
-      const state = useChatStore.getState();
-      expect(state.activeTurnId).toBe(turnId);
-      expect(state.streamingMessage).not.toBeNull();
-      expect(state.streamingMessage!.role).toBe('assistant');
-      expect(state.streamingMessage!.content).toBe('');
-      expect(state.streamingMessage!.slices).toEqual([]);
+      const sm = useConversationStore.getState().streamingMap.get(S1 as string);
+      expect(sm).toBeDefined();
+      expect(sm!.role).toBe('assistant');
+      expect(sm!.content).toBe('');
+      expect(sm!.slices).toEqual([]);
     });
 
-    it('appendDelta("text", ...) appends to content and creates text slice', () => {
-      useChatStore.getState().beginStream('turn_1' as TurnId);
+    it('appendDelta("text") accumulates content and coalesces text slices', () => {
+      useConversationStore.getState().beginStream(S1, T1);
+      useConversationStore.getState().appendDelta(S1, 'text', 'Hello ');
+      useConversationStore.getState().appendDelta(S1, 'text', 'World');
 
-      useChatStore.getState().appendDelta('text', 'Hello ');
-      useChatStore.getState().appendDelta('text', 'World');
-
-      const sm = useChatStore.getState().streamingMessage!;
+      const sm = useConversationStore.getState().streamingMap.get(S1 as string)!;
       expect(sm.content).toBe('Hello World');
       expect(sm.slices).toHaveLength(1);
       expect(sm.slices[0]).toMatchObject({ type: 'text', text: 'Hello World' });
     });
 
-    it('appendDelta("thinking", ...) adds thinking slice', () => {
-      useChatStore.getState().beginStream('turn_1' as TurnId);
+    it('appendDelta("thinking") adds thinking slice (does not go into content)', () => {
+      useConversationStore.getState().beginStream(S1, T1);
+      useConversationStore.getState().appendDelta(S1, 'thinking', 'Let me think...');
 
-      useChatStore.getState().appendDelta('thinking', 'Let me think about this...');
-
-      const sm = useChatStore.getState().streamingMessage!;
-      expect(sm.slices).toHaveLength(1);
-      expect(sm.slices[0]).toMatchObject({
-        type: 'thinking',
-        text: 'Let me think about this...',
-      });
-      // thinking does NOT go into content
+      const sm = useConversationStore.getState().streamingMap.get(S1 as string)!;
       expect(sm.content).toBe('');
-    });
-
-    it('appendDelta("tool_call", ...) adds tool_call slice', () => {
-      useChatStore.getState().beginStream('turn_1' as TurnId);
-
-      useChatStore.getState().appendDelta('tool_call', {
-        callId: 'call_1',
-        name: 'read_file',
-        args: { path: '/tmp/x' },
-      });
-
-      const sm = useChatStore.getState().streamingMessage!;
       expect(sm.slices).toHaveLength(1);
-      expect(sm.slices[0]).toMatchObject({
-        type: 'tool_call',
-        callId: 'call_1',
-        name: 'read_file',
-        args: { path: '/tmp/x' },
-      });
+      expect(sm.slices[0]).toMatchObject({ type: 'thinking', text: 'Let me think...' });
     });
 
-    it('appendDelta("tool_result", ...) attaches result to matching tool_call', () => {
-      useChatStore.getState().beginStream('turn_1' as TurnId);
-
-      // First add a tool call
-      useChatStore.getState().appendDelta('tool_call', {
-        callId: 'call_1',
-        name: 'read_file',
-        args: { path: '/tmp/x' },
+    it('appendDelta("tool_call") adds tool_call slice', () => {
+      useConversationStore.getState().beginStream(S1, T1);
+      useConversationStore.getState().appendDelta(S1, 'tool_call', {
+        callId: 'call_1', name: 'read_file', args: { path: '/tmp/x' },
       });
 
-      // Then attach result
-      useChatStore.getState().appendDelta('tool_result', {
-        callId: 'call_1',
-        output: 'file content here',
-      });
-
-      const sm = useChatStore.getState().streamingMessage!;
-      expect(sm.slices[0]).toMatchObject({
-        type: 'tool_call',
-        result: 'file content here',
-      });
+      const sm = useConversationStore.getState().streamingMap.get(S1 as string)!;
+      expect(sm.slices).toHaveLength(1);
+      expect(sm.slices[0]).toMatchObject({ type: 'tool_call', callId: 'call_1', name: 'read_file' });
     });
 
-    it('tool_result attaches error to matching tool_call', () => {
-      useChatStore.getState().beginStream('turn_1' as TurnId);
-
-      useChatStore.getState().appendDelta('tool_call', {
-        callId: 'call_err',
-        name: 'write_file',
-        args: {},
+    it('appendDelta("tool_result") attaches result to matching tool_call', () => {
+      useConversationStore.getState().beginStream(S1, T1);
+      useConversationStore.getState().appendDelta(S1, 'tool_call', {
+        callId: 'call_1', name: 'read_file', args: { path: '/tmp/x' },
+      });
+      useConversationStore.getState().appendDelta(S1, 'tool_result', {
+        callId: 'call_1', output: 'file content',
       });
 
-      useChatStore.getState().appendDelta('tool_result', {
-        callId: 'call_err',
-        error: { code: 'EACCES', message: 'Permission denied' },
-      });
-
-      const sm = useChatStore.getState().streamingMessage!;
-      expect(sm.slices[0]).toMatchObject({
-        type: 'tool_call',
-        error: { code: 'EACCES', message: 'Permission denied' },
-      });
+      const sm = useConversationStore.getState().streamingMap.get(S1 as string)!;
+      expect(sm.slices[0]).toMatchObject({ type: 'tool_call', result: 'file content' });
     });
 
-    it('finalizeStream pushes streamingMessage to messages and clears it', () => {
-      useChatStore.getState().beginStream('turn_1' as TurnId);
-      useChatStore.getState().appendDelta('text', 'Final answer.');
+    it('finalizeStream pushes message to history and removes streaming entry', () => {
+      useConversationStore.setState({ messages: new Map([[S1 as string, []]]) });
+      useConversationStore.getState().beginStream(S1, T1);
+      useConversationStore.getState().appendDelta(S1, 'text', 'Final answer.');
+      useConversationStore.getState().finalizeStream(S1, null);
 
-      useChatStore.getState().finalizeStream({
-        inputTokens: 100,
-        outputTokens: 50,
-        costUsd: 0.01,
-        durationMs: 500,
-      });
+      const state = useConversationStore.getState();
+      expect(state.streamingMap.has(S1 as string)).toBe(false);
 
-      const state = useChatStore.getState();
-      expect(state.streamingMessage).toBeNull();
-      expect(state.activeTurnId).toBeNull();
-
-      // Check that the message was pushed
-      const msgs = state.messages.get('sess_1');
+      const msgs = state.messages.get(S1 as string);
       expect(msgs).toBeDefined();
-      expect(msgs!.length).toBeGreaterThanOrEqual(1);
-      const lastMsg = msgs![msgs!.length - 1]!;
-      expect(lastMsg.role).toBe('assistant');
-      expect(lastMsg.content).toBe('Final answer.');
+      const last = msgs![msgs!.length - 1]!;
+      expect(last.role).toBe('assistant');
+      expect(last.content).toBe('Final answer.');
     });
 
-    it('abortStream pushes error item and clears streaming', () => {
-      useChatStore.getState().beginStream('turn_1' as TurnId);
-      useChatStore.getState().appendDelta('text', 'Partial...');
+    it('abortStream preserves partial content in history and sets stopReason', () => {
+      useConversationStore.setState({ messages: new Map([[S1 as string, []]]) });
+      useConversationStore.getState().beginStream(S1, T1);
+      useConversationStore.getState().appendDelta(S1, 'text', 'Partial...');
+      useConversationStore.getState().abortStream(S1, 'Connection lost');
 
-      useChatStore.getState().abortStream('Connection lost');
+      const state = useConversationStore.getState();
+      expect(state.streamingMap.has(S1 as string)).toBe(false);
+      expect(state.stopReasonMap.get(S1 as string)).toBe('Connection lost');
 
-      const state = useChatStore.getState();
-      expect(state.streamingMessage).toBeNull();
-      expect(state.activeTurnId).toBeNull();
-
-      const msgs = state.messages.get('sess_1');
-      const lastMsg = msgs![msgs!.length - 1]!;
-      expect(lastMsg.role).toBe('error');
-      expect(lastMsg.content).toBe('Connection lost');
+      const msgs = state.messages.get(S1 as string);
+      expect(msgs![msgs!.length - 1]).toMatchObject({ role: 'assistant', content: 'Partial...' });
     });
   });
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // Interleaved slices: text → tool_call → text → tool_call
+  // Per-session isolation: two sessions stream independently
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  describe('per-session isolation', () => {
+    it('two sessions stream in parallel without interfering', () => {
+      useConversationStore.getState().beginStream(S1, T1);
+      useConversationStore.getState().beginStream(S2, T2);
+
+      useConversationStore.getState().appendDelta(S1, 'text', 'Session1');
+      useConversationStore.getState().appendDelta(S2, 'text', 'Session2');
+
+      const sm1 = useConversationStore.getState().streamingMap.get(S1 as string)!;
+      const sm2 = useConversationStore.getState().streamingMap.get(S2 as string)!;
+      expect(sm1.content).toBe('Session1');
+      expect(sm2.content).toBe('Session2');
+    });
+
+    it('finalizing one session does not affect the other', () => {
+      useConversationStore.setState({
+        messages: new Map([[S1 as string, []], [S2 as string, []]]),
+      });
+      useConversationStore.getState().beginStream(S1, T1);
+      useConversationStore.getState().beginStream(S2, T2);
+      useConversationStore.getState().appendDelta(S1, 'text', 'Done1');
+      useConversationStore.getState().appendDelta(S2, 'text', 'Still going');
+
+      useConversationStore.getState().finalizeStream(S1, null);
+
+      const state = useConversationStore.getState();
+      expect(state.streamingMap.has(S1 as string)).toBe(false);
+      expect(state.streamingMap.has(S2 as string)).toBe(true);
+      expect(state.streamingMap.get(S2 as string)!.content).toBe('Still going');
+    });
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Interleaved slices
   // ═══════════════════════════════════════════════════════════════════════════
 
   describe('interleaved slices', () => {
-    it('preserves text/tool interleaving order', () => {
-      useChatStore.getState().beginStream('turn_1' as TurnId);
-
-      useChatStore.getState().appendDelta('text', 'Let me check...');
-      useChatStore.getState().appendDelta('tool_call', {
-        callId: 'c1',
-        name: 'search',
-        args: { query: 'weather' },
+    it('preserves text → tool → text order', () => {
+      useConversationStore.getState().beginStream(S1, T1);
+      useConversationStore.getState().appendDelta(S1, 'text', 'Let me check...');
+      useConversationStore.getState().appendDelta(S1, 'tool_call', {
+        callId: 'c1', name: 'search', args: { query: 'weather' },
       });
-      useChatStore.getState().appendDelta('tool_result', {
-        callId: 'c1',
-        output: 'Sunny 22°C',
+      useConversationStore.getState().appendDelta(S1, 'tool_result', {
+        callId: 'c1', output: 'Sunny 22°C',
       });
-      useChatStore.getState().appendDelta('text', ' The weather is sunny.');
+      useConversationStore.getState().appendDelta(S1, 'text', ' The weather is sunny.');
 
-      const sm = useChatStore.getState().streamingMessage!;
+      const sm = useConversationStore.getState().streamingMap.get(S1 as string)!;
       expect(sm.slices).toHaveLength(3);
       expect(sm.slices[0]!.type).toBe('text');
       expect(sm.slices[1]!.type).toBe('tool_call');
@@ -219,50 +193,24 @@ describe('chat-store', () => {
   // ═══════════════════════════════════════════════════════════════════════════
 
   describe('edge cases', () => {
-    it('appendDelta when streamingMessage is null logs warning (no crash)', () => {
-      // Don't call beginStream — streamingMessage is null
+    it('appendDelta when no streaming entry is a no-op (no crash)', () => {
       expect(() => {
-        useChatStore.getState().appendDelta('text', 'orphan delta');
+        useConversationStore.getState().appendDelta(S1, 'text', 'orphan delta');
       }).not.toThrow();
     });
 
-    it('beginStream is idempotent (second call resets)', () => {
-      useChatStore.getState().beginStream('turn_1' as TurnId);
-      useChatStore.getState().appendDelta('text', 'First turn text');
-
-      // New turn starts
-      useChatStore.getState().beginStream('turn_2' as TurnId);
-
-      const sm = useChatStore.getState().streamingMessage!;
-      expect(sm.content).toBe('');
-      expect(sm.slices).toHaveLength(0);
-    });
-
-    it('finalizeStream with null streamingMessage is a no-op', () => {
+    it('finalizeStream with no streaming entry is a no-op', () => {
       expect(() => {
-        useChatStore.getState().finalizeStream(null);
+        useConversationStore.getState().finalizeStream(S1, null);
       }).not.toThrow();
     });
 
-    it('abortStream with null streamingMessage is a no-op', () => {
-      expect(() => {
-        useChatStore.getState().abortStream('no stream');
-      }).not.toThrow();
-    });
-  });
+    it('draftMap survives session operations', () => {
+      useConversationStore.getState().setDraft(S1, 'draft text');
+      expect(useConversationStore.getState().draftMap.get(S1 as string)).toBe('draft text');
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // Session management (pure state tests, no API calls)
-  // ═══════════════════════════════════════════════════════════════════════════
-
-  describe('session state', () => {
-    it('selectSession with same id is no-op', async () => {
-      // Reset with active session
-      useChatStore.setState({ activeSessionId: 'sess_1' as SessionId });
-
-      // Should not throw or change state
-      await useChatStore.getState().selectSession('sess_1' as SessionId);
-      expect(useChatStore.getState().activeSessionId).toBe('sess_1');
+      useConversationStore.getState().setDraft(S1, '');
+      expect(useConversationStore.getState().draftMap.has(S1 as string)).toBe(false);
     });
   });
 });

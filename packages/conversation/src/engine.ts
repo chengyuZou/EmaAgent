@@ -42,7 +42,7 @@ async function* runTurn(
   let llmStreamDone = false;
 
   try {
-    emotion.beginTurn();
+    emotion.beginTurn(input.sessionId);
 
     // ── onTurnStart ───────────────────────────────────────────────────────────
     const startResult = await hooks.trigger('onTurnStart', {

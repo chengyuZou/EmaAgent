@@ -112,7 +112,7 @@ async function* runTurn(
   });
 
   try {
-    emotion.beginTurn();
+    emotion.beginTurn(sessionId);
     clearTodos(sessionId);
 
     // ── onTurnStart hook ──────────────────────────────────────────────────────

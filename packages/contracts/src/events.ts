@@ -78,22 +78,22 @@ export interface MemoryRecallLayerReport {
 
 export type EmaStreamEvent =
   // Turn lifecycle
-  | { type: 'turn_started'; turnId: TurnId; mode: TurnMode; subMode?: AgentSubMode }
-  | { type: 'turn_completed'; turnId: TurnId; usage: UsageSummary }
-  | { type: 'turn_failed'; turnId: TurnId; code: ErrorCode; message: string }
-  | { type: 'turn_aborted'; turnId: TurnId; reason: string }
+  | { type: 'turn_started';   sessionId: SessionId; turnId: TurnId; mode: TurnMode; agentSubMode?: AgentSubMode }
+  | { type: 'turn_completed'; sessionId: SessionId; turnId: TurnId; usage: UsageSummary }
+  | { type: 'turn_failed';    sessionId: SessionId; turnId: TurnId; code: ErrorCode; message: string }
+  | { type: 'turn_aborted';   sessionId: SessionId; turnId: TurnId; reason: string }
 
   // Text streaming — blockIndex tracks position within the assistant's block array
-  | { type: 'output_text_delta';    blockIndex: number; delta: string }
+  | { type: 'output_text_delta';    sessionId: SessionId; blockIndex: number; delta: string }
 
   // Reasoning / thinking blocks (DeepSeek-R1, Claude extended thinking)
-  | { type: 'reasoning_delta';    blockIndex: number; delta: string }
-  | { type: 'reasoning_complete'; blockIndex: number }
+  | { type: 'reasoning_delta';    sessionId: SessionId; blockIndex: number; delta: string }
+  | { type: 'reasoning_complete'; sessionId: SessionId; blockIndex: number }
 
   // Tool calls — blockIndex lets the frontend know where in the block list this tool sits
-  | { type: 'tool_call_partial';  blockIndex: number; callId: string; name: string; argsDelta: string }
-  | { type: 'tool_call_complete'; blockIndex: number; callId: string; name: string; args: unknown }
-  | { type: 'tool_result';        callId: string; output?: unknown; error?: ToolError }
+  | { type: 'tool_call_partial';  sessionId: SessionId; blockIndex: number; callId: string; name: string; argsDelta: string }
+  | { type: 'tool_call_complete'; sessionId: SessionId; blockIndex: number; callId: string; name: string; args: unknown }
+  | { type: 'tool_result';        sessionId: SessionId; callId: string; output?: unknown; error?: ToolError }
 
   // Permission
   // `humanDescription` is an optional plain-language explanation of what the
@@ -101,47 +101,50 @@ export type EmaStreamEvent =
   // it above the raw command so non-technical users can decide.
   | {
       type: 'permission_required';
+      sessionId: SessionId;
       promptId: string;
       tool: string;
       args: unknown;
       hint: string;
       humanDescription?: string;
     }
-  | { type: 'permission_resolved'; promptId: string; decision: 'allow' | 'deny' }
+  | { type: 'permission_resolved'; sessionId: SessionId; promptId: string; decision: 'allow' | 'deny' }
 
   // Ask-user — emitted by the built-in `ask_user` tool when it runs under a
   // streaming context (Tauri / SSE). One event carries the full question
   // batch (1-4 questions); the orchestrator awaits the matching POST
-  // /api/permission/:promptId/respond before the tool resolves.
+  // /api/turns/:turnId/ask-user/:promptId/respond before the tool resolves.
   | {
       type: 'ask_user_required';
+      sessionId: SessionId;
+      turnId: TurnId;
       promptId: string;
       questions: AskUserQuestionSpec[];
       humanDescription?: string;
     }
   | {
       type: 'ask_user_resolved';
+      sessionId: SessionId;
       promptId: string;
       /** Keyed by question.id; the value is the user's free-text or joined option labels. */
       answers: Record<string, string>;
     }
 
   // Artifact
-  | { type: 'artifact_upserted'; artifact: Artifact }
-  | { type: 'artifact_applied'; id: ArtifactId }
+  | { type: 'artifact_upserted'; sessionId: SessionId; artifact: Artifact }
+  | { type: 'artifact_applied';  sessionId: SessionId; id: ArtifactId }
 
-  // Stage / Emotion
-  // turnId lets the frontend ignore cues from a preempted turn (concurrent sends).
-  | { type: 'stage_cue'; turnId: TurnId; cue: StageCue }
-  | { type: 'emotion_changed'; turnId: TurnId; state: EmotionState }
+  // Stage / Emotion — sessionId routes cues to the correct Live2D/TTS owner.
+  | { type: 'stage_cue';      sessionId: SessionId; turnId: TurnId; cue: StageCue }
+  | { type: 'emotion_changed'; sessionId: SessionId; turnId: TurnId; state: EmotionState }
 
   // TTS — audio is base64-encoded string over SSE
-  | { type: 'tts_chunk'; turnId: TurnId; audio: string; lipsync?: LipSyncFrame[]; sentenceId: string; sessionId: string }
-  | { type: 'tts_sentence_complete'; turnId: TurnId; sentenceId: string; sessionId: string }
+  | { type: 'tts_chunk';             sessionId: SessionId; turnId: TurnId; audio: string; lipsync?: LipSyncFrame[]; sentenceId: string }
+  | { type: 'tts_sentence_complete'; sessionId: SessionId; turnId: TurnId; sentenceId: string }
 
   // Narrative
-  | { type: 'narrative_route_resolved'; timelines: string[] }
-  | { type: 'narrative_timeline_complete'; timeline: string; charCount: number; snippet: string }
+  | { type: 'narrative_route_resolved';    sessionId: SessionId; timelines: string[] }
+  | { type: 'narrative_timeline_complete'; sessionId: SessionId; timeline: string; charCount: number; snippet: string }
 
   // Memory — turn-scoped. One event per recall layer; emitted as soon as that layer settles.
   | {
@@ -154,19 +157,17 @@ export type EmaStreamEvent =
     }
 
   // Memory — pipeline observability (cross-turn, emitted on the system bus)
-  | { type: 'memory_compaction_started'; sessionId: SessionId; turnId: TurnId; mode: TurnMode; beforeTokens: number }
+  | { type: 'memory_compaction_started';   sessionId: SessionId; turnId: TurnId; mode: TurnMode; beforeTokens: number }
   | { type: 'memory_compaction_completed'; sessionId: SessionId; turnId: TurnId; mode: TurnMode; beforeTokens: number; afterTokens: number; savedTokens: number; durationMs: number }
-  | { type: 'memory_compaction_failed'; sessionId: SessionId; turnId: TurnId; mode: TurnMode; error: string; beforeTokens: number; afterTokens: number; durationMs: number }
+  | { type: 'memory_compaction_failed';    sessionId: SessionId; turnId: TurnId; mode: TurnMode; error: string; beforeTokens: number; afterTokens: number; durationMs: number }
   | { type: 'memory_extraction_started';    sessionId: SessionId; turnId?: TurnId; queueDepth: number }
-  | { type: 'memory_extraction_completed';
-      sessionId: SessionId; nodes: number; edges: number; items: number;
-      lazyQueued: number; durationMs: number }
+  | { type: 'memory_extraction_completed';  sessionId: SessionId; nodes: number; edges: number; items: number; lazyQueued: number; durationMs: number }
   | { type: 'memory_extraction_failed';     sessionId: SessionId; error: string }
-  | { type: 'memory_consolidation_started'; nodeCount: number }
+  | { type: 'memory_consolidation_started';   nodeCount: number }
   | { type: 'memory_consolidation_completed'; consolidated: number; durationMs: number }
-  | { type: 'memory_consolidation_failed';  error: string }
+  | { type: 'memory_consolidation_failed';    error: string }
   | { type: 'memory_maintenance_completed'; decayedNodes: number; decayedItems: number; dryRun: boolean; durationMs: number }
-  | { type: 'memory_maintenance_failed';  error: string }
+  | { type: 'memory_maintenance_failed';    error: string }
   | { type: 'memory_node_merged';           nodeId: string; label: string; fragmentCount: number }
   | { type: 'memory_index_rebuilt';         backend: string; nodes: number; items: number; durationMs: number }
 
@@ -176,17 +177,17 @@ export type EmaStreamEvent =
   | { type: 'memory_task_failed';    taskId: string; kind: string; error: string }
 
   // Agent
-  | { type: 'agent_iteration'; n: number }
-  | { type: 'agent_breaker_tripped'; reason: string }
+  | { type: 'agent_iteration';     sessionId: SessionId; n: number }
+  | { type: 'agent_breaker_tripped'; sessionId: SessionId; reason: string }
 
   // Sub-agent (V1.5 — events reserved now so the frontend bubble system can
   // plug in without a contracts migration later). The runtime that spawns
   // sub-agents is not implemented in V1; the subagent tool stays a stub.
-  | { type: 'subagent_started';   subagentId: string; parentTurnId: TurnId; description?: string; promptExcerpt: string }
-  | { type: 'subagent_progress';  subagentId: string; iteration: number; lastTool?: string }
-  | { type: 'subagent_completed'; subagentId: string; outputExcerpt: string; usage: UsageSummary; durationMs: number }
-  | { type: 'subagent_failed';    subagentId: string; error: string }
-  | { type: 'subagent_aborted';   subagentId: string; reason: string }
+  | { type: 'subagent_started';   sessionId: SessionId; subagentId: string; parentTurnId: TurnId; description?: string; promptExcerpt: string }
+  | { type: 'subagent_progress';  sessionId: SessionId; subagentId: string; iteration: number; lastTool?: string }
+  | { type: 'subagent_completed'; sessionId: SessionId; subagentId: string; outputExcerpt: string; usage: UsageSummary; durationMs: number }
+  | { type: 'subagent_failed';    sessionId: SessionId; subagentId: string; error: string }
+  | { type: 'subagent_aborted';   sessionId: SessionId; subagentId: string; reason: string }
 
   // Provider health
   | {

@@ -22,13 +22,16 @@ export type { SettingsStoreState } from './stores/settings-store.js';
 export { useCardStore }      from './stores/card-store.js';
 export type { CardStoreState } from './stores/card-store.js';
 
-export { useChatStore }      from './stores/chat-store.js';
+export { useSessionStore }      from './stores/session-store.js';
+export type { SessionStoreState, SessionsState } from './stores/session-store.js';
+
+export { useConversationStore } from './stores/conversation-store.js';
 export type {
-  ChatStoreState,
+  ConversationStoreState,
   ChatHistoryItem,
   StreamingAssistantMessage,
   AssistantSlice,
-} from './stores/chat-store.js';
+} from './stores/conversation-store.js';
 
 export { useDecisionStore }  from './stores/decision-store.js';
 

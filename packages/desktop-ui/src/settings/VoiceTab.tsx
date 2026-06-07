@@ -5,7 +5,8 @@ import { useState, useRef, type ChangeEvent } from 'react';
 import { useCardStore } from '../stores/card-store.js';
 import { cardsApi } from '../api/cards.js';
 import { showToast } from '../lib/toast.js';
-import type { CharacterCardId, CharacterVoiceProfile, CharacterRefAudio } from '@ema-agent/contracts';
+import type { CharacterCardId } from '@ema-agent/contracts';
+import type { CharacterVoiceProfile, CharacterRefAudio } from '@ema-agent/character-card';
 
 export function VoiceTab({ cardId, voiceProfile }: { cardId: CharacterCardId; voiceProfile: CharacterVoiceProfile }): JSX.Element {
   const [showUpload, setShowUpload] = useState(false);

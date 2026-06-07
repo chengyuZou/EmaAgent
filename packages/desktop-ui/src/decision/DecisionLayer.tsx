@@ -80,6 +80,7 @@ function PromptRouter({ prompt }: { prompt: DecisionPrompt }): JSX.Element {
       return (
         <AskUserBatchPrompt
           promptId={prompt.promptId}
+          turnId={prompt.turnId as string}
           questions={prompt.questions}
           humanDescription={prompt.humanDescription}
           onResolve={(answers) => {

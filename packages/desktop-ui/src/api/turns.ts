@@ -7,13 +7,13 @@ import type { TurnId, SessionId, TurnMode, AgentSubMode, MessageContentPart } fr
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 export interface CreateTurnRequest {
-  sessionId?:   string;
-  mode:         TurnMode;
-  subMode?:     AgentSubMode;
-  userInput?:   string;
+  sessionId?:    string;
+  mode:          TurnMode;
+  agentSubMode?: AgentSubMode;
+  userInput?:    string;
   contentParts?: MessageContentPart[];
-  model?:       string;
-  ttsEnabled?:  boolean;
+  model?:        string;
+  ttsEnabled?:   boolean;
 }
 
 export interface CreateTurnResponse {

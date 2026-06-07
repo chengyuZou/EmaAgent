@@ -1,99 +1,63 @@
+import { useRef, useState, useCallback, useEffect } from 'react';
+
 /**
- * useChatHistoryScroll — auto-scroll-to-bottom with user-scroll detection.
+ * Tracks scroll position for a chat history container.
  *
- * Adapted from AIRI's `stage-ui/src/chat/composables/use-chat-history-scroll.ts`.
+ * - Auto-scrolls to bottom whenever `scrollDeps` change, unless the user has
+ *   manually scrolled up (userScrolled = true).
+ * - Resets scroll state (forces bottom) whenever `resetDeps` change (e.g. session switch).
+ * - Returns `userScrolled` to show/hide the "scroll to bottom" button, and
+ *   `resetUserScrolled` to jump back to bottom on button click.
  */
-import { useEffect, useRef, useCallback, useState, type RefObject } from 'react';
-
-export interface ChatHistoryScrollResult {
-  /** Force scroll to bottom (called on new messages). */
-  scrollToBottom: (smooth?: boolean) => void;
-  /** Whether the user has manually scrolled away from the bottom. Reactive — triggers re-render. */
-  userScrolled: boolean;
-  /** Scroll back to bottom and clear userScrolled flag. */
-  resetUserScrolled: () => void;
-}
-
 export function useChatHistoryScroll(
-  containerRef: RefObject<HTMLDivElement | null>,
-  /** Dependencies that trigger auto-scroll (e.g. messages, streamingMessage). */
-  deps: unknown[],
-  /**
-   * When these change (e.g. activeSessionId), force-reset the user-scroll flag
-   * and jump to bottom — regardless of whether the user had scrolled away.
-   * Must be listed BEFORE the auto-scroll effect so the reset happens first.
-   */
-  resetDeps?: unknown[],
-): ChatHistoryScrollResult {
-  // ref for use inside event handlers (avoids stale closures)
-  const userScrolledRef = useRef(false);
-  const isNearBottomRef = useRef(true);
-  // state copy drives re-renders so the "scroll to bottom" badge appears/disappears
+  containerRef: React.RefObject<HTMLElement | null>,
+  scrollDeps: readonly unknown[],
+  resetDeps: readonly unknown[],
+): { userScrolled: boolean; resetUserScrolled(): void } {
   const [userScrolled, setUserScrolled] = useState(false);
+  const userScrolledRef = useRef(false);
 
-  const isNearBottom = useCallback((el: HTMLDivElement): boolean => {
-    const threshold = 100; // px from bottom
-    return el.scrollHeight - el.scrollTop - el.clientHeight < threshold;
-  }, []);
-
-  // Listen to scroll events — update both ref and state
-  useEffect(() => {
+  function scrollToBottom(): void {
     const el = containerRef.current;
-    if (!el) return;
+    if (el) el.scrollTop = el.scrollHeight;
+  }
 
-    const handler = (): void => {
-      const near = isNearBottom(el);
-      isNearBottomRef.current = near;
-      const scrolledAway = !near;
-      if (userScrolledRef.current !== scrolledAway) {
-        userScrolledRef.current = scrolledAway;
-        setUserScrolled(scrolledAway);
-      }
-    };
-
-    el.addEventListener('scroll', handler, { passive: true });
-    return () => el.removeEventListener('scroll', handler);
-  }, [containerRef, isNearBottom]);
-
-  // Force-reset user-scroll state on session switch (or any resetDeps change).
-  // Runs BEFORE the auto-scroll effect so the flag is clear when auto-scroll fires.
+  // Force bottom + clear flag on session switch
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
-    if (!resetDeps || resetDeps.length === 0) return;
     userScrolledRef.current = false;
-    isNearBottomRef.current = true;
     setUserScrolled(false);
-  }, resetDeps); // eslint-disable-line react-hooks/exhaustive-deps
+    scrollToBottom();
+  }, resetDeps);
 
-  // Auto-scroll when deps change (new message or streaming delta)
+  // Auto-scroll when messages or streaming state changes
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!userScrolledRef.current) scrollToBottom();
+  }, scrollDeps);
+
+  // Detect manual upward scroll
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
 
-    const timer = setTimeout(() => {
-      if (!userScrolledRef.current || isNearBottomRef.current) {
-        el.scrollTo({ top: el.scrollHeight, behavior: 'instant' });
-        userScrolledRef.current = false;
-        setUserScrolled(false);
-      }
-    }, 50);
+    function onScroll(): void {
+      const distFromBottom = el!.scrollHeight - el!.clientHeight - el!.scrollTop;
+      const scrolledUp = distFromBottom > 50;
+      userScrolledRef.current = scrolledUp;
+      setUserScrolled(scrolledUp);
+    }
 
-    return () => clearTimeout(timer);
-  }, deps); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const scrollToBottom = useCallback(
-    (smooth = true) => {
-      const el = containerRef.current;
-      if (!el) return;
-      el.scrollTo({ top: el.scrollHeight, behavior: smooth ? 'smooth' : 'instant' });
-      userScrolledRef.current = false;
-      setUserScrolled(false);
-    },
-    [containerRef],
-  );
+    el.addEventListener('scroll', onScroll, { passive: true });
+    return () => el.removeEventListener('scroll', onScroll);
+  }, []); // container element is stable after mount
 
   const resetUserScrolled = useCallback(() => {
-    scrollToBottom(true);
-  }, [scrollToBottom]);
+    userScrolledRef.current = false;
+    setUserScrolled(false);
+    scrollToBottom();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [containerRef]);
 
-  return { scrollToBottom, userScrolled, resetUserScrolled };
+  return { userScrolled, resetUserScrolled };
 }

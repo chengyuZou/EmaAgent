@@ -44,7 +44,7 @@ export function ttsEventToEma(
         turnId:     ctx.turnId,
         audio:      base64Encode(ev.bytes),
         sentenceId: makeSentenceId(ctx.turnId, currentSentenceIndex),
-        sessionId:  ctx.sessionId as string,
+        sessionId:  ctx.sessionId,
       };
 
     case 'sentence_done':
@@ -52,7 +52,7 @@ export function ttsEventToEma(
         type:       'tts_sentence_complete',
         turnId:     ctx.turnId,
         sentenceId: makeSentenceId(ctx.turnId, ev.index),
-        sessionId:  ctx.sessionId as string,
+        sessionId:  ctx.sessionId,
       };
 
     case 'error':

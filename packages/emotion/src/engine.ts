@@ -1,4 +1,4 @@
-import type { EmaStreamEvent, EmotionState, TurnId } from '@ema-agent/contracts';
+import type { EmaStreamEvent, EmotionState, TurnId, SessionId } from '@ema-agent/contracts';
 import { StreamingActScanner } from './parser.js';
 import type { ParsedActTag } from './types.js';
 import {
@@ -51,6 +51,7 @@ export interface EmotionEngineOptions {
 export class EmotionEngine {
   private vocabulary: readonly string[];
   private state: EmotionStateInternal;
+  private currentSessionId: SessionId | null = null;
   /** Cleaned accumulated text for the current turn (ACT tags stripped). */
   private strippedAccumulated = '';
   private readonly scanner = new StreamingActScanner();
@@ -76,7 +77,8 @@ export class EmotionEngine {
    * Prepare for a new turn.
    * Resets the streaming scanner and per-turn buffer; emotional state is kept.
    */
-  beginTurn(): void {
+  beginTurn(sessionId: SessionId): void {
+    this.currentSessionId = sessionId;
     this.scanner.reset();
     this.strippedAccumulated = '';
   }
@@ -126,6 +128,7 @@ export class EmotionEngine {
     tags: ParsedActTag[],
     turnId: TurnId,
   ): EmaStreamEvent[] {
+    const sessionId = this.currentSessionId!;
     const events: EmaStreamEvent[] = [];
 
     for (const tag of tags) {
@@ -136,6 +139,7 @@ export class EmotionEngine {
             this.state = next;
             events.push({
               type: 'emotion_changed',
+              sessionId,
               turnId,
               state: toPublicState(next),
             });
@@ -145,6 +149,7 @@ export class EmotionEngine {
         case 'motion':
           events.push({
             type: 'stage_cue',
+            sessionId,
             turnId,
             cue: { motion: tag.value, priority: 1 },
           });
@@ -153,6 +158,7 @@ export class EmotionEngine {
           const durationMs = Math.round(parseFloat(tag.value) * 1000);
           events.push({
             type: 'stage_cue',
+            sessionId,
             turnId,
             cue: { durationMs, priority: 0 },
           });

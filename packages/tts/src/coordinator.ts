@@ -218,7 +218,7 @@ export class TtsCoordinator {
       // Always send a sentence_complete marker, even if the adapter produced
       // no audio (e.g. all-error path). The frontend uses it to detect that
       // the sentence is "done attempting" and won't get more chunks.
-      this.emit({ type: 'tts_sentence_complete', turnId: this.turnId, sentenceId, sessionId: this.sessionId as string });
+      this.emit({ type: 'tts_sentence_complete', turnId: this.turnId, sentenceId, sessionId: this.sessionId });
     } finally {
       writer?.close();
     }

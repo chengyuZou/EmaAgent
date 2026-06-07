@@ -8,7 +8,7 @@
  * Only one prompt is visible at a time (top of queue).
  */
 import { create } from 'zustand';
-import type { AskUserQuestionSpec } from '@ema-agent/contracts';
+import type { AskUserQuestionSpec, TurnId } from '@ema-agent/contracts';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -49,6 +49,7 @@ export type DecisionPrompt =
   | {
       kind: 'ask_user';
       promptId: string;
+      turnId: TurnId;
       questions: AskUserQuestionSpec[];
       humanDescription?: string;
     };
@@ -83,12 +84,6 @@ export interface DecisionStoreState {
 
   /** Clear all prompts. */
   clear(): void;
-}
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-function advance(): { current: DecisionPrompt | null; queue: DecisionPrompt[] } {
-  return { current: null, queue: [] };
 }
 
 // ── Store ─────────────────────────────────────────────────────────────────────

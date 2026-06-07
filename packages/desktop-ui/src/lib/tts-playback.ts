@@ -13,6 +13,7 @@
 import type { EmaStreamEvent } from '@ema-agent/contracts';
 import { useSpeechStore } from '@ema-agent/live2d-react';
 import { tauriBridge } from './tauri-bridge.js';
+import { useConversationStore } from '../stores/conversation-store.js';
 
 interface SpeechStatePayload {
   speaking: boolean;
@@ -190,6 +191,7 @@ function toOwnedArrayBuffer(bytes: Uint8Array): ArrayBuffer {
  * Decodes the base64 payload and enqueues it for playback.
  */
 export function handleTtsChunk(event: EmaStreamEvent & { type: 'tts_chunk' }): void {
+  if (event.sessionId !== (useConversationStore.getState().ttsOwnerSessionId as string)) return;
   try {
     console.log('[tts-playback] raw chunk received, audioLen=', event.audio?.length);
     const binary = atob(event.audio);
@@ -208,6 +210,7 @@ export function handleTtsChunk(event: EmaStreamEvent & { type: 'tts_chunk' }): v
  * marker reserved for future use (e.g. pre-buffer next sentence).
  */
 export function handleTtsSentenceComplete(event: EmaStreamEvent & { type: 'tts_sentence_complete' }): void {
+  if (event.sessionId !== (useConversationStore.getState().ttsOwnerSessionId as string)) return;
   const bytes = completeSentence(event.sentenceId);
   if (!bytes || bytes.byteLength === 0) {
     console.log('[tts-playback] sentence complete without audio, sentenceId=', event.sentenceId);
