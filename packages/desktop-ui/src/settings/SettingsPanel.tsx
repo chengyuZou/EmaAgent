@@ -10,8 +10,9 @@ import { BindingsTab } from './BindingsTab.js';
 import { CardsTab } from './CardsTab.js';
 import { Live2DTab } from './Live2DTab.js';
 import { ShortcutsTab } from './ShortcutsTab.js';
+import { AppearanceTab } from './AppearanceTab.js';
 
-type TabId = 'providers' | 'bindings' | 'cards' | 'live2d' | 'shortcuts';
+type TabId = 'providers' | 'bindings' | 'cards' | 'live2d' | 'shortcuts' | 'appearance';
 
 const TABS: Array<{ id: TabId; label: string }> = [
   { id: 'providers',  label: '服务来源' },
@@ -19,6 +20,7 @@ const TABS: Array<{ id: TabId; label: string }> = [
   { id: 'cards',      label: '角色卡' },
   { id: 'live2d',     label: 'Live2D' },
   { id: 'shortcuts',  label: '快捷键' },
+  { id: 'appearance', label: '外观' },
 ];
 
 export function SettingsPanel(): JSX.Element {
@@ -75,6 +77,7 @@ function TabContent({ tab }: { tab: TabId }): JSX.Element {
     case 'cards':      return <CardsTab />;
     case 'live2d':     return <Live2DTab />;
     case 'shortcuts':  return <ShortcutsTab />;
+    case 'appearance': return <AppearanceTab />;
     default:           return <div>未知标签</div>;
   }
 }

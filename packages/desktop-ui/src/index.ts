@@ -31,6 +31,9 @@ export type {
 } from './stores/chat-store.js';
 
 export { useDecisionStore }  from './stores/decision-store.js';
+
+export { useThemeStore, useThemeSync } from './stores/theme-store.js';
+export type { ThemeStoreState }        from './stores/theme-store.js';
 export type {
   DecisionStoreState,
   DecisionPrompt,

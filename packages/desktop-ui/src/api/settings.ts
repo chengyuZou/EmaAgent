@@ -22,6 +22,11 @@ export interface PermissionTimeoutResult {
   timeoutMs: number;
 }
 
+export interface ThemeConfig {
+  hue:    number;
+  radius: number;
+}
+
 // ── API object ────────────────────────────────────────────────────────────────
 
 export const settingsApi = {
@@ -46,6 +51,19 @@ export const settingsApi = {
   /** PUT /api/settings/permission-timeout */
   async putPermissionTimeout(payload: { timeoutMs: number }): Promise<void> {
     await sidecarClient.request('/api/settings/permission-timeout', {
+      method: 'PUT',
+      json: payload,
+    });
+  },
+
+  /** GET /api/settings/theme */
+  async getTheme(): Promise<ThemeConfig> {
+    return sidecarClient.request<ThemeConfig>('/api/settings/theme');
+  },
+
+  /** PUT /api/settings/theme */
+  async putTheme(payload: ThemeConfig): Promise<void> {
+    await sidecarClient.request('/api/settings/theme', {
       method: 'PUT',
       json: payload,
     });

@@ -1,5 +1,7 @@
 import { VAR_HUE, EMA_PRIMARY_HUE } from '../uno-preset-chromatic.js';
-import { VAR_RADIUS } from '../../uno.config.js';
+
+/** Mirrors VAR_RADIUS exported from uno.config.ts — kept in sync manually. */
+const VAR_RADIUS = '--ema-radius';
 
 /** Default radius multiplier — matches the :root preflight. */
 const DEFAULT_RADIUS = 1;

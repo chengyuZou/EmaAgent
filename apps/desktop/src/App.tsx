@@ -3,7 +3,7 @@ import { EmaStageView } from './components/EmaStageView.js';
 import { useSpeechStore } from '@ema-agent/live2d-react';
 import { FloatingDock } from '@ema-agent/desktop-ui';
 import { DecisionLayer } from '@ema-agent/desktop-ui';
-import { useSidecarStore } from '@ema-agent/desktop-ui';
+import { useSidecarStore, useThemeSync } from '@ema-agent/desktop-ui';
 
 // ── Main window ─────────────────────────────────────────────────────────────
 //
@@ -26,6 +26,7 @@ export function App(): React.JSX.Element {
   const [dockVisible, setDockVisible] = useState(false);
 
   useDevTtsPlaybackFromUrl();
+  useThemeSync();
 
   // Sidecar health polling
   useEffect(() => {

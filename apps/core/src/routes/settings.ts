@@ -7,6 +7,7 @@ import type { AppBindings } from '../wiring.js';
 
 const SETTINGS_KEY_EVENT_DISPLAY      = 'frontend.eventDisplay';
 const SETTINGS_KEY_PERMISSION_TIMEOUT = 'permission.askTimeoutMs';
+const SETTINGS_KEY_THEME              = 'frontend.theme';
 
 // ── Event-display defaults ───────────────────────────────────────────────────
 //
@@ -98,6 +99,15 @@ const permissionTimeoutBodySchema = z.object({
   timeoutMs: z.number().int().min(5_000).max(600_000),
 });
 
+const themeBodySchema = z.object({
+  hue:    z.number().min(0).max(360),
+  radius: z.number().min(0).max(3),
+});
+
+type ThemeConfig = z.infer<typeof themeBodySchema>;
+
+const DEFAULT_THEME: ThemeConfig = { hue: 350, radius: 1 };
+
 // ── Route factory ────────────────────────────────────────────────────────────
 
 /**
@@ -148,6 +158,21 @@ export function settingsRoute(bindings: AppBindings): Hono {
     }
     repo.set(SETTINGS_KEY_PERMISSION_TIMEOUT, parsed.data.timeoutMs);
     bindings.permissionPrompts.setDefaultTimeout(parsed.data.timeoutMs);
+    return c.json({ ok: true });
+  });
+
+  // ── Theme (hue + radius) ──────────────────────────────────────────────────
+  app.get('/theme', (c) => {
+    const stored = repo.get(SETTINGS_KEY_THEME) as ThemeConfig | undefined;
+    return c.json({ ...DEFAULT_THEME, ...stored });
+  });
+
+  app.put('/theme', async (c) => {
+    const parsed = themeBodySchema.safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success) {
+      return c.json({ error: 'invalid_request', details: parsed.error.flatten() }, 400);
+    }
+    repo.set(SETTINGS_KEY_THEME, parsed.data);
     return c.json({ ok: true });
   });
 
