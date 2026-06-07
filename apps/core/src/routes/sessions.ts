@@ -33,6 +33,12 @@ const forkSchema = z.object({
   untilTurnId: z.string().optional(),
 });
 
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+function isNotFound(err: unknown): boolean {
+  return err instanceof Error && err.message.startsWith('session_not_found');
+}
+
 // ── Route factory ────────────────────────────────────────────────────────────
 
 const createSessionSchema = z.object({
@@ -92,18 +98,20 @@ export function sessionsRoute(bindings: AppBindings): Hono {
       return c.json({ error: 'invalid_request', details: body.error.flatten() }, 400);
     }
 
-    // Transactional partial update — one round-trip to SQLite, no
-    // half-applied state if a later sub-update were to fail.
-    bindings.session.patchSession(sessionId, {
-      title:          body.data.title,
-      pinned:         body.data.pinned,
-      groupLabel:     'groupLabel' in body.data ? body.data.groupLabel ?? null : undefined,
-      workspaceRoots: body.data.workspaceRoots,
-      lastMode:       body.data.lastMode,
-      lastSubMode:    body.data.lastSubMode,
-    });
-
-    return c.json(bindings.session.getSession(sessionId));
+    try {
+      bindings.session.patchSession(sessionId, {
+        title:          body.data.title,
+        pinned:         body.data.pinned,
+        groupLabel:     'groupLabel' in body.data ? body.data.groupLabel ?? null : undefined,
+        workspaceRoots: body.data.workspaceRoots,
+        lastMode:       body.data.lastMode,
+        lastSubMode:    body.data.lastSubMode,
+      });
+      return c.json(bindings.session.getSession(sessionId));
+    } catch (err) {
+      if (isNotFound(err)) return c.json({ error: 'session_not_found' }, 404);
+      throw err;
+    }
   });
 
   // ── POST /api/sessions/:id/fork ────────────────────────────────────────────
@@ -113,11 +121,16 @@ export function sessionsRoute(bindings: AppBindings): Hono {
     if (!body.success) {
       return c.json({ error: 'invalid_request', details: body.error.flatten() }, 400);
     }
-    const result = bindings.session.forkSession(
-      sessionId,
-      body.data.untilTurnId ? asTurnId(body.data.untilTurnId) : undefined,
-    );
-    return c.json(result, 201);
+    try {
+      const result = bindings.session.forkSession(
+        sessionId,
+        body.data.untilTurnId ? asTurnId(body.data.untilTurnId) : undefined,
+      );
+      return c.json(result, 201);
+    } catch (err) {
+      if (isNotFound(err)) return c.json({ error: 'session_not_found' }, 404);
+      throw err;
+    }
   });
 
   // ── POST /api/sessions/:id/archive ─────────────────────────────────────────

@@ -88,7 +88,9 @@ export function createSkillsRouter(bindings: AppBindings) {
 
   // ── Delete ──────────────────────────────────────────────────────────────────
   router.delete('/skills/:name', (c) => {
-    skillStore.remove(c.req.param('name'));
+    const name = c.req.param('name');
+    if (!skillStore.findByName(name)) return c.json({ error: 'Skill not found' }, 404);
+    skillStore.remove(name);
     return c.json({ ok: true });
   });
 
