@@ -139,9 +139,16 @@ export function emaSharedPreset(): Preset[] {
         },
       ],
     },
-    // -- Custom animations (preflight keyframes) --
+    // -- Custom animations: keyframes + theme entries for animate-* utilities --
     {
       name: 'ema-animations',
+      theme: {
+        animation: {
+          'fade-in':  'ema-fade-in  150ms ease-out',
+          'fade-out': 'ema-fade-out 100ms ease-in  forwards',
+          'scale-in': 'ema-scale-in 150ms ease-out',
+        },
+      },
       preflights: [
         {
           getCSS: () => `
@@ -149,6 +156,9 @@ export function emaSharedPreset(): Preset[] {
   0%   { opacity: 0.4; transform: scale(0, 1); }
   100% { opacity: 0;   transform: scale(1, 1); }
 }
+@keyframes ema-fade-in  { from { opacity: 0; } to { opacity: 1; } }
+@keyframes ema-fade-out { from { opacity: 1; } to { opacity: 0; } }
+@keyframes ema-scale-in { from { opacity: 0; scale: 0.95; } to { opacity: 1; scale: 1; } }
           `.trim(),
         },
       ],

@@ -87,7 +87,7 @@ export function Tabs(props: TabsProps): React.JSX.Element {
           <RadixTabs.Content
             key={it.value}
             value={it.value}
-            className="outline-none data-[state=inactive]:hidden"
+            className="outline-none"
           >
             {it.content}
           </RadixTabs.Content>

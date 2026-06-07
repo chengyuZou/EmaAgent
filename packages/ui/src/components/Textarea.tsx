@@ -56,7 +56,20 @@ export const Textarea = forwardRef<TextareaHandle, TextareaProps>(
       focus: () => innerRef.current?.focus(),
       blur:  () => innerRef.current?.blur(),
       clear: () => {
-        if (innerRef.current) innerRef.current.value = '';
+        const el = innerRef.current;
+        if (!el) return;
+        // Direct .value mutation is ignored by React for controlled inputs.
+        // Using the native prototype setter + synthetic input event triggers
+        // React's onChange so both controlled and uncontrolled callers get ''.
+        const nativeSetter = Object.getOwnPropertyDescriptor(
+          HTMLTextAreaElement.prototype, 'value',
+        )?.set;
+        if (nativeSetter) {
+          nativeSetter.call(el, '');
+          el.dispatchEvent(new Event('input', { bubbles: true }));
+        } else {
+          el.value = '';
+        }
       },
       el:    () => innerRef.current,
     }), []);

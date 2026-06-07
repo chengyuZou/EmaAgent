@@ -15,7 +15,8 @@ export interface DialogProps {
   /** Hide the default close (X) button in the corner. */
   hideClose?:   boolean;
   children:     ReactNode;
-  /** Override max width (default 'max-w-md'). */
+  /** Override max width. Must be a static UnoCSS class (e.g. 'max-w-lg', 'max-w-2xl').
+   *  Do NOT pass dynamic bracket values like 'w-[500px]' — UnoCSS cannot scan them. */
   widthClass?:  string;
   className?:   string;
 }

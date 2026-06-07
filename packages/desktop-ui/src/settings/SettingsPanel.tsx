@@ -5,6 +5,7 @@ import { useState, useEffect, type JSX } from 'react';
 import { ErrorBoundary } from '../lib/error-boundary.js';
 import { useSettingsStore } from '../stores/settings-store.js';
 import { useCardStore } from '../stores/card-store.js';
+import { useThemeSync } from '../stores/theme-store.js';
 import { ProvidersTab } from './ProvidersTab.js';
 import { BindingsTab } from './BindingsTab.js';
 import { CardsTab } from './CardsTab.js';
@@ -24,6 +25,7 @@ const TABS: Array<{ id: TabId; label: string }> = [
 ];
 
 export function SettingsPanel(): JSX.Element {
+  useThemeSync();
   const [activeTab, setActiveTab] = useState<TabId>('providers');
   const settingsLoading = useSettingsStore((s) => s.loading);
   const cardsLoading = useCardStore((s) => s.loading);

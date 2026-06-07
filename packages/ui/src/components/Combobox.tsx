@@ -120,7 +120,8 @@ export function Combobox({
       side="bottom"
       align="start"
       sideOffset={4}
-      widthClass={`w-[${width}px]`}
+      style={{ width }}
+      widthClass=""
     >
       <div className="max-h-64 overflow-y-auto">
         {filtered.length === 0 ? (

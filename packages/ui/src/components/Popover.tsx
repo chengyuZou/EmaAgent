@@ -1,5 +1,5 @@
 import * as RadixPopover from '@radix-ui/react-popover';
-import type { ReactNode } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 import { cn } from '../utils/cn.js';
 
 // ── Popover ─────────────────────────────────────────────────────────────────
@@ -22,8 +22,10 @@ export interface PopoverProps {
   side?:       'top' | 'right' | 'bottom' | 'left';
   align?:      'start' | 'center' | 'end';
   sideOffset?: number;
-  /** Width of the popover. CSS class string (e.g. 'w-72'). */
+  /** Width of the popover. CSS class string (e.g. 'w-72'). Must be a static string for UnoCSS scanning. */
   widthClass?: string;
+  /** Inline style — use for dynamic widths (e.g. `{ width: 280 }`) to avoid UnoCSS scanning limits. */
+  style?:      CSSProperties;
   className?:  string;
 }
 
@@ -35,6 +37,7 @@ export function Popover(props: PopoverProps): React.JSX.Element {
     align      = 'center',
     sideOffset = 8,
     widthClass = 'w-64',
+    style,
     className,
   } = props;
 
@@ -50,6 +53,7 @@ export function Popover(props: PopoverProps): React.JSX.Element {
           side={side}
           align={align}
           sideOffset={sideOffset}
+          style={style}
           className={cn(
             'z-40 panel-glass rounded-lg p-2 shadow-xl',
             widthClass,
