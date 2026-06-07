@@ -1,6 +1,7 @@
 import type { z } from 'zod';
 import type {
   EmaStreamEvent, Artifact, ArtifactId, ArtifactType, SessionId, TurnId,
+  AskUserQuestionSpec,
 } from '@ema-agent/contracts';
 import type { ToolPermissionMeta } from '@ema-agent/permission';
 
@@ -104,6 +105,31 @@ export interface ICommandRunner {
   destroy?(): void;
 }
 
+// ── Extension interfaces (injected into ToolExecutionContext by the host) ─────
+
+export interface SubagentSpawnOpts {
+  model?:       string;
+  subMode?:     string;
+  description?: string;
+}
+
+export interface SubagentSpawnResult {
+  output: string;
+  usage:  { inputTokens: number; outputTokens: number };
+}
+
+export interface ISubagentSpawner {
+  spawn(prompt: string, opts: SubagentSpawnOpts, signal: AbortSignal): Promise<SubagentSpawnResult>;
+}
+
+export interface IMcpClientBridge {
+  call(server: string, tool: string, args: Record<string, unknown>): Promise<unknown>;
+}
+
+export interface ISkillRunner {
+  run(skill: string, args: string | undefined, ctx: ToolExecutionContext): Promise<string>;
+}
+
 // ── ToolExecutionContext ───────────────────────────────────────────────────────
 
 export interface ToolExecutionContext {
@@ -140,12 +166,27 @@ export interface ToolExecutionContext {
    * tests and minimal embedders that don't support interactive prompts.
    * `promptId` must match the id already broadcast in `ask_user_required`.
    */
-  askUser?: (promptId: string, questions: unknown[]) => Promise<{ answers: Record<string, string> }>;
+  askUser?: (promptId: string, questions: AskUserQuestionSpec[]) => Promise<{ answers: Record<string, string> }>;
   /**
    * Persistent artifact store. When present, artifact_write/read/list delegate
    * here instead of the in-process memory fallback.
    */
   artifactStore?: IArtifactStore;
+  /**
+   * Sub-agent spawner. Injected by AgentEngine when sub-agent support is wired.
+   * Absent in tests and non-agent embedders.
+   */
+  subagentSpawner?: ISubagentSpawner;
+  /**
+   * MCP client bridge. Injected when at least one MCP server is connected.
+   * Absent if no MCP servers are configured.
+   */
+  mcpClient?: IMcpClientBridge;
+  /**
+   * Skill runner. Injected when the skill registry is wired up.
+   * Absent in tests and minimal embedders.
+   */
+  skillRunner?: ISkillRunner;
 }
 
 // ── ToolDescriptor — what the LLM sees ───────────────────────────────────────

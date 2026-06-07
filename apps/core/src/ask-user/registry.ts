@@ -13,9 +13,13 @@ export class AskUserRegistry {
     string,
     {
       resolve: (answers: Record<string, string>) => void;
-      timer: ReturnType<typeof setTimeout>;
+      timer:   ReturnType<typeof setTimeout>;
+      turnId?: string;
     }
   >();
+
+  // turnId → set of promptIds waiting on that turn
+  private readonly byTurn = new Map<string, Set<string>>();
 
   private defaultTimeoutMs: number;
 
@@ -24,12 +28,12 @@ export class AskUserRegistry {
   }
 
   /** Create a pending prompt with an auto-generated promptId. */
-  create(timeoutMs?: number): {
+  create(timeoutMs?: number, turnId?: string): {
     promptId: string;
-    promise: Promise<Record<string, string>>;
+    promise:  Promise<Record<string, string>>;
   } {
     const promptId = crypto.randomUUID();
-    const promise = this._makePromise(promptId, timeoutMs);
+    const promise  = this._makePromise(promptId, timeoutMs, turnId);
     return { promptId, promise };
   }
 
@@ -39,22 +43,36 @@ export class AskUserRegistry {
    * Use this when the tool has already generated the promptId and broadcast
    * it in an SSE event (ask_user_required). The frontend will POST that same
    * promptId back, so the registry entry must be keyed to it.
+   *
+   * Pass `turnId` so the prompt can be batch-cancelled when its turn ends.
    */
-  createWithId(promptId: string, timeoutMs?: number): {
+  createWithId(promptId: string, timeoutMs?: number, turnId?: string): {
     promise: Promise<Record<string, string>>;
   } {
-    return { promise: this._makePromise(promptId, timeoutMs) };
+    return { promise: this._makePromise(promptId, timeoutMs, turnId) };
   }
 
-  private _makePromise(promptId: string, timeoutMs?: number): Promise<Record<string, string>> {
+  private _makePromise(
+    promptId:  string,
+    timeoutMs?: number,
+    turnId?:   string,
+  ): Promise<Record<string, string>> {
     const ms = timeoutMs ?? this.defaultTimeoutMs;
+
+    if (turnId) {
+      let set = this.byTurn.get(turnId);
+      if (!set) { set = new Set(); this.byTurn.set(turnId, set); }
+      set.add(promptId);
+    }
+
     return new Promise<Record<string, string>>((resolve) => {
       const timer = setTimeout(() => {
         if (this.pending.delete(promptId)) {
-          resolve({}); // empty answers on timeout
+          if (turnId) this.byTurn.get(turnId)?.delete(promptId);
+          resolve({});
         }
       }, ms);
-      this.pending.set(promptId, { resolve, timer });
+      this.pending.set(promptId, { resolve, timer, turnId });
     });
   }
 
@@ -67,21 +85,42 @@ export class AskUserRegistry {
     if (!entry) return false;
     clearTimeout(entry.timer);
     this.pending.delete(promptId);
+    if (entry.turnId) this.byTurn.get(entry.turnId)?.delete(promptId);
     entry.resolve(answers);
     return true;
   }
 
-  /** Cancel a pending prompt (e.g. turn aborted). Resolves with empty answers. */
+  /** Cancel a single pending prompt (resolves with empty answers). */
   cancel(promptId: string): boolean {
     const entry = this.pending.get(promptId);
     if (!entry) return false;
     clearTimeout(entry.timer);
     this.pending.delete(promptId);
+    if (entry.turnId) this.byTurn.get(entry.turnId)?.delete(promptId);
     entry.resolve({});
     return true;
   }
 
-  /** Cancel all prompts for a given turn id (not yet needed — V1.5). */
+  /**
+   * Cancel all pending ask_user prompts for a given turn.
+   * Called when a turn reaches any terminal state so prompts don't hang
+   * until the 120 s timeout fires.
+   * Returns the number of prompts cancelled.
+   */
+  cancelForTurn(turnId: string): number {
+    const promptIds = this.byTurn.get(turnId);
+    if (!promptIds || promptIds.size === 0) {
+      this.byTurn.delete(turnId);
+      return 0;
+    }
+    let n = 0;
+    for (const promptId of [...promptIds]) {
+      if (this.cancel(promptId)) n++;
+    }
+    this.byTurn.delete(turnId);
+    return n;
+  }
+
   size(): number {
     return this.pending.size;
   }

@@ -72,8 +72,8 @@ export const askUserTool = buildTool<AskUserInput, AskUserResult>({
       // Desktop / SSE path — emit a structured event and wait for the answer
       // to come back through a side-channel promise resolved by the orchestrator.
       // The orchestrator injects an `askUser` resolver into ctx for this purpose.
-      const askFn = (ctx as unknown as { askUser?: AskFn }).askUser;
-      if (askFn) {
+      if (ctx.askUser) {
+        const askFn = ctx.askUser;
         const promptId = randomUUID();
         const specs: AskUserQuestionSpec[] = questions.map((q, i) => ({
           id:          `q${i}`,

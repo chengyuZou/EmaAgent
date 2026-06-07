@@ -6,6 +6,7 @@ import type { AgentDeps, AgentRunInput } from './types.js';
 import { AgentPolicy } from './policy.js';
 import { TurnToolExecutor } from './tool-executor.js';
 import { historyToLlmMessages } from '@ema-agent/session';
+import { clearTodos } from '@ema-agent/tool-builtin';
 
 // ── AgentEngine ───────────────────────────────────────────────────────────────
 
@@ -87,7 +88,7 @@ async function* runTurn(
           // promptId the tool already broadcast in `ask_user_required`. The
           // frontend will POST back that exact promptId; a mismatched key means
           // respond() returns false and the promise never resolves.
-          const { promise } = askUserRegistry.createWithId(promptId);
+          const { promise } = askUserRegistry.createWithId(promptId, undefined, turnId as string);
           return { answers: await promise };
         }
       : undefined,
@@ -112,6 +113,7 @@ async function* runTurn(
 
   try {
     emotion.beginTurn();
+    clearTodos(sessionId);
 
     // ── onTurnStart hook ──────────────────────────────────────────────────────
     const startResult = await hooks.trigger('onTurnStart', {
@@ -309,7 +311,8 @@ async function* runTurn(
         turnId, sessionId, role: 'assistant',
         blocks: allBlocks as MessageBlocks,
       });
-      messages.push({ role: 'assistant', content: allBlocks });
+      const replayBlocks = allBlocks.filter(b => b.type !== 'thinking');
+      messages.push({ role: 'assistant', content: replayBlocks });
 
       session.appendMessage({
         turnId, sessionId, role: 'user',

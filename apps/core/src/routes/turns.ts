@@ -108,6 +108,8 @@ export function turnsRoute(bindings: AppBindings): Hono {
         if (isTerminalTurnEvent(event)) {
           const n = bindings.permissionPrompts.cancelForTurn(turnId, `turn ${event.type}`);
           if (n > 0) console.log(`[permission] cancelled ${n} prompt(s) on ${event.type}`);
+          const m = bindings.askUserRegistry.cancelForTurn(turnId as string);
+          if (m > 0) console.log(`[ask_user] cancelled ${m} prompt(s) on ${event.type}`);
         }
       }
     })().catch((err) => {
@@ -184,13 +186,13 @@ export function turnsRoute(bindings: AppBindings): Hono {
           }, 15_000);
         },
         cancel() {
-          // Client disconnected — mark turn as cancelled so further push() calls
-          // are dropped. Do NOT call clear() here: that would erase the cancelled
-          // entry and let the background fan-out IIFE silently re-create the store
-          // entry with no reader on the other end.
+          // Client disconnected — abort the running turn so the LLM stream,
+          // tool calls, and TTS synthesis all stop. Also mark the event store
+          // as cancelled so further push() calls are dropped.
           cleanup();
           if (!eventStore.isDone(turnId) && eventHub.subscriberCount(turnId) === 0) {
             eventStore.cancel(turnId);
+            orchestrator.abort(turnId);
           }
         },
       }),

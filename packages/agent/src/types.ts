@@ -11,7 +11,7 @@ import type { AgentFileStateStore, AgentToolResultStore } from '@ema-agent/agent
 export interface AskUserRegistryLike {
   create(timeoutMs?: number): { promptId: string; promise: Promise<Record<string, string>> };
   /** Keyed variant: registry uses the caller-supplied promptId, not a new UUID. */
-  createWithId(promptId: string, timeoutMs?: number): { promise: Promise<Record<string, string>> };
+  createWithId(promptId: string, timeoutMs?: number, turnId?: string): { promise: Promise<Record<string, string>> };
   respond(promptId: string, answers: Record<string, string>): boolean;
 }
 

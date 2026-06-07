@@ -407,11 +407,7 @@ export class SessionStore {
   appendMessage(input: AppendMessageInput): Message {
     const id  = asMessageId(crypto.randomUUID());
     const now = this.nextTs();
-    // blocks is always serialized to JSON for the TEXT column.
-    // Simple string content is stored as a JSON string: "\"hello world\""
-    const blocksJson = typeof input.blocks === 'string'
-      ? JSON.stringify(input.blocks)
-      : JSON.stringify(input.blocks);
+    const blocksJson = JSON.stringify(input.blocks);
     this.messagesRepo.insert({
       id,
       sessionId:   input.sessionId,
@@ -447,11 +443,6 @@ export class SessionStore {
     return this.messagesRepo.listForTurn(turnId).map(toMessage);
   }
 
-  /**
-   * Cursor-based list for the frontend chat UI.
-   * Returns messages newest-first; pass the last item's createdAt as `before`
-   * to load older messages (scroll-up pagination).
-   */
   /**
    * Cursor-based list for the frontend chat UI.
    * Both first page and older pages return messages **newest-first**.

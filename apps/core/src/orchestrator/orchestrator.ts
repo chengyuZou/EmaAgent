@@ -67,6 +67,8 @@ export class Orchestrator {
   private readonly conversation: ConversationEngine;
   private readonly agent:        AgentEngine;
   private readonly callbacks:    OrchestratorCallbacks;
+  // turnId → sessionId, kept alive until the events generator exits
+  private readonly activeTurns = new Map<string, ReturnType<typeof asSessionId>>();
 
   constructor(
     private readonly bindings:   AppBindings,
@@ -89,6 +91,13 @@ export class Orchestrator {
     });
   }
 
+  /** Signal abort for a running turn. No-op if turn is not active. */
+  abort(turnId: TurnId): void {
+    const sessionId = this.activeTurns.get(turnId as string);
+    if (!sessionId) return;
+    this.bindings.session.abortTurn(sessionId, turnId);
+  }
+
   async run(request: TurnRequest): Promise<TurnResult> {
     const sessionId = asSessionId(request.sessionId);
     const { turn, signal } = this.bindings.session.startTurn({
@@ -98,6 +107,7 @@ export class Orchestrator {
       userInput:    request.userInput,
     });
     const turnId = turn.id;
+    this.activeTurns.set(turnId as string, sessionId);
 
     // Build the TTS queue + coordinator before the engine stream is consumed.
     // Queue is shared between coordinator.emit and the merge loop.
@@ -114,6 +124,7 @@ export class Orchestrator {
     const engineEvents = this.engineStreamFor(request, turn, signal, sessionId);
 
     const { callbacks } = this;
+    const self = this;
     const events = (async function* () {
       try {
         let pendingTurnDone: EmaStreamEvent | null = null;
@@ -153,6 +164,8 @@ export class Orchestrator {
           callbacks.onAudioFinalized?.(turnId, null);
         }
         throw err;
+      } finally {
+        self.activeTurns.delete(turnId as string);
       }
     })();
 
