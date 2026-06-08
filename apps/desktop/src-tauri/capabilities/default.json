@@ -1,0 +1,11 @@
+{
+  "$schema": "https://schema.tauri.app/config/2/capability.json",
+  "identifier": "default",
+  "description": "Default app capability",
+  "windows": ["main", "chat", "settings"],
+  "permissions": [
+    "core:default",
+    "dialog:allow-save",
+    "dialog:allow-open"
+  ]
+}

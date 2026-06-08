@@ -66,6 +66,7 @@ pub fn run() {
     let handle_for_setup = sidecar_state.clone();
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .manage(sidecar_state)
         .invoke_handler(tauri::generate_handler![
             get_sidecar_port,

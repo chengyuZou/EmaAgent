@@ -13,6 +13,7 @@ import {
 import { tauriBridge } from '../lib/tauri-bridge.js';
 import { useSessionStore } from './session-store.js';
 import { useDecisionStore } from './decision-store.js';
+import { useArtifactStore } from './artifact-store.js';
 import type {
   SessionId,
   TurnId,
@@ -255,9 +256,15 @@ function dispatchSseEvent(
       }
       break;
 
-    // Reserved for V1.5
     case 'artifact_upserted':
+      useArtifactStore.getState().upsertFromEvent(event.artifact);
+      break;
+
     case 'artifact_applied':
+      useArtifactStore.getState().markAppliedFromEvent(event.id);
+      break;
+
+    // Reserved for V1.5
     case 'narrative_route_resolved':
     case 'narrative_timeline_complete':
     case 'memory_recall_evidence':
@@ -427,6 +434,7 @@ export const useConversationStore = create<ConversationStoreState>((set, get) =>
     sendQueues.get(id as string)?.clear();
     sendQueues.delete(id as string);
     evictSessionPlayers(id as string);
+    useArtifactStore.getState().evictSession(id);
     set((s) => {
       const msgs = new Map(s.messages);
       msgs.delete(id as string);

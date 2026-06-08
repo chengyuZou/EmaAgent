@@ -17,6 +17,7 @@
     "@ema-agent/live2d-react": "workspace:*",
     "@ema-agent/ui": "workspace:*",
     "@tauri-apps/api": "^2.4.0",
+    "@tauri-apps/plugin-dialog": "^2",
     "@tauri-apps/plugin-shell": "^2.2.0",
     "@unocss/preset-attributify": "^66.0.0",
     "@unocss/preset-uno": "^66.7.0",

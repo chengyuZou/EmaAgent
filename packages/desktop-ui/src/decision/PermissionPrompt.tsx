@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { Button, Card } from '@ema-agent/ui';
 import { permissionApi } from '../api/permission.js';
 import { HumanDescriptionPanel } from './HumanDescriptionPanel.js';
@@ -23,8 +22,6 @@ export function PermissionPrompt({
   humanDescriptionPending,
   onResolve,
 }: PermissionPromptProps): JSX.Element {
-  const [countdown, _setCountdown] = useState<number | null>(null);
-
   return (
     <Card variant="elevated" padding="lg" className="shadow-2xl max-w-lg w-full">
       <HumanDescriptionPanel
@@ -34,10 +31,6 @@ export function PermissionPrompt({
       />
 
       <RawCommandPanel toolName={toolName} args={args} />
-
-      {countdown !== null && (
-        <p className="text-xs text-neutral-500 mt-2">剩余 {countdown}s</p>
-      )}
 
       <div className="flex gap-3 mt-4 justify-end">
         <Button

@@ -36,6 +36,16 @@ export interface TauriBridge {
 
   /** Toggle mouse passthrough for the current window. */
   setPassthrough(value: boolean): Promise<void>;
+
+  /**
+   * Open a native "Save As" dialog starting at defaultPath.
+   * Returns the chosen absolute path, or null if the user cancelled.
+   * Returns null when Tauri is absent (browser / Ladle dev mode).
+   */
+  saveFileDialog(opts?: {
+    defaultPath?: string;
+    filters?: Array<{ name: string; extensions: string[] }>;
+  }): Promise<string | null>;
 }
 
 // ── Detection ────────────────────────────────────────────────────────────────
@@ -57,11 +67,13 @@ function detectTauri(): boolean {
 
 // ── Lazy imports ─────────────────────────────────────────────────────────────
 
-type TauriCore = typeof import('@tauri-apps/api/core');
-type TauriEvent = typeof import('@tauri-apps/api/event');
+type TauriCore   = typeof import('@tauri-apps/api/core');
+type TauriEvent  = typeof import('@tauri-apps/api/event');
+type TauriDialog = typeof import('@tauri-apps/plugin-dialog');
 
-let _core: TauriCore | null = null;
-let _event: TauriEvent | null = null;
+let _core:   TauriCore   | null = null;
+let _event:  TauriEvent  | null = null;
+let _dialog: TauriDialog | null = null;
 
 async function getCore(): Promise<TauriCore | null> {
   if (!detectTauri()) return null;
@@ -83,6 +95,17 @@ async function getEvent(): Promise<TauriEvent | null> {
     return _event;
   } catch {
     _detected = false;
+    return null;
+  }
+}
+
+async function getDialog(): Promise<TauriDialog | null> {
+  if (!detectTauri()) return null;
+  if (_dialog) return _dialog;
+  try {
+    _dialog = await import('@tauri-apps/plugin-dialog');
+    return _dialog;
+  } catch {
     return null;
   }
 }
@@ -136,5 +159,11 @@ export const tauriBridge: TauriBridge = {
     const core = await getCore();
     if (!core) return;
     await core.invoke('set_passthrough', { value });
+  },
+
+  async saveFileDialog(opts = {}): Promise<string | null> {
+    const dialog = await getDialog();
+    if (!dialog) return null;
+    return dialog.save(opts);
   },
 };
