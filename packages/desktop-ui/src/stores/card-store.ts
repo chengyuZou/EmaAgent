@@ -2,20 +2,20 @@
  * Card store — character card CRUD + activate + voice-refs passthrough.
  */
 import { create } from 'zustand';
-import { cardsApi, type CharacterCardWire, type CharacterCardInput } from '../api/cards.js';
+import { cardsApi, type CharacterCard, type CharacterCardInput } from '../api/cards.js';
 import type { CharacterCardId } from '@ema-agent/contracts';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 export interface CardStoreState {
-  cards:         CharacterCardWire[];
+  cards:         CharacterCard[];
   activeCardId:  CharacterCardId | null;
   loading:       boolean;
   error:         string | null;
 
   load():                                          Promise<void>;
   activate(id: CharacterCardId):                   Promise<void>;
-  create(input: CharacterCardInput):               Promise<CharacterCardWire>;
+  create(input: CharacterCardInput):               Promise<CharacterCard>;
   patch(id: CharacterCardId, input: Partial<CharacterCardInput>): Promise<void>;
   delete(id: CharacterCardId):                     Promise<void>;
 

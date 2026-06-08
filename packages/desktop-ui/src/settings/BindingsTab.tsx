@@ -4,6 +4,7 @@
 import { useState, useEffect } from 'react';
 import { useSettingsStore } from '../stores/settings-store.js';
 import { modelBindingsApi, type BindingModule, type ResolvedModelBinding } from '../api/model-bindings.js';
+import type { Capability } from '@ema-agent/contracts';
 import { showToast } from '../lib/toast.js';
 
 /** Maps each binding module to the provider capability it requires. */
@@ -20,9 +21,7 @@ const MODULE_CAPABILITY: Record<BindingModule, string> = {
   'lightrag-llm': 'llm',
   embed:          'embed',
   rerank:         'rerank',
-  tts_chat:       'tts',
-  tts_narrative:  'tts',
-  tts_agent:      'tts',
+  tts:            'tts',
   stt:            'stt',
   vision:         'vision',
   imagegen:       'vision',
@@ -41,9 +40,7 @@ const MODULES: Array<{ id: BindingModule; label: string }> = [
   { id: 'embed',         label: 'Embed' },
   { id: 'rerank',        label: 'Rerank' },
   { id: 'lightrag-llm',  label: 'LightRAG LLM' },
-  { id: 'tts_chat',      label: 'TTS Chat' },
-  { id: 'tts_narrative', label: 'TTS Narrative' },
-  { id: 'tts_agent',     label: 'TTS Agent' },
+  { id: 'tts',           label: 'TTS' },
   { id: 'stt',           label: 'STT' },
   { id: 'vision',        label: 'Vision' },
   { id: 'imagegen',      label: 'Image Gen' },
@@ -126,7 +123,7 @@ export function BindingsTab(): JSX.Element {
 
   function firstModelSuggestion(providerId: string): string {
     const p = allProviders.find((x) => x.id === providerId);
-    const models = p?.definition?.defaultModels?.[requiredCap];
+    const models = p?.definition?.defaultModels?.[requiredCap as Capability];
     return Array.isArray(models) ? (models[0] ?? '') : '';
   }
 
@@ -214,7 +211,7 @@ export function BindingsTab(): JSX.Element {
 
                     {(() => {
                       const provider = allProviders.find((p) => p.id === addProviderId);
-                      const suggestions: string[] = (provider?.definition?.defaultModels?.[requiredCap] as string[]) ?? [];
+                      const suggestions: string[] = (provider?.definition?.defaultModels?.[requiredCap as Capability] as string[]) ?? [];
                       return (
                         <>
                           {suggestions.length > 0 && (

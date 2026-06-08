@@ -1,12 +1,13 @@
 /** ProviderForm — add/edit a provider instance. */
 import { useState, type FormEvent } from 'react';
 import { useSettingsStore } from '../stores/settings-store.js';
-import { providersApi, type ProviderConfigWire, type ProviderConfigInput, type ProviderDefinitionWire } from '../api/providers.js';
+import { providersApi, type ProviderConfigWire, type ProviderConfigInput, type ProviderDefinition } from '../api/providers.js';
+import type { ProtocolFamily } from '@ema-agent/contracts';
 import { showToast } from '../lib/toast.js';
 
 export interface ProviderFormProps {
   definitionId: string;
-  definition?:  ProviderDefinitionWire;
+  definition?:  ProviderDefinition;
   instance?:    ProviderConfigWire;
   onClose():    void;
 }
@@ -44,7 +45,7 @@ export function ProviderForm({ definitionId, definition, instance, onClose }: Pr
 
   // Default baseUrl: editing → saved value; new → protocolBaseUrl or defaultBaseUrl
   function defaultUrlFor(proto: string): string {
-    return definition?.protocolBaseUrls?.[proto]
+    return definition?.protocolBaseUrls?.[proto as ProtocolFamily]
       ?? definition?.defaultBaseUrl
       ?? '';
   }

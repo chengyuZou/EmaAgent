@@ -4,7 +4,7 @@
 import { useState } from 'react';
 import { useCardStore } from '../stores/card-store.js';
 import { cardsApi } from '../api/cards.js';
-import type { CharacterCardWire } from '../api/cards.js';
+import type { CharacterCard } from '../api/cards.js';
 import { CharacterCardEditor } from './CharacterCardEditor.js';
 import { showToast } from '../lib/toast.js';
 import type { CharacterCardId } from '@ema-agent/contracts';

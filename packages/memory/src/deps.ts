@@ -12,7 +12,6 @@ import type {
 import type { SessionStore } from '@ema-agent/session';
 import type { LlmRouter } from '@ema-agent/llm';
 import type { EbdRouter } from '@ema-agent/ebd-client';
-import type { NarrativeClient } from '@ema-agent/narrative-client';
 import type { EmaStreamEvent } from '@ema-agent/contracts';
 
 // ── External dependencies ─────────────────────────────────────────────────────
@@ -25,7 +24,6 @@ export interface MemoryDeps {
   session:        SessionStore;
   llm:            LlmRouter;
   ebd:            EbdRouter;
-  narrative:      NarrativeClient;
   modelBindings:  ModelBindingsRepo;
 
   // Storage repos owned by the memory subsystem

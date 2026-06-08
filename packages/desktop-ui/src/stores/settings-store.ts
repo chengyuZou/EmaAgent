@@ -2,7 +2,7 @@
  * Settings store — providers + bindings + settings cache (write-through).
  */
 import { create } from 'zustand';
-import { providersApi, type ProviderConfigWire, type ProviderConfigInput, type ProviderDefinitionWire, type ProbeResultWire } from '../api/providers.js';
+import { providersApi, type ProviderConfigWire, type ProviderConfigInput, type ProviderDefinition, type ProbeResultWire } from '../api/providers.js';
 import { modelBindingsApi, type BindingModule, type ResolvedModelBinding, type BindingUpsertInput } from '../api/model-bindings.js';
 import { settingsApi } from '../api/settings.js';
 
@@ -10,7 +10,7 @@ import { settingsApi } from '../api/settings.js';
 
 export interface SettingsStoreState {
   providers:           ProviderConfigWire[];
-  providerDefinitions: ProviderDefinitionWire[];
+  providerDefinitions: ProviderDefinition[];
   bindings:            Partial<Record<BindingModule, ResolvedModelBinding[]>>;
   permissionTimeoutMs: number;
   loading:             boolean;

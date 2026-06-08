@@ -1,15 +1,13 @@
 import { sidecarClient } from './sidecar-client.js';
-
-// Mirror of routes/permission.ts respondSchema
-export type PermissionAction =
-  | { action: 'allow' }
-  | { action: 'allow_session' }
-  | { action: 'always_allow'; scope: 'session' | 'project' | 'global' }
-  | { action: 'always_deny';  scope: 'session' | 'project' | 'global' }
-  | { action: 'deny'; reason?: string };
+import type { PermissionResponse } from '@ema-agent/permission';
 
 export const permissionApi = {
-  respond(promptId: string, response: PermissionAction): Promise<{ ok: boolean }> {
+  /** GET /api/permission/pending — number of in-flight prompt registrations */
+  pending(): Promise<{ count: number }> {
+    return sidecarClient.request<{ count: number }>('/api/permission/pending');
+  },
+
+  respond(promptId: string, response: PermissionResponse): Promise<{ ok: boolean }> {
     return sidecarClient.request(`/api/permission/${promptId}/respond`, {
       method: 'POST',
       json: response,

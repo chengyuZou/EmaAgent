@@ -3,7 +3,7 @@
  */
 import { useState, type FormEvent, type KeyboardEvent } from 'react';
 import { useCardStore } from '../stores/card-store.js';
-import type { CharacterCardWire } from '../api/cards.js';
+import type { CharacterCard } from '../api/cards.js';
 import { showToast } from '../lib/toast.js';
 import type { CharacterCardId } from '@ema-agent/contracts';
 
@@ -50,7 +50,7 @@ function TagEditor({ tags, onChange, placeholder }: { tags: string[]; onChange(t
   );
 }
 
-export function BehaviorTab({ card }: { card: CharacterCardWire }): JSX.Element {
+export function BehaviorTab({ card }: { card: CharacterCard }): JSX.Element {
   const [speechPatterns, setSpeechPatterns] = useState<string[]>(card.speechPatterns);
   const [forbiddenTopics, setForbiddenTopics] = useState<string[]>(card.forbiddenTopics);
   const [emotionVocab, setEmotionVocab] = useState<string[]>(card.emotionVocabulary);

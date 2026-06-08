@@ -3,11 +3,11 @@
  */
 import { useState, type FormEvent } from 'react';
 import { useCardStore } from '../stores/card-store.js';
-import type { CharacterCardWire } from '../api/cards.js';
+import type { CharacterCard } from '../api/cards.js';
 import { showToast } from '../lib/toast.js';
 import type { CharacterCardId } from '@ema-agent/contracts';
 
-export function IdentityTab({ card }: { card: CharacterCardWire }): JSX.Element {
+export function IdentityTab({ card }: { card: CharacterCard }): JSX.Element {
   const [name, setName] = useState(card.name);
   const [description, setDescription] = useState(card.description ?? '');
   const [systemPrompt, setSystemPrompt] = useState(card.systemPrompt);

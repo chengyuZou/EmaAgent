@@ -1,20 +1,11 @@
 /**
  * Transcribe API — speech-to-text via multipart upload.
+ * Types imported from @ema-agent/stt.
  */
 import { sidecarClient } from './sidecar-client.js';
+import type { SttResponse, SttSegment } from '@ema-agent/stt';
 
-// ── Wire-format types ────────────────────────────────────────────────────────
-
-export interface SttSegment {
-  start: number;
-  end:   number;
-  text:  string;
-}
-
-export interface TranscribeResult {
-  text:     string;
-  segments?: SttSegment[];
-}
+export type { SttResponse, SttSegment };
 
 // ── API object ────────────────────────────────────────────────────────────────
 
@@ -24,12 +15,12 @@ export const transcribeApi = {
     audio: Blob;
     mime: string;
     language?: string;
-  }): Promise<TranscribeResult> {
+  }): Promise<SttResponse> {
     const form = new FormData();
     form.set('file', input.audio, `recording.${input.mime.split('/')[1] ?? 'webm'}`);
     if (input.language) form.set('language', input.language);
 
-    return sidecarClient.request<TranscribeResult>('/api/transcribe', {
+    return sidecarClient.request<SttResponse>('/api/transcribe', {
       method: 'POST',
       body: form,
     });

@@ -8,7 +8,7 @@
  */
 import { useState, useEffect } from 'react';
 import { useSettingsStore } from '../stores/settings-store.js';
-import { providersApi, type ProviderDefinitionWire, type ProviderConfigWire } from '../api/providers.js';
+import { providersApi, type ProviderDefinition, type ProviderConfigWire } from '../api/providers.js';
 import { showToast } from '../lib/toast.js';
 import { ProviderCard } from './ProviderCard.js';
 import { ProviderForm } from './ProviderForm.js';
@@ -37,7 +37,7 @@ function SectionHeading({ children }: { children: string }): JSX.Element {
 
 export function ProvidersTab(): JSX.Element {
   const providers = useSettingsStore((s) => s.providers);
-  const [definitions, setDefinitions] = useState<ProviderDefinitionWire[]>([]);
+  const [definitions, setDefinitions] = useState<ProviderDefinition[]>([]);
   const [selectedDef, setSelectedDef] = useState<string | null>(null);
   const [editingInstance, setEditingInstance] = useState<ProviderConfigWire | null>(null);
   const [showForm, setShowForm] = useState(false);
@@ -63,7 +63,7 @@ export function ProvidersTab(): JSX.Element {
       {/* Left: sections with provider cards */}
       <div className="w-80 flex-shrink-0 flex flex-col overflow-y-auto">
         {SECTIONS.map((section) => {
-          const sectionDefs = definitions.filter((d) => d.capabilities.includes(section.key));
+          const sectionDefs = definitions.filter((d) => (d.capabilities as readonly string[]).includes(section.key));
           if (sectionDefs.length === 0) return null;
           return (
             <div key={section.key}>

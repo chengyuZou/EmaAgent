@@ -32,7 +32,6 @@ const overridesSchema = z.object({
   layer0:        z.boolean().optional(),
   layer1:        z.boolean().optional(),
   layer2:        z.boolean().optional(),
-  narrative:     z.boolean().optional(),
   extraction:    z.boolean().optional(),
   consolidation: z.boolean().optional(),
   compaction:    z.boolean().optional(),

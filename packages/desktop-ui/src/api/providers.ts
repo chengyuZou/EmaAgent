@@ -1,33 +1,11 @@
 /**
  * Providers API — CRUD + definitions + health probe.
+ * ProviderDefinition imported from @ema-agent/contracts.
  */
 import { sidecarClient } from './sidecar-client.js';
+import type { ProviderDefinition } from '@ema-agent/contracts';
 
-// ── Wire-format types ────────────────────────────────────────────────────────
-
-export interface ProviderDefinitionWire {
-  id:                  string;
-  name:                string;
-  defaultBaseUrl?:     string;
-  /** Per-protocol base URLs, e.g. { 'openai-llm': '...', 'anthropic-llm': '...' } */
-  protocolBaseUrls?:   Record<string, string>;
-  capabilities:        string[];
-  /** Each capability maps to a protocol or array of protocols. */
-  protocols:           Record<string, string | string[]>;
-  defaultModels?:      Record<string, string[]>;
-  iconKey?:            string;
-  iconColor?:          string;
-  requiresCredentials: boolean;
-  onboardingFields?:   Array<{
-    key: string;
-    type: string;
-    label: string;
-    description?: string;
-    placeholder?: string;
-    required?: boolean;
-    defaultValue?: string;
-  }>;
-}
+export type { ProviderDefinition };
 
 export interface ProviderHealthWire {
   status:       string;
@@ -46,7 +24,7 @@ export interface ProviderConfigWire {
   capabilities: string[];
   config:       Record<string, unknown>;
   health:       ProviderHealthWire | null;
-  definition:   ProviderDefinitionWire | null;
+  definition:   ProviderDefinition | null;
 }
 
 export interface ProviderConfigInput {
@@ -70,8 +48,8 @@ export interface ProbeResultWire {
 
 export const providersApi = {
   /** GET /api/providers/definitions — static registry. */
-  async listDefinitions(): Promise<ProviderDefinitionWire[]> {
-    return sidecarClient.request<ProviderDefinitionWire[]>('/api/providers/definitions');
+  async listDefinitions(): Promise<ProviderDefinition[]> {
+    return sidecarClient.request<ProviderDefinition[]>('/api/providers/definitions');
   },
 
   /** GET /api/providers — user-configured providers with health. */

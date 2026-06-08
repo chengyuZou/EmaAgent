@@ -1,8 +1,9 @@
 /** ProviderCard — single provider definition card in the selection list. */
-import type { ProviderDefinitionWire } from '../api/providers.js';
+import type { ProviderDefinition } from '../api/providers.js';
+import type { Capability } from '@ema-agent/contracts';
 
 export interface ProviderCardProps {
-  def:              ProviderDefinitionWire;
+  def:              ProviderDefinition;
   instanceCount:    number;
   healthyCount:     number;
   selected?:        boolean;
@@ -13,8 +14,9 @@ export interface ProviderCardProps {
 
 export function ProviderCard({ def, instanceCount, healthyCount, selected, activeCapability, onClick }: ProviderCardProps): JSX.Element {
   // When filtered by capability, show the relevant protocol and model
-  const capInfo = activeCapability && def.capabilities.includes(activeCapability)
-    ? { proto: def.protocols?.[activeCapability], models: def.defaultModels?.[activeCapability] }
+  const cap = activeCapability as Capability;
+  const capInfo = activeCapability && (def.capabilities as readonly string[]).includes(activeCapability)
+    ? { proto: def.protocols?.[cap], models: def.defaultModels?.[cap] }
     : null;
 
   return (

@@ -2,7 +2,7 @@
  * CharacterCardEditor — card editor with 3 tabs: Identity / Behavior / Voice.
  */
 import { useState, type JSX } from 'react';
-import type { CharacterCardWire } from '../api/cards.js';
+import type { CharacterCard } from '../api/cards.js';
 import { IdentityTab } from './IdentityTab.js';
 import { BehaviorTab } from './BehaviorTab.js';
 import { VoiceTab } from './VoiceTab.js';
@@ -17,7 +17,7 @@ const TABS: Array<{ id: EditorTab; label: string }> = [
 ];
 
 export interface CharacterCardEditorProps {
-  card:        CharacterCardWire;
+  card:        CharacterCard;
   onActivate(): void;
 }
 
@@ -65,7 +65,7 @@ export function CharacterCardEditor({ card, onActivate }: CharacterCardEditorPro
   );
 }
 
-function TabContent({ tab, card }: { tab: EditorTab; card: CharacterCardWire }): JSX.Element {
+function TabContent({ tab, card }: { tab: EditorTab; card: CharacterCard }): JSX.Element {
   switch (tab) {
     case 'identity': return <IdentityTab card={card} />;
     case 'behavior': return <BehaviorTab card={card} />;

@@ -1,24 +1,16 @@
 /**
  * Model Bindings API — per-module LLM/TTS/STT binding CRUD.
+ * Types imported from @ema-agent/storage.
  */
 import { sidecarClient } from './sidecar-client.js';
+import type { BindingModule, ResolvedModelBinding } from '@ema-agent/storage';
 
-// ── Wire-format types ────────────────────────────────────────────────────────
+export type { BindingModule, ResolvedModelBinding };
 
-/** Keep in sync with backend `BindingModule` + CHECK constraint. */
-export type BindingModule =
-  | 'chat' | 'narrative' | 'agent'
-  | 'compaction' | 'emotion' | 'memory'
-  | 'router' | 'plan-parse' | 'title'
-  | 'embed' | 'rerank' | 'lightrag-llm'
-  | 'tts_chat' | 'tts_narrative' | 'tts_agent'
-  | 'stt' | 'vision' | 'imagegen';
-
-export interface ResolvedModelBinding {
-  module:           BindingModule;
+export interface BindingUpsertInput {
   providerConfigId: string;
   model:            string;
-  voiceId?:         string | null;
+  voiceId?:         string;
   config?:          Record<string, unknown>;
 }
 

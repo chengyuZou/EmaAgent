@@ -82,7 +82,7 @@ export type {
 
 export { providersApi }      from './api/providers.js';
 export type {
-  ProviderDefinitionWire,
+  ProviderDefinition,
   ProviderHealthWire,
   ProviderConfigWire,
   ProviderConfigInput,
@@ -103,13 +103,13 @@ export type {
 } from './api/settings.js';
 
 export { cardsApi }          from './api/cards.js';
-export type { CharacterCardWire, CharacterCardInput } from './api/cards.js';
+export type { CharacterCard, CharacterCardInput } from './api/cards.js';
 
 export { transcribeApi }     from './api/transcribe.js';
-export type { TranscribeResult, SttSegment } from './api/transcribe.js';
+export type { SttResponse, SttSegment } from './api/transcribe.js';
 
 export { memoryApi }         from './api/memory.js';
-export type { MemoryStats, MemoryNode, MemoryItem } from './api/memory.js';
+export type { MemoryMaintenanceInput } from './api/memory.js';
 
 // ── Markdown ──────────────────────────────────────────────────────────────────
 

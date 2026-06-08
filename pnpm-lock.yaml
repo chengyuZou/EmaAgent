@@ -354,6 +354,24 @@ importers:
       '@ema-agent/live2d-react':
         specifier: workspace:*
         version: link:../live2d-react
+      '@ema-agent/mcp':
+        specifier: workspace:*
+        version: link:../mcp
+      '@ema-agent/memory':
+        specifier: workspace:*
+        version: link:../memory
+      '@ema-agent/permission':
+        specifier: workspace:*
+        version: link:../permission
+      '@ema-agent/skill':
+        specifier: workspace:*
+        version: link:../skill
+      '@ema-agent/storage':
+        specifier: workspace:*
+        version: link:../storage
+      '@ema-agent/stt':
+        specifier: workspace:*
+        version: link:../stt
       '@ema-agent/ui':
         specifier: workspace:*
         version: link:../ui

@@ -3,65 +3,34 @@
  */
 import { sidecarClient } from './sidecar-client.js';
 import type { CharacterCardId } from '@ema-agent/contracts';
-import type { CharacterVoiceProfile } from '@ema-agent/character-card';
+import type { CharacterCard, CharacterCardInput, CharacterVoiceProfile } from '@ema-agent/character-card';
 
-// ── Wire-format types (match backend CharacterCard domain) ───────────────────
-
-export interface CharacterCardWire {
-  id:               CharacterCardId;
-  name:             string;
-  version:          string;
-  description:      string | null;
-  systemPrompt:     string;
-  speechPatterns:   string[];
-  forbiddenTopics:  string[];
-  emotionVocabulary: string[];
-  motionVocabulary:  string[];
-  live2dModelId:    string | null;
-  voiceProfile:     CharacterVoiceProfile;
-  isActive:         boolean;
-  isBuiltin:        boolean;
-  createdAt:        number;
-  updatedAt:        number;
-}
-
-export interface CharacterCardInput {
-  name:              string;
-  version?:          string;
-  description?:      string;
-  systemPrompt:      string;
-  speechPatterns?:   string[];
-  forbiddenTopics?:  string[];
-  emotionVocabulary?: string[];
-  motionVocabulary?:  string[];
-  live2dModelId?:    string;
-  voiceProfile?:     CharacterVoiceProfile;
-}
+export type { CharacterCard, CharacterCardInput, CharacterVoiceProfile };
 
 // ── API object ────────────────────────────────────────────────────────────────
 
 export const cardsApi = {
   /** GET /api/cards — list all cards. */
-  async list(): Promise<CharacterCardWire[]> {
-    return sidecarClient.request<CharacterCardWire[]>('/api/cards');
+  async list(): Promise<CharacterCard[]> {
+    return sidecarClient.request<CharacterCard[]>('/api/cards');
   },
 
   /** GET /api/cards/:id */
-  async get(id: CharacterCardId): Promise<CharacterCardWire> {
-    return sidecarClient.request<CharacterCardWire>(`/api/cards/${id}`);
+  async get(id: CharacterCardId): Promise<CharacterCard> {
+    return sidecarClient.request<CharacterCard>(`/api/cards/${id}`);
   },
 
   /** POST /api/cards */
-  async create(input: CharacterCardInput): Promise<CharacterCardWire> {
-    return sidecarClient.request<CharacterCardWire>('/api/cards', {
+  async create(input: CharacterCardInput): Promise<CharacterCard> {
+    return sidecarClient.request<CharacterCard>('/api/cards', {
       method: 'POST',
       json: input,
     });
   },
 
   /** PATCH /api/cards/:id */
-  async patch(id: CharacterCardId, input: Partial<CharacterCardInput>): Promise<CharacterCardWire> {
-    return sidecarClient.request<CharacterCardWire>(`/api/cards/${id}`, {
+  async patch(id: CharacterCardId, input: Partial<CharacterCardInput>): Promise<CharacterCard> {
+    return sidecarClient.request<CharacterCard>(`/api/cards/${id}`, {
       method: 'PATCH',
       json: input,
     });
