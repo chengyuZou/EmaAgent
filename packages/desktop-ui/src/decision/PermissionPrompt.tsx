@@ -1,9 +1,6 @@
-/**
- * PermissionPrompt — permission allow/deny modal.
- */
-
 import { useState } from 'react';
-import { sidecarClient } from '../api/sidecar-client.js';
+import { Button, Card } from '@ema-agent/ui';
+import { permissionApi } from '../api/permission.js';
 import { HumanDescriptionPanel } from './HumanDescriptionPanel.js';
 import { RawCommandPanel } from './RawCommandPanel.js';
 
@@ -29,7 +26,7 @@ export function PermissionPrompt({
   const [countdown, _setCountdown] = useState<number | null>(null);
 
   return (
-    <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 shadow-2xl">
+    <Card variant="elevated" padding="lg" className="shadow-2xl max-w-lg w-full">
       <HumanDescriptionPanel
         description={humanDescription ?? hint}
         toolName={toolName}
@@ -39,39 +36,31 @@ export function PermissionPrompt({
       <RawCommandPanel toolName={toolName} args={args} />
 
       {countdown !== null && (
-        <div className="text-xs text-gray-500 mt-2">剩余 {countdown}s</div>
+        <p className="text-xs text-neutral-500 mt-2">剩余 {countdown}s</p>
       )}
 
       <div className="flex gap-3 mt-4 justify-end">
-        <button
-          className="px-4 py-2 rounded-xl bg-red-500/20 text-red-300 hover:bg-red-500/30 transition-colors"
+        <Button
+          variant="danger"
+          size="sm"
           onClick={async () => {
-            try {
-              await sidecarClient.request(`/api/permission/${promptId}/respond`, {
-                method: 'POST',
-                json: { action: 'deny' },
-              });
-            } catch { /* timeout / sidecar down — continue local cleanup */ }
+            try { await permissionApi.respond(promptId, { action: 'deny' }); } catch { /* sidecar down */ }
             onResolve('deny');
           }}
         >
           拒绝
-        </button>
-        <button
-          className="px-4 py-2 rounded-xl bg-green-500/20 text-green-300 hover:bg-green-500/30 transition-colors"
+        </Button>
+        <Button
+          variant="primary"
+          size="sm"
           onClick={async () => {
-            try {
-              await sidecarClient.request(`/api/permission/${promptId}/respond`, {
-                method: 'POST',
-                json: { action: 'allow' },
-              });
-            } catch { /* timeout / sidecar down — continue local cleanup */ }
+            try { await permissionApi.respond(promptId, { action: 'allow' }); } catch { /* sidecar down */ }
             onResolve('allow');
           }}
         >
           允许
-        </button>
+        </Button>
       </div>
-    </div>
+    </Card>
   );
 }

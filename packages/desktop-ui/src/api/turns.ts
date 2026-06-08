@@ -48,4 +48,16 @@ export const turnsApi = {
   async audioUrl(turnId: TurnId): Promise<string> {
     return sidecarClient.streamUrl(`/api/turns/${turnId}/audio`);
   },
+
+  /** POST /api/turns/:turnId/ask-user/:promptId/respond */
+  respondAskUser(
+    turnId:   string,
+    promptId: string,
+    answers:  Record<string, string>,
+  ): Promise<{ ok: boolean }> {
+    return sidecarClient.request(
+      `/api/turns/${turnId}/ask-user/${promptId}/respond`,
+      { method: 'POST', json: { answers } },
+    );
+  },
 };
