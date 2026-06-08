@@ -6,7 +6,7 @@ import type { JSX } from 'react';
 import { Markdown } from '../markdown/renderer.js';
 import { ThinkingBlock } from './ThinkingBlock.js';
 import { ToolCallBlock } from './ToolCallBlock.js';
-import type { ChatHistoryItem, AssistantSlice } from '../stores/chat-store.js';
+import type { ChatHistoryItem, AssistantSlice } from '../stores/conversation-store.js';
 
 export interface AssistantBubbleProps {
   message:      Pick<ChatHistoryItem, 'content' | 'slices' | 'createdAt'>;
@@ -54,11 +54,11 @@ function SliceRenderer({ slice, streaming }: { slice: AssistantSlice; streaming:
     case 'text':
       return <Markdown source={slice.text ?? ''} />;
     case 'thinking':
-      return <ThinkingBlock text={slice.text ?? ''} />;
-    case 'tool_call':
+      return <ThinkingBlock text={slice.thinking ?? ''} />;
+    case 'tool_use':
       return (
         <ToolCallBlock
-          slice={slice as AssistantSlice & { type: 'tool_call' }}
+          slice={slice as AssistantSlice & { type: 'tool_use' }}
           streaming={streaming}
         />
       );

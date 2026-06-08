@@ -8,10 +8,10 @@
  *   - any            + error      → "失败"
  */
 import { useState, type JSX } from 'react';
-import type { AssistantSlice } from '../stores/chat-store.js';
+import type { AssistantSlice } from '../stores/conversation-store.js';
 
 export interface ToolCallBlockProps {
-  slice:      AssistantSlice & { type: 'tool_call' };
+  slice:      AssistantSlice & { type: 'tool_use' };
   streaming?: boolean;  // true only when this bubble is the live stream
 }
 

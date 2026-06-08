@@ -3,7 +3,6 @@
  */
 import { create } from 'zustand';
 import { tauriBridge } from '../lib/tauri-bridge.js';
-import { sidecarClient } from '../api/sidecar-client.js';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 

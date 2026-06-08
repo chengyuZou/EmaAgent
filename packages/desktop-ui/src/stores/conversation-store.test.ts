@@ -70,23 +70,23 @@ describe('conversation-store', () => {
       const sm = useConversationStore.getState().streamingMap.get(S1 as string)!;
       expect(sm.content).toBe('');
       expect(sm.slices).toHaveLength(1);
-      expect(sm.slices[0]).toMatchObject({ type: 'thinking', text: 'Let me think...' });
+      expect(sm.slices[0]).toMatchObject({ type: 'thinking', thinking: 'Let me think...' });
     });
 
-    it('appendDelta("tool_call") adds tool_call slice', () => {
+    it('appendDelta("tool_use") adds tool_use slice', () => {
       useConversationStore.getState().beginStream(S1, T1);
-      useConversationStore.getState().appendDelta(S1, 'tool_call', {
+      useConversationStore.getState().appendDelta(S1, 'tool_use', {
         callId: 'call_1', name: 'read_file', args: { path: '/tmp/x' },
       });
 
       const sm = useConversationStore.getState().streamingMap.get(S1 as string)!;
       expect(sm.slices).toHaveLength(1);
-      expect(sm.slices[0]).toMatchObject({ type: 'tool_call', callId: 'call_1', name: 'read_file' });
+      expect(sm.slices[0]).toMatchObject({ type: 'tool_use', callId: 'call_1', name: 'read_file' });
     });
 
-    it('appendDelta("tool_result") attaches result to matching tool_call', () => {
+    it('appendDelta("tool_result") attaches result to matching tool_use', () => {
       useConversationStore.getState().beginStream(S1, T1);
-      useConversationStore.getState().appendDelta(S1, 'tool_call', {
+      useConversationStore.getState().appendDelta(S1, 'tool_use', {
         callId: 'call_1', name: 'read_file', args: { path: '/tmp/x' },
       });
       useConversationStore.getState().appendDelta(S1, 'tool_result', {
@@ -94,7 +94,7 @@ describe('conversation-store', () => {
       });
 
       const sm = useConversationStore.getState().streamingMap.get(S1 as string)!;
-      expect(sm.slices[0]).toMatchObject({ type: 'tool_call', result: 'file content' });
+      expect(sm.slices[0]).toMatchObject({ type: 'tool_use', result: 'file content' });
     });
 
     it('finalizeStream pushes message to history and removes streaming entry', () => {
@@ -172,7 +172,7 @@ describe('conversation-store', () => {
     it('preserves text → tool → text order', () => {
       useConversationStore.getState().beginStream(S1, T1);
       useConversationStore.getState().appendDelta(S1, 'text', 'Let me check...');
-      useConversationStore.getState().appendDelta(S1, 'tool_call', {
+      useConversationStore.getState().appendDelta(S1, 'tool_use', {
         callId: 'c1', name: 'search', args: { query: 'weather' },
       });
       useConversationStore.getState().appendDelta(S1, 'tool_result', {
@@ -183,7 +183,7 @@ describe('conversation-store', () => {
       const sm = useConversationStore.getState().streamingMap.get(S1 as string)!;
       expect(sm.slices).toHaveLength(3);
       expect(sm.slices[0]!.type).toBe('text');
-      expect(sm.slices[1]!.type).toBe('tool_call');
+      expect(sm.slices[1]!.type).toBe('tool_use');
       expect(sm.slices[2]!.type).toBe('text');
     });
   });

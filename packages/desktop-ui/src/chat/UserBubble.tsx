@@ -1,7 +1,7 @@
 /** UserBubble — right-aligned user message. Layout from AIRI user-item.vue, colors original. */
 import type { JSX } from 'react';
 import { Markdown } from '../markdown/renderer.js';
-import type { ChatHistoryItem } from '../stores/chat-store.js';
+import type { ChatHistoryItem } from '../stores/conversation-store.js';
 
 export interface UserBubbleProps {
   message: ChatHistoryItem;

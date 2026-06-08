@@ -1,83 +1,71 @@
-// ── TTS Playback Manager ────────────────────────────────────────────────────
-//
-// Consumes `tts_chunk` / `tts_sentence_complete` SSE events, decodes base64
-// audio chunks, plays them sequentially through the Web Audio API, and
-// writes real-time RMS volume to SpeechAnimationStore so Live2D plugins
-// can drive lip-sync and speech-emphasis body animation.
-//
-// Singleton — only one AudioContext and one active queue at a time.
-// Sentence audio chunks are already ordered by the backend (TtsCoordinator
-// synthesizes sequentially). Within a sentence, `tts_chunk` events arrive
-// in playback order. Across sentences, the queue drains in FIFO order.
-
-import type { EmaStreamEvent } from '@ema-agent/contracts';
+import type { EmaStreamEvent, TurnId } from '@ema-agent/contracts';
 import { useSpeechStore } from '@ema-agent/live2d-react';
+import type { SpeechAnimationState } from '@ema-agent/live2d-react';
 import { tauriBridge } from './tauri-bridge.js';
+import { turnsApi } from '../api/turns.js';
 import { useConversationStore } from '../stores/conversation-store.js';
 
-interface SpeechStatePayload {
-  speaking: boolean;
-  rms: number;
-}
+// ── Shared audio infrastructure (lazy-init) ───────────────────────────────────
 
-// ── Audio infrastructure (lazy-init) ─────────────────────────────────────────
-
-let audioCtx: AudioContext | null = null;
-let analyser: AnalyserNode | null = null;
-let rmsBinCount = 0;
+let sharedCtx: AudioContext | null = null;
+let sharedAnalyser: AnalyserNode | null = null;
 let rmsData: Uint8Array | null = null;
 
-function ensureAudio(): { ctx: AudioContext; analyser: AnalyserNode } {
-  if (!audioCtx) {
-    audioCtx = new AudioContext();
-    analyser = audioCtx.createAnalyser();
-    analyser.fftSize = 256;
-    analyser.smoothingTimeConstant = 0.4;
-    analyser.connect(audioCtx.destination);
-    rmsBinCount = analyser.frequencyBinCount;
-    rmsData = new Uint8Array(rmsBinCount);
+function ensureAudioCtx(): { ctx: AudioContext; analyser: AnalyserNode } {
+  if (!sharedCtx) {
+    sharedCtx = new AudioContext();
+    sharedAnalyser = sharedCtx.createAnalyser();
+    sharedAnalyser.fftSize = 256;
+    sharedAnalyser.smoothingTimeConstant = 0.4;
+    sharedAnalyser.connect(sharedCtx.destination);
+    rmsData = new Uint8Array(sharedAnalyser.frequencyBinCount);
   }
-  return { ctx: audioCtx!, analyser: analyser! };
+  return { ctx: sharedCtx!, analyser: sharedAnalyser! };
 }
 
-// ── RMS extraction loop ──────────────────────────────────────────────────────
+// ── Speech state broadcasting ─────────────────────────────────────────────────
 
-let rmsRaf = 0;
-let lastSpeechPublishAt = 0;
 let speechChannel: BroadcastChannel | null = null;
+let lastPublishAt = 0;
 
 function getSpeechChannel(): BroadcastChannel | null {
   if (typeof BroadcastChannel === 'undefined') return null;
-  if (!speechChannel) {
-    speechChannel = new BroadcastChannel('ema-stage-speech');
-  }
+  if (!speechChannel) speechChannel = new BroadcastChannel('ema-stage-speech');
   return speechChannel;
 }
 
-function publishSpeechState(payload: SpeechStatePayload, force = false): void {
+function publishSpeechState(
+  state: Pick<SpeechAnimationState, 'speaking' | 'rms'>,
+  force = false,
+): void {
   const now = performance.now();
-  if (!force && now - lastSpeechPublishAt < 33) return;
-  lastSpeechPublishAt = now;
-
-  getSpeechChannel()?.postMessage(payload);
-  void tauriBridge.emit('stage:speech-state', payload);
+  if (!force && now - lastPublishAt < 33) return;
+  lastPublishAt = now;
+  getSpeechChannel()?.postMessage(state);
+  void tauriBridge.emit('stage:speech-state', state);
 }
+
+// ── RMS loop ──────────────────────────────────────────────────────────────────
+
+let rmsRaf = 0;
 
 function startRmsLoop(): void {
   if (rmsRaf) return;
   publishSpeechState({ speaking: true, rms: 0 }, true);
+  useSpeechStore.getState().setSpeaking(true);
+
   const loop = (): void => {
-    const { analyser } = ensureAudio();
-    if (!rmsData || rmsData.length !== rmsBinCount) {
-      rmsData = new Uint8Array(rmsBinCount);
+    const { analyser } = ensureAudioCtx();
+    if (!rmsData || rmsData.length !== analyser.frequencyBinCount) {
+      rmsData = new Uint8Array(analyser.frequencyBinCount);
     }
-    analyser.getByteTimeDomainData(rmsData as unknown as Uint8Array<ArrayBuffer>);
+    analyser.getByteTimeDomainData(rmsData as Uint8Array<ArrayBuffer>);
     let sum = 0;
-    for (let i = 0; i < rmsData!.length; i++) {
-      const v = (rmsData![i]! - 128) / 128;
+    for (let i = 0; i < rmsData.length; i++) {
+      const v = (rmsData[i]! - 128) / 128;
       sum += v * v;
     }
-    const rms = Math.sqrt(sum / rmsData!.length);
+    const rms = Math.sqrt(sum / rmsData.length);
     useSpeechStore.getState().setRms(rms);
     publishSpeechState({ speaking: true, rms });
     rmsRaf = requestAnimationFrame(loop);
@@ -86,177 +74,287 @@ function startRmsLoop(): void {
 }
 
 function stopRmsLoop(): void {
-  if (rmsRaf) { cancelAnimationFrame(rmsRaf); rmsRaf = 0; }
+  if (rmsRaf) {
+    cancelAnimationFrame(rmsRaf);
+    rmsRaf = 0;
+  }
   useSpeechStore.getState().reset();
   publishSpeechState({ speaking: false, rms: 0 }, true);
 }
 
-// ── Audio chunk queue ────────────────────────────────────────────────────────
+// ── TurnPlayer ────────────────────────────────────────────────────────────────
+//
+// One per active turn. Owns a MediaSource + SourceBuffer backed HTMLAudioElement
+// connected to the shared AnalyserNode so RMS-based lip-sync works without a
+// separate decode pass.
 
-interface AudioItem {
-  decode: Promise<AudioBuffer>;
-  sentenceId: string;
-  byteLength: number;
+interface TurnPlayer {
+  sessionId: string;
+  turnId:    string;
+  mediaSource:   MediaSource;
+  sourceBuffer:  SourceBuffer | null;
+  objectUrl:     string;
+  audioEl:       HTMLAudioElement;
+  elementSource: MediaElementAudioSourceNode;
+  pendingChunks: ArrayBuffer[];
+  stopped:       boolean;
+  completed:     boolean;
 }
 
-interface PendingSentence {
-  chunks: Uint8Array[];
-  byteLength: number;
-}
+const activePlayers   = new Map<string, TurnPlayer>(); // turnId → player
+const sessionToTurnId = new Map<string, string>();     // sessionId → turnId
 
-let queue: AudioItem[] = [];
-let playing = false;
-let currentSentenceId: string | null = null;
-const pendingSentences = new Map<string, PendingSentence>();
-
-async function drainQueue(): Promise<void> {
-  if (playing || queue.length === 0) return;
-  playing = true;
-  startRmsLoop();
-  useSpeechStore.getState().setSpeaking(true);
-
-  const { ctx, analyser } = ensureAudio();
-  if (ctx.state === 'suspended') {
-    try { await ctx.resume(); } catch { /* browser may reject without gesture */ }
+function createPlayer(sessionId: string, turnId: string): TurnPlayer | null {
+  if (!MediaSource.isTypeSupported('audio/mpeg')) {
+    console.error('[tts-playback] audio/mpeg not supported by MediaSource');
+    return null;
   }
 
-  while (queue.length > 0) {
-    const item = queue.shift()!;
-    currentSentenceId = item.sentenceId;
+  const { ctx, analyser } = ensureAudioCtx();
+  if (ctx.state === 'suspended') ctx.resume().catch(() => {});
 
+  const mediaSource  = new MediaSource();
+  const objectUrl    = URL.createObjectURL(mediaSource);
+  const audioEl      = new Audio();
+  const elementSource = ctx.createMediaElementSource(audioEl);
+  elementSource.connect(analyser);
+
+  const player: TurnPlayer = {
+    sessionId, turnId,
+    mediaSource, objectUrl, audioEl, elementSource,
+    sourceBuffer:  null,
+    pendingChunks: [],
+    stopped:       false,
+    completed:     false,
+  };
+
+  mediaSource.addEventListener('sourceopen', () => {
+    if (player.stopped) return;
     try {
-      const audioBuffer = await item.decode;
-      const source = ctx.createBufferSource();
-      source.buffer = audioBuffer;
-      source.connect(analyser);
-
-      await new Promise<void>((resolve) => {
-        source.onended = () => resolve();
-        source.start();
+      const sb = mediaSource.addSourceBuffer('audio/mpeg');
+      player.sourceBuffer = sb;
+      sb.addEventListener('updateend', () => {
+        if (!player.stopped) flushPending(player);
       });
+      flushPending(player);
     } catch (err) {
-      console.error('[tts-playback] decode/play error for sentence', item.sentenceId, err);
+      console.error('[tts-playback] SourceBuffer creation failed', err);
     }
-  }
+  }, { once: true });
 
+  audioEl.src = objectUrl;
+  audioEl.addEventListener('ended', () => {
+    if (!player.stopped) onPlaybackEnded();
+  }, { once: true });
+
+  audioEl.play().catch(() => {});
+
+  return player;
+}
+
+function flushPending(player: TurnPlayer): void {
+  if (!player.sourceBuffer || player.sourceBuffer.updating) return;
+  const next = player.pendingChunks.shift();
+  if (next) {
+    player.sourceBuffer.appendBuffer(next);
+  } else if (player.completed) {
+    tryEndStream(player);
+  }
+}
+
+function tryEndStream(player: TurnPlayer): void {
+  if (player.sourceBuffer?.updating || player.pendingChunks.length > 0) return;
+  try {
+    if (player.mediaSource.readyState === 'open') player.mediaSource.endOfStream();
+  } catch { /* already ended or detached */ }
+}
+
+function destroyPlayer(player: TurnPlayer): void {
+  player.stopped = true;
+  player.audioEl.pause();
+  player.audioEl.src = '';
+  try { player.elementSource.disconnect(); } catch { /* already disconnected */ }
+  try {
+    if (player.mediaSource.readyState === 'open') player.mediaSource.endOfStream();
+  } catch { /* fine */ }
+  URL.revokeObjectURL(player.objectUrl);
+  activePlayers.delete(player.turnId);
+  if (sessionToTurnId.get(player.sessionId) === player.turnId) {
+    sessionToTurnId.delete(player.sessionId);
+  }
+}
+
+function onPlaybackEnded(): void {
   stopRmsLoop();
-  useSpeechStore.getState().setSpeaking(false);
-  currentSentenceId = null;
-  playing = false;
 }
 
-function enqueueSentence(sentenceId: string, bytes: Uint8Array): void {
-  const { ctx } = ensureAudio();
-  const decode = ctx.decodeAudioData(toOwnedArrayBuffer(bytes));
-  decode.catch(() => { /* handled when drainQueue awaits this item */ });
-  queue.push({ decode, sentenceId, byteLength: bytes.byteLength });
-  void drainQueue();
-}
+// ── Owner check ───────────────────────────────────────────────────────────────
 
-function appendChunk(sentenceId: string, bytes: Uint8Array): number {
-  let pending = pendingSentences.get(sentenceId);
-  if (!pending) {
-    pending = { chunks: [], byteLength: 0 };
-    pendingSentences.set(sentenceId, pending);
-  }
-  pending.chunks.push(bytes);
-  pending.byteLength += bytes.byteLength;
-  return pending.byteLength;
-}
-
-function completeSentence(sentenceId: string): Uint8Array | null {
-  const pending = pendingSentences.get(sentenceId);
-  if (!pending) return null;
-  pendingSentences.delete(sentenceId);
-
-  const merged = new Uint8Array(pending.byteLength);
-  let offset = 0;
-  for (const chunk of pending.chunks) {
-    merged.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  return merged;
-}
-
-function toOwnedArrayBuffer(bytes: Uint8Array): ArrayBuffer {
-  const copy = new Uint8Array(bytes.byteLength);
-  copy.set(bytes);
-  return copy.buffer;
+function isTtsOwner(sessionId: string): boolean {
+  return (useConversationStore.getState().ttsOwnerSessionId as string) === sessionId;
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
 /**
- * Call from chat-store's SSE dispatch when a `tts_chunk` event arrives.
- * Decodes the base64 payload and enqueues it for playback.
+ * Feed a `tts_chunk` SSE event. Immediately streams the decoded bytes into the
+ * MediaSource SourceBuffer so playback begins on the first chunk, not after
+ * the sentence is complete.
+ *
+ * Only processes events for the current ttsOwner session.
  */
 export function handleTtsChunk(event: EmaStreamEvent & { type: 'tts_chunk' }): void {
-  if (event.sessionId !== (useConversationStore.getState().ttsOwnerSessionId as string)) return;
-  try {
-    console.log('[tts-playback] raw chunk received, audioLen=', event.audio?.length);
-    const binary = atob(event.audio);
-    const bytes = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-    const total = appendChunk(event.sentenceId, bytes);
-    console.log('[tts-playback] chunk buffered, sentenceId=', event.sentenceId, 'bytes=', bytes.length, 'total=', total);
-  } catch(err) {
-    console.error('[tts-playback] base64 decode failed:', err, 'audio sample=', event.audio?.slice(0, 20));
+  if (!isTtsOwner(event.sessionId as string)) return;
+
+  const turnId    = event.turnId as string;
+  const sessionId = event.sessionId as string;
+
+  let player: TurnPlayer | null | undefined = activePlayers.get(turnId);
+
+  if (!player) {
+    // A new turn started for this session — tear down any prior player.
+    const prevTurnId = sessionToTurnId.get(sessionId);
+    if (prevTurnId) {
+      const prev = activePlayers.get(prevTurnId);
+      if (prev) destroyPlayer(prev);
+    }
+
+    player = createPlayer(sessionId, turnId);
+    if (!player) return;
+
+    activePlayers.set(turnId, player);
+    sessionToTurnId.set(sessionId, turnId);
+    startRmsLoop();
   }
+
+  if (player.stopped) return;
+
+  const binary = atob(event.audio);
+  const bytes  = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)!;
+
+  player.pendingChunks.push(bytes.buffer as ArrayBuffer);
+  if (player.sourceBuffer) flushPending(player);
 }
 
 /**
- * Call from chat-store's SSE dispatch when a `tts_sentence_complete` event arrives.
- * The queue drainer handles sentence boundaries naturally — this is a no-op
- * marker reserved for future use (e.g. pre-buffer next sentence).
+ * `tts_sentence_complete` — sentence boundary marker from the backend.
+ * In the new streaming design, playback has already started via the chunks.
+ * This is a no-op for live playback; `handleTurnCompleted` signals end-of-stream.
+ *
+ * Only processes events for the current ttsOwner session.
  */
-export function handleTtsSentenceComplete(event: EmaStreamEvent & { type: 'tts_sentence_complete' }): void {
-  if (event.sessionId !== (useConversationStore.getState().ttsOwnerSessionId as string)) return;
-  const bytes = completeSentence(event.sentenceId);
-  if (!bytes || bytes.byteLength === 0) {
-    console.log('[tts-playback] sentence complete without audio, sentenceId=', event.sentenceId);
-    return;
-  }
-
-  console.log('[tts-playback] sentence complete, sentenceId=', event.sentenceId, 'bytes=', bytes.byteLength, 'queue.length=', queue.length);
-  enqueueSentence(event.sentenceId, bytes);
+export function handleTtsSentenceComplete(
+  event: EmaStreamEvent & { type: 'tts_sentence_complete' },
+): void {
+  if (!isTtsOwner(event.sessionId as string)) return;
+  // No-op: sentence boundaries are transparent in the MediaSource streaming model.
+  // The SourceBuffer accumulates all sentences continuously; endOfStream is called
+  // once by handleTurnCompleted when the backend signals the full turn is done.
 }
 
-// ── Test harness ─────────────────────────────────────────────────────────────
+/**
+ * Call when `turn_completed` fires for a session. Signals the SourceBuffer that
+ * no more audio data is coming so the HTMLAudioElement can play to the end.
+ */
+export function handleTurnCompleted(sessionId: string): void {
+  const turnId = sessionToTurnId.get(sessionId);
+  if (!turnId) return;
+  const player = activePlayers.get(turnId);
+  if (!player || player.stopped) return;
+  player.completed = true;
+  if (player.sourceBuffer) flushPending(player);
+  // If sourceBuffer isn't ready yet, completed=true will be picked up when
+  // sourceopen fires and calls flushPending.
+}
 
 /**
- * Test the full Web Audio → RMS → speech-store pipeline with an arbitrary
- * audio buffer. Call from browser console to verify lip-sync visually:
- *
- *   const res = await fetch('/test-audio.mp3');
- *   const buf = await res.arrayBuffer();
- *   window.__testTtsPlayback(buf);
- *
- * The Live2D mouth should move in sync with the audio.
+ * Call when `turn_failed` or `turn_aborted` fires, or when the stop button
+ * is pressed. Immediately halts audio and Live2D for the given session.
  */
-export async function testTtsPlayback(arrayBuffer: ArrayBuffer): Promise<void> {
-  const { ctx } = ensureAudio();
+export function handleTurnAborted(sessionId: string): void {
+  stopTtsPlayback(sessionId);
+}
+
+/**
+ * Stop all active audio for a session (stop-button path).
+ * Tears down the player and resets Live2D speech state.
+ */
+export function stopTtsPlayback(sessionId: string): void {
+  const turnId = sessionToTurnId.get(sessionId);
+  if (turnId) {
+    const player = activePlayers.get(turnId);
+    if (player) destroyPlayer(player);
+  }
+  stopRmsLoop();
+}
+
+/**
+ * Replay the merged audio for a completed turn.
+ * Fetches the turn's archived audio from the sidecar and plays it through the
+ * shared AnalyserNode so RMS lip-sync still works. No emotion events are emitted.
+ *
+ * Stops any currently playing audio before starting.
+ */
+export async function replayTurn(turnId: string): Promise<void> {
+  // Stop all active live players first.
+  for (const player of activePlayers.values()) {
+    destroyPlayer(player);
+  }
+  stopRmsLoop();
+
+  const { ctx, analyser } = ensureAudioCtx();
+  if (ctx.state === 'suspended') await ctx.resume().catch(() => {});
+
+  const url = await turnsApi.audioUrl(turnId as TurnId);
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`[tts-playback] replay fetch failed: ${res.status}`);
+
+  const arrayBuffer = await res.arrayBuffer();
+  const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
+
+  const source = ctx.createBufferSource();
+  source.buffer = audioBuffer;
+  source.connect(analyser);
+
   startRmsLoop();
-  useSpeechStore.getState().setSpeaking(true);
 
-  try {
-    const audioBuffer = await ctx.decodeAudioData(arrayBuffer.slice(0) as ArrayBuffer);
-    const source = ctx.createBufferSource();
-    source.buffer = audioBuffer;
-    source.connect(ensureAudio().analyser);
+  await new Promise<void>((resolve) => {
+    source.onended = () => resolve();
+    source.start();
+  });
 
-    await new Promise<void>((resolve) => {
-      source.onended = () => resolve();
-      source.start();
-    });
-  } catch (err) {
-    console.error('[tts-playback] test playback failed', err);
-  } finally {
-    stopRmsLoop();
-    useSpeechStore.getState().setSpeaking(false);
-  }
+  stopRmsLoop();
 }
 
-// Expose for browser console
+/**
+ * Release all players for a session. Call from conversation-store.evictSession.
+ */
+export function evictSessionPlayers(sessionId: string): void {
+  stopTtsPlayback(sessionId);
+}
+
+// ── Test harness ──────────────────────────────────────────────────────────────
+
+export async function testTtsPlayback(arrayBuffer: ArrayBuffer): Promise<void> {
+  const { ctx, analyser } = ensureAudioCtx();
+  if (ctx.state === 'suspended') await ctx.resume().catch(() => {});
+
+  const audioBuffer = await ctx.decodeAudioData(arrayBuffer.slice(0) as ArrayBuffer);
+  const source = ctx.createBufferSource();
+  source.buffer = audioBuffer;
+  source.connect(analyser);
+
+  startRmsLoop();
+
+  await new Promise<void>((resolve) => {
+    source.onended = () => resolve();
+    source.start();
+  });
+
+  stopRmsLoop();
+}
+
 if (typeof window !== 'undefined') {
-  (window as any).__testTtsPlayback = testTtsPlayback;
+  (window as unknown as Record<string, unknown>).__testTtsPlayback = testTtsPlayback;
 }

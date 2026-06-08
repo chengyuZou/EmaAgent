@@ -3,7 +3,13 @@ import { createSendQueue, type SendQueue } from '../lib/send-queue.js';
 import { sseConsumer } from '../lib/sse-consumer.js';
 import { sessionsApi } from '../api/sessions.js';
 import { turnsApi } from '../api/turns.js';
-import { handleTtsChunk, handleTtsSentenceComplete } from '../lib/tts-playback.js';
+import {
+  handleTtsChunk,
+  handleTtsSentenceComplete,
+  handleTurnCompleted,
+  handleTurnAborted,
+  evictSessionPlayers,
+} from '../lib/tts-playback.js';
 import { tauriBridge } from '../lib/tauri-bridge.js';
 import { useSessionStore } from './session-store.js';
 import { useDecisionStore } from './decision-store.js';
@@ -24,13 +30,14 @@ import type {
 // ── Display types ─────────────────────────────────────────────────────────────
 
 export interface AssistantSlice {
-  type:    'text' | 'thinking' | 'tool_call';
-  text?:   string;
-  callId?: string;
-  name?:   string;
-  args?:   unknown;
-  result?: unknown;
-  error?:  { code: string; message: string };
+  type:      'text' | 'thinking' | 'tool_use';
+  text?:     string;   // type === 'text'
+  thinking?: string;   // type === 'thinking'
+  callId?:   string;
+  name?:     string;
+  args?:     unknown;
+  result?:   unknown;
+  error?:    { code: string; message: string };
 }
 
 export interface StreamingAssistantMessage {
@@ -124,7 +131,7 @@ function getOrCreateQueue(sessionId: SessionId): SendQueue<SendInput> {
 
 // ── SSE event dispatcher ─────────────────────────────────────────────────────
 
-type DeltaSlice = 'text' | 'thinking' | 'tool_call' | 'tool_result';
+type DeltaSlice = 'text' | 'thinking' | 'tool_use' | 'tool_result';
 type DeltaPayload =
   | string
   | { callId: string; name: string; args: unknown }
@@ -165,7 +172,7 @@ function dispatchSseEvent(
       break;
 
     case 'tool_call_complete':
-      cb.appendDelta(sessionId, 'tool_call', { callId: event.callId, name: event.name, args: event.args });
+      cb.appendDelta(sessionId, 'tool_use', { callId: event.callId, name: event.name, args: event.args });
       break;
 
     case 'tool_result':
@@ -173,14 +180,17 @@ function dispatchSseEvent(
       break;
 
     case 'turn_completed':
+      handleTurnCompleted(sessionId as string);
       cb.finalizeStream(sessionId, event.usage);
       break;
 
     case 'turn_failed':
+      handleTurnAborted(sessionId as string);
       cb.abortStream(sessionId, event.message);
       break;
 
     case 'turn_aborted':
+      handleTurnAborted(sessionId as string);
       cb.abortStream(sessionId, event.reason);
       break;
 
@@ -395,6 +405,7 @@ export const useConversationStore = create<ConversationStoreState>((set, get) =>
     const handle = sseHandles.get(sessionId as string);
     handle?.stop();
     sseHandles.delete(sessionId as string);
+    handleTurnAborted(sessionId as string);
     get().abortStream(sessionId, '已停止');
   },
 
@@ -415,6 +426,7 @@ export const useConversationStore = create<ConversationStoreState>((set, get) =>
     sseHandles.delete(id as string);
     sendQueues.get(id as string)?.clear();
     sendQueues.delete(id as string);
+    evictSessionPlayers(id as string);
     set((s) => {
       const msgs = new Map(s.messages);
       msgs.delete(id as string);
@@ -472,12 +484,12 @@ export const useConversationStore = create<ConversationStoreState>((set, get) =>
         return { streamingMap: streaming };
       }
 
-      if (slice === 'tool_call' && typeof delta === 'object') {
+      if (slice === 'tool_use' && typeof delta === 'object') {
         const tc = delta as { callId: string; name: string; args: unknown };
         const streaming = new Map(s.streamingMap);
         streaming.set(sessionId as string, {
           ...sm,
-          slices: [...sm.slices, { type: 'tool_call', callId: tc.callId, name: tc.name, args: tc.args }],
+          slices: [...sm.slices, { type: 'tool_use', callId: tc.callId, name: tc.name, args: tc.args }],
         });
         return { streamingMap: streaming };
       }
@@ -488,7 +500,7 @@ export const useConversationStore = create<ConversationStoreState>((set, get) =>
         streaming.set(sessionId as string, {
           ...sm,
           slices: sm.slices.map((sl) =>
-            sl.type === 'tool_call' && sl.callId === tr.callId
+            sl.type === 'tool_use' && sl.callId === tr.callId
               ? { ...sl, result: tr.output ?? null, error: tr.error }
               : sl,
           ),
@@ -564,8 +576,8 @@ function blocksToHistoryFields(
     const ab = blocks as AssistantBlock[];
     const slices: AssistantSlice[] = ab.map((b) => {
       if (b.type === 'text')     return { type: 'text'     as const, text: b.text };
-      if (b.type === 'thinking') return { type: 'thinking' as const, text: b.thinking };
-      return { type: 'tool_call' as const, callId: b.id, name: b.name, args: b.args };
+      if (b.type === 'thinking') return { type: 'thinking' as const, thinking: b.thinking };
+      return { type: 'tool_use' as const, callId: b.id, name: b.name, args: b.args };
     });
     const content = ab
       .filter((b): b is { type: 'text'; text: string } => b.type === 'text')
@@ -595,7 +607,7 @@ function appendTextSlice(slices: AssistantSlice[], delta: string): AssistantSlic
 function appendThinkingSlice(slices: AssistantSlice[], delta: string): AssistantSlice[] {
   const last = slices[slices.length - 1];
   if (last?.type === 'thinking') {
-    return [...slices.slice(0, -1), { ...last, text: (last.text ?? '') + delta }];
+    return [...slices.slice(0, -1), { ...last, thinking: (last.thinking ?? '') + delta }];
   }
-  return [...slices, { type: 'thinking', text: delta }];
+  return [...slices, { type: 'thinking', thinking: delta }];
 }
