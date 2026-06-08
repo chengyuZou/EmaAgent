@@ -30,20 +30,30 @@ use tokio::time::timeout;
 pub struct SidecarState(Arc<Inner>);
 
 struct Inner {
-    port:  OnceCell<u16>,
-    child: Mutex<Option<Child>>,
+    port:   OnceCell<u16>,
+    secret: OnceCell<String>,
+    child:  Mutex<Option<Child>>,
 }
 
 impl SidecarState {
     pub fn new() -> Self {
         SidecarState(Arc::new(Inner {
-            port:  OnceCell::new(),
-            child: Mutex::new(None),
+            port:   OnceCell::new(),
+            secret: OnceCell::new(),
+            child:  Mutex::new(None),
         }))
     }
 
     pub async fn set_port(&self, port: u16) {
         let _ = self.0.port.set(port);
+    }
+
+    pub fn set_secret(&self, secret: String) {
+        let _ = self.0.secret.set(secret);
+    }
+
+    pub fn get_secret(&self) -> Option<&str> {
+        self.0.secret.get().map(|s| s.as_str())
     }
 
     pub async fn wait_for_port(&self, max: Duration) -> Option<u16> {
@@ -89,6 +99,9 @@ pub async fn spawn(state: SidecarState, _app: AppHandle) -> Result<(), String> {
     let pnpm = locate_pnpm()?;
     let workspace_root = locate_workspace_root()?;
 
+    let secret = uuid::Uuid::new_v4().to_string();
+    state.set_secret(secret.clone());
+
     tracing::info!(
         pnpm = %pnpm.display(),
         cwd  = %workspace_root.display(),
@@ -100,8 +113,8 @@ pub async fn spawn(state: SidecarState, _app: AppHandle) -> Result<(), String> {
         .current_dir(&workspace_root)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
-        // Detach from any parent stdin
-        .stdin(Stdio::null());
+        .stdin(Stdio::null())
+        .env("EMA_SHARED_SECRET", &secret);
 
     // On Windows, prevent a console window from popping up alongside the
     // sidecar process. CREATE_NO_WINDOW = 0x08000000.

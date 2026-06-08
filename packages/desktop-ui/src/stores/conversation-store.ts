@@ -99,11 +99,15 @@ function getOrCreateQueue(sessionId: SessionId): SendQueue<SendInput> {
         useConversationStore.setState({ viewedSessionId: actualSessionId });
       }
 
-      const url = await turnsApi.eventsUrl(turnId);
+      const [url, authHeaders] = await Promise.all([
+        turnsApi.eventsUrl(turnId),
+        sidecarClient.getAuthHeaders(),
+      ]);
 
       await new Promise<void>((resolve) => {
         const handle = sseConsumer.start({
           url,
+          headers: authHeaders,
           onEvent: (event) => dispatchSseEvent(event, input.sessionId, {
             beginStream:    (sid, tid) => useConversationStore.getState().beginStream(sid, tid),
             appendDelta:    (sid, slice, delta) => useConversationStore.getState().appendDelta(sid, slice, delta),
@@ -144,6 +148,9 @@ interface StreamCallbacks {
   finalizeStream(sessionId: SessionId, usage: UsageSummary | null): void;
   abortStream(sessionId: SessionId, reason: string): void;
 }
+
+// Temp storage for agent_breaker_tripped reasons — cleared when turn_aborted arrives.
+const breakerReasons = new Map<string, string>();
 
 function dispatchSseEvent(
   event: EmaStreamEvent,
@@ -190,10 +197,13 @@ function dispatchSseEvent(
       cb.abortStream(sessionId, event.message);
       break;
 
-    case 'turn_aborted':
+    case 'turn_aborted': {
+      const breakerReason = breakerReasons.get(sessionId as string);
+      breakerReasons.delete(sessionId as string);
       handleTurnAborted(sessionId as string);
-      cb.abortStream(sessionId, event.reason);
+      cb.abortStream(sessionId, breakerReason ?? event.reason);
       break;
+    }
 
     case 'ask_user_required':
       useDecisionStore.getState().push({
@@ -265,13 +275,16 @@ function dispatchSseEvent(
       break;
 
     // Reserved for V1.5
+    case 'agent_breaker_tripped':
+      breakerReasons.set(sessionId as string, `熔断保护：${event.reason}`);
+      break;
+
     case 'narrative_route_resolved':
     case 'narrative_timeline_complete':
     case 'memory_recall_evidence':
     case 'reasoning_complete':
     case 'tool_call_partial':
     case 'agent_iteration':
-    case 'agent_breaker_tripped':
       break;
 
     default:

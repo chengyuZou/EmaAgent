@@ -24,6 +24,9 @@ export interface SidecarClient {
 
   /** Build a full SSE URL with optional lastEventId query param. */
   streamUrl(path: string, params?: { lastEventId?: number }): Promise<string>;
+
+  /** Returns headers required for authenticated requests (X-Ema-Secret). */
+  getAuthHeaders(): Promise<Record<string, string>>;
 }
 
 export class SidecarApiError extends Error {
@@ -57,10 +60,11 @@ export class SidecarApiError extends Error {
   }
 }
 
-// ── Port discovery ───────────────────────────────────────────────────────────
+// ── Port + secret discovery ───────────────────────────────────────────────────
 
 const DEFAULT_PORT = 3421;
-let portPromise: Promise<number> | null = null;
+let portPromise:   Promise<number>      | null = null;
+let secretPromise: Promise<string|null> | null = null;
 
 async function discoverPort(): Promise<number> {
   const port = await tauriBridge.invoke<number>('get_sidecar_port');
@@ -76,6 +80,13 @@ function getPortPromise(): Promise<number> {
     });
   }
   return portPromise;
+}
+
+function getSecretPromise(): Promise<string | null> {
+  if (!secretPromise) {
+    secretPromise = tauriBridge.getSidecarSecret().catch(() => null);
+  }
+  return secretPromise;
 }
 
 // ── Implementation ───────────────────────────────────────────────────────────
@@ -97,8 +108,8 @@ async function doRequest<T>(
   path: string,
   init?: RequestInit & { json?: unknown },
 ): Promise<T> {
-  const url = await buildUrl(path);
-  const requestInit = prepareRequestInit(init);
+  const [url, secret] = await Promise.all([buildUrl(path), getSecretPromise()]);
+  const requestInit = prepareRequestInit(init, secret);
 
   let res: Response;
   try {
@@ -125,8 +136,8 @@ async function doRequestRaw(
   path: string,
   init?: RequestInit & { json?: unknown },
 ): Promise<Response> {
-  const url = await buildUrl(path);
-  const requestInit = prepareRequestInit(init);
+  const [url, secret] = await Promise.all([buildUrl(path), getSecretPromise()]);
+  const requestInit = prepareRequestInit(init, secret);
 
   let res: Response;
   try {
@@ -146,10 +157,11 @@ async function doRequestRaw(
   return res;
 }
 
-function prepareRequestInit(init?: RequestInit & { json?: unknown }): RequestInit {
+function prepareRequestInit(init?: RequestInit & { json?: unknown }, secret?: string | null): RequestInit {
   const headers = new Headers(init?.headers);
-  let body: BodyInit | undefined = init?.body ?? undefined;
+  if (secret) headers.set('X-Ema-Secret', secret);
 
+  let body: BodyInit | undefined = init?.body ?? undefined;
   if (init?.json !== undefined && !body) {
     body = JSON.stringify(init.json);
     headers.set('Content-Type', 'application/json');
@@ -181,5 +193,10 @@ export const sidecarClient: SidecarClient = {
 
   async streamUrl(path: string, params?: { lastEventId?: number }): Promise<string> {
     return buildUrl(path, params as Record<string, string | number | undefined>);
+  },
+
+  async getAuthHeaders(): Promise<Record<string, string>> {
+    const secret = await getSecretPromise();
+    return secret ? { 'X-Ema-Secret': secret } : {};
   },
 };

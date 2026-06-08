@@ -41,10 +41,14 @@ function scheduleReconnect(delayMs: number): void {
 export async function startSystemSse(): Promise<void> {
   if (_handle) return;
 
-  const url = await sidecarClient.streamUrl('/api/system/events');
+  const [url, authHeaders] = await Promise.all([
+    sidecarClient.streamUrl('/api/system/events'),
+    sidecarClient.getAuthHeaders(),
+  ]);
 
   _handle = sseConsumer.start({
     url,
+    headers: authHeaders,
     onEvent: (event) => dispatchSystemEvent(event),
     onHeartbeat: () => {},
     onError: (err) => {

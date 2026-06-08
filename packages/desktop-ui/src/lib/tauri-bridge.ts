@@ -25,6 +25,9 @@ export interface TauriBridge {
   /** Whether the Tauri runtime is available. */
   isTauri(): boolean;
 
+  /** Retrieve the shared secret generated at sidecar startup. Returns null in browser mode. */
+  getSidecarSecret(): Promise<string | null>;
+
   /** Show / focus a pre-declared sub-window by label (chat / settings). */
   openWindow(label: string): Promise<void>;
 
@@ -159,6 +162,10 @@ export const tauriBridge: TauriBridge = {
     const core = await getCore();
     if (!core) return;
     await core.invoke('set_passthrough', { value });
+  },
+
+  async getSidecarSecret(): Promise<string | null> {
+    return tauriBridge.invoke<string>('get_sidecar_secret');
   },
 
   async saveFileDialog(opts = {}): Promise<string | null> {

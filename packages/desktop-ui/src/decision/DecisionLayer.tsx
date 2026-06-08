@@ -5,6 +5,7 @@
  * and renders the matching prompt component. Only one prompt at a time.
  */
 import { useDecisionStore, type DecisionPrompt } from '../stores/decision-store.js';
+import { useSettingsStore } from '../stores/settings-store.js';
 import { PermissionPrompt } from './PermissionPrompt.js';
 import { AskConfirmPrompt } from './AskConfirmPrompt.js';
 import { AskTextPrompt } from './AskTextPrompt.js';
@@ -14,6 +15,8 @@ import { AskUserBatchPrompt } from './AskUserBatchPrompt.js';
 // ── Prompt router ─────────────────────────────────────────────────────────────
 
 function PromptRouter({ prompt }: { prompt: DecisionPrompt }): JSX.Element {
+  const timeoutMs = useSettingsStore((s) => s.permissionTimeoutMs);
+
   switch (prompt.kind) {
     case 'permission':
       return (
@@ -24,6 +27,7 @@ function PromptRouter({ prompt }: { prompt: DecisionPrompt }): JSX.Element {
           hint={prompt.hint}
           humanDescription={prompt.humanDescription}
           humanDescriptionPending={prompt.humanDescriptionPending}
+          timeoutMs={timeoutMs}
           onResolve={(decision) => {
             useDecisionStore.getState().resolve({ decision });
           }}

@@ -11,6 +11,7 @@ export interface SseStartOptions {
   url:           string;
   signal?:       AbortSignal;
   lastEventId?:  number;
+  headers?:      Record<string, string>;
   onEvent:       (event: EmaStreamEvent) => void;
   onHeartbeat?:  () => void;
   onError?:      (err: Error) => void;
@@ -122,7 +123,7 @@ export function createSseConsumer(): {
       void (async () => {
         try {
           const res = await fetch(opts.url, {
-            headers: { Accept: 'text/event-stream' },
+            headers: { Accept: 'text/event-stream', ...opts.headers },
             signal: controller.signal,
           });
 

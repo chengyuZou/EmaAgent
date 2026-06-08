@@ -8,6 +8,14 @@ use sidecar::SidecarState;
 // ── Tauri commands ──────────────────────────────────────────────────────────
 
 #[tauri::command]
+fn get_sidecar_secret(state: tauri::State<'_, SidecarState>) -> Result<String, String> {
+    state
+        .get_secret()
+        .map(|s| s.to_string())
+        .ok_or_else(|| "sidecar secret not yet available".to_string())
+}
+
+#[tauri::command]
 async fn get_sidecar_port(state: tauri::State<'_, SidecarState>) -> Result<u16, String> {
     // Block-ish wait for the port — sidecar may not have logged it yet on
     // very first launch. We poll the OnceCell for up to 30s; this matches the
@@ -69,6 +77,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .manage(sidecar_state)
         .invoke_handler(tauri::generate_handler![
+            get_sidecar_secret,
             get_sidecar_port,
             set_always_on_top,
             set_passthrough,
