@@ -9,10 +9,14 @@
  *   ask_user_required / ask_user_resolved
  *   emotion_changed / stage_cue
  *   tts_chunk / tts_sentence_complete
+ *   memory_recall_evidence
+ *   artifact_upserted / artifact_applied
  */
 import { sseConsumer, type SseHandle } from './sse-consumer.js';
 import { sidecarClient } from '../api/sidecar-client.js';
 import { tauriBridge } from './tauri-bridge.js';
+import { useSettingsStore } from '../stores/settings-store.js';
+import { useCardStore } from '../stores/card-store.js';
 import type { EmaStreamEvent } from '@ema-agent/contracts';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -82,15 +86,15 @@ function dispatchSystemEvent(event: EmaStreamEvent): void {
     // ── Character card ─────────────────────────────────────────────────────
     case 'character_card_switched':
       void tauriBridge.emit('card:switched', { cardId: event.cardId, name: event.name });
+      void useCardStore.getState().load();
       break;
 
     // ── Provider health ────────────────────────────────────────────────────
     case 'provider_health_changed':
-      // Settings store refreshes on this event (V1.5 — polling covers V1).
+      void useSettingsStore.getState().refreshProviders();
       break;
 
     // ── Memory observability ───────────────────────────────────────────────
-    case 'memory_recall_evidence':
     case 'memory_compaction_started':
     case 'memory_compaction_completed':
     case 'memory_compaction_failed':
@@ -107,11 +111,6 @@ function dispatchSystemEvent(event: EmaStreamEvent): void {
     case 'memory_task_started':
     case 'memory_task_completed':
     case 'memory_task_failed':
-      break;
-
-    // ── Artifacts ──────────────────────────────────────────────────────────
-    case 'artifact_upserted':
-    case 'artifact_applied':
       break;
 
     default:

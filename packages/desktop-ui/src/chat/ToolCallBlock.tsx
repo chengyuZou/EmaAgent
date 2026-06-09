@@ -11,7 +11,7 @@ import { useState, type JSX } from 'react';
 import type { AssistantSlice } from '../stores/conversation-store.js';
 
 export interface ToolCallBlockProps {
-  slice:      AssistantSlice & { type: 'tool_use' };
+  slice:      Extract<AssistantSlice, { type: 'tool_use' }>;
   streaming?: boolean;  // true only when this bubble is the live stream
 }
 
@@ -19,10 +19,12 @@ export function ToolCallBlock({ slice, streaming = false }: ToolCallBlockProps):
   const [open, setOpen] = useState(false);
 
   // null = "completed, no output"  |  undefined = "not yet received"
-  const hasResult = slice.result !== undefined;
-  const hasError  = !!slice.error;
-  // Pending only when actively streaming AND no result/error yet
-  const isPending = streaming && !hasResult && !hasError;
+  const hasResult    = slice.result !== undefined;
+  const hasError     = !!slice.error;
+  const isStreaming  = streaming && !hasResult && !hasError;
+  const argsReady    = slice.args !== undefined;
+  // Pending = actively streaming AND args not finalized yet
+  const isPending    = isStreaming && !argsReady;
 
   const badge = isPending
     ? { label: '运行中', cls: 'bg-yellow-400/20 text-yellow-300' }
@@ -30,7 +32,8 @@ export function ToolCallBlock({ slice, streaming = false }: ToolCallBlockProps):
     ? { label: '失败',   cls: 'bg-red-400/20 text-red-300' }
     : { label: '完成',   cls: 'bg-green-400/20 text-green-300' };
 
-  const argsStr   = formatJson(slice.args);
+  // Show partial args while streaming, fall back to final args once complete.
+  const argsStr   = argsReady ? formatJson(slice.args) : (slice.partialArgs ?? '');
   const resultStr = hasResult && slice.result !== null ? formatJson(slice.result) : null;
 
   return (
@@ -55,7 +58,10 @@ export function ToolCallBlock({ slice, streaming = false }: ToolCallBlockProps):
         <div className="w-full flex flex-col gap-2">
           {/* Args */}
           <div className="rounded-md p-2 w-full bg-gray-900/80 text-sm text-gray-200">
-            <div className="text-[10px] text-gray-500 uppercase tracking-wide mb-1">参数</div>
+            <div className="text-[10px] text-gray-500 uppercase tracking-wide mb-1 flex items-center gap-1.5">
+              参数
+              {isPending && <span className="w-1 h-1 rounded-full bg-yellow-400 animate-pulse" />}
+            </div>
             <pre className="font-mono text-xs whitespace-pre-wrap break-words">{argsStr}</pre>
           </div>
 

@@ -5,10 +5,11 @@
 import { useState, type JSX } from 'react';
 
 export interface ThinkingBlockProps {
-  text: string;
+  text:  string;
+  done?: boolean;
 }
 
-export function ThinkingBlock({ text }: ThinkingBlockProps): JSX.Element {
+export function ThinkingBlock({ text, done = false }: ThinkingBlockProps): JSX.Element {
   const [open, setOpen] = useState(false);
 
   return (
@@ -19,7 +20,7 @@ export function ThinkingBlock({ text }: ThinkingBlockProps): JSX.Element {
         onClick={() => setOpen(!open)}
       >
         <span>{open ? '▼' : '▶'}</span>
-        <span className="font-semibold">思考过程</span>
+        <span className="font-semibold">{done ? '思考完毕' : '思考过程'}</span>
       </button>
       {open && (
         <div className="text-sm text-violet-200/80 italic whitespace-pre-wrap leading-relaxed">

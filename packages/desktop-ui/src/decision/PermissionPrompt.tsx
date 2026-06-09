@@ -43,19 +43,21 @@ export function PermissionPrompt({
 
     const id = setInterval(() => {
       setSecondsLeft((s) => {
-        if (s <= 1) {
-          clearInterval(id);
-          void permissionApi.respond(promptId, { action: 'deny' }).catch(() => {});
-          handleResolve('deny');
-          return 0;
-        }
+        if (s <= 1) { clearInterval(id); return 0; }
         return s - 1;
       });
     }, 1000);
 
     return () => clearInterval(id);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [promptId, totalSeconds]);
+
+  // Side effects run outside the updater to avoid double-fire in Strict Mode / concurrent mode.
+  useEffect(() => {
+    if (secondsLeft !== 0 || !totalSeconds || resolved.current) return;
+    void permissionApi.respond(promptId, { action: 'deny' }).catch(() => {});
+    handleResolve('deny');
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [secondsLeft]);
 
   const progress = totalSeconds > 0 ? (secondsLeft / totalSeconds) * 100 : 0;
 

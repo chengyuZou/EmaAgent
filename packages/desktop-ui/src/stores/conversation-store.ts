@@ -26,20 +26,19 @@ import type {
   AssistantBlock,
   MessageBlocks,
   MessageContentPart,
+  MemoryRecallLayer,
+  MemoryRecallLayerReport,
 } from '@ema-agent/contracts';
 
 // ── Display types ─────────────────────────────────────────────────────────────
 
-export interface AssistantSlice {
-  type:      'text' | 'thinking' | 'tool_use';
-  text?:     string;   // type === 'text'
-  thinking?: string;   // type === 'thinking'
-  callId?:   string;
-  name?:     string;
-  args?:     unknown;
-  result?:   unknown;
-  error?:    { code: string; message: string };
-}
+export type AssistantSlice =
+  | { type: 'text';             text: string }
+  | { type: 'thinking';         thinking: string; done?: boolean }
+  | { type: 'tool_use';         callId: string; name: string; args?: unknown; partialArgs?: string;
+                                result?: unknown; error?: { code: string; message: string } }
+  | { type: 'narrative_status'; timelines: string[]; completedTimelines: string[];
+                                snippets: Record<string, string> };
 
 export interface StreamingAssistantMessage {
   role:      'assistant';
@@ -193,6 +192,7 @@ function dispatchSseEvent(
       break;
 
     case 'turn_failed':
+      breakerReasons.delete(sessionId as string);
       handleTurnAborted(sessionId as string);
       cb.abortStream(sessionId, event.message);
       break;
@@ -279,12 +279,87 @@ function dispatchSseEvent(
       breakerReasons.set(sessionId as string, `熔断保护：${event.reason}`);
       break;
 
-    case 'narrative_route_resolved':
-    case 'narrative_timeline_complete':
-    case 'memory_recall_evidence':
-    case 'reasoning_complete':
-    case 'tool_call_partial':
     case 'agent_iteration':
+      useConversationStore.setState((s) => {
+        const m = new Map(s.iterationCountMap);
+        m.set(sessionId as string, event.n);
+        return { iterationCountMap: m };
+      });
+      break;
+
+    case 'narrative_route_resolved':
+      useConversationStore.setState((s) => {
+        const sm = s.streamingMap.get(sessionId as string);
+        if (!sm) return {};
+        const slices = [
+          ...sm.slices.filter((sl) => sl.type !== 'narrative_status'),
+          { type: 'narrative_status' as const, timelines: event.timelines, completedTimelines: [], snippets: {} },
+        ];
+        const streaming = new Map(s.streamingMap);
+        streaming.set(sessionId as string, { ...sm, slices });
+        return { streamingMap: streaming };
+      });
+      break;
+
+    case 'narrative_timeline_complete':
+      useConversationStore.setState((s) => {
+        const sm = s.streamingMap.get(sessionId as string);
+        if (!sm) return {};
+        const slices = sm.slices.map((sl) =>
+          sl.type !== 'narrative_status' ? sl : {
+            ...sl,
+            completedTimelines: [...(sl.completedTimelines ?? []), event.timeline],
+            snippets: { ...(sl.snippets ?? {}), [event.timeline]: event.snippet },
+          },
+        );
+        const streaming = new Map(s.streamingMap);
+        streaming.set(sessionId as string, { ...sm, slices });
+        return { streamingMap: streaming };
+      });
+      break;
+
+    case 'reasoning_complete':
+      useConversationStore.setState((s) => {
+        const sm = s.streamingMap.get(sessionId as string);
+        if (!sm) return {};
+        let thinkingIdx = 0;
+        const slices = sm.slices.map((sl) => {
+          if (sl.type !== 'thinking') return sl;
+          const hit = thinkingIdx === event.blockIndex;
+          thinkingIdx++;
+          return hit ? { ...sl, done: true } : sl;
+        });
+        const streaming = new Map(s.streamingMap);
+        streaming.set(sessionId as string, { ...sm, slices });
+        return { streamingMap: streaming };
+      });
+      break;
+
+    case 'memory_recall_evidence':
+      useConversationStore.setState((s) => {
+        const prev = s.recallEvidenceMap.get(sessionId as string) ?? {};
+        const next  = new Map(s.recallEvidenceMap);
+        next.set(sessionId as string, { ...prev, [event.layer]: event.report });
+        return { recallEvidenceMap: next };
+      });
+      break;
+
+    case 'tool_call_partial':
+      useConversationStore.setState((s) => {
+        const sm = s.streamingMap.get(sessionId as string);
+        if (!sm) return {};
+        const idx = sm.slices.findIndex((sl) => sl.type === 'tool_use' && sl.callId === event.callId);
+        const slices = idx >= 0
+          ? sm.slices.map((sl, i) => {
+              if (i !== idx) return sl;
+              const tsl = sl as Extract<AssistantSlice, { type: 'tool_use' }>;
+              return { ...tsl, partialArgs: (tsl.partialArgs ?? '') + event.argsDelta };
+            })
+          : [...sm.slices, { type: 'tool_use' as const, callId: event.callId, name: event.name, partialArgs: event.argsDelta }];
+        const streaming = new Map(s.streamingMap);
+        streaming.set(sessionId as string, { ...sm, slices });
+        return { streamingMap: streaming };
+      });
       break;
 
     default:
@@ -299,6 +374,10 @@ export interface ConversationStoreState {
   ttsOwnerSessionId: SessionId | null;
   /** Last known emotion state per session — restored when ttsOwner switches. */
   emotionStateMap:   Map<string, EmotionState>;
+  /** Current agent iteration count per session (resets on each new turn). */
+  iterationCountMap:   Map<string, number>;
+  /** Memory recall evidence for the latest turn per session (resets on each new turn). */
+  recallEvidenceMap:   Map<string, Partial<Record<MemoryRecallLayer, MemoryRecallLayerReport>>>;
   messages:          Map<string, ChatHistoryItem[]>;
   streamingMap:      Map<string, StreamingAssistantMessage>;
   stopReasonMap:     Map<string, string>;
@@ -325,6 +404,8 @@ export const useConversationStore = create<ConversationStoreState>((set, get) =>
   viewedSessionId:   null,
   ttsOwnerSessionId: null,
   emotionStateMap:   new Map(),
+  iterationCountMap: new Map(),
+  recallEvidenceMap: new Map(),
   messages:          new Map(),
   streamingMap:      new Map(),
   stopReasonMap:     new Map(),
@@ -446,6 +527,7 @@ export const useConversationStore = create<ConversationStoreState>((set, get) =>
     sseHandles.delete(id as string);
     sendQueues.get(id as string)?.clear();
     sendQueues.delete(id as string);
+    breakerReasons.delete(id as string);
     evictSessionPlayers(id as string);
     useArtifactStore.getState().evictSession(id);
     set((s) => {
@@ -459,7 +541,11 @@ export const useConversationStore = create<ConversationStoreState>((set, get) =>
       drafts.delete(id as string);
       const emotions = new Map(s.emotionStateMap);
       emotions.delete(id as string);
-      return { messages: msgs, streamingMap: streaming, stopReasonMap: stops, draftMap: drafts, emotionStateMap: emotions };
+      const iterations = new Map(s.iterationCountMap);
+      iterations.delete(id as string);
+      const recalls = new Map(s.recallEvidenceMap);
+      recalls.delete(id as string);
+      return { messages: msgs, streamingMap: streaming, stopReasonMap: stops, draftMap: drafts, emotionStateMap: emotions, iterationCountMap: iterations, recallEvidenceMap: recalls };
     });
   },
 
@@ -471,10 +557,13 @@ export const useConversationStore = create<ConversationStoreState>((set, get) =>
       streaming.set(sessionId as string, {
         role: 'assistant', content: '', slices: [], startedAt: Date.now(),
       });
-      // Clear any previous stop reason for this session
       const stops = new Map(s.stopReasonMap);
       stops.delete(sessionId as string);
-      return { streamingMap: streaming, stopReasonMap: stops };
+      const iterations = new Map(s.iterationCountMap);
+      iterations.delete(sessionId as string);
+      const recalls = new Map(s.recallEvidenceMap);
+      recalls.delete(sessionId as string);
+      return { streamingMap: streaming, stopReasonMap: stops, iterationCountMap: iterations, recallEvidenceMap: recalls };
     });
     // turnId is stored on the streaming entry so AskUserBatchPrompt can look it up
     // We encode it as a side-channel property (not in the type) — see decision-store instead.
@@ -507,11 +596,17 @@ export const useConversationStore = create<ConversationStoreState>((set, get) =>
 
       if (slice === 'tool_use' && typeof delta === 'object') {
         const tc = delta as { callId: string; name: string; args: unknown };
+        const existing = sm.slices.findIndex((sl) => sl.type === 'tool_use' && sl.callId === tc.callId);
+        const newSlices = existing >= 0
+          ? sm.slices.map((sl, i) => {
+              if (i !== existing) return sl;
+              // findIndex predicate guarantees this is a tool_use slice
+              const tsl = sl as Extract<AssistantSlice, { type: 'tool_use' }>;
+              return { ...tsl, args: tc.args, partialArgs: undefined };
+            })
+          : [...sm.slices, { type: 'tool_use' as const, callId: tc.callId, name: tc.name, args: tc.args }];
         const streaming = new Map(s.streamingMap);
-        streaming.set(sessionId as string, {
-          ...sm,
-          slices: [...sm.slices, { type: 'tool_use', callId: tc.callId, name: tc.name, args: tc.args }],
-        });
+        streaming.set(sessionId as string, { ...sm, slices: newSlices });
         return { streamingMap: streaming };
       }
 
@@ -597,7 +692,7 @@ function blocksToHistoryFields(
     const ab = blocks as AssistantBlock[];
     const slices: AssistantSlice[] = ab.map((b) => {
       if (b.type === 'text')     return { type: 'text'     as const, text: b.text };
-      if (b.type === 'thinking') return { type: 'thinking' as const, thinking: b.thinking };
+      if (b.type === 'thinking') return { type: 'thinking' as const, thinking: b.thinking, done: true };
       return { type: 'tool_use' as const, callId: b.id, name: b.name, args: b.args };
     });
     const content = ab
@@ -620,7 +715,7 @@ function blocksToHistoryFields(
 function appendTextSlice(slices: AssistantSlice[], delta: string): AssistantSlice[] {
   const last = slices[slices.length - 1];
   if (last?.type === 'text') {
-    return [...slices.slice(0, -1), { ...last, text: (last.text ?? '') + delta }];
+    return [...slices.slice(0, -1), { ...last, text: last.text + delta }];
   }
   return [...slices, { type: 'text', text: delta }];
 }
@@ -628,7 +723,7 @@ function appendTextSlice(slices: AssistantSlice[], delta: string): AssistantSlic
 function appendThinkingSlice(slices: AssistantSlice[], delta: string): AssistantSlice[] {
   const last = slices[slices.length - 1];
   if (last?.type === 'thinking') {
-    return [...slices.slice(0, -1), { ...last, thinking: (last.thinking ?? '') + delta }];
+    return [...slices.slice(0, -1), { ...last, thinking: last.thinking + delta }];
   }
   return [...slices, { type: 'thinking', thinking: delta }];
 }
