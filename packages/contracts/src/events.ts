@@ -156,20 +156,24 @@ export type EmaStreamEvent =
       report: MemoryRecallLayerReport;
     }
 
-  // Memory — pipeline observability (cross-turn, emitted on the system bus)
+  // Memory compaction — turn-scoped. Emitted by MemoryPlanner.compact() via ctx.emit (beforeLlm hook).
+  // Has turnId — belongs on the per-turn SSE channel, NOT the system bus.
   | { type: 'memory_compaction_started';   sessionId: SessionId; turnId: TurnId; mode: TurnMode; beforeTokens: number }
   | { type: 'memory_compaction_completed'; sessionId: SessionId; turnId: TurnId; mode: TurnMode; beforeTokens: number; afterTokens: number; savedTokens: number; durationMs: number }
   | { type: 'memory_compaction_failed';    sessionId: SessionId; turnId: TurnId; mode: TurnMode; error: string; beforeTokens: number; afterTokens: number; durationMs: number }
+
+  // Memory pipeline telemetry — system-scoped (emitted by MemoryTaskRunner / MemoryPlanner.initialize).
   | { type: 'memory_extraction_started';    sessionId: SessionId; turnId?: TurnId; queueDepth: number }
   | { type: 'memory_extraction_completed';  sessionId: SessionId; nodes: number; edges: number; items: number; lazyQueued: number; durationMs: number }
   | { type: 'memory_extraction_failed';     sessionId: SessionId; error: string }
+  | { type: 'memory_index_rebuilt';         backend: string; nodes: number; items: number; durationMs: number }
+  // Reserved — not yet emitted (Round 4.5):
   | { type: 'memory_consolidation_started';   nodeCount: number }
   | { type: 'memory_consolidation_completed'; consolidated: number; durationMs: number }
   | { type: 'memory_consolidation_failed';    error: string }
   | { type: 'memory_maintenance_completed'; decayedNodes: number; decayedItems: number; dryRun: boolean; durationMs: number }
   | { type: 'memory_maintenance_failed';    error: string }
   | { type: 'memory_node_merged';           nodeId: string; label: string; fragmentCount: number }
-  | { type: 'memory_index_rebuilt';         backend: string; nodes: number; items: number; durationMs: number }
 
   // Background tasks — system-scoped (memory queue worker telemetry)
   | { type: 'memory_task_started';   taskId: string; kind: string; sessionId?: SessionId }

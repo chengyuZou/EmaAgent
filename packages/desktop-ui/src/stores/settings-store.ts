@@ -4,7 +4,9 @@
 import { create } from 'zustand';
 import { providersApi, type ProviderConfigWire, type ProviderConfigInput, type ProviderDefinition, type ProbeResultWire } from '../api/providers.js';
 import { modelBindingsApi, type BindingModule, type ResolvedModelBinding, type BindingUpsertInput } from '../api/model-bindings.js';
-import { settingsApi } from '../api/settings.js';
+import { settingsApi, type EventDisplayConfig, type EventDisplayResult } from '../api/settings.js';
+
+export type { EventDisplayConfig, EventDisplayResult };
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -13,6 +15,8 @@ export interface SettingsStoreState {
   providerDefinitions: ProviderDefinition[];
   bindings:            Partial<Record<BindingModule, ResolvedModelBinding[]>>;
   permissionTimeoutMs: number;
+  /** Effective event-display config (defaults merged with user overrides). */
+  eventDisplay:        EventDisplayResult | null;
   loading:             boolean;
   error:               string | null;
 
@@ -28,6 +32,11 @@ export interface SettingsStoreState {
   deleteBinding(module: BindingModule, providerConfigId: string, model: string): Promise<void>;
 
   putPermissionTimeout(ms: number):                    Promise<void>;
+
+  /** Reload the full event-display config from the sidecar. */
+  refreshEventDisplay():                              Promise<void>;
+  /** Persist user overrides for specific event types. Merges with existing overrides. */
+  putEventDisplay(overrides: Record<string, EventDisplayConfig>): Promise<void>;
 }
 
 // ── Store ─────────────────────────────────────────────────────────────────────
@@ -37,21 +46,24 @@ export const useSettingsStore = create<SettingsStoreState>((set, get) => ({
   providerDefinitions: [],
   bindings:            {},
   permissionTimeoutMs: 120_000,
+  eventDisplay:        null,
   loading:             false,
   error:               null,
 
   async loadAll() {
     set({ loading: true, error: null });
     try {
-      const [definitions, providers, permResult] = await Promise.all([
+      const [definitions, providers, permResult, eventDisplay] = await Promise.all([
         providersApi.listDefinitions(),
         providersApi.list(),
         settingsApi.getPermissionTimeout().catch(() => ({ timeoutMs: 120_000 })),
+        settingsApi.getEventDisplay().catch(() => null),
       ]);
       set({
         providerDefinitions: definitions,
         providers,
         permissionTimeoutMs: permResult.timeoutMs,
+        eventDisplay,
         loading: false,
       });
     } catch (err: unknown) {
@@ -134,6 +146,25 @@ export const useSettingsStore = create<SettingsStoreState>((set, get) => ({
       set({ permissionTimeoutMs: ms });
     } catch (err: unknown) {
       set({ error: err instanceof Error ? err.message : 'Failed to save permission timeout' });
+      throw err;
+    }
+  },
+
+  async refreshEventDisplay() {
+    try {
+      const eventDisplay = await settingsApi.getEventDisplay();
+      set({ eventDisplay });
+    } catch (err: unknown) {
+      set({ error: err instanceof Error ? err.message : 'Failed to load event display config' });
+    }
+  },
+
+  async putEventDisplay(overrides) {
+    try {
+      await settingsApi.putEventDisplay(overrides);
+      await get().refreshEventDisplay();
+    } catch (err: unknown) {
+      set({ error: err instanceof Error ? err.message : 'Failed to save event display config' });
       throw err;
     }
   },

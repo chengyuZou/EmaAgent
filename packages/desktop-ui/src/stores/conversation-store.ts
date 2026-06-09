@@ -279,6 +279,13 @@ function dispatchSseEvent(
       breakerReasons.set(sessionId as string, `熔断保护：${event.reason}`);
       break;
 
+    // memory_compaction_* are turn-scoped: emitted by MemoryPlanner.compact() via ctx.emit.
+    // No UI change for now — reserved for memory status panel (V1.5).
+    case 'memory_compaction_started':
+    case 'memory_compaction_completed':
+    case 'memory_compaction_failed':
+      break;
+
     case 'agent_iteration':
       useConversationStore.setState((s) => {
         const m = new Map(s.iterationCountMap);

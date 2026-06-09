@@ -10,6 +10,7 @@
  *   emotion_changed / stage_cue
  *   tts_chunk / tts_sentence_complete
  *   memory_recall_evidence
+ *   memory_compaction_started / completed / failed   ← emitted via ctx.emit (beforeLlm), NOT system bus
  *   artifact_upserted / artifact_applied
  */
 import { sseConsumer, type SseHandle } from './sse-consumer.js';
@@ -17,7 +18,9 @@ import { sidecarClient } from '../api/sidecar-client.js';
 import { tauriBridge } from './tauri-bridge.js';
 import { useSettingsStore } from '../stores/settings-store.js';
 import { useCardStore } from '../stores/card-store.js';
+import { useMemoryStore } from '../stores/memory-store.js';
 import type { EmaStreamEvent } from '@ema-agent/contracts';
+import type { MemoryTaskKind } from '@ema-agent/storage';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -94,23 +97,61 @@ function dispatchSystemEvent(event: EmaStreamEvent): void {
       void useSettingsStore.getState().refreshProviders();
       break;
 
-    // ── Memory observability ───────────────────────────────────────────────
-    case 'memory_compaction_started':
-    case 'memory_compaction_completed':
-    case 'memory_compaction_failed':
+    // ── Memory pipeline telemetry (system bus) ────────────────────────────
+
+    case 'memory_task_started':
+      // event.kind is `string` in contracts (contracts has no storage dep);
+      // backend only ever emits valid MemoryTaskKind values.
+      useMemoryStore.getState().onTaskStarted(
+        event.taskId,
+        event.kind as MemoryTaskKind,
+        event.sessionId as string | undefined,
+      );
+      break;
+
+    case 'memory_task_completed':
+      useMemoryStore.getState().onTaskCompleted(event.taskId);
+      break;
+
+    case 'memory_task_failed':
+      useMemoryStore.getState().onTaskFailed(event.taskId, event.error);
+      break;
+
     case 'memory_extraction_started':
+      useMemoryStore.getState().onExtractionStarted(event.sessionId as string);
+      break;
+
     case 'memory_extraction_completed':
+      useMemoryStore.getState().onExtractionCompleted(event.sessionId as string, {
+        nodes:      event.nodes,
+        edges:      event.edges,
+        items:      event.items,
+        lazyQueued: event.lazyQueued,
+        durationMs: event.durationMs,
+      });
+      break;
+
     case 'memory_extraction_failed':
+      useMemoryStore.getState().onExtractionFailed(event.sessionId as string, event.error);
+      break;
+
+    case 'memory_index_rebuilt':
+      useMemoryStore.getState().onIndexRebuilt();
+      break;
+
+    case 'memory_maintenance_completed':
+      useMemoryStore.getState().onMaintenanceCompleted(event.decayedNodes, event.decayedItems, event.dryRun);
+      break;
+
+    case 'memory_maintenance_failed':
+      useMemoryStore.getState().onMaintenanceFailed(event.error);
+      break;
+
+    // ── Memory pipeline telemetry (Reserved — not yet emitted, Round 4.5) ─
     case 'memory_consolidation_started':
     case 'memory_consolidation_completed':
     case 'memory_consolidation_failed':
-    case 'memory_maintenance_completed':
-    case 'memory_maintenance_failed':
     case 'memory_node_merged':
-    case 'memory_index_rebuilt':
-    case 'memory_task_started':
-    case 'memory_task_completed':
-    case 'memory_task_failed':
       break;
 
     default:
