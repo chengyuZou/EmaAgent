@@ -180,6 +180,7 @@ export const sidecarClient: SidecarClient = {
 
   async refreshPort(): Promise<void> {
     portPromise = null;
+    secretPromise = null;
     await getPortPromise();
   },
 
