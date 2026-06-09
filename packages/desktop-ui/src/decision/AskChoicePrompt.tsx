@@ -1,5 +1,5 @@
-/** AskChoicePrompt — single/multi select with optional custom input. */
 import { useState } from 'react';
+import { Button, Card, Checkbox, Input } from '@ema-agent/ui';
 import { HumanDescriptionPanel } from './HumanDescriptionPanel.js';
 
 export interface AskChoicePromptProps {
@@ -13,7 +13,9 @@ export interface AskChoicePromptProps {
   onCancel(): void;
 }
 
-export function AskChoicePrompt({ question, humanDescription, options, multiSelect, allowCustom, onResolve, onCancel }: AskChoicePromptProps): JSX.Element {
+export function AskChoicePrompt({
+  question, humanDescription, options, multiSelect, allowCustom, onResolve, onCancel,
+}: AskChoicePromptProps): JSX.Element {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [customText, setCustomText] = useState('');
 
@@ -31,32 +33,55 @@ export function AskChoicePrompt({ question, humanDescription, options, multiSele
   }
 
   return (
-    <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 shadow-2xl">
+    <Card variant="elevated" padding="lg" className="shadow-2xl max-w-lg w-full">
       <HumanDescriptionPanel description={humanDescription ?? question} toolName="" pending={false} />
-      <p className="text-gray-300 mt-2">{question}</p>
+      <p className="text-neutral-300 mt-2 text-sm">{question}</p>
 
       <div className="flex flex-col gap-2 mt-3">
-        {options.map((opt) => (
-          <button
-            key={opt.label}
-            className={`px-4 py-2 rounded-xl text-left transition-colors ${
-              selected.has(opt.label)
-                ? 'bg-pink-400/20 text-pink-300 border border-pink-400/40'
-                : 'bg-gray-800 text-gray-300 border border-gray-600 hover:bg-gray-700'
-            }`}
-            onClick={() => toggle(opt.label)}
-          >
-            <div className="font-medium">{opt.label}</div>
-            {opt.humanDescription && (
-              <div className="text-xs text-gray-500 mt-0.5">{opt.humanDescription}</div>
-            )}
-          </button>
-        ))}
+        {options.map((opt) =>
+          multiSelect ? (
+            <label
+              key={opt.label}
+              className={`flex items-start gap-3 px-3 py-2.5 rounded-lg cursor-pointer border transition-colors ${
+                selected.has(opt.label)
+                  ? 'border-primary-400/40 bg-primary-500/10'
+                  : 'border-neutral-700/60 bg-neutral-800/50 hover:bg-neutral-700/40'
+              }`}
+            >
+              <Checkbox
+                checked={selected.has(opt.label)}
+                onCheckedChange={() => toggle(opt.label)}
+                className="mt-0.5 shrink-0"
+              />
+              <div>
+                <div className="text-sm text-neutral-200">{opt.label}</div>
+                {opt.humanDescription && (
+                  <div className="text-xs text-neutral-500 mt-0.5">{opt.humanDescription}</div>
+                )}
+              </div>
+            </label>
+          ) : (
+            <button
+              key={opt.label}
+              className={`text-left px-3 py-2.5 rounded-lg border transition-colors ${
+                selected.has(opt.label)
+                  ? 'border-primary-400/40 bg-primary-500/10 text-primary-100'
+                  : 'border-neutral-700/60 bg-neutral-800/50 text-neutral-200 hover:bg-neutral-700/40'
+              }`}
+              onClick={() => toggle(opt.label)}
+            >
+              <div className="text-sm font-medium">{opt.label}</div>
+              {opt.humanDescription && (
+                <div className="text-xs text-neutral-500 mt-0.5">{opt.humanDescription}</div>
+              )}
+            </button>
+          ),
+        )}
       </div>
 
       {allowCustom && (
-        <input
-          className="w-full mt-3 bg-gray-800 border border-gray-600 rounded-xl px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-pink-400/50"
+        <Input
+          className="mt-3"
           placeholder="其他（自定义）…"
           value={customText}
           onChange={(e) => setCustomText(e.target.value)}
@@ -64,16 +89,14 @@ export function AskChoicePrompt({ question, humanDescription, options, multiSele
       )}
 
       <div className="flex gap-3 mt-4 justify-end">
-        <button
-          className="px-4 py-2 rounded-xl bg-gray-700 text-gray-300 hover:bg-gray-600 transition-colors"
-          onClick={onCancel}
-        >取消</button>
-        <button
-          className="px-4 py-2 rounded-xl bg-pink-400/20 text-pink-300 hover:bg-pink-400/30 transition-colors"
-          onClick={() => onResolve([...selected], customText || undefined)}
+        <Button variant="ghost" size="sm" onClick={onCancel}>取消</Button>
+        <Button
+          variant="primary"
+          size="sm"
           disabled={selected.size === 0 && !customText}
-        >确定</button>
+          onClick={() => onResolve([...selected], customText || undefined)}
+        >确定</Button>
       </div>
-    </div>
+    </Card>
   );
 }

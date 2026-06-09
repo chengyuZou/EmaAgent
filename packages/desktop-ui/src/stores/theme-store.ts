@@ -68,12 +68,24 @@ export function useThemeSync(): void {
     void useThemeStore.getState().init();
 
     let unlisten: (() => void) | undefined;
+    let cancelled = false;
+
     void tauriBridge.listen<ThemeConfig>(THEME_EVENT, (e) => {
       setThemeHue(e.payload.hue);
       setThemeRadius(e.payload.radius);
       useThemeStore.setState({ hue: e.payload.hue, radius: e.payload.radius });
-    }).then((fn) => { unlisten = fn; });
+    }).then((fn) => {
+      if (cancelled) {
+        // Component already unmounted before listen() resolved — clean up immediately.
+        fn();
+      } else {
+        unlisten = fn;
+      }
+    });
 
-    return () => { unlisten?.(); };
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
   }, []);
 }

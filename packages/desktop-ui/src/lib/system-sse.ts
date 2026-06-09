@@ -16,6 +16,7 @@
 import { sseConsumer, type SseHandle } from './sse-consumer.js';
 import { sidecarClient } from '../api/sidecar-client.js';
 import { tauriBridge } from './tauri-bridge.js';
+import { showToast } from './toast.js';
 import { useSettingsStore } from '../stores/settings-store.js';
 import { useCardStore } from '../stores/card-store.js';
 import { useMemoryStore } from '../stores/memory-store.js';
@@ -60,6 +61,7 @@ export async function startSystemSse(): Promise<void> {
     onHeartbeat: () => {},
     onError: (err) => {
       console.error('[system-sse] error, will retry in 5s', err.message);
+      showToast(`系统连接中断，正在重试…（${err.message}）`, { variant: 'warning', duration: 5000 });
       _handle = null;
       scheduleReconnect(5000);
     },

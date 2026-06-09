@@ -26,9 +26,11 @@ let nextId = 1;
 const listeners = new Set<() => void>();
 let toasts: ToastItem[] = [];
 
-function addToast(message: string, variant: ToastItem['variant']): void {
-  toasts = [...toasts.slice(-2), { id: nextId++, message, variant }]; // max 3
+function addToast(message: string, variant: ToastItem['variant']): number {
+  const id = nextId++;
+  toasts = [...toasts.slice(-2), { id, message, variant }]; // max 3
   listeners.forEach((fn) => fn());
+  return id;
 }
 
 function removeToast(id: number): void {
@@ -97,11 +99,6 @@ export function showToast(message: string, opts?: ToastOptions): void {
   const variant = opts?.variant ?? 'info';
   const duration = opts?.duration ?? 3000;
 
-  addToast(message, variant);
-
-  // Remove after duration
-  setTimeout(() => {
-    const last = toasts[toasts.length - 1];
-    if (last) removeToast(last.id);
-  }, duration);
+  const id = addToast(message, variant);
+  setTimeout(() => removeToast(id), duration);
 }

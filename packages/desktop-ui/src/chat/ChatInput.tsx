@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, useRef, type KeyboardEvent, type JSX } from 'react';
+import { IconButton, Input } from '@ema-agent/ui';
 import { useConversationStore } from '../stores/conversation-store.js';
 import { useSessionStore } from '../stores/session-store.js';
 import { useUiStore } from '../stores/ui-store.js';
@@ -9,7 +10,6 @@ export function ChatInput(): JSX.Element {
   const viewedId   = useConversationStore((s) => s.viewedSessionId);
   const ttsEnabled = useUiStore((s) => s.ttsEnabled);
 
-  // Draft: restore when viewedId changes, persist on every keystroke
   const initialDraft = useConversationStore.getState().draftMap.get(viewedId as string ?? '') ?? '';
   const [text, setText] = useState(initialDraft);
   const prevViewedIdRef = useRef(viewedId);
@@ -28,7 +28,7 @@ export function ChatInput(): JSX.Element {
   const mode    = sessionMode?.mode    ?? 'chat';
   const subMode = sessionMode?.subMode ?? undefined;
 
-  const hasAnyStreaming = useConversationStore((s) => s.streamingMap.size > 0);
+  const hasAnyStreaming  = useConversationStore((s) => s.streamingMap.size > 0);
   const isStreamingHere = useConversationStore((s) =>
     viewedId ? s.streamingMap.has(viewedId as string) : false,
   );
@@ -59,12 +59,33 @@ export function ChatInput(): JSX.Element {
     }
   }
 
+  // The send/stop button rendered inside the Textarea's embeddedAction slot.
+  const embeddedAction = isStreamingHere ? (
+    <IconButton
+      variant="danger"
+      size="sm"
+      label="停止生成"
+      icon="i-mdi:stop"
+      onClick={() => { if (viewedId) useConversationStore.getState().stopStreaming(viewedId); }}
+    />
+  ) : (
+    <IconButton
+      variant="primary"
+      size="sm"
+      label="发送"
+      icon="i-mdi:send"
+      disabled={!canSend}
+      onClick={send}
+    />
+  );
+
   return (
-    <div className="flex-shrink-0 border-t border-gray-800 px-4 py-3">
+    <div className="shrink-0 border-t border-neutral-800 px-4 py-3">
       <div className="max-w-2xl mx-auto">
+        {/* Main textarea with embedded send/stop button */}
         <div className="relative">
           <textarea
-            className="w-full bg-gray-800 border border-gray-600 rounded-2xl px-4 py-3 pr-12 text-sm text-gray-200 resize-none focus:outline-none focus:border-pink-400/50 placeholder-gray-500"
+            className="w-full bg-neutral-800/80 border border-neutral-700/60 rounded-2xl px-4 py-3 pr-12 text-sm text-neutral-200 resize-none focus:outline-none focus:border-primary-400/50 placeholder-neutral-500 transition-colors"
             rows={3}
             placeholder="输入消息…"
             value={text}
@@ -73,61 +94,37 @@ export function ChatInput(): JSX.Element {
             onCompositionStart={() => setIsComposing(true)}
             onCompositionEnd={() => setIsComposing(false)}
           />
-
-          {isStreamingHere ? (
-            <button
-              className="absolute right-2 bottom-2 w-8 h-8 rounded-full flex items-center justify-center bg-red-500/20 text-red-300 hover:bg-red-500/30 transition-colors"
-              onClick={() => { if (viewedId) useConversationStore.getState().stopStreaming(viewedId); }}
-              aria-label="停止生成"
-            >
-              <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
-                <rect x="1" y="1" width="10" height="10" rx="1" />
-              </svg>
-            </button>
-          ) : (
-            <button
-              className={`absolute right-2 bottom-2 w-8 h-8 rounded-full flex items-center justify-center transition-colors ${
-                canSend
-                  ? 'bg-pink-400/20 text-pink-300 hover:bg-pink-400/30'
-                  : 'bg-gray-700 text-gray-500 cursor-not-allowed'
-              }`}
-              disabled={!canSend}
-              onClick={send}
-              aria-label="发送"
-            >
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-                <path d="M1 8l14-7-7 14-2-7z" />
-              </svg>
-            </button>
-          )}
+          <div className="absolute right-2 bottom-2">
+            {embeddedAction}
+          </div>
         </div>
 
+        {/* Bottom toolbar */}
         <div className="flex items-center justify-between mt-2">
           <div className="flex items-center gap-1">
             {viewedId && <WorkspaceButton sessionId={viewedId as string} />}
 
-            <button
-              className={`px-2 py-1 rounded-lg text-xs transition-colors ${
-                ttsEnabled ? 'bg-pink-400/20 text-pink-300' : 'text-gray-500 hover:text-gray-300'
-              }`}
+            <IconButton
+              variant={ttsEnabled ? 'primary' : 'default'}
+              size="sm"
+              label="切换 TTS"
+              icon="i-mdi:volume-high"
+              toggled={ttsEnabled}
               onClick={() => useUiStore.getState().setTtsEnabled(!ttsEnabled)}
-              aria-label="切换 TTS"
-            >
-              🔊
-            </button>
+            />
 
             <ModeSelector
               mode={mode}
               subMode={subMode}
               onModeChange={(m, sm) => {
-                if (viewedId) void useSessionStore.getState().setSessionMode(viewedId, m, sm);
+                if (viewedId) void useSessionStore.getState().setSessionMode(viewedId, m as TurnMode, sm as AgentSubMode | undefined);
               }}
             />
           </div>
 
           {hasAnyStreaming && (
-            <div className="text-xs text-gray-500 flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-pink-400 animate-pulse" />
+            <div className="text-xs text-neutral-500 flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-primary-400 animate-pulse" aria-hidden />
               {isStreamingHere ? '生成中…' : '其他会话生成中'}
             </div>
           )}
@@ -146,16 +143,14 @@ function WorkspaceButton({ sessionId }: { sessionId: string }): JSX.Element {
 
   return (
     <div className="relative">
-      <button
-        className={`px-2 py-1 rounded-lg text-xs transition-colors ${
-          roots.length > 0 ? 'bg-blue-400/20 text-blue-300 hover:bg-blue-400/30' : 'text-gray-500 hover:text-gray-300'
-        }`}
+      <IconButton
+        variant={roots.length > 0 ? 'primary' : 'default'}
+        size="sm"
+        icon="i-mdi:folder-outline"
+        label={roots.length > 0 ? `工作区目录 (${roots.length})` : '未设置工作区目录'}
+        toggled={roots.length > 0}
         onClick={() => setOpen(!open)}
-        aria-label="工作区目录"
-        title={roots.length > 0 ? roots.join('\n') : '未设置工作区目录'}
-      >
-        📁{roots.length > 0 && <span className="ml-0.5">{roots.length}</span>}
-      </button>
+      />
 
       {open && (
         <>
@@ -201,42 +196,54 @@ function WorkspaceEditor({
 
   return (
     <div
-      className="absolute bottom-full left-0 mb-2 z-50 bg-gray-800 border border-gray-600 rounded-xl p-3 shadow-xl w-72"
+      className="absolute bottom-full left-0 mb-2 z-50 bg-neutral-800 border border-neutral-600 rounded-xl p-3 shadow-xl w-72"
       onClick={(e) => e.stopPropagation()}
     >
-      <p className="text-xs text-gray-400 mb-2 font-medium">工作区目录</p>
+      <p className="text-xs text-neutral-400 mb-2 font-medium">工作区目录</p>
 
       <div className="flex flex-col gap-1 mb-2 max-h-36 overflow-y-auto">
         {paths.length === 0 && (
-          <p className="text-xs text-gray-500 py-1">暂无工作区（使用 sidecar 启动目录）</p>
+          <p className="text-xs text-neutral-500 py-1">暂无工作区（使用 sidecar 启动目录）</p>
         )}
         {paths.map((p) => (
-          <div key={p} className="flex items-center justify-between bg-gray-900 rounded-lg px-2 py-1 gap-2">
-            <span className="text-xs text-gray-300 font-mono truncate flex-1" title={p}>{p}</span>
-            <button className="text-gray-500 hover:text-red-400 text-xs flex-shrink-0" onClick={() => setPaths(paths.filter((x) => x !== p))}>✕</button>
+          <div key={p} className="flex items-center justify-between bg-neutral-900 rounded-lg px-2 py-1 gap-2">
+            <span className="text-xs text-neutral-300 font-mono truncate flex-1" title={p}>{p}</span>
+            <button
+              className="text-neutral-500 hover:text-red-400 shrink-0"
+              onClick={() => setPaths(paths.filter((x) => x !== p))}
+            >
+              <span className="i-mdi:close text-sm" aria-hidden />
+            </button>
           </div>
         ))}
       </div>
 
       <div className="flex gap-1 mb-3">
-        <input
-          className="flex-1 bg-gray-900 border border-gray-600 rounded-lg px-2 py-1.5 text-xs text-gray-200 font-mono placeholder-gray-600 focus:outline-none focus:border-pink-400/50"
+        <Input
+          inputSize="sm"
+          className="font-mono"
           placeholder="D:\path\to\project"
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') addPath(); }}
           autoFocus
         />
-        <button className="px-2 py-1.5 rounded-lg bg-gray-700 text-gray-300 text-xs hover:bg-gray-600" onClick={addPath}>+</button>
+        <button
+          className="px-2 rounded-md bg-neutral-700 text-neutral-300 text-xs hover:bg-neutral-600"
+          onClick={addPath}
+        >+</button>
       </div>
 
       <div className="flex gap-2">
         <button
-          className="px-3 py-1.5 rounded-lg bg-pink-400/20 text-pink-300 text-xs hover:bg-pink-400/30 transition-colors disabled:opacity-50"
+          className="px-3 py-1.5 rounded-lg bg-primary-500/20 text-primary-200 text-xs hover:bg-primary-500/30 transition-colors disabled:opacity-50"
           disabled={saving}
           onClick={() => void save()}
         >{saving ? '保存中…' : '保存'}</button>
-        <button className="px-3 py-1.5 rounded-lg text-gray-400 text-xs hover:text-gray-200" onClick={onClose}>取消</button>
+        <button
+          className="px-3 py-1.5 rounded-lg text-neutral-400 text-xs hover:text-neutral-200"
+          onClick={onClose}
+        >取消</button>
       </div>
     </div>
   );

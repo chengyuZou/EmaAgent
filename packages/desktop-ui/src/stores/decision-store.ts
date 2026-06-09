@@ -107,33 +107,29 @@ export const useDecisionStore = create<DecisionStoreState>((set, get) => ({
   },
 
   resolve(_response) {
-    const state = get();
-    const next = state.queue[0];
-    set({
-      current: next ?? null,
-      queue: state.queue.slice(1),
+    set((s) => {
+      const next = s.queue[0] ?? null;
+      return { current: next, queue: s.queue.slice(1) };
     });
   },
 
   cancel() {
-    const state = get();
-    const next = state.queue[0];
-    set({
-      current: next ?? null,
-      queue: state.queue.slice(1),
+    set((s) => {
+      const next = s.queue[0] ?? null;
+      return { current: next, queue: s.queue.slice(1) };
     });
   },
 
   dismiss(promptId) {
-    set((s) => ({
-      current: s.current?.promptId === promptId ? null : s.current,
-      queue:   s.queue.filter((p) => p.promptId !== promptId),
-    }));
-    // If we dismissed current, try advancing
-    if (get().current === null && get().queue.length > 0) {
-      const next = get().queue[0]!;
-      set({ current: next, queue: get().queue.slice(1) });
-    }
+    set((s) => {
+      const wasCurrent = s.current?.promptId === promptId;
+      const newQueue   = s.queue.filter((p) => p.promptId !== promptId);
+      if (wasCurrent) {
+        const next = newQueue[0] ?? null;
+        return { current: next, queue: next ? newQueue.slice(1) : newQueue };
+      }
+      return { queue: newQueue };
+    });
   },
 
   clear() {
