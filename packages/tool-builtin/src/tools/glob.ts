@@ -29,6 +29,8 @@ export interface GlobResult {
   /** Matching file paths, sorted by mtime descending (most recently modified first). */
   files: string[];
   truncated: boolean;
+  /** Present only when truncated=true. Human-readable notice for the model. */
+  notice?: string;
 }
 
 const MAX_RESULTS = 1000;
@@ -87,8 +89,11 @@ export const globTool = buildTool<GlobInput, GlobResult>({
 
     const truncated = withMtime.length > MAX_RESULTS;
     const files = withMtime.slice(0, MAX_RESULTS).map((x) => x.p);
+    const notice = truncated
+      ? `[Output truncated: ${withMtime.length.toLocaleString()} matches → ${MAX_RESULTS} shown. Narrow your pattern or path to see more.]`
+      : undefined;
 
-    return { files, truncated };
+    return { files, truncated, notice };
   },
 });
 

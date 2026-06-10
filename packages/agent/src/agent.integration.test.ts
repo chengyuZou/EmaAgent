@@ -28,7 +28,8 @@ import type { AgentDeps } from './types.js';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const DS_KEY       = process.env['DS_API_KEY'] ?? 'sk-xxx';
+// Live API tests are skipped unless DS_API_KEY (or DEEPSEEK_API_KEY) is set.
+const DS_KEY       = process.env['DS_API_KEY'] ?? process.env['DEEPSEEK_API_KEY'] ?? '';
 const PROVIDER_ID  = 'deepseek-test';
 const MODEL        = 'deepseek-chat';
 const WORKSPACE    = path.resolve('D:/Github/EmaAgent');
@@ -160,7 +161,7 @@ function makeInput(overrides: Partial<Parameters<AgentEngine['run']>[0]> = {}) {
 
 // ── Test suite ────────────────────────────────────────────────────────────────
 
-describe('AgentEngine integration (DeepSeek)', () => {
+describe.skipIf(!DS_KEY)('AgentEngine integration (DeepSeek)', () => {
 
   it('1. simple: no-tool turn ends normally', async () => {
     sessionStore.clear();

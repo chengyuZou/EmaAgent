@@ -7,6 +7,7 @@ import { ErrorBoundary } from '../lib/error-boundary.js';
 import { SessionSwitcher } from './SessionSwitcher.js';
 import { ChatHistory } from './ChatHistory.js';
 import { ChatInput } from './ChatInput.js';
+import { ContextPanel } from './ContextPanel.js';
 
 export function ChatPanel(): JSX.Element {
   const viewedSessionId = useConversationStore((s) => s.viewedSessionId);
@@ -56,9 +57,12 @@ export function ChatPanel(): JSX.Element {
             <span>sidecar</span>
             {sidecarStatus.kind === 'ok' && <span>{sidecarStatus.latencyMs}ms</span>}
           </div>
-          {viewedSessionId && (
-            <div className="text-gray-600">{(viewedSessionId as string).slice(0, 8)}</div>
-          )}
+          <div className="flex items-center gap-3">
+            <ContextPanel />
+            {viewedSessionId && (
+              <span className="text-neutral-700">{(viewedSessionId as string).slice(0, 8)}</span>
+            )}
+          </div>
         </div>
       </div>
     </ErrorBoundary>

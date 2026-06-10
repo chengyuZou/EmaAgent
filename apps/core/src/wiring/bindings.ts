@@ -248,7 +248,6 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
     session,
     llm,
     ebd,
-    narrative,
     modelBindings,
     nodes:            new MemoryNodesRepo(profileDb.sqlite),
     edges:            new MemoryEdgesRepo(profileDb.sqlite),

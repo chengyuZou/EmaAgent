@@ -4,7 +4,7 @@ import { SessionStore } from '../src/store.js';
 import type { SessionId, TurnId, MessageId } from '@ema-agent/contracts';
 
 function makeStore() {
-  const db = new Database({ memory: true });
+  const db = new Database({ memory: true, kind: 'data' });
   db.migrate();
   return new SessionStore({ db });
 }
@@ -25,10 +25,10 @@ describe('SessionStore — session', () => {
 
   it('creates a session with custom input', () => {
     const store = makeStore();
-    const s = store.createSession({ title: 'My Chat', workspaceRoot: '/tmp' });
+    const s = store.createSession({ title: 'My Chat', workspaceRoots: ['/tmp'] });
 
     expect(s.title).toBe('My Chat');
-    expect(s.workspaceRoot).toBe('/tmp');
+    expect(s.workspaceRoots).toEqual(['/tmp']);
   });
 
   it('getSession throws for unknown id', () => {
@@ -40,10 +40,10 @@ describe('SessionStore — session', () => {
     const store = makeStore();
     store.createSession({ title: 'A' });
     store.createSession({ title: 'B' });
-    const list = store.listSessions();
+    const { sessions } = store.listSessions();
 
-    expect(list.length).toBe(2);
-    expect(list[0]!.title).toBe('B'); // newest first
+    expect(sessions.length).toBe(2);
+    expect(sessions[0]!.title).toBe('B'); // newest first
   });
 
   it('archiveSession hides session from list', () => {
@@ -51,8 +51,8 @@ describe('SessionStore — session', () => {
     const s = store.createSession();
     store.archiveSession(s.id);
 
-    const list = store.listSessions();
-    expect(list).toHaveLength(0);
+    const { sessions } = store.listSessions();
+    expect(sessions).toHaveLength(0);
   });
 
   it('updateTitle changes title', () => {
@@ -173,30 +173,31 @@ describe('SessionStore — message', () => {
       sessionId: s.id,
       turnId: turn.id,
       role: 'user',
-      content: 'Hi',
+      blocks: 'Hi',
     });
 
     expect(msg.role).toBe('user');
-    expect(msg.content).toBe('Hi');
+    expect(msg.blocks).toBe('Hi');
     expect(msg.interrupted).toBe(false);
-    expect(msg.toolCalls).toBeNull();
   });
 
-  it('appendMessage serialises toolCalls correctly', () => {
+  it('appendMessage serialises tool_use blocks correctly', () => {
     const store = makeStore();
     const s = store.createSession();
     const { turn } = store.startTurn({ sessionId: s.id, mode: 'agent', userInput: 'Run' });
 
-    const calls = [{ id: 'c1', name: 'Bash', args: { cmd: 'ls' } }];
+    const blocks = [
+      { type: 'text' as const, text: '' },
+      { type: 'tool_use' as const, id: 'c1', name: 'Bash', args: { cmd: 'ls' } },
+    ];
     const msg = store.appendMessage({
       sessionId: s.id,
       turnId: turn.id,
       role: 'assistant',
-      content: '',
-      toolCalls: calls,
+      blocks,
     });
 
-    expect(msg.toolCalls).toEqual(calls);
+    expect(msg.blocks).toEqual(blocks);
   });
 
   it('loadHistory returns messages in chronological order', () => {
@@ -204,12 +205,14 @@ describe('SessionStore — message', () => {
     const s = store.createSession();
     const { turn } = store.startTurn({ sessionId: s.id, mode: 'chat', userInput: 'A' });
 
-    store.appendMessage({ sessionId: s.id, turnId: turn.id, role: 'user',      content: 'first'  });
-    store.appendMessage({ sessionId: s.id, turnId: turn.id, role: 'assistant', content: 'second' });
-    store.appendMessage({ sessionId: s.id, turnId: turn.id, role: 'user',      content: 'third'  });
+    store.appendMessage({ sessionId: s.id, turnId: turn.id, role: 'user',      blocks: 'first'  });
+    store.appendMessage({ sessionId: s.id, turnId: turn.id, role: 'assistant', blocks: [{ type: 'text', text: 'second' }] });
+    store.appendMessage({ sessionId: s.id, turnId: turn.id, role: 'user',      blocks: 'third'  });
 
     const history = store.loadHistory(s.id);
-    expect(history.map(m => m.content)).toEqual(['first', 'second', 'third']);
+    expect(history).toHaveLength(3);
+    expect(history[0]!.blocks).toBe('first');
+    expect(history[2]!.blocks).toBe('third');
   });
 
   it('listMessages (cursor) returns newest-first on first page', () => {
@@ -217,11 +220,11 @@ describe('SessionStore — message', () => {
     const s = store.createSession();
     const { turn } = store.startTurn({ sessionId: s.id, mode: 'chat', userInput: 'A' });
 
-    store.appendMessage({ sessionId: s.id, turnId: turn.id, role: 'user',      content: 'old'    });
-    store.appendMessage({ sessionId: s.id, turnId: turn.id, role: 'assistant', content: 'newest' });
+    store.appendMessage({ sessionId: s.id, turnId: turn.id, role: 'user',      blocks: 'old'    });
+    store.appendMessage({ sessionId: s.id, turnId: turn.id, role: 'assistant', blocks: [{ type: 'text', text: 'newest' }] });
 
     const page = store.listMessages(s.id);
-    expect(page[0]!.content).toBe('newest');
+    expect(page[0]!.blocks).toEqual([{ type: 'text', text: 'newest' }]);
   });
 
   it('listMessages (cursor) loads older messages with before param', () => {
@@ -229,8 +232,8 @@ describe('SessionStore — message', () => {
     const s = store.createSession();
     const { turn } = store.startTurn({ sessionId: s.id, mode: 'chat', userInput: 'A' });
 
-    const m1 = store.appendMessage({ sessionId: s.id, turnId: turn.id, role: 'user', content: 'old' });
-    store.appendMessage({ sessionId: s.id, turnId: turn.id, role: 'assistant', content: 'new' });
+    store.appendMessage({ sessionId: s.id, turnId: turn.id, role: 'user', blocks: 'old' });
+    store.appendMessage({ sessionId: s.id, turnId: turn.id, role: 'assistant', blocks: [{ type: 'text', text: 'new' }] });
 
     // Ask for messages before 'new' — should only return 'old'
     const newer = store.listMessages(s.id);
@@ -238,7 +241,7 @@ describe('SessionStore — message', () => {
     const older = store.listMessages(s.id, { before: cursor });
 
     expect(older).toHaveLength(1);
-    expect(older[0]!.content).toBe('old');
+    expect(older[0]!.blocks).toBe('old');
   });
 
   it('markMessageInterrupted sets interrupted flag', () => {
@@ -246,7 +249,7 @@ describe('SessionStore — message', () => {
     const s = store.createSession();
     const { turn } = store.startTurn({ sessionId: s.id, mode: 'chat', userInput: 'X' });
 
-    const msg = store.appendMessage({ sessionId: s.id, turnId: turn.id, role: 'assistant', content: 'partial' });
+    const msg = store.appendMessage({ sessionId: s.id, turnId: turn.id, role: 'assistant', blocks: [{ type: 'text', text: 'partial' }] });
     store.markMessageInterrupted(msg.id);
 
     const history = store.loadHistory(s.id);

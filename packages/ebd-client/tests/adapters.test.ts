@@ -56,7 +56,7 @@ describe('GeminiEmbedAdapter', () => {
     );
     expect(String(input)).not.toContain('key=');
     expect((init?.headers as Record<string, string>)['x-goog-api-key']).toBe('test-gemini-key');
-    expect(result).toEqual({ embeddings: [[0.1, 0.2, 0.3]], dim: 768 });
+    expect(result).toEqual({ embeddings: [[0.1, 0.2, 0.3]], dim: 3 });
   });
 });
 

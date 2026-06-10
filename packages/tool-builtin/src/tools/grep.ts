@@ -130,7 +130,10 @@ Results are capped at \`head_limit\` lines (default 250).`,
 
     const lines = stdout.split('\n').filter((l) => l.length > 0);
     const truncated = lines.length > head_limit;
-    const output = lines.slice(0, head_limit).join('\n');
+    const trimmed   = lines.slice(0, head_limit).join('\n');
+    const output    = truncated
+      ? trimmed + `\n[Output truncated: ${lines.length.toLocaleString()} lines → ${head_limit} shown. Use a narrower pattern or glob filter to see more.]`
+      : trimmed;
 
     return { output, truncated };
   },

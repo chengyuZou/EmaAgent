@@ -63,6 +63,10 @@ export default defineConfig({
         chat:     resolve(__dirname, 'chat.html'),
         settings: resolve(__dirname, 'settings.html'),
       },
+      // oxc-parser is a build-time tool dragged in via unocss's dependency
+      // graph; its optional wasm binding doesn't exist on Windows and must
+      // never be bundled into the webview.
+      external: ['@oxc-parser/binding-wasm32-wasi'],
     },
   },
 });

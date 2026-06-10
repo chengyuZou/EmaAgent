@@ -27,7 +27,10 @@ import { registerBuiltinTools } from './index.js';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const DS_KEY        = 'sk-112xxxd59';
+// Live API tests are skipped unless DEEPSEEK_API_KEY is set:
+//   DEEPSEEK_API_KEY=sk-... pnpm --filter @ema-agent/tool-builtin test
+const DS_KEY        = process.env.DEEPSEEK_API_KEY ?? '';
+const itLive        = it.skipIf(!DS_KEY);
 const PROVIDER_ID   = 'deepseek-test';
 const MODEL         = 'deepseek-chat';
 const WORKSPACE     = path.resolve('D:/Github/EmaAgent');
@@ -169,7 +172,7 @@ beforeAll(() => {
 
 // ── 1. Sanity: plain completion ───────────────────────────────────────────────
 
-it('sanity: plain completion without tools', async () => {
+itLive('sanity: plain completion without tools', async () => {
   const result = await router.complete({
     providerId: PROVIDER_ID,
     model:      MODEL,
@@ -187,7 +190,7 @@ it('sanity: plain completion without tools', async () => {
 
 // ── 2. Single tool: glob ──────────────────────────────────────────────────────
 
-it('single-tool: LLM calls glob to find TypeScript files', async () => {
+itLive('single-tool: LLM calls glob to find TypeScript files', async () => {
   const messages: LlmMessage[] = [{
     role:    'user',
     content: `Use the glob tool to find all TypeScript source files (*.ts) ` +
@@ -207,7 +210,7 @@ it('single-tool: LLM calls glob to find TypeScript files', async () => {
 
 // ── 3. Multi-tool: glob + grep in one turn ────────────────────────────────────
 
-it('multi-tool: LLM calls glob and grep in the same turn', async () => {
+itLive('multi-tool: LLM calls glob and grep in the same turn', async () => {
   const messages: LlmMessage[] = [{
     role:    'user',
     content: `I need you to do two things at once using the available tools:\n` +
@@ -230,7 +233,7 @@ it('multi-tool: LLM calls glob and grep in the same turn', async () => {
 
 // ── 4. Full agent loop: fs_read a real file ───────────────────────────────────
 
-it('agent-loop: LLM reads a file and answers a question about it', async () => {
+itLive('agent-loop: LLM reads a file and answers a question about it', async () => {
   const targetFile = path.join(WORKSPACE, 'packages/tool-builtin/src/tools/fs-read.ts');
   const messages: LlmMessage[] = [{
     role:    'user',

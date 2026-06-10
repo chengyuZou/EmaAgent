@@ -107,8 +107,11 @@ export const webFetchTool = buildTool<WebFetchInput, WebFetchResult>({
     let content = raw ? text : htmlToMarkdown(text);
 
     const totalLength = content.length;
-    const sliced = content.slice(start_index, start_index + max_length);
-    const truncated = start_index + max_length < totalLength;
+    const truncated   = start_index + max_length < totalLength;
+    const sliced      = truncated
+      ? content.slice(start_index, start_index + max_length) +
+        `\n[Output truncated: ${totalLength.toLocaleString()} chars → ${max_length.toLocaleString()} chars shown. Use start_index to paginate.]`
+      : content.slice(start_index, start_index + max_length);
 
     return { url, content: sliced, truncated, totalLength };
   },

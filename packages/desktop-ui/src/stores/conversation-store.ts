@@ -3,6 +3,7 @@ import { createSendQueue, type SendQueue } from '../lib/send-queue.js';
 import { sseConsumer } from '../lib/sse-consumer.js';
 import { sessionsApi } from '../api/sessions.js';
 import { turnsApi } from '../api/turns.js';
+import { sidecarClient } from '../api/sidecar-client.js';
 import {
   handleTtsChunk,
   handleTtsSentenceComplete,

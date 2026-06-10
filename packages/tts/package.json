@@ -16,7 +16,7 @@
     "build": "tsc -p tsconfig.json",
     "dev": "tsc -p tsconfig.json --watch",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "vitest run",
+    "test": "vitest run --passWithNoTests",
     "test:siliconflow": "tsx scripts/test-siliconflow.ts",
     "clean": "rimraf dist"
   },

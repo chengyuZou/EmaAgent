@@ -11,6 +11,7 @@ import { BindingsTab } from './BindingsTab.js';
 import { CardsTab } from './CardsTab.js';
 import { SkillsTab } from './SkillsTab.js';
 import { McpTab } from './McpTab.js';
+import { MemoryTab } from './MemoryTab.js';
 import { Live2DTab } from './Live2DTab.js';
 import { ShortcutsTab } from './ShortcutsTab.js';
 import { AppearanceTab } from './AppearanceTab.js';
@@ -19,7 +20,7 @@ import { AppearanceTab } from './AppearanceTab.js';
 
 type TabId =
   | 'providers' | 'bindings' | 'cards'
-  | 'skills'    | 'mcp'
+  | 'skills'    | 'mcp'      | 'memory'
   | 'live2d'    | 'shortcuts' | 'appearance';
 
 interface TabDef {
@@ -34,6 +35,7 @@ const TABS: TabDef[] = [
   { id: 'cards',      label: '角色卡',   icon: 'i-mdi:card-account-details-outline' },
   { id: 'skills',     label: '技能',     icon: 'i-mdi:puzzle-outline'              },
   { id: 'mcp',        label: 'MCP 服务器', icon: 'i-mdi:server-outline'            },
+  { id: 'memory',     label: '记忆系统',  icon: 'i-mdi:brain-outline'              },
   { id: 'live2d',     label: 'Live2D',   icon: 'i-mdi:animation-outline'           },
   { id: 'shortcuts',  label: '快捷键',   icon: 'i-mdi:keyboard-outline'            },
   { id: 'appearance', label: '外观',     icon: 'i-mdi:palette-outline'             },
@@ -46,6 +48,7 @@ function TabContent({ tab }: { tab: TabId }): JSX.Element {
     case 'cards':      return <CardsTab />;
     case 'skills':     return <SkillsTab />;
     case 'mcp':        return <McpTab />;
+    case 'memory':     return <MemoryTab />;
     case 'live2d':     return <Live2DTab />;
     case 'shortcuts':  return <ShortcutsTab />;
     case 'appearance': return <AppearanceTab />;

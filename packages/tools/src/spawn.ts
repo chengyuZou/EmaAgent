@@ -64,11 +64,13 @@ export function spawnProcess(
       clearTimeout(timer);
       signal?.removeEventListener('abort', onAbort);
 
-      const truncated = (stdout + stderr).length > MAX_OUTPUT_CHARS;
+      const totalChars = stdout.length + stderr.length;
+      const truncated  = totalChars > MAX_OUTPUT_CHARS;
       if (truncated) {
-        const keep = MAX_OUTPUT_CHARS / 2;
-        stdout = stdout.slice(0, keep);
-        stderr = stderr.slice(0, keep);
+        const keep   = MAX_OUTPUT_CHARS / 2;
+        const notice = `\n[Output truncated: ${totalChars.toLocaleString()} chars → ${MAX_OUTPUT_CHARS.toLocaleString()} chars shown. Refine your command to see specific content.]`;
+        stdout = stdout.slice(0, keep) + (stdout.length > keep ? notice : '');
+        stderr = stderr.slice(0, keep) + (stderr.length > keep ? notice : '');
       }
 
       resolve({
