@@ -15,8 +15,11 @@
 //   const chromatic = createPresetChromatic();
 //   chromatic({ baseHue: EMA_PRIMARY_HUE, colors: { primary: 0, violet: EMA_VIOLET_OFFSET } })
 
-import type { CSSEntries, VariantObject } from 'unocss';
-import { definePreset, LAYER_PREFLIGHTS } from 'unocss';
+// Import from @unocss/core, NOT the `unocss` aggregate: this file is reached
+// at runtime by utils/theme.ts (browser graph), and the aggregate entry drags
+// every transformer — including oxc-parser's wasm binding — into the bundle.
+import type { CSSEntries, VariantObject } from '@unocss/core';
+import { definePreset, LAYER_PREFLIGHTS } from '@unocss/core';
 
 // ── EmaAgent default hues ─────────────────────────────────────────────────────
 

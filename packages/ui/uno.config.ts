@@ -18,7 +18,14 @@
 // file is shared across the workspace — anything app-specific belongs in
 // that app's own uno.config.ts.
 
-import { defineConfig, presetAttributify, presetIcons, presetTypography, type Preset } from 'unocss';
+// Import presets from their own packages, NOT the `unocss` aggregate entry —
+// the aggregate re-exports every transformer, and transformer-attributify-jsx
+// drags oxc-parser's wasm binding into Vite's browser module graph (the
+// unocss vite plugin injects this config file into the graph for HMR).
+import type { Preset, UserConfig } from '@unocss/core';
+import presetAttributify from '@unocss/preset-attributify';
+import presetIcons from '@unocss/preset-icons';
+import presetTypography from '@unocss/preset-typography';
 import presetWind3 from '@unocss/preset-wind3';
 import {
   createPresetChromatic,
@@ -98,7 +105,12 @@ function buildSafelist(): string[] {
  * rather than a finalized config so each consumer can add their own
  * `content` globs and additional presets.
  */
-export function emaSharedPreset(): Preset[] {
+export interface EmaSharedPresetOptions {
+  /** Extra iconify collections (e.g. lobe-icons via createExternalPackageIconLoader). */
+  iconCollections?: Record<string, unknown>;
+}
+
+export function emaSharedPreset(options: EmaSharedPresetOptions = {}): Preset[] {
   const chromatic = createPresetChromatic();
   return [
     presetWind3({
@@ -123,6 +135,9 @@ export function emaSharedPreset(): Preset[] {
         'display':         'inline-block',
         'vertical-align':  'middle',
       },
+      ...(options.iconCollections
+        ? { collections: options.iconCollections as never }
+        : {}),
     }),
     presetTypography({
       cssExtend: {
@@ -197,7 +212,7 @@ export const emaSharedSafelist = buildSafelist();
 
 // ── This package's own config (used by Ladle preview) ──────────────────────
 
-export default defineConfig({
+const config: UserConfig = {
   presets:   emaSharedPreset(),
   theme:     emaSharedTheme(),
   shortcuts: emaSharedShortcuts(),
@@ -207,4 +222,6 @@ export default defineConfig({
       include: [/src\/.*\.(t|j)sx?$/],
     },
   },
-});
+};
+
+export default config;

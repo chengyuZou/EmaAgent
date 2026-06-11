@@ -17,6 +17,10 @@ export { Progress } from './Progress.js';
 export { Badge }   from './Badge.js';
 export { Divider } from './Divider.js';
 
+// Menu cards (AIRI-style settings entries)
+export { MenuIconItem }   from './MenuIconItem.js';
+export { MenuStatusItem } from './MenuStatusItem.js';
+
 // Layout / overlays
 export { Dialog }       from './Dialog.js';
 export { Popover }      from './Popover.js';
@@ -48,6 +52,8 @@ export type { CalloutProps, CalloutVariant } from './Callout.js';
 export type { ProgressProps } from './Progress.js';
 export type { BadgeProps, BadgeVariant } from './Badge.js';
 export type { DividerProps } from './Divider.js';
+export type { MenuIconItemProps } from './MenuIconItem.js';
+export type { MenuStatusItemProps } from './MenuStatusItem.js';
 export type { DialogProps } from './Dialog.js';
 export type { PopoverProps } from './Popover.js';
 export type { TooltipProps } from './Tooltip.js';
