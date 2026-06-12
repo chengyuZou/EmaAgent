@@ -10,7 +10,7 @@ import { NarrativeStatusBlock } from './NarrativeStatusBlock.js';
 import type { ChatHistoryItem, AssistantSlice } from '../stores/conversation-store.js';
 
 export interface AssistantBubbleProps {
-  message:         Pick<ChatHistoryItem, 'content' | 'slices' | 'createdAt'>;
+  message:         Pick<ChatHistoryItem, 'content' | 'slices' | 'createdAt' | 'usage'>;
   label?:          string;
   isStreaming?:    boolean;
   iterationCount?: number;
@@ -43,6 +43,14 @@ export function AssistantBubble({ message, label = 'Ema', isStreaming, iteration
             {slices.map((slice, i) => (
               <SliceRenderer key={i} slice={slice} streaming={!!isStreaming} />
             ))}
+          </div>
+        )}
+
+        {!isStreaming && message.usage && (
+          <div className="text-xs text-white/30 mt-1">
+            ↑ {message.usage.inputTokens.toLocaleString()} tokens
+            {' '}↓ {message.usage.outputTokens.toLocaleString()} tokens
+            {' '}· {(message.usage.durationMs / 1000).toFixed(1)}s
           </div>
         )}
       </div>
