@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { asSessionId, asTurnId } from '@ema-agent/contracts';
+import type { SessionWire, MessageWire, SessionsListResult, SessionsGroupedResult } from '@ema-agent/contracts';
 import type { AppBindings } from '../wiring.js';
 
 // ── Schemas ─────────────────────────────────────────────────────────────────
@@ -59,7 +60,9 @@ export function sessionsRoute(bindings: AppBindings): Hono {
     const session = bindings.session.createSession({
       title: body.data.title,
     });
-    return c.json(session, 201);
+    // `satisfies` pins the JSON shape to the shared wire contract — if the
+    // domain type drifts from what the frontend expects, this line fails the build.
+    return c.json(session satisfies SessionWire, 201);
   });
 
   // ── GET /api/sessions — flat list (back-compat) ────────────────────────────
@@ -69,13 +72,13 @@ export function sessionsRoute(bindings: AppBindings): Hono {
       return c.json({ error: 'invalid_request', details: query.error.flatten() }, 400);
     }
     const sessions = bindings.session.listSessions(query.data);
-    return c.json(sessions);
+    return c.json(sessions satisfies SessionsListResult);
   });
 
   // ── GET /api/sessions/grouped — sidebar-ready grouped listing ──────────────
   app.get('/grouped', (c) => {
     const result = bindings.session.listSessionsGrouped();
-    return c.json(result);
+    return c.json(result satisfies SessionsGroupedResult);
   });
 
   // ── GET /api/sessions/:id/messages ─────────────────────────────────────────
@@ -87,7 +90,7 @@ export function sessionsRoute(bindings: AppBindings): Hono {
 
     const sessionId = asSessionId(c.req.param('id'));
     const messages = bindings.session.listMessages(sessionId, query.data);
-    return c.json(messages);
+    return c.json(messages satisfies MessageWire[]);
   });
 
   // ── PUT /api/sessions/:id — partial update (title / pinned / groupLabel) ───

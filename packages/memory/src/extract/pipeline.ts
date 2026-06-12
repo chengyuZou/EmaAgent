@@ -18,7 +18,7 @@ import { buildNoteCompactionPrompt } from '../compact/prompts.js';
 import { readPending, clearPending } from './pending.js';
 import { EmbedService } from '../embed/service.js';
 import { unpackEmbedding } from '../embed/similarity.js';
-import { estimateTextTokens } from '../tokens/estimate.js';
+import { estimateTextTokens } from '@ema-agent/token';
 import type { VectorIndex } from '../index/vector-index.js';
 
 // ── Configuration knobs (mode-dependent) ─────────────────────────────────────

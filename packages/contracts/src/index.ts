@@ -5,3 +5,4 @@ export * from './events.js';
 export * from './messages.js';
 export * from './providers/index.js';
 export * from './artifact.js';
+export * from './wire.js';

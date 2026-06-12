@@ -28,7 +28,8 @@
     "@ema-agent/llm":              "workspace:*",
     "@ema-agent/ebd-client":       "workspace:*",
     "@ema-agent/narrative-client": "workspace:*",
-    "@ema-agent/hook":             "workspace:*"
+    "@ema-agent/hook":             "workspace:*",
+    "@ema-agent/token":            "workspace:*"
   },
   "optionalDependencies": {
     "usearch": "^2.25.1"

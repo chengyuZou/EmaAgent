@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import type { SessionId, TurnId } from '@ema-agent/contracts';
 import type { PendingFragmentsRepo } from '@ema-agent/storage';
-import { estimateTextTokens } from '../tokens/estimate.js';
+import { estimateTextTokens } from '@ema-agent/token';
 import type { PendingFragment } from './types.js';
 
 // ── Read / write pending fragments ───────────────────────────────────────────

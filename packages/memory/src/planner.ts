@@ -20,7 +20,7 @@ import { MemoryTaskRunner } from './tasks/runner.js';
 import { microCompact } from './compact/micro.js';
 import { runMacroCompaction } from './compact/macro.js';
 import { buildPostCompactRestore } from './compact/restore.js';
-import { estimateMessagesTokens, estimateTextTokens } from './tokens/estimate.js';
+import { estimateMessagesTokens, estimateTextTokens } from '@ema-agent/token';
 import {
   readOverrides, writeOverrides,
   type MemorySessionOverrides, type ResolvedSessionOverrides,

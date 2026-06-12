@@ -1,4 +1,4 @@
-import type { LlmMessage } from '@ema-agent/llm';
+import type { LlmMessage } from '@ema-agent/contracts';
 
 // ── Heuristic token estimate ─────────────────────────────────────────────────
 

@@ -4,7 +4,7 @@ import type { ModelBindingsRepo } from '@ema-agent/storage';
 import type { TurnMode, SessionId, TurnId, MessageBlocks } from '@ema-agent/contracts';
 import type { SessionStore } from '@ema-agent/session';
 import { buildCompactionPrompt } from './prompts.js';
-import { estimateMessagesTokens } from '../tokens/estimate.js';
+import { estimateMessagesTokens } from '@ema-agent/token';
 
 // ── Constants ────────────────────────────────────────────────────────────────
 

@@ -28,7 +28,10 @@ export {
   unpackEmbedding,
   normalizeQueryVector,
 } from './embed/similarity.js';
-export { estimateTextTokens, estimateMessagesTokens } from './tokens/estimate.js';
+// Token estimation moved to @ema-agent/token (shared with the frontend).
+// Re-exported here for backward compatibility — prefer importing from
+// @ema-agent/token directly in new code.
+export { estimateTextTokens, estimateMessagesTokens } from '@ema-agent/token';
 
 // ── Vector index ─────────────────────────────────────────────────────────────
 export { createVectorIndex }                  from './index/factory.js';

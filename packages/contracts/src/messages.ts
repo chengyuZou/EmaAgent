@@ -122,19 +122,4 @@ export interface TurnAttachment {
 
 // ── HTTP API 响应格式 ─────────────────────────────────────────────────────────
 
-/**
- * GET /api/sessions/:id/messages 的单条响应体。
- *
- * 前端根据 kind 决定渲染方式（见 MessageKind 表格）。
- * tool_results 消息不单独渲染气泡，前端用 toolUseId 把结果合并进
- * 对应的 assistant 气泡里的 tool_use block。
- */
-export interface MessageWire {
-  id:           MessageId;
-  role:         MessageRole;
-  kind:         MessageKind;
-  blocks:       MessageBlocks;
-  attachments?: TurnAttachment[];  // 只在 role='user' 消息上有值
-  meta:        Record<string, unknown>; // 用于 kind='summary' 的压缩元信息，或其他扩展字段
-  createdAt:    number;
-}
+// MessageWire 已移至 wire.ts —— 所有 REST wire 类型统一放在那里。
