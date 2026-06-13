@@ -30,9 +30,14 @@ export interface TurnCreatedResponse {
   sessionId: SessionId;
 }
 
-// ── 用量统计（被 turn_completed SSE 事件引用） ────────────────────────────────
+// ── 本轮统计（被 turn_completed SSE 事件引用） ────────────────────────────────
+//
+// 命名注意：这是"turn 终态摘要"不是 provider 的 usage 对象——token（账单）与
+// durationMs（秒表）出身不同但消费场景 100% 重合，故同居一个类型。
+// 曾名 UsageSummary，因名字暗示"纯 token 计量"导致 subagent_completed 事件
+// 在外面重复携带过一次 durationMs——名不正则字段歪。
 
-export interface UsageSummary {
+export interface TurnStats {
   inputTokens:  number;
   outputTokens: number;
   costUsd:      number;

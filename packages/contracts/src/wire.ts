@@ -1,4 +1,4 @@
-import type { TurnMode, AgentSubMode, MessageRole } from './ids.js';
+import type { TurnMode, AgentSubMode, TurnStatus, MessageRole } from './ids.js';
 import type { MessageKind, MessageBlocks, TurnAttachment } from './messages.js';
 
 // ── REST wire formats ─────────────────────────────────────────────────────────
@@ -53,7 +53,41 @@ export interface ForkResult {
 }
 
 /**
- * GET /api/sessions/:id/messages 的单条响应体。
+ * Turn 摘要——与 session 包的 Turn 域对象逐字段对齐。
+ * 前端用它做三件事：按 turnId 给 messages 分组重组装气泡、
+ * 给每个 turn 气泡挂 usage/耗时（durationMs = completedAt - startedAt）、
+ * 定位可重播的 turn 音频。
+ */
+export interface TurnWire {
+  id:                string;
+  sessionId:         string;
+  mode:              TurnMode;
+  agentSubMode:      AgentSubMode | null;
+  status:            TurnStatus;
+  userInput:         string;
+  startedAt:         number;
+  completedAt:       number | null;
+  errorCode:         string | null;
+  errorMessage:      string | null;
+  iterations:        number;
+  usageInputTokens:  number;
+  usageOutputTokens: number;
+  costUsd:           number;
+  meta:              Record<string, unknown>;
+}
+
+/**
+ * GET /api/sessions/:id/messages 的响应体。
+ * messages 与其所属 turns 一次带齐——前端按 turnId 配对，
+ * 避免每条 message 冗余背一份 turn usage，也省一次往返。
+ */
+export interface SessionMessagesResult {
+  messages: MessageWire[];
+  turns:    TurnWire[];
+}
+
+/**
+ * GET /api/sessions/:id/messages 的单条消息。
  * 与 session 包的 Message 域对象逐字段对齐——后端路由用 `satisfies` 钉住，
  * 任何一侧漂移都在编译期报错。
  *

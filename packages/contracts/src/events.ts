@@ -8,12 +8,12 @@
 } from './ids.js';
 import type { ErrorCode } from './errors.js';
 import type { ProtocolFamily } from './providers/types.js';
-import type { UsageSummary } from './turns.js';
+import type { TurnStats } from './turns.js';
 import type { Artifact } from './artifact.js';
 
 // ── Shared sub-types ──────────────────────────────────────────────────────────
 
-export type { UsageSummary };
+export type { TurnStats };
 
 export interface ToolError {
   code: string;
@@ -79,7 +79,7 @@ export interface MemoryRecallLayerReport {
 export type EmaStreamEvent =
   // Turn lifecycle
   | { type: 'turn_started';   sessionId: SessionId; turnId: TurnId; mode: TurnMode; agentSubMode?: AgentSubMode }
-  | { type: 'turn_completed'; sessionId: SessionId; turnId: TurnId; usage: UsageSummary }
+  | { type: 'turn_completed'; sessionId: SessionId; turnId: TurnId; stats: TurnStats }
   | { type: 'turn_failed';    sessionId: SessionId; turnId: TurnId; code: ErrorCode; message: string }
   | { type: 'turn_aborted';   sessionId: SessionId; turnId: TurnId; reason: string }
 
@@ -189,7 +189,7 @@ export type EmaStreamEvent =
   // sub-agents is not implemented in V1; the subagent tool stays a stub.
   | { type: 'subagent_started';   sessionId: SessionId; subagentId: string; parentTurnId: TurnId; description?: string; promptExcerpt: string }
   | { type: 'subagent_progress';  sessionId: SessionId; subagentId: string; iteration: number; lastTool?: string }
-  | { type: 'subagent_completed'; sessionId: SessionId; subagentId: string; outputExcerpt: string; usage: UsageSummary; durationMs: number }
+  | { type: 'subagent_completed'; sessionId: SessionId; subagentId: string; outputExcerpt: string; stats: TurnStats }
   | { type: 'subagent_failed';    sessionId: SessionId; subagentId: string; error: string }
   | { type: 'subagent_aborted';   sessionId: SessionId; subagentId: string; reason: string }
 
