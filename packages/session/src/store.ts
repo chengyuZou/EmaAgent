@@ -162,6 +162,12 @@ export class SessionStore {
     return this.requireSession(id);
   }
 
+  /** Non-throwing existence check. Used to guard turn creation against stale
+   *  client session ids (e.g. a viewedSessionId left over from a wiped DB). */
+  sessionExists(id: SessionId): boolean {
+    return this.sessionsRepo.findById(id) !== undefined;
+  }
+
   listSessions(input: ListSessionsInput = {}): ListSessionsOutput {
     const limit = input.limit ?? 50;
     // Fetch one extra row to know if there's a next page
