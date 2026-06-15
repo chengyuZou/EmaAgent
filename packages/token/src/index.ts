@@ -6,3 +6,5 @@
 //     event arrives — estimate-then-correct pattern)
 
 export { estimateTextTokens, estimateMessagesTokens } from './estimate.js';
+export { lookupContextWindow, knownModelIds, suggestModels } from './context-windows.js';
+export { lookupEmbedDim, knownEmbedModelIds, suggestEmbedModels } from './embed-dims.js';

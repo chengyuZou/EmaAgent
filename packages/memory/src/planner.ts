@@ -1,5 +1,6 @@
 import type { SessionId, TurnId, TurnMode, EmaStreamEvent } from '@ema-agent/contracts';
 import type { LlmMessage } from '@ema-agent/llm';
+import { bestEffort, bestEffortAsync } from './observability.js';
 import type { MemoryDeps } from './deps.js';
 import type {
   PlanContext, RecallBundle, MemorySettings, AlreadySurfaced,  CompactResult
@@ -593,19 +594,16 @@ export class MemoryPlanner {
       at:            Date.now(),
     });
 
-    try {
+    bestEffort('appendPending', () => {
       for (const f of fragments) {
         appendPending(this.deps.pendingFragments, ctx.sessionId, f, Date.now());
       }
-    } catch { /* ignore — extraction will retry next time */ }
+    }, undefined);
 
     // Trigger evaluation
-    let pending;
-    try {
-      pending = readPending(this.deps.pendingFragments, ctx.sessionId);
-    } catch {
-      return;
-    }
+    const pending = bestEffort('readPending',
+      () => readPending(this.deps.pendingFragments, ctx.sessionId), null);
+    if (pending === null) return;
     if (!shouldExtract(pending, {
       tokenThreshold: this.settings.triggers.pendingTokenThreshold,
       turnThreshold:  this.settings.triggers.pendingTurnThreshold,
@@ -614,19 +612,19 @@ export class MemoryPlanner {
     }
 
     // Enqueue extraction task (durable, survives crash)
-    try {
+    bestEffort('enqueue extraction', () => {
       this.runner.enqueue('extraction', ctx.sessionId, {
         sessionId: ctx.sessionId,
         mode:      ctx.mode,
       });
-    } catch { /* ignore */ }
+    }, undefined);
   }
 
   /** Force-enqueue an extraction task regardless of thresholds (e.g. session close). */
   async forceExtract(sessionId: SessionId, mode: TurnMode): Promise<void> {
-    try {
+    bestEffort('forceExtract enqueue', () => {
       this.runner.enqueue('extraction', sessionId, { sessionId, mode });
-    } catch { /* ignore */ }
+    }, undefined);
   }
 
   /** Allow the orchestrator to drive periodic ticks (e.g. on a 5s interval). */
@@ -820,8 +818,7 @@ ${result.summary}
   // ── Internals ───────────────────────────────────────────────────────────────
 
   private async safeEmbedQuery(text: string) {
-    try { return await this.embed.embedQuery(text); }
-    catch { return null; }
+    return bestEffortAsync('embedQuery', () => this.embed.embedQuery(text), null);
   }
 
   private loadAlreadySurfaced(sessionId: SessionId): AlreadySurfaced {
@@ -854,17 +851,15 @@ ${result.summary}
       saturationSlope: this.settings.maintenance.boostSaturationSlope,
     };
 
-    try { this.deps.nodes.touchReferenced(newNodes, nowMs, boost); } catch { /* ignore */ }
-    try { this.deps.items.touchReferenced(newItems, nowMs, boost); } catch { /* ignore */ }
+    bestEffort('touchReferenced nodes', () => this.deps.nodes.touchReferenced(newNodes, nowMs, boost), undefined);
+    bestEffort('touchReferenced items', () => this.deps.items.touchReferenced(newItems, nowMs, boost), undefined);
 
     const merged: AlreadySurfaced = {
       nodes:     dedupTail([...prior.nodes, ...newNodes], 200),
       items:     dedupTail([...prior.items, ...newItems], 200),
       updatedAt: nowMs,
     };
-    try {
-      this.persistSurfaced(sessionId, merged);
-    } catch { /* ignore */ }
+    bestEffort('persistSurfaced', () => this.persistSurfaced(sessionId, merged), undefined);
   }
 
   private persistSurfaced(sessionId: SessionId, surfaced: AlreadySurfaced): void {

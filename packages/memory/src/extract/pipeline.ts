@@ -11,6 +11,7 @@ import type {
 } from './types.js';
 import { safeParseEntries } from './types.js';
 import { runExtraction, runConsolidation } from './llm-call.js';
+import { bestEffortAsync } from '../observability.js';
 import {
   buildExtractionPrompt, buildConsolidationPrompt,
 } from './prompts.js';
@@ -161,9 +162,9 @@ export async function runExtractionPipeline(
   clearPending(deps.memory.pendingFragments, args.sessionId, Date.now());
 
   // ── 4. Compact L1 note if it has grown over budget ────────────────────────
-  try {
-    await compactSessionNoteIfNeeded(deps, args.sessionId, args.mode, args.signal);
-  } catch { /* non-fatal — note stays verbose, next run may compact */ }
+  // Non-fatal — note stays verbose, next run may compact. Logged for visibility.
+  await bestEffortAsync('compactSessionNoteIfNeeded',
+    () => compactSessionNoteIfNeeded(deps, args.sessionId, args.mode, args.signal), undefined);
 
   // ── 5. Consolidate any nodes with lazy_updates ───────────────────────────
   // NOT wrapped in try/catch: if this throws, the task runner marks the task

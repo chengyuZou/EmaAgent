@@ -78,17 +78,17 @@ export function VoiceTab({ cardId, voiceProfile }: { cardId: CharacterCardId; vo
     <div className="max-w-lg">
       {/* Current primary */}
       <div className="mb-4">
-        <span className="text-xs text-gray-400">当前主用：</span>
+        <span className="text-xs text-neutral-400">当前主用：</span>
         {primary ? (
           <span className="text-sm text-green-300 ml-1">{primary.label}</span>
         ) : (
-          <span className="text-sm text-gray-500 ml-1">无</span>
+          <span className="text-sm text-neutral-500 ml-1">无</span>
         )}
       </div>
 
       {/* Audio list */}
       {voiceProfile.refAudios.length === 0 ? (
-        <div className="text-gray-500 text-sm mb-4">尚无参考音频。上传后可用于 GPT-SoVITS 声音复刻。</div>
+        <div className="text-neutral-500 text-sm mb-4">尚无参考音频。上传后可用于 GPT-SoVITS 声音复刻。</div>
       ) : (
         <div className="flex flex-col gap-2 mb-4">
           {voiceProfile.refAudios.map((ref) => (
@@ -132,18 +132,18 @@ function RefAudioRow({ refAudio, isPrimary, isPlaying, onPlay, onSetPrimary, onD
   onDelete():  void;
 }): JSX.Element {
   return (
-    <div className="bg-gray-800 border border-gray-700 rounded-xl p-3">
+    <div className="bg-neutral-900/80 backdrop-blur-sm border border-neutral-800/40 rounded-xl p-3">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <span className={isPrimary ? 'text-green-400' : 'text-gray-500'}>●</span>
+          <span className={isPrimary ? 'text-green-400' : 'text-neutral-500'}>●</span>
           <span className="text-sm font-medium">{refAudio.label}</span>
         </div>
         <div className="flex gap-1">
-          <button className={`px-2 py-1 rounded-lg text-xs ${isPlaying ? 'bg-pink-400/20 text-pink-300' : 'bg-gray-700 text-gray-300'} hover:bg-gray-600`} onClick={onPlay}>
+          <button className={`px-2 py-1 rounded-lg text-xs ${isPlaying ? 'bg-pink-400/20 text-pink-300' : 'bg-neutral-800 text-neutral-300'} hover:bg-neutral-700 transition-all duration-250`} onClick={onPlay}>
             {isPlaying ? '停止' : '试听'}
           </button>
           {!isPrimary && (
-            <button className="px-2 py-1 rounded-lg text-xs bg-gray-700 text-gray-300 hover:bg-gray-600" onClick={onSetPrimary}>
+            <button className="px-2 py-1 rounded-lg text-xs bg-neutral-800 text-neutral-300 hover:bg-neutral-700 transition-all duration-250" onClick={onSetPrimary}>
               设主用
             </button>
           )}
@@ -152,7 +152,7 @@ function RefAudioRow({ refAudio, isPrimary, isPlaying, onPlay, onSetPrimary, onD
           </button>
         </div>
       </div>
-      <div className="text-xs text-gray-500 mt-1">
+      <div className="text-xs text-neutral-500 mt-1">
         prompt: "{refAudio.promptText}" · lang: {refAudio.promptLang}
       </div>
     </div>
@@ -181,19 +181,19 @@ function UploadForm({ onUpload, uploading, onCancel }: {
   }
 
   return (
-    <div className="bg-gray-800 border border-gray-700 rounded-2xl p-4">
+    <div className="bg-neutral-900/80 backdrop-blur-sm border border-neutral-800/40 rounded-2xl p-4">
       <h3 className="text-sm font-semibold mb-3">上传参考音频</h3>
       <div className="flex flex-col gap-3">
-        <input type="file" accept=".wav,.mp3,.flac,.ogg,.m4a" onChange={handleFileChange} className="text-sm text-gray-300" />
+        <input type="file" accept=".wav,.mp3,.flac,.ogg,.m4a" onChange={handleFileChange} className="text-sm text-neutral-300" />
         <textarea
-          className="bg-gray-900 border border-gray-600 rounded-xl px-3 py-2 text-sm text-gray-200 resize-none focus:outline-none focus:border-pink-400/50"
+          className="bg-neutral-900/80 backdrop-blur-sm border border-neutral-800 rounded-xl px-3 py-2 text-sm text-neutral-200 resize-none focus:outline-none focus:border-pink-400/40 transition-all duration-250"
           rows={2}
           placeholder="参考文本（如：'你好呀，今天过得怎么样？'）"
           value={promptText}
           onChange={(e) => setPromptText(e.target.value)}
         />
         <select
-          className="bg-gray-900 border border-gray-600 rounded-xl px-3 py-2 text-sm text-gray-200"
+          className="bg-neutral-900/80 backdrop-blur-sm border border-neutral-800 rounded-xl px-3 py-2 text-sm text-neutral-200 transition-all duration-250"
           value={promptLang}
           onChange={(e) => setPromptLang(e.target.value)}
         >
@@ -201,7 +201,7 @@ function UploadForm({ onUpload, uploading, onCancel }: {
           <option value="en">English (en)</option>
           <option value="ja">日本語 (ja)</option>
         </select>
-        <label className="flex items-center gap-2 text-sm text-gray-300">
+        <label className="flex items-center gap-2 text-sm text-neutral-300">
           <input type="checkbox" checked={setPrimary} onChange={(e) => setSetPrimary(e.target.checked)} />
           设为主用
         </label>

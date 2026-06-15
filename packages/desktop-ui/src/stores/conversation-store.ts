@@ -23,8 +23,11 @@ import type {
   AgentSubMode,
   EmaStreamEvent,
   EmotionState,
-  UsageSummary,
+  TurnStats,
   AssistantBlock,
+  MessageWire,
+  TurnWire,
+  ToolResultBlock,
   MessageBlocks,
   MessageContentPart,
   MemoryRecallLayer,
@@ -46,6 +49,7 @@ export interface StreamingAssistantMessage {
   content:   string;
   slices:    AssistantSlice[];
   startedAt: number;
+  turnId:    TurnId;
 }
 
 export interface ChatHistoryItem {
@@ -54,6 +58,8 @@ export interface ChatHistoryItem {
   slices?:    AssistantSlice[];
   createdAt:  number;
   messageId?: MessageId;
+  turnId?:    TurnId;
+  stats?:     TurnStats;
 }
 
 // ── Send input ────────────────────────────────────────────────────────────────
@@ -104,25 +110,70 @@ function getOrCreateQueue(sessionId: SessionId): SendQueue<SendInput> {
         sidecarClient.getAuthHeaders(),
       ]);
 
+      // ── SSE with reconnect ──────────────────────────────────────────────
+      // A dropped connection is NOT a dead turn — the backend keeps running
+      // and buffers every event in TurnEventStore. We reconnect with
+      // lastEventId=cursor (events consumed so far) and the server replays
+      // what we missed. Only after MAX_SSE_RETRIES consecutive failures do
+      // we give up and surface "连接中断" (which is honest, unlike "已停止").
+      const MAX_SSE_RETRIES = 3;
       await new Promise<void>((resolve) => {
-        const handle = sseConsumer.start({
-          url,
-          headers: authHeaders,
-          onEvent: (event) => dispatchSseEvent(event, input.sessionId, {
-            beginStream:    (sid, tid) => useConversationStore.getState().beginStream(sid, tid),
-            appendDelta:    (sid, slice, delta) => useConversationStore.getState().appendDelta(sid, slice, delta),
-            finalizeStream: (sid, usage) => { useConversationStore.getState().finalizeStream(sid, usage); resolve(); },
-            abortStream:    (sid, reason) => { useConversationStore.getState().abortStream(sid, reason); resolve(); },
-          }),
-          onHeartbeat: () => {},
-          onError: (err) => {
-            console.error('[conversation-store] SSE error', err);
-            useConversationStore.getState().abortStream(input.sessionId, err.message);
-            resolve();
-          },
-          onComplete: () => resolve(),
-        });
-        sseHandles.set(input.sessionId as string, handle);
+        let cursor   = 0;      // events consumed — the replay cursor
+        let finished = false;  // terminal event seen OR permanently failed
+
+        const finish = (): void => {
+          if (finished) return;
+          finished = true;
+          resolve();
+        };
+
+        const startSse = (attempt: number): void => {
+          if (finished) return;   // user stopped while a retry was pending
+          const handle = sseConsumer.start({
+            url,
+            headers: authHeaders,
+            lastEventId: cursor,
+            onEvent: (event) => {
+              cursor += 1;
+              dispatchSseEvent(event, input.sessionId, {
+                beginStream:    (sid, tid) => useConversationStore.getState().beginStream(sid, tid),
+                appendDelta:    (sid, slice, delta) => useConversationStore.getState().appendDelta(sid, slice, delta),
+                finalizeStream: (sid, stats) => { useConversationStore.getState().finalizeStream(sid, stats); finish(); },
+                abortStream:    (sid, reason) => { useConversationStore.getState().abortStream(sid, reason); finish(); },
+              });
+            },
+            onHeartbeat: () => {},
+            onError: (err) => {
+              if (!finished && attempt < MAX_SSE_RETRIES) {
+                const delay = 1000 * 2 ** attempt;
+                console.warn(`[conversation-store] SSE dropped, retry ${attempt + 1}/${MAX_SSE_RETRIES} in ${delay}ms:`, err.message);
+                setTimeout(() => {
+                  // User may have hit stop while we waited: stopStreaming
+                  // clears the streamingMap entry. cursor > 0 guarantees the
+                  // entry existed (turn_started → beginStream), so its absence
+                  // now means "user gave up" — don't resurrect the stream.
+                  const stillStreaming = useConversationStore.getState()
+                    .streamingMap.has(input.sessionId as string);
+                  if (cursor > 0 && !stillStreaming) {
+                    finish();
+                    return;
+                  }
+                  startSse(attempt + 1);
+                }, delay);
+                return;
+              }
+              console.error('[conversation-store] SSE failed permanently', err);
+              useConversationStore.getState().abortStream(input.sessionId, `连接中断：${err.message}`);
+              finish();
+            },
+            // Fires on natural stream end AND on user stop() — either way the
+            // queue must move on. (Terminal events already called finish().)
+            onComplete: () => finish(),
+          });
+          sseHandles.set(input.sessionId as string, handle);
+        };
+
+        startSse(0);
       });
 
       sseHandles.delete(input.sessionId as string);
@@ -145,7 +196,7 @@ type DeltaPayload =
 interface StreamCallbacks {
   beginStream(sessionId: SessionId, turnId: TurnId): void;
   appendDelta(sessionId: SessionId, slice: DeltaSlice, delta: DeltaPayload): void;
-  finalizeStream(sessionId: SessionId, usage: UsageSummary | null): void;
+  finalizeStream(sessionId: SessionId, stats: TurnStats | null): void;
   abortStream(sessionId: SessionId, reason: string): void;
 }
 
@@ -160,16 +211,30 @@ function dispatchSseEvent(
   switch (event.type) {
     case 'turn_started': {
       cb.beginStream(sessionId, event.turnId);
+      // Clear live usage + thinking for this turn
+      useConversationStore.setState((s) => {
+        const u = new Map(s.liveUsageMap);
+        u.delete(sessionId as string);
+        const t = new Map(s.thinkingActiveMap);
+        t.delete(sessionId as string);
+        return { liveUsageMap: u, thinkingActiveMap: t };
+      });
       const prev = useConversationStore.getState().ttsOwnerSessionId;
       if ((prev as string) !== (sessionId as string)) {
         useConversationStore.setState({ ttsOwnerSessionId: sessionId });
-        // Restore the new owner's last known emotion so Live2D doesn't show the
-        // previous session's expression after switching.
         const saved = useConversationStore.getState().emotionStateMap.get(sessionId as string);
         if (saved) void tauriBridge.emit('stage:emotion-changed', saved);
       }
       break;
     }
+
+    case 'usage_update':
+      useConversationStore.setState((s) => {
+        const m = new Map(s.liveUsageMap);
+        m.set(sessionId as string, { inputTokens: event.inputTokens, outputTokens: event.outputTokens });
+        return { liveUsageMap: m };
+      });
+      break;
 
     case 'output_text_delta':
       cb.appendDelta(sessionId, 'text', event.delta);
@@ -177,6 +242,11 @@ function dispatchSseEvent(
 
     case 'reasoning_delta':
       cb.appendDelta(sessionId, 'thinking', event.delta);
+      useConversationStore.setState((s) => {
+        const t = new Map(s.thinkingActiveMap);
+        t.set(sessionId as string, true);
+        return { thinkingActiveMap: t };
+      });
       break;
 
     case 'tool_call_complete':
@@ -189,7 +259,7 @@ function dispatchSseEvent(
 
     case 'turn_completed':
       handleTurnCompleted(sessionId as string);
-      cb.finalizeStream(sessionId, event.usage);
+      cb.finalizeStream(sessionId, event.stats);
       break;
 
     case 'turn_failed':
@@ -280,11 +350,23 @@ function dispatchSseEvent(
       breakerReasons.set(sessionId as string, `熔断保护：${event.reason}`);
       break;
 
-    // memory_compaction_* are turn-scoped: emitted by MemoryPlanner.compact() via ctx.emit.
-    // No UI change for now — reserved for memory status panel (V1.5).
+    // ── Compaction notice ──────────────────────────────────────────────────
     case 'memory_compaction_started':
-    case 'memory_compaction_completed':
     case 'memory_compaction_failed':
+      break;
+
+    case 'memory_compaction_completed':
+      useConversationStore.setState((s) => {
+        const msgs = new Map(s.messages);
+        const existing = msgs.get(sessionId as string) ?? [];
+        const notice: ChatHistoryItem = {
+          role:      'system',
+          content:   `📋 上下文已压缩 · 节省 ${event.savedTokens.toLocaleString()} tokens`,
+          createdAt: Date.now(),
+        };
+        msgs.set(sessionId as string, [...existing, notice]);
+        return { messages: msgs };
+      });
       break;
 
     case 'agent_iteration':
@@ -339,7 +421,9 @@ function dispatchSseEvent(
         });
         const streaming = new Map(s.streamingMap);
         streaming.set(sessionId as string, { ...sm, slices });
-        return { streamingMap: streaming };
+        const t = new Map(s.thinkingActiveMap);
+        t.delete(sessionId as string);
+        return { streamingMap: streaming, thinkingActiveMap: t };
       });
       break;
 
@@ -386,6 +470,10 @@ export interface ConversationStoreState {
   iterationCountMap:   Map<string, number>;
   /** Memory recall evidence for the latest turn per session (resets on each new turn). */
   recallEvidenceMap:   Map<string, Partial<Record<MemoryRecallLayer, MemoryRecallLayerReport>>>;
+  /** Live token usage from provider during streaming (key = sessionId). */
+  liveUsageMap:      Map<string, { inputTokens: number; outputTokens: number }>;
+  /** Whether reasoning/thinking is currently active per session. */
+  thinkingActiveMap: Map<string, boolean>;
   messages:          Map<string, ChatHistoryItem[]>;
   streamingMap:      Map<string, StreamingAssistantMessage>;
   stopReasonMap:     Map<string, string>;
@@ -402,7 +490,7 @@ export interface ConversationStoreState {
 
   beginStream(sessionId: SessionId, turnId: TurnId):                    void;
   appendDelta(sessionId: SessionId, slice: DeltaSlice, delta: DeltaPayload): void;
-  finalizeStream(sessionId: SessionId, usage: UsageSummary | null):     void;
+  finalizeStream(sessionId: SessionId, stats: TurnStats | null):     void;
   abortStream(sessionId: SessionId, reason: string):                    void;
 }
 
@@ -414,6 +502,8 @@ export const useConversationStore = create<ConversationStoreState>((set, get) =>
   emotionStateMap:   new Map(),
   iterationCountMap: new Map(),
   recallEvidenceMap: new Map(),
+  liveUsageMap:      new Map(),
+  thinkingActiveMap: new Map(),
   messages:          new Map(),
   streamingMap:      new Map(),
   stopReasonMap:     new Map(),
@@ -445,16 +535,8 @@ export const useConversationStore = create<ConversationStoreState>((set, get) =>
       loading: { messages: new Set([...s.loading.messages, id as string]) },
     }));
     try {
-      const raw = await sessionsApi.listMessages(id);
-      const history: ChatHistoryItem[] = raw
-        .filter((m) => m.kind === 'normal' || m.kind === 'summary')
-        .map((m) => ({
-          role:      m.role as ChatHistoryItem['role'],
-          ...blocksToHistoryFields(m.role, m.blocks),
-          createdAt: m.createdAt,
-          messageId: m.id as MessageId,
-        }))
-        .filter((item) => item.content !== '' || item.role === 'assistant');
+      const { messages: raw, turns } = await sessionsApi.listMessages(id);
+      const history = assembleHistory(raw, turns);
 
       set((s) => {
         const msgs = new Map(s.messages);
@@ -553,7 +635,9 @@ export const useConversationStore = create<ConversationStoreState>((set, get) =>
       iterations.delete(id as string);
       const recalls = new Map(s.recallEvidenceMap);
       recalls.delete(id as string);
-      return { messages: msgs, streamingMap: streaming, stopReasonMap: stops, draftMap: drafts, emotionStateMap: emotions, iterationCountMap: iterations, recallEvidenceMap: recalls };
+      const usageMap = new Map(s.liveUsageMap);
+      usageMap.delete(id as string);
+      return { messages: msgs, streamingMap: streaming, stopReasonMap: stops, draftMap: drafts, emotionStateMap: emotions, iterationCountMap: iterations, recallEvidenceMap: recalls, liveUsageMap: usageMap };
     });
   },
 
@@ -563,7 +647,9 @@ export const useConversationStore = create<ConversationStoreState>((set, get) =>
     set((s) => {
       const streaming = new Map(s.streamingMap);
       streaming.set(sessionId as string, {
-        role: 'assistant', content: '', slices: [], startedAt: Date.now(),
+        // turnId rides on the streaming entry so finalizeStream can stamp the
+        // finished bubble with it (audio replay + per-turn stats need it).
+        role: 'assistant', content: '', slices: [], startedAt: Date.now(), turnId,
       });
       const stops = new Map(s.stopReasonMap);
       stops.delete(sessionId as string);
@@ -573,9 +659,6 @@ export const useConversationStore = create<ConversationStoreState>((set, get) =>
       recalls.delete(sessionId as string);
       return { streamingMap: streaming, stopReasonMap: stops, iterationCountMap: iterations, recallEvidenceMap: recalls };
     });
-    // turnId is stored on the streaming entry so AskUserBatchPrompt can look it up
-    // We encode it as a side-channel property (not in the type) — see decision-store instead.
-    void turnId; // used indirectly via the per-session SSE handler closure
   },
 
   appendDelta(sessionId, slice, delta) {
@@ -636,7 +719,7 @@ export const useConversationStore = create<ConversationStoreState>((set, get) =>
     });
   },
 
-  finalizeStream(sessionId, _usage) {
+  finalizeStream(sessionId, stats) {
     set((s) => {
       const sm = s.streamingMap.get(sessionId as string);
       const streaming = new Map(s.streamingMap);
@@ -645,7 +728,8 @@ export const useConversationStore = create<ConversationStoreState>((set, get) =>
       if (!sm) return { streamingMap: streaming };
 
       const historyItem: ChatHistoryItem = {
-        role: 'assistant', content: sm.content, slices: sm.slices, createdAt: Date.now(),
+        role: 'assistant', content: sm.content, slices: sm.slices,
+        createdAt: Date.now(), stats: stats ?? undefined, turnId: sm.turnId,
       };
       const msgs = new Map(s.messages);
       const existing = msgs.get(sessionId as string) ?? [];
@@ -667,7 +751,7 @@ export const useConversationStore = create<ConversationStoreState>((set, get) =>
 
       if (sm && (sm.content.trim() || sm.slices.length > 0)) {
         const partial: ChatHistoryItem = {
-          role: 'assistant', content: sm.content, slices: sm.slices, createdAt: sm.startedAt,
+          role: 'assistant', content: sm.content, slices: sm.slices, createdAt: sm.startedAt, turnId: sm.turnId,
         };
         const msgs = new Map(s.messages);
         const existing = msgs.get(sessionId as string) ?? [];
@@ -689,6 +773,125 @@ export const useConversationStore = create<ConversationStoreState>((set, get) =>
 }));
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+/**
+ * Rebuild chronological chat history from raw DB messages + their turns.
+ *
+ * Grouping invariant: a "group" only ever holds ASSISTANT content. Agent turns
+ * persist as multiple assistant messages (think→act→think) plus tool_results
+ * user-messages — we fold them back into ONE bubble so reload looks identical
+ * to streaming. User messages share the same turnId as their reply, so they
+ * must NEVER open a group (or the reply would merge into the user bubble).
+ */
+function assembleHistory(messages: MessageWire[], turns: TurnWire[]): ChatHistoryItem[] {
+  const turnById = new Map(turns.map((t) => [t.id, t]));
+  // listMessages is newest-first (cursor semantics); fold in chronological order.
+  const chronological = [...messages].reverse();
+
+  const out: ChatHistoryItem[] = [];
+  let currentGroup: ChatHistoryItem | null = null;
+
+  const flush = (): void => {
+    if (!currentGroup) return;
+    const turn = currentGroup.turnId ? turnById.get(currentGroup.turnId as string) : undefined;
+    if (turn) {
+      currentGroup.stats = {
+        inputTokens:  turn.usageInputTokens,
+        outputTokens: turn.usageOutputTokens,
+        costUsd:      turn.costUsd,
+        durationMs:   turn.completedAt !== null ? turn.completedAt - turn.startedAt : 0,
+      };
+    }
+    out.push(currentGroup);
+    currentGroup = null;
+  };
+
+  const toItem = (m: MessageWire): ChatHistoryItem => {
+    const { content, slices } = blocksToHistoryFields(m.role, m.blocks);
+    return {
+      role:      m.role as ChatHistoryItem['role'],
+      content,
+      slices,
+      createdAt: m.createdAt,
+      messageId: m.id as MessageId,
+      turnId:    m.turnId !== null ? (m.turnId as TurnId) : undefined,
+    };
+  };
+
+  for (const m of chronological) {
+    if (m.kind !== 'normal' && m.kind !== 'summary' && m.kind !== 'tool_results') {
+      continue;
+    }
+
+    if (m.kind === 'tool_results') {
+      // Backfill tool results into the current group's tool_use slices —
+      // mirrors the streaming path's appendDelta('tool_result').
+      const blocks = m.blocks;
+      const group = currentGroup;
+      if (!Array.isArray(blocks) || !group?.slices) continue;
+
+      // Work on a local copy so each backfill sees the previous one
+      // (multiple tool results per message must not overwrite each other).
+      let working = group.slices;
+      for (const block of blocks as ToolResultBlock[]) {
+        if (block.type !== 'tool_result') continue;
+        const idx = working.findIndex(
+          (s) => s.type === 'tool_use' && s.callId === block.toolUseId,
+        );
+        if (idx === -1) continue;
+        const target = working[idx];
+        if (target?.type !== 'tool_use') continue;
+
+        const updated: AssistantSlice = {
+          ...target,
+          result: block.content,
+          ...(block.isError
+            ? { error: { code: 'tool/error', message: typeof block.content === 'string' ? block.content : '工具执行失败' } }
+            : {}),
+        };
+        working = [...working.slice(0, idx), updated, ...working.slice(idx + 1)];
+      }
+      group.slices = working;
+      continue;
+    }
+
+    if (m.role === 'user') {
+      // User bubbles never open a group — see grouping invariant above.
+      flush();
+      out.push(toItem(m));
+      continue;
+    }
+
+    if (m.role === 'assistant') {
+      const item = toItem(m);
+
+      if (!item.turnId) {
+        // Legacy rows without turnId degrade to standalone bubbles.
+        flush();
+        out.push(item);
+        continue;
+      }
+
+      if (currentGroup && currentGroup.turnId === item.turnId) {
+        if (item.slices) {
+          currentGroup.slices = [...(currentGroup.slices ?? []), ...item.slices];
+        }
+        if (item.content) {
+          currentGroup.content = currentGroup.content
+            ? currentGroup.content + '\n' + item.content
+            : item.content;
+        }
+      } else {
+        flush();
+        currentGroup = item;
+      }
+      continue;
+    }
+  }
+
+  flush();   // the last group has no successor to trigger it
+  return out;
+}
 
 function blocksToHistoryFields(
   role: string,

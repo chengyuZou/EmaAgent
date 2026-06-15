@@ -37,10 +37,10 @@ export function CardsTab(): JSX.Element {
   }
 
   return (
-    <div className="flex gap-6 h-full">
+    <div className="flex gap-6">
       {/* Left: card list */}
       <div className="w-72 shrink-0 flex flex-col gap-2">
-        <Button variant="primary" size="sm" block onClick={handleCreate}>
+        <Button variant="primary" size="sm" block onClick={handleCreate} className="active:scale-[0.98] transition-all duration-250">
           <span className="i-mdi:plus text-base" aria-hidden />
           新建角色卡
         </Button>
@@ -91,7 +91,7 @@ function CardListItem({
     <Card
       variant={isSelected ? 'glass' : 'elevated'}
       padding="sm"
-      className={`cursor-pointer transition-colors ${
+      className={`cursor-pointer transition-all duration-250 active:scale-[0.98] ${
         isSelected
           ? 'border border-primary-400/30 bg-primary-500/10'
           : 'hover:bg-neutral-800/80'

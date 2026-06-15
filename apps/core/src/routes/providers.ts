@@ -15,8 +15,12 @@ import {
   buildEmbedProviderConfig,
   buildRerankProviderConfig,
   configureBridge,
+  fetchLlmModels,
+  fetchEmbedModels,
 } from '../wiring.js';
-import { reloadTtsClient } from '../wiring/providers/tts.js';
+import { ProviderLlmModelsRepo, SettingsRepo } from '@ema-agent/storage';
+import { lookupContextWindow } from '@ema-agent/token';
+import { reloadTtsClient, resolveVoice, ensureVoiceUri, VoiceUriCache } from '../wiring/providers/tts.js';
 import { reloadSttClient } from '../wiring/providers/stt.js';
 
 // ── Response shaping ──────────────────────────────────────────────────────────
@@ -78,6 +82,20 @@ const patchSchema = z.object({
 
 const probeSchema = z.object({
   model: z.string().optional(),
+});
+
+const enableModelSchema = z.object({
+  contextWindow: z.number().int().positive(),
+  contextSource: z.enum(['live', 'table', 'manual']).optional(),
+});
+
+const enableEmbedModelSchema = z.object({
+  dim:       z.number().int().positive(),
+  dimSource: z.enum(['live', 'table', 'manual']).optional(),
+});
+
+const enableRerankModelSchema = z.object({
+  maxChunks: z.number().int().positive().optional(),
 });
 
 // ── Hot-reload ────────────────────────────────────────────────────────────────
@@ -225,6 +243,17 @@ export function providersRoute(bindings: AppBindings): Hono {
     return c.json(shapeProvider(config, health, getProviderDefinition(config.definition_id)));
   });
 
+  // Reveal the stored API key so the edit form can prefill it (so the field
+  // shows the configured key instead of staying blank). V1: keys are plaintext
+  // in profile.db on the user's own machine; sidecar is localhost + secret
+  // gated, so this stays local. V2/Stronghold would gate or remove it.
+  app.get('/:id/key', (c) => {
+    const repo = new ProvidersRepo(bindings.profileDb.sqlite);
+    const row = repo.get(c.req.param('id'));
+    if (!row) return c.json({ error: 'not_found' }, 404);
+    return c.json({ apiKey: row.api_key_plain ?? '' });
+  });
+
   // PATCH /api/providers/:id
   app.patch('/:id', async (c) => {
     const id = c.req.param('id');
@@ -307,6 +336,292 @@ export function providersRoute(bindings: AppBindings): Hono {
     });
 
     return c.json(result);
+  });
+
+  // ── GET /api/providers/:id/models — available LLM models for the picker ─────
+  //
+  // Live /v1/models when the protocol supports it, else the definition's
+  // curated defaults. Each model is annotated with its context window (token
+  // table) and whether it's already enabled (provider_llm_models).
+  app.get('/:id/models', async (c) => {
+    const id = c.req.param('id');
+    const repo = new ProvidersRepo(bindings.profileDb.sqlite);
+    const row = repo.get(id);
+    if (!row) return c.json({ error: 'not_found' }, 404);
+
+    const { models, source } = await fetchLlmModels(row);
+    const pool = new ProviderLlmModelsRepo(bindings.profileDb.sqlite);
+    const enabled = new Map(pool.listByProvider(id).map((m) => [m.model, m.context_window]));
+
+    return c.json({
+      source,
+      models: models.map((model) => ({
+        id:            model,
+        contextWindow: enabled.get(model) ?? lookupContextWindow(model) ?? null,
+        enabled:       enabled.has(model),
+      })),
+    });
+  });
+
+  // ── PUT /api/providers/:id/models/:model — enable a model ───────────────────
+  app.put('/:id/models/:model', async (c) => {
+    const id = c.req.param('id');
+    const model = decodeURIComponent(c.req.param('model'));
+    const body = enableModelSchema.safeParse(await c.req.json().catch(() => null));
+    if (!body.success) {
+      return c.json({ error: 'invalid_request', details: body.error.flatten() }, 400);
+    }
+    const repo = new ProvidersRepo(bindings.profileDb.sqlite);
+    if (!repo.get(id)) return c.json({ error: 'not_found' }, 404);
+
+    new ProviderLlmModelsRepo(bindings.profileDb.sqlite).upsert({
+      providerConfigId: id,
+      model,
+      contextWindow:    body.data.contextWindow,
+      contextSource:    body.data.contextSource,
+    });
+    return c.body(null, 204);
+  });
+
+  // ── DELETE /api/providers/:id/models/:model — disable a model ───────────────
+  //
+  // Cascade: bindings referencing this (provider, model) are removed too
+  // (option B — disabling a bound model takes its bindings with it; the
+  // frontend confirms first).
+  app.delete('/:id/models/:model', (c) => {
+    const id = c.req.param('id');
+    const model = decodeURIComponent(c.req.param('model'));
+
+    const removed = new ProviderLlmModelsRepo(bindings.profileDb.sqlite).remove(id, model);
+    if (!removed) return c.json({ error: 'not_found' }, 404);
+
+    const bindingsRepo = new ModelBindingsRepo(bindings.profileDb.sqlite);
+    const cascaded = bindingsRepo.deleteByProviderModel(id, model);
+
+    return c.json({ ok: true, cascadedBindings: cascaded });
+  });
+
+  // ── POST /:id/tts-test ───────────────────────────────────────────────────
+  // Real TTS synthesis test — replaces the old "测试声音" that mis-fired an LLM
+  // probe (hit /chat/completions with a TTS model → 400). Synthesizes the
+  // sample text with the active card's voice via the SAME path as live TTS
+  // and returns the audio bytes for the frontend to play.
+  app.post('/:id/tts-test', async (c) => {
+    const providerId = c.req.param('id');
+    const body = await c.req.json().catch(() => null) as { text?: string; model?: string } | null;
+    const text  = body?.text?.trim() || '你好，我是艾玛，很高兴认识你。';
+    const model = body?.model?.trim();
+    if (!model) return c.json({ error: 'model_required' }, 400);
+
+    const adapter = bindings.tts.getAdapter(providerId);
+    if (!adapter) return c.json({ error: 'tts_adapter_unavailable' }, 400);
+
+    const card  = bindings.card.current();
+    const voice = resolveVoice(card.id, bindings.card);
+    if (!voice) {
+      return c.json({ error: 'no_reference_audio', message: '当前角色卡未配置参考音频，无法测试声音克隆' }, 400);
+    }
+
+    try {
+      const cache = new VoiceUriCache(new SettingsRepo(bindings.profileDb.sqlite));
+      await ensureVoiceUri(voice, adapter, model, card.id, providerId, cache);
+      if (!voice.voiceUri && adapter.protocol !== 'gpt-sovits-tts') {
+        return c.json({ error: 'voice_upload_failed', message: '参考音频上传失败' }, 400);
+      }
+
+      const chunks: Uint8Array[] = [];
+      let mime = 'audio/mpeg';
+      for await (const ev of bindings.tts.synthesize({ providerId, model, text, voice, format: 'mp3' })) {
+        if (ev.type === 'audio_chunk') { chunks.push(ev.bytes); mime = ev.mime; }
+      }
+      if (chunks.length === 0) return c.json({ error: 'no_audio', message: '合成未产生音频' }, 502);
+
+      const total = chunks.reduce((n, b) => n + b.length, 0);
+      const buf = new Uint8Array(total);
+      let off = 0;
+      for (const b of chunks) { buf.set(b, off); off += b.length; }
+      return new Response(buf, { headers: { 'Content-Type': mime, 'Cache-Control': 'no-store' } });
+    } catch (err) {
+      return c.json({ error: 'tts_test_failed', message: err instanceof Error ? err.message : String(err) }, 502);
+    }
+  });
+
+  // ── Embed model pool ─────────────────────────────────────────────────────────
+
+  app.get('/:id/embed-models', async (c) => {
+    const id = c.req.param('id');
+    const repo = new ProvidersRepo(bindings.profileDb.sqlite);
+    const row = repo.get(id);
+    if (!row) return c.json({ error: 'not_found' }, 404);
+
+    const { models, source } = await fetchEmbedModels(row);
+    const pool = bindings.providerEmbedModels;
+    const enabled = new Map(pool.listByProvider(id).map((m) => [m.model, m.dim]));
+
+    return c.json({
+      source,
+      models: models.map((model) => ({
+        id:      model,
+        dim:     enabled.get(model) ?? null,
+        enabled: enabled.has(model),
+      })),
+    });
+  });
+
+  app.put('/:id/embed-models/:model', async (c) => {
+    const id    = c.req.param('id');
+    const model = decodeURIComponent(c.req.param('model'));
+    const body  = enableEmbedModelSchema.safeParse(await c.req.json().catch(() => null));
+    if (!body.success) return c.json({ error: 'invalid_request', details: body.error.flatten() }, 400);
+
+    const repo = new ProvidersRepo(bindings.profileDb.sqlite);
+    if (!repo.get(id)) return c.json({ error: 'not_found' }, 404);
+
+    bindings.providerEmbedModels.upsert({
+      providerConfigId: id,
+      model,
+      dim:       body.data.dim,
+      dimSource: body.data.dimSource,
+    });
+    return c.body(null, 204);
+  });
+
+  app.delete('/:id/embed-models/:model', (c) => {
+    const id    = c.req.param('id');
+    const model = decodeURIComponent(c.req.param('model'));
+    const removed = bindings.providerEmbedModels.remove(id, model);
+    if (!removed) return c.json({ error: 'not_found' }, 404);
+
+    const cascaded = new ModelBindingsRepo(bindings.profileDb.sqlite).deleteByProviderModel(id, model);
+    return c.json({ ok: true, cascadedBindings: cascaded });
+  });
+
+  // ── Rerank model pool ─────────────────────────────────────────────────────────
+
+  app.get('/:id/rerank-models', (c) => {
+    const id = c.req.param('id');
+    const repo = new ProvidersRepo(bindings.profileDb.sqlite);
+    const row = repo.get(id);
+    if (!row) return c.json({ error: 'not_found' }, 404);
+
+    const def = getProviderDefinition(row.definition_id);
+    const models = def?.defaultModels?.rerank ?? [];
+    const pool = bindings.providerRerankModels;
+    const enabled = new Map(pool.listByProvider(id).map((m) => [m.model, m.max_chunks]));
+
+    return c.json({
+      source: 'static',
+      models: models.map((model) => ({
+        id:        model,
+        maxChunks: enabled.get(model) ?? null,
+        enabled:   enabled.has(model),
+      })),
+    });
+  });
+
+  app.put('/:id/rerank-models/:model', async (c) => {
+    const id    = c.req.param('id');
+    const model = decodeURIComponent(c.req.param('model'));
+    const body  = enableRerankModelSchema.safeParse(await c.req.json().catch(() => null));
+    if (!body.success) return c.json({ error: 'invalid_request', details: body.error.flatten() }, 400);
+
+    const repo = new ProvidersRepo(bindings.profileDb.sqlite);
+    if (!repo.get(id)) return c.json({ error: 'not_found' }, 404);
+
+    bindings.providerRerankModels.upsert({
+      providerConfigId: id,
+      model,
+      maxChunks: body.data.maxChunks,
+    });
+    return c.body(null, 204);
+  });
+
+  app.delete('/:id/rerank-models/:model', (c) => {
+    const id    = c.req.param('id');
+    const model = decodeURIComponent(c.req.param('model'));
+    const removed = bindings.providerRerankModels.remove(id, model);
+    if (!removed) return c.json({ error: 'not_found' }, 404);
+
+    const cascaded = new ModelBindingsRepo(bindings.profileDb.sqlite).deleteByProviderModel(id, model);
+    return c.json({ ok: true, cascadedBindings: cascaded });
+  });
+
+  // ── TTS model pool ────────────────────────────────────────────────────────────
+
+  app.get('/:id/tts-models', (c) => {
+    const id = c.req.param('id');
+    const repo = new ProvidersRepo(bindings.profileDb.sqlite);
+    const row = repo.get(id);
+    if (!row) return c.json({ error: 'not_found' }, 404);
+
+    const def = getProviderDefinition(row.definition_id);
+    const models = def?.defaultModels?.tts ?? [];
+    const pool = bindings.providerTtsModels;
+    const enabledSet = new Set(pool.listByProvider(id).map((m) => m.model));
+
+    return c.json({
+      source: 'static',
+      models: models.map((model) => ({ id: model, enabled: enabledSet.has(model) })),
+    });
+  });
+
+  app.put('/:id/tts-models/:model', async (c) => {
+    const id    = c.req.param('id');
+    const model = decodeURIComponent(c.req.param('model'));
+    const repo  = new ProvidersRepo(bindings.profileDb.sqlite);
+    if (!repo.get(id)) return c.json({ error: 'not_found' }, 404);
+
+    bindings.providerTtsModels.upsert({ providerConfigId: id, model });
+    return c.body(null, 204);
+  });
+
+  app.delete('/:id/tts-models/:model', (c) => {
+    const id    = c.req.param('id');
+    const model = decodeURIComponent(c.req.param('model'));
+    const removed = bindings.providerTtsModels.remove(id, model);
+    if (!removed) return c.json({ error: 'not_found' }, 404);
+
+    const cascaded = new ModelBindingsRepo(bindings.profileDb.sqlite).deleteByProviderModel(id, model);
+    return c.json({ ok: true, cascadedBindings: cascaded });
+  });
+
+  // ── STT model pool ────────────────────────────────────────────────────────────
+
+  app.get('/:id/stt-models', (c) => {
+    const id = c.req.param('id');
+    const repo = new ProvidersRepo(bindings.profileDb.sqlite);
+    const row = repo.get(id);
+    if (!row) return c.json({ error: 'not_found' }, 404);
+
+    const def = getProviderDefinition(row.definition_id);
+    const models = def?.defaultModels?.stt ?? [];
+    const pool = bindings.providerSttModels;
+    const enabledSet = new Set(pool.listByProvider(id).map((m) => m.model));
+
+    return c.json({
+      source: 'static',
+      models: models.map((model) => ({ id: model, enabled: enabledSet.has(model) })),
+    });
+  });
+
+  app.put('/:id/stt-models/:model', async (c) => {
+    const id    = c.req.param('id');
+    const model = decodeURIComponent(c.req.param('model'));
+    const repo  = new ProvidersRepo(bindings.profileDb.sqlite);
+    if (!repo.get(id)) return c.json({ error: 'not_found' }, 404);
+
+    bindings.providerSttModels.upsert({ providerConfigId: id, model });
+    return c.body(null, 204);
+  });
+
+  app.delete('/:id/stt-models/:model', (c) => {
+    const id    = c.req.param('id');
+    const model = decodeURIComponent(c.req.param('model'));
+    const removed = bindings.providerSttModels.remove(id, model);
+    if (!removed) return c.json({ error: 'not_found' }, 404);
+
+    const cascaded = new ModelBindingsRepo(bindings.profileDb.sqlite).deleteByProviderModel(id, model);
+    return c.json({ ok: true, cascadedBindings: cascaded });
   });
 
   return app;

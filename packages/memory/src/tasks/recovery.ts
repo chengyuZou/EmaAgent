@@ -1,5 +1,6 @@
 import type { MemoryDeps } from '../deps.js';
 import type { EmbedService } from '../embed/service.js';
+import { bestEffort } from '../observability.js';
 
 export interface RecoveryReport {
   resetTasks:        number;
@@ -34,23 +35,17 @@ export function runStartupRecovery(
     orphanLazyUpdates: 0,
   };
 
-  try { report.resetTasks = deps.memoryTasks.resetStuckRunning(now); }
-  catch { /* ignore */ }
+  report.resetTasks = bestEffort('recovery resetStuckRunning', () => deps.memoryTasks.resetStuckRunning(now), 0);
 
-  try { report.orphanLazyUpdates = deps.lazyUpdates.cleanOrphans(); }
-  catch { /* ignore */ }
+  report.orphanLazyUpdates = bestEffort('recovery cleanOrphans', () => deps.lazyUpdates.cleanOrphans(), 0);
 
-  try {
-    const sessions = deps.pendingFragments.listSessionsWithPending();
-    report.pendingSessions = sessions.length;
-  } catch { /* ignore */ }
+  report.pendingSessions = bestEffort('recovery listSessionsWithPending',
+    () => deps.pendingFragments.listSessionsWithPending().length, 0);
 
   const providerId = embed.currentProviderId();
   if (providerId) {
-    try { report.staleNodeEmbeds = deps.nodes.countStaleEmbeddings(providerId); }
-    catch { /* ignore */ }
-    try { report.staleItemEmbeds = deps.items.countStaleEmbeddings(providerId); }
-    catch { /* ignore */ }
+    report.staleNodeEmbeds = bestEffort('recovery countStaleEmbeddings(nodes)', () => deps.nodes.countStaleEmbeddings(providerId), 0);
+    report.staleItemEmbeds = bestEffort('recovery countStaleEmbeddings(items)', () => deps.items.countStaleEmbeddings(providerId), 0);
   }
 
   return report;

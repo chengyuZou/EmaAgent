@@ -5,6 +5,7 @@ import type {
 import type { LlmRouter } from '@ema-agent/llm';
 import type { SessionStore } from '@ema-agent/session';
 import type { MemoryPlanner } from './planner.js';
+import { bestEffortAsync } from './observability.js';
 
 // ── Recent files extractor (agent restore) ───────────────────────────────────
 
@@ -94,11 +95,8 @@ export function registerMemoryHooks(
   const offOnTurnEnd = bus.register(
     'onTurnEnd',
     async (ctx) => {
-      try {
-        await runOnTurnEnd(deps.session, planner, ctx.sessionId, ctx.turnId);
-      } catch {
-        /* best-effort */
-      }
+      await bestEffortAsync('onTurnEnd extraction',
+        () => runOnTurnEnd(deps.session, planner, ctx.sessionId, ctx.turnId), undefined);
       return { kind: 'continue' };
     },
     { name: 'memory:onTurnEnd', priority: 50, critical: false, parallel: true },

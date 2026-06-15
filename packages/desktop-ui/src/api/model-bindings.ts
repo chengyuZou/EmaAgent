@@ -23,10 +23,30 @@ export interface BindingUpsertInput {
 
 // ── API object ────────────────────────────────────────────────────────────────
 
+export interface AvailableBindingModel {
+  providerConfigId: string;
+  providerName:     string;
+  model:            string;
+  contextWindow:    number;
+  dim?:             number;
+  maxChunks?:       number;
+}
+
 export const modelBindingsApi = {
   /** GET /api/model-bindings — all modules' bindings. */
   async list(): Promise<ResolvedModelBinding[]> {
     return sidecarClient.request<ResolvedModelBinding[]>('/api/model-bindings');
+  },
+
+  /**
+   * GET /api/model-bindings/available/:capability — the enabled-model pool the
+   * picker chooses from (provider-enabled models). Only 'llm' is populated today.
+   */
+  async listAvailable(capability: string): Promise<AvailableBindingModel[]> {
+    const res = await sidecarClient.request<{ models: AvailableBindingModel[] }>(
+      `/api/model-bindings/available/${capability}`,
+    );
+    return res.models;
   },
 
   /** GET /api/model-bindings/:module */
@@ -55,5 +75,19 @@ export const modelBindingsApi = {
     await sidecarClient.request(`/api/model-bindings/${module}?${params}`, {
       method: 'DELETE',
     });
+  },
+
+  /**
+   * PUT /api/model-bindings/:module/set — atomic single-select: wipes all
+   * existing bindings for the module, then sets the one given model.
+   */
+  async set(
+    module: BindingModule,
+    input: BindingUpsertInput,
+  ): Promise<ResolvedModelBinding[]> {
+    return sidecarClient.request<ResolvedModelBinding[]>(
+      `/api/model-bindings/${module}/set`,
+      { method: 'PUT', json: input },
+    );
   },
 };

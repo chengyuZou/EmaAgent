@@ -23,7 +23,8 @@
         "resizable":     true,
         "shadow":        false,
         "skipTaskbar":   false,
-        "visible":       true
+        "visible":       true,
+        "additionalBrowserArgs": "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --autoplay-policy=no-user-gesture-required"
       },
       {
         "label":         "chat",
@@ -36,7 +37,8 @@
         "alwaysOnTop":   false,
         "resizable":     true,
         "visible":       false,
-        "center":        true
+        "center":        true,
+        "additionalBrowserArgs": "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --autoplay-policy=no-user-gesture-required"
       },
       {
         "label":         "settings",

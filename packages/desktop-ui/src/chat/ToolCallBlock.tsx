@@ -37,14 +37,14 @@ export function ToolCallBlock({ slice, streaming = false }: ToolCallBlockProps):
   const resultStr = hasResult && slice.result !== null ? formatJson(slice.result) : null;
 
   return (
-    <div className="rounded-lg px-2 pt-2 pb-2 bg-pink-900/60 flex flex-col gap-2 items-start">
+    <div className="rounded-lg px-2 pt-2 pb-2 bg-neutral-900/50 backdrop-blur-sm border border-neutral-800/40 flex flex-col gap-2 items-start">
       {/* Trigger */}
       <button
         className="w-full text-start flex items-center gap-2"
         onClick={() => setOpen(!open)}
       >
-        <span className="text-gray-400 text-xs">{open ? '▼' : '▶'}</span>
-        <span className="font-mono text-xs text-pink-200/80">🔧 {slice.name}</span>
+        <span className="text-neutral-400 text-xs">{open ? '▼' : '▶'}</span>
+        <span className="font-mono text-xs text-neutral-200">🔧 {slice.name}</span>
         <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ml-auto flex items-center gap-1 ${badge.cls}`}>
           {isPending && (
             <span className="w-1.5 h-1.5 rounded-full bg-yellow-400 animate-pulse" />
@@ -57,8 +57,8 @@ export function ToolCallBlock({ slice, streaming = false }: ToolCallBlockProps):
       {open && (
         <div className="w-full flex flex-col gap-2">
           {/* Args */}
-          <div className="rounded-md p-2 w-full bg-gray-900/80 text-sm text-gray-200">
-            <div className="text-[10px] text-gray-500 uppercase tracking-wide mb-1 flex items-center gap-1.5">
+          <div className="rounded-md p-2 w-full bg-neutral-950/80 text-sm text-neutral-200">
+            <div className="text-[10px] text-neutral-500 uppercase tracking-wide mb-1 flex items-center gap-1.5">
               参数
               {isPending && <span className="w-1 h-1 rounded-full bg-yellow-400 animate-pulse" />}
             </div>
@@ -77,8 +77,8 @@ export function ToolCallBlock({ slice, streaming = false }: ToolCallBlockProps):
 
           {/* Result — only when we actually have output (null = no output, skip) */}
           {resultStr !== null && (
-            <div className="rounded-md p-2 w-full bg-gray-900/80 text-sm text-gray-200">
-              <div className="text-[10px] text-gray-500 uppercase tracking-wide mb-1">结果</div>
+            <div className="rounded-md p-2 w-full bg-neutral-950/80 text-sm text-neutral-200">
+              <div className="text-[10px] text-neutral-500 uppercase tracking-wide mb-1">结果</div>
               <pre className="font-mono text-xs whitespace-pre-wrap break-words max-h-48 overflow-auto">{resultStr}</pre>
             </div>
           )}

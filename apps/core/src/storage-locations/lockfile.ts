@@ -48,7 +48,13 @@ export function acquireLock(dataDir: string): LockAcquireResult {
   };
 
   const existing = readLockfile(fp);
-  if (existing && !isStale(existing, now) && existing.dataDir === dataDir && existing.pid !== process.pid) {
+  if (
+    existing &&
+    !isStale(existing, now) &&
+    !isHolderDead(existing) &&
+    existing.dataDir === dataDir &&
+    existing.pid !== process.pid
+  ) {
     return { acquired: false, conflict: existing };
   }
 
@@ -96,4 +102,26 @@ function writeLockfile(fp: string, info: LockInfo): void {
 
 function isStale(info: LockInfo, now: number): boolean {
   return now - info.updatedAt > STALE_MS;
+}
+
+/**
+ * True when the lock's holder process is provably gone. `process.kill(pid, 0)`
+ * sends no signal — it only probes existence, throwing ESRCH for a dead pid.
+ * Only meaningful on the SAME host (a pid on another machine tells us nothing),
+ * so cross-host locks fall back to the time-based staleness check.
+ *
+ * This is what makes hot-reload (tsx watch hard-kills + respawns within
+ * seconds) and crash recovery work without waiting out the 5-minute window:
+ * the old pid is dead → its lock is immediately reclaimable.
+ */
+function isHolderDead(info: LockInfo): boolean {
+  if (info.hostname !== os.hostname()) return false;
+  if (info.pid === process.pid) return false;
+  try {
+    process.kill(info.pid, 0);
+    return false;   // signal accepted → process alive
+  } catch (err) {
+    // ESRCH = no such process (dead). EPERM = alive but not ours (still alive).
+    return (err as NodeJS.ErrnoException).code === 'ESRCH';
+  }
 }

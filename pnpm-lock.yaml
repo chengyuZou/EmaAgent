@@ -89,6 +89,9 @@ importers:
       '@ema-agent/stt':
         specifier: workspace:*
         version: link:../../packages/stt
+      '@ema-agent/token':
+        specifier: workspace:*
+        version: link:../../packages/token
       '@ema-agent/tool':
         specifier: workspace:*
         version: link:../../packages/tools
@@ -147,12 +150,6 @@ importers:
       '@tauri-apps/plugin-shell':
         specifier: ^2.2.0
         version: 2.3.5
-      '@unocss/preset-attributify':
-        specifier: ^66.0.0
-        version: 66.7.0
-      '@unocss/preset-uno':
-        specifier: ^66.7.0
-        version: 66.7.0
       '@unocss/preset-wind':
         specifier: ^66.7.0
         version: 66.7.0
@@ -172,6 +169,21 @@ importers:
         specifier: ^66.0.0
         version: 66.7.0(vite@5.4.21(@types/node@20.19.39))
     devDependencies:
+      '@iconify-json/mdi':
+        specifier: ^1.2.3
+        version: 1.2.3
+      '@iconify-json/solar':
+        specifier: ^1.2.5
+        version: 1.2.5
+      '@iconify-json/svg-spinners':
+        specifier: ^1.2.4
+        version: 1.2.4
+      '@iconify/utils':
+        specifier: ^3.1.3
+        version: 3.1.3
+      '@proj-airi/lobe-icons':
+        specifier: ^1.0.19
+        version: 1.0.19
       '@tauri-apps/cli':
         specifier: ^2.4.0
         version: 2.11.2
@@ -181,6 +193,15 @@ importers:
       '@types/react-dom':
         specifier: ^18.3.1
         version: 18.3.7(@types/react@18.3.29)
+      '@unocss/preset-attributify':
+        specifier: ^66.7.0
+        version: 66.7.0
+      '@unocss/preset-icons':
+        specifier: ^66.7.0
+        version: 66.7.0
+      '@unocss/preset-uno':
+        specifier: ^66.7.0
+        version: 66.7.0
       '@vitejs/plugin-react':
         specifier: ^4.3.3
         version: 4.7.0(vite@5.4.21(@types/node@20.19.39))
@@ -375,6 +396,9 @@ importers:
       '@ema-agent/stt':
         specifier: workspace:*
         version: link:../stt
+      '@ema-agent/token':
+        specifier: workspace:*
+        version: link:../token
       '@ema-agent/ui':
         specifier: workspace:*
         version: link:../ui
@@ -610,6 +634,9 @@ importers:
       '@ema-agent/storage':
         specifier: workspace:*
         version: link:../storage
+      '@ema-agent/token':
+        specifier: workspace:*
+        version: link:../token
     optionalDependencies:
       usearch:
         specifier: ^2.25.1
@@ -806,6 +833,25 @@ importers:
         specifier: ^2.0.0
         version: 2.1.9(@types/node@20.19.39)(msw@2.14.6(@types/node@20.19.39)(typescript@5.9.3))
 
+  packages/token:
+    dependencies:
+      '@ema-agent/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+    devDependencies:
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.39
+      rimraf:
+        specifier: ^5.0.0
+        version: 5.0.10
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: ^2.0.0
+        version: 2.1.9(@types/node@20.19.39)(msw@2.14.6(@types/node@20.19.39)(typescript@5.9.3))
+
   packages/tool-builtin:
     dependencies:
       '@ema-agent/contracts':
@@ -934,6 +980,9 @@ importers:
       '@radix-ui/react-tooltip':
         specifier: ^1.1.4
         version: 1.2.8(@types/react-dom@18.3.7(@types/react@18.3.29))(@types/react@18.3.29)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@unocss/core':
+        specifier: ^66.0.0
+        version: 66.7.0
       clsx:
         specifier: ^2.1.1
         version: 2.1.1
@@ -1572,6 +1621,15 @@ packages:
     peerDependencies:
       hono: ^4
 
+  '@iconify-json/mdi@1.2.3':
+    resolution: {integrity: sha512-O3cLwbDOK7NNDf2ihaQOH5F9JglnulNDFV7WprU2dSoZu3h3cWH//h74uQAB87brHmvFVxIOkuBX2sZSzYhScg==}
+
+  '@iconify-json/solar@1.2.5':
+    resolution: {integrity: sha512-WMAiNwchU8zhfrySww6KQBRIBbsQ6SvgIu2yA+CHGyMima/0KQwT5MXogrZPJGoQF+1Ye3Qj6K+1CiyNn3YkoA==}
+
+  '@iconify-json/svg-spinners@1.2.4':
+    resolution: {integrity: sha512-ayn0pogFPwJA1WFZpDnoq9/hjDxN+keeCMyThaX4d3gSJ3y0mdKUxIA/b1YXWGtY9wVtZmxwcvOIeEieG4+JNg==}
+
   '@iconify/types@2.0.0':
     resolution: {integrity: sha512-+wluvCrRhXrhyOmRDJ3q8mux9JkKy5SJ/v8ol2tu4FVjyYvtEzkc/3pK15ET6RKg4b4w4BmTk1+gsCUhf21Ykg==}
 
@@ -2032,6 +2090,9 @@ packages:
 
   '@polka/url@1.0.0-next.29':
     resolution: {integrity: sha512-wwQAWhWSuHaag8c4q/KN/vCoeOJYshAIvMQwD4GpSb3OiZklFfvAgmj0VCBBImRpuF/aFgIRzllXlVX93Jevww==}
+
+  '@proj-airi/lobe-icons@1.0.19':
+    resolution: {integrity: sha512-hBB/MUYqzckzMXYDLZ7/4HRuldqEvLKhMzTcVPLUOdXR0sn9y4vk+k14tynwgeePCrUKSUTP/bnPdETqvWJzqw==}
 
   '@protobufjs/aspromise@1.1.2':
     resolution: {integrity: sha512-j+gKExEuLmKwvz3OgROXtrJ2UG2x8Ch2YZUxahh+s1F2HZ+wAceUNLkvy6zKCPVRkU++ZWQrdxsUeQXmcg4uoQ==}
@@ -5985,6 +6046,18 @@ snapshots:
     dependencies:
       hono: 4.12.18
 
+  '@iconify-json/mdi@1.2.3':
+    dependencies:
+      '@iconify/types': 2.0.0
+
+  '@iconify-json/solar@1.2.5':
+    dependencies:
+      '@iconify/types': 2.0.0
+
+  '@iconify-json/svg-spinners@1.2.4':
+    dependencies:
+      '@iconify/types': 2.0.0
+
   '@iconify/types@2.0.0': {}
 
   '@iconify/utils@3.1.3':
@@ -6471,6 +6544,10 @@ snapshots:
     optional: true
 
   '@polka/url@1.0.0-next.29': {}
+
+  '@proj-airi/lobe-icons@1.0.19':
+    dependencies:
+      '@iconify/types': 2.0.0
 
   '@protobufjs/aspromise@1.1.2': {}
 

@@ -1,7 +1,8 @@
 import { defineConfig }               from 'vite';
 import react                           from '@vitejs/plugin-react';
 import UnoCSS                          from 'unocss/vite';
-import { presetUno, presetAttributify } from 'unocss';
+import presetUno                       from '@unocss/preset-uno';
+import presetAttributify               from '@unocss/preset-attributify';
 import { resolve }                     from 'node:path';
 
 // Tauri 2 conventions:
@@ -37,8 +38,17 @@ export default defineConfig({
 
   // Exclude workspace packages from Vite's esbuild pre-bundler so they pass
   // through the full transform pipeline where UnoCSS can extract class names.
+  //
+  // live2d-react is here too: Vite only re-optimizes pre-bundled deps when
+  // package.json/lockfile change, NOT when a workspace dep's dist content
+  // changes — so a rebuilt live2d-react/dist was silently served stale from
+  // .vite/deps cache (the registerTicker fix never reached the running app).
+  // Excluding it makes Vite read its current dist on every reload.
   optimizeDeps: {
-    exclude: ['@ema-agent/desktop-ui', '@ema-agent/contracts'],
+    // 'oxc-parser' excluded so its optional wasm binding (absent on Windows)
+    // never enters the pre-bundler. Vite's esbuildOptions type omits
+    // `external`, so exclusion is the only supported lever here.
+    exclude: ['@ema-agent/desktop-ui', '@ema-agent/contracts', '@ema-agent/live2d-react', 'oxc-parser'],
   },
 
   // Prevent vite from clobbering Rust errors with the spinner UI.

@@ -46,12 +46,12 @@ export function ChatPanel(): JSX.Element {
 
   return (
     <ErrorBoundary>
-      <div className="flex flex-col h-screen bg-gray-950">
+      <div className="flex flex-col h-screen bg-neutral-950">
         <SessionSwitcher />
         <ChatHistory />
         <ChatInput />
 
-        <div className="flex items-center justify-between px-4 py-1.5 border-t border-gray-800 text-xs text-gray-500">
+        <div className="flex items-center justify-between px-4 py-1.5 border-t border-neutral-800 text-xs text-neutral-500">
           <div className="flex items-center gap-2">
             <div className={`w-2 h-2 rounded-full ${sidecarStatus.kind === 'ok' ? 'bg-green-400' : 'bg-red-400'}`} />
             <span>sidecar</span>

@@ -5,6 +5,11 @@
   "windows": ["main", "chat", "settings"],
   "permissions": [
     "core:default",
+    "core:window:allow-start-dragging",
+    "core:window:allow-cursor-position",
+    "core:window:allow-outer-position",
+    "core:window:allow-outer-size",
+    "core:window:allow-scale-factor",
     "dialog:allow-save",
     "dialog:allow-open"
   ]

@@ -129,14 +129,14 @@ export function McpTab(): JSX.Element {
     (form.transport === 'stdio' ? form.command.trim() : form.url.trim());
 
   return (
-    <div className="flex flex-col gap-4 h-full">
+    <div className="flex flex-col gap-4">
       {/* Header */}
       <div className="flex items-start justify-between shrink-0">
         <div>
           <h2 className="text-base font-semibold text-neutral-100">MCP 服务器</h2>
           <p className="text-xs text-neutral-500 mt-0.5">连接模型上下文协议（MCP）服务器，扩展 Agent 的工具集</p>
         </div>
-        <Button variant="primary" size="sm" onClick={() => setAddOpen(true)}>
+        <Button variant="primary" size="sm" onClick={() => setAddOpen(true)} className="active:scale-[0.98] transition-all duration-250">
           <span className="i-mdi:plus text-base" aria-hidden />
           添加服务器
         </Button>
@@ -304,7 +304,7 @@ function ServerRow({
   ];
 
   return (
-    <Card variant="elevated" padding="sm">
+    <Card variant="elevated" padding="sm" className="active:scale-[0.98] transition-all duration-250">
       <div className="flex items-start gap-3">
         {/* Status dot */}
         <div className="pt-0.5 shrink-0">

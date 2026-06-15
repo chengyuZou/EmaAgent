@@ -132,6 +132,8 @@ export {
   buildRerankProviderConfig,
 } from './bindings.js';
 
+export { fetchLlmModels, type FetchedModels } from './providers/llm.js';
+export { fetchEmbedModels, type FetchedEmbedModels } from './providers/embed.js';
 export { resolveBridgeUrl, configureBridge } from './bridge.js';
 export { registerAllHooks }    from './register-hooks.js';
 export { registerAllEmitters } from './register-emitters.js';

@@ -6,7 +6,8 @@ import {
   MemoryNodesRepo, MemoryEdgesRepo, MemoryLazyUpdatesRepo,
   MemoryItemsRepo, SessionNotesRepo, MemoryTasksRepo, PendingFragmentsRepo,
   ArtifactRepo,
-  LlmModelCatalogRepo, EmbedModelCatalogRepo,
+  ProviderLlmModelsRepo, ProviderEmbedModelsRepo,
+  ProviderRerankModelsRepo, ProviderTtsModelsRepo, ProviderSttModelsRepo,
   McpServersRepo, SkillsRepo,
 } from '@ema-agent/storage';
 import { ArtifactStore }                               from '@ema-agent/artifact';
@@ -23,6 +24,7 @@ import { TtsClient, FsAudioArchive, type AudioArchive } from '@ema-agent/tts';
 import { SttClient }     from '@ema-agent/stt';
 import { buildTtsClient } from './providers/tts.js';
 import { buildSttClient } from './providers/stt.js';
+import { lookupEmbedDim } from '@ema-agent/token';
 import { loadLlmConfigs }   from './providers/llm.js';
 import { loadEmbedConfigs }  from './providers/embed.js';
 import { loadRerankConfigs } from './providers/rerank.js';
@@ -79,8 +81,8 @@ export interface AppBindings {
   emotion: EmotionEngine;
 
   // TTS façade — synthesizes assistant text. Voice identity always reads from
-  // the active card; provider/model reads from model_bindings rows
-  // tts_chat / tts_narrative / tts_agent.
+  // the active card; provider/model reads from the single `tts` model_bindings
+  // row (one binding for all modes).
   tts:         TtsClient;
   // Audio archive — per-segment write + per-turn merge, under {activeDataDir}/audio.
   audioArchive: AudioArchive;
@@ -101,6 +103,14 @@ export interface AppBindings {
   }) => AskPermissionFn;
   /** Per-session sandbox runner — memoised on first call per sessionId. */
   getCommandRunner: (sessionId: SessionId) => ICommandRunner;
+  /**
+   * Drop a session's cached CommandRunner so the next getCommandRunner()
+   * rebuilds it from current state. MUST be called whenever workspaceRoots
+   * change — the runner bakes the roots into its sandbox config at
+   * construction, so a stale cache means commands keep running (and the
+   * sandbox keeps permitting writes) in the OLD workspace.
+   */
+  invalidateSessionRuntime: (sessionId: SessionId) => void;
   /** Per-session file-state + tool-result store — memoised on first call. */
   getContextStores: (sessionId: SessionId) => {
     fileStateStore:  AgentFileStateStore;
@@ -117,9 +127,12 @@ export interface AppBindings {
   systemBus: SystemEventBus;
 
   // Repos kept on the binding for route convenience
-  modelBindings:  ModelBindingsRepo;
-  llmCatalog:     LlmModelCatalogRepo;
-  embedCatalog:   EmbedModelCatalogRepo;
+  modelBindings:        ModelBindingsRepo;
+  providerLlmModels:    ProviderLlmModelsRepo;
+  providerEmbedModels:  ProviderEmbedModelsRepo;
+  providerRerankModels: ProviderRerankModelsRepo;
+  providerTtsModels:    ProviderTtsModelsRepo;
+  providerSttModels:    ProviderSttModelsRepo;
   artifactStore:  ArtifactStore;
   mcpRegistry:    McpRegistry;
   skillStore:     SkillStore;
@@ -154,9 +167,12 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
   });
   const session = new SessionStore({ db: dataDb });
 
-  // ── Model catalogs (profileDb — model capabilities, not provider properties) ─
-  const llmCatalog   = new LlmModelCatalogRepo(profileDb.sqlite);
-  const embedCatalog = new EmbedModelCatalogRepo(profileDb.sqlite);
+  // ── Per-provider model pools (profileDb) ────────────────────────────────────
+  const providerLlmModels    = new ProviderLlmModelsRepo(profileDb.sqlite);
+  const providerEmbedModels  = new ProviderEmbedModelsRepo(profileDb.sqlite);
+  const providerRerankModels = new ProviderRerankModelsRepo(profileDb.sqlite);
+  const providerTtsModels    = new ProviderTtsModelsRepo(profileDb.sqlite);
+  const providerSttModels    = new ProviderSttModelsRepo(profileDb.sqlite);
 
   // ── AI clients (provider configs live in profileDb) ────────────────────────
   const llm = new LlmRouter(loadLlmConfigs(profileDb));
@@ -220,6 +236,12 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
     return runner;
   };
 
+  const invalidateSessionRuntime = (sessionId: SessionId): void => {
+    // contextStores intentionally survive — file-state history is not
+    // workspace-scoped. Only the runner bakes workspaceRoots in.
+    runnerCache.delete(sessionId);
+  };
+
   // ── Agent context stores ────────────────────────────────────────────────────
   const sessionsDir = nodePath.join(activeDataDir, '.ema-agent', 'sessions');
   const contextStoresCache = new Map<string, {
@@ -257,7 +279,7 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
     memoryTasks:      new MemoryTasksRepo(dataDb.sqlite),
     pendingFragments: new PendingFragmentsRepo(dataDb.sqlite),
     sessions:         sessionsRepo,
-    getEmbedDim:      (model) => embedCatalog.dim(model),
+    getEmbedDim:      (model) => providerEmbedModels.dimFor(model) ?? lookupEmbedDim(model) ?? 0,
     emit:             (ev) => systemBus.emit(ev),
   });
 
@@ -295,10 +317,12 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
     card, emotion,
     tts, audioArchive, stt,
     permission, permissionPrompts, askUserRegistry, tools, buildAskForTurn, getCommandRunner,
+    invalidateSessionRuntime,
     getContextStores, toolResultCleaner,
     memory,
     systemBus,
-    modelBindings, llmCatalog, embedCatalog,
+    modelBindings, providerLlmModels, providerEmbedModels,
+    providerRerankModels, providerTtsModels, providerSttModels,
     artifactStore,
     mcpRegistry,
     skillStore, skillRunner, skillInstaller,

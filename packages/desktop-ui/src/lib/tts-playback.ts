@@ -1,9 +1,29 @@
+import { create } from 'zustand';
 import type { EmaStreamEvent, TurnId } from '@ema-agent/contracts';
 import { useSpeechStore } from '@ema-agent/live2d-react';
 import type { SpeechAnimationState } from '@ema-agent/live2d-react';
 import { tauriBridge } from './tauri-bridge.js';
+import { showToast } from './toast.js';
 import { turnsApi } from '../api/turns.js';
+import { sidecarClient } from '../api/sidecar-client.js';
 import { useConversationStore } from '../stores/conversation-store.js';
+
+// ── Playback state (subscribable) ─────────────────────────────────────────────
+//
+// Which turn's audio is audible right now (live stream OR replay). Components
+// subscribe to render play/stop toggles; null = silence.
+
+interface PlaybackState {
+  playingTurnId: string | null;
+}
+
+export const usePlaybackStore = create<PlaybackState>(() => ({ playingTurnId: null }));
+
+function setPlaying(turnId: string | null): void {
+  if (usePlaybackStore.getState().playingTurnId !== turnId) {
+    usePlaybackStore.setState({ playingTurnId: turnId });
+  }
+}
 
 // ── Shared audio infrastructure (lazy-init) ───────────────────────────────────
 
@@ -111,7 +131,13 @@ function createPlayer(sessionId: string, turnId: string): TurnPlayer | null {
   }
 
   const { ctx, analyser } = ensureAudioCtx();
-  if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+  if (ctx.state === 'suspended') {
+    ctx.resume().catch((err: Error) => {
+      // Autoplay policy keeps the context suspended until a user gesture —
+      // the #1 cause of "silent TTS with zero logs". Make it loud.
+      console.error('[tts-playback] AudioContext.resume() failed:', err.name, err.message);
+    });
+  }
 
   const mediaSource  = new MediaSource();
   const objectUrl    = URL.createObjectURL(mediaSource);
@@ -147,7 +173,14 @@ function createPlayer(sessionId: string, turnId: string): TurnPlayer | null {
     if (!player.stopped) onPlaybackEnded();
   }, { once: true });
 
-  audioEl.play().catch(() => {});
+  audioEl.play().catch((err: Error) => {
+    console.error('[tts-playback] play() rejected:', err.name, err.message);
+    if (err.name === 'NotAllowedError') {
+      // Safety net — should be unreachable once additionalBrowserArgs disables
+      // the autoplay policy (tauri.conf.json), kept in case the flag regresses.
+      showToast('音频被自动播放策略拦截，点击窗口任意处后重试', { variant: 'warning' });
+    }
+  });
 
   return player;
 }
@@ -182,10 +215,14 @@ function destroyPlayer(player: TurnPlayer): void {
   if (sessionToTurnId.get(player.sessionId) === player.turnId) {
     sessionToTurnId.delete(player.sessionId);
   }
+  if (usePlaybackStore.getState().playingTurnId === player.turnId) {
+    setPlaying(null);
+  }
 }
 
 function onPlaybackEnded(): void {
   stopRmsLoop();
+  setPlaying(null);
 }
 
 // ── Owner check ───────────────────────────────────────────────────────────────
@@ -204,6 +241,9 @@ function isTtsOwner(sessionId: string): boolean {
  * Only processes events for the current ttsOwner session.
  */
 export function handleTtsChunk(event: EmaStreamEvent & { type: 'tts_chunk' }): void {
+  // Evicted chunks (replayed after the audio file was finalized) keep their
+  // cursor slot but carry no audio — see TurnEventStore.evictAudioChunks.
+  if (!event.audio) return;
   if (!isTtsOwner(event.sessionId as string)) return;
 
   const turnId    = event.turnId as string;
@@ -224,6 +264,7 @@ export function handleTtsChunk(event: EmaStreamEvent & { type: 'tts_chunk' }): v
 
     activePlayers.set(turnId, player);
     sessionToTurnId.set(sessionId, turnId);
+    setPlaying(turnId);
     startRmsLoop();
   }
 
@@ -289,25 +330,30 @@ export function stopTtsPlayback(sessionId: string): void {
   stopRmsLoop();
 }
 
+// The one replay source that may be live. Kept module-level so stopPlayback()
+// can interrupt it — BufferSource has no pause, only stop() (fires onended).
+let replaySource: AudioBufferSourceNode | null = null;
+
 /**
  * Replay the merged audio for a completed turn.
  * Fetches the turn's archived audio from the sidecar and plays it through the
  * shared AnalyserNode so RMS lip-sync still works. No emotion events are emitted.
  *
- * Stops any currently playing audio before starting.
+ * Stops any currently playing audio (live or replay) before starting.
+ * Interruptible via stopPlayback().
  */
 export async function replayTurn(turnId: string): Promise<void> {
-  // Stop all active live players first.
-  for (const player of activePlayers.values()) {
-    destroyPlayer(player);
-  }
-  stopRmsLoop();
+  stopPlayback();   // stop live players AND any in-flight replay
 
   const { ctx, analyser } = ensureAudioCtx();
-  if (ctx.state === 'suspended') await ctx.resume().catch(() => {});
+  if (ctx.state === 'suspended') await ctx.resume().catch((err: Error) => { console.error('[tts-playback] AudioContext.resume() failed:', err.name, err.message); });
 
-  const url = await turnsApi.audioUrl(turnId as TurnId);
-  const res = await fetch(url);
+  // The audio route is auth-gated like every /api route — a bare fetch()
+  // returns 401, which surfaced as "该轮没有可重播的语音" even though the
+  // merged file was on disk. Attach the shared secret.
+  const url     = await turnsApi.audioUrl(turnId as TurnId);
+  const headers = await sidecarClient.getAuthHeaders();
+  const res     = await fetch(url, { headers });
   if (!res.ok) throw new Error(`[tts-playback] replay fetch failed: ${res.status}`);
 
   const arrayBuffer = await res.arrayBuffer();
@@ -317,14 +363,36 @@ export async function replayTurn(turnId: string): Promise<void> {
   source.buffer = audioBuffer;
   source.connect(analyser);
 
+  replaySource = source;
+  setPlaying(turnId);
   startRmsLoop();
 
-  await new Promise<void>((resolve) => {
-    source.onended = () => resolve();
-    source.start();
-  });
+  try {
+    await new Promise<void>((resolve) => {
+      source.onended = () => resolve();   // fires on natural end AND on stop()
+      source.start();
+    });
+  } finally {
+    if (replaySource === source) replaySource = null;
+    stopRmsLoop();
+    setPlaying(null);
+  }
+}
 
+/**
+ * Stop ALL audible audio — live stream players, in-flight replay, RMS loop —
+ * and reset Live2D speech state. The universal "■" button handler.
+ */
+export function stopPlayback(): void {
+  for (const player of [...activePlayers.values()]) {
+    destroyPlayer(player);
+  }
+  if (replaySource) {
+    try { replaySource.stop(); } catch { /* already stopped */ }
+    replaySource = null;
+  }
   stopRmsLoop();
+  setPlaying(null);
 }
 
 /**
@@ -338,7 +406,7 @@ export function evictSessionPlayers(sessionId: string): void {
 
 export async function testTtsPlayback(arrayBuffer: ArrayBuffer): Promise<void> {
   const { ctx, analyser } = ensureAudioCtx();
-  if (ctx.state === 'suspended') await ctx.resume().catch(() => {});
+  if (ctx.state === 'suspended') await ctx.resume().catch((err: Error) => { console.error('[tts-playback] AudioContext.resume() failed:', err.name, err.message); });
 
   const audioBuffer = await ctx.decodeAudioData(arrayBuffer.slice(0) as ArrayBuffer);
   const source = ctx.createBufferSource();

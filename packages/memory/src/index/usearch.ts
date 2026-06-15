@@ -42,7 +42,12 @@ async function loadUsearch(): Promise<UsearchModule | null> {
     // are richer than what we use here.
     const mod = await import('usearch');
     cached = mod as unknown as UsearchModule;
-  } catch {
+  } catch (err) {
+    // Optional native dep — absence is expected (e.g. no prebuilt .node on
+    // this platform). Lossless fallback to BruteForceIndex, but log once so
+    // "why is recall on the slow path?" is answerable.
+    console.warn('[memory] usearch native module unavailable, using brute-force index:',
+      err instanceof Error ? err.message : err);
     cached = null;
   }
   return cached;

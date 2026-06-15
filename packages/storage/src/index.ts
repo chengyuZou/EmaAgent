@@ -86,14 +86,14 @@ export type {
   PendingFragmentInsert,
 } from './repos/pending-fragments.js';
 
-// ── Model catalogs ────────────────────────────────────────────────────────────
-export { LlmModelCatalogRepo }   from './repos/llm-model-catalog.js';
-export { EmbedModelCatalogRepo } from './repos/embed-model-catalog.js';
-export { RerankModelCatalogRepo } from './repos/rerank-model-catalog.js';
-export { TtsModelCatalogRepo }   from './repos/tts-model-catalog.js';
-export { SttModelCatalogRepo }   from './repos/stt-model-catalog.js';
-export type { LlmModelRow }   from './repos/llm-model-catalog.js';
-export type { EmbedModelRow } from './repos/embed-model-catalog.js';
-export type { RerankModelRow } from './repos/rerank-model-catalog.js';
-export type { TtsModelRow }   from './repos/tts-model-catalog.js';
-export type { SttModelRow }   from './repos/stt-model-catalog.js';
+// ── Per-provider model pools ──────────────────────────────────────────────────
+export { ProviderLlmModelsRepo } from './repos/provider-llm-models.js';
+export type { ProviderLlmModelRow, ProviderLlmModelInsert, ContextSource } from './repos/provider-llm-models.js';
+export { ProviderEmbedModelsRepo } from './repos/provider-embed-models.js';
+export type { ProviderEmbedModelRow, ProviderEmbedModelInsert, DimSource } from './repos/provider-embed-models.js';
+export { ProviderRerankModelsRepo } from './repos/provider-rerank-models.js';
+export type { ProviderRerankModelRow, ProviderRerankModelInsert } from './repos/provider-rerank-models.js';
+export { ProviderTtsModelsRepo } from './repos/provider-tts-models.js';
+export type { ProviderTtsModelRow, ProviderTtsModelInsert } from './repos/provider-tts-models.js';
+export { ProviderSttModelsRepo } from './repos/provider-stt-models.js';
+export type { ProviderSttModelRow, ProviderSttModelInsert } from './repos/provider-stt-models.js';

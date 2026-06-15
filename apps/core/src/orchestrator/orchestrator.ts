@@ -111,27 +111,65 @@ export class Orchestrator {
 
     // Build the TTS queue + coordinator before the engine stream is consumed.
     // Queue is shared between coordinator.emit and the merge loop.
+    //
+    // Wake-up uses a standing signal, not a one-shot slot: push fires the
+    // CURRENT signal at push time (double-fire is harmless), the consumer
+    // re-arms a fresh one each time it waits. The old slot pattern had a
+    // window where a push landed while no waiter was armed — the event sat
+    // in the queue until the next engine event, which during a long tool
+    // execution could be a minute away (audio stalls).
     const ttsQueue: EmaStreamEvent[] = [];
-    let notifyTts: (() => void) | null = null;
+    let ttsSignal = armSignal();
     const pushTts = (ev: EmaStreamEvent): void => {
       ttsQueue.push(ev);
-      notifyTts?.();
-      notifyTts = null;
+      ttsSignal.fire();
     };
 
-    const coordinator = await this.maybeBuildCoordinator(request, turnId, sessionId, signal, pushTts);
+    // TTS is an enhancement — its setup does real I/O (ensureVoiceUri uploads
+    // reference audio) and MUST NOT kill the turn. A failure here used to
+    // propagate out of run() with the turn already started: nobody called
+    // failTurn, the in-memory RunRegistry never cleared, and the session was
+    // stuck on session_busy until process restart. Degrade to silent instead.
+    let coordinator: TtsCoordinator | null = null;
+    try {
+      coordinator = await this.maybeBuildCoordinator(request, turnId, sessionId, signal, pushTts);
+    } catch (err) {
+      pushTts({
+        type:    'system_warning',
+        level:   'warn',
+        message: `TTS 初始化失败，本轮无语音：${err instanceof Error ? err.message : String(err)}`,
+      });
+    }
 
-    const engineEvents = this.engineStreamFor(request, turn, signal, sessionId);
+    // Any synchronous failure while preparing the engine stream must release
+    // the turn — same stuck-turn class as the coordinator path above.
+    let engineEvents: AsyncIterable<EmaStreamEvent>;
+    try {
+      engineEvents = this.engineStreamFor(request, turn, signal, sessionId);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.bindings.session.failTurn(turnId, 'turn/setup_failed', message);
+      this.activeTurns.delete(turnId as string);
+      throw err;
+    }
 
     const { callbacks } = this;
     const self = this;
     const events = (async function* () {
       try {
+        // Drain anything pushed before the merge loop starts (e.g. the TTS
+        // degrade warning above — with coordinator null, mergeStreams never
+        // touches ttsQueue).
+        while (ttsQueue.length > 0) yield ttsQueue.shift()!;
+
         let pendingTurnDone: EmaStreamEvent | null = null;
 
         for await (const ev of mergeStreams(engineEvents, coordinator, ttsQueue, () => {
-          const w = new Promise<void>((r) => { notifyTts = r; });
-          return w;
+          // Re-arm then hand out: pushes from this moment on fire the new
+          // signal; anything pushed earlier is already in ttsQueue and gets
+          // picked up by the merge loop's drain pass.
+          ttsSignal = armSignal();
+          return ttsSignal.promise;
         })) {
           // Terminal turn events must be yielded LAST. For completed turns we
           // drain/finalize TTS first; for failed/aborted turns we cancel TTS and
@@ -206,6 +244,11 @@ export class Orchestrator {
           ?? (providerId ? this.bindings.llm.defaultModelFor(providerId) : undefined);
 
         if (!providerId || !model) {
+          // Persist the failure BEFORE yielding the event — a yielded
+          // turn_failed without failTurn leaves the turn 'running' and the
+          // RunRegistry locked (session_busy forever, engines do this too).
+          this.bindings.session.failTurn(turn.id, 'provider/not_configured',
+            'No LLM provider configured for agent mode');
           return (async function* () {
             yield { type: 'turn_failed' as const, sessionId, turnId: turn.id, code: 'provider/not_configured', message: 'No LLM provider configured for agent mode' };
           })();
@@ -233,26 +276,38 @@ export class Orchestrator {
   ): Promise<TtsCoordinator | null> {
     if (!request.ttsEnabled) return null;
 
+    // Each gate below silently produced no audio (no warning). Log every
+    // skip reason so "TTS enabled but no sound" is diagnosable from the
+    // sidecar console instead of guessed at.
     const bindingRow = this.bindings.modelBindings.get('tts');
-    if (!bindingRow) return null;
+    if (!bindingRow) {
+      console.warn('[tts] no audio: no `tts` model binding configured');
+      return null;
+    }
 
     const card  = this.bindings.card.current();
     const voice = resolveVoice(card.id, this.bindings.card);
-    if (!voice) return null;
+    if (!voice) {
+      console.warn(`[tts] no audio: card "${card.id}" has no reference audio registered (voiceProfile.refAudios empty)`);
+      return null;
+    }
 
     // Ensure voiceUri (cache hit → skip upload; cache miss → upload + persist)
     const adapter = this.bindings.tts.getAdapter(bindingRow.providerConfigId);
-    const model   = request.model ?? bindingRow.model;
-    if (adapter) {
-      const cache = new VoiceUriCache(
-        new SettingsRepo(this.bindings.profileDb.sqlite),
-      );
-      await ensureVoiceUri(voice, adapter, model, card.id, bindingRow.providerConfigId, cache);
+    if (!adapter) {
+      console.warn(`[tts] no audio: no TTS adapter for provider ${bindingRow.providerConfigId}`);
+      return null;
     }
+    const model   = request.model ?? bindingRow.model;
+    const cache = new VoiceUriCache(new SettingsRepo(this.bindings.profileDb.sqlite));
+    await ensureVoiceUri(voice, adapter, model, card.id, bindingRow.providerConfigId, cache);
 
     // GPT-SoVITS uses refAudioPath directly and never sets voiceUri.
     // Cloud adapters (DashScope, OpenAI-TTS) require voiceUri — reject if absent.
-    if (!voice.voiceUri && adapter?.protocol !== 'gpt-sovits-tts') return null;
+    if (!voice.voiceUri && adapter.protocol !== 'gpt-sovits-tts') {
+      console.warn(`[tts] no audio: cloud adapter ${adapter.protocol} requires a voiceUri but upload/cache produced none`);
+      return null;
+    }
 
     return new TtsCoordinator({
       turnId,
@@ -267,6 +322,15 @@ export class Orchestrator {
       signal,
     });
   }
+}
+
+// ── Signal helper ───────────────────────────────────────────────────────────
+
+/** One-shot wake-up signal (hand-rolled Promise.withResolvers — Node 20). */
+function armSignal(): { promise: Promise<void>; fire: () => void } {
+  let fire!: () => void;
+  const promise = new Promise<void>((r) => { fire = r; });
+  return { promise, fire };
 }
 
 // ── Merge helper ────────────────────────────────────────────────────────────

@@ -153,7 +153,6 @@ export { SessionSwitcher }         from './chat/SessionSwitcher.js';
 export { ChatHistory }             from './chat/ChatHistory.js';
 export { UserBubble }              from './chat/UserBubble.js';
 export { AssistantBubble }         from './chat/AssistantBubble.js';
-export { ThinkingBlock }           from './chat/ThinkingBlock.js';
 export { ToolCallBlock }           from './chat/ToolCallBlock.js';
 export { ChatInput }               from './chat/ChatInput.js';
 export { ModeSelector }            from './chat/ModeSelector.js';

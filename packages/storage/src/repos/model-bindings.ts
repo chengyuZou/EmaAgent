@@ -92,6 +92,27 @@ export class ModelBindingsRepo {
       .run(module, providerConfigId, model);
   }
 
+  /** Delete ALL bindings for a module. Used for single-select atomic replace. */
+  deleteAllByModule(module: BindingModule): number {
+    const info = this.db
+      .prepare('DELETE FROM model_bindings WHERE module = ?')
+      .run(module);
+    return info.changes;
+  }
+
+  /**
+   * Delete every binding (across all modules) that references a given
+   * provider+model. Called when a model is disabled in the provider page —
+   * the enabled-pool row is gone, so its bindings must go too. Returns the
+   * number of bindings removed.
+   */
+  deleteByProviderModel(providerConfigId: string, model: string): number {
+    const info = this.db
+      .prepare('DELETE FROM model_bindings WHERE provider_config_id = ? AND model = ?')
+      .run(providerConfigId, model);
+    return info.changes;
+  }
+
   // ── Read ───────────────────────────────────────────────────────────────────
 
   /** Return the FIRST binding for a module (engines use this as the default). */

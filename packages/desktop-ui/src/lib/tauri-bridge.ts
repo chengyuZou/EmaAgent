@@ -40,6 +40,21 @@ export interface TauriBridge {
   /** Toggle mouse passthrough for the current window. */
   setPassthrough(value: boolean): Promise<void>;
 
+  /** Begin native window drag. Must be called from a mousedown handler. */
+  startDragging(): Promise<void>;
+
+  /**
+   * Global cursor position + current window bounds, all in physical pixels.
+   * Polled by the dynamic-passthrough loop — works even while the window
+   * ignores cursor events (cursorPosition is OS-global, not a window event).
+   * Returns null when Tauri is absent.
+   */
+  cursorAndBounds(): Promise<{
+    cursor: { x: number; y: number };
+    win:    { x: number; y: number; width: number; height: number };
+    scale:  number;
+  } | null>;
+
   /**
    * Open a native "Save As" dialog starting at defaultPath.
    * Returns the chosen absolute path, or null if the user cancelled.
@@ -73,10 +88,12 @@ function detectTauri(): boolean {
 type TauriCore   = typeof import('@tauri-apps/api/core');
 type TauriEvent  = typeof import('@tauri-apps/api/event');
 type TauriDialog = typeof import('@tauri-apps/plugin-dialog');
+type TauriWindow = typeof import('@tauri-apps/api/window');
 
 let _core:   TauriCore   | null = null;
 let _event:  TauriEvent  | null = null;
 let _dialog: TauriDialog | null = null;
+let _window: TauriWindow | null = null;
 
 async function getCore(): Promise<TauriCore | null> {
   if (!detectTauri()) return null;
@@ -108,6 +125,17 @@ async function getDialog(): Promise<TauriDialog | null> {
   try {
     _dialog = await import('@tauri-apps/plugin-dialog');
     return _dialog;
+  } catch {
+    return null;
+  }
+}
+
+async function getWindow(): Promise<TauriWindow | null> {
+  if (!detectTauri()) return null;
+  if (_window) return _window;
+  try {
+    _window = await import('@tauri-apps/api/window');
+    return _window;
   } catch {
     return null;
   }
@@ -162,6 +190,29 @@ export const tauriBridge: TauriBridge = {
     const core = await getCore();
     if (!core) return;
     await core.invoke('set_passthrough', { value });
+  },
+
+  async startDragging(): Promise<void> {
+    const winMod = await getWindow();
+    if (!winMod) return;
+    await winMod.getCurrentWindow().startDragging();
+  },
+
+  async cursorAndBounds() {
+    const winMod = await getWindow();
+    if (!winMod) return null;
+    const w = winMod.getCurrentWindow();
+    const [cursor, pos, size, scale] = await Promise.all([
+      winMod.cursorPosition(),
+      w.outerPosition(),
+      w.outerSize(),
+      w.scaleFactor(),
+    ]);
+    return {
+      cursor: { x: cursor.x, y: cursor.y },
+      win:    { x: pos.x, y: pos.y, width: size.width, height: size.height },
+      scale,
+    };
   },
 
   async getSidecarSecret(): Promise<string | null> {

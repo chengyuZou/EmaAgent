@@ -191,7 +191,6 @@ export class TtsCoordinator {
     // Segment is opened lazily on the first audio_chunk so we can infer the
     // actual file extension from the chunk's MIME (e.g. Qwen-TTS delivers WAV).
     let writer: ReturnType<NonNullable<typeof this.archive>['openSegment']> | undefined;
-    let wroteAny = false;
 
     try {
       for await (const ev of this.ttsClient.synthesize({
@@ -209,7 +208,6 @@ export class TtsCoordinator {
             writer = this.archive.openSegment(this.turnId as string, index, ext);
           }
           writer?.write(ev.bytes);
-          wroteAny = true;
         }
         const transformed = ttsEventToEma(ev, { turnId: this.turnId, sessionId: this.sessionId }, index);
         if (transformed) this.emit(transformed);

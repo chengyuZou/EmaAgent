@@ -1,93 +1,83 @@
-/** ProviderForm — add/edit a provider instance. */
-import { useState, type FormEvent } from 'react';
+/** ProviderForm — AIRI-style provider editor. */
+import { useState, useEffect, type FormEvent } from 'react';
 import { useSettingsStore } from '../stores/settings-store.js';
 import { providersApi, type ProviderConfigWire, type ProviderConfigInput, type ProviderDefinition } from '../api/providers.js';
-import type { ProtocolFamily } from '@ema-agent/contracts';
+import type { ProtocolFamily, Capability } from '@ema-agent/contracts';
+import { resolveProtocols } from '@ema-agent/contracts';
 import { showToast } from '../lib/toast.js';
+import { LlmModelManager }    from './LlmModelManager.js';
+import { EmbedModelManager }  from './EmbedModelManager.js';
+import { RerankModelManager } from './RerankModelManager.js';
+import { TtsModelManager }    from './TtsModelManager.js';
+import { SttModelManager }    from './SttModelManager.js';
 
 export interface ProviderFormProps {
   definitionId: string;
   definition?:  ProviderDefinition;
+  capability?:  Capability;
   instance?:    ProviderConfigWire;
   onClose():    void;
 }
 
-export function ProviderForm({ definitionId, definition, instance, onClose }: ProviderFormProps): JSX.Element {
-  const [displayName, setDisplayName] = useState(instance?.displayName ?? '');
-  const [apiKey, setApiKey] = useState('');
+const PROTOCOL_LABELS: Record<string, string> = {
+  'openai-llm':           'OpenAI 兼容',
+  'openai-responses-llm': 'OpenAI Responses',
+  'anthropic-llm':        'Anthropic 兼容',
+  'gemini-llm':           'Gemini',
+};
+
+const inputCls = 'w-full bg-neutral-900/80 backdrop-blur-sm border border-neutral-800 rounded-lg px-3 py-2 text-sm text-neutral-200 focus:outline-none focus:border-pink-400/40 transition-all duration-250';
+
+export function ProviderForm({ definitionId, definition, capability, instance, onClose }: ProviderFormProps): JSX.Element {
+  const [apiKey, setApiKey]         = useState('');
   const [showApiKey, setShowApiKey] = useState(false);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
 
-  // ── TTS-specific fields ─────────────────────────────────────────────────
-  const hasTts = definition?.capabilities?.includes('tts') ?? false;
-  const ttsModels: string[] = (definition?.defaultModels?.['tts'] as string[]) ?? [];
-  const [ttsModel, setTtsModel] = useState(instance?.config?.['ttsModel'] as string ?? ttsModels[0] ?? '');
-  const [ttsSpeed, setTtsSpeed] = useState(instance?.config?.['ttsSpeed'] as number ?? 1.0);
-  const [ttsVoice, setTtsVoice] = useState(instance?.config?.['ttsVoice'] as string ?? '');
-  const [ttsTestText, setTtsTestText] = useState('你好，我是艾玛，很高兴认识你。');
-  const [ttsTesting, setTtsTesting] = useState(false);
+  const activeCap: Capability | undefined = capability ?? definition?.capabilities?.[0];
 
-  // ── Protocol selection ──────────────────────────────────────────────────
-  // Find the first capability that offers multiple protocols. When present,
-  // the user can pick which wire protocol to use (e.g. DeepSeek supports
-  // openai-llm and anthropic-llm on different base URLs).
-  const capabilityEntries = Object.entries(definition?.protocols ?? {}) as [string, string | string[]][];
-  const multiCap = capabilityEntries.find(([, v]) => Array.isArray(v) && (v as string[]).length > 1);
-  const protocolChoices: string[] = multiCap
-    ? (multiCap[1] as string[])
-    : (capabilityEntries.length > 0 && typeof capabilityEntries[0]![1] === 'string'
-      ? [capabilityEntries[0]![1] as string]
-      : []);
+  useEffect(() => {
+    if (!instance) return;
+    let cancelled = false;
+    void providersApi.getKey(instance.id)
+      .then((k) => { if (!cancelled) setApiKey(k); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [instance]);
 
+  const protocolChoices: string[] = activeCap
+    ? resolveProtocols(definition?.protocols?.[activeCap])
+    : [];
   const existingProtocol = (instance?.config?.['protocol'] as string | undefined)
-    ?? protocolChoices[0]
-    ?? '';
+    ?? protocolChoices[0] ?? '';
   const [selectedProtocol, setSelectedProtocol] = useState(existingProtocol);
 
-  // Default baseUrl: editing → saved value; new → protocolBaseUrl or defaultBaseUrl
   function defaultUrlFor(proto: string): string {
     return definition?.protocolBaseUrls?.[proto as ProtocolFamily]
-      ?? definition?.defaultBaseUrl
-      ?? '';
+      ?? definition?.defaultBaseUrl ?? '';
   }
-  const [baseUrl, setBaseUrl] = useState(
-    instance?.baseUrl ?? defaultUrlFor(existingProtocol),
-  );
-  // Track whether the user has manually edited baseUrl so we don't overwrite
+  const [baseUrl, setBaseUrl]           = useState(instance?.baseUrl ?? defaultUrlFor(existingProtocol));
   const [baseUrlManual, setBaseUrlManual] = useState(false);
 
   function handleProtocolChange(proto: string): void {
     setSelectedProtocol(proto);
-    if (!baseUrlManual) {
-      setBaseUrl(defaultUrlFor(proto));
-    }
+    if (!baseUrlManual) setBaseUrl(defaultUrlFor(proto));
   }
 
-  // ── Submit ──────────────────────────────────────────────────────────────
-
   const [submitting, setSubmitting] = useState(false);
+  const [probing, setProbing]       = useState(false);
+  const [probeOk, setProbeOk]       = useState<boolean | null>(instance?.health?.status === 'ok' ? true : null);
+  const [probeMsg, setProbeMsg]     = useState<string | null>(instance?.health?.lastError ?? null);
 
-  async function handleSubmit(e: FormEvent): Promise<void> {
-    e.preventDefault();
-
-    // New instance: API key is required
-    if (!instance && !apiKey.trim()) {
-      showToast('API Key 不能为空', { variant: 'danger' });
-      return;
-    }
-
+  async function doSave(): Promise<void> {
+    if (!instance && !apiKey.trim()) return; // need key for first create
     setSubmitting(true);
     try {
       const input: ProviderConfigInput = {
         definitionId,
-        displayName: displayName || undefined,
-        apiKey:      apiKey.trim() || undefined,
-        baseUrl:     baseUrl.trim() || null,
-        config:      {
-          ...(selectedProtocol ? { protocol: selectedProtocol } : {}),
-          ...(hasTts ? { ttsModel, ttsSpeed, ttsVoice } : {}),
-        },
+        apiKey:  apiKey.trim() || undefined,
+        baseUrl: baseUrl.trim() || null,
+        config:  { ...(selectedProtocol ? { protocol: selectedProtocol } : {}) },
       };
-
       if (instance) {
         await providersApi.patch(instance.id, input);
         showToast('已更新', { variant: 'success' });
@@ -95,9 +85,7 @@ export function ProviderForm({ definitionId, definition, instance, onClose }: Pr
         await providersApi.create(input);
         showToast('已创建', { variant: 'success' });
       }
-
       void useSettingsStore.getState().refreshProviders();
-      onClose();
     } catch (err: unknown) {
       showToast(`操作失败: ${err instanceof Error ? err.message : 'Unknown'}`, { variant: 'danger' });
     } finally {
@@ -105,148 +93,189 @@ export function ProviderForm({ definitionId, definition, instance, onClose }: Pr
     }
   }
 
+  async function handleSubmit(e: FormEvent): Promise<void> {
+    e.preventDefault();
+    await doSave();
+  }
+
   async function handleProbe(): Promise<void> {
+    if (!instance) return;
+    setProbing(true);
     try {
-      const result = await providersApi.probe(instance?.id ?? '', undefined);
-      showToast(result.ok ? `连接成功 ${result.latencyMs}ms` : `连接失败: ${result.error}`, {
-        variant: result.ok ? 'success' : 'danger',
-      });
+      const result = await providersApi.probe(instance.id, undefined);
+      setProbeOk(result.ok);
+      setProbeMsg(result.ok ? null : (result.error ?? '连接失败'));
     } catch {
-      showToast('探测失败', { variant: 'danger' });
+      setProbeOk(false);
+      setProbeMsg('探测失败');
+    } finally {
+      setProbing(false);
     }
   }
 
   return (
-    <form onSubmit={handleSubmit} className="bg-gray-800 border border-gray-700 rounded-2xl p-4">
-      <h3 className="text-sm font-semibold mb-3">{instance ? '编辑实例' : '新增实例'}</h3>
+    <div className="flex flex-col gap-8 pb-6">
+      <form onSubmit={handleSubmit} className="flex flex-col gap-8 max-w-lg">
 
-      <div className="flex flex-col gap-3">
-        <input
-          className="bg-gray-900 border border-gray-600 rounded-xl px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-pink-400/50"
-          placeholder="显示名称（可选）"
-          value={displayName}
-          onChange={(e) => setDisplayName(e.target.value)}
-        />
-
-        {/* API Key with show/hide toggle */}
-        <div className="relative">
-          <input
-            className="w-full bg-gray-900 border border-gray-600 rounded-xl px-3 py-2 pr-10 text-sm text-gray-200 focus:outline-none focus:border-pink-400/50"
-            placeholder={instance ? 'API Key（留空则不修改）' : 'API Key *'}
-            type={showApiKey ? 'text' : 'password'}
-            value={apiKey}
-            onChange={(e) => setApiKey(e.target.value)}
-            autoComplete="off"
-          />
-          <button
-            type="button"
-            className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300 transition-colors px-1"
-            tabIndex={-1}
-            onClick={() => setShowApiKey((v) => !v)}
-            title={showApiKey ? '隐藏' : '显示明文'}
-          >
-            {showApiKey ? '🙈' : '👁'}
-          </button>
-        </div>
-
-        {/* Protocol selector — shown when provider has multiple protocols for one capability */}
-        {protocolChoices.length > 1 && (
-          <select
-            className="bg-gray-900 border border-gray-600 rounded-xl px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-pink-400/50"
-            value={selectedProtocol}
-            onChange={(e) => handleProtocolChange(e.target.value)}
-          >
-            {protocolChoices.map((proto) => (
-              <option key={proto} value={proto}>{proto}</option>
-            ))}
-          </select>
-        )}
-
-        <input
-          className="bg-gray-900 border border-gray-600 rounded-xl px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-pink-400/50"
-          placeholder="Base URL（可选）"
-          value={baseUrl}
-          onChange={(e) => { setBaseUrl(e.target.value); setBaseUrlManual(true); }}
-        />
-
-        {/* ── TTS-specific fields ────────────────────────────────────────── */}
-        {hasTts && (
-          <>
-            {ttsModels.length > 0 && (
-              <select
-                className="bg-gray-900 border border-gray-600 rounded-xl px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-pink-400/50"
-                value={ttsModel}
-                onChange={(e) => setTtsModel(e.target.value)}
-              >
-                {ttsModels.map((m) => <option key={m} value={m}>{m}</option>)}
-              </select>
-            )}
-            <div className="flex items-center gap-2 text-sm text-gray-400">
-              <span>语速</span>
-              <input
-                type="range" min={0.25} max={2.0} step={0.05}
-                className="flex-1 accent-pink-400"
-                value={ttsSpeed}
-                onChange={(e) => setTtsSpeed(parseFloat(e.target.value))}
-              />
-              <span className="w-10 text-right text-gray-200">{ttsSpeed.toFixed(2)}</span>
+        {/* ── 基础配置 ─────────────────────────────────────────────────────── */}
+        <section className="flex flex-col gap-6">
+          <div className="flex items-start justify-between">
+            <div>
+              <h2 className="text-2xl text-neutral-400">基础配置</h2>
+              <p className="text-sm text-neutral-500 mt-0.5">基本设置</p>
             </div>
-            <input
-              className="bg-gray-900 border border-gray-600 rounded-xl px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-pink-400/50"
-              placeholder="语音 ID（可选，如 alloy）"
-              value={ttsVoice}
-              onChange={(e) => setTtsVoice(e.target.value)}
-            />
-            <div className="flex gap-2">
+          </div>
+
+          {/* API 密钥 */}
+          <label className="flex flex-col gap-2">
+            <div>
+              <div className="text-sm font-medium text-neutral-300">API 密钥</div>
+              <div className="text-xs text-neutral-500 mt-0.5">
+                API Key for {definition?.name ?? definitionId}
+              </div>
+            </div>
+            <div className="relative">
               <input
-                className="flex-1 bg-gray-900 border border-gray-600 rounded-xl px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-pink-400/50"
-                placeholder="测试文本"
-                value={ttsTestText}
-                onChange={(e) => setTtsTestText(e.target.value)}
+                className={`${inputCls} pr-10`}
+                placeholder="sk-..."
+                type={showApiKey ? 'text' : 'password'}
+                value={apiKey}
+                onChange={(e) => setApiKey(e.target.value)}
+                onBlur={() => { void doSave(); }}
+                autoComplete="off"
               />
               <button
                 type="button"
-                disabled={ttsTesting || !instance}
-                className="px-3 py-2 rounded-xl bg-pink-400/20 text-pink-300 text-sm hover:bg-pink-400/30 disabled:opacity-50"
-                onClick={async () => {
-                  if (!instance) return;
-                  setTtsTesting(true);
-                  try {
-                    const res = await providersApi.probe(instance.id, ttsModel);
-                    showToast(res.ok ? `测试成功 ${res.latencyMs}ms` : `测试失败: ${res.error}`, {
-                      variant: res.ok ? 'success' : 'danger',
-                    });
-                  } catch {
-                    showToast('测试失败', { variant: 'danger' });
-                  } finally { setTtsTesting(false); }
-                }}
-              >{ttsTesting ? '测试中…' : '测试声音'}</button>
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-neutral-500 hover:text-neutral-300 transition-colors px-1"
+                tabIndex={-1}
+                onClick={() => setShowApiKey((v) => !v)}
+                aria-label={showApiKey ? '隐藏' : '显示明文'}
+              >
+                <span className={showApiKey ? 'i-solar:eye-closed-linear' : 'i-solar:eye-linear'} aria-hidden />
+              </button>
             </div>
-          </>
-        )}
-      </div>
+          </label>
+        </section>
 
-      <div className="flex gap-2 mt-4">
-        <button
-          type="submit"
-          disabled={submitting}
-          className="px-4 py-2 rounded-xl bg-pink-400/20 text-pink-300 text-sm hover:bg-pink-400/30 transition-colors disabled:opacity-50"
-        >
-          {submitting ? '保存中…' : '保存'}
-        </button>
-        {instance && (
+        {/* ── 高级配置（默认折叠）─────────────────────────────────────────── */}
+        <section className="flex flex-col gap-4">
           <button
             type="button"
-            className="px-3 py-2 rounded-xl bg-gray-700 text-gray-300 text-sm hover:bg-gray-600"
-            onClick={handleProbe}
-          >测试连接</button>
+            className="flex items-center gap-1.5 text-left outline-none group bg-transparent border-0 focus:ring-0 focus-visible:ring-0"
+            onClick={() => setAdvancedOpen((v) => !v)}
+          >
+            <h2 className="text-2xl text-neutral-400 group-hover:text-neutral-300 transition-colors duration-200">高级配置</h2>
+            <span
+              className="i-solar:alt-arrow-down-linear text-neutral-500 group-hover:text-neutral-400 transition-transform duration-200"
+              style={{ transform: advancedOpen ? 'rotate(180deg)' : 'rotate(0deg)' }}
+              aria-hidden
+            />
+          </button>
+
+          {advancedOpen && (
+            <div className="flex flex-col gap-4 mt-1">
+              {protocolChoices.length > 1 && (
+                <label className="flex flex-col gap-2">
+                  <div>
+                    <div className="text-sm font-medium text-neutral-300">协议</div>
+                  </div>
+                  <select
+                    className={inputCls}
+                    value={selectedProtocol}
+                    onChange={(e) => handleProtocolChange(e.target.value)}
+                  >
+                    {protocolChoices.map((proto) => (
+                      <option key={proto} value={proto}>{PROTOCOL_LABELS[proto] ?? proto}</option>
+                    ))}
+                  </select>
+                </label>
+              )}
+
+              <label className="flex flex-col gap-2">
+                <div>
+                  <div className="text-sm font-medium text-neutral-300">Base URL</div>
+                  <div className="text-xs text-neutral-500 mt-0.5">自定义服务地址（可选）</div>
+                </div>
+                <input
+                  className={inputCls}
+                  placeholder={defaultUrlFor(selectedProtocol) || 'https://...'}
+                  value={baseUrl}
+                  onChange={(e) => { setBaseUrl(e.target.value); setBaseUrlManual(true); }}
+                />
+              </label>
+            </div>
+          )}
+        </section>
+
+        {/* ── 验证状态条（Ping 内嵌）──────────────────────────────────────── */}
+        {instance && probeOk === false && probeMsg && (
+          <div className="flex items-center justify-between rounded-lg bg-red-500/10 border border-red-500/20 px-3 py-2 text-sm text-red-400">
+            <div className="flex items-center gap-2">
+              <span className="i-solar:danger-circle-linear shrink-0" aria-hidden />
+              <span>{probeMsg}</span>
+            </div>
+            {activeCap === 'llm' && (
+              <button type="button" disabled={probing} onClick={handleProbe}
+                className="ml-4 rounded px-2 py-0.5 text-xs font-medium bg-red-500/15 text-red-300 hover:bg-red-500/25 transition-colors disabled:opacity-50">
+                {probing ? '测试中…' : 'Ping API'}
+              </button>
+            )}
+          </div>
         )}
-        <button
-          type="button"
-          className="px-3 py-2 rounded-xl text-gray-400 text-sm hover:text-gray-200"
-          onClick={onClose}
-        >取消</button>
-      </div>
-    </form>
+        {instance && probeOk !== false && (
+          <div className="flex items-center justify-between rounded-lg bg-blue-500/10 border border-blue-500/20 px-3 py-2 text-sm text-blue-300">
+            <div className="flex items-center gap-2">
+              <span className="i-solar:info-circle-linear shrink-0" aria-hidden />
+              <span>{probeOk === true ? '配置验证通过' : '配置部分验证'}</span>
+            </div>
+            {activeCap === 'llm' && (
+              <button type="button" disabled={probing} onClick={handleProbe}
+                className="ml-4 rounded px-2 py-0.5 text-xs font-medium bg-blue-500/15 text-blue-300 hover:bg-blue-500/25 transition-colors disabled:opacity-50">
+                {probing ? '测试中…' : 'Ping API'}
+              </button>
+            )}
+          </div>
+        )}
+        {!instance && (
+          <div className="flex items-center rounded-lg bg-blue-500/10 border border-blue-500/20 px-3 py-2 text-sm text-blue-300">
+            <span className="i-solar:info-circle-linear mr-2 shrink-0" aria-hidden />
+            <span>输入 API Key 后自动保存</span>
+          </div>
+        )}
+
+      </form>
+
+      {/* ── 模型池（配置存在后才显示）──────────────────────────────────────── */}
+      {instance && activeCap === 'llm' && (
+        <>
+          <div className="border-t border-neutral-800" />
+          <LlmModelManager providerId={instance.id} />
+        </>
+      )}
+      {instance && activeCap === 'embed' && (
+        <>
+          <div className="border-t border-neutral-800" />
+          <EmbedModelManager providerId={instance.id} />
+        </>
+      )}
+      {instance && activeCap === 'rerank' && (
+        <>
+          <div className="border-t border-neutral-800" />
+          <RerankModelManager providerId={instance.id} />
+        </>
+      )}
+      {instance && activeCap === 'tts' && (
+        <>
+          <div className="border-t border-neutral-800" />
+          <TtsModelManager providerId={instance.id} />
+        </>
+      )}
+      {instance && activeCap === 'stt' && (
+        <>
+          <div className="border-t border-neutral-800" />
+          <SttModelManager providerId={instance.id} />
+        </>
+      )}
+    </div>
   );
 }

@@ -4,6 +4,7 @@ import type {
   MemoryTaskKind, MemoryTaskRow,
 } from '@ema-agent/storage';
 import type { MemoryDeps } from '../deps.js';
+import { bestEffort } from '../observability.js';
 import type { MemorySettings } from '../types.js';
 import { EmbedService }     from '../embed/service.js';
 import { SessionTaskQueue } from './session-queue.js';
@@ -79,10 +80,9 @@ export class MemoryTaskRunner {
 
   private async dispatch(row: MemoryTaskRow): Promise<void> {
     const t0 = Date.now();
-    const payload = (() => {
-      try { return JSON.parse(row.payload_json) as { sessionId?: string }; }
-      catch { return {} as { sessionId?: string }; }
-    })();
+    const payload = bestEffort(`task ${row.id} payload_json parse`,
+      () => JSON.parse(row.payload_json) as { sessionId?: string },
+      {} as { sessionId?: string });
     this.deps.memory.emit?.({
       type:      'memory_task_started',
       taskId:    row.id,

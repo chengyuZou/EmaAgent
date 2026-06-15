@@ -58,7 +58,7 @@ export function ChatHistory(): JSX.Element {
 
           {streaming && (
             <AssistantBubble
-              message={{ content: streaming.content, slices: streaming.slices, createdAt: streaming.startedAt }}
+              message={{ content: streaming.content, slices: streaming.slices, createdAt: streaming.startedAt, turnId: streaming.turnId }}
               isStreaming
               iterationCount={iterationCount ?? undefined}
             />
@@ -90,6 +90,14 @@ function BubbleRouter({ message }: { message: ChatHistoryItem }): JSX.Element {
   switch (message.role) {
     case 'user':      return <UserBubble message={message} />;
     case 'assistant': return <AssistantBubble message={message} />;
+    case 'system':
+      return (
+        <div className="flex items-center justify-center gap-3 py-2">
+          <div className="flex-1 border-t border-neutral-800" />
+          <span className="text-xs text-neutral-500 whitespace-nowrap">{message.content}</span>
+          <div className="flex-1 border-t border-neutral-800" />
+        </div>
+      );
     case 'error':
       return (
         <div className="flex justify-center">

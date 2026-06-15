@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { asSessionId, asTurnId } from '@ema-agent/contracts';
-import type { SessionWire, MessageWire, SessionsListResult, SessionsGroupedResult } from '@ema-agent/contracts';
+import type { SessionWire, SessionMessagesResult, SessionsListResult, SessionsGroupedResult } from '@ema-agent/contracts';
 import type { AppBindings } from '../wiring.js';
 
 // ── Schemas ─────────────────────────────────────────────────────────────────
@@ -90,7 +90,10 @@ export function sessionsRoute(bindings: AppBindings): Hono {
 
     const sessionId = asSessionId(c.req.param('id'));
     const messages = bindings.session.listMessages(sessionId, query.data);
-    return c.json(messages satisfies MessageWire[]);
+    // Turns ride along so the frontend can group messages by turnId and attach
+    // per-turn usage / duration / replayable audio without a second request.
+    const turns = bindings.session.listTurns(sessionId);
+    return c.json({ messages, turns } satisfies SessionMessagesResult);
   });
 
   // ── PUT /api/sessions/:id — partial update (title / pinned / groupLabel) ───
@@ -110,6 +113,11 @@ export function sessionsRoute(bindings: AppBindings): Hono {
         lastMode:       body.data.lastMode,
         lastSubMode:    body.data.lastSubMode,
       });
+      if (body.data.workspaceRoots !== undefined) {
+        // The cached CommandRunner baked the old roots into its sandbox
+        // config — drop it so the next turn rebuilds against the new ones.
+        bindings.invalidateSessionRuntime(sessionId);
+      }
       return c.json(bindings.session.getSession(sessionId));
     } catch (err) {
       if (isNotFound(err)) return c.json({ error: 'session_not_found' }, 404);

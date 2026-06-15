@@ -223,87 +223,57 @@ CREATE INDEX idx_memory_items_lastref    ON memory_items(last_referenced_at DESC
 -- is_builtin = 0 via the settings UI. Builtin rows are updated via UPSERT on
 -- migration (safe for re-run).
 
--- LLM models: context window + capability flags
-CREATE TABLE llm_model_catalog (
-  model_name      TEXT PRIMARY KEY,
-  context_window  INTEGER NOT NULL,
-  supports_vision INTEGER NOT NULL DEFAULT 0,
-  supports_tools  INTEGER NOT NULL DEFAULT 1,
-  supports_think  INTEGER NOT NULL DEFAULT 0,
-  is_builtin      INTEGER NOT NULL DEFAULT 1
+-- Per-provider ENABLED LLM models — the pool that bindings draw from.
+-- A row exists ⟺ the user toggled this model ON for this provider config.
+-- context_window is denormalized at enable time (live API value > token table >
+-- manual entry) so memory budgeting always has it without a second lookup.
+-- (Replaces the old global llm_model_catalog, which was never populated.)
+CREATE TABLE provider_llm_models (
+  provider_config_id  TEXT    NOT NULL REFERENCES provider_configs(id) ON DELETE CASCADE,
+  model               TEXT    NOT NULL,
+  context_window      INTEGER NOT NULL,
+  context_source      TEXT    NOT NULL DEFAULT 'table'   -- 'live' | 'table' | 'manual'
+                      CHECK(context_source IN ('live','table','manual')),
+  created_at          INTEGER NOT NULL,
+  PRIMARY KEY (provider_config_id, model)
+);
+CREATE INDEX idx_provider_llm_models_model ON provider_llm_models(model);
+
+-- Per-provider ENABLED embed model pool. dim is denormalized at enable time
+-- (@ema-agent/token's embed-dims.json as static fallback > manual entry).
+CREATE TABLE provider_embed_models (
+  provider_config_id  TEXT    NOT NULL REFERENCES provider_configs(id) ON DELETE CASCADE,
+  model               TEXT    NOT NULL,
+  dim                 INTEGER NOT NULL,
+  dim_source          TEXT    NOT NULL DEFAULT 'table'
+                      CHECK(dim_source IN ('live','table','manual')),
+  created_at          INTEGER NOT NULL,
+  PRIMARY KEY (provider_config_id, model)
+);
+CREATE INDEX idx_provider_embed_models_model ON provider_embed_models(model);
+
+-- Per-provider ENABLED rerank model pool. max_chunks is optional metadata.
+CREATE TABLE provider_rerank_models (
+  provider_config_id  TEXT    NOT NULL REFERENCES provider_configs(id) ON DELETE CASCADE,
+  model               TEXT    NOT NULL,
+  max_chunks          INTEGER,
+  created_at          INTEGER NOT NULL,
+  PRIMARY KEY (provider_config_id, model)
 );
 
--- Embedding models: vector dimension + optional max_tokens per call
-CREATE TABLE embed_model_catalog (
-  model_name  TEXT PRIMARY KEY,
-  dim         INTEGER NOT NULL,
-  max_tokens  INTEGER,
-  is_builtin  INTEGER NOT NULL DEFAULT 1
+-- Per-provider ENABLED TTS model pool. Model metadata (supports_speed etc.)
+-- lives in @ema-agent/tts adapter logic — no extra columns needed here.
+CREATE TABLE provider_tts_models (
+  provider_config_id  TEXT    NOT NULL REFERENCES provider_configs(id) ON DELETE CASCADE,
+  model               TEXT    NOT NULL,
+  created_at          INTEGER NOT NULL,
+  PRIMARY KEY (provider_config_id, model)
 );
 
--- Rerank models: max concurrent chunks (no dimension needed — rerankers only sort)
-CREATE TABLE rerank_model_catalog (
-  model_name  TEXT PRIMARY KEY,
-  max_chunks  INTEGER,
-  is_builtin  INTEGER NOT NULL DEFAULT 1
+-- Per-provider ENABLED STT model pool.
+CREATE TABLE provider_stt_models (
+  provider_config_id  TEXT    NOT NULL REFERENCES provider_configs(id) ON DELETE CASCADE,
+  model               TEXT    NOT NULL,
+  created_at          INTEGER NOT NULL,
+  PRIMARY KEY (provider_config_id, model)
 );
-
--- TTS models: default output format, sample rate, and whether the model accepts
--- speed control. openai-tts clone path (CosyVoice2) hardcodes skipSpeedGain=true
--- so supports_speed=0 for those models. DashScope CosyVoice/QwenTTS and
--- GPT-SoVITS accept speed parameters.
-CREATE TABLE tts_model_catalog (
-  model_name          TEXT PRIMARY KEY,
-  default_format      TEXT NOT NULL DEFAULT 'mp3',
-  default_sample_rate INTEGER NOT NULL DEFAULT 24000,
-  supports_speed      INTEGER NOT NULL DEFAULT 1,
-  is_builtin          INTEGER NOT NULL DEFAULT 1
-);
-
--- STT models: supported languages as JSON array ('[]' = auto-detect / all),
--- whether verbose_json (segment timestamps) is supported, and max audio duration.
-CREATE TABLE stt_model_catalog (
-  model_name          TEXT PRIMARY KEY,
-  languages           TEXT NOT NULL DEFAULT '[]',
-  supports_timestamps INTEGER NOT NULL DEFAULT 1,
-  max_duration_s      INTEGER,
-  is_builtin          INTEGER NOT NULL DEFAULT 1
-);
-
--- ── Seed data ─────────────────────────────────────────────────────────────────
-
--- LLM
-INSERT OR REPLACE INTO llm_model_catalog (model_name, context_window, supports_vision, supports_tools, supports_think) VALUES
-  ('gpt-4.1',              1047576, 1, 1, 0),
-  ('gpt-4.1-mini',         1047576, 1, 1, 0),
-  ('gpt-4o',                128000, 1, 1, 0),
-  ('gpt-4o-mini',           128000, 1, 1, 0),
-  ('o3',                    200000, 0, 1, 1),
-  ('o4-mini',               200000, 1, 1, 1),
-  ('claude-opus-4-5',       200000, 1, 1, 1),
-  ('claude-sonnet-4-5',     200000, 1, 1, 1),
-  ('claude-haiku-4-5',      200000, 1, 1, 0),
-  ('gemini-2.5-pro',       1048576, 1, 1, 1),
-  ('gemini-2.5-flash',     1048576, 1, 1, 1),
-  ('gemini-2.0-flash',     1000000, 1, 1, 0),
-  ('deepseek-v4-flash',      64000, 0, 1, 1),
-  ('deepseek-v4-pro',        64000, 0, 1, 1);
-
--- Embed
-INSERT OR REPLACE INTO embed_model_catalog (model_name, dim, max_tokens) VALUES
-  ('text-embedding-3-large', 3072, 8192),
-  ('text-embedding-3-small', 1536, 8192),
-  ('text-embedding-ada-002', 1536, 8191);
-
--- Rerank
-INSERT OR REPLACE INTO rerank_model_catalog (model_name, max_chunks) VALUES
-  ('cohere-rerank-v3.5', 1000);
-
--- TTS
-INSERT OR REPLACE INTO tts_model_catalog (model_name, default_format, default_sample_rate, supports_speed) VALUES
-  ('tts-1',    'mp3', 24000, 1),
-  ('tts-1-hd', 'mp3', 24000, 1);
-
--- STT
-INSERT OR REPLACE INTO stt_model_catalog (model_name, languages, supports_timestamps, max_duration_s) VALUES
-  ('whisper-1', '[]', 1, 1500);

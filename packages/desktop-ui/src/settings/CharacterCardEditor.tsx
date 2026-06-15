@@ -38,19 +38,19 @@ export function CharacterCardEditor({ card, onActivate }: CharacterCardEditorPro
               onClick={onActivate}
             >切换至此</button>
           )}
-          <span className="text-xs text-gray-500">v{card.version}</span>
+          <span className="text-xs text-neutral-500">v{card.version}</span>
         </div>
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 mb-4 border-b border-gray-700 pb-2">
+      <div className="flex gap-1 mb-4 border-b border-neutral-800 pb-2">
         {TABS.map((tab) => (
           <button
             key={tab.id}
             className={`px-4 py-2 rounded-t-lg text-sm transition-colors ${
               activeTab === tab.id
                 ? 'text-pink-300 border-b-2 border-pink-400'
-                : 'text-gray-400 hover:text-gray-200'
+                : 'text-neutral-400 hover:text-neutral-200'
             }`}
             onClick={() => setActiveTab(tab.id)}
           >

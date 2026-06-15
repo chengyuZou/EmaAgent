@@ -1,15 +1,60 @@
-import { defineConfig, presetUno, presetAttributify } from 'unocss';
+// Desktop app UnoCSS config — consumes the shared EmaAgent design system
+// from @ema-agent/ui (chromatic pink/violet palettes, icons, radius scale,
+// glass shortcuts) and adds app-specific scanning + safelist on top.
+//
+// NOTE: no `unocss` aggregate imports here or in the shared config — the
+// aggregate drags oxc-parser's wasm binding into Vite's browser module graph
+// (the unocss vite plugin injects this config file into the graph for HMR).
+import type { UserConfig } from '@unocss/core';
+import { createExternalPackageIconLoader } from '@iconify/utils/lib/loader/external-pkg';
+import {
+  emaSharedPreset,
+  emaSharedTheme,
+  emaSharedShortcuts,
+  emaSharedSafelist,
+} from '@ema-agent/ui/uno.config';
 
-export default defineConfig({
-  presets: [
-    presetUno(),          // Tailwind/Windi-compatible utilities
-    presetAttributify(),  // <div flex flex-col /> shorthand (optional)
-  ],
-  // Scan all files in the desktop app + the desktop-ui package it imports from.
+// Provider iconKeys arrive as runtime strings from the sidecar API — static
+// scanning can't see them, so every definition's iconKey must be safelisted.
+const PROVIDER_ICON_SAFELIST = [
+  'i-lobe-icons:alibabacloud',
+  'i-lobe-icons:claude',
+  'i-lobe-icons:deepseek',
+  'i-lobe-icons:fireworks',
+  'i-lobe-icons:gemini',
+  'i-lobe-icons:groq',
+  'i-lobe-icons:huggingface',
+  'i-lobe-icons:jina',
+  'i-lobe-icons:lmstudio',
+  'i-lobe-icons:mistral',
+  'i-lobe-icons:moonshot',
+  'i-lobe-icons:ollama',
+  'i-lobe-icons:openai',
+  'i-lobe-icons:openrouter',
+  'i-lobe-icons:perplexity',
+  'i-lobe-icons:siliconcloud',
+  'i-lobe-icons:together',
+  'i-lobe-icons:xai',
+  'i-lobe-icons:zhipu',
+];
+
+const config: UserConfig = {
+  presets: emaSharedPreset({
+    iconCollections: createExternalPackageIconLoader('@proj-airi/lobe-icons'),
+  }),
+  theme:     emaSharedTheme(),
+  shortcuts: emaSharedShortcuts(),
+  safelist:  [...emaSharedSafelist, ...PROVIDER_ICON_SAFELIST],
+  // Scan the desktop app plus every workspace package that renders UI here.
+  // Paths are relative to this config file (apps/desktop/).
   content: {
     filesystem: [
       'src/**/*.{ts,tsx}',
-      '../../../packages/desktop-ui/src/**/*.{ts,tsx}',
+      '../../packages/desktop-ui/src/**/*.{ts,tsx}',
+      '../../packages/ui/src/**/*.{ts,tsx}',
+      '../../packages/live2d-react/src/**/*.{ts,tsx}',
     ],
   },
-});
+};
+
+export default config;

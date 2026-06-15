@@ -22,6 +22,13 @@ import {
   type Live2DModelRuntimeConfig,
 } from '../model-config.js';
 
+// pixi-live2d-display's `autoUpdate: true` is a NO-OP unless a Ticker class is
+// registered with the library first. Without this the model loads and renders
+// frame 0 but never ticks — no breath, no blink, no idle sway, no lip-sync
+// (looks "completely frozen"). Register once at module load, before any
+// PixiLive2DModel.from().
+PixiLive2DModel.registerTicker(PIXI.Ticker);
+
 // ── Live2DStage ─────────────────────────────────────────────────────────────
 //
 // Single-file orchestrator that:

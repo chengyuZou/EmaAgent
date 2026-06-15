@@ -69,16 +69,16 @@ export function SkillsTab(): JSX.Element {
   }
 
   return (
-    <div className="flex flex-col gap-4 h-full">
+    <div className="flex flex-col gap-4">
       {/* Header */}
       <div className="flex items-start justify-between shrink-0">
         <div>
           <h2 className="text-base font-semibold text-neutral-100">技能管理</h2>
-          <p className="text-xs text-neutral-500 mt-0.5">安装并管理自定义技能（Markdown 驱动，含工具权限白名单）</p>
+          <p className="text-xs text-neutral-500 mt-0.5">安装并管理自定义技能(Markdown 驱动，含工具权限白名单)</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="secondary" size="sm" onClick={() => setInstallMode('url')}>从 URL 安装</Button>
-          <Button variant="primary"   size="sm" onClick={() => setInstallMode('text')}>从文本安装</Button>
+          <Button variant="secondary" size="sm" onClick={() => setInstallMode('url')} className="active:scale-[0.98] transition-all duration-250">从 URL 安装</Button>
+          <Button variant="primary"   size="sm" onClick={() => setInstallMode('text')} className="active:scale-[0.98] transition-all duration-250">从文本安装</Button>
         </div>
       </div>
 
@@ -105,7 +105,7 @@ export function SkillsTab(): JSX.Element {
         <ScrollArea className="flex-1" viewportClassName="pb-2">
           <div className="flex flex-col gap-2 pr-2">
             {skills.map((sk) => (
-              <Card key={sk.manifest.name} variant="elevated" padding="sm">
+              <Card key={sk.manifest.name} variant="elevated" padding="sm" className="animate-slide-up active:scale-[0.98] transition-all duration-250" style={{ animationDelay: `${Math.min(parseInt(sk.manifest.name.length.toString(), 10) * 30, 300)}ms` }}>
                 <div className="flex items-start gap-3">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">

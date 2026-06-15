@@ -1,57 +1,27 @@
 /**
  * Sessions API — session CRUD + message loading.
+ *
+ * Wire types live in @ema-agent/contracts (single source of truth shared with
+ * apps/core routes). Re-exported here so existing consumers keep working.
  */
 import { sidecarClient } from './sidecar-client.js';
-import type { SessionId, MessageId, MessageRole, MessageKind, MessageBlocks, TurnMode, AgentSubMode } from '@ema-agent/contracts';
+import type {
+  SessionId,
+  TurnMode,
+  AgentSubMode,
+  SessionWire,
+  MessageWire,
+  TurnWire,
+  SessionMessagesResult,
+  SessionsListResult,
+  SessionsGroupedResult,
+  ForkResult,
+} from '@ema-agent/contracts';
 
-// ── Wire-format types (match backend JSON shapes) ────────────────────────────
-
-export interface SessionWire {
-  id:               string;
-  title:            string;
-  characterCardId:  string;
-  workspaceRoots:   string[];
-  createdAt:        number;
-  updatedAt:        number;
-  archivedAt:       number | null;
-  pinned:           boolean;
-  pinnedAt:         number | null;
-  groupLabel:       string | null;
-  parentSessionId:  string | null;
-  runningTurnCount: number;
-  meta:             Record<string, unknown>;
-  lastMode:         TurnMode | null;
-  lastSubMode:      AgentSubMode | null;
-}
-
-export interface MessageWire {
-  id:          string;
-  sessionId:   string;
-  turnId:      string | null;
-  role:        MessageRole;
-  kind:        MessageKind;
-  blocks:      MessageBlocks;
-  interrupted: boolean;
-  createdAt:   number;
-  meta:        Record<string, unknown>;
-}
-
-export interface SessionsListResult {
-  sessions:   SessionWire[];
-  nextCursor?: string;
-}
-
-export interface SessionsGroupedResult {
-  pinned:   SessionWire[];
-  byGroup:  Array<{ label: string; sessions: SessionWire[] }>;
-  recent:   SessionWire[];
-  archived: SessionWire[];
-}
-
-export interface ForkResult {
-  sessionId:   string;
-  messageCount: number;
-}
+export type {
+  SessionWire, MessageWire, TurnWire, SessionMessagesResult,
+  SessionsListResult, SessionsGroupedResult, ForkResult,
+};
 
 // ── API object ────────────────────────────────────────────────────────────────
 
@@ -96,16 +66,20 @@ export const sessionsApi = {
     });
   },
 
-  /** GET /api/sessions/:id/messages — load messages for a session. */
+  /**
+   * GET /api/sessions/:id/messages — load messages + their turns.
+   * Turns ride along so the store can group messages by turnId and attach
+   * per-turn usage / duration / replayable audio (see SessionMessagesResult).
+   */
   async listMessages(
     id: SessionId,
     opts?: { before?: number; limit?: number },
-  ): Promise<MessageWire[]> {
+  ): Promise<SessionMessagesResult> {
     const params = new URLSearchParams();
     if (opts?.before) params.set('before', String(opts.before));
     if (opts?.limit) params.set('limit', String(opts.limit ?? 100));
     const qs = params.toString();
-    return sidecarClient.request<MessageWire[]>(`/api/sessions/${id}/messages${qs ? `?${qs}` : ''}`);
+    return sidecarClient.request<SessionMessagesResult>(`/api/sessions/${id}/messages${qs ? `?${qs}` : ''}`);
   },
 
   /** POST /api/sessions/:id/fork — fork a session. */

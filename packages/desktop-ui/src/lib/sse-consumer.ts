@@ -85,14 +85,25 @@ export function createSseConsumer(): {
   return {
     start(opts: SseStartOptions): SseHandle {
       const controller = new AbortController();
-      let stopped = false;
+      let completed = false;
 
-      // Merge external signal
-      if (opts.signal) {
-        opts.signal.addEventListener('abort', () => {
-          controller.abort();
-        }, { once: true });
-      }
+      // Exactly-once completion across all exit paths (natural end, stop(),
+      // external abort). Callers await this to release send queues — a path
+      // that exits without firing it leaves the session's queue stuck forever.
+      const complete = (): void => {
+        if (completed) return;
+        completed = true;
+        opts.onComplete?.();
+      };
+
+      // Merge external signal — keep the handler reference so it can be
+      // removed on every exit (a long-lived caller signal would otherwise
+      // accumulate one dead listener per stream).
+      const onExternalAbort = (): void => controller.abort();
+      opts.signal?.addEventListener('abort', onExternalAbort, { once: true });
+      const removeExternalListener = (): void => {
+        opts.signal?.removeEventListener('abort', onExternalAbort);
+      };
 
       const parser = createFrameParser((frame) => {
         const parsed = parseFrame(frame);
@@ -119,10 +130,17 @@ export function createSseConsumer(): {
         }
       });
 
+      // lastEventId rides as a query param — the backend replays missed
+      // events after that cursor (see TurnEventStore.replay).
+      let url = opts.url;
+      if (opts.lastEventId && opts.lastEventId > 0) {
+        url += (url.includes('?') ? '&' : '?') + `lastEventId=${opts.lastEventId}`;
+      }
+
       // Start fetch
       void (async () => {
         try {
-          const res = await fetch(opts.url, {
+          const res = await fetch(url, {
             headers: { Accept: 'text/event-stream', ...opts.headers },
             signal: controller.signal,
           });
@@ -147,19 +165,23 @@ export function createSseConsumer(): {
           }
 
           parser.flush();
-          if (!stopped) {
-            opts.onComplete?.();
-          }
+          complete();
         } catch (err: unknown) {
-          if (controller.signal.aborted) return; // expected
+          if (controller.signal.aborted) {
+            // Deliberate stop / external abort — still a stream END for the
+            // caller: without this, the awaiting send-queue hangs forever.
+            complete();
+            return;
+          }
           const message = err instanceof Error ? err.message : 'Unknown SSE error';
           opts.onError?.(new Error(message));
+        } finally {
+          removeExternalListener();
         }
       })();
 
       return {
         stop() {
-          stopped = true;
           controller.abort();
         },
       };

@@ -11,6 +11,8 @@ export {
   buildRerankProviderConfig,
   resolveBridgeUrl,
   configureBridge,
+  fetchLlmModels,
+  fetchEmbedModels,
   registerAllHooks,
   registerAllEmitters,
 } from './wiring/index.js';

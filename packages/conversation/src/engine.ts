@@ -170,6 +170,7 @@ async function* runTurn(
         case 'usage':
           inputTokens = chunk.inputTokens;
           outputTokens = chunk.outputTokens;
+          yield { type: 'usage_update', sessionId: input.sessionId, turnId, inputTokens, outputTokens };
           break;
         case 'done':
         case 'tool_use_delta':
@@ -236,7 +237,7 @@ async function* runTurn(
     });
 
     session.completeTurn(turnId, { usageInputTokens: inputTokens, usageOutputTokens: outputTokens });
-    yield { type: 'turn_completed', sessionId: input.sessionId, turnId, usage: { inputTokens, outputTokens, costUsd: 0, durationMs } };
+    yield { type: 'turn_completed', sessionId: input.sessionId, turnId, stats: { inputTokens, outputTokens, costUsd: 0, durationMs } };
 
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);

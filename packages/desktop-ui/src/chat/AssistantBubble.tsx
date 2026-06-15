@@ -2,23 +2,70 @@
  * AssistantBubble — left-aligned assistant message. Layout from AIRI assistant-item.vue,
  * colors kept as original EmaAgent gray.
  */
-import type { JSX } from 'react';
+import { useState, useEffect, useRef, type JSX } from 'react';
+import { IconButton } from '@ema-agent/ui';
+import { estimateTextTokens } from '@ema-agent/token';
 import { Markdown } from '../markdown/renderer.js';
-import { ThinkingBlock } from './ThinkingBlock.js';
 import { ToolCallBlock } from './ToolCallBlock.js';
 import { NarrativeStatusBlock } from './NarrativeStatusBlock.js';
-import type { ChatHistoryItem, AssistantSlice } from '../stores/conversation-store.js';
+import { replayTurn, stopPlayback, usePlaybackStore } from '../lib/tts-playback.js';
+import { showToast } from '../lib/toast.js';
+import { useConversationStore, type ChatHistoryItem, type AssistantSlice } from '../stores/conversation-store.js';
 
 export interface AssistantBubbleProps {
-  message:         Pick<ChatHistoryItem, 'content' | 'slices' | 'createdAt' | 'usage'>;
+  message:         Pick<ChatHistoryItem, 'content' | 'slices' | 'createdAt' | 'stats' | 'turnId'>;
   label?:          string;
   isStreaming?:    boolean;
   iterationCount?: number;
 }
 
+/** Ignore clicks landing within this window after the previous one (rage-click guard). */
+const AUDIO_CLICK_THROTTLE_MS = 600;
+
 export function AssistantBubble({ message, label = 'Ema', isStreaming, iterationCount }: AssistantBubbleProps): JSX.Element {
   const slices = resolveSlices(message);
   const isEmpty = slices.length === 0;
+
+  const playingTurnId = usePlaybackStore((s) => s.playingTurnId);
+  const isPlayingThis = !!message.turnId && playingTurnId === (message.turnId as string);
+  const lastAudioClickRef = useRef(0);
+
+  const handleAudioClick = (): void => {
+    const now = Date.now();
+    if (now - lastAudioClickRef.current < AUDIO_CLICK_THROTTLE_MS) return;
+    lastAudioClickRef.current = now;
+
+    if (isPlayingThis) {
+      stopPlayback();
+      return;
+    }
+    void replayTurn(message.turnId as string).catch(() => {
+      // 404 = this turn produced no audio (TTS off / aborted) — not an error.
+      showToast('该轮没有可重播的语音', { variant: 'warning' });
+    });
+  };
+
+  // Streaming bubble: only the stop square while its audio is live.
+  // Finished bubble: play triangle, which toggles to stop while replaying.
+  // ── Live elapsed time during streaming ──────────────────────────────────
+  const [elapsed, setElapsed] = useState(0);
+  useEffect(() => {
+    if (!isStreaming) { setElapsed(0); return; }
+    const id = setInterval(() => setElapsed(Math.round((Date.now() - message.createdAt) / 1000)), 1000);
+    return () => clearInterval(id);
+  }, [isStreaming, message.createdAt]);
+
+  // Real provider usage if available, else estimate from content
+  const liveUsage = useConversationStore((s) =>
+    message.turnId ? s.liveUsageMap.get((message.turnId as string)) : undefined,
+  );
+  const thinkingActive = useConversationStore((s) =>
+    message.turnId ? s.thinkingActiveMap.get((message.turnId as string)) : false,
+  );
+  const estimatedOut = isStreaming ? (liveUsage?.outputTokens ?? estimateTextTokens(message.content)) : null;
+  const estimatedIn  = isStreaming ? liveUsage?.inputTokens : null;
+
+  const showAudioButton = !!message.turnId && (isPlayingThis || !isStreaming);
 
   return (
     <div className="flex mr-12">
@@ -31,26 +78,49 @@ export function AssistantBubble({ message, label = 'Ema', isStreaming, iteration
         </div>
 
         {isEmpty && isStreaming ? (
-          <div className="bg-gray-800 border border-gray-700 rounded-xl px-3 py-3">
-            <div className="flex gap-1.5 items-center h-4">
-              <div className="w-1.5 h-1.5 rounded-full bg-gray-500 animate-bounce" style={{ animationDelay: '0ms' }} />
-              <div className="w-1.5 h-1.5 rounded-full bg-gray-500 animate-bounce" style={{ animationDelay: '150ms' }} />
-              <div className="w-1.5 h-1.5 rounded-full bg-gray-500 animate-bounce" style={{ animationDelay: '300ms' }} />
-            </div>
+          <div className="flex gap-1.5 items-center h-4 py-2">
+            <div className="w-1.5 h-1.5 rounded-full bg-neutral-500 animate-bounce" style={{ animationDelay: '0ms' }} />
+            <div className="w-1.5 h-1.5 rounded-full bg-neutral-500 animate-bounce" style={{ animationDelay: '150ms' }} />
+            <div className="w-1.5 h-1.5 rounded-full bg-neutral-500 animate-bounce" style={{ animationDelay: '300ms' }} />
           </div>
         ) : (
-          <div className="bg-gray-800 border border-gray-700 rounded-xl px-3 py-3 text-gray-200 text-sm break-words flex flex-col gap-2">
+          <div className="text-neutral-200 text-sm break-words flex flex-col gap-2">
             {slices.map((slice, i) => (
               <SliceRenderer key={i} slice={slice} streaming={!!isStreaming} />
             ))}
           </div>
         )}
 
-        {!isStreaming && message.usage && (
-          <div className="text-xs text-white/30 mt-1">
-            ↑ {message.usage.inputTokens.toLocaleString()} tokens
-            {' '}↓ {message.usage.outputTokens.toLocaleString()} tokens
-            {' '}· {(message.usage.durationMs / 1000).toFixed(1)}s
+        {((!isStreaming && message.stats) || isStreaming || showAudioButton) && (
+          <div className="text-xs text-neutral-400 mt-1 flex items-center gap-2">
+            {!isStreaming && message.stats ? (
+              <span>
+                ↑ {message.stats.inputTokens.toLocaleString()} tokens
+                {' '}↓ {message.stats.outputTokens.toLocaleString()} tokens
+                {' '}· {(message.stats.durationMs / 1000).toFixed(1)}s
+              </span>
+            ) : isStreaming && (
+              <span className="flex items-center gap-1">
+                <span className="w-1 h-1 rounded-full bg-primary-400 animate-pulse" />
+                {elapsed > 0 && <span>· {elapsed}s</span>}
+                {estimatedIn != null && estimatedIn > 0 && (
+                  <span>· ↑{estimatedIn.toLocaleString()}</span>
+                )}
+                {estimatedOut != null && estimatedOut > 0 && (
+                  <span>· ↓{estimatedOut.toLocaleString()}</span>
+                )}
+                {thinkingActive && <span className="text-violet-400/80">· Thinking</span>}
+              </span>
+            )}
+            {showAudioButton && (
+              <IconButton
+                size="sm"
+                label={isPlayingThis ? '停止播放' : '播放语音'}
+                icon={isPlayingThis ? 'i-mdi:stop' : 'i-mdi:play'}
+                className="opacity-40 hover:opacity-100"
+                onClick={handleAudioClick}
+              />
+            )}
           </div>
         )}
       </div>
@@ -69,7 +139,7 @@ function SliceRenderer({ slice, streaming }: { slice: AssistantSlice; streaming:
     case 'text':
       return <Markdown source={slice.text} />;
     case 'thinking':
-      return <ThinkingBlock text={slice.thinking} done={slice.done} />;
+      return <></>;
     case 'tool_use':
       return <ToolCallBlock slice={slice} streaming={streaming} />;
     case 'narrative_status':

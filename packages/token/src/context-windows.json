@@ -1,0 +1,37 @@
+{
+  "deepseek-chat": 65536,
+  "deepseek-reasoner": 65536,
+  "deepseek-ai/deepseek-v3": 65536,
+  "deepseek-ai/deepseek-r1": 65536,
+
+  "gpt-4o": 128000,
+  "gpt-4o-mini": 128000,
+  "gpt-4.1": 1047576,
+  "gpt-4.1-mini": 1047576,
+  "gpt-4-turbo": 128000,
+  "o1": 200000,
+  "o1-mini": 128000,
+  "o3-mini": 200000,
+
+  "claude-3-5-sonnet": 200000,
+  "claude-3-5-haiku": 200000,
+  "claude-3-opus": 200000,
+  "claude-sonnet-4": 200000,
+  "claude-opus-4": 200000,
+
+  "gemini-1.5-pro": 2097152,
+  "gemini-1.5-flash": 1048576,
+  "gemini-2.0-flash": 1048576,
+  "gemini-2.5-pro": 2097152,
+
+  "qwen-max": 32768,
+  "qwen-plus": 131072,
+  "qwen-turbo": 1008192,
+  "qwen/qwen2.5-72b-instruct": 131072,
+  "qwen/qwen2.5-7b-instruct": 131072,
+
+  "moonshot-v1-128k": 131072,
+  "moonshot-v1-32k": 32768,
+  "glm-4": 131072,
+  "glm-4-flash": 131072
+}

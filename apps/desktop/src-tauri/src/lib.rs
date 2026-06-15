@@ -95,12 +95,20 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(|window, event| {
-            if let WindowEvent::CloseRequested { .. } = event {
-                if window.label() == "main" {
-                    let state = window.state::<SidecarState>();
-                    tauri::async_runtime::block_on(async {
-                        state.shutdown().await;
-                    });
+            if let WindowEvent::CloseRequested { api, .. } = event {
+                match window.label() {
+                    "main" => {
+                        let state = window.state::<SidecarState>();
+                        tauri::async_runtime::block_on(async {
+                            state.shutdown().await;
+                        });
+                    }
+                    // Sub-windows are pre-declared singletons — destroying them
+                    // would make open_window fail forever. Hide instead.
+                    _ => {
+                        api.prevent_close();
+                        let _ = window.hide();
+                    }
                 }
             }
         })

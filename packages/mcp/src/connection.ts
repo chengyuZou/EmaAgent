@@ -57,14 +57,18 @@ export async function openConnection(
     { capabilities: {} },
   );
 
-  // Wrap connect in a timeout
+  // Wrap connect in a timeout. The timer MUST be cleared once the race
+  // settles — otherwise every successful connect leaves a 30s-delayed
+  // rejection with no listener (unhandledRejection; fatal under
+  // --unhandled-rejections=strict). Same pattern as execution.ts.
   const connectPromise = client.connect(transport);
-  const timeout = new Promise<never>((_, reject) =>
-    setTimeout(
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(
       () => reject(new McpTimeoutError(serverName, 'connect', CONNECT_TIMEOUT_MS)),
       CONNECT_TIMEOUT_MS,
-    ),
-  );
+    );
+  });
 
   try {
     await Promise.race([connectPromise, timeout]);
@@ -73,6 +77,8 @@ export async function openConnection(
     try { await transport.close(); } catch { /* ignore */ }
     if (err instanceof McpTimeoutError) throw err;
     throw new McpConnectionError(serverName, (err as Error).message ?? String(err));
+  } finally {
+    if (timeoutId !== undefined) clearTimeout(timeoutId);
   }
 
   const cleanup = async () => {

@@ -1,6 +1,7 @@
 import { registerPromptsHooks }      from '@ema-agent/prompts';
 import { registerConversationHooks } from '@ema-agent/conversation';
 import { registerMemoryHooks }       from '@ema-agent/memory';
+import { lookupContextWindow }       from '@ema-agent/token';
 import type { AppBindings } from './bindings.js';
 
 // ── Aggregated hook registration ─────────────────────────────────────────────
@@ -42,11 +43,13 @@ export function registerAllHooks(bindings: AppBindings): () => void {
     planner:      bindings.memory,
     session:      bindings.session,
     llm:          bindings.llm,
-    // Context window: single source of truth is llm_model_catalog (DB).
-    // model_name is the key — model capabilities are model properties, not
-    // provider properties. Returns 0 when unknown → hooks.ts falls back to
-    // defaultContextWindow (128K).
-    getContextWindow: (model) => bindings.llmCatalog.contextWindow(model),
+    // Context window resolution: user-enabled models first (provider_llm_models,
+    // which stores the window picked at enable time), then the static knowledge
+    // table (@ema-agent/token json). Returns 0 when unknown → hooks.ts falls
+    // back to defaultContextWindow (128K). Replaces the never-populated
+    // llm_model_catalog (was always 0 → memory silently ran at the 128K default).
+    getContextWindow: (model) =>
+      bindings.providerLlmModels.contextWindowFor(model) ?? lookupContextWindow(model) ?? 0,
     // Agent sessions: supply the 20 most recently touched files so the post-compact
     // restore step can re-inject their content without a redundant LLM round-trip.
     // Conversation sessions have no file state — the store simply returns [].

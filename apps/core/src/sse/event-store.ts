@@ -91,6 +91,13 @@ export class TurnEventStore {
   evictAudioChunks(turnId: TurnId): void {
     const entry = this.store.get(turnId as string);
     if (!entry) return;
-    entry.events = entry.events.filter((e) => e.type !== 'tts_chunk');
+    // Replace, don't filter: the replay cursor is "index in this array", so
+    // removing elements would shift every later event and make reconnecting
+    // clients skip/duplicate events. An empty-audio chunk keeps the index
+    // space stable while freeing the base64 payload; the frontend's
+    // handleTtsChunk ignores chunks with no audio.
+    entry.events = entry.events.map((e) =>
+      e.type === 'tts_chunk' ? { ...e, audio: '', lipsync: undefined } : e,
+    );
   }
 }

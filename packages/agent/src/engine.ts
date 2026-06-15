@@ -300,10 +300,19 @@ async function* runTurn(
       while (!executor.allDone() || pendingToolEvents.length > 0) {
         // Yield events as they arrive (tool results, permission dialogs, progress)
         while (pendingToolEvents.length > 0) yield pendingToolEvents.shift()!;
-        if (!executor.allDone()) {
-          // Park until a tool pushes an event or signals completion
-          await new Promise<void>(r => { wakeUp = r; });
+        if (executor.allDone()) break;
+
+        // Park until a tool pushes an event or signals completion.
+        // Install the resolver FIRST, then re-check: the last tool can finish
+        // between the allDone() check above and the assignment — its signal_()
+        // would hit a null wakeUp and the loop would park forever (TOCTOU
+        // deadlock, no logs, session stuck until restart).
+        const parked = new Promise<void>(r => { wakeUp = r; });
+        if (executor.allDone() || pendingToolEvents.length > 0) {
+          wakeUp = null;   // state changed during installation — cancel the park
+          continue;
         }
+        await parked;
       }
 
       const resultBlocks: ToolResultBlock[] = executor.getResults();
@@ -331,6 +340,24 @@ async function* runTurn(
     }
 
     // ── Turn teardown ─────────────────────────────────────────────────────────
+    // Abort has TWO routes into teardown: mid-stream (llm.stream throws
+    // AbortError → catch below) and between iterations (the `if
+    // (signal.aborted) break` at the loop head). The second route used to
+    // fall through to completeTurn — a user-stopped turn was persisted as
+    // 'completed', onTurnAbort never fired, and memory extraction ingested
+    // the half-finished turn as a normal one. Branch here so both routes
+    // produce identical abort semantics.
+    if (signal.aborted) {
+      await hooks.trigger('onTurnAbort', {
+        turnId, sessionId,
+        payload: { reason: 'user_stop' },
+        meta: {},
+      });
+      session.abortTurn(sessionId, turnId);
+      yield { type: 'turn_aborted', sessionId, turnId, reason: 'user_stop' };
+      return;
+    }
+
     const durationMs = Date.now() - startedAt;
     await hooks.trigger('onTurnEnd', {
       turnId, sessionId,
@@ -345,7 +372,7 @@ async function* runTurn(
     });
     yield {
       type: 'turn_completed', sessionId, turnId,
-      usage: { inputTokens: totalInput, outputTokens: totalOutput, costUsd: 0, durationMs },
+      stats: { inputTokens: totalInput, outputTokens: totalOutput, costUsd: 0, durationMs },
     };
 
   } catch (err) {

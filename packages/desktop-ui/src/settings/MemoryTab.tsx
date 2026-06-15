@@ -97,7 +97,7 @@ function OverviewTab(): JSX.Element {
           {/* By-type breakdown */}
           <div className="grid grid-cols-2 gap-3">
             {/* Nodes by type */}
-            <Card variant="elevated" padding="sm">
+            <Card variant="elevated" padding="sm" className="active:scale-[0.98] transition-all duration-250">
               <p className="text-xs font-medium text-neutral-400 mb-2">节点类型分布</p>
               <div className="flex flex-col gap-1.5">
                 {(Object.entries(stats.nodes.byType) as [MemoryNodeType, number][])
@@ -113,7 +113,7 @@ function OverviewTab(): JSX.Element {
             </Card>
 
             {/* Items by kind */}
-            <Card variant="elevated" padding="sm">
+            <Card variant="elevated" padding="sm" className="active:scale-[0.98] transition-all duration-250">
               <p className="text-xs font-medium text-neutral-400 mb-2">条目类型分布</p>
               <div className="flex flex-col gap-1.5">
                 {(Object.entries(stats.items.byKind) as [MemoryItemKind, number][])
@@ -130,7 +130,7 @@ function OverviewTab(): JSX.Element {
           </div>
 
           {/* Index + embedding health */}
-          <Card variant="elevated" padding="sm">
+          <Card variant="elevated" padding="sm" className="active:scale-[0.98] transition-all duration-250">
             <p className="text-xs font-medium text-neutral-400 mb-2">向量索引</p>
             <div className="flex gap-4 flex-wrap text-xs text-neutral-400">
               <span>
@@ -211,7 +211,7 @@ function OverviewTab(): JSX.Element {
 
 function StatCard({ label, value, sub }: { label: string; value: number; sub: string }): JSX.Element {
   return (
-    <Card variant="elevated" padding="sm">
+    <Card variant="elevated" padding="sm" className="active:scale-[0.98] transition-all duration-250">
       <p className="text-xs text-neutral-500">{label}</p>
       <p className="text-2xl font-bold text-neutral-100 tabular-nums">{value.toLocaleString()}</p>
       <p className="text-xs text-neutral-600 mt-0.5">{sub}</p>
@@ -238,7 +238,7 @@ function OverrideSwitch({
 // ── Nodes tab ─────────────────────────────────────────────────────────────────
 
 const NODE_TYPE_OPTIONS = [
-  { value: '',             label: '全部类型' },
+  { value: 'all',          label: '全部类型' },
   { value: 'user_fact',    label: '事实'     },
   { value: 'entity',       label: '实体'     },
   { value: 'event',        label: '事件'     },
@@ -252,7 +252,7 @@ function NodesTab(): JSX.Element {
   const [loading,  setLoading]  = useState(false);
   const [error,    setError]    = useState<string | null>(null);
   const [search,   setSearch]   = useState('');
-  const [typeFilter, setTypeFilter] = useState('');
+  const [typeFilter, setTypeFilter] = useState('all');   // 'all' sentinel — Radix Select forbids empty-string values
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -281,14 +281,14 @@ function NodesTab(): JSX.Element {
   }
 
   const filtered = nodes.filter((n) => {
-    if (typeFilter && n.node_type !== typeFilter) return false;
+    if (typeFilter !== 'all' && n.node_type !== typeFilter) return false;
     if (search && !n.label.toLowerCase().includes(search.toLowerCase()) &&
         !n.description.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
   });
 
   return (
-    <div className="flex flex-col gap-3 h-full">
+    <div className="flex flex-col gap-3">
       <div className="flex gap-2 shrink-0">
         <Input
           className="flex-1"
@@ -381,7 +381,7 @@ function NodesTab(): JSX.Element {
 // ── Items tab ─────────────────────────────────────────────────────────────────
 
 const ITEM_KIND_OPTIONS = [
-  { value: '',          label: '全部类型' },
+  { value: 'all',       label: '全部类型' },
   { value: 'user',      label: '用户'     },
   { value: 'feedback',  label: '反馈'     },
   { value: 'project',   label: '项目'     },
@@ -393,7 +393,7 @@ function ItemsTab(): JSX.Element {
   const [loading,  setLoading]  = useState(false);
   const [error,    setError]    = useState<string | null>(null);
   const [search,   setSearch]   = useState('');
-  const [kindFilter, setKindFilter] = useState('');
+  const [kindFilter, setKindFilter] = useState('all');   // 'all' sentinel — Radix Select forbids empty-string values
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -422,14 +422,14 @@ function ItemsTab(): JSX.Element {
   }
 
   const filtered = items.filter((item) => {
-    if (kindFilter && item.kind !== kindFilter) return false;
+    if (kindFilter !== 'all' && item.kind !== kindFilter) return false;
     if (search && !item.title.toLowerCase().includes(search.toLowerCase()) &&
         !item.body.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
   });
 
   return (
-    <div className="flex flex-col gap-3 h-full">
+    <div className="flex flex-col gap-3">
       <div className="flex gap-2 shrink-0">
         <Input
           className="flex-1"
@@ -686,7 +686,7 @@ export function MemoryTab(): JSX.Element {
   ];
 
   return (
-    <div className="flex flex-col h-full gap-4">
+    <div className="flex flex-col gap-4">
       <div className="shrink-0">
         <h2 className="text-base font-semibold text-neutral-100">记忆系统</h2>
         <p className="text-xs text-neutral-500 mt-0.5">浏览和管理 Agent 的长期记忆节点与条目</p>

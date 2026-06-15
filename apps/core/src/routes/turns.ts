@@ -8,7 +8,7 @@ import { TurnEventStore } from '../sse/event-store.js';
 import { encodeEvent, encodePing } from '../sse/writer.js';
 import type { AppBindings } from '../wiring.js';
 import type { EmaStreamEvent, TurnId } from '@ema-agent/contracts';
-import { asTurnId } from '@ema-agent/contracts';
+import { asTurnId, asSessionId } from '@ema-agent/contracts';
 
 // ── UTF-8 safe body decoder ───────────────────────────────────────────────────
 
@@ -62,7 +62,6 @@ function isTerminalTurnEvent(event: EmaStreamEvent): boolean {
 function enrichTurnEvent(
   event: EmaStreamEvent,
   sessionId: string,
-  _turnId: TurnId,
 ): EmaStreamEvent {
   if ('sessionId' in event && (event as Record<string, unknown>).sessionId !== undefined) return event;
   return { ...event, sessionId } as EmaStreamEvent;
@@ -91,25 +90,43 @@ export function turnsRoute(bindings: AppBindings): Hono {
 
     const { sessionId, mode, agentSubMode, userInput, contentParts, model, ttsEnabled } = parsed.data;
 
-    const effectiveSessionId = sessionId
-      ?? bindings.session.createSession().id;
+    // Trust the client's sessionId only if it still exists. A stale id (e.g.
+    // a viewedSessionId persisted across a DB reset) would otherwise FK-fail
+    // the turn insert with an opaque 500 and block every send. Fall back to a
+    // fresh session — the frontend already reconciles when the returned
+    // sessionId differs from what it sent.
+    const effectiveSessionId =
+      sessionId && bindings.session.sessionExists(asSessionId(sessionId))
+        ? asSessionId(sessionId)
+        : bindings.session.createSession().id;
 
-    const { turnId, events } = await orchestrator.run({
-      sessionId: effectiveSessionId,
-      mode: mode,
-      agentSubMode: agentSubMode,
-      userInput: userInput ?? '',
-      contentParts: contentParts,
-      model: model,
-      ttsEnabled: ttsEnabled ?? false,
-    });
+    let turnId: TurnId;
+    let events: AsyncIterable<EmaStreamEvent>;
+    try {
+      ({ turnId, events } = await orchestrator.run({
+        sessionId: effectiveSessionId,
+        mode: mode,
+        agentSubMode: agentSubMode,
+        userInput: userInput ?? '',
+        contentParts: contentParts,
+        model: model,
+        ttsEnabled: ttsEnabled ?? false,
+      }));
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      // Expected concurrency conflict — tell the client to retry, not "server broke".
+      if (message.startsWith('session_busy')) {
+        return c.json({ error: 'session_busy', message }, 409);
+      }
+      console.error('[turns] orchestrator.run failed', err);
+      return c.json({ error: 'internal', message }, 500);
+    }
 
     // ── Fan-out: push every event into TurnEventStore for replay ──────────
     (async () => {
       for await (const event of events) {
-        // Inject sessionId (and turnId for ask_user_required) into events that
-        // come from engines which don't carry session context themselves.
-        const enriched = enrichTurnEvent(event, effectiveSessionId, turnId);
+        // Inject sessionId into events from engines that don't carry it.
+        const enriched = enrichTurnEvent(event, effectiveSessionId);
         const cursor = eventStore.push(turnId, enriched);
         if (cursor !== null) {
           eventHub.publish(turnId, { cursor, event: enriched });
