@@ -1,0 +1,8 @@
+{
+  "name": "@ema-agent/bridge",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "uv run ema-bridge"
+  }
+}

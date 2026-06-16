@@ -14,17 +14,34 @@ if TYPE_CHECKING:
 
 TIMELINES = ("1st_Loop", "2nd_Loop", "3rd_Loop")
 
+# How long finalize() waits for in-flight requests to drain before giving up
+# and closing storage handles anyway (best-effort — matches this codebase's
+# pattern of bounded waits over indefinite blocking, e.g. TtsCoordinator's
+# abort/finish race).
+_DRAIN_TIMEOUT_S = 30.0
+
 
 class NarrativeManager:
     """
     Owns one LightRAG instance per timeline (1st/2nd/3rd Loop).
     Constructed synchronously; storage is lazily initialised by LightRAG on first use.
+
+    `/internal/configure` builds a fresh instance on every reconfigure and
+    replaces `state.narrative_manager`, then calls `finalize()` on the old
+    one. Once replaced, nothing reachable from `state` can start a NEW
+    request against this instance — but a request that started just before
+    the swap may still be mid-flight. `_active`/`_drained` let `finalize()`
+    wait for those to finish instead of closing storage out from under them.
     """
 
     def __init__(self, state: BridgeState, data_dir: str) -> None:
         embed_func = make_embedding_func(state)
         llm_func   = make_llm_func(state)
         dim        = state.embed_dim
+
+        self._active  = 0
+        self._drained = asyncio.Event()
+        self._drained.set()  # starts idle — zero in-flight requests
 
         self._instances: dict[str, LightRAG] = {}
         for timeline in TIMELINES:
@@ -39,6 +56,15 @@ class NarrativeManager:
                     func=embed_func,
                 ),
             )
+
+    def _enter(self) -> None:
+        self._active += 1
+        self._drained.clear()
+
+    def _exit(self) -> None:
+        self._active = max(0, self._active - 1)
+        if self._active == 0:
+            self._drained.set()
 
     async def initialize(self) -> None:
         """Must be called once before any query — required by lightrag-hku >=1.4."""
@@ -66,10 +92,14 @@ class NarrativeManager:
             )
             return timeline, result or ""
 
-        settled = await asyncio.gather(
-            *(_one(t, q) for t, q in valid.items()),
-            return_exceptions=True,
-        )
+        self._enter()
+        try:
+            settled = await asyncio.gather(
+                *(_one(t, q) for t, q in valid.items()),
+                return_exceptions=True,
+            )
+        finally:
+            self._exit()
         results: dict[str, str] = {}
         errors: list[BaseException] = []
         for item in settled:
@@ -95,11 +125,30 @@ class NarrativeManager:
         rag = self._instances.get(timeline)
         if rag is None:
             return 0
-        await rag.ainsert(documents)
+        self._enter()
+        try:
+            await rag.ainsert(documents)
+        finally:
+            self._exit()
         return len(documents)
 
     async def finalize(self) -> None:
-        """Release LightRAG storage handles. Call on bridge shutdown."""
+        """
+        Release LightRAG storage handles. Called on bridge shutdown, and by
+        `/internal/configure` on the manager being replaced.
+
+        Waits (bounded by _DRAIN_TIMEOUT_S) for any in-flight query_batch/ingest
+        call to finish before closing storage — otherwise a request that
+        started just before a reconfigure could have its storage handle
+        closed mid-read. Best-effort: a request stuck past the timeout
+        doesn't block finalize forever, matching this codebase's other
+        bounded-wait shutdown paths.
+        """
+        if self._active > 0:
+            try:
+                await asyncio.wait_for(self._drained.wait(), timeout=_DRAIN_TIMEOUT_S)
+            except asyncio.TimeoutError:
+                pass  # proceed anyway — closing late is better than leaking forever
         for timeline, rag in self._instances.items():
             try:
                 await rag.finalize_storages()
