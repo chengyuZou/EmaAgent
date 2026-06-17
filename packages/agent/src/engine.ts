@@ -177,7 +177,6 @@ async function* runTurn(
       const textByIndex     = new Map<number, string>();
       const thinkingByIndex = new Map<number, string>();
       const toolUseByIndex  = new Map<number, AssistantBlock & { type: 'tool_use' }>();
-      let   stopReason      = 'end_turn';
 
       const stream = llm.stream({
         providerId, model,
@@ -238,10 +237,6 @@ async function* runTurn(
             totalInput  += chunk.inputTokens;
             totalOutput += chunk.outputTokens;
             break;
-
-          case 'done':
-            stopReason = chunk.stopReason;
-            break;
         }
       }
 
@@ -277,8 +272,11 @@ async function* runTurn(
         meta: {},
       });
 
-      // ── End condition: no tool calls or model said stop ─────────────────────
-      if (stopReason === 'end_turn' || toolUseByIndex.size === 0) {
+      // ── End condition: no tool calls registered this iteration ─────────────
+      // Sole criterion: did the model actually emit any tool_use blocks?
+      // Ignoring stopReason avoids provider inconsistencies where finish_reason='stop'
+      // arrives alongside tool calls (DeepSeek, some compat providers).
+      if (toolUseByIndex.size === 0) {
         // Drain any tool events that slipped in during the final hook await
         while (pendingToolEvents.length > 0) yield pendingToolEvents.shift()!;
 
