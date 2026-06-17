@@ -163,3 +163,11 @@ export { useChatHistoryScroll }    from './chat/use-chat-history-scroll.js';
 
 // Floating dock
 export { FloatingDock }            from './floating-dock/FloatingDock.js';
+
+// Setup / onboarding
+export { ShellSetupDialog }        from './setup/ShellSetupDialog.js';
+export type { ShellSetupDialogProps } from './setup/ShellSetupDialog.js';
+
+// Shell API
+export { shellApi }                from './api/shell.js';
+export type { ShellStatus, GitInstallResult } from './api/shell.js';

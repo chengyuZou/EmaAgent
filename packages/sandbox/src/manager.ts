@@ -9,7 +9,7 @@ import { AppLayerBackend }         from './backends/app-layer.js';
 import { BubblewrapBackend }       from './backends/bubblewrap.js';
 import { SandboxExecBackend }      from './backends/sandbox-exec.js';
 import type { ConfigContext }      from './config-builder.js';
-import { getPlatform }            from './platform.js';
+import { probeShell }            from './shell-probe.js';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -135,9 +135,13 @@ function selectBackend(kind: ReturnType<typeof detectBackend>['backend']): Sandb
 // ── Shell selection ───────────────────────────────────────────────────────────
 
 function getShell(): string {
-  const platform = getPlatform();
-  // wsl1/wsl2 run inside Linux — /bin/bash is correct.
-  // 'windows' means native Win32; bash requires Git Bash or WSL in PATH.
-  return platform === 'windows' ? 'bash' : '/bin/bash';
+  const result = probeShell();
+  if (!result.available) {
+    throw new Error(
+      '[sandbox] bash 未找到，无法执行 shell 命令。' +
+      '请安装 Git for Windows(https://git-scm.com/download/win)或启用 WSL2。',
+    );
+  }
+  return result.path;
 }
 

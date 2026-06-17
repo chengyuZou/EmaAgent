@@ -64,6 +64,12 @@ export interface TauriBridge {
     defaultPath?: string;
     filters?: Array<{ name: string; extensions: string[] }>;
   }): Promise<string | null>;
+
+  /**
+   * Open a URL in the system's default browser.
+   * Uses Tauri's plugin:opener when available; falls back to window.open.
+   */
+  openUrl(url: string): Promise<void>;
 }
 
 // ── Detection ────────────────────────────────────────────────────────────────
@@ -223,5 +229,18 @@ export const tauriBridge: TauriBridge = {
     const dialog = await getDialog();
     if (!dialog) return null;
     return dialog.save(opts);
+  },
+
+  async openUrl(url: string): Promise<void> {
+    // Tauri 2: plugin:opener|open_url (requires @tauri-apps/plugin-opener in tauri.conf.json).
+    // Falls back to window.open which Tauri webview routes to the system browser.
+    const core = await getCore();
+    if (core) {
+      try {
+        await core.invoke('plugin:opener|open_url', { url });
+        return;
+      } catch { /* plugin not configured — fall through */ }
+    }
+    window.open(url, '_blank');
   },
 };

@@ -1,9 +1,8 @@
 import { useEffect, useState } from 'react';
 import { EmaStageView } from './components/EmaStageView.js';
 import { useSpeechStore } from '@ema-agent/live2d-react';
-import { FloatingDock } from '@ema-agent/desktop-ui';
-import { DecisionLayer } from '@ema-agent/desktop-ui';
-import { useSidecarStore, useThemeSync } from '@ema-agent/desktop-ui';
+import { FloatingDock, DecisionLayer, ShellSetupDialog, shellApi, useSidecarStore, useThemeSync } from '@ema-agent/desktop-ui';
+import type { ShellStatus } from '@ema-agent/desktop-ui';
 
 // ── Main window ─────────────────────────────────────────────────────────────
 //
@@ -23,10 +22,18 @@ const DOCK_FADE_GRACE_MS = 600;
 
 export function App(): React.JSX.Element {
   const sidecarStatus = useSidecarStore((s) => s.status);
-  const [dockVisible, setDockVisible] = useState(false);
+  const [dockVisible,  setDockVisible]  = useState(false);
+  const [shellStatus,  setShellStatus]  = useState<ShellStatus | null>(null);
 
   useDevTtsPlaybackFromUrl();
   useThemeSync();
+
+  // Shell availability check — runs once when the sidecar becomes reachable.
+  // On non-Windows this always resolves to { available: true } immediately.
+  useEffect(() => {
+    if (sidecarStatus.kind !== 'ok') return;
+    shellApi.status().then(setShellStatus).catch(() => { /* sidecar not yet settled */ });
+  }, [sidecarStatus.kind]);
 
   // Sidecar health polling
   useEffect(() => {
@@ -73,6 +80,13 @@ export function App(): React.JSX.Element {
       <SidecarBadge status={sidecarStatus} />
 
       <DecisionLayer />
+
+      {shellStatus?.available === false && (
+        <ShellSetupDialog
+          status={shellStatus}
+          onResolved={() => shellApi.status(true).then(setShellStatus).catch(() => {})}
+        />
+      )}
     </>
   );
 }

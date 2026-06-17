@@ -16,6 +16,7 @@ import { diagnosticRoute } from './routes/diagnostic.js';
 import { createArtifactsRouter } from './routes/artifacts.js';
 import { createSkillsRouter }   from './routes/skills.js';
 import { createMcpRouter }       from './routes/mcp.js';
+import { shellRoute }            from './routes/shell.js';
 import type { AppBindings } from './wiring.js';
 
 export function buildServer(bindings: AppBindings): Hono {
@@ -51,6 +52,7 @@ export function buildServer(bindings: AppBindings): Hono {
   app.route('/api/permission',     permissionRoute(bindings));
   app.route('/api/memory',         memoryRoute(bindings));
   app.route('/api/system/events',  systemEventsRoute(bindings));
+  app.route('/api/system/shell',   shellRoute());
   app.route('/api/settings',       settingsRoute(bindings));
   app.route('/api/diagnostics',    diagnosticRoute());
   app.route('/api/transcribe',     transcribeRoute(bindings));
