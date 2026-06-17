@@ -41,7 +41,13 @@ fn set_passthrough(window: tauri::Window, value: bool) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn quit_app(app: tauri::AppHandle) {
+async fn quit_app(app: tauri::AppHandle) {
+    // Same cleanup as the main window's CloseRequested handler — without this,
+    // a UI-triggered quit (tray menu, settings "Exit" button, etc.) orphans
+    // the sidecar process tree and leaves the SQLite lockfile pointing at a
+    // dead-but-still-running pid.
+    let state = app.state::<SidecarState>();
+    state.shutdown().await;
     app.exit(0);
 }
 

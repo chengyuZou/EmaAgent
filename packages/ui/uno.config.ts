@@ -145,6 +145,23 @@ export function emaSharedPreset(options: EmaSharedPresetOptions = {}): Preset[] 
         'code': { 'border-radius': RADIUS_SCALE.sm },
       },
     }),
+    // -- Universal box-sizing reset --
+    //
+    // UnoCSS (unlike Tailwind's `@tailwind base`) does NOT auto-inject this.
+    // Without it, form elements (textarea/input/select/button) fall back to
+    // the UA stylesheet's `content-box`, so `w-full` + `px-*`/`pr-*` padding
+    // ADDS to the declared width instead of being absorbed by it — the
+    // element silently renders wider than its parent. Cost a full afternoon
+    // chasing a "phantom rounded box" next to ChatInput's textarea that
+    // turned out to be exactly this overflow (see chat history 2026-06-16).
+    {
+      name: 'ema-reset',
+      preflights: [
+        {
+          getCSS: () => `*, ::before, ::after { box-sizing: border-box; }`,
+        },
+      ],
+    },
     // -- Shape system: --ema-radius scales all rounded-* values at runtime --
     {
       name: 'ema-shape',

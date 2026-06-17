@@ -85,9 +85,22 @@ impl SidecarState {
     pub async fn shutdown(&self) {
         let mut guard = self.0.child.lock().await;
         if let Some(mut child) = guard.take() {
-            tracing::info!("sidecar: killing child process");
+            tracing::info!("sidecar: killing child process tree");
+
+            // On Windows, child.kill() only terminates the direct child (pnpm /
+            // cmd.exe) and leaves grandchildren (tsx, node) running — keeping
+            // SQLite locks open until they exit on their own.
+            // taskkill /F /T kills the entire process tree.
+            #[cfg(target_os = "windows")]
+            if let Some(pid) = child.id() {
+                let _ = tokio::process::Command::new("taskkill")
+                    .args(["/F", "/T", "/PID", &pid.to_string()])
+                    .output()
+                    .await;
+                tracing::info!(pid, "sidecar: taskkill sent to process tree");
+            }
+
             let _ = child.kill().await;
-            // Give the process a moment to actually exit
             let _ = timeout(Duration::from_secs(3), child.wait()).await;
         }
     }

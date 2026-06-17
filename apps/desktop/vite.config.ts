@@ -15,6 +15,20 @@ export default defineConfig({
   plugins: [
     UnoCSS({
       presets: [presetUno(), presetAttributify()],
+      // UnoCSS's built-in preflight doesn't reset button/pre UA defaults.
+      // WebView2 gives <button> a system-grey background and <pre> a white one —
+      // both bleed through when bg-transparent is used on a dark UI.
+      preflights: [
+        {
+          getCSS: () =>
+            `button,[role="button"]{background:transparent;border:none;padding:0;cursor:pointer;}` +
+            `pre,code{background:transparent;}` +
+            `::-webkit-scrollbar{width:5px;height:5px;}` +
+            `::-webkit-scrollbar-track{background:transparent;}` +
+            `::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.1);border-radius:3px;}` +
+            `::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,0.2);}`,
+        },
+      ],
       // Extend the content pipeline to also handle .js extension imports that
       // come from workspace packages resolved via the alias below.
       content: {
