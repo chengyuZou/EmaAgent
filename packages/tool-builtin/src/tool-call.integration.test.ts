@@ -345,14 +345,11 @@ describe('permission tests', () => {
     expect(outcome.granted).toBe(false);
   });
 
-  it('ask-mode: "always_allow" response adds a persisted rule', async () => {
-    const persistedRules: unknown[] = [];
-
+  it('ask-mode: "allow_session" adds a session-scoped rule for this tool only', async () => {
     const permEngine = new PermissionEngine({
       mode:  'ask',
       rules: [],
-      ask:   async (_req) => ({ action: 'always_allow' as const, scope: 'session' as const }),
-      onRulePersisted: async (rule) => { persistedRules.push(rule); },
+      ask:   async (_req) => ({ action: 'allow_session' as const }),
     });
 
     const fsReadMeta = registry.get('fs_read').permissionMeta;
@@ -361,11 +358,13 @@ describe('permission tests', () => {
 
     const outcome = await permEngine.gate('fs_read', input, fsReadMeta, makePermCtx());
 
-    console.log('[permission] always_allow outcome:', outcome, 'persisted:', persistedRules);
+    console.log('[permission] allow_session outcome:', outcome);
     expect(outcome.granted).toBe(true);
-    expect(persistedRules.length).toBe(1);
-    // Second call: now the persisted rule auto-allows it
+    // Second call for same tool: session rule auto-allows without prompting
     const outcome2 = await permEngine.gate('fs_read', input, fsReadMeta, makePermCtx());
     expect(outcome2.granted).toBe(true);
+    // Session rule is tool-scoped: rules list has exactly one entry for fs_read
+    expect(permEngine.getRules()).toHaveLength(1);
+    expect(permEngine.getRules()[0]).toMatchObject({ action: 'allow', tool: 'fs_read', scope: 'session' });
   });
 });

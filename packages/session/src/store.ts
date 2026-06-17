@@ -41,12 +41,17 @@ import type {
 
 // ── Row → domain object converters (module-private) ──────────────────────────
 
+function safeJson<T>(raw: string, fallback: T, label: string): T {
+  try { return JSON.parse(raw) as T; }
+  catch { console.warn(`[session] corrupt JSON in ${label}, using fallback`); return fallback; }
+}
+
 function toSession(row: SessionRow): Session {
   return {
     id: row.id as SessionId,
     title: row.title,
     characterCardId: row.character_card_id as CharacterCardId,
-    workspaceRoots: JSON.parse(row.workspace_roots_json) as string[],
+    workspaceRoots: safeJson(row.workspace_roots_json, [] as string[], `session ${row.id} workspace_roots_json`),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     lastActivityAt: row.last_activity_at,
@@ -56,7 +61,7 @@ function toSession(row: SessionRow): Session {
     groupLabel:    row.group_label,
     parentSessionId: row.parent_session_id as SessionId | null,
     runningTurnCount: 0,    // populated by caller
-    meta: JSON.parse(row.meta_json) as Record<string, unknown>,
+    meta: safeJson(row.meta_json, {} as Record<string, unknown>, `session ${row.id} meta_json`),
     lastMode:    (row.last_mode    ?? null) as TurnMode    | null,
     lastSubMode: (row.last_sub_mode ?? null) as AgentSubMode | null,
     lastViewedAt:   row.last_viewed_at ?? null,
@@ -90,7 +95,7 @@ function toTurn(row: TurnRow): Turn {
     usageInputTokens: row.usage_input_tokens,
     usageOutputTokens: row.usage_output_tokens,
     costUsd: row.cost_usd,
-    meta: JSON.parse(row.meta_json) as Record<string, unknown>,
+    meta: safeJson(row.meta_json, {} as Record<string, unknown>, `turn ${row.id} meta_json`),
   };
 }
 
@@ -111,7 +116,7 @@ function toMessage(row: MessageRow): Message {
     blocks,
     interrupted: row.interrupted === 1,
     createdAt:   row.created_at,
-    meta:        JSON.parse(row.meta_json) as Record<string, unknown>,
+    meta:        safeJson(row.meta_json, {} as Record<string, unknown>, `message ${row.id} meta_json`),
   };
 }
 

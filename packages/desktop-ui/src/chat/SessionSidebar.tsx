@@ -54,7 +54,7 @@ export function SessionSidebar(): JSX.Element {
             onClick={() => setCollapsed(false)}
             title="展开侧边栏"
           >
-            <span className="i-mdi:chevron-right text-base" aria-hidden />
+            <span className="text-base leading-none" aria-hidden>◨</span>
           </button>
           <div className="flex flex-col items-center gap-1.5 mt-1">
             {sessions.recent.slice(0, 8).map((s) => {
@@ -73,13 +73,12 @@ export function SessionSidebar(): JSX.Element {
       ) : (
         <>
           <div className="px-1.5 py-2 border-b border-neutral-800/60">
-            <SidebarCommand
-              icon="i-mdi:square-edit-outline"
-              label="新对话"
-              onClick={async () => {
+            <NewConversationCommand
+              onCreate={async () => {
                 const newId = await useSessionStore.getState().createSession();
                 if (newId) void useConversationStore.getState().viewSession(newId);
               }}
+              onCollapse={() => setCollapsed(true)}
             />
             <SidebarCommand
               icon="i-mdi:magnify"
@@ -123,6 +122,33 @@ export function SessionSidebar(): JSX.Element {
           onClose={() => setSearchOpen(false)}
         />
       )}
+    </div>
+  );
+}
+
+function NewConversationCommand({
+  onCreate, onCollapse,
+}: {
+  onCreate(): void | Promise<void>;
+  onCollapse(): void;
+}): JSX.Element {
+  return (
+    <div className={`w-full ${sidebarBlockClass} pr-1`}>
+      <button
+        className="min-w-0 flex flex-1 items-center gap-2.5 text-left"
+        onClick={() => void onCreate()}
+      >
+        <span className="i-mdi:square-edit-outline text-base text-neutral-400" aria-hidden />
+        <span className="truncate">新对话</span>
+      </button>
+      <button
+        className="w-6 h-6 shrink-0 flex items-center justify-center rounded text-neutral-500 hover:text-neutral-100 hover:bg-neutral-800/90 transition-colors"
+        onClick={onCollapse}
+        title="折叠侧边栏"
+        aria-label="折叠侧边栏"
+      >
+        <span className="text-[15px] leading-none" aria-hidden>◧</span>
+      </button>
     </div>
   );
 }

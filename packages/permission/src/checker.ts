@@ -10,57 +10,10 @@ import type {
   PermissionOutcome,
   PermissionRule,
   PermissionPrompt,
-  PermissionUpdate,
   ToolPermissionMeta,
   DecisionReason,
   RuleScope,
 } from './types.js';
-
-// ── Suggestion helpers ────────────────────────────────────────────────────────
-
-function suggestionsForPath(
-  toolName:    string,
-  targetPath:  string | undefined,
-  context:     Pick<PermissionContext, 'workspaceRoots'>,
-): PermissionUpdate[] {
-  const suggestions: PermissionUpdate[] = [];
-  const allRoots = context.workspaceRoots;
-
-  if (!targetPath) {
-    // Non-file tool: suggest always-allow for this tool in session scope
-    suggestions.push({
-      type:        'addRules',
-      rules:       [{ tool: toolName, action: 'allow' }],
-      destination: 'session',
-    });
-    return suggestions;
-  }
-
-  // File tool: suggest adding the directory to session allow list
-  const dir = path.dirname(path.resolve(targetPath));
-  suggestions.push({
-    type:        'addDirectories',
-    directories: [dir],
-    destination: 'session',
-  });
-
-  // RESP-03: only suggest a path-scoped rule when the directory is inside the
-  // workspace root (path.relative returns an absolute path or starts with '..'
-  // when they are on different drives or the target is above the root).
-  for (const root of allRoots) {
-    const rel = path.relative(root, dir);
-    if (rel && !rel.startsWith('..') && !path.isAbsolute(rel)) {
-      suggestions.push({
-        type:        'addRules',
-        rules:       [{ tool: toolName, pathGlob: `/${rel.replace(/\\/g, '/')}/**`, action: 'allow' }],
-        destination: 'session',
-      });
-      break;
-    }
-  }
-
-  return suggestions;
-}
 
 // ── PermissionEngine ──────────────────────────────────────────────────────────
 
@@ -243,8 +196,7 @@ export class PermissionEngine {
     for (const p of allPaths) {
       const reason = getDangerousPathReason(p);
       if (reason) {
-        const suggestions = suggestionsForPath(toolName, extractedPath, context);
-        return this.promptUser(toolName, input, meta, reason, suggestions, context);
+        return this.promptUser(toolName, input, meta, reason, context);
       }
     }
 
@@ -255,7 +207,7 @@ export class PermissionEngine {
         return this.promptUser(
           toolName, input, meta,
           `an "ask" rule requires confirmation for ${toolName}`,
-          [], context,
+          context,
         );
       }
     }
@@ -312,8 +264,7 @@ export class PermissionEngine {
     }
 
     // ── Step 12: ask user ──────────────────────────────────────────────────
-    const suggestions = suggestionsForPath(toolName, extractedPath, context);
-    return this.promptUser(toolName, input, meta, undefined, suggestions, context);
+    return this.promptUser(toolName, input, meta, undefined, context);
   }
 
   getRules(): ReadonlyArray<PermissionRule> {
@@ -342,12 +293,11 @@ export class PermissionEngine {
   // ── Private helpers ───────────────────────────────────────────────────────
 
   private async promptUser(
-    toolName:    string,
-    input:       unknown,
-    meta:        ToolPermissionMeta,
-    reason:      string | undefined,
-    suggestions: PermissionUpdate[],
-    context:     PermissionContext,
+    toolName: string,
+    input:    unknown,
+    meta:     ToolPermissionMeta,
+    reason:   string | undefined,
+    context:  PermissionContext,
   ): Promise<PermissionOutcome> {
     // Per-call override wins (lets each turn route the prompt through its
     // own SSE event stream). Falls back to engine-level config.
@@ -355,8 +305,8 @@ export class PermissionEngine {
     if (!askFn) {
       // Headless / daemon mode — no callback → deny rather than hang
       return {
-        granted:      false,
-        reason:       `no ask callback; denying "${toolName}" in headless mode`,
+        granted:        false,
+        reason:         `no ask callback; denying "${toolName}" in headless mode`,
         decisionReason: { type: 'other', reason: 'headless mode: no ask callback configured' },
       };
     }
@@ -364,10 +314,9 @@ export class PermissionEngine {
     const prompt: PermissionPrompt = {
       toolName,
       input,
-      riskLevel:   meta.riskLevel,
-      accessType:  meta.accessType,
-      gateReason:  reason,
-      suggestions: suggestions.length > 0 ? suggestions : undefined,
+      riskLevel:  meta.riskLevel,
+      accessType: meta.accessType,
+      gateReason: reason,
     };
 
     const response = await askFn(prompt);
@@ -377,92 +326,24 @@ export class PermissionEngine {
         if (context.sessionId) this.recordSuccess(context.sessionId);
         return { granted: true };
 
-      case 'allow_session':
-        // Promote THIS session to bypass — other sessions are unaffected.
-        if (context.sessionId) {
-          this.setSessionMode(context.sessionId, 'bypass');
-        } else {
-          // Headless / no session context — fall back to global mutation.
-          this.setMode('bypass');
-        }
+      case 'allow_session': {
+        // Add a session-scoped allow rule for THIS specific tool only.
+        // Users see "此会话允许" and expect only this tool to be approved —
+        // not a full-session bypass of all tools.
+        const rule: PermissionRule = { action: 'allow', tool: toolName, scope: 'session' };
+        this.rules = upsertRule(this.rules, rule);
         if (context.sessionId) this.recordSuccess(context.sessionId);
-        return { granted: true, decisionReason: { type: 'mode', mode: 'bypass' } };
+        return { granted: true, decisionReason: { type: 'rule', rule } };
+      }
 
-      case 'deny': {
+      case 'deny':
         this.trackDenial(context.sessionId);
         return {
           granted:        false,
           reason:         response.reason ?? 'denied by user',
           decisionReason: { type: 'other', reason: response.reason ?? 'user denied' },
         };
-      }
-
-      case 'always_allow': {
-        // BUG-04 fix: pass real input so extractPath can derive the correct path.
-        const rule = this.buildRule('allow', toolName, meta, response.scope, context, input);
-        this.rules = upsertRule(this.rules, rule);
-        await this.config.onRulePersisted?.(rule);
-        return { granted: true, decisionReason: { type: 'rule', rule } };
-      }
-
-      case 'always_deny': {
-        // BUG-04 fix: pass real input so extractPath can derive the correct path.
-        const rule = this.buildRule('deny', toolName, meta, response.scope, context, input);
-        this.rules = upsertRule(this.rules, rule);
-        await this.config.onRulePersisted?.(rule);
-        return {
-          granted:      false,
-          reason:       'permanently denied by user',
-          decisionReason: { type: 'rule', rule },
-        };
-      }
     }
-  }
-
-  private buildRule(
-    action:   'allow' | 'deny',
-    toolName: string,
-    meta:     ToolPermissionMeta,
-    scope:    PermissionRule['scope'],
-    context:  PermissionContext,
-    input:    unknown,
-  ): PermissionRule {
-    // BUG-04 fix: was meta.extractPath?.({}) — must use the real input so the
-    // path is extracted correctly (empty object would always yield undefined).
-    const extractedPath = meta.extractPath?.(input);
-    let pathGlob: string | undefined;
-
-    if (extractedPath) {
-      const dir = path.dirname(path.resolve(extractedPath));
-
-      // Check primary workspace root first, then additional working dirs.
-      // The first root that contains the dir wins — this produces a tidy
-      // workspace-relative /rel/** glob instead of a raw //absolute/** one.
-      for (const root of context.workspaceRoots) {
-        const rel = path.relative(root, dir);
-        if (rel && !rel.startsWith('..') && !path.isAbsolute(rel)) {
-          pathGlob = `/${rel.replace(/\\/g, '/')}/**`;
-          break;
-        }
-      }
-
-      if (!pathGlob) {
-        // Outside every working dir, same drive — anchor to filesystem root.
-        // This avoids a pathGlob:undefined rule silently allowing the tool on
-        // ALL paths.
-        const primaryRel = path.relative(context.workspaceRoots[0] ?? '', dir);
-        if (!path.isAbsolute(primaryRel)) {
-          const posixDir = dir.replace(/\\/g, '/');
-          const withoutLeadingSlash = posixDir.startsWith('/') ? posixDir.slice(1) : posixDir;
-          pathGlob = `//${withoutLeadingSlash}/**`;
-        }
-        // Windows cross-drive: path.relative returns the absolute target path.
-        // We cannot express a cross-drive scope in the current glob convention,
-        // so pathGlob remains undefined (broad allow). Acceptable edge-case for V1.
-      }
-    }
-
-    return { action, tool: toolName, pathGlob, scope };
   }
 
   private trackDenial(sessionId: string | undefined): void {

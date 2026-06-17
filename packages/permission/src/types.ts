@@ -51,21 +51,6 @@ export type DecisionReason =
   | { type: 'safetyCheck';  reason: string }
   | { type: 'other';        reason: string }
 
-// ── Permission Updates (suggestions) ─────────────────────────────────────────
-
-/**
- * Suggested rule changes to show the user in the permission dialog so they can
- * click "Always allow" and get a meaningful rule added automatically.
- */
-export type PermissionUpdate =
-  | {
-      type:        'addRules'
-      rules:       Array<{ tool: string; pathGlob?: string; action: 'allow' | 'deny' }>
-      destination: RuleScope
-    }
-  | { type: 'setMode';        mode: PermissionMode; destination: RuleScope }
-  | { type: 'addDirectories'; directories: string[];  destination: RuleScope }
-
 // ── Outcome ───────────────────────────────────────────────────────────────────
 
 export type PermissionOutcome =
@@ -102,19 +87,13 @@ export interface PermissionPrompt {
   accessType?:      AccessType
   /** Human-readable reason why this call is being gated (shown in the dialog). */
   gateReason?:      string
-  /** Suggested rule changes to show as quick-action buttons in the dialog. */
-  suggestions?:     PermissionUpdate[]
 }
 
 export type PermissionResponse =
   /** Allow this one call. */
   | { action: 'allow' }
-  /** Allow ALL tools for the rest of this session without asking again. */
+  /** Allow this tool for the rest of this session (session-scoped allow rule). */
   | { action: 'allow_session' }
-  /** Permanently allow this tool (persist rule at given scope). */
-  | { action: 'always_allow'; scope: RuleScope }
-  /** Permanently deny this tool (persist rule at given scope). */
-  | { action: 'always_deny';  scope: RuleScope }
   /** Deny this call. User may optionally provide a reason. */
   | { action: 'deny'; reason?: string }
 

@@ -259,8 +259,15 @@ export class OpenAiAdapter implements LlmAdapter {
       if (choice?.finish_reason) {
         stopReason = mapStopReason(choice.finish_reason);
         for (const [idx, buf] of toolBufs) {
-          let args: unknown = {};
-          try { args = JSON.parse(buf.argsJson); } catch { /* keep {} */ }
+          let args: unknown;
+          try {
+            args = JSON.parse(buf.argsJson);
+          } catch {
+            // argsJson is not valid JSON — likely truncated by max_tokens or a provider bug.
+            // Pass the raw fragment so the executor can surface a useful error to the model
+            // rather than silently calling the tool with empty args.
+            args = { __parse_error: true, raw: buf.argsJson.slice(0, 500) };
+          }
           yield {
             type:       'tool_use_complete',
             blockIndex: 1000 + idx,

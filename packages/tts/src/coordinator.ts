@@ -72,6 +72,7 @@ export class TtsCoordinator {
   private readonly splitter = new SentenceSplitter();
   private chain:      Promise<void>       = Promise.resolve();
   private finishing                       = false;
+  private aborted                         = false;
   private finalAudioPath: string | null   = null;
   /**
    * Actual archive extension detected from the first audio_chunk MIME.
@@ -141,6 +142,10 @@ export class TtsCoordinator {
 
     await this.chain;
 
+    // If abort() was called while we were waiting for the chain, it has already
+    // set this.aborted and will call discardTurn — don't write a partial merged file.
+    if (this.aborted) return { audioPath: null };
+
     if (this.archive) {
       try {
         this.finalAudioPath = await this.archive.finalizeTurn(
@@ -159,14 +164,17 @@ export class TtsCoordinator {
   /** Discard everything. Used when the turn aborts before completion. */
   async abort(): Promise<void> {
     if (this.abortController.signal.aborted) return;
-    const finishAlreadyStarted = this.finishing;
+    // Set aborted BEFORE firing the signal so finish() sees it after chain settles.
+    // Also set finishing so any concurrent finish() call returns early rather than
+    // racing to finalizeTurn after the chain resolves.
+    this.aborted = true;
     this.abortController.abort();
     this.disposeExternalAbort?.();
-    if (!finishAlreadyStarted) {
-      this.finishing = true;
-      try { await this.chain; } catch { /* swallow */ }
-      this.archive?.discardTurn(this.turnId as string);
-    }
+    this.finishing = true;
+    try { await this.chain; } catch (err) { 
+      console.warn('[tts/coordinator] chain error during abort:', err instanceof Error ? err.message : err);
+     }
+    this.archive?.discardTurn(this.turnId as string);
   }
 
   // ── Internals ─────────────────────────────────────────────────────────────

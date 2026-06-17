@@ -21,7 +21,6 @@ export type {
   PermissionOutcome,
   PermissionPrompt,
   PermissionResponse,
-  PermissionUpdate,
   PermissionContext,
   AskPermissionFn,
   ToolPermissionMeta,

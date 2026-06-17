@@ -16,7 +16,13 @@ export class SessionTaskQueue {
   enqueue<T>(sessionId: SessionId, task: () => Promise<T>): Promise<T> {
     const prev = this.chains.get(sessionId) ?? Promise.resolve();
     const next = prev.then(task, task);
-    this.chains.set(sessionId, next.catch(() => undefined));
+    const stored = next.catch(() => undefined);
+    this.chains.set(sessionId, stored);
+    // Auto-evict when this entry is still the tail — prevents the Map from growing
+    // unboundedly in long-running processes where users open many sessions.
+    void stored.finally(() => {
+      if (this.chains.get(sessionId) === stored) this.chains.delete(sessionId);
+    });
     return next;
   }
 

@@ -114,6 +114,22 @@ export class TurnToolExecutor {
       return;
     }
 
+    // ── Args parse error (LLM output truncated by max_tokens or provider bug) ──
+    // The OpenAI adapter tags unparseable argsJson with __parse_error rather than
+    // silently falling back to {} — calling a tool with wrong args causes silent
+    // misbehaviour that is much harder to diagnose than an explicit error result.
+    if (args !== null && typeof args === 'object' && (args as Record<string, unknown>)['__parse_error'] === true) {
+      const raw = (args as Record<string, unknown>)['raw'];
+      const snippet = typeof raw === 'string' ? raw.slice(0, 200) : '';
+      const msg = `工具参数解析失败（模型输出可能被截断），请重试或缩短回复长度。${snippet ? `原始片段：${snippet}` : ''}`;
+      this.tracked.push({
+        blockIndex, id, name, args, isConcurrencySafe: true, done: true,
+        result: { type: 'tool_result', toolUseId: id, content: msg, isError: true },
+      });
+      pushEv({ type: 'tool_result', sessionId: this.opts.sessionId, callId: id, error: { code: 'tool/args_parse_error', message: msg } });
+      return;
+    }
+
     // ── Async execution path ─────────────────────────────────────────────────
 
     const toolEntry        = tools.get(name);

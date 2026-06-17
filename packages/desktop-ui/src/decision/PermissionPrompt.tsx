@@ -3,13 +3,7 @@ import { Button, Card, Progress } from '@ema-agent/ui';
 import { permissionApi } from '../api/permission.js';
 import { HumanDescriptionPanel } from './HumanDescriptionPanel.js';
 import { RawCommandPanel } from './RawCommandPanel.js';
-import type { PermissionResponse, RuleScope } from '@ema-agent/permission';
-
-const SCOPE_LABELS: Record<RuleScope, string> = {
-  session: '此会话',
-  project: '本项目',
-  global:  '全局',
-};
+import type { PermissionResponse } from '@ema-agent/permission';
 
 export interface PermissionPromptProps {
   promptId:                 string;
@@ -38,8 +32,7 @@ export function PermissionPrompt({
   onResolve,
 }: PermissionPromptProps): JSX.Element {
   const totalSeconds = timeoutMs ? Math.ceil(timeoutMs / 1000) : 0;
-  const [secondsLeft, setSecondsLeft]   = useState(totalSeconds);
-  const [scopeFor, setScopeFor]         = useState<'allow' | 'deny' | null>(null);
+  const [secondsLeft, setSecondsLeft] = useState(totalSeconds);
   const resolved = useRef(false);
 
   const handleResolve = (decision: 'allow' | 'deny'): void => {
@@ -92,51 +85,15 @@ export function PermissionPrompt({
 
       <RawCommandPanel toolName={toolName} args={args} />
 
-      {/* Inline scope picker — shown when user clicks "始终…" */}
-      {scopeFor !== null && (
-        <div className="mt-3 p-2 rounded-lg bg-neutral-800/50 border border-neutral-600/30 flex items-center gap-2 flex-wrap text-xs">
-          <span className="text-neutral-400 shrink-0">
-            {scopeFor === 'allow' ? '始终允许范围：' : '始终拒绝范围：'}
-          </span>
-          {(['session', 'project', 'global'] as const).map((scope) => (
-            <Button
-              key={scope}
-              variant={scopeFor === 'allow' ? 'primary' : 'danger'}
-              size="sm"
-              onClick={() => {
-                setScopeFor(null);
-                void respond(
-                  scopeFor === 'allow'
-                    ? { action: 'always_allow', scope }
-                    : { action: 'always_deny',  scope },
-                  scopeFor === 'allow' ? 'allow' : 'deny',
-                );
-              }}
-            >
-              {SCOPE_LABELS[scope]}
-            </Button>
-          ))}
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setScopeFor(null)}
-          >
-            取消
-          </Button>
-        </div>
-      )}
-
-      {/* Primary action row */}
+      {/* Action row */}
       <div className="flex gap-2 mt-4 justify-between items-center">
-        <div className="flex gap-2">
-          <Button
-            variant="danger"
-            size="sm"
-            onClick={() => void respond({ action: 'deny' }, 'deny')}
-          >
-            拒绝
-          </Button>
-        </div>
+        <Button
+          variant="danger"
+          size="sm"
+          onClick={() => void respond({ action: 'deny' }, 'deny')}
+        >
+          拒绝
+        </Button>
 
         <div className="flex gap-2">
           <Button
@@ -154,26 +111,6 @@ export function PermissionPrompt({
             允许
           </Button>
         </div>
-      </div>
-
-      {/* Secondary row: persistent allow / deny */}
-      <div className="flex gap-2 mt-2 justify-between">
-        <Button
-          variant="ghost"
-          size="sm"
-          className={scopeFor === 'deny' ? 'text-red-400' : 'text-neutral-500 hover:text-red-400'}
-          onClick={() => setScopeFor(scopeFor === 'deny' ? null : 'deny')}
-        >
-          始终拒绝…
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          className={scopeFor === 'allow' ? 'text-primary-300' : 'text-neutral-500 hover:text-primary-300'}
-          onClick={() => setScopeFor(scopeFor === 'allow' ? null : 'allow')}
-        >
-          始终允许…
-        </Button>
       </div>
 
       {totalSeconds > 0 && (

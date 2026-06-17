@@ -9,14 +9,6 @@ const respondSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('allow') }),
   z.object({ action: z.literal('allow_session') }),
   z.object({
-    action: z.literal('always_allow'),
-    scope:  z.enum(['session', 'project', 'global']),
-  }),
-  z.object({
-    action: z.literal('always_deny'),
-    scope:  z.enum(['session', 'project', 'global']),
-  }),
-  z.object({
     action: z.literal('deny'),
     reason: z.string().optional(),
   }),
