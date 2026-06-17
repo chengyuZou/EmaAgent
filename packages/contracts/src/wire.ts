@@ -23,7 +23,10 @@ export interface SessionWire {
   characterCardId:  string;
   workspaceRoots:   string[];
   createdAt:        number;
+  /** Row metadata update time: title/group/pin/workspace/mode/meta edits. */
   updatedAt:        number;
+  /** Conversation activity time used for "recent sessions" ordering. */
+  lastActivityAt:   number;
   archivedAt:       number | null;
   pinned:           boolean;
   pinnedAt:         number | null;
@@ -33,6 +36,12 @@ export interface SessionWire {
   meta:             Record<string, unknown>;
   lastMode:         TurnMode | null;
   lastSubMode:      AgentSubMode | null;
+  /** Unix-ms timestamp when user last opened this session. Null = never explicitly viewed. */
+  lastViewedAt:     number | null;
+  /** Status of the most recent turn, or null if session has no turns. */
+  lastTurnStatus:   TurnStatus | null;
+  /** True when the most recent completed turn happened after the user last viewed this session. */
+  hasUnread:        boolean;
 }
 
 export interface SessionsListResult {
@@ -45,6 +54,18 @@ export interface SessionsGroupedResult {
   byGroup:  Array<{ label: string; sessions: SessionWire[] }>;
   recent:   SessionWire[];
   archived: SessionWire[];
+}
+
+export interface SessionSearchItem {
+  session:      SessionWire;
+  matchKind:    'title' | 'message';
+  snippet:      string;
+  messageId:    string | null;
+  messageAt:    number | null;
+}
+
+export interface SessionsSearchResult {
+  results: SessionSearchItem[];
 }
 
 export interface ForkResult {

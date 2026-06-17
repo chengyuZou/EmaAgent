@@ -21,7 +21,10 @@ export interface Session {
   characterCardId: CharacterCardId;
   workspaceRoots: string[];
   createdAt: number;
+  /** Row metadata update time: title/group/pin/workspace/mode/meta edits. */
   updatedAt: number;
+  /** Conversation activity time used for "recent sessions" ordering. */
+  lastActivityAt: number;
   archivedAt: number | null;
   pinned:        boolean;
   pinnedAt:      number | null;
@@ -31,6 +34,9 @@ export interface Session {
   meta: Record<string, unknown>;
   lastMode:     TurnMode | null;
   lastSubMode:  AgentSubMode | null;
+  lastViewedAt:   number | null;
+  lastTurnStatus: TurnStatus | null;
+  hasUnread:      boolean;
 }
 
 export interface Turn {
@@ -106,10 +112,10 @@ export interface ListSessionsInput {
   limit?: number;
   /**
    * Opaque cursor from the previous page's `nextCursor`. Format is internal
-   * (`"<pinned>.<updated_at>"`), callers should NOT parse or construct it.
+   * (`"<pinned>.<last_activity_at>"`), callers should NOT parse or construct it.
    *
    * Composite keyset cursor is required because the sort key is
-   * `(pinned DESC, updated_at DESC)` — a single-field cursor would skip
+   * `(pinned DESC, last_activity_at DESC)` — a single-field cursor would skip
    * items across the pinned/unpinned boundary.
    */
   cursor?: string;
@@ -125,6 +131,23 @@ export interface ListMessagesInput {
   /** Cursor: load messages older than this timestamp (for UI pagination). */
   before?: number;
   limit?: number;
+}
+
+export interface SearchSessionsInput {
+  query: string;
+  limit?: number;
+}
+
+export interface SessionSearchHit {
+  session:   Session;
+  matchKind: 'title' | 'message';
+  snippet:   string;
+  messageId: MessageId | null;
+  messageAt: number | null;
+}
+
+export interface SearchSessionsOutput {
+  results: SessionSearchHit[];
 }
 
 // Re-export for consumers who build block arrays

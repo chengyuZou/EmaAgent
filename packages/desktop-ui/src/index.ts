@@ -77,6 +77,8 @@ export type {
   MessageWire,
   SessionsListResult,
   SessionsGroupedResult,
+  SessionsSearchResult,
+  SessionSearchItem,
   ForkResult,
 } from './api/sessions.js';
 
@@ -150,6 +152,7 @@ export { ShortcutsTab }            from './settings/ShortcutsTab.js';
 // Chat
 export { ChatPanel }               from './chat/ChatPanel.js';
 export { SessionSwitcher }         from './chat/SessionSwitcher.js';
+export { SessionSidebar }          from './chat/SessionSidebar.js';
 export { ChatHistory }             from './chat/ChatHistory.js';
 export { UserBubble }              from './chat/UserBubble.js';
 export { AssistantBubble }         from './chat/AssistantBubble.js';

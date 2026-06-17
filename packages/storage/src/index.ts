@@ -27,7 +27,7 @@ export { MemoryTasksRepo }   from './repos/memory-tasks.js';
 export { PendingFragmentsRepo }  from './repos/pending-fragments.js';
 
 export type { DatabaseOptions, SqliteDb } from './database.js';
-export type { SessionRow, SessionInsert, SessionsGrouped } from './repos/sessions.js';
+export type { SessionRow, SessionRowEnriched, SessionSearchRow, SessionInsert, SessionsGrouped } from './repos/sessions.js';
 export type { TurnRow, TurnInsert, TurnCompletion } from './repos/turns.js';
 export type { MessageRow, MessageInsert } from './repos/messages.js';
 export type { CharacterCardRow, CharacterCardInsert } from './repos/character-cards.js';

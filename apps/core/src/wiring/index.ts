@@ -2,12 +2,15 @@ import type { Database } from '@ema-agent/storage';
 import { buildBindings, type AppBindings, type BuildBindingsArgs } from './bindings.js';
 import { registerAllHooks }    from './register-hooks.js';
 import { registerAllEmitters } from './register-emitters.js';
+import { configureBridge }     from './bridge.js';
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
 const BACKGROUND_TICK_MS  = 5_000;      // poll background_tasks every 5 s
 // 360 ticks × 5 s = 1800 s = 30 min between cleaner sweeps.
 const CLEANER_SWEEP_EVERY = 360;
+// 12 ticks × 5 s = 60 s between bridge readiness checks.
+const BRIDGE_HEARTBEAT_EVERY = 12;
 
 // ── wire — synchronous setup, returns bindings ───────────────────────────────
 
@@ -88,8 +91,12 @@ export function startBackgroundWork(bindings: AppBindings): BackgroundHandle {
     console.warn('[mcp] startAll() failed:', err);
   });
 
-  // 4) Periodic tick — drains background_tasks queue + sweeps tool-result files.
+  // 4) Periodic tick — drains background_tasks queue + sweeps tool-result files
+  //    + bridge heartbeat (CLAUDE.md red line: ping /health, mark unavailable
+  //    on failure, never fail silently).
   let tickCount = 0;
+  // null = not checked yet (don't emit a spurious "recovered" on the first tick).
+  let lastBridgeReady: boolean | null = null;
   const ticker = setInterval(() => {
     tickCount++;
     void bindings.memory.tick().catch((err) => {
@@ -104,6 +111,11 @@ export function startBackgroundWork(bindings: AppBindings): BackgroundHandle {
       } catch (err) {
         console.warn('[agent-context] cleaner sweep failed:', err);
       }
+    }
+    if (tickCount % BRIDGE_HEARTBEAT_EVERY === 0) {
+      void checkBridgeHeartbeat(bindings, lastBridgeReady).then((ready) => {
+        lastBridgeReady = ready;
+      });
     }
   }, BACKGROUND_TICK_MS);
   ticker.unref?.();
@@ -121,6 +133,40 @@ export function startBackgroundWork(bindings: AppBindings): BackgroundHandle {
       }
     },
   };
+}
+
+/**
+ * Bridge heartbeat — CLAUDE.md red line: "apps/core 定期 ping /health，失败时
+ * 主动标记 unavailable 并触发降级；禁止静默失败". Without this, a bridge that
+ * starts AFTER core (the common manual-start order) never gets configured —
+ * core's one-shot fire-and-forget `configureBridge` at startup already failed
+ * and nothing ever retries it.
+ *
+ * Idempotent: re-pushing the same config to an already-configured bridge just
+ * makes it rebuild its NarrativeManager (cheap, observed safe in practice).
+ * Emits a `system_warning` on every down↔up transition so the frontend status
+ * bar reflects reality instead of staying silent.
+ */
+async function checkBridgeHeartbeat(
+  bindings:  AppBindings,
+  lastReady: boolean | null,
+): Promise<boolean> {
+  let ready = await bindings.narrative.isReady();
+  if (!ready) {
+    // Retry configure once before declaring it down — covers "bridge just
+    // came up since the last tick" without waiting a full extra cycle.
+    await configureBridge(bindings.profileDb, bindings.narrative).catch(() => {});
+    ready = await bindings.narrative.isReady();
+  }
+
+  if (lastReady === false && ready) {
+    console.log('[bridge] narrative capability recovered');
+    bindings.systemBus.emit({ type: 'system_warning', level: 'info', message: 'Narrative bridge 已恢复' });
+  } else if (lastReady === true && !ready) {
+    console.warn('[bridge] narrative capability lost — degrading');
+    bindings.systemBus.emit({ type: 'system_warning', level: 'warn', message: 'Narrative bridge 不可达 — narrative 模式暂时降级' });
+  }
+  return ready;
 }
 
 // ── Public re-exports (back-compat for existing routes / orchestrator) ──────

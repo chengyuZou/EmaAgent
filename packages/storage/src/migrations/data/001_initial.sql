@@ -27,6 +27,8 @@ CREATE TABLE sessions (
   character_card_id    TEXT NOT NULL DEFAULT 'ema',
   workspace_roots_json TEXT NOT NULL DEFAULT '[]',
   created_at           INTEGER NOT NULL,
+  -- Row metadata update time: title/group/pin/workspace/mode/meta edits.
+  -- Conversation recency is tracked by last_activity_at added in migration 003.
   updated_at           INTEGER NOT NULL,
   archived_at          INTEGER,
   pinned               INTEGER NOT NULL DEFAULT 0,

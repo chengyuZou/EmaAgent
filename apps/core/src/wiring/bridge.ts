@@ -65,17 +65,22 @@ export async function configureBridge(
   if (embedBinding) {
     const row = providersRepo.get(embedBinding.providerConfigId);
     const def = row ? getProviderDefinition(row.definition_id) : undefined;
-    const protocol = def?.protocols.embed;
-    if (protocol === 'openai-embed' && row) {
+    // protocols.embed is declared as `ProtocolFamily | readonly ProtocolFamily[]` —
+    // every provider definition in this repo actually uses the array form, so
+    // normalize to an array before checking membership (comparing the array
+    // directly against a string literal with `===` is always false).
+    const declared  = def?.protocols.embed;
+    const protocols = declared === undefined ? [] : Array.isArray(declared) ? declared : [declared];
+    if (protocols.includes('openai-embed') && row) {
       payload.embed = {
-        protocol,
-        apiKey:  row.api_key_plain ?? '',
-        baseUrl: row.base_url ?? def?.defaultBaseUrl ?? '',
-        model:   embedBinding.model,
-        dim:     (embedBinding.config['dim'] as number | undefined) ?? 1024,
+        protocol: 'openai-embed',
+        apiKey:   row.api_key_plain ?? '',
+        baseUrl:  row.base_url ?? def?.defaultBaseUrl ?? '',
+        model:    embedBinding.model,
+        dim:      (embedBinding.config['dim'] as number | undefined) ?? 1024,
       };
-    } else if (protocol) {
-      console.warn(`[bridge] embed protocol "${protocol}" not yet supported in bridge`);
+    } else if (protocols.length > 0) {
+      console.warn(`[bridge] embed protocols [${protocols.join(', ')}] not yet supported in bridge`);
     }
   }
 

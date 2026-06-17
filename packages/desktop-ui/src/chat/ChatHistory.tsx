@@ -52,9 +52,14 @@ export function ChatHistory(): JSX.Element {
         )}
 
         <div className="flex flex-col gap-2 max-w-2xl mx-auto">
-          {messages.map((msg, i) => (
-            <BubbleRouter key={getKey(msg, i)} message={msg} />
-          ))}
+          {messages.map((msg, i) => {
+            const key = getKey(msg, i);
+            return (
+              <div key={key} id={`msg-${key}`}>
+                <BubbleRouter message={msg} />
+              </div>
+            );
+          })}
 
           {streaming && (
             <AssistantBubble
@@ -85,6 +90,8 @@ export function ChatHistory(): JSX.Element {
     </div>
   );
 }
+
+// ── Internal ──────────────────────────────────────────────────────────────────
 
 function BubbleRouter({ message }: { message: ChatHistoryItem }): JSX.Element {
   switch (message.role) {

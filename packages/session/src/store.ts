@@ -5,6 +5,8 @@ import {
   MessagesRepo,
   nextCursorFor,
   type SessionRow,
+  type SessionRowEnriched,
+  type SessionSearchRow,
   type TurnRow,
   type MessageRow,
 } from '@ema-agent/storage';
@@ -33,6 +35,8 @@ import type {
   ListSessionsInput,
   ListSessionsOutput,
   ListMessagesInput,
+  SearchSessionsInput,
+  SearchSessionsOutput,
 } from './types.js';
 
 // ── Row → domain object converters (module-private) ──────────────────────────
@@ -45,6 +49,7 @@ function toSession(row: SessionRow): Session {
     workspaceRoots: JSON.parse(row.workspace_roots_json) as string[],
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    lastActivityAt: row.last_activity_at,
     archivedAt: row.archived_at,
     pinned:        row.pinned === 1,
     pinnedAt:      row.pinned_at,
@@ -54,7 +59,19 @@ function toSession(row: SessionRow): Session {
     meta: JSON.parse(row.meta_json) as Record<string, unknown>,
     lastMode:    (row.last_mode    ?? null) as TurnMode    | null,
     lastSubMode: (row.last_sub_mode ?? null) as AgentSubMode | null,
+    lastViewedAt:   row.last_viewed_at ?? null,
+    lastTurnStatus: null,
+    hasUnread:      false,
   };
+}
+
+function toSessionEnriched(row: SessionRowEnriched): Session {
+  const s = toSession(row);
+  const lastTurnStatus = (row.last_turn_status ?? null) as Session['lastTurnStatus'];
+  const lastTurnCompletedAt = row.last_turn_completed_at ?? 0;
+  const hasUnread = lastTurnStatus === 'completed'
+    && lastTurnCompletedAt > (row.last_viewed_at ?? 0);
+  return { ...s, lastTurnStatus, hasUnread };
 }
 
 function toTurn(row: TurnRow): Turn {
@@ -95,6 +112,48 @@ function toMessage(row: MessageRow): Message {
     interrupted: row.interrupted === 1,
     createdAt:   row.created_at,
     meta:        JSON.parse(row.meta_json) as Record<string, unknown>,
+  };
+}
+
+function blocksJsonToSearchText(raw: string | null): string {
+  if (!raw) return '';
+  try {
+    const blocks = JSON.parse(raw) as MessageBlocks;
+    if (typeof blocks === 'string') return normaliseSnippet(blocks);
+    if (!Array.isArray(blocks)) return '';
+
+    const parts: string[] = [];
+    for (const b of blocks as Array<{ type?: string; text?: string; content?: unknown }>) {
+      if (b.type === 'text' && typeof b.text === 'string') {
+        parts.push(b.text);
+      } else if (b.type === 'tool_result' && typeof b.content === 'string') {
+        parts.push(b.content);
+      }
+    }
+    return normaliseSnippet(parts.join(' '));
+  } catch {
+    return normaliseSnippet(raw);
+  }
+}
+
+function normaliseSnippet(text: string): string {
+  return text
+    .replace(/\\n/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 220);
+}
+
+function toSearchHit(row: SessionSearchRow): SearchSessionsOutput['results'][number] {
+  const session = toSessionEnriched(row);
+  return {
+    session,
+    matchKind: row.match_kind,
+    snippet: row.match_kind === 'title'
+      ? row.title
+      : blocksJsonToSearchText(row.snippet_json),
+    messageId: row.message_id as MessageId | null,
+    messageAt: row.message_created_at,
   };
 }
 
@@ -154,6 +213,7 @@ export class SessionStore {
       parentSessionId:  input.parentSessionId,
       createdAt:        now,
       updatedAt:        now,
+      lastActivityAt:   now,
     });
     return this.requireSession(id);
   }
@@ -193,8 +253,8 @@ export class SessionStore {
     archived: Session[];
   } {
     const grouped = this.sessionsRepo.listGrouped();
-    const map = (rows: SessionRow[]) => rows.map(r => {
-      const s = toSession(r);
+    const map = (rows: SessionRowEnriched[]) => rows.map(r => {
+      const s = toSessionEnriched(r);
       s.runningTurnCount = this.sessionsRepo.runningTurnCount(s.id);
       return s;
     });
@@ -204,6 +264,22 @@ export class SessionStore {
       recent:   map(grouped.recent),
       archived: map(grouped.archived),
     };
+  }
+
+  searchSessions(input: SearchSessionsInput): SearchSessionsOutput {
+    const query = input.query.trim();
+    if (!query) return { results: [] };
+    const rows = this.sessionsRepo.search(query, input.limit ?? 20);
+    const results = rows.map((r) => {
+      const hit = toSearchHit(r);
+      hit.session.runningTurnCount = this.sessionsRepo.runningTurnCount(hit.session.id);
+      return hit;
+    });
+    return { results };
+  }
+
+  setViewedAt(id: SessionId): void {
+    this.sessionsRepo.setViewedAt(id, Date.now());
   }
 
   updateTitle(id: SessionId, title: string): void {
@@ -340,7 +416,7 @@ export class SessionStore {
       startedAt:    now,
     });
     this.turnsRepo.setRunning(turnId);
-    this.sessionsRepo.touch(input.sessionId, now);
+    this.sessionsRepo.touchActivity(input.sessionId, now);
 
     const signal = this.registry.register(input.sessionId, turnId);
     return { turn: this.requireTurn(turnId), signal };

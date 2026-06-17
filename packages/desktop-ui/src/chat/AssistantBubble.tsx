@@ -85,9 +85,21 @@ export function AssistantBubble({ message, label = 'Ema', isStreaming, iteration
           </div>
         ) : (
           <div className="text-neutral-200 text-sm break-words flex flex-col gap-2">
-            {slices.map((slice, i) => (
-              <SliceRenderer key={i} slice={slice} streaming={!!isStreaming} />
-            ))}
+            {groupSlices(slices).map((group, gi) => {
+              if (group.kind === 'tool_group') {
+                return (
+                  <div
+                    key={gi}
+                    className="rounded-xl border border-neutral-800/60 bg-transparent px-3 py-2 flex flex-col gap-1.5"
+                  >
+                    {group.slices.map((slice, si) => (
+                      <SliceRenderer key={si} slice={slice} streaming={!!isStreaming} />
+                    ))}
+                  </div>
+                );
+              }
+              return <SliceRenderer key={gi} slice={group.slice} streaming={!!isStreaming} />;
+            })}
           </div>
         )}
 
@@ -126,6 +138,39 @@ export function AssistantBubble({ message, label = 'Ema', isStreaming, iteration
       </div>
     </div>
   );
+}
+
+// Group consecutive tool_use slices into a shared box.
+type SliceGroup =
+  | { kind: 'tool_group'; slices: AssistantSlice[] }
+  | { kind: 'single';     slice:  AssistantSlice   };
+
+function groupSlices(slices: AssistantSlice[]): SliceGroup[] {
+  const out: SliceGroup[] = [];
+  let i = 0;
+  while (i < slices.length) {
+    const s = slices[i];
+    if (!s) break;
+    if (s.type === 'tool_use') {
+      const group: AssistantSlice[] = [];
+      while (i < slices.length) {
+        const cur = slices[i];
+        if (!cur || cur.type !== 'tool_use') break;
+        group.push(cur);
+        i++;
+      }
+      const first = group[0];
+      if (group.length === 1 && first) {
+        out.push({ kind: 'single', slice: first });
+      } else {
+        out.push({ kind: 'tool_group', slices: group });
+      }
+    } else {
+      out.push({ kind: 'single', slice: s });
+      i++;
+    }
+  }
+  return out;
 }
 
 function resolveSlices(msg: { content: string; slices?: AssistantSlice[] }): AssistantSlice[] {

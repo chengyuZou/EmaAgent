@@ -1,8 +1,18 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { asSessionId, asTurnId } from '@ema-agent/contracts';
-import type { SessionWire, SessionMessagesResult, SessionsListResult, SessionsGroupedResult } from '@ema-agent/contracts';
+import type {
+  SessionWire,
+  SessionMessagesResult,
+  SessionsListResult,
+  SessionsGroupedResult,
+  SessionsSearchResult,
+  MessageBlocks,
+} from '@ema-agent/contracts';
 import type { AppBindings } from '../wiring.js';
+
+const TITLE_PROMPT = `Generate a very short title (3–6 words, no quotes) that captures the topic of the following message. Reply with only the title.\n\nMessage: `;
+const TITLE_MAX_CHARS = 60;
 
 // ── Schemas ─────────────────────────────────────────────────────────────────
 
@@ -10,7 +20,7 @@ const listSessionsSchema = z.object({
   limit:  z.coerce.number().int().min(1).max(100).default(50),
   /**
    * Opaque cursor returned by the previous response. Internal format
-   * (`"<pinned>.<updated_at>"`); the repo parses it and silently falls back
+   * (`"<pinned>.<last_activity_at>"`); the repo parses it and silently falls back
    * to "first page" if malformed.
    */
   cursor: z.string().min(1).max(64).optional(),
@@ -19,6 +29,11 @@ const listSessionsSchema = z.object({
 const listMessagesSchema = z.object({
   before: z.coerce.number().int().optional(),
   limit:  z.coerce.number().int().min(1).max(200).default(100),
+});
+
+const searchSessionsSchema = z.object({
+  q:     z.string().trim().min(1).max(100),
+  limit: z.coerce.number().int().min(1).max(50).default(12),
 });
 
 const patchSessionSchema = z.object({
@@ -38,6 +53,17 @@ const forkSchema = z.object({
 
 function isNotFound(err: unknown): boolean {
   return err instanceof Error && err.message.startsWith('session_not_found');
+}
+
+function extractText(blocks: MessageBlocks): string {
+  if (typeof blocks === 'string') return blocks;
+  const part = (blocks as Array<{ type: string; text?: string }>).find((b) => b.type === 'text');
+  return part?.text ?? '';
+}
+
+function truncateTitle(text: string): string {
+  const t = text.trim().replace(/\s+/g, ' ');
+  return t.length <= TITLE_MAX_CHARS ? t : t.slice(0, TITLE_MAX_CHARS - 1) + '…';
 }
 
 // ── Route factory ────────────────────────────────────────────────────────────
@@ -79,6 +105,19 @@ export function sessionsRoute(bindings: AppBindings): Hono {
   app.get('/grouped', (c) => {
     const result = bindings.session.listSessionsGrouped();
     return c.json(result satisfies SessionsGroupedResult);
+  });
+
+  // ── GET /api/sessions/search?q=... — title/message search ────────────────
+  app.get('/search', (c) => {
+    const query = searchSessionsSchema.safeParse(c.req.query());
+    if (!query.success) {
+      return c.json({ error: 'invalid_request', details: query.error.flatten() }, 400);
+    }
+    const result = bindings.session.searchSessions({
+      query: query.data.q,
+      limit: query.data.limit,
+    });
+    return c.json(result satisfies SessionsSearchResult);
   });
 
   // ── GET /api/sessions/:id/messages ─────────────────────────────────────────
@@ -125,6 +164,57 @@ export function sessionsRoute(bindings: AppBindings): Hono {
     }
   });
 
+  // ── POST /api/sessions/:id/title — LLM-generated title (fire-and-forget) ───
+  // Frontend calls this after the first turn of a new session completes.
+  // Uses the 'title' binding; falls back to truncating the first user message.
+  app.post('/:id/title', async (c) => {
+    const sessionId = asSessionId(c.req.param('id'));
+
+    try {
+      const messages = bindings.session.listMessages(sessionId, { limit: 10 });
+      const firstUser = messages.find((m) => m.role === 'user');
+      if (!firstUser) return c.body(null, 204);
+
+      const firstText = extractText(firstUser.blocks);
+      if (!firstText) return c.body(null, 204);
+
+      // Build title: try LLM first, fall back to truncation.
+      let title: string;
+
+      const binding    = bindings.modelBindings.get('title');
+      const providerId = binding?.providerConfigId ?? bindings.llm.firstProviderId();
+      const model      = binding?.model ?? (providerId ? bindings.llm.defaultModelFor(providerId) : undefined);
+
+      if (providerId && model) {
+        try {
+          const result = await bindings.llm.complete({
+            providerId,
+            model,
+            maxTokens: 32,
+            temperature: 0,
+            messages: [
+              { role: 'user', content: [{ type: 'text', text: TITLE_PROMPT + firstText.slice(0, 400) }] },
+            ],
+          });
+          const textBlock = result.blocks.find((b) => b.type === 'text');
+          title = textBlock
+            ? textBlock.text.trim().replace(/^["']|["']$/g, '').slice(0, TITLE_MAX_CHARS)
+            : truncateTitle(firstText);
+        } catch {
+          title = truncateTitle(firstText);
+        }
+      } else {
+        title = truncateTitle(firstText);
+      }
+
+      bindings.session.patchSession(sessionId, { title });
+      return c.json({ title });
+    } catch (err) {
+      if (isNotFound(err)) return c.json({ error: 'session_not_found' }, 404);
+      throw err;
+    }
+  });
+
   // ── POST /api/sessions/:id/fork ────────────────────────────────────────────
   app.post('/:id/fork', async (c) => {
     const sessionId = asSessionId(c.req.param('id'));
@@ -142,6 +232,16 @@ export function sessionsRoute(bindings: AppBindings): Hono {
       if (isNotFound(err)) return c.json({ error: 'session_not_found' }, 404);
       throw err;
     }
+  });
+
+  // ── POST /api/sessions/:id/viewed — mark session as seen by user ───────────
+  // Updates last_viewed_at so hasUnread resets for this session.
+  app.post('/:id/viewed', (c) => {
+    const sessionId = asSessionId(c.req.param('id'));
+    try {
+      bindings.session.setViewedAt(sessionId);
+    } catch { /* non-critical */ }
+    return c.body(null, 204);
   });
 
   // ── POST /api/sessions/:id/archive ─────────────────────────────────────────

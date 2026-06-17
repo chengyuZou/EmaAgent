@@ -14,13 +14,6 @@ export interface BindingUpsertInput {
   config?:          Record<string, unknown>;
 }
 
-export interface BindingUpsertInput {
-  providerConfigId: string;
-  model:            string;
-  voiceId?:         string;
-  config?:          Record<string, unknown>;
-}
-
 // ── API object ────────────────────────────────────────────────────────────────
 
 export interface AvailableBindingModel {

@@ -16,6 +16,7 @@ export type DecisionPrompt =
   | {
       kind: 'permission';
       promptId: string;
+      sessionId?: string;
       toolName: string;
       args: unknown;
       hint: string;
@@ -25,12 +26,14 @@ export type DecisionPrompt =
   | {
       kind: 'ask_confirm';
       promptId: string;
+      sessionId?: string;
       question: string;
       humanDescription?: string;
     }
   | {
       kind: 'ask_text';
       promptId: string;
+      sessionId?: string;
       question: string;
       humanDescription?: string;
       placeholder?: string;
@@ -38,6 +41,7 @@ export type DecisionPrompt =
   | {
       kind: 'ask_choice';
       promptId: string;
+      sessionId?: string;
       question: string;
       humanDescription?: string;
       options: Array<{ label: string; humanDescription?: string }>;
@@ -49,6 +53,7 @@ export type DecisionPrompt =
   | {
       kind: 'ask_user';
       promptId: string;
+      sessionId?: string;
       turnId: TurnId;
       questions: AskUserQuestionSpec[];
       humanDescription?: string;

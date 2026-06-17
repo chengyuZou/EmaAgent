@@ -15,12 +15,14 @@ import type {
   SessionMessagesResult,
   SessionsListResult,
   SessionsGroupedResult,
+  SessionsSearchResult,
+  SessionSearchItem,
   ForkResult,
 } from '@ema-agent/contracts';
 
 export type {
   SessionWire, MessageWire, TurnWire, SessionMessagesResult,
-  SessionsListResult, SessionsGroupedResult, ForkResult,
+  SessionsListResult, SessionsGroupedResult, SessionsSearchResult, SessionSearchItem, ForkResult,
 };
 
 // ── API object ────────────────────────────────────────────────────────────────
@@ -46,6 +48,14 @@ export const sessionsApi = {
   /** GET /api/sessions/grouped — sidebar-ready grouped listing. */
   async listGrouped(): Promise<SessionsGroupedResult> {
     return sidecarClient.request<SessionsGroupedResult>('/api/sessions/grouped');
+  },
+
+  /** GET /api/sessions/search?q=... — search titles + message text. */
+  async search(opts: { q: string; limit?: number }): Promise<SessionsSearchResult> {
+    const params = new URLSearchParams();
+    params.set('q', opts.q);
+    if (opts.limit) params.set('limit', String(opts.limit));
+    return sidecarClient.request<SessionsSearchResult>(`/api/sessions/search?${params.toString()}`);
   },
 
   /** PUT /api/sessions/:id — partial update. Returns updated session. */
@@ -87,6 +97,11 @@ export const sessionsApi = {
     return sidecarClient.request<ForkResult>(`/api/sessions/${id}/fork`, { method: 'POST' });
   },
 
+  /** POST /api/sessions/:id/viewed — reset hasUnread for this session. Fire-and-forget. */
+  async markViewed(id: SessionId): Promise<void> {
+    await sidecarClient.request(`/api/sessions/${id}/viewed`, { method: 'POST' });
+  },
+
   /** POST /api/sessions/:id/archive */
   async archive(id: SessionId): Promise<void> {
     await sidecarClient.request(`/api/sessions/${id}/archive`, { method: 'POST' });
@@ -100,5 +115,20 @@ export const sessionsApi = {
   /** DELETE /api/sessions/:id */
   async delete(id: SessionId): Promise<void> {
     await sidecarClient.request(`/api/sessions/${id}`, { method: 'DELETE' });
+  },
+
+  /**
+   * POST /api/sessions/:id/title — generate a title for the session using the
+   * 'title' LLM binding (falls back to truncating the first user message).
+   * Fire-and-forget from the caller's perspective.
+   */
+  async generateTitle(id: SessionId): Promise<{ title: string } | null> {
+    try {
+      return await sidecarClient.request<{ title: string }>(`/api/sessions/${id}/title`, {
+        method: 'POST',
+      });
+    } catch {
+      return null;
+    }
   },
 };

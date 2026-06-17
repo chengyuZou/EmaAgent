@@ -4,6 +4,7 @@ import { useConversationStore } from '../stores/conversation-store.js';
 import { useSessionStore } from '../stores/session-store.js';
 import { useUiStore } from '../stores/ui-store.js';
 import { ModeSelector } from './ModeSelector.js';
+import { showToast } from '../lib/toast.js';
 import type { TurnMode, AgentSubMode, SessionId } from '@ema-agent/contracts';
 
 export function ChatInput(): JSX.Element {
@@ -74,7 +75,6 @@ export function ChatInput(): JSX.Element {
       size="sm"
       label="发送"
       icon="i-mdi:send"
-      disabled={!canSend}
       onClick={send}
     />
   );
@@ -84,8 +84,10 @@ export function ChatInput(): JSX.Element {
       <div className="max-w-2xl mx-auto">
         {/* Main textarea with embedded send/stop button */}
         <div className="relative">
+          {/* Always-pulsing pink glow ring — separate layer so pulse doesn't dim the text */}
+          <div className="absolute inset-0 rounded-2xl pointer-events-none animate-pulse shadow-[0_0_0_1.5px_rgba(244,114,182,0.45),0_0_20px_rgba(244,114,182,0.2)]" />
           <textarea
-            className="w-full bg-neutral-800/80 border border-neutral-700/60 rounded-2xl px-4 py-3 pr-12 text-sm text-neutral-200 resize-none focus:outline-none focus:border-primary-400/50 placeholder-neutral-500 transition-colors"
+            className="relative w-full bg-neutral-800/80 border-0 rounded-2xl px-4 py-3 pr-12 text-sm text-neutral-200 resize-none focus:outline-none placeholder-neutral-500 transition-colors"
             rows={3}
             placeholder="输入消息…"
             value={text}
@@ -102,7 +104,7 @@ export function ChatInput(): JSX.Element {
         {/* Bottom toolbar */}
         <div className="flex items-center justify-between mt-2">
           <div className="flex items-center gap-1">
-            {viewedId && <WorkspaceButton sessionId={viewedId as string} />}
+            <WorkspaceButton sessionId={viewedId as string | null} />
 
             <IconButton
               variant={ttsEnabled ? 'primary' : 'default'}
@@ -136,10 +138,20 @@ export function ChatInput(): JSX.Element {
 
 // ── WorkspaceButton ───────────────────────────────────────────────────────────
 
-function WorkspaceButton({ sessionId }: { sessionId: string }): JSX.Element {
+function WorkspaceButton({ sessionId }: { sessionId: string | null }): JSX.Element {
   const [open, setOpen] = useState(false);
-  const session = useSessionStore((s) => s.sessions.byId.get(sessionId));
-  const roots   = session?.workspaceRoots ?? [];
+  const session = useSessionStore((s) =>
+    sessionId ? s.sessions.byId.get(sessionId) : undefined,
+  );
+  const roots = session?.workspaceRoots ?? [];
+
+  function handleClick(): void {
+    if (!sessionId) {
+      showToast('请先发送消息创建会话', { variant: 'warning' });
+      return;
+    }
+    setOpen(!open);
+  }
 
   return (
     <div className="relative">
@@ -149,10 +161,10 @@ function WorkspaceButton({ sessionId }: { sessionId: string }): JSX.Element {
         icon="i-mdi:folder-outline"
         label={roots.length > 0 ? `工作区目录 (${roots.length})` : '未设置工作区目录'}
         toggled={roots.length > 0}
-        onClick={() => setOpen(!open)}
+        onClick={handleClick}
       />
 
-      {open && (
+      {open && sessionId && (
         <>
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
           <WorkspaceEditor

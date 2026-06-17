@@ -17,4 +17,7 @@ export type {
   ListSessionsInput,
   ListSessionsOutput,
   ListMessagesInput,
+  SearchSessionsInput,
+  SessionSearchHit,
+  SearchSessionsOutput,
 } from './types.js';

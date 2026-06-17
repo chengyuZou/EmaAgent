@@ -78,6 +78,8 @@ interface SendInput {
 
 const sseHandles = new Map<string, { stop(): void }>();
 const sendQueues = new Map<string, SendQueue<SendInput>>();
+// Sessions whose first turn hasn't completed yet — trigger title generation on completion.
+const pendingTitleSessions = new Set<string>();
 
 function getOrCreateQueue(sessionId: SessionId): SendQueue<SendInput> {
   const key = sessionId as string;
@@ -211,12 +213,13 @@ function dispatchSseEvent(
   switch (event.type) {
     case 'turn_started': {
       cb.beginStream(sessionId, event.turnId);
-      // Clear live usage + thinking for this turn
+      // Clear live usage + thinking for this turn (keyed by turnId, not sessionId —
+      // AssistantBubble looks these up by the specific turn it's rendering).
       useConversationStore.setState((s) => {
         const u = new Map(s.liveUsageMap);
-        u.delete(sessionId as string);
+        u.delete(event.turnId as string);
         const t = new Map(s.thinkingActiveMap);
-        t.delete(sessionId as string);
+        t.delete(event.turnId as string);
         return { liveUsageMap: u, thinkingActiveMap: t };
       });
       const prev = useConversationStore.getState().ttsOwnerSessionId;
@@ -231,7 +234,7 @@ function dispatchSseEvent(
     case 'usage_update':
       useConversationStore.setState((s) => {
         const m = new Map(s.liveUsageMap);
-        m.set(sessionId as string, { inputTokens: event.inputTokens, outputTokens: event.outputTokens });
+        m.set(event.turnId as string, { inputTokens: event.inputTokens, outputTokens: event.outputTokens });
         return { liveUsageMap: m };
       });
       break;
@@ -243,8 +246,11 @@ function dispatchSseEvent(
     case 'reasoning_delta':
       cb.appendDelta(sessionId, 'thinking', event.delta);
       useConversationStore.setState((s) => {
+        // Event carries no turnId — recover it from the live streaming entry.
+        const turnId = s.streamingMap.get(sessionId as string)?.turnId;
+        if (!turnId) return {};
         const t = new Map(s.thinkingActiveMap);
-        t.set(sessionId as string, true);
+        t.set(turnId as string, true);
         return { thinkingActiveMap: t };
       });
       break;
@@ -280,6 +286,7 @@ function dispatchSseEvent(
       useDecisionStore.getState().push({
         kind:             'ask_user',
         promptId:         event.promptId,
+        sessionId:        sessionId as string,
         turnId:           event.turnId,
         questions:        event.questions,
         humanDescription: event.humanDescription,
@@ -294,6 +301,7 @@ function dispatchSseEvent(
       useDecisionStore.getState().push({
         kind:                    'permission',
         promptId:                event.promptId,
+        sessionId:               sessionId as string,
         toolName:                event.tool,
         args:                    event.args,
         hint:                    event.hint,
@@ -422,7 +430,7 @@ function dispatchSseEvent(
         const streaming = new Map(s.streamingMap);
         streaming.set(sessionId as string, { ...sm, slices });
         const t = new Map(s.thinkingActiveMap);
-        t.delete(sessionId as string);
+        t.delete(sm.turnId as string);
         return { streamingMap: streaming, thinkingActiveMap: t };
       });
       break;
@@ -470,9 +478,9 @@ export interface ConversationStoreState {
   iterationCountMap:   Map<string, number>;
   /** Memory recall evidence for the latest turn per session (resets on each new turn). */
   recallEvidenceMap:   Map<string, Partial<Record<MemoryRecallLayer, MemoryRecallLayerReport>>>;
-  /** Live token usage from provider during streaming (key = sessionId). */
+  /** Live token usage from provider during streaming (key = turnId — AssistantBubble reads by turnId). */
   liveUsageMap:      Map<string, { inputTokens: number; outputTokens: number }>;
-  /** Whether reasoning/thinking is currently active per session. */
+  /** Whether reasoning/thinking is currently active (key = turnId — AssistantBubble reads by turnId). */
   thinkingActiveMap: Map<string, boolean>;
   messages:          Map<string, ChatHistoryItem[]>;
   streamingMap:      Map<string, StreamingAssistantMessage>;
@@ -517,10 +525,19 @@ export const useConversationStore = create<ConversationStoreState>((set, get) =>
     if (get().viewedSessionId === id) return;
     set({ viewedSessionId: id });
 
+    // Update last_viewed_at in SQL then reload so hasUnread resets in the sidebar.
+    void sessionsApi.markViewed(id)
+      .then(() => useSessionStore.getState().loadSessions())
+      .catch(() => {});
+
     const session = useSessionStore.getState().sessions.byId.get(id as string);
     if (session?.lastMode) {
-      useSessionStore.getState().setSessionMode(id, session.lastMode, session.lastSubMode ?? undefined)
-        .catch(() => { /* mode restore is non-critical */ });
+      useSessionStore.setState((s) => ({
+        sessionModes: new Map(s.sessionModes).set(id as string, {
+          mode:    session.lastMode!,
+          subMode: session.lastSubMode ?? undefined,
+        }),
+      }));
     }
 
     await get().loadMessages(id);
@@ -565,6 +582,7 @@ export const useConversationStore = create<ConversationStoreState>((set, get) =>
     if (!targetId) {
       const newSession = await sessionsApi.create();
       targetId = newSession.id as SessionId;
+      pendingTitleSessions.add(targetId as string);
       void useSessionStore.getState().loadSessions();
       set({ viewedSessionId: targetId });
     }
@@ -635,9 +653,16 @@ export const useConversationStore = create<ConversationStoreState>((set, get) =>
       iterations.delete(id as string);
       const recalls = new Map(s.recallEvidenceMap);
       recalls.delete(id as string);
+      // liveUsageMap/thinkingActiveMap are keyed by turnId, not sessionId — clean up
+      // whichever turn this session was last streaming (if any) before it's gone.
+      const lastTurnId = s.streamingMap.get(id as string)?.turnId as string | undefined;
       const usageMap = new Map(s.liveUsageMap);
-      usageMap.delete(id as string);
-      return { messages: msgs, streamingMap: streaming, stopReasonMap: stops, draftMap: drafts, emotionStateMap: emotions, iterationCountMap: iterations, recallEvidenceMap: recalls, liveUsageMap: usageMap };
+      const thinking = new Map(s.thinkingActiveMap);
+      if (lastTurnId) {
+        usageMap.delete(lastTurnId);
+        thinking.delete(lastTurnId);
+      }
+      return { messages: msgs, streamingMap: streaming, stopReasonMap: stops, draftMap: drafts, emotionStateMap: emotions, iterationCountMap: iterations, recallEvidenceMap: recalls, liveUsageMap: usageMap, thinkingActiveMap: thinking };
     });
   },
 
@@ -738,7 +763,14 @@ export const useConversationStore = create<ConversationStoreState>((set, get) =>
       return { messages: msgs, streamingMap: streaming };
     });
 
-    void useSessionStore.getState().loadSessions().catch(() => {});
+    if (pendingTitleSessions.has(sessionId as string)) {
+      pendingTitleSessions.delete(sessionId as string);
+      void sessionsApi.generateTitle(sessionId)
+        .then(() => useSessionStore.getState().loadSessions())
+        .catch(() => {});
+    } else {
+      void useSessionStore.getState().loadSessions().catch(() => {});
+    }
   },
 
   abortStream(sessionId, reason) {
@@ -769,6 +801,11 @@ export const useConversationStore = create<ConversationStoreState>((set, get) =>
         return { stopReasonMap: stops };
       });
     }, 3000);
+
+    // Refresh sidebar status for failed turns (not user-initiated stops).
+    if (reason !== '已停止') {
+      void useSessionStore.getState().loadSessions().catch(() => {});
+    }
   },
 }));
 

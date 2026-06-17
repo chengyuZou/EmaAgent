@@ -39,7 +39,6 @@
   "dependencies": {
     "@ema-agent/character-card": "workspace:*",
     "@ema-agent/contracts": "workspace:*",
-    "@ema-agent/token": "workspace:*",
     "@ema-agent/live2d-react": "workspace:*",
     "@ema-agent/mcp": "workspace:*",
     "@ema-agent/memory": "workspace:*",
@@ -47,9 +46,11 @@
     "@ema-agent/skill": "workspace:*",
     "@ema-agent/storage": "workspace:*",
     "@ema-agent/stt": "workspace:*",
+    "@ema-agent/token": "workspace:*",
     "@ema-agent/ui": "workspace:*",
     "@tauri-apps/api": "^2.4.0",
     "@tauri-apps/plugin-dialog": "^2",
+    "diff": "^9.0.0",
     "katex": "^0.16.11",
     "nanoid": "^5.0.0",
     "react-markdown": "^9.0.1",
@@ -61,6 +62,7 @@
     "zustand": "^5.0.2"
   },
   "devDependencies": {
+    "@types/diff": "^8.0.0",
     "@types/react": "^18.3.0",
     "@types/react-dom": "^18.3.0",
     "rimraf": "^5.0.0",

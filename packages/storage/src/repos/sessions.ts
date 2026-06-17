@@ -7,7 +7,10 @@ export interface SessionRow {
   character_card_id: string;
   workspace_roots_json: string;
   created_at: number;
+  /** Row metadata update time: title/group/pin/workspace/mode/meta edits. Not used for recent-session ordering. */
   updated_at: number;
+  /** Conversation activity time: advanced when a new turn/message starts. Used for recent-session ordering. */
+  last_activity_at: number;
   archived_at: number | null;
   pinned:        number;        // 0 | 1
   pinned_at:     number | null;
@@ -16,6 +19,20 @@ export interface SessionRow {
   meta_json: string;
   last_mode:     string | null;
   last_sub_mode: string | null;
+  last_viewed_at: number | null;
+}
+
+/** SessionRow with derived turn fields from a JOIN query. */
+export interface SessionRowEnriched extends SessionRow {
+  last_turn_status:       string | null;
+  last_turn_completed_at: number | null;
+}
+
+export interface SessionSearchRow extends SessionRowEnriched {
+  match_kind:         'title' | 'message';
+  snippet_json:       string | null;
+  message_id:         string | null;
+  message_created_at: number | null;
 }
 
 export interface SessionInsert {
@@ -26,13 +43,14 @@ export interface SessionInsert {
   parentSessionId?: string;
   createdAt: number;
   updatedAt: number;
+  lastActivityAt?: number;
 }
 
 export interface SessionsGrouped {
-  pinned:   SessionRow[];
-  byGroup:  Array<{ label: string; sessions: SessionRow[] }>;
-  recent:   SessionRow[];
-  archived: SessionRow[];
+  pinned:   SessionRowEnriched[];
+  byGroup:  Array<{ label: string; sessions: SessionRowEnriched[] }>;
+  recent:   SessionRowEnriched[];
+  archived: SessionRowEnriched[];
 }
 
 export class SessionsRepo {
@@ -43,12 +61,13 @@ export class SessionsRepo {
       .prepare(
         `INSERT INTO sessions
            (id, title, character_card_id, workspace_roots_json,
-            parent_session_id, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+            parent_session_id, created_at, updated_at, last_activity_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(s.id, s.title, s.characterCardId,
         JSON.stringify(s.workspaceRoots ?? []),
-        s.parentSessionId ?? null, s.createdAt, s.updatedAt);
+        s.parentSessionId ?? null, s.createdAt, s.updatedAt,
+        s.lastActivityAt ?? s.createdAt);
   }
 
   findById(id: SessionId): SessionRow | undefined {
@@ -60,15 +79,15 @@ export class SessionsRepo {
   /**
    * Cursor-based listing. Pass `cursor` from previous response's `nextCursor`.
    *
-   * Cursor format: `"<pinned>.<updated_at>"` (opaque to client; encoded by
+   * Cursor format: `"<pinned>.<last_activity_at>"` (opaque to client; encoded by
    * `nextCursorFor` below). This composite cursor is required because the
-   * sort key is `(pinned DESC, updated_at DESC)` — a single-field cursor on
-   * `updated_at` would skip items across the pinned/unpinned boundary when
+   * sort key is `(pinned DESC, last_activity_at DESC)` — a single-field cursor on
+   * `last_activity_at` would skip items across the pinned/unpinned boundary when
    * a pinned item has an older timestamp than the last unpinned item shown.
    *
    * SQL keyset condition: "give me items strictly AFTER (lastPinned, lastTs)
    * in the sort order", which is:
-   *   pinned < lastPinned   OR   (pinned = lastPinned AND updated_at < lastTs)
+   *   pinned < lastPinned   OR   (pinned = lastPinned AND last_activity_at < lastTs)
    */
   listActive(limit: number, cursor?: string): SessionRow[] {
     const parsed = parseCursor(cursor);
@@ -77,17 +96,17 @@ export class SessionsRepo {
         .prepare(
           `SELECT * FROM sessions
            WHERE archived_at IS NULL
-             AND (pinned < ? OR (pinned = ? AND updated_at < ?))
-           ORDER BY pinned DESC, updated_at DESC
+             AND (pinned < ? OR (pinned = ? AND last_activity_at < ?))
+           ORDER BY pinned DESC, last_activity_at DESC
            LIMIT ?`,
         )
-        .all(parsed.pinned, parsed.pinned, parsed.updatedAt, limit) as SessionRow[];
+        .all(parsed.pinned, parsed.pinned, parsed.lastActivityAt, limit) as SessionRow[];
     }
     return this.db
       .prepare(
         `SELECT * FROM sessions
          WHERE archived_at IS NULL
-         ORDER BY pinned DESC, updated_at DESC
+         ORDER BY pinned DESC, last_activity_at DESC
          LIMIT ?`,
       )
       .all(limit) as SessionRow[];
@@ -109,15 +128,21 @@ export class SessionsRepo {
    *
    * Fold/unfold is purely a frontend concern — backend returns flat buckets.
    */
-  listGrouped(): SessionsGrouped {
+  listGrouped(): { pinned: SessionRowEnriched[]; byGroup: Array<{ label: string; sessions: SessionRowEnriched[] }>; recent: SessionRowEnriched[]; archived: SessionRowEnriched[] } {
     const all = this.db
-      .prepare('SELECT * FROM sessions ORDER BY pinned DESC, updated_at DESC')
-      .all() as SessionRow[];
+      .prepare(`
+        SELECT s.*,
+          (SELECT t.status FROM turns t WHERE t.session_id = s.id ORDER BY t.started_at DESC LIMIT 1) AS last_turn_status,
+          (SELECT t.completed_at FROM turns t WHERE t.session_id = s.id ORDER BY t.started_at DESC LIMIT 1) AS last_turn_completed_at
+        FROM sessions s
+        ORDER BY s.pinned DESC, s.last_activity_at DESC
+      `)
+      .all() as SessionRowEnriched[];
 
-    const groupedMap = new Map<string, SessionRow[]>();
-    const pinned:   SessionRow[] = [];
-    const recent:   SessionRow[] = [];
-    const archived: SessionRow[] = [];
+    const groupedMap = new Map<string, SessionRowEnriched[]>();
+    const pinned:   SessionRowEnriched[] = [];
+    const recent:   SessionRowEnriched[] = [];
+    const archived: SessionRowEnriched[] = [];
 
     for (const s of all) {
       if (s.archived_at) { archived.push(s); continue; }
@@ -125,7 +150,7 @@ export class SessionsRepo {
       // Grouped sessions include BOTH pinned and non-pinned — frontend sorts
       // pinned-first within each group visual section.
       if (s.group_label) {
-        const list = groupedMap.get(s.group_label) ?? [];
+        const list = groupedMap.get(s.group_label) ?? ([] as SessionRowEnriched[]);
         list.push(s);
         groupedMap.set(s.group_label, list);
         continue;
@@ -144,6 +169,74 @@ export class SessionsRepo {
     };
   }
 
+  search(query: string, limit: number): SessionSearchRow[] {
+    const q = query.trim().toLowerCase();
+    if (!q) return [];
+    const pattern = `%${q}%`;
+
+    return this.db
+      .prepare(`
+        SELECT s.*,
+          (SELECT t.status FROM turns t WHERE t.session_id = s.id ORDER BY t.started_at DESC LIMIT 1) AS last_turn_status,
+          (SELECT t.completed_at FROM turns t WHERE t.session_id = s.id ORDER BY t.started_at DESC LIMIT 1) AS last_turn_completed_at,
+          CASE
+            WHEN lower(s.title) LIKE ? THEN 'title'
+            ELSE 'message'
+          END AS match_kind,
+          CASE
+            WHEN lower(s.title) LIKE ? THEN s.title
+            ELSE (
+              SELECT m.blocks_json
+                FROM messages m
+               WHERE m.session_id = s.id
+                 AND m.kind IN ('normal', 'summary')
+                 AND lower(m.blocks_json) LIKE ?
+               ORDER BY m.created_at DESC
+               LIMIT 1
+            )
+          END AS snippet_json,
+          (
+            SELECT m.id
+              FROM messages m
+             WHERE m.session_id = s.id
+               AND m.kind IN ('normal', 'summary')
+               AND lower(m.blocks_json) LIKE ?
+             ORDER BY m.created_at DESC
+             LIMIT 1
+          ) AS message_id,
+          (
+            SELECT m.created_at
+              FROM messages m
+             WHERE m.session_id = s.id
+               AND m.kind IN ('normal', 'summary')
+               AND lower(m.blocks_json) LIKE ?
+             ORDER BY m.created_at DESC
+             LIMIT 1
+          ) AS message_created_at
+        FROM sessions s
+        WHERE s.archived_at IS NULL
+          AND (
+            lower(s.title) LIKE ?
+            OR EXISTS (
+              SELECT 1
+                FROM messages m
+               WHERE m.session_id = s.id
+                 AND m.kind IN ('normal', 'summary')
+                 AND lower(m.blocks_json) LIKE ?
+            )
+          )
+        ORDER BY s.pinned DESC, s.last_activity_at DESC
+        LIMIT ?
+      `)
+      .all(pattern, pattern, pattern, pattern, pattern, pattern, pattern, limit) as SessionSearchRow[];
+  }
+
+  setViewedAt(id: SessionId, now: number): void {
+    this.db
+      .prepare('UPDATE sessions SET last_viewed_at = ? WHERE id = ?')
+      .run(now, id);
+  }
+
   /**
    * Replace the entire meta_json for a session. Callers are responsible for
    * reading the current meta first (via findById), merging their changes in JS,
@@ -152,8 +245,8 @@ export class SessionsRepo {
    */
   setMeta(id: SessionId, meta: Record<string, unknown>): void {
     this.db
-      .prepare('UPDATE sessions SET meta_json = ? WHERE id = ?')
-      .run(JSON.stringify(meta), id);
+      .prepare('UPDATE sessions SET meta_json = ?, updated_at = ? WHERE id = ?')
+      .run(JSON.stringify(meta), Date.now(), id);
   }
 
   updateTitle(id: SessionId, title: string, updatedAt: number): void {
@@ -162,32 +255,34 @@ export class SessionsRepo {
       .run(title, updatedAt, id);
   }
 
-  touch(id: SessionId, updatedAt: number): void {
+  touchActivity(id: SessionId, at: number): void {
     this.db
-      .prepare('UPDATE sessions SET updated_at = ? WHERE id = ?')
-      .run(updatedAt, id);
+      .prepare('UPDATE sessions SET updated_at = ?, last_activity_at = ? WHERE id = ?')
+      .run(at, at, id);
   }
 
   // ── Pin / Unpin ───────────────────────────────────────────────────────────
 
   pin(id: SessionId, pinnedAt: number): void {
     this.db
-      .prepare('UPDATE sessions SET pinned = 1, pinned_at = ? WHERE id = ?')
-      .run(pinnedAt, id);
+      .prepare('UPDATE sessions SET pinned = 1, pinned_at = ?, updated_at = ? WHERE id = ?')
+      .run(pinnedAt, pinnedAt, id);
   }
 
   unpin(id: SessionId): void {
+    const now = Date.now();
     this.db
-      .prepare('UPDATE sessions SET pinned = 0, pinned_at = NULL WHERE id = ?')
-      .run(id);
+      .prepare('UPDATE sessions SET pinned = 0, pinned_at = NULL, updated_at = ? WHERE id = ?')
+      .run(now, id);
   }
 
   // ── Group ──────────────────────────────────────────────────────────────────
 
   setGroup(id: SessionId, label: string | null): void {
+    const now = Date.now();
     this.db
-      .prepare('UPDATE sessions SET group_label = ? WHERE id = ?')
-      .run(label, id);
+      .prepare('UPDATE sessions SET group_label = ?, updated_at = ? WHERE id = ?')
+      .run(label, now, id);
   }
 
   // ── Archive / Unarchive ────────────────────────────────────────────────────
@@ -232,10 +327,10 @@ export class SessionsRepo {
       this.db.prepare(
         `INSERT INTO sessions
            (id, title, character_card_id, workspace_roots_json,
-            parent_session_id, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+            parent_session_id, created_at, updated_at, last_activity_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       ).run(newId, title, src.character_card_id, src.workspace_roots_json,
-        srcId, createdAt, createdAt);
+        srcId, createdAt, createdAt, createdAt);
 
       if (untilTurnId) {
         // Copy messages up to and including the last message of the cutoff turn.
@@ -362,14 +457,14 @@ export class SessionsRepo {
 
 interface ParsedCursor {
   pinned:    number;     // 0 | 1
-  updatedAt: number;
+  lastActivityAt: number;
 }
 
 /**
- * Parse the opaque cursor string `"<pinned>.<updatedAt>"`. Returns `null`
+ * Parse the opaque cursor string `"<pinned>.<lastActivityAt>"`. Returns `null`
  * when the cursor is absent or malformed (callers fall back to "first page").
  *
- * @example parseCursor("1.1700000000")  // { pinned: 1, updatedAt: 1700000000 }
+ * @example parseCursor("1.1700000000")  // { pinned: 1, lastActivityAt: 1700000000 }
  * @example parseCursor(undefined)       // null
  */
 function parseCursor(cursor: string | undefined): ParsedCursor | null {
@@ -377,10 +472,10 @@ function parseCursor(cursor: string | undefined): ParsedCursor | null {
   const [pinnedStr, tsStr] = cursor.split('.');
   if (pinnedStr === undefined || tsStr === undefined) return null;
   const pinned    = parseInt(pinnedStr, 10);
-  const updatedAt = parseInt(tsStr, 10);
-  if (!Number.isFinite(pinned) || !Number.isFinite(updatedAt)) return null;
+  const lastActivityAt = parseInt(tsStr, 10);
+  if (!Number.isFinite(pinned) || !Number.isFinite(lastActivityAt)) return null;
   if (pinned !== 0 && pinned !== 1) return null;
-  return { pinned, updatedAt };
+  return { pinned, lastActivityAt };
 }
 
 /**
@@ -388,5 +483,5 @@ function parseCursor(cursor: string | undefined): ParsedCursor | null {
  * the next page query will use this to keyset-skip into the right spot.
  */
 export function nextCursorFor(row: SessionRow): string {
-  return `${row.pinned}.${row.updated_at}`;
+  return `${row.pinned}.${row.last_activity_at}`;
 }
