@@ -12,8 +12,9 @@ export class OpenAIEmbedAdapter implements EmbedAdapter {
     this.config = config;
   }
 
-  async embed(texts: string[], model: string): Promise<EmbedResponse> {
+  async embed(texts: string[], model: string, signal?: AbortSignal): Promise<EmbedResponse> {
     const baseUrl = (this.config.baseUrl ?? 'https://api.openai.com/v1').replace(/\/$/, '');
+    const timeout = AbortSignal.timeout(15_000);
     const res = await fetch(`${baseUrl}/embeddings`, {
       method: 'POST',
       headers: {
@@ -21,6 +22,7 @@ export class OpenAIEmbedAdapter implements EmbedAdapter {
         'Authorization': `Bearer ${this.config.apiKey}`,
       },
       body: JSON.stringify({ model, input: texts, encoding_format: 'float' }),
+      signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
     });
 
     if (!res.ok) {

@@ -52,7 +52,7 @@ export class EbdRouter {
   async embed(req: EmbedRequest): Promise<EmbedResponse> {
     const adapter = this.embedAdapters.get(req.providerId);
     if (!adapter) throw new Error(`ebd/embed: no provider registered for id "${req.providerId}"`);
-    return adapter.embed(req.texts, req.model);
+    return adapter.embed(req.texts, req.model, req.signal);
   }
 
   upsertEmbedConfig(config: EmbedProviderConfig): void {
@@ -78,7 +78,7 @@ export class EbdRouter {
   async rerank(req: RerankRequest): Promise<RerankResponse> {
     const adapter = this.rerankAdapters.get(req.providerId);
     if (!adapter) throw new Error(`ebd/rerank: no provider registered for id "${req.providerId}"`);
-    return adapter.rerank(req.query, req.documents, req.topK ?? 5, req.model);
+    return adapter.rerank(req.query, req.documents, req.topK ?? 5, req.model, req.signal);
   }
 
   upsertRerankConfig(config: RerankProviderConfig): void {

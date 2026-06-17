@@ -27,6 +27,7 @@ export interface EmbedRequest {
   providerId: string;
   model: string;
   texts: string[];
+  signal?: AbortSignal;
 }
 
 export interface EmbedResponse {
@@ -41,6 +42,7 @@ export interface RerankRequest {
   query: string;
   documents: string[];
   topK?: number;
+  signal?: AbortSignal;
 }
 
 export interface RerankItem {

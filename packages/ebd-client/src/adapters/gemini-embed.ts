@@ -17,12 +17,13 @@ export class GeminiEmbedAdapter implements EmbedAdapter {
     this.config = config;
   }
 
-  async embed(texts: string[], model: string): Promise<EmbedResponse> {
+  async embed(texts: string[], model: string, signal?: AbortSignal): Promise<EmbedResponse> {
     const baseUrl = (
       this.config.baseUrl ?? 'https://generativelanguage.googleapis.com/v1beta'
     ).replace(/\/$/, '');
 
     const url = `${baseUrl}/models/${model}:batchEmbedContents`;
+    const timeout = AbortSignal.timeout(15_000);
 
     const res = await fetch(url, {
       method: 'POST',
@@ -36,6 +37,7 @@ export class GeminiEmbedAdapter implements EmbedAdapter {
           content: { parts: [{ text }] },
         })),
       }),
+      signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
     });
 
     if (!res.ok) {

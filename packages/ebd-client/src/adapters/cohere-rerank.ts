@@ -30,8 +30,10 @@ export class CohereRerankAdapter implements RerankAdapter {
     documents: string[],
     topK: number,
     model: string,
+    signal?: AbortSignal,
   ): Promise<RerankResponse> {
     const baseUrl = normalizeBaseUrl(this.config.baseUrl);
+    const timeout = AbortSignal.timeout(15_000);
     const res = await fetch(`${baseUrl}/rerank`, {
       method: 'POST',
       headers: {
@@ -39,6 +41,7 @@ export class CohereRerankAdapter implements RerankAdapter {
         'Authorization': `Bearer ${this.config.apiKey}`,
       },
       body: JSON.stringify({ model, query, documents, top_n: topK }),
+      signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
     });
 
     if (!res.ok) {
