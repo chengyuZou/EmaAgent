@@ -137,7 +137,10 @@ function getOrCreateQueue(sessionId: SessionId): SendQueue<SendInput> {
             lastEventId: cursor,
             onEvent: (event) => {
               cursor += 1;
-              dispatchSseEvent(event, input.sessionId, {
+              const sid = ('sessionId' in event && event.sessionId)
+                ? event.sessionId as SessionId
+                : input.sessionId;
+              dispatchSseEvent(event, sid, {
                 beginStream:    (sid, tid) => useConversationStore.getState().beginStream(sid, tid),
                 appendDelta:    (sid, slice, delta) => useConversationStore.getState().appendDelta(sid, slice, delta),
                 finalizeStream: (sid, stats) => { useConversationStore.getState().finalizeStream(sid, stats); finish(); },

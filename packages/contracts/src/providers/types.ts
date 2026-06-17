@@ -12,8 +12,9 @@ export type Capability = 'llm' | 'embed' | 'rerank' | 'vision' | 'tts' | 'stt';
  * to stay honest about which capability uses which body/response shape.
  *
  * Only protocols we actually have an implementation for are listed here.
- * Adding a new entry MUST come with a corresponding adapter in `packages/llm`
- * (for *-llm) or `apps/bridge` (for embed/rerank/etc).
+ * Adding a new entry MUST come with a corresponding adapter in the package that
+ * owns that capability, e.g. `packages/llm` for `*-llm` or `packages/vision`
+ * for `*-vision`.
  */
 export type ProtocolFamily =
   // LLM protocols
@@ -26,6 +27,8 @@ export type ProtocolFamily =
   | 'gemini-embed'      // /v1beta/models/{model}:batchEmbedContents, Google format
   // Rerank protocols
   | 'cohere-rerank'     // /rerank, { model, query, documents, top_n } — Cohere/Jina/SiliconFlow all use this
+  // Vision protocols
+  | 'openai-vision'     // /v1/chat/completions multimodal content parts — OpenAI-compatible vision models
   // TTS protocols
   | 'openai-tts'        // POST /v1/audio/speech — OpenAI / SiliconFlow / Groq / OpenAI 兼容
   | 'dashscope-tts'     // 阿里百炼 WS — adapter routes by model prefix (cosyvoice-* | qwen*-tts*)
@@ -41,6 +44,7 @@ export type ProtocolFamily =
 export type LlmProtocol    = Extract<ProtocolFamily, `${string}-llm`>;
 export type EmbedProtocol  = Extract<ProtocolFamily, `${string}-embed`>;
 export type RerankProtocol = Extract<ProtocolFamily, `${string}-rerank`>;
+export type VisionProtocol = Extract<ProtocolFamily, `${string}-vision`>;
 export type TtsProtocol    = Extract<ProtocolFamily, `${string}-tts`>;
 export type SttProtocol    = Extract<ProtocolFamily, `${string}-stt`>;
 
@@ -58,6 +62,10 @@ export function isEmbedProtocol(p: ProtocolFamily | undefined): p is EmbedProtoc
 
 export function isRerankProtocol(p: ProtocolFamily | undefined): p is RerankProtocol {
   return p === 'cohere-rerank';
+}
+
+export function isVisionProtocol(p: ProtocolFamily | undefined): p is VisionProtocol {
+  return p === 'openai-vision';
 }
 
 export function isTtsProtocol(p: ProtocolFamily | undefined): p is TtsProtocol {

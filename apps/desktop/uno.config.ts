@@ -5,8 +5,26 @@
 // NOTE: no `unocss` aggregate imports here or in the shared config — the
 // aggregate drags oxc-parser's wasm binding into Vite's browser module graph
 // (the unocss vite plugin injects this config file into the graph for HMR).
+import { existsSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type { UserConfig } from '@unocss/core';
 import { createExternalPackageIconLoader } from '@iconify/utils/lib/loader/external-pkg';
+
+// ── Build-time path assertions ────────────────────────────────────────────────
+// Fail fast if a scanned directory is missing — catches typos or deleted
+// packages before they silently produce an empty CSS bundle.
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const SCANNED_DIRS = [
+  '../../packages/desktop-ui/src',
+  '../../packages/ui/src',
+  '../../packages/live2d-react/src',
+];
+for (const rel of SCANNED_DIRS) {
+  if (!existsSync(resolve(__dirname, rel))) {
+    throw new Error(`[uno] content path not found: ${rel}\n  → run "pnpm install" and verify the package exists.`);
+  }
+}
 import {
   emaSharedPreset,
   emaSharedTheme,

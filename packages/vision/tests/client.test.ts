@@ -1,81 +1,80 @@
 import { describe, expect, it } from 'vitest';
 import {
-  VisionClient,
-  type VisionLlmCompletion,
-  type VisionLlmContentPart,
-  type VisionLlmFacade,
-  type VisionLlmRequest,
-  type VisionUnsupportedPart,
+  VisionRouter,
+  type VisionAdapter,
+  type VisionAdapterCall,
+  type VisionExtractionResult,
+  type VisionProviderConfig,
 } from '../src/index.js';
 
-class MockLlm implements VisionLlmFacade {
-  readonly requests: VisionLlmRequest[] = [];
-  unsupported: VisionUnsupportedPart[] = [];
+const CONFIG: VisionProviderConfig = {
+  id: 'provider-1',
+  protocol: 'openai-vision',
+  apiKey: 'test-key',
+  defaultModel: 'vision-model',
+};
 
-  constructor(private readonly completion: VisionLlmCompletion) {}
+class MockAdapter implements VisionAdapter {
+  readonly requests: VisionAdapterCall[] = [];
 
-  async complete(request: VisionLlmRequest): Promise<VisionLlmCompletion> {
+  constructor(private readonly result: VisionExtractionResult) {}
+
+  async extract(request: VisionAdapterCall): Promise<VisionExtractionResult> {
     this.requests.push(request);
-    return this.completion;
-  }
-
-  warnUnsupportedParts(_providerId: string, _parts: VisionLlmContentPart[]): VisionUnsupportedPart[] {
-    return this.unsupported;
+    return this.result;
   }
 }
 
-class BlockingLlm implements VisionLlmFacade {
-  readonly requests: VisionLlmRequest[] = [];
-  private releaseComplete: (() => void) | undefined;
+class BlockingAdapter implements VisionAdapter {
+  readonly requests: VisionAdapterCall[] = [];
+  private releaseExtract: (() => void) | undefined;
   private resolveStarted: () => void = () => {};
 
   readonly started = new Promise<void>((resolve) => {
     this.resolveStarted = resolve;
   });
 
-  async complete(request: VisionLlmRequest): Promise<VisionLlmCompletion> {
+  async extract(request: VisionAdapterCall): Promise<VisionExtractionResult> {
     this.requests.push(request);
     this.resolveStarted();
     await new Promise<void>((resolve) => {
-      this.releaseComplete = resolve;
+      this.releaseExtract = resolve;
     });
     return {
-      blocks: [{
-        type: 'text',
-        text: JSON.stringify({ text: 'done', blocks: [] }),
-      }],
-      stopReason: 'end_turn',
+      providerId: request.providerId,
+      model: request.model,
+      task: request.task,
+      text: 'done',
+      blocks: [{ id: 'block-1', kind: 'text', text: 'done' }],
+      sources: [],
       usage: { inputTokens: 1, outputTokens: 1 },
     };
   }
 
-  warnUnsupportedParts(_providerId: string, _parts: VisionLlmContentPart[]): VisionUnsupportedPart[] {
-    return [];
-  }
-
   release(): void {
-    this.releaseComplete?.();
+    this.releaseExtract?.();
   }
 }
 
-describe('VisionClient', () => {
-  it('extracts structured vision output through the llm backend', async () => {
-    const llm = new MockLlm({
-      blocks: [{
-        type: 'text',
-        text: JSON.stringify({
-          text: 'hello world',
-          blocks: [{ id: 'b1', kind: 'text', text: 'hello world' }],
-        }),
-      }],
-      stopReason: 'end_turn',
+describe('VisionRouter', () => {
+  it('extracts structured vision output through the configured adapter', async () => {
+    const adapter = new MockAdapter({
+      providerId: 'provider-1',
+      model: 'vision-model',
+      task: 'ocr',
+      text: 'hello world',
+      blocks: [{ id: 'b1', kind: 'text', text: 'hello world' }],
+      sources: [],
       usage: { inputTokens: 10, outputTokens: 5 },
     });
-    const vision = new VisionClient({ llm });
+    const vision = new VisionRouter({
+      configs: [CONFIG],
+      adapterOverrides: new Map([['provider-1', adapter]]),
+    });
 
     const result = await vision.extract({
       providerId: 'provider-1',
-      model: 'gpt-4o-mini',
+      model: 'vision-model',
       task: 'ocr',
       inputs: [{
         kind: 'base64',
@@ -88,53 +87,59 @@ describe('VisionClient', () => {
     expect(result.text).toBe('hello world');
     expect(result.blocks).toHaveLength(1);
     expect(result.usage).toEqual({ inputTokens: 10, outputTokens: 5 });
-    expect(llm.requests).toHaveLength(1);
-    const content = llm.requests[0]?.messages[0]?.content;
-    expect(Array.isArray(content)).toBe(true);
-    expect((content as VisionLlmContentPart[])[1]).toMatchObject({
-      type: 'image_data',
-      mimeType: 'image/png',
-      name: 'sample.png',
+    expect(adapter.requests).toHaveLength(1);
+    expect(adapter.requests[0]).toMatchObject({
+      providerId: 'provider-1',
+      model: 'vision-model',
+      task: 'ocr',
+      parseMode: 'best_effort',
     });
   });
 
-  it('throws a typed error for unsupported provider input', async () => {
-    const llm = new MockLlm({
-      blocks: [],
-      stopReason: 'end_turn',
-      usage: { inputTokens: 0, outputTokens: 0 },
-    });
-    llm.unsupported = [{
-      index: 1,
-      part: { type: 'image_url', url: 'https://example.test/a.png' },
-      reason: 'not supported',
-    }];
-    const vision = new VisionClient({ llm });
-
-    await expect(vision.extract({
+  it('defaults task to auto when the caller does not specify one', async () => {
+    const adapter = new MockAdapter({
       providerId: 'provider-1',
-      model: 'm',
-      task: 'caption',
-      inputs: [{ kind: 'url', url: 'https://example.test/a.png' }],
-    })).rejects.toMatchObject({
-      code: 'vision/unsupported_input',
+      model: 'vision-model',
+      task: 'auto',
+      text: 'caption',
+      blocks: [{ id: 'b1', kind: 'caption', text: 'caption' }],
+      sources: [],
     });
+    const vision = new VisionRouter({
+      configs: [CONFIG],
+      adapterOverrides: new Map([['provider-1', adapter]]),
+    });
+
+    await vision.extract({
+      providerId: 'provider-1',
+      model: 'vision-model',
+      inputs: [{
+        kind: 'url',
+        url: 'https://example.test/a.png',
+      }],
+    });
+
+    expect(adapter.requests[0]?.task).toBe('auto');
   });
 
   it('enforces payload size limits before calling the provider', async () => {
-    const llm = new MockLlm({
+    const adapter = new MockAdapter({
+      providerId: 'provider-1',
+      model: 'vision-model',
+      task: 'ocr',
+      text: '',
       blocks: [],
-      stopReason: 'end_turn',
-      usage: { inputTokens: 0, outputTokens: 0 },
+      sources: [],
     });
-    const vision = new VisionClient({
-      llm,
+    const vision = new VisionRouter({
+      configs: [CONFIG],
+      adapterOverrides: new Map([['provider-1', adapter]]),
       limits: { maxBytesPerImage: 2 },
     });
 
     await expect(vision.extract({
       providerId: 'provider-1',
-      model: 'm',
+      model: 'vision-model',
       task: 'ocr',
       inputs: [{
         kind: 'bytes',
@@ -145,46 +150,37 @@ describe('VisionClient', () => {
       code: 'vision/payload_too_large',
     });
 
-    expect(llm.requests).toHaveLength(0);
+    expect(adapter.requests).toHaveLength(0);
   });
 
-  it('can fail strictly when the provider output is not JSON', async () => {
-    const llm = new MockLlm({
-      blocks: [{ type: 'text', text: 'not json' }],
-      stopReason: 'end_turn',
-      usage: { inputTokens: 1, outputTokens: 1 },
-    });
-    const vision = new VisionClient({ llm });
+  it('throws a typed error when the provider is not configured', async () => {
+    const vision = new VisionRouter({ configs: [CONFIG] });
 
     await expect(vision.extract({
-      providerId: 'provider-1',
-      model: 'm',
+      providerId: 'missing-provider',
+      model: 'vision-model',
       task: 'ocr',
-      parseMode: 'strict',
       inputs: [{
         kind: 'base64',
         data: 'aGVsbG8=',
         mimeType: 'image/png',
       }],
     })).rejects.toMatchObject({
-      code: 'vision/output_parse_failed',
+      code: 'vision/not_configured',
     });
   });
 
-  it('shares concurrency limits across VisionClient instances by default', async () => {
-    const llm = new BlockingLlm();
-    const first = new VisionClient({
-      llm,
-      limits: { maxConcurrentGlobal: 1, maxConcurrentPerProvider: 1 },
-    });
-    const second = new VisionClient({
-      llm,
+  it('shares concurrency limits inside the singleton router instance', async () => {
+    const adapter = new BlockingAdapter();
+    const vision = new VisionRouter({
+      configs: [CONFIG],
+      adapterOverrides: new Map([['provider-1', adapter]]),
       limits: { maxConcurrentGlobal: 1, maxConcurrentPerProvider: 1 },
     });
 
-    const running = first.extract({
+    const running = vision.extract({
       providerId: 'provider-1',
-      model: 'm',
+      model: 'vision-model',
       task: 'ocr',
       inputs: [{
         kind: 'base64',
@@ -192,11 +188,11 @@ describe('VisionClient', () => {
         mimeType: 'image/png',
       }],
     });
-    await llm.started;
+    await adapter.started;
 
-    await expect(second.extract({
+    await expect(vision.extract({
       providerId: 'provider-1',
-      model: 'm',
+      model: 'vision-model',
       task: 'ocr',
       inputs: [{
         kind: 'base64',
@@ -207,7 +203,7 @@ describe('VisionClient', () => {
       code: 'vision/concurrency_limited',
     });
 
-    llm.release();
+    adapter.release();
     await expect(running).resolves.toMatchObject({ text: 'done' });
   });
 });

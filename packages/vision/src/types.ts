@@ -1,28 +1,34 @@
+import type { VisionProtocol } from '@ema-agent/contracts';
+
 export type VisionTask =
   | 'auto'
   | 'caption'
   | 'ocr'
   | 'layout'
-  | 'table'
-  | 'document_image';
+  | 'table';
 
 export type VisionParseMode = 'strict' | 'best_effort';
 
 export type VisionCaller =
   | 'turn_attachment'
-  | 'document_ingest'
-  | 'knowledge_ingest'
   | 'ema_live_vision'
   | 'system';
 
 export interface VisionInvocationContext {
-  caller: VisionCaller;
+  caller:     VisionCaller;
   sessionId?: string;
-  turnId?: string;
-  attachmentId?: string;
-  documentId?: string;
-  jobId?: string;
-  traceId?: string;
+  turnId?:    string;
+  traceId?:   string;
+}
+
+// ── Provider config ───────────────────────────────────────────────────────────
+
+export interface VisionProviderConfig {
+  id:            string;
+  protocol:      VisionProtocol;
+  apiKey:        string;
+  baseUrl?:      string;
+  defaultModel?: string;
 }
 
 export type VisionImageMime =
@@ -32,12 +38,9 @@ export type VisionImageMime =
   | 'image/gif';
 
 export interface VisionSourceRef {
-  attachmentId?: string;
   localPath?: string;
-  url?: string;
-  page?: number;
-  frameMs?: number;
-  label?: string;
+  url?:       string;
+  label?:     string;
 }
 
 export type VisionImageInput =
@@ -91,7 +94,7 @@ export interface VisionRequest {
   providerId: string;
   /** Raw model name expected by the selected provider. */
   model: string;
-  task: VisionTask;
+  task?: VisionTask;
   inputs: VisionImageInput[];
   language?: string;
   /**

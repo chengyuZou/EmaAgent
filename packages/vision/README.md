@@ -1,79 +1,85 @@
 # `@ema-agent/vision`
 
-`@ema-agent/vision` is the thin visual text extraction Facade for EmaAgent.
+`@ema-agent/vision` is EmaAgent's independent visual extraction capability.
 
-It converts images, screenshots, scanned pages, and future video frames into
-text that can be consumed by attachments, document ingestion, knowledge base
-indexing, and Ema's own visual ability.
+It accepts images, screenshots, scanned pages, and future video frames, then
+returns text / markdown / structured blocks for turn attachments, document
+ingestion, knowledge-base indexing, and Ema's live visual ability.
 
 ## Boundary
 
 ```text
-attachments / document / knowledge / Ema visual features
-  -> VisionClient
-    -> LlmRouter
-      -> provider adapters
+attachments / document ingest / knowledge ingest / Ema visual features
+  -> VisionRouter
+    -> provider id -> VisionAdapter
+      -> provider vision endpoint
 ```
 
 Vision does not own file storage, attachment metadata, chunking, vector indexes,
-or knowledge base lifecycle. It only turns visual input into a stable
+or knowledge-base lifecycle. It only turns visual input into a stable
 `VisionExtractionResult`.
 
-## Provider Boundary
+Vision is also independent from `@ema-agent/llm`. A vision provider may expose an
+OpenAI-compatible chat-completions wire format, but the Vision package owns that
+adapter itself. Core wiring should treat vision the same way it treats LLM, TTS,
+STT, EBD, and rerank: separate provider configs, separate router, separate
+capability surface.
 
-Vision does not expose a backend selector. Callers provide the configured
-provider id and model:
+## Runtime Shape
 
-```ts
-await vision.extract({
-  providerId,
-  model,
-  task: 'ocr',
-  inputs,
-});
-```
-
-Qwen-VL, GPT-4o, Claude Vision, Gemini, or any OpenAI-compatible vision model are
-all provider/model choices. Sending images to a provider remains the job of the
-LLM Facade supplied by `apps/core`; Vision does not duplicate provider wire
-protocols and does not own provider lifecycle.
-
-The package depends only on `@ema-agent/contracts` types. `apps/core` injects an
-object compatible with `VisionLlmFacade`, normally the existing `LlmRouter`.
-
-## Lifecycle
-
-Production wiring should create one `VisionClient` in `apps/core` and expose it
-as `bindings.vision`.
+Production wiring should create one `VisionRouter` in `apps/core` and expose it
+through `AppBindings`.
 
 ```text
 buildBindings()
-  -> llm = new LlmRouter(...)
-  -> vision = new VisionClient({ llm })
+  -> vision = new VisionRouter({
+       configs: visionProviderConfigs,
+       limits,
+     })
 
-routes / orchestrator / document ingest / attachment ingest
+routes / orchestrator / attachment ingest / knowledge ingest
   -> bindings.vision.extract(...)
 ```
 
-`VisionClient` does not store per-request payloads or results on the instance.
-Each call keeps prompt, content parts, parse state, and abort controller in local
-variables, so concurrent calls cannot overwrite each other.
+`VisionRouter` keeps only provider config, adapter instances, and lightweight
+concurrency counters. Per-call images, prompts, parse state, and abort
+controllers stay local to `extract()`, so chat, attachments, and knowledge-base
+jobs cannot overwrite each other's request state.
 
-The process-wide concurrency limiter is shared by default. This keeps global and
-per-provider budgets effective even if a future caller accidentally constructs a
-new `VisionClient` instead of using `bindings.vision`.
+## Provider Model
 
-## Data flow
+```ts
+const vision = new VisionRouter({
+  configs: [{
+    id: 'openai-vision-main',
+    protocol: 'openai-vision',
+    apiKey,
+    baseUrl: 'https://api.openai.com/v1',
+    defaultModel: 'gpt-4o-mini',
+  }],
+});
+```
+
+The current adapter is `openai-vision`, which targets `/v1/chat/completions`
+with multimodal content parts. OpenAI-compatible providers such as SiliconFlow
+can use the same protocol with their own base URL and model names.
+
+## Data Flow
 
 ```text
 VisionRequest
+  -> normalize task / parse mode
+  -> validate image count and byte budgets
+  -> acquire global + per-provider concurrency slot
   -> build extraction prompt
-  -> MessageContentPart[] with image_data / image_url
-  -> LlmRouter.warnUnsupportedParts()
-  -> LlmRouter.complete()
-  -> parse JSON payload
+  -> convert image inputs into provider content parts
+  -> call provider endpoint
+  -> parse provider JSON output
   -> VisionExtractionResult
 ```
+
+`VisionRequest.task` is optional for callers and defaults to `auto`. Adapters
+receive a normalized request where `task` and `parseMode` are always present.
 
 ## Failure Policy
 
@@ -95,16 +101,14 @@ vision/output_parse_failed
 vision/provider_failed
 ```
 
-`VisionClient` also enforces request size, image count, per-provider concurrency,
-global concurrency, timeout, and strict/best-effort output parsing.
+The router enforces request size, image count, global concurrency,
+per-provider concurrency, timeout, and strict/best-effort output parsing.
 
 ## Public API
 
 ```ts
-const vision = new VisionClient({ llm });
-
 const result = await vision.extract({
-  providerId: 'provider-config-id',
+  providerId: 'openai-vision-main',
   model: 'gpt-4o-mini',
   task: 'ocr',
   inputs: [{
@@ -116,6 +120,6 @@ const result = await vision.extract({
 });
 ```
 
-The result intentionally contains both `text` and `blocks`. `text` is easy for
-LLM context injection, while `blocks` keeps enough structure for document
-preview, chunking, provenance, and later layout-aware retrieval.
+The result intentionally contains both `text` and `blocks`. `text` is suitable
+for model context injection. `blocks` preserves structure for document preview,
+chunking, provenance, and later layout-aware retrieval.

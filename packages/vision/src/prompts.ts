@@ -11,8 +11,6 @@ const TASK_INSTRUCTIONS: Record<VisionTask, string> = {
     'Extract text and describe layout regions, headings, tables, figures, and visual hierarchy.',
   table:
     'Focus on tables. Reconstruct each table as markdown when possible.',
-  document_image:
-    'Treat the image as a scanned or photographed document page. Extract text, headings, tables, figures, and reading order.',
 };
 
 export interface BuildVisionExtractionPromptArgs {
@@ -76,7 +74,6 @@ export function defaultMaxTokensForVisionTask(task: VisionTask): number {
       return 2048;
     case 'layout':
     case 'table':
-    case 'document_image':
       return 4096;
   }
 }

@@ -1,13 +1,12 @@
-export { VisionClient } from './client.js';
+export { VisionRouter, VisionLimiter } from './router.js';
 export type {
-  VisionClientArgs,
   VisionConcurrencyLimiter,
-  VisionLlmCompletion,
-  VisionLlmContentPart,
-  VisionLlmFacade,
-  VisionLlmRequest,
-  VisionUnsupportedPart,
-} from './client.js';
+  VisionRouterArgs,
+} from './router.js';
+
+export type { VisionAdapter, VisionAdapterCall } from './adapters/base.js';
+
+export { OpenAiVisionAdapter } from './adapters/openai-vision.js';
 
 export {
   buildVisionExtractionPrompt,
@@ -31,6 +30,7 @@ export type {
   VisionLimits,
   VisionParseMode,
   VisionProbeResult,
+  VisionProviderConfig,
   VisionRequest,
   VisionSourceRef,
   VisionTask,
