@@ -258,6 +258,14 @@ export function sessionsRoute(bindings: AppBindings): Hono {
     return c.body(null, 204);
   });
 
+  // ── GET /api/sessions/:id/attachments ─────────────────────────────────────
+  // Returns every turn_attachment for this session, ordered newest-first.
+  app.get('/:id/attachments', (c) => {
+    const sessionId = asSessionId(c.req.param('id'));
+    const attachments = bindings.attachmentStore.listBySession(sessionId);
+    return c.json({ attachments });
+  });
+
   // ── DELETE /api/sessions/:id ───────────────────────────────────────────────
   app.delete('/:id', (c) => {
     const sessionId = asSessionId(c.req.param('id'));

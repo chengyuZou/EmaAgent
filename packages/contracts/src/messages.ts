@@ -117,6 +117,7 @@ export interface TurnAttachment {
   name:       string;   // 显示名：'cat.png' / 'main.py' / '粘贴的文字'
   mimeType:   string;
   size?:      number;   // 字节数，用于显示 '2.3 MB'
+  mtime?:     number;   // 文件修改时间（unix ms）；Tool 用来检测文件是否在附件后被修改
   localPath?: string;   // 本机绝对路径，用于点击打开（单机应用）
 }
 

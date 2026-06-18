@@ -42,22 +42,18 @@ import {
 
 // ── alreadySurfaced bookkeeping ──────────────────────────────────────────────
 
-const SURFACED_META_KEY = 'memory.alreadySurfaced';
-const SURFACED_TTL_MS   = 1000 * 60 * 60 * 6;   // 6 hours
+const SURFACED_TTL_MS = 1000 * 60 * 60 * 6;   // 6 hours
 
-function loadSurfaced(meta: Record<string, unknown>): AlreadySurfaced {
-  const raw = meta[SURFACED_META_KEY];
-  if (!raw || typeof raw !== 'object') {
-    return { nodes: [], items: [], updatedAt: Date.now() };
-  }
+function loadSurfaced(raw: Record<string, unknown>): AlreadySurfaced {
   const entry = raw as Partial<AlreadySurfaced>;
-  if (Date.now() - (entry.updatedAt ?? 0) > SURFACED_TTL_MS) {
+  if (!entry.updatedAt) return { nodes: [], items: [], updatedAt: Date.now() };
+  if (Date.now() - entry.updatedAt > SURFACED_TTL_MS) {
     return { nodes: [], items: [], updatedAt: Date.now() };
   }
   return {
     nodes:     Array.isArray(entry.nodes) ? entry.nodes.slice(-200) : [],
     items:     Array.isArray(entry.items) ? entry.items.slice(-200) : [],
-    updatedAt: entry.updatedAt ?? Date.now(),
+    updatedAt: entry.updatedAt,
   };
 }
 
@@ -494,7 +490,7 @@ export class MemoryPlanner {
    * Used by the UI memory panel to populate its toggle state.
    */
   getSessionOverrides(sessionId: SessionId): ResolvedSessionOverrides {
-    return readOverrides(this.deps.sessions, sessionId);
+    return readOverrides(this.deps.memorySessionState, sessionId);
   }
 
   /**
@@ -503,7 +499,7 @@ export class MemoryPlanner {
    * when a user toggles a memory layer for one specific conversation.
    */
   setSessionOverrides(sessionId: SessionId, overrides: MemorySessionOverrides): void {
-    writeOverrides(this.deps.sessions, sessionId, overrides);
+    writeOverrides(this.deps.memorySessionState, sessionId, overrides);
   }
 
   // ── Stats / Inspection (UI memory panel) ────────────────────────────────────
@@ -822,8 +818,7 @@ ${result.summary}
   }
 
   private loadAlreadySurfaced(sessionId: SessionId): AlreadySurfaced {
-    const session = this.deps.session.getSession(sessionId);
-    return loadSurfaced(session.meta);
+    return loadSurfaced(this.deps.memorySessionState.getSurfaced(sessionId));
   }
 
   private recordSurfaced(
@@ -859,15 +854,9 @@ ${result.summary}
       items:     dedupTail([...prior.items, ...newItems], 200),
       updatedAt: nowMs,
     };
-    bestEffort('persistSurfaced', () => this.persistSurfaced(sessionId, merged), undefined);
-  }
-
-  private persistSurfaced(sessionId: SessionId, surfaced: AlreadySurfaced): void {
-    const row = this.deps.sessions.findById(sessionId);
-    if (!row) return;
-    const meta = JSON.parse(row.meta_json) as Record<string, unknown>;
-    meta[SURFACED_META_KEY] = surfaced;
-    this.deps.sessions.setMeta(sessionId, meta);
+    bestEffort('persistSurfaced', () =>
+      this.deps.memorySessionState.setSurfaced(sessionId, merged as unknown as Record<string, unknown>),
+    undefined);
   }
 }
 

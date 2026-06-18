@@ -1,0 +1,17 @@
+export class AttachmentNotFoundError extends Error {
+  constructor(id: string) {
+    super(`Attachment not found: ${id}`);
+    this.name = 'AttachmentNotFoundError';
+  }
+}
+
+export class AttachmentFileError extends Error {
+  readonly localPath: string;
+  override readonly cause: unknown;
+  constructor(localPath: string, cause: unknown) {
+    super(`Cannot read attachment file: ${localPath}`);
+    this.name      = 'AttachmentFileError';
+    this.localPath = localPath;
+    this.cause     = cause;
+  }
+}

@@ -1,5 +1,5 @@
 import type { SessionId } from '@ema-agent/contracts';
-import type { SessionsRepo } from '@ema-agent/storage';
+import type { MemorySessionStateRepo } from '@ema-agent/storage';
 
 // ── Per-session memory overrides ─────────────────────────────────────────────
 
@@ -37,8 +37,6 @@ export interface ResolvedSessionOverrides {
   compaction:    boolean;
 }
 
-const OVERRIDES_META_KEY = 'memory.overrides';
-
 export const DEFAULT_OVERRIDES: ResolvedSessionOverrides = {
   layer0:        true,
   layer1:        true,
@@ -51,27 +49,22 @@ export const DEFAULT_OVERRIDES: ResolvedSessionOverrides = {
 // ── Read / write ──────────────────────────────────────────────────────────────
 
 export function readOverrides(
-  repo: SessionsRepo,
+  repo:      MemorySessionStateRepo,
   sessionId: SessionId,
 ): ResolvedSessionOverrides {
-  const row = repo.findById(sessionId);
-  if (!row) return DEFAULT_OVERRIDES;
-  const meta = safeParseMeta(row.meta_json);
-  const stored = meta[OVERRIDES_META_KEY];
-  if (!stored || typeof stored !== 'object') return DEFAULT_OVERRIDES;
+  const stored = repo.getOverrides(sessionId);
+  if (!stored || typeof stored !== 'object' || Object.keys(stored).length === 0) {
+    return DEFAULT_OVERRIDES;
+  }
   return resolveOverrides(stored as MemorySessionOverrides);
 }
 
 export function writeOverrides(
-  repo: SessionsRepo,
+  repo:      MemorySessionStateRepo,
   sessionId: SessionId,
   overrides: MemorySessionOverrides,
 ): void {
-  const row = repo.findById(sessionId);
-  if (!row) return;
-  const meta = safeParseMeta(row.meta_json);
-  meta[OVERRIDES_META_KEY] = overrides;
-  repo.setMeta(sessionId, meta);
+  repo.setOverrides(sessionId, overrides as Record<string, unknown>);
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -85,13 +78,4 @@ function resolveOverrides(partial: MemorySessionOverrides): ResolvedSessionOverr
     consolidation: partial.consolidation ?? DEFAULT_OVERRIDES.consolidation,
     compaction:    partial.compaction    ?? DEFAULT_OVERRIDES.compaction,
   };
-}
-
-function safeParseMeta(json: string): Record<string, unknown> {
-  try {
-    const obj = JSON.parse(json);
-    return obj && typeof obj === 'object' ? obj as Record<string, unknown> : {};
-  } catch {
-    return {};
-  }
 }

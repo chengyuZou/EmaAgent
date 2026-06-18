@@ -5,7 +5,7 @@ import type {
   MemoryItemsRepo,
   SessionNotesRepo,
   MemoryTasksRepo,
-  SessionsRepo,
+  MemorySessionStateRepo,
   PendingFragmentsRepo,
   ModelBindingsRepo,
 } from '@ema-agent/storage';
@@ -33,7 +33,7 @@ export interface MemoryDeps {
   items:          MemoryItemsRepo;
   sessionNotes:      SessionNotesRepo;
   memoryTasks:   MemoryTasksRepo;
-  sessions:          SessionsRepo;         // meta_json, overrides, turn concurrency
+  memorySessionState: MemorySessionStateRepo;
   pendingFragments:  PendingFragmentsRepo; // extraction input queue
 
   /**

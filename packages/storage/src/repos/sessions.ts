@@ -16,7 +16,6 @@ export interface SessionRow {
   pinned_at:     number | null;
   group_label:   string | null;
   parent_session_id: string | null;
-  meta_json: string;
   last_mode:     string | null;
   last_sub_mode: string | null;
   last_viewed_at: number | null;
@@ -235,18 +234,6 @@ export class SessionsRepo {
     this.db
       .prepare('UPDATE sessions SET last_viewed_at = ? WHERE id = ?')
       .run(now, id);
-  }
-
-  /**
-   * Replace the entire meta_json for a session. Callers are responsible for
-   * reading the current meta first (via findById), merging their changes in JS,
-   * then writing the merged object back here. This keeps the write path in
-   * the repo without exposing raw SQL to callers.
-   */
-  setMeta(id: SessionId, meta: Record<string, unknown>): void {
-    this.db
-      .prepare('UPDATE sessions SET meta_json = ?, updated_at = ? WHERE id = ?')
-      .run(JSON.stringify(meta), Date.now(), id);
   }
 
   updateTitle(id: SessionId, title: string, updatedAt: number): void {

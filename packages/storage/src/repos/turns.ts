@@ -16,7 +16,6 @@ export interface TurnRow {
   usage_input_tokens: number;
   usage_output_tokens: number;
   cost_usd: number;
-  meta_json: string;
 }
 
 export interface TurnInsert {

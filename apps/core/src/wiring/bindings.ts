@@ -1,15 +1,16 @@
 import type { Database } from '@ema-agent/storage';
 import {
   ModelBindingsRepo,
-  SessionsRepo,
   SettingsRepo,
   MemoryNodesRepo, MemoryEdgesRepo, MemoryLazyUpdatesRepo,
   MemoryItemsRepo, SessionNotesRepo, MemoryTasksRepo, PendingFragmentsRepo,
-  ArtifactRepo,
+  ArtifactRepo, AttachmentRepo,
+  MemorySessionStateRepo,
   ProviderLlmModelsRepo, ProviderEmbedModelsRepo,
   ProviderRerankModelsRepo, ProviderTtsModelsRepo, ProviderSttModelsRepo,
   McpServersRepo, SkillsRepo,
 } from '@ema-agent/storage';
+import { AttachmentStore } from '@ema-agent/attachment';
 import { ArtifactStore }                               from '@ema-agent/artifact';
 import { McpRegistry, McpServerStore }                 from '@ema-agent/mcp';
 import { SkillStore, SkillRunner, SkillInstaller }     from '@ema-agent/skill';
@@ -133,8 +134,9 @@ export interface AppBindings {
   providerRerankModels: ProviderRerankModelsRepo;
   providerTtsModels:    ProviderTtsModelsRepo;
   providerSttModels:    ProviderSttModelsRepo;
-  artifactStore:  ArtifactStore;
-  mcpRegistry:    McpRegistry;
+  artifactStore:    ArtifactStore;
+  attachmentStore:  AttachmentStore;
+  mcpRegistry:      McpRegistry;
   skillStore:     SkillStore;
   skillRunner:    SkillRunner;
   skillInstaller: SkillInstaller;
@@ -202,7 +204,6 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
 
   // ── Repos ───────────────────────────────────────────────────────────────────
   const modelBindings = new ModelBindingsRepo(profileDb.sqlite);
-  const sessionsRepo  = new SessionsRepo(dataDb.sqlite);
 
   // ── Permission subsystem ────────────────────────────────────────────────────
   const settingsRepo = new SettingsRepo(profileDb.sqlite);
@@ -277,8 +278,8 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
     items:            new MemoryItemsRepo(profileDb.sqlite),
     sessionNotes:     new SessionNotesRepo(dataDb.sqlite),
     memoryTasks:      new MemoryTasksRepo(dataDb.sqlite),
-    pendingFragments: new PendingFragmentsRepo(dataDb.sqlite),
-    sessions:         sessionsRepo,
+    pendingFragments:   new PendingFragmentsRepo(dataDb.sqlite),
+    memorySessionState: new MemorySessionStateRepo(dataDb.sqlite),
     getEmbedDim:      (model) => providerEmbedModels.dimFor(model) ?? lookupEmbedDim(model) ?? 0,
     emit:             (ev) => systemBus.emit(ev),
   });
@@ -288,6 +289,9 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
     new ArtifactRepo(dataDb.sqlite),
     nodePath.join(activeDataDir, '.ema-agent', 'artifacts'),
   );
+
+  // ── Attachments ─────────────────────────────────────────────────────────────
+  const attachmentStore = new AttachmentStore(new AttachmentRepo(dataDb.sqlite));
 
   // ── MCP registry ────────────────────────────────────────────────────────────
   const mcpStdioGate = async (serverName: string, command: string): Promise<boolean> => {
@@ -323,7 +327,7 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
     systemBus,
     modelBindings, providerLlmModels, providerEmbedModels,
     providerRerankModels, providerTtsModels, providerSttModels,
-    artifactStore,
+    artifactStore, attachmentStore,
     mcpRegistry,
     skillStore, skillRunner, skillInstaller,
   };

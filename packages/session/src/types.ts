@@ -31,7 +31,6 @@ export interface Session {
   groupLabel:    string | null;
   parentSessionId: string | null;
   runningTurnCount: number;
-  meta: Record<string, unknown>;
   lastMode:     TurnMode | null;
   lastSubMode:  AgentSubMode | null;
   lastViewedAt:   number | null;
@@ -54,7 +53,6 @@ export interface Turn {
   usageInputTokens: number;
   usageOutputTokens: number;
   costUsd: number;
-  meta: Record<string, unknown>;
 }
 
 export interface Message {
@@ -72,7 +70,6 @@ export interface Message {
   blocks: MessageBlocks;
   interrupted: boolean;
   createdAt: number;
-  meta: Record<string, unknown>;
 }
 
 // ── Input types for SessionStore methods ─────────────────────────────────────

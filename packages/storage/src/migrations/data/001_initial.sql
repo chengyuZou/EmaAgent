@@ -191,6 +191,45 @@ CREATE TABLE attachment_chunks (
 );
 CREATE INDEX idx_chunks_attachment ON attachment_chunks(attachment_id, chunk_index);
 
+-- ============ Turn attachments ============
+--
+-- Per-turn file references attached by the user in the composer.
+-- Distinct from `attachments` (above) which is reserved for future
+-- knowledge-base indexing (scope: session RAG).
+--
+-- Nothing is copied here — local_path is the original absolute path on disk.
+-- mtime (unix ms) lets tools detect whether the file changed since it was attached.
+
+CREATE TABLE turn_attachments (
+  id         TEXT    PRIMARY KEY,
+  turn_id    TEXT    NOT NULL REFERENCES turns(id)    ON DELETE CASCADE,
+  session_id TEXT    NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  name       TEXT    NOT NULL,
+  mime       TEXT    NOT NULL,
+  size       INTEGER NOT NULL,
+  mtime      INTEGER NOT NULL,
+  local_path TEXT    NOT NULL,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX idx_turn_attachments_turn    ON turn_attachments(turn_id);
+CREATE INDEX idx_turn_attachments_session ON turn_attachments(session_id, created_at DESC);
+
+-- ============ Memory session state ============
+--
+-- Owned entirely by the memory package. Two JSON blobs per session:
+--   surfaced_json   — AlreadySurfaced: node/item ids recalled in recent turns
+--                     (dedup filter so the same fact isn't injected every turn)
+--   overrides_json  — MemorySessionOverrides: per-session layer toggles
+--
+-- Separated from sessions.meta_json so memory owns its own schema.
+
+CREATE TABLE memory_session_state (
+  session_id      TEXT    PRIMARY KEY
+                          REFERENCES sessions(id) ON DELETE CASCADE,
+  surfaced_json   TEXT    NOT NULL DEFAULT '{}',
+  overrides_json  TEXT    NOT NULL DEFAULT '{}'
+);
+
 -- ============ Artifacts ============
 --
 -- Files > 64 KB live at: {dataDir}/sessions/{session_id}/artifacts/{id}

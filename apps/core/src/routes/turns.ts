@@ -29,6 +29,15 @@ async function safeJsonBody(c: import('hono').Context): Promise<unknown> {
   }
 }
 
+const attachmentInputSchema = z.object({
+  id:        z.string(),
+  name:      z.string(),
+  mimeType:  z.string(),
+  size:      z.number().int().nonnegative(),
+  mtime:     z.number().int().nonnegative(),
+  localPath: z.string(),
+});
+
 const contentPartSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('text'),       text: z.string() }),
   z.object({ type: z.literal('image_url'),  url: z.string() }),
@@ -44,6 +53,7 @@ const turnBodySchema = z.object({
   agentSubMode: z.enum(['plan', 'debug', 'full']).optional(),
   userInput: z.string().optional(),
   contentParts: z.array(contentPartSchema).optional(),
+  attachments:  z.array(attachmentInputSchema).optional(),
   model: z.string().optional(),
   ttsEnabled: z.boolean().optional(),
 }).refine(
@@ -88,7 +98,7 @@ export function turnsRoute(bindings: AppBindings): Hono {
       return c.json({ error: 'invalid_request', details: parsed.error.flatten() }, 400);
     }
 
-    const { sessionId, mode, agentSubMode, userInput, contentParts, model, ttsEnabled } = parsed.data;
+    const { sessionId, mode, agentSubMode, userInput, contentParts, attachments, model, ttsEnabled } = parsed.data;
 
     // Trust the client's sessionId only if it still exists. A stale id (e.g.
     // a viewedSessionId persisted across a DB reset) would otherwise FK-fail
@@ -104,13 +114,14 @@ export function turnsRoute(bindings: AppBindings): Hono {
     let events: AsyncIterable<EmaStreamEvent>;
     try {
       ({ turnId, events } = await orchestrator.run({
-        sessionId: effectiveSessionId,
-        mode: mode,
-        agentSubMode: agentSubMode,
-        userInput: userInput ?? '',
-        contentParts: contentParts,
-        model: model,
-        ttsEnabled: ttsEnabled ?? false,
+        sessionId:        effectiveSessionId,
+        mode,
+        agentSubMode,
+        userInput:        userInput ?? '',
+        contentParts,
+        attachmentInputs: attachments,
+        model,
+        ttsEnabled:       ttsEnabled ?? false,
       }));
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);

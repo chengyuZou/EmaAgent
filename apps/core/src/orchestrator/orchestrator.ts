@@ -3,6 +3,7 @@ import type {
   TurnMode, AgentSubMode, EmaStreamEvent, TurnId,
 } from '@ema-agent/contracts';
 import type { LlmContentPart } from '@ema-agent/llm';
+import type { AttachmentInput } from '@ema-agent/attachment';
 import { asSessionId } from '@ema-agent/contracts';
 import { ConversationEngine } from '@ema-agent/conversation';
 import { AgentEngine }        from '@ema-agent/agent';
@@ -18,12 +19,14 @@ export interface TurnResult {
 }
 
 export interface TurnRequest {
-  sessionId:     string;
-  mode:          TurnMode;
-  agentSubMode?: AgentSubMode;
-  userInput:     string;
-  contentParts?: LlmContentPart[];
-  model?:        string;
+  sessionId:        string;
+  mode:             TurnMode;
+  agentSubMode?:    AgentSubMode;
+  userInput:        string;
+  contentParts?:    LlmContentPart[];
+  /** Per-turn file attachments from the frontend. Persisted and resolved before engine dispatch. */
+  attachmentInputs?: AttachmentInput[];
+  model?:           string;
   /**
    * Whether to spawn a TtsCoordinator for this turn. Defaults to false —
    * the frontend opts in per turn (after the user toggles the speaker icon).
@@ -109,6 +112,30 @@ export class Orchestrator {
     const turnId = turn.id;
     this.activeTurns.set(turnId as string, sessionId);
 
+    // Persist per-turn attachments and merge them into the engine input.
+    // Images → prepended to contentParts as base64 parts.
+    // Other files → appended as a text block listing their paths.
+    let contentParts = request.contentParts;
+    let userInput    = request.userInput;
+    if (request.attachmentInputs?.length) {
+      const stored   = this.bindings.attachmentStore.addAll(request.attachmentInputs, turnId, sessionId);
+      const resolved = this.bindings.attachmentStore.resolveForPrompt(stored);
+
+      if (resolved.imageParts.length > 0 || resolved.promptLines) {
+        const parts: LlmContentPart[] = [...resolved.imageParts];
+        if (contentParts?.length) {
+          parts.push(...contentParts);
+        } else {
+          parts.push({ type: 'text', text: userInput });
+        }
+        if (resolved.promptLines) {
+          parts.push({ type: 'text', text: resolved.promptLines });
+        }
+        contentParts = parts;
+        userInput    = '';
+      }
+    }
+
     // Build the TTS queue + coordinator before the engine stream is consumed.
     // Queue is shared between coordinator.emit and the merge loop.
     //
@@ -145,7 +172,10 @@ export class Orchestrator {
     // the turn — same stuck-turn class as the coordinator path above.
     let engineEvents: AsyncIterable<EmaStreamEvent>;
     try {
-      engineEvents = this.engineStreamFor(request, turn, signal, sessionId);
+      const resolvedRequest = contentParts !== request.contentParts || userInput !== request.userInput
+        ? { ...request, contentParts, userInput }
+        : request;
+      engineEvents = this.engineStreamFor(resolvedRequest, turn, signal, sessionId);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       this.bindings.session.failTurn(turnId, 'turn/setup_failed', message);

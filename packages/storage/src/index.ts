@@ -12,6 +12,8 @@ export { Live2DModelsRepo } from './repos/live2d-models.js';
 export { ProvidersRepo } from './repos/providers.js';
 export { ModelBindingsRepo } from './repos/model-bindings.js';
 export { ArtifactRepo }    from './repos/artifact.js';
+export { AttachmentRepo }  from './repos/attachment.js';
+export type { AttachmentRow, AttachmentInsert } from './repos/attachment.js';
 export { McpServersRepo }  from './repos/mcp-servers.js';
 export type { McpServerRow } from './repos/mcp-servers.js';
 export { SkillsRepo }      from './repos/skills.js';
@@ -24,7 +26,8 @@ export { MemoryLazyUpdatesRepo } from './repos/memory-lazy-updates.js';
 export { MemoryItemsRepo }       from './repos/memory-items.js';
 export { SessionNotesRepo }      from './repos/session-notes.js';
 export { MemoryTasksRepo }   from './repos/memory-tasks.js';
-export { PendingFragmentsRepo }  from './repos/pending-fragments.js';
+export { PendingFragmentsRepo }       from './repos/pending-fragments.js';
+export { MemorySessionStateRepo }     from './repos/memory-session-state.js';
 
 export type { DatabaseOptions, SqliteDb } from './database.js';
 export type { SessionRow, SessionRowEnriched, SessionSearchRow, SessionInsert, SessionsGrouped } from './repos/sessions.js';

@@ -84,9 +84,7 @@ export function buildPermissionSubsystem(settingsRepo: SettingsRepo): Permission
         type:      'permission_resolved',
         sessionId: args.sessionId as SessionId,
         promptId,
-        decision: response.action === 'allow'
-                || response.action === 'allow_session'
-                || response.action === 'always_allow'
+        decision: response.action === 'allow' || response.action === 'allow_session'
                   ? 'allow' : 'deny',
       });
       return response;

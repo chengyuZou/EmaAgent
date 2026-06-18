@@ -61,7 +61,6 @@ function toSession(row: SessionRow): Session {
     groupLabel:    row.group_label,
     parentSessionId: row.parent_session_id as SessionId | null,
     runningTurnCount: 0,    // populated by caller
-    meta: safeJson(row.meta_json, {} as Record<string, unknown>, `session ${row.id} meta_json`),
     lastMode:    (row.last_mode    ?? null) as TurnMode    | null,
     lastSubMode: (row.last_sub_mode ?? null) as AgentSubMode | null,
     lastViewedAt:   row.last_viewed_at ?? null,
@@ -95,7 +94,6 @@ function toTurn(row: TurnRow): Turn {
     usageInputTokens: row.usage_input_tokens,
     usageOutputTokens: row.usage_output_tokens,
     costUsd: row.cost_usd,
-    meta: safeJson(row.meta_json, {} as Record<string, unknown>, `turn ${row.id} meta_json`),
   };
 }
 
@@ -116,7 +114,6 @@ function toMessage(row: MessageRow): Message {
     blocks,
     interrupted: row.interrupted === 1,
     createdAt:   row.created_at,
-    meta:        safeJson(row.meta_json, {} as Record<string, unknown>, `message ${row.id} meta_json`),
   };
 }
 

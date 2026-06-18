@@ -20,7 +20,6 @@ describe('SessionStore — session', () => {
     expect(s.title).toBe('新对话');
     expect(s.characterCardId).toBe('ema');
     expect(s.archivedAt).toBeNull();
-    expect(s.meta).toEqual({});
   });
 
   it('creates a session with custom input', () => {
