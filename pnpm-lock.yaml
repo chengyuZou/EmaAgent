@@ -291,6 +291,22 @@ importers:
         specifier: ^5.9.3
         version: 5.9.3
 
+  packages/agent-task:
+    dependencies:
+      '@ema-agent/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+    devDependencies:
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.39
+      rimraf:
+        specifier: ^5.0.0
+        version: 5.0.10
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
   packages/artifact:
     dependencies:
       '@ema-agent/contracts':
