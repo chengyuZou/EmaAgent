@@ -25,6 +25,8 @@ import { TtsClient, FsAudioArchive, type AudioArchive } from '@ema-agent/tts';
 import { SttClient }     from '@ema-agent/stt';
 import { buildTtsClient } from './providers/tts.js';
 import { buildSttClient } from './providers/stt.js';
+import { buildVisionRouter, asKbVisionAdapter } from './providers/vision.js';
+import { VisionRouter } from '@ema-agent/vision';
 import { lookupEmbedDim } from '@ema-agent/token';
 import { loadLlmConfigs }   from './providers/llm.js';
 import { loadEmbedConfigs }  from './providers/embed.js';
@@ -46,6 +48,12 @@ import {
   AgentFileStateStore, AgentToolResultStore, ToolResultCleaner,
 } from '@ema-agent/agent-context';
 import { MemoryPlanner } from '@ema-agent/memory';
+import {
+  KnowledgeClient, KnowledgeStore,
+} from '@ema-agent/knowledge-base';
+import {
+  DocumentAssetRepo, DocumentChunkRepo, DocumentPreviewRepo,
+} from '@ema-agent/storage';
 import { resolveBridgeUrl } from './bridge.js';
 import { SystemEventBus }  from '../sse/system-bus.js';
 
@@ -89,6 +97,8 @@ export interface AppBindings {
   audioArchive: AudioArchive;
   // STT façade — converts user audio → text (single binding in V1).
   stt:          SttClient;
+  // Vision façade — image understanding; used by KB ingest (OCR fallback).
+  vision:       VisionRouter;
 
   // Agent stack
   permission:        PermissionEngine;
@@ -140,6 +150,8 @@ export interface AppBindings {
   skillStore:     SkillStore;
   skillRunner:    SkillRunner;
   skillInstaller: SkillInstaller;
+
+  kb: KnowledgeClient;
 }
 
 // ── Build bindings ────────────────────────────────────────────────────────────
@@ -192,8 +204,9 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
   const emotion = new EmotionEngine({ vocabulary: card.current().emotionVocabulary });
 
   // ── TTS / STT ───────────────────────────────────────────────────────────────
-  const tts = buildTtsClient({ profileDb });
-  const stt = buildSttClient({ profileDb });
+  const tts    = buildTtsClient({ profileDb });
+  const stt    = buildSttClient({ profileDb });
+  const vision = buildVisionRouter(profileDb);
 
   // ── Audio archive ───────────────────────────────────────────────────────────
   // TODO(wiring): should be per-session → sessionAudioDirFor(activeDataDir, sessionId).
@@ -314,12 +327,26 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
   const skillRunner    = new SkillRunner(skillStore, hooks);
   const skillInstaller = new SkillInstaller(skillStore);
 
+  // ── Knowledge base ───────────────────────────────────────────────────────────
+  const kb = new KnowledgeClient({
+    store: new KnowledgeStore(
+      new DocumentAssetRepo(dataDb.sqlite),
+      new DocumentChunkRepo(dataDb.sqlite),
+      new DocumentPreviewRepo(dataDb.sqlite),
+    ),
+    ebdRouter: ebd,
+    visionAdapter: asKbVisionAdapter(vision),
+  });
+  // Fire-and-forget: builds in-memory HNSW from persisted BLOBs.
+  // Search falls back to SQL cosine until this resolves (~50–200ms).
+  void kb.init().catch((err) => console.warn('[kb] HNSW init failed:', err));
+
   return {
     profileDb, dataDb, activeDataDir,
     hooks, session,
     llm, ebd, narrative,
     card, emotion,
-    tts, audioArchive, stt,
+    tts, audioArchive, stt, vision,
     permission, permissionPrompts, askUserRegistry, tools, buildAskForTurn, getCommandRunner,
     invalidateSessionRuntime,
     getContextStores, toolResultCleaner,
@@ -330,6 +357,7 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
     artifactStore, attachmentStore,
     mcpRegistry,
     skillStore, skillRunner, skillInstaller,
+    kb,
   };
 }
 

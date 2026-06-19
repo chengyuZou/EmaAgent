@@ -17,6 +17,7 @@ import { createArtifactsRouter } from './routes/artifacts.js';
 import { createSkillsRouter }   from './routes/skills.js';
 import { createMcpRouter }       from './routes/mcp.js';
 import { shellRoute }            from './routes/shell.js';
+import { kbRoute }               from './routes/knowledge-base.js';
 import type { AppBindings } from './wiring.js';
 
 export function buildServer(bindings: AppBindings): Hono {
@@ -60,6 +61,7 @@ export function buildServer(bindings: AppBindings): Hono {
   app.route('/api',                createArtifactsRouter(bindings));
   app.route('/api',                createSkillsRouter(bindings));
   app.route('/api/mcp',            createMcpRouter(bindings));
+  app.route('/api/kb',             kbRoute(bindings));
 
   // 404 fallback
   app.notFound((c) => c.json({ error: 'not_found' }, 404));

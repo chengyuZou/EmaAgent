@@ -61,6 +61,9 @@ importers:
       '@ema-agent/hook':
         specifier: workspace:*
         version: link:../../packages/hook
+      '@ema-agent/knowledge-base':
+        specifier: workspace:*
+        version: link:../../packages/knowledge-base
       '@ema-agent/llm':
         specifier: workspace:*
         version: link:../../packages/llm
@@ -106,6 +109,9 @@ importers:
       '@ema-agent/tts':
         specifier: workspace:*
         version: link:../../packages/tts
+      '@ema-agent/vision':
+        specifier: workspace:*
+        version: link:../../packages/vision
       '@hono/node-server':
         specifier: ^1.14.3
         version: 1.19.14(hono@4.12.18)
