@@ -380,16 +380,70 @@ export class SessionStore {
 
   // ── Fork ───────────────────────────────────────────────────────────────────
 
+  /**
+   * Fork a session into a new independent session.
+   *
+   * Non-branched sessions use a fast single SQL INSERT…SELECT path.
+   *
+   * Branched sessions (activeBranchId is set) must materialize the branch-aware
+   * linear history in app code first, because the simple SQL cutoff on created_at
+   * cannot distinguish messages from sibling branches — e.g. if the user switched
+   * back to an ancestor branch and continued there, those later turns would have
+   * higher created_at than descendant-branch turns and the SQL cutoff would
+   * silently drop them.
+   *
+   * The new session always starts flat (no branches, activeBranchId = null).
+   * All message IDs are re-generated; turn_id is set to null (turns don't transfer).
+   */
   forkSession(
-    srcId:       SessionId,
+    srcId:        SessionId,
     untilTurnId?: TurnId,
   ): { sessionId: SessionId; messageCount: number } {
-    const newId = asSessionId(crypto.randomUUID());
     const src   = this.requireSession(srcId);
+    const newId = asSessionId(crypto.randomUUID());
     const title = `${src.title} (fork)`;
     const now   = this.nextTs();
-    const count = this.sessionsRepo.forkInto(srcId, newId, title, now, untilTurnId);
-    return { sessionId: newId, messageCount: count };
+
+    if (!src.activeBranchId) {
+      const count = this.sessionsRepo.forkInto(srcId, newId, title, now, untilTurnId);
+      return { sessionId: newId, messageCount: count };
+    }
+
+    // Branch-aware path: materialise the linear history, then bulk-insert.
+    this.sessionsRepo.insert({
+      id:              newId,
+      title,
+      characterCardId: src.characterCardId,
+      workspaceRoots:  src.workspaceRoots,
+      parentSessionId: srcId,
+      createdAt:       now,
+      updatedAt:       now,
+      lastActivityAt:  now,
+    });
+
+    let msgs = this.loadBranchMessages(srcId, src.activeBranchId);
+
+    if (untilTurnId) {
+      const cutoffRows = this.messagesRepo.listForTurn(untilTurnId);
+      const cutoff     = cutoffRows.length
+        ? Math.max(...cutoffRows.map(r => r.created_at))
+        : 0;
+      msgs = msgs.filter(m => m.createdAt <= cutoff);
+    }
+
+    for (const m of msgs) {
+      this.messagesRepo.insert({
+        id:          asMessageId(crypto.randomUUID()),
+        sessionId:   newId,
+        role:        m.role,
+        kind:        m.kind,
+        blocksJson:  JSON.stringify(m.blocks),
+        interrupted: m.interrupted,
+        createdAt:   m.createdAt,
+      });
+    }
+
+    return { sessionId: newId, messageCount: msgs.length };
   }
 
   // ── Delete ─────────────────────────────────────────────────────────────────
