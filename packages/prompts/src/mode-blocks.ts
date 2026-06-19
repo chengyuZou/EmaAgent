@@ -1,7 +1,6 @@
-import type { TurnMode, AgentSubMode } from '@ema-agent/contracts';
+import type { TurnMode } from '@ema-agent/contracts';
 
 export interface ModeBlockOpts {
-  agentSubMode?: AgentSubMode;
   /** One or more workspace roots the agent is allowed to operate in. */
   workspaceRoots?: string[];
 }
@@ -43,8 +42,7 @@ function narrativeBlock(): string {
 
 // ── Agent ─────────────────────────────────────────────────────────────────────
 
-function agentBlock({ agentSubMode, workspaceRoots }: ModeBlockOpts): string {
-  const subModeNote = agentSubMode ? subModeInstructions(agentSubMode) : '';
+function agentBlock({ workspaceRoots }: ModeBlockOpts): string {
   const wsNote = workspaceRoots && workspaceRoots.length > 0
     ? `当前允许操作的工作区目录：\n${workspaceRoots.map((r) => `  - \`${r}\``).join('\n')}\n所有文件操作必须限定在以上目录范围内。\n`
     : '';
@@ -57,17 +55,6 @@ ${wsNote}工作原则：
 4. 代码修改必须通过 artifact 系统展示，不在聊天气泡里粘贴大段 diff
 5. 同一工具连续报错超过一次，改用其他工具或向用户说明限制
 6. 最终回答：先「结论」，再「关键依据」，最后「可执行下一步」
-${subModeNote}
-使用 ACT 标签保持角色感，但任务场景下情绪表达应简洁，不喧宾夺主。`;
-}
 
-function subModeInstructions(subMode: AgentSubMode): string {
-  switch (subMode) {
-    case 'plan':
-      return `\n子模式：plan — 生成执行计划，等待用户确认后再行动。不自动执行高风险操作。`;
-    case 'debug':
-      return `\n子模式：debug — 聚焦错误溯源，优先读日志/错误信息，精准定位后再提修复方案。`;
-    case 'full':
-      return `\n子模式：full — 全自动执行，最小化用户确认次数。高风险操作（删除、写入生产配置等）仍需确认。`;
-  }
+使用 ACT 标签保持角色感，但任务场景下情绪表达应简洁，不喧宾夺主。`;
 }

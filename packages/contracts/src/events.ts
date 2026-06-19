@@ -2,7 +2,6 @@
   SessionId,
   TurnId,
   TurnMode,
-  AgentSubMode,
   ArtifactId,
   CharacterCardId,
 } from './ids.js';
@@ -78,7 +77,7 @@ export interface MemoryRecallLayerReport {
 
 export type EmaStreamEvent =
   // Turn lifecycle
-  | { type: 'turn_started';   sessionId: SessionId; turnId: TurnId; mode: TurnMode; agentSubMode?: AgentSubMode }
+  | { type: 'turn_started';   sessionId: SessionId; turnId: TurnId; mode: TurnMode }
   | { type: 'usage_update';   sessionId: SessionId; turnId: TurnId; inputTokens: number; outputTokens: number }
   | { type: 'turn_completed'; sessionId: SessionId; turnId: TurnId; stats: TurnStats }
   | { type: 'turn_failed';    sessionId: SessionId; turnId: TurnId; code: ErrorCode; message: string }

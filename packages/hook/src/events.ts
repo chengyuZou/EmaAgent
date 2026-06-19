@@ -82,7 +82,6 @@ export interface HookPayload {
   };
   onTurnStart: {
     mode: TurnMode;
-    subMode?: string;
   };
   onTurnEnd: {
     durationMs: number;

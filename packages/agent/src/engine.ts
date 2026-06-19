@@ -40,13 +40,13 @@ async function* runTurn(
   input: AgentRunInput,
 ): AsyncIterable<EmaStreamEvent> {
   const { session, hooks, llm, emotion, tools, permission, askUserRegistry } = deps;
-  const { turn, signal, subMode, userInput, systemPrompt, workspaceRoots, providerId, model } = input;
+  const { turn, signal, userInput, systemPrompt, workspaceRoots, providerId, model } = input;
   const sessionId = turn.sessionId;
   const turnId    = turn.id;
   const startedAt = Date.now();
 
   // Per-turn state
-  const policy        = new AgentPolicy(subMode, tools.list());
+  const policy        = new AgentPolicy(tools.list());
   const readFileState = new Map() as ReadFileState;
 
   // Per-session context stores (file state + tool result offload).
@@ -118,7 +118,7 @@ async function* runTurn(
     // ── onTurnStart hook ──────────────────────────────────────────────────────
     const startResult = await hooks.trigger('onTurnStart', {
       turnId, sessionId,
-      payload: { mode: 'agent', subMode },
+      payload: { mode: 'agent' },
       meta: {},
     });
     if (startResult.kind === 'abort') {
@@ -127,7 +127,7 @@ async function* runTurn(
       return;
     }
 
-    yield { type: 'turn_started', sessionId, turnId, mode: 'agent', agentSubMode: subMode };
+    yield { type: 'turn_started', sessionId, turnId, mode: 'agent' };
 
     // ── Build initial message history ─────────────────────────────────────────
     const history = session.loadHistory(sessionId);
@@ -153,7 +153,7 @@ async function* runTurn(
     const preLlm = await hooks.trigger('beforeLlm', {
       turnId, sessionId,
       payload: { systemPrompt, messages },
-      meta: { mode: 'agent', subMode, userInput, signal, providerId, model, workspaceRoots },
+      meta: { mode: 'agent', userInput, signal, providerId, model, workspaceRoots },
     });
     if (preLlm.kind === 'abort') {
       session.failTurn(turnId, 'turn/hook_aborted', preLlm.reason);

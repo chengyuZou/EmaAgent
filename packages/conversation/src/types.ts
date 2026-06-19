@@ -1,4 +1,4 @@
-import type { SessionId, TurnMode, AgentSubMode } from '@ema-agent/contracts';
+import type { SessionId, TurnMode } from '@ema-agent/contracts';
 import type { LlmRouter } from '@ema-agent/llm';
 import type { LlmContentPart } from '@ema-agent/llm';
 import type { SessionStore, Turn } from '@ema-agent/session';

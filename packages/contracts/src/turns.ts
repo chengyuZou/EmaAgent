@@ -1,4 +1,4 @@
-﻿import type { SessionId, TurnId, TurnMode, AgentSubMode, TurnStatus } from './ids.js';
+﻿import type { SessionId, TurnId, TurnMode } from './ids.js';
 import type { MessageContentPart, TurnAttachment } from './messages.js';
 
 // ── POST /api/turns 的请求体 ──────────────────────────────────────────────────
@@ -11,7 +11,6 @@ import type { MessageContentPart, TurnAttachment } from './messages.js';
 export interface TurnRequest {
   sessionId?:    SessionId;             // 省略 → 自动创建新 session
   mode:          TurnMode;
-  agentSubMode?: AgentSubMode;
   userInput?:    string;
   contentParts?: MessageContentPart[];
   attachments?:  TurnAttachment[];

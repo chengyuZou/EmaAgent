@@ -22,7 +22,6 @@ import type {
   TurnId,
   MessageId,
   TurnMode,
-  AgentSubMode,
   EmaStreamEvent,
   EmotionState,
   TurnStats,
@@ -69,7 +68,6 @@ export interface ChatHistoryItem {
 interface SendInput {
   sessionId:     SessionId;
   mode:          TurnMode;
-  agentSubMode?: AgentSubMode;
   text?:         string;
   contentParts?: MessageContentPart[];
   attachments?:  AttachmentInputWire[];
@@ -96,7 +94,6 @@ function getOrCreateQueue(sessionId: SessionId): SendQueue<SendInput> {
       const { turnId, sessionId: actualSessionId } = await turnsApi.create({
         sessionId:    input.sessionId as string,
         mode:         input.mode,
-        agentSubMode: input.agentSubMode,
         userInput:    input.text,
         contentParts: input.contentParts,
         attachments:  input.attachments,
@@ -541,8 +538,7 @@ export const useConversationStore = create<ConversationStoreState>((set, get) =>
     if (session?.lastMode) {
       useSessionStore.setState((s) => ({
         sessionModes: new Map(s.sessionModes).set(id as string, {
-          mode:    session.lastMode!,
-          subMode: session.lastSubMode ?? undefined,
+          mode: session.lastMode!,
         }),
       }));
     }

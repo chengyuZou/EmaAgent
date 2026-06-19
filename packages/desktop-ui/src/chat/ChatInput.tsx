@@ -7,7 +7,7 @@ import { ModeSelector } from './ModeSelector.js';
 import { showToast } from '../lib/toast.js';
 import { tauriBridge } from '../lib/tauri-bridge.js';
 import type { AttachmentInputWire } from '../api/turns.js';
-import type { TurnMode, AgentSubMode, SessionId } from '@ema-agent/contracts';
+import type { TurnMode, SessionId } from '@ema-agent/contracts';
 
 // ── Attachment helpers ────────────────────────────────────────────────────────
 
@@ -56,8 +56,7 @@ export function ChatInput(): JSX.Element {
   const sessionMode = useSessionStore((s) =>
     viewedId ? s.sessionModes.get(viewedId as string) : undefined,
   );
-  const mode    = sessionMode?.mode    ?? 'chat';
-  const subMode = sessionMode?.subMode ?? undefined;
+  const mode = sessionMode?.mode ?? 'chat';
 
   const hasAnyStreaming  = useConversationStore((s) => s.streamingMap.size > 0);
   const isStreamingHere = useConversationStore((s) =>
@@ -84,7 +83,6 @@ export function ChatInput(): JSX.Element {
     if (!canSend) return;
     void useConversationStore.getState().sendMessage(viewedId, {
       mode,
-      agentSubMode: subMode,
       text: text.trim(),
       attachments: pendingAttachments.length > 0 ? pendingAttachments : undefined,
       ttsEnabled,
@@ -92,7 +90,7 @@ export function ChatInput(): JSX.Element {
     setText('');
     setPendingAttachments([]);
     if (viewedId) useConversationStore.getState().setDraft(viewedId, '');
-  }, [canSend, mode, subMode, text, pendingAttachments, ttsEnabled, viewedId]);
+  }, [canSend, mode, text, pendingAttachments, ttsEnabled, viewedId]);
 
   function handleKeyDown(e: KeyboardEvent<HTMLTextAreaElement>): void {
     if (isComposing) return;
@@ -198,9 +196,8 @@ export function ChatInput(): JSX.Element {
 
             <ModeSelector
               mode={mode}
-              subMode={subMode}
-              onModeChange={(m, sm) => {
-                if (viewedId) void useSessionStore.getState().setSessionMode(viewedId, m as TurnMode, sm as AgentSubMode | undefined);
+              onModeChange={(m) => {
+                if (viewedId) void useSessionStore.getState().setSessionMode(viewedId, m as TurnMode);
               }}
             />
           </div>

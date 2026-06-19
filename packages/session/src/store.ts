@@ -18,7 +18,6 @@ import {
   type BranchId,
   type CharacterCardId,
   type TurnMode,
-  type AgentSubMode,
   type MessageBlocks,
   asSessionId,
   asTurnId,
@@ -71,7 +70,6 @@ function toSession(row: SessionRow): Session {
     activeBranchId:   (row.active_branch_id ?? null) as BranchId | null,
     runningTurnCount: 0,    // populated by caller
     lastMode:    (row.last_mode    ?? null) as TurnMode    | null,
-    lastSubMode: (row.last_sub_mode ?? null) as AgentSubMode | null,
     lastViewedAt:   row.last_viewed_at ?? null,
     lastTurnStatus: null,
     hasUnread:      false,
@@ -93,7 +91,6 @@ function toTurn(row: TurnRow): Turn {
     sessionId:    row.session_id as SessionId,
     branchId:     (row.branch_id ?? null) as BranchId | null,
     mode:         row.mode,
-    agentSubMode: row.agent_sub_mode,
     status: row.status,
     userInput: row.user_input,
     startedAt: row.started_at,
@@ -323,7 +320,6 @@ export class SessionStore {
       groupLabel?:     string | null;
       workspaceRoots?: string[];
       lastMode?:       TurnMode | null;
-      lastSubMode?:    AgentSubMode | null;
     },
   ): void {
     const cleaned: Parameters<SessionsRepo['patch']>[1] = {};
@@ -342,8 +338,7 @@ export class SessionStore {
     if (patch.workspaceRoots !== undefined) {
       cleaned.workspaceRoots = patch.workspaceRoots;
     }
-    if (patch.lastMode !== undefined)    cleaned.lastMode    = patch.lastMode;
-    if (patch.lastSubMode !== undefined) cleaned.lastSubMode = patch.lastSubMode;
+    if (patch.lastMode !== undefined) cleaned.lastMode = patch.lastMode;
 
     if (Object.keys(cleaned).length === 0) return;
 
@@ -480,7 +475,6 @@ export class SessionStore {
       id:           turnId,
       sessionId:    input.sessionId,
       mode:         input.mode,
-      agentSubMode: input.agentSubMode,
       branchId:     session.activeBranchId ?? undefined,
       userInput:    input.userInput,
       startedAt:    now,

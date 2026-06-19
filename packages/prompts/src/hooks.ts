@@ -1,6 +1,6 @@
 import type { HookBus } from '@ema-agent/hook';
 import type { CharacterCardStore } from '@ema-agent/character-card';
-import type { TurnMode, AgentSubMode } from '@ema-agent/contracts';
+import type { TurnMode } from '@ema-agent/contracts';
 import { buildSystemPrompt } from './build.js';
 
 // ── Hook deps ────────────────────────────────────────────────────────────────
@@ -31,18 +31,10 @@ export function registerPromptsHooks(
     'beforeLlm',
     async (ctx) => {
       const card    = deps.card.current();
-      const mode    = (ctx.meta['mode']    as TurnMode | undefined)     ?? 'chat';
-      const subMode =  ctx.meta['subMode'] as AgentSubMode | undefined;
-
-      // workspaceRoots are intentionally omitted at hook level — agent mode's
-      // engine passes them via meta when they're available. For chat / narrative
-      // they're irrelevant.
+      const mode    = (ctx.meta['mode'] as TurnMode | undefined) ?? 'chat';
       const workspaceRoots = ctx.meta['workspaceRoots'] as string[] | undefined;
 
-      const systemPrompt = buildSystemPrompt(card, mode, {
-        agentSubMode: subMode,
-        workspaceRoots,
-      });
+      const systemPrompt = buildSystemPrompt(card, mode, { workspaceRoots });
 
       // Prepend the system message if the messages array doesn't already
       // start with one. (Defensive — callers that pre-seed messages with a

@@ -2,7 +2,7 @@
  * Turns API — POST /api/turns, SSE events URL, merged audio URL.
  */
 import { sidecarClient } from './sidecar-client.js';
-import type { TurnId, SessionId, TurnMode, AgentSubMode, MessageContentPart } from '@ema-agent/contracts';
+import type { TurnId, SessionId, TurnMode, MessageContentPart } from '@ema-agent/contracts';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -19,7 +19,6 @@ export interface AttachmentInputWire {
 export interface CreateTurnRequest {
   sessionId?:    string;
   mode:          TurnMode;
-  agentSubMode?: AgentSubMode;
   userInput?:    string;
   contentParts?: MessageContentPart[];
   /** Per-turn file attachments. Images → base64 contentParts; others → path block appended to prompt. */

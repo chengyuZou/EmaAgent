@@ -8,7 +8,6 @@ import { sidecarClient } from './sidecar-client.js';
 import type {
   SessionId,
   TurnMode,
-  AgentSubMode,
   SessionWire,
   MessageWire,
   TurnWire,
@@ -67,7 +66,6 @@ export const sessionsApi = {
       groupLabel?: string | null;
       workspaceRoots?: string[];
       lastMode?: TurnMode | null;
-      lastSubMode?: AgentSubMode | null;
     },
   ): Promise<SessionWire> {
     return sidecarClient.request<SessionWire>(`/api/sessions/${id}`, {

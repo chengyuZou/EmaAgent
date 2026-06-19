@@ -1,4 +1,4 @@
-import type { SessionId, AgentSubMode, EmaStreamEvent } from '@ema-agent/contracts';
+import type { SessionId, EmaStreamEvent } from '@ema-agent/contracts';
 import type { LlmRouter, LlmContentPart } from '@ema-agent/llm';
 import type { SessionStore, Turn } from '@ema-agent/session';
 import type { HookBus } from '@ema-agent/hook';
@@ -79,7 +79,6 @@ export interface AgentRunInput {
   turn:                  Turn;
   /** Abort signal wired from session.startTurn — fires on user Stop. */
   signal:                AbortSignal;
-  subMode:               AgentSubMode;
   /**
    * User message content. Plain string for text-only turns; LlmContentPart[]
    * for multimodal (image, audio, file). These are two shapes of the same

@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { buildSystemBlock, buildSystemPrompt } from '../src/build.js';
 import { buildModeBlock } from '../src/mode-blocks.js';
 import type { CharacterCard } from '@ema-agent/character-card';
-import type { CharacterCardId, TurnMode, AgentSubMode } from '@ema-agent/contracts';
+import type { CharacterCardId, TurnMode } from '@ema-agent/contracts';
 
 // ── test fixtures ─────────────────────────────────────────────────────────────
 
@@ -43,37 +43,10 @@ describe('buildModeBlock', () => {
     expect(block).toContain('不调用工具');
   });
 
-  it('returns agent-mode instructions without sub-mode', () => {
+  it('returns agent-mode instructions', () => {
     const block = buildModeBlock('agent' as TurnMode);
     expect(block).toContain('Agent 任务（agent）');
     expect(block).toContain('先理解任务再选工具');
-    expect(block).not.toContain('子模式');
-  });
-
-  it('returns agent-mode with plan sub-mode instructions', () => {
-    const block = buildModeBlock('agent' as TurnMode, {
-      agentSubMode: 'plan' as AgentSubMode,
-    });
-    expect(block).toContain('子模式：plan');
-    expect(block).toContain('生成执行计划');
-    expect(block).toContain('等待用户确认后再行动');
-  });
-
-  it('returns agent-mode with debug sub-mode instructions', () => {
-    const block = buildModeBlock('agent' as TurnMode, {
-      agentSubMode: 'debug' as AgentSubMode,
-    });
-    expect(block).toContain('子模式：debug');
-    expect(block).toContain('聚焦错误溯源');
-  });
-
-  it('returns agent-mode with full sub-mode instructions', () => {
-    const block = buildModeBlock('agent' as TurnMode, {
-      agentSubMode: 'full' as AgentSubMode,
-    });
-    expect(block).toContain('子模式：full');
-    expect(block).toContain('全自动执行');
-    expect(block).toContain('最小化用户确认次数');
   });
 
   it('includes workspace root list when provided', () => {
@@ -145,12 +118,10 @@ describe('buildSystemPrompt', () => {
   it('assembles character block + agent mode block', () => {
     const card = mockCard();
     const prompt = buildSystemPrompt(card, 'agent' as TurnMode, {
-      agentSubMode: 'full' as AgentSubMode,
       workspaceRoots: ['/workspace'],
     });
     expect(prompt).toContain(card.systemPrompt);
     expect(prompt).toContain('Agent 任务（agent）');
-    expect(prompt).toContain('子模式：full');
     expect(prompt).toContain('`/workspace`');
   });
 

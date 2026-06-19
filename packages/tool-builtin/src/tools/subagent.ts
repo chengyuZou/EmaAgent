@@ -18,10 +18,6 @@ const inputSchema = z.object({
     .describe(
       'Override model ID for this sub-agent. Defaults to the parent agent\'s model.',
     ),
-  subMode: z
-    .enum(['plan', 'debug', 'full'])
-    .optional()
-    .describe('AgentPolicy sub-mode for the spawned agent. Defaults to "full".'),
   description: z
     .string()
     .optional()
@@ -70,7 +66,6 @@ The sub-agent:
       input.prompt,
       {
         model: input.model,
-        subMode: input.subMode,
         description: input.description,
       },
       ctx.signal,

@@ -81,7 +81,6 @@ function makeTurn(id = 'turn-1'): Turn {
     id:                id as TurnId,
     sessionId:         'session-1' as SessionId,
     mode:              'agent',
-    agentSubMode:      'full',
     status:            'running',
     userInput:         '',
     startedAt:         Date.now(),
@@ -149,7 +148,6 @@ function makeInput(overrides: Partial<Parameters<AgentEngine['run']>[0]> = {}) {
   return {
     turn:          makeTurn(),
     signal:        AbortSignal.timeout(60_000),
-    subMode:       'full' as const,
     userInput:     'Hello',
     systemPrompt:  'You are a helpful assistant.',
     workspaceRoots: [WORKSPACE],
@@ -231,32 +229,7 @@ describe.skipIf(!DS_KEY)('AgentEngine integration (DeepSeek)', () => {
     console.log('[test 3] finalText:', fullText.slice(0, 300));
   }, TEST_TIMEOUT);
 
-  it('4. plan mode: write tools denied by policy', async () => {
-    sessionStore.clear();
-    const engine = new AgentEngine(deps);
-
-    const events = await collectEvents(engine, makeInput({
-      turn:      { ...makeTurn('turn-4'), agentSubMode: 'plan' },
-      subMode:   'plan',
-      userInput: 'Use bash_execute to run: echo hello',
-      systemPrompt: 'You are a helpful agent. Try to use bash_execute tool.',
-    }));
-
-    const completed = events.find(e => e.type === 'turn_completed');
-    // Either the tool was denied (tool_result with error) or LLM chose not to use it
-    const denied = events.find(e => e.type === 'tool_result' && (e as any).error?.code === 'policy/denied');
-
-    expect(completed).toBeDefined();
-    // In plan mode, write tools should be blocked or LLM sees no write tools
-    console.log('[test 4] events types:', [...new Set(events.map(e => e.type))]);
-    if (denied) {
-      console.log('[test 4] tool denied as expected');
-    } else {
-      console.log('[test 4] LLM skipped write tools (no write tools in plan mode schema)');
-    }
-  }, TEST_TIMEOUT);
-
-  it('5. abort: AbortSignal cancels in-flight turn', async () => {
+  it('4. abort: AbortSignal cancels in-flight turn', async () => {
     sessionStore.clear();
     const engine = new AgentEngine(deps);
     const controller = new AbortController();
@@ -267,7 +240,7 @@ describe.skipIf(!DS_KEY)('AgentEngine integration (DeepSeek)', () => {
     const events: unknown[] = [];
     try {
       for await (const ev of engine.run(makeInput({
-        turn:      makeTurn('turn-5'),
+        turn:      makeTurn('turn-4'),
         signal:    controller.signal,
         userInput: 'Count slowly from 1 to 1000, one number per line.',
       }))) {
@@ -284,8 +257,8 @@ describe.skipIf(!DS_KEY)('AgentEngine integration (DeepSeek)', () => {
     const wasInterrupted = aborted !== undefined || failed !== undefined;
     expect(wasInterrupted || events.some((e: any) => e.type === 'turn_completed')).toBe(true);
 
-    console.log('[test 5] events types:', [...new Set((events as any[]).map(e => e.type))]);
-    console.log('[test 5] total events:', events.length);
+    console.log('[test 4] events types:', [...new Set((events as any[]).map(e => e.type))]);
+    console.log('[test 4] total events:', events.length);
   }, TEST_TIMEOUT);
 
 });

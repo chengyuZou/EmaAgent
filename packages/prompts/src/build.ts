@@ -1,9 +1,8 @@
-import type { TurnMode, AgentSubMode } from '@ema-agent/contracts';
+import type { TurnMode } from '@ema-agent/contracts';
 import type { CharacterCard } from '@ema-agent/character-card';
 import { buildModeBlock } from './mode-blocks.js';
 
 export interface BuildSystemPromptOpts {
-  agentSubMode?: AgentSubMode;
   /** Absolute paths to all workspace roots the agent may operate in. */
   workspaceRoots?: string[];
 }
@@ -26,7 +25,6 @@ export function buildSystemPrompt(
 ): string {
   const characterBlock = buildSystemBlock(card);
   const modeBlock = buildModeBlock(mode, {
-    agentSubMode: opts.agentSubMode,
     workspaceRoots: opts.workspaceRoots,
   });
 

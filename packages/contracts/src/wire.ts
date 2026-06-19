@@ -1,4 +1,4 @@
-import type { TurnMode, AgentSubMode, TurnStatus, MessageRole } from './ids.js';
+import type { TurnMode, TurnStatus, MessageRole } from './ids.js';
 import type { MessageKind, MessageBlocks, TurnAttachment } from './messages.js';
 
 // ── REST wire formats ─────────────────────────────────────────────────────────
@@ -35,7 +35,6 @@ export interface SessionWire {
   runningTurnCount: number;
   meta:             Record<string, unknown>;
   lastMode:         TurnMode | null;
-  lastSubMode:      AgentSubMode | null;
   /** Unix-ms timestamp when user last opened this session. Null = never explicitly viewed. */
   lastViewedAt:     number | null;
   /** Status of the most recent turn, or null if session has no turns. */
@@ -83,7 +82,6 @@ export interface TurnWire {
   id:                string;
   sessionId:         string;
   mode:              TurnMode;
-  agentSubMode:      AgentSubMode | null;
   status:            TurnStatus;
   userInput:         string;
   startedAt:         number;

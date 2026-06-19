@@ -1,6 +1,6 @@
 import type { AppBindings } from '../wiring.js';
 import type {
-  TurnMode, AgentSubMode, EmaStreamEvent, TurnId,
+  TurnMode, EmaStreamEvent, TurnId,
 } from '@ema-agent/contracts';
 import type { LlmContentPart } from '@ema-agent/llm';
 import type { AttachmentInput } from '@ema-agent/attachment';
@@ -21,7 +21,6 @@ export interface TurnResult {
 export interface TurnRequest {
   sessionId:        string;
   mode:             TurnMode;
-  agentSubMode?:    AgentSubMode;
   userInput:        string;
   contentParts?:    LlmContentPart[];
   /** Per-turn file attachments from the frontend. Persisted and resolved before engine dispatch. */
@@ -105,9 +104,8 @@ export class Orchestrator {
     const sessionId = asSessionId(request.sessionId);
     const { turn, signal } = this.bindings.session.startTurn({
       sessionId,
-      mode:         request.mode,
-      agentSubMode: request.agentSubMode,
-      userInput:    request.userInput,
+      mode:      request.mode,
+      userInput: request.userInput,
     });
     const turnId = turn.id;
     this.activeTurns.set(turnId as string, sessionId);
@@ -258,13 +256,12 @@ export class Orchestrator {
         });
 
       case 'agent': {
-        const subMode        = request.agentSubMode ?? 'full';
         const sess           = this.bindings.session.getSession(sessionId);
         const workspaceRoots = sess.workspaceRoots.length > 0 ? sess.workspaceRoots : [process.cwd()];
         const systemPrompt   = buildSystemPrompt(
           this.bindings.card.current(),
           'agent',
-          { agentSubMode: subMode, workspaceRoots },
+          { workspaceRoots },
         );
 
         // Resolve provider + model here — AgentEngine is binding-unaware.
@@ -286,7 +283,6 @@ export class Orchestrator {
 
         return this.agent.run({
           turn, signal,
-          subMode,
           providerId,
           model,
           userInput:      request.contentParts?.length ? request.contentParts : (request.userInput ?? ''),

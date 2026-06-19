@@ -1,11 +1,11 @@
 ﻿import type { SqliteDb } from '../database.js';
-import type { TurnId, SessionId, TurnMode, AgentSubMode, TurnStatus, BranchId } from '@ema-agent/contracts';
+import type { TurnId, SessionId, TurnMode, TurnStatus, BranchId } from '@ema-agent/contracts';
 
 export interface TurnRow {
   id: string;
   session_id: string;
   mode: TurnMode;
-  agent_sub_mode: AgentSubMode | null;
+  agent_sub_mode: string | null;
   status: TurnStatus;
   user_input: string;
   started_at: number;
@@ -23,7 +23,6 @@ export interface TurnInsert {
   id: TurnId;
   sessionId: SessionId;
   mode: TurnMode;
-  agentSubMode?: AgentSubMode;
   branchId?: BranchId;
   userInput: string;
   startedAt: number;
@@ -50,7 +49,7 @@ export class TurnsRepo {
            (id, session_id, mode, agent_sub_mode, branch_id, status, user_input, started_at)
          VALUES (?, ?, ?, ?, ?, 'pending', ?, ?)`,
       )
-      .run(t.id, t.sessionId, t.mode, t.agentSubMode ?? null, t.branchId ?? null, t.userInput, t.startedAt);
+      .run(t.id, t.sessionId, t.mode, null, t.branchId ?? null, t.userInput, t.startedAt);
   }
 
   setRunning(id: TurnId): void {

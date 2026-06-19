@@ -5,7 +5,6 @@ import type {
   BranchId,
   CharacterCardId,
   TurnMode,
-  AgentSubMode,
   TurnStatus,
   MessageRole,
   MessageKind,
@@ -51,7 +50,6 @@ export interface Session {
   activeBranchId:   BranchId | null;
   runningTurnCount: number;
   lastMode:     TurnMode | null;
-  lastSubMode:  AgentSubMode | null;
   lastViewedAt:   number | null;
   lastTurnStatus: TurnStatus | null;
   hasUnread:      boolean;
@@ -62,7 +60,6 @@ export interface Turn {
   sessionId:    SessionId;
   branchId:     BranchId | null;
   mode:         TurnMode;
-  agentSubMode: AgentSubMode | null;
   status: TurnStatus;
   userInput: string;
   startedAt: number;
@@ -116,7 +113,6 @@ export interface CreateSessionInput {
 export interface StartTurnInput {
   sessionId: SessionId;
   mode: TurnMode;
-  agentSubMode?: AgentSubMode;
   userInput: string;
 }
 

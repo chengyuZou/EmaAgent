@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { sessionsApi, type SessionWire } from '../api/sessions.js';
 import { useConversationStore } from './conversation-store.js';
-import type { SessionId, TurnMode, AgentSubMode } from '@ema-agent/contracts';
+import type { SessionId, TurnMode } from '@ema-agent/contracts';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -15,7 +15,7 @@ export interface SessionsState {
 
 export interface SessionStoreState {
   sessions:     SessionsState;
-  sessionModes: Map<string, { mode: TurnMode; subMode?: AgentSubMode }>;
+  sessionModes: Map<string, { mode: TurnMode }>;
   loading:      boolean;
   error:        string | null;
 
@@ -25,7 +25,7 @@ export interface SessionStoreState {
   pinSession(id: SessionId, pinned: boolean):                        Promise<void>;
   setSessionGroup(id: SessionId, label: string | null):              Promise<void>;
   setWorkspaceRoots(id: SessionId, paths: string[]):                 Promise<void>;
-  setSessionMode(id: SessionId, mode: TurnMode, subMode?: AgentSubMode): Promise<void>;
+  setSessionMode(id: SessionId, mode: TurnMode): Promise<void>;
   forkSession(id: SessionId):                                        Promise<SessionId>;
   archiveSession(id: SessionId):                                     Promise<void>;
   unarchiveSession(id: SessionId):                                   Promise<void>;
@@ -118,17 +118,17 @@ export const useSessionStore = create<SessionStoreState>((set, get) => ({
     }
   },
 
-  async setSessionMode(id, mode, subMode) {
+  async setSessionMode(id, mode) {
     set((s) => ({
-      sessionModes: new Map(s.sessionModes).set(id as string, { mode, subMode }),
+      sessionModes: new Map(s.sessionModes).set(id as string, { mode }),
     }));
     try {
-      await sessionsApi.patch(id, { lastMode: mode, lastSubMode: subMode ?? null });
+      await sessionsApi.patch(id, { lastMode: mode });
       set((s) => {
         const existing = s.sessions.byId.get(id as string);
         if (!existing) return {};
         const byId = new Map(s.sessions.byId);
-        byId.set(id as string, { ...existing, lastMode: mode, lastSubMode: subMode ?? null });
+        byId.set(id as string, { ...existing, lastMode: mode });
         return { sessions: { ...s.sessions, byId } };
       });
     } catch {

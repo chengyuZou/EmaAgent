@@ -109,7 +109,6 @@ export interface ICommandRunner {
 
 export interface SubagentSpawnOpts {
   model?:       string;
-  subMode?:     string;
   description?: string;
 }
 

@@ -2,7 +2,6 @@ import type {
   SessionId,
   TurnId,
   TurnMode,
-  AgentSubMode,
   EmaStreamEvent,
 } from '@ema-agent/contracts';
 import type { LlmMessage } from '@ema-agent/llm';
@@ -25,7 +24,6 @@ export interface PlanContext {
   sessionId:    SessionId;
   turnId:       TurnId;
   mode:         TurnMode;
-  subMode?:     AgentSubMode;
   /** Plain-text excerpt of the current user message used as the recall query. */
   userInput:    string;
   /** Optional abort signal — long recall paths (narrative) honour it. */

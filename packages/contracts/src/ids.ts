@@ -18,7 +18,6 @@ export function asArtifactId(s: string): ArtifactId     { return s as ArtifactId
 
 
 export type TurnMode      = 'chat' | 'narrative' | 'agent';
-export type AgentSubMode  = 'plan' | 'debug' | 'full';
 export type TurnStatus    = 'pending' | 'running' | 'completed' | 'failed' | 'aborted';
 export type MessageRole   = 'system' | 'user' | 'assistant';
 

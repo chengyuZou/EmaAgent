@@ -50,7 +50,6 @@ const contentPartSchema = z.discriminatedUnion('type', [
 const turnBodySchema = z.object({
   sessionId: z.string().optional(),
   mode: z.enum(['chat', 'narrative', 'agent']).default('chat'),
-  agentSubMode: z.enum(['plan', 'debug', 'full']).optional(),
   userInput: z.string().optional(),
   contentParts: z.array(contentPartSchema).optional(),
   attachments:  z.array(attachmentInputSchema).optional(),
@@ -98,7 +97,7 @@ export function turnsRoute(bindings: AppBindings): Hono {
       return c.json({ error: 'invalid_request', details: parsed.error.flatten() }, 400);
     }
 
-    const { sessionId, mode, agentSubMode, userInput, contentParts, attachments, model, ttsEnabled } = parsed.data;
+    const { sessionId, mode, userInput, contentParts, attachments, model, ttsEnabled } = parsed.data;
 
     // Trust the client's sessionId only if it still exists. A stale id (e.g.
     // a viewedSessionId persisted across a DB reset) would otherwise FK-fail
@@ -116,7 +115,6 @@ export function turnsRoute(bindings: AppBindings): Hono {
       ({ turnId, events } = await orchestrator.run({
         sessionId:        effectiveSessionId,
         mode,
-        agentSubMode,
         userInput:        userInput ?? '',
         contentParts,
         attachmentInputs: attachments,
