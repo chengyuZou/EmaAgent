@@ -491,50 +491,6 @@ importers:
         specifier: ^2.0.0
         version: 2.1.9(@types/node@20.19.39)(msw@2.14.6(@types/node@20.19.39)(typescript@5.9.3))
 
-  packages/document:
-    dependencies:
-      '@ema-agent/ebd-client':
-        specifier: workspace:*
-        version: link:../ebd-client
-      '@ema-agent/token':
-        specifier: workspace:*
-        version: link:../token
-      '@ema-agent/vision':
-        specifier: workspace:*
-        version: link:../vision
-      cheerio:
-        specifier: ^1.0.0
-        version: 1.2.0
-      domhandler:
-        specifier: ^5.0.3
-        version: 5.0.3
-      mammoth:
-        specifier: ^1.8.0
-        version: 1.12.0
-      pdfjs-dist:
-        specifier: ^4.10.38
-        version: 4.10.38
-      sharp:
-        specifier: ^0.33.5
-        version: 0.33.5
-    optionalDependencies:
-      canvas:
-        specifier: ^2.11.2
-        version: 2.11.2
-    devDependencies:
-      '@types/node':
-        specifier: ^20.0.0
-        version: 20.19.39
-      rimraf:
-        specifier: ^5.0.0
-        version: 5.0.10
-      typescript:
-        specifier: ^5.9.3
-        version: 5.9.3
-      vitest:
-        specifier: ^2.0.0
-        version: 2.1.9(@types/node@20.19.39)(msw@2.14.6(@types/node@20.19.39)(typescript@5.9.3))
-
   packages/ebd-client:
     dependencies:
       '@ema-agent/contracts':
@@ -578,6 +534,56 @@ importers:
       '@ema-agent/contracts':
         specifier: workspace:*
         version: link:../contracts
+    devDependencies:
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.39
+      rimraf:
+        specifier: ^5.0.0
+        version: 5.0.10
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: ^2.0.0
+        version: 2.1.9(@types/node@20.19.39)(msw@2.14.6(@types/node@20.19.39)(typescript@5.9.3))
+
+  packages/knowledge-base:
+    dependencies:
+      '@ema-agent/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@ema-agent/ebd-client':
+        specifier: workspace:*
+        version: link:../ebd-client
+      '@ema-agent/storage':
+        specifier: workspace:*
+        version: link:../storage
+      '@ema-agent/token':
+        specifier: workspace:*
+        version: link:../token
+      cheerio:
+        specifier: ^1.0.0
+        version: 1.2.0
+      domhandler:
+        specifier: ^5.0.3
+        version: 5.0.3
+      mammoth:
+        specifier: ^1.8.0
+        version: 1.12.0
+      pdfjs-dist:
+        specifier: ^4.10.38
+        version: 4.10.38
+      sharp:
+        specifier: ^0.33.5
+        version: 0.33.5
+    optionalDependencies:
+      canvas:
+        specifier: ^2.11.2
+        version: 2.11.2
+      usearch:
+        specifier: ^2.25.1
+        version: 2.25.1
     devDependencies:
       '@types/node':
         specifier: ^20.0.0

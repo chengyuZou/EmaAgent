@@ -100,3 +100,11 @@ export { ProviderTtsModelsRepo } from './repos/provider-tts-models.js';
 export type { ProviderTtsModelRow, ProviderTtsModelInsert } from './repos/provider-tts-models.js';
 export { ProviderSttModelsRepo } from './repos/provider-stt-models.js';
 export type { ProviderSttModelRow, ProviderSttModelInsert } from './repos/provider-stt-models.js';
+
+// ── Knowledge-base repos (migration data/004) ─────────────────────────────────
+export { DocumentAssetRepo }   from './repos/document-asset.js';
+export { DocumentChunkRepo }   from './repos/document-chunk.js';
+export { DocumentPreviewRepo } from './repos/document-preview.js';
+export type { DocumentAssetRow, DocumentAssetInsert }     from './repos/document-asset.js';
+export type { DocumentChunkRow, DocumentChunkInsert, ChunkSearchHit }  from './repos/document-chunk.js';
+export type { DocumentPreviewRow, DocumentPreviewUpsert } from './repos/document-preview.js';
