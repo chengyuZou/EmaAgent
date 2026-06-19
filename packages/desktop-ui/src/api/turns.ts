@@ -6,12 +6,24 @@ import type { TurnId, SessionId, TurnMode, AgentSubMode, MessageContentPart } fr
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
+/** Mirrors the backend's attachmentInputSchema — localPath is the absolute FS path. */
+export interface AttachmentInputWire {
+  id:        string;
+  name:      string;
+  mimeType:  string;
+  size:      number;
+  mtime:     number;
+  localPath: string;
+}
+
 export interface CreateTurnRequest {
   sessionId?:    string;
   mode:          TurnMode;
   agentSubMode?: AgentSubMode;
   userInput?:    string;
   contentParts?: MessageContentPart[];
+  /** Per-turn file attachments. Images → base64 contentParts; others → path block appended to prompt. */
+  attachments?:  AttachmentInputWire[];
   model?:        string;
   ttsEnabled?:   boolean;
 }
@@ -30,7 +42,6 @@ export const turnsApi = {
     if (!req.mode) throw new Error('mode is required');
     const hasInput = req.userInput || (req.contentParts && req.contentParts.length > 0);
     if (!hasInput) throw new Error('either userInput or contentParts is required');
-
     return sidecarClient.request<CreateTurnResponse>('/api/turns', {
       method: 'POST',
       json: req,

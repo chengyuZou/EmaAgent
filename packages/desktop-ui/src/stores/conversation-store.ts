@@ -2,7 +2,9 @@ import { create } from 'zustand';
 import { createSendQueue, type SendQueue } from '../lib/send-queue.js';
 import { sseConsumer } from '../lib/sse-consumer.js';
 import { sessionsApi } from '../api/sessions.js';
-import { turnsApi } from '../api/turns.js';
+import { turnsApi, type AttachmentInputWire } from '../api/turns.js';
+
+export type { AttachmentInputWire };
 import { sidecarClient } from '../api/sidecar-client.js';
 import {
   handleTtsChunk,
@@ -70,6 +72,7 @@ interface SendInput {
   agentSubMode?: AgentSubMode;
   text?:         string;
   contentParts?: MessageContentPart[];
+  attachments?:  AttachmentInputWire[];
   model?:        string;
   ttsEnabled?:   boolean;
 }
@@ -91,13 +94,14 @@ function getOrCreateQueue(sessionId: SessionId): SendQueue<SendInput> {
       const store = useConversationStore.getState();
 
       const { turnId, sessionId: actualSessionId } = await turnsApi.create({
-        sessionId:     input.sessionId as string,
-        mode:          input.mode,
-        agentSubMode:  input.agentSubMode,
-        userInput:     input.text,
-        contentParts:  input.contentParts,
-        model:         input.model,
-        ttsEnabled:    input.ttsEnabled,
+        sessionId:    input.sessionId as string,
+        mode:         input.mode,
+        agentSubMode: input.agentSubMode,
+        userInput:    input.text,
+        contentParts: input.contentParts,
+        attachments:  input.attachments,
+        model:        input.model,
+        ttsEnabled:   input.ttsEnabled,
       });
 
       // Backend may have created a new session (when input.sessionId was auto-generated).

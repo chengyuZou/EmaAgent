@@ -66,6 +66,16 @@ export interface TauriBridge {
   }): Promise<string | null>;
 
   /**
+   * Open a native "Open File" dialog (single file).
+   * Returns the absolute path of the selected file, or null if cancelled.
+   * Returns null when Tauri is absent (browser / Ladle dev mode).
+   */
+  openFileDialog(opts?: {
+    defaultPath?: string;
+    filters?: Array<{ name: string; extensions: string[] }>;
+  }): Promise<string | null>;
+
+  /**
    * Open a URL in the system's default browser.
    * Uses Tauri's plugin:opener when available; falls back to window.open.
    */
@@ -229,6 +239,14 @@ export const tauriBridge: TauriBridge = {
     const dialog = await getDialog();
     if (!dialog) return null;
     return dialog.save(opts);
+  },
+
+  async openFileDialog(opts = {}): Promise<string | null> {
+    const dialog = await getDialog();
+    if (!dialog) return null;
+    const result = await dialog.open({ multiple: false, ...opts });
+    if (Array.isArray(result)) return result[0] ?? null;
+    return result as string | null;
   },
 
   async openUrl(url: string): Promise<void> {

@@ -35,6 +35,9 @@ export type {
 
 export { useDecisionStore }  from './stores/decision-store.js';
 
+export { useKbStore }        from './stores/kb-store.js';
+export type { KbStoreState } from './stores/kb-store.js';
+
 export { useThemeStore, useThemeSync } from './stores/theme-store.js';
 export type { ThemeStoreState }        from './stores/theme-store.js';
 export type {
@@ -113,6 +116,20 @@ export type { SttResponse, SttSegment } from './api/transcribe.js';
 export { memoryApi }         from './api/memory.js';
 export type { MemoryMaintenanceInput } from './api/memory.js';
 
+export { kbApi }             from './api/knowledge-base.js';
+export type {
+  DocumentAssetWire,
+  DocumentScope,
+  DocumentIndexStatus,
+  IngestResultWire,
+  KbSearchHitWire,
+  KbSearchResultWire,
+  KbIngestOptions,
+  KbSearchOptions,
+} from './api/knowledge-base.js';
+
+export type { AttachmentInputWire } from './api/turns.js';
+
 // ── Markdown ──────────────────────────────────────────────────────────────────
 
 export { Markdown } from './markdown/renderer.js';
@@ -148,6 +165,7 @@ export { BehaviorTab }             from './settings/BehaviorTab.js';
 export { VoiceTab }                from './settings/VoiceTab.js';
 export { Live2DTab }               from './settings/Live2DTab.js';
 export { ShortcutsTab }            from './settings/ShortcutsTab.js';
+export { KnowledgeBaseTab }        from './settings/KnowledgeBaseTab.js';
 
 // Chat
 export { ChatPanel }               from './chat/ChatPanel.js';

@@ -1,5 +1,5 @@
 ﻿import type { SqliteDb } from '../database.js';
-import type { TurnId, SessionId, TurnMode, AgentSubMode, TurnStatus } from '@ema-agent/contracts';
+import type { TurnId, SessionId, TurnMode, AgentSubMode, TurnStatus, BranchId } from '@ema-agent/contracts';
 
 export interface TurnRow {
   id: string;
@@ -16,6 +16,7 @@ export interface TurnRow {
   usage_input_tokens: number;
   usage_output_tokens: number;
   cost_usd: number;
+  branch_id: string | null;
 }
 
 export interface TurnInsert {
@@ -23,6 +24,7 @@ export interface TurnInsert {
   sessionId: SessionId;
   mode: TurnMode;
   agentSubMode?: AgentSubMode;
+  branchId?: BranchId;
   userInput: string;
   startedAt: number;
 }
@@ -45,10 +47,10 @@ export class TurnsRepo {
     this.db
       .prepare(
         `INSERT INTO turns
-           (id, session_id, mode, agent_sub_mode, status, user_input, started_at)
-         VALUES (?, ?, ?, ?, 'pending', ?, ?)`,
+           (id, session_id, mode, agent_sub_mode, branch_id, status, user_input, started_at)
+         VALUES (?, ?, ?, ?, ?, 'pending', ?, ?)`,
       )
-      .run(t.id, t.sessionId, t.mode, t.agentSubMode ?? null, t.userInput, t.startedAt);
+      .run(t.id, t.sessionId, t.mode, t.agentSubMode ?? null, t.branchId ?? null, t.userInput, t.startedAt);
   }
 
   setRunning(id: TurnId): void {
@@ -111,6 +113,38 @@ export class TurnsRepo {
          WHERE status IN ('pending','running')`,
       )
       .run(now);
+    return result.changes;
+  }
+
+  /**
+   * Turns on a specific branch, optionally capped at a started_at cutoff.
+   * Used when reconstructing the linear message history for a forked branch:
+   * each ancestor branch only contributes turns up to its fork point.
+   */
+  listForBranch(branchId: BranchId, beforeStartedAt?: number): TurnRow[] {
+    if (beforeStartedAt === undefined) {
+      return this.db
+        .prepare('SELECT * FROM turns WHERE branch_id = ? ORDER BY started_at ASC')
+        .all(branchId) as TurnRow[];
+    }
+    return this.db
+      .prepare(
+        'SELECT * FROM turns WHERE branch_id = ? AND started_at <= ? ORDER BY started_at ASC',
+      )
+      .all(branchId, beforeStartedAt) as TurnRow[];
+  }
+
+  /**
+   * Backfill all pre-fork turns (branch_id IS NULL) to the given branch.
+   * Called once when the first fork occurs in a session so the root branch
+   * owns all existing turns. Returns the number of rows updated.
+   */
+  assignBranch(sessionId: SessionId, branchId: BranchId): number {
+    const result = this.db
+      .prepare(
+        'UPDATE turns SET branch_id = ? WHERE session_id = ? AND branch_id IS NULL',
+      )
+      .run(branchId, sessionId);
     return result.changes;
   }
 }

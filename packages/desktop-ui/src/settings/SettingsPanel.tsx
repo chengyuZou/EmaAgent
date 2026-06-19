@@ -19,6 +19,7 @@ import { CardsTab } from './CardsTab.js';
 import { SkillsTab } from './SkillsTab.js';
 import { McpTab } from './McpTab.js';
 import { MemoryTab } from './MemoryTab.js';
+import { KnowledgeBaseTab } from './KnowledgeBaseTab.js';
 import { Live2DTab } from './Live2DTab.js';
 import { ShortcutsTab } from './ShortcutsTab.js';
 import { AppearanceTab } from './AppearanceTab.js';
@@ -28,7 +29,8 @@ import { AppearanceTab } from './AppearanceTab.js';
 type SectionId =
   | 'cards'  | 'providers' | 'bindings'
   | 'memory' | 'skills'    | 'mcp'
-  | 'live2d' | 'shortcuts' | 'appearance';
+  | 'live2d' | 'shortcuts' | 'appearance'
+  | 'knowledge-base';
 
 interface SectionDef {
   id:          SectionId;
@@ -50,6 +52,8 @@ const SECTIONS: SectionDef[] = [
     icon: 'i-solar:server-square-bold-duotone' },
   { id: 'memory',     title: '记忆系统',  description: '浏览和管理记忆节点与条目',
     icon: 'i-solar:leaf-bold-duotone' },
+  { id: 'knowledge-base', title: '知识库',  description: '导入文档，AI 主动检索参考资料',
+    icon: 'i-solar:database-bold-duotone' },
   { id: 'live2d',     title: 'Live2D',    description: '模型加载与运行时参数',
     icon: 'i-solar:adhesive-plaster-bold-duotone' },
   { id: 'shortcuts',  title: '快捷键',    description: '全局热键与窗口快捷键',
@@ -63,8 +67,9 @@ function SectionContent({ section }: { section: SectionId }): JSX.Element {
     case 'cards':      return <CardsTab />;
     case 'providers':  return <ProvidersTab />;
     case 'bindings':   return <BindingsTab />;
-    case 'memory':     return <MemoryTab />;
-    case 'skills':     return <SkillsTab />;
+    case 'memory':         return <MemoryTab />;
+    case 'knowledge-base': return <KnowledgeBaseTab />;
+    case 'skills':         return <SkillsTab />;
     case 'mcp':        return <McpTab />;
     case 'live2d':     return <Live2DTab />;
     case 'shortcuts':  return <ShortcutsTab />;

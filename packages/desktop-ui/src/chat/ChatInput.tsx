@@ -5,7 +5,36 @@ import { useSessionStore } from '../stores/session-store.js';
 import { useUiStore } from '../stores/ui-store.js';
 import { ModeSelector } from './ModeSelector.js';
 import { showToast } from '../lib/toast.js';
+import { tauriBridge } from '../lib/tauri-bridge.js';
+import type { AttachmentInputWire } from '../api/turns.js';
 import type { TurnMode, AgentSubMode, SessionId } from '@ema-agent/contracts';
+
+// ── Attachment helpers ────────────────────────────────────────────────────────
+
+function mimeFromName(name: string): string {
+  const ext = name.split('.').pop()?.toLowerCase() ?? '';
+  const map: Record<string, string> = {
+    pdf: 'application/pdf', md: 'text/markdown', txt: 'text/plain',
+    png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg',
+    gif: 'image/gif', webp: 'image/webp',
+    docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  };
+  return map[ext] ?? 'application/octet-stream';
+}
+
+function pathToAttachment(localPath: string): AttachmentInputWire {
+  const name = localPath.replace(/\\/g, '/').split('/').pop() ?? localPath;
+  return {
+    id:        crypto.randomUUID(),
+    name,
+    mimeType:  mimeFromName(name),
+    size:      0,
+    mtime:     0,
+    localPath,
+  };
+}
 
 export function ChatInput(): JSX.Element {
   const viewedId   = useConversationStore((s) => s.viewedSessionId);
@@ -13,6 +42,7 @@ export function ChatInput(): JSX.Element {
 
   const initialDraft = useConversationStore.getState().draftMap.get(viewedId as string ?? '') ?? '';
   const [text, setText] = useState(initialDraft);
+  const [pendingAttachments, setPendingAttachments] = useState<AttachmentInputWire[]>([]);
   const prevViewedIdRef = useRef(viewedId);
 
   useEffect(() => {
@@ -40,17 +70,29 @@ export function ChatInput(): JSX.Element {
     if (viewedId) useConversationStore.getState().setDraft(viewedId, value);
   }
 
+  async function pickAttachment(): Promise<void> {
+    const localPath = await tauriBridge.openFileDialog();
+    if (!localPath) return;
+    setPendingAttachments((prev) => [...prev, pathToAttachment(localPath)]);
+  }
+
+  function removeAttachment(id: string): void {
+    setPendingAttachments((prev) => prev.filter((a) => a.id !== id));
+  }
+
   const send = useCallback(() => {
     if (!canSend) return;
     void useConversationStore.getState().sendMessage(viewedId, {
       mode,
       agentSubMode: subMode,
       text: text.trim(),
+      attachments: pendingAttachments.length > 0 ? pendingAttachments : undefined,
       ttsEnabled,
     });
     setText('');
+    setPendingAttachments([]);
     if (viewedId) useConversationStore.getState().setDraft(viewedId, '');
-  }, [canSend, mode, subMode, text, ttsEnabled, viewedId]);
+  }, [canSend, mode, subMode, text, pendingAttachments, ttsEnabled, viewedId]);
 
   function handleKeyDown(e: KeyboardEvent<HTMLTextAreaElement>): void {
     if (isComposing) return;
@@ -101,10 +143,49 @@ export function ChatInput(): JSX.Element {
           </div>
         </div>
 
+        {/* Pending attachments preview strip */}
+        {pendingAttachments.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 mt-2">
+            {pendingAttachments.map((a) => (
+              <div
+                key={a.id}
+                className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-neutral-700/60 text-xs text-neutral-300 max-w-[180px]"
+              >
+                <span className="i-solar:document-bold text-neutral-400 shrink-0" aria-hidden />
+                <span className="truncate" title={a.localPath}>{a.name}</span>
+                <button
+                  className="text-neutral-500 hover:text-red-400 shrink-0 ml-0.5"
+                  onClick={() => removeAttachment(a.id)}
+                  aria-label={`移除 ${a.name}`}
+                >
+                  <span className="i-mdi:close text-sm" aria-hidden />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
         {/* Bottom toolbar */}
         <div className="flex items-center justify-between mt-2">
           <div className="flex items-center gap-1">
             <WorkspaceButton sessionId={viewedId as string | null} />
+
+            {/* Attachment picker */}
+            <div className="relative">
+              <IconButton
+                variant={pendingAttachments.length > 0 ? 'primary' : 'default'}
+                size="sm"
+                label="添加附件"
+                icon="i-mdi:paperclip"
+                toggled={pendingAttachments.length > 0}
+                onClick={() => void pickAttachment()}
+              />
+              {pendingAttachments.length > 0 && (
+                <span className="absolute -top-1 -right-1 min-w-[16px] h-4 flex items-center justify-center rounded-full bg-primary-500 text-[10px] text-white font-medium px-0.5 pointer-events-none">
+                  {pendingAttachments.length}
+                </span>
+              )}
+            </div>
 
             <IconButton
               variant={ttsEnabled ? 'primary' : 'default'}
