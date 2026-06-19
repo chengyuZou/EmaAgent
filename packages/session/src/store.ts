@@ -3,6 +3,7 @@ import {
   SessionsRepo,
   TurnsRepo,
   MessagesRepo,
+  BranchesRepo,
   nextCursorFor,
   type SessionRow,
   type SessionRowEnriched,
@@ -14,6 +15,7 @@ import {
   type SessionId,
   type TurnId,
   type MessageId,
+  type BranchId,
   type CharacterCardId,
   type TurnMode,
   type AgentSubMode,
@@ -21,17 +23,23 @@ import {
   asSessionId,
   asTurnId,
   asMessageId,
+  asBranchId,
 } from '@ema-agent/contracts';
 import type { Database } from '@ema-agent/storage';
 import { RunRegistry } from './run-registry.js';
+import { BranchAncestorTable } from './branch-ancestor.js';
 import type {
   Session,
   Turn,
+  Branch,
+  BranchSibling,
   Message,
   CreateSessionInput,
   StartTurnInput,
   CompleteTurnInput,
   AppendMessageInput,
+  ForkMessageInput,
+  SwitchBranchInput,
   ListSessionsInput,
   ListSessionsOutput,
   ListMessagesInput,
@@ -59,7 +67,8 @@ function toSession(row: SessionRow): Session {
     pinned:        row.pinned === 1,
     pinnedAt:      row.pinned_at,
     groupLabel:    row.group_label,
-    parentSessionId: row.parent_session_id as SessionId | null,
+    parentSessionId:  row.parent_session_id  as SessionId  | null,
+    activeBranchId:   (row.active_branch_id ?? null) as BranchId | null,
     runningTurnCount: 0,    // populated by caller
     lastMode:    (row.last_mode    ?? null) as TurnMode    | null,
     lastSubMode: (row.last_sub_mode ?? null) as AgentSubMode | null,
@@ -80,9 +89,10 @@ function toSessionEnriched(row: SessionRowEnriched): Session {
 
 function toTurn(row: TurnRow): Turn {
   return {
-    id: row.id as TurnId,
-    sessionId: row.session_id as SessionId,
-    mode: row.mode,
+    id:           row.id        as TurnId,
+    sessionId:    row.session_id as SessionId,
+    branchId:     (row.branch_id ?? null) as BranchId | null,
+    mode:         row.mode,
     agentSubMode: row.agent_sub_mode,
     status: row.status,
     userInput: row.user_input,
@@ -175,9 +185,10 @@ export interface SessionStoreDeps {
  */
 export class SessionStore {
   private readonly sessionsRepo: SessionsRepo;
-  private readonly turnsRepo: TurnsRepo;
+  private readonly turnsRepo:    TurnsRepo;
   private readonly messagesRepo: MessagesRepo;
-  private readonly registry: RunRegistry;
+  private readonly branchesRepo: BranchesRepo;
+  private readonly registry:     RunRegistry;
   /** Monotonically increasing clock — ensures created_at is unique even for sub-ms bursts. */
   private lastTs = 0;
 
@@ -185,6 +196,7 @@ export class SessionStore {
     this.sessionsRepo = new SessionsRepo(db.sqlite);
     this.turnsRepo    = new TurnsRepo(db.sqlite);
     this.messagesRepo = new MessagesRepo(db.sqlite);
+    this.branchesRepo = new BranchesRepo(db.sqlite);
     this.registry     = new RunRegistry();
   }
 
@@ -408,12 +420,14 @@ export class SessionStore {
     // better-sqlite3 is sync, so this + insert below are effectively atomic.
     this.turnsRepo.abortStale(input.sessionId, now);
 
-    const turnId = asTurnId(crypto.randomUUID());
+    const session = this.requireSession(input.sessionId);
+    const turnId  = asTurnId(crypto.randomUUID());
     this.turnsRepo.insert({
       id:           turnId,
       sessionId:    input.sessionId,
       mode:         input.mode,
       agentSubMode: input.agentSubMode,
+      branchId:     session.activeBranchId ?? undefined,
       userInput:    input.userInput,
       startedAt:    now,
     });
@@ -512,14 +526,28 @@ export class SessionStore {
   /**
    * Load message history for LLM context — chronological order, last N messages.
    *
-   * Summary-aware: when a kind='summary' message exists in this session, the
-   * returned list begins at that summary (inclusive). Older messages are
-   * implicitly omitted — they were compacted by MemoryPlanner.
+   * Summary-aware: when a kind='summary' message exists, the list begins at
+   * that summary (inclusive). Branch-aware: if the session has an active branch,
+   * reconstructs the full linear history across the ancestor chain first, then
+   * applies the summary boundary in-memory.
    *
    * For UI rendering, use listMessages() instead — it ignores summary slicing.
    */
   loadHistory(sessionId: SessionId, limit = 500): Message[] {
-    return this.messagesRepo.listForSessionFromSummary(sessionId, limit).map(toMessage);
+    const session = this.requireSession(sessionId);
+
+    if (!session.activeBranchId) {
+      return this.messagesRepo.listForSessionFromSummary(sessionId, limit).map(toMessage);
+    }
+
+    const all = this.loadBranchMessages(sessionId, session.activeBranchId);
+
+    // Find last summary boundary and slice from there.
+    let startIdx = 0;
+    for (let i = all.length - 1; i >= 0; i--) {
+      if (all[i]!.kind === 'summary') { startIdx = i; break; }
+    }
+    return all.slice(startIdx, startIdx + limit);
   }
 
   /** All messages belonging to one turn — used by post-turn extraction. */
@@ -532,17 +560,195 @@ export class SessionStore {
    * Both first page and older pages return messages **newest-first**.
    * Pass the last returned message's `createdAt` as `before` to load
    * the next (older) page (scroll-up pagination).
+   *
+   * Branch-aware: when the session has an active branch, reconstructs the
+   * full linear message history across the ancestor chain, then applies
+   * cursor slicing in-memory. Branch depth is shallow enough that loading
+   * the full chain is cheaper than multi-pass SQL pagination.
    */
   listMessages(sessionId: SessionId, input: ListMessagesInput = {}): Message[] {
-    const limit = input.limit ?? 50;
+    const limit   = input.limit ?? 50;
+    const session = this.requireSession(sessionId);
 
-    if (input.before === undefined) {
-      // First page: listForSession already orders DESC (newest-first).
-      return this.messagesRepo.listForSession(sessionId, limit).map(toMessage);
+    if (!session.activeBranchId) {
+      if (input.before === undefined) {
+        return this.messagesRepo.listForSession(sessionId, limit).map(toMessage);
+      }
+      return this.messagesRepo.listBefore(sessionId, input.before, limit).map(toMessage);
     }
 
-    // Cursor page: listBefore also orders DESC — consistent with first page.
-    return this.messagesRepo.listBefore(sessionId, input.before, limit).map(toMessage);
+    // Branch-aware path: reconstruct full linear history (oldest → newest).
+    const all = this.loadBranchMessages(sessionId, session.activeBranchId);
+
+    if (input.before === undefined) {
+      // First page: last `limit` messages, newest-first.
+      return all.slice(-limit).reverse();
+    }
+
+    // Cursor page: messages older than `before`, newest-first.
+    const cutoff = all.findIndex(m => m.createdAt >= input.before!);
+    const older  = cutoff <= 0 ? [] : all.slice(0, cutoff);
+    return older.slice(-limit).reverse();
+  }
+
+  // ── Branch ──────────────────────────────────────────────────────────────────
+
+  /**
+   * Fork the conversation at `fromTurnId`, creating a new empty branch that
+   * starts after that turn. Sets `session.activeBranchId` to the new branch so
+   * subsequent turns are appended there.
+   *
+   * On the very first fork of a session:
+   *   • Creates a root branch record to own the pre-fork history.
+   *   • Backfills all existing `branch_id = NULL` turns to the root branch.
+   *
+   * Returns the new branch's id.
+   */
+  forkMessage(input: ForkMessageInput): { branchId: BranchId } {
+    const { sessionId, fromTurnId } = input;
+    const now = this.nextTs();
+
+    // Snapshot current branch_id BEFORE any backfill.
+    const forkTurnRow = this.turnsRepo.findById(fromTurnId);
+    if (!forkTurnRow) throw new Error(`turn_not_found: ${fromTurnId}`);
+    const preForkBranchId = forkTurnRow.branch_id as BranchId | null;
+
+    // Ensure a root branch exists; backfill pre-fork turns on first call.
+    let rootBranchId: BranchId;
+    const existingRoot = this.branchesRepo.findRoot(sessionId);
+    if (!existingRoot) {
+      rootBranchId = asBranchId(crypto.randomUUID());
+      this.branchesRepo.insert({
+        id:        rootBranchId,
+        sessionId,
+        createdAt: now,
+      });
+      this.turnsRepo.assignBranch(sessionId, rootBranchId);
+    } else {
+      rootBranchId = existingRoot.id as BranchId;
+    }
+
+    const parentBranchId = preForkBranchId ?? rootBranchId;
+
+    const newBranchId = asBranchId(crypto.randomUUID());
+    this.branchesRepo.insert({
+      id:              newBranchId,
+      sessionId,
+      parentBranchId,
+      forkFromTurnId:  fromTurnId,
+      createdAt:       now + 1,
+    });
+
+    this.sessionsRepo.setActiveBranch(sessionId, newBranchId);
+    return { branchId: newBranchId };
+  }
+
+  /**
+   * Switch the session's active branch. Pass a branchId to view that branch's
+   * history, or null to return to the un-branched root view (only valid before
+   * any fork has occurred).
+   */
+  switchBranch(input: SwitchBranchInput): void {
+    const { sessionId, branchId } = input;
+    if (branchId !== null) {
+      const branch = this.branchesRepo.findById(branchId);
+      if (!branch || branch.session_id !== sessionId) {
+        throw new Error(`branch_not_found: ${branchId}`);
+      }
+    }
+    this.sessionsRepo.setActiveBranch(sessionId, branchId);
+  }
+
+  /**
+   * Siblings at a fork point — the parent branch plus all child branches that
+   * forked from the same turn. Used to render the `< N/M >` navigator.
+   */
+  listBranchSiblings(sessionId: SessionId, forkFromTurnId: TurnId): BranchSibling[] {
+    const forkTurn = this.turnsRepo.findById(forkFromTurnId);
+    if (!forkTurn) return [];
+
+    const parentBranchId = (forkTurn.branch_id ?? null) as BranchId | null;
+    const children       = this.branchesRepo.listSiblingsAt(forkFromTurnId);
+    const session        = this.requireSession(sessionId);
+
+    // Sibling order: parent branch first, then children in creation order.
+    type Entry = { branchId: BranchId; createdAt: number };
+    const entries: Entry[] = [];
+
+    if (parentBranchId !== null) {
+      const parentRow = this.branchesRepo.findById(parentBranchId);
+      if (parentRow) entries.push({ branchId: parentBranchId, createdAt: parentRow.created_at });
+    }
+    for (const c of children) {
+      entries.push({ branchId: c.id as BranchId, createdAt: c.created_at });
+    }
+
+    const total = entries.length;
+    return entries.map((e, i) => ({
+      branchId:  e.branchId,
+      position:  i + 1,
+      total,
+      isActive:  e.branchId === session.activeBranchId,
+      createdAt: e.createdAt,
+    }));
+  }
+
+  /** All branches for a session — useful for rendering the branch tree UI. */
+  listBranches(sessionId: SessionId): Branch[] {
+    return this.branchesRepo.listForSession(sessionId).map(b => ({
+      id:             b.id             as BranchId,
+      sessionId:      b.session_id     as SessionId,
+      parentBranchId: (b.parent_branch_id ?? null) as BranchId | null,
+      forkFromTurnId: (b.fork_from_turn_id ?? null) as TurnId   | null,
+      createdAt:      b.created_at,
+    }));
+  }
+
+  /**
+   * Reconstruct the full linear message history for `branchId` by walking up
+   * the ancestor chain and concatenating branch segments.
+   *
+   * For each branch in the chain [root → … → branchId]:
+   *   - Root segment: all messages in the session on the root branch, up to
+   *     the fork point (plus turnless system messages).
+   *   - Child segments: only messages whose turns have branch_id = that branch,
+   *     up to the next fork point.
+   *
+   * Result is chronological (oldest first).
+   */
+  private loadBranchMessages(sessionId: SessionId, branchId: BranchId): Message[] {
+    const rows    = this.branchesRepo.listForSession(sessionId);
+    const branchMap = new Map(rows.map(b => [b.id, b]));
+    const table   = new BranchAncestorTable(
+      rows.map(b => ({
+        id:             b.id as BranchId,
+        parentBranchId: (b.parent_branch_id ?? null) as BranchId | null,
+      })),
+    );
+
+    const chain    = table.getAncestorChain(branchId);
+    const segments: MessageRow[][] = [];
+
+    for (let i = 0; i < chain.length; i++) {
+      const curId   = chain[i]!;
+      const childId = chain[i + 1];
+
+      let cutoffAt: number | undefined;
+      if (childId) {
+        const child    = branchMap.get(childId);
+        const forkTurn = child?.fork_from_turn_id
+          ? this.turnsRepo.findById(child.fork_from_turn_id as TurnId)
+          : undefined;
+        cutoffAt = forkTurn?.started_at;
+      }
+
+      const msgs = i === 0
+        ? this.messagesRepo.listForRootSegment(sessionId, curId, cutoffAt)
+        : this.messagesRepo.listForChildSegment(curId, cutoffAt);
+      segments.push(msgs);
+    }
+
+    return segments.flat().map(toMessage);
   }
 
   // ── Private ─────────────────────────────────────────────────────────────────

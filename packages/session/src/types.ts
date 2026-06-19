@@ -2,6 +2,7 @@ import type {
   SessionId,
   TurnId,
   MessageId,
+  BranchId,
   CharacterCardId,
   TurnMode,
   AgentSubMode,
@@ -14,6 +15,23 @@ import type {
 } from '@ema-agent/contracts';
 
 // ── Domain objects (camelCase, parsed) ───────────────────────────────────────
+
+export interface Branch {
+  id:               BranchId;
+  sessionId:        SessionId;
+  parentBranchId:   BranchId | null;
+  forkFromTurnId:   TurnId   | null;
+  createdAt:        number;
+}
+
+export interface BranchSibling {
+  branchId:  BranchId;
+  /** 1-based position in the sibling list (for "< 1/2 >" display). */
+  position:  number;
+  total:     number;
+  isActive:  boolean;
+  createdAt: number;
+}
 
 export interface Session {
   id: SessionId;
@@ -29,7 +47,8 @@ export interface Session {
   pinned:        boolean;
   pinnedAt:      number | null;
   groupLabel:    string | null;
-  parentSessionId: string | null;
+  parentSessionId:  string   | null;
+  activeBranchId:   BranchId | null;
   runningTurnCount: number;
   lastMode:     TurnMode | null;
   lastSubMode:  AgentSubMode | null;
@@ -39,9 +58,10 @@ export interface Session {
 }
 
 export interface Turn {
-  id: TurnId;
-  sessionId: SessionId;
-  mode: TurnMode;
+  id:           TurnId;
+  sessionId:    SessionId;
+  branchId:     BranchId | null;
+  mode:         TurnMode;
   agentSubMode: AgentSubMode | null;
   status: TurnStatus;
   userInput: string;
@@ -73,6 +93,18 @@ export interface Message {
 }
 
 // ── Input types for SessionStore methods ─────────────────────────────────────
+
+export interface ForkMessageInput {
+  sessionId:     SessionId;
+  /** The last turn to include in the parent branch before the fork diverges. */
+  fromTurnId:    TurnId;
+}
+
+export interface SwitchBranchInput {
+  sessionId: SessionId;
+  /** Pass null to reset to root (only valid before any fork — after first fork use root branch ID). */
+  branchId:  BranchId | null;
+}
 
 export interface CreateSessionInput {
   title?: string;

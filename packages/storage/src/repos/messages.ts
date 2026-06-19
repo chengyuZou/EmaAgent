@@ -1,5 +1,5 @@
 import type { SqliteDb } from '../database.js';
-import type { MessageId, SessionId, TurnId, MessageRole, MessageKind } from '@ema-agent/contracts';
+import type { MessageId, SessionId, TurnId, BranchId, MessageRole, MessageKind } from '@ema-agent/contracts';
 
 export interface MessageRow {
   id:          string;
@@ -93,6 +93,65 @@ export class MessagesRepo {
       .prepare('SELECT COUNT(*) as n FROM messages WHERE session_id = ?')
       .get(sessionId) as { n: number };
     return row.n;
+  }
+
+  // ── Branch-segment queries ────────────────────────────────────────────────
+
+  /**
+   * Root branch segment: all messages in the session whose turn belongs to
+   * rootBranchId, plus messages with no turn_id (system/context rows that
+   * pre-date branching). Optionally capped at turns started at or before
+   * `beforeTurnStartedAt` (set to the fork point's started_at when this
+   * branch has a child).
+   */
+  listForRootSegment(
+    sessionId:           SessionId,
+    rootBranchId:        BranchId,
+    beforeTurnStartedAt?: number,
+  ): MessageRow[] {
+    return this.db
+      .prepare(
+        `SELECT m.* FROM messages m
+         WHERE m.session_id = ?
+           AND (
+             m.turn_id IS NULL
+             OR m.turn_id IN (
+               SELECT t.id FROM turns t
+               WHERE t.branch_id = ?
+                 AND (? IS NULL OR t.started_at <= ?)
+             )
+           )
+         ORDER BY m.created_at ASC`,
+      )
+      .all(
+        sessionId,
+        rootBranchId,
+        beforeTurnStartedAt ?? null,
+        beforeTurnStartedAt ?? null,
+      ) as MessageRow[];
+  }
+
+  /**
+   * Non-root branch segment: only messages whose turn has branch_id = branchId,
+   * optionally capped at the fork point. Does NOT include turnless messages
+   * (those are already in the root segment).
+   */
+  listForChildSegment(branchId: BranchId, beforeTurnStartedAt?: number): MessageRow[] {
+    return this.db
+      .prepare(
+        `SELECT m.* FROM messages m
+         WHERE m.turn_id IN (
+           SELECT t.id FROM turns t
+           WHERE t.branch_id = ?
+             AND (? IS NULL OR t.started_at <= ?)
+         )
+         ORDER BY m.created_at ASC`,
+      )
+      .all(
+        branchId,
+        beforeTurnStartedAt ?? null,
+        beforeTurnStartedAt ?? null,
+      ) as MessageRow[];
   }
 
   // ── Summary / compaction boundary helpers ──────────────────────────────────

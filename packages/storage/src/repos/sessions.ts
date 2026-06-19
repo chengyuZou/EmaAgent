@@ -1,5 +1,5 @@
 ﻿import type { SqliteDb } from '../database.js';
-import type { SessionId, TurnId, CharacterCardId } from '@ema-agent/contracts';
+import type { SessionId, TurnId, CharacterCardId, BranchId } from '@ema-agent/contracts';
 
 export interface SessionRow {
   id: string;
@@ -16,9 +16,10 @@ export interface SessionRow {
   pinned_at:     number | null;
   group_label:   string | null;
   parent_session_id: string | null;
-  last_mode:     string | null;
-  last_sub_mode: string | null;
-  last_viewed_at: number | null;
+  last_mode:        string | null;
+  last_sub_mode:    string | null;
+  last_viewed_at:   number | null;
+  active_branch_id: string | null;
 }
 
 /** SessionRow with derived turn fields from a JOIN query. */
@@ -353,6 +354,14 @@ export class SessionsRepo {
       .prepare('SELECT COUNT(*) as cnt FROM messages WHERE session_id = ?')
       .get(newId) as { cnt: number };
     return count.cnt;
+  }
+
+  // ── Branch ────────────────────────────────────────────────────────────────
+
+  setActiveBranch(id: SessionId, branchId: BranchId | null): void {
+    this.db
+      .prepare('UPDATE sessions SET active_branch_id = ?, updated_at = ? WHERE id = ?')
+      .run(branchId, Date.now(), id);
   }
 
   // ── Running turn count ─────────────────────────────────────────────────────

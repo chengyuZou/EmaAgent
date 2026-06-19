@@ -2,11 +2,14 @@ export { SessionStore } from './store.js';
 export { historyToLlmMessages } from './history.js';
 export type { SessionStoreDeps } from './store.js';
 export { RunRegistry } from './run-registry.js';
+export { BranchAncestorTable } from './branch-ancestor.js';
 
 export type {
   Session,
   Turn,
   Message,
+  Branch,
+  BranchSibling,
   MessageBlocks,
   AssistantBlock,
   UserBlock,
@@ -14,6 +17,8 @@ export type {
   StartTurnInput,
   CompleteTurnInput,
   AppendMessageInput,
+  ForkMessageInput,
+  SwitchBranchInput,
   ListSessionsInput,
   ListSessionsOutput,
   ListMessagesInput,
