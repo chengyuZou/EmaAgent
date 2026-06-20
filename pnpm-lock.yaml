@@ -148,7 +148,7 @@ importers:
         version: link:../../packages/contracts
       '@ema-agent/desktop-ui':
         specifier: workspace:*
-        version: link:../../packages/desktop-ui
+        version: link:../desktop-ui
       '@ema-agent/live2d-react':
         specifier: workspace:*
         version: link:../../packages/live2d-react
@@ -225,6 +225,103 @@ importers:
       vite:
         specifier: ^5.4.10
         version: 5.4.21(@types/node@20.19.39)
+
+  apps/desktop-ui:
+    dependencies:
+      '@ema-agent/character-card':
+        specifier: workspace:*
+        version: link:../../packages/character-card
+      '@ema-agent/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
+      '@ema-agent/live2d-react':
+        specifier: workspace:*
+        version: link:../../packages/live2d-react
+      '@ema-agent/mcp':
+        specifier: workspace:*
+        version: link:../../packages/mcp
+      '@ema-agent/memory':
+        specifier: workspace:*
+        version: link:../../packages/memory
+      '@ema-agent/permission':
+        specifier: workspace:*
+        version: link:../../packages/permission
+      '@ema-agent/skill':
+        specifier: workspace:*
+        version: link:../../packages/skill
+      '@ema-agent/storage':
+        specifier: workspace:*
+        version: link:../../packages/storage
+      '@ema-agent/stt':
+        specifier: workspace:*
+        version: link:../../packages/stt
+      '@ema-agent/token':
+        specifier: workspace:*
+        version: link:../../packages/token
+      '@ema-agent/ui':
+        specifier: workspace:*
+        version: link:../../packages/ui
+      '@tauri-apps/api':
+        specifier: ^2.4.0
+        version: 2.11.0
+      '@tauri-apps/plugin-dialog':
+        specifier: ^2
+        version: 2.7.1
+      diff:
+        specifier: ^9.0.0
+        version: 9.0.0
+      katex:
+        specifier: ^0.16.11
+        version: 0.16.47
+      nanoid:
+        specifier: ^5.0.0
+        version: 5.1.11
+      react:
+        specifier: ^18.3.0
+        version: 18.3.1
+      react-dom:
+        specifier: ^18.3.0
+        version: 18.3.1(react@18.3.1)
+      react-markdown:
+        specifier: ^9.0.1
+        version: 9.1.0(@types/react@18.3.29)(react@18.3.1)
+      rehype-katex:
+        specifier: ^7.0.0
+        version: 7.0.1
+      rehype-raw:
+        specifier: ^7.0.0
+        version: 7.0.0
+      rehype-sanitize:
+        specifier: ^6.0.0
+        version: 6.0.0
+      remark-gfm:
+        specifier: ^4.0.0
+        version: 4.0.1
+      remark-math:
+        specifier: ^6.0.0
+        version: 6.0.0
+      zustand:
+        specifier: ^5.0.2
+        version: 5.0.13(@types/react@18.3.29)(react@18.3.1)
+    devDependencies:
+      '@types/diff':
+        specifier: ^8.0.0
+        version: 8.0.0
+      '@types/react':
+        specifier: ^18.3.0
+        version: 18.3.29
+      '@types/react-dom':
+        specifier: ^18.3.0
+        version: 18.3.7(@types/react@18.3.29)
+      rimraf:
+        specifier: ^5.0.0
+        version: 5.0.10
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: ^2.0.0
+        version: 2.1.9(@types/node@20.19.39)(msw@2.14.6(@types/node@20.19.39)(typescript@5.9.3))
 
   packages/agent:
     dependencies:
@@ -412,103 +509,6 @@ importers:
       '@types/node':
         specifier: ^20.0.0
         version: 20.19.39
-      rimraf:
-        specifier: ^5.0.0
-        version: 5.0.10
-      typescript:
-        specifier: ^5.9.3
-        version: 5.9.3
-      vitest:
-        specifier: ^2.0.0
-        version: 2.1.9(@types/node@20.19.39)(msw@2.14.6(@types/node@20.19.39)(typescript@5.9.3))
-
-  packages/desktop-ui:
-    dependencies:
-      '@ema-agent/character-card':
-        specifier: workspace:*
-        version: link:../character-card
-      '@ema-agent/contracts':
-        specifier: workspace:*
-        version: link:../contracts
-      '@ema-agent/live2d-react':
-        specifier: workspace:*
-        version: link:../live2d-react
-      '@ema-agent/mcp':
-        specifier: workspace:*
-        version: link:../mcp
-      '@ema-agent/memory':
-        specifier: workspace:*
-        version: link:../memory
-      '@ema-agent/permission':
-        specifier: workspace:*
-        version: link:../permission
-      '@ema-agent/skill':
-        specifier: workspace:*
-        version: link:../skill
-      '@ema-agent/storage':
-        specifier: workspace:*
-        version: link:../storage
-      '@ema-agent/stt':
-        specifier: workspace:*
-        version: link:../stt
-      '@ema-agent/token':
-        specifier: workspace:*
-        version: link:../token
-      '@ema-agent/ui':
-        specifier: workspace:*
-        version: link:../ui
-      '@tauri-apps/api':
-        specifier: ^2.4.0
-        version: 2.11.0
-      '@tauri-apps/plugin-dialog':
-        specifier: ^2
-        version: 2.7.1
-      diff:
-        specifier: ^9.0.0
-        version: 9.0.0
-      katex:
-        specifier: ^0.16.11
-        version: 0.16.47
-      nanoid:
-        specifier: ^5.0.0
-        version: 5.1.11
-      react:
-        specifier: ^18.3.0
-        version: 18.3.1
-      react-dom:
-        specifier: ^18.3.0
-        version: 18.3.1(react@18.3.1)
-      react-markdown:
-        specifier: ^9.0.1
-        version: 9.1.0(@types/react@18.3.29)(react@18.3.1)
-      rehype-katex:
-        specifier: ^7.0.0
-        version: 7.0.1
-      rehype-raw:
-        specifier: ^7.0.0
-        version: 7.0.0
-      rehype-sanitize:
-        specifier: ^6.0.0
-        version: 6.0.0
-      remark-gfm:
-        specifier: ^4.0.0
-        version: 4.0.1
-      remark-math:
-        specifier: ^6.0.0
-        version: 6.0.0
-      zustand:
-        specifier: ^5.0.2
-        version: 5.0.13(@types/react@18.3.29)(react@18.3.1)
-    devDependencies:
-      '@types/diff':
-        specifier: ^8.0.0
-        version: 8.0.0
-      '@types/react':
-        specifier: ^18.3.0
-        version: 18.3.29
-      '@types/react-dom':
-        specifier: ^18.3.0
-        version: 18.3.7(@types/react@18.3.29)
       rimraf:
         specifier: ^5.0.0
         version: 5.0.10
