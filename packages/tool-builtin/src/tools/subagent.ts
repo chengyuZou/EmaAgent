@@ -23,6 +23,14 @@ const inputSchema = z.object({
     .string()
     .optional()
     .describe('Short description of this sub-agent\'s role (shown in the dashboard and logs).'),
+  kind: z
+    .enum(['subagent', 'fork'])
+    .optional()
+    .describe(
+      'Context strategy. "fork" (default) inherits the parent conversation history — use when ' +
+        'the sub-agent needs prior context. "subagent" starts fresh with only the task prompt — ' +
+        'use for independent parallel workers to save tokens and avoid context bleed.',
+    ),
 });
 
 type SubagentInput = z.infer<typeof inputSchema>;
@@ -59,7 +67,8 @@ The sub-agent:
     const spawner: ISubagentSpawner | undefined = ctx.subagentSpawner;
     if (!spawner) {
       throw new Error(
-        'Sub-agent spawner is not configured. The AgentEngine must inject a subagentSpawner into the execution context.',
+        'Sub-agents cannot spawn further sub-agents (depth limit: 1). ' +
+        'If you need nested parallelism, restructure the task so the top-level agent spawns all workers directly.',
       );
     }
 
@@ -70,7 +79,7 @@ The sub-agent:
 
     return spawner.spawn(
       input.prompt,
-      { model: input.model, description: input.description, subagentId },
+      { model: input.model, description: input.description, kind: input.kind, subagentId },
       ctx.signal,
     );
   },

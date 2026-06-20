@@ -231,11 +231,13 @@ export const scratchpadListTool = buildTool<
         try {
           const filePath = path.join(dir, f);
           const bytes    = fs.statSync(filePath).size;
-          const value    = fs.readFileSync(filePath, 'utf8');
+          // Byte-based token estimate avoids reading file content for every key.
+          // ~4 bytes/token is a safe approximation for the mixed content stored here.
+          // Use scratchpad_read to get an exact count for a specific key.
           return {
             key:            f,
             bytes,
-            estimatedTokens: estimateTextTokens(value),
+            estimatedTokens: Math.ceil(bytes / 4),
             author:         meta[f]?.author ?? 'main',
           };
         } catch {

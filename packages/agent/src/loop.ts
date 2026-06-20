@@ -64,6 +64,14 @@ export interface AgentLoopInput {
    * Used to inject current scratchpad state so agents see what sub-agents wrote.
    */
   getScratchpadContext?: () => string | undefined;
+  /**
+   * Called before each LLM call. Returns any messages queued via
+   * subagent_send_message since the last iteration, then atomically clears
+   * the queue. Each string is injected as a separate ephemeral user message
+   * so the agent sees mid-execution coordinator instructions.
+   * Only populated for background sub-agents; always undefined for the main agent.
+   */
+  getMailboxMessages?: () => string[];
 }
 
 // ── agentLoop ─────────────────────────────────────────────────────────────────
@@ -82,7 +90,7 @@ export interface AgentLoopInput {
  * if the last tool finishes between the allDone() check and await.
  */
 export async function* agentLoop(input: AgentLoopInput): AsyncIterable<AgentLoopEvent> {
-  const { messages, policy, llm, providerId, model, signal, maxIterations, getScratchpadContext } = input;
+  const { messages, policy, llm, providerId, model, signal, maxIterations, getScratchpadContext, getMailboxMessages } = input;
 
   const pendingRelayEvents: EmaStreamEvent[] = [];
   let wakeUp: (() => void) | null = null;
@@ -116,13 +124,16 @@ export async function* agentLoop(input: AgentLoopInput): AsyncIterable<AgentLoop
     const thinkingByIndex = new Map<number, string>();
     const toolUseByIndex  = new Map<number, AssistantBlock & { type: 'tool_use' }>();
 
-    // Inject scratchpad context as an ephemeral user message before each LLM
-    // call — not persisted into messages[]. Lets the main agent see what
-    // sub-agents wrote without the summary accumulating across iterations.
-    const scratchpadCtx = getScratchpadContext?.();
-    const effectiveMessages: LlmMessage[] = scratchpadCtx
-      ? [...messages, { role: 'user', content: scratchpadCtx }]
-      : messages;
+    // Inject scratchpad context and mailbox messages as ephemeral user messages
+    // before each LLM call — not persisted into messages[].
+    // Mailbox messages are drained atomically so each is only seen once.
+    const scratchpadCtx  = getScratchpadContext?.();
+    const mailboxMsgs    = getMailboxMessages?.() ?? [];
+    const effectiveMessages: LlmMessage[] = [
+      ...messages,
+      ...(scratchpadCtx ? [{ role: 'user' as const, content: scratchpadCtx }] : []),
+      ...mailboxMsgs.map(m => ({ role: 'user' as const, content: `[Coordinator]: ${m}` })),
+    ];
 
     const stream = llm.stream({
       providerId, model,

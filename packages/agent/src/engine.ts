@@ -9,7 +9,7 @@ import { agentLoop, type ExecutorFactory } from './loop.js';
 import { SubagentSpawner } from './spawner.js';
 import { historyToLlmMessages } from '@ema-agent/session';
 import { clearTodos } from '@ema-agent/tool-builtin';
-import { readScratchpadEntries } from './scratchpad-reader.js';
+import { buildScratchpadContext } from './scratchpad-context.js';
 import * as fs   from 'node:fs';
 import * as path from 'node:path';
 
@@ -73,6 +73,11 @@ async function* runTurn(
   let totalOutput = 0;
   let iterations  = 0;
 
+  // Declared before try so finally can clear it. emitRef is filled in by
+  // buildExecutor (inside the loop) and cleared in finally to cut the reference
+  // chain to pendingRelayEvents before the spawner is released.
+  const emitRef: { fn?: (ev: EmaStreamEvent) => void } = {};
+
   try {
     emotion.beginTurn(sessionId);
     clearTodos(sessionId);
@@ -126,7 +131,7 @@ async function* runTurn(
     // emitRef lets the spawner forward subagent_progress to the parent SSE stream.
     // The ref is filled in by buildExecutor (called by agentLoop before any tools
     // run), so spawn() always sees a populated emitter.
-    const emitRef: { fn?: (ev: EmaStreamEvent) => void } = {};
+    // (emitRef is declared before try{} so finally can clear it on turn end.)
 
     const spawner = new SubagentSpawner(
       deps, sessionId, turnId, providerId, model, messages,
@@ -327,6 +332,11 @@ async function* runTurn(
       yield { type: 'turn_failed', sessionId, turnId, code: 'provider/server_error', message: reason };
     }
   } finally {
+    // Cut the emitRef → pushEv → pendingRelayEvents reference chain before the
+    // spawner is released. Background sub-agents that outlive their parent turn
+    // (LLM forgot to call subagent_await) will call emit() which is now a no-op
+    // instead of pushing into a GC'd array, preventing a silent memory leak.
+    emitRef.fn = undefined;
     activeSpawners.delete(turnId);
     if (scratchpadDir) {
       try { fs.rmSync(scratchpadDir, { recursive: true, force: true }); } catch { /* non-fatal */ }
@@ -334,39 +344,3 @@ async function* runTurn(
   }
 }
 
-// ── Scratchpad context injection ──────────────────────────────────────────────
-
-/** Token budget for scratchpad injection — stays within typical context headroom. */
-const SCRATCHPAD_INJECT_TOKEN_BUDGET = 2000;
-
-/**
- * Reads the scratchpad directory and returns a formatted context string, or
- * undefined when the scratchpad is empty or the directory does not exist yet.
- *
- * Injection strategy:
- *   - Total estimated tokens ≤ budget  → include full values for all keys
- *   - Total estimated tokens > budget  → include only key names + sizes + author,
- *     prompt the agent to use scratchpad_read to fetch values it needs
- */
-function buildScratchpadContext(scratchpadDir: string): string | undefined {
-  const entries = readScratchpadEntries(scratchpadDir);
-  if (entries.length === 0) return undefined;
-
-  const totalTokens = entries.reduce((s, e) => s + e.tokens, 0);
-  const lines: string[] = ['[Scratchpad — shared state between you and your sub-agents]'];
-
-  if (totalTokens <= SCRATCHPAD_INJECT_TOKEN_BUDGET) {
-    for (const { key, value, tokens, author } of entries) {
-      lines.push(`\n## ${key}  (~${tokens} tok, by ${author})\n${value}`);
-    }
-  } else {
-    lines.push(`Total: ~${totalTokens} tokens across ${entries.length} key(s). Values not shown to save context.`);
-    lines.push('Use scratchpad_read to fetch the value you need.\n');
-    for (const { key, value, tokens, author } of entries) {
-      const preview = value.slice(0, 80).replace(/\n/g, ' ');
-      lines.push(`• ${key}  (~${tokens} tok, by ${author})  ${preview}${value.length > 80 ? '…' : ''}`);
-    }
-  }
-
-  return lines.join('\n');
-}

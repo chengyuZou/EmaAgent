@@ -88,9 +88,9 @@ export type UserBlock = MessageContentPart | ToolResultBlock;
  * a `role: 'user'` message so the history exactly mirrors what Anthropic expects.
  */
 export type LlmMessage =
-  | { role: 'system';    content: string }
-  | { role: 'user';      content: string | UserBlock[] }
-  | { role: 'assistant'; content: AssistantBlock[] };
+  | { role: 'system';    content: string;                      cacheBreakpoint?: true }
+  | { role: 'user';      content: string | UserBlock[];        cacheBreakpoint?: true }
+  | { role: 'assistant'; content: AssistantBlock[];            cacheBreakpoint?: true };
 
 // ── 存储格式 ──────────────────────────────────────────────────────────────────
 

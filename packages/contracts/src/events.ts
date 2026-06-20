@@ -9,6 +9,7 @@ import type { ErrorCode } from './errors.js';
 import type { ProtocolFamily } from './providers/types.js';
 import type { TurnStats } from './turns.js';
 import type { Artifact } from './artifact.js';
+import type { AgentKind } from './agents.js';
 
 // ── Shared sub-types ──────────────────────────────────────────────────────────
 
@@ -239,6 +240,7 @@ export type EmaStreamEvent =
       parentTurnId:   TurnId;
       description?:   string;
       model:          string;    // resolved model (parent model or override)
+      kind:           AgentKind; // 'fork' inherits parent history; 'subagent' starts fresh
       promptExcerpt:  string;    // first 200 chars
       startedAtMs:    number;    // epoch ms — client uses for elapsed timer
     }

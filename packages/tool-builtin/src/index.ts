@@ -51,6 +51,8 @@ export { subagentTool } from './tools/subagent.js';
 export type { SubagentResult } from './tools/subagent.js';
 export type { ISubagentSpawner, SubagentSpawnOpts } from '@ema-agent/tool';
 
+export { subagentSpawnBgTool, subagentSendMessageTool, subagentAwaitTool } from './tools/subagent-bg.js';
+
 export { scratchpadWriteTool, scratchpadReadTool, scratchpadListTool, scratchpadDeleteTool, scratchpadClearAllTool } from './tools/scratchpad.js';
 
 // ── Registration ──────────────────────────────────────────────────────────────
@@ -71,6 +73,7 @@ import { artifactWriteTool, artifactReadTool, artifactListTool } from './tools/a
 import { mcpCallTool } from './tools/mcp-call.js';
 import { skillCallTool } from './tools/skill-call.js';
 import { subagentTool } from './tools/subagent.js';
+import { subagentSpawnBgTool, subagentSendMessageTool, subagentAwaitTool } from './tools/subagent-bg.js';
 import { scratchpadWriteTool, scratchpadReadTool, scratchpadListTool, scratchpadDeleteTool, scratchpadClearAllTool } from './tools/scratchpad.js';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -94,6 +97,9 @@ const ALL_BUILTIN_TOOLS: BuiltTool<any, any>[] = [
   mcpCallTool,
   skillCallTool,
   subagentTool,
+  subagentSpawnBgTool,
+  subagentSendMessageTool,
+  subagentAwaitTool,
   scratchpadWriteTool,
   scratchpadReadTool,
   scratchpadListTool,
@@ -109,9 +115,12 @@ const EXECUTE_TOOLS: ReadonlySet<string> = new Set(['bash', 'powershell']);
  * Key = tool name, value = which RegisterOptions flag enables it.
  */
 const BRIDGE_GATED: ReadonlyMap<string, keyof RegisterOptions> = new Map([
-  ['mcp_call',  'hasMcpBridge'],
-  ['skill_call', 'hasSkillBridge'],
-  ['subagent',   'hasSubagentBridge'],
+  ['mcp_call',              'hasMcpBridge'],
+  ['skill_call',            'hasSkillBridge'],
+  ['subagent',              'hasSubagentBridge'],
+  ['subagent_spawn_bg',     'hasSubagentBridge'],
+  ['subagent_send_message', 'hasSubagentBridge'],
+  ['subagent_await',        'hasSubagentBridge'],
 ]);
 
 export interface RegisterOptions {

@@ -29,7 +29,11 @@ const OUTPUT_EXCERPT_MAX = 200;   // chars for subagent_completed.outputExcerpt
 
 export class SubagentSpawner implements ISubagentSpawner {
   // Keyed by subagentId — used by abortSubagent().
-  private readonly activeSubagents = new Map<string, AbortController>();
+  private readonly activeSubagents   = new Map<string, AbortController>();
+  // Background spawns: subagentId → result Promise (for awaitBackground).
+  private readonly backgroundSpawns  = new Map<string, Promise<{ output: string; usage: { inputTokens: number; outputTokens: number } }>>();
+  // Mailbox queues: subagentId → pending coordinator messages.
+  private readonly pendingMessages   = new Map<string, string[]>();
 
   constructor(
     private readonly deps:                  AgentDeps,
@@ -42,6 +46,46 @@ export class SubagentSpawner implements ISubagentSpawner {
     private readonly getScratchpadContext?: () => string | undefined,
     private readonly parentEmit?:           (ev: EmaStreamEvent) => void,
   ) {}
+
+  // ── Background spawn ──────────────────────────────────────────────────────
+
+  spawnBackground(prompt: string, opts: SubagentSpawnOpts, signal: AbortSignal): string {
+    const subagentId = opts.subagentId ?? randomUUID();
+    const optsWithId: SubagentSpawnOpts = { ...opts, subagentId };
+    // Initialise an empty mailbox queue so queueMessage() works immediately.
+    this.pendingMessages.set(subagentId, []);
+    const p = this.spawn(prompt, optsWithId, signal).finally(() => {
+      this.pendingMessages.delete(subagentId);
+    });
+    // Suppress unhandled rejection: if awaitBackground() is never called and the
+    // sub-agent fails, the stored Promise would produce an UnhandledPromiseRejection
+    // when GC drops the Map entry. The error is already surfaced via subagent_failed
+    // SSE event; awaitBackground()'s own `await p` still re-throws correctly.
+    p.catch(() => {});
+    this.backgroundSpawns.set(subagentId, p);
+    return subagentId;
+  }
+
+  async awaitBackground(
+    subagentId: string,
+  ): Promise<{ output: string; usage: { inputTokens: number; outputTokens: number } } | null> {
+    const p = this.backgroundSpawns.get(subagentId);
+    if (!p) return null;
+    try {
+      return await p;
+    } finally {
+      this.backgroundSpawns.delete(subagentId);
+    }
+  }
+
+  // ── Mailbox ───────────────────────────────────────────────────────────────
+
+  queueMessage(subagentId: string, message: string): boolean {
+    const queue = this.pendingMessages.get(subagentId);
+    if (!queue) return false;   // sub-agent not active or already finished
+    queue.push(message);
+    return true;
+  }
 
   // ── Per-subagent cancellation ─────────────────────────────────────────────
 
@@ -66,6 +110,7 @@ export class SubagentSpawner implements ISubagentSpawner {
 
     const startedAtMs = Date.now();
     const taskId      = opts.taskId;   // undefined until V1.5 task-store wiring
+    const kind        = opts.kind ?? 'fork';
     const emit = (ev: EmaStreamEvent) => this.parentEmit?.(ev);
 
     // Child AbortController: cascades from parent signal, but can also be aborted
@@ -94,6 +139,7 @@ export class SubagentSpawner implements ISubagentSpawner {
       parentTurnId,
       description:   opts.description,
       model:         resolvedModel,
+      kind,
       promptExcerpt: prompt.slice(0, 200),
       startedAtMs,
     });
@@ -104,13 +150,26 @@ export class SubagentSpawner implements ISubagentSpawner {
     const callStartMs    = new Map<string, number>();  // callId → start epoch ms
     const callIdToName   = new Map<string, string>();  // callId → tool name
 
-    // Fork: snapshot parent messages + inject the subagent prompt.
-    const messages: LlmMessage[] = [
-      ...this.parentMessages,
-      { role: 'user', content: prompt },
-    ];
+    // Build initial context based on AgentKind:
+    //   'fork'     — inherit parent history with a cache breakpoint on the last message
+    //                so parallel sub-agents sharing the same prefix only pay for it once.
+    //   'subagent' — fresh slate; only the task prompt, no parent history (saves tokens,
+    //                avoids context bleed for independent workers).
+    let messages: LlmMessage[];
+    if (kind === 'subagent') {
+      messages = [{ role: 'user', content: prompt }];
+    } else {
+      const sharedPrefix = this.parentMessages.map((m, i) =>
+        i === this.parentMessages.length - 1 ? { ...m, cacheBreakpoint: true as const } : m,
+      );
+      messages = [...sharedPrefix, { role: 'user', content: prompt }];
+    }
 
     const buildExecutor: ExecutorFactory = ({ pushEv, signal: wakeSignal }) => {
+      // Intentionally omitting `subagentSpawner` from the sub-agent's toolCtx.
+      // This enforces depth=1: sub-agents cannot recursively spawn further sub-agents.
+      // Nested spawning would require unbounded resource accounting, deadlock analysis
+      // for mailbox cycles, and cascading abort propagation — all deferred to V2.
       const toolCtx: ToolExecutionContext = {
         sessionId,
         turnId:           subagentId as TurnId,
@@ -146,6 +205,15 @@ export class SubagentSpawner implements ISubagentSpawner {
         maxIterations:        policy.maxIterations(),
         sessionId:            this.parentSessionId,
         getScratchpadContext: this.getScratchpadContext,
+        // Drain mailbox queue atomically before each LLM call so coordinator
+        // messages arrive exactly once at the next iteration boundary.
+        getMailboxMessages: () => {
+          const queue = this.pendingMessages.get(subagentId);
+          if (!queue || queue.length === 0) return [];
+          const msgs = [...queue];
+          queue.length = 0;
+          return msgs;
+        },
       })) {
         const elapsedMs = Date.now() - startedAtMs;
 

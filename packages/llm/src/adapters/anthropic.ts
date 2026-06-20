@@ -89,7 +89,15 @@ function toAnthropicMessages(msgs: LlmMessage[]): NormalizedMessages {
 
     if (msg.role === 'user') {
       if (typeof msg.content === 'string') {
-        messages.push({ role: 'user', content: msg.content });
+        // cacheBreakpoint: convert string to block so we can attach cache_control.
+        if (msg.cacheBreakpoint) {
+          messages.push({
+            role:    'user',
+            content: [{ type: 'text', text: msg.content, cache_control: { type: 'ephemeral' } }],
+          });
+        } else {
+          messages.push({ role: 'user', content: msg.content });
+        }
         continue;
       }
 
@@ -118,6 +126,11 @@ function toAnthropicMessages(msgs: LlmMessage[]): NormalizedMessages {
           if (mapped) content.push(mapped);
         }
       }
+      // cacheBreakpoint: spread cache_control onto the last block.
+      if (msg.cacheBreakpoint && content.length > 0) {
+        const last = content.pop()!;
+        content.push({ ...last, cache_control: { type: 'ephemeral' } } as Anthropic.ContentBlockParam);
+      }
       messages.push({ role: 'user', content });
       continue;
     }
@@ -145,6 +158,11 @@ function toAnthropicMessages(msgs: LlmMessage[]): NormalizedMessages {
           input: block.args as Record<string, unknown>,
         });
       }
+    }
+    // cacheBreakpoint on assistant messages.
+    if (msg.cacheBreakpoint && content.length > 0) {
+      const last = content.pop()!;
+      content.push({ ...last, cache_control: { type: 'ephemeral' } } as Anthropic.ContentBlockParam);
     }
     messages.push({ role: 'assistant', content });
   }
