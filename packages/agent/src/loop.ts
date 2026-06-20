@@ -1,83 +1,105 @@
-import type { LlmMessage, AssistantBlock, UserBlock, ToolResultBlock } from '@ema-agent/contracts';
+import type { LlmMessage, AssistantBlock, UserBlock, ToolResultBlock, EmaStreamEvent } from '@ema-agent/contracts';
 import type { LlmRouter } from '@ema-agent/llm';
-import type { EmotionEngine } from '@ema-agent/emotion';
-import type { AskUserQuestionSpec } from '@ema-agent/contracts';
-import { AgentPolicy } from './policy.js';
-import { TurnToolExecutor } from './tool-executor.js';
+import type { AgentPolicy } from './policy.js';
+import type { TurnToolExecutor } from './tool-executor.js';
 import { advanceState, addUsage, createLoopState } from './loop-state.js';
 import type { LoopState } from './loop-state.js';
+
+// ── AgentLoopEvent — internal, not EmaStreamEvent ────────────────────────────
+//
+// Loop yields only the events it generates itself.  Tool events (tool_result,
+// permission_required, ask_user_required, …) come through two paths:
+//
+//   loop_relay        — executor event forwarded verbatim; engine yields as-is.
+//   loop_llm_complete — LLM stream ended; engine should flush emotion + fire
+//                       afterLlmComplete hook.
+//   loop_tool_results — all tools finished; engine persists to session DB.
+//
+// Emotion processing (ACT tag stripping) is intentionally NOT in the loop.
+// engine.ts intercepts loop_text_delta and runs emotion.processChunk() before
+// yielding output_text_delta to SSE.
+
+export type AgentLoopEvent =
+  | { type: 'loop_iteration';     n: number; state: LoopState }
+  | { type: 'loop_text_delta';    delta: string; blockIndex: number }
+  | { type: 'loop_thinking_delta';delta: string; blockIndex: number }
+  | { type: 'loop_tool_partial';  callId: string; name: string; argsDelta: string; blockIndex: number }
+  | { type: 'loop_tool_complete'; callId: string; name: string; args: unknown; blockIndex: number }
+  | { type: 'loop_relay';         ev: EmaStreamEvent }
+  | { type: 'loop_llm_complete' }
+  | { type: 'loop_tool_results';  results: ToolResultBlock[]; fullText: string }
+  | { type: 'loop_breaker';       reason: string }
+  | { type: 'loop_done';          fullText: string; state: LoopState };
 
 // ── AgentLoopInput ────────────────────────────────────────────────────────────
 
 /**
- * Everything agentLoop() needs. Deliberately excludes session/hooks/SSE —
- * those belong to the callers (engine.ts for root, spawner.ts for subagents).
- *
- * `messages` is mutated in-place by the loop: the caller passes its own
- * array and the loop appends assistant + tool-result turns to it directly.
- * This allows ForkRunner to share a parent messages[] prefix efficiently.
+ * Factory called by the loop to build its TurnToolExecutor.
+ * The loop provides the internal wakeUp/relay callbacks; the caller bakes in
+ * all the session/permission/hook deps it knows about.
  */
+export type ExecutorFactory = (internals: {
+  /** Called by executor for every event it generates (tool_result, permission_required, …). */
+  pushEv:  (ev: EmaStreamEvent) => void;
+  /** Called by executor when a tool finishes, so the loop's drain-wait unparks. */
+  signal:  () => void;
+}) => TurnToolExecutor;
+
 export interface AgentLoopInput {
-  messages:      LlmMessage[];
-  policy:        AgentPolicy;
-  executor:      TurnToolExecutor;
-  llm:           LlmRouter;
-  providerId:    string;
-  model:         string;
-  signal:        AbortSignal;
-  maxIterations: number;
-  /** Optional: only wired for root agents (subagents skip emotion). */
-  emotion?:      EmotionEngine;
-  /** Passed through to AgentLoopEvent for the caller to map to SSE. */
-  sessionId:     string;
+  /** Mutable messages array. Loop appends each round's assistant + tool-result messages. */
+  messages:       LlmMessage[];
+  policy:         AgentPolicy;
+  /** Called once at loop construction. Provides the loop's internal relay callbacks. */
+  buildExecutor:  ExecutorFactory;
+  llm:            LlmRouter;
+  providerId:     string;
+  model:          string;
+  signal:         AbortSignal;
+  maxIterations:  number;
+  sessionId:      string;
+  /**
+   * Called before each LLM call. When it returns a non-empty string, the loop
+   * prepends an ephemeral user message containing that string to the messages
+   * sent to the LLM — without mutating the persistent messages[].
+   * Used to inject current scratchpad state so agents see what sub-agents wrote.
+   */
+  getScratchpadContext?: () => string | undefined;
 }
-
-// ── AgentLoopEvent — internal events, NOT EmaStreamEvent ─────────────────────
-
-export type AgentLoopEvent =
-  | { type: 'iteration';          n: number; state: LoopState }
-  | { type: 'text_delta';         delta: string; blockIndex: number }
-  | { type: 'thinking_delta';     delta: string; blockIndex: number }
-  | { type: 'tool_call_partial';  callId: string; name: string; argsDelta: string; blockIndex: number }
-  | { type: 'tool_call_complete'; callId: string; name: string; args: unknown; blockIndex: number }
-  | { type: 'tool_result_event';  callId: string; output?: unknown; error?: { code: string; message: string } }
-  | { type: 'waiting_user';       promptId: string; questions: AskUserQuestionSpec[] }
-  | { type: 'breaker_tripped';    reason: string }
-  | { type: 'loop_done';          fullText: string; state: LoopState };
 
 // ── agentLoop ─────────────────────────────────────────────────────────────────
 
 /**
- * Pure think→act loop. No session store, no hook bus, no SSE types.
+ * Pure think→act loop. No session store, no hook bus, no EmaStreamEvent yield
+ * (except as loop_relay wrappers).
  *
  * Callers:
- *   engine.ts   — wraps with session lifecycle + hook triggers + SSE translation
- *   spawner.ts  — wraps with ephemeral context, collects final text output
+ *   engine.ts   — wraps with session lifecycle + beforeLlm hook + emotion + SSE
+ *   spawner.ts  — ephemeral context, collects fullText + usage from loop_done
  *
- * The loop mutates input.messages (appends each round's assistant + tool-result
- * messages). Callers that need a pristine copy should pass a slice.
+ * Tool events (executor pushEv) are collected in pendingRelayEvents and yielded
+ * as loop_relay between every LLM chunk and during the drain-wait.
+ * The TOCTOU-safe park pattern prevents the drain-wait from blocking forever
+ * if the last tool finishes between the allDone() check and await.
  */
 export async function* agentLoop(input: AgentLoopInput): AsyncIterable<AgentLoopEvent> {
-  const { messages, policy, executor, llm, providerId, model, signal, emotion, sessionId } = input;
+  const { messages, policy, llm, providerId, model, signal, maxIterations, getScratchpadContext } = input;
 
-  // Shared event queue: TurnToolExecutor pushes raw SSE events; we relay them.
-  // The queue + wakeUp pattern is identical to engine.ts — tools push while LLM
-  // streams, we drain between chunks.
-  const pendingToolEvents: AgentLoopEvent[] = [];
+  const pendingRelayEvents: EmaStreamEvent[] = [];
   let wakeUp: (() => void) | null = null;
   const signalWake = (): void => { wakeUp?.(); wakeUp = null; };
 
-  const toolEmit = (ev: AgentLoopEvent): void => {
-    pendingToolEvents.push(ev);
-    signalWake();
-  };
+  const executor = input.buildExecutor({
+    pushEv: (ev: EmaStreamEvent) => { pendingRelayEvents.push(ev); signalWake(); },
+    signal: signalWake,
+  });
 
   let state = createLoopState();
 
   while (true) {
     if (signal.aborted) {
       state = advanceState(state, { phase: 'aborted', transition: 'user_abort' });
-      break;
+      yield { type: 'loop_done', fullText: '', state };
+      return;
     }
 
     state = advanceState(state, {
@@ -85,7 +107,7 @@ export async function* agentLoop(input: AgentLoopInput): AsyncIterable<AgentLoop
       transition: state.iteration === 0 ? 'initial' : 'next_turn',
       iteration:  state.iteration + 1,
     });
-    yield { type: 'iteration', n: state.iteration, state };
+    yield { type: 'loop_iteration', n: state.iteration, state };
 
     executor.reset();
 
@@ -94,51 +116,49 @@ export async function* agentLoop(input: AgentLoopInput): AsyncIterable<AgentLoop
     const thinkingByIndex = new Map<number, string>();
     const toolUseByIndex  = new Map<number, AssistantBlock & { type: 'tool_use' }>();
 
+    // Inject scratchpad context as an ephemeral user message before each LLM
+    // call — not persisted into messages[]. Lets the main agent see what
+    // sub-agents wrote without the summary accumulating across iterations.
+    const scratchpadCtx = getScratchpadContext?.();
+    const effectiveMessages: LlmMessage[] = scratchpadCtx
+      ? [...messages, { role: 'user', content: scratchpadCtx }]
+      : messages;
+
     const stream = llm.stream({
       providerId, model,
-      messages,
+      messages:   effectiveMessages,
       tools:      policy.toolDefs(),
       toolChoice: 'auto',
       signal,
     });
 
     for await (const chunk of stream) {
-      while (pendingToolEvents.length > 0) yield pendingToolEvents.shift()!;
+      // Drain relay events between LLM chunks — tools may have fired concurrently.
+      while (pendingRelayEvents.length > 0) {
+        yield { type: 'loop_relay', ev: pendingRelayEvents.shift()! };
+      }
 
       switch (chunk.type) {
-        case 'text_delta': {
-          const { cleaned, events: emotionEvs } = emotion
-            ? emotion.processChunk(chunk.delta, 'loop', sessionId)
-            : { cleaned: chunk.delta, events: [] };
-
-          if (cleaned) {
-            textByIndex.set(chunk.blockIndex, (textByIndex.get(chunk.blockIndex) ?? '') + cleaned);
-            yield { type: 'text_delta', delta: cleaned, blockIndex: chunk.blockIndex };
-          }
-          for (const ev of emotionEvs) {
-            // Emotion events are EmaStreamEvent — the caller (engine.ts) handles
-            // them via a translateEvent() wrapper. We can't yield them here
-            // because AgentLoopEvent and EmaStreamEvent are different types.
-            // engine.ts passes emotion separately and handles emotion events
-            // by processing them outside the loop. Skip for subagents (no emotion).
-          }
+        case 'text_delta':
+          textByIndex.set(chunk.blockIndex, (textByIndex.get(chunk.blockIndex) ?? '') + chunk.delta);
+          yield { type: 'loop_text_delta', delta: chunk.delta, blockIndex: chunk.blockIndex };
           break;
-        }
 
         case 'thinking_delta':
           thinkingByIndex.set(chunk.blockIndex, (thinkingByIndex.get(chunk.blockIndex) ?? '') + chunk.delta);
-          yield { type: 'thinking_delta', delta: chunk.delta, blockIndex: chunk.blockIndex };
+          yield { type: 'loop_thinking_delta', delta: chunk.delta, blockIndex: chunk.blockIndex };
           break;
 
         case 'tool_use_delta':
-          yield { type: 'tool_call_partial', callId: chunk.callId, name: chunk.name, argsDelta: chunk.argsDelta, blockIndex: chunk.blockIndex };
+          yield { type: 'loop_tool_partial', callId: chunk.callId, name: chunk.name, argsDelta: chunk.argsDelta, blockIndex: chunk.blockIndex };
           break;
 
         case 'tool_use_complete':
           toolUseByIndex.set(chunk.blockIndex, {
             type: 'tool_use', id: chunk.callId, name: chunk.name, args: chunk.args,
           });
-          yield { type: 'tool_call_complete', callId: chunk.callId, name: chunk.name, args: chunk.args, blockIndex: chunk.blockIndex };
+          yield { type: 'loop_tool_complete', callId: chunk.callId, name: chunk.name, args: chunk.args, blockIndex: chunk.blockIndex };
+          // Start executing immediately — concurrent-safe tools run in parallel.
           executor.addTool(chunk.blockIndex, chunk.callId, chunk.name, chunk.args);
           break;
 
@@ -148,82 +168,80 @@ export async function* agentLoop(input: AgentLoopInput): AsyncIterable<AgentLoop
       }
     }
 
-    // Flush emotion tail
-    if (emotion) {
-      const { cleaned: tail } = emotion.flush('loop', sessionId);
-      if (tail) {
-        const textIdx = textByIndex.size > 0 ? Math.min(...textByIndex.keys()) : 0;
-        textByIndex.set(textIdx, (textByIndex.get(textIdx) ?? '') + tail);
-        yield { type: 'text_delta', delta: tail, blockIndex: textIdx };
-      }
-    }
-
     const fullText = [...textByIndex.entries()]
       .sort(([a], [b]) => a - b)
       .map(([, t]) => t)
       .join('');
 
-    // ── End condition: no tool calls ─────────────────────────────────────────
-    if (toolUseByIndex.size === 0) {
-      while (pendingToolEvents.length > 0) yield pendingToolEvents.shift()!;
+    // Signal LLM stream end — engine flushes emotion + fires afterLlmComplete.
+    yield { type: 'loop_llm_complete' };
 
-      // Persist final assistant message into messages[] for the caller
-      const blockMap = new Map<number, AssistantBlock>();
-      for (const [idx, text]     of textByIndex)     blockMap.set(idx, { type: 'text', text });
-      for (const [idx, thinking] of thinkingByIndex) blockMap.set(idx, { type: 'thinking', thinking });
-      const allBlocks = [...blockMap.entries()].sort(([a], [b]) => a - b).map(([, b]) => b);
-      messages.push({ role: 'assistant', content: allBlocks });
+    // ── End condition: no tool calls → done ──────────────────────────────────
+    if (toolUseByIndex.size === 0) {
+      const blockMap = buildBlockMap(textByIndex, thinkingByIndex, new Map());
+      messages.push({ role: 'assistant', content: blockMap });
 
       state = advanceState(state, { phase: 'done', transition: 'no_tool_calls' });
       yield { type: 'loop_done', fullText, state };
       return;
     }
 
-    // ── ACT: drain tool events and wait for all tools ────────────────────────
+    // ── ACT: wait for all tools, draining relay events as they arrive ────────
     state = advanceState(state, { phase: 'acting', transition: 'next_turn' });
 
-    while (!executor.allDone() || pendingToolEvents.length > 0) {
-      while (pendingToolEvents.length > 0) {
-        const ev = pendingToolEvents.shift()!;
-        yield ev;
+    while (!executor.allDone() || pendingRelayEvents.length > 0) {
+      while (pendingRelayEvents.length > 0) {
+        yield { type: 'loop_relay', ev: pendingRelayEvents.shift()! };
       }
       if (executor.allDone()) break;
 
+      // Install resolver BEFORE re-checking — avoids TOCTOU deadlock where the
+      // last tool finishes between allDone() and the await assignment.
       const parked = new Promise<void>(r => { wakeUp = r; });
-      if (executor.allDone() || pendingToolEvents.length > 0) {
-        wakeUp = null;
-        continue;
-      }
+      if (executor.allDone() || pendingRelayEvents.length > 0) { wakeUp = null; continue; }
       await parked;
     }
-
-    // Rebuild allBlocks including tool_use
-    const blockMap = new Map<number, AssistantBlock>();
-    for (const [idx, text]     of textByIndex)     blockMap.set(idx, { type: 'text', text });
-    for (const [idx, thinking] of thinkingByIndex) blockMap.set(idx, { type: 'thinking', thinking });
-    for (const [idx, b]        of toolUseByIndex)  blockMap.set(idx, b);
-    const allBlocks = [...blockMap.entries()].sort(([a], [b]) => a - b).map(([, b]) => b);
+    // Final relay drain after drain-wait exits.
+    while (pendingRelayEvents.length > 0) {
+      yield { type: 'loop_relay', ev: pendingRelayEvents.shift()! };
+    }
 
     const resultBlocks: ToolResultBlock[] = executor.getResults();
 
-    // Append to messages[] (mutable — caller's array, or fork-shared array)
-    messages.push({ role: 'assistant', content: allBlocks.filter(b => b.type !== 'thinking') });
+    // Persist round: assistant (tool_use) + user (tool_result) into messages[].
+    const allBlocks    = buildBlockMap(textByIndex, thinkingByIndex, toolUseByIndex);
+    const replayBlocks = allBlocks.filter(b => b.type !== 'thinking');
+    messages.push({ role: 'assistant', content: replayBlocks });
     messages.push({ role: 'user', content: resultBlocks as UserBlock[] });
 
+    // Signal engine to persist tool results to session DB.
+    yield { type: 'loop_tool_results', results: resultBlocks, fullText };
+
     // ── Circuit breaker ──────────────────────────────────────────────────────
-    if (state.iteration >= input.maxIterations) {
-      const reason = `max iterations (${input.maxIterations}) reached`;
+    if (state.iteration >= maxIterations) {
+      const reason = `max iterations (${maxIterations}) reached`;
       state = advanceState(state, { phase: 'done', transition: 'max_iterations' });
-      yield { type: 'breaker_tripped', reason };
+      yield { type: 'loop_breaker', reason };
       yield { type: 'loop_done', fullText, state };
       return;
     }
-
-    // Next preprocessing pass happens at the top of the while loop.
-    // (memory's beforeLlm hook is triggered by engine.ts before each LLM call,
-    //  not here — keeps loop.ts free of hook/session deps.)
   }
-
-  // Aborted path
-  yield { type: 'loop_done', fullText: '', state };
 }
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+function buildBlockMap(
+  textByIndex:    Map<number, string>,
+  thinkingByIndex:Map<number, string>,
+  toolUseByIndex: Map<number, AssistantBlock & { type: 'tool_use' }>,
+): AssistantBlock[] {
+  const blockMap = new Map<number, AssistantBlock>();
+  for (const [idx, text]     of textByIndex)     blockMap.set(idx, { type: 'text', text });
+  for (const [idx, thinking] of thinkingByIndex) blockMap.set(idx, { type: 'thinking', thinking });
+  for (const [idx, b]        of toolUseByIndex)  blockMap.set(idx, b);
+  return [...blockMap.entries()].sort(([a], [b]) => a - b).map(([, b]) => b);
+}
+
+// ── Re-export types needed by callers ────────────────────────────────────────
+
+export type { LoopState };

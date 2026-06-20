@@ -51,6 +51,8 @@ export { subagentTool } from './tools/subagent.js';
 export type { SubagentResult } from './tools/subagent.js';
 export type { ISubagentSpawner, SubagentSpawnOpts } from '@ema-agent/tool';
 
+export { scratchpadWriteTool, scratchpadReadTool, scratchpadListTool, scratchpadDeleteTool, scratchpadClearAllTool } from './tools/scratchpad.js';
+
 // ── Registration ──────────────────────────────────────────────────────────────
 
 import { fsReadTool } from './tools/fs-read.js';
@@ -69,6 +71,7 @@ import { artifactWriteTool, artifactReadTool, artifactListTool } from './tools/a
 import { mcpCallTool } from './tools/mcp-call.js';
 import { skillCallTool } from './tools/skill-call.js';
 import { subagentTool } from './tools/subagent.js';
+import { scratchpadWriteTool, scratchpadReadTool, scratchpadListTool, scratchpadDeleteTool, scratchpadClearAllTool } from './tools/scratchpad.js';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const ALL_BUILTIN_TOOLS: BuiltTool<any, any>[] = [
@@ -91,6 +94,11 @@ const ALL_BUILTIN_TOOLS: BuiltTool<any, any>[] = [
   mcpCallTool,
   skillCallTool,
   subagentTool,
+  scratchpadWriteTool,
+  scratchpadReadTool,
+  scratchpadListTool,
+  scratchpadDeleteTool,
+  scratchpadClearAllTool,
 ];
 
 /** Tools that require a physical OS-level sandbox to be safely exposed. */

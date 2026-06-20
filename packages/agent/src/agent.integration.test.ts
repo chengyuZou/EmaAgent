@@ -61,7 +61,6 @@ function makeSessionStore() {
         blocks:      input.blocks as Message['blocks'],
         interrupted: false,
         createdAt:   Date.now(),
-        meta:        {},
       };
       messages.push(msg);
       return msg;
@@ -80,6 +79,7 @@ function makeTurn(id = 'turn-1'): Turn {
   return {
     id:                id as TurnId,
     sessionId:         'session-1' as SessionId,
+    branchId:          null,
     mode:              'agent',
     status:            'running',
     userInput:         '',
@@ -91,7 +91,6 @@ function makeTurn(id = 'turn-1'): Turn {
     usageInputTokens:  0,
     usageOutputTokens: 0,
     costUsd:           0,
-    meta:              {},
   };
 }
 

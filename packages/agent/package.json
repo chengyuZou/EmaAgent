@@ -30,10 +30,11 @@
     "@ema-agent/tool": "workspace:*",
     "@ema-agent/storage": "workspace:*",
     "@ema-agent/sandbox": "workspace:*",
-    "@ema-agent/agent-context": "workspace:*"
+    "@ema-agent/agent-context": "workspace:*",
+    "@ema-agent/token": "workspace:*",
+    "@ema-agent/tool-builtin": "workspace:*"
   },
   "devDependencies": {
-    "@ema-agent/tool-builtin": "workspace:*",
     "@types/node": "^20.0.0",
     "rimraf": "^5.0.0",
     "typescript": "^5.9.3",

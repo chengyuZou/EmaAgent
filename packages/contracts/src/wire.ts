@@ -33,7 +33,6 @@ export interface SessionWire {
   groupLabel:       string | null;
   parentSessionId:  string | null;
   runningTurnCount: number;
-  meta:             Record<string, unknown>;
   lastMode:         TurnMode | null;
   /** Unix-ms timestamp when user last opened this session. Null = never explicitly viewed. */
   lastViewedAt:     number | null;
@@ -92,7 +91,6 @@ export interface TurnWire {
   usageInputTokens:  number;
   usageOutputTokens: number;
   costUsd:           number;
-  meta:              Record<string, unknown>;
 }
 
 /**
@@ -124,6 +122,5 @@ export interface MessageWire {
   blocks:       MessageBlocks;
   interrupted:  boolean;
   attachments?: TurnAttachment[];  // 只在 role='user' 消息上有值（预留，后端暂未填充）
-  meta:         Record<string, unknown>; // 用于 kind='summary' 的压缩元信息，或其他扩展字段
   createdAt:    number;
 }

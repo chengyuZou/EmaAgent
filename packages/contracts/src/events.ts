@@ -19,6 +19,48 @@ export interface ToolError {
   message: string;
 }
 
+/**
+ * High-frequency detail stream inside the subagent_stream envelope.
+ * Mirrors the main agent's event taxonomy — the frontend can render a
+ * mini agent view per sub-agent identical to the main chat panel.
+ *
+ * Card view  → subscribes only to subagent_started/progress/completed/failed/aborted
+ * Detail view → subscribes to subagent_stream filtered by subagentId
+ *
+ * Every member carries the full identity triple (sessionId / subagentId / taskId)
+ * so that events remain self-sufficient when stored, filtered, or replayed
+ * independently of the outer subagent_stream envelope. Multiple sessions can
+ * produce concurrent sub-agent streams on one SSE channel and each event is
+ * unambiguously addressable.
+ *
+ *   sessionId  — which user session this belongs to
+ *   subagentId — the sub-agent's identity (also its internal turnId)
+ *   taskId     — AgentTaskStore task ID; absent until sub-agents are wired into
+ *                the task journal (V1.5); optional so the type is forward-compatible
+ */
+export type SubagentInnerEvent =
+  /** New LLM iteration starting — heartbeat with timing and cumulative state. */
+  | { type: 'iteration';
+      sessionId: SessionId; subagentId: string; taskId?: string;
+      n: number; elapsedMs: number }
+  /** Streaming assistant text chunk. */
+  | { type: 'text_delta';
+      sessionId: SessionId; subagentId: string; taskId?: string;
+      delta: string }
+  /** Streaming reasoning/thinking chunk (DeepSeek-R1, extended thinking). */
+  | { type: 'reasoning_delta';
+      sessionId: SessionId; subagentId: string; taskId?: string;
+      delta: string }
+  /** Tool call dispatched — args may be large; truncate before rendering. */
+  | { type: 'tool_call';
+      sessionId: SessionId; subagentId: string; taskId?: string;
+      callId: string; name: string; args: unknown; iteration: number }
+  /** Tool call resolved — excerpt capped at ~500 chars; bytes = original size. */
+  | { type: 'tool_result';
+      sessionId: SessionId; subagentId: string; taskId?: string;
+      callId: string; name: string; excerpt: string; bytes: number;
+      isError: boolean; error?: ToolError; durationMs: number }
+
 export interface StageCue {
   motion?: string;
   expression?: string;
@@ -184,14 +226,58 @@ export type EmaStreamEvent =
   | { type: 'agent_iteration';     sessionId: SessionId; n: number }
   | { type: 'agent_breaker_tripped'; sessionId: SessionId; reason: string }
 
-  // Sub-agent (V1.5 — events reserved now so the frontend bubble system can
-  // plug in without a contracts migration later). The runtime that spawns
-  // sub-agents is not implemented in V1; the subagent tool stays a stub.
-  | { type: 'subagent_started';   sessionId: SessionId; subagentId: string; parentTurnId: TurnId; description?: string; promptExcerpt: string }
-  | { type: 'subagent_progress';  sessionId: SessionId; subagentId: string; iteration: number; lastTool?: string }
-  | { type: 'subagent_completed'; sessionId: SessionId; subagentId: string; outputExcerpt: string; stats: TurnStats }
-  | { type: 'subagent_failed';    sessionId: SessionId; subagentId: string; error: string }
-  | { type: 'subagent_aborted';   sessionId: SessionId; subagentId: string; reason: string }
+  // ── Sub-agent dashboard events ────────────────────────────────────────────────
+  //
+  // All emitted by SubagentSpawner (not by the tool) so model/timing/usage are
+  // available. subagentId doubles as the internal turnId for the sub-agent run.
+  //
+  // Card-view events — low frequency, one per lifecycle transition:
+  | {
+      type:           'subagent_started';
+      sessionId:      SessionId;
+      subagentId:     string;    // = internal turnId of the sub-agent
+      parentTurnId:   TurnId;
+      description?:   string;
+      model:          string;    // resolved model (parent model or override)
+      promptExcerpt:  string;    // first 200 chars
+      startedAtMs:    number;    // epoch ms — client uses for elapsed timer
+    }
+  | {
+      type:          'subagent_progress';
+      sessionId:     SessionId;
+      subagentId:    string;
+      iteration:     number;
+      elapsedMs:     number;     // ms since subagent_started
+      toolCallCount: number;     // total tool calls fired so far
+    }
+  | {
+      type:           'subagent_completed';
+      sessionId:      SessionId;
+      subagentId:     string;
+      outputExcerpt:  string;    // first 200 chars of final text
+      iterationCount: number;
+      toolCallCount:  number;
+      stats:          TurnStats; // inputTokens, outputTokens, costUsd, durationMs
+    }
+  | {
+      type:        'subagent_failed';
+      sessionId:   SessionId;
+      subagentId:  string;
+      error:       string;
+      atIteration: number;       // which iteration the error occurred in
+      elapsedMs:   number;
+    }
+  | {
+      type:       'subagent_aborted';
+      sessionId:  SessionId;
+      subagentId: string;
+      reason:     string;
+      elapsedMs:  number;
+    }
+  //
+  // Detail-stream envelope — high frequency, subscribe only when panel is open.
+  // subagentId routes the inner event to the correct detail panel.
+  | { type: 'subagent_stream'; sessionId: SessionId; subagentId: string; ev: SubagentInnerEvent }
 
   // Provider health
   | {

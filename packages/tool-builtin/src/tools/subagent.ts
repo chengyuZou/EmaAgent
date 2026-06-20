@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { buildTool } from '@ema-agent/tool';
 import type { ToolExecutionContext, ISubagentSpawner } from '@ema-agent/tool';
@@ -21,7 +22,7 @@ const inputSchema = z.object({
   description: z
     .string()
     .optional()
-    .describe('Short description of this sub-agent\'s role (shown in logs and UI).'),
+    .describe('Short description of this sub-agent\'s role (shown in the dashboard and logs).'),
 });
 
 type SubagentInput = z.infer<typeof inputSchema>;
@@ -62,12 +63,14 @@ The sub-agent:
       );
     }
 
+    // Pre-allocate the ID so the spawner can emit subagent_started before blocking.
+    // All dashboard events (started/progress/stream/completed/failed/aborted) are
+    // emitted by the spawner — it has model, timing, and usage info the tool lacks.
+    const subagentId = randomUUID();
+
     return spawner.spawn(
       input.prompt,
-      {
-        model: input.model,
-        description: input.description,
-      },
+      { model: input.model, description: input.description, subagentId },
       ctx.signal,
     );
   },
