@@ -89,6 +89,8 @@ export class Orchestrator {
       buildAsk:          bindings.buildAskForTurn,
       askUserRegistry:   bindings.askUserRegistry,
       artifactStore:     bindings.artifactStore,
+      mcpClient:         bindings.mcpBridge,
+      skillRunner:       bindings.skillBridge,
       getContextStores:  bindings.getContextStores,
       taskStore:         bindings.taskStore,
       dataDir:           bindings.activeDataDir,

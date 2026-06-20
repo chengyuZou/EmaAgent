@@ -42,7 +42,7 @@ import type { EmaStreamEvent }      from '@ema-agent/contracts';
 import { ToolRegistry }        from '@ema-agent/tool';
 import { registerBuiltinTools } from '@ema-agent/tool-builtin';
 import { detectBackend, CommandRunner } from '@ema-agent/sandbox';
-import type { ICommandRunner }     from '@ema-agent/tool';
+import type { ICommandRunner, IMcpClientBridge, ISkillRunner } from '@ema-agent/tool';
 import type { SessionId }          from '@ema-agent/contracts';
 import {
   AgentFileStateStore, AgentToolResultStore, ToolResultCleaner,
@@ -150,6 +150,10 @@ export interface AppBindings {
   artifactStore:    ArtifactStore;
   attachmentStore:  AttachmentStore;
   mcpRegistry:      McpRegistry;
+  /** Thin adapter satisfying IMcpClientBridge — delegates to mcpRegistry.callTool(). */
+  mcpBridge:        IMcpClientBridge;
+  /** Thin adapter satisfying ISkillRunner — looks up skill body from skillStore. */
+  skillBridge:      ISkillRunner;
   skillStore:     SkillStore;
   skillRunner:    SkillRunner;
   skillInstaller: SkillInstaller;
@@ -235,7 +239,12 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
     process.env['AGEN_UNSAFE_SHELL'] !== '1';
 
   const tools = new ToolRegistry();
-  registerBuiltinTools(tools, { disableExecuteTools });
+  registerBuiltinTools(tools, {
+    disableExecuteTools,
+    hasSubagentBridge: true,   // SubagentSpawner wired inside AgentEngine per turn
+    hasMcpBridge:      true,   // mcpBridge adapter injected into toolCtx
+    hasSkillBridge:    true,   // skillBridge adapter injected into toolCtx
+  });
 
   // Per-session command runner — memoised to avoid rebuilding SandboxConfig
   // on every turn (detectBackend + stat on bare-repo files is wasteful).
@@ -325,11 +334,26 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
     tools,
     mcpStdioGate,
   );
+  // Adapter: expose McpRegistry as IMcpClientBridge for mcp_call tool injection.
+  const mcpBridge: IMcpClientBridge = {
+    call: (server, tool, args) => mcpRegistry.callTool(server, tool, args),
+  };
 
   // ── Skills ───────────────────────────────────────────────────────────────────
   const skillStore     = new SkillStore(new SkillsRepo(profileDb.sqlite));
   const skillRunner    = new SkillRunner(skillStore, hooks);
   const skillInstaller = new SkillInstaller(skillStore);
+  // Adapter: expose SkillStore as ISkillRunner for skill_call tool injection.
+  // Returns the skill's body (prompt template) as the tool result — the calling
+  // LLM reads the instructions and acts on them. LLM sub-call execution is V1.5.
+  const skillBridge: ISkillRunner = {
+    run: async (skillName, args) => {
+      const skill = skillStore.findByName(skillName);
+      if (!skill) throw new Error(`Skill "${skillName}" not found`);
+      if (!skill.enabled) throw new Error(`Skill "${skillName}" is disabled`);
+      return args ? `${skill.manifest.body}\n\nArguments: ${args}` : skill.manifest.body;
+    },
+  };
 
   // ── Knowledge base ───────────────────────────────────────────────────────────
   const kb = new KnowledgeClient({
@@ -359,8 +383,8 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
     modelBindings, providerLlmModels, providerEmbedModels,
     providerRerankModels, providerTtsModels, providerSttModels,
     artifactStore, attachmentStore,
-    mcpRegistry,
-    skillStore, skillRunner, skillInstaller,
+    mcpRegistry, mcpBridge,
+    skillStore, skillRunner, skillInstaller, skillBridge,
     kb,
   };
 }
