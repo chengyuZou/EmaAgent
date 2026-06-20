@@ -90,6 +90,8 @@ export class Orchestrator {
       askUserRegistry:   bindings.askUserRegistry,
       artifactStore:     bindings.artifactStore,
       getContextStores:  bindings.getContextStores,
+      taskStore:         bindings.taskStore,
+      dataDir:           bindings.activeDataDir,
     });
   }
 
@@ -98,6 +100,11 @@ export class Orchestrator {
     const sessionId = this.activeTurns.get(turnId as string);
     if (!sessionId) return;
     this.bindings.session.abortTurn(sessionId, turnId);
+  }
+
+  /** Cancel a single sub-agent without aborting the parent turn. No-op if not found. */
+  abortSubagent(turnId: TurnId, subagentId: string): void {
+    this.agent.abortSubagent(turnId as string, subagentId);
   }
 
   async run(request: TurnRequest): Promise<TurnResult> {

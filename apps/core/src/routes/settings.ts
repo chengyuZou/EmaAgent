@@ -70,12 +70,15 @@ const DEFAULT_EVENT_DISPLAY: Record<string, EventDisplayConfig> = {
   provider_health_changed:      { enabled: true,  color: '#0ea5e9', durationMs: 3000 },
   system_warning:               { enabled: true,  color: '#f59e0b', durationMs: 5000 },
 
-  // Sub-agent (V1.5 — events reserved)
+  // Sub-agent dashboard
   subagent_started:             { enabled: true,  color: '#8b5cf6', durationMs: null },
   subagent_progress:            { enabled: false, color: '#8b5cf6', durationMs: 1500 },
   subagent_completed:           { enabled: true,  color: '#22c55e', durationMs: 4000 },
   subagent_failed:              { enabled: true,  color: '#ef4444', durationMs: 5000 },
   subagent_aborted:             { enabled: true,  color: '#94a3b8', durationMs: 3000 },
+  // High-frequency detail stream — disabled in toast/notification by default;
+  // frontend subscribes to subagent_stream directly for the detail panel.
+  subagent_stream:              { enabled: false, color: '#8b5cf6', durationMs: null },
 
   // Agent
   agent_iteration:              { enabled: false, color: '#64748b', durationMs: 1000 },

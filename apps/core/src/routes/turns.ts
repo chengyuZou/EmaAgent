@@ -268,6 +268,17 @@ export function turnsRoute(bindings: AppBindings): Hono {
     });
   });
 
+  // ── DELETE /api/turns/:turnId/subagents/:subagentId ───────────────────────
+  //
+  // Cancel a single sub-agent without aborting the parent turn.
+  // No-op (returns 200) if the subagentId is not currently active.
+  app.delete('/:turnId/subagents/:subagentId', (c) => {
+    const turnId     = asTurnId(c.req.param('turnId'));
+    const subagentId = c.req.param('subagentId');
+    orchestrator.abortSubagent(turnId, subagentId);
+    return c.json({ ok: true });
+  });
+
   // ── POST /api/turns/:turnId/ask-user/:promptId/respond ─────────────────────
   //
   // Resolves a pending ask_user prompt. The tool awaits a Promise stored in

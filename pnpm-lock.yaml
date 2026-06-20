@@ -37,6 +37,9 @@ importers:
       '@ema-agent/agent-context':
         specifier: workspace:*
         version: link:../../packages/agent-context
+      '@ema-agent/agent-task':
+        specifier: workspace:*
+        version: link:../../packages/agent-task
       '@ema-agent/artifact':
         specifier: workspace:*
         version: link:../../packages/artifact
@@ -252,13 +255,16 @@ importers:
       '@ema-agent/storage':
         specifier: workspace:*
         version: link:../storage
+      '@ema-agent/token':
+        specifier: workspace:*
+        version: link:../token
       '@ema-agent/tool':
         specifier: workspace:*
         version: link:../tools
-    devDependencies:
       '@ema-agent/tool-builtin':
         specifier: workspace:*
         version: link:../tool-builtin
+    devDependencies:
       '@types/node':
         specifier: ^20.0.0
         version: 20.19.39
@@ -968,6 +974,9 @@ importers:
       '@ema-agent/permission':
         specifier: workspace:*
         version: link:../permission
+      '@ema-agent/token':
+        specifier: workspace:*
+        version: link:../token
       '@ema-agent/tool':
         specifier: workspace:*
         version: link:../tools

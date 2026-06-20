@@ -47,6 +47,7 @@ import type { SessionId }          from '@ema-agent/contracts';
 import {
   AgentFileStateStore, AgentToolResultStore, ToolResultCleaner,
 } from '@ema-agent/agent-context';
+import { AgentTaskStore } from '@ema-agent/agent-task';
 import { MemoryPlanner } from '@ema-agent/memory';
 import {
   KnowledgeClient, KnowledgeStore,
@@ -129,6 +130,8 @@ export interface AppBindings {
   };
   /** Sweeps offloaded tool-result files — called by background tick. */
   toolResultCleaner: ToolResultCleaner;
+  /** Cross-session agent task registry — used for crash recovery and task visibility. */
+  taskStore: AgentTaskStore;
 
   // Memory subsystem
   memory: MemoryPlanner;
@@ -275,6 +278,7 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
     return stores;
   };
   const toolResultCleaner = new ToolResultCleaner(sessionsDir);
+  const taskStore = new AgentTaskStore();
 
   // ── System event bus ────────────────────────────────────────────────────────
   const systemBus = new SystemEventBus();
@@ -349,7 +353,7 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
     tts, audioArchive, stt, vision,
     permission, permissionPrompts, askUserRegistry, tools, buildAskForTurn, getCommandRunner,
     invalidateSessionRuntime,
-    getContextStores, toolResultCleaner,
+    getContextStores, toolResultCleaner, taskStore,
     memory,
     systemBus,
     modelBindings, providerLlmModels, providerEmbedModels,

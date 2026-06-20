@@ -46,6 +46,7 @@
     "@ema-agent/artifact": "workspace:*",
     "@ema-agent/attachment": "workspace:*",
     "@ema-agent/agent-context": "workspace:*",
+    "@ema-agent/agent-task": "workspace:*",
     "@ema-agent/skill":    "workspace:*",
     "@ema-agent/mcp": "workspace:*",
     "@hono/node-server": "^1.14.3",

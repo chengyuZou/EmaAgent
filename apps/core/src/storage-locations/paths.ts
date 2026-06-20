@@ -106,6 +106,31 @@ export function ensureSessionLayout(dataDir: string, sessionId: string): void {
   fs.mkdirSync(sessionArtifactsDirFor(dataDir, sessionId), { recursive: true });
 }
 
+// ── Turn-scoped scratchpad ────────────────────────────────────────────────────
+//
+// Temporary shared storage for the main agent and its sub-agents within one
+// turn. Each key maps to a file; the entire directory is deleted on turn end.
+//
+// Layout:
+//   {dataDir}/sessions/{sessionId}/scratchpad/{turnId}/{key}
+
+export function scratchpadTurnDir(dataDir: string, sessionId: string, turnId: string): string {
+  return path.join(sessionDirFor(dataDir, sessionId), 'scratchpad', turnId);
+}
+
+export function ensureScratchpadDir(dataDir: string, sessionId: string, turnId: string): string {
+  const dir = scratchpadTurnDir(dataDir, sessionId, turnId);
+  fs.mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
+export function removeScratchpadDir(dataDir: string, sessionId: string, turnId: string): void {
+  const dir = scratchpadTurnDir(dataDir, sessionId, turnId);
+  if (fs.existsSync(dir)) {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+}
+
 /**
  * Delete the entire session directory tree.
  * Called when a session is permanently deleted.

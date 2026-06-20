@@ -42,7 +42,6 @@ const patchSessionSchema = z.object({
   groupLabel:     z.string().max(100).nullable().optional(),
   workspaceRoots: z.array(z.string().max(500)).max(20).optional(),
   lastMode:       z.enum(['chat', 'narrative', 'agent']).nullable().optional(),
-  lastSubMode:    z.enum(['plan', 'debug', 'full']).nullable().optional(),
 });
 
 const forkSchema = z.object({
@@ -150,7 +149,6 @@ export function sessionsRoute(bindings: AppBindings): Hono {
         groupLabel:     'groupLabel' in body.data ? body.data.groupLabel ?? null : undefined,
         workspaceRoots: body.data.workspaceRoots,
         lastMode:       body.data.lastMode,
-        lastSubMode:    body.data.lastSubMode,
       });
       if (body.data.workspaceRoots !== undefined) {
         // The cached CommandRunner baked the old roots into its sandbox
