@@ -1,0 +1,72 @@
+{
+  "name": "@ema-agent/desktop-ui",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./stores/*": {
+      "import": "./dist/stores/*.js",
+      "types": "./dist/stores/*.d.ts"
+    },
+    "./api/*": {
+      "import": "./dist/api/*.js",
+      "types": "./dist/api/*.d.ts"
+    },
+    "./lib/*": {
+      "import": "./dist/lib/*.js",
+      "types": "./dist/lib/*.d.ts"
+    },
+    "./markdown": {
+      "import": "./dist/markdown/index.js",
+      "types": "./dist/markdown/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsc -p tsconfig.json --watch",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run --passWithNoTests",
+    "clean": "rimraf dist"
+  },
+  "peerDependencies": {
+    "react": "^18.3.0",
+    "react-dom": "^18.3.0"
+  },
+  "dependencies": {
+    "@ema-agent/character-card": "workspace:*",
+    "@ema-agent/contracts": "workspace:*",
+    "@ema-agent/live2d-react": "workspace:*",
+    "@ema-agent/mcp": "workspace:*",
+    "@ema-agent/memory": "workspace:*",
+    "@ema-agent/permission": "workspace:*",
+    "@ema-agent/skill": "workspace:*",
+    "@ema-agent/storage": "workspace:*",
+    "@ema-agent/stt": "workspace:*",
+    "@ema-agent/token": "workspace:*",
+    "@ema-agent/ui": "workspace:*",
+    "@tauri-apps/api": "^2.4.0",
+    "@tauri-apps/plugin-dialog": "^2",
+    "diff": "^9.0.0",
+    "katex": "^0.16.11",
+    "nanoid": "^5.0.0",
+    "react-markdown": "^9.0.1",
+    "rehype-katex": "^7.0.0",
+    "rehype-raw": "^7.0.0",
+    "rehype-sanitize": "^6.0.0",
+    "remark-gfm": "^4.0.0",
+    "remark-math": "^6.0.0",
+    "zustand": "^5.0.2"
+  },
+  "devDependencies": {
+    "@types/diff": "^8.0.0",
+    "@types/react": "^18.3.0",
+    "@types/react-dom": "^18.3.0",
+    "rimraf": "^5.0.0",
+    "typescript": "^5.9.3",
+    "vitest": "^2.0.0"
+  }
+}
