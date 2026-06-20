@@ -4,13 +4,15 @@ import type { LlmToolDef } from '@ema-agent/llm';
 // ── AgentPolicy ───────────────────────────────────────────────────────────────
 
 export class AgentPolicy {
-  private readonly allowed: BuiltTool[];
+  private readonly allowed:      BuiltTool[];
+  private readonly allowedNames: Set<string>;
 
   constructor(
     allTools: BuiltTool[],
     private readonly maxIter = 30,
   ) {
-    this.allowed = allTools;
+    this.allowed      = allTools;
+    this.allowedNames = new Set(allTools.map(t => t.name));
   }
 
   /** LlmToolDef[] ready to pass straight to LlmRequest.tools. */
@@ -23,7 +25,7 @@ export class AgentPolicy {
 
   /** Returns true if the named tool is permitted under this policy. */
   allows(toolName: string): boolean {
-    return this.allowed.some((t) => t.name === toolName);
+    return this.allowedNames.has(toolName);
   }
 
   maxIterations(): number {

@@ -80,7 +80,7 @@ async function* runTurn(
 
   try {
     emotion.beginTurn(sessionId);
-    clearTodos(sessionId);
+    clearTodos(turnId);
 
     // ── onTurnStart ───────────────────────────────────────────────────────────
     const startResult = await hooks.trigger('onTurnStart', {

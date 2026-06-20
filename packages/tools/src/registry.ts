@@ -114,5 +114,3 @@ export class ToolRegistry {
   }
 }
 
-// Exported for use in tool-builtin's registerBuiltinTools
-export type { AnyBuiltTool };

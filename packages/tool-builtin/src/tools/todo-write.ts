@@ -16,17 +16,19 @@ const todoSchema = z.object({
 
 export type Todo = z.infer<typeof todoSchema>;
 
-// ── In-memory store (per-process, keyed by sessionId) ─────────────────────────
-// AgentEngine resets this at the start of each agent run by calling clearTodos().
+// ── In-memory store (per-process, keyed by turnId) ────────────────────────────
+// Keyed by turnId (not sessionId) so sub-agents — which share the parent's
+// sessionId but carry their own subagentId as turnId — get an isolated list.
+// AgentEngine resets this at turn start by calling clearTodos(turnId).
 
 const store = new Map<string, Todo[]>();
 
-export function getTodos(sessionId: string): Todo[] {
-  return store.get(sessionId) ?? [];
+export function getTodos(turnId: string): Todo[] {
+  return store.get(turnId) ?? [];
 }
 
-export function clearTodos(sessionId: string): void {
-  store.delete(sessionId);
+export function clearTodos(turnId: string): void {
+  store.delete(turnId);
 }
 
 // ── Input schema ──────────────────────────────────────────────────────────────
@@ -71,7 +73,7 @@ Priority values: \`high\` | \`medium\` | \`low\``,
 
   async execute(input: TodoWriteInput, ctx: ToolExecutionContext): Promise<TodoWriteResult> {
     const { todos } = input;
-    store.set(ctx.sessionId, todos);
+    store.set(ctx.turnId, todos);
 
     // Emit a system_warning as a lightweight "todos updated" signal so the
     // frontend can display progress without a dedicated event type.

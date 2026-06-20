@@ -37,6 +37,7 @@ type SubagentInput = z.infer<typeof inputSchema>;
 
 // ── Output type ───────────────────────────────────────────────────────────────
 
+// TODO 加一个时间算了? 此外改为status 里面放Token+时间
 export interface SubagentResult {
   output: string;
   usage: { inputTokens: number; outputTokens: number };

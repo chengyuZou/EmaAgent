@@ -20,4 +20,4 @@ export type {
 
 export { buildTool } from './build-tool.js';
 export { ToolRegistry, ToolRegistryError, ToolInputError } from './registry.js';
-export { spawnProcess } from './spawn.js';
+export { spawnProcess } from './process-spawn.js';

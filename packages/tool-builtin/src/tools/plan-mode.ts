@@ -3,6 +3,11 @@ import { buildTool } from '@ema-agent/tool';
 import type { ToolExecutionContext } from '@ema-agent/tool';
 import type { EmaStreamEvent } from '@ema-agent/contracts';
 
+// Stub: plan_enter / plan_exit are text-only signals to the frontend.
+// No permission gating, no tool blocking, no approval state machine.
+// Full PlanModeController (strips dangerous permissions, approval gate,
+// circuit breaker) is deferred to V1.5. See CLAUDE.md §6 for design.
+
 // ── Shared output type ────────────────────────────────────────────────────────
 
 export interface PlanModeResult {
