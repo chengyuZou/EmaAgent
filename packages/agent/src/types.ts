@@ -3,7 +3,7 @@ import type { LlmRouter, LlmContentPart } from '@ema-agent/llm';
 import type { SessionStore, Turn } from '@ema-agent/session';
 import type { HookBus } from '@ema-agent/hook';
 import type { EmotionEngine } from '@ema-agent/emotion';
-import type { ICommandRunner, IArtifactStore, ToolRegistry } from '@ema-agent/tool';
+import type { ICommandRunner, IArtifactStore, IMcpClientBridge, ISkillRunner, ToolRegistry } from '@ema-agent/tool';
 import type { PermissionEngine, AskPermissionFn } from '@ema-agent/permission';
 import type { AgentFileStateStore, AgentToolResultStore } from '@ema-agent/agent-context';
 
@@ -56,6 +56,10 @@ export interface AgentDeps {
   askUserRegistry?: AskUserRegistryLike;
   /** Persistent artifact store — injected so artifact_write/read/list persist across turns. */
   artifactStore?: IArtifactStore;
+  /** MCP client bridge — injected so mcp_call tool can dispatch to connected MCP servers. */
+  mcpClient?: IMcpClientBridge;
+  /** Skill runner bridge — injected so skill_call tool can invoke registered skills. */
+  skillRunner?: ISkillRunner;
   /**
    * Per-session context store factory. Returns the file-state and tool-result
    * stores for a given session, creating them on first call and caching.

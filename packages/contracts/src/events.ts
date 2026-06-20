@@ -136,7 +136,7 @@ export type EmaStreamEvent =
   // Tool calls — blockIndex lets the frontend know where in the block list this tool sits
   | { type: 'tool_call_partial';  sessionId: SessionId; blockIndex: number; callId: string; name: string; argsDelta: string }
   | { type: 'tool_call_complete'; sessionId: SessionId; blockIndex: number; callId: string; name: string; args: unknown }
-  | { type: 'tool_result';        sessionId: SessionId; callId: string; output?: unknown; error?: ToolError }
+  | { type: 'tool_result';        sessionId: SessionId; callId: string; name: string; output?: unknown; error?: ToolError; durationMs: number }
 
   // Permission
   // `humanDescription` is an optional plain-language explanation of what the

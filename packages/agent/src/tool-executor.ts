@@ -27,6 +27,7 @@ interface TrackedTool {
   name:              string;
   args:              unknown;
   isConcurrencySafe: boolean;
+  startMs:           number;
   done:              boolean;
   result?:           ToolResultBlock;
   promise?:          Promise<void>;
@@ -91,26 +92,27 @@ export class TurnToolExecutor {
    */
   addTool(blockIndex: number, id: string, name: string, args: unknown): void {
     const { allows, tools, pushEv } = this.opts;
+    const startMs = Date.now();
 
     // ── Synchronous rejection paths (no async needed) ───────────────────────
 
     if (!allows(name)) {
       const msg = `Tool "${name}" is not available in this mode`;
       this.tracked.push({
-        blockIndex, id, name, args, isConcurrencySafe: true, done: true,
+        blockIndex, id, name, args, isConcurrencySafe: true, startMs, done: true,
         result: { type: 'tool_result', toolUseId: id, content: msg, isError: true },
       });
-      pushEv({ type: 'tool_result', sessionId: this.opts.sessionId, callId: id, error: { code: 'policy/denied', message: msg } });
+      pushEv({ type: 'tool_result', sessionId: this.opts.sessionId, callId: id, name, error: { code: 'policy/denied', message: msg }, durationMs: 0 });
       return;
     }
 
     if (!tools.has(name)) {
       const msg = `Unknown tool: "${name}"`;
       this.tracked.push({
-        blockIndex, id, name, args, isConcurrencySafe: true, done: true,
+        blockIndex, id, name, args, isConcurrencySafe: true, startMs, done: true,
         result: { type: 'tool_result', toolUseId: id, content: msg, isError: true },
       });
-      pushEv({ type: 'tool_result', sessionId: this.opts.sessionId, callId: id, error: { code: 'tool/not_found', message: msg } });
+      pushEv({ type: 'tool_result', sessionId: this.opts.sessionId, callId: id, name, error: { code: 'tool/not_found', message: msg }, durationMs: 0 });
       return;
     }
 
@@ -123,10 +125,10 @@ export class TurnToolExecutor {
       const snippet = typeof raw === 'string' ? raw.slice(0, 200) : '';
       const msg = `工具参数解析失败（模型输出可能被截断），请重试或缩短回复长度。${snippet ? `原始片段：${snippet}` : ''}`;
       this.tracked.push({
-        blockIndex, id, name, args, isConcurrencySafe: true, done: true,
+        blockIndex, id, name, args, isConcurrencySafe: true, startMs, done: true,
         result: { type: 'tool_result', toolUseId: id, content: msg, isError: true },
       });
-      pushEv({ type: 'tool_result', sessionId: this.opts.sessionId, callId: id, error: { code: 'tool/args_parse_error', message: msg } });
+      pushEv({ type: 'tool_result', sessionId: this.opts.sessionId, callId: id, name, error: { code: 'tool/args_parse_error', message: msg }, durationMs: 0 });
       return;
     }
 
@@ -134,7 +136,7 @@ export class TurnToolExecutor {
 
     const toolEntry        = tools.get(name);
     const isConcurrencySafe = toolEntry.isConcurrencySafe();
-    const track: TrackedTool = { blockIndex, id, name, args, isConcurrencySafe, done: false };
+    const track: TrackedTool = { blockIndex, id, name, args, isConcurrencySafe, startMs: Date.now(), done: false };
 
     // Snapshot the promises of all tools added before this one.
     // Used by non-concurrent tools to wait for currently-running concurrent-safe ones.
@@ -204,7 +206,7 @@ export class TurnToolExecutor {
       if (!outcome.granted) {
         const reason = `Permission denied: ${outcome.reason}`;
         track.result = { type: 'tool_result', toolUseId: id, content: reason, isError: true };
-        pushEv({ type: 'tool_result', sessionId: this.opts.sessionId, callId: id, error: { code: 'permission/denied', message: reason } });
+        pushEv({ type: 'tool_result', sessionId: this.opts.sessionId, callId: id, name, error: { code: 'permission/denied', message: reason }, durationMs: Date.now() - track.startMs });
         await hooks.trigger('onToolFailure', {
           turnId, sessionId,
           payload: { callId: id, name, error: reason },
@@ -221,7 +223,7 @@ export class TurnToolExecutor {
         output = await tools.dispatch(name, args, toolCtx);
         // Push result event BEFORE await-ing hooks so the engine can yield it
         // immediately. track.done is set in finally after hooks complete.
-        pushEv({ type: 'tool_result', sessionId: this.opts.sessionId, callId: id, output });
+        pushEv({ type: 'tool_result', sessionId: this.opts.sessionId, callId: id, name, output, durationMs: Date.now() - track.startMs });
         await hooks.trigger('afterToolUse', {
           turnId, sessionId,
           payload: { callId: id, name, output },
@@ -230,7 +232,7 @@ export class TurnToolExecutor {
       } catch (err) {
         isError = true;
         output  = (err as Error).message;
-        pushEv({ type: 'tool_result', sessionId: this.opts.sessionId, callId: id, error: { code: 'tool/error', message: output as string } });
+        pushEv({ type: 'tool_result', sessionId: this.opts.sessionId, callId: id, name, error: { code: 'tool/error', message: output as string }, durationMs: Date.now() - track.startMs });
         await hooks.trigger('onToolFailure', {
           turnId, sessionId,
           payload: { callId: id, name, error: err },
@@ -254,7 +256,7 @@ export class TurnToolExecutor {
         if (!track.result) {
           const msg = 'Tool execution failed unexpectedly';
           track.result = { type: 'tool_result', toolUseId: id, content: msg, isError: true };
-          pushEv({ type: 'tool_result', sessionId: this.opts.sessionId, callId: id, error: { code: 'tool/error', message: msg } });
+          pushEv({ type: 'tool_result', sessionId: this.opts.sessionId, callId: id, name, error: { code: 'tool/error', message: msg }, durationMs: Date.now() - track.startMs });
         }
       }
       track.done = true;

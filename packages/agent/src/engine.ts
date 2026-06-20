@@ -149,6 +149,8 @@ async function* runTurn(
         emit:            pushEv,
         commandRunner:   resolvedRunner,
         artifactStore:   deps.artifactStore,
+        mcpClient:       deps.mcpClient,
+        skillRunner:     deps.skillRunner,
         subagentSpawner: spawner,
         scratchpadDir,
         scratchpadAuthor: 'main',

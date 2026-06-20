@@ -54,6 +54,7 @@ export interface BashResult {
   exitCode: number;
   timedOut: boolean;
   truncated: boolean;
+  durationMs: number;
 }
 
 // ── Tool definition ───────────────────────────────────────────────────────────
@@ -100,24 +101,26 @@ Safety rules:
     const shell = process.platform === 'win32' ? 'bash' : '/bin/bash';
     const cwd = ctx.workspaceRoots[0] ?? process.cwd();
     const timeoutMs = Math.min(timeout ?? DEFAULT_TIMEOUT_MS, MAX_TIMEOUT_MS);
+    const startMs = Date.now();
 
     // Delegate to sandbox CommandRunner when available — gets OS-level sandboxing.
     // run_in_background also goes through CommandRunner so it respects sandbox
     // rules and produces a trackable task rather than a detached orphan process.
     if (ctx.commandRunner) {
-      return ctx.commandRunner.run(command, {
+      const result = await ctx.commandRunner.run(command, {
         cwd,
         timeout: run_in_background ? 0 : timeoutMs,
         signal: ctx.signal,
         background: run_in_background,
       });
+      return { ...result, durationMs: Date.now() - startMs };
     }
 
     if (run_in_background) {
       // No CommandRunner — fall back to detached spawn, but only as last resort.
       const { spawn } = await import('node:child_process');
       spawn(shell, ['-c', command], { cwd, stdio: 'ignore', detached: true }).unref();
-      return { stdout: '', stderr: '', exitCode: 0, timedOut: false, truncated: false };
+      return { stdout: '', stderr: '', exitCode: 0, timedOut: false, truncated: false, durationMs: 0 };
     }
 
     return runShell(shell, ['-c', command], cwd, timeoutMs, ctx.signal);
@@ -130,12 +133,14 @@ Safety rules:
  * Thin wrapper kept for backward-compat (powershell.ts imports it).
  * Real implementation lives in @ema-agent/tool spawnProcess.
  */
-export function runShell(
+export async function runShell(
   shell: string,
   args: string[],
   cwd: string,
   timeoutMs: number,
   signal: AbortSignal,
 ): Promise<BashResult> {
-  return spawnProcess(shell, args, cwd, timeoutMs, signal);
+  const startMs = Date.now();
+  const result  = await spawnProcess(shell, args, cwd, timeoutMs, signal);
+  return { ...result, durationMs: Date.now() - startMs };
 }

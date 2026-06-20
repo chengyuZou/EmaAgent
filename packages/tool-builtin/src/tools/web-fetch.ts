@@ -43,6 +43,7 @@ export interface WebFetchResult {
   content: string;
   truncated: boolean;
   totalLength: number;
+  durationMs: number;
 }
 
 // ── Tool definition ───────────────────────────────────────────────────────────
@@ -93,6 +94,7 @@ export const webFetchTool = buildTool<WebFetchInput, WebFetchResult>({
       throw new Error(`Invalid URL: ${url}`);
     }
 
+    const startMs  = Date.now();
     const response = await fetch(url, {
       signal: AbortSignal.any([ctx.signal, AbortSignal.timeout(FETCH_TIMEOUT_MS)]),
       redirect: 'follow',
@@ -113,7 +115,7 @@ export const webFetchTool = buildTool<WebFetchInput, WebFetchResult>({
         `\n[Output truncated: ${totalLength.toLocaleString()} chars → ${max_length.toLocaleString()} chars shown. Use start_index to paginate.]`
       : content.slice(start_index, start_index + max_length);
 
-    return { url, content: sliced, truncated, totalLength };
+    return { url, content: sliced, truncated, totalLength, durationMs: Date.now() - startMs };
   },
 });
 
