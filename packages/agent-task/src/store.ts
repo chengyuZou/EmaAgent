@@ -1,290 +1,139 @@
 import type { AskUserQuestionSpec } from '@ema-agent/contracts';
 import type { AgentTask, TaskStatus } from './types.js';
-import { TranscriptJournal, journalPathFor } from './journal.js';
+import type { AgentTasksRepo, AgentTaskRow } from '@ema-agent/storage';
+
+// ── Row → domain ──────────────────────────────────────────────────────────────
+
+function rowToTask(row: AgentTaskRow): AgentTask {
+  return {
+    id:        row.id,
+    sessionId: row.session_id,
+    turnId:    row.turn_id,
+    parentId:  row.parent_id,
+    status:    row.status as TaskStatus,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    ...(row.pending_prompt_id
+      ? { pendingPromptId: row.pending_prompt_id }
+      : {}),
+    ...(row.pending_questions_json
+      ? { pendingQuestions: JSON.parse(row.pending_questions_json) as AskUserQuestionSpec[] }
+      : {}),
+    ...(row.error ? { error: row.error } : {}),
+  };
+}
 
 // ── AgentTaskStore ────────────────────────────────────────────────────────────
 //
-// Cross-session singleton: every agent turn (root + subagent) registers here.
+// SQL-backed registry for all agent runs (root turns + subagent spawns).
 //
-// Concurrency model: JS is single-threaded. claim() is synchronous — it checks
-// and inserts in the same microtask tick, so no two concurrent awaits can race
-// on the same taskId.
+// Concurrency model: JS is single-threaded; claim() is synchronous inside
+// SQLite's synchronous driver, so no two microtasks race on the same taskId.
 //
-// Cross-session behaviour:
-//   - Each session's turns get independent task entries.
-//   - Two sessions running simultaneously → two separate tasks, no conflict.
-//   - listRunning() lets the UI/orchestrator see all active tasks globally.
-//
-// Crash recovery: every status transition appends a JSONL line before returning.
-// scanAndRecover() reads those files at startup.
+// Crash recovery: at startup call recoverInterrupted() to mark orphaned
+// 'running'/'waiting_user' tasks as 'failed' and surface any 'waiting_user'
+// tasks that need their question widgets re-presented.
 
 export class AgentTaskStore {
-  private readonly tasks   = new Map<string, AgentTask>();
-  private readonly journals = new Map<string, TranscriptJournal>();
+  constructor(private readonly repo: AgentTasksRepo) {}
 
   // ── Claim ─────────────────────────────────────────────────────────────────
 
   /**
-   * Atomically create and register a task. Idempotent: if taskId already exists
-   * (e.g. duplicate RPC), returns the existing task unchanged.
-   *
-   * @param taskId     Unique task id — use turnId for root tasks, UUID for subagents.
-   * @param sessionId  Owning session.
-   * @param turnId     DB turn id, or null for subagent tasks.
-   * @param parentId   Parent task id, or null for root tasks.
-   * @param dataDir    App data directory used to derive the journal path.
+   * Atomically create and register a task. Idempotent: if taskId already
+   * exists (duplicate call) returns the existing row unchanged.
    */
   claim(args: {
     taskId:    string;
     sessionId: string;
     turnId:    string | null;
     parentId:  string | null;
-    dataDir:   string;
   }): AgentTask {
-    const existing = this.tasks.get(args.taskId);
-    if (existing) return existing;
+    const existing = this.repo.findById(args.taskId);
+    if (existing) return rowToTask(existing);
 
-    const jPath   = journalPathFor(args.dataDir, args.sessionId, args.taskId);
-    const journal = new TranscriptJournal(jPath);
-
-    const task: AgentTask = {
-      id:          args.taskId,
-      sessionId:   args.sessionId,
-      turnId:      args.turnId,
-      parentId:    args.parentId,
-      status:      'running',
-      createdAt:   Date.now(),
-      updatedAt:   Date.now(),
-      journalPath: jPath,
-    };
-
-    this.tasks.set(args.taskId, task);
-    this.journals.set(args.taskId, journal);
-
-    journal.append({
-      type:      'task_created',
-      taskId:    task.id,
-      sessionId: task.sessionId,
-      turnId:    task.turnId,
-      parentId:  task.parentId,
-      ts:        task.createdAt,
+    const now = Date.now();
+    this.repo.insert({
+      id:        args.taskId,
+      sessionId: args.sessionId,
+      turnId:    args.turnId,
+      parentId:  args.parentId,
+      createdAt: now,
     });
-    journal.append({ type: 'task_started', ts: task.createdAt });
-
-    return task;
+    return rowToTask(this.repo.findById(args.taskId)!);
   }
 
   // ── Status transitions ────────────────────────────────────────────────────
 
-  /** Transition to waiting_user — persists promptId + questions for crash recovery. */
   waitUser(taskId: string, promptId: string, questions: AskUserQuestionSpec[]): void {
-    const task = this.tasks.get(taskId);
-    if (!task) return;
-    task.status            = 'waiting_user';
-    task.pendingPromptId   = promptId;
-    task.pendingQuestions  = questions;
-    task.updatedAt         = Date.now();
-    this.journals.get(taskId)?.append({
-      type: 'task_waiting_user', promptId, questions, ts: task.updatedAt,
-    });
+    this.repo.waitUser(taskId, promptId, questions, Date.now());
   }
 
-  /** Called when the user submits answers. Clears pending state, resumes loop. */
-  userAnswered(taskId: string, promptId: string): void {
-    const task = this.tasks.get(taskId);
-    if (!task) return;
-    task.status           = 'running';
-    task.pendingPromptId  = undefined;
-    task.pendingQuestions = undefined;
-    task.updatedAt        = Date.now();
-    this.journals.get(taskId)?.append({
-      type: 'task_user_answered', promptId, ts: task.updatedAt,
-    });
-    this.journals.get(taskId)?.append({
-      type: 'task_resumed', ts: task.updatedAt,
-    });
+  userAnswered(taskId: string, _promptId: string): void {
+    this.repo.userAnswered(taskId, Date.now());
   }
 
   complete(taskId: string, stats: { iterations: number; inputTokens: number; outputTokens: number }): void {
-    this._terminal(taskId, 'completed');
-    this.journals.get(taskId)?.append({ type: 'task_completed', ...stats, ts: Date.now() });
+    this.repo.complete(taskId, stats, Date.now());
   }
 
   fail(taskId: string, reason: string): void {
-    this._terminal(taskId, 'failed', reason);
-    this.journals.get(taskId)?.append({ type: 'task_failed', reason, ts: Date.now() });
+    this.repo.fail(taskId, reason, Date.now());
   }
 
   cancel(taskId: string, reason: string): void {
-    this._terminal(taskId, 'cancelled', reason);
-    this.journals.get(taskId)?.append({ type: 'task_cancelled', reason, ts: Date.now() });
+    this.repo.cancel(taskId, reason, Date.now());
   }
 
   // ── Queries ───────────────────────────────────────────────────────────────
 
   get(taskId: string): AgentTask | undefined {
-    return this.tasks.get(taskId);
+    const row = this.repo.findById(taskId);
+    return row ? rowToTask(row) : undefined;
   }
 
   listForSession(sessionId: string): AgentTask[] {
-    return [...this.tasks.values()].filter(t => t.sessionId === sessionId);
+    return this.repo.listForSession(sessionId).map(rowToTask);
   }
 
   listRunning(): AgentTask[] {
-    return [...this.tasks.values()].filter(
-      t => t.status === 'running' || t.status === 'waiting_user',
-    );
+    return this.repo.listRunning().map(rowToTask);
+  }
+
+  // ── Deletion ──────────────────────────────────────────────────────────────
+
+  /** Hard-delete a task and its messages (cascades via FK). */
+  delete(taskId: string): void {
+    this.repo.delete(taskId);
+  }
+
+  /**
+   * Batch-delete all terminal tasks for a session (completed/failed/cancelled).
+   * Returns the count deleted.
+   */
+  clearTerminalForSession(sessionId: string): number {
+    return this.repo.deleteTerminalForSession(sessionId);
   }
 
   // ── Startup crash recovery ────────────────────────────────────────────────
 
   /**
-   * Scan all JSONL files under dataDir, reconstruct task state, and return a
-   * report of interrupted tasks. Called once at app startup before any turn runs.
-   *
-   * Recovery rules:
-   *   status=running      → mark failed (process died mid-loop)
-   *   status=waiting_user → restore pendingPromptId/pendingQuestions so the
-   *                         UI can re-show the question widget
-   *   status=completed/failed/cancelled → load into memory for history queries,
-   *                                       no action needed
+   * Mark orphaned tasks failed; return a summary for startup logging.
+   * 'waiting_user' tasks are left in their state (UI re-presents the widget).
    */
-  recoverInterrupted(dataDir: string): {
-    recovered: AgentTask[];
+  recoverInterrupted(): {
+    recovered:   AgentTask[];
     waitingUser: AgentTask[];
   } {
-    const recovered:   AgentTask[] = [];
-    const waitingUser: AgentTask[] = [];
+    const all = this.repo.listRunning();
 
-    const allJournals = collectJournalPaths(dataDir);
+    const waitingUser = all
+      .filter(r => r.status === 'waiting_user')
+      .map(rowToTask);
 
-    for (const { sessionId, taskId, filePath } of allJournals) {
-      if (this.tasks.has(taskId)) continue; // already loaded
-
-      const journal = new TranscriptJournal(filePath);
-      const entries = journal.readAll();
-      if (entries.length === 0) continue;
-
-      const task = replayJournal(taskId, sessionId, filePath, entries);
-      if (!task) continue;
-
-      this.tasks.set(taskId, task);
-      this.journals.set(taskId, journal);
-
-      if (task.status === 'running') {
-        task.status    = 'failed';
-        task.error     = 'Process terminated unexpectedly';
-        task.updatedAt = Date.now();
-        journal.append({ type: 'task_failed', reason: 'unexpected_shutdown', ts: task.updatedAt });
-        recovered.push(task);
-      } else if (task.status === 'waiting_user') {
-        waitingUser.push(task);
-      }
-    }
+    const stuck = this.repo.markStuckFailed(Date.now());
+    const recovered = stuck.map(rowToTask);
 
     return { recovered, waitingUser };
   }
-
-  // ── Internals ─────────────────────────────────────────────────────────────
-
-  private _terminal(taskId: string, status: Extract<TaskStatus, 'completed' | 'failed' | 'cancelled'>, error?: string): void {
-    const task = this.tasks.get(taskId);
-    if (!task) return;
-    task.status    = status;
-    task.error     = error;
-    task.updatedAt = Date.now();
-  }
-}
-
-// ── Journal replay ────────────────────────────────────────────────────────────
-
-function replayJournal(
-  taskId:    string,
-  sessionId: string,
-  filePath:  string,
-  entries:   ReturnType<TranscriptJournal['readAll']>,
-): AgentTask | null {
-  const created = entries.find(e => e.type === 'task_created');
-  if (!created || created.type !== 'task_created') return null;
-
-  const task: AgentTask = {
-    id:          taskId,
-    sessionId,
-    turnId:      created.turnId,
-    parentId:    created.parentId,
-    status:      'pending',
-    createdAt:   created.ts,
-    updatedAt:   created.ts,
-    journalPath: filePath,
-  };
-
-  for (const e of entries) {
-    task.updatedAt = e.ts;
-    switch (e.type) {
-      case 'task_started':
-        task.status = 'running';
-        break;
-      case 'task_waiting_user':
-        task.status           = 'waiting_user';
-        task.pendingPromptId  = e.promptId;
-        task.pendingQuestions = e.questions;
-        break;
-      case 'task_resumed':
-        task.status           = 'running';
-        task.pendingPromptId  = undefined;
-        task.pendingQuestions = undefined;
-        break;
-      case 'task_completed':
-        task.status = 'completed';
-        break;
-      case 'task_failed':
-        task.status = 'failed';
-        task.error  = e.reason;
-        break;
-      case 'task_cancelled':
-        task.status = 'cancelled';
-        task.error  = e.reason;
-        break;
-    }
-  }
-
-  return task;
-}
-
-// ── JSONL discovery ───────────────────────────────────────────────────────────
-
-import * as fs   from 'node:fs';
-import * as path from 'node:path';
-
-interface JournalRef { sessionId: string; taskId: string; filePath: string }
-
-function collectJournalPaths(dataDir: string): JournalRef[] {
-  const sessionsRoot = path.join(dataDir, '.ema-agent', 'sessions');
-  const refs: JournalRef[] = [];
-
-  let sessionDirs: fs.Dirent[];
-  try {
-    sessionDirs = fs.readdirSync(sessionsRoot, { withFileTypes: true });
-  } catch {
-    return [];
-  }
-
-  for (const sdir of sessionDirs) {
-    if (!sdir.isDirectory()) continue;
-    const sessionId  = sdir.name;
-    const tasksDir   = path.join(sessionsRoot, sessionId, 'tasks');
-    let taskFiles: fs.Dirent[];
-    try {
-      taskFiles = fs.readdirSync(tasksDir, { withFileTypes: true });
-    } catch {
-      continue;
-    }
-    for (const tfile of taskFiles) {
-      if (!tfile.isFile() || !tfile.name.endsWith('.jsonl')) continue;
-      const taskId = tfile.name.slice(0, -'.jsonl'.length);
-      refs.push({ sessionId, taskId, filePath: path.join(tasksDir, tfile.name) });
-    }
-  }
-
-  return refs;
 }

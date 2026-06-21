@@ -121,13 +121,12 @@ export class SubagentSpawner implements ISubagentSpawner {
     this.activeSubagents.set(subagentId, childCtrl);
 
     // ── taskStore: register this sub-agent ────────────────────────────────
-    if (this.deps.taskStore && this.deps.dataDir) {
+    if (this.deps.taskStore) {
       this.deps.taskStore.claim({
         taskId:    subagentId,
         sessionId: this.parentSessionId,
-        turnId:    null,           // sub-agents have no DB turn record
+        turnId:    null,
         parentId:  this.parentTurnId,
-        dataDir:   this.deps.dataDir,
       });
     }
 

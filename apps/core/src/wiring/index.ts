@@ -90,7 +90,7 @@ export function startBackgroundWork(bindings: AppBindings): BackgroundHandle {
   //     to 'failed', restore 'waiting_user' state so the UI can re-present
   //     question widgets that were pending when the process crashed.
   try {
-    const { recovered, waitingUser } = bindings.taskStore.recoverInterrupted(bindings.activeDataDir);
+    const { recovered, waitingUser } = bindings.taskStore.recoverInterrupted();
     if (recovered.length > 0) {
       console.log(`[agent-task] startup: marked ${recovered.length} interrupted task(s) as failed`);
     }

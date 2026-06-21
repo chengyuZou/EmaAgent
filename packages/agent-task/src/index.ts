@@ -1,3 +1,2 @@
-export type { AgentTask, TaskStatus, TaskJournalEntry } from './types.js';
-export { TranscriptJournal, journalPathFor } from './journal.js';
+export type { AgentTask, TaskStatus } from './types.js';
 export { AgentTaskStore } from './store.js';

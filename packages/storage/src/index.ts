@@ -103,6 +103,12 @@ export type { ProviderTtsModelRow, ProviderTtsModelInsert } from './repos/provid
 export { ProviderSttModelsRepo } from './repos/provider-stt-models.js';
 export type { ProviderSttModelRow, ProviderSttModelInsert } from './repos/provider-stt-models.js';
 
+// ── Agent task repos (migration data/008) ────────────────────────────────────
+export { AgentTasksRepo }        from './repos/agent-tasks.js';
+export { AgentTaskMessagesRepo } from './repos/agent-task-messages.js';
+export type { AgentTaskRow, AgentTaskInsert, AgentTaskStatus }           from './repos/agent-tasks.js';
+export type { AgentTaskMessageRow, AgentTaskMessageInsert, AgentTaskMessageRole } from './repos/agent-task-messages.js';
+
 // ── Knowledge-base repos (migration data/004) ─────────────────────────────────
 export { DocumentAssetRepo }   from './repos/document-asset.js';
 export { DocumentChunkRepo }   from './repos/document-chunk.js';

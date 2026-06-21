@@ -18,6 +18,7 @@ import { createSkillsRouter }   from './routes/skills.js';
 import { createMcpRouter }       from './routes/mcp.js';
 import { shellRoute }            from './routes/shell.js';
 import { kbRoute }               from './routes/knowledge-base.js';
+import { agentTasksRoute }       from './routes/agent-tasks.js';
 import type { AppBindings } from './wiring.js';
 
 export function buildServer(bindings: AppBindings): Hono {
@@ -62,6 +63,7 @@ export function buildServer(bindings: AppBindings): Hono {
   app.route('/api',                createSkillsRouter(bindings));
   app.route('/api/mcp',            createMcpRouter(bindings));
   app.route('/api/kb',             kbRoute(bindings));
+  app.route('/api/agent-tasks',    agentTasksRoute(bindings));
 
   // 404 fallback
   app.notFound((c) => c.json({ error: 'not_found' }, 404));

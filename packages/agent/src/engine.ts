@@ -175,10 +175,9 @@ async function* runTurn(
     };
 
     // ── taskStore: claim turn ────────────────────────────────────────────────
-    if (deps.taskStore && deps.dataDir) {
+    if (deps.taskStore) {
       deps.taskStore.claim({
         taskId: turnId, sessionId, turnId, parentId: null,
-        dataDir: deps.dataDir,
       });
     }
 

@@ -132,6 +132,25 @@ export function turnsRoute(bindings: AppBindings): Hono {
     }
 
     // ── Fan-out: push every event into TurnEventStore for replay ──────────
+    //
+    // Also intercepts subagent_stream events to persist the subagent's
+    // conversation transcript into agent_task_messages via the messages repo.
+    // Text deltas are accumulated per-subagent and flushed on iteration
+    // boundaries or lifecycle terminal events.
+    const subagentTextAcc = new Map<string, string>();
+
+    const flushSubagentText = (subagentId: string): void => {
+      const text = subagentTextAcc.get(subagentId);
+      if (!text) return;
+      subagentTextAcc.delete(subagentId);
+      bindings.agentTaskMessages.insert({
+        taskId:    subagentId,
+        role:      'assistant',
+        content:   { text },
+        createdAt: Date.now(),
+      });
+    };
+
     (async () => {
       for await (const event of events) {
         // Inject sessionId into events from engines that don't carry it.
@@ -140,6 +159,39 @@ export function turnsRoute(bindings: AppBindings): Hono {
         if (cursor !== null) {
           eventHub.publish(turnId, { cursor, event: enriched });
         }
+
+        // ── Subagent transcript persistence ────────────────────────────────
+        if (enriched.type === 'subagent_stream') {
+          const { subagentId, ev: inner } = enriched;
+          if (inner.type === 'text_delta') {
+            subagentTextAcc.set(subagentId, (subagentTextAcc.get(subagentId) ?? '') + inner.delta);
+          } else if (inner.type === 'iteration') {
+            flushSubagentText(subagentId);
+          } else if (inner.type === 'tool_call') {
+            flushSubagentText(subagentId);
+            bindings.agentTaskMessages.insert({
+              taskId:    subagentId,
+              role:      'tool_call',
+              content:   { callId: inner.callId, name: inner.name, args: inner.args, iteration: inner.iteration },
+              createdAt: Date.now(),
+            });
+          } else if (inner.type === 'tool_result') {
+            bindings.agentTaskMessages.insert({
+              taskId:    subagentId,
+              role:      'tool_result',
+              content:   { callId: inner.callId, name: inner.name, excerpt: inner.excerpt, isError: inner.isError, error: inner.error, durationMs: inner.durationMs },
+              createdAt: Date.now(),
+            });
+          }
+        } else if (
+          enriched.type === 'subagent_completed' ||
+          enriched.type === 'subagent_failed'    ||
+          enriched.type === 'subagent_aborted'
+        ) {
+          flushSubagentText(enriched.subagentId);
+          subagentTextAcc.delete(enriched.subagentId);
+        }
+
         // Auto-cancel any in-flight permission prompts when the turn ends.
         // Otherwise an aborted turn leaves the prompt hanging in the
         // registry — and on the frontend — until the 120 s timeout fires.

@@ -9,6 +9,7 @@ import {
   ProviderLlmModelsRepo, ProviderEmbedModelsRepo,
   ProviderRerankModelsRepo, ProviderTtsModelsRepo, ProviderSttModelsRepo,
   McpServersRepo, SkillsRepo,
+  AgentTasksRepo, AgentTaskMessagesRepo,
 } from '@ema-agent/storage';
 import { AttachmentStore } from '@ema-agent/attachment';
 import { ArtifactStore }                               from '@ema-agent/artifact';
@@ -131,7 +132,9 @@ export interface AppBindings {
   /** Sweeps offloaded tool-result files — called by background tick. */
   toolResultCleaner: ToolResultCleaner;
   /** Cross-session agent task registry — used for crash recovery and task visibility. */
-  taskStore: AgentTaskStore;
+  taskStore:          AgentTaskStore;
+  /** Direct repo access for the SSE fan-out to write subagent transcript messages. */
+  agentTaskMessages:  AgentTaskMessagesRepo;
 
   // Memory subsystem
   memory: MemoryPlanner;
@@ -286,8 +289,9 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
     contextStoresCache.set(sessionId, stores);
     return stores;
   };
-  const toolResultCleaner = new ToolResultCleaner(sessionsDir);
-  const taskStore = new AgentTaskStore();
+  const toolResultCleaner    = new ToolResultCleaner(sessionsDir);
+  const agentTaskMessages    = new AgentTaskMessagesRepo(dataDb.sqlite);
+  const taskStore            = new AgentTaskStore(new AgentTasksRepo(dataDb.sqlite));
 
   // ── System event bus ────────────────────────────────────────────────────────
   const systemBus = new SystemEventBus();
@@ -377,7 +381,7 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
     tts, audioArchive, stt, vision,
     permission, permissionPrompts, askUserRegistry, tools, buildAskForTurn, getCommandRunner,
     invalidateSessionRuntime,
-    getContextStores, toolResultCleaner, taskStore,
+    getContextStores, toolResultCleaner, taskStore, agentTaskMessages,
     memory,
     systemBus,
     modelBindings, providerLlmModels, providerEmbedModels,

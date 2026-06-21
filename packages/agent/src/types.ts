@@ -71,17 +71,17 @@ export interface AgentDeps {
   };
   /**
    * Task lifecycle store for crash recovery and cross-session task visibility.
-   * Optional — omit in tests. Requires dataDir when provided.
+   * Optional — omit in tests.
    */
   taskStore?: IAgentTaskStore;
-  /** App data directory — required for task journal paths when taskStore is provided. */
+  /** App data directory — used for turn-scoped scratchpad directories. */
   dataDir?: string;
 }
 
 // ── IAgentTaskStore — minimal interface avoids hard dep on agent-task ─────────
 
 export interface IAgentTaskStore {
-  claim(args: { taskId: string; sessionId: string; turnId: string | null; parentId: string | null; dataDir: string }): unknown;
+  claim(args: { taskId: string; sessionId: string; turnId: string | null; parentId: string | null }): unknown;
   complete(taskId: string, stats: { iterations: number; inputTokens: number; outputTokens: number }): void;
   fail(taskId: string, reason: string): void;
   cancel(taskId: string, reason: string): void;
