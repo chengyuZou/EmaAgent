@@ -8,6 +8,7 @@ import { ingest as runIngest } from './ingest/index.js';
 import type { KnowledgeStore } from './store/index.js';
 import type { KbVisionAdapter } from './adapters/vision.js';
 import type { KbHydeAdapter }   from './adapters/hyde.js';
+import type { KbAutoQuestionAdapter } from './adapters/auto-questions.js';
 import { DocumentEventEmitter } from './events/emitter.js';
 import { weightedRank }         from './retrieval/hybrid.js';
 import type { VectorIndex }     from './index/vector-index.js';
@@ -23,6 +24,9 @@ export interface KnowledgeClientDeps {
   ebdRouter?:     EbdRouter;
   visionAdapter?: KbVisionAdapter;
   hydeAdapter?:   KbHydeAdapter;
+  /** Index-time question generation (RAGFlow-style). Interface only — unwired in V1,
+   *  pending a frontend/product decision on how questions feed embedding. */
+  autoQuestionAdapter?: KbAutoQuestionAdapter;
 }
 
 export interface ReembedOptions {

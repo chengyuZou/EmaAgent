@@ -39,5 +39,6 @@ export { createVectorIndex }     from './index/factory.js';
 export type { VectorIndex, SearchHit } from './index/vector-index.js';
 
 // ── Adapters (types only) ─────────────────────────────────────────────────────
-export type { KbHydeAdapter }    from './adapters/hyde.js';
-export type { ReembedOptions }   from './client.js';
+export type { KbHydeAdapter }          from './adapters/hyde.js';
+export type { KbAutoQuestionAdapter }  from './adapters/auto-questions.js';
+export type { ReembedOptions }         from './client.js';

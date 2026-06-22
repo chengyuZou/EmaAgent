@@ -1,4 +1,5 @@
 import type { SqliteDb } from '../database.js';
+import { segmentForFts } from '../zh-tokenizer.js';
 
 export interface DocumentChunkRow {
   id:                string;
@@ -75,12 +76,14 @@ export class DocumentChunkRepo {
   insertMany(chunks: DocumentChunkInsert[]): void {
     const stmt = this.db.prepare(
       `INSERT OR REPLACE INTO document_chunks
-         (id, asset_id, text, markdown, block_kinds_json, token_count, page, section_path_json, prev_id, next_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         (id, asset_id, text, tokens, markdown, block_kinds_json, token_count, page, section_path_json, prev_id, next_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     );
     this.db.transaction(() => {
       for (const c of chunks) {
-        stmt.run(c.id, c.assetId, c.text, c.markdown ?? null,
+        // tokens = jieba-segmented text; the FTS trigger copies this column so
+        // BM25 scores over whole Chinese words (migration 009).
+        stmt.run(c.id, c.assetId, c.text, segmentForFts(c.text), c.markdown ?? null,
           JSON.stringify(c.blockKinds), c.tokenCount,
           c.page ?? null, JSON.stringify(c.sectionPath),
           c.prev ?? null, c.next ?? null);
@@ -110,9 +113,10 @@ export class DocumentChunkRepo {
 
   /** FTS5 BM25 full-text search, scope-filtered via JOIN.
    *
-   * Uses trigram tokenizer (migration 005) — works for CJK, Latin, and mixed.
-   * Trigram requires each search term to be ≥ 3 characters; shorter terms are
-   * dropped rather than causing a query error.
+   * Uses jieba word-segmented index (migration 009): the query is segmented the
+   * same way as the indexed text, so 2-char Chinese words match (which trigram's
+   * 3-char window could not). Each token is quoted as an FTS phrase so input
+   * punctuation can't be misread as an FTS operator.
    */
   searchFts(
     query:      string,
@@ -122,15 +126,15 @@ export class DocumentChunkRepo {
   ): ChunkSearchHit[] {
     if (!query.trim()) return [];
 
-    // Keep only word chars, CJK characters, and spaces — strip everything else.
-    // FTS5 treats chars like , : - + * ( ) ^ " as query operators; a whitelist
-    // approach avoids syntax errors from arbitrary user input.
-    const terms = query
+    // Segment the query with jieba (same pipeline as indexing), strip any FTS
+    // operator chars from each token, then quote each as a phrase below.
+    const terms = segmentForFts(query)
       .replace(/[^\w　-鿿豈-﫿＀-￯\s]/g, ' ')
       .split(/\s+/)
-      .filter(t => t.length >= 3); // trigram minimum: terms < 3 chars produce no index entries
+      .map(t => t.replace(/"/g, '').trim())
+      .filter(Boolean); // jieba words can be 1–2 chars; no trigram length floor anymore
     if (terms.length === 0) return [];
-    const ftsQuery = terms.join(' ');
+    const ftsQuery = terms.map(t => `"${t}"`).join(' OR ');
 
     const rows = this.db.prepare(`
       SELECT fts.chunk_id, bm25(document_chunks_fts) AS score

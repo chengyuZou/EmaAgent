@@ -61,13 +61,19 @@ export async function ingest(
     // ── 4. Parse ─────────────────────────────────────────────────────────────
     events.emit({ assetId, kind: 'parse' });
 
-    const imageReader = (mimeType.startsWith('image/') && visionAdapter && opts.visionProviderId && opts.visionModel)
+    // One vision-backed OCR reader, reused for image/* sources AND scanned PDF
+    // pages. Same VisionRouter→KbVisionAdapter chain that already powers image OCR.
+    const ocrReader = (visionAdapter && opts.visionProviderId && opts.visionModel)
       ? new ImageReader(visionAdapter, { providerId: opts.visionProviderId, model: opts.visionModel })
       : undefined;
 
     const parsed = await parseDocument(
       { kind: 'bytes', bytes, name: fileName },
-      { mimeType, imageReader },
+      {
+        mimeType,
+        imageReader:  mimeType.startsWith('image/')  ? ocrReader : undefined,
+        pdfOcrReader: mimeType === 'application/pdf' ? ocrReader : undefined,
+      },
     );
 
     // Backfill parse results into the stored asset row

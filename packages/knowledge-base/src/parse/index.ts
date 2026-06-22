@@ -30,7 +30,10 @@ export const EXT_TO_MIME: Record<string, string> = {
 
 export interface ParseOptions {
   mimeType?:    string;
+  /** Vision OCR reader for image/* sources. */
   imageReader?: ImageReader;
+  /** Vision OCR reader for scanned PDF pages (image-only pages get rasterized + OCR'd). */
+  pdfOcrReader?: ImageReader;
 }
 
 export interface ParseResult {
@@ -54,7 +57,7 @@ export async function parseDocument(source: ReaderSource, opts: ParseOptions = {
     const result = await opts.imageReader.read(source);
     blocks = result.blocks;
   } else {
-    const result = await selectReader(MIME_TO_READER[mimeType] ?? 'text').read(source);
+    const result = await selectReader(MIME_TO_READER[mimeType] ?? 'text', opts).read(source);
     blocks    = result.blocks;
     pageCount = result.pageCount;
   }
@@ -68,11 +71,11 @@ export async function parseDocument(source: ReaderSource, opts: ParseOptions = {
   };
 }
 
-function selectReader(kind: 'text' | 'html' | 'docx' | 'pdf') {
+function selectReader(kind: 'text' | 'html' | 'docx' | 'pdf', opts: ParseOptions) {
   switch (kind) {
     case 'text': return new TextReader();
     case 'html': return new HtmlReader();
     case 'docx': return new DocxReader();
-    case 'pdf':  return new PdfReader();
+    case 'pdf':  return new PdfReader(opts.pdfOcrReader);
   }
 }
