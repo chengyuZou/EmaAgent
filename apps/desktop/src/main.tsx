@@ -1,5 +1,4 @@
 import 'virtual:uno.css';
-import './style.css';
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { TooltipProvider } from '@ema-agent/ui';

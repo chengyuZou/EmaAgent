@@ -351,10 +351,14 @@ function InspectorPanelHeader({ id, compact }: { id: InspectorPanelId; compact?:
 }
 
 function InspectorPanelBody({ id, sessionId }: { id: InspectorPanelId; sessionId: string | null }): JSX.Element {
-  if (id === 'tasks')     return <TaskPanel className="p-2" />;
-  if (id === 'branches')  return <BranchPanel />;
-  if (id === 'artifacts') return <ArtifactsPanel />;
-  if (id === 'files')     return <FilesPanel />;
+  // key=id forces remount on panel switch → triggers ema-panel-in entrance
+  const wrap = (child: JSX.Element): JSX.Element => (
+    <div key={id} className="ema-panel-in h-full">{child}</div>
+  );
+  if (id === 'tasks')     return wrap(<TaskPanel className="p-2" />);
+  if (id === 'branches')  return wrap(<BranchPanel />);
+  if (id === 'artifacts') return wrap(<ArtifactsPanel />);
+  if (id === 'files')     return wrap(<FilesPanel />);
   return <></>;
 }
 

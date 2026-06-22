@@ -26,6 +26,8 @@ export interface AgentTaskState extends AgentTaskWire {
   live?: LiveTaskInfo;
   /** parentTurnId — needed to call abortSubagent(). */
   parentTurnId?: string;
+  /** First 200 chars of the prompt — set on subagent_started, survives completion. */
+  description?: string;
 }
 
 // ── Store ─────────────────────────────────────────────────────────────────────

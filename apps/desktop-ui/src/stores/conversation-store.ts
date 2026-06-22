@@ -372,14 +372,15 @@ function dispatchSseEvent(
     // ── Subagent lifecycle ─────────────────────────────────────────────────
     case 'subagent_started':
       useAgentTaskStore.getState().upsert({
-        id:          event.subagentId,
-        sessionId:   event.sessionId as string,
-        turnId:      null,
-        parentId:    event.parentTurnId as string,
-        status:      'running',
-        createdAt:   event.startedAtMs,
-        updatedAt:   event.startedAtMs,
+        id:           event.subagentId,
+        sessionId:    event.sessionId as string,
+        turnId:       null,
+        parentId:     event.parentTurnId as string,
+        status:       'running',
+        createdAt:    event.startedAtMs,
+        updatedAt:    event.startedAtMs,
         parentTurnId: event.parentTurnId as string,
+        description:  event.promptExcerpt,
         live: {
           startedAtMs:   event.startedAtMs,
           promptExcerpt: event.promptExcerpt,

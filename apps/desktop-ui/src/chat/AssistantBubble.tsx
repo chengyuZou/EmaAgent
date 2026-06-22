@@ -68,7 +68,7 @@ export function AssistantBubble({ message, label = 'Ema', isStreaming }: Assista
   const showAudioButton = !!message.turnId && (isPlayingThis || !isStreaming);
 
   return (
-    <div className="flex mr-12">
+    <div className="flex mr-12 ema-bubble-in">
       <div className="flex flex-col min-w-20 max-w-full">
         <div className="text-xs text-white/40 font-normal mb-1">
           <span>{label}</span>

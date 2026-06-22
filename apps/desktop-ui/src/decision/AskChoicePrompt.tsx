@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type CSSProperties } from 'react';
 import { Button, Card, Checkbox, Input } from '@ema-agent/ui';
 import { HumanDescriptionPanel } from './HumanDescriptionPanel.js';
 
@@ -38,15 +38,16 @@ export function AskChoicePrompt({
       <p className="text-neutral-300 mt-2 text-sm">{question}</p>
 
       <div className="flex flex-col gap-2 mt-3">
-        {options.map((opt) =>
+        {options.map((opt, i) =>
           multiSelect ? (
             <label
               key={opt.label}
-              className={`flex items-start gap-3 px-3 py-2.5 rounded-lg cursor-pointer border transition-colors ${
+              className={`flex items-start gap-3 px-3 py-2.5 rounded-lg cursor-pointer border transition-colors ema-stagger-in ${
                 selected.has(opt.label)
                   ? 'border-primary-400/40 bg-primary-500/10'
                   : 'border-neutral-700/60 bg-neutral-800/50 hover:bg-neutral-700/40'
               }`}
+              style={{ '--stagger-i': i } as CSSProperties}
             >
               <Checkbox
                 checked={selected.has(opt.label)}
@@ -63,11 +64,12 @@ export function AskChoicePrompt({
           ) : (
             <button
               key={opt.label}
-              className={`text-left px-3 py-2.5 rounded-lg border transition-colors ${
+              className={`text-left px-3 py-2.5 rounded-lg border transition-colors ema-stagger-in ${
                 selected.has(opt.label)
                   ? 'border-primary-400/40 bg-primary-500/10 text-primary-100'
                   : 'border-neutral-700/60 bg-neutral-800/50 text-neutral-200 hover:bg-neutral-700/40'
               }`}
+              style={{ '--stagger-i': i } as CSSProperties}
               onClick={() => toggle(opt.label)}
             >
               <div className="text-sm font-medium">{opt.label}</div>

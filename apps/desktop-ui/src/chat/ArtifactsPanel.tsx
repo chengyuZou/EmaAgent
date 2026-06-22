@@ -6,7 +6,7 @@
  * generation; this component just loads any pre-existing artifacts
  * on mount and renders ArtifactCard for each one.
  */
-import { useEffect, type JSX } from 'react';
+import { useEffect, type JSX, type CSSProperties } from 'react';
 import { ScrollArea } from '@ema-agent/ui';
 import { useArtifactStore } from '../stores/artifact-store.js';
 import { useConversationStore } from '../stores/conversation-store.js';
@@ -61,8 +61,14 @@ export function ArtifactsPanel(): JSX.Element {
 
       <ScrollArea orientation="vertical" className="flex-1" viewportClassName="p-3">
         <div className="flex flex-col gap-2">
-          {[...artifacts].reverse().map((artifact) => (
-            <ArtifactCard key={artifact.id as string} artifact={artifact} />
+          {[...artifacts].reverse().map((artifact, i) => (
+            <div
+              key={artifact.id as string}
+              className="ema-stagger-in"
+              style={{ '--stagger-i': i } as CSSProperties}
+            >
+              <ArtifactCard artifact={artifact} />
+            </div>
           ))}
         </div>
       </ScrollArea>

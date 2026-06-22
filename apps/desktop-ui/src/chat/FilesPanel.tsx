@@ -6,7 +6,7 @@
  * GET /api/workspace/ls?path=... Files are read-only (⌘-click opens in OS).
  * The search box filters by name (case-insensitive substring).
  */
-import { useState, useCallback, useMemo, type JSX } from 'react';
+import { useState, useCallback, useMemo, type JSX, type CSSProperties } from 'react';
 import { ScrollArea } from '@ema-agent/ui';
 import { workspaceApi, type FileEntry } from '../api/workspace.js';
 import { useConversationStore } from '../stores/conversation-store.js';
@@ -134,8 +134,8 @@ function DirSubtree({
 
   return (
     <>
-      {node.children.map((child) => (
-        <div key={child.path}>
+      {node.children.map((child, i) => (
+        <div key={child.path} className="ema-stagger-in" style={{ '--stagger-i': i } as CSSProperties}>
           <FileRow
             entry={child}
             depth={depth}

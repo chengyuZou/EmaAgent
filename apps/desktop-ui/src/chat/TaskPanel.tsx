@@ -4,7 +4,8 @@
  * Shows running tasks first, then terminal (completed/failed/cancelled).
  * Expanding a card loads and shows the subagent transcript.
  */
-import { useState, useEffect, useCallback, type JSX } from 'react';
+import { useState, useEffect, useCallback, useMemo, type JSX, type CSSProperties } from 'react';
+import { Badge, Button, IconButton, Input, Spinner, type BadgeVariant } from '@ema-agent/ui';
 import { useAgentTaskStore, type AgentTaskState, type AgentTaskMessageWire } from '../stores/agent-task-store.js';
 import { useConversationStore } from '../stores/conversation-store.js';
 import type { ToolCallMessageContent, AssistantMessageContent, ToolResultMessageContent } from '../api/agent-tasks.js';
@@ -16,25 +17,43 @@ export interface TaskPanelProps {
 }
 
 export function TaskPanel({ className = '' }: TaskPanelProps): JSX.Element {
-  const sessionId     = useConversationStore((s) => s.viewedSessionId);
-  const tasks         = useAgentTaskStore((s) => s.tasks);
+  const sessionId      = useConversationStore((s) => s.viewedSessionId);
+  const tasks          = useAgentTaskStore((s) => s.tasks);
   const loadForSession = useAgentTaskStore((s) => s.loadForSession);
   const clearTerminal  = useAgentTaskStore((s) => s.clearTerminal);
 
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [search,     setSearch]     = useState('');
 
   useEffect(() => {
     if (sessionId) void loadForSession(sessionId as string);
   }, [sessionId, loadForSession]);
 
-  const sessionTasks = sessionId
-    ? [...tasks.values()].filter((t) => t.sessionId === sessionId as string)
-    : [];
+  const sessionTasks = useMemo(() => {
+    const all = sessionId
+      ? [...tasks.values()].filter((t) => t.sessionId === sessionId as string)
+      : [];
+    const kw = search.trim().toLowerCase();
+    return kw
+      ? all.filter((t) =>
+          t.id.toLowerCase().includes(kw) ||
+          (t.description ?? t.live?.promptExcerpt ?? '').toLowerCase().includes(kw)
+        )
+      : all;
+  }, [tasks, sessionId, search]);
 
   const running  = sessionTasks.filter((t) => t.status === 'running' || t.status === 'waiting_user');
   const terminal = sessionTasks.filter((t) => t.status === 'completed' || t.status === 'failed' || t.status === 'cancelled');
 
-  const hasTerminal = terminal.length > 0;
+  const allForSession = sessionId
+    ? [...tasks.values()].filter((t) => t.sessionId === sessionId as string)
+    : [];
+  const stats = {
+    total:     allForSession.length,
+    running:   allForSession.filter((t) => t.status === 'running' || t.status === 'waiting_user').length,
+    completed: allForSession.filter((t) => t.status === 'completed').length,
+    failed:    allForSession.filter((t) => t.status === 'failed' || t.status === 'cancelled').length,
+  };
 
   const handleClear = useCallback(async () => {
     if (!sessionId) return;
@@ -42,34 +61,48 @@ export function TaskPanel({ className = '' }: TaskPanelProps): JSX.Element {
     setExpandedId((id) => terminal.some((t) => t.id === id) ? null : id);
   }, [sessionId, clearTerminal, terminal]);
 
-  if (sessionTasks.length === 0) {
-    return (
-      <div className={`flex flex-col items-center justify-center gap-2 py-10 text-xs ${className}`}
-           style={{ color: 'var(--ema-text-tertiary)' }}>
-        <span className="i-mdi:robot-outline text-2xl opacity-40" />
-        <span>暂无 Agent 任务</span>
-      </div>
-    );
-  }
-
   return (
     <div className={`flex flex-col gap-1 ${className}`}>
-      {/* Header actions */}
-      {hasTerminal && (
-        <div className="flex justify-end px-2 pb-1">
-          <button
-            onClick={() => void handleClear()}
-            className="text-xs px-2 py-0.5 rounded transition-colors"
-            style={{
-              color:           'var(--ema-text-tertiary)',
-              background:      'transparent',
-              border:          '1px solid var(--ema-border)',
-            }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = 'var(--ema-text-secondary)'; }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = 'var(--ema-text-tertiary)'; }}
-          >
+      {/* Stats row */}
+      {stats.total > 0 && (
+        <div className="flex gap-4 px-3 py-2 rounded-lg mx-1 mb-0.5"
+             style={{ background: 'var(--ema-surface-0)', border: '1px solid var(--ema-border)' }}>
+          {([
+            { label: '总计',   value: stats.total,     color: 'var(--ema-text-secondary)' },
+            { label: '运行中', value: stats.running,   color: 'var(--ema-primary)'       },
+            { label: '已完成', value: stats.completed, color: 'var(--ema-success)'       },
+            { label: '失败',   value: stats.failed,    color: 'var(--ema-danger)'        },
+          ] as const).map(({ label, value, color }) => (
+            <div key={label} className="flex flex-col items-center flex-1">
+              <span className="text-sm font-bold leading-none" style={{ color }}>{value}</span>
+              <span className="text-[9px] mt-0.5" style={{ color: 'var(--ema-text-tertiary)' }}>{label}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Search + clear */}
+      <div className="flex items-center gap-1.5 px-1 mb-0.5">
+        <Input
+          inputSize="sm"
+          className="flex-1"
+          placeholder="搜索任务…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+        {terminal.length > 0 && (
+          <Button variant="ghost" size="sm" onClick={() => void handleClear()}>
             清空已完结
-          </button>
+          </Button>
+        )}
+      </div>
+
+      {/* Empty state */}
+      {sessionTasks.length === 0 && (
+        <div className="flex flex-col items-center justify-center gap-2 py-10 text-xs"
+             style={{ color: 'var(--ema-text-tertiary)' }}>
+          <span className="i-mdi:robot-outline text-2xl opacity-40" />
+          <span>{search ? '无匹配任务' : '暂无 Agent 任务'}</span>
         </div>
       )}
 
@@ -77,10 +110,11 @@ export function TaskPanel({ className = '' }: TaskPanelProps): JSX.Element {
       {running.length > 0 && (
         <div className="flex flex-col gap-1">
           <SectionLabel>运行中</SectionLabel>
-          {running.map((t) => (
+          {running.map((t, i) => (
             <TaskCard
               key={t.id}
               task={t}
+              staggerIndex={i}
               expanded={expandedId === t.id}
               onToggle={() => setExpandedId((id) => id === t.id ? null : t.id)}
             />
@@ -92,10 +126,11 @@ export function TaskPanel({ className = '' }: TaskPanelProps): JSX.Element {
       {terminal.length > 0 && (
         <div className="flex flex-col gap-1 mt-2">
           <SectionLabel>历史任务</SectionLabel>
-          {terminal.map((t) => (
+          {terminal.map((t, i) => (
             <TaskCard
               key={t.id}
               task={t}
+              staggerIndex={running.length + i}
               expanded={expandedId === t.id}
               onToggle={() => setExpandedId((id) => id === t.id ? null : t.id)}
             />
@@ -120,17 +155,19 @@ function SectionLabel({ children }: { children: string }): JSX.Element {
 // ── TaskCard ──────────────────────────────────────────────────────────────────
 
 interface TaskCardProps {
-  task:     AgentTaskState;
-  expanded: boolean;
-  onToggle: () => void;
+  task:         AgentTaskState;
+  expanded:     boolean;
+  onToggle:     () => void;
+  staggerIndex?: number;
 }
 
-function TaskCard({ task, expanded, onToggle }: TaskCardProps): JSX.Element {
+function TaskCard({ task, expanded, onToggle, staggerIndex = 0 }: TaskCardProps): JSX.Element {
   const deleteTask = useAgentTaskStore((s) => s.deleteTask);
   const { icon, color } = statusMeta(task.status);
   const isRunning = task.status === 'running' || task.status === 'waiting_user';
 
   const excerpt = task.live?.promptExcerpt
+    ?? task.description
     ?? (task.status === 'waiting_user' ? '等待用户确认…' : undefined);
 
   const handleDelete = useCallback(async (e: React.MouseEvent) => {
@@ -138,34 +175,45 @@ function TaskCard({ task, expanded, onToggle }: TaskCardProps): JSX.Element {
     await deleteTask(task.id, task.parentTurnId);
   }, [deleteTask, task.id, task.parentTurnId]);
 
+  const barColor = {
+    running:      'var(--ema-primary)',
+    waiting_user: 'var(--ema-warning)',
+    completed:    'var(--ema-success)',
+    failed:       'var(--ema-danger)',
+    cancelled:    'var(--ema-text-tertiary)',
+  }[task.status];
+
   return (
     <div
-      className="relative rounded-lg overflow-hidden cursor-pointer transition-all"
+      className="relative rounded-lg overflow-hidden cursor-pointer transition-all flex ema-stagger-in"
       style={{
-        background:  'var(--ema-surface-1)',
-        border:      `1px solid ${expanded ? 'var(--ema-border-hover)' : 'var(--ema-border)'}`,
-      }}
+        background:    'var(--ema-surface-1)',
+        border:        `1px solid ${expanded ? 'var(--ema-border-hover)' : 'var(--ema-border)'}`,
+        '--stagger-i': staggerIndex,
+      } as CSSProperties}
       onClick={onToggle}
     >
-      {/* Running pulse bar */}
+      {/* Left status bar (Apix style) */}
+      <div className="w-1 shrink-0 my-1 ml-0.5 mr-1 rounded-full"
+           style={{ background: barColor, opacity: isRunning ? undefined : 0.7 }} />
+
+      {/* Running pulse bar (top) */}
       {isRunning && <div className="ema-running-bar" />}
 
       {/* Card header */}
-      <div className="flex items-start gap-2 px-3 py-2">
+      <div className="flex items-start gap-2 px-2 py-2 flex-1 min-w-0">
         {/* Status icon */}
         <span className={`mt-0.5 text-base flex-shrink-0 ${icon}`} style={{ color }} />
 
         {/* Body */}
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1.5">
             <span className="text-xs truncate" style={{ color: 'var(--ema-text-secondary)' }}>
               {task.live?.model ?? 'subagent'}
             </span>
-            {task.status === 'waiting_user' && (
-              <span className="text-xs px-1 rounded" style={{ background: 'var(--ema-warning-muted)', color: 'var(--ema-warning-text)' }}>
-                等待
-              </span>
-            )}
+            <Badge variant={STATUS_BADGE_VARIANT[task.status]} dot={isRunning}>
+              {STATUS_LABEL[task.status]}
+            </Badge>
           </div>
           {excerpt && (
             <p className="text-xs mt-0.5 line-clamp-2" style={{ color: 'var(--ema-text-primary)' }}>
@@ -198,17 +246,13 @@ function TaskCard({ task, expanded, onToggle }: TaskCardProps): JSX.Element {
           )}
         </div>
 
-        {/* Action button */}
-        <button
-          className="flex-shrink-0 text-base rounded p-0.5 transition-colors"
-          style={{ color: 'var(--ema-text-tertiary)', background: 'transparent', border: 'none' }}
-          title={isRunning ? '取消' : '删除'}
+        <IconButton
+          variant="danger"
+          size="sm"
+          icon={isRunning ? 'i-mdi:stop-circle-outline' : 'i-mdi:trash-can-outline'}
+          label={isRunning ? '取消' : '删除'}
           onClick={handleDelete}
-          onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = 'var(--ema-danger)'; }}
-          onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = 'var(--ema-text-tertiary)'; }}
-        >
-          <span className={isRunning ? 'i-mdi:stop-circle-outline' : 'i-mdi:trash-can-outline'} />
-        </button>
+        />
       </div>
 
       {/* Transcript (lazy loaded) */}
@@ -236,7 +280,7 @@ function TaskTranscript({ taskId }: { taskId: string }): JSX.Element {
       <>
         {divider}
         <div className="flex justify-center py-4">
-          <span className="i-mdi:loading text-lg animate-spin" style={{ color: 'var(--ema-text-tertiary)' }} />
+          <Spinner size="sm" />
         </div>
       </>
     );
@@ -319,6 +363,22 @@ function TranscriptRow({ msg }: { msg: AgentTaskMessageWire }): JSX.Element {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+const STATUS_LABEL: Record<AgentTaskState['status'], string> = {
+  running:      '运行中',
+  waiting_user: '等待确认',
+  completed:    '已完成',
+  failed:       '失败',
+  cancelled:    '已取消',
+};
+
+const STATUS_BADGE_VARIANT: Record<AgentTaskState['status'], BadgeVariant> = {
+  running:      'primary',
+  waiting_user: 'warn',
+  completed:    'success',
+  failed:       'danger',
+  cancelled:    'neutral',
+};
 
 type StatusMeta = { icon: string; color: string };
 

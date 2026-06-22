@@ -80,8 +80,11 @@ export function ToolCallBlock({ slice, streaming = false }: ToolCallBlockProps):
         )}
       </button>
 
-      {/* ── Expanded body ── */}
-      {open && (
+      {/* ── Expanded body — grid-rows trick for smooth height animation ── */}
+      <div
+        className="ema-collapsible"
+        style={{ gridTemplateRows: open ? '1fr' : '0fr', opacity: open ? 1 : 0 }}
+      >
         <div className="relative ml-3 border-l border-neutral-800 pl-3">
           {/* Copy button */}
           <button
@@ -136,7 +139,7 @@ export function ToolCallBlock({ slice, streaming = false }: ToolCallBlockProps):
             </div>
           )}
         </div>
-      )}
+      </div>
     </div>
   );
 }

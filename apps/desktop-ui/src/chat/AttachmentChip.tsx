@@ -61,7 +61,7 @@ export function AttachmentChip({ attachment, onRemove }: AttachmentChipProps): J
 
   return (
     <div
-      className="flex items-center gap-1.5 rounded-lg px-2 py-1.5 cursor-pointer group transition-colors"
+      className="flex items-center gap-1.5 rounded-lg px-2 py-1.5 cursor-pointer group transition-colors ema-chip-in"
       style={{
         width:      152,
         background: 'rgba(255,255,255,0.05)',

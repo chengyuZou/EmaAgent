@@ -13,7 +13,7 @@ export function UserBubble({ message, label = '你' }: UserBubbleProps): JSX.Ele
   const attachments = message.attachments ?? [];
 
   return (
-    <div className="flex ml-12 flex-row-reverse">
+    <div className="flex ml-12 flex-row-reverse ema-bubble-in">
       <div className="flex flex-col min-w-20 max-w-full items-end">
         <div className="text-xs text-white/50 font-normal mb-1">{label}</div>
 

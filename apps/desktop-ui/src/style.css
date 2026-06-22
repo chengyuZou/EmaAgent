@@ -1,0 +1,343 @@
+/* ── EmaAgent Global Design Tokens ────────────────────────────────────────────
+ *
+ * Structural layer borrowed from APIX's design system, adapted for EmaAgent:
+ *
+ * Key differences from APIX:
+ *   - Dark-first (floating transparent window sits on user desktop)
+ *   - Surface layers are semi-transparent, not solid
+ *   - Glassmorphism is first-class, not a special case
+ *   - OKLCH colors for perceptual uniformity (not static RGB)
+ *   - Shadows are subtle warm-dark halos (not cool-grey)
+ *
+ * Naming convention:  --ema-<category>[-variant]
+ */
+
+/* ── Base reset ──────────────────────────────────────────────────────────────*/
+
+html, body {
+  overflow: hidden;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Microsoft YaHei', sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  user-select: none;
+}
+
+/* Allow text selection inside explicitly opted-in containers */
+.selectable, .selectable * {
+  user-select: text !important;
+  -webkit-user-select: text !important;
+}
+
+:focus-visible {
+  outline: none !important;
+}
+
+/* ── Motion ──────────────────────────────────────────────────────────────────*/
+
+:root {
+  /* Easing: fast start, gentle soft landing — signature Agent UI feel */
+  --ema-ease:   cubic-bezier(0.23, 1, 0.32, 1);
+  --ema-ease-in: cubic-bezier(0.4, 0, 1, 1);
+
+  /* Standard durations */
+  --ema-duration-fast:   120ms;
+  --ema-duration-base:   200ms;
+  --ema-duration-slow:   300ms;
+  --ema-duration-panel:  280ms;
+}
+
+/* ── Border radius ───────────────────────────────────────────────────────────*/
+
+:root {
+  --ema-radius-xs:    4px;
+  --ema-radius-sm:    6px;
+  --ema-radius-md:    10px;   /* default chip / tag */
+  --ema-radius-lg:    14px;   /* card / module */
+  --ema-radius-xl:    20px;   /* panel / drawer */
+  --ema-radius-panel: 16px;   /* matches Tauri window corner-radius */
+  --ema-radius-pill:  999px;
+}
+
+/* ── Shadows — warm-dark halos (works against any desktop background) ────────
+ *
+ *  Layer 1: micro-lift — buttons, chips, hover state
+ *  Layer 2: card lift  — panels, dropdowns, floating cards
+ *  Layer 3: modal lift — dialogs, drawers, global alerts
+ */
+
+:root {
+  --ema-shadow-1:
+    0 1px 2px rgba(0, 0, 0, 0.18),
+    0 0px 1px rgba(0, 0, 0, 0.12);
+
+  --ema-shadow-2:
+    0 2px 4px rgba(0, 0, 0, 0.22),
+    0 4px 10px rgba(0, 0, 0, 0.16),
+    0 1px 2px rgba(0, 0, 0, 0.10);
+
+  --ema-shadow-3:
+    0 4px 8px rgba(0, 0, 0, 0.28),
+    0 8px 20px rgba(0, 0, 0, 0.20),
+    0 16px 40px rgba(0, 0, 0, 0.14),
+    0 1px 2px rgba(0, 0, 0, 0.10);
+
+  --ema-shadow-focus:   0 0 0 3px oklch(0.72 0.18 350 / 0.28);
+  --ema-shadow-danger:  0 0 0 3px oklch(0.62 0.22 25  / 0.28);
+}
+
+/* ── Surface layers — semi-transparent dark glass ────────────────────────────
+ *
+ *  Each layer is slightly lighter (more opaque) as content gets "closer".
+ *  Combined with backdrop-filter blur on parent containers.
+ *
+ *  0 = page substrate (darkest)
+ *  4 = tooltips / dialogs (lightest, most visible)
+ */
+
+:root {
+  --ema-surface-0:  rgba(10,  8, 16, 0.90);   /* deep background, sidebars */
+  --ema-surface-1:  rgba(18, 16, 28, 0.85);   /* cards, module panels */
+  --ema-surface-2:  rgba(26, 24, 38, 0.80);   /* content areas, inner panels */
+  --ema-surface-3:  rgba(34, 32, 48, 0.75);   /* nested items, table rows */
+  --ema-surface-4:  rgba(42, 40, 58, 0.88);   /* dropdowns, tooltips, dialogs */
+
+  /* Glassmorphism recipes — backdrop-filter + surface color */
+  --ema-glass-weak:   saturate(150%) blur(4px);
+  --ema-glass-base:   saturate(180%) blur(8px);
+  --ema-glass-strong: saturate(200%) blur(16px);
+
+  /* Utility: overlay mask for modals */
+  --ema-mask: rgba(0, 0, 0, 0.45);
+}
+
+/* ── Semantic colors — OKLCH for perceptual uniformity ──────────────────────*/
+
+:root {
+  /* Primary — Ema's signature pink-rose  (matches chromatic hue 350) */
+  --ema-primary:        oklch(0.72 0.18 350);
+  --ema-primary-hover:  oklch(0.76 0.16 350);
+  --ema-primary-active: oklch(0.65 0.20 350);
+  --ema-primary-muted:  oklch(0.72 0.18 350 / 0.20);
+  --ema-primary-text:   oklch(0.98 0.01 350);
+
+  /* Success — green */
+  --ema-success:        oklch(0.68 0.16 145);
+  --ema-success-hover:  oklch(0.72 0.14 145);
+  --ema-success-muted:  oklch(0.68 0.16 145 / 0.18);
+  --ema-success-text:   oklch(0.88 0.10 145);
+
+  /* Warning — amber */
+  --ema-warning:        oklch(0.78 0.16 75);
+  --ema-warning-hover:  oklch(0.82 0.14 75);
+  --ema-warning-muted:  oklch(0.78 0.16 75 / 0.18);
+  --ema-warning-text:   oklch(0.90 0.10 75);
+
+  /* Danger — red */
+  --ema-danger:         oklch(0.62 0.22 25);
+  --ema-danger-hover:   oklch(0.66 0.20 25);
+  --ema-danger-muted:   oklch(0.62 0.22 25 / 0.18);
+  --ema-danger-text:    oklch(0.88 0.12 25);
+
+  /* Info — blue */
+  --ema-info:           oklch(0.68 0.13 240);
+  --ema-info-hover:     oklch(0.72 0.11 240);
+  --ema-info-muted:     oklch(0.68 0.13 240 / 0.18);
+  --ema-info-text:      oklch(0.88 0.08 240);
+}
+
+/* ── Text scale ──────────────────────────────────────────────────────────────*/
+
+:root {
+  /* Dark-on-glass text hierarchy */
+  --ema-text-primary:   oklch(0.94 0.01 280);   /* main content */
+  --ema-text-secondary: oklch(0.72 0.01 280);   /* labels, meta */
+  --ema-text-tertiary:  oklch(0.52 0.01 280);   /* placeholders, disabled */
+  --ema-text-inverse:   oklch(0.10 0.01 280);   /* text on light surfaces */
+
+  /* Code / mono */
+  --ema-text-code:      oklch(0.85 0.04 280);
+}
+
+/* ── Border ──────────────────────────────────────────────────────────────────*/
+
+:root {
+  --ema-border:         rgba(255, 255, 255, 0.08);
+  --ema-border-hover:   rgba(255, 255, 255, 0.14);
+  --ema-border-focus:   var(--ema-primary);
+  --ema-border-strong:  rgba(255, 255, 255, 0.18);
+  --ema-border-error:   var(--ema-danger);
+}
+
+/* ── Scrollbar ───────────────────────────────────────────────────────────────*/
+
+::-webkit-scrollbar {
+  width:  6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background:    transparent;
+  border-radius: var(--ema-radius-pill);
+}
+
+::-webkit-scrollbar-thumb {
+  background:    rgba(255, 255, 255, 0.15);
+  border-radius: var(--ema-radius-pill);
+  transition:    background var(--ema-duration-base) var(--ema-ease);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.28);
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* ── Selection ───────────────────────────────────────────────────────────────*/
+
+::selection {
+  background: oklch(0.72 0.18 350 / 0.35) !important;
+  color: inherit !important;
+}
+
+/* ── Placeholder ─────────────────────────────────────────────────────────────*/
+
+::placeholder {
+  color:   var(--ema-text-tertiary);
+  opacity: 1;
+}
+
+/* ── Keyframe library ────────────────────────────────────────────────────────*/
+
+@keyframes ema-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes ema-slide-up {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes ema-slide-down {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes ema-scale-in {
+  from { opacity: 0; transform: scale(0.94); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+/* Running indicator — left border pulse used by task cards */
+@keyframes ema-pulse-bar {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.45; }
+}
+
+/* Spinner — tool execution, loading states */
+@keyframes ema-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Check pop — task completed feedback */
+@keyframes ema-check-pop {
+  0%   { transform: scale(0);    opacity: 0; }
+  60%  { transform: scale(1.25); opacity: 1; }
+  100% { transform: scale(1);    opacity: 1; }
+}
+
+/* Error shake — tool failure, validation error */
+@keyframes ema-shake {
+  0%, 100% { transform: translateX(0); }
+  20%       { transform: translateX(-4px); }
+  40%       { transform: translateX(4px); }
+  60%       { transform: translateX(-3px); }
+  80%       { transform: translateX(3px); }
+}
+
+/* Card stagger: set --stagger-i on each card for sequential entry */
+@keyframes ema-card-in {
+  from { opacity: 0; transform: translateY(8px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* Chip / tag pop-in — attachment chips, badge additions */
+@keyframes ema-chip-in {
+  from { opacity: 0; transform: scale(0.80) translateY(4px); }
+  to   { opacity: 1; transform: scale(1)    translateY(0);   }
+}
+
+/* Bubble entrance — chat messages */
+@keyframes ema-bubble-in {
+  from { opacity: 0; transform: translateY(10px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0)    scale(1);    }
+}
+
+/* ── Utility classes (supplement UnoCSS for CSS-var-dependent patterns) ──────*/
+
+/* Glassmorphism surface presets */
+.ema-glass-weak   { backdrop-filter: var(--ema-glass-weak);   }
+.ema-glass-base   { backdrop-filter: var(--ema-glass-base);   }
+.ema-glass-strong { backdrop-filter: var(--ema-glass-strong); }
+
+/* Fade-in at startup with optional stagger via --stagger-i CSS var */
+.ema-stagger-in {
+  animation: ema-card-in var(--ema-duration-slow) var(--ema-ease) both;
+  animation-delay: calc(var(--stagger-i, 0) * 40ms);
+}
+
+/* Chip pop-in */
+.ema-chip-in {
+  animation: ema-chip-in var(--ema-duration-fast) var(--ema-ease) both;
+}
+
+/* Chat bubble entrance */
+.ema-bubble-in {
+  animation: ema-bubble-in var(--ema-duration-base) var(--ema-ease) both;
+}
+
+/* Inspector panel content fade — applied to each panel body on mount */
+.ema-panel-in {
+  animation: ema-scale-in var(--ema-duration-fast) var(--ema-ease) both;
+}
+
+/* Smooth collapsible — grid-template-rows: 0fr ↔ 1fr.
+   Apply to wrapper; inner child needs overflow:hidden.   */
+.ema-collapsible {
+  display:    grid;
+  transition: grid-template-rows var(--ema-duration-base) var(--ema-ease),
+              opacity             var(--ema-duration-base) var(--ema-ease);
+}
+.ema-collapsible > * { overflow: hidden; }
+
+/* Status left-border pulse (used on running task cards) */
+.ema-running-bar::before {
+  content:        '';
+  position:       absolute;
+  left:           0; top: 0; bottom: 0;
+  width:          3px;
+  border-radius:  var(--ema-radius-pill);
+  background:     var(--ema-primary);
+  animation:      ema-pulse-bar 1.6s ease-in-out infinite;
+}
+
+/* Mask overlay for dialogs / drawers */
+.ema-mask {
+  position:       fixed;
+  inset:          0;
+  background:     var(--ema-mask);
+  backdrop-filter: blur(2px);
+  z-index:        200;
+  animation:      ema-fade-in var(--ema-duration-base) var(--ema-ease);
+}
