@@ -9,14 +9,17 @@ import { tauriBridge } from '../lib/tauri-bridge.js';
 export type SubWindowName = 'chat' | 'settings';
 
 export interface UiStoreState {
-  openSubWindows: Set<SubWindowName>;
-  theme:          'dark' | 'light' | 'system';
-  dockVisible:    boolean;
-  ttsEnabled:     boolean;
+  openSubWindows:        Set<SubWindowName>;
+  theme:                 'dark' | 'light' | 'system';
+  dockVisible:           boolean;
+  ttsEnabled:            boolean;
+  /** Context window of the model the user explicitly selected in ModelPicker. Null = using default binding. */
+  selectedContextWindow: number | null;
 
   setTheme(theme: 'dark' | 'light' | 'system'): void;
   setDockVisible(value: boolean): void;
   setTtsEnabled(value: boolean): void;
+  setSelectedContextWindow(n: number | null): void;
 
   notifySubWindowOpened(name: SubWindowName): Promise<void>;
   notifySubWindowClosed(name: SubWindowName): Promise<void>;
@@ -26,10 +29,11 @@ export interface UiStoreState {
 // ── Store ─────────────────────────────────────────────────────────────────────
 
 export const useUiStore = create<UiStoreState>((set, get) => ({
-  openSubWindows: new Set(),
-  theme:          'dark',
-  dockVisible:    false,
-  ttsEnabled:     false,
+  openSubWindows:        new Set(),
+  theme:                 'dark',
+  dockVisible:           false,
+  ttsEnabled:            false,
+  selectedContextWindow: null,
 
   setTheme(theme) {
     set({ theme });
@@ -41,6 +45,10 @@ export const useUiStore = create<UiStoreState>((set, get) => ({
 
   setTtsEnabled(value) {
     set({ ttsEnabled: value });
+  },
+
+  setSelectedContextWindow(n) {
+    set({ selectedContextWindow: n });
   },
 
   async notifySubWindowOpened(name) {

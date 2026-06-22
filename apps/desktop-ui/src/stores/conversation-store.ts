@@ -52,6 +52,7 @@ export interface StreamingAssistantMessage {
   slices:    AssistantSlice[];
   startedAt: number;
   turnId:    TurnId;
+  mode?:     TurnMode;
 }
 
 export interface ChatHistoryItem {
@@ -62,6 +63,7 @@ export interface ChatHistoryItem {
   messageId?: MessageId;
   turnId?:    TurnId;
   stats?:     TurnStats;
+  mode?:      TurnMode;
 }
 
 // ── Send input ────────────────────────────────────────────────────────────────
@@ -145,7 +147,7 @@ function getOrCreateQueue(sessionId: SessionId): SendQueue<SendInput> {
                 ? event.sessionId as SessionId
                 : input.sessionId;
               dispatchSseEvent(event, sid, {
-                beginStream:    (sid, tid) => useConversationStore.getState().beginStream(sid, tid),
+                beginStream:    (sid, tid, mode) => useConversationStore.getState().beginStream(sid, tid, mode),
                 appendDelta:    (sid, slice, delta) => useConversationStore.getState().appendDelta(sid, slice, delta),
                 finalizeStream: (sid, stats) => { useConversationStore.getState().finalizeStream(sid, stats); finish(); },
                 abortStream:    (sid, reason) => { useConversationStore.getState().abortStream(sid, reason); finish(); },
@@ -203,7 +205,7 @@ type DeltaPayload =
   | { callId: string; output?: unknown; error?: { code: string; message: string } };
 
 interface StreamCallbacks {
-  beginStream(sessionId: SessionId, turnId: TurnId): void;
+  beginStream(sessionId: SessionId, turnId: TurnId, mode?: TurnMode): void;
   appendDelta(sessionId: SessionId, slice: DeltaSlice, delta: DeltaPayload): void;
   finalizeStream(sessionId: SessionId, stats: TurnStats | null): void;
   abortStream(sessionId: SessionId, reason: string): void;
@@ -219,7 +221,7 @@ function dispatchSseEvent(
 ): void {
   switch (event.type) {
     case 'turn_started': {
-      cb.beginStream(sessionId, event.turnId);
+      cb.beginStream(sessionId, event.turnId, event.mode);
       // Clear live usage + thinking for this turn (keyed by turnId, not sessionId —
       // AssistantBubble looks these up by the specific turn it's rendering).
       useConversationStore.setState((s) => {
@@ -580,7 +582,7 @@ export interface ConversationStoreState {
   loadMessages(id: SessionId):                                          Promise<void>;
   evictSession(id: SessionId):                                          void;
 
-  beginStream(sessionId: SessionId, turnId: TurnId):                    void;
+  beginStream(sessionId: SessionId, turnId: TurnId, mode?: TurnMode):   void;
   appendDelta(sessionId: SessionId, slice: DeltaSlice, delta: DeltaPayload): void;
   finalizeStream(sessionId: SessionId, stats: TurnStats | null):     void;
   abortStream(sessionId: SessionId, reason: string):                    void;
@@ -752,13 +754,11 @@ export const useConversationStore = create<ConversationStoreState>((set, get) =>
 
   // ── Stream lifecycle ─────────────────────────────────────────────────────
 
-  beginStream(sessionId, turnId) {
+  beginStream(sessionId, turnId, mode) {
     set((s) => {
       const streaming = new Map(s.streamingMap);
       streaming.set(sessionId as string, {
-        // turnId rides on the streaming entry so finalizeStream can stamp the
-        // finished bubble with it (audio replay + per-turn stats need it).
-        role: 'assistant', content: '', slices: [], startedAt: Date.now(), turnId,
+        role: 'assistant', content: '', slices: [], startedAt: Date.now(), turnId, mode,
       });
       const stops = new Map(s.stopReasonMap);
       stops.delete(sessionId as string);
@@ -838,7 +838,7 @@ export const useConversationStore = create<ConversationStoreState>((set, get) =>
 
       const historyItem: ChatHistoryItem = {
         role: 'assistant', content: sm.content, slices: sm.slices,
-        createdAt: Date.now(), stats: stats ?? undefined, turnId: sm.turnId,
+        createdAt: Date.now(), stats: stats ?? undefined, turnId: sm.turnId, mode: sm.mode,
       };
       const msgs = new Map(s.messages);
       const existing = msgs.get(sessionId as string) ?? [];
@@ -867,7 +867,7 @@ export const useConversationStore = create<ConversationStoreState>((set, get) =>
 
       if (sm && (sm.content.trim() || sm.slices.length > 0)) {
         const partial: ChatHistoryItem = {
-          role: 'assistant', content: sm.content, slices: sm.slices, createdAt: sm.startedAt, turnId: sm.turnId,
+          role: 'assistant', content: sm.content, slices: sm.slices, createdAt: sm.startedAt, turnId: sm.turnId, mode: sm.mode,
         };
         const msgs = new Map(s.messages);
         const existing = msgs.get(sessionId as string) ?? [];
@@ -921,6 +921,7 @@ function assembleHistory(messages: MessageWire[], turns: TurnWire[]): ChatHistor
         outputTokens: turn.usageOutputTokens,
         durationMs:   turn.completedAt !== null ? turn.completedAt - turn.startedAt : 0,
       };
+      currentGroup.mode = turn.mode;
     }
     out.push(currentGroup);
     currentGroup = null;

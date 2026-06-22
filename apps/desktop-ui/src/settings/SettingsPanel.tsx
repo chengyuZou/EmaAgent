@@ -1,12 +1,11 @@
 /**
- * SettingsPanel — AIRI-style two-level settings navigation.
+ * SettingsPanel — two-column accordion layout.
  *
- * Level 1 (home): 2-column list of large MenuIconItem cards with staggered
- * slide-up entrance animation and an oversized decorative gear bottom-right.
- * Level 2 (section): slide-right entrance + back-arrow header.
+ * Left: fixed sidebar with collapsible groups → sections.
+ * Right: content area for the active section (no home grid, no back button).
+ * Default: AI 与模型 expanded, 服务来源 selected.
  */
-import { useState, useEffect, useRef, type JSX } from 'react';
-import { MenuIconItem, Spinner } from '@ema-agent/ui';
+import { useState, useEffect, type JSX } from 'react';
 import { ErrorBoundary } from '../lib/error-boundary.js';
 import { useSettingsStore } from '../stores/settings-store.js';
 import { useCardStore } from '../stores/card-store.js';
@@ -24,56 +23,80 @@ import { Live2DTab } from './Live2DTab.js';
 import { ShortcutsTab } from './ShortcutsTab.js';
 import { AppearanceTab } from './AppearanceTab.js';
 
-// ── Section registry ──────────────────────────────────────────────────────────
+// ── Types ─────────────────────────────────────────────────────────────────────
 
 type SectionId =
-  | 'cards'  | 'providers' | 'bindings'
-  | 'memory' | 'skills'    | 'mcp'
-  | 'live2d' | 'shortcuts' | 'appearance'
-  | 'knowledge-base';
+  | 'providers' | 'bindings'
+  | 'cards'
+  | 'skills'    | 'mcp'
+  | 'memory'
+  | 'knowledge-base'
+  | 'live2d'    | 'shortcuts' | 'appearance';
 
-interface SectionDef {
-  id:          SectionId;
-  title:       string;
-  description: string;
-  icon:        string;
-}
+type GroupId = 'ai' | 'character' | 'agent' | 'memory' | 'knowledge' | 'desktop';
 
-const SECTIONS: SectionDef[] = [
-  { id: 'providers',  title: '服务来源',  description: 'LLM、语音合成、语音识别服务来源等',
-    icon: 'i-solar:box-minimalistic-bold-duotone' },
-  { id: 'bindings',   title: '模型绑定',  description: '各模块使用的模型与音色',
-    icon: 'i-solar:link-circle-bold-duotone' },
-  { id: 'cards',      title: '角色卡',    description: 'Ema 的人格、问候语与声音',
-    icon: 'i-solar:emoji-funny-square-bold-duotone' },
-  { id: 'skills',     title: '技能',      description: '安装与管理自定义技能',
-    icon: 'i-solar:magic-stick-3-bold-duotone' },
-  { id: 'mcp',        title: 'MCP 服务器', description: '连接 MCP 服务器，扩展工具集',
-    icon: 'i-solar:server-square-bold-duotone' },
-  { id: 'memory',     title: '记忆系统',  description: '浏览和管理记忆节点与条目',
-    icon: 'i-solar:leaf-bold-duotone' },
-  { id: 'knowledge-base', title: '知识库',  description: '导入文档，AI 主动检索参考资料',
-    icon: 'i-solar:database-bold-duotone' },
-  { id: 'live2d',     title: 'Live2D',    description: '模型加载与运行时参数',
-    icon: 'i-solar:adhesive-plaster-bold-duotone' },
-  { id: 'shortcuts',  title: '快捷键',    description: '全局热键与窗口快捷键',
-    icon: 'i-solar:keyboard-bold-duotone' },
-  { id: 'appearance', title: '外观',      description: '主题色与界面风格',
-    icon: 'i-solar:pallete-2-bold-duotone' },
+interface SectionDef { id: SectionId; label: string }
+interface GroupDef   { id: GroupId; label: string; icon: string; sections: SectionDef[] }
+
+// ── Navigation structure ──────────────────────────────────────────────────────
+
+const GROUPS: GroupDef[] = [
+  {
+    id: 'ai', label: 'AI 与模型', icon: 'i-solar:box-minimalistic-bold-duotone',
+    sections: [
+      { id: 'providers', label: '服务来源' },
+      { id: 'bindings',  label: '模型绑定' },
+    ],
+  },
+  {
+    id: 'character', label: '角色', icon: 'i-solar:emoji-funny-square-bold-duotone',
+    sections: [
+      { id: 'cards', label: '角色卡' },
+    ],
+  },
+  {
+    id: 'agent', label: 'Agent 能力', icon: 'i-solar:magic-stick-3-bold-duotone',
+    sections: [
+      { id: 'skills', label: '技能' },
+      { id: 'mcp',    label: 'MCP 服务器' },
+    ],
+  },
+  {
+    id: 'memory', label: 'Memory', icon: 'i-solar:leaf-bold-duotone',
+    sections: [
+      { id: 'memory', label: '记忆系统' },
+    ],
+  },
+  {
+    id: 'knowledge', label: 'Knowledge Base', icon: 'i-solar:database-bold-duotone',
+    sections: [
+      { id: 'knowledge-base', label: '知识库' },
+    ],
+  },
+  {
+    id: 'desktop', label: '桌面与外观', icon: 'i-solar:pallete-2-bold-duotone',
+    sections: [
+      { id: 'live2d',     label: 'Live2D' },
+      { id: 'shortcuts',  label: '快捷键' },
+      { id: 'appearance', label: '外观' },
+    ],
+  },
 ];
 
-function SectionContent({ section }: { section: SectionId }): JSX.Element {
-  switch (section) {
-    case 'cards':      return <CardsTab />;
-    case 'providers':  return <ProvidersTab />;
-    case 'bindings':   return <BindingsTab />;
+// ── Section renderer ──────────────────────────────────────────────────────────
+
+function SectionContent({ id }: { id: SectionId }): JSX.Element {
+  switch (id) {
+    case 'providers':      return <ProvidersTab />;
+    case 'bindings':       return <BindingsTab />;
+    case 'cards':          return <CardsTab />;
+    case 'skills':         return <SkillsTab />;
+    case 'mcp':            return <McpTab />;
     case 'memory':         return <MemoryTab />;
     case 'knowledge-base': return <KnowledgeBaseTab />;
-    case 'skills':         return <SkillsTab />;
-    case 'mcp':        return <McpTab />;
-    case 'live2d':     return <Live2DTab />;
-    case 'shortcuts':  return <ShortcutsTab />;
-    case 'appearance': return <AppearanceTab />;
+    case 'live2d':         return <Live2DTab />;
+    case 'shortcuts':      return <ShortcutsTab />;
+    case 'appearance':     return <AppearanceTab />;
   }
 }
 
@@ -81,12 +104,10 @@ function SectionContent({ section }: { section: SectionId }): JSX.Element {
 
 export function SettingsPanel(): JSX.Element {
   useThemeSync();
-  const [section, setSection] = useState<SectionId | null>(null);
-  // Bump to force home-grid remount (replays stagger) on every return
-  const [homeKey, setHomeKey] = useState(0);
 
-  const settingsLoading = useSettingsStore((s) => s.loading);
-  const cardsLoading    = useCardStore((s)    => s.loading);
+  // Default: AI 与模型 expanded, 服务来源 selected.
+  const [expandedGroups, setExpandedGroups] = useState<Set<GroupId>>(new Set(['ai']));
+  const [activeSection,  setActiveSection]  = useState<SectionId>('providers');
 
   useEffect(() => {
     void useSettingsStore.getState().loadAll();
@@ -95,85 +116,82 @@ export function SettingsPanel(): JSX.Element {
     void useMcpStore.getState().load();
   }, []);
 
-  const isLoading = settingsLoading || cardsLoading;
-  const active = SECTIONS.find((s) => s.id === section);
-
-  function goBack(): void {
-    setSection(null);
-    setHomeKey((k) => k + 1);
+  function toggleGroup(groupId: GroupId): void {
+    setExpandedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(groupId)) next.delete(groupId);
+      else next.add(groupId);
+      return next;
+    });
   }
 
   return (
     <ErrorBoundary>
-      <div className="fixed inset-0 flex flex-col bg-neutral-950 text-neutral-200">
-        <main className="flex-1 min-h-0 overflow-y-auto px-8 py-6" id="settings-scroll-container">
+      <div className="fixed inset-0 flex bg-neutral-950 text-neutral-200">
 
-          {/* ── Header ── */}
-          <header className="flex items-center gap-2 mb-6">
-            {active && (
-              <button
-                className="size-8 -ml-1.5 rounded-lg flex items-center justify-center
-                           text-neutral-400 hover:text-primary-300 hover:bg-neutral-800/60
-                           active:scale-90 transition-all duration-150"
-                onClick={goBack}
-                aria-label="返回设置"
-              >
-                <span className="i-solar:alt-arrow-left-line-duotone text-xl" aria-hidden />
-              </button>
-            )}
-            <div>
-              <h1 className="text-2xl font-semibold text-neutral-100 transition-all duration-250">
-                {active ? active.title : '设置'}
-              </h1>
-              {active && (
-                <p className="text-xs text-neutral-500 animate-fade-in">{active.description}</p>
-              )}
-            </div>
-          </header>
+        {/* ── Left sidebar ── */}
+        <nav
+          className="flex-none w-52 flex flex-col gap-0.5 px-2 py-4 border-r border-neutral-800 overflow-y-auto"
+          aria-label="设置导航"
+        >
+          <p className="px-3 pb-3 text-base font-semibold text-neutral-100">设置</p>
 
-          {/* ── Body ── */}
-          {isLoading ? (
-            <div className="flex h-64 items-center justify-center">
-              <Spinner size="lg" />
-            </div>
-          ) : active ? (
-            /* Section view — keyed so React remounts on every section change,
-               replaying the slide-right entrance animation */
-            <div key={active.id} className="animate-slide-right">
-              <SectionContent section={active.id} />
-            </div>
-          ) : (
-            /* Home grid — keyed (homeKey) so returning from a section replays stagger */
-            <div key={homeKey} className="flex flex-col gap-3 pb-12">
-              {SECTIONS.map((s, i) => (
-                <MenuIconItem
-                  key={s.id}
-                  title={s.title}
-                  description={s.description}
-                  icon={s.icon}
-                  onClick={() => setSection(s.id)}
-                  /* Stagger: each card waits 55 ms × its index before animating in.
-                     animation-fill-mode: both (from keyframe) keeps it invisible during delay. */
-                  style={{ animationDelay: `${i * 55}ms` }}
-                  className="animate-slide-up"
-                />
-              ))}
-            </div>
-          )}
+          {GROUPS.map((group) => {
+            const expanded = expandedGroups.has(group.id);
+            return (
+              <div key={group.id}>
+                {/* Group header */}
+                <button
+                  className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm
+                             text-neutral-400 hover:text-neutral-100 hover:bg-neutral-800/50
+                             transition-colors duration-150"
+                  onClick={() => toggleGroup(group.id)}
+                  aria-expanded={expanded}
+                >
+                  <span className={`${group.icon} text-base flex-none`} aria-hidden />
+                  <span className="flex-1 text-left">{group.label}</span>
+                  <span
+                    className={`i-solar:alt-arrow-right-line-duotone text-xs flex-none
+                                transition-transform duration-200 ${expanded ? 'rotate-90' : ''}`}
+                    aria-hidden
+                  />
+                </button>
+
+                {/* Section items (visible when expanded) */}
+                {expanded && (
+                  <div className="ml-4 mt-0.5 mb-1 flex flex-col gap-0.5">
+                    {group.sections.map((sec) => {
+                      const isActive = activeSection === sec.id;
+                      return (
+                        <button
+                          key={sec.id}
+                          className={`w-full text-left px-3 py-1.5 rounded-lg text-sm transition-colors duration-150
+                            ${isActive
+                              ? 'text-primary-300 bg-primary-500/10'
+                              : 'text-neutral-500 hover:text-neutral-200 hover:bg-neutral-800/40'
+                            }`}
+                          onClick={() => setActiveSection(sec.id)}
+                          aria-current={isActive ? 'page' : undefined}
+                        >
+                          {sec.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </nav>
+
+        {/* ── Right content ── */}
+        <main
+          key={activeSection}
+          className="flex-1 min-w-0 overflow-y-auto px-8 py-6 animate-slide-right"
+          id="settings-scroll-container"
+        >
+          <SectionContent id={activeSection} />
         </main>
-
-        {/* ── Decorative gear (home only) — animates in on mount ── */}
-        {!active && (
-          <div
-            aria-hidden
-            className="pointer-events-none absolute -right-10 bottom-0 z-0
-                       size-60 flex items-center justify-center
-                       text-neutral-600/20 animate-scale-in
-                       hover:rotate-12 transition-transform duration-1000 ease-in-out"
-          >
-            <div className="i-solar:settings-bold-duotone text-[15rem]" />
-          </div>
-        )}
       </div>
     </ErrorBoundary>
   );

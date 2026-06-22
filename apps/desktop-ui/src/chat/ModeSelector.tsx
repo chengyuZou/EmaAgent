@@ -27,7 +27,7 @@ export function ModeSelector({ mode, onModeChange }: ModeSelectorProps): JSX.Ele
       >
         <span>{current.icon}</span>
         <span>{current.label}</span>
-        <span className="text-[10px]">▾</span>
+        <span className="text-[10px]">▴</span>
       </button>
 
       {open && (

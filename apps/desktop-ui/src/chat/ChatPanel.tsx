@@ -1,33 +1,56 @@
-import { useEffect, type JSX } from 'react';
+import { useEffect, useState, useRef, type JSX } from 'react';
 import type { SessionId } from '@ema-agent/contracts';
 import { useConversationStore } from '../stores/conversation-store.js';
 import { useSessionStore } from '../stores/session-store.js';
 import { useSidecarStore } from '../stores/sidecar-store.js';
+import { useAgentTaskStore } from '../stores/agent-task-store.js';
+import { useUiStore } from '../stores/ui-store.js';
 import { startSystemSse } from '../lib/system-sse.js';
 import { ErrorBoundary } from '../lib/error-boundary.js';
 import { SessionSidebar } from './SessionSidebar.js';
 import { ChatHistory } from './ChatHistory.js';
 import { ChatInput } from './ChatInput.js';
 import { ContextPanel } from './ContextPanel.js';
+import { TaskPanel } from './TaskPanel.js';
+
+// ── Inspector panel types ─────────────────────────────────────────────────────
+
+type InspectorPanelId = 'branches' | 'artifacts' | 'files' | 'tasks';
+
+// ── ChatPanel ─────────────────────────────────────────────────────────────────
 
 export function ChatPanel(): JSX.Element {
   const viewedSessionId = useConversationStore((s) => s.viewedSessionId);
   const sidecarStatus   = useSidecarStore((s) => s.status);
 
-  useEffect(() => { void startSystemSse(); }, []);
+  const [activePanels, setActivePanels] = useState<Set<InspectorPanelId>>(new Set());
+  const [overflowOpen, setOverflowOpen] = useState(false);
+  const overflowRef = useRef<HTMLDivElement>(null);
 
+  // Session metadata for title bar
+  const session = useSessionStore((s) =>
+    viewedSessionId ? s.sessions.byId.get(viewedSessionId as string) : undefined,
+  );
+
+  // Running task count badge on the ⋮ button
+  const runningTaskCount = useAgentTaskStore((s) => {
+    if (!viewedSessionId) return 0;
+    return [...s.tasks.values()].filter(
+      (t) => t.sessionId === viewedSessionId as string &&
+             (t.status === 'running' || t.status === 'waiting_user'),
+    ).length;
+  });
+
+  useEffect(() => { void startSystemSse(); }, []);
   useEffect(() => {
     const stop = useSidecarStore.getState().startPolling();
     return stop;
   }, []);
-
   useEffect(() => {
     void (async () => {
       await useSessionStore.getState().loadSessions();
-      // Auto-select the most recently viewed / most recent session on startup.
       if (!useConversationStore.getState().viewedSessionId) {
         const { sessions } = useSessionStore.getState();
-        // Prefer session with latest last_viewed_at, fall back to first in recent list.
         const allSessions = [...sessions.pinned, ...sessions.recent];
         const best = allSessions.reduce<{ id: string; ts: number } | null>((prev, s) => {
           const ts = s.lastViewedAt ?? 0;
@@ -38,6 +61,29 @@ export function ChatPanel(): JSX.Element {
       }
     })();
   }, []);
+
+  // Close overflow when clicking outside
+  useEffect(() => {
+    if (!overflowOpen) return;
+    const handler = (e: MouseEvent): void => {
+      if (overflowRef.current && !overflowRef.current.contains(e.target as Node)) {
+        setOverflowOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [overflowOpen]);
+
+  function togglePanel(id: InspectorPanelId): void {
+    setActivePanels((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  const hasInspector = activePanels.size > 0;
 
   if (sidecarStatus.kind === 'error') {
     return (
@@ -60,29 +106,295 @@ export function ChatPanel(): JSX.Element {
 
   return (
     <ErrorBoundary>
-      <div className="flex flex-row h-screen bg-neutral-950">
+      <div className="flex flex-row h-screen" style={{ background: 'var(--ema-surface-0)' }}>
         <SessionSidebar />
 
-        {/* Main chat area */}
+        {/* ── Main column ── */}
         <div className="flex flex-col flex-1 min-w-0">
+
+          {/* Title bar + inspector dock */}
+          <div className="flex items-center justify-between px-4 py-2 border-b shrink-0"
+               style={{ borderColor: 'var(--ema-border)' }}>
+            {/* Session title */}
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="text-sm font-medium text-neutral-200 truncate">
+                {session?.title ?? (viewedSessionId ? '加载中…' : '无会话')}
+              </span>
+              {session?.parentSessionId && (
+                <span className="text-xs text-neutral-600 shrink-0">· 分支</span>
+              )}
+            </div>
+
+            {/* Inspector dock */}
+            <div className="flex items-center gap-0.5 shrink-0">
+              {/* ⑂ Branches */}
+              <InspectorDockBtn
+                icon="i-mdi:source-fork"
+                label="会话分支"
+                active={activePanels.has('branches')}
+                onClick={() => togglePanel('branches')}
+              />
+              {/* ▣ Artifacts */}
+              <InspectorDockBtn
+                icon="i-mdi:layers-outline"
+                label="产物"
+                active={activePanels.has('artifacts')}
+                onClick={() => togglePanel('artifacts')}
+              />
+              {/* ⋮ Overflow */}
+              <div className="relative" ref={overflowRef}>
+                <button
+                  className={`relative size-7 rounded-md flex items-center justify-center text-sm transition-colors
+                    ${overflowOpen
+                      ? 'text-primary-300 bg-primary-500/10'
+                      : 'text-neutral-500 hover:text-neutral-200 hover:bg-neutral-800/60'}`}
+                  onClick={() => setOverflowOpen((v) => !v)}
+                  title="更多面板"
+                >
+                  <span className="i-mdi:dots-horizontal text-base" aria-hidden />
+                  {runningTaskCount > 0 && (
+                    <span className="absolute -top-0.5 -right-0.5 min-w-[14px] h-3.5 flex items-center justify-center rounded-full bg-primary-500 text-[9px] text-white font-bold px-0.5 pointer-events-none">
+                      {runningTaskCount}
+                    </span>
+                  )}
+                </button>
+
+                {overflowOpen && (
+                  <div className="absolute top-full right-0 mt-1 z-50 w-44 rounded-xl border shadow-xl py-1"
+                       style={{ background: 'var(--ema-surface-4)', borderColor: 'var(--ema-border-hover)' }}>
+                    <OverflowItem
+                      icon="i-mdi:folder-outline"
+                      label="文件浏览"
+                      active={activePanels.has('files')}
+                      onClick={() => { togglePanel('files'); setOverflowOpen(false); }}
+                    />
+                    <OverflowItem
+                      icon="i-mdi:robot-outline"
+                      label="后台任务"
+                      active={activePanels.has('tasks')}
+                      badge={runningTaskCount}
+                      onClick={() => { togglePanel('tasks'); setOverflowOpen(false); }}
+                    />
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
           <ChatHistory />
           <ChatInput />
 
-          <div className="flex items-center justify-between px-4 py-1.5 border-t border-neutral-800 text-xs text-neutral-500">
+          {/* Status bar */}
+          <div className="flex items-center justify-between px-4 py-1.5 border-t shrink-0 text-[11px]"
+               style={{ borderColor: 'var(--ema-border)', color: 'var(--ema-text-tertiary)' }}>
             <div className="flex items-center gap-2">
-              <div className={`w-2 h-2 rounded-full ${sidecarStatus.kind === 'ok' ? 'bg-green-400' : 'bg-red-400'}`} />
-              <span>sidecar</span>
-              {sidecarStatus.kind === 'ok' && <span>{sidecarStatus.latencyMs}ms</span>}
+              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${sidecarStatus.kind === 'ok' ? 'bg-green-400' : 'bg-red-400'}`} />
+              <span>Sidecar</span>
+              {sidecarStatus.kind === 'ok' && (
+                <span style={{ color: 'var(--ema-text-tertiary)' }}>{sidecarStatus.latencyMs}ms</span>
+              )}
             </div>
             <div className="flex items-center gap-3">
+              <ContextBall sessionId={viewedSessionId as string | null} />
               <ContextPanel />
               {viewedSessionId && (
-                <span className="text-neutral-700">{(viewedSessionId as string).slice(0, 8)}</span>
+                <span className="font-mono opacity-40">{(viewedSessionId as string).slice(0, 8)}</span>
               )}
             </div>
           </div>
         </div>
+
+        {/* ── Right inspector panel ── */}
+        {hasInspector && (
+          <div
+            className="flex-none w-72 border-l flex flex-col overflow-hidden"
+            style={{ borderColor: 'var(--ema-border)', background: 'var(--ema-surface-1)' }}
+          >
+            <InspectorContent activePanels={activePanels} sessionId={viewedSessionId as string | null} />
+          </div>
+        )}
       </div>
     </ErrorBoundary>
+  );
+}
+
+// ── Inspector dock helpers ────────────────────────────────────────────────────
+
+function InspectorDockBtn({
+  icon, label, active, badge, onClick,
+}: {
+  icon: string; label: string; active: boolean; badge?: number; onClick(): void;
+}): JSX.Element {
+  return (
+    <button
+      className={`relative size-7 rounded-md flex items-center justify-center text-sm transition-colors
+        ${active
+          ? 'text-primary-300 bg-primary-500/10'
+          : 'text-neutral-500 hover:text-neutral-200 hover:bg-neutral-800/60'}`}
+      onClick={onClick}
+      title={label}
+    >
+      <span className={`${icon} text-base`} aria-hidden />
+      {badge != null && badge > 0 && (
+        <span className="absolute -top-0.5 -right-0.5 min-w-[14px] h-3.5 flex items-center justify-center rounded-full bg-primary-500 text-[9px] text-white font-bold px-0.5 pointer-events-none">
+          {badge}
+        </span>
+      )}
+    </button>
+  );
+}
+
+function OverflowItem({
+  icon, label, active, badge, onClick,
+}: {
+  icon: string; label: string; active: boolean; badge?: number; onClick(): void;
+}): JSX.Element {
+  return (
+    <button
+      className={`w-full flex items-center gap-2.5 px-3 py-1.5 text-xs transition-colors
+        ${active
+          ? 'text-primary-300 bg-primary-500/8'
+          : 'text-neutral-400 hover:text-neutral-100 hover:bg-neutral-700/40'}`}
+      onClick={onClick}
+    >
+      <span className={`${icon} text-base shrink-0`} aria-hidden />
+      <span className="flex-1 text-left">{label}</span>
+      {badge != null && badge > 0 && (
+        <span className="min-w-[18px] h-4 flex items-center justify-center rounded-full bg-primary-500/20 text-primary-300 text-[10px] font-medium px-1">
+          {badge}
+        </span>
+      )}
+      {active && <span className="i-mdi:check text-primary-400 text-sm shrink-0" aria-hidden />}
+    </button>
+  );
+}
+
+// ── Inspector content ─────────────────────────────────────────────────────────
+
+function InspectorContent({
+  activePanels, sessionId,
+}: {
+  activePanels: Set<InspectorPanelId>;
+  sessionId:    string | null;
+}): JSX.Element {
+  const panels = [...activePanels];
+
+  if (panels.length === 1) {
+    const id = panels[0]!;
+    return (
+      <div className="flex flex-col flex-1 min-h-0">
+        <InspectorPanelHeader id={id} />
+        <div className="flex-1 overflow-y-auto">
+          <InspectorPanelBody id={id} sessionId={sessionId} />
+        </div>
+      </div>
+    );
+  }
+
+  // Multiple panels: stack vertically with equal flex
+  return (
+    <div className="flex flex-col flex-1 min-h-0 divide-y" style={{ borderColor: 'var(--ema-border)' }}>
+      {panels.map((id) => (
+        <div key={id} className="flex flex-col flex-1 min-h-0 overflow-hidden">
+          <InspectorPanelHeader id={id} compact />
+          <div className="flex-1 overflow-y-auto">
+            <InspectorPanelBody id={id} sessionId={sessionId} />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+const PANEL_META: Record<InspectorPanelId, { label: string; icon: string }> = {
+  branches:  { label: '会话分支', icon: 'i-mdi:source-fork' },
+  artifacts: { label: '产物',     icon: 'i-mdi:layers-outline' },
+  files:     { label: '文件',     icon: 'i-mdi:folder-outline' },
+  tasks:     { label: '后台任务', icon: 'i-mdi:robot-outline' },
+};
+
+function InspectorPanelHeader({ id, compact }: { id: InspectorPanelId; compact?: boolean }): JSX.Element {
+  const meta = PANEL_META[id];
+  return (
+    <div className={`flex items-center gap-1.5 px-3 shrink-0 border-b ${compact ? 'py-1.5' : 'py-2'}`}
+         style={{ borderColor: 'var(--ema-border)' }}>
+      <span className={`${meta.icon} text-sm`} style={{ color: 'var(--ema-text-tertiary)' }} aria-hidden />
+      <span className={`font-medium ${compact ? 'text-xs' : 'text-sm'}`}
+            style={{ color: 'var(--ema-text-secondary)' }}>
+        {meta.label}
+      </span>
+    </div>
+  );
+}
+
+function InspectorPanelBody({ id, sessionId }: { id: InspectorPanelId; sessionId: string | null }): JSX.Element {
+  if (id === 'tasks') {
+    return <TaskPanel className="p-2" />;
+  }
+  // Placeholder for branches / artifacts / files (V1.5)
+  return (
+    <div className="flex flex-col items-center justify-center gap-2 py-12 text-xs"
+         style={{ color: 'var(--ema-text-tertiary)' }}>
+      <span className={`${PANEL_META[id].icon} text-2xl opacity-30`} aria-hidden />
+      <span className="opacity-50">V1.5 即将推出</span>
+    </div>
+  );
+}
+
+// ── Context ball ──────────────────────────────────────────────────────────────
+// Small circular arc indicator showing live input token count vs context window.
+
+const FALLBACK_CTX = 200_000;
+
+function ContextBall({ sessionId }: { sessionId: string | null }): JSX.Element | null {
+  // Use the selected model's real context window; fall back to 200K if none selected.
+  const selectedCtx = useUiStore((s) => s.selectedContextWindow);
+  const ctxWindow = selectedCtx ?? FALLBACK_CTX;
+  const isFallback = selectedCtx === null;
+
+  const streaming = useConversationStore((s) =>
+    sessionId ? s.streamingMap.get(sessionId) : undefined,
+  );
+  const liveUsage = useConversationStore((s) => {
+    if (!streaming?.turnId) return undefined;
+    return s.liveUsageMap.get(streaming.turnId as string);
+  });
+
+  const messages = useConversationStore((s) =>
+    sessionId ? s.messages.get(sessionId) ?? [] : [],
+  );
+  const lastAssistant = [...messages].reverse().find((m) => m.role === 'assistant' && m.stats);
+  const inputTok = liveUsage?.inputTokens ?? lastAssistant?.stats?.inputTokens ?? 0;
+
+  if (!inputTok) return null;
+
+  const pct = Math.min(inputTok / ctxWindow, 1);
+  const r   = 7;
+  const circ = 2 * Math.PI * r;
+  const dash = pct * circ;
+
+  const color = pct > 0.8 ? 'var(--ema-danger)' : pct > 0.5 ? 'var(--ema-warning)' : 'var(--ema-success)';
+
+  function fmtK(n: number): string {
+    return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
+  }
+
+  return (
+    <div className="flex items-center gap-1.5"
+         title={`上下文: ${fmtK(inputTok)} / ${fmtK(ctxWindow)} (${Math.round(pct * 100)}%)${isFallback ? ' · 选择模型后显示精确上限' : ''}`}>
+      <svg width="18" height="18" viewBox="0 0 18 18" style={{ transform: 'rotate(-90deg)' }}>
+        <circle cx="9" cy="9" r={r} fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="2.5" />
+        <circle
+          cx="9" cy="9" r={r} fill="none"
+          stroke={color} strokeWidth="2.5"
+          strokeDasharray={`${dash} ${circ - dash}`}
+          strokeLinecap="round"
+          style={{ transition: 'stroke-dasharray 0.4s ease' }}
+        />
+      </svg>
+      <span style={{ color: 'var(--ema-text-tertiary)' }} className="tabular-nums">
+        {fmtK(inputTok)}
+      </span>
+    </div>
   );
 }

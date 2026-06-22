@@ -13,16 +13,15 @@ import { showToast } from '../lib/toast.js';
 import { useConversationStore, type ChatHistoryItem, type AssistantSlice } from '../stores/conversation-store.js';
 
 export interface AssistantBubbleProps {
-  message:         Pick<ChatHistoryItem, 'content' | 'slices' | 'createdAt' | 'stats' | 'turnId'>;
-  label?:          string;
-  isStreaming?:    boolean;
-  iterationCount?: number;
+  message:         Pick<ChatHistoryItem, 'content' | 'slices' | 'createdAt' | 'stats' | 'turnId' | 'mode'>;
+  label?:       string;
+  isStreaming?: boolean;
 }
 
 /** Ignore clicks landing within this window after the previous one (rage-click guard). */
 const AUDIO_CLICK_THROTTLE_MS = 600;
 
-export function AssistantBubble({ message, label = 'Ema', isStreaming, iterationCount }: AssistantBubbleProps): JSX.Element {
+export function AssistantBubble({ message, label = 'Ema', isStreaming }: AssistantBubbleProps): JSX.Element {
   const slices = resolveSlices(message);
   const isEmpty = slices.length === 0;
 
@@ -70,11 +69,8 @@ export function AssistantBubble({ message, label = 'Ema', isStreaming, iteration
   return (
     <div className="flex mr-12">
       <div className="flex flex-col min-w-20 max-w-full">
-        <div className="text-xs text-white/50 font-normal mb-1 flex items-center gap-1.5">
+        <div className="text-xs text-white/40 font-normal mb-1">
           <span>{label}</span>
-          {isStreaming && iterationCount != null && iterationCount > 0 && (
-            <span className="text-violet-400/70">第 {iterationCount} 轮</span>
-          )}
         </div>
 
         {isEmpty && isStreaming ? (
@@ -103,41 +99,68 @@ export function AssistantBubble({ message, label = 'Ema', isStreaming, iteration
           </div>
         )}
 
-        {((!isStreaming && message.stats) || isStreaming || showAudioButton) && (
-          <div className="text-xs text-neutral-400 mt-1 flex items-center gap-2">
-            {!isStreaming && message.stats ? (
-              <span>
-                ↑ {message.stats.inputTokens.toLocaleString()} tokens
-                {' '}↓ {message.stats.outputTokens.toLocaleString()} tokens
-                {' '}· {(message.stats.durationMs / 1000).toFixed(1)}s
-              </span>
-            ) : isStreaming && (
-              <span className="flex items-center gap-1">
-                <span className="w-1 h-1 rounded-full bg-primary-400 animate-pulse" />
-                {elapsed > 0 && <span>· {elapsed}s</span>}
-                {estimatedIn != null && estimatedIn > 0 && (
-                  <span>· ↑{estimatedIn.toLocaleString()}</span>
-                )}
-                {estimatedOut != null && estimatedOut > 0 && (
-                  <span>· ↓{estimatedOut.toLocaleString()}</span>
-                )}
-                {thinkingActive && <span className="text-violet-400/80">· Thinking</span>}
-              </span>
-            )}
-            {showAudioButton && (
-              <IconButton
-                size="sm"
-                label={isPlayingThis ? '停止播放' : '播放语音'}
-                icon={isPlayingThis ? 'i-mdi:stop' : 'i-mdi:play'}
-                className="opacity-40 hover:opacity-100"
-                onClick={handleAudioClick}
-              />
-            )}
-          </div>
-        )}
+        <div className="mt-1.5 flex items-center gap-2 text-[11px] text-neutral-500">
+          {/* Mode chip */}
+          {message.mode && (
+            <span className={`px-1.5 py-0.5 rounded-md font-medium
+              ${message.mode === 'agent'     ? 'bg-violet-500/15 text-violet-400/80'
+              : message.mode === 'narrative' ? 'bg-amber-500/15 text-amber-400/80'
+              :                                'bg-neutral-700/50 text-neutral-400/70'}`}>
+              {message.mode === 'agent' ? 'Agent' : message.mode === 'narrative' ? '叙事' : 'Chat'}
+            </span>
+          )}
+
+          {/* Live streaming stats */}
+          {isStreaming && (
+            <span className="flex items-center gap-1.5">
+              <span className="w-1 h-1 rounded-full bg-primary-400 animate-pulse shrink-0" />
+              <span className="tabular-nums">{elapsed}s</span>
+              {estimatedIn != null && estimatedIn > 0 && (
+                <span className="tabular-nums text-neutral-600">↑{fmtTok(estimatedIn)}</span>
+              )}
+              {estimatedOut != null && estimatedOut > 0 && (
+                <span className="tabular-nums">↓{fmtTok(estimatedOut)}</span>
+              )}
+              {thinkingActive && <span className="text-violet-400/70">· thinking</span>}
+            </span>
+          )}
+
+          {/* Final stats */}
+          {!isStreaming && (message.stats || message.content) && (
+            <span className="flex items-center gap-1.5 tabular-nums">
+              {message.stats ? (
+                <>
+                  <span>↑{fmtTok(message.stats.inputTokens)}</span>
+                  <span className="text-neutral-700">·</span>
+                  <span>↓{fmtTok(message.stats.outputTokens)}</span>
+                  <span className="text-neutral-700">·</span>
+                  <span>{(message.stats.durationMs / 1000).toFixed(1)}s</span>
+                </>
+              ) : (
+                <span className="text-neutral-600">≈↓{fmtTok(estimateTextTokens(message.content))}</span>
+              )}
+            </span>
+          )}
+
+          {/* Replay button */}
+          {showAudioButton && (
+            <IconButton
+              size="sm"
+              label={isPlayingThis ? '停止播放' : '重播语音'}
+              icon={isPlayingThis ? 'i-mdi:stop' : 'i-mdi:replay'}
+              className="opacity-30 hover:opacity-80 -ml-0.5"
+              onClick={handleAudioClick}
+            />
+          )}
+        </div>
       </div>
     </div>
   );
+}
+
+function fmtTok(n: number): string {
+  if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
+  return String(n);
 }
 
 // Group consecutive tool_use slices into a shared box.

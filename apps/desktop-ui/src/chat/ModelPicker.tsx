@@ -8,6 +8,7 @@
 import { useState, useEffect, useMemo, useRef, type JSX } from 'react';
 import { ScrollArea } from '@ema-agent/ui';
 import { modelsApi, type EnabledModelWire } from '../api/models.js';
+import { useUiStore } from '../stores/ui-store.js';
 
 export interface ModelSelection {
   providerId: string;
@@ -93,7 +94,7 @@ export function ModelPicker({ selected, onSelect, onClear }: ModelPickerProps): 
       >
         <span className="text-[10px]">🤖</span>
         <span className="truncate">{triggerLabel}</span>
-        <span className="text-[10px] shrink-0">▾</span>
+        <span className="text-[10px] shrink-0">▴</span>
       </button>
 
       {/* Dropdown — pops UPWARD (bottom-full) since it's in the bottom toolbar */}
@@ -117,7 +118,11 @@ export function ModelPicker({ selected, onSelect, onClear }: ModelPickerProps): 
               {selected && (
                 <button
                   className="shrink-0 text-[10px] text-gray-500 hover:text-red-400 px-1 transition-colors"
-                  onClick={() => { onClear(); setOpen(false); }}
+                  onClick={() => {
+                    onClear();
+                    useUiStore.getState().setSelectedContextWindow(null);
+                    setOpen(false);
+                  }}
                   title="恢复默认模型"
                 >
                   ✕
@@ -153,6 +158,7 @@ export function ModelPicker({ selected, onSelect, onClear }: ModelPickerProps): 
                           }
                           onClick={() => {
                             onSelect({ providerId: m.providerId, model: m.model });
+                            useUiStore.getState().setSelectedContextWindow(m.contextWindow);
                             setOpen(false);
                           }}
                         >
