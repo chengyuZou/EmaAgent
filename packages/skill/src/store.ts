@@ -4,7 +4,7 @@ import { dirname, join, resolve, sep } from 'node:path';
 import type { SkillsRepo, SkillRow } from '@ema-agent/storage';
 import { parseSkillMd, validateSkillMd } from './parser.js';
 import type {
-  SkillActivateMode, SkillRecord, SkillRoot, SkillSource, SkillSummary,
+  SkillRecord, SkillRoot, SkillSource, SkillSummary,
 } from './types.js';
 
 export class SkillNotFoundError extends Error {
@@ -100,19 +100,19 @@ export class SkillStore {
 
     const existing = this.repo.findByName(manifest.name);
     const row: SkillRow = {
-      id:             existing?.id ?? randomUUID(),
-      name:           manifest.name,
-      version:        manifest.version,
-      description:    manifest.description,
-      arg_hint:       manifest.argumentHint ?? null,
-      dir_path:       resolve(dirPath),
+      id:            existing?.id ?? randomUUID(),
+      name:          manifest.name,
+      version:       manifest.version,
+      description:   manifest.description,
+      arg_hint:      manifest.argumentHint ?? null,
+      dir_path:      resolve(dirPath),
       source,
-      source_url:     existing?.source_url ?? null,
-      sha256:         existing?.sha256 ?? null,
-      activates_json: JSON.stringify(manifest.activates),
-      enabled:        existing?.enabled ?? 1,
-      content_mtime:  Math.floor(st.mtimeMs),
-      installed_at:   existing?.installed_at ?? Date.now(),
+      source_url:    existing?.source_url ?? null,
+      sha256:        existing?.sha256 ?? null,
+      size_bytes:    await dirSize(dirPath),
+      enabled:       existing?.enabled ?? 1,
+      content_mtime: Math.floor(st.mtimeMs),
+      installed_at:  existing?.installed_at ?? Date.now(),
     };
     this.repo.upsertByName(row);
     return this.#rowToRecord(row);
@@ -129,15 +129,13 @@ export class SkillStore {
     return row ? this.#rowToRecord(row) : null;
   }
 
-  /** Lightweight catalog for prompt injection — enabled skills active in `mode`. */
-  listSummariesForMode(mode: SkillActivateMode): SkillSummary[] {
-    return this.repo.listEnabled()
-      .map((r) => this.#rowToRecord(r))
-      .filter((s) => s.activates.includes(mode))
-      .map((s) => ({
-        name: s.name, description: s.description,
-        argumentHint: s.argumentHint, activates: s.activates,
-      }));
+  /** Lightweight catalog for prompt injection — all enabled skills. */
+  listSummaries(): SkillSummary[] {
+    return this.repo.listEnabled().map((r) => ({
+      name:         r.name,
+      description:  r.description,
+      argumentHint: r.arg_hint ?? undefined,
+    }));
   }
 
   // ── Activation: read body lazily from disk (with path guard) ───────────────
@@ -213,19 +211,19 @@ export class SkillStore {
     const st = await stat(join(finalDir, SKILL_FILE));
     const existing = this.repo.findByName(manifest.name);
     const row: SkillRow = {
-      id:             existing?.id ?? randomUUID(),
-      name:           manifest.name,
-      version:        manifest.version,
-      description:    manifest.description,
-      arg_hint:       manifest.argumentHint ?? null,
-      dir_path:       resolve(finalDir),
-      source:         root.source,
-      source_url:     extra.sourceUrl ?? null,
-      sha256:         extra.sha256 ?? null,
-      activates_json: JSON.stringify(manifest.activates),
-      enabled:        existing?.enabled ?? 1,
-      content_mtime:  Math.floor(st.mtimeMs),
-      installed_at:   existing?.installed_at ?? Date.now(),
+      id:            existing?.id ?? randomUUID(),
+      name:          manifest.name,
+      version:       manifest.version,
+      description:   manifest.description,
+      arg_hint:      manifest.argumentHint ?? null,
+      dir_path:      resolve(finalDir),
+      source:        root.source,
+      source_url:    extra.sourceUrl ?? null,
+      sha256:        extra.sha256 ?? null,
+      size_bytes:    await dirSize(finalDir),
+      enabled:       existing?.enabled ?? 1,
+      content_mtime: Math.floor(st.mtimeMs),
+      installed_at:  existing?.installed_at ?? Date.now(),
     };
     this.repo.upsertByName(row);
     return this.#rowToRecord(row);
@@ -294,10 +292,10 @@ export class SkillStore {
       version:      row.version,
       description:  row.description,
       argumentHint: row.arg_hint ?? undefined,
-      activates:    JSON.parse(row.activates_json) as SkillActivateMode[],
       dirPath:      row.dir_path,
       source:       row.source as SkillSource,
       sourceUrl:    row.source_url ?? undefined,
+      sizeBytes:    row.size_bytes,
       enabled:      row.enabled === 1,
       installedAt:  row.installed_at,
     };
@@ -308,4 +306,24 @@ export class SkillStore {
 
 function slugify(name: string): string {
   return name.trim().toLowerCase().replace(/[^a-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '') || 'skill';
+}
+
+/** Recursive total byte size of a skill directory (SKILL.md + assets). */
+async function dirSize(dir: string): Promise<number> {
+  let total = 0;
+  let entries;
+  try {
+    entries = await readdir(dir, { withFileTypes: true });
+  } catch {
+    return 0;
+  }
+  for (const e of entries) {
+    const p = join(dir, e.name);
+    if (e.isDirectory()) {
+      total += await dirSize(p);
+    } else if (e.isFile()) {
+      try { total += (await stat(p)).size; } catch { /* ignore */ }
+    }
+  }
+  return total;
 }

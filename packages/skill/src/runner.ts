@@ -2,7 +2,7 @@ import type { HookBus, HookContext, HookResult } from '@ema-agent/hook';
 import { PRIORITY } from '@ema-agent/hook';
 import type { TurnMode } from '@ema-agent/contracts';
 import type { SkillStore } from './store.js';
-import type { SkillActivateMode, SkillSummary } from './types.js';
+import type { SkillSummary } from './types.js';
 
 // ── SkillRunner ───────────────────────────────────────────────────────────────
 //
@@ -12,12 +12,10 @@ import type { SkillActivateMode, SkillSummary } from './types.js';
 // (see SkillStore.renderBody). This keeps the prompt small and, because the
 // catalog only changes on install/enable (not per-turn), preserves prompt cache.
 //
-// Activation rules:
-//   - Skill is globally enabled (skills.enabled = 1)
-//   - Skill.activates includes the current turn mode
-//
-// allowed-tools: enforced at activation time (skill_call → temp permission
-// grant), not here. The runner only advertises availability.
+// Skills are NOT gated per-mode. The catalog is injected only in `agent` mode
+// because skill_call is an agent-mode tool — there is no per-skill mode tag.
+// allowed-tools is enforced at activation time (skill_call → temp permission
+// grant), not here; the runner only advertises availability.
 
 export class SkillRunner {
   private unregister: (() => void) | null = null;
@@ -35,12 +33,11 @@ export class SkillRunner {
       ctx: HookContext<'beforeLlm'>,
     ): Promise<HookResult<'beforeLlm'>> => {
       const mode = ctx.meta['mode'] as TurnMode | undefined;
-      if (!mode) return { kind: 'continue' };
+      // skill_call is an agent-mode tool; advertising skills elsewhere is dead
+      // weight (the model could not invoke them).
+      if (mode !== 'agent') return { kind: 'continue' };
 
-      const skillMode = turnModeToSkillMode(mode);
-      if (!skillMode) return { kind: 'continue' };
-
-      const summaries = this.store.listSummariesForMode(skillMode);
+      const summaries = this.store.listSummaries();
       if (summaries.length === 0) return { kind: 'continue' };
 
       const messages = ctx.payload.messages;
@@ -91,11 +88,4 @@ function renderCatalog(summaries: SkillSummary[]): string {
     '需要时用 `skill_call(skill, arguments)` 激活以下技能(激活后才会注入其完整指令):\n' +
     lines.join('\n')
   );
-}
-
-function turnModeToSkillMode(mode: TurnMode): SkillActivateMode | null {
-  if (mode === 'chat')      return 'chat';
-  if (mode === 'narrative') return 'narrative';
-  if (mode === 'agent')     return 'agent';
-  return null;
 }

@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { z }    from 'zod';
+import { listMarketSkills, DEFAULT_MARKET } from '@ema-agent/skill';
 import type { AppBindings } from '../wiring.js';
 
 // ── Skills router ─────────────────────────────────────────────────────────────
@@ -34,6 +35,19 @@ export function createSkillsRouter(bindings: AppBindings) {
 
   router.get('/skills', (c) => {
     return c.json({ skills: skillStore.listAll() });
+  });
+
+  // ── Marketplace: list installable skills from a GitHub repo (default: anthropics/skills) ──
+  router.get('/skills/market', async (c) => {
+    const owner = c.req.query('owner') ?? DEFAULT_MARKET.owner;
+    const repo  = c.req.query('repo')  ?? DEFAULT_MARKET.repo;
+    const ref   = c.req.query('ref')   ?? DEFAULT_MARKET.ref;
+    try {
+      const skills = await listMarketSkills({ owner, repo, ref });
+      return c.json({ source: { owner, repo, ref }, skills });
+    } catch (err) {
+      return c.json({ error: (err as Error).message }, 502);
+    }
   });
 
   router.post('/skills', async (c) => {

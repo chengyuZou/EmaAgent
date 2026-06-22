@@ -8,6 +8,12 @@ import { showToast } from '../lib/toast.js';
 
 type InstallMode = 'text' | 'url' | null;
 
+function formatBytes(bytes: number): string {
+  if (!bytes || bytes < 1024) return `${bytes || 0} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
 export function SkillsTab(): JSX.Element {
   const skills  = useSkillStore((s) => s.skills);
   const loading = useSkillStore((s) => s.loading);
@@ -116,7 +122,7 @@ export function SkillsTab(): JSX.Element {
                       <p className="text-xs text-neutral-400 mt-1 line-clamp-2">{sk.description}</p>
                     )}
                     <p className="text-xs text-neutral-600 mt-1">
-                      安装于 {new Date(sk.installedAt).toLocaleDateString('zh-CN')}
+                      安装于 {new Date(sk.installedAt).toLocaleDateString('zh-CN')} · {formatBytes(sk.sizeBytes)}
                     </p>
                   </div>
 

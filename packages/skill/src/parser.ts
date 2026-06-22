@@ -23,7 +23,6 @@ export function parseSkillMd(rawMd: string): SkillManifest {
     version:      fm.version,
     description:  fm.description,
     argumentHint: fm['argument-hint'],
-    activates:    fm.activates,
     allowedTools: fm['allowed-tools'] ?? [],
     body:         content.trim(),
   };

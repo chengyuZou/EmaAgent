@@ -16,7 +16,7 @@ export interface SkillRow {
   source:         string;          // 'builtin' | 'user' | 'market'
   source_url:     string | null;
   sha256:         string | null;
-  activates_json: string;          // JSON array: ["chat","agent",...]
+  size_bytes:     number;          // total size of the skill dir (bytes)
   enabled:        number;          // 0 | 1
   content_mtime:  number;          // SKILL.md mtime (ms)
   installed_at:   number;
@@ -41,20 +41,20 @@ export class SkillsRepo {
     this.db.prepare(`
       INSERT INTO skills
         (id, name, version, description, arg_hint, dir_path, source,
-         source_url, sha256, activates_json, enabled, content_mtime, installed_at)
+         source_url, sha256, size_bytes, enabled, content_mtime, installed_at)
       VALUES
         (@id, @name, @version, @description, @arg_hint, @dir_path, @source,
-         @source_url, @sha256, @activates_json, @enabled, @content_mtime, @installed_at)
+         @source_url, @sha256, @size_bytes, @enabled, @content_mtime, @installed_at)
       ON CONFLICT(name) DO UPDATE SET
-        version        = excluded.version,
-        description    = excluded.description,
-        arg_hint       = excluded.arg_hint,
-        dir_path       = excluded.dir_path,
-        source         = excluded.source,
-        source_url     = excluded.source_url,
-        sha256         = excluded.sha256,
-        activates_json = excluded.activates_json,
-        content_mtime  = excluded.content_mtime
+        version       = excluded.version,
+        description   = excluded.description,
+        arg_hint      = excluded.arg_hint,
+        dir_path      = excluded.dir_path,
+        source        = excluded.source,
+        source_url    = excluded.source_url,
+        sha256        = excluded.sha256,
+        size_bytes    = excluded.size_bytes,
+        content_mtime = excluded.content_mtime
     `).run(row);
   }
 

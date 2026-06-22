@@ -133,7 +133,7 @@ CREATE TABLE skills (
   source         TEXT NOT NULL DEFAULT 'user',  -- 'builtin' | 'user' | 'market'
   source_url     TEXT,                          -- market/github origin (optional)
   sha256         TEXT,                          -- market install integrity (optional)
-  activates_json TEXT NOT NULL DEFAULT '["agent"]',
+  size_bytes     INTEGER NOT NULL DEFAULT 0,    -- total size of the skill dir (SKILL.md + assets)
   enabled        INTEGER NOT NULL DEFAULT 1,
   content_mtime  INTEGER NOT NULL DEFAULT 0,    -- SKILL.md mtime — detect external edits
   installed_at   INTEGER NOT NULL
