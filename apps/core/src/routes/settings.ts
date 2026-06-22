@@ -1,4 +1,4 @@
-import { Hono } from 'hono';
+﻿import { Hono } from 'hono';
 import { z } from 'zod';
 import { SettingsRepo } from '@ema-agent/storage';
 import type { AppBindings } from '../wiring.js';
@@ -125,7 +125,7 @@ const DEFAULT_THEME: ThemeConfig = { hue: 350, radius: 1 };
  */
 export function settingsRoute(bindings: AppBindings): Hono {
   const app = new Hono();
-  const repo = new SettingsRepo(bindings.profileDb.sqlite);
+  const repo = bindings.settings;
 
   // ── Event-display ─────────────────────────────────────────────────────────
   app.get('/event-display', (c) => {

@@ -1,4 +1,4 @@
-import { Hono } from 'hono';
+﻿import { Hono } from 'hono';
 import { z } from 'zod';
 import { randomUUID } from 'node:crypto';
 import { ProvidersRepo, ModelBindingsRepo } from '@ema-agent/storage';
@@ -215,7 +215,7 @@ export function providersRoute(bindings: AppBindings): Hono {
 
   // GET /api/providers
   app.get('/', (c) => {
-    const repo = new ProvidersRepo(bindings.profileDb.sqlite);
+    const repo = bindings.providers;
     const rows = repo.listWithHealth();
     return c.json(rows.map(({ config, health }) =>
       shapeProvider(config, health, getProviderDefinition(config.definition_id)),
@@ -239,7 +239,7 @@ export function providersRoute(bindings: AppBindings): Hono {
       cap => (def.capabilities as readonly string[]).includes(cap),
     );
 
-    const repo = new ProvidersRepo(bindings.profileDb.sqlite);
+    const repo = bindings.providers;
     const id = randomUUID();
     repo.upsert({
       id,
@@ -260,7 +260,7 @@ export function providersRoute(bindings: AppBindings): Hono {
 
   // GET /api/providers/:id
   app.get('/:id', (c) => {
-    const repo = new ProvidersRepo(bindings.profileDb.sqlite);
+    const repo = bindings.providers;
     const result = repo.getWithHealth(c.req.param('id'));
     if (!result) return c.json({ error: 'not_found' }, 404);
     const { config, health } = result;
@@ -272,7 +272,7 @@ export function providersRoute(bindings: AppBindings): Hono {
   // in profile.db on the user's own machine; sidecar is localhost + secret
   // gated, so this stays local. V2/Stronghold would gate or remove it.
   app.get('/:id/key', (c) => {
-    const repo = new ProvidersRepo(bindings.profileDb.sqlite);
+    const repo = bindings.providers;
     const row = repo.get(c.req.param('id'));
     if (!row) return c.json({ error: 'not_found' }, 404);
     return c.json({ apiKey: row.api_key_plain ?? '' });
@@ -281,7 +281,7 @@ export function providersRoute(bindings: AppBindings): Hono {
   // PATCH /api/providers/:id
   app.patch('/:id', async (c) => {
     const id = c.req.param('id');
-    const repo = new ProvidersRepo(bindings.profileDb.sqlite);
+    const repo = bindings.providers;
 
     const existing = repo.get(id);
     if (!existing) return c.json({ error: 'not_found' }, 404);
@@ -324,7 +324,7 @@ export function providersRoute(bindings: AppBindings): Hono {
   // DELETE /api/providers/:id
   app.delete('/:id', (c) => {
     const id = c.req.param('id');
-    const repo = new ProvidersRepo(bindings.profileDb.sqlite);
+    const repo = bindings.providers;
 
     const existing = repo.get(id);
     if (!existing) return c.json({ error: 'not_found' }, 404);
@@ -344,7 +344,7 @@ export function providersRoute(bindings: AppBindings): Hono {
       return c.json({ error: 'invalid_request', details: parsed.error.flatten() }, 400);
     }
 
-    const repo = new ProvidersRepo(bindings.profileDb.sqlite);
+    const repo = bindings.providers;
     const existing = repo.get(id);
     if (!existing) return c.json({ error: 'not_found' }, 404);
 
@@ -369,12 +369,15 @@ export function providersRoute(bindings: AppBindings): Hono {
   // table) and whether it's already enabled (provider_llm_models).
   app.get('/:id/models', async (c) => {
     const id = c.req.param('id');
-    const repo = new ProvidersRepo(bindings.profileDb.sqlite);
+    const repo = bindings.providers;
     const row = repo.get(id);
     if (!row) return c.json({ error: 'not_found' }, 404);
 
-    const { models, source } = await fetchLlmModels(row);
-    const pool = new ProviderLlmModelsRepo(bindings.profileDb.sqlite);
+    const { models, source } = await fetchLlmModels(row, {
+      modelsDevId:  getProviderDefinition(row.definition_id)?.modelsDevId,
+      modelCatalog: bindings.modelCatalog,
+    });
+    const pool = bindings.providerLlmModels;
     const enabled = new Map(pool.listByProvider(id).map((m) => [m.model, m.context_window]));
     const modelsDevId = getProviderDefinition(row.definition_id)?.modelsDevId;
 
@@ -398,7 +401,7 @@ export function providersRoute(bindings: AppBindings): Hono {
     if (!body.success) {
       return c.json({ error: 'invalid_request', details: body.error.flatten() }, 400);
     }
-    const repo = new ProvidersRepo(bindings.profileDb.sqlite);
+    const repo = bindings.providers;
     if (!repo.get(id)) return c.json({ error: 'not_found' }, 404);
 
     new ProviderLlmModelsRepo(bindings.profileDb.sqlite).upsert({
@@ -450,7 +453,7 @@ export function providersRoute(bindings: AppBindings): Hono {
     }
 
     try {
-      const cache = new VoiceUriCache(new SettingsRepo(bindings.profileDb.sqlite));
+      const cache = new VoiceUriCache(bindings.settings);
       await ensureVoiceUri(voice, adapter, model, card.id, providerId, cache);
       if (!voice.voiceUri && adapter.protocol !== 'gpt-sovits-tts') {
         return c.json({ error: 'voice_upload_failed', message: '参考音频上传失败' }, 400);
@@ -477,7 +480,7 @@ export function providersRoute(bindings: AppBindings): Hono {
 
   app.get('/:id/embed-models', async (c) => {
     const id = c.req.param('id');
-    const repo = new ProvidersRepo(bindings.profileDb.sqlite);
+    const repo = bindings.providers;
     const row = repo.get(id);
     if (!row) return c.json({ error: 'not_found' }, 404);
 
@@ -501,7 +504,7 @@ export function providersRoute(bindings: AppBindings): Hono {
     const body  = enableEmbedModelSchema.safeParse(await c.req.json().catch(() => null));
     if (!body.success) return c.json({ error: 'invalid_request', details: body.error.flatten() }, 400);
 
-    const repo = new ProvidersRepo(bindings.profileDb.sqlite);
+    const repo = bindings.providers;
     if (!repo.get(id)) return c.json({ error: 'not_found' }, 404);
 
     // Probe the real dimension by embedding a short text — the vector length is
@@ -536,7 +539,7 @@ export function providersRoute(bindings: AppBindings): Hono {
 
   app.get('/:id/rerank-models', (c) => {
     const id = c.req.param('id');
-    const repo = new ProvidersRepo(bindings.profileDb.sqlite);
+    const repo = bindings.providers;
     const row = repo.get(id);
     if (!row) return c.json({ error: 'not_found' }, 404);
 
@@ -561,7 +564,7 @@ export function providersRoute(bindings: AppBindings): Hono {
     const body  = enableRerankModelSchema.safeParse(await c.req.json().catch(() => null));
     if (!body.success) return c.json({ error: 'invalid_request', details: body.error.flatten() }, 400);
 
-    const repo = new ProvidersRepo(bindings.profileDb.sqlite);
+    const repo = bindings.providers;
     if (!repo.get(id)) return c.json({ error: 'not_found' }, 404);
 
     bindings.providerRerankModels.upsert({
@@ -586,7 +589,7 @@ export function providersRoute(bindings: AppBindings): Hono {
 
   app.get('/:id/tts-models', (c) => {
     const id = c.req.param('id');
-    const repo = new ProvidersRepo(bindings.profileDb.sqlite);
+    const repo = bindings.providers;
     const row = repo.get(id);
     if (!row) return c.json({ error: 'not_found' }, 404);
 
@@ -604,7 +607,7 @@ export function providersRoute(bindings: AppBindings): Hono {
   app.put('/:id/tts-models/:model', async (c) => {
     const id    = c.req.param('id');
     const model = decodeURIComponent(c.req.param('model'));
-    const repo  = new ProvidersRepo(bindings.profileDb.sqlite);
+    const repo  = bindings.providers;
     if (!repo.get(id)) return c.json({ error: 'not_found' }, 404);
 
     bindings.providerTtsModels.upsert({ providerConfigId: id, model });
@@ -625,7 +628,7 @@ export function providersRoute(bindings: AppBindings): Hono {
 
   app.get('/:id/stt-models', (c) => {
     const id = c.req.param('id');
-    const repo = new ProvidersRepo(bindings.profileDb.sqlite);
+    const repo = bindings.providers;
     const row = repo.get(id);
     if (!row) return c.json({ error: 'not_found' }, 404);
 
@@ -643,7 +646,7 @@ export function providersRoute(bindings: AppBindings): Hono {
   app.put('/:id/stt-models/:model', async (c) => {
     const id    = c.req.param('id');
     const model = decodeURIComponent(c.req.param('model'));
-    const repo  = new ProvidersRepo(bindings.profileDb.sqlite);
+    const repo  = bindings.providers;
     if (!repo.get(id)) return c.json({ error: 'not_found' }, 404);
 
     bindings.providerSttModels.upsert({ providerConfigId: id, model });

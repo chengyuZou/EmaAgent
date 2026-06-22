@@ -1,4 +1,4 @@
-import { defineProvider } from '../types.js';
+﻿import { defineProvider } from '../types.js';
 
 export const provider = defineProvider({
   id: 'deepseek',
@@ -14,7 +14,6 @@ export const provider = defineProvider({
   capabilities: ['llm'],
   // User picks protocol when adding a config; openai-llm is the default (first)
   protocols: { llm: ['openai-llm', 'anthropic-llm'] },
-  defaultModels: { llm: ['deepseek-chat', 'deepseek-reasoner'] },
   iconKey: 'i-lobe-icons:deepseek',
   iconColor: 'i-lobe-icons:deepseek-color',
 });

@@ -52,7 +52,7 @@ export interface AvailableModelWire {
 }
 
 export interface ModelsListWire {
-  source: 'live' | 'static';
+  source: 'live' | 'catalog';
   models: AvailableModelWire[];
 }
 

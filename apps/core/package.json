@@ -14,7 +14,7 @@
   "files": ["dist"],
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && node --input-type=module -e \"import{cpSync}from'fs';cpSync('models-dev-snapshot.json','dist/models-dev-snapshot.json')\"",
     "start": "node dist/index.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run --passWithNoTests",

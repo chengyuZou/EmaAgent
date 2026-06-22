@@ -3,7 +3,7 @@ import {
   type ProviderConfigRow,
   type Database,
 } from '@ema-agent/storage';
-import type { ProviderConfig } from '@ema-agent/llm';
+import type { ProviderConfig, ModelsDevCatalog } from '@ema-agent/llm';
 import {
   getProviderDefinition,
   isLlmProtocol,
@@ -52,8 +52,8 @@ export function loadLlmConfigs(db: Database): ProviderConfig[] {
 
 export interface FetchedModels {
   models: string[];
-  /** 'live' = fetched from the provider; 'static' = definition's defaultModels fallback. */
-  source: 'live' | 'static';
+  /** 'live' = fetched from provider; 'catalog' = from models.dev. */
+  source: 'live' | 'catalog';
 }
 
 /**
@@ -61,7 +61,8 @@ export interface FetchedModels {
  * (e.g. SiliconFlow returns embed/rerank/tts/stt/image models in the same list),
  * so we drop obvious non-LLM families by name. Deliberately conservative — bare
  * "audio"/"voice"/"speech" are NOT matched, since multimodal LLMs (gpt-4o-audio)
- * legitimately contain them; curated defaultModels are unioned back regardless.
+ * legitimately contain them. The models.dev catalog covers any LLMs the heuristic
+ * drops, and live results are merged with catalog before returning.
  */
 function isNonLlmModelId(id: string): boolean {
   return /(?:(?:^|[/\-_])(?:bge|m3e|gte|e5|embedding|embed)|rerank|cosyvoice|sensevoice|whisper|tts|sovits|kolors|flux|stable-?diffusion|sdxl|dall-?e|wanx|musicgen)/i.test(id);
@@ -70,44 +71,53 @@ function isNonLlmModelId(id: string): boolean {
 /**
  * List the LLM models a provider config exposes.
  *
- * OpenAI-compatible protocols expose `GET {baseUrl}/models` (id list); we hit
- * it live so the picker reflects the key's real entitlements. Anthropic/Gemini
- * have no uniform list endpoint here, and any failure (network, 401, non-OpenAI
- * shape) falls back to the definition's curated `defaultModels.llm`.
+ * Fallback chain:
+ *   1. Live /v1/models (openai-style protocols only)
+ *   2. models.dev catalog (when modelsDevId is known)
+ *   3. Empty — user must manually enable models
  *
- * Note: OpenAI's /models does NOT carry context length — windows come from the
- * token table downstream, not from here.
+ * `defaultModels.llm` is intentionally NOT used as fallback — the static list
+ * is a maintenance burden and the models.dev catalog supersedes it. Users can
+ * still manually add models via the settings UI's model manager.
  */
-export async function fetchLlmModels(row: ProviderConfigRow, signal?: AbortSignal): Promise<FetchedModels> {
-  const def = getProviderDefinition(row.definition_id);
-  const staticList = [...(def?.defaultModels?.llm ?? [])];
+export async function fetchLlmModels(
+  row: ProviderConfigRow,
+  opts?: {
+    modelsDevId?:   string;
+    modelCatalog?:  ModelsDevCatalog;
+    signal?:        AbortSignal;
+  },
+): Promise<FetchedModels> {
+  const catalogModels = opts?.modelsDevId && opts?.modelCatalog
+    ? opts.modelCatalog.listLlmModelIds(opts.modelsDevId)
+    : [];
+
   const cfg = buildLlmProviderConfig(row);
 
-  // Only openai-style protocols have the /v1/models list endpoint.
-  if (!cfg || (cfg.protocol !== 'openai-llm' && cfg.protocol !== 'openai-responses-llm')) {
-    return { models: staticList, source: 'static' };
+  // Live /v1/models probe — supplements the catalog for custom / self-hosted
+  // models that models.dev doesn't track.
+  if (cfg && (cfg.protocol === 'openai-llm' || cfg.protocol === 'openai-responses-llm')) {
+    const base = (cfg.baseUrl ?? '').replace(/\/$/, '');
+    if (base) {
+      try {
+        const res = await fetch(`${base}/models`, {
+          headers: { Authorization: `Bearer ${cfg.apiKey}` },
+          signal:  opts?.signal ?? AbortSignal.timeout(10_000),
+        });
+        if (res.ok) {
+          const body = await res.json() as { data?: Array<{ id?: string }> };
+          const liveIds = (body.data ?? [])
+            .map((m) => m.id)
+            .filter((id): id is string => !!id)
+            .filter((id) => !isNonLlmModelId(id));
+          const merged = [...new Set([...catalogModels, ...liveIds])].sort();
+          return { models: merged, source: 'live' };
+        }
+      } catch { /* probe failed — fall through to catalog */ }
+    }
   }
 
-  const base = (cfg.baseUrl ?? '').replace(/\/$/, '');
-  if (!base) return { models: staticList, source: 'static' };
-
-  try {
-    const res = await fetch(`${base}/models`, {
-      headers: { Authorization: `Bearer ${cfg.apiKey}` },
-      signal:  signal ?? AbortSignal.timeout(10_000),
-    });
-    if (!res.ok) return { models: staticList, source: 'static' };
-    const body = await res.json() as { data?: Array<{ id?: string }> };
-    const ids = (body.data ?? [])
-      .map((m) => m.id)
-      .filter((id): id is string => !!id)
-      // /v1/models is modality-blind — drop obvious non-LLM families by name.
-      .filter((id) => !isNonLlmModelId(id));
-    if (ids.length === 0) return { models: staticList, source: 'static' };
-    // Union with curated static LLM list (covers any LLM the heuristic dropped).
-    const merged = [...new Set([...ids, ...staticList])].sort();
-    return { models: merged, source: 'live' };
-  } catch {
-    return { models: staticList, source: 'static' };
-  }
+  // models.dev catalog is the primary source for non-OpenAI providers
+  // (Anthropic, Gemini) and the fallback when live probe fails.
+  return { models: catalogModels, source: 'catalog' };
 }

@@ -320,8 +320,11 @@ export class Orchestrator {
     if (request.providerId && request.model) {
       return { providerId: request.providerId, model: request.model };
     }
-    // Path 2: model only — resolve provider from request.providerId or binding
-    const binding    = this.bindings.modelBindings.get(request.mode as BindingModule);
+    // Path 2: model only — resolve provider from request.providerId.
+    // chat/narrative/agent no longer use model_bindings (model comes from
+    // the frontend picker). Other modes still read their binding.
+    const isTurnMode = request.mode === 'chat' || request.mode === 'narrative' || request.mode === 'agent';
+    const binding    = isTurnMode ? undefined : this.bindings.modelBindings.get(request.mode as BindingModule);
     const providerId = request.providerId ?? binding?.providerConfigId ?? this.bindings.llm.firstProviderId();
     const model      = request.model ?? binding?.model
       ?? (providerId ? this.bindings.llm.defaultModelFor(providerId) : undefined);

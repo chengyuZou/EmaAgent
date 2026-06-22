@@ -61,8 +61,10 @@ export function registerMemoryHooks(
       const mode       = (ctx.meta['mode']       as TurnMode | undefined) ?? 'chat';
       const userInput  = (ctx.meta['userInput']  as string   | undefined) ?? '';
       const signal     = ctx.meta['signal']      as AbortSignal | undefined;
-      // Engine sets model in meta so context window is always per-turn accurate.
-      const model  = ctx.meta['model'] as string | undefined;
+      // Engine sets model + providerId in meta so context window + compaction
+      // are always per-turn accurate.
+      const model      = ctx.meta['model']      as string | undefined;
+      const providerId = ctx.meta['providerId'] as string | undefined;
 
       const window = resolveContextWindow(deps, model);
       const recent = deps.recentFiles?.(ctx.sessionId);
@@ -75,6 +77,8 @@ export function registerMemoryHooks(
         userInput,
         messages:           ctx.payload.messages,
         modelContextWindow: window,
+        providerId,
+        compactionModel:    model,
         recentFiles:        recent,
         signal,
         emit:               ctx.emit,

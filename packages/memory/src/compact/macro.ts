@@ -1,6 +1,5 @@
 import crypto from 'node:crypto';
 import type { LlmRouter, LlmMessage, AssistantBlock, UserBlock } from '@ema-agent/llm';
-import type { ModelBindingsRepo } from '@ema-agent/storage';
 import type { TurnMode, SessionId, TurnId, MessageBlocks } from '@ema-agent/contracts';
 import type { SessionStore } from '@ema-agent/session';
 import { buildCompactionPrompt } from './prompts.js';
@@ -12,29 +11,12 @@ const MAX_RETRIES = 3;
 const TRUNCATE_FRACTION = 0.2;   // each retry drops the oldest 20%
 const MIN_PRESERVE_MESSAGES = 4; // never compact below this many tail messages
 
-// ── Resolve compaction LLM binding ───────────────────────────────────────────
-
-interface BindingRef {
-  providerId: string;
-  model:      string;
-}
-
-function resolveCompactionBinding(
-  llm: LlmRouter,
-  modelBindings: ModelBindingsRepo,
-): BindingRef | null {
-  // Prefer a dedicated 'compaction' binding; fall back to 'memory' (same cheap
-  // model commonly serves both extraction and compaction in V1).
-  const binding = modelBindings.get('compaction') ?? modelBindings.get('memory');
-  if (binding) {
-    return { providerId: binding.providerConfigId, model: binding.model };
-  }
-  const providerId = llm.firstProviderId();
-  if (!providerId) return null;
-  const model = llm.defaultModelFor(providerId);
-  if (!model) return null;
-  return { providerId, model };
-}
+/** Fraction of context window that triggers compaction (i.e. messages > 85% → compact). */
+const COMPACTION_TRIGGER_RATIO = 0.85;
+/** Fraction of context window reserved for the compaction summary output. */
+const COMPACTION_OUTPUT_RATIO  = 0.20;
+/** Minimum output tokens for the compaction LLM call (small-model floor). */
+const MIN_COMPACTION_OUTPUT    = 2000;
 
 // ── Slice formatting (for the LLM input) ─────────────────────────────────────
 
@@ -111,7 +93,10 @@ function stripImages(messages: LlmMessage[]): LlmMessage[] {
 
 export interface MacroCompactArgs {
   llm:           LlmRouter;
-  modelBindings: ModelBindingsRepo;
+  /** Current turn's provider — compaction uses the same model the user picked. */
+  providerId:    string;
+  /** Current turn's model. */
+  model:         string;
   session:       SessionStore;
   sessionId:     SessionId;
   turnId:        TurnId;
@@ -119,8 +104,9 @@ export interface MacroCompactArgs {
   /** Messages to summarise (older portion). */
   toCompact:     LlmMessage[];
   /**
-   * Token limit we MUST land below. When the summariser itself trips PTL we
-   * retry with a truncated head (oldest 20% dropped) up to MAX_RETRIES.
+   * Token limit we MUST land below. If the history slice exceeds this window,
+   * the oldest messages are truncated to fit before summarisation (same
+   * behaviour as Claude Code — truncate to current model's capacity).
    */
   modelContextWindow: number;
   signal?:       AbortSignal;
@@ -150,10 +136,11 @@ export async function runMacroCompaction(
   if (args.toCompact.length === 0) {
     return { summary: '', summaryMessageId: null, succeeded: false, attempts: 0 };
   }
-  const binding = resolveCompactionBinding(args.llm, args.modelBindings);
-  if (!binding) {
-    return { summary: '', summaryMessageId: null, succeeded: false, attempts: 0 };
-  }
+  // Compaction always uses the current turn's model — same (providerId, model)
+  // the user picked in the frontend picker. No separate binding needed.
+  // If the history exceeds this model's context window, the truncate loop
+  // below drops the oldest 20% each retry until it fits.
+  const { providerId, model } = args;
 
   let toCompact = stripImages(args.toCompact);
 
@@ -161,20 +148,22 @@ export async function runMacroCompaction(
     const history = formatHistory(toCompact);
     const prompt  = buildCompactionPrompt({ mode: args.mode, history });
 
-    // Sanity check: pre-flight token estimate. Bail to truncation early if huge.
+    // Sanity check: pre-flight token estimate. Trigger threshold is 85% of
+    // the current model's context window — when messages exceed this, we
+    // truncate the oldest 20% and retry. Mirrors Claude Code's approach.
     const estimated = estimateMessagesTokens([{ role: 'user', content: prompt }]);
-    const safeBudget = Math.max(8000, args.modelContextWindow - 4000);
-    if (estimated > safeBudget && toCompact.length > MIN_PRESERVE_MESSAGES) {
+    const threshold = Math.floor(args.modelContextWindow * COMPACTION_TRIGGER_RATIO);
+    if (estimated > threshold && toCompact.length > MIN_PRESERVE_MESSAGES) {
       toCompact = truncateOldest(toCompact, TRUNCATE_FRACTION);
       continue;
     }
 
     try {
       const completion = await args.llm.complete({
-        providerId:  binding.providerId,
-        model:       binding.model,
+        providerId,
+        model,
         messages:    [{ role: 'user', content: prompt }],
-        maxTokens:   3000,
+        maxTokens:   Math.max(MIN_COMPACTION_OUTPUT, Math.floor(args.modelContextWindow * COMPACTION_OUTPUT_RATIO)),
         temperature: 0.2,
         signal:      args.signal,
       });

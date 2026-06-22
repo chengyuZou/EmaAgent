@@ -1,4 +1,4 @@
-import { defineProvider } from '../types.js';
+﻿import { defineProvider } from '../types.js';
 
 export const provider = defineProvider({
   id: 'zhipu',
@@ -12,7 +12,6 @@ export const provider = defineProvider({
   capabilities: ['llm', 'embed'],
   protocols: { llm: ['openai-llm'], embed: ['openai-embed'] },
   defaultModels: {
-    llm:   ['glm-4-plus', 'glm-4-flash', 'glm-4-air'],
     embed: ['embedding-3'],
   },
   iconKey: 'i-lobe-icons:zhipu',

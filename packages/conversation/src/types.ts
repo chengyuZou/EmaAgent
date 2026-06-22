@@ -20,7 +20,6 @@ export interface ConversationDeps {
   llm:           LlmRouter;
   emotion:       EmotionEngine;
   narrative:     NarrativeClient;
-  modelBindings: ModelBindingsRepo;
 }
 
 // ── Run input ─────────────────────────────────────────────────────────────────

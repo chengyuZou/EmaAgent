@@ -1,13 +1,14 @@
 import type { Database } from '@ema-agent/storage';
 import {
   ModelBindingsRepo,
+  ProvidersRepo,
   SettingsRepo,
   MemoryNodesRepo, MemoryEdgesRepo, MemoryLazyUpdatesRepo,
   MemoryItemsRepo, SessionNotesRepo, MemoryTasksRepo, PendingFragmentsRepo,
   ArtifactRepo, AttachmentRepo,
   MemorySessionStateRepo,
   ProviderLlmModelsRepo, ProviderEmbedModelsRepo,
-  ProviderRerankModelsRepo, ProviderTtsModelsRepo, ProviderSttModelsRepo,
+  ProviderRerankModelsRepo, ProviderTtsModelsRepo, ProviderSttModelsRepo, ProviderVisionModelsRepo,
   McpServersRepo, SkillsRepo,
   AgentTasksRepo, AgentTaskMessagesRepo,
 } from '@ema-agent/storage';
@@ -16,6 +17,7 @@ import { ArtifactStore }                               from '@ema-agent/artifact
 import { McpRegistry, McpServerStore }                 from '@ema-agent/mcp';
 import { SkillStore, SkillRunner, SkillInstaller }     from '@ema-agent/skill';
 import * as nodePath from 'node:path';
+import { readFileSync } from 'node:fs';
 import * as os from 'node:os';
 import { HookBus }       from '@ema-agent/hook';
 import { createTraceSink } from './diagnostic-sink.js';
@@ -146,12 +148,15 @@ export interface AppBindings {
   systemBus: SystemEventBus;
 
   // Repos kept on the binding for route convenience
+  providers:            ProvidersRepo;
+  settings:             SettingsRepo;
   modelBindings:        ModelBindingsRepo;
   providerLlmModels:    ProviderLlmModelsRepo;
   providerEmbedModels:  ProviderEmbedModelsRepo;
   providerRerankModels: ProviderRerankModelsRepo;
   providerTtsModels:    ProviderTtsModelsRepo;
   providerSttModels:    ProviderSttModelsRepo;
+  providerVisionModels:  ProviderVisionModelsRepo;
   artifactStore:    ArtifactStore;
   attachmentStore:  AttachmentStore;
   mcpRegistry:      McpRegistry;
@@ -194,18 +199,28 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
   const session = new SessionStore({ db: dataDb });
 
   // ── Per-provider model pools (profileDb) ────────────────────────────────────
+  const providers            = new ProvidersRepo(profileDb.sqlite);
   const providerLlmModels    = new ProviderLlmModelsRepo(profileDb.sqlite);
   const providerEmbedModels  = new ProviderEmbedModelsRepo(profileDb.sqlite);
   const providerRerankModels = new ProviderRerankModelsRepo(profileDb.sqlite);
   const providerTtsModels    = new ProviderTtsModelsRepo(profileDb.sqlite);
   const providerSttModels    = new ProviderSttModelsRepo(profileDb.sqlite);
+  const providerVisionModels = new ProviderVisionModelsRepo(profileDb.sqlite);
 
   // ── AI clients (provider configs live in profileDb) ────────────────────────
   const llm = new LlmRouter(loadLlmConfigs(profileDb));
   const ebd = new EbdRouter(loadEmbedConfigs(profileDb), loadRerankConfigs(profileDb));
-  // models.dev catalog: empty until the first refresh resolves. Fire-and-forget
-  // below; consumers fall through to provider_llm_models / 0 until then.
+  // models.dev catalog: load bundled snapshot first (instant, offline-safe),
+  // then refresh from network in the background. Consumers get catalog data
+  // immediately from the snapshot; the refresh updates it silently.
   const modelCatalog = new ModelsDevCatalog();
+  try {
+    const snapshotPath = nodePath.join(import.meta.dirname!, 'models-dev-snapshot.json');
+    modelCatalog.loadFromJson(JSON.parse(readFileSync(snapshotPath, 'utf8')));
+    console.info(`[catalog] loaded bundled snapshot (${modelCatalog.size} models)`);
+  } catch {
+    console.warn('[catalog] no bundled snapshot found, will rely on network refresh');
+  }
 
   const narrative = new NarrativeClient({
     baseUrl:   resolveBridgeUrl(),
@@ -400,8 +415,9 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
     getContextStores, toolResultCleaner, taskStore, agentTaskMessages,
     memory,
     systemBus,
+    providers, settings: settingsRepo,
     modelBindings, providerLlmModels, providerEmbedModels,
-    providerRerankModels, providerTtsModels, providerSttModels,
+    providerRerankModels, providerTtsModels, providerSttModels, providerVisionModels,
     artifactStore, attachmentStore,
     mcpRegistry, mcpBridge,
     skillStore, skillRunner, skillInstaller, skillBridge,

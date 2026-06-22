@@ -583,7 +583,7 @@ async function compactSessionNoteIfNeeded(
 function resolveMemoryBindingLocal(
   deps: ExtractionPipelineDeps,
 ): { providerId: string; model: string } | null {
-  const binding = deps.memory.modelBindings.get('memory') ?? deps.memory.modelBindings.get('compaction');
+  const binding = deps.memory.modelBindings.get('memory');
   if (binding) return { providerId: binding.providerConfigId, model: binding.model };
   const providerId = deps.memory.llm.firstProviderId();
   if (!providerId) return null;

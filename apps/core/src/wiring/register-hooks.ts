@@ -29,12 +29,11 @@ export function registerAllHooks(bindings: AppBindings): () => void {
 
   // ── conversation: narrative mode RAG recall ───────────────────────────────
   offs.push(registerConversationHooks(bindings.hooks, {
-    session:       bindings.session,
-    hooks:         bindings.hooks,
-    llm:           bindings.llm,
-    emotion:       bindings.emotion,
-    narrative:     bindings.narrative,
-    modelBindings: bindings.modelBindings,
+    session:   bindings.session,
+    hooks:     bindings.hooks,
+    llm:       bindings.llm,
+    emotion:   bindings.emotion,
+    narrative: bindings.narrative,
   }));
 
   // ── memory: compaction + recall + post-turn extraction ────────────────────

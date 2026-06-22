@@ -4,17 +4,13 @@ import type { SqliteDb } from '../database.js';
 
 /** All modules that can be bound to a specific provider instance + model. */
 export type BindingModule =
-  // LLM modules — routed through LlmRouter (TS sidecar)
-  | 'chat' | 'narrative' | 'agent'
-  | 'compaction' | 'emotion'
-  // 'memory' powers extraction / consolidation / mode-specific compaction.
-  // Intentionally one binding for all three — keeps a cheap model on the slot.
+  // Infrastructure / background tasks — still need global bindings
+  | 'emotion'
   | 'memory'
   | 'router' | 'plan-parse' | 'title'
   // LightRAG internal config — pushed to Python bridge
   | 'embed' | 'rerank' | 'lightrag-llm'
-  // TTS — single binding for all modes. Voice identity always reads from the
-  // active character card's voice_profile_json refAudios.
+  // TTS — single binding for all modes
   | 'tts'
   // Other TS-side clients (reserved)
   | 'stt' | 'vision' | 'imagegen';

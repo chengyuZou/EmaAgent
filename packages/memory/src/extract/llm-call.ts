@@ -17,7 +17,7 @@ function resolveMemoryBinding(
   llm: LlmRouter,
   modelBindings: ModelBindingsRepo,
 ): ResolvedBinding | null {
-  const binding = modelBindings.get('memory') ?? modelBindings.get('compaction');
+  const binding = modelBindings.get('memory');
   if (binding) {
     return { providerId: binding.providerConfigId, model: binding.model };
   }

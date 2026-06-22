@@ -1,4 +1,4 @@
-import { defineProvider } from '../types.js';
+﻿import { defineProvider } from '../types.js';
 
 /**
  * Local GPT-SoVITS server. The user runs `api_v2.py` themselves; we just talk

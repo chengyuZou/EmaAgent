@@ -1,4 +1,4 @@
-import { defineProvider } from '../types.js';
+﻿import { defineProvider } from '../types.js';
 
 export const provider = defineProvider({
   id: 'lmstudio',
@@ -12,7 +12,6 @@ export const provider = defineProvider({
   capabilities: ['llm', 'embed'],
   protocols: { llm: ['openai-llm'], embed: ['openai-embed'] },
   defaultModels: {
-    llm:   ['auto'],
     embed: ['auto'],
   },
   requiresCredentials: false,

@@ -1,4 +1,4 @@
-import { defineProvider } from '../types.js';
+﻿import { defineProvider } from '../types.js';
 
 export const provider = defineProvider({
   id: 'ollama',
@@ -11,7 +11,6 @@ export const provider = defineProvider({
   capabilities: ['llm', 'embed'],
   protocols: { llm: ['openai-llm'], embed: ['openai-embed'] },
   defaultModels: {
-    llm:   ['llama3.2', 'qwen3', 'deepseek-r1'],
     embed: ['nomic-embed-text', 'mxbai-embed-large'],
   },
   requiresCredentials: false,

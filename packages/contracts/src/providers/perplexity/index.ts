@@ -1,4 +1,4 @@
-import { defineProvider } from '../types.js';
+﻿import { defineProvider } from '../types.js';
 
 export const provider = defineProvider({
   id: 'perplexity',
@@ -8,7 +8,6 @@ export const provider = defineProvider({
   protocolBaseUrls: { 'openai-llm': 'https://api.perplexity.ai' },
   capabilities: ['llm'],
   protocols: { llm: ['openai-llm'] },
-  defaultModels: { llm: ['sonar-pro', 'sonar-reasoning-pro'] },
   iconKey: 'i-lobe-icons:perplexity',
   iconColor: 'i-lobe-icons:perplexity-color',
 });

@@ -367,6 +367,10 @@ export class MemoryPlanner {
     userInput:          string;
     messages:           LlmMessage[];
     modelContextWindow: number;
+    /** Current turn's provider (from frontend picker). Forwarded to compaction. */
+    providerId?:        string;
+    /** Current turn's model. Forwarded to compaction. */
+    compactionModel?:   string;
     recentFiles?:       ReadonlyArray<{ path: string; content: string; mtimeMs: number }>;
     signal?:            AbortSignal;
     emit?:              (event: EmaStreamEvent) => void;
@@ -387,13 +391,17 @@ export class MemoryPlanner {
       };
     }
 
-    // 1. Compact
+    // 1. Compact — uses the current turn's (providerId, model) for the
+    //    summarisation LLM call. Falls back to LlmRouter defaults when the
+    //    hook meta doesn't carry model info (legacy / background tasks).
     const compactRes = await this.compact({
       sessionId:           args.sessionId,
       turnId:              args.turnId,
       mode:                args.mode,
       messages:            args.messages,
       modelContextWindow:  args.modelContextWindow,
+      providerId:          args.providerId,
+      model:               args.compactionModel,
       recentFiles:         args.recentFiles,
       signal:              args.signal,
       emit:                args.emit,
@@ -671,6 +679,10 @@ export class MemoryPlanner {
     mode:                TurnMode;
     messages:            LlmMessage[];
     modelContextWindow:  number;
+    /** Current turn's provider (from frontend picker). Used for the compaction LLM call. */
+    providerId?:         string;
+    /** Current turn's model. */
+    model?:              string;
     recentFiles?:        ReadonlyArray<{ path: string; content: string; mtimeMs: number }>;
     signal?:             AbortSignal;
     emit?:               (event: EmaStreamEvent) => void;
@@ -738,7 +750,8 @@ export class MemoryPlanner {
 
     const result = await runMacroCompaction({
       llm:                this.deps.llm,
-      modelBindings:      this.deps.modelBindings,
+      providerId:         args.providerId ?? this.deps.llm.firstProviderId() ?? '',
+      model:              args.model      ?? this.deps.llm.defaultModelFor(args.providerId ?? this.deps.llm.firstProviderId() ?? '') ?? '',
       session:            this.deps.session,
       sessionId:          args.sessionId,
       turnId:             args.turnId,

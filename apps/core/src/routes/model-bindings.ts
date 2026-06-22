@@ -1,4 +1,4 @@
-import { Hono } from 'hono';
+﻿import { Hono } from 'hono';
 import { z } from 'zod';
 import { ModelBindingsRepo, ProviderLlmModelsRepo, ProvidersRepo } from '@ema-agent/storage';
 import type { BindingModule } from '@ema-agent/storage';
@@ -59,7 +59,7 @@ export function modelBindingsRoute(bindings: AppBindings): Hono {
   // binding picker draws from. Dispatches to the right per-capability pool repo.
   app.get('/available/:capability', (c) => {
     const capability = c.req.param('capability');
-    const providers  = new ProvidersRepo(bindings.profileDb.sqlite);
+    const providers  = bindings.providers;
     const nameCache  = new Map<string, string>();
 
     const resolveName = (pcId: string): string => {

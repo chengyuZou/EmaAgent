@@ -1,4 +1,4 @@
-import { defineProvider } from '../types.js';
+﻿import { defineProvider } from '../types.js';
 
 export const provider = defineProvider({
   id: 'openai',
@@ -17,14 +17,12 @@ export const provider = defineProvider({
   protocols: {
     // openai-llm      = Chat Completions — broad OpenAI-compat support
     // openai-responses-llm = Responses API  — per-tool done events, o-series reasoning
-    llm:   ['openai-llm', 'openai-responses-llm'],
     embed: ['openai-embed'],
     vision: ['openai-vision'],
     tts:   ['openai-tts'],
     stt:   ['openai-stt'],
   },
   defaultModels: {
-    llm:   ['gpt-4.1', 'gpt-4o', 'o3', 'o4-mini'],
     embed: ['text-embedding-3-small', 'text-embedding-3-large'],
     vision: ['gpt-4.1', 'gpt-4.1-mini', 'gpt-4o', 'gpt-4o-mini', 'o4-mini'],
     tts:   ['gpt-4o-mini-tts', 'tts-1', 'tts-1-hd'],
