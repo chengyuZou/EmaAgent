@@ -3,7 +3,7 @@ import { OpenAiResponsesAdapter } from './adapters/openai-responses.js';
 import { AnthropicAdapter }       from './adapters/anthropic.js';
 import { GeminiAdapter }          from './adapters/gemini.js';
 import type { LlmAdapter }        from './adapters/base.js';
-import { sleep, httpStatus, isRetryable, rethrowAs } from './retry.js';
+import { CircuitBreaker, CircuitOpenError } from './retry.js';
 import { validateContentParts } from './validate.js';
 import type { UnsupportedPart } from './validate.js';
 import type {
@@ -49,6 +49,8 @@ export class LlmRouter {
   private readonly adapters = new Map<string, LlmAdapter>();
   /** id → config (kept for hot-reload and probe) */
   private readonly configs  = new Map<string, ProviderConfig>();
+  /** id → circuit breaker (per-provider failure isolation) */
+  private readonly breakers = new Map<string, CircuitBreaker>();
   /** Test-only adapter replacements keyed by ProviderConfig.id. */
   private readonly adapterOverrides?: ReadonlyMap<string, LlmAdapter>;
 
@@ -74,16 +76,17 @@ export class LlmRouter {
 
   // ── Streaming ───────────────────────────────────────────────────────────────
 
-  /** Stream a completion from the specified provider instance. Throws synchronously on unknown id. */
+  /**
+   * Stream a completion from the specified provider instance.
+   * Throws CircuitOpenError when the provider's circuit breaker is open.
+   * Throws synchronously on unknown provider id.
+   */
   stream(request: LlmRequest): AsyncIterable<LlmStreamChunk> {
-    if (!this.configs.has(request.providerId)) {
-      throw notConfigured(request.providerId);
-    }
-    const adapter = this.adapters.get(request.providerId);
-    if (!adapter) {
-      throw notConfigured(request.providerId);
-    }
-    return adapter.stream(request, request.model);
+    return this.guardedStream(request.providerId, () => {
+      const adapter = this.adapters.get(request.providerId);
+      if (!adapter) throw notConfigured(request.providerId);
+      return adapter.stream(request, request.model);
+    });
   }
 
   // ── Non-streaming ────────────────────────────────────────────────────────────
@@ -92,95 +95,103 @@ export class LlmRouter {
    * Collect the full completion into a single object.
    * Use for internal calls: compaction, emotion extraction, plan parsing.
    *
-   * Retry policy:
-   *   - Only retries when the connection fails BEFORE any chunk arrives
-   *     (401/429/5xx thrown by the adapter before the first yield).
-   *   - Never retries a mid-stream failure: if we already received tokens,
-   *     retrying would double the token cost and might produce different output.
+   * No built-in retry — callers (compaction, extraction) own their retry
+   * policy. The circuit breaker on stream() protects against provider outages.
    *
    * Blocks are sorted by blockIndex so text/tool_use order is preserved even
    * though thinking_delta and tool_use_complete may arrive interleaved.
    */
   async complete(request: LlmRequest): Promise<LlmCompletion> {
-    const MAX_ATTEMPTS = 3;
-    const BASE_DELAY_MS = 1_000;
-    let lastErr: unknown;
+    let stopReason: StopReason = 'end_turn';
+    let inputTokens             = 0;
+    let outputTokens            = 0;
+    const textBufs             = new Map<number, string>();
+    const thinkingBufs         = new Map<number, string>();
+    const thinkingSignatureMap = new Map<number, string>();
+    const toolUseMap           = new Map<number, AssistantBlock & { type: 'tool_use' }>();
 
-    for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
-      // Reset accumulation state for each attempt.
-      let stopReason: StopReason = 'end_turn';
-      let inputTokens             = 0;
-      let outputTokens            = 0;
-      const textBufs             = new Map<number, string>();
-      const thinkingBufs         = new Map<number, string>();
-      const thinkingSignatureMap = new Map<number, string>();
-      const toolUseMap           = new Map<number, AssistantBlock & { type: 'tool_use' }>();
-
-      // Tracks whether the provider sent at least one chunk.
-      // When true, the HTTP connection succeeded and tokens are already in flight —
-      // retrying would double-charge the caller, so we propagate the error directly.
-      let hasStartedStreaming = false;
-
-      try {
-        for await (const chunk of this.stream(request)) {
-          hasStartedStreaming = true;
-          switch (chunk.type) {
-            case 'text_delta':
-              textBufs.set(chunk.blockIndex, (textBufs.get(chunk.blockIndex) ?? '') + chunk.delta);
-              break;
-            case 'thinking_delta':
-              thinkingBufs.set(chunk.blockIndex, (thinkingBufs.get(chunk.blockIndex) ?? '') + chunk.delta);
-              break;
-            case 'thinking_complete':
-              thinkingSignatureMap.set(chunk.blockIndex, chunk.signature);
-              break;
-            case 'tool_use_complete':
-              toolUseMap.set(chunk.blockIndex, { type: 'tool_use', id: chunk.callId, name: chunk.name, args: chunk.args });
-              break;
-            case 'usage':
-              inputTokens  = chunk.inputTokens;
-              outputTokens = chunk.outputTokens;
-              break;
-            case 'done':
-              stopReason = chunk.stopReason;
-              break;
-          }
-        }
-
-        // Stream completed normally — build result.
-        const blockEntries: Array<[number, AssistantBlock]> = [];
-        for (const [idx, text] of textBufs) {
-          blockEntries.push([idx, { type: 'text', text }]);
-        }
-        for (const [idx, thinking] of thinkingBufs) {
-          const signature = thinkingSignatureMap.get(idx);
-          blockEntries.push([idx, { type: 'thinking', thinking, ...(signature ? { signature } : {}) }]);
-        }
-        for (const [idx, block] of toolUseMap) {
-          blockEntries.push([idx, block]);
-        }
-        blockEntries.sort((a, b) => a[0] - b[0]);
-        const blocks: AssistantBlock[] = blockEntries.map(([, block]) => block);
-
-        return { blocks, stopReason, usage: { inputTokens, outputTokens } };
-
-      } catch (e) {
-        lastErr = e;
-
-        // Mid-stream failure: tokens were already consumed, no retry.
-        if (hasStartedStreaming) throw e;
-
-        // Connection failure: classify and maybe retry.
-        const s = httpStatus(e);
-        if (s === 401 || s === 403) rethrowAs('auth/api_key_invalid',     e);
-        if (s === 413)              rethrowAs('provider/context_too_long', e);
-        if (!isRetryable(e) || attempt === MAX_ATTEMPTS - 1) throw e;
-
-        await sleep(BASE_DELAY_MS * 2 ** attempt);
+    for await (const chunk of this.stream(request)) {
+      switch (chunk.type) {
+        case 'text_delta':
+          textBufs.set(chunk.blockIndex, (textBufs.get(chunk.blockIndex) ?? '') + chunk.delta);
+          break;
+        case 'thinking_delta':
+          thinkingBufs.set(chunk.blockIndex, (thinkingBufs.get(chunk.blockIndex) ?? '') + chunk.delta);
+          break;
+        case 'thinking_complete':
+          thinkingSignatureMap.set(chunk.blockIndex, chunk.signature);
+          break;
+        case 'tool_use_complete':
+          toolUseMap.set(chunk.blockIndex, { type: 'tool_use', id: chunk.callId, name: chunk.name, args: chunk.args });
+          break;
+        case 'usage':
+          inputTokens  = chunk.inputTokens;
+          outputTokens = chunk.outputTokens;
+          break;
+        case 'done':
+          stopReason = chunk.stopReason;
+          break;
       }
     }
 
-    throw lastErr;
+    const blockEntries: Array<[number, AssistantBlock]> = [];
+    for (const [idx, text] of textBufs) {
+      blockEntries.push([idx, { type: 'text', text }]);
+    }
+    for (const [idx, thinking] of thinkingBufs) {
+      const signature = thinkingSignatureMap.get(idx);
+      blockEntries.push([idx, { type: 'thinking', thinking, ...(signature ? { signature } : {}) }]);
+    }
+    for (const [idx, block] of toolUseMap) {
+      blockEntries.push([idx, block]);
+    }
+    blockEntries.sort((a, b) => a[0] - b[0]);
+    const blocks: AssistantBlock[] = blockEntries.map(([, block]) => block);
+
+    return { blocks, stopReason, usage: { inputTokens, outputTokens } };
+  }
+
+  // ── Circuit breaker ──────────────────────────────────────────────────────────
+
+  private breakerFor(providerId: string): CircuitBreaker {
+    let cb = this.breakers.get(providerId);
+    if (!cb) {
+      cb = new CircuitBreaker();
+      this.breakers.set(providerId, cb);
+    }
+    return cb;
+  }
+
+  /**
+   * Wrap an adapter stream with circuit breaker gating.
+   * - guard() before the call → throws CircuitOpenError if open.
+   * - First successful chunk → breaker.success().
+   * - Error thrown before any chunk → breaker.failure().
+   */
+  private async *guardedStream(
+    breakerKey: string,
+    start: () => AsyncIterable<LlmStreamChunk>,
+  ): AsyncIterable<LlmStreamChunk> {
+    const breaker = this.breakerFor(breakerKey);
+    breaker.guard();
+
+    let started = false;
+    try {
+      const stream = start();
+      for await (const chunk of stream) {
+        if (!started) {
+          started = true;
+          breaker.success();
+        }
+        yield chunk;
+      }
+    } catch (e) {
+      if (!started) breaker.failure();
+      // Re-throw CircuitOpenError so the caller can distinguish "breaker open"
+      // from a real provider error. Don't count guard throws as failures.
+      if (e instanceof CircuitOpenError) throw e;
+      throw e;
+    }
   }
 
   // ── Health check ─────────────────────────────────────────────────────────────

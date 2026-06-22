@@ -55,3 +55,96 @@ export async function withRetry<T>(
   }
   throw lastErr;
 }
+
+// ── Circuit breaker ──────────────────────────────────────────────────────────
+//
+// Per-provider state machine: closed → open → half-open → closed.
+//
+//   closed:     normal operation, counting consecutive 5xx failures.
+//   open:       N consecutive failures within the window → block ALL calls
+//               for cooldownMs. Returns a fast-fail CircuitOpenError.
+//   half-open:  after cooldown, allow ONE probe call.
+//               success → reset to closed; failure → back to open.
+
+const CB_FAILURE_THRESHOLD = 3;       // consecutive 5xx to trip
+const CB_WINDOW_MS         = 60_000;  // reset failure count after this
+const CB_COOLDOWN_MS       = 30_000;  // stay open for this long
+
+export class CircuitOpenError extends Error {
+  constructor(
+    message: string,
+    readonly opensAt: number,
+  ) {
+    super(message);
+    this.name = 'CircuitOpenError';
+  }
+}
+
+type CbState =
+  | { phase: 'closed'; failures: number; firstFailureAt: number }
+  | { phase: 'open';   since: number }
+  | { phase: 'half-open' };
+
+export class CircuitBreaker {
+  private state: CbState = { phase: 'closed', failures: 0, firstFailureAt: 0 };
+
+  /** Call before every request. Throws CircuitOpenError when the breaker is open. */
+  guard(now = Date.now()): void {
+    switch (this.state.phase) {
+      case 'closed': {
+        // Expire old failure window.
+        if (this.state.failures > 0 && now - this.state.firstFailureAt > CB_WINDOW_MS) {
+          this.state = { phase: 'closed', failures: 0, firstFailureAt: 0 };
+        }
+        return; // allow
+      }
+      case 'open': {
+        if (now - this.state.since >= CB_COOLDOWN_MS) {
+          this.state = { phase: 'half-open' };
+          return; // allow one probe
+        }
+        throw new CircuitOpenError(
+          `LLM circuit breaker open — cooling down until ${new Date(this.state.since + CB_COOLDOWN_MS).toISOString()}`,
+          this.state.since,
+        );
+      }
+      case 'half-open': {
+        return; // allow probe
+      }
+    }
+  }
+
+  /** Call after a successful response. Resets the breaker. */
+  success(): void {
+    this.state = { phase: 'closed', failures: 0, firstFailureAt: 0 };
+  }
+
+  /** Call after a failure. Increments the failure counter; trips to open if threshold reached. */
+  failure(now = Date.now()): void {
+    switch (this.state.phase) {
+      case 'closed': {
+        const failures = this.state.failures + 1;
+        const firstFailureAt = this.state.failures === 0 ? now : this.state.firstFailureAt;
+        if (failures >= CB_FAILURE_THRESHOLD) {
+          this.state = { phase: 'open', since: now };
+          return;
+        }
+        this.state = { phase: 'closed', failures, firstFailureAt };
+        return;
+      }
+      case 'half-open': {
+        // Probe failed — back to open.
+        this.state = { phase: 'open', since: now };
+        return;
+      }
+      case 'open': {
+        // Already open; no-op.
+        return;
+      }
+    }
+  }
+
+  get phase(): CbState['phase'] {
+    return this.state.phase;
+  }
+}

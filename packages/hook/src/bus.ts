@@ -80,6 +80,8 @@ export interface HookOptions {
   name?: string;
   critical?: boolean;
   parallel?: boolean;
+  /** Per-handler timeout in ms. Overrides the bus-level default. 0 = no timeout. */
+  timeoutMs?: number;
 }
 
 export interface HookBusOptions {
@@ -100,6 +102,13 @@ export interface HookBusOptions {
    * Defaults to false — set true in dev / debug builds.
    */
   warnAnonymous?:    boolean;
+  /**
+   * Default handler timeout in ms. Handlers that don't resolve within this
+   * window are treated as errors (abort if critical, warning if not).
+   * 0 = no timeout. Per-handler `timeoutMs` overrides this.
+   * @default 30_000
+   */
+  handlerTimeoutMs?: number;
 }
 
 export interface RegisteredHook {
@@ -133,6 +142,7 @@ interface HandlerEntry<E extends HookEvent> {
   name: string;
   critical: boolean;
   parallel: boolean;
+  timeoutMs: number;
 }
 
 type HookBatch<E extends HookEvent> =
@@ -198,6 +208,13 @@ function chunkArray<T>(items: T[], size: number): T[][] {
   return chunks;
 }
 
+/** Returns a promise that rejects after `ms` with a timeout error. */
+function timeout<T>(ms: number, handlerName: string): Promise<T> {
+  return new Promise<T>((_, reject) => {
+    setTimeout(() => reject(new Error(`Hook handler "${handlerName}" timed out after ${ms}ms`)), ms);
+  });
+}
+
 function buildBatches<E extends HookEvent>(
   entries: HandlerEntry<E>[],
   eventAllowsParallel: boolean,
@@ -235,11 +252,13 @@ export class HookBus {
   private readonly options: HookBusOptions;
   private readonly maxConcurrency: number;
   private readonly parallelEvents: ReadonlySet<HookEvent>;
+  private readonly defaultTimeoutMs: number;
 
   constructor(options: HookBusOptions = {}) {
-    this.options        = options;
-    this.maxConcurrency = options.maxConcurrency ?? Number.POSITIVE_INFINITY;
-    this.parallelEvents = options.parallelEvents ?? DEFAULT_PARALLEL_EVENTS;
+    this.options          = options;
+    this.maxConcurrency   = options.maxConcurrency ?? Number.POSITIVE_INFINITY;
+    this.parallelEvents   = options.parallelEvents ?? DEFAULT_PARALLEL_EVENTS;
+    this.defaultTimeoutMs = options.handlerTimeoutMs ?? 30_000;
 
     if (this.maxConcurrency <= 0) {
       throw new Error(
@@ -265,6 +284,7 @@ export class HookBus {
       name: opts.name ?? (handler.name || '<anonymous>'),
       critical: opts.critical ?? true,
       parallel: opts.parallel ?? false,
+      timeoutMs: opts.timeoutMs ?? this.defaultTimeoutMs,
     };
 
     if (this.options.warnAnonymous && entry.name === '<anonymous>') {
@@ -401,7 +421,13 @@ export class HookBus {
     const t0 = performance.now();
 
     try {
-      const result = await entry.handler(handlerCtx) as HookRuntimeResult<E>;
+      const promise = entry.handler(handlerCtx) as Promise<HookRuntimeResult<E>>;
+      const result  = entry.timeoutMs > 0
+        ? await Promise.race([
+            promise,
+            timeout<HookRuntimeResult<E>>(entry.timeoutMs, entry.name),
+          ])
+        : await promise;
       try {
         this.options.traceSink?.({
           event:           event,
