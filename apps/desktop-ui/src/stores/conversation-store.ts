@@ -574,8 +574,11 @@ export interface ConversationStoreState {
   draftMap:          Map<string, string>;
   loading:           { messages: Set<string> };
   error:             string | null;
+  /** Set to scroll ChatHistory to a specific turn. Reset to null after consuming. */
+  scrollToTurnId:    string | null;
 
   viewSession(id: SessionId):                                           Promise<void>;
+  scrollToTurn(turnId: string):                                         void;
   sendMessage(sessionId: SessionId | null, input: Omit<SendInput, 'sessionId'>): Promise<void>;
   stopStreaming(sessionId: SessionId):                                   void;
   setDraft(sessionId: SessionId, text: string):                         void;
@@ -604,6 +607,9 @@ export const useConversationStore = create<ConversationStoreState>((set, get) =>
   draftMap:          new Map(),
   loading:           { messages: new Set() },
   error:             null,
+  scrollToTurnId:    null,
+
+  scrollToTurn(turnId) { set({ scrollToTurnId: turnId }); },
 
   // ── Navigation ───────────────────────────────────────────────────────────
 

@@ -12,6 +12,7 @@ import { ChatHistory } from './ChatHistory.js';
 import { ChatInput } from './ChatInput.js';
 import { ContextPanel } from './ContextPanel.js';
 import { TaskPanel } from './TaskPanel.js';
+import { BranchPanel } from './BranchPanel.js';
 
 // ── Inspector panel types ─────────────────────────────────────────────────────
 
@@ -328,10 +329,10 @@ function InspectorPanelHeader({ id, compact }: { id: InspectorPanelId; compact?:
 }
 
 function InspectorPanelBody({ id, sessionId }: { id: InspectorPanelId; sessionId: string | null }): JSX.Element {
-  if (id === 'tasks') {
-    return <TaskPanel className="p-2" />;
-  }
-  // Placeholder for branches / artifacts / files (V1.5)
+  if (id === 'tasks')    return <TaskPanel className="p-2" />;
+  if (id === 'branches') return <BranchPanel />;
+
+  // files / artifacts — V1.5
   return (
     <div className="flex flex-col items-center justify-center gap-2 py-12 text-xs"
          style={{ color: 'var(--ema-text-tertiary)' }}>

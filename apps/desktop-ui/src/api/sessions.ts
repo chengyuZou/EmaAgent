@@ -3,10 +3,15 @@
  *
  * Wire types live in @ema-agent/contracts (single source of truth shared with
  * apps/core routes). Re-exported here so existing consumers keep working.
+ *
+ * BranchWire is local to this layer (not in contracts) — it's only consumed by
+ * the desktop-ui BranchPanel and has no cross-package users.
  */
 import { sidecarClient } from './sidecar-client.js';
 import type {
   SessionId,
+  TurnId,
+  BranchId,
   TurnMode,
   SessionWire,
   MessageWire,
@@ -18,6 +23,24 @@ import type {
   SessionSearchItem,
   ForkResult,
 } from '@ema-agent/contracts';
+
+// ── Branch wire types (session-layer only, not in contracts) ─────────────────
+
+export interface BranchNodeWire {
+  branchId:       BranchId;
+  parentBranchId: BranchId | null;
+  forkFromTurnId: TurnId   | null;
+  /** First ≤30 chars of the user query at the fork point. */
+  forkUserInput:  string;
+  forkTurnMode:   TurnMode | null;
+  isActive:       boolean;
+  createdAt:      number;
+}
+
+export interface BranchTreeWire {
+  sessionActiveBranchId: BranchId | null;
+  branches:              BranchNodeWire[];
+}
 
 export type {
   SessionWire, MessageWire, TurnWire, SessionMessagesResult,
@@ -128,5 +151,34 @@ export const sessionsApi = {
     } catch {
       return null;
     }
+  },
+
+  // ── Branch operations ────────────────────────────────────────────────────
+
+  /** GET /api/sessions/:id/branches — all branches with fork-point metadata. */
+  async listBranches(id: SessionId): Promise<BranchTreeWire> {
+    return sidecarClient.request<BranchTreeWire>(`/api/sessions/${id}/branches`);
+  },
+
+  /**
+   * POST /api/sessions/:id/branches — fork the session at a specific turn.
+   * Creates a new empty branch starting after `fromTurnId` and sets it active.
+   */
+  async forkBranch(id: SessionId, fromTurnId: TurnId): Promise<{ branchId: BranchId }> {
+    return sidecarClient.request<{ branchId: BranchId }>(`/api/sessions/${id}/branches`, {
+      method: 'POST',
+      json: { fromTurnId },
+    });
+  },
+
+  /**
+   * PUT /api/sessions/:id/branches/active — switch to a different branch.
+   * Pass null to reset to the root (only valid before any fork).
+   */
+  async switchBranch(id: SessionId, branchId: BranchId | null): Promise<void> {
+    await sidecarClient.request(`/api/sessions/${id}/branches/active`, {
+      method: 'PUT',
+      json: { branchId },
+    });
   },
 };

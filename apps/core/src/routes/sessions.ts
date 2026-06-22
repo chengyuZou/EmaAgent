@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { asSessionId, asTurnId } from '@ema-agent/contracts';
+import { asSessionId, asTurnId, asBranchId } from '@ema-agent/contracts';
 import type {
   SessionWire,
   SessionMessagesResult,
@@ -269,6 +269,72 @@ export function sessionsRoute(bindings: AppBindings): Hono {
     const sessionId = asSessionId(c.req.param('id'));
     bindings.session.deleteSession(sessionId);
     return c.body(null, 204);
+  });
+
+  // ── GET /api/sessions/:id/branches ────────────────────────────────────────
+  // Returns all branches with their fork-point turn's userInput and mode so
+  // the frontend can label each node with the user's query text.
+  app.get('/:id/branches', (c) => {
+    const sessionId = asSessionId(c.req.param('id'));
+    try {
+      const session  = bindings.session.getSession(sessionId);
+      const branches = bindings.session.listBranches(sessionId);
+
+      const nodes = branches.map((b) => {
+        let forkUserInput = '';
+        let forkTurnMode: string | null = null;
+        if (b.forkFromTurnId) {
+          const turn = bindings.session.getTurn(b.forkFromTurnId);
+          if (turn) {
+            forkUserInput = turn.userInput.slice(0, 30);
+            forkTurnMode  = turn.mode;
+          }
+        }
+        return {
+          branchId:       b.id,
+          parentBranchId: b.parentBranchId,
+          forkFromTurnId: b.forkFromTurnId,
+          forkUserInput,
+          forkTurnMode,
+          isActive: b.id === session.activeBranchId,
+          createdAt: b.createdAt,
+        };
+      });
+
+      return c.json({ sessionActiveBranchId: session.activeBranchId, branches: nodes });
+    } catch (err) {
+      if (isNotFound(err)) return c.json({ error: 'session_not_found' }, 404);
+      throw err;
+    }
+  });
+
+  // ── POST /api/sessions/:id/branches — fork at a turn ─────────────────────
+  app.post('/:id/branches', async (c) => {
+    const sessionId  = asSessionId(c.req.param('id'));
+    const body       = await c.req.json().catch(() => ({})) as Record<string, unknown>;
+    const fromTurnId = typeof body.fromTurnId === 'string' ? asTurnId(body.fromTurnId) : null;
+    if (!fromTurnId) return c.json({ error: 'fromTurnId required' }, 400);
+    try {
+      const result = bindings.session.forkMessage({ sessionId, fromTurnId });
+      return c.json(result, 201);
+    } catch (err) {
+      if (isNotFound(err)) return c.json({ error: 'session_not_found' }, 404);
+      throw err;
+    }
+  });
+
+  // ── PUT /api/sessions/:id/branches/active — switch active branch ──────────
+  app.put('/:id/branches/active', async (c) => {
+    const sessionId = asSessionId(c.req.param('id'));
+    const body      = await c.req.json().catch(() => ({})) as Record<string, unknown>;
+    const branchId  = typeof body.branchId === 'string' ? asBranchId(body.branchId) : null;
+    try {
+      bindings.session.switchBranch({ sessionId, branchId });
+      return c.body(null, 204);
+    } catch (err) {
+      if (isNotFound(err)) return c.json({ error: 'branch_not_found' }, 404);
+      throw err;
+    }
   });
 
   return app;

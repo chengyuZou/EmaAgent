@@ -28,6 +28,19 @@ export function ChatHistory(): JSX.Element {
     void useConversationStore.getState().loadMessages(viewedId);
   }, [viewedId]);
 
+  const scrollToTurnId = useConversationStore((s) => s.scrollToTurnId);
+
+  // Scroll to the first message belonging to the requested turn, then clear.
+  useEffect(() => {
+    if (!scrollToTurnId || !containerRef.current) return;
+    const target = messages.find((m) => m.turnId === scrollToTurnId);
+    if (!target) return;
+    const key = target.messageId ?? `${target.role}:${target.createdAt}:${messages.indexOf(target)}`;
+    const el = containerRef.current.querySelector(`#msg-${CSS.escape(key)}`);
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    useConversationStore.setState({ scrollToTurnId: null }); // consume once
+  }, [scrollToTurnId, messages]);
+
   const { userScrolled, resetUserScrolled } = useChatHistoryScroll(
     containerRef,
     [messages, streaming],
