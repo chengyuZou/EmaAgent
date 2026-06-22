@@ -1,6 +1,6 @@
 import type {
   DocumentAsset, DocumentChunk, DocumentPreview,
-  IngestOptions, IngestResult, SearchOptions,
+  IngestOptions, IngestResult, SearchOptions, AssetListPage,
 } from './types.js';
 import type { KbSearchResult, DocumentSourceRef } from '@ema-agent/contracts';
 import type { EbdRouter } from '@ema-agent/ebd-client';
@@ -41,10 +41,8 @@ export class KnowledgeClient {
 
   // In-memory HNSW (or brute-force fallback). null until init() is called.
   private hnsw: VectorIndex | null = null;
-  // chunkId → assetId for O(1) scope lookup after HNSW search
+  // chunkId → assetId, so HNSW hits can be filtered to the turn's selected KBs.
   private readonly chunkToAsset = new Map<string, string>();
-  // assetId → { scope, sessionId } — avoids extra DB round-trips during search
-  private readonly assetMeta = new Map<string, { scope: string; sessionId?: string }>();
 
   constructor(private readonly deps: KnowledgeClientDeps) {}
 
@@ -60,18 +58,11 @@ export class KnowledgeClient {
     const dim = rows[0]!.embedding.byteLength / 4;
     this.hnsw = await createVectorIndex(dim);
     this.chunkToAsset.clear();
-    this.assetMeta.clear();
 
     for (const { id, assetId, embedding } of rows) {
       const vec = bufferToFloat32(embedding);
       this.hnsw.add(id, vec);
       this.chunkToAsset.set(id, assetId);
-    }
-
-    // Populate assetMeta from store for all assets referenced by these chunks
-    for (const assetId of new Set(this.chunkToAsset.values())) {
-      const asset = this.deps.store.getAsset(assetId);
-      if (asset) this.assetMeta.set(assetId, { scope: asset.scope, sessionId: asset.sessionId });
     }
   }
 
@@ -111,8 +102,6 @@ export class KnowledgeClient {
       this.hnsw = await createVectorIndex(dim);
     }
     const rows = this.deps.store.getAllEmbeddings().filter(r => r.assetId === assetId);
-    const asset = this.deps.store.getAsset(assetId);
-    if (asset) this.assetMeta.set(assetId, { scope: asset.scope, sessionId: asset.sessionId });
     for (const { id, embedding } of rows) {
       const vec = bufferToFloat32(embedding);
       this.hnsw.add(id, vec);
@@ -137,11 +126,9 @@ export class KnowledgeClient {
       const freshIds = new Set(this.deps.store.getAllEmbeddings().map(r => r.id));
       for (const [chunkId, assetId] of this.chunkToAsset) {
         if (!freshIds.has(chunkId)) {
+          void assetId;
           this.hnsw.remove(chunkId);
           this.chunkToAsset.delete(chunkId);
-          // Clean up assetMeta if no more chunks reference this asset
-          const stillHas = [...this.chunkToAsset.values()].some(aid => aid === assetId);
-          if (!stillHas) this.assetMeta.delete(assetId);
         }
       }
     }
@@ -197,11 +184,17 @@ export class KnowledgeClient {
 
   // ── Search ────────────────────────────────────────────────────────────────
 
-  async search(query: string, opts: SearchOptions = { scope: 'global' }): Promise<KbSearchResult> {
+  async search(query: string, opts: SearchOptions = {}): Promise<KbSearchResult> {
     const topK  = opts.topK  ?? 10;
     const alpha = opts.alpha ?? 0.5;
 
-    const searchOpts = { scope: opts.scope, sessionId: opts.sessionId, topK: topK * 3 };
+    // Record this turn's KB selection (use_count + last_activated_at).
+    if (opts.assetIds && opts.assetIds.length > 0) {
+      this.deps.store.recordActivation(opts.assetIds);
+    }
+
+    const searchOpts = { assetIds: opts.assetIds, topK: topK * 3 };
+    const selected = opts.assetIds ? new Set(opts.assetIds) : null;
 
     const toRanked = (hits: Array<{ chunkId: string; score: number }>) =>
       hits.map(h => ({ id: h.chunkId, score: h.score }));
@@ -239,11 +232,8 @@ export class KnowledgeClient {
               .filter(h => {
                 const assetId = this.chunkToAsset.get(h.id);
                 if (!assetId) return false;
-                const meta = this.assetMeta.get(assetId);
-                if (!meta) return false;
-                if (meta.scope !== opts.scope) return false;
-                if (opts.scope === 'session' && opts.sessionId && meta.sessionId !== opts.sessionId) return false;
-                return true;
+                // Filter to the turn's selected KBs (null = all KBs).
+                return selected ? selected.has(assetId) : true;
               })
               .slice(0, topK * 3)
               .map(h => ({ id: h.id, score: h.score }));
@@ -323,8 +313,14 @@ export class KnowledgeClient {
   getChunks(assetId: string): DocumentChunk[]                  { return this.deps.store.getChunks(assetId); }
   getPreview(assetId: string): DocumentPreview | undefined     { return this.deps.store.getPreview(assetId); }
 
-  listAssets(scope: 'global' | 'session', sessionId?: string): DocumentAsset[] {
-    return this.deps.store.listAssets(scope, sessionId);
+  /** Cursor-paginated KB list for the UI (newest first), optional keyword. */
+  listAssets(opts: { cursor?: number; limit?: number; keyword?: string } = {}): AssetListPage {
+    return this.deps.store.listAssetsPaged(opts);
+  }
+
+  /** KBs not selected in the last `days` days (default 30). For the stale-KB view. */
+  listInactiveAssets(days = 30): DocumentAsset[] {
+    return this.deps.store.listInactiveAssets(Date.now() - days * 24 * 60 * 60 * 1000);
   }
 
   deleteAsset(id: string): void {
@@ -337,7 +333,6 @@ export class KnowledgeClient {
         }
       }
     }
-    this.assetMeta.delete(id);
     this.deps.store.deleteAsset(id);
   }
 }

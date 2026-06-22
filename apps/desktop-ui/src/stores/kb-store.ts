@@ -8,7 +8,6 @@ import {
   type KbSearchResultWire,
   type KbIngestOptions,
   type KbSearchOptions,
-  type DocumentScope,
 } from '../api/knowledge-base.js';
 
 export type { DocumentAssetWire, KbSearchResultWire, KbSearchHitWire } from '../api/knowledge-base.js';
@@ -27,7 +26,7 @@ export interface KbStoreState {
   searchLoading: boolean;
   searchError:   string | null;
 
-  loadDocuments(opts?: { scope?: DocumentScope; sessionId?: string }): Promise<void>;
+  loadDocuments(opts?: { cursor?: number; limit?: number; keyword?: string }): Promise<void>;
   ingest(filePath: string, opts?: KbIngestOptions): Promise<void>;
   deleteDocument(id: string): Promise<void>;
   search(query: string, opts?: KbSearchOptions): Promise<void>;
@@ -52,8 +51,8 @@ export const useKbStore = create<KbStoreState>((set, get) => ({
   async loadDocuments(opts = {}) {
     set({ loading: true, error: null });
     try {
-      const documents = await kbApi.listDocuments(opts);
-      set({ documents, loading: false });
+      const page = await kbApi.listDocuments(opts);
+      set({ documents: page.items, loading: false });
     } catch (err: unknown) {
       set({
         error: err instanceof Error ? err.message : '加载文档列表失败',
@@ -67,7 +66,7 @@ export const useKbStore = create<KbStoreState>((set, get) => ({
     try {
       await kbApi.ingest(filePath, opts);
       // Reload the list to show the newly ingested doc.
-      await get().loadDocuments({ scope: opts.scope ?? 'global', sessionId: opts.sessionId });
+      await get().loadDocuments();
       set({ ingesting: false });
     } catch (err: unknown) {
       set({

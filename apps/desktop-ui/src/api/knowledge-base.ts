@@ -6,13 +6,10 @@ import { sidecarClient } from './sidecar-client.js';
 
 // ── Wire types ────────────────────────────────────────────────────────────────
 
-export type DocumentScope        = 'global' | 'session';
 export type DocumentIndexStatus  = 'pending' | 'indexing' | 'indexed' | 'error';
 
 export interface DocumentAssetWire {
   id:         string;
-  scope:      DocumentScope;
-  sessionId?: string;
   filePath:   string;
   fileName:   string;
   mimeType:   string;
@@ -22,6 +19,16 @@ export interface DocumentAssetWire {
   status:     DocumentIndexStatus;
   createdAt:  number;
   updatedAt:  number;
+  /** Times this KB has been selected for a turn. */
+  useCount:   number;
+  /** Last selection time (ms); absent → never (UI falls back to createdAt). */
+  lastActivatedAt?: number;
+}
+
+/** One cursor-paginated page of KB assets. */
+export interface AssetPageWire {
+  items:      DocumentAssetWire[];
+  nextCursor: number | null;
 }
 
 export interface IngestResultWire {
@@ -60,8 +67,6 @@ export interface KbSearchResultWire {
 }
 
 export interface KbIngestOptions {
-  scope?:          DocumentScope;
-  sessionId?:      string;
   ebdProviderId?:  string;
   ebdModel?:       string;
   visionProviderId?: string;
@@ -70,8 +75,8 @@ export interface KbIngestOptions {
 }
 
 export interface KbSearchOptions {
-  scope?:           DocumentScope;
-  sessionId?:       string;
+  /** Selected KB asset ids for this turn. Omit = all KBs; [] = none. */
+  assetIds?:        string[];
   topK?:            number;
   alpha?:           number;
   ebdProviderId?:   string;
@@ -87,16 +92,23 @@ export const kbApi = {
   async ingest(filePath: string, opts: KbIngestOptions = {}): Promise<IngestResultWire> {
     return sidecarClient.request<IngestResultWire>('/api/kb/documents', {
       method: 'POST',
-      json: { filePath, scope: 'global', ...opts },
+      json: { filePath, ...opts },
     });
   },
 
-  /** GET /api/kb/documents — list indexed assets. */
-  async listDocuments(opts: { scope?: DocumentScope; sessionId?: string } = {}): Promise<DocumentAssetWire[]> {
+  /** GET /api/kb/documents — cursor-paginated list (newest first), optional keyword. */
+  async listDocuments(opts: { cursor?: number; limit?: number; keyword?: string } = {}): Promise<AssetPageWire> {
     const params = new URLSearchParams();
-    params.set('scope', opts.scope ?? 'global');
-    if (opts.sessionId) params.set('sessionId', opts.sessionId);
-    return sidecarClient.request<DocumentAssetWire[]>(`/api/kb/documents?${params.toString()}`);
+    if (opts.cursor !== undefined) params.set('cursor', String(opts.cursor));
+    if (opts.limit  !== undefined) params.set('limit',  String(opts.limit));
+    if (opts.keyword)              params.set('keyword', opts.keyword);
+    const qs = params.toString();
+    return sidecarClient.request<AssetPageWire>(`/api/kb/documents${qs ? `?${qs}` : ''}`);
+  },
+
+  /** GET /api/kb/documents-stale — KBs not selected in the last N days (default 30). */
+  async listStaleDocuments(days = 30): Promise<DocumentAssetWire[]> {
+    return sidecarClient.request<DocumentAssetWire[]>(`/api/kb/documents-stale?days=${days}`);
   },
 
   /** GET /api/kb/documents/:id */
@@ -118,7 +130,7 @@ export const kbApi = {
   async search(query: string, opts: KbSearchOptions = {}): Promise<KbSearchResultWire> {
     return sidecarClient.request<KbSearchResultWire>('/api/kb/search', {
       method: 'POST',
-      json: { query, scope: 'global', ...opts },
+      json: { query, ...opts },
     });
   },
 

@@ -7,7 +7,7 @@ export { KnowledgeStore }           from './store/index.js';
 export type {
   DocumentBlock, DocumentBlockKind,
   DocumentPage,
-  DocumentAsset, DocumentScope, DocumentIndexStatus,
+  DocumentAsset, DocumentIndexStatus, AssetListPage,
   DocumentChunk,
   DocumentPreview,
   IngestOptions, IngestResult,

@@ -1,6 +1,6 @@
 import type {
   DocumentAsset, DocumentChunk, DocumentPreview,
-  DocumentIndexStatus, DocumentScope,
+  DocumentIndexStatus, AssetListPage,
 } from '../types.js';
 import type { DocumentAssetRepo }   from '@ema-agent/storage';
 import type { DocumentChunkRepo }   from '@ema-agent/storage';
@@ -8,9 +8,9 @@ import type { DocumentPreviewRepo } from '@ema-agent/storage';
 import type { ChunkSearchHit }      from '@ema-agent/storage';
 
 export interface KbSearchOpts {
-  scope:      DocumentScope;
-  sessionId?: string;
-  topK:       number;
+  /** Selected KB asset ids for this turn. undefined = all KBs; [] = none. */
+  assetIds?: string[];
+  topK:      number;
 }
 
 export class KnowledgeStore {
@@ -28,8 +28,24 @@ export class KnowledgeStore {
     return this.assets.findById(id) as DocumentAsset | undefined;
   }
 
-  listAssets(scope: DocumentScope, sessionId?: string): DocumentAsset[] {
-    return this.assets.listByScope(scope, sessionId) as DocumentAsset[];
+  /** All assets (unpaginated) — for HNSW priming / indexing, not the UI list. */
+  listAllAssets(): DocumentAsset[] {
+    return this.assets.listAll() as DocumentAsset[];
+  }
+
+  /** Cursor-paginated list for the UI (newest first), optional keyword filter. */
+  listAssetsPaged(opts: { cursor?: number; limit?: number; keyword?: string } = {}): AssetListPage {
+    return this.assets.listPaged(opts) as AssetListPage;
+  }
+
+  /** KBs not selected since `beforeTs` (last_activated_at, falling back to created_at). */
+  listInactiveAssets(beforeTs: number): DocumentAsset[] {
+    return this.assets.listInactiveSince(beforeTs) as DocumentAsset[];
+  }
+
+  /** Record a turn selecting these KBs: bump use_count + stamp last_activated_at. */
+  recordActivation(assetIds: string[], ts: number = Date.now()): void {
+    this.assets.recordActivation(assetIds, ts);
   }
 
   findAssetByHash(hash: string): DocumentAsset | undefined {
@@ -64,12 +80,12 @@ export class KnowledgeStore {
 
   /** BM25 full-text search via SQLite FTS5. */
   searchFts(query: string, opts: KbSearchOpts): ChunkSearchHit[] {
-    return this.chunks.searchFts(query, opts.scope, opts.sessionId, opts.topK);
+    return this.chunks.searchFts(query, opts.assetIds, opts.topK);
   }
 
   /** Cosine similarity search over persisted BLOB embeddings. */
   searchByEmbedding(queryVec: number[], opts: KbSearchOpts): ChunkSearchHit[] {
-    return this.chunks.searchByEmbedding(queryVec, opts.scope, opts.sessionId, opts.topK);
+    return this.chunks.searchByEmbedding(queryVec, opts.assetIds, opts.topK);
   }
 
   // ── Preview ────────────────────────────────────────────────────────────────
@@ -92,7 +108,7 @@ export class KnowledgeStore {
   }
 
   listStaleAssets(): DocumentAsset[] {
-    return this.assets.listStale() as DocumentAsset[];
+    return this.assets.listEbdStale() as DocumentAsset[];
   }
 
   /** Load all non-stale embedded chunks for rebuilding the HNSW index. */

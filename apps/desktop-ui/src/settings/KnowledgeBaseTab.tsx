@@ -6,7 +6,7 @@ import { Button, IconButton, Input, Spinner, Badge, Callout, ScrollArea } from '
 import { useKbStore } from '../stores/kb-store.js';
 import { tauriBridge } from '../lib/tauri-bridge.js';
 import { showToast } from '../lib/toast.js';
-import type { DocumentAssetWire, DocumentScope } from '../api/knowledge-base.js';
+import type { DocumentAssetWire } from '../api/knowledge-base.js';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -55,8 +55,8 @@ function DocumentRow({ doc, onDelete }: { doc: DocumentAssetWire; onDelete(): vo
         </p>
       </div>
       <div className="flex items-center gap-2 shrink-0">
-        <Badge variant={doc.scope === 'global' ? 'neutral' : 'warn'} className="text-xs">
-          {doc.scope === 'global' ? '全局' : '会话'}
+        <Badge variant="neutral" className="text-xs">
+          {doc.useCount > 0 ? `被选 ${doc.useCount} 次` : '未使用'}
         </Badge>
         <Badge variant={STATUS_VARIANT[doc.status] ?? 'neutral'} className="text-xs">
           {STATUS_LABEL[doc.status] ?? doc.status}
@@ -81,7 +81,6 @@ function IngestForm({ onDone }: { onDone(): void }): JSX.Element {
   const ingestError = useKbStore((s) => s.ingestError);
 
   const [filePath, setFilePath] = useState('');
-  const [scope, setScope]       = useState<DocumentScope>('global');
 
   async function pickFile(): Promise<void> {
     const path = await tauriBridge.openFileDialog({
@@ -98,7 +97,7 @@ function IngestForm({ onDone }: { onDone(): void }): JSX.Element {
       showToast('请选择或输入文件路径', { variant: 'warning' });
       return;
     }
-    await useKbStore.getState().ingest(filePath.trim(), { scope });
+    await useKbStore.getState().ingest(filePath.trim());
     if (!useKbStore.getState().ingestError) {
       setFilePath('');
       onDone();
@@ -121,27 +120,6 @@ function IngestForm({ onDone }: { onDone(): void }): JSX.Element {
         <Button variant="secondary" size="sm" onClick={() => void pickFile()}>
           浏览…
         </Button>
-      </div>
-
-      {/* Scope selector */}
-      <div className="flex items-center gap-3">
-        <span className="text-xs text-neutral-400">范围</span>
-        <div className="flex gap-2">
-          {(['global', 'session'] as const).map((s) => (
-            <button
-              key={s}
-              onClick={() => setScope(s)}
-              className={[
-                'px-3 py-1 rounded-lg text-xs transition-colors',
-                scope === s
-                  ? 'bg-primary-500/20 text-primary-200 border border-primary-500/30'
-                  : 'bg-neutral-800 text-neutral-400 hover:text-neutral-200',
-              ].join(' ')}
-            >
-              {s === 'global' ? '全局' : '当前会话'}
-            </button>
-          ))}
-        </div>
       </div>
 
       {ingestError && (

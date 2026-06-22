@@ -46,7 +46,7 @@ export async function ingest(
   // ── 3. Store asset (indexing) ──────────────────────────────────────────────
   const fileName = filePath.split(/[\\/]/).pop() ?? filePath;
   const asset: DocumentAsset = {
-    id: assetId, scope: opts.scope, sessionId: opts.sessionId,
+    id: assetId,
     filePath, fileName, mimeType,
     title:       undefined,
     wordCount:   0,
@@ -55,6 +55,8 @@ export async function ingest(
     status:      'indexing',
     createdAt:   Date.now(),
     updatedAt:   Date.now(),
+    useCount:    0,
+    lastActivatedAt: undefined,
   };
   store.addAsset(asset);
 

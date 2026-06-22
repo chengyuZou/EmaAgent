@@ -31,13 +31,8 @@ export interface DocumentPage {
 // ── Document asset ────────────────────────────────────────────────────────────
 
 export type DocumentIndexStatus = 'pending' | 'indexing' | 'indexed' | 'error';
-export type DocumentScope       = 'global' | 'session';
-
 export interface DocumentAsset {
   id:          string;
-  scope:       DocumentScope;
-  /** Only present when scope = 'session'. */
-  sessionId?:  string;
   filePath:    string;
   fileName:    string;
   mimeType:    string;
@@ -48,6 +43,17 @@ export interface DocumentAsset {
   contentHash?: string;
   createdAt:   number;
   updatedAt:   number;
+  /** Times this KB has been selected for a turn. */
+  useCount:    number;
+  /** Last time selected for a turn (ms). Undefined → never; UI falls back to createdAt. */
+  lastActivatedAt?: number;
+}
+
+/** One page of a cursor-paginated asset list. */
+export interface AssetListPage {
+  items:      DocumentAsset[];
+  /** createdAt cursor to pass for the next page; null = no more. */
+  nextCursor: number | null;
 }
 
 // ── Document chunk (chunker output, stored in DB) ─────────────────────────────
@@ -89,8 +95,6 @@ export interface DocumentPreview {
 // ── Ingest ────────────────────────────────────────────────────────────────────
 
 export interface IngestOptions {
-  scope:      DocumentScope;
-  sessionId?: string;
   /** Vision provider id for image/scanned-PDF OCR. */
   visionProviderId?: string;
   visionModel?:      string;
@@ -111,8 +115,8 @@ export interface IngestResult {
 // ── Search ────────────────────────────────────────────────────────────────────
 
 export interface SearchOptions {
-  scope:      DocumentScope;
-  sessionId?: string;
+  /** Selected KB asset ids for this turn. undefined = search all KBs; [] = none. */
+  assetIds?:  string[];
   topK?:      number;
   /** BM25 / vector blend weight (0 = pure BM25, 1 = pure vector). Default 0.5. */
   alpha?:     number;

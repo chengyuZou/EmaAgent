@@ -4,32 +4,33 @@ import type { AppBindings } from '../wiring.js';
 
 // ── Schemas ───────────────────────────────────────────────────────────────────
 
-const scopeSchema = z.enum(['global', 'session']);
-
 const ingestBody = z.object({
   filePath:       z.string().min(1),
-  scope:          scopeSchema.default('global'),
-  sessionId:      z.string().optional(),
   ebdProviderId:  z.string().optional(),
   ebdModel:       z.string().optional(),
   mimeType:       z.string().optional(),
 });
 
 const listQuery = z.object({
-  scope:     scopeSchema.default('global'),
-  sessionId: z.string().optional(),
+  cursor:  z.coerce.number().int().optional(),
+  limit:   z.coerce.number().int().min(1).max(100).optional(),
+  keyword: z.string().optional(),
 });
 
 const searchBody = z.object({
   query:            z.string().min(1),
-  scope:            scopeSchema.default('global'),
-  sessionId:        z.string().optional(),
+  // Selected KB asset ids for this turn. Omit = search all KBs; [] = none.
+  assetIds:         z.array(z.string()).optional(),
   topK:             z.number().int().min(1).max(50).optional(),
   alpha:            z.number().min(0).max(1).optional(),
   ebdProviderId:    z.string().optional(),
   ebdModel:         z.string().optional(),
   rerankProviderId: z.string().optional(),
   rerankModel:      z.string().optional(),
+});
+
+const staleQuery = z.object({
+  days: z.coerce.number().int().min(1).max(3650).optional(),
 });
 
 const invalidateBody = z.object({
@@ -52,12 +53,10 @@ export function kbRoute(bindings: AppBindings): Hono {
     if (!parsed.success)
       return c.json({ error: 'invalid_request', details: parsed.error.flatten() }, 400);
 
-    const { filePath, scope, sessionId, ebdProviderId, ebdModel, mimeType } = parsed.data;
+    const { filePath, ebdProviderId, ebdModel, mimeType } = parsed.data;
 
     try {
       const result = await bindings.kb.ingest(filePath, {
-        scope,
-        sessionId,
         ebdProviderId,
         ebdModel,
         mimeType,
@@ -78,15 +77,22 @@ export function kbRoute(bindings: AppBindings): Hono {
     }
   });
 
-  // GET /api/kb/documents — list indexed assets
+  // GET /api/kb/documents — cursor-paginated list (newest first), optional keyword
   app.get('/documents', (c) => {
     const parsed = listQuery.safeParse(c.req.query());
     if (!parsed.success)
       return c.json({ error: 'invalid_request', details: parsed.error.flatten() }, 400);
 
-    const { scope, sessionId } = parsed.data;
-    const assets = bindings.kb.listAssets(scope, sessionId);
-    return c.json(assets);
+    const page = bindings.kb.listAssets(parsed.data);
+    return c.json(page);
+  });
+
+  // GET /api/kb/documents-stale — KBs not selected in the last N days (default 30)
+  app.get('/documents-stale', (c) => {
+    const parsed = staleQuery.safeParse(c.req.query());
+    if (!parsed.success)
+      return c.json({ error: 'invalid_request', details: parsed.error.flatten() }, 400);
+    return c.json(bindings.kb.listInactiveAssets(parsed.data.days ?? 30));
   });
 
   // GET /api/kb/documents/:id — get single asset metadata

@@ -129,7 +129,7 @@ export type { MemoryMaintenanceInput } from './api/memory.js';
 export { kbApi }             from './api/knowledge-base.js';
 export type {
   DocumentAssetWire,
-  DocumentScope,
+  AssetPageWire,
   DocumentIndexStatus,
   IngestResultWire,
   KbSearchHitWire,

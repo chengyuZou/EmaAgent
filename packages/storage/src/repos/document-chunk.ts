@@ -126,12 +126,12 @@ export class DocumentChunkRepo {
    * punctuation can't be misread as an FTS operator.
    */
   searchFts(
-    query:      string,
-    scope:      string,
-    sessionId:  string | undefined,
-    topK:       number,
+    query:    string,
+    assetIds: string[] | undefined,   // undefined = all KBs; [] = none
+    topK:     number,
   ): ChunkSearchHit[] {
     if (!query.trim()) return [];
+    if (assetIds && assetIds.length === 0) return [];
 
     // Segment the query with jieba (same pipeline as indexing), strip any FTS
     // operator chars from each token, then quote each as a phrase below.
@@ -142,37 +142,34 @@ export class DocumentChunkRepo {
     if (terms.length === 0) return [];
     const ftsQuery = terms.map(t => `"${t}"`).join(' OR ');
 
+    const assetFilter = assetIds ? `AND fts.asset_id IN (${assetIds.map(() => '?').join(',')})` : '';
     const rows = this.db.prepare(`
       SELECT fts.chunk_id, bm25(document_chunks_fts) AS score
       FROM   document_chunks_fts fts
-      JOIN   document_chunks dc ON dc.id = fts.chunk_id
-      JOIN   document_assets da ON da.id = dc.asset_id
       WHERE  document_chunks_fts MATCH ?
-        AND  da.scope = ?
-        AND  (? IS NULL OR da.session_id = ?)
+             ${assetFilter}
       ORDER  BY score
       LIMIT  ?
-    `).all(ftsQuery, scope, sessionId ?? null, sessionId ?? null, topK) as Array<{ chunk_id: string; score: number }>;
+    `).all(ftsQuery, ...(assetIds ?? []), topK) as Array<{ chunk_id: string; score: number }>;
 
     // bm25() returns negative values (lower = better match); negate for ascending scores
     return rows.map(r => ({ chunkId: r.chunk_id, score: -r.score }));
   }
 
-  /** Cosine similarity search over stored BLOB embeddings, scope-filtered. */
+  /** Cosine similarity search over stored BLOB embeddings, filtered to assetIds. */
   searchByEmbedding(
-    queryVec:   number[],
-    scope:      string,
-    sessionId:  string | undefined,
-    topK:       number,
+    queryVec: number[],
+    assetIds: string[] | undefined,   // undefined = all KBs; [] = none
+    topK:     number,
   ): ChunkSearchHit[] {
+    if (assetIds && assetIds.length === 0) return [];
+    const assetFilter = assetIds ? `AND dc.asset_id IN (${assetIds.map(() => '?').join(',')})` : '';
     const rows = this.db.prepare(`
       SELECT dc.id, dc.embedding
       FROM   document_chunks dc
-      JOIN   document_assets da ON da.id = dc.asset_id
-      WHERE  da.scope = ?
-        AND  (? IS NULL OR da.session_id = ?)
-        AND  dc.embedding IS NOT NULL
-    `).all(scope, sessionId ?? null, sessionId ?? null) as Array<{ id: string; embedding: Buffer }>;
+      WHERE  dc.embedding IS NOT NULL
+             ${assetFilter}
+    `).all(...(assetIds ?? [])) as Array<{ id: string; embedding: Buffer }>;
 
     const hits = rows.map(r => ({
       chunkId: r.id,
