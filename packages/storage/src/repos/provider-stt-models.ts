@@ -24,16 +24,35 @@ export class ProviderSttModelsRepo {
       .all(providerConfigId) as ProviderSttModelRow[];
   }
 
+  /** All providers that have this STT model enabled. */
+  listByModel(model: string): ProviderSttModelRow[] {
+    return this.db
+      .prepare('SELECT * FROM provider_stt_models WHERE model = ? ORDER BY provider_config_id')
+      .all(model) as ProviderSttModelRow[];
+  }
+
+  get(providerConfigId: string, model: string): ProviderSttModelRow | undefined {
+    return this.db
+      .prepare('SELECT * FROM provider_stt_models WHERE provider_config_id = ? AND model = ?')
+      .get(providerConfigId, model) as ProviderSttModelRow | undefined;
+  }
+
   listAll(): ProviderSttModelRow[] {
     return this.db
       .prepare('SELECT * FROM provider_stt_models ORDER BY provider_config_id, created_at ASC')
       .all() as ProviderSttModelRow[];
   }
 
-  has(providerConfigId: string, model: string): boolean {
+  hasProviderModel(providerConfigId: string, model: string): boolean {
     return this.db
       .prepare('SELECT 1 FROM provider_stt_models WHERE provider_config_id = ? AND model = ?')
       .get(providerConfigId, model) !== undefined;
+  }
+
+  hasModel(model: string): boolean {
+    return this.db
+      .prepare('SELECT 1 FROM provider_stt_models WHERE model = ?')
+      .get(model) !== undefined;
   }
 
   upsert(input: ProviderSttModelInsert): void {

@@ -24,16 +24,35 @@ export class ProviderTtsModelsRepo {
       .all(providerConfigId) as ProviderTtsModelRow[];
   }
 
+  /** All providers that have this TTS model enabled. */
+  listByModel(model: string): ProviderTtsModelRow[] {
+    return this.db
+      .prepare('SELECT * FROM provider_tts_models WHERE model = ? ORDER BY provider_config_id')
+      .all(model) as ProviderTtsModelRow[];
+  }
+
+  get(providerConfigId: string, model: string): ProviderTtsModelRow | undefined {
+    return this.db
+      .prepare('SELECT * FROM provider_tts_models WHERE provider_config_id = ? AND model = ?')
+      .get(providerConfigId, model) as ProviderTtsModelRow | undefined;
+  }
+
   listAll(): ProviderTtsModelRow[] {
     return this.db
       .prepare('SELECT * FROM provider_tts_models ORDER BY provider_config_id, created_at ASC')
       .all() as ProviderTtsModelRow[];
   }
 
-  has(providerConfigId: string, model: string): boolean {
+  hasProviderModel(providerConfigId: string, model: string): boolean {
     return this.db
       .prepare('SELECT 1 FROM provider_tts_models WHERE provider_config_id = ? AND model = ?')
       .get(providerConfigId, model) !== undefined;
+  }
+
+  hasModel(model: string): boolean {
+    return this.db
+      .prepare('SELECT 1 FROM provider_tts_models WHERE model = ?')
+      .get(model) !== undefined;
   }
 
   upsert(input: ProviderTtsModelInsert): void {

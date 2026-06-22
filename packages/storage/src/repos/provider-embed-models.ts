@@ -29,11 +29,32 @@ export interface ProviderEmbedModelInsert {
 export class ProviderEmbedModelsRepo {
   constructor(private readonly db: SqliteDb) {}
 
+  // ── Queries by provider ──────────────────────────────────────────────────
+
   listByProvider(providerConfigId: string): ProviderEmbedModelRow[] {
     return this.db
       .prepare('SELECT * FROM provider_embed_models WHERE provider_config_id = ? ORDER BY created_at ASC')
       .all(providerConfigId) as ProviderEmbedModelRow[];
   }
+
+  // ── Queries by model ─────────────────────────────────────────────────────
+
+  /** All providers that have this embed model enabled. */
+  listByModel(model: string): ProviderEmbedModelRow[] {
+    return this.db
+      .prepare('SELECT * FROM provider_embed_models WHERE model = ? ORDER BY provider_config_id')
+      .all(model) as ProviderEmbedModelRow[];
+  }
+
+  // ── Exact lookup ─────────────────────────────────────────────────────────
+
+  get(providerConfigId: string, model: string): ProviderEmbedModelRow | undefined {
+    return this.db
+      .prepare('SELECT * FROM provider_embed_models WHERE provider_config_id = ? AND model = ?')
+      .get(providerConfigId, model) as ProviderEmbedModelRow | undefined;
+  }
+
+  // ── Whole pool ───────────────────────────────────────────────────────────
 
   listAll(): ProviderEmbedModelRow[] {
     return this.db
@@ -41,10 +62,18 @@ export class ProviderEmbedModelsRepo {
       .all() as ProviderEmbedModelRow[];
   }
 
-  has(providerConfigId: string, model: string): boolean {
+  // ── Existence checks ─────────────────────────────────────────────────────
+
+  hasProviderModel(providerConfigId: string, model: string): boolean {
     return this.db
       .prepare('SELECT 1 FROM provider_embed_models WHERE provider_config_id = ? AND model = ?')
       .get(providerConfigId, model) !== undefined;
+  }
+
+  hasModel(model: string): boolean {
+    return this.db
+      .prepare('SELECT 1 FROM provider_embed_models WHERE model = ?')
+      .get(model) !== undefined;
   }
 
   /** Vector dimension for a model name, across any provider. Fallback for memory pipeline. */

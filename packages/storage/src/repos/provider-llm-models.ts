@@ -10,6 +10,8 @@ export interface ProviderLlmModelRow {
   context_window:     number;
   context_source:     ContextSource;
   created_at:         number;
+  /** Joined from provider_configs — used for capability lookups (modelsDevId). */
+  definition_id:      string | null;
 }
 
 export interface ProviderLlmModelInsert {
@@ -29,6 +31,8 @@ export interface ProviderLlmModelInsert {
 export class ProviderLlmModelsRepo {
   constructor(private readonly db: SqliteDb) {}
 
+  // ── Queries by provider ────────────────────────────────────────────────────
+
   /** Enabled models for one provider config — drives the provider page list. */
   listByProvider(providerConfigId: string): ProviderLlmModelRow[] {
     return this.db
@@ -36,17 +40,58 @@ export class ProviderLlmModelsRepo {
       .all(providerConfigId) as ProviderLlmModelRow[];
   }
 
-  /** Whole pool across providers — drives the binding picker + context lookup. */
+  // ── Queries by model ───────────────────────────────────────────────────────
+
+  /**
+   * All providers that have this model enabled — drives the frontend model
+   * picker (same model name may exist under multiple provider configs).
+   * JOINs definition_id so the caller can resolve modelsDevId for capability checks.
+   */
+  listByModel(model: string): ProviderLlmModelRow[] {
+    return this.db
+      .prepare(`SELECT plm.*, pc.definition_id
+                FROM provider_llm_models plm
+                JOIN provider_configs pc ON pc.id = plm.provider_config_id
+                WHERE plm.model = ?
+                ORDER BY plm.provider_config_id`)
+      .all(model) as ProviderLlmModelRow[];
+  }
+
+  // ── Exact lookup ───────────────────────────────────────────────────────────
+
+  /** Returns the full row (including definition_id) for a specific enabled model. */
+  get(providerConfigId: string, model: string): ProviderLlmModelRow | undefined {
+    return this.db
+      .prepare(`SELECT plm.*, pc.definition_id
+                FROM provider_llm_models plm
+                JOIN provider_configs pc ON pc.id = plm.provider_config_id
+                WHERE plm.provider_config_id = ? AND plm.model = ?`)
+      .get(providerConfigId, model) as ProviderLlmModelRow | undefined;
+  }
+
+  // ── Whole pool ─────────────────────────────────────────────────────────────
+
+  /** All enabled models across every provider. */
   listAll(): ProviderLlmModelRow[] {
     return this.db
       .prepare('SELECT * FROM provider_llm_models ORDER BY provider_config_id, created_at ASC')
       .all() as ProviderLlmModelRow[];
   }
 
-  has(providerConfigId: string, model: string): boolean {
+  // ── Existence checks ───────────────────────────────────────────────────────
+
+  /** Check whether a specific (provider, model) pair is enabled. */
+  hasProviderModel(providerConfigId: string, model: string): boolean {
     return this.db
       .prepare('SELECT 1 FROM provider_llm_models WHERE provider_config_id = ? AND model = ?')
       .get(providerConfigId, model) !== undefined;
+  }
+
+  /** Check whether ANY provider has this model enabled. */
+  hasModel(model: string): boolean {
+    return this.db
+      .prepare('SELECT 1 FROM provider_llm_models WHERE model = ?')
+      .get(model) !== undefined;
   }
 
   /**

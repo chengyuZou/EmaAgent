@@ -289,3 +289,12 @@ CREATE TABLE provider_stt_models (
   created_at          INTEGER NOT NULL,
   PRIMARY KEY (provider_config_id, model)
 );
+
+-- Per-provider ENABLED vision model pool. Capability flags (inputModalities
+-- etc.) come from the models.dev catalog at runtime — no extra columns here.
+CREATE TABLE provider_vision_models (
+  provider_config_id  TEXT    NOT NULL REFERENCES provider_configs(id) ON DELETE CASCADE,
+  model               TEXT    NOT NULL,
+  created_at          INTEGER NOT NULL,
+  PRIMARY KEY (provider_config_id, model)
+);

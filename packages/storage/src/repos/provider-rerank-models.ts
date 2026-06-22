@@ -26,16 +26,35 @@ export class ProviderRerankModelsRepo {
       .all(providerConfigId) as ProviderRerankModelRow[];
   }
 
+  /** All providers that have this rerank model enabled. */
+  listByModel(model: string): ProviderRerankModelRow[] {
+    return this.db
+      .prepare('SELECT * FROM provider_rerank_models WHERE model = ? ORDER BY provider_config_id')
+      .all(model) as ProviderRerankModelRow[];
+  }
+
+  get(providerConfigId: string, model: string): ProviderRerankModelRow | undefined {
+    return this.db
+      .prepare('SELECT * FROM provider_rerank_models WHERE provider_config_id = ? AND model = ?')
+      .get(providerConfigId, model) as ProviderRerankModelRow | undefined;
+  }
+
   listAll(): ProviderRerankModelRow[] {
     return this.db
       .prepare('SELECT * FROM provider_rerank_models ORDER BY provider_config_id, created_at ASC')
       .all() as ProviderRerankModelRow[];
   }
 
-  has(providerConfigId: string, model: string): boolean {
+  hasProviderModel(providerConfigId: string, model: string): boolean {
     return this.db
       .prepare('SELECT 1 FROM provider_rerank_models WHERE provider_config_id = ? AND model = ?')
       .get(providerConfigId, model) !== undefined;
+  }
+
+  hasModel(model: string): boolean {
+    return this.db
+      .prepare('SELECT 1 FROM provider_rerank_models WHERE model = ?')
+      .get(model) !== undefined;
   }
 
   upsert(input: ProviderRerankModelInsert): void {

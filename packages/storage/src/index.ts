@@ -102,6 +102,8 @@ export { ProviderTtsModelsRepo } from './repos/provider-tts-models.js';
 export type { ProviderTtsModelRow, ProviderTtsModelInsert } from './repos/provider-tts-models.js';
 export { ProviderSttModelsRepo } from './repos/provider-stt-models.js';
 export type { ProviderSttModelRow, ProviderSttModelInsert } from './repos/provider-stt-models.js';
+export { ProviderVisionModelsRepo } from './repos/provider-vision-models.js';
+export type { ProviderVisionModelRow, ProviderVisionModelInsert } from './repos/provider-vision-models.js';
 
 // ── Agent task repos (migration data/008) ────────────────────────────────────
 export { AgentTasksRepo }        from './repos/agent-tasks.js';

@@ -10,7 +10,7 @@ import { ConversationEngine } from '@ema-agent/conversation';
 import { AgentEngine }        from '@ema-agent/agent';
 import { buildSystemPrompt }  from '@ema-agent/prompts';
 import { TtsCoordinator }     from '@ema-agent/tts';
-import { SettingsRepo, ProvidersRepo } from '@ema-agent/storage';
+import { SettingsRepo } from '@ema-agent/storage';
 import type { BindingModule } from '@ema-agent/storage';
 import { resolveVoice, ensureVoiceUri, VoiceUriCache } from '../wiring/providers/tts.js';
 import type { Turn }           from '@ema-agent/session';
@@ -324,8 +324,8 @@ export class Orchestrator {
     const llmBinding = this.bindings.modelBindings.get(mode as BindingModule);
     if (!llmBinding) return imageParts;
 
-    const provRow     = new ProvidersRepo(this.bindings.profileDb.sqlite).get(llmBinding.providerConfigId);
-    const modelsDevId = provRow ? getProviderDefinition(provRow.definition_id)?.modelsDevId : undefined;
+    const modelRow    = this.bindings.providerLlmModels.get(llmBinding.providerConfigId, llmBinding.model);
+    const modelsDevId = modelRow ? getProviderDefinition(modelRow.definition_id)?.modelsDevId : undefined;
     // Unknown provider (custom OpenAI-compat, etc.) → assume it handles images.
     if (!modelsDevId) return imageParts;
 
