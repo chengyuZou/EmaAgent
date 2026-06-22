@@ -35,6 +35,8 @@ export interface ConversationRunInput {
   mode:          Exclude<TurnMode, 'agent'>;
   userInput:     string;
   contentParts?: LlmContentPart[];
-  /** Explicit model override; falls back to model_bindings for the mode. */
+  /** provider_configs.id — resolved by orchestrator from request or legacy binding. */
+  providerId?:   string;
+  /** Model name — resolved by orchestrator from request or legacy binding. */
   model?:        string;
 }

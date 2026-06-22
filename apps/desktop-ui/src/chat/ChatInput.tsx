@@ -4,6 +4,7 @@ import { useConversationStore } from '../stores/conversation-store.js';
 import { useSessionStore } from '../stores/session-store.js';
 import { useUiStore } from '../stores/ui-store.js';
 import { ModeSelector } from './ModeSelector.js';
+import { ModelPicker, type ModelSelection } from './ModelPicker.js';
 import { showToast } from '../lib/toast.js';
 import { tauriBridge } from '../lib/tauri-bridge.js';
 import type { AttachmentInputWire } from '../api/turns.js';
@@ -43,6 +44,7 @@ export function ChatInput(): JSX.Element {
   const initialDraft = useConversationStore.getState().draftMap.get(viewedId as string ?? '') ?? '';
   const [text, setText] = useState(initialDraft);
   const [pendingAttachments, setPendingAttachments] = useState<AttachmentInputWire[]>([]);
+  const [selectedModel, setSelectedModel] = useState<ModelSelection | null>(null);
   const prevViewedIdRef = useRef(viewedId);
 
   useEffect(() => {
@@ -85,6 +87,8 @@ export function ChatInput(): JSX.Element {
       mode,
       text: text.trim(),
       attachments: pendingAttachments.length > 0 ? pendingAttachments : undefined,
+      providerId: selectedModel?.providerId,
+      model:      selectedModel?.model,
       ttsEnabled,
     });
     setText('');
@@ -192,6 +196,12 @@ export function ChatInput(): JSX.Element {
               icon="i-mdi:volume-high"
               toggled={ttsEnabled}
               onClick={() => useUiStore.getState().setTtsEnabled(!ttsEnabled)}
+            />
+
+            <ModelPicker
+              selected={selectedModel}
+              onSelect={setSelectedModel}
+              onClear={() => setSelectedModel(null)}
             />
 
             <ModeSelector

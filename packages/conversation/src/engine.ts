@@ -59,9 +59,12 @@ async function* runTurn(
 
     yield { type: 'turn_started', sessionId: input.sessionId, turnId, mode };
 
-    // ── Provider resolution (early — needed for content-part validation) ─────
-    const binding = deps.modelBindings.get(mode as 'chat' | 'narrative');
-    const providerId = binding?.providerConfigId ?? llm.firstProviderId();
+    // ── Provider resolution ──────────────────────────────────────────────────
+    // Prefer explicit (providerId, model) from the orchestrator (frontend picker
+    // or resolveLlmForTurn). Fall back to legacy mode-based binding, then to
+    // the first available LLM provider.
+    const binding       = deps.modelBindings.get(mode as 'chat' | 'narrative');
+    const providerId    = input.providerId ?? binding?.providerConfigId ?? llm.firstProviderId();
     const resolvedModel = input.model
       ?? binding?.model
       ?? (providerId ? llm.defaultModelFor(providerId) : undefined);

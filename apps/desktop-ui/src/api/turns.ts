@@ -23,6 +23,8 @@ export interface CreateTurnRequest {
   contentParts?: MessageContentPart[];
   /** Per-turn file attachments. Images → base64 contentParts; others → path block appended to prompt. */
   attachments?:  AttachmentInputWire[];
+  /** provider_configs.id — the provider instance to use for this turn. */
+  providerId?:   string;
   model?:        string;
   ttsEnabled?:   boolean;
 }

@@ -190,6 +190,29 @@ export function providersRoute(bindings: AppBindings): Hono {
     return c.json(defs);
   });
 
+  // GET /api/providers/models  — all enabled LLM models across all providers.
+  // Drives the frontend model picker (ChatInput dropdown). Returns (providerId,
+  // providerName, model, contextWindow) so the user sees "OpenAI / gpt-4o".
+  app.get('/models', (c) => {
+    const rows = bindings.profileDb.sqlite
+      .prepare(`SELECT plm.provider_config_id, plm.model, plm.context_window, plm.context_source,
+                       pc.display_name, pc.definition_id
+                FROM provider_llm_models plm
+                JOIN provider_configs pc ON pc.id = plm.provider_config_id
+                ORDER BY pc.display_name, plm.model`)
+      .all() as Array<{ provider_config_id: string; model: string; context_window: number;
+                         context_source: string; display_name: string; definition_id: string }>;
+    const result = rows.map(r => ({
+      providerId:      r.provider_config_id,
+      providerName:    r.display_name,
+      model:           r.model,
+      contextWindow:   r.context_window,
+      contextSource:   r.context_source,
+      definitionId:    r.definition_id,
+    }));
+    return c.json(result);
+  });
+
   // GET /api/providers
   app.get('/', (c) => {
     const repo = new ProvidersRepo(bindings.profileDb.sqlite);
@@ -357,9 +380,8 @@ export function providersRoute(bindings: AppBindings): Hono {
 
     return c.json({
       source,
-      models: models.map((model) => ({
+      models: models.map((model): { id: string; contextWindow: number | null; enabled: boolean } => ({
         id:            model,
-        // enabled (stored) → models.dev catalog → unknown.
         contextWindow: enabled.get(model)
           ?? (modelsDevId ? bindings.modelCatalog.contextWindowOf(modelsDevId, model) : undefined)
           ?? null,

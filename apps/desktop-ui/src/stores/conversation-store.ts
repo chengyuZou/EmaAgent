@@ -72,6 +72,7 @@ interface SendInput {
   text?:         string;
   contentParts?: MessageContentPart[];
   attachments?:  AttachmentInputWire[];
+  providerId?:   string;
   model?:        string;
   ttsEnabled?:   boolean;
 }
@@ -98,6 +99,7 @@ function getOrCreateQueue(sessionId: SessionId): SendQueue<SendInput> {
         userInput:    input.text,
         contentParts: input.contentParts,
         attachments:  input.attachments,
+        providerId:   input.providerId,
         model:        input.model,
         ttsEnabled:   input.ttsEnabled,
       });

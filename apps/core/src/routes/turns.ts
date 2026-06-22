@@ -53,6 +53,7 @@ const turnBodySchema = z.object({
   userInput: z.string().optional(),
   contentParts: z.array(contentPartSchema).optional(),
   attachments:  z.array(attachmentInputSchema).optional(),
+  providerId: z.string().optional(),
   model: z.string().optional(),
   ttsEnabled: z.boolean().optional(),
 }).refine(
@@ -97,7 +98,7 @@ export function turnsRoute(bindings: AppBindings): Hono {
       return c.json({ error: 'invalid_request', details: parsed.error.flatten() }, 400);
     }
 
-    const { sessionId, mode, userInput, contentParts, attachments, model, ttsEnabled } = parsed.data;
+    const { sessionId, mode, userInput, contentParts, attachments, providerId, model, ttsEnabled } = parsed.data;
 
     // Trust the client's sessionId only if it still exists. A stale id (e.g.
     // a viewedSessionId persisted across a DB reset) would otherwise FK-fail
@@ -118,6 +119,7 @@ export function turnsRoute(bindings: AppBindings): Hono {
         userInput:        userInput ?? '',
         contentParts,
         attachmentInputs: attachments,
+        providerId,
         model,
         ttsEnabled:       ttsEnabled ?? false,
       }));

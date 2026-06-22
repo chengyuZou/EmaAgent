@@ -6,7 +6,9 @@ import type { MessageContentPart, TurnAttachment } from './messages.js';
 /**
  * userInput 和 contentParts 至少要有一个（Zod schema 在路由层做 refine 校验）。
  * sessionId 省略时后端自动创建新 session 并返回生成的 sessionId。
- * model 省略时使用 model_bindings 里对应 mode 的绑定。
+ * providerId + model 省略时使用 model_bindings 里对应 mode 的绑定。
+ * providerId 和 model 应成对出现——前端选择器选的是 (provider, model) 组合，
+ * 因为同名模型可能存在于多个供应商下。
  */
 export interface TurnRequest {
   sessionId?:    SessionId;             // 省略 → 自动创建新 session
@@ -14,7 +16,10 @@ export interface TurnRequest {
   userInput?:    string;
   contentParts?: MessageContentPart[];
   attachments?:  TurnAttachment[];
-  model?:        string;                // 覆盖本次 turn 的模型绑定
+  /** provider_configs.id — 本次 turn 使用的供应商实例。和 model 成对使用。 */
+  providerId?:   string;
+  /** 模型名。如果有 providerId，此模型必须在该供应商下已启用。 */
+  model?:        string;
   ttsEnabled?:   boolean;
 }
 

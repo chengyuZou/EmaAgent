@@ -28,6 +28,8 @@ export interface TurnRequest {
   contentParts?:    LlmContentPart[];
   /** Per-turn file attachments from the frontend. Persisted and resolved before engine dispatch. */
   attachmentInputs?: AttachmentInput[];
+  /** provider_configs.id — 和 model 成对使用，前端选择器选的是 (provider, model) 组合。 */
+  providerId?:      string;
   model?:           string;
   /**
    * Whether to spawn a TtsCoordinator for this turn. Defaults to false —
@@ -132,8 +134,11 @@ export class Orchestrator {
       const stored   = this.bindings.attachmentStore.addAll(request.attachmentInputs, turnId, sessionId);
       const resolved = this.bindings.attachmentStore.resolveForPrompt(stored);
 
-      const imageParts = resolved.imageParts.length > 0
-        ? await this.visionFallbackIfNeeded(request.mode, resolved.imageParts, signal)
+      // Resolve provider + model early for vision fallback — reuse the same
+      // resolution logic as engineStreamFor so providerId is consistent.
+      const resolvedLlm = this.resolveLlmForTurn(request);
+      const imageParts = resolved.imageParts.length > 0 && resolvedLlm.providerId
+        ? await this.visionFallbackIfNeeded(resolvedLlm.providerId, resolvedLlm.model, resolved.imageParts, signal)
         : resolved.imageParts;
 
       if (imageParts.length > 0 || resolved.promptLines) {
@@ -263,14 +268,17 @@ export class Orchestrator {
   ): AsyncIterable<EmaStreamEvent> {
     switch (request.mode) {
       case 'chat':
-      case 'narrative':
+      case 'narrative': {
+        const { providerId, model } = this.resolveLlmForTurn(request);
         return this.conversation.run({
           turn, signal, sessionId,
           mode:         request.mode,
           userInput:    request.userInput,
           contentParts: request.contentParts,
-          model:        request.model,
+          providerId,
+          model,
         });
+      }
 
       case 'agent': {
         const sess           = this.bindings.session.getSession(sessionId);
@@ -281,16 +289,8 @@ export class Orchestrator {
           { workspaceRoots },
         );
 
-        // Resolve provider + model here — AgentEngine is binding-unaware.
-        const binding    = this.bindings.modelBindings.get('agent');
-        const providerId = binding?.providerConfigId ?? this.bindings.llm.firstProviderId();
-        const model      = request.model ?? binding?.model
-          ?? (providerId ? this.bindings.llm.defaultModelFor(providerId) : undefined);
-
+        const { providerId, model } = this.resolveLlmForTurn(request);
         if (!providerId || !model) {
-          // Persist the failure BEFORE yielding the event — a yielded
-          // turn_failed without failTurn leaves the turn 'running' and the
-          // RunRegistry locked (session_busy forever, engines do this too).
           this.bindings.session.failTurn(turn.id, 'provider/not_configured',
             'No LLM provider configured for agent mode');
           return (async function* () {
@@ -311,25 +311,42 @@ export class Orchestrator {
   }
 
   /**
-   * If the active LLM for this mode does not accept image input (per the
-   * models.dev catalog), describe the images via VisionRouter and return a
-   * single text part instead. Falls back to the original parts on any error
-   * or when no vision provider is configured — never throws.
+   * Resolve (providerId, model) for a turn. Prefers request.providerId/model
+   * (frontend model picker), falls back to the per-mode binding (legacy),
+   * then to the first available LLM provider.
+   */
+  private resolveLlmForTurn(request: TurnRequest): { providerId: string; model: string } | { providerId: undefined; model: undefined } {
+    // Path 1: explicit (providerId, model) from frontend picker
+    if (request.providerId && request.model) {
+      return { providerId: request.providerId, model: request.model };
+    }
+    // Path 2: model only — resolve provider from request.providerId or binding
+    const binding    = this.bindings.modelBindings.get(request.mode as BindingModule);
+    const providerId = request.providerId ?? binding?.providerConfigId ?? this.bindings.llm.firstProviderId();
+    const model      = request.model ?? binding?.model
+      ?? (providerId ? this.bindings.llm.defaultModelFor(providerId) : undefined);
+    if (!providerId || !model) return { providerId: undefined, model: undefined };
+    return { providerId, model };
+  }
+
+  /**
+   * If the active LLM does not accept image input (per the models.dev catalog),
+   * describe the images via VisionRouter and return a single text part instead.
+   * Falls back to the original parts on any error or when no vision provider is
+   * configured — never throws.
    */
   private async visionFallbackIfNeeded(
-    mode:       TurnMode,
+    providerId: string,
+    model:      string,
     imageParts: LlmContentPart[],
     signal:     AbortSignal,
   ): Promise<LlmContentPart[]> {
-    const llmBinding = this.bindings.modelBindings.get(mode as BindingModule);
-    if (!llmBinding) return imageParts;
-
-    const modelRow    = this.bindings.providerLlmModels.get(llmBinding.providerConfigId, llmBinding.model);
-    const modelsDevId = modelRow ? getProviderDefinition(modelRow.definition_id)?.modelsDevId : undefined;
+    const modelRow    = this.bindings.providerLlmModels.get(providerId, model);
+    const modelsDevId = modelRow?.definition_id ? getProviderDefinition(modelRow.definition_id)?.modelsDevId : undefined;
     // Unknown provider (custom OpenAI-compat, etc.) → assume it handles images.
     if (!modelsDevId) return imageParts;
 
-    if (this.bindings.modelCatalog.supportsImageInput(modelsDevId, llmBinding.model)) {
+    if (this.bindings.modelCatalog.supportsImageInput(modelsDevId, model)) {
       return imageParts;
     }
 
