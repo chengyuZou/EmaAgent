@@ -6,6 +6,7 @@
  */
 import { useDecisionStore, type DecisionPrompt } from '../stores/decision-store.js';
 import { useSettingsStore } from '../stores/settings-store.js';
+import { turnsApi } from '../api/turns.js';
 import { PermissionPrompt } from './PermissionPrompt.js';
 import { AskConfirmPrompt } from './AskConfirmPrompt.js';
 import { AskTextPrompt } from './AskTextPrompt.js';
@@ -40,8 +41,13 @@ function PromptRouter({ prompt }: { prompt: DecisionPrompt }): JSX.Element {
           promptId={prompt.promptId}
           question={prompt.question}
           humanDescription={prompt.humanDescription}
-          onResolve={(confirmed) => {
+          onResolve={async (confirmed) => {
+            await turnsApi.respondAskUser(prompt.turnId, prompt.promptId, { confirmed: String(confirmed) }).catch(() => {});
             useDecisionStore.getState().resolve({ kind: 'confirm', confirmed });
+          }}
+          onCancel={async () => {
+            await turnsApi.respondAskUser(prompt.turnId, prompt.promptId, { confirmed: 'false' }).catch(() => {});
+            useDecisionStore.getState().cancel();
           }}
         />
       );
@@ -53,10 +59,12 @@ function PromptRouter({ prompt }: { prompt: DecisionPrompt }): JSX.Element {
           question={prompt.question}
           humanDescription={prompt.humanDescription}
           placeholder={prompt.placeholder}
-          onResolve={(text) => {
+          onResolve={async (text) => {
+            await turnsApi.respondAskUser(prompt.turnId, prompt.promptId, { text }).catch(() => {});
             useDecisionStore.getState().resolve({ kind: 'text', text });
           }}
-          onCancel={() => {
+          onCancel={async () => {
+            await turnsApi.respondAskUser(prompt.turnId, prompt.promptId, { text: '' }).catch(() => {});
             useDecisionStore.getState().cancel();
           }}
         />
@@ -71,10 +79,15 @@ function PromptRouter({ prompt }: { prompt: DecisionPrompt }): JSX.Element {
           options={prompt.options}
           multiSelect={prompt.multiSelect}
           allowCustom={prompt.allowCustom}
-          onResolve={(answers, customText) => {
+          onResolve={async (answers, customText) => {
+            await turnsApi.respondAskUser(prompt.turnId, prompt.promptId, {
+              selected: answers.join(','),
+              ...(customText ? { custom: customText } : {}),
+            }).catch(() => {});
             useDecisionStore.getState().resolve({ kind: 'choice', answers, customText });
           }}
-          onCancel={() => {
+          onCancel={async () => {
+            await turnsApi.respondAskUser(prompt.turnId, prompt.promptId, { selected: '' }).catch(() => {});
             useDecisionStore.getState().cancel();
           }}
         />
@@ -108,15 +121,25 @@ export function DecisionLayer(): JSX.Element | null {
 
   if (!current) return null;
 
+  // Permission prompts must not be silently dismissed via backdrop — the
+  // backend agent is waiting for a response. Clicking away sends an explicit
+  // deny so the agent can unblock. Ask-user prompts call cancel() which sends
+  // no network request (the ask_user tool handles its own abort path).
+  const handleBackdrop = (): void => {
+    if (current.kind === 'permission') {
+      void import('../api/permission.js').then(({ permissionApi }) =>
+        permissionApi.respond(current.promptId, { action: 'deny' }).catch(() => {}),
+      );
+    }
+    useDecisionStore.getState().cancel();
+  };
+
   return (
     <div className="fixed inset-0 z-9998 flex items-center justify-center">
       {/* Backdrop */}
-      <div
-        className="absolute inset-0 bg-black/60"
-        onClick={() => useDecisionStore.getState().cancel()}
-      />
-      {/* Modal content */}
-      <div className="relative z-10 max-w-lg w-full mx-4">
+      <div className="absolute inset-0 bg-black/60" onClick={handleBackdrop} />
+      {/* Modal content — ema-scale-in entrance */}
+      <div className="relative z-10 max-w-lg w-full mx-4 ema-scale-in">
         <PromptRouter prompt={current} />
       </div>
     </div>

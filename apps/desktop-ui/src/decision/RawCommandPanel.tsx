@@ -10,8 +10,15 @@ export function RawCommandPanel({ toolName, args }: RawCommandPanelProps): JSX.E
     : JSON.stringify(args, null, 2);
 
   return (
-    <div className="mt-3 bg-gray-800 border border-gray-600 rounded-xl p-3 font-mono text-xs text-gray-300 overflow-auto max-h-60">
-      <div className="text-pink-400 font-semibold mb-1">{toolName}</div>
+    <div
+      className="mt-3 rounded-xl p-3 font-mono text-xs overflow-auto max-h-60"
+      style={{
+        background:   'var(--ema-surface-0)',
+        border:       '1px solid var(--ema-border)',
+        color:        'var(--ema-text-secondary)',
+      }}
+    >
+      <div className="font-semibold mb-1" style={{ color: 'var(--ema-primary)' }}>{toolName}</div>
       <pre className="whitespace-pre-wrap">{argsStr}</pre>
     </div>
   );

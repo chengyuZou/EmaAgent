@@ -308,6 +308,55 @@ function dispatchSseEvent(
       useDecisionStore.getState().dismiss(event.promptId);
       break;
 
+    case 'ask_confirm_required':
+      useDecisionStore.getState().push({
+        kind:             'ask_confirm',
+        promptId:         event.promptId,
+        turnId:           event.turnId as string,
+        sessionId:        sessionId as string,
+        question:         event.question,
+        humanDescription: event.humanDescription,
+      });
+      break;
+
+    case 'ask_confirm_resolved':
+      useDecisionStore.getState().dismiss(event.promptId);
+      break;
+
+    case 'ask_text_required':
+      useDecisionStore.getState().push({
+        kind:             'ask_text',
+        promptId:         event.promptId,
+        turnId:           event.turnId as string,
+        sessionId:        sessionId as string,
+        question:         event.question,
+        humanDescription: event.humanDescription,
+        placeholder:      event.placeholder,
+      });
+      break;
+
+    case 'ask_text_resolved':
+      useDecisionStore.getState().dismiss(event.promptId);
+      break;
+
+    case 'ask_choice_required':
+      useDecisionStore.getState().push({
+        kind:             'ask_choice',
+        promptId:         event.promptId,
+        turnId:           event.turnId as string,
+        sessionId:        sessionId as string,
+        question:         event.question,
+        humanDescription: event.humanDescription,
+        options:          event.options,
+        multiSelect:      event.multiSelect ?? false,
+        allowCustom:      event.allowCustom,
+      });
+      break;
+
+    case 'ask_choice_resolved':
+      useDecisionStore.getState().dismiss(event.promptId);
+      break;
+
     case 'permission_required':
       useDecisionStore.getState().push({
         kind:                    'permission',
@@ -364,7 +413,7 @@ function dispatchSseEvent(
       useArtifactStore.getState().markAppliedFromEvent(event.id);
       break;
 
-    // Reserved for V1.5
+    
     case 'agent_breaker_tripped':
       breakerReasons.set(sessionId as string, `熔断保护：${event.reason}`);
       break;

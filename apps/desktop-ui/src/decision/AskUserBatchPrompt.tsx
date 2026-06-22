@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type CSSProperties } from 'react';
 import { Button, Card, Textarea } from '@ema-agent/ui';
 import { turnsApi } from '../api/turns.js';
 import { HumanDescriptionPanel } from './HumanDescriptionPanel.js';
@@ -70,9 +70,10 @@ export function AskUserBatchPrompt({
         {questions.map((_, i) => (
           <div
             key={i}
-            className={`h-1.5 rounded-full flex-1 transition-colors ${
+            className={`h-1.5 rounded-full flex-1 transition-colors ema-stagger-in ${
               i <= step ? 'bg-primary-400' : 'bg-neutral-700'
             }`}
+            style={{ '--stagger-i': i } as CSSProperties}
           />
         ))}
       </div>
@@ -88,14 +89,15 @@ export function AskUserBatchPrompt({
 
       {hasOptions ? (
         <div className="flex flex-col gap-2 mb-4">
-          {current.options!.map((opt) => (
+          {current.options!.map((opt, i) => (
             <button
               key={opt.label}
-              className={`px-4 py-2.5 rounded-md text-left transition-colors border ${
+              className={`px-4 py-2.5 rounded-md text-left transition-colors border ema-stagger-in ${
                 choiceSelected.has(opt.label)
                   ? 'bg-primary-400/20 text-primary-300 border-primary-400/40'
                   : 'bg-neutral-800 text-neutral-300 border-neutral-600 hover:bg-neutral-700'
               }`}
+              style={{ '--stagger-i': i } as CSSProperties}
               onClick={() => toggleChoice(opt.label, current.multiSelect ?? false)}
             >
               <p className="font-medium text-sm">{opt.label}</p>

@@ -34,6 +34,15 @@ export type { Todo, TodoWriteResult } from './tools/todo-write.js';
 export { askUserTool } from './tools/ask-user.js';
 export type { AskUserResult } from './tools/ask-user.js';
 
+export { askConfirmTool } from './tools/ask-confirm.js';
+export type { AskConfirmResult } from './tools/ask-confirm.js';
+
+export { askTextTool } from './tools/ask-text.js';
+export type { AskTextResult } from './tools/ask-text.js';
+
+export { askChoiceTool } from './tools/ask-choice.js';
+export type { AskChoiceResult } from './tools/ask-choice.js';
+
 export { planEnterTool, planExitTool } from './tools/plan-mode.js';
 export type { PlanModeResult } from './tools/plan-mode.js';
 
@@ -69,6 +78,9 @@ import { webFetchTool } from './tools/web-fetch.js';
 import { webSearchTool } from './tools/web-search.js';
 import { todoWriteTool } from './tools/todo-write.js';
 import { askUserTool } from './tools/ask-user.js';
+import { askConfirmTool } from './tools/ask-confirm.js';
+import { askTextTool } from './tools/ask-text.js';
+import { askChoiceTool } from './tools/ask-choice.js';
 import { planEnterTool, planExitTool } from './tools/plan-mode.js';
 import { artifactWriteTool, artifactReadTool, artifactListTool } from './tools/artifact.js';
 import { skillCallTool } from './tools/skill-call.js';
@@ -89,6 +101,9 @@ const ALL_BUILTIN_TOOLS: BuiltTool<any, any>[] = [
   webSearchTool,
   todoWriteTool,
   askUserTool,
+  askConfirmTool,
+  askTextTool,
+  askChoiceTool,
   planEnterTool,
   planExitTool,
   artifactWriteTool,

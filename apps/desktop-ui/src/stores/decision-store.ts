@@ -26,6 +26,7 @@ export type DecisionPrompt =
   | {
       kind: 'ask_confirm';
       promptId: string;
+      turnId: string;
       sessionId?: string;
       question: string;
       humanDescription?: string;
@@ -33,6 +34,7 @@ export type DecisionPrompt =
   | {
       kind: 'ask_text';
       promptId: string;
+      turnId: string;
       sessionId?: string;
       question: string;
       humanDescription?: string;
@@ -41,10 +43,11 @@ export type DecisionPrompt =
   | {
       kind: 'ask_choice';
       promptId: string;
+      turnId: string;
       sessionId?: string;
       question: string;
       humanDescription?: string;
-      options: Array<{ label: string; humanDescription?: string }>;
+      options: Array<{ label: string; description?: string }>;
       multiSelect: boolean;
       allowCustom?: boolean;
     }

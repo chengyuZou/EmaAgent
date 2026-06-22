@@ -6,15 +6,19 @@ export interface AskConfirmPromptProps {
   question:          string;
   humanDescription?: string;
   onResolve(confirmed: boolean): void;
+  onCancel(): void;
 }
 
-export function AskConfirmPrompt({ question, humanDescription, onResolve }: AskConfirmPromptProps): JSX.Element {
+export function AskConfirmPrompt({ question, humanDescription, onResolve, onCancel }: AskConfirmPromptProps): JSX.Element {
   return (
     <Card variant="elevated" padding="lg" className="shadow-2xl max-w-lg w-full">
       <HumanDescriptionPanel description={humanDescription ?? question} toolName="" pending={false} />
-      <p className="text-neutral-300 mt-2 text-sm">{question}</p>
-      <div className="flex gap-3 mt-4 justify-end">
-        <Button variant="ghost" size="sm" onClick={() => onResolve(false)}>取消</Button>
+      {humanDescription && (
+        <p className="mt-2 text-sm" style={{ color: 'var(--ema-text-secondary)' }}>{question}</p>
+      )}
+      <div className="flex gap-3 mt-5 justify-end">
+        <Button variant="ghost" size="sm" onClick={onCancel}>取消</Button>
+        <Button variant="danger" size="sm" onClick={() => onResolve(false)}>否</Button>
         <Button variant="primary" size="sm" onClick={() => onResolve(true)}>确认</Button>
       </div>
     </Card>

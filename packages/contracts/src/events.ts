@@ -173,6 +173,26 @@ export type EmaStreamEvent =
       answers: Record<string, string>;
     }
 
+  // Single-purpose ask variants — simpler API surface than ask_user for common patterns.
+  // All share the same POST /api/turns/:id/ask-user/:promptId/respond endpoint;
+  // answer keys are standardised per type (see tool implementations for details).
+  | { type: 'ask_confirm_required'; sessionId: SessionId; turnId: TurnId; promptId: string; question: string; humanDescription?: string }
+  | { type: 'ask_confirm_resolved'; sessionId: SessionId; promptId: string; confirmed: boolean }
+  | { type: 'ask_text_required';    sessionId: SessionId; turnId: TurnId; promptId: string; question: string; humanDescription?: string; placeholder?: string }
+  | { type: 'ask_text_resolved';    sessionId: SessionId; promptId: string; text: string }
+  | {
+      type: 'ask_choice_required';
+      sessionId: SessionId;
+      turnId: TurnId;
+      promptId: string;
+      question: string;
+      humanDescription?: string;
+      options: Array<{ label: string; description?: string }>;
+      multiSelect?: boolean;
+      allowCustom?: boolean;
+    }
+  | { type: 'ask_choice_resolved'; sessionId: SessionId; promptId: string; selected: string[]; customText?: string }
+
   // Artifact
   | { type: 'artifact_upserted'; sessionId: SessionId; artifact: Artifact }
   | { type: 'artifact_applied';  sessionId: SessionId; id: ArtifactId }

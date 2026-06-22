@@ -9,7 +9,7 @@ export function HumanDescriptionPanel({ description, toolName, pending }: HumanD
   if (pending) {
     return (
       <div className="mb-3">
-        <div className="h-6 w-3/4 rounded-lg bg-gray-700 animate-pulse" />
+        <div className="h-6 w-3/4 rounded-lg animate-pulse" style={{ background: 'var(--ema-surface-2)' }} />
       </div>
     );
   }
@@ -17,7 +17,10 @@ export function HumanDescriptionPanel({ description, toolName, pending }: HumanD
   return (
     <div className="mb-2">
       {description && (
-        <p className={`text-base ${!toolName ? 'text-gray-300' : 'text-gray-200'} leading-relaxed`}>
+        <p
+          className="text-base leading-relaxed"
+          style={{ color: toolName ? 'var(--ema-text-primary)' : 'var(--ema-text-secondary)' }}
+        >
           {description}
         </p>
       )}
