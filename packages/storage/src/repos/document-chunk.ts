@@ -12,6 +12,8 @@ export interface DocumentChunkRow {
   section_path_json: string;
   prev_id:           string | null;
   next_id:           string | null;
+  mom_id:            string | null;
+  mom_text:          string | null;
   embedding:         Buffer | null;
 }
 
@@ -26,6 +28,8 @@ export interface DocumentChunkInsert {
   sectionPath: string[];
   prev?:       string;
   next?:       string;
+  momId?:      string;
+  momText?:    string;
 }
 
 export interface ChunkSearchHit { chunkId: string; score: number }
@@ -42,6 +46,8 @@ function rowToChunk(row: DocumentChunkRow) {
     sectionPath: JSON.parse(row.section_path_json) as string[],
     prev:        row.prev_id ?? undefined,
     next:        row.next_id ?? undefined,
+    momId:       row.mom_id ?? undefined,
+    momText:     row.mom_text ?? undefined,
   };
 }
 
@@ -76,8 +82,8 @@ export class DocumentChunkRepo {
   insertMany(chunks: DocumentChunkInsert[]): void {
     const stmt = this.db.prepare(
       `INSERT OR REPLACE INTO document_chunks
-         (id, asset_id, text, tokens, markdown, block_kinds_json, token_count, page, section_path_json, prev_id, next_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         (id, asset_id, text, tokens, markdown, block_kinds_json, token_count, page, section_path_json, prev_id, next_id, mom_id, mom_text)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     );
     this.db.transaction(() => {
       for (const c of chunks) {
@@ -86,7 +92,8 @@ export class DocumentChunkRepo {
         stmt.run(c.id, c.assetId, c.text, segmentForFts(c.text), c.markdown ?? null,
           JSON.stringify(c.blockKinds), c.tokenCount,
           c.page ?? null, JSON.stringify(c.sectionPath),
-          c.prev ?? null, c.next ?? null);
+          c.prev ?? null, c.next ?? null,
+          c.momId ?? null, c.momText ?? null);
       }
     })();
   }
@@ -129,7 +136,6 @@ export class DocumentChunkRepo {
     // Segment the query with jieba (same pipeline as indexing), strip any FTS
     // operator chars from each token, then quote each as a phrase below.
     const terms = segmentForFts(query)
-      .replace(/[^\w　-鿿豈-﫿＀-￯\s]/g, ' ')
       .split(/\s+/)
       .map(t => t.replace(/"/g, '').trim())
       .filter(Boolean); // jieba words can be 1–2 chars; no trigram length floor anymore

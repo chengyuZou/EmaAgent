@@ -284,22 +284,35 @@ export class KnowledgeClient {
     }
 
     // ── Build result hits with source attribution ─────────────────────────────
-    const hits = ranked
-      .map(r => {
-        const chunk = this.deps.store.getChunk(r.id);
-        if (!chunk?.assetId) return null;
-        const asset = this.deps.store.getAsset(chunk.assetId);
-        if (!asset) return null;
-        const source: DocumentSourceRef = {
-          assetId:      asset.id,
-          fileName:     asset.fileName,
-          page:         chunk.page,
-          sectionPath:  chunk.sectionPath,
-          chunkPreview: chunk.text.slice(0, 200),
-        };
-        return { chunkId: chunk.id, text: chunk.text, markdown: chunk.markdown, score: r.score, source };
-      })
-      .filter((h): h is NonNullable<typeof h> => h !== null);
+    // Parent-child (small-to-big): a matched child returns its parent window
+    // (momText) for richer context, and sibling children of the same parent
+    // collapse into one hit (keep the best-scored, which `ranked` lists first).
+    const seenMom = new Set<string>();
+    const hits: KbSearchResult['hits'] = [];
+    for (const r of ranked) {
+      const chunk = this.deps.store.getChunk(r.id);
+      if (!chunk?.assetId) continue;
+      if (chunk.momId) {
+        if (seenMom.has(chunk.momId)) continue;
+        seenMom.add(chunk.momId);
+      }
+      const asset = this.deps.store.getAsset(chunk.assetId);
+      if (!asset) continue;
+      const source: DocumentSourceRef = {
+        assetId:      asset.id,
+        fileName:     asset.fileName,
+        page:         chunk.page,
+        sectionPath:  chunk.sectionPath,
+        chunkPreview: chunk.text.slice(0, 200),  // preview stays the matched child
+      };
+      hits.push({
+        chunkId: chunk.id,
+        text:    chunk.momText ?? chunk.text,    // return the parent window when present
+        markdown: chunk.markdown,
+        score:   r.score,
+        source,
+      });
+    }
 
     return { query, hits };
   }

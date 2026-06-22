@@ -65,6 +65,14 @@ export interface DocumentChunk {
   sectionPath: string[];
   prev?:       string;
   next?:       string;
+  // ── Parent-child (small-to-big) retrieval (RAGFlow-style) ─────────────────
+  /** Parent ("mom") window id this child belongs to. Children of the same
+   *  parent share it; undefined when parent-child is disabled. */
+  momId?:      string;
+  /** Full text of the parent window. Carried on each child so retrieval can
+   *  return the larger parent context without a separate parent row (mirrors
+   *  RAGFlow's mom_with_weight). */
+  momText?:    string;
 }
 
 // ── Preview ───────────────────────────────────────────────────────────────────

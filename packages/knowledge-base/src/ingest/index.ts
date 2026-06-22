@@ -7,6 +7,7 @@ import { validateFile }                  from './validate.js';
 import { planIngest }                    from './plan.js';
 import { RecursiveChunker }              from '../chunking/recursive.js';
 import { SemanticChunker }               from '../chunking/semantic.js';
+import { assignParents }                 from '../chunking/base.js';
 import { ImageReader }                   from '../readers/image.js';
 import type { KnowledgeStore }           from '../store/index.js';
 import type { DocumentEventEmitter }     from '../events/emitter.js';
@@ -104,6 +105,9 @@ export async function ingest(
     }
 
     const chunks = rawChunks.map(c => ({ ...c, assetId }));
+    // Parent-child (small-to-big): stamp momId/momText on children so retrieval
+    // can return the larger parent window. Single call site for all chunkers.
+    assignParents(chunks, chunkOpts.maxTokens * 4);
     store.addChunks(chunks);
 
     // ── 6. Embed ──────────────────────────────────────────────────────────────
