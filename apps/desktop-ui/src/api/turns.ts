@@ -59,6 +59,14 @@ export const turnsApi = {
     return sidecarClient.streamUrl(`/api/turns/${turnId}/audio`);
   },
 
+  /** DELETE /api/turns/:turnId/subagents/:subagentId — cancel a running subagent. */
+  abortSubagent(turnId: string, subagentId: string): Promise<{ ok: boolean }> {
+    return sidecarClient.request(
+      `/api/turns/${turnId}/subagents/${subagentId}`,
+      { method: 'DELETE' },
+    );
+  },
+
   /** POST /api/turns/:turnId/ask-user/:promptId/respond */
   respondAskUser(
     turnId:   string,

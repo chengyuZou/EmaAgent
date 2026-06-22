@@ -40,6 +40,16 @@ export type { KbStoreState } from './stores/kb-store.js';
 
 export { useThemeStore, useThemeSync } from './stores/theme-store.js';
 export type { ThemeStoreState }        from './stores/theme-store.js';
+
+export { useAgentTaskStore }           from './stores/agent-task-store.js';
+export type {
+  AgentTaskStoreState,
+  AgentTaskState,
+  AgentTaskWire,
+  AgentTaskMessageWire,
+  LiveTaskInfo,
+  TaskStatus,
+} from './stores/agent-task-store.js';
 export type {
   DecisionStoreState,
   DecisionPrompt,
@@ -130,6 +140,8 @@ export type {
 
 export type { AttachmentInputWire } from './api/turns.js';
 
+export { agentTasksApi }             from './api/agent-tasks.js';
+
 // ── Markdown ──────────────────────────────────────────────────────────────────
 
 export { Markdown } from './markdown/renderer.js';
@@ -178,6 +190,10 @@ export { ToolCallBlock }           from './chat/ToolCallBlock.js';
 export { ChatInput }               from './chat/ChatInput.js';
 export { ModeSelector }            from './chat/ModeSelector.js';
 export { useChatHistoryScroll }    from './chat/use-chat-history-scroll.js';
+
+// Task panel
+export { TaskPanel }               from './chat/TaskPanel.js';
+export type { TaskPanelProps }     from './chat/TaskPanel.js';
 
 // Floating dock
 export { FloatingDock }            from './floating-dock/FloatingDock.js';

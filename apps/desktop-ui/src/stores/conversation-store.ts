@@ -17,6 +17,7 @@ import { tauriBridge } from '../lib/tauri-bridge.js';
 import { useSessionStore } from './session-store.js';
 import { useDecisionStore } from './decision-store.js';
 import { useArtifactStore } from './artifact-store.js';
+import { useAgentTaskStore } from './agent-task-store.js';
 import type {
   SessionId,
   TurnId,
@@ -362,6 +363,83 @@ function dispatchSseEvent(
       breakerReasons.set(sessionId as string, `熔断保护：${event.reason}`);
       break;
 
+    // ── Subagent lifecycle ─────────────────────────────────────────────────
+    case 'subagent_started':
+      useAgentTaskStore.getState().upsert({
+        id:          event.subagentId,
+        sessionId:   event.sessionId as string,
+        turnId:      null,
+        parentId:    event.parentTurnId as string,
+        status:      'running',
+        createdAt:   event.startedAtMs,
+        updatedAt:   event.startedAtMs,
+        parentTurnId: event.parentTurnId as string,
+        live: {
+          startedAtMs:   event.startedAtMs,
+          promptExcerpt: event.promptExcerpt,
+          model:         event.model,
+          iteration:     0,
+          toolCallCount: 0,
+          elapsedMs:     0,
+        },
+      });
+      break;
+
+    case 'subagent_progress': {
+      const existing = useAgentTaskStore.getState().tasks.get(event.subagentId);
+      useAgentTaskStore.getState().upsert({
+        id:      event.subagentId,
+        status:  'running',
+        live: {
+          startedAtMs:   existing?.live?.startedAtMs   ?? Date.now(),
+          promptExcerpt: existing?.live?.promptExcerpt ?? '',
+          model:         existing?.live?.model         ?? '',
+          iteration:     event.iteration,
+          toolCallCount: event.toolCallCount,
+          elapsedMs:     event.elapsedMs,
+        },
+      });
+      break;
+    }
+
+    case 'subagent_completed':
+      useAgentTaskStore.getState().upsert({
+        id:          event.subagentId,
+        status:      'completed',
+        updatedAt:   Date.now(),
+        iterations:  event.iterationCount,
+        inputTokens: event.stats.inputTokens,
+        outputTokens: event.stats.outputTokens,
+        live: undefined,
+      });
+      break;
+
+    case 'subagent_failed':
+      useAgentTaskStore.getState().upsert({
+        id:        event.subagentId,
+        status:    'failed',
+        error:     event.error,
+        updatedAt: Date.now(),
+        live:      undefined,
+      });
+      break;
+
+    case 'subagent_aborted':
+      useAgentTaskStore.getState().upsert({
+        id:        event.subagentId,
+        status:    'cancelled',
+        error:     event.reason,
+        updatedAt: Date.now(),
+        live:      undefined,
+      });
+      break;
+
+    case 'subagent_stream':
+      // Transcript messages are written to the DB by turns.ts fan-out.
+      // The store's transcript cache may be stale — invalidate on next open.
+      // (No live streaming into transcript yet; panel reloads from server.)
+      break;
+
     // ── Compaction notice ──────────────────────────────────────────────────
     case 'memory_compaction_started':
     case 'memory_compaction_failed':
@@ -641,6 +719,7 @@ export const useConversationStore = create<ConversationStoreState>((set, get) =>
     breakerReasons.delete(id as string);
     evictSessionPlayers(id as string);
     useArtifactStore.getState().evictSession(id);
+    useAgentTaskStore.getState().evictSession(id as string);
     set((s) => {
       const msgs = new Map(s.messages);
       msgs.delete(id as string);
