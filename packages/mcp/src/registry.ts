@@ -26,6 +26,8 @@ export type McpStdioPermissionGate = (
 
 export class McpRegistry {
   private connections = new Map<string, OpenedConnection & { info: McpConnection }>();
+  /** Tools registered from cache (server not yet connected). Keyed by server name. */
+  private primed = new Map<string, McpToolInfo[]>();
 
   constructor(
     private readonly store:        McpServerStore,
@@ -79,10 +81,42 @@ export class McpRegistry {
       this.toolRegistry.registerMcp(buildMcpBuiltTool(toolInfo, this));
     }
 
+    // Persist the live tool list so next startup can prime the registry without
+    // connecting (fast/offline). Best-effort — caching failure must not break connect.
+    try { this.store.cacheTools(serverName, tools); } catch { /* ignore */ }
+
     return info;
   }
 
+  /**
+   * Register cached tools for all enabled servers WITHOUT connecting. Tools
+   * become visible to the LLM immediately at startup; the actual transport is
+   * opened lazily on first callTool (see below). Call once at boot, before/instead
+   * of an eager connect-all.
+   */
+  primeFromCache(): number {
+    let primedCount = 0;
+    for (const record of this.store.listEnabled()) {
+      if (this.connections.has(record.name)) continue;          // already live
+      const tools = record.cachedTools;
+      if (!tools || tools.length === 0) continue;
+      for (const toolInfo of tools) {
+        this.toolRegistry.registerMcp(buildMcpBuiltTool(toolInfo, this));
+      }
+      this.primed.set(record.name, tools);
+      primedCount += tools.length;
+    }
+    return primedCount;
+  }
+
   async disconnect(serverName: string): Promise<void> {
+    // Unregister cache-primed tools (registered without a live connection).
+    const primedTools = this.primed.get(serverName);
+    if (primedTools) {
+      for (const tool of primedTools) this.toolRegistry.unregisterMcp(tool.qualifiedName);
+      this.primed.delete(serverName);
+    }
+
     const conn = this.connections.get(serverName);
     if (!conn) return;
 
@@ -106,7 +140,13 @@ export class McpRegistry {
     args:       Record<string, unknown>,
     signal?:    AbortSignal,
   ): Promise<unknown> {
-    const conn = this.connections.get(serverName);
+    let conn = this.connections.get(serverName);
+    // Lazy connect: tools may have been primed from cache (visible but not yet
+    // connected). Open the transport on first actual call.
+    if (!conn || conn.info.status !== 'connected') {
+      await this.connect(serverName);                 // throws if server unknown / connect fails
+      conn = this.connections.get(serverName);
+    }
     if (!conn || conn.info.status !== 'connected') {
       throw new McpServerNotFoundError(`${serverName} (not connected)`);
     }

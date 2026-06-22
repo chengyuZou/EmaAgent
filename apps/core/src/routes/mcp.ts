@@ -1,6 +1,6 @@
 import { Hono }                from 'hono';
 import { z }                   from 'zod';
-import { McpServerConfigSchema } from '@ema-agent/mcp';
+import { McpServerConfigSchema, parseImportedMcpServers } from '@ema-agent/mcp';
 import type { AppBindings }    from '../wiring.js';
 
 // ── MCP server management routes ──────────────────────────────────────────────
@@ -57,6 +57,43 @@ export function createMcpRouter(bindings: AppBindings) {
     } catch (err) {
       return c.json({ id, error: `Registered but connection failed: ${(err as Error).message}` }, 201);
     }
+  });
+
+  // ── Import (paste mcp.so / Claude Desktop JSON) ─────────────────────────────
+  // Accepts { json: "<pasted config text or object>" }. Parses the common
+  // shapes (mcpServers map / single server / bare map), infers transport type,
+  // registers each, and best-effort connects. Returns per-server results.
+  router.post('/import', async (c) => {
+    let payload: unknown;
+    try {
+      const body = await c.req.json() as { json?: unknown };
+      payload = typeof body.json === 'string' ? JSON.parse(body.json) : body.json;
+    } catch (err) {
+      return c.json({ error: `Invalid JSON: ${(err as Error).message}` }, 400);
+    }
+
+    let servers;
+    try {
+      servers = parseImportedMcpServers(payload);
+    } catch (err) {
+      return c.json({ error: (err as Error).message }, 400);
+    }
+
+    const results = [];
+    for (const { name, config } of servers) {
+      try {
+        const id = mcpRegistry.register(name, config);
+        try {
+          await mcpRegistry.connectConfig(name, config);
+          results.push({ name, id, ok: true });
+        } catch (err) {
+          results.push({ name, id, ok: true, connectError: (err as Error).message });
+        }
+      } catch (err) {
+        results.push({ name, ok: false, error: (err as Error).message });
+      }
+    }
+    return c.json({ imported: results }, 201);
   });
 
   // ── Single server ─────────────────────────────────────────────────────────

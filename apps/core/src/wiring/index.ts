@@ -101,9 +101,17 @@ export function startBackgroundWork(bindings: AppBindings): BackgroundHandle {
     console.warn('[agent-task] startup recovery skipped:', err);
   }
 
-  // 3) MCP — connect all globally-enabled servers (fire-and-forget; failures logged)
+  // 3) MCP — prime tools from cache synchronously (instant visibility, no connect),
+  //    then refresh connections in the background. Transports open lazily on first
+  //    callTool, so a slow/offline server never blocks startup.
+  try {
+    const primed = bindings.mcpRegistry.primeFromCache();
+    if (primed > 0) console.info(`[mcp] primed ${primed} tool(s) from cache`);
+  } catch (err) {
+    console.warn('[mcp] primeFromCache() failed:', err);
+  }
   void bindings.mcpRegistry.startAll().catch((err) => {
-    console.warn('[mcp] startAll() failed:', err);
+    console.warn('[mcp] startAll() refresh failed:', err);
   });
 
   // 4) Periodic tick — drains background_tasks queue + sweeps tool-result files

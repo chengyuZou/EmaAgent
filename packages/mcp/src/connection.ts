@@ -1,5 +1,5 @@
 import { Client }             from '@modelcontextprotocol/sdk/client/index.js';
-import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
+import { StdioClientTransport, getDefaultEnvironment } from '@modelcontextprotocol/sdk/client/stdio.js';
 // SSEClientTransport is deprecated in the MCP SDK (prefer StreamableHTTPClientTransport),
 // but many published servers (e.g. Zhipu, Baidu) still use the legacy SSE protocol.
 // We keep it for backward compatibility during the migration period.
@@ -20,7 +20,11 @@ function buildTransport(config: McpServerConfig): StdioClientTransport | SSEClie
     return new StdioClientTransport({
       command: config.command,
       args:    config.args,
-      env:     config.env,
+      cwd:     config.cwd,
+      // MUST merge the SDK's default env (PATH, HOME, …). Passing only the
+      // user's env would strip PATH and break `npx`/`node`/`uvx` resolution —
+      // the #1 cause of "stdio server won't start". User keys override defaults.
+      env:     { ...getDefaultEnvironment(), ...(config.env ?? {}) },
     });
   }
   if (config.type === 'sse') {

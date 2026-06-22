@@ -1,6 +1,6 @@
 import { randomUUID }            from 'node:crypto';
 import type { McpServersRepo }   from '@ema-agent/storage';
-import type { McpServerConfig, McpServerRecord } from './types.js';
+import type { McpServerConfig, McpServerRecord, McpToolInfo } from './types.js';
 import { McpServerConfigSchema } from './types.js';
 import { McpServerNotFoundError } from './errors.js';
 
@@ -32,10 +32,19 @@ export class McpServerStore {
       name,
       source_url:   sourceUrl ?? null,
       config_json:  JSON.stringify(config),
+      tools_cache:  null,
+      cached_at:    0,
       enabled:      1,
       installed_at: Date.now(),
     });
     return id;
+  }
+
+  /** Persist the tool list discovered on a successful connect (fast/offline startup). */
+  cacheTools(name: string, tools: McpToolInfo[]): void {
+    const row = this.repo.findByName(name);
+    if (!row) return;
+    this.repo.update(row.id, { toolsCache: JSON.stringify(tools), cachedAt: Date.now() });
   }
 
   setEnabled(name: string, enabled: boolean): void {
@@ -67,13 +76,20 @@ export class McpServerStore {
 
   private rowToRecord(row: {
     id: string; name: string; source_url: string | null;
-    config_json: string; enabled: number; installed_at: number;
+    config_json: string; tools_cache?: string | null; cached_at?: number;
+    enabled: number; installed_at: number;
   }): McpServerRecord {
+    let cachedTools: McpToolInfo[] | undefined;
+    if (row.tools_cache) {
+      try { cachedTools = JSON.parse(row.tools_cache) as McpToolInfo[]; } catch { cachedTools = undefined; }
+    }
     return {
       id:          row.id,
       name:        row.name,
       sourceUrl:   row.source_url ?? undefined,
       config:      McpServerConfigSchema.parse(JSON.parse(row.config_json)),
+      cachedTools,
+      cachedAt:    row.cached_at ?? 0,
       enabled:     row.enabled === 1,
       installedAt: row.installed_at,
     };

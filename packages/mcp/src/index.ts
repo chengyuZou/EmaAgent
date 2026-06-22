@@ -1,6 +1,8 @@
 export { McpRegistry }               from './registry.js';
 export type { McpStdioPermissionGate } from './registry.js';
 export { McpServerStore }            from './store.js';
+export { parseImportedMcpServers }   from './config-import.js';
+export type { ImportedServer }       from './config-import.js';
 export {
   McpServerConfigSchema,
   McpStdioConfigSchema,

@@ -12,6 +12,8 @@ export const McpStdioConfigSchema = z.object({
   command: z.string().min(1),
   args:    z.array(z.string()).default([]),
   env:     z.record(z.string(), z.string()).optional(),
+  /** Working directory for the spawned subprocess. Some servers require it. */
+  cwd:     z.string().optional(),
 });
 
 // 'sse' uses the legacy SSEClientTransport (deprecated in MCP SDK ≥1.x).
@@ -47,6 +49,10 @@ export interface McpServerRecord {
   name:        string;           // user-facing alias
   sourceUrl?:  string;           // mcp.so page URL (optional)
   config:      McpServerConfig;  // parsed transport config
+  /** Tools from the last successful listTools — used to prime the registry at
+   *  startup without connecting, and to show tools while a server is offline. */
+  cachedTools?: McpToolInfo[];
+  cachedAt:    number;           // ms; 0 = never cached
   enabled:     boolean;
   installedAt: number;
 }

@@ -111,6 +111,8 @@ CREATE TABLE mcp_servers (
   name         TEXT NOT NULL UNIQUE,
   source_url   TEXT,
   config_json  TEXT NOT NULL,
+  tools_cache  TEXT,                          -- JSON McpToolInfo[] from last successful listTools (offline/fast startup)
+  cached_at    INTEGER NOT NULL DEFAULT 0,    -- when tools_cache was last refreshed (ms)
   enabled      INTEGER NOT NULL DEFAULT 1,
   installed_at INTEGER NOT NULL
 );

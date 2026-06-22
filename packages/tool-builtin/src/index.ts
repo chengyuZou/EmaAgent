@@ -39,8 +39,9 @@ export type { PlanModeResult } from './tools/plan-mode.js';
 
 export { artifactWriteTool, artifactReadTool, artifactListTool } from './tools/artifact.js';
 
-export { mcpCallTool } from './tools/mcp-call.js';
-export type { McpCallResult } from './tools/mcp-call.js';
+// NOTE: the legacy generic `mcp_call` dispatcher was retired. MCP tools are
+// auto-expanded into the registry as `mcp__<server>__<tool>` (see
+// McpRegistry.registerMcp), so the model calls them directly — no套娃 dispatcher.
 export type { IMcpClientBridge } from '@ema-agent/tool';
 
 export { skillCallTool } from './tools/skill-call.js';
@@ -70,7 +71,6 @@ import { todoWriteTool } from './tools/todo-write.js';
 import { askUserTool } from './tools/ask-user.js';
 import { planEnterTool, planExitTool } from './tools/plan-mode.js';
 import { artifactWriteTool, artifactReadTool, artifactListTool } from './tools/artifact.js';
-import { mcpCallTool } from './tools/mcp-call.js';
 import { skillCallTool } from './tools/skill-call.js';
 import { subagentTool } from './tools/subagent.js';
 import { subagentSpawnBgTool, subagentSendMessageTool, subagentAwaitTool } from './tools/subagent-bg.js';
@@ -94,7 +94,6 @@ const ALL_BUILTIN_TOOLS: BuiltTool<any, any>[] = [
   artifactWriteTool,
   artifactReadTool,
   artifactListTool,
-  mcpCallTool,
   skillCallTool,
   subagentTool,
   subagentSpawnBgTool,
@@ -115,7 +114,6 @@ const EXECUTE_TOOLS: ReadonlySet<string> = new Set(['bash', 'powershell']);
  * Key = tool name, value = which RegisterOptions flag enables it.
  */
 const BRIDGE_GATED: ReadonlyMap<string, keyof RegisterOptions> = new Map([
-  ['mcp_call',              'hasMcpBridge'],
   ['skill_call',            'hasSkillBridge'],
   ['subagent',              'hasSubagentBridge'],
   ['subagent_spawn_bg',     'hasSubagentBridge'],
@@ -138,9 +136,11 @@ export interface RegisterOptions {
    * All default to false (tool hidden) — set to true only when the bridge
    * is wired up in apps/core.
    *
-   * mcp_call   — generic MCP dispatcher (distinct from auto-registered MCP tools)
    * skill_call — SkillRunner bridge
    * subagent   — subagent spawner bridge
+   *
+   * hasMcpBridge is retained (apps/core still sets it) but no longer gates any
+   * tool: MCP tools are auto-expanded by McpRegistry, not exposed via mcp_call.
    */
   hasMcpBridge?:      boolean;
   hasSkillBridge?:    boolean;
