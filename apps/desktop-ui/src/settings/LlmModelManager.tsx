@@ -11,7 +11,6 @@
  */
 import { useState, useEffect, useCallback, type JSX } from 'react';
 import { Badge, Button, Callout, Divider, Input, Spinner, Switch } from '@ema-agent/ui';
-import { suggestModels, lookupContextWindow } from '@ema-agent/token';
 import { providersApi, type AvailableModelWire } from '../api/providers.js';
 import { showToast } from '../lib/toast.js';
 
@@ -59,9 +58,9 @@ export function LlmModelManager({ providerId }: { providerId: string }): JSX.Ele
     if (m.contextWindow != null) {
       void enable(m.id, m.contextWindow, 'table');
     } else {
-      // Unknown window → open inline editor, prefill any table guess.
+      // Unknown window (not in models.dev catalog either) → ask the user.
       setPendingModel(m.id);
-      setPendingCtx(String(lookupContextWindow(m.id) ?? ''));
+      setPendingCtx('');
     }
   }
 
@@ -160,21 +159,33 @@ export function LlmModelManager({ providerId }: { providerId: string }): JSX.Ele
         </div>
       )}
 
-      <ManualAddModel onAdd={(model, ctx) => void enable(model, ctx, 'manual')} existing={models.map((m) => m.id)} />
+      <ManualAddModel
+        onAdd={(model, ctx) => void enable(model, ctx, 'manual')}
+        existing={models.map((m) => m.id)}
+        available={models}
+      />
     </div>
   );
 }
 
-// ── Manual add with token-table autocomplete ──────────────────────────────────
+// ── Manual add with catalog-backed autocomplete ───────────────────────────────
 
-function ManualAddModel({ onAdd, existing }: {
+function ManualAddModel({ onAdd, existing, available }: {
   onAdd(model: string, contextWindow: number): void;
   existing: string[];
+  available: AvailableModelWire[];
 }): JSX.Element {
   const [query, setQuery] = useState('');
   const [ctx, setCtx]     = useState('');
 
-  const suggestions = query.trim() ? suggestModels(query, 6) : [];
+  // Autocomplete from the provider's fetched list (live /models + models.dev
+  // catalog context), not a bundled static table.
+  const suggestions = query.trim()
+    ? available
+        .filter((m) => m.id.toLowerCase().includes(query.toLowerCase().trim()))
+        .slice(0, 6)
+        .map((m) => ({ id: m.id, contextWindow: m.contextWindow ?? 0 }))
+    : [];
 
   function pick(id: string, contextWindow: number): void {
     setQuery(id);
@@ -203,9 +214,11 @@ function ManualAddModel({ onAdd, existing }: {
             placeholder="模型 ID，如 deepseek-chat"
             value={query}
             onChange={(e) => {
-              setQuery(e.target.value);
-              const win = lookupContextWindow(e.target.value);
-              if (win != null) setCtx(String(win));
+              const v = e.target.value;
+              setQuery(v);
+              // Auto-fill context from the provider's fetched list (live + models.dev catalog).
+              const hit = available.find((m) => m.id === v);
+              if (hit?.contextWindow != null) setCtx(String(hit.contextWindow));
             }}
           />
           {suggestions.length > 0 && (

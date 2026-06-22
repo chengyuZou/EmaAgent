@@ -19,7 +19,7 @@ import * as nodePath from 'node:path';
 import * as os from 'node:os';
 import { HookBus }       from '@ema-agent/hook';
 import { createTraceSink } from './diagnostic-sink.js';
-import { LlmRouter }     from '@ema-agent/llm';
+import { LlmRouter, ModelsDevCatalog } from '@ema-agent/llm';
 import { EbdRouter }     from '@ema-agent/ebd-client';
 import { NarrativeClient } from '@ema-agent/narrative-client';
 import { CharacterCardStore } from '@ema-agent/character-card';
@@ -29,7 +29,6 @@ import { buildTtsClient } from './providers/tts.js';
 import { buildSttClient } from './providers/stt.js';
 import { buildVisionRouter, asKbVisionAdapter } from './providers/vision.js';
 import { VisionRouter } from '@ema-agent/vision';
-import { lookupEmbedDim } from '@ema-agent/token';
 import { loadLlmConfigs }   from './providers/llm.js';
 import { loadEmbedConfigs }  from './providers/embed.js';
 import { loadRerankConfigs } from './providers/rerank.js';
@@ -86,6 +85,8 @@ export interface AppBindings {
   // AI clients
   llm:       LlmRouter;
   ebd:       EbdRouter;
+  /** models.dev LLM/Vision catalog — context window + capabilities by modelsDevId. */
+  modelCatalog: ModelsDevCatalog;
   narrative: NarrativeClient;
 
   // Per-card runtime
@@ -202,6 +203,9 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
   // ── AI clients (provider configs live in profileDb) ────────────────────────
   const llm = new LlmRouter(loadLlmConfigs(profileDb));
   const ebd = new EbdRouter(loadEmbedConfigs(profileDb), loadRerankConfigs(profileDb));
+  // models.dev catalog: empty until the first refresh resolves. Fire-and-forget
+  // below; consumers fall through to provider_llm_models / 0 until then.
+  const modelCatalog = new ModelsDevCatalog();
 
   const narrative = new NarrativeClient({
     baseUrl:   resolveBridgeUrl(),
@@ -311,7 +315,8 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
     memoryTasks:      new MemoryTasksRepo(dataDb.sqlite),
     pendingFragments:   new PendingFragmentsRepo(dataDb.sqlite),
     memorySessionState: new MemorySessionStateRepo(dataDb.sqlite),
-    getEmbedDim:      (model) => providerEmbedModels.dimFor(model) ?? lookupEmbedDim(model) ?? 0,
+    // dim is probed at enable time and stored on provider_embed_models (dim_source='probed').
+    getEmbedDim:      (model) => providerEmbedModels.dimFor(model) ?? 0,
     emit:             (ev) => systemBus.emit(ev),
   });
 
@@ -377,10 +382,17 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
   // Search falls back to SQL cosine until this resolves (~50–200ms).
   void kb.init().catch((err) => console.warn('[kb] HNSW init failed:', err));
 
+  // Fire-and-forget: pull the models.dev catalog (context windows + capabilities).
+  // On failure the catalog stays empty and lookups fall through to the DB / 0.
+  void modelCatalog.refresh().then((ok) => {
+    if (ok) console.info(`[catalog] models.dev loaded (${modelCatalog.size} models)`);
+    else console.warn('[catalog] models.dev refresh failed; context/capability lookups degraded');
+  });
+
   return {
     profileDb, dataDb, activeDataDir,
     hooks, session,
-    llm, ebd, narrative,
+    llm, ebd, narrative, modelCatalog,
     card, emotion,
     tts, audioArchive, stt, vision,
     permission, permissionPrompts, askUserRegistry, tools, buildAskForTurn, getCommandRunner,

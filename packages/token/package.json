@@ -13,7 +13,7 @@
   "types": "./dist/index.d.ts",
   "files": ["dist"],
   "scripts": {
-    "build": "tsc -p tsconfig.json && node --input-type=module -e \"import{cpSync}from'fs';cpSync('src/context-windows.json','dist/context-windows.json');cpSync('src/embed-dims.json','dist/embed-dims.json')\"",
+    "build": "tsc -p tsconfig.json",
     "dev": "tsc -p tsconfig.json --watch",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run --passWithNoTests",

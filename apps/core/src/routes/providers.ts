@@ -19,7 +19,6 @@ import {
   fetchEmbedModels,
 } from '../wiring.js';
 import { ProviderLlmModelsRepo, SettingsRepo } from '@ema-agent/storage';
-import { lookupContextWindow } from '@ema-agent/token';
 import { reloadTtsClient, resolveVoice, ensureVoiceUri, VoiceUriCache } from '../wiring/providers/tts.js';
 import { reloadSttClient } from '../wiring/providers/stt.js';
 
@@ -90,7 +89,9 @@ const enableModelSchema = z.object({
 });
 
 const enableEmbedModelSchema = z.object({
-  dim:       z.number().int().positive(),
+  // Optional: the server probes the real dim (embed a short text) at enable time.
+  // Only used as a fallback when the probe fails (offline / provider error).
+  dim:       z.number().int().positive().optional(),
   dimSource: z.enum(['live', 'table', 'manual']).optional(),
 });
 
@@ -352,12 +353,16 @@ export function providersRoute(bindings: AppBindings): Hono {
     const { models, source } = await fetchLlmModels(row);
     const pool = new ProviderLlmModelsRepo(bindings.profileDb.sqlite);
     const enabled = new Map(pool.listByProvider(id).map((m) => [m.model, m.context_window]));
+    const modelsDevId = getProviderDefinition(row.definition_id)?.modelsDevId;
 
     return c.json({
       source,
       models: models.map((model) => ({
         id:            model,
-        contextWindow: enabled.get(model) ?? lookupContextWindow(model) ?? null,
+        // enabled (stored) → models.dev catalog → unknown.
+        contextWindow: enabled.get(model)
+          ?? (modelsDevId ? bindings.modelCatalog.contextWindowOf(modelsDevId, model) : undefined)
+          ?? null,
         enabled:       enabled.has(model),
       })),
     });
@@ -477,12 +482,21 @@ export function providersRoute(bindings: AppBindings): Hono {
     const repo = new ProvidersRepo(bindings.profileDb.sqlite);
     if (!repo.get(id)) return c.json({ error: 'not_found' }, 404);
 
-    bindings.providerEmbedModels.upsert({
-      providerConfigId: id,
-      model,
-      dim:       body.data.dim,
-      dimSource: body.data.dimSource,
-    });
+    // Probe the real dimension by embedding a short text — the vector length is
+    // ground truth (EmbedResponse.dim). Fall back to a caller-supplied dim only
+    // when the probe fails (offline / provider error).
+    let dim = body.data.dim;
+    let dimSource: 'live' | 'table' | 'manual' = body.data.dimSource ?? 'manual';
+    try {
+      const res = await bindings.ebd.embed({ providerId: id, model, texts: ['test'] });
+      if (res.dim > 0) { dim = res.dim; dimSource = 'live'; }
+    } catch { /* keep fallback dim */ }
+
+    if (!dim || dim <= 0) {
+      return c.json({ error: 'dim_unknown', message: 'Could not probe embedding dimension; supply `dim` manually.' }, 422);
+    }
+
+    bindings.providerEmbedModels.upsert({ providerConfigId: id, model, dim, dimSource });
     return c.body(null, 204);
   });
 

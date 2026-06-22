@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback, type JSX } from 'react';
 import { Badge, Button, Callout, Input, Spinner, Switch } from '@ema-agent/ui';
-import { suggestEmbedModels, lookupEmbedDim } from '@ema-agent/token';
 import { providersApi, type AvailableEmbedModelWire } from '../api/providers.js';
 import { showToast } from '../lib/toast.js';
 
@@ -29,10 +28,13 @@ export function EmbedModelManager({ providerId }: { providerId: string }): JSX.E
 
   useEffect(() => { void load(); }, [load]);
 
-  async function enable(model: string, dim: number, src: 'live' | 'table' | 'manual'): Promise<void> {
+  // dim is probed server-side at enable time; `dim`/`src` are only a fallback
+  // (manual entry) when the probe fails. After enabling we reload to show the
+  // probed dimension.
+  async function enable(model: string, dim?: number, src?: 'live' | 'table' | 'manual'): Promise<void> {
     try {
       await providersApi.enableEmbedModel(providerId, model, dim, src);
-      setModels((ms) => ms.map((m) => (m.id === model ? { ...m, enabled: true, dim } : m)));
+      await load();
     } catch (err) {
       showToast(`启用失败: ${err instanceof Error ? err.message : String(err)}`, { variant: 'danger' });
     }
@@ -43,12 +45,8 @@ export function EmbedModelManager({ providerId }: { providerId: string }): JSX.E
       void disable(m.id);
       return;
     }
-    if (m.dim != null) {
-      void enable(m.id, m.dim, 'table');
-    } else {
-      setPendingModel(m.id);
-      setPendingDim(String(lookupEmbedDim(m.id) ?? ''));
-    }
+    // Server probes the dimension — no need to know it up front.
+    void enable(m.id);
   }
 
   async function disable(model: string): Promise<void> {
@@ -137,25 +135,22 @@ export function EmbedModelManager({ providerId }: { providerId: string }): JSX.E
 }
 
 function ManualAddEmbedModel({ onAdd, existing }: {
-  onAdd(model: string, dim: number): void;
+  onAdd(model: string, dim?: number): void;
   existing: string[];
 }): JSX.Element {
   const [query, setQuery] = useState('');
   const [dim,   setDim]   = useState('');
 
-  const suggestions = query.trim() ? suggestEmbedModels(query, 6) : [];
-
-  function pick(id: string, d: number): void {
-    setQuery(id);
-    setDim(String(d));
-  }
-
   function add(): void {
     const model = query.trim();
-    const n = parseInt(dim, 10);
     if (!model) return;
     if (existing.includes(model)) { showToast('该模型已在列表中', { variant: 'warning' }); return; }
-    if (!Number.isFinite(n) || n <= 0) { showToast('请填写向量维度', { variant: 'danger' }); return; }
+    // dim is optional — the server probes it. Only validate if the user typed one.
+    let n: number | undefined;
+    if (dim.trim()) {
+      n = parseInt(dim, 10);
+      if (!Number.isFinite(n) || n <= 0) { showToast('维度需为正整数（留空则自动探测）', { variant: 'danger' }); return; }
+    }
     onAdd(model, n);
     setQuery('');
     setDim('');
@@ -171,33 +166,14 @@ function ManualAddEmbedModel({ onAdd, existing }: {
             className="font-mono"
             placeholder="模型 ID，如 bge-m3"
             value={query}
-            onChange={(e) => {
-              setQuery(e.target.value);
-              const d = lookupEmbedDim(e.target.value);
-              if (d != null) setDim(String(d));
-            }}
+            onChange={(e) => setQuery(e.target.value)}
           />
-          {suggestions.length > 0 && (
-            <div className="absolute z-20 left-0 right-0 top-full mt-1 bg-neutral-900/95 backdrop-blur-md border border-neutral-700/50 rounded-lg shadow-xl overflow-hidden">
-              {suggestions.map((s) => (
-                <button
-                  key={s.id}
-                  type="button"
-                  className="w-full flex items-center justify-between px-3 py-1.5 text-left hover:bg-neutral-800/70 transition-colors"
-                  onClick={() => pick(s.id, s.dim)}
-                >
-                  <span className="text-sm font-mono text-neutral-300">{s.id}</span>
-                  <span className="text-xs text-neutral-500">{s.dim}d</span>
-                </button>
-              ))}
-            </div>
-          )}
         </div>
         <Input
           inputSize="sm"
           type="number"
-          className="w-24"
-          placeholder="维度"
+          className="w-28"
+          placeholder="维度(可选)"
           value={dim}
           onChange={(e) => setDim(e.target.value)}
         />

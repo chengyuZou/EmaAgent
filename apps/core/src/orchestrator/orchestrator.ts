@@ -2,6 +2,7 @@ import type { AppBindings } from '../wiring.js';
 import type {
   TurnMode, EmaStreamEvent, TurnId,
 } from '@ema-agent/contracts';
+import { getProviderDefinition } from '@ema-agent/contracts';
 import type { LlmContentPart } from '@ema-agent/llm';
 import type { AttachmentInput } from '@ema-agent/attachment';
 import { asSessionId } from '@ema-agent/contracts';
@@ -9,9 +10,11 @@ import { ConversationEngine } from '@ema-agent/conversation';
 import { AgentEngine }        from '@ema-agent/agent';
 import { buildSystemPrompt }  from '@ema-agent/prompts';
 import { TtsCoordinator }     from '@ema-agent/tts';
-import { SettingsRepo } from '@ema-agent/storage';
+import { SettingsRepo, ProvidersRepo } from '@ema-agent/storage';
+import type { BindingModule } from '@ema-agent/storage';
 import { resolveVoice, ensureVoiceUri, VoiceUriCache } from '../wiring/providers/tts.js';
 import type { Turn }           from '@ema-agent/session';
+import type { VisionImageInput, VisionImageMime } from '@ema-agent/vision';
 
 export interface TurnResult {
   turnId: TurnId;
@@ -120,7 +123,8 @@ export class Orchestrator {
     this.activeTurns.set(turnId as string, sessionId);
 
     // Persist per-turn attachments and merge them into the engine input.
-    // Images → prepended to contentParts as base64 parts.
+    // Images → prepended to contentParts as base64 parts (or described as text
+    //   if the active LLM does not support image input per the models.dev catalog).
     // Other files → appended as a text block listing their paths.
     let contentParts = request.contentParts;
     let userInput    = request.userInput;
@@ -128,8 +132,12 @@ export class Orchestrator {
       const stored   = this.bindings.attachmentStore.addAll(request.attachmentInputs, turnId, sessionId);
       const resolved = this.bindings.attachmentStore.resolveForPrompt(stored);
 
-      if (resolved.imageParts.length > 0 || resolved.promptLines) {
-        const parts: LlmContentPart[] = [...resolved.imageParts];
+      const imageParts = resolved.imageParts.length > 0
+        ? await this.visionFallbackIfNeeded(request.mode, resolved.imageParts, signal)
+        : resolved.imageParts;
+
+      if (imageParts.length > 0 || resolved.promptLines) {
+        const parts: LlmContentPart[] = [...imageParts];
         if (contentParts?.length) {
           parts.push(...contentParts);
         } else {
@@ -299,6 +307,57 @@ export class Orchestrator {
           workspaceRoots,
         });
       }
+    }
+  }
+
+  /**
+   * If the active LLM for this mode does not accept image input (per the
+   * models.dev catalog), describe the images via VisionRouter and return a
+   * single text part instead. Falls back to the original parts on any error
+   * or when no vision provider is configured — never throws.
+   */
+  private async visionFallbackIfNeeded(
+    mode:       TurnMode,
+    imageParts: LlmContentPart[],
+    signal:     AbortSignal,
+  ): Promise<LlmContentPart[]> {
+    const llmBinding = this.bindings.modelBindings.get(mode as BindingModule);
+    if (!llmBinding) return imageParts;
+
+    const provRow     = new ProvidersRepo(this.bindings.profileDb.sqlite).get(llmBinding.providerConfigId);
+    const modelsDevId = provRow ? getProviderDefinition(provRow.definition_id)?.modelsDevId : undefined;
+    // Unknown provider (custom OpenAI-compat, etc.) → assume it handles images.
+    if (!modelsDevId) return imageParts;
+
+    if (this.bindings.modelCatalog.supportsImageInput(modelsDevId, llmBinding.model)) {
+      return imageParts;
+    }
+
+    // LLM does not support image input — describe via VisionRouter.
+    const visionBinding = this.bindings.modelBindings.get('vision');
+    if (!visionBinding) return imageParts;
+
+    const base64Inputs: VisionImageInput[] = imageParts
+      .filter((p): p is Extract<LlmContentPart, { type: 'image_data' }> => p.type === 'image_data')
+      .map((p) => ({
+        kind:     'base64' as const,
+        data:     p.data,
+        mimeType: p.mimeType as VisionImageMime,
+      }));
+
+    if (base64Inputs.length === 0) return imageParts; // image_url only → pass through
+
+    try {
+      const result = await this.bindings.vision.extract({
+        providerId: visionBinding.providerConfigId,
+        model:      visionBinding.model,
+        task:       'caption',
+        inputs:     base64Inputs,
+        signal,
+      });
+      return [{ type: 'text', text: `[图片内容]\n${result.text}` }];
+    } catch {
+      return imageParts;
     }
   }
 

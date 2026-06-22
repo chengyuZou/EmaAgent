@@ -185,7 +185,9 @@ export const providersApi = {
     return sidecarClient.request<EmbedModelsListWire>(`/api/providers/${id}/embed-models`);
   },
 
-  async enableEmbedModel(id: string, model: string, dim: number, dimSource?: 'live' | 'table' | 'manual'): Promise<void> {
+  // dim is optional: the server probes the real dimension at enable time and
+  // only uses a supplied dim as a fallback when the probe fails.
+  async enableEmbedModel(id: string, model: string, dim?: number, dimSource?: 'live' | 'table' | 'manual'): Promise<void> {
     await sidecarClient.request(`/api/providers/${id}/embed-models/${encodeURIComponent(model)}`, {
       method: 'PUT',
       json: { dim, dimSource },
