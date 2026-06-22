@@ -16,6 +16,7 @@ import { ArtifactStore }                               from '@ema-agent/artifact
 import { McpRegistry, McpServerStore }                 from '@ema-agent/mcp';
 import { SkillStore, SkillRunner, SkillInstaller }     from '@ema-agent/skill';
 import * as nodePath from 'node:path';
+import * as os from 'node:os';
 import { HookBus }       from '@ema-agent/hook';
 import { createTraceSink } from './diagnostic-sink.js';
 import { LlmRouter }     from '@ema-agent/llm';
@@ -344,19 +345,22 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
   };
 
   // ── Skills ───────────────────────────────────────────────────────────────────
-  const skillStore     = new SkillStore(new SkillsRepo(profileDb.sqlite));
+  // File-backed: SKILL.md files live under the profile dir (cross-dataDir,
+  // mirrors where profile.db lives). The SQL index in profile.db is a cache.
+  const skillsUserRoot = nodePath.join(os.homedir(), '.ema-agent', 'skills');
+  const skillStore     = new SkillStore(new SkillsRepo(profileDb.sqlite), [
+    // builtin (read-only) root could be prepended here once skills ship with the app.
+    { path: skillsUserRoot, source: 'user' },
+  ]);
+  // Reconcile the index against disk on startup (fire-and-forget, like kb.init).
+  void skillStore.scanAndReconcile().catch((err) => console.warn('[skill] reconcile failed:', err));
   const skillRunner    = new SkillRunner(skillStore, hooks);
   const skillInstaller = new SkillInstaller(skillStore);
-  // Adapter: expose SkillStore as ISkillRunner for skill_call tool injection.
-  // Returns the skill's body (prompt template) as the tool result — the calling
-  // LLM reads the instructions and acts on them. LLM sub-call execution is V1.5.
+  // Adapter: expose the SkillRunner as ISkillRunner for the skill_call tool.
+  // Reads the skill body lazily from disk and substitutes $ARGUMENTS — the
+  // calling LLM receives the instructions as the tool result and acts on them.
   const skillBridge: ISkillRunner = {
-    run: async (skillName, args) => {
-      const skill = skillStore.findByName(skillName);
-      if (!skill) throw new Error(`Skill "${skillName}" not found`);
-      if (!skill.enabled) throw new Error(`Skill "${skillName}" is disabled`);
-      return args ? `${skill.manifest.body}\n\nArguments: ${args}` : skill.manifest.body;
-    },
+    run: async (skillName, args) => skillRunner.render(skillName, args),
   };
 
   // ── Knowledge base ───────────────────────────────────────────────────────────

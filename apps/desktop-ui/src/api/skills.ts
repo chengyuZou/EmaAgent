@@ -4,7 +4,8 @@
 import { sidecarClient } from './sidecar-client.js';
 import type { SkillRecord } from '@ema-agent/skill';
 
-// Backend route strips rawMd for list; detail returns full record.
+// File-backed model: records are metadata (no body). Body is read lazily on
+// activation server-side; the UI never receives it.
 export type { SkillRecord };
 
 export interface SkillValidateResult {
@@ -16,8 +17,8 @@ export interface SkillValidateResult {
 
 export const skillsApi = {
   /** GET /api/skills */
-  async list(): Promise<{ skills: Omit<SkillRecord, 'rawMd'>[] }> {
-    return sidecarClient.request<{ skills: Omit<SkillRecord, 'rawMd'>[] }>('/api/skills');
+  async list(): Promise<{ skills: SkillRecord[] }> {
+    return sidecarClient.request<{ skills: SkillRecord[] }>('/api/skills');
   },
 
   /** GET /api/skills/:name */
@@ -26,16 +27,16 @@ export const skillsApi = {
   },
 
   /** POST /api/skills — install from text content */
-  async installFromText(content: string): Promise<{ skill: Omit<SkillRecord, 'rawMd'> }> {
-    return sidecarClient.request<{ skill: Omit<SkillRecord, 'rawMd'> }>('/api/skills', {
+  async installFromText(content: string): Promise<{ skill: SkillRecord }> {
+    return sidecarClient.request<{ skill: SkillRecord }>('/api/skills', {
       method: 'POST',
       json: { source: 'text', content },
     });
   },
 
   /** POST /api/skills — install from URL */
-  async installFromUrl(url: string): Promise<{ skill: Omit<SkillRecord, 'rawMd'> }> {
-    return sidecarClient.request<{ skill: Omit<SkillRecord, 'rawMd'> }>('/api/skills', {
+  async installFromUrl(url: string): Promise<{ skill: SkillRecord }> {
+    return sidecarClient.request<{ skill: SkillRecord }>('/api/skills', {
       method: 'POST',
       json: { source: 'url', url },
     });

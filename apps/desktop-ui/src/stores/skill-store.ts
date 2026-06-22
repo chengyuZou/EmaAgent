@@ -85,14 +85,14 @@ export const useSkillStore = create<SkillStoreState>((set, get) => ({
   async setEnabled(name, enabled) {
     // Optimistic update
     set((s) => ({
-      skills: s.skills.map((sk) => sk.manifest.name === name ? { ...sk, enabled } : sk),
+      skills: s.skills.map((sk) => sk.name === name ? { ...sk, enabled } : sk),
     }));
     try {
       await skillsApi.setEnabled(name, enabled);
     } catch (err: unknown) {
       // Rollback
       set((s) => ({
-        skills: s.skills.map((sk) => sk.manifest.name === name ? { ...sk, enabled: !enabled } : sk),
+        skills: s.skills.map((sk) => sk.name === name ? { ...sk, enabled: !enabled } : sk),
         error: err instanceof Error ? err.message : 'Failed to update skill',
       }));
       throw err;
@@ -102,7 +102,7 @@ export const useSkillStore = create<SkillStoreState>((set, get) => ({
   async remove(name) {
     try {
       await skillsApi.remove(name);
-      set((s) => ({ skills: s.skills.filter((sk) => sk.manifest.name !== name) }));
+      set((s) => ({ skills: s.skills.filter((sk) => sk.name !== name) }));
     } catch (err: unknown) {
       set({ error: err instanceof Error ? err.message : 'Failed to remove skill' });
       throw err;

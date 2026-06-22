@@ -34,7 +34,7 @@ export function SkillsTab(): JSX.Element {
     setInstallError(null);
     try {
       const sk = await useSkillStore.getState().installFromText(textContent);
-      showToast(`已安装 ${sk.manifest.name}`, { variant: 'success' });
+      showToast(`已安装 ${sk.name}`, { variant: 'success' });
       closeDialog();
     } catch (err) {
       setInstallError(err instanceof Error ? err.message : String(err));
@@ -49,7 +49,7 @@ export function SkillsTab(): JSX.Element {
     setInstallError(null);
     try {
       const sk = await useSkillStore.getState().installFromUrl(urlInput.trim());
-      showToast(`已安装 ${sk.manifest.name}`, { variant: 'success' });
+      showToast(`已安装 ${sk.name}`, { variant: 'success' });
       closeDialog();
     } catch (err) {
       setInstallError(err instanceof Error ? err.message : String(err));
@@ -105,15 +105,15 @@ export function SkillsTab(): JSX.Element {
         <ScrollArea className="flex-1" viewportClassName="pb-2">
           <div className="flex flex-col gap-2 pr-2">
             {skills.map((sk) => (
-              <Card key={sk.manifest.name} variant="elevated" padding="sm" className="animate-slide-up active:scale-[0.98] transition-all duration-250" style={{ animationDelay: `${Math.min(parseInt(sk.manifest.name.length.toString(), 10) * 30, 300)}ms` }}>
+              <Card key={sk.name} variant="elevated" padding="sm" className="animate-slide-up active:scale-[0.98] transition-all duration-250" style={{ animationDelay: `${Math.min(parseInt(sk.name.length.toString(), 10) * 30, 300)}ms` }}>
                 <div className="flex items-start gap-3">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-sm font-medium text-neutral-100">{sk.manifest.name}</span>
-                      <Badge variant="neutral">v{sk.manifest.version}</Badge>
+                      <span className="text-sm font-medium text-neutral-100">{sk.name}</span>
+                      <Badge variant="neutral">v{sk.version}</Badge>
                     </div>
-                    {sk.manifest.description && (
-                      <p className="text-xs text-neutral-400 mt-1 line-clamp-2">{sk.manifest.description}</p>
+                    {sk.description && (
+                      <p className="text-xs text-neutral-400 mt-1 line-clamp-2">{sk.description}</p>
                     )}
                     <p className="text-xs text-neutral-600 mt-1">
                       安装于 {new Date(sk.installedAt).toLocaleDateString('zh-CN')}
@@ -124,10 +124,10 @@ export function SkillsTab(): JSX.Element {
                     <Tooltip content={sk.enabled ? '禁用技能' : '启用技能'}>
                       <Switch
                         checked={sk.enabled}
-                        label={sk.manifest.name}
+                        label={sk.name}
                         onCheckedChange={(checked) => {
                           void useSkillStore.getState()
-                            .setEnabled(sk.manifest.name, checked)
+                            .setEnabled(sk.name, checked)
                             .catch((err: Error) => showToast(`更新失败: ${err.message}`, { variant: 'danger' }));
                         }}
                       />
@@ -137,7 +137,7 @@ export function SkillsTab(): JSX.Element {
                         variant="ghost"
                         size="sm"
                         className="text-neutral-500 hover:text-red-400 px-1.5"
-                        onClick={() => void handleRemove(sk.manifest.name)}
+                        onClick={() => void handleRemove(sk.name)}
                       >
                         <span className="i-mdi:delete-outline text-base" aria-hidden />
                       </Button>

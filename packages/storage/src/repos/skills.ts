@@ -1,63 +1,73 @@
 import type { SqliteDb } from '../database.js';
 
 // ── Raw DB row ────────────────────────────────────────────────────────────────
+//
+// File-backed model: this row is an INDEX over <dir_path>/SKILL.md. The body is
+// NOT stored here — it is read lazily from disk on activation. Frontmatter
+// fields are mirrored so the catalog can be built without opening files.
 
 export interface SkillRow {
   id:             string;
   name:           string;
   version:        string;
   description:    string;
+  arg_hint:       string | null;   // frontmatter argument-hint
+  dir_path:       string;          // absolute path to the skill directory
+  source:         string;          // 'builtin' | 'user' | 'market'
   source_url:     string | null;
-  content_md:     string;          // full SKILL.md — parsed by packages/skill
+  sha256:         string | null;
   activates_json: string;          // JSON array: ["chat","agent",...]
   enabled:        number;          // 0 | 1
+  content_mtime:  number;          // SKILL.md mtime (ms)
   installed_at:   number;
 }
 
 // ── SkillsRepo ────────────────────────────────────────────────────────────────
 //
 // Pure SQL layer — does NOT import from @ema-agent/skill.
-// Schema validation and frontmatter parsing live in SkillStore.
+// Schema validation, frontmatter parsing, and filesystem reconciliation live in
+// SkillStore. This repo just persists/reads the index.
 
 export class SkillsRepo {
   constructor(private readonly db: SqliteDb) {}
 
-  insert(row: SkillRow): void {
+  /**
+   * Insert or update by unique `name`. The reconcile scan and the installer both
+   * upsert, so a single idempotent entry point avoids insert/update branching
+   * at call sites. `enabled` and `installed_at` are preserved on update so a
+   * reconcile scan never re-enables a user-disabled skill or resets its age.
+   */
+  upsertByName(row: SkillRow): void {
     this.db.prepare(`
       INSERT INTO skills
-        (id, name, version, description, source_url, content_md,
-         activates_json, enabled, installed_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      row.id, row.name, row.version, row.description,
-      row.source_url, row.content_md, row.activates_json,
-      row.enabled, row.installed_at,
-    );
+        (id, name, version, description, arg_hint, dir_path, source,
+         source_url, sha256, activates_json, enabled, content_mtime, installed_at)
+      VALUES
+        (@id, @name, @version, @description, @arg_hint, @dir_path, @source,
+         @source_url, @sha256, @activates_json, @enabled, @content_mtime, @installed_at)
+      ON CONFLICT(name) DO UPDATE SET
+        version        = excluded.version,
+        description    = excluded.description,
+        arg_hint       = excluded.arg_hint,
+        dir_path       = excluded.dir_path,
+        source         = excluded.source,
+        source_url     = excluded.source_url,
+        sha256         = excluded.sha256,
+        activates_json = excluded.activates_json,
+        content_mtime  = excluded.content_mtime
+    `).run(row);
   }
 
-  update(id: string, patch: {
-    name?:           string;
-    version?:        string;
-    description?:    string;
-    sourceUrl?:      string | null;
-    contentMd?:      string;
-    activatesJson?:  string;
-    enabled?:        number;
-  }): void {
-    const cols:   string[] = [];
-    const values: unknown[] = [];
+  setEnabled(name: string, enabled: number): void {
+    this.db.prepare('UPDATE skills SET enabled = ? WHERE name = ?').run(enabled, name);
+  }
 
-    if (patch.name          !== undefined) { cols.push('name = ?');           values.push(patch.name); }
-    if (patch.version       !== undefined) { cols.push('version = ?');        values.push(patch.version); }
-    if (patch.description   !== undefined) { cols.push('description = ?');    values.push(patch.description); }
-    if (patch.sourceUrl     !== undefined) { cols.push('source_url = ?');     values.push(patch.sourceUrl); }
-    if (patch.contentMd     !== undefined) { cols.push('content_md = ?');     values.push(patch.contentMd); }
-    if (patch.activatesJson !== undefined) { cols.push('activates_json = ?'); values.push(patch.activatesJson); }
-    if (patch.enabled       !== undefined) { cols.push('enabled = ?');        values.push(patch.enabled); }
+  rename(oldName: string, newName: string): void {
+    this.db.prepare('UPDATE skills SET name = ? WHERE name = ?').run(newName, oldName);
+  }
 
-    if (cols.length === 0) return;
-    values.push(id);
-    this.db.prepare(`UPDATE skills SET ${cols.join(', ')} WHERE id = ?`).run(...values);
+  setDirPath(name: string, dirPath: string): void {
+    this.db.prepare('UPDATE skills SET dir_path = ? WHERE name = ?').run(dirPath, name);
   }
 
   findById(id: string): SkillRow | null {
@@ -74,6 +84,10 @@ export class SkillsRepo {
 
   listEnabled(): SkillRow[] {
     return this.db.prepare('SELECT * FROM skills WHERE enabled = 1 ORDER BY installed_at ASC').all() as SkillRow[];
+  }
+
+  deleteByName(name: string): void {
+    this.db.prepare('DELETE FROM skills WHERE name = ?').run(name);
   }
 
   deleteById(id: string): void {

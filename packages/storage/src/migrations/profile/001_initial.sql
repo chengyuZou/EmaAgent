@@ -116,16 +116,26 @@ CREATE TABLE mcp_servers (
 );
 
 -- ============ Skills ============
+--
+-- File-backed model: the source of truth is <dir_path>/SKILL.md on disk.
+-- This table is an INDEX/CACHE — frontmatter fields are mirrored here so the
+-- "available skills" catalog can be built without opening every file; the body
+-- is read lazily from disk on activation (skill_call). Rows are reconciled
+-- against the filesystem on startup (SkillStore.scanAndReconcile).
 
 CREATE TABLE skills (
   id             TEXT PRIMARY KEY,
-  name           TEXT NOT NULL UNIQUE,
+  name           TEXT NOT NULL UNIQUE,        -- frontmatter.name (logical id)
   version        TEXT NOT NULL DEFAULT '1.0.0',
   description    TEXT NOT NULL DEFAULT '',
-  source_url     TEXT,
-  content_md     TEXT NOT NULL,
+  arg_hint       TEXT,                          -- frontmatter argument-hint (catalog display)
+  dir_path       TEXT NOT NULL,                 -- absolute path to the skill directory
+  source         TEXT NOT NULL DEFAULT 'user',  -- 'builtin' | 'user' | 'market'
+  source_url     TEXT,                          -- market/github origin (optional)
+  sha256         TEXT,                          -- market install integrity (optional)
   activates_json TEXT NOT NULL DEFAULT '["agent"]',
   enabled        INTEGER NOT NULL DEFAULT 1,
+  content_mtime  INTEGER NOT NULL DEFAULT 0,    -- SKILL.md mtime — detect external edits
   installed_at   INTEGER NOT NULL
 );
 
