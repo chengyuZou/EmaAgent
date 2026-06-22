@@ -120,8 +120,23 @@ export interface ProviderDefinition {
    * Only declare capabilities you intend to expose AND have an adapter for.
    */
   protocols: Partial<Record<Capability, ProtocolFamily | readonly ProtocolFamily[]>>;
-  /** Recommended models per capability — shown in the model picker. */
+  /**
+   * Recommended models per capability — shown in the model picker.
+   * @deprecated Superseded by the models.dev catalog (see `modelsDevId`) for LLM
+   * model lists + context/capability metadata. Kept as an offline fallback only;
+   * remove once the catalog fetch pipeline is the sole source.
+   */
   defaultModels?: Partial<Record<Capability, readonly string[]>>;
+  /**
+   * models.dev provider folder id, used to pull LLM/Vision model lists +
+   * context window + modalities/tool_call/reasoning/temperature from the
+   * models.dev catalog (https://models.dev/api.json) instead of hardcoding.
+   *
+   * Omit for providers models.dev doesn't track (local runtimes, embed/rerank/
+   * tts-only providers) — those fall back to the provider's own `/models`
+   * endpoint or manual entry.
+   */
+  modelsDevId?: string;
   /** Icon hint, e.g. `i-lobe-icons:deepseek`. Frontend maps to actual asset. */
   iconKey?: string;
   /** Icon variant for colored logo. */

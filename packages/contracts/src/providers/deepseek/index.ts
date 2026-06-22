@@ -2,6 +2,7 @@ import { defineProvider } from '../types.js';
 
 export const provider = defineProvider({
   id: 'deepseek',
+  modelsDevId: 'deepseek',
   name: 'DeepSeek',
   // OpenAI-compatible endpoint is the primary base URL
   defaultBaseUrl: 'https://api.deepseek.com',

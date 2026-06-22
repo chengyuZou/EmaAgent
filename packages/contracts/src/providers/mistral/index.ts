@@ -2,6 +2,7 @@ import { defineProvider } from '../types.js';
 
 export const provider = defineProvider({
   id: 'mistral',
+  modelsDevId: 'mistral',
   name: 'Mistral',
   defaultBaseUrl: 'https://api.mistral.ai/v1',
   protocolBaseUrls: { 'openai-llm': 'https://api.mistral.ai/v1' },

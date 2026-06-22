@@ -2,6 +2,7 @@ import { defineProvider } from '../types.js';
 
 export const provider = defineProvider({
   id: 'anthropic',
+  modelsDevId: 'anthropic',
   name: 'Anthropic',
   defaultBaseUrl: 'https://api.anthropic.com/v1',
   protocolBaseUrls: { 'anthropic-llm': 'https://api.anthropic.com/v1' },

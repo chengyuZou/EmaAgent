@@ -2,6 +2,7 @@ import { defineProvider } from '../types.js';
 
 export const provider = defineProvider({
   id: 'together',
+  modelsDevId: 'togetherai',
   name: 'Together AI',
   defaultBaseUrl: 'https://api.together.xyz/v1',
   protocolBaseUrls: {

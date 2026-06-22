@@ -2,6 +2,7 @@ import { defineProvider } from '../types.js';
 
 export const provider = defineProvider({
   id: 'zhipu',
+  modelsDevId: 'zhipuai',
   name: '智谱 GLM',
   defaultBaseUrl: 'https://open.bigmodel.cn/api/paas/v4',
   protocolBaseUrls: {

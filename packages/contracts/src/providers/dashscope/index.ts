@@ -15,6 +15,7 @@ import { defineProvider } from '../types.js';
  */
 export const provider = defineProvider({
   id: 'dashscope',
+  modelsDevId: 'alibaba',
   name: '阿里云百炼 (DashScope)',
   defaultBaseUrl: 'https://dashscope.aliyuncs.com',
   protocolBaseUrls: { 'dashscope-tts': 'https://dashscope.aliyuncs.com' },

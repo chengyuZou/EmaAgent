@@ -2,6 +2,7 @@ import { defineProvider } from '../types.js';
 
 export const provider = defineProvider({
   id: 'siliconflow',
+  modelsDevId: 'siliconflow',
   name: 'SiliconFlow',
   defaultBaseUrl: 'https://api.siliconflow.cn/v1',
   protocolBaseUrls: {

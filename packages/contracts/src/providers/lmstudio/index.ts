@@ -2,6 +2,7 @@ import { defineProvider } from '../types.js';
 
 export const provider = defineProvider({
   id: 'lmstudio',
+  modelsDevId: 'lmstudio',
   name: 'LM Studio',
   defaultBaseUrl: 'http://localhost:1234/v1',
   protocolBaseUrls: {

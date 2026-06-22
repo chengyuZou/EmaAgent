@@ -2,6 +2,7 @@ import { defineProvider } from '../types.js';
 
 export const provider = defineProvider({
   id: 'gemini',
+  modelsDevId: 'google',
   name: 'Google Gemini',
   defaultBaseUrl: 'https://generativelanguage.googleapis.com',
   protocolBaseUrls: { 'gemini-llm': 'https://generativelanguage.googleapis.com' },

@@ -2,6 +2,7 @@ import { defineProvider } from '../types.js';
 
 export const provider = defineProvider({
   id: 'openai',
+  modelsDevId: 'openai',
   name: 'OpenAI',
   defaultBaseUrl: 'https://api.openai.com/v1',
   protocolBaseUrls: {

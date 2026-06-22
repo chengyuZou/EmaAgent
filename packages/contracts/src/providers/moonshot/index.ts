@@ -2,6 +2,7 @@ import { defineProvider } from '../types.js';
 
 export const provider = defineProvider({
   id: 'moonshot',
+  modelsDevId: 'moonshotai',
   name: 'Moonshot Kimi',
   defaultBaseUrl: 'https://api.moonshot.cn/v1',
   protocolBaseUrls: { 'openai-llm': 'https://api.moonshot.cn/v1' },
