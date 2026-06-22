@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { z }    from 'zod';
-import { listMarketSkills, DEFAULT_MARKET } from '@ema-agent/skill';
+import { listMarketSkills, marketFromGithub, DEFAULT_MARKET_ID } from '@ema-agent/skill';
 import type { AppBindings } from '../wiring.js';
 
 // ── Skills router ─────────────────────────────────────────────────────────────
@@ -37,14 +37,21 @@ export function createSkillsRouter(bindings: AppBindings) {
     return c.json({ skills: skillStore.listAll() });
   });
 
-  // ── Marketplace: list installable skills from a GitHub repo (default: anthropics/skills) ──
+  // ── Marketplace: list installable skills ──
+  // Registered market:  GET /skills/market            (default: anthropic)
+  //                     GET /skills/market?market=xxx
+  // Ad-hoc GitHub repo: GET /skills/market?owner=o&repo=r&ref=main
   router.get('/skills/market', async (c) => {
-    const owner = c.req.query('owner') ?? DEFAULT_MARKET.owner;
-    const repo  = c.req.query('repo')  ?? DEFAULT_MARKET.repo;
-    const ref   = c.req.query('ref')   ?? DEFAULT_MARKET.ref;
+    const owner = c.req.query('owner');
+    const repo  = c.req.query('repo');
     try {
-      const skills = await listMarketSkills({ owner, repo, ref });
-      return c.json({ source: { owner, repo, ref }, skills });
+      if (owner && repo) {
+        const ref = c.req.query('ref') ?? 'main';
+        const market = marketFromGithub({ owner, repo, ref });
+        return c.json({ source: market.id, skills: await market.list() });
+      }
+      const marketId = c.req.query('market') ?? DEFAULT_MARKET_ID;
+      return c.json({ source: marketId, skills: await listMarketSkills(marketId) });
     } catch (err) {
       return c.json({ error: (err as Error).message }, 502);
     }
