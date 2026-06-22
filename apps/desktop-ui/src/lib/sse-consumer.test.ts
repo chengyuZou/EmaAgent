@@ -105,14 +105,14 @@ describe('createSseConsumer', () => {
       mockSseResponse([
         'data: {"type":"turn_started","turnId":"t1","mode":"chat"}',
         'data: {"type":"output_text_delta","blockIndex":0,"delta":"Hello"}',
-        'data: {"type":"turn_completed","turnId":"t1","usage":{"inputTokens":10,"outputTokens":5,"costUsd":0.001,"durationMs":100}}',
+        'data: {"type":"turn_completed","turnId":"t1","usage":{"inputTokens":10,"outputTokens":5,"durationMs":100}}',
       ]),
     );
 
     const result = await collectSse([
       'data: {"type":"turn_started","turnId":"t1","mode":"chat"}',
       'data: {"type":"output_text_delta","blockIndex":0,"delta":"Hello"}',
-      'data: {"type":"turn_completed","turnId":"t1","usage":{"inputTokens":10,"outputTokens":5,"costUsd":0.001,"durationMs":100}}',
+      'data: {"type":"turn_completed","turnId":"t1","usage":{"inputTokens":10,"outputTokens":5,"durationMs":100}}',
     ]);
 
     expect(result.events).toHaveLength(3);

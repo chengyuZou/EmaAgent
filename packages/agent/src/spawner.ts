@@ -325,7 +325,7 @@ export class SubagentSpawner implements ISubagentSpawner {
         outputExcerpt:  fullText.slice(0, OUTPUT_EXCERPT_MAX),
         iterationCount: currentIteration,
         toolCallCount,
-        stats: { inputTokens: usage.inputTokens, outputTokens: usage.outputTokens, costUsd: 0, durationMs },
+        stats: { inputTokens: usage.inputTokens, outputTokens: usage.outputTokens, durationMs },
       });
 
       this.deps.taskStore?.complete(subagentId, {

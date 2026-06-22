@@ -237,7 +237,7 @@ async function* runTurn(
     });
 
     session.completeTurn(turnId, { usageInputTokens: inputTokens, usageOutputTokens: outputTokens });
-    yield { type: 'turn_completed', sessionId: input.sessionId, turnId, stats: { inputTokens, outputTokens, costUsd: 0, durationMs } };
+    yield { type: 'turn_completed', sessionId: input.sessionId, turnId, stats: { inputTokens, outputTokens, durationMs } };
 
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);

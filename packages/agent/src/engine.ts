@@ -317,7 +317,7 @@ async function* runTurn(
     deps.taskStore?.complete(turnId, { iterations, inputTokens: totalInput, outputTokens: totalOutput });
     yield {
       type: 'turn_completed', sessionId, turnId,
-      stats: { inputTokens: totalInput, outputTokens: totalOutput, costUsd: 0, durationMs },
+      stats: { inputTokens: totalInput, outputTokens: totalOutput, durationMs },
     };
 
   } catch (err) {

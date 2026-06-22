@@ -919,7 +919,6 @@ function assembleHistory(messages: MessageWire[], turns: TurnWire[]): ChatHistor
       currentGroup.stats = {
         inputTokens:  turn.usageInputTokens,
         outputTokens: turn.usageOutputTokens,
-        costUsd:      turn.costUsd,
         durationMs:   turn.completedAt !== null ? turn.completedAt - turn.startedAt : 0,
       };
     }

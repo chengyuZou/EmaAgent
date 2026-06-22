@@ -16,7 +16,7 @@ import { showToast } from '../lib/toast.js';
 
 export function LlmModelManager({ providerId }: { providerId: string }): JSX.Element {
   const [models, setModels]   = useState<AvailableModelWire[]>([]);
-  const [source, setSource]   = useState<'live' | 'static'>('static');
+  const [source, setSource]   = useState<'live' | 'catalog'>('catalog');
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState<string | null>(null);
 
@@ -102,7 +102,7 @@ export function LlmModelManager({ providerId }: { providerId: string }): JSX.Ele
           <h3 className="text-sm font-medium text-neutral-200">模型</h3>
           <p className="text-xs text-neutral-500 mt-0.5">
             启用的模型才能在「模型绑定」里分配给 Chat、Agent 等模块。
-            {source === 'static' && '（显示内置推荐）'}
+            {source === 'catalog' && '（显示内置推荐）'}
           </p>
         </div>
         <Button variant="ghost" size="sm" onClick={() => void load()} disabled={loading}>

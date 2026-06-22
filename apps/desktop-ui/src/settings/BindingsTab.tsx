@@ -17,10 +17,6 @@ import { showToast } from '../lib/toast.js';
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const MODULE_CAPABILITY: Record<BindingModule, string> = {
-  chat:           'llm',
-  narrative:      'llm',
-  agent:          'llm',
-  compaction:     'llm',
   emotion:        'llm',
   memory:         'llm',
   router:         'llm',
@@ -38,10 +34,6 @@ const MODULE_CAPABILITY: Record<BindingModule, string> = {
 const POOL_CAPABILITIES = new Set(['llm', 'embed', 'rerank', 'tts', 'stt']);
 
 const MODULES: Array<{ id: BindingModule; label: string }> = [
-  { id: 'chat',          label: 'Chat' },
-  { id: 'narrative',     label: 'Narrative' },
-  { id: 'agent',         label: 'Agent' },
-  { id: 'compaction',    label: 'Compaction' },
   { id: 'emotion',       label: 'Emotion' },
   { id: 'memory',        label: 'Memory' },
   { id: 'router',        label: 'Router' },
@@ -116,7 +108,7 @@ function ProviderCardRow({
 
 export function BindingsTab(): JSX.Element {
   const [view, setView] = useState<'grid' | 'detail'>('grid');
-  const [activeModule, setActiveModule] = useState<BindingModule>('chat');
+  const [activeModule, setActiveModule] = useState<BindingModule>('memory');
   const [bindings, setBindings] = useState<ResolvedModelBinding[]>([]);
   const [pool, setPool] = useState<AvailableBindingModel[]>([]);
   const [loading, setLoading] = useState(false);

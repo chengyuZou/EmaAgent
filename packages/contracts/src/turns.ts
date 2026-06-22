@@ -44,6 +44,5 @@ export interface TurnCreatedResponse {
 export interface TurnStats {
   inputTokens:  number;
   outputTokens: number;
-  costUsd:      number;
   durationMs:   number;
 }
