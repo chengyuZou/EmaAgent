@@ -1,10 +1,11 @@
-import { useState, useCallback, useEffect, useRef, type KeyboardEvent, type JSX } from 'react';
+import { useState, useCallback, useEffect, useRef, type KeyboardEvent, type JSX, type ChangeEvent } from 'react';
 import { IconButton, Input } from '@ema-agent/ui';
 import { useConversationStore } from '../stores/conversation-store.js';
 import { useSessionStore } from '../stores/session-store.js';
 import { useUiStore } from '../stores/ui-store.js';
 import { ModeSelector } from './ModeSelector.js';
 import { ModelPicker, type ModelSelection } from './ModelPicker.js';
+import { AttachmentChip } from './AttachmentChip.js';
 import { showToast } from '../lib/toast.js';
 import { tauriBridge } from '../lib/tauri-bridge.js';
 import type { AttachmentInputWire } from '../api/turns.js';
@@ -45,13 +46,23 @@ export function ChatInput(): JSX.Element {
   const [text, setText] = useState(initialDraft);
   const [pendingAttachments, setPendingAttachments] = useState<AttachmentInputWire[]>([]);
   const [selectedModel, setSelectedModel] = useState<ModelSelection | null>(null);
+  const textareaRef     = useRef<HTMLTextAreaElement>(null);
   const prevViewedIdRef = useRef(viewedId);
+  const TEXTAREA_MAX_H  = 200; // px — beyond this the textarea scrolls
 
   useEffect(() => {
     if (prevViewedIdRef.current === viewedId) return;
     prevViewedIdRef.current = viewedId;
     setText(useConversationStore.getState().draftMap.get(viewedId as string ?? '') ?? '');
   }, [viewedId]);
+
+  // Auto-resize textarea height based on content, capped at TEXTAREA_MAX_H.
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${Math.min(el.scrollHeight, TEXTAREA_MAX_H)}px`;
+  }, [text]);
 
   const [isComposing, setIsComposing] = useState(false);
 
@@ -126,46 +137,47 @@ export function ChatInput(): JSX.Element {
   return (
     <div className="shrink-0 border-t border-neutral-800 px-4 py-3">
       <div className="max-w-2xl mx-auto">
-        {/* Main textarea with embedded send/stop button */}
-        <div className="relative">
-          {/* Always-pulsing pink glow ring — separate layer so pulse doesn't dim the text */}
+        {/* ── Unified input box ── */}
+        <div className="relative rounded-2xl bg-neutral-800/80">
+          {/* Always-pulsing pink glow ring */}
           <div className="absolute inset-0 rounded-2xl pointer-events-none animate-pulse shadow-[0_0_0_1.5px_rgba(244,114,182,0.45),0_0_20px_rgba(244,114,182,0.2)]" />
-          <textarea
-            className="relative w-full bg-neutral-800/80 border-0 rounded-2xl px-4 py-3 pr-12 text-sm text-neutral-200 resize-none focus:outline-none placeholder-neutral-500 transition-colors"
-            rows={3}
-            placeholder="输入消息…"
-            value={text}
-            onChange={(e) => handleChange(e.target.value)}
-            onKeyDown={handleKeyDown}
-            onCompositionStart={() => setIsComposing(true)}
-            onCompositionEnd={() => setIsComposing(false)}
-          />
-          <div className="absolute right-2 bottom-2">
-            {embeddedAction}
+
+          {/* Attachment strip (top half, shown only when files queued) */}
+          {pendingAttachments.length > 0 && (
+            <>
+              <div className="relative px-3 pt-3 pb-2 flex flex-wrap gap-1.5">
+                {pendingAttachments.map((a) => (
+                  <AttachmentChip
+                    key={a.id}
+                    attachment={a}
+                    onRemove={() => removeAttachment(a.id)}
+                  />
+                ))}
+              </div>
+              {/* Fully transparent divider — just a hairline to separate regions */}
+              <div className="mx-4 border-t border-white/[0.05]" />
+            </>
+          )}
+
+          {/* Textarea + send button (bottom half) */}
+          <div className="relative">
+            <textarea
+              ref={textareaRef}
+              className="relative w-full bg-transparent rounded-2xl px-4 py-3 pr-12 text-sm text-neutral-200 resize-none focus:outline-none placeholder-neutral-500 overflow-y-auto"
+              style={{ minHeight: 60, maxHeight: TEXTAREA_MAX_H }}
+              rows={1}
+              placeholder="输入消息…"
+              value={text}
+              onChange={(e: ChangeEvent<HTMLTextAreaElement>) => handleChange(e.target.value)}
+              onKeyDown={handleKeyDown}
+              onCompositionStart={() => setIsComposing(true)}
+              onCompositionEnd={() => setIsComposing(false)}
+            />
+            <div className="absolute right-2 bottom-2">
+              {embeddedAction}
+            </div>
           </div>
         </div>
-
-        {/* Pending attachments preview strip */}
-        {pendingAttachments.length > 0 && (
-          <div className="flex flex-wrap gap-1.5 mt-2">
-            {pendingAttachments.map((a) => (
-              <div
-                key={a.id}
-                className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-neutral-700/60 text-xs text-neutral-300 max-w-[180px]"
-              >
-                <span className="i-solar:document-bold text-neutral-400 shrink-0" aria-hidden />
-                <span className="truncate" title={a.localPath}>{a.name}</span>
-                <button
-                  className="text-neutral-500 hover:text-red-400 shrink-0 ml-0.5"
-                  onClick={() => removeAttachment(a.id)}
-                  aria-label={`移除 ${a.name}`}
-                >
-                  <span className="i-mdi:close text-sm" aria-hidden />
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
 
         {/* Bottom toolbar */}
         <div className="flex items-center justify-between mt-2">

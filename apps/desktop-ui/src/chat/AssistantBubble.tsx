@@ -11,6 +11,7 @@ import { NarrativeStatusBlock } from './NarrativeStatusBlock.js';
 import { replayTurn, stopPlayback, usePlaybackStore } from '../lib/tts-playback.js';
 import { showToast } from '../lib/toast.js';
 import { useConversationStore, type ChatHistoryItem, type AssistantSlice } from '../stores/conversation-store.js';
+import { sessionsApi } from '../api/sessions.js';
 
 export interface AssistantBubbleProps {
   message:         Pick<ChatHistoryItem, 'content' | 'slices' | 'createdAt' | 'stats' | 'turnId' | 'mode'>;
@@ -152,9 +153,71 @@ export function AssistantBubble({ message, label = 'Ema', isStreaming }: Assista
               onClick={handleAudioClick}
             />
           )}
+
+          {/* Branch sibling navigation ‹ N/M › */}
+          {!isStreaming && message.turnId && (
+            <BranchSiblingNav turnId={message.turnId as string} />
+          )}
         </div>
       </div>
     </div>
+  );
+}
+
+// ── Branch sibling navigator ‹ N/M › ─────────────────────────────────────────
+
+function BranchSiblingNav({ turnId }: { turnId: string }): JSX.Element | null {
+  const viewedId   = useConversationStore((s) => s.viewedSessionId);
+  const branchData = useConversationStore((s) =>
+    viewedId ? s.branchDataBySession.get(viewedId as string) : undefined,
+  );
+
+  if (!branchData || !viewedId) return null;
+
+  const siblings = branchData.branches
+    .filter((b) => (b.forkFromTurnId as string) === turnId)
+    .sort((a, b) => a.createdAt - b.createdAt);
+
+  if (siblings.length < 2) return null;
+
+  const activeIdx = siblings.findIndex((b) => b.isActive);
+  if (activeIdx < 0) return null;
+
+  const pos   = activeIdx + 1;
+  const total = siblings.length;
+
+  const navigate = async (delta: -1 | 1): Promise<void> => {
+    const next = siblings[activeIdx + delta];
+    if (!next) return;
+    try {
+      await sessionsApi.switchBranch(viewedId, next.branchId);
+      await useConversationStore.getState().loadBranches(viewedId);
+      // Evict + reload messages so the switched branch history appears.
+      useConversationStore.setState((s) => {
+        const m = new Map(s.messages);
+        m.delete(viewedId as string);
+        return { messages: m };
+      });
+      await useConversationStore.getState().loadMessages(viewedId);
+    } catch { /* non-critical */ }
+  };
+
+  return (
+    <span className="flex items-center gap-0.5 ml-1">
+      <button
+        className="w-3.5 h-3.5 flex items-center justify-center text-neutral-500 hover:text-neutral-200 disabled:opacity-25 transition-colors leading-none"
+        disabled={pos === 1}
+        onClick={() => void navigate(-1)}
+        title="上一个分支"
+      >‹</button>
+      <span className="tabular-nums text-[10px] text-neutral-500">{pos}/{total}</span>
+      <button
+        className="w-3.5 h-3.5 flex items-center justify-center text-neutral-500 hover:text-neutral-200 disabled:opacity-25 transition-colors leading-none"
+        disabled={pos === total}
+        onClick={() => void navigate(1)}
+        title="下一个分支"
+      >›</button>
+    </span>
   );
 }
 

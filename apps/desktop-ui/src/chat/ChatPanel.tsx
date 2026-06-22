@@ -13,6 +13,8 @@ import { ChatInput } from './ChatInput.js';
 import { ContextPanel } from './ContextPanel.js';
 import { TaskPanel } from './TaskPanel.js';
 import { BranchPanel } from './BranchPanel.js';
+import { ArtifactsPanel } from './ArtifactsPanel.js';
+import { FilesPanel } from './FilesPanel.js';
 
 // ── Inspector panel types ─────────────────────────────────────────────────────
 
@@ -208,7 +210,7 @@ export function ChatPanel(): JSX.Element {
         {/* ── Right inspector panel ── */}
         {hasInspector && (
           <div
-            className="flex-none w-72 border-l flex flex-col overflow-hidden"
+            className={`flex-none border-l flex flex-col overflow-hidden transition-[width] duration-200 ${activePanels.size > 1 ? 'w-[560px]' : 'w-72'}`}
             style={{ borderColor: 'var(--ema-border)', background: 'var(--ema-surface-1)' }}
           >
             <InspectorContent activePanels={activePanels} sessionId={viewedSessionId as string | null} />
@@ -271,6 +273,12 @@ function OverflowItem({
 }
 
 // ── Inspector content ─────────────────────────────────────────────────────────
+//
+// Grid rules (panels ordered by activation time):
+//   1 panel  → full height, full width
+//   2 panels → [A][B]         side-by-side
+//   3 panels → [A][B] / [C  ] — C spans both columns
+//   4 panels → [A][B] / [C][D]
 
 function InspectorContent({
   activePanels, sessionId,
@@ -278,31 +286,45 @@ function InspectorContent({
   activePanels: Set<InspectorPanelId>;
   sessionId:    string | null;
 }): JSX.Element {
-  const panels = [...activePanels];
+  const panels = [...activePanels]; // Set preserves insertion order
+  const count  = panels.length;
 
-  if (panels.length === 1) {
+  if (count === 0) return <></>;
+
+  if (count === 1) {
     const id = panels[0]!;
     return (
       <div className="flex flex-col flex-1 min-h-0">
         <InspectorPanelHeader id={id} />
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 overflow-hidden">
           <InspectorPanelBody id={id} sessionId={sessionId} />
         </div>
       </div>
     );
   }
 
-  // Multiple panels: stack vertically with equal flex
+  // 2-4: CSS grid — 2 columns, 1-2 rows
+  const twoRows = count >= 3;
   return (
-    <div className="flex flex-col flex-1 min-h-0 divide-y" style={{ borderColor: 'var(--ema-border)' }}>
-      {panels.map((id) => (
-        <div key={id} className="flex flex-col flex-1 min-h-0 overflow-hidden">
-          <InspectorPanelHeader id={id} compact />
-          <div className="flex-1 overflow-y-auto">
-            <InspectorPanelBody id={id} sessionId={sessionId} />
+    <div
+      className={`grid flex-1 min-h-0 grid-cols-2 ${twoRows ? 'grid-rows-2' : 'grid-rows-1'}`}
+      style={{ borderColor: 'var(--ema-border)' }}
+    >
+      {panels.map((id, i) => {
+        const colSpan = count === 3 && i === 2; // bottom panel spans both cols when only 3
+        return (
+          <div
+            key={id}
+            className={`flex flex-col min-h-0 overflow-hidden border-r border-b ${colSpan ? 'col-span-2' : ''}`}
+            style={{ borderColor: 'var(--ema-border)' }}
+          >
+            <InspectorPanelHeader id={id} compact />
+            <div className="flex-1 overflow-hidden">
+              <InspectorPanelBody id={id} sessionId={sessionId} />
+            </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
@@ -329,17 +351,11 @@ function InspectorPanelHeader({ id, compact }: { id: InspectorPanelId; compact?:
 }
 
 function InspectorPanelBody({ id, sessionId }: { id: InspectorPanelId; sessionId: string | null }): JSX.Element {
-  if (id === 'tasks')    return <TaskPanel className="p-2" />;
-  if (id === 'branches') return <BranchPanel />;
-
-  // files / artifacts — V1.5
-  return (
-    <div className="flex flex-col items-center justify-center gap-2 py-12 text-xs"
-         style={{ color: 'var(--ema-text-tertiary)' }}>
-      <span className={`${PANEL_META[id].icon} text-2xl opacity-30`} aria-hidden />
-      <span className="opacity-50">V1.5 即将推出</span>
-    </div>
-  );
+  if (id === 'tasks')     return <TaskPanel className="p-2" />;
+  if (id === 'branches')  return <BranchPanel />;
+  if (id === 'artifacts') return <ArtifactsPanel />;
+  if (id === 'files')     return <FilesPanel />;
+  return <></>;
 }
 
 // ── Context ball ──────────────────────────────────────────────────────────────

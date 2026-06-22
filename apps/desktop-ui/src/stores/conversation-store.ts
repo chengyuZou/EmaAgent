@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { createSendQueue, type SendQueue } from '../lib/send-queue.js';
 import { sseConsumer } from '../lib/sse-consumer.js';
-import { sessionsApi } from '../api/sessions.js';
+import { sessionsApi, type BranchTreeWire } from '../api/sessions.js';
 import { turnsApi, type AttachmentInputWire } from '../api/turns.js';
 
 export type { AttachmentInputWire };
@@ -56,14 +56,16 @@ export interface StreamingAssistantMessage {
 }
 
 export interface ChatHistoryItem {
-  role:       'system' | 'user' | 'assistant' | 'error';
-  content:    string;
-  slices?:    AssistantSlice[];
-  createdAt:  number;
-  messageId?: MessageId;
-  turnId?:    TurnId;
-  stats?:     TurnStats;
-  mode?:      TurnMode;
+  role:         'system' | 'user' | 'assistant' | 'error';
+  content:      string;
+  slices?:      AssistantSlice[];
+  createdAt:    number;
+  messageId?:   MessageId;
+  turnId?:      TurnId;
+  stats?:       TurnStats;
+  mode?:        TurnMode;
+  /** File attachments on user messages — carried from MessageWire.attachments. */
+  attachments?: AttachmentInputWire[];
 }
 
 // ── Send input ────────────────────────────────────────────────────────────────
@@ -576,9 +578,12 @@ export interface ConversationStoreState {
   error:             string | null;
   /** Set to scroll ChatHistory to a specific turn. Reset to null after consuming. */
   scrollToTurnId:    string | null;
+  /** Branch tree per session — used by AssistantBubble for sibling `< N/M >` navigation. */
+  branchDataBySession: Map<string, BranchTreeWire>;
 
   viewSession(id: SessionId):                                           Promise<void>;
   scrollToTurn(turnId: string):                                         void;
+  loadBranches(id: SessionId):                                          Promise<void>;
   sendMessage(sessionId: SessionId | null, input: Omit<SendInput, 'sessionId'>): Promise<void>;
   stopStreaming(sessionId: SessionId):                                   void;
   setDraft(sessionId: SessionId, text: string):                         void;
@@ -607,9 +612,21 @@ export const useConversationStore = create<ConversationStoreState>((set, get) =>
   draftMap:          new Map(),
   loading:           { messages: new Set() },
   error:             null,
-  scrollToTurnId:    null,
+  scrollToTurnId:      null,
+  branchDataBySession: new Map(),
 
   scrollToTurn(turnId) { set({ scrollToTurnId: turnId }); },
+
+  async loadBranches(id) {
+    try {
+      const data = await sessionsApi.listBranches(id);
+      set((s) => {
+        const m = new Map(s.branchDataBySession);
+        m.set(id as string, data);
+        return { branchDataBySession: m };
+      });
+    } catch { /* non-critical */ }
+  },
 
   // ── Navigation ───────────────────────────────────────────────────────────
 
@@ -632,6 +649,7 @@ export const useConversationStore = create<ConversationStoreState>((set, get) =>
     }
 
     await get().loadMessages(id);
+    void get().loadBranches(id); // non-blocking — sibling nav renders once data arrives
   },
 
   // ── Messages ─────────────────────────────────────────────────────────────
@@ -935,7 +953,7 @@ function assembleHistory(messages: MessageWire[], turns: TurnWire[]): ChatHistor
 
   const toItem = (m: MessageWire): ChatHistoryItem => {
     const { content, slices } = blocksToHistoryFields(m.role, m.blocks);
-    return {
+    const item: ChatHistoryItem = {
       role:      m.role as ChatHistoryItem['role'],
       content,
       slices,
@@ -943,6 +961,13 @@ function assembleHistory(messages: MessageWire[], turns: TurnWire[]): ChatHistor
       messageId: m.id as MessageId,
       turnId:    m.turnId !== null ? (m.turnId as TurnId) : undefined,
     };
+    if (m.role === 'user' && m.attachments && m.attachments.length > 0) {
+      item.attachments = m.attachments.map((a) => ({
+        id: a.id, name: a.name, mimeType: a.mimeType,
+        size: a.size ?? 0, mtime: a.mtime ?? 0, localPath: a.localPath ?? '',
+      }));
+    }
+    return item;
   };
 
   for (const m of chronological) {

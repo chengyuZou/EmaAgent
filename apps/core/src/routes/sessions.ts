@@ -8,6 +8,7 @@ import type {
   SessionsGroupedResult,
   SessionsSearchResult,
   MessageBlocks,
+  TurnAttachment,
 } from '@ema-agent/contracts';
 import type { AppBindings } from '../wiring.js';
 
@@ -131,7 +132,25 @@ export function sessionsRoute(bindings: AppBindings): Hono {
     // Turns ride along so the frontend can group messages by turnId and attach
     // per-turn usage / duration / replayable audio without a second request.
     const turns = bindings.session.listTurns(sessionId);
-    return c.json({ messages, turns } satisfies SessionMessagesResult);
+
+    // Enrich user messages with their stored file attachments so the
+    // UserBubble can show them on every page load, not only during the session.
+    const enriched = messages.map((m) => {
+      if (m.role !== 'user' || !m.turnId) return m;
+      const rows = bindings.attachmentStore.listByTurn(m.turnId as string);
+      if (rows.length === 0) return m;
+      const attachments: TurnAttachment[] = rows.map((a) => ({
+        id:        a.id,
+        name:      a.name,
+        mimeType:  a.mime,
+        size:      a.size,
+        mtime:     a.mtime,
+        localPath: a.localPath,
+      }));
+      return { ...m, attachments };
+    });
+
+    return c.json({ messages: enriched, turns } satisfies SessionMessagesResult);
   });
 
   // ── PUT /api/sessions/:id — partial update (title / pinned / groupLabel) ───

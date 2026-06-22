@@ -80,6 +80,13 @@ export interface TauriBridge {
    * Uses Tauri's plugin:opener when available; falls back to window.open.
    */
   openUrl(url: string): Promise<void>;
+
+  /**
+   * Open a local file or folder path in its system default handler
+   * (Explorer on Windows, Finder on macOS, etc.).
+   * No-ops gracefully when Tauri is absent (browser / Ladle dev mode).
+   */
+  openPath(path: string): Promise<void>;
 }
 
 // ── Detection ────────────────────────────────────────────────────────────────
@@ -260,5 +267,16 @@ export const tauriBridge: TauriBridge = {
       } catch { /* plugin not configured — fall through */ }
     }
     window.open(url, '_blank');
+  },
+
+  async openPath(path: string): Promise<void> {
+    const core = await getCore();
+    if (!core) return; // no-op in browser/Ladle
+    try {
+      await core.invoke('plugin:opener|open_path', { path });
+    } catch {
+      // Fallback: open as file:// URL via system browser
+      window.open(`file://${path}`, '_blank');
+    }
   },
 };

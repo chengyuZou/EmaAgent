@@ -17,6 +17,7 @@ import { createArtifactsRouter } from './routes/artifacts.js';
 import { createSkillsRouter }   from './routes/skills.js';
 import { createMcpRouter }       from './routes/mcp.js';
 import { shellRoute }            from './routes/shell.js';
+import { workspaceRoute }        from './routes/workspace.js';
 import { kbRoute }               from './routes/knowledge-base.js';
 import { agentTasksRoute }       from './routes/agent-tasks.js';
 import type { AppBindings } from './wiring.js';
@@ -55,6 +56,7 @@ export function buildServer(bindings: AppBindings): Hono {
   app.route('/api/memory',         memoryRoute(bindings));
   app.route('/api/system/events',  systemEventsRoute(bindings));
   app.route('/api/system/shell',   shellRoute());
+  app.route('/api/workspace',      workspaceRoute());
   app.route('/api/settings',       settingsRoute(bindings));
   app.route('/api/diagnostics',    diagnosticRoute());
   app.route('/api/transcribe',     transcribeRoute(bindings));
