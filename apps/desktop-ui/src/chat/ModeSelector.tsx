@@ -22,7 +22,10 @@ export function ModeSelector({ mode, onModeChange }: ModeSelectorProps): JSX.Ele
   return (
     <div className="relative">
       <button
-        className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs text-gray-400 hover:text-gray-200 hover:bg-gray-800 transition-colors"
+        className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs
+                   text-[var(--ema-text-tertiary)] hover:text-[var(--ema-text-primary)]
+                   hover:bg-[var(--ema-surface-2)]
+                   transition-colors duration-[var(--ema-duration-base)]"
         onClick={() => setOpen(!open)}
       >
         <span>{current.icon}</span>
@@ -33,15 +36,20 @@ export function ModeSelector({ mode, onModeChange }: ModeSelectorProps): JSX.Ele
       {open && (
         <>
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-          <div className="absolute bottom-full left-0 mb-1 z-50 bg-gray-800 border border-gray-700 rounded-xl py-1 shadow-xl min-w-32">
+          <div
+            className="ema-slide-up absolute bottom-full left-0 mb-1 z-50
+                       bg-[var(--ema-surface-4)] border border-[var(--ema-border)]
+                       rounded-xl py-1 shadow-[var(--ema-shadow-3)] min-w-32"
+          >
             {MODES.map((m) => (
               <button
                 key={m.id}
                 className={
-                  'w-full flex items-center text-left px-3 py-1.5 text-sm transition-colors' +
+                  'w-full flex items-center text-left px-3 py-1.5 text-sm ' +
+                  `transition-colors duration-[var(--ema-duration-base)] ` +
                   (mode === m.id
-                    ? ' text-pink-300 bg-pink-400/10'
-                    : ' text-gray-300 hover:bg-gray-700')
+                    ? 'text-[var(--ema-primary)] bg-[var(--ema-primary-muted)]'
+                    : 'text-[var(--ema-text-secondary)] hover:bg-[var(--ema-surface-3)] hover:text-[var(--ema-text-primary)]')
                 }
                 onClick={() => {
                   onModeChange(m.id);
@@ -50,7 +58,9 @@ export function ModeSelector({ mode, onModeChange }: ModeSelectorProps): JSX.Ele
               >
                 <span className="mr-2">{m.icon}</span>
                 <span className="flex-1">{m.label}</span>
-                {mode === m.id && <span className="text-pink-400">✓</span>}
+                {mode === m.id && (
+                  <span className="text-[var(--ema-primary)] text-[10px]">✓</span>
+                )}
               </button>
             ))}
           </div>

@@ -172,8 +172,8 @@ export function McpTab(): JSX.Element {
       {/* Header */}
       <div className="flex items-start justify-between shrink-0">
         <div>
-          <h2 className="text-base font-semibold text-neutral-100">MCP 服务器</h2>
-          <p className="text-xs text-neutral-500 mt-0.5">连接模型上下文协议（MCP）服务器，扩展 Agent 的工具集</p>
+          <h2 className="text-base font-semibold text-[var(--ema-text-primary)]">MCP 服务器</h2>
+          <p className="text-xs text-[var(--ema-text-tertiary)] mt-0.5">连接模型上下文协议（MCP）服务器，扩展 Agent 的工具集</p>
         </div>
         <div className="flex gap-2">
           <Button variant="ghost" size="sm" onClick={() => setImportOpen(true)}
@@ -200,7 +200,7 @@ export function McpTab(): JSX.Element {
 
       {/* Empty */}
       {!loading && servers.length === 0 && (
-        <div className="flex flex-col items-center justify-center py-16 text-neutral-500 gap-2">
+        <div className="flex flex-col items-center justify-center py-16 text-[var(--ema-text-tertiary)] gap-2">
           <span className="i-mdi:server-outline text-4xl opacity-40" />
           <p className="text-sm">暂无 MCP 服务器</p>
           <p className="text-xs">点击"添加服务器"连接第一个 MCP 服务</p>
@@ -238,19 +238,20 @@ export function McpTab(): JSX.Element {
             {importResults.map((r) => (
               <div
                 key={r.name}
-                className="flex items-start gap-3 px-3 py-2 rounded-lg border border-neutral-800/40 bg-neutral-900/60"
+                className="flex items-start gap-3 px-3 py-2 rounded-lg
+                           border border-[var(--ema-border)] bg-[var(--ema-surface-1)]"
               >
                 <Badge variant={r.ok ? 'success' : 'danger'} dot className="mt-0.5 shrink-0" />
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium text-neutral-200">{r.name}</span>
+                    <span className="text-sm font-medium text-[var(--ema-text-primary)]">{r.name}</span>
                     <Badge variant={r.ok ? 'success' : 'danger'}>{r.ok ? '成功' : '失败'}</Badge>
                   </div>
                   {r.error && (
-                    <p className="text-xs text-red-400 mt-0.5">{r.error}</p>
+                    <p className="text-xs text-[var(--ema-danger)] mt-0.5">{r.error}</p>
                   )}
                   {r.connectError && (
-                    <p className="text-xs text-yellow-500 mt-0.5">连接警告：{r.connectError}</p>
+                    <p className="text-xs text-[var(--ema-warning)] mt-0.5">连接警告：{r.connectError}</p>
                   )}
                 </div>
               </div>
@@ -425,7 +426,7 @@ function ServerRow({
         {/* Info */}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-sm font-medium text-neutral-100">{server.name}</span>
+            <span className="text-sm font-medium text-[var(--ema-text-primary)]">{server.name}</span>
             <Badge variant={st.variant}>{st.label}</Badge>
             {toolCount > 0 && (
               <Tooltip content={`${toolCount} 个工具可用`}>
@@ -437,14 +438,14 @@ function ServerRow({
             )}
           </div>
 
-          <p className="text-xs text-neutral-500 mt-0.5 font-mono">
+          <p className="text-xs text-[var(--ema-text-tertiary)] mt-0.5 font-mono">
             {server.config.type === 'stdio'
               ? `${server.config.command} ${server.config.args?.join(' ') ?? ''}`.trim()
               : (server.config as { url: string }).url}
           </p>
 
           {server.connection.status === 'failed' && (
-            <p className="text-xs text-red-400 mt-1 line-clamp-1">
+            <p className="text-xs text-[var(--ema-danger)] mt-1 line-clamp-1">
               连接错误
             </p>
           )}
@@ -462,7 +463,7 @@ function ServerRow({
           <DropdownMenu
             trigger={
               <Button variant="ghost" size="sm" className="px-1.5">
-                <span className="i-mdi:dots-vertical text-base text-neutral-400" aria-hidden />
+                <span className="i-mdi:dots-vertical text-base text-[var(--ema-text-tertiary)]" aria-hidden />
               </Button>
             }
             items={menuItems}

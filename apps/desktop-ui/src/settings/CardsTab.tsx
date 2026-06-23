@@ -70,7 +70,7 @@ export function CardsTab(): JSX.Element {
             onActivate={() => handleActivate(selected.id as CharacterCardId)}
           />
         ) : (
-          <div className="flex items-center justify-center h-full text-neutral-500 text-sm">
+          <div className="flex items-center justify-center h-full text-[var(--ema-text-tertiary)] text-sm">
             选择一张角色卡编辑
           </div>
         )}
@@ -93,22 +93,22 @@ function CardListItem({
     <Card
       variant={isSelected ? 'glass' : 'elevated'}
       padding="sm"
-      className={`cursor-pointer transition-all duration-250 active:scale-[0.98] ${
+      className={`cursor-pointer transition-all duration-[var(--ema-duration-base)] active:scale-[0.98] ${
         isSelected
-          ? 'border border-primary-400/30 bg-primary-500/10'
-          : 'hover:bg-neutral-800/80'
+          ? 'border border-[var(--ema-primary)] bg-[var(--ema-primary-muted)]'
+          : 'hover:bg-[var(--ema-surface-2)]'
       }`}
       onClick={onSelect}
     >
       <div className="flex items-start justify-between gap-2">
-        <span className="text-sm font-medium text-neutral-100 leading-snug">{card.name}</span>
+        <span className="text-sm font-medium text-[var(--ema-text-primary)] leading-snug">{card.name}</span>
         <div className="flex items-center gap-1 shrink-0 mt-0.5">
           {isActive && <Badge variant="success" dot>当前</Badge>}
           {card.isBuiltin && <Badge variant="neutral">内置</Badge>}
         </div>
       </div>
       {card.description && (
-        <p className="text-xs text-neutral-500 mt-1 line-clamp-2">{card.description}</p>
+        <p className="text-xs text-[var(--ema-text-tertiary)] mt-1 line-clamp-2">{card.description}</p>
       )}
     </Card>
   );

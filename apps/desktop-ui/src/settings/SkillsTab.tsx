@@ -68,7 +68,7 @@ function MarketView({
 
   if (marketSkills.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-16 text-neutral-500 gap-2">
+      <div className="flex flex-col items-center justify-center py-16 text-[var(--ema-text-tertiary)] gap-2">
         <span className="i-mdi:store-outline text-4xl opacity-40" aria-hidden />
         <p className="text-sm">市场暂无技能</p>
       </div>
@@ -78,30 +78,30 @@ function MarketView({
   return (
     <div className="flex flex-col gap-2">
       {marketSource && (
-        <p className="text-xs text-neutral-600 mb-1 font-mono truncate">来源：{marketSource}</p>
+        <p className="text-xs text-[var(--ema-text-tertiary)] mb-1 font-mono truncate">来源：{marketSource}</p>
       )}
       {marketSkills.map((entry, i) => {
         const installed = installedNames.has(entry.name);
         return (
           <div
             key={entry.name}
-            className="bg-neutral-900/80 ema-glass-weak border border-neutral-800/40 rounded-xl px-4 py-3
+            className="bg-[var(--ema-surface-1)] ema-glass-weak border border-[var(--ema-border)] rounded-xl px-4 py-3
                        ema-stagger-in"
             style={{ '--stagger-i': i } as React.CSSProperties}
           >
             <div className="flex items-start gap-3">
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-sm font-medium text-neutral-100">{entry.name}</span>
+                  <span className="text-sm font-medium text-[var(--ema-text-primary)]">{entry.name}</span>
                   <Badge variant="neutral">v{entry.version}</Badge>
                   {entry.tags?.map((t) => (
                     <Badge key={t} variant="neutral">{t}</Badge>
                   ))}
                 </div>
                 {entry.description && (
-                  <p className="text-xs text-neutral-400 mt-1 line-clamp-2">{entry.description}</p>
+                  <p className="text-xs text-[var(--ema-text-tertiary)] mt-1 line-clamp-2">{entry.description}</p>
                 )}
-                <p className="text-xs text-neutral-600 mt-1">
+                <p className="text-xs text-[var(--ema-text-tertiary)] mt-1 opacity-60">
                   {entry.author && `${entry.author} · `}
                   {entry.sizeBytes != null && formatBytes(entry.sizeBytes)}
                 </p>
@@ -146,7 +146,7 @@ function InstalledList({
 
   if (skills.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-16 text-neutral-500 gap-2">
+      <div className="flex flex-col items-center justify-center py-16 text-[var(--ema-text-tertiary)] gap-2">
         <span className="i-mdi:puzzle-outline text-4xl opacity-40" aria-hidden />
         <p className="text-sm">暂无已安装技能</p>
         <p className="text-xs">切换到「浏览市场」或点击右上角安装</p>
@@ -168,13 +168,13 @@ function InstalledList({
             <div className="flex items-start gap-3">
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-sm font-medium text-neutral-100">{sk.name}</span>
+                  <span className="text-sm font-medium text-[var(--ema-text-primary)]">{sk.name}</span>
                   <Badge variant="neutral">v{sk.version}</Badge>
                 </div>
                 {sk.description && (
-                  <p className="text-xs text-neutral-400 mt-1 line-clamp-2">{sk.description}</p>
+                  <p className="text-xs text-[var(--ema-text-tertiary)] mt-1 line-clamp-2">{sk.description}</p>
                 )}
-                <p className="text-xs text-neutral-600 mt-1">
+                <p className="text-xs text-[var(--ema-text-tertiary)] opacity-60 mt-1">
                   安装于 {new Date(sk.installedAt).toLocaleDateString('zh-CN')} · {formatBytes(sk.sizeBytes)}
                 </p>
               </div>
@@ -195,7 +195,7 @@ function InstalledList({
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="text-neutral-500 hover:text-red-400 px-1.5"
+                    className="text-[var(--ema-text-tertiary)] hover:text-[var(--ema-danger)] px-1.5"
                     onClick={() => void onRemove(sk.name)}
                   >
                     <span className="i-mdi:delete-outline text-base" aria-hidden />
@@ -299,8 +299,8 @@ export function SkillsTab(): JSX.Element {
       {/* Header */}
       <div className="flex items-start justify-between shrink-0">
         <div>
-          <h2 className="text-base font-semibold text-neutral-100">技能管理</h2>
-          <p className="text-xs text-neutral-500 mt-0.5">安装并管理自定义技能（Markdown 驱动，含工具权限白名单）</p>
+          <h2 className="text-base font-semibold text-[var(--ema-text-primary)]">技能管理</h2>
+          <p className="text-xs text-[var(--ema-text-tertiary)] mt-0.5">安装并管理自定义技能（Markdown 驱动，含工具权限白名单）</p>
         </div>
         <div className="flex gap-2">
           <Button variant="secondary" size="sm" onClick={() => setInstallMode('url')}

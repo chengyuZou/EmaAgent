@@ -94,17 +94,17 @@ export function VoiceTab({
     <div className="max-w-lg pt-3">
       {/* Current primary */}
       <div className="mb-4">
-        <span className="text-xs text-neutral-400">当前主用：</span>
+        <span className="text-xs text-[var(--ema-text-tertiary)]">当前主用：</span>
         {primary ? (
-          <span className="text-sm text-green-300 ml-1">{primary.label}</span>
+          <span className="text-sm text-[var(--ema-success-text)] ml-1">{primary.label}</span>
         ) : (
-          <span className="text-sm text-neutral-500 ml-1">无</span>
+          <span className="text-sm text-[var(--ema-text-tertiary)] ml-1">无</span>
         )}
       </div>
 
       {/* Audio list */}
       {voiceProfile.refAudios.length === 0 ? (
-        <p className="text-neutral-500 text-sm mb-4">
+        <p className="text-[var(--ema-text-tertiary)] text-sm mb-4">
           尚无参考音频。上传后可用于 GPT-SoVITS 声音复刻。
         </p>
       ) : (
@@ -157,11 +157,11 @@ function RefAudioRow({
   onDelete():   void;
 }): JSX.Element {
   return (
-    <div className="bg-neutral-900/80 ema-glass-weak border border-neutral-800/40 rounded-xl p-3">
+    <div className="bg-[var(--ema-surface-1)] ema-glass-weak border border-[var(--ema-border)] rounded-xl p-3">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <span className={isPrimary ? 'text-green-400' : 'text-neutral-500'}>●</span>
-          <span className="text-sm font-medium">{refAudio.label}</span>
+          <span className={isPrimary ? 'text-[var(--ema-success)]' : 'text-[var(--ema-text-tertiary)]'}>●</span>
+          <span className="text-sm font-medium text-[var(--ema-text-primary)]">{refAudio.label}</span>
         </div>
         <div className="flex gap-1.5">
           <Button
@@ -182,7 +182,7 @@ function RefAudioRow({
           </Button>
         </div>
       </div>
-      <p className="text-xs text-neutral-500 mt-1">
+      <p className="text-xs text-[var(--ema-text-tertiary)] mt-1">
         prompt: "{refAudio.promptText}" · lang: {refAudio.promptLang}
       </p>
     </div>
@@ -216,15 +216,15 @@ function UploadForm({
   }
 
   return (
-    <div className="bg-neutral-900/80 ema-glass-weak border border-neutral-800/40 rounded-2xl p-4">
-      <h3 className="text-sm font-semibold mb-3">上传参考音频</h3>
+    <div className="bg-[var(--ema-surface-1)] ema-glass-weak border border-[var(--ema-border)] rounded-2xl p-4">
+      <h3 className="text-sm font-semibold text-[var(--ema-text-primary)] mb-3">上传参考音频</h3>
       <div className="flex flex-col gap-3">
         {/* File picker — no component equivalent */}
         <input
           type="file"
           accept=".wav,.mp3,.flac,.ogg,.m4a"
           onChange={handleFileChange}
-          className="text-sm text-neutral-300"
+          className="text-sm text-[var(--ema-text-secondary)]"
         />
 
         <Textarea

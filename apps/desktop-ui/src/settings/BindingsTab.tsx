@@ -75,10 +75,10 @@ function ProviderCardRow({
           <button
             key={pcId}
             className={`flex-shrink-0 rounded-xl p-4 min-w-[180px] text-left border-2
-                        active:scale-[0.98] transition-all duration-250 ease-in-out ${
+                        active:scale-[0.98] transition-all duration-[var(--ema-duration-base)] ${
               isSel
-                ? 'bg-primary-500/10 border-primary-400/40 shadow-lg'
-                : 'bg-neutral-900/80 ema-glass-weak border-neutral-800/40 hover:border-primary-400/30 hover:bg-neutral-900/95'
+                ? 'bg-[var(--ema-primary-muted)] border-[var(--ema-primary)] shadow-[var(--ema-shadow-2)]'
+                : 'bg-[var(--ema-surface-1)] ema-glass-weak border-[var(--ema-border)] hover:border-[var(--ema-primary)] hover:bg-[var(--ema-surface-2)]'
             }`}
             onClick={() => onSelect(pcId)}
           >
@@ -86,16 +86,18 @@ function ProviderCardRow({
             <div className="flex items-center gap-2 mb-2">
               <span
                 className={`size-4 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${
-                  isSel ? 'border-primary-400' : 'border-neutral-600'
+                  isSel ? 'border-[var(--ema-primary)]' : 'border-[var(--ema-border-strong)]'
                 }`}
               >
-                {isSel && <span className="size-2 rounded-full bg-primary-400" />}
+                {isSel && <span className="size-2 rounded-full bg-[var(--ema-primary)]" />}
               </span>
-              <span className={`text-sm font-medium truncate ${isSel ? 'text-primary-200' : 'text-neutral-300'}`}>
+              <span className={`text-sm font-medium truncate ${
+                isSel ? 'text-[var(--ema-primary-text)]' : 'text-[var(--ema-text-secondary)]'
+              }`}>
                 {providerName(pcId)}
               </span>
             </div>
-            <p className="text-xs text-neutral-500 truncate">
+            <p className="text-xs text-[var(--ema-text-tertiary)] truncate">
               {isSel ? '已选择' : '点击选择'}
             </p>
           </button>
@@ -221,8 +223,8 @@ export function BindingsTab(): JSX.Element {
     return (
       <div className="flex flex-col gap-6 overflow-y-auto min-h-0">
         <div>
-          <h2 className="text-2xl text-neutral-500">模型绑定</h2>
-          <p className="text-neutral-400 text-sm mt-1">
+          <h2 className="text-2xl text-[var(--ema-text-tertiary)]">模型绑定</h2>
+          <p className="text-[var(--ema-text-tertiary)] text-sm mt-1">
             为每个模块选择要使用的模型。先在"服务来源"启用模型，再在此绑定。
           </p>
         </div>
@@ -233,19 +235,23 @@ export function BindingsTab(): JSX.Element {
             return (
               <button
                 key={m.id}
-                className="bg-neutral-900/80 ema-glass-weak border border-neutral-800/40 rounded-2xl p-5 text-left
-                           hover:border-primary-400/30 hover:bg-neutral-900/95 hover:shadow-lg
-                           active:scale-[0.98] transition-all duration-250 ease-in-out ema-stagger-in"
+                className="bg-[var(--ema-surface-1)] ema-glass-weak border border-[var(--ema-border)]
+                           rounded-2xl p-5 text-left
+                           hover:border-[var(--ema-primary)] hover:bg-[var(--ema-surface-2)]
+                           hover:shadow-[var(--ema-shadow-2)]
+                           active:scale-[0.98] transition-all duration-[var(--ema-duration-base)] ema-stagger-in"
                 style={{ '--stagger-i': i } as React.CSSProperties}
                 onClick={() => goDetail(m.id)}
               >
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-base font-medium text-neutral-200 group-hover:text-primary-300">{m.label}</span>
-                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-neutral-800/60 text-neutral-400 uppercase tracking-wide">
+                  <span className="text-base font-medium text-[var(--ema-text-primary)]">{m.label}</span>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full
+                                   bg-[var(--ema-surface-3)] text-[var(--ema-text-tertiary)]
+                                   uppercase tracking-wide">
                     {CAP_LABELS[cap] ?? cap}
                   </span>
                 </div>
-                <p className="text-xs text-neutral-500">点击配置 →</p>
+                <p className="text-xs text-[var(--ema-text-tertiary)]">点击配置 →</p>
               </button>
             );
           })}
@@ -270,8 +276,10 @@ export function BindingsTab(): JSX.Element {
           onClick={goGrid}
         />
         <div>
-          <h2 className="text-2xl text-neutral-500">{moduleLabel} 绑定
-            <span className="text-[10px] px-2 py-0.5 rounded-full bg-neutral-800 text-neutral-400 ml-2 align-middle uppercase">
+          <h2 className="text-2xl text-[var(--ema-text-tertiary)]">{moduleLabel} 绑定
+            <span className="text-[10px] px-2 py-0.5 rounded-full
+                             bg-[var(--ema-surface-2)] text-[var(--ema-text-tertiary)]
+                             ml-2 align-middle uppercase">
               {CAP_LABELS[cap] ?? cap}
             </span>
           </h2>
@@ -279,18 +287,20 @@ export function BindingsTab(): JSX.Element {
       </div>
 
       {loading ? (
-        <div className="text-neutral-500 text-sm">加载中…</div>
+        <div className="text-[var(--ema-text-tertiary)] text-sm">加载中…</div>
       ) : (
         <>
           {/* ── Current binding ──────────────────────────────────────────── */}
           <section className="flex flex-col gap-2">
-            <h3 className="text-sm text-neutral-400">已绑定</h3>
+            <h3 className="text-sm text-[var(--ema-text-tertiary)]">已绑定</h3>
             {currentBinding ? (
-              <div className="flex items-center justify-between bg-primary-500/10 border-2 border-primary-400/40 rounded-xl px-4 py-3">
+              <div className="flex items-center justify-between
+                              bg-[var(--ema-primary-muted)] border-2 border-[var(--ema-primary)]
+                              rounded-xl px-4 py-3">
                 <div className="flex items-center gap-2 text-sm min-w-0">
-                  <span className="text-neutral-300 truncate">{providerName(currentBinding.providerConfigId)}</span>
-                  <span className="text-neutral-500 flex-shrink-0">/</span>
-                  <span className="font-mono text-primary-300 truncate">{currentBinding.model}</span>
+                  <span className="text-[var(--ema-text-secondary)] truncate">{providerName(currentBinding.providerConfigId)}</span>
+                  <span className="text-[var(--ema-text-tertiary)] flex-shrink-0">/</span>
+                  <span className="font-mono text-[var(--ema-primary)] truncate">{currentBinding.model}</span>
                 </div>
                 <Button
                   variant="danger"
@@ -302,19 +312,19 @@ export function BindingsTab(): JSX.Element {
                 </Button>
               </div>
             ) : (
-              <p className="text-neutral-500 text-sm">暂无绑定，请从下方选择</p>
+              <p className="text-[var(--ema-text-tertiary)] text-sm">暂无绑定，请从下方选择</p>
             )}
           </section>
 
           {/* ── Pool area ────────────────────────────────────────────────── */}
           {!hasPool ? (
-            <p className="text-neutral-500 text-sm">
+            <p className="text-[var(--ema-text-tertiary)] text-sm">
               {cap === 'vision' ? 'Vision 模型暂不支持启用池。' : '此能力暂不支持启用池。'}
             </p>
           ) : pool.length === 0 ? (
-            <div className="bg-neutral-900 border border-neutral-800 rounded-xl px-4 py-6 text-center">
-              <p className="text-neutral-400 text-sm">尚无已启用的 {CAP_LABELS[cap] ?? cap} 模型</p>
-              <p className="text-neutral-500 text-xs mt-1">
+            <div className="bg-[var(--ema-surface-1)] border border-[var(--ema-border)] rounded-xl px-4 py-6 text-center">
+              <p className="text-[var(--ema-text-tertiary)] text-sm">尚无已启用的 {CAP_LABELS[cap] ?? cap} 模型</p>
+              <p className="text-[var(--ema-text-tertiary)] text-xs opacity-70 mt-1">
                 请先到"服务来源"打开对应能力的 provider，启用要用的模型。
               </p>
             </div>
@@ -322,7 +332,7 @@ export function BindingsTab(): JSX.Element {
             <>
               {/* Provider cards */}
               <section className="flex flex-col gap-3">
-                <h3 className="text-sm text-neutral-400">服务来源</h3>
+                <h3 className="text-sm text-[var(--ema-text-tertiary)]">服务来源</h3>
                 <ProviderCardRow
                   providerIds={poolProviderIds}
                   providerName={providerName}
@@ -334,13 +344,17 @@ export function BindingsTab(): JSX.Element {
               {/* Model grid with search */}
               <section className="flex flex-col gap-4">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-sm text-neutral-400">模型</h3>
-                  <span className="text-[10px] text-neutral-600">{visibleModels.length} 个</span>
+                  <h3 className="text-sm text-[var(--ema-text-tertiary)]">模型</h3>
+                  <span className="text-[10px] text-[var(--ema-text-tertiary)] opacity-50">
+                    {visibleModels.length} 个
+                  </span>
                 </div>
 
                 {/* Search */}
                 <div className="relative w-full">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 i-solar:magnifer-line-duotone w-4 h-4 text-neutral-500 pointer-events-none" aria-hidden />
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2
+                                   i-solar:magnifer-line-duotone w-4 h-4
+                                   text-[var(--ema-text-tertiary)] pointer-events-none" aria-hidden />
                   <Input
                     className="pl-10"
                     placeholder="搜索模型..."
@@ -360,10 +374,11 @@ export function BindingsTab(): JSX.Element {
                       <button
                         key={key}
                         disabled={isBound || isSaving}
-                        className={`rounded-xl p-3.5 text-left border-2 transition-colors ${
+                        className={`rounded-xl p-3.5 text-left border-2 transition-all
+                                    duration-[var(--ema-duration-base)] ${
                           isBound
-                            ? 'bg-primary-500/10 border-primary-400/40'
-                            : 'bg-neutral-900/60 border-neutral-800 hover:border-primary-400/30'
+                            ? 'bg-[var(--ema-primary-muted)] border-[var(--ema-primary)]'
+                            : 'bg-[var(--ema-surface-1)] border-[var(--ema-border)] hover:border-[var(--ema-primary)]'
                         } disabled:cursor-default`}
                         onClick={() => handleSelect(m.providerConfigId, m.model)}
                       >
@@ -371,16 +386,18 @@ export function BindingsTab(): JSX.Element {
                           {/* Radio dot */}
                           <span
                             className={`mt-0.5 size-4 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${
-                              isBound ? 'border-primary-400' : 'border-neutral-600'
+                              isBound ? 'border-[var(--ema-primary)]' : 'border-[var(--ema-border-strong)]'
                             }`}
                           >
-                            {isBound && <span className="size-2 rounded-full bg-primary-400" />}
+                            {isBound && <span className="size-2 rounded-full bg-[var(--ema-primary)]" />}
                           </span>
                           <div className="min-w-0 flex flex-col gap-0.5">
-                            <span className={`text-sm truncate ${isBound ? 'text-primary-200' : 'text-neutral-200'}`}>
+                            <span className={`text-sm truncate ${
+                              isBound ? 'text-[var(--ema-primary-text)]' : 'text-[var(--ema-text-primary)]'
+                            }`}>
                               {m.model}
                             </span>
-                            <span className="text-xs text-neutral-500">
+                            <span className="text-xs text-[var(--ema-text-tertiary)]">
                               {m.contextWindow > 0 && `${(m.contextWindow / 1000).toFixed(0)}K`}
                               {m.dim !== undefined && m.dim > 0 && ` · ${m.dim}d`}
                               {isSaving && ' · 保存中…'}
@@ -393,7 +410,7 @@ export function BindingsTab(): JSX.Element {
                 </div>
 
                 {visibleModels.length === 0 && searchQuery && (
-                  <p className="text-neutral-500 text-sm text-center py-4">未找到匹配的模型</p>
+                  <p className="text-[var(--ema-text-tertiary)] text-sm text-center py-4">未找到匹配的模型</p>
                 )}
               </section>
             </>

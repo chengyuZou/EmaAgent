@@ -24,17 +24,17 @@ interface ModelPickerProps {
 /** Format context window for compact display. */
 function fmtCtx(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 10_000)   return `${Math.round(n / 1000)}K`;
-  if (n >= 1000)     return `${(n / 1000).toFixed(1)}K`;
+  if (n >= 10_000)    return `${Math.round(n / 1000)}K`;
+  if (n >= 1_000)     return `${(n / 1000).toFixed(1)}K`;
   return `${n}`;
 }
 
 export function ModelPicker({ selected, onSelect, onClear }: ModelPickerProps): JSX.Element {
-  const [open, setOpen]         = useState(false);
-  const [models, setModels]     = useState<EnabledModelWire[]>([]);
-  const [search, setSearch]     = useState('');
-  const [loading, setLoading]   = useState(true);
-  const searchRef               = useRef<HTMLInputElement>(null);
+  const [open, setOpen]       = useState(false);
+  const [models, setModels]   = useState<EnabledModelWire[]>([]);
+  const [search, setSearch]   = useState('');
+  const [loading, setLoading] = useState(true);
+  const searchRef             = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     modelsApi.listEnabled()
@@ -55,7 +55,7 @@ export function ModelPicker({ selected, onSelect, onClear }: ModelPickerProps): 
   const grouped = useMemo(() => {
     const q = search.trim().toLowerCase();
     const filtered = q
-      ? models.filter(m =>
+      ? models.filter((m) =>
           m.model.toLowerCase().includes(q) ||
           m.providerName.toLowerCase().includes(q),
         )
@@ -67,13 +67,13 @@ export function ModelPicker({ selected, onSelect, onClear }: ModelPickerProps): 
       list.push(m);
       map.set(m.providerId, list);
     }
-    return [...map.entries()].sort(([,a], [,b]) =>
+    return [...map.entries()].sort(([, a], [, b]) =>
       (a[0]?.providerName ?? '').localeCompare(b[0]?.providerName ?? ''),
     );
   }, [models, search]);
 
   const selectedModel = selected
-    ? models.find(m => m.providerId === selected.providerId && m.model === selected.model)
+    ? models.find((m) => m.providerId === selected.providerId && m.model === selected.model)
     : null;
 
   const triggerLabel = selectedModel
@@ -88,7 +88,10 @@ export function ModelPicker({ selected, onSelect, onClear }: ModelPickerProps): 
     <div className="relative">
       {/* Trigger button */}
       <button
-        className="flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs text-gray-400 hover:text-gray-200 hover:bg-gray-800 transition-colors max-w-48"
+        className="flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs max-w-48
+                   text-[var(--ema-text-tertiary)] hover:text-[var(--ema-text-primary)]
+                   hover:bg-[var(--ema-surface-2)]
+                   transition-colors duration-[var(--ema-duration-base)]"
         onClick={() => setOpen(!open)}
         title={triggerTitle}
       >
@@ -102,22 +105,30 @@ export function ModelPicker({ selected, onSelect, onClear }: ModelPickerProps): 
         <>
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
 
-          <div className="absolute bottom-full left-0 mb-1 z-50 w-72 max-h-72 flex flex-col rounded-xl bg-gray-850 border border-gray-700 shadow-2xl">
+          <div
+            className="ema-slide-up absolute bottom-full left-0 mb-1 z-50
+                       w-72 max-h-72 flex flex-col rounded-xl
+                       bg-[var(--ema-surface-4)] border border-[var(--ema-border)]
+                       shadow-[var(--ema-shadow-3)]"
+          >
             {/* Search + clear */}
-            <div className="flex items-center gap-1 px-3 py-2 border-b border-gray-700/60 shrink-0">
+            <div className="flex items-center gap-1 px-3 py-2 border-b border-[var(--ema-border)] shrink-0">
               <input
                 ref={searchRef}
-                className="flex-1 bg-transparent text-xs text-gray-200 placeholder-gray-500 outline-none"
+                className="flex-1 bg-transparent text-xs outline-none
+                           text-[var(--ema-text-primary)] placeholder-[var(--ema-text-tertiary)]"
                 placeholder="搜索模型…"
                 value={search}
-                onChange={e => setSearch(e.target.value)}
-                onKeyDown={e => {
-                  if (e.key === 'Escape') { setOpen(false); }
+                onChange={(e) => setSearch(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') setOpen(false);
                 }}
               />
               {selected && (
                 <button
-                  className="shrink-0 text-[10px] text-gray-500 hover:text-red-400 px-1 transition-colors"
+                  className="shrink-0 text-[10px] px-1
+                             text-[var(--ema-text-tertiary)] hover:text-[var(--ema-danger)]
+                             transition-colors duration-[var(--ema-duration-base)]"
                   onClick={() => {
                     onClear();
                     useUiStore.getState().setSelectedContextWindow(null);
@@ -130,31 +141,34 @@ export function ModelPicker({ selected, onSelect, onClear }: ModelPickerProps): 
               )}
             </div>
 
-            {/* Model list with ScrollArea */}
+            {/* Model list */}
             <ScrollArea orientation="vertical" className="flex-1" viewportClassName="py-1">
               {loading ? (
-                <div className="px-3 py-6 text-xs text-gray-500 text-center">加载中…</div>
+                <div className="px-3 py-6 text-xs text-[var(--ema-text-tertiary)] text-center">加载中…</div>
               ) : grouped.length === 0 ? (
-                <div className="px-3 py-6 text-xs text-gray-500 text-center">
+                <div className="px-3 py-6 text-xs text-[var(--ema-text-tertiary)] text-center">
                   {search ? '无匹配结果' : '暂无已启用的模型'}
                 </div>
               ) : (
                 grouped.map(([providerId, providerModels]) => (
                   <div key={providerId}>
                     {/* Provider group header */}
-                    <div className="px-3 pt-2 pb-0.5 text-[10px] text-gray-500 font-medium uppercase tracking-wider select-none">
+                    <div className="px-3 pt-2 pb-0.5 text-[10px] font-medium uppercase tracking-wider select-none
+                                    text-[var(--ema-text-tertiary)]">
                       {providerModels[0]?.providerName ?? providerId}
                     </div>
-                    {providerModels.map(m => {
-                      const isSelected = selected?.providerId === m.providerId && selected?.model === m.model;
+                    {providerModels.map((m) => {
+                      const isSelected =
+                        selected?.providerId === m.providerId && selected?.model === m.model;
                       return (
                         <button
                           key={`${m.providerId}:${m.model}`}
                           className={
-                            'w-full flex items-center gap-2 text-left px-3 py-1.5 text-xs transition-colors' +
+                            'w-full flex items-center gap-2 text-left px-3 py-1.5 text-xs ' +
+                            `transition-colors duration-[var(--ema-duration-base)] ` +
                             (isSelected
-                              ? ' text-pink-300 bg-pink-400/10'
-                              : ' text-gray-300 hover:bg-gray-750')
+                              ? 'text-[var(--ema-primary)] bg-[var(--ema-primary-muted)]'
+                              : 'text-[var(--ema-text-secondary)] hover:bg-[var(--ema-surface-3)] hover:text-[var(--ema-text-primary)]')
                           }
                           onClick={() => {
                             onSelect({ providerId: m.providerId, model: m.model });
@@ -163,10 +177,13 @@ export function ModelPicker({ selected, onSelect, onClear }: ModelPickerProps): 
                           }}
                         >
                           <span className="flex-1 truncate">{m.model}</span>
-                          <span className="shrink-0 text-[10px] text-gray-500 font-mono tabular-nums">
+                          <span className="shrink-0 text-[10px] font-mono tabular-nums
+                                           text-[var(--ema-text-tertiary)]">
                             {fmtCtx(m.contextWindow)}
                           </span>
-                          {isSelected && <span className="text-pink-400 text-[10px] shrink-0">✓</span>}
+                          {isSelected && (
+                            <span className="text-[var(--ema-primary)] text-[10px] shrink-0">✓</span>
+                          )}
                         </button>
                       );
                     })}

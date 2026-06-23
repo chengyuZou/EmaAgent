@@ -17,8 +17,8 @@ export function ShortcutsTab(): JSX.Element {
 
   return (
     <div>
-      <h2 className="text-lg font-semibold text-neutral-100 mb-3">快捷键</h2>
-      <div className="text-xs text-neutral-500 mb-4">V1 不可自定义，V1.5 将支持自定义绑定</div>
+      <h2 className="text-lg font-semibold text-[var(--ema-text-primary)] mb-3">快捷键</h2>
+      <div className="text-xs text-[var(--ema-text-tertiary)] mb-4">V1 不可自定义，V1.5 将支持自定义绑定</div>
       <div className="flex flex-col gap-1 max-w-md">
         {shortcuts.map((s) => (
           <Card
@@ -27,8 +27,8 @@ export function ShortcutsTab(): JSX.Element {
             padding="none"
             className="flex items-center justify-between px-4 py-2"
           >
-            <span className="text-sm text-neutral-300">{s.action}</span>
-            <kbd className="px-2 py-0.5 rounded-lg bg-neutral-800 text-xs text-neutral-400 font-mono">{s.keys}</kbd>
+            <span className="text-sm text-[var(--ema-text-secondary)]">{s.action}</span>
+            <kbd className="px-2 py-0.5 rounded-lg bg-[var(--ema-surface-2)] text-xs text-[var(--ema-text-tertiary)] font-mono">{s.keys}</kbd>
           </Card>
         ))}
       </div>

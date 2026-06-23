@@ -63,7 +63,7 @@ export function IdentityTab({ card }: { card: CharacterCard }): JSX.Element {
       </Field>
 
       {isBuiltin && (
-        <p className="text-xs text-amber-400">内置角色卡不可修改身份信息，可复制后修改。</p>
+        <p className="text-xs text-[var(--ema-warning)]">内置角色卡不可修改身份信息，可复制后修改。</p>
       )}
 
       {!isBuiltin && (

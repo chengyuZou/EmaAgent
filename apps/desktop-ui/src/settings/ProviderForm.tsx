@@ -133,15 +133,14 @@ export function ProviderForm({
         {/* ── 基础配置 ──────────────────────────────────────────────────────── */}
         <section className="flex flex-col gap-6">
           <div>
-            <h2 className="text-2xl text-neutral-400">基础配置</h2>
-            <p className="text-sm text-neutral-500 mt-0.5">基本设置</p>
+            <h2 className="text-2xl text-[var(--ema-text-tertiary)]">基础配置</h2>
+            <p className="text-sm text-[var(--ema-text-tertiary)] mt-0.5">基本设置</p>
           </div>
 
-          {/* API 密钥 */}
           <div className="flex flex-col gap-2">
             <div>
-              <div className="text-sm font-medium text-neutral-300">API 密钥</div>
-              <div className="text-xs text-neutral-500 mt-0.5">
+              <div className="text-sm font-medium text-[var(--ema-text-secondary)]">API 密钥</div>
+              <div className="text-xs text-[var(--ema-text-tertiary)] mt-0.5">
                 API Key for {definition?.name ?? definitionId}
               </div>
             </div>
@@ -170,17 +169,16 @@ export function ProviderForm({
 
         {/* ── 高级配置（默认折叠）────────────────────────────────────────────── */}
         <section className="flex flex-col gap-4">
-          {/* Accordion toggle — bare button is intentional here (h-auto layout) */}
           <button
             type="button"
             className="flex items-center gap-1.5 text-left outline-none group"
             onClick={() => setAdvancedOpen((v) => !v)}
           >
-            <h2 className="text-2xl text-neutral-400 group-hover:text-neutral-300 transition-colors duration-200">
+            <h2 className="text-2xl text-[var(--ema-text-tertiary)] group-hover:text-[var(--ema-text-secondary)] transition-colors duration-[var(--ema-duration-base)]">
               高级配置
             </h2>
             <span
-              className="i-solar:alt-arrow-down-linear text-neutral-500 group-hover:text-neutral-400 transition-transform duration-200"
+              className="i-solar:alt-arrow-down-linear text-[var(--ema-text-tertiary)] group-hover:text-[var(--ema-text-secondary)] transition-transform duration-[var(--ema-duration-base)]"
               style={{ transform: advancedOpen ? 'rotate(180deg)' : 'rotate(0deg)' }}
               aria-hidden
             />
@@ -190,7 +188,7 @@ export function ProviderForm({
             <div className="flex flex-col gap-4 mt-1">
               {protocolChoices.length > 1 && (
                 <div className="flex flex-col gap-2">
-                  <div className="text-sm font-medium text-neutral-300">协议</div>
+                  <div className="text-sm font-medium text-[var(--ema-text-secondary)]">协议</div>
                   <Select
                     value={selectedProtocol}
                     onChange={handleProtocolChange}
@@ -201,8 +199,8 @@ export function ProviderForm({
 
               <div className="flex flex-col gap-2">
                 <div>
-                  <div className="text-sm font-medium text-neutral-300">Base URL</div>
-                  <div className="text-xs text-neutral-500 mt-0.5">自定义服务地址（可选）</div>
+                  <div className="text-sm font-medium text-[var(--ema-text-secondary)]">Base URL</div>
+                  <div className="text-xs text-[var(--ema-text-tertiary)] mt-0.5">自定义服务地址（可选）</div>
                 </div>
                 <Input
                   placeholder={defaultUrlFor(selectedProtocol) || 'https://...'}
@@ -216,7 +214,9 @@ export function ProviderForm({
 
         {/* ── 验证状态条 ────────────────────────────────────────────────────── */}
         {instance && probeOk === false && probeMsg && (
-          <div className="flex items-center justify-between rounded-lg bg-red-500/10 border border-red-500/20 px-3 py-2 text-sm text-red-400">
+          <div className="flex items-center justify-between rounded-lg
+                          bg-[var(--ema-danger-muted)] border border-[var(--ema-danger)]
+                          px-3 py-2 text-sm text-[var(--ema-danger-text)]">
             <div className="flex items-center gap-2">
               <span className="i-solar:danger-circle-linear shrink-0" aria-hidden />
               <span>{probeMsg}</span>
@@ -263,31 +263,31 @@ export function ProviderForm({
       {/* ── 模型池 ───────────────────────────────────────────────────────────── */}
       {instance && activeCap === 'llm' && (
         <>
-          <div className="border-t border-neutral-800" />
+          <div className="border-t border-[var(--ema-border)]" />
           <LlmModelManager providerId={instance.id} />
         </>
       )}
       {instance && activeCap === 'embed' && (
         <>
-          <div className="border-t border-neutral-800" />
+          <div className="border-t border-[var(--ema-border)]" />
           <EmbedModelManager providerId={instance.id} />
         </>
       )}
       {instance && activeCap === 'rerank' && (
         <>
-          <div className="border-t border-neutral-800" />
+          <div className="border-t border-[var(--ema-border)]" />
           <RerankModelManager providerId={instance.id} />
         </>
       )}
       {instance && activeCap === 'tts' && (
         <>
-          <div className="border-t border-neutral-800" />
+          <div className="border-t border-[var(--ema-border)]" />
           <TtsModelManager providerId={instance.id} />
         </>
       )}
       {instance && activeCap === 'stt' && (
         <>
-          <div className="border-t border-neutral-800" />
+          <div className="border-t border-[var(--ema-border)]" />
           <SttModelManager providerId={instance.id} />
         </>
       )}

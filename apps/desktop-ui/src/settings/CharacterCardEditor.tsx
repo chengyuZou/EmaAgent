@@ -39,14 +39,16 @@ export function CharacterCardEditor({ card, onActivate }: CharacterCardEditorPro
     <div>
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-lg font-semibold">{card.name}</h2>
+        <h2 className="text-lg font-semibold text-[var(--ema-text-primary)]">{card.name}</h2>
         <div className="flex items-center gap-2">
           {card.isActive ? (
-            <span className="text-xs text-green-400 px-2 py-1 rounded-lg bg-green-400/10">当前使用</span>
+            <span className="text-xs text-[var(--ema-success-text)] px-2 py-1 rounded-lg bg-[var(--ema-success-muted)]">
+              当前使用
+            </span>
           ) : (
             <Button variant="primary" size="sm" onClick={onActivate}>切换至此</Button>
           )}
-          <span className="text-xs text-neutral-500">v{card.version}</span>
+          <span className="text-xs text-[var(--ema-text-tertiary)]">v{card.version}</span>
         </div>
       </div>
 

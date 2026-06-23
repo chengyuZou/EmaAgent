@@ -49,8 +49,10 @@ export function RerankModelManager({ providerId }: { providerId: string }): JSX.
     <div className="flex flex-col gap-3 mt-2">
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="text-sm font-medium text-neutral-200">重排序模型</h3>
-          <p className="text-xs text-neutral-500 mt-0.5">启用的模型可在「模型绑定」里分配给 rerank 模块。</p>
+          <h3 className="text-sm font-medium text-[var(--ema-text-primary)]">重排序模型</h3>
+          <p className="text-xs text-[var(--ema-text-tertiary)] mt-0.5">
+            启用的模型可在「模型绑定」里分配给 rerank 模块。
+          </p>
         </div>
         <Button variant="ghost" size="sm" onClick={() => void load()} disabled={loading}>
           <span className="i-mdi:refresh text-base" aria-hidden />
@@ -63,12 +65,18 @@ export function RerankModelManager({ providerId }: { providerId: string }): JSX.
       {!loading && (
         <div className="flex flex-col gap-1.5">
           {models.length === 0 && (
-            <p className="text-xs text-neutral-500 py-2">该供应商暂无内置重排序模型。</p>
+            <p className="text-xs text-[var(--ema-text-tertiary)] py-2">该供应商暂无内置重排序模型。</p>
           )}
           {models.map((m) => (
-            <div key={m.id} className="flex items-center justify-between bg-neutral-900/80 ema-glass-weak rounded-xl px-3 py-2 border border-neutral-800/40 hover:border-neutral-700/40 active:scale-[0.98] transition-all duration-250">
+            <div
+              key={m.id}
+              className="flex items-center justify-between bg-[var(--ema-surface-1)] ema-glass-weak
+                         rounded-xl px-3 py-2 border border-[var(--ema-border)]
+                         hover:border-[var(--ema-border-hover)] active:scale-[0.98]
+                         transition-all duration-[var(--ema-duration-base)]"
+            >
               <div className="flex items-center gap-2 min-w-0">
-                <span className="text-sm text-neutral-200 font-mono truncate">{m.id}</span>
+                <span className="text-sm text-[var(--ema-text-primary)] font-mono truncate">{m.id}</span>
                 {m.maxChunks != null && <Badge variant="neutral">max {m.maxChunks} chunks</Badge>}
               </div>
               <Switch

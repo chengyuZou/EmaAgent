@@ -1,10 +1,5 @@
 /**
  * ProvidersTab — AIRI-style provider grid grouped by capability.
- *
- * Level 1: capability sections (LLM / Embed / TTS / …), each a 2-column grid
- * of MenuStatusItem cards with the provider's brand icon and a configured
- * status dot. Level 2 (click a card): instance management for that provider
- * definition — list, add, edit, delete — with a back arrow.
  */
 import React, { useState, useEffect } from 'react';
 import { Button, Callout, IconButton, MenuStatusItem } from '@ema-agent/ui';
@@ -44,9 +39,6 @@ export function ProvidersTab(): JSX.Element {
   const providers = useSettingsStore((s) => s.providers);
   const [definitions, setDefinitions] = useState<ProviderDefinition[]>([]);
   const [selectedDef, setSelectedDef] = useState<string | null>(null);
-  // Which capability section the user entered from. ProviderForm renders ONLY
-  // this capability's config — without it, a multi-capability provider (e.g.
-  // SiliconFlow = llm+embed+tts+stt) showed the TTS block in every section.
   const [selectedCapability, setSelectedCapability] = useState<Capability | null>(null);
 
   useEffect(() => {
@@ -55,10 +47,7 @@ export function ProvidersTab(): JSX.Element {
 
   const selectedDefinition = definitions.find((d) => d.id === selectedDef);
 
-  // ── Level 2: instance management ──────────────────────────────────────────
   if (selectedDef && selectedDefinition) {
-    // One config per provider (no multi-instance — AIRI-style). The single
-    // config row, or null when not yet configured.
     const config = providers.find((p) => p.definitionId === selectedDef) ?? null;
     return (
       <ProviderConfigPanel
@@ -70,10 +59,7 @@ export function ProvidersTab(): JSX.Element {
     );
   }
 
-  // ── Level 1: capability grid ──────────────────────────────────────────────
   const anyConfigured = providers.length > 0;
-
-  // Global card index for stagger delay across all sections
   let cardIdx = 0;
 
   return (
@@ -92,17 +78,15 @@ export function ProvidersTab(): JSX.Element {
 
         return (
           <section key={section.key}>
-            {/* Section header — subtle slide-down */}
             <div className="flex items-center gap-3 mb-4 ema-stagger-in"
               style={{ '--stagger-i': cardIdx } as React.CSSProperties}>
-              <span className={`${section.icon} text-4xl text-neutral-500`} aria-hidden />
+              <span className={`${section.icon} text-4xl text-[var(--ema-text-tertiary)]`} aria-hidden />
               <div>
-                <p className="text-sm text-neutral-500">{section.description}</p>
-                <h3 className="text-2xl font-normal text-neutral-100">{section.label}</h3>
+                <p className="text-sm text-[var(--ema-text-tertiary)]">{section.description}</p>
+                <h3 className="text-2xl font-normal text-[var(--ema-text-primary)]">{section.label}</h3>
               </div>
             </div>
 
-            {/* Provider grid — each card staggers in */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {sectionDefs.map((def) => {
                 const instances = providers.filter((p) => p.definitionId === def.id);
@@ -129,10 +113,6 @@ export function ProvidersTab(): JSX.Element {
 }
 
 // ── Provider config panel (level 2) ──────────────────────────────────────────
-//
-// One config per provider (AIRI-style — no multi-instance). The form is always
-// open, editing the single config (or creating it on first save). When a config
-// exists, a configured dot + latency + delete are shown in the header.
 
 function ProviderConfigPanel({
   definition, capability, config, onBack,
@@ -155,7 +135,6 @@ function ProviderConfigPanel({
 
   return (
     <div className="flex flex-col gap-4 pb-10">
-      {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <IconButton
@@ -166,23 +145,30 @@ function ProviderConfigPanel({
             onClick={onBack}
           />
           <span className={`${definition.iconKey ?? 'i-solar:box-bold-duotone'} text-3xl`} aria-hidden />
-          <h2 className="text-xl font-medium text-neutral-100">{definition.name}</h2>
+          <h2 className="text-xl font-medium text-[var(--ema-text-primary)]">{definition.name}</h2>
           {config && (
-            <span className={`size-2 rounded-full ${config.health?.status === 'ok' ? 'bg-green-400' : 'bg-red-400'}`} />
+            <span className={`size-2 rounded-full ${
+              config.health?.status === 'ok'
+                ? 'bg-[var(--ema-success)]'
+                : 'bg-[var(--ema-danger)]'
+            }`} />
           )}
           {config?.health?.latencyMs != null && (
-            <span className="text-xs text-neutral-500">{config.health.latencyMs}ms</span>
+            <span className="text-xs text-[var(--ema-text-tertiary)]">{config.health.latencyMs}ms</span>
           )}
         </div>
         {config && (
-          <Button variant="ghost" size="sm" className="text-neutral-500 hover:text-red-400" onClick={handleDelete}>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-[var(--ema-text-tertiary)] hover:text-[var(--ema-danger)]"
+            onClick={handleDelete}
+          >
             删除
           </Button>
         )}
       </div>
 
-      {/* Single config form — remounts (key) when the config is first created
-          so the masked-key state and the model manager pick up the new id. */}
       <ProviderForm
         key={config?.id ?? 'new'}
         definitionId={definition.id}

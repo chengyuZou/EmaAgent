@@ -1,13 +1,5 @@
 /**
- * LlmModelManager — the model list shown under a provider's LLM config.
- *
- * Lists models the provider exposes (live /v1/models or static defaults), each
- * with its context window + an enable/disable toggle. Enabled models feed the
- * binding picker. A manual-add box (with token-table autocomplete) covers
- * models the live list misses.
- *
- * Context window is mandatory: enabling a model whose window is unknown forces
- * the user to type one first (memory budgeting depends on it).
+ * LlmModelManager — model list under a provider's LLM config.
  */
 import { useState, useEffect, useCallback, type JSX } from 'react';
 import { Badge, Button, Callout, Divider, Input, Spinner, Switch } from '@ema-agent/ui';
@@ -96,8 +88,8 @@ export function LlmModelManager({ providerId }: { providerId: string }): JSX.Ele
 
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="text-sm font-medium text-neutral-200">模型</h3>
-          <p className="text-xs text-neutral-500 mt-0.5">
+          <h3 className="text-sm font-medium text-[var(--ema-text-primary)]">模型</h3>
+          <p className="text-xs text-[var(--ema-text-tertiary)] mt-0.5">
             启用的模型才能在「模型绑定」里分配给 Chat、Agent 等模块。
             {source === 'catalog' && '（显示内置推荐）'}
           </p>
@@ -107,9 +99,9 @@ export function LlmModelManager({ providerId }: { providerId: string }): JSX.Ele
         </Button>
       </div>
 
-      {/* 搜索框 */}
       <div className="relative">
-        <span className="i-solar:magnifer-linear absolute left-3 top-1/2 -translate-y-1/2 text-neutral-500 text-sm pointer-events-none" aria-hidden />
+        <span className="i-solar:magnifer-linear absolute left-3 top-1/2 -translate-y-1/2
+                         text-[var(--ema-text-tertiary)] text-sm pointer-events-none" aria-hidden />
         <Input
           className="pl-8"
           placeholder="搜索模型…"
@@ -125,9 +117,12 @@ export function LlmModelManager({ providerId }: { providerId: string }): JSX.Ele
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
           {filtered.map((m) => (
             <div key={m.id}>
-              <div className="flex items-center justify-between bg-neutral-900/80 ema-glass-weak rounded-xl px-3 py-2.5 border border-neutral-800/40 hover:border-neutral-700/40 active:scale-[0.98] transition-all duration-250">
+              <div className="flex items-center justify-between bg-[var(--ema-surface-1)] ema-glass-weak
+                              rounded-xl px-3 py-2.5 border border-[var(--ema-border)]
+                              hover:border-[var(--ema-border-hover)] active:scale-[0.98]
+                              transition-all duration-[var(--ema-duration-base)]">
                 <div className="flex items-center gap-2 min-w-0 flex-1">
-                  <span className="text-sm text-neutral-200 font-mono truncate">{m.id}</span>
+                  <span className="text-sm text-[var(--ema-text-primary)] font-mono truncate">{m.id}</span>
                   {m.contextWindow != null && (
                     <Badge variant="neutral">{(m.contextWindow / 1000).toFixed(0)}K ctx</Badge>
                   )}
@@ -137,7 +132,7 @@ export function LlmModelManager({ providerId }: { providerId: string }): JSX.Ele
 
               {pendingModel === m.id && (
                 <div className="flex items-center gap-2 mt-1.5 px-1">
-                  <span className="text-xs text-neutral-400 shrink-0">上下文窗口 (token)</span>
+                  <span className="text-xs text-[var(--ema-text-tertiary)] shrink-0">上下文窗口 (token)</span>
                   <Input
                     inputSize="sm"
                     type="number"
@@ -200,7 +195,7 @@ function ManualAddModel({ onAdd, existing, available }: {
 
   return (
     <div className="mt-1">
-      <p className="text-xs text-neutral-500 mb-1.5">手动添加模型（列表里没有的）</p>
+      <p className="text-xs text-[var(--ema-text-tertiary)] mb-1.5">手动添加模型（列表里没有的）</p>
       <div className="relative flex gap-2">
         <div className="relative flex-1">
           <Input
@@ -216,16 +211,23 @@ function ManualAddModel({ onAdd, existing, available }: {
             }}
           />
           {suggestions.length > 0 && (
-            <div className="absolute z-20 left-0 right-0 top-full mt-1 bg-neutral-900/95 ema-glass-base border border-neutral-700/50 rounded-lg shadow-xl overflow-hidden">
+            <div className="absolute z-20 left-0 right-0 top-full mt-1
+                            bg-[var(--ema-surface-4)] ema-glass-base
+                            border border-[var(--ema-border)] rounded-lg
+                            shadow-[var(--ema-shadow-3)] overflow-hidden">
               {suggestions.map((s) => (
                 <button
                   key={s.id}
                   type="button"
-                  className="w-full flex items-center justify-between px-3 py-1.5 text-left hover:bg-neutral-800/70 transition-colors"
+                  className="w-full flex items-center justify-between px-3 py-1.5 text-left
+                             hover:bg-[var(--ema-surface-3)]
+                             transition-colors duration-[var(--ema-duration-fast)]"
                   onClick={() => pick(s.id, s.contextWindow)}
                 >
                   <span className="text-sm font-mono">{highlight(s.id, query.trim())}</span>
-                  <span className="text-xs text-neutral-500">{(s.contextWindow / 1000).toFixed(0)}K</span>
+                  <span className="text-xs text-[var(--ema-text-tertiary)]">
+                    {(s.contextWindow / 1000).toFixed(0)}K
+                  </span>
                 </button>
               ))}
             </div>
@@ -245,15 +247,16 @@ function ManualAddModel({ onAdd, existing, available }: {
   );
 }
 
-/** Highlight the matched substring in primary palette. */
 function highlight(text: string, query: string): JSX.Element {
   const q = query.toLowerCase();
   const idx = text.toLowerCase().indexOf(q);
-  if (!q || idx === -1) return <span className="text-neutral-300">{text}</span>;
+  if (!q || idx === -1) return <span className="text-[var(--ema-text-secondary)]">{text}</span>;
   return (
-    <span className="text-neutral-300">
+    <span className="text-[var(--ema-text-secondary)]">
       {text.slice(0, idx)}
-      <span className="text-primary-200 bg-violet-500/25 rounded px-0.5">{text.slice(idx, idx + q.length)}</span>
+      <span className="text-[var(--ema-primary)] bg-[var(--ema-primary-muted)] rounded px-0.5">
+        {text.slice(idx, idx + q.length)}
+      </span>
       {text.slice(idx + q.length)}
     </span>
   );

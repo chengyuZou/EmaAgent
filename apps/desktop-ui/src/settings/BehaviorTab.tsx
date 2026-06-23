@@ -44,7 +44,7 @@ function TagEditor({
         {tags.map((tag, i) => (
           <span
             key={`${tag}-${i}`}
-            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-neutral-800 text-xs text-neutral-200"
+            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-[var(--ema-surface-2)] text-xs text-[var(--ema-text-primary)]"
           >
             {tag}
             <IconButton
@@ -97,22 +97,22 @@ export function BehaviorTab({ card }: { card: CharacterCard }): JSX.Element {
   return (
     <form onSubmit={handleSave} className="flex flex-col gap-5 max-w-lg pt-3">
       <div className="flex flex-col gap-1.5">
-        <label className="text-xs text-neutral-400">说话风格模式</label>
+        <label className="text-xs text-[var(--ema-text-tertiary)]">说话风格模式</label>
         <TagEditor tags={speechPatterns} onChange={setSpeechPatterns} placeholder="添加模式… (Enter 确认)" />
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <label className="text-xs text-neutral-400">禁止话题</label>
+        <label className="text-xs text-[var(--ema-text-tertiary)]">禁止话题</label>
         <TagEditor tags={forbiddenTopics} onChange={setForbiddenTopics} placeholder="添加话题… (Enter 确认)" />
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <label className="text-xs text-neutral-400">情感词汇（控制 Live2D 表情）</label>
+        <label className="text-xs text-[var(--ema-text-tertiary)]">情感词汇（控制 Live2D 表情）</label>
         <TagEditor tags={emotionVocab} onChange={setEmotionVocab} placeholder="添加情绪词… (Enter 确认)" />
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <label className="text-xs text-neutral-400">动作词汇（控制 Live2D 动作）</label>
+        <label className="text-xs text-[var(--ema-text-tertiary)]">动作词汇（控制 Live2D 动作）</label>
         <TagEditor tags={motionVocab} onChange={setMotionVocab} placeholder="添加动作词… (Enter 确认)" />
       </div>
 

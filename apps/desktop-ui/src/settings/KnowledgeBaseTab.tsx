@@ -24,10 +24,6 @@ const STATUS_VARIANT: Record<string, 'success' | 'warn' | 'neutral' | 'danger'> 
   error:    'danger',
 };
 
-function fileNameFromPath(p: string): string {
-  return p.replace(/\\/g, '/').split('/').pop() ?? p;
-}
-
 // ── DocumentRow ───────────────────────────────────────────────────────────────
 
 function DocumentRow({ doc, onDelete }: { doc: DocumentAssetWire; onDelete(): void }): JSX.Element {
@@ -46,11 +42,13 @@ function DocumentRow({ doc, onDelete }: { doc: DocumentAssetWire; onDelete(): vo
   }
 
   return (
-    <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-neutral-900 hover:bg-neutral-800/80 transition-colors">
-      <span className="i-solar:document-bold text-neutral-500 shrink-0 text-lg" aria-hidden />
+    <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl
+                    bg-[var(--ema-surface-1)] hover:bg-[var(--ema-surface-2)]
+                    transition-colors duration-[var(--ema-duration-base)]">
+      <span className="i-solar:document-bold text-[var(--ema-text-tertiary)] shrink-0 text-lg" aria-hidden />
       <div className="flex-1 min-w-0">
-        <p className="text-sm text-neutral-200 truncate" title={doc.filePath}>{doc.fileName}</p>
-        <p className="text-xs text-neutral-500 mt-0.5">
+        <p className="text-sm text-[var(--ema-text-primary)] truncate" title={doc.filePath}>{doc.fileName}</p>
+        <p className="text-xs text-[var(--ema-text-tertiary)] mt-0.5">
           {doc.wordCount.toLocaleString()} 词{doc.pageCount ? ` · ${doc.pageCount} 页` : ''}
         </p>
       </div>
@@ -79,7 +77,6 @@ function DocumentRow({ doc, onDelete }: { doc: DocumentAssetWire; onDelete(): vo
 function IngestForm({ onDone }: { onDone(): void }): JSX.Element {
   const ingesting   = useKbStore((s) => s.ingesting);
   const ingestError = useKbStore((s) => s.ingestError);
-
   const [filePath, setFilePath] = useState('');
 
   async function pickFile(): Promise<void> {
@@ -106,10 +103,10 @@ function IngestForm({ onDone }: { onDone(): void }): JSX.Element {
   }
 
   return (
-    <div className="flex flex-col gap-3 p-4 rounded-xl bg-neutral-900 border border-neutral-700/60">
-      <p className="text-sm font-medium text-neutral-300">导入文档</p>
+    <div className="flex flex-col gap-3 p-4 rounded-xl
+                    bg-[var(--ema-surface-1)] border border-[var(--ema-border)]">
+      <p className="text-sm font-medium text-[var(--ema-text-secondary)]">导入文档</p>
 
-      {/* File path row */}
       <div className="flex gap-2">
         <Input
           className="flex-1 font-mono text-xs"
@@ -178,28 +175,28 @@ function SearchTest(): JSX.Element {
 
       {searchResult && (
         <div className="flex flex-col gap-2">
-          <p className="text-xs text-neutral-500">
+          <p className="text-xs text-[var(--ema-text-tertiary)]">
             "{searchResult.query}" — {searchResult.hits.length} 条结果
           </p>
           {searchResult.hits.length === 0 ? (
-            <p className="text-sm text-neutral-500 py-3 text-center">未找到相关内容</p>
+            <p className="text-sm text-[var(--ema-text-tertiary)] py-3 text-center">未找到相关内容</p>
           ) : (
             <div className="flex flex-col gap-2">
               {searchResult.hits.map((hit) => (
                 <div
                   key={hit.chunkId}
-                  className="p-3 rounded-xl bg-neutral-900 border border-neutral-700/40"
+                  className="p-3 rounded-xl bg-[var(--ema-surface-1)] border border-[var(--ema-border)]"
                 >
                   <div className="flex items-center gap-2 mb-1.5">
-                    <span className="text-xs text-neutral-500 font-mono">{hit.source.fileName}</span>
+                    <span className="text-xs text-[var(--ema-text-tertiary)] font-mono">{hit.source.fileName}</span>
                     {hit.source.page && (
-                      <span className="text-xs text-neutral-600">第 {hit.source.page} 页</span>
+                      <span className="text-xs text-[var(--ema-text-tertiary)]">第 {hit.source.page} 页</span>
                     )}
-                    <span className="ml-auto text-xs text-primary-400 font-mono">
+                    <span className="ml-auto text-xs text-[var(--ema-primary)] font-mono">
                       {(hit.score * 100).toFixed(1)}%
                     </span>
                   </div>
-                  <p className="text-xs text-neutral-300 leading-relaxed line-clamp-4">
+                  <p className="text-xs text-[var(--ema-text-secondary)] leading-relaxed line-clamp-4">
                     {hit.text}
                   </p>
                 </div>
@@ -230,10 +227,10 @@ export function KnowledgeBaseTab(): JSX.Element {
       {/* ── Document list ── */}
       <section className="flex flex-col gap-3">
         <div className="flex items-center justify-between">
-          <h2 className="text-sm font-medium text-neutral-300">
+          <h2 className="text-sm font-medium text-[var(--ema-text-secondary)]">
             已导入文档
             {documents.length > 0 && (
-              <span className="ml-2 text-xs text-neutral-500">({documents.length})</span>
+              <span className="ml-2 text-xs text-[var(--ema-text-tertiary)]">({documents.length})</span>
             )}
           </h2>
           <Button
@@ -259,7 +256,7 @@ export function KnowledgeBaseTab(): JSX.Element {
             <Spinner size="md" />
           </div>
         ) : documents.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-28 gap-2 text-neutral-500">
+          <div className="flex flex-col items-center justify-center h-28 gap-2 text-[var(--ema-text-tertiary)]">
             <span className="i-solar:database-bold text-2xl opacity-40" aria-hidden />
             <p className="text-sm">暂无文档，点击「导入文档」添加</p>
           </div>
@@ -280,7 +277,7 @@ export function KnowledgeBaseTab(): JSX.Element {
 
       {/* ── Search test ── */}
       <section className="flex flex-col gap-3">
-        <h2 className="text-sm font-medium text-neutral-300">检索测试</h2>
+        <h2 className="text-sm font-medium text-[var(--ema-text-secondary)]">检索测试</h2>
         <SearchTest />
       </section>
     </div>

@@ -28,9 +28,6 @@ export function EmbedModelManager({ providerId }: { providerId: string }): JSX.E
 
   useEffect(() => { void load(); }, [load]);
 
-  // dim is probed server-side at enable time; `dim`/`src` are only a fallback
-  // (manual entry) when the probe fails. After enabling we reload to show the
-  // probed dimension.
   async function enable(model: string, dim?: number, src?: 'live' | 'table' | 'manual'): Promise<void> {
     try {
       await providersApi.enableEmbedModel(providerId, model, dim, src);
@@ -45,7 +42,6 @@ export function EmbedModelManager({ providerId }: { providerId: string }): JSX.E
       void disable(m.id);
       return;
     }
-    // Server probes the dimension — no need to know it up front.
     void enable(m.id);
   }
 
@@ -77,8 +73,8 @@ export function EmbedModelManager({ providerId }: { providerId: string }): JSX.E
     <div className="flex flex-col gap-3 mt-2">
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="text-sm font-medium text-neutral-200">嵌入模型</h3>
-          <p className="text-xs text-neutral-500 mt-0.5">
+          <h3 className="text-sm font-medium text-[var(--ema-text-primary)]">嵌入模型</h3>
+          <p className="text-xs text-[var(--ema-text-tertiary)] mt-0.5">
             启用的模型可在「模型绑定」里分配给 embed 模块。
             {source === 'static' && '（显示内置推荐）'}
           </p>
@@ -95,9 +91,12 @@ export function EmbedModelManager({ providerId }: { providerId: string }): JSX.E
         <div className="flex flex-col gap-1.5">
           {models.map((m) => (
             <div key={m.id}>
-              <div className="flex items-center justify-between bg-neutral-900/80 ema-glass-weak rounded-xl px-3 py-2 border border-neutral-800/40 hover:border-neutral-700/40 active:scale-[0.98] transition-all duration-250">
+              <div className="flex items-center justify-between bg-[var(--ema-surface-1)] ema-glass-weak
+                              rounded-xl px-3 py-2 border border-[var(--ema-border)]
+                              hover:border-[var(--ema-border-hover)] active:scale-[0.98]
+                              transition-all duration-[var(--ema-duration-base)]">
                 <div className="flex items-center gap-2 min-w-0">
-                  <span className="text-sm text-neutral-200 font-mono truncate">{m.id}</span>
+                  <span className="text-sm text-[var(--ema-text-primary)] font-mono truncate">{m.id}</span>
                   {m.dim != null && <Badge variant="neutral">{m.dim}d</Badge>}
                 </div>
                 <Switch checked={m.enabled} label={m.id} onCheckedChange={() => handleToggle(m)} />
@@ -105,7 +104,7 @@ export function EmbedModelManager({ providerId }: { providerId: string }): JSX.E
 
               {pendingModel === m.id && (
                 <div className="flex items-center gap-2 mt-1.5 pl-3">
-                  <span className="text-xs text-neutral-400 shrink-0">向量维度</span>
+                  <span className="text-xs text-[var(--ema-text-tertiary)] shrink-0">向量维度</span>
                   <Input
                     inputSize="sm"
                     type="number"
@@ -143,7 +142,6 @@ function ManualAddEmbedModel({ onAdd, existing }: {
     const model = query.trim();
     if (!model) return;
     if (existing.includes(model)) { showToast('该模型已在列表中', { variant: 'warning' }); return; }
-    // dim is optional — the server probes it. Only validate if the user typed one.
     let n: number | undefined;
     if (dim.trim()) {
       n = parseInt(dim, 10);
@@ -156,7 +154,7 @@ function ManualAddEmbedModel({ onAdd, existing }: {
 
   return (
     <div className="mt-1">
-      <p className="text-xs text-neutral-500 mb-1.5">手动添加嵌入模型</p>
+      <p className="text-xs text-[var(--ema-text-tertiary)] mb-1.5">手动添加嵌入模型</p>
       <div className="relative flex gap-2">
         <div className="relative flex-1">
           <Input

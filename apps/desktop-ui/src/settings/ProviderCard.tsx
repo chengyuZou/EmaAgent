@@ -20,27 +20,29 @@ export function ProviderCard({ def, instanceCount, healthyCount, selected, activ
 
   return (
     <button
-      className={`w-full text-left px-4 py-3 rounded-xl border transition-all duration-250 ${
+      className={`w-full text-left px-4 py-3 rounded-xl border transition-all duration-[var(--ema-duration-base)] ${
         selected
-          ? 'border-primary-400/40 bg-primary-500/10'
-          : 'border-neutral-800/40 bg-neutral-900/80 ema-glass-weak hover:bg-neutral-800/60 active:scale-[0.98]'
+          ? 'border-[var(--ema-primary)] bg-[var(--ema-primary-muted)]'
+          : 'border-[var(--ema-border)] bg-[var(--ema-surface-1)] ema-glass-weak hover:bg-[var(--ema-surface-2)] active:scale-[0.98]'
       }`}
       onClick={onClick}
     >
       <div className="flex items-center justify-between">
-        <span className="font-medium text-sm">{def.name}</span>
+        <span className="font-medium text-sm text-[var(--ema-text-primary)]">{def.name}</span>
         <div className="flex items-center gap-2 text-xs">
-          {healthyCount > 0 && <span className="text-green-400">● {healthyCount}</span>}
-          <span className="text-neutral-500">{instanceCount} 个实例</span>
+          {healthyCount > 0 && (
+            <span className="text-[var(--ema-success)]">● {healthyCount}</span>
+          )}
+          <span className="text-[var(--ema-text-tertiary)]">{instanceCount} 个实例</span>
         </div>
       </div>
       {capInfo && Array.isArray(capInfo.models) && capInfo.models.length > 0 && (
-        <div className="text-[11px] text-neutral-500 mt-0.5 truncate">
+        <div className="text-[11px] text-[var(--ema-text-tertiary)] mt-0.5 truncate">
           {capInfo.models[0]}
         </div>
       )}
       {!capInfo && def.defaultBaseUrl && (
-        <div className="text-xs text-neutral-500 mt-1 truncate">{def.defaultBaseUrl}</div>
+        <div className="text-xs text-[var(--ema-text-tertiary)] mt-1 truncate">{def.defaultBaseUrl}</div>
       )}
     </button>
   );

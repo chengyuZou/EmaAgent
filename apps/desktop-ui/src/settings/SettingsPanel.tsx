@@ -139,14 +139,14 @@ export function SettingsPanel(): JSX.Element {
 
   return (
     <ErrorBoundary>
-      <div className="fixed inset-0 flex bg-neutral-950 text-neutral-200">
+      <div className="fixed inset-0 flex bg-[var(--ema-surface-0)] text-[var(--ema-text-primary)]">
 
         {/* ── Left sidebar ── */}
         <nav
-          className="flex-none w-52 flex flex-col gap-0.5 px-2 py-4 border-r border-neutral-800 overflow-y-auto"
+          className="flex-none w-52 flex flex-col gap-0.5 px-2 py-4 border-r border-[var(--ema-border)] overflow-y-auto"
           aria-label="设置导航"
         >
-          <p className="px-3 pb-3 text-base font-semibold text-neutral-100">设置</p>
+          <p className="px-3 pb-3 text-base font-semibold text-[var(--ema-text-primary)]">设置</p>
 
           {GROUPS.map((group) => {
             const expanded = expandedGroups.has(group.id);
@@ -155,8 +155,9 @@ export function SettingsPanel(): JSX.Element {
                 {/* Group header */}
                 <button
                   className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm
-                             text-neutral-400 hover:text-neutral-100 hover:bg-neutral-800/50
-                             transition-colors duration-150"
+                             text-[var(--ema-text-tertiary)] hover:text-[var(--ema-text-primary)]
+                             hover:bg-[var(--ema-surface-2)]/50
+                             transition-colors duration-[var(--ema-duration-fast)]"
                   onClick={() => toggleGroup(group.id)}
                   aria-expanded={expanded}
                 >
@@ -177,11 +178,12 @@ export function SettingsPanel(): JSX.Element {
                       return (
                         <button
                           key={sec.id}
-                          className={`w-full text-left px-3 py-1.5 rounded-lg text-sm transition-colors duration-150
-                            ${isActive
-                              ? 'text-primary-300 bg-primary-500/10'
-                              : 'text-neutral-500 hover:text-neutral-200 hover:bg-neutral-800/40'
-                            }`}
+                          className={`w-full text-left px-3 py-1.5 rounded-lg text-sm
+                            transition-colors duration-[var(--ema-duration-fast)] ${
+                            isActive
+                              ? 'text-[var(--ema-primary)] bg-[var(--ema-primary-muted)]'
+                              : 'text-[var(--ema-text-tertiary)] hover:text-[var(--ema-text-primary)] hover:bg-[var(--ema-surface-2)]/40'
+                          }`}
                           onClick={() => setActiveSection(sec.id)}
                           aria-current={isActive ? 'page' : undefined}
                         >
