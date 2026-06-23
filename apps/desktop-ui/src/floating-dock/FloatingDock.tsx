@@ -54,11 +54,12 @@ export function FloatingDock({ visible }: FloatingDockProps): JSX.Element {
       {/* ── More (click-to-toggle, flyout expands upward like a drawer) ── */}
       <div className="relative">
         <div
-          className={`absolute bottom-full right-0 mb-3 p-3 rounded-2xl bg-neutral-900/95 border border-neutral-700/60 shadow-2xl backdrop-blur grid grid-cols-[repeat(3,auto)] gap-3 origin-bottom-right transition-all duration-200 ease-out ${
+          className={`absolute bottom-full right-0 mb-3 p-3 rounded-2xl border shadow-2xl backdrop-blur grid grid-cols-[repeat(3,auto)] gap-3 origin-bottom-right transition-all duration-200 ease-out ${
             flyoutOpen
               ? 'opacity-100 translate-y-0 scale-100'
               : 'opacity-0 translate-y-3 scale-90 pointer-events-none'
           }`}
+          style={{ background: 'var(--ema-surface-4)', borderColor: 'var(--ema-border)' }}
         >
           {flyoutButtons.map((btn) => (
             <Tooltip key={btn.id} content={btn.label} side="top">

@@ -95,8 +95,10 @@ export function AttachmentChip({ attachment, onRemove }: AttachmentChipProps): J
       {/* Remove button (input preview only) */}
       {onRemove && (
         <button
-          className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity hover:text-red-400 -mr-0.5"
+          className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity -mr-0.5"
           style={{ color: 'var(--ema-text-tertiary)' }}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--ema-danger)'; }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--ema-text-tertiary)'; }}
           onClick={(e) => { e.stopPropagation(); onRemove(); }}
           aria-label={`移除 ${attachment.name}`}
         >

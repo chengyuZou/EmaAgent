@@ -90,10 +90,10 @@ export function ChatPanel(): JSX.Element {
 
   if (sidecarStatus.kind === 'error') {
     return (
-      <div className="flex items-center justify-center h-screen text-gray-400">
+      <div className="flex items-center justify-center h-screen" style={{ color: 'var(--ema-text-tertiary)' }}>
         <div className="text-center">
           <div className="text-lg mb-2">⚡ Sidecar 离线</div>
-          <div className="text-sm text-gray-500">{sidecarStatus.reason}</div>
+          <div className="text-sm" style={{ color: 'var(--ema-text-tertiary)' }}>{sidecarStatus.reason}</div>
         </div>
       </div>
     );
@@ -101,7 +101,7 @@ export function ChatPanel(): JSX.Element {
 
   if (sidecarStatus.kind === 'pending' || sidecarStatus.kind === 'unknown') {
     return (
-      <div className="flex items-center justify-center h-screen text-gray-500">
+      <div className="flex items-center justify-center h-screen" style={{ color: 'var(--ema-text-tertiary)' }}>
         连接中…
       </div>
     );
@@ -120,11 +120,11 @@ export function ChatPanel(): JSX.Element {
                style={{ borderColor: 'var(--ema-border)' }}>
             {/* Session title */}
             <div className="flex items-center gap-2 min-w-0">
-              <span className="text-sm font-medium text-neutral-200 truncate">
+              <span className="text-sm font-medium truncate" style={{ color: 'var(--ema-text-secondary)' }}>
                 {session?.title ?? (viewedSessionId ? '加载中…' : '无会话')}
               </span>
               {session?.parentSessionId && (
-                <span className="text-xs text-neutral-600 shrink-0">· 分支</span>
+                <span className="text-xs" style={{ color: 'var(--ema-text-tertiary)' }}>· 分支</span>
               )}
             </div>
 
@@ -149,14 +149,15 @@ export function ChatPanel(): JSX.Element {
                 <button
                   className={`relative size-7 rounded-md flex items-center justify-center text-sm transition-colors
                     ${overflowOpen
-                      ? 'text-primary-300 bg-primary-500/10'
-                      : 'text-neutral-500 hover:text-neutral-200 hover:bg-neutral-800/60'}`}
+                      ? 'text-[var(--ema-primary)] bg-[var(--ema-primary-muted)]'
+                      : 'text-[var(--ema-text-tertiary)] hover:text-[var(--ema-text-primary)] hover:bg-[var(--ema-surface-2)]'}`}
                   onClick={() => setOverflowOpen((v) => !v)}
                   title="更多面板"
                 >
                   <span className="i-mdi:dots-horizontal text-base" aria-hidden />
                   {runningTaskCount > 0 && (
-                    <span className="absolute -top-0.5 -right-0.5 min-w-[14px] h-3.5 flex items-center justify-center rounded-full bg-primary-500 text-[9px] text-white font-bold px-0.5 pointer-events-none">
+                    <span className="absolute -top-0.5 -right-0.5 min-w-[14px] h-3.5 flex items-center justify-center rounded-full text-[9px] font-bold px-0.5 pointer-events-none"
+                          style={{ background: 'var(--ema-primary)', color: 'var(--ema-text-primary)' }}>
                       {runningTaskCount}
                     </span>
                   )}
@@ -191,7 +192,7 @@ export function ChatPanel(): JSX.Element {
           <div className="flex items-center justify-between px-4 py-1.5 border-t shrink-0 text-[11px]"
                style={{ borderColor: 'var(--ema-border)', color: 'var(--ema-text-tertiary)' }}>
             <div className="flex items-center gap-2">
-              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${sidecarStatus.kind === 'ok' ? 'bg-green-400' : 'bg-red-400'}`} />
+              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${sidecarStatus.kind === 'ok' ? 'bg-[var(--ema-success)]' : 'bg-[var(--ema-danger)]'}`} />
               <span>Sidecar</span>
               {sidecarStatus.kind === 'ok' && (
                 <span style={{ color: 'var(--ema-text-tertiary)' }}>{sidecarStatus.latencyMs}ms</span>
@@ -233,13 +234,14 @@ function InspectorDockBtn({
       className={`relative size-7 rounded-md flex items-center justify-center text-sm transition-colors
         ${active
           ? 'text-primary-300 bg-primary-500/10'
-          : 'text-neutral-500 hover:text-neutral-200 hover:bg-neutral-800/60'}`}
+          : 'hover:bg-[var(--ema-surface-2)] hover:text-[var(--ema-text-primary)]'}`}
       onClick={onClick}
       title={label}
     >
       <span className={`${icon} text-base`} aria-hidden />
       {badge != null && badge > 0 && (
-        <span className="absolute -top-0.5 -right-0.5 min-w-[14px] h-3.5 flex items-center justify-center rounded-full bg-primary-500 text-[9px] text-white font-bold px-0.5 pointer-events-none">
+        <span className="absolute -top-0.5 -right-0.5 min-w-[14px] h-3.5 flex items-center justify-center rounded-full text-[9px] font-bold px-0.5 pointer-events-none"
+              style={{ background: 'var(--ema-primary)', color: 'var(--ema-primary-text)' }}>
           {badge}
         </span>
       )}
@@ -257,13 +259,14 @@ function OverflowItem({
       className={`w-full flex items-center gap-2.5 px-3 py-1.5 text-xs transition-colors
         ${active
           ? 'text-primary-300 bg-primary-500/8'
-          : 'text-neutral-400 hover:text-neutral-100 hover:bg-neutral-700/40'}`}
+          : 'hover:bg-[var(--ema-surface-3)] hover:text-[var(--ema-text-primary)]'}`}
       onClick={onClick}
     >
       <span className={`${icon} text-base shrink-0`} aria-hidden />
       <span className="flex-1 text-left">{label}</span>
       {badge != null && badge > 0 && (
-        <span className="min-w-[18px] h-4 flex items-center justify-center rounded-full bg-primary-500/20 text-primary-300 text-[10px] font-medium px-1">
+        <span className="min-w-[18px] h-4 flex items-center justify-center rounded-full text-[10px] font-medium px-1"
+              style={{ background: 'var(--ema-primary-muted)', color: 'var(--ema-primary)' }}>
           {badge}
         </span>
       )}

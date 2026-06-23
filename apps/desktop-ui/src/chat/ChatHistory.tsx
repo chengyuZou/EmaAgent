@@ -49,7 +49,7 @@ export function ChatHistory(): JSX.Element {
 
   if (!viewedId) {
     return (
-      <div className="flex-1 flex items-center justify-center text-gray-500 text-sm">
+      <div className="flex-1 flex items-center justify-center text-sm" style={{ color: 'var(--ema-text-tertiary)' }}>
         选择或创建会话开始聊天
       </div>
     );
@@ -59,7 +59,7 @@ export function ChatHistory(): JSX.Element {
     <div className="flex-1 relative">
       <div ref={containerRef} className="absolute inset-0 overflow-y-auto px-4 py-4">
         {messages.length === 0 && !streaming && (
-          <div className="flex items-center justify-center h-full text-gray-600 text-sm">
+          <div className="flex items-center justify-center h-full text-sm" style={{ color: 'var(--ema-text-tertiary)' }}>
             开始聊天吧
           </div>
         )}
@@ -83,7 +83,8 @@ export function ChatHistory(): JSX.Element {
 
           {stopReason && !streaming && (
             <div className="flex justify-center">
-              <div className="bg-gray-800/80 border border-gray-600/50 rounded-full px-4 py-1.5 text-xs text-gray-400">
+              <div className="rounded-full px-4 py-1.5 text-xs"
+                   style={{ background: 'var(--ema-surface-2)', border: '1px solid var(--ema-border)', color: 'var(--ema-text-tertiary)' }}>
                 {stopReason}
               </div>
             </div>
@@ -93,7 +94,9 @@ export function ChatHistory(): JSX.Element {
 
       {userScrolled && (
         <button
-          className="absolute bottom-4 left-1/2 -translate-x-1/2 px-3 py-1.5 rounded-full bg-gray-800 border border-gray-600 text-gray-300 text-xs hover:bg-gray-700 transition-colors shadow-lg"
+          className="absolute bottom-4 left-1/2 -translate-x-1/2 px-3 py-1.5 rounded-full text-xs transition-colors shadow-lg"
+          style={{ background: 'var(--ema-surface-2)', border: '1px solid var(--ema-border)', color: 'var(--ema-text-secondary)' }}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--ema-surface-3)'; }}
           onClick={resetUserScrolled}
         >
           ⬇ 回到底部
@@ -113,7 +116,7 @@ function BubbleRouter({ message }: { message: ChatHistoryItem }): JSX.Element {
       return (
         <div className="flex items-center justify-center gap-3 py-2">
           <div className="flex-1 border-t border-neutral-800" />
-          <span className="text-xs text-neutral-500 whitespace-nowrap">{message.content}</span>
+          <span className="text-xs whitespace-nowrap" style={{ color: 'var(--ema-text-tertiary)' }}>{message.content}</span>
           <div className="flex-1 border-t border-neutral-800" />
         </div>
       );
@@ -126,7 +129,7 @@ function BubbleRouter({ message }: { message: ChatHistoryItem }): JSX.Element {
         </div>
       );
     default:
-      return <div className="text-gray-500 text-xs text-center">{message.content}</div>;
+      return <div className="text-xs text-center" style={{ color: 'var(--ema-text-tertiary)' }}>{message.content}</div>;
   }
 }
 

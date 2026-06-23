@@ -15,7 +15,7 @@ export function UserBubble({ message, label = '你' }: UserBubbleProps): JSX.Ele
   return (
     <div className="flex ml-12 flex-row-reverse ema-bubble-in">
       <div className="flex flex-col min-w-20 max-w-full items-end">
-        <div className="text-xs text-white/50 font-normal mb-1">{label}</div>
+        <div className="text-xs mb-1" style={{ color: 'var(--ema-text-tertiary)' }}>{label}</div>
 
         {/* Attachment chips — shown above the message bubble when present */}
         {attachments.length > 0 && (
@@ -26,7 +26,8 @@ export function UserBubble({ message, label = '你' }: UserBubbleProps): JSX.Ele
           </div>
         )}
 
-        <div className="bg-neutral-800/80 backdrop-blur-sm border border-neutral-700/40 rounded-2xl rounded-br-md px-5 py-3 text-sm text-neutral-200 break-words">
+        <div className="rounded-2xl rounded-br-md px-5 py-3 border text-sm break-words"
+             style={{ background: 'var(--ema-surface-2)', borderColor: 'var(--ema-border)', color: 'var(--ema-text-secondary)' }}>
           <Markdown source={message.content} />
         </div>
       </div>

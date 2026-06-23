@@ -76,8 +76,10 @@ function FileRow({
 
   return (
     <div
-      className="flex items-center gap-1.5 px-2 py-0.5 rounded cursor-pointer group select-none hover:bg-neutral-800/50 transition-colors"
+      className="flex items-center gap-1.5 px-2 py-0.5 rounded cursor-pointer group select-none transition-colors"
       style={{ paddingLeft: 8 + indent }}
+      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--ema-surface-2)'; }}
+      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = ''; }}
       onClick={handleClick}
       title={entry.path}
     >
@@ -243,8 +245,8 @@ export function FilesPanel(): JSX.Element {
       {/* Search */}
       <div className="px-2 py-1.5 border-b shrink-0" style={{ borderColor: 'var(--ema-border)' }}>
         <input
-          className="w-full bg-neutral-800/60 rounded-md px-2 py-1 text-[11px] outline-none placeholder-neutral-600"
-          style={{ color: 'var(--ema-text-primary)' }}
+          className="w-full rounded-md px-2 py-1 text-[11px] outline-none"
+          style={{ background: 'var(--ema-surface-2)', color: 'var(--ema-text-primary)' }}
           placeholder="筛选文件…（? 前缀搜索内容）"
           value={search}
           onChange={(e) => setSearch(e.target.value)}

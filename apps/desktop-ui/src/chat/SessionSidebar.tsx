@@ -13,7 +13,7 @@ interface ProjectGroup {
   sessions: SessionWire[];
 }
 
-const sidebarBlockClass = 'flex items-center gap-2.5 h-9 px-2 rounded-md text-sm text-neutral-300 hover:text-neutral-50 hover:bg-neutral-900/90 transition-[background-color,color] duration-150 ease-out';
+const sidebarBlockClass = 'flex items-center gap-2.5 h-9 px-2 rounded-md text-sm text-[var(--ema-text-secondary)] hover:text-[var(--ema-text-primary)] hover:bg-[var(--ema-surface-2)] transition-[background-color,color] duration-150 ease-out';
 
 export function SessionSidebar(): JSX.Element {
   const [collapsed, setCollapsed]   = useState(false);
@@ -47,11 +47,15 @@ export function SessionSidebar(): JSX.Element {
   ]).filter((s) => !projectSessionIds.has(s.id)), [sessions, projectSessionIds]);
 
   return (
-    <div className={`flex flex-col shrink-0 border-r border-neutral-800/80 bg-neutral-950 h-full transition-[width] duration-200 ease-out ${collapsed ? 'w-10' : 'w-64'}`}>
+    <div className={`flex flex-col shrink-0 border-r h-full transition-[width] duration-200 ease-out ${collapsed ? 'w-10' : 'w-64'}`}
+         style={{ borderColor: 'var(--ema-border)', background: 'var(--ema-surface-0)' }}>
       {collapsed ? (
         <div className="flex flex-col items-center py-2 gap-2">
           <button
-            className="w-7 h-7 flex items-center justify-center rounded-md hover:bg-neutral-800 text-neutral-500 hover:text-neutral-300 transition-colors"
+            className="w-7 h-7 flex items-center justify-center rounded-md transition-colors"
+            style={{ color: 'var(--ema-text-tertiary)' }}
+            onMouseEnter={(e) => { const t = e.currentTarget as HTMLElement; t.style.color = 'var(--ema-text-primary)'; t.style.background = 'var(--ema-surface-2)'; }}
+            onMouseLeave={(e) => { const t = e.currentTarget as HTMLElement; t.style.color = 'var(--ema-text-tertiary)'; t.style.background = ''; }}
             onClick={() => setCollapsed(false)}
             title="展开侧边栏"
           >
@@ -73,7 +77,7 @@ export function SessionSidebar(): JSX.Element {
         </div>
       ) : (
         <>
-          <div className="px-1.5 py-2 border-b border-neutral-800/60">
+          <div className="px-1.5 py-2 border-b" style={{ borderColor: 'var(--ema-border)' }}>
             <NewConversationCommand
               onCreate={async () => {
                 const newId = await useSessionStore.getState().createSession();
@@ -139,11 +143,14 @@ function NewConversationCommand({
         className="min-w-0 flex flex-1 items-center gap-2.5 text-left"
         onClick={() => void onCreate()}
       >
-        <span className="i-mdi:square-edit-outline text-base text-neutral-400" aria-hidden />
+        <span className="i-mdi:square-edit-outline text-base" style={{ color: 'var(--ema-text-tertiary)' }} aria-hidden />
         <span className="truncate">新对话</span>
       </button>
       <button
-        className="w-6 h-6 shrink-0 flex items-center justify-center rounded text-neutral-500 hover:text-neutral-100 hover:bg-neutral-800/90 transition-colors"
+        className="w-6 h-6 shrink-0 flex items-center justify-center rounded transition-colors"
+        style={{ color: 'var(--ema-text-tertiary)' }}
+        onMouseEnter={(e) => { const t = e.currentTarget as HTMLElement; t.style.color = 'var(--ema-text-primary)'; t.style.background = 'var(--ema-surface-2)'; }}
+        onMouseLeave={(e) => { const t = e.currentTarget as HTMLElement; t.style.color = 'var(--ema-text-tertiary)'; t.style.background = ''; }}
         onClick={onCollapse}
         title="折叠侧边栏"
         aria-label="折叠侧边栏"
@@ -166,7 +173,7 @@ function SidebarCommand({
       className={`w-full ${sidebarBlockClass}`}
       onClick={onClick}
     >
-      <span className={`${icon} text-base text-neutral-400`} aria-hidden />
+      <span className={`${icon} text-base`} style={{ color: 'var(--ema-text-tertiary)' }} aria-hidden />
       <span className="truncate">{label}</span>
     </button>
   );
@@ -197,7 +204,7 @@ function ProjectListSection({
       <AnimatedCollapse open={!collapsed} maxHeight={maxHeight}>
         <div className="flex flex-col gap-1 px-1.5 pb-1">
           {groups.length === 0 ? (
-            <p className="px-2 py-2 text-xs text-neutral-700">暂无项目</p>
+            <p className="px-2 py-2 text-xs" style={{ color: 'var(--ema-text-tertiary)' }}>暂无项目</p>
           ) : groups.map((g) => (
             <ProjectNode
               key={g.label}
@@ -233,14 +240,14 @@ function ProjectNode({
     <div>
       <button
         className={`group/project w-full flex items-center gap-2 h-9 px-2 rounded-md text-sm transition-[background-color,color,box-shadow] duration-150 ease-out ${
-          hasActive ? 'bg-neutral-800 text-neutral-50 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]' : 'text-neutral-300 hover:bg-neutral-900/90 hover:text-neutral-50'
+          hasActive ? 'bg-[var(--ema-surface-2)] text-[var(--ema-text-primary)] shadow-[var(--ema-shadow-1)]' : 'text-[var(--ema-text-secondary)] hover:bg-[var(--ema-surface-2)] hover:text-[var(--ema-text-primary)]'
         }`}
         onClick={() => setCollapsed(!collapsed)}
       >
-        <span className={`i-mdi:folder-outline text-base ${hasActive ? 'text-neutral-300' : 'text-neutral-400'}`} aria-hidden />
+        <span className={`i-mdi:folder-outline text-base ${hasActive ? 'text-[var(--ema-text-secondary)]' : 'text-[var(--ema-text-tertiary)]'}`} aria-hidden />
         <span className="flex-1 truncate text-left">{group.label}</span>
-        <span className={`text-[11px] tabular-nums ${hasActive ? 'text-neutral-300' : 'text-neutral-500'}`}>{group.sessions.length}</span>
-        <span className={`i-mdi:chevron-down text-xs ${hasActive ? 'text-neutral-300' : 'text-neutral-500'} transition-transform duration-200 ${collapsed ? '-rotate-90' : ''}`} aria-hidden />
+        <span className={`text-[11px] tabular-nums ${hasActive ? 'text-[var(--ema-text-secondary)]' : 'text-[var(--ema-text-tertiary)]'}`}>{group.sessions.length}</span>
+        <span className={`i-mdi:chevron-down text-xs ${hasActive ? 'text-[var(--ema-text-secondary)]' : 'text-[var(--ema-text-tertiary)]'} transition-transform duration-200 ${collapsed ? '-rotate-90' : ''}`} aria-hidden />
       </button>
       <AnimatedCollapse open={!collapsed} maxHeight={maxHeight}>
         <div className="flex flex-col gap-0.5 pt-0.5">
@@ -286,7 +293,7 @@ function SidebarSection({
       <AnimatedCollapse open={!collapsed} maxHeight={maxHeight}>
         <div className="flex flex-col gap-0.5 px-1.5 pb-1">
           {sessions.length === 0 ? (
-            <p className="px-2 py-2 text-xs text-neutral-700">{emptyText ?? '暂无内容'}</p>
+            <p className="px-2 py-2 text-xs" style={{ color: 'var(--ema-text-tertiary)' }}>{emptyText ?? '暂无内容'}</p>
           ) : sessions.map((s) => (
             <SidebarRow
               key={s.id}
@@ -316,10 +323,10 @@ function SectionHeader({
       className={`${sidebarBlockClass} mx-1.5 mb-0.5 w-[calc(100%-0.75rem)]`}
       onClick={onToggle}
     >
-      <span className={`${icon} text-base text-neutral-400`} aria-hidden />
+      <span className={`${icon} text-base`} style={{ color: 'var(--ema-text-tertiary)' }} aria-hidden />
       <span className="flex-1 truncate">{label}</span>
-      <span className="text-[11px] tabular-nums text-neutral-500">{count}</span>
-      <span className={`i-mdi:chevron-right text-xs text-neutral-500 transition-transform duration-200 ease-out ${collapsed ? '' : 'rotate-90'}`} aria-hidden />
+      <span className="text-[11px] tabular-nums" style={{ color: 'var(--ema-text-tertiary)' }}>{count}</span>
+      <span className={`i-mdi:chevron-right text-xs transition-transform duration-200 ease-out ${collapsed ? '' : 'rotate-90'}`} style={{ color: 'var(--ema-text-tertiary)' }} aria-hidden />
     </button>
   );
 }
@@ -352,12 +359,12 @@ function getStatusDot(
   streaming: Map<string, unknown>,
   decisions: Set<string>,
 ): StatusDot {
-  if (streaming.has(session.id)) return { cls: 'bg-blue-400 animate-pulse' };
-  if (decisions.has(session.id)) return { cls: 'bg-yellow-400 animate-pulse' };
+  if (streaming.has(session.id)) return { cls: 'bg-[var(--ema-info)] animate-pulse' };
+  if (decisions.has(session.id)) return { cls: 'bg-[var(--ema-warning)] animate-pulse' };
   if (session.lastTurnStatus === 'failed' || session.lastTurnStatus === 'aborted') {
-    return { cls: 'bg-red-400' };
+    return { cls: 'bg-[var(--ema-danger)]' };
   }
-  if (session.hasUnread) return { cls: 'bg-green-400' };
+  if (session.hasUnread) return { cls: 'bg-[var(--ema-success)]' };
   return null;
 }
 
@@ -442,8 +449,8 @@ function SidebarRow({ session, isActive, streaming, decisions, nested = false }:
         nested ? 'pl-6' : 'pl-2'
       } ${
         isActive
-          ? 'bg-neutral-800 text-neutral-50 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]'
-          : 'text-neutral-300 hover:bg-neutral-900/90 hover:text-neutral-50'
+          ? 'bg-[var(--ema-surface-2)] text-[var(--ema-text-primary)] shadow-[var(--ema-shadow-1)]'
+          : 'text-[var(--ema-text-secondary)] hover:bg-[var(--ema-surface-2)] hover:text-[var(--ema-text-primary)]'
       }`}
       onClick={() => void useConversationStore.getState().viewSession(session.id as SessionId)}
     >
@@ -461,13 +468,13 @@ function SidebarRow({ session, isActive, streaming, decisions, nested = false }:
             ))}
           </span>
         ) : (
-          <span className={`w-1.5 h-1.5 rounded-full border ${isActive ? 'border-neutral-400' : 'border-neutral-700'}`} />
+          <span className={`w-1.5 h-1.5 rounded-full border ${isActive ? 'border-[var(--ema-text-tertiary)]' : 'border-[var(--ema-border)]'}`} />
         )}
       </span>
 
       <div className="flex items-center gap-1.5 min-w-0 flex-1">
         {session.pinned && (
-          <span className={`i-mdi:pin-outline text-[11px] shrink-0 ${isActive ? 'text-neutral-300' : 'text-neutral-500'}`} aria-hidden />
+          <span className={`i-mdi:pin-outline text-[11px] shrink-0 ${isActive ? 'text-[var(--ema-text-secondary)]' : 'text-[var(--ema-text-tertiary)]'}`} aria-hidden />
         )}
         <span className="truncate min-w-0 leading-snug">
           {session.title || '新对话'}
@@ -482,9 +489,12 @@ function SidebarRow({ session, isActive, streaming, decisions, nested = false }:
         </span>
         <DropdownMenu
           trigger={
-            <button className={`absolute right-0 top-1/2 -translate-y-1/2 w-5 h-5 flex items-center justify-center text-neutral-500 hover:text-neutral-100 rounded hover:bg-neutral-700/80 transition-[opacity,color,background-color] ${
+            <button className={`absolute right-0 top-1/2 -translate-y-1/2 w-5 h-5 flex items-center justify-center rounded transition-[opacity,color,background-color] ${
               isActive ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
-            }`}>
+            }`}
+              style={{ color: 'var(--ema-text-tertiary)' }}
+              onMouseEnter={(e) => { const t = e.currentTarget as HTMLElement; t.style.color = 'var(--ema-text-primary)'; t.style.background = 'var(--ema-surface-3)'; }}
+              onMouseLeave={(e) => { const t = e.currentTarget as HTMLElement; t.style.color = 'var(--ema-text-tertiary)'; t.style.background = ''; }}>
               <span className="i-mdi:dots-horizontal text-xs" aria-hidden />
             </button>
           }
@@ -558,10 +568,11 @@ function SessionSearchOverlay({
   return (
     <div className="fixed inset-0 z-40" onMouseDown={onClose}>
       <div
-        className="absolute left-1/2 top-14 w-[min(520px,calc(100vw-32px))] -translate-x-1/2 rounded-xl border border-neutral-700/80 bg-neutral-900/95 shadow-2xl overflow-hidden animate-scale-in"
+        className="absolute left-1/2 top-14 w-[min(520px,calc(100vw-32px))] -translate-x-1/2 rounded-xl border shadow-2xl overflow-hidden animate-scale-in"
+        style={{ background: 'var(--ema-surface-4)', borderColor: 'var(--ema-border)' }}
         onMouseDown={(e) => e.stopPropagation()}
       >
-        <div className="p-3 border-b border-neutral-800/80">
+        <div className="p-3" style={{ borderBottom: '1px solid var(--ema-border)' }}>
           <Input
             autoFocus
             inputSize="md"
@@ -574,17 +585,18 @@ function SessionSearchOverlay({
                 selectSession(visibleResults[0].session.id);
               }
             }}
-            className="bg-neutral-800/80 border-neutral-700/60"
+            className="text-[var(--ema-text-primary)]"
+            style={{ background: 'var(--ema-surface-2)', borderColor: 'var(--ema-border)' }}
           />
         </div>
 
         <div className="max-h-[420px] overflow-y-auto p-1.5">
-          <div className="px-2 py-1.5 text-xs text-neutral-500">
+          <div className="px-2 py-1.5 text-xs" style={{ color: 'var(--ema-text-tertiary)' }}>
             {trimmed ? (loading ? '搜索中…' : '匹配结果') : '近期对话'}
           </div>
 
           {visibleResults.length === 0 && !loading ? (
-            <div className="px-3 py-6 text-center text-sm text-neutral-500">
+            <div className="px-3 py-6 text-center text-sm" style={{ color: 'var(--ema-text-tertiary)' }}>
               没有匹配的对话
             </div>
           ) : visibleResults.map((hit) => (

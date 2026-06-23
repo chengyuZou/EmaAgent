@@ -137,7 +137,7 @@ export function DecisionLayer(): JSX.Element | null {
   return (
     <div className="fixed inset-0 z-9998 flex items-center justify-center">
       {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/60" onClick={handleBackdrop} />
+      <div className="absolute inset-0" style={{ background: 'var(--ema-mask)' }} onClick={handleBackdrop} />
       {/* Modal content — ema-scale-in entrance */}
       <div className="relative z-10 max-w-lg w-full mx-4 ema-scale-in">
         <PromptRouter prompt={current} />

@@ -40,11 +40,18 @@ function removeToast(id: number): void {
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-const variantColors: Record<ToastItem['variant'], string> = {
-  info:    'bg-blue-500/20 border-blue-400/40 text-blue-200',
-  success: 'bg-green-500/20 border-green-400/40 text-green-200',
-  warning: 'bg-yellow-500/20 border-yellow-400/40 text-yellow-200',
-  danger:  'bg-red-500/20 border-red-400/40 text-red-200',
+const variantStyles: Record<ToastItem['variant'], string> = {
+  info:    'border-[var(--ema-info)] text-[var(--ema-info-text)]',
+  success: 'border-[var(--ema-success)] text-[var(--ema-success-text)]',
+  warning: 'border-[var(--ema-warning)] text-[var(--ema-warning-text)]',
+  danger:  'border-[var(--ema-danger)] text-[var(--ema-danger-text)]',
+};
+
+const variantBg: Record<ToastItem['variant'], string> = {
+  info:    'var(--ema-info-muted)',
+  success: 'var(--ema-success-muted)',
+  warning: 'var(--ema-warning-muted)',
+  danger:  'var(--ema-danger-muted)',
 };
 
 function ToastContainer(): JSX.Element {
@@ -63,7 +70,8 @@ function ToastContainer(): JSX.Element {
       {toasts.map((t) => (
         <div
           key={t.id}
-          className={`pointer-events-auto px-4 py-2 rounded-xl border text-sm ${variantColors[t.variant]} animate-fade-in`}
+          className={`pointer-events-auto px-4 py-2 rounded-xl border text-sm ${variantStyles[t.variant]} animate-fade-in`}
+          style={{ background: variantBg[t.variant] }}
         >
           {t.message}
         </div>

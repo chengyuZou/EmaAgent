@@ -54,27 +54,27 @@ export function ToolCallBlock({ slice, streaming = false }: ToolCallBlockProps):
         className="flex items-center gap-2 text-left w-full group"
         onClick={() => setOpen((v) => !v)}
       >
-        <span className="text-neutral-700 text-[10px] w-3 shrink-0">
+        <span className="text-[10px] w-3 shrink-0" style={{ color: 'var(--ema-text-tertiary)' }}>
           {open ? '▾' : '▸'}
         </span>
 
         <span className={`font-mono text-xs transition-colors ${
-          hasError   ? 'text-red-400' :
-          isPending  ? 'text-yellow-400/80 animate-pulse' :
-                       'text-neutral-300 group-hover:text-neutral-200'
+          hasError   ? 'text-[var(--ema-danger)]' :
+          isPending  ? 'text-[var(--ema-warning)] animate-pulse' :
+                       'text-[var(--ema-text-secondary)] group-hover:text-[var(--ema-text-primary)]'
         }`}>
           {slice.name}
         </span>
 
         {target && (
-          <span className="text-neutral-500 text-xs font-mono truncate max-w-[18rem]">
+          <span className="text-xs font-mono truncate max-w-[18rem]" style={{ color: 'var(--ema-text-tertiary)' }}>
             · {target}
           </span>
         )}
 
         {isPending && (
-          <span className="ml-auto flex items-center gap-1 text-[10px] text-yellow-500/80 shrink-0">
-            <span className="w-1 h-1 rounded-full bg-yellow-400 animate-pulse" />
+          <span className="ml-auto flex items-center gap-1 text-[10px] shrink-0" style={{ color: 'var(--ema-warning)' }}>
+            <span className="w-1 h-1 rounded-full animate-pulse" style={{ background: 'var(--ema-warning)' }} />
             运行中
           </span>
         )}
@@ -85,10 +85,13 @@ export function ToolCallBlock({ slice, streaming = false }: ToolCallBlockProps):
         className="ema-collapsible"
         style={{ gridTemplateRows: open ? '1fr' : '0fr', opacity: open ? 1 : 0 }}
       >
-        <div className="relative ml-3 border-l border-neutral-800 pl-3">
+        <div className="relative ml-3 pl-3" style={{ borderLeftColor: 'var(--ema-border)', borderLeftWidth: 1 }}>
           {/* Copy button */}
           <button
-            className="absolute top-0 right-0 px-1.5 py-0.5 rounded text-[10px] text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800/60 transition-colors"
+            className="absolute top-0 right-0 px-1.5 py-0.5 rounded text-[10px] transition-colors"
+            style={{ color: 'var(--ema-text-tertiary)' }}
+            onMouseEnter={(e) => { const t = e.currentTarget as HTMLElement; t.style.color = 'var(--ema-text-primary)'; t.style.background = 'var(--ema-surface-2)'; }}
+            onMouseLeave={(e) => { const t = e.currentTarget as HTMLElement; t.style.color = 'var(--ema-text-tertiary)'; t.style.background = ''; }}
             onClick={(e) => { e.stopPropagation(); copy(); }}
           >
             {copied ? '✓' : '⎘'}
@@ -155,11 +158,11 @@ function BashBlock({ cmd, output, partialArgs, isPending }: {
       {displayCmd && (
         <span className="text-yellow-300/90">{'$ '}{displayCmd}</span>
       )}
-      {isPending && <span className="text-neutral-600 animate-pulse"> ▌</span>}
+      {isPending && <span className="text-[var(--ema-text-tertiary)] animate-pulse"> ▌</span>}
       {output !== null && (
         <>
           {'\n\n'}
-          <span className="text-neutral-300">{output}</span>
+          <span className="text-[var(--ema-text-secondary)]">{output}</span>
         </>
       )}
     </pre>

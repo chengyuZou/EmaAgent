@@ -38,9 +38,9 @@ function fmtTokens(n: number): string {
 function StatCard({ label, value, sub }: { label: string; value: string; sub?: string }): JSX.Element {
   return (
     <div className="ema-glass-weak rounded-lg px-4 py-3 flex flex-col gap-0.5 min-w-0">
-      <span className="text-xs text-neutral-500">{label}</span>
-      <span className="text-lg font-semibold text-neutral-100 truncate">{value}</span>
-      {sub && <span className="text-xs text-neutral-500">{sub}</span>}
+      <span className="text-xs" style={{ color: 'var(--ema-text-tertiary)' }}>{label}</span>
+      <span className="text-lg font-semibold truncate" style={{ color: 'var(--ema-text-primary)' }}>{value}</span>
+      {sub && <span className="text-xs" style={{ color: 'var(--ema-text-tertiary)' }}>{sub}</span>}
     </div>
   );
 }
@@ -67,7 +67,7 @@ function OverviewTab({ d }: { d: SessionDashboardWire }): JSX.Element {
 
 function ArtifactsTab({ artifacts }: { artifacts: ArtifactSummaryWire[] }): JSX.Element {
   if (artifacts.length === 0) {
-    return <p className="text-neutral-500 text-sm py-4 text-center">暂无 Artifact</p>;
+    return <p className="text-sm py-4 text-center" style={{ color: 'var(--ema-text-tertiary)' }}>暂无 Artifact</p>;
   }
   return (
     <div className="flex flex-col gap-1">
@@ -77,10 +77,10 @@ function ArtifactsTab({ artifacts }: { artifacts: ArtifactSummaryWire[] }): JSX.
           className="ema-stagger-in ema-glass-weak rounded-lg px-3 py-2 flex items-center gap-3"
           style={{ '--stagger-i': i } as React.CSSProperties}
         >
-          <span className="i-mdi:file-outline text-base text-neutral-400 shrink-0" aria-hidden />
+          <span className="i-mdi:file-outline text-base shrink-0" style={{ color: 'var(--ema-text-tertiary)' }} aria-hidden />
           <div className="min-w-0 flex-1">
-            <p className="text-sm text-neutral-200 truncate">{a.title || '(untitled)'}</p>
-            <p className="text-xs text-neutral-500">{a.type} · {fmtBytes(a.byteSize)}</p>
+            <p className="text-sm truncate" style={{ color: 'var(--ema-text-secondary)' }}>{a.title || '(untitled)'}</p>
+            <p className="text-xs" style={{ color: 'var(--ema-text-tertiary)' }}>{a.type} · {fmtBytes(a.byteSize)}</p>
           </div>
           {a.appliedAt && (
             <Badge variant="success">已应用</Badge>
@@ -96,7 +96,7 @@ function ArtifactsTab({ artifacts }: { artifacts: ArtifactSummaryWire[] }): JSX.
 
 function AudioTab({ entries }: { entries: AudioEntryWire[] }): JSX.Element {
   if (entries.length === 0) {
-    return <p className="text-neutral-500 text-sm py-4 text-center">暂无音频记录</p>;
+    return <p className="text-sm py-4 text-center" style={{ color: 'var(--ema-text-tertiary)' }}>暂无音频记录</p>;
   }
   return (
     <div className="flex flex-col gap-1">
@@ -106,14 +106,14 @@ function AudioTab({ entries }: { entries: AudioEntryWire[] }): JSX.Element {
           className="ema-stagger-in ema-glass-weak rounded-lg px-3 py-2 flex items-center gap-3"
           style={{ '--stagger-i': i } as React.CSSProperties}
         >
-          <span className="i-mdi:waveform text-base text-neutral-400 shrink-0" aria-hidden />
+          <span className="i-mdi:waveform text-base shrink-0" style={{ color: 'var(--ema-text-tertiary)' }} aria-hidden />
           <div className="min-w-0 flex-1">
-            <p className="text-xs text-neutral-400 font-mono truncate">{e.turnId.slice(-8)}</p>
-            <p className="text-xs text-neutral-500">
+            <p className="text-xs font-mono truncate" style={{ color: 'var(--ema-text-secondary)' }}>{e.turnId.slice(-8)}</p>
+            <p className="text-xs" style={{ color: 'var(--ema-text-tertiary)' }}>
               {fmtDuration(e.durationMs)} · {fmtBytes(e.byteSize)} · {e.segmentCount}段
             </p>
           </div>
-          <span className="text-xs text-neutral-500 shrink-0">{e.mimeType.replace('audio/', '')}</span>
+          <span className="text-xs shrink-0" style={{ color: 'var(--ema-text-tertiary)' }}>{e.mimeType.replace('audio/', '')}</span>
         </div>
       ))}
     </div>
@@ -122,11 +122,11 @@ function AudioTab({ entries }: { entries: AudioEntryWire[] }): JSX.Element {
 
 function MemoryTab({ notes }: { notes: SessionDashboardWire['notes'] }): JSX.Element {
   if (!notes || notes.entries.length === 0) {
-    return <p className="text-neutral-500 text-sm py-4 text-center">暂无 L1 记忆笔记</p>;
+    return <p className="text-sm py-4 text-center" style={{ color: 'var(--ema-text-tertiary)' }}>暂无 L1 记忆笔记</p>;
   }
   return (
     <div className="flex flex-col gap-2">
-      <p className="text-xs text-neutral-500">
+      <p className="text-xs" style={{ color: 'var(--ema-text-tertiary)' }}>
         {notes.entries.length} 条 · {fmtTokens(notes.tokensAtLastUpdate)} tokens
       </p>
       <div className="flex flex-col gap-1.5">
@@ -136,8 +136,8 @@ function MemoryTab({ notes }: { notes: SessionDashboardWire['notes'] }): JSX.Ele
             className="ema-stagger-in ema-glass-weak rounded-lg px-3 py-2"
             style={{ '--stagger-i': i } as React.CSSProperties}
           >
-            <p className="text-xs text-neutral-500 mb-1">{entry.timestamp}</p>
-            <p className="text-sm text-neutral-200 whitespace-pre-wrap">{entry.delta}</p>
+            <p className="text-xs mb-1" style={{ color: 'var(--ema-text-tertiary)' }}>{entry.timestamp}</p>
+            <p className="text-sm whitespace-pre-wrap" style={{ color: 'var(--ema-text-secondary)' }}>{entry.delta}</p>
           </div>
         ))}
       </div>

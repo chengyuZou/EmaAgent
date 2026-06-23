@@ -71,7 +71,7 @@ export function AskUserBatchPrompt({
           <div
             key={i}
             className={`h-1.5 rounded-full flex-1 transition-colors ema-stagger-in ${
-              i <= step ? 'bg-primary-400' : 'bg-neutral-700'
+              i <= step ? 'bg-[var(--ema-primary)]' : 'bg-[var(--ema-surface-3)]'
             }`}
             style={{ '--stagger-i': i } as CSSProperties}
           />
@@ -84,8 +84,8 @@ export function AskUserBatchPrompt({
         pending={false}
       />
 
-      <p className="text-xs text-primary-300 font-medium mb-1">{current.header}</p>
-      <p className="text-neutral-200 text-base mb-4">{current.question}</p>
+      <p className="text-xs font-medium mb-1" style={{ color: 'var(--ema-primary)' }}>{current.header}</p>
+      <p className="text-base mb-4" style={{ color: 'var(--ema-text-primary)' }}>{current.question}</p>
 
       {hasOptions ? (
         <div className="flex flex-col gap-2 mb-4">
@@ -94,15 +94,15 @@ export function AskUserBatchPrompt({
               key={opt.label}
               className={`px-4 py-2.5 rounded-md text-left transition-colors border ema-stagger-in ${
                 choiceSelected.has(opt.label)
-                  ? 'bg-primary-400/20 text-primary-300 border-primary-400/40'
-                  : 'bg-neutral-800 text-neutral-300 border-neutral-600 hover:bg-neutral-700'
+                  ? 'bg-[var(--ema-primary-muted)] text-[var(--ema-primary)] border-[var(--ema-primary)]'
+                  : 'bg-[var(--ema-surface-2)] text-[var(--ema-text-secondary)] border-[var(--ema-border)] hover:bg-[var(--ema-surface-3)]'
               }`}
               style={{ '--stagger-i': i } as CSSProperties}
               onClick={() => toggleChoice(opt.label, current.multiSelect ?? false)}
             >
               <p className="font-medium text-sm">{opt.label}</p>
               {opt.description && (
-                <p className="text-xs text-neutral-500 mt-0.5">{opt.description}</p>
+                <p className="text-xs mt-0.5" style={{ color: 'var(--ema-text-tertiary)' }}>{opt.description}</p>
               )}
             </button>
           ))}

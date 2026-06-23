@@ -163,8 +163,8 @@ export function ChatInput(): JSX.Element {
           <div className="relative">
             <textarea
               ref={textareaRef}
-              className="relative w-full bg-transparent rounded-2xl px-4 py-3 pr-12 text-sm text-neutral-200 resize-none focus:outline-none placeholder-neutral-500 overflow-y-auto"
-              style={{ minHeight: 60, maxHeight: TEXTAREA_MAX_H }}
+              className="relative w-full bg-transparent rounded-2xl px-4 py-3 pr-12 text-sm resize-none focus:outline-none overflow-y-auto"
+              style={{ color: 'var(--ema-text-secondary)', minHeight: 60, maxHeight: TEXTAREA_MAX_H }}
               rows={1}
               placeholder="输入消息…"
               value={text}
@@ -195,7 +195,8 @@ export function ChatInput(): JSX.Element {
                 onClick={() => void pickAttachment()}
               />
               {pendingAttachments.length > 0 && (
-                <span className="absolute -top-1 -right-1 min-w-[16px] h-4 flex items-center justify-center rounded-full bg-primary-500 text-[10px] text-white font-medium px-0.5 pointer-events-none">
+                <span className="absolute -top-1 -right-1 min-w-[16px] h-4 flex items-center justify-center rounded-full text-[10px] font-medium px-0.5 pointer-events-none"
+                      style={{ background: 'var(--ema-primary)', color: 'var(--ema-text-primary)' }}>
                   {pendingAttachments.length}
                 </span>
               )}
@@ -225,8 +226,8 @@ export function ChatInput(): JSX.Element {
           </div>
 
           {hasAnyStreaming && (
-            <div className="text-xs text-neutral-500 flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-primary-400 animate-pulse" aria-hidden />
+            <div className="text-xs flex items-center gap-1.5" style={{ color: 'var(--ema-text-tertiary)' }}>
+              <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: 'var(--ema-primary)' }} aria-hidden />
               {isStreamingHere ? '生成中…' : '其他会话生成中'}
             </div>
           )}
@@ -308,20 +309,24 @@ function WorkspaceEditor({
 
   return (
     <div
-      className="absolute bottom-full left-0 mb-2 z-50 bg-neutral-800 border border-neutral-600 rounded-xl p-3 shadow-xl w-72"
+      className="absolute bottom-full left-0 mb-2 z-50 rounded-xl p-3 shadow-[var(--ema-shadow-2)] w-72"
+      style={{ background: 'var(--ema-surface-4)', border: '1px solid var(--ema-border)' }}
       onClick={(e) => e.stopPropagation()}
     >
-      <p className="text-xs text-neutral-400 mb-2 font-medium">工作区目录</p>
+      <p className="text-xs mb-2 font-medium" style={{ color: 'var(--ema-text-secondary)' }}>工作区目录</p>
 
       <div className="flex flex-col gap-1 mb-2 max-h-36 overflow-y-auto">
         {paths.length === 0 && (
-          <p className="text-xs text-neutral-500 py-1">暂无工作区（使用 sidecar 启动目录）</p>
+          <p className="text-xs py-1" style={{ color: 'var(--ema-text-tertiary)' }}>暂无工作区（使用 sidecar 启动目录）</p>
         )}
         {paths.map((p) => (
-          <div key={p} className="flex items-center justify-between bg-neutral-900 rounded-lg px-2 py-1 gap-2">
-            <span className="text-xs text-neutral-300 font-mono truncate flex-1" title={p}>{p}</span>
+          <div key={p} className="flex items-center justify-between rounded-lg px-2 py-1 gap-2"
+               style={{ background: 'var(--ema-surface-2)' }}>
+            <span className="text-xs font-mono truncate flex-1" style={{ color: 'var(--ema-text-secondary)' }} title={p}>{p}</span>
             <button
-              className="text-neutral-500 hover:text-red-400 shrink-0"
+              style={{ color: 'var(--ema-text-tertiary)' }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--ema-danger)'; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--ema-text-tertiary)'; }}
               onClick={() => setPaths(paths.filter((x) => x !== p))}
             >
               <span className="i-mdi:close text-sm" aria-hidden />
@@ -341,19 +346,22 @@ function WorkspaceEditor({
           autoFocus
         />
         <button
-          className="px-2 rounded-md bg-neutral-700 text-neutral-300 text-xs hover:bg-neutral-600"
+          className="px-2 rounded-md text-xs transition-colors text-[var(--ema-text-secondary)] bg-[var(--ema-surface-3)] hover:bg-[var(--ema-surface-2)]"
           onClick={addPath}
         >+</button>
       </div>
 
       <div className="flex gap-2">
         <button
-          className="px-3 py-1.5 rounded-lg bg-primary-500/20 text-primary-200 text-xs hover:bg-primary-500/30 transition-colors disabled:opacity-50"
+          className="px-3 py-1.5 rounded-lg text-xs transition-colors disabled:opacity-50"
+          style={{ background: 'var(--ema-primary-muted)', color: 'var(--ema-primary)' }}
           disabled={saving}
           onClick={() => void save()}
         >{saving ? '保存中…' : '保存'}</button>
         <button
-          className="px-3 py-1.5 rounded-lg text-neutral-400 text-xs hover:text-neutral-200"
+          className="px-3 py-1.5 rounded-lg text-xs transition-colors"
+          style={{ color: 'var(--ema-text-tertiary)' }}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--ema-text-primary)'; }}
           onClick={onClose}
         >取消</button>
       </div>

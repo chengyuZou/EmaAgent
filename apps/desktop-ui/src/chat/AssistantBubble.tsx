@@ -70,24 +70,25 @@ export function AssistantBubble({ message, label = 'Ema', isStreaming }: Assista
   return (
     <div className="flex mr-12 ema-bubble-in">
       <div className="flex flex-col min-w-20 max-w-full">
-        <div className="text-xs text-white/40 font-normal mb-1">
+        <div className="text-xs font-normal mb-1" style={{ color: 'var(--ema-text-tertiary)' }}>
           <span>{label}</span>
         </div>
 
         {isEmpty && isStreaming ? (
           <div className="flex gap-1.5 items-center h-4 py-2">
-            <div className="w-1.5 h-1.5 rounded-full bg-neutral-500 animate-bounce" style={{ animationDelay: '0ms' }} />
-            <div className="w-1.5 h-1.5 rounded-full bg-neutral-500 animate-bounce" style={{ animationDelay: '150ms' }} />
-            <div className="w-1.5 h-1.5 rounded-full bg-neutral-500 animate-bounce" style={{ animationDelay: '300ms' }} />
+            <div className="w-1.5 h-1.5 rounded-full animate-bounce" style={{ background: 'var(--ema-text-secondary)', animationDelay: '0ms' }} />
+            <div className="w-1.5 h-1.5 rounded-full animate-bounce" style={{ background: 'var(--ema-text-secondary)', animationDelay: '150ms' }} />
+            <div className="w-1.5 h-1.5 rounded-full animate-bounce" style={{ background: 'var(--ema-text-secondary)', animationDelay: '300ms' }} />
           </div>
         ) : (
-          <div className="text-neutral-200 text-sm break-words flex flex-col gap-2">
+          <div className="text-sm break-words flex flex-col gap-2" style={{ color: 'var(--ema-text-secondary)' }}>
             {groupSlices(slices).map((group, gi) => {
               if (group.kind === 'tool_group') {
                 return (
                   <div
                     key={gi}
-                    className="rounded-xl border border-neutral-800/60 bg-transparent px-3 py-2 flex flex-col gap-1.5"
+                    className="rounded-xl border bg-transparent px-3 py-2 flex flex-col gap-1.5"
+                    style={{ borderColor: 'var(--ema-border)' }}
                   >
                     {group.slices.map((slice, si) => (
                       <SliceRenderer key={si} slice={slice} streaming={!!isStreaming} />
@@ -100,13 +101,13 @@ export function AssistantBubble({ message, label = 'Ema', isStreaming }: Assista
           </div>
         )}
 
-        <div className="mt-1.5 flex items-center gap-2 text-[11px] text-neutral-500">
+        <div className="mt-1.5 flex items-center gap-2 text-[11px]" style={{ color: 'var(--ema-text-tertiary)' }}>
           {/* Mode chip */}
           {message.mode && (
             <span className={`px-1.5 py-0.5 rounded-md font-medium
-              ${message.mode === 'agent'     ? 'bg-violet-500/15 text-violet-400/80'
-              : message.mode === 'narrative' ? 'bg-amber-500/15 text-amber-400/80'
-              :                                'bg-neutral-700/50 text-neutral-400/70'}`}>
+              ${message.mode === 'agent'     ? 'bg-[var(--ema-info-muted)] text-[var(--ema-info)]'
+              : message.mode === 'narrative' ? 'bg-[var(--ema-warning-muted)] text-[var(--ema-warning)]'
+              :                                'bg-[var(--ema-surface-3)] text-[var(--ema-text-tertiary)]'}`}>
               {message.mode === 'agent' ? 'Agent' : message.mode === 'narrative' ? '叙事' : 'Chat'}
             </span>
           )}
@@ -114,15 +115,15 @@ export function AssistantBubble({ message, label = 'Ema', isStreaming }: Assista
           {/* Live streaming stats */}
           {isStreaming && (
             <span className="flex items-center gap-1.5">
-              <span className="w-1 h-1 rounded-full bg-primary-400 animate-pulse shrink-0" />
+              <span className="w-1 h-1 rounded-full animate-pulse shrink-0" style={{ background: 'var(--ema-primary)' }} />
               <span className="tabular-nums">{elapsed}s</span>
               {estimatedIn != null && estimatedIn > 0 && (
-                <span className="tabular-nums text-neutral-600">↑{fmtTok(estimatedIn)}</span>
+                <span className="tabular-nums" style={{ color: 'var(--ema-text-tertiary)' }}>↑{fmtTok(estimatedIn)}</span>
               )}
               {estimatedOut != null && estimatedOut > 0 && (
                 <span className="tabular-nums">↓{fmtTok(estimatedOut)}</span>
               )}
-              {thinkingActive && <span className="text-violet-400/70">· thinking</span>}
+              {thinkingActive && <span style={{ color: 'var(--ema-info)' }}>· thinking</span>}
             </span>
           )}
 
@@ -132,13 +133,13 @@ export function AssistantBubble({ message, label = 'Ema', isStreaming }: Assista
               {message.stats ? (
                 <>
                   <span>↑{fmtTok(message.stats.inputTokens)}</span>
-                  <span className="text-neutral-700">·</span>
+                  <span className="tabular-nums" style={{ color: 'var(--ema-text-tertiary)' }}>·</span>
                   <span>↓{fmtTok(message.stats.outputTokens)}</span>
-                  <span className="text-neutral-700">·</span>
+                  <span className="tabular-nums" style={{ color: 'var(--ema-text-tertiary)' }}>·</span>
                   <span>{(message.stats.durationMs / 1000).toFixed(1)}s</span>
                 </>
               ) : (
-                <span className="text-neutral-600">≈↓{fmtTok(estimateTextTokens(message.content))}</span>
+                <span style={{ color: 'var(--ema-text-tertiary)' }}>≈↓{fmtTok(estimateTextTokens(message.content))}</span>
               )}
             </span>
           )}
@@ -205,14 +206,14 @@ function BranchSiblingNav({ turnId }: { turnId: string }): JSX.Element | null {
   return (
     <span className="flex items-center gap-0.5 ml-1">
       <button
-        className="w-3.5 h-3.5 flex items-center justify-center text-neutral-500 hover:text-neutral-200 disabled:opacity-25 transition-colors leading-none"
+        className="w-3.5 h-3.5 flex items-center justify-center text-[var(--ema-text-tertiary)] hover:text-[var(--ema-text-primary)] disabled:opacity-25 transition-colors leading-none"
         disabled={pos === 1}
         onClick={() => void navigate(-1)}
         title="上一个分支"
       >‹</button>
-      <span className="tabular-nums text-[10px] text-neutral-500">{pos}/{total}</span>
+      <span className="tabular-nums text-[10px] text-[var(--ema-text-tertiary)]">{pos}/{total}</span>
       <button
-        className="w-3.5 h-3.5 flex items-center justify-center text-neutral-500 hover:text-neutral-200 disabled:opacity-25 transition-colors leading-none"
+        className="w-3.5 h-3.5 flex items-center justify-center text-[var(--ema-text-tertiary)] hover:text-[var(--ema-text-primary)] disabled:opacity-25 transition-colors leading-none"
         disabled={pos === total}
         onClick={() => void navigate(1)}
         title="下一个分支"

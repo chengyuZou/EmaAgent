@@ -67,13 +67,13 @@ export function AppearanceTab(): JSX.Element {
 
   return (
     <div className="space-y-8 max-w-lg">
-      <h2 className="text-base font-semibold text-neutral-100">外观</h2>
+      <h2 className="text-base font-semibold" style={{ color: 'var(--ema-text-primary)' }}>外观</h2>
 
       {/* ── Color ── */}
       <section className="space-y-4">
         <div>
-          <p className="text-sm font-medium text-neutral-200">主题色</p>
-          <p className="text-xs text-neutral-500 mt-0.5">拖动选择任意色相，辅色（紫罗兰）会自动跟随</p>
+          <p className="text-sm font-medium" style={{ color: 'var(--ema-text-secondary)' }}>主题色</p>
+          <p className="text-xs mt-0.5" style={{ color: 'var(--ema-text-tertiary)' }}>拖动选择任意色相，辅色（紫罗兰）会自动跟随</p>
         </div>
 
         {/* Continuous hue slider */}
@@ -96,7 +96,10 @@ export function AppearanceTab(): JSX.Element {
                   boxShadow:   Math.abs(hue - p.hue) < 5 ? '0 0 0 1px rgba(255,255,255,0.3)' : 'none',
                 }}
               />
-              <span className="text-xs text-neutral-500 group-hover:text-neutral-300 transition-ema">
+              <span className="text-xs transition-ema"
+                    style={{ color: 'var(--ema-text-tertiary)' }}
+                    onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--ema-text-primary)'; }}
+                    onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--ema-text-tertiary)'; }}>
                 {p.label}
               </span>
             </button>
@@ -104,13 +107,13 @@ export function AppearanceTab(): JSX.Element {
         </div>
       </section>
 
-      <div className="border-t border-neutral-800" />
+      <div className="border-t" style={{ borderColor: 'var(--ema-border)' }} />
 
       {/* ── Shape ── */}
       <section className="space-y-4">
         <div>
-          <p className="text-sm font-medium text-neutral-200">圆角风格</p>
-          <p className="text-xs text-neutral-500 mt-0.5">调整按钮、卡片、弹窗的圆角程度</p>
+          <p className="text-sm font-medium" style={{ color: 'var(--ema-text-secondary)' }}>圆角风格</p>
+          <p className="text-xs mt-0.5" style={{ color: 'var(--ema-text-tertiary)' }}>调整按钮、卡片、弹窗的圆角程度</p>
         </div>
 
         <Slider<number>
@@ -124,7 +127,8 @@ export function AppearanceTab(): JSX.Element {
           {(['sm', 'md', 'lg', 'xl'] as const).map((size) => (
             <div
               key={size}
-              className={`w-12 h-12 bg-primary-500/20 border border-primary-400/30 rounded-${size}`}
+              className={`w-12 h-12 rounded-${size}`}
+              style={{ background: 'var(--ema-primary-muted)', borderColor: 'var(--ema-primary)', borderWidth: 1 }}
             />
           ))}
         </div>

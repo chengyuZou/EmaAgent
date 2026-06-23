@@ -33,21 +33,23 @@ export function SessionSwitcher(): JSX.Element {
     filteredGroups.length > 0 || filteredArchived.length > 0;
 
   return (
-    <div className="relative shrink-0 border-b border-neutral-800">
+    <div className="relative shrink-0 border-b" style={{ borderColor: 'var(--ema-border)' }}>
       <button
-        className="w-full flex items-center justify-between px-4 py-2.5 hover:bg-neutral-900 transition-colors"
+        className="w-full flex items-center justify-between px-4 py-2.5 transition-colors"
+        style={{ color: 'var(--ema-text-secondary)' }}
+        onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--ema-surface-2)'; }}
+        onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = ''; }}
         onClick={() => setOpen(!open)}
       >
-        <span className="text-sm font-medium text-neutral-200 truncate">
-          {activeSession?.title ?? '新对话'}
-        </span>
-        <span className="i-mdi:chevron-down text-neutral-500 text-base ml-2" aria-hidden />
+        <span className="text-sm font-medium truncate">{activeSession?.title ?? '新对话'}</span>
+        <span className="i-mdi:chevron-down text-base ml-2" style={{ color: 'var(--ema-text-tertiary)' }} aria-hidden />
       </button>
 
       {open && (
         <>
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-          <div className="absolute top-full left-0 right-0 z-50 bg-neutral-900 border border-neutral-700 rounded-b-xl shadow-2xl max-h-80 overflow-hidden flex flex-col">
+          <div className="absolute top-full left-0 right-0 z-50 rounded-b-xl shadow-2xl max-h-80 overflow-hidden flex flex-col"
+               style={{ background: 'var(--ema-surface-4)', border: '1px solid var(--ema-border)' }}>
             <div className="p-2">
               <Input
                 inputSize="sm"
@@ -60,7 +62,7 @@ export function SessionSwitcher(): JSX.Element {
 
             <div className="overflow-y-auto flex-1 px-1 pb-1">
               {!hasResults && (
-                <div className="text-center text-neutral-500 text-sm py-4">
+                <div className="text-center text-sm py-4" style={{ color: 'var(--ema-text-tertiary)' }}>
                   暂无会话，发消息自动创建
                 </div>
               )}
@@ -79,7 +81,10 @@ export function SessionSwitcher(): JSX.Element {
               )}
 
               <button
-                className="w-full px-3 py-2 mt-1 rounded-lg text-sm text-primary-300 hover:bg-primary-400/10 transition-colors text-left"
+                className="w-full px-3 py-2 mt-1 rounded-lg text-sm transition-colors text-left"
+                style={{ color: 'var(--ema-primary)' }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--ema-primary-muted)'; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = ''; }}
                 onClick={async () => {
                   const newId = await useSessionStore.getState().createSession();
                   if (newId) void useConversationStore.getState().viewSession(newId);
@@ -110,12 +115,15 @@ function Section({
   return (
     <div className="mb-1">
       <button
-        className="flex items-center gap-1 px-2 py-1 text-xs text-neutral-500 hover:text-neutral-300 w-full text-left"
+        className="flex items-center gap-1 px-2 py-1 text-xs w-full text-left transition-colors"
+        style={{ color: 'var(--ema-text-tertiary)' }}
+        onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--ema-text-primary)'; }}
+        onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--ema-text-tertiary)'; }}
         onClick={() => setCollapsed(!collapsed)}
       >
         <span className={`i-mdi:chevron-right text-sm transition-transform ${collapsed ? '' : 'rotate-90'}`} aria-hidden />
         {label}
-        <span className="text-neutral-600 ml-1">({sessions.length})</span>
+        <span className="ml-1" style={{ color: 'var(--ema-text-tertiary)' }}>({sessions.length})</span>
       </button>
       {!collapsed && (
         <div className="flex flex-col gap-0.5">
@@ -162,17 +170,21 @@ function WorkspaceEditor({ session, onClose }: { session: SessionWire; onClose()
 
   return (
     <div
-      className="absolute right-0 top-6 z-50 bg-neutral-800 border border-neutral-600 rounded-xl p-3 shadow-xl w-72"
+      className="absolute right-0 top-6 z-50 rounded-xl p-3 shadow-[var(--ema-shadow-2)] w-72"
+      style={{ background: 'var(--ema-surface-4)', border: '1px solid var(--ema-border)' }}
       onClick={(e) => e.stopPropagation()}
     >
-      <p className="text-xs text-neutral-400 mb-2 font-medium">工作区目录</p>
+      <p className="text-xs mb-2 font-medium" style={{ color: 'var(--ema-text-secondary)' }}>工作区目录</p>
       <div className="flex flex-col gap-1 mb-2 max-h-36 overflow-y-auto">
-        {paths.length === 0 && <p className="text-xs text-neutral-500 py-1">暂无工作区</p>}
+        {paths.length === 0 && <p className="text-xs py-1" style={{ color: 'var(--ema-text-tertiary)' }}>暂无工作区</p>}
         {paths.map((p) => (
-          <div key={p} className="flex items-center justify-between bg-neutral-900 rounded-lg px-2 py-1 gap-2">
-            <span className="text-xs text-neutral-300 font-mono truncate flex-1" title={p}>{p}</span>
+          <div key={p} className="flex items-center justify-between rounded-lg px-2 py-1 gap-2"
+               style={{ background: 'var(--ema-surface-2)' }}>
+            <span className="text-xs font-mono truncate flex-1" style={{ color: 'var(--ema-text-secondary)' }} title={p}>{p}</span>
             <button
-              className="text-neutral-500 hover:text-red-400 shrink-0"
+              style={{ color: 'var(--ema-text-tertiary)' }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--ema-danger)'; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--ema-text-tertiary)'; }}
               onClick={() => setPaths(paths.filter((x) => x !== p))}
             >
               <span className="i-mdi:close text-sm" aria-hidden />
@@ -190,18 +202,23 @@ function WorkspaceEditor({ session, onClose }: { session: SessionWire; onClose()
           onKeyDown={(e) => { if (e.key === 'Enter') addPath(); }}
         />
         <button
-          className="px-2 rounded-md bg-neutral-700 text-neutral-300 text-xs hover:bg-neutral-600"
+          className="px-2 rounded-md text-xs transition-colors"
+          style={{ background: 'var(--ema-surface-3)', color: 'var(--ema-text-secondary)' }}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--ema-surface-2)'; }}
           onClick={addPath}
         >+</button>
       </div>
       <div className="flex gap-2">
         <button
-          className="px-3 py-1.5 rounded-lg bg-primary-500/20 text-primary-200 text-xs hover:bg-primary-500/30 transition-colors disabled:opacity-50"
+          className="px-3 py-1.5 rounded-lg text-xs transition-colors disabled:opacity-50"
+          style={{ background: 'var(--ema-primary-muted)', color: 'var(--ema-primary)' }}
           disabled={saving}
           onClick={() => void save()}
         >{saving ? '保存中…' : '保存'}</button>
         <button
-          className="px-3 py-1.5 rounded-lg text-neutral-400 text-xs hover:text-neutral-200"
+          className="px-3 py-1.5 rounded-lg text-xs transition-colors"
+          style={{ color: 'var(--ema-text-tertiary)' }}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--ema-text-primary)'; }}
           onClick={onClose}
         >取消</button>
       </div>
@@ -282,24 +299,26 @@ function SessionRow({ session, isActive, onSelect }: {
   return (
     <div
       className={`group flex items-center justify-between px-3 py-1.5 rounded-lg text-sm cursor-pointer transition-colors ${
-        isActive ? 'bg-primary-500/15 text-primary-200' : 'text-neutral-300 hover:bg-neutral-800'
+        isActive ? 'bg-[var(--ema-primary-muted)] text-[var(--ema-primary)]' : 'text-[var(--ema-text-secondary)] hover:bg-[var(--ema-surface-2)]'
       }`}
       onClick={onSelect}
     >
       <div className="flex items-center gap-2 truncate min-w-0">
         {session.pinned && (
-          <span className="i-mdi:pin text-xs text-primary-400 shrink-0" aria-hidden />
+          <span className="i-mdi:pin text-xs shrink-0" style={{ color: 'var(--ema-primary)' }} aria-hidden />
         )}
         <span className="truncate">{session.title || '新对话'}</span>
         {session.runningTurnCount > 0 && (
-          <span className="w-1.5 h-1.5 rounded-full bg-primary-400 animate-pulse shrink-0" aria-hidden />
+          <span className="w-1.5 h-1.5 rounded-full animate-pulse shrink-0" style={{ background: 'var(--ema-primary)' }} aria-hidden />
         )}
       </div>
 
       <div className="relative shrink-0" onClick={(e) => e.stopPropagation()}>
         <DropdownMenu
           trigger={
-            <button className="opacity-0 group-hover:opacity-100 px-1 text-neutral-500 hover:text-neutral-200 rounded">
+            <button className="opacity-0 group-hover:opacity-100 px-1 rounded transition-colors"
+                    style={{ color: 'var(--ema-text-tertiary)' }}
+                    onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--ema-text-primary)'; }}>
               <span className="i-mdi:dots-horizontal text-base" aria-hidden />
             </button>
           }

@@ -17,19 +17,21 @@ export function NarrativeStatusBlock({ slice }: { slice: NarrativeSlice }): Reac
   }, [allDone]);
 
   return (
-    <div className="flex flex-col gap-1 text-xs text-neutral-400 rounded-lg bg-violet-900/20 border border-violet-500/20 px-2.5 py-1.5">
+    <div className="flex flex-col gap-1 text-xs rounded-lg px-2.5 py-1.5"
+         style={{ color: 'var(--ema-text-tertiary)', background: 'var(--ema-info-muted)', borderColor: 'var(--ema-info)', borderWidth: 1 }}>
       <button
-        className="flex items-center gap-1.5 font-medium text-violet-400/80 hover:text-violet-300 transition-colors text-left w-full"
-        onClick={() => setOpen((v) => !v)}
-      >
+        className="flex items-center gap-1.5 font-medium transition-colors text-left w-full"
+        style={{ color: 'var(--ema-info)' }}
+        onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--ema-info-hover)'; }}
+        onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--ema-info)'; }}>
         {allDone
-          ? <span className="i-mdi:check-circle-outline text-violet-400 shrink-0" aria-hidden />
+          ? <span className="i-mdi:check-circle-outline shrink-0" style={{ color: 'var(--ema-info)' }} aria-hidden />
           : <Spinner size="sm" />
         }
         <span className="flex-1">
           {allDone ? `已检索 ${timelines.length} 条剧情线` : '检索剧情线…'}
         </span>
-        <span className="text-neutral-500">{open ? '▼' : '▶'}</span>
+        <span style={{ color: 'var(--ema-text-tertiary)' }}>{open ? '▼' : '▶'}</span>
       </button>
 
       {open && timelines.length > 0 && (
@@ -37,10 +39,10 @@ export function NarrativeStatusBlock({ slice }: { slice: NarrativeSlice }): Reac
           {timelines.map((t) => (
             <div key={t} className="flex items-center gap-1.5">
               {completed.has(t)
-                ? <span className="i-mdi:check text-violet-400/70 shrink-0" aria-hidden />
-                : <span className="i-mdi:dots-horizontal text-neutral-500 shrink-0" aria-hidden />
+                ? <span className="i-mdi:check shrink-0" style={{ color: 'var(--ema-info)' }} aria-hidden />
+                : <span className="i-mdi:dots-horizontal shrink-0" style={{ color: 'var(--ema-text-tertiary)' }} aria-hidden />
               }
-              <span className={completed.has(t) ? 'text-neutral-300' : 'text-neutral-500'}>{t}</span>
+              <span style={{ color: completed.has(t) ? 'var(--ema-text-secondary)' : 'var(--ema-text-tertiary)' }}>{t}</span>
             </div>
           ))}
         </div>

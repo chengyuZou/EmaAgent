@@ -78,9 +78,9 @@ function ModeIcon({ mode }: { mode: TurnMode | null }): JSX.Element {
 }
 
 function modeColor(mode: TurnMode | null): string {
-  if (mode === 'agent')     return 'oklch(0.68 0.16 290)';   // violet
-  if (mode === 'narrative') return 'oklch(0.76 0.14 75)';    // amber
-  return                           'oklch(0.72 0.18 350)';   // pink (chat)
+  if (mode === 'agent')     return 'var(--ema-info)';
+  if (mode === 'narrative') return 'var(--ema-warning)';
+  return                           'var(--ema-primary)';
 }
 
 // ── BranchPanel ───────────────────────────────────────────────────────────────
@@ -234,7 +234,7 @@ export function BranchPanel(): JSX.Element {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-12 text-xs text-neutral-600">
+      <div className="flex items-center justify-center py-12 text-xs" style={{ color: 'var(--ema-text-tertiary)' }}>
         加载中…
       </div>
     );
@@ -242,9 +242,9 @@ export function BranchPanel(): JSX.Element {
 
   if (error) {
     return (
-      <div className="flex flex-col items-center justify-center py-12 gap-2 text-xs text-neutral-600">
+      <div className="flex flex-col items-center justify-center py-12 gap-2 text-xs" style={{ color: 'var(--ema-text-tertiary)' }}>
         <span>{error}</span>
-        <button className="text-primary-400 hover:text-primary-300" onClick={() => void load()}>
+        <button className="text-[var(--ema-primary)] hover:text-[var(--ema-primary-hover)]" onClick={() => void load()}>
           重试
         </button>
       </div>

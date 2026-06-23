@@ -45,14 +45,18 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, State> {
       }
       return (
         <div className="flex flex-col items-center justify-center h-full gap-4 p-8">
-          <div className="text-red-400 text-lg font-semibold">
+          <div className="text-lg font-semibold" style={{ color: 'var(--ema-danger)' }}>
             出错了
           </div>
-          <pre className="text-xs text-gray-500 max-w-md overflow-auto whitespace-pre-wrap bg-gray-900 rounded-xl p-4">
+          <pre className="text-xs max-w-md overflow-auto whitespace-pre-wrap rounded-xl p-4"
+               style={{ color: 'var(--ema-text-tertiary)', background: 'var(--ema-surface-0)' }}>
             {this.state.error.message}
           </pre>
           <button
-            className="px-4 py-2 rounded-xl bg-pink-400/20 text-pink-300 hover:bg-pink-400/30 transition-colors"
+            className="px-4 py-2 rounded-xl transition-colors"
+            style={{ background: 'var(--ema-primary-muted)', color: 'var(--ema-primary)' }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'oklch(0.72 0.18 350 / 0.30)'; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--ema-primary-muted)'; }}
             onClick={this.reset}
           >
             重新加载
