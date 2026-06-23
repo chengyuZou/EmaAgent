@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Badge, Button, Callout, Card, Dialog, Field,
-  Input, ScrollArea, Spinner, Switch, Textarea, Tooltip,
+  Input, ScrollArea, Spinner, Switch, Tabs, Textarea, Tooltip,
 } from '@ema-agent/ui';
-import { useSkillStore } from '../stores/skill-store.js';
+import { useSkillStore, type MarketSkillEntry } from '../stores/skill-store.js';
 import { showToast } from '../lib/toast.js';
 
 type InstallMode = 'text' | 'url' | null;
@@ -14,16 +14,214 @@ function formatBytes(bytes: number): string {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
-export function SkillsTab(): JSX.Element {
+// ── Market view ───────────────────────────────────────────────────────────────
+
+function MarketView({
+  active,
+  installedNames,
+  onInstall,
+}: {
+  active:         boolean;
+  installedNames: Set<string>;
+  onInstall:      (url: string, name: string) => Promise<void>;
+}): JSX.Element {
+  const marketSkills  = useSkillStore((s) => s.marketSkills);
+  const marketLoading = useSkillStore((s) => s.marketLoading);
+  const marketError   = useSkillStore((s) => s.marketError);
+  const marketSource  = useSkillStore((s) => s.marketSource);
+  const [installing, setInstalling] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (active && marketSkills.length === 0 && !marketLoading) {
+      void useSkillStore.getState().listMarket();
+    }
+  }, [active, marketSkills.length, marketLoading]);
+
+  async function handleInstall(entry: MarketSkillEntry): Promise<void> {
+    setInstalling(entry.name);
+    try {
+      await onInstall(entry.url, entry.name);
+    } finally {
+      setInstalling(null);
+    }
+  }
+
+  if (marketLoading) {
+    return (
+      <div className="flex justify-center py-12">
+        <Spinner size="md" />
+      </div>
+    );
+  }
+
+  if (marketError) {
+    return (
+      <div className="flex flex-col gap-3">
+        <Callout variant="danger">{marketError}</Callout>
+        <Button variant="secondary" size="sm" className="self-start"
+          onClick={() => void useSkillStore.getState().listMarket()}>
+          重试
+        </Button>
+      </div>
+    );
+  }
+
+  if (marketSkills.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-neutral-500 gap-2">
+        <span className="i-mdi:store-outline text-4xl opacity-40" aria-hidden />
+        <p className="text-sm">市场暂无技能</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      {marketSource && (
+        <p className="text-xs text-neutral-600 mb-1 font-mono truncate">来源：{marketSource}</p>
+      )}
+      {marketSkills.map((entry, i) => {
+        const installed = installedNames.has(entry.name);
+        return (
+          <div
+            key={entry.name}
+            className="bg-neutral-900/80 ema-glass-weak border border-neutral-800/40 rounded-xl px-4 py-3
+                       ema-stagger-in"
+            style={{ '--stagger-i': i } as React.CSSProperties}
+          >
+            <div className="flex items-start gap-3">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-sm font-medium text-neutral-100">{entry.name}</span>
+                  <Badge variant="neutral">v{entry.version}</Badge>
+                  {entry.tags?.map((t) => (
+                    <Badge key={t} variant="neutral">{t}</Badge>
+                  ))}
+                </div>
+                {entry.description && (
+                  <p className="text-xs text-neutral-400 mt-1 line-clamp-2">{entry.description}</p>
+                )}
+                <p className="text-xs text-neutral-600 mt-1">
+                  {entry.author && `${entry.author} · `}
+                  {entry.sizeBytes != null && formatBytes(entry.sizeBytes)}
+                </p>
+              </div>
+
+              <div className="shrink-0 pt-0.5">
+                {installed ? (
+                  <Badge variant="success">已安装</Badge>
+                ) : (
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    loading={installing === entry.name}
+                    disabled={installing !== null}
+                    onClick={() => void handleInstall(entry)}
+                  >
+                    安装
+                  </Button>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── Installed list ────────────────────────────────────────────────────────────
+
+function InstalledList({
+  onRemove,
+}: {
+  onRemove: (name: string) => Promise<void>;
+}): JSX.Element {
   const skills  = useSkillStore((s) => s.skills);
   const loading = useSkillStore((s) => s.loading);
-  const error   = useSkillStore((s) => s.error);
 
-  const [installMode, setInstallMode]   = useState<InstallMode>(null);
-  const [textContent, setTextContent]   = useState('');
-  const [urlInput,    setUrlInput]      = useState('');
-  const [installing,  setInstalling]    = useState(false);
+  if (loading) {
+    return <div className="flex justify-center py-10"><Spinner size="md" /></div>;
+  }
+
+  if (skills.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-neutral-500 gap-2">
+        <span className="i-mdi:puzzle-outline text-4xl opacity-40" aria-hidden />
+        <p className="text-sm">暂无已安装技能</p>
+        <p className="text-xs">切换到「浏览市场」或点击右上角安装</p>
+      </div>
+    );
+  }
+
+  return (
+    <ScrollArea className="flex-1" viewportClassName="pb-2">
+      <div className="flex flex-col gap-2 pr-2">
+        {skills.map((sk, i) => (
+          <Card
+            key={sk.name}
+            variant="elevated"
+            padding="sm"
+            className="ema-stagger-in active:scale-[0.98] transition-all duration-250"
+            style={{ '--stagger-i': i } as React.CSSProperties}
+          >
+            <div className="flex items-start gap-3">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-sm font-medium text-neutral-100">{sk.name}</span>
+                  <Badge variant="neutral">v{sk.version}</Badge>
+                </div>
+                {sk.description && (
+                  <p className="text-xs text-neutral-400 mt-1 line-clamp-2">{sk.description}</p>
+                )}
+                <p className="text-xs text-neutral-600 mt-1">
+                  安装于 {new Date(sk.installedAt).toLocaleDateString('zh-CN')} · {formatBytes(sk.sizeBytes)}
+                </p>
+              </div>
+
+              <div className="flex items-center gap-3 shrink-0 pt-0.5">
+                <Tooltip content={sk.enabled ? '禁用技能' : '启用技能'}>
+                  <Switch
+                    checked={sk.enabled}
+                    label={sk.name}
+                    onCheckedChange={(checked) => {
+                      void useSkillStore.getState()
+                        .setEnabled(sk.name, checked)
+                        .catch((err: Error) => showToast(`更新失败: ${err.message}`, { variant: 'danger' }));
+                    }}
+                  />
+                </Tooltip>
+                <Tooltip content="卸载技能">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-neutral-500 hover:text-red-400 px-1.5"
+                    onClick={() => void onRemove(sk.name)}
+                  >
+                    <span className="i-mdi:delete-outline text-base" aria-hidden />
+                  </Button>
+                </Tooltip>
+              </div>
+            </div>
+          </Card>
+        ))}
+      </div>
+    </ScrollArea>
+  );
+}
+
+// ── SkillsTab ─────────────────────────────────────────────────────────────────
+
+export function SkillsTab(): JSX.Element {
+  const skills      = useSkillStore((s) => s.skills);
+  const error       = useSkillStore((s) => s.error);
+
+  const [installMode,  setInstallMode]  = useState<InstallMode>(null);
+  const [textContent,  setTextContent]  = useState('');
+  const [urlInput,     setUrlInput]     = useState('');
+  const [installing,   setInstalling]   = useState(false);
   const [installError, setInstallError] = useState<string | null>(null);
+  const [activeTab,    setActiveTab]    = useState<string>('installed');
 
   useEffect(() => { void useSkillStore.getState().load(); }, []);
 
@@ -49,12 +247,13 @@ export function SkillsTab(): JSX.Element {
     }
   }
 
-  async function handleInstallFromUrl(): Promise<void> {
-    if (!urlInput.trim()) return;
+  async function handleInstallFromUrl(url: string): Promise<void> {
+    const target = url || urlInput.trim();
+    if (!target) return;
     setInstalling(true);
     setInstallError(null);
     try {
-      const sk = await useSkillStore.getState().installFromUrl(urlInput.trim());
+      const sk = await useSkillStore.getState().installFromUrl(target);
       showToast(`已安装 ${sk.name}`, { variant: 'success' });
       closeDialog();
     } catch (err) {
@@ -74,87 +273,55 @@ export function SkillsTab(): JSX.Element {
     }
   }
 
+  const installedNames = new Set(skills.map((s) => s.name));
+
+  const tabItems = [
+    {
+      value:   'installed',
+      label:   `已安装 (${skills.length})`,
+      content: <InstalledList onRemove={handleRemove} />,
+    },
+    {
+      value:   'market',
+      label:   '浏览市场',
+      content: (
+        <MarketView
+          active={activeTab === 'market'}
+          installedNames={installedNames}
+          onInstall={(url, _name) => handleInstallFromUrl(url)}
+        />
+      ),
+    },
+  ];
+
   return (
     <div className="flex flex-col gap-4">
       {/* Header */}
       <div className="flex items-start justify-between shrink-0">
         <div>
           <h2 className="text-base font-semibold text-neutral-100">技能管理</h2>
-          <p className="text-xs text-neutral-500 mt-0.5">安装并管理自定义技能(Markdown 驱动，含工具权限白名单)</p>
+          <p className="text-xs text-neutral-500 mt-0.5">安装并管理自定义技能（Markdown 驱动，含工具权限白名单）</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="secondary" size="sm" onClick={() => setInstallMode('url')} className="active:scale-[0.98] transition-all duration-250">从 URL 安装</Button>
-          <Button variant="primary"   size="sm" onClick={() => setInstallMode('text')} className="active:scale-[0.98] transition-all duration-250">从文本安装</Button>
+          <Button variant="secondary" size="sm" onClick={() => setInstallMode('url')}
+            className="active:scale-[0.98] transition-all duration-250">
+            从 URL 安装
+          </Button>
+          <Button variant="primary" size="sm" onClick={() => setInstallMode('text')}
+            className="active:scale-[0.98] transition-all duration-250">
+            从文本安装
+          </Button>
         </div>
       </div>
 
       {error && <Callout variant="danger" className="shrink-0">{error}</Callout>}
 
-      {/* Loading */}
-      {loading && (
-        <div className="flex justify-center py-10">
-          <Spinner size="md" />
-        </div>
-      )}
-
-      {/* Empty */}
-      {!loading && skills.length === 0 && (
-        <div className="flex flex-col items-center justify-center py-16 text-neutral-500 gap-2">
-          <span className="i-mdi:puzzle-outline text-4xl opacity-40" />
-          <p className="text-sm">暂无已安装技能</p>
-          <p className="text-xs">点击"从文本安装"添加第一个技能</p>
-        </div>
-      )}
-
-      {/* List */}
-      {!loading && skills.length > 0 && (
-        <ScrollArea className="flex-1" viewportClassName="pb-2">
-          <div className="flex flex-col gap-2 pr-2">
-            {skills.map((sk) => (
-              <Card key={sk.name} variant="elevated" padding="sm" className="animate-slide-up active:scale-[0.98] transition-all duration-250" style={{ animationDelay: `${Math.min(parseInt(sk.name.length.toString(), 10) * 30, 300)}ms` }}>
-                <div className="flex items-start gap-3">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-sm font-medium text-neutral-100">{sk.name}</span>
-                      <Badge variant="neutral">v{sk.version}</Badge>
-                    </div>
-                    {sk.description && (
-                      <p className="text-xs text-neutral-400 mt-1 line-clamp-2">{sk.description}</p>
-                    )}
-                    <p className="text-xs text-neutral-600 mt-1">
-                      安装于 {new Date(sk.installedAt).toLocaleDateString('zh-CN')} · {formatBytes(sk.sizeBytes)}
-                    </p>
-                  </div>
-
-                  <div className="flex items-center gap-3 shrink-0 pt-0.5">
-                    <Tooltip content={sk.enabled ? '禁用技能' : '启用技能'}>
-                      <Switch
-                        checked={sk.enabled}
-                        label={sk.name}
-                        onCheckedChange={(checked) => {
-                          void useSkillStore.getState()
-                            .setEnabled(sk.name, checked)
-                            .catch((err: Error) => showToast(`更新失败: ${err.message}`, { variant: 'danger' }));
-                        }}
-                      />
-                    </Tooltip>
-                    <Tooltip content="卸载技能">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="text-neutral-500 hover:text-red-400 px-1.5"
-                        onClick={() => void handleRemove(sk.name)}
-                      >
-                        <span className="i-mdi:delete-outline text-base" aria-hidden />
-                      </Button>
-                    </Tooltip>
-                  </div>
-                </div>
-              </Card>
-            ))}
-          </div>
-        </ScrollArea>
-      )}
+      <Tabs
+        value={activeTab}
+        onChange={setActiveTab}
+        items={tabItems}
+        variant="underline"
+      />
 
       {/* Install from text */}
       <Dialog
@@ -199,7 +366,7 @@ export function SkillsTab(): JSX.Element {
             placeholder="https://raw.githubusercontent.com/..."
             value={urlInput}
             onChange={(e) => setUrlInput(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') void handleInstallFromUrl(); }}
+            onKeyDown={(e) => { if (e.key === 'Enter') void handleInstallFromUrl(''); }}
             autoFocus
           />
         </Field>
@@ -210,7 +377,7 @@ export function SkillsTab(): JSX.Element {
             size="sm"
             loading={installing}
             disabled={!urlInput.trim() || installing}
-            onClick={() => void handleInstallFromUrl()}
+            onClick={() => void handleInstallFromUrl('')}
           >安装</Button>
         </div>
       </Dialog>

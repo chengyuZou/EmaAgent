@@ -1,4 +1,6 @@
 /** ShortcutsTab — keyboard shortcuts reference (V1 read-only). */
+import { Card } from '@ema-agent/ui';
+
 export function ShortcutsTab(): JSX.Element {
   const shortcuts: Array<{ keys: string; action: string }> = [
     { keys: 'Enter',          action: '发送消息' },
@@ -19,10 +21,15 @@ export function ShortcutsTab(): JSX.Element {
       <div className="text-xs text-neutral-500 mb-4">V1 不可自定义，V1.5 将支持自定义绑定</div>
       <div className="flex flex-col gap-1 max-w-md">
         {shortcuts.map((s) => (
-          <div key={s.keys} className="flex items-center justify-between bg-neutral-900/80 backdrop-blur-sm rounded-xl px-4 py-2 border border-neutral-800/40 hover:border-neutral-700/40 transition-all duration-250">
+          <Card
+            key={s.keys}
+            variant="elevated"
+            padding="none"
+            className="flex items-center justify-between px-4 py-2"
+          >
             <span className="text-sm text-neutral-300">{s.action}</span>
             <kbd className="px-2 py-0.5 rounded-lg bg-neutral-800 text-xs text-neutral-400 font-mono">{s.keys}</kbd>
-          </div>
+          </Card>
         ))}
       </div>
     </div>

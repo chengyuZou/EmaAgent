@@ -20,7 +20,6 @@ export function LlmModelManager({ providerId }: { providerId: string }): JSX.Ele
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState<string | null>(null);
 
-  // Inline "enter context window" editor for a model whose window is unknown.
   const [pendingModel, setPendingModel] = useState<string | null>(null);
   const [pendingCtx,   setPendingCtx]   = useState('');
 
@@ -54,11 +53,9 @@ export function LlmModelManager({ providerId }: { providerId: string }): JSX.Ele
       void disable(m.id);
       return;
     }
-    // Enabling: context window required.
     if (m.contextWindow != null) {
       void enable(m.id, m.contextWindow, 'table');
     } else {
-      // Unknown window (not in models.dev catalog either) → ask the user.
       setPendingModel(m.id);
       setPendingCtx('');
     }
@@ -112,9 +109,9 @@ export function LlmModelManager({ providerId }: { providerId: string }): JSX.Ele
 
       {/* 搜索框 */}
       <div className="relative">
-        <span className="i-solar:magnifer-linear absolute left-3 top-1/2 -translate-y-1/2 text-neutral-500 text-sm" aria-hidden />
-        <input
-          className="w-full bg-neutral-900/80 backdrop-blur-sm border border-neutral-800 rounded-lg pl-8 pr-3 py-2 text-sm text-neutral-200 placeholder:text-neutral-600 focus:outline-none focus:border-pink-400/40 transition-all duration-250"
+        <span className="i-solar:magnifer-linear absolute left-3 top-1/2 -translate-y-1/2 text-neutral-500 text-sm pointer-events-none" aria-hidden />
+        <Input
+          className="pl-8"
           placeholder="搜索模型…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
@@ -128,7 +125,7 @@ export function LlmModelManager({ providerId }: { providerId: string }): JSX.Ele
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
           {filtered.map((m) => (
             <div key={m.id}>
-              <div className="flex items-center justify-between bg-neutral-900/80 backdrop-blur-sm rounded-xl px-3 py-2.5 border border-neutral-800/40 hover:border-neutral-700/40 active:scale-[0.98] transition-all duration-250">
+              <div className="flex items-center justify-between bg-neutral-900/80 ema-glass-weak rounded-xl px-3 py-2.5 border border-neutral-800/40 hover:border-neutral-700/40 active:scale-[0.98] transition-all duration-250">
                 <div className="flex items-center gap-2 min-w-0 flex-1">
                   <span className="text-sm text-neutral-200 font-mono truncate">{m.id}</span>
                   {m.contextWindow != null && (
@@ -178,8 +175,6 @@ function ManualAddModel({ onAdd, existing, available }: {
   const [query, setQuery] = useState('');
   const [ctx, setCtx]     = useState('');
 
-  // Autocomplete from the provider's fetched list (live /models + models.dev
-  // catalog context), not a bundled static table.
   const suggestions = query.trim()
     ? available
         .filter((m) => m.id.toLowerCase().includes(query.toLowerCase().trim()))
@@ -216,13 +211,12 @@ function ManualAddModel({ onAdd, existing, available }: {
             onChange={(e) => {
               const v = e.target.value;
               setQuery(v);
-              // Auto-fill context from the provider's fetched list (live + models.dev catalog).
               const hit = available.find((m) => m.id === v);
               if (hit?.contextWindow != null) setCtx(String(hit.contextWindow));
             }}
           />
           {suggestions.length > 0 && (
-            <div className="absolute z-20 left-0 right-0 top-full mt-1 bg-neutral-900/95 backdrop-blur-md border border-neutral-700/50 rounded-lg shadow-xl overflow-hidden">
+            <div className="absolute z-20 left-0 right-0 top-full mt-1 bg-neutral-900/95 ema-glass-base border border-neutral-700/50 rounded-lg shadow-xl overflow-hidden">
               {suggestions.map((s) => (
                 <button
                   key={s.id}
@@ -237,9 +231,10 @@ function ManualAddModel({ onAdd, existing, available }: {
             </div>
           )}
         </div>
-        <input
+        <Input
           type="number"
-          className="w-28 bg-neutral-900/80 backdrop-blur-sm border border-neutral-800 rounded-lg px-3 py-1.5 text-sm text-neutral-200 focus:outline-none focus:border-pink-400/40 transition-all duration-250 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+          inputSize="sm"
+          className="w-28 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
           placeholder="窗口 token"
           value={ctx}
           onChange={(e) => setCtx(e.target.value)}
@@ -250,7 +245,7 @@ function ManualAddModel({ onAdd, existing, available }: {
   );
 }
 
-/** Highlight the matched substring in pink-white + violet (brand palette). */
+/** Highlight the matched substring in primary palette. */
 function highlight(text: string, query: string): JSX.Element {
   const q = query.toLowerCase();
   const idx = text.toLowerCase().indexOf(q);
@@ -258,7 +253,7 @@ function highlight(text: string, query: string): JSX.Element {
   return (
     <span className="text-neutral-300">
       {text.slice(0, idx)}
-      <span className="text-pink-200 bg-violet-500/25 rounded px-0.5">{text.slice(idx, idx + q.length)}</span>
+      <span className="text-primary-200 bg-violet-500/25 rounded px-0.5">{text.slice(idx, idx + q.length)}</span>
       {text.slice(idx + q.length)}
     </span>
   );

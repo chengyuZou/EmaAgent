@@ -6,8 +6,8 @@
  * status dot. Level 2 (click a card): instance management for that provider
  * definition — list, add, edit, delete — with a back arrow.
  */
-import { useState, useEffect } from 'react';
-import { Button, Callout, MenuStatusItem } from '@ema-agent/ui';
+import React, { useState, useEffect } from 'react';
+import { Button, Callout, IconButton, MenuStatusItem } from '@ema-agent/ui';
 import { useSettingsStore } from '../stores/settings-store.js';
 import { providersApi, type ProviderDefinition, type ProviderConfigWire } from '../api/providers.js';
 import type { Capability } from '@ema-agent/contracts';
@@ -93,8 +93,8 @@ export function ProvidersTab(): JSX.Element {
         return (
           <section key={section.key}>
             {/* Section header — subtle slide-down */}
-            <div className="flex items-center gap-3 mb-4 animate-slide-down"
-              style={{ animationDelay: `${cardIdx * 40}ms` }}>
+            <div className="flex items-center gap-3 mb-4 ema-stagger-in"
+              style={{ '--stagger-i': cardIdx } as React.CSSProperties}>
               <span className={`${section.icon} text-4xl text-neutral-500`} aria-hidden />
               <div>
                 <p className="text-sm text-neutral-500">{section.description}</p>
@@ -106,7 +106,7 @@ export function ProvidersTab(): JSX.Element {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {sectionDefs.map((def) => {
                 const instances = providers.filter((p) => p.definitionId === def.id);
-                const delay = `${(cardIdx++) * 40 + 60}ms`;
+                const staggerI = cardIdx++;
                 return (
                   <MenuStatusItem
                     key={def.id}
@@ -115,8 +115,8 @@ export function ProvidersTab(): JSX.Element {
                     icon={def.iconKey ?? 'i-solar:box-bold-duotone'}
                     configured={instances.length > 0}
                     onClick={() => { setSelectedDef(def.id); setSelectedCapability(section.key as Capability); }}
-                    style={{ animationDelay: delay }}
-                    className="animate-slide-up"
+                    style={{ '--stagger-i': staggerI } as React.CSSProperties}
+                    className="ema-stagger-in"
                   />
                 );
               })}
@@ -158,15 +158,13 @@ function ProviderConfigPanel({
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <button
-            className="size-8 -ml-1.5 rounded-lg flex items-center justify-center
-                       text-neutral-400 hover:text-primary-300 hover:bg-neutral-800/60
-                       active:scale-90 transition-all duration-150"
+          <IconButton
+            label="返回服务来源"
+            icon="i-solar:alt-arrow-left-line-duotone"
+            size="sm"
+            className="-ml-1.5"
             onClick={onBack}
-            aria-label="返回服务来源"
-          >
-            <span className="i-solar:alt-arrow-left-line-duotone text-xl" aria-hidden />
-          </button>
+          />
           <span className={`${definition.iconKey ?? 'i-solar:box-bold-duotone'} text-3xl`} aria-hidden />
           <h2 className="text-xl font-medium text-neutral-100">{definition.name}</h2>
           {config && (

@@ -187,7 +187,7 @@ export function SettingsPanel(): JSX.Element {
         {/* ── Right content ── */}
         <main
           key={activeSection}
-          className="flex-1 min-w-0 overflow-y-auto px-8 py-6 animate-slide-right"
+          className="flex-1 min-w-0 overflow-y-auto px-8 py-6 ema-slide-right"
           id="settings-scroll-container"
         >
           <SectionContent id={activeSection} />

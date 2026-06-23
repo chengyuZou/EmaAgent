@@ -13,7 +13,6 @@ export interface ProviderCardProps {
 }
 
 export function ProviderCard({ def, instanceCount, healthyCount, selected, activeCapability, onClick }: ProviderCardProps): JSX.Element {
-  // When filtered by capability, show the relevant protocol and model
   const cap = activeCapability as Capability;
   const capInfo = activeCapability && (def.capabilities as readonly string[]).includes(activeCapability)
     ? { proto: def.protocols?.[cap], models: def.defaultModels?.[cap] }
@@ -21,11 +20,11 @@ export function ProviderCard({ def, instanceCount, healthyCount, selected, activ
 
   return (
     <button
-      className={`w-full text-left px-4 py-3 rounded-xl border transition-colors ${
+      className={`w-full text-left px-4 py-3 rounded-xl border transition-all duration-250 ${
         selected
-          ? 'border-pink-400/40 bg-pink-400/10'
-          : 'border-neutral-800/40 bg-neutral-900/80 backdrop-blur-sm hover:bg-neutral-800/60 active:scale-[0.98]'
-      } transition-all duration-250`}
+          ? 'border-primary-400/40 bg-primary-500/10'
+          : 'border-neutral-800/40 bg-neutral-900/80 ema-glass-weak hover:bg-neutral-800/60 active:scale-[0.98]'
+      }`}
       onClick={onClick}
     >
       <div className="flex items-center justify-between">

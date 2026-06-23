@@ -60,7 +60,7 @@ export function SttModelManager({ providerId }: { providerId: string }): JSX.Ele
       {!loading && (
         <div className="flex flex-col gap-1.5">
           {models.map((m) => (
-            <div key={m.id} className="flex items-center justify-between bg-neutral-900/80 backdrop-blur-sm rounded-xl px-3 py-2 border border-neutral-800/40 hover:border-neutral-700/40 active:scale-[0.98] transition-all duration-250">
+            <div key={m.id} className="flex items-center justify-between bg-neutral-900/80 ema-glass-weak rounded-xl px-3 py-2 border border-neutral-800/40 hover:border-neutral-700/40 active:scale-[0.98] transition-all duration-250">
               <span className="text-sm text-neutral-200 font-mono truncate">{m.id}</span>
               <Switch
                 checked={m.enabled}

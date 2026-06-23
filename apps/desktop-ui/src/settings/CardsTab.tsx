@@ -40,10 +40,12 @@ export function CardsTab(): JSX.Element {
     <div className="flex gap-6">
       {/* Left: card list */}
       <div className="w-72 shrink-0 flex flex-col gap-2">
+        {/* TODO: V1 单角色，暂不开放新建入口，待多角色支持后恢复。
         <Button variant="primary" size="sm" block onClick={handleCreate} className="active:scale-[0.98] transition-all duration-250">
           <span className="i-mdi:plus text-base" aria-hidden />
           新建角色卡
         </Button>
+        */}
 
         <ScrollArea className="flex-1" viewportClassName="pb-2">
           <div className="flex flex-col gap-1.5 pr-1">

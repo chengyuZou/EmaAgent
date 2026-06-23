@@ -12,6 +12,14 @@ export interface McpProbeResult {
   tools?:  McpToolInfo[];
 }
 
+export interface McpImportResult {
+  name:          string;
+  id?:           string;
+  ok:            boolean;
+  error?:        string;
+  connectError?: string;
+}
+
 export const mcpApi = {
   /** GET /api/mcp/servers */
   async list(): Promise<{ servers: Array<McpServerRecord & { connection: McpConnection }> }> {
@@ -71,6 +79,18 @@ export const mcpApi = {
     return sidecarClient.request<McpProbeResult>('/api/mcp/probe', {
       method: 'POST',
       json: config,
+    });
+  },
+
+  /**
+   * POST /api/mcp/import — bulk-import servers from a Claude Desktop / mcp.so
+   * JSON config. Accepts the raw object or a JSON string in `{ json }`.
+   * Each entry is registered + best-effort connected; per-entry results returned.
+   */
+  async import(payload: object | string): Promise<{ imported: McpImportResult[] }> {
+    return sidecarClient.request<{ imported: McpImportResult[] }>('/api/mcp/import', {
+      method: 'POST',
+      json:   { json: typeof payload === 'string' ? payload : JSON.stringify(payload) },
     });
   },
 };

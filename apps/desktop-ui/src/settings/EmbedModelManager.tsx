@@ -73,8 +73,6 @@ export function EmbedModelManager({ providerId }: { providerId: string }): JSX.E
     setPendingDim('');
   }
 
-  const inputCls = 'w-full bg-neutral-900/80 backdrop-blur-sm border border-neutral-800 rounded-xl px-3 py-2 text-sm text-neutral-200 focus:outline-none focus:border-pink-400/40 transition-all duration-250';
-
   return (
     <div className="flex flex-col gap-3 mt-2">
       <div className="flex items-center justify-between">
@@ -97,7 +95,7 @@ export function EmbedModelManager({ providerId }: { providerId: string }): JSX.E
         <div className="flex flex-col gap-1.5">
           {models.map((m) => (
             <div key={m.id}>
-              <div className="flex items-center justify-between bg-neutral-900/80 backdrop-blur-sm rounded-xl px-3 py-2 border border-neutral-800/40 hover:border-neutral-700/40 active:scale-[0.98] transition-all duration-250">
+              <div className="flex items-center justify-between bg-neutral-900/80 ema-glass-weak rounded-xl px-3 py-2 border border-neutral-800/40 hover:border-neutral-700/40 active:scale-[0.98] transition-all duration-250">
                 <div className="flex items-center gap-2 min-w-0">
                   <span className="text-sm text-neutral-200 font-mono truncate">{m.id}</span>
                   {m.dim != null && <Badge variant="neutral">{m.dim}d</Badge>}

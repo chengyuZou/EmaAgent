@@ -66,7 +66,7 @@ export function RerankModelManager({ providerId }: { providerId: string }): JSX.
             <p className="text-xs text-neutral-500 py-2">该供应商暂无内置重排序模型。</p>
           )}
           {models.map((m) => (
-            <div key={m.id} className="flex items-center justify-between bg-neutral-900/80 backdrop-blur-sm rounded-xl px-3 py-2 border border-neutral-800/40 hover:border-neutral-700/40 active:scale-[0.98] transition-all duration-250">
+            <div key={m.id} className="flex items-center justify-between bg-neutral-900/80 ema-glass-weak rounded-xl px-3 py-2 border border-neutral-800/40 hover:border-neutral-700/40 active:scale-[0.98] transition-all duration-250">
               <div className="flex items-center gap-2 min-w-0">
                 <span className="text-sm text-neutral-200 font-mono truncate">{m.id}</span>
                 {m.maxChunks != null && <Badge variant="neutral">max {m.maxChunks} chunks</Badge>}

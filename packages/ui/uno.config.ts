@@ -171,17 +171,15 @@ export function emaSharedPreset(options: EmaSharedPresetOptions = {}): Preset[] 
         },
       ],
     },
-    // -- Custom animations: keyframes + theme entries for animate-* utilities --
+    // -- Custom animations: theme entries so animate-* UnoCSS utilities remain
+    //    available as aliases. Keyframes live exclusively in style.css.
     {
       name: 'ema-animations',
       theme: {
         animation: {
-          // Fade
           'fade-in':     'ema-fade-in     150ms ease-out both',
           'fade-out':    'ema-fade-out    100ms ease-in  forwards',
-          // Scale entrance (dialogs, popovers)
           'scale-in':    'ema-scale-in    150ms cubic-bezier(0.16,1,0.3,1) both',
-          // Slide entrances — spring easing from AIRI
           'slide-up':    'ema-slide-up    220ms cubic-bezier(0.16,1,0.3,1) both',
           'slide-down':  'ema-slide-down  220ms cubic-bezier(0.16,1,0.3,1) both',
           'slide-right': 'ema-slide-right 220ms cubic-bezier(0.16,1,0.3,1) both',
@@ -190,18 +188,12 @@ export function emaSharedPreset(options: EmaSharedPresetOptions = {}): Preset[] 
       },
       preflights: [
         {
+          // progress-shine is Progress-component-only; not in style.css.
           getCSS: () => `
 @keyframes progress-shine {
   0%   { opacity: 0.4; transform: scale(0, 1); }
   100% { opacity: 0;   transform: scale(1, 1); }
 }
-@keyframes ema-fade-in     { from { opacity: 0;                          } to { opacity: 1;                        } }
-@keyframes ema-fade-out    { from { opacity: 1;                          } to { opacity: 0;                        } }
-@keyframes ema-scale-in    { from { opacity: 0; transform: scale(0.95);  } to { opacity: 1; transform: scale(1);   } }
-@keyframes ema-slide-up    { from { opacity: 0; transform: translateY(10px);  } to { opacity: 1; transform: translateY(0);  } }
-@keyframes ema-slide-down  { from { opacity: 0; transform: translateY(-8px);  } to { opacity: 1; transform: translateY(0);  } }
-@keyframes ema-slide-right { from { opacity: 0; transform: translateX(-12px); } to { opacity: 1; transform: translateX(0); } }
-@keyframes ema-slide-left  { from { opacity: 0; transform: translateX(12px);  } to { opacity: 1; transform: translateX(0); } }
           `.trim(),
         },
       ],

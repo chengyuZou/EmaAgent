@@ -1,13 +1,22 @@
 /**
  * BehaviorTab — edit speechPatterns, forbiddenTopics, emotionVocabulary, motionVocabulary.
  */
-import { useState, type FormEvent, type KeyboardEvent } from 'react';
+import { useState, type FormEvent, type KeyboardEvent, type JSX } from 'react';
+import { Button, IconButton, Input } from '@ema-agent/ui';
 import { useCardStore } from '../stores/card-store.js';
 import type { CharacterCard } from '../api/cards.js';
 import { showToast } from '../lib/toast.js';
 import type { CharacterCardId } from '@ema-agent/contracts';
 
-function TagEditor({ tags, onChange, placeholder }: { tags: string[]; onChange(tags: string[]): void; placeholder: string }): JSX.Element {
+function TagEditor({
+  tags,
+  onChange,
+  placeholder,
+}: {
+  tags:        string[];
+  onChange:    (tags: string[]) => void;
+  placeholder: string;
+}): JSX.Element {
   const [input, setInput] = useState('');
 
   function addTag(): void {
@@ -30,17 +39,27 @@ function TagEditor({ tags, onChange, placeholder }: { tags: string[]; onChange(t
   }
 
   return (
-    <div>
-      <div className="flex flex-wrap gap-1 mb-2">
+    <div className="flex flex-col gap-2">
+      <div className="flex flex-wrap gap-1">
         {tags.map((tag, i) => (
-          <span key={`${tag}-${i}`} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-neutral-800 text-xs text-neutral-200">
+          <span
+            key={`${tag}-${i}`}
+            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-neutral-800 text-xs text-neutral-200"
+          >
             {tag}
-            <button type="button" className="text-gray-500 hover:text-red-400" onClick={() => removeTag(i)}>×</button>
+            <IconButton
+              label={`删除 ${tag}`}
+              icon="i-mdi:close"
+              size="sm"
+              variant="default"
+              type="button"
+              className="w-4 h-4 text-[10px]"
+              onClick={() => removeTag(i)}
+            />
           </span>
         ))}
       </div>
-      <input
-        className="w-full bg-neutral-900/80 backdrop-blur-sm border border-neutral-800 rounded-xl px-3 py-1.5 text-sm text-neutral-200 focus:outline-none focus:border-pink-400/40 transition-all duration-250"
+      <Input
         placeholder={placeholder}
         value={input}
         onChange={(e) => setInput(e.target.value)}
@@ -65,7 +84,7 @@ export function BehaviorTab({ card }: { card: CharacterCard }): JSX.Element {
         speechPatterns,
         forbiddenTopics,
         emotionVocabulary: emotionVocab,
-        motionVocabulary: motionVocab,
+        motionVocabulary:  motionVocab,
       });
       showToast('已保存', { variant: 'success' });
     } catch (err: unknown) {
@@ -76,34 +95,30 @@ export function BehaviorTab({ card }: { card: CharacterCard }): JSX.Element {
   }
 
   return (
-    <form onSubmit={handleSave} className="flex flex-col gap-4 max-w-lg">
-      <div className="flex flex-col gap-1">
+    <form onSubmit={handleSave} className="flex flex-col gap-5 max-w-lg pt-3">
+      <div className="flex flex-col gap-1.5">
         <label className="text-xs text-neutral-400">说话风格模式</label>
-        <TagEditor tags={speechPatterns} onChange={setSpeechPatterns} placeholder="添加模式…" />
+        <TagEditor tags={speechPatterns} onChange={setSpeechPatterns} placeholder="添加模式… (Enter 确认)" />
       </div>
 
-      <div className="flex flex-col gap-1">
+      <div className="flex flex-col gap-1.5">
         <label className="text-xs text-neutral-400">禁止话题</label>
-        <TagEditor tags={forbiddenTopics} onChange={setForbiddenTopics} placeholder="添加话题…" />
+        <TagEditor tags={forbiddenTopics} onChange={setForbiddenTopics} placeholder="添加话题… (Enter 确认)" />
       </div>
 
-      <div className="flex flex-col gap-1">
+      <div className="flex flex-col gap-1.5">
         <label className="text-xs text-neutral-400">情感词汇（控制 Live2D 表情）</label>
-        <TagEditor tags={emotionVocab} onChange={setEmotionVocab} placeholder="添加情绪词…" />
+        <TagEditor tags={emotionVocab} onChange={setEmotionVocab} placeholder="添加情绪词… (Enter 确认)" />
       </div>
 
-      <div className="flex flex-col gap-1">
+      <div className="flex flex-col gap-1.5">
         <label className="text-xs text-neutral-400">动作词汇（控制 Live2D 动作）</label>
-        <TagEditor tags={motionVocab} onChange={setMotionVocab} placeholder="添加动作词…" />
+        <TagEditor tags={motionVocab} onChange={setMotionVocab} placeholder="添加动作词… (Enter 确认)" />
       </div>
 
-      <button
-        type="submit"
-        disabled={saving}
-        className="self-start px-4 py-2 rounded-xl bg-pink-400/20 text-pink-300 text-sm hover:bg-pink-400/30 transition-all duration-250 active:scale-[0.98] disabled:opacity-50"
-      >
-        {saving ? '保存中…' : '保存'}
-      </button>
+      <Button type="submit" variant="primary" size="sm" loading={saving} className="self-start">
+        保存
+      </Button>
     </form>
   );
 }

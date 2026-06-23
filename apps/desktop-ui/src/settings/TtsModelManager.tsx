@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, type JSX } from 'react';
-import { Button, Callout, Spinner, Switch } from '@ema-agent/ui';
+import { Button, Callout, IconButton, Input, Spinner, Switch } from '@ema-agent/ui';
 import { providersApi, type AvailableSimpleModelWire } from '../api/providers.js';
 import { showToast } from '../lib/toast.js';
 
@@ -10,7 +10,7 @@ export function TtsModelManager({ providerId }: { providerId: string }): JSX.Ele
   const [loading, setLoading]   = useState(true);
   const [error, setError]       = useState<string | null>(null);
   const [testText, setTestText] = useState(DEFAULT_TEST_TEXT);
-  const [testing, setTesting]   = useState<string | null>(null); // model id being tested
+  const [testing, setTesting]   = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -65,8 +65,6 @@ export function TtsModelManager({ providerId }: { providerId: string }): JSX.Ele
     }
   }
 
-  const inputCls = 'w-full bg-neutral-900/80 backdrop-blur-sm border border-neutral-800 rounded-xl px-3 py-2 text-sm text-neutral-200 focus:outline-none focus:border-pink-400/40 transition-all duration-250';
-
   return (
     <div className="flex flex-col gap-3 mt-2">
       <div className="flex items-center justify-between">
@@ -82,19 +80,27 @@ export function TtsModelManager({ providerId }: { providerId: string }): JSX.Ele
       {!loading && (
         <div className="flex flex-col gap-1.5">
           {models.map((m) => (
-            <div key={m.id} className="flex items-center justify-between bg-neutral-900/80 backdrop-blur-sm rounded-xl px-3 py-2 border border-neutral-800/40 hover:border-neutral-700/40 active:scale-[0.98] transition-all duration-250">
+            <div
+              key={m.id}
+              className="flex items-center justify-between bg-neutral-900/80 ema-glass-weak rounded-xl px-3 py-2 border border-neutral-800/40 hover:border-neutral-700/40 active:scale-[0.98] transition-all duration-250"
+            >
               <span className="text-sm text-neutral-200 font-mono truncate flex-1 mr-2">{m.id}</span>
               <div className="flex items-center gap-2 shrink-0">
                 {m.enabled && (
-                  <button
-                    type="button"
+                  <IconButton
+                    label="测试声音"
+                    iconNode={
+                      <span
+                        className={testing === m.id ? 'i-mdi:volume-high animate-pulse text-primary-300' : 'i-mdi:volume-high'}
+                        aria-hidden
+                      />
+                    }
                     disabled={testing !== null}
-                    className="text-neutral-500 hover:text-pink-300 transition-colors disabled:opacity-40"
-                    title="测试声音"
+                    variant="default"
+                    size="sm"
+                    type="button"
                     onClick={() => void handleTest(m.id)}
-                  >
-                    <span className={testing === m.id ? 'i-mdi:volume-high animate-pulse text-pink-300' : 'i-mdi:volume-high'} aria-hidden />
-                  </button>
+                  />
                 )}
                 <Switch
                   checked={m.enabled}
@@ -109,8 +115,7 @@ export function TtsModelManager({ providerId }: { providerId: string }): JSX.Ele
 
       {/* 测试文本输入 */}
       <div className="flex gap-2 mt-1">
-        <input
-          className={inputCls}
+        <Input
           placeholder="测试文本"
           value={testText}
           onChange={(e) => setTestText(e.target.value)}

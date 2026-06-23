@@ -1,3 +1,4 @@
+// TODO: Live2D 舞台设置（scale / position / FPS / 行为开关）暂未实现，V1.5 再补。
 /** Live2DTab — Live2D model selection (V1 minimal). */
 export function Live2DTab(): JSX.Element {
   return (
@@ -6,7 +7,7 @@ export function Live2DTab(): JSX.Element {
       <div className="text-neutral-500 text-sm">
         V1 暂不支持模型上传。当前使用内置 Ema 模型。
       </div>
-      <div className="mt-4 flex items-center gap-3 bg-neutral-900/80 backdrop-blur-sm rounded-xl px-4 py-3 border border-neutral-800/40">
+      <div className="mt-4 flex items-center gap-3 bg-neutral-900/80 ema-glass-weak rounded-xl px-4 py-3 border border-neutral-800/40">
         <div className="w-2 h-2 rounded-full bg-green-400" />
         <span className="text-sm font-medium">ema-v1</span>
         <span className="text-xs text-gray-500">内置</span>

@@ -15,6 +15,24 @@ export interface SkillValidateResult {
   version?: string;
 }
 
+export interface MarketSkillEntry {
+  name:        string;
+  version:     string;
+  description?: string;
+  /** Raw file URL (GitHub raw / jsDelivr) ready for installFromUrl. */
+  url:         string;
+  /** SHA-256 checksum (hex) for integrity verification, if provided. */
+  sha256?:     string;
+  author?:     string;
+  tags?:       string[];
+  sizeBytes?:  number;
+}
+
+export interface MarketListResult {
+  source: string;
+  skills: MarketSkillEntry[];
+}
+
 export const skillsApi = {
   /** GET /api/skills */
   async list(): Promise<{ skills: SkillRecord[] }> {
@@ -62,6 +80,35 @@ export const skillsApi = {
   async remove(name: string): Promise<{ ok: boolean }> {
     return sidecarClient.request<{ ok: boolean }>(`/api/skills/${name}`, {
       method: 'DELETE',
+    });
+  },
+
+  /**
+   * GET /api/skills/market — list installable skills from a market.
+   * - Default (no args): Anthropic official skill market.
+   * - `marketId`: named market registered on the server.
+   * - `owner`+`repo`+`ref`: ad-hoc GitHub repository.
+   */
+  async listMarket(opts: {
+    marketId?: string;
+    owner?:    string;
+    repo?:     string;
+    ref?:      string;
+  } = {}): Promise<MarketListResult> {
+    const params = new URLSearchParams();
+    if (opts.marketId) params.set('market', opts.marketId);
+    if (opts.owner)    params.set('owner',  opts.owner);
+    if (opts.repo)     params.set('repo',   opts.repo);
+    if (opts.ref)      params.set('ref',    opts.ref);
+    const qs = params.toString();
+    return sidecarClient.request<MarketListResult>(`/api/skills/market${qs ? `?${qs}` : ''}`);
+  },
+
+  /** POST /api/skills/:name/rename */
+  async rename(name: string, newName: string): Promise<{ ok: boolean }> {
+    return sidecarClient.request<{ ok: boolean }>(`/api/skills/${name}/rename`, {
+      method: 'POST',
+      json:   { newName },
     });
   },
 };

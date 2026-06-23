@@ -1,7 +1,13 @@
 /** ProviderForm — AIRI-style provider editor. */
-import { useState, useEffect, type FormEvent } from 'react';
+import { useState, useEffect, type FormEvent, type JSX } from 'react';
+import { Button, Callout, IconButton, Input, Select } from '@ema-agent/ui';
 import { useSettingsStore } from '../stores/settings-store.js';
-import { providersApi, type ProviderConfigWire, type ProviderConfigInput, type ProviderDefinition } from '../api/providers.js';
+import {
+  providersApi,
+  type ProviderConfigWire,
+  type ProviderConfigInput,
+  type ProviderDefinition,
+} from '../api/providers.js';
 import type { ProtocolFamily, Capability } from '@ema-agent/contracts';
 import { resolveProtocols } from '@ema-agent/contracts';
 import { showToast } from '../lib/toast.js';
@@ -26,11 +32,11 @@ const PROTOCOL_LABELS: Record<string, string> = {
   'gemini-llm':           'Gemini',
 };
 
-const inputCls = 'w-full bg-neutral-900/80 backdrop-blur-sm border border-neutral-800 rounded-lg px-3 py-2 text-sm text-neutral-200 focus:outline-none focus:border-pink-400/40 transition-all duration-250';
-
-export function ProviderForm({ definitionId, definition, capability, instance, onClose }: ProviderFormProps): JSX.Element {
-  const [apiKey, setApiKey]         = useState('');
-  const [showApiKey, setShowApiKey] = useState(false);
+export function ProviderForm({
+  definitionId, definition, capability, instance, onClose,
+}: ProviderFormProps): JSX.Element {
+  const [apiKey,       setApiKey]       = useState('');
+  const [showApiKey,   setShowApiKey]   = useState(false);
   const [advancedOpen, setAdvancedOpen] = useState(false);
 
   const activeCap: Capability | undefined = capability ?? definition?.capabilities?.[0];
@@ -55,7 +61,7 @@ export function ProviderForm({ definitionId, definition, capability, instance, o
     return definition?.protocolBaseUrls?.[proto as ProtocolFamily]
       ?? definition?.defaultBaseUrl ?? '';
   }
-  const [baseUrl, setBaseUrl]           = useState(instance?.baseUrl ?? defaultUrlFor(existingProtocol));
+  const [baseUrl,       setBaseUrl]       = useState(instance?.baseUrl ?? defaultUrlFor(existingProtocol));
   const [baseUrlManual, setBaseUrlManual] = useState(false);
 
   function handleProtocolChange(proto: string): void {
@@ -64,12 +70,14 @@ export function ProviderForm({ definitionId, definition, capability, instance, o
   }
 
   const [submitting, setSubmitting] = useState(false);
-  const [probing, setProbing]       = useState(false);
-  const [probeOk, setProbeOk]       = useState<boolean | null>(instance?.health?.status === 'ok' ? true : null);
-  const [probeMsg, setProbeMsg]     = useState<string | null>(instance?.health?.lastError ?? null);
+  const [probing,    setProbing]    = useState(false);
+  const [probeOk,    setProbeOk]    = useState<boolean | null>(
+    instance?.health?.status === 'ok' ? true : null,
+  );
+  const [probeMsg, setProbeMsg] = useState<string | null>(instance?.health?.lastError ?? null);
 
   async function doSave(): Promise<void> {
-    if (!instance && !apiKey.trim()) return; // need key for first create
+    if (!instance && !apiKey.trim()) return;
     setSubmitting(true);
     try {
       const input: ProviderConfigInput = {
@@ -113,21 +121,24 @@ export function ProviderForm({ definitionId, definition, capability, instance, o
     }
   }
 
+  const protocolOptions = protocolChoices.map((proto) => ({
+    value: proto,
+    label: PROTOCOL_LABELS[proto] ?? proto,
+  }));
+
   return (
     <div className="flex flex-col gap-8 pb-6">
       <form onSubmit={handleSubmit} className="flex flex-col gap-8 max-w-lg">
 
-        {/* ── 基础配置 ─────────────────────────────────────────────────────── */}
+        {/* ── 基础配置 ──────────────────────────────────────────────────────── */}
         <section className="flex flex-col gap-6">
-          <div className="flex items-start justify-between">
-            <div>
-              <h2 className="text-2xl text-neutral-400">基础配置</h2>
-              <p className="text-sm text-neutral-500 mt-0.5">基本设置</p>
-            </div>
+          <div>
+            <h2 className="text-2xl text-neutral-400">基础配置</h2>
+            <p className="text-sm text-neutral-500 mt-0.5">基本设置</p>
           </div>
 
           {/* API 密钥 */}
-          <label className="flex flex-col gap-2">
+          <div className="flex flex-col gap-2">
             <div>
               <div className="text-sm font-medium text-neutral-300">API 密钥</div>
               <div className="text-xs text-neutral-500 mt-0.5">
@@ -135,36 +146,39 @@ export function ProviderForm({ definitionId, definition, capability, instance, o
               </div>
             </div>
             <div className="relative">
-              <input
-                className={`${inputCls} pr-10`}
-                placeholder="sk-..."
+              <Input
                 type={showApiKey ? 'text' : 'password'}
+                placeholder="sk-..."
                 value={apiKey}
                 onChange={(e) => setApiKey(e.target.value)}
                 onBlur={() => { void doSave(); }}
                 autoComplete="off"
+                className="pr-10"
               />
-              <button
+              <IconButton
+                label={showApiKey ? '隐藏密钥' : '显示密钥'}
+                icon={showApiKey ? 'i-solar:eye-closed-linear' : 'i-solar:eye-linear'}
+                size="sm"
                 type="button"
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-neutral-500 hover:text-neutral-300 transition-colors px-1"
                 tabIndex={-1}
+                className="absolute right-1.5 top-1/2 -translate-y-1/2"
                 onClick={() => setShowApiKey((v) => !v)}
-                aria-label={showApiKey ? '隐藏' : '显示明文'}
-              >
-                <span className={showApiKey ? 'i-solar:eye-closed-linear' : 'i-solar:eye-linear'} aria-hidden />
-              </button>
+              />
             </div>
-          </label>
+          </div>
         </section>
 
-        {/* ── 高级配置（默认折叠）─────────────────────────────────────────── */}
+        {/* ── 高级配置（默认折叠）────────────────────────────────────────────── */}
         <section className="flex flex-col gap-4">
+          {/* Accordion toggle — bare button is intentional here (h-auto layout) */}
           <button
             type="button"
-            className="flex items-center gap-1.5 text-left outline-none group bg-transparent border-0 focus:ring-0 focus-visible:ring-0"
+            className="flex items-center gap-1.5 text-left outline-none group"
             onClick={() => setAdvancedOpen((v) => !v)}
           >
-            <h2 className="text-2xl text-neutral-400 group-hover:text-neutral-300 transition-colors duration-200">高级配置</h2>
+            <h2 className="text-2xl text-neutral-400 group-hover:text-neutral-300 transition-colors duration-200">
+              高级配置
+            </h2>
             <span
               className="i-solar:alt-arrow-down-linear text-neutral-500 group-hover:text-neutral-400 transition-transform duration-200"
               style={{ transform: advancedOpen ? 'rotate(180deg)' : 'rotate(0deg)' }}
@@ -175,39 +189,32 @@ export function ProviderForm({ definitionId, definition, capability, instance, o
           {advancedOpen && (
             <div className="flex flex-col gap-4 mt-1">
               {protocolChoices.length > 1 && (
-                <label className="flex flex-col gap-2">
-                  <div>
-                    <div className="text-sm font-medium text-neutral-300">协议</div>
-                  </div>
-                  <select
-                    className={inputCls}
+                <div className="flex flex-col gap-2">
+                  <div className="text-sm font-medium text-neutral-300">协议</div>
+                  <Select
                     value={selectedProtocol}
-                    onChange={(e) => handleProtocolChange(e.target.value)}
-                  >
-                    {protocolChoices.map((proto) => (
-                      <option key={proto} value={proto}>{PROTOCOL_LABELS[proto] ?? proto}</option>
-                    ))}
-                  </select>
-                </label>
+                    onChange={handleProtocolChange}
+                    options={protocolOptions}
+                  />
+                </div>
               )}
 
-              <label className="flex flex-col gap-2">
+              <div className="flex flex-col gap-2">
                 <div>
                   <div className="text-sm font-medium text-neutral-300">Base URL</div>
                   <div className="text-xs text-neutral-500 mt-0.5">自定义服务地址（可选）</div>
                 </div>
-                <input
-                  className={inputCls}
+                <Input
                   placeholder={defaultUrlFor(selectedProtocol) || 'https://...'}
                   value={baseUrl}
                   onChange={(e) => { setBaseUrl(e.target.value); setBaseUrlManual(true); }}
                 />
-              </label>
+              </div>
             </div>
           )}
         </section>
 
-        {/* ── 验证状态条（Ping 内嵌）──────────────────────────────────────── */}
+        {/* ── 验证状态条 ────────────────────────────────────────────────────── */}
         {instance && probeOk === false && probeMsg && (
           <div className="flex items-center justify-between rounded-lg bg-red-500/10 border border-red-500/20 px-3 py-2 text-sm text-red-400">
             <div className="flex items-center gap-2">
@@ -215,37 +222,45 @@ export function ProviderForm({ definitionId, definition, capability, instance, o
               <span>{probeMsg}</span>
             </div>
             {activeCap === 'llm' && (
-              <button type="button" disabled={probing} onClick={handleProbe}
-                className="ml-4 rounded px-2 py-0.5 text-xs font-medium bg-red-500/15 text-red-300 hover:bg-red-500/25 transition-colors disabled:opacity-50">
-                {probing ? '测试中…' : 'Ping API'}
-              </button>
+              <Button
+                variant="danger"
+                size="sm"
+                loading={probing}
+                disabled={probing}
+                type="button"
+                onClick={() => void handleProbe()}
+              >
+                Ping API
+              </Button>
             )}
           </div>
         )}
         {instance && probeOk !== false && (
-          <div className="flex items-center justify-between rounded-lg bg-blue-500/10 border border-blue-500/20 px-3 py-2 text-sm text-blue-300">
-            <div className="flex items-center gap-2">
-              <span className="i-solar:info-circle-linear shrink-0" aria-hidden />
+          <Callout variant="info">
+            <div className="flex items-center justify-between">
               <span>{probeOk === true ? '配置验证通过' : '配置部分验证'}</span>
+              {activeCap === 'llm' && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  loading={probing}
+                  disabled={probing}
+                  type="button"
+                  onClick={() => void handleProbe()}
+                >
+                  Ping API
+                </Button>
+              )}
             </div>
-            {activeCap === 'llm' && (
-              <button type="button" disabled={probing} onClick={handleProbe}
-                className="ml-4 rounded px-2 py-0.5 text-xs font-medium bg-blue-500/15 text-blue-300 hover:bg-blue-500/25 transition-colors disabled:opacity-50">
-                {probing ? '测试中…' : 'Ping API'}
-              </button>
-            )}
-          </div>
+          </Callout>
         )}
         {!instance && (
-          <div className="flex items-center rounded-lg bg-blue-500/10 border border-blue-500/20 px-3 py-2 text-sm text-blue-300">
-            <span className="i-solar:info-circle-linear mr-2 shrink-0" aria-hidden />
-            <span>输入 API Key 后自动保存</span>
-          </div>
+          <Callout variant="info">输入 API Key 后自动保存</Callout>
         )}
 
       </form>
 
-      {/* ── 模型池（配置存在后才显示）──────────────────────────────────────── */}
+      {/* ── 模型池 ───────────────────────────────────────────────────────────── */}
       {instance && activeCap === 'llm' && (
         <>
           <div className="border-t border-neutral-800" />

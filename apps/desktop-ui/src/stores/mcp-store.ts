@@ -1,7 +1,7 @@
 import { create } from 'zustand';
-import { mcpApi, type McpServerConfig, type McpServerRecord, type McpConnection, type McpProbeResult } from '../api/mcp.js';
+import { mcpApi, type McpServerConfig, type McpServerRecord, type McpConnection, type McpProbeResult, type McpImportResult } from '../api/mcp.js';
 
-export type { McpServerConfig, McpServerRecord, McpConnection, McpProbeResult };
+export type { McpServerConfig, McpServerRecord, McpConnection, McpProbeResult, McpImportResult };
 
 // ── Composite type used everywhere in the UI ──────────────────────────────────
 
@@ -43,6 +43,12 @@ export interface McpStoreState {
    * Used to validate before saving (e.g. in the "Add server" dialog).
    */
   probe(config: McpServerConfig): Promise<McpProbeResult>;
+
+  /**
+   * Bulk-import servers from a Claude Desktop / mcp.so JSON config.
+   * Refreshes server list on completion. Returns per-server results.
+   */
+  importFromJson(payload: object | string): Promise<McpImportResult[]>;
 }
 
 // ── Store ─────────────────────────────────────────────────────────────────────
@@ -145,5 +151,16 @@ export const useMcpStore = create<McpStoreState>((set, get) => ({
 
   async probe(config) {
     return mcpApi.probe(config);
+  },
+
+  async importFromJson(payload) {
+    try {
+      const { imported } = await mcpApi.import(payload);
+      await get().refresh();
+      return imported;
+    } catch (err: unknown) {
+      set({ error: err instanceof Error ? err.message : 'Failed to import MCP servers' });
+      throw err;
+    }
   },
 }));

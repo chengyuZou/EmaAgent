@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
 import {
   Badge, Button, Callout, Card, Dialog, Divider, DropdownMenu,
-  Field, Input, ScrollArea, Select, Spinner, Switch, Tooltip,
+  Field, Input, ScrollArea, Select, Spinner, Switch, Textarea, Tooltip,
 } from '@ema-agent/ui';
-import { useMcpStore, type McpServerEntry, type McpServerConfig } from '../stores/mcp-store.js';
+import { useMcpStore, type McpServerEntry, type McpServerConfig, type McpImportResult } from '../stores/mcp-store.js';
 import { showToast } from '../lib/toast.js';
 import type { McpConnectionStatus } from '@ema-agent/mcp';
 
@@ -66,6 +66,12 @@ export function McpTab(): JSX.Element {
   const [adding,    setAdding]    = useState(false);
   const [addError,  setAddError]  = useState<string | null>(null);
 
+  const [importOpen,    setImportOpen]    = useState(false);
+  const [importJson,    setImportJson]    = useState('');
+  const [importing,     setImporting]     = useState(false);
+  const [importError,   setImportError]   = useState<string | null>(null);
+  const [importResults, setImportResults] = useState<McpImportResult[] | null>(null);
+
   useEffect(() => { void useMcpStore.getState().load(); }, []);
 
   function closeAdd(): void {
@@ -103,6 +109,39 @@ export function McpTab(): JSX.Element {
     }
   }
 
+  function closeImport(): void {
+    setImportOpen(false);
+    setImportJson('');
+    setImportError(null);
+    setImportResults(null);
+  }
+
+  async function handleImport(): Promise<void> {
+    const trimmed = importJson.trim();
+    if (!trimmed) return;
+    let payload: object;
+    try {
+      payload = JSON.parse(trimmed) as object;
+    } catch {
+      setImportError('JSON 格式错误，请检查后重试');
+      return;
+    }
+    setImporting(true);
+    setImportError(null);
+    setImportResults(null);
+    try {
+      const results = await useMcpStore.getState().importFromJson(payload);
+      setImportResults(results);
+      const ok    = results.filter((r) => r.ok).length;
+      const total = results.length;
+      showToast(`已导入 ${ok}/${total} 个服务器`, { variant: ok > 0 ? 'success' : 'warning' });
+    } catch (err) {
+      setImportError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setImporting(false);
+    }
+  }
+
   async function handleToggleEnabled(sv: McpServerEntry): Promise<void> {
     try {
       if (sv.enabled) {
@@ -136,10 +175,18 @@ export function McpTab(): JSX.Element {
           <h2 className="text-base font-semibold text-neutral-100">MCP 服务器</h2>
           <p className="text-xs text-neutral-500 mt-0.5">连接模型上下文协议（MCP）服务器，扩展 Agent 的工具集</p>
         </div>
-        <Button variant="primary" size="sm" onClick={() => setAddOpen(true)} className="active:scale-[0.98] transition-all duration-250">
-          <span className="i-mdi:plus text-base" aria-hidden />
-          添加服务器
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="ghost" size="sm" onClick={() => setImportOpen(true)}
+            className="active:scale-[0.98] transition-all duration-250">
+            <span className="i-mdi:code-json text-base" aria-hidden />
+            从 JSON 导入
+          </Button>
+          <Button variant="primary" size="sm" onClick={() => setAddOpen(true)}
+            className="active:scale-[0.98] transition-all duration-250">
+            <span className="i-mdi:plus text-base" aria-hidden />
+            添加服务器
+          </Button>
+        </div>
       </div>
 
       {error && <Callout variant="danger" className="shrink-0">{error}</Callout>}
@@ -175,6 +222,70 @@ export function McpTab(): JSX.Element {
           </div>
         </ScrollArea>
       )}
+
+      {/* Import from JSON dialog */}
+      <Dialog
+        open={importOpen}
+        onOpenChange={(open) => { if (!open) closeImport(); }}
+        title="从 JSON 导入 MCP 服务器"
+        description="粘贴 Claude Desktop 或 mcp.so 格式的 JSON 配置，支持批量导入多个服务器。"
+        widthClass="max-w-2xl"
+      >
+        {importError && <Callout variant="danger" className="mb-3">{importError}</Callout>}
+
+        {importResults ? (
+          <div className="flex flex-col gap-2">
+            {importResults.map((r) => (
+              <div
+                key={r.name}
+                className="flex items-start gap-3 px-3 py-2 rounded-lg border border-neutral-800/40 bg-neutral-900/60"
+              >
+                <Badge variant={r.ok ? 'success' : 'danger'} dot className="mt-0.5 shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium text-neutral-200">{r.name}</span>
+                    <Badge variant={r.ok ? 'success' : 'danger'}>{r.ok ? '成功' : '失败'}</Badge>
+                  </div>
+                  {r.error && (
+                    <p className="text-xs text-red-400 mt-0.5">{r.error}</p>
+                  )}
+                  {r.connectError && (
+                    <p className="text-xs text-yellow-500 mt-0.5">连接警告：{r.connectError}</p>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <Field label="JSON 配置" required description='格式：{ "mcpServers": { "服务器名": { "command": "...", "args": [...] } } }'>
+            <Textarea
+              minRows={8}
+              maxRows={16}
+              placeholder={'{\n  "mcpServers": {\n    "brave-search": {\n      "command": "npx",\n      "args": ["-y", "@modelcontextprotocol/server-brave-search"]\n    }\n  }\n}'}
+              value={importJson}
+              onChange={(e) => setImportJson(e.target.value)}
+              className="font-mono text-xs"
+            />
+          </Field>
+        )}
+
+        <div className="flex justify-end gap-2 mt-4">
+          {importResults ? (
+            <Button variant="primary" size="sm" onClick={closeImport}>完成</Button>
+          ) : (
+            <>
+              <Button variant="ghost" size="sm" onClick={closeImport}>取消</Button>
+              <Button
+                variant="primary"
+                size="sm"
+                loading={importing}
+                disabled={!importJson.trim() || importing}
+                onClick={() => void handleImport()}
+              >导入</Button>
+            </>
+          )}
+        </div>
+      </Dialog>
 
       {/* Add-server dialog */}
       <Dialog

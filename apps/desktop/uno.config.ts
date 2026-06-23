@@ -16,7 +16,7 @@ import { createExternalPackageIconLoader } from '@iconify/utils/lib/loader/exter
 // packages before they silently produce an empty CSS bundle.
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SCANNED_DIRS = [
-  '../../packages/desktop-ui/src',
+  '../desktop-ui/src',
   '../../packages/ui/src',
   '../../packages/live2d-react/src',
 ];
@@ -68,7 +68,7 @@ const config: UserConfig = {
   content: {
     filesystem: [
       'src/**/*.{ts,tsx}',
-      '../../packages/desktop-ui/src/**/*.{ts,tsx}',
+      '../desktop-ui/src/**/*.{ts,tsx}',
       '../../packages/ui/src/**/*.{ts,tsx}',
       '../../packages/live2d-react/src/**/*.{ts,tsx}',
     ],

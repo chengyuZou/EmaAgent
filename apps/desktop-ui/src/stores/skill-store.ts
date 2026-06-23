@@ -1,8 +1,8 @@
 import { create } from 'zustand';
-import { skillsApi, type SkillValidateResult } from '../api/skills.js';
+import { skillsApi, type SkillValidateResult, type MarketSkillEntry } from '../api/skills.js';
 import type { SkillRecord } from '@ema-agent/skill';
 
-export type { SkillRecord, SkillValidateResult };
+export type { SkillRecord, SkillValidateResult, MarketSkillEntry };
 
 // ── Store interface ───────────────────────────────────────────────────────────
 
@@ -10,6 +10,11 @@ export interface SkillStoreState {
   skills:   Omit<SkillRecord, 'rawMd'>[];
   loading:  boolean;
   error:    string | null;
+
+  marketSkills:  MarketSkillEntry[];
+  marketLoading: boolean;
+  marketError:   string | null;
+  marketSource:  string;
 
   /** Load all installed skills. Idempotent — skips if already loaded. */
   load(): Promise<void>;
@@ -29,6 +34,9 @@ export interface SkillStoreState {
 
   /** Uninstall a skill by name. Refreshes list on success. */
   remove(name: string): Promise<void>;
+
+  /** Fetch installable skills from the market. Results cached in store. */
+  listMarket(opts?: { marketId?: string; owner?: string; repo?: string; ref?: string }): Promise<void>;
 }
 
 // ── Store ─────────────────────────────────────────────────────────────────────
@@ -37,6 +45,11 @@ export const useSkillStore = create<SkillStoreState>((set, get) => ({
   skills:  [],
   loading: false,
   error:   null,
+
+  marketSkills:  [],
+  marketLoading: false,
+  marketError:   null,
+  marketSource:  '',
 
   async load() {
     if (get().skills.length > 0) return;
@@ -106,6 +119,19 @@ export const useSkillStore = create<SkillStoreState>((set, get) => ({
     } catch (err: unknown) {
       set({ error: err instanceof Error ? err.message : 'Failed to remove skill' });
       throw err;
+    }
+  },
+
+  async listMarket(opts) {
+    set({ marketLoading: true, marketError: null });
+    try {
+      const res = await skillsApi.listMarket(opts);
+      set({ marketSkills: res.skills, marketSource: res.source, marketLoading: false });
+    } catch (err: unknown) {
+      set({
+        marketError:   err instanceof Error ? err.message : 'Failed to load market',
+        marketLoading: false,
+      });
     }
   },
 }));

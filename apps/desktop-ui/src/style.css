@@ -288,12 +288,30 @@ html, body {
   to   { opacity: 1; transform: translateY(0)    scale(1);    }
 }
 
+/* ── Slide-right keyframe (not in the base set above) ───────────────────────*/
+
+@keyframes ema-slide-right {
+  from { opacity: 0; transform: translateX(-12px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
 /* ── Utility classes (supplement UnoCSS for CSS-var-dependent patterns) ──────*/
 
 /* Glassmorphism surface presets */
 .ema-glass-weak   { backdrop-filter: var(--ema-glass-weak);   }
 .ema-glass-base   { backdrop-filter: var(--ema-glass-base);   }
 .ema-glass-strong { backdrop-filter: var(--ema-glass-strong); }
+
+/* Single-element entrance animations — use when no stagger is needed */
+.ema-slide-up {
+  animation: ema-slide-up    var(--ema-duration-slow)  var(--ema-ease) both;
+}
+.ema-slide-down {
+  animation: ema-slide-down  var(--ema-duration-slow)  var(--ema-ease) both;
+}
+.ema-slide-right {
+  animation: ema-slide-right var(--ema-duration-panel) var(--ema-ease) both;
+}
 
 /* Fade-in at startup with optional stagger via --stagger-i CSS var */
 .ema-stagger-in {
