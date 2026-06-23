@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
-import { EmaStageView } from './components/EmaStageView.js';
+import { EmaStageView }          from './components/EmaStageView.js';
+import { SpeechBubble }          from './components/SpeechBubble.js';
+import { PermissionToastLayer }  from './components/PermissionToastLayer.js';
 import { useSpeechStore } from '@ema-agent/live2d-react';
 import { FloatingDock, DecisionLayer, ShellSetupDialog, shellApi, useSidecarStore, useThemeSync } from '@ema-agent/desktop-ui';
 import type { ShellStatus } from '@ema-agent/desktop-ui';
@@ -75,10 +77,14 @@ export function App(): React.JSX.Element {
 
       <EmaStageView modelPath={EMA_MODEL_PATH} />
 
+      <SpeechBubble />
+
       <FloatingDock visible={dockVisible} />
 
       <SidecarBadge status={sidecarStatus} />
 
+      {/* Non-blocking toasts for permission / ask_confirm; DecisionLayer handles the rest */}
+      <PermissionToastLayer />
       <DecisionLayer />
 
       {shellStatus?.available === false && (

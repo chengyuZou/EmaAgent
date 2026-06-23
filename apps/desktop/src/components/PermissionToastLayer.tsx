@@ -1,0 +1,298 @@
+/**
+ * PermissionToastLayer — non-blocking floating decision cards in the pet window.
+ *
+ * Listens to Tauri IPC events relayed from the chat window:
+ *   decision:push    — new prompt → show compact toast card
+ *   decision:dismiss — prompt resolved → animate card out
+ *
+ * Permission + ask_confirm → compact non-blocking toast cards (this layer).
+ * ask_text / ask_choice / ask_user → delegated to the existing DecisionLayer
+ * (blocking modal already mounted in App.tsx) via useDecisionStore.
+ *
+ * Multiple sessions can have stacked prompts simultaneously. Clicking buttons
+ * POSTs directly to the backend; does NOT change the active TTS/Live2D session.
+ */
+import { useEffect, useState, type CSSProperties } from 'react';
+import {
+  tauriBridge,
+  permissionApi,
+  turnsApi,
+  useDecisionStore,
+  type DecisionPrompt,
+} from '@ema-agent/desktop-ui';
+
+// ── Toast item types ──────────────────────────────────────────────────────────
+
+type PermissionToast = Extract<DecisionPrompt, { kind: 'permission' }>;
+type AskConfirmToast = Extract<DecisionPrompt, { kind: 'ask_confirm' }>;
+type QuickToast      = PermissionToast | AskConfirmToast;
+
+// ── Root ─────────────────────────────────────────────────────────────────────
+
+export function PermissionToastLayer(): React.JSX.Element {
+  const [toasts, setToasts] = useState<QuickToast[]>([]);
+
+  useEffect(() => {
+    const unlistenPush = tauriBridge.listen<DecisionPrompt>('decision:push', (e) => {
+      const p = e.payload;
+      if (p.kind === 'permission' || p.kind === 'ask_confirm') {
+        setToasts((prev) => {
+          if (prev.some((t) => t.promptId === p.promptId)) return prev;
+          return [...prev, p as QuickToast];
+        });
+      } else {
+        // ask_text / ask_choice / ask_user → pet window's DecisionLayer modal
+        useDecisionStore.getState().push(p);
+      }
+    });
+
+    const unlistenDismiss = tauriBridge.listen<{ promptId: string }>('decision:dismiss', (e) => {
+      const { promptId } = e.payload;
+      setToasts((prev) => prev.filter((t) => t.promptId !== promptId));
+      useDecisionStore.getState().dismiss(promptId);
+    });
+
+    return () => {
+      void unlistenPush.then((fn) => fn());
+      void unlistenDismiss.then((fn) => fn());
+    };
+  }, []);
+
+  if (toasts.length === 0) return <></>;
+
+  const removeToast = (promptId: string): void =>
+    setToasts((prev) => prev.filter((t) => t.promptId !== promptId));
+
+  return (
+    <div
+      data-tauri-drag-region={false}
+      style={{
+        position:      'fixed',
+        bottom:        90,          // above FloatingDock
+        right:         10,
+        zIndex:        200,
+        display:       'flex',
+        flexDirection: 'column-reverse',
+        gap:           8,
+        pointerEvents: 'none',
+      }}
+    >
+      {toasts.map((toast) => (
+        <div key={toast.promptId} className="ema-toast-in" style={{ pointerEvents: 'auto' }}>
+          {toast.kind === 'permission'
+            ? <PermissionCard toast={toast} onDismiss={removeToast} />
+            : <AskConfirmCard toast={toast} onDismiss={removeToast} />}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ── Permission card ───────────────────────────────────────────────────────────
+
+function PermissionCard({
+  toast,
+  onDismiss,
+}: {
+  toast: PermissionToast;
+  onDismiss(promptId: string): void;
+}): React.JSX.Element {
+  const respond = async (action: 'allow' | 'allow_session' | 'deny'): Promise<void> => {
+    try { await permissionApi.respond(toast.promptId, { action }); } catch { /* sidecar down */ }
+    onDismiss(toast.promptId);
+  };
+
+  const desc = toast.humanDescriptionPending
+    ? toast.hint
+    : (toast.humanDescription ?? toast.hint);
+
+  return (
+    <ToastCard sessionId={toast.sessionId} label="工具请求">
+      <p style={toolNameStyle}>{toast.toolName}</p>
+      <p style={descStyle}>{desc}</p>
+      <div style={rowStyle}>
+        <Btn variant="danger"   onClick={() => void respond('deny')}>拒绝</Btn>
+        <Btn variant="neutral"  onClick={() => void respond('allow_session')}>此会话</Btn>
+        <Btn variant="primary"  onClick={() => void respond('allow')}>允许</Btn>
+      </div>
+    </ToastCard>
+  );
+}
+
+// ── Ask-confirm card ──────────────────────────────────────────────────────────
+
+function AskConfirmCard({
+  toast,
+  onDismiss,
+}: {
+  toast: AskConfirmToast;
+  onDismiss(promptId: string): void;
+}): React.JSX.Element {
+  const respond = async (confirmed: boolean): Promise<void> => {
+    try {
+      await turnsApi.respondAskUser(toast.turnId, toast.promptId, { confirmed: String(confirmed) });
+    } catch { /* sidecar down */ }
+    onDismiss(toast.promptId);
+  };
+
+  const body = toast.humanDescription ?? toast.question;
+  const sub  = toast.humanDescription ? toast.question : undefined;
+
+  return (
+    <ToastCard sessionId={toast.sessionId} label="确认请求">
+      <p style={descStyle}>{body}</p>
+      {sub && <p style={subStyle}>{sub}</p>}
+      <div style={rowStyle}>
+        <Btn variant="neutral" onClick={() => void respond(false)}>否</Btn>
+        <Btn variant="primary" onClick={() => void respond(true)}>确认</Btn>
+      </div>
+    </ToastCard>
+  );
+}
+
+// ── Shared card shell ─────────────────────────────────────────────────────────
+
+function ToastCard({
+  sessionId,
+  label,
+  children,
+}: {
+  sessionId?: string;
+  label:      string;
+  children:   React.ReactNode;
+}): React.JSX.Element {
+  return (
+    <div style={cardStyle}>
+      <div style={headerStyle}>
+        <span style={sessionChipStyle}>{sessionId?.slice(0, 8) ?? '—'}</span>
+        <span style={labelStyle}>{label}</span>
+      </div>
+      {children}
+    </div>
+  );
+}
+
+// ── Button ────────────────────────────────────────────────────────────────────
+
+type BtnVariant = 'primary' | 'neutral' | 'danger';
+
+const btnVars: Record<BtnVariant, { bg: string; bgHover: string; color: string }> = {
+  primary: {
+    bg:      'var(--ema-primary)',
+    bgHover: 'var(--ema-primary-hover)',
+    color:   'var(--ema-primary-text)',
+  },
+  neutral: {
+    bg:      'rgba(255,255,255,0.08)',
+    bgHover: 'var(--ema-border-hover)',
+    color:   'var(--ema-text-secondary)',
+  },
+  danger: {
+    bg:      'var(--ema-danger-muted)',
+    bgHover: 'oklch(0.62 0.22 25 / 0.36)',
+    color:   'var(--ema-danger-text)',
+  },
+};
+
+function Btn({
+  variant,
+  onClick,
+  children,
+}: {
+  variant:  BtnVariant;
+  onClick(): void;
+  children: React.ReactNode;
+}): React.JSX.Element {
+  const v = btnVars[variant];
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        background:   v.bg,
+        color:        v.color,
+        border:       'none',
+        borderRadius: 'var(--ema-radius-sm)',
+        padding:      '4px 10px',
+        fontSize:     11,
+        fontWeight:   500,
+        cursor:       'pointer',
+        whiteSpace:   'nowrap',
+        transition:   `background var(--ema-duration-fast) var(--ema-ease)`,
+      }}
+      onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = v.bgHover; }}
+      onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = v.bg; }}
+    >
+      {children}
+    </button>
+  );
+}
+
+// ── Styles ────────────────────────────────────────────────────────────────────
+
+const cardStyle: CSSProperties = {
+  width:          234,
+  background:     'var(--ema-surface-0)',
+  border:         '1px solid var(--ema-glow)',
+  borderRadius:   'var(--ema-radius-md)',
+  padding:        '10px 12px',
+  backdropFilter: 'var(--ema-glass-strong)',
+  boxShadow:      'var(--ema-shadow-3)',
+  display:        'flex',
+  flexDirection:  'column',
+  gap:            6,
+};
+
+const headerStyle: CSSProperties = {
+  display:    'flex',
+  alignItems: 'center',
+  gap:        6,
+};
+
+const sessionChipStyle: CSSProperties = {
+  fontSize:      10,
+  fontFamily:    'monospace',
+  padding:       '1px 6px',
+  borderRadius:  'var(--ema-radius-pill)',
+  background:    'var(--ema-primary-muted)',
+  border:        '1px solid var(--ema-glow)',
+  color:         'var(--ema-primary)',
+  letterSpacing: '0.02em',
+};
+
+const labelStyle: CSSProperties = {
+  fontSize: 10,
+  color:    'var(--ema-text-tertiary)',
+};
+
+const toolNameStyle: CSSProperties = {
+  margin:     0,
+  fontSize:   12,
+  fontWeight: 600,
+  color:      'var(--ema-text-code)',
+  fontFamily: 'monospace',
+};
+
+const descStyle: CSSProperties = {
+  margin:              0,
+  fontSize:            11.5,
+  color:               'var(--ema-text-secondary)',
+  lineHeight:          1.5,
+  display:             '-webkit-box',
+  WebkitLineClamp:     3,
+  WebkitBoxOrient:     'vertical',
+  overflow:            'hidden',
+};
+
+const subStyle: CSSProperties = {
+  margin:     0,
+  fontSize:   11,
+  color:      'var(--ema-text-tertiary)',
+  lineHeight: 1.4,
+};
+
+const rowStyle: CSSProperties = {
+  display:        'flex',
+  gap:            6,
+  justifyContent: 'flex-end',
+  marginTop:      2,
+};

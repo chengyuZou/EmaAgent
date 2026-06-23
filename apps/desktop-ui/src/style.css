@@ -152,6 +152,10 @@ html, body {
   --ema-info-hover:     oklch(0.72 0.11 240);
   --ema-info-muted:     oklch(0.68 0.13 240 / 0.18);
   --ema-info-text:      oklch(0.88 0.08 240);
+
+  /* Pet window pink glow accent (speech bubble, toast card borders) */
+  --ema-glow:           rgba(255, 214, 230, 0.22);
+  --ema-glow-strong:    rgba(255, 192, 214, 0.55);
 }
 
 /* ── Text scale ──────────────────────────────────────────────────────────────*/
@@ -305,6 +309,24 @@ html, body {
 /* Chat bubble entrance */
 .ema-bubble-in {
   animation: ema-bubble-in var(--ema-duration-base) var(--ema-ease) both;
+}
+
+/* Toast / notification slide-in from right edge */
+@keyframes ema-toast-in {
+  from { opacity: 0; transform: translateX(110%); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+.ema-toast-in {
+  animation: ema-toast-in var(--ema-duration-slow) var(--ema-ease) both;
+}
+
+/* Speech bubble: scale-up from top with soft drop */
+@keyframes ema-speech-in {
+  from { opacity: 0; transform: scale(0.88) translateY(-6px); }
+  to   { opacity: 1; transform: scale(1)    translateY(0); }
+}
+.ema-speech-in {
+  animation: ema-speech-in 0.26s var(--ema-ease) both;
 }
 
 /* Inspector panel content fade — applied to each panel body on mount */

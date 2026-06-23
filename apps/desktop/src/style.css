@@ -272,6 +272,16 @@ html, body {
   to   { opacity: 1; transform: translateY(0) scale(1); }
 }
 
+@keyframes ema-bubble-in {
+  from { opacity: 0; transform: scale(0.90) translateY(-6px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+@keyframes ema-toast-in {
+  from { opacity: 0; transform: translateX(110%); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
 /* ── Utility classes (supplement UnoCSS for CSS-var-dependent patterns) ──────*/
 
 /* Glassmorphism surface presets */

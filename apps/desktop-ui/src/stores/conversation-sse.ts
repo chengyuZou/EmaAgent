@@ -1,0 +1,444 @@
+/**
+ * conversation-sse.ts — SSE event dispatcher for per-turn streams.
+ *
+ * Owns the `dispatchSseEvent` function (the big switch) and its supporting
+ * types. Kept separate from the Zustand store to keep responsibilities clear:
+ *   - conversation-history.ts: pure data helpers (no imports from this repo)
+ *   - conversation-sse.ts:     event routing + side effects (this file)
+ *   - conversation-store.ts:   Zustand state + queue management
+ *
+ * Note: this module and conversation-store.ts are in a deliberate circular
+ * relationship (store imports getOrCreateQueue; this file imports
+ * useConversationStore). ES module live bindings make this safe as long as
+ * neither module uses the other's exports at the top-level init phase.
+ */
+import { tauriBridge }             from '../lib/tauri-bridge.js';
+import {
+  handleTtsChunk,
+  handleTtsSentenceComplete,
+  handleTurnCompleted,
+  handleTurnAborted,
+} from '../lib/tts-playback.js';
+import { useDecisionStore }        from './decision-store.js';
+import { useArtifactStore }        from './artifact-store.js';
+import { useAgentTaskStore }       from './agent-task-store.js';
+import { useConversationStore }    from './conversation-store.js';
+import {
+  appendTextSlice,
+  appendThinkingSlice,
+} from './conversation-history.js';
+import type {
+  SessionId,
+  TurnId,
+  TurnMode,
+  TurnStats,
+  EmaStreamEvent,
+  MemoryRecallLayer,
+  MemoryRecallLayerReport,
+} from '@ema-agent/contracts';
+
+// ── StreamCallbacks ───────────────────────────────────────────────────────────
+
+export type DeltaSlice = 'text' | 'thinking' | 'tool_use' | 'tool_result';
+export type DeltaPayload =
+  | string
+  | { callId: string; name: string; args: unknown }
+  | { callId: string; output?: unknown; error?: { code: string; message: string } };
+
+export interface StreamCallbacks {
+  beginStream(sessionId: SessionId, turnId: TurnId, mode?: TurnMode): void;
+  appendDelta(sessionId: SessionId, slice: DeltaSlice, delta: DeltaPayload): void;
+  finalizeStream(sessionId: SessionId, stats: TurnStats | null): void;
+  abortStream(sessionId: SessionId, reason: string): void;
+}
+
+// ── Module-level temp state ───────────────────────────────────────────────────
+
+// Breaker reasons arrive before turn_aborted; we hold them here for lookup.
+export const breakerReasons = new Map<string, string>();
+
+// ── Main dispatcher ───────────────────────────────────────────────────────────
+
+export function dispatchSseEvent(
+  event:     EmaStreamEvent,
+  sessionId: SessionId,
+  cb:        StreamCallbacks,
+): void {
+  switch (event.type) {
+
+    // ── Turn lifecycle ─────────────────────────────────────────────────────
+
+    case 'turn_started': {
+      cb.beginStream(sessionId, event.turnId, event.mode);
+      useConversationStore.setState((s) => {
+        const u = new Map(s.liveUsageMap);    u.delete(event.turnId as string);
+        const t = new Map(s.thinkingActiveMap); t.delete(event.turnId as string);
+        return { liveUsageMap: u, thinkingActiveMap: t };
+      });
+      const prev = useConversationStore.getState().ttsOwnerSessionId;
+      if ((prev as string) !== (sessionId as string)) {
+        useConversationStore.setState({ ttsOwnerSessionId: sessionId });
+        const saved = useConversationStore.getState().emotionStateMap.get(sessionId as string);
+        if (saved) void tauriBridge.emit('stage:emotion-changed', saved);
+      }
+      void tauriBridge.emit('speech:start', { sessionId: sessionId as string });
+      break;
+    }
+
+    case 'turn_completed':
+      handleTurnCompleted(sessionId as string);
+      cb.finalizeStream(sessionId, event.stats);
+      void tauriBridge.emit('speech:end', { sessionId: sessionId as string });
+      break;
+
+    case 'turn_failed':
+      breakerReasons.delete(sessionId as string);
+      handleTurnAborted(sessionId as string);
+      cb.abortStream(sessionId, event.message);
+      void tauriBridge.emit('speech:end', { sessionId: sessionId as string });
+      break;
+
+    case 'turn_aborted': {
+      const reason = breakerReasons.get(sessionId as string);
+      breakerReasons.delete(sessionId as string);
+      handleTurnAborted(sessionId as string);
+      cb.abortStream(sessionId, reason ?? event.reason);
+      void tauriBridge.emit('speech:end', { sessionId: sessionId as string });
+      break;
+    }
+
+    // ── Content streaming ─────────────────────────────────────────────────
+
+    case 'usage_update':
+      useConversationStore.setState((s) => {
+        const m = new Map(s.liveUsageMap);
+        m.set(event.turnId as string, { inputTokens: event.inputTokens, outputTokens: event.outputTokens });
+        return { liveUsageMap: m };
+      });
+      break;
+
+    case 'output_text_delta':
+      cb.appendDelta(sessionId, 'text', event.delta);
+      void tauriBridge.emit('speech:delta', { sessionId: sessionId as string, text: event.delta });
+      break;
+
+    case 'reasoning_delta':
+      cb.appendDelta(sessionId, 'thinking', event.delta);
+      useConversationStore.setState((s) => {
+        const turnId = s.streamingMap.get(sessionId as string)?.turnId;
+        if (!turnId) return {};
+        const t = new Map(s.thinkingActiveMap);
+        t.set(turnId as string, true);
+        return { thinkingActiveMap: t };
+      });
+      break;
+
+    case 'reasoning_complete':
+      useConversationStore.setState((s) => {
+        const sm = s.streamingMap.get(sessionId as string);
+        if (!sm) return {};
+        let thinkingIdx = 0;
+        const slices = sm.slices.map((sl) => {
+          if (sl.type !== 'thinking') return sl;
+          const hit = thinkingIdx === event.blockIndex;
+          thinkingIdx++;
+          return hit ? { ...sl, done: true } : sl;
+        });
+        const streaming = new Map(s.streamingMap);
+        streaming.set(sessionId as string, { ...sm, slices });
+        const t = new Map(s.thinkingActiveMap);
+        t.delete(sm.turnId as string);
+        return { streamingMap: streaming, thinkingActiveMap: t };
+      });
+      break;
+
+    // ── Tool events ────────────────────────────────────────────────────────
+
+    case 'tool_call_partial':
+      useConversationStore.setState((s) => {
+        const sm = s.streamingMap.get(sessionId as string);
+        if (!sm) return {};
+        const idx = sm.slices.findIndex((sl) => sl.type === 'tool_use' && sl.callId === event.callId);
+        const slices = idx >= 0
+          ? sm.slices.map((sl, i) => {
+              if (i !== idx) return sl;
+              const tsl = sl as Extract<typeof sl, { type: 'tool_use' }>;
+              return { ...tsl, partialArgs: (tsl.partialArgs ?? '') + event.argsDelta };
+            })
+          : [...sm.slices, { type: 'tool_use' as const, callId: event.callId, name: event.name, partialArgs: event.argsDelta }];
+        const streaming = new Map(s.streamingMap);
+        streaming.set(sessionId as string, { ...sm, slices });
+        return { streamingMap: streaming };
+      });
+      break;
+
+    case 'tool_call_complete':
+      cb.appendDelta(sessionId, 'tool_use', { callId: event.callId, name: event.name, args: event.args });
+      break;
+
+    case 'tool_result':
+      cb.appendDelta(sessionId, 'tool_result', { callId: event.callId, output: event.output, error: event.error });
+      break;
+
+    // ── Decision events — push to decision-store + relay to pet window ────
+
+    case 'ask_user_required': {
+      const p = {
+        kind: 'ask_user' as const, promptId: event.promptId, sessionId: sessionId as string,
+        turnId: event.turnId, questions: event.questions, humanDescription: event.humanDescription,
+      };
+      useDecisionStore.getState().push(p);
+      void tauriBridge.emit('decision:push', p);
+      break;
+    }
+    case 'ask_user_resolved':
+      useDecisionStore.getState().dismiss(event.promptId);
+      void tauriBridge.emit('decision:dismiss', { promptId: event.promptId });
+      break;
+
+    case 'ask_confirm_required': {
+      const p = {
+        kind: 'ask_confirm' as const, promptId: event.promptId, turnId: event.turnId as string,
+        sessionId: sessionId as string, question: event.question, humanDescription: event.humanDescription,
+      };
+      useDecisionStore.getState().push(p);
+      void tauriBridge.emit('decision:push', p);
+      break;
+    }
+    case 'ask_confirm_resolved':
+      useDecisionStore.getState().dismiss(event.promptId);
+      void tauriBridge.emit('decision:dismiss', { promptId: event.promptId });
+      break;
+
+    case 'ask_text_required': {
+      const p = {
+        kind: 'ask_text' as const, promptId: event.promptId, turnId: event.turnId as string,
+        sessionId: sessionId as string, question: event.question,
+        humanDescription: event.humanDescription, placeholder: event.placeholder,
+      };
+      useDecisionStore.getState().push(p);
+      void tauriBridge.emit('decision:push', p);
+      break;
+    }
+    case 'ask_text_resolved':
+      useDecisionStore.getState().dismiss(event.promptId);
+      void tauriBridge.emit('decision:dismiss', { promptId: event.promptId });
+      break;
+
+    case 'ask_choice_required': {
+      const p = {
+        kind: 'ask_choice' as const, promptId: event.promptId, turnId: event.turnId as string,
+        sessionId: sessionId as string, question: event.question,
+        humanDescription: event.humanDescription, options: event.options,
+        multiSelect: event.multiSelect ?? false, allowCustom: event.allowCustom,
+      };
+      useDecisionStore.getState().push(p);
+      void tauriBridge.emit('decision:push', p);
+      break;
+    }
+    case 'ask_choice_resolved':
+      useDecisionStore.getState().dismiss(event.promptId);
+      void tauriBridge.emit('decision:dismiss', { promptId: event.promptId });
+      break;
+
+    case 'permission_required': {
+      const p = {
+        kind: 'permission' as const, promptId: event.promptId, sessionId: sessionId as string,
+        toolName: event.tool, args: event.args, hint: event.hint,
+        humanDescription: event.humanDescription ?? event.hint,
+        humanDescriptionPending: event.humanDescription === undefined,
+      };
+      useDecisionStore.getState().push(p);
+      void tauriBridge.emit('decision:push', p);
+      break;
+    }
+    case 'permission_resolved':
+      useDecisionStore.getState().dismiss(event.promptId);
+      void tauriBridge.emit('decision:dismiss', { promptId: event.promptId });
+      break;
+
+    // ── TTS ────────────────────────────────────────────────────────────────
+
+    case 'tts_chunk':
+      handleTtsChunk(event);
+      break;
+
+    case 'tts_sentence_complete':
+      handleTtsSentenceComplete(event);
+      break;
+
+    // ── Emotion / stage ────────────────────────────────────────────────────
+
+    case 'emotion_changed': {
+      useConversationStore.setState((s) => {
+        const m = new Map(s.emotionStateMap);
+        m.set(event.sessionId as string, event.state);
+        return { emotionStateMap: m };
+      });
+      if ((event.sessionId as string) === (useConversationStore.getState().ttsOwnerSessionId as string)) {
+        void tauriBridge.emit('stage:emotion-changed', event.state);
+      }
+      break;
+    }
+
+    case 'stage_cue':
+      if ((event.sessionId as string) === (useConversationStore.getState().ttsOwnerSessionId as string)) {
+        void tauriBridge.emit('stage:cue', event.cue);
+      }
+      break;
+
+    // ── Artifacts ──────────────────────────────────────────────────────────
+
+    case 'artifact_upserted':
+      useArtifactStore.getState().upsertFromEvent(event.artifact);
+      break;
+
+    case 'artifact_applied':
+      useArtifactStore.getState().markAppliedFromEvent(event.id);
+      break;
+
+    // ── Agent events ───────────────────────────────────────────────────────
+
+    case 'agent_breaker_tripped':
+      breakerReasons.set(sessionId as string, `熔断保护：${event.reason}`);
+      break;
+
+    case 'agent_iteration':
+      useConversationStore.setState((s) => {
+        const m = new Map(s.iterationCountMap);
+        m.set(sessionId as string, event.n);
+        return { iterationCountMap: m };
+      });
+      break;
+
+    // ── Subagent lifecycle ─────────────────────────────────────────────────
+
+    case 'subagent_started':
+      useAgentTaskStore.getState().upsert({
+        id: event.subagentId, sessionId: event.sessionId as string, turnId: null,
+        parentId: event.parentTurnId as string, status: 'running',
+        createdAt: event.startedAtMs, updatedAt: event.startedAtMs,
+        parentTurnId: event.parentTurnId as string, description: event.promptExcerpt,
+        live: {
+          startedAtMs: event.startedAtMs, promptExcerpt: event.promptExcerpt,
+          model: event.model, iteration: 0, toolCallCount: 0, elapsedMs: 0,
+        },
+      });
+      break;
+
+    case 'subagent_progress': {
+      const existing = useAgentTaskStore.getState().tasks.get(event.subagentId);
+      useAgentTaskStore.getState().upsert({
+        id: event.subagentId, status: 'running',
+        live: {
+          startedAtMs:   existing?.live?.startedAtMs   ?? Date.now(),
+          promptExcerpt: existing?.live?.promptExcerpt ?? '',
+          model:         existing?.live?.model         ?? '',
+          iteration:     event.iteration,
+          toolCallCount: event.toolCallCount,
+          elapsedMs:     event.elapsedMs,
+        },
+      });
+      break;
+    }
+
+    case 'subagent_completed':
+      useAgentTaskStore.getState().upsert({
+        id: event.subagentId, status: 'completed', updatedAt: Date.now(),
+        iterations: event.iterationCount,
+        inputTokens: event.stats.inputTokens, outputTokens: event.stats.outputTokens,
+        live: undefined,
+      });
+      break;
+
+    case 'subagent_failed':
+      useAgentTaskStore.getState().upsert({
+        id: event.subagentId, status: 'failed', error: event.error, updatedAt: Date.now(), live: undefined,
+      });
+      break;
+
+    case 'subagent_aborted':
+      useAgentTaskStore.getState().upsert({
+        id: event.subagentId, status: 'cancelled', error: event.reason, updatedAt: Date.now(), live: undefined,
+      });
+      break;
+
+    case 'subagent_stream':
+      // Transcript is written to DB by turns.ts fan-out; panel reloads from server.
+      break;
+
+    // ── Narrative ──────────────────────────────────────────────────────────
+
+    case 'narrative_route_resolved':
+      useConversationStore.setState((s) => {
+        const sm = s.streamingMap.get(sessionId as string);
+        if (!sm) return {};
+        const slices = [
+          ...sm.slices.filter((sl) => sl.type !== 'narrative_status'),
+          { type: 'narrative_status' as const, timelines: event.timelines, completedTimelines: [], snippets: {} },
+        ];
+        const streaming = new Map(s.streamingMap);
+        streaming.set(sessionId as string, { ...sm, slices });
+        return { streamingMap: streaming };
+      });
+      break;
+
+    case 'narrative_timeline_complete':
+      useConversationStore.setState((s) => {
+        const sm = s.streamingMap.get(sessionId as string);
+        if (!sm) return {};
+        const slices = sm.slices.map((sl) =>
+          sl.type !== 'narrative_status' ? sl : {
+            ...sl,
+            completedTimelines: [...(sl.completedTimelines ?? []), event.timeline],
+            snippets: { ...(sl.snippets ?? {}), [event.timeline]: event.snippet },
+          },
+        );
+        const streaming = new Map(s.streamingMap);
+        streaming.set(sessionId as string, { ...sm, slices });
+        return { streamingMap: streaming };
+      });
+      break;
+
+    // ── Memory ─────────────────────────────────────────────────────────────
+
+    case 'memory_compaction_started':
+    case 'memory_compaction_failed':
+      break;
+
+    case 'memory_compaction_completed':
+      useConversationStore.setState((s) => {
+        const msgs    = new Map(s.messages);
+        const existing = msgs.get(sessionId as string) ?? [];
+        const notice = {
+          role:      'system' as const,
+          content:   `📋 上下文已压缩 · 节省 ${event.savedTokens.toLocaleString()} tokens`,
+          createdAt: Date.now(),
+        };
+        msgs.set(sessionId as string, [...existing, notice]);
+        return { messages: msgs };
+      });
+      break;
+
+    case 'memory_recall_evidence':
+      useConversationStore.setState((s) => {
+        const prev = s.recallEvidenceMap.get(sessionId as string) ?? {};
+        const next  = new Map(s.recallEvidenceMap);
+        next.set(sessionId as string, {
+          ...prev,
+          [event.layer as MemoryRecallLayer]: event.report as MemoryRecallLayerReport,
+        });
+        return { recallEvidenceMap: next };
+      });
+      break;
+
+    // ── Misc ───────────────────────────────────────────────────────────────
+
+    case 'system_warning':
+      console.warn('[sse] system_warning:', event.level, event.message);
+      break;
+
+    default:
+      break;
+  }
+}
