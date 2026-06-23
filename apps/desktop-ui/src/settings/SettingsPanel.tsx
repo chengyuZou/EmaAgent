@@ -22,6 +22,7 @@ import { KnowledgeBaseTab } from './KnowledgeBaseTab.js';
 import { Live2DTab } from './Live2DTab.js';
 import { ShortcutsTab } from './ShortcutsTab.js';
 import { AppearanceTab } from './AppearanceTab.js';
+import { SessionsTab }   from './SessionsTab.js';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -31,9 +32,13 @@ type SectionId =
   | 'skills'    | 'mcp'
   | 'memory'
   | 'knowledge-base'
+  | 'sessions'
   | 'live2d'    | 'shortcuts' | 'appearance';
 
-type GroupId = 'ai' | 'character' | 'agent' | 'memory' | 'knowledge' | 'desktop';
+type GroupId = 'ai' | 'character' | 'agent' | 'memory' | 'knowledge' | 'data' | 'desktop';
+
+// Sessions fills the entire content pane (no outer padding / scroll)
+const FULL_HEIGHT_SECTIONS = new Set<SectionId>(['sessions']);
 
 interface SectionDef { id: SectionId; label: string }
 interface GroupDef   { id: GroupId; label: string; icon: string; sections: SectionDef[] }
@@ -74,6 +79,12 @@ const GROUPS: GroupDef[] = [
     ],
   },
   {
+    id: 'data', label: '数据', icon: 'i-solar:history-bold-duotone',
+    sections: [
+      { id: 'sessions', label: '历史会话' },
+    ],
+  },
+  {
     id: 'desktop', label: '桌面与外观', icon: 'i-solar:pallete-2-bold-duotone',
     sections: [
       { id: 'live2d',     label: 'Live2D' },
@@ -94,6 +105,7 @@ function SectionContent({ id }: { id: SectionId }): JSX.Element {
     case 'mcp':            return <McpTab />;
     case 'memory':         return <MemoryTab />;
     case 'knowledge-base': return <KnowledgeBaseTab />;
+    case 'sessions':       return <SessionsTab />;
     case 'live2d':         return <Live2DTab />;
     case 'shortcuts':      return <ShortcutsTab />;
     case 'appearance':     return <AppearanceTab />;
@@ -187,7 +199,11 @@ export function SettingsPanel(): JSX.Element {
         {/* ── Right content ── */}
         <main
           key={activeSection}
-          className="flex-1 min-w-0 overflow-y-auto px-8 py-6 ema-slide-right"
+          className={`flex-1 min-w-0 ema-slide-right ${
+            FULL_HEIGHT_SECTIONS.has(activeSection)
+              ? 'overflow-hidden'
+              : 'overflow-y-auto px-8 py-6'
+          }`}
           id="settings-scroll-container"
         >
           <SectionContent id={activeSection} />

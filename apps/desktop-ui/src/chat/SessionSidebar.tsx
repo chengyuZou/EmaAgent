@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useMemo, useRef, type JSX } from 'react';
+import { useState, useCallback, useEffect, useMemo, type JSX } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { DropdownMenu, Input, type MenuItem } from '@ema-agent/ui';
 import { sessionsApi, type SessionWire, type SessionSearchItem } from '../api/sessions.js';
@@ -6,7 +6,6 @@ import { useConversationStore } from '../stores/conversation-store.js';
 import { useSessionStore, type SessionsState } from '../stores/session-store.js';
 import { useDecisionStore } from '../stores/decision-store.js';
 import { showToast } from '../lib/toast.js';
-import { SessionDetailPanel } from './SessionDetailPanel.js';
 import type { SessionId } from '@ema-agent/contracts';
 
 interface ProjectGroup {
@@ -19,20 +18,6 @@ const sidebarBlockClass = 'flex items-center gap-2.5 h-9 px-2 rounded-md text-sm
 export function SessionSidebar(): JSX.Element {
   const [collapsed, setCollapsed]   = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
-  const importRef = useRef<HTMLInputElement>(null);
-
-  async function handleImportFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    e.target.value = '';
-    try {
-      const session = await sessionsApi.importSession(file);
-      await useSessionStore.getState().loadSessions();
-      showToast(`导入成功：${session.title || session.id}`, { variant: 'success' });
-    } catch (err) {
-      showToast(err instanceof Error ? `导入失败：${err.message}` : '导入失败', { variant: 'danger' });
-    }
-  }
 
   const sessions  = useSessionStore((s) => s.sessions);
   const viewedId  = useConversationStore((s) => s.viewedSessionId);
@@ -100,18 +85,6 @@ export function SessionSidebar(): JSX.Element {
               icon="i-mdi:magnify"
               label="搜索"
               onClick={() => setSearchOpen(true)}
-            />
-            <SidebarCommand
-              icon="i-mdi:import"
-              label="导入会话"
-              onClick={() => importRef.current?.click()}
-            />
-            <input
-              ref={importRef}
-              type="file"
-              accept=".zip"
-              className="hidden"
-              onChange={(e) => void handleImportFile(e)}
             />
           </div>
 
@@ -396,19 +369,11 @@ function SidebarRow({ session, isActive, streaming, decisions, nested = false }:
   nested?:   boolean;
 }): JSX.Element {
   const [showWorkspace, setShowWorkspace] = useState(false);
-  const [showDetail, setShowDetail]       = useState(false);
   const dot = getStatusDot(session, streaming, decisions);
   const isRunning = streaming.has(session.id);
   const timeLabel = formatRelativeTime(session.lastActivityAt);
 
   const menuItems: MenuItem[] = [
-    {
-      kind:     'item',
-      label:    '查看详情',
-      icon:     'i-mdi:chart-box-outline',
-      onSelect: () => setShowDetail(true),
-    },
-    { kind: 'separator' },
     {
       kind:     'item',
       label:    session.pinned ? '取消固定' : '固定',
@@ -536,14 +501,6 @@ function SidebarRow({ session, isActive, streaming, decisions, nested = false }:
         )}
       </div>
 
-      {showDetail && (
-        <SessionDetailPanel
-          sessionId={session.id as SessionId}
-          sessionTitle={session.title}
-          open={showDetail}
-          onOpenChange={setShowDetail}
-        />
-      )}
     </div>
   );
 }

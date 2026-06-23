@@ -21,6 +21,7 @@ import { workspaceRoute }        from './routes/workspace.js';
 import { kbRoute }               from './routes/knowledge-base.js';
 import { agentTasksRoute }       from './routes/agent-tasks.js';
 import { sessionDetailRoute }    from './routes/session-detail.js';
+import { systemRoute }           from './routes/system.js';
 import type { AppBindings } from './wiring.js';
 
 export function buildServer(bindings: AppBindings): Hono {
@@ -57,6 +58,7 @@ export function buildServer(bindings: AppBindings): Hono {
   app.route('/api/permission',     permissionRoute(bindings));
   app.route('/api/memory',         memoryRoute(bindings));
   app.route('/api/system/events',  systemEventsRoute(bindings));
+  app.route('/api/system',         systemRoute(bindings));
   app.route('/api/system/shell',   shellRoute());
   app.route('/api/workspace',      workspaceRoute());
   app.route('/api/settings',       settingsRoute(bindings));

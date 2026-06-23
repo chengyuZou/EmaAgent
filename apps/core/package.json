@@ -49,6 +49,7 @@
     "@ema-agent/agent-task": "workspace:*",
     "@ema-agent/skill":    "workspace:*",
     "@ema-agent/mcp": "workspace:*",
+    "@ema-agent/system": "workspace:*",
     "@hono/node-server": "^1.14.3",
     "fflate": "^0.8.2",
     "hono": "^4.7.10",

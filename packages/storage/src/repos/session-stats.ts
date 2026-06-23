@@ -10,6 +10,7 @@ export interface SessionStats {
   chatTurns:            number;
   narrativeTurns:       number;
   agentTurns:           number;
+  branchCount:          number;
   artifactCount:        number;
   artifactInlineBytes:  number;
   audioTurnCount:       number;
@@ -55,6 +56,7 @@ export class SessionStatsRepo {
         (SELECT COUNT(*) FROM turns WHERE session_id = ? AND mode = 'chat')      AS chat_turns,
         (SELECT COUNT(*) FROM turns WHERE session_id = ? AND mode = 'narrative') AS narrative_turns,
         (SELECT COUNT(*) FROM turns WHERE session_id = ? AND mode = 'agent')     AS agent_turns,
+        (SELECT COUNT(DISTINCT branch_id) FROM turns WHERE session_id = ?) AS branch_count,
         (SELECT COUNT(*) FROM artifacts WHERE session_id = ?) AS artifact_count,
         (SELECT COALESCE(SUM(LENGTH(COALESCE(content,''))), 0)
            FROM artifacts WHERE session_id = ? AND content_location = 'inline')  AS artifact_inline_bytes,
@@ -65,7 +67,7 @@ export class SessionStatsRepo {
         (SELECT COALESCE(SUM(size), 0) FROM turn_attachments WHERE session_id = ?) AS attachment_total_bytes
     `).get(
       sessionId, sessionId, sessionId, sessionId,
-      sessionId, sessionId, sessionId,
+      sessionId, sessionId, sessionId, sessionId,
       sessionId, sessionId,
       sessionId, sessionId, sessionId,
       sessionId, sessionId,
@@ -73,6 +75,7 @@ export class SessionStatsRepo {
       turn_count:            number; message_count:        number;
       total_input_tokens:    number; total_output_tokens:  number;
       chat_turns:            number; narrative_turns:      number; agent_turns: number;
+      branch_count:          number;
       artifact_count:        number; artifact_inline_bytes: number;
       audio_turn_count:      number; audio_total_bytes:    number; audio_total_duration_ms: number;
       attachment_count:      number; attachment_total_bytes: number;
@@ -86,6 +89,7 @@ export class SessionStatsRepo {
       chatTurns:            row.chat_turns,
       narrativeTurns:       row.narrative_turns,
       agentTurns:           row.agent_turns,
+      branchCount:          row.branch_count,
       artifactCount:        row.artifact_count,
       artifactInlineBytes:  row.artifact_inline_bytes,
       audioTurnCount:       row.audio_turn_count,

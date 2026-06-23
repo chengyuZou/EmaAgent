@@ -165,6 +165,7 @@ export interface SessionDashboardWire {
   totalInputTokens:     number;
   totalOutputTokens:    number;
   modeCounts:           { chat: number; narrative: number; agent: number };
+  branchCount:          number;
   artifactCount:        number;
   artifactTotalBytes:   number;
   artifacts:            ArtifactSummaryWire[];

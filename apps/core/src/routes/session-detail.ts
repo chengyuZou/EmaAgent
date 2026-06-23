@@ -86,6 +86,7 @@ export function sessionDetailRoute(bindings: AppBindings): Hono {
       totalInputTokens:     stats.totalInputTokens,
       totalOutputTokens:    stats.totalOutputTokens,
       modeCounts:           { chat: stats.chatTurns, narrative: stats.narrativeTurns, agent: stats.agentTurns },
+      branchCount:          stats.branchCount,
       artifactCount:        stats.artifactCount,
       artifactTotalBytes:   stats.artifactInlineBytes,
       artifacts,
