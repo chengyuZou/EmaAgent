@@ -1,5 +1,12 @@
 import { create } from 'zustand';
-import { agentTasksApi, type AgentTaskWire, type AgentTaskMessageWire, type TaskStatus } from '../api/agent-tasks.js';
+import {
+  agentTasksApi,
+  type AgentTaskWire,
+  type AgentTaskMessageWire,
+  type TaskMessageRole,
+  type TaskStatus,
+  type AssistantMessageContent,
+} from '../api/agent-tasks.js';
 import { turnsApi } from '../api/turns.js';
 
 export type { AgentTaskWire, AgentTaskMessageWire, TaskStatus };
@@ -54,6 +61,17 @@ export interface AgentTaskStoreState {
 
   /** Load transcript for a task (lazy, cached). */
   loadTranscript(taskId: string): Promise<void>;
+
+  /**
+   * Append a live SSE message into the transcript for a running subagent.
+   * Consecutive text_delta → assistant messages are merged into one entry.
+   * Pre-initializes `transcripts.get(subagentId) = []` if not yet present.
+   */
+  appendLiveTranscript(
+    subagentId: string,
+    role: TaskMessageRole,
+    content: AgentTaskMessageWire['content'],
+  ): void;
 
   /** Evict all data for a session (called on session delete). */
   evictSession(sessionId: string): void;
@@ -143,6 +161,34 @@ export const useAgentTaskStore = create<AgentTaskStoreState>((set, get) => ({
         return { transcripts: trans };
       });
     }
+  },
+
+  appendLiveTranscript(subagentId, role, content) {
+    set((s) => {
+      const trans    = new Map(s.transcripts);
+      const existing = trans.get(subagentId) ?? [];
+
+      // Merge consecutive assistant text deltas into the last assistant message.
+      if (role === 'assistant') {
+        const last = existing[existing.length - 1];
+        if (last?.role === 'assistant') {
+          const prev = (last.content as AssistantMessageContent).text;
+          const next = (content as AssistantMessageContent).text;
+          trans.set(subagentId, [
+            ...existing.slice(0, -1),
+            { ...last, content: { text: prev + next } },
+          ]);
+          return { transcripts: trans };
+        }
+      }
+
+      const msg: AgentTaskMessageWire = {
+        id: `live-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        taskId: subagentId, role, content, createdAt: Date.now(),
+      };
+      trans.set(subagentId, [...existing, msg]);
+      return { transcripts: trans };
+    });
   },
 
   evictSession(sessionId) {

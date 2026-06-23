@@ -13,6 +13,7 @@
  * neither module uses the other's exports at the top-level init phase.
  */
 import { tauriBridge }             from '../lib/tauri-bridge.js';
+import { showToast }               from '../lib/toast.js';
 import {
   handleTtsChunk,
   handleTtsSentenceComplete,
@@ -324,6 +325,13 @@ export function dispatchSseEvent(
           model: event.model, iteration: 0, toolCallCount: 0, elapsedMs: 0,
         },
       });
+      // Pre-initialize live transcript so TaskTranscript shows streaming immediately.
+      useAgentTaskStore.setState((s) => {
+        if (s.transcripts.has(event.subagentId)) return {};
+        const trans = new Map(s.transcripts);
+        trans.set(event.subagentId, []);
+        return { transcripts: trans };
+      });
       break;
 
     case 'subagent_progress': {
@@ -363,9 +371,26 @@ export function dispatchSseEvent(
       });
       break;
 
-    case 'subagent_stream':
-      // Transcript is written to DB by turns.ts fan-out; panel reloads from server.
+    case 'subagent_stream': {
+      const { ev: inner, subagentId } = event;
+      const taskStore = useAgentTaskStore.getState();
+
+      if (inner.type === 'text_delta') {
+        taskStore.appendLiveTranscript(subagentId, 'assistant', { text: inner.delta });
+      } else if (inner.type === 'tool_call') {
+        taskStore.appendLiveTranscript(subagentId, 'tool_call', {
+          callId: inner.callId, name: inner.name, args: inner.args,
+          iteration: inner.iteration,
+        });
+      } else if (inner.type === 'tool_result') {
+        taskStore.appendLiveTranscript(subagentId, 'tool_result', {
+          callId: inner.callId, name: inner.name, excerpt: inner.excerpt,
+          isError: inner.isError, error: inner.error?.message, durationMs: inner.durationMs,
+        });
+      }
+      // iteration / reasoning_delta — no transcript entry needed
       break;
+    }
 
     // ── Narrative ──────────────────────────────────────────────────────────
 
@@ -403,7 +428,11 @@ export function dispatchSseEvent(
     // ── Memory ─────────────────────────────────────────────────────────────
 
     case 'memory_compaction_started':
+      showToast('正在压缩上下文…', { variant: 'info', duration: 8000 });
+      break;
+
     case 'memory_compaction_failed':
+      showToast(`上下文压缩失败：${event.error}`, { variant: 'danger', duration: 6000 });
       break;
 
     case 'memory_compaction_completed':
@@ -412,7 +441,7 @@ export function dispatchSseEvent(
         const existing = msgs.get(sessionId as string) ?? [];
         const notice = {
           role:      'system' as const,
-          content:   `📋 上下文已压缩 · 节省 ${event.savedTokens.toLocaleString()} tokens`,
+          content:   `上下文已压缩 · 节省 ${event.savedTokens.toLocaleString()} tokens`,
           createdAt: Date.now(),
         };
         msgs.set(sessionId as string, [...existing, notice]);
