@@ -129,6 +129,11 @@ export class ArtifactStore implements IArtifactStore {
     return this.repo.listBySession(sessionId, { type: opts?.type, includeContent: false });
   }
 
+  /** Export-only: full artifacts including inline content and file-backed paths. */
+  listForExport(sessionId: SessionId): Artifact[] {
+    return this.repo.listForExport(sessionId);
+  }
+
   // ── apply ───────────────────────────────────────────────────────────────────
 
   /**

@@ -100,7 +100,6 @@ function toTurn(row: TurnRow): Turn {
     iterations: row.iterations,
     usageInputTokens: row.usage_input_tokens,
     usageOutputTokens: row.usage_output_tokens,
-    costUsd: row.cost_usd,
   };
 }
 
@@ -493,7 +492,6 @@ export class SessionStore {
       completedAt:        Date.now(),
       usageInputTokens:   usage.usageInputTokens,
       usageOutputTokens:  usage.usageOutputTokens,
-      costUsd:            usage.costUsd,
       iterations:         usage.iterations,
     });
     this.registry.clear(turn.sessionId);

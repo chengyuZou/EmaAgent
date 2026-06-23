@@ -69,7 +69,6 @@ export interface Turn {
   iterations: number;
   usageInputTokens: number;
   usageOutputTokens: number;
-  costUsd: number;
 }
 
 export interface Message {
@@ -119,7 +118,6 @@ export interface StartTurnInput {
 export interface CompleteTurnInput {
   usageInputTokens?: number;
   usageOutputTokens?: number;
-  costUsd?: number;
   iterations?: number;
 }
 

@@ -11,6 +11,7 @@ import {
   ProviderRerankModelsRepo, ProviderTtsModelsRepo, ProviderSttModelsRepo, ProviderVisionModelsRepo,
   McpServersRepo, SkillsRepo,
   AgentTasksRepo, AgentTaskMessagesRepo,
+  SessionStatsRepo,
 } from '@ema-agent/storage';
 import { AttachmentStore } from '@ema-agent/attachment';
 import { ArtifactStore }                               from '@ema-agent/artifact';
@@ -159,6 +160,8 @@ export interface AppBindings {
   providerVisionModels:  ProviderVisionModelsRepo;
   artifactStore:    ArtifactStore;
   attachmentStore:  AttachmentStore;
+  sessionStats:     SessionStatsRepo;
+  sessionNotes:     SessionNotesRepo;
   mcpRegistry:      McpRegistry;
   /** Thin adapter satisfying IMcpClientBridge — delegates to mcpRegistry.callTool(). */
   mcpBridge:        IMcpClientBridge;
@@ -344,6 +347,10 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
   // ── Attachments ─────────────────────────────────────────────────────────────
   const attachmentStore = new AttachmentStore(new AttachmentRepo(dataDb.sqlite));
 
+  // ── Session detail (stats + notes) — used by /api/sessions/:id/dashboard ──
+  const sessionStats = new SessionStatsRepo(dataDb.sqlite);
+  const sessionNotes = new SessionNotesRepo(dataDb.sqlite);
+
   // ── MCP registry ────────────────────────────────────────────────────────────
   const mcpStdioGate = async (serverName: string, command: string): Promise<boolean> => {
     const outcome = await permission.gate(
@@ -418,7 +425,7 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
     providers, settings: settingsRepo,
     modelBindings, providerLlmModels, providerEmbedModels,
     providerRerankModels, providerTtsModels, providerSttModels, providerVisionModels,
-    artifactStore, attachmentStore,
+    artifactStore, attachmentStore, sessionStats, sessionNotes,
     mcpRegistry, mcpBridge,
     skillStore, skillRunner, skillInstaller, skillBridge,
     kb,

@@ -15,7 +15,6 @@ export interface TurnRow {
   iterations: number;
   usage_input_tokens: number;
   usage_output_tokens: number;
-  cost_usd: number;
   branch_id: string | null;
 }
 
@@ -36,7 +35,6 @@ export interface TurnCompletion {
   iterations?: number;
   usageInputTokens?: number;
   usageOutputTokens?: number;
-  costUsd?: number;
 }
 
 export class TurnsRepo {
@@ -63,7 +61,7 @@ export class TurnsRepo {
       .prepare(
         `UPDATE turns SET
            status = ?, completed_at = ?, error_code = ?, error_message = ?,
-           iterations = ?, usage_input_tokens = ?, usage_output_tokens = ?, cost_usd = ?
+           iterations = ?, usage_input_tokens = ?, usage_output_tokens = ?
          WHERE id = ?`,
       )
       .run(
@@ -74,7 +72,6 @@ export class TurnsRepo {
         c.iterations ?? 0,
         c.usageInputTokens ?? 0,
         c.usageOutputTokens ?? 0,
-        c.costUsd ?? 0,
         id,
       );
   }

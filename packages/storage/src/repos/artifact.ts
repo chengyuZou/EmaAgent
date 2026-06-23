@@ -140,6 +140,14 @@ export class ArtifactRepo {
     });
   }
 
+  /** Export-only: returns all artifacts with full content (inline text + contentPath for file-backed). */
+  listForExport(sessionId: SessionId): Artifact[] {
+    const rows = this.db
+      .prepare(`SELECT * FROM artifacts WHERE session_id = ? ORDER BY created_at ASC`)
+      .all(sessionId) as ArtifactRow[];
+    return rows.map(rowToArtifact);
+  }
+
   deleteById(id: ArtifactId): void {
     this.db.prepare(`DELETE FROM artifacts WHERE id = ?`).run(id);
   }

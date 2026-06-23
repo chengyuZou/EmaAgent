@@ -15,6 +15,8 @@ export { ModelBindingsRepo } from './repos/model-bindings.js';
 export { ArtifactRepo }    from './repos/artifact.js';
 export { AttachmentRepo }  from './repos/attachment.js';
 export type { AttachmentRow, AttachmentInsert } from './repos/attachment.js';
+export { SessionStatsRepo } from './repos/session-stats.js';
+export type { SessionStats, AudioEntryRow, ArtifactSummaryRow } from './repos/session-stats.js';
 export { McpServersRepo }  from './repos/mcp-servers.js';
 export type { McpServerRow } from './repos/mcp-servers.js';
 export { SkillsRepo }      from './repos/skills.js';
