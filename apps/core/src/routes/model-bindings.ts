@@ -1,6 +1,5 @@
 ﻿import { Hono } from 'hono';
 import { z } from 'zod';
-import { ModelBindingsRepo, ProviderLlmModelsRepo, ProvidersRepo } from '@ema-agent/storage';
 import type { BindingModule } from '@ema-agent/storage';
 import type { AppBindings } from '../wiring.js';
 import { configureBridge } from '../wiring.js';
@@ -51,8 +50,7 @@ export function modelBindingsRoute(bindings: AppBindings): Hono {
 
   // GET /api/model-bindings — list all bindings across all modules
   app.get('/', (c) => {
-    const repo = new ModelBindingsRepo(bindings.profileDb.sqlite);
-    return c.json(repo.list());
+    return c.json(bindings.modelBindings.list());
   });
 
   // GET /api/model-bindings/available/:capability — the enabled-model pool the
@@ -73,7 +71,7 @@ export function modelBindingsRoute(bindings: AppBindings): Hono {
 
     switch (capability) {
       case 'llm': {
-        const rows = new ProviderLlmModelsRepo(bindings.profileDb.sqlite).listAll();
+        const rows = bindings.providerLlmModels.listAll();
         return c.json({
           models: rows.map((r) => ({
             providerConfigId: r.provider_config_id,
@@ -141,8 +139,7 @@ export function modelBindingsRoute(bindings: AppBindings): Hono {
       return c.json({ error: 'invalid_module', validModules: BINDING_MODULES }, 400);
     }
     const module = moduleParsed.data as BindingModule;
-    const repo = new ModelBindingsRepo(bindings.profileDb.sqlite);
-    return c.json(repo.listByModule(module));
+    return c.json(bindings.modelBindings.listByModule(module));
   });
 
   // PUT /api/model-bindings/:module/set — atomic single-select: delete all
@@ -159,11 +156,10 @@ export function modelBindingsRoute(bindings: AppBindings): Hono {
     }
 
     const module = moduleParsed.data as BindingModule;
-    const repo    = new ModelBindingsRepo(bindings.profileDb.sqlite);
 
     // Atomic: wipe old → insert new (single-select semantics)
-    repo.deleteAllByModule(module);
-    repo.upsert({
+    bindings.modelBindings.deleteAllByModule(module);
+    bindings.modelBindings.upsert({
       module,
       providerConfigId: bodyParsed.data.providerConfigId,
       model:            bodyParsed.data.model,
@@ -177,7 +173,7 @@ export function modelBindingsRoute(bindings: AppBindings): Hono {
     if (TTS_MODULES.has(module)) reloadTtsClient(bindings.tts, bindings.profileDb);
     if (STT_MODULES.has(module)) reloadSttClient(bindings.stt, bindings.profileDb);
 
-    return c.json(repo.listByModule(module));
+    return c.json(bindings.modelBindings.listByModule(module));
   });
 
   // PUT /api/model-bindings/:module — upsert one binding
@@ -193,9 +189,8 @@ export function modelBindingsRoute(bindings: AppBindings): Hono {
     }
 
     const module = moduleParsed.data as BindingModule;
-    const repo = new ModelBindingsRepo(bindings.profileDb.sqlite);
 
-    repo.upsert({
+    bindings.modelBindings.upsert({
       module,
       providerConfigId: bodyParsed.data.providerConfigId,
       model:            bodyParsed.data.model,
@@ -211,7 +206,7 @@ export function modelBindingsRoute(bindings: AppBindings): Hono {
     if (STT_MODULES.has(module)) reloadSttClient(bindings.stt, bindings.profileDb);
 
     // Return the updated list for this module
-    return c.json(repo.listByModule(module));
+    return c.json(bindings.modelBindings.listByModule(module));
   });
 
   // DELETE /api/model-bindings/:module?providerConfigId=...&model=...
@@ -227,8 +222,7 @@ export function modelBindingsRoute(bindings: AppBindings): Hono {
     }
 
     const module = moduleParsed.data as BindingModule;
-    const repo = new ModelBindingsRepo(bindings.profileDb.sqlite);
-    repo.delete(module, queryParsed.data.providerConfigId, queryParsed.data.model);
+    bindings.modelBindings.delete(module, queryParsed.data.providerConfigId, queryParsed.data.model);
 
     if (BRIDGE_MODULES.has(module)) {
       void configureBridge(bindings.profileDb, bindings.narrative);

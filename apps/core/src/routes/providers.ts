@@ -1,7 +1,6 @@
 ﻿import { Hono } from 'hono';
 import { z } from 'zod';
 import { randomUUID } from 'node:crypto';
-import { ProvidersRepo, ModelBindingsRepo } from '@ema-agent/storage';
 import type { ProviderConfigRow, ProviderHealthRow } from '@ema-agent/storage';
 import {
   getProviderDefinition,
@@ -18,7 +17,6 @@ import {
   fetchLlmModels,
   fetchEmbedModels,
 } from '../wiring.js';
-import { ProviderLlmModelsRepo, SettingsRepo } from '@ema-agent/storage';
 import { reloadTtsClient, resolveVoice, ensureVoiceUri, VoiceUriCache } from '../wiring/providers/tts.js';
 import { reloadSttClient } from '../wiring/providers/stt.js';
 
@@ -151,9 +149,8 @@ function hotReload(
   }
 
   // ── Bridge sync ───────────────────────────────────────────────────────────
-  const mbRepo = new ModelBindingsRepo(bindings.profileDb.sqlite);
   const bridgeUsesThisProvider = BRIDGE_MODULES.some(
-    mod => mbRepo.get(mod)?.providerConfigId === row.id,
+    mod => bindings.modelBindings.get(mod)?.providerConfigId === row.id,
   );
   if (bridgeUsesThisProvider) {
     void configureBridge(bindings.profileDb, bindings.narrative);
@@ -404,7 +401,7 @@ export function providersRoute(bindings: AppBindings): Hono {
     const repo = bindings.providers;
     if (!repo.get(id)) return c.json({ error: 'not_found' }, 404);
 
-    new ProviderLlmModelsRepo(bindings.profileDb.sqlite).upsert({
+    bindings.providerLlmModels.upsert({
       providerConfigId: id,
       model,
       contextWindow:    body.data.contextWindow,
@@ -422,11 +419,10 @@ export function providersRoute(bindings: AppBindings): Hono {
     const id = c.req.param('id');
     const model = decodeURIComponent(c.req.param('model'));
 
-    const removed = new ProviderLlmModelsRepo(bindings.profileDb.sqlite).remove(id, model);
+    const removed = bindings.providerLlmModels.remove(id, model);
     if (!removed) return c.json({ error: 'not_found' }, 404);
 
-    const bindingsRepo = new ModelBindingsRepo(bindings.profileDb.sqlite);
-    const cascaded = bindingsRepo.deleteByProviderModel(id, model);
+    const cascaded = bindings.modelBindings.deleteByProviderModel(id, model);
 
     return c.json({ ok: true, cascadedBindings: cascaded });
   });
@@ -531,7 +527,7 @@ export function providersRoute(bindings: AppBindings): Hono {
     const removed = bindings.providerEmbedModels.remove(id, model);
     if (!removed) return c.json({ error: 'not_found' }, 404);
 
-    const cascaded = new ModelBindingsRepo(bindings.profileDb.sqlite).deleteByProviderModel(id, model);
+    const cascaded = bindings.modelBindings.deleteByProviderModel(id, model);
     return c.json({ ok: true, cascadedBindings: cascaded });
   });
 
@@ -581,7 +577,7 @@ export function providersRoute(bindings: AppBindings): Hono {
     const removed = bindings.providerRerankModels.remove(id, model);
     if (!removed) return c.json({ error: 'not_found' }, 404);
 
-    const cascaded = new ModelBindingsRepo(bindings.profileDb.sqlite).deleteByProviderModel(id, model);
+    const cascaded = bindings.modelBindings.deleteByProviderModel(id, model);
     return c.json({ ok: true, cascadedBindings: cascaded });
   });
 
@@ -620,7 +616,7 @@ export function providersRoute(bindings: AppBindings): Hono {
     const removed = bindings.providerTtsModels.remove(id, model);
     if (!removed) return c.json({ error: 'not_found' }, 404);
 
-    const cascaded = new ModelBindingsRepo(bindings.profileDb.sqlite).deleteByProviderModel(id, model);
+    const cascaded = bindings.modelBindings.deleteByProviderModel(id, model);
     return c.json({ ok: true, cascadedBindings: cascaded });
   });
 
@@ -659,7 +655,7 @@ export function providersRoute(bindings: AppBindings): Hono {
     const removed = bindings.providerSttModels.remove(id, model);
     if (!removed) return c.json({ error: 'not_found' }, 404);
 
-    const cascaded = new ModelBindingsRepo(bindings.profileDb.sqlite).deleteByProviderModel(id, model);
+    const cascaded = bindings.modelBindings.deleteByProviderModel(id, model);
     return c.json({ ok: true, cascadedBindings: cascaded });
   });
 
