@@ -71,14 +71,17 @@ function isNonLlmModelId(id: string): boolean {
 /**
  * List the LLM models a provider config exposes.
  *
- * Fallback chain:
- *   1. Live /v1/models (openai-style protocols only)
- *   2. models.dev catalog (when modelsDevId is known)
- *   3. Empty — user must manually enable models
+ * Priority:
+ *   1. models.dev catalog (in-memory; core loads from online fetch or disk
+ *      snapshot at startup — caller passes whichever is available)
+ *   2. Live /v1/models — only when catalog has no entry for this provider
+ *      (custom self-hosted, Ollama, private deployments, etc.)
+ *   3. Empty — user must manually add models
  *
- * `defaultModels.llm` is intentionally NOT used as fallback — the static list
- * is a maintenance burden and the models.dev catalog supersedes it. Users can
- * still manually add models via the settings UI's model manager.
+ * Catalog always wins when present: providers like SiliconFlow expose all
+ * modalities via /v1/models (embed/rerank/tts mixed in), making heuristic
+ * filtering unreliable. models.dev already records only LLM-capable models
+ * per provider, so there is no need to probe when catalog data exists.
  */
 export async function fetchLlmModels(
   row: ProviderConfigRow,
@@ -88,14 +91,17 @@ export async function fetchLlmModels(
     signal?:        AbortSignal;
   },
 ): Promise<FetchedModels> {
+  // 1. models.dev catalog (online or disk snapshot — already resolved by caller)
   const catalogModels = opts?.modelsDevId && opts?.modelCatalog
     ? opts.modelCatalog.listLlmModelIds(opts.modelsDevId)
     : [];
 
-  const cfg = buildLlmProviderConfig(row);
+  if (catalogModels.length > 0) {
+    return { models: catalogModels, source: 'catalog' };
+  }
 
-  // Live /v1/models probe — supplements the catalog for custom / self-hosted
-  // models that models.dev doesn't track.
+  // 2. Live /v1/models — only for providers not tracked by models.dev
+  const cfg = buildLlmProviderConfig(row);
   if (cfg && (cfg.protocol === 'openai-llm' || cfg.protocol === 'openai-responses-llm')) {
     const base = (cfg.baseUrl ?? '').replace(/\/$/, '');
     if (base) {
@@ -110,14 +116,14 @@ export async function fetchLlmModels(
             .map((m) => m.id)
             .filter((id): id is string => !!id)
             .filter((id) => !isNonLlmModelId(id));
-          const merged = [...new Set([...catalogModels, ...liveIds])].sort();
-          return { models: merged, source: 'live' };
+          if (liveIds.length > 0) {
+            return { models: liveIds, source: 'live' };
+          }
         }
-      } catch { /* probe failed — fall through to catalog */ }
+      } catch { /* probe failed */ }
     }
   }
 
-  // models.dev catalog is the primary source for non-OpenAI providers
-  // (Anthropic, Gemini) and the fallback when live probe fails.
-  return { models: catalogModels, source: 'catalog' };
+  // 3. Empty — user must manually add models via the model manager
+  return { models: [], source: 'catalog' };
 }
