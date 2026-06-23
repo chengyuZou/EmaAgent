@@ -55,7 +55,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, State> {
           <button
             className="px-4 py-2 rounded-xl transition-colors"
             style={{ background: 'var(--ema-primary-muted)', color: 'var(--ema-primary)' }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'oklch(0.72 0.18 350 / 0.30)'; }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--ema-primary-active)'; }}
             onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--ema-primary-muted)'; }}
             onClick={this.reset}
           >

@@ -11,7 +11,7 @@ export interface AskConfirmPromptProps {
 
 export function AskConfirmPrompt({ question, humanDescription, onResolve, onCancel }: AskConfirmPromptProps): JSX.Element {
   return (
-    <Card variant="elevated" padding="lg" className="shadow-2xl max-w-lg w-full">
+    <Card variant="elevated" padding="lg" className="shadow-[var(--ema-shadow-3)] max-w-lg w-full">
       <HumanDescriptionPanel description={humanDescription ?? question} toolName="" pending={false} />
       {humanDescription && (
         <p className="mt-2 text-sm" style={{ color: 'var(--ema-text-secondary)' }}>{question}</p>

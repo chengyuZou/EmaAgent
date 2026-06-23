@@ -76,7 +76,7 @@ export function PermissionPrompt({
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
-    <Card variant="elevated" padding="lg" className="shadow-2xl max-w-lg w-full">
+    <Card variant="elevated" padding="lg" className="shadow-[var(--ema-shadow-3)] max-w-lg w-full">
       <HumanDescriptionPanel
         description={humanDescription ?? hint}
         toolName={toolName}

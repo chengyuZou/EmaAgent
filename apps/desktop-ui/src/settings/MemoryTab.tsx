@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, type JSX } from 'react';
+import { useState, useEffect, useCallback, type CSSProperties, type JSX } from 'react';
 import {
   Badge, Button, Callout, Card, Divider, Field,
   Input, Progress, ScrollArea, Select, Spinner, Switch, Tabs, Tooltip,
@@ -95,9 +95,9 @@ function OverviewTab(): JSX.Element {
       {stats && (
         <>
           <div className="grid grid-cols-3 gap-3">
-            <StatCard label="节点" value={stats.nodes.total} sub={`avg 重要度 ${(stats.nodes.avgImportance * 100).toFixed(0)}%`} />
-            <StatCard label="条目" value={stats.items.total} sub={`avg 重要度 ${(stats.items.avgImportance * 100).toFixed(0)}%`} />
-            <StatCard label="边"   value={stats.edges.total} sub={`avg 引用 ${stats.edges.avgMentionCount.toFixed(1)}`} />
+            <div className="ema-stagger-in" style={{ '--stagger-i': 0 } as CSSProperties}><StatCard label="节点" value={stats.nodes.total} sub={`avg 重要度 ${(stats.nodes.avgImportance * 100).toFixed(0)}%`} /></div>
+            <div className="ema-stagger-in" style={{ '--stagger-i': 1 } as CSSProperties}><StatCard label="条目" value={stats.items.total} sub={`avg 重要度 ${(stats.items.avgImportance * 100).toFixed(0)}%`} /></div>
+            <div className="ema-stagger-in" style={{ '--stagger-i': 2 } as CSSProperties}><StatCard label="边"   value={stats.edges.total} sub={`avg 引用 ${stats.edges.avgMentionCount.toFixed(1)}`} /></div>
           </div>
 
           {/* By-type breakdown */}

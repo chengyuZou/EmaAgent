@@ -25,7 +25,7 @@ export function ArtifactsPanel(): JSX.Element {
 
   if (!sessionId) {
     return (
-      <div className="flex items-center justify-center py-12 text-xs"
+      <div className="flex items-center justify-center py-12 text-xs ema-fade-in"
            style={{ color: 'var(--ema-text-tertiary)' }}>
         无活跃会话
       </div>
@@ -34,7 +34,7 @@ export function ArtifactsPanel(): JSX.Element {
 
   if (artifacts.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center gap-3 py-10 px-4">
+      <div className="flex flex-col items-center justify-center gap-3 py-10 px-4 ema-fade-in">
         <span
           className="i-mdi:file-document-multiple-outline text-3xl opacity-20"
           style={{ color: 'var(--ema-primary)' }}

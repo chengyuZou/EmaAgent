@@ -1,7 +1,7 @@
 /**
  * VoiceTab — manage refAudios: upload, test listen, set primary, delete.
  */
-import { useState, useRef, type ChangeEvent, type JSX } from 'react';
+import { useState, useRef, type ChangeEvent, type CSSProperties, type JSX } from 'react';
 import { Button, Checkbox, Select, Textarea } from '@ema-agent/ui';
 import { useCardStore } from '../stores/card-store.js';
 import { cardsApi } from '../api/cards.js';
@@ -109,7 +109,8 @@ export function VoiceTab({
         </p>
       ) : (
         <div className="flex flex-col gap-2 mb-4">
-          {voiceProfile.refAudios.map((ref) => (
+          {voiceProfile.refAudios.map((ref, i) => (
+            <div key={ref.id} className="ema-stagger-in" style={{ '--stagger-i': i } as CSSProperties}>
             <RefAudioRow
               key={ref.id}
               refAudio={ref}
@@ -119,6 +120,7 @@ export function VoiceTab({
               onSetPrimary={() => handleSetPrimary(ref.id)}
               onDelete={() => handleDelete(ref.id)}
             />
+            </div>
           ))}
         </div>
       )}

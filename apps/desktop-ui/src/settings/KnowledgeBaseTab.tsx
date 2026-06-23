@@ -1,7 +1,7 @@
 /**
  * KnowledgeBaseTab — document ingest, list, delete, and search test.
  */
-import { useState, useEffect, type JSX } from 'react';
+import { useState, useEffect, type CSSProperties, type JSX } from 'react';
 import { Button, IconButton, Input, Spinner, Badge, Callout, ScrollArea } from '@ema-agent/ui';
 import { useKbStore } from '../stores/kb-store.js';
 import { tauriBridge } from '../lib/tauri-bridge.js';
@@ -182,10 +182,11 @@ function SearchTest(): JSX.Element {
             <p className="text-sm text-[var(--ema-text-tertiary)] py-3 text-center">未找到相关内容</p>
           ) : (
             <div className="flex flex-col gap-2">
-              {searchResult.hits.map((hit) => (
+              {searchResult.hits.map((hit, i) => (
                 <div
                   key={hit.chunkId}
-                  className="p-3 rounded-xl bg-[var(--ema-surface-1)] border border-[var(--ema-border)]"
+                  className="p-3 rounded-xl bg-[var(--ema-surface-1)] border border-[var(--ema-border)] ema-stagger-in"
+                  style={{ '--stagger-i': i } as CSSProperties}
                 >
                   <div className="flex items-center gap-2 mb-1.5">
                     <span className="text-xs text-[var(--ema-text-tertiary)] font-mono">{hit.source.fileName}</span>
@@ -263,12 +264,13 @@ export function KnowledgeBaseTab(): JSX.Element {
         ) : (
           <ScrollArea className="max-h-72">
             <div className="flex flex-col gap-1.5 pr-2">
-              {documents.map((doc) => (
+              {documents.map((doc, i) => (
+                <div key={doc.id} className="ema-stagger-in" style={{ '--stagger-i': i } as CSSProperties}>
                 <DocumentRow
-                  key={doc.id}
                   doc={doc}
                   onDelete={() => void useKbStore.getState().loadDocuments()}
                 />
+                </div>
               ))}
             </div>
           </ScrollArea>

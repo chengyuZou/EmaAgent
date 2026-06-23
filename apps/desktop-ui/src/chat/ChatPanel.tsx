@@ -90,7 +90,7 @@ export function ChatPanel(): JSX.Element {
 
   if (sidecarStatus.kind === 'error') {
     return (
-      <div className="flex items-center justify-center h-screen" style={{ color: 'var(--ema-text-tertiary)' }}>
+      <div className="flex items-center justify-center h-screen ema-fade-in" style={{ color: 'var(--ema-text-tertiary)' }}>
         <div className="text-center">
           <div className="text-lg mb-2">⚡ Sidecar 离线</div>
           <div className="text-sm" style={{ color: 'var(--ema-text-tertiary)' }}>{sidecarStatus.reason}</div>
@@ -101,7 +101,7 @@ export function ChatPanel(): JSX.Element {
 
   if (sidecarStatus.kind === 'pending' || sidecarStatus.kind === 'unknown') {
     return (
-      <div className="flex items-center justify-center h-screen" style={{ color: 'var(--ema-text-tertiary)' }}>
+      <div className="flex items-center justify-center h-screen ema-fade-in" style={{ color: 'var(--ema-text-tertiary)' }}>
         连接中…
       </div>
     );

@@ -1,7 +1,7 @@
 /**
  * BehaviorTab — edit speechPatterns, forbiddenTopics, emotionVocabulary, motionVocabulary.
  */
-import { useState, type FormEvent, type KeyboardEvent, type JSX } from 'react';
+import { useState, type FormEvent, type KeyboardEvent, type JSX, type CSSProperties } from 'react';
 import { Button, IconButton, Input } from '@ema-agent/ui';
 import { useCardStore } from '../stores/card-store.js';
 import type { CharacterCard } from '../api/cards.js';
@@ -44,7 +44,8 @@ function TagEditor({
         {tags.map((tag, i) => (
           <span
             key={`${tag}-${i}`}
-            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-[var(--ema-surface-2)] text-xs text-[var(--ema-text-primary)]"
+            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-[var(--ema-surface-2)] text-xs text-[var(--ema-text-primary)] ema-chip-in"
+            style={{ '--stagger-i': i } as CSSProperties}
           >
             {tag}
             <IconButton

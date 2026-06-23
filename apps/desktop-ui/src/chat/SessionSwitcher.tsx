@@ -170,7 +170,7 @@ function WorkspaceEditor({ session, onClose }: { session: SessionWire; onClose()
 
   return (
     <div
-      className="absolute right-0 top-6 z-50 rounded-xl p-3 shadow-[var(--ema-shadow-2)] w-72"
+      className="ema-slide-up absolute right-0 top-6 z-50 rounded-xl p-3 shadow-[var(--ema-shadow-2)] w-72"
       style={{ background: 'var(--ema-surface-4)', border: '1px solid var(--ema-border)' }}
       onClick={(e) => e.stopPropagation()}
     >

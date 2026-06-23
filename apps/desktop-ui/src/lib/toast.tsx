@@ -70,7 +70,7 @@ function ToastContainer(): JSX.Element {
       {toasts.map((t) => (
         <div
           key={t.id}
-          className={`pointer-events-auto px-4 py-2 rounded-xl border text-sm ${variantStyles[t.variant]} animate-fade-in`}
+          className={`pointer-events-auto px-4 py-2 rounded-xl border text-sm ${variantStyles[t.variant]} ema-fade-in`}
           style={{ background: variantBg[t.variant] }}
         >
           {t.message}

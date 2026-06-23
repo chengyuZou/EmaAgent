@@ -64,7 +64,7 @@ export function AskUserBatchPrompt({
   }
 
   return (
-    <Card variant="elevated" padding="lg" className="shadow-2xl max-w-lg w-full">
+    <Card variant="elevated" padding="lg" className="shadow-[var(--ema-shadow-3)] max-w-lg w-full">
       {/* Step indicator */}
       <div className="flex items-center gap-2 mb-3">
         {questions.map((_, i) => (

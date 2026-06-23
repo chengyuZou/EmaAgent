@@ -234,7 +234,7 @@ export function BranchPanel(): JSX.Element {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-12 text-xs" style={{ color: 'var(--ema-text-tertiary)' }}>
+      <div className="flex items-center justify-center py-12 text-xs ema-fade-in" style={{ color: 'var(--ema-text-tertiary)' }}>
         加载中…
       </div>
     );
@@ -242,7 +242,7 @@ export function BranchPanel(): JSX.Element {
 
   if (error) {
     return (
-      <div className="flex flex-col items-center justify-center py-12 gap-2 text-xs" style={{ color: 'var(--ema-text-tertiary)' }}>
+      <div className="flex flex-col items-center justify-center py-12 gap-2 text-xs ema-fade-in" style={{ color: 'var(--ema-text-tertiary)' }}>
         <span>{error}</span>
         <button className="text-[var(--ema-primary)] hover:text-[var(--ema-primary-hover)]" onClick={() => void load()}>
           重试

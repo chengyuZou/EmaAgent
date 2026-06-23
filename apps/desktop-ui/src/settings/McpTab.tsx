@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type CSSProperties } from 'react';
 import {
   Badge, Button, Callout, Card, Dialog, Divider, DropdownMenu,
   Field, Input, ScrollArea, Select, Spinner, Switch, Textarea, Tooltip,
@@ -200,7 +200,7 @@ export function McpTab(): JSX.Element {
 
       {/* Empty */}
       {!loading && servers.length === 0 && (
-        <div className="flex flex-col items-center justify-center py-16 text-[var(--ema-text-tertiary)] gap-2">
+        <div className="flex flex-col items-center justify-center py-16 text-[var(--ema-text-tertiary)] gap-2 ema-fade-in">
           <span className="i-mdi:server-outline text-4xl opacity-40" />
           <p className="text-sm">暂无 MCP 服务器</p>
           <p className="text-xs">点击"添加服务器"连接第一个 MCP 服务</p>
@@ -211,13 +211,14 @@ export function McpTab(): JSX.Element {
       {!loading && servers.length > 0 && (
         <ScrollArea className="flex-1" viewportClassName="pb-2">
           <div className="flex flex-col gap-2 pr-2">
-            {servers.map((sv) => (
+            {servers.map((sv, i) => (
+              <div key={sv.name} className="ema-stagger-in" style={{ '--stagger-i': i } as CSSProperties}>
               <ServerRow
-                key={sv.name}
                 server={sv}
                 onToggleEnabled={() => void handleToggleEnabled(sv)}
                 onRemove={() => void handleRemove(sv.name)}
               />
+              </div>
             ))}
           </div>
         </ScrollArea>
@@ -235,11 +236,12 @@ export function McpTab(): JSX.Element {
 
         {importResults ? (
           <div className="flex flex-col gap-2">
-            {importResults.map((r) => (
+            {importResults.map((r, i) => (
               <div
                 key={r.name}
                 className="flex items-start gap-3 px-3 py-2 rounded-lg
-                           border border-[var(--ema-border)] bg-[var(--ema-surface-1)]"
+                           border border-[var(--ema-border)] bg-[var(--ema-surface-1)] ema-stagger-in"
+                style={{ '--stagger-i': i } as CSSProperties}
               >
                 <Badge variant={r.ok ? 'success' : 'danger'} dot className="mt-0.5 shrink-0" />
                 <div className="flex-1 min-w-0">

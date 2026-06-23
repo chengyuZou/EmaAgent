@@ -20,12 +20,13 @@ export function ShortcutsTab(): JSX.Element {
       <h2 className="text-lg font-semibold text-[var(--ema-text-primary)] mb-3">快捷键</h2>
       <div className="text-xs text-[var(--ema-text-tertiary)] mb-4">V1 不可自定义，V1.5 将支持自定义绑定</div>
       <div className="flex flex-col gap-1 max-w-md">
-        {shortcuts.map((s) => (
+        {shortcuts.map((s, i) => (
           <Card
             key={s.keys}
             variant="elevated"
             padding="none"
-            className="flex items-center justify-between px-4 py-2"
+            className="flex items-center justify-between px-4 py-2 ema-stagger-in"
+            style={{ '--stagger-i': i } as React.CSSProperties}
           >
             <span className="text-sm text-[var(--ema-text-secondary)]">{s.action}</span>
             <kbd className="px-2 py-0.5 rounded-lg bg-[var(--ema-surface-2)] text-xs text-[var(--ema-text-tertiary)] font-mono">{s.keys}</kbd>

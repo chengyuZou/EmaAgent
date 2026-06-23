@@ -9,7 +9,7 @@ export function HumanDescriptionPanel({ description, toolName, pending }: HumanD
   if (pending) {
     return (
       <div className="mb-3">
-        <div className="h-6 w-3/4 rounded-lg animate-pulse" style={{ background: 'var(--ema-surface-2)' }} />
+        <div className="h-6 w-3/4 rounded-lg ema-skeleton-pulse" />
       </div>
     );
   }
