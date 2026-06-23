@@ -1,6 +1,7 @@
 mod sidecar;
 
 use tauri::{Manager, RunEvent, WindowEvent};
+use tauri::tray::{TrayIconBuilder, TrayIconEvent, MouseButton, MouseButtonState};
 use tracing_subscriber::EnvFilter;
 
 use sidecar::SidecarState;
@@ -81,6 +82,7 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_opener::init())
         .manage(sidecar_state)
         .invoke_handler(tauri::generate_handler![
             get_sidecar_secret,
@@ -98,24 +100,62 @@ pub fn run() {
                     tracing::error!(?err, "sidecar spawn failed");
                 }
             });
+
+            // ── System tray ────────────────────────────────────────────────
+            let tray_menu = tauri::menu::MenuBuilder::new(app)
+                .item(&tauri::menu::MenuItem::with_id(app, "show",  "显示 Ema",  true, None::<&str>)?)
+                .item(&tauri::menu::MenuItem::with_id(app, "quit",  "退出",       true, None::<&str>)?)
+                .build()?;
+
+            let _tray = TrayIconBuilder::new()
+                .icon(app.default_window_icon().unwrap().clone())
+                .tooltip("Ema")
+                .menu(&tray_menu)
+                .show_menu_on_left_click(false)
+                .on_tray_icon_event(|tray, event| {
+                    // Left-click: toggle main window visibility
+                    if let TrayIconEvent::Click {
+                        button: MouseButton::Left,
+                        button_state: MouseButtonState::Up,
+                        ..
+                    } = event {
+                        let app = tray.app_handle();
+                        if let Some(win) = app.get_webview_window("main") {
+                            if win.is_visible().unwrap_or(false) {
+                                let _ = win.hide();
+                            } else {
+                                let _ = win.show();
+                                let _ = win.set_focus();
+                            }
+                        }
+                    }
+                })
+                .on_menu_event(|app, event| match event.id.as_ref() {
+                    "show" => {
+                        if let Some(win) = app.get_webview_window("main") {
+                            let _ = win.show();
+                            let _ = win.set_focus();
+                        }
+                    }
+                    "quit" => {
+                        let state = app.state::<SidecarState>();
+                        tauri::async_runtime::block_on(async {
+                            state.shutdown().await;
+                        });
+                        app.exit(0);
+                    }
+                    _ => {}
+                })
+                .build(app)?;
+
             Ok(())
         })
         .on_window_event(|window, event| {
             if let WindowEvent::CloseRequested { api, .. } = event {
-                match window.label() {
-                    "main" => {
-                        let state = window.state::<SidecarState>();
-                        tauri::async_runtime::block_on(async {
-                            state.shutdown().await;
-                        });
-                    }
-                    // Sub-windows are pre-declared singletons — destroying them
-                    // would make open_window fail forever. Hide instead.
-                    _ => {
-                        api.prevent_close();
-                        let _ = window.hide();
-                    }
-                }
+                // All windows (main included) hide to tray instead of closing.
+                // The only way to fully quit is via the tray menu "退出".
+                api.prevent_close();
+                let _ = window.hide();
             }
         })
         .build(tauri::generate_context!())

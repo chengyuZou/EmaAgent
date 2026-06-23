@@ -45,7 +45,7 @@ export default defineConfig({
   // extract class names from them) instead of loading the pre-built dist/.
   resolve: {
     alias: {
-      '@ema-agent/desktop-ui': resolve(__dirname, '../../packages/desktop-ui/src/index.ts'),
+      '@ema-agent/desktop-ui': resolve(__dirname, '../desktop-ui/src/index.ts'),
       '@ema-agent/live2d-react': resolve(__dirname, '../../packages/live2d-react/src/index.ts'),
     },
   },

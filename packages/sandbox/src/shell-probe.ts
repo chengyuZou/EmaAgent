@@ -20,6 +20,26 @@ const GIT_BASH_CANDIDATE_PATHS = [
   `${process.env['LOCALAPPDATA'] ?? 'C:\\Users\\Default\\AppData\\Local'}\\Programs\\Git\\usr\\bin\\bash.exe`,
 ];
 
+/** Read Git install path from registry (HKLM or HKCU). Returns bash.exe path or null. */
+function gitBashFromRegistry(): string | null {
+  for (const hive of ['HKLM', 'HKCU']) {
+    try {
+      const r = spawnSync(
+        'reg', ['query', `${hive}\\SOFTWARE\\GitForWindows`, '/v', 'InstallPath'],
+        { encoding: 'utf8', timeout: 3_000, windowsHide: true },
+      );
+      if (r.status === 0) {
+        const m = r.stdout.match(/InstallPath\s+REG_SZ\s+(.+)/);
+        if (m) {
+          const candidate = `${m[1]!.trim()}\\usr\\bin\\bash.exe`;
+          if (existsSync(candidate)) return candidate;
+        }
+      }
+    } catch { /* ignore */ }
+  }
+  return null;
+}
+
 let _cached: ShellProbeResult | undefined;
 
 /**
@@ -45,6 +65,14 @@ export function probeShell(opts?: { fresh?: boolean }): ShellProbeResult {
   if (whereResult.status === 0 && whereResult.stdout.trim()) {
     const firstLine = whereResult.stdout.trim().split(/\r?\n/)[0]!.trim();
     return (_cached = { available: true, path: firstLine });
+  }
+
+  // `where bash` uses the process-inherited PATH, which won't include a freshly
+  // installed Git for Windows until the process restarts. Fall back to a direct
+  // file-system check: well-known install locations, then registry lookup.
+  const knownPath = GIT_BASH_CANDIDATE_PATHS.find(existsSync) ?? gitBashFromRegistry();
+  if (knownPath) {
+    return (_cached = { available: true, path: knownPath });
   }
 
   const wingetResult = spawnSync('winget', ['--version'], {
@@ -99,10 +127,10 @@ export function installGitViaWinget(): Promise<GitInstallResult> {
       clearTimeout(timer);
       const ok = code === 0;
       if (ok) {
-        // winget succeeded — try to find the new bash via known paths first.
+        // winget succeeded — try to find the new bash via known paths + registry.
         // The parent Node process's PATH won't include the new install yet,
         // so `where bash` via spawnSync would still fail. Direct file check works.
-        const found = GIT_BASH_CANDIDATE_PATHS.find(existsSync);
+        const found = GIT_BASH_CANDIDATE_PATHS.find(existsSync) ?? gitBashFromRegistry();
         _cached = found
           ? { available: true, path: found }
           : undefined; // fall back to re-probe on next probeShell() call

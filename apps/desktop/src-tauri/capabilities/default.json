@@ -11,6 +11,7 @@
     "core:window:allow-outer-size",
     "core:window:allow-scale-factor",
     "dialog:allow-save",
-    "dialog:allow-open"
+    "dialog:allow-open",
+    "opener:allow-open-url"
   ]
 }
