@@ -241,7 +241,9 @@ export function SkillsTab(): JSX.Element {
       showToast(`已安装 ${sk.name}`, { variant: 'success' });
       closeDialog();
     } catch (err) {
-      setInstallError(err instanceof Error ? err.message : String(err));
+      const msg = err instanceof Error ? err.message : String(err);
+      setInstallError(msg);
+      showToast(`安装失败: ${msg}`, { variant: 'danger' });
     } finally {
       setInstalling(false);
     }
@@ -257,7 +259,11 @@ export function SkillsTab(): JSX.Element {
       showToast(`已安装 ${sk.name}`, { variant: 'success' });
       closeDialog();
     } catch (err) {
-      setInstallError(err instanceof Error ? err.message : String(err));
+      // Market installs run with the dialog closed, so installError is invisible
+      // there — a toast guarantees the failure is always surfaced.
+      const msg = err instanceof Error ? err.message : String(err);
+      setInstallError(msg);
+      showToast(`安装失败: ${msg}`, { variant: 'danger' });
     } finally {
       setInstalling(false);
     }

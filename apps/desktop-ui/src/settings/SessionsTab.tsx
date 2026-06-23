@@ -374,7 +374,7 @@ function SessionDetail({
       {dashboard && !loading && (
         <div className="flex flex-col flex-1 min-h-0">
           <div className="flex-none px-6 pt-3 pb-0">
-            <Tabs value={tab} onChange={setTab} items={tabs} variant="pill" />
+            <Tabs value={tab} onChange={setTab} items={tabs} variant="pill" triggersOnly />
           </div>
           <ScrollArea className="flex-1 px-6 py-4">
             {tabs.find((t) => t.value === tab)?.content}

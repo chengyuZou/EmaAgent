@@ -1,7 +1,7 @@
 import { create } from 'zustand';
-import { mcpApi, type McpServerConfig, type McpServerRecord, type McpConnection, type McpProbeResult, type McpImportResult } from '../api/mcp.js';
+import { mcpApi, type McpServerConfig, type McpServerRecord, type McpConnection, type McpProbeResult, type McpImportResult, type McpMarketEntry } from '../api/mcp.js';
 
-export type { McpServerConfig, McpServerRecord, McpConnection, McpProbeResult, McpImportResult };
+export type { McpServerConfig, McpServerRecord, McpConnection, McpProbeResult, McpImportResult, McpMarketEntry };
 
 // ── Composite type used everywhere in the UI ──────────────────────────────────
 
@@ -13,6 +13,11 @@ export interface McpStoreState {
   servers:  McpServerEntry[];
   loading:  boolean;
   error:    string | null;
+
+  marketServers: McpMarketEntry[];
+  marketLoading: boolean;
+  marketError:   string | null;
+  marketSource:  string;
 
   /** Load all registered MCP servers + their connection status. */
   load(): Promise<void>;
@@ -49,6 +54,9 @@ export interface McpStoreState {
    * Refreshes server list on completion. Returns per-server results.
    */
   importFromJson(payload: object | string): Promise<McpImportResult[]>;
+
+  /** Fetch the browsable MCP server marketplace (official registry). */
+  listMarket(): Promise<void>;
 }
 
 // ── Store ─────────────────────────────────────────────────────────────────────
@@ -57,6 +65,11 @@ export const useMcpStore = create<McpStoreState>((set, get) => ({
   servers: [],
   loading: false,
   error:   null,
+
+  marketServers: [],
+  marketLoading: false,
+  marketError:   null,
+  marketSource:  '',
 
   async load() {
     if (get().servers.length > 0) return;
@@ -161,6 +174,19 @@ export const useMcpStore = create<McpStoreState>((set, get) => ({
     } catch (err: unknown) {
       set({ error: err instanceof Error ? err.message : 'Failed to import MCP servers' });
       throw err;
+    }
+  },
+
+  async listMarket() {
+    set({ marketLoading: true, marketError: null });
+    try {
+      const res = await mcpApi.listMarket();
+      set({ marketServers: res.servers, marketSource: res.source, marketLoading: false });
+    } catch (err: unknown) {
+      set({
+        marketError:   err instanceof Error ? err.message : 'Failed to load MCP market',
+        marketLoading: false,
+      });
     }
   },
 }));

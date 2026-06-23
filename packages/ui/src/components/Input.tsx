@@ -34,6 +34,10 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
           'transition-ema focus-ring',
           'disabled:cursor-not-allowed disabled:opacity-50',
           SIZE_CLASSES[inputSize],
+          // Strip the native number-spinner arrows (↕) — they look out of place
+          // in the dark UI; users type the value directly.
+          type === 'number' &&
+            '[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none',
           error
             ? 'border-red-400/60 focus-visible:ring-red-400'
             : 'border-neutral-700/50 hover:border-neutral-600 focus-visible:border-primary-300',

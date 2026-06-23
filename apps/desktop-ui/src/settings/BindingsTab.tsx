@@ -34,23 +34,34 @@ const MODULE_CAPABILITY: Record<BindingModule, string> = {
 
 const POOL_CAPABILITIES = new Set(['llm', 'embed', 'rerank', 'tts', 'stt']);
 
-const MODULES: Array<{ id: BindingModule; label: string }> = [
-  { id: 'emotion',       label: 'Emotion' },
-  { id: 'memory',        label: 'Memory' },
-  { id: 'router',        label: 'Router' },
-  { id: 'plan-parse',    label: 'Plan Parse' },
-  { id: 'title',         label: 'Title' },
-  { id: 'embed',         label: 'Embed' },
-  { id: 'rerank',        label: 'Rerank' },
-  { id: 'lightrag-llm',  label: 'LightRAG LLM' },
-  { id: 'tts',           label: 'TTS' },
-  { id: 'stt',           label: 'STT' },
-  { id: 'vision',        label: 'Vision' },
-  { id: 'imagegen',      label: 'Image Gen' },
+const MODULES: Array<{ id: BindingModule; label: string; desc: string }> = [
+  { id: 'emotion',       label: 'Emotion',      desc: '情绪后置抽取兜底(ACT 标签缺失时用便宜 LLM 二次判定)' },
+  { id: 'memory',        label: 'Memory',       desc: '记忆提取与整合' },
+  { id: 'router',        label: 'Router',       desc: '模式路由判定' },
+  { id: 'plan-parse',    label: 'Plan Parse',   desc: 'Agent 计划解析' },
+  { id: 'title',         label: 'Title',        desc: '会话标题自动生成' },
+  { id: 'embed',         label: 'Embed',        desc: '向量化（记忆 / 知识库）' },
+  { id: 'rerank',        label: 'Rerank',       desc: '召回结果重排序' },
+  { id: 'lightrag-llm',  label: 'LightRAG LLM', desc: '叙事模式剧情检索 LLM' },
+  { id: 'tts',           label: 'TTS',          desc: '语音合成' },
+  { id: 'stt',           label: 'STT',          desc: '语音识别' },
+  { id: 'vision',        label: 'Vision',       desc: '图像理解' },
+  { id: 'imagegen',      label: 'Image Gen',    desc: '图像生成' },
 ];
 
 const CAP_LABELS: Record<string, string> = {
   llm: 'LLM', embed: 'Embed', rerank: 'Rerank', tts: 'TTS', stt: 'STT', vision: 'Vision',
+};
+
+// Capability icons — mirror the ProvidersTab section icons.
+const CAP_ICON: Record<string, string> = {
+  llm:      'i-solar:chat-square-like-bold-duotone',
+  embed:    'i-solar:structure-bold-duotone',
+  rerank:   'i-solar:sort-from-top-to-bottom-bold-duotone',
+  tts:      'i-solar:user-speak-rounded-bold-duotone',
+  stt:      'i-solar:microphone-3-bold-duotone',
+  vision:   'i-solar:eye-bold-duotone',
+  imagegen: 'i-solar:gallery-bold-duotone',
 };
 
 // ── Sub-components ────────────────────────────────────────────────────────────
@@ -113,6 +124,7 @@ export function BindingsTab(): JSX.Element {
   const [view, setView] = useState<'grid' | 'detail'>('grid');
   const [activeModule, setActiveModule] = useState<BindingModule>('memory');
   const [bindings, setBindings] = useState<ResolvedModelBinding[]>([]);
+  const [boundModules, setBoundModules] = useState<Set<BindingModule>>(new Set());
   const [pool, setPool] = useState<AvailableBindingModel[]>([]);
   const [loading, setLoading] = useState(false);
   const [savingKey, setSavingKey] = useState<string | null>(null);
@@ -140,6 +152,15 @@ export function BindingsTab(): JSX.Element {
     () => [...new Set(pool.map((m) => m.providerConfigId))],
     [pool],
   );
+
+  // Bound-status across all modules — drives the grid card status dots.
+  const refreshBoundModules = useCallback(() => {
+    void modelBindingsApi.list()
+      .then((all) => setBoundModules(new Set(all.map((b) => b.module))))
+      .catch(() => { /* leave as-is */ });
+  }, []);
+
+  useEffect(() => { refreshBoundModules(); }, [refreshBoundModules]);
 
   // ── Load data ──────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -184,13 +205,14 @@ export function BindingsTab(): JSX.Element {
         model,
       });
       setBindings(updated);
+      refreshBoundModules();
       showToast('已绑定', { variant: 'success' });
     } catch (err: unknown) {
       showToast(`绑定失败: ${err instanceof Error ? err.message : 'Unknown'}`, { variant: 'danger' });
     } finally {
       setSavingKey(null);
     }
-  }, [activeModule]);
+  }, [activeModule, refreshBoundModules]);
 
   const handleUnbind = useCallback(async () => {
     const b = bindings[0];
@@ -199,11 +221,12 @@ export function BindingsTab(): JSX.Element {
       await modelBindingsApi.delete(activeModule, b.providerConfigId, b.model);
       const updated = await modelBindingsApi.listByModule(activeModule);
       setBindings(updated);
+      refreshBoundModules();
       showToast('已解绑', { variant: 'success' });
     } catch (err: unknown) {
       showToast(`解绑失败: ${err instanceof Error ? err.message : 'Unknown'}`, { variant: 'danger' });
     }
-  }, [activeModule, bindings]);
+  }, [activeModule, bindings, refreshBoundModules]);
 
   // ── Filtered models ────────────────────────────────────────────────────────
   const visibleModels = useMemo(() => {
@@ -232,26 +255,33 @@ export function BindingsTab(): JSX.Element {
         <div className="grid grid-cols-2 gap-3">
           {MODULES.map((m, i) => {
             const cap = MODULE_CAPABILITY[m.id];
+            const isBound = boundModules.has(m.id);
             return (
               <button
                 key={m.id}
-                className="bg-[var(--ema-surface-1)] ema-glass-weak border border-[var(--ema-border)]
-                           rounded-2xl p-5 text-left
+                className="relative bg-[var(--ema-surface-1)] ema-glass-weak border border-[var(--ema-border)]
+                           rounded-2xl p-4 text-left
                            hover:border-[var(--ema-primary)] hover:bg-[var(--ema-surface-2)]
                            hover:shadow-[var(--ema-shadow-2)]
                            active:scale-[0.98] transition-all duration-[var(--ema-duration-base)] ema-stagger-in"
                 style={{ '--stagger-i': i } as React.CSSProperties}
                 onClick={() => goDetail(m.id)}
               >
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-base font-medium text-[var(--ema-text-primary)]">{m.label}</span>
-                  <span className="text-[10px] px-2 py-0.5 rounded-full
-                                   bg-[var(--ema-surface-3)] text-[var(--ema-text-tertiary)]
-                                   uppercase tracking-wide">
-                    {CAP_LABELS[cap] ?? cap}
-                  </span>
+                {/* Bound status dot (top-right) — mirrors the provider card dot */}
+                {isBound && (
+                  <span
+                    className="absolute top-3 right-3 size-2 rounded-full bg-[var(--ema-success)]"
+                    aria-hidden
+                  />
+                )}
+                <div className="flex items-center gap-2.5 mb-1.5">
+                  <span
+                    className={`${CAP_ICON[cap] ?? 'i-solar:box-bold-duotone'} text-2xl shrink-0 text-[var(--ema-text-tertiary)]`}
+                    aria-hidden
+                  />
+                  <span className="text-base font-medium text-[var(--ema-text-primary)] truncate">{m.label}</span>
                 </div>
-                <p className="text-xs text-[var(--ema-text-tertiary)]">点击配置 →</p>
+                <p className="text-xs text-[var(--ema-text-tertiary)] line-clamp-2">{m.desc}</p>
               </button>
             );
           })}
@@ -294,10 +324,15 @@ export function BindingsTab(): JSX.Element {
           <section className="flex flex-col gap-2">
             <h3 className="text-sm text-[var(--ema-text-tertiary)]">已绑定</h3>
             {currentBinding ? (
-              <div className="flex items-center justify-between
+              <div className="relative flex items-center justify-between
                               bg-[var(--ema-primary-muted)] border-2 border-[var(--ema-primary)]
                               rounded-xl px-4 py-3">
+                <span
+                  className="absolute top-2 right-2 size-2 rounded-full bg-[var(--ema-success)]"
+                  aria-hidden
+                />
                 <div className="flex items-center gap-2 text-sm min-w-0">
+                  <span className={`${CAP_ICON[cap] ?? 'i-solar:box-bold-duotone'} text-lg shrink-0 text-[var(--ema-text-tertiary)]`} aria-hidden />
                   <span className="text-[var(--ema-text-secondary)] truncate">{providerName(currentBinding.providerConfigId)}</span>
                   <span className="text-[var(--ema-text-tertiary)] flex-shrink-0">/</span>
                   <span className="font-mono text-[var(--ema-primary)] truncate">{currentBinding.model}</span>

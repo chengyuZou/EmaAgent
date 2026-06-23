@@ -22,6 +22,9 @@ const NODE_H   = 110;   // vertical distance between tree levels
 const NODE_R   = 26;    // node circle radius
 const LABEL_W  = 130;   // max label width in px
 
+// Synthetic id for the implicit main line shown when a session has no forks.
+const MAIN_BRANCH_SENTINEL = '__main__';
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 interface NodePos { x: number; y: number }
@@ -168,6 +171,8 @@ export function BranchPanel(): JSX.Element {
 
   async function handleNodeClick(node: BranchNodeWire): Promise<void> {
     if (!sessionId) return;
+    // The synthetic main-line node has no real branch row to switch to.
+    if ((node.branchId as string) === MAIN_BRANCH_SENTINEL) return;
     if ((node.branchId as string) === active) {
       // Already on this branch — just scroll to the fork turn
       if (node.forkFromTurnId) {
@@ -203,7 +208,20 @@ export function BranchPanel(): JSX.Element {
 
   // ── Layout ───────────────────────────────────────────────────────────────────
 
-  const positions = buildLayout(tree);
+  // A fork-less session has no branch rows; show the implicit main line as a
+  // single root node so the panel always renders a chain (linked-list view).
+  const effectiveTree: BranchNodeWire[] = tree.length > 0 ? tree : [{
+    branchId:       MAIN_BRANCH_SENTINEL as BranchId,
+    parentBranchId: null,
+    forkFromTurnId: null,
+    forkUserInput:  '主线',
+    forkTurnMode:   null,
+    isActive:       true,
+    createdAt:      0,
+  }];
+  const effectiveActive = tree.length > 0 ? active : MAIN_BRANCH_SENTINEL;
+
+  const positions = buildLayout(effectiveTree);
 
   // SVG canvas size = bounding box of all nodes + padding
   const allPos = [...positions.values()];
@@ -213,7 +231,7 @@ export function BranchPanel(): JSX.Element {
   // ── Edge paths ────────────────────────────────────────────────────────────────
 
   const edges: JSX.Element[] = [];
-  for (const node of tree) {
+  for (const node of effectiveTree) {
     if (!node.parentBranchId) continue;
     const from = positions.get(node.parentBranchId as string);
     const to   = positions.get(node.branchId as string);
@@ -251,32 +269,13 @@ export function BranchPanel(): JSX.Element {
     );
   }
 
-  if (tree.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center gap-3 py-10 px-4 ema-slide-up">
-        <span className="i-mdi:source-fork text-3xl opacity-20" style={{ color: 'var(--ema-primary)' }} />
-        <p className="text-xs text-center" style={{ color: 'var(--ema-text-tertiary)' }}>
-          当前会话暂无分支
-        </p>
-        <button
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs transition-colors ema-stagger-in"
-          style={{ background: 'var(--ema-primary-muted)', color: 'var(--ema-primary)' }}
-          onClick={() => void handleFork()}
-        >
-          <span className="i-mdi:source-fork text-base" aria-hidden />
-          从当前位置 Fork
-        </button>
-      </div>
-    );
-  }
-
   return (
     <div className="flex flex-col h-full">
       {/* Toolbar */}
       <div className="flex items-center justify-between px-3 py-1.5 border-b shrink-0"
            style={{ borderColor: 'var(--ema-border)' }}>
         <span className="text-xs" style={{ color: 'var(--ema-text-tertiary)' }}>
-          {tree.length} 条分支
+          {tree.length > 0 ? `${tree.length} 条分支` : '主线（未分支）'}
         </span>
         <button
           className="flex items-center gap-1 px-2 py-1 rounded-md text-xs transition-colors"
@@ -312,10 +311,10 @@ export function BranchPanel(): JSX.Element {
           </svg>
 
           {/* Node divs */}
-          {tree.map((node) => {
+          {effectiveTree.map((node) => {
             const p      = positions.get(node.branchId as string);
             if (!p) return null;
-            const isActive = (node.branchId as string) === active;
+            const isActive = (node.branchId as string) === effectiveActive;
             const color    = modeColor(node.forkTurnMode);
 
             return (

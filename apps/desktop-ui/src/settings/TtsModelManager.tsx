@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback, type JSX } from 'react';
-import { Button, Callout, IconButton, Input, Spinner, Switch } from '@ema-agent/ui';
+import { Button, Callout, IconButton, Input, Spinner } from '@ema-agent/ui';
 import { providersApi, type AvailableSimpleModelWire } from '../api/providers.js';
 import { showToast } from '../lib/toast.js';
+import { ModelToggleCard } from './ModelToggleCard.js';
 
 const DEFAULT_TEST_TEXT = '你好，我是艾玛，很高兴认识你。';
 
@@ -78,42 +79,32 @@ export function TtsModelManager({ providerId }: { providerId: string }): JSX.Ele
       {loading && <div className="flex justify-center py-6"><Spinner size="md" /></div>}
 
       {!loading && (
-        <div className="flex flex-col gap-1.5">
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
           {models.map((m) => (
-            <div
+            <ModelToggleCard
               key={m.id}
-              className="flex items-center justify-between bg-[var(--ema-surface-1)] ema-glass-weak
-                         rounded-xl px-3 py-2 border border-[var(--ema-border)]
-                         hover:border-[var(--ema-border-hover)] active:scale-[0.98]
-                         transition-all duration-[var(--ema-duration-base)]"
-            >
-              <span className="text-sm text-[var(--ema-text-primary)] font-mono truncate flex-1 mr-2">{m.id}</span>
-              <div className="flex items-center gap-2 shrink-0">
-                {m.enabled && (
-                  <IconButton
-                    label="测试声音"
-                    iconNode={
-                      <span
-                        className={testing === m.id
-                          ? 'i-mdi:volume-high animate-pulse text-[var(--ema-primary)]'
-                          : 'i-mdi:volume-high'}
-                        aria-hidden
-                      />
-                    }
-                    disabled={testing !== null}
-                    variant="default"
-                    size="sm"
-                    type="button"
-                    onClick={() => void handleTest(m.id)}
-                  />
-                )}
-                <Switch
-                  checked={m.enabled}
-                  label={m.id}
-                  onCheckedChange={() => void (m.enabled ? disable(m.id) : enable(m.id))}
+              id={m.id}
+              enabled={m.enabled}
+              onToggle={() => void (m.enabled ? disable(m.id) : enable(m.id))}
+              action={m.enabled ? (
+                <IconButton
+                  label="测试声音"
+                  iconNode={
+                    <span
+                      className={testing === m.id
+                        ? 'i-mdi:volume-high animate-pulse text-[var(--ema-primary)]'
+                        : 'i-mdi:volume-high'}
+                      aria-hidden
+                    />
+                  }
+                  disabled={testing !== null}
+                  variant="default"
+                  size="sm"
+                  type="button"
+                  onClick={() => void handleTest(m.id)}
                 />
-              </div>
-            </div>
+              ) : undefined}
+            />
           ))}
         </div>
       )}

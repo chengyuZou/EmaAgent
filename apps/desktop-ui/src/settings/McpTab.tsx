@@ -1,9 +1,9 @@
 ﻿import { useEffect, useState, type CSSProperties } from 'react';
 import {
   Badge, Button, Callout, Card, Dialog, Divider, DropdownMenu,
-  Field, Input, ScrollArea, Select, Spinner, Switch, Textarea, Tooltip,
+  Field, Input, ScrollArea, Select, Spinner, Switch, Tabs, Textarea, Tooltip,
 } from '@ema-agent/ui';
-import { useMcpStore, type McpServerEntry, type McpServerConfig, type McpImportResult } from '../stores/mcp-store.js';
+import { useMcpStore, type McpServerEntry, type McpServerConfig, type McpImportResult, type McpMarketEntry } from '../stores/mcp-store.js';
 import { showToast } from '../lib/toast.js';
 import type { McpConnectionStatus } from '@ema-agent/mcp';
 
@@ -72,7 +72,11 @@ export function McpTab(): JSX.Element {
   const [importError,   setImportError]   = useState<string | null>(null);
   const [importResults, setImportResults] = useState<McpImportResult[] | null>(null);
 
+  const [activeTab, setActiveTab] = useState('installed');
+
   useEffect(() => { void useMcpStore.getState().load(); }, []);
+
+  const installedNames = new Set(servers.map((s) => s.name));
 
   function closeAdd(): void {
     setAddOpen(false);
@@ -191,38 +195,51 @@ export function McpTab(): JSX.Element {
 
       {error && <Callout variant="danger" className="shrink-0">{error}</Callout>}
 
-      {/* Loading */}
-      {loading && (
-        <div className="flex justify-center py-10">
-          <Spinner size="md" />
-        </div>
-      )}
-
-      {/* Empty */}
-      {!loading && servers.length === 0 && (
-        <div className="flex flex-col items-center justify-center py-16 text-[var(--ema-text-tertiary)] gap-2 ema-fade-in">
-          <span className="i-mdi:server-outline text-4xl opacity-40" />
-          <p className="text-sm">暂无 MCP 服务器</p>
-          <p className="text-xs">点击"添加服务器"连接第一个 MCP 服务</p>
-        </div>
-      )}
-
-      {/* Server list */}
-      {!loading && servers.length > 0 && (
-        <ScrollArea className="flex-1" viewportClassName="pb-2">
-          <div className="flex flex-col gap-2 pr-2">
-            {servers.map((sv, i) => (
-              <div key={sv.name} className="ema-stagger-in" style={{ '--stagger-i': i } as CSSProperties}>
-              <ServerRow
-                server={sv}
-                onToggleEnabled={() => void handleToggleEnabled(sv)}
-                onRemove={() => void handleRemove(sv.name)}
-              />
-              </div>
-            ))}
-          </div>
-        </ScrollArea>
-      )}
+      <Tabs
+        value={activeTab}
+        onChange={setActiveTab}
+        variant="underline"
+        items={[
+          {
+            value: 'installed',
+            label: `已配置 (${servers.length})`,
+            content: (
+              <>
+                {loading && (
+                  <div className="flex justify-center py-10"><Spinner size="md" /></div>
+                )}
+                {!loading && servers.length === 0 && (
+                  <div className="flex flex-col items-center justify-center py-16 text-[var(--ema-text-tertiary)] gap-2 ema-fade-in">
+                    <span className="i-mdi:server-outline text-4xl opacity-40" />
+                    <p className="text-sm">暂无 MCP 服务器</p>
+                    <p className="text-xs">点击"添加服务器"或到「浏览市场」挑选</p>
+                  </div>
+                )}
+                {!loading && servers.length > 0 && (
+                  <ScrollArea className="flex-1" viewportClassName="pb-2">
+                    <div className="flex flex-col gap-2 pr-2">
+                      {servers.map((sv, i) => (
+                        <div key={sv.name} className="ema-stagger-in" style={{ '--stagger-i': i } as CSSProperties}>
+                          <ServerRow
+                            server={sv}
+                            onToggleEnabled={() => void handleToggleEnabled(sv)}
+                            onRemove={() => void handleRemove(sv.name)}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </ScrollArea>
+                )}
+              </>
+            ),
+          },
+          {
+            value: 'market',
+            label: '浏览市场',
+            content: <McpMarketView active={activeTab === 'market'} installedNames={installedNames} />,
+          },
+        ]}
+      />
 
       {/* Import from JSON dialog */}
       <Dialog
@@ -375,6 +392,136 @@ export function McpTab(): JSX.Element {
         </div>
       </Dialog>
     </div>
+  );
+}
+
+// ── Market view ───────────────────────────────────────────────────────────────
+
+function sanitizeServerName(raw: string): string {
+  return raw.replace(/[^a-zA-Z0-9_-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 100) || 'mcp-server';
+}
+
+const TRANSPORT_LABEL: Record<string, string> = {
+  stdio: '本地进程', sse: 'SSE 远程', http: 'HTTP 远程',
+};
+
+function McpMarketView({
+  active, installedNames,
+}: {
+  active:         boolean;
+  installedNames: Set<string>;
+}): JSX.Element {
+  const marketServers = useMcpStore((s) => s.marketServers);
+  const marketLoading = useMcpStore((s) => s.marketLoading);
+  const marketError   = useMcpStore((s) => s.marketError);
+  const marketSource  = useMcpStore((s) => s.marketSource);
+  const [installing, setInstalling] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (active && marketServers.length === 0 && !marketLoading) {
+      void useMcpStore.getState().listMarket();
+    }
+  }, [active, marketServers.length, marketLoading]);
+
+  async function handleInstall(entry: McpMarketEntry): Promise<void> {
+    if (!entry.transport) return;
+    const cleanName = sanitizeServerName(entry.title || entry.name);
+    const config: McpServerConfig = entry.transport === 'stdio'
+      ? { type: 'stdio', command: entry.command ?? '', args: entry.args ?? [] }
+      : { type: entry.transport, url: entry.url ?? '' };
+    setInstalling(entry.name);
+    try {
+      await useMcpStore.getState().register(cleanName, config, entry.websiteUrl ?? entry.repository);
+      showToast(`已添加 ${cleanName}`, { variant: 'success' });
+    } catch (err) {
+      showToast(`添加失败: ${err instanceof Error ? err.message : String(err)}`, { variant: 'danger' });
+    } finally {
+      setInstalling(null);
+    }
+  }
+
+  if (marketLoading) {
+    return <div className="flex justify-center py-12"><Spinner size="md" /></div>;
+  }
+
+  if (marketError) {
+    return (
+      <div className="flex flex-col gap-3">
+        <Callout variant="danger">{marketError}</Callout>
+        <Button variant="secondary" size="sm" className="self-start"
+          onClick={() => void useMcpStore.getState().listMarket()}>
+          重试
+        </Button>
+      </div>
+    );
+  }
+
+  if (marketServers.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-[var(--ema-text-tertiary)] gap-2">
+        <span className="i-mdi:store-outline text-4xl opacity-40" aria-hidden />
+        <p className="text-sm">市场暂无可用服务器</p>
+      </div>
+    );
+  }
+
+  return (
+    <ScrollArea className="flex-1" viewportClassName="pb-2">
+      <div className="flex flex-col gap-2 pr-2">
+        {marketSource && (
+          <p className="text-xs text-[var(--ema-text-tertiary)] mb-1 font-mono truncate">来源：{marketSource}</p>
+        )}
+        {marketServers.map((entry, i) => {
+          const installed = installedNames.has(sanitizeServerName(entry.title || entry.name));
+          return (
+            <div
+              key={entry.name}
+              className="bg-[var(--ema-surface-1)] ema-glass-weak border border-[var(--ema-border)]
+                         rounded-xl px-4 py-3 ema-stagger-in"
+              style={{ '--stagger-i': i } as CSSProperties}
+            >
+              <div className="flex items-start gap-3">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-sm font-medium text-[var(--ema-text-primary)] truncate">
+                      {entry.title || entry.name}
+                    </span>
+                    {entry.version && <Badge variant="neutral">v{entry.version}</Badge>}
+                    {entry.transport && (
+                      <Badge variant="neutral">{TRANSPORT_LABEL[entry.transport] ?? entry.transport}</Badge>
+                    )}
+                  </div>
+                  {entry.description && (
+                    <p className="text-xs text-[var(--ema-text-tertiary)] mt-1 line-clamp-2">{entry.description}</p>
+                  )}
+                  <p className="text-xs text-[var(--ema-text-tertiary)] mt-1 font-mono truncate opacity-60">
+                    {entry.transport === 'stdio'
+                      ? `${entry.command} ${entry.args?.join(' ') ?? ''}`.trim()
+                      : entry.url}
+                  </p>
+                </div>
+
+                <div className="shrink-0 pt-0.5">
+                  {installed ? (
+                    <Badge variant="success">已添加</Badge>
+                  ) : (
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      loading={installing === entry.name}
+                      disabled={installing !== null}
+                      onClick={() => void handleInstall(entry)}
+                    >
+                      添加
+                    </Button>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </ScrollArea>
   );
 }
 

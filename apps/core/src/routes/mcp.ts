@@ -21,9 +21,98 @@ const registerSchema = z.object({
   sourceUrl: z.string().url().optional(),
 });
 
+// ── Marketplace (official MCP registry) ──────────────────────────────────────
+//
+// mcp.so has no public JSON API (403s on scraping). The official registry at
+// registry.modelcontextprotocol.io exposes a documented REST endpoint, so we
+// browse that and normalise entries into install-ready configs for the UI.
+
+const MCP_REGISTRY_URL = 'https://registry.modelcontextprotocol.io/v0/servers?limit=100';
+
+interface McpMarketEntry {
+  name:         string;
+  title?:       string;
+  description?: string;
+  version?:     string;
+  repository?:  string;
+  websiteUrl?:  string;
+  transport:    'stdio' | 'sse' | 'http' | null;
+  url?:         string;
+  command?:     string;
+  args?:        string[];
+}
+
+interface RegistryPackage {
+  registryType?: string;
+  identifier?:   string;
+  runtimeHint?:  string;
+  transport?:    { type?: string };
+}
+interface RegistryRemote { type?: string; url?: string }
+interface RegistryServer {
+  name:        string;
+  title?:      string;
+  description?: string;
+  version?:    string;
+  websiteUrl?: string;
+  repository?: { url?: string };
+  remotes?:    RegistryRemote[];
+  packages?:   RegistryPackage[];
+}
+
+function normaliseRegistryServer(s: RegistryServer): McpMarketEntry {
+  const base: McpMarketEntry = {
+    name:        s.name,
+    title:       s.title,
+    description: s.description,
+    version:     s.version,
+    repository:  s.repository?.url,
+    websiteUrl:  s.websiteUrl,
+    transport:   null,
+  };
+
+  // Prefer a hosted remote (no local install needed).
+  const remote = s.remotes?.find((r) => r.url);
+  if (remote?.url) {
+    return { ...base, transport: remote.type === 'sse' ? 'sse' : 'http', url: remote.url };
+  }
+
+  // Otherwise derive a stdio launch command from the first package.
+  const pkg = s.packages?.find((p) => p.identifier);
+  if (pkg?.identifier) {
+    if (pkg.registryType === 'npm') {
+      return { ...base, transport: 'stdio', command: 'npx', args: ['-y', pkg.identifier] };
+    }
+    if (pkg.registryType === 'pypi') {
+      return { ...base, transport: 'stdio', command: 'uvx', args: [pkg.identifier] };
+    }
+  }
+  return base;
+}
+
 export function createMcpRouter(bindings: AppBindings) {
   const router = new Hono();
   const { mcpRegistry } = bindings;
+
+  // ── Marketplace ─────────────────────────────────────────────────────────────
+  router.get('/market', async (c) => {
+    try {
+      const res = await fetch(MCP_REGISTRY_URL, {
+        headers: { Accept: 'application/json' },
+        signal:  AbortSignal.timeout(10_000),
+      });
+      if (!res.ok) {
+        return c.json({ error: `registry HTTP ${res.status}`, servers: [] }, 502);
+      }
+      const body = await res.json() as { servers?: RegistryServer[] };
+      const servers = (body.servers ?? [])
+        .map(normaliseRegistryServer)
+        .filter((e) => e.transport !== null);
+      return c.json({ source: 'registry.modelcontextprotocol.io', servers });
+    } catch (err) {
+      return c.json({ error: (err as Error).message, servers: [] }, 502);
+    }
+  });
 
   // ── List ──────────────────────────────────────────────────────────────────
   router.get('/servers', (c) => {

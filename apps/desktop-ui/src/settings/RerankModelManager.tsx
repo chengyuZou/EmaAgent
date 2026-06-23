@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback, type JSX } from 'react';
-import { Badge, Button, Callout, Spinner, Switch } from '@ema-agent/ui';
+import { Button, Callout, Spinner } from '@ema-agent/ui';
 import { providersApi, type AvailableRerankModelWire } from '../api/providers.js';
 import { showToast } from '../lib/toast.js';
+import { ModelToggleCard } from './ModelToggleCard.js';
 
 export function RerankModelManager({ providerId }: { providerId: string }): JSX.Element {
   const [models, setModels]   = useState<AvailableRerankModelWire[]>([]);
@@ -63,30 +64,22 @@ export function RerankModelManager({ providerId }: { providerId: string }): JSX.
       {loading && <div className="flex justify-center py-6"><Spinner size="md" /></div>}
 
       {!loading && (
-        <div className="flex flex-col gap-1.5">
+        <>
           {models.length === 0 && (
             <p className="text-xs text-[var(--ema-text-tertiary)] py-2">该供应商暂无内置重排序模型。</p>
           )}
-          {models.map((m) => (
-            <div
-              key={m.id}
-              className="flex items-center justify-between bg-[var(--ema-surface-1)] ema-glass-weak
-                         rounded-xl px-3 py-2 border border-[var(--ema-border)]
-                         hover:border-[var(--ema-border-hover)] active:scale-[0.98]
-                         transition-all duration-[var(--ema-duration-base)]"
-            >
-              <div className="flex items-center gap-2 min-w-0">
-                <span className="text-sm text-[var(--ema-text-primary)] font-mono truncate">{m.id}</span>
-                {m.maxChunks != null && <Badge variant="neutral">max {m.maxChunks} chunks</Badge>}
-              </div>
-              <Switch
-                checked={m.enabled}
-                label={m.id}
-                onCheckedChange={() => void (m.enabled ? disable(m.id) : enable(m.id))}
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+            {models.map((m) => (
+              <ModelToggleCard
+                key={m.id}
+                id={m.id}
+                badge={m.maxChunks != null ? `max ${m.maxChunks}` : undefined}
+                enabled={m.enabled}
+                onToggle={() => void (m.enabled ? disable(m.id) : enable(m.id))}
               />
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        </>
       )}
     </div>
   );

@@ -20,6 +20,24 @@ export interface McpImportResult {
   connectError?: string;
 }
 
+export interface McpMarketEntry {
+  name:         string;
+  title?:       string;
+  description?: string;
+  version?:     string;
+  repository?:  string;
+  websiteUrl?:  string;
+  transport:    'stdio' | 'sse' | 'http' | null;
+  url?:         string;
+  command?:     string;
+  args?:        string[];
+}
+
+export interface McpMarketResult {
+  source:  string;
+  servers: McpMarketEntry[];
+}
+
 export const mcpApi = {
   /** GET /api/mcp/servers */
   async list(): Promise<{ servers: Array<McpServerRecord & { connection: McpConnection }> }> {
@@ -80,6 +98,11 @@ export const mcpApi = {
       method: 'POST',
       json: config,
     });
+  },
+
+  /** GET /api/mcp/market — browsable MCP servers from the official registry. */
+  async listMarket(): Promise<McpMarketResult> {
+    return sidecarClient.request<McpMarketResult>('/api/mcp/market');
   },
 
   /**

@@ -23,6 +23,9 @@ export interface TabsProps {
   orientation?:  'horizontal' | 'vertical';
   /** Use small vertical sidebar style (e.g. for the settings panel). */
   variant?:      'underline' | 'pill' | 'sidebar';
+  /** Render only the trigger row; caller renders the active content itself
+   *  (e.g. inside its own scroll container). Avoids double-rendering. */
+  triggersOnly?: boolean;
   className?:    string;
 }
 
@@ -31,6 +34,7 @@ export function Tabs(props: TabsProps): React.JSX.Element {
     value, onChange, items,
     orientation = 'horizontal',
     variant     = orientation === 'vertical' ? 'sidebar' : 'underline',
+    triggersOnly = false,
     className,
   } = props;
 
@@ -82,17 +86,19 @@ export function Tabs(props: TabsProps): React.JSX.Element {
           </RadixTabs.Trigger>
         ))}
       </RadixTabs.List>
-      <div className="flex-1 min-w-0">
-        {items.map((it) => (
-          <RadixTabs.Content
-            key={it.value}
-            value={it.value}
-            className="outline-none"
-          >
-            {it.content}
-          </RadixTabs.Content>
-        ))}
-      </div>
+      {!triggersOnly && (
+        <div className="flex-1 min-w-0">
+          {items.map((it) => (
+            <RadixTabs.Content
+              key={it.value}
+              value={it.value}
+              className="outline-none"
+            >
+              {it.content}
+            </RadixTabs.Content>
+          ))}
+        </div>
+      )}
     </RadixTabs.Root>
   );
 }

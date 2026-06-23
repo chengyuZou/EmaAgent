@@ -2,9 +2,10 @@
  * LlmModelManager — model list under a provider's LLM config.
  */
 import { useState, useEffect, useCallback, type JSX } from 'react';
-import { Badge, Button, Callout, Divider, Input, Spinner, Switch } from '@ema-agent/ui';
+import { Button, Callout, Divider, Input, Spinner } from '@ema-agent/ui';
 import { providersApi, type AvailableModelWire } from '../api/providers.js';
 import { showToast } from '../lib/toast.js';
+import { ModelToggleCard } from './ModelToggleCard.js';
 
 export function LlmModelManager({ providerId }: { providerId: string }): JSX.Element {
   const [models, setModels]   = useState<AvailableModelWire[]>([]);
@@ -113,40 +114,38 @@ export function LlmModelManager({ providerId }: { providerId: string }): JSX.Ele
       {error && <Callout variant="danger">{error}</Callout>}
       {loading && <div className="flex justify-center py-6"><Spinner size="md" /></div>}
 
-      {!loading && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-          {filtered.map((m) => (
-            <div key={m.id}>
-              <div className="flex items-center justify-between bg-[var(--ema-surface-1)] ema-glass-weak
-                              rounded-xl px-3 py-2.5 border border-[var(--ema-border)]
-                              hover:border-[var(--ema-border-hover)] active:scale-[0.98]
-                              transition-all duration-[var(--ema-duration-base)]">
-                <div className="flex items-center gap-2 min-w-0 flex-1">
-                  <span className="text-sm text-[var(--ema-text-primary)] font-mono truncate">{m.id}</span>
-                  {m.contextWindow != null && (
-                    <Badge variant="neutral">{(m.contextWindow / 1000).toFixed(0)}K ctx</Badge>
-                  )}
-                </div>
-                <Switch checked={m.enabled} label={m.id} onCheckedChange={() => handleToggle(m)} />
-              </div>
+      {/* Context-window prompt for models without a known window */}
+      {pendingModel && (
+        <div className="flex items-center gap-2 rounded-lg border border-[var(--ema-border)]
+                        bg-[var(--ema-surface-1)] px-3 py-2">
+          <span className="text-xs text-[var(--ema-text-secondary)] shrink-0 font-mono truncate max-w-40" title={pendingModel}>
+            {pendingModel}
+          </span>
+          <span className="text-xs text-[var(--ema-text-tertiary)] shrink-0">上下文窗口 (token)</span>
+          <Input
+            inputSize="sm"
+            type="number"
+            placeholder="如 65536"
+            value={pendingCtx}
+            onChange={(e) => setPendingCtx(e.target.value)}
+            autoFocus
+            onKeyDown={(e) => { if (e.key === 'Enter') confirmPendingContext(); }}
+          />
+          <Button variant="primary" size="sm" onClick={confirmPendingContext}>确认启用</Button>
+          <Button variant="ghost" size="sm" onClick={() => setPendingModel(null)}>取消</Button>
+        </div>
+      )}
 
-              {pendingModel === m.id && (
-                <div className="flex items-center gap-2 mt-1.5 px-1">
-                  <span className="text-xs text-[var(--ema-text-tertiary)] shrink-0">上下文窗口 (token)</span>
-                  <Input
-                    inputSize="sm"
-                    type="number"
-                    placeholder="如 65536"
-                    value={pendingCtx}
-                    onChange={(e) => setPendingCtx(e.target.value)}
-                    autoFocus
-                    onKeyDown={(e) => { if (e.key === 'Enter') confirmPendingContext(); }}
-                  />
-                  <Button variant="primary" size="sm" onClick={confirmPendingContext}>确认启用</Button>
-                  <Button variant="ghost" size="sm" onClick={() => setPendingModel(null)}>取消</Button>
-                </div>
-              )}
-            </div>
+      {!loading && (
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+          {filtered.map((m) => (
+            <ModelToggleCard
+              key={m.id}
+              id={m.id}
+              badge={m.contextWindow != null ? `${(m.contextWindow / 1000).toFixed(0)}K ctx` : undefined}
+              enabled={m.enabled}
+              onToggle={() => handleToggle(m)}
+            />
           ))}
         </div>
       )}

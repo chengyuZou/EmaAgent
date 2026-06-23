@@ -1,16 +1,14 @@
 ﻿import { useState, useEffect, useCallback, type JSX } from 'react';
-import { Badge, Button, Callout, Input, Spinner, Switch } from '@ema-agent/ui';
+import { Button, Callout, Input, Spinner } from '@ema-agent/ui';
 import { providersApi, type AvailableEmbedModelWire } from '../api/providers.js';
 import { showToast } from '../lib/toast.js';
+import { ModelToggleCard } from './ModelToggleCard.js';
 
 export function EmbedModelManager({ providerId }: { providerId: string }): JSX.Element {
   const [models, setModels]   = useState<AvailableEmbedModelWire[]>([]);
   const [source, setSource]   = useState<'live' | 'static'>('static');
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState<string | null>(null);
-
-  const [pendingModel, setPendingModel] = useState<string | null>(null);
-  const [pendingDim,   setPendingDim]   = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -58,17 +56,6 @@ export function EmbedModelManager({ providerId }: { providerId: string }): JSX.E
     }
   }
 
-  function confirmPendingDim(): void {
-    const n = parseInt(pendingDim, 10);
-    if (!pendingModel || !Number.isFinite(n) || n <= 0) {
-      showToast('请填写有效的向量维度(正整数)', { variant: 'danger' });
-      return;
-    }
-    void enable(pendingModel, n, 'manual');
-    setPendingModel(null);
-    setPendingDim('');
-  }
-
   return (
     <div className="flex flex-col gap-3 mt-2">
       <div className="flex items-center justify-between">
@@ -88,37 +75,15 @@ export function EmbedModelManager({ providerId }: { providerId: string }): JSX.E
       {loading && <div className="flex justify-center py-6"><Spinner size="md" /></div>}
 
       {!loading && (
-        <div className="flex flex-col gap-1.5">
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
           {models.map((m) => (
-            <div key={m.id}>
-              <div className="flex items-center justify-between bg-[var(--ema-surface-1)] ema-glass-weak
-                              rounded-xl px-3 py-2 border border-[var(--ema-border)]
-                              hover:border-[var(--ema-border-hover)] active:scale-[0.98]
-                              transition-all duration-[var(--ema-duration-base)]">
-                <div className="flex items-center gap-2 min-w-0">
-                  <span className="text-sm text-[var(--ema-text-primary)] font-mono truncate">{m.id}</span>
-                  {m.dim != null && <Badge variant="neutral">{m.dim}d</Badge>}
-                </div>
-                <Switch checked={m.enabled} label={m.id} onCheckedChange={() => handleToggle(m)} />
-              </div>
-
-              {pendingModel === m.id && (
-                <div className="flex items-center gap-2 mt-1.5 pl-3">
-                  <span className="text-xs text-[var(--ema-text-tertiary)] shrink-0">向量维度</span>
-                  <Input
-                    inputSize="sm"
-                    type="number"
-                    placeholder="如 1536"
-                    value={pendingDim}
-                    onChange={(e) => setPendingDim(e.target.value)}
-                    autoFocus
-                    onKeyDown={(e) => { if (e.key === 'Enter') confirmPendingDim(); }}
-                  />
-                  <Button variant="primary" size="sm" onClick={confirmPendingDim}>确认启用</Button>
-                  <Button variant="ghost" size="sm" onClick={() => setPendingModel(null)}>取消</Button>
-                </div>
-              )}
-            </div>
+            <ModelToggleCard
+              key={m.id}
+              id={m.id}
+              badge={m.dim != null ? `${m.dim}d` : undefined}
+              enabled={m.enabled}
+              onToggle={() => handleToggle(m)}
+            />
           ))}
         </div>
       )}

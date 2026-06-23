@@ -15,29 +15,32 @@ export interface DiskInfo {
 // ── Platform implementations ──────────────────────────────────────────────────
 
 function getDisksWindows(): DiskInfo[] {
-  // wmic logicaldisk: Caption=drive letter, VolumeName=label, Size=total, FreeSpace=free
+  // wmic is deprecated and emits the OEM codepage (e.g. GBK on zh-CN), which
+  // garbles non-ASCII volume labels when decoded as UTF-8. PowerShell lets us
+  // force UTF-8 on stdout and emit clean JSON.
+  const script =
+    '[Console]::OutputEncoding=[System.Text.Encoding]::UTF8;' +
+    'Get-CimInstance Win32_LogicalDisk | ' +
+    'Where-Object { $_.Size -gt 0 } | ' +
+    'Select-Object DeviceID,VolumeName,Size,FreeSpace | ' +
+    'ConvertTo-Json -Compress';
+
   const raw = execSync(
-    'wmic logicaldisk get Caption,VolumeName,Size,FreeSpace /format:csv',
+    `powershell -NoProfile -NonInteractive -Command "${script}"`,
     { encoding: 'utf8', timeout: 5000 },
-  );
+  ).trim();
+  if (!raw) return [];
 
-  const lines = raw.trim().split(/\r?\n/).filter(Boolean);
-  // First non-empty line is the header row (Node,Caption,FreeSpace,Size,VolumeName)
-  if (lines.length < 2) return [];
-
-  const header = lines[0]!.split(',').map(h => h.trim());
-  const captionIdx   = header.indexOf('Caption');
-  const freeIdx      = header.indexOf('FreeSpace');
-  const sizeIdx      = header.indexOf('Size');
-  const labelIdx     = header.indexOf('VolumeName');
+  type Row = { DeviceID: string; VolumeName: string | null; Size: number; FreeSpace: number };
+  const parsed = JSON.parse(raw) as Row | Row[];
+  const rows = Array.isArray(parsed) ? parsed : [parsed];
 
   const result: DiskInfo[] = [];
-  for (let i = 1; i < lines.length; i++) {
-    const cols  = lines[i]!.split(',');
-    const mount = cols[captionIdx]?.trim() ?? '';
-    const total = parseInt(cols[sizeIdx]?.trim() ?? '0', 10);
-    const free  = parseInt(cols[freeIdx]?.trim() ?? '0', 10);
-    const label = cols[labelIdx]?.trim() ?? '';
+  for (const row of rows) {
+    const mount = (row.DeviceID ?? '').trim();
+    const total = Number(row.Size ?? 0);
+    const free  = Number(row.FreeSpace ?? 0);
+    const label = (row.VolumeName ?? '').trim();
     if (!mount || !total) continue;
     result.push({ mount, label: label || mount, total, free });
   }
