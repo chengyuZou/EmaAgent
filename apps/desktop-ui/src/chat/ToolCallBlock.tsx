@@ -114,7 +114,7 @@ export function ToolCallBlock({ slice, streaming = false }: ToolCallBlockProps):
           {/* Generic tool: args */}
           {!isBash && !editDiff && argsReady && (
             <div className={resultStr !== null ? 'mb-2' : ''}>
-              {isPending && <span className="w-1 h-1 rounded-full bg-yellow-400 animate-pulse inline-block mb-1" />}
+              {isPending && <span className="w-1 h-1 rounded-full animate-pulse inline-block mb-1" style={{ background: 'var(--ema-warning)' }} />}
               <CodeBlock code={formatJson(slice.args)} lang={argsLang} />
             </div>
           )}
@@ -128,8 +128,9 @@ export function ToolCallBlock({ slice, streaming = false }: ToolCallBlockProps):
 
           {/* Error */}
           {hasError && (
-            <div className="border-l-2 border-red-700/50 pl-2 mt-1">
-              <pre className="font-mono text-[11px] text-red-400/80 whitespace-pre-wrap break-all bg-transparent m-0 p-0">
+            <div className="border-l-2 pl-2 mt-1" style={{ borderColor: 'var(--ema-danger)' }}>
+              <pre className="font-mono text-[11px] whitespace-pre-wrap break-all bg-transparent m-0 p-0"
+                   style={{ color: 'var(--ema-danger-text)' }}>
                 [{slice.error!.code}] {slice.error!.message}
               </pre>
             </div>

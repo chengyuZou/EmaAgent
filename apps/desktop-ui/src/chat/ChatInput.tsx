@@ -135,12 +135,13 @@ export function ChatInput(): JSX.Element {
   );
 
   return (
-    <div className="shrink-0 border-t border-neutral-800 px-4 py-3">
+    <div className="shrink-0 px-4 py-3" style={{ borderTop: '1px solid var(--ema-border)' }}>
       <div className="max-w-2xl mx-auto">
         {/* ── Unified input box ── */}
-        <div className="relative rounded-2xl bg-neutral-800/80">
+        <div className="relative rounded-2xl" style={{ background: 'var(--ema-surface-2)' }}>
           {/* Always-pulsing pink glow ring */}
-          <div className="absolute inset-0 rounded-2xl pointer-events-none animate-pulse shadow-[0_0_0_1.5px_rgba(244,114,182,0.45),0_0_20px_rgba(244,114,182,0.2)]" />
+          <div className="absolute inset-0 rounded-2xl pointer-events-none animate-pulse"
+               style={{ boxShadow: '0 0 0 1.5px var(--ema-glow-strong), 0 0 20px var(--ema-glow)' }} />
 
           {/* Attachment strip (top half, shown only when files queued) */}
           {pendingAttachments.length > 0 && (
@@ -309,7 +310,7 @@ function WorkspaceEditor({
 
   return (
     <div
-      className="absolute bottom-full left-0 mb-2 z-50 rounded-xl p-3 shadow-[var(--ema-shadow-2)] w-72"
+      className="ema-slide-up absolute bottom-full left-0 mb-2 z-50 rounded-xl p-3 shadow-[var(--ema-shadow-2)] w-72"
       style={{ background: 'var(--ema-surface-4)', border: '1px solid var(--ema-border)' }}
       onClick={(e) => e.stopPropagation()}
     >

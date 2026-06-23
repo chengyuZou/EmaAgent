@@ -48,7 +48,7 @@ export function SessionSwitcher(): JSX.Element {
       {open && (
         <>
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-          <div className="absolute top-full left-0 right-0 z-50 rounded-b-xl shadow-2xl max-h-80 overflow-hidden flex flex-col"
+          <div className="ema-slide-up absolute top-full left-0 right-0 z-50 rounded-b-xl max-h-80 overflow-hidden flex flex-col shadow-[var(--ema-shadow-3)]"
                style={{ background: 'var(--ema-surface-4)', border: '1px solid var(--ema-border)' }}>
             <div className="p-2">
               <Input
@@ -81,7 +81,7 @@ export function SessionSwitcher(): JSX.Element {
               )}
 
               <button
-                className="w-full px-3 py-2 mt-1 rounded-lg text-sm transition-colors text-left"
+                className="ema-stagger-in w-full px-3 py-2 mt-1 rounded-lg text-sm transition-colors text-left"
                 style={{ color: 'var(--ema-primary)' }}
                 onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--ema-primary-muted)'; }}
                 onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = ''; }}

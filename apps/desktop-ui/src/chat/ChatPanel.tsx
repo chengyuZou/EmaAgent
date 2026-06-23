@@ -164,7 +164,7 @@ export function ChatPanel(): JSX.Element {
                 </button>
 
                 {overflowOpen && (
-                  <div className="absolute top-full right-0 mt-1 z-50 w-44 rounded-xl border shadow-xl py-1"
+                  <div className="ema-slide-up absolute top-full right-0 mt-1 z-50 w-44 rounded-xl border py-1 shadow-[var(--ema-shadow-3)]"
                        style={{ background: 'var(--ema-surface-4)', borderColor: 'var(--ema-border-hover)' }}>
                     <OverflowItem
                       icon="i-mdi:folder-outline"
@@ -233,8 +233,8 @@ function InspectorDockBtn({
     <button
       className={`relative size-7 rounded-md flex items-center justify-center text-sm transition-colors
         ${active
-          ? 'text-primary-300 bg-primary-500/10'
-          : 'hover:bg-[var(--ema-surface-2)] hover:text-[var(--ema-text-primary)]'}`}
+          ? 'text-[var(--ema-primary)] bg-[var(--ema-primary-muted)]'
+          : 'text-[var(--ema-text-tertiary)] hover:text-[var(--ema-text-primary)] hover:bg-[var(--ema-surface-2)]'}`}
       onClick={onClick}
       title={label}
     >
@@ -258,8 +258,8 @@ function OverflowItem({
     <button
       className={`w-full flex items-center gap-2.5 px-3 py-1.5 text-xs transition-colors
         ${active
-          ? 'text-primary-300 bg-primary-500/8'
-          : 'hover:bg-[var(--ema-surface-3)] hover:text-[var(--ema-text-primary)]'}`}
+          ? 'text-[var(--ema-primary)] bg-[var(--ema-primary-muted)]'
+          : 'text-[var(--ema-text-tertiary)] hover:text-[var(--ema-text-primary)] hover:bg-[var(--ema-surface-3)]'}`}
       onClick={onClick}
     >
       <span className={`${icon} text-base shrink-0`} aria-hidden />
@@ -270,7 +270,7 @@ function OverflowItem({
           {badge}
         </span>
       )}
-      {active && <span className="i-mdi:check text-primary-400 text-sm shrink-0" aria-hidden />}
+      {active && <span className="i-mdi:check text-sm shrink-0" style={{ color: 'var(--ema-primary)' }} aria-hidden />}
     </button>
   );
 }

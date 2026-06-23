@@ -462,8 +462,8 @@ function SidebarRow({ session, isActive, streaming, decisions, nested = false }:
             {[0, 1, 2].map((i) => (
               <span
                 key={i}
-                className="w-0.5 h-0.5 rounded-full bg-neutral-500 animate-pulse"
-                style={{ animationDelay: `${i * 150}ms` }}
+                className="w-0.5 h-0.5 rounded-full animate-pulse"
+                style={{ background: 'var(--ema-text-secondary)', animationDelay: `${i * 150}ms` }}
               />
             ))}
           </span>
@@ -483,8 +483,9 @@ function SidebarRow({ session, isActive, streaming, decisions, nested = false }:
 
       <div className="shrink-0 relative w-12 flex justify-end" onClick={(e) => e.stopPropagation()}>
         <span className={`text-[11px] tabular-nums transition-opacity ${
-          isActive ? 'opacity-0' : 'text-neutral-500 group-hover:opacity-0'
-        }`}>
+          isActive ? 'opacity-0' : 'group-hover:opacity-0'
+        }`}
+              style={{ color: 'var(--ema-text-tertiary)' }}>
           {timeLabel}
         </span>
         <DropdownMenu
@@ -568,7 +569,7 @@ function SessionSearchOverlay({
   return (
     <div className="fixed inset-0 z-40" onMouseDown={onClose}>
       <div
-        className="absolute left-1/2 top-14 w-[min(520px,calc(100vw-32px))] -translate-x-1/2 rounded-xl border shadow-2xl overflow-hidden animate-scale-in"
+        className="absolute left-1/2 top-14 w-[min(520px,calc(100vw-32px))] -translate-x-1/2 rounded-xl border overflow-hidden animate-scale-in shadow-[var(--ema-shadow-3)]"
         style={{ background: 'var(--ema-surface-4)', borderColor: 'var(--ema-border)' }}
         onMouseDown={(e) => e.stopPropagation()}
       >
@@ -627,21 +628,24 @@ function SearchResultRow({
 
   return (
     <button
-      className="w-full flex items-start gap-3 rounded-lg px-3 py-2 text-left hover:bg-neutral-800 transition-colors group"
+      className="w-full flex items-start gap-3 rounded-lg px-3 py-2 text-left transition-colors group"
+      style={{ color: 'var(--ema-text-primary)' }}
+      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--ema-surface-2)'; }}
+      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = ''; }}
       onClick={onSelect}
     >
       <span className={`mt-1 w-1.5 h-1.5 rounded-full shrink-0 ${
-        item.matchKind === 'message' ? 'bg-neutral-500' : 'bg-neutral-400'
+        item.matchKind === 'message' ? 'bg-[var(--ema-text-secondary)]' : 'bg-[var(--ema-text-tertiary)]'
       }`} aria-hidden />
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-sm text-neutral-100">
+        <span className="block truncate text-sm" style={{ color: 'var(--ema-text-primary)' }}>
           {item.session.title || '新对话'}
         </span>
-        <span className="block truncate text-xs text-neutral-500 mt-0.5">
+        <span className="block truncate text-xs mt-0.5" style={{ color: 'var(--ema-text-tertiary)' }}>
           {snippet || (query ? '标题匹配' : formatRelativeTime(item.session.lastActivityAt))}
         </span>
       </span>
-      <span className="shrink-0 max-w-28 truncate text-xs text-neutral-500 mt-0.5">
+      <span className="shrink-0 max-w-28 truncate text-xs mt-0.5" style={{ color: 'var(--ema-text-tertiary)' }}>
         {project}
       </span>
     </button>
@@ -672,17 +676,21 @@ function WorkspaceEditor({ session, onClose }: { session: SessionWire; onClose()
 
   return (
     <div
-      className="absolute left-full top-0 ml-1 z-50 bg-neutral-800 border border-neutral-600 rounded-xl p-3 shadow-xl w-72"
+      className="ema-slide-up absolute left-full top-0 ml-1 z-50 rounded-xl p-3 shadow-[var(--ema-shadow-2)] w-72"
+      style={{ background: 'var(--ema-surface-4)', border: '1px solid var(--ema-border)' }}
       onClick={(e) => e.stopPropagation()}
     >
-      <p className="text-xs text-neutral-400 mb-2 font-medium">工作区目录</p>
+      <p className="text-xs mb-2 font-medium" style={{ color: 'var(--ema-text-secondary)' }}>工作区目录</p>
       <div className="flex flex-col gap-1 mb-2 max-h-36 overflow-y-auto">
-        {paths.length === 0 && <p className="text-xs text-neutral-500 py-1">暂无工作区</p>}
+        {paths.length === 0 && <p className="text-xs py-1" style={{ color: 'var(--ema-text-tertiary)' }}>暂无工作区</p>}
         {paths.map((p) => (
-          <div key={p} className="flex items-center justify-between bg-neutral-900 rounded-lg px-2 py-1 gap-2">
-            <span className="text-xs text-neutral-300 font-mono truncate flex-1" title={p}>{p}</span>
+          <div key={p} className="flex items-center justify-between rounded-lg px-2 py-1 gap-2"
+               style={{ background: 'var(--ema-surface-2)' }}>
+            <span className="text-xs font-mono truncate flex-1" style={{ color: 'var(--ema-text-secondary)' }} title={p}>{p}</span>
             <button
-              className="text-neutral-500 hover:text-red-400 shrink-0"
+              style={{ color: 'var(--ema-text-tertiary)' }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--ema-danger)'; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--ema-text-tertiary)'; }}
               onClick={() => setPaths(paths.filter((x) => x !== p))}
             >
               <span className="i-mdi:close text-sm" aria-hidden />
@@ -700,18 +708,23 @@ function WorkspaceEditor({ session, onClose }: { session: SessionWire; onClose()
           onKeyDown={(e) => { if (e.key === 'Enter') addPath(); }}
         />
         <button
-          className="px-2 rounded-md bg-neutral-700 text-neutral-300 text-xs hover:bg-neutral-600"
+          className="px-2 rounded-md text-xs transition-colors"
+          style={{ background: 'var(--ema-surface-3)', color: 'var(--ema-text-secondary)' }}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--ema-surface-2)'; }}
           onClick={addPath}
         >+</button>
       </div>
       <div className="flex gap-2">
         <button
-          className="px-3 py-1.5 rounded-lg bg-primary-500/20 text-primary-200 text-xs hover:bg-primary-500/30 transition-colors disabled:opacity-50"
+          className="px-3 py-1.5 rounded-lg text-xs transition-colors disabled:opacity-50"
+          style={{ background: 'var(--ema-primary-muted)', color: 'var(--ema-primary)' }}
           disabled={saving}
           onClick={() => void save()}
         >{saving ? '保存中…' : '保存'}</button>
         <button
-          className="px-3 py-1.5 rounded-lg text-neutral-400 text-xs hover:text-neutral-200"
+          className="px-3 py-1.5 rounded-lg text-xs transition-colors"
+          style={{ color: 'var(--ema-text-tertiary)' }}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--ema-text-primary)'; }}
           onClick={onClose}
         >取消</button>
       </div>

@@ -233,8 +233,8 @@ export function SessionDetailPanel({
 
       {error && !loading && (
         <div className="flex flex-col items-center gap-3 py-12">
-          <span className="i-mdi:alert-circle-outline text-2xl text-danger-400" aria-hidden />
-          <p className="text-sm text-neutral-400">{error}</p>
+          <span className="i-mdi:alert-circle-outline text-2xl" style={{ color: 'var(--ema-danger)' }} aria-hidden />
+          <p className="text-sm" style={{ color: 'var(--ema-text-tertiary)' }}>{error}</p>
           <Button
             variant="ghost" size="sm"
             onClick={() => { store.clearSession(sessionId); void store.loadDashboard(sessionId); }}
@@ -253,7 +253,7 @@ export function SessionDetailPanel({
             variant="pill"
           />
 
-          <div className="flex justify-end pt-2 border-t border-neutral-800/60">
+          <div className="flex justify-end pt-2" style={{ borderTop: '1px solid var(--ema-border)' }}>
             <Button
               variant="secondary"
               size="sm"

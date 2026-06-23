@@ -73,7 +73,7 @@ export function ContextPanel(): JSX.Element | null {
         <>
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
           <div
-            className="absolute bottom-full right-0 mb-2 z-50 w-72 rounded-xl shadow-2xl p-3"
+            className="ema-slide-up absolute bottom-full right-0 mb-2 z-50 w-72 rounded-xl p-3 shadow-[var(--ema-shadow-3)]"
             style={{ background: 'var(--ema-surface-4)', border: '1px solid var(--ema-border)' }}
             onClick={(e) => e.stopPropagation()}
           >

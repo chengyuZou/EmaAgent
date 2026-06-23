@@ -64,8 +64,8 @@ export function AttachmentChip({ attachment, onRemove }: AttachmentChipProps): J
       className="flex items-center gap-1.5 rounded-lg px-2 py-1.5 cursor-pointer group transition-colors ema-chip-in"
       style={{
         width:      152,
-        background: 'rgba(255,255,255,0.05)',
-        border:     '1px solid rgba(255,255,255,0.08)',
+        background: 'var(--ema-surface-2)',
+        border:     '1px solid var(--ema-border)',
       }}
       onClick={handleOpen}
       title={attachment.localPath || attachment.name}

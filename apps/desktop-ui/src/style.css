@@ -381,3 +381,170 @@ html, body {
   z-index:        200;
   animation:      ema-fade-in var(--ema-duration-base) var(--ema-ease);
 }
+
+/* ── Skeleton loading ────────────────────────────────────────────────────────
+ *
+ *  .ema-skeleton-pulse  — opacity pulse, generic placeholder
+ *  .ema-skeleton-wave   — left→right shimmer sweep, data-loading placeholder
+ *  .ema-shimmer         — progress / loading bar shine stripe
+ */
+
+/* Fade-in utility — simplest entrance, works everywhere */
+.ema-fade-in {
+  animation: ema-fade-in var(--ema-duration-base) var(--ema-ease) both;
+}
+
+/* Skeleton pulse — cards, list items, text block placeholders */
+@keyframes ema-skeleton-pulse {
+  0%   { opacity: 0.4; }
+  50%  { opacity: 0.8; }
+  100% { opacity: 0.4; }
+}
+.ema-skeleton-pulse {
+  background: var(--ema-surface-2);
+  animation: ema-skeleton-pulse 2s ease-in-out infinite;
+}
+
+/* Skeleton wave — shimmer sweep left→right, needs overflow:hidden on parent */
+@keyframes ema-skeleton-wave {
+  from { transform: translateX(-100%); }
+  to   { transform: translateX(100%); }
+}
+.ema-skeleton-wave {
+  position: relative;
+  overflow: hidden;
+  background: var(--ema-surface-2);
+}
+.ema-skeleton-wave::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.06) 40%,
+    rgba(255, 255, 255, 0.10) 50%,
+    rgba(255, 255, 255, 0.06) 60%,
+    transparent 100%
+  );
+  animation: ema-skeleton-wave 2s ease-in-out infinite;
+}
+
+/* Shimmer — subtle shine stripe for progress bars / loading indicators */
+@keyframes ema-shimmer {
+  from { transform: translateX(-100%); }
+  to   { transform: translateX(200%); }
+}
+.ema-shimmer {
+  position: relative;
+  overflow: hidden;
+}
+.ema-shimmer::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    105deg,
+    transparent 30%,
+    rgba(255, 255, 255, 0.08) 45%,
+    rgba(255, 255, 255, 0.14) 50%,
+    rgba(255, 255, 255, 0.08) 55%,
+    transparent 70%
+  );
+  animation: ema-shimmer 2.5s ease-in-out infinite;
+}
+
+/* ── Existing keyframe utilities (keyframes defined above) ───────────────────
+ *
+ *  These keyframes already exist in the keyframe library section.
+ *  The classes below just expose them as drop-in utilities.
+ */
+
+/* Spin — loading spinners, refresh icons */
+.ema-spin {
+  animation: ema-spin 0.8s linear infinite;
+}
+
+/* Check pop — success / completion feedback */
+.ema-check-pop {
+  animation: ema-check-pop 0.4s var(--ema-ease) both;
+}
+
+/* Error shake — validation error, failure feedback */
+.ema-shake {
+  animation: ema-shake 0.4s var(--ema-ease) both;
+}
+
+/* ── Micro-interactions ──────────────────────────────────────────────────────
+ *
+ *  Small, single-purpose animations for interactive elements.
+ *  No new keyframes needed — pure CSS transitions or transforms.
+ */
+
+/* Pop-in — quick scale-up entrance for badges, indicators, small elements */
+@keyframes ema-pop-in {
+  from { opacity: 0; transform: scale(0.6); }
+  to   { opacity: 1; transform: scale(1); }
+}
+.ema-pop-in {
+  animation: ema-pop-in 0.22s var(--ema-ease) both;
+}
+
+/* Press — subtle scale-down on :active, use alongside existing styles */
+.ema-press {
+  transition: transform var(--ema-duration-fast) var(--ema-ease);
+}
+.ema-press:active {
+  transform: scale(0.97);
+}
+
+/* ── Exit / leave animations ─────────────────────────────────────────────────
+ *
+ *  Reverse-direction utilities for unmounting / dismissal.
+ *  Use with React transition libraries or conditional rendering.
+ */
+
+/* Fade-out — element fades away */
+@keyframes ema-fade-out {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
+.ema-fade-out {
+  animation: ema-fade-out var(--ema-duration-base) var(--ema-ease) both;
+}
+
+/* Slide-out-right — element exits to the right */
+@keyframes ema-slide-out-right {
+  from { opacity: 1; transform: translateX(0); }
+  to   { opacity: 0; transform: translateX(100%); }
+}
+.ema-slide-out-right {
+  animation: ema-slide-out-right var(--ema-duration-base) var(--ema-ease) both;
+}
+
+/* Slide-out-left — element exits to the left */
+@keyframes ema-slide-out-left {
+  from { opacity: 1; transform: translateX(0); }
+  to   { opacity: 0; transform: translateX(-100%); }
+}
+.ema-slide-out-left {
+  animation: ema-slide-out-left var(--ema-duration-base) var(--ema-ease) both;
+}
+
+/* Slide-in-left — element enters from the left */
+@keyframes ema-slide-in-left {
+  from { opacity: 0; transform: translateX(-12px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+.ema-slide-in-left {
+  animation: ema-slide-in-left var(--ema-duration-slow) var(--ema-ease) both;
+}
+
+/* Slide-in-right — element enters from the right */
+@keyframes ema-slide-in-right {
+  from { opacity: 0; transform: translateX(12px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+.ema-slide-in-right {
+  animation: ema-slide-in-right var(--ema-duration-slow) var(--ema-ease) both;
+}

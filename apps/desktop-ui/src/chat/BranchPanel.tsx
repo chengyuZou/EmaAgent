@@ -224,7 +224,7 @@ export function BranchPanel(): JSX.Element {
         key={`${node.parentBranchId}-${node.branchId}`}
         d={`M ${from.x} ${from.y + NODE_R} C ${from.x} ${mx}, ${to.x} ${from.y + NODE_R}, ${to.x} ${to.y - NODE_R}`}
         fill="none"
-        stroke="rgba(255,255,255,0.12)"
+        stroke="var(--ema-border-strong)"
         strokeWidth={1.5}
       />,
     );
@@ -253,13 +253,13 @@ export function BranchPanel(): JSX.Element {
 
   if (tree.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center gap-3 py-10 px-4">
+      <div className="flex flex-col items-center justify-center gap-3 py-10 px-4 ema-slide-up">
         <span className="i-mdi:source-fork text-3xl opacity-20" style={{ color: 'var(--ema-primary)' }} />
         <p className="text-xs text-center" style={{ color: 'var(--ema-text-tertiary)' }}>
           当前会话暂无分支
         </p>
         <button
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs transition-colors"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs transition-colors ema-stagger-in"
           style={{ background: 'var(--ema-primary-muted)', color: 'var(--ema-primary)' }}
           onClick={() => void handleFork()}
         >
@@ -337,10 +337,10 @@ export function BranchPanel(): JSX.Element {
                   style={{
                     width:     NODE_R * 2,
                     height:    NODE_R * 2,
-                    background: isActive ? color : 'rgba(255,255,255,0.06)',
-                    border:     `2px solid ${isActive ? color : 'rgba(255,255,255,0.15)'}`,
+                    background: isActive ? color : 'var(--ema-surface-2)',
+                    border:     `2px solid ${isActive ? color : 'var(--ema-border)'}`,
                     boxShadow:  isActive ? `0 0 12px ${color}55` : 'none',
-                    color:      isActive ? '#fff' : 'rgba(255,255,255,0.5)',
+                    color:      isActive ? 'var(--ema-text-primary)' : 'var(--ema-text-tertiary)',
                   }}
                 >
                   <ModeIcon mode={node.forkTurnMode} />
