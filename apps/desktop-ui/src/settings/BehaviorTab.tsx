@@ -1,4 +1,4 @@
-/**
+﻿/**
  * BehaviorTab — edit speechPatterns, forbiddenTopics, emotionVocabulary, motionVocabulary.
  */
 import { useState, type FormEvent, type KeyboardEvent, type JSX, type CSSProperties } from 'react';
@@ -108,12 +108,12 @@ export function BehaviorTab({ card }: { card: CharacterCard }): JSX.Element {
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <label className="text-xs text-[var(--ema-text-tertiary)]">情感词汇（控制 Live2D 表情）</label>
+        <label className="text-xs text-[var(--ema-text-tertiary)]">情感词汇(控制 Live2D 表情)</label>
         <TagEditor tags={emotionVocab} onChange={setEmotionVocab} placeholder="添加情绪词… (Enter 确认)" />
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <label className="text-xs text-[var(--ema-text-tertiary)]">动作词汇（控制 Live2D 动作）</label>
+        <label className="text-xs text-[var(--ema-text-tertiary)]">动作词汇(控制 Live2D 动作)</label>
         <TagEditor tags={motionVocab} onChange={setMotionVocab} placeholder="添加动作词… (Enter 确认)" />
       </div>
 

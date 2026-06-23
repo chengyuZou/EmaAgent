@@ -1,4 +1,4 @@
-/**
+﻿/**
  * LlmModelManager — model list under a provider's LLM config.
  */
 import { useState, useEffect, useCallback, type JSX } from 'react';
@@ -54,7 +54,7 @@ export function LlmModelManager({ providerId }: { providerId: string }): JSX.Ele
   }
 
   async function disable(model: string): Promise<void> {
-    if (!confirm(`禁用 "${model}"？所有使用它的模块绑定（Chat / Agent 等）也会一并解除。`)) return;
+    if (!confirm(`禁用 "${model}"？所有使用它的模块绑定(Chat / Agent 等)也会一并解除。`)) return;
     try {
       const res = await providersApi.disableModel(providerId, model);
       setModels((ms) => ms.map((m) => (m.id === model ? { ...m, enabled: false } : m)));
@@ -69,7 +69,7 @@ export function LlmModelManager({ providerId }: { providerId: string }): JSX.Ele
   function confirmPendingContext(): void {
     const n = parseInt(pendingCtx, 10);
     if (!pendingModel || !Number.isFinite(n) || n <= 0) {
-      showToast('请填写有效的上下文窗口（正整数 token 数）', { variant: 'danger' });
+      showToast('请填写有效的上下文窗口(正整数 token 数)', { variant: 'danger' });
       return;
     }
     void enable(pendingModel, n, 'manual');
@@ -91,7 +91,7 @@ export function LlmModelManager({ providerId }: { providerId: string }): JSX.Ele
           <h3 className="text-sm font-medium text-[var(--ema-text-primary)]">模型</h3>
           <p className="text-xs text-[var(--ema-text-tertiary)] mt-0.5">
             启用的模型才能在「模型绑定」里分配给 Chat、Agent 等模块。
-            {source === 'catalog' && '（显示内置推荐）'}
+            {source === 'catalog' && '(显示内置推荐)'}
           </p>
         </div>
         <Button variant="ghost" size="sm" onClick={() => void load()} disabled={loading}>
@@ -195,7 +195,7 @@ function ManualAddModel({ onAdd, existing, available }: {
 
   return (
     <div className="mt-1">
-      <p className="text-xs text-[var(--ema-text-tertiary)] mb-1.5">手动添加模型（列表里没有的）</p>
+      <p className="text-xs text-[var(--ema-text-tertiary)] mb-1.5">手动添加模型(列表里没有的)</p>
       <div className="relative flex gap-2">
         <div className="relative flex-1">
           <Input

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, type CSSProperties, type JSX } from 'react';
+﻿import { useState, useEffect, useCallback, type CSSProperties, type JSX } from 'react';
 import {
   Badge, Button, Callout, Card, Divider, Field,
   Input, Progress, ScrollArea, Select, Spinner, Switch, Tabs, Tooltip,
@@ -185,7 +185,7 @@ function OverviewTab(): JSX.Element {
 
             <div className="grid grid-cols-2 gap-x-6 gap-y-3">
               <div>
-                <p className="text-xs text-[var(--ema-text-tertiary)] mb-2 font-medium uppercase tracking-wide">召回（读）</p>
+                <p className="text-xs text-[var(--ema-text-tertiary)] mb-2 font-medium uppercase tracking-wide">召回(读)</p>
                 <div className="flex flex-col gap-2">
                   <OverrideSwitch label="L0 锚点召回" desc="全局身份图" checked={sessionOverrides?.layer0 ?? true}
                     onChange={(v) => setOverride('layer0', v)} />
@@ -197,7 +197,7 @@ function OverviewTab(): JSX.Element {
               </div>
 
               <div>
-                <p className="text-xs text-[var(--ema-text-tertiary)] mb-2 font-medium uppercase tracking-wide">写入（写）</p>
+                <p className="text-xs text-[var(--ema-text-tertiary)] mb-2 font-medium uppercase tracking-wide">写入(写)</p>
                 <div className="flex flex-col gap-2">
                   <OverrideSwitch label="提取"   desc="turn 结束后写入待处理片段" checked={sessionOverrides?.extraction    ?? true}
                     onChange={(v) => setOverride('extraction', v)} />
@@ -556,12 +556,12 @@ function MaintenanceTab(): JSX.Element {
       <div>
         <h3 className="text-sm font-semibold text-[var(--ema-text-primary)]">重要度衰减</h3>
         <p className="text-xs text-[var(--ema-text-tertiary)] mt-0.5">
-          降低长期未引用记忆的重要度，使其在召回时权重降低。受保护类型（事实/偏好/关系）永远不衰减。
+          降低长期未引用记忆的重要度，使其在召回时权重降低。受保护类型(事实/偏好/关系)永远不衰减。
         </p>
       </div>
 
       <div className="grid grid-cols-2 gap-3">
-        <Field label="衰减阈值（天）" description="最后引用距今超过此天数才会衰减">
+        <Field label="衰减阈值(天)" description="最后引用距今超过此天数才会衰减">
           <Input
             type="number"
             min="1"
@@ -570,7 +570,7 @@ function MaintenanceTab(): JSX.Element {
           />
         </Field>
 
-        <Field label="单次衰减量" description="每次执行将重要度减少（0.0–1.0）">
+        <Field label="单次衰减量" description="每次执行将重要度减少(0.0–1.0)">
           <Input
             type="number"
             min="0.01"
@@ -594,7 +594,7 @@ function MaintenanceTab(): JSX.Element {
         <div className="flex items-center gap-3">
           <Switch
             checked={dryRun}
-            label="预演模式（不实际修改）"
+            label="预演模式(不实际修改)"
             showLabel
             onCheckedChange={setDryRun}
           />
@@ -632,7 +632,7 @@ function MaintenanceTab(): JSX.Element {
 
             {maintenanceReport.preview.nodes.length > 0 && (
               <div className="mb-3">
-                <p className="text-xs text-[var(--ema-text-tertiary)] mb-1.5">受影响节点（前 {maintenanceReport.preview.nodes.length} 条）</p>
+                <p className="text-xs text-[var(--ema-text-tertiary)] mb-1.5">受影响节点(前 {maintenanceReport.preview.nodes.length} 条)</p>
                 <ScrollArea viewportClassName="max-h-40">
                   <div className="flex flex-col gap-1 pr-1">
                     {maintenanceReport.preview.nodes.map((n) => (
@@ -651,7 +651,7 @@ function MaintenanceTab(): JSX.Element {
 
             {maintenanceReport.preview.items.length > 0 && (
               <div>
-                <p className="text-xs text-[var(--ema-text-tertiary)] mb-1.5">受影响条目（前 {maintenanceReport.preview.items.length} 条）</p>
+                <p className="text-xs text-[var(--ema-text-tertiary)] mb-1.5">受影响条目(前 {maintenanceReport.preview.items.length} 条)</p>
                 <ScrollArea viewportClassName="max-h-40">
                   <div className="flex flex-col gap-1 pr-1">
                     {maintenanceReport.preview.items.map((item) => (

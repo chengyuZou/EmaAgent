@@ -1,4 +1,4 @@
-/**
+﻿/**
  * FilesPanel — workspace file browser for the Inspector dock.
  *
  * Roots = session.workspaceRoots (set via settings or Tauri file dialog).
@@ -247,7 +247,7 @@ export function FilesPanel(): JSX.Element {
         <input
           className="w-full rounded-md px-2 py-1 text-[11px] outline-none"
           style={{ background: 'var(--ema-surface-2)', color: 'var(--ema-text-primary)' }}
-          placeholder="筛选文件…（? 前缀搜索内容）"
+          placeholder="筛选文件…(? 前缀搜索内容)"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           spellCheck={false}

@@ -1,4 +1,4 @@
-/**
+﻿/**
  * VoiceTab — manage refAudios: upload, test listen, set primary, delete.
  */
 import { useState, useRef, type ChangeEvent, type CSSProperties, type JSX } from 'react';
@@ -232,7 +232,7 @@ function UploadForm({
         <Textarea
           minRows={2}
           maxRows={4}
-          placeholder="参考文本（如：'你好呀，今天过得怎么样？'）"
+          placeholder="参考文本(如：'你好呀，今天过得怎么样？')"
           value={promptText}
           onChange={(e) => setPromptText(e.target.value)}
         />

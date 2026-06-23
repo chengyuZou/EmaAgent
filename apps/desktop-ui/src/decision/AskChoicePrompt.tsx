@@ -1,4 +1,4 @@
-import { useState, type CSSProperties } from 'react';
+﻿import { useState, type CSSProperties } from 'react';
 import { Button, Card, Checkbox, Input } from '@ema-agent/ui';
 import { HumanDescriptionPanel } from './HumanDescriptionPanel.js';
 
@@ -87,7 +87,7 @@ export function AskChoicePrompt({
       {allowCustom && (
         <Input
           className="mt-3"
-          placeholder="其他（自定义）…"
+          placeholder="其他(自定义)…"
           value={customText}
           onChange={(e) => setCustomText(e.target.value)}
         />

@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef, type KeyboardEvent, type JSX, type ChangeEvent } from 'react';
+﻿import { useState, useCallback, useEffect, useRef, type KeyboardEvent, type JSX, type ChangeEvent } from 'react';
 import { IconButton, Input } from '@ema-agent/ui';
 import { useConversationStore } from '../stores/conversation-store.js';
 import { useSessionStore } from '../stores/session-store.js';
@@ -318,7 +318,7 @@ function WorkspaceEditor({
 
       <div className="flex flex-col gap-1 mb-2 max-h-36 overflow-y-auto">
         {paths.length === 0 && (
-          <p className="text-xs py-1" style={{ color: 'var(--ema-text-tertiary)' }}>暂无工作区（使用 sidecar 启动目录）</p>
+          <p className="text-xs py-1" style={{ color: 'var(--ema-text-tertiary)' }}>暂无工作区(使用 sidecar 启动目录)</p>
         )}
         {paths.map((p) => (
           <div key={p} className="flex items-center justify-between rounded-lg px-2 py-1 gap-2"

@@ -1,4 +1,4 @@
-/** ProviderForm — AIRI-style provider editor. */
+﻿/** ProviderForm — AIRI-style provider editor. */
 import { useState, useEffect, type FormEvent, type JSX } from 'react';
 import { Button, Callout, IconButton, Input, Select } from '@ema-agent/ui';
 import { useSettingsStore } from '../stores/settings-store.js';
@@ -167,7 +167,7 @@ export function ProviderForm({
           </div>
         </section>
 
-        {/* ── 高级配置（默认折叠）────────────────────────────────────────────── */}
+        {/* ── 高级配置(默认折叠)────────────────────────────────────────────── */}
         <section className="flex flex-col gap-4">
           <button
             type="button"
@@ -200,7 +200,7 @@ export function ProviderForm({
               <div className="flex flex-col gap-2">
                 <div>
                   <div className="text-sm font-medium text-[var(--ema-text-secondary)]">Base URL</div>
-                  <div className="text-xs text-[var(--ema-text-tertiary)] mt-0.5">自定义服务地址（可选）</div>
+                  <div className="text-xs text-[var(--ema-text-tertiary)] mt-0.5">自定义服务地址(可选)</div>
                 </div>
                 <Input
                   placeholder={defaultUrlFor(selectedProtocol) || 'https://...'}

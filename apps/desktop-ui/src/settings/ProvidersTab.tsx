@@ -1,4 +1,4 @@
-/**
+﻿/**
  * ProvidersTab — AIRI-style provider grid grouped by capability.
  */
 import React, { useState, useEffect } from 'react';
@@ -21,7 +21,7 @@ const SECTIONS = [
   { key: 'tts',      label: 'TTS',       icon: 'i-solar:user-speak-rounded-bold-duotone',
     description: '语音合成，如 SiliconFlow CosyVoice、GPT-SoVITS' },
   { key: 'stt',      label: 'STT',       icon: 'i-solar:microphone-3-bold-duotone',
-    description: '语音识别（语音转文字）' },
+    description: '语音识别(语音转文字)' },
   { key: 'vision',   label: 'Vision',    icon: 'i-solar:eye-bold-duotone',
     description: '图像理解模型' },
   { key: 'imagegen', label: 'Image Gen', icon: 'i-solar:gallery-bold-duotone',

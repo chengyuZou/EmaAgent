@@ -1,4 +1,4 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import { Badge, Button, Card, Dialog, Input, toast } from '@ema-agent/ui';
 import { useArtifactStore } from '../stores/artifact-store.js';
 import { useSessionStore } from '../stores/session-store.js';
@@ -108,7 +108,7 @@ function FallbackDialog({ artifactId, defaultPath, onClose }: FallbackDialogProp
       open
       onOpenChange={(open) => { if (!open) onClose(); }}
       title="写入工作区"
-      description="输入目标文件路径（仅在非 Tauri 环境下显示此输入框）。"
+      description="输入目标文件路径(仅在非 Tauri 环境下显示此输入框)。"
       widthClass="max-w-lg"
     >
       <div className="flex flex-col gap-3">

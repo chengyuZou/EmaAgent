@@ -1,4 +1,4 @@
-import { useEffect, useState, type CSSProperties } from 'react';
+﻿import { useEffect, useState, type CSSProperties } from 'react';
 import {
   Badge, Button, Callout, Card, Dialog, Divider, DropdownMenu,
   Field, Input, ScrollArea, Select, Spinner, Switch, Textarea, Tooltip,
@@ -19,8 +19,8 @@ const STATUS_BADGE: Record<McpConnectionStatus, { variant: 'success' | 'warn' | 
 type TransportType = 'stdio' | 'sse' | 'http';
 
 const TRANSPORT_OPTIONS = [
-  { value: 'stdio', label: 'Stdio（本地进程）' },
-  { value: 'sse',   label: 'SSE（远程 HTTP）'  },
+  { value: 'stdio', label: 'Stdio(本地进程)' },
+  { value: 'sse',   label: 'SSE(远程 HTTP)'  },
   { value: 'http',  label: 'Streamable HTTP'  },
 ];
 
@@ -173,7 +173,7 @@ export function McpTab(): JSX.Element {
       <div className="flex items-start justify-between shrink-0">
         <div>
           <h2 className="text-base font-semibold text-[var(--ema-text-primary)]">MCP 服务器</h2>
-          <p className="text-xs text-[var(--ema-text-tertiary)] mt-0.5">连接模型上下文协议（MCP）服务器，扩展 Agent 的工具集</p>
+          <p className="text-xs text-[var(--ema-text-tertiary)] mt-0.5">连接模型上下文协议(MCP)服务器，扩展 Agent 的工具集</p>
         </div>
         <div className="flex gap-2">
           <Button variant="ghost" size="sm" onClick={() => setImportOpen(true)}
@@ -455,7 +455,7 @@ function ServerRow({
 
         {/* Controls */}
         <div className="flex items-center gap-2 shrink-0 pt-0.5">
-          <Tooltip content={server.enabled ? '禁用（下次启动不自动连接）' : '启用'}>
+          <Tooltip content={server.enabled ? '禁用(下次启动不自动连接)' : '启用'}>
             <Switch
               checked={server.enabled}
               label={server.name}

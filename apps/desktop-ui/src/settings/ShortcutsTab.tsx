@@ -1,17 +1,17 @@
-/** ShortcutsTab — keyboard shortcuts reference (V1 read-only). */
+﻿/** ShortcutsTab — keyboard shortcuts reference (V1 read-only). */
 import { Card } from '@ema-agent/ui';
 
 export function ShortcutsTab(): JSX.Element {
   const shortcuts: Array<{ keys: string; action: string }> = [
     { keys: 'Enter',          action: '发送消息' },
     { keys: 'Shift+Enter',    action: '换行' },
-    { keys: 'Ctrl+Enter',     action: '发送消息（备用）' },
+    { keys: 'Ctrl+Enter',     action: '发送消息(备用)' },
     { keys: 'Esc',            action: '关闭弹窗 / 取消操作' },
-    { keys: 'P',              action: '固定/取消固定会话（在列表内焦点时）' },
-    { keys: 'R',              action: '重命名会话（在列表内焦点时）' },
-    { keys: 'F',              action: 'Fork 会话（在列表内焦点时）' },
-    { keys: 'A',              action: '归档会话（在列表内焦点时）' },
-    { keys: 'D',              action: '删除会话（在列表内焦点时）' },
+    { keys: 'P',              action: '固定/取消固定会话(在列表内焦点时)' },
+    { keys: 'R',              action: '重命名会话(在列表内焦点时)' },
+    { keys: 'F',              action: 'Fork 会话(在列表内焦点时)' },
+    { keys: 'A',              action: '归档会话(在列表内焦点时)' },
+    { keys: 'D',              action: '删除会话(在列表内焦点时)' },
     { keys: 'Ctrl+1~9',       action: '快速切换模型' },
   ];
 

@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useMemo, type JSX } from 'react';
+﻿import { useState, useCallback, useEffect, useMemo, type JSX } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { DropdownMenu, Input, type MenuItem } from '@ema-agent/ui';
 import { sessionsApi, type SessionWire, type SessionSearchItem } from '../api/sessions.js';
@@ -410,7 +410,7 @@ function SidebarRow({ session, isActive, streaming, decisions, nested = false }:
       label:    '设置分组',
       icon:     'i-mdi:tag-outline',
       onSelect: () => {
-        const label = prompt('分组名称（留空取消分组）', session.groupLabel ?? '');
+        const label = prompt('分组名称(留空取消分组)', session.groupLabel ?? '');
         if (label !== null) void useSessionStore.getState().setSessionGroup(session.id as SessionId, label.trim() || null);
       },
     },

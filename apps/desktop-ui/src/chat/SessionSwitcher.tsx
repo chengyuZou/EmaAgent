@@ -1,4 +1,4 @@
-import { useState, useCallback, type JSX } from 'react';
+﻿import { useState, useCallback, type JSX } from 'react';
 import { DropdownMenu, Input, type MenuItem } from '@ema-agent/ui';
 import { useConversationStore } from '../stores/conversation-store.js';
 import { useSessionStore } from '../stores/session-store.js';
@@ -263,7 +263,7 @@ function SessionRow({ session, isActive, onSelect }: {
       label:    '设置分组',
       icon:     'i-mdi:tag-outline',
       onSelect: () => {
-        const label = prompt('分组名称（留空取消分组）', session.groupLabel ?? '');
+        const label = prompt('分组名称(留空取消分组)', session.groupLabel ?? '');
         if (label !== null) void useSessionStore.getState().setSessionGroup(session.id as SessionId, label.trim() || null);
       },
     },

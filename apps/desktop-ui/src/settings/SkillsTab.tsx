@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+﻿import React, { useEffect, useState } from 'react';
 import {
   Badge, Button, Callout, Card, Dialog, Field,
   Input, ScrollArea, Spinner, Switch, Tabs, Textarea, Tooltip,
@@ -300,7 +300,7 @@ export function SkillsTab(): JSX.Element {
       <div className="flex items-start justify-between shrink-0">
         <div>
           <h2 className="text-base font-semibold text-[var(--ema-text-primary)]">技能管理</h2>
-          <p className="text-xs text-[var(--ema-text-tertiary)] mt-0.5">安装并管理自定义技能（Markdown 驱动，含工具权限白名单）</p>
+          <p className="text-xs text-[var(--ema-text-tertiary)] mt-0.5">安装并管理自定义技能(Markdown 驱动，含工具权限白名单)</p>
         </div>
         <div className="flex gap-2">
           <Button variant="secondary" size="sm" onClick={() => setInstallMode('url')}
@@ -358,7 +358,7 @@ export function SkillsTab(): JSX.Element {
         open={installMode === 'url'}
         onOpenChange={(open) => { if (!open) closeDialog(); }}
         title="从 URL 安装技能"
-        description="输入技能 Markdown 文件的直链（GitHub raw、jsDelivr 等）。"
+        description="输入技能 Markdown 文件的直链(GitHub raw、jsDelivr 等)。"
       >
         {installError && <Callout variant="danger" className="mb-3">{installError}</Callout>}
         <Field label="技能文件 URL" required>

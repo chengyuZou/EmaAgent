@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, type JSX } from 'react';
+﻿import { useState, useEffect, useCallback, type JSX } from 'react';
 import { Badge, Button, Callout, Input, Spinner, Switch } from '@ema-agent/ui';
 import { providersApi, type AvailableEmbedModelWire } from '../api/providers.js';
 import { showToast } from '../lib/toast.js';
@@ -61,7 +61,7 @@ export function EmbedModelManager({ providerId }: { providerId: string }): JSX.E
   function confirmPendingDim(): void {
     const n = parseInt(pendingDim, 10);
     if (!pendingModel || !Number.isFinite(n) || n <= 0) {
-      showToast('请填写有效的向量维度（正整数）', { variant: 'danger' });
+      showToast('请填写有效的向量维度(正整数)', { variant: 'danger' });
       return;
     }
     void enable(pendingModel, n, 'manual');
@@ -76,7 +76,7 @@ export function EmbedModelManager({ providerId }: { providerId: string }): JSX.E
           <h3 className="text-sm font-medium text-[var(--ema-text-primary)]">嵌入模型</h3>
           <p className="text-xs text-[var(--ema-text-tertiary)] mt-0.5">
             启用的模型可在「模型绑定」里分配给 embed 模块。
-            {source === 'static' && '（显示内置推荐）'}
+            {source === 'static' && '(显示内置推荐)'}
           </p>
         </div>
         <Button variant="ghost" size="sm" onClick={() => void load()} disabled={loading}>
@@ -145,7 +145,7 @@ function ManualAddEmbedModel({ onAdd, existing }: {
     let n: number | undefined;
     if (dim.trim()) {
       n = parseInt(dim, 10);
-      if (!Number.isFinite(n) || n <= 0) { showToast('维度需为正整数（留空则自动探测）', { variant: 'danger' }); return; }
+      if (!Number.isFinite(n) || n <= 0) { showToast('维度需为正整数(留空则自动探测)', { variant: 'danger' }); return; }
     }
     onAdd(model, n);
     setQuery('');

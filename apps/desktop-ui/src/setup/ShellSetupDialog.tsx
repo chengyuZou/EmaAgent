@@ -1,4 +1,4 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import { Button, Card } from '@ema-agent/ui';
 import { shellApi } from '../api/shell.js';
 import type { ShellStatus } from '../api/shell.js';
@@ -47,12 +47,12 @@ export function ShellSetupDialog({ status, onResolved }: ShellSetupDialogProps):
 
           <p className="text-sm leading-relaxed m-0" style={{ color: 'var(--ema-text-secondary)' }}>
             EmaAgent 的 Agent 模式通过 bash 执行工具命令。
-            当前系统未检测到 bash（Git Bash / WSL），请先安装。
+            当前系统未检测到 bash(Git Bash / WSL)，请先安装。
           </p>
 
           {phase === 'installing' && (
             <p className="text-sm m-0" style={{ color: 'var(--ema-warning)' }}>
-              正在安装 Git for Windows，请稍候（约 1-3 分钟）…
+              正在安装 Git for Windows，请稍候(约 1-3 分钟)…
             </p>
           )}
 
@@ -83,7 +83,7 @@ export function ShellSetupDialog({ status, onResolved }: ShellSetupDialogProps):
                 size="sm"
                 onClick={() => void handleInstall()}
               >
-                {phase === 'failed' ? '重试 winget 安装' : '用 winget 安装 Git（推荐）'}
+                {phase === 'failed' ? '重试 winget 安装' : '用 winget 安装 Git(推荐)'}
               </Button>
             )}
 
@@ -101,7 +101,7 @@ export function ShellSetupDialog({ status, onResolved }: ShellSetupDialogProps):
                 size="sm"
                 onClick={() => void tauriBridge.openUrl(WSL_GUIDE_URL)}
               >
-                使用 WSL2（高级）
+                使用 WSL2(高级)
               </Button>
             )}
           </div>

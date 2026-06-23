@@ -1,4 +1,4 @@
-/**
+﻿/**
  * System SSE — subscribe to /api/system/events for global events.
  *
  * System bus carries: character_card_switched, provider_health_changed,
@@ -61,7 +61,7 @@ export async function startSystemSse(): Promise<void> {
     onHeartbeat: () => {},
     onError: (err) => {
       console.error('[system-sse] error, will retry in 5s', err.message);
-      showToast(`系统连接中断，正在重试…（${err.message}）`, { variant: 'warning', duration: 5000 });
+      showToast(`系统连接中断，正在重试…(${err.message})`, { variant: 'warning', duration: 5000 });
       _handle = null;
       scheduleReconnect(5000);
     },

@@ -1,4 +1,4 @@
-import { useEffect, type JSX, type ChangeEvent } from 'react';
+﻿import { useEffect, type JSX, type ChangeEvent } from 'react';
 import { Slider, type SliderStep } from '@ema-agent/ui';
 import { useThemeStore } from '../stores/theme-store.js';
 
@@ -73,7 +73,7 @@ export function AppearanceTab(): JSX.Element {
       <section className="space-y-4">
         <div>
           <p className="text-sm font-medium" style={{ color: 'var(--ema-text-secondary)' }}>主题色</p>
-          <p className="text-xs mt-0.5" style={{ color: 'var(--ema-text-tertiary)' }}>拖动选择任意色相，辅色（紫罗兰）会自动跟随</p>
+          <p className="text-xs mt-0.5" style={{ color: 'var(--ema-text-tertiary)' }}>拖动选择任意色相，辅色(紫罗兰)会自动跟随</p>
         </div>
 
         {/* Continuous hue slider */}

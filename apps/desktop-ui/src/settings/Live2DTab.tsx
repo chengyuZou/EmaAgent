@@ -1,4 +1,4 @@
-// TODO: Live2D 舞台设置（scale / position / FPS / 行为开关）暂未实现，V1.5 再补。
+﻿// TODO: Live2D 舞台设置(scale / position / FPS / 行为开关)暂未实现，V1.5 再补。
 /** Live2DTab — Live2D model selection (V1 minimal). */
 import { Badge } from '@ema-agent/ui';
 
