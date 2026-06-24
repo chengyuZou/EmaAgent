@@ -5,6 +5,7 @@ import { useSessionStore } from '../stores/session-store.js';
 import { useSidecarStore } from '../stores/sidecar-store.js';
 import { useAgentTaskStore } from '../stores/agent-task-store.js';
 import { useUiStore } from '../stores/ui-store.js';
+import { useThemeSync } from '../stores/theme-store.js';
 import { startSystemSse } from '../lib/system-sse.js';
 import { ErrorBoundary } from '../lib/error-boundary.js';
 import { SessionSidebar } from './SessionSidebar.js';
@@ -25,6 +26,8 @@ type InspectorPanelId = 'branches' | 'artifacts' | 'files' | 'tasks';
 export function ChatPanel(): JSX.Element {
   const viewedSessionId = useConversationStore((s) => s.viewedSessionId);
   const sidecarStatus   = useSidecarStore((s) => s.status);
+
+  useThemeSync();
 
   const [activePanels, setActivePanels] = useState<Set<InspectorPanelId>>(new Set());
   const [overflowOpen, setOverflowOpen] = useState(false);
@@ -109,7 +112,7 @@ export function ChatPanel(): JSX.Element {
 
   return (
     <ErrorBoundary>
-      <div className="flex flex-row h-screen" style={{ background: 'var(--ema-surface-0)' }}>
+      <div className="flex flex-row h-screen" style={{ background: 'var(--ema-bg)' }}>
         <SessionSidebar />
 
         {/* ── Main column ── */}

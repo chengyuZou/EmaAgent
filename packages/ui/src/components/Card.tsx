@@ -13,9 +13,9 @@ export interface CardProps extends HTMLAttributes<HTMLDivElement> {
 }
 
 const VARIANT_CLASSES: Record<CardVariant, string> = {
-  default:  'bg-neutral-900/85 border border-neutral-700/40',
-  elevated: 'bg-neutral-900 border border-neutral-700/40 shadow-lg shadow-black/30',
-  glass:    'panel-glass',
+  default:  'bg-[var(--ema-surface-1)] border border-[var(--ema-border)]',
+  elevated: 'bg-[var(--ema-surface-1)] border border-[var(--ema-border-strong)] shadow-[var(--ema-shadow-1)]',
+  glass:    'bg-[var(--ema-surface-1)] ema-glass-weak border border-[var(--ema-border)]',
 };
 
 const PADDING_CLASSES: Record<CardPadding, string> = {

@@ -25,34 +25,33 @@ export function MenuIconItem(props: MenuIconItemProps): React.JSX.Element {
       className={cn(
         'group relative w-full flex items-center overflow-hidden box-border',
         'rounded-xl p-5 text-left cursor-pointer',
-        // Glass card — semi-transparent + blur so bg-neutral-950 bleeds through subtly
-        'bg-neutral-900/80 backdrop-blur-sm border-2 border-solid border-neutral-800/40',
-        'hover:border-primary-400/30 hover:bg-neutral-900/95 hover:shadow-lg',
-        // Press feedback (AIRI active:scale pattern)
+        'bg-[var(--ema-surface-1)] ema-glass-weak border-2 border-solid border-[var(--ema-border)]',
+        'hover:border-[var(--ema-primary)]/30 hover:bg-[var(--ema-surface-2)] hover:shadow-[var(--ema-shadow-2)]',
         'active:scale-[0.98]',
-        'transition-all duration-250 ease-in-out',
+        'transition-all duration-[var(--ema-duration-base)] ease-in-out',
         // Light sweep (::before)
         'before:content-empty before:absolute before:inset-0 before:z-0',
         'before:w-1/4 before:h-full before:opacity-0',
         'before:transition-all before:duration-250 before:ease-in-out',
         'before:[mask-image:linear-gradient(120deg,white_30%,transparent_50%)]',
         'hover:before:opacity-100 hover:before:w-[85%]',
-        'hover:before:bg-gradient-to-r hover:before:from-primary-400/20 hover:before:via-primary-400/10 hover:before:to-transparent',
+        'hover:before:bg-gradient-to-r hover:before:from-[var(--ema-primary)]/20 hover:before:via-[var(--ema-primary)]/10 hover:before:to-transparent',
         // Dotted texture (::after)
         'after:content-empty after:absolute after:inset-0 after:z-0 after:w-full after:h-full',
-        'after:[background-image:radial-gradient(circle,rgba(115,115,115,0.25)_1px,transparent_1px)]',
+        'after:[background-image:radial-gradient(circle,var(--ema-text-tertiary)_1px,transparent_1px)]',
         'after:[background-size:10px_10px]',
         'after:[mask-image:linear-gradient(165deg,white_30%,transparent_50%)]',
         'after:transition-all after:duration-250',
+        'after:opacity-25',
         className,
       )}
       {...rest}
     >
       <div className="relative z-1 flex-1 min-w-0">
-        <div className="text-lg font-normal text-neutral-100 group-hover:text-primary-300 transition-all duration-250 ease-in-out">
+        <div className="text-lg font-semibold text-[var(--ema-text-primary)] group-hover:text-[var(--ema-primary-text)] transition-all duration-[var(--ema-duration-base)] ease-in-out">
           {title}
         </div>
-        <div className="text-sm text-neutral-400 group-hover:text-primary-300/80 transition-all duration-250 ease-in-out">
+        <div className="text-sm text-[var(--ema-text-tertiary)] group-hover:text-[var(--ema-primary-text)]/80 transition-all duration-[var(--ema-duration-base)] ease-in-out">
           {description}
         </div>
       </div>
@@ -60,9 +59,9 @@ export function MenuIconItem(props: MenuIconItemProps): React.JSX.Element {
         aria-hidden
         className={cn(
           icon,
-          'absolute right-0 size-24 translate-y-4 opacity-50',
-          'text-neutral-600/50 group-hover:text-primary-400 group-hover:scale-120',
-          'transition-all duration-250 ease-in-out',
+          'absolute right-0 size-24 translate-y-4 opacity-40',
+          'text-[var(--ema-text-tertiary)] group-hover:text-[var(--ema-primary)] group-hover:scale-120',
+          'transition-all duration-[var(--ema-duration-base)] ease-in-out',
         )}
       />
     </button>

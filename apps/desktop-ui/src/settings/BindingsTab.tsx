@@ -246,7 +246,7 @@ export function BindingsTab(): JSX.Element {
     return (
       <div className="flex flex-col gap-6">
         <div>
-          <h2 className="text-2xl text-[var(--ema-text-tertiary)]">模型绑定</h2>
+          <h2 className="text-2xl font-semibold text-[var(--ema-text-primary)]">模型绑定</h2>
           <p className="text-[var(--ema-text-tertiary)] text-sm mt-1">
             为每个模块选择要使用的模型。先在"服务来源"启用模型，再在此绑定。
           </p>
@@ -306,7 +306,7 @@ export function BindingsTab(): JSX.Element {
           onClick={goGrid}
         />
         <div>
-          <h2 className="text-2xl text-[var(--ema-text-tertiary)]">{moduleLabel} 绑定
+          <h2 className="text-2xl font-semibold text-[var(--ema-text-primary)]">{moduleLabel} 绑定
             <span className="text-[10px] px-2 py-0.5 rounded-full
                              bg-[var(--ema-surface-2)] text-[var(--ema-text-tertiary)]
                              ml-2 align-middle uppercase">

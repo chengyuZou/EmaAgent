@@ -69,7 +69,7 @@ export function ShellSetupDialog({ status, onResolved }: ShellSetupDialogProps):
               </p>
               {log && (
                 <pre className="text-[11px] mt-2 px-2 py-1.5 rounded overflow-x-auto max-h-24 whitespace-pre-wrap"
-                     style={{ color: 'var(--ema-text-secondary)', background: 'var(--ema-surface-0)' }}>
+                     style={{ color: 'var(--ema-text-secondary)', background: 'var(--ema-bg)' }}>
                   {log}
                 </pre>
               )}

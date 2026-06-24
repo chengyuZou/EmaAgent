@@ -49,7 +49,7 @@ export function SttModelManager({ providerId }: { providerId: string }): JSX.Ele
   return (
     <div className="flex flex-col gap-3 mt-2">
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-medium text-[var(--ema-text-primary)]">STT 模型</h3>
+        <h3 className="text-base font-semibold text-[var(--ema-text-primary)]">STT 模型</h3>
         <Button variant="ghost" size="sm" onClick={() => void load()} disabled={loading}>
           <span className="i-mdi:refresh text-base" aria-hidden />
         </Button>

@@ -60,7 +60,7 @@ export function EmbedModelManager({ providerId }: { providerId: string }): JSX.E
     <div className="flex flex-col gap-3 mt-2">
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="text-sm font-medium text-[var(--ema-text-primary)]">嵌入模型</h3>
+          <h3 className="text-base font-semibold text-[var(--ema-text-primary)]">嵌入模型</h3>
           <p className="text-xs text-[var(--ema-text-tertiary)] mt-0.5">
             启用的模型可在「模型绑定」里分配给 embed 模块。
             {source === 'static' && '(显示内置推荐)'}

@@ -139,7 +139,7 @@ export function SettingsPanel(): JSX.Element {
 
   return (
     <ErrorBoundary>
-      <div className="fixed inset-0 flex bg-[var(--ema-surface-0)] text-[var(--ema-text-primary)]">
+      <div className="fixed inset-0 flex bg-[var(--ema-bg)] text-[var(--ema-text-primary)]">
 
         {/* ── Left sidebar ── */}
         <nav

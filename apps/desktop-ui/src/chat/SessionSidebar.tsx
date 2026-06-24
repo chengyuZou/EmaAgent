@@ -48,7 +48,7 @@ export function SessionSidebar(): JSX.Element {
 
   return (
     <div className={`flex flex-col shrink-0 border-r h-full transition-[width] duration-200 ease-out ${collapsed ? 'w-10' : 'w-64'}`}
-         style={{ borderColor: 'var(--ema-border)', background: 'var(--ema-surface-0)' }}>
+         style={{ borderColor: 'var(--ema-border)', background: 'var(--ema-bg)' }}>
       {collapsed ? (
         <div className="flex flex-col items-center py-2 gap-2">
           <button

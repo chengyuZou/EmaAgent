@@ -13,7 +13,7 @@ export function RawCommandPanel({ toolName, args }: RawCommandPanelProps): JSX.E
     <div
       className="mt-3 rounded-xl p-3 font-mono text-xs overflow-auto max-h-60"
       style={{
-        background:   'var(--ema-surface-0)',
+        background:   'var(--ema-bg)',
         border:       '1px solid var(--ema-border)',
         color:        'var(--ema-text-secondary)',
       }}

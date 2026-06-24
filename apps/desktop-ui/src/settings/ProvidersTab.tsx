@@ -83,7 +83,7 @@ export function ProvidersTab(): JSX.Element {
               <span className={`${section.icon} text-4xl text-[var(--ema-text-tertiary)]`} aria-hidden />
               <div>
                 <p className="text-sm text-[var(--ema-text-tertiary)]">{section.description}</p>
-                <h3 className="text-2xl font-normal text-[var(--ema-text-primary)]">{section.label}</h3>
+                <h3 className="text-2xl font-semibold text-[var(--ema-text-primary)]">{section.label}</h3>
               </div>
             </div>
 
@@ -145,7 +145,7 @@ function ProviderConfigPanel({
             onClick={onBack}
           />
           <span className={`${definition.iconKey ?? 'i-solar:box-bold-duotone'} text-3xl`} aria-hidden />
-          <h2 className="text-xl font-medium text-[var(--ema-text-primary)]">{definition.name}</h2>
+          <h2 className="text-xl font-semibold text-[var(--ema-text-primary)]">{definition.name}</h2>
           {config && (
             <span className={`size-2 rounded-full ${
               config.health?.status === 'ok'

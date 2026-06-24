@@ -66,7 +66,7 @@ export function TaskPanel({ className = '' }: TaskPanelProps): JSX.Element {
       {/* Stats row */}
       {stats.total > 0 && (
         <div className="flex gap-4 px-3 py-2 rounded-lg mx-1 mb-0.5"
-             style={{ background: 'var(--ema-surface-0)', border: '1px solid var(--ema-border)' }}>
+             style={{ background: 'var(--ema-bg)', border: '1px solid var(--ema-border)' }}>
           {([
             { label: '总计',   value: stats.total,     color: 'var(--ema-text-secondary)' },
             { label: '运行中', value: stats.running,   color: 'var(--ema-primary)'       },

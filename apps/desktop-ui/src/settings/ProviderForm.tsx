@@ -134,7 +134,7 @@ export function ProviderForm({
         {/* ── 基础配置 ──────────────────────────────────────────────────────── */}
         <section className="flex flex-col gap-6">
           <div>
-            <h2 className="text-2xl text-[var(--ema-text-tertiary)]">基础配置</h2>
+            <h2 className="text-2xl text-[var(--ema-text-primary)]">基础配置</h2>
             <p className="text-sm text-[var(--ema-text-tertiary)] mt-0.5">基本设置</p>
           </div>
 
@@ -175,7 +175,7 @@ export function ProviderForm({
             className="flex items-center gap-1.5 text-left outline-none group"
             onClick={() => setAdvancedOpen((v) => !v)}
           >
-            <h2 className="text-2xl text-[var(--ema-text-tertiary)] group-hover:text-[var(--ema-text-secondary)] transition-colors duration-[var(--ema-duration-base)]">
+            <h2 className="text-2xl text-[var(--ema-text-primary)] group-hover:text-[var(--ema-text-secondary)] transition-colors duration-[var(--ema-duration-base)]">
               高级配置
             </h2>
             <span

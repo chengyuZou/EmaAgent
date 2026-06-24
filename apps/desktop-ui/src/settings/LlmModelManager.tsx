@@ -89,7 +89,7 @@ export function LlmModelManager({ providerId }: { providerId: string }): JSX.Ele
 
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="text-sm font-medium text-[var(--ema-text-primary)]">模型</h3>
+          <h3 className="text-base font-semibold text-[var(--ema-text-primary)]">模型</h3>
           <p className="text-xs text-[var(--ema-text-tertiary)] mt-0.5">
             启用的模型才能在「模型绑定」里分配给 Chat、Agent 等模块。
             {source === 'catalog' && '(显示内置推荐)'}

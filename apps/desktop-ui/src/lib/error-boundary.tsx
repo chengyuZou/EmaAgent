@@ -49,7 +49,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, State> {
             出错了
           </div>
           <pre className="text-xs max-w-md overflow-auto whitespace-pre-wrap rounded-xl p-4"
-               style={{ color: 'var(--ema-text-tertiary)', background: 'var(--ema-surface-0)' }}>
+               style={{ color: 'var(--ema-text-tertiary)', background: 'var(--ema-bg)' }}>
             {this.state.error.message}
           </pre>
           <button

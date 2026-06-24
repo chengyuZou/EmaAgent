@@ -49,7 +49,7 @@ export function VisionModelManager({ providerId }: { providerId: string }): JSX.
   return (
     <div className="flex flex-col gap-3 mt-2">
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-medium text-[var(--ema-text-primary)]">Vision 模型</h3>
+        <h3 className="text-base font-semibold text-[var(--ema-text-primary)]">Vision 模型</h3>
         <Button variant="ghost" size="sm" onClick={() => void load()} disabled={loading}>
           <span className="i-solar:refresh-linear text-base" aria-hidden />
         </Button>

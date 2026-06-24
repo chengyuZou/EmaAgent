@@ -13,7 +13,6 @@ export interface ThemeStoreState {
   radius: number;
   ready:  boolean;
 
-  /** Load from API and apply CSS vars. Call once on app init. */
   init(): Promise<void>;
   setHue(hue: number): Promise<void>;
   setRadius(radius: number): Promise<void>;
@@ -30,7 +29,6 @@ export const useThemeStore = create<ThemeStoreState>((set, get) => ({
       setThemeRadius(config.radius);
       set({ hue: config.hue, radius: config.radius, ready: true });
     } catch {
-      // Sidecar not yet ready — apply defaults and mark ready anyway
       setThemeHue(DEFAULTS.hue);
       setThemeRadius(DEFAULTS.radius);
       set({ ...DEFAULTS, ready: true });
@@ -40,29 +38,18 @@ export const useThemeStore = create<ThemeStoreState>((set, get) => ({
   async setHue(hue) {
     setThemeHue(hue);
     set({ hue });
-    const radius = get().radius;
-    void tauriBridge.emit(THEME_EVENT, { hue, radius });
-    try {
-      await settingsApi.putTheme({ hue, radius });
-    } catch { /* non-blocking */ }
+    void tauriBridge.emit(THEME_EVENT, { hue, radius: get().radius });
+    try { await settingsApi.putTheme({ hue, radius: get().radius }); } catch { /* ok */ }
   },
 
   async setRadius(radius) {
     setThemeRadius(radius);
     set({ radius });
-    const hue = get().hue;
-    void tauriBridge.emit(THEME_EVENT, { hue, radius });
-    try {
-      await settingsApi.putTheme({ hue, radius });
-    } catch { /* non-blocking */ }
+    void tauriBridge.emit(THEME_EVENT, { hue: get().hue, radius });
+    try { await settingsApi.putTheme({ hue: get().hue, radius }); } catch { /* ok */ }
   },
 }));
 
-/**
- * Call this once in the root of each Tauri window.
- * - Fetches and applies the saved theme on mount.
- * - Listens for theme:changed events from other windows (e.g. settings window).
- */
 export function useThemeSync(): void {
   useEffect(() => {
     void useThemeStore.getState().init();
@@ -75,17 +62,9 @@ export function useThemeSync(): void {
       setThemeRadius(e.payload.radius);
       useThemeStore.setState({ hue: e.payload.hue, radius: e.payload.radius });
     }).then((fn) => {
-      if (cancelled) {
-        // Component already unmounted before listen() resolved — clean up immediately.
-        fn();
-      } else {
-        unlisten = fn;
-      }
+      if (cancelled) { fn(); } else { unlisten = fn; }
     });
 
-    return () => {
-      cancelled = true;
-      unlisten?.();
-    };
+    return () => { cancelled = true; unlisten?.(); };
   }, []);
 }

@@ -105,7 +105,7 @@ function IngestForm({ onDone }: { onDone(): void }): JSX.Element {
   return (
     <div className="flex flex-col gap-3 p-4 rounded-xl
                     bg-[var(--ema-surface-1)] border border-[var(--ema-border)]">
-      <p className="text-sm font-medium text-[var(--ema-text-secondary)]">导入文档</p>
+      <p className="text-sm font-semibold text-[var(--ema-text-primary)]">导入文档</p>
 
       <div className="flex gap-2">
         <Input
@@ -254,7 +254,7 @@ export function KnowledgeBaseTab(): JSX.Element {
       {/* ── Document list ── */}
       <section className="flex flex-col gap-3">
         <div className="flex items-center justify-between">
-          <h2 className="text-sm font-medium text-[var(--ema-text-secondary)]">
+          <h2 className="text-base font-semibold text-[var(--ema-text-primary)]">
             已导入文档
             {documents.length > 0 && (
               <span className="ml-2 text-xs text-[var(--ema-text-tertiary)]">({documents.length})</span>
@@ -305,7 +305,7 @@ export function KnowledgeBaseTab(): JSX.Element {
 
       {/* ── Search test ── */}
       <section className="flex flex-col gap-3">
-        <h2 className="text-sm font-medium text-[var(--ema-text-secondary)]">检索测试</h2>
+        <h2 className="text-base font-semibold text-[var(--ema-text-primary)]">检索测试</h2>
         <SearchTest />
       </section>
     </div>
