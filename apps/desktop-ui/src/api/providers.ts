@@ -260,4 +260,24 @@ export const providersApi = {
       { method: 'DELETE' },
     );
   },
+
+  // ── Vision model pool ───────────────────────────────────────────────────────
+
+  async listVisionModels(id: string): Promise<SimpleModelsListWire> {
+    return sidecarClient.request<SimpleModelsListWire>(`/api/providers/${id}/vision-models`);
+  },
+
+  async enableVisionModel(id: string, model: string): Promise<void> {
+    await sidecarClient.request(`/api/providers/${id}/vision-models/${encodeURIComponent(model)}`, {
+      method: 'PUT',
+      json: {},
+    });
+  },
+
+  async disableVisionModel(id: string, model: string): Promise<{ ok: boolean; cascadedBindings: number }> {
+    return sidecarClient.request<{ ok: boolean; cascadedBindings: number }>(
+      `/api/providers/${id}/vision-models/${encodeURIComponent(model)}`,
+      { method: 'DELETE' },
+    );
+  },
 };

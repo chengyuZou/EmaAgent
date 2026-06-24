@@ -207,7 +207,7 @@ function SearchTest(): JSX.Element {
           {searchResult.hits.length === 0 ? (
             <p className="text-sm text-[var(--ema-text-tertiary)] py-3 text-center">未找到相关内容</p>
           ) : (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
+            <div className="grid grid-cols-2 gap-2">
               {searchResult.hits.map((hit, i) => (
                 <div
                   key={hit.chunkId}

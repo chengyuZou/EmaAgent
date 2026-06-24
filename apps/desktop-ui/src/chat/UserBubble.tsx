@@ -9,14 +9,12 @@ export interface UserBubbleProps {
   label?:  string;
 }
 
-export function UserBubble({ message, label = '你' }: UserBubbleProps): JSX.Element {
+export function UserBubble({ message }: UserBubbleProps): JSX.Element {
   const attachments = message.attachments ?? [];
 
   return (
     <div className="flex ml-12 flex-row-reverse ema-bubble-in">
       <div className="flex flex-col min-w-20 max-w-full items-end">
-        <div className="text-xs mb-1" style={{ color: 'var(--ema-text-tertiary)' }}>{label}</div>
-
         {/* Attachment chips — shown above the message bubble when present */}
         {attachments.length > 0 && (
           <div className="flex flex-wrap justify-end gap-1.5 mb-1.5 max-w-full">

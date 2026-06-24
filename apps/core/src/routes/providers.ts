@@ -19,6 +19,7 @@ import {
 } from '../wiring.js';
 import { reloadTtsClient, resolveVoice, ensureVoiceUri, VoiceUriCache } from '../wiring/providers/tts.js';
 import { reloadSttClient } from '../wiring/providers/stt.js';
+import { buildVisionProviderConfig } from '../wiring/providers/vision.js';
 
 // ── Response shaping ──────────────────────────────────────────────────────────
 
@@ -162,6 +163,17 @@ function hotReload(
   // updates not worth the complexity.
   if (capabilities.includes('tts')) reloadTtsClient(bindings.tts, bindings.profileDb);
   if (capabilities.includes('stt')) reloadSttClient(bindings.stt, bindings.profileDb);
+
+  // ── VisionRouter sync ──────────────────────────────────────────────────────
+  if (capabilities.includes('vision')) {
+    if (deleted) {
+      bindings.vision.removeConfig(row.id);
+    } else {
+      const cfg = buildVisionProviderConfig(row);
+      if (cfg) bindings.vision.upsertConfig(cfg);
+      else     bindings.vision.removeConfig(row.id);
+    }
+  }
 }
 
 // ── Route factory ─────────────────────────────────────────────────────────────
@@ -332,7 +344,7 @@ export function providersRoute(bindings: AppBindings): Hono {
     return c.body(null, 204);
   });
 
-  // POST /api/providers/:id/probe  — verify connectivity (LLM capability only)
+  // POST /api/providers/:id/probe  — verify connectivity (LLM or Vision)
   app.post('/:id/probe', async (c) => {
     const id = c.req.param('id');
 
@@ -346,17 +358,29 @@ export function providersRoute(bindings: AppBindings): Hono {
     if (!existing) return c.json({ error: 'not_found' }, 404);
 
     const def = getProviderDefinition(existing.definition_id);
-    const model = parsed.data.model
-      ?? def?.defaultModels?.llm?.[0]
-      ?? 'gpt-4o-mini';
-    const result = await bindings.llm.probe(id, model);
+    const capabilities: string[] = JSON.parse(existing.capabilities_json);
 
-    repo.recordHealth(id, result.ok ? 'ok' : 'failed', {
-      latencyMs: result.latencyMs,
-      lastError: result.error,
-    });
+    if (capabilities.includes('llm')) {
+      const model = parsed.data.model ?? def?.defaultModels?.llm?.[0] ?? 'gpt-4o-mini';
+      const result = await bindings.llm.probe(id, model);
+      repo.recordHealth(id, result.ok ? 'ok' : 'failed', {
+        latencyMs: result.latencyMs,
+        lastError: result.error,
+      });
+      return c.json(result);
+    }
 
-    return c.json(result);
+    if (capabilities.includes('vision')) {
+      const model = parsed.data.model ?? def?.defaultModels?.vision?.[0] ?? '';
+      const result = await bindings.vision.probe(id, model || undefined);
+      repo.recordHealth(id, result.ok ? 'ok' : 'failed', {
+        latencyMs: result.latencyMs,
+        lastError: result.error,
+      });
+      return c.json({ ok: result.ok, model, latencyMs: result.latencyMs ?? null, error: result.error });
+    }
+
+    return c.json({ error: 'no_probeable_capability' }, 422);
   });
 
   // ── GET /api/providers/:id/models — available LLM models for the picker ─────
@@ -653,6 +677,45 @@ export function providersRoute(bindings: AppBindings): Hono {
     const id    = c.req.param('id');
     const model = decodeURIComponent(c.req.param('model'));
     const removed = bindings.providerSttModels.remove(id, model);
+    if (!removed) return c.json({ error: 'not_found' }, 404);
+
+    const cascaded = bindings.modelBindings.deleteByProviderModel(id, model);
+    return c.json({ ok: true, cascadedBindings: cascaded });
+  });
+
+  // ── Vision model pool ─────────────────────────────────────────────────────────
+
+  app.get('/:id/vision-models', (c) => {
+    const id = c.req.param('id');
+    const repo = bindings.providers;
+    const row = repo.get(id);
+    if (!row) return c.json({ error: 'not_found' }, 404);
+
+    const def = getProviderDefinition(row.definition_id);
+    const models = def?.defaultModels?.vision ?? [];
+    const pool = bindings.providerVisionModels;
+    const enabledSet = new Set(pool.listByProvider(id).map((m) => m.model));
+
+    return c.json({
+      source: 'static',
+      models: models.map((model) => ({ id: model, enabled: enabledSet.has(model) })),
+    });
+  });
+
+  app.put('/:id/vision-models/:model', async (c) => {
+    const id    = c.req.param('id');
+    const model = decodeURIComponent(c.req.param('model'));
+    const repo  = bindings.providers;
+    if (!repo.get(id)) return c.json({ error: 'not_found' }, 404);
+
+    bindings.providerVisionModels.upsert({ providerConfigId: id, model });
+    return c.body(null, 204);
+  });
+
+  app.delete('/:id/vision-models/:model', (c) => {
+    const id    = c.req.param('id');
+    const model = decodeURIComponent(c.req.param('model'));
+    const removed = bindings.providerVisionModels.remove(id, model);
     if (!removed) return c.json({ error: 'not_found' }, 404);
 
     const cascaded = bindings.modelBindings.deleteByProviderModel(id, model);

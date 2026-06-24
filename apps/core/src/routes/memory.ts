@@ -39,7 +39,8 @@ const overridesSchema = z.object({
 
 const maintenanceSchema = z.object({
   decayAfterDays:     z.number().int().min(1).max(365).default(30),
-  decayAmount:        z.number().int().min(1).max(50).default(5),
+  // importance is a 0–1 score, so decayAmount is a fraction subtracted per pass.
+  decayAmount:        z.number().min(0.01).max(1).default(0.1),
   decayItems:         z.boolean().default(true),
   dryRun:             z.boolean().default(true),
 });

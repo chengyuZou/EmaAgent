@@ -1,4 +1,4 @@
-﻿import { useEffect, useState, type CSSProperties } from 'react';
+﻿import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import {
   Badge, Button, Callout, Card, Dialog, Divider, DropdownMenu,
   Field, Input, ScrollArea, Select, Spinner, Switch, Tabs, Textarea, Tooltip,
@@ -416,12 +416,16 @@ function McpMarketView({
   const marketError   = useMcpStore((s) => s.marketError);
   const marketSource  = useMcpStore((s) => s.marketSource);
   const [installing, setInstalling] = useState<string | null>(null);
+  const attemptedRef = useRef(false);
 
+  // Fetch once when the tab first becomes active. A ref guard prevents the
+  // retry-on-error loop (effect re-firing as loading flips false → fetch again).
   useEffect(() => {
-    if (active && marketServers.length === 0 && !marketLoading) {
+    if (active && !attemptedRef.current) {
+      attemptedRef.current = true;
       void useMcpStore.getState().listMarket();
     }
-  }, [active, marketServers.length, marketLoading]);
+  }, [active]);
 
   async function handleInstall(entry: McpMarketEntry): Promise<void> {
     if (!entry.transport) return;

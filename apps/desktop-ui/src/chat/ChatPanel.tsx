@@ -370,6 +370,11 @@ function InspectorPanelBody({ id, sessionId }: { id: InspectorPanelId; sessionId
 
 const FALLBACK_CTX = 200_000;
 
+// Stable empty reference — returning a fresh [] from a Zustand selector each
+// render makes useSyncExternalStore loop ("Maximum update depth exceeded"),
+// which is exactly what happens once the viewed session is deleted.
+const EMPTY_MSGS: never[] = [];
+
 function ContextBall({ sessionId }: { sessionId: string | null }): JSX.Element | null {
   // Use the selected model's real context window; fall back to 200K if none selected.
   const selectedCtx = useUiStore((s) => s.selectedContextWindow);
@@ -385,7 +390,7 @@ function ContextBall({ sessionId }: { sessionId: string | null }): JSX.Element |
   });
 
   const messages = useConversationStore((s) =>
-    sessionId ? s.messages.get(sessionId) ?? [] : [],
+    sessionId ? s.messages.get(sessionId) ?? EMPTY_MSGS : EMPTY_MSGS,
   );
   const lastAssistant = [...messages].reverse().find((m) => m.role === 'assistant' && m.stats);
   const inputTok = liveUsage?.inputTokens ?? lastAssistant?.stats?.inputTokens ?? 0;

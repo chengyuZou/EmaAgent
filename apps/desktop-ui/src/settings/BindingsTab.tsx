@@ -32,7 +32,7 @@ const MODULE_CAPABILITY: Record<BindingModule, string> = {
   imagegen:       'vision',
 };
 
-const POOL_CAPABILITIES = new Set(['llm', 'embed', 'rerank', 'tts', 'stt']);
+const POOL_CAPABILITIES = new Set(['llm', 'embed', 'rerank', 'tts', 'stt', 'vision']);
 
 const MODULES: Array<{ id: BindingModule; label: string; desc: string }> = [
   { id: 'emotion',       label: 'Emotion',      desc: '情绪后置抽取兜底(ACT 标签缺失时用便宜 LLM 二次判定)' },
@@ -244,7 +244,7 @@ export function BindingsTab(): JSX.Element {
   // ── Grid view ──────────────────────────────────────────────────────────────
   if (view === 'grid') {
     return (
-      <div className="flex flex-col gap-6 overflow-y-auto min-h-0">
+      <div className="flex flex-col gap-6">
         <div>
           <h2 className="text-2xl text-[var(--ema-text-tertiary)]">模型绑定</h2>
           <p className="text-[var(--ema-text-tertiary)] text-sm mt-1">
@@ -296,7 +296,7 @@ export function BindingsTab(): JSX.Element {
   const currentBinding = bindings[0] ?? null;
 
   return (
-    <div className="flex flex-col gap-6 overflow-y-auto min-h-0 ema-slide-right">
+    <div className="flex flex-col gap-6 ema-slide-right">
       {/* Header */}
       <div className="flex items-center gap-4">
         <IconButton
@@ -353,9 +353,7 @@ export function BindingsTab(): JSX.Element {
 
           {/* ── Pool area ────────────────────────────────────────────────── */}
           {!hasPool ? (
-            <p className="text-[var(--ema-text-tertiary)] text-sm">
-              {cap === 'vision' ? 'Vision 模型暂不支持启用池。' : '此能力暂不支持启用池。'}
-            </p>
+            <p className="text-[var(--ema-text-tertiary)] text-sm">此能力暂不支持启用池。</p>
           ) : pool.length === 0 ? (
             <div className="bg-[var(--ema-surface-1)] border border-[var(--ema-border)] rounded-xl px-4 py-6 text-center">
               <p className="text-[var(--ema-text-tertiary)] text-sm">尚无已启用的 {CAP_LABELS[cap] ?? cap} 模型</p>

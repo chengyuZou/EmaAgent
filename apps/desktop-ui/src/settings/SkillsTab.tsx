@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useState } from 'react';
+﻿import React, { useEffect, useRef, useState } from 'react';
 import {
   Badge, Button, Callout, Card, Dialog, Field,
   Input, ScrollArea, Spinner, Switch, Tabs, Textarea, Tooltip,
@@ -30,12 +30,15 @@ function MarketView({
   const marketError   = useSkillStore((s) => s.marketError);
   const marketSource  = useSkillStore((s) => s.marketSource);
   const [installing, setInstalling] = useState<string | null>(null);
+  const attemptedRef = useRef(false);
 
+  // Fetch once on first activation; ref guard avoids the retry-on-error loop.
   useEffect(() => {
-    if (active && marketSkills.length === 0 && !marketLoading) {
+    if (active && !attemptedRef.current) {
+      attemptedRef.current = true;
       void useSkillStore.getState().listMarket();
     }
-  }, [active, marketSkills.length, marketLoading]);
+  }, [active]);
 
   async function handleInstall(entry: MarketSkillEntry): Promise<void> {
     setInstalling(entry.name);

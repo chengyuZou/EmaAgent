@@ -16,6 +16,7 @@ import { EmbedModelManager }  from './EmbedModelManager.js';
 import { RerankModelManager } from './RerankModelManager.js';
 import { TtsModelManager }    from './TtsModelManager.js';
 import { SttModelManager }    from './SttModelManager.js';
+import { VisionModelManager } from './VisionModelManager.js';
 
 export interface ProviderFormProps {
   definitionId: string;
@@ -221,7 +222,7 @@ export function ProviderForm({
               <span className="i-solar:danger-circle-linear shrink-0" aria-hidden />
               <span>{probeMsg}</span>
             </div>
-            {activeCap === 'llm' && (
+            {(activeCap === 'llm' || activeCap === 'vision') && (
               <Button
                 variant="danger"
                 size="sm"
@@ -239,7 +240,7 @@ export function ProviderForm({
           <Callout variant="info">
             <div className="flex items-center justify-between">
               <span>{probeOk === true ? '配置验证通过' : '配置部分验证'}</span>
-              {activeCap === 'llm' && (
+              {(activeCap === 'llm' || activeCap === 'vision') && (
                 <Button
                   variant="ghost"
                   size="sm"
@@ -261,7 +262,7 @@ export function ProviderForm({
       </form>
 
       {/* ── 模型池 ───────────────────────────────────────────────────────────── */}
-      {instance && activeCap === 'llm' && (
+      {instance && (activeCap === 'llm' || activeCap === 'vision') && (
         <>
           <div className="border-t border-[var(--ema-border)]" />
           <LlmModelManager providerId={instance.id} />
@@ -289,6 +290,12 @@ export function ProviderForm({
         <>
           <div className="border-t border-[var(--ema-border)]" />
           <SttModelManager providerId={instance.id} />
+        </>
+      )}
+      {instance && activeCap === 'vision' && (
+        <>
+          <div className="border-t border-[var(--ema-border)]" />
+          <VisionModelManager providerId={instance.id} />
         </>
       )}
     </div>

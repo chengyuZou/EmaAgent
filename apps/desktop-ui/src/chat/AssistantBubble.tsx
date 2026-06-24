@@ -22,7 +22,7 @@ export interface AssistantBubbleProps {
 /** Ignore clicks landing within this window after the previous one (rage-click guard). */
 const AUDIO_CLICK_THROTTLE_MS = 600;
 
-export function AssistantBubble({ message, label = 'Ema', isStreaming }: AssistantBubbleProps): JSX.Element {
+export function AssistantBubble({ message, isStreaming }: AssistantBubbleProps): JSX.Element {
   const slices = resolveSlices(message);
   const isEmpty = slices.length === 0;
 
@@ -70,10 +70,6 @@ export function AssistantBubble({ message, label = 'Ema', isStreaming }: Assista
   return (
     <div className="flex mr-12 ema-bubble-in">
       <div className="flex flex-col min-w-20 max-w-full">
-        <div className="text-xs font-normal mb-1" style={{ color: 'var(--ema-text-tertiary)' }}>
-          <span>{label}</span>
-        </div>
-
         {isEmpty && isStreaming ? (
           <div className="flex gap-1.5 items-center h-4 py-2">
             <div className="w-1.5 h-1.5 rounded-full animate-bounce" style={{ background: 'var(--ema-text-secondary)', animationDelay: '0ms' }} />

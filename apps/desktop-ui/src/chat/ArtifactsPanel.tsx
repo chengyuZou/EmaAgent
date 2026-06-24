@@ -12,11 +12,15 @@ import { useArtifactStore } from '../stores/artifact-store.js';
 import { useConversationStore } from '../stores/conversation-store.js';
 import { ArtifactCard } from './ArtifactCard.js';
 
+// Stable empty reference — a fresh [] from the selector each render makes
+// useSyncExternalStore loop once the session has no artifacts entry.
+const EMPTY_ARTIFACTS: never[] = [];
+
 export function ArtifactsPanel(): JSX.Element {
   const sessionId = useConversationStore((s) => s.viewedSessionId);
 
   const artifacts = useArtifactStore((s) =>
-    sessionId ? (s.bySession.get(sessionId as string) ?? []) : [],
+    sessionId ? (s.bySession.get(sessionId as string) ?? EMPTY_ARTIFACTS) : EMPTY_ARTIFACTS,
   );
 
   useEffect(() => {

@@ -127,6 +127,17 @@ export function modelBindingsRoute(bindings: AppBindings): Hono {
           })),
         });
       }
+      case 'vision': {
+        const rows = bindings.providerVisionModels.listAll();
+        return c.json({
+          models: rows.map((r) => ({
+            providerConfigId: r.provider_config_id,
+            providerName:     resolveName(r.provider_config_id),
+            model:            r.model,
+            contextWindow:    0,
+          })),
+        });
+      }
       default:
         return c.json({ models: [] });
     }
