@@ -80,5 +80,5 @@ export interface MarketSkillEntry {
   /** Path within the repo, e.g. "document-skills/pdf". */
   path:        string;
   /** Raw URL to the SKILL.md, ready for installFromUrl(). */
-  skillMdUrl:  string;
+  url:         string;
 }

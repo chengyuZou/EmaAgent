@@ -435,8 +435,10 @@ function McpMarketView({
       : { type: entry.transport, url: entry.url ?? '' };
     setInstalling(entry.name);
     try {
-      await useMcpStore.getState().register(cleanName, config, entry.websiteUrl ?? entry.repository);
-      showToast(`已添加 ${cleanName}`, { variant: 'success' });
+      // connect: false — many registry servers need env/keys or a local runtime;
+      // save it disconnected and let the user connect from 「已配置」 afterwards.
+      await useMcpStore.getState().register(cleanName, config, entry.websiteUrl ?? entry.repository, false);
+      showToast(`已添加 ${cleanName}，请在「已配置」补全环境后连接`, { variant: 'success' });
     } catch (err) {
       showToast(`添加失败: ${err instanceof Error ? err.message : String(err)}`, { variant: 'danger' });
     } finally {

@@ -26,9 +26,10 @@ export interface McpStoreState {
 
   /**
    * Register a new MCP server config.
+   * `connect: false` saves it disconnected (market installs needing env first).
    * Returns the connection status from the registration attempt.
    */
-  register(name: string, config: McpServerConfig, sourceUrl?: string): Promise<McpConnection>;
+  register(name: string, config: McpServerConfig, sourceUrl?: string, connect?: boolean): Promise<McpConnection>;
 
   /** Enable a server (persists to DB + attempts reconnect). */
   enable(name: string): Promise<void>;
@@ -89,9 +90,9 @@ export const useMcpStore = create<McpStoreState>((set, get) => ({
     }
   },
 
-  async register(name, config, sourceUrl) {
+  async register(name, config, sourceUrl, connect = true) {
     try {
-      const { connection } = await mcpApi.register(name, config, sourceUrl);
+      const { connection } = await mcpApi.register(name, config, sourceUrl, connect);
       await get().refresh();
       return connection;
     } catch (err: unknown) {

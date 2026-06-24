@@ -43,7 +43,7 @@ export class GithubSkillMarket implements SkillMarket {
       entries.push({
         name,
         path: dir,
-        skillMdUrl: `https://raw.githubusercontent.com/${owner}/${repo}/${ref}/${node.path}`,
+        url: `https://raw.githubusercontent.com/${owner}/${repo}/${ref}/${node.path}`,
       });
     }
     entries.sort((a, b) => a.name.localeCompare(b.name));

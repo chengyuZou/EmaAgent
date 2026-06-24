@@ -28,10 +28,16 @@ html, body {
 
 *, *::before, *::after {
   box-sizing: border-box;
-  user-select: none;
 }
 
-/* Allow text selection inside explicitly opted-in containers */
+/* Content is selectable by default (chat / settings text must be copyable).
+   Only UI chrome opts out so dragging the pet never starts a text selection. */
+button, [role="button"], [data-tauri-drag-region], .ema-no-select, .ema-no-select * {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* Explicit opt-in kept for back-compat with existing .selectable usages. */
 .selectable, .selectable * {
   user-select: text !important;
   -webkit-user-select: text !important;

@@ -29,7 +29,7 @@ function MarketView({
   const marketLoading = useSkillStore((s) => s.marketLoading);
   const marketError   = useSkillStore((s) => s.marketError);
   const marketSource  = useSkillStore((s) => s.marketSource);
-  const [installing, setInstalling] = useState<string | null>(null);
+  const [installing, setInstalling] = useState<Set<string>>(new Set());
   const attemptedRef = useRef(false);
 
   // Fetch once on first activation; ref guard avoids the retry-on-error loop.
@@ -41,11 +41,15 @@ function MarketView({
   }, [active]);
 
   async function handleInstall(entry: MarketSkillEntry): Promise<void> {
-    setInstalling(entry.name);
+    setInstalling((prev) => new Set(prev).add(entry.name));
     try {
       await onInstall(entry.url, entry.name);
     } finally {
-      setInstalling(null);
+      setInstalling((prev) => {
+        const next = new Set(prev);
+        next.delete(entry.name);
+        return next;
+      });
     }
   }
 
@@ -117,8 +121,8 @@ function MarketView({
                   <Button
                     variant="secondary"
                     size="sm"
-                    loading={installing === entry.name}
-                    disabled={installing !== null}
+                    loading={installing.has(entry.name)}
+                    disabled={installing.has(entry.name)}
                     onClick={() => void handleInstall(entry)}
                   >
                     安装

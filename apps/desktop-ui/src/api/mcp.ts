@@ -49,11 +49,11 @@ export const mcpApi = {
     return sidecarClient.request<McpServerRecord & { connection: McpConnection }>(`/api/mcp/servers/${name}`);
   },
 
-  /** POST /api/mcp/servers */
-  async register(name: string, config: McpServerConfig, sourceUrl?: string): Promise<{ id: string; connection: McpConnection }> {
+  /** POST /api/mcp/servers. `connect: false` saves without connecting (market installs). */
+  async register(name: string, config: McpServerConfig, sourceUrl?: string, connect = true): Promise<{ id: string; connection: McpConnection }> {
     return sidecarClient.request<{ id: string; connection: McpConnection }>('/api/mcp/servers', {
       method: 'POST',
-      json: { name, config, sourceUrl },
+      json: { name, config, sourceUrl, connect },
     });
   },
 

@@ -39,7 +39,15 @@ export class SkillInstaller {
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
-async function downloadText(url: string): Promise<string> {
+/** raw.githubusercontent.com → jsDelivr CDN, which is reachable where GitHub is blocked/slow. */
+function githubRawToJsdelivr(url: string): string | null {
+  const m = url.match(/^https?:\/\/raw\.githubusercontent\.com\/([^/]+)\/([^/]+)\/([^/]+)\/(.+)$/);
+  if (!m) return null;
+  const [, owner, repo, ref, path] = m;
+  return `https://cdn.jsdelivr.net/gh/${owner}/${repo}@${ref}/${path}`;
+}
+
+async function fetchSkillText(url: string): Promise<string> {
   const res = await fetch(url, {
     headers: { Accept: 'text/markdown, text/plain, */*' },
     signal:  AbortSignal.timeout(15_000),
@@ -53,6 +61,19 @@ async function downloadText(url: string): Promise<string> {
   const rawMd = await res.text();
   assertSize(rawMd);
   return rawMd;
+}
+
+async function downloadText(url: string): Promise<string> {
+  try {
+    return await fetchSkillText(url);
+  } catch (err) {
+    // GitHub raw is frequently blocked/slow in CN — retry via the jsDelivr mirror.
+    const mirror = githubRawToJsdelivr(url);
+    if (mirror) {
+      try { return await fetchSkillText(mirror); } catch { /* fall through to original error */ }
+    }
+    throw err;
+  }
 }
 
 function assertSize(rawMd: string): void {

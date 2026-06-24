@@ -19,6 +19,9 @@ const registerSchema = z.object({
   name:      z.string().min(1).max(100),
   config:    McpServerConfigSchema,
   sourceUrl: z.string().url().optional(),
+  // Market installs save the entry without connecting — many servers need env
+  // vars / API keys / a local npx-uvx runtime before they can start.
+  connect:   z.boolean().default(true),
 });
 
 // ── Marketplace (official MCP registry) ──────────────────────────────────────
@@ -42,23 +45,30 @@ interface McpMarketEntry {
   args?:        string[];
 }
 
+// The registry uses snake_case and (in newer revisions) has renamed some keys,
+// so accept both spellings defensively.
 interface RegistryPackage {
-  registryType?: string;
-  identifier?:   string;
-  runtimeHint?:  string;
-  transport?:    { type?: string };
+  registry_type?: string;   // "npm" | "pypi" | "oci" …
+  registry_name?: string;   // older field name for registry_type
+  identifier?:    string;
+  name?:          string;   // some entries put the package id here
+  version?:       string;
+  runtime_hint?:  string;
+  transport?:     { type?: string };
 }
 interface RegistryRemote { type?: string; url?: string }
 interface RegistryServer {
-  name:        string;
-  title?:      string;
+  name:         string;
+  title?:       string;
   description?: string;
-  version?:    string;
-  websiteUrl?: string;
-  repository?: { url?: string };
-  remotes?:    RegistryRemote[];
-  packages?:   RegistryPackage[];
+  version?:     string;
+  websiteUrl?:  string;
+  repository?:  { url?: string };
+  remotes?:     RegistryRemote[];
+  packages?:    RegistryPackage[];
 }
+// Each list item wraps the server under `server`, with registry metadata in `_meta`.
+interface RegistryItem { server?: RegistryServer }
 
 function normaliseRegistryServer(s: RegistryServer): McpMarketEntry {
   const base: McpMarketEntry = {
@@ -78,13 +88,15 @@ function normaliseRegistryServer(s: RegistryServer): McpMarketEntry {
   }
 
   // Otherwise derive a stdio launch command from the first package.
-  const pkg = s.packages?.find((p) => p.identifier);
-  if (pkg?.identifier) {
-    if (pkg.registryType === 'npm') {
-      return { ...base, transport: 'stdio', command: 'npx', args: ['-y', pkg.identifier] };
+  const pkg = s.packages?.find((p) => p.identifier || p.name);
+  const pkgId = pkg?.identifier ?? pkg?.name;
+  if (pkg && pkgId) {
+    const kind = pkg.registry_type ?? pkg.registry_name;
+    if (kind === 'npm') {
+      return { ...base, transport: 'stdio', command: 'npx', args: ['-y', pkgId] };
     }
-    if (pkg.registryType === 'pypi') {
-      return { ...base, transport: 'stdio', command: 'uvx', args: [pkg.identifier] };
+    if (kind === 'pypi') {
+      return { ...base, transport: 'stdio', command: 'uvx', args: [pkgId] };
     }
   }
   return base;
@@ -104,8 +116,11 @@ export function createMcpRouter(bindings: AppBindings) {
       if (!res.ok) {
         return c.json({ error: `registry HTTP ${res.status}`, servers: [] }, 502);
       }
-      const body = await res.json() as { servers?: RegistryServer[] };
+      // Items are wrapped as { server, _meta }; tolerate a flat shape too.
+      const body = await res.json() as { servers?: Array<RegistryItem | RegistryServer> };
       const servers = (body.servers ?? [])
+        .map((item) => ('server' in item && item.server ? item.server : item as RegistryServer))
+        .filter((s): s is RegistryServer => !!s && typeof s.name === 'string')
         .map(normaliseRegistryServer)
         .filter((e) => e.transport !== null);
       return c.json({ source: 'registry.modelcontextprotocol.io', servers });
@@ -138,6 +153,11 @@ export function createMcpRouter(bindings: AppBindings) {
     }
 
     const id = mcpRegistry.register(body.name, body.config, body.sourceUrl);
+
+    if (!body.connect) {
+      // Saved as a disconnected candidate — user connects after filling env/keys.
+      return c.json({ id, connection: { serverName: body.name, status: 'disconnected', tools: [] } }, 201);
+    }
 
     // Auto-connect after registration
     try {
