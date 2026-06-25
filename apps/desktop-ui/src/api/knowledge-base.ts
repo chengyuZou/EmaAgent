@@ -142,9 +142,10 @@ export const kbApi = {
     });
   },
 
-  /** POST /api/kb/reembed — re-embed all stale assets in the background. */
-  async reembed(opts: { ebdProviderId: string; ebdModel: string }): Promise<{ reembedded: number }> {
-    return sidecarClient.request<{ reembedded: number }>('/api/kb/reembed', {
+  /** POST /api/kb/reembed — re-embed all stale assets in the background.
+   *  Returns counts of assets successfully re-embedded vs failed. */
+  async reembed(opts: { ebdProviderId: string; ebdModel: string }): Promise<{ done: number; failed: number }> {
+    return sidecarClient.request<{ done: number; failed: number }>('/api/kb/reembed', {
       method: 'POST',
       json: opts,
     });

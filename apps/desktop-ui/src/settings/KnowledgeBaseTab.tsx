@@ -82,7 +82,8 @@ function IngestForm({ onDone }: { onDone(): void }): JSX.Element {
   async function pickFile(): Promise<void> {
     const path = await tauriBridge.openFileDialog({
       filters: [
-        { name: '文档', extensions: ['pdf', 'md', 'txt', 'docx', 'pptx', 'xlsx'] },
+        { name: '文档', extensions: ['pdf', 'md', 'txt', 'docx', 'html', 'htm'] },
+        { name: '图片', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif'] },
         { name: '所有文件', extensions: ['*'] },
       ],
     });

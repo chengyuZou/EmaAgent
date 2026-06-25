@@ -5,10 +5,12 @@ import type { AppBindings } from '../wiring.js';
 // ── Schemas ───────────────────────────────────────────────────────────────────
 
 const ingestBody = z.object({
-  filePath:       z.string().min(1),
-  ebdProviderId:  z.string().optional(),
-  ebdModel:       z.string().optional(),
-  mimeType:       z.string().optional(),
+  filePath:         z.string().min(1),
+  ebdProviderId:    z.string().optional(),
+  ebdModel:         z.string().optional(),
+  visionProviderId: z.string().optional(),
+  visionModel:      z.string().optional(),
+  mimeType:         z.string().optional(),
 });
 
 const listQuery = z.object({
@@ -38,9 +40,35 @@ const invalidateBody = z.object({
 });
 
 const reembedBody = z.object({
-  ebdProviderId: z.string().min(1),
-  ebdModel:      z.string().min(1),
+  ebdProviderId: z.string().min(1).optional(),
+  ebdModel:      z.string().min(1).optional(),
 });
+
+// ── Binding resolution ──────────────────────────────────────────────────────────
+
+/**
+ * Resolve the embed/vision/rerank models bound in settings so KB ingest/search
+ * reuse the same global model-bindings the rest of the app uses. Request-supplied
+ * values take precedence; otherwise the bound default is filled in. This is what
+ * lets the KB UI stay dumb (send no model ids) yet still get dense retrieval + OCR.
+ */
+function resolveBoundModels(bindings: AppBindings): {
+  ebdProviderId?:    string; ebdModel?:    string;
+  visionProviderId?: string; visionModel?: string;
+  rerankProviderId?: string; rerankModel?: string;
+} {
+  const embed  = bindings.modelBindings.get('embed');
+  const vision = bindings.modelBindings.get('vision');
+  const rerank = bindings.modelBindings.get('rerank');
+  return {
+    ebdProviderId:    embed?.providerConfigId,
+    ebdModel:         embed?.model,
+    visionProviderId: vision?.providerConfigId,
+    visionModel:      vision?.model,
+    rerankProviderId: rerank?.providerConfigId,
+    rerankModel:      rerank?.model,
+  };
+}
 
 // ── Route factory ─────────────────────────────────────────────────────────────
 
@@ -53,12 +81,15 @@ export function kbRoute(bindings: AppBindings): Hono {
     if (!parsed.success)
       return c.json({ error: 'invalid_request', details: parsed.error.flatten() }, 400);
 
-    const { filePath, ebdProviderId, ebdModel, mimeType } = parsed.data;
+    const { filePath, ebdProviderId, ebdModel, visionProviderId, visionModel, mimeType } = parsed.data;
+    const bound = resolveBoundModels(bindings);
 
     try {
       const result = await bindings.kb.ingest(filePath, {
-        ebdProviderId,
-        ebdModel,
+        ebdProviderId:    ebdProviderId    ?? bound.ebdProviderId,
+        ebdModel:         ebdModel         ?? bound.ebdModel,
+        visionProviderId: visionProviderId ?? bound.visionProviderId,
+        visionModel:      visionModel      ?? bound.visionModel,
         mimeType,
       });
       return c.json({
@@ -124,8 +155,17 @@ export function kbRoute(bindings: AppBindings): Hono {
     if (!parsed.success)
       return c.json({ error: 'invalid_request', details: parsed.error.flatten() }, 400);
 
+    const bound = resolveBoundModels(bindings);
+    const opts = {
+      ...parsed.data,
+      ebdProviderId:    parsed.data.ebdProviderId    ?? bound.ebdProviderId,
+      ebdModel:         parsed.data.ebdModel         ?? bound.ebdModel,
+      rerankProviderId: parsed.data.rerankProviderId ?? bound.rerankProviderId,
+      rerankModel:      parsed.data.rerankModel       ?? bound.rerankModel,
+    };
+
     try {
-      const result = await bindings.kb.search(parsed.data.query, parsed.data);
+      const result = await bindings.kb.search(parsed.data.query, opts);
       return c.json(result);
     } catch (err) {
       return c.json({ error: 'search_failed', message: (err as Error).message }, 500);
@@ -133,8 +173,8 @@ export function kbRoute(bindings: AppBindings): Hono {
   });
 
   // POST /api/kb/invalidate — mark all embeddings stale (call when embed model changes)
-  app.post('/invalidate', (c) => {
-    const parsed = invalidateBody.safeParse(c.req.json());
+  app.post('/invalidate', async (c) => {
+    const parsed = invalidateBody.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success)
       return c.json({ error: 'invalid_request', details: parsed.error.flatten() }, 400);
 
@@ -148,7 +188,12 @@ export function kbRoute(bindings: AppBindings): Hono {
     if (!parsed.success)
       return c.json({ error: 'invalid_request', details: parsed.error.flatten() }, 400);
 
-    const { ebdProviderId, ebdModel } = parsed.data;
+    const bound = resolveBoundModels(bindings);
+    const ebdProviderId = parsed.data.ebdProviderId ?? bound.ebdProviderId;
+    const ebdModel      = parsed.data.ebdModel      ?? bound.ebdModel;
+    if (!ebdProviderId || !ebdModel) {
+      return c.json({ error: 'no_embed_binding', message: '未配置 Embedding 模型，无法重建索引' }, 400);
+    }
     try {
       const result = await bindings.kb.reembed({ ebdProviderId, ebdModel });
       return c.json(result);

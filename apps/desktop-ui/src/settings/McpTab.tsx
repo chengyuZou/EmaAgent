@@ -1,7 +1,7 @@
 ﻿import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import {
   Badge, Button, Callout, Card, Dialog, Divider, DropdownMenu,
-  Field, Input, ScrollArea, Select, Spinner, Switch, Tabs, Textarea, Tooltip,
+  Field, IconButton, Input, ScrollArea, Select, Spinner, Switch, Tabs, Textarea, Tooltip,
 } from '@ema-agent/ui';
 import { useMcpStore, type McpServerEntry, type McpServerConfig, type McpImportResult, type McpMarketEntry } from '../stores/mcp-store.js';
 import { showToast } from '../lib/toast.js';
@@ -26,17 +26,35 @@ const TRANSPORT_OPTIONS = [
 
 // ── Add-server form state ─────────────────────────────────────────────────────
 
+interface KvPair { key: string; value: string }
+
 interface AddFormState {
   name:        string;
   transport:   TransportType;
   command:     string;
   args:        string;   // space-separated
   url:         string;
+  /** Environment variables for stdio (API keys etc., e.g. AMAP_MAPS_API_KEY). */
+  env:         KvPair[];
+  /** Request headers for sse/http (auth, e.g. Authorization: Bearer …). */
+  headers:     KvPair[];
 }
 
 const EMPTY_FORM: AddFormState = {
-  name: '', transport: 'stdio', command: '', args: '', url: '',
+  name: '', transport: 'stdio', command: '', args: '', url: '', env: [], headers: [],
 };
+
+function kvToRecord(pairs: KvPair[]): Record<string, string> | undefined {
+  const out: Record<string, string> = {};
+  for (const { key, value } of pairs) {
+    if (key.trim()) out[key.trim()] = value;
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
+function recordToKv(rec: Record<string, string> | undefined): KvPair[] {
+  return rec ? Object.entries(rec).map(([key, value]) => ({ key, value })) : [];
+}
 
 function buildConfig(form: AddFormState): McpServerConfig {
   if (form.transport === 'stdio') {
@@ -44,12 +62,83 @@ function buildConfig(form: AddFormState): McpServerConfig {
       type:    'stdio',
       command: form.command.trim(),
       args:    form.args.trim() ? form.args.trim().split(/\s+/) : [],
+      env:     kvToRecord(form.env),
     };
   }
   return {
-    type: form.transport as 'sse' | 'http',
-    url:  form.url.trim(),
+    type:    form.transport as 'sse' | 'http',
+    url:     form.url.trim(),
+    headers: kvToRecord(form.headers),
   };
+}
+
+/** Pre-fill the form from an existing server (edit flow). */
+function configToForm(name: string, config: McpServerConfig): AddFormState {
+  if (config.type === 'stdio') {
+    return {
+      name, transport: 'stdio',
+      command: config.command,
+      args:    (config.args ?? []).join(' '),
+      url:     '',
+      env:     recordToKv(config.env),
+      headers: [],
+    };
+  }
+  return {
+    name, transport: config.type,
+    command: '', args: '',
+    url:     config.url,
+    env:     [],
+    headers: recordToKv(config.headers),
+  };
+}
+
+// ── Key-value editor (env vars / headers) ──────────────────────────────────────
+
+function KeyValueEditor({
+  pairs, onChange, keyPlaceholder, valuePlaceholder, secret,
+}: {
+  pairs:             KvPair[];
+  onChange:          (pairs: KvPair[]) => void;
+  keyPlaceholder?:   string;
+  valuePlaceholder?: string;
+  secret?:           boolean;
+}): JSX.Element {
+  const [reveal, setReveal] = useState(false);
+  const update = (i: number, patch: Partial<KvPair>): void =>
+    onChange(pairs.map((p, idx) => (idx === i ? { ...p, ...patch } : p)));
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      {pairs.map((p, i) => (
+        <div key={i} className="flex items-center gap-1.5">
+          <Input
+            inputSize="sm" className="flex-1 font-mono" placeholder={keyPlaceholder}
+            value={p.key} onChange={(e) => update(i, { key: e.target.value })}
+          />
+          <Input
+            inputSize="sm" className="flex-1 font-mono"
+            type={secret && !reveal ? 'password' : 'text'} placeholder={valuePlaceholder}
+            value={p.value} onChange={(e) => update(i, { value: e.target.value })}
+          />
+          <IconButton
+            size="sm" label="删除" icon="i-mdi:close"
+            onClick={() => onChange(pairs.filter((_, idx) => idx !== i))}
+          />
+        </div>
+      ))}
+      <div className="flex items-center gap-1">
+        <Button variant="ghost" size="sm" onClick={() => onChange([...pairs, { key: '', value: '' }])}>
+          <span className="i-mdi:plus text-base mr-0.5" aria-hidden /> 添加一项
+        </Button>
+        {secret && pairs.length > 0 && (
+          <Button variant="ghost" size="sm" onClick={() => setReveal((v) => !v)}>
+            {reveal ? '隐藏值' : '显示值'}
+          </Button>
+        )}
+      </div>
+    </div>
+  );
 }
 
 // ── Tab component ─────────────────────────────────────────────────────────────
@@ -73,6 +162,7 @@ export function McpTab(): JSX.Element {
   const [importResults, setImportResults] = useState<McpImportResult[] | null>(null);
 
   const [activeTab, setActiveTab] = useState('installed');
+  const [editingName, setEditingName] = useState<string | null>(null);
 
   useEffect(() => { void useMcpStore.getState().load(); }, []);
 
@@ -83,6 +173,15 @@ export function McpTab(): JSX.Element {
     setForm(EMPTY_FORM);
     setProbeResult(null);
     setAddError(null);
+    setEditingName(null);
+  }
+
+  function handleEdit(sv: McpServerEntry): void {
+    setForm(configToForm(sv.name, sv.config));
+    setEditingName(sv.name);
+    setProbeResult(null);
+    setAddError(null);
+    setAddOpen(true);
   }
 
   async function handleProbe(): Promise<void> {
@@ -103,8 +202,10 @@ export function McpTab(): JSX.Element {
     setAdding(true);
     setAddError(null);
     try {
-      await useMcpStore.getState().register(form.name.trim(), buildConfig(form));
-      showToast(`已注册 ${form.name}`, { variant: 'success' });
+      // register() upserts by name; editing re-registers + connects so the new
+      // env/headers (API keys, Bearer token) take effect immediately.
+      await useMcpStore.getState().register(form.name.trim(), buildConfig(form), undefined, true);
+      showToast(editingName ? `已更新 ${form.name}` : `已注册 ${form.name}`, { variant: 'success' });
       closeAdd();
     } catch (err) {
       setAddError(err instanceof Error ? err.message : String(err));
@@ -224,6 +325,7 @@ export function McpTab(): JSX.Element {
                             server={sv}
                             onToggleEnabled={() => void handleToggleEnabled(sv)}
                             onRemove={() => void handleRemove(sv.name)}
+                            onEdit={() => handleEdit(sv)}
                           />
                         </div>
                       ))}
@@ -307,12 +409,13 @@ export function McpTab(): JSX.Element {
         </div>
       </Dialog>
 
-      {/* Add-server dialog */}
+      {/* Add / edit-server dialog */}
       <Dialog
         open={addOpen}
         onOpenChange={(open) => { if (!open) closeAdd(); }}
-        title="添加 MCP 服务器"
-        description="注册一个新的 MCP 服务器。注册后自动尝试连接。"
+        title={editingName ? '编辑 MCP 服务器' : '添加 MCP 服务器'}
+        description="注册后自动尝试连接。远程服务器在 Headers 填鉴权，本地进程在环境变量填 API Key。"
+        widthClass="max-w-lg"
       >
         {addError && <Callout variant="danger" className="mb-3">{addError}</Callout>}
 
@@ -322,7 +425,8 @@ export function McpTab(): JSX.Element {
               placeholder="my-server"
               value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })}
-              autoFocus
+              disabled={!!editingName}
+              autoFocus={!editingName}
             />
           </Field>
 
@@ -350,15 +454,35 @@ export function McpTab(): JSX.Element {
                   onChange={(e) => setForm({ ...form, args: e.target.value })}
                 />
               </Field>
+              <Field label="环境变量" description="API Key 等，如 AMAP_MAPS_API_KEY">
+                <KeyValueEditor
+                  pairs={form.env}
+                  onChange={(env) => setForm({ ...form, env })}
+                  keyPlaceholder="AMAP_MAPS_API_KEY"
+                  valuePlaceholder="api_key"
+                  secret
+                />
+              </Field>
             </>
           ) : (
-            <Field label="服务器 URL" required>
-              <Input
-                placeholder="http://localhost:3000/sse"
-                value={form.url}
-                onChange={(e) => setForm({ ...form, url: e.target.value })}
-              />
-            </Field>
+            <>
+              <Field label="服务器 URL" required>
+                <Input
+                  placeholder="http://localhost:3000/sse"
+                  value={form.url}
+                  onChange={(e) => setForm({ ...form, url: e.target.value })}
+                />
+              </Field>
+              <Field label="请求头 Headers" description="鉴权等，如 Authorization: Bearer …">
+                <KeyValueEditor
+                  pairs={form.headers}
+                  onChange={(headers) => setForm({ ...form, headers })}
+                  keyPlaceholder="Authorization"
+                  valuePlaceholder="Bearer sk-..."
+                  secret
+                />
+              </Field>
+            </>
           )}
 
           {probeResult && (
@@ -609,11 +733,12 @@ function toolParamNames(schema: Record<string, unknown> | undefined): string[] {
 }
 
 function ServerRow({
-  server, onToggleEnabled, onRemove,
+  server, onToggleEnabled, onRemove, onEdit,
 }: {
   server:           McpServerEntry;
   onToggleEnabled:  () => void;
   onRemove:         () => void;
+  onEdit:           () => void;
 }): JSX.Element {
   const st = STATUS_BADGE[server.connection.status];
   const tools = server.connection.tools;
@@ -622,6 +747,12 @@ function ServerRow({
   const [detailOpen, setDetailOpen] = useState(false);
 
   const menuItems = [
+    {
+      kind: 'item' as const,
+      label: '编辑 / 鉴权',
+      icon: 'i-mdi:pencil-outline',
+      onSelect: onEdit,
+    },
     {
       kind: 'item' as const,
       label: '详情 / 参数',
