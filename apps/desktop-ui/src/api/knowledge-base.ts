@@ -55,13 +55,12 @@ export interface AssetPageWire {
   nextCursor: number | null;
 }
 
-export interface IngestResultWire {
-  assetId:   string;
-  fileName:  string;
-  chunks:    number;
-  pageCount?: number;
-  wordCount:  number;
-  status:     DocumentIndexStatus;
+/** POST /api/kb/documents now returns immediately (202) — indexing runs in the
+ *  background and progress arrives via the system SSE (kb_ingest_* events). */
+export interface IngestStartedWire {
+  assetId:  string;
+  fileName: string;
+  status:   DocumentIndexStatus;
 }
 
 export interface DocumentPreviewWire {
@@ -112,9 +111,9 @@ export interface KbSearchOptions {
 // ── API object ────────────────────────────────────────────────────────────────
 
 export const kbApi = {
-  /** POST /api/kb/documents — ingest a file into the knowledge base. */
-  async ingest(filePath: string, opts: KbIngestOptions = {}): Promise<IngestResultWire> {
-    return sidecarClient.request<IngestResultWire>('/api/kb/documents', {
+  /** POST /api/kb/documents — start background ingest, returns immediately (202). */
+  async ingest(filePath: string, opts: KbIngestOptions = {}): Promise<IngestStartedWire> {
+    return sidecarClient.request<IngestStartedWire>('/api/kb/documents', {
       method: 'POST',
       json: { filePath, ...opts },
     });

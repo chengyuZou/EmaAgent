@@ -20,6 +20,7 @@ import { showToast } from './toast.js';
 import { useSettingsStore } from '../stores/settings-store.js';
 import { useCardStore } from '../stores/card-store.js';
 import { useMemoryStore } from '../stores/memory-store.js';
+import { useKbStore } from '../stores/kb-store.js';
 import type { EmaStreamEvent } from '@ema-agent/contracts';
 import type { MemoryTaskKind } from '@ema-agent/storage';
 
@@ -147,6 +148,19 @@ function dispatchSystemEvent(event: EmaStreamEvent): void {
 
     case 'memory_maintenance_failed':
       useMemoryStore.getState().onMaintenanceFailed(event.error);
+      break;
+
+    // ── Knowledge-base ingest progress (background indexing) ──────────────
+    case 'kb_ingest_progress':
+      useKbStore.getState().onIngestProgress(event.assetId, event.stage, event.progress);
+      break;
+
+    case 'kb_ingest_completed':
+      useKbStore.getState().onIngestCompleted(event.assetId);
+      break;
+
+    case 'kb_ingest_failed':
+      useKbStore.getState().onIngestFailed(event.assetId, event.error);
       break;
 
     // ── Memory pipeline telemetry (Reserved — not yet emitted, Round 4.5) ─

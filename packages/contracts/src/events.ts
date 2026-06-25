@@ -243,6 +243,13 @@ export type EmaStreamEvent =
   | { type: 'memory_task_completed'; taskId: string; kind: string; durationMs: number }
   | { type: 'memory_task_failed';    taskId: string; kind: string; error: string }
 
+  // Knowledge-base ingest progress — system-scoped (background document indexing).
+  // sessionId is optional: absent for global settings-page uploads; set later for
+  // chat-dropped scope:session ingests. progress is a 0–1 fraction for the bar.
+  | { type: 'kb_ingest_progress';  assetId: string; stage: 'validate' | 'parse' | 'chunk' | 'embed'; progress: number; sessionId?: SessionId }
+  | { type: 'kb_ingest_completed'; assetId: string; sessionId?: SessionId }
+  | { type: 'kb_ingest_failed';    assetId: string; error: string; sessionId?: SessionId }
+
   // Agent
   | { type: 'agent_iteration';     sessionId: SessionId; n: number }
   | { type: 'agent_breaker_tripped'; sessionId: SessionId; reason: string }

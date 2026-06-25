@@ -135,7 +135,7 @@ export type {
   DocumentAssetWire,
   AssetPageWire,
   DocumentIndexStatus,
-  IngestResultWire,
+  IngestStartedWire,
   KbSearchHitWire,
   KbSearchResultWire,
   KbIngestOptions,

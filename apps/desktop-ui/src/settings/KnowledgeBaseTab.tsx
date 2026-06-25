@@ -2,8 +2,8 @@
  * KnowledgeBaseTab — document ingest, list, delete, and search test.
  */
 import { useState, useEffect, useCallback, type CSSProperties, type JSX } from 'react';
-import { Button, IconButton, Input, Spinner, Badge, Callout, ScrollArea, Select } from '@ema-agent/ui';
-import { useKbStore } from '../stores/kb-store.js';
+import { Button, IconButton, Input, Spinner, Badge, Callout, ScrollArea, Select, Progress } from '@ema-agent/ui';
+import { useKbStore, type IngestJob, type IngestStage } from '../stores/kb-store.js';
 import { tauriBridge } from '../lib/tauri-bridge.js';
 import { showToast } from '../lib/toast.js';
 import { kbApi, type DocumentAssetWire, type ChunkSummaryWire, type AssetUsageWire } from '../api/knowledge-base.js';
@@ -232,7 +232,7 @@ function IngestForm({ onDone }: { onDone(): void }): JSX.Element {
     if (!useKbStore.getState().ingestError) {
       setFilePath('');
       onDone();
-      showToast('导入成功', { variant: 'success' });
+      showToast('已加入处理队列', { variant: 'success' });
     }
   }
 
@@ -370,6 +370,78 @@ function SearchTest(): JSX.Element {
   );
 }
 
+// ── ProcessingQueue ───────────────────────────────────────────────────────────
+// Background ingest jobs, fed by the system SSE (kb_ingest_* → kb-store).
+
+const STAGE_LABEL: Record<IngestStage, string> = {
+  validate: '校验', parse: '解析', chunk: '分块', embed: '嵌入',
+};
+// Bar colour per stage — literal class strings so UnoCSS scans them statically.
+const STAGE_BAR: Record<IngestStage, string> = {
+  validate: 'bg-[var(--ema-info)]',
+  parse:    'bg-[var(--ema-info)]',
+  chunk:    'bg-[#a855f7]',
+  embed:    'bg-[var(--ema-warning)]',
+};
+
+function ProcessingQueue(): JSX.Element | null {
+  const jobs = useKbStore((s) => s.ingestJobs);
+  const list = Object.values(jobs);
+  if (list.length === 0) return null;
+
+  return (
+    <section className="flex flex-col gap-2 ema-fade-in">
+      <h2 className="text-base font-semibold text-[var(--ema-text-primary)]">处理队列</h2>
+      <div className="flex flex-col gap-1.5">
+        {list.map((job, i) => (
+          <div key={job.assetId} className="ema-stagger-in" style={{ '--stagger-i': i } as CSSProperties}>
+            <IngestJobRow job={job} />
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function IngestJobRow({ job }: { job: IngestJob }): JSX.Element {
+  const errored = job.status === 'error';
+  const done    = job.status === 'done';
+  const pct     = Math.round(job.progress * 100);
+  const barClass = errored ? 'bg-[var(--ema-danger)]' : done ? 'bg-[var(--ema-success)]' : STAGE_BAR[job.stage];
+
+  return (
+    <div className={`rounded-xl bg-[var(--ema-surface-1)] px-3 py-2.5 flex flex-col gap-1.5
+                     ${done ? 'ema-fade-out' : ''}`}>
+      <div className="flex items-center gap-2">
+        {errored ? (
+          <span className="i-mdi:alert-circle text-base shrink-0" style={{ color: 'var(--ema-danger)' }} aria-hidden />
+        ) : done ? (
+          <span className="i-mdi:check-circle text-base shrink-0" style={{ color: 'var(--ema-success)' }} aria-hidden />
+        ) : (
+          <Spinner size="sm" />
+        )}
+        <span className="text-sm truncate flex-1 text-[var(--ema-text-primary)]" title={job.fileName}>
+          {errored ? '处理失败' : done ? '已完成' : '正在处理'} · {job.fileName}
+        </span>
+        <span className="text-xs shrink-0 font-mono"
+              style={{ color: errored ? 'var(--ema-danger)' : 'var(--ema-text-tertiary)' }}>
+          {errored ? '错误' : done ? '100%' : `${STAGE_LABEL[job.stage]} · ${pct}%`}
+        </span>
+        {errored && (
+          <IconButton size="sm" variant="default" label="移除" icon="i-mdi:close"
+                      onClick={() => useKbStore.getState().dismissJob(job.assetId)} />
+        )}
+      </div>
+
+      <Progress progress={errored ? 100 : pct} barClass={barClass} height="h-1.5" animated={!errored && !done} />
+
+      {errored && job.error && (
+        <p className="text-[11px] text-[var(--ema-danger)] truncate ema-fade-in" title={job.error}>{job.error}</p>
+      )}
+    </div>
+  );
+}
+
 // ── KbModelSettings ───────────────────────────────────────────────────────────
 // KB's own embed + rerank model choice (settings → kb.models), decoupled from
 // LightRAG's lightrag-embed binding. Changing embed makes existing docs stale.
@@ -462,6 +534,9 @@ export function KnowledgeBaseTab(): JSX.Element {
 
       {/* ── Retrieval models (embed + rerank) ── */}
       <KbModelSettings />
+
+      {/* ── Background processing queue ── */}
+      <ProcessingQueue />
 
       {/* ── Document list ── */}
       <section className="flex flex-col gap-3">

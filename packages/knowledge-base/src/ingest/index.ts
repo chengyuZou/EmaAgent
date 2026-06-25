@@ -27,7 +27,7 @@ export async function ingest(
   deps:     IngestDeps,
 ): Promise<IngestResult> {
   const { store, events, ebdRouter, visionAdapter } = deps;
-  const assetId = randomUUID();
+  const assetId = opts.assetId ?? randomUUID();
 
   // ── 1. Read + validate ────────────────────────────────────────────────────
   const bytes    = new Uint8Array(await readFile(filePath));
@@ -41,7 +41,12 @@ export async function ingest(
   // ── 2. Deduplication ──────────────────────────────────────────────────────
   // Skip dedup if the previous ingest errored — allow re-ingest.
   const existing = validation.hash ? store.findAssetByHash(validation.hash) : undefined;
-  if (existing && existing.status !== 'error') return buildDuplicateResult(existing, store);
+  if (existing && existing.status !== 'error') {
+    // Duplicate: signal completion for the caller's pre-generated assetId so a
+    // background processing row clears, then return the already-indexed asset.
+    events.emit({ assetId, kind: 'complete', progress: 1 });
+    return buildDuplicateResult(existing, store);
+  }
 
   // ── 3. Store asset (indexing) ──────────────────────────────────────────────
   const fileName = filePath.split(/[\\/]/).pop() ?? filePath;

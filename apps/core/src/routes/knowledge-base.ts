@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
+import { randomUUID } from 'node:crypto';
 import type { AppBindings } from '../wiring.js';
 
 // ── Schemas ───────────────────────────────────────────────────────────────────
@@ -93,30 +94,26 @@ export function kbRoute(bindings: AppBindings): Hono {
       return c.json({ error: 'invalid_request', details: parsed.error.flatten() }, 400);
 
     const { filePath, ebdProviderId, ebdModel, visionProviderId, visionModel, mimeType } = parsed.data;
-    const bound = resolveBoundModels(bindings);
+    const bound    = resolveBoundModels(bindings);
+    const assetId  = randomUUID();
+    const fileName = filePath.split(/[\\/]/).pop() ?? filePath;
 
-    try {
-      const result = await bindings.kb.ingest(filePath, {
-        ebdProviderId:    ebdProviderId    ?? bound.ebdProviderId,
-        ebdModel:         ebdModel         ?? bound.ebdModel,
-        visionProviderId: visionProviderId ?? bound.visionProviderId,
-        visionModel:      visionModel      ?? bound.visionModel,
-        mimeType,
-      });
-      return c.json({
-        assetId:   result.asset.id,
-        fileName:  result.asset.fileName,
-        chunks:    result.chunks,
-        pageCount: result.asset.pageCount,
-        wordCount: result.asset.wordCount,
-        status:    result.asset.status,
-      }, 201);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      if (msg.includes('validation failed'))
-        return c.json({ error: 'unsupported_file', message: msg }, 422);
-      return c.json({ error: 'ingest_failed', message: msg }, 500);
-    }
+    // Background indexing: kick off and return immediately. Progress, completion,
+    // and errors all arrive over the systemBus SSE as kb_ingest_* events (keyed by
+    // the pre-generated assetId). A duplicate emits complete instantly.
+    void bindings.kb.ingest(filePath, {
+      assetId,
+      ebdProviderId:    ebdProviderId    ?? bound.ebdProviderId,
+      ebdModel:         ebdModel         ?? bound.ebdModel,
+      visionProviderId: visionProviderId ?? bound.visionProviderId,
+      visionModel:      visionModel      ?? bound.visionModel,
+      mimeType,
+    }).catch((err) => {
+      // The failure was already broadcast via kb_ingest_failed; just log here.
+      console.warn('[kb] background ingest failed:', err instanceof Error ? err.message : err);
+    });
+
+    return c.json({ assetId, fileName, status: 'indexing' }, 202);
   });
 
   // GET /api/kb/documents — cursor-paginated list (newest first), optional keyword

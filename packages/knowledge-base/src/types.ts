@@ -95,6 +95,9 @@ export interface DocumentPreview {
 // ── Ingest ────────────────────────────────────────────────────────────────────
 
 export interface IngestOptions {
+  /** Pre-generated asset id (so the caller can return it before ingest finishes
+   *  and correlate background progress events). Defaults to a fresh uuid. */
+  assetId?: string;
   /** Vision provider id for image/scanned-PDF OCR. */
   visionProviderId?: string;
   visionModel?:      string;

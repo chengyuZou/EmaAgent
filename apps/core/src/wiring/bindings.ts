@@ -410,6 +410,18 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
   // Search falls back to SQL cosine until this resolves (~50–200ms).
   void kb.init().catch((err) => console.warn('[kb] HNSW init failed:', err));
 
+  // Bridge KB ingest progress (internal DocumentEventEmitter) → systemBus as
+  // EmaStreamEvent, so the existing /api/system/events SSE drives the KB
+  // processing-queue UI. Background indexing — no new SSE endpoint.
+  kb.events.on((e) => {
+    if (e.kind === 'complete') { systemBus.emit({ type: 'kb_ingest_completed', assetId: e.assetId }); return; }
+    if (e.kind === 'error')    { systemBus.emit({ type: 'kb_ingest_failed', assetId: e.assetId, error: e.error ?? 'unknown' }); return; }
+    // validate/parse/chunk/embed → a monotonic 0–1 bar for the UI.
+    const base: Record<string, number> = { validate: 0.05, parse: 0.25, chunk: 0.45, embed: 0.5 };
+    const progress = e.kind === 'embed' ? 0.5 + 0.5 * (e.progress ?? 0) : (base[e.kind] ?? 0);
+    systemBus.emit({ type: 'kb_ingest_progress', assetId: e.assetId, stage: e.kind, progress });
+  });
+
   // kb_search tool injection: resolve the bound embed/rerank models so retrieval
   // uses the same models as the rest of the app. assetIds omitted → searches all
   // global KBs; per-turn document scoping arrives with the input-bar KB picker.

@@ -12,6 +12,19 @@ import {
 
 export type { DocumentAssetWire, KbSearchResultWire, KbSearchHitWire } from '../api/knowledge-base.js';
 
+// ── Ingest job (background processing queue) ────────────────────────────────────
+
+export type IngestStage = 'validate' | 'parse' | 'chunk' | 'embed';
+
+export interface IngestJob {
+  assetId:  string;
+  fileName: string;
+  stage:    IngestStage;
+  progress: number;            // 0–1
+  status:   'indexing' | 'done' | 'error';
+  error?:   string;
+}
+
 // ── Store interface ───────────────────────────────────────────────────────────
 
 export interface KbStoreState {
@@ -19,6 +32,8 @@ export interface KbStoreState {
   loading:      boolean;
   error:        string | null;
 
+  /** assetId → in-flight ingest job (background processing queue). */
+  ingestJobs:   Record<string, IngestJob>;
   ingesting:    boolean;
   ingestError:  string | null;
 
@@ -32,6 +47,12 @@ export interface KbStoreState {
   search(query: string, opts?: KbSearchOptions): Promise<void>;
   clearSearch(): void;
   clearError(): void;
+
+  // Driven by the system SSE (kb_ingest_* events).
+  onIngestProgress(assetId: string, stage: IngestStage, progress: number): void;
+  onIngestCompleted(assetId: string): void;
+  onIngestFailed(assetId: string, error: string): void;
+  dismissJob(assetId: string): void;
 }
 
 // ── Store ─────────────────────────────────────────────────────────────────────
@@ -41,6 +62,7 @@ export const useKbStore = create<KbStoreState>((set, get) => ({
   loading:       false,
   error:         null,
 
+  ingestJobs:    {},
   ingesting:     false,
   ingestError:   null,
 
@@ -64,10 +86,22 @@ export const useKbStore = create<KbStoreState>((set, get) => ({
   async ingest(filePath, opts = {}) {
     set({ ingesting: true, ingestError: null });
     try {
-      await kbApi.ingest(filePath, opts);
-      // Reload the list to show the newly ingested doc.
-      await get().loadDocuments();
-      set({ ingesting: false });
+      // Background: POST returns immediately with the pre-generated assetId; a
+      // processing job is shown until the system SSE delivers completion/error.
+      const started = await kbApi.ingest(filePath, opts);
+      set((s) => ({
+        ingesting:  false,
+        ingestJobs: {
+          ...s.ingestJobs,
+          [started.assetId]: {
+            assetId:  started.assetId,
+            fileName: started.fileName,
+            stage:    'validate',
+            progress: 0,
+            status:   'indexing',
+          },
+        },
+      }));
     } catch (err: unknown) {
       set({
         ingestError: err instanceof Error ? err.message : '导入失败',
@@ -108,5 +142,45 @@ export const useKbStore = create<KbStoreState>((set, get) => ({
 
   clearError() {
     set({ error: null, ingestError: null });
+  },
+
+  onIngestProgress(assetId, stage, progress) {
+    set((s) => {
+      const job = s.ingestJobs[assetId];
+      if (!job) return {};
+      return { ingestJobs: { ...s.ingestJobs, [assetId]: { ...job, stage, progress } } };
+    });
+  },
+
+  onIngestCompleted(assetId) {
+    // Mark done (green, 100%) briefly so the row plays an exit animation, then
+    // drop it — by which point loadDocuments has surfaced the real KB row.
+    set((s) => {
+      const job = s.ingestJobs[assetId];
+      if (!job) return {};
+      return { ingestJobs: { ...s.ingestJobs, [assetId]: { ...job, status: 'done', progress: 1 } } };
+    });
+    void get().loadDocuments();
+    setTimeout(() => {
+      set((s) => {
+        const { [assetId]: _gone, ...rest } = s.ingestJobs;
+        return { ingestJobs: rest };
+      });
+    }, 350);
+  },
+
+  onIngestFailed(assetId, error) {
+    set((s) => {
+      const job = s.ingestJobs[assetId];
+      if (!job) return {};
+      return { ingestJobs: { ...s.ingestJobs, [assetId]: { ...job, status: 'error', error } } };
+    });
+  },
+
+  dismissJob(assetId) {
+    set((s) => {
+      const { [assetId]: _gone, ...rest } = s.ingestJobs;
+      return { ingestJobs: rest };
+    });
   },
 }));
