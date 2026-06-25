@@ -31,6 +31,8 @@ export interface TurnRequest {
   /** provider_configs.id — 和 model 成对使用，前端选择器选的是 (provider, model) 组合。 */
   providerId?:      string;
   model?:           string;
+  /** KB documents the user selected for this turn — scopes kb_search. */
+  kbAssetIds?:      string[];
   /**
    * Whether to spawn a TtsCoordinator for this turn. Defaults to false —
    * the frontend opts in per turn (after the user toggles the speaker icon).
@@ -306,6 +308,7 @@ export class Orchestrator {
           userInput:      request.contentParts?.length ? request.contentParts : (request.userInput ?? ''),
           systemPrompt,
           workspaceRoots,
+          kbAssetIds:     request.kbAssetIds,
         });
       }
     }

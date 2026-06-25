@@ -27,6 +27,8 @@ export interface CreateTurnRequest {
   providerId?:   string;
   model?:        string;
   ttsEnabled?:   boolean;
+  /** KB documents selected for this turn — scopes kb_search (agent mode). */
+  kbAssetIds?:   string[];
 }
 
 export interface CreateTurnResponse {

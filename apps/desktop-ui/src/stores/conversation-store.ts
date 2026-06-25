@@ -70,6 +70,7 @@ interface SendInput {
   providerId?:   string;
   model?:        string;
   ttsEnabled?:   boolean;
+  kbAssetIds?:   string[];
 }
 
 // ── Module-level per-session resources ────────────────────────────────────────
@@ -94,6 +95,7 @@ function getOrCreateQueue(sessionId: SessionId): SendQueue<SendInput> {
         providerId:   input.providerId,
         model:        input.model,
         ttsEnabled:   input.ttsEnabled,
+        kbAssetIds:   input.kbAssetIds,
       });
 
       if ((actualSessionId as string) !== (input.sessionId as string)) {

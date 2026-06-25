@@ -151,7 +151,9 @@ async function* runTurn(
         artifactStore:   deps.artifactStore,
         mcpClient:       deps.mcpClient,
         skillRunner:     deps.skillRunner,
-        kbSearch:        deps.kbSearch,
+        kbSearch:        deps.kbSearch
+          ? (query, topK) => deps.kbSearch!(query, topK, input.kbAssetIds)
+          : undefined,
         subagentSpawner: spawner,
         scratchpadDir,
         scratchpadAuthor: 'main',

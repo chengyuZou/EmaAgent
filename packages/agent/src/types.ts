@@ -60,8 +60,13 @@ export interface AgentDeps {
   mcpClient?: IMcpClientBridge;
   /** Skill runner bridge — injected so skill_call tool can invoke registered skills. */
   skillRunner?: ISkillRunner;
-  /** Knowledge-base search — injected so kb_search tool can run AgenticRAG retrieval. */
-  kbSearch?: (query: string, topK?: number) => Promise<KbSearchResult>;
+  /**
+   * Knowledge-base search — injected so the kb_search tool can run AgenticRAG.
+   * The engine binds the turn's selected assetIds into the toolCtx closure, so
+   * the tool itself only passes query + topK. assetIds non-empty → scoped search
+   * + use-count bump; omitted → search all global KBs.
+   */
+  kbSearch?: (query: string, topK?: number, assetIds?: string[]) => Promise<KbSearchResult>;
   /**
    * Per-session context store factory. Returns the file-state and tool-result
    * stores for a given session, creating them on first call and caching.
@@ -115,4 +120,6 @@ export interface AgentRunInput {
   model:                 string;
   /** All workspace roots. First entry is the primary cwd for shell tools. */
   workspaceRoots: string[];
+  /** KB documents selected for this turn — scopes kb_search. Empty/undefined = all KBs. */
+  kbAssetIds?:    string[];
 }

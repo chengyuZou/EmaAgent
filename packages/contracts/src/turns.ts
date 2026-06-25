@@ -21,6 +21,13 @@ export interface TurnRequest {
   /** 模型名。如果有 providerId，此模型必须在该供应商下已启用。 */
   model?:        string;
   ttsEnabled?:   boolean;
+  /**
+   * 本次 turn 用户选中的知识库文档 id。决定 AgenticRAG 的检索范围：
+   * - 非空 → kb_search 限定在这些文档内，并为每个文档记一次使用（use_count +1）
+   * - 省略/空 → 不限定（agent 模式下 kb_search 搜全部全局库）
+   * turn 级字段，与 mode 无关——将来 chat/narrative 的 RAG 复用同一字段。
+   */
+  kbAssetIds?:   string[];
 }
 
 // ── POST /api/turns 的响应体 ─────────────────────────────────────────────────

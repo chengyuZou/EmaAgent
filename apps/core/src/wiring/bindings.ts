@@ -173,8 +173,9 @@ export interface AppBindings {
   skillInstaller: SkillInstaller;
 
   kb: KnowledgeClient;
-  /** KB hybrid search for the kb_search tool — resolves bound embed/rerank models. */
-  kbSearch: (query: string, topK?: number) => Promise<KbSearchResult>;
+  /** KB hybrid search for the kb_search tool — resolves bound embed/rerank models.
+   *  assetIds scopes to the turn's selected docs (+use-count); omitted = all KBs. */
+  kbSearch: (query: string, topK?: number, assetIds?: string[]) => Promise<KbSearchResult>;
 }
 
 // ── Build bindings ────────────────────────────────────────────────────────────
@@ -410,10 +411,11 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
   // kb_search tool injection: resolve the bound embed/rerank models so retrieval
   // uses the same models as the rest of the app. assetIds omitted → searches all
   // global KBs; per-turn document scoping arrives with the input-bar KB picker.
-  const kbSearch = (query: string, topK?: number): Promise<KbSearchResult> => {
+  const kbSearch = (query: string, topK?: number, assetIds?: string[]): Promise<KbSearchResult> => {
     const embed  = modelBindings.get('embed');
     const rerank = modelBindings.get('rerank');
     return kb.search(query, {
+      assetIds,
       topK,
       ebdProviderId:    embed?.providerConfigId,
       ebdModel:         embed?.model,
