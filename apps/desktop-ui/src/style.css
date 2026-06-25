@@ -332,6 +332,19 @@ button, [role="button"], [data-tauri-drag-region], .ema-no-select, .ema-no-selec
 .ema-anim-scale[data-state="open"]   { animation: ema-scale-in var(--ema-duration-base) var(--ema-ease) both; }
 .ema-anim-scale[data-state="closed"] { animation: ema-fade-out var(--ema-duration-fast) var(--ema-ease) both; }
 
+/* Centered dialog — the keyframe MUST keep translate(-50%,-50%), otherwise the
+   scale transform overrides Radix's centering and the dialog jumps off-center. */
+@keyframes ema-dialog-in {
+  from { opacity: 0; transform: translate(-50%, -50%) scale(0.95); }
+  to   { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+@keyframes ema-dialog-out {
+  from { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  to   { opacity: 0; transform: translate(-50%, -50%) scale(0.97); }
+}
+.ema-anim-dialog[data-state="open"]   { animation: ema-dialog-in  var(--ema-duration-base) var(--ema-ease) both; }
+.ema-anim-dialog[data-state="closed"] { animation: ema-dialog-out var(--ema-duration-fast) var(--ema-ease) both; }
+
 .ema-anim-fade[data-state="open"],
 .ema-anim-fade[data-state="delayed-open"] { animation: ema-fade-in var(--ema-duration-base) var(--ema-ease) both; }
 .ema-anim-fade[data-state="closed"]       { animation: ema-fade-out var(--ema-duration-fast) var(--ema-ease) both; }

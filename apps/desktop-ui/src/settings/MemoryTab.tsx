@@ -295,7 +295,7 @@ function NodesTab(): JSX.Element {
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex gap-2 shrink-0">
+      <div className="flex gap-2 shrink-0 ema-slide-down">
         <Input
           className="flex-1"
           placeholder="搜索节点…"
@@ -437,7 +437,7 @@ function ItemsTab(): JSX.Element {
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex gap-2 shrink-0">
+      <div className="flex gap-2 shrink-0 ema-slide-down">
         <Input
           className="flex-1"
           placeholder="搜索条目…"
@@ -555,14 +555,14 @@ function MaintenanceTab(): JSX.Element {
 
   return (
     <div className="flex flex-col gap-4">
-      <div>
+      <div className="ema-slide-down">
         <h3 className="text-sm font-semibold text-[var(--ema-text-primary)]">重要度衰减</h3>
         <p className="text-xs text-[var(--ema-text-tertiary)] mt-0.5">
           降低长期未引用记忆的重要度，使其在召回时权重降低。受保护类型(事实/偏好/关系)永远不衰减。
         </p>
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 gap-3 ema-slide-up">
         <Field label="衰减阈值(天)" description="最后引用距今超过此天数才会衰减">
           <Input
             type="number"
