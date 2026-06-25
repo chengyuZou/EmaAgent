@@ -159,6 +159,11 @@ export function kbRoute(bindings: AppBindings): Hono {
     return c.json(bindings.kb.getChunksPaged(c.req.param('id'), parsed.data));
   });
 
+  // GET /api/kb/documents/:id/usage — which sessions used this KB + how many calls
+  app.get('/documents/:id/usage', (c) => {
+    return c.json(bindings.kb.getAssetUsage(c.req.param('id')));
+  });
+
   // DELETE /api/kb/documents/:id — remove asset + all its chunks
   app.delete('/documents/:id', (c) => {
     const id = c.req.param('id');

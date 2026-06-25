@@ -6,7 +6,7 @@ import { Button, IconButton, Input, Spinner, Badge, Callout, ScrollArea, Select 
 import { useKbStore } from '../stores/kb-store.js';
 import { tauriBridge } from '../lib/tauri-bridge.js';
 import { showToast } from '../lib/toast.js';
-import { kbApi, type DocumentAssetWire, type ChunkSummaryWire } from '../api/knowledge-base.js';
+import { kbApi, type DocumentAssetWire, type ChunkSummaryWire, type AssetUsageWire } from '../api/knowledge-base.js';
 import { settingsApi, type KbModelsConfig, type KbModelRef } from '../api/settings.js';
 import { modelBindingsApi, type AvailableBindingModel } from '../api/model-bindings.js';
 
@@ -114,6 +114,7 @@ function ChunkViewer({ assetId, closing }: { assetId: string; closing?: boolean 
   const [nextCursor, setNextCursor] = useState<number | null>(null);
   const [loading, setLoading]       = useState(false);
   const [loaded, setLoaded]         = useState(false);
+  const [usage, setUsage]           = useState<AssetUsageWire | null>(null);
 
   const load = useCallback(async (cursor?: number): Promise<void> => {
     setLoading(true);
@@ -127,11 +128,39 @@ function ChunkViewer({ assetId, closing }: { assetId: string; closing?: boolean 
     }
   }, [assetId]);
 
-  useEffect(() => { void load(undefined); }, [load]);
+  useEffect(() => {
+    void load(undefined);
+    void kbApi.getUsage(assetId).then(setUsage).catch(() => { /* ignore */ });
+  }, [load, assetId]);
 
   return (
     <div className={`${closing ? 'ema-fade-out' : 'ema-slide-down'} flex flex-col gap-1.5 px-3 py-2.5
                     border-t border-[var(--ema-border)] bg-[var(--ema-surface-0)]`}>
+      {/* ── Usage: which sessions retrieved this doc, how many times ── */}
+      {usage && (usage.totalCalls > 0 ? (
+        <div className="ema-fade-in flex flex-col gap-1 pb-1.5 mb-0.5 border-b border-[var(--ema-border)]">
+          <p className="text-[11px] text-[var(--ema-text-secondary)]">
+            在 <b>{usage.sessions.length}</b> 个会话中被检索 <b>{usage.totalCalls}</b> 次
+          </p>
+          <div className="flex flex-wrap gap-1">
+            {usage.sessions.slice(0, 8).map((s) => (
+              <span key={s.sessionId}
+                    className="ema-stagger-in text-[10px] px-1.5 py-0.5 rounded-full
+                               bg-[var(--ema-surface-2)] text-[var(--ema-text-tertiary)]">
+                {s.title || '(未命名)'} · {s.calls}
+              </span>
+            ))}
+            {usage.sessions.length > 8 && (
+              <span className="text-[10px] px-1 py-0.5 text-[var(--ema-text-tertiary)] opacity-60">
+                +{usage.sessions.length - 8}
+              </span>
+            )}
+          </div>
+        </div>
+      ) : (
+        <p className="ema-fade-in text-[11px] text-[var(--ema-text-tertiary)] pb-1">尚未在任何会话中被检索</p>
+      ))}
+
       {!loaded && loading ? (
         <div className="flex justify-center py-3 ema-fade-in"><Spinner size="sm" /></div>
       ) : items.length === 0 ? (

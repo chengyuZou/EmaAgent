@@ -4,7 +4,7 @@ import type {
 } from './types.js';
 import type { KbSearchResult, DocumentSourceRef } from '@ema-agent/contracts';
 import type { EbdRouter } from '@ema-agent/ebd-client';
-import type { ChunkPage } from '@ema-agent/storage';
+import type { ChunkPage, AssetUsage } from '@ema-agent/storage';
 import { ingest as runIngest } from './ingest/index.js';
 import type { KnowledgeStore } from './store/index.js';
 import type { KbVisionAdapter } from './adapters/vision.js';
@@ -314,6 +314,9 @@ export class KnowledgeClient {
   getChunks(assetId: string): DocumentChunk[]                  { return this.deps.store.getChunks(assetId); }
   getChunksPaged(assetId: string, opts: { cursor?: number; limit?: number } = {}): ChunkPage {
     return this.deps.store.getChunksPaged(assetId, opts);
+  }
+  getAssetUsage(assetId: string): AssetUsage {
+    return this.deps.store.getAssetUsage(assetId);
   }
   getPreview(assetId: string): DocumentPreview | undefined     { return this.deps.store.getPreview(assetId); }
 

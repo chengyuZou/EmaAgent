@@ -61,4 +61,25 @@ export class KbActivationsRepo {
       .all(sessionId) as Array<{ asset_id: string }>;
     return rows.map(r => r.asset_id);
   }
+
+  /** Per-session usage breakdown for one KB document (with session titles). */
+  usageForAsset(assetId: string): AssetUsage {
+    const sessions = this.db.prepare(`
+      SELECT a.session_id            AS sessionId,
+             COALESCE(s.title, '')   AS title,
+             COUNT(DISTINCT a.call_id) AS calls
+      FROM   kb_activations a
+      LEFT JOIN sessions s ON s.id = a.session_id
+      WHERE  a.asset_id = ?
+      GROUP  BY a.session_id
+      ORDER  BY calls DESC
+    `).all(assetId) as Array<{ sessionId: string; title: string; calls: number }>;
+    const totalCalls = sessions.reduce((n, r) => n + r.calls, 0);
+    return { totalCalls, sessions };
+  }
+}
+
+export interface AssetUsage {
+  totalCalls: number;
+  sessions:   Array<{ sessionId: string; title: string; calls: number }>;
 }

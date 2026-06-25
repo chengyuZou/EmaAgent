@@ -44,6 +44,11 @@ export interface ChunkPageWire {
   nextCursor: number | null;
 }
 
+export interface AssetUsageWire {
+  totalCalls: number;
+  sessions:   Array<{ sessionId: string; title: string; calls: number }>;
+}
+
 /** One cursor-paginated page of KB assets. */
 export interface AssetPageWire {
   items:      DocumentAssetWire[];
@@ -147,6 +152,11 @@ export const kbApi = {
     if (opts.limit  !== undefined) params.set('limit',  String(opts.limit));
     const qs = params.toString();
     return sidecarClient.request<ChunkPageWire>(`/api/kb/documents/${id}/chunks${qs ? `?${qs}` : ''}`);
+  },
+
+  /** GET /api/kb/documents/:id/usage — which sessions used this KB + how many calls. */
+  async getUsage(id: string): Promise<AssetUsageWire> {
+    return sidecarClient.request<AssetUsageWire>(`/api/kb/documents/${id}/usage`);
   },
 
   /** DELETE /api/kb/documents/:id */
