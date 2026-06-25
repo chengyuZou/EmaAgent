@@ -57,6 +57,8 @@ export { skillCallTool } from './tools/skill-call.js';
 export type { SkillCallResult } from './tools/skill-call.js';
 export type { ISkillRunner } from '@ema-agent/tool';
 
+export { kbSearchTool } from './tools/kb-search.js';
+
 export { subagentTool } from './tools/subagent.js';
 export type { SubagentResult } from './tools/subagent.js';
 export type { ISubagentSpawner, SubagentSpawnOpts } from '@ema-agent/tool';
@@ -84,6 +86,7 @@ import { askChoiceTool } from './tools/ask-choice.js';
 import { planEnterTool, planExitTool } from './tools/plan-mode.js';
 import { artifactWriteTool, artifactReadTool, artifactListTool } from './tools/artifact.js';
 import { skillCallTool } from './tools/skill-call.js';
+import { kbSearchTool } from './tools/kb-search.js';
 import { subagentTool } from './tools/subagent.js';
 import { subagentSpawnBgTool, subagentSendMessageTool, subagentAwaitTool } from './tools/subagent-bg.js';
 import { scratchpadWriteTool, scratchpadReadTool, scratchpadListTool, scratchpadDeleteTool, scratchpadClearAllTool } from './tools/scratchpad.js';
@@ -110,6 +113,7 @@ const ALL_BUILTIN_TOOLS: BuiltTool<any, any>[] = [
   artifactReadTool,
   artifactListTool,
   skillCallTool,
+  kbSearchTool,
   subagentTool,
   subagentSpawnBgTool,
   subagentSendMessageTool,

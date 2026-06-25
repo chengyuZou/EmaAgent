@@ -1,4 +1,4 @@
-import type { SessionId, EmaStreamEvent } from '@ema-agent/contracts';
+import type { SessionId, EmaStreamEvent, KbSearchResult } from '@ema-agent/contracts';
 import type { LlmRouter, LlmContentPart } from '@ema-agent/llm';
 import type { SessionStore, Turn } from '@ema-agent/session';
 import type { HookBus } from '@ema-agent/hook';
@@ -60,6 +60,8 @@ export interface AgentDeps {
   mcpClient?: IMcpClientBridge;
   /** Skill runner bridge — injected so skill_call tool can invoke registered skills. */
   skillRunner?: ISkillRunner;
+  /** Knowledge-base search — injected so kb_search tool can run AgenticRAG retrieval. */
+  kbSearch?: (query: string, topK?: number) => Promise<KbSearchResult>;
   /**
    * Per-session context store factory. Returns the file-state and tool-result
    * stores for a given session, creating them on first call and caching.

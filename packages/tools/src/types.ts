@@ -1,7 +1,7 @@
 import type { z } from 'zod';
 import type {
   EmaStreamEvent, Artifact, ArtifactId, ArtifactType, SessionId, TurnId,
-  AskUserQuestionSpec, AgentKind,
+  AskUserQuestionSpec, AgentKind, KbSearchResult,
 } from '@ema-agent/contracts';
 import type { ToolPermissionMeta } from '@ema-agent/permission';
 
@@ -241,6 +241,14 @@ export interface ToolExecutionContext {
    * Absent in tests and minimal embedders.
    */
   skillRunner?: ISkillRunner;
+  /**
+   * Knowledge-base search (AgenticRAG). The host adapter resolves the bound
+   * embedding/rerank models and scopes the search to the turn's selected KB
+   * documents (recording a use-count hit per selected doc). The kb_search tool
+   * supplies only the query + topK. Absent when no KB is selected for the turn,
+   * so the tool is hidden from the model.
+   */
+  kbSearch?: (query: string, topK?: number) => Promise<KbSearchResult>;
   /**
    * Absolute path to the per-turn scratchpad directory.
    * Each key is stored as a file; the directory is deleted when the turn ends.

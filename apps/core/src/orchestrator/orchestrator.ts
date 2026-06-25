@@ -96,6 +96,7 @@ export class Orchestrator {
       artifactStore:     bindings.artifactStore,
       mcpClient:         bindings.mcpBridge,
       skillRunner:       bindings.skillBridge,
+      kbSearch:          bindings.kbSearch,
       getContextStores:  bindings.getContextStores,
       taskStore:         bindings.taskStore,
       dataDir:           bindings.activeDataDir,

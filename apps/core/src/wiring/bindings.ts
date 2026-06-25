@@ -48,6 +48,7 @@ import { registerBuiltinTools } from '@ema-agent/tool-builtin';
 import { detectBackend, CommandRunner } from '@ema-agent/sandbox';
 import type { ICommandRunner, IMcpClientBridge, ISkillRunner } from '@ema-agent/tool';
 import type { SessionId }          from '@ema-agent/contracts';
+import type { KbSearchResult }     from '@ema-agent/contracts';
 import {
   AgentFileStateStore, AgentToolResultStore, ToolResultCleaner,
 } from '@ema-agent/agent-context';
@@ -172,6 +173,8 @@ export interface AppBindings {
   skillInstaller: SkillInstaller;
 
   kb: KnowledgeClient;
+  /** KB hybrid search for the kb_search tool — resolves bound embed/rerank models. */
+  kbSearch: (query: string, topK?: number) => Promise<KbSearchResult>;
 }
 
 // ── Build bindings ────────────────────────────────────────────────────────────
@@ -404,6 +407,21 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
   // Search falls back to SQL cosine until this resolves (~50–200ms).
   void kb.init().catch((err) => console.warn('[kb] HNSW init failed:', err));
 
+  // kb_search tool injection: resolve the bound embed/rerank models so retrieval
+  // uses the same models as the rest of the app. assetIds omitted → searches all
+  // global KBs; per-turn document scoping arrives with the input-bar KB picker.
+  const kbSearch = (query: string, topK?: number): Promise<KbSearchResult> => {
+    const embed  = modelBindings.get('embed');
+    const rerank = modelBindings.get('rerank');
+    return kb.search(query, {
+      topK,
+      ebdProviderId:    embed?.providerConfigId,
+      ebdModel:         embed?.model,
+      rerankProviderId: rerank?.providerConfigId,
+      rerankModel:      rerank?.model,
+    });
+  };
+
   // Fire-and-forget: pull the models.dev catalog (context windows + capabilities).
   // On failure the catalog stays empty and lookups fall through to the DB / 0.
   void modelCatalog.refresh().then((ok) => {
@@ -428,7 +446,7 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
     artifactStore, attachmentStore, sessionStats, sessionNotes,
     mcpRegistry, mcpBridge,
     skillStore, skillRunner, skillInstaller, skillBridge,
-    kb,
+    kb, kbSearch,
   };
 }
 
