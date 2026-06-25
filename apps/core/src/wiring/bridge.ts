@@ -61,7 +61,7 @@ export async function configureBridge(
     }
   }
 
-  const embedBinding = bindings.get('embed');
+  const embedBinding = bindings.get('lightrag-embed');
   if (embedBinding) {
     const row = providersRepo.get(embedBinding.providerConfigId);
     const def = row ? getProviderDefinition(row.definition_id) : undefined;

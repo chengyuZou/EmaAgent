@@ -5,7 +5,7 @@
  * Level 2: single-select — provider cards (horizontal scroll) → model grid (2-col).
  */
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { Button, IconButton, Input } from '@ema-agent/ui';
+import { Button, IconButton, Input, Callout } from '@ema-agent/ui';
 import {
   modelBindingsApi,
   type BindingModule,
@@ -18,18 +18,17 @@ import { showToast } from '../lib/toast.js';
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const MODULE_CAPABILITY: Record<BindingModule, string> = {
-  emotion:        'llm',
-  memory:         'llm',
-  router:         'llm',
-  'plan-parse':   'llm',
-  title:          'llm',
-  'lightrag-llm': 'llm',
-  embed:          'embed',
-  rerank:         'rerank',
-  tts:            'tts',
-  stt:            'stt',
-  vision:         'vision',
-  imagegen:       'vision',
+  emotion:          'llm',
+  memory:           'llm',
+  router:           'llm',
+  'plan-parse':     'llm',
+  title:            'llm',
+  'lightrag-llm':   'llm',
+  'lightrag-embed': 'embed',
+  tts:              'tts',
+  stt:              'stt',
+  vision:           'vision',
+  imagegen:         'vision',
 };
 
 const POOL_CAPABILITIES = new Set(['llm', 'embed', 'rerank', 'tts', 'stt', 'vision']);
@@ -39,10 +38,9 @@ const MODULES: Array<{ id: BindingModule; label: string; desc: string }> = [
   { id: 'memory',        label: 'Memory',       desc: '记忆提取与整合' },
   { id: 'router',        label: 'Router',       desc: '模式路由判定' },
   { id: 'plan-parse',    label: 'Plan Parse',   desc: 'Agent 计划解析' },
-  { id: 'title',         label: 'Title',        desc: '会话标题自动生成' },
-  { id: 'embed',         label: 'Embed',        desc: '向量化（记忆 / 知识库）' },
-  { id: 'rerank',        label: 'Rerank',       desc: '召回结果重排序' },
-  { id: 'lightrag-llm',  label: 'LightRAG LLM', desc: '叙事模式剧情检索 LLM' },
+  { id: 'title',          label: 'Title',         desc: '会话标题自动生成' },
+  { id: 'lightrag-embed', label: 'LightRAG 嵌入', desc: '⚠️ 叙事专用嵌入（bge-m3）。换模型会让 narrative 检索骤减、需重建索引——非必要勿动。知识库的嵌入在「设置 → 知识库」单独选。' },
+  { id: 'lightrag-llm',   label: 'LightRAG LLM',  desc: '叙事模式剧情检索 LLM' },
   { id: 'tts',           label: 'TTS',          desc: '语音合成' },
   { id: 'stt',           label: 'STT',          desc: '语音识别' },
   { id: 'vision',        label: 'Vision',       desc: '图像理解' },
@@ -315,6 +313,13 @@ export function BindingsTab(): JSX.Element {
           </h2>
         </div>
       </div>
+
+      {activeModule === 'lightrag-embed' && (
+        <Callout variant="warn" className="text-xs leading-relaxed ema-slide-up">
+          这是 <b>叙事模式（narrative）专用</b>的嵌入模型，默认 <b>bge-m3</b>。知识库用的是另一套（设置 → 知识库 → 模型）。
+          换这里的模型会让已建好的 LightRAG 剧情索引与新查询<b>错配、检索质量骤减</b>，且需要重建 LightRAG 索引——非必要请勿改动。
+        </Callout>
+      )}
 
       {loading ? (
         <div className="text-[var(--ema-text-tertiary)] text-sm">加载中…</div>

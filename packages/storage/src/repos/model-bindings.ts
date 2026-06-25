@@ -8,8 +8,9 @@ export type BindingModule =
   | 'emotion'
   | 'memory'
   | 'router' | 'plan-parse' | 'title'
-  // LightRAG internal config — pushed to Python bridge
-  | 'embed' | 'rerank' | 'lightrag-llm'
+  // LightRAG internal config — pushed to Python bridge. KB embed/rerank moved
+  // OUT to app settings (kb.models); only LightRAG's embed lives here now.
+  | 'lightrag-embed' | 'lightrag-llm'
   // TTS — single binding for all modes
   | 'tts'
   // Other TS-side clients (reserved)

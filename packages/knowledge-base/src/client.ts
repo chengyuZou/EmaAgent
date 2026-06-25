@@ -188,9 +188,9 @@ export class KnowledgeClient {
     const topK  = opts.topK  ?? 10;
     const alpha = opts.alpha ?? 0.5;
 
-    // Record this turn's KB selection (use_count + last_activated_at).
+    // Record this turn's KB selection (use_count + last_activated_at + kb_activations).
     if (opts.assetIds && opts.assetIds.length > 0) {
-      this.deps.store.recordActivation(opts.assetIds);
+      this.deps.store.recordActivation(opts.assetIds, { sessionId: opts.sessionId, turnId: opts.turnId });
     }
 
     const searchOpts = { assetIds: opts.assetIds, topK: topK * 3 };

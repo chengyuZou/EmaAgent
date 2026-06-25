@@ -27,6 +27,10 @@ export interface ThemeConfig {
   radius: number;
 }
 
+/** KB's own embed/rerank model choice (decoupled from LightRAG's lightrag-embed binding). */
+export interface KbModelRef { providerConfigId: string; model: string }
+export interface KbModelsConfig { embed?: KbModelRef | null; rerank?: KbModelRef | null }
+
 // ── API object ────────────────────────────────────────────────────────────────
 
 export const settingsApi = {
@@ -64,6 +68,19 @@ export const settingsApi = {
   /** PUT /api/settings/theme */
   async putTheme(payload: ThemeConfig): Promise<void> {
     await sidecarClient.request('/api/settings/theme', {
+      method: 'PUT',
+      json: payload,
+    });
+  },
+
+  /** GET /api/settings/kb-models — KB's embed + rerank model choice. */
+  async getKbModels(): Promise<KbModelsConfig> {
+    return sidecarClient.request<KbModelsConfig>('/api/settings/kb-models');
+  },
+
+  /** PUT /api/settings/kb-models */
+  async putKbModels(payload: KbModelsConfig): Promise<void> {
+    await sidecarClient.request('/api/settings/kb-models', {
       method: 'PUT',
       json: payload,
     });

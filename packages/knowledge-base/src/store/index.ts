@@ -5,6 +5,7 @@ import type {
 import type { DocumentAssetRepo }   from '@ema-agent/storage';
 import type { DocumentChunkRepo }   from '@ema-agent/storage';
 import type { DocumentPreviewRepo } from '@ema-agent/storage';
+import type { KbActivationsRepo }   from '@ema-agent/storage';
 import type { ChunkSearchHit }      from '@ema-agent/storage';
 
 export interface KbSearchOpts {
@@ -15,9 +16,10 @@ export interface KbSearchOpts {
 
 export class KnowledgeStore {
   constructor(
-    private readonly assets:   DocumentAssetRepo,
-    private readonly chunks:   DocumentChunkRepo,
-    private readonly previews: DocumentPreviewRepo,
+    private readonly assets:      DocumentAssetRepo,
+    private readonly chunks:      DocumentChunkRepo,
+    private readonly previews:    DocumentPreviewRepo,
+    private readonly activations: KbActivationsRepo,
   ) {}
 
   // ── Asset ──────────────────────────────────────────────────────────────────
@@ -43,9 +45,17 @@ export class KnowledgeStore {
     return this.assets.listInactiveSince(beforeTs) as DocumentAsset[];
   }
 
-  /** Record a turn selecting these KBs: bump use_count + stamp last_activated_at. */
-  recordActivation(assetIds: string[], ts: number = Date.now()): void {
+  /** Record a turn selecting these KBs: bump use_count + stamp last_activated_at,
+   *  and log one kb_activations call (per-asset rows) when a session is known. */
+  recordActivation(
+    assetIds: string[],
+    opts: { sessionId?: string; turnId?: string; ts?: number } = {},
+  ): void {
+    const ts = opts.ts ?? Date.now();
     this.assets.recordActivation(assetIds, ts);
+    if (opts.sessionId) {
+      this.activations.recordCall({ assetIds, sessionId: opts.sessionId, turnId: opts.turnId, ts });
+    }
   }
 
   findAssetByHash(hash: string): DocumentAsset | undefined {

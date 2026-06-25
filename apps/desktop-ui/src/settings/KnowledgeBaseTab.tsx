@@ -2,11 +2,13 @@
  * KnowledgeBaseTab — document ingest, list, delete, and search test.
  */
 import { useState, useEffect, type CSSProperties, type JSX } from 'react';
-import { Button, IconButton, Input, Spinner, Badge, Callout, ScrollArea } from '@ema-agent/ui';
+import { Button, IconButton, Input, Spinner, Badge, Callout, ScrollArea, Select } from '@ema-agent/ui';
 import { useKbStore } from '../stores/kb-store.js';
 import { tauriBridge } from '../lib/tauri-bridge.js';
 import { showToast } from '../lib/toast.js';
 import type { DocumentAssetWire } from '../api/knowledge-base.js';
+import { settingsApi, type KbModelsConfig, type KbModelRef } from '../api/settings.js';
+import { modelBindingsApi, type AvailableBindingModel } from '../api/model-bindings.js';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -237,6 +239,79 @@ function SearchTest(): JSX.Element {
   );
 }
 
+// ── KbModelSettings ───────────────────────────────────────────────────────────
+// KB's own embed + rerank model choice (settings → kb.models), decoupled from
+// LightRAG's lightrag-embed binding. Changing embed makes existing docs stale.
+
+const NONE = '__none__';
+
+function KbModelSettings(): JSX.Element {
+  const [embedModels,  setEmbedModels]  = useState<AvailableBindingModel[]>([]);
+  const [rerankModels, setRerankModels] = useState<AvailableBindingModel[]>([]);
+  const [config, setConfig] = useState<KbModelsConfig>({});
+
+  useEffect(() => {
+    void (async () => {
+      const [emb, rer, cfg] = await Promise.all([
+        modelBindingsApi.listAvailable('embed').catch(() => []),
+        modelBindingsApi.listAvailable('rerank').catch(() => []),
+        settingsApi.getKbModels().catch(() => ({} as KbModelsConfig)),
+      ]);
+      setEmbedModels(emb); setRerankModels(rer); setConfig(cfg);
+    })();
+  }, []);
+
+  const enc = (r?: KbModelRef | null): string => (r ? `${r.providerConfigId}|${r.model}` : NONE);
+  const dec = (v: string): KbModelRef | null => {
+    if (v === NONE) return null;
+    const i = v.indexOf('|');
+    return i < 0 ? null : { providerConfigId: v.slice(0, i), model: v.slice(i + 1) };
+  };
+
+  async function save(next: KbModelsConfig): Promise<void> {
+    setConfig(next);
+    try { await settingsApi.putKbModels(next); showToast('已保存', { variant: 'success' }); }
+    catch { showToast('保存失败', { variant: 'danger' }); }
+  }
+
+  const opts = (models: AvailableBindingModel[], withNone: boolean) => [
+    ...(withNone ? [{ value: NONE, label: '（不使用）' }] : []),
+    ...models.map((m) => ({ value: `${m.providerConfigId}|${m.model}`, label: `${m.providerName} / ${m.model}` })),
+  ];
+
+  return (
+    <section className="flex flex-col gap-3 ema-fade-in">
+      <h2 className="text-base font-semibold text-[var(--ema-text-primary)]">检索模型</h2>
+
+      <div className="grid grid-cols-2 gap-3">
+        <div className="flex flex-col gap-1.5 ema-stagger-in" style={{ '--stagger-i': 0 } as CSSProperties}>
+          <label className="text-xs text-[var(--ema-text-tertiary)]">嵌入模型（Embedding）</label>
+          <Select
+            value={enc(config.embed)}
+            onChange={(v) => void save({ ...config, embed: dec(v) })}
+            options={opts(embedModels, true)}
+            placeholder="未设置 → 仅关键词检索"
+          />
+        </div>
+        <div className="flex flex-col gap-1.5 ema-stagger-in" style={{ '--stagger-i': 1 } as CSSProperties}>
+          <label className="text-xs text-[var(--ema-text-tertiary)]">重排模型（Rerank，可选）</label>
+          <Select
+            value={enc(config.rerank)}
+            onChange={(v) => void save({ ...config, rerank: dec(v) })}
+            options={opts(rerankModels, true)}
+            placeholder="（不使用）"
+          />
+        </div>
+      </div>
+
+      <Callout variant="warn" className="text-xs leading-relaxed ema-slide-up">
+        换<b>嵌入模型</b>会让已索引文档的向量与新查询<b>错配、检索骤减</b>——换完需对所有文档<b>重建索引</b>。
+        重排模型可随时更换，无需重建。此处与「叙事模式」的 LightRAG 嵌入互不影响。
+      </Callout>
+    </section>
+  );
+}
+
 // ── KnowledgeBaseTab ──────────────────────────────────────────────────────────
 
 export function KnowledgeBaseTab(): JSX.Element {
@@ -251,6 +326,9 @@ export function KnowledgeBaseTab(): JSX.Element {
 
   return (
     <div className="flex flex-col gap-6">
+
+      {/* ── Retrieval models (embed + rerank) ── */}
+      <KbModelSettings />
 
       {/* ── Document list ── */}
       <section className="flex flex-col gap-3">

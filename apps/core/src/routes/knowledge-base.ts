@@ -46,27 +46,33 @@ const reembedBody = z.object({
 
 // ── Binding resolution ──────────────────────────────────────────────────────────
 
+/** KB's own embed/rerank model choice (app settings, NOT model_bindings — those
+ *  are LightRAG's). One key so the two move together. See settings.ts. */
+interface KbModelsSetting {
+  embed?:  { providerConfigId: string; model: string };
+  rerank?: { providerConfigId: string; model: string };
+}
+
 /**
- * Resolve the embed/vision/rerank models bound in settings so KB ingest/search
- * reuse the same global model-bindings the rest of the app uses. Request-supplied
- * values take precedence; otherwise the bound default is filled in. This is what
- * lets the KB UI stay dumb (send no model ids) yet still get dense retrieval + OCR.
+ * Resolve the embed/vision/rerank models for KB ingest/search. embed + rerank
+ * come from the KB-specific `kb.models` setting (decoupled from LightRAG's
+ * lightrag-embed binding); vision still rides the global `vision` binding.
+ * This lets the KB UI stay dumb (send no model ids) yet still get dense + OCR.
  */
 function resolveBoundModels(bindings: AppBindings): {
   ebdProviderId?:    string; ebdModel?:    string;
   visionProviderId?: string; visionModel?: string;
   rerankProviderId?: string; rerankModel?: string;
 } {
-  const embed  = bindings.modelBindings.get('embed');
+  const kb     = (bindings.settings.get('kb.models') as KbModelsSetting | undefined) ?? {};
   const vision = bindings.modelBindings.get('vision');
-  const rerank = bindings.modelBindings.get('rerank');
   return {
-    ebdProviderId:    embed?.providerConfigId,
-    ebdModel:         embed?.model,
+    ebdProviderId:    kb.embed?.providerConfigId,
+    ebdModel:         kb.embed?.model,
     visionProviderId: vision?.providerConfigId,
     visionModel:      vision?.model,
-    rerankProviderId: rerank?.providerConfigId,
-    rerankModel:      rerank?.model,
+    rerankProviderId: kb.rerank?.providerConfigId,
+    rerankModel:      kb.rerank?.model,
   };
 }
 

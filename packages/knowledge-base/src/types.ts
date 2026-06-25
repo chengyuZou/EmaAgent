@@ -126,5 +126,8 @@ export interface SearchOptions {
   /** Reranker provider (optional; applied after hybrid fusion). */
   rerankProviderId?: string;
   rerankModel?:      string;
+  /** Turn context for activation logging (kb_activations). Omit → no per-session log. */
+  sessionId?:        string;
+  turnId?:           string;
   signal?:           AbortSignal;
 }

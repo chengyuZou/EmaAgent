@@ -66,7 +66,7 @@ export interface AgentDeps {
    * the tool itself only passes query + topK. assetIds non-empty → scoped search
    * + use-count bump; omitted → search all global KBs.
    */
-  kbSearch?: (query: string, topK?: number, assetIds?: string[]) => Promise<KbSearchResult>;
+  kbSearch?: (query: string, topK?: number, assetIds?: string[], sessionId?: string, turnId?: string) => Promise<KbSearchResult>;
   /**
    * Per-session context store factory. Returns the file-state and tool-result
    * stores for a given session, creating them on first call and caching.

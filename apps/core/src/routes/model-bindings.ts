@@ -8,12 +8,14 @@ import { reloadSttClient } from '../wiring/providers/stt.js';
 
 // Keep in sync with BindingModule type and migration 001 CHECK constraint.
 const BINDING_MODULES = [
-  // TS-side LLM modules
-  'chat', 'narrative', 'agent',
-  'compaction', 'emotion', 'memory',
+  // TS-side LLM modules. (chat/narrative/agent/compaction retired — those模式
+  // pick their model in the chat UI, and compaction reuses the turn's model.)
+  'emotion', 'memory',
   'router', 'plan-parse', 'title',
-  // LightRAG internal config — changes here trigger bridge re-push
-  'embed', 'rerank', 'lightrag-llm',
+  // LightRAG internal config — changes here trigger bridge re-push.
+  // KB embed/rerank moved OUT to app settings (kb.models); only LightRAG's
+  // dedicated embed remains a binding. lightrag-embed = bge-m3 (don't casually change).
+  'lightrag-embed', 'lightrag-llm',
   // TTS — SINGLE binding for all modes (voice identity always from the
   // character card). Must match the model_bindings CHECK constraint and the
   // orchestrator's modelBindings.get('tts') — an earlier per-mode design
@@ -25,7 +27,7 @@ const BINDING_MODULES = [
 ] as const;
 
 // Modules whose changes must be pushed to the Python bridge (LightRAG config).
-const BRIDGE_MODULES = new Set<string>(['embed', 'lightrag-llm']);
+const BRIDGE_MODULES = new Set<string>(['lightrag-embed', 'lightrag-llm']);
 
 // Modules whose changes must trigger TtsClient / SttClient hot-reload.
 const TTS_MODULES = new Set<string>(['tts']);

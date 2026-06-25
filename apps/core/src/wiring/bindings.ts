@@ -58,7 +58,7 @@ import {
   KnowledgeClient, KnowledgeStore,
 } from '@ema-agent/knowledge-base';
 import {
-  DocumentAssetRepo, DocumentChunkRepo, DocumentPreviewRepo,
+  DocumentAssetRepo, DocumentChunkRepo, DocumentPreviewRepo, KbActivationsRepo,
 } from '@ema-agent/storage';
 import { resolveBridgeUrl } from './bridge.js';
 import { SystemEventBus }  from '../sse/system-bus.js';
@@ -174,8 +174,9 @@ export interface AppBindings {
 
   kb: KnowledgeClient;
   /** KB hybrid search for the kb_search tool — resolves bound embed/rerank models.
-   *  assetIds scopes to the turn's selected docs (+use-count); omitted = all KBs. */
-  kbSearch: (query: string, topK?: number, assetIds?: string[]) => Promise<KbSearchResult>;
+   *  assetIds scopes to the turn's selected docs (+use-count + kb_activations);
+   *  sessionId/turnId tag the activation log; all omitted = unscoped all-KB search. */
+  kbSearch: (query: string, topK?: number, assetIds?: string[], sessionId?: string, turnId?: string) => Promise<KbSearchResult>;
 }
 
 // ── Build bindings ────────────────────────────────────────────────────────────
@@ -400,6 +401,7 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
       new DocumentAssetRepo(dataDb.sqlite),
       new DocumentChunkRepo(dataDb.sqlite),
       new DocumentPreviewRepo(dataDb.sqlite),
+      new KbActivationsRepo(dataDb.sqlite),
     ),
     ebdRouter: ebd,
     visionAdapter: asKbVisionAdapter(vision),
@@ -411,16 +413,28 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
   // kb_search tool injection: resolve the bound embed/rerank models so retrieval
   // uses the same models as the rest of the app. assetIds omitted → searches all
   // global KBs; per-turn document scoping arrives with the input-bar KB picker.
-  const kbSearch = (query: string, topK?: number, assetIds?: string[]): Promise<KbSearchResult> => {
-    const embed  = modelBindings.get('embed');
-    const rerank = modelBindings.get('rerank');
+  const kbSearch = (
+    query:     string,
+    topK?:     number,
+    assetIds?: string[],
+    sessionId?: string,
+    turnId?:    string,
+  ): Promise<KbSearchResult> => {
+    // KB embed/rerank come from the KB-specific `kb.models` setting, NOT the
+    // model_bindings (those are LightRAG's lightrag-embed). See settings.ts.
+    const kbModels = (settingsRepo.get('kb.models') as {
+      embed?:  { providerConfigId: string; model: string };
+      rerank?: { providerConfigId: string; model: string };
+    } | undefined) ?? {};
     return kb.search(query, {
       assetIds,
       topK,
-      ebdProviderId:    embed?.providerConfigId,
-      ebdModel:         embed?.model,
-      rerankProviderId: rerank?.providerConfigId,
-      rerankModel:      rerank?.model,
+      sessionId,
+      turnId,
+      ebdProviderId:    kbModels.embed?.providerConfigId,
+      ebdModel:         kbModels.embed?.model,
+      rerankProviderId: kbModels.rerank?.providerConfigId,
+      rerankModel:      kbModels.rerank?.model,
     });
   };
 

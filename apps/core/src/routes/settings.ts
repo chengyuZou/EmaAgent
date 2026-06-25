@@ -8,6 +8,7 @@ import type { AppBindings } from '../wiring.js';
 const SETTINGS_KEY_EVENT_DISPLAY      = 'frontend.eventDisplay';
 const SETTINGS_KEY_PERMISSION_TIMEOUT = 'permission.askTimeoutMs';
 const SETTINGS_KEY_THEME              = 'frontend.theme';
+const SETTINGS_KEY_KB_MODELS          = 'kb.models';
 
 // ── Event-display defaults ───────────────────────────────────────────────────
 //
@@ -111,6 +112,18 @@ type ThemeConfig = z.infer<typeof themeBodySchema>;
 
 const DEFAULT_THEME: ThemeConfig = { hue: 200, radius: 1 };
 
+// KB's own embed/rerank model choice — decoupled from LightRAG's lightrag-embed
+// binding so changing KB's model never touches narrative (and vice versa).
+const kbModelRefSchema = z.object({
+  providerConfigId: z.string().min(1),
+  model:            z.string().min(1),
+});
+const kbModelsBodySchema = z.object({
+  embed:  kbModelRefSchema.nullish(),
+  rerank: kbModelRefSchema.nullish(),
+});
+type KbModelsConfig = z.infer<typeof kbModelsBodySchema>;
+
 // ── Route factory ────────────────────────────────────────────────────────────
 
 /**
@@ -176,6 +189,21 @@ export function settingsRoute(bindings: AppBindings): Hono {
       return c.json({ error: 'invalid_request', details: parsed.error.flatten() }, 400);
     }
     repo.set(SETTINGS_KEY_THEME, parsed.data);
+    return c.json({ ok: true });
+  });
+
+  // ── KB models (embed + rerank) ────────────────────────────────────────────
+  app.get('/kb-models', (c) => {
+    const stored = repo.get(SETTINGS_KEY_KB_MODELS) as KbModelsConfig | undefined;
+    return c.json(stored ?? {});
+  });
+
+  app.put('/kb-models', async (c) => {
+    const parsed = kbModelsBodySchema.safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success) {
+      return c.json({ error: 'invalid_request', details: parsed.error.flatten() }, 400);
+    }
+    repo.set(SETTINGS_KEY_KB_MODELS, parsed.data);
     return c.json({ ok: true });
   });
 

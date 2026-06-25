@@ -102,7 +102,7 @@ const enableRerankModelSchema = z.object({
 
 // The two model_bindings modules that feed LightRAG's internal config.
 // When a provider referenced by any of these changes, bridge must be re-pushed.
-const BRIDGE_MODULES = ['embed', 'lightrag-llm'] as const;
+const BRIDGE_MODULES = ['lightrag-embed', 'lightrag-llm'] as const;
 
 /**
  * After any provider write:
