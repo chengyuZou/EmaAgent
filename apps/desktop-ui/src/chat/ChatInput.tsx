@@ -1,9 +1,9 @@
 ﻿import { useState, useCallback, useEffect, useRef, type KeyboardEvent, type JSX, type ChangeEvent } from 'react';
-import { IconButton, Input } from '@ema-agent/ui';
+import { IconButton, Input, Button, Popover, Tooltip, TooltipProvider, Checkbox, ScrollArea, Spinner } from '@ema-agent/ui';
+import { kbApi, type DocumentAssetWire } from '../api/knowledge-base.js';
 import { useConversationStore } from '../stores/conversation-store.js';
 import { useSessionStore } from '../stores/session-store.js';
 import { useUiStore } from '../stores/ui-store.js';
-import { useKbStore } from '../stores/kb-store.js';
 import { ModeSelector } from './ModeSelector.js';
 import { ModelPicker, type ModelSelection } from './ModelPicker.js';
 import { AttachmentChip } from './AttachmentChip.js';
@@ -209,9 +209,7 @@ export function ChatInput(): JSX.Element {
               )}
             </div>
 
-            {mode === 'agent' && (
-              <KbButton selectedIds={selectedKbIds} onChange={setSelectedKbIds} />
-            )}
+            <KbButton visible={mode === 'agent'} selectedIds={selectedKbIds} onChange={setSelectedKbIds} />
 
             <IconButton
               variant={ttsEnabled ? 'primary' : 'default'}
@@ -250,58 +248,95 @@ export function ChatInput(): JSX.Element {
 
 // ── KbButton ──────────────────────────────────────────────────────────────────
 // Agent-mode knowledge-base picker: select uploaded documents to scope kb_search.
+// Appears/disappears with the agent mode toggle (ema-scale-in / ema-fade-out,
+// delayed unmount so the exit keyframe plays). The panel is a Radix Popover
+// (ema-anim-scale → both enter and exit animate, from style.css).
 
 function KbButton({
-  selectedIds, onChange,
+  visible, selectedIds, onChange,
 }: {
-  selectedIds: string[]; onChange(ids: string[]): void;
-}): JSX.Element {
-  const [open, setOpen] = useState(false);
+  visible: boolean; selectedIds: string[]; onChange(ids: string[]): void;
+}): JSX.Element | null {
+  const [mounted, setMounted] = useState(visible);
+  const [open, setOpen]       = useState(false);
+
+  useEffect(() => {
+    if (visible) { setMounted(true); return; }
+    setOpen(false);  // close the panel before the button leaves
+    const t = setTimeout(() => setMounted(false), 220);  // ≈ --ema-duration-base, lets ema-fade-out finish
+    return () => clearTimeout(t);
+  }, [visible]);
+
+  if (!mounted) return null;
+
+  const count = selectedIds.length;
 
   return (
-    <div className="relative">
-      <IconButton
-        variant={selectedIds.length > 0 ? 'primary' : 'default'}
-        size="sm"
-        icon="i-solar:database-bold"
-        label={selectedIds.length > 0 ? `知识库 (${selectedIds.length})` : '选择知识库'}
-        toggled={selectedIds.length > 0}
-        onClick={() => setOpen((v) => !v)}
-      />
-      {selectedIds.length > 0 && (
-        <span className="absolute -top-1 -right-1 min-w-[16px] h-4 flex items-center justify-center rounded-full text-[10px] font-medium px-0.5 pointer-events-none"
-              style={{ background: 'var(--ema-primary)', color: 'var(--ema-text-primary)' }}>
-          {selectedIds.length}
-        </span>
-      )}
-
-      {open && (
-        <>
-          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-          <KbSelector
-            selectedIds={selectedIds}
-            onChange={onChange}
-            onClose={() => setOpen(false)}
-          />
-        </>
-      )}
+    <div className={visible ? 'ema-scale-in' : 'ema-fade-out'}>
+      <TooltipProvider>
+        <Popover
+          open={open}
+          onOpenChange={setOpen}
+          side="top"
+          align="start"
+          widthClass="w-72"
+          trigger={
+            <span className="relative inline-flex">
+              <Tooltip content={count > 0 ? `知识库 · 已选 ${count} 个` : '选择知识库'}>
+                <span className="inline-flex">
+                  <IconButton
+                    variant={count > 0 ? 'primary' : 'default'}
+                    size="sm"
+                    icon="i-solar:database-bold"
+                    label="选择知识库"
+                    toggled={count > 0}
+                  />
+                </span>
+              </Tooltip>
+              {count > 0 && (
+                <span className="absolute -top-1 -right-1 min-w-[16px] h-4 flex items-center justify-center rounded-full text-[10px] font-medium px-0.5 pointer-events-none"
+                      style={{ background: 'var(--ema-primary)', color: 'var(--ema-text-primary)' }}>
+                  {count}
+                </span>
+              )}
+            </span>
+          }
+        >
+          <KbSelectorBody selectedIds={selectedIds} onChange={onChange} />
+        </Popover>
+      </TooltipProvider>
     </div>
   );
 }
 
-// ── KbSelector ────────────────────────────────────────────────────────────────
+// ── KbSelectorBody ────────────────────────────────────────────────────────────
+// Cursor-paginated document list (the backend listAssetsPaged returns nextCursor).
 
-function KbSelector({
-  selectedIds, onChange, onClose,
+const KB_PAGE_SIZE = 20;
+
+function KbSelectorBody({
+  selectedIds, onChange,
 }: {
-  selectedIds: string[]; onChange(ids: string[]): void; onClose(): void;
+  selectedIds: string[]; onChange(ids: string[]): void;
 }): JSX.Element {
-  const documents = useKbStore((s) => s.documents);
-  const loading   = useKbStore((s) => s.loading);
+  const [items, setItems]           = useState<DocumentAssetWire[]>([]);
+  const [nextCursor, setNextCursor] = useState<number | null>(null);
+  const [loading, setLoading]       = useState(false);
+  const [loaded, setLoaded]         = useState(false);
 
-  useEffect(() => {
-    void useKbStore.getState().loadDocuments();
+  const loadPage = useCallback(async (cursor?: number): Promise<void> => {
+    setLoading(true);
+    try {
+      const page = await kbApi.listDocuments({ cursor, limit: KB_PAGE_SIZE });
+      setItems((prev) => (cursor === undefined ? page.items : [...prev, ...page.items]));
+      setNextCursor(page.nextCursor);
+    } finally {
+      setLoading(false);
+      setLoaded(true);
+    }
   }, []);
+
+  useEffect(() => { void loadPage(undefined); }, [loadPage]);
 
   function toggle(id: string): void {
     onChange(selectedIds.includes(id)
@@ -310,66 +345,62 @@ function KbSelector({
   }
 
   return (
-    <div
-      className="ema-slide-up absolute bottom-full left-0 mb-2 z-50 rounded-xl p-3 shadow-[var(--ema-shadow-2)] w-72"
-      style={{ background: 'var(--ema-surface-4)', border: '1px solid var(--ema-border)' }}
-      onClick={(e) => e.stopPropagation()}
-    >
-      <div className="flex items-center justify-between mb-2">
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center justify-between px-1">
         <p className="text-xs font-medium" style={{ color: 'var(--ema-text-secondary)' }}>选择知识库文档</p>
         {selectedIds.length > 0 && (
           <button
-            className="text-xs transition-colors"
+            className="text-xs transition-colors hover:text-[var(--ema-primary)]"
             style={{ color: 'var(--ema-text-tertiary)' }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--ema-primary)'; }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--ema-text-tertiary)'; }}
             onClick={() => onChange([])}
           >清空</button>
         )}
       </div>
 
-      <div className="flex flex-col gap-1 max-h-56 overflow-y-auto">
-        {loading ? (
-          <p className="text-xs py-2 text-center" style={{ color: 'var(--ema-text-tertiary)' }}>加载中…</p>
-        ) : documents.length === 0 ? (
-          <p className="text-xs py-2 text-center" style={{ color: 'var(--ema-text-tertiary)' }}>暂无文档，去设置 → 知识库上传</p>
-        ) : (
-          documents.map((doc) => {
-            const checked = selectedIds.includes(doc.id);
-            return (
-              <button
-                key={doc.id}
-                className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors"
-                style={{ background: checked ? 'var(--ema-primary-muted)' : 'var(--ema-surface-2)' }}
-                onClick={() => toggle(doc.id)}
-              >
-                <span
-                  className={`text-sm shrink-0 ${checked ? 'i-mdi:checkbox-marked' : 'i-mdi:checkbox-blank-outline'}`}
-                  style={{ color: checked ? 'var(--ema-primary)' : 'var(--ema-text-tertiary)' }}
-                  aria-hidden
-                />
-                <span className="text-xs truncate flex-1"
-                      style={{ color: 'var(--ema-text-secondary)' }} title={doc.fileName}>
-                  {doc.fileName}
-                </span>
-                {doc.status !== 'indexed' && (
-                  <span className="text-[10px] shrink-0" style={{ color: 'var(--ema-text-tertiary)' }}>
-                    {doc.status === 'error' ? '错误' : '索引中'}
+      <ScrollArea className="max-h-56">
+        <div className="flex flex-col gap-1 pr-1">
+          {!loaded && loading ? (
+            <div className="flex justify-center py-4"><Spinner size="sm" /></div>
+          ) : items.length === 0 ? (
+            <p className="text-xs py-3 text-center" style={{ color: 'var(--ema-text-tertiary)' }}>暂无文档，去设置 → 知识库上传</p>
+          ) : (
+            items.map((doc) => {
+              const checked = selectedIds.includes(doc.id);
+              return (
+                <div
+                  key={doc.id}
+                  className="flex items-center gap-2 rounded-lg px-2 py-1.5 cursor-pointer transition-ema"
+                  style={{ background: checked ? 'var(--ema-primary-muted)' : 'transparent' }}
+                  onClick={() => toggle(doc.id)}
+                >
+                  <Checkbox checked={checked} className="pointer-events-none" label={doc.fileName} />
+                  <span className="text-xs truncate flex-1"
+                        style={{ color: 'var(--ema-text-secondary)' }} title={doc.fileName}>
+                    {doc.fileName}
                   </span>
-                )}
-              </button>
-            );
-          })
-        )}
-      </div>
+                  {doc.status !== 'indexed' && (
+                    <span className="text-[10px] shrink-0" style={{ color: 'var(--ema-text-tertiary)' }}>
+                      {doc.status === 'error' ? '错误' : '索引中'}
+                    </span>
+                  )}
+                </div>
+              );
+            })
+          )}
+        </div>
+      </ScrollArea>
 
-      <div className="flex justify-end mt-3">
-        <button
-          className="px-3 py-1.5 rounded-lg text-xs transition-colors"
-          style={{ background: 'var(--ema-primary-muted)', color: 'var(--ema-primary)' }}
-          onClick={onClose}
-        >完成</button>
-      </div>
+      {nextCursor !== null && (
+        <Button
+          variant="ghost"
+          size="sm"
+          className="w-full"
+          disabled={loading}
+          onClick={() => void loadPage(nextCursor)}
+        >
+          {loading ? <Spinner size="sm" /> : '加载更多'}
+        </Button>
+      )}
     </div>
   );
 }

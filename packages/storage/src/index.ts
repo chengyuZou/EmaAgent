@@ -117,6 +117,8 @@ export type { AgentTaskMessageRow, AgentTaskMessageInsert, AgentTaskMessageRole 
 export { DocumentAssetRepo }   from './repos/document-asset.js';
 export { DocumentChunkRepo }   from './repos/document-chunk.js';
 export { DocumentPreviewRepo } from './repos/document-preview.js';
+export { KbActivationsRepo }   from './repos/kb-activations.js';
 export type { DocumentAssetRow, DocumentAssetInsert }     from './repos/document-asset.js';
 export type { DocumentChunkRow, DocumentChunkInsert, ChunkSearchHit }  from './repos/document-chunk.js';
 export type { DocumentPreviewRow, DocumentPreviewUpsert } from './repos/document-preview.js';
+export type { KbActivationRow }                           from './repos/kb-activations.js';
