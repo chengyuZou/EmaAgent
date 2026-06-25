@@ -16,7 +16,7 @@ export interface BadgeProps {
 }
 
 const VARIANT_CLASSES: Record<BadgeVariant, { bg: string; text: string; dot: string }> = {
-  neutral: { bg: 'bg-neutral-700/50',  text: 'text-neutral-200', dot: 'bg-neutral-400' },
+  neutral: { bg: 'bg-[var(--ema-surface-2)]',  text: 'text-[var(--ema-text-secondary)]', dot: 'bg-[var(--ema-text-tertiary)]' },
   primary: { bg: 'bg-primary-500/25',  text: 'text-primary-100', dot: 'bg-primary-300' },
   violet:  { bg: 'bg-violet-500/25',   text: 'text-violet-100',  dot: 'bg-violet-300'  },
   success: { bg: 'bg-green-500/20',    text: 'text-green-200',   dot: 'bg-green-400'   },

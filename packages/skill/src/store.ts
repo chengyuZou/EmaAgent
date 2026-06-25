@@ -138,6 +138,15 @@ export class SkillStore {
     }));
   }
 
+  // ── Read raw SKILL.md for viewing (frontmatter + body, no substitution) ────
+
+  async readRawMd(name: string): Promise<string> {
+    const rec = this.findByName(name);
+    if (!rec) throw new SkillNotFoundError(name);
+    const file = await this.#guardedSkillFile(rec.dirPath);
+    return readFile(file, 'utf8');
+  }
+
   // ── Activation: read body lazily from disk (with path guard) ───────────────
 
   async renderBody(name: string, args: string | undefined): Promise<string> {

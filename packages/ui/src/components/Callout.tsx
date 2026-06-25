@@ -17,10 +17,10 @@ export interface CalloutProps {
 }
 
 const VARIANT_CLASSES: Record<CalloutVariant, { bg: string; text: string; stripe: string; icon: string }> = {
-  info:    { bg: 'bg-sky-500/12 border-sky-400/30',    text: 'text-sky-100',    stripe: 'before:bg-sky-400/60',    icon: 'i-mdi:information-outline' },
-  success: { bg: 'bg-green-500/12 border-green-400/30', text: 'text-green-100', stripe: 'before:bg-green-400/60', icon: 'i-mdi:check-circle-outline' },
-  warn:    { bg: 'bg-amber-500/12 border-amber-400/30', text: 'text-amber-100', stripe: 'before:bg-amber-400/60', icon: 'i-mdi:alert-outline' },
-  danger:  { bg: 'bg-red-500/15 border-red-400/40',     text: 'text-red-100',   stripe: 'before:bg-red-400/70',   icon: 'i-mdi:alert-circle-outline' },
+  info:    { bg: 'bg-[var(--ema-info-muted)] border-[var(--ema-border)]',       text: 'text-[var(--ema-info-text)]',    stripe: 'before:bg-[var(--ema-info)]/60',    icon: 'i-mdi:information-outline' },
+  success: { bg: 'bg-[var(--ema-success-muted)] border-[var(--ema-border)]', text: 'text-[var(--ema-success-text)]', stripe: 'before:bg-[var(--ema-success)]/60', icon: 'i-mdi:check-circle-outline' },
+  warn:    { bg: 'bg-[var(--ema-warning-muted)] border-[var(--ema-border)]', text: 'text-[var(--ema-warning-text)]', stripe: 'before:bg-[var(--ema-warning)]/60', icon: 'i-mdi:alert-outline' },
+  danger:  { bg: 'bg-[var(--ema-danger-muted)] border-[var(--ema-border)]',   text: 'text-[var(--ema-danger-text)]',  stripe: 'before:bg-[var(--ema-danger)]/70',   icon: 'i-mdi:alert-circle-outline' },
 };
 
 export function Callout(props: CalloutProps): React.JSX.Element {

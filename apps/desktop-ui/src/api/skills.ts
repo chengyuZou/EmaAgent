@@ -44,6 +44,11 @@ export const skillsApi = {
     return sidecarClient.request<{ skill: SkillRecord }>(`/api/skills/${name}`);
   },
 
+  /** GET /api/skills/:name/content — raw SKILL.md for the in-app viewer. */
+  async getContent(name: string): Promise<{ content: string }> {
+    return sidecarClient.request<{ content: string }>(`/api/skills/${encodeURIComponent(name)}/content`);
+  },
+
   /** POST /api/skills — install from text content */
   async installFromText(content: string): Promise<{ skill: SkillRecord }> {
     return sidecarClient.request<{ skill: SkillRecord }>('/api/skills', {

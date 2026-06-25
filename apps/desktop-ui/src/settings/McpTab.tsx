@@ -533,6 +533,11 @@ function McpMarketView({
 
 // ── Server row ────────────────────────────────────────────────────────────────
 
+function toolParamNames(schema: Record<string, unknown> | undefined): string[] {
+  const props = schema && (schema as { properties?: unknown }).properties;
+  return props && typeof props === 'object' ? Object.keys(props as object) : [];
+}
+
 function ServerRow({
   server, onToggleEnabled, onRemove,
 }: {
@@ -541,9 +546,19 @@ function ServerRow({
   onRemove:         () => void;
 }): JSX.Element {
   const st = STATUS_BADGE[server.connection.status];
-  const toolCount = server.connection.tools.length;
+  const tools = server.connection.tools;
+  const toolCount = tools.length;
+  const [expanded, setExpanded]     = useState(false);
+  const [detailOpen, setDetailOpen] = useState(false);
 
   const menuItems = [
+    {
+      kind: 'item' as const,
+      label: '详情 / 参数',
+      icon: 'i-mdi:information-outline',
+      onSelect: () => setDetailOpen(true),
+    },
+    { kind: 'separator' as const },
     server.connection.status === 'connected'
       ? {
           kind: 'item' as const,
@@ -584,12 +599,17 @@ function ServerRow({
             <span className="text-sm font-medium text-[var(--ema-text-primary)]">{server.name}</span>
             <Badge variant={st.variant}>{st.label}</Badge>
             {toolCount > 0 && (
-              <Tooltip content={`${toolCount} 个工具可用`}>
-                <Badge variant="neutral">
-                  <span className="i-mdi:tools text-xs mr-1" aria-hidden />
-                  {toolCount}
-                </Badge>
-              </Tooltip>
+              <button
+                className="inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-xs
+                           bg-[var(--ema-surface-2)] text-[var(--ema-text-secondary)]
+                           hover:bg-[var(--ema-surface-3)] transition-colors"
+                onClick={() => setExpanded((v) => !v)}
+                title={expanded ? '收起工具' : '展开查看工具'}
+              >
+                <span className="i-mdi:tools text-xs" aria-hidden />
+                {toolCount}
+                <span className={`i-mdi:chevron-down text-xs transition-transform ${expanded ? 'rotate-180' : ''}`} aria-hidden />
+              </button>
             )}
           </div>
 
@@ -603,6 +623,28 @@ function ServerRow({
             <p className="text-xs text-[var(--ema-danger)] mt-1 line-clamp-1">
               连接错误
             </p>
+          )}
+
+          {/* Inline expanded tool list — quick glance at names + params */}
+          {expanded && toolCount > 0 && (
+            <div className="mt-2 flex flex-col gap-1.5 ema-slide-up">
+              {tools.map((t) => {
+                const params = toolParamNames(t.inputSchema);
+                return (
+                  <div key={t.serverToolName} className="rounded-lg px-2.5 py-1.5 bg-[var(--ema-surface-1)] border border-[var(--ema-border)]">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-xs font-mono font-medium text-[var(--ema-text-primary)]">{t.serverToolName}</span>
+                      {params.length > 0 && (
+                        <span className="text-[10px] text-[var(--ema-text-tertiary)] font-mono">({params.join(', ')})</span>
+                      )}
+                    </div>
+                    {t.description && (
+                      <p className="text-[11px] text-[var(--ema-text-tertiary)] mt-0.5 line-clamp-2">{t.description}</p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
           )}
         </div>
 
@@ -626,6 +668,51 @@ function ServerRow({
           />
         </div>
       </div>
+
+      {/* Detail dialog — full config + every tool's parameter schema */}
+      <Dialog
+        open={detailOpen}
+        onOpenChange={setDetailOpen}
+        title={`${server.name} · 详情`}
+        description="连接配置与工具参数 schema"
+        widthClass="max-w-2xl"
+      >
+        <div className="flex flex-col gap-4 max-h-[65vh] overflow-auto">
+          {/* Config */}
+          <div>
+            <p className="text-xs font-medium text-[var(--ema-text-secondary)] mb-1">连接配置</p>
+            <pre className="text-xs font-mono whitespace-pre-wrap break-words rounded-lg p-2.5
+                            bg-[var(--ema-surface-0)] text-[var(--ema-text-secondary)] border border-[var(--ema-border)] selectable">
+              {JSON.stringify(server.config, null, 2)}
+            </pre>
+          </div>
+
+          {/* Tools */}
+          <div>
+            <p className="text-xs font-medium text-[var(--ema-text-secondary)] mb-1">
+              工具 ({toolCount})
+            </p>
+            {toolCount === 0 ? (
+              <p className="text-xs text-[var(--ema-text-tertiary)]">未连接或无工具（连接后才能读取）</p>
+            ) : (
+              <div className="flex flex-col gap-2">
+                {tools.map((t) => (
+                  <div key={t.serverToolName} className="rounded-lg p-2.5 bg-[var(--ema-surface-1)] border border-[var(--ema-border)]">
+                    <span className="text-xs font-mono font-medium text-[var(--ema-text-primary)]">{t.serverToolName}</span>
+                    {t.description && (
+                      <p className="text-[11px] text-[var(--ema-text-tertiary)] mt-0.5">{t.description}</p>
+                    )}
+                    <pre className="text-[11px] font-mono whitespace-pre-wrap break-words mt-1.5 rounded p-2
+                                    bg-[var(--ema-surface-0)] text-[var(--ema-text-tertiary)] border border-[var(--ema-border)] selectable">
+                      {JSON.stringify(t.inputSchema ?? {}, null, 2)}
+                    </pre>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </Dialog>
     </Card>
   );
 }

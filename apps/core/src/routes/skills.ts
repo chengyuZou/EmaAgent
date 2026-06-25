@@ -90,6 +90,17 @@ export function createSkillsRouter(bindings: AppBindings) {
     return c.json({ skill: record });
   });
 
+  // Raw SKILL.md (frontmatter + body) for the in-app viewer.
+  router.get('/skills/:name/content', async (c) => {
+    const name = c.req.param('name');
+    if (!skillStore.findByName(name)) return c.json({ error: 'Skill not found' }, 404);
+    try {
+      return c.json({ content: await skillStore.readRawMd(name) });
+    } catch (err) {
+      return c.json({ error: (err as Error).message }, 500);
+    }
+  });
+
   router.patch('/skills/:name', async (c) => {
     let body: z.infer<typeof patchBodySchema>;
     try {

@@ -71,7 +71,7 @@ button, [role="button"], [data-tauri-drag-region], .ema-no-select, .ema-no-selec
   --ema-shadow-1:  0 1px 2px rgba(0,0,0,0.18), 0 0px 1px rgba(0,0,0,0.12);
   --ema-shadow-2:  0 2px 4px rgba(0,0,0,0.22), 0 4px 10px rgba(0,0,0,0.16), 0 1px 2px rgba(0,0,0,0.10);
   --ema-shadow-3:  0 4px 8px rgba(0,0,0,0.28), 0 8px 20px rgba(0,0,0,0.20), 0 16px 40px rgba(0,0,0,0.14), 0 1px 2px rgba(0,0,0,0.10);
-  --ema-shadow-focus:   0 0 0 3px oklch(0.72 0.18 var(--chromatic-hue, 350) / 0.28);
+  --ema-shadow-focus:   0 0 0 3px oklch(0.72 0.18 var(--chromatic-hue, 200) / 0.28);
   --ema-shadow-danger:  0 0 0 3px oklch(0.62 0.22 25  / 0.28);
 
   /* ── Surface layers — semi-transparent dark glass ─────────────────────── */
@@ -85,6 +85,71 @@ button, [role="button"], [data-tauri-drag-region], .ema-no-select, .ema-no-selec
   --ema-glass-base:   saturate(180%) blur(8px);
   --ema-glass-strong: saturate(200%) blur(16px);
   --ema-mask: rgba(0, 0, 0, 0.45);
+}
+
+/* ── Light-mode overrides ────────────────────────────────────────────────────
+ *
+ *  Applied via [data-theme="light"] on <html> by the theme store.
+ *  Flips text, surface, border, mask, shadow, and semantic-text colours
+ *  while keeping primary/secondary hues unchanged.
+ */
+
+[data-theme="light"] {
+  /* ── Text: flip from light-on-dark to dark-on-light, heavier weight ──── */
+  --ema-text-primary:   oklch(0.15 0.01 280);
+  --ema-text-secondary: oklch(0.35 0.01 280);
+  --ema-text-tertiary:  oklch(0.48 0.01 280);
+  --ema-text-code:      oklch(0.22 0.04 280);
+
+  /* ── Surface: opaque warm white (no transparency — like AstrBot cards) ─ */
+  --ema-surface-0:  rgba(240, 238, 245, 1);
+  --ema-surface-1:  rgba(250, 249, 255, 1);
+  --ema-surface-2:  rgba(235, 233, 242, 1);
+  --ema-surface-3:  rgba(225, 222, 235, 1);
+  --ema-surface-4:  rgba(255, 255, 255, 1);
+  --ema-bg:         var(--ema-surface-0);
+
+  /* ── Glass: disable — opaque surfaces don't need backdrop blur ───────── */
+  --ema-glass-weak:   none;
+  --ema-glass-base:   none;
+  --ema-glass-strong: none;
+
+  /* ── Border: darker for visibility on light ───────────────────────────── */
+  --ema-border:         rgba(0, 0, 0, 0.10);
+  --ema-border-hover:   rgba(0, 0, 0, 0.18);
+  --ema-border-strong:  rgba(0, 0, 0, 0.24);
+
+  /* ── Shadows: darker & more visible ───────────────────────────────────── */
+  --ema-shadow-1:  0 1px 3px rgba(0, 0, 0, 0.10),  0 0px 1px rgba(0, 0, 0, 0.06);
+  --ema-shadow-2:  0 2px 6px rgba(0, 0, 0, 0.12),  0 4px 12px rgba(0, 0, 0, 0.08);
+  --ema-shadow-3:  0 4px 12px rgba(0, 0, 0, 0.15), 0 8px 24px rgba(0, 0, 0, 0.10), 0 1px 3px rgba(0, 0, 0, 0.06);
+  --ema-shadow-focus:   0 0 0 3px oklch(0.65 0.18 var(--chromatic-hue, 200) / 0.25);
+  --ema-shadow-danger:  0 0 0 3px oklch(0.55 0.20 25  / 0.25);
+
+  /* ── Semantic: flip text & muted backgrounds for legibility ───────────── */
+  --ema-primary-text: oklch(0.25 0.14 var(--chromatic-hue, 200));
+  --ema-success-text: oklch(0.28 0.10 145);
+  --ema-warning-text: oklch(0.30 0.10 75);
+  --ema-danger-text:  oklch(0.28 0.12 25);
+  --ema-info-text:    oklch(0.28 0.08 240);
+
+  --ema-success-muted: oklch(0.55 0.14 145 / 0.18);
+  --ema-warning-muted: oklch(0.65 0.14 75  / 0.18);
+  --ema-danger-muted:  oklch(0.50 0.20 25  / 0.18);
+  --ema-info-muted:    oklch(0.55 0.11 240 / 0.18);
+
+  --ema-primary-muted: oklch(0.65 0.16 var(--chromatic-hue, 200) / 0.18);
+
+  /* ── Mask: lighter overlay ────────────────────────────────────────────── */
+  --ema-mask: rgba(0, 0, 0, 0.20);
+
+  /* ── Glow: toned down ─────────────────────────────────────────────────── */
+  --ema-glow:        rgba(180, 160, 200, 0.15);
+  --ema-glow-strong: rgba(160, 130, 180, 0.35);
+
+  /* ── Scrollbar: visible on light ──────────────────────────────────────── */
+  --ema-scrollbar-thumb: rgba(0, 0, 0, 0.20);
+  --ema-scrollbar-thumb-hover: rgba(0, 0, 0, 0.36);
 }
 
 /* ── Scrollbar ───────────────────────────────────────────────────────────────*/
@@ -116,7 +181,7 @@ button, [role="button"], [data-tauri-drag-region], .ema-no-select, .ema-no-selec
 /* ── Selection ───────────────────────────────────────────────────────────────*/
 
 ::selection {
-  background: oklch(0.72 0.18 var(--chromatic-hue, 350) / 0.35) !important;
+  background: oklch(0.72 0.18 var(--chromatic-hue, 200) / 0.35) !important;
   color: inherit !important;
 }
 

@@ -52,7 +52,7 @@ export function Tabs(props: TabsProps): React.JSX.Element {
         className={cn(
           'flex',
           orientation === 'vertical' ? 'flex-col gap-1 min-w-44 shrink-0' : 'flex-row gap-1',
-          variant === 'underline' && orientation === 'horizontal' && 'border-b border-neutral-700/40',
+          variant === 'underline' && orientation === 'horizontal' && 'border-b border-[var(--ema-border)]',
         )}
       >
         {items.map((it) => (
@@ -63,7 +63,7 @@ export function Tabs(props: TabsProps): React.JSX.Element {
             className={cn(
               'inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium transition-ema cursor-pointer',
               'disabled:opacity-40 disabled:cursor-not-allowed',
-              'text-neutral-400 hover:text-neutral-100',
+              'text-[var(--ema-text-tertiary)] hover:text-[var(--ema-text-primary)]',
               variant === 'underline' && cn(
                 'border-b-2 border-transparent -mb-px',
                 'data-[state=active]:text-primary-100',

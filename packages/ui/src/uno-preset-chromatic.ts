@@ -23,8 +23,8 @@ import { definePreset, LAYER_PREFLIGHTS } from '@unocss/core';
 
 // ── EmaAgent default hues ─────────────────────────────────────────────────────
 
-/** Ema's signature pink-rose. Change this to shift the whole theme. */
-export const EMA_PRIMARY_HUE = 350;
+/** Ema's default water-blue (cyan). Change this to shift the whole theme. */
+export const EMA_PRIMARY_HUE = 200;
 
 /**
  * Violet secondary hue offset from primary.

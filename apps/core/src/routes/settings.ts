@@ -109,7 +109,7 @@ const themeBodySchema = z.object({
 
 type ThemeConfig = z.infer<typeof themeBodySchema>;
 
-const DEFAULT_THEME: ThemeConfig = { hue: 350, radius: 1 };
+const DEFAULT_THEME: ThemeConfig = { hue: 200, radius: 1 };
 
 // ── Route factory ────────────────────────────────────────────────────────────
 

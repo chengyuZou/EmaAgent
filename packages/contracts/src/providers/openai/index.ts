@@ -17,6 +17,7 @@ export const provider = defineProvider({
   protocols: {
     // openai-llm      = Chat Completions — broad OpenAI-compat support
     // openai-responses-llm = Responses API  — per-tool done events, o-series reasoning
+    llm:   ['openai-llm', 'openai-responses-llm'],
     embed: ['openai-embed'],
     vision: ['openai-vision'],
     tts:   ['openai-tts'],

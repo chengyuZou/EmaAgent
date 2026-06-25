@@ -15,6 +15,7 @@ export const provider = defineProvider({
   },
   capabilities: ['llm', 'embed', 'rerank', 'vision', 'tts', 'stt'],
   protocols: {
+    llm:    ['openai-llm'],
     embed:  ['openai-embed'],
     rerank: ['cohere-rerank'],
     vision: ['openai-vision'],

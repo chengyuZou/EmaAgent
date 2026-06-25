@@ -4,6 +4,7 @@ import {
   Input, ScrollArea, Spinner, Switch, Tabs, Textarea, Tooltip,
 } from '@ema-agent/ui';
 import { useSkillStore, type MarketSkillEntry } from '../stores/skill-store.js';
+import { skillsApi } from '../api/skills.js';
 import { showToast } from '../lib/toast.js';
 
 type InstallMode = 'text' | 'url' | null;
@@ -147,6 +148,25 @@ function InstalledList({
   const skills  = useSkillStore((s) => s.skills);
   const loading = useSkillStore((s) => s.loading);
 
+  const [viewing, setViewing]   = useState<string | null>(null);
+  const [content, setContent]   = useState<string | null>(null);
+  const [viewLoading, setViewLoading] = useState(false);
+
+  async function handleView(name: string): Promise<void> {
+    setViewing(name);
+    setContent(null);
+    setViewLoading(true);
+    try {
+      const res = await skillsApi.getContent(name);
+      setContent(res.content);
+    } catch (err) {
+      showToast(`读取失败: ${err instanceof Error ? err.message : String(err)}`, { variant: 'danger' });
+      setViewing(null);
+    } finally {
+      setViewLoading(false);
+    }
+  }
+
   if (loading) {
     return <div className="flex justify-center py-10"><Spinner size="md" /></div>;
   }
@@ -187,6 +207,16 @@ function InstalledList({
               </div>
 
               <div className="flex items-center gap-3 shrink-0 pt-0.5">
+                <Tooltip content="查看内容">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-[var(--ema-text-tertiary)] hover:text-[var(--ema-text-primary)] px-1.5"
+                    onClick={() => void handleView(sk.name)}
+                  >
+                    <span className="i-mdi:eye-outline text-base" aria-hidden />
+                  </Button>
+                </Tooltip>
                 <Tooltip content={sk.enabled ? '禁用技能' : '启用技能'}>
                   <Switch
                     checked={sk.enabled}
@@ -213,6 +243,26 @@ function InstalledList({
           </Card>
         ))}
       </div>
+
+      {/* Skill content viewer */}
+      <Dialog
+        open={viewing !== null}
+        onOpenChange={(open) => { if (!open) { setViewing(null); setContent(null); } }}
+        title={viewing ? `${viewing} · SKILL.md` : '技能内容'}
+        description="技能定义的完整内容（含 frontmatter）"
+        widthClass="max-w-3xl"
+      >
+        {viewLoading ? (
+          <div className="flex justify-center py-12"><Spinner size="md" /></div>
+        ) : (
+          <pre className="text-xs leading-relaxed whitespace-pre-wrap break-words font-mono
+                          max-h-[60vh] overflow-auto rounded-lg p-3
+                          bg-[var(--ema-surface-0)] text-[var(--ema-text-secondary)]
+                          border border-[var(--ema-border)] selectable">
+            {content ?? ''}
+          </pre>
+        )}
+      </Dialog>
     </ScrollArea>
   );
 }

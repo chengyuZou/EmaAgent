@@ -361,7 +361,17 @@ export function providersRoute(bindings: AppBindings): Hono {
     const capabilities: string[] = JSON.parse(existing.capabilities_json);
 
     if (capabilities.includes('llm')) {
-      const model = parsed.data.model ?? def?.defaultModels?.llm?.[0] ?? 'gpt-4o-mini';
+      // Pick a real model the provider actually serves: caller's choice →
+      // an enabled model → a models.dev catalog model. No hardcoded default
+      // (the old gpt-4o-mini fallback broke providers like DeepSeek/SiliconFlow).
+      const enabledLlm    = bindings.providerLlmModels.listByProvider(id);
+      const catalogLlmIds = def?.modelsDevId
+        ? bindings.modelCatalog.listLlmModelIds(def.modelsDevId)
+        : [];
+      const model = parsed.data.model ?? enabledLlm[0]?.model ?? catalogLlmIds[0];
+      if (!model) {
+        return c.json({ ok: false, latencyMs: null, error: '没有可探测的模型，请先在下方「模型」启用一个' });
+      }
       const result = await bindings.llm.probe(id, model);
       repo.recordHealth(id, result.ok ? 'ok' : 'failed', {
         latencyMs: result.latencyMs,

@@ -42,7 +42,7 @@ export { useKbStore }        from './stores/kb-store.js';
 export type { KbStoreState } from './stores/kb-store.js';
 
 export { useThemeStore, useThemeSync } from './stores/theme-store.js';
-export type { ThemeStoreState }        from './stores/theme-store.js';
+export type { ThemeStoreState, ThemeMode } from './stores/theme-store.js';
 
 export { useAgentTaskStore }           from './stores/agent-task-store.js';
 export type {

@@ -59,7 +59,7 @@ function HueSlider({ value, onChange }: { value: number; onChange: (h: number) =
 // ── AppearanceTab ─────────────────────────────────────────────────────────────
 
 export function AppearanceTab(): JSX.Element {
-  const { hue, radius, ready, init, setHue, setRadius } = useThemeStore();
+  const { hue, radius, mode, ready, init, setHue, setRadius, setMode } = useThemeStore();
 
   useEffect(() => {
     if (!ready) void init();
@@ -131,6 +131,43 @@ export function AppearanceTab(): JSX.Element {
               style={{ background: 'var(--ema-primary-muted)', borderColor: 'var(--ema-primary)', borderWidth: 1 }}
             />
           ))}
+        </div>
+      </section>
+
+      <div className="border-t" style={{ borderColor: 'var(--ema-border)' }} />
+
+      {/* ── Mode ── */}
+      <section className="space-y-4">
+        <div>
+          <p className="text-sm font-medium" style={{ color: 'var(--ema-text-secondary)' }}>显示模式</p>
+          <p className="text-xs mt-0.5" style={{ color: 'var(--ema-text-tertiary)' }}>切换深色 / 浅色主题，文字与背景自动适配</p>
+        </div>
+
+        <div className="flex items-center gap-4">
+          {/* V1.5: 深色模式暂未想好配置方案，按钮先注释
+          <button
+            onClick={() => void setMode('dark')}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border transition-all duration-[var(--ema-duration-base)] ${
+              mode === 'dark'
+                ? 'border-[var(--ema-primary)] bg-[var(--ema-primary-muted)] text-[var(--ema-text-primary)]'
+                : 'border-[var(--ema-border)] bg-[var(--ema-surface-1)] text-[var(--ema-text-tertiary)] hover:border-[var(--ema-border-hover)]'
+            }`}
+          >
+            <span className="i-solar:moon-bold-duotone text-lg" aria-hidden />
+            <span className="text-sm font-medium">深色</span>
+          </button>
+          */}
+          <button
+            onClick={() => void setMode('light')}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border transition-all duration-[var(--ema-duration-base)] ${
+              mode === 'light'
+                ? 'border-[var(--ema-primary)] bg-[var(--ema-primary-muted)] text-[var(--ema-text-primary)]'
+                : 'border-[var(--ema-border)] bg-[var(--ema-surface-1)] text-[var(--ema-text-tertiary)] hover:border-[var(--ema-border-hover)]'
+            }`}
+          >
+            <span className="i-solar:sun-bold-duotone text-lg" aria-hidden />
+            <span className="text-sm font-medium">浅色</span>
+          </button>
         </div>
       </section>
     </div>
