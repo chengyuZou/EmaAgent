@@ -33,29 +33,27 @@ export function Dialog(props: DialogProps): React.JSX.Element {
       <RadixDialog.Portal>
         <RadixDialog.Overlay
           className={cn(
-            'fixed inset-0 z-50 bg-black/60 backdrop-blur-sm',
-            'data-[state=open]:animate-fade-in data-[state=closed]:animate-fade-out',
+            'fixed inset-0 z-50 bg-[var(--ema-mask)] backdrop-blur-sm ema-anim-fade',
           )}
         />
         <RadixDialog.Content
           className={cn(
             'fixed left-1/2 top-1/2 z-50 -translate-x-1/2 -translate-y-1/2',
             'w-[92vw]', widthClass,
-            'rounded-lg border border-primary-200/15 bg-neutral-900/95 p-5 shadow-xl',
-            'focus:outline-none',
-            'data-[state=open]:animate-scale-in',
+            'rounded-lg border border-[var(--ema-border)] bg-[var(--ema-surface-4)] p-5 shadow-[var(--ema-shadow-3)]',
+            'focus:outline-none ema-anim-scale',
             className,
           )}
         >
           {(title || description) && (
             <div className="mb-4">
               {title && (
-                <RadixDialog.Title className="text-lg font-medium text-neutral-100">
+                <RadixDialog.Title className="text-lg font-medium text-[var(--ema-text-primary)]">
                   {title}
                 </RadixDialog.Title>
               )}
               {description && (
-                <RadixDialog.Description className="mt-1 text-sm text-neutral-400">
+                <RadixDialog.Description className="mt-1 text-sm text-[var(--ema-text-tertiary)]">
                   {description}
                 </RadixDialog.Description>
               )}
@@ -69,7 +67,7 @@ export function Dialog(props: DialogProps): React.JSX.Element {
               aria-label="关闭"
               className={cn(
                 'absolute right-3 top-3 inline-flex h-7 w-7 items-center justify-center rounded-full',
-                'text-neutral-400 hover:bg-neutral-700/50 hover:text-neutral-100 transition-ema',
+                'text-[var(--ema-text-tertiary)] hover:bg-[var(--ema-surface-2)] hover:text-[var(--ema-text-primary)] transition-ema',
                 'focus-ring',
               )}
             >

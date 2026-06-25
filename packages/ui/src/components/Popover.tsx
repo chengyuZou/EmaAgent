@@ -57,7 +57,7 @@ export function Popover(props: PopoverProps): React.JSX.Element {
           className={cn(
             'z-40 panel-glass rounded-lg p-2 shadow-xl',
             widthClass,
-            'data-[state=open]:animate-fade-in',
+            'ema-anim-scale',
             'focus:outline-none',
             className,
           )}

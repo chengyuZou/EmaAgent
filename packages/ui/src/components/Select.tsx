@@ -57,7 +57,7 @@ export function Select(props: SelectProps): React.JSX.Element {
           className={cn(
             'z-50 panel-glass rounded-lg p-1 shadow-xl',
             'min-w-[var(--radix-select-trigger-width)]',
-            'data-[state=open]:animate-fade-in',
+            'ema-anim-scale',
           )}
         >
           <RadixSelect.Viewport className="max-h-72">

@@ -323,6 +323,25 @@ button, [role="button"], [data-tauri-drag-region], .ema-no-select, .ema-no-selec
   animation: ema-scale-in var(--ema-duration-fast) var(--ema-ease) both;
 }
 
+/* ── Radix data-state animations ─────────────────────────────────────────────
+ *  Marker classes added to Radix content/overlay elements (Dialog, Popover,
+ *  Select, DropdownMenu, Tooltip, Toast, Tabs). Driven by Radix's data-state so
+ *  enter AND exit animate, all from the ema-* keyframes above — no dependency on
+ *  UnoCSS arbitrary-animate generation (which the desktop preset doesn't emit).
+ */
+.ema-anim-scale[data-state="open"]   { animation: ema-scale-in var(--ema-duration-base) var(--ema-ease) both; }
+.ema-anim-scale[data-state="closed"] { animation: ema-fade-out var(--ema-duration-fast) var(--ema-ease) both; }
+
+.ema-anim-fade[data-state="open"],
+.ema-anim-fade[data-state="delayed-open"] { animation: ema-fade-in var(--ema-duration-base) var(--ema-ease) both; }
+.ema-anim-fade[data-state="closed"]       { animation: ema-fade-out var(--ema-duration-fast) var(--ema-ease) both; }
+
+.ema-anim-toast[data-state="open"]   { animation: ema-toast-in var(--ema-duration-slow) var(--ema-ease) both; }
+.ema-anim-toast[data-state="closed"],
+.ema-anim-toast[data-swipe="end"]    { animation: ema-slide-out-right var(--ema-duration-base) var(--ema-ease) both; }
+
+.ema-anim-tab[data-state="active"]   { animation: ema-fade-in var(--ema-duration-base) var(--ema-ease) both; }
+
 /* Smooth collapsible — grid-template-rows: 0fr ↔ 1fr.
    Apply to wrapper; inner child needs overflow:hidden.   */
 .ema-collapsible {

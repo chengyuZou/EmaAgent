@@ -6,6 +6,7 @@ import {
 import { useSkillStore, type MarketSkillEntry } from '../stores/skill-store.js';
 import { skillsApi } from '../api/skills.js';
 import { showToast } from '../lib/toast.js';
+import { Markdown } from '../markdown/renderer.js';
 
 type InstallMode = 'text' | 'url' | null;
 
@@ -189,7 +190,7 @@ function InstalledList({
             key={sk.name}
             variant="elevated"
             padding="sm"
-            className="ema-stagger-in active:scale-[0.98] transition-all duration-250"
+            className="ema-stagger-in active:scale-[0.98] transition-all duration-[var(--ema-duration-base)]"
             style={{ '--stagger-i': i } as React.CSSProperties}
           >
             <div className="flex items-start gap-3">
@@ -255,12 +256,10 @@ function InstalledList({
         {viewLoading ? (
           <div className="flex justify-center py-12"><Spinner size="md" /></div>
         ) : (
-          <pre className="text-xs leading-relaxed whitespace-pre-wrap break-words font-mono
-                          max-h-[60vh] overflow-auto rounded-lg p-3
-                          bg-[var(--ema-surface-0)] text-[var(--ema-text-secondary)]
-                          border border-[var(--ema-border)] selectable">
-            {content ?? ''}
-          </pre>
+          <div className="max-h-[60vh] overflow-auto rounded-lg p-3 selectable
+                          bg-[var(--ema-surface-0)] border border-[var(--ema-border)]">
+            <Markdown source={content ?? ''} />
+          </div>
         )}
       </Dialog>
     </ScrollArea>
@@ -367,11 +366,11 @@ export function SkillsTab(): JSX.Element {
         </div>
         <div className="flex gap-2">
           <Button variant="secondary" size="sm" onClick={() => setInstallMode('url')}
-            className="active:scale-[0.98] transition-all duration-250">
+            className="active:scale-[0.98] transition-all duration-[var(--ema-duration-base)]">
             从 URL 安装
           </Button>
           <Button variant="primary" size="sm" onClick={() => setInstallMode('text')}
-            className="active:scale-[0.98] transition-all duration-250">
+            className="active:scale-[0.98] transition-all duration-[var(--ema-duration-base)]">
             从文本安装
           </Button>
         </div>

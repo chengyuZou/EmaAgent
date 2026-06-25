@@ -45,13 +45,13 @@ export function Tooltip(props: TooltipProps): React.JSX.Element {
           align={align}
           sideOffset={sideOffset}
           className={cn(
-            'z-50 rounded-md border border-primary-200/15 bg-neutral-900/95 px-2.5 py-1',
-            'text-xs text-neutral-100 shadow-md',
-            'data-[state=delayed-open]:animate-fade-in',
+            'z-50 rounded-md border border-[var(--ema-border)] bg-[var(--ema-surface-4)] px-2.5 py-1',
+            'text-xs text-[var(--ema-text-primary)] shadow-[var(--ema-shadow-2)]',
+            'ema-anim-fade',
           )}
         >
           {content}
-          <RadixTooltip.Arrow className="fill-neutral-900" />
+          <RadixTooltip.Arrow className="fill-[var(--ema-surface-4)]" />
         </RadixTooltip.Content>
       </RadixTooltip.Portal>
     </RadixTooltip.Root>

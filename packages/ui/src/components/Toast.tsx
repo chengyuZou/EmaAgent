@@ -108,9 +108,7 @@ export function Toaster({ maxVisible = 5 }: ToasterProps): React.JSX.Element {
           className={cn(
             'flex items-start gap-3 rounded-lg border px-4 py-3 shadow-xl',
             'backdrop-blur-md',
-            'data-[state=open]:animate-fade-in',
-            'data-[state=closed]:animate-fade-out',
-            'data-[swipe=end]:animate-fade-out',
+            'ema-anim-toast',
             VARIANT_CLASSES[item.variant],
           )}
         >

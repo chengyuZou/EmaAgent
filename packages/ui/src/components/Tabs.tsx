@@ -92,7 +92,7 @@ export function Tabs(props: TabsProps): React.JSX.Element {
             <RadixTabs.Content
               key={it.value}
               value={it.value}
-              className="outline-none"
+              className="outline-none ema-anim-tab"
             >
               {it.content}
             </RadixTabs.Content>

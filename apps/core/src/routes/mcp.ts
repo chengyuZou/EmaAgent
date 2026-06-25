@@ -30,7 +30,9 @@ const registerSchema = z.object({
 // registry.modelcontextprotocol.io exposes a documented REST endpoint, so we
 // browse that and normalise entries into install-ready configs for the UI.
 
-const MCP_REGISTRY_URL = 'https://registry.modelcontextprotocol.io/v0/servers?limit=100';
+const MCP_REGISTRY_BASE = 'https://registry.modelcontextprotocol.io/v0/servers';
+const MCP_MARKET_CAP    = 600;  // safety cap on total entries fetched
+const MCP_MARKET_PAGES  = 12;   // safety cap on cursor follow-ups
 
 interface McpMarketEntry {
   name:         string;
@@ -107,23 +109,45 @@ export function createMcpRouter(bindings: AppBindings) {
   const { mcpRegistry } = bindings;
 
   // ── Marketplace ─────────────────────────────────────────────────────────────
+  // The registry is cursor-paginated (no total count), so we follow nextCursor
+  // and return the whole catalog — the UI paginates client-side (numbered pages
+  // + jump). Versions are deduped by name, keeping the newest seen.
   router.get('/market', async (c) => {
     try {
-      const res = await fetch(MCP_REGISTRY_URL, {
-        headers: { Accept: 'application/json' },
-        signal:  AbortSignal.timeout(10_000),
-      });
-      if (!res.ok) {
-        return c.json({ error: `registry HTTP ${res.status}`, servers: [] }, 502);
+      const all  = new Map<string, McpMarketEntry>();
+      let cursor: string | undefined;
+
+      for (let page = 0; page < MCP_MARKET_PAGES && all.size < MCP_MARKET_CAP; page++) {
+        const url = new URL(MCP_REGISTRY_BASE);
+        url.searchParams.set('limit', '100');
+        if (cursor) url.searchParams.set('cursor', cursor);
+
+        const res = await fetch(url, {
+          headers: { Accept: 'application/json' },
+          signal:  AbortSignal.timeout(10_000),
+        });
+        if (!res.ok) {
+          if (all.size > 0) break;  // partial result is still useful
+          return c.json({ error: `registry HTTP ${res.status}`, servers: [] }, 502);
+        }
+
+        const body = await res.json() as {
+          servers?:  Array<RegistryItem | RegistryServer>;
+          metadata?: { nextCursor?: string };
+        };
+        for (const item of body.servers ?? []) {
+          const s = 'server' in item && item.server ? item.server : (item as RegistryServer);
+          if (!s || typeof s.name !== 'string') continue;
+          const entry = normaliseRegistryServer(s);
+          if (entry.transport === null) continue;
+          all.set(entry.name, entry);  // later (newer) version overwrites
+        }
+
+        cursor = body.metadata?.nextCursor;
+        if (!cursor) break;
       }
-      // Items are wrapped as { server, _meta }; tolerate a flat shape too.
-      const body = await res.json() as { servers?: Array<RegistryItem | RegistryServer> };
-      const servers = (body.servers ?? [])
-        .map((item) => ('server' in item && item.server ? item.server : item as RegistryServer))
-        .filter((s): s is RegistryServer => !!s && typeof s.name === 'string')
-        .map(normaliseRegistryServer)
-        .filter((e) => e.transport !== null);
-      return c.json({ source: 'registry.modelcontextprotocol.io', servers });
+
+      return c.json({ source: 'registry.modelcontextprotocol.io', servers: [...all.values()] });
     } catch (err) {
       return c.json({ error: (err as Error).message, servers: [] }, 502);
     }

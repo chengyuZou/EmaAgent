@@ -181,12 +181,12 @@ export function McpTab(): JSX.Element {
         </div>
         <div className="flex gap-2">
           <Button variant="ghost" size="sm" onClick={() => setImportOpen(true)}
-            className="active:scale-[0.98] transition-all duration-250">
+            className="active:scale-[0.98] transition-all duration-[var(--ema-duration-base)]">
             <span className="i-mdi:code-json text-base" aria-hidden />
             从 JSON 导入
           </Button>
           <Button variant="primary" size="sm" onClick={() => setAddOpen(true)}
-            className="active:scale-[0.98] transition-all duration-250">
+            className="active:scale-[0.98] transition-all duration-[var(--ema-duration-base)]">
             <span className="i-mdi:plus text-base" aria-hidden />
             添加服务器
           </Button>
@@ -416,7 +416,13 @@ function McpMarketView({
   const marketError   = useMcpStore((s) => s.marketError);
   const marketSource  = useMcpStore((s) => s.marketSource);
   const [installing, setInstalling] = useState<string | null>(null);
+  const [page, setPage] = useState(0);
   const attemptedRef = useRef(false);
+
+  const PAGE_SIZE   = 6;
+  const totalPages  = Math.max(1, Math.ceil(marketServers.length / PAGE_SIZE));
+  const safePage    = Math.min(page, totalPages - 1);
+  const pageServers = marketServers.slice(safePage * PAGE_SIZE, (safePage + 1) * PAGE_SIZE);
 
   // Fetch once when the tab first becomes active. A ref guard prevents the
   // retry-on-error loop (effect re-firing as loading flips false → fetch again).
@@ -472,20 +478,23 @@ function McpMarketView({
   }
 
   return (
-    <ScrollArea className="flex-1" viewportClassName="pb-2">
-      <div className="flex flex-col gap-2 pr-2">
-        {marketSource && (
-          <p className="text-xs text-[var(--ema-text-tertiary)] mb-1 font-mono truncate">来源：{marketSource}</p>
-        )}
-        {marketServers.map((entry, i) => {
-          const installed = installedNames.has(sanitizeServerName(entry.title || entry.name));
-          return (
-            <div
-              key={entry.name}
-              className="bg-[var(--ema-surface-1)] ema-glass-weak border border-[var(--ema-border)]
-                         rounded-xl px-4 py-3 ema-stagger-in"
-              style={{ '--stagger-i': i } as CSSProperties}
-            >
+    <div className="flex flex-col min-h-0 flex-1">
+      {marketSource && (
+        <p className="text-xs text-[var(--ema-text-tertiary)] mb-1 font-mono truncate shrink-0">
+          来源：{marketSource} · 共 {marketServers.length} 个
+        </p>
+      )}
+      <ScrollArea className="flex-1" viewportClassName="pb-2">
+        <div className="flex flex-col gap-2 pr-2">
+          {pageServers.map((entry, i) => {
+            const installed = installedNames.has(sanitizeServerName(entry.title || entry.name));
+            return (
+              <div
+                key={entry.name}
+                className="bg-[var(--ema-surface-1)] ema-glass-weak border border-[var(--ema-border)]
+                           rounded-xl px-4 py-3 ema-stagger-in"
+                style={{ '--stagger-i': i } as CSSProperties}
+              >
               <div className="flex items-start gap-3">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
@@ -524,10 +533,71 @@ function McpMarketView({
                 </div>
               </div>
             </div>
-          );
-        })}
-      </div>
-    </ScrollArea>
+            );
+          })}
+        </div>
+      </ScrollArea>
+
+      <Pager page={safePage} totalPages={totalPages} onChange={setPage} />
+    </div>
+  );
+}
+
+// ── Pager (numbered pages + prev/next + jump-to-page) ─────────────────────────
+
+function Pager({
+  page, totalPages, onChange,
+}: {
+  page: number; totalPages: number; onChange: (p: number) => void;
+}): JSX.Element | null {
+  const [jump, setJump] = useState('');
+  if (totalPages <= 1) return null;
+
+  const go = (p: number): void => onChange(Math.min(totalPages - 1, Math.max(0, p)));
+
+  // Sliding window of up to 7 page numbers, with first/last + ellipsis.
+  const WINDOW = 7;
+  let start = Math.max(0, page - 3);
+  const end = Math.min(totalPages, start + WINDOW);
+  start = Math.max(0, end - WINDOW);
+  const nums: number[] = [];
+  for (let i = start; i < end; i++) nums.push(i);
+
+  const btn = (label: string, p: number, opts: { active?: boolean; disabled?: boolean } = {}): JSX.Element => (
+    <button
+      key={`${label}-${p}`}
+      disabled={opts.disabled}
+      onClick={() => go(p)}
+      className={`min-w-7 h-7 px-1.5 rounded-lg text-xs transition-colors disabled:opacity-30 ${
+        opts.active
+          ? 'bg-[var(--ema-primary)] text-[var(--ema-primary-text)] font-medium'
+          : 'bg-[var(--ema-surface-2)] text-[var(--ema-text-secondary)] hover:bg-[var(--ema-surface-3)]'
+      }`}
+    >
+      {label}
+    </button>
+  );
+
+  return (
+    <div className="flex items-center justify-center gap-1.5 flex-wrap pt-3 shrink-0">
+      {btn('‹', page - 1, { disabled: page === 0 })}
+      {start > 0 && (<>{btn('1', 0)}<span className="text-[var(--ema-text-tertiary)] text-xs">…</span></>)}
+      {nums.map((n) => btn(String(n + 1), n, { active: n === page }))}
+      {end < totalPages && (<><span className="text-[var(--ema-text-tertiary)] text-xs">…</span>{btn(String(totalPages), totalPages - 1)}</>)}
+      {btn('›', page + 1, { disabled: page === totalPages - 1 })}
+
+      <span className="text-xs text-[var(--ema-text-tertiary)] ml-1">{page + 1} / {totalPages} 页</span>
+      <input
+        value={jump}
+        onChange={(e) => setJump(e.target.value.replace(/\D/g, ''))}
+        onKeyDown={(e) => { if (e.key === 'Enter' && jump) { go(Number(jump) - 1); setJump(''); } }}
+        placeholder="跳转"
+        className="w-14 h-7 px-2 text-xs rounded-lg text-center outline-none
+                   bg-[var(--ema-surface-1)] border border-[var(--ema-border)]
+                   text-[var(--ema-text-primary)] placeholder:text-[var(--ema-text-tertiary)]
+                   focus:border-[var(--ema-primary)]"
+      />
+    </div>
   );
 }
 
@@ -586,7 +656,7 @@ function ServerRow({
   ];
 
   return (
-    <Card variant="elevated" padding="sm" className="active:scale-[0.98] transition-all duration-250">
+    <Card variant="elevated" padding="sm" className="active:scale-[0.98] transition-all duration-[var(--ema-duration-base)]">
       <div className="flex items-start gap-3">
         {/* Status dot */}
         <div className="pt-0.5 shrink-0">

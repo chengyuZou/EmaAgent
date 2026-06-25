@@ -40,7 +40,7 @@ export function DropdownMenu(props: DropdownMenuProps): React.JSX.Element {
           className={cn(
             'z-40 panel-glass rounded-lg p-1 shadow-xl',
             widthClass,
-            'data-[state=open]:animate-[ema-fade-in_80ms_ease-out_both]',
+            'ema-anim-scale',
           )}
         >
           {items.map((it, i) => <RenderItem key={i} item={it} />)}
@@ -97,7 +97,7 @@ function RenderItem({ item }: { item: MenuItem }): React.JSX.Element {
             <RadixDropdown.SubContent
               className={cn(
                 'z-50 panel-glass rounded-lg p-1 shadow-xl min-w-44',
-                'data-[state=open]:animate-[ema-fade-in_80ms_ease-out_both]',
+                'ema-anim-scale',
               )}
             >
               {item.items.map((sub, i) => <RenderItem key={i} item={sub} />)}
