@@ -119,6 +119,8 @@ export { DocumentChunkRepo }   from './repos/document-chunk.js';
 export { DocumentPreviewRepo } from './repos/document-preview.js';
 export { KbActivationsRepo }   from './repos/kb-activations.js';
 export type { AssetUsage }     from './repos/kb-activations.js';
+export { KbIngestTasksRepo }   from './repos/kb-ingest-tasks.js';
+export type { KbIngestTask, KbIngestStatus } from './repos/kb-ingest-tasks.js';
 export type { DocumentAssetRow, DocumentAssetInsert }     from './repos/document-asset.js';
 export type { DocumentChunkRow, DocumentChunkInsert, ChunkSearchHit, ChunkSummary, ChunkPage }  from './repos/document-chunk.js';
 export type { DocumentPreviewRow, DocumentPreviewUpsert } from './repos/document-preview.js';

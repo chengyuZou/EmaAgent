@@ -1,7 +1,7 @@
 import { estimateTextTokens } from '@ema-agent/token';
 import type { DocumentBlock, DocumentChunk, DocumentBlockKind } from '../types.js';
 import type { Chunker, ChunkOptions } from './base.js';
-import { DEFAULT_CHUNK_OPTIONS, chunkId, linkChunks } from './base.js';
+import { DEFAULT_CHUNK_OPTIONS, chunkId, linkChunks, normalizeChunkSizes } from './base.js';
 
 // Split priority: paragraph → line → CJK sentence → Latin sentence → word
 // CJK standalone punctuation separators are listed before the regex so that
@@ -133,31 +133,6 @@ function splitRecursive(text: string, maxTokens: number, sepIdx = 0): string[] {
   }
   if (current) results.push(...splitRecursive(current, maxTokens, sepIdx));
   return results;
-}
-
-/**
- * Merge undersized tail chunks forward into their predecessor.
- * Mirrors Open WebUI's normalize_chunk_sizes — avoids orphan chunks.
- */
-function normalizeChunkSizes(chunks: DocumentChunk[], opts: ChunkOptions, assetId: string): DocumentChunk[] {
-  if (chunks.length === 0) return [];
-  const out: DocumentChunk[] = [];
-  let acc = { ...chunks[0]! };
-
-  for (let i = 1; i < chunks.length; i++) {
-    const next = chunks[i]!;
-    const merged = acc.text + '\n\n' + next.text;
-    if (acc.tokenCount < opts.minTokens && estimateTextTokens(merged) <= opts.maxTokens) {
-      acc = { ...acc, text: merged, tokenCount: estimateTextTokens(merged) };
-    } else {
-      out.push(acc);
-      acc = { ...next };
-    }
-  }
-  out.push(acc);
-
-  // Re-assign stable ids
-  return out.map((c, i) => ({ ...c, id: chunkId(assetId, i) }));
 }
 
 /**

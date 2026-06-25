@@ -2,7 +2,7 @@ import { estimateTextTokens } from '@ema-agent/token';
 import type { EbdRouter } from '@ema-agent/ebd-client';
 import type { DocumentBlock, DocumentChunk } from '../types.js';
 import type { ChunkOptions } from './base.js';
-import { chunkId, linkChunks } from './base.js';
+import { chunkId, linkChunks, normalizeChunkSizes } from './base.js';
 import { recursiveChunk, RecursiveChunker } from './recursive.js';
 import { splitSentences, cosineSimilarity, smoothSimilarities, percentile } from './utils/sentences.js';
 
@@ -66,8 +66,11 @@ export class SemanticChunker {
       all.push(...sub);
     }
 
-    linkChunks(all);
-    return all;
+    // Shared post-pass: orphan-merge (maxTokens-guarded, atomic-safe). Parent-child
+    // (assignParents) is applied later by the ingest pipeline for both chunkers.
+    const normalized = normalizeChunkSizes(all, opts, assetId);
+    linkChunks(normalized);
+    return normalized;
   }
 
   private async chunkTextRun(blks: DocumentBlock[], opts: SemanticChunkOptions, assetId: string, startIdx: number): Promise<DocumentChunk[]> {
@@ -124,13 +127,10 @@ export class SemanticChunker {
       const firstBlk = g[0]!.blk;
 
       if (toks <= opts.maxTokens) {
-        if (toks < opts.minTokens && chunks.length > 0) {
-          const prev = chunks[chunks.length - 1]!;
-          prev.text += ' ' + text; prev.tokenCount = estimateTextTokens(prev.text);
-        } else {
-          chunks.push({ id: chunkId(assetId, idx++), assetId, text, blockKinds: ['paragraph'],
-            tokenCount: toks, page: firstBlk.page, sectionPath: firstBlk.sectionPath });
-        }
+        // Orphan-merge is handled globally by normalizeChunkSizes() after all runs,
+        // which adds a maxTokens guard the old inline merge lacked.
+        chunks.push({ id: chunkId(assetId, idx++), assetId, text, blockKinds: ['paragraph'],
+          tokenCount: toks, page: firstBlk.page, sectionPath: firstBlk.sectionPath });
       } else {
         const sub = splitByBudget(g, opts, assetId, idx);
         idx += sub.length; chunks.push(...sub);

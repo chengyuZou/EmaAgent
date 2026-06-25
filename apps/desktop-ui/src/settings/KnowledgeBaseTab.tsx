@@ -386,6 +386,11 @@ const STAGE_BAR: Record<IngestStage, string> = {
 
 function ProcessingQueue(): JSX.Element | null {
   const jobs = useKbStore((s) => s.ingestJobs);
+
+  useEffect(() => {
+    void useKbStore.getState().loadIngestTasks();  // hydrate from the persistent queue
+  }, []);
+
   const list = Object.values(jobs);
   if (list.length === 0) return null;
 
@@ -404,16 +409,23 @@ function ProcessingQueue(): JSX.Element | null {
 }
 
 function IngestJobRow({ job }: { job: IngestJob }): JSX.Element {
-  const errored = job.status === 'error';
+  const failed  = job.status === 'failed';
   const done    = job.status === 'done';
+  const pending = job.status === 'pending';
   const pct     = Math.round(job.progress * 100);
-  const barClass = errored ? 'bg-[var(--ema-danger)]' : done ? 'bg-[var(--ema-success)]' : STAGE_BAR[job.stage];
+  const barClass = failed ? 'bg-[var(--ema-danger)]'
+    : done ? 'bg-[var(--ema-success)]'
+    : job.stage ? STAGE_BAR[job.stage] : 'bg-[var(--ema-info)]';
+
+  const label = failed ? '处理失败' : done ? '已完成' : pending ? '排队中' : '正在处理';
+  const status = failed ? '错误' : done ? '100%' : pending ? '等待'
+    : `${job.stage ? STAGE_LABEL[job.stage] : ''} · ${pct}%`;
 
   return (
     <div className={`rounded-xl bg-[var(--ema-surface-1)] px-3 py-2.5 flex flex-col gap-1.5
                      ${done ? 'ema-fade-out' : ''}`}>
       <div className="flex items-center gap-2">
-        {errored ? (
+        {failed ? (
           <span className="i-mdi:alert-circle text-base shrink-0" style={{ color: 'var(--ema-danger)' }} aria-hidden />
         ) : done ? (
           <span className="i-mdi:check-circle text-base shrink-0" style={{ color: 'var(--ema-success)' }} aria-hidden />
@@ -421,21 +433,23 @@ function IngestJobRow({ job }: { job: IngestJob }): JSX.Element {
           <Spinner size="sm" />
         )}
         <span className="text-sm truncate flex-1 text-[var(--ema-text-primary)]" title={job.fileName}>
-          {errored ? '处理失败' : done ? '已完成' : '正在处理'} · {job.fileName}
+          {label} · {job.fileName}
         </span>
         <span className="text-xs shrink-0 font-mono"
-              style={{ color: errored ? 'var(--ema-danger)' : 'var(--ema-text-tertiary)' }}>
-          {errored ? '错误' : done ? '100%' : `${STAGE_LABEL[job.stage]} · ${pct}%`}
+              style={{ color: failed ? 'var(--ema-danger)' : 'var(--ema-text-tertiary)' }}>
+          {status}
         </span>
-        {errored && (
-          <IconButton size="sm" variant="default" label="移除" icon="i-mdi:close"
-                      onClick={() => useKbStore.getState().dismissJob(job.assetId)} />
+        {failed && (
+          <Button size="sm" variant="ghost" className="shrink-0 ema-fade-in"
+                  onClick={() => void useKbStore.getState().retryIngest(job.assetId)}>
+            重试
+          </Button>
         )}
       </div>
 
-      <Progress progress={errored ? 100 : pct} barClass={barClass} height="h-1.5" animated={!errored && !done} />
+      <Progress progress={failed ? 100 : pct} barClass={barClass} height="h-1.5" animated={!failed && !done} />
 
-      {errored && job.error && (
+      {failed && job.error && (
         <p className="text-[11px] text-[var(--ema-danger)] truncate ema-fade-in" title={job.error}>{job.error}</p>
       )}
     </div>

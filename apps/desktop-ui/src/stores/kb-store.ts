@@ -15,13 +15,14 @@ export type { DocumentAssetWire, KbSearchResultWire, KbSearchHitWire } from '../
 // ── Ingest job (background processing queue) ────────────────────────────────────
 
 export type IngestStage = 'validate' | 'parse' | 'chunk' | 'embed';
+export type IngestJobStatus = 'pending' | 'running' | 'failed' | 'done';
 
 export interface IngestJob {
   assetId:  string;
   fileName: string;
-  stage:    IngestStage;
+  stage?:   IngestStage;       // absent while pending
   progress: number;            // 0–1
-  status:   'indexing' | 'done' | 'error';
+  status:   IngestJobStatus;
   error?:   string;
 }
 
@@ -42,7 +43,9 @@ export interface KbStoreState {
   searchError:   string | null;
 
   loadDocuments(opts?: { cursor?: number; limit?: number; keyword?: string }): Promise<void>;
+  loadIngestTasks(): Promise<void>;
   ingest(filePath: string, opts?: KbIngestOptions): Promise<void>;
+  retryIngest(assetId: string): Promise<void>;
   deleteDocument(id: string): Promise<void>;
   search(query: string, opts?: KbSearchOptions): Promise<void>;
   clearSearch(): void;
@@ -83,31 +86,49 @@ export const useKbStore = create<KbStoreState>((set, get) => ({
     }
   },
 
+  async loadIngestTasks() {
+    try {
+      const tasks = await kbApi.getIngestTasks();
+      const jobs: Record<string, IngestJob> = {};
+      for (const t of tasks) {
+        jobs[t.id] = {
+          assetId:  t.id,
+          fileName: t.fileName,
+          stage:    t.stage as IngestStage | undefined,
+          progress: t.progress,
+          status:   t.status,
+          error:    t.error,
+        };
+      }
+      set({ ingestJobs: jobs });
+    } catch { /* ignore — queue is advisory */ }
+  },
+
   async ingest(filePath, opts = {}) {
     set({ ingesting: true, ingestError: null });
     try {
-      // Background: POST returns immediately with the pre-generated assetId; a
-      // processing job is shown until the system SSE delivers completion/error.
-      const started = await kbApi.ingest(filePath, opts);
-      set((s) => ({
-        ingesting:  false,
-        ingestJobs: {
-          ...s.ingestJobs,
-          [started.assetId]: {
-            assetId:  started.assetId,
-            fileName: started.fileName,
-            stage:    'validate',
-            progress: 0,
-            status:   'indexing',
-          },
-        },
-      }));
+      // Enqueue (POST returns 202 once the task row exists); hydrate the queue so
+      // the new pending job shows. Progress/completion arrive via the system SSE.
+      await kbApi.ingest(filePath, opts);
+      await get().loadIngestTasks();
+      set({ ingesting: false });
     } catch (err: unknown) {
       set({
         ingestError: err instanceof Error ? err.message : '导入失败',
         ingesting:   false,
       });
     }
+  },
+
+  async retryIngest(assetId) {
+    // Optimistic: flip to pending immediately; the SSE drives it from there.
+    set((s) => {
+      const job = s.ingestJobs[assetId];
+      if (!job) return {};
+      return { ingestJobs: { ...s.ingestJobs, [assetId]: { ...job, status: 'pending', stage: undefined, progress: 0, error: undefined } } };
+    });
+    try { await kbApi.retryIngest(assetId); }
+    catch { void get().loadIngestTasks(); }  // resync on failure
   },
 
   async deleteDocument(id) {
@@ -148,7 +169,7 @@ export const useKbStore = create<KbStoreState>((set, get) => ({
     set((s) => {
       const job = s.ingestJobs[assetId];
       if (!job) return {};
-      return { ingestJobs: { ...s.ingestJobs, [assetId]: { ...job, stage, progress } } };
+      return { ingestJobs: { ...s.ingestJobs, [assetId]: { ...job, status: 'running', stage, progress } } };
     });
   },
 
@@ -173,7 +194,7 @@ export const useKbStore = create<KbStoreState>((set, get) => ({
     set((s) => {
       const job = s.ingestJobs[assetId];
       if (!job) return {};
-      return { ingestJobs: { ...s.ingestJobs, [assetId]: { ...job, status: 'error', error } } };
+      return { ingestJobs: { ...s.ingestJobs, [assetId]: { ...job, status: 'failed', error } } };
     });
   },
 

@@ -49,6 +49,21 @@ export interface AssetUsageWire {
   sessions:   Array<{ sessionId: string; title: string; calls: number }>;
 }
 
+export type KbIngestStatus = 'pending' | 'running' | 'failed';
+
+export interface KbIngestTaskWire {
+  id:        string;
+  filePath:  string;
+  fileName:  string;
+  mimeType?: string;
+  status:    KbIngestStatus;
+  stage?:    string;
+  progress:  number;
+  error?:    string;
+  createdAt: number;
+  updatedAt: number;
+}
+
 /** One cursor-paginated page of KB assets. */
 export interface AssetPageWire {
   items:      DocumentAssetWire[];
@@ -156,6 +171,16 @@ export const kbApi = {
   /** GET /api/kb/documents/:id/usage — which sessions used this KB + how many calls. */
   async getUsage(id: string): Promise<AssetUsageWire> {
     return sidecarClient.request<AssetUsageWire>(`/api/kb/documents/${id}/usage`);
+  },
+
+  /** GET /api/kb/ingest-tasks — the background ingest queue (pending/running/failed). */
+  async getIngestTasks(): Promise<KbIngestTaskWire[]> {
+    return sidecarClient.request<KbIngestTaskWire[]>('/api/kb/ingest-tasks');
+  },
+
+  /** POST /api/kb/documents/:id/retry — re-queue a failed ingest task. */
+  async retryIngest(id: string): Promise<void> {
+    await sidecarClient.request(`/api/kb/documents/${id}/retry`, { method: 'POST' });
   },
 
   /** DELETE /api/kb/documents/:id */

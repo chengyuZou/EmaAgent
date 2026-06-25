@@ -93,27 +93,17 @@ export function kbRoute(bindings: AppBindings): Hono {
     if (!parsed.success)
       return c.json({ error: 'invalid_request', details: parsed.error.flatten() }, 400);
 
-    const { filePath, ebdProviderId, ebdModel, visionProviderId, visionModel, mimeType } = parsed.data;
-    const bound    = resolveBoundModels(bindings);
+    const { filePath, mimeType } = parsed.data;
     const assetId  = randomUUID();
     const fileName = filePath.split(/[\\/]/).pop() ?? filePath;
 
-    // Background indexing: kick off and return immediately. Progress, completion,
-    // and errors all arrive over the systemBus SSE as kb_ingest_* events (keyed by
-    // the pre-generated assetId). A duplicate emits complete instantly.
-    void bindings.kb.ingest(filePath, {
-      assetId,
-      ebdProviderId:    ebdProviderId    ?? bound.ebdProviderId,
-      ebdModel:         ebdModel         ?? bound.ebdModel,
-      visionProviderId: visionProviderId ?? bound.visionProviderId,
-      visionModel:      visionModel      ?? bound.visionModel,
-      mimeType,
-    }).catch((err) => {
-      // The failure was already broadcast via kb_ingest_failed; just log here.
-      console.warn('[kb] background ingest failed:', err instanceof Error ? err.message : err);
-    });
+    // Enqueue: a concurrency-limited, persistent worker drains the task. Progress,
+    // completion and errors arrive over the systemBus SSE as kb_ingest_* events
+    // (keyed by the pre-generated assetId). Embed/vision models are resolved by the
+    // queue from settings at run time, so per-request model ids are ignored here.
+    bindings.ingestQueue.enqueue({ id: assetId, filePath, fileName, mimeType });
 
-    return c.json({ assetId, fileName, status: 'indexing' }, 202);
+    return c.json({ assetId, fileName, status: 'pending' }, 202);
   });
 
   // GET /api/kb/documents — cursor-paginated list (newest first), optional keyword
@@ -159,6 +149,18 @@ export function kbRoute(bindings: AppBindings): Hono {
   // GET /api/kb/documents/:id/usage — which sessions used this KB + how many calls
   app.get('/documents/:id/usage', (c) => {
     return c.json(bindings.kb.getAssetUsage(c.req.param('id')));
+  });
+
+  // GET /api/kb/ingest-tasks — the background ingest queue (pending/running/failed)
+  app.get('/ingest-tasks', (c) => {
+    return c.json(bindings.kbIngestTasks.listActive());
+  });
+
+  // POST /api/kb/documents/:id/retry — re-queue a failed ingest task
+  app.post('/documents/:id/retry', (c) => {
+    const ok = bindings.ingestQueue.retry(c.req.param('id'));
+    if (!ok) return c.json({ error: 'not_failed_or_not_found' }, 404);
+    return c.json({ ok: true });
   });
 
   // DELETE /api/kb/documents/:id — remove asset + all its chunks
