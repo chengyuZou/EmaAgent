@@ -35,6 +35,11 @@ const staleQuery = z.object({
   days: z.coerce.number().int().min(1).max(3650).optional(),
 });
 
+const chunkQuery = z.object({
+  cursor: z.coerce.number().int().optional(),
+  limit:  z.coerce.number().int().min(1).max(100).optional(),
+});
+
 const invalidateBody = z.object({
   newModel: z.string().min(1),
 });
@@ -144,6 +149,14 @@ export function kbRoute(bindings: AppBindings): Hono {
     const preview = bindings.kb.getPreview(c.req.param('id'));
     if (!preview) return c.json({ error: 'not_found' }, 404);
     return c.json(preview);
+  });
+
+  // GET /api/kb/documents/:id/chunks — cursor-paginated chunk summaries
+  app.get('/documents/:id/chunks', (c) => {
+    const parsed = chunkQuery.safeParse(c.req.query());
+    if (!parsed.success)
+      return c.json({ error: 'invalid_request', details: parsed.error.flatten() }, 400);
+    return c.json(bindings.kb.getChunksPaged(c.req.param('id'), parsed.data));
   });
 
   // DELETE /api/kb/documents/:id — remove asset + all its chunks

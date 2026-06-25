@@ -34,6 +34,22 @@ export interface DocumentChunkInsert {
 
 export interface ChunkSearchHit { chunkId: string; score: number }
 
+/** Chunk summary for the document detail viewer (no embedding BLOB). */
+export interface ChunkSummary {
+  id:           string;
+  text:         string;
+  markdown?:    string;
+  tokenCount:   number;
+  page?:        number;
+  sectionPath:  string[];
+  hasEmbedding: boolean;
+}
+
+export interface ChunkPage {
+  items:      ChunkSummary[];
+  nextCursor: number | null;
+}
+
 function rowToChunk(row: DocumentChunkRow) {
   return {
     id:          row.id,
@@ -103,6 +119,47 @@ export class DocumentChunkRepo {
       .prepare('SELECT * FROM document_chunks WHERE asset_id = ? ORDER BY id')
       .all(assetId) as DocumentChunkRow[];
     return rows.map(rowToChunk);
+  }
+
+  /**
+   * Cursor-paginated chunk summaries for one asset (for the document detail
+   * viewer). Ordered by insert order (rowid); cursor = previous page's last
+   * rowid. Deliberately does NOT load the embedding BLOB — only a hasEmbedding
+   * flag — so paging a large doc stays cheap.
+   */
+  findByAssetPaged(
+    assetId: string,
+    opts: { cursor?: number; limit?: number } = {},
+  ): { items: ChunkSummary[]; nextCursor: number | null } {
+    const limit = Math.min(Math.max(opts.limit ?? 30, 1), 100);
+    const params: unknown[] = [assetId];
+    let cursorSql = '';
+    if (opts.cursor !== undefined) { cursorSql = 'AND rowid > ?'; params.push(opts.cursor); }
+
+    const rows = this.db.prepare(`
+      SELECT rowid AS _rowid, id, text, markdown, token_count, page, section_path_json,
+             (embedding IS NOT NULL) AS has_embedding
+      FROM   document_chunks
+      WHERE  asset_id = ? ${cursorSql}
+      ORDER  BY rowid
+      LIMIT  ?
+    `).all(...params, limit + 1) as Array<{
+      _rowid: number; id: string; text: string; markdown: string | null;
+      token_count: number; page: number | null; section_path_json: string; has_embedding: number;
+    }>;
+
+    const hasMore = rows.length > limit;
+    const slice   = rows.slice(0, limit);
+    const items: ChunkSummary[] = slice.map(r => ({
+      id:           r.id,
+      text:         r.text,
+      markdown:     r.markdown ?? undefined,
+      tokenCount:   r.token_count,
+      page:         r.page ?? undefined,
+      sectionPath:  JSON.parse(r.section_path_json) as string[],
+      hasEmbedding: r.has_embedding === 1,
+    }));
+    return { items, nextCursor: hasMore ? slice[slice.length - 1]!._rowid : null };
   }
 
   findById(id: string): ReturnType<typeof rowToChunk> | undefined {

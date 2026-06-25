@@ -7,6 +7,7 @@ import type { DocumentChunkRepo }   from '@ema-agent/storage';
 import type { DocumentPreviewRepo } from '@ema-agent/storage';
 import type { KbActivationsRepo }   from '@ema-agent/storage';
 import type { ChunkSearchHit }      from '@ema-agent/storage';
+import type { ChunkPage }           from '@ema-agent/storage';
 
 export interface KbSearchOpts {
   /** Selected KB asset ids for this turn. undefined = all KBs; [] = none. */
@@ -78,6 +79,11 @@ export class KnowledgeStore {
 
   getChunks(assetId: string): DocumentChunk[] {
     return this.chunks.findByAsset(assetId) as DocumentChunk[];
+  }
+
+  /** Cursor-paginated chunk summaries for the document detail viewer. */
+  getChunksPaged(assetId: string, opts: { cursor?: number; limit?: number } = {}): ChunkPage {
+    return this.chunks.findByAssetPaged(assetId, opts);
   }
 
   getChunk(id: string): DocumentChunk | undefined {

@@ -4,6 +4,7 @@ import type {
 } from './types.js';
 import type { KbSearchResult, DocumentSourceRef } from '@ema-agent/contracts';
 import type { EbdRouter } from '@ema-agent/ebd-client';
+import type { ChunkPage } from '@ema-agent/storage';
 import { ingest as runIngest } from './ingest/index.js';
 import type { KnowledgeStore } from './store/index.js';
 import type { KbVisionAdapter } from './adapters/vision.js';
@@ -311,6 +312,9 @@ export class KnowledgeClient {
 
   getAsset(id: string): DocumentAsset | undefined              { return this.deps.store.getAsset(id); }
   getChunks(assetId: string): DocumentChunk[]                  { return this.deps.store.getChunks(assetId); }
+  getChunksPaged(assetId: string, opts: { cursor?: number; limit?: number } = {}): ChunkPage {
+    return this.deps.store.getChunksPaged(assetId, opts);
+  }
   getPreview(assetId: string): DocumentPreview | undefined     { return this.deps.store.getPreview(assetId); }
 
   /** Cursor-paginated KB list for the UI (newest first), optional keyword. */

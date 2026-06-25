@@ -23,6 +23,25 @@ export interface DocumentAssetWire {
   useCount:   number;
   /** Last selection time (ms); absent → never (UI falls back to createdAt). */
   lastActivatedAt?: number;
+  /** Embedding model this doc was indexed with (undefined → not embedded yet). */
+  ebdModel?:  string;
+  /** True when the doc's embeddings were marked stale (model changed). */
+  ebdStale?:  boolean;
+}
+
+export interface ChunkSummaryWire {
+  id:           string;
+  text:         string;
+  markdown?:    string;
+  tokenCount:   number;
+  page?:        number;
+  sectionPath:  string[];
+  hasEmbedding: boolean;
+}
+
+export interface ChunkPageWire {
+  items:      ChunkSummaryWire[];
+  nextCursor: number | null;
 }
 
 /** One cursor-paginated page of KB assets. */
@@ -119,6 +138,15 @@ export const kbApi = {
   /** GET /api/kb/documents/:id/preview */
   async getPreview(id: string): Promise<DocumentPreviewWire> {
     return sidecarClient.request<DocumentPreviewWire>(`/api/kb/documents/${id}/preview`);
+  },
+
+  /** GET /api/kb/documents/:id/chunks — cursor-paginated chunk summaries. */
+  async listChunks(id: string, opts: { cursor?: number; limit?: number } = {}): Promise<ChunkPageWire> {
+    const params = new URLSearchParams();
+    if (opts.cursor !== undefined) params.set('cursor', String(opts.cursor));
+    if (opts.limit  !== undefined) params.set('limit',  String(opts.limit));
+    const qs = params.toString();
+    return sidecarClient.request<ChunkPageWire>(`/api/kb/documents/${id}/chunks${qs ? `?${qs}` : ''}`);
   },
 
   /** DELETE /api/kb/documents/:id */
