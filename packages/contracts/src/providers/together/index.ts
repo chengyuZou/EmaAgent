@@ -9,8 +9,8 @@ export const provider = defineProvider({
     'openai-llm':   'https://api.together.xyz/v1',
     'openai-embed': 'https://api.together.xyz/v1',
   },
-  capabilities: ['llm', 'embed'],
-  protocols: { llm: ['openai-llm'], embed: ['openai-embed'] },
+  capabilities: ['llm', 'embed', 'vision'],
+  protocols: { llm: ['openai-llm'], embed: ['openai-embed'], vision: ['openai-vision'] },
   defaultModels: {
     embed: ['togethercomputer/m2-bert-80M-8k-retrieval'],
   },

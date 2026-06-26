@@ -9,8 +9,8 @@ export const provider = defineProvider({
     'openai-llm':   'https://open.bigmodel.cn/api/paas/v4',
     'openai-embed': 'https://open.bigmodel.cn/api/paas/v4',
   },
-  capabilities: ['llm', 'embed'],
-  protocols: { llm: ['openai-llm'], embed: ['openai-embed'] },
+  capabilities: ['llm', 'embed', 'vision'],
+  protocols: { llm: ['openai-llm'], embed: ['openai-embed'], vision: ['openai-vision'] },
   defaultModels: {
     embed: ['embedding-3'],
   },

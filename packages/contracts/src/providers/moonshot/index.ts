@@ -6,8 +6,8 @@ export const provider = defineProvider({
   name: 'Moonshot Kimi',
   defaultBaseUrl: 'https://api.moonshot.cn/v1',
   protocolBaseUrls: { 'openai-llm': 'https://api.moonshot.cn/v1' },
-  capabilities: ['llm'],
-  protocols: { llm: ['openai-llm'] },
+  capabilities: ['llm', 'vision'],
+  protocols: { llm: ['openai-llm'], vision: ['openai-vision'] },
   iconKey: 'i-lobe-icons:moonshot',
   iconColor: 'i-lobe-icons:moonshot-color',
 });

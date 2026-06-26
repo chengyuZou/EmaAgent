@@ -6,7 +6,9 @@ export type {
 
 export type { VisionAdapter, VisionAdapterCall } from './adapters/base.js';
 
-export { OpenAiVisionAdapter } from './adapters/openai-vision.js';
+export { OpenAiVisionAdapter }    from './adapters/openai-vision.js';
+export { AnthropicVisionAdapter } from './adapters/anthropic-vision.js';
+export { GeminiVisionAdapter }    from './adapters/gemini-vision.js';
 
 export {
   buildVisionExtractionPrompt,

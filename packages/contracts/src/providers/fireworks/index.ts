@@ -6,8 +6,8 @@ export const provider = defineProvider({
   name: 'Fireworks AI',
   defaultBaseUrl: 'https://api.fireworks.ai/inference/v1',
   protocolBaseUrls: { 'openai-llm': 'https://api.fireworks.ai/inference/v1' },
-  capabilities: ['llm'],
-  protocols: { llm: ['openai-llm'] },
+  capabilities: ['llm', 'vision'],
+  protocols: { llm: ['openai-llm'], vision: ['openai-vision'] },
   iconKey: 'i-lobe-icons:fireworks',
   iconColor: 'i-lobe-icons:fireworks-color',
 });

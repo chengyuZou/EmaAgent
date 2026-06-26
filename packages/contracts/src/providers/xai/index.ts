@@ -6,8 +6,8 @@ export const provider = defineProvider({
   name: 'xAI Grok',
   defaultBaseUrl: 'https://api.x.ai/v1',
   protocolBaseUrls: { 'openai-llm': 'https://api.x.ai/v1' },
-  capabilities: ['llm'],
-  protocols: { llm: ['openai-llm'] },
+  capabilities: ['llm', 'vision'],
+  protocols: { llm: ['openai-llm'], vision: ['openai-vision'] },
   iconKey: 'i-lobe-icons:xai',
   iconColor: 'i-lobe-icons:xai-color',
 });

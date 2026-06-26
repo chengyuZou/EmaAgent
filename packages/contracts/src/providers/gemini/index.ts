@@ -6,8 +6,8 @@ export const provider = defineProvider({
   name: 'Google Gemini',
   defaultBaseUrl: 'https://generativelanguage.googleapis.com',
   protocolBaseUrls: { 'gemini-llm': 'https://generativelanguage.googleapis.com' },
-  capabilities: ['llm'],
-  protocols: { llm: ['gemini-llm'] },
+  capabilities: ['llm', 'vision'],
+  protocols: { llm: ['gemini-llm'], vision: ['gemini-vision'] },
   iconKey: 'i-lobe-icons:gemini',
   iconColor: 'i-lobe-icons:gemini-color',
 });

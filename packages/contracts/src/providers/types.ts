@@ -29,6 +29,8 @@ export type ProtocolFamily =
   | 'cohere-rerank'     // /rerank, { model, query, documents, top_n } — Cohere/Jina/SiliconFlow all use this
   // Vision protocols
   | 'openai-vision'     // /v1/chat/completions multimodal content parts — OpenAI-compatible vision models
+  | 'anthropic-vision'  // /messages with image blocks — Anthropic SDK native
+  | 'gemini-vision'     // generateContent with inlineData parts — Google GenAI SDK native
   // TTS protocols
   | 'openai-tts'        // POST /v1/audio/speech — OpenAI / SiliconFlow / Groq / OpenAI 兼容
   | 'dashscope-tts'     // 阿里百炼 WS — adapter routes by model prefix (cosyvoice-* | qwen*-tts*)
@@ -65,7 +67,7 @@ export function isRerankProtocol(p: ProtocolFamily | undefined): p is RerankProt
 }
 
 export function isVisionProtocol(p: ProtocolFamily | undefined): p is VisionProtocol {
-  return p === 'openai-vision';
+  return p === 'openai-vision' || p === 'anthropic-vision' || p === 'gemini-vision';
 }
 
 export function isTtsProtocol(p: ProtocolFamily | undefined): p is TtsProtocol {

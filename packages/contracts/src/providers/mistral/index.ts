@@ -6,8 +6,8 @@ export const provider = defineProvider({
   name: 'Mistral',
   defaultBaseUrl: 'https://api.mistral.ai/v1',
   protocolBaseUrls: { 'openai-llm': 'https://api.mistral.ai/v1' },
-  capabilities: ['llm'],
-  protocols: { llm: ['openai-llm'] },
+  capabilities: ['llm', 'vision'],
+  protocols: { llm: ['openai-llm'], vision: ['openai-vision'] },
   iconKey: 'i-lobe-icons:mistral',
   iconColor: 'i-lobe-icons:mistral-color',
 });

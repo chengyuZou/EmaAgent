@@ -1,4 +1,6 @@
-import { OpenAiVisionAdapter } from './adapters/openai-vision.js';
+import { OpenAiVisionAdapter }    from './adapters/openai-vision.js';
+import { AnthropicVisionAdapter } from './adapters/anthropic-vision.js';
+import { GeminiVisionAdapter }    from './adapters/gemini-vision.js';
 import type { VisionAdapter, VisionAdapterCall } from './adapters/base.js';
 import { VisionError, classifyVisionError } from './errors.js';
 import type {
@@ -31,6 +33,10 @@ function createAdapter(config: VisionProviderConfig): VisionAdapter {
   switch (config.protocol) {
     case 'openai-vision':
       return new OpenAiVisionAdapter(config);
+    case 'anthropic-vision':
+      return new AnthropicVisionAdapter(config);
+    case 'gemini-vision':
+      return new GeminiVisionAdapter(config);
     default:
       throw new VisionError('vision/not_configured', `Unsupported vision protocol "${config.protocol}"`, {
         meta: { providerId: config.id, retryable: false },

@@ -1170,9 +1170,15 @@ importers:
 
   packages/vision:
     dependencies:
+      '@anthropic-ai/sdk':
+        specifier: ^0.39.0
+        version: 0.39.0
       '@ema-agent/contracts':
         specifier: workspace:*
         version: link:../contracts
+      '@google/genai':
+        specifier: ^2.7.0
+        version: 2.7.0(@modelcontextprotocol/sdk@1.29.0(zod@3.25.76))
     devDependencies:
       '@types/node':
         specifier: ^20.0.0

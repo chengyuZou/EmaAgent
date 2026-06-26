@@ -22,7 +22,9 @@
     "clean": "rimraf dist"
   },
   "dependencies": {
-    "@ema-agent/contracts": "workspace:*"
+    "@ema-agent/contracts": "workspace:*",
+    "@anthropic-ai/sdk": "^0.39.0",
+    "@google/genai": "^2.7.0"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

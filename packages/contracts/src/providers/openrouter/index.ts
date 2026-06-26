@@ -6,8 +6,8 @@ export const provider = defineProvider({
   name: 'OpenRouter',
   defaultBaseUrl: 'https://openrouter.ai/api/v1',
   protocolBaseUrls: { 'openai-llm': 'https://openrouter.ai/api/v1' },
-  capabilities: ['llm'],
-  protocols: { llm: ['openai-llm'] },
+  capabilities: ['llm', 'vision'],
+  protocols: { llm: ['openai-llm'], vision: ['openai-vision'] },
   iconKey: 'i-lobe-icons:openrouter',
   iconColor: 'i-lobe-icons:openrouter-color',
 });
