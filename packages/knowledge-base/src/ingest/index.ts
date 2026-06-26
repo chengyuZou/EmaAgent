@@ -13,6 +13,7 @@ import type { KnowledgeStore }           from '../store/index.js';
 import type { DocumentEventEmitter }     from '../events/emitter.js';
 import type { KbVisionAdapter }          from '../adapters/vision.js';
 import type { EbdRouter }                from '@ema-agent/ebd-client';
+import { normalizeVec }                  from '../embed/normalize.js';
 
 export interface IngestDeps {
   store:         KnowledgeStore;
@@ -172,7 +173,7 @@ async function embedChunks(
       });
       for (let j = 0; j < batch.length; j++) {
         const vec = res.embeddings[j];
-        if (vec?.length) store.storeEmbedding(batch[j]!.id, vec);
+        if (vec?.length) store.storeEmbedding(batch[j]!.id, normalizeVec(vec));
       }
     } catch {
       // Partial failure: skip this batch, chunk is still searchable via FTS5

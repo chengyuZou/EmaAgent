@@ -14,6 +14,7 @@ import { DocumentEventEmitter } from './events/emitter.js';
 import { weightedRank }         from './retrieval/hybrid.js';
 import type { VectorIndex }     from './index/vector-index.js';
 import { createVectorIndex }    from './index/factory.js';
+import { normalizeF32, normalizeVec } from './embed/normalize.js';
 
 // Reranker scores below this threshold indicate the document does not actually
 // contain relevant content for the query. Filtering prevents cross-document
@@ -61,7 +62,7 @@ export class KnowledgeClient {
     this.chunkToAsset.clear();
 
     for (const { id, assetId, embedding } of rows) {
-      const vec = bufferToFloat32(embedding);
+      const vec = normalizeF32(bufferToFloat32(embedding));
       this.hnsw.add(id, vec);
       this.chunkToAsset.set(id, assetId);
     }
@@ -104,7 +105,7 @@ export class KnowledgeClient {
     }
     const rows = this.deps.store.getAllEmbeddings().filter(r => r.assetId === assetId);
     for (const { id, embedding } of rows) {
-      const vec = bufferToFloat32(embedding);
+      const vec = normalizeF32(bufferToFloat32(embedding));
       this.hnsw.add(id, vec);
       this.chunkToAsset.set(id, assetId);
     }
@@ -165,7 +166,7 @@ export class KnowledgeClient {
           for (let j = 0; j < batch.length; j++) {
             const vec = res.embeddings[j];
             if (vec?.length) {
-              this.deps.store.storeEmbedding(batch[j]!.id, vec);
+              this.deps.store.storeEmbedding(batch[j]!.id, normalizeVec(vec));
               if (!dim) dim = vec.length;
             }
           }
@@ -202,7 +203,7 @@ export class KnowledgeClient {
         for (let j = 0; j < batch.length; j++) {
           const vec = res.embeddings[j];
           if (vec?.length) {
-            this.deps.store.storeEmbedding(batch[j]!.id, vec);
+            this.deps.store.storeEmbedding(batch[j]!.id, normalizeVec(vec));
             if (!dim) dim = vec.length;
           }
         }
@@ -259,7 +260,7 @@ export class KnowledgeClient {
         if (queryVec?.length) {
           if (this.hnsw) {
             // HNSW path: search with extra budget, then filter by scope
-            const f32 = new Float32Array(queryVec);
+            const f32 = normalizeF32(new Float32Array(queryVec));
             const raw = this.hnsw.search(f32, topK * 6);
             denseHits = raw
               .filter(h => {
@@ -383,3 +384,4 @@ function bufferToFloat32(buf: Buffer): Float32Array {
   for (let i = 0; i < f32.length; i++) f32[i] = buf.readFloatLE(i * 4);
   return f32;
 }
+
