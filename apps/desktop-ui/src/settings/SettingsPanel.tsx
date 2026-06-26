@@ -23,7 +23,7 @@ import { KnowledgeBaseTab } from './KnowledgeBaseTab.js';
 import { Live2DTab } from './Live2DTab.js';
 import { ShortcutsTab } from './ShortcutsTab.js';
 import { AppearanceTab } from './AppearanceTab.js';
-import { SessionsTab }   from './SessionsTab.js';
+import { StorageTab }    from './StorageTab.js';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -33,13 +33,13 @@ type SectionId =
   | 'skills'    | 'mcp'
   | 'memory'
   | 'knowledge-base'
-  | 'sessions'
+  | 'storage'
   | 'live2d'    | 'shortcuts' | 'appearance';
 
 type GroupId = 'ai' | 'character' | 'agent' | 'memory' | 'knowledge' | 'data' | 'desktop';
 
-// Sessions fills the entire content pane (no outer padding / scroll)
-const FULL_HEIGHT_SECTIONS = new Set<SectionId>(['sessions']);
+// Storage fills the entire content pane (no outer padding / scroll)
+const FULL_HEIGHT_SECTIONS = new Set<SectionId>(['storage']);
 
 interface SectionDef { id: SectionId; label: string }
 interface GroupDef   { id: GroupId; label: string; icon: string; sections: SectionDef[] }
@@ -82,7 +82,7 @@ const GROUPS: GroupDef[] = [
   {
     id: 'data', label: '数据', icon: 'i-solar:history-bold-duotone',
     sections: [
-      { id: 'sessions', label: '历史会话' },
+      { id: 'storage', label: '存储位置' },
     ],
   },
   {
@@ -125,7 +125,7 @@ function SectionContent({ id }: { id: SectionId }): JSX.Element {
     case 'mcp':            return <McpTab />;
     case 'memory':         return <MemoryTab />;
     case 'knowledge-base': return <KnowledgeBaseTab />;
-    case 'sessions':       return <SessionsTab />;
+    case 'storage':        return <StorageTab />;
     case 'live2d':         return <Live2DTab />;
     case 'shortcuts':      return <ShortcutsTab />;
     case 'appearance':     return <AppearanceTab />;

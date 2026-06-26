@@ -22,11 +22,6 @@ import type {
   SessionsSearchResult,
   SessionSearchItem,
   ForkResult,
-  SessionDashboardWire,
-  SessionNoteWire,
-  SessionNoteEntryWire,
-  ArtifactSummaryWire,
-  AudioEntryWire,
 } from '@ema-agent/contracts';
 
 // ── Branch wire types (session-layer only, not in contracts) ─────────────────
@@ -50,7 +45,6 @@ export interface BranchTreeWire {
 export type {
   SessionWire, MessageWire, TurnWire, SessionMessagesResult,
   SessionsListResult, SessionsGroupedResult, SessionsSearchResult, SessionSearchItem, ForkResult,
-  SessionDashboardWire, SessionNoteWire, SessionNoteEntryWire, ArtifactSummaryWire, AudioEntryWire,
 };
 
 // ── API object ────────────────────────────────────────────────────────────────
@@ -157,33 +151,6 @@ export const sessionsApi = {
     } catch {
       return null;
     }
-  },
-
-  // ── Dashboard / export / import ──────────────────────────────────────────
-
-  /** GET /api/sessions/:id/dashboard — stats + artifact/audio summaries. */
-  async getDashboard(id: SessionId): Promise<SessionDashboardWire> {
-    return sidecarClient.request<SessionDashboardWire>(`/api/sessions/${id}/dashboard`);
-  },
-
-  /** GET /api/sessions/:id/notes — session L1 memory notes, or null. */
-  async getNotes(id: SessionId): Promise<SessionNoteWire | null> {
-    return sidecarClient.request<SessionNoteWire | null>(`/api/sessions/${id}/notes`);
-  },
-
-  /** POST /api/sessions/:id/export — download session as ZIP Blob. */
-  async exportSession(id: SessionId): Promise<Blob> {
-    const res = await sidecarClient.requestRaw(`/api/sessions/${id}/export`, { method: 'POST' });
-    if (!res.ok) throw new Error(`Export failed: ${res.status}`);
-    return res.blob();
-  },
-
-  /** POST /api/sessions/import — upload a ZIP file and import its session. */
-  async importSession(file: File): Promise<SessionWire> {
-    const form = new FormData();
-    form.append('file', file);
-    const res = await sidecarClient.requestRaw('/api/sessions/import', { method: 'POST', body: form });
-    return res.json() as Promise<SessionWire>;
   },
 
   // ── Branch operations ────────────────────────────────────────────────────
