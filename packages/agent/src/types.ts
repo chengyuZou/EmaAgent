@@ -1,4 +1,4 @@
-import type { SessionId, EmaStreamEvent, KbSearchResult } from '@ema-agent/contracts';
+import type { SessionId, EmaStreamEvent, KbSearchResult, KbAssetScope } from '@ema-agent/contracts';
 import type { LlmRouter, LlmContentPart } from '@ema-agent/llm';
 import type { SessionStore, Turn } from '@ema-agent/session';
 import type { HookBus } from '@ema-agent/hook';
@@ -62,11 +62,11 @@ export interface AgentDeps {
   skillRunner?: ISkillRunner;
   /**
    * Knowledge-base search — injected so the kb_search tool can run AgenticRAG.
-   * The engine binds the turn's selected assetIds into the toolCtx closure, so
-   * the tool itself only passes query + topK. assetIds non-empty → scoped search
-   * + use-count bump; omitted → search all global KBs.
+   * kbIds: which KBs to search ([] / undefined → active KB). Supplied by the LLM tool call.
+   * assetScopes: per-KB doc filters from the chat picker (user selection, not LLM).
+   * Engine closure passes assetScopes only when the tool does NOT supply kbIds.
    */
-  kbSearch?: (query: string, topK?: number, kbIds?: string[], assetIds?: string[], sessionId?: string, turnId?: string) => Promise<KbSearchResult>;
+  kbSearch?: (query: string, topK?: number, kbIds?: string[], assetScopes?: KbAssetScope[], sessionId?: string, turnId?: string) => Promise<KbSearchResult>;
   /**
    * Per-session context store factory. Returns the file-state and tool-result
    * stores for a given session, creating them on first call and caching.
@@ -120,9 +120,10 @@ export interface AgentRunInput {
   model:                 string;
   /** All workspace roots. First entry is the primary cwd for shell tools. */
   workspaceRoots: string[];
-  /** KB id the user was browsing in the chat picker (which KB the kbAssetIds belong to).
-   *  Tells kbSearch which KB to target. Omit → active KB. */
-  kbId?:       string;
-  /** KB documents selected for this turn — scopes kb_search within kbId. */
-  kbAssetIds?: string[];
+  /** KB ids the user selected in the chat picker. kbSearch searches across all of them.
+   *  [] / omit → falls back to the active KB. */
+  kbIds?:         string[];
+  /** Per-KB doc scopes from the chat picker — narrows search within each KB.
+   *  KBs without a matching scope are searched unfiltered. */
+  kbAssetScopes?: KbAssetScope[];
 }

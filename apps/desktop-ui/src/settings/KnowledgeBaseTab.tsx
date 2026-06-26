@@ -414,24 +414,55 @@ const STAGE_BAR: Record<IngestStage, string> = {
 
 function ProcessingQueue(): JSX.Element | null {
   const jobs = useKbStore((s) => s.ingestJobs);
+  const libs = useKbStore((s) => s.libs);
 
   useEffect(() => {
     void useKbStore.getState().loadIngestTasks();  // hydrate from the persistent queue
+    void useKbStore.getState().loadLibs();
   }, []);
 
   const list = Object.values(jobs);
   if (list.length === 0) return null;
 
+  // Group by kbId; preserve order of first appearance.
+  const groups = new Map<string, typeof list>();
+  for (const job of list) {
+    const g = groups.get(job.kbId) ?? [];
+    g.push(job);
+    groups.set(job.kbId, g);
+  }
+
+  const libName = (kbId: string): string => libs.find((l) => l.id === kbId)?.name ?? kbId;
+
   return (
-    <section className="flex flex-col gap-2 ema-fade-in">
+    <section className="flex flex-col gap-3 ema-fade-in">
       <h2 className="text-base font-semibold text-[var(--ema-text-primary)]">处理队列</h2>
-      <div className="flex flex-col gap-1.5">
-        {list.map((job, i) => (
-          <div key={job.assetId} className="ema-stagger-in" style={{ '--stagger-i': i } as CSSProperties}>
-            <IngestJobRow job={job} />
+      {[...groups.entries()].map(([kbId, kbJobs], gi) => {
+        const done  = kbJobs.filter((j) => j.status === 'done').length;
+        const total = kbJobs.length;
+        return (
+          <div key={kbId} className="flex flex-col gap-1.5 ema-stagger-in"
+               style={{ '--stagger-i': gi } as CSSProperties}>
+            {/* Per-KB header with completion fraction */}
+            <div className="flex items-center gap-2 px-1">
+              <span className="i-solar:database-linear text-sm shrink-0"
+                    style={{ color: 'var(--ema-text-tertiary)' }} aria-hidden />
+              <p className="text-xs font-medium text-[var(--ema-text-secondary)] truncate flex-1">
+                {libName(kbId)}
+              </p>
+              <span className="text-[11px] font-mono shrink-0"
+                    style={{ color: 'var(--ema-text-tertiary)' }}>
+                {done}/{total}
+              </span>
+            </div>
+            {kbJobs.map((job, i) => (
+              <div key={job.assetId} className="ema-stagger-in" style={{ '--stagger-i': i } as CSSProperties}>
+                <IngestJobRow job={job} />
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
+        );
+      })}
     </section>
   );
 }
@@ -818,8 +849,16 @@ export function KnowledgeBaseTab(): JSX.Element {
   const documents = useKbStore((s) => s.documents);
   const loading   = useKbStore((s) => s.loading);
   const error     = useKbStore((s) => s.error);
-  const [showIngest, setShowIngest] = useState(false);
+  const [showIngest,       setShowIngest]       = useState(false);
+  const [ingestFormMounted, setIngestFormMounted] = useState(false);
   const [embedModel, setEmbedModel] = useState<string | undefined>();
+
+  // Delayed unmount so IngestForm exit animation plays.
+  useEffect(() => {
+    if (showIngest) { setIngestFormMounted(true); return; }
+    const t = setTimeout(() => setIngestFormMounted(false), 220);
+    return () => clearTimeout(t);
+  }, [showIngest]);
 
   useEffect(() => {
     void useKbStore.getState().loadDocuments();
@@ -857,25 +896,27 @@ export function KnowledgeBaseTab(): JSX.Element {
           </Button>
         </div>
 
-        {showIngest && (
-          <IngestForm onDone={() => setShowIngest(false)} />
+        {ingestFormMounted && (
+          <div className={showIngest ? 'ema-slide-down' : 'ema-fade-out'}>
+            <IngestForm onDone={() => setShowIngest(false)} />
+          </div>
         )}
 
         {error && (
-          <Callout variant="danger" className="text-xs">{error}</Callout>
+          <Callout variant="danger" className="text-xs ema-fade-in">{error}</Callout>
         )}
 
         {loading ? (
-          <div className="flex h-24 items-center justify-center">
+          <div className="flex h-24 items-center justify-center ema-fade-in">
             <Spinner size="md" />
           </div>
         ) : documents.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-28 gap-2 text-[var(--ema-text-tertiary)]">
+          <div className="flex flex-col items-center justify-center h-28 gap-2 text-[var(--ema-text-tertiary)] ema-fade-in">
             <span className="i-solar:database-bold text-2xl opacity-40" aria-hidden />
             <p className="text-sm">暂无文档，点击「导入文档」添加</p>
           </div>
         ) : (
-          <ScrollArea className="max-h-72">
+          <ScrollArea className="max-h-72 ema-fade-in">
             <div className="flex flex-col gap-1.5 pr-2">
               {documents.map((doc, i) => (
                 <div key={doc.id} className="ema-stagger-in" style={{ '--stagger-i': i } as CSSProperties}>

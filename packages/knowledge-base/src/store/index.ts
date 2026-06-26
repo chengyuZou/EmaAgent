@@ -11,9 +11,9 @@ import type { ChunkPage }           from '@ema-agent/storage';
 import type { AssetUsage }          from '@ema-agent/storage';
 
 export interface KbSearchOpts {
-  /** Selected KB asset ids for this turn. undefined = all KBs; [] = none. */
+  /** Document filter within this KB. undefined = search all docs; [] = unfiltered (same as undefined). */
   assetIds?: string[];
-  topK:      number;
+  topK?:     number;
 }
 
 export class KnowledgeStore {
@@ -22,7 +22,7 @@ export class KnowledgeStore {
     private readonly chunks:      DocumentChunkRepo,
     private readonly previews:    DocumentPreviewRepo,
     private readonly activations: KbActivationsRepo,
-    private readonly kbId:        string = '',
+    private readonly kbId:        string,
   ) {}
 
   // ── Asset ──────────────────────────────────────────────────────────────────
@@ -103,12 +103,12 @@ export class KnowledgeStore {
 
   /** BM25 full-text search via SQLite FTS5. */
   searchFts(query: string, opts: KbSearchOpts): ChunkSearchHit[] {
-    return this.chunks.searchFts(query, opts.assetIds, opts.topK);
+    return this.chunks.searchFts(query, opts.assetIds, opts.topK ?? 10);
   }
 
   /** Cosine similarity search over persisted BLOB embeddings. */
   searchByEmbedding(queryVec: number[], opts: KbSearchOpts): ChunkSearchHit[] {
-    return this.chunks.searchByEmbedding(queryVec, opts.assetIds, opts.topK);
+    return this.chunks.searchByEmbedding(queryVec, opts.assetIds, opts.topK ?? 10);
   }
 
   // ── Preview ────────────────────────────────────────────────────────────────

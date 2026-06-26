@@ -152,15 +152,15 @@ function dispatchSystemEvent(event: EmaStreamEvent): void {
 
     // ── Knowledge-base ingest progress (background indexing) ──────────────
     case 'kb_ingest_progress':
-      useKbStore.getState().onIngestProgress(event.assetId, event.stage, event.progress);
+      useKbStore.getState().onIngestProgress(event.kbId, event.assetId, event.stage, event.progress);
       break;
 
     case 'kb_ingest_completed':
-      useKbStore.getState().onIngestCompleted(event.assetId);
+      useKbStore.getState().onIngestCompleted(event.kbId, event.assetId);
       break;
 
     case 'kb_ingest_failed':
-      useKbStore.getState().onIngestFailed(event.assetId, event.error);
+      useKbStore.getState().onIngestFailed(event.kbId, event.assetId, event.error);
       break;
 
     // ── Memory pipeline telemetry (Reserved — not yet emitted, Round 4.5) ─

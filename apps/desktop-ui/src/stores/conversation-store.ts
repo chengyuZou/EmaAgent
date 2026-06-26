@@ -15,6 +15,7 @@ import { createSendQueue, type SendQueue } from '../lib/send-queue.js';
 import { sseConsumer }     from '../lib/sse-consumer.js';
 import { sessionsApi, type BranchTreeWire } from '../api/sessions.js';
 import { turnsApi, type AttachmentInputWire } from '../api/turns.js';
+import type { KbAssetScope } from '@ema-agent/contracts';
 import { sidecarClient }   from '../api/sidecar-client.js';
 import {
   handleTurnAborted,
@@ -35,6 +36,8 @@ import {
   appendTextSlice,
   appendThinkingSlice,
   type AnyAssistantSlice,
+  type ChatHistoryItem,
+  type StreamingAssistantMessage,
 } from './conversation-history.js';
 import type {
   SessionId,
@@ -68,10 +71,10 @@ interface SendInput {
   contentParts?: MessageContentPart[];
   attachments?:  AttachmentInputWire[];
   providerId?:   string;
-  model?:        string;
-  ttsEnabled?:   boolean;
-  kbId?:         string;
-  kbAssetIds?:   string[];
+  model?:          string;
+  ttsEnabled?:     boolean;
+  kbIds?:          string[];
+  kbAssetScopes?:  KbAssetScope[];
 }
 
 // ── Module-level per-session resources ────────────────────────────────────────
@@ -94,10 +97,10 @@ function getOrCreateQueue(sessionId: SessionId): SendQueue<SendInput> {
         contentParts: input.contentParts,
         attachments:  input.attachments,
         providerId:   input.providerId,
-        model:        input.model,
-        ttsEnabled:   input.ttsEnabled,
-        kbId:         input.kbId,
-        kbAssetIds:   input.kbAssetIds,
+        model:          input.model,
+        ttsEnabled:     input.ttsEnabled,
+        kbIds:          input.kbIds,
+        kbAssetScopes:  input.kbAssetScopes,
       });
 
       if ((actualSessionId as string) !== (input.sessionId as string)) {
@@ -183,8 +186,8 @@ export interface ConversationStoreState {
   recallEvidenceMap:  Map<string, Partial<Record<MemoryRecallLayer, MemoryRecallLayerReport>>>;
   liveUsageMap:       Map<string, { inputTokens: number; outputTokens: number }>;
   thinkingActiveMap:  Map<string, boolean>;
-  messages:           Map<string, import('./conversation-history.js').ChatHistoryItem[]>;
-  streamingMap:       Map<string, import('./conversation-history.js').StreamingAssistantMessage>;
+  messages:           Map<string, ChatHistoryItem[]>;
+  streamingMap:       Map<string, StreamingAssistantMessage>;
   stopReasonMap:      Map<string, string>;
   draftMap:           Map<string, string>;
   loading:            { messages: Set<string> };

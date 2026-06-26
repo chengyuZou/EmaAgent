@@ -46,9 +46,9 @@ export function ChatInput(): JSX.Element {
   const initialDraft = useConversationStore.getState().draftMap.get(viewedId as string ?? '') ?? '';
   const [text, setText] = useState(initialDraft);
   const [pendingAttachments, setPendingAttachments] = useState<AttachmentInputWire[]>([]);
-  const [selectedKbIds, setSelectedKbIds] = useState<string[]>([]);
-  const [selectedKbId,  setSelectedKbId]  = useState<string | null>(null);
-  const [selectedModel, setSelectedModel] = useState<ModelSelection | null>(null);
+  // Map<kbId, assetId[]> — per-KB doc selection; persists when switching library tabs.
+  const [selectedScopes, setSelectedScopes] = useState<Map<string, string[]>>(new Map());
+  const [selectedModel,  setSelectedModel]  = useState<ModelSelection | null>(null);
   const textareaRef     = useRef<HTMLTextAreaElement>(null);
   const prevViewedIdRef = useRef(viewedId);
   const TEXTAREA_MAX_H  = 200; // px — beyond this the textarea scrolls
@@ -57,8 +57,7 @@ export function ChatInput(): JSX.Element {
     if (prevViewedIdRef.current === viewedId) return;
     prevViewedIdRef.current = viewedId;
     setText(useConversationStore.getState().draftMap.get(viewedId as string ?? '') ?? '');
-    setSelectedKbIds([]);    // KB selection is per-session; reset when switching sessions
-    setSelectedKbId(null);
+    setSelectedScopes(new Map()); // KB selection is per-session; reset when switching sessions
   }, [viewedId]);
 
   // Auto-resize textarea height based on content, capped at TEXTAREA_MAX_H.
@@ -106,16 +105,23 @@ export function ChatInput(): JSX.Element {
       providerId: selectedModel?.providerId,
       model:      selectedModel?.model,
       ttsEnabled,
-      // KB scope applies to agent mode only (no tool loop in chat/narrative).
-      // Selection persists across sends so each send bumps the docs' use-count.
-      // kbId tells the backend which KB the selected document IDs belong to.
-      kbId:       mode === 'agent' && selectedKbIds.length > 0 ? (selectedKbId ?? undefined) : undefined,
-      kbAssetIds: mode === 'agent' && selectedKbIds.length > 0 ? selectedKbIds : undefined,
+      // KB scope applies to agent mode only. Selection persists across sends.
+      ...(() => {
+        if (mode !== 'agent' || selectedScopes.size === 0) return {};
+        const scopes = [...selectedScopes.entries()]
+          .filter(([, ids]) => ids.length > 0)
+          .map(([kbId, assetIds]) => ({ kbId, assetIds }));
+        if (scopes.length === 0) return {};
+        return {
+          kbIds:         scopes.map((s) => s.kbId),
+          kbAssetScopes: scopes,
+        };
+      })(),
     });
     setText('');
     setPendingAttachments([]);
     if (viewedId) useConversationStore.getState().setDraft(viewedId, '');
-  }, [canSend, mode, text, pendingAttachments, ttsEnabled, viewedId, selectedKbIds]);
+  }, [canSend, mode, text, pendingAttachments, ttsEnabled, viewedId, selectedScopes]);
 
   function handleKeyDown(e: KeyboardEvent<HTMLTextAreaElement>): void {
     if (isComposing) return;
@@ -215,10 +221,8 @@ export function ChatInput(): JSX.Element {
 
             <KbButton
               visible={mode === 'agent'}
-              selectedIds={selectedKbIds}
-              selectedKbId={selectedKbId}
-              onChange={setSelectedKbIds}
-              onKbIdChange={setSelectedKbId}
+              selectedScopes={selectedScopes}
+              onScopesChange={setSelectedScopes}
             />
 
             <IconButton
@@ -263,27 +267,25 @@ export function ChatInput(): JSX.Element {
 // (ema-anim-scale → both enter and exit animate, from style.css).
 
 function KbButton({
-  visible, selectedIds, selectedKbId, onChange, onKbIdChange,
+  visible, selectedScopes, onScopesChange,
 }: {
   visible: boolean;
-  selectedIds: string[];
-  selectedKbId: string | null;
-  onChange(ids: string[]): void;
-  onKbIdChange(kbId: string | null): void;
+  selectedScopes: Map<string, string[]>;
+  onScopesChange(scopes: Map<string, string[]>): void;
 }): JSX.Element | null {
   const [mounted, setMounted] = useState(visible);
   const [open, setOpen]       = useState(false);
 
   useEffect(() => {
     if (visible) { setMounted(true); return; }
-    setOpen(false);  // close the panel before the button leaves
-    const t = setTimeout(() => setMounted(false), 220);  // ≈ --ema-duration-base, lets ema-fade-out finish
+    setOpen(false);
+    const t = setTimeout(() => setMounted(false), 220);
     return () => clearTimeout(t);
   }, [visible]);
 
   if (!mounted) return null;
 
-  const count = selectedIds.length;
+  const count = [...selectedScopes.values()].reduce((s, ids) => s + ids.length, 0);
 
   return (
     <div className={visible ? 'ema-scale-in' : 'ema-fade-out'}>
@@ -296,7 +298,7 @@ function KbButton({
           widthClass="w-72"
           trigger={
             <span className="relative inline-flex">
-              <Tooltip content={count > 0 ? `知识库 · 已选 ${count} 个` : '选择知识库'}>
+              <Tooltip content={count > 0 ? `知识库 · 已选 ${count} 个文档` : '选择知识库'}>
                 <span className="inline-flex">
                   <IconButton
                     variant={count > 0 ? 'primary' : 'default'}
@@ -316,12 +318,7 @@ function KbButton({
             </span>
           }
         >
-          <KbSelectorBody
-            selectedIds={selectedIds}
-            selectedKbId={selectedKbId}
-            onChange={onChange}
-            onKbIdChange={onKbIdChange}
-          />
+          <KbSelectorBody selectedScopes={selectedScopes} onScopesChange={onScopesChange} />
         </Popover>
       </TooltipProvider>
     </div>
@@ -329,15 +326,17 @@ function KbButton({
 }
 
 // ── KbSelectorBody ────────────────────────────────────────────────────────────
-// Two-level picker: first pick a KB library (from the registry), then select
-// documents within it. Uses the cursor-paginated document list.
+// Two-level picker: pick a KB library tab, then select documents within it.
+// Switching tabs preserves selections from other KBs (selectedScopes is per-KB).
 
 const KB_PAGE_SIZE = 20;
 
 function KbDocList({
-  kbId, selectedIds, onChange,
+  kbId, selectedIds, onScopeChange,
 }: {
-  kbId: string; selectedIds: string[]; onChange(ids: string[]): void;
+  kbId: string;
+  selectedIds: string[];
+  onScopeChange(ids: string[]): void;
 }): JSX.Element {
   const [items, setItems]           = useState<DocumentAssetWire[]>([]);
   const [nextCursor, setNextCursor] = useState<number | null>(null);
@@ -356,7 +355,7 @@ function KbDocList({
   useEffect(() => { void loadPage(undefined); }, [loadPage]);
 
   function toggle(id: string): void {
-    onChange(selectedIds.includes(id)
+    onScopeChange(selectedIds.includes(id)
       ? selectedIds.filter((x) => x !== id)
       : [...selectedIds, id]);
   }
@@ -409,12 +408,10 @@ function KbDocList({
 }
 
 function KbSelectorBody({
-  selectedIds, selectedKbId, onChange, onKbIdChange,
+  selectedScopes, onScopesChange,
 }: {
-  selectedIds:  string[];
-  selectedKbId: string | null;
-  onChange(ids: string[]): void;
-  onKbIdChange(kbId: string | null): void;
+  selectedScopes:  Map<string, string[]>;
+  onScopesChange(scopes: Map<string, string[]>): void;
 }): JSX.Element {
   const [libs, setLibs]             = useState<KbLibraryWire[]>([]);
   const [libsLoaded, setLibsLoaded] = useState(false);
@@ -424,44 +421,40 @@ function KbSelectorBody({
     void kbApi.listLibs().then((list) => {
       setLibs(list);
       setLibsLoaded(true);
-      // Default to showing the active KB's documents.
       const active = list.find((l) => l.isActive);
       if (active) setShownLibId(active.id);
       else if (list[0]) setShownLibId(list[0].id);
     }).catch(() => { setLibsLoaded(true); });
   }, []);
 
-  // Switching the displayed KB tab — clear existing doc selection (IDs don't transfer).
-  function switchLib(lib: KbLibraryWire): void {
-    if (lib.id === shownLibId) return;
-    onChange([]);
-    onKbIdChange(null);    // no docs selected yet in the new KB
-    setShownLibId(lib.id);
+  function handleScopeChange(kbId: string, ids: string[]): void {
+    const next = new Map(selectedScopes);
+    if (ids.length === 0) next.delete(kbId);
+    else next.set(kbId, ids);
+    onScopesChange(next);
   }
 
-  // Wrap onChange so we can track which KB the selected docs belong to.
-  function handleDocChange(ids: string[]): void {
-    onChange(ids);
-    onKbIdChange(ids.length > 0 ? (shownLibId ?? null) : null);
+  function clearAll(): void {
+    onScopesChange(new Map());
   }
 
-  const shownLib = libs.find((l) => l.id === shownLibId);
+  const totalCount = [...selectedScopes.values()].reduce((s, ids) => s + ids.length, 0);
+  const shownLib   = libs.find((l) => l.id === shownLibId);
 
   return (
     <div className="flex flex-col gap-2">
       {/* ── Header row ── */}
       <div className="flex items-center justify-between px-1">
         <p className="text-xs font-medium" style={{ color: 'var(--ema-text-secondary)' }}>知识库</p>
-        {selectedIds.length > 0 && (
+        {totalCount > 0 && (
           <button
             className="text-xs transition-colors hover:text-[var(--ema-primary)]"
             style={{ color: 'var(--ema-text-tertiary)' }}
-            onClick={() => handleDocChange([])}
-          >清空</button>
+            onClick={clearAll}
+          >清空全部</button>
         )}
       </div>
 
-      {/* ── Library tabs (only when multiple KBs exist) ── */}
       {!libsLoaded ? (
         <div className="flex justify-center py-3 ema-fade-in"><Spinner size="sm" /></div>
       ) : libs.length === 0 ? (
@@ -470,33 +463,38 @@ function KbSelectorBody({
         </p>
       ) : (
         <>
+          {/* ── Library tabs — switching preserves other KBs' selections ── */}
           {libs.length > 1 && (
             <div className="flex flex-wrap gap-1 ema-slide-up">
-              {libs.map((lib) => (
-                <button
-                  key={lib.id}
-                  className="text-xs px-2 py-0.5 rounded-full transition-ema"
-                  style={{
-                    background: lib.id === shownLibId ? 'var(--ema-primary)' : 'var(--ema-surface-2)',
-                    color:      lib.id === shownLibId ? 'var(--ema-text-on-primary)' : 'var(--ema-text-secondary)',
-                  }}
-                  onClick={() => switchLib(lib)}
-                >
-                  {lib.name}
-                  {lib.isActive && <span className="ml-1 opacity-60 text-[9px]">●</span>}
-                </button>
-              ))}
+              {libs.map((lib) => {
+                const libCount = selectedScopes.get(lib.id)?.length ?? 0;
+                return (
+                  <button
+                    key={lib.id}
+                    className="text-xs px-2 py-0.5 rounded-full transition-ema relative"
+                    style={{
+                      background: lib.id === shownLibId ? 'var(--ema-primary)' : 'var(--ema-surface-2)',
+                      color:      lib.id === shownLibId ? 'var(--ema-text-on-primary)' : 'var(--ema-text-secondary)',
+                    }}
+                    onClick={() => setShownLibId(lib.id)}
+                  >
+                    {lib.name}
+                    {lib.isActive && <span className="ml-1 opacity-60 text-[9px]">●</span>}
+                    {libCount > 0 && (
+                      <span className="ml-1 text-[9px] font-mono opacity-80">{libCount}</span>
+                    )}
+                  </button>
+                );
+              })}
             </div>
           )}
 
-          {/* Each KB's documents are queried directly by kbId — no active-KB
-              switching needed; the backend resolveEntry() opens any registered KB. */}
           {shownLib && (
             <KbDocList
               key={shownLib.id}
               kbId={shownLib.id}
-              selectedIds={selectedIds}
-              onChange={handleDocChange}
+              selectedIds={selectedScopes.get(shownLib.id) ?? []}
+              onScopeChange={(ids) => handleScopeChange(shownLib.id, ids)}
             />
           )}
         </>

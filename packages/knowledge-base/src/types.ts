@@ -1,4 +1,5 @@
 // ── Document block (reader output) ───────────────────────────────────────────
+import type { KbAssetScope } from '@ema-agent/contracts';
 
 export type DocumentBlockKind =
   | 'title'
@@ -118,7 +119,10 @@ export interface IngestResult {
 // ── Search ────────────────────────────────────────────────────────────────────
 
 export interface SearchOptions {
-  /** Selected KB asset ids for this turn. undefined = search all KBs; [] = none. */
+  /** Per-KB document scope from the chat picker. KbManager uses this to pass the
+   *  right assetIds to each KB's client. Ignored by KnowledgeClient.search() directly. */
+  assetScopes?: KbAssetScope[];
+  /** Single-KB asset filter (used by KnowledgeClient.search() internally). */
   assetIds?:  string[];
   topK?:      number;
   /** BM25 / vector blend weight (0 = pure BM25, 1 = pure vector). Default 0.5. */

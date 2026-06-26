@@ -53,6 +53,7 @@ export type KbIngestStatus = 'pending' | 'running' | 'failed';
 
 export interface KbIngestTaskWire {
   id:        string;
+  kbId:      string;   // which KB this task belongs to (injected by the route)
   filePath:  string;
   fileName:  string;
   mimeType?: string;
@@ -117,8 +118,6 @@ export interface KbIngestOptions {
 export interface KbSearchOptions {
   /** KB ids to search. [] / omit → active KB; multiple → multi-KB merge by score. */
   kbIds?:           string[];
-  /** Selected asset ids to scope search within the KB(s). */
-  assetIds?:        string[];
   topK?:            number;
   alpha?:           number;
   ebdProviderId?:   string;

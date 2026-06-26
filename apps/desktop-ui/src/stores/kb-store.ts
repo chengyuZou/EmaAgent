@@ -20,6 +20,7 @@ export type IngestJobStatus = 'pending' | 'running' | 'failed' | 'done';
 
 export interface IngestJob {
   assetId:  string;
+  kbId:     string;   // which KB this document belongs to
   fileName: string;
   stage?:   IngestStage;       // absent while pending
   progress: number;            // 0–1
@@ -68,9 +69,9 @@ export interface KbStoreState {
   deleteLib(id: string): Promise<void>;
 
   // Driven by the system SSE (kb_ingest_* events).
-  onIngestProgress(assetId: string, stage: IngestStage, progress: number): void;
-  onIngestCompleted(assetId: string): void;
-  onIngestFailed(assetId: string, error: string): void;
+  onIngestProgress(kbId: string, assetId: string, stage: IngestStage, progress: number): void;
+  onIngestCompleted(kbId: string, assetId: string): void;
+  onIngestFailed(kbId: string, assetId: string, error: string): void;
 }
 
 // ── Store ─────────────────────────────────────────────────────────────────────
@@ -108,11 +109,12 @@ export const useKbStore = create<KbStoreState>((set, get) => ({
 
   async loadIngestTasks() {
     try {
-      const tasks = await kbApi.getIngestTasks();
+      const tasks = await kbApi.getIngestTasks(); // no kbId → all KBs
       const jobs: Record<string, IngestJob> = {};
       for (const t of tasks) {
         jobs[t.id] = {
           assetId:  t.id,
+          kbId:     t.kbId,
           fileName: t.fileName,
           stage:    t.stage as IngestStage | undefined,
           progress: t.progress,
@@ -144,13 +146,14 @@ export const useKbStore = create<KbStoreState>((set, get) => ({
   },
 
   async retryIngest(assetId) {
+    const kbId = get().ingestJobs[assetId]?.kbId;
     // Optimistic: flip to pending immediately; the SSE drives it from there.
     set((s) => {
       const job = s.ingestJobs[assetId];
       if (!job) return {};
       return { ingestJobs: { ...s.ingestJobs, [assetId]: { ...job, status: 'pending', stage: undefined, progress: 0, error: undefined } } };
     });
-    try { await kbApi.retryIngest(assetId); }
+    try { await kbApi.retryIngest(assetId, kbId); }
     catch { void get().loadIngestTasks(); }  // resync on failure
   },
 
@@ -238,23 +241,25 @@ export const useKbStore = create<KbStoreState>((set, get) => ({
     }
   },
 
-  onIngestProgress(assetId, stage, progress) {
+  onIngestProgress(kbId, assetId, stage, progress) {
     set((s) => {
       const job = s.ingestJobs[assetId];
-      if (!job) return {};
-      return { ingestJobs: { ...s.ingestJobs, [assetId]: { ...job, status: 'running', stage, progress } } };
+      if (!job) {
+        // First SSE event for this asset — create the job entry (loadIngestTasks may not have run yet).
+        return { ingestJobs: { ...s.ingestJobs, [assetId]: { assetId, kbId, fileName: assetId, status: 'running', stage, progress } } };
+      }
+      return { ingestJobs: { ...s.ingestJobs, [assetId]: { ...job, kbId, status: 'running', stage, progress } } };
     });
   },
 
-  onIngestCompleted(assetId) {
-    // Mark done (green, 100%) briefly so the row plays an exit animation, then
-    // drop it — by which point loadDocuments has surfaced the real KB row.
+  onIngestCompleted(kbId, assetId) {
+    // Mark done (green, 100%) briefly so the row plays an exit animation, then drop it.
     set((s) => {
       const job = s.ingestJobs[assetId];
       if (!job) return {};
       return {
         ingestDoneCount: s.ingestDoneCount + 1,
-        ingestJobs: { ...s.ingestJobs, [assetId]: { ...job, status: 'done', progress: 1 } },
+        ingestJobs: { ...s.ingestJobs, [assetId]: { ...job, kbId, status: 'done', progress: 1 } },
       };
     });
     void get().loadDocuments();
@@ -266,11 +271,11 @@ export const useKbStore = create<KbStoreState>((set, get) => ({
     }, 350);
   },
 
-  onIngestFailed(assetId, error) {
+  onIngestFailed(kbId, assetId, error) {
     set((s) => {
       const job = s.ingestJobs[assetId];
       if (!job) return {};
-      return { ingestJobs: { ...s.ingestJobs, [assetId]: { ...job, status: 'failed', error } } };
+      return { ingestJobs: { ...s.ingestJobs, [assetId]: { ...job, kbId, status: 'failed', error } } };
     });
   },
 }));

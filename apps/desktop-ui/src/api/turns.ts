@@ -26,11 +26,11 @@ export interface CreateTurnRequest {
   /** provider_configs.id — the provider instance to use for this turn. */
   providerId?:   string;
   model?:        string;
-  ttsEnabled?:   boolean;
-  /** Which KB the selected documents belong to. Omit → active KB. */
-  kbId?:         string;
-  /** KB documents selected for this turn — scopes kb_search (agent mode). */
-  kbAssetIds?:   string[];
+  ttsEnabled?:     boolean;
+  /** KB ids the user selected in the chat picker (turn-level search scope). */
+  kbIds?:          string[];
+  /** Per-KB document scopes: which docs within each KB are selected. */
+  kbAssetScopes?:  Array<{ kbId: string; assetIds: string[] }>;
 }
 
 export interface CreateTurnResponse {

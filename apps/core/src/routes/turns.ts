@@ -55,10 +55,11 @@ const turnBodySchema = z.object({
   attachments:  z.array(attachmentInputSchema).optional(),
   providerId: z.string().optional(),
   model: z.string().optional(),
-  ttsEnabled:  z.boolean().optional(),
-  /** Which KB the user was browsing in the chat picker — the kbAssetIds belong to this KB. */
-  kbId:        z.string().optional(),
-  kbAssetIds:  z.array(z.string()).optional(),
+  ttsEnabled:    z.boolean().optional(),
+  /** KB ids the user selected in the chat picker (turn-level search scope). */
+  kbIds:         z.array(z.string()).optional(),
+  /** Per-KB document scopes: which docs within each KB are selected. */
+  kbAssetScopes: z.array(z.object({ kbId: z.string(), assetIds: z.array(z.string()) })).optional(),
 }).refine(
   (data) => data.userInput || (data.contentParts && data.contentParts.length > 0),
   { message: 'either userInput or contentParts is required' },
@@ -101,7 +102,7 @@ export function turnsRoute(bindings: AppBindings): Hono {
       return c.json({ error: 'invalid_request', details: parsed.error.flatten() }, 400);
     }
 
-    const { sessionId, mode, userInput, contentParts, attachments, providerId, model, ttsEnabled, kbId, kbAssetIds } = parsed.data;
+    const { sessionId, mode, userInput, contentParts, attachments, providerId, model, ttsEnabled, kbIds, kbAssetScopes } = parsed.data;
 
     // Trust the client's sessionId only if it still exists. A stale id (e.g.
     // a viewedSessionId persisted across a DB reset) would otherwise FK-fail
@@ -124,8 +125,8 @@ export function turnsRoute(bindings: AppBindings): Hono {
         attachmentInputs: attachments,
         providerId,
         model,
-        kbId,
-        kbAssetIds,
+        kbIds,
+        kbAssetScopes,
         ttsEnabled:       ttsEnabled ?? false,
       }));
     } catch (err) {

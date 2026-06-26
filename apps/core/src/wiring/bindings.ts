@@ -42,13 +42,11 @@ import { PermissionEngine } from '@ema-agent/permission';
 import type { AskPermissionFn } from '@ema-agent/permission';
 import { PermissionPromptRegistry } from '../permissions/registry.js';
 import { AskUserRegistry }          from '../ask-user/registry.js';
-import type { EmaStreamEvent }      from '@ema-agent/contracts';
+import type { EmaStreamEvent, KbAssetScope, SessionId, KbSearchResult } from '@ema-agent/contracts';
 import { ToolRegistry }        from '@ema-agent/tool';
 import { registerBuiltinTools } from '@ema-agent/tool-builtin';
 import { detectBackend, CommandRunner } from '@ema-agent/sandbox';
 import type { ICommandRunner, IMcpClientBridge, ISkillRunner } from '@ema-agent/tool';
-import type { SessionId }          from '@ema-agent/contracts';
-import type { KbSearchResult }     from '@ema-agent/contracts';
 import {
   AgentFileStateStore, AgentToolResultStore, ToolResultCleaner,
 } from '@ema-agent/agent-context';
@@ -176,9 +174,10 @@ export interface AppBindings {
   /** Multi-KB manager. Routes use openActiveEntry() to get the active KB's client/queue. */
   kb: KbManager;
   /** KB hybrid search for the kb_search tool — resolves bound embed/rerank models.
-   *  kbIds=[] → search active KB; multiple ids → cross-KB merge.
-   *  assetIds scopes document-level within the targeted KB(s); sessionId/turnId tag activations. */
-  kbSearch: (query: string, topK?: number, kbIds?: string[], assetIds?: string[], sessionId?: string, turnId?: string) => Promise<KbSearchResult>;
+   *  kbIds=[] → active KB; multiple ids → cross-KB merge.
+   *  assetScopes: per-KB doc filters from the chat picker (each scope targets one KB).
+   *  KBs without a matching scope are searched unfiltered.  */
+  kbSearch: (query: string, topK?: number, kbIds?: string[], assetScopes?: KbAssetScope[], sessionId?: string, turnId?: string) => Promise<KbSearchResult>;
 }
 
 // ── Build bindings ────────────────────────────────────────────────────────────
@@ -420,33 +419,34 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
   });
 
   // Bridge KbManager's aggregated event bus → systemBus SSE.
-  // Progress task persistence is now done inside KbManager._openEntry per-KB.
+  // kbId is now injected by KbManager.openEntry; forward it on every event type.
   kb.events.on((e) => {
-    if (e.kind === 'complete') { systemBus.emit({ type: 'kb_ingest_completed', assetId: e.assetId }); return; }
-    if (e.kind === 'error')    { systemBus.emit({ type: 'kb_ingest_failed', assetId: e.assetId, error: e.error ?? 'unknown' }); return; }
+    const kbId = e.kbId ?? '';
+    if (e.kind === 'complete') { systemBus.emit({ type: 'kb_ingest_completed', kbId, assetId: e.assetId }); return; }
+    if (e.kind === 'error')    { systemBus.emit({ type: 'kb_ingest_failed', kbId, assetId: e.assetId, error: e.error ?? 'unknown' }); return; }
     const base: Record<string, number> = { validate: 0.05, parse: 0.25, chunk: 0.45, embed: 0.5 };
     const progress = e.kind === 'embed' ? 0.5 + 0.5 * (e.progress ?? 0) : (base[e.kind] ?? 0);
-    systemBus.emit({ type: 'kb_ingest_progress', assetId: e.assetId, stage: e.kind, progress });
+    systemBus.emit({ type: 'kb_ingest_progress', kbId, assetId: e.assetId, stage: e.kind, progress });
   });
 
-  // kb_search tool injection: resolve the bound embed/rerank models so retrieval
-  // uses the same models as the rest of the app. assetIds omitted → searches all
-  // global KBs; per-turn document scoping arrives with the input-bar KB picker.
+  // kb_search tool injection: resolves bound embed/rerank models and threads
+  // kbIds (LLM override) + assetScopes (user picker) into KbManager.search().
   const kbSearch = (
-    query:      string,
-    topK?:      number,
-    kbIds?:     string[],
-    assetIds?:  string[],
-    sessionId?: string,
-    turnId?:    string,
+    query:        string,
+    topK?:        number,
+    kbIds?:       string[],
+    assetScopes?: KbAssetScope[],
+    sessionId?:   string,
+    turnId?:      string,
   ): Promise<KbSearchResult> => {
     const kbModels = (settingsRepo.get('kb.models') as {
       embed?:  { providerConfigId: string; model: string };
       rerank?: { providerConfigId: string; model: string };
     } | undefined) ?? {};
     // kbIds=[] / undefined → KbManager falls back to the active KB.
+    // assetScopes let KbManager route per-KB doc filters to the right client.
     return kb.search(kbIds ?? [], query, {
-      assetIds,
+      assetScopes,
       topK,
       sessionId,
       turnId,

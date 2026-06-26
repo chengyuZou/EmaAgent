@@ -1,6 +1,6 @@
 import type { AppBindings } from '../wiring.js';
 import type {
-  TurnMode, EmaStreamEvent, TurnId,
+  TurnMode, EmaStreamEvent, TurnId, KbAssetScope,
 } from '@ema-agent/contracts';
 import { getProviderDefinition } from '@ema-agent/contracts';
 import type { LlmContentPart } from '@ema-agent/llm';
@@ -31,10 +31,10 @@ export interface TurnRequest {
   /** provider_configs.id — 和 model 成对使用，前端选择器选的是 (provider, model) 组合。 */
   providerId?:      string;
   model?:           string;
-  /** KB id the user was browsing in the chat picker (kbAssetIds belong to this KB). */
-  kbId?:            string;
-  /** KB documents the user selected for this turn — scopes kb_search within kbId. */
-  kbAssetIds?:      string[];
+  /** KB ids the user selected in the chat picker (turn-level search scope). */
+  kbIds?:           string[];
+  /** Per-KB document scopes from the chat picker. */
+  kbAssetScopes?:   KbAssetScope[];
   /**
    * Whether to spawn a TtsCoordinator for this turn. Defaults to false —
    * the frontend opts in per turn (after the user toggles the speaker icon).
@@ -310,8 +310,8 @@ export class Orchestrator {
           userInput:      request.contentParts?.length ? request.contentParts : (request.userInput ?? ''),
           systemPrompt,
           workspaceRoots,
-          kbId:           request.kbId,
-          kbAssetIds:     request.kbAssetIds,
+          kbIds:          request.kbIds,
+          kbAssetScopes:  request.kbAssetScopes,
         });
       }
     }

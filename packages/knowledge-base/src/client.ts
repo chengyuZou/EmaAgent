@@ -42,7 +42,7 @@ export class KnowledgeClient {
 
   // In-memory HNSW (or brute-force fallback). null until init() is called.
   private hnsw: VectorIndex | null = null;
-  // chunkId → assetId, so HNSW hits can be filtered to the turn's selected KBs.
+  // chunkId → assetId, so HNSW hits can be filtered to the turn's selected docs.
   private readonly chunkToAsset = new Map<string, string>();
 
   constructor(private readonly deps: KnowledgeClientDeps) {}

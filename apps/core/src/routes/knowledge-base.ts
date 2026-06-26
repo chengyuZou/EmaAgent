@@ -25,7 +25,6 @@ const searchBody = z.object({
   query:            z.string().min(1),
   /** KB ids to search. [] / omit → active KB; [id1, id2] → multi-KB merge. */
   kbIds:            z.array(z.string()).optional(),
-  assetIds:         z.array(z.string()).optional(),
   topK:             z.number().int().min(1).max(50).optional(),
   alpha:            z.number().min(0).max(1).optional(),
   ebdProviderId:    z.string().optional(),
@@ -203,15 +202,29 @@ export function kbRoute(bindings: AppBindings): Hono {
     return c.json(entry.client.getAssetUsage(c.req.param('id')));
   });
 
-  // GET /api/kb/ingest-tasks — the background ingest queue
+  // GET /api/kb/ingest-tasks — background ingest queue.
+  // kbId provided → that KB only; omitted → all registered KBs (each task includes kbId).
   app.get('/ingest-tasks', async (c) => {
     const parsed = kbIdQuery.safeParse(c.req.query());
     const kbId = parsed.success ? parsed.data.kbId : undefined;
 
-    const entry = await resolveEntry(bindings, kbId, c);
-    if (entry instanceof Response) return entry;
+    if (kbId) {
+      const entry = await resolveEntry(bindings, kbId, c);
+      if (entry instanceof Response) return entry;
+      return c.json(entry.ingestTasks.listActive().map((t) => ({ ...t, kbId })));
+    }
 
-    return c.json(entry.ingestTasks.listActive());
+    // No kbId → aggregate across every registered KB.
+    const allKbs = bindings.kb.listKbs();
+    const results = await Promise.all(
+      allKbs.map(async (rec) => {
+        try {
+          const entry = await bindings.kb.openClient(rec.id);
+          return entry.ingestTasks.listActive().map((t) => ({ ...t, kbId: rec.id }));
+        } catch { return []; }
+      }),
+    );
+    return c.json(results.flat());
   });
 
   // POST /api/kb/documents/:id/retry — re-queue a failed ingest task
@@ -276,7 +289,6 @@ export function kbRoute(bindings: AppBindings): Hono {
     };
 
     try {
-      // kbIds=[] → KbManager routes to the active KB (same behaviour as before)
       const result = await bindings.kb.search(kbIds, parsed.data.query, opts);
       return c.json(result);
     } catch (err) {

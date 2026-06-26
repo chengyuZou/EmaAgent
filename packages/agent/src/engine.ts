@@ -152,10 +152,12 @@ async function* runTurn(
         mcpClient:       deps.mcpClient,
         skillRunner:     deps.skillRunner,
         kbSearch:        deps.kbSearch
-          ? (query, topK, kbIds) =>
-              // kbIds from the tool call override turn-level kbId; fall back to the
-              // KB the user was browsing in the picker, then [] = active KB.
-              deps.kbSearch!(query, topK, kbIds ?? (input.kbId ? [input.kbId] : []), input.kbAssetIds, sessionId, turnId)
+          ? (query, topK, kbIds) => {
+              // Tool-supplied kbIds = explicit LLM override; pass assetScopes only for user selection.
+              const effectiveKbIds  = kbIds ?? (input.kbIds?.length ? input.kbIds : []);
+              const effectiveScopes = kbIds ? undefined : input.kbAssetScopes;
+              return deps.kbSearch!(query, topK, effectiveKbIds, effectiveScopes, sessionId, turnId);
+            }
           : undefined,
         subagentSpawner: spawner,
         scratchpadDir,
