@@ -8,9 +8,10 @@ import {
   type KbSearchResultWire,
   type KbIngestOptions,
   type KbSearchOptions,
+  type KbLibraryWire,
 } from '../api/knowledge-base.js';
 
-export type { DocumentAssetWire, KbSearchResultWire, KbSearchHitWire } from '../api/knowledge-base.js';
+export type { DocumentAssetWire, KbSearchResultWire, KbSearchHitWire, KbLibraryWire } from '../api/knowledge-base.js';
 
 // ── Ingest job (background processing queue) ────────────────────────────────────
 
@@ -45,6 +46,11 @@ export interface KbStoreState {
   searchLoading: boolean;
   searchError:   string | null;
 
+  // ── KB library registry ─────────────────────────────────────────────────────
+  libs:          KbLibraryWire[];
+  libsLoading:   boolean;
+  libsError:     string | null;
+
   loadDocuments(opts?: { cursor?: number; limit?: number; keyword?: string }): Promise<void>;
   loadIngestTasks(): Promise<void>;
   ingest(filePath: string, opts?: KbIngestOptions): Promise<void>;
@@ -53,6 +59,13 @@ export interface KbStoreState {
   search(query: string, opts?: KbSearchOptions): Promise<void>;
   clearSearch(): void;
   clearError(): void;
+
+  // KB library operations.
+  loadLibs(): Promise<void>;
+  createLib(name: string, kbPath: string): Promise<KbLibraryWire | undefined>;
+  renameLib(id: string, name: string): Promise<void>;
+  activateLib(id: string): Promise<void>;
+  deleteLib(id: string): Promise<void>;
 
   // Driven by the system SSE (kb_ingest_* events).
   onIngestProgress(assetId: string, stage: IngestStage, progress: number): void;
@@ -75,6 +88,10 @@ export const useKbStore = create<KbStoreState>((set, get) => ({
   searchResult:  null,
   searchLoading: false,
   searchError:   null,
+
+  libs:          [],
+  libsLoading:   false,
+  libsError:     null,
 
   async loadDocuments(opts = {}) {
     set({ loading: true, error: null });
@@ -169,6 +186,56 @@ export const useKbStore = create<KbStoreState>((set, get) => ({
 
   clearError() {
     set({ error: null, ingestError: null });
+  },
+
+  async loadLibs() {
+    set({ libsLoading: true, libsError: null });
+    try {
+      const libs = await kbApi.listLibs();
+      set({ libs, libsLoading: false });
+    } catch (err: unknown) {
+      set({ libsError: err instanceof Error ? err.message : '加载知识库列表失败', libsLoading: false });
+    }
+  },
+
+  async createLib(name, kbPath) {
+    try {
+      const lib = await kbApi.createLib(name, kbPath);
+      set((s) => ({ libs: [...s.libs, lib] }));
+      return lib;
+    } catch (err: unknown) {
+      set({ libsError: err instanceof Error ? err.message : '创建失败' });
+      return undefined;
+    }
+  },
+
+  async renameLib(id, name) {
+    try {
+      await kbApi.renameLib(id, name);
+      set((s) => ({ libs: s.libs.map((l) => l.id === id ? { ...l, name } : l) }));
+    } catch (err: unknown) {
+      set({ libsError: err instanceof Error ? err.message : '重命名失败' });
+    }
+  },
+
+  async activateLib(id) {
+    try {
+      await kbApi.activateLib(id);
+      set((s) => ({ libs: s.libs.map((l) => ({ ...l, isActive: l.id === id })) }));
+      // Reload documents from the newly-active KB.
+      void get().loadDocuments();
+    } catch (err: unknown) {
+      set({ libsError: err instanceof Error ? err.message : '激活失败' });
+    }
+  },
+
+  async deleteLib(id) {
+    try {
+      await kbApi.deleteLib(id);
+      set((s) => ({ libs: s.libs.filter((l) => l.id !== id) }));
+    } catch (err: unknown) {
+      set({ libsError: err instanceof Error ? err.message : '删除失败' });
+    }
   },
 
   onIngestProgress(assetId, stage, progress) {

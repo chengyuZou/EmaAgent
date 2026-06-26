@@ -66,7 +66,7 @@ export interface AgentDeps {
    * the tool itself only passes query + topK. assetIds non-empty → scoped search
    * + use-count bump; omitted → search all global KBs.
    */
-  kbSearch?: (query: string, topK?: number, assetIds?: string[], sessionId?: string, turnId?: string) => Promise<KbSearchResult>;
+  kbSearch?: (query: string, topK?: number, kbIds?: string[], assetIds?: string[], sessionId?: string, turnId?: string) => Promise<KbSearchResult>;
   /**
    * Per-session context store factory. Returns the file-state and tool-result
    * stores for a given session, creating them on first call and caching.
@@ -120,6 +120,9 @@ export interface AgentRunInput {
   model:                 string;
   /** All workspace roots. First entry is the primary cwd for shell tools. */
   workspaceRoots: string[];
-  /** KB documents selected for this turn — scopes kb_search. Empty/undefined = all KBs. */
-  kbAssetIds?:    string[];
+  /** KB id the user was browsing in the chat picker (which KB the kbAssetIds belong to).
+   *  Tells kbSearch which KB to target. Omit → active KB. */
+  kbId?:       string;
+  /** KB documents selected for this turn — scopes kb_search within kbId. */
+  kbAssetIds?: string[];
 }

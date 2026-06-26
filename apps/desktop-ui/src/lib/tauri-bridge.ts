@@ -66,13 +66,15 @@ export interface TauriBridge {
   }): Promise<string | null>;
 
   /**
-   * Open a native "Open File" dialog (single file).
-   * Returns the absolute path of the selected file, or null if cancelled.
+   * Open a native "Open File" (or directory) dialog (single selection).
+   * Returns the absolute path of the selected file/folder, or null if cancelled.
    * Returns null when Tauri is absent (browser / Ladle dev mode).
    */
   openFileDialog(opts?: {
     defaultPath?: string;
     filters?: Array<{ name: string; extensions: string[] }>;
+    /** When true, opens a directory picker instead of a file picker. */
+    directory?: boolean;
   }): Promise<string | null>;
 
   /**

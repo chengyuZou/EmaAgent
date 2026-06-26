@@ -9,16 +9,22 @@ import type { KbEntry } from '@ema-agent/knowledge-base';
 const ingestBody = z.object({
   filePath: z.string().min(1),
   mimeType: z.string().optional(),
+  /** Target KB id. Omit → active KB. */
+  kbId:     z.string().optional(),
 });
 
 const listQuery = z.object({
   cursor:  z.coerce.number().int().optional(),
   limit:   z.coerce.number().int().min(1).max(100).optional(),
   keyword: z.string().optional(),
+  /** Target KB id. Omit → active KB. */
+  kbId:    z.string().optional(),
 });
 
 const searchBody = z.object({
   query:            z.string().min(1),
+  /** KB ids to search. [] / omit → active KB; [id1, id2] → multi-KB merge. */
+  kbIds:            z.array(z.string()).optional(),
   assetIds:         z.array(z.string()).optional(),
   topK:             z.number().int().min(1).max(50).optional(),
   alpha:            z.number().min(0).max(1).optional(),
@@ -30,23 +36,31 @@ const searchBody = z.object({
 
 const staleQuery = z.object({
   days: z.coerce.number().int().min(1).max(3650).optional(),
+  kbId: z.string().optional(),
 });
 
 const chunkQuery = z.object({
   cursor: z.coerce.number().int().optional(),
   limit:  z.coerce.number().int().min(1).max(100).optional(),
+  kbId:   z.string().optional(),
+});
+
+const kbIdQuery = z.object({
+  kbId: z.string().optional(),
 });
 
 const invalidateBody = z.object({
   newModel: z.string().min(1),
+  kbId:     z.string().optional(),
 });
 
 const reembedBody = z.object({
   ebdProviderId: z.string().min(1).optional(),
   ebdModel:      z.string().min(1).optional(),
+  kbId:          z.string().optional(),
 });
 
-// ── Binding resolution ──────────────────────────────────────────────────────────
+// ── Binding resolution ────────────────────────────────────────────────────────
 
 interface KbModelsSetting {
   embed?:  { providerConfigId: string; model: string };
@@ -70,11 +84,21 @@ function resolveBoundModels(bindings: AppBindings): {
   };
 }
 
-/** Resolve the active KB entry or return a 503 JSON response. */
-async function requireActiveEntry(
+/**
+ * Resolve a KB entry for a request.
+ * - kbId provided → open that specific KB (404 if not registered)
+ * - kbId omitted  → use the active KB (503 if none active)
+ */
+async function resolveEntry(
   bindings: AppBindings,
+  kbId: string | undefined,
   c: { json: (body: unknown, status: number) => Response },
 ): Promise<KbEntry | Response> {
+  if (kbId) {
+    const rec = bindings.kb.getKb(kbId);
+    if (!rec) return c.json({ error: 'not_found', message: `知识库未找到: ${kbId}` }, 404) as Response;
+    return bindings.kb.openClient(kbId);
+  }
   const entry = await bindings.kb.openActiveEntry();
   if (!entry) return c.json({ error: 'no_active_kb', message: '请先在设置中创建并激活一个知识库' }, 503) as Response;
   return entry;
@@ -85,13 +109,13 @@ async function requireActiveEntry(
 export function kbRoute(bindings: AppBindings): Hono {
   const app = new Hono();
 
-  // POST /api/kb/documents — ingest a file into the active knowledge base
+  // POST /api/kb/documents — ingest a file into a KB (default: active)
   app.post('/documents', async (c) => {
     const parsed = ingestBody.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success)
       return c.json({ error: 'invalid_request', details: parsed.error.flatten() }, 400);
 
-    const entry = await requireActiveEntry(bindings, c);
+    const entry = await resolveEntry(bindings, parsed.data.kbId, c);
     if (entry instanceof Response) return entry;
 
     const { filePath, mimeType } = parsed.data;
@@ -109,27 +133,32 @@ export function kbRoute(bindings: AppBindings): Hono {
     if (!parsed.success)
       return c.json({ error: 'invalid_request', details: parsed.error.flatten() }, 400);
 
-    const entry = await requireActiveEntry(bindings, c);
+    const { kbId, ...listOpts } = parsed.data;
+    const entry = await resolveEntry(bindings, kbId, c);
     if (entry instanceof Response) return entry;
 
-    return c.json(entry.client.listAssets(parsed.data));
+    return c.json(entry.client.listAssets(listOpts));
   });
 
-  // GET /api/kb/documents-stale — KBs not selected in the last N days (default 30)
+  // GET /api/kb/documents-stale — assets not selected in the last N days
   app.get('/documents-stale', async (c) => {
     const parsed = staleQuery.safeParse(c.req.query());
     if (!parsed.success)
       return c.json({ error: 'invalid_request', details: parsed.error.flatten() }, 400);
 
-    const entry = await requireActiveEntry(bindings, c);
+    const { kbId, days } = parsed.data;
+    const entry = await resolveEntry(bindings, kbId, c);
     if (entry instanceof Response) return entry;
 
-    return c.json(entry.client.listInactiveAssets(parsed.data.days ?? 30));
+    return c.json(entry.client.listInactiveAssets(days ?? 30));
   });
 
-  // GET /api/kb/documents/:id — get single asset metadata
+  // GET /api/kb/documents/:id
   app.get('/documents/:id', async (c) => {
-    const entry = await requireActiveEntry(bindings, c);
+    const parsed = kbIdQuery.safeParse(c.req.query());
+    const kbId = parsed.success ? parsed.data.kbId : undefined;
+
+    const entry = await resolveEntry(bindings, kbId, c);
     if (entry instanceof Response) return entry;
 
     const asset = entry.client.getAsset(c.req.param('id'));
@@ -139,7 +168,10 @@ export function kbRoute(bindings: AppBindings): Hono {
 
   // GET /api/kb/documents/:id/preview
   app.get('/documents/:id/preview', async (c) => {
-    const entry = await requireActiveEntry(bindings, c);
+    const parsed = kbIdQuery.safeParse(c.req.query());
+    const kbId = parsed.success ? parsed.data.kbId : undefined;
+
+    const entry = await resolveEntry(bindings, kbId, c);
     if (entry instanceof Response) return entry;
 
     const preview = entry.client.getPreview(c.req.param('id'));
@@ -153,23 +185,30 @@ export function kbRoute(bindings: AppBindings): Hono {
     if (!parsed.success)
       return c.json({ error: 'invalid_request', details: parsed.error.flatten() }, 400);
 
-    const entry = await requireActiveEntry(bindings, c);
+    const { kbId, ...chunkOpts } = parsed.data;
+    const entry = await resolveEntry(bindings, kbId, c);
     if (entry instanceof Response) return entry;
 
-    return c.json(entry.client.getChunksPaged(c.req.param('id'), parsed.data));
+    return c.json(entry.client.getChunksPaged(c.req.param('id'), chunkOpts));
   });
 
-  // GET /api/kb/documents/:id/usage — which sessions used this KB doc
+  // GET /api/kb/documents/:id/usage — which sessions used this doc
   app.get('/documents/:id/usage', async (c) => {
-    const entry = await requireActiveEntry(bindings, c);
+    const parsed = kbIdQuery.safeParse(c.req.query());
+    const kbId = parsed.success ? parsed.data.kbId : undefined;
+
+    const entry = await resolveEntry(bindings, kbId, c);
     if (entry instanceof Response) return entry;
 
     return c.json(entry.client.getAssetUsage(c.req.param('id')));
   });
 
-  // GET /api/kb/ingest-tasks — the background ingest queue (pending/running/failed)
+  // GET /api/kb/ingest-tasks — the background ingest queue
   app.get('/ingest-tasks', async (c) => {
-    const entry = await requireActiveEntry(bindings, c);
+    const parsed = kbIdQuery.safeParse(c.req.query());
+    const kbId = parsed.success ? parsed.data.kbId : undefined;
+
+    const entry = await resolveEntry(bindings, kbId, c);
     if (entry instanceof Response) return entry;
 
     return c.json(entry.ingestTasks.listActive());
@@ -177,7 +216,10 @@ export function kbRoute(bindings: AppBindings): Hono {
 
   // POST /api/kb/documents/:id/retry — re-queue a failed ingest task
   app.post('/documents/:id/retry', async (c) => {
-    const entry = await requireActiveEntry(bindings, c);
+    const parsed = kbIdQuery.safeParse(c.req.query());
+    const kbId = parsed.success ? parsed.data.kbId : undefined;
+
+    const entry = await resolveEntry(bindings, kbId, c);
     if (entry instanceof Response) return entry;
 
     const ok = entry.ingestQueue.retry(c.req.param('id'));
@@ -185,9 +227,12 @@ export function kbRoute(bindings: AppBindings): Hono {
     return c.json({ ok: true });
   });
 
-  // POST /api/kb/documents/:id/reembed — re-embed a single doc with the current model
+  // POST /api/kb/documents/:id/reembed — re-embed a single doc
   app.post('/documents/:id/reembed', async (c) => {
-    const entry = await requireActiveEntry(bindings, c);
+    const parsed = kbIdQuery.safeParse(c.req.query());
+    const kbId = parsed.success ? parsed.data.kbId : undefined;
+
+    const entry = await resolveEntry(bindings, kbId, c);
     if (entry instanceof Response) return entry;
 
     const bound = resolveBoundModels(bindings);
@@ -201,7 +246,10 @@ export function kbRoute(bindings: AppBindings): Hono {
 
   // DELETE /api/kb/documents/:id — remove asset + all its chunks
   app.delete('/documents/:id', async (c) => {
-    const entry = await requireActiveEntry(bindings, c);
+    const parsed = kbIdQuery.safeParse(c.req.query());
+    const kbId = parsed.success ? parsed.data.kbId : undefined;
+
+    const entry = await resolveEntry(bindings, kbId, c);
     if (entry instanceof Response) return entry;
 
     const id = c.req.param('id');
@@ -211,42 +259,42 @@ export function kbRoute(bindings: AppBindings): Hono {
     return c.json({ deleted: id });
   });
 
-  // POST /api/kb/search — hybrid retrieval
+  // POST /api/kb/search — hybrid retrieval, optionally across multiple KBs
   app.post('/search', async (c) => {
     const parsed = searchBody.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success)
       return c.json({ error: 'invalid_request', details: parsed.error.flatten() }, 400);
 
-    const entry = await requireActiveEntry(bindings, c);
-    if (entry instanceof Response) return entry;
-
     const bound = resolveBoundModels(bindings);
+    const { kbIds = [], ...rest } = parsed.data;
     const opts = {
-      ...parsed.data,
-      ebdProviderId:    parsed.data.ebdProviderId    ?? bound.ebdProviderId,
-      ebdModel:         parsed.data.ebdModel         ?? bound.ebdModel,
-      rerankProviderId: parsed.data.rerankProviderId ?? bound.rerankProviderId,
-      rerankModel:      parsed.data.rerankModel       ?? bound.rerankModel,
+      ...rest,
+      ebdProviderId:    rest.ebdProviderId    ?? bound.ebdProviderId,
+      ebdModel:         rest.ebdModel         ?? bound.ebdModel,
+      rerankProviderId: rest.rerankProviderId ?? bound.rerankProviderId,
+      rerankModel:      rest.rerankModel       ?? bound.rerankModel,
     };
 
     try {
-      const result = await entry.client.search(parsed.data.query, opts);
+      // kbIds=[] → KbManager routes to the active KB (same behaviour as before)
+      const result = await bindings.kb.search(kbIds, parsed.data.query, opts);
       return c.json(result);
     } catch (err) {
       return c.json({ error: 'search_failed', message: (err as Error).message }, 500);
     }
   });
 
-  // POST /api/kb/invalidate — mark all embeddings stale (call when embed model changes)
+  // POST /api/kb/invalidate — mark embeddings stale after embed model change
   app.post('/invalidate', async (c) => {
     const parsed = invalidateBody.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success)
       return c.json({ error: 'invalid_request', details: parsed.error.flatten() }, 400);
 
-    const entry = await requireActiveEntry(bindings, c);
+    const { kbId, newModel } = parsed.data;
+    const entry = await resolveEntry(bindings, kbId, c);
     if (entry instanceof Response) return entry;
 
-    const count = entry.client.invalidateEmbeddings(parsed.data.newModel);
+    const count = entry.client.invalidateEmbeddings(newModel);
     return c.json({ markedStale: count });
   });
 
@@ -256,12 +304,13 @@ export function kbRoute(bindings: AppBindings): Hono {
     if (!parsed.success)
       return c.json({ error: 'invalid_request', details: parsed.error.flatten() }, 400);
 
-    const entry = await requireActiveEntry(bindings, c);
+    const { kbId, ...reembedOpts } = parsed.data;
+    const entry = await resolveEntry(bindings, kbId, c);
     if (entry instanceof Response) return entry;
 
     const bound = resolveBoundModels(bindings);
-    const ebdProviderId = parsed.data.ebdProviderId ?? bound.ebdProviderId;
-    const ebdModel      = parsed.data.ebdModel      ?? bound.ebdModel;
+    const ebdProviderId = reembedOpts.ebdProviderId ?? bound.ebdProviderId;
+    const ebdModel      = reembedOpts.ebdModel      ?? bound.ebdModel;
     if (!ebdProviderId || !ebdModel)
       return c.json({ error: 'no_embed_binding', message: '未配置 Embedding 模型，无法重建索引' }, 400);
 
@@ -273,7 +322,7 @@ export function kbRoute(bindings: AppBindings): Hono {
     }
   });
 
-  // ── KB registry routes (Phase 3 will expand these) ────────────────────────
+  // ── KB registry routes ────────────────────────────────────────────────────────
 
   // GET /api/kb/libs — list all registered KBs
   app.get('/libs', (c) => {

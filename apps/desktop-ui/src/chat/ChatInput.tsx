@@ -1,6 +1,6 @@
 ﻿import { useState, useCallback, useEffect, useRef, type KeyboardEvent, type JSX, type ChangeEvent } from 'react';
 import { IconButton, Input, Button, Popover, Tooltip, TooltipProvider, Checkbox, ScrollArea, Spinner } from '@ema-agent/ui';
-import { kbApi, type DocumentAssetWire } from '../api/knowledge-base.js';
+import { kbApi, type DocumentAssetWire, type KbLibraryWire } from '../api/knowledge-base.js';
 import { useConversationStore } from '../stores/conversation-store.js';
 import { useSessionStore } from '../stores/session-store.js';
 import { useUiStore } from '../stores/ui-store.js';
@@ -47,6 +47,7 @@ export function ChatInput(): JSX.Element {
   const [text, setText] = useState(initialDraft);
   const [pendingAttachments, setPendingAttachments] = useState<AttachmentInputWire[]>([]);
   const [selectedKbIds, setSelectedKbIds] = useState<string[]>([]);
+  const [selectedKbId,  setSelectedKbId]  = useState<string | null>(null);
   const [selectedModel, setSelectedModel] = useState<ModelSelection | null>(null);
   const textareaRef     = useRef<HTMLTextAreaElement>(null);
   const prevViewedIdRef = useRef(viewedId);
@@ -56,7 +57,8 @@ export function ChatInput(): JSX.Element {
     if (prevViewedIdRef.current === viewedId) return;
     prevViewedIdRef.current = viewedId;
     setText(useConversationStore.getState().draftMap.get(viewedId as string ?? '') ?? '');
-    setSelectedKbIds([]);  // KB selection is per-session; reset when switching sessions
+    setSelectedKbIds([]);    // KB selection is per-session; reset when switching sessions
+    setSelectedKbId(null);
   }, [viewedId]);
 
   // Auto-resize textarea height based on content, capped at TEXTAREA_MAX_H.
@@ -106,6 +108,8 @@ export function ChatInput(): JSX.Element {
       ttsEnabled,
       // KB scope applies to agent mode only (no tool loop in chat/narrative).
       // Selection persists across sends so each send bumps the docs' use-count.
+      // kbId tells the backend which KB the selected document IDs belong to.
+      kbId:       mode === 'agent' && selectedKbIds.length > 0 ? (selectedKbId ?? undefined) : undefined,
       kbAssetIds: mode === 'agent' && selectedKbIds.length > 0 ? selectedKbIds : undefined,
     });
     setText('');
@@ -209,7 +213,13 @@ export function ChatInput(): JSX.Element {
               )}
             </div>
 
-            <KbButton visible={mode === 'agent'} selectedIds={selectedKbIds} onChange={setSelectedKbIds} />
+            <KbButton
+              visible={mode === 'agent'}
+              selectedIds={selectedKbIds}
+              selectedKbId={selectedKbId}
+              onChange={setSelectedKbIds}
+              onKbIdChange={setSelectedKbId}
+            />
 
             <IconButton
               variant={ttsEnabled ? 'primary' : 'default'}
@@ -253,9 +263,13 @@ export function ChatInput(): JSX.Element {
 // (ema-anim-scale → both enter and exit animate, from style.css).
 
 function KbButton({
-  visible, selectedIds, onChange,
+  visible, selectedIds, selectedKbId, onChange, onKbIdChange,
 }: {
-  visible: boolean; selectedIds: string[]; onChange(ids: string[]): void;
+  visible: boolean;
+  selectedIds: string[];
+  selectedKbId: string | null;
+  onChange(ids: string[]): void;
+  onKbIdChange(kbId: string | null): void;
 }): JSX.Element | null {
   const [mounted, setMounted] = useState(visible);
   const [open, setOpen]       = useState(false);
@@ -302,7 +316,12 @@ function KbButton({
             </span>
           }
         >
-          <KbSelectorBody selectedIds={selectedIds} onChange={onChange} />
+          <KbSelectorBody
+            selectedIds={selectedIds}
+            selectedKbId={selectedKbId}
+            onChange={onChange}
+            onKbIdChange={onKbIdChange}
+          />
         </Popover>
       </TooltipProvider>
     </div>
@@ -310,14 +329,15 @@ function KbButton({
 }
 
 // ── KbSelectorBody ────────────────────────────────────────────────────────────
-// Cursor-paginated document list (the backend listAssetsPaged returns nextCursor).
+// Two-level picker: first pick a KB library (from the registry), then select
+// documents within it. Uses the cursor-paginated document list.
 
 const KB_PAGE_SIZE = 20;
 
-function KbSelectorBody({
-  selectedIds, onChange,
+function KbDocList({
+  kbId, selectedIds, onChange,
 }: {
-  selectedIds: string[]; onChange(ids: string[]): void;
+  kbId: string; selectedIds: string[]; onChange(ids: string[]): void;
 }): JSX.Element {
   const [items, setItems]           = useState<DocumentAssetWire[]>([]);
   const [nextCursor, setNextCursor] = useState<number | null>(null);
@@ -327,14 +347,11 @@ function KbSelectorBody({
   const loadPage = useCallback(async (cursor?: number): Promise<void> => {
     setLoading(true);
     try {
-      const page = await kbApi.listDocuments({ cursor, limit: KB_PAGE_SIZE });
+      const page = await kbApi.listDocuments({ cursor, limit: KB_PAGE_SIZE, kbId });
       setItems((prev) => (cursor === undefined ? page.items : [...prev, ...page.items]));
       setNextCursor(page.nextCursor);
-    } finally {
-      setLoading(false);
-      setLoaded(true);
-    }
-  }, []);
+    } finally { setLoading(false); setLoaded(true); }
+  }, [kbId]);
 
   useEffect(() => { void loadPage(undefined); }, [loadPage]);
 
@@ -345,24 +362,15 @@ function KbSelectorBody({
   }
 
   return (
-    <div className="flex flex-col gap-2">
-      <div className="flex items-center justify-between px-1">
-        <p className="text-xs font-medium" style={{ color: 'var(--ema-text-secondary)' }}>选择知识库文档</p>
-        {selectedIds.length > 0 && (
-          <button
-            className="text-xs transition-colors hover:text-[var(--ema-primary)]"
-            style={{ color: 'var(--ema-text-tertiary)' }}
-            onClick={() => onChange([])}
-          >清空</button>
-        )}
-      </div>
-
-      <ScrollArea className="max-h-56">
-        <div className="flex flex-col gap-1 pr-1">
+    <div className="flex flex-col gap-1 ema-slide-down">
+      <ScrollArea className="max-h-44">
+        <div className="flex flex-col gap-0.5 pr-1">
           {!loaded && loading ? (
-            <div className="flex justify-center py-4"><Spinner size="sm" /></div>
+            <div className="flex justify-center py-4 ema-fade-in"><Spinner size="sm" /></div>
           ) : items.length === 0 ? (
-            <p className="text-xs py-3 text-center" style={{ color: 'var(--ema-text-tertiary)' }}>暂无文档，去设置 → 知识库上传</p>
+            <p className="text-xs py-3 text-center ema-fade-in" style={{ color: 'var(--ema-text-tertiary)' }}>
+              此知识库暂无文档，去设置 → 知识库上传
+            </p>
           ) : (
             items.map((doc) => {
               const checked = selectedIds.includes(doc.id);
@@ -391,15 +399,107 @@ function KbSelectorBody({
       </ScrollArea>
 
       {nextCursor !== null && (
-        <Button
-          variant="ghost"
-          size="sm"
-          className="w-full"
-          disabled={loading}
-          onClick={() => void loadPage(nextCursor)}
-        >
+        <Button variant="ghost" size="sm" className="w-full ema-fade-in" disabled={loading}
+                onClick={() => void loadPage(nextCursor)}>
           {loading ? <Spinner size="sm" /> : '加载更多'}
         </Button>
+      )}
+    </div>
+  );
+}
+
+function KbSelectorBody({
+  selectedIds, selectedKbId, onChange, onKbIdChange,
+}: {
+  selectedIds:  string[];
+  selectedKbId: string | null;
+  onChange(ids: string[]): void;
+  onKbIdChange(kbId: string | null): void;
+}): JSX.Element {
+  const [libs, setLibs]             = useState<KbLibraryWire[]>([]);
+  const [libsLoaded, setLibsLoaded] = useState(false);
+  const [shownLibId, setShownLibId] = useState<string | null>(null);
+
+  useEffect(() => {
+    void kbApi.listLibs().then((list) => {
+      setLibs(list);
+      setLibsLoaded(true);
+      // Default to showing the active KB's documents.
+      const active = list.find((l) => l.isActive);
+      if (active) setShownLibId(active.id);
+      else if (list[0]) setShownLibId(list[0].id);
+    }).catch(() => { setLibsLoaded(true); });
+  }, []);
+
+  // Switching the displayed KB tab — clear existing doc selection (IDs don't transfer).
+  function switchLib(lib: KbLibraryWire): void {
+    if (lib.id === shownLibId) return;
+    onChange([]);
+    onKbIdChange(null);    // no docs selected yet in the new KB
+    setShownLibId(lib.id);
+  }
+
+  // Wrap onChange so we can track which KB the selected docs belong to.
+  function handleDocChange(ids: string[]): void {
+    onChange(ids);
+    onKbIdChange(ids.length > 0 ? (shownLibId ?? null) : null);
+  }
+
+  const shownLib = libs.find((l) => l.id === shownLibId);
+
+  return (
+    <div className="flex flex-col gap-2">
+      {/* ── Header row ── */}
+      <div className="flex items-center justify-between px-1">
+        <p className="text-xs font-medium" style={{ color: 'var(--ema-text-secondary)' }}>知识库</p>
+        {selectedIds.length > 0 && (
+          <button
+            className="text-xs transition-colors hover:text-[var(--ema-primary)]"
+            style={{ color: 'var(--ema-text-tertiary)' }}
+            onClick={() => handleDocChange([])}
+          >清空</button>
+        )}
+      </div>
+
+      {/* ── Library tabs (only when multiple KBs exist) ── */}
+      {!libsLoaded ? (
+        <div className="flex justify-center py-3 ema-fade-in"><Spinner size="sm" /></div>
+      ) : libs.length === 0 ? (
+        <p className="text-xs py-3 text-center ema-fade-in" style={{ color: 'var(--ema-text-tertiary)' }}>
+          暂无知识库，去设置 → 知识库创建
+        </p>
+      ) : (
+        <>
+          {libs.length > 1 && (
+            <div className="flex flex-wrap gap-1 ema-slide-up">
+              {libs.map((lib) => (
+                <button
+                  key={lib.id}
+                  className="text-xs px-2 py-0.5 rounded-full transition-ema"
+                  style={{
+                    background: lib.id === shownLibId ? 'var(--ema-primary)' : 'var(--ema-surface-2)',
+                    color:      lib.id === shownLibId ? 'var(--ema-text-on-primary)' : 'var(--ema-text-secondary)',
+                  }}
+                  onClick={() => switchLib(lib)}
+                >
+                  {lib.name}
+                  {lib.isActive && <span className="ml-1 opacity-60 text-[9px]">●</span>}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Each KB's documents are queried directly by kbId — no active-KB
+              switching needed; the backend resolveEntry() opens any registered KB. */}
+          {shownLib && (
+            <KbDocList
+              key={shownLib.id}
+              kbId={shownLib.id}
+              selectedIds={selectedIds}
+              onChange={handleDocChange}
+            />
+          )}
+        </>
       )}
     </div>
   );

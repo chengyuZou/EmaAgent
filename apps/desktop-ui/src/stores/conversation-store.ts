@@ -70,6 +70,7 @@ interface SendInput {
   providerId?:   string;
   model?:        string;
   ttsEnabled?:   boolean;
+  kbId?:         string;
   kbAssetIds?:   string[];
 }
 
@@ -95,6 +96,7 @@ function getOrCreateQueue(sessionId: SessionId): SendQueue<SendInput> {
         providerId:   input.providerId,
         model:        input.model,
         ttsEnabled:   input.ttsEnabled,
+        kbId:         input.kbId,
         kbAssetIds:   input.kbAssetIds,
       });
 

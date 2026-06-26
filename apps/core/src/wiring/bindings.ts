@@ -176,8 +176,9 @@ export interface AppBindings {
   /** Multi-KB manager. Routes use openActiveEntry() to get the active KB's client/queue. */
   kb: KbManager;
   /** KB hybrid search for the kb_search tool — resolves bound embed/rerank models.
-   *  kbIds=[] → search active KB; assetIds scopes within it; sessionId/turnId tag activations. */
-  kbSearch: (query: string, topK?: number, assetIds?: string[], sessionId?: string, turnId?: string) => Promise<KbSearchResult>;
+   *  kbIds=[] → search active KB; multiple ids → cross-KB merge.
+   *  assetIds scopes document-level within the targeted KB(s); sessionId/turnId tag activations. */
+  kbSearch: (query: string, topK?: number, kbIds?: string[], assetIds?: string[], sessionId?: string, turnId?: string) => Promise<KbSearchResult>;
 }
 
 // ── Build bindings ────────────────────────────────────────────────────────────
@@ -432,20 +433,19 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
   // uses the same models as the rest of the app. assetIds omitted → searches all
   // global KBs; per-turn document scoping arrives with the input-bar KB picker.
   const kbSearch = (
-    query:     string,
-    topK?:     number,
-    assetIds?: string[],
+    query:      string,
+    topK?:      number,
+    kbIds?:     string[],
+    assetIds?:  string[],
     sessionId?: string,
     turnId?:    string,
   ): Promise<KbSearchResult> => {
-    // KB embed/rerank come from the KB-specific `kb.models` setting, NOT the
-    // model_bindings (those are LightRAG's lightrag-embed). See settings.ts.
     const kbModels = (settingsRepo.get('kb.models') as {
       embed?:  { providerConfigId: string; model: string };
       rerank?: { providerConfigId: string; model: string };
     } | undefined) ?? {};
-    // kbIds=[] → KbManager routes to the active KB
-    return kb.search([], query, {
+    // kbIds=[] / undefined → KbManager falls back to the active KB.
+    return kb.search(kbIds ?? [], query, {
       assetIds,
       topK,
       sessionId,

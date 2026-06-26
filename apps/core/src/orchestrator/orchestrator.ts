@@ -31,7 +31,9 @@ export interface TurnRequest {
   /** provider_configs.id — 和 model 成对使用，前端选择器选的是 (provider, model) 组合。 */
   providerId?:      string;
   model?:           string;
-  /** KB documents the user selected for this turn — scopes kb_search. */
+  /** KB id the user was browsing in the chat picker (kbAssetIds belong to this KB). */
+  kbId?:            string;
+  /** KB documents the user selected for this turn — scopes kb_search within kbId. */
   kbAssetIds?:      string[];
   /**
    * Whether to spawn a TtsCoordinator for this turn. Defaults to false —
@@ -308,6 +310,7 @@ export class Orchestrator {
           userInput:      request.contentParts?.length ? request.contentParts : (request.userInput ?? ''),
           systemPrompt,
           workspaceRoots,
+          kbId:           request.kbId,
           kbAssetIds:     request.kbAssetIds,
         });
       }

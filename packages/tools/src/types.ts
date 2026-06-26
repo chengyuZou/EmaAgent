@@ -244,11 +244,12 @@ export interface ToolExecutionContext {
   /**
    * Knowledge-base search (AgenticRAG). The host adapter resolves the bound
    * embedding/rerank models and scopes the search to the turn's selected KB
-   * documents (recording a use-count hit per selected doc). The kb_search tool
-   * supplies only the query + topK. Absent when no KB is selected for the turn,
-   * so the tool is hidden from the model.
+   * documents (recording a use-count hit per selected doc).
+   * kbIds: target specific KBs ([] / omit → the KB the user selected, or active KB).
+   * The tool supplies query + topK; optionally kbIds when the LLM needs to target a
+   * specific KB. Absent when no KB is configured for the turn.
    */
-  kbSearch?: (query: string, topK?: number) => Promise<KbSearchResult>;
+  kbSearch?: (query: string, topK?: number, kbIds?: string[]) => Promise<KbSearchResult>;
   /**
    * Absolute path to the per-turn scratchpad directory.
    * Each key is stored as a file; the directory is deleted when the turn ends.

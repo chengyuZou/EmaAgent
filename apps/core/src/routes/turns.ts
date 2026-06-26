@@ -55,8 +55,10 @@ const turnBodySchema = z.object({
   attachments:  z.array(attachmentInputSchema).optional(),
   providerId: z.string().optional(),
   model: z.string().optional(),
-  ttsEnabled: z.boolean().optional(),
-  kbAssetIds: z.array(z.string()).optional(),
+  ttsEnabled:  z.boolean().optional(),
+  /** Which KB the user was browsing in the chat picker — the kbAssetIds belong to this KB. */
+  kbId:        z.string().optional(),
+  kbAssetIds:  z.array(z.string()).optional(),
 }).refine(
   (data) => data.userInput || (data.contentParts && data.contentParts.length > 0),
   { message: 'either userInput or contentParts is required' },
@@ -99,7 +101,7 @@ export function turnsRoute(bindings: AppBindings): Hono {
       return c.json({ error: 'invalid_request', details: parsed.error.flatten() }, 400);
     }
 
-    const { sessionId, mode, userInput, contentParts, attachments, providerId, model, ttsEnabled, kbAssetIds } = parsed.data;
+    const { sessionId, mode, userInput, contentParts, attachments, providerId, model, ttsEnabled, kbId, kbAssetIds } = parsed.data;
 
     // Trust the client's sessionId only if it still exists. A stale id (e.g.
     // a viewedSessionId persisted across a DB reset) would otherwise FK-fail
@@ -122,6 +124,7 @@ export function turnsRoute(bindings: AppBindings): Hono {
         attachmentInputs: attachments,
         providerId,
         model,
+        kbId,
         kbAssetIds,
         ttsEnabled:       ttsEnabled ?? false,
       }));

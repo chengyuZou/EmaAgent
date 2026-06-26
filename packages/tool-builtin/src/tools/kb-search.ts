@@ -14,6 +14,14 @@ const inputSchema = z.object({
     .max(20)
     .default(5)
     .describe('Maximum number of passages to return.'),
+  kb_ids: z
+    .array(z.string())
+    .optional()
+    .describe(
+      'Optional list of knowledge-base IDs to search. ' +
+      'Omit to search the KB the user selected for this turn (or the active KB as fallback). ' +
+      'Provide multiple IDs to merge results across KBs by relevance score.',
+    ),
 });
 
 type KbSearchInput = z.infer<typeof inputSchema>;
@@ -26,9 +34,11 @@ export type { KbSearchResult };
 
 export const kbSearchTool = buildTool<KbSearchInput, KbSearchResult>({
   name: 'kb_search',
-  description: `Search the user's selected knowledge-base documents and return the most relevant passages with source attribution (file name, page, section).
+  description: `Search the user's knowledge-base documents and return the most relevant passages with source attribution (file name, page, section).
 
-Use this whenever the user's request might be answered by documents they have provided. The search is scoped to the documents the user selected for this turn — you only supply the query. Each returned hit includes a citation source so you can tell the user where the answer came from.`,
+Use this whenever the user's request might be answered by documents they have provided. The search is scoped to the documents the user selected for this turn — you only supply the query. Each returned hit includes a citation source so you can tell the user where the answer came from.
+
+If the user has multiple knowledge bases, you may specify kb_ids to target one or more of them explicitly; omit kb_ids to search the KB selected for this turn.`,
 
   inputSchema,
   isReadOnly: () => true,
@@ -46,6 +56,6 @@ Use this whenever the user's request might be answered by documents they have pr
       );
     }
 
-    return ctx.kbSearch(input.query, input.top_k);
+    return ctx.kbSearch(input.query, input.top_k, input.kb_ids);
   },
 });
