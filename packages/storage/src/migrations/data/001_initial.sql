@@ -46,7 +46,6 @@ CREATE TABLE turns (
   session_id           TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
   branch_id            TEXT REFERENCES branches(id),
   mode                 TEXT NOT NULL CHECK(mode IN ('chat','narrative','agent')),
-  agent_sub_mode       TEXT CHECK(agent_sub_mode IN ('plan','debug','full')),
   status               TEXT NOT NULL CHECK(status IN ('pending','running','completed','failed','aborted')),
   user_input           TEXT NOT NULL,
   started_at           INTEGER NOT NULL,
@@ -154,31 +153,7 @@ CREATE TABLE turn_audio_merged (
 
 CREATE INDEX idx_audio_merged_session ON turn_audio_merged(session_id, created_at DESC);
 
--- ── Attachments (per-session + per-turn) ───────────────────────────────────────
-
-CREATE TABLE attachments (
-  id           TEXT PRIMARY KEY,
-  session_id   TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
-  filename     TEXT NOT NULL,
-  mime         TEXT NOT NULL,
-  size         INTEGER NOT NULL,
-  storage_path TEXT NOT NULL,
-  content_hash TEXT NOT NULL,
-  status       TEXT NOT NULL CHECK(status IN ('pending','indexed','failed')),
-  created_at   INTEGER NOT NULL,
-  meta_json    TEXT NOT NULL DEFAULT '{}'
-);
-
-CREATE TABLE attachment_chunks (
-  id            TEXT PRIMARY KEY,
-  attachment_id TEXT NOT NULL REFERENCES attachments(id) ON DELETE CASCADE,
-  chunk_index   INTEGER NOT NULL,
-  text          TEXT NOT NULL,
-  embedding     BLOB,
-  meta_json     TEXT NOT NULL DEFAULT '{}'
-);
-
-CREATE INDEX idx_chunks_attachment ON attachment_chunks(attachment_id, chunk_index);
+-- ── Turn attachments (per-turn local-file references) ─────────────────────────
 
 CREATE TABLE turn_attachments (
   id         TEXT    PRIMARY KEY,

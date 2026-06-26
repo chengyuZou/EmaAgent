@@ -11,7 +11,7 @@ import {
   ProviderRerankModelsRepo, ProviderTtsModelsRepo, ProviderSttModelsRepo, ProviderVisionModelsRepo,
   McpServersRepo, SkillsRepo,
   AgentTasksRepo, AgentTaskMessagesRepo,
-  SessionStatsRepo,
+  SessionStatsRepo, DataDirStatsRepo,
 } from '@ema-agent/storage';
 import { AttachmentStore } from '@ema-agent/attachment';
 import { ArtifactStore }                               from '@ema-agent/artifact';
@@ -161,6 +161,7 @@ export interface AppBindings {
   artifactStore:    ArtifactStore;
   attachmentStore:  AttachmentStore;
   sessionStats:     SessionStatsRepo;
+  storageStats:     DataDirStatsRepo;
   sessionNotes:     SessionNotesRepo;
   mcpRegistry:      McpRegistry;
   /** Thin adapter satisfying IMcpClientBridge — delegates to mcpRegistry.callTool(). */
@@ -355,6 +356,7 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
 
   // ── Session detail (stats + notes) — used by /api/sessions/:id/dashboard ──
   const sessionStats = new SessionStatsRepo(dataDb.sqlite);
+  const storageStats = new DataDirStatsRepo(dataDb.sqlite);
   const sessionNotes = new SessionNotesRepo(dataDb.sqlite);
 
   // ── MCP registry ────────────────────────────────────────────────────────────
@@ -478,7 +480,7 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
     providers, settings: settingsRepo,
     modelBindings, providerLlmModels, providerEmbedModels,
     providerRerankModels, providerTtsModels, providerSttModels, providerVisionModels,
-    artifactStore, attachmentStore, sessionStats, sessionNotes,
+    artifactStore, attachmentStore, sessionStats, storageStats, sessionNotes,
     mcpRegistry, mcpBridge,
     skillStore, skillRunner, skillInstaller, skillBridge,
     kb, kbSearch,

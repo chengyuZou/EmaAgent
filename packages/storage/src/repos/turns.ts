@@ -5,7 +5,6 @@ export interface TurnRow {
   id: string;
   session_id: string;
   mode: TurnMode;
-  agent_sub_mode: string | null;
   status: TurnStatus;
   user_input: string;
   started_at: number;
@@ -44,10 +43,10 @@ export class TurnsRepo {
     this.db
       .prepare(
         `INSERT INTO turns
-           (id, session_id, mode, agent_sub_mode, branch_id, status, user_input, started_at)
-         VALUES (?, ?, ?, ?, ?, 'pending', ?, ?)`,
+           (id, session_id, mode, branch_id, status, user_input, started_at)
+         VALUES (?, ?, ?, ?, 'pending', ?, ?)`,
       )
-      .run(t.id, t.sessionId, t.mode, null, t.branchId ?? null, t.userInput, t.startedAt);
+      .run(t.id, t.sessionId, t.mode, t.branchId ?? null, t.userInput, t.startedAt);
   }
 
   setRunning(id: TurnId): void {

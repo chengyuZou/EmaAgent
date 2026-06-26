@@ -4,7 +4,7 @@ import { buildServer } from './server.js';
 import { wire, configureBridge } from './wiring.js';
 import { startBackgroundWork } from './wiring/index.js';
 import {
-  profileDbPath, dataDbPathFor, loadRegistry, activeDirEntry,
+  profileDbPath, dataDbPathFor, profileDir, loadRegistry, activeDirEntry,
   ensureDataDirLayout, ensureProfileLayout, acquireLock,
 } from './storage-locations/index.js';
 import { createServer } from 'node:net';
@@ -76,7 +76,7 @@ async function main() {
 
   // Ensure at least one KB exists; if registry is empty auto-create a default
   // KB under the active dataDir so the app works out of the box.
-  const defaultKbPath = path.join(activeDir.path, 'kb-default');
+  const defaultKbPath = path.join(profileDir(), 'kb-default');
   await bindings.kb.ensureDefault(defaultKbPath);
   // Open + HNSW-init all registered KBs (fire-and-forget; search falls back
   // to SQL cosine until HNSW builds, same as before).

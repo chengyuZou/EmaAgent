@@ -20,7 +20,7 @@ import { shellRoute }            from './routes/shell.js';
 import { workspaceRoute }        from './routes/workspace.js';
 import { kbRoute }               from './routes/knowledge-base.js';
 import { agentTasksRoute }       from './routes/agent-tasks.js';
-import { sessionDetailRoute }    from './routes/session-detail.js';
+import { storageStatsRoute }     from './routes/storage-stats.js';
 import { systemRoute }           from './routes/system.js';
 import type { AppBindings } from './wiring.js';
 
@@ -53,7 +53,7 @@ export function buildServer(bindings: AppBindings): Hono {
   app.route('/api/turns',          turnsRoute(bindings));
   app.route('/api/providers',      providersRoute(bindings));
   app.route('/api/model-bindings', modelBindingsRoute(bindings));
-  app.route('/api/sessions',       sessionDetailRoute(bindings));
+  app.route('/api/storage',        storageStatsRoute(bindings));
   app.route('/api/sessions',       sessionsRoute(bindings));
   app.route('/api/permission',     permissionRoute(bindings));
   app.route('/api/memory',         memoryRoute(bindings));

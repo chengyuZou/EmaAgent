@@ -1,0 +1,490 @@
+import type { SqliteDb } from '../database.js';
+import type { AgentTaskMessageRow } from './agent-task-messages.js';
+import type { KbActivationRow }     from './kb-activations.js';
+import type { AgentTaskRow }        from './agent-tasks.js';
+import type { TurnUsageRow }        from './usage.js';
+import type { BranchRow }           from './branches.js';
+
+export type { AgentTaskMessageRow, KbActivationRow, AgentTaskRow, TurnUsageRow, BranchRow };
+
+// ════════════════════════════════════════════════════════════════════════════
+// DataDir-level aggregate stats
+// ════════════════════════════════════════════════════════════════════════════
+
+export interface DataDirStats {
+  sessionCount:    number;
+  turnCount:       number;
+  messageCount:    number;
+  artifactCount:   number;
+  agentTaskCount:  number;
+  audioCount:      number;
+  audioDurationMs: number;
+}
+
+export class DataDirStatsRepo {
+  constructor(private readonly db: SqliteDb) {}
+
+  getStats(): DataDirStats {
+    const row = this.db.prepare(`
+      SELECT
+        (SELECT COUNT(*) FROM sessions)    AS session_count,
+        (SELECT COUNT(*) FROM turns)       AS turn_count,
+        (SELECT COUNT(*) FROM messages)    AS message_count,
+        (SELECT COUNT(*) FROM artifacts)   AS artifact_count,
+        (SELECT COUNT(*) FROM agent_tasks) AS agent_task_count,
+        (SELECT COUNT(*)                      FROM turn_audio_merged) AS audio_count,
+        (SELECT COALESCE(SUM(duration_ms), 0) FROM turn_audio_merged) AS audio_duration_ms
+    `).get() as {
+      session_count: number; turn_count: number; message_count: number;
+      artifact_count: number; agent_task_count: number;
+      audio_count: number; audio_duration_ms: number;
+    };
+    return {
+      sessionCount:    row.session_count,
+      turnCount:       row.turn_count,
+      messageCount:    row.message_count,
+      artifactCount:   row.artifact_count,
+      agentTaskCount:  row.agent_task_count,
+      audioCount:      row.audio_count,
+      audioDurationMs: row.audio_duration_ms,
+    };
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// Session-level stats + export raw rows + import transaction
+// ════════════════════════════════════════════════════════════════════════════
+
+// ── Stats result ─────────────────────────────────────────────────────────────
+
+export interface SessionStats {
+  turnCount:            number;
+  messageCount:         number;
+  totalInputTokens:     number;
+  totalOutputTokens:    number;
+  chatTurns:            number;
+  narrativeTurns:       number;
+  agentTurns:           number;
+  branchCount:          number;
+  artifactCount:        number;
+  artifactInlineBytes:  number;
+  audioTurnCount:       number;
+  audioTotalBytes:      number;
+  audioTotalDurationMs: number;
+  attachmentCount:      number;
+  attachmentTotalBytes: number;
+}
+
+// ── Export raw row types (snake_case — direct DB column names) ────────────────
+
+export interface AudioEntryRow {
+  turn_id:       string;
+  mime_type:     string;
+  byte_size:     number;
+  duration_ms:   number | null;
+  segment_count: number;
+  created_at:    number;
+  storage_path:  string;
+}
+
+export interface ArtifactSummaryRow {
+  id:               string;
+  type:             string;
+  title:            string;
+  content_location: string;
+  byte_size:        number;
+  created_at:       number;
+  applied_at:       number | null;
+  rejected_at:      number | null;
+}
+
+export interface MemoryStateRow {
+  session_id:     string;
+  surfaced_json:  string;
+  overrides_json: string;
+}
+
+// ── Import (restore) payload types ───────────────────────────────────────────
+
+export interface TurnRestoreRow {
+  id: string; sessionId: string; branchId: string | null; mode: string;
+  status: string; userInput: string; startedAt: number;
+  completedAt: number | null; errorCode: string | null; errorMessage: string | null;
+  iterations: number; usageInputTokens: number; usageOutputTokens: number;
+}
+
+export interface MessageRestoreRow {
+  id: string; sessionId: string; turnId: string | null;
+  role: string; kind: string; blocksJson: string;
+  interrupted: boolean; createdAt: number;
+}
+
+export interface ArtifactRestoreRow {
+  id: string; type: string; title: string; contentLocation: string;
+  content: string | null;
+  contentPath: string | null;
+  createdAt: number; appliedAt: number | null; rejectedAt: number | null;
+}
+
+export interface AudioRestoreRow {
+  turnId: string; sessionId: string; storagePath: string;
+  mimeType: string; byteSize: number; durationMs: number | null;
+  segmentCount: number; createdAt: number;
+}
+
+export interface AttachmentRestoreRow {
+  id: string; turnId: string; name: string; mime: string;
+  size: number; mtime: number; localPath: string; createdAt: number;
+}
+
+export interface NotesRestoreData {
+  body: string; tokensAtLastUpdate: number; updatedAt: number;
+}
+
+export interface SessionRestorePayload {
+  session: {
+    id: string; title: string; characterCardId: string;
+    workspaceRoots: string[]; createdAt: number; updatedAt: number;
+    lastActivityAt: number; archivedAt: number | null;
+    pinned: boolean; pinnedAt: number | null;
+    groupLabel: string | null; parentSessionId: string | null;
+    lastMode: string | null; activeBranchId: string | null;
+  };
+  branches:          BranchRow[];
+  turns:             TurnRestoreRow[];
+  messages:          MessageRestoreRow[];
+  artifacts:         ArtifactRestoreRow[];
+  audio:             AudioRestoreRow[];
+  attachments:       AttachmentRestoreRow[];
+  agentTasks:        AgentTaskRow[];
+  agentTaskMessages: AgentTaskMessageRow[];
+  memoryState:       MemoryStateRow | null;
+  kbActivations:     KbActivationRow[];
+  turnUsage:         TurnUsageRow[];
+  notes:             NotesRestoreData | null;
+}
+
+// ── Repo ──────────────────────────────────────────────────────────────────────
+
+export class SessionStatsRepo {
+  constructor(private readonly db: SqliteDb) {}
+
+  // ── Aggregate stats for dashboard ─────────────────────────────────────────
+
+  getStats(sessionId: string): SessionStats {
+    const row = this.db.prepare(`
+      SELECT
+        (SELECT COUNT(*) FROM turns    WHERE session_id = ?) AS turn_count,
+        (SELECT COUNT(*) FROM messages WHERE session_id = ?) AS message_count,
+        (SELECT COALESCE(SUM(usage_input_tokens),  0) FROM turns WHERE session_id = ?) AS total_input_tokens,
+        (SELECT COALESCE(SUM(usage_output_tokens), 0) FROM turns WHERE session_id = ?) AS total_output_tokens,
+        (SELECT COUNT(*) FROM turns WHERE session_id = ? AND mode = 'chat')      AS chat_turns,
+        (SELECT COUNT(*) FROM turns WHERE session_id = ? AND mode = 'narrative') AS narrative_turns,
+        (SELECT COUNT(*) FROM turns WHERE session_id = ? AND mode = 'agent')     AS agent_turns,
+        ((SELECT COUNT(DISTINCT branch_id) FROM turns WHERE session_id = ? AND branch_id IS NOT NULL) + 1) AS branch_count,
+        (SELECT COUNT(*) FROM artifacts WHERE session_id = ?) AS artifact_count,
+        (SELECT COALESCE(SUM(LENGTH(COALESCE(content,''))), 0)
+           FROM artifacts WHERE session_id = ? AND content_location = 'inline') AS artifact_inline_bytes,
+        (SELECT COUNT(*)                   FROM turn_audio_merged  WHERE session_id = ?) AS audio_turn_count,
+        (SELECT COALESCE(SUM(byte_size),0) FROM turn_audio_merged  WHERE session_id = ?) AS audio_total_bytes,
+        (SELECT COALESCE(SUM(duration_ms),0) FROM turn_audio_merged WHERE session_id = ?) AS audio_total_duration_ms,
+        (SELECT COUNT(*)              FROM turn_attachments WHERE session_id = ?) AS attachment_count,
+        (SELECT COALESCE(SUM(size),0) FROM turn_attachments WHERE session_id = ?) AS attachment_total_bytes
+    `).get(
+      sessionId, sessionId, sessionId, sessionId,
+      sessionId, sessionId, sessionId, sessionId,
+      sessionId, sessionId,
+      sessionId, sessionId, sessionId,
+      sessionId, sessionId,
+    ) as {
+      turn_count: number; message_count: number;
+      total_input_tokens: number; total_output_tokens: number;
+      chat_turns: number; narrative_turns: number; agent_turns: number;
+      branch_count: number;
+      artifact_count: number; artifact_inline_bytes: number;
+      audio_turn_count: number; audio_total_bytes: number; audio_total_duration_ms: number;
+      attachment_count: number; attachment_total_bytes: number;
+    };
+
+    return {
+      turnCount:            row.turn_count,
+      messageCount:         row.message_count,
+      totalInputTokens:     row.total_input_tokens,
+      totalOutputTokens:    row.total_output_tokens,
+      chatTurns:            row.chat_turns,
+      narrativeTurns:       row.narrative_turns,
+      agentTurns:           row.agent_turns,
+      branchCount:          row.branch_count,
+      artifactCount:        row.artifact_count,
+      artifactInlineBytes:  row.artifact_inline_bytes,
+      audioTurnCount:       row.audio_turn_count,
+      audioTotalBytes:      row.audio_total_bytes,
+      audioTotalDurationMs: row.audio_total_duration_ms,
+      attachmentCount:      row.attachment_count,
+      attachmentTotalBytes: row.attachment_total_bytes,
+    };
+  }
+
+  // ── Export: raw rows per table ────────────────────────────────────────────
+
+  listAudioEntries(sessionId: string): AudioEntryRow[] {
+    return this.db.prepare(`
+      SELECT turn_id, mime_type, byte_size, duration_ms, segment_count, created_at, storage_path
+      FROM turn_audio_merged
+      WHERE session_id = ?
+      ORDER BY created_at ASC
+    `).all(sessionId) as AudioEntryRow[];
+  }
+
+  listArtifactSummaries(sessionId: string): ArtifactSummaryRow[] {
+    return this.db.prepare(`
+      SELECT id, type, title, content_location,
+             CASE WHEN content_location = 'inline'
+                  THEN LENGTH(COALESCE(content, ''))
+                  ELSE 0
+             END AS byte_size,
+             created_at, applied_at, rejected_at
+      FROM artifacts
+      WHERE session_id = ?
+      ORDER BY created_at ASC
+    `).all(sessionId) as ArtifactSummaryRow[];
+  }
+
+  listBranches(sessionId: string): BranchRow[] {
+    return this.db.prepare(`
+      SELECT id, parent_branch_id, fork_from_turn_id, created_at
+      FROM branches WHERE session_id = ?
+      ORDER BY created_at ASC
+    `).all(sessionId) as BranchRow[];
+  }
+
+  listAgentTasks(sessionId: string): AgentTaskRow[] {
+    return this.db.prepare(`
+      SELECT id, session_id, turn_id, parent_id, status, error,
+             iterations, input_tokens, output_tokens, created_at, updated_at
+      FROM agent_tasks WHERE session_id = ?
+      ORDER BY created_at ASC
+    `).all(sessionId) as AgentTaskRow[];
+  }
+
+  listAgentTaskMessages(sessionId: string): AgentTaskMessageRow[] {
+    return this.db.prepare(`
+      SELECT m.id, m.task_id, m.role, m.content_json, m.created_at
+      FROM agent_task_messages m
+      JOIN agent_tasks t ON t.id = m.task_id
+      WHERE t.session_id = ?
+      ORDER BY m.created_at ASC
+    `).all(sessionId) as AgentTaskMessageRow[];
+  }
+
+  getMemoryState(sessionId: string): MemoryStateRow | undefined {
+    return this.db.prepare(`
+      SELECT session_id, surfaced_json, overrides_json
+      FROM memory_session_state WHERE session_id = ?
+    `).get(sessionId) as MemoryStateRow | undefined;
+  }
+
+  listKbActivations(sessionId: string): KbActivationRow[] {
+    return this.db.prepare(`
+      SELECT id, call_id, kb_id, asset_id, session_id, turn_id, created_at
+      FROM kb_activations WHERE session_id = ?
+      ORDER BY created_at ASC
+    `).all(sessionId) as KbActivationRow[];
+  }
+
+  listTurnUsage(sessionId: string): TurnUsageRow[] {
+    return this.db.prepare(`
+      SELECT u.turn_id, u.llm_provider, u.model_id,
+             u.input_tokens, u.output_tokens, u.cost_usd, u.duration_ms, u.created_at
+      FROM turn_usage u
+      JOIN turns t ON t.id = u.turn_id
+      WHERE t.session_id = ?
+      ORDER BY u.created_at ASC
+    `).all(sessionId) as TurnUsageRow[];
+  }
+
+  // ── Import: full restore transaction ──────────────────────────────────────
+  // File I/O (audio, artifacts, attachments) is handled by the caller before
+  // invoking this method. All localPath / contentPath / storagePath fields in
+  // the payload must already point to files on disk.
+
+  restoreRows(p: SessionRestorePayload): void {
+    this.db.transaction(() => {
+      // 1. Session — active_branch_id set to NULL first (circular FK: session→branch, branch→session)
+      this.db.prepare(`
+        INSERT INTO sessions
+          (id, title, character_card_id, workspace_roots_json, created_at, updated_at,
+           last_activity_at, archived_at, pinned, pinned_at, group_label,
+           parent_session_id, last_mode, last_sub_mode, active_branch_id, meta_json)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, '{}')
+      `).run(
+        p.session.id, p.session.title, p.session.characterCardId ?? 'ema',
+        JSON.stringify(p.session.workspaceRoots ?? []),
+        p.session.createdAt, p.session.updatedAt,
+        p.session.lastActivityAt ?? p.session.updatedAt,
+        p.session.archivedAt ?? null,
+        p.session.pinned ? 1 : 0, p.session.pinnedAt ?? null,
+        p.session.groupLabel ?? null, p.session.parentSessionId ?? null,
+        p.session.lastMode ?? null,
+      );
+
+      // 2. Branches (must precede turns which reference branch_id)
+      const stmtBranch = this.db.prepare(`
+        INSERT OR IGNORE INTO branches (id, session_id, parent_branch_id, fork_from_turn_id, created_at)
+        VALUES (?, ?, ?, ?, ?)
+      `);
+      for (const b of p.branches) {
+        stmtBranch.run(b.id, p.session.id, b.parent_branch_id ?? null, b.fork_from_turn_id ?? null, b.created_at);
+      }
+
+      // 3. Restore active_branch_id now that branches exist
+      if (p.session.activeBranchId) {
+        this.db.prepare('UPDATE sessions SET active_branch_id = ? WHERE id = ?')
+          .run(p.session.activeBranchId, p.session.id);
+      }
+
+      // 4. Turns
+      const stmtTurn = this.db.prepare(`
+        INSERT OR IGNORE INTO turns
+          (id, session_id, mode, agent_sub_mode, branch_id, status, user_input,
+           started_at, completed_at, error_code, error_message,
+           iterations, usage_input_tokens, usage_output_tokens)
+        VALUES (?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+      for (const t of p.turns) {
+        stmtTurn.run(
+          t.id, t.sessionId, t.mode, t.branchId ?? null,
+          t.status, t.userInput, t.startedAt, t.completedAt ?? null,
+          t.errorCode ?? null, t.errorMessage ?? null,
+          t.iterations ?? 0, t.usageInputTokens ?? 0, t.usageOutputTokens ?? 0,
+        );
+      }
+
+      // 5. Messages
+      const stmtMsg = this.db.prepare(`
+        INSERT OR IGNORE INTO messages
+          (id, session_id, turn_id, role, kind, blocks_json, interrupted, created_at, meta_json)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, '{}')
+      `);
+      for (const m of p.messages) {
+        stmtMsg.run(
+          m.id, m.sessionId, m.turnId ?? null, m.role, m.kind ?? 'normal',
+          m.blocksJson, m.interrupted ? 1 : 0, m.createdAt,
+        );
+      }
+
+      // 6. Artifacts
+      const stmtArt = this.db.prepare(`
+        INSERT OR IGNORE INTO artifacts
+          (id, session_id, turn_id, type, title, content, content_location,
+           content_path, meta_json, created_at, updated_at, applied_at, rejected_at)
+        VALUES (?, ?, NULL, ?, ?, ?, ?, ?, '{}', ?, ?, ?, ?)
+      `);
+      for (const a of p.artifacts) {
+        stmtArt.run(
+          a.id, p.session.id, a.type, a.title,
+          a.content, a.contentLocation,
+          a.contentPath ?? null,
+          a.createdAt, a.createdAt,
+          a.appliedAt ?? null, a.rejectedAt ?? null,
+        );
+      }
+
+      // 7. Audio merged rows (files already written by caller)
+      const stmtAudio = this.db.prepare(`
+        INSERT OR IGNORE INTO turn_audio_merged
+          (turn_id, session_id, storage_path, mime_type, byte_size, duration_ms, segment_count, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+      for (const r of p.audio) {
+        stmtAudio.run(
+          r.turnId, r.sessionId, r.storagePath,
+          r.mimeType, r.byteSize, r.durationMs,
+          r.segmentCount, r.createdAt,
+        );
+      }
+
+      // 8. Attachments (files already written by caller)
+      const stmtAtt = this.db.prepare(`
+        INSERT OR IGNORE INTO turn_attachments
+          (id, turn_id, session_id, name, mime, size, mtime, local_path, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+      for (const a of p.attachments) {
+        stmtAtt.run(
+          a.id, a.turnId, p.session.id,
+          a.name, a.mime, a.size, a.mtime ?? 0,
+          a.localPath, a.createdAt,
+        );
+      }
+
+      // 9. Agent tasks
+      const stmtTask = this.db.prepare(`
+        INSERT OR IGNORE INTO agent_tasks
+          (id, session_id, turn_id, parent_id, status, error, iterations,
+           input_tokens, output_tokens, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+      for (const t of p.agentTasks) {
+        stmtTask.run(
+          t.id, t.session_id, t.turn_id ?? null, t.parent_id ?? null,
+          t.status, t.error ?? null, t.iterations ?? null,
+          t.input_tokens ?? null, t.output_tokens ?? null,
+          t.created_at, t.updated_at,
+        );
+      }
+
+      // 10. Agent task messages
+      const stmtTaskMsg = this.db.prepare(`
+        INSERT OR IGNORE INTO agent_task_messages (id, task_id, role, content_json, created_at)
+        VALUES (?, ?, ?, ?, ?)
+      `);
+      for (const m of p.agentTaskMessages) {
+        stmtTaskMsg.run(m.id, m.task_id, m.role, m.content_json, m.created_at);
+      }
+
+      // 11. Memory session state
+      if (p.memoryState) {
+        this.db.prepare(`
+          INSERT OR IGNORE INTO memory_session_state (session_id, surfaced_json, overrides_json)
+          VALUES (?, ?, ?)
+        `).run(p.memoryState.session_id, p.memoryState.surfaced_json, p.memoryState.overrides_json);
+      }
+
+      // 12. KB activations
+      const stmtKb = this.db.prepare(`
+        INSERT OR IGNORE INTO kb_activations
+          (id, call_id, kb_id, asset_id, session_id, turn_id, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `);
+      for (const k of p.kbActivations) {
+        stmtKb.run(k.id, k.call_id, k.kb_id, k.asset_id, k.session_id, k.turn_id ?? null, k.created_at);
+      }
+
+      // 13. Turn usage
+      const stmtUsage = this.db.prepare(`
+        INSERT OR IGNORE INTO turn_usage
+          (turn_id, llm_provider, model_id, input_tokens, output_tokens, cost_usd, duration_ms, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+      for (const u of p.turnUsage) {
+        stmtUsage.run(
+          u.turn_id, u.llm_provider, u.model_id,
+          u.input_tokens, u.output_tokens, u.cost_usd, u.duration_ms, u.created_at,
+        );
+      }
+
+      // 14. Session notes (upsert — notes may be updated post-import)
+      if (p.notes) {
+        this.db.prepare(`
+          INSERT OR REPLACE INTO session_notes
+            (session_id, body, tokens_at_last_update, updated_at)
+          VALUES (?, ?, ?, ?)
+        `).run(
+          p.session.id, p.notes.body,
+          p.notes.tokensAtLastUpdate ?? 0, p.notes.updatedAt,
+        );
+      }
+    })();
+  }
+}
