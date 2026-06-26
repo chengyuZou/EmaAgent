@@ -16,7 +16,7 @@ const MIGRATIONS_DIR = path.join(__dirname, 'migrations');
  * Each stream is independent: profile can be on version 3 while data is on
  * version 7 (or vice versa). Versions advance only inside their own folder.
  */
-export type DatabaseKind = 'profile' | 'data';
+export type DatabaseKind = 'profile' | 'data' | 'kb';
 
 export class MigrationsRunner {
   constructor(

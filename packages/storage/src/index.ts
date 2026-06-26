@@ -121,6 +121,8 @@ export { KbActivationsRepo }   from './repos/kb-activations.js';
 export type { AssetUsage }     from './repos/kb-activations.js';
 export { KbIngestTasksRepo }   from './repos/kb-ingest-tasks.js';
 export type { KbIngestTask, KbIngestStatus } from './repos/kb-ingest-tasks.js';
+export { KbRegistryRepo }      from './repos/kb-registry.js';
+export type { KbRecord }       from './repos/kb-registry.js';
 export type { DocumentAssetRow, DocumentAssetInsert }     from './repos/document-asset.js';
 export type { DocumentChunkRow, DocumentChunkInsert, ChunkSearchHit, ChunkSummary, ChunkPage }  from './repos/document-chunk.js';
 export type { DocumentPreviewRow, DocumentPreviewUpsert } from './repos/document-preview.js';

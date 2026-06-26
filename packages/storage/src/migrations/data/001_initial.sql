@@ -1,71 +1,50 @@
--- ── Data DB schema ────────────────────────────────────────────────────────────
+-- ════════════════════════════════════════════════════════════════════════════
+-- DATA stream — one data.db per workspace (dataDir). Sessions / turns / messages
+-- / per-session memory / audio / artifacts / agent tasks. KB *documents* live in
+-- per-KB kb.db (kb stream); only kb_activations (session→KB usage) stays here.
 --
--- data.db lives in `{dataDir}/data.db`.
--- "dataDir" = where the user chose to store their data, not a workspace
--- boundary (workspace = Permission/sandbox scope, stored in sessions.workspace_roots_json).
---
--- Contains everything scoped to this data directory:
---   sessions / turns / messages
---   memory L1 (session notes — per-session rolling summary)
---   background tasks queue
---   audio metadata (files at sessions/<sessionId>/audio/)
---   attachments + artifacts metadata (files at sessions/<sessionId>/artifacts/)
---   permission grants
---   telemetry + usage
---
--- Memory L0 (entity graph) and L2 (episodic items) live in profile.db
--- because they are global memories that must survive dataDir switches.
---
--- Development note: single consolidated migration. New schema changes are
--- made here directly during development.
+-- Consolidated initial schema (replaces the old incremental migrations 001–016).
+-- ════════════════════════════════════════════════════════════════════════════
 
--- ============ Sessions / turns / messages ============
+-- ── Sessions / branches / turns / messages ─────────────────────────────────────
 
 CREATE TABLE sessions (
   id                   TEXT PRIMARY KEY,
   title                TEXT NOT NULL,
   character_card_id    TEXT NOT NULL DEFAULT 'ema',
   workspace_roots_json TEXT NOT NULL DEFAULT '[]',
-  created_at           INTEGER NOT NULL,
-  -- Row metadata update time: title/group/pin/workspace/mode/meta edits.
-  -- Conversation recency is tracked by last_activity_at added in migration 003.
-  updated_at           INTEGER NOT NULL,
-  archived_at          INTEGER,
-  pinned               INTEGER NOT NULL DEFAULT 0,
-  pinned_at            INTEGER,
-  group_label          TEXT,
-  parent_session_id    TEXT REFERENCES sessions(id) ON DELETE SET NULL,
   last_mode            TEXT,
   last_sub_mode        TEXT,
-  meta_json            TEXT NOT NULL DEFAULT '{}'
+  group_label          TEXT,
+  pinned               INTEGER NOT NULL DEFAULT 0,
+  pinned_at            INTEGER,
+  archived_at          INTEGER,
+  parent_session_id    TEXT REFERENCES sessions(id) ON DELETE SET NULL,
+  active_branch_id     TEXT REFERENCES branches(id),
+  last_viewed_at       INTEGER,
+  last_activity_at     INTEGER NOT NULL DEFAULT 0,
+  meta_json            TEXT NOT NULL DEFAULT '{}',
+  created_at           INTEGER NOT NULL,
+  updated_at           INTEGER NOT NULL
 );
-CREATE INDEX idx_sessions_list ON sessions(pinned DESC, group_label, updated_at DESC);
 
--- ── Pending extraction fragments ──────────────────────────────────────────────
---
--- Accumulates raw conversation text (user + assistant turns) that has not yet
--- been processed by the extraction LLM. Fragments are appended onTurnEnd and
--- consumed (then deleted) by the background extraction pipeline.
---
--- Separated from sessions so we can:
---   • query "which sessions have pending work" with a simple SELECT DISTINCT
---   • delete individual fragments without rewriting the whole sessions row
---   • track per-fragment turn lineage for idempotent retry logic
---
-CREATE TABLE pending_fragments (
-  id         TEXT    PRIMARY KEY,
-  session_id TEXT    NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
-  turn_id    TEXT    NOT NULL REFERENCES turns(id)    ON DELETE CASCADE,
-  role       TEXT    NOT NULL CHECK(role IN ('user', 'assistant')),
-  content    TEXT    NOT NULL,
-  at         INTEGER NOT NULL,   -- unix ms: when this side of the turn happened
-  created_at INTEGER NOT NULL
+CREATE INDEX idx_sessions_list ON sessions(pinned DESC, group_label, last_activity_at DESC);
+
+CREATE TABLE branches (
+  id                TEXT    PRIMARY KEY,
+  session_id        TEXT    NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  parent_branch_id  TEXT    REFERENCES branches(id),
+  fork_from_turn_id TEXT    REFERENCES turns(id),
+  created_at        INTEGER NOT NULL
 );
-CREATE INDEX idx_pending_fragments_session ON pending_fragments(session_id, created_at ASC);
+
+CREATE INDEX idx_branches_session   ON branches(session_id);
+CREATE INDEX idx_branches_fork_turn ON branches(fork_from_turn_id);
 
 CREATE TABLE turns (
   id                   TEXT PRIMARY KEY,
   session_id           TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  branch_id            TEXT REFERENCES branches(id),
   mode                 TEXT NOT NULL CHECK(mode IN ('chat','narrative','agent')),
   agent_sub_mode       TEXT CHECK(agent_sub_mode IN ('plan','debug','full')),
   status               TEXT NOT NULL CHECK(status IN ('pending','running','completed','failed','aborted')),
@@ -77,11 +56,12 @@ CREATE TABLE turns (
   iterations           INTEGER NOT NULL DEFAULT 0,
   usage_input_tokens   INTEGER NOT NULL DEFAULT 0,
   usage_output_tokens  INTEGER NOT NULL DEFAULT 0,
-  cost_usd             REAL NOT NULL DEFAULT 0,
   meta_json            TEXT NOT NULL DEFAULT '{}'
 );
+
 CREATE INDEX idx_turns_session ON turns(session_id, started_at);
 CREATE INDEX idx_turns_status  ON turns(status);
+CREATE INDEX idx_turns_branch  ON turns(branch_id);
 
 CREATE TABLE messages (
   id          TEXT PRIMARY KEY,
@@ -95,78 +75,86 @@ CREATE TABLE messages (
   created_at  INTEGER NOT NULL,
   meta_json   TEXT NOT NULL DEFAULT '{}'
 );
+
 CREATE INDEX idx_messages_session ON messages(session_id, created_at);
 CREATE INDEX idx_messages_turn    ON messages(turn_id);
 
--- ============ Memory Layer 1: session notes ============
---
--- Per-session rolling summary. Scoped to this dataDir; unlike L0/L2, these
--- summaries describe what was discussed in a specific session, not global facts.
+CREATE TABLE pending_fragments (
+  id         TEXT    PRIMARY KEY,
+  session_id TEXT    NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  turn_id    TEXT    NOT NULL REFERENCES turns(id)    ON DELETE CASCADE,
+  role       TEXT    NOT NULL CHECK(role IN ('user', 'assistant')),
+  content    TEXT    NOT NULL,
+  at         INTEGER NOT NULL,
+  created_at INTEGER NOT NULL
+);
+
+CREATE INDEX idx_pending_fragments_session ON pending_fragments(session_id, created_at ASC);
+
+-- ── Per-session memory (L1 notes + queue + recall state) ───────────────────────
 
 CREATE TABLE session_notes (
-  session_id             TEXT PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE,
-  body                   TEXT NOT NULL DEFAULT '',
-  last_message_id        TEXT,
-  tokens_at_last_update  INTEGER NOT NULL DEFAULT 0,
-  updated_at             INTEGER NOT NULL
+  session_id            TEXT PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE,
+  body                  TEXT NOT NULL DEFAULT '',
+  last_message_id       TEXT,
+  tokens_at_last_update INTEGER NOT NULL DEFAULT 0,
+  updated_at            INTEGER NOT NULL
 );
-
--- ============ Memory tasks ============
 
 CREATE TABLE memory_tasks (
-  id            TEXT PRIMARY KEY,
-  kind          TEXT NOT NULL CHECK(kind IN (
-                  'extraction', 'maintenance',
-                  'embedding_refresh', 'consolidation'
-                )),
-  status        TEXT NOT NULL CHECK(status IN (
-                  'pending', 'running', 'completed', 'failed'
-                )),
-  session_id    TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
-  payload_json  TEXT NOT NULL,
-  attempts      INTEGER NOT NULL DEFAULT 0,
-  last_error    TEXT,
-  created_at    INTEGER NOT NULL,
-  updated_at    INTEGER NOT NULL
+  id           TEXT PRIMARY KEY,
+  kind         TEXT NOT NULL CHECK(kind IN ('extraction','maintenance','embedding_refresh','consolidation')),
+  status       TEXT NOT NULL CHECK(status IN ('pending','running','completed','failed')),
+  session_id   TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  payload_json TEXT NOT NULL,
+  attempts     INTEGER NOT NULL DEFAULT 0,
+  last_error   TEXT,
+  created_at   INTEGER NOT NULL,
+  updated_at   INTEGER NOT NULL
 );
+
 CREATE INDEX idx_memorytasks_status_created ON memory_tasks(status, created_at);
 CREATE INDEX idx_memorytasks_session        ON memory_tasks(session_id);
 
--- ============ Audio (TTS output) ============
---
--- Files live at: {dataDir}/sessions/{session_id}/audio/segments/{turn_id}/{n}.{ext}
---                {dataDir}/sessions/{session_id}/audio/merged/{turn_id}.{ext}
--- storage_path is relative to dataDir.
+CREATE TABLE memory_session_state (
+  session_id     TEXT PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE,
+  surfaced_json  TEXT NOT NULL DEFAULT '{}',
+  overrides_json TEXT NOT NULL DEFAULT '{}'
+);
+
+-- ── Audio (TTS segments + merged) ──────────────────────────────────────────────
 
 CREATE TABLE turn_audio_segments (
-  id              TEXT PRIMARY KEY,
-  turn_id         TEXT NOT NULL REFERENCES turns(id) ON DELETE CASCADE,
-  session_id      TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
-  sentence_index  INTEGER NOT NULL,
-  storage_path    TEXT NOT NULL,
-  mime_type       TEXT NOT NULL,
-  byte_size       INTEGER NOT NULL,
-  duration_ms     INTEGER,
-  text            TEXT NOT NULL,
-  created_at      INTEGER NOT NULL,
-  UNIQUE(turn_id, sentence_index)
-);
-CREATE INDEX idx_audio_seg_turn    ON turn_audio_segments(turn_id, sentence_index);
-CREATE INDEX idx_audio_seg_session ON turn_audio_segments(session_id, created_at DESC);
-
-CREATE TABLE turn_audio_merged (
-  turn_id        TEXT PRIMARY KEY REFERENCES turns(id) ON DELETE CASCADE,
+  id             TEXT PRIMARY KEY,
+  turn_id        TEXT NOT NULL REFERENCES turns(id) ON DELETE CASCADE,
   session_id     TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  sentence_index INTEGER NOT NULL,
   storage_path   TEXT NOT NULL,
   mime_type      TEXT NOT NULL,
   byte_size      INTEGER NOT NULL,
   duration_ms    INTEGER,
-  segment_count  INTEGER NOT NULL,
-  created_at     INTEGER NOT NULL
+  text           TEXT NOT NULL,
+  created_at     INTEGER NOT NULL,
+  UNIQUE(turn_id, sentence_index)
 );
+
+CREATE INDEX idx_audio_seg_turn    ON turn_audio_segments(turn_id, sentence_index);
+CREATE INDEX idx_audio_seg_session ON turn_audio_segments(session_id, created_at DESC);
+
+CREATE TABLE turn_audio_merged (
+  turn_id       TEXT PRIMARY KEY REFERENCES turns(id) ON DELETE CASCADE,
+  session_id    TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  storage_path  TEXT NOT NULL,
+  mime_type     TEXT NOT NULL,
+  byte_size     INTEGER NOT NULL,
+  duration_ms   INTEGER,
+  segment_count INTEGER NOT NULL,
+  created_at    INTEGER NOT NULL
+);
+
 CREATE INDEX idx_audio_merged_session ON turn_audio_merged(session_id, created_at DESC);
 
--- ============ Attachments ============
+-- ── Attachments (per-session + per-turn) ───────────────────────────────────────
 
 CREATE TABLE attachments (
   id           TEXT PRIMARY KEY,
@@ -189,16 +177,8 @@ CREATE TABLE attachment_chunks (
   embedding     BLOB,
   meta_json     TEXT NOT NULL DEFAULT '{}'
 );
-CREATE INDEX idx_chunks_attachment ON attachment_chunks(attachment_id, chunk_index);
 
--- ============ Turn attachments ============
---
--- Per-turn file references attached by the user in the composer.
--- Distinct from `attachments` (above) which is reserved for future
--- knowledge-base indexing (scope: session RAG).
---
--- Nothing is copied here — local_path is the original absolute path on disk.
--- mtime (unix ms) lets tools detect whether the file changed since it was attached.
+CREATE INDEX idx_chunks_attachment ON attachment_chunks(attachment_id, chunk_index);
 
 CREATE TABLE turn_attachments (
   id         TEXT    PRIMARY KEY,
@@ -211,29 +191,11 @@ CREATE TABLE turn_attachments (
   local_path TEXT    NOT NULL,
   created_at INTEGER NOT NULL
 );
+
 CREATE INDEX idx_turn_attachments_turn    ON turn_attachments(turn_id);
 CREATE INDEX idx_turn_attachments_session ON turn_attachments(session_id, created_at DESC);
 
--- ============ Memory session state ============
---
--- Owned entirely by the memory package. Two JSON blobs per session:
---   surfaced_json   — AlreadySurfaced: node/item ids recalled in recent turns
---                     (dedup filter so the same fact isn't injected every turn)
---   overrides_json  — MemorySessionOverrides: per-session layer toggles
---
--- Separated from sessions.meta_json so memory owns its own schema.
-
-CREATE TABLE memory_session_state (
-  session_id      TEXT    PRIMARY KEY
-                          REFERENCES sessions(id) ON DELETE CASCADE,
-  surfaced_json   TEXT    NOT NULL DEFAULT '{}',
-  overrides_json  TEXT    NOT NULL DEFAULT '{}'
-);
-
--- ============ Artifacts ============
---
--- Files > 64 KB live at: {dataDir}/sessions/{session_id}/artifacts/{id}
--- content_path is relative to dataDir.
+-- ── Artifacts ──────────────────────────────────────────────────────────────────
 
 CREATE TABLE artifacts (
   id               TEXT PRIMARY KEY,
@@ -250,10 +212,11 @@ CREATE TABLE artifacts (
   applied_at       INTEGER,
   rejected_at      INTEGER
 );
+
 CREATE INDEX idx_artifacts_session ON artifacts(session_id, created_at DESC);
 CREATE INDEX idx_artifacts_turn    ON artifacts(turn_id);
 
--- ============ Permission grants ============
+-- ── Permission grants / telemetry / usage ──────────────────────────────────────
 
 CREATE TABLE permission_grants (
   id           TEXT PRIMARY KEY,
@@ -265,9 +228,8 @@ CREATE TABLE permission_grants (
   source       TEXT NOT NULL CHECK(source IN ('user','project','default')),
   created_at   INTEGER NOT NULL
 );
-CREATE INDEX idx_grants_tool ON permission_grants(tool_pattern);
 
--- ============ Telemetry + usage ============
+CREATE INDEX idx_grants_tool ON permission_grants(tool_pattern);
 
 CREATE TABLE telemetry_events (
   id           TEXT PRIMARY KEY,
@@ -277,6 +239,7 @@ CREATE TABLE telemetry_events (
   payload_json TEXT NOT NULL,
   created_at   INTEGER NOT NULL
 );
+
 CREATE INDEX idx_telemetry_kind ON telemetry_events(kind, created_at);
 
 CREATE TABLE turn_usage (
@@ -289,3 +252,54 @@ CREATE TABLE turn_usage (
   duration_ms   INTEGER NOT NULL,
   created_at    INTEGER NOT NULL
 );
+
+-- ── Agent tasks (SQL-backed; replaces JSONL transcript) ────────────────────────
+
+CREATE TABLE agent_tasks (
+  id                     TEXT    PRIMARY KEY,
+  session_id             TEXT    NOT NULL,
+  turn_id                TEXT,
+  parent_id              TEXT,
+  status                 TEXT    NOT NULL DEFAULT 'running'
+                                 CHECK (status IN ('running','waiting_user','completed','failed','cancelled')),
+  pending_prompt_id      TEXT,
+  pending_questions_json TEXT,
+  error                  TEXT,
+  iterations             INTEGER,
+  input_tokens           INTEGER,
+  output_tokens          INTEGER,
+  created_at             INTEGER NOT NULL,
+  updated_at             INTEGER NOT NULL
+);
+
+CREATE INDEX idx_agent_tasks_session ON agent_tasks(session_id, created_at DESC);
+CREATE INDEX idx_agent_tasks_parent  ON agent_tasks(parent_id);
+CREATE INDEX idx_agent_tasks_status  ON agent_tasks(status);
+
+CREATE TABLE agent_task_messages (
+  id           TEXT    PRIMARY KEY,
+  task_id      TEXT    NOT NULL REFERENCES agent_tasks(id) ON DELETE CASCADE,
+  role         TEXT    NOT NULL CHECK (role IN ('assistant','tool_call','tool_result')),
+  content_json TEXT    NOT NULL,
+  created_at   INTEGER NOT NULL
+);
+
+CREATE INDEX idx_atm_task_created ON agent_task_messages(task_id, created_at ASC);
+
+-- ── KB activations (session → KB-doc usage) ────────────────────────────────────
+-- Stays in data.db (session-scoped). kb_id + asset_id are PLAIN refs into a
+-- per-KB kb.db (no FK — cross-database). session_id keeps its FK.
+
+CREATE TABLE kb_activations (
+  id          TEXT    PRIMARY KEY,
+  call_id     TEXT    NOT NULL,
+  kb_id       TEXT    NOT NULL,
+  asset_id    TEXT    NOT NULL,
+  session_id  TEXT    NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  turn_id     TEXT,
+  created_at  INTEGER NOT NULL
+);
+
+CREATE INDEX idx_kb_act_session ON kb_activations(session_id);
+CREATE INDEX idx_kb_act_asset   ON kb_activations(kb_id, asset_id);
+CREATE INDEX idx_kb_act_call    ON kb_activations(call_id);
