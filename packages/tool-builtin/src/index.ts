@@ -1,4 +1,4 @@
-import type { ToolRegistry, BuiltTool } from '@ema-agent/tool';
+import type { ToolRegistry, BuiltTool } from '@ema-agent/tools';
 
 // ── Individual tool exports ───────────────────────────────────────────────────
 
@@ -51,17 +51,17 @@ export { artifactWriteTool, artifactReadTool, artifactListTool } from './tools/a
 // NOTE: the legacy generic `mcp_call` dispatcher was retired. MCP tools are
 // auto-expanded into the registry as `mcp__<server>__<tool>` (see
 // McpRegistry.registerMcp), so the model calls them directly — no套娃 dispatcher.
-export type { IMcpClientBridge } from '@ema-agent/tool';
+export type { IMcpClientBridge } from '@ema-agent/tools';
 
 export { skillCallTool } from './tools/skill-call.js';
 export type { SkillCallResult } from './tools/skill-call.js';
-export type { ISkillRunner } from '@ema-agent/tool';
+export type { ISkillRunner } from '@ema-agent/tools';
 
 export { kbSearchTool } from './tools/kb-search.js';
 
 export { subagentTool } from './tools/subagent.js';
 export type { SubagentResult } from './tools/subagent.js';
-export type { ISubagentSpawner, SubagentSpawnOpts } from '@ema-agent/tool';
+export type { ISubagentSpawner, SubagentSpawnOpts } from '@ema-agent/tools';
 
 export { subagentSpawnBgTool, subagentSendMessageTool, subagentAwaitTool } from './tools/subagent-bg.js';
 

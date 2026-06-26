@@ -20,7 +20,7 @@
   },
   "dependencies": {
     "@ema-agent/contracts": "workspace:*",
-    "@ema-agent/tool":      "workspace:*"
+    "@ema-agent/tools":      "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

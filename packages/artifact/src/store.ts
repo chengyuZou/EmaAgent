@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto';
 
 import type { ArtifactRepo } from '@ema-agent/storage';
 import type { Artifact, ArtifactId, SessionId } from '@ema-agent/contracts';
-import type { IArtifactStore, ArtifactUpsertArgs } from '@ema-agent/tool';
+import type { IArtifactStore, ArtifactUpsertArgs } from '@ema-agent/tools';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 

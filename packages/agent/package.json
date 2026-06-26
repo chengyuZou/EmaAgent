@@ -27,7 +27,7 @@
     "@ema-agent/permission": "workspace:*",
     "@ema-agent/session": "workspace:*",
     "@ema-agent/emotion": "workspace:*",
-    "@ema-agent/tool": "workspace:*",
+    "@ema-agent/tools": "workspace:*",
     "@ema-agent/storage": "workspace:*",
     "@ema-agent/sandbox": "workspace:*",
     "@ema-agent/agent-context": "workspace:*",

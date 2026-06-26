@@ -24,7 +24,7 @@
     "@ema-agent/contracts": "workspace:*",
     "@ema-agent/permission": "workspace:*",
     "@ema-agent/storage": "workspace:*",
-    "@ema-agent/tool": "workspace:*",
+    "@ema-agent/tools": "workspace:*",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "zod": "^3.23.0"
   },

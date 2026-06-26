@@ -1,4 +1,4 @@
-import type { BuiltTool } from '@ema-agent/tool';
+import type { BuiltTool } from '@ema-agent/tools';
 import type { LlmToolDef } from '@ema-agent/llm';
 
 // ── AgentPolicy ───────────────────────────────────────────────────────────────

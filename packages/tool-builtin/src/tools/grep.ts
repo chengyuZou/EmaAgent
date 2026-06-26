@@ -2,8 +2,8 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import path from 'node:path';
 import { z } from 'zod';
-import { buildTool } from '@ema-agent/tool';
-import type { ToolExecutionContext } from '@ema-agent/tool';
+import { buildTool } from '@ema-agent/tools';
+import type { ToolExecutionContext } from '@ema-agent/tools';
 
 const execFileAsync = promisify(execFile);
 

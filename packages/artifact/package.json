@@ -21,7 +21,7 @@
   "dependencies": {
     "@ema-agent/storage": "workspace:*",
     "@ema-agent/contracts": "workspace:*",
-    "@ema-agent/tool": "workspace:*"
+    "@ema-agent/tools": "workspace:*"
   },
   "devDependencies": {
     "rimraf": "^5.0.0",

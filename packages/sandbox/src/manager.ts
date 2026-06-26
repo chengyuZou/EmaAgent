@@ -1,6 +1,6 @@
 import { existsSync, rmSync } from 'node:fs';
 import { spawn }               from 'node:child_process';
-import { spawnProcess }        from '@ema-agent/tool';
+import { spawnProcess }        from '@ema-agent/tools';
 import type { PermissionEngine } from '@ema-agent/permission';
 import type { SandboxBackend, SandboxConfig, RunOptions, RunResult } from './types.js';
 import { detectBackend }           from './detect.js';

@@ -1,5 +1,5 @@
 {
-  "name": "@ema-agent/tool",
+  "name": "@ema-agent/tools",
   "version": "0.1.0",
   "private": true,
   "type": "module",

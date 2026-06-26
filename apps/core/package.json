@@ -35,7 +35,7 @@
     "@ema-agent/ebd-client": "workspace:*",
     "@ema-agent/narrative-client": "workspace:*",
     "@ema-agent/permission": "workspace:*",
-    "@ema-agent/tool": "workspace:*",
+    "@ema-agent/tools": "workspace:*",
     "@ema-agent/tool-builtin": "workspace:*",
     "@ema-agent/sandbox": "workspace:*",
     "@ema-agent/knowledge-base": "workspace:*",

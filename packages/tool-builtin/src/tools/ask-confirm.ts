@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
-import { buildTool } from '@ema-agent/tool';
-import type { ToolExecutionContext } from '@ema-agent/tool';
+import { buildTool } from '@ema-agent/tools';
+import type { ToolExecutionContext } from '@ema-agent/tools';
 import type { EmaStreamEvent, SessionId, TurnId } from '@ema-agent/contracts';
 
 const inputSchema = z.object({

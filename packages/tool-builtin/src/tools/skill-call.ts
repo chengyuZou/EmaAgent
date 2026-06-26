@@ -1,6 +1,6 @@
 import { z } from 'zod';
-import { buildTool } from '@ema-agent/tool';
-import type { ToolExecutionContext, ISkillRunner } from '@ema-agent/tool';
+import { buildTool } from '@ema-agent/tools';
+import type { ToolExecutionContext, ISkillRunner } from '@ema-agent/tools';
 
 // ── Input schema ──────────────────────────────────────────────────────────────
 

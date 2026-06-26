@@ -1,5 +1,5 @@
 import { randomUUID }       from 'node:crypto';
-import type { ToolRegistry } from '@ema-agent/tool';
+import type { ToolRegistry } from '@ema-agent/tools';
 import type { McpServerStore }                            from './store.js';
 import type { McpServerConfig, McpConnection, McpToolInfo } from './types.js';
 import { openConnection }                                from './connection.js';

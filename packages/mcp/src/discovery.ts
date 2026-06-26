@@ -1,6 +1,6 @@
 import type { Client }           from '@modelcontextprotocol/sdk/client/index.js';
 import { z }                     from 'zod';
-import type { BuiltTool, ToolDescriptor, ToolExecutionContext } from '@ema-agent/tool';
+import type { BuiltTool, ToolDescriptor, ToolExecutionContext } from '@ema-agent/tools';
 import type { ToolPermissionMeta } from '@ema-agent/permission';
 import type { McpToolInfo }      from './types.js';
 import { buildMcpToolName }      from './types.js';

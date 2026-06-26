@@ -1,8 +1,8 @@
 import * as fs   from 'node:fs';
 import * as path from 'node:path';
 import { z } from 'zod';
-import { buildTool } from '@ema-agent/tool';
-import type { ToolExecutionContext } from '@ema-agent/tool';
+import { buildTool } from '@ema-agent/tools';
+import type { ToolExecutionContext } from '@ema-agent/tools';
 import { estimateTextTokens } from '@ema-agent/token';
 
 // ── Constraints ───────────────────────────────────────────────────────────────

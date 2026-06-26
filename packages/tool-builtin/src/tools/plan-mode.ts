@@ -1,6 +1,6 @@
 import { z } from 'zod';
-import { buildTool } from '@ema-agent/tool';
-import type { ToolExecutionContext } from '@ema-agent/tool';
+import { buildTool } from '@ema-agent/tools';
+import type { ToolExecutionContext } from '@ema-agent/tools';
 import type { EmaStreamEvent } from '@ema-agent/contracts';
 
 // Stub: plan_enter / plan_exit are text-only signals to the frontend.

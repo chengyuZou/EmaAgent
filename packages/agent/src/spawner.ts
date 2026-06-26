@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { LlmMessage, SessionId, TurnId, EmaStreamEvent, ToolError } from '@ema-agent/contracts';
-import type { ISubagentSpawner, SubagentSpawnOpts, ToolExecutionContext } from '@ema-agent/tool';
+import type { ISubagentSpawner, SubagentSpawnOpts, ToolExecutionContext } from '@ema-agent/tools';
 import type { AgentDeps } from './types.js';
 import { AgentPolicy } from './policy.js';
 import { TurnToolExecutor } from './tool-executor.js';

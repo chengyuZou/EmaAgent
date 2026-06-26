@@ -25,7 +25,7 @@
       "@ema-agent/llm": ["./packages/llm/src/index.ts"],
       "@ema-agent/config": ["./packages/config/src/index.ts"],
       "@ema-agent/storage-sql": ["./packages/storage-sql/src/index.ts"],
-      "@ema-agent/tool": ["./packages/tool/src/index.ts"],
+      "@ema-agent/tools": ["./packages/tools/src/index.ts"],
       "@ema-agent/permission": ["./packages/permission/src/index.ts"],
       "@ema-agent/sandbox": ["./packages/sandbox/src/index.ts"],
       "@ema-agent/attachment": ["./packages/attachment/src/index.ts"],

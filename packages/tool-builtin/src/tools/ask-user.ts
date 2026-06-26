@@ -1,8 +1,8 @@
 import * as readline from 'node:readline/promises';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
-import { buildTool } from '@ema-agent/tool';
-import type { ToolExecutionContext } from '@ema-agent/tool';
+import { buildTool } from '@ema-agent/tools';
+import type { ToolExecutionContext } from '@ema-agent/tools';
 import type { AskUserQuestionSpec, EmaStreamEvent, SessionId, TurnId } from '@ema-agent/contracts';
 
 // ── Input schema ──────────────────────────────────────────────────────────────

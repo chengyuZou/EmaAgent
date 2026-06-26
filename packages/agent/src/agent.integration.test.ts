@@ -18,7 +18,7 @@ import { LlmRouter } from '@ema-agent/llm';
 import { HookBus } from '@ema-agent/hook';
 import { EmotionEngine } from '@ema-agent/emotion';
 import { PermissionEngine } from '@ema-agent/permission';
-import { ToolRegistry } from '@ema-agent/tool';
+import { ToolRegistry } from '@ema-agent/tools';
 import { registerBuiltinTools } from '@ema-agent/tool-builtin';
 import type { Message, Turn } from '@ema-agent/session';
 import type { SessionId, TurnId, MessageId } from '@ema-agent/contracts';

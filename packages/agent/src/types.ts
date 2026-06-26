@@ -3,7 +3,7 @@ import type { LlmRouter, LlmContentPart } from '@ema-agent/llm';
 import type { SessionStore, Turn } from '@ema-agent/session';
 import type { HookBus } from '@ema-agent/hook';
 import type { EmotionEngine } from '@ema-agent/emotion';
-import type { ICommandRunner, IArtifactStore, IMcpClientBridge, ISkillRunner, ToolRegistry } from '@ema-agent/tool';
+import type { ICommandRunner, IArtifactStore, IMcpClientBridge, ISkillRunner, ToolRegistry } from '@ema-agent/tools';
 import type { PermissionEngine, AskPermissionFn } from '@ema-agent/permission';
 import type { AgentFileStateStore, AgentToolResultStore } from '@ema-agent/agent-context';
 

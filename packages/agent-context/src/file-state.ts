@@ -1,5 +1,5 @@
 import { normalize } from 'node:path';
-import type { IFileStateStore, IFileStateStoreEntry } from '@ema-agent/tool';
+import type { IFileStateStore, IFileStateStoreEntry } from '@ema-agent/tools';
 
 // ── AgentFileStateStore ───────────────────────────────────────────────────────
 //

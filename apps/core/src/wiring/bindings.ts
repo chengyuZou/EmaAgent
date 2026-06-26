@@ -43,10 +43,10 @@ import type { AskPermissionFn } from '@ema-agent/permission';
 import { PermissionPromptRegistry } from '../permissions/registry.js';
 import { AskUserRegistry }          from '../ask-user/registry.js';
 import type { EmaStreamEvent, KbAssetScope, SessionId, KbSearchResult } from '@ema-agent/contracts';
-import { ToolRegistry }        from '@ema-agent/tool';
+import { ToolRegistry }        from '@ema-agent/tools';
 import { registerBuiltinTools } from '@ema-agent/tool-builtin';
 import { detectBackend, CommandRunner } from '@ema-agent/sandbox';
-import type { ICommandRunner, IMcpClientBridge, ISkillRunner } from '@ema-agent/tool';
+import type { ICommandRunner, IMcpClientBridge, ISkillRunner } from '@ema-agent/tools';
 import {
   AgentFileStateStore, AgentToolResultStore, ToolResultCleaner,
 } from '@ema-agent/agent-context';

@@ -13,7 +13,7 @@
  */
 
 import type { EmaStreamEvent, ToolResultBlock, SessionId, TurnId } from '@ema-agent/contracts';
-import type { ToolExecutionContext, ICommandRunner } from '@ema-agent/tool';
+import type { ToolExecutionContext, ICommandRunner } from '@ema-agent/tools';
 import type { PermissionEngine, PermissionContext } from '@ema-agent/permission';
 import type { HookBus } from '@ema-agent/hook';
 import type { AgentToolResultStore } from '@ema-agent/agent-context';

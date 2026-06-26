@@ -106,12 +106,12 @@ importers:
       '@ema-agent/token':
         specifier: workspace:*
         version: link:../../packages/token
-      '@ema-agent/tool':
-        specifier: workspace:*
-        version: link:../../packages/tools
       '@ema-agent/tool-builtin':
         specifier: workspace:*
         version: link:../../packages/tool-builtin
+      '@ema-agent/tools':
+        specifier: workspace:*
+        version: link:../../packages/tools
       '@ema-agent/tts':
         specifier: workspace:*
         version: link:../../packages/tts
@@ -361,12 +361,12 @@ importers:
       '@ema-agent/token':
         specifier: workspace:*
         version: link:../token
-      '@ema-agent/tool':
-        specifier: workspace:*
-        version: link:../tools
       '@ema-agent/tool-builtin':
         specifier: workspace:*
         version: link:../tool-builtin
+      '@ema-agent/tools':
+        specifier: workspace:*
+        version: link:../tools
     devDependencies:
       '@types/node':
         specifier: ^20.0.0
@@ -386,7 +386,7 @@ importers:
       '@ema-agent/contracts':
         specifier: workspace:*
         version: link:../contracts
-      '@ema-agent/tool':
+      '@ema-agent/tools':
         specifier: workspace:*
         version: link:../tools
     devDependencies:
@@ -427,7 +427,7 @@ importers:
       '@ema-agent/storage':
         specifier: workspace:*
         version: link:../storage
-      '@ema-agent/tool':
+      '@ema-agent/tools':
         specifier: workspace:*
         version: link:../tools
     devDependencies:
@@ -711,7 +711,7 @@ importers:
       '@ema-agent/storage':
         specifier: workspace:*
         version: link:../storage
-      '@ema-agent/tool':
+      '@ema-agent/tools':
         specifier: workspace:*
         version: link:../tools
       '@modelcontextprotocol/sdk':
@@ -839,7 +839,7 @@ importers:
       '@ema-agent/permission':
         specifier: workspace:*
         version: link:../permission
-      '@ema-agent/tool':
+      '@ema-agent/tools':
         specifier: workspace:*
         version: link:../tools
     devDependencies:
@@ -1001,7 +1001,7 @@ importers:
       '@ema-agent/token':
         specifier: workspace:*
         version: link:../token
-      '@ema-agent/tool':
+      '@ema-agent/tools':
         specifier: workspace:*
         version: link:../tools
       glob:
