@@ -73,6 +73,16 @@ async function main() {
 
   // ── 4. Wire + start ────────────────────────────────────────────────────────
   const bindings = wire({ profileDb, dataDb, activeDataDir: activeDir.path });
+
+  // Ensure at least one KB exists; if registry is empty auto-create a default
+  // KB under the active dataDir so the app works out of the box.
+  const defaultKbPath = path.join(activeDir.path, 'kb-default');
+  await bindings.kb.ensureDefault(defaultKbPath);
+  // Open + HNSW-init all registered KBs (fire-and-forget; search falls back
+  // to SQL cosine until HNSW builds, same as before).
+  void bindings.kb.initAll().catch((err) => {
+    console.warn('[kb] initAll() failed:', err);
+  });
   const bgWork   = startBackgroundWork(bindings);
   const app = buildServer(bindings);
 

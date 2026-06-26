@@ -2,6 +2,8 @@
 export { KnowledgeClient }          from './client.js';
 export type { KnowledgeClientDeps } from './client.js';
 export { KnowledgeStore }           from './store/index.js';
+export { KbManager }                from './manager.js';
+export type { KbManagerDeps, KbEntry } from './manager.js';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 export type {

@@ -55,11 +55,11 @@ import {
 import { AgentTaskStore } from '@ema-agent/agent-task';
 import { MemoryPlanner } from '@ema-agent/memory';
 import {
-  KnowledgeClient, KnowledgeStore, IngestQueue,
+  KbManager,
 } from '@ema-agent/knowledge-base';
 import type { IngestOptions } from '@ema-agent/knowledge-base';
 import {
-  DocumentAssetRepo, DocumentChunkRepo, DocumentPreviewRepo, KbActivationsRepo, KbIngestTasksRepo,
+  KbActivationsRepo, KbRegistryRepo,
 } from '@ema-agent/storage';
 import { resolveBridgeUrl } from './bridge.js';
 import { SystemEventBus }  from '../sse/system-bus.js';
@@ -173,14 +173,10 @@ export interface AppBindings {
   skillRunner:    SkillRunner;
   skillInstaller: SkillInstaller;
 
-  kb: KnowledgeClient;
-  /** Persistent, concurrency-limited background ingest queue. */
-  ingestQueue:   IngestQueue;
-  /** KB ingest task repo — for the queue list/retry routes. */
-  kbIngestTasks: KbIngestTasksRepo;
+  /** Multi-KB manager. Routes use openActiveEntry() to get the active KB's client/queue. */
+  kb: KbManager;
   /** KB hybrid search for the kb_search tool — resolves bound embed/rerank models.
-   *  assetIds scopes to the turn's selected docs (+use-count + kb_activations);
-   *  sessionId/turnId tag the activation log; all omitted = unscoped all-KB search. */
+   *  kbIds=[] → search active KB; assetIds scopes within it; sessionId/turnId tag activations. */
   kbSearch: (query: string, topK?: number, assetIds?: string[], sessionId?: string, turnId?: string) => Promise<KbSearchResult>;
 }
 
@@ -401,22 +397,6 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
   };
 
   // ── Knowledge base ───────────────────────────────────────────────────────────
-  const kb = new KnowledgeClient({
-    store: new KnowledgeStore(
-      new DocumentAssetRepo(dataDb.sqlite),
-      new DocumentChunkRepo(dataDb.sqlite),
-      new DocumentPreviewRepo(dataDb.sqlite),
-      new KbActivationsRepo(dataDb.sqlite),
-    ),
-    ebdRouter: ebd,
-    visionAdapter: asKbVisionAdapter(vision),
-  });
-  // Fire-and-forget: builds in-memory HNSW from persisted BLOBs.
-  // Search falls back to SQL cosine until this resolves (~50–200ms).
-  void kb.init().catch((err) => console.warn('[kb] HNSW init failed:', err));
-
-  // Persistent ingest task queue (concurrency-limited, survives restart).
-  const kbIngestTasks = new KbIngestTasksRepo(dataDb.sqlite);
   const resolveIngestModels = (): Partial<IngestOptions> => {
     const kbModels = (settingsRepo.get('kb.models') as
       { embed?: { providerConfigId: string; model: string } } | undefined) ?? {};
@@ -428,29 +408,25 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
       visionModel:      visionB?.model,
     };
   };
-  const ingestQueue = new IngestQueue({
-    tasks:          kbIngestTasks,
-    ingest:         (fp, opts) => kb.ingest(fp, opts),
-    resolveOptions: resolveIngestModels,
-    concurrency:    3,
+
+  const kb = new KbManager({
+    registry:             new KbRegistryRepo(profileDb.sqlite),
+    activations:          new KbActivationsRepo(dataDb.sqlite),
+    ebdRouter:            ebd,
+    visionAdapter:        asKbVisionAdapter(vision),
+    resolveIngestOptions: resolveIngestModels,
+    concurrency:          3,
   });
 
-  // Bridge KB ingest progress (internal DocumentEventEmitter) → systemBus as
-  // EmaStreamEvent (live SSE) AND persist stage/progress on the task row (so the
-  // queue survives reload). No new SSE endpoint — reuses /api/system/events.
+  // Bridge KbManager's aggregated event bus → systemBus SSE.
+  // Progress task persistence is now done inside KbManager._openEntry per-KB.
   kb.events.on((e) => {
     if (e.kind === 'complete') { systemBus.emit({ type: 'kb_ingest_completed', assetId: e.assetId }); return; }
     if (e.kind === 'error')    { systemBus.emit({ type: 'kb_ingest_failed', assetId: e.assetId, error: e.error ?? 'unknown' }); return; }
-    // validate/parse/chunk/embed → a monotonic 0–1 bar for the UI.
     const base: Record<string, number> = { validate: 0.05, parse: 0.25, chunk: 0.45, embed: 0.5 };
     const progress = e.kind === 'embed' ? 0.5 + 0.5 * (e.progress ?? 0) : (base[e.kind] ?? 0);
-    kbIngestTasks.updateProgress(e.assetId, e.kind, progress);
     systemBus.emit({ type: 'kb_ingest_progress', assetId: e.assetId, stage: e.kind, progress });
   });
-
-  // Recover crashed `running` tasks → failed, then drain pending. After the bridge
-  // is wired so resumed tasks' progress events are observed.
-  ingestQueue.resume();
 
   // kb_search tool injection: resolve the bound embed/rerank models so retrieval
   // uses the same models as the rest of the app. assetIds omitted → searches all
@@ -468,7 +444,8 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
       embed?:  { providerConfigId: string; model: string };
       rerank?: { providerConfigId: string; model: string };
     } | undefined) ?? {};
-    return kb.search(query, {
+    // kbIds=[] → KbManager routes to the active KB
+    return kb.search([], query, {
       assetIds,
       topK,
       sessionId,
@@ -504,7 +481,7 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
     artifactStore, attachmentStore, sessionStats, sessionNotes,
     mcpRegistry, mcpBridge,
     skillStore, skillRunner, skillInstaller, skillBridge,
-    kb, kbSearch, ingestQueue, kbIngestTasks,
+    kb, kbSearch,
   };
 }
 

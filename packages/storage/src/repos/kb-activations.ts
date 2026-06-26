@@ -4,6 +4,7 @@ import type { SqliteDb } from '../database.js';
 export interface KbActivationRow {
   id:         string;
   call_id:    string;
+  kb_id:      string;
   asset_id:   string;
   session_id: string;
   turn_id:    string | null;
@@ -19,6 +20,7 @@ export class KbActivationsRepo {
    * No-op when assetIds is empty (e.g. an unscoped "all KBs" search).
    */
   recordCall(args: {
+    kbId:      string;
     assetIds:  string[];
     sessionId: string;
     turnId?:   string;
@@ -28,12 +30,12 @@ export class KbActivationsRepo {
     const callId = randomUUID();
     const ts     = args.ts ?? Date.now();
     const stmt = this.db.prepare(
-      `INSERT INTO kb_activations (id, call_id, asset_id, session_id, turn_id, created_at)
-       VALUES (?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO kb_activations (id, call_id, kb_id, asset_id, session_id, turn_id, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
     );
     this.db.transaction(() => {
       for (const assetId of args.assetIds) {
-        stmt.run(randomUUID(), callId, assetId, args.sessionId, args.turnId ?? null, ts);
+        stmt.run(randomUUID(), callId, args.kbId, assetId, args.sessionId, args.turnId ?? null, ts);
       }
     })();
   }

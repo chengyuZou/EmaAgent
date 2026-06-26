@@ -22,6 +22,7 @@ export class KnowledgeStore {
     private readonly chunks:      DocumentChunkRepo,
     private readonly previews:    DocumentPreviewRepo,
     private readonly activations: KbActivationsRepo,
+    private readonly kbId:        string = '',
   ) {}
 
   // ── Asset ──────────────────────────────────────────────────────────────────
@@ -56,7 +57,7 @@ export class KnowledgeStore {
     const ts = opts.ts ?? Date.now();
     this.assets.recordActivation(assetIds, ts);
     if (opts.sessionId) {
-      this.activations.recordCall({ assetIds, sessionId: opts.sessionId, turnId: opts.turnId, ts });
+      this.activations.recordCall({ kbId: this.kbId, assetIds, sessionId: opts.sessionId, turnId: opts.turnId, ts });
     }
   }
 
