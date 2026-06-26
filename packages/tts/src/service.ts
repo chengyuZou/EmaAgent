@@ -4,6 +4,7 @@ import type {
   TtsAdapter,
   TtsProviderConfig,
   TtsHealthResult,
+  TtsProbeResult,
 } from './types.js';
 
 import { OpenAiTtsAdapter }   from './adapters/openai-tts.js';
@@ -106,6 +107,13 @@ export class TtsClient {
       ok: providers.length > 0 && providers.every((p) => p.ok),
       providers,
     };
+  }
+
+  async probe(providerId: string): Promise<TtsProbeResult> {
+    const adapter = this.adapters.get(providerId);
+    if (!adapter) return { ok: false, error: `provider "${providerId}" not registered` };
+    if (!adapter.probe) return { ok: false, error: 'probe not supported by this adapter' };
+    return adapter.probe();
   }
 
   private createAdapter(cfg: TtsProviderConfig): TtsAdapter {

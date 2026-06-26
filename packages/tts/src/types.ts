@@ -102,6 +102,12 @@ export interface TtsHealthResult {
   providers: TtsProviderHealth[];
 }
 
+export interface TtsProbeResult {
+  ok:        boolean;
+  latencyMs?: number;
+  error?:    string;
+}
+
 // ── Adapter contract ────────────────────────────────────────────────────────
 
 export interface TtsAdapter {
@@ -119,4 +125,7 @@ export interface TtsAdapter {
    * Not all adapters support this — unsupported adapters throw.
    */
   uploadVoice?(refAudioPath: string, promptText: string, promptLang: string, model: string): Promise<string>;
+
+  /** Live connectivity check. Optional — service falls back to ok=false when absent. */
+  probe?(): Promise<Omit<TtsProbeResult, never>>;
 }

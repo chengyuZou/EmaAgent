@@ -1,4 +1,4 @@
-import type { TtsAdapter, TtsProviderConfig, TtsRequest, TtsStreamEvent, TtsErrorCode } from '../types.js';
+import type { TtsAdapter, TtsProviderConfig, TtsProbeResult, TtsRequest, TtsStreamEvent, TtsErrorCode } from '../types.js';
 import { readFile } from 'node:fs/promises';
 import { basename } from 'node:path';
 
@@ -144,6 +144,23 @@ export class OpenAiTtsAdapter implements TtsAdapter {
       throw new Error(`Voice upload response missing uri: ${JSON.stringify(data)}`);
     }
     return data.uri;
+  }
+
+  async probe(): Promise<TtsProbeResult> {
+    const url = `${this.config.baseUrl.replace(/\/$/, '')}/models`;
+    const startedAt = Date.now();
+    try {
+      const res = await fetch(url, {
+        headers: { 'Authorization': `Bearer ${this.config.apiKey}` },
+        signal: AbortSignal.timeout(10_000),
+      });
+      const latencyMs = Date.now() - startedAt;
+      if (res.ok) return { ok: true, latencyMs };
+      const text = await res.text().catch(() => '');
+      return { ok: false, latencyMs, error: `HTTP ${res.status}: ${text.slice(0, 120)}` };
+    } catch (err) {
+      return { ok: false, error: (err as Error).message };
+    }
   }
 }
 

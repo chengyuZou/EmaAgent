@@ -1,4 +1,4 @@
-import type { TtsAdapter, TtsProviderConfig, TtsRequest, TtsStreamEvent, TtsErrorCode } from '../types.js';
+import type { TtsAdapter, TtsProviderConfig, TtsProbeResult, TtsRequest, TtsStreamEvent, TtsErrorCode } from '../types.js';
 
 // ── GPT-SoVITS local server (api_v2.py) ─────────────────────────────────────
 //
@@ -104,6 +104,19 @@ export class GptSoVitsTtsAdapter implements TtsAdapter {
     }
 
     yield { type: 'done', totalBytes, firstByteMs };
+  }
+
+  async probe(): Promise<TtsProbeResult> {
+    const url = this.config.baseUrl.replace(/\/$/, '');
+    const startedAt = Date.now();
+    try {
+      const res = await fetch(url, { signal: AbortSignal.timeout(8_000) });
+      const latencyMs = Date.now() - startedAt;
+      // GPT-SoVITS server may return 404 on GET / but that still means it's up.
+      return { ok: res.status < 500, latencyMs };
+    } catch (err) {
+      return { ok: false, error: (err as Error).message };
+    }
   }
 }
 

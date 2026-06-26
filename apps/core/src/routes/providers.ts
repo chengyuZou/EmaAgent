@@ -390,6 +390,52 @@ export function providersRoute(bindings: AppBindings): Hono {
       return c.json({ ok: result.ok, model, latencyMs: result.latencyMs ?? null, error: result.error });
     }
 
+    if (capabilities.includes('embed')) {
+      const enabledEmbed = bindings.providerEmbedModels.listByProvider(id);
+      const model = parsed.data.model ?? enabledEmbed[0]?.model ?? def?.defaultModels?.embed?.[0];
+      if (!model) {
+        return c.json({ ok: false, latencyMs: null, error: '没有可探测的模型，请先在下方「模型」启用一个' });
+      }
+      const result = await bindings.ebd.probeEmbed(id, model);
+      repo.recordHealth(id, result.ok ? 'ok' : 'failed', {
+        latencyMs: result.latencyMs,
+        lastError: result.error,
+      });
+      return c.json(result);
+    }
+
+    if (capabilities.includes('rerank')) {
+      const enabledRerank = bindings.providerRerankModels.listByProvider(id);
+      const model = parsed.data.model ?? enabledRerank[0]?.model;
+      if (!model) {
+        return c.json({ ok: false, latencyMs: null, error: '没有可探测的模型，请先在下方「模型」启用一个' });
+      }
+      const result = await bindings.ebd.probeRerank(id, model);
+      repo.recordHealth(id, result.ok ? 'ok' : 'failed', {
+        latencyMs: result.latencyMs,
+        lastError: result.error,
+      });
+      return c.json(result);
+    }
+
+    if (capabilities.includes('tts')) {
+      const result = await bindings.tts.probe(id);
+      repo.recordHealth(id, result.ok ? 'ok' : 'failed', {
+        latencyMs: result.latencyMs,
+        lastError: result.error,
+      });
+      return c.json(result);
+    }
+
+    if (capabilities.includes('stt')) {
+      const result = await bindings.stt.probe(id);
+      repo.recordHealth(id, result.ok ? 'ok' : 'failed', {
+        latencyMs: result.latencyMs,
+        lastError: result.error,
+      });
+      return c.json(result);
+    }
+
     return c.json({ error: 'no_probeable_capability' }, 422);
   });
 

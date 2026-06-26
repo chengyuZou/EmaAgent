@@ -3,7 +3,7 @@ import fs   from 'node:fs/promises';
 import path from 'node:path';
 import WebSocket from 'ws';
 
-import type { TtsAdapter, TtsProviderConfig, TtsRequest, TtsStreamEvent, TtsErrorCode } from '../types.js';
+import type { TtsAdapter, TtsProviderConfig, TtsProbeResult, TtsRequest, TtsStreamEvent, TtsErrorCode } from '../types.js';
 
 // ── DashScope (Aliyun百炼) TTS ──────────────────────────────────────────────
 //
@@ -118,6 +118,24 @@ export class DashscopeTtsAdapter implements TtsAdapter {
     }
 
     return voiceId;
+  }
+
+  async probe(): Promise<TtsProbeResult> {
+    // DashScope uses WebSocket; probe via their REST models API instead.
+    const url = 'https://dashscope.aliyuncs.com/api/v1/models';
+    const startedAt = Date.now();
+    try {
+      const res = await fetch(url, {
+        headers: { 'Authorization': `Bearer ${this.config.apiKey}` },
+        signal: AbortSignal.timeout(10_000),
+      });
+      const latencyMs = Date.now() - startedAt;
+      if (res.ok || res.status === 404) return { ok: true, latencyMs };
+      const text = await res.text().catch(() => '');
+      return { ok: false, latencyMs, error: `HTTP ${res.status}: ${text.slice(0, 120)}` };
+    } catch (err) {
+      return { ok: false, error: (err as Error).message };
+    }
   }
 }
 

@@ -16,6 +16,7 @@ export type {
   TtsProtocol,
   TtsHealthResult,
   TtsProviderHealth,
+  TtsProbeResult,
 } from './types.js';
 
 export { SentenceSplitter } from './streaming/sentence-splitter.js';
