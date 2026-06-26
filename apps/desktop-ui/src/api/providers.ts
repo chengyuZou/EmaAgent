@@ -84,7 +84,7 @@ export interface AvailableSimpleModelWire {
 }
 
 export interface SimpleModelsListWire {
-  source: 'static';
+  source: 'static' | 'catalog';
   models: AvailableSimpleModelWire[];
 }
 

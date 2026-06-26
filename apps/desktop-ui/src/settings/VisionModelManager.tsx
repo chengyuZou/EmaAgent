@@ -6,6 +6,7 @@ import { ModelToggleCard } from './ModelToggleCard.js';
 
 export function VisionModelManager({ providerId }: { providerId: string }): JSX.Element {
   const [models, setModels]   = useState<AvailableSimpleModelWire[]>([]);
+  const [source, setSource]   = useState<'static' | 'catalog'>('static');
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState<string | null>(null);
 
@@ -15,6 +16,7 @@ export function VisionModelManager({ providerId }: { providerId: string }): JSX.
     try {
       const res = await providersApi.listVisionModels(providerId);
       setModels(res.models);
+      setSource(res.source);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -49,7 +51,13 @@ export function VisionModelManager({ providerId }: { providerId: string }): JSX.
   return (
     <div className="flex flex-col gap-3 mt-2">
       <div className="flex items-center justify-between">
-        <h3 className="text-base font-semibold text-[var(--ema-text-primary)]">Vision 模型</h3>
+        <div>
+          <h3 className="text-base font-semibold text-[var(--ema-text-primary)]">Vision 模型</h3>
+          <p className="text-xs text-[var(--ema-text-tertiary)] mt-0.5">
+            启用的模型可在「模型绑定」里分配给 vision 模块。
+            {source === 'static' && '(显示内置推荐)'}
+          </p>
+        </div>
         <Button variant="ghost" size="sm" onClick={() => void load()} disabled={loading}>
           <span className="i-solar:refresh-linear text-base" aria-hidden />
         </Button>

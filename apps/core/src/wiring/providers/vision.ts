@@ -2,6 +2,7 @@ import type { Database, ProviderConfigRow } from '@ema-agent/storage';
 import { ProvidersRepo } from '@ema-agent/storage';
 import { VisionRouter } from '@ema-agent/vision';
 import type { VisionProviderConfig, VisionImageMime } from '@ema-agent/vision';
+import type { ModelsDevCatalog } from '@ema-agent/llm';
 import type { KbVisionAdapter } from '@ema-agent/knowledge-base';
 import {
   getProviderDefinition,
@@ -9,6 +10,42 @@ import {
   resolveProtocols,
   type ProtocolFamily,
 } from '@ema-agent/contracts';
+
+export interface FetchedVisionModels {
+  models: string[];
+  source: 'catalog' | 'static';
+}
+
+/**
+ * List the vision models a provider exposes.
+ *
+ * Priority:
+ *   1. models.dev catalog — filter LLM models where inputModalities includes 'image'
+ *   2. Provider definition's defaultModels.vision — offline/static fallback
+ *   3. Empty — no vision models declared
+ *
+ * No live /v1/models fallback: vision has no dedicated live-listing endpoint,
+ * and filtering a live LLM list by vision support isn't reliable.
+ */
+export async function fetchVisionModels(
+  row: ProviderConfigRow,
+  opts?: {
+    modelsDevId?:  string;
+    modelCatalog?: ModelsDevCatalog;
+  },
+): Promise<FetchedVisionModels> {
+  const catalogModels = opts?.modelsDevId && opts?.modelCatalog
+    ? opts.modelCatalog.listVisionModelIds(opts.modelsDevId)
+    : [];
+
+  if (catalogModels.length > 0) {
+    return { models: catalogModels, source: 'catalog' };
+  }
+
+  const def = getProviderDefinition(row.definition_id);
+  const staticModels = def?.defaultModels?.vision ?? [];
+  return { models: [...staticModels], source: 'static' };
+}
 
 export function buildVisionProviderConfig(row: ProviderConfigRow): VisionProviderConfig | null {
   const def = getProviderDefinition(row.definition_id);

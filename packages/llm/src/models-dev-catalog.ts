@@ -166,6 +166,18 @@ export class ModelsDevCatalog {
       .map(s => s.id);
   }
 
+  /** Vision model ids — output includes 'text' AND input includes 'image'. */
+  listVisionModelIds(modelsDevId: string): string[] {
+    const map = this.index.get(modelsDevId);
+    if (!map) return [];
+    return [...map.values()]
+      .filter(s =>
+        (s.outputModalities.length === 0 || s.outputModalities.includes('text')) &&
+        s.inputModalities.includes('image'),
+      )
+      .map(s => s.id);
+  }
+
   /** Vision gate: does this LLM accept image input? Drives orchestrator fallback. */
   supportsImageInput(modelsDevId: string, modelId: string): boolean {
     return this.get(modelsDevId, modelId)?.inputModalities.includes('image') ?? false;

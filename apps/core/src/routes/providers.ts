@@ -19,7 +19,7 @@ import {
 } from '../wiring.js';
 import { reloadTtsClient, resolveVoice, ensureVoiceUri, VoiceUriCache } from '../wiring/providers/tts.js';
 import { reloadSttClient } from '../wiring/providers/stt.js';
-import { buildVisionProviderConfig } from '../wiring/providers/vision.js';
+import { buildVisionProviderConfig, fetchVisionModels } from '../wiring/providers/vision.js';
 
 // ── Response shaping ──────────────────────────────────────────────────────────
 
@@ -695,19 +695,21 @@ export function providersRoute(bindings: AppBindings): Hono {
 
   // ── Vision model pool ─────────────────────────────────────────────────────────
 
-  app.get('/:id/vision-models', (c) => {
+  app.get('/:id/vision-models', async (c) => {
     const id = c.req.param('id');
     const repo = bindings.providers;
     const row = repo.get(id);
     if (!row) return c.json({ error: 'not_found' }, 404);
 
-    const def = getProviderDefinition(row.definition_id);
-    const models = def?.defaultModels?.vision ?? [];
+    const { models, source } = await fetchVisionModels(row, {
+      modelsDevId:  getProviderDefinition(row.definition_id)?.modelsDevId,
+      modelCatalog: bindings.modelCatalog,
+    });
     const pool = bindings.providerVisionModels;
     const enabledSet = new Set(pool.listByProvider(id).map((m) => m.model));
 
     return c.json({
-      source: 'static',
+      source,
       models: models.map((model) => ({ id: model, enabled: enabledSet.has(model) })),
     });
   });
