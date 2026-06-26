@@ -41,9 +41,13 @@ function DocumentRow({ doc, currentEmbedModel, onDelete }: {
     return () => clearTimeout(t);
   }, [expanded]);
 
+  const [reembedding, setReembedding] = useState(false);
+
   // ebd 元信息：和当前 KB embed 模型不一致（或已标 stale）→ 需重嵌，标红
   const embedMismatch = !!doc.ebdModel && !!currentEmbedModel && doc.ebdModel !== currentEmbedModel;
   const embedStale    = !!doc.ebdStale || embedMismatch;
+  // Per-doc "重嵌" applies when stale, or never embedded while a model is set.
+  const needsReembed  = embedStale || (!doc.ebdModel && !!currentEmbedModel);
 
   async function handleDelete(): Promise<void> {
     setDeleting(true);
@@ -54,6 +58,19 @@ function DocumentRow({ doc, currentEmbedModel, onDelete }: {
       showToast('删除失败', { variant: 'danger' });
     } finally {
       setDeleting(false);
+    }
+  }
+
+  async function handleReembed(): Promise<void> {
+    setReembedding(true);
+    try {
+      await kbApi.reembedDocument(doc.id);
+      await useKbStore.getState().loadDocuments();
+      showToast('已重新嵌入', { variant: 'success' });
+    } catch {
+      showToast('重嵌失败（请先在上方选择嵌入模型）', { variant: 'danger' });
+    } finally {
+      setReembedding(false);
     }
   }
 
@@ -90,6 +107,17 @@ function DocumentRow({ doc, currentEmbedModel, onDelete }: {
           <Badge variant={STATUS_VARIANT[doc.status] ?? 'neutral'} className="text-xs">
             {STATUS_LABEL[doc.status] ?? doc.status}
           </Badge>
+          {needsReembed && (
+            <IconButton
+              variant="default"
+              size="sm"
+              label="重新嵌入此文档"
+              icon={reembedding ? 'i-solar:spinner-bold animate-spin' : 'i-solar:refresh-bold'}
+              onClick={() => void handleReembed()}
+              disabled={reembedding}
+              className="ema-fade-in"
+            />
+          )}
           <IconButton
             variant="default"
             size="sm"
@@ -466,6 +494,7 @@ function KbModelSettings(): JSX.Element {
   const [embedModels,  setEmbedModels]  = useState<AvailableBindingModel[]>([]);
   const [rerankModels, setRerankModels] = useState<AvailableBindingModel[]>([]);
   const [config, setConfig] = useState<KbModelsConfig>({});
+  const [rebuilding, setRebuilding] = useState(false);
 
   useEffect(() => {
     void (async () => {
@@ -496,6 +525,24 @@ function KbModelSettings(): JSX.Element {
     ...models.map((m) => ({ value: `${m.providerConfigId}|${m.model}`, label: `${m.providerName} / ${m.model}` })),
   ];
 
+  // Re-embed every doc not on the current embed model (changed OR never-embedded),
+  // then refresh so the ⚠️ stale flags clear.
+  async function rebuildIndex(): Promise<void> {
+    if (!config.embed) { showToast('请先选择嵌入模型', { variant: 'warning' }); return; }
+    setRebuilding(true);
+    try {
+      await kbApi.invalidate(config.embed.model);
+      const res = await kbApi.reembed({ ebdProviderId: config.embed.providerConfigId, ebdModel: config.embed.model });
+      showToast(`重建完成：${res.done} 成功${res.failed ? `，${res.failed} 失败` : ''}`,
+        { variant: res.failed ? 'warning' : 'success' });
+      void useKbStore.getState().loadDocuments();
+    } catch {
+      showToast('重建失败', { variant: 'danger' });
+    } finally {
+      setRebuilding(false);
+    }
+  }
+
   return (
     <section className="flex flex-col gap-3 ema-fade-in">
       <h2 className="text-base font-semibold text-[var(--ema-text-primary)]">检索模型</h2>
@@ -522,9 +569,24 @@ function KbModelSettings(): JSX.Element {
       </div>
 
       <Callout variant="warn" className="text-xs leading-relaxed ema-slide-up">
-        换<b>嵌入模型</b>会让已索引文档的向量与新查询<b>错配、检索骤减</b>——换完需对所有文档<b>重建索引</b>。
+        换<b>嵌入模型</b>会让已索引文档的向量与新查询<b>错配、检索骤减</b>——换完点下方<b>重建过期索引</b>。
         重排模型可随时更换，无需重建。此处与「叙事模式」的 LightRAG 嵌入互不影响。
       </Callout>
+
+      <div className="flex items-center justify-between gap-2 ema-fade-in">
+        <p className="text-[11px] text-[var(--ema-text-tertiary)]">
+          把所有「未嵌入 / 过期」的文档用当前嵌入模型重新建立向量索引。
+        </p>
+        <Button
+          variant="secondary"
+          size="sm"
+          className="shrink-0"
+          disabled={rebuilding || !config.embed}
+          onClick={() => void rebuildIndex()}
+        >
+          {rebuilding ? <><Spinner size="sm" className="mr-1.5" />重建中…</> : '重建过期索引'}
+        </Button>
+      </div>
     </section>
   );
 }

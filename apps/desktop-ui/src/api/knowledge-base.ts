@@ -183,6 +183,11 @@ export const kbApi = {
     await sidecarClient.request(`/api/kb/documents/${id}/retry`, { method: 'POST' });
   },
 
+  /** POST /api/kb/documents/:id/reembed — re-embed one doc with the current model. */
+  async reembedDocument(id: string): Promise<void> {
+    await sidecarClient.request(`/api/kb/documents/${id}/reembed`, { method: 'POST' });
+  },
+
   /** DELETE /api/kb/documents/:id */
   async deleteDocument(id: string): Promise<void> {
     await sidecarClient.request(`/api/kb/documents/${id}`, { method: 'DELETE' });

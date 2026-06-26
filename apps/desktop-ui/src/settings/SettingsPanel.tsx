@@ -11,6 +11,7 @@ import { useSettingsStore } from '../stores/settings-store.js';
 import { useCardStore } from '../stores/card-store.js';
 import { useSkillStore } from '../stores/skill-store.js';
 import { useMcpStore } from '../stores/mcp-store.js';
+import { useKbStore, selectIngestSummary } from '../stores/kb-store.js';
 import { useThemeSync } from '../stores/theme-store.js';
 import { ProvidersTab } from './ProvidersTab.js';
 import { BindingsTab } from './BindingsTab.js';
@@ -94,6 +95,25 @@ const GROUPS: GroupDef[] = [
   },
 ];
 
+// ── KB ingest indicator (right side of the 知识库 nav item) ───────────────────
+
+function KbNavIndicator(): JSX.Element | null {
+  const sum = useKbStore(selectIngestSummary);
+  if (sum.state === 'idle') return null;
+  // key={sum.state} → React remounts on each state change so ema-fade-in replays
+  // (running count → done dot → failed dot all animate in, not just the first).
+  if (sum.state === 'running') {
+    return (
+      <span key="running" className="ema-scale-in text-[10px] font-mono shrink-0" style={{ color: 'var(--ema-info)' }}>
+        {sum.done}/{sum.total}
+      </span>
+    );
+  }
+  // done → water-blue dot; failed → red dot.
+  const color = sum.state === 'failed' ? 'var(--ema-danger)' : 'var(--ema-info)';
+  return <span key={sum.state} className="ema-scale-in size-2 rounded-full shrink-0" style={{ background: color }} aria-hidden />;
+}
+
 // ── Section renderer ──────────────────────────────────────────────────────────
 
 function SectionContent({ id }: { id: SectionId }): JSX.Element {
@@ -126,6 +146,7 @@ export function SettingsPanel(): JSX.Element {
     void useCardStore.getState().load();
     void useSkillStore.getState().load();
     void useMcpStore.getState().load();
+    void useKbStore.getState().loadIngestTasks();  // hydrate queue → nav indicator
   }, []);
 
   function toggleGroup(groupId: GroupId): void {
@@ -149,6 +170,30 @@ export function SettingsPanel(): JSX.Element {
           <p className="px-3 pb-3 text-base font-semibold text-[var(--ema-text-primary)]">设置</p>
 
           {GROUPS.map((group) => {
+            // Single-section group → flat, directly-selectable item. No collapse
+            // wrapper, no English group label — just the section's Chinese name.
+            if (group.sections.length === 1) {
+              const sec = group.sections[0]!;
+              const isActive = activeSection === sec.id;
+              return (
+                <button
+                  key={group.id}
+                  className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm
+                    transition-colors duration-[var(--ema-duration-fast)] ${
+                    isActive
+                      ? 'text-[var(--ema-primary)] bg-[var(--ema-primary-muted)]'
+                      : 'text-[var(--ema-text-tertiary)] hover:text-[var(--ema-text-primary)] hover:bg-[var(--ema-surface-2)]/50'
+                  }`}
+                  onClick={() => setActiveSection(sec.id)}
+                  aria-current={isActive ? 'page' : undefined}
+                >
+                  <span className={`${group.icon} text-base flex-none`} aria-hidden />
+                  <span className="flex-1 text-left">{sec.label}</span>
+                  {sec.id === 'knowledge-base' && <KbNavIndicator />}
+                </button>
+              );
+            }
+
             const expanded = expandedGroups.has(group.id);
             return (
               <div key={group.id}>

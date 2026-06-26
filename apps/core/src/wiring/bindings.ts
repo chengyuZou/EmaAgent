@@ -55,13 +55,12 @@ import {
 import { AgentTaskStore } from '@ema-agent/agent-task';
 import { MemoryPlanner } from '@ema-agent/memory';
 import {
-  KnowledgeClient, KnowledgeStore,
+  KnowledgeClient, KnowledgeStore, IngestQueue,
 } from '@ema-agent/knowledge-base';
 import type { IngestOptions } from '@ema-agent/knowledge-base';
 import {
   DocumentAssetRepo, DocumentChunkRepo, DocumentPreviewRepo, KbActivationsRepo, KbIngestTasksRepo,
 } from '@ema-agent/storage';
-import { IngestQueue } from '../kb/ingest-queue.js';
 import { resolveBridgeUrl } from './bridge.js';
 import { SystemEventBus }  from '../sse/system-bus.js';
 
@@ -433,10 +432,8 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
     tasks:          kbIngestTasks,
     ingest:         (fp, opts) => kb.ingest(fp, opts),
     resolveOptions: resolveIngestModels,
-    concurrency:    2,
+    concurrency:    3,
   });
-  // Recover crashed `running` tasks → failed, then drain anything still pending.
-  ingestQueue.resume();
 
   // Bridge KB ingest progress (internal DocumentEventEmitter) → systemBus as
   // EmaStreamEvent (live SSE) AND persist stage/progress on the task row (so the
@@ -450,6 +447,10 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
     kbIngestTasks.updateProgress(e.assetId, e.kind, progress);
     systemBus.emit({ type: 'kb_ingest_progress', assetId: e.assetId, stage: e.kind, progress });
   });
+
+  // Recover crashed `running` tasks → failed, then drain pending. After the bridge
+  // is wired so resumed tasks' progress events are observed.
+  ingestQueue.resume();
 
   // kb_search tool injection: resolve the bound embed/rerank models so retrieval
   // uses the same models as the rest of the app. assetIds omitted → searches all

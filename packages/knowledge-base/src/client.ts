@@ -183,6 +183,38 @@ export class KnowledgeClient {
     return { done, failed };
   }
 
+  /** Re-embed a single asset's chunks with the given model (for the per-document
+   *  "重嵌" button). Returns false if no embed router is configured or it fails. */
+  async reembedAsset(assetId: string, opts: ReembedOptions): Promise<boolean> {
+    if (!this.deps.ebdRouter) return false;
+    try {
+      const chunks = this.deps.store.getChunks(assetId);
+      let dim = 0;
+      const BATCH = 32;
+      for (let i = 0; i < chunks.length; i += BATCH) {
+        const batch = chunks.slice(i, i + BATCH);
+        const res = await this.deps.ebdRouter.embed({
+          providerId: opts.ebdProviderId,
+          model:      opts.ebdModel,
+          texts:      batch.map((c) => c.text),
+          signal:     opts.signal,
+        });
+        for (let j = 0; j < batch.length; j++) {
+          const vec = res.embeddings[j];
+          if (vec?.length) {
+            this.deps.store.storeEmbedding(batch[j]!.id, vec);
+            if (!dim) dim = vec.length;
+          }
+        }
+      }
+      this.deps.store.setEbdModel(assetId, opts.ebdModel, dim);
+      if (dim) await this._addAssetToHnsw(assetId, opts.ebdModel, dim);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   // ── Search ────────────────────────────────────────────────────────────────
 
   async search(query: string, opts: SearchOptions = {}): Promise<KbSearchResult> {

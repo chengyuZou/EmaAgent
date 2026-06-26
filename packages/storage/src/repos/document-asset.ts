@@ -157,13 +157,15 @@ export class DocumentAssetRepo {
       .run(model, dim, Date.now(), id);
   }
 
-  /** Mark all assets whose ebd_model differs from currentModel as stale.
-   *  Returns the number of rows updated. */
+  /** Mark every indexed asset NOT embedded with currentModel as stale — both
+   *  model-changed (ebd_model != x) AND never-embedded (ebd_model IS NULL, e.g.
+   *  ingested FTS-only before an embed model was chosen). reembed() then embeds
+   *  them with the current model. Returns the number of rows updated. */
   markStaleExcept(currentModel: string): number {
     const info = this.db
       .prepare(`UPDATE document_assets
         SET ebd_stale = 1, updated_at = ?
-        WHERE ebd_model IS NOT NULL AND ebd_model != ?`)
+        WHERE status = 'indexed' AND (ebd_model IS NULL OR ebd_model != ?)`)
       .run(Date.now(), currentModel);
     return info.changes;
   }

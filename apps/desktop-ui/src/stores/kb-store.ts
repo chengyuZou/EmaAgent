@@ -35,6 +35,9 @@ export interface KbStoreState {
 
   /** assetId → in-flight ingest job (background processing queue). */
   ingestJobs:   Record<string, IngestJob>;
+  /** Completed count in the current batch (done jobs are removed from the map,
+   *  so this is the reliable "succeeded" tally for the nav indicator). */
+  ingestDoneCount: number;
   ingesting:    boolean;
   ingestError:  string | null;
 
@@ -55,7 +58,6 @@ export interface KbStoreState {
   onIngestProgress(assetId: string, stage: IngestStage, progress: number): void;
   onIngestCompleted(assetId: string): void;
   onIngestFailed(assetId: string, error: string): void;
-  dismissJob(assetId: string): void;
 }
 
 // ── Store ─────────────────────────────────────────────────────────────────────
@@ -66,6 +68,7 @@ export const useKbStore = create<KbStoreState>((set, get) => ({
   error:         null,
 
   ingestJobs:    {},
+  ingestDoneCount: 0,
   ingesting:     false,
   ingestError:   null,
 
@@ -105,7 +108,10 @@ export const useKbStore = create<KbStoreState>((set, get) => ({
   },
 
   async ingest(filePath, opts = {}) {
-    set({ ingesting: true, ingestError: null });
+    // Starting a fresh batch (no active jobs) → reset the succeeded tally so the
+    // nav indicator counts this batch, not the last one.
+    const active = Object.values(get().ingestJobs).some((j) => j.status === 'pending' || j.status === 'running');
+    set({ ingesting: true, ingestError: null, ...(active ? {} : { ingestDoneCount: 0 }) });
     try {
       // Enqueue (POST returns 202 once the task row exists); hydrate the queue so
       // the new pending job shows. Progress/completion arrive via the system SSE.
@@ -179,7 +185,10 @@ export const useKbStore = create<KbStoreState>((set, get) => ({
     set((s) => {
       const job = s.ingestJobs[assetId];
       if (!job) return {};
-      return { ingestJobs: { ...s.ingestJobs, [assetId]: { ...job, status: 'done', progress: 1 } } };
+      return {
+        ingestDoneCount: s.ingestDoneCount + 1,
+        ingestJobs: { ...s.ingestJobs, [assetId]: { ...job, status: 'done', progress: 1 } },
+      };
     });
     void get().loadDocuments();
     setTimeout(() => {
@@ -197,11 +206,30 @@ export const useKbStore = create<KbStoreState>((set, get) => ({
       return { ingestJobs: { ...s.ingestJobs, [assetId]: { ...job, status: 'failed', error } } };
     });
   },
-
-  dismissJob(assetId) {
-    set((s) => {
-      const { [assetId]: _gone, ...rest } = s.ingestJobs;
-      return { ingestJobs: rest };
-    });
-  },
 }));
+
+// ── Selectors ───────────────────────────────────────────────────────────────
+
+export interface IngestSummary {
+  active: number;   // pending + running
+  failed: number;
+  done:   number;   // succeeded in this batch
+  total:  number;
+  state:  'idle' | 'running' | 'done' | 'failed';
+}
+
+/** Aggregate ingest-queue status for the settings-nav indicator. */
+export function selectIngestSummary(s: KbStoreState): IngestSummary {
+  const jobs   = Object.values(s.ingestJobs);
+  const active = jobs.filter((j) => j.status === 'pending' || j.status === 'running').length;
+  const failed = jobs.filter((j) => j.status === 'failed').length;
+  const done   = s.ingestDoneCount;
+  const total  = done + active + failed;
+
+  let state: IngestSummary['state'] = 'idle';
+  if (active > 0)            state = 'running';
+  else if (total === 0)      state = 'idle';
+  else if (done === 0)       state = 'failed';   // nothing succeeded → all failed
+  else                       state = 'done';     // at least one succeeded, none active
+  return { active, failed, done, total, state };
+}

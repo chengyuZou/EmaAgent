@@ -5,13 +5,11 @@ import type { AppBindings } from '../wiring.js';
 
 // ── Schemas ───────────────────────────────────────────────────────────────────
 
+// Ingest is queued and the queue resolves embed/vision models from settings at
+// run time, so the request only needs the file path (+ optional mime override).
 const ingestBody = z.object({
-  filePath:         z.string().min(1),
-  ebdProviderId:    z.string().optional(),
-  ebdModel:         z.string().optional(),
-  visionProviderId: z.string().optional(),
-  visionModel:      z.string().optional(),
-  mimeType:         z.string().optional(),
+  filePath: z.string().min(1),
+  mimeType: z.string().optional(),
 });
 
 const listQuery = z.object({
@@ -161,6 +159,16 @@ export function kbRoute(bindings: AppBindings): Hono {
     const ok = bindings.ingestQueue.retry(c.req.param('id'));
     if (!ok) return c.json({ error: 'not_failed_or_not_found' }, 404);
     return c.json({ ok: true });
+  });
+
+  // POST /api/kb/documents/:id/reembed — re-embed a single doc with the current model
+  app.post('/documents/:id/reembed', async (c) => {
+    const bound = resolveBoundModels(bindings);
+    if (!bound.ebdProviderId || !bound.ebdModel)
+      return c.json({ error: 'no_embed_model' }, 400);
+    const ok = await bindings.kb.reembedAsset(c.req.param('id'),
+      { ebdProviderId: bound.ebdProviderId, ebdModel: bound.ebdModel });
+    return ok ? c.json({ ok: true }) : c.json({ error: 'reembed_failed' }, 500);
   });
 
   // DELETE /api/kb/documents/:id — remove asset + all its chunks
