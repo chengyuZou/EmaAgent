@@ -4,7 +4,7 @@ import { bestEffort, bestEffortAsync } from './observability.js';
 import type { MemoryDeps } from './deps.js';
 import type {
   PlanContext, RecallBundle, MemorySettings, AlreadySurfaced, CompactResult,
-  GraphRecallResult,
+  GraphRecallResult, EpisodicRecallResult,
 } from './types.js';
 import { DEFAULT_MEMORY_SETTINGS } from './types.js';
 import { EmbedService }     from './embed/service.js';
@@ -328,6 +328,10 @@ export class MemoryPlanner {
           alreadySurfaced: new Set(surfaced.items),
           settings: this.settings,
         });
+        if (this.settings.recall.useReranker &&
+            (layer2.currentMode.length + layer2.otherModes.length) > 1) {
+          layer2 = await this.rerankEpisodic(ctx.userInput, layer2, ctx.signal);
+        }
         emitRecallLayer(ctx, 'layer2', {
           status: 'succeeded',
           itemCount: countEpisodicItems(layer2),
@@ -854,6 +858,42 @@ ${result.summary}
         .sort((a, b) => b.score - a.score)
         .map(x => x.node);
       return { nodes: reranked, edges: result.edges };
+    } catch {
+      return result;
+    }
+  }
+
+  private async rerankEpisodic(
+    query:  string,
+    result: EpisodicRecallResult,
+    signal?: AbortSignal,
+  ): Promise<EpisodicRecallResult> {
+    const providerId = this.deps.ebd.firstRerankId();
+    const model      = providerId ? this.deps.ebd.defaultRerankModelFor(providerId) : undefined;
+    if (!providerId || !model) return result;
+
+    try {
+      // Concatenate both lists so we do one rerank call; remember the split point
+      const allItems  = [...result.currentMode, ...result.otherModes];
+      const documents = allItems.map(i => `${i.title}: ${i.body}`);
+      const resp = await this.deps.ebd.rerank({
+        providerId, model, query,
+        documents,
+        topK: documents.length,
+        signal,
+      });
+      const scores = new Map(resp.results.map(r => [r.index, r.score]));
+
+      const rerank = <T>(items: T[], offset: number): T[] =>
+        [...items]
+          .map((item, i) => ({ item, score: scores.get(offset + i) ?? -Infinity }))
+          .sort((a, b) => b.score - a.score)
+          .map(x => x.item);
+
+      return {
+        currentMode: rerank(result.currentMode, 0),
+        otherModes:  rerank(result.otherModes,  result.currentMode.length),
+      };
     } catch {
       return result;
     }
