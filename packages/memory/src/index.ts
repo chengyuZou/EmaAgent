@@ -13,6 +13,7 @@ export type {
   RecalledEdge,
   RecalledItem,
   MemorySettings,
+  MemoryModelRef,
   EmbeddedText,
   AlreadySurfaced,
 } from './types.js';

@@ -21,58 +21,42 @@ import type { ResolvedSessionOverrides } from '../maintenance/overrides.js';
 // ── rerank helpers ───────────────────────────────────────────────────────────
 
 export async function rerankLayer0(
-  deps:   MemoryDeps,
+  embed:  EmbedService,
   query:  string,
   result: GraphRecallResult,
   signal?: AbortSignal,
 ): Promise<GraphRecallResult> {
-  const providerId = deps.ebd.firstRerankId();
-  const model      = providerId ? deps.ebd.defaultRerankModelFor(providerId) : undefined;
-  if (!providerId || !model) return result;
-
-  try {
-    const documents = result.nodes.map(n => `${n.label}: ${n.description}`);
-    const resp = await deps.ebd.rerank({ providerId, model, query, documents, topK: documents.length, signal });
-    const scores = new Map(resp.results.map(r => [r.index, r.score]));
-    const reranked = [...result.nodes]
-      .map((node, i) => ({ node, score: scores.get(i) ?? -Infinity }))
-      .sort((a, b) => b.score - a.score)
-      .map(x => x.node);
-    return { nodes: reranked, edges: result.edges };
-  } catch {
-    return result;
-  }
+  const documents = result.nodes.map(n => `${n.label}: ${n.description}`);
+  const scores    = await embed.rerank(query, documents, documents.length, signal);
+  if (!scores) return result;
+  const reranked = [...result.nodes]
+    .map((node, i) => ({ node, score: scores.get(i) ?? -Infinity }))
+    .sort((a, b) => b.score - a.score)
+    .map(x => x.node);
+  return { nodes: reranked, edges: result.edges };
 }
 
 export async function rerankEpisodic(
-  deps:   MemoryDeps,
+  embed:  EmbedService,
   query:  string,
   result: EpisodicRecallResult,
   signal?: AbortSignal,
 ): Promise<EpisodicRecallResult> {
-  const providerId = deps.ebd.firstRerankId();
-  const model      = providerId ? deps.ebd.defaultRerankModelFor(providerId) : undefined;
-  if (!providerId || !model) return result;
+  const allItems  = [...result.currentMode, ...result.otherModes];
+  const documents = allItems.map(i => `${i.title}: ${i.body}`);
+  const scores    = await embed.rerank(query, documents, documents.length, signal);
+  if (!scores) return result;
 
-  try {
-    const allItems  = [...result.currentMode, ...result.otherModes];
-    const documents = allItems.map(i => `${i.title}: ${i.body}`);
-    const resp = await deps.ebd.rerank({ providerId, model, query, documents, topK: documents.length, signal });
-    const scores = new Map(resp.results.map(r => [r.index, r.score]));
+  const rerank = <T>(items: T[], offset: number): T[] =>
+    [...items]
+      .map((item, i) => ({ item, score: scores.get(offset + i) ?? -Infinity }))
+      .sort((a, b) => b.score - a.score)
+      .map(x => x.item);
 
-    const rerank = <T>(items: T[], offset: number): T[] =>
-      [...items]
-        .map((item, i) => ({ item, score: scores.get(offset + i) ?? -Infinity }))
-        .sort((a, b) => b.score - a.score)
-        .map(x => x.item);
-
-    return {
-      currentMode: rerank(result.currentMode, 0),
-      otherModes:  rerank(result.otherModes,  result.currentMode.length),
-    };
-  } catch {
-    return result;
-  }
+  return {
+    currentMode: rerank(result.currentMode, 0),
+    otherModes:  rerank(result.otherModes,  result.currentMode.length),
+  };
 }
 
 // ── surfaced tracking ────────────────────────────────────────────────────────
@@ -160,7 +144,7 @@ export async function planRecall(
     try {
       layer0 = recallGraph(deps, { queryVec, queryEmbed, index: nodesIndex, alreadySurfaced: new Set(prior.nodes), settings });
       if (settings.recall.useReranker && layer0.nodes.length > 1) {
-        layer0 = await rerankLayer0(deps, ctx.userInput, layer0, ctx.signal);
+        layer0 = await rerankLayer0(embed, ctx.userInput, layer0, ctx.signal);
       }
       emitRecallLayer(ctx, 'layer0', { status: 'succeeded', itemCount: layer0.nodes.length, tokenEstimate: estimateGraphRecallTokens(layer0), durationMs: Date.now() - t0 });
     } catch (err) {
@@ -194,7 +178,7 @@ export async function planRecall(
       const mode = ctx.mode === 'narrative' ? 'narrative' : ctx.mode;
       layer2 = await recallEpisodic(deps, { query: ctx.userInput, queryVec, queryEmbed, index: itemsIndex, mode, alreadySurfaced: new Set(prior.items), settings });
       if (settings.recall.useReranker && (layer2.currentMode.length + layer2.otherModes.length) > 1) {
-        layer2 = await rerankEpisodic(deps, ctx.userInput, layer2, ctx.signal);
+        layer2 = await rerankEpisodic(embed, ctx.userInput, layer2, ctx.signal);
       }
       emitRecallLayer(ctx, 'layer2', { status: 'succeeded', itemCount: countEpisodicItems(layer2), tokenEstimate: estimateEpisodicRecallTokens(layer2), durationMs: Date.now() - t0 });
     } catch (err) {

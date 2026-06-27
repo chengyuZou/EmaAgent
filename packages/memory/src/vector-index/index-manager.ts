@@ -7,11 +7,9 @@ import type { VectorIndex } from './vector-index.js';
 export class IndexManager {
   nodesIndex: VectorIndex | null = null;
   itemsIndex: VectorIndex | null = null;
-  private indexProviderId: string | null = null;
-  private indexDim:        number | null = null;
 
   constructor(
-    private readonly deps: MemoryDeps,
+    private readonly deps:  MemoryDeps,
     private readonly embed: EmbedService,
   ) {}
 
@@ -24,23 +22,18 @@ export class IndexManager {
       };
     }
 
-    const providerId = this.embed.currentProviderId();
-    if (!providerId) return { nodes: 0, items: 0, backend: null };
+    const p = this.embed.resolveEmbed();
+    if (!p) return { nodes: 0, items: 0, backend: null };
 
-    const model = this.deps.ebd.defaultEmbedModelFor(providerId);
-    if (!model) return { nodes: 0, items: 0, backend: null };
-
-    const dim = this.deps.getEmbedDim(model);
+    const dim = this.deps.getEmbedDim(p.model);
     if (!dim) return { nodes: 0, items: 0, backend: null };
 
     const t0 = Date.now();
-    this.indexProviderId = providerId;
-    this.indexDim        = dim;
-    this.nodesIndex      = await createVectorIndex(dim);
-    this.itemsIndex      = await createVectorIndex(dim);
+    this.nodesIndex = await createVectorIndex(dim);
+    this.itemsIndex = await createVectorIndex(dim);
 
-    const nodes = rebuildNodesIndex(this.nodesIndex, this.deps.nodes, model);
-    const items = rebuildItemsIndex(this.itemsIndex, this.deps.items, model);
+    const nodes = rebuildNodesIndex(this.nodesIndex, this.deps.nodes, p.model);
+    const items = rebuildItemsIndex(this.itemsIndex, this.deps.items, p.model);
 
     this.deps.emit?.({
       type:       'memory_index_rebuilt',
@@ -56,8 +49,6 @@ export class IndexManager {
   async refreshIndexes(): Promise<void> {
     this.nodesIndex = null;
     this.itemsIndex = null;
-    this.indexProviderId = null;
-    this.indexDim = null;
     await this.initialize();
   }
 

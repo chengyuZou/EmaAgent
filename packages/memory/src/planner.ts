@@ -41,7 +41,6 @@ export class MemoryPlanner {
     private readonly deps: MemoryDeps,
     overrides: Partial<MemorySettings> = {},
   ) {
-    this.embed = new EmbedService(deps.ebd);
     this.settings = {
       ...DEFAULT_MEMORY_SETTINGS,
       ...overrides,
@@ -50,6 +49,7 @@ export class MemoryPlanner {
       compaction:  { ...DEFAULT_MEMORY_SETTINGS.compaction,  ...overrides.compaction },
       maintenance: { ...DEFAULT_MEMORY_SETTINGS.maintenance, ...overrides.maintenance },
     };
+    this.embed    = new EmbedService(deps.ebd, this.settings.models?.embed, this.settings.models?.rerank);
     this.indexMgr = new IndexManager(deps, this.embed);
     this.queue    = new SessionTaskQueue();
     this.runner   = new MemoryTaskRunner({

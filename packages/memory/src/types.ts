@@ -84,8 +84,19 @@ export interface RecallBundle {
 
 // ── Settings ──────────────────────────────────────────────────────────────────
 
+export interface MemoryModelRef {
+  providerId: string;
+  model:      string;
+}
+
 export interface MemorySettings {
   enabled: boolean;
+
+  /** Optional explicit provider+model overrides. Absent → fallback to first registered. */
+  models?: {
+    embed?:  MemoryModelRef;
+    rerank?: MemoryModelRef;
+  };
 
   triggers: {
     pendingTokenThreshold: number;     // default 5000
