@@ -1,9 +1,11 @@
 export interface RankedHit { id: string; score: number }
 
+const RRF_K = 60;
+
 /**
- * WeightedRanker: merge BM25 and vector results.
- * Both score lists are min-max normalized to [0,1] before blending.
- * alpha = 0 → pure BM25, alpha = 1 → pure vector.
+ * Reciprocal Rank Fusion: merge BM25 and vector results by rank position.
+ * More robust than min-max score blending — unaffected by score distribution skew.
+ * alpha = 0 → pure BM25, alpha = 1 → pure vector, 0.5 → equal weight.
  */
 export function weightedRank(
   sparse: Array<{ id: string; score: number }>,
@@ -11,25 +13,23 @@ export function weightedRank(
   alpha = 0.5,
   topK  = 10,
 ): RankedHit[] {
-  const normS = normalize(sparse);
-  const normD = normalize(dense);
+  const sortedSparse = [...sparse].sort((a, b) => b.score - a.score);
+  const sortedDense  = [...dense].sort((a, b) => b.score - a.score);
+
+  const sparseRank = new Map(sortedSparse.map((h, i) => [h.id, i]));
+  const denseRank  = new Map(sortedDense.map((h, i) => [h.id, i]));
+
+  const allIds = new Set([...sparse.map(h => h.id), ...dense.map(h => h.id)]);
 
   const merged = new Map<string, number>();
-  for (const { id, score } of normS) merged.set(id, (1 - alpha) * score);
-  for (const { id, score } of normD) merged.set(id, (merged.get(id) ?? 0) + alpha * score);
+  for (const id of allIds) {
+    const sr = sparseRank.has(id) ? (1 - alpha) / (RRF_K + sparseRank.get(id)!) : 0;
+    const dr = denseRank.has(id)  ? alpha       / (RRF_K + denseRank.get(id)!)  : 0;
+    merged.set(id, sr + dr);
+  }
 
   return [...merged.entries()]
     .sort(([, a], [, b]) => b - a)
     .slice(0, topK)
     .map(([id, score]) => ({ id, score }));
-}
-
-function normalize(hits: Array<{ id: string; score: number }>): Array<{ id: string; score: number }> {
-  if (hits.length === 0) return [];
-  const scores = hits.map(h => h.score);
-  const min = Math.min(...scores);
-  const max = Math.max(...scores);
-  const range = max - min;
-  if (range === 0) return hits.map(h => ({ ...h, score: 1 }));
-  return hits.map(h => ({ id: h.id, score: (h.score - min) / range }));
 }

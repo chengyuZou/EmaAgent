@@ -3,7 +3,8 @@ import type { LlmMessage } from '@ema-agent/llm';
 import { bestEffort, bestEffortAsync } from './observability.js';
 import type { MemoryDeps } from './deps.js';
 import type {
-  PlanContext, RecallBundle, MemorySettings, AlreadySurfaced,  CompactResult
+  PlanContext, RecallBundle, MemorySettings, AlreadySurfaced, CompactResult,
+  GraphRecallResult,
 } from './types.js';
 import { DEFAULT_MEMORY_SETTINGS } from './types.js';
 import { EmbedService }     from './embed/service.js';
@@ -249,6 +250,9 @@ export class MemoryPlanner {
           alreadySurfaced: new Set(surfaced.nodes),
           settings: this.settings,
         });
+        if (this.settings.recall.useReranker && layer0.nodes.length > 1) {
+          layer0 = await this.rerankLayer0(ctx.userInput, layer0, ctx.signal);
+        }
         emitRecallLayer(ctx, 'layer0', {
           status: 'succeeded',
           itemCount: layer0.nodes.length,
@@ -825,6 +829,35 @@ ${result.summary}
   }
 
   // ── Internals ───────────────────────────────────────────────────────────────
+
+  private async rerankLayer0(
+    query:  string,
+    result: GraphRecallResult,
+    signal?: AbortSignal,
+  ): Promise<GraphRecallResult> {
+    const providerId = this.deps.ebd.firstRerankId();
+    const model      = providerId ? this.deps.ebd.defaultRerankModelFor(providerId) : undefined;
+    if (!providerId || !model) return result;
+
+    try {
+      const documents = result.nodes.map(n => `${n.label}: ${n.description}`);
+      const resp = await this.deps.ebd.rerank({
+        providerId, model, query,
+        documents,
+        topK: documents.length,
+        signal,
+      });
+      // Build score map by original index — handle providers that return partial results
+      const scores = new Map(resp.results.map(r => [r.index, r.score]));
+      const reranked = [...result.nodes]
+        .map((node, i) => ({ node, score: scores.get(i) ?? -Infinity }))
+        .sort((a, b) => b.score - a.score)
+        .map(x => x.node);
+      return { nodes: reranked, edges: result.edges };
+    } catch {
+      return result;
+    }
+  }
 
   private async safeEmbedQuery(text: string) {
     return bestEffortAsync('embedQuery', () => this.embed.embedQuery(text), null);
