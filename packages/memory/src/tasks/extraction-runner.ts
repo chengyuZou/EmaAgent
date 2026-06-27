@@ -4,12 +4,12 @@ import type {
   MemoryTaskKind, MemoryTaskRow,
 } from '@ema-agent/storage';
 import type { MemoryDeps } from '../deps.js';
-import { bestEffort } from '../observability.js';
+import { bestEffort } from '../best-effort.js';
 import type { MemorySettings } from '../types.js';
 import { EmbedService }     from '../embed/service.js';
 import { SessionTaskQueue } from './session-queue.js';
 import { runExtractionPipeline } from '../extract/pipeline.js';
-import type { VectorIndex } from '../index/vector-index.js';
+import type { VectorIndex } from '../vector-index/vector-index.js';
 import type { ResolvedSessionOverrides } from '../maintenance/overrides.js';
 
 // ── Background task runner ───────────────────────────────────────────────────

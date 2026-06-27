@@ -5,7 +5,7 @@ import type {
 import type { LlmRouter } from '@ema-agent/llm';
 import type { SessionStore } from '@ema-agent/session';
 import type { MemoryPlanner } from './planner.js';
-import { bestEffortAsync } from './observability.js';
+import { bestEffortAsync } from './best-effort.js';
 
 // ── Recent files extractor (agent restore) ───────────────────────────────────
 

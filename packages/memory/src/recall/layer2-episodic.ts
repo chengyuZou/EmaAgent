@@ -4,7 +4,7 @@ import type {
   EpisodicRecallResult, RecalledItem, MemorySettings, EmbeddedText,
 } from '../types.js';
 import { dotProduct, unpackEmbedding } from '../embed/similarity.js';
-import type { VectorIndex } from '../index/vector-index.js';
+import type { VectorIndex } from '../vector-index/vector-index.js';
 
 // ── Mode-weighted recall ─────────────────────────────────────────────────────
 

@@ -1,6 +1,6 @@
 import type { MemoryDeps } from '../deps.js';
 import type { EmbedService } from '../embed/service.js';
-import { bestEffort } from '../observability.js';
+import { bestEffort } from '../best-effort.js';
 
 export interface RecoveryReport {
   resetTasks:        number;

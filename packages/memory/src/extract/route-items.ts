@@ -1,0 +1,82 @@
+import crypto from 'node:crypto';
+import type { SessionId, TurnMode } from '@ema-agent/contracts';
+import type { EmbeddedText } from '../types.js';
+import type { ExtractionOutput } from './types.js';
+import { unpackEmbedding } from '../embed/similarity.js';
+import type { ExtractionPipelineDeps, PipelineResult } from './pipeline.js';
+
+export function processItems(
+  deps: ExtractionPipelineDeps,
+  sessionId: SessionId,
+  mode: TurnMode,
+  output: ExtractionOutput,
+  stats: PipelineResult,
+  precomputedEmbeddings: EmbeddedText[] | null,
+  extractionTurnId: string | undefined,
+): void {
+  if (output.memory_items.length === 0) return;
+
+  const modes = inferModesForMode(mode);
+  for (let i = 0; i < output.memory_items.length; i++) {
+    const item = output.memory_items[i]!;
+    const e    = precomputedEmbeddings?.[i] ?? null;
+    const now  = Date.now();
+
+    const existing = deps.memory.items.findBySourceAndTitle(sessionId, item.title);
+
+    if (existing) {
+      // Same session + same title: distinguish retry from legitimate update.
+      //   - Same turnId → retry of the same extraction → skip entirely.
+      //   - Different turnId → knowledge evolved in a new turn → update body.
+      if (existing.source_turn_id === (extractionTurnId ?? null)) continue;
+
+      deps.memory.items.updateBody({
+        id:                  existing.id,
+        body:                item.body,
+        importance:          item.importance,
+        sourceTurnId:        extractionTurnId,
+        updatedAt:           now,
+        embedding:           e?.embedding,
+        embeddingProviderId: e?.providerId,
+        embeddingModel:      e?.model,
+        embeddingDim:        e?.dim,
+      });
+      if (e && deps.itemsIndex && deps.itemsIndex.dim === e.dim) {
+        const view = unpackEmbedding(e.embedding, e.dim);
+        deps.itemsIndex.update(existing.id, view);
+      }
+      stats.extractedItems++;
+      continue;
+    }
+
+    // New item — insert fresh
+    const id = crypto.randomUUID();
+    deps.memory.items.insert({
+      id,
+      kind:                item.kind,
+      title:               item.title,
+      body:                item.body,
+      modes,
+      embedding:           e?.embedding,
+      embeddingProviderId: e?.providerId,
+      embeddingModel:      e?.model,
+      embeddingDim:        e?.dim,
+      sourceSessionId:     sessionId,
+      sourceTurnId:        extractionTurnId as never,
+      importance:          item.importance,
+      createdAt:           now,
+    });
+
+    if (e && deps.itemsIndex && deps.itemsIndex.dim === e.dim) {
+      const view = unpackEmbedding(e.embedding, e.dim);
+      deps.itemsIndex.add(id, view);
+    }
+    stats.extractedItems++;
+  }
+}
+
+export function inferModesForMode(mode: TurnMode): string[] {
+  if (mode === 'narrative') return ['narrative'];
+  if (mode === 'agent')     return ['agent', 'chat'];
+  return ['chat', 'agent'];
+}

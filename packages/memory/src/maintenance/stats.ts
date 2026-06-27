@@ -1,6 +1,6 @@
 import type { MemoryDeps } from '../deps.js';
 import type { MemoryNodeType, MemoryItemKind } from '@ema-agent/storage';
-import type { VectorIndex } from '../index/vector-index.js';
+import type { VectorIndex } from '../vector-index/vector-index.js';
 
 // ── Stats shape (consumed by UI memory panel) ────────────────────────────────
 

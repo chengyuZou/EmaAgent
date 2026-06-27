@@ -34,11 +34,11 @@ export {
 export { estimateTextTokens, estimateMessagesTokens } from '@ema-agent/token';
 
 // ── Vector index ─────────────────────────────────────────────────────────────
-export { createVectorIndex }                  from './index/factory.js';
-export { BruteForceIndex }                    from './index/brute-force.js';
-export { UsearchIndex }                       from './index/usearch.js';
-export { rebuildNodesIndex, rebuildItemsIndex } from './index/builder.js';
-export type { VectorIndex, SearchHit }        from './index/vector-index.js';
+export { createVectorIndex }                  from './vector-index/factory.js';
+export { BruteForceIndex }                    from './vector-index/brute-force.js';
+export { UsearchIndex }                       from './vector-index/usearch.js';
+export { rebuildNodesIndex, rebuildItemsIndex } from './vector-index/rebuild.js';
+export type { VectorIndex, SearchHit }        from './vector-index/vector-index.js';
 
 // ── Extraction pipeline ──────────────────────────────────────────────────────
 export { runExtractionPipeline }              from './extract/pipeline.js';
@@ -50,7 +50,7 @@ export type {
 
 // ── Background tasks + recovery ──────────────────────────────────────────────
 export { SessionTaskQueue }                   from './tasks/session-queue.js';
-export { MemoryTaskRunner }               from './tasks/runner.js';
+export { MemoryTaskRunner }               from './tasks/extraction-runner.js';
 export { runStartupRecovery }                 from './tasks/recovery.js';
 export type { RecoveryReport }                from './tasks/recovery.js';
 
@@ -77,7 +77,7 @@ export type { MemoryStats }                   from './maintenance/stats.js';
 export type {
   BrowseNodesOptions,
   BrowseItemsOptions,
-} from './maintenance/inspection.js';
+} from './maintenance/browse.js';
 
 // ── Maintenance: decay + delete ──────────────────────────────────────────────           from './maintenance/decay.js';
 export type {

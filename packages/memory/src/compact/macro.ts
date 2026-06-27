@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import type { LlmRouter, LlmMessage, AssistantBlock, UserBlock } from '@ema-agent/llm';
 import type { TurnMode, SessionId, TurnId, MessageBlocks } from '@ema-agent/contracts';
 import type { SessionStore } from '@ema-agent/session';
-import { buildCompactionPrompt } from './prompts.js';
+import { buildCompactionPrompt } from './compaction-prompts.js';
 import { estimateMessagesTokens } from '@ema-agent/token';
 
 // ── Constants ────────────────────────────────────────────────────────────────

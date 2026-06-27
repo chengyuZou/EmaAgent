@@ -5,7 +5,7 @@ import type {
   MemorySettings, EmbeddedText,
 } from '../types.js';
 import { dotProduct, unpackEmbedding } from '../embed/similarity.js';
-import type { VectorIndex } from '../index/vector-index.js';
+import type { VectorIndex } from '../vector-index/vector-index.js';
 
 // ── Layer 0 recall ────────────────────────────────────────────────────────────
 
