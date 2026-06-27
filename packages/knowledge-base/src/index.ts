@@ -22,8 +22,6 @@ export type { DocumentProgressEvent, DocumentProgressKind } from './events/index
 
 // ── Adapters ───────────────────────────────────────────────────────────────────
 export type { KbVisionAdapter } from './adapters/vision.js';
-export { NodeFsAdapter }        from './adapters/fs.js';
-export type { FsAdapter }       from './adapters/fs.js';
 
 // ── Retrieval (hybrid only; FTS5 + vector live in storage repos) ───────────────
 export { weightedRank }         from './retrieval/hybrid.js';

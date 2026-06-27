@@ -6,8 +6,6 @@ import { DocxReader }  from '../readers/docx.js';
 import { PdfReader }   from '../readers/pdf.js';
 import type { ImageReader } from '../readers/image.js';
 
-export { normalizeToPages } from './normalize.js';
-
 const MIME_TO_READER: Record<string, 'text' | 'html' | 'docx' | 'pdf'> = {
   'text/plain':    'text', 'text/markdown': 'text',
   'text/html':     'html',

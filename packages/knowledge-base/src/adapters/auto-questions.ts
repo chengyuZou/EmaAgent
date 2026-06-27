@@ -7,7 +7,7 @@
  * "question ↔ statement", closing the phrasing gap at INDEX time (zero per-query
  * cost), complementing the query-time HyDE adapter.
  *
- * STATUS: interface only — intentionally left UNWIRED. The actual generation +
+ * STATUS: interface ready, intentionally left UNWIRED (V1.5+). The actual generation +
  * how generated questions feed embedding (separate vectors vs. appended to
  * searchText) is a frontend/product decision deferred per the V1 plan. A concrete
  * implementation (calling the LLM router with a prompt + cache) is injected later.
