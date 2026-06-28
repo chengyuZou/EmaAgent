@@ -8,7 +8,7 @@ import { useState, useEffect, useCallback, useMemo, type JSX, type CSSProperties
 import { Badge, Button, IconButton, Input, Spinner, type BadgeVariant } from '@ema-agent/ui';
 import { useAgentTaskStore, type AgentTaskState, type AgentTaskMessageWire } from '../stores/agent-task-store.js';
 import { useConversationStore } from '../stores/conversation-store.js';
-import type { ToolCallMessageContent, AssistantMessageContent, ToolResultMessageContent } from '../api/agent-tasks.js';
+import type { ToolCallMessageContent, AssistantMessageContent, ReasoningMessageContent, ToolResultMessageContent } from '../api/agent-tasks.js';
 
 // ── TaskPanel ─────────────────────────────────────────────────────────────────
 
@@ -315,6 +315,23 @@ function TaskTranscript({ taskId }: { taskId: string }): JSX.Element {
 // ── TranscriptRow ─────────────────────────────────────────────────────────────
 
 function TranscriptRow({ msg }: { msg: AgentTaskMessageWire }): JSX.Element {
+  if (msg.role === 'reasoning') {
+    const c = msg.content as ReasoningMessageContent;
+    return (
+      <details className="py-0.5">
+        <summary className="flex items-center gap-1 cursor-pointer text-xs select-none"
+                  style={{ color: 'var(--ema-text-tertiary)' }}>
+          <span className="i-mdi:brain-outline text-sm" />
+          思考过程
+        </summary>
+        <p className="mt-1 text-xs whitespace-pre-wrap break-words selectable pl-4"
+           style={{ color: 'var(--ema-text-tertiary)', fontStyle: 'italic' }}>
+          {c.text}
+        </p>
+      </details>
+    );
+  }
+
   if (msg.role === 'assistant') {
     const c = msg.content as AssistantMessageContent;
     return (

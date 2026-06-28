@@ -23,9 +23,10 @@ export interface AgentTaskWire {
   outputTokens?:     number;
 }
 
-export type TaskMessageRole = 'assistant' | 'tool_call' | 'tool_result';
+export type TaskMessageRole = 'assistant' | 'tool_call' | 'tool_result' | 'reasoning';
 
 export interface AssistantMessageContent  { text: string }
+export interface ReasoningMessageContent  { text: string }
 export interface ToolCallMessageContent   { callId: string; name: string; args: unknown; iteration: number }
 export interface ToolResultMessageContent {
   callId: string; name: string; excerpt: string;
@@ -36,7 +37,7 @@ export interface AgentTaskMessageWire {
   id:        string;
   taskId:    string;
   role:      TaskMessageRole;
-  content:   AssistantMessageContent | ToolCallMessageContent | ToolResultMessageContent;
+  content:   AssistantMessageContent | ReasoningMessageContent | ToolCallMessageContent | ToolResultMessageContent;
   createdAt: number;
 }
 

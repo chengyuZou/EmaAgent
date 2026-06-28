@@ -143,11 +143,22 @@ export function turnsRoute(bindings: AppBindings): Hono {
     //
     // Also intercepts subagent_stream events to persist the subagent's
     // conversation transcript into agent_task_messages via the messages repo.
-    // Text deltas are accumulated per-subagent and flushed on iteration
-    // boundaries or lifecycle terminal events.
-    const subagentTextAcc = new Map<string, string>();
+    // Text and reasoning deltas are accumulated per-subagent and flushed on
+    // iteration boundaries or lifecycle terminal events.
+    const subagentTextAcc      = new Map<string, string>();
+    const subagentReasoningAcc = new Map<string, string>();
 
     const flushSubagentText = (subagentId: string): void => {
+      const reasoning = subagentReasoningAcc.get(subagentId);
+      if (reasoning) {
+        subagentReasoningAcc.delete(subagentId);
+        bindings.agentTaskMessages.insert({
+          taskId:    subagentId,
+          role:      'reasoning',
+          content:   { text: reasoning },
+          createdAt: Date.now(),
+        });
+      }
       const text = subagentTextAcc.get(subagentId);
       if (!text) return;
       subagentTextAcc.delete(subagentId);
@@ -173,6 +184,8 @@ export function turnsRoute(bindings: AppBindings): Hono {
           const { subagentId, ev: inner } = enriched;
           if (inner.type === 'text_delta') {
             subagentTextAcc.set(subagentId, (subagentTextAcc.get(subagentId) ?? '') + inner.delta);
+          } else if (inner.type === 'reasoning_delta') {
+            subagentReasoningAcc.set(subagentId, (subagentReasoningAcc.get(subagentId) ?? '') + inner.delta);
           } else if (inner.type === 'iteration') {
             flushSubagentText(subagentId);
           } else if (inner.type === 'tool_call') {
@@ -198,6 +211,7 @@ export function turnsRoute(bindings: AppBindings): Hono {
         ) {
           flushSubagentText(enriched.subagentId);
           subagentTextAcc.delete(enriched.subagentId);
+          subagentReasoningAcc.delete(enriched.subagentId);
         }
 
         // Auto-cancel any in-flight permission prompts when the turn ends.

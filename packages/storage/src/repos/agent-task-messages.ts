@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-export type AgentTaskMessageRole = 'assistant' | 'tool_call' | 'tool_result';
+export type AgentTaskMessageRole = 'assistant' | 'tool_call' | 'tool_result' | 'reasoning';
 
 export interface AgentTaskMessageRow {
   id:           string;

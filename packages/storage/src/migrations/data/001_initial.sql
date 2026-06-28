@@ -254,7 +254,7 @@ CREATE INDEX idx_agent_tasks_status  ON agent_tasks(status);
 CREATE TABLE agent_task_messages (
   id           TEXT    PRIMARY KEY,
   task_id      TEXT    NOT NULL REFERENCES agent_tasks(id) ON DELETE CASCADE,
-  role         TEXT    NOT NULL CHECK (role IN ('assistant','tool_call','tool_result')),
+  role         TEXT    NOT NULL CHECK (role IN ('assistant','tool_call','tool_result','reasoning')),
   content_json TEXT    NOT NULL,
   created_at   INTEGER NOT NULL
 );

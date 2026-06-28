@@ -168,10 +168,10 @@ export const useAgentTaskStore = create<AgentTaskStoreState>((set, get) => ({
       const trans    = new Map(s.transcripts);
       const existing = trans.get(subagentId) ?? [];
 
-      // Merge consecutive assistant text deltas into the last assistant message.
-      if (role === 'assistant') {
+      // Merge consecutive same-role text deltas (assistant / reasoning) into the last message.
+      if (role === 'assistant' || role === 'reasoning') {
         const last = existing[existing.length - 1];
-        if (last?.role === 'assistant') {
+        if (last?.role === role) {
           const prev = (last.content as AssistantMessageContent).text;
           const next = (content as AssistantMessageContent).text;
           trans.set(subagentId, [

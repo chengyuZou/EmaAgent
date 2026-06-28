@@ -377,6 +377,8 @@ export function dispatchSseEvent(
 
       if (inner.type === 'text_delta') {
         taskStore.appendLiveTranscript(subagentId, 'assistant', { text: inner.delta });
+      } else if (inner.type === 'reasoning_delta') {
+        taskStore.appendLiveTranscript(subagentId, 'reasoning', { text: inner.delta });
       } else if (inner.type === 'tool_call') {
         taskStore.appendLiveTranscript(subagentId, 'tool_call', {
           callId: inner.callId, name: inner.name, args: inner.args,
@@ -388,7 +390,7 @@ export function dispatchSseEvent(
           isError: inner.isError, error: inner.error?.message, durationMs: inner.durationMs,
         });
       }
-      // iteration / reasoning_delta — no transcript entry needed
+      // iteration — no transcript entry needed
       break;
     }
 
