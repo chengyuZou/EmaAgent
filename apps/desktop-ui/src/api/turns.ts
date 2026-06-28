@@ -26,7 +26,8 @@ export interface CreateTurnRequest {
   /** provider_configs.id — the provider instance to use for this turn. */
   providerId?:   string;
   model?:        string;
-  ttsEnabled?:     boolean;
+  ttsEnabled?:      boolean;
+  thinkingEnabled?: boolean;
   /** KB ids the user selected in the chat picker (turn-level search scope). */
   kbIds?:          string[];
   /** Per-KB document scopes: which docs within each KB are selected. */

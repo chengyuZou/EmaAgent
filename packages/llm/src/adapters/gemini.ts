@@ -6,6 +6,7 @@ import type {
   Part,
   ToolConfig,
   FunctionDeclaration,
+  ThinkingConfig,
 } from '@google/genai';
 import { randomUUID } from 'node:crypto';
 import type { LlmAdapter } from './base.js';
@@ -217,6 +218,16 @@ export class GeminiAdapter implements LlmAdapter {
       if (tc) config.toolConfig = tc;
     }
 
+    if (request.thinking?.enabled === true) {
+      const tc: ThinkingConfig = {
+        includeThoughts:  true,
+        thinkingBudget:   (request.thinking as { budgetTokens?: number }).budgetTokens ?? 8000,
+      };
+      config.thinkingConfig = tc;
+    } else if (request.thinking?.enabled === false) {
+      config.thinkingConfig = { thinkingBudget: 0 };
+    }
+
     let responseStream: AsyncGenerator<GenerateContentResponse>;
     let lastUsage:
       | { inputTokens: number; outputTokens: number }
@@ -243,14 +254,20 @@ export class GeminiAdapter implements LlmAdapter {
 
     let stopReason: StopReason = 'end_turn';
     let toolBlockIdx = 0;
+    let hasThinking  = false;
 
     try {
       for await (const chunk of responseStream) {
         const parts = chunk.candidates?.[0]?.content?.parts ?? [];
 
         for (const part of parts) {
+          if (part.thought && part.text) {
+            hasThinking = true;
+            yield { type: 'thinking_delta', blockIndex: 0, delta: part.text };
+            continue;
+          }
           if (part.text) {
-            yield { type: 'text_delta', blockIndex: 0, delta: part.text };
+            yield { type: 'text_delta', blockIndex: hasThinking ? 1 : 0, delta: part.text };
           }
           if (part.functionCall) {
             const name = part.functionCall.name;

@@ -72,7 +72,8 @@ interface SendInput {
   attachments?:  AttachmentInputWire[];
   providerId?:   string;
   model?:          string;
-  ttsEnabled?:     boolean;
+  ttsEnabled?:      boolean;
+  thinkingEnabled?: boolean;
   kbIds?:          string[];
   kbAssetScopes?:  KbAssetScope[];
 }
@@ -98,7 +99,8 @@ function getOrCreateQueue(sessionId: SessionId): SendQueue<SendInput> {
         attachments:  input.attachments,
         providerId:   input.providerId,
         model:          input.model,
-        ttsEnabled:     input.ttsEnabled,
+        ttsEnabled:      input.ttsEnabled,
+        thinkingEnabled: input.thinkingEnabled,
         kbIds:          input.kbIds,
         kbAssetScopes:  input.kbAssetScopes,
       });

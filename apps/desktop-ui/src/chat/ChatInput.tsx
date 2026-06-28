@@ -1,5 +1,5 @@
 ﻿import { useState, useCallback, useEffect, useRef, type KeyboardEvent, type JSX, type ChangeEvent } from 'react';
-import { IconButton, Input, Button, Popover, Tooltip, TooltipProvider, Checkbox, ScrollArea, Spinner } from '@ema-agent/ui';
+import { IconButton, Input, Button, Popover, Tooltip, TooltipProvider, Checkbox, ScrollArea, Spinner, Switch } from '@ema-agent/ui';
 import { kbApi, type DocumentAssetWire, type KbLibraryWire } from '../api/knowledge-base.js';
 import { useConversationStore } from '../stores/conversation-store.js';
 import { useSessionStore } from '../stores/session-store.js';
@@ -47,8 +47,9 @@ export function ChatInput(): JSX.Element {
   const [text, setText] = useState(initialDraft);
   const [pendingAttachments, setPendingAttachments] = useState<AttachmentInputWire[]>([]);
   // Map<kbId, assetId[]> — per-KB doc selection; persists when switching library tabs.
-  const [selectedScopes, setSelectedScopes] = useState<Map<string, string[]>>(new Map());
-  const [selectedModel,  setSelectedModel]  = useState<ModelSelection | null>(null);
+  const [selectedScopes,   setSelectedScopes]   = useState<Map<string, string[]>>(new Map());
+  const [selectedModel,    setSelectedModel]    = useState<ModelSelection | null>(null);
+  const [thinkingEnabled,  setThinkingEnabled]  = useState(false);
   const textareaRef     = useRef<HTMLTextAreaElement>(null);
   const prevViewedIdRef = useRef(viewedId);
   const TEXTAREA_MAX_H  = 200; // px — beyond this the textarea scrolls
@@ -102,9 +103,10 @@ export function ChatInput(): JSX.Element {
       mode,
       text: text.trim(),
       attachments: pendingAttachments.length > 0 ? pendingAttachments : undefined,
-      providerId: selectedModel?.providerId,
-      model:      selectedModel?.model,
+      providerId:      selectedModel?.providerId,
+      model:           selectedModel?.model,
       ttsEnabled,
+      thinkingEnabled: thinkingEnabled || undefined,
       // KB scope applies to agent mode only. Selection persists across sends.
       ...(() => {
         if (mode !== 'agent' || selectedScopes.size === 0) return {};
@@ -121,7 +123,7 @@ export function ChatInput(): JSX.Element {
     setText('');
     setPendingAttachments([]);
     if (viewedId) useConversationStore.getState().setDraft(viewedId, '');
-  }, [canSend, mode, text, pendingAttachments, ttsEnabled, viewedId, selectedScopes]);
+  }, [canSend, mode, text, pendingAttachments, ttsEnabled, thinkingEnabled, viewedId, selectedScopes]);
 
   function handleKeyDown(e: KeyboardEvent<HTMLTextAreaElement>): void {
     if (isComposing) return;
@@ -236,9 +238,26 @@ export function ChatInput(): JSX.Element {
 
             <ModelPicker
               selected={selectedModel}
-              onSelect={setSelectedModel}
-              onClear={() => setSelectedModel(null)}
+              onSelect={(sel) => {
+                setSelectedModel(sel);
+                if (!sel.reasoning) setThinkingEnabled(false);
+              }}
+              onClear={() => { setSelectedModel(null); setThinkingEnabled(false); }}
             />
+
+            {/* 启用思考 — 仅当所选模型支持思考时显示 */}
+            {selectedModel?.reasoning && (
+              <div className="flex items-center gap-1 px-1 ema-fade-in">
+                <Switch
+                  checked={thinkingEnabled}
+                  onCheckedChange={setThinkingEnabled}
+                  label="启用思考"
+                />
+                <span className="text-[11px] select-none" style={{ color: 'var(--ema-text-tertiary)' }}>
+                  思考
+                </span>
+              </div>
+            )}
 
             <ModeSelector
               mode={mode}

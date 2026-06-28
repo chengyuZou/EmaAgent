@@ -1,6 +1,5 @@
 import type { SessionId, TurnMode } from '@ema-agent/contracts';
-import type { LlmRouter } from '@ema-agent/llm';
-import type { LlmContentPart } from '@ema-agent/llm';
+import type { LlmRouter, LlmContentPart, ThinkingMode } from '@ema-agent/llm';
 import type { SessionStore, Turn } from '@ema-agent/session';
 import type { HookBus } from '@ema-agent/hook';
 import type { EmotionEngine } from '@ema-agent/emotion';
@@ -38,4 +37,6 @@ export interface ConversationRunInput {
   providerId?:   string;
   /** Model name — resolved by orchestrator from request or legacy binding. */
   model?:        string;
+  /** User-requested thinking mode — forwarded directly to LlmRequest. */
+  thinking?:     ThinkingMode;
 }

@@ -1,5 +1,5 @@
 import type { SessionId, EmaStreamEvent, KbSearchResult, KbAssetScope } from '@ema-agent/contracts';
-import type { LlmRouter, LlmContentPart, LlmMessage } from '@ema-agent/llm';
+import type { LlmRouter, LlmContentPart, LlmMessage, ThinkingMode } from '@ema-agent/llm';
 import type { SessionStore, Turn } from '@ema-agent/session';
 import type { HookBus } from '@ema-agent/hook';
 import type { EmotionEngine } from '@ema-agent/emotion';
@@ -133,4 +133,6 @@ export interface AgentRunInput {
    * Omit in tests and sub-agent spawns (ephemeral context).
    */
   compactMessages?: (messages: LlmMessage[]) => Promise<LlmMessage[]>;
+  /** User-requested thinking mode — forwarded to every LlmRequest in the agent loop. */
+  thinking?: ThinkingMode;
 }

@@ -6,13 +6,14 @@
  * bottom toolbar, uses @ema-agent/ui ScrollArea for the model list.
  */
 import { useState, useEffect, useMemo, useRef, type JSX } from 'react';
-import { ScrollArea } from '@ema-agent/ui';
+import { ScrollArea, Badge } from '@ema-agent/ui';
 import { modelsApi, type EnabledModelWire } from '../api/models.js';
 import { useUiStore } from '../stores/ui-store.js';
 
 export interface ModelSelection {
   providerId: string;
   model:      string;
+  reasoning?: boolean;
 }
 
 interface ModelPickerProps {
@@ -171,12 +172,15 @@ export function ModelPicker({ selected, onSelect, onClear }: ModelPickerProps): 
                               : 'text-[var(--ema-text-secondary)] hover:bg-[var(--ema-surface-3)] hover:text-[var(--ema-text-primary)]')
                           }
                           onClick={() => {
-                            onSelect({ providerId: m.providerId, model: m.model });
+                            onSelect({ providerId: m.providerId, model: m.model, reasoning: m.reasoning });
                             useUiStore.getState().setSelectedContextWindow(m.contextWindow);
                             setOpen(false);
                           }}
                         >
                           <span className="flex-1 truncate">{m.model}</span>
+                          {m.reasoning && (
+                            <Badge variant="primary">思考</Badge>
+                          )}
                           <span className="shrink-0 text-[10px] font-mono tabular-nums
                                            text-[var(--ema-text-tertiary)]">
                             {fmtCtx(m.contextWindow)}

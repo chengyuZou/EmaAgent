@@ -3,6 +3,7 @@ import type {
   TurnMode, EmaStreamEvent, TurnId, KbAssetScope,
 } from '@ema-agent/contracts';
 import { getProviderDefinition } from '@ema-agent/contracts';
+import type { ThinkingMode } from '@ema-agent/llm';
 import type { LlmContentPart } from '@ema-agent/llm';
 import type { AttachmentInput } from '@ema-agent/attachment';
 import { asSessionId } from '@ema-agent/contracts';
@@ -41,6 +42,8 @@ export interface TurnRequest {
    * When false, no TTS synthesis happens and no `tts_chunk` events emit.
    */
   ttsEnabled?:  boolean;
+  /** User-requested thinking mode. Only sent when the model supports reasoning and the user toggled it on. */
+  thinking?:    ThinkingMode;
 }
 
 /**
@@ -282,6 +285,7 @@ export class Orchestrator {
           contentParts: request.contentParts,
           providerId,
           model,
+          thinking:     request.thinking,
         });
       }
 
@@ -316,6 +320,7 @@ export class Orchestrator {
           workspaceRoots,
           kbIds:          request.kbIds,
           kbAssetScopes:  request.kbAssetScopes,
+          thinking:       request.thinking,
           compactMessages: (msgs) => this.bindings.memory.compact({
             sessionId:          turn.sessionId,
             turnId:             turn.id,

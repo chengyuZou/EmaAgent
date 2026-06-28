@@ -4,7 +4,7 @@
  * Shows running tasks first, then terminal (completed/failed/cancelled).
  * Expanding a card loads and shows the subagent transcript.
  */
-import { useState, useEffect, useCallback, useMemo, type JSX, type CSSProperties } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef, type JSX, type CSSProperties } from 'react';
 import { Badge, Button, IconButton, Input, Spinner, type BadgeVariant } from '@ema-agent/ui';
 import { useAgentTaskStore, type AgentTaskState, type AgentTaskMessageWire } from '../stores/agent-task-store.js';
 import { useConversationStore } from '../stores/conversation-store.js';
@@ -314,22 +314,63 @@ function TaskTranscript({ taskId }: { taskId: string }): JSX.Element {
 
 // ── TranscriptRow ─────────────────────────────────────────────────────────────
 
+function ReasoningBlock({ text }: { text: string }): JSX.Element {
+  const [open, setOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
+  const mountedRef = useRef(false);
+
+  useEffect(() => {
+    if (open) {
+      setMounted(true);
+      mountedRef.current = true;
+      return undefined;
+    }
+    if (mountedRef.current) {
+      const t = setTimeout(() => setMounted(false), 200);
+      return () => clearTimeout(t);
+    }
+    return undefined;
+  }, [open]);
+
+  return (
+    <div className="py-0.5">
+      <button
+        className="flex items-center gap-1 text-xs select-none w-full text-left
+                   transition-colors duration-[var(--ema-duration-base)]"
+        style={{ color: 'var(--ema-text-tertiary)' }}
+        onClick={() => setOpen((v) => !v)}
+      >
+        <span className="i-mdi:brain-outline text-sm" />
+        <span>思考过程</span>
+        <span
+          className="ml-auto text-[10px] transition-transform duration-[var(--ema-duration-base)]"
+          style={{ transform: open ? 'rotate(180deg)' : 'rotate(0deg)' }}
+        >▾</span>
+      </button>
+
+      <div
+        className="ema-collapsible"
+        style={{ gridTemplateRows: open ? '1fr' : '0fr', opacity: open ? 1 : 0 }}
+      >
+        <div>
+          {mounted && (
+            <p
+              className="mt-1 text-xs whitespace-pre-wrap break-words selectable pl-4 ema-fade-in"
+              style={{ color: 'var(--ema-text-tertiary)', fontStyle: 'italic' }}
+            >
+              {text}
+            </p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function TranscriptRow({ msg }: { msg: AgentTaskMessageWire }): JSX.Element {
   if (msg.role === 'reasoning') {
     const c = msg.content as ReasoningMessageContent;
-    return (
-      <details className="py-0.5">
-        <summary className="flex items-center gap-1 cursor-pointer text-xs select-none"
-                  style={{ color: 'var(--ema-text-tertiary)' }}>
-          <span className="i-mdi:brain-outline text-sm" />
-          思考过程
-        </summary>
-        <p className="mt-1 text-xs whitespace-pre-wrap break-words selectable pl-4"
-           style={{ color: 'var(--ema-text-tertiary)', fontStyle: 'italic' }}>
-          {c.text}
-        </p>
-      </details>
-    );
+    return <ReasoningBlock text={c.text} />;
   }
 
   if (msg.role === 'assistant') {

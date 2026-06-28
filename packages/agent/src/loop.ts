@@ -1,5 +1,5 @@
 import type { LlmMessage, AssistantBlock, UserBlock, ToolResultBlock, EmaStreamEvent } from '@ema-agent/contracts';
-import type { LlmRouter } from '@ema-agent/llm';
+import type { LlmRouter, ThinkingMode } from '@ema-agent/llm';
 import type { AgentPolicy } from './policy.js';
 import type { TurnToolExecutor } from './tool-executor.js';
 import { advanceState, addUsage, createLoopState } from './loop-state.js';
@@ -80,6 +80,7 @@ export interface AgentLoopInput {
    * Engine wires this to MemoryPlanner.compact(); spawner omits it (ephemeral).
    */
   compactMessages?: (messages: LlmMessage[]) => Promise<LlmMessage[]>;
+  thinking?: ThinkingMode;
 }
 
 // ── agentLoop ─────────────────────────────────────────────────────────────────
@@ -98,7 +99,7 @@ export interface AgentLoopInput {
  * if the last tool finishes between the allDone() check and await.
  */
 export async function* agentLoop(input: AgentLoopInput): AsyncIterable<AgentLoopEvent> {
-  const { messages, policy, llm, providerId, model, signal, maxIterations, getScratchpadContext, getMailboxMessages, compactMessages } = input;
+  const { messages, policy, llm, providerId, model, signal, maxIterations, getScratchpadContext, getMailboxMessages, compactMessages, thinking } = input;
 
   const pendingRelayEvents: EmaStreamEvent[] = [];
   let wakeUp: (() => void) | null = null;
@@ -156,6 +157,7 @@ export async function* agentLoop(input: AgentLoopInput): AsyncIterable<AgentLoop
       messages:   effectiveMessages,
       tools:      policy.toolDefs(),
       toolChoice: 'auto',
+      thinking,
       signal,
     });
 

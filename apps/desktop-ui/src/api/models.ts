@@ -9,6 +9,7 @@ export interface EnabledModelWire {
   contextWindow:   number;
   contextSource:   string;
   definitionId:    string;
+  reasoning:       boolean;
 }
 
 // ── API object ────────────────────────────────────────────────────────────────

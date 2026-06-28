@@ -17,6 +17,7 @@ import type {
   AssistantBlock,
 } from './types.js';
 import type { LlmProtocol } from '@ema-agent/contracts';
+import type { ModelsDevCatalog } from './models-dev-catalog.js';
 
 // ── Internal factory ──────────────────────────────────────────────────────────
 
@@ -62,6 +63,7 @@ export class LlmRouter {
   constructor(
     configs: ProviderConfig[],
     adapterOverrides?: ReadonlyMap<string, LlmAdapter>,
+    private readonly catalog?: ModelsDevCatalog,
   ) {
     this.adapterOverrides = adapterOverrides;
     for (const config of configs) {
@@ -82,10 +84,13 @@ export class LlmRouter {
    * Throws synchronously on unknown provider id.
    */
   stream(request: LlmRequest): AsyncIterable<LlmStreamChunk> {
-    return this.guardedStream(request.providerId, () => {
-      const adapter = this.adapters.get(request.providerId);
-      if (!adapter) throw notConfigured(request.providerId);
-      return adapter.stream(request, request.model);
+    const enriched: LlmRequest = this.catalog
+      ? { ...request, supportsReasoning: request.supportsReasoning ?? this.catalog.hasReasoning(request.model) }
+      : request;
+    return this.guardedStream(enriched.providerId, () => {
+      const adapter = this.adapters.get(enriched.providerId);
+      if (!adapter) throw notConfigured(enriched.providerId);
+      return adapter.stream(enriched, enriched.model);
     });
   }
 

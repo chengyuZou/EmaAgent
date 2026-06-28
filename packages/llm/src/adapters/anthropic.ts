@@ -202,17 +202,28 @@ export class AnthropicAdapter implements LlmAdapter {
     const tools      = request.toolChoice === 'none' ? undefined : request.tools?.map(toAnthropicTool);
     const toolChoice = tools?.length ? toAnthropicToolChoice(request.toolChoice) : undefined;
 
+    const thinkingEnabled = request.thinking?.enabled === true;
+    const streamBody: Anthropic.Messages.MessageStreamParams = {
+      model:       modelName,
+      messages,
+      max_tokens:  request.maxTokens ?? 4096,
+      temperature: thinkingEnabled ? 1 : request.temperature,
+      ...(system    ? { system }                                          : {}),
+      ...(tools?.length ? { tools, tool_choice: toolChoice }             : {}),
+      ...(thinkingEnabled
+        ? { thinking: { type: 'enabled' as const,
+                        budget_tokens: (request.thinking as { budgetTokens?: number }).budgetTokens ?? 8000 } }
+        : {}),
+    };
+
     const anthropicStream = this.client.messages.stream(
+      streamBody,
       {
-        model:        modelName,
-        system,
-        messages,
-        tools:        tools?.length ? tools : undefined,
-        tool_choice:  toolChoice,
-        max_tokens:   request.maxTokens ?? 4096,
-        temperature:  request.temperature,
+        signal:  request.signal,
+        headers: thinkingEnabled
+          ? { 'anthropic-beta': 'interleaved-thinking-2025-05-14' }
+          : undefined,
       },
-      { signal: request.signal },
     );
 
     // Track in-progress blocks keyed by Anthropic content_block index.

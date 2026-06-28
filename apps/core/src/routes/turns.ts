@@ -55,7 +55,8 @@ const turnBodySchema = z.object({
   attachments:  z.array(attachmentInputSchema).optional(),
   providerId: z.string().optional(),
   model: z.string().optional(),
-  ttsEnabled:    z.boolean().optional(),
+  ttsEnabled:       z.boolean().optional(),
+  thinkingEnabled:  z.boolean().optional(),
   /** KB ids the user selected in the chat picker (turn-level search scope). */
   kbIds:         z.array(z.string()).optional(),
   /** Per-KB document scopes: which docs within each KB are selected. */
@@ -102,7 +103,7 @@ export function turnsRoute(bindings: AppBindings): Hono {
       return c.json({ error: 'invalid_request', details: parsed.error.flatten() }, 400);
     }
 
-    const { sessionId, mode, userInput, contentParts, attachments, providerId, model, ttsEnabled, kbIds, kbAssetScopes } = parsed.data;
+    const { sessionId, mode, userInput, contentParts, attachments, providerId, model, ttsEnabled, thinkingEnabled, kbIds, kbAssetScopes } = parsed.data;
 
     // Trust the client's sessionId only if it still exists. A stale id (e.g.
     // a viewedSessionId persisted across a DB reset) would otherwise FK-fail
@@ -128,6 +129,7 @@ export function turnsRoute(bindings: AppBindings): Hono {
         kbIds,
         kbAssetScopes,
         ttsEnabled:       ttsEnabled ?? false,
+        thinking:         thinkingEnabled ? { enabled: true as const, budgetTokens: 8000 } : undefined,
       }));
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);

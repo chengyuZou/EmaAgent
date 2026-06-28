@@ -67,6 +67,9 @@ export interface LlmRequest {
   tools?: LlmToolDef[];
   toolChoice?: 'auto' | 'none' | { name: string };
   thinking?: ThinkingMode;
+  /** Set by LlmRouter from ModelsDevCatalog. Adapters use this to pre-initialize
+   *  hasThinking so blockIndex stays stable even when reasoning_content arrives late. */
+  supportsReasoning?: boolean;
   maxTokens?: number;
   temperature?: number;
   signal?: AbortSignal;

@@ -218,11 +218,10 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
   const providerVisionModels = new ProviderVisionModelsRepo(profileDb.sqlite);
 
   // ── AI clients (provider configs live in profileDb) ────────────────────────
-  const llm = new LlmRouter(loadLlmConfigs(profileDb));
-  const ebd = new EbdRouter(loadEmbedConfigs(profileDb), loadRerankConfigs(profileDb));
   // models.dev catalog: load bundled snapshot first (instant, offline-safe),
   // then refresh from network in the background. Consumers get catalog data
   // immediately from the snapshot; the refresh updates it silently.
+  // Must be created before LlmRouter so it can be passed in for reasoning lookup.
   const modelCatalog = new ModelsDevCatalog();
   try {
     const snapshotPath = nodePath.join(import.meta.dirname!, 'models-dev-snapshot.json');
@@ -231,6 +230,8 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
   } catch {
     console.warn('[catalog] no bundled snapshot found, will rely on network refresh');
   }
+  const llm = new LlmRouter(loadLlmConfigs(profileDb), undefined, modelCatalog);
+  const ebd = new EbdRouter(loadEmbedConfigs(profileDb), loadRerankConfigs(profileDb));
 
   const narrative = new NarrativeClient({
     baseUrl:   resolveBridgeUrl(),

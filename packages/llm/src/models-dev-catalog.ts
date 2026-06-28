@@ -129,6 +129,14 @@ export class ModelsDevCatalog {
     return undefined;
   }
 
+  /** Provider-agnostic reasoning lookup: true if any provider marks this model as reasoning-capable. */
+  hasReasoning(modelId: string): boolean {
+    for (const models of this.index.values()) {
+      if (models.get(modelId)?.reasoning) return true;
+    }
+    return false;
+  }
+
   /**
    * Provider-agnostic fuzzy suggestions for a model-name input (settings UI).
    * Returns LLM model ids whose id contains `query`, with their context window.

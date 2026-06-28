@@ -143,7 +143,7 @@ async function* runTurn(
     const thinkingSignatureByIndex = new Map<number, string>();
     const completedThinkingIndexes = new Set<number>();
 
-    const stream = llm.stream({ providerId, model: resolvedModel, messages: finalMessages, signal });
+    const stream = llm.stream({ providerId, model: resolvedModel, messages: finalMessages, thinking: input.thinking, signal });
 
     for await (const chunk of stream) {
       switch (chunk.type) {

@@ -211,13 +211,16 @@ export class OpenAiResponsesAdapter implements LlmAdapter {
       temperature:       request.temperature,
     };
 
-    if (instructions)      params.instructions = instructions;
+    if (instructions) params.instructions = instructions;
     if (request.tools?.length && request.toolChoice !== 'none') {
       params.tools = request.tools.map(toResponsesTool);
-      // ToolChoiceOptions | ToolChoiceFunction is a subset of the accepted union;
-      // TypeScript should accept it without a cast.
       params.tool_choice = toResponsesToolChoice(request.toolChoice) as
         OpenAI.Responses.ResponseCreateParamsStreaming['tool_choice'];
+    }
+
+    if (request.thinking?.enabled !== false && (request.thinking as { effort?: string } | undefined)?.effort) {
+      const effort = (request.thinking as { effort: string }).effort;
+      params.reasoning = { effort: effort as 'low' | 'medium' | 'high' };
     }
 
     let responseStream: AsyncIterable<ResponseStreamEvent>;

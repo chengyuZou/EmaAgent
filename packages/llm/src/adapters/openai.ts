@@ -211,8 +211,9 @@ export class OpenAiAdapter implements LlmAdapter {
     // the full round-trip) but correct for both serial and parallel tool calls.
     const toolBufs = new Map<number, { id: string; name: string; argsJson: string }>();
     let stopReason: StopReason = 'end_turn';
-    // Track whether reasoning_content ever arrived so text blockIndex stays consistent.
-    let hasThinking = false;
+    // Pre-initialize from catalog so blockIndex stays stable even when reasoning_content
+    // arrives after the first text chunk (DeepSeek-reasoner real-world order).
+    let hasThinking = request.supportsReasoning ?? false;
 
     for await (const chunk of completion) {
       const choice = chunk.choices[0];

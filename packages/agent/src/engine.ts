@@ -199,6 +199,7 @@ async function* runTurn(
         ? () => buildScratchpadContext(scratchpadDir)
         : undefined,
       compactMessages: input.compactMessages,
+      thinking:        input.thinking,
     })) {
       switch (ev.type) {
 
