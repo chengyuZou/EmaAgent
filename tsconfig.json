@@ -19,22 +19,14 @@
     "noImplicitReturns": true,
     "noFallthroughCasesInSwitch": true,
     "paths": {
-      "@ema-agent/constants-core": ["./packages/constants-core/src/index.ts"],
-      "@ema-agent/core-types": ["./packages/core-types/src/index.ts"],
       "@ema-agent/session": ["./packages/session/src/index.ts"],
       "@ema-agent/llm": ["./packages/llm/src/index.ts"],
-      "@ema-agent/config": ["./packages/config/src/index.ts"],
-      "@ema-agent/storage-sql": ["./packages/storage-sql/src/index.ts"],
       "@ema-agent/tools": ["./packages/tools/src/index.ts"],
       "@ema-agent/permission": ["./packages/permission/src/index.ts"],
       "@ema-agent/sandbox": ["./packages/sandbox/src/index.ts"],
       "@ema-agent/attachment": ["./packages/attachment/src/index.ts"],
-      "@ema-agent/ebd": ["./packages/ebd/src/index.ts"],
       "@ema-agent/memory": ["./packages/memory/src/index.ts"],
-      "@ema-agent/narrative": ["./packages/narrative/src/index.ts"],
       "@ema-agent/prompts": ["./packages/prompts/src/index.ts"],
-      "@ema-agent/telemetry": ["./packages/telemetry/src/index.ts"],
-      "@ema-agent/multimodal": ["./packages/multimodal/src/index.ts"],
       "@ema-agent/skill": ["./packages/skill/src/index.ts"]
     }
   },

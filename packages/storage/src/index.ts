@@ -29,7 +29,7 @@ export type { McpServerRow } from './repos/mcp-servers.js';
 export { SkillsRepo }      from './repos/skills.js';
 export type { SkillRow }   from './repos/skills.js';
 
-// ── Memory subsystem (migration 006) ──────────────────────────────────────────
+// ── Memory subsystem ──────────────────────────────────────────────────────────
 export { MemoryNodesRepo }       from './repos/memory-nodes.js';
 export { MemoryEdgesRepo }       from './repos/memory-edges.js';
 export { MemoryLazyUpdatesRepo } from './repos/memory-lazy-updates.js';
@@ -114,13 +114,13 @@ export type { ProviderSttModelRow, ProviderSttModelInsert } from './repos/provid
 export { ProviderVisionModelsRepo } from './repos/provider-vision-models.js';
 export type { ProviderVisionModelRow, ProviderVisionModelInsert } from './repos/provider-vision-models.js';
 
-// ── Agent task repos (migration data/008) ────────────────────────────────────
+// ── Agent task repos ─────────────────────────────────────────────────────────
 export { AgentTasksRepo }        from './repos/agent-tasks.js';
 export { AgentTaskMessagesRepo } from './repos/agent-task-messages.js';
 export type { AgentTaskRow, AgentTaskInsert, AgentTaskStatus }           from './repos/agent-tasks.js';
 export type { AgentTaskMessageRow, AgentTaskMessageInsert, AgentTaskMessageRole } from './repos/agent-task-messages.js';
 
-// ── Knowledge-base repos (migration data/004) ─────────────────────────────────
+// ── Knowledge-base repos ──────────────────────────────────────────────────────
 export { DocumentAssetRepo }   from './repos/document-asset.js';
 export { DocumentChunkRepo }   from './repos/document-chunk.js';
 export { DocumentPreviewRepo } from './repos/document-preview.js';

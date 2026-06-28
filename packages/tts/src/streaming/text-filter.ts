@@ -326,6 +326,3 @@ export function filterSentenceForTts(text: string): string {
 
   return out;
 }
-
-/** @deprecated 改名为 filterSentenceForTts，V1.1 删除 */
-export const filterTextForTts = filterSentenceForTts;

@@ -103,8 +103,7 @@ export class DocumentChunkRepo {
     );
     this.db.transaction(() => {
       for (const c of chunks) {
-        // tokens = jieba-segmented text; the FTS trigger copies this column so
-        // BM25 scores over whole Chinese words (migration 009).
+        // tokens = jieba-segmented text; FTS trigger copies this column so BM25 scores over whole Chinese words.
         stmt.run(c.id, c.assetId, c.text, segmentForFts(c.text), c.markdown ?? null,
           JSON.stringify(c.blockKinds), c.tokenCount,
           c.page ?? null, JSON.stringify(c.sectionPath),
@@ -177,10 +176,9 @@ export class DocumentChunkRepo {
 
   /** FTS5 BM25 full-text search, scope-filtered via JOIN.
    *
-   * Uses jieba word-segmented index (migration 009): the query is segmented the
-   * same way as the indexed text, so 2-char Chinese words match (which trigram's
-   * 3-char window could not). Each token is quoted as an FTS phrase so input
-   * punctuation can't be misread as an FTS operator.
+   * Query is jieba-segmented the same way as indexed text so 2-char Chinese
+   * words match. Each token is quoted as an FTS phrase to prevent punctuation
+   * being misread as FTS operators.
    */
   searchFts(
     query:    string,
