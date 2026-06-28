@@ -118,22 +118,10 @@ export class AgentTaskStore {
   // ── Startup crash recovery ────────────────────────────────────────────────
 
   /**
-   * Mark orphaned tasks failed; return a summary for startup logging.
-   * 'waiting_user' tasks are left in their state (UI re-presents the widget).
+   * Mark all orphaned tasks (running or waiting_user) as failed.
+   * Returns the rows that were changed, for startup logging.
    */
-  recoverInterrupted(): {
-    recovered:   AgentTask[];
-    waitingUser: AgentTask[];
-  } {
-    const all = this.repo.listRunning();
-
-    const waitingUser = all
-      .filter(r => r.status === 'waiting_user')
-      .map(rowToTask);
-
-    const stuck = this.repo.markStuckFailed(Date.now());
-    const recovered = stuck.map(rowToTask);
-
-    return { recovered, waitingUser };
+  recoverInterrupted(): AgentTask[] {
+    return this.repo.markStuckFailed(Date.now()).map(rowToTask);
   }
 }

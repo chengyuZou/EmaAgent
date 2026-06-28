@@ -86,16 +86,12 @@ export function startBackgroundWork(bindings: AppBindings): BackgroundHandle {
     console.warn('[session] startup turn recovery skipped:', err);
   }
 
-  // 2c) Agent task journal recovery — scan JSONL files, reset 'running' tasks
-  //     to 'failed', restore 'waiting_user' state so the UI can re-present
-  //     question widgets that were pending when the process crashed.
+  // 2c) Agent task crash recovery — any task still running or waiting_user at
+  //     startup was orphaned by a process kill; mark them failed.
   try {
-    const { recovered, waitingUser } = bindings.taskStore.recoverInterrupted();
+    const recovered = bindings.taskStore.recoverInterrupted();
     if (recovered.length > 0) {
       console.log(`[agent-task] startup: marked ${recovered.length} interrupted task(s) as failed`);
-    }
-    if (waitingUser.length > 0) {
-      console.log(`[agent-task] startup: ${waitingUser.length} task(s) were waiting for user input — sessions should re-present their question widgets`);
     }
   } catch (err) {
     console.warn('[agent-task] startup recovery skipped:', err);

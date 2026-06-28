@@ -154,9 +154,8 @@ export class AgentTasksRepo {
   }
 
   /**
-   * Crash recovery: any task still 'running' or 'waiting_user' at startup was
-   * orphaned by a process kill. Mark them failed so the UI shows the real state.
-   * Returns the rows that were changed (for logging).
+   * Crash recovery: mark all tasks still in a non-terminal state as failed.
+   * Returns the rows that were changed (for startup logging).
    */
   markStuckFailed(at: number): AgentTaskRow[] {
     return this.db
