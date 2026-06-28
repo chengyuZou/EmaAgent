@@ -343,6 +343,7 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
     // dim is probed at enable time and stored on provider_embed_models (dim_source='probed').
     getEmbedDim:      (model) => providerEmbedModels.dimFor(model) ?? 0,
     emit:             (ev) => systemBus.emit(ev),
+    hookBus:          hooks,
   });
 
   // ── Artifacts ───────────────────────────────────────────────────────────────

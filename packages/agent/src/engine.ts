@@ -198,6 +198,7 @@ async function* runTurn(
       getScratchpadContext: scratchpadDir
         ? () => buildScratchpadContext(scratchpadDir)
         : undefined,
+      compactMessages: input.compactMessages,
     })) {
       switch (ev.type) {
 

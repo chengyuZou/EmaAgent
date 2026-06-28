@@ -13,6 +13,7 @@ import type { SessionStore } from '@ema-agent/session';
 import type { LlmRouter } from '@ema-agent/llm';
 import type { EbdRouter } from '@ema-agent/ebd-client';
 import type { EmaStreamEvent } from '@ema-agent/contracts';
+import type { HookBus } from '@ema-agent/hook';
 
 // ── External dependencies ─────────────────────────────────────────────────────
 
@@ -49,4 +50,6 @@ export interface MemoryDeps {
    * frontend can render them as bubbles. Optional: tests omit it.
    */
   emit?:          (ev: EmaStreamEvent) => void;
+  /** Hook bus — triggers beforeCompact / afterCompact at precise macro-compaction boundaries. Optional: tests omit it. */
+  hookBus?:       HookBus;
 }

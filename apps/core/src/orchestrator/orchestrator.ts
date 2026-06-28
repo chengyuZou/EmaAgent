@@ -303,6 +303,10 @@ export class Orchestrator {
           })();
         }
 
+        const contextWindow =  this.bindings.modelCatalog.contextWindowOfAny(model)
+          ?? this.bindings.providerLlmModels.contextWindowFor(model)
+          ?? 200_000;
+
         return this.agent.run({
           turn, signal,
           providerId,
@@ -312,6 +316,18 @@ export class Orchestrator {
           workspaceRoots,
           kbIds:          request.kbIds,
           kbAssetScopes:  request.kbAssetScopes,
+          compactMessages: (msgs) => this.bindings.memory.compact({
+            sessionId:          turn.sessionId,
+            turnId:             turn.id,
+            mode:               'agent',
+            messages:           msgs,
+            modelContextWindow: contextWindow,
+            providerId,
+            model,
+            emit:               this.bindings.systemBus
+              ? (ev) => this.bindings.systemBus.emit(ev)
+              : undefined,
+          }).then(r => r.messages),
         });
       }
     }

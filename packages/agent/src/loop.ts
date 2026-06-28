@@ -72,6 +72,14 @@ export interface AgentLoopInput {
    * Only populated for background sub-agents; always undefined for the main agent.
    */
   getMailboxMessages?: () => string[];
+  /**
+   * Called at the top of every iteration before the LLM call.
+   * Runs compaction on the accumulated messages and returns the (possibly
+   * compacted) replacement array. Mutates messages[] in place so subsequent
+   * iterations and the spawner both see the compacted history.
+   * Engine wires this to MemoryPlanner.compact(); spawner omits it (ephemeral).
+   */
+  compactMessages?: (messages: LlmMessage[]) => Promise<LlmMessage[]>;
 }
 
 // ── agentLoop ─────────────────────────────────────────────────────────────────
@@ -90,7 +98,7 @@ export interface AgentLoopInput {
  * if the last tool finishes between the allDone() check and await.
  */
 export async function* agentLoop(input: AgentLoopInput): AsyncIterable<AgentLoopEvent> {
-  const { messages, policy, llm, providerId, model, signal, maxIterations, getScratchpadContext, getMailboxMessages } = input;
+  const { messages, policy, llm, providerId, model, signal, maxIterations, getScratchpadContext, getMailboxMessages, compactMessages } = input;
 
   const pendingRelayEvents: EmaStreamEvent[] = [];
   let wakeUp: (() => void) | null = null;
@@ -123,6 +131,14 @@ export async function* agentLoop(input: AgentLoopInput): AsyncIterable<AgentLoop
     const textByIndex     = new Map<number, string>();
     const thinkingByIndex = new Map<number, string>();
     const toolUseByIndex  = new Map<number, AssistantBlock & { type: 'tool_use' }>();
+
+    // Per-iteration compaction: runs before every LLM call so agent loops that
+    // accumulate many tool results don't overflow the context window mid-turn.
+    // Mutates messages[] in place; spawner omits compactMessages (ephemeral ctx).
+    if (compactMessages) {
+      const compacted = await compactMessages([...messages]);
+      messages.splice(0, messages.length, ...compacted);
+    }
 
     // Inject scratchpad context and mailbox messages as ephemeral user messages
     // before each LLM call — not persisted into messages[].
