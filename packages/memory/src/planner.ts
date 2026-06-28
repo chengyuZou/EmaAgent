@@ -139,7 +139,7 @@ export class MemoryPlanner {
     if (ctxMsg) {
       tokenEstimate = typeof ctxMsg.content === 'string' ? estimateTextTokens(ctxMsg.content) : 0;
       const lastIdx    = working.length - 1;
-      const lastIsUser = lastIdx >= 0 && working[lastIdx]?.role === 'user';
+      const lastIsUser = lastIdx >= 0 && working[lastIdx]?.role === 'user' && !isToolResultMessage(working[lastIdx]!);
       working = lastIsUser
         ? [...working.slice(0, lastIdx), ctxMsg, working[lastIdx]!]
         : [...working, ctxMsg];
@@ -252,4 +252,18 @@ export class MemoryPlanner {
   }): Promise<CompactResult> {
     return runCompaction(this.deps, this.settings, (sid) => this.getSessionOverrides(sid), args);
   }
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+/** True when the message is a tool-result carrier (role=user, content=[{type:'tool_result'}]).
+ *  Memory context must NOT be inserted before a tool-result — it would break the
+ *  tool_use/tool_result pair and cause providers to reject the request. */
+function isToolResultMessage(msg: LlmMessage): boolean {
+  return (
+    msg.role === 'user' &&
+    Array.isArray(msg.content) &&
+    msg.content.length > 0 &&
+    (msg.content[0] as { type?: string }).type === 'tool_result'
+  );
 }
