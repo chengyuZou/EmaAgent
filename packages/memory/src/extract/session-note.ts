@@ -47,9 +47,20 @@ export async function compactSessionNoteIfNeeded(
 
   const cutoff = Date.now() - expiry_days * 86400_000;
 
-  const fresh    = entries.filter(e => e.at > cutoff);
-  const tail     = fresh.slice(-keep_recent);
-  const toMerge  = fresh.slice(0, -keep_recent);
+  const fresh = entries.filter(e => e.at > cutoff);
+
+  if (fresh.length === 0) {
+    deps.memory.sessionNotes.upsert({
+      sessionId,
+      body:               JSON.stringify([]),
+      tokensAtLastUpdate: 0,
+      updatedAt:          Date.now(),
+    });
+    return;
+  }
+
+  const tail    = fresh.slice(-keep_recent);
+  const toMerge = fresh.slice(0, -keep_recent);
 
   if (toMerge.length === 0) return;
 
