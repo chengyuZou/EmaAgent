@@ -14,7 +14,18 @@ import type {
   LlmRequest, LlmStreamChunk, LlmMessage, LlmToolDef,
   StopReason, ProviderConfig, AssistantBlock, UserBlock,
 } from '../types.js';
+import { ContextWindowExceededError } from '../types.js';
 import type { ToolResultBlock, MessageContentPart } from '@ema-agent/contracts';
+
+function isContextWindowError(err: unknown): boolean {
+  const msg = (err instanceof Error ? err.message : String(err)).toLowerCase();
+  return (
+    msg.includes('request payload size') ||
+    msg.includes('context window') ||
+    msg.includes('maximum context length') ||
+    msg.includes('exceeds the limit')
+  );
+}
 
 // ── Stop reason ────────────────────────────────────────────────────────────────
 
@@ -249,6 +260,7 @@ export class GeminiAdapter implements LlmAdapter {
         yield { type: 'done', stopReason: 'end_turn' };
         return;
       }
+      if (isContextWindowError(err)) throw new ContextWindowExceededError(err instanceof Error ? err.message : String(err));
       throw err;
     }
 
@@ -306,6 +318,7 @@ export class GeminiAdapter implements LlmAdapter {
         yield { type: 'done', stopReason };
         return;
       }
+      if (isContextWindowError(err)) throw new ContextWindowExceededError(err instanceof Error ? err.message : String(err));
       throw err;
     }
 

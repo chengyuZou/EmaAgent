@@ -9,7 +9,18 @@ import type {
   ProviderConfig,
   AssistantBlock,
 } from '../types.js';
+import { ContextWindowExceededError } from '../types.js';
 import type { UserBlock, ToolResultBlock, MessageContentPart } from '@ema-agent/contracts';
+
+function isContextWindowError(err: unknown): boolean {
+  const msg = (err instanceof Error ? err.message : String(err)).toLowerCase();
+  const status = (err as { status?: number }).status;
+  return status === 400 && (
+    msg.includes('prompt is too long') ||
+    msg.includes('prompt_too_long') ||
+    msg.includes('context window')
+  );
+}
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -237,6 +248,7 @@ export class AnthropicAdapter implements LlmAdapter {
     let outputTokens = 0;
     let stopReason: StopReason = 'end_turn';
 
+    try {
     for await (const event of anthropicStream) {
       switch (event.type) {
         case 'message_start':
@@ -312,6 +324,12 @@ export class AnthropicAdapter implements LlmAdapter {
         default:
           break;
       }
+    }
+
+    } catch (err) {
+      if (request.signal?.aborted) { yield { type: 'done', stopReason }; return; }
+      if (isContextWindowError(err)) throw new ContextWindowExceededError(err instanceof Error ? err.message : String(err));
+      throw err;
     }
 
     yield { type: 'usage', inputTokens, outputTokens };

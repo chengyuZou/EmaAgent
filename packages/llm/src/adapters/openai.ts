@@ -11,7 +11,18 @@ import type {
   AssistantBlock,
   UserBlock,
 } from '../types.js';
+import { ContextWindowExceededError } from '../types.js';
 import type { ToolResultBlock } from '@ema-agent/contracts';
+
+function isContextWindowError(err: unknown): boolean {
+  const msg = (err instanceof Error ? err.message : String(err)).toLowerCase();
+  const status = (err as { status?: number }).status;
+  return status === 400 && (
+    msg.includes('maximum context length') ||
+    msg.includes('context_length_exceeded') ||
+    msg.includes('context window')
+  );
+}
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -215,6 +226,7 @@ export class OpenAiAdapter implements LlmAdapter {
     // arrives after the first text chunk (DeepSeek-reasoner real-world order).
     let hasThinking = request.supportsReasoning ?? false;
 
+    try {
     for await (const chunk of completion) {
       const choice = chunk.choices[0];
       const delta  = choice?.delta;
@@ -287,6 +299,12 @@ export class OpenAiAdapter implements LlmAdapter {
           outputTokens: chunk.usage.completion_tokens,
         };
       }
+    }
+
+    } catch (err) {
+      if (request.signal?.aborted) { yield { type: 'done', stopReason }; return; }
+      if (isContextWindowError(err)) throw new ContextWindowExceededError(err instanceof Error ? err.message : String(err));
+      throw err;
     }
 
     yield { type: 'done', stopReason };

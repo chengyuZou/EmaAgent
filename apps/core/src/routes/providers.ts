@@ -464,7 +464,7 @@ export function providersRoute(bindings: AppBindings): Hono {
       models: models.map((model): { id: string; contextWindow: number | null; enabled: boolean } => ({
         id:            model,
         contextWindow: enabled.get(model)
-          ?? (modelsDevId ? bindings.modelCatalog.contextWindowOf(modelsDevId, model) : undefined)
+          ?? (modelsDevId ? bindings.modelCatalog.get(modelsDevId, model)?.contextWindow : undefined)
           ?? null,
         enabled:       enabled.has(model),
       })),

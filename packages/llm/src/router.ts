@@ -84,9 +84,11 @@ export class LlmRouter {
    * Throws synchronously on unknown provider id.
    */
   stream(request: LlmRequest): AsyncIterable<LlmStreamChunk> {
-    const enriched: LlmRequest = this.catalog
-      ? { ...request, supportsReasoning: request.supportsReasoning ?? this.catalog.hasReasoning(request.model) }
-      : request;
+    const enriched: LlmRequest = this.catalog ? {
+      ...request,
+      supportsReasoning: request.supportsReasoning ?? this.catalog.hasReasoning(request.model),
+      maxTokens:         request.maxTokens         ?? this.catalog.maxOutputOf(request.model),
+    } : request;
     return this.guardedStream(enriched.providerId, () => {
       const adapter = this.adapters.get(enriched.providerId);
       if (!adapter) throw notConfigured(enriched.providerId);

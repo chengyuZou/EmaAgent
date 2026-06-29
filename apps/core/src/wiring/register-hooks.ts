@@ -47,7 +47,7 @@ export function registerAllHooks(bindings: AppBindings): () => void {
     // back to defaultContextWindow (128K). Replaces the never-populated
     // llm_model_catalog (was always 0 → memory silently ran at the 128K default).
     getContextWindow: (model) =>
-      bindings.providerLlmModels.contextWindowFor(model) ?? bindings.modelCatalog.contextWindowOfAny(model) ?? 0,
+      bindings.providerLlmModels.contextWindowFor(model) ?? bindings.modelCatalog.contextWindowOf(model) ?? 0,
     // Agent sessions: supply the 20 most recently touched files so the post-compact
     // restore step can re-inject their content without a redundant LLM round-trip.
     // Conversation sessions have no file state — the store simply returns [].

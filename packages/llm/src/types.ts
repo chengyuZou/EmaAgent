@@ -123,3 +123,17 @@ export interface ProbeResult {
   latencyMs?: number;
   error?:     string;
 }
+
+// ── Well-known errors ─────────────────────────────────────────────────────────
+
+/**
+ * Thrown by adapters when the provider rejects the request because the prompt
+ * exceeds the model's context window.  The agent loop catches this to trigger
+ * a reactive compaction pass instead of failing the turn immediately.
+ */
+export class ContextWindowExceededError extends Error {
+  constructor(message?: string) {
+    super(message ?? 'Context window exceeded');
+    this.name = 'ContextWindowExceededError';
+  }
+}

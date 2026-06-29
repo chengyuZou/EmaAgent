@@ -10,7 +10,18 @@ import type {
   AssistantBlock,
   UserBlock,
 } from '../types.js';
+import { ContextWindowExceededError } from '../types.js';
 import type { ToolResultBlock, MessageContentPart } from '@ema-agent/contracts';
+
+function isContextWindowError(err: unknown): boolean {
+  const msg = (err instanceof Error ? err.message : String(err)).toLowerCase();
+  const status = (err as { status?: number }).status;
+  return status === 400 && (
+    msg.includes('maximum context length') ||
+    msg.includes('context_length_exceeded') ||
+    msg.includes('context window')
+  );
+}
 
 // ── Types (narrowed from openai SDK namespace) ────────────────────────────────
 
@@ -353,6 +364,7 @@ export class OpenAiResponsesAdapter implements LlmAdapter {
         yield { type: 'done', stopReason };
         return;
       }
+      if (isContextWindowError(err)) throw new ContextWindowExceededError(err instanceof Error ? err.message : String(err));
       throw err;
     }
 

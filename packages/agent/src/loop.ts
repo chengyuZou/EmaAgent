@@ -1,5 +1,6 @@
 import type { LlmMessage, AssistantBlock, UserBlock, ToolResultBlock, EmaStreamEvent } from '@ema-agent/contracts';
-import type { LlmRouter, ThinkingMode } from '@ema-agent/llm';
+import type { LlmRouter, ThinkingMode, StopReason } from '@ema-agent/llm';
+import { ContextWindowExceededError } from '@ema-agent/llm';
 import type { AgentPolicy } from './policy.js';
 import type { TurnToolExecutor } from './tool-executor.js';
 import { advanceState, addUsage, createLoopState } from './loop-state.js';
@@ -123,6 +124,9 @@ export async function* agentLoop(input: AgentLoopInput): AsyncIterable<AgentLoop
       phase:      'thinking',
       transition: state.iteration === 0 ? 'initial' : 'next_turn',
       iteration:  state.iteration + 1,
+      // Reset per-iteration recovery flags on every new iteration.
+      maxOutputTokensRecoveryCount: 0,
+      hasAttemptedReactiveCompact:  false,
     });
     yield { type: 'loop_iteration', n: state.iteration, state };
 
@@ -146,56 +150,93 @@ export async function* agentLoop(input: AgentLoopInput): AsyncIterable<AgentLoop
     // Mailbox messages are drained atomically so each is only seen once.
     const scratchpadCtx  = getScratchpadContext?.();
     const mailboxMsgs    = getMailboxMessages?.() ?? [];
-    const effectiveMessages: LlmMessage[] = [
+
+    const buildEffectiveMessages = (): LlmMessage[] => [
       ...messages,
       ...(scratchpadCtx ? [{ role: 'user' as const, content: scratchpadCtx }] : []),
       ...mailboxMsgs.map(m => ({ role: 'user' as const, content: `[Coordinator]: ${m}` })),
     ];
 
-    const stream = llm.stream({
-      providerId, model,
-      messages:   effectiveMessages,
-      tools:      policy.toolDefs(),
-      toolChoice: 'auto',
-      thinking,
-      signal,
-    });
+    let lastStopReason: StopReason = 'end_turn';
 
-    for await (const chunk of stream) {
-      // Drain relay events between LLM chunks — tools may have fired concurrently.
-      while (pendingRelayEvents.length > 0) {
-        yield { type: 'loop_relay', ev: pendingRelayEvents.shift()! };
-      }
+    // ── Inner retry loop: handles reactive compact on ContextWindowExceededError ──
+    let streamRetry = false;
+    do {
+      streamRetry = false;
+      textByIndex.clear();
+      thinkingByIndex.clear();
+      toolUseByIndex.clear();
+      lastStopReason = 'end_turn';
 
-      switch (chunk.type) {
-        case 'text_delta':
-          textByIndex.set(chunk.blockIndex, (textByIndex.get(chunk.blockIndex) ?? '') + chunk.delta);
-          yield { type: 'loop_text_delta', delta: chunk.delta, blockIndex: chunk.blockIndex };
-          break;
+      const stream = llm.stream({
+        providerId, model,
+        messages:   buildEffectiveMessages(),
+        tools:      policy.toolDefs(),
+        toolChoice: 'auto',
+        thinking,
+        signal,
+      });
 
-        case 'thinking_delta':
-          thinkingByIndex.set(chunk.blockIndex, (thinkingByIndex.get(chunk.blockIndex) ?? '') + chunk.delta);
-          yield { type: 'loop_thinking_delta', delta: chunk.delta, blockIndex: chunk.blockIndex };
-          break;
+      try {
+        for await (const chunk of stream) {
+          // Drain relay events between LLM chunks — tools may have fired concurrently.
+          while (pendingRelayEvents.length > 0) {
+            yield { type: 'loop_relay', ev: pendingRelayEvents.shift()! };
+          }
 
-        case 'tool_use_delta':
-          yield { type: 'loop_tool_partial', callId: chunk.callId, name: chunk.name, argsDelta: chunk.argsDelta, blockIndex: chunk.blockIndex };
-          break;
+          switch (chunk.type) {
+            case 'text_delta':
+              textByIndex.set(chunk.blockIndex, (textByIndex.get(chunk.blockIndex) ?? '') + chunk.delta);
+              yield { type: 'loop_text_delta', delta: chunk.delta, blockIndex: chunk.blockIndex };
+              break;
 
-        case 'tool_use_complete':
-          toolUseByIndex.set(chunk.blockIndex, {
-            type: 'tool_use', id: chunk.callId, name: chunk.name, args: chunk.args,
+            case 'thinking_delta':
+              thinkingByIndex.set(chunk.blockIndex, (thinkingByIndex.get(chunk.blockIndex) ?? '') + chunk.delta);
+              yield { type: 'loop_thinking_delta', delta: chunk.delta, blockIndex: chunk.blockIndex };
+              break;
+
+            case 'tool_use_delta':
+              yield { type: 'loop_tool_partial', callId: chunk.callId, name: chunk.name, argsDelta: chunk.argsDelta, blockIndex: chunk.blockIndex };
+              break;
+
+            case 'tool_use_complete':
+              toolUseByIndex.set(chunk.blockIndex, {
+                type: 'tool_use', id: chunk.callId, name: chunk.name, args: chunk.args,
+              });
+              yield { type: 'loop_tool_complete', callId: chunk.callId, name: chunk.name, args: chunk.args, blockIndex: chunk.blockIndex };
+              // Start executing immediately — concurrent-safe tools run in parallel.
+              executor.addTool(chunk.blockIndex, chunk.callId, chunk.name, chunk.args);
+              break;
+
+            case 'usage':
+              state = addUsage(state, { inputTokens: chunk.inputTokens, outputTokens: chunk.outputTokens });
+              break;
+
+            case 'done':
+              lastStopReason = chunk.stopReason;
+              break;
+          }
+        }
+      } catch (err) {
+        // ── Reactive compact: prompt too long → compact once and retry ────────
+        if (
+          err instanceof ContextWindowExceededError &&
+          compactMessages &&
+          !state.hasAttemptedReactiveCompact
+        ) {
+          const compacted = await compactMessages([...messages]);
+          messages.splice(0, messages.length, ...compacted);
+          state = advanceState(state, {
+            phase:                       state.phase,
+            hasAttemptedReactiveCompact: true,
+            transition:                  'reactive_compact',
           });
-          yield { type: 'loop_tool_complete', callId: chunk.callId, name: chunk.name, args: chunk.args, blockIndex: chunk.blockIndex };
-          // Start executing immediately — concurrent-safe tools run in parallel.
-          executor.addTool(chunk.blockIndex, chunk.callId, chunk.name, chunk.args);
-          break;
-
-        case 'usage':
-          state = addUsage(state, { inputTokens: chunk.inputTokens, outputTokens: chunk.outputTokens });
-          break;
+          streamRetry = true;
+          continue;
+        }
+        throw err;
       }
-    }
+    } while (streamRetry);
 
     const fullText = [...textByIndex.entries()]
       .sort(([a], [b]) => a - b)
@@ -204,6 +245,33 @@ export async function* agentLoop(input: AgentLoopInput): AsyncIterable<AgentLoop
 
     // Signal LLM stream end — engine flushes emotion + fires afterLlmComplete.
     yield { type: 'loop_llm_complete' };
+
+    // ── max_output_tokens recovery ────────────────────────────────────────────
+    // Router fills maxTokens from the catalog so the model always runs at its
+    // actual limit. A max_tokens stop therefore means the output genuinely
+    // exceeds the model's capacity — inject a continuation prompt once, then
+    // give up.
+    if (lastStopReason === 'max_tokens' && toolUseByIndex.size === 0) {
+      if (state.maxOutputTokensRecoveryCount === 0) {
+        const partialBlocks = buildBlockMap(textByIndex, thinkingByIndex, new Map());
+        if (partialBlocks.length > 0) {
+          messages.push({ role: 'assistant', content: partialBlocks });
+        }
+        messages.push({ role: 'user', content: '[系统] 你的输出被截断，请从中断处继续输出剩余内容，不要重复已输出的部分。' });
+        state = advanceState(state, {
+          phase: 'thinking',
+          transition: 'max_output_tokens_recovery',
+          maxOutputTokensRecoveryCount: 1,
+        });
+        continue;
+      } else {
+        // Continuation attempt also truncated — give up.
+        state = advanceState(state, { phase: 'done', transition: 'max_output_tokens_recovery' });
+        yield { type: 'loop_breaker', reason: 'max_output_tokens recovery failed' };
+        yield { type: 'loop_done', fullText, state };
+        return;
+      }
+    }
 
     // ── End condition: no tool calls → done ──────────────────────────────────
     if (toolUseByIndex.size === 0) {
@@ -223,6 +291,13 @@ export async function* agentLoop(input: AgentLoopInput): AsyncIterable<AgentLoop
         yield { type: 'loop_relay', ev: pendingRelayEvents.shift()! };
       }
       if (executor.allDone()) break;
+
+      // Track waiting_user phase when ask_user tool is pending.
+      if (executor.hasWaitingUserTool() && state.phase !== 'waiting_user') {
+        state = advanceState(state, { phase: 'waiting_user', transition: 'waiting_user' });
+      } else if (!executor.hasWaitingUserTool() && state.phase === 'waiting_user') {
+        state = advanceState(state, { phase: 'acting', transition: 'user_answered' });
+      }
 
       // Install resolver BEFORE re-checking — avoids TOCTOU deadlock where the
       // last tool finishes between allDone() and the await assignment.

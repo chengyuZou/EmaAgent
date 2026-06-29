@@ -9,6 +9,7 @@ export type { LlmAdapter }                   from './adapters/base.js';
 export { OpenAiResponsesAdapter }            from './adapters/openai-responses.js';
 export type { UnsupportedPart }              from './validate.js';
 
+export { ContextWindowExceededError } from './types.js';
 export type {
   LlmProtocol,
   StopReason,

@@ -20,8 +20,8 @@ export type LoopPhase =
 // next iteration can detect degenerate loops (e.g. repeated tool failures).
 export type LoopTransition =
   | 'initial'
-  | 'next_turn'              // normal tool-call → continue
-  | 'no_tool_calls'          // LLM returned text only → done
+  | 'next_turn'                    // normal tool-call → continue
+  | 'no_tool_calls'                // LLM returned text only → done
   | 'user_abort'
   | 'max_iterations'
   | 'hook_abort'
@@ -29,13 +29,19 @@ export type LoopTransition =
   | 'waiting_user'
   | 'user_answered'
   | 'user_timeout'
-  | 'user_cancel';
+  | 'user_cancel'
+  | 'max_output_tokens_recovery'   // output truncated → inject continuation prompt and retry once
+  | 'reactive_compact';            // prompt too long → compact then retry
 
 export interface LoopState {
   readonly phase:      LoopPhase;
   readonly iteration:  number;
   readonly transition: LoopTransition;
   readonly usage:      { inputTokens: number; outputTokens: number };
+  /** 0 = not attempted; 1 = continuation prompt sent (next truncation → loop_breaker). */
+  readonly maxOutputTokensRecoveryCount: number;
+  /** Whether a reactive compact has already been attempted this iteration. */
+  readonly hasAttemptedReactiveCompact: boolean;
   /** Populated only when phase === 'waiting_user'. */
   readonly pendingPromptId?: string;
 }
@@ -44,10 +50,12 @@ export interface LoopState {
 
 export function createLoopState(): LoopState {
   return Object.freeze({
-    phase:      'preprocessing',
-    iteration:  0,
-    transition: 'initial',
-    usage:      { inputTokens: 0, outputTokens: 0 },
+    phase:                       'preprocessing',
+    iteration:                   0,
+    transition:                  'initial',
+    usage:                       { inputTokens: 0, outputTokens: 0 },
+    maxOutputTokensRecoveryCount: 0,
+    hasAttemptedReactiveCompact: false,
   });
 }
 

@@ -307,7 +307,7 @@ export class Orchestrator {
           })();
         }
 
-        const contextWindow =  this.bindings.modelCatalog.contextWindowOfAny(model)
+        const contextWindow =  this.bindings.modelCatalog.contextWindowOf(model)
           ?? this.bindings.providerLlmModels.contextWindowFor(model)
           ?? 200_000;
 

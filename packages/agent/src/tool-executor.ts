@@ -167,6 +167,11 @@ export class TurnToolExecutor {
     return this.tracked.every(t => t.done);
   }
 
+  /** Returns true if any ask_user tool call is still pending a response. */
+  hasWaitingUserTool(): boolean {
+    return this.tracked.some(t => t.name === 'ask_user' && !t.done);
+  }
+
   /** Returns tool results sorted by blockIndex. Call after allDone(). */
   getResults(): ToolResultBlock[] {
     return [...this.tracked]
