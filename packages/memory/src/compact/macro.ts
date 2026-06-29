@@ -148,13 +148,31 @@ export async function runMacroCompaction(
     const history = formatHistory(toCompact);
     const prompt  = buildCompactionPrompt({ mode: args.mode, history });
 
-    // Sanity check: pre-flight token estimate. Trigger threshold is 85% of
-    // the current model's context window — when messages exceed this, we
-    // truncate the oldest 20% and retry. Mirrors Claude Code's approach.
+    // Pre-flight token estimate. If the prompt exceeds 85% of the model's
+    // context window, truncate and retry rather than sending a known-overlimit
+    // request.
+    //
+    // Strategy:
+    //   attempt 1 — proportional cut: keep (threshold/estimated) fraction of
+    //               messages, landing just under the threshold in one step.
+    //               Handles large model switches (e.g. 1M → 200K) without
+    //               burning multiple retry slots.
+    //   attempt 2+ — small 20% cuts to correct for token-estimate imprecision.
+    //   MIN_PRESERVE_MESSAGES reached while still over limit → bail immediately
+    //               without calling the LLM (avoids a guaranteed PTL error).
     const estimated = estimateMessagesTokens([{ role: 'user', content: prompt }]);
     const threshold = Math.floor(args.modelContextWindow * COMPACTION_TRIGGER_RATIO);
-    if (estimated > threshold && toCompact.length > MIN_PRESERVE_MESSAGES) {
-      toCompact = truncateOldest(toCompact, TRUNCATE_FRACTION);
+    if (estimated > threshold) {
+      if (toCompact.length <= MIN_PRESERVE_MESSAGES) {
+        return { summary: '', summaryMessageId: null, succeeded: false, attempts: attempt };
+      }
+      if (attempt === 1) {
+        const keepFraction = threshold / estimated;
+        const keepCount    = Math.max(MIN_PRESERVE_MESSAGES, Math.floor(toCompact.length * keepFraction));
+        toCompact = toCompact.slice(toCompact.length - keepCount);
+      } else {
+        toCompact = truncateOldest(toCompact, TRUNCATE_FRACTION);
+      }
       continue;
     }
 
