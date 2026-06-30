@@ -49,12 +49,14 @@ type BashInput = z.infer<typeof inputSchema>;
 // ── Output type ───────────────────────────────────────────────────────────────
 
 export interface BashResult {
-  stdout: string;
-  stderr: string;
-  exitCode: number;
-  timedOut: boolean;
-  truncated: boolean;
+  stdout:     string;
+  stderr:     string;
+  exitCode:   number;
+  timedOut:   boolean;
+  truncated:  boolean;
   durationMs: number;
+  /** True when the process was killed via a per-tool abort (not a timeout or turn abort). */
+  aborted?:   boolean;
 }
 
 // ── Tool definition ───────────────────────────────────────────────────────────

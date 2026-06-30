@@ -76,8 +76,22 @@ export class TurnToolExecutor {
    * Non-concurrent tools update this fence when they're queued.
    */
   private serialTail: Promise<void> = Promise.resolve();
+  /**
+   * Per-tool AbortControllers keyed by callId.
+   * Each controller is cascaded from the turn-level signal so a turn abort fires all of them.
+   * abortTool(callId) fires only one without touching the parent turn.
+   */
+  private readonly toolAborts = new Map<string, AbortController>();
 
   constructor(private readonly opts: TurnToolExecutorOpts) {}
+
+  /** Cancel a single in-flight tool without aborting the parent turn. Returns false if not found. */
+  abortTool(callId: string): boolean {
+    const ctrl = this.toolAborts.get(callId);
+    if (!ctrl) return false;
+    ctrl.abort();
+    return true;
+  }
 
   /** Reset between LLM iterations. */
   reset(): void {
@@ -188,6 +202,14 @@ export class TurnToolExecutor {
     } = this.opts;
     const { id, name, args } = track;
 
+    // ── Per-tool AbortController ──────────────────────────────────────────────
+    // Cascades from the turn signal so turn-level abort fires all tool aborts.
+    // abortTool(callId) fires only this controller, leaving the turn running.
+    const perToolCtrl    = new AbortController();
+    const onTurnAbort    = (): void => perToolCtrl.abort();
+    toolCtx.signal.addEventListener('abort', onTurnAbort, { once: true });
+    this.toolAborts.set(id, perToolCtrl);
+
     try {
       // ── Tool observer hook ────────────────────────────────────────────────
       // Tool lifecycle hooks are UI/audit observers only. PermissionEngine is
@@ -221,13 +243,20 @@ export class TurnToolExecutor {
       }
 
       // ── Execute ───────────────────────────────────────────────────────────
+      // Tools receive the per-tool signal so abortTool() can cancel just this
+      // invocation. The turn-level signal is cascaded so both fire on turn abort.
+      const perToolCtx = { ...toolCtx, signal: perToolCtrl.signal };
       let output: unknown;
       let isError = false;
 
       try {
-        output = await tools.dispatch(name, args, toolCtx);
-        // Push result event BEFORE await-ing hooks so the engine can yield it
-        // immediately. track.done is set in finally after hooks complete.
+        output = await tools.dispatch(name, args, perToolCtx);
+
+        // If aborted mid-run but the turn is still alive, annotate the partial output.
+        if (perToolCtrl.signal.aborted && !toolCtx.signal.aborted) {
+          output = annotateAborted(output);
+        }
+
         pushEv({ type: 'tool_result', sessionId: this.opts.sessionId, callId: id, name, output, durationMs: Date.now() - track.startMs });
         await hooks.trigger('afterToolUse', {
           turnId, sessionId,
@@ -235,14 +264,21 @@ export class TurnToolExecutor {
           meta:    {},
         });
       } catch (err) {
-        isError = true;
-        output  = (err as Error).message;
-        pushEv({ type: 'tool_result', sessionId: this.opts.sessionId, callId: id, name, error: { code: 'tool/error', message: output as string }, durationMs: Date.now() - track.startMs });
-        await hooks.trigger('onToolFailure', {
-          turnId, sessionId,
-          payload: { callId: id, name, error: err },
-          meta:    {},
-        });
+        // Per-tool abort (user cancelled this tool) — not an error from the LLM's perspective.
+        if (perToolCtrl.signal.aborted && !toolCtx.signal.aborted) {
+          output  = '[用户中途终止]';
+          isError = false;
+          pushEv({ type: 'tool_result', sessionId: this.opts.sessionId, callId: id, name, output, durationMs: Date.now() - track.startMs });
+        } else {
+          isError = true;
+          output  = (err as Error).message;
+          pushEv({ type: 'tool_result', sessionId: this.opts.sessionId, callId: id, name, error: { code: 'tool/error', message: output as string }, durationMs: Date.now() - track.startMs });
+          await hooks.trigger('onToolFailure', {
+            turnId, sessionId,
+            payload: { callId: id, name, error: err },
+            meta:    {},
+          });
+        }
       }
 
       const serialized = typeof output === 'string' ? output : JSON.stringify(output, null, 2);
@@ -255,6 +291,9 @@ export class TurnToolExecutor {
       track.result = { type: 'tool_result', toolUseId: id, content, isError };
 
     } finally {
+      toolCtx.signal.removeEventListener('abort', onTurnAbort);
+      this.toolAborts.delete(id);
+
       // Always mark done and signal the drain loop — even if an unexpected error
       // escaped from hooks or the gate. Prevents the drain loop from deadlocking.
       if (!track.done) {
@@ -272,4 +311,22 @@ export class TurnToolExecutor {
       signal();
     }
   }
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+/**
+ * Append an abort notice to a tool's partial output.
+ * For bash-like results (objects with a `stdout` string field), the notice is
+ * appended to stdout so the LLM sees what was printed before cancellation.
+ * All other types are serialised and the notice appended as a trailing line.
+ */
+function annotateAborted(output: unknown): unknown {
+  const notice = '\n[用户中途终止]';
+  if (output && typeof output === 'object' && typeof (output as Record<string, unknown>)['stdout'] === 'string') {
+    const r = output as Record<string, unknown>;
+    return { ...r, stdout: (r['stdout'] as string) + notice };
+  }
+  if (typeof output === 'string') return output + notice;
+  return String(JSON.stringify(output) ?? '') + notice;
 }

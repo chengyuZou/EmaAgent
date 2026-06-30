@@ -91,6 +91,8 @@ export interface RunResult {
   exitCode:  number;
   timedOut:  boolean;
   truncated: boolean;
+  /** True when the process was killed via a per-tool AbortSignal (not a timeout). */
+  aborted?:  boolean;
 }
 
 export interface ICommandRunner {

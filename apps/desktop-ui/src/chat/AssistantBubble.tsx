@@ -87,12 +87,12 @@ export function AssistantBubble({ message, isStreaming }: AssistantBubbleProps):
                     style={{ borderColor: 'var(--ema-border)' }}
                   >
                     {group.slices.map((slice, si) => (
-                      <SliceRenderer key={si} slice={slice} streaming={!!isStreaming} />
+                      <SliceRenderer key={si} slice={slice} streaming={!!isStreaming} turnId={message.turnId as string | undefined} />
                     ))}
                   </div>
                 );
               }
-              return <SliceRenderer key={gi} slice={group.slice} streaming={!!isStreaming} />;
+              return <SliceRenderer key={gi} slice={group.slice} streaming={!!isStreaming} turnId={message.turnId as string | undefined} />;
             })}
           </div>
         )}
@@ -262,14 +262,14 @@ function resolveSlices(msg: { content: string; slices?: AssistantSlice[] }): Ass
   return [];
 }
 
-function SliceRenderer({ slice, streaming }: { slice: AssistantSlice; streaming: boolean }): JSX.Element {
+function SliceRenderer({ slice, streaming, turnId }: { slice: AssistantSlice; streaming: boolean; turnId?: string }): JSX.Element {
   switch (slice.type) {
     case 'text':
       return <Markdown source={slice.text} />;
     case 'thinking':
       return <></>;
     case 'tool_use':
-      return <ToolCallBlock slice={slice} streaming={streaming} />;
+      return <ToolCallBlock slice={slice} streaming={streaming} turnId={turnId} />;
     case 'narrative_status':
       return <NarrativeStatusBlock slice={slice} />;
     default:

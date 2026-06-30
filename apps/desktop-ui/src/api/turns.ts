@@ -74,6 +74,14 @@ export const turnsApi = {
     );
   },
 
+  /** DELETE /api/turns/:turnId/tools/:callId — cancel a single in-flight tool. */
+  abortTool(turnId: string, callId: string): Promise<{ ok: boolean }> {
+    return sidecarClient.request(
+      `/api/turns/${turnId}/tools/${callId}`,
+      { method: 'DELETE' },
+    );
+  },
+
   /** POST /api/turns/:turnId/ask-user/:promptId/respond */
   respondAskUser(
     turnId:   string,

@@ -355,6 +355,20 @@ export function turnsRoute(bindings: AppBindings): Hono {
     return c.json({ ok: true });
   });
 
+  // ── DELETE /api/turns/:turnId/tools/:callId ────────────────────────────────
+  //
+  // Cancel a single in-flight tool without aborting the parent turn.
+  // The tool receives a per-tool AbortSignal; partial output (if any) is
+  // returned as the tool_result so the LLM can decide how to proceed.
+  // Returns 404 if the callId is not currently active.
+  app.delete('/:turnId/tools/:callId', (c) => {
+    const turnId = asTurnId(c.req.param('turnId'));
+    const callId = c.req.param('callId');
+    const aborted = orchestrator.abortTool(turnId, callId);
+    if (!aborted) return c.json({ ok: false, reason: 'not_found' }, 404);
+    return c.json({ ok: true });
+  });
+
   // ── POST /api/turns/:turnId/ask-user/:promptId/respond ─────────────────────
   //
   // Resolves a pending ask_user prompt. The tool awaits a Promise stored in

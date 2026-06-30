@@ -8,14 +8,18 @@
  */
 import { useState, useCallback, type JSX } from 'react';
 import { createPatch } from 'diff';
+import { IconButton } from '@ema-agent/ui';
 import type { AssistantSlice } from '../stores/conversation-store.js';
+import { turnsApi } from '../api/turns.js';
 
 export interface ToolCallBlockProps {
   slice:      Extract<AssistantSlice, { type: 'tool_use' }>;
   streaming?: boolean;
+  /** Turn ID — required to enable per-tool abort button. */
+  turnId?:    string;
 }
 
-export function ToolCallBlock({ slice, streaming = false }: ToolCallBlockProps): JSX.Element {
+export function ToolCallBlock({ slice, streaming = false, turnId }: ToolCallBlockProps): JSX.Element {
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
 
@@ -76,6 +80,21 @@ export function ToolCallBlock({ slice, streaming = false }: ToolCallBlockProps):
           <span className="ml-auto flex items-center gap-1 text-[10px] shrink-0" style={{ color: 'var(--ema-warning)' }}>
             <span className="w-1 h-1 rounded-full animate-pulse" style={{ background: 'var(--ema-warning)' }} />
             运行中
+          </span>
+        )}
+
+        {isPending && turnId && (
+          <span className="ema-chip-in shrink-0">
+            <IconButton
+              label="中止该工具"
+              icon="i-mdi:stop-circle-outline"
+              variant="danger"
+              size="sm"
+              onClick={(e) => {
+                e.stopPropagation();
+                void turnsApi.abortTool(turnId, slice.callId);
+              }}
+            />
           </span>
         )}
       </button>
@@ -291,7 +310,7 @@ function ShellBlock({ code }: { code: string }): JSX.Element {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-const BASH_TOOLS = new Set(['bash', 'run_command', 'execute_bash', 'shell']);
+const BASH_TOOLS = new Set(['bash', 'powershell', 'run_command', 'execute_bash', 'shell']);
 const EDIT_TOOLS = new Set(['edit_file', 'str_replace', 'str_replace_editor', 'apply_diff', 'patch']);
 
 function getBashCommand(args: unknown): string {

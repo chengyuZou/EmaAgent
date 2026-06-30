@@ -122,6 +122,11 @@ export class Orchestrator {
     this.agent.abortSubagent(turnId as string, subagentId);
   }
 
+  /** Cancel a single in-flight tool without aborting the parent turn. Returns false if not found. */
+  abortTool(turnId: TurnId, callId: string): boolean {
+    return this.agent.abortTool(turnId as string, callId);
+  }
+
   async run(request: TurnRequest): Promise<TurnResult> {
     const sessionId = asSessionId(request.sessionId);
     const { turn, signal } = this.bindings.session.startTurn({

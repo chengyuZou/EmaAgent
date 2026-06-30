@@ -64,6 +64,7 @@ export function spawnProcess(
       clearTimeout(timer);
       signal?.removeEventListener('abort', onAbort);
 
+      const aborted    = !timedOut && (signal?.aborted ?? false);
       const totalChars = stdout.length + stderr.length;
       const truncated  = totalChars > MAX_OUTPUT_CHARS;
       if (truncated) {
@@ -79,6 +80,7 @@ export function spawnProcess(
         exitCode: code ?? -1,
         timedOut,
         truncated,
+        aborted,
       });
     });
   });

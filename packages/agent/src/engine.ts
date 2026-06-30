@@ -26,26 +26,34 @@ import * as path from 'node:path';
  */
 export class AgentEngine {
   // turnId → spawner, for per-subagent cancellation from the route layer.
-  private readonly activeSpawners = new Map<string, SubagentSpawner>();
+  private readonly activeSpawners  = new Map<string, SubagentSpawner>();
+  // turnId → executor, for per-tool cancellation from the route layer.
+  private readonly activeExecutors = new Map<string, TurnToolExecutor>();
 
   constructor(private readonly deps: AgentDeps) {}
 
   run(input: AgentRunInput): AsyncIterable<EmaStreamEvent> {
-    return runTurn(this.deps, input, this.activeSpawners);
+    return runTurn(this.deps, input, this.activeSpawners, this.activeExecutors);
   }
 
   /** Cancel a single sub-agent without aborting the parent turn. */
   abortSubagent(turnId: string, subagentId: string): void {
     this.activeSpawners.get(turnId)?.abortSubagent(subagentId);
   }
+
+  /** Cancel a single in-flight tool without aborting the parent turn. Returns false if not found. */
+  abortTool(turnId: string, callId: string): boolean {
+    return this.activeExecutors.get(turnId)?.abortTool(callId) ?? false;
+  }
 }
 
 // ── Core turn runner ──────────────────────────────────────────────────────────
 
 async function* runTurn(
-  deps:           AgentDeps,
-  input:          AgentRunInput,
-  activeSpawners: Map<string, SubagentSpawner>,
+  deps:            AgentDeps,
+  input:           AgentRunInput,
+  activeSpawners:  Map<string, SubagentSpawner>,
+  activeExecutors: Map<string, TurnToolExecutor>,
 ): AsyncIterable<EmaStreamEvent> {
   const { session, hooks, llm, emotion, tools, permission, askUserRegistry } = deps;
   const { turn, signal, userInput, systemPrompt, workspaceRoots, providerId, model } = input;
@@ -170,7 +178,7 @@ async function* runTurn(
           : undefined,
       };
 
-      return new TurnToolExecutor({
+      const executor = new TurnToolExecutor({
         sessionId, turnId,
         allows:          name => policy.allows(name),
         tools, permission, permCtx, hooks, toolCtx,
@@ -180,6 +188,8 @@ async function* runTurn(
         signal:          wakeSignal,
         toolResultStore: contextStores?.toolResultStore,
       });
+      activeExecutors.set(turnId, executor);
+      return executor;
     };
 
     // ── taskStore: claim turn ────────────────────────────────────────────────
@@ -349,6 +359,7 @@ async function* runTurn(
     // instead of pushing into a GC'd array, preventing a silent memory leak.
     emitRef.fn = undefined;
     activeSpawners.delete(turnId);
+    activeExecutors.delete(turnId);
     if (scratchpadDir) {
       try { fs.rmSync(scratchpadDir, { recursive: true, force: true }); } catch { /* non-fatal */ }
     }
