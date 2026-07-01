@@ -101,9 +101,17 @@ export function ShellSetupDialog({ status, onResolved }: ShellSetupDialogProps):
                 size="sm"
                 onClick={() => void tauriBridge.openUrl(WSL_GUIDE_URL)}
               >
-                使用 WSL2(高级)
+                WSL2 安装指南(高级)
               </Button>
             )}
+
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onResolved}
+            >
+              已安装，重新检测
+            </Button>
           </div>
 
         </div>

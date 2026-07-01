@@ -1,6 +1,7 @@
 import { spawnSync, spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { getPlatform } from './platform.js';
+import { WSL_BASH_SENTINEL } from './types.js';
 
 export type ShellProbeResult =
   | { available: true;  path: string }
@@ -40,6 +41,21 @@ function gitBashFromRegistry(): string | null {
   return null;
 }
 
+/**
+ * Verify that WSL has a usable bash — i.e. a distro is installed and `bash`
+ * runs inside it. `wsl --status` returning 0 only means wsl.exe is present
+ * (could be no distro), so we actually invoke bash. Returns true iff the
+ * probe exits 0 within the timeout.
+ */
+function probeWslBash(): boolean {
+  const r = spawnSync('wsl.exe', ['bash', '-c', 'echo ok'], {
+    encoding:    'utf8',
+    timeout:     8_000,
+    windowsHide: true,
+  });
+  return r.status === 0;
+}
+
 let _cached: ShellProbeResult | undefined;
 
 /**
@@ -73,6 +89,14 @@ export function probeShell(opts?: { fresh?: boolean }): ShellProbeResult {
   const knownPath = GIT_BASH_CANDIDATE_PATHS.find(existsSync) ?? gitBashFromRegistry();
   if (knownPath) {
     return (_cached = { available: true, path: knownPath });
+  }
+
+  // No native bash.exe — but WSL2 with a distro installed gives a usable bash.
+  // `wsl --status` returning 0 only proves wsl.exe exists (not that a distro is
+  // installed), so actually invoke bash inside WSL to verify. Backends route
+  // commands through `wsl.exe bash -c …` when they see the sentinel.
+  if (probeWslBash()) {
+    return (_cached = { available: true, path: WSL_BASH_SENTINEL });
   }
 
   const wingetResult = spawnSync('winget', ['--version'], {

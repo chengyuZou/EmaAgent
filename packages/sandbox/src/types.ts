@@ -23,6 +23,17 @@ export interface SandboxConfig {
   network:    SandboxNetworkConfig
 }
 
+// ── Shell sentinel ────────────────────────────────────────────────────────────
+
+/**
+ * Sentinel returned by `probeShell().path` on Windows when no native bash.exe
+ * is found but WSL bash is usable. Backends recognise this and route through
+ * `wsl.exe bash -c …` instead of spawning a bare shell. Lets users with WSL2
+ * (and no Git for Windows) enter Agent mode — previously blocked by the
+ * "bash 未找到" dialog.
+ */
+export const WSL_BASH_SENTINEL = 'wsl:bash'
+
 // ── Backend interface ─────────────────────────────────────────────────────────
 
 /**
