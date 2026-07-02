@@ -56,7 +56,7 @@ function probeWslBash(): boolean {
   return r.status === 0;
 }
 
-let _cached: ShellProbeResult | undefined;
+let cached: ShellProbeResult | undefined;
 
 /**
  * Detect bash availability on the current platform.
@@ -65,11 +65,11 @@ let _cached: ShellProbeResult | undefined;
  * Result is cached for the process lifetime. Pass `{ fresh: true }` to bypass.
  */
 export function probeShell(opts?: { fresh?: boolean }): ShellProbeResult {
-  if (!opts?.fresh && _cached !== undefined) return _cached;
+  if (!opts?.fresh && cached !== undefined) return cached;
 
   const platform = getPlatform();
   if (platform !== 'windows') {
-    return (_cached = { available: true, path: '/bin/bash' });
+    return (cached = { available: true, path: '/bin/bash' });
   }
 
   const whereResult = spawnSync('where', ['bash'], {
@@ -80,7 +80,7 @@ export function probeShell(opts?: { fresh?: boolean }): ShellProbeResult {
 
   if (whereResult.status === 0 && whereResult.stdout.trim()) {
     const firstLine = whereResult.stdout.trim().split(/\r?\n/)[0]!.trim();
-    return (_cached = { available: true, path: firstLine });
+    return (cached = { available: true, path: firstLine });
   }
 
   // `where bash` uses the process-inherited PATH, which won't include a freshly
@@ -88,7 +88,7 @@ export function probeShell(opts?: { fresh?: boolean }): ShellProbeResult {
   // file-system check: well-known install locations, then registry lookup.
   const knownPath = GIT_BASH_CANDIDATE_PATHS.find(existsSync) ?? gitBashFromRegistry();
   if (knownPath) {
-    return (_cached = { available: true, path: knownPath });
+    return (cached = { available: true, path: knownPath });
   }
 
   // No native bash.exe — but WSL2 with a distro installed gives a usable bash.
@@ -96,7 +96,7 @@ export function probeShell(opts?: { fresh?: boolean }): ShellProbeResult {
   // installed), so actually invoke bash inside WSL to verify. Backends route
   // commands through `wsl.exe bash -c …` when they see the sentinel.
   if (probeWslBash()) {
-    return (_cached = { available: true, path: WSL_BASH_SENTINEL });
+    return (cached = { available: true, path: WSL_BASH_SENTINEL });
   }
 
   const wingetResult = spawnSync('winget', ['--version'], {
@@ -111,7 +111,7 @@ export function probeShell(opts?: { fresh?: boolean }): ShellProbeResult {
     windowsHide: true,
   });
 
-  return (_cached = {
+  return (cached = {
     available:       false,
     wingetAvailable: wingetResult.status === 0,
     wslAvailable:    wslResult.status === 0,
@@ -155,7 +155,7 @@ export function installGitViaWinget(): Promise<GitInstallResult> {
         // The parent Node process's PATH won't include the new install yet,
         // so `where bash` via spawnSync would still fail. Direct file check works.
         const found = GIT_BASH_CANDIDATE_PATHS.find(existsSync) ?? gitBashFromRegistry();
-        _cached = found
+        cached = found
           ? { available: true, path: found }
           : undefined; // fall back to re-probe on next probeShell() call
       }
