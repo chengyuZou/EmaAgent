@@ -82,7 +82,7 @@ function buildProfile(config: SandboxConfig): string {
     }
   }
 
-  // Always allow localhost and Unix domain sockets — required by npm, git, many tools.
+  // Always allow localhost and Unix domain sockets — required by npm, git, many tools
   // These come AFTER any global deny so they form explicit overrides regardless of
   // whether SBPL evaluates by first-match or most-specific-match semantics.
   rules.push('(allow network-outbound (remote unix-socket))');
