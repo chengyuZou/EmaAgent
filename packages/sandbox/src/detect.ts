@@ -77,6 +77,7 @@ function detectBwrap(
   return { backend: 'app-layer', degradeReason };
 }
 
+
 function detectWindowsBackend(): DetectResult {
   // Use --list instead of --status: --list is supported on every wsl.exe since
   // the first public WSL release, whereas --status was added later and silently
