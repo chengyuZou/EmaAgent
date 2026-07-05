@@ -106,6 +106,11 @@ export class SubagentSpawner implements ISubagentSpawner {
     const sessionId     = this.parentSessionId as SessionId;
     const parentTurnId  = this.parentTurnId   as TurnId;
     const resolvedModel = opts.model ?? this.parentModel;
+    // Subagents get no workspace: workspaceRoot='' means "no workspace" —
+    // pathInAnyWorkingDir short-circuits to false and resolvePatternRoot
+    // returns no-match for session-scoped relative patterns, so a subagent
+    // cannot touch the parent's workspace files unless an explicit global/
+    // home-anchored (~/) allow rule permits it. Do NOT pass process.cwd().
     const permCtx       = { workspaceRoot: '', sessionId: this.parentSessionId };
 
     const startedAtMs = Date.now();
@@ -181,7 +186,7 @@ export class SubagentSpawner implements ISubagentSpawner {
       const toolCtx: ToolExecutionContext = {
         sessionId,
         turnId:           subagentId as TurnId,
-        workspaceRoot:    '',
+        workspaceRoot:    '',  // no workspace — see permCtx note above
         signal:           childCtrl.signal,
         readFileState:    new Map(),
         emit:             pushEv,

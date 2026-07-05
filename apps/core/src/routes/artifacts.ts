@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { z }    from 'zod';
 import * as path from 'node:path';
 import { asArtifactId, asSessionId } from '@ema-agent/contracts';
+import { pathInWorkingDir } from '@ema-agent/permission';
 import type { AppBindings } from '../wiring/index.js';
 
 // ── Artifacts router ──────────────────────────────────────────────────────────
@@ -58,9 +59,10 @@ export function createArtifactsRouter(bindings: AppBindings) {
       return c.json({ error: 'session has no workspace root' }, 403);
     }
     const resolved = path.resolve(body.targetPath);
-    const abs      = path.resolve(workspaceRoot);
-    const inRoot   = resolved === abs || resolved.startsWith(abs + path.sep);
-    if (!inRoot) {
+    // Use permission's pathInWorkingDir — handles macOS symlink normalisation,
+    //Windows/macOS case-insensitivity, and path traversal. The previous naive
+    // startsWith check was case-sensitive and missed drive-letter casing.
+    if (!pathInWorkingDir(resolved, workspaceRoot)) {
       return c.json({ error: 'targetPath must be inside the workspace root' }, 403);
     }
 

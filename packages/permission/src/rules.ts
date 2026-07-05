@@ -87,6 +87,14 @@ function resolvePatternRoot(
 
   const scopeRoot = scope === 'global' ? home : workspaceRoot;
 
+  // No workspace (subagents pass ''). Session/project-scoped relative or
+  // `/`-prefixed patterns anchor to the workspace — without one they cannot
+  // match. Return empty so pathMatchesGlob short-circuits to false instead of
+  // falling back to path.resolve('') = process.cwd() (which would let a
+  // subagent match rules against the sidecar's cwd). `~/` and `//` patterns
+  // already returned above (home / fs-root anchored, workspace-independent).
+  if (!scopeRoot) return { root: '', pattern: '' };
+
   if (glob.startsWith('/')) {
     // BUG-02 fix: strip leading / so pattern is root-relative, not scope-relative with a slash
     return { root: scopeRoot, pattern: glob.slice(1) };
