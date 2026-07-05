@@ -39,15 +39,16 @@ export async function recallEpisodic(
   const { mode, queryVec, queryEmbed, index, alreadySurfaced, settings } = args;
   const K       = mode === 'narrative' ? Math.max(1, Math.ceil(settings.recall.layer2TopK / 2)) : settings.recall.layer2TopK;
   const w       = settings.recall.currentModeWeight;
-  const curSlot = Math.max(1, Math.ceil(K * w));
+  // Reserve at least 1 slot for cross-mode recall when K allows, so a high
+  // currentModeWeight (e.g. 0.9) doesn't fully starve otherModes at small K
+  // (previously: K=5, w=0.9 → curSlot=5, othSlot=0, cross-mode shut off).
+  const curSlot = K > 1 ? Math.min(Math.max(1, Math.ceil(K * w)), K - 1) : 1;
   const othSlot = Math.max(0, K - curSlot);
-  /**
-   * otherMode is the "opposite" of mode: 
-   * - if mode=chat, otherMode=agent; 
-   * - if mode=agent, otherMode=chat; 
-   * - if mode=narrative, otherMode=chat
-   */
-  const otherMode: 'chat' | 'agent' | 'narrative' = mode === 'chat' ? 'agent' : mode === 'agent' ? 'chat' : 'chat';
+  // Cross-mode recall pulls from ALL other modes, not just one — a single
+  // hardcoded otherMode meant the third mode's memories never surfaced
+  // (e.g. narrative mode only recalled chat, never agent).
+  const otherModeNames: ReadonlyArray<'chat' | 'agent' | 'narrative'> =
+    (['chat', 'agent', 'narrative'] as const).filter(m => m !== mode);
 
   // ── Vector path ──────────────────────────────────────────────────────────
   if (queryVec && queryEmbed) {
@@ -61,8 +62,10 @@ export async function recallEpisodic(
       .map(toRecalledItem);
 
     const otherModes = ranked
-      .filter(r => parseModes(r.modes_json).includes(otherMode)
-                 && !currentMode.some(c => c.id === r.id))
+      .filter(r => {
+        if (currentMode.some(c => c.id === r.id)) return false;
+        return parseModes(r.modes_json).some(m => m !== mode);
+      })
       .slice(0, othSlot)
       .map(toRecalledItem);
 
@@ -71,7 +74,7 @@ export async function recallEpisodic(
 
   // ── Heuristic fallback ───────────────────────────────────────────────────
   const currentPool = deps.items.listByMode(mode, 500);
-  const otherPool   = deps.items.listByMode(otherMode, 500);
+  const otherPool   = otherModeNames.flatMap(m => deps.items.listByMode(m, 500));
   const currentRanked = rankByHeuristic(currentPool, alreadySurfaced);
   const otherRanked   = rankByHeuristic(otherPool,   alreadySurfaced);
 

@@ -99,7 +99,11 @@ export class AgentTasksRepo {
   fail(id: string, error: string, at: number): void {
     this.db
       .prepare(
-        `UPDATE agent_tasks SET status = 'failed', error = ?, updated_at = ? WHERE id = ?`,
+        `UPDATE agent_tasks
+            SET status = 'failed', error = ?,
+                pending_prompt_id = NULL, pending_questions_json = NULL,
+                updated_at = ?
+          WHERE id = ?`,
       )
       .run(error, at, id);
   }
@@ -107,7 +111,11 @@ export class AgentTasksRepo {
   cancel(id: string, reason: string, at: number): void {
     this.db
       .prepare(
-        `UPDATE agent_tasks SET status = 'cancelled', error = ?, updated_at = ? WHERE id = ?`,
+        `UPDATE agent_tasks
+            SET status = 'cancelled', error = ?,
+                pending_prompt_id = NULL, pending_questions_json = NULL,
+                updated_at = ?
+          WHERE id = ?`,
       )
       .run(reason, at, id);
   }

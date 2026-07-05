@@ -120,28 +120,37 @@ export class SubagentSpawner implements ISubagentSpawner {
     signal.addEventListener('abort', onParentAbort, { once: true });
     this.activeSubagents.set(subagentId, childCtrl);
 
-    // ── taskStore: register this sub-agent ────────────────────────────────
-    if (this.deps.taskStore) {
-      this.deps.taskStore.claim({
-        taskId:    subagentId,
-        sessionId: this.parentSessionId,
-        turnId:    null,
-        parentId:  this.parentTurnId,
-      });
-    }
+    // claim + subagent_started emit can throw (DB write / subscriber error).
+    // If they do, release the listener + map entry registered above so they
+    // don't leak — the main loop's try/finally below only covers the loop body.
+    try {
+      // ── taskStore: register this sub-agent ──────────────────────────────
+      if (this.deps.taskStore) {
+        this.deps.taskStore.claim({
+          taskId:    subagentId,
+          sessionId: this.parentSessionId,
+          turnId:    null,
+          parentId:  this.parentTurnId,
+        });
+      }
 
-    // ── subagent_started ──────────────────────────────────────────────────
-    emit({
-      type: 'subagent_started',
-      sessionId,
-      subagentId,
-      parentTurnId,
-      description:   opts.description,
-      model:         resolvedModel,
-      kind,
-      promptExcerpt: prompt.slice(0, 200),
-      startedAtMs,
-    });
+      // ── subagent_started ────────────────────────────────────────────────
+      emit({
+        type: 'subagent_started',
+        sessionId,
+        subagentId,
+        parentTurnId,
+        description:   opts.description,
+        model:         resolvedModel,
+        kind,
+        promptExcerpt: prompt.slice(0, 200),
+        startedAtMs,
+      });
+    } catch (err) {
+      signal.removeEventListener('abort', onParentAbort);
+      this.activeSubagents.delete(subagentId);
+      throw err;
+    }
 
     // Tracking state for dashboard metrics
     let currentIteration = 0;
