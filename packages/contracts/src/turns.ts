@@ -1,7 +1,12 @@
 ﻿import type { SessionId, TurnId, TurnMode } from './ids.js';
 import type { MessageContentPart, TurnAttachment } from './messages.js';
+import type { KbAssetScope } from './kb.js';
 
 // ── POST /api/turns 的请求体 ──────────────────────────────────────────────────
+//
+// Wire 类型一律用 plain string（JSON 实际形态），不用 branded ID——brand 是
+// 内部类型安全工具，边界在 route handler（asSessionId / asTurnId 转换）。
+// 与 SessionWire.id: string 同惯例。
 
 /**
  * userInput 和 contentParts 至少要有一个（Zod schema 在路由层做 refine 校验）。
@@ -11,7 +16,7 @@ import type { MessageContentPart, TurnAttachment } from './messages.js';
  * 因为同名模型可能存在于多个供应商下。
  */
 export interface TurnRequest {
-  sessionId?:    SessionId;             // 省略 → 自动创建新 session
+  sessionId?:    string;             // 省略 → 自动创建新 session
   mode:          TurnMode;
   userInput?:    string;
   contentParts?: MessageContentPart[];
@@ -20,14 +25,17 @@ export interface TurnRequest {
   providerId?:   string;
   /** 模型名。如果有 providerId，此模型必须在该供应商下已启用。 */
   model?:        string;
-  ttsEnabled?:   boolean;
+  ttsEnabled?:      boolean;
+  /** 用户开启"思考"开关——仅对支持 reasoning 的模型生效。route 转成 orchestrator 的 ThinkingMode。 */
+  thinkingEnabled?: boolean;
+  /** KB ids the user selected in the chat picker (turn-level search scope). */
+  kbIds?:           string[];
   /**
-   * 本次 turn 用户选中的知识库文档 id。决定 AgenticRAG 的检索范围：
-   * - 非空 → kb_search 限定在这些文档内，并为每个文档记一次使用（use_count +1）
-   * - 省略/空 → 不限定（agent 模式下 kb_search 搜全部全局库）
-   * turn 级字段，与 mode 无关——将来 chat/narrative 的 RAG 复用同一字段。
+   * Per-KB document scopes: which docs within each KB are selected. Drives
+   * AgenticRAG precision — kb_search is restricted to these assets. Omit/empty
+   * → agent mode searches all global KBs; chat/narrative RAG will reuse this.
    */
-  kbAssetIds?:   string[];
+  kbAssetScopes?:   KbAssetScope[];
 }
 
 // ── POST /api/turns 的响应体 ─────────────────────────────────────────────────

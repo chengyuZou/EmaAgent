@@ -86,7 +86,7 @@ export type { SidecarClient } from './api/sidecar-client.js';
 
 export { turnsApi }          from './api/turns.js';
 export { permissionApi }     from './api/permission.js';
-export type { CreateTurnRequest, CreateTurnResponse } from './api/turns.js';
+export type { TurnRequest, TurnCreatedResponse } from './api/turns.js';
 
 export { sessionsApi }       from './api/sessions.js';
 export type {

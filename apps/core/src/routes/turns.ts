@@ -7,7 +7,7 @@ import { TurnEventHub } from '../sse/event-hub.js';
 import { TurnEventStore } from '../sse/event-store.js';
 import { encodeEvent, encodePing } from '../sse/writer.js';
 import type { AppBindings } from '../wiring/index.js';
-import type { EmaStreamEvent, TurnId } from '@ema-agent/contracts';
+import type { EmaStreamEvent, TurnId, TurnRequest } from '@ema-agent/contracts';
 import { asTurnId, asSessionId } from '@ema-agent/contracts';
 
 // ── UTF-8 safe body decoder ───────────────────────────────────────────────────
@@ -65,6 +65,16 @@ const turnBodySchema = z.object({
   (data) => data.userInput || (data.contentParts && data.contentParts.length > 0),
   { message: 'either userInput or contentParts is required' },
 );
+
+// ── Drift guard ───────────────────────────────────────────────────────────────
+// Forces a compile error when T is not `true` — used to assert that the Zod
+// schema above stays in sync with the canonical TurnRequest wire type in
+// @ema-agent/contracts. If editing either side, the error here tells you the
+// other side is out of date.
+type RequireTrue<T extends true> = T;
+type TurnBodySchemaMatchesContract = RequireTrue<
+  z.infer<typeof turnBodySchema> extends TurnRequest ? true : false
+>;
 
 function isTerminalTurnEvent(event: EmaStreamEvent): boolean {
   return (
