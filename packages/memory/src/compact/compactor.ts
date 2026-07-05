@@ -59,6 +59,15 @@ export async function runCompaction(
   }
 
   const safeCut = findSafeCutPoint(working, working.length - tailSize);
+  // Empty head (safeCut === 0) means nothing can be safely compacted off the
+  // front. Bail before emitting memory_compaction_started — running macro
+  // compaction on an empty head would only fail and emit a misleading
+  // started→failed pair for a compaction that was never viable.
+  if (safeCut === 0) {
+    return { messages: working, macroRan: false, microCleared: micro.cleared,
+             succeeded: false, beforeTokens, afterTokens: estimated,
+             savedTokens: beforeTokens - estimated };
+  }
   const head    = working.slice(0, safeCut);
   const tail    = working.slice(safeCut);
 

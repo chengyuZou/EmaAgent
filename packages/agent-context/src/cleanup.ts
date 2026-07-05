@@ -53,10 +53,21 @@ export class ToolResultCleaner {
     for (const dir of sessionDirs) {
       const files = this.listFiles(dir);
 
-      // Rule 1: TTL
+      // Rule 1: TTL — but skip sessions with recent activity. A long-running
+      // session shouldn't lose its early tool results just because they aged
+      // past ttlDays while the session is still in use; the session directory's
+      // mtime is the activity signal (any write into the session dir updates
+      // it). Quota rules below still apply to active sessions, so disk usage
+      // stays bounded.
+      const sessionDir = path.dirname(dir);
+      let sessionActive = false;
+      try {
+        sessionActive = (now - fs.statSync(sessionDir).mtimeMs) < ttlMs;
+      } catch { /* session dir gone — treat as inactive */ }
+
       const survivors: FileEntry[] = [];
       for (const f of files) {
-        if (now - f.mtimeMs > ttlMs) {
+        if (!sessionActive && now - f.mtimeMs > ttlMs) {
           if (this.rm(f.fullPath)) { deleted++; freed += f.size; }
         } else {
           survivors.push(f);
