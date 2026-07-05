@@ -143,30 +143,41 @@ export class Orchestrator {
     // Other files → appended as a text block listing their paths.
     let contentParts = request.contentParts;
     let userInput    = request.userInput;
-    if (request.attachmentInputs?.length) {
-      const stored   = this.bindings.attachmentStore.addAll(request.attachmentInputs, turnId, sessionId);
-      const resolved = this.bindings.attachmentStore.resolveForPrompt(stored);
+    // Attachment setup does DB writes + a vision LLM call and can throw. The
+    // turn is already registered at this point, so any throw must release the
+    // lock — otherwise the session is stuck on session_busy until restart.
+    try {
+      if (request.attachmentInputs?.length) {
+        const stored   = this.bindings.attachmentStore.addAll(request.attachmentInputs, turnId, sessionId);
+        const resolved = this.bindings.attachmentStore.resolveForPrompt(stored);
 
-      // Resolve provider + model early for vision fallback — reuse the same
-      // resolution logic as engineStreamFor so providerId is consistent.
-      const resolvedLlm = this.resolveLlmForTurn(request);
-      const imageParts = resolved.imageParts.length > 0 && resolvedLlm.providerId
-        ? await this.visionFallbackIfNeeded(resolvedLlm.providerId, resolvedLlm.model, resolved.imageParts, signal)
-        : resolved.imageParts;
+        // Resolve provider + model early for vision fallback — reuse the same
+        // resolution logic as engineStreamFor so providerId is consistent.
+        const resolvedLlm = this.resolveLlmForTurn(request);
+        const imageParts = resolved.imageParts.length > 0 && resolvedLlm.providerId
+          ? await this.visionFallbackIfNeeded(resolvedLlm.providerId, resolvedLlm.model, resolved.imageParts, signal)
+          : resolved.imageParts;
 
-      if (imageParts.length > 0 || resolved.promptLines) {
-        const parts: LlmContentPart[] = [...imageParts];
-        if (contentParts?.length) {
-          parts.push(...contentParts);
-        } else {
-          parts.push({ type: 'text', text: userInput });
+        if (imageParts.length > 0 || resolved.promptLines) {
+          const parts: LlmContentPart[] = [...imageParts];
+          if (contentParts?.length) {
+            parts.push(...contentParts);
+          } else {
+            parts.push({ type: 'text', text: userInput });
+          }
+          if (resolved.promptLines) {
+            parts.push({ type: 'text', text: resolved.promptLines });
+          }
+          contentParts = parts;
+          userInput    = '';
         }
-        if (resolved.promptLines) {
-          parts.push({ type: 'text', text: resolved.promptLines });
-        }
-        contentParts = parts;
-        userInput    = '';
       }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      try { this.bindings.session.failTurn(turnId, 'turn/attachment_failed', message); } catch { /* fall through to clear */ }
+      this.bindings.session.clearRunning(sessionId);
+      this.activeTurns.delete(turnId as string);
+      throw err;
     }
 
     // Build the TTS queue + coordinator before the engine stream is consumed.
