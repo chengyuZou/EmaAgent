@@ -211,7 +211,10 @@ export class Orchestrator {
       engineEvents = this.engineStreamFor(resolvedRequest, turn, signal, sessionId);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      this.bindings.session.failTurn(turnId, 'turn/setup_failed', message);
+      // failTurn may itself throw (requireTurn / DB write) — guard it so the
+      // unconditional clearRunning below still runs and the lock is released.
+      try { this.bindings.session.failTurn(turnId, 'turn/setup_failed', message); } catch { /* fall through to clear */ }
+      this.bindings.session.clearRunning(sessionId);
       this.activeTurns.delete(turnId as string);
       throw err;
     }
@@ -266,6 +269,11 @@ export class Orchestrator {
         }
         throw err;
       } finally {
+        // Unconditional: release the in-memory turn lock even if the engine
+        // threw before reaching completeTurn/failTurn/abortTurn, or if those
+        // terminal methods threw before their own registry.clear() ran.
+        // Idempotent — safe alongside the clear inside the terminal methods.
+        self.bindings.session.clearRunning(sessionId);
         self.activeTurns.delete(turnId as string);
       }
     })();

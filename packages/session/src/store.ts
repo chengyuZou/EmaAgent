@@ -522,6 +522,21 @@ export class SessionStore {
   }
 
   /**
+   * Idempotent: release the in-memory running-turn lock for a session.
+   *
+   * Safe to call regardless of whether completeTurn/failTurn/abortTurn already
+   * cleared it. Covers the leak where a terminal method throws before reaching
+   * its own `registry.clear()` (e.g. `requireTurn` on a missing row, or a DB
+   * write error): without this, the orchestrator's end-of-turn finally has no
+   * way to release the lock, and the session stays `session_busy` until the
+   * process restarts. Intended to be called unconditionally from the
+   * orchestrator's turn finally/catch blocks.
+   */
+  clearRunning(sessionId: SessionId): void {
+    this.registry.clear(sessionId);
+  }
+
+  /**
    * Process-crash startup recovery: any turn still in 'running'/'pending' state
    * across ALL sessions was orphaned by a crash — mark it aborted so future
    * startTurn() calls aren't blocked. Called once at process start.
