@@ -72,6 +72,12 @@ export function pathInAnyWorkingDir(
   targetPath: string,
   context:    Pick<PermissionContext, 'workspaceRoot'>,
 ): boolean {
+  // Empty workspaceRoot = no workspace (subagents). MUST short-circuit to false
+  // — pathInWorkingDir(p, '') resolves '' to process.cwd(), which would
+  // accidentally grant subagents access to the sidecar's cwd. Originally
+  // (empty workspaceRoots array + .some()) this returned false for subagents.
+  if (!context.workspaceRoot) return false;
+
   const allPaths = getPathsForPermissionCheck(targetPath);
   const wd       = context.workspaceRoot;
 
