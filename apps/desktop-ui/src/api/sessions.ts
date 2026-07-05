@@ -13,6 +13,7 @@ import type {
   TurnId,
   BranchId,
   TurnMode,
+  TurnStatus,
   SessionWire,
   MessageWire,
   TurnWire,
@@ -37,9 +38,19 @@ export interface BranchNodeWire {
   createdAt:      number;
 }
 
+export interface TurnTreeNodeWire {
+  id:        TurnId;
+  branchId:  BranchId | null;
+  startedAt: number;
+  mode:      TurnMode;
+  userInput: string;
+  status:    TurnStatus;
+}
+
 export interface BranchTreeWire {
   sessionActiveBranchId: BranchId | null;
   branches:              BranchNodeWire[];
+  turns:                 TurnTreeNodeWire[];
 }
 
 export type {

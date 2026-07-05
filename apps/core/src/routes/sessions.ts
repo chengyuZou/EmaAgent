@@ -320,7 +320,18 @@ export function sessionsRoute(bindings: AppBindings): Hono {
         };
       });
 
-      return c.json({ sessionActiveBranchId: session.activeBranchId, branches: nodes });
+      // Turns (all branches) so the frontend can render a turn-level branch
+      // tree — each turn is a node, forks diverge at forkFromTurnId.
+      const turns = bindings.session.listTurns(sessionId).map((t) => ({
+        id:        t.id,
+        branchId:  t.branchId,
+        startedAt: t.startedAt,
+        mode:      t.mode,
+        userInput: t.userInput,
+        status:    t.status,
+      }));
+
+      return c.json({ sessionActiveBranchId: session.activeBranchId, branches: nodes, turns });
     } catch (err) {
       if (isNotFound(err)) return c.json({ error: 'session_not_found' }, 404);
       throw err;
