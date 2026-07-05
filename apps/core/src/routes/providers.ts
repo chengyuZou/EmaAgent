@@ -8,7 +8,7 @@ import {
   type ProviderDefinition,
   type Capability,
 } from '@ema-agent/contracts';
-import type { AppBindings } from '../wiring.js';
+import type { AppBindings } from '../wiring/index.js';
 import {
   buildLlmProviderConfig,
   buildEmbedProviderConfig,
@@ -16,7 +16,7 @@ import {
   configureBridge,
   fetchLlmModels,
   fetchEmbedModels,
-} from '../wiring.js';
+} from '../wiring/index.js';
 import { reloadTtsClient, resolveVoice, ensureVoiceUri, VoiceUriCache } from '../wiring/providers/tts.js';
 import { reloadSttClient } from '../wiring/providers/stt.js';
 import { buildVisionProviderConfig, fetchVisionModels } from '../wiring/providers/vision.js';

@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { encodeEvent, encodePing } from '../sse/writer.js';
-import type { AppBindings } from '../wiring.js';
+import type { AppBindings } from '../wiring/index.js';
 
 // ── /api/system/events ───────────────────────────────────────────────────────
 

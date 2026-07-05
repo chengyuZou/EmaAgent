@@ -22,7 +22,7 @@ import { kbRoute }               from './routes/knowledge-base.js';
 import { agentTasksRoute }       from './routes/agent-tasks.js';
 import { storageStatsRoute }     from './routes/storage-stats.js';
 import { systemRoute }           from './routes/system.js';
-import type { AppBindings } from './wiring.js';
+import type { AppBindings } from './wiring/index.js';
 
 export function buildServer(bindings: AppBindings): Hono {
   const app = new Hono();

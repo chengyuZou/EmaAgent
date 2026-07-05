@@ -1,7 +1,7 @@
 import { Hono }                from 'hono';
 import { z }                   from 'zod';
 import { McpServerConfigSchema, parseImportedMcpServers } from '@ema-agent/mcp';
-import type { AppBindings }    from '../wiring.js';
+import type { AppBindings }    from '../wiring/index.js';
 
 // ── MCP server management routes ──────────────────────────────────────────────
 //

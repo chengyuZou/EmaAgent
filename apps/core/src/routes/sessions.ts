@@ -10,7 +10,7 @@ import type {
   MessageBlocks,
   TurnAttachment,
 } from '@ema-agent/contracts';
-import type { AppBindings } from '../wiring.js';
+import type { AppBindings } from '../wiring/index.js';
 
 const TITLE_PROMPT = `Generate a very short title (3–6 words, no quotes) that captures the topic of the following message. Reply with only the title.\n\nMessage: `;
 const TITLE_MAX_CHARS = 60;

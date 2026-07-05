@@ -19,7 +19,7 @@ import {
   loadRegistry, addDir, removeDir, setActive,
   dataDbPathFor,
 } from '../storage-locations/index.js';
-import type { AppBindings } from '../wiring.js';
+import type { AppBindings } from '../wiring/index.js';
 
 // ── Shared fs helpers ─────────────────────────────────────────────────────────
 

@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import type { AppBindings } from '../wiring.js';
+import type { AppBindings } from '../wiring/index.js';
 
 // ── POST /api/transcribe ────────────────────────────────────────────────────
 //

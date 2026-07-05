@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { z }    from 'zod';
 import { listMarketSkills, marketFromGithub, DEFAULT_MARKET_ID } from '@ema-agent/skill';
-import type { AppBindings } from '../wiring.js';
+import type { AppBindings } from '../wiring/index.js';
 
 // ── Skills router ─────────────────────────────────────────────────────────────
 //

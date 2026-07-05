@@ -6,7 +6,7 @@ import { Orchestrator } from '../orchestrator/orchestrator.js';
 import { TurnEventHub } from '../sse/event-hub.js';
 import { TurnEventStore } from '../sse/event-store.js';
 import { encodeEvent, encodePing } from '../sse/writer.js';
-import type { AppBindings } from '../wiring.js';
+import type { AppBindings } from '../wiring/index.js';
 import type { EmaStreamEvent, TurnId } from '@ema-agent/contracts';
 import { asTurnId, asSessionId } from '@ema-agent/contracts';
 

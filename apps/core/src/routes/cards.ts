@@ -4,7 +4,7 @@ import { Readable } from 'node:stream';
 import { randomUUID } from 'node:crypto';
 import { Hono } from 'hono';
 
-import type { AppBindings } from '../wiring.js';
+import type { AppBindings } from '../wiring/index.js';
 import { asCharacterCardId } from '@ema-agent/contracts';
 import {
   emptyVoiceProfile,

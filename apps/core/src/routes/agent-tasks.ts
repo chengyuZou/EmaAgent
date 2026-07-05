@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { z }    from 'zod';
-import type { AppBindings } from '../wiring.js';
+import type { AppBindings } from '../wiring/index.js';
 
 // ── Route factory ─────────────────────────────────────────────────────────────
 

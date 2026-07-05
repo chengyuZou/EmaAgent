@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { randomUUID } from 'node:crypto';
-import type { AppBindings } from '../wiring.js';
+import type { AppBindings } from '../wiring/index.js';
 import type { KbEntry } from '@ema-agent/knowledge-base';
 
 // ── Schemas ───────────────────────────────────────────────────────────────────

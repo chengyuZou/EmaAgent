@@ -1,7 +1,7 @@
 import { serve } from '@hono/node-server';
 import { Database } from '@ema-agent/storage';
 import { buildServer } from './server.js';
-import { wire, configureBridge } from './wiring.js';
+import { wire, configureBridge } from './wiring/index.js';
 import { startBackgroundWork } from './wiring/index.js';
 import {
   profileDbPath, dataDbPathFor, profileDir, loadRegistry, activeDirEntry,
@@ -16,7 +16,7 @@ import path from 'node:path';
 // consumers of the assembled runtime. Exposing `wire`, `startBackgroundWork`,
 // and `Orchestrator` lets a CLI import them directly and consume the
 // AsyncIterable<EmaStreamEvent> without any Hono dependency.
-export { wire, configureBridge, resolveBridgeUrl } from './wiring.js';
+export { wire, configureBridge, resolveBridgeUrl } from './wiring/index.js';
 export { startBackgroundWork } from './wiring/index.js';
 export type { AppBindings, BuildBindingsArgs, BackgroundHandle } from './wiring/index.js';
 export { Orchestrator }     from './orchestrator/orchestrator.js';

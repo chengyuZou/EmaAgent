@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { getDisksInfo } from '@ema-agent/system';
-import type { AppBindings } from '../wiring.js';
+import type { AppBindings } from '../wiring/index.js';
 
 export function systemRoute(bindings: AppBindings): Hono {
   const app = new Hono();

@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import type { PermissionResponse } from '@ema-agent/permission';
-import type { AppBindings } from '../wiring.js';
+import type { AppBindings } from '../wiring/index.js';
 
 // ── Schemas ──────────────────────────────────────────────────────────────────
 

@@ -1,8 +1,8 @@
 ﻿import { Hono } from 'hono';
 import { z } from 'zod';
 import type { BindingModule } from '@ema-agent/storage';
-import type { AppBindings } from '../wiring.js';
-import { configureBridge } from '../wiring.js';
+import type { AppBindings } from '../wiring/index.js';
+import { configureBridge } from '../wiring/index.js';
 import { reloadTtsClient } from '../wiring/providers/tts.js';
 import { reloadSttClient } from '../wiring/providers/stt.js';
 

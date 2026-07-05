@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { z }    from 'zod';
 import * as path from 'node:path';
 import { asArtifactId, asSessionId } from '@ema-agent/contracts';
-import type { AppBindings } from '../wiring.js';
+import type { AppBindings } from '../wiring/index.js';
 
 // ── Artifacts router ──────────────────────────────────────────────────────────
 //

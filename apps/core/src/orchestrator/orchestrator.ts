@@ -1,4 +1,4 @@
-import type { AppBindings } from '../wiring.js';
+import type { AppBindings } from '../wiring/index.js';
 import type {
   TurnMode, EmaStreamEvent, TurnId, KbAssetScope,
 } from '@ema-agent/contracts';
