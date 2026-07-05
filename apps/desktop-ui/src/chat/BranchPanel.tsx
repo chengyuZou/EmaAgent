@@ -1,83 +1,121 @@
 /**
- * BranchPanel — interactive branch tree for the current session.
+ * BranchPanel — interactive turn-level branch tree for the current session.
  *
- * Layout: top-down tree. Each node = one branch, labeled by the user's query
- * at the fork point (first 28 chars). Mode icon distinguishes Chat / Agent / Narrative.
+ * Each node = one turn. Turns on the same branch form a vertical chain;
+ * forks diverge to a new column at the fork point. Click a node → switch
+ * to that turn's branch + scroll chat to that turn.
+ *
+ * Layout: top-down. Top = oldest turn, bottom = newest. Forks branch right.
  *
  * Interactions:
  *   - Mouse drag  → pan
  *   - Scroll wheel → zoom (centered on cursor)
- *   - Click node   → switch to that branch + scroll ChatHistory to the fork turn
+ *   - Click node   → switch to that turn's branch + scroll ChatHistory to it
  */
 import { useState, useEffect, useRef, useCallback, type JSX } from 'react';
 import type { BranchId, TurnId, TurnMode } from '@ema-agent/contracts';
-import { sessionsApi, type BranchNodeWire } from '../api/sessions.js';
+import { Button } from '@ema-agent/ui';
+import { sessionsApi, type BranchNodeWire, type TurnTreeNodeWire } from '../api/sessions.js';
 import { useConversationStore } from '../stores/conversation-store.js';
 import { useSessionStore } from '../stores/session-store.js';
+import { showToast } from '../lib/toast.js';
 
 // ── Layout constants ──────────────────────────────────────────────────────────
 
-const NODE_W   = 160;   // horizontal distance between leaf columns
-const NODE_H   = 110;   // vertical distance between tree levels
-const NODE_R   = 26;    // node circle radius
+const NODE_W   = 160;   // horizontal distance between branch columns
+const NODE_H   = 80;    // vertical distance between turns
+const NODE_R   = 20;    // node circle radius
 const LABEL_W  = 130;   // max label width in px
-
-// Synthetic id for the implicit main line shown when a session has no forks.
-const MAIN_BRANCH_SENTINEL = '__main__';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 interface NodePos { x: number; y: number }
 
-// ── Layout algorithm ──────────────────────────────────────────────────────────
+// ── Turn-level layout algorithm ───────────────────────────────────────────────
 
-function buildLayout(nodes: BranchNodeWire[]): Map<string, NodePos> {
-  if (nodes.length === 0) return new Map();
+function buildTurnLayout(
+  branches: BranchNodeWire[],
+  turns:    TurnTreeNodeWire[],
+): Map<string, NodePos> {
+  if (turns.length === 0) return new Map();
 
-  const children = new Map<string | null, string[]>();
-  for (const n of nodes) {
-    const p = n.parentBranchId as string | null;
-    const list = children.get(p) ?? [];
-    list.push(n.branchId as string);
-    children.set(p, list);
+  // No branches — all turns on the implicit main line, single column
+  if (branches.length === 0) {
+    const pos = new Map<string, NodePos>();
+    const sorted = [...turns].sort((a, b) => a.startedAt - b.startedAt);
+    sorted.forEach((t, i) => {
+      pos.set(t.id as string, { x: NODE_W / 2, y: i * NODE_H + NODE_R + 8 });
+    });
+    return pos;
   }
 
-  const pos = new Map<string, NodePos>();
+  // Build branch tree (parent → children)
+  const childrenOf = new Map<string | null, string[]>();
+  for (const b of branches) {
+    const p = b.parentBranchId as string | null;
+    const list = childrenOf.get(p) ?? [];
+    list.push(b.branchId as string);
+    childrenOf.set(p, list);
+  }
+
+  // Group + sort turns by branch
+  const turnsByBranch = new Map<string, TurnTreeNodeWire[]>();
+  for (const t of turns) {
+    const bid = (t.branchId ?? '__null__') as string;
+    const list = turnsByBranch.get(bid) ?? [];
+    list.push(t);
+    turnsByBranch.set(bid, list);
+  }
+  for (const list of turnsByBranch.values()) list.sort((a, b) => a.startedAt - b.startedAt);
+
+  // Assign columns (x) to branches — leaf-counting post-order, center internal
+  const branchX = new Map<string, number>();
   let leafCounter = 0;
-
-  function place(id: string, depth: number): void {
-    const kids = children.get(id) ?? [];
-    if (kids.length === 0) {
-      pos.set(id, { x: leafCounter * NODE_W, y: depth * NODE_H });
-      leafCounter++;
-      return;
-    }
-    for (const kid of kids) place(kid, depth + 1);
-    const first = pos.get(kids[0]!)!;
-    const last  = pos.get(kids[kids.length - 1]!)!;
-    pos.set(id, { x: (first.x + last.x) / 2, y: depth * NODE_H });
+  function assignX(id: string): void {
+    const kids = childrenOf.get(id) ?? [];
+    if (kids.length === 0) { branchX.set(id, leafCounter++); return; }
+    for (const kid of kids) assignX(kid);
+    const first = branchX.get(kids[0]!)!;
+    const last  = branchX.get(kids[kids.length - 1]!)!;
+    branchX.set(id, (first + last) / 2);
   }
+  const roots = branches.filter((b) => b.parentBranchId === null).map((b) => b.branchId as string);
+  for (const root of roots) assignX(root);
 
-  // Roots = nodes with no parent
-  const roots = nodes.filter((n) => n.parentBranchId === null).map((n) => n.branchId as string);
-  for (const root of roots) place(root, 0);
+  // Place turns: chain within branch, fork-aligned y
+  const pos = new Map<string, NodePos>();
+  function placeBranch(branchId: string): void {
+    const x = (branchX.get(branchId) ?? 0) * NODE_W + NODE_W / 2;
+    const branchRow = branches.find((b) => (b.branchId as string) === branchId);
+    const forkTurnId = branchRow?.forkFromTurnId as string | null;
+    const forkPos = forkTurnId ? pos.get(forkTurnId) : undefined;
+    let y = forkPos ? forkPos.y + NODE_H : NODE_R + 8;
+    for (const t of turnsByBranch.get(branchId) ?? []) {
+      pos.set(t.id as string, { x, y });
+      y += NODE_H;
+    }
+    for (const kid of childrenOf.get(branchId) ?? []) placeBranch(kid);
+  }
+  for (const root of roots) placeBranch(root);
 
-  // Centre horizontally
+  // Center horizontally
   const xs = [...pos.values()].map((p) => p.x);
-  const minX = Math.min(...xs);
-  for (const [id, p] of pos) pos.set(id, { x: p.x - minX + NODE_W / 2, y: p.y + NODE_R + 8 });
+  if (xs.length > 0) {
+    const minX = Math.min(...xs);
+    for (const [id, p] of pos) pos.set(id, { x: p.x - minX + NODE_W / 2, y: p.y });
+  }
 
   return pos;
 }
 
-// ── Mode icon ─────────────────────────────────────────────────────────────────
+// ── Mode icon + color ─────────────────────────────────────────────────────────
 
 function ModeIcon({ mode }: { mode: TurnMode | null }): JSX.Element {
   const icon =
     mode === 'agent'     ? 'i-mdi:robot-outline' :
     mode === 'narrative' ? 'i-mdi:book-open-variant-outline' :
                            'i-mdi:chat-outline';
-  return <span className={`${icon} text-base`} aria-hidden />;
+  return <span className={`${icon} text-sm`} aria-hidden />;
 }
 
 function modeColor(mode: TurnMode | null): string {
@@ -91,15 +129,16 @@ function modeColor(mode: TurnMode | null): string {
 export function BranchPanel(): JSX.Element {
   const sessionId = useConversationStore((s) => s.viewedSessionId);
 
-  const [tree, setTree]     = useState<BranchNodeWire[]>([]);
-  const [active, setActive] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError]   = useState<string | null>(null);
+  const [branches, setBranches] = useState<BranchNodeWire[]>([]);
+  const [turns, setTurns]       = useState<TurnTreeNodeWire[]>([]);
+  const [active, setActive]     = useState<string | null>(null);
+  const [loading, setLoading]   = useState(true);
+  const [error, setError]       = useState<string | null>(null);
 
   // Pan + zoom state
   const [pan,  setPan]  = useState({ x: 0, y: 20 });
   const [zoom, setZoom] = useState(1);
-  const dragging = useRef(false);
+  const dragging  = useRef(false);
   const lastMouse = useRef({ x: 0, y: 0 });
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -111,7 +150,8 @@ export function BranchPanel(): JSX.Element {
     setError(null);
     try {
       const data = await sessionsApi.listBranches(sessionId);
-      setTree(data.branches);
+      setBranches(data.branches);
+      setTurns(data.turns);
       setActive(data.sessionActiveBranchId as string | null);
     } catch {
       setError('加载分支失败');
@@ -152,13 +192,12 @@ export function BranchPanel(): JSX.Element {
 
   const onWheel = useCallback((e: React.WheelEvent) => {
     e.preventDefault();
-    const rect   = containerRef.current!.getBoundingClientRect();
-    const cx     = e.clientX - rect.left;
-    const cy     = e.clientY - rect.top;
-    const delta  = e.deltaY > 0 ? 0.9 : 1.1;
+    const rect  = containerRef.current!.getBoundingClientRect();
+    const cx    = e.clientX - rect.left;
+    const cy    = e.clientY - rect.top;
+    const delta = e.deltaY > 0 ? 0.9 : 1.1;
     setZoom((z) => {
       const next = Math.min(Math.max(z * delta, 0.25), 3);
-      // Keep point under cursor fixed: adjust pan to compensate scale change
       setPan((p) => ({
         x: cx - (cx - p.x) * (next / z),
         y: cy - (cy - p.y) * (next / z),
@@ -167,88 +206,130 @@ export function BranchPanel(): JSX.Element {
     });
   }, []);
 
-  // ── Node click → switch branch + scroll ─────────────────────────────────────
+  // ── Node click → switch branch + scroll to turn ─────────────────────────────
 
-  async function handleNodeClick(node: BranchNodeWire): Promise<void> {
+  async function handleNodeClick(turn: TurnTreeNodeWire): Promise<void> {
     if (!sessionId) return;
-    // The synthetic main-line node has no real branch row to switch to.
-    if ((node.branchId as string) === MAIN_BRANCH_SENTINEL) return;
-    if ((node.branchId as string) === active) {
-      // Already on this branch — just scroll to the fork turn
-      if (node.forkFromTurnId) {
-        useConversationStore.getState().scrollToTurn(node.forkFromTurnId as string);
+    const turnBranch = turn.branchId as string | null;
+
+    // Switch branch if the turn is on a different branch
+    if (turnBranch && turnBranch !== active) {
+      try {
+        await sessionsApi.switchBranch(sessionId, turnBranch as BranchId);
+        setActive(turnBranch);
+        await useSessionStore.getState().loadSessions();
+        await useConversationStore.getState().loadMessages(sessionId);
+      } catch (err) {
+        showToast(err instanceof Error ? `切换分支失败: ${err.message}` : '切换分支失败', { variant: 'danger' });
+        return;
       }
-      return;
     }
-    try {
-      await sessionsApi.switchBranch(sessionId, node.branchId);
-      setActive(node.branchId as string);
-      // Reload session list + messages to reflect new branch
-      await useSessionStore.getState().loadSessions();
-      await useConversationStore.getState().loadMessages(sessionId);
-      if (node.forkFromTurnId) {
-        useConversationStore.getState().scrollToTurn(node.forkFromTurnId as string);
-      }
-    } catch { /* non-critical */ }
+    // Scroll chat to the clicked turn
+    useConversationStore.getState().scrollToTurn(turn.id as string);
   }
 
   // ── Fork current session ─────────────────────────────────────────────────────
 
   async function handleFork(): Promise<void> {
     if (!sessionId) return;
-    // Find last completed turn from message history
     const messages = useConversationStore.getState().messages.get(sessionId as string) ?? [];
     const lastTurn = [...messages].reverse().find((m) => m.turnId);
-    if (!lastTurn?.turnId) return;
+    if (!lastTurn?.turnId) {
+      showToast('没有可分叉的对话', { variant: 'warning' });
+      return;
+    }
     try {
       await sessionsApi.forkBranch(sessionId, lastTurn.turnId as TurnId);
       await load();
-    } catch { /* non-critical */ }
+    } catch (err) {
+      showToast(err instanceof Error ? `分叉失败: ${err.message}` : '分叉失败', { variant: 'danger' });
+    }
   }
 
   // ── Layout ───────────────────────────────────────────────────────────────────
 
-  // A fork-less session has no branch rows; show the implicit main line as a
-  // single root node so the panel always renders a chain (linked-list view).
-  const effectiveTree: BranchNodeWire[] = tree.length > 0 ? tree : [{
-    branchId:       MAIN_BRANCH_SENTINEL as BranchId,
-    parentBranchId: null,
-    forkFromTurnId: null,
-    forkUserInput:  '主线',
-    forkTurnMode:   null,
-    isActive:       true,
-    createdAt:      0,
-  }];
-  const effectiveActive = tree.length > 0 ? active : MAIN_BRANCH_SENTINEL;
+  const positions = buildTurnLayout(branches, turns);
 
-  const positions = buildLayout(effectiveTree);
-
-  // SVG canvas size = bounding box of all nodes + padding
   const allPos = [...positions.values()];
   const svgW = allPos.length ? Math.max(...allPos.map((p) => p.x)) + NODE_W     : 200;
   const svgH = allPos.length ? Math.max(...allPos.map((p) => p.y)) + NODE_H * 2 : 200;
 
-  // ── Edge paths ────────────────────────────────────────────────────────────────
+  // ── Active lineage path ─────────────────────────────────────────────────────
+  // The "lineage" = active branch + all ancestor branches up to root.
+  // For ancestor branches, only turns up to the fork point are on the lineage
+  // (turns after the fork belong to a different branch's history).
+  const activePath = new Set<string>();
+  const forkCapByAncestor = new Map<string, number>(); // ancestorBranchId → forkTurn.startedAt
+  if (active) {
+    let cur: string | null = active;
+    while (cur) {
+      activePath.add(cur);
+      const branch = branches.find((b) => (b.branchId as string) === cur);
+      const parent = (branch?.parentBranchId as string | null) ?? null;
+      if (parent && branch?.forkFromTurnId) {
+        const forkTurn = turns.find((t) => (t.id as string) === (branch.forkFromTurnId as string));
+        if (forkTurn) forkCapByAncestor.set(parent, forkTurn.startedAt);
+      }
+      cur = parent;
+    }
+  }
+
+  function isOnLineage(turn: TurnTreeNodeWire): boolean {
+    if (!active) return true; // no branches → all on main line
+    const bid = turn.branchId as string | null;
+    if (!bid || !activePath.has(bid)) return false;
+    if (bid === active) return true;
+    const cap = forkCapByAncestor.get(bid);
+    return cap === undefined ? true : turn.startedAt <= cap;
+  }
+
+  const EDGE_ACTIVE   = 'var(--ema-primary)';
+  const EDGE_INACTIVE = 'var(--ema-border-strong)';
+
+  // ── Edges ────────────────────────────────────────────────────────────────────
+
+  // Group turns by branch for edge computation
+  const turnsByBranch = new Map<string, TurnTreeNodeWire[]>();
+  for (const t of turns) {
+    const bid = (t.branchId ?? '__null__') as string;
+    const list = turnsByBranch.get(bid) ?? [];
+    list.push(t);
+    turnsByBranch.set(bid, list);
+  }
+  for (const list of turnsByBranch.values()) list.sort((a, b) => a.startedAt - b.startedAt);
 
   const edges: JSX.Element[] = [];
-  for (const node of effectiveTree) {
-    if (!node.parentBranchId) continue;
-    const from = positions.get(node.parentBranchId as string);
-    const to   = positions.get(node.branchId as string);
-    if (!from || !to) continue;
-    const mx = (from.x + to.x) / 2;
+  // Within-branch: vertical lines connecting consecutive turns
+  for (const [bid, list] of turnsByBranch) {
+    for (let i = 0; i < list.length - 1; i++) {
+      const from = positions.get(list[i]!.id as string);
+      const to   = positions.get(list[i + 1]!.id as string);
+      if (!from || !to) continue;
+      const onLineage = isOnLineage(list[i]!) && isOnLineage(list[i + 1]!);
+      edges.push(
+        <line key={`chain-${bid}-${i}`} x1={from.x} y1={from.y + NODE_R} x2={to.x} y2={to.y - NODE_R}
+              stroke={onLineage ? EDGE_ACTIVE : EDGE_INACTIVE} strokeWidth={onLineage ? 2 : 1.5} />,
+      );
+    }
+  }
+  // Fork: curved line from fork turn → child branch's first turn
+  for (const b of branches) {
+    if (!b.forkFromTurnId) continue;
+    const forkPos = positions.get(b.forkFromTurnId as string);
+    const childTurns = turnsByBranch.get(b.branchId as string) ?? [];
+    if (childTurns.length === 0 || !forkPos) continue;
+    const childFirst = positions.get(childTurns[0]!.id as string);
+    if (!childFirst) continue;
+    const mx = (forkPos.y + childFirst.y) / 2;
+    const onLineage = activePath.has(b.branchId as string);
     edges.push(
-      <path
-        key={`${node.parentBranchId}-${node.branchId}`}
-        d={`M ${from.x} ${from.y + NODE_R} C ${from.x} ${mx}, ${to.x} ${from.y + NODE_R}, ${to.x} ${to.y - NODE_R}`}
-        fill="none"
-        stroke="var(--ema-border-strong)"
-        strokeWidth={1.5}
-      />,
+      <path key={`fork-${b.branchId}`} fill="none"
+            stroke={onLineage ? EDGE_ACTIVE : EDGE_INACTIVE} strokeWidth={onLineage ? 2 : 1.5}
+            d={`M ${forkPos.x} ${forkPos.y + NODE_R} C ${forkPos.x} ${mx}, ${childFirst.x} ${mx}, ${childFirst.x} ${childFirst.y - NODE_R}`} />,
     );
   }
 
-  // ── Render ────────────────────────────────────────────────────────────────────
+  // ── Render ───────────────────────────────────────────────────────────────────
 
   if (loading) {
     return (
@@ -262,9 +343,16 @@ export function BranchPanel(): JSX.Element {
     return (
       <div className="flex flex-col items-center justify-center py-12 gap-2 text-xs ema-fade-in" style={{ color: 'var(--ema-text-tertiary)' }}>
         <span>{error}</span>
-        <button className="text-[var(--ema-primary)] hover:text-[var(--ema-primary-hover)]" onClick={() => void load()}>
-          重试
-        </button>
+        <Button variant="ghost" size="sm" onClick={() => void load()}>重试</Button>
+      </div>
+    );
+  }
+
+  if (turns.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-12 gap-2 text-xs ema-fade-in" style={{ color: 'var(--ema-text-tertiary)' }}>
+        <span className="i-mdi:git-branch text-3xl opacity-30" aria-hidden />
+        <span>暂无对话</span>
       </div>
     );
   }
@@ -275,17 +363,17 @@ export function BranchPanel(): JSX.Element {
       <div className="flex items-center justify-between px-3 py-1.5 border-b shrink-0"
            style={{ borderColor: 'var(--ema-border)' }}>
         <span className="text-xs" style={{ color: 'var(--ema-text-tertiary)' }}>
-          {tree.length > 0 ? `${tree.length} 条分支` : '主线（未分支）'}
+          {branches.length > 0 ? `${branches.length} 条分支 · ${turns.length} 轮对话` : `${turns.length} 轮对话`}
         </span>
-        <button
-          className="flex items-center gap-1 px-2 py-1 rounded-md text-xs transition-colors"
-          style={{ color: 'var(--ema-text-secondary)' }}
+        <Button
+          variant="ghost"
+          size="sm"
+          icon="i-mdi:source-fork"
           onClick={() => void handleFork()}
           title="从当前对话末尾 Fork 新分支"
         >
-          <span className="i-mdi:source-fork text-sm" aria-hidden />
           Fork
-        </button>
+        </Button>
       </div>
 
       {/* Interactive canvas */}
@@ -310,48 +398,48 @@ export function BranchPanel(): JSX.Element {
             {edges}
           </svg>
 
-          {/* Node divs */}
-          {effectiveTree.map((node) => {
-            const p      = positions.get(node.branchId as string);
+          {/* Turn node divs — sorted oldest-first for staggered entrance */}
+          {[...turns].sort((a, b) => a.startedAt - b.startedAt).map((turn, index) => {
+            const p = positions.get(turn.id as string);
             if (!p) return null;
-            const isActive = (node.branchId as string) === effectiveActive;
-            const color    = modeColor(node.forkTurnMode);
+            const onLineage = isOnLineage(turn);
+            const color = modeColor(turn.mode);
 
             return (
               <div
-                key={node.branchId as string}
-                className="absolute flex flex-col items-center"
+                key={turn.id as string}
+                className="absolute flex flex-col items-center ema-fade-in"
                 style={{
-                  left:      p.x - LABEL_W / 2,
-                  top:       p.y - NODE_R,
-                  width:     LABEL_W,
-                  transform: 'none',
-                  cursor:    'pointer',
+                  left:           p.x - LABEL_W / 2,
+                  top:            p.y - NODE_R,
+                  width:          LABEL_W,
+                  cursor:         'pointer',
+                  animationDelay: `${index * 40}ms`,
                 }}
-                onClick={() => void handleNodeClick(node)}
+                onClick={() => void handleNodeClick(turn)}
               >
                 {/* Circle */}
                 <div
-                  className="flex items-center justify-center rounded-full transition-all duration-150 shrink-0"
+                  className="flex items-center justify-center rounded-full transition-all duration-150 shrink-0 active:scale-90"
                   style={{
                     width:     NODE_R * 2,
                     height:    NODE_R * 2,
-                    background: isActive ? color : 'var(--ema-surface-2)',
-                    border:     `2px solid ${isActive ? color : 'var(--ema-border)'}`,
-                    boxShadow:  isActive ? `0 0 12px ${color}55` : 'none',
-                    color:      isActive ? 'var(--ema-text-primary)' : 'var(--ema-text-tertiary)',
+                    background: onLineage ? color : 'var(--ema-surface-2)',
+                    border:     `2px solid ${onLineage ? color : 'var(--ema-border)'}`,
+                    boxShadow:  onLineage ? `0 0 12px ${color}55` : 'none',
+                    color:      onLineage ? 'var(--ema-text-primary)' : 'var(--ema-text-tertiary)',
                   }}
                 >
-                  <ModeIcon mode={node.forkTurnMode} />
+                  <ModeIcon mode={turn.mode} />
                 </div>
 
                 {/* Label */}
                 <div
-                  className="mt-1.5 text-center leading-snug"
+                  className="mt-1 text-center leading-snug"
                   style={{
                     fontSize:   '10px',
-                    color:      isActive ? 'var(--ema-text-primary)' : 'var(--ema-text-tertiary)',
-                    fontWeight: isActive ? 600 : 400,
+                    color:      onLineage ? 'var(--ema-text-primary)' : 'var(--ema-text-tertiary)',
+                    fontWeight: onLineage ? 600 : 400,
                     maxWidth:   LABEL_W,
                     overflow:   'hidden',
                     display:    '-webkit-box',
@@ -359,18 +447,8 @@ export function BranchPanel(): JSX.Element {
                     WebkitBoxOrient: 'vertical',
                   }}
                 >
-                  {node.forkUserInput || '(起始)'}
+                  {turn.userInput.slice(0, 28) || '(空)'}
                 </div>
-
-                {/* Active badge */}
-                {isActive && (
-                  <div
-                    className="mt-1 px-1.5 py-0.5 rounded-full text-[9px] font-semibold"
-                    style={{ background: `${color}28`, color }}
-                  >
-                    当前
-                  </div>
-                )}
               </div>
             );
           })}

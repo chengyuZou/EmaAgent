@@ -212,14 +212,15 @@ export function ChatPanel(): JSX.Element {
         </div>
 
         {/* ── Right inspector panel ── */}
-        {hasInspector && (
-          <div
-            className={`flex-none border-l flex flex-col overflow-hidden transition-[width] duration-200 ${activePanels.size > 1 ? 'w-[560px]' : 'w-72'}`}
-            style={{ borderColor: 'var(--ema-border)', background: 'var(--ema-surface-1)' }}
-          >
-            <InspectorContent activePanels={activePanels} sessionId={viewedSessionId as string | null} />
-          </div>
-        )}
+        {/* Always mounted; width transitions 0↔w-72/w-[560px] so closing
+            animates the slide-out (not just unmount). Content unmounts
+            immediately on close but the space shrinks with animation. */}
+        <div
+          className={`flex-none flex flex-col overflow-hidden transition-[width] duration-200 ease-in-out ${hasInspector ? (activePanels.size > 1 ? 'w-[560px] border-l' : 'w-72 border-l') : 'w-0'}`}
+          style={{ borderColor: 'var(--ema-border)', background: 'var(--ema-surface-1)' }}
+        >
+          {hasInspector && <InspectorContent activePanels={activePanels} sessionId={viewedSessionId as string | null} />}
+        </div>
       </div>
     </ErrorBoundary>
   );
