@@ -379,6 +379,19 @@ export function turnsRoute(bindings: AppBindings): Hono {
     return c.json({ ok: true });
   });
 
+  // ── POST /api/turns/:turnId/abort ──────────────────────────────────────────
+  //
+  // Cancel the whole turn — LLM stream + all in-flight tools. The frontend
+  // calls this when the user clicks Stop: disconnecting SSE alone doesn't
+  // reach the backend, so without this the turn keeps running (LLM keeps
+  // burning tokens, tools keep executing) after the UI shows "stopped".
+  // No-op (200) if the turn isn't currently active.
+  app.post('/:turnId/abort', (c) => {
+    const turnId = asTurnId(c.req.param('turnId'));
+    orchestrator.abort(turnId);
+    return c.json({ ok: true });
+  });
+
   // ── POST /api/turns/:turnId/ask-user/:promptId/respond ─────────────────────
   //
   // Resolves a pending ask_user prompt. The tool awaits a Promise stored in

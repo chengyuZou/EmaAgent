@@ -331,6 +331,12 @@ export const useConversationStore = create<ConversationStoreState>((set, get) =>
   },
 
   stopStreaming(sessionId) {
+    // Tell the backend to abort the turn too — disconnecting SSE alone leaves
+    // the LLM stream + tools running server-side (burning tokens, executing
+    // commands) after the UI already shows "stopped". Fire-and-forget: the UI
+    // must react instantly, the abort signal reaches the backend in parallel.
+    const turnId = get().streamingMap.get(sessionId as string)?.turnId;
+    if (turnId) void turnsApi.abortTurn(turnId as string).catch(() => {});
     sseHandles.get(sessionId as string)?.stop();
     sseHandles.delete(sessionId as string);
     handleTurnAborted(sessionId as string);

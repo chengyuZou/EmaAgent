@@ -67,6 +67,14 @@ export const turnsApi = {
     );
   },
 
+  /** POST /api/turns/:turnId/abort — cancel the whole turn (LLM stream + all tools). */
+  abortTurn(turnId: string): Promise<{ ok: boolean }> {
+    return sidecarClient.request(
+      `/api/turns/${turnId}/abort`,
+      { method: 'POST' },
+    );
+  },
+
   /** POST /api/turns/:turnId/ask-user/:promptId/respond */
   respondAskUser(
     turnId:   string,

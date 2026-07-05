@@ -100,10 +100,18 @@ function PromptRouter({ prompt }: { prompt: DecisionPrompt }): JSX.Element {
           turnId={prompt.turnId as string}
           questions={prompt.questions}
           humanDescription={prompt.humanDescription}
-          onResolve={(answers) => {
+          onResolve={async (answers) => {
+            // Send answers to the backend so AskUserRegistry resolves — without
+            // this the agent tool awaits forever (until 120s timeout) and the
+            // turn hangs. Matches ask_confirm/text/choice which all call respond.
+            await turnsApi.respondAskUser(prompt.turnId, prompt.promptId, answers).catch(() => {});
             useDecisionStore.getState().resolve({ kind: 'ask_user', answers });
           }}
-          onCancel={() => {
+          onCancel={async () => {
+            // Send an empty response so the backend resolves immediately
+            // instead of waiting 120s for the timeout. Without this the user's
+            // cancel intent never reaches the agent.
+            await turnsApi.respondAskUser(prompt.turnId, prompt.promptId, {}).catch(() => {});
             useDecisionStore.getState().cancel();
           }}
         />
@@ -123,13 +131,16 @@ export function DecisionLayer(): JSX.Element | null {
 
   // Permission prompts must not be silently dismissed via backdrop — the
   // backend agent is waiting for a response. Clicking away sends an explicit
-  // deny so the agent can unblock. Ask-user prompts call cancel() which sends
-  // no network request (the ask_user tool handles its own abort path).
+  // deny so the agent can unblock. The ask_user (batch) prompt likewise needs
+  // an explicit empty response — otherwise the AskUserRegistry awaits the
+  // 120s timeout and the turn appears frozen.
   const handleBackdrop = (): void => {
     if (current.kind === 'permission') {
       void import('../api/permission.js').then(({ permissionApi }) =>
         permissionApi.respond(current.promptId, { action: 'deny' }).catch(() => {}),
       );
+    } else if (current.kind === 'ask_user') {
+      void turnsApi.respondAskUser(current.turnId, current.promptId, {}).catch(() => {});
     }
     useDecisionStore.getState().cancel();
   };
