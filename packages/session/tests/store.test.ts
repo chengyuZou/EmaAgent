@@ -24,10 +24,10 @@ describe('SessionStore — session', () => {
 
   it('creates a session with custom input', () => {
     const store = makeStore();
-    const s = store.createSession({ title: 'My Chat', workspaceRoots: ['/tmp'] });
+    const s = store.createSession({ title: 'My Chat', workspaceRoot: '/tmp' });
 
     expect(s.title).toBe('My Chat');
-    expect(s.workspaceRoots).toEqual(['/tmp']);
+    expect(s.workspaceRoot).toBe('/tmp');
   });
 
   it('getSession throws for unknown id', () => {

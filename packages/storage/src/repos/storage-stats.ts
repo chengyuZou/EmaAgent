@@ -144,7 +144,7 @@ export interface NotesRestoreData {
 export interface SessionRestorePayload {
   session: {
     id: string; title: string; characterCardId: string;
-    workspaceRoots: string[]; createdAt: number; updatedAt: number;
+    workspaceRoot: string | null; createdAt: number; updatedAt: number;
     lastActivityAt: number; archivedAt: number | null;
     pinned: boolean; pinnedAt: number | null;
     groupLabel: string | null; parentSessionId: string | null;
@@ -313,13 +313,13 @@ export class SessionStatsRepo {
       // 1. Session — active_branch_id set to NULL first (circular FK: session→branch, branch→session)
       this.db.prepare(`
         INSERT INTO sessions
-          (id, title, character_card_id, workspace_roots_json, created_at, updated_at,
+          (id, title, character_card_id, workspace_root, created_at, updated_at,
            last_activity_at, archived_at, pinned, pinned_at, group_label,
            parent_session_id, last_mode, last_sub_mode, active_branch_id, meta_json)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, '{}')
       `).run(
         p.session.id, p.session.title, p.session.characterCardId ?? 'ema',
-        JSON.stringify(p.session.workspaceRoots ?? []),
+        p.session.workspaceRoot ?? null,
         p.session.createdAt, p.session.updatedAt,
         p.session.lastActivityAt ?? p.session.updatedAt,
         p.session.archivedAt ?? null,

@@ -191,8 +191,8 @@ export interface ISkillRunner {
 export interface ToolExecutionContext {
   sessionId: string;
   turnId: string;
-  /** All workspace roots. First entry is the primary cwd for shell tools. */
-  workspaceRoots: string[];
+  /** The workspace root. Empty string = no workspace (subagent). Used as cwd for shell tools. */
+  workspaceRoot: string;
   /** Per-turn cancellation signal — tools must honour this for long-running ops. */
   signal: AbortSignal;
   /**

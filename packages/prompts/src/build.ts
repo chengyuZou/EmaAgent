@@ -3,8 +3,8 @@ import type { CharacterCard } from '@ema-agent/character-card';
 import { buildModeBlock } from './mode-blocks.js';
 
 export interface BuildSystemPromptOpts {
-  /** Absolute paths to all workspace roots the agent may operate in. */
-  workspaceRoots?: string[];
+  /** Absolute path to the workspace root the agent may operate in. null/undefined = not set. */
+  workspaceRoot?: string | null;
 }
 
 /**
@@ -25,7 +25,7 @@ export function buildSystemPrompt(
 ): string {
   const characterBlock = buildSystemBlock(card);
   const modeBlock = buildModeBlock(mode, {
-    workspaceRoots: opts.workspaceRoots,
+    workspaceRoot: opts.workspaceRoot,
   });
 
   return `${characterBlock}\n\n${modeBlock}`;

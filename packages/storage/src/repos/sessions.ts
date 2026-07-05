@@ -5,7 +5,7 @@ export interface SessionRow {
   id: string;
   title: string;
   character_card_id: string;
-  workspace_roots_json: string;
+  workspace_root:     string | null;
   created_at: number;
   /** Row metadata update time: title/group/pin/workspace/mode/meta edits. Not used for recent-session ordering. */
   updated_at: number;
@@ -39,7 +39,7 @@ export interface SessionInsert {
   id: SessionId;
   title: string;
   characterCardId: CharacterCardId;
-  workspaceRoots?: string[];
+  workspaceRoot?:  string | null;
   parentSessionId?: string;
   createdAt: number;
   updatedAt: number;
@@ -60,12 +60,12 @@ export class SessionsRepo {
     this.db
       .prepare(
         `INSERT INTO sessions
-           (id, title, character_card_id, workspace_roots_json,
+           (id, title, character_card_id, workspace_root,
             parent_session_id, created_at, updated_at, last_activity_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(s.id, s.title, s.characterCardId,
-        JSON.stringify(s.workspaceRoots ?? []),
+        s.workspaceRoot ?? null,
         s.parentSessionId ?? null, s.createdAt, s.updatedAt,
         s.lastActivityAt ?? s.createdAt);
   }
@@ -314,10 +314,10 @@ export class SessionsRepo {
     this.db.transaction(() => {
       this.db.prepare(
         `INSERT INTO sessions
-           (id, title, character_card_id, workspace_roots_json,
+           (id, title, character_card_id, workspace_root,
             parent_session_id, created_at, updated_at, last_activity_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      ).run(newId, title, src.character_card_id, src.workspace_roots_json,
+      ).run(newId, title, src.character_card_id, src.workspace_root,
         srcId, createdAt, createdAt, createdAt);
 
       if (untilTurnId) {
@@ -399,7 +399,7 @@ export class SessionsRepo {
       title?:          string;
       pinned?:         boolean;
       groupLabel?:     string | null;
-      workspaceRoots?: string[];
+      workspaceRoot?:  string | null;
       lastMode?:       string | null;
       lastSubMode?:    string | null;
     },
@@ -422,9 +422,9 @@ export class SessionsRepo {
       setClauses.push('group_label = ?');
       values.push(patch.groupLabel);
     }
-    if (patch.workspaceRoots !== undefined) {
-      setClauses.push('workspace_roots_json = ?');
-      values.push(JSON.stringify(patch.workspaceRoots));
+    if (patch.workspaceRoot !== undefined) {
+      setClauses.push('workspace_root = ?');
+      values.push(patch.workspaceRoot);
     }
     if (patch.lastMode !== undefined) {
       setClauses.push('last_mode = ?');

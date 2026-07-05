@@ -106,7 +106,7 @@ export class SubagentSpawner implements ISubagentSpawner {
     const sessionId     = this.parentSessionId as SessionId;
     const parentTurnId  = this.parentTurnId   as TurnId;
     const resolvedModel = opts.model ?? this.parentModel;
-    const permCtx       = { workspaceRoots: [], sessionId: this.parentSessionId };
+    const permCtx       = { workspaceRoot: '', sessionId: this.parentSessionId };
 
     const startedAtMs = Date.now();
     const taskId      = opts.taskId;   // undefined until V1.5 task-store wiring
@@ -181,7 +181,7 @@ export class SubagentSpawner implements ISubagentSpawner {
       const toolCtx: ToolExecutionContext = {
         sessionId,
         turnId:           subagentId as TurnId,
-        workspaceRoots:   [],
+        workspaceRoot:    '',
         signal:           childCtrl.signal,
         readFileState:    new Map(),
         emit:             pushEv,

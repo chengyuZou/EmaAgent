@@ -32,9 +32,9 @@ export function registerPromptsHooks(
     async (ctx) => {
       const card    = deps.card.current();
       const mode    = (ctx.meta['mode'] as TurnMode | undefined) ?? 'chat';
-      const workspaceRoots = ctx.meta['workspaceRoots'] as string[] | undefined;
+      const workspaceRoot = ctx.meta['workspaceRoot'] as string | null | undefined;
 
-      const systemPrompt = buildSystemPrompt(card, mode, { workspaceRoots });
+      const systemPrompt = buildSystemPrompt(card, mode, { workspaceRoot });
 
       // Prepend the system message if the messages array doesn't already
       // start with one. (Defensive — callers that pre-seed messages with a

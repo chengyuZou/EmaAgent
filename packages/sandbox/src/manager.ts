@@ -19,7 +19,7 @@ const MAX_TIMEOUT_MS     = 600_000;
 // ── CommandRunner ─────────────────────────────────────────────────────────────
 
 export interface CommandRunnerOptions {
-  workspaceRoots: string[];
+  workspaceRoot:  string;
   sessionId?:     string;
   /** Live permission engine — rules are re-read on every refreshConfig(). */
   permission:     PermissionEngine;
@@ -63,7 +63,7 @@ export class CommandRunner {
    */
   async run(command: string, opts: RunOptions = {}): Promise<RunResult> {
     const shell     = getShell();
-    const cwd       = opts.cwd ?? this.opts.workspaceRoots[0] ?? process.cwd();
+    const cwd       = opts.cwd ?? (this.opts.workspaceRoot || process.cwd());
     const timeoutMs = Math.min(opts.timeout ?? DEFAULT_TIMEOUT_MS, MAX_TIMEOUT_MS);
 
     const { executable, args } = this.backend.wrap(command, shell, this.config);
@@ -116,7 +116,7 @@ export class CommandRunner {
 
   private configCtx(): ConfigContext {
     return {
-      workspaceRoots: this.opts.workspaceRoots,
+      workspaceRoot: this.opts.workspaceRoot,
       sessionId:      this.opts.sessionId,
     };
   }

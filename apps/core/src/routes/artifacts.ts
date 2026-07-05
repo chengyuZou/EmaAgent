@@ -52,18 +52,16 @@ export function createArtifactsRouter(bindings: AppBindings) {
     const artifact = artifactStore.get(id);
     if (!artifact) return c.json({ error: 'Artifact not found' }, 404);
 
-    const session        = sessionStore.getSession(artifact.sessionId);
-    const workspaceRoots = session?.workspaceRoots ?? [];
-    if (workspaceRoots.length === 0) {
+    const session       = sessionStore.getSession(artifact.sessionId);
+    const workspaceRoot = session?.workspaceRoot ?? null;
+    if (!workspaceRoot) {
       return c.json({ error: 'session has no workspace root' }, 403);
     }
     const resolved = path.resolve(body.targetPath);
-    const inAnyRoot = workspaceRoots.some((root) => {
-      const abs = path.resolve(root);
-      return resolved.startsWith(abs + path.sep) || resolved === abs;
-    });
-    if (!inAnyRoot) {
-      return c.json({ error: 'targetPath must be inside a workspace root' }, 403);
+    const abs      = path.resolve(workspaceRoot);
+    const inRoot   = resolved === abs || resolved.startsWith(abs + path.sep);
+    if (!inRoot) {
+      return c.json({ error: 'targetPath must be inside the workspace root' }, 403);
     }
 
     try {

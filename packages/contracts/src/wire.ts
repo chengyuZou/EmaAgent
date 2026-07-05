@@ -21,7 +21,7 @@ export interface SessionWire {
   id:               string;
   title:            string;
   characterCardId:  string;
-  workspaceRoots:   string[];
+  workspaceRoot:    string | null;
   createdAt:        number;
   /** Row metadata update time: title/group/pin/workspace/mode/meta edits. */
   updatedAt:        number;

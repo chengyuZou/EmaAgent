@@ -82,7 +82,7 @@ function makeBenchSessionStore(): MemoryDeps['session'] {
       id,
       title:            'bench',
       characterCardId:  'ema',
-      workspaceRoots:   [],
+      workspaceRoot:    null,
       createdAt:        Date.now(),
       updatedAt:        Date.now(),
       archivedAt:       null,

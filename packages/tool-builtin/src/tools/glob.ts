@@ -60,21 +60,18 @@ export const globTool = buildTool<GlobInput, GlobResult>({
   },
 
   async execute(input: GlobInput, ctx: ToolExecutionContext): Promise<GlobResult> {
-    const searchDirs = input.path
-      ? [path.resolve(input.path)]
-      : (ctx.workspaceRoots.length > 0 ? ctx.workspaceRoots : [process.cwd()]);
+    const searchDir = input.path
+      ? path.resolve(input.path)
+      : (ctx.workspaceRoot || process.cwd());
 
-    // Search each root independently, then merge. rg is preferred; Node glob is fallback.
+    // rg is preferred; Node glob is fallback.
     const allPaths: string[] = [];
-    for (const searchDir of searchDirs) {
-      try {
-        allPaths.push(...await rgGlob(input.pattern, searchDir, ctx.signal));
-      } catch {
-        allPaths.push(...await nodeGlob(input.pattern, searchDir, ctx.signal));
-      }
+    try {
+      allPaths.push(...await rgGlob(input.pattern, searchDir, ctx.signal));
+    } catch {
+      allPaths.push(...await nodeGlob(input.pattern, searchDir, ctx.signal));
     }
-    // Deduplicate in case roots overlap
-    const rawPaths = [...new Set(allPaths)];
+    const rawPaths = allPaths;
 
     // Sort by mtime descending
     const withMtime = rawPaths.map((p) => {

@@ -107,9 +107,9 @@ function pathMatchesGlob(
   targetPath:    string,
   glob:          string,
   scope:         RuleScope,
-  context:       Pick<PermissionContext, 'workspaceRoots'>,
+  context:       Pick<PermissionContext, 'workspaceRoot'>,
 ): boolean {
-  const { root, pattern } = resolvePatternRoot(glob, scope, context.workspaceRoots[0] ?? '');
+  const { root, pattern } = resolvePatternRoot(glob, scope, context.workspaceRoot || '');
 
   const posixTarget = toPosix(path.resolve(targetPath));
   const posixRoot   = toPosix(path.resolve(root));
@@ -134,7 +134,7 @@ export function ruleMatches(
   rule:       PermissionRule,
   toolName:   string,
   targetPath: string | undefined,
-  context:    Pick<PermissionContext, 'workspaceRoots'>,
+  context:    Pick<PermissionContext, 'workspaceRoot'>,
 ): boolean {
   if (rule.tool !== '*' && normalizeCaseForComparison(rule.tool) !== normalizeCaseForComparison(toolName)) {
     return false;
@@ -148,21 +148,21 @@ export function ruleMatches(
 
 export function findDenyRule(
   rules: PermissionRule[], toolName: string, targetPath: string | undefined,
-  context: Pick<PermissionContext, 'workspaceRoots'>,
+  context: Pick<PermissionContext, 'workspaceRoot'>,
 ): PermissionRule | undefined {
   return rules.find(r => r.action === 'deny' && ruleMatches(r, toolName, targetPath, context));
 }
 
 export function findAskRule(
   rules: PermissionRule[], toolName: string, targetPath: string | undefined,
-  context: Pick<PermissionContext, 'workspaceRoots'>,
+  context: Pick<PermissionContext, 'workspaceRoot'>,
 ): PermissionRule | undefined {
   return rules.find(r => r.action === 'ask' && ruleMatches(r, toolName, targetPath, context));
 }
 
 export function findAllowRule(
   rules: PermissionRule[], toolName: string, targetPath: string | undefined,
-  context: Pick<PermissionContext, 'workspaceRoots'>,
+  context: Pick<PermissionContext, 'workspaceRoot'>,
 ): PermissionRule | undefined {
   return rules.find(r => r.action === 'allow' && ruleMatches(r, toolName, targetPath, context));
 }

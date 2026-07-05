@@ -24,7 +24,7 @@ export interface SessionStoreState {
   renameSession(id: SessionId, title: string):                       Promise<void>;
   pinSession(id: SessionId, pinned: boolean):                        Promise<void>;
   setSessionGroup(id: SessionId, label: string | null):              Promise<void>;
-  setWorkspaceRoots(id: SessionId, paths: string[]):                 Promise<void>;
+  setWorkspaceRoot(id: SessionId, path: string | null):              Promise<void>;
   setSessionMode(id: SessionId, mode: TurnMode): Promise<void>;
   forkSession(id: SessionId):                                        Promise<SessionId>;
   archiveSession(id: SessionId):                                     Promise<void>;
@@ -109,12 +109,12 @@ export const useSessionStore = create<SessionStoreState>((set, get) => ({
     }
   },
 
-  async setWorkspaceRoots(id, paths) {
+  async setWorkspaceRoot(id, path) {
     try {
-      await sessionsApi.patch(id, { workspaceRoots: paths });
+      await sessionsApi.patch(id, { workspaceRoot: path });
       await get().loadSessions();
     } catch (err: unknown) {
-      set({ error: err instanceof Error ? err.message : 'Failed to set workspace roots' });
+      set({ error: err instanceof Error ? err.message : 'Failed to set workspace root' });
     }
   },
 

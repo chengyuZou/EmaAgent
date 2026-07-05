@@ -49,18 +49,17 @@ describe('buildModeBlock', () => {
     expect(block).toContain('先理解任务再选工具');
   });
 
-  it('includes workspace root list when provided', () => {
+  it('includes workspace root when provided', () => {
     const block = buildModeBlock('agent' as TurnMode, {
-      workspaceRoots: ['/home/user/project', '/tmp/scratch'],
+      workspaceRoot: '/home/user/project',
     });
     expect(block).toContain('当前允许操作的工作区目录：');
     expect(block).toContain('`/home/user/project`');
-    expect(block).toContain('`/tmp/scratch`');
-    expect(block).toContain('所有文件操作必须限定在以上目录范围内');
+    expect(block).toContain('所有文件操作必须限定在该目录范围内');
   });
 
-  it('does not include workspace section when roots is empty', () => {
-    const block = buildModeBlock('agent' as TurnMode, { workspaceRoots: [] });
+  it('does not include workspace section when root is empty', () => {
+    const block = buildModeBlock('agent' as TurnMode, { workspaceRoot: null });
     expect(block).not.toContain('当前允许操作的工作区目录');
   });
 });
@@ -118,7 +117,7 @@ describe('buildSystemPrompt', () => {
   it('assembles character block + agent mode block', () => {
     const card = mockCard();
     const prompt = buildSystemPrompt(card, 'agent' as TurnMode, {
-      workspaceRoots: ['/workspace'],
+      workspaceRoot: '/workspace',
     });
     expect(prompt).toContain(card.systemPrompt);
     expect(prompt).toContain('Agent 任务（agent）');

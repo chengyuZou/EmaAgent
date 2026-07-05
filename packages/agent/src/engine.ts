@@ -56,7 +56,7 @@ async function* runTurn(
   activeExecutors: Map<string, TurnToolExecutor>,
 ): AsyncIterable<EmaStreamEvent> {
   const { session, hooks, llm, emotion, tools, permission, askUserRegistry } = deps;
-  const { turn, signal, userInput, systemPrompt, workspaceRoots, providerId, model } = input;
+  const { turn, signal, userInput, systemPrompt, workspaceRoot, providerId, model } = input;
   const sessionId = turn.sessionId;
   const turnId    = turn.id;
   const startedAt = Date.now();
@@ -64,7 +64,7 @@ async function* runTurn(
   const policy        = new AgentPolicy(tools.list());
   const readFileState = new Map() as ReadFileState;
   const contextStores = deps.getContextStores?.(sessionId);
-  const permCtx: PermissionContext = { workspaceRoots, sessionId };
+  const permCtx: PermissionContext = { workspaceRoot, sessionId };
   const resolvedRunner = deps.getCommandRunner?.(sessionId);
 
   // Turn-scoped scratchpad: shared between main agent and all sub-agents.
@@ -123,7 +123,7 @@ async function* runTurn(
     const preLlm = await hooks.trigger('beforeLlm', {
       turnId, sessionId,
       payload: { systemPrompt, messages },
-      meta: { mode: 'agent', userInput, signal, providerId, model, workspaceRoots },
+      meta: { mode: 'agent', userInput, signal, providerId, model, workspaceRoot },
     });
     if (preLlm.kind === 'abort') {
       session.failTurn(turnId, 'turn/hook_aborted', preLlm.reason);
@@ -152,7 +152,7 @@ async function* runTurn(
     const buildExecutor: ExecutorFactory = ({ pushEv, signal: wakeSignal }) => {
       emitRef.fn = pushEv;   // wire parent SSE emitter now that the loop has started
       const toolCtx: ToolExecutionContext = {
-        sessionId, turnId, workspaceRoots, signal, readFileState,
+        sessionId, turnId, workspaceRoot, signal, readFileState,
         fileStateStore:  contextStores?.fileStateStore,
         emit:            pushEv,
         commandRunner:   resolvedRunner,

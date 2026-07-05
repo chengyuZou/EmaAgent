@@ -93,7 +93,7 @@ Results are capped at \`head_limit\` lines (default 250).`,
 
     const searchTargets = inputPath
       ? [path.resolve(inputPath)]
-      : (ctx.workspaceRoots.length > 0 ? ctx.workspaceRoots : [process.cwd()]);
+      : [ctx.workspaceRoot || process.cwd()];
 
     const args: string[] = [pattern];
 

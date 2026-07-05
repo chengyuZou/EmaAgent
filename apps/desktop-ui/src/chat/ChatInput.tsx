@@ -10,7 +10,8 @@ import { AttachmentChip } from './AttachmentChip.js';
 import { showToast } from '../lib/toast.js';
 import { tauriBridge } from '../lib/tauri-bridge.js';
 import type { AttachmentInputWire } from '../api/turns.js';
-import type { TurnMode, SessionId } from '@ema-agent/contracts';
+import type { TurnMode } from '@ema-agent/contracts';
+import { WorkspacePicker } from './WorkspacePicker.js';
 
 // ── Attachment helpers ────────────────────────────────────────────────────────
 
@@ -529,7 +530,7 @@ function WorkspaceButton({ sessionId }: { sessionId: string | null }): JSX.Eleme
   const session = useSessionStore((s) =>
     sessionId ? s.sessions.byId.get(sessionId) : undefined,
   );
-  const roots = session?.workspaceRoots ?? [];
+  const hasRoot = !!session?.workspaceRoot;
 
   function handleClick(): void {
     if (!sessionId) {
@@ -542,20 +543,20 @@ function WorkspaceButton({ sessionId }: { sessionId: string | null }): JSX.Eleme
   return (
     <div className="relative">
       <IconButton
-        variant={roots.length > 0 ? 'primary' : 'default'}
+        variant={hasRoot ? 'primary' : 'default'}
         size="sm"
         icon="i-mdi:folder-outline"
-        label={roots.length > 0 ? `工作区目录 (${roots.length})` : '未设置工作区目录'}
-        toggled={roots.length > 0}
+        label={hasRoot ? '工作区目录' : '未设置工作区目录'}
+        toggled={hasRoot}
         onClick={handleClick}
       />
 
-      {open && sessionId && (
+      {open && session && (
         <>
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-          <WorkspaceEditor
-            sessionId={sessionId}
-            initialRoots={roots}
+          <WorkspacePicker
+            session={session}
+            positionClassName="bottom-full left-0 mb-2"
             onClose={() => setOpen(false)}
           />
         </>
@@ -565,91 +566,5 @@ function WorkspaceButton({ sessionId }: { sessionId: string | null }): JSX.Eleme
 }
 
 // ── WorkspaceEditor ───────────────────────────────────────────────────────────
+// (removed — replaced by the shared WorkspacePicker component)
 
-function WorkspaceEditor({
-  sessionId, initialRoots, onClose,
-}: {
-  sessionId: string; initialRoots: string[]; onClose(): void;
-}): JSX.Element {
-  const [paths, setPaths] = useState<string[]>(initialRoots);
-  const [input, setInput] = useState('');
-  const [saving, setSaving] = useState(false);
-
-  function addPath(): void {
-    const p = input.trim();
-    if (!p || paths.includes(p)) return;
-    setPaths([...paths, p]);
-    setInput('');
-  }
-
-  async function save(): Promise<void> {
-    setSaving(true);
-    try {
-      await useSessionStore.getState().setWorkspaceRoots(sessionId as SessionId, paths);
-      onClose();
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <div
-      className="ema-slide-up absolute bottom-full left-0 mb-2 z-50 rounded-xl p-3 shadow-[var(--ema-shadow-2)] w-72"
-      style={{ background: 'var(--ema-surface-4)', border: '1px solid var(--ema-border)' }}
-      onClick={(e) => e.stopPropagation()}
-    >
-      <p className="text-xs mb-2 font-medium" style={{ color: 'var(--ema-text-secondary)' }}>工作区目录</p>
-
-      <div className="flex flex-col gap-1 mb-2 max-h-36 overflow-y-auto">
-        {paths.length === 0 && (
-          <p className="text-xs py-1" style={{ color: 'var(--ema-text-tertiary)' }}>暂无工作区(使用 sidecar 启动目录)</p>
-        )}
-        {paths.map((p) => (
-          <div key={p} className="flex items-center justify-between rounded-lg px-2 py-1 gap-2"
-               style={{ background: 'var(--ema-surface-2)' }}>
-            <span className="text-xs font-mono truncate flex-1" style={{ color: 'var(--ema-text-secondary)' }} title={p}>{p}</span>
-            <button
-              style={{ color: 'var(--ema-text-tertiary)' }}
-              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--ema-danger)'; }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--ema-text-tertiary)'; }}
-              onClick={() => setPaths(paths.filter((x) => x !== p))}
-            >
-              <span className="i-mdi:close text-sm" aria-hidden />
-            </button>
-          </div>
-        ))}
-      </div>
-
-      <div className="flex gap-1 mb-3">
-        <Input
-          inputSize="sm"
-          className="font-mono"
-          placeholder="D:\path\to\project"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter') addPath(); }}
-          autoFocus
-        />
-        <button
-          className="px-2 rounded-md text-xs transition-colors text-[var(--ema-text-secondary)] bg-[var(--ema-surface-3)] hover:bg-[var(--ema-surface-2)]"
-          onClick={addPath}
-        >+</button>
-      </div>
-
-      <div className="flex gap-2">
-        <button
-          className="px-3 py-1.5 rounded-lg text-xs transition-colors disabled:opacity-50"
-          style={{ background: 'var(--ema-primary-muted)', color: 'var(--ema-primary)' }}
-          disabled={saving}
-          onClick={() => void save()}
-        >{saving ? '保存中…' : '保存'}</button>
-        <button
-          className="px-3 py-1.5 rounded-lg text-xs transition-colors"
-          style={{ color: 'var(--ema-text-tertiary)' }}
-          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--ema-text-primary)'; }}
-          onClick={onClose}
-        >取消</button>
-      </div>
-    </div>
-  );
-}

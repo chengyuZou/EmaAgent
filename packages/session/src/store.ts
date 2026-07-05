@@ -48,17 +48,12 @@ import type {
 
 // ── Row → domain object converters (module-private) ──────────────────────────
 
-function safeJson<T>(raw: string, fallback: T, label: string): T {
-  try { return JSON.parse(raw) as T; }
-  catch { console.warn(`[session] corrupt JSON in ${label}, using fallback`); return fallback; }
-}
-
 function toSession(row: SessionRow): Session {
   return {
     id: row.id as SessionId,
     title: row.title,
     characterCardId: row.character_card_id as CharacterCardId,
-    workspaceRoots: safeJson(row.workspace_roots_json, [] as string[], `session ${row.id} workspace_roots_json`),
+    workspaceRoot:  row.workspace_root ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     lastActivityAt: row.last_activity_at,
@@ -219,7 +214,7 @@ export class SessionStore {
       id,
       title,
       characterCardId:  input.characterCardId  ?? ('ema' as CharacterCardId),
-      workspaceRoots:   input.workspaceRoots,
+      workspaceRoot:    input.workspaceRoot,
       parentSessionId:  input.parentSessionId,
       createdAt:        now,
       updatedAt:        now,
@@ -317,7 +312,7 @@ export class SessionStore {
       title?:          string;
       pinned?:         boolean;
       groupLabel?:     string | null;
-      workspaceRoots?: string[];
+      workspaceRoot?:  string | null;
       lastMode?:       TurnMode | null;
     },
   ): void {
@@ -334,8 +329,8 @@ export class SessionStore {
         : patch.groupLabel.trim() || null;
       cleaned.groupLabel = normalised;
     }
-    if (patch.workspaceRoots !== undefined) {
-      cleaned.workspaceRoots = patch.workspaceRoots;
+    if (patch.workspaceRoot !== undefined) {
+      cleaned.workspaceRoot = patch.workspaceRoot;
     }
     if (patch.lastMode !== undefined) cleaned.lastMode = patch.lastMode;
 
@@ -408,7 +403,7 @@ export class SessionStore {
       id:              newId,
       title,
       characterCardId: src.characterCardId,
-      workspaceRoots:  src.workspaceRoots,
+      workspaceRoot:   src.workspaceRoot,
       parentSessionId: srcId,
       createdAt:       now,
       updatedAt:       now,

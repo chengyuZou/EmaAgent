@@ -12,7 +12,7 @@ CREATE TABLE sessions (
   id                   TEXT PRIMARY KEY,
   title                TEXT NOT NULL,
   character_card_id    TEXT NOT NULL DEFAULT 'ema',
-  workspace_roots_json TEXT NOT NULL DEFAULT '[]',
+  workspace_root       TEXT,
   last_mode            TEXT,
   last_sub_mode        TEXT,
   group_label          TEXT,

@@ -36,7 +36,7 @@ export interface Session {
   id: SessionId;
   title: string;
   characterCardId: CharacterCardId;
-  workspaceRoots: string[];
+  workspaceRoot:  string | null;
   createdAt: number;
   /** Row metadata update time: title/group/pin/workspace/mode/meta edits. */
   updatedAt: number;
@@ -105,7 +105,7 @@ export interface SwitchBranchInput {
 export interface CreateSessionInput {
   title?: string;
   characterCardId?: CharacterCardId;
-  workspaceRoots?: string[];
+  workspaceRoot?:  string | null;
   parentSessionId?: string;
 }
 

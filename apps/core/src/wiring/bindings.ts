@@ -123,8 +123,8 @@ export interface AppBindings {
   getCommandRunner: (sessionId: SessionId) => ICommandRunner;
   /**
    * Drop a session's cached CommandRunner so the next getCommandRunner()
-   * rebuilds it from current state. MUST be called whenever workspaceRoots
-   * change — the runner bakes the roots into its sandbox config at
+   * rebuilds it from current state. MUST be called whenever workspaceRoot
+   * changes — the runner bakes the root into its sandbox config at
    * construction, so a stale cache means commands keep running (and the
    * sandbox keeps permitting writes) in the OLD workspace.
    */
@@ -288,7 +288,7 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
     if (runner) return runner;
     const s = session.getSession(sessionId);
     runner = new CommandRunner({
-      workspaceRoots: s.workspaceRoots.length > 0 ? s.workspaceRoots : [process.cwd()],
+      workspaceRoot: s.workspaceRoot || process.cwd(),
       sessionId,
       permission,
     });
@@ -298,7 +298,7 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
 
   const invalidateSessionRuntime = (sessionId: SessionId): void => {
     // contextStores intentionally survive — file-state history is not
-    // workspace-scoped. Only the runner bakes workspaceRoots in.
+    // workspace-scoped. Only the runner bakes workspaceRoot in.
     runnerCache.delete(sessionId);
   };
 
@@ -367,7 +367,7 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
       'mcp_stdio_connect',
       { serverName, command },
       { riskLevel: 'high', accessType: 'execute' },
-      { workspaceRoots: [process.cwd()] },
+      { workspaceRoot: process.cwd() },
     );
     return outcome.granted;
   };

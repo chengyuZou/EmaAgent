@@ -4,6 +4,7 @@ import { useConversationStore } from '../stores/conversation-store.js';
 import { useSessionStore } from '../stores/session-store.js';
 import type { SessionWire } from '../api/sessions.js';
 import type { SessionId } from '@ema-agent/contracts';
+import { WorkspacePicker } from './WorkspacePicker.js';
 
 export function SessionSwitcher(): JSX.Element {
   const sessions = useSessionStore((s) => s.sessions);
@@ -145,86 +146,8 @@ function Section({
 }
 
 // ── WorkspaceEditor ───────────────────────────────────────────────────────────
+// (removed — replaced by the shared WorkspacePicker component)
 
-function WorkspaceEditor({ session, onClose }: { session: SessionWire; onClose(): void }): JSX.Element {
-  const [paths, setPaths] = useState<string[]>(session.workspaceRoots ?? []);
-  const [input, setInput] = useState('');
-  const [saving, setSaving] = useState(false);
-
-  function addPath(): void {
-    const p = input.trim();
-    if (!p || paths.includes(p)) return;
-    setPaths([...paths, p]);
-    setInput('');
-  }
-
-  async function save(): Promise<void> {
-    setSaving(true);
-    try {
-      await useSessionStore.getState().setWorkspaceRoots(session.id as SessionId, paths);
-      onClose();
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <div
-      className="ema-slide-up absolute right-0 top-6 z-50 rounded-xl p-3 shadow-[var(--ema-shadow-2)] w-72"
-      style={{ background: 'var(--ema-surface-4)', border: '1px solid var(--ema-border)' }}
-      onClick={(e) => e.stopPropagation()}
-    >
-      <p className="text-xs mb-2 font-medium" style={{ color: 'var(--ema-text-secondary)' }}>工作区目录</p>
-      <div className="flex flex-col gap-1 mb-2 max-h-36 overflow-y-auto">
-        {paths.length === 0 && <p className="text-xs py-1" style={{ color: 'var(--ema-text-tertiary)' }}>暂无工作区</p>}
-        {paths.map((p) => (
-          <div key={p} className="flex items-center justify-between rounded-lg px-2 py-1 gap-2"
-               style={{ background: 'var(--ema-surface-2)' }}>
-            <span className="text-xs font-mono truncate flex-1" style={{ color: 'var(--ema-text-secondary)' }} title={p}>{p}</span>
-            <button
-              style={{ color: 'var(--ema-text-tertiary)' }}
-              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--ema-danger)'; }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--ema-text-tertiary)'; }}
-              onClick={() => setPaths(paths.filter((x) => x !== p))}
-            >
-              <span className="i-mdi:close text-sm" aria-hidden />
-            </button>
-          </div>
-        ))}
-      </div>
-      <div className="flex gap-1 mb-3">
-        <Input
-          inputSize="sm"
-          className="font-mono"
-          placeholder="D:\path\to\project"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter') addPath(); }}
-        />
-        <button
-          className="px-2 rounded-md text-xs transition-colors"
-          style={{ background: 'var(--ema-surface-3)', color: 'var(--ema-text-secondary)' }}
-          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--ema-surface-2)'; }}
-          onClick={addPath}
-        >+</button>
-      </div>
-      <div className="flex gap-2">
-        <button
-          className="px-3 py-1.5 rounded-lg text-xs transition-colors disabled:opacity-50"
-          style={{ background: 'var(--ema-primary-muted)', color: 'var(--ema-primary)' }}
-          disabled={saving}
-          onClick={() => void save()}
-        >{saving ? '保存中…' : '保存'}</button>
-        <button
-          className="px-3 py-1.5 rounded-lg text-xs transition-colors"
-          style={{ color: 'var(--ema-text-tertiary)' }}
-          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--ema-text-primary)'; }}
-          onClick={onClose}
-        >取消</button>
-      </div>
-    </div>
-  );
-}
 
 // ── SessionRow ────────────────────────────────────────────────────────────────
 
@@ -330,7 +253,7 @@ function SessionRow({ session, isActive, onSelect }: {
         {showWorkspace && (
           <>
             <div className="fixed inset-0 z-50" onClick={() => setShowWorkspace(false)} />
-            <WorkspaceEditor session={session} onClose={() => setShowWorkspace(false)} />
+            <WorkspacePicker session={session} positionClassName="right-0 top-6" onClose={() => setShowWorkspace(false)} />
           </>
         )}
       </div>

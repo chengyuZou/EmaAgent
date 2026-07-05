@@ -91,7 +91,7 @@ export const powershellTool = buildTool<PowerShellInput, BashResult>({
     return runShell(
       'powershell.exe',
       ['-NonInteractive', '-Command', command],
-      ctx.workspaceRoots[0] ?? process.cwd(),
+      ctx.workspaceRoot || process.cwd(),
       timeoutMs,
       ctx.signal,
     );

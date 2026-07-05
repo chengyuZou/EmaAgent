@@ -61,8 +61,8 @@ export type PermissionOutcome =
 
 /** Runtime context passed to every gate() call. */
 export interface PermissionContext {
-  /** All workspace roots the agent is allowed to operate in. First entry is the primary cwd. */
-  workspaceRoots:  string[]
+  /** The workspace root the agent is allowed to operate in. Empty string = no workspace (subagent). */
+  workspaceRoot:   string
   /** Current session ID — used for internal path carve-outs (e.g. session memory). */
   sessionId?:      string
   /**

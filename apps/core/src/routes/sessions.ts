@@ -41,7 +41,7 @@ const patchSessionSchema = z.object({
   title:          z.string().min(1).max(200).optional(),
   pinned:         z.boolean().optional(),
   groupLabel:     z.string().max(100).nullable().optional(),
-  workspaceRoots: z.array(z.string().max(500)).max(20).optional(),
+  workspaceRoot: z.string().max(500).nullable().optional(),
   lastMode:       z.enum(['chat', 'narrative', 'agent']).nullable().optional(),
 });
 
@@ -166,12 +166,12 @@ export function sessionsRoute(bindings: AppBindings): Hono {
         title:          body.data.title,
         pinned:         body.data.pinned,
         groupLabel:     'groupLabel' in body.data ? body.data.groupLabel ?? null : undefined,
-        workspaceRoots: body.data.workspaceRoots,
+        workspaceRoot:  body.data.workspaceRoot,
         lastMode:       body.data.lastMode,
       });
-      if (body.data.workspaceRoots !== undefined) {
-        // The cached CommandRunner baked the old roots into its sandbox
-        // config — drop it so the next turn rebuilds against the new ones.
+      if (body.data.workspaceRoot !== undefined) {
+        // The cached CommandRunner baked the old root into its sandbox
+        // config — drop it so the next turn rebuilds against the new one.
         bindings.invalidateSessionRuntime(sessionId);
       }
       return c.json(bindings.session.getSession(sessionId));

@@ -90,7 +90,6 @@ function makeTurn(id = 'turn-1'): Turn {
     iterations:        0,
     usageInputTokens:  0,
     usageOutputTokens: 0,
-    costUsd:           0,
   };
 }
 
@@ -149,7 +148,7 @@ function makeInput(overrides: Partial<Parameters<AgentEngine['run']>[0]> = {}) {
     signal:        AbortSignal.timeout(60_000),
     userInput:     'Hello',
     systemPrompt:  'You are a helpful assistant.',
-    workspaceRoots: [WORKSPACE],
+    workspaceRoot: WORKSPACE,
     providerId:    PROVIDER_ID,
     model:         MODEL,
     ...overrides,

@@ -87,7 +87,7 @@ export const sessionsApi = {
       title?: string;
       pinned?: boolean;
       groupLabel?: string | null;
-      workspaceRoots?: string[];
+      workspaceRoot?: string | null;
       lastMode?: TurnMode | null;
     },
   ): Promise<SessionWire> {

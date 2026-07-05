@@ -17,8 +17,8 @@ const BARE_REPO_FILES = ['HEAD', 'objects', 'refs', 'hooks', 'config'] as const;
 // ── Context ───────────────────────────────────────────────────────────────────
 
 export interface ConfigContext {
-  workspaceRoots: string[];
-  sessionId?:     string;
+  workspaceRoot: string;
+  sessionId?:    string;
 }
 
 // ── Builder output ────────────────────────────────────────────────────────────
@@ -44,7 +44,7 @@ export function buildSandboxConfig(
   const macOsTmpExtras = process.platform === 'darwin' ? ['/tmp', '/private/tmp'] : [];
 
   const allowWrite: string[] = [
-    ...ctx.workspaceRoots.map(r => path.resolve(r)),
+    ...(ctx.workspaceRoot ? [path.resolve(ctx.workspaceRoot)] : []),
     os.tmpdir(),
     ...macOsTmpExtras,
   ];
@@ -62,18 +62,16 @@ export function buildSandboxConfig(
   denyRead.push(settingsPath);
 
   // Bare-repo attack prevention ───────────────────────────────────────────────
-  // Cover workspaceRoot AND every additionalWorkingDir — a sandboxed command
-  // could plant HEAD/objects/refs/hooks/config in any of them to trigger the
-  // bare-repo escape on the next git call.
+  // A sandboxed command could plant HEAD/objects/refs/hooks/config in the
+  // workspace root to trigger the bare-repo escape on the next git call.
   //
   // For files that already exist: add to denyWrite so sandbox mounts them ro.
   // For files that don't exist: record in scrubPaths so cleanup() can delete
   // anything planted during a sandboxed command.
-  const allWorkingRoots = ctx.workspaceRoots;
   const scrubPaths: string[] = [];
-  for (const root of allWorkingRoots) {
+  if (ctx.workspaceRoot) {
     for (const file of BARE_REPO_FILES) {
-      const p = path.resolve(root, file);
+      const p = path.resolve(ctx.workspaceRoot, file);
       try {
         statSync(p);            // throws ENOENT if absent
         denyWrite.push(p);      // exists → make it read-only inside sandbox
@@ -95,7 +93,7 @@ export function buildSandboxConfig(
       continue;
     }
 
-    const base = resolveGlobBase(rule.pathGlob, ctx.workspaceRoots[0] ?? '');
+    const base = resolveGlobBase(rule.pathGlob, ctx.workspaceRoot || '');
 
     if (rule.tool === 'fs-edit' || rule.tool === 'fs-write') {
       if (rule.action === 'allow') allowWrite.push(base);

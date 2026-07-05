@@ -146,14 +146,14 @@ export function ArtifactCard({ artifact }: ArtifactCardProps): React.JSX.Element
   const applyArtifact  = useArtifactStore((s) => s.applyArtifact);
   const rejectArtifact = useArtifactStore((s) => s.rejectArtifact);
 
-  const workspaceRoots = useSessionStore(
-    (s) => s.sessions.byId.get(artifact.sessionId as string)?.workspaceRoots ?? [],
+  const workspaceRoot = useSessionStore(
+    (s) => s.sessions.byId.get(artifact.sessionId as string)?.workspaceRoot ?? null,
   );
 
   // Shared: open Save As dialog → write artifact to chosen path
   async function handlePickAndApply(): Promise<void> {
     if (tauriBridge.isTauri()) {
-      const defaultPath = buildDefaultPath(workspaceRoots[0], artifact.meta);
+      const defaultPath = buildDefaultPath(workspaceRoot ?? undefined, artifact.meta);
       const targetPath  = await tauriBridge.saveFileDialog({
         defaultPath,
         filters: buildFilters(artifact.type),
@@ -236,7 +236,7 @@ export function ArtifactCard({ artifact }: ArtifactCardProps): React.JSX.Element
       {fallbackOpen && (
         <FallbackDialog
           artifactId={artifact.id}
-          defaultPath={buildDefaultPath(workspaceRoots[0], artifact.meta)}
+          defaultPath={buildDefaultPath(workspaceRoot ?? undefined, artifact.meta)}
           onClose={() => setFallbackOpen(false)}
         />
       )}

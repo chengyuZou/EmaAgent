@@ -1,8 +1,8 @@
 import type { TurnMode } from '@ema-agent/contracts';
 
 export interface ModeBlockOpts {
-  /** One or more workspace roots the agent is allowed to operate in. */
-  workspaceRoots?: string[];
+  /** The workspace root the agent is allowed to operate in. null/undefined = not set. */
+  workspaceRoot?: string | null;
 }
 
 /**
@@ -42,9 +42,9 @@ function narrativeBlock(): string {
 
 // ── Agent ─────────────────────────────────────────────────────────────────────
 
-function agentBlock({ workspaceRoots }: ModeBlockOpts): string {
-  const wsNote = workspaceRoots && workspaceRoots.length > 0
-    ? `当前允许操作的工作区目录：\n${workspaceRoots.map((r) => `  - \`${r}\``).join('\n')}\n所有文件操作必须限定在以上目录范围内。\n`
+function agentBlock({ workspaceRoot }: ModeBlockOpts): string {
+  const wsNote = workspaceRoot
+    ? `当前允许操作的工作区目录：\`${workspaceRoot}\`\n所有文件操作必须限定在该目录范围内。\n`
     : '';
 
   return `## 当前模式：Agent 任务（agent）

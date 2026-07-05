@@ -118,8 +118,8 @@ export interface AgentRunInput {
   providerId:            string;
   /** Resolved model name — orchestrator responsibility. */
   model:                 string;
-  /** All workspace roots. First entry is the primary cwd for shell tools. */
-  workspaceRoots: string[];
+  /** The workspace root. Empty string = no workspace (subagent). */
+  workspaceRoot: string;
   /** KB ids the user selected in the chat picker. kbSearch searches across all of them.
    *  [] / omit → falls back to the active KB. */
   kbIds?:         string[];

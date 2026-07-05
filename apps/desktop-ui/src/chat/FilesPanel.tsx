@@ -1,8 +1,8 @@
 ﻿/**
  * FilesPanel — workspace file browser for the Inspector dock.
  *
- * Roots = session.workspaceRoots (set via settings or Tauri file dialog).
- * Each root starts collapsed; clicking expands it lazily via
+ * Root = session.workspaceRoot (set via the workspace picker or Tauri file dialog).
+ * Starts collapsed; clicking expands it lazily via
  * GET /api/workspace/ls?path=... Files are read-only (⌘-click opens in OS).
  * The search box filters by name (case-insensitive substring).
  */
@@ -173,7 +173,7 @@ export function FilesPanel(): JSX.Element {
     sessionId ? s.sessions.byId.get(sessionId as string) : undefined,
   );
 
-  const roots: string[] = session?.workspaceRoots ?? [];
+  const root: string | null = session?.workspaceRoot ?? null;
 
   const [search,   setSearch]   = useState('');
   const [dirNodes, setDirNodes] = useState<Map<string, DirNode>>(new Map);
@@ -219,13 +219,13 @@ export function FilesPanel(): JSX.Element {
     if (!node?.children) void loadDir(dirPath);
   }, [dirNodes, loadDir]);
 
-  // Roots rendered as top-level expandable entries
+  // Root rendered as the single top-level expandable entry
   const rootEntries: FileEntry[] = useMemo(
-    () => roots.map((r) => ({ name: r.split(/[\\/]/).pop() ?? r, path: r, type: 'dir' as const })),
-    [roots],
+    () => root ? [{ name: root.split(/[\\/]/).pop() ?? root, path: root, type: 'dir' as const }] : [],
+    [root],
   );
 
-  if (roots.length === 0) {
+  if (!root) {
     return (
       <div className="flex flex-col items-center justify-center gap-3 py-10 px-4 ema-fade-in">
         <span className="i-mdi:folder-alert-outline text-3xl opacity-20"

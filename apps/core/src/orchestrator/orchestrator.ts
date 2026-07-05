@@ -314,12 +314,12 @@ export class Orchestrator {
       }
 
       case 'agent': {
-        const sess           = this.bindings.session.getSession(sessionId);
-        const workspaceRoots = sess.workspaceRoots.length > 0 ? sess.workspaceRoots : [process.cwd()];
-        const systemPrompt   = buildSystemPrompt(
+        const sess          = this.bindings.session.getSession(sessionId);
+        const workspaceRoot = sess.workspaceRoot ?? process.cwd();
+        const systemPrompt  = buildSystemPrompt(
           this.bindings.card.current(),
           'agent',
-          { workspaceRoots },
+          { workspaceRoot },
         );
 
         const { providerId, model } = this.resolveLlmForTurn(request);
@@ -341,7 +341,7 @@ export class Orchestrator {
           model,
           userInput:      request.contentParts?.length ? request.contentParts : (request.userInput ?? ''),
           systemPrompt,
-          workspaceRoots,
+          workspaceRoot,
           kbIds:          request.kbIds,
           kbAssetScopes:  request.kbAssetScopes,
           thinking:       request.thinking,
