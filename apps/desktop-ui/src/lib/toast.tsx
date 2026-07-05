@@ -110,3 +110,23 @@ export function showToast(message: string, opts?: ToastOptions): void {
   const id = addToast(message, variant);
   setTimeout(() => removeToast(id), duration);
 }
+
+/**
+ * Run an async store action, toasting on failure. Pairs with store methods that
+ * re-throw on error (e.g. session-store's delete/rename/pin/archive all
+ * `throw err` after setting state.error). Avoids repeating try/catch+toast at
+ * every call site.
+ *
+ * The toast shows `<fallback>: <err.message>` so the user sees both the action
+ * that failed and the backend's error detail.
+ *
+ * @example
+ *   void runWithToast(store.deleteSession(id), '删除失败');
+ */
+export function runWithToast<T>(p: Promise<T>, fallback: string): Promise<T | undefined> {
+  return p.catch((err: unknown) => {
+    const msg = err instanceof Error ? `${fallback}: ${err.message}` : fallback;
+    showToast(msg, { variant: 'danger' });
+    return undefined;
+  });
+}

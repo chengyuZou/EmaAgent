@@ -88,6 +88,7 @@ export const useSessionStore = create<SessionStoreState>((set, get) => ({
       await get().loadSessions();
     } catch (err: unknown) {
       set({ error: err instanceof Error ? err.message : 'Failed to rename session' });
+      throw err;
     }
   },
 
@@ -97,6 +98,7 @@ export const useSessionStore = create<SessionStoreState>((set, get) => ({
       await get().loadSessions();
     } catch (err: unknown) {
       set({ error: err instanceof Error ? err.message : 'Failed to pin session' });
+      throw err;
     }
   },
 
@@ -106,6 +108,7 @@ export const useSessionStore = create<SessionStoreState>((set, get) => ({
       await get().loadSessions();
     } catch (err: unknown) {
       set({ error: err instanceof Error ? err.message : 'Failed to set group' });
+      throw err;
     }
   },
 
@@ -154,6 +157,7 @@ export const useSessionStore = create<SessionStoreState>((set, get) => ({
       await get().loadSessions();
     } catch (err: unknown) {
       set({ error: err instanceof Error ? err.message : 'Failed to archive session' });
+      throw err;
     }
   },
 
@@ -163,6 +167,7 @@ export const useSessionStore = create<SessionStoreState>((set, get) => ({
       await get().loadSessions();
     } catch (err: unknown) {
       set({ error: err instanceof Error ? err.message : 'Failed to unarchive session' });
+      throw err;
     }
   },
 
@@ -173,6 +178,7 @@ export const useSessionStore = create<SessionStoreState>((set, get) => ({
       await get().loadSessions();
     } catch (err: unknown) {
       set({ error: err instanceof Error ? err.message : 'Failed to delete session' });
+      throw err;
     }
   },
 }));

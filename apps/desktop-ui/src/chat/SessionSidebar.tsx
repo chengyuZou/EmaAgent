@@ -5,7 +5,7 @@ import { sessionsApi, type SessionWire, type SessionSearchItem } from '../api/se
 import { useConversationStore } from '../stores/conversation-store.js';
 import { useSessionStore, type SessionsState } from '../stores/session-store.js';
 import { useDecisionStore } from '../stores/decision-store.js';
-import { showToast } from '../lib/toast.js';
+import { runWithToast } from '../lib/toast.js';
 import type { SessionId } from '@ema-agent/contracts';
 import { WorkspacePicker } from './WorkspacePicker.js';
 
@@ -386,7 +386,7 @@ function SidebarRow({ session, isActive, streaming, decisions, nested = false }:
       kind:     'item',
       label:    session.pinned ? '取消固定' : '固定',
       icon:     session.pinned ? 'i-mdi:pin-off-outline' : 'i-mdi:pin-outline',
-      onSelect: () => void useSessionStore.getState().pinSession(session.id as SessionId, !session.pinned),
+      onSelect: () => void runWithToast(useSessionStore.getState().pinSession(session.id as SessionId, !session.pinned), '固定失败'),
     },
     {
       kind:     'item',
@@ -394,7 +394,7 @@ function SidebarRow({ session, isActive, streaming, decisions, nested = false }:
       icon:     'i-mdi:pencil-outline',
       onSelect: () => {
         const name = prompt('新名称', session.title);
-        if (name) void useSessionStore.getState().renameSession(session.id as SessionId, name);
+        if (name) void runWithToast(useSessionStore.getState().renameSession(session.id as SessionId, name), '重命名失败');
       },
     },
     {
@@ -412,7 +412,7 @@ function SidebarRow({ session, isActive, streaming, decisions, nested = false }:
       icon:     'i-mdi:tag-outline',
       onSelect: () => {
         const label = prompt('分组名称(留空取消分组)', session.groupLabel ?? '');
-        if (label !== null) void useSessionStore.getState().setSessionGroup(session.id as SessionId, label.trim() || null);
+        if (label !== null) void runWithToast(useSessionStore.getState().setSessionGroup(session.id as SessionId, label.trim() || null), '分组失败');
       },
     },
     {
@@ -425,7 +425,7 @@ function SidebarRow({ session, isActive, streaming, decisions, nested = false }:
       kind:     'item',
       label:    '归档',
       icon:     'i-mdi:archive-outline',
-      onSelect: () => void useSessionStore.getState().archiveSession(session.id as SessionId),
+      onSelect: () => void runWithToast(useSessionStore.getState().archiveSession(session.id as SessionId), '归档失败'),
     },
     { kind: 'separator' },
     {
@@ -435,10 +435,7 @@ function SidebarRow({ session, isActive, streaming, decisions, nested = false }:
       danger:   true,
       onSelect: () => {
         if (confirm('确定删除这个会话？')) {
-          void (async () => {
-            await useSessionStore.getState().deleteSession(session.id as SessionId);
-            useConversationStore.getState().evictSession(session.id as SessionId);
-          })();
+          void runWithToast(useSessionStore.getState().deleteSession(session.id as SessionId), '删除失败');
         }
       },
     },
