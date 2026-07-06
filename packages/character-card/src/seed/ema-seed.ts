@@ -1,4 +1,4 @@
-﻿import type { CharacterCardInput } from './types.js';
+﻿import type { CharacterCardInput } from '../types.js';
 
 export const EMA_CARD_ID = 'ema' as const;
 
@@ -110,4 +110,19 @@ determined: 「一定有办法的！」「我不会放弃！」
     'bow',
     'scared',
   ],
+
+  live2dModelId: 'ema',
+
+  voiceProfile: {
+    refAudios: [
+      {
+        id:           'ra_ema001',
+        label:        '默认',
+        refAudioPath: 'voiceRefs/ra_ema001.mp3',
+        promptText:   '我就是担心这种伤风败俗的东西如果被身心尚幼的小朋友们看到会造成不好的影响，所以我想提前为小朋友们做好预防措施。',
+        promptLang:   'zh',
+      },
+    ],
+    primaryId: 'ra_ema001',
+  },
 };

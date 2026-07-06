@@ -25,7 +25,8 @@ import { createTraceSink } from './diagnostic-sink.js';
 import { LlmRouter, ModelsDevCatalog } from '@ema-agent/llm';
 import { EbdRouter }     from '@ema-agent/ebd-client';
 import { NarrativeClient } from '@ema-agent/narrative-client';
-import { CharacterCardStore } from '@ema-agent/character-card';
+import { CharacterCardStore, BUILTIN_CARDS, EMA_CARD_INPUT, EMA_CARD_ID } from '@ema-agent/character-card';
+import { Live2DModelsRepo } from '@ema-agent/storage';
 import { TtsClient, FsAudioArchive, type AudioArchive } from '@ema-agent/tts';
 import { SttClient }     from '@ema-agent/stt';
 import { buildTtsClient } from './providers/tts.js';
@@ -240,6 +241,26 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
   });
 
   // ── Character + emotion ─────────────────────────────────────────────────────
+  // Seed built-in Live2D models FIRST — character_cards.live2d_model_id has an
+  // FK to live2d_models(id), so the model row must exist before the card insert.
+  const live2dModelsRepo = new Live2DModelsRepo(profileDb.sqlite);
+  for (const builtinCard of BUILTIN_CARDS) {
+    if (!builtinCard.live2dModelId) continue;
+    if (!live2dModelsRepo.findById(builtinCard.live2dModelId)) {
+      const cardId = builtinCard === EMA_CARD_INPUT ? EMA_CARD_ID : builtinCard.name;
+      const now = Date.now();
+      live2dModelsRepo.insert({
+        id:           builtinCard.live2dModelId,
+        name:         builtinCard.name,
+        format:       'live2d',
+        storage_path: `cards/${cardId}/live2d/${builtinCard.live2dModelId}.model3.json`,
+        params_json:  '{}',
+        is_builtin:   1,
+        created_at:   now,
+        updated_at:   now,
+      });
+    }
+  }
   const card = new CharacterCardStore({ db: profileDb });
   card.ensureSeed();
   const emotion = new EmotionEngine({ vocabulary: card.current().emotionVocabulary });

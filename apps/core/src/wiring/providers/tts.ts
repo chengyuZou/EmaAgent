@@ -17,7 +17,7 @@ import {
 } from '@ema-agent/contracts';
 
 import type { CharacterCardStore, CharacterVoiceProfile } from '@ema-agent/character-card';
-import { resolveVoiceRefPath } from '../../storage-locations/index.js';
+import { resolveCardVoiceRefPath } from '../../storage-locations/index.js';
 
 // ── Provider config builder ─────────────────────────────────────────────────
 
@@ -103,7 +103,7 @@ export function resolveVoice(
   if (!primary) return null;
 
   return {
-    refAudioPath: resolveVoiceRefPath(primary.refAudioPath),
+    refAudioPath: resolveCardVoiceRefPath(c.id as string, c.isBuiltin, primary.refAudioPath),
     promptText:   primary.promptText,
     promptLang:   primary.promptLang,
     // voiceUri is populated later by ensureVoiceUri (lazy upload or cache hit)

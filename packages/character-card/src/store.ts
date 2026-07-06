@@ -4,7 +4,7 @@ import type { CharacterCardId } from '@ema-agent/contracts';
 import { asCharacterCardId } from '@ema-agent/contracts';
 import type { CharacterCard, CharacterCardInput } from './types.js';
 import { CharacterCardRepository } from './repository.js';
-import { EMA_CARD_ID, EMA_CARD_INPUT } from './seed.js';
+import { EMA_CARD_ID, EMA_CARD_INPUT, BUILTIN_CARDS } from './seed/index.js';
 
 // ── Event listener types ─────────────────────────────────────────────────────
 
@@ -61,12 +61,20 @@ export class CharacterCardStore {
   }
 
   ensureSeed(): void {
-    const emaId = asCharacterCardId(EMA_CARD_ID);
-    if (!this.repository.findById(emaId)) {
-      this.repository.insert(EMA_CARD_INPUT, { id: EMA_CARD_ID, isBuiltin: true });
+    // Seed ALL built-in cards (not just Ema). Each is inserted if missing.
+    // New built-in characters are added by pushing into BUILTIN_CARDS in
+    // seed/index.ts — no wiring changes needed here.
+    for (const cardInput of BUILTIN_CARDS) {
+      const cardId = asCharacterCardId(cardInput === EMA_CARD_INPUT ? EMA_CARD_ID : cardInput.name);
+      if (!this.repository.findById(cardId)) {
+        this.repository.insert(cardInput, { id: cardId as string, isBuiltin: true });
+      }
     }
+
+    // Activate Ema if no card is active yet.
     const before = this.repository.findActive();
     if (!before) {
+      const emaId = asCharacterCardId(EMA_CARD_ID);
       this.repository.activate(emaId);
       const after = this.repository.findActive();
       if (after) this.emitSwitched(after, null);

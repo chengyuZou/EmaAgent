@@ -5,6 +5,7 @@ export {
   sessionDirFor, sessionAudioDirFor, sessionArtifactsDirFor,
   ensureSessionLayout, removeSessionDir,
   voiceRefsDir, voiceRefsForCard, resolveVoiceRefPath, ensureProfileLayout,
+  cardsDir, cardDir, cardResourcePath, resolveCardVoiceRefPath,
 } from './paths.js';
 
 export {

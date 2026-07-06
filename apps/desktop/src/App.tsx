@@ -3,7 +3,7 @@ import { EmaStageView }          from './components/EmaStageView.js';
 import { SpeechBubble }          from './components/SpeechBubble.js';
 import { PermissionToastLayer }  from './components/PermissionToastLayer.js';
 import { useSpeechStore } from '@ema-agent/live2d-react';
-import { FloatingDock, DecisionLayer, ShellSetupDialog, shellApi, useSidecarStore, useThemeSync } from '@ema-agent/desktop-ui';
+import { FloatingDock, DecisionLayer, ShellSetupDialog, shellApi, useSidecarStore, useThemeSync, sidecarClient } from '@ema-agent/desktop-ui';
 import type { ShellStatus } from '@ema-agent/desktop-ui';
 
 // ── Main window ─────────────────────────────────────────────────────────────
@@ -19,13 +19,31 @@ import type { ShellStatus } from '@ema-agent/desktop-ui';
 // dock fades in (opacity 0 → 1). On leave with a 600 ms grace, fades out.
 // Grace keeps the dock visible while you move along its right edge briefly.
 
-const EMA_MODEL_PATH = '/live2d/ema/ema.model3.json';
 const DOCK_FADE_GRACE_MS = 600;
 
 export function App(): React.JSX.Element {
   const sidecarStatus = useSidecarStore((s) => s.status);
   const [dockVisible,  setDockVisible]  = useState(false);
   const [shellStatus,  setShellStatus]  = useState<ShellStatus | null>(null);
+  const [modelPath,    setModelPath]    = useState<string | null>(null);
+  const [runtimeConfigUrl, setRuntimeConfigUrl] = useState<string | null>(null);
+
+  // Fetch the active card's Live2D model path + runtime config URL from the
+  // sidecar. No hardcoding — the card's live2dModelId → live2d_models table
+  // → storage_path tells us where the model lives.
+  useEffect(() => {
+    if (sidecarStatus.kind !== 'ok') return;
+    void (async () => {
+      try {
+        const cards = await sidecarClient.request<{ cards: { id: string; isActive: boolean; live2dModelId: string | null }[] }>('/api/cards');
+        const active = cards.cards.find((c) => c.isActive);
+        if (!active?.live2dModelId) return;
+        const { path } = await sidecarClient.request<{ path: string }>(`/api/cards/${active.id}/live2d/model-path`);
+        setModelPath(path);
+        setRuntimeConfigUrl(`/api/cards/${active.id}/live2d/runtime-config`);
+      } catch { /* sidecar not ready yet — will retry on next render */ }
+    })();
+  }, [sidecarStatus.kind]);
 
   useDevTtsPlaybackFromUrl();
   useThemeSync();
@@ -75,7 +93,12 @@ export function App(): React.JSX.Element {
 
       <GlowBorder />
 
-      <EmaStageView modelPath={EMA_MODEL_PATH} />
+      {modelPath && (
+        <EmaStageView
+          modelPath={modelPath}
+          runtimeConfigUrl={runtimeConfigUrl ?? undefined}
+        />
+      )}
 
       <SpeechBubble />
 

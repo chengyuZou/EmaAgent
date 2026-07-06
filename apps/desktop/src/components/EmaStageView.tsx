@@ -4,7 +4,7 @@
  * Listens to Tauri events (emitted by system-sse) for emotion/stage cues
  * and dispatches them to the Live2D model via live2d-react.
  */
-import { useEffect, useRef, type JSX } from 'react';
+import { useEffect, useRef, useState, type JSX } from 'react';
 import {
   Live2DStage,
   useLive2DStore,
@@ -15,53 +15,23 @@ import {
 import { tauriBridge } from '@ema-agent/desktop-ui';
 
 export interface EmaStageViewProps {
-  modelPath?: string;
+  modelPath: string;
+  /** URL to fetch the Live2D runtime config JSON (emotionMap, motionMap, etc.). */
+  runtimeConfigUrl?: string;
 }
 
-const EMA_LIVE2D_RUNTIME_CONFIG: Live2DModelRuntimeConfig = {
-  modelId: 'ema',
-  parameters: {
-    mouthOpenParam: 'ParamMouthOpenY',
-    mouthOpenMax: 2.1,
-    speechNodParam: 'Param86',
-    speechNodAmplitude: 3,
-    headInputX: 'Param85',
-    headInputY: 'Param86',
-    headInputZ: 'Param87',
-    breathParam: 'ParamBreath',
-  },
-  idleBeat: {
-    swayAmplitude: 15,
-    swayFrequencyX: 0.8,
-    swayFrequencyY: 0.56,
-    swayFrequencyZ: 0.62,
-    breathFrequency: 0.6,
-  },
-  randomIdle: {
-    group: 'Idle',
-    minDelayMs: 12_000,
-    maxDelayMs: 35_000,
-  },
-  emotionMap: {
-    neutral: {},
-    happy: {},
-    curious: {},
-    shy: {},
-    sad: { expression: 'liulei' },
-    scared: { expression: 'liulei' },
-    determined: { expression: 'taishou' },
-    focused: { expression: 'taishou' },
-    surprised: { expression: 'taishou' },
-    angry: { expression: 'monvhua' },
-  },
-  motionMap: {
-    idle: { group: 'Idle', index: 0 },
-    think: { group: 'Idle', index: 0 },
-  },
-};
-
-export function EmaStageView({ modelPath = '/live2d/ema/ema.model3.json' }: EmaStageViewProps): JSX.Element {
+export function EmaStageView({ modelPath, runtimeConfigUrl }: EmaStageViewProps): JSX.Element {
   const stageRef = useRef<Live2DStageHandle>(null);
+  const [runtimeConfig, setRuntimeConfig] = useState<Live2DModelRuntimeConfig | null>(null);
+
+  // Fetch runtime config from the card's resource pack (runtime-config.json).
+  useEffect(() => {
+    if (!runtimeConfigUrl) return;
+    void fetch(runtimeConfigUrl)
+      .then((res) => res.ok ? res.json() : null)
+      .then((cfg) => { if (cfg) setRuntimeConfig(cfg as Live2DModelRuntimeConfig); })
+      .catch(() => { /* config missing — model loads with defaults */ });
+  }, [runtimeConfigUrl]);
 
   useEffect(() => {
     const applySpeechState = (payload: { speaking: boolean; rms: number }): void => {
@@ -74,7 +44,7 @@ export function EmaStageView({ modelPath = '/live2d/ema/ema.model3.json' }: EmaS
     };
 
     const applyEmotion = (primary: string): void => {
-      const target = EMA_LIVE2D_RUNTIME_CONFIG.emotionMap?.[primary];
+      const target = runtimeConfig?.emotionMap?.[primary];
       if (target?.expression) {
         stageRef.current?.setExpression(target.expression);
       } else {
@@ -86,7 +56,7 @@ export function EmaStageView({ modelPath = '/live2d/ema/ema.model3.json' }: EmaS
     };
 
     const applyMotion = (motion: string): void => {
-      const target = EMA_LIVE2D_RUNTIME_CONFIG.motionMap?.[motion];
+      const target = runtimeConfig?.motionMap?.[motion];
       if (!target) return;
       stageRef.current?.playMotion(target.group, target.index);
     };
@@ -104,7 +74,7 @@ export function EmaStageView({ modelPath = '/live2d/ema/ema.model3.json' }: EmaS
       'stage:cue',
       (event) => {
         if (event.payload.expression) {
-          const target = EMA_LIVE2D_RUNTIME_CONFIG.emotionMap?.[event.payload.expression];
+          const target = runtimeConfig?.emotionMap?.[event.payload.expression];
           stageRef.current?.setExpression(target?.expression ?? event.payload.expression);
         }
         if (event.payload.motion) {
@@ -157,13 +127,13 @@ export function EmaStageView({ modelPath = '/live2d/ema/ema.model3.json' }: EmaS
       void unlistenCycle.then((fn) => fn());
       speechChannel?.close();
     };
-  }, []);
+  }, [runtimeConfig]);
 
   return (
     <Live2DStage
       ref={stageRef}
       modelPath={modelPath}
-      runtimeConfig={EMA_LIVE2D_RUNTIME_CONFIG}
+      runtimeConfig={runtimeConfig ?? undefined}
     />
   );
 }

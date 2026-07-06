@@ -11,7 +11,7 @@ import {
   type CharacterRefAudio,
   type CharacterVoiceProfile,
 } from '@ema-agent/character-card';
-import { voiceRefsForCard, resolveVoiceRefPath } from '../storage-locations/index.js';
+import { voiceRefsForCard, resolveVoiceRefPath, cardDir, cardResourcePath, resolveCardVoiceRefPath } from '../storage-locations/index.js';
 import { z } from 'zod';
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -177,6 +177,7 @@ export function cardsRoute(bindings: AppBindings): Hono {
   app.post('/:cardId/voice-refs', async (c) => {
     const found = getCardOr404(bindings, c.req.param('cardId'));
     if (!found) return c.json({ error: 'card_not_found' }, 404);
+    if (found.card.isBuiltin) return c.json({ error: 'builtin_readonly' }, 403);
 
     let form: FormData;
     try { form = await c.req.formData(); }
@@ -203,10 +204,10 @@ export function cardsRoute(bindings: AppBindings): Hono {
 
     const refId   = `ra_${randomUUID().slice(0, 8)}`;
     const ext     = extForMime(file.type || mimeForExt(path.extname(label).slice(1)));
-    const cardDir = voiceRefsForCard(found.id);
-    fs.mkdirSync(cardDir, { recursive: true });
-    const relPath = `${found.id as string}/${refId}.${ext}`;
-    const absPath = path.join(cardDir, `${refId}.${ext}`);
+    const voiceDir = path.join(cardDir(found.id as string, found.card.isBuiltin), 'voiceRefs');
+    fs.mkdirSync(voiceDir, { recursive: true });
+    const relPath = `voiceRefs/${refId}.${ext}`;
+    const absPath = path.join(voiceDir, `${refId}.${ext}`);
 
     const bytes = new Uint8Array(await file.arrayBuffer());
     await fs.promises.writeFile(absPath, bytes);
@@ -239,7 +240,7 @@ export function cardsRoute(bindings: AppBindings): Hono {
     const ref = found.card.voiceProfile.refAudios.find((r) => r.id === refId);
     if (!ref) return c.json({ error: 'ref_not_found' }, 404);
 
-    const absPath = resolveVoiceRefPath(ref.refAudioPath);
+    const absPath = resolveCardVoiceRefPath(found.id as string, found.card.isBuiltin, ref.refAudioPath);
     if (!fs.existsSync(absPath)) return c.json({ error: 'file_missing' }, 410);
 
     const stat = await fs.promises.stat(absPath);
@@ -257,12 +258,13 @@ export function cardsRoute(bindings: AppBindings): Hono {
   app.delete('/:cardId/voice-refs/:refId', (c) => {
     const found = getCardOr404(bindings, c.req.param('cardId'));
     if (!found) return c.json({ error: 'card_not_found' }, 404);
+    if (found.card.isBuiltin) return c.json({ error: 'builtin_readonly' }, 403);
 
     const refId = c.req.param('refId');
     const ref = found.card.voiceProfile.refAudios.find((r) => r.id === refId);
     if (!ref) return c.json({ error: 'ref_not_found' }, 404);
 
-    const absPath = resolveVoiceRefPath(ref.refAudioPath);
+    const absPath = resolveCardVoiceRefPath(found.id as string, found.card.isBuiltin, ref.refAudioPath);
     try { fs.rmSync(absPath, { force: true }); } catch { /* ignore */ }
 
     const nextRefs = found.card.voiceProfile.refAudios.filter((r) => r.id !== refId);
@@ -292,6 +294,50 @@ export function cardsRoute(bindings: AppBindings): Hono {
       voiceProfile: { ...found.card.voiceProfile, primaryId: body.refId },
     });
     return c.json({ primaryId: body.refId });
+  });
+
+  // ── Live2D model path + runtime config ──────────────────────────────────────
+
+  /**
+   * GET /:cardId/live2d/model-path
+   * Returns the web-accessible path for the card's Live2D model.
+   * Builtin cards: returns a public/ relative path (e.g. '/cards/ema/live2d/ema.model3.json').
+   * User cards: returns an absolute filesystem path (the frontend streams via a sidecar route).
+   */
+  app.get('/:cardId/live2d/model-path', (c) => {
+    const found = getCardOr404(bindings, c.req.param('cardId'));
+    if (!found) return c.json({ error: 'card_not_found' }, 404);
+    const modelId = found.card.live2dModelId;
+    if (!modelId) return c.json({ error: 'no_live2d_model' }, 404);
+
+    if (found.card.isBuiltin) {
+      // Builtin: served from public/ by Tauri webview — return URL path.
+      const cardId = found.id as string;
+      return c.json({ path: `/cards/${cardId}/live2d/${modelId}.model3.json` });
+    }
+    // User: return absolute filesystem path (frontend fetches via a file route).
+    const abs = cardResourcePath(found.id as string, false, `live2d/${modelId}.model3.json`);
+    return c.json({ path: abs });
+  });
+
+  /**
+   * GET /:cardId/live2d/runtime-config
+   * Returns the Live2D runtime config (emotionMap, motionMap, parameters)
+   * from the card's resource pack (runtime-config.json).
+   */
+  app.get('/:cardId/live2d/runtime-config', async (c) => {
+    const found = getCardOr404(bindings, c.req.param('cardId'));
+    if (!found) return c.json({ error: 'card_not_found' }, 404);
+    const modelId = found.card.live2dModelId;
+    if (!modelId) return c.json({ error: 'no_live2d_model' }, 404);
+
+    const configPath = cardResourcePath(found.id as string, found.card.isBuiltin, 'live2d/runtime-config.json');
+    try {
+      const content = await fs.promises.readFile(configPath, 'utf-8');
+      return c.json(JSON.parse(content));
+    } catch {
+      return c.json({ error: 'runtime_config_missing' }, 404);
+    }
   });
 
   return app;

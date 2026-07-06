@@ -1,0 +1,41 @@
+{
+  "modelId": "ema",
+  "parameters": {
+    "mouthOpenParam": "ParamMouthOpenY",
+    "mouthOpenMax": 2.1,
+    "speechNodParam": "Param86",
+    "speechNodAmplitude": 3,
+    "headInputX": "Param85",
+    "headInputY": "Param86",
+    "headInputZ": "Param87",
+    "breathParam": "ParamBreath"
+  },
+  "idleBeat": {
+    "swayAmplitude": 15,
+    "swayFrequencyX": 0.8,
+    "swayFrequencyY": 0.56,
+    "swayFrequencyZ": 0.62,
+    "breathFrequency": 0.6
+  },
+  "randomIdle": {
+    "group": "Idle",
+    "minDelayMs": 12000,
+    "maxDelayMs": 35000
+  },
+  "emotionMap": {
+    "neutral": {},
+    "happy": {},
+    "curious": {},
+    "shy": {},
+    "sad": { "expression": "liulei" },
+    "scared": { "expression": "liulei" },
+    "determined": { "expression": "taishou" },
+    "focused": { "expression": "taishou" },
+    "surprised": { "expression": "taishou" },
+    "angry": { "expression": "monvhua" }
+  },
+  "motionMap": {
+    "idle": { "group": "Idle", "index": 0 },
+    "think": { "group": "Idle", "index": 0 }
+  }
+}

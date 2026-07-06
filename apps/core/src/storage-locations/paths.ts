@@ -28,11 +28,18 @@ export function lockfilePath(): string {
 }
 
 // ── Voice reference audio (profile-scoped) ───────────────────────────────────
+// @deprecated Use cardDir(cardId, isBuiltin) + 'voiceRefs' instead.
+// Kept for backward compatibility during the V2 migration.
 
 /**
  * Root for character reference audio. Profile-scoped so a card's voice
  * survives dataDir switches. Per-card sub-folder:
  *   `<profileDir>/voiceRefs/<cardId>/<filename>`
+ *
+ * @deprecated — user-uploaded voice-refs now live under
+ *   `~/.ema-agent/cards/<cardId>/voiceRefs/`. This function is kept only
+ *   for migration of legacy voice-ref paths. New code should use
+ *   cardDir(cardId, false) + 'voiceRefs'.
  */
 export function voiceRefsDir(): string {
   return path.join(profileDir(), 'voiceRefs');
@@ -46,9 +53,64 @@ export function resolveVoiceRefPath(relPath: string): string {
   return path.join(voiceRefsDir(), relPath);
 }
 
+// ── Character card resource packs ────────────────────────────────────────────
+
+/**
+ * Root for user character card resource packs. Each card gets a sub-directory:
+ *   `<profileDir>/cards/<cardId>/`
+ *     ├── live2d/        (model files + runtime-config.json)
+ *     └── voiceRefs/     (reference audio)
+ */
+export function cardsDir(): string {
+  return path.join(profileDir(), 'cards');
+}
+
+/**
+ * Path to a character card's resource directory.
+ *
+ * Builtin cards (isBuiltin=true): packaged in `public/cards/<cardId>/`,
+ * read-only, served by the Tauri webview. The EMA_BUILTIN_CARDS_DIR env
+ * var overrides the default (used in dev to point at apps/desktop/public).
+ *
+ * User cards (isBuiltin=false): `~/.ema-agent/cards/<cardId>/`, read-write.
+ */
+export function cardDir(cardId: string, isBuiltin: boolean): string {
+  if (isBuiltin) {
+    const base = process.env['EMA_BUILTIN_CARDS_DIR'] ?? path.join(process.cwd(), 'apps', 'desktop', 'public', 'cards');
+    return path.join(base, cardId);
+  }
+  return path.join(cardsDir(), cardId);
+}
+
+/**
+ * Resolve a relative path inside a card's resource pack to an absolute path.
+ *
+ * @param cardId    The card's id (e.g. 'ema').
+ * @param isBuiltin Whether the card is builtin (read from public/) or user.
+ * @param relPath   Relative path inside the card pack (e.g. 'live2d/ema.model3.json'
+ *                  or 'voiceRefs/ra_ema001.mp3').
+ */
+export function cardResourcePath(cardId: string, isBuiltin: boolean, relPath: string): string {
+  return path.join(cardDir(cardId, isBuiltin), relPath);
+}
+
+/**
+ * Resolve a voice-ref relative path inside a card's resource pack.
+ *
+ * For builtin cards, this returns the path inside `public/cards/<cardId>/voiceRefs/`.
+ * For user cards, `~/.ema-agent/cards/<cardId>/voiceRefs/`.
+ *
+ * The relPath stored in CharacterRefAudio.refAudioPath is relative to the
+ * card pack root (e.g. 'voiceRefs/ra_ema001.mp3').
+ */
+export function resolveCardVoiceRefPath(cardId: string, isBuiltin: boolean, relPath: string): string {
+  return cardResourcePath(cardId, isBuiltin, relPath);
+}
+
 /** Create the profile-side directories that aren't part of profile.db itself. */
 export function ensureProfileLayout(): void {
   fs.mkdirSync(voiceRefsDir(), { recursive: true });
+  fs.mkdirSync(cardsDir(), { recursive: true });
 }
 
 // ── Data dir (top-level) ─────────────────────────────────────────────────────
