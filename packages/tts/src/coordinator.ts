@@ -7,7 +7,7 @@ import type { TtsVoiceRef } from './types.js';
 import { SentenceSplitter } from './streaming/sentence-splitter.js';
 import { TextFilterStream } from './streaming/text-filter.js';
 import { ttsEventToEma, makeSentenceId } from './bridge.js';
-import type { AudioArchive } from './archive.js';
+import type { AudioArchive, FinalizedAudio } from './archive.js';
 
 // ── TtsCoordinator ──────────────────────────────────────────────────────────
 //
@@ -73,7 +73,7 @@ export class TtsCoordinator {
   private chain:      Promise<void>       = Promise.resolve();
   private finishing                       = false;
   private aborted                         = false;
-  private finalAudioPath: string | null   = null;
+  private finalAudio: FinalizedAudio | null     = null;
   /**
    * Actual archive extension detected from the first audio_chunk MIME.
    * Set once on the first synthesized sentence; used by finish() for finalizeTurn.
@@ -122,10 +122,10 @@ export class TtsCoordinator {
   /**
    * Stop accepting new deltas, flush the splitter's trailing buffer, drain
    * the synthesis queue, and finalize the archive. Returns the merged audio
-   * path if the archive wrote one.
+   * metadata if the archive wrote one.
    */
-  async finish(): Promise<{ audioPath: string | null }> {
-    if (this.finishing) return { audioPath: this.finalAudioPath };
+  async finish(): Promise<{ audio: FinalizedAudio | null }> {
+    if (this.finishing) return { audio: this.finalAudio };
     this.finishing = true;
     this.disposeExternalAbort?.();
 
@@ -144,21 +144,22 @@ export class TtsCoordinator {
 
     // If abort() was called while we were waiting for the chain, it has already
     // set this.aborted and will call discardTurn — don't write a partial merged file.
-    if (this.aborted) return { audioPath: null };
+    if (this.aborted) return { audio: null };
 
     if (this.archive) {
       try {
-        this.finalAudioPath = await this.archive.finalizeTurn(
+        this.finalAudio = await this.archive.finalizeTurn(
+          this.sessionId as string,
           this.turnId as string,
           this.effectiveExt ?? this.format,
         );
       } catch {
         // archive failure is non-fatal — audio already streamed live
-        this.finalAudioPath = null;
+        this.finalAudio = null;
       }
     }
 
-    return { audioPath: this.finalAudioPath };
+    return { audio: this.finalAudio };
   }
 
   /** Discard everything. Used when the turn aborts before completion. */
@@ -171,10 +172,10 @@ export class TtsCoordinator {
     this.abortController.abort();
     this.disposeExternalAbort?.();
     this.finishing = true;
-    try { await this.chain; } catch (err) { 
+    try { await this.chain; } catch (err) {
       console.warn('[tts/coordinator] chain error during abort:', err instanceof Error ? err.message : err);
      }
-    this.archive?.discardTurn(this.turnId as string);
+    this.archive?.discardTurn(this.sessionId as string, this.turnId as string);
   }
 
   // ── Internals ─────────────────────────────────────────────────────────────
@@ -213,7 +214,7 @@ export class TtsCoordinator {
           if (!writer && this.archive) {
             const ext = mimeToExt(ev.mime) ?? this.format;
             this.effectiveExt ??= ext;
-            writer = this.archive.openSegment(this.turnId as string, index, ext);
+            writer = this.archive.openSegment(this.sessionId as string, this.turnId as string, index, ext);
           }
           writer?.write(ev.bytes);
         }

@@ -120,7 +120,7 @@ export interface MessageRestoreRow {
 }
 
 export interface ArtifactRestoreRow {
-  id: string; type: string; title: string; contentLocation: string;
+  id: string; sessionId: string; turnId: string | null; type: string; title: string; contentLocation: string;
   content: string | null;
   contentPath: string | null;
   createdAt: number; appliedAt: number | null; rejectedAt: number | null;
@@ -234,6 +234,31 @@ export class SessionStatsRepo {
       WHERE session_id = ?
       ORDER BY created_at ASC
     `).all(sessionId) as AudioEntryRow[];
+  }
+
+  /**
+   * Record a turn's merged audio file. Called by the orchestrator once TTS
+   * finalizes the merged file — without this, dashboard stats and export zip
+   * see no audio even though the file exists on disk.
+   */
+  recordAudioMerged(row: {
+    turnId:       string;
+    sessionId:    string;
+    storagePath:  string;
+    mimeType:     string;
+    byteSize:     number;
+    durationMs:   number | null;
+    segmentCount: number;
+    createdAt:    number;
+  }): void {
+    this.db.prepare(`
+      INSERT OR REPLACE INTO turn_audio_merged
+        (turn_id, session_id, storage_path, mime_type, byte_size, duration_ms, segment_count, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      row.turnId, row.sessionId, row.storagePath, row.mimeType,
+      row.byteSize, row.durationMs, row.segmentCount, row.createdAt,
+    );
   }
 
   listArtifactSummaries(sessionId: string): ArtifactSummaryRow[] {
@@ -378,11 +403,11 @@ export class SessionStatsRepo {
         INSERT OR IGNORE INTO artifacts
           (id, session_id, turn_id, type, title, content, content_location,
            content_path, meta_json, created_at, updated_at, applied_at, rejected_at)
-        VALUES (?, ?, NULL, ?, ?, ?, ?, ?, '{}', ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, '{}', ?, ?, ?, ?)
       `);
       for (const a of p.artifacts) {
         stmtArt.run(
-          a.id, p.session.id, a.type, a.title,
+          a.id, p.session.id, a.turnId ?? null, a.type, a.title,
           a.content, a.contentLocation,
           a.contentPath ?? null,
           a.createdAt, a.createdAt,

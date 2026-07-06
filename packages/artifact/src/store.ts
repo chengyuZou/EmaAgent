@@ -31,10 +31,15 @@ const SESSION_WARN_THRESHOLD = 100;
 export class ArtifactStore implements IArtifactStore {
   constructor(
     private readonly repo: ArtifactRepo,
-    /** Absolute path to the app-managed directory for large artifact files. */
-    private readonly artifactsDir: string,
+    /**
+     * Root of the per-session directory tree (`{dataDir}/sessions`). Each
+     * file-backed artifact lands at `{sessionsRoot}/{sessionId}/artifacts/{id}`
+     * so it is collocated with the session's audio/scratchpad and cleaned by
+     * `removeSessionDir`.
+     */
+    private readonly sessionsRoot: string,
   ) {
-    fs.mkdirSync(artifactsDir, { recursive: true });
+    // The per-session subdirectory is created on demand in upsert().
   }
 
   // ── upsert ──────────────────────────────────────────────────────────────────
@@ -73,7 +78,9 @@ export class ArtifactStore implements IArtifactStore {
     let artifactForDb: Artifact;
 
     if (isLarge) {
-      const contentPath = path.join(this.artifactsDir, id);
+      const artDir = path.join(this.sessionsRoot, args.sessionId as string, 'artifacts');
+      fs.mkdirSync(artDir, { recursive: true });
+      const contentPath = path.join(artDir, id);
       tmpPath = contentPath + '.tmp';
       // 1. Write to .tmp — DB is untouched yet
       fs.writeFileSync(tmpPath, args.content, 'utf8');

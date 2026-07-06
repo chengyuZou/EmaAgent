@@ -232,7 +232,7 @@ CREATE TABLE turn_usage (
 
 CREATE TABLE agent_tasks (
   id                     TEXT    PRIMARY KEY,
-  session_id             TEXT    NOT NULL,
+  session_id             TEXT    NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
   turn_id                TEXT,
   parent_id              TEXT,
   status                 TEXT    NOT NULL DEFAULT 'running'

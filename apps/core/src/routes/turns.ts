@@ -99,8 +99,22 @@ export function turnsRoute(bindings: AppBindings): Hono {
   const eventStore = new TurnEventStore(60_000);
   const eventHub = new TurnEventHub();
   const orchestrator = new Orchestrator(bindings, {
-    onAudioFinalized: (turnId, audioPath) => {
-      if (audioPath) eventStore.evictAudioChunks(turnId);
+    onAudioFinalized: (turnId, sessionId, audio) => {
+      if (audio) {
+        // Record the merged audio in turn_audio_merged so dashboard stats and
+        // export zip can see it — the file alone on disk is not enough.
+        bindings.sessionStats.recordAudioMerged({
+          turnId:       turnId as string,
+          sessionId:    sessionId as string,
+          storagePath:  audio.path,
+          mimeType:     audio.mime,
+          byteSize:     audio.byteSize,
+          durationMs:   audio.durationMs,
+          segmentCount: audio.segmentCount,
+          createdAt:    Date.now(),
+        });
+        eventStore.evictAudioChunks(turnId);
+      }
     },
   });
   // Evict completed / cancelled turns every 30 s to prevent unbounded memory growth.
@@ -340,7 +354,10 @@ export function turnsRoute(bindings: AppBindings): Hono {
   //   - turn predates the audio archive feature
   app.get('/:turnId/audio', async (c) => {
     const turnId = c.req.param('turnId');
-    const found  = bindings.audioArchive.findMergedFor(turnId);
+    // findMergedFor is per-session — resolve the turn's sessionId first.
+    const turn = bindings.session.getTurn(turnId as TurnId);
+    if (!turn) return c.json({ error: 'turn_not_found' }, 404);
+    const found  = bindings.audioArchive.findMergedFor(turn.sessionId as string, turnId);
     if (!found) return c.json({ error: 'audio_not_found' }, 404);
 
     const stat = await fs.promises.stat(found.path);

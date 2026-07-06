@@ -1,6 +1,6 @@
 import type { AppBindings } from '../wiring/index.js';
 import type {
-  TurnMode, EmaStreamEvent, TurnId, KbAssetScope,
+  TurnMode, EmaStreamEvent, TurnId, SessionId, KbAssetScope,
 } from '@ema-agent/contracts';
 import { getProviderDefinition } from '@ema-agent/contracts';
 import type { ThinkingMode } from '@ema-agent/llm';
@@ -11,9 +11,11 @@ import { ConversationEngine } from '@ema-agent/conversation';
 import { AgentEngine }        from '@ema-agent/agent';
 import { buildSystemPrompt }  from '@ema-agent/prompts';
 import { TtsCoordinator }     from '@ema-agent/tts';
+import type { FinalizedAudio } from '@ema-agent/tts';
 import { SettingsRepo } from '@ema-agent/storage';
 import type { BindingModule } from '@ema-agent/storage';
 import { resolveVoice, ensureVoiceUri, VoiceUriCache } from '../wiring/providers/tts.js';
+import { ensureSessionLayout } from '../storage-locations/index.js';
 import type { Turn }           from '@ema-agent/session';
 import type { VisionImageInput, VisionImageMime } from '@ema-agent/vision';
 
@@ -60,7 +62,7 @@ export interface OrchestratorCallbacks {
    * `audioPath` is null if no audio was produced (turn had no TTS, or all
    * sentences errored).
    */
-  onAudioFinalized?: (turnId: TurnId, audioPath: string | null) => void;
+  onAudioFinalized?: (turnId: TurnId, sessionId: SessionId, audio: FinalizedAudio | null) => void;
 }
 
 /**
@@ -129,6 +131,9 @@ export class Orchestrator {
 
   async run(request: TurnRequest): Promise<TurnResult> {
     const sessionId = asSessionId(request.sessionId);
+    // Ensure the per-session directory tree exists before any audio/artifact
+    // writes land in it. Cheap (mkdirSync recursive) and idempotent.
+    ensureSessionLayout(this.bindings.activeDataDir, sessionId as string);
     const { turn, signal } = this.bindings.session.startTurn({
       sessionId,
       mode:      request.mode,
@@ -263,20 +268,20 @@ export class Orchestrator {
         }
 
         if (coordinator && pendingTurnDone?.type === 'turn_completed') {
-          const { audioPath } = await coordinator.finish();
+          const { audio } = await coordinator.finish();
           while (ttsQueue.length > 0) yield ttsQueue.shift()!;
-          callbacks.onAudioFinalized?.(turnId, audioPath);
+          callbacks.onAudioFinalized?.(turnId, sessionId, audio);
         } else if (coordinator) {
           await coordinator.abort();
           ttsQueue.length = 0;
-          callbacks.onAudioFinalized?.(turnId, null);
+          callbacks.onAudioFinalized?.(turnId, sessionId, null);
         }
 
         if (pendingTurnDone) yield pendingTurnDone;
       } catch (err) {
         if (coordinator) {
           await coordinator.abort();
-          callbacks.onAudioFinalized?.(turnId, null);
+          callbacks.onAudioFinalized?.(turnId, sessionId, null);
         }
         throw err;
       } finally {

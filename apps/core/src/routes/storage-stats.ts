@@ -284,7 +284,8 @@ export function storageStatsRoute(bindings: AppBindings): Hono {
 
     const artifactIndex = artifacts.map((a) => ({
       id: a.id, type: a.type, title: a.title, contentLocation: a.contentLocation,
-      createdAt: a.createdAt,
+      turnId:     (a as { turnId?: string }).turnId ?? null,
+      createdAt:  a.createdAt,
       appliedAt:  (a as { appliedAt?:  number }).appliedAt  ?? null,
       rejectedAt: (a as { rejectedAt?: number }).rejectedAt ?? null,
     }));
@@ -387,7 +388,8 @@ export function storageStatsRoute(bindings: AppBindings): Hono {
     if (unzipped['audio/index.json']) {
       interface AudioMeta { turnId: string; mimeType: string; byteSize: number; durationMs: number | null; segmentCount: number; createdAt: number; }
       const audioIndex = JSON.parse(strFromU8(unzipped['audio/index.json'])) as AudioMeta[];
-      const audioDir   = path.join(bindings.activeDataDir, 'audio', 'merged');
+      // Restore to the per-session audio directory (matches live TTS layout).
+      const audioDir   = path.join(bindings.activeDataDir, 'sessions', sd.id, 'audio', 'merged');
       fs.mkdirSync(audioDir, { recursive: true });
       for (const entry of audioIndex) {
         const ext      = mimeToExt(entry.mimeType);
@@ -417,12 +419,26 @@ export function storageStatsRoute(bindings: AppBindings): Hono {
 
     const artifactRestoreRows: ArtifactRestoreRow[] = [];
     if (unzipped['artifacts/index.json']) {
-      interface ArtMeta { id: string; type: string; title: string; contentLocation: string; createdAt: number; appliedAt: number | null; rejectedAt: number | null; }
+      interface ArtMeta { id: string; type: string; title: string; contentLocation: string; turnId: string | null; createdAt: number; appliedAt: number | null; rejectedAt: number | null; }
       const artIndex = JSON.parse(strFromU8(unzipped['artifacts/index.json'])) as ArtMeta[];
+      // File-backed artifacts restore to the per-session directory so they
+      // behave identically to live-created ones (and removeSessionDir cleans them).
+      const artDir = path.join(bindings.activeDataDir, 'sessions', sd.id, 'artifacts');
       for (const art of artIndex) {
         const fileKey = `artifacts/${art.id}${artifactExt(art.type)}`;
-        const content = unzipped[fileKey] ? strFromU8(unzipped[fileKey]) : null;
-        artifactRestoreRows.push({ id: art.id, type: art.type, title: art.title, contentLocation: art.contentLocation, content, contentPath: null, createdAt: art.createdAt, appliedAt: art.appliedAt ?? null, rejectedAt: art.rejectedAt ?? null });
+        const raw = unzipped[fileKey] ?? null;
+        if (art.contentLocation === 'file' && raw) {
+          fs.mkdirSync(artDir, { recursive: true });
+          // Preserve the original extension (export used path.extname or .bin).
+          const ext = path.extname(fileKey) || '.bin';
+          const destPath = path.join(artDir, `${art.id}${ext}`);
+          fs.writeFileSync(destPath, raw);
+          artifactRestoreRows.push({ id: art.id, sessionId: sd.id, turnId: art.turnId, type: art.type, title: art.title, contentLocation: 'file', content: null, contentPath: destPath, createdAt: art.createdAt, appliedAt: art.appliedAt ?? null, rejectedAt: art.rejectedAt ?? null });
+        } else {
+          // inline (or file-backed but the blob is missing — degrade to inline empty)
+          const content = raw ? strFromU8(raw) : null;
+          artifactRestoreRows.push({ id: art.id, sessionId: sd.id, turnId: art.turnId, type: art.type, title: art.title, contentLocation: 'inline', content, contentPath: null, createdAt: art.createdAt, appliedAt: art.appliedAt ?? null, rejectedAt: art.rejectedAt ?? null });
+        }
       }
     }
 

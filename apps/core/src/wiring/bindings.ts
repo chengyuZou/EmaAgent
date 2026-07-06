@@ -22,6 +22,7 @@ import { readFileSync } from 'node:fs';
 import * as os from 'node:os';
 import { HookBus }       from '@ema-agent/hook';
 import { createTraceSink } from './diagnostic-sink.js';
+import { removeSessionDir } from '../storage-locations/index.js';
 import { LlmRouter, ModelsDevCatalog } from '@ema-agent/llm';
 import { EbdRouter }     from '@ema-agent/ebd-client';
 import { NarrativeClient } from '@ema-agent/narrative-client';
@@ -207,7 +208,12 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
     traceSink:     createTraceSink(),   // ring buffer + console; SSE layer added by orchestrator
     warnAnonymous: process.env['NODE_ENV'] !== 'production',
   });
-  const session = new SessionStore({ db: dataDb });
+  const session = new SessionStore({
+    db: dataDb,
+    // Remove the session's on-disk directory tree (audio/artifacts/scratchpad)
+    // when the session is deleted. DB rows cascade via FK; files need this.
+    onSessionRemoved: (sid) => removeSessionDir(activeDataDir, sid),
+  });
 
   // ── Per-provider model pools (profileDb) ────────────────────────────────────
   const providers            = new ProvidersRepo(profileDb.sqlite);
@@ -271,10 +277,10 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
   const vision = buildVisionRouter(profileDb);
 
   // ── Audio archive ───────────────────────────────────────────────────────────
-  // TODO(wiring): should be per-session → sessionAudioDirFor(activeDataDir, sessionId).
-  // Shared root is fine for V1 (single-user, one active session at a time).
+  // Per-session: {dataDir}/sessions/{sessionId}/audio/. Collocated with
+  // artifacts/scratchpad so removeSessionDir cleans everything together.
   const audioArchive = new FsAudioArchive(
-    nodePath.join(activeDataDir, 'audio'),
+    nodePath.join(activeDataDir, 'sessions'),
   );
 
   // ── Repos ───────────────────────────────────────────────────────────────────
@@ -369,9 +375,11 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
   });
 
   // ── Artifacts ───────────────────────────────────────────────────────────────
+  // Per-session: {dataDir}/sessions/{sessionId}/artifacts/{id}. Collocated
+  // with audio/scratchpad so removeSessionDir cleans everything together.
   const artifactStore = new ArtifactStore(
     new ArtifactRepo(dataDb.sqlite),
-    nodePath.join(activeDataDir, '.ema-agent', 'artifacts'),
+    nodePath.join(activeDataDir, 'sessions'),
   );
 
   // ── Attachments ─────────────────────────────────────────────────────────────

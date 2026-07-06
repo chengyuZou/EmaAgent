@@ -3,34 +3,42 @@ import path from 'node:path';
 
 // ── TTS audio archive ───────────────────────────────────────────────────────
 //
-// Persists streamed audio chunks to disk. Two layers:
-//   1. Per-sentence segment files: one file per `sentence_done`, written to
-//      `{audioRoot}/segments/{turnId}/{sentenceIndex}.{ext}`
-//   2. Per-turn merged file: written after all sentences complete, at
-//      `{audioRoot}/merged/{turnId}.{ext}`
+// Persists streamed audio chunks to disk under a per-session directory:
+//   {sessionsRoot}/{sessionId}/audio/segments/{turnId}/{sentenceIndex}.{ext}
+//   {sessionsRoot}/{sessionId}/audio/merged/{turnId}.{ext}
+//
+// Per-session layout means an entire session's audio is collocated with its
+// artifacts/scratchpad, so `removeSessionDir` cleans everything in one call.
 //
 // Merge strategy:
-//   - If `ffmpeg` available: use it (cleanest; future enhancement)
-//   - Else if all chunks are MP3: concat after stripping ID3 tags from each
+//   - If all chunks are MP3: concat after stripping ID3 tags from each
 //     (borrowed from v0.4 prototype — works without external tools)
 //   - Else: write only the first segment as the merged file (degraded path)
 
+export interface FinalizedAudio {
+  path:          string;
+  mime:          string;
+  byteSize:      number;
+  durationMs:    number | null;
+  segmentCount:  number;
+}
+
 export interface AudioArchive {
   /** Open a new segment writer. Returns a sink the caller pushes bytes to. */
-  openSegment(turnId: string, sentenceIndex: number, ext: string): SegmentWriter;
+  openSegment(sessionId: string, turnId: string, sentenceIndex: number, ext: string): SegmentWriter;
 
-  /** Finalize a turn: merge all segments into one file and return its path. */
-  finalizeTurn(turnId: string, ext: string): Promise<string | null>;
+  /** Finalize a turn: merge all segments into one file and return its path + metadata. */
+  finalizeTurn(sessionId: string, turnId: string, ext: string): Promise<FinalizedAudio | null>;
 
   /** Forget a turn's audio (called on turn_aborted / turn_failed). */
-  discardTurn(turnId: string): void;
+  discardTurn(sessionId: string, turnId: string): void;
 
   /**
    * Look up the merged audio for a turn, regardless of extension. Returns
    * { path, mime } for the route handler to stream, or null if no merged
    * file exists yet (turn aborted before finalize, or no TTS happened).
    */
-  findMergedFor(turnId: string): { path: string; mime: string } | null;
+  findMergedFor(sessionId: string, turnId: string): { path: string; mime: string } | null;
 }
 
 export interface SegmentWriter {
@@ -40,14 +48,19 @@ export interface SegmentWriter {
 
 // ── Filesystem-backed implementation ────────────────────────────────────────
 
+/**
+ * @param sessionsRoot The `{dataDir}/sessions` root. Per-session audio lives
+ *                     under `{sessionsRoot}/{sessionId}/audio/`.
+ */
 export class FsAudioArchive implements AudioArchive {
-  constructor(private readonly audioRoot: string) {
-    fs.mkdirSync(path.join(this.audioRoot, 'segments'), { recursive: true });
-    fs.mkdirSync(path.join(this.audioRoot, 'merged'),   { recursive: true });
+  constructor(private readonly sessionsRoot: string) {}
+
+  private audioDir(sessionId: string): string {
+    return path.join(this.sessionsRoot, sessionId, 'audio');
   }
 
-  openSegment(turnId: string, sentenceIndex: number, ext: string): SegmentWriter {
-    const dir = path.join(this.audioRoot, 'segments', turnId);
+  openSegment(sessionId: string, turnId: string, sentenceIndex: number, ext: string): SegmentWriter {
+    const dir = path.join(this.audioDir(sessionId), 'segments', turnId);
     fs.mkdirSync(dir, { recursive: true });
     const filePath = path.join(dir, `${sentenceIndex}.${ext}`);
     const fd = fs.openSync(filePath, 'w');
@@ -58,8 +71,9 @@ export class FsAudioArchive implements AudioArchive {
     };
   }
 
-  async finalizeTurn(turnId: string, ext: string): Promise<string | null> {
-    const segDir = path.join(this.audioRoot, 'segments', turnId);
+  async finalizeTurn(sessionId: string, turnId: string, ext: string): Promise<FinalizedAudio | null> {
+    const audioDir = this.audioDir(sessionId);
+    const segDir = path.join(audioDir, 'segments', turnId);
     if (!fs.existsSync(segDir)) return null;
 
     const segments = fs.readdirSync(segDir)
@@ -69,31 +83,36 @@ export class FsAudioArchive implements AudioArchive {
 
     if (segments.length === 0) return null;
 
-    const target = path.join(this.audioRoot, 'merged', `${turnId}.${ext}`);
+    const mergedDir = path.join(audioDir, 'merged');
+    fs.mkdirSync(mergedDir, { recursive: true });
+    const target = path.join(mergedDir, `${turnId}.${ext}`);
 
+    let bytes: Buffer;
     if (segments.length === 1) {
-      fs.mkdirSync(path.dirname(target), { recursive: true });
-      fs.copyFileSync(segments[0]!, target);
-      return target;
-    }
-
-    if (ext === 'mp3') {
+      bytes = fs.readFileSync(segments[0]!);
+    } else if (ext === 'mp3') {
       const merged = mergeMp3SegmentsByConcat(segments);
-      if (merged) {
-        fs.writeFileSync(target, merged);
-        return target;
-      }
+      bytes = merged ?? fs.readFileSync(segments[0]!);
+    } else {
+      // Degraded fallback: only first segment survives
+      bytes = fs.readFileSync(segments[0]!);
     }
+    fs.writeFileSync(target, bytes);
 
-    // Degraded fallback: only first segment survives
-    fs.copyFileSync(segments[0]!, target);
-    return target;
+    return {
+      path:         target,
+      mime:         mimeForExt(ext),
+      byteSize:     bytes.length,
+      durationMs:   estimateAudioDurationMs(bytes, ext),
+      segmentCount: segments.length,
+    };
   }
 
-  discardTurn(turnId: string): void {
-    const segDir = path.join(this.audioRoot, 'segments', turnId);
+  discardTurn(sessionId: string, turnId: string): void {
+    const audioDir = this.audioDir(sessionId);
+    const segDir = path.join(audioDir, 'segments', turnId);
     if (fs.existsSync(segDir)) fs.rmSync(segDir, { recursive: true, force: true });
-    const merged = path.join(this.audioRoot, 'merged');
+    const merged = path.join(audioDir, 'merged');
     if (fs.existsSync(merged)) {
       for (const f of fs.readdirSync(merged)) {
         if (f.startsWith(turnId + '.')) fs.rmSync(path.join(merged, f), { force: true });
@@ -101,8 +120,8 @@ export class FsAudioArchive implements AudioArchive {
     }
   }
 
-  findMergedFor(turnId: string): { path: string; mime: string } | null {
-    const dir = path.join(this.audioRoot, 'merged');
+  findMergedFor(sessionId: string, turnId: string): { path: string; mime: string } | null {
+    const dir = path.join(this.audioDir(sessionId), 'merged');
     if (!fs.existsSync(dir)) return null;
     for (const f of fs.readdirSync(dir)) {
       if (!f.startsWith(turnId + '.')) continue;
@@ -123,6 +142,55 @@ function mimeForExt(ext: string): string {
     case 'aac':  return 'audio/aac';
     default:     return 'application/octet-stream';
   }
+}
+
+/**
+ * Best-effort duration estimate from the byte stream. Exact for WAV (header),
+ * approximate for MP3 (frame count × frame duration). Returns null when the
+ * format is unknown — the caller treats null as "duration unknown" rather
+ * than 0, so downstream stats stay honest.
+ */
+function estimateAudioDurationMs(bytes: Buffer, ext: string): number | null {
+  if (ext === 'wav' && bytes.length >= 44) {
+    // RIFF header: sample rate at offset 24 (4 bytes LE), byte rate at 28.
+    const byteRate = bytes.readUInt32LE(28);
+    if (byteRate > 0) return Math.round((bytes.length / byteRate) * 1000);
+  }
+  if (ext === 'mp3') {
+    // Count audio frames; each frame's duration = 1152 samples / sample_rate.
+    // CBR approximation — good enough for a stat field.
+    const sampleRate = extractMp3SampleRate(bytes);
+    if (sampleRate > 0) {
+      const frames = countMp3Frames(bytes);
+      if (frames > 0) return Math.round((frames * 1152 * 1000) / sampleRate);
+    }
+  }
+  return null;
+}
+
+function extractMp3SampleRate(data: Buffer): number {
+  const RATES = [44100, 48000, 32000, 0]; // index 0..3 by bitrate bits
+  // Find first valid frame header (sync 0xFFE/0xFFE0)
+  for (let i = 0; i < data.length - 4; i++) {
+    if (data[i] === 0xFF && (data[i + 1]! & 0xE0) === 0xE0) {
+      const srBits = (data[i + 2]! >> 2) & 0x03;
+      const rate = RATES[srBits];
+      if (rate && rate > 0) return rate;
+    }
+  }
+  return 0;
+}
+
+function countMp3Frames(data: Buffer): number {
+  let count = 0;
+  for (let i = 0; i < data.length - 4; i++) {
+    if (data[i] === 0xFF && (data[i + 1]! & 0xE0) === 0xE0) {
+      count++;
+      // Skip past this frame (frame length varies; advance ~417 bytes for 128kbps/44.1kHz)
+      i += 416;
+    }
+  }
+  return count;
 }
 
 // ── MP3 concat helpers (no ffmpeg) ──────────────────────────────────────────

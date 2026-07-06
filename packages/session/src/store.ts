@@ -164,6 +164,12 @@ function toSearchHit(row: SessionSearchRow): SearchSessionsOutput['results'][num
 
 export interface SessionStoreDeps {
   db: Database;
+  /**
+   * Called after a session is deleted from the DB. The wiring layer injects
+   * `removeSessionDir(dataDir, sessionId)` so the session's audio/artifact/
+   * scratchpad files are cleaned alongside the DB rows.
+   */
+  onSessionRemoved?: (sessionId: string) => void;
 }
 
 /**
@@ -180,15 +186,17 @@ export class SessionStore {
   private readonly messagesRepo: MessagesRepo;
   private readonly branchesRepo: BranchesRepo;
   private readonly registry:     RunRegistry;
+  private readonly onSessionRemoved?: (sessionId: string) => void;
   /** Monotonically increasing clock — ensures created_at is unique even for sub-ms bursts. */
   private lastTs = 0;
 
-  constructor({ db }: SessionStoreDeps) {
+  constructor({ db, onSessionRemoved }: SessionStoreDeps) {
     this.sessionsRepo = new SessionsRepo(db.sqlite);
     this.turnsRepo    = new TurnsRepo(db.sqlite);
     this.messagesRepo = new MessagesRepo(db.sqlite);
     this.branchesRepo = new BranchesRepo(db.sqlite);
     this.registry     = new RunRegistry();
+    this.onSessionRemoved = onSessionRemoved;
   }
 
   // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -440,6 +448,9 @@ export class SessionStore {
   deleteSession(id: SessionId): void {
     this.registry.clear(id);
     this.sessionsRepo.delete(id);  // cascades to turns + messages via FK
+    // Clean the per-session directory tree (audio/artifacts/scratchpad).
+    // DB rows cascade-cleaned; this catches the file side that has no FK.
+    this.onSessionRemoved?.(id as string);
   }
 
   // ── Turn ────────────────────────────────────────────────────────────────────

@@ -24,7 +24,7 @@ export type { SentenceChunk } from './streaming/sentence-splitter.js';
 export { TextFilterStream, filterSentenceForTts } from './streaming/text-filter.js';
 
 export { FsAudioArchive } from './archive.js';
-export type { AudioArchive, SegmentWriter } from './archive.js';
+export type { AudioArchive, SegmentWriter, FinalizedAudio } from './archive.js';
 
 export {
   ttsEventToEma, makeSentenceId, parseSentenceId,
