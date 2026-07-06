@@ -114,9 +114,9 @@ export function ProviderForm({
       const result = await providersApi.probe(instance.id, undefined);
       setProbeOk(result.ok);
       setProbeMsg(result.ok ? null : (result.error ?? '连接失败'));
-    } catch {
+    } catch (err) {
       setProbeOk(false);
-      setProbeMsg('探测失败');
+      setProbeMsg(err instanceof Error ? err.message : '探测失败');
     } finally {
       setProbing(false);
     }

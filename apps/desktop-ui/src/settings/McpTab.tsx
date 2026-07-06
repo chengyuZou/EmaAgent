@@ -3,7 +3,7 @@ import {
   Badge, Button, Callout, Card, Dialog, Divider, DropdownMenu,
   Field, IconButton, Input, ScrollArea, Select, Spinner, Switch, Tabs, Textarea, Tooltip,
 } from '@ema-agent/ui';
-import { useMcpStore, type McpServerEntry, type McpServerConfig, type McpImportResult, type McpMarketEntry } from '../stores/mcp-store.js';
+import { useMcpStore, type McpServerEntry, type McpServerConfig, type McpProbeResult, type McpImportResult, type McpMarketEntry } from '../stores/mcp-store.js';
 import { showToast } from '../lib/toast.js';
 import type { McpConnectionStatus } from '@ema-agent/mcp';
 
@@ -150,7 +150,7 @@ export function McpTab(): JSX.Element {
 
   const [addOpen,   setAddOpen]   = useState(false);
   const [form,      setForm]      = useState<AddFormState>(EMPTY_FORM);
-  const [probeResult, setProbeResult] = useState<{ ok: boolean; error?: string } | null>(null);
+  const [probeResult, setProbeResult] = useState<McpProbeResult | null>(null);
   const [probing,   setProbing]   = useState(false);
   const [adding,    setAdding]    = useState(false);
   const [addError,  setAddError]  = useState<string | null>(null);
@@ -489,6 +489,30 @@ export function McpTab(): JSX.Element {
             <Callout variant={probeResult.ok ? 'success' : 'danger'}>
               {probeResult.ok ? '连接测试成功' : `连接失败：${probeResult.error}`}
             </Callout>
+          )}
+
+          {probeResult?.ok && probeResult.tools && probeResult.tools.length > 0 && (
+            <div className="flex flex-col gap-1.5 mt-2">
+              <span className="text-xs" style={{ color: 'var(--ema-text-tertiary)' }}>
+                发现 {probeResult.tools.length} 个工具：
+              </span>
+              {probeResult.tools.map((t) => {
+                const params = toolParamNames(t.inputSchema);
+                return (
+                  <div key={t.serverToolName} className="rounded-lg px-2.5 py-1.5 bg-[var(--ema-surface-1)] border border-[var(--ema-border)]">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-xs font-mono font-medium text-[var(--ema-text-primary)]">{t.serverToolName}</span>
+                      {params.length > 0 && (
+                        <span className="text-[10px] text-[var(--ema-text-tertiary)] font-mono">({params.join(', ')})</span>
+                      )}
+                    </div>
+                    {t.description && (
+                      <p className="text-[11px] text-[var(--ema-text-tertiary)] mt-0.5 line-clamp-2">{t.description}</p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
           )}
         </div>
 
