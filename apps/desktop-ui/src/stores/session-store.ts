@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { sessionsApi, type SessionWire } from '../api/sessions.js';
 import { useConversationStore } from './conversation-store.js';
+import { useDecisionStore } from './decision-store.js';
 import type { SessionId, TurnMode } from '@ema-agent/contracts';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -175,6 +176,7 @@ export const useSessionStore = create<SessionStoreState>((set, get) => ({
     try {
       await sessionsApi.delete(id);
       useConversationStore.getState().evictSession(id);
+      useDecisionStore.getState().clearSession(id);
       await get().loadSessions();
     } catch (err: unknown) {
       set({ error: err instanceof Error ? err.message : 'Failed to delete session' });

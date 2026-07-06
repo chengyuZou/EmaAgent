@@ -6,8 +6,10 @@
  *   decision:dismiss — prompt resolved → animate card out
  *
  * Permission + ask_confirm → compact non-blocking toast cards (this layer).
- * ask_text / ask_choice / ask_user → delegated to the existing DecisionLayer
- * (blocking modal already mounted in App.tsx) via useDecisionStore.
+ * ask_text / ask_choice / ask_user → NOT shown in the pet window. The pet
+ * window has no viewedSessionId so it cannot render a blocking modal; these
+ * prompts are handled in the chat window's DecisionLayer. The sidebar badge
+ * there surfaces pending counts per session.
  *
  * Multiple sessions can have stacked prompts simultaneously. Clicking buttons
  * POSTs directly to the backend; does NOT change the active TTS/Live2D session.
@@ -17,7 +19,6 @@ import {
   tauriBridge,
   permissionApi,
   turnsApi,
-  useDecisionStore,
   type DecisionPrompt,
 } from '@ema-agent/desktop-ui';
 
@@ -40,16 +41,13 @@ export function PermissionToastLayer(): React.JSX.Element {
           if (prev.some((t) => t.promptId === p.promptId)) return prev;
           return [...prev, p as QuickToast];
         });
-      } else {
-        // ask_text / ask_choice / ask_user → pet window's DecisionLayer modal
-        useDecisionStore.getState().push(p);
       }
+      // ask_text / ask_choice / ask_user are handled in the chat window only.
     });
 
     const unlistenDismiss = tauriBridge.listen<{ promptId: string }>('decision:dismiss', (e) => {
       const { promptId } = e.payload;
       setToasts((prev) => prev.filter((t) => t.promptId !== promptId));
-      useDecisionStore.getState().dismiss(promptId);
     });
 
     return () => {

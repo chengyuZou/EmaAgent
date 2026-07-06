@@ -82,21 +82,21 @@ export function dispatchSseEvent(
         const saved = useConversationStore.getState().emotionStateMap.get(sessionId as string);
         if (saved) void tauriBridge.emit('stage:emotion-changed', saved);
       }
-      void tauriBridge.emit('speech:start', { sessionId: sessionId as string });
+      void tauriBridge.emit('speech:start', { sessionId });
       break;
     }
 
     case 'turn_completed':
       handleTurnCompleted(sessionId as string);
       cb.finalizeStream(sessionId, event.stats);
-      void tauriBridge.emit('speech:end', { sessionId: sessionId as string });
+      void tauriBridge.emit('speech:end', { sessionId });
       break;
 
     case 'turn_failed':
       breakerReasons.delete(sessionId as string);
       handleTurnAborted(sessionId as string);
       cb.abortStream(sessionId, event.message);
-      void tauriBridge.emit('speech:end', { sessionId: sessionId as string });
+      void tauriBridge.emit('speech:end', { sessionId });
       break;
 
     case 'turn_aborted': {
@@ -104,7 +104,7 @@ export function dispatchSseEvent(
       breakerReasons.delete(sessionId as string);
       handleTurnAborted(sessionId as string);
       cb.abortStream(sessionId, reason ?? event.reason);
-      void tauriBridge.emit('speech:end', { sessionId: sessionId as string });
+      void tauriBridge.emit('speech:end', { sessionId });
       break;
     }
 
@@ -120,7 +120,7 @@ export function dispatchSseEvent(
 
     case 'output_text_delta':
       cb.appendDelta(sessionId, 'text', event.delta);
-      void tauriBridge.emit('speech:delta', { sessionId: sessionId as string, text: event.delta });
+      void tauriBridge.emit('speech:delta', { sessionId, text: event.delta });
       break;
 
     case 'reasoning_delta':
@@ -185,7 +185,7 @@ export function dispatchSseEvent(
 
     case 'ask_user_required': {
       const p = {
-        kind: 'ask_user' as const, promptId: event.promptId, sessionId: sessionId as string,
+        kind: 'ask_user' as const, promptId: event.promptId, sessionId,
         turnId: event.turnId, questions: event.questions, humanDescription: event.humanDescription,
       };
       useDecisionStore.getState().push(p);
@@ -199,8 +199,8 @@ export function dispatchSseEvent(
 
     case 'ask_confirm_required': {
       const p = {
-        kind: 'ask_confirm' as const, promptId: event.promptId, turnId: event.turnId as string,
-        sessionId: sessionId as string, question: event.question, humanDescription: event.humanDescription,
+        kind: 'ask_confirm' as const, promptId: event.promptId, turnId: event.turnId,
+        sessionId, question: event.question, humanDescription: event.humanDescription,
       };
       useDecisionStore.getState().push(p);
       void tauriBridge.emit('decision:push', p);
@@ -213,8 +213,8 @@ export function dispatchSseEvent(
 
     case 'ask_text_required': {
       const p = {
-        kind: 'ask_text' as const, promptId: event.promptId, turnId: event.turnId as string,
-        sessionId: sessionId as string, question: event.question,
+        kind: 'ask_text' as const, promptId: event.promptId, turnId: event.turnId,
+        sessionId, question: event.question,
         humanDescription: event.humanDescription, placeholder: event.placeholder,
       };
       useDecisionStore.getState().push(p);
@@ -228,8 +228,8 @@ export function dispatchSseEvent(
 
     case 'ask_choice_required': {
       const p = {
-        kind: 'ask_choice' as const, promptId: event.promptId, turnId: event.turnId as string,
-        sessionId: sessionId as string, question: event.question,
+        kind: 'ask_choice' as const, promptId: event.promptId, turnId: event.turnId,
+        sessionId, question: event.question,
         humanDescription: event.humanDescription, options: event.options,
         multiSelect: event.multiSelect ?? false, allowCustom: event.allowCustom,
       };
@@ -244,7 +244,7 @@ export function dispatchSseEvent(
 
     case 'permission_required': {
       const p = {
-        kind: 'permission' as const, promptId: event.promptId, sessionId: sessionId as string,
+        kind: 'permission' as const, promptId: event.promptId, sessionId,
         toolName: event.tool, args: event.args, hint: event.hint,
         humanDescription: event.humanDescription ?? event.hint,
         humanDescriptionPending: event.humanDescription === undefined,

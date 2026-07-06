@@ -4,6 +4,7 @@
 import { sidecarClient } from './sidecar-client.js';
 import type { CharacterCardId } from '@ema-agent/contracts';
 import type { CharacterCard, CharacterCardInput, CharacterVoiceProfile } from '@ema-agent/character-card';
+import type { Live2DModelRuntimeConfig } from '@ema-agent/live2d-react';
 
 export type { CharacterCard, CharacterCardInput, CharacterVoiceProfile };
 
@@ -46,6 +47,19 @@ export const cardsApi = {
     return sidecarClient.request<{ activeCardId: string }>(`/api/cards/${id}/activate`, {
       method: 'PUT',
     });
+  },
+
+  // ── Live2D ──────────────────────────────────────────────────────────────
+
+  /** GET /api/cards/:id/live2d/model-path — web-accessible model path. */
+  async getLive2dModelPath(id: CharacterCardId): Promise<string> {
+    const res = await sidecarClient.request<{ path: string }>(`/api/cards/${id}/live2d/model-path`);
+    return res.path;
+  },
+
+  /** GET /api/cards/:id/live2d/runtime-config — emotion/motion map (may 404). */
+  async getLive2dRuntimeConfig(id: CharacterCardId): Promise<Live2DModelRuntimeConfig> {
+    return sidecarClient.request<Live2DModelRuntimeConfig>(`/api/cards/${id}/live2d/runtime-config`);
   },
 
   // ── Voice-refs ──────────────────────────────────────────────────────────

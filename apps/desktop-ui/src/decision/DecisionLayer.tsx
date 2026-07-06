@@ -1,10 +1,17 @@
 /**
- * DecisionLayer — global modal router for permission / ask-user prompts.
+ * DecisionLayer — modal router for the active session's permission / ask-user
+ * prompts.
  *
- * Mount this at the root of EACH sub-window. It reads from decision-store
- * and renders the matching prompt component. Only one prompt at a time.
+ * Mount this in the CHAT sub-window. It reads `viewedSessionId` from
+ * conversation-store and renders that session's queue head. Other sessions'
+ * prompts stay queued (surfaced via sidebar badges) without interrupting the
+ * session the user is currently viewing. The pet window does NOT mount this
+ * (it has no viewedSessionId) — it only shows non-blocking toasts via
+ * PermissionToastLayer.
  */
+import { useShallow } from 'zustand/react/shallow';
 import { useDecisionStore, type DecisionPrompt } from '../stores/decision-store.js';
+import { useConversationStore } from '../stores/conversation-store.js';
 import { useSettingsStore } from '../stores/settings-store.js';
 import { turnsApi } from '../api/turns.js';
 import { PermissionPrompt } from './PermissionPrompt.js';
@@ -12,10 +19,17 @@ import { AskConfirmPrompt } from './AskConfirmPrompt.js';
 import { AskTextPrompt } from './AskTextPrompt.js';
 import { AskChoicePrompt } from './AskChoicePrompt.js';
 import { AskUserBatchPrompt } from './AskUserBatchPrompt.js';
+import type { SessionId } from '@ema-agent/contracts';
 
 // ── Prompt router ─────────────────────────────────────────────────────────────
 
-function PromptRouter({ prompt }: { prompt: DecisionPrompt }): JSX.Element {
+function PromptRouter({
+  prompt,
+  sessionId,
+}: {
+  prompt:   DecisionPrompt;
+  sessionId: SessionId;
+}): JSX.Element {
   const timeoutMs = useSettingsStore((s) => s.permissionTimeoutMs);
 
   switch (prompt.kind) {
@@ -30,7 +44,7 @@ function PromptRouter({ prompt }: { prompt: DecisionPrompt }): JSX.Element {
           humanDescriptionPending={prompt.humanDescriptionPending}
           timeoutMs={timeoutMs}
           onResolve={(decision) => {
-            useDecisionStore.getState().resolve({ decision });
+            useDecisionStore.getState().resolve(sessionId, { decision });
           }}
         />
       );
@@ -43,11 +57,11 @@ function PromptRouter({ prompt }: { prompt: DecisionPrompt }): JSX.Element {
           humanDescription={prompt.humanDescription}
           onResolve={async (confirmed) => {
             await turnsApi.respondAskUser(prompt.turnId, prompt.promptId, { confirmed: String(confirmed) }).catch(() => {});
-            useDecisionStore.getState().resolve({ kind: 'confirm', confirmed });
+            useDecisionStore.getState().resolve(sessionId, { kind: 'confirm', confirmed });
           }}
           onCancel={async () => {
             await turnsApi.respondAskUser(prompt.turnId, prompt.promptId, { confirmed: 'false' }).catch(() => {});
-            useDecisionStore.getState().cancel();
+            useDecisionStore.getState().cancel(sessionId);
           }}
         />
       );
@@ -61,11 +75,11 @@ function PromptRouter({ prompt }: { prompt: DecisionPrompt }): JSX.Element {
           placeholder={prompt.placeholder}
           onResolve={async (text) => {
             await turnsApi.respondAskUser(prompt.turnId, prompt.promptId, { text }).catch(() => {});
-            useDecisionStore.getState().resolve({ kind: 'text', text });
+            useDecisionStore.getState().resolve(sessionId, { kind: 'text', text });
           }}
           onCancel={async () => {
             await turnsApi.respondAskUser(prompt.turnId, prompt.promptId, { text: '' }).catch(() => {});
-            useDecisionStore.getState().cancel();
+            useDecisionStore.getState().cancel(sessionId);
           }}
         />
       );
@@ -84,11 +98,11 @@ function PromptRouter({ prompt }: { prompt: DecisionPrompt }): JSX.Element {
               selected: answers.join(','),
               ...(customText ? { custom: customText } : {}),
             }).catch(() => {});
-            useDecisionStore.getState().resolve({ kind: 'choice', answers, customText });
+            useDecisionStore.getState().resolve(sessionId, { kind: 'choice', answers, customText });
           }}
           onCancel={async () => {
             await turnsApi.respondAskUser(prompt.turnId, prompt.promptId, { selected: '' }).catch(() => {});
-            useDecisionStore.getState().cancel();
+            useDecisionStore.getState().cancel(sessionId);
           }}
         />
       );
@@ -103,14 +117,14 @@ function PromptRouter({ prompt }: { prompt: DecisionPrompt }): JSX.Element {
             // this the agent tool awaits forever (until 120s timeout) and the
             // turn hangs. Matches ask_confirm/text/choice which all call respond.
             await turnsApi.respondAskUser(prompt.turnId, prompt.promptId, answers).catch(() => {});
-            useDecisionStore.getState().resolve({ kind: 'ask_user', answers });
+            useDecisionStore.getState().resolve(sessionId, { kind: 'ask_user', answers });
           }}
           onCancel={async () => {
             // Send an empty response so the backend resolves immediately
             // instead of waiting 120s for the timeout. Without this the user's
             // cancel intent never reaches the agent.
             await turnsApi.respondAskUser(prompt.turnId, prompt.promptId, {}).catch(() => {});
-            useDecisionStore.getState().cancel();
+            useDecisionStore.getState().cancel(sessionId);
           }}
         />
       );
@@ -123,9 +137,12 @@ function PromptRouter({ prompt }: { prompt: DecisionPrompt }): JSX.Element {
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export function DecisionLayer(): JSX.Element | null {
-  const current = useDecisionStore((s) => s.current);
+  const viewedSessionId = useConversationStore((s) => s.viewedSessionId);
+  const current = useDecisionStore(
+    useShallow((s) => (viewedSessionId ? s.sessions.get(viewedSessionId)?.[0] ?? null : null)),
+  );
 
-  if (!current) return null;
+  if (!current || !viewedSessionId) return null;
 
   // Permission prompts must not be silently dismissed via backdrop — the
   // backend agent is waiting for a response. Clicking away sends an explicit
@@ -140,7 +157,7 @@ export function DecisionLayer(): JSX.Element | null {
     } else if (current.kind === 'ask_user') {
       void turnsApi.respondAskUser(current.turnId, current.promptId, {}).catch(() => {});
     }
-    useDecisionStore.getState().cancel();
+    useDecisionStore.getState().cancel(viewedSessionId);
   };
 
   return (
@@ -149,7 +166,7 @@ export function DecisionLayer(): JSX.Element | null {
       <div className="absolute inset-0" style={{ background: 'var(--ema-mask)' }} onClick={handleBackdrop} />
       {/* Modal content — ema-scale-in entrance */}
       <div className="relative z-10 max-w-lg w-full mx-4 ema-scale-in">
-        <PromptRouter prompt={current} />
+        <PromptRouter prompt={current} sessionId={viewedSessionId} />
       </div>
     </div>
   );

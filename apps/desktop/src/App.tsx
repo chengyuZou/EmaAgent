@@ -3,8 +3,9 @@ import { EmaStageView }          from './components/EmaStageView.js';
 import { SpeechBubble }          from './components/SpeechBubble.js';
 import { PermissionToastLayer }  from './components/PermissionToastLayer.js';
 import { useSpeechStore, type Live2DModelRuntimeConfig } from '@ema-agent/live2d-react';
-import { FloatingDock, DecisionLayer, ShellSetupDialog, shellApi, useSidecarStore, useThemeSync, sidecarClient, cardsApi } from '@ema-agent/desktop-ui';
+import { FloatingDock, ShellSetupDialog, shellApi, useSidecarStore, useThemeSync, cardsApi, turnsApi } from '@ema-agent/desktop-ui';
 import type { ShellStatus } from '@ema-agent/desktop-ui';
+import type { TurnId } from '@ema-agent/contracts';
 
 // ── Main window ─────────────────────────────────────────────────────────────
 //
@@ -34,9 +35,6 @@ export function App(): React.JSX.Element {
   // model-path is REQUIRED (stage can't mount without it); runtime-config is
   // an OPTIONAL enhancement (emotion/motion map) whose 404 must NOT block
   // model loading — fetch them independently.
-  // Use cardsApi.list() (typed CharacterCard[]) — do NOT hand-roll
-  // sidecarClient.request here: GET /api/cards returns a bare array, and a
-  // wrong type param ({cards: [...]}) silently breaks model discovery.
   useEffect(() => {
     if (sidecarStatus.kind !== 'ok') return;
     void (async () => {
@@ -44,10 +42,10 @@ export function App(): React.JSX.Element {
         const cards = await cardsApi.list();
         const active = cards.find((c) => c.isActive);
         if (!active?.live2dModelId) return;
-        const { path } = await sidecarClient.request<{ path: string }>(`/api/cards/${active.id}/live2d/model-path`);
+        const path = await cardsApi.getLive2dModelPath(active.id);
         setModelPath(path);
         try {
-          const config = await sidecarClient.request<Live2DModelRuntimeConfig>(`/api/cards/${active.id}/live2d/runtime-config`);
+          const config = await cardsApi.getLive2dRuntimeConfig(active.id);
           setRuntimeConfig(config);
         } catch { /* runtime-config missing — model loads with defaults */ }
       } catch { /* sidecar not ready yet — will retry on next render */ }
@@ -115,9 +113,10 @@ export function App(): React.JSX.Element {
 
       <SidecarBadge status={sidecarStatus} />
 
-      {/* Non-blocking toasts for permission / ask_confirm; DecisionLayer handles the rest */}
+      {/* Non-blocking toasts for permission / ask_confirm. Other ask_* prompts
+          are handled in the chat window's DecisionLayer (per-session queue);
+          the pet window has no viewedSessionId so it never shows a modal. */}
       <PermissionToastLayer />
-      <DecisionLayer />
 
       {shellStatus?.available === false && (
         <ShellSetupDialog
@@ -141,9 +140,8 @@ function useDevTtsPlaybackFromUrl(): void {
       if (disposed) return;
       window.removeEventListener('pointerdown', play);
       try {
-        const response = await fetch(
-          `http://127.0.0.1:3421/api/turns/${encodeURIComponent(turnId)}/audio`,
-        );
+        const url = await turnsApi.audioUrl(turnId as TurnId);
+        const response = await fetch(url);
         if (!response.ok) {
           throw new Error(`audio fetch failed: ${response.status} ${response.statusText}`);
         }

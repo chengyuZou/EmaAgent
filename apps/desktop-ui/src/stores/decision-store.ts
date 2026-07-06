@@ -1,14 +1,22 @@
 /**
- * Decision store — global permission / ask-user prompt queue.
+ * Decision store — per-session permission / ask-user prompt queues.
  *
- * Receives prompts from:
+ * Each session owns an independent FIFO queue. The active session's queue
+ * head is what the chat-window DecisionLayer renders; non-active sessions
+ * surface pending counts via the sidebar. The pet window never mounts
+ * DecisionLayer (it has no viewedSessionId), so it never shows a blocking
+ * modal — only non-blocking toasts via PermissionToastLayer.
+ *
+ * Prompts arrive from:
  *   - system SSE (/api/system/events) — permission_required
- *   - turn SSE — ask_user tool events (routed through chat-store → decision-store)
+ *   - turn SSE — ask_* tool events (routed through conversation-sse)
  *
- * Only one prompt is visible at a time (top of queue).
+ * Routing is by `promptId` (globally unique UUID) on the backend
+ * (AskUserRegistry.respond only looks up promptId, never turnId/sessionId).
+ * This store mirrors that: dismiss(promptId) scans all session queues.
  */
 import { create } from 'zustand';
-import type { AskUserQuestionSpec, TurnId } from '@ema-agent/contracts';
+import type { AskUserQuestionSpec, SessionId, TurnId } from '@ema-agent/contracts';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -16,7 +24,7 @@ export type DecisionPrompt =
   | {
       kind: 'permission';
       promptId: string;
-      sessionId?: string;
+      sessionId?: SessionId;
       toolName: string;
       args: unknown;
       hint: string;
@@ -26,16 +34,16 @@ export type DecisionPrompt =
   | {
       kind: 'ask_confirm';
       promptId: string;
-      turnId: string;
-      sessionId?: string;
+      turnId: TurnId;
+      sessionId?: SessionId;
       question: string;
       humanDescription?: string;
     }
   | {
       kind: 'ask_text';
       promptId: string;
-      turnId: string;
-      sessionId?: string;
+      turnId: TurnId;
+      sessionId?: SessionId;
       question: string;
       humanDescription?: string;
       placeholder?: string;
@@ -43,8 +51,8 @@ export type DecisionPrompt =
   | {
       kind: 'ask_choice';
       promptId: string;
-      turnId: string;
-      sessionId?: string;
+      turnId: TurnId;
+      sessionId?: SessionId;
       question: string;
       humanDescription?: string;
       options: Array<{ label: string; description?: string }>;
@@ -56,7 +64,7 @@ export type DecisionPrompt =
   | {
       kind: 'ask_user';
       promptId: string;
-      sessionId?: string;
+      sessionId?: SessionId;
       turnId: TurnId;
       questions: AskUserQuestionSpec[];
       humanDescription?: string;
@@ -75,72 +83,94 @@ export type AskResponse =
 // ── State ─────────────────────────────────────────────────────────────────────
 
 export interface DecisionStoreState {
-  queue:   DecisionPrompt[];
-  current: DecisionPrompt | null;
+  /** Per-session FIFO queues. Each queue's [0] is that session's "current". */
+  sessions: Map<SessionId, DecisionPrompt[]>;
 
-  /** Push a new prompt. If nothing is active, it becomes current immediately. */
+  /** Push a prompt onto its session's queue (deduped by promptId). */
   push(prompt: DecisionPrompt): void;
 
-  /** Resolve the current prompt. Advances queue. */
-  resolve(response: PermissionResponse | AskResponse): void;
+  /** Resolve the head of `sessionId`'s queue. */
+  resolve(sessionId: SessionId, response: PermissionResponse | AskResponse): void;
 
-  /** Cancel the current prompt without a response. Advances queue. */
-  cancel(): void;
+  /** Cancel the head of `sessionId`'s queue. */
+  cancel(sessionId: SessionId): void;
 
-  /** Remove a specific prompt from the queue by promptId. */
+  /** Remove a specific prompt by promptId (scans all sessions). Used by
+   *  `*_resolved` SSE events which carry only promptId. */
   dismiss(promptId: string): void;
 
-  /** Clear all prompts. */
+  /** Drop a session's entire queue (called when the session is deleted). */
+  clearSession(sessionId: SessionId): void;
+
+  /** Clear all queues. */
   clear(): void;
 }
 
 // ── Store ─────────────────────────────────────────────────────────────────────
 
 export const useDecisionStore = create<DecisionStoreState>((set, get) => ({
-  queue:   [],
-  current: null,
+  sessions: new Map(),
 
   push(prompt) {
-    const state = get();
-    // Deduplicate — backend may occasionally emit the same promptId twice
-    // (e.g. permission_required arriving on both per-turn and system SSE).
-    if (state.current?.promptId === prompt.promptId) return;
-    if (state.queue.some((p) => p.promptId === prompt.promptId)) return;
-
-    if (!state.current) {
-      set({ current: prompt });
-    } else {
-      set({ queue: [...state.queue, prompt] });
+    const sid = prompt.sessionId;
+    if (!sid) {
+      // SSE always carries sessionId; a missing one means upstream is broken.
+      // Drop rather than pollute a synthetic queue.
+      console.warn('[decision-store] prompt without sessionId, dropped', prompt.promptId);
+      return;
     }
+    const state = get();
+    const existing = state.sessions.get(sid) ?? [];
+    // Dedupe — backend may emit the same promptId on both per-turn and system SSE.
+    if (existing.some((p) => p.promptId === prompt.promptId)) return;
+    const next = new Map(state.sessions);
+    next.set(sid, [...existing, prompt]);
+    set({ sessions: next });
   },
 
-  resolve(_response) {
+  resolve(sessionId, _response) {
     set((s) => {
-      const next = s.queue[0] ?? null;
-      return { current: next, queue: s.queue.slice(1) };
+      const q = s.sessions.get(sessionId);
+      if (!q || q.length === 0) return {};
+      const next = new Map(s.sessions);
+      next.set(sessionId, q.slice(1));
+      return { sessions: next };
     });
   },
 
-  cancel() {
+  cancel(sessionId) {
     set((s) => {
-      const next = s.queue[0] ?? null;
-      return { current: next, queue: s.queue.slice(1) };
+      const q = s.sessions.get(sessionId);
+      if (!q || q.length === 0) return {};
+      const next = new Map(s.sessions);
+      next.set(sessionId, q.slice(1));
+      return { sessions: next };
     });
   },
 
   dismiss(promptId) {
     set((s) => {
-      const wasCurrent = s.current?.promptId === promptId;
-      const newQueue   = s.queue.filter((p) => p.promptId !== promptId);
-      if (wasCurrent) {
-        const next = newQueue[0] ?? null;
-        return { current: next, queue: next ? newQueue.slice(1) : newQueue };
+      let changed = false;
+      const next = new Map<SessionId, DecisionPrompt[]>();
+      for (const [sid, q] of s.sessions) {
+        const filtered = q.filter((p) => p.promptId !== promptId);
+        if (filtered.length !== q.length) changed = true;
+        if (filtered.length > 0) next.set(sid, filtered);
       }
-      return { queue: newQueue };
+      return changed ? { sessions: next } : {};
+    });
+  },
+
+  clearSession(sessionId) {
+    set((s) => {
+      if (!s.sessions.has(sessionId)) return {};
+      const next = new Map(s.sessions);
+      next.delete(sessionId);
+      return { sessions: next };
     });
   },
 
   clear() {
-    set({ queue: [], current: null });
+    set({ sessions: new Map() });
   },
 }));

@@ -23,13 +23,13 @@ export function SessionSidebar(): JSX.Element {
   const sessions  = useSessionStore((s) => s.sessions);
   const viewedId  = useConversationStore((s) => s.viewedSessionId);
   const streaming = useConversationStore((s) => s.streamingMap);
-  const pendingSessionIds = useDecisionStore(
+  const pendingCounts = useDecisionStore(
     useShallow((s) => {
-      const all = s.current ? [s.current, ...s.queue] : s.queue;
-      return all.map((d) => d.sessionId).filter(Boolean) as string[];
+      const counts: Record<string, number> = {};
+      for (const [sid, q] of s.sessions) counts[sid as string] = q.length;
+      return counts;
     }),
   );
-  const decisions = new Set(pendingSessionIds);
 
   const allActiveSessions = useMemo(() => uniqueSessions([
     ...sessions.pinned,
@@ -64,7 +64,7 @@ export function SessionSidebar(): JSX.Element {
           </button>
           <div className="flex flex-col items-center gap-1.5 mt-1">
             {sessions.recent.slice(0, 8).map((s) => {
-              const dot = getStatusDot(s, streaming, decisions);
+              const dot = getStatusDot(s, streaming, pendingCounts);
               if (!dot) return null;
               return (
                 <span
@@ -99,14 +99,14 @@ export function SessionSidebar(): JSX.Element {
               groups={projectGroups}
               viewedId={viewedId}
               streaming={streaming}
-              decisions={decisions}
+              pendingCounts={pendingCounts}
             />
             <SidebarSection
               label="对话"
               sessions={conversationSessions}
               viewedId={viewedId}
               streaming={streaming}
-              decisions={decisions}
+              pendingCounts={pendingCounts}
               emptyText="暂无独立对话"
             />
             <SidebarSection
@@ -114,7 +114,7 @@ export function SessionSidebar(): JSX.Element {
               sessions={sessions.archived}
               viewedId={viewedId}
               streaming={streaming}
-              decisions={decisions}
+              pendingCounts={pendingCounts}
               collapsed
               emptyText="暂无归档"
             />
@@ -181,13 +181,13 @@ function SidebarCommand({
 }
 
 function ProjectListSection({
-  label, groups, viewedId, streaming, decisions,
+  label, groups, viewedId, streaming, pendingCounts,
 }: {
   label: string;
   groups: ProjectGroup[];
   viewedId: SessionId | null;
   streaming: Map<string, unknown>;
-  decisions: Set<string>;
+  pendingCounts: Record<string, number>;
 }): JSX.Element {
   const [collapsed, setCollapsed] = useState(false);
   const total = groups.reduce((sum, g) => sum + g.sessions.length, 0);
@@ -212,7 +212,7 @@ function ProjectListSection({
               group={g}
               viewedId={viewedId}
               streaming={streaming}
-              decisions={decisions}
+              pendingCounts={pendingCounts}
             />
           ))}
         </div>
@@ -222,12 +222,12 @@ function ProjectListSection({
 }
 
 function ProjectNode({
-  group, viewedId, streaming, decisions,
+  group, viewedId, streaming, pendingCounts,
 }: {
   group: ProjectGroup;
   viewedId: SessionId | null;
   streaming: Map<string, unknown>;
-  decisions: Set<string>;
+  pendingCounts: Record<string, number>;
 }): JSX.Element {
   const hasActive = group.sessions.some((s) => s.id === (viewedId as string));
   const [collapsed, setCollapsed] = useState(!hasActive);
@@ -258,7 +258,7 @@ function ProjectNode({
               session={s}
               isActive={s.id === (viewedId as string)}
               streaming={streaming}
-              decisions={decisions}
+              pendingCounts={pendingCounts}
               nested
             />
           ))}
@@ -269,13 +269,13 @@ function ProjectNode({
 }
 
 function SidebarSection({
-  label, sessions, viewedId, streaming, decisions, collapsed: initCollapsed = false, emptyText,
+  label, sessions, viewedId, streaming, pendingCounts, collapsed: initCollapsed = false, emptyText,
 }: {
   label: string;
   sessions: SessionWire[];
   viewedId: SessionId | null;
   streaming: Map<string, unknown>;
-  decisions: Set<string>;
+  pendingCounts: Record<string, number>;
   collapsed?: boolean;
   emptyText?: string;
 }): JSX.Element {
@@ -301,7 +301,7 @@ function SidebarSection({
               session={s}
               isActive={s.id === (viewedId as string)}
               streaming={streaming}
-              decisions={decisions}
+              pendingCounts={pendingCounts}
             />
           ))}
         </div>
@@ -358,10 +358,10 @@ type StatusDot = { cls: string } | null;
 function getStatusDot(
   session: SessionWire,
   streaming: Map<string, unknown>,
-  decisions: Set<string>,
+  pendingCounts: Record<string, number>,
 ): StatusDot {
   if (streaming.has(session.id)) return { cls: 'bg-[var(--ema-info)] animate-pulse' };
-  if (decisions.has(session.id)) return { cls: 'bg-[var(--ema-warning)] animate-pulse' };
+  if ((pendingCounts[session.id] ?? 0) > 0) return { cls: 'bg-[var(--ema-warning)] animate-pulse' };
   if (session.lastTurnStatus === 'failed' || session.lastTurnStatus === 'aborted') {
     return { cls: 'bg-[var(--ema-danger)]' };
   }
@@ -369,15 +369,15 @@ function getStatusDot(
   return null;
 }
 
-function SidebarRow({ session, isActive, streaming, decisions, nested = false }: {
+function SidebarRow({ session, isActive, streaming, pendingCounts, nested = false }: {
   session:   SessionWire;
   isActive:  boolean;
   streaming: Map<string, unknown>;
-  decisions: Set<string>;
+  pendingCounts: Record<string, number>;
   nested?:   boolean;
 }): JSX.Element {
   const [showWorkspace, setShowWorkspace] = useState(false);
-  const dot = getStatusDot(session, streaming, decisions);
+  const dot = getStatusDot(session, streaming, pendingCounts);
   const isRunning = streaming.has(session.id);
   const timeLabel = formatRelativeTime(session.lastActivityAt);
 
@@ -477,6 +477,15 @@ function SidebarRow({ session, isActive, streaming, decisions, nested = false }:
         <span className="truncate min-w-0 leading-snug">
           {session.title || '新对话'}
         </span>
+        {(pendingCounts[session.id] ?? 0) > 0 && (
+          <span
+            className="shrink-0 text-[10px] font-mono px-1.5 py-0.5 rounded-full ema-scale-in"
+            style={{ background: 'var(--ema-warning-muted)', color: 'var(--ema-warning-text)' }}
+            title={`${pendingCounts[session.id]} 个待答问题`}
+          >
+            {pendingCounts[session.id]}
+          </span>
+        )}
       </div>
 
       <div className="shrink-0 relative w-12 flex justify-end" onClick={(e) => e.stopPropagation()}>
