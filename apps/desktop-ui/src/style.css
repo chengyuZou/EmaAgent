@@ -323,6 +323,13 @@ button, [role="button"], [data-tauri-drag-region], .ema-no-select, .ema-no-selec
   animation: ema-scale-in var(--ema-duration-fast) var(--ema-ease) both;
 }
 
+/* Width transition for expand/collapse sidebars (e.g. Inspector panel).
+   Use with w-0 ↔ w-72 / w-[560px] — keeps DOM mounted, animates both
+   open AND close. Pair with overflow-hidden + conditional content render. */
+.ema-transition-width {
+  transition: width var(--ema-duration-panel) var(--ema-ease);
+}
+
 /* ── Radix data-state animations ─────────────────────────────────────────────
  *  Marker classes added to Radix content/overlay elements (Dialog, Popover,
  *  Select, DropdownMenu, Tooltip, Toast, Tabs). Driven by Radix's data-state so

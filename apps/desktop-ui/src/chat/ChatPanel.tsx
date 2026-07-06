@@ -216,7 +216,7 @@ export function ChatPanel(): JSX.Element {
             animates the slide-out (not just unmount). Content unmounts
             immediately on close but the space shrinks with animation. */}
         <div
-          className={`flex-none flex flex-col overflow-hidden transition-[width] duration-200 ease-in-out ${hasInspector ? (activePanels.size > 1 ? 'w-[560px] border-l' : 'w-72 border-l') : 'w-0'}`}
+          className={`flex-none flex flex-col overflow-hidden ema-transition-width ${hasInspector ? (activePanels.size > 1 ? 'w-[560px] border-l' : 'w-72 border-l') : 'w-0'}`}
           style={{ borderColor: 'var(--ema-border)', background: 'var(--ema-surface-1)' }}
         >
           {hasInspector && <InspectorContent activePanels={activePanels} sessionId={viewedSessionId as string | null} />}
