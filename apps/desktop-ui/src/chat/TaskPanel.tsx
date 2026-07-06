@@ -340,7 +340,7 @@ function ReasoningBlock({ text }: { text: string }): JSX.Element {
         style={{ color: 'var(--ema-text-tertiary)' }}
         onClick={() => setOpen((v) => !v)}
       >
-        <span className="i-mdi:brain-outline text-sm" />
+        <span className="i-mdi:brain text-sm" />
         <span>思考过程</span>
         <span
           className="ml-auto text-[10px] transition-transform duration-[var(--ema-duration-base)]"

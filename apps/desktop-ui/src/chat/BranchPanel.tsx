@@ -351,7 +351,7 @@ export function BranchPanel(): JSX.Element {
   if (turns.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-12 gap-2 text-xs ema-fade-in" style={{ color: 'var(--ema-text-tertiary)' }}>
-        <span className="i-mdi:git-branch text-3xl opacity-30" aria-hidden />
+        <span className="i-mdi:source-branch text-3xl opacity-30" aria-hidden />
         <span>暂无对话</span>
       </div>
     );

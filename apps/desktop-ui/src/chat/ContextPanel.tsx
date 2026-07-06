@@ -61,7 +61,7 @@ export function ContextPanel(): JSX.Element | null {
         onClick={() => setOpen((v) => !v)}
         title="查看记忆召回"
       >
-        <span className="i-mdi:brain-outline text-sm" aria-hidden />
+        <span className="i-mdi:brain text-sm" aria-hidden />
         <span>记忆</span>
         <Badge variant={triggerVariant}>
           {succeededItems}
@@ -79,7 +79,7 @@ export function ContextPanel(): JSX.Element | null {
           >
             <p className="text-xs font-semibold mb-2.5 flex items-center gap-1.5"
                style={{ color: 'var(--ema-text-tertiary)' }}>
-              <span className="i-mdi:brain-outline text-sm" aria-hidden />
+              <span className="i-mdi:brain text-sm" aria-hidden />
               记忆召回 — 本轮
             </p>
 
