@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react';
 import { EmaStageView }          from './components/EmaStageView.js';
 import { SpeechBubble }          from './components/SpeechBubble.js';
 import { PermissionToastLayer }  from './components/PermissionToastLayer.js';
-import { useSpeechStore } from '@ema-agent/live2d-react';
-import { FloatingDock, DecisionLayer, ShellSetupDialog, shellApi, useSidecarStore, useThemeSync, sidecarClient } from '@ema-agent/desktop-ui';
+import { useSpeechStore, type Live2DModelRuntimeConfig } from '@ema-agent/live2d-react';
+import { FloatingDock, DecisionLayer, ShellSetupDialog, shellApi, useSidecarStore, useThemeSync, sidecarClient, cardsApi } from '@ema-agent/desktop-ui';
 import type { ShellStatus } from '@ema-agent/desktop-ui';
 
 // ── Main window ─────────────────────────────────────────────────────────────
@@ -26,21 +26,30 @@ export function App(): React.JSX.Element {
   const [dockVisible,  setDockVisible]  = useState(false);
   const [shellStatus,  setShellStatus]  = useState<ShellStatus | null>(null);
   const [modelPath,    setModelPath]    = useState<string | null>(null);
-  const [runtimeConfigUrl, setRuntimeConfigUrl] = useState<string | null>(null);
+  const [runtimeConfig, setRuntimeConfig] = useState<Live2DModelRuntimeConfig | null>(null);
 
-  // Fetch the active card's Live2D model path + runtime config URL from the
+  // Fetch the active card's Live2D model path + runtime config from the
   // sidecar. No hardcoding — the card's live2dModelId → live2d_models table
   // → storage_path tells us where the model lives.
+  // model-path is REQUIRED (stage can't mount without it); runtime-config is
+  // an OPTIONAL enhancement (emotion/motion map) whose 404 must NOT block
+  // model loading — fetch them independently.
+  // Use cardsApi.list() (typed CharacterCard[]) — do NOT hand-roll
+  // sidecarClient.request here: GET /api/cards returns a bare array, and a
+  // wrong type param ({cards: [...]}) silently breaks model discovery.
   useEffect(() => {
     if (sidecarStatus.kind !== 'ok') return;
     void (async () => {
       try {
-        const cards = await sidecarClient.request<{ cards: { id: string; isActive: boolean; live2dModelId: string | null }[] }>('/api/cards');
-        const active = cards.cards.find((c) => c.isActive);
+        const cards = await cardsApi.list();
+        const active = cards.find((c) => c.isActive);
         if (!active?.live2dModelId) return;
         const { path } = await sidecarClient.request<{ path: string }>(`/api/cards/${active.id}/live2d/model-path`);
         setModelPath(path);
-        setRuntimeConfigUrl(`/api/cards/${active.id}/live2d/runtime-config`);
+        try {
+          const config = await sidecarClient.request<Live2DModelRuntimeConfig>(`/api/cards/${active.id}/live2d/runtime-config`);
+          setRuntimeConfig(config);
+        } catch { /* runtime-config missing — model loads with defaults */ }
       } catch { /* sidecar not ready yet — will retry on next render */ }
     })();
   }, [sidecarStatus.kind]);
@@ -96,7 +105,7 @@ export function App(): React.JSX.Element {
       {modelPath && (
         <EmaStageView
           modelPath={modelPath}
-          runtimeConfigUrl={runtimeConfigUrl ?? undefined}
+          runtimeConfig={runtimeConfig ?? undefined}
         />
       )}
 

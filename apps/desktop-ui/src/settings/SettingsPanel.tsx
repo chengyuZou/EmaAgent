@@ -11,6 +11,7 @@ import { useSettingsStore } from '../stores/settings-store.js';
 import { useCardStore } from '../stores/card-store.js';
 import { useSkillStore } from '../stores/skill-store.js';
 import { useMcpStore } from '../stores/mcp-store.js';
+import { useShallow } from 'zustand/react/shallow';
 import { useKbStore, selectIngestSummary } from '../stores/kb-store.js';
 import { useThemeSync } from '../stores/theme-store.js';
 import { ProvidersTab } from './ProvidersTab.js';
@@ -98,7 +99,10 @@ const GROUPS: GroupDef[] = [
 // ── KB ingest indicator (right side of the 知识库 nav item) ───────────────────
 
 function KbNavIndicator(): JSX.Element | null {
-  const sum = useKbStore(selectIngestSummary);
+  // useShallow: selectIngestSummary returns a fresh object each call; under
+  // zustand v5's Object.is equality that triggers a render-during-store-change
+  // loop (Maximum update depth exceeded). Shallow-compare the fields instead.
+  const sum = useKbStore(useShallow(selectIngestSummary));
   if (sum.state === 'idle') return null;
   // key={sum.state} → React remounts on each state change so ema-fade-in replays
   // (running count → done dot → failed dot all animate in, not just the first).

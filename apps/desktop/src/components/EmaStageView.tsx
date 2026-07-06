@@ -4,7 +4,7 @@
  * Listens to Tauri events (emitted by system-sse) for emotion/stage cues
  * and dispatches them to the Live2D model via live2d-react.
  */
-import { useEffect, useRef, useState, type JSX } from 'react';
+import { useEffect, useRef, type JSX } from 'react';
 import {
   Live2DStage,
   useLive2DStore,
@@ -16,22 +16,13 @@ import { tauriBridge } from '@ema-agent/desktop-ui';
 
 export interface EmaStageViewProps {
   modelPath: string;
-  /** URL to fetch the Live2D runtime config JSON (emotionMap, motionMap, etc.). */
-  runtimeConfigUrl?: string;
+  /** Live2D runtime config JSON (emotionMap, motionMap, etc.). */
+  runtimeConfig?: Live2DModelRuntimeConfig;
 }
 
-export function EmaStageView({ modelPath, runtimeConfigUrl }: EmaStageViewProps): JSX.Element {
+export function EmaStageView({ modelPath, runtimeConfig }: EmaStageViewProps): JSX.Element {
   const stageRef = useRef<Live2DStageHandle>(null);
-  const [runtimeConfig, setRuntimeConfig] = useState<Live2DModelRuntimeConfig | null>(null);
 
-  // Fetch runtime config from the card's resource pack (runtime-config.json).
-  useEffect(() => {
-    if (!runtimeConfigUrl) return;
-    void fetch(runtimeConfigUrl)
-      .then((res) => res.ok ? res.json() : null)
-      .then((cfg) => { if (cfg) setRuntimeConfig(cfg as Live2DModelRuntimeConfig); })
-      .catch(() => { /* config missing — model loads with defaults */ });
-  }, [runtimeConfigUrl]);
 
   useEffect(() => {
     const applySpeechState = (payload: { speaking: boolean; rms: number }): void => {
