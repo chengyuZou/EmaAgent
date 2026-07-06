@@ -11,7 +11,7 @@ import {
   type CharacterRefAudio,
   type CharacterVoiceProfile,
 } from '@ema-agent/character-card';
-import { voiceRefsForCard, resolveVoiceRefPath, cardDir, cardResourcePath, resolveCardVoiceRefPath } from '../storage-locations/index.js';
+import { cardDir, cardResourcePath, resolveCardVoiceRefPath } from '../storage-locations/index.js';
 import { z } from 'zod';
 
 // ── Helpers ─────────────────────────────────────────────────────────────────

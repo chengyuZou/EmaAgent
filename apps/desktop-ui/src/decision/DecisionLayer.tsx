@@ -96,8 +96,6 @@ function PromptRouter({ prompt }: { prompt: DecisionPrompt }): JSX.Element {
     case 'ask_user':
       return (
         <AskUserBatchPrompt
-          promptId={prompt.promptId}
-          turnId={prompt.turnId as string}
           questions={prompt.questions}
           humanDescription={prompt.humanDescription}
           onResolve={async (answers) => {

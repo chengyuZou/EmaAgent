@@ -18,9 +18,11 @@ const LANG_OPTIONS = [
 export function VoiceTab({
   cardId,
   voiceProfile,
+  isBuiltin,
 }: {
   cardId:       CharacterCardId;
   voiceProfile: CharacterVoiceProfile;
+  isBuiltin:    boolean;
 }): JSX.Element {
   const [showUpload, setShowUpload] = useState(false);
   const [uploading,  setUploading]  = useState(false);
@@ -109,6 +111,11 @@ export function VoiceTab({
         </p>
       ) : (
         <div className="flex flex-col gap-2 mb-4">
+          {isBuiltin && (
+            <p className="text-xs text-[var(--ema-text-tertiary)] mb-1">
+              内置角色音色为只读，不可上传 / 删除 / 改主用。
+            </p>
+          )}
           {voiceProfile.refAudios.map((ref, i) => (
             <div key={ref.id} className="ema-stagger-in" style={{ '--stagger-i': i } as CSSProperties}>
             <RefAudioRow
@@ -117,30 +124,32 @@ export function VoiceTab({
               isPrimary={ref.id === voiceProfile.primaryId}
               isPlaying={playing === ref.id}
               onPlay={() => handlePlay(ref.id)}
-              onSetPrimary={() => handleSetPrimary(ref.id)}
-              onDelete={() => handleDelete(ref.id)}
+              onSetPrimary={isBuiltin ? undefined : () => handleSetPrimary(ref.id)}
+              onDelete={isBuiltin ? undefined : () => handleDelete(ref.id)}
             />
             </div>
           ))}
         </div>
       )}
 
-      {/* Upload trigger / form */}
-      {!showUpload ? (
-        <Button
-          variant="secondary"
-          size="sm"
-          icon="i-mdi:plus"
-          onClick={() => setShowUpload(true)}
-        >
-          上传参考音频
-        </Button>
-      ) : (
-        <UploadForm
-          onUpload={handleUpload}
-          uploading={uploading}
-          onCancel={() => setShowUpload(false)}
-        />
+      {/* Upload trigger / form — hidden for builtin (read-only) cards */}
+      {!isBuiltin && (
+        !showUpload ? (
+          <Button
+            variant="secondary"
+            size="sm"
+            icon="i-mdi:plus"
+            onClick={() => setShowUpload(true)}
+          >
+            上传参考音频
+          </Button>
+        ) : (
+          <UploadForm
+            onUpload={handleUpload}
+            uploading={uploading}
+            onCancel={() => setShowUpload(false)}
+          />
+        )
       )}
     </div>
   );
@@ -155,8 +164,8 @@ function RefAudioRow({
   isPrimary:    boolean;
   isPlaying:    boolean;
   onPlay():     void;
-  onSetPrimary(): void;
-  onDelete():   void;
+  onSetPrimary?(): void;
+  onDelete?():   void;
 }): JSX.Element {
   return (
     <div className="bg-[var(--ema-surface-1)] ema-glass-weak border border-[var(--ema-border)] rounded-xl p-3">
@@ -174,14 +183,16 @@ function RefAudioRow({
           >
             {isPlaying ? '停止' : '试听'}
           </Button>
-          {!isPrimary && (
+          {!isPrimary && onSetPrimary && (
             <Button variant="secondary" size="sm" onClick={onSetPrimary}>
               设主用
             </Button>
           )}
-          <Button variant="danger" size="sm" onClick={onDelete}>
-            删除
-          </Button>
+          {onDelete && (
+            <Button variant="danger" size="sm" onClick={onDelete}>
+              删除
+            </Button>
+          )}
         </div>
       </div>
       <p className="text-xs text-[var(--ema-text-tertiary)] mt-1">

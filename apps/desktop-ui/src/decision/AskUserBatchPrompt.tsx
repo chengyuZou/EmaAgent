@@ -1,12 +1,9 @@
 import { useState, type CSSProperties } from 'react';
 import { Button, Card, Textarea } from '@ema-agent/ui';
-import { turnsApi } from '../api/turns.js';
 import { HumanDescriptionPanel } from './HumanDescriptionPanel.js';
 import type { AskUserQuestionSpec } from '@ema-agent/contracts';
 
 export interface AskUserBatchPromptProps {
-  promptId:          string;
-  turnId:            string;
   questions:         AskUserQuestionSpec[];
   humanDescription?: string;
   onResolve(answers: Record<string, string>): void;
@@ -14,8 +11,6 @@ export interface AskUserBatchPromptProps {
 }
 
 export function AskUserBatchPrompt({
-  promptId,
-  turnId,
   questions,
   humanDescription,
   onResolve,
@@ -53,9 +48,8 @@ export function AskUserBatchPrompt({
     });
   }
 
-  async function handleNext(): Promise<void> {
+  function handleNext(): void {
     if (isLast) {
-      try { await turnsApi.respondAskUser(turnId, promptId, answers); } catch { /* sidecar down */ }
       onResolve(answers);
     } else {
       setStep((s) => s + 1);
