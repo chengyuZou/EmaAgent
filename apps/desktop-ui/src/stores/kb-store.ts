@@ -236,6 +236,9 @@ export const useKbStore = create<KbStoreState>((set, get) => ({
     try {
       await kbApi.deleteLib(id);
       set((s) => ({ libs: s.libs.filter((l) => l.id !== id) }));
+      // Reload documents — the deleted lib may have been active, so the
+      // document list needs to reflect the new active lib (or empty).
+      void get().loadDocuments();
     } catch (err: unknown) {
       set({ libsError: err instanceof Error ? err.message : '删除失败' });
     }
