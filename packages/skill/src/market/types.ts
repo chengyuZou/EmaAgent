@@ -1,13 +1,9 @@
 import type { MarketSkillEntry } from '../types.js';
 
-// ── Skill market abstraction ─────────────────────────────────────────────────
+// ── Skill market 抽象(保留:ad-hoc 用)─────────────────────────────────────────
 //
-// A "market" is any source that can enumerate installable skills (each yielding
-// a raw SKILL.md URL the installer can fetch). GitHub repos are one kind; a
-// hosted JSON index or a local mirror could be others. New markets implement
-// this interface and register in market/index.ts — Anthropic's repo is just the
-// default impl, isolated in anthropic-market.ts so a future change there never
-// touches the generic parser.
+// 注册型 market 已交给 @ema-agent/marketplace 底座 + SkillMarketAdapter。
+// 这里保留 SkillMarket 接口供 marketFromGithub() ad-hoc 用(路由 ?owner=&repo=&ref=)。
 
 export interface SkillMarket {
   /** Stable id, e.g. 'anthropic'. */
@@ -18,7 +14,38 @@ export interface SkillMarket {
   list(): Promise<MarketSkillEntry[]>;
 }
 
-// ── GitHub-repo source ──────────────────────────────────────────────────────────
+// ── 各 source type 的 config 结构(存 market_sources.config JSON)───────────────
+
+/** type='github':GitHub 仓库,git tree API 找所有 SKILL.md */
+export interface GithubSkillSourceConfig {
+  owner:     string;
+  repo:      string;
+  ref:       string;
+  /** jsDelivr 等 CDN base,如 https://cdn.jsdelivr.net/gh/owner/repo@ref/ —— CN 可达 */
+  mirrorUrl?: string;
+}
+
+/** type='json-index':用户自传 JSON 索引 URL */
+export interface SkillJsonIndexConfig {
+  indexUrl:   string;
+  mirrorUrl?: string;
+}
+
+// ── 通用 JSON 索引条目(json-index type 解析这个)──────────────────────────────
+//
+// 约定格式:{ entries: SkillJsonIndexEntry[] }
+
+export interface SkillJsonIndexEntry {
+  name:        string;
+  path?:       string;
+  url:         string;
+}
+
+export interface SkillJsonIndex {
+  entries: SkillJsonIndexEntry[];
+}
+
+// ── 旧 ad-hoc 用(保留兼容 marketFromGithub)──────────────────────────────────
 
 export interface GithubMarketSource {
   owner: string;

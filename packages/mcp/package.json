@@ -22,6 +22,7 @@
   },
   "dependencies": {
     "@ema-agent/contracts": "workspace:*",
+    "@ema-agent/marketplace": "workspace:*",
     "@ema-agent/permission": "workspace:*",
     "@ema-agent/storage": "workspace:*",
     "@ema-agent/tools": "workspace:*",

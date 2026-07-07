@@ -28,6 +28,8 @@ export { McpServersRepo }  from './repos/mcp-servers.js';
 export type { McpServerRow } from './repos/mcp-servers.js';
 export { SkillsRepo }      from './repos/skills.js';
 export type { SkillRow }   from './repos/skills.js';
+export { MarketSourcesRepo } from './repos/market-sources.js';
+export type { MarketSourceRow } from './repos/market-sources.js';
 
 // ── Memory subsystem ──────────────────────────────────────────────────────────
 export { MemoryNodesRepo }       from './repos/memory-nodes.js';

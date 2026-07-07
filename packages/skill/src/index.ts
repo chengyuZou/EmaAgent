@@ -3,10 +3,16 @@ export { SkillRunner }                   from './runner.js';
 export { SkillInstaller }                from './installer.js';
 export { parseSkillMd, validateSkillMd } from './parser.js';
 export {
-  listMarketSkills, marketFromGithub, getMarket,
-  MARKETS, DEFAULT_MARKET_ID, GithubSkillMarket, anthropicMarket, ANTHROPIC_SOURCE,
+  SkillMarketAdapter, SKILL_SEEDS,
+  marketFromGithub, listGithubSkills,
+  listGithubSkillSource, listJsonIndexSource, GithubSkillMarket,
 } from './market/index.js';
-export type { SkillMarket, GithubMarketSource } from './market/index.js';
+export type {
+  SkillMarket,
+  GithubMarketSource,
+  GithubSkillSourceConfig,
+  SkillJsonIndexConfig,
+} from './market/index.js';
 export type {
   SkillManifest,
   SkillRecord,

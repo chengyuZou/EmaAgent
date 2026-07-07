@@ -155,6 +155,27 @@ CREATE TABLE mcp_servers (
   installed_at INTEGER NOT NULL
 );
 
+-- ── Market sources(MCP / Skill / 未来 integration 共用)──────────────────────
+-- 一个"市场源"= 一个可浏览可装条目的来源(官方 registry / GitHub 仓库 / 用户自传 JSON 索引)。
+-- 与 mcp_servers / skills 区分:那俩是"已装实例",这张表是"从哪浏览"。
+-- kind 不加 CHECK —— 业务包(mcp='mcp'/skill='skill'/未来 integration='integration')自由填,
+-- 底层 marketplace 包不约束语义,保证未来加新 kind 零迁移。
+-- config 结构由各业务包的 adapter 定义(github: owner/repo/ref; mcp-registry: baseUrl/mirrorUrl; ...)。
+
+CREATE TABLE market_sources (
+  id          TEXT PRIMARY KEY,
+  kind        TEXT NOT NULL,
+  type        TEXT NOT NULL,
+  label       TEXT NOT NULL,
+  config      TEXT NOT NULL,
+  enabled     INTEGER NOT NULL DEFAULT 1,
+  builtin     INTEGER NOT NULL DEFAULT 0,
+  sort_order  INTEGER NOT NULL DEFAULT 0,
+  created_at  INTEGER NOT NULL
+);
+
+CREATE INDEX idx_market_sources_kind ON market_sources(kind);
+
 -- ── Skills index (SKILL.md files live on disk; this is the cache) ──────────────
 
 CREATE TABLE skills (

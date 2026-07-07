@@ -26,3 +26,11 @@ export {
   McpTimeoutError,
   McpServerNotFoundError,
 }                                    from './errors.js';
+export { McpMarketAdapter, MCP_SEEDS } from './market/index.js';
+export type {
+  McpMarketEntry,
+  McpRegistryConfig,
+  McpJsonIndexConfig,
+  McpJsonIndexEntry,
+  McpJsonIndex,
+}                                    from './market/index.js';
