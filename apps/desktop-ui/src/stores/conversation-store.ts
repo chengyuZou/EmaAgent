@@ -304,9 +304,19 @@ export const useConversationStore = create<ConversationStoreState>((set, get) =>
     if (!targetId) {
       const newSession = await sessionsApi.create();
       targetId = newSession.id as SessionId;
-      pendingTitleSessions.add(targetId as string);
       void useSessionStore.getState().loadSessions();
       set({ viewedSessionId: targetId });
+    }
+
+    // Queue auto-title generation for a session's first completed assistant
+    // turn. Covers both paths: lazy create (no targetId above) and pre-created
+    // sessions (new-session button → createSession + viewSession). The set is
+    // consumed in finalizeStream; checking "no assistant message yet" means a
+    // session that already has replies won't re-trigger.
+    const existingMsgs = get().messages.get(targetId as string) ?? [];
+    const hasAssistant = existingMsgs.some((m) => m.role === 'assistant');
+    if (!hasAssistant) {
+      pendingTitleSessions.add(targetId as string);
     }
 
     if (input.text && get().messages.has(targetId as string)) {
