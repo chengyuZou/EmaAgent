@@ -68,6 +68,10 @@ export interface ToolResultBlock {
   toolUseId: string;
   content:   string | ToolResultContentPart[];
   isError?:  boolean;
+  /** 工具执行耗时（ms）。刷新后从 DB 还原，让 Tool 块能持续显示耗时。 */
+  durationMs?: number;
+  /** 失败原因精确码：'permission/denied' | 'policy/denied' | 'tool/error'。成功时 undefined。 */
+  errorCode?:  string;
 }
 
 // ── 用户消息 block ────────────────────────────────────────────────────────────

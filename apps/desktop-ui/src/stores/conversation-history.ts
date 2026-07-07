@@ -30,6 +30,15 @@ export interface AssistantSliceToolUse {
   type: 'tool_use';         callId: string; name: string; args?: unknown;
                             partialArgs?: string;
                             result?: unknown; error?: { code: string; message: string };
+  // ── 状态展示字段（8.2 Tool 块重做）──
+  /** 流式创建时间戳，running 时算实时耗时用。刷新后无（DB 不存）。 */
+  startedAt?: number;
+  /** 完成耗时（ms）。流式由 tool_result 事件带回，刷新后从 ToolResultBlock.durationMs 还原。 */
+  durationMs?: number;
+  /** 失败原因码：'permission/denied' | 'policy/denied' | 'tool/error'。 */
+  errorCode?: string;
+  /** 权限等待中关联的 promptId。permission_resolved 时按此定位 slice。 */
+  permissionPromptId?: string;
 }
 export interface AssistantSliceNarrative {
   type: 'narrative_status'; timelines: string[]; completedTimelines: string[];
@@ -153,8 +162,10 @@ export function assembleHistory(messages: MessageWire[], turns: TurnWire[]): Cha
         const updated: AnyAssistantSlice = {
           ...target,
           result: block.content,
+          durationMs: block.durationMs,
+          errorCode: block.errorCode ?? (block.isError ? 'tool/error' : undefined),
           ...(block.isError
-            ? { error: { code: 'tool/error', message: typeof block.content === 'string' ? block.content : '工具执行失败' } }
+            ? { error: { code: block.errorCode ?? 'tool/error', message: typeof block.content === 'string' ? block.content : '工具执行失败' } }
             : {}),
         };
         working = [...working.slice(0, idx), updated, ...working.slice(idx + 1)];

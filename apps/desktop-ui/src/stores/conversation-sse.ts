@@ -251,11 +251,45 @@ export function dispatchSseEvent(
       };
       useDecisionStore.getState().push(p);
       void tauriBridge.emit('decision:push', p);
+      // 关联到当前 streaming 的 tool_use slice（用 tool name 匹配最近的 pending 工具）
+      // permission 事件不带 callId，同名并发概率低，取最后一个无 result 的同名 slice
+      useConversationStore.setState((s) => {
+        const sm = s.streamingMap.get(sessionId as string);
+        if (!sm) return {};
+        let set = false;
+        const slices = sm.slices.map((sl) => {
+          if (set) return sl;
+          if (sl.type === 'tool_use' && sl.name === event.tool && sl.result === undefined && !sl.permissionPromptId) {
+            set = true;
+            return { ...sl, permissionPromptId: event.promptId };
+          }
+          return sl;
+        });
+        if (!set) return {};
+        const streaming = new Map(s.streamingMap);
+        streaming.set(sessionId as string, { ...sm, slices });
+        return { streamingMap: streaming };
+      });
       break;
     }
     case 'permission_resolved':
       useDecisionStore.getState().dismiss(event.promptId);
       void tauriBridge.emit('decision:dismiss', { promptId: event.promptId });
+      // allow → 清掉 permissionPromptId 恢复运行中；deny → 不在此标失败，等后端 tool_result(permission/denied) 统一处理
+      if (event.decision === 'allow') {
+        useConversationStore.setState((s) => {
+          const sm = s.streamingMap.get(sessionId as string);
+          if (!sm) return {};
+          const slices = sm.slices.map((sl) =>
+            sl.type === 'tool_use' && sl.permissionPromptId === event.promptId
+              ? { ...sl, permissionPromptId: undefined }
+              : sl,
+          );
+          const streaming = new Map(s.streamingMap);
+          streaming.set(sessionId as string, { ...sm, slices });
+          return { streamingMap: streaming };
+        });
+      }
       break;
 
     // ── TTS ────────────────────────────────────────────────────────────────

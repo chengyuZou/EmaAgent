@@ -114,7 +114,7 @@ export class TurnToolExecutor {
       const msg = `Tool "${name}" is not available in this mode`;
       this.tracked.push({
         blockIndex, id, name, args, isConcurrencySafe: true, startMs, done: true,
-        result: { type: 'tool_result', toolUseId: id, content: msg, isError: true },
+        result: { type: 'tool_result', toolUseId: id, content: msg, isError: true, durationMs: 0, errorCode: 'policy/denied' },
       });
       pushEv({ type: 'tool_result', sessionId: this.opts.sessionId, callId: id, name, error: { code: 'policy/denied', message: msg }, durationMs: 0 });
       return;
@@ -124,7 +124,7 @@ export class TurnToolExecutor {
       const msg = `Unknown tool: "${name}"`;
       this.tracked.push({
         blockIndex, id, name, args, isConcurrencySafe: true, startMs, done: true,
-        result: { type: 'tool_result', toolUseId: id, content: msg, isError: true },
+        result: { type: 'tool_result', toolUseId: id, content: msg, isError: true, durationMs: 0, errorCode: 'tool/not_found' },
       });
       pushEv({ type: 'tool_result', sessionId: this.opts.sessionId, callId: id, name, error: { code: 'tool/not_found', message: msg }, durationMs: 0 });
       return;
@@ -232,7 +232,7 @@ export class TurnToolExecutor {
 
       if (!outcome.granted) {
         const reason = `Permission denied: ${outcome.reason}`;
-        track.result = { type: 'tool_result', toolUseId: id, content: reason, isError: true };
+        track.result = { type: 'tool_result', toolUseId: id, content: reason, isError: true, durationMs: Date.now() - track.startMs, errorCode: 'permission/denied' };
         pushEv({ type: 'tool_result', sessionId: this.opts.sessionId, callId: id, name, error: { code: 'permission/denied', message: reason }, durationMs: Date.now() - track.startMs });
         await hooks.trigger('onToolFailure', {
           turnId, sessionId,
@@ -288,7 +288,7 @@ export class TurnToolExecutor {
         const norm = toolResultStore.maybeNormalize(id, name, serialized);
         if (norm.kind !== 'unchanged') content = norm.blockContent;
       }
-      track.result = { type: 'tool_result', toolUseId: id, content, isError };
+      track.result = { type: 'tool_result', toolUseId: id, content, isError, durationMs: Date.now() - track.startMs, errorCode: isError ? 'tool/error' : undefined };
 
     } finally {
       toolCtx.signal.removeEventListener('abort', onTurnAbort);
@@ -299,7 +299,7 @@ export class TurnToolExecutor {
       if (!track.done) {
         if (!track.result) {
           const msg = 'Tool execution failed unexpectedly';
-          track.result = { type: 'tool_result', toolUseId: id, content: msg, isError: true };
+          track.result = { type: 'tool_result', toolUseId: id, content: msg, isError: true, durationMs: Date.now() - track.startMs, errorCode: 'tool/error' };
           pushEv({ type: 'tool_result', sessionId: this.opts.sessionId, callId: id, name, error: { code: 'tool/error', message: msg }, durationMs: Date.now() - track.startMs });
         }
       }

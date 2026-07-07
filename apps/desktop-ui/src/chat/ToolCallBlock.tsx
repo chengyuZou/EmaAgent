@@ -1,16 +1,18 @@
 /**
  * ToolCallBlock — collapsible tool invocation.
  *
- * Header: arrow · tool-name · primary-target · [copy]
- * Bash: `$ cmd` blank-line output in one block.
- * Edit: unified diff.
- * Others: args then result, no section labels.
+ * Header: arrow · tool-name · primary-target · [status badge · duration] · [abort]
+ * Body: 单块 — 参数(平铺 key-value) · 透明横线 · 结果(无 {}) · [error]
+ *
+ * 状态色：运行中黄/等待权限蓝/成功绿/失败红/已拒绝红（归失败色，文字区分）。
+ * 耗时：流式用 startedAt 实时算，完成后用 durationMs（DB 持久化，刷新后保留）。
  */
-import { useState, useCallback, type JSX } from 'react';
+import { useState, useEffect, useCallback, type JSX } from 'react';
 import { createPatch } from 'diff';
 import { IconButton } from '@ema-agent/ui';
 import type { AssistantSlice } from '../stores/conversation-store.js';
 import { turnsApi } from '../api/turns.js';
+import { renderToolArgs, renderToolResult, stripOuterBraces } from './tool-renderers.js';
 
 export interface ToolCallBlockProps {
   slice:      Extract<AssistantSlice, { type: 'tool_use' }>;
@@ -19,12 +21,45 @@ export interface ToolCallBlockProps {
   turnId?:    string;
 }
 
+// ── 状态派生 ──────────────────────────────────────────────────────────────────
+
+type ToolStatus = 'running' | 'awaiting_permission' | 'success' | 'failed' | 'denied';
+
+function deriveStatus(slice: Extract<AssistantSlice, { type: 'tool_use' }>): ToolStatus {
+  if (slice.error?.code === 'permission/denied') return 'denied';
+  if (slice.error) return 'failed'; // policy/denied | tool/error | tool/not_found
+  if (slice.permissionPromptId) return 'awaiting_permission';
+  if (slice.result !== undefined) return 'success';
+  return 'running';
+}
+
+const STATUS_META: Record<ToolStatus, { color: string; label: string; pulse?: boolean }> = {
+  running:             { color: 'var(--ema-warning-text)', label: '运行中', pulse: true },
+  awaiting_permission: { color: 'var(--ema-info-text)',    label: '等待确认', pulse: true },
+  success:             { color: 'var(--ema-success-text)', label: '成功' },
+  failed:              { color: 'var(--ema-danger-text)',  label: '失败' },
+  denied:              { color: 'var(--ema-danger-text)',  label: '已拒绝' },
+};
+
+/** 毫秒 → 显示秒（<1s 显示一位小数，≥10s 取整，≥60s 显示 m:ss）。 */
+function fmtDuration(ms: number): string {
+  if (ms < 1000) return `${ms}ms`;
+  if (ms < 10_000) return `${(ms / 1000).toFixed(1)}s`;
+  if (ms < 60_000) return `${Math.round(ms / 1000)}s`;
+  const s = Math.floor(ms / 1000);
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+}
+
+// ── 主组件 ────────────────────────────────────────────────────────────────────
+
 export function ToolCallBlock({ slice, streaming = false, turnId }: ToolCallBlockProps): JSX.Element {
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
 
   const hasResult   = slice.result !== undefined;
   const hasError    = !!slice.error;
+  const status      = deriveStatus(slice);
+  const statusMeta  = STATUS_META[status];
   const isStreaming = streaming && !hasResult && !hasError;
   const argsReady   = slice.args !== undefined;
   const isPending   = isStreaming && !argsReady;
@@ -33,16 +68,12 @@ export function ToolCallBlock({ slice, streaming = false, turnId }: ToolCallBloc
 
   const isBash      = BASH_TOOLS.has(slice.name);
   const editDiff    = argsReady ? buildEditDiff(slice.name, slice.args) : null;
-  const argsLang: CodeLang = editDiff ? 'diff'
-                           : isBash   ? 'shell'
-                           : detectArgsLang(slice.name, slice.args);
 
-  const resultStr  = hasResult && slice.result !== null ? formatJson(slice.result) : null;
-  const resultLang = detectResultLang(slice.name, slice.args, slice.result);
+  const resultView = hasResult && slice.result !== null ? renderToolResult(slice.name, slice.result) : null;
+  // bash 结果沿用原终端融合渲染（不进 renderToolResult）
+  const bashResultStr = isBash && hasResult && slice.result !== null ? formatJson(slice.result) : null;
 
-  // For bash: fuse command + output into one terminal block.
-  const bashCmd   = isBash && argsReady ? getBashCommand(slice.args) : null;
-  const bodyForCopy = buildBodyText(slice, editDiff, bashCmd, resultStr, argsReady);
+  const bodyForCopy = buildBodyText(slice, editDiff, isBash ? getBashCommand(slice.args) : null, bashResultStr, argsReady);
 
   const copy = useCallback(() => {
     void navigator.clipboard.writeText(bodyForCopy).then(() => {
@@ -76,12 +107,16 @@ export function ToolCallBlock({ slice, streaming = false, turnId }: ToolCallBloc
           </span>
         )}
 
-        {isPending && (
-          <span className="ml-auto flex items-center gap-1 text-[10px] shrink-0" style={{ color: 'var(--ema-warning)' }}>
-            <span className="w-1 h-1 rounded-full animate-pulse" style={{ background: 'var(--ema-warning)' }} />
-            运行中
-          </span>
-        )}
+        {/* 状态徽章 + 耗时（右侧） */}
+        <span className="ml-auto flex items-center gap-1.5 text-[10px] shrink-0" style={{ color: statusMeta.color }}>
+          <span
+            className={`w-1.5 h-1.5 rounded-full ${statusMeta.pulse ? 'animate-pulse' : ''}`}
+            style={{ background: statusMeta.color }}
+            aria-hidden
+          />
+          {statusMeta.label}
+          <StatusDuration status={status} durationMs={slice.durationMs} startedAt={slice.startedAt} />
+        </span>
 
         {isPending && turnId && (
           <span className="ema-chip-in shrink-0">
@@ -116,10 +151,10 @@ export function ToolCallBlock({ slice, streaming = false, turnId }: ToolCallBloc
             {copied ? '✓' : '⎘'}
           </button>
 
-          {/* Bash: fused terminal view */}
+          {/* Bash: 融合终端视图（命令 + 输出，不走通用平铺） */}
           {isBash && (
             <div className="max-h-64 overflow-auto pr-6">
-              <BashBlock cmd={bashCmd ?? ''} output={resultStr} partialArgs={slice.partialArgs} isPending={isPending} />
+              <BashBlock cmd={getBashCommand(slice.args) ?? ''} output={bashResultStr} partialArgs={slice.partialArgs} isPending={isPending} />
             </div>
           )}
 
@@ -130,41 +165,119 @@ export function ToolCallBlock({ slice, streaming = false, turnId }: ToolCallBloc
             </div>
           )}
 
-          {/* Generic tool: args */}
-          {!isBash && !editDiff && argsReady && (
-            <div className={resultStr !== null ? 'mb-2' : ''}>
-              {isPending && <span className="w-1 h-1 rounded-full animate-pulse inline-block mb-1" style={{ background: 'var(--ema-warning)' }} />}
-              <CodeBlock code={formatJson(slice.args)} lang={argsLang} />
-            </div>
-          )}
+          {/* 通用工具：单块 = 参数 + 透明横线 + 结果 */}
+          {!isBash && !editDiff && (
+            <>
+              {/* 参数区 */}
+              {argsReady ? (
+                <ToolArgsView name={slice.name} args={slice.args} />
+              ) : slice.partialArgs ? (
+                <pre className="font-mono text-[11px] text-neutral-400 whitespace-pre-wrap break-all leading-relaxed bg-transparent m-0 p-0 pr-6">
+                  {slice.partialArgs}
+                </pre>
+              ) : null}
 
-          {/* Partial streaming args */}
-          {!isBash && !editDiff && !argsReady && slice.partialArgs && (
-            <pre className="font-mono text-[11px] text-neutral-400 whitespace-pre-wrap break-all leading-relaxed bg-transparent m-0 p-0 pr-6">
-              {slice.partialArgs}
-            </pre>
-          )}
+              {/* 透明横线（分隔参数与结果，仅当两者都有时） */}
+              {(argsReady || slice.partialArgs) && resultView !== null && (
+                <div className="my-2 mx-4 border-t border-white/[0.05]" />
+              )}
 
-          {/* Error */}
-          {hasError && (
-            <div className="border-l-2 pl-2 mt-1" style={{ borderColor: 'var(--ema-danger)' }}>
-              <pre className="font-mono text-[11px] whitespace-pre-wrap break-all bg-transparent m-0 p-0"
-                   style={{ color: 'var(--ema-danger-text)' }}>
-                [{slice.error!.code}] {slice.error!.message}
-              </pre>
-            </div>
-          )}
+              {/* 结果区 */}
+              {resultView !== null && (
+                <div className="max-h-48 overflow-auto pr-6">
+                  <ToolResultViewBlock view={resultView} />
+                </div>
+              )}
 
-          {/* Generic result */}
-          {!isBash && resultStr !== null && (
-            <div className="max-h-48 overflow-auto pr-6">
-              <CodeBlock code={resultStr} lang={resultLang} />
-            </div>
+              {/* 错误区（denied/failed 状态） */}
+              {hasError && (
+                <div className="border-l-2 pl-2 mt-1" style={{ borderColor: 'var(--ema-danger)' }}>
+                  <pre className="font-mono text-[11px] whitespace-pre-wrap break-all bg-transparent m-0 p-0"
+                       style={{ color: 'var(--ema-danger-text)' }}>
+                    {status === 'denied' ? '已拒绝' : `[${slice.error!.code}]`} {slice.error!.message}
+                  </pre>
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>
     </div>
   );
+}
+
+// ── StatusDuration（实时耗时 hook）────────────────────────────────────────────
+
+function StatusDuration({
+  status, durationMs, startedAt,
+}: {
+  status: ToolStatus;
+  durationMs?: number;
+  startedAt?: number;
+}): JSX.Element | null {
+  // 运行中：用 startedAt 实时算
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (status !== 'running' || !startedAt) return;
+    const t = setInterval(() => setNow(Date.now()), 100);
+    return () => clearInterval(t);
+  }, [status, startedAt]);
+
+  if (status === 'running' && startedAt) {
+    return <span className="tabular-nums">· {fmtDuration(now - startedAt)}</span>;
+  }
+  if (durationMs != null && (status === 'success' || status === 'failed' || status === 'denied')) {
+    return <span className="tabular-nums">· {fmtDuration(durationMs)}</span>;
+  }
+  // awaiting_permission / 无耗时的 failed / denied（durationMs 为 0 也不显示）
+  return null;
+}
+
+// ── ToolArgsView（参数平铺，无 {}）────────────────────────────────────────────
+
+function ToolArgsView({ name, args }: { name: string; args: unknown }): JSX.Element {
+  const { rows } = renderToolArgs(name, args);
+  if (rows.length === 0) return <span className="text-[11px]" style={{ color: 'var(--ema-text-tertiary)' }}>（无参数）</span>;
+  return (
+    <div className="flex flex-col gap-0.5 pr-6">
+      {rows.map((r, i) => (
+        <div key={i} className="flex items-baseline gap-2 text-[11px] leading-relaxed">
+          <span style={{ color: 'var(--ema-text-tertiary)' }} className="shrink-0">{r.key}:</span>
+          <span className={`break-all ${r.mono ? 'font-mono' : ''}`} style={{ color: 'var(--ema-text-secondary)' }}>
+            {r.value}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ── ToolResultViewBlock（结果区，按 kind 分派）────────────────────────────────
+
+function ToolResultViewBlock({ view }: { view: ReturnType<typeof renderToolResult> }): JSX.Element {
+  if (view.kind === 'text') {
+    return (
+      <pre className="font-mono text-[11px] text-neutral-300 whitespace-pre-wrap break-all leading-relaxed bg-transparent m-0 p-0">
+        {view.text}
+      </pre>
+    );
+  }
+  if (view.kind === 'rows') {
+    return (
+      <div className="flex flex-col gap-0.5">
+        {view.rows.map((r, i) => (
+          <div key={i} className="flex items-baseline gap-2 text-[11px] leading-relaxed">
+            <span style={{ color: 'var(--ema-text-tertiary)' }} className="shrink-0">{r.key}:</span>
+            <span className={`break-all ${r.mono ? 'font-mono' : ''}`} style={{ color: 'var(--ema-text-secondary)' }}>
+              {r.value}
+            </span>
+          </div>
+        ))}
+      </div>
+    );
+  }
+  // raw：JsonBlock 高亮，但剥外层 {}
+  return <JsonBlock code={stripOuterBraces(view.text)} />;
 }
 
 // ── BashBlock ─────────────────────────────────────────────────────────────────
@@ -189,20 +302,7 @@ function BashBlock({ cmd, output, partialArgs, isPending }: {
   );
 }
 
-// ── CodeBlock ─────────────────────────────────────────────────────────────────
-
-type CodeLang = 'json' | 'diff' | 'shell' | 'plain';
-
-function CodeBlock({ code, lang }: { code: string; lang: CodeLang }): JSX.Element {
-  if (lang === 'json') return <JsonBlock code={code} />;
-  if (lang === 'diff') return <DiffBlock code={code} />;
-  if (lang === 'shell') return <ShellBlock code={code} />;
-  return (
-    <pre className="font-mono text-[11px] text-neutral-300 whitespace-pre-wrap break-all leading-relaxed bg-transparent m-0 p-0">
-      {code}
-    </pre>
-  );
-}
+// ── JsonBlock（raw 结果高亮，外层 {} 已由调用方剥除）──────────────────────────
 
 function JsonBlock({ code }: { code: string }): JSX.Element {
   const parts = tokenizeJson(code);
@@ -295,19 +395,6 @@ function DiffBlock({ code }: { code: string }): JSX.Element {
   );
 }
 
-function ShellBlock({ code }: { code: string }): JSX.Element {
-  return (
-    <pre className="font-mono text-[11px] whitespace-pre-wrap break-all leading-relaxed bg-transparent m-0 p-0">
-      {code.split('\n').map((line, i) => {
-        const isCmd = /^\s*\$/.test(line);
-        return (
-          <span key={i} className={isCmd ? 'text-yellow-300' : 'text-neutral-300'}>{line}{'\n'}</span>
-        );
-      })}
-    </pre>
-  );
-}
-
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 const BASH_TOOLS = new Set(['bash', 'powershell', 'run_command', 'execute_bash', 'shell']);
@@ -323,19 +410,20 @@ function buildBodyText(
   slice: Extract<AssistantSlice, { type: 'tool_use' }>,
   editDiff: string | null,
   bashCmd: string | null,
-  resultStr: string | null,
+  bashResultStr: string | null,
   argsReady: boolean,
 ): string {
+  // 复制时保留完整 JSON（含 {}）—— 复制粘贴场景需要可解析的结构化数据
   if (BASH_TOOLS.has(slice.name)) {
     const parts: string[] = [];
     if (bashCmd) parts.push(`$ ${bashCmd}`);
-    if (resultStr !== null) parts.push('', resultStr);
+    if (bashResultStr !== null) parts.push('', bashResultStr);
     return parts.join('\n');
   }
   if (editDiff) return editDiff;
   const parts: string[] = [];
   if (argsReady) parts.push(formatJson(slice.args));
-  if (resultStr !== null) parts.push(resultStr);
+  if (slice.result !== undefined && slice.result !== null) parts.push(formatJson(slice.result));
   return parts.join('\n\n');
 }
 
@@ -352,22 +440,6 @@ function buildEditDiff(name: string, args: unknown): string | null {
   const filePath = typeof (a.path ?? a.file_path) === 'string'
     ? String(a.path ?? a.file_path) : 'file';
   return createPatch(filePath, oldStr, newStr, '', '', { context: 3 });
-}
-
-function detectArgsLang(_name: string, args: unknown): CodeLang {
-  if (!args || typeof args !== 'object') return 'plain';
-  return 'json';
-}
-
-function detectResultLang(name: string, _args: unknown, result: unknown): CodeLang {
-  if (BASH_TOOLS.has(name)) return 'shell';
-  if (EDIT_TOOLS.has(name)) return 'plain';
-  if (typeof result === 'object' && result !== null) return 'json';
-  if (typeof result === 'string') {
-    const trimmed = result.trimStart();
-    if (trimmed.startsWith('{') || trimmed.startsWith('[')) return 'json';
-  }
-  return 'plain';
 }
 
 function getPrimaryTarget(name: string, args: unknown): string | null {

@@ -439,20 +439,20 @@ export const useConversationStore = create<ConversationStoreState>((set, get) =>
               const tsl = sl as Extract<AnyAssistantSlice, { type: 'tool_use' }>;
               return { ...tsl, args: tc.args, partialArgs: undefined };
             })
-          : [...sm.slices, { type: 'tool_use' as const, callId: tc.callId, name: tc.name, args: tc.args }];
+          : [...sm.slices, { type: 'tool_use' as const, callId: tc.callId, name: tc.name, args: tc.args, startedAt: Date.now() }];
         const streaming = new Map(s.streamingMap);
         streaming.set(sessionId as string, { ...sm, slices: newSlices });
         return { streamingMap: streaming };
       }
 
       if (slice === 'tool_result' && typeof delta === 'object') {
-        const tr = delta as { callId: string; output?: unknown; error?: { code: string; message: string } };
+        const tr = delta as { callId: string; output?: unknown; error?: { code: string; message: string }; durationMs?: number };
         const streaming = new Map(s.streamingMap);
         streaming.set(sessionId as string, {
           ...sm,
           slices: sm.slices.map((sl) =>
             sl.type === 'tool_use' && sl.callId === tr.callId
-              ? { ...sl, result: tr.output ?? null, error: tr.error }
+              ? { ...sl, result: tr.output ?? null, error: tr.error, durationMs: tr.durationMs, errorCode: tr.error?.code, permissionPromptId: undefined }
               : sl,
           ),
         });
