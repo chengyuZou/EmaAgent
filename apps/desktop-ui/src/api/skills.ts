@@ -28,9 +28,17 @@ export interface MarketSkillEntry {
   sizeBytes?:  number;
 }
 
+export interface MarketSourceMeta {
+  id:      string;
+  label:   string;
+  type:    string;
+  error?:  string;
+  count:   number;
+}
+
 export interface MarketListResult {
-  source: string;
-  skills: MarketSkillEntry[];
+  sources: MarketSourceMeta[];
+  skills:  MarketSkillEntry[];
 }
 
 export const skillsApi = {
@@ -89,24 +97,11 @@ export const skillsApi = {
   },
 
   /**
-   * GET /api/skills/market — list installable skills from a market.
-   * - Default (no args): Anthropic official skill market.
-   * - `marketId`: named market registered on the server.
-   * - `owner`+`repo`+`ref`: ad-hoc GitHub repository.
+   * GET /api/skills/market — 聚合所有 enabled 源,并发 fetch 合并。
+   * 源管理走 /api/market/sources。
    */
-  async listMarket(opts: {
-    marketId?: string;
-    owner?:    string;
-    repo?:     string;
-    ref?:      string;
-  } = {}): Promise<MarketListResult> {
-    const params = new URLSearchParams();
-    if (opts.marketId) params.set('market', opts.marketId);
-    if (opts.owner)    params.set('owner',  opts.owner);
-    if (opts.repo)     params.set('repo',   opts.repo);
-    if (opts.ref)      params.set('ref',    opts.ref);
-    const qs = params.toString();
-    return sidecarClient.request<MarketListResult>(`/api/skills/market${qs ? `?${qs}` : ''}`);
+  async listMarket(): Promise<MarketListResult> {
+    return sidecarClient.request<MarketListResult>('/api/skills/market');
   },
 
   /** POST /api/skills/:name/rename */

@@ -7,6 +7,7 @@ import { useSkillStore, type MarketSkillEntry } from '../stores/skill-store.js';
 import { skillsApi } from '../api/skills.js';
 import { showToast } from '../lib/toast.js';
 import { Markdown } from '../markdown/renderer.js';
+import { MarketSourceManager } from './MarketSourceManager.js';
 
 type InstallMode = 'text' | 'url' | null;
 
@@ -86,6 +87,7 @@ function MarketView({
 
   return (
     <div className="flex flex-col gap-2">
+      <MarketSourceManager kind="skill" />
       {marketSource && (
         <p className="text-xs text-[var(--ema-text-tertiary)] mb-1 font-mono truncate">来源：{marketSource}</p>
       )}

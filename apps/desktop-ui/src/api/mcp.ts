@@ -33,9 +33,17 @@ export interface McpMarketEntry {
   args?:        string[];
 }
 
+export interface MarketSourceMeta {
+  id:      string;
+  label:   string;
+  type:    string;
+  error?:  string;
+  count:   number;
+}
+
 export interface McpMarketResult {
-  source:  string;
-  servers: McpMarketEntry[];
+  sources:  MarketSourceMeta[];
+  servers:  McpMarketEntry[];
 }
 
 export const mcpApi = {
@@ -100,7 +108,7 @@ export const mcpApi = {
     });
   },
 
-  /** GET /api/mcp/market — browsable MCP servers from the official registry. */
+  /** GET /api/mcp/market — 聚合所有 enabled 源,并发 fetch 合并。源管理走 /api/market/sources。 */
   async listMarket(): Promise<McpMarketResult> {
     return sidecarClient.request<McpMarketResult>('/api/mcp/market');
   },

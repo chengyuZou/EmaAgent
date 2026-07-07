@@ -35,8 +35,8 @@ export interface SkillStoreState {
   /** Uninstall a skill by name. Refreshes list on success. */
   remove(name: string): Promise<void>;
 
-  /** Fetch installable skills from the market. Results cached in store. */
-  listMarket(opts?: { marketId?: string; owner?: string; repo?: string; ref?: string }): Promise<void>;
+  /** Fetch installable skills from the market(聚合所有 enabled 源)。Results cached in store. */
+  listMarket(): Promise<void>;
 }
 
 // ── Store ─────────────────────────────────────────────────────────────────────
@@ -122,11 +122,17 @@ export const useSkillStore = create<SkillStoreState>((set, get) => ({
     }
   },
 
-  async listMarket(opts) {
+  async listMarket() {
     set({ marketLoading: true, marketError: null });
     try {
-      const res = await skillsApi.listMarket(opts);
-      set({ marketSkills: res.skills, marketSource: res.source, marketLoading: false });
+      const res = await skillsApi.listMarket();
+      // marketSource 显示参与源数 + 失败源数(供 UI 顶部展示)
+      const okCount = res.sources.filter((s) => !s.error).length;
+      const errCount = res.sources.filter((s) => s.error).length;
+      const sourceLabel = errCount > 0
+        ? `${okCount} 个源 · ${errCount} 个失败`
+        : `${okCount} 个源`;
+      set({ marketSkills: res.skills, marketSource: sourceLabel, marketLoading: false });
     } catch (err: unknown) {
       set({
         marketError:   err instanceof Error ? err.message : 'Failed to load market',

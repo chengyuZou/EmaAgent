@@ -120,8 +120,48 @@ export function createMarketRouter(bindings: AppBindings) {
     return c.json({ ok: true });
   });
 
+  // ── Test by config (添加前先测,不存 DB)─────────────────────────────────────
+  // 接收 { kind, type, config },校验 + 试拉,返回 count / error。
+  // 给前端"添加源"Dialog 的"测试连通"按钮用 —— 不用先创建再测。
+  router.post('/sources/test', async (c) => {
+    let body: z.infer<typeof createBodySchema>;
+    try {
+      body = createBodySchema.parse(await c.req.json());
+    } catch (err) {
+      return c.json({ error: String(err) }, 400);
+    }
+
+    const adapter = marketRegistry.getAdapter(body.kind);
+    if (!adapter) return c.json({ ok: false, error: `未知的市场 kind: ${body.kind}` }, 400);
+    if (!adapter.types.includes(body.type)) {
+      return c.json({ ok: false, error: `kind "${body.kind}" 不支持 type "${body.type}"` }, 400);
+    }
+
+    const validated = adapter.validateConfig(body.type, body.config);
+    if (!validated.ok) return c.json({ ok: false, error: validated.error }, 400);
+
+    // 用校验后的 config 构造临时 source 对象调 adapter.list
+    const tempSource = {
+      id:        '__test__',
+      kind:      body.kind,
+      type:      body.type,
+      label:     body.label,
+      config:    validated.config,
+      enabled:   true,
+      builtin:   false,
+      sortOrder: 0,
+      createdAt: Date.now(),
+    };
+    try {
+      const entries = await adapter.list(tempSource) as unknown[];
+      return c.json({ ok: true, count: entries.length, sample: entries.slice(0, 3) });
+    } catch (err) {
+      return c.json({ ok: false, error: (err as Error).message });
+    }
+  });
+
   // ── Test source connectivity ───────────────────────────────────────────────
-  // 调 adapter.list 试拉,返回条目数 / error。用户加源前可先测。
+  // 调 adapter.list 试拉已存源,返回条目数 / error。列表里"测试"按钮用。
   router.get('/sources/:id/test', async (c) => {
     const id = c.req.param('id');
     const source = marketSourceStore.get(id);

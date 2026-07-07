@@ -6,6 +6,7 @@ import {
 import { useMcpStore, type McpServerEntry, type McpServerConfig, type McpProbeResult, type McpImportResult, type McpMarketEntry } from '../stores/mcp-store.js';
 import { showToast } from '../lib/toast.js';
 import type { McpConnectionStatus } from '@ema-agent/mcp';
+import { MarketSourceManager } from './MarketSourceManager.js';
 
 // ── Status helpers ────────────────────────────────────────────────────────────
 
@@ -626,7 +627,8 @@ function McpMarketView({
   }
 
   return (
-    <div className="flex flex-col min-h-0 flex-1">
+    <div className="flex flex-col min-h-0 flex-1 gap-3">
+      <MarketSourceManager kind="mcp" />
       {marketSource && (
         <p className="text-xs text-[var(--ema-text-tertiary)] mb-1 font-mono truncate shrink-0">
           来源：{marketSource} · 共 {marketServers.length} 个

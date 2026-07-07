@@ -182,7 +182,12 @@ export const useMcpStore = create<McpStoreState>((set, get) => ({
     set({ marketLoading: true, marketError: null });
     try {
       const res = await mcpApi.listMarket();
-      set({ marketServers: res.servers, marketSource: res.source, marketLoading: false });
+      const okCount = res.sources.filter((s) => !s.error).length;
+      const errCount = res.sources.filter((s) => s.error).length;
+      const sourceLabel = errCount > 0
+        ? `${okCount} 个源 · ${errCount} 个失败`
+        : `${okCount} 个源`;
+      set({ marketServers: res.servers, marketSource: sourceLabel, marketLoading: false });
     } catch (err: unknown) {
       set({
         marketError:   err instanceof Error ? err.message : 'Failed to load MCP market',
