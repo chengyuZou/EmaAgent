@@ -2,7 +2,7 @@
  * Skills API — skill lifecycle management.
  */
 import { sidecarClient } from './sidecar-client.js';
-import type { SkillRecord } from '@ema-agent/skill';
+import type { GithubSkillCoords, SkillRecord } from '@ema-agent/skill';
 
 // File-backed model: records are metadata (no body). Body is read lazily on
 // activation server-side; the UI never receives it.
@@ -26,6 +26,8 @@ export interface MarketSkillEntry {
   author?:     string;
   tags?:       string[];
   sizeBytes?:  number;
+  /** GitHub 源携带坐标,bundle 安装透传(不丢 sibling assets)。 */
+  coords?:     GithubSkillCoords;
 }
 
 export interface MarketSourceMeta {
@@ -65,11 +67,11 @@ export const skillsApi = {
     });
   },
 
-  /** POST /api/skills — install from URL */
-  async installFromUrl(url: string): Promise<{ skill: SkillRecord }> {
+  /** POST /api/skills — install from URL (coords 透传给后端 bundle 安装) */
+  async installFromUrl(url: string, coords?: GithubSkillCoords): Promise<{ skill: SkillRecord }> {
     return sidecarClient.request<{ skill: SkillRecord }>('/api/skills', {
       method: 'POST',
-      json: { source: 'url', url },
+      json:   { source: 'url', url, ...(coords ? { coords } : {}) },
     });
   },
 

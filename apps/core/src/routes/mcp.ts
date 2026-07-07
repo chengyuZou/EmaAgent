@@ -1,6 +1,7 @@
 import { Hono }                from 'hono';
 import { z }                   from 'zod';
 import { McpServerConfigSchema, parseImportedMcpServers } from '@ema-agent/mcp';
+import { mergeByName }         from '@ema-agent/marketplace';
 import type { McpMarketEntry } from '@ema-agent/mcp';
 import type { AppBindings }    from '../wiring/index.js';
 
@@ -40,17 +41,12 @@ export function createMcpRouter(bindings: AppBindings) {
   router.get('/market', async (c) => {
     try {
       const sources = bindings.marketSourceStore.listEnabled('mcp');
-      const results = await bindings.marketRegistry.listAll('mcp', sources);
-      // 合并所有源条目,去重 by name(后源覆盖前源,保留最新版本)
-      const all = new Map<string, McpMarketEntry>();
-      for (const r of results) {
-        for (const entry of r.entries as McpMarketEntry[]) {
-          all.set(entry.name, entry);
-        }
-      }
+      const results = await bindings.marketRegistry.listAll<McpMarketEntry>('mcp', sources);
+      // 跨源按 name 去重,sortOrder 小的优先(底座 mergeByName 保策略一致)
+      const servers = mergeByName(results);
       return c.json({
         sources: results.map((r) => ({ id: r.sourceId, label: r.sourceLabel, type: r.sourceType, error: r.error, count: r.entries.length })),
-        servers: [...all.values()],
+        servers,
       });
     } catch (err) {
       return c.json({ error: (err as Error).message, servers: [] }, 502);

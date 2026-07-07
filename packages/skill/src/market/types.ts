@@ -35,5 +35,5 @@ export interface SkillJsonIndex {
   entries: SkillJsonIndexEntry[];
 }
 
-// MarketSkillEntry 从 ../types.js 重导出,方便 adapters 一次性 import
+// MarketSkillEntry 从 ../types.js 重导出,方便 handlers 一次性 import
 export type { MarketSkillEntry };

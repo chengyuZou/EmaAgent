@@ -5,6 +5,7 @@ import {
 } from '@ema-agent/ui';
 import { useSkillStore, type MarketSkillEntry } from '../stores/skill-store.js';
 import { skillsApi } from '../api/skills.js';
+import type { GithubSkillCoords } from '@ema-agent/skill';
 import { showToast } from '../lib/toast.js';
 import { Markdown } from '../markdown/renderer.js';
 import { MarketSourceManager } from './MarketSourceManager.js';
@@ -26,7 +27,7 @@ function MarketView({
 }: {
   active:         boolean;
   installedNames: Set<string>;
-  onInstall:      (url: string, name: string) => Promise<void>;
+  onInstall:      (url: string, name: string, coords?: GithubSkillCoords) => Promise<void>;
 }): JSX.Element {
   const marketSkills  = useSkillStore((s) => s.marketSkills);
   const marketLoading = useSkillStore((s) => s.marketLoading);
@@ -46,7 +47,8 @@ function MarketView({
   async function handleInstall(entry: MarketSkillEntry): Promise<void> {
     setInstalling((prev) => new Set(prev).add(entry.name));
     try {
-      await onInstall(entry.url, entry.name);
+      // coords 透传给后端 bundle 安装(不丢 sibling assets)
+      await onInstall(entry.url, entry.name, entry.coords);
     } finally {
       setInstalling((prev) => {
         const next = new Set(prev);
@@ -307,13 +309,13 @@ export function SkillsTab(): JSX.Element {
     }
   }
 
-  async function handleInstallFromUrl(url: string): Promise<void> {
+  async function handleInstallFromUrl(url: string, coords?: GithubSkillCoords): Promise<void> {
     const target = url || urlInput.trim();
     if (!target) return;
     setInstalling(true);
     setInstallError(null);
     try {
-      const sk = await useSkillStore.getState().installFromUrl(target);
+      const sk = await useSkillStore.getState().installFromUrl(target, coords);
       showToast(`已安装 ${sk.name}`, { variant: 'success' });
       closeDialog();
     } catch (err) {
@@ -352,7 +354,7 @@ export function SkillsTab(): JSX.Element {
         <MarketView
           active={activeTab === 'market'}
           installedNames={installedNames}
-          onInstall={(url, _name) => handleInstallFromUrl(url)}
+          onInstall={(url, _name, coords) => handleInstallFromUrl(url, coords)}
         />
       ),
     },

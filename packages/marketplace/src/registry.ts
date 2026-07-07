@@ -71,3 +71,23 @@ export class MarketRegistry {
     );
   }
 }
+
+// ── 合并 helper(业务包共用,保证跨源去重策略一致)──────────────────────────────
+
+/**
+ * 按 entry.name 合并多源结果,先到先得 —— 后源同名不覆盖前源。
+ * listAll 返回的 results 按 source.sortOrder 升序保序,所以"先到"= sortOrder 小的优先
+ * (builtin 官方源 sortOrder 0 优先于用户自加源)。
+ * 业务包调 listAll 后用这个去重,避免 mcp/skill 各写一套漂移。
+ */
+export function mergeByName<Entry extends { name: string }>(
+  results: readonly MarketSourceResult<Entry>[],
+): Entry[] {
+  const seen = new Map<string, Entry>();
+  for (const r of results) {
+    for (const entry of r.entries) {
+      if (!seen.has(entry.name)) seen.set(entry.name, entry);
+    }
+  }
+  return [...seen.values()];
+}

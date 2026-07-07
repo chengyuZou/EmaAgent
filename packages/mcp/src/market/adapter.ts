@@ -1,12 +1,11 @@
-import type { MarketSourceAdapter } from '@ema-agent/marketplace';
-import type { MarketSourceRecord } from '@ema-agent/marketplace';
+import type { MarketSourceAdapter, MarketSourceRecord, MarketSourceTypeSchema } from '@ema-agent/marketplace';
 import type { McpMarketEntry } from './types.js';
-import { MCP_TYPE_HANDLERS, MCP_SUPPORTED_TYPES } from './adapters/index.js';
+import { MCP_TYPE_HANDLERS, MCP_SUPPORTED_TYPES } from './handlers/index.js';
 
 // ── MCP market adapter(kind='mcp')─────────────────────────────────────────────
 //
-// 总 dispatch:查 adapters/ 的 type→handler Map,转发 list / validateConfig。
-// 加新 source type = 加 adapters/<type>.ts + adapters/index.ts 注册一行,
+// 总 dispatch:查 handlers/ 的 type→handler Map,转发 list / validateConfig / describeTypes。
+// 加新 source type = 加 handlers/<type>.ts + handlers/index.ts 注册一行,
 // 此文件零改动。底座只见 MarketSourceAdapter 接口,不感知 type 细节。
 
 export class McpMarketAdapter implements MarketSourceAdapter<McpMarketEntry> {
@@ -23,5 +22,9 @@ export class McpMarketAdapter implements MarketSourceAdapter<McpMarketEntry> {
     const handler = MCP_TYPE_HANDLERS[type];
     if (!handler) return { ok: false, error: `不支持的 mcp 源 type: ${type}` };
     return handler.validateConfig(config);
+  }
+
+  describeTypes(): readonly MarketSourceTypeSchema[] {
+    return Object.values(MCP_TYPE_HANDLERS).map((h) => h.schema);
   }
 }

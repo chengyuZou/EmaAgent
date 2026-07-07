@@ -2,75 +2,19 @@ import { useEffect, useState } from 'react';
 import {
   Badge, Button, Callout, Dialog, Field, IconButton, Input, Select, Spinner, Switch, Tooltip,
 } from '@ema-agent/ui';
-import { marketApi, type MarketSourceRecord, type MarketSourceTestResult } from '../api/market.js';
+import {
+  marketApi,
+  type MarketSourceRecord,
+  type MarketSourceTestResult,
+  type MarketSourceTypeSchema,
+} from '../api/market.js';
 import { showToast } from '../lib/toast.js';
 
 // ── MarketSourceManager(共享:MCP/Skills 两边复用,只传 kind)──────────────────
 //
 // 在"浏览市场"tab 顶部折叠显示源列表。builtin 源不可删只能启停;用户源可删。
-// "添加源"Dialog:type 下拉选完后 config 表单动态切换(前端写死 type→表单映射)。
-// 添加前先测试(POST /sources/test 不存 DB),通过后再创建。
-
-// ── 各 kind 支持的 type + config 表单定义(前端写死映射)─────────────────────────
-
-interface ConfigField {
-  key: string;          // config 对象的 key
-  label: string;
-  placeholder?: string;
-  required?: boolean;
-  optional?: boolean;   // 可选字段(mirrorUrl 等)
-}
-interface SourceTypeSpec {
-  type: string;
-  label: string;
-  fields: ConfigField[];
-}
-
-/** mcp kind 支持的 source type + 表单字段 */
-const MCP_TYPE_SPECS: SourceTypeSpec[] = [
-  {
-    type: 'mcp-registry',
-    label: 'MCP 官方 Registry(cursor 分页)',
-    fields: [
-      { key: 'baseUrl', label: 'Base URL', placeholder: 'https://registry.modelcontextprotocol.io/v0/servers', required: true },
-      { key: 'mirrorUrl', label: '镜像 URL(可选,失败降级)', placeholder: 'https://...', optional: true },
-    ],
-  },
-  {
-    type: 'json-index',
-    label: 'JSON 索引(用户自传 URL)',
-    fields: [
-      { key: 'indexUrl', label: '索引 URL', placeholder: 'https://my-server.com/mcp-list.json', required: true },
-      { key: 'mirrorUrl', label: '镜像 URL(可选)', placeholder: 'https://...', optional: true },
-    ],
-  },
-];
-
-/** skill kind 支持的 source type + 表单字段 */
-const SKILL_TYPE_SPECS: SourceTypeSpec[] = [
-  {
-    type: 'github',
-    label: 'GitHub 仓库(git tree 找 SKILL.md)',
-    fields: [
-      { key: 'owner', label: 'Owner', placeholder: 'anthropics', required: true },
-      { key: 'repo', label: 'Repo', placeholder: 'skills', required: true },
-      { key: 'ref', label: 'Ref(分支/标签)', placeholder: 'main', required: true },
-      { key: 'mirrorUrl', label: '镜像 URL(可选,jsDelivr 等 CDN base)', placeholder: 'https://cdn.jsdelivr.net/gh/owner/repo@ref/', optional: true },
-    ],
-  },
-  {
-    type: 'json-index',
-    label: 'JSON 索引(用户自传 URL)',
-    fields: [
-      { key: 'indexUrl', label: '索引 URL', placeholder: 'https://my-server.com/skill-list.json', required: true },
-      { key: 'mirrorUrl', label: '镜像 URL(可选)', placeholder: 'https://...', optional: true },
-    ],
-  },
-];
-
-function typeSpecsFor(kind: string): SourceTypeSpec[] {
-  return kind === 'mcp' ? MCP_TYPE_SPECS : kind === 'skill' ? SKILL_TYPE_SPECS : [];
-}
+// "添加源"Dialog 的 type 列表 + config 字段表单从后端 adapter.describeTypes() 动态拉
+// (GET /api/market/types?kind=),后端加 type → 前端自动出表单,不再前端写死映射。
 
 // ── 组件 ───────────────────────────────────────────────────────────────────────
 
@@ -291,14 +235,31 @@ function AddSourceDialog({
   onOpenChange:(open: boolean) => void;
   onCreated:   () => void;
 }): JSX.Element {
-  const specs = typeSpecsFor(kind);
-  const [type, setType] = useState<string>(specs[0]?.type ?? '');
+  // type + 字段表单 schema 从后端 adapter.describeTypes() 动态拉,不再前端写死
+  const [specs, setSpecs] = useState<MarketSourceTypeSchema[]>([]);
+  const [specsLoading, setSpecsLoading] = useState(false);
+  const [type, setType] = useState<string>('');
   const [label, setLabel] = useState('');
   const [config, setConfig] = useState<Record<string, string>>({});
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<MarketSourceTestResult | null>(null);
   const [adding, setAdding] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Dialog 打开时拉 type schema
+  useEffect(() => {
+    if (!open) return;
+    setSpecsLoading(true);
+    marketApi.listTypes(kind)
+      .then(({ types }) => {
+        setSpecs(types);
+        setType(types[0]?.type ?? '');
+      })
+      .catch((err) => {
+        setError(err instanceof Error ? err.message : String(err));
+      })
+      .finally(() => setSpecsLoading(false));
+  }, [open, kind]);
 
   // 切 type 时重置表单
   useEffect(() => {
@@ -389,41 +350,47 @@ function AddSourceDialog({
       {error && <Callout variant="danger" className="mb-3">{error}</Callout>}
 
       <div className="flex flex-col gap-3">
-        <Field label="源类型" required>
-          <Select
-            value={type}
-            onChange={(v) => setType(v)}
-            options={specs.map((s) => ({ value: s.type, label: s.label }))}
-          />
-        </Field>
+        {specsLoading ? (
+          <div className="flex justify-center py-4"><Spinner size="sm" /></div>
+        ) : (
+          <>
+            <Field label="源类型" required>
+              <Select
+                value={type}
+                onChange={(v) => setType(v)}
+                options={specs.map((s) => ({ value: s.type, label: s.label }))}
+              />
+            </Field>
 
-        <Field label="显示名" required>
-          <Input
-            placeholder="如:我的自定义源"
-            value={label}
-            onChange={(e) => setLabel(e.target.value)}
-            autoFocus
-          />
-        </Field>
+            <Field label="显示名" required>
+              <Input
+                placeholder="如:我的自定义源"
+                value={label}
+                onChange={(e) => setLabel(e.target.value)}
+                autoFocus
+              />
+            </Field>
 
-        {currentSpec && (
-          <div className="flex flex-col gap-3 pt-1 border-t border-[var(--ema-border)]">
-            <p className="text-xs text-[var(--ema-text-tertiary)] pt-2">{currentSpec.label} 配置</p>
-            {currentSpec.fields.map((f) => (
-              <Field
-                key={f.key}
-                label={f.label}
-                required={f.required}
-              >
-                <Input
-                  placeholder={f.placeholder}
-                  value={config[f.key] ?? ''}
-                  onChange={(e) => setConfig((prev) => ({ ...prev, [f.key]: e.target.value }))}
-                  className="font-mono text-xs"
-                />
-              </Field>
-            ))}
-          </div>
+            {currentSpec && (
+              <div className="flex flex-col gap-3 pt-1 border-t border-[var(--ema-border)]">
+                <p className="text-xs text-[var(--ema-text-tertiary)] pt-2">{currentSpec.label} 配置</p>
+                {currentSpec.fields.map((f) => (
+                  <Field
+                    key={f.key}
+                    label={f.label}
+                    required={f.required}
+                  >
+                    <Input
+                      placeholder={f.placeholder}
+                      value={config[f.key] ?? ''}
+                      onChange={(e) => setConfig((prev) => ({ ...prev, [f.key]: e.target.value }))}
+                      className="font-mono text-xs"
+                    />
+                  </Field>
+                ))}
+              </div>
+            )}
+          </>
         )}
 
         {testResult && (

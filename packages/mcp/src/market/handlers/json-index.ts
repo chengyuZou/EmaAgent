@@ -1,5 +1,5 @@
 import { fetchJson } from '@ema-agent/marketplace';
-import type { MarketSourceRecord } from '@ema-agent/marketplace';
+import type { MarketSourceRecord, MarketSourceTypeSchema } from '@ema-agent/marketplace';
 import type { McpJsonIndex, McpJsonIndexConfig, McpJsonIndexEntry, McpMarketEntry } from '../types.js';
 
 // ── json-index source type ────────────────────────────────────────────────────
@@ -69,6 +69,16 @@ export function validateConfig(config: unknown): { ok: true; config: string } | 
   const cfg: McpJsonIndexConfig = { indexUrl, ...(typeof mirrorUrl === 'string' ? { mirrorUrl } : {}) };
   return ok(JSON.stringify(cfg));
 }
+
+/** 该 type 的 config 表单 schema(供前端"添加源"Dialog 动态渲染)。 */
+export const schema: MarketSourceTypeSchema = {
+  type:   'json-index',
+  label:  'JSON 索引(用户自传 URL)',
+  fields: [
+    { key: 'indexUrl',   label: '索引 URL',       placeholder: 'https://my-server.com/mcp-list.json', required: true },
+    { key: 'mirrorUrl',  label: '镜像 URL(可选)', placeholder: 'https://...', optional: true },
+  ],
+};
 
 function isObj(v: unknown): v is Record<string, unknown> {
   return v !== null && typeof v === 'object' && !Array.isArray(v);

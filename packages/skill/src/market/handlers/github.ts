@@ -1,5 +1,5 @@
 import { fetchGithubTree } from '@ema-agent/marketplace';
-import type { MarketSourceRecord } from '@ema-agent/marketplace';
+import type { MarketSourceRecord, MarketSourceTypeSchema } from '@ema-agent/marketplace';
 import type { MarketSkillEntry } from '../../types.js';
 import type { GithubSkillSourceConfig } from '../types.js';
 
@@ -28,7 +28,13 @@ export async function list(source: MarketSourceRecord): Promise<MarketSkillEntry
     const url  = cfg.mirrorUrl
       ? `${cfg.mirrorUrl.replace(/\/$/, '')}/${node.path}`
       : `https://raw.githubusercontent.com/${cfg.owner}/${cfg.repo}/${cfg.ref}/${node.path}`;
-    entries.push({ name, path: dir, url });
+    // coords 透传给 installer,bundle 安装直接用坐标 + mirrorUrl,不靠 URL 反解析
+    entries.push({
+      name,
+      path: dir,
+      url,
+      coords: { owner: cfg.owner, repo: cfg.repo, ref: cfg.ref, dir, mirrorUrl: cfg.mirrorUrl },
+    });
   }
   entries.sort((a, b) => a.name.localeCompare(b.name));
   return entries;
@@ -48,6 +54,18 @@ export function validateConfig(config: unknown): { ok: true; config: string } | 
   const cfg: GithubSkillSourceConfig = { owner, repo, ref, ...(typeof mirrorUrl === 'string' ? { mirrorUrl } : {}) };
   return ok(JSON.stringify(cfg));
 }
+
+/** 该 type 的 config 表单 schema(供前端"添加源"Dialog 动态渲染)。 */
+export const schema: MarketSourceTypeSchema = {
+  type:   'github',
+  label:  'GitHub 仓库(git tree 找 SKILL.md)',
+  fields: [
+    { key: 'owner',     label: 'Owner',                       placeholder: 'anthropics', required: true },
+    { key: 'repo',      label: 'Repo',                        placeholder: 'skills', required: true },
+    { key: 'ref',       label: 'Ref(分支/标签)',              placeholder: 'main', required: true },
+    { key: 'mirrorUrl', label: '镜像 URL(可选,jsDelivr 等 CDN base)', placeholder: 'https://cdn.jsdelivr.net/gh/owner/repo@ref/', optional: true },
+  ],
+};
 
 function isObj(v: unknown): v is Record<string, unknown> {
   return v !== null && typeof v === 'object' && !Array.isArray(v);

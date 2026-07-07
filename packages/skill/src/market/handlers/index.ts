@@ -1,16 +1,18 @@
-import type { MarketSourceRecord } from '@ema-agent/marketplace';
+import type { MarketSourceRecord, MarketSourceTypeSchema } from '@ema-agent/marketplace';
 import type { MarketSkillEntry } from '../../types.js';
 import * as github from './github.js';
 import * as jsonIndex from './json-index.js';
 
-// ── adapters 聚合(type → { list, validateConfig } 映射)─────────────────────────
+// ── handlers 聚合(type → { list, validateConfig, schema } 映射)─────────────────
 //
-// 业务包内部约定:每个 source type 一个 adapters/<type>.ts,导出 list + validateConfig。
-// 此文件聚合 Map,adapter.ts 查表 dispatch。加新 type = 加一个文件 + 在此注册。
+// 业务包内部约定:每个 source type 一个 handlers/<type>.ts,导出 list + validateConfig + schema。
+// 此文件聚合 Map,adapter.ts 查表 dispatch + describeTypes 暴露 schema。加新 type = 加一个文件 + 在此注册。
 
 export interface SkillSourceTypeHandler {
   list:           (source: MarketSourceRecord) => Promise<MarketSkillEntry[]>;
   validateConfig: (config: unknown) => { ok: true; config: string } | { ok: false; error: string };
+  /** 该 type 的 config 表单 schema(前端动态渲染用) */
+  schema:         MarketSourceTypeSchema;
 }
 
 export const SKILL_TYPE_HANDLERS: Record<string, SkillSourceTypeHandler> = {

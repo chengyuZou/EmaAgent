@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import type { SkillStore } from './store.js';
-import type { SkillRecord } from './types.js';
+import type { GithubSkillCoords, SkillRecord } from './types.js';
 import {
   fetchGithubTree,
   fetchText,
@@ -38,15 +38,20 @@ export class SkillInstaller {
    * back to a single-file install.
    * `expectedSha256` (from a market manifest) is verified against SKILL.md.
    * `signal` 透传给所有 fetch,调用方可中止安装。
+   * `coords`   market entry 携带的 GitHub 坐标,优先于 URL 反解析 ——
+   *            jsDelivr URL 也能正确触发 bundle 下载(不丢 sibling assets)。
    */
   async installFromUrl(
     url: string,
     expectedSha256?: string,
     signal?: AbortSignal,
+    coords?: GithubSkillCoords,
   ): Promise<SkillRecord> {
-    const bundle = await tryFetchGithubBundle(url, signal);
+    const bundle = await tryFetchGithubBundle(url, signal, coords);
 
-    const rawMd  = bundle ? bundle.skillMd : await downloadSkillText(url, signal);
+    const rawMd  = bundle
+      ? bundle.skillMd
+      : await downloadSkillText(url, githubRawToJsdelivr(url) ?? undefined, signal);
     const sha256 = createHash('sha256').update(rawMd).digest('hex');
     if (expectedSha256 && sha256 !== expectedSha256) {
       throw new Error(`Skill integrity check failed for ${url}: sha256 mismatch`);
@@ -60,11 +65,13 @@ export class SkillInstaller {
   }
 }
 
-// ── SKILL.md 文本下载(带 size 校验 + jsDelivr 镜像降级)─────────────────────────
+// ── SKILL.md 文本下载(带 size 校验 + 镜像降级)─────────────────────────────────
 
-async function downloadSkillText(url: string, signal?: AbortSignal): Promise<string> {
-  // fetchText 内部已处理 raw → jsDelivr 降级(mirrorUrl 用 githubRawToJsdelivr 推导)
-  const mirror = githubRawToJsdelivr(url) ?? undefined;
+async function downloadSkillText(
+  url:    string,
+  mirror: string | undefined,
+  signal: AbortSignal | undefined,
+): Promise<string> {
   const rawMd = await fetchText(url, mirror, { timeoutMs: FETCH_TIMEOUT_MS, signal });
   assertSize(rawMd);
   return rawMd;
@@ -85,19 +92,61 @@ interface SkillBundle {
   assets:  Record<string, Uint8Array>;
 }
 
-/** 解析 GitHub-raw `…/SKILL.md` URL 为 repo 坐标 + skill 目录。 */
-function parseGithubRawSkillUrl(url: string): { owner: string; repo: string; ref: string; dir: string } | null {
-  const m = url.match(/^https?:\/\/raw\.githubusercontent\.com\/([^/]+)\/([^/]+)\/([^/]+)\/(.+\/)?SKILL\.md$/i);
-  if (!m) return null;
-  const [, owner, repo, ref, dirWithSlash] = m;
-  return { owner: owner!, repo: repo!, ref: ref!, dir: (dirWithSlash ?? '').replace(/\/$/, '') };
+/**
+ * 从 GitHub 坐标拼单个文件的 {主 URL, 降级 mirror}。
+ * mirrorUrl 已知:主走 mirror(CN 可达 jsDelivr 等),降级 raw。
+ * mirrorUrl 未知:主走 raw,降级 githubRawToJsdelivr 推导的 jsDelivr。
+ */
+function githubFileUrls(
+  coords:   GithubSkillCoords,
+  filePath: string,
+): { url: string; mirror: string | undefined } {
+  const raw = `https://raw.githubusercontent.com/${coords.owner}/${coords.repo}/${coords.ref}/${filePath}`;
+  if (coords.mirrorUrl) {
+    return { url: `${coords.mirrorUrl.replace(/\/$/, '')}/${filePath}`, mirror: raw };
+  }
+  return { url: raw, mirror: githubRawToJsdelivr(raw) ?? undefined };
 }
 
-/** 若 URL 是 GitHub-raw SKILL.md,下载整个 skill 目录(SKILL.md + siblings)。否则返回 null(走单文件)。 */
-async function tryFetchGithubBundle(url: string, signal?: AbortSignal): Promise<SkillBundle | null> {
-  const coords = parseGithubRawSkillUrl(url);
-  if (!coords) return null;
-  const { owner, repo, ref, dir } = coords;
+/**
+ * 解析 GitHub SKILL.md URL 为坐标 + mirrorUrl。支持两种 host:
+ *  - raw.githubusercontent.com/owner/repo/ref/(dir/)SKILL.md
+ *  - cdn.jsdelivr.net/gh/owner/repo@ref/(dir/)SKILL.md  (jsDelivr,反推时填 mirrorUrl)
+ * 用户手动粘 URL 安装(无 coords)时走这里。
+ */
+function parseGithubSkillUrl(url: string): GithubSkillCoords | null {
+  let m = url.match(/^https?:\/\/raw\.githubusercontent\.com\/([^/]+)\/([^/]+)\/([^/]+)\/(.+\/)?SKILL\.md$/i);
+  if (m) {
+    const [, owner, repo, ref, dirWithSlash] = m;
+    return { owner: owner!, repo: repo!, ref: ref!, dir: (dirWithSlash ?? '').replace(/\/$/, '') };
+  }
+  m = url.match(/^https?:\/\/cdn\.jsdelivr\.net\/gh\/([^/]+)\/([^/]+)@([^/]+)\/(.+\/)?SKILL\.md$/i);
+  if (m) {
+    const [, owner, repo, ref, dirWithSlash] = m;
+    return {
+      owner:     owner!,
+      repo:      repo!,
+      ref:       ref!,
+      dir:       (dirWithSlash ?? '').replace(/\/$/, ''),
+      mirrorUrl: `https://cdn.jsdelivr.net/gh/${owner}/${repo}@${ref}/`,
+    };
+  }
+  return null;
+}
+
+/**
+ * 若 URL/coords 指向 GitHub SKILL.md,下载整个 skill 目录(SKILL.md + siblings)。
+ * 优先用 market entry 透传的 coords;无 coords 则 URL 反解析(支持 raw + jsDelivr)。
+ * 返回 null 表示非 GitHub SKILL.md(走单文件下载)。
+ */
+async function tryFetchGithubBundle(
+  url:    string,
+  signal: AbortSignal | undefined,
+  coords?: GithubSkillCoords,
+): Promise<SkillBundle | null> {
+  const c = coords ?? parseGithubSkillUrl(url);
+  if (!c) return null;
+  const { owner, repo, ref, dir } = c;
 
   // api.github.com 不被 CDN 代理,失败就降级单文件下载
   let tree: GitTreeNode[];
@@ -113,10 +162,8 @@ async function tryFetchGithubBundle(url: string, signal?: AbortSignal): Promise<
     (n) => n.type === 'blob' && n.path.startsWith(prefix) && n.path !== skillPath,
   );
 
-  const skillMd = await downloadSkillText(
-    `https://raw.githubusercontent.com/${owner}/${repo}/${ref}/${skillPath}`,
-    signal,
-  );
+  const skillMdUrls = githubFileUrls(c, skillPath);
+  const skillMd = await downloadSkillText(skillMdUrls.url, skillMdUrls.mirror, signal);
   if (blobs.length === 0) return { skillMd, assets: {} };
   if (blobs.length > MAX_BUNDLE_FILES) {
     throw new Error(`Skill bundle has too many files (${blobs.length} > ${MAX_BUNDLE_FILES}).`);
@@ -130,10 +177,8 @@ async function tryFetchGithubBundle(url: string, signal?: AbortSignal): Promise<
     if (rel.startsWith('/') || rel.split('/').includes('..')) {
       throw new Error(`Skill bundle contains an unsafe path: ${rel}`);
     }
-    const bytes = await downloadAssetBytes(
-      `https://raw.githubusercontent.com/${owner}/${repo}/${ref}/${blob.path}`,
-      signal,
-    );
+    const assetUrls = githubFileUrls(c, blob.path);
+    const bytes = await downloadAssetBytes(assetUrls.url, assetUrls.mirror, signal);
     total += bytes.byteLength;
     if (total > MAX_BUNDLE_BYTES) {
       throw new Error(`Skill bundle too large (> ${MAX_BUNDLE_BYTES} bytes).`);
@@ -143,9 +188,12 @@ async function tryFetchGithubBundle(url: string, signal?: AbortSignal): Promise<
   return { skillMd, assets };
 }
 
-/** 下载二进制 asset(带 jsDelivr 镜像降级,size 由调用方累加校验)。 */
-async function downloadAssetBytes(url: string, signal?: AbortSignal): Promise<Uint8Array> {
-  const mirror = githubRawToJsdelivr(url) ?? undefined;
+/** 下载二进制 asset(带镜像降级,size 由调用方累加校验)。 */
+async function downloadAssetBytes(
+  url:    string,
+  mirror: string | undefined,
+  signal: AbortSignal | undefined,
+): Promise<Uint8Array> {
   const res = await fetchWithMirror(url, mirror, { timeoutMs: FETCH_TIMEOUT_MS, signal });
   return new Uint8Array(await res.arrayBuffer());
 }

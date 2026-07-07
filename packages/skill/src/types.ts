@@ -74,6 +74,30 @@ export interface SkillRoot {
 
 // ── Marketplace ────────────────────────────────────────────────────────────────
 
+/**
+ * GitHub 仓库坐标 —— github 源的 market entry 携带,bundle 安装直接用,
+ * 不靠 URL 反解析(避免 jsDelivr URL 解析失败丢 sibling assets)。
+ * mirrorUrl 已知时 bundle 下载主走 mirror(CN 可达),降级 raw。
+ */
+export interface GithubSkillCoords {
+  owner:     string;
+  repo:      string;
+  ref:       string;
+  /** SKILL.md 所在目录(repo 内相对路径,空串表示根目录) */
+  dir:       string;
+  /** jsDelivr 等 CDN base,如 https://cdn.jsdelivr.net/gh/owner/repo@ref/ —— CN 可达 */
+  mirrorUrl?: string;
+}
+
+/** Zod schema for GithubSkillCoords(路由层校验 market install 透传的坐标)。 */
+export const GithubSkillCoordsSchema = z.object({
+  owner:     z.string().min(1),
+  repo:      z.string().min(1),
+  ref:       z.string().min(1),
+  dir:       z.string().default(''),
+  mirrorUrl: z.string().url().optional(),
+});
+
 export interface MarketSkillEntry {
   /** Folder name / skill slug as it appears in the source repo. */
   name:        string;
@@ -81,4 +105,6 @@ export interface MarketSkillEntry {
   path:        string;
   /** Raw URL to the SKILL.md, ready for installFromUrl(). */
   url:         string;
+  /** GitHub 源携带坐标,bundle 安装优先用(不丢 mirrorUrl / 不靠 URL 反解析)。 */
+  coords?:     GithubSkillCoords;
 }

@@ -18,4 +18,6 @@ export type {
   SkillSource,
   SkillFrontmatter,
   MarketSkillEntry,
+  GithubSkillCoords,
 }                                        from './types.js';
+export { GithubSkillCoordsSchema }       from './types.js';

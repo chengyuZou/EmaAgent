@@ -34,6 +34,17 @@ export function createMarketRouter(bindings: AppBindings) {
   const router = new Hono();
   const { marketSourceStore, marketRegistry } = bindings;
 
+  // ── List type schemas(前端"添加源"Dialog 动态渲染表单用)──────────────────────
+  // 返回该 kind 所有 source type 的 config 字段 schema。后端加 type → adapter
+  // 自动暴露 → 前端自动出表单,不再前端写死 type→字段映射(防漂移)。
+  router.get('/types', (c) => {
+    const kind = c.req.query('kind');
+    if (!kind) return c.json({ error: 'kind 参数必传' }, 400);
+    const adapter = marketRegistry.getAdapter(kind);
+    if (!adapter) return c.json({ error: `未知的市场 kind: ${kind}(未注册 adapter)` }, 404);
+    return c.json({ types: adapter.describeTypes() });
+  });
+
   // ── List sources ───────────────────────────────────────────────────────────
   router.get('/sources', (c) => {
     const kind = c.req.query('kind');

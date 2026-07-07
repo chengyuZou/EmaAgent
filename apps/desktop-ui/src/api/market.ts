@@ -34,7 +34,30 @@ export interface MarketSourceMeta {
   count:   number;
 }
 
+// ── Type schema(后端 adapter.describeTypes 自描述,前端动态渲染表单)──────────────
+
+export interface MarketSourceFieldSchema {
+  key:          string;
+  label:        string;
+  placeholder?: string;
+  required?:    boolean;
+  optional?:    boolean;
+}
+
+export interface MarketSourceTypeSchema {
+  type:   string;
+  label:  string;
+  fields: MarketSourceFieldSchema[];
+}
+
 export const marketApi = {
+  /** GET /api/market/types?kind=... — 该 kind 支持的 type + config 字段 schema */
+  async listTypes(kind: string): Promise<{ types: MarketSourceTypeSchema[] }> {
+    return sidecarClient.request<{ types: MarketSourceTypeSchema[] }>(
+      `/api/market/types?kind=${encodeURIComponent(kind)}`,
+    );
+  },
+
   /** GET /api/market/sources?kind=... */
   async list(kind?: string): Promise<{ sources: MarketSourceRecord[] }> {
     const query = kind ? `?kind=${encodeURIComponent(kind)}` : '';

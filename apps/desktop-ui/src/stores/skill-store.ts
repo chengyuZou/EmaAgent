@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { skillsApi, type SkillValidateResult, type MarketSkillEntry } from '../api/skills.js';
-import type { SkillRecord } from '@ema-agent/skill';
+import type { GithubSkillCoords, SkillRecord } from '@ema-agent/skill';
 
 export type { SkillRecord, SkillValidateResult, MarketSkillEntry };
 
@@ -24,7 +24,7 @@ export interface SkillStoreState {
   /** Install a skill from raw markdown text. Refreshes list on success. */
   installFromText(content: string): Promise<Omit<SkillRecord, 'rawMd'>>;
   /** Install a skill from a remote URL. Refreshes list on success. */
-  installFromUrl(url: string): Promise<Omit<SkillRecord, 'rawMd'>>;
+  installFromUrl(url: string, coords?: GithubSkillCoords): Promise<Omit<SkillRecord, 'rawMd'>>;
 
   /** Validate skill markdown without installing. Returns validation result. */
   validate(content: string): Promise<SkillValidateResult>;
@@ -80,9 +80,9 @@ export const useSkillStore = create<SkillStoreState>((set, get) => ({
     }
   },
 
-  async installFromUrl(url) {
+  async installFromUrl(url, coords) {
     try {
-      const { skill } = await skillsApi.installFromUrl(url);
+      const { skill } = await skillsApi.installFromUrl(url, coords);
       await get().refresh();
       return skill;
     } catch (err: unknown) {

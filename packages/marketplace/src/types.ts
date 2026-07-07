@@ -58,6 +58,33 @@ export interface MarketSourceAdapter<Entry> {
    * 用于 POST /api/market/sources 时在写入前校验。
    */
   validateConfig(type: string, config: unknown): { ok: true; config: string } | { ok: false; error: string };
+  /**
+   * 自描述该 kind 支持的所有 source type + 各 type 的 config 字段表单 schema。
+   * 前端"添加源"Dialog 据此动态渲染表单,不再前端写死 type→字段映射(防漂移)。
+   * 后端加 type → adapter.describeTypes() 自动暴露 → 前端自动出表单。
+   */
+  describeTypes(): readonly MarketSourceTypeSchema[];
+}
+
+// ── Type schema(供前端动态渲染"添加源"表单)────────────────────────────────────
+
+export interface MarketSourceFieldSchema {
+  /** config 对象的 key,如 'owner' / 'baseUrl' */
+  key:          string;
+  label:        string;
+  placeholder?: string;
+  required?:    boolean;
+  /** 可选字段(mirrorUrl 等),前端标"可选"且不阻塞提交 */
+  optional?:    boolean;
+}
+
+export interface MarketSourceTypeSchema {
+  /** 该 type 的标识,与 adapter.types 项一致 */
+  type:   string;
+  /** 人类可读名,前端下拉用 */
+  label:  string;
+  /** 该 type 的 config 字段定义 */
+  fields: readonly MarketSourceFieldSchema[];
 }
 
 // ── Builtin seed(业务包注册时提供)────────────────────────────────────────────

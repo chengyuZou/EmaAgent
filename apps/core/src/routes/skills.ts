@@ -1,5 +1,8 @@
 import { Hono } from 'hono';
 import { z }    from 'zod';
+import { GithubSkillCoordsSchema } from '@ema-agent/skill';
+import { mergeByName } from '@ema-agent/marketplace';
+import type { MarketSkillEntry } from '@ema-agent/skill';
 import type { AppBindings } from '../wiring/index.js';
 
 // ── Skills router ─────────────────────────────────────────────────────────────
@@ -20,7 +23,14 @@ import type { AppBindings } from '../wiring/index.js';
 
 const installBodySchema = z.discriminatedUnion('source', [
   z.object({ source: z.literal('text'), content: z.string().min(1) }),
-  z.object({ source: z.literal('url'),  url: z.string().url(), sha256: z.string().optional() }),
+  // coords: market entry 透传的 GitHub 坐标,bundle 安装优先用(不丢 sibling assets)。
+  // 用户手动粘 URL 安装时无 coords,installer 会 URL 反解析兜底。
+  z.object({
+    source: z.literal('url'),
+    url:    z.string().url(),
+    sha256: z.string().optional(),
+    coords: GithubSkillCoordsSchema.optional(),
+  }),
 ]);
 
 const validateBodySchema = z.object({ content: z.string().min(1) });
@@ -42,9 +52,9 @@ export function createSkillsRouter(bindings: AppBindings) {
   router.get('/skills/market', async (c) => {
     try {
       const sources = bindings.marketSourceStore.listEnabled('skill');
-      const results = await bindings.marketRegistry.listAll('skill', sources);
-      // 合并所有源条目;前端按需去重
-      const skills = results.flatMap((r) => r.entries);
+      const results = await bindings.marketRegistry.listAll<MarketSkillEntry>('skill', sources);
+      // 跨源按 name 去重,sortOrder 小的优先(与 mcp 对称,底座 mergeByName)
+      const skills = mergeByName(results);
       return c.json({
         sources: results.map((r) => ({ id: r.sourceId, label: r.sourceLabel, type: r.sourceType, error: r.error, count: r.entries.length })),
         skills,
@@ -63,7 +73,7 @@ export function createSkillsRouter(bindings: AppBindings) {
     }
     try {
       const record = body.source === 'url'
-        ? await skillInstaller.installFromUrl(body.url, body.sha256)
+        ? await skillInstaller.installFromUrl(body.url, body.sha256, undefined, body.coords)
         : await skillInstaller.installFromText(body.content);
       return c.json({ skill: record }, 201);
     } catch (err) {
