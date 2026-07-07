@@ -7,6 +7,7 @@ import {
   type ProviderConfigWire,
   type ProviderConfigInput,
   type ProviderDefinition,
+  type ProbeResultWire,
 } from '../api/providers.js';
 import type { ProtocolFamily, Capability } from '@ema-agent/contracts';
 import { resolveProtocols } from '@ema-agent/contracts';
@@ -108,10 +109,21 @@ export function ProviderForm({
   }
 
   async function handleProbe(): Promise<void> {
-    if (!instance) return;
+    if (!instance || !activeCap) return;
     setProbing(true);
     try {
-      const result = await providersApi.probe(instance.id, undefined);
+      // Each capability has its own probe endpoint — the old single endpoint
+      // dispatched by capabilities-array order, so probing OpenAI from the
+      // Embed section hit LLM first. Per-capability dispatch fixes that.
+      const result = await (
+        activeCap === 'llm'    ? providersApi.probeLlm(instance.id)
+      : activeCap === 'vision' ? providersApi.probeVision(instance.id)
+      : activeCap === 'embed'  ? providersApi.probeEmbed(instance.id)
+      : activeCap === 'rerank' ? providersApi.probeRerank(instance.id)
+      : activeCap === 'tts'    ? providersApi.probeTts(instance.id)
+      : activeCap === 'stt'    ? providersApi.probeStt(instance.id)
+      : Promise.resolve<ProbeResultWire>({ ok: false, model: '', latencyMs: null, error: '该能力不支持探测' })
+      );
       setProbeOk(result.ok);
       setProbeMsg(result.ok ? null : (result.error ?? '连接失败'));
     } catch (err) {
@@ -222,7 +234,7 @@ export function ProviderForm({
               <span className="i-solar:danger-circle-linear shrink-0" aria-hidden />
               <span>{probeMsg}</span>
             </div>
-            {(activeCap === 'llm' || activeCap === 'vision') && (
+            {activeCap && (
               <Button
                 variant="danger"
                 size="sm"
@@ -240,7 +252,7 @@ export function ProviderForm({
           <Callout variant="info">
             <div className="flex items-center justify-between">
               <span>{probeOk === true ? '配置验证通过' : '配置部分验证'}</span>
-              {(activeCap === 'llm' || activeCap === 'vision') && (
+              {activeCap && (
                 <Button
                   variant="ghost"
                   size="sm"

@@ -133,11 +133,50 @@ export const providersApi = {
     await sidecarClient.request(`/api/providers/${id}`, { method: 'DELETE' });
   },
 
-  /** POST /api/providers/:id/probe */
-  async probe(id: string, model?: string): Promise<ProbeResultWire> {
-    return sidecarClient.request<ProbeResultWire>(`/api/providers/${id}/probe`, {
+  // ── Probe — one endpoint per capability ──────────────────────────────────
+  //
+  // llm/vision/embed/rerank probe a specific model's availability (model is
+  // caller's choice → enabled → catalog/default fallback). tts/stt probe only
+  // provider connectivity (no model). ProbeResultWire.model is '' for tts/stt.
+
+  /** POST /api/providers/:id/probe/llm */
+  async probeLlm(id: string, model?: string): Promise<ProbeResultWire> {
+    return sidecarClient.request<ProbeResultWire>(`/api/providers/${id}/probe/llm`, {
       method: 'POST',
-      json: { model },  // undefined → backend picks definition's first LLM model
+      json: { model },
+    });
+  },
+  /** POST /api/providers/:id/probe/vision */
+  async probeVision(id: string, model?: string): Promise<ProbeResultWire> {
+    return sidecarClient.request<ProbeResultWire>(`/api/providers/${id}/probe/vision`, {
+      method: 'POST',
+      json: { model },
+    });
+  },
+  /** POST /api/providers/:id/probe/embed */
+  async probeEmbed(id: string, model?: string): Promise<ProbeResultWire> {
+    return sidecarClient.request<ProbeResultWire>(`/api/providers/${id}/probe/embed`, {
+      method: 'POST',
+      json: { model },
+    });
+  },
+  /** POST /api/providers/:id/probe/rerank */
+  async probeRerank(id: string, model?: string): Promise<ProbeResultWire> {
+    return sidecarClient.request<ProbeResultWire>(`/api/providers/${id}/probe/rerank`, {
+      method: 'POST',
+      json: { model },
+    });
+  },
+  /** POST /api/providers/:id/probe/tts */
+  async probeTts(id: string): Promise<ProbeResultWire> {
+    return sidecarClient.request<ProbeResultWire>(`/api/providers/${id}/probe/tts`, {
+      method: 'POST',
+    });
+  },
+  /** POST /api/providers/:id/probe/stt */
+  async probeStt(id: string): Promise<ProbeResultWire> {
+    return sidecarClient.request<ProbeResultWire>(`/api/providers/${id}/probe/stt`, {
+      method: 'POST',
     });
   },
 

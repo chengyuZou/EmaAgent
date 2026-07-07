@@ -2,7 +2,7 @@
  * Settings store — providers + bindings + settings cache (write-through).
  */
 import { create } from 'zustand';
-import { providersApi, type ProviderConfigWire, type ProviderConfigInput, type ProviderDefinition, type ProbeResultWire } from '../api/providers.js';
+import { providersApi, type ProviderConfigWire, type ProviderConfigInput, type ProviderDefinition } from '../api/providers.js';
 import { modelBindingsApi, type BindingModule, type ResolvedModelBinding, type BindingUpsertInput } from '../api/model-bindings.js';
 import { settingsApi, type EventDisplayConfig, type EventDisplayResult } from '../api/settings.js';
 
@@ -26,7 +26,6 @@ export interface SettingsStoreState {
 
   upsertProvider(input: ProviderConfigInput, id?: string): Promise<void>;
   deleteProvider(id: string):                         Promise<void>;
-  probeProvider(id: string, model?: string):          Promise<ProbeResultWire>;
 
   upsertBinding(module: BindingModule, input: BindingUpsertInput): Promise<void>;
   deleteBinding(module: BindingModule, providerConfigId: string, model: string): Promise<void>;
@@ -114,10 +113,6 @@ export const useSettingsStore = create<SettingsStoreState>((set, get) => ({
       set({ error: err instanceof Error ? err.message : 'Failed to delete provider' });
       throw err;
     }
-  },
-
-  async probeProvider(id, model) {
-    return providersApi.probe(id, model);
   },
 
   async upsertBinding(module, input) {

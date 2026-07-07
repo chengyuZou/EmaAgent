@@ -1,4 +1,4 @@
-﻿import { Hono } from 'hono';
+﻿import { Hono, type Context } from 'hono';
 import { z } from 'zod';
 import { randomUUID } from 'node:crypto';
 import type { ProviderConfigRow, ProviderHealthRow } from '@ema-agent/storage';
@@ -76,10 +76,6 @@ const patchSchema = z.object({
   enabled:      z.boolean().optional(),
   capabilities: z.array(z.string()).optional(),
   config:       z.record(z.unknown()).optional(),
-});
-
-const probeSchema = z.object({
-  model: z.string().optional(),
 });
 
 const enableModelSchema = z.object({
@@ -338,99 +334,120 @@ export function providersRoute(bindings: AppBindings): Hono {
     return c.body(null, 204);
   });
 
-  // POST /api/providers/:id/probe  — verify connectivity (LLM or Vision)
-  app.post('/:id/probe', async (c) => {
+  // ── Probe endpoints ────────────────────────────────────────────────────────
+  //
+  // One endpoint per capability. The old single `POST /:id/probe` dispatched by
+  // capabilities-array order, so probing a multi-capability provider (e.g. OpenAI)
+  // from the Embed section hit `capabilities.includes('llm')` first and probed
+  // LLM instead of embed. Per-capability endpoints make the intent explicit in
+  // the URL; each validates the provider supports that capability, picks a model
+  // (when the probe needs one), and records health.
+  //
+  // llm/vision/embed/rerank probes test a specific model's availability; the
+  // model is caller's choice → an enabled model → a catalog/default fallback.
+  // tts/stt probes test provider connectivity only (adapter.probe() hits
+  // /v1/models or equivalent — no synthesis), so no model is needed.
+
+  const probeModelSchema = z.object({ model: z.string().optional() });
+
+  function requireProvider(c: Context, id: string) {
+    const existing = bindings.providers.get(id);
+    if (!existing) {
+      c.json({ error: 'not_found' }, 404);
+      return null;
+    }
+    return existing;
+  }
+
+  function requireCapability(c: Context, id: string, cap: Capability) {
+    const existing = requireProvider(c, id);
+    if (!existing) return null;
+    const capabilities: Capability[] = JSON.parse(existing.capabilities_json);
+    if (!capabilities.includes(cap)) {
+      c.json({ error: 'capability_not_supported', capability: cap }, 422);
+      return null;
+    }
+    return { existing, def: getProviderDefinition(existing.definition_id) };
+  }
+
+  function recordProbe(id: string, result: { ok: boolean; latencyMs?: number; error?: string }): void {
+    bindings.providers.recordHealth(id, result.ok ? 'ok' : 'failed', {
+      latencyMs: result.latencyMs,
+      lastError: result.error,
+    });
+  }
+
+  app.post('/:id/probe/llm', async (c) => {
     const id = c.req.param('id');
+    const parsed = probeModelSchema.safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success) return c.json({ error: 'invalid_request', details: parsed.error.flatten() }, 400);
+    const ctx = requireCapability(c, id, 'llm');
+    if (!ctx) return c.body(null);
+    const enabledLlm    = bindings.providerLlmModels.listByProvider(id);
+    const catalogLlmIds = ctx.def?.modelsDevId
+      ? bindings.modelCatalog.listLlmModelIds(ctx.def.modelsDevId)
+      : [];
+    const model = parsed.data.model ?? enabledLlm[0]?.model ?? catalogLlmIds[0];
+    if (!model) return c.json({ ok: false, model: '', latencyMs: null, error: '没有可探测的模型，请先在下方「模型」启用一个' });
+    const result = await bindings.llm.probe(id, model);
+    recordProbe(id, result);
+    return c.json({ ...result, model });
+  });
 
-    const parsed = probeSchema.safeParse(await c.req.json().catch(() => null));
-    if (!parsed.success) {
-      return c.json({ error: 'invalid_request', details: parsed.error.flatten() }, 400);
-    }
+  app.post('/:id/probe/vision', async (c) => {
+    const id = c.req.param('id');
+    const parsed = probeModelSchema.safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success) return c.json({ error: 'invalid_request', details: parsed.error.flatten() }, 400);
+    const ctx = requireCapability(c, id, 'vision');
+    if (!ctx) return c.body(null);
+    const model = parsed.data.model ?? ctx.def?.defaultModels?.vision?.[0] ?? '';
+    const result = await bindings.vision.probe(id, model || undefined);
+    recordProbe(id, result);
+    return c.json({ ok: result.ok, model, latencyMs: result.latencyMs ?? null, error: result.error });
+  });
 
-    const repo = bindings.providers;
-    const existing = repo.get(id);
-    if (!existing) return c.json({ error: 'not_found' }, 404);
+  app.post('/:id/probe/embed', async (c) => {
+    const id = c.req.param('id');
+    const parsed = probeModelSchema.safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success) return c.json({ error: 'invalid_request', details: parsed.error.flatten() }, 400);
+    const ctx = requireCapability(c, id, 'embed');
+    if (!ctx) return c.body(null);
+    const enabledEmbed = bindings.providerEmbedModels.listByProvider(id);
+    const model = parsed.data.model ?? enabledEmbed[0]?.model ?? ctx.def?.defaultModels?.embed?.[0];
+    if (!model) return c.json({ ok: false, model: '', latencyMs: null, error: '没有可探测的模型，请先在下方「模型」启用一个' });
+    const result = await bindings.ebd.probeEmbed(id, model);
+    recordProbe(id, result);
+    return c.json({ ...result, model });
+  });
 
-    const def = getProviderDefinition(existing.definition_id);
-    const capabilities: string[] = JSON.parse(existing.capabilities_json);
+  app.post('/:id/probe/rerank', async (c) => {
+    const id = c.req.param('id');
+    const parsed = probeModelSchema.safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success) return c.json({ error: 'invalid_request', details: parsed.error.flatten() }, 400);
+    const ctx = requireCapability(c, id, 'rerank');
+    if (!ctx) return c.body(null);
+    const enabledRerank = bindings.providerRerankModels.listByProvider(id);
+    const model = parsed.data.model ?? enabledRerank[0]?.model ?? ctx.def?.defaultModels?.rerank?.[0] ?? '';
+    if (!model) return c.json({ ok: false, model: '', latencyMs: null, error: '没有可探测的模型，请先在下方「模型」启用一个' });
+    const result = await bindings.ebd.probeRerank(id, model);
+    recordProbe(id, result);
+    return c.json({ ...result, model });
+  });
 
-    if (capabilities.includes('llm')) {
-      // Pick a real model the provider actually serves: caller's choice →
-      // an enabled model → a models.dev catalog model. No hardcoded default
-      // (the old gpt-4o-mini fallback broke providers like DeepSeek/SiliconFlow).
-      const enabledLlm    = bindings.providerLlmModels.listByProvider(id);
-      const catalogLlmIds = def?.modelsDevId
-        ? bindings.modelCatalog.listLlmModelIds(def.modelsDevId)
-        : [];
-      const model = parsed.data.model ?? enabledLlm[0]?.model ?? catalogLlmIds[0];
-      if (!model) {
-        return c.json({ ok: false, latencyMs: null, error: '没有可探测的模型，请先在下方「模型」启用一个' });
-      }
-      const result = await bindings.llm.probe(id, model);
-      repo.recordHealth(id, result.ok ? 'ok' : 'failed', {
-        latencyMs: result.latencyMs,
-        lastError: result.error,
-      });
-      return c.json(result);
-    }
+  app.post('/:id/probe/tts', async (c) => {
+    const id = c.req.param('id');
+    if (!requireCapability(c, id, 'tts')) return c.body(null);
+    const result = await bindings.tts.probe(id);
+    recordProbe(id, result);
+    return c.json({ ok: result.ok, model: '', latencyMs: result.latencyMs ?? null, error: result.error });
+  });
 
-    if (capabilities.includes('vision')) {
-      const model = parsed.data.model ?? def?.defaultModels?.vision?.[0] ?? '';
-      const result = await bindings.vision.probe(id, model || undefined);
-      repo.recordHealth(id, result.ok ? 'ok' : 'failed', {
-        latencyMs: result.latencyMs,
-        lastError: result.error,
-      });
-      return c.json({ ok: result.ok, model, latencyMs: result.latencyMs ?? null, error: result.error });
-    }
-
-    if (capabilities.includes('embed')) {
-      const enabledEmbed = bindings.providerEmbedModels.listByProvider(id);
-      const model = parsed.data.model ?? enabledEmbed[0]?.model ?? def?.defaultModels?.embed?.[0];
-      if (!model) {
-        return c.json({ ok: false, latencyMs: null, error: '没有可探测的模型，请先在下方「模型」启用一个' });
-      }
-      const result = await bindings.ebd.probeEmbed(id, model);
-      repo.recordHealth(id, result.ok ? 'ok' : 'failed', {
-        latencyMs: result.latencyMs,
-        lastError: result.error,
-      });
-      return c.json(result);
-    }
-
-    if (capabilities.includes('rerank')) {
-      const enabledRerank = bindings.providerRerankModels.listByProvider(id);
-      const model = parsed.data.model ?? enabledRerank[0]?.model;
-      if (!model) {
-        return c.json({ ok: false, latencyMs: null, error: '没有可探测的模型，请先在下方「模型」启用一个' });
-      }
-      const result = await bindings.ebd.probeRerank(id, model);
-      repo.recordHealth(id, result.ok ? 'ok' : 'failed', {
-        latencyMs: result.latencyMs,
-        lastError: result.error,
-      });
-      return c.json(result);
-    }
-
-    if (capabilities.includes('tts')) {
-      const result = await bindings.tts.probe(id);
-      repo.recordHealth(id, result.ok ? 'ok' : 'failed', {
-        latencyMs: result.latencyMs,
-        lastError: result.error,
-      });
-      return c.json(result);
-    }
-
-    if (capabilities.includes('stt')) {
-      const result = await bindings.stt.probe(id);
-      repo.recordHealth(id, result.ok ? 'ok' : 'failed', {
-        latencyMs: result.latencyMs,
-        lastError: result.error,
-      });
-      return c.json(result);
-    }
-
-    return c.json({ error: 'no_probeable_capability' }, 422);
+  app.post('/:id/probe/stt', async (c) => {
+    const id = c.req.param('id');
+    if (!requireCapability(c, id, 'stt')) return c.body(null);
+    const result = await bindings.stt.probe(id);
+    recordProbe(id, { ok: result.ok, latencyMs: result.latencyMs, error: result.error });
+    return c.json({ ok: result.ok, model: '', latencyMs: result.latencyMs ?? null, error: result.error });
   });
 
   // ── GET /api/providers/:id/models — available LLM models for the picker ─────
