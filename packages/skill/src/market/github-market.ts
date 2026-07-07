@@ -28,7 +28,8 @@ async function listGithubSkills(
   mirrorUrl?: string,
 ): Promise<MarketSkillEntry[]> {
   const { owner, repo, ref } = coords;
-  const tree = await fetchGithubTree(owner, repo, ref, undefined);
+  // api.github.com 不被 CDN 代理,失败就抛错;条目 url 用 mirrorUrl 拼(CN 可达)
+  const tree = await fetchGithubTree(owner, repo, ref);
 
   const entries: MarketSkillEntry[] = [];
   for (const node of tree) {

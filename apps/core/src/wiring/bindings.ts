@@ -10,13 +10,17 @@ import {
   ProviderLlmModelsRepo, ProviderEmbedModelsRepo,
   ProviderRerankModelsRepo, ProviderTtsModelsRepo, ProviderSttModelsRepo, ProviderVisionModelsRepo,
   McpServersRepo, SkillsRepo,
+  MarketSourcesRepo,
   AgentTasksRepo, AgentTaskMessagesRepo,
   SessionStatsRepo, DataDirStatsRepo,
 } from '@ema-agent/storage';
 import { AttachmentStore } from '@ema-agent/attachment';
 import { ArtifactStore }                               from '@ema-agent/artifact';
 import { McpRegistry, McpServerStore }                 from '@ema-agent/mcp';
+import { McpMarketAdapter, MCP_SEEDS }                 from '@ema-agent/mcp';
 import { SkillStore, SkillRunner, SkillInstaller }     from '@ema-agent/skill';
+import { SkillMarketAdapter, SKILL_SEEDS }             from '@ema-agent/skill';
+import { MarketRegistry, MarketSourceStore }           from '@ema-agent/marketplace';
 import * as nodePath from 'node:path';
 import { readFileSync } from 'node:fs';
 import * as os from 'node:os';
@@ -168,6 +172,9 @@ export interface AppBindings {
   mcpRegistry:      McpRegistry;
   /** Thin adapter satisfying IMcpClientBridge — delegates to mcpRegistry.callTool(). */
   mcpBridge:        IMcpClientBridge;
+  /** 市场源注册表 + 通用 store(MCP/Skill 共用,kind 不约束)。 */
+  marketRegistry:     MarketRegistry;
+  marketSourceStore:  MarketSourceStore;
   /** Thin adapter satisfying ISkillRunner — looks up skill body from skillStore. */
   skillBridge:      ISkillRunner;
   skillStore:     SkillStore;
@@ -410,6 +417,20 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
     call: (server, tool, args) => mcpRegistry.callTool(server, tool, args),
   };
 
+  // ── Marketplace(多源聚合底座,MCP/Skill 共用)──────────────────────────────
+  // 纯底座:adapter 注册表 + 通用源 store。各业务包(MCP/Skill)实现自己的 adapter
+  // + seed,wiring 时注册。kind 不约束,未来 integration(QQ/微信/邮箱)零改底座接入。
+  const marketRegistry    = new MarketRegistry();
+  const marketSourceStore = new MarketSourceStore(new MarketSourcesRepo(profileDb.sqlite));
+  marketRegistry.registerAdapter(new McpMarketAdapter());
+  marketRegistry.registerAdapter(new SkillMarketAdapter());
+  // startup 幂等 seed builtin 源(已存在则跳过,不覆盖用户的启停/排序)
+  try {
+    marketSourceStore.ensureSeeds([...MCP_SEEDS, ...SKILL_SEEDS]);
+  } catch (err) {
+    console.warn('[marketplace] seed failed:', err);
+  }
+
   // ── Skills ───────────────────────────────────────────────────────────────────
   // File-backed: SKILL.md files live under the profile dir (cross-dataDir,
   // mirrors where profile.db lives). The SQL index in profile.db is a cache.
@@ -513,6 +534,7 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
     providerRerankModels, providerTtsModels, providerSttModels, providerVisionModels,
     artifactStore, attachmentStore, sessionStats, storageStats, sessionNotes,
     mcpRegistry, mcpBridge,
+    marketRegistry, marketSourceStore,
     skillStore, skillRunner, skillInstaller, skillBridge,
     kb, kbSearch,
   };
