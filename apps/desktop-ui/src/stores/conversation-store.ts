@@ -42,6 +42,7 @@ import {
 import type {
   SessionId,
   TurnId,
+  BranchId,
   TurnMode,
   TurnStats,
   EmotionState,
@@ -200,6 +201,8 @@ export interface ConversationStoreState {
   viewSession(id: SessionId):                                                Promise<void>;
   scrollToTurn(turnId: string):                                              void;
   loadBranches(id: SessionId):                                               Promise<void>;
+  /** 切换分支并重载 —— BranchPanel 节点点击 + BranchSiblingNav 切换统一走这里，保证双向联动。 */
+  switchBranchAndLoad(sessionId: SessionId, branchId: BranchId | null):      Promise<void>;
   sendMessage(sessionId: SessionId | null, input: Omit<SendInput, 'sessionId'>): Promise<void>;
   stopStreaming(sessionId: SessionId):                                        void;
   setDraft(sessionId: SessionId, text: string):                              void;
@@ -242,6 +245,21 @@ export const useConversationStore = create<ConversationStoreState>((set, get) =>
         return { branchDataBySession: m };
       });
     } catch { /* non-critical */ }
+  },
+
+  // 统一分支切换动作：BranchPanel 节点点击 + BranchSiblingNav ‹› 都走这里。
+  // 调 loadBranches 更新 branchDataBySession（两边都订阅，双向联动）+ 清 messages 重载。
+  async switchBranchAndLoad(sessionId, branchId) {
+    await sessionsApi.switchBranch(sessionId, branchId);
+    await get().loadBranches(sessionId);
+    await useSessionStore.getState().loadSessions();
+    // Evict + reload messages so the switched branch history appears.
+    set((s) => {
+      const m = new Map(s.messages);
+      m.delete(sessionId as string);
+      return { messages: m };
+    });
+    await get().loadMessages(sessionId);
   },
 
   // ── Navigation ───────────────────────────────────────────────────────────

@@ -13,11 +13,10 @@
  *   - Click node   → switch to that turn's branch + scroll ChatHistory to it
  */
 import { useState, useEffect, useRef, useCallback, type JSX } from 'react';
-import type { BranchId, TurnId, TurnMode } from '@ema-agent/contracts';
+import type { BranchId, TurnMode } from '@ema-agent/contracts';
 import { Button } from '@ema-agent/ui';
 import { sessionsApi, type BranchNodeWire, type TurnTreeNodeWire } from '../api/sessions.js';
 import { useConversationStore } from '../stores/conversation-store.js';
-import { useSessionStore } from '../stores/session-store.js';
 import { showToast } from '../lib/toast.js';
 
 // ── Layout constants ──────────────────────────────────────────────────────────
@@ -128,10 +127,14 @@ function modeColor(mode: TurnMode | null): string {
 
 export function BranchPanel(): JSX.Element {
   const sessionId = useConversationStore((s) => s.viewedSessionId);
+  // active 订阅 branchDataBySession —— BranchSiblingNav 切换时 branchData 更新，这里自动联动高亮。
+  const branchData = useConversationStore((s) =>
+    sessionId ? s.branchDataBySession.get(sessionId as string) : undefined,
+  );
+  const active = branchData?.sessionActiveBranchId as string | null ?? null;
 
   const [branches, setBranches] = useState<BranchNodeWire[]>([]);
   const [turns, setTurns]       = useState<TurnTreeNodeWire[]>([]);
-  const [active, setActive]     = useState<string | null>(null);
   const [loading, setLoading]   = useState(true);
   const [error, setError]       = useState<string | null>(null);
 
@@ -152,7 +155,7 @@ export function BranchPanel(): JSX.Element {
       const data = await sessionsApi.listBranches(sessionId);
       setBranches(data.branches);
       setTurns(data.turns);
-      setActive(data.sessionActiveBranchId as string | null);
+      // active 不再本地存 —— 从 branchDataBySession 派生（switchBranchAndLoad 会更新它）
     } catch {
       setError('加载分支失败');
     } finally {
@@ -207,6 +210,7 @@ export function BranchPanel(): JSX.Element {
   }, []);
 
   // ── Node click → switch branch + scroll to turn ─────────────────────────────
+  // 统一走 store.switchBranchAndLoad —— 与 BranchSiblingNav 同动作，双向联动。
 
   async function handleNodeClick(turn: TurnTreeNodeWire): Promise<void> {
     if (!sessionId) return;
@@ -215,10 +219,7 @@ export function BranchPanel(): JSX.Element {
     // Switch branch if the turn is on a different branch
     if (turnBranch && turnBranch !== active) {
       try {
-        await sessionsApi.switchBranch(sessionId, turnBranch as BranchId);
-        setActive(turnBranch);
-        await useSessionStore.getState().loadSessions();
-        await useConversationStore.getState().loadMessages(sessionId);
+        await useConversationStore.getState().switchBranchAndLoad(sessionId, turnBranch as BranchId);
       } catch (err) {
         showToast(err instanceof Error ? `切换分支失败: ${err.message}` : '切换分支失败', { variant: 'danger' });
         return;
@@ -226,24 +227,6 @@ export function BranchPanel(): JSX.Element {
     }
     // Scroll chat to the clicked turn
     useConversationStore.getState().scrollToTurn(turn.id as string);
-  }
-
-  // ── Fork current session ─────────────────────────────────────────────────────
-
-  async function handleFork(): Promise<void> {
-    if (!sessionId) return;
-    const messages = useConversationStore.getState().messages.get(sessionId as string) ?? [];
-    const lastTurn = [...messages].reverse().find((m) => m.turnId);
-    if (!lastTurn?.turnId) {
-      showToast('没有可分叉的对话', { variant: 'warning' });
-      return;
-    }
-    try {
-      await sessionsApi.forkBranch(sessionId, lastTurn.turnId as TurnId);
-      await load();
-    } catch (err) {
-      showToast(err instanceof Error ? `分叉失败: ${err.message}` : '分叉失败', { variant: 'danger' });
-    }
   }
 
   // ── Layout ───────────────────────────────────────────────────────────────────
@@ -359,21 +342,12 @@ export function BranchPanel(): JSX.Element {
 
   return (
     <div className="flex flex-col h-full">
-      {/* Toolbar */}
+      {/* Toolbar — 仅统计 + 节点图，Fork 入口已移到消息气泡（ForkButton） */}
       <div className="flex items-center justify-between px-3 py-1.5 border-b shrink-0"
            style={{ borderColor: 'var(--ema-border)' }}>
         <span className="text-xs" style={{ color: 'var(--ema-text-tertiary)' }}>
           {branches.length > 0 ? `${branches.length} 条分支 · ${turns.length} 轮对话` : `${turns.length} 轮对话`}
         </span>
-        <Button
-          variant="ghost"
-          size="sm"
-          icon="i-mdi:source-fork"
-          onClick={() => void handleFork()}
-          title="从当前对话末尾 Fork 新分支"
-        >
-          Fork
-        </Button>
       </div>
 
       {/* Interactive canvas */}

@@ -3,6 +3,8 @@ import type { JSX } from 'react';
 import { Markdown } from '../markdown/renderer.js';
 import type { ChatHistoryItem } from '../stores/conversation-store.js';
 import { AttachmentChip } from './AttachmentChip.js';
+import { ForkButton } from './ForkButton.js';
+import { BranchSiblingNav } from './BranchSiblingNav.js';
 
 export interface UserBubbleProps {
   message: ChatHistoryItem;
@@ -11,6 +13,7 @@ export interface UserBubbleProps {
 
 export function UserBubble({ message }: UserBubbleProps): JSX.Element {
   const attachments = message.attachments ?? [];
+  const hasTurnId = !!message.turnId;
 
   return (
     <div className="flex ml-12 flex-row-reverse ema-bubble-in">
@@ -27,6 +30,20 @@ export function UserBubble({ message }: UserBubbleProps): JSX.Element {
         <div className="rounded-2xl rounded-br-md px-5 py-3 border text-sm break-words"
              style={{ background: 'var(--ema-surface-2)', borderColor: 'var(--ema-border)', color: 'var(--ema-text-secondary)' }}>
           <Markdown source={message.content} />
+        </div>
+
+        {/* ── 折叠 footer：fork 入口 + 分支兄弟导航 ──
+            ema-collapsible 双向折叠（grid-rows 0fr↔1fr + opacity），DOM 常驻不 unmount。
+            有 turnId 展开（分支操作是完成态），无 turnId 折叠。 */}
+        <div
+          className="ema-collapsible"
+          style={{ gridTemplateRows: hasTurnId ? '1fr' : '0fr', opacity: hasTurnId ? 1 : 0 }}
+        >
+          <div className="flex items-center justify-end gap-1 text-[11px] overflow-hidden"
+               style={{ color: 'var(--ema-text-tertiary)' }}>
+            {message.turnId && <ForkButton turnId={message.turnId} />}
+            {message.turnId && <BranchSiblingNav turnId={message.turnId} />}
+          </div>
         </div>
       </div>
     </div>
