@@ -25,6 +25,13 @@ regex              = "1"
 tracing            = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
+# Windows 进程树清理：Job Object + KILL_ON_JOB_CLOSE，Rust 进程退出时 OS 自动 kill
+# 整个 Job 内子进程（sidecar + bridge），不依赖 taskkill /T 进程树完整性（bug 4 修法）。
+[target.'cfg(windows)'.dependencies]
+win32job = "2"
+# OpenProcess 从 pid 拿进程 handle，assign 到 Job Object（win32job 只暴露 handle 接口）
+windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_System_Threading"] }
+
 [features]
 default = ["custom-protocol"]
 custom-protocol = ["tauri/custom-protocol"]

@@ -165,11 +165,13 @@ pub fn run() {
                         }
                     }
                     "quit" => {
-                        let state = app.state::<SidecarState>();
-                        tauri::async_runtime::block_on(async {
+                        // 不用 block_on 阻塞主线程；spawn 一个 async 任务跑 shutdown 后退出
+                        let app = app.clone();
+                        tauri::async_runtime::spawn(async move {
+                            let state = app.state::<SidecarState>();
                             state.shutdown().await;
+                            app.exit(0);
                         });
-                        app.exit(0);
                     }
                     _ => {}
                 })
@@ -187,9 +189,15 @@ pub fn run() {
         })
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
-        .run(|_app_handle, event| {
+        .run(|app_handle, event| {
             if let RunEvent::Exit = event {
-                tracing::info!("tauri exit event");
+                // 最后防线：任何退出路径（崩溃、Task Manager 杀、系统关机）都尝试清理。
+                // 配合 Job Object，即使 shutdown 没跑完，OS 也会 kill 整个 Job（bug 4 兜底）。
+                let state = app_handle.state::<SidecarState>();
+                tauri::async_runtime::block_on(async {
+                    state.shutdown().await;
+                });
+                tracing::info!("tauri exit event — sidecar + bridge shutdown complete");
             }
         });
 }

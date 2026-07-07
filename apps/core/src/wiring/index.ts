@@ -178,10 +178,18 @@ async function checkBridgeHeartbeat(
     ready = await bindings.narrative.isReady();
   }
 
-  if (lastReady === false && ready) {
+  if (lastReady === null) {
+    // 首 tick：如实报状态。down 则 warn「不可达」（bridge 没启动时给用户信号），
+    // up 则静默（不算「恢复」，避免假报）。修 bug 2.1：原逻辑 null→false 不发事件，
+    // 导致 bridge 从没启动时全程零用户信号。
+    if (!ready) {
+      console.warn('[bridge] narrative capability unavailable — degrading');
+      bindings.systemBus.emit({ type: 'system_warning', level: 'warn', message: 'Narrative bridge 不可达 — narrative 模式暂时降级' });
+    }
+  } else if (!lastReady && ready) {
     console.log('[bridge] narrative capability recovered');
     bindings.systemBus.emit({ type: 'system_warning', level: 'info', message: 'Narrative bridge 已恢复' });
-  } else if (lastReady === true && !ready) {
+  } else if (lastReady && !ready) {
     console.warn('[bridge] narrative capability lost — degrading');
     bindings.systemBus.emit({ type: 'system_warning', level: 'warn', message: 'Narrative bridge 不可达 — narrative 模式暂时降级' });
   }
