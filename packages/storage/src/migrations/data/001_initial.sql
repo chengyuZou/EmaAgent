@@ -14,7 +14,6 @@ CREATE TABLE sessions (
   character_card_id    TEXT NOT NULL DEFAULT 'ema',
   workspace_root       TEXT,
   last_mode            TEXT,
-  last_sub_mode        TEXT,
   group_label          TEXT,
   pinned               INTEGER NOT NULL DEFAULT 0,
   pinned_at            INTEGER,

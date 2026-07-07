@@ -15,6 +15,7 @@ export interface TurnRow {
   usage_input_tokens: number;
   usage_output_tokens: number;
   branch_id: string | null;
+  meta_json: string;
 }
 
 export interface TurnInsert {
@@ -47,6 +48,27 @@ export class TurnsRepo {
          VALUES (?, ?, ?, ?, 'pending', ?, ?)`,
       )
       .run(t.id, t.sessionId, t.mode, t.branchId ?? null, t.userInput, t.startedAt);
+  }
+
+  /**
+   * Copy a completed turn row to a new session with a fresh id. Used by fork
+   * (both forkInto and the branch-aware path) so the forked session retains
+   * mode / status / usage / timing. branch_id is always cleared — the new
+   * session starts flat (no branches).
+   */
+  copyTurn(src: TurnRow, newSessionId: SessionId, newId: TurnId): void {
+    this.db
+      .prepare(
+        `INSERT INTO turns
+           (id, session_id, mode, branch_id, status, user_input, started_at, completed_at,
+            error_code, error_message, iterations, usage_input_tokens, usage_output_tokens, meta_json)
+         VALUES (?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        newId, newSessionId, src.mode, src.status, src.user_input, src.started_at, src.completed_at,
+        src.error_code, src.error_message, src.iterations, src.usage_input_tokens,
+        src.usage_output_tokens, src.meta_json ?? '{}',
+      );
   }
 
   setRunning(id: TurnId): void {

@@ -93,7 +93,6 @@ function makeBenchSessionStore(): MemoryDeps['session'] {
       runningTurnCount: 0,
       meta:             {},
       lastMode:         null,
-      lastSubMode:      null,
     }),
   } as unknown as MemoryDeps['session'];
 }

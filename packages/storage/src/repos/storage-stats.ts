@@ -340,8 +340,8 @@ export class SessionStatsRepo {
         INSERT INTO sessions
           (id, title, character_card_id, workspace_root, created_at, updated_at,
            last_activity_at, archived_at, pinned, pinned_at, group_label,
-           parent_session_id, last_mode, last_sub_mode, active_branch_id, meta_json)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, '{}')
+           parent_session_id, last_mode, active_branch_id, meta_json)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, '{}')
       `).run(
         p.session.id, p.session.title, p.session.characterCardId ?? 'ema',
         p.session.workspaceRoot ?? null,
@@ -371,10 +371,10 @@ export class SessionStatsRepo {
       // 4. Turns
       const stmtTurn = this.db.prepare(`
         INSERT OR IGNORE INTO turns
-          (id, session_id, mode, agent_sub_mode, branch_id, status, user_input,
+          (id, session_id, mode, branch_id, status, user_input,
            started_at, completed_at, error_code, error_message,
            iterations, usage_input_tokens, usage_output_tokens)
-        VALUES (?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
       for (const t of p.turns) {
         stmtTurn.run(

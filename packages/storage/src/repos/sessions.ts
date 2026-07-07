@@ -17,7 +17,6 @@ export interface SessionRow {
   group_label:   string | null;
   parent_session_id: string | null;
   last_mode:        string | null;
-  last_sub_mode:    string | null;
   last_viewed_at:   number | null;
   active_branch_id: string | null;
 }
@@ -41,6 +40,7 @@ export interface SessionInsert {
   characterCardId: CharacterCardId;
   workspaceRoot?:  string | null;
   parentSessionId?: string;
+  lastMode?:        string | null;
   createdAt: number;
   updatedAt: number;
   lastActivityAt?: number;
@@ -61,12 +61,12 @@ export class SessionsRepo {
       .prepare(
         `INSERT INTO sessions
            (id, title, character_card_id, workspace_root,
-            parent_session_id, created_at, updated_at, last_activity_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+            parent_session_id, last_mode, created_at, updated_at, last_activity_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(s.id, s.title, s.characterCardId,
         s.workspaceRoot ?? null,
-        s.parentSessionId ?? null, s.createdAt, s.updatedAt,
+        s.parentSessionId ?? null, s.lastMode ?? null, s.createdAt, s.updatedAt,
         s.lastActivityAt ?? s.createdAt);
   }
 
@@ -312,42 +312,87 @@ export class SessionsRepo {
     if (!src) throw new Error(`Source session not found: ${srcId}`);
 
     this.db.transaction(() => {
+      // 1. New session row — copy character_card_id + workspace_root + last_mode,
+      //    parent_session_id points back to src (provenance). New session starts
+      //    flat (no branches, active_branch_id NULL).
       this.db.prepare(
         `INSERT INTO sessions
            (id, title, character_card_id, workspace_root,
-            parent_session_id, created_at, updated_at, last_activity_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+            parent_session_id, last_mode, created_at, updated_at, last_activity_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       ).run(newId, title, src.character_card_id, src.workspace_root,
-        srcId, createdAt, createdAt, createdAt);
+        srcId, src.last_mode, createdAt, createdAt, createdAt);
 
-      if (untilTurnId) {
-        // Copy messages up to and including the last message of the cutoff turn.
-        this.db.prepare(
-          `INSERT INTO messages
-             (id, session_id, turn_id, role, kind, blocks_json, interrupted, created_at, meta_json)
-           SELECT lower(hex(randomblob(16))), ?, NULL,
-                  role, kind, blocks_json, interrupted, created_at, meta_json
-           FROM messages
-           WHERE session_id = ?
-             AND created_at <= (
-               SELECT COALESCE(MAX(created_at), 0)
-               FROM messages
-               WHERE turn_id = ?
-             )
-           ORDER BY created_at ASC`,
-        ).run(newId, srcId, untilTurnId);
-      } else {
-        // Copy all messages with new IDs; null out turn_id (turns stay in source).
-        this.db.prepare(
-          `INSERT INTO messages
-             (id, session_id, turn_id, role, kind, blocks_json, interrupted, created_at, meta_json)
-           SELECT lower(hex(randomblob(16))), ?, NULL,
-                  role, kind, blocks_json, interrupted, created_at, meta_json
-           FROM messages
-           WHERE session_id = ?
-           ORDER BY created_at ASC`,
-        ).run(newId, srcId);
-      }
+      // 2. Build old→new turn id map. Turns are copied so the forked session
+      //    retains mode / status / usage / timing — without them, the frontend
+      //    loses token stats, mode chip, TTS replay button, and tool_result
+      //    grouping. branch_id is cleared (new session is flat).
+      this.db.prepare('CREATE TEMP TABLE _turn_id_map (old_id TEXT PRIMARY KEY, new_id TEXT NOT NULL)').run();
+
+      const untilStartedAt = untilTurnId
+        ? (this.db.prepare('SELECT started_at FROM turns WHERE id = ?').get(untilTurnId) as { started_at: number } | undefined)?.started_at
+        : undefined;
+
+      this.db.prepare(
+        untilStartedAt !== undefined
+          ? `INSERT INTO _turn_id_map (old_id, new_id)
+             SELECT id, lower(hex(randomblob(16))) FROM turns
+             WHERE session_id = ? AND started_at <= ?`
+          : `INSERT INTO _turn_id_map (old_id, new_id)
+             SELECT id, lower(hex(randomblob(16))) FROM turns WHERE session_id = ?`,
+      ).run(srcId, ...(untilStartedAt !== undefined ? [untilStartedAt] : []));
+
+      // 3. Copy turns with fresh ids, branch_id = NULL.
+      this.db.prepare(
+        `INSERT INTO turns
+           (id, session_id, mode, branch_id, status, user_input, started_at, completed_at,
+            error_code, error_message, iterations, usage_input_tokens, usage_output_tokens, meta_json)
+         SELECT m.new_id, ?, t.mode, NULL, t.status, t.user_input, t.started_at, t.completed_at,
+                t.error_code, t.error_message, t.iterations,
+                t.usage_input_tokens, t.usage_output_tokens, t.meta_json
+         FROM turns t JOIN _turn_id_map m ON m.old_id = t.id
+         ORDER BY t.started_at ASC`,
+      ).run(newId);
+
+      // 4. Copy messages — fresh ids, turn_id remapped via the temp map (NULL
+      //    for messages with no turn). Cutoff aligns with the original: messages
+      //    up to and including the last message of the cutoff turn.
+      const msgCutoff = untilTurnId
+        ? (this.db.prepare('SELECT COALESCE(MAX(created_at), 0) AS m FROM messages WHERE turn_id = ?').get(untilTurnId) as { m: number }).m
+        : undefined;
+
+      this.db.prepare(
+        msgCutoff !== undefined
+          ? `INSERT INTO messages
+               (id, session_id, turn_id, role, kind, blocks_json, interrupted, created_at, meta_json)
+             SELECT lower(hex(randomblob(16))), ?,
+                    (SELECT m.new_id FROM _turn_id_map m WHERE m.old_id = messages.turn_id),
+                    role, kind, blocks_json, interrupted, created_at, meta_json
+             FROM messages
+             WHERE session_id = ? AND created_at <= ?
+             ORDER BY created_at ASC`
+          : `INSERT INTO messages
+               (id, session_id, turn_id, role, kind, blocks_json, interrupted, created_at, meta_json)
+             SELECT lower(hex(randomblob(16))), ?,
+                    (SELECT m.new_id FROM _turn_id_map m WHERE m.old_id = messages.turn_id),
+                    role, kind, blocks_json, interrupted, created_at, meta_json
+             FROM messages
+             WHERE session_id = ?
+             ORDER BY created_at ASC`,
+      ).run(newId, srcId, ...(msgCutoff !== undefined ? [msgCutoff] : []));
+
+      // 5. Copy turn_attachments — fresh ids, turn_id remapped, session_id = new.
+      //    Without this, user-message attachment chips disappear in the fork
+      //    (attachmentStore.listByTurn(newTurnId) would be empty).
+      this.db.prepare(
+        `INSERT INTO turn_attachments
+           (id, turn_id, session_id, name, mime, size, mtime, local_path, created_at)
+         SELECT lower(hex(randomblob(16))), m.new_id, ?, ta.name, ta.mime, ta.size, ta.mtime, ta.local_path, ta.created_at
+         FROM turn_attachments ta
+         JOIN _turn_id_map m ON m.old_id = ta.turn_id`,
+      ).run(newId);
+
+      this.db.prepare('DROP TABLE _turn_id_map').run();
     })();
 
     const count = this.db
@@ -401,7 +446,6 @@ export class SessionsRepo {
       groupLabel?:     string | null;
       workspaceRoot?:  string | null;
       lastMode?:       string | null;
-      lastSubMode?:    string | null;
     },
     now: number,
   ): void {
@@ -429,10 +473,6 @@ export class SessionsRepo {
     if (patch.lastMode !== undefined) {
       setClauses.push('last_mode = ?');
       values.push(patch.lastMode);
-    }
-    if (patch.lastSubMode !== undefined) {
-      setClauses.push('last_sub_mode = ?');
-      values.push(patch.lastSubMode);
     }
 
     if (setClauses.length === 0) return;

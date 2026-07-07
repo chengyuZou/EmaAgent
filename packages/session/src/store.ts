@@ -4,6 +4,7 @@ import {
   TurnsRepo,
   MessagesRepo,
   BranchesRepo,
+  AttachmentRepo,
   nextCursorFor,
   type SessionRow,
   type SessionRowEnriched,
@@ -185,6 +186,7 @@ export class SessionStore {
   private readonly turnsRepo:    TurnsRepo;
   private readonly messagesRepo: MessagesRepo;
   private readonly branchesRepo: BranchesRepo;
+  private readonly attachmentsRepo: AttachmentRepo;
   private readonly registry:     RunRegistry;
   private readonly onSessionRemoved?: (sessionId: string) => void;
   /** Monotonically increasing clock — ensures created_at is unique even for sub-ms bursts. */
@@ -195,6 +197,7 @@ export class SessionStore {
     this.turnsRepo    = new TurnsRepo(db.sqlite);
     this.messagesRepo = new MessagesRepo(db.sqlite);
     this.branchesRepo = new BranchesRepo(db.sqlite);
+    this.attachmentsRepo = new AttachmentRepo(db.sqlite);
     this.registry     = new RunRegistry();
     this.onSessionRemoved = onSessionRemoved;
   }
@@ -390,7 +393,10 @@ export class SessionStore {
    * silently drop them.
    *
    * The new session always starts flat (no branches, activeBranchId = null).
-   * All message IDs are re-generated; turn_id is set to null (turns don't transfer).
+   * All message/turn/attachment IDs are re-generated. turns are copied (with
+   * fresh ids, branch_id cleared) so the fork retains mode / usage / timing.
+   * message.turn_id is remapped to the new turn ids. branch_id is always NULL
+   * (the new session starts flat, no branches).
    */
   forkSession(
     srcId:        SessionId,
@@ -413,6 +419,7 @@ export class SessionStore {
       characterCardId: src.characterCardId,
       workspaceRoot:   src.workspaceRoot,
       parentSessionId: srcId,
+      lastMode:        src.lastMode,
       createdAt:       now,
       updatedAt:       now,
       lastActivityAt:  now,
@@ -428,16 +435,53 @@ export class SessionStore {
       msgs = msgs.filter(m => m.createdAt <= cutoff);
     }
 
+    // Copy turns (fresh ids, branch_id cleared) and build old→new turn id map.
+    // Messages and attachments reference turns via turn_id, so they must be
+    // remapped to the new ids or the fork loses mode/stats/replay/attachments.
+    const turnIdMap = new Map<string, TurnId>();
+    const seenTurnIds = new Set<string>();
     for (const m of msgs) {
+      if (m.turnId && !seenTurnIds.has(m.turnId as string)) {
+        seenTurnIds.add(m.turnId as string);
+        const srcTurn = this.turnsRepo.findById(m.turnId);
+        if (!srcTurn) continue;
+        const newTurnId = asTurnId(crypto.randomUUID());
+        this.turnsRepo.copyTurn(srcTurn, newId, newTurnId);
+        turnIdMap.set(m.turnId as string, newTurnId);
+      }
+    }
+
+    for (const m of msgs) {
+      const newTurnId = m.turnId ? turnIdMap.get(m.turnId as string) : undefined;
       this.messagesRepo.insert({
         id:          asMessageId(crypto.randomUUID()),
         sessionId:   newId,
+        turnId:      newTurnId,
         role:        m.role,
         kind:        m.kind,
         blocksJson:  JSON.stringify(m.blocks),
         interrupted: m.interrupted,
         createdAt:   m.createdAt,
       });
+    }
+
+    // Copy turn_attachments (fresh ids, turn_id remapped, session_id = new) so
+    // user-message attachment chips survive the fork.
+    for (const [oldTurnId, newTurnId] of turnIdMap) {
+      const atts = this.attachmentsRepo.listByTurn(oldTurnId);
+      for (const a of atts) {
+        this.attachmentsRepo.insert({
+          id:        crypto.randomUUID(),
+          turnId:    newTurnId as string,
+          sessionId: newId as string,
+          name:      a.name,
+          mime:      a.mime,
+          size:      a.size,
+          mtime:     a.mtime,
+          localPath: a.local_path,
+          createdAt: a.created_at,
+        });
+      }
     }
 
     return { sessionId: newId, messageCount: msgs.length };
