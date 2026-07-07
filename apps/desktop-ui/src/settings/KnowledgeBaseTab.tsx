@@ -916,7 +916,7 @@ export function KnowledgeBaseTab(): JSX.Element {
             <p className="text-sm">暂无文档，点击「导入文档」添加</p>
           </div>
         ) : (
-          <ScrollArea className="max-h-72 ema-fade-in">
+          <ScrollArea className="ema-fade-in" viewportClassName="max-h-72">
             <div className="flex flex-col gap-1.5 pr-2">
               {documents.map((doc, i) => (
                 <div key={doc.id} className="ema-stagger-in" style={{ '--stagger-i': i } as CSSProperties}>

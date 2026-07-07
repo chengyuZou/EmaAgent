@@ -231,7 +231,7 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
   // Must be created before LlmRouter so it can be passed in for reasoning lookup.
   const modelCatalog = new ModelsDevCatalog();
   try {
-    const snapshotPath = nodePath.join(import.meta.dirname!, 'models-dev-snapshot.json');
+    const snapshotPath = nodePath.join(import.meta.dirname!, '..', '..', 'models-dev-snapshot.json');
     modelCatalog.loadFromJson(JSON.parse(readFileSync(snapshotPath, 'utf8')));
     console.info(`[catalog] loaded bundled snapshot (${modelCatalog.size} models)`);
   } catch {

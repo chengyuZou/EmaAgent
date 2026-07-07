@@ -114,9 +114,9 @@ export function ProviderForm({
       const result = await providersApi.probe(instance.id, undefined);
       setProbeOk(result.ok);
       setProbeMsg(result.ok ? null : (result.error ?? '连接失败'));
-    } catch (err) {
+    } catch {
       setProbeOk(false);
-      setProbeMsg(err instanceof Error ? err.message : '探测失败');
+      setProbeMsg('探测失败');
     } finally {
       setProbing(false);
     }
@@ -262,7 +262,7 @@ export function ProviderForm({
       </form>
 
       {/* ── 模型池 ───────────────────────────────────────────────────────────── */}
-      {instance && (activeCap === 'llm' || activeCap === 'vision') && (
+      {instance && activeCap === 'llm' && (
         <>
           <div className="border-t border-[var(--ema-border)]" />
           <LlmModelManager providerId={instance.id} />

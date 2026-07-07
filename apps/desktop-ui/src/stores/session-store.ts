@@ -119,6 +119,7 @@ export const useSessionStore = create<SessionStoreState>((set, get) => ({
       await get().loadSessions();
     } catch (err: unknown) {
       set({ error: err instanceof Error ? err.message : 'Failed to set workspace root' });
+      throw err;
     }
   },
 

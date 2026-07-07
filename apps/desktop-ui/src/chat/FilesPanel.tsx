@@ -12,6 +12,7 @@ import { workspaceApi, type FileEntry } from '../api/workspace.js';
 import { useConversationStore } from '../stores/conversation-store.js';
 import { useSessionStore } from '../stores/session-store.js';
 import { tauriBridge } from '../lib/tauri-bridge.js';
+import { showToast } from '../lib/toast.js';
 
 // ── File icon by extension ────────────────────────────────────────────────────
 
@@ -71,7 +72,9 @@ function FileRow({
 
   const handleClick = (): void => {
     if (isDir) { onToggle(entry.path); return; }
-    void tauriBridge.openPath(entry.path).catch(() => {});
+    void tauriBridge.openPath(entry.path).catch((err: unknown) => {
+      showToast(err instanceof Error ? err.message : '无法打开文件', { variant: 'danger' });
+    });
   };
 
   return (

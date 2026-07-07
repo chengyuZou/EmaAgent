@@ -78,6 +78,16 @@ export class ProviderLlmModelsRepo {
       .all() as ProviderLlmModelRow[];
   }
 
+  /** All enabled models with provider display_name (for ModelPicker). */
+  listAllWithProvider(): Array<ProviderLlmModelRow & { display_name: string }> {
+    return this.db
+      .prepare(`SELECT plm.*, pc.display_name, pc.definition_id
+                FROM provider_llm_models plm
+                JOIN provider_configs pc ON pc.id = plm.provider_config_id
+                ORDER BY pc.display_name, plm.model`)
+      .all() as Array<ProviderLlmModelRow & { display_name: string }>;
+  }
+
   // ── Existence checks ───────────────────────────────────────────────────────
 
   /** Check whether a specific (provider, model) pair is enabled. */

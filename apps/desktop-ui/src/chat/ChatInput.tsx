@@ -70,8 +70,6 @@ export function ChatInput(): JSX.Element {
     el.style.height = `${Math.min(el.scrollHeight, TEXTAREA_MAX_H)}px`;
   }, [text]);
 
-  const [isComposing, setIsComposing] = useState(false);
-
   const sessionMode = useSessionStore((s) =>
     viewedId ? s.sessionModes.get(viewedId as string) : undefined,
   );
@@ -127,7 +125,7 @@ export function ChatInput(): JSX.Element {
   }, [canSend, mode, text, pendingAttachments, ttsEnabled, thinkingEnabled, viewedId, selectedScopes]);
 
   function handleKeyDown(e: KeyboardEvent<HTMLTextAreaElement>): void {
-    if (isComposing) return;
+    if (e.nativeEvent.isComposing || e.keyCode === 229) return;
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       send();
@@ -190,8 +188,6 @@ export function ChatInput(): JSX.Element {
               value={text}
               onChange={(e: ChangeEvent<HTMLTextAreaElement>) => handleChange(e.target.value)}
               onKeyDown={handleKeyDown}
-              onCompositionStart={() => setIsComposing(true)}
-              onCompositionEnd={() => setIsComposing(false)}
             />
             <div className="absolute right-2 bottom-2">
               {embeddedAction}
@@ -382,7 +378,7 @@ function KbDocList({
 
   return (
     <div className="flex flex-col gap-1 ema-slide-down">
-      <ScrollArea className="max-h-44">
+      <ScrollArea viewportClassName="max-h-44">
         <div className="flex flex-col gap-0.5 pr-1">
           {!loaded && loading ? (
             <div className="flex justify-center py-4 ema-fade-in"><Spinner size="sm" /></div>

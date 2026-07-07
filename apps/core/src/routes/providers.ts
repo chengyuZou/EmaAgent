@@ -203,14 +203,7 @@ export function providersRoute(bindings: AppBindings): Hono {
   // Drives the frontend model picker (ChatInput dropdown). Returns (providerId,
   // providerName, model, contextWindow) so the user sees "OpenAI / gpt-4o".
   app.get('/models', (c) => {
-    const rows = bindings.profileDb.sqlite
-      .prepare(`SELECT plm.provider_config_id, plm.model, plm.context_window, plm.context_source,
-                       pc.display_name, pc.definition_id
-                FROM provider_llm_models plm
-                JOIN provider_configs pc ON pc.id = plm.provider_config_id
-                ORDER BY pc.display_name, plm.model`)
-      .all() as Array<{ provider_config_id: string; model: string; context_window: number;
-                         context_source: string; display_name: string; definition_id: string }>;
+    const rows = bindings.providerLlmModels.listAllWithProvider();
     const result = rows.map(r => ({
       providerId:      r.provider_config_id,
       providerName:    r.display_name,

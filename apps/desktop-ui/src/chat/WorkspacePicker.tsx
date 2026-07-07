@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useSessionStore } from '../stores/session-store.js';
 import { tauriBridge } from '../lib/tauri-bridge.js';
+import { showToast } from '../lib/toast.js';
 import { Input } from '@ema-agent/ui';
 import type { SessionWire } from '@ema-agent/contracts';
 import type { SessionId } from '@ema-agent/contracts';
@@ -36,6 +37,8 @@ export function WorkspacePicker({
         trimmed === '' ? null : trimmed,
       );
       onClose();
+    } catch (err: unknown) {
+      showToast(err instanceof Error ? err.message : '工作区设置失败', { variant: 'danger' });
     } finally {
       setSaving(false);
     }

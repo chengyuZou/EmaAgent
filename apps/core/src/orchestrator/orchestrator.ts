@@ -469,7 +469,7 @@ export class Orchestrator {
       console.warn(`[tts] no audio: no TTS adapter for provider ${bindingRow.providerConfigId}`);
       return null;
     }
-    const model   = request.model ?? bindingRow.model;
+    const model   = bindingRow.model;
     const cache = new VoiceUriCache(new SettingsRepo(this.bindings.profileDb.sqlite));
     await ensureVoiceUri(voice, adapter, model, card.id, bindingRow.providerConfigId, cache);
 
