@@ -4,12 +4,9 @@ export { SkillInstaller }                from './installer.js';
 export { parseSkillMd, validateSkillMd } from './parser.js';
 export {
   SkillMarketAdapter, SKILL_SEEDS,
-  marketFromGithub, listGithubSkills,
-  listGithubSkillSource, listJsonIndexSource, GithubSkillMarket,
+  listGithubSource, listJsonIndexSource,
 } from './market/index.js';
 export type {
-  SkillMarket,
-  GithubMarketSource,
   GithubSkillSourceConfig,
   SkillJsonIndexConfig,
 } from './market/index.js';

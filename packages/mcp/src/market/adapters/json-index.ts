@@ -1,11 +1,11 @@
 import { fetchJson } from '@ema-agent/marketplace';
 import type { MarketSourceRecord } from '@ema-agent/marketplace';
-import type { McpJsonIndex, McpJsonIndexConfig, McpJsonIndexEntry, McpMarketEntry } from './types.js';
+import type { McpJsonIndex, McpJsonIndexConfig, McpJsonIndexEntry, McpMarketEntry } from '../types.js';
 
-// ── 通用 JSON 索引源(用户自传 URL)──────────────────────────────────────────────
+// ── json-index source type ────────────────────────────────────────────────────
 //
-// 约定 JSON 格式:{ entries: McpJsonIndexEntry[] }
-// 用户可以自己 host 一个 MCP 列表(json-index),或镜像官方列表。
+// 通用 JSON 索引源(用户自传 URL)。约定 JSON 格式:{ entries: McpJsonIndexEntry[] }
+// 用户可自 host 一个 MCP 列表(json-index),或镜像官方列表。
 // transport 缺失时按 url/command 推断,保证宽松输入也能用。
 
 function inferTransport(entry: McpJsonIndexEntry): 'stdio' | 'sse' | 'http' | null {
@@ -38,9 +38,7 @@ function toMarketEntry(raw: McpJsonIndexEntry): McpMarketEntry | null {
 }
 
 /** 列出某 json-index 源的所有可装 server。 */
-export async function listJsonIndexSource(
-  source: MarketSourceRecord,
-): Promise<McpMarketEntry[]> {
+export async function list(source: MarketSourceRecord): Promise<McpMarketEntry[]> {
   const cfg = JSON.parse(source.config) as McpJsonIndexConfig;
   if (!cfg.indexUrl) throw new Error('json-index source missing indexUrl');
 
@@ -58,3 +56,22 @@ export async function listJsonIndexSource(
   for (const e of entries) map.set(e.name, e);
   return [...map.values()];
 }
+
+/** 校验 json-index config,返回标准化 JSON。 */
+export function validateConfig(config: unknown): { ok: true; config: string } | { ok: false; error: string } {
+  if (!isObj(config)) return fail('config 必须是对象');
+  const indexUrl = (config as { indexUrl?: unknown }).indexUrl;
+  if (typeof indexUrl !== 'string' || !indexUrl.startsWith('http')) return fail('indexUrl 必须是 http(s) URL');
+  const mirrorUrl = (config as { mirrorUrl?: unknown }).mirrorUrl;
+  if (mirrorUrl !== undefined && (typeof mirrorUrl !== 'string' || !mirrorUrl.startsWith('http'))) {
+    return fail('mirrorUrl 必须是 http(s) URL');
+  }
+  const cfg: McpJsonIndexConfig = { indexUrl, ...(typeof mirrorUrl === 'string' ? { mirrorUrl } : {}) };
+  return ok(JSON.stringify(cfg));
+}
+
+function isObj(v: unknown): v is Record<string, unknown> {
+  return v !== null && typeof v === 'object' && !Array.isArray(v);
+}
+function ok(config: string): { ok: true; config: string } { return { ok: true, config }; }
+function fail(error: string): { ok: false; error: string } { return { ok: false, error }; }

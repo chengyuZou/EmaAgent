@@ -1,11 +1,11 @@
 import { fetchJson } from '@ema-agent/marketplace';
 import type { MarketSourceRecord } from '@ema-agent/marketplace';
-import type { McpMarketEntry, McpRegistryConfig } from './types.js';
+import type { McpMarketEntry, McpRegistryConfig } from '../types.js';
 
-// ── 官方 MCP registry cursor 分页 fetch ───────────────────────────────────────
+// ── mcp-registry source type ──────────────────────────────────────────────────
 //
-// 从 apps/core/src/routes/mcp.ts:33-154 搬来。registry.modelcontextprotocol.io
-// 的 REST API,cursor 分页无总数,跟 nextCursor 直到取完(有安全 cap)。
+// 官方 MCP registry cursor 分页 API。从 apps/core/src/routes/mcp.ts:33-154 搬来。
+// registry.modelcontextprotocol.io 的 REST API,cursor 分页无总数,跟 nextCursor 直到取完(有安全 cap)。
 
 const MCP_REGISTRY_CAP   = 600;  // 单源总条目安全 cap
 const MCP_REGISTRY_PAGES = 12;   // cursor follow-up 次数 cap
@@ -67,9 +67,7 @@ function normaliseRegistryServer(s: RegistryServer): McpMarketEntry {
 }
 
 /** 列出某 mcp-registry 源的所有可装 server(去重 by name,留最新版本)。 */
-export async function listMcpRegistrySource(
-  source: MarketSourceRecord,
-): Promise<McpMarketEntry[]> {
+export async function list(source: MarketSourceRecord): Promise<McpMarketEntry[]> {
   const cfg = JSON.parse(source.config) as McpRegistryConfig;
   if (!cfg.baseUrl) throw new Error('mcp-registry source missing baseUrl');
 
@@ -102,3 +100,22 @@ export async function listMcpRegistrySource(
   }
   return [...all.values()];
 }
+
+/** 校验 mcp-registry config,返回标准化 JSON。 */
+export function validateConfig(config: unknown): { ok: true; config: string } | { ok: false; error: string } {
+  if (!isObj(config)) return fail('config 必须是对象');
+  const baseUrl = (config as { baseUrl?: unknown }).baseUrl;
+  if (typeof baseUrl !== 'string' || !baseUrl.startsWith('http')) return fail('baseUrl 必须是 http(s) URL');
+  const mirrorUrl = (config as { mirrorUrl?: unknown }).mirrorUrl;
+  if (mirrorUrl !== undefined && (typeof mirrorUrl !== 'string' || !mirrorUrl.startsWith('http'))) {
+    return fail('mirrorUrl 必须是 http(s) URL');
+  }
+  const cfg: McpRegistryConfig = { baseUrl, ...(typeof mirrorUrl === 'string' ? { mirrorUrl } : {}) };
+  return ok(JSON.stringify(cfg));
+}
+
+function isObj(v: unknown): v is Record<string, unknown> {
+  return v !== null && typeof v === 'object' && !Array.isArray(v);
+}
+function ok(config: string): { ok: true; config: string } { return { ok: true, config }; }
+function fail(error: string): { ok: false; error: string } { return { ok: false, error }; }

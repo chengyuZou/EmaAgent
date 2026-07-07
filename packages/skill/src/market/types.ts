@@ -1,20 +1,10 @@
 import type { MarketSkillEntry } from '../types.js';
 
-// ── Skill market 抽象(保留:ad-hoc 用)─────────────────────────────────────────
-//
-// 注册型 market 已交给 @ema-agent/marketplace 底座 + SkillMarketAdapter。
-// 这里保留 SkillMarket 接口供 marketFromGithub() ad-hoc 用(路由 ?owner=&repo=&ref=)。
-
-export interface SkillMarket {
-  /** Stable id, e.g. 'anthropic'. */
-  id:    string;
-  /** Human-facing label. */
-  label: string;
-  /** Enumerate installable skills. */
-  list(): Promise<MarketSkillEntry[]>;
-}
-
 // ── 各 source type 的 config 结构(存 market_sources.config JSON)───────────────
+//
+// 注册型 market 走 @ema-agent/marketplace 底座 + SkillMarketAdapter。
+// adapter.list(source) 从 source.config 解析出坐标/URL 去 fetch。
+// 这里只定义 config 形状,不定义 SkillMarket 抽象(底座已有 MarketSourceAdapter)。
 
 /** type='github':GitHub 仓库,git tree API 找所有 SKILL.md */
 export interface GithubSkillSourceConfig {
@@ -45,10 +35,5 @@ export interface SkillJsonIndex {
   entries: SkillJsonIndexEntry[];
 }
 
-// ── 旧 ad-hoc 用(保留兼容 marketFromGithub)──────────────────────────────────
-
-export interface GithubMarketSource {
-  owner: string;
-  repo:  string;
-  ref:   string;   // branch or tag
-}
+// MarketSkillEntry 从 ../types.js 重导出,方便 adapters 一次性 import
+export type { MarketSkillEntry };
