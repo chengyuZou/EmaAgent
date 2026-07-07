@@ -1,6 +1,5 @@
 import { Hono } from 'hono';
 import { z }    from 'zod';
-import { listMarketSkills, marketFromGithub, DEFAULT_MARKET_ID } from '@ema-agent/skill';
 import type { AppBindings } from '../wiring/index.js';
 
 // ── Skills router ─────────────────────────────────────────────────────────────
@@ -38,20 +37,18 @@ export function createSkillsRouter(bindings: AppBindings) {
   });
 
   // ── Marketplace: list installable skills ──
-  // Registered market:  GET /skills/market            (default: anthropic)
-  //                     GET /skills/market?market=xxx
-  // Ad-hoc GitHub repo: GET /skills/market?owner=o&repo=r&ref=main
+  // 聚合所有 enabled 的 skill 源(market_sources 表),并发 fetch 合并。
+  // 单源失败不阻断(返回该源 error)。源管理走 /api/market/sources。
   router.get('/skills/market', async (c) => {
-    const owner = c.req.query('owner');
-    const repo  = c.req.query('repo');
     try {
-      if (owner && repo) {
-        const ref = c.req.query('ref') ?? 'main';
-        const market = marketFromGithub({ owner, repo, ref });
-        return c.json({ source: market.id, skills: await market.list() });
-      }
-      const marketId = c.req.query('market') ?? DEFAULT_MARKET_ID;
-      return c.json({ source: marketId, skills: await listMarketSkills(marketId) });
+      const sources = bindings.marketSourceStore.listEnabled('skill');
+      const results = await bindings.marketRegistry.listAll('skill', sources);
+      // 合并所有源条目;前端按需去重
+      const skills = results.flatMap((r) => r.entries);
+      return c.json({
+        sources: results.map((r) => ({ id: r.sourceId, label: r.sourceLabel, type: r.sourceType, error: r.error, count: r.entries.length })),
+        skills,
+      });
     } catch (err) {
       return c.json({ error: (err as Error).message }, 502);
     }

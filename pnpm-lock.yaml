@@ -70,6 +70,9 @@ importers:
       '@ema-agent/llm':
         specifier: workspace:*
         version: link:../../packages/llm
+      '@ema-agent/marketplace':
+        specifier: workspace:*
+        version: link:../../packages/marketplace
       '@ema-agent/mcp':
         specifier: workspace:*
         version: link:../../packages/mcp

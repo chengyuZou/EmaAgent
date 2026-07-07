@@ -16,6 +16,7 @@ import { diagnosticRoute } from './routes/diagnostic.js';
 import { createArtifactsRouter } from './routes/artifacts.js';
 import { createSkillsRouter }   from './routes/skills.js';
 import { createMcpRouter }       from './routes/mcp.js';
+import { createMarketRouter }    from './routes/market.js';
 import { shellRoute }            from './routes/shell.js';
 import { workspaceRoute }        from './routes/workspace.js';
 import { kbRoute }               from './routes/knowledge-base.js';
@@ -68,6 +69,7 @@ export function buildServer(bindings: AppBindings): Hono {
   app.route('/api',                createArtifactsRouter(bindings));
   app.route('/api',                createSkillsRouter(bindings));
   app.route('/api/mcp',            createMcpRouter(bindings));
+  app.route('/api/market',         createMarketRouter(bindings));
   app.route('/api/kb',             kbRoute(bindings));
   app.route('/api/agent-tasks',    agentTasksRoute(bindings));
 

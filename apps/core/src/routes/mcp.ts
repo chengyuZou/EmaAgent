@@ -1,6 +1,7 @@
 import { Hono }                from 'hono';
 import { z }                   from 'zod';
 import { McpServerConfigSchema, parseImportedMcpServers } from '@ema-agent/mcp';
+import type { McpMarketEntry } from '@ema-agent/mcp';
 import type { AppBindings }    from '../wiring/index.js';
 
 // ── MCP server management routes ──────────────────────────────────────────────
@@ -24,130 +25,33 @@ const registerSchema = z.object({
   connect:   z.boolean().default(true),
 });
 
-// ── Marketplace (official MCP registry) ──────────────────────────────────────
+// ── Marketplace ──────────────────────────────────────────────────────────────
 //
-// mcp.so has no public JSON API (403s on scraping). The official registry at
-// registry.modelcontextprotocol.io exposes a documented REST endpoint, so we
-// browse that and normalise entries into install-ready configs for the UI.
-
-const MCP_REGISTRY_BASE = 'https://registry.modelcontextprotocol.io/v0/servers';
-const MCP_MARKET_CAP    = 600;  // safety cap on total entries fetched
-const MCP_MARKET_PAGES  = 12;   // safety cap on cursor follow-ups
-
-interface McpMarketEntry {
-  name:         string;
-  title?:       string;
-  description?: string;
-  version?:     string;
-  repository?:  string;
-  websiteUrl?:  string;
-  transport:    'stdio' | 'sse' | 'http' | null;
-  url?:         string;
-  command?:     string;
-  args?:        string[];
-}
-
-// The registry uses snake_case and (in newer revisions) has renamed some keys,
-// so accept both spellings defensively.
-interface RegistryPackage {
-  registry_type?: string;   // "npm" | "pypi" | "oci" …
-  registry_name?: string;   // older field name for registry_type
-  identifier?:    string;
-  name?:          string;   // some entries put the package id here
-  version?:       string;
-  runtime_hint?:  string;
-  transport?:     { type?: string };
-}
-interface RegistryRemote { type?: string; url?: string }
-interface RegistryServer {
-  name:         string;
-  title?:       string;
-  description?: string;
-  version?:     string;
-  websiteUrl?:  string;
-  repository?:  { url?: string };
-  remotes?:     RegistryRemote[];
-  packages?:    RegistryPackage[];
-}
-// Each list item wraps the server under `server`, with registry metadata in `_meta`.
-interface RegistryItem { server?: RegistryServer }
-
-function normaliseRegistryServer(s: RegistryServer): McpMarketEntry {
-  const base: McpMarketEntry = {
-    name:        s.name,
-    title:       s.title,
-    description: s.description,
-    version:     s.version,
-    repository:  s.repository?.url,
-    websiteUrl:  s.websiteUrl,
-    transport:   null,
-  };
-
-  // Prefer a hosted remote (no local install needed).
-  const remote = s.remotes?.find((r) => r.url);
-  if (remote?.url) {
-    return { ...base, transport: remote.type === 'sse' ? 'sse' : 'http', url: remote.url };
-  }
-
-  // Otherwise derive a stdio launch command from the first package.
-  const pkg = s.packages?.find((p) => p.identifier || p.name);
-  const pkgId = pkg?.identifier ?? pkg?.name;
-  if (pkg && pkgId) {
-    const kind = pkg.registry_type ?? pkg.registry_name;
-    if (kind === 'npm') {
-      return { ...base, transport: 'stdio', command: 'npx', args: ['-y', pkgId] };
-    }
-    if (kind === 'pypi') {
-      return { ...base, transport: 'stdio', command: 'uvx', args: [pkgId] };
-    }
-  }
-  return base;
-}
+// 市场源从 market_sources 表读(marketplace 底座),聚合所有 enabled 源并发 fetch。
+// 单源失败不阻断。源管理走 /api/market/sources。
+// 旧的 inline registry fetch + normaliseRegistryServer 已搬到
+// packages/mcp/src/market/adapters/mcp-registry.ts。
 
 export function createMcpRouter(bindings: AppBindings) {
   const router = new Hono();
   const { mcpRegistry } = bindings;
 
   // ── Marketplace ─────────────────────────────────────────────────────────────
-  // The registry is cursor-paginated (no total count), so we follow nextCursor
-  // and return the whole catalog — the UI paginates client-side (numbered pages
-  // + jump). Versions are deduped by name, keeping the newest seen.
   router.get('/market', async (c) => {
     try {
-      const all  = new Map<string, McpMarketEntry>();
-      let cursor: string | undefined;
-
-      for (let page = 0; page < MCP_MARKET_PAGES && all.size < MCP_MARKET_CAP; page++) {
-        const url = new URL(MCP_REGISTRY_BASE);
-        url.searchParams.set('limit', '100');
-        if (cursor) url.searchParams.set('cursor', cursor);
-
-        const res = await fetch(url, {
-          headers: { Accept: 'application/json' },
-          signal:  AbortSignal.timeout(10_000),
-        });
-        if (!res.ok) {
-          if (all.size > 0) break;  // partial result is still useful
-          return c.json({ error: `registry HTTP ${res.status}`, servers: [] }, 502);
+      const sources = bindings.marketSourceStore.listEnabled('mcp');
+      const results = await bindings.marketRegistry.listAll('mcp', sources);
+      // 合并所有源条目,去重 by name(后源覆盖前源,保留最新版本)
+      const all = new Map<string, McpMarketEntry>();
+      for (const r of results) {
+        for (const entry of r.entries as McpMarketEntry[]) {
+          all.set(entry.name, entry);
         }
-
-        const body = await res.json() as {
-          servers?:  Array<RegistryItem | RegistryServer>;
-          metadata?: { nextCursor?: string };
-        };
-        for (const item of body.servers ?? []) {
-          const s = 'server' in item && item.server ? item.server : (item as RegistryServer);
-          if (!s || typeof s.name !== 'string') continue;
-          const entry = normaliseRegistryServer(s);
-          if (entry.transport === null) continue;
-          all.set(entry.name, entry);  // later (newer) version overwrites
-        }
-
-        cursor = body.metadata?.nextCursor;
-        if (!cursor) break;
       }
-
-      return c.json({ source: 'registry.modelcontextprotocol.io', servers: [...all.values()] });
+      return c.json({
+        sources: results.map((r) => ({ id: r.sourceId, label: r.sourceLabel, type: r.sourceType, error: r.error, count: r.entries.length })),
+        servers: [...all.values()],
+      });
     } catch (err) {
       return c.json({ error: (err as Error).message, servers: [] }, 502);
     }
