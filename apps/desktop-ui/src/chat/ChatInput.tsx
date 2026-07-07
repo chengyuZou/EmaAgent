@@ -28,14 +28,18 @@ function mimeFromName(name: string): string {
   return map[ext] ?? 'application/octet-stream';
 }
 
-function pathToAttachment(localPath: string): AttachmentInputWire {
+// 用 Tauri 拿真实 size/mtime，避免硬编码 0 绕过 5MB 图片内联限制（大图静默 turn_failed）。
+// browser/Ladle 模式 fileMetadata 返回 null，回退 0 保持兼容。目录不作为附件。
+async function pathToAttachmentAsync(localPath: string): Promise<AttachmentInputWire | null> {
   const name = localPath.replace(/\\/g, '/').split('/').pop() ?? localPath;
+  const meta = await tauriBridge.fileMetadata(localPath);
+  if (meta?.isDir) return null;
   return {
     id:        crypto.randomUUID(),
     name,
     mimeType:  mimeFromName(name),
-    size:      0,
-    mtime:     0,
+    size:      meta?.size ?? 0,
+    mtime:     meta?.mtime ?? 0,
     localPath,
   };
 }
@@ -51,7 +55,10 @@ export function ChatInput(): JSX.Element {
   const [selectedScopes,   setSelectedScopes]   = useState<Map<string, string[]>>(new Map());
   const [selectedModel,    setSelectedModel]    = useState<ModelSelection | null>(null);
   const [thinkingEnabled,  setThinkingEnabled]  = useState(false);
+  // 拖动上传：文件拖入对话框区域时高亮
+  const [isDragOver,       setIsDragOver]       = useState(false);
   const textareaRef     = useRef<HTMLTextAreaElement>(null);
+  const inputBoxRef     = useRef<HTMLDivElement>(null); // 拖放命中检测基准
   const prevViewedIdRef = useRef(viewedId);
   const TEXTAREA_MAX_H  = 200; // px — beyond this the textarea scrolls
 
@@ -79,22 +86,61 @@ export function ChatInput(): JSX.Element {
   const isStreamingHere = useConversationStore((s) =>
     viewedId ? s.streamingMap.has(viewedId as string) : false,
   );
-  const canSend = text.trim().length > 0 && !isStreamingHere;
+  // 附件-only 也可发送（后端 turns.ts refine 同步放行）
+  const canSend = (text.trim().length > 0 || pendingAttachments.length > 0) && !isStreamingHere;
 
   function handleChange(value: string): void {
     setText(value);
     if (viewedId) useConversationStore.getState().setDraft(viewedId, value);
   }
 
+  // 多选文件 + 批量拿真实元数据。目录/不可访问文件过滤掉。
   async function pickAttachment(): Promise<void> {
-    const localPath = await tauriBridge.openFileDialog();
-    if (!localPath) return;
-    setPendingAttachments((prev) => [...prev, pathToAttachment(localPath)]);
+    const paths = await tauriBridge.openFileDialogMultiple();
+    if (paths.length === 0) return;
+    const atts = (await Promise.all(paths.map(pathToAttachmentAsync)))
+      .filter((a): a is AttachmentInputWire => a !== null);
+    if (atts.length === 0) {
+      showToast('所选文件不可用', { variant: 'warning' });
+      return;
+    }
+    setPendingAttachments((prev) => [...prev, ...atts]);
   }
 
   function removeAttachment(id: string): void {
     setPendingAttachments((prev) => prev.filter((a) => a.id !== id));
   }
+
+  // 拖动上传：Tauri 原生 onDragDropEvent（webview 级，物理像素）。位置命中对话框区域才收。
+  // 物理像素 → CSS 像素需除以 devicePixelRatio，才能与 getBoundingClientRect 比较。
+  useEffect(() => {
+    let unlisten = () => {};
+    void tauriBridge.onDragDrop((ev) => {
+      const rect = inputBoxRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const inside = ev.position
+        ? (ev.position.x / window.devicePixelRatio >= rect.left &&
+           ev.position.x / window.devicePixelRatio <= rect.right &&
+           ev.position.y / window.devicePixelRatio >= rect.top &&
+           ev.position.y / window.devicePixelRatio <= rect.bottom)
+        : false;
+      if (ev.type === 'enter' || ev.type === 'over') {
+        setIsDragOver(inside);
+      } else if (ev.type === 'drop') {
+        setIsDragOver(false);
+        const paths = ev.paths ?? [];
+        if (!inside || paths.length === 0) return;
+        void (async () => {
+          const atts = (await Promise.all(paths.map(pathToAttachmentAsync)))
+            .filter((a): a is AttachmentInputWire => a !== null);
+          if (atts.length > 0) setPendingAttachments((prev) => [...prev, ...atts]);
+        })();
+      } else if (ev.type === 'leave') {
+        setIsDragOver(false);
+      }
+    }).then((u) => { unlisten = u; });
+    return () => unlisten();
+  }, []);
 
   const send = useCallback(() => {
     if (!canSend) return;
@@ -155,10 +201,31 @@ export function ChatInput(): JSX.Element {
     <div className="shrink-0 px-4 py-3" style={{ borderTop: '1px solid var(--ema-border)' }}>
       <div className="max-w-2xl mx-auto">
         {/* ── Unified input box ── */}
-        <div className="relative rounded-2xl" style={{ background: 'var(--ema-surface-2)' }}>
+        <div
+          ref={inputBoxRef}
+          className="relative rounded-2xl transition-shadow"
+          style={{
+            background: 'var(--ema-surface-2)',
+            boxShadow: isDragOver
+              ? '0 0 0 2px var(--ema-primary), 0 0 24px var(--ema-glow)'
+              : undefined,
+          }}
+        >
           {/* Always-pulsing pink glow ring */}
           <div className="absolute inset-0 rounded-2xl pointer-events-none animate-pulse"
                style={{ boxShadow: '0 0 0 1.5px var(--ema-glow-strong), 0 0 20px var(--ema-glow)' }} />
+
+          {/* 拖放遮罩 — 拖入对话框区域时显示 */}
+          {isDragOver && (
+            <div className="absolute inset-0 z-10 rounded-2xl flex items-center justify-center pointer-events-none ema-fade-in"
+                 style={{ background: 'color-mix(in srgb, var(--ema-primary) 14%, transparent)' }}>
+              <div className="flex items-center gap-2 text-sm font-medium"
+                   style={{ color: 'var(--ema-text-primary)' }}>
+                <span className="i-mdi:tray-arrow-down text-xl" aria-hidden />
+                放下以上传文件
+              </div>
+            </div>
+          )}
 
           {/* Attachment strip (top half, shown only when files queued) */}
           {pendingAttachments.length > 0 && (

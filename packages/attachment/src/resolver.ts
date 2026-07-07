@@ -29,7 +29,7 @@ export function resolveForPrompt(attachments: Attachment[]): ResolvedPrompt {
 
   const promptLines = fileLines.length === 0
     ? ''
-    : '[Attached files — use tools to read their contents]\n' + fileLines.join('\n');
+    : '[Attached files — file paths listed below for reference]\n' + fileLines.join('\n');
 
   return { imageParts, promptLines };
 }

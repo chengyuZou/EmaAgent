@@ -62,8 +62,10 @@ const turnBodySchema = z.object({
   /** Per-KB document scopes: which docs within each KB are selected. */
   kbAssetScopes: z.array(z.object({ kbId: z.string(), assetIds: z.array(z.string()) })).optional(),
 }).refine(
-  (data) => data.userInput || (data.contentParts && data.contentParts.length > 0),
-  { message: 'either userInput or contentParts is required' },
+  (data) => data.userInput
+    || (data.contentParts && data.contentParts.length > 0)
+    || (data.attachments && data.attachments.length > 0),
+  { message: 'either userInput, contentParts, or attachments is required' },
 );
 
 // ── Drift guard ───────────────────────────────────────────────────────────────

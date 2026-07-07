@@ -72,6 +72,32 @@ fn open_window(app: tauri::AppHandle, label: String) -> Result<(), String> {
     }
 }
 
+/// 文件元数据 — 供前端附件上传时拿真实 size/mtime。
+/// 不引入 tauri-plugin-fs（避免 scope 配置），自定义命令聚焦且无路径白名单限制：
+/// 用户已通过 dialog 主动选了文件，读其元数据是合理操作。browser/Ladle 模式前端走 null 兜底。
+#[derive(serde::Serialize)]
+struct FileMeta {
+    size: u64,    // 字节
+    mtime: u64,   // unix 毫秒
+    is_dir: bool,
+}
+
+#[tauri::command]
+fn file_metadata(path: String) -> Result<FileMeta, String> {
+    let meta = std::fs::metadata(&path).map_err(|e| e.to_string())?;
+    let mtime = meta
+        .modified()
+        .ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0);
+    Ok(FileMeta {
+        size: meta.len(),
+        mtime,
+        is_dir: meta.is_dir(),
+    })
+}
+
 // ── App entry ───────────────────────────────────────────────────────────────
 
 pub fn run() {
@@ -91,6 +117,7 @@ pub fn run() {
             set_passthrough,
             quit_app,
             open_window,
+            file_metadata,
         ])
         .setup(move |app| {
             let app_handle = app.handle().clone();

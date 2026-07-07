@@ -78,6 +78,38 @@ export interface TauriBridge {
   }): Promise<string | null>;
 
   /**
+   * Open a native "Open File" dialog with multi-selection enabled.
+   * Returns the absolute paths of all selected files (empty array if cancelled).
+   * Returns [] when Tauri is absent (browser / Ladle dev mode).
+   */
+  openFileDialogMultiple(opts?: {
+    defaultPath?: string;
+    filters?: Array<{ name: string; extensions: string[] }>;
+  }): Promise<string[]>;
+
+  /**
+   * Query real file metadata (size / mtime / isDir) for a local path.
+   * Used by attachment upload to avoid hardcoding size:0 (which bypasses the
+   * 5MB image-inline limit and silently turn_fails on large images).
+   * Returns null when Tauri is absent (browser / Ladle dev mode) — caller falls back to 0.
+   */
+  fileMetadata(path: string): Promise<{ size: number; mtime: number; isDir: boolean } | null>;
+
+  /**
+   * Subscribe to native OS-level file drag-and-drop events on the current webview.
+   * Tauri 2 disables HTML5 drop events by default (so we can read file *paths*,
+   * not just File contents). Position is in physical pixels — divide by
+   * window.devicePixelRatio to compare with getBoundingClientRect (CSS px).
+   * Returns a no-op unlisten when Tauri is absent.
+   */
+  onDragDrop(handler: (event: {
+    type: 'enter' | 'over' | 'drop' | 'leave';
+    paths?: string[];
+    position?: { x: number; y: number };
+  }) => void): Promise<() => void>;
+
+
+  /**
    * Open a URL in the system's default browser.
    * Uses Tauri's plugin:opener when available; falls back to window.open.
    */
@@ -114,11 +146,13 @@ type TauriCore   = typeof import('@tauri-apps/api/core');
 type TauriEvent  = typeof import('@tauri-apps/api/event');
 type TauriDialog = typeof import('@tauri-apps/plugin-dialog');
 type TauriWindow = typeof import('@tauri-apps/api/window');
+type TauriWebview = typeof import('@tauri-apps/api/webview');
 
 let _core:   TauriCore   | null = null;
 let _event:  TauriEvent  | null = null;
 let _dialog: TauriDialog | null = null;
 let _window: TauriWindow | null = null;
+let _webview: TauriWebview | null = null;
 
 async function getCore(): Promise<TauriCore | null> {
   if (!detectTauri()) return null;
@@ -161,6 +195,17 @@ async function getWindow(): Promise<TauriWindow | null> {
   try {
     _window = await import('@tauri-apps/api/window');
     return _window;
+  } catch {
+    return null;
+  }
+}
+
+async function getWebview(): Promise<TauriWebview | null> {
+  if (!detectTauri()) return null;
+  if (_webview) return _webview;
+  try {
+    _webview = await import('@tauri-apps/api/webview');
+    return _webview;
   } catch {
     return null;
   }
@@ -256,6 +301,42 @@ export const tauriBridge: TauriBridge = {
     const result = await dialog.open({ multiple: false, ...opts });
     if (Array.isArray(result)) return result[0] ?? null;
     return result as string | null;
+  },
+
+  async openFileDialogMultiple(opts = {}): Promise<string[]> {
+    const dialog = await getDialog();
+    if (!dialog) return [];
+    const result = await dialog.open({ multiple: true, ...opts });
+    if (Array.isArray(result)) return result as string[];
+    // single-select falls through as a 1-element array; cancel → []
+    return result ? [result as string] : [];
+  },
+
+  async fileMetadata(path: string): Promise<{ size: number; mtime: number; isDir: boolean } | null> {
+    return tauriBridge.invoke<{ size: number; mtime: number; is_dir: boolean }>('file_metadata', { path })
+      .then((m) => m ? { size: m.size, mtime: m.mtime, isDir: m.is_dir } : null)
+      .catch(() => null);
+  },
+
+  async onDragDrop(handler: (event: {
+    type: 'enter' | 'over' | 'drop' | 'leave';
+    paths?: string[];
+    position?: { x: number; y: number };
+  }) => void): Promise<() => void> {
+    const webview = await getWebview();
+    if (!webview) return () => {};
+    const unlisten = await webview.getCurrentWebview().onDragDropEvent((event) => {
+      const p = event.payload;
+      if (p.type === 'leave') {
+        handler({ type: 'leave' });
+      } else if (p.type === 'over') {
+        handler({ type: 'over', position: { x: p.position.x, y: p.position.y } });
+      } else {
+        // enter / drop 都带 paths
+        handler({ type: p.type, paths: p.paths, position: { x: p.position.x, y: p.position.y } });
+      }
+    });
+    return () => unlisten();
   },
 
   async openUrl(url: string): Promise<void> {
