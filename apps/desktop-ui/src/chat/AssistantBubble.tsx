@@ -8,8 +8,6 @@ import { estimateTextTokens } from '@ema-agent/token';
 import { Markdown } from '../markdown/renderer.js';
 import { ToolCallBlock } from './ToolCallBlock.js';
 import { NarrativeStatusBlock } from './NarrativeStatusBlock.js';
-import { ForkButton } from './ForkButton.js';
-import { BranchSiblingNav } from './BranchSiblingNav.js';
 import { replayTurn, stopPlayback, usePlaybackStore } from '../lib/tts-playback.js';
 import { showToast } from '../lib/toast.js';
 import { useConversationStore, type ChatHistoryItem, type AssistantSlice } from '../stores/conversation-store.js';
@@ -152,13 +150,6 @@ export function AssistantBubble({ message, isStreaming }: AssistantBubbleProps):
             />
           )}
 
-          {/* Fork 入口 + 分支兄弟导航 ‹ N/M › —— 完成态才显示 */}
-          {!isStreaming && message.turnId && (
-            <>
-              <ForkButton turnId={message.turnId as string} />
-              <BranchSiblingNav turnId={message.turnId as string} />
-            </>
-          )}
         </div>
       </div>
     </div>

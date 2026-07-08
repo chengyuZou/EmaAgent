@@ -62,4 +62,17 @@ export class BranchesRepo {
       )
       .all(forkFromTurnId) as BranchRow[];
   }
+
+  /** 子分支数(parent_branch_id 指向 branchId)。>0 时不可删(FK 约束 + 孤儿子分支)。 */
+  countChildren(branchId: BranchId): number {
+    const row = this.db
+      .prepare('SELECT COUNT(*) AS n FROM branches WHERE parent_branch_id = ?')
+      .get(branchId) as { n: number };
+    return row.n;
+  }
+
+  /** 删除分支行。调用方负责确保无 turn / 无子分支引用(否则 FK 违反)。 */
+  delete(branchId: BranchId): void {
+    this.db.prepare('DELETE FROM branches WHERE id = ?').run(branchId);
+  }
 }

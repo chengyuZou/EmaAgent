@@ -74,7 +74,19 @@ export function dispatchSseEvent(
       useConversationStore.setState((s) => {
         const u = new Map(s.liveUsageMap);    u.delete(event.turnId as string);
         const t = new Map(s.thinkingActiveMap); t.delete(event.turnId as string);
-        return { liveUsageMap: u, thinkingActiveMap: t };
+        // 给最后一条 user message 补 turnId(乐观更新时没带,且 loadMessages 对已有
+        // session 不刷新 -> user message 永远没 turnId -> ForkButton 不显示)
+        const msgs = new Map(s.messages);
+        const list = msgs.get(sessionId as string);
+        if (list && list.length > 0) {
+          const last = list[list.length - 1];
+          if (last && last.role === 'user' && !last.turnId) {
+            const updated = list.slice();
+            updated[updated.length - 1] = { ...last, turnId: event.turnId };
+            msgs.set(sessionId as string, updated);
+          }
+        }
+        return { liveUsageMap: u, thinkingActiveMap: t, messages: msgs };
       });
       const prev = useConversationStore.getState().ttsOwnerSessionId;
       if ((prev as string) !== (sessionId as string)) {

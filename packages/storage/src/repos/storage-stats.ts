@@ -181,7 +181,7 @@ export class SessionStatsRepo {
         (SELECT COUNT(*) FROM turns WHERE session_id = ? AND mode = 'chat')      AS chat_turns,
         (SELECT COUNT(*) FROM turns WHERE session_id = ? AND mode = 'narrative') AS narrative_turns,
         (SELECT COUNT(*) FROM turns WHERE session_id = ? AND mode = 'agent')     AS agent_turns,
-        ((SELECT COUNT(DISTINCT branch_id) FROM turns WHERE session_id = ? AND branch_id IS NOT NULL) + 1) AS branch_count,
+        (SELECT COUNT(*) FROM branches WHERE session_id = ?) AS branch_count,
         (SELECT COUNT(*) FROM artifacts WHERE session_id = ?) AS artifact_count,
         (SELECT COALESCE(SUM(LENGTH(COALESCE(content,''))), 0)
            FROM artifacts WHERE session_id = ? AND content_location = 'inline') AS artifact_inline_bytes,

@@ -767,7 +767,28 @@ export class SessionStore {
         throw new Error(`branch_not_found: ${branchId}`);
       }
     }
+    // 切走前清理当前 active 分支:若是空 fork 分支(非主 + 无 turn + 无子)则删除,
+    // 防止疯狂 fork 堆积空 branch(9.A)
+    const session = this.requireSession(sessionId);
+    const currentActive = session.activeBranchId as BranchId | null;
+    if (currentActive && currentActive !== branchId) {
+      this.deleteBranchIfEmpty(currentActive);
+    }
     this.sessionsRepo.setActiveBranch(sessionId, branchId);
+  }
+
+  /**
+   * 若 branchId 是空 fork 分支(非主 branch + 无 turn + 无子分支),删除它。
+   * switchBranch 切走时调用,清理用户 fork 了不发消息就切走的空分支。
+   * 主 branch 不删;有 turn 的不删;有子分支的不删(FK 约束 + 避免孤儿子分支)。
+   */
+  private deleteBranchIfEmpty(branchId: BranchId): void {
+    const branch = this.branchesRepo.findById(branchId);
+    if (!branch) return;
+    if (branch.parent_branch_id === null) return;  // 主 branch 不删
+    if (this.turnsRepo.listForBranch(branchId).length > 0) return;  // 有 turn 不删
+    if (this.branchesRepo.countChildren(branchId) > 0) return;  // 有子分支不删
+    this.branchesRepo.delete(branchId);
   }
 
   /**
