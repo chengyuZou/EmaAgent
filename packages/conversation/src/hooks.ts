@@ -103,10 +103,10 @@ async function recallNarrativeContext(
           charCount: text.length,
           snippet: text.length > 100 ? text.slice(0, 100) + '…' : text,
         });
-        if (text.trim().length > 0) {
-          recallParts.push([timeline, text]);
-          recallTimelines.push({ name: timeline, charCount: text.length, text });
-        }
+        // 不管 text 空不空都进 recallTimelines -- 落盘要完整(重开能看到所有 timeline,
+        // 哪怕检索返回空)。text 空前端展开显示"无内容"提示,不能整个 message 不落盘。
+        recallParts.push([timeline, text]);
+        recallTimelines.push({ name: timeline, charCount: text.length, text });
       } catch (err) {
         if (isAbortLike(err, args.signal) || err instanceof NarrativeUnavailableError) {
           fatalError ??= err;
@@ -132,7 +132,10 @@ async function recallNarrativeContext(
 
   recallParts.sort(([a], [b]) => routeOrder.indexOf(a) - routeOrder.indexOf(b));
 
+  // inject 给 LLM 的只含有内容的 timeline(空 section 对 LLM 无意义)。
+  // 落盘的 recallTimelines 保留全部(含空,前端展示"检索了但无内容")。
   const sections = recallParts
+    .filter(([, text]) => text.trim().length > 0)
     .map(([timeline, text]) => `## ${timeline}\n${text}`)
     .join('\n\n');
 

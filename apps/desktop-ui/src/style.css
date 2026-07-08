@@ -330,6 +330,15 @@ button, [role="button"], [data-tauri-drag-region], .ema-no-select, .ema-no-selec
   transition: width var(--ema-duration-panel) var(--ema-ease);
 }
 
+/* Text expand/collapse transition (narrative 检索块"展开全文/收起全文")。
+   Pair with max-h-[preview] ↔ max-h-[full] + overflow-hidden。DOM 常驻,
+   双向动画:展开高度增长+淡入,收起高度收缩+淡出。比纯 max-height 过渡多
+   opacity 层,避免文本突然出现/消失的生硬感。 */
+.ema-transition-text-expand {
+  transition: max-height var(--ema-duration-base) var(--ema-ease),
+              opacity    var(--ema-duration-base) var(--ema-ease);
+}
+
 /* ── Radix data-state animations ─────────────────────────────────────────────
  *  Marker classes added to Radix content/overlay elements (Dialog, Popover,
  *  Select, DropdownMenu, Tooltip, Toast, Tabs). Driven by Radix's data-state so
