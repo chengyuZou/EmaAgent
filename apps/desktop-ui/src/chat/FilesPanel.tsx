@@ -1,18 +1,17 @@
-﻿/**
- * FilesPanel — workspace file browser for the Inspector dock.
+/**
+ * FilesPanel - workspace file browser for the Inspector dock.
  *
- * Root = session.workspaceRoot (set via the workspace picker or Tauri file dialog).
- * Starts collapsed; clicking expands it lazily via
- * GET /api/workspace/ls?path=... Files are read-only (⌘-click opens in OS).
- * The search box filters by name (case-insensitive substring).
+ * Root = session.workspaceRoot。直接列 root 内容(不套一层文件夹)。
+ * 点文件 -> in-app 预览(FilePreview),不走 OS 程序。
+ * 点目录 -> 展开/折叠(lazy load via GET /api/workspace/ls)。
+ * 搜索框按名字过滤。列表 <-> 预览双向 ema-fade-in。
  */
-import { useState, useCallback, useMemo, type JSX, type CSSProperties } from 'react';
+import { useState, useCallback, useMemo, useEffect, type JSX, type CSSProperties } from 'react';
 import { ScrollArea } from '@ema-agent/ui';
 import { workspaceApi, type FileEntry } from '../api/workspace.js';
 import { useConversationStore } from '../stores/conversation-store.js';
 import { useSessionStore } from '../stores/session-store.js';
-import { tauriBridge } from '../lib/tauri-bridge.js';
-import { showToast } from '../lib/toast.js';
+import { FilePreview } from './FilePreview.js';
 
 // ── File icon by extension ────────────────────────────────────────────────────
 
@@ -52,13 +51,14 @@ interface DirNode {
 
 function FileRow({
   entry, depth, filter,
-  dirNode, onToggle,
+  dirNode, onToggle, onSelectFile,
 }: {
-  entry:    FileEntry;
-  depth:    number;
-  filter:   string;
-  dirNode:  DirNode | undefined;
-  onToggle: (path: string) => void;
+  entry:        FileEntry;
+  depth:        number;
+  filter:       string;
+  dirNode:      DirNode | undefined;
+  onToggle:     (path: string) => void;
+  onSelectFile: (path: string) => void;
 }): JSX.Element | null {
   const isDir    = entry.type === 'dir';
   const expanded = isDir && dirNode?.children != null;
@@ -72,9 +72,7 @@ function FileRow({
 
   const handleClick = (): void => {
     if (isDir) { onToggle(entry.path); return; }
-    void tauriBridge.openPath(entry.path).catch((err: unknown) => {
-      showToast(err instanceof Error ? err.message : '无法打开文件', { variant: 'danger' });
-    });
+    onSelectFile(entry.path);  // in-app 预览,不走 OS
   };
 
   return (
@@ -126,13 +124,14 @@ function FileRow({
 // ── Recursive subtree ─────────────────────────────────────────────────────────
 
 function DirSubtree({
-  dirPath, depth, filter, dirNodes, onToggle,
+  dirPath, depth, filter, dirNodes, onToggle, onSelectFile,
 }: {
-  dirPath:  string;
-  depth:    number;
-  filter:   string;
-  dirNodes: Map<string, DirNode>;
-  onToggle: (path: string) => void;
+  dirPath:      string;
+  depth:        number;
+  filter:       string;
+  dirNodes:     Map<string, DirNode>;
+  onToggle:     (path: string) => void;
+  onSelectFile: (path: string) => void;
 }): JSX.Element | null {
   const node = dirNodes.get(dirPath);
   if (!node?.children) return null;
@@ -147,6 +146,7 @@ function DirSubtree({
             filter={filter}
             dirNode={dirNodes.get(child.path)}
             onToggle={onToggle}
+            onSelectFile={onSelectFile}
           />
           {child.type === 'dir' && dirNodes.get(child.path)?.children != null && (
             <DirSubtree
@@ -155,6 +155,7 @@ function DirSubtree({
               filter={filter}
               dirNodes={dirNodes}
               onToggle={onToggle}
+              onSelectFile={onSelectFile}
             />
           )}
         </div>
@@ -178,8 +179,9 @@ export function FilesPanel(): JSX.Element {
 
   const root: string | null = session?.workspaceRoot ?? null;
 
-  const [search,   setSearch]   = useState('');
-  const [dirNodes, setDirNodes] = useState<Map<string, DirNode>>(new Map);
+  const [search,       setSearch]       = useState('');
+  const [dirNodes,     setDirNodes]     = useState<Map<string, DirNode>>(new Map);
+  const [selectedFile, setSelectedFile] = useState<string | null>(null);
 
   const filter = search.trim().toLowerCase();
 
@@ -222,11 +224,10 @@ export function FilesPanel(): JSX.Element {
     if (!node?.children) void loadDir(dirPath);
   }, [dirNodes, loadDir]);
 
-  // Root rendered as the single top-level expandable entry
-  const rootEntries: FileEntry[] = useMemo(
-    () => root ? [{ name: root.split(/[\\/]/).pop() ?? root, path: root, type: 'dir' as const }] : [],
-    [root],
-  );
+  // 根目录默认展开:首次 mount 时 lazy load root 内容(不套一层文件夹)
+  useEffect(() => {
+    if (root && !dirNodes.has(root)) void loadDir(root);
+  }, [root, dirNodes, loadDir]);
 
   if (!root) {
     return (
@@ -243,14 +244,24 @@ export function FilesPanel(): JSX.Element {
     );
   }
 
+  // 选中文件 -> in-app 预览(双向 ema-fade-in)
+  if (selectedFile) {
+    return (
+      <FilePreview
+        path={selectedFile}
+        onBack={() => setSelectedFile(null)}
+      />
+    );
+  }
+
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full ema-fade-in">
       {/* Search */}
       <div className="px-2 py-1.5 border-b shrink-0" style={{ borderColor: 'var(--ema-border)' }}>
         <input
           className="w-full rounded-md px-2 py-1 text-[11px] outline-none"
           style={{ background: 'var(--ema-surface-2)', color: 'var(--ema-text-primary)' }}
-          placeholder="筛选文件…(? 前缀搜索内容)"
+          placeholder="筛选文件…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           spellCheck={false}
@@ -258,24 +269,18 @@ export function FilesPanel(): JSX.Element {
       </div>
 
       <ScrollArea orientation="vertical" className="flex-1" viewportClassName="py-1">
-        {rootEntries.map((root) => (
-          <div key={root.path}>
-            <FileRow
-              entry={root}
-              depth={0}
-              filter={filter}
-              dirNode={dirNodes.get(root.path)}
-              onToggle={toggleDir}
-            />
-            <DirSubtree
-              dirPath={root.path}
-              depth={1}
-              filter={filter}
-              dirNodes={dirNodes}
-              onToggle={toggleDir}
-            />
-          </div>
-        ))}
+        {/* 根目录内容直接列(不套一层),depth=0 */}
+        <DirSubtree
+          dirPath={root}
+          depth={0}
+          filter={filter}
+          dirNodes={dirNodes}
+          onToggle={toggleDir}
+          onSelectFile={setSelectedFile}
+        />
+        {dirNodes.get(root)?.loading && (
+          <div className="px-3 py-1 text-[10px]" style={{ color: 'var(--ema-text-tertiary)' }}>加载中…</div>
+        )}
       </ScrollArea>
     </div>
   );

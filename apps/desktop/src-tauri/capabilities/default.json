@@ -13,6 +13,9 @@
     "dialog:allow-save",
     "dialog:allow-open",
     "opener:allow-open-url",
-    "opener:allow-open-path"
+    {
+      "identifier": "opener:allow-open-path",
+      "allow": [{ "path": "**" }]
+    }
   ]
 }

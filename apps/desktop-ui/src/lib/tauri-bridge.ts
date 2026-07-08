@@ -354,9 +354,15 @@ export const tauriBridge: TauriBridge = {
 
   async openPath(path: string): Promise<void> {
     const core = await getCore();
-    if (!core) return; // no-op in browser/Ladle
-    // 不吞错 + 不 fallback file://(webview 拦截)。让 invoke 错误抛给调用方 toast,
-    // 暴露真实根因(权限/命令名/路径)。2.3 文件预览打不开排查用。
-    await core.invoke('plugin:opener|open_path', { path });
+    if (!core) { console.warn('[openPath] no Tauri core (browser mode?)'); return; }
+    console.log('[openPath] invoking open_path:', path);
+    try {
+      await core.invoke('plugin:opener|open_path', { path });
+      console.log('[openPath] invoke OK');
+    } catch (err) {
+      console.error('[openPath] invoke failed:', err);
+      const msg = typeof err === 'string' ? err : (err instanceof Error ? err.message : JSON.stringify(err));
+      throw new Error('openPath: ' + msg);
+    }
   },
 };
