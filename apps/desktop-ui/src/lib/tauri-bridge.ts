@@ -355,11 +355,8 @@ export const tauriBridge: TauriBridge = {
   async openPath(path: string): Promise<void> {
     const core = await getCore();
     if (!core) return; // no-op in browser/Ladle
-    try {
-      await core.invoke('plugin:opener|open_path', { path });
-    } catch {
-      // Fallback: open as file:// URL via system browser
-      window.open(`file://${path}`, '_blank');
-    }
+    // 不吞错 + 不 fallback file://(webview 拦截)。让 invoke 错误抛给调用方 toast,
+    // 暴露真实根因(权限/命令名/路径)。2.3 文件预览打不开排查用。
+    await core.invoke('plugin:opener|open_path', { path });
   },
 };
