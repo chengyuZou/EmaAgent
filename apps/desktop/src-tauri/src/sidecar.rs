@@ -98,6 +98,29 @@ impl SidecarState {
         // Job Object（assign_to_job 设的）会在 Rust 进程退出时兜底清理整棵树。
         self.kill_child(&self.0.sidecar, "sidecar").await;
         self.kill_child(&self.0.bridge,  "bridge").await;
+        // sidecar 被强杀没机会跑 release() 清 lockfile -> 主动删文件,防残留
+        // (bug 4:lockfile 残留指向已死 pid,虽然下次启动 isHolderDead 能重抢,但文件残留让用户困惑)
+        self.remove_lockfile();
+    }
+
+    /// 删 sidecar 的 lockfile.json。跟 Node 层 profileDir 对齐:
+    /// EMA_PROFILE_DIR env 优先,否则 ~/.ema-agent。跨平台 std::fs::remove_file。
+    fn remove_lockfile(&self) {
+        let dir = std::env::var("EMA_PROFILE_DIR")
+            .or_else(|_| {
+                std::env::var("USERPROFILE")
+                    .or_else(|_| std::env::var("HOME"))
+                    .map(|h| format!("{}/.ema-agent", h))
+            })
+            .unwrap_or_else(|_| "~/.ema-agent".to_string());
+        let fp = std::path::PathBuf::from(dir).join("lockfile.json");
+        match std::fs::remove_file(&fp) {
+            Ok(()) => tracing::info!(path = %fp.display(), "lockfile removed"),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                // 没有 lockfile 正常(sidecar 没起来就退出),不算错
+            }
+            Err(e) => tracing::warn!(path = %fp.display(), "lockfile remove failed: {e}"),
+        }
     }
 
     async fn kill_child(&self, slot: &Mutex<Option<Child>>, label: &str) {
