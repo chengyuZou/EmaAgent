@@ -211,10 +211,6 @@ export function ChatInput(): JSX.Element {
               : undefined,
           }}
         >
-          {/* Always-pulsing pink glow ring */}
-          <div className="absolute inset-0 rounded-2xl pointer-events-none animate-pulse"
-               style={{ boxShadow: '0 0 0 1.5px var(--ema-glow-strong), 0 0 20px var(--ema-glow)' }} />
-
           {/* 拖放遮罩 — 拖入对话框区域时显示 */}
           {isDragOver && (
             <div className="absolute inset-0 z-10 rounded-2xl flex items-center justify-center pointer-events-none ema-fade-in"
