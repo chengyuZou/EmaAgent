@@ -1,4 +1,4 @@
-﻿import { useState, useCallback, useEffect, useMemo, type JSX } from 'react';
+﻿import { useState, useCallback, useEffect, useMemo, useRef, type JSX } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { DropdownMenu, Input, type MenuItem } from '@ema-agent/ui';
 import { sessionsApi, type SessionWire, type SessionSearchItem } from '../api/sessions.js';
@@ -19,6 +19,32 @@ const sidebarBlockClass = 'flex items-center gap-2.5 h-9 px-2 rounded-md text-sm
 export function SessionSidebar(): JSX.Element {
   const [collapsed, setCollapsed]   = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
+  // 侧栏宽度(可拖拽,右边缘手柄)。默认 256px(w-64),范围 200-480。collapsed 时 w-10 不拖。
+  const [sidebarWidth, setSidebarWidth] = useState(256);
+  const [resizing, setResizing] = useState(false);
+  const resizeStartX = useRef(0);
+  const resizeStartW = useRef(0);
+
+  const onResizeStart = useCallback((e: React.MouseEvent): void => {
+    e.preventDefault();
+    setResizing(true);
+    resizeStartX.current = e.clientX;
+    resizeStartW.current = sidebarWidth;
+    document.body.classList.add('ema-resizing');
+    const onMove = (ev: MouseEvent): void => {
+      // 手柄在右边缘,向右拖 = 增宽
+      const delta = ev.clientX - resizeStartX.current;
+      setSidebarWidth(Math.max(200, Math.min(480, resizeStartW.current + delta)));
+    };
+    const onUp = (): void => {
+      setResizing(false);
+      document.body.classList.remove('ema-resizing');
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  }, [sidebarWidth]);
 
   const sessions  = useSessionStore((s) => s.sessions);
   const viewedId  = useConversationStore((s) => s.viewedSessionId);
@@ -48,8 +74,21 @@ export function SessionSidebar(): JSX.Element {
   ]).filter((s) => !projectSessionIds.has(s.id)), [sessions, projectSessionIds]);
 
   return (
-    <div className={`flex flex-col shrink-0 border-r h-full transition-[width] duration-200 ease-out ${collapsed ? 'w-10' : 'w-64'}`}
-         style={{ borderColor: 'var(--ema-border)', background: 'var(--ema-bg)' }}>
+    <div className={`relative flex flex-col shrink-0 border-r h-full ${resizing ? '' : 'ema-transition-width'}`}
+         style={{
+           width: collapsed ? 40 : sidebarWidth,
+           borderColor: 'var(--ema-border)',
+           background: 'var(--ema-bg)',
+         }}>
+      {/* 拖拽手柄(右边缘)。展开态才显示,collapsed 不拖 */}
+      {!collapsed && (
+        <div
+          className="ema-resize-handle"
+          style={{ left: 'auto', right: 0 }}
+          onMouseDown={onResizeStart}
+          aria-hidden
+        />
+      )}
       {collapsed ? (
         <div className="flex flex-col items-center py-2 gap-2">
           <button
