@@ -18,6 +18,9 @@ import remarkGfm from 'remark-gfm';
 import rehypeKatex from 'rehype-katex';
 import rehypeRaw from 'rehype-raw';
 import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
+import rehypeHighlight from 'rehype-highlight';
+// highlight.js 主题(深色,跟项目风格匹配)。全局引入一次。
+import 'highlight.js/styles/github-dark.css';
 
 // ── Props ─────────────────────────────────────────────────────────────────────
 
@@ -86,6 +89,8 @@ export function Markdown({ source, className }: MarkdownProps): JSX.Element {
           rehypeRaw,
           rehypeKatex,
           [rehypeSanitize, sanitizeSchema],
+          // 高亮放 sanitize 之后:sanitize 已过,高亮加的 hljs-* class/span 不被清
+          rehypeHighlight,
         ]}
         className={`markdown-content${className ? ` ${className}` : ''}`}
       >

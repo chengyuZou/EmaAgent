@@ -567,3 +567,17 @@ button, [role="button"], [data-tauri-drag-region], .ema-no-select, .ema-no-selec
 .ema-slide-in-right {
   animation: ema-slide-in-right var(--ema-duration-slow) var(--ema-ease) both;
 }
+
+
+
+/* 代码高亮字体(FilePreview 代码 + 聊天代码块统一柔和)。直接作用 .hljs(code 元素),
+   跟 github-dark.css 同 specificity,style.css 后定义赢。Cascadia Code 优先(柔和+连字),
+   字重 400 + 行高 1.7(松) + 连字 + 抗锯齿,避免默认 monospace 尖锐。 */
+.hljs, .markdown-content pre, .markdown-content code, .ema-font-mono {
+  font-family: 'Cascadia Code', 'JetBrains Mono', 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace !important;
+  font-weight: 400;
+  line-height: 1.7;
+  font-feature-settings: 'liga' 1, 'calt' 1;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}

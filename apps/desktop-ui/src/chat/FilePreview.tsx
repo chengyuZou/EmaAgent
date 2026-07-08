@@ -12,8 +12,34 @@
  */
 import { useEffect, useState, type JSX } from 'react';
 import { IconButton, ScrollArea, Spinner } from '@ema-agent/ui';
+import hljs from 'highlight.js';
 import { Markdown } from '../markdown/renderer.js';
 import { workspaceApi, type FileContent } from '../api/workspace.js';
+
+/** 扩展名 -> highlight.js 语言名(常见映射,未知走自动检测) */
+const LANG_MAP: Record<string, string> = {
+  ts: 'typescript', tsx: 'typescript', js: 'javascript', jsx: 'javascript', mjs: 'javascript', cjs: 'javascript',
+  py: 'python', rs: 'rust', go: 'go', java: 'java', c: 'c', cpp: 'cpp', h: 'c', hpp: 'cpp',
+  json: 'json', jsonl: 'json', jsonc: 'json', yaml: 'yaml', yml: 'yaml',
+  css: 'css', scss: 'scss', sass: 'scss', less: 'less', html: 'xml', xml: 'xml', svg: 'xml',
+  sh: 'bash', bash: 'bash', zsh: 'bash', sql: 'sql', toml: 'ini', ini: 'ini', cfg: 'ini', conf: 'ini',
+  graphql: 'graphql', gql: 'graphql',
+};
+
+/** 高亮代码:按语言指定(准),未知扩展名 fallback 自动检测,都失败回纯文本 */
+function highlightCode(code: string, ext: string): string {
+  const lang = LANG_MAP[ext];
+  try {
+    if (lang && hljs.getLanguage(lang)) {
+      return hljs.highlight(code, { language: lang, ignoreIllegals: true }).value;
+    }
+  } catch { /* fall through to auto */ }
+  try {
+    return hljs.highlightAuto(code).value;
+  } catch {
+    return code;
+  }
+}
 
 function fmtSize(bytes: number): string {
   if (bytes < 1024) return `${bytes}B`;
@@ -108,11 +134,11 @@ function ContentBody({ content, ext }: { content: FileContent; ext: string }): J
   if (ext === 'md' || ext === 'mdx') {
     return <Markdown source={content.content} />;
   }
-  // 纯文本/代码:<pre> 无高亮(Shiki 禁用)。等宽字体 + 换行保留。
+  // 代码/文本:highlight.js 直接高亮(按 ext 指定语言,未知自动检测),不包 Markdown
+  const html = highlightCode(content.content, ext);
   return (
-    <pre className="text-xs font-mono whitespace-pre-wrap break-words"
-         style={{ color: 'var(--ema-text-secondary)' }}>
-      {content.content}
+    <pre className="ema-font-mono text-xs whitespace-pre-wrap break-words">
+      <code className="hljs" dangerouslySetInnerHTML={{ __html: html }} />
     </pre>
   );
 }
