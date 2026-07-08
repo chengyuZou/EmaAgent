@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, type JSX } from 'react';
+import { useEffect, useState, useRef, useCallback, type JSX } from 'react';
 import type { SessionId } from '@ema-agent/contracts';
 import { useConversationStore } from '../stores/conversation-store.js';
 import { useSessionStore } from '../stores/session-store.js';
@@ -32,6 +32,34 @@ export function ChatPanel(): JSX.Element {
   const [activePanels, setActivePanels] = useState<Set<InspectorPanelId>>(new Set());
   const [overflowOpen, setOverflowOpen] = useState(false);
   const overflowRef = useRef<HTMLDivElement>(null);
+
+  // Inspector 宽度(可拖拽)。默认 360px,范围 240-800。拖拽中禁过渡跟手。
+  const [inspectorWidth, setInspectorWidth] = useState(360);
+  const [resizing, setResizing] = useState(false);
+  const resizeStartX = useRef(0);
+  const resizeStartW = useRef(0);
+
+  const onResizeStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setResizing(true);
+    resizeStartX.current = e.clientX;
+    resizeStartW.current = inspectorWidth;
+    document.body.classList.add('ema-resizing');
+    const onMove = (ev: MouseEvent): void => {
+      // 手柄在左边缘,向左拖 = 增宽(鼠标 X 减小 -> width 增大)
+      const delta = resizeStartX.current - ev.clientX;
+      const next = Math.max(240, Math.min(800, resizeStartW.current + delta));
+      setInspectorWidth(next);
+    };
+    const onUp = (): void => {
+      setResizing(false);
+      document.body.classList.remove('ema-resizing');
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  }, [inspectorWidth]);
 
   // Session metadata for title bar
   const session = useSessionStore((s) =>
@@ -212,13 +240,24 @@ export function ChatPanel(): JSX.Element {
         </div>
 
         {/* ── Right inspector panel ── */}
-        {/* Always mounted; width transitions 0↔w-72/w-[560px] so closing
-            animates the slide-out (not just unmount). Content unmounts
-            immediately on close but the space shrinks with animation. */}
+        {/* 宽度可拖拽(左边缘手柄)。hasInspector 切换走 ema-transition-width 过渡,
+            拖拽中(resizing)禁过渡跟手。收起 width:0 滑出动画。 */}
         <div
-          className={`flex-none flex flex-col overflow-hidden ema-transition-width ${hasInspector ? (activePanels.size > 1 ? 'w-[560px] border-l' : 'w-72 border-l') : 'w-0'}`}
-          style={{ borderColor: 'var(--ema-border)', background: 'var(--ema-surface-1)' }}
+          className={`relative flex-none flex flex-col overflow-hidden border-l ${resizing ? '' : 'ema-transition-width'}`}
+          style={{
+            width: hasInspector ? inspectorWidth : 0,
+            borderColor: hasInspector ? 'var(--ema-border)' : 'transparent',
+            background: 'var(--ema-surface-1)',
+          }}
         >
+          {/* 拖拽手柄(左边缘)。hasInspector 才显示 */}
+          {hasInspector && (
+            <div
+              className="ema-resize-handle"
+              onMouseDown={onResizeStart}
+              aria-hidden
+            />
+          )}
           {hasInspector && <InspectorContent activePanels={activePanels} sessionId={viewedSessionId as string | null} />}
         </div>
       </div>

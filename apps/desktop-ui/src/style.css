@@ -581,3 +581,26 @@ button, [role="button"], [data-tauri-drag-region], .ema-no-select, .ema-no-selec
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
+
+/* Inspector 拖拽手柄(左边缘 col-resize)。raw div 用,样式全 CSS 变量。
+   hover 变粗变色,拖拽中全局 cursor: col-resize(加 .ema-resizing 到 body)。 */
+.ema-resize-handle {
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 4px;
+  cursor: col-resize;
+  z-index: 10;
+  transition: background var(--ema-duration-fast) var(--ema-ease);
+  background: transparent;
+}
+.ema-resize-handle:hover,
+.ema-resizing .ema-resize-handle {
+  background: var(--ema-primary);
+  width: 4px;
+}
+/* 拖拽中:全局 col-resize + 禁止文本选中(防拖拽选中文本) */
+.ema-resizing,
+.ema-resizing * {
+  cursor: col-resize !important;
+  user-select: none !important;
+}

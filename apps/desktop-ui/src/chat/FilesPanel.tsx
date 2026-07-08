@@ -268,7 +268,7 @@ export function FilesPanel(): JSX.Element {
         />
       </div>
 
-      <ScrollArea orientation="vertical" className="flex-1" viewportClassName="py-1">
+      <ScrollArea orientation="both" className="flex-1" viewportClassName="py-1">
         {/* 根目录内容直接列(不套一层),depth=0 */}
         <DirSubtree
           dirPath={root}

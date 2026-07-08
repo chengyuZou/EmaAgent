@@ -63,7 +63,7 @@ export function ArtifactsPanel(): JSX.Element {
         </span>
       </div>
 
-      <ScrollArea orientation="vertical" className="flex-1" viewportClassName="p-3">
+      <ScrollArea orientation="both" className="flex-1" viewportClassName="p-3">
         <div className="flex flex-col gap-2">
           {[...artifacts].reverse().map((artifact, i) => (
             <div

@@ -88,7 +88,7 @@ export function FilePreview({ path, onBack }: { path: string; onBack: () => void
       </div>
 
       {/* 内容区 */}
-      <ScrollArea orientation="vertical" className="flex-1" viewportClassName="p-3">
+      <ScrollArea orientation="both" className="flex-1" viewportClassName="p-3">
         {loading && (
           <div className="flex justify-center py-8"><Spinner size="sm" /></div>
         )}
@@ -137,7 +137,7 @@ function ContentBody({ content, ext }: { content: FileContent; ext: string }): J
   // 代码/文本:highlight.js 直接高亮(按 ext 指定语言,未知自动检测),不包 Markdown
   const html = highlightCode(content.content, ext);
   return (
-    <pre className="ema-font-mono text-xs whitespace-pre-wrap break-words">
+    <pre className="ema-font-mono text-xs whitespace-pre">
       <code className="hljs" dangerouslySetInnerHTML={{ __html: html }} />
     </pre>
   );
