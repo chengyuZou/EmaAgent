@@ -35,14 +35,22 @@ export function NarrativeStatusBlock({ slice }: { slice: NarrativeSlice }): Reac
       </button>
 
       {open && timelines.length > 0 && (
-        <div className="flex flex-col gap-0.5 pl-0.5 pt-0.5">
+        <div className="flex flex-col gap-1 pl-0.5 pt-0.5">
           {timelines.map((t) => (
-            <div key={t} className="flex items-center gap-1.5">
-              {completed.has(t)
-                ? <span className="i-mdi:check shrink-0" style={{ color: 'var(--ema-info)' }} aria-hidden />
-                : <span className="i-mdi:dots-horizontal shrink-0" style={{ color: 'var(--ema-text-tertiary)' }} aria-hidden />
-              }
-              <span style={{ color: completed.has(t) ? 'var(--ema-text-secondary)' : 'var(--ema-text-tertiary)' }}>{t}</span>
+            <div key={t} className="flex flex-col gap-0.5">
+              <div className="flex items-center gap-1.5">
+                {completed.has(t)
+                  ? <span className="i-mdi:check shrink-0" style={{ color: 'var(--ema-info)' }} aria-hidden />
+                  : <span className="i-mdi:dots-horizontal shrink-0" style={{ color: 'var(--ema-text-tertiary)' }} aria-hidden />
+                }
+                <span style={{ color: completed.has(t) ? 'var(--ema-text-secondary)' : 'var(--ema-text-tertiary)' }}>{t}</span>
+              </div>
+              {completed.has(t) && slice.snippets?.[t] && (
+                <p className="pl-5 text-xs whitespace-pre-wrap break-words max-h-48 overflow-y-auto"
+                   style={{ color: 'var(--ema-text-tertiary)' }}>
+                  {slice.snippets[t]}
+                </p>
+              )}
             </div>
           ))}
         </div>

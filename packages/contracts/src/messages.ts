@@ -6,20 +6,47 @@ import type { MessageId, MessageRole } from './ids.js';
 /**
  * 决定一条消息如何被 LLM 使用 和 如何在 UI 里渲染：
  *
- * | kind             | 发给 LLM? | UI 渲染?          |
- * |------------------|-----------|-------------------|
- * | normal           | ✅        | ✅ 正常气泡        |
- * | summary          | ✅        | ✅ "上下文已压缩"横幅 |
- * | context          | ✅        | ❌ 隐藏            |
- * | tool_results     | ✅        | ❌ 合并进助手气泡  |
- * | persona_reminder | ✅        | ❌ 隐藏            |
+ * | kind              | 发给 LLM? | UI 渲染?            |
+ * |-------------------|-----------|---------------------|
+ * | normal            | ✅        | ✅ 正常气泡          |
+ * | summary           | ✅        | ✅ "上下文已压缩"横幅 |
+ * | context           | ✅        | ❌ 隐藏              |
+ * | tool_results      | ✅        | ❌ 合并进助手气泡    |
+ * | persona_reminder  | ✅        | ❌ 隐藏              |
+ * | narrative_context | ✅        | ✅ narrative 检索块气泡 |
  */
 export type MessageKind =
   | 'normal'
   | 'context'
   | 'tool_results'
   | 'summary'
-  | 'persona_reminder';
+  | 'persona_reminder'
+  | 'narrative_context';
+
+// ── narrative 检索结果(narrative_context kind 的 blocks 结构)──────────────────
+
+/**
+ * narrative 模式 beforeLlm hook 检索到的单条剧情线结果。
+ * 落盘进 messages.blocks_json,既回灌 LLM(转 [NARRATIVE CONTEXT] 文本)
+ * 又在前端 NarrativeStatusBlock 展开显示完整 text。
+ */
+export interface NarrativeTimelineRecall {
+  /** 剧情线名,如 '1st_Loop' / '2nd_Loop' / '3rd_Loop' */
+  name:      string;
+  /** 检索文本字符数(展示用,避免前端算长度) */
+  charCount: number;
+  /** 完整检索文本(展开看 + 回灌 LLM 用) */
+  text:      string;
+}
+
+/**
+ * kind='narrative_context' message 的 blocks 结构。
+ * MessageBlocks 是 string | AssistantBlock[] | UserBlock[],这里再加一种对象形态 --
+ * narrative_context 的 blocks 是此对象,JSON 存进 blocks_json。
+ */
+export interface NarrativeContextBlocks {
+  timelines: NarrativeTimelineRecall[];
+}
 
 // ── 多模态内容块 ──────────────────────────────────────────────────────────────
 
@@ -104,7 +131,7 @@ export type LlmMessage =
  *   AssistantBlock[] → role='assistant'
  *   UserBlock[]     → role='user'（含多模态或 tool_result）
  */
-export type MessageBlocks = string | AssistantBlock[] | UserBlock[];
+export type MessageBlocks = string | AssistantBlock[] | UserBlock[] | NarrativeContextBlocks;
 
 // ── 附件元数据（UI 展示用） ───────────────────────────────────────────────────
 

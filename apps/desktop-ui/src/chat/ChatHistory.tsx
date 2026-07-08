@@ -3,6 +3,7 @@ import { useConversationStore, type ChatHistoryItem } from '../stores/conversati
 import { useChatHistoryScroll } from './use-chat-history-scroll.js';
 import { UserBubble } from './UserBubble.js';
 import { AssistantBubble } from './AssistantBubble.js';
+import { NarrativeStatusBlock } from './NarrativeStatusBlock.js';
 
 const EMPTY_MSGS: ChatHistoryItem[] = [];
 
@@ -109,6 +110,19 @@ export function ChatHistory(): JSX.Element {
 // ── Internal ──────────────────────────────────────────────────────────────────
 
 function BubbleRouter({ message }: { message: ChatHistoryItem }): JSX.Element {
+  // narrative_context:检索结果独立气泡(NarrativeStatusBlock),不走 UserBubble
+  if (message.kind === 'narrative_context') {
+    const slice = message.slices?.find((s) => s.type === 'narrative_status');
+    if (slice && slice.type === 'narrative_status') {
+      return (
+        <div className="flex justify-start px-1">
+          <div className="max-w-[85%]">
+            <NarrativeStatusBlock slice={slice} />
+          </div>
+        </div>
+      );
+    }
+  }
   switch (message.role) {
     case 'user':      return <UserBubble message={message} />;
     case 'assistant': return <AssistantBubble message={message} />;

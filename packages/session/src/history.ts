@@ -1,4 +1,4 @@
-import type { LlmMessage, AssistantBlock, UserBlock, MessageContentPart } from '@ema-agent/contracts';
+import type { LlmMessage, AssistantBlock, UserBlock, MessageContentPart, NarrativeContextBlocks } from '@ema-agent/contracts';
 import type { Message } from './types.js';
 
 /**
@@ -19,6 +19,18 @@ export function historyToLlmMessages(history: Message[]): LlmMessage[] {
         out.push({ role: 'system', content: typeof msg.blocks === 'string' ? msg.blocks : '' });
         break;
       case 'user':
+        // narrative_context:结构化检索结果 -> [NARRATIVE CONTEXT] 文本回灌 LLM
+        if (msg.kind === 'narrative_context') {
+          const b = msg.blocks as NarrativeContextBlocks;
+          if (b?.timelines?.length) {
+            const text = b.timelines.map((t) => `## ${t.name}\n${t.text}`).join('\n\n');
+            out.push({
+              role: 'user',
+              content: `[NARRATIVE CONTEXT - do not quote verbatim; use as background]\n\n${text}`,
+            });
+          }
+          break;
+        }
         if (typeof msg.blocks === 'string') {
           out.push({ role: 'user', content: msg.blocks });
         } else if (Array.isArray(msg.blocks)) {

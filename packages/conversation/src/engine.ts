@@ -119,11 +119,14 @@ async function* runTurn(
     //
     // Pattern: run trigger() as a background task, yield events as emit() is
     // called, wait for the task to finish, then inspect the result.
+    // meta 是 shared bag 引用,hook(narrative:recall)往里写 narrativeRecall,
+    // trigger 返回后 engine 读它落盘成 kind='narrative_context' message。
+    const hookMeta: Record<string, unknown> = { mode, userInput: input.userInput, signal, providerId, model: resolvedModel };
     const llmHookResult = yield* streamingBeforeLlm(hooks, {
       turnId,
       sessionId: input.sessionId,
       payload: { systemPrompt: '', messages },
-      meta: { mode, userInput: input.userInput, signal, providerId, model: resolvedModel },
+      meta: hookMeta,
     });
 
     if (llmHookResult.kind === 'abort') {
@@ -132,6 +135,24 @@ async function* runTurn(
       return;
     }
     const finalMessages = llmHookResult.payload.messages;
+
+    // ── narrative 检索结果落盘 ──────────────────────────────────────────────
+    // narrative:recall hook 把检索结果写进 hookMeta.narrativeRecall。落盘成
+    // kind='narrative_context' message:既回灌 LLM(下一轮 historyToLlmMessages
+    // 转文本)又前端显示(检索块气泡)。一份内容不拆。本轮 LLM 已通过 inject 的
+    // 临时 user message 看过检索内容(上面 finalMessages 里),这里落盘是给未来轮次 + 前端展示。
+    const narrativeRecall = hookMeta['narrativeRecall'] as
+      | { timelines: Array<{ name: string; charCount: number; text: string }> }
+      | undefined;
+    if (narrativeRecall && narrativeRecall.timelines.length > 0) {
+      session.appendMessage({
+        turnId,
+        sessionId: input.sessionId,
+        role: 'user',
+        kind: 'narrative_context',
+        blocks: { timelines: narrativeRecall.timelines },
+      });
+    }
 
     // ── LLM stream ────────────────────────────────────────────────────────────
     let fullText = '';

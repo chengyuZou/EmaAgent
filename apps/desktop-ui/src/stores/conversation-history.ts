@@ -69,6 +69,8 @@ export interface ChatHistoryItem {
   stats?:       TurnStats;
   mode?:        TurnMode;
   attachments?: AttachmentInputWire[];
+  /** narrative_context 检索块标记(前端渲染成 NarrativeStatusBlock 气泡) */
+  kind?:        'narrative_context';
 }
 
 // ── Streaming slice helpers ────────────────────────────────────────────────────
@@ -142,6 +144,29 @@ export function assembleHistory(messages: MessageWire[], turns: TurnWire[]): Cha
   };
 
   for (const m of chronological) {
+    // narrative_context:检索结果独立成 item(不合并进 assistant group),
+    // 带 narrative_status slice(完整 text,展开用)。重开 session 从 DB 重建不丢。
+    if (m.kind === 'narrative_context') {
+      flush();
+      const b = m.blocks as { timelines?: Array<{ name: string; charCount: number; text: string }> };
+      const timelines = b?.timelines ?? [];
+      out.push({
+        role:      'user',
+        content:   '',
+        kind:      'narrative_context',
+        createdAt: m.createdAt,
+        messageId: m.id as MessageId,
+        turnId:    m.turnId !== null ? (m.turnId as TurnId) : undefined,
+        slices:    [{
+          type:              'narrative_status',
+          timelines:         timelines.map((t) => t.name),
+          completedTimelines: timelines.map((t) => t.name),
+          snippets:          Object.fromEntries(timelines.map((t) => [t.name, t.text])),
+        }],
+      });
+      continue;
+    }
+
     if (m.kind !== 'normal' && m.kind !== 'summary' && m.kind !== 'tool_results') continue;
 
     if (m.kind === 'tool_results') {

@@ -1,5 +1,5 @@
 import type { HookBus } from '@ema-agent/hook';
-import type { EmaStreamEvent, SessionId } from '@ema-agent/contracts';
+import type { EmaStreamEvent, NarrativeTimelineRecall, SessionId } from '@ema-agent/contracts';
 import type { LlmMessage } from '@ema-agent/contracts';
 import { NarrativeUnavailableError } from '@ema-agent/narrative-client';
 import type { ConversationDeps } from './types.js';
@@ -35,6 +35,7 @@ export function registerConversationHooks(bus: HookBus, deps: ConversationDeps):
           userInput,
           signal,
           emit: ctx.emit,
+          meta: ctx.meta,  // 写 narrativeRecall,engine trigger 后落盘用
         });
         if (!recalled) return { kind: 'continue' };
 
@@ -76,6 +77,8 @@ async function recallNarrativeContext(
     userInput: string;
     signal?: AbortSignal;
     emit?: (event: EmaStreamEvent) => void;
+    /** HookContext.shared bag -- 写 narrativeRecall 让 engine 落盘 */
+    meta?: Record<string, unknown>;
   },
 ): Promise<NarrativeRecallContext | null> {
   const routeResp = await deps.narrative.route(args.userInput, args.signal);
@@ -85,6 +88,7 @@ async function recallNarrativeContext(
   if (routeOrder.length === 0) return null;
 
   const recallParts: Array<[string, string]> = [];
+  const recallTimelines: NarrativeTimelineRecall[] = [];
   let fatalError: unknown;
 
   await Promise.allSettled(
@@ -99,7 +103,10 @@ async function recallNarrativeContext(
           charCount: text.length,
           snippet: text.length > 100 ? text.slice(0, 100) + '…' : text,
         });
-        if (text.trim().length > 0) recallParts.push([timeline, text]);
+        if (text.trim().length > 0) {
+          recallParts.push([timeline, text]);
+          recallTimelines.push({ name: timeline, charCount: text.length, text });
+        }
       } catch (err) {
         if (isAbortLike(err, args.signal) || err instanceof NarrativeUnavailableError) {
           fatalError ??= err;
@@ -116,6 +123,12 @@ async function recallNarrativeContext(
 
   if (fatalError !== undefined) throw fatalError;
   if (recallParts.length === 0) return null;
+
+  // 写 shared bag:engine 在 trigger 返回后读 meta.narrativeRecall 落盘成
+  // kind='narrative_context' message(既回灌 LLM 又前端显示),一份内容不拆。
+  if (args.meta && recallTimelines.length > 0) {
+    args.meta['narrativeRecall'] = { timelines: recallTimelines };
+  }
 
   recallParts.sort(([a], [b]) => routeOrder.indexOf(a) - routeOrder.indexOf(b));
 
