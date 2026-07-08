@@ -158,18 +158,18 @@ export class DocumentAssetRepo {
   }
 
   /** Mark every indexed asset NOT embedded with currentModel as stale — both
-   *  model-changed (ebd_model != x) AND never-embedded (ebd_model IS NULL, e.g.
-   *  ingested FTS-only before an embed model was chosen). reembed() then embeds
-   *  them with the current model. Returns the number of rows updated. */
+  /** 标不匹配 currentModel 的 asset 为 stale,同时清匹配的 stale=0。
+   *  切换模型后调:新模型不匹配的标 stale(需重嵌),切回原模型时匹配的清 stale
+   *  (之前只标不清,导致切回原模型按钮还在)。返回更新的行数。 */
   markStaleExcept(currentModel: string): number {
     const info = this.db
       .prepare(`UPDATE document_assets
-        SET ebd_stale = 1, updated_at = ?
-        WHERE status = 'indexed' AND (ebd_model IS NULL OR ebd_model != ?)`)
-      .run(Date.now(), currentModel);
+        SET ebd_stale = CASE WHEN (ebd_model IS NULL OR ebd_model != ?) THEN 1 ELSE 0 END,
+            updated_at = ?
+        WHERE status = 'indexed'`)
+      .run(currentModel, Date.now());
     return info.changes;
   }
-
   /** Assets whose embeddings are stale (model changed) — needs re-embedding. */
   listEbdStale(): ReturnType<typeof rowToAsset>[] {
     const rows = this.db

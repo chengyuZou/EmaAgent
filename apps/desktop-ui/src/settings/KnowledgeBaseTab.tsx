@@ -742,7 +742,7 @@ function LibraryManager(): JSX.Element {
 
 const NONE = '__none__';
 
-function KbModelSettings(): JSX.Element {
+function KbModelSettings({ onEmbedModelChanged }: { onEmbedModelChanged?: (model: string | undefined) => void }): JSX.Element {
   const [embedModels,  setEmbedModels]  = useState<AvailableBindingModel[]>([]);
   const [rerankModels, setRerankModels] = useState<AvailableBindingModel[]>([]);
   const [config, setConfig] = useState<KbModelsConfig>({});
@@ -767,8 +767,20 @@ function KbModelSettings(): JSX.Element {
   };
 
   async function save(next: KbModelsConfig): Promise<void> {
+    const prevEmbed = config.embed;
     setConfig(next);
-    try { await settingsApi.putKbModels(next); showToast('已保存', { variant: 'success' }); }
+    try {
+      await settingsApi.putKbModels(next);
+      // embed 模型变了 -> 自动 invalidate(标 stale),让不匹配 doc 立刻显 ⚠️ + 重嵌按钮。
+      // 之前要手动点"重建索引"才标 stale,导致切换后按钮时有时无。
+      if (next.embed?.model !== prevEmbed?.model) {
+        if (next.embed) {
+          try { await kbApi.invalidate(next.embed.model); } catch { /* 标 stale 失败不阻断保存 */ }
+        }
+        onEmbedModelChanged?.(next.embed?.model);
+      }
+      showToast('已保存', { variant: 'success' });
+    }
     catch { showToast('保存失败', { variant: 'danger' }); }
   }
 
@@ -872,7 +884,7 @@ export function KnowledgeBaseTab(): JSX.Element {
       <LibraryManager />
 
       {/* ── Retrieval models (embed + rerank) ── */}
-      <KbModelSettings />
+      <KbModelSettings onEmbedModelChanged={(m) => { setEmbedModel(m); void useKbStore.getState().loadDocuments(); }} />
 
       {/* ── Background processing queue ── */}
       <ProcessingQueue />
@@ -885,6 +897,14 @@ export function KnowledgeBaseTab(): JSX.Element {
             {documents.length > 0 && (
               <span className="ml-2 text-xs text-[var(--ema-text-tertiary)]">({documents.length})</span>
             )}
+            {documents.length > 0 && embedModel && (() => {
+              const need = documents.filter((d) => d.ebdStale || (!!d.ebdModel && d.ebdModel !== embedModel) || (!d.ebdModel)).length;
+              return need > 0 ? (
+                <span className="ml-2 text-xs font-mono" style={{ color: 'var(--ema-danger)' }}>
+                  · {need}/{documents.length} 需重嵌
+                </span>
+              ) : null;
+            })()}
           </h2>
           <Button
             variant="secondary"
