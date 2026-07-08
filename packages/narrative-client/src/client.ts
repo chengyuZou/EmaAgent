@@ -121,11 +121,20 @@ export class NarrativeClient {
    * Push LightRAG config (embed + llm) to the bridge.
    * Called by apps/core on startup and whenever relevant bindings change.
    * Returns false if the bridge is unreachable — safe to ignore.
+   *
+   * 注意:bridge 的 /internal/configure 返回 204 No Content(无 body),
+   * 不能走通用 post<T>()(它会 res.json() 解析空 body 抛 SyntaxError,
+   * 把成功的 204 误判为 unreachable)。这里单独处理:只看 res.ok。
    */
   async configure(payload: BridgeConfigurePayload): Promise<boolean> {
     try {
-      await this.post('/internal/configure', payload);
-      return true;
+      const res = await fetch(`${this.baseUrl}/internal/configure`, {
+        method:  'POST',
+        headers: this.headers,
+        body:    JSON.stringify(payload),
+        signal:  AbortSignal.timeout(this.timeoutMs),
+      });
+      return res.ok;
     } catch {
       return false;
     }

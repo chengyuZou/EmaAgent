@@ -22,14 +22,16 @@ import {
   type Live2DModelRuntimeConfig,
 } from '../model-config.js';
 
-// pixi-live2d-display 的 `autoUpdate: true` 需要一个 Ticker 驱动模型 update。
-// 0.5.0-beta 起推荐通过 `Live2DModelOptions.ticker` 传实例(显式,自包含),
-// 旧的 `PixiLive2DModel.registerTicker(PIXI.Ticker)` 全局副作用写法已 @deprecated。
-// 我们在 PixiLive2DModel.from() 里传 app.ticker —— 模型 update 挂到 app 的 ticker
-// 上,跟 render 同频跑,breath/blink/physics/motion 全动。不传则 autoUpdate 是空操作
-// → 模型卡在第 0 帧(加载成功但完全不动)。
+// pixi-live2d-display's `autoUpdate: true` is a NO-OP unless a Ticker class is
+// registered with the library first. Without this the model loads and renders
+// frame 0 but never ticks — no breath, no blink, no idle sway, no lip-sync
+// (looks "completely frozen"). Register once at module load, before any
+// PixiLive2DModel.from().
 //
-// (原 registerTicker 行已移除:全局注册 + 全局窗口 PIXI 赋值,迁移到 per-instance ticker。)
+// 注:`registerTicker` 在 0.5.0-beta 标 @deprecated,推荐 `Live2DModelOptions.ticker`
+// 传实例。但实测 `ticker: app.ticker` 在 0.5.0-beta 不驱动 update(模型卡第 0 帧),
+// 故回退到 registerTicker —— deprecated 但实际有效。新 API 待 0.5.0 正式版再验证迁移。
+PixiLive2DModel.registerTicker(PIXI.Ticker);
 
 // ── Live2DStage ─────────────────────────────────────────────────────────────
 //
@@ -127,9 +129,6 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
             motionPreload: undefined,
             autoInteract:  false,
             autoUpdate:    true,
-            // 传 app.ticker 驱动模型 update —— 替代已 @deprecated 的 registerTicker。
-            // 不传则 autoUpdate 是空操作,模型卡第 0 帧(CLAUDE.md §10 坑 1)。
-            ticker:        app.ticker,
           });
           if (cancelled || !app) {
             model.destroy({ children: true });

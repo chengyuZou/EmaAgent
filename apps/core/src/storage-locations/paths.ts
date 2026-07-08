@@ -1,6 +1,14 @@
 import fs   from 'node:fs';
 import os   from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+// 本文件位于 apps/core/src/storage-locations/ —— 回仓库根用于定位 builtin 资源
+// (apps/desktop/public/cards)。用 import.meta.dirname 而非 process.cwd(),因为
+// sidecar 经 pnpm 在 apps/core 跑 tsx watch,process.cwd() 是 apps/core 而非仓库根
+// (catalog 路径在 bindings.ts 用同款写法,见 bug 3.1c)。
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const REPO_ROOT = path.resolve(__dirname, '..', '..', '..', '..');
 
 // ── Profile (cross-data-dir) ─────────────────────────────────────────────────
 
@@ -76,7 +84,10 @@ export function cardsDir(): string {
  */
 export function cardDir(cardId: string, isBuiltin: boolean): string {
   if (isBuiltin) {
-    const base = process.env['EMA_BUILTIN_CARDS_DIR'] ?? path.join(process.cwd(), 'apps', 'desktop', 'public', 'cards');
+    // builtin 卡资源在 apps/desktop/public/cards/<cardId>/,从仓库根拼
+    // (process.cwd() 在 tsx watch 下是 apps/core,不是仓库根,会导致路径错误 →
+    // runtime-config 404 → Live2D 加载失败卡第 0 帧)
+    const base = process.env['EMA_BUILTIN_CARDS_DIR'] ?? path.join(REPO_ROOT, 'apps', 'desktop', 'public', 'cards');
     return path.join(base, cardId);
   }
   return path.join(cardsDir(), cardId);
