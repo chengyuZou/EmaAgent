@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useSessionStore } from '../stores/session-store.js';
 import { tauriBridge } from '../lib/tauri-bridge.js';
 import { showToast } from '../lib/toast.js';
-import { Input } from '@ema-agent/ui';
+import { Button, IconButton, Input } from '@ema-agent/ui';
 import type { SessionWire } from '@ema-agent/contracts';
 import type { SessionId } from '@ema-agent/contracts';
 
@@ -61,25 +61,28 @@ export function WorkspacePicker({
           onChange={(e) => setPath(e.target.value)}
           autoFocus
         />
-        <button
+        <IconButton
+          size="sm"
+          label="浏览…"
+          icon="i-mdi:folder-open-outline"
           className="px-2 rounded-md text-xs transition-colors text-[var(--ema-text-secondary)] bg-[var(--ema-surface-3)] hover:bg-[var(--ema-surface-2)]"
           onClick={() => void pick()}
           title="浏览…"
-        >
-          <span className="i-mdi:folder-open-outline text-sm" aria-hidden />
-        </button>
+        />
       </div>
 
       <div className="flex gap-2">
-        <button
+        <Button
+          variant="primary"
           className="px-3 py-1.5 rounded-lg text-xs transition-colors disabled:opacity-50 bg-[var(--ema-primary-muted)] text-[var(--ema-primary)]"
           disabled={saving}
           onClick={() => void save()}
-        >{saving ? '保存中…' : '保存'}</button>
-        <button
+        >{saving ? '保存中…' : '保存'}</Button>
+        <Button
+          variant="ghost"
           className="px-3 py-1.5 rounded-lg text-xs transition-colors text-[var(--ema-text-tertiary)] hover:text-[var(--ema-text-primary)]"
           onClick={onClose}
-        >取消</button>
+        >取消</Button>
       </div>
     </div>
   );

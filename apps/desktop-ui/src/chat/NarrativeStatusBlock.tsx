@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Spinner } from '@ema-agent/ui';
+import { Button, Spinner } from '@ema-agent/ui';
 import type { AssistantSlice } from '../stores/conversation-store.js';
 
 type NarrativeSlice = Extract<AssistantSlice, { type: 'narrative_status' }>;
@@ -28,7 +28,8 @@ export function NarrativeStatusBlock({ slice }: { slice: NarrativeSlice }): Reac
          style={{ borderWidth: 1 }}>
 
       {/* header:始终可点击折叠 */}
-      <button
+      <Button
+        variant="ghost"
         type="button"
         onClick={() => setOuterOpen((v) => !v)}
         className="flex items-center gap-1.5 font-medium transition-colors text-left w-full hover:opacity-80 text-[var(--ema-info)]"
@@ -42,7 +43,7 @@ export function NarrativeStatusBlock({ slice }: { slice: NarrativeSlice }): Reac
           {allDone ? `已检索 ${timelines.length} 条剧情线` : '检索剧情线…'}
         </span>
         <span className={`${outerOpen ? 'i-mdi:chevron-down' : 'i-mdi:chevron-right'} text-[var(--ema-text-tertiary)]`} aria-hidden />
-      </button>
+      </Button>
 
       {/* 外层折叠区:ema-collapsible 双向动画。内层 gap-2 与 header 间距一致 */}
       <div
@@ -82,7 +83,8 @@ function TimelineRow({
   return (
     <div className="flex flex-col gap-1.5">
       {/* 周目名行:多周目可点击子折叠,单周目不可点击 */}
-      <button
+      <Button
+        variant="ghost"
         type="button"
         disabled={!isMulti || !completed}
         onClick={isMulti && completed ? () => setInnerOpen((v) => !v) : undefined}
@@ -96,7 +98,7 @@ function TimelineRow({
         {isMulti && completed && (
           <span className={`ml-auto ${innerOpen ? 'i-mdi:chevron-down' : 'i-mdi:chevron-right'} text-[var(--ema-text-tertiary)]`} aria-hidden />
         )}
-      </button>
+      </Button>
 
       {/* 内层:单周目常驻显示(1fr);多周目子折叠按 innerOpen 切。均用 ema-collapsible 动画 */}
       <div
@@ -119,22 +121,24 @@ function TimelineRow({
               </p>
             </div>
             {hasFull && !fullText && (
-              <button
+              <Button
+                variant="ghost"
                 type="button"
                 onClick={() => setFullText(true)}
                 className="text-left hover:opacity-80 w-fit text-[var(--ema-info)]"
               >
                 …展开全文
-              </button>
+              </Button>
             )}
             {hasFull && fullText && (
-              <button
+              <Button
+                variant="ghost"
                 type="button"
                 onClick={() => setFullText(false)}
                 className="text-left hover:opacity-80 w-fit text-[var(--ema-info)]"
               >
                 收起全文
-              </button>
+              </Button>
             )}
           </div>
         ) : completed ? (

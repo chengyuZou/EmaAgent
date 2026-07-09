@@ -1,5 +1,5 @@
 import { useState, type JSX } from 'react';
-import { Badge } from '@ema-agent/ui';
+import { Badge, Button } from '@ema-agent/ui';
 import { useConversationStore } from '../stores/conversation-store.js';
 import type { MemoryRecallLayer, MemoryRecallLayerReport } from '@ema-agent/contracts';
 
@@ -53,7 +53,8 @@ export function ContextPanel(): JSX.Element | null {
   return (
     <div className="relative">
       {/* Trigger */}
-      <button
+      <Button
+        variant="ghost"
         className="flex items-center gap-1 text-xs transition-colors text-[var(--ema-text-tertiary)] hover:text-[var(--ema-text-primary)]"
         onClick={() => setOpen((v) => !v)}
         title="查看记忆召回"
@@ -63,7 +64,7 @@ export function ContextPanel(): JSX.Element | null {
         <Badge variant={triggerVariant}>
           {succeededItems}
         </Badge>
-      </button>
+      </Button>
 
       {/* Popover */}
       {open && (

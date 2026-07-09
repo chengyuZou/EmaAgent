@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef, useCallback, type JSX } from 'react';
+import { Button } from '@ema-agent/ui';
 import type { SessionId } from '@ema-agent/contracts';
 import { useConversationStore } from '../stores/conversation-store.js';
 import { useSessionStore } from '../stores/session-store.js';
@@ -176,7 +177,8 @@ export function ChatPanel(): JSX.Element {
               />
               {/* ⋮ Overflow */}
               <div className="relative" ref={overflowRef}>
-                <button
+                <Button
+                  variant="ghost"
                   className={`relative size-7 rounded-md flex items-center justify-center text-sm transition-colors
                     ${overflowOpen
                       ? 'text-[var(--ema-primary)] bg-[var(--ema-primary-muted)]'
@@ -190,7 +192,7 @@ export function ChatPanel(): JSX.Element {
                       {runningTaskCount}
                     </span>
                   )}
-                </button>
+                </Button>
 
                 {overflowOpen && (
                   <div className="ema-slide-up absolute top-full right-0 mt-1 z-50 w-44 rounded-xl border py-1 shadow-[var(--ema-shadow-3)] bg-[var(--ema-surface-4)] border-[var(--ema-border-hover)]">
@@ -268,7 +270,8 @@ function InspectorDockBtn({
   icon: string; label: string; active: boolean; badge?: number; onClick(): void;
 }): JSX.Element {
   return (
-    <button
+    <Button
+      variant="ghost"
       className={`relative size-7 rounded-md flex items-center justify-center text-sm transition-colors
         ${active
           ? 'text-[var(--ema-primary)] bg-[var(--ema-primary-muted)]'
@@ -282,7 +285,7 @@ function InspectorDockBtn({
           {badge}
         </span>
       )}
-    </button>
+    </Button>
   );
 }
 

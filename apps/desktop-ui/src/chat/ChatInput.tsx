@@ -521,10 +521,11 @@ function KbSelectorBody({
       <div className="flex items-center justify-between px-1">
         <p className="text-xs font-medium text-[var(--ema-text-secondary)]">知识库</p>
         {totalCount > 0 && (
-          <button
+          <Button
+            variant="ghost"
             className="text-xs transition-colors hover:text-[var(--ema-primary)] text-[var(--ema-text-tertiary)]"
             onClick={clearAll}
-          >清空全部</button>
+          >清空全部</Button>
         )}
       </div>
 

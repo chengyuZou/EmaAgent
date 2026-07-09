@@ -2,6 +2,7 @@
  * ModeSelector — dropdown for TurnMode.
  */
 import { useState, type JSX } from 'react';
+import { Button } from '@ema-agent/ui';
 import type { TurnMode } from '@ema-agent/contracts';
 
 interface ModeSelectorProps {
@@ -21,7 +22,8 @@ export function ModeSelector({ mode, onModeChange }: ModeSelectorProps): JSX.Ele
 
   return (
     <div className="relative">
-      <button
+      <Button
+        variant="ghost"
         className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs
                    text-[var(--ema-text-tertiary)] hover:text-[var(--ema-text-primary)]
                    hover:bg-[var(--ema-surface-2)]
@@ -31,7 +33,7 @@ export function ModeSelector({ mode, onModeChange }: ModeSelectorProps): JSX.Ele
         <span className={current.icon + ' text-sm'} aria-hidden />
         <span>{current.label}</span>
         <span className="i-mdi:chevron-up text-[10px]" aria-hidden />
-      </button>
+      </Button>
 
       {open && (
         <>
@@ -42,8 +44,9 @@ export function ModeSelector({ mode, onModeChange }: ModeSelectorProps): JSX.Ele
                        rounded-xl py-1 shadow-[var(--ema-shadow-3)] min-w-32"
           >
             {MODES.map((m) => (
-              <button
+              <Button
                 key={m.id}
+                variant="ghost"
                 className={
                   'w-full flex items-center text-left px-3 py-1.5 text-sm ' +
                   `transition-colors duration-[var(--ema-duration-base)] ` +
@@ -61,7 +64,7 @@ export function ModeSelector({ mode, onModeChange }: ModeSelectorProps): JSX.Ele
                 {mode === m.id && (
                   <span className="i-mdi:check text-[var(--ema-primary)] text-xs" aria-hidden />
                 )}
-              </button>
+              </Button>
             ))}
           </div>
         </>
