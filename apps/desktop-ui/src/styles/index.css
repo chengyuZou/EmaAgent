@@ -1,0 +1,15 @@
+/* ── EmaAgent global styles entry ──────────────────────────────────────────
+ * 按职责分文件,聚合 import。每个文件 <200 行,职责单一。
+ * tokens:    CSS 变量(:root dark + [data-theme="light"] 覆盖)
+ * base:      reset + scrollbar + selection + placeholder
+ * keyframes: 25 个 @keyframes(UnoCSS animate-* 别名引用)
+ * animations: .ema-* 入场/退场/stagger/骨架/微光/状态 工具类
+ * transitions: 宽度/文本/折叠过渡 + press 按压
+ * components: 玻璃/运行条/遮罩/拖拽手柄/Radix data-state/代码字体
+ */
+@import './tokens.css';
+@import './base.css';
+@import './keyframes.css';
+@import './animations.css';
+@import './transitions.css';
+@import './components.css';

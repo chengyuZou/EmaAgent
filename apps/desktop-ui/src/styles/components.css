@@ -1,0 +1,87 @@
+/* ── Component-style utility classes ────────────────────────────────────────
+ * 玻璃表面/运行条/遮罩/拖拽手柄/Radix data-state 动画/代码字体。
+ * 这些用了 CSS 变量依赖/伪元素/data-state,UnoCSS 表达不了。
+ */
+
+/* ── Glassmorphism surface presets ──────────────────────────────────────────*/
+.ema-glass-weak   { backdrop-filter: var(--ema-glass-weak);   }
+.ema-glass-base   { backdrop-filter: var(--ema-glass-base);   }
+.ema-glass-strong { backdrop-filter: var(--ema-glass-strong); }
+
+/* ── Radix data-state animations ────────────────────────────────────────────
+ *  Marker class 加到 Radix content/overlay(Dialog/Popover/Select/DropdownMenu/
+ *  Tooltip/Toast/Tabs)。data-state 驱动进出场,全用 ema-* keyframes。
+ */
+.ema-anim-scale[data-state="open"]   { animation: ema-scale-in var(--ema-duration-base) var(--ema-ease) both; }
+.ema-anim-scale[data-state="closed"] { animation: ema-fade-out var(--ema-duration-fast) var(--ema-ease) both; }
+
+.ema-anim-dialog[data-state="open"]   { animation: ema-dialog-in  var(--ema-duration-base) var(--ema-ease) both; }
+.ema-anim-dialog[data-state="closed"] { animation: ema-dialog-out var(--ema-duration-fast) var(--ema-ease) both; }
+
+.ema-anim-fade[data-state="open"],
+.ema-anim-fade[data-state="delayed-open"] { animation: ema-fade-in var(--ema-duration-base) var(--ema-ease) both; }
+.ema-anim-fade[data-state="closed"]       { animation: ema-fade-out var(--ema-duration-fast) var(--ema-ease) both; }
+
+.ema-anim-toast[data-state="open"]   { animation: ema-toast-in var(--ema-duration-slow) var(--ema-ease) both; }
+.ema-anim-toast[data-state="closed"],
+.ema-anim-toast[data-swipe="end"]    { animation: ema-slide-out-right var(--ema-duration-base) var(--ema-ease) both; }
+
+.ema-anim-tab[data-state="active"]   { animation: ema-fade-in var(--ema-duration-base) var(--ema-ease) both; }
+
+/* ── Status left-border pulse(running task cards)──────────────────────────*/
+.ema-running-bar::before {
+  content:        '';
+  position:       absolute;
+  left:           0; top: 0; bottom: 0;
+  width:          3px;
+  border-radius:  var(--ema-radius-pill);
+  background:     var(--ema-primary);
+  animation:      ema-pulse-bar 1.6s ease-in-out infinite;
+}
+
+/* ── Mask overlay(dialogs / drawers)──────────────────────────────────────*/
+.ema-mask {
+  position:       fixed;
+  inset:          0;
+  background:     var(--ema-mask);
+  backdrop-filter: blur(2px);
+  z-index:        200;
+  animation:      ema-fade-in var(--ema-duration-base) var(--ema-ease);
+}
+
+/* ── Inspector 拖拽手柄(左边缘 col-resize)──────────────────────────────
+ *  hover 变粗变色,拖拽中全局 cursor: col-resize(加 .ema-resizing 到 body)。
+ */
+.ema-resize-handle {
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 4px;
+  cursor: col-resize;
+  z-index: 10;
+  transition: background var(--ema-duration-fast) var(--ema-ease);
+  background: transparent;
+}
+.ema-resize-handle:hover,
+.ema-resizing .ema-resize-handle {
+  background: var(--ema-primary);
+  width: 4px;
+}
+/* 拖拽中:全局 col-resize + 禁止文本选中(防拖拽选中文本)*/
+.ema-resizing,
+.ema-resizing * {
+  cursor: col-resize !important;
+  user-select: none !important;
+}
+
+/* ── 代码高亮字体(FilePreview 代码 + 聊天代码块统一柔和)──────────────────
+ *  直接作用 .hljs(code 元素),跟 github-dark.css 同 specificity,后定义赢。
+ *  Cascadia Code 优先(柔和+连字),字重 400 + 行高 1.7 + 连字 + 抗锯齿。
+ */
+.hljs, .markdown-content pre, .markdown-content code, .ema-font-mono {
+  font-family: 'Cascadia Code', 'JetBrains Mono', 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace !important;
+  font-weight: 400;
+  line-height: 1.7;
+  font-feature-settings: 'liga' 1, 'calt' 1;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}

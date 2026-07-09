@@ -1,5 +1,5 @@
 // Design tokens + keyframe library — must load before any component renders.
-import './style.css';
+import './styles/index.css';
 
 /**
  * @ema-agent/desktop-ui — L3 business layer

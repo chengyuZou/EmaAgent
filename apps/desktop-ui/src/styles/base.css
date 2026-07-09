@@ -1,0 +1,64 @@
+/* ── Base reset + element defaults ──────────────────────────────────────────*/
+
+html, body {
+  overflow: hidden;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Microsoft YaHei', sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+/* 内容默认可选(chat/settings 文本要能复制)。UI chrome 用 .ema-no-select opt-out */
+button, [role="button"], [data-tauri-drag-region], .ema-no-select, .ema-no-select * {
+  user-select: none;
+  -webkit-user-select: none;
+}
+.selectable, .selectable * {
+  user-select: text !important;
+  -webkit-user-select: text !important;
+}
+
+:focus-visible {
+  outline: none !important;
+}
+
+/* ── Scrollbar ──────────────────────────────────────────────────────────────*/
+::-webkit-scrollbar {
+  width:  6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background:    transparent;
+  border-radius: var(--ema-radius-pill);
+}
+::-webkit-scrollbar-thumb {
+  background:    var(--ema-scrollbar-thumb, rgba(255, 255, 255, 0.15));
+  border-radius: var(--ema-radius-pill);
+  transition:    background var(--ema-duration-base) var(--ema-ease);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--ema-scrollbar-thumb-hover, rgba(255, 255, 255, 0.28));
+}
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* ── Selection ──────────────────────────────────────────────────────────────*/
+::selection {
+  background: oklch(0.72 0.18 var(--chromatic-hue, 200) / 0.35) !important;
+  color: inherit !important;
+}
+
+/* ── Placeholder ────────────────────────────────────────────────────────────*/
+::placeholder {
+  color:   var(--ema-text-tertiary);
+  opacity: 1;
+}

@@ -1,0 +1,111 @@
+/* ── Animation utility classes ─────────────────────────────────────────────
+ * 引用 keyframes.css 的 @keyframes。单元素入场/退场/stagger/骨架/微光/状态。
+ * 补 UnoCSS 表达不了的(animation-delay: calc(var(--stagger-i)*40ms) 等)。
+ */
+
+/* ── 入场 ───────────────────────────────────────────────────────────────────*/
+.ema-fade-in {
+  animation: ema-fade-in var(--ema-duration-base) var(--ema-ease) both;
+}
+.ema-slide-up {
+  animation: ema-slide-up    var(--ema-duration-slow)  var(--ema-ease) both;
+}
+.ema-slide-down {
+  animation: ema-slide-down  var(--ema-duration-slow)  var(--ema-ease) both;
+}
+.ema-slide-right {
+  animation: ema-slide-right var(--ema-duration-panel) var(--ema-ease) both;
+}
+.ema-stagger-in {
+  animation: ema-card-in var(--ema-duration-slow) var(--ema-ease) both;
+  animation-delay: calc(var(--stagger-i, 0) * 40ms);
+}
+.ema-chip-in {
+  animation: ema-chip-in var(--ema-duration-fast) var(--ema-ease) both;
+}
+.ema-bubble-in {
+  animation: ema-bubble-in var(--ema-duration-base) var(--ema-ease) both;
+}
+.ema-toast-in {
+  animation: ema-toast-in var(--ema-duration-slow) var(--ema-ease) both;
+}
+.ema-speech-in {
+  animation: ema-speech-in 0.26s var(--ema-ease) both;
+}
+.ema-panel-in {
+  animation: ema-scale-in var(--ema-duration-fast) var(--ema-ease) both;
+}
+.ema-pop-in {
+  animation: ema-pop-in 0.22s var(--ema-ease) both;
+}
+.ema-slide-in-left {
+  animation: ema-slide-in-left var(--ema-duration-slow) var(--ema-ease) both;
+}
+.ema-slide-in-right {
+  animation: ema-slide-in-right var(--ema-duration-slow) var(--ema-ease) both;
+}
+
+/* ── 退场 ───────────────────────────────────────────────────────────────────*/
+.ema-fade-out {
+  animation: ema-fade-out var(--ema-duration-base) var(--ema-ease) both;
+}
+.ema-slide-out-right {
+  animation: ema-slide-out-right var(--ema-duration-base) var(--ema-ease) both;
+}
+.ema-slide-out-left {
+  animation: ema-slide-out-left var(--ema-duration-base) var(--ema-ease) both;
+}
+
+/* ── 状态 ───────────────────────────────────────────────────────────────────*/
+.ema-spin {
+  animation: ema-spin 0.8s linear infinite;
+}
+.ema-check-pop {
+  animation: ema-check-pop 0.4s var(--ema-ease) both;
+}
+.ema-shake {
+  animation: ema-shake 0.4s var(--ema-ease) both;
+}
+
+/* ── 骨架/微光 ──────────────────────────────────────────────────────────────*/
+.ema-skeleton-pulse {
+  background: var(--ema-surface-2);
+  animation: ema-skeleton-pulse 2s ease-in-out infinite;
+}
+.ema-skeleton-wave {
+  position: relative;
+  overflow: hidden;
+  background: var(--ema-surface-2);
+}
+.ema-skeleton-wave::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.06) 40%,
+    rgba(255, 255, 255, 0.10) 50%,
+    rgba(255, 255, 255, 0.06) 60%,
+    transparent 100%
+  );
+  animation: ema-skeleton-wave 2s ease-in-out infinite;
+}
+.ema-shimmer {
+  position: relative;
+  overflow: hidden;
+}
+.ema-shimmer::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    105deg,
+    transparent 30%,
+    rgba(255, 255, 255, 0.08) 45%,
+    rgba(255, 255, 255, 0.14) 50%,
+    rgba(255, 255, 255, 0.08) 55%,
+    transparent 70%
+  );
+  animation: ema-shimmer 2.5s ease-in-out infinite;
+}

@@ -1,0 +1,31 @@
+/* ── Transition utility classes ─────────────────────────────────────────────
+ * 宽度/高度/文本展开/折叠过渡 + collapsible grid + press 按压。
+ */
+
+/* 宽度过渡(Inspector 面板/sidebar 展开/收起)。配 w-0 ↔ w-72/w-[560px] + overflow-hidden */
+.ema-transition-width {
+  transition: width var(--ema-duration-panel) var(--ema-ease);
+}
+
+/* 文本展开/收起(narrative 检索块"展开全文/收起全文")。配 max-h-[preview] ↔ max-h-[full]
+   + overflow-hidden。DOM 常驻,双向:展开高度增长+淡入,收起收缩+淡出。*/
+.ema-transition-text-expand {
+  transition: max-height var(--ema-duration-base) var(--ema-ease),
+              opacity    var(--ema-duration-base) var(--ema-ease);
+}
+
+/* 平滑折叠:grid-template-rows 0fr ↔ 1fr。配 opacity 双向。内层 > * overflow:hidden */
+.ema-collapsible {
+  display:    grid;
+  transition: grid-template-rows var(--ema-duration-base) var(--ema-ease),
+              opacity             var(--ema-duration-base) var(--ema-ease);
+}
+.ema-collapsible > * { overflow: hidden; }
+
+/* 按压:active scale-down,配合现有样式用 */
+.ema-press {
+  transition: transform var(--ema-duration-fast) var(--ema-ease);
+}
+.ema-press:active {
+  transform: scale(0.97);
+}

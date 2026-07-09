@@ -1,0 +1,116 @@
+/* ── Keyframe library ──────────────────────────────────────────────────────
+ * 25 个 @keyframes,按 入场/状态/骨架/退场 分组。UnoCSS animate-* 别名引用这些。
+ */
+
+/* ── 入场 ───────────────────────────────────────────────────────────────────*/
+@keyframes ema-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes ema-slide-up {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes ema-slide-down {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes ema-scale-in {
+  from { opacity: 0; transform: scale(0.94); }
+  to   { opacity: 1; transform: scale(1); }
+}
+@keyframes ema-slide-right {
+  from { opacity: 0; transform: translateX(-12px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+@keyframes ema-card-in {
+  from { opacity: 0; transform: translateY(8px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes ema-chip-in {
+  from { opacity: 0; transform: scale(0.80) translateY(4px); }
+  to   { opacity: 1; transform: scale(1)    translateY(0);   }
+}
+@keyframes ema-bubble-in {
+  from { opacity: 0; transform: translateY(10px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0)    scale(1);    }
+}
+@keyframes ema-toast-in {
+  from { opacity: 0; transform: translateX(110%); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+@keyframes ema-speech-in {
+  from { opacity: 0; transform: scale(0.88) translateY(-6px); }
+  to   { opacity: 1; transform: scale(1)    translateY(0); }
+}
+@keyframes ema-pop-in {
+  from { opacity: 0; transform: scale(0.6); }
+  to   { opacity: 1; transform: scale(1); }
+}
+@keyframes ema-slide-in-left {
+  from { opacity: 0; transform: translateX(-12px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+@keyframes ema-slide-in-right {
+  from { opacity: 0; transform: translateX(12px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+/* 居中 dialog:transform 必须保留 translate(-50%,-50%),否则 scale 覆盖 Radix 居中 */
+@keyframes ema-dialog-in {
+  from { opacity: 0; transform: translate(-50%, -50%) scale(0.95); }
+  to   { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+@keyframes ema-dialog-out {
+  from { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  to   { opacity: 0; transform: translate(-50%, -50%) scale(0.97); }
+}
+
+/* ── 状态(循环)──────────────────────────────────────────────────────────*/
+@keyframes ema-pulse-bar {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.45; }
+}
+@keyframes ema-spin {
+  to { transform: rotate(360deg); }
+}
+@keyframes ema-check-pop {
+  0%   { transform: scale(0);    opacity: 0; }
+  60%  { transform: scale(1.25); opacity: 1; }
+  100% { transform: scale(1);    opacity: 1; }
+}
+@keyframes ema-shake {
+  0%, 100% { transform: translateX(0); }
+  20%       { transform: translateX(-4px); }
+  40%       { transform: translateX(4px); }
+  60%       { transform: translateX(-3px); }
+  80%       { transform: translateX(3px); }
+}
+
+/* ── 骨架/微光 ──────────────────────────────────────────────────────────────*/
+@keyframes ema-skeleton-pulse {
+  0%   { opacity: 0.4; }
+  50%  { opacity: 0.8; }
+  100% { opacity: 0.4; }
+}
+@keyframes ema-skeleton-wave {
+  from { transform: translateX(-100%); }
+  to   { transform: translateX(100%); }
+}
+@keyframes ema-shimmer {
+  from { transform: translateX(-100%); }
+  to   { transform: translateX(200%); }
+}
+
+/* ── 退场 ───────────────────────────────────────────────────────────────────*/
+@keyframes ema-fade-out {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
+@keyframes ema-slide-out-right {
+  from { opacity: 1; transform: translateX(0); }
+  to   { opacity: 0; transform: translateX(100%); }
+}
+@keyframes ema-slide-out-left {
+  from { opacity: 1; transform: translateX(0); }
+  to   { opacity: 0; transform: translateX(-100%); }
+}
