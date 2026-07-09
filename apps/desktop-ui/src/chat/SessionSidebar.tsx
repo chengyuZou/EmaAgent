@@ -90,9 +90,7 @@ export function SessionSidebar(): JSX.Element {
       {collapsed ? (
         <div className="flex flex-col items-center py-2 gap-2">
           <button
-            className="w-7 h-7 flex items-center justify-center rounded-md transition-colors text-[var(--ema-text-tertiary)]"
-            onMouseEnter={(e) => { const t = e.currentTarget as HTMLElement; t.style.color = 'var(--ema-text-primary)'; t.style.background = 'var(--ema-surface-2)'; }}
-            onMouseLeave={(e) => { const t = e.currentTarget as HTMLElement; t.style.color = 'var(--ema-text-tertiary)'; t.style.background = ''; }}
+            className="w-7 h-7 flex items-center justify-center rounded-md transition-colors text-[var(--ema-text-tertiary)] hover:text-[var(--ema-text-primary)] hover:bg-[var(--ema-surface-2)]"
             onClick={() => setCollapsed(false)}
             title="展开侧边栏"
           >
@@ -184,9 +182,7 @@ function NewConversationCommand({
         <span className="truncate">新对话</span>
       </button>
       <button
-        className="w-6 h-6 shrink-0 flex items-center justify-center rounded transition-colors text-[var(--ema-text-tertiary)]"
-        onMouseEnter={(e) => { const t = e.currentTarget as HTMLElement; t.style.color = 'var(--ema-text-primary)'; t.style.background = 'var(--ema-surface-2)'; }}
-        onMouseLeave={(e) => { const t = e.currentTarget as HTMLElement; t.style.color = 'var(--ema-text-tertiary)'; t.style.background = ''; }}
+        className="w-6 h-6 shrink-0 flex items-center justify-center rounded transition-colors text-[var(--ema-text-tertiary)] hover:text-[var(--ema-text-primary)] hover:bg-[var(--ema-surface-2)]"
         onClick={onCollapse}
         title="折叠侧边栏"
         aria-label="折叠侧边栏"
@@ -528,11 +524,9 @@ function SidebarRow({ session, isActive, streaming, pendingCounts, nested = fals
         </span>
         <DropdownMenu
           trigger={
-            <button className={`absolute right-0 top-1/2 -translate-y-1/2 w-5 h-5 flex items-center justify-center rounded transition-[opacity,color,background-color] text-[var(--ema-text-tertiary)] ${
+            <button className={`absolute right-0 top-1/2 -translate-y-1/2 w-5 h-5 flex items-center justify-center rounded transition-[opacity,color,background-color] text-[var(--ema-text-tertiary)] hover:text-[var(--ema-text-primary)] hover:bg-[var(--ema-surface-3)] ${
               isActive ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
-            }`}
-              onMouseEnter={(e) => { const t = e.currentTarget as HTMLElement; t.style.color = 'var(--ema-text-primary)'; t.style.background = 'var(--ema-surface-3)'; }}
-              onMouseLeave={(e) => { const t = e.currentTarget as HTMLElement; t.style.color = 'var(--ema-text-tertiary)'; t.style.background = ''; }}>
+            }`}>
               <span className="i-mdi:dots-horizontal text-xs" aria-hidden />
             </button>
           }
@@ -690,9 +684,7 @@ function SearchResultRow({
 
   return (
     <button
-      className="w-full flex items-start gap-3 rounded-lg px-3 py-2 text-left transition-colors group text-[var(--ema-text-primary)]"
-      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--ema-surface-2)'; }}
-      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = ''; }}
+      className="w-full flex items-start gap-3 rounded-lg px-3 py-2 text-left transition-colors group text-[var(--ema-text-primary)] hover:bg-[var(--ema-surface-2)]"
       onClick={onSelect}
     >
       <span className={`mt-1 w-1.5 h-1.5 rounded-full shrink-0 ${

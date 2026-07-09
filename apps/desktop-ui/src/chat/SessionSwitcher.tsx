@@ -37,9 +37,7 @@ export function SessionSwitcher(): JSX.Element {
   return (
     <div className="relative shrink-0 border-b border-[var(--ema-border)]">
       <button
-        className="w-full flex items-center justify-between px-4 py-2.5 transition-colors text-[var(--ema-text-secondary)]"
-        onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--ema-surface-2)'; }}
-        onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = ''; }}
+        className="w-full flex items-center justify-between px-4 py-2.5 transition-colors text-[var(--ema-text-secondary)] hover:bg-[var(--ema-surface-2)]"
         onClick={() => setOpen(!open)}
       >
         <span className="text-sm font-medium truncate">{activeSession?.title ?? '新对话'}</span>
@@ -82,9 +80,7 @@ export function SessionSwitcher(): JSX.Element {
               )}
 
               <button
-                className="ema-stagger-in w-full px-3 py-2 mt-1 rounded-lg text-sm transition-colors text-left text-[var(--ema-primary)]"
-                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--ema-primary-muted)'; }}
-                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = ''; }}
+                className="ema-stagger-in w-full px-3 py-2 mt-1 rounded-lg text-sm transition-colors text-left text-[var(--ema-primary)] hover:bg-[var(--ema-primary-muted)]"
                 onClick={async () => {
                   const newId = await useSessionStore.getState().createSession();
                   if (newId) void useConversationStore.getState().viewSession(newId);
@@ -115,9 +111,7 @@ function Section({
   return (
     <div className="mb-1">
       <button
-        className="flex items-center gap-1 px-2 py-1 text-xs w-full text-left transition-colors text-[var(--ema-text-tertiary)]"
-        onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--ema-text-primary)'; }}
-        onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--ema-text-tertiary)'; }}
+        className="flex items-center gap-1 px-2 py-1 text-xs w-full text-left transition-colors text-[var(--ema-text-tertiary)] hover:text-[var(--ema-text-primary)]"
         onClick={() => setCollapsed(!collapsed)}
       >
         <span className={`i-mdi:chevron-right text-sm transition-transform ${collapsed ? '' : 'rotate-90'}`} aria-hidden />
