@@ -18,7 +18,7 @@ export interface MenuStatusItemProps extends Omit<ButtonHTMLAttributes<HTMLButto
   description?: string;
   /** UnoCSS icon class, e.g. "i-mdi:robot-outline". */
   icon?:        string;
-  /** Custom icon colour class appended to the icon (e.g. "text-emerald-400"). */
+  /** Custom icon colour class appended to the icon (e.g. "text-[var(--ema-success)]"). */
   iconColor?:   string;
   /** Filled green dot when true, hollow ring when false. */
   configured?:  boolean;

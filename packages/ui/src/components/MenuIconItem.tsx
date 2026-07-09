@@ -7,7 +7,7 @@ import { cn } from '../utils/cn.js';
 // title + description on the left, oversized half-faded icon bleeding off
 // the right edge. Hover: primary border, primary text, icon scales up and
 // tints, a gradient light-sweep fades in from the left over a dotted
-// texture. Dark-theme only (the app is fixed dark).
+// texture. Token-driven - works in both light and dark themes.
 
 export interface MenuIconItemProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'title'> {
   title:       string;

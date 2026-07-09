@@ -6,7 +6,7 @@ import { cn } from '../utils/cn.js';
 //   - pulse: opacity-only breathing (cheap, default)
 //   - wave:  ::after gradient sweep (richer, slightly more expensive)
 //
-// Animation keyframes live in apps/desktop-ui/src/style.css so they are
+// Animation keyframes live in apps/desktop-ui/src/styles/ so they are
 // tree-shakeable and consistent with the rest of the design system.
 //
 // Sized via `width` / `height` props (CSS strings) or className overrides.
