@@ -400,7 +400,7 @@ export function BranchPanel(): JSX.Element {
                     height:    NODE_R * 2,
                     background: onLineage ? color : 'var(--ema-surface-2)',
                     border:     `2px solid ${onLineage ? color : 'var(--ema-border)'}`,
-                    boxShadow:  onLineage ? `0 0 12px ${color}55` : 'none',
+                    boxShadow:  onLineage ? `0 0 12px color-mix(in srgb, ${color} 33%, transparent)` : 'none',
                     color:      onLineage ? 'var(--ema-text-primary)' : 'var(--ema-text-tertiary)',
                   }}
                 >

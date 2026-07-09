@@ -24,6 +24,14 @@ const RADIUS_STEPS: SliderStep<number>[] = [
   { value: 2,   label: '极圆' },
 ];
 
+/** 圆角预览块静态映射--UnoCSS 扫不到 `rounded-${size}` 动态拼接，必须完整字面量。 */
+const RADIUS_PREVIEW_CLASS: Record<'sm' | 'md' | 'lg' | 'xl', string> = {
+  sm: 'rounded-sm',
+  md: 'rounded-md',
+  lg: 'rounded-lg',
+  xl: 'rounded-xl',
+};
+
 // ── Hue spectrum slider ───────────────────────────────────────────────────────
 //
 // Native <input type="range"> with a gradient track showing the full hue wheel.
@@ -138,7 +146,7 @@ export function AppearanceTab(): JSX.Element {
           {(['sm', 'md', 'lg', 'xl'] as const).map((size) => (
             <div
               key={size}
-              className={`w-12 h-12 rounded-${size}`}
+              className={`w-12 h-12 ${RADIUS_PREVIEW_CLASS[size]}`}
               style={{ background: 'var(--ema-primary-muted)', borderColor: 'var(--ema-primary)', borderWidth: 1 }}
             />
           ))}

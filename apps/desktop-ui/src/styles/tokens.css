@@ -75,6 +75,14 @@
   --ema-violet-muted:   oklch(0.72 0.16 285 / 0.20);
   --ema-violet-text:    oklch(0.98 0.01 285);
 
+  /* Syntax highlight(代码高亮,亮暗分别定义,ToolCallBlock/FilePreview 用)*/
+  --ema-syntax-key:     oklch(0.78 0.13 250);
+  --ema-syntax-string:  oklch(0.78 0.16 145);
+  --ema-syntax-number:  oklch(0.78 0.15 55);
+  --ema-syntax-boolean: oklch(0.78 0.16 285);
+  --ema-syntax-comment: oklch(0.55 0.01 280);
+  --ema-syntax-prompt:  oklch(0.78 0.16 75);
+
   /* Info - 蓝 */
   --ema-info:           oklch(0.68 0.13 240);
   --ema-info-hover:     oklch(0.72 0.11 240);
@@ -153,6 +161,12 @@
   --ema-info-muted:    oklch(0.55 0.11 240 / 0.18);
   --ema-violet-muted:  oklch(0.65 0.16 285 / 0.18);
   --ema-violet-text:   oklch(0.28 0.14 285);
+  --ema-syntax-key:     oklch(0.45 0.18 255);
+  --ema-syntax-string:  oklch(0.40 0.15 145);
+  --ema-syntax-number:  oklch(0.50 0.16 55);
+  --ema-syntax-boolean: oklch(0.45 0.18 285);
+  --ema-syntax-comment: oklch(0.50 0.01 280);
+  --ema-syntax-prompt:  oklch(0.45 0.16 75);
   --ema-primary-muted: oklch(0.65 0.16 var(--chromatic-hue, 200) / 0.18);
 
   /* Mask: 浅遮罩 */

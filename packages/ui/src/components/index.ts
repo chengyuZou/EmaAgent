@@ -6,6 +6,7 @@ export { IconButton } from './IconButton.js';
 export { Input }      from './Input.js';
 export { Textarea }   from './Textarea.js';
 export { Card }       from './Card.js';
+export { CardButton } from './CardButton.js';
 
 // Feedback
 export { Skeleton } from './Skeleton.js';
@@ -22,7 +23,8 @@ export { MenuIconItem }   from './MenuIconItem.js';
 export { MenuStatusItem } from './MenuStatusItem.js';
 
 // Layout / overlays
-export { Dialog }       from './Dialog.js';
+export { Dialog }        from './Dialog.js';
+export { ConfirmDialog } from './ConfirmDialog.js';
 export { Popover }      from './Popover.js';
 export { Tooltip, TooltipProvider } from './Tooltip.js';
 export { DropdownMenu } from './DropdownMenu.js';
@@ -35,7 +37,8 @@ export { ScrollArea }   from './ScrollArea.js';
 export { Field }    from './Field.js';
 export { Switch }   from './Switch.js';
 export { Slider }   from './Slider.js';
-export { Checkbox } from './Checkbox.js';
+export { Checkbox }  from './Checkbox.js';
+export { FilePicker } from './FilePicker.js';
 
 // Notifications
 export { Toaster, toast } from './Toast.js';
@@ -46,6 +49,7 @@ export type { IconButtonProps, IconButtonVariant, IconButtonSize } from './IconB
 export type { InputProps, InputSize } from './Input.js';
 export type { TextareaProps, TextareaHandle } from './Textarea.js';
 export type { CardProps, CardVariant, CardPadding } from './Card.js';
+export type { CardButtonProps, CardButtonPadding } from './CardButton.js';
 export type { SkeletonProps, SkeletonAnimation } from './Skeleton.js';
 export type { SpinnerProps, SpinnerSize } from './Spinner.js';
 export type { CalloutProps, CalloutVariant } from './Callout.js';
@@ -55,6 +59,7 @@ export type { DividerProps } from './Divider.js';
 export type { MenuIconItemProps } from './MenuIconItem.js';
 export type { MenuStatusItemProps } from './MenuStatusItem.js';
 export type { DialogProps } from './Dialog.js';
+export type { ConfirmDialogProps } from './ConfirmDialog.js';
 export type { PopoverProps } from './Popover.js';
 export type { TooltipProps } from './Tooltip.js';
 export type { DropdownMenuProps, MenuItem } from './DropdownMenu.js';
@@ -66,4 +71,5 @@ export type { FieldProps } from './Field.js';
 export type { SwitchProps } from './Switch.js';
 export type { SliderProps, SliderStep } from './Slider.js';
 export type { CheckboxProps } from './Checkbox.js';
+export type { FilePickerProps } from './FilePicker.js';
 export type { ToasterProps, ToastItem, ToastVariant } from './Toast.js';

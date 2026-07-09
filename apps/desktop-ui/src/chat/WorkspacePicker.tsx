@@ -78,9 +78,7 @@ export function WorkspacePicker({
           onClick={() => void save()}
         >{saving ? '保存中…' : '保存'}</button>
         <button
-          className="px-3 py-1.5 rounded-lg text-xs transition-colors"
-          style={{ color: 'var(--ema-text-tertiary)' }}
-          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--ema-text-primary)'; }}
+          className="px-3 py-1.5 rounded-lg text-xs transition-colors text-[var(--ema-text-tertiary)] hover:text-[var(--ema-text-primary)]"
           onClick={onClose}
         >取消</button>
       </div>

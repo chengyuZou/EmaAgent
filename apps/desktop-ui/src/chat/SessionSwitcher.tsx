@@ -237,9 +237,7 @@ function SessionRow({ session, isActive, onSelect }: {
       <div className="relative shrink-0" onClick={(e) => e.stopPropagation()}>
         <DropdownMenu
           trigger={
-            <button className="opacity-0 group-hover:opacity-100 px-1 rounded transition-colors"
-                    style={{ color: 'var(--ema-text-tertiary)' }}
-                    onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--ema-text-primary)'; }}>
+            <button className="opacity-0 group-hover:opacity-100 px-1 rounded transition-colors text-[var(--ema-text-tertiary)] hover:text-[var(--ema-text-primary)]">
               <span className="i-mdi:dots-horizontal text-base" aria-hidden />
             </button>
           }
