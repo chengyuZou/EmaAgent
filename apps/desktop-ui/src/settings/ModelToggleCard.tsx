@@ -34,7 +34,7 @@ export function ModelToggleCard({ id, badge, enabled, onToggle, action }: ModelT
     >
       {enabled && (
         <span
-          className="absolute top-1.5 right-1.5 size-2 rounded-full bg-[var(--ema-success)]"
+          className="absolute top-1.5 right-1.5 size-2 rounded-full bg-[var(--ema-success)] ema-scale-in"
           aria-hidden
         />
       )}

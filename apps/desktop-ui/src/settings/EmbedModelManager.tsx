@@ -1,5 +1,5 @@
 ﻿import { useState, useEffect, useCallback, type JSX } from 'react';
-import { Button, Callout, Input, Spinner } from '@ema-agent/ui';
+import { Button, Callout, ConfirmDialog, Input, Spinner } from '@ema-agent/ui';
 import { providersApi, type AvailableEmbedModelWire } from '../api/providers.js';
 import { showToast } from '../lib/toast.js';
 import { ModelToggleCard } from './ModelToggleCard.js';
@@ -9,6 +9,7 @@ export function EmbedModelManager({ providerId }: { providerId: string }): JSX.E
   const [source, setSource]   = useState<'live' | 'static'>('static');
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState<string | null>(null);
+  const [confirmModel, setConfirmModel] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -37,14 +38,16 @@ export function EmbedModelManager({ providerId }: { providerId: string }): JSX.E
 
   function handleToggle(m: AvailableEmbedModelWire): void {
     if (m.enabled) {
-      void disable(m.id);
+      setConfirmModel(m.id);
       return;
     }
     void enable(m.id);
   }
 
-  async function disable(model: string): Promise<void> {
-    if (!confirm(`禁用 "${model}"？使用它的嵌入绑定也会一并解除。`)) return;
+  async function confirmDisable(): Promise<void> {
+    if (!confirmModel) return;
+    const model = confirmModel;
+    setConfirmModel(null);
     try {
       const res = await providersApi.disableEmbedModel(providerId, model);
       setModels((ms) => ms.map((m) => (m.id === model ? { ...m, enabled: false } : m)));
@@ -91,6 +94,14 @@ export function EmbedModelManager({ providerId }: { providerId: string }): JSX.E
       <ManualAddEmbedModel
         onAdd={(model, dim) => void enable(model, dim, 'manual')}
         existing={models.map((m) => m.id)}
+      />
+
+      <ConfirmDialog
+        open={!!confirmModel}
+        message={confirmModel ? `禁用 "${confirmModel}"？使用它的嵌入绑定也会一并解除。` : ''}
+        confirmText="禁用"
+        onConfirm={() => void confirmDisable()}
+        onCancel={() => setConfirmModel(null)}
       />
     </div>
   );

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, type JSX } from 'react';
-import { Button, Callout, Spinner } from '@ema-agent/ui';
+import { Button, Callout, ConfirmDialog, Spinner } from '@ema-agent/ui';
 import { providersApi, type AvailableSimpleModelWire } from '../api/providers.js';
 import { showToast } from '../lib/toast.js';
 import { ModelToggleCard } from './ModelToggleCard.js';
@@ -8,6 +8,7 @@ export function SttModelManager({ providerId }: { providerId: string }): JSX.Ele
   const [models, setModels]   = useState<AvailableSimpleModelWire[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState<string | null>(null);
+  const [confirmModel, setConfirmModel] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -33,8 +34,10 @@ export function SttModelManager({ providerId }: { providerId: string }): JSX.Ele
     }
   }
 
-  async function disable(model: string): Promise<void> {
-    if (!confirm(`禁用 "${model}"？使用它的 STT 绑定也会一并解除。`)) return;
+  async function confirmDisable(): Promise<void> {
+    if (!confirmModel) return;
+    const model = confirmModel;
+    setConfirmModel(null);
     try {
       const res = await providersApi.disableSttModel(providerId, model);
       setModels((ms) => ms.map((m) => (m.id === model ? { ...m, enabled: false } : m)));
@@ -65,11 +68,19 @@ export function SttModelManager({ providerId }: { providerId: string }): JSX.Ele
               key={m.id}
               id={m.id}
               enabled={m.enabled}
-              onToggle={() => void (m.enabled ? disable(m.id) : enable(m.id))}
+              onToggle={() => void (m.enabled ? setConfirmModel(m.id) : enable(m.id))}
             />
           ))}
         </div>
       )}
+
+      <ConfirmDialog
+        open={!!confirmModel}
+        message={confirmModel ? `禁用 "${confirmModel}"？使用它的 STT 绑定也会一并解除。` : ''}
+        confirmText="禁用"
+        onConfirm={() => void confirmDisable()}
+        onCancel={() => setConfirmModel(null)}
+      />
     </div>
   );
 }

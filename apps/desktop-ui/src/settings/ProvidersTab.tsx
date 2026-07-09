@@ -2,7 +2,7 @@
  * ProvidersTab — AIRI-style provider grid grouped by capability.
  */
 import React, { useState, useEffect } from 'react';
-import { Button, Callout, IconButton, MenuStatusItem } from '@ema-agent/ui';
+import { Button, Callout, ConfirmDialog, IconButton, MenuStatusItem } from '@ema-agent/ui';
 import { useSettingsStore } from '../stores/settings-store.js';
 import { providersApi, type ProviderDefinition, type ProviderConfigWire } from '../api/providers.js';
 import type { Capability } from '@ema-agent/contracts';
@@ -122,9 +122,16 @@ function ProviderConfigPanel({
   config:     ProviderConfigWire | null;
   onBack():   void;
 }): JSX.Element {
+  const [confirmOpen, setConfirmOpen] = useState(false);
+
   function handleDelete(): void {
     if (!config) return;
-    if (!confirm('确定删除这个服务来源？相关模型绑定也会失效。')) return;
+    setConfirmOpen(true);
+  }
+
+  function confirmDelete(): void {
+    if (!config) return;
+    setConfirmOpen(false);
     void useSettingsStore.getState().deleteProvider(config.id).then(() => {
       showToast('已删除', { variant: 'success' });
       onBack();
@@ -176,6 +183,14 @@ function ProviderConfigPanel({
         capability={capability ?? undefined}
         instance={config ?? undefined}
         onClose={onBack}
+      />
+
+      <ConfirmDialog
+        open={confirmOpen}
+        message="确定删除这个服务来源？相关模型绑定也会失效。"
+        confirmText="删除"
+        onConfirm={confirmDelete}
+        onCancel={() => setConfirmOpen(false)}
       />
     </div>
   );

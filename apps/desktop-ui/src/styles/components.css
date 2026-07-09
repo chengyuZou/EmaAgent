@@ -85,3 +85,46 @@
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
+
+/* ── Hue spectrum slider(AppearanceTab)──────────────────────────────────────
+ *  native <input type="range"> 全色谱 track + 圆形 thumb。webkit/moz 伪元素。
+ *  thumb 用 surface-4 + border-strong + shadow-2 token,亮暗双模。
+ */
+.ema-hue-range {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 12px;
+  border-radius: 9999px;
+  outline: none;
+  cursor: pointer;
+  background: linear-gradient(to right,
+    oklch(65% 0.18 0), oklch(65% 0.18 60), oklch(65% 0.18 120),
+    oklch(65% 0.18 180), oklch(65% 0.18 240), oklch(65% 0.18 300), oklch(65% 0.18 360));
+}
+.ema-hue-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 20px; height: 20px;
+  border-radius: 50%;
+  background: var(--ema-surface-4);
+  border: 2px solid var(--ema-border-strong);
+  box-shadow: var(--ema-shadow-2);
+  cursor: pointer;
+  transition: transform var(--ema-duration-fast) var(--ema-ease);
+}
+.ema-hue-range::-webkit-slider-thumb:hover { transform: scale(1.15); }
+.ema-hue-range::-moz-range-thumb {
+  width: 20px; height: 20px;
+  border-radius: 50%;
+  background: var(--ema-surface-4);
+  border: 2px solid var(--ema-border-strong);
+  box-shadow: var(--ema-shadow-2);
+  cursor: pointer;
+}
+.ema-hue-range::-moz-range-track {
+  height: 12px;
+  border-radius: 9999px;
+  background: linear-gradient(to right,
+    oklch(65% 0.18 0), oklch(65% 0.18 60), oklch(65% 0.18 120),
+    oklch(65% 0.18 180), oklch(65% 0.18 240), oklch(65% 0.18 300), oklch(65% 0.18 360));
+}

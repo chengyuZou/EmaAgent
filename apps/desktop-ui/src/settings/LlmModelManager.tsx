@@ -2,7 +2,7 @@
  * LlmModelManager — model list under a provider's LLM config.
  */
 import { useState, useEffect, useCallback, type JSX } from 'react';
-import { Button, Callout, Divider, Input, Spinner } from '@ema-agent/ui';
+import { Button, Callout, ConfirmDialog, Divider, Input, Spinner } from '@ema-agent/ui';
 import { providersApi, type AvailableModelWire } from '../api/providers.js';
 import { showToast } from '../lib/toast.js';
 import { ModelToggleCard } from './ModelToggleCard.js';
@@ -15,6 +15,7 @@ export function LlmModelManager({ providerId }: { providerId: string }): JSX.Ele
 
   const [pendingModel, setPendingModel] = useState<string | null>(null);
   const [pendingCtx,   setPendingCtx]   = useState('');
+  const [confirmModel, setConfirmModel] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -43,7 +44,7 @@ export function LlmModelManager({ providerId }: { providerId: string }): JSX.Ele
 
   function handleToggle(m: AvailableModelWire): void {
     if (m.enabled) {
-      void disable(m.id);
+      setConfirmModel(m.id);
       return;
     }
     if (m.contextWindow != null) {
@@ -54,8 +55,10 @@ export function LlmModelManager({ providerId }: { providerId: string }): JSX.Ele
     }
   }
 
-  async function disable(model: string): Promise<void> {
-    if (!confirm(`禁用 "${model}"？所有使用它的模块绑定(Chat / Agent 等)也会一并解除。`)) return;
+  async function confirmDisable(): Promise<void> {
+    if (!confirmModel) return;
+    const model = confirmModel;
+    setConfirmModel(null);
     try {
       const res = await providersApi.disableModel(providerId, model);
       setModels((ms) => ms.map((m) => (m.id === model ? { ...m, enabled: false } : m)));
@@ -96,12 +99,12 @@ export function LlmModelManager({ providerId }: { providerId: string }): JSX.Ele
           </p>
         </div>
         <Button variant="ghost" size="sm" onClick={() => void load()} disabled={loading}>
-          <span className="i-solar:refresh-linear text-base" aria-hidden />
+          <span className="i-mdi:refresh text-base" aria-hidden />
         </Button>
       </div>
 
       <div className="relative">
-        <span className="i-solar:magnifer-linear absolute left-3 top-1/2 -translate-y-1/2
+        <span className="i-mdi:magnify absolute left-3 top-1/2 -translate-y-1/2
                          text-[var(--ema-text-tertiary)] text-sm pointer-events-none" aria-hidden />
         <Input
           className="pl-8"
@@ -154,6 +157,14 @@ export function LlmModelManager({ providerId }: { providerId: string }): JSX.Ele
         onAdd={(model, ctx) => void enable(model, ctx, 'manual')}
         existing={models.map((m) => m.id)}
         available={models}
+      />
+
+      <ConfirmDialog
+        open={!!confirmModel}
+        message={confirmModel ? `禁用 "${confirmModel}"？所有使用它的模块绑定(Chat / Agent 等)也会一并解除。` : ''}
+        confirmText="禁用"
+        onConfirm={() => void confirmDisable()}
+        onCancel={() => setConfirmModel(null)}
       />
     </div>
   );

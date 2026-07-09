@@ -1,6 +1,6 @@
 ﻿import React, { useEffect, useRef, useState } from 'react';
 import {
-  Badge, Button, Callout, Card, Dialog, Field,
+  Badge, Button, Callout, Card, ConfirmDialog, Dialog, Field,
   Input, ScrollArea, Spinner, Switch, Tabs, Textarea, Tooltip,
 } from '@ema-agent/ui';
 import { useSkillStore, type MarketSkillEntry } from '../stores/skill-store.js';
@@ -148,7 +148,7 @@ function MarketView({
 function InstalledList({
   onRemove,
 }: {
-  onRemove: (name: string) => Promise<void>;
+  onRemove: (name: string) => void;
 }): JSX.Element {
   const skills  = useSkillStore((s) => s.skills);
   const loading = useSkillStore((s) => s.loading);
@@ -282,6 +282,7 @@ export function SkillsTab(): JSX.Element {
   const [installing,   setInstalling]   = useState(false);
   const [installError, setInstallError] = useState<string | null>(null);
   const [activeTab,    setActiveTab]    = useState<string>('installed');
+  const [pendingRemove, setPendingRemove] = useState<string | null>(null);
 
   useEffect(() => { void useSkillStore.getState().load(); }, []);
 
@@ -329,8 +330,14 @@ export function SkillsTab(): JSX.Element {
     }
   }
 
-  async function handleRemove(name: string): Promise<void> {
-    if (!confirm(`确定卸载技能 "${name}"？`)) return;
+  function handleRemove(name: string): void {
+    setPendingRemove(name);
+  }
+
+  async function confirmRemove(): Promise<void> {
+    if (!pendingRemove) return;
+    const name = pendingRemove;
+    setPendingRemove(null);
     try {
       await useSkillStore.getState().remove(name);
       showToast(`已卸载 ${name}`, { variant: 'success' });
@@ -447,6 +454,14 @@ export function SkillsTab(): JSX.Element {
           >安装</Button>
         </div>
       </Dialog>
+
+      <ConfirmDialog
+        open={!!pendingRemove}
+        message={pendingRemove ? `确定卸载技能 "${pendingRemove}"？` : ''}
+        confirmText="卸载"
+        onConfirm={() => void confirmRemove()}
+        onCancel={() => setPendingRemove(null)}
+      />
     </div>
   );
 }

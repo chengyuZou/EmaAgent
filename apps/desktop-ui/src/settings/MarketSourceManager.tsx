@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import {
-  Badge, Button, Callout, Dialog, Field, IconButton, Input, Select, Spinner, Switch, Tooltip,
+  Badge, Button, Callout, ConfirmDialog, Dialog, Field, IconButton, Input, Select, Spinner, Switch, Tooltip,
 } from '@ema-agent/ui';
 import {
   marketApi,
@@ -24,6 +24,7 @@ export function MarketSourceManager({ kind }: { kind: 'mcp' | 'skill' }): JSX.El
   const [loading, setLoading] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const [testingId, setTestingId] = useState<string | null>(null);
+  const [pendingRemove, setPendingRemove] = useState<MarketSourceRecord | null>(null);
 
   async function loadSources(): Promise<void> {
     setLoading(true);
@@ -48,8 +49,14 @@ export function MarketSourceManager({ kind }: { kind: 'mcp' | 'skill' }): JSX.El
     }
   }
 
-  async function handleRemove(source: MarketSourceRecord): Promise<void> {
-    if (!confirm(`确定删除源"${source.label}"?`)) return;
+  function handleRemove(source: MarketSourceRecord): void {
+    setPendingRemove(source);
+  }
+
+  async function confirmRemove(): Promise<void> {
+    if (!pendingRemove) return;
+    const source = pendingRemove;
+    setPendingRemove(null);
     try {
       await marketApi.remove(source.id);
       setSources((prev) => prev.filter((s) => s.id !== source.id));
@@ -146,6 +153,14 @@ export function MarketSourceManager({ kind }: { kind: 'mcp' | 'skill' }): JSX.El
         kind={kind}
         onOpenChange={(open) => { if (!open) setAddOpen(false); }}
         onCreated={() => void handleCreated()}
+      />
+
+      <ConfirmDialog
+        open={!!pendingRemove}
+        message={pendingRemove ? `确定删除源"${pendingRemove.label}"?` : ''}
+        confirmText="删除"
+        onConfirm={() => void confirmRemove()}
+        onCancel={() => setPendingRemove(null)}
       />
     </div>
   );

@@ -1,6 +1,6 @@
 ﻿import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import {
-  Badge, Button, Callout, Card, Dialog, Divider, DropdownMenu,
+  Badge, Button, Callout, Card, ConfirmDialog, Dialog, Divider, DropdownMenu,
   Field, IconButton, Input, ScrollArea, Select, Spinner, Switch, Tabs, Textarea, Tooltip,
 } from '@ema-agent/ui';
 import { useMcpStore, type McpServerEntry, type McpServerConfig, type McpProbeResult, type McpImportResult, type McpMarketEntry } from '../stores/mcp-store.js';
@@ -164,6 +164,7 @@ export function McpTab(): JSX.Element {
 
   const [activeTab, setActiveTab] = useState('installed');
   const [editingName, setEditingName] = useState<string | null>(null);
+  const [pendingRemove, setPendingRemove] = useState<string | null>(null);
 
   useEffect(() => { void useMcpStore.getState().load(); }, []);
 
@@ -260,8 +261,14 @@ export function McpTab(): JSX.Element {
     }
   }
 
-  async function handleRemove(name: string): Promise<void> {
-    if (!confirm(`确定移除 MCP 服务器 "${name}"？`)) return;
+  function handleRemove(name: string): void {
+    setPendingRemove(name);
+  }
+
+  async function confirmRemove(): Promise<void> {
+    if (!pendingRemove) return;
+    const name = pendingRemove;
+    setPendingRemove(null);
     try {
       await useMcpStore.getState().remove(name);
       showToast(`已移除 ${name}`, { variant: 'success' });
@@ -540,6 +547,14 @@ export function McpTab(): JSX.Element {
           </div>
         </div>
       </Dialog>
+
+      <ConfirmDialog
+        open={!!pendingRemove}
+        message={pendingRemove ? `确定移除 MCP 服务器 "${pendingRemove}"？` : ''}
+        confirmText="移除"
+        onConfirm={() => void confirmRemove()}
+        onCancel={() => setPendingRemove(null)}
+      />
     </div>
   );
 }

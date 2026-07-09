@@ -1,6 +1,6 @@
 ﻿import { useState, useEffect, useCallback, type CSSProperties, type JSX } from 'react';
 import {
-  Badge, Button, Callout, Card, Divider, Field,
+  Badge, Button, Callout, Card, ConfirmDialog, Divider, Field,
   Input, Progress, ScrollArea, Select, Spinner, Switch, Tabs, Tooltip,
 } from '@ema-agent/ui';
 import { useMemoryStore, type MemorySessionOverrides } from '../stores/memory-store.js';
@@ -259,6 +259,7 @@ function NodesTab(): JSX.Element {
   const [error,    setError]    = useState<string | null>(null);
   const [search,   setSearch]   = useState('');
   const [typeFilter, setTypeFilter] = useState('all');
+  const [pendingNode, setPendingNode] = useState<{ id: string; label: string } | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -275,8 +276,14 @@ function NodesTab(): JSX.Element {
 
   useEffect(() => { void load(); }, [load]);
 
-  async function handleDelete(id: string, label: string): Promise<void> {
-    if (!confirm(`确定删除节点 "${label}"？此操作不可撤销。`)) return;
+  function handleDelete(id: string, label: string): void {
+    setPendingNode({ id, label });
+  }
+
+  async function confirmDelete(): Promise<void> {
+    if (!pendingNode) return;
+    const { id } = pendingNode;
+    setPendingNode(null);
     try {
       await useMemoryStore.getState().deleteNode(id);
       setNodes((ns) => ns.filter((n) => n.id !== id));
@@ -381,6 +388,14 @@ function NodesTab(): JSX.Element {
           显示 {filtered.length} / {nodes.length} 个节点
         </p>
       )}
+
+      <ConfirmDialog
+        open={!!pendingNode}
+        message={pendingNode ? `确定删除节点 "${pendingNode.label}"？此操作不可撤销。` : ''}
+        confirmText="删除"
+        onConfirm={() => void confirmDelete()}
+        onCancel={() => setPendingNode(null)}
+      />
     </div>
   );
 }
@@ -401,6 +416,7 @@ function ItemsTab(): JSX.Element {
   const [error,    setError]    = useState<string | null>(null);
   const [search,   setSearch]   = useState('');
   const [kindFilter, setKindFilter] = useState('all');
+  const [pendingItem, setPendingItem] = useState<{ id: string; title: string } | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -417,8 +433,14 @@ function ItemsTab(): JSX.Element {
 
   useEffect(() => { void load(); }, [load]);
 
-  async function handleDelete(id: string, title: string): Promise<void> {
-    if (!confirm(`确定删除条目 "${title}"？此操作不可撤销。`)) return;
+  function handleDelete(id: string, title: string): void {
+    setPendingItem({ id, title });
+  }
+
+  async function confirmDelete(): Promise<void> {
+    if (!pendingItem) return;
+    const { id } = pendingItem;
+    setPendingItem(null);
     try {
       await useMemoryStore.getState().deleteItem(id);
       setItems((is) => is.filter((i) => i.id !== id));
@@ -523,6 +545,14 @@ function ItemsTab(): JSX.Element {
           显示 {filtered.length} / {items.length} 个条目
         </p>
       )}
+
+      <ConfirmDialog
+        open={!!pendingItem}
+        message={pendingItem ? `确定删除条目 "${pendingItem.title}"？此操作不可撤销。` : ''}
+        confirmText="删除"
+        onConfirm={() => void confirmDelete()}
+        onCancel={() => setPendingItem(null)}
+      />
     </div>
   );
 }
