@@ -69,19 +69,18 @@ export function FilePreview({ path, onBack }: { path: string; onBack: () => void
   return (
     <div className="flex flex-col h-full ema-fade-in">
       {/* 顶栏:回退 + 文件名 + 大小 */}
-      <div className="flex items-center gap-2 px-2 py-1.5 border-b shrink-0"
-           style={{ borderColor: 'var(--ema-border)' }}>
+      <div className="flex items-center gap-2 px-2 py-1.5 border-b shrink-0 border-[var(--ema-border)]">
         <IconButton
           size="sm"
           label="返回文件列表"
           icon="i-mdi:arrow-left"
           onClick={onBack}
         />
-        <span className="flex-1 truncate text-xs font-mono" style={{ color: 'var(--ema-text-primary)' }} title={path}>
+        <span className="flex-1 truncate text-xs font-mono text-[var(--ema-text-primary)]" title={path}>
           {fileName}
         </span>
         {content && 'size' in content && (
-          <span className="text-[10px] shrink-0 tabular-nums" style={{ color: 'var(--ema-text-tertiary)' }}>
+          <span className="text-[10px] shrink-0 tabular-nums text-[var(--ema-text-tertiary)]">
             {fmtSize(content.size)}
           </span>
         )}
@@ -93,7 +92,7 @@ export function FilePreview({ path, onBack }: { path: string; onBack: () => void
           <div className="flex justify-center py-8"><Spinner size="sm" /></div>
         )}
         {error && (
-          <p className="text-xs text-center py-8" style={{ color: 'var(--ema-danger)' }}>
+          <p className="text-xs text-center py-8 text-[var(--ema-danger)]">
             读取失败:{error}
           </p>
         )}
@@ -106,14 +105,14 @@ export function FilePreview({ path, onBack }: { path: string; onBack: () => void
 function ContentBody({ content, ext }: { content: FileContent; ext: string }): JSX.Element {
   if ('tooLarge' in content) {
     return (
-      <p className="text-xs text-center py-8" style={{ color: 'var(--ema-text-tertiary)' }}>
+      <p className="text-xs text-center py-8 text-[var(--ema-text-tertiary)]">
         文件过大({fmtSize(content.size)} 大于 {fmtSize(content.limit)}),请用外部程序打开
       </p>
     );
   }
   if ('binary' in content) {
     return (
-      <p className="text-xs text-center py-8" style={{ color: 'var(--ema-text-tertiary)' }}>
+      <p className="text-xs text-center py-8 text-[var(--ema-text-tertiary)]">
         二进制文件,无法 in-app 预览
       </p>
     );
@@ -124,8 +123,7 @@ function ContentBody({ content, ext }: { content: FileContent; ext: string }): J
         <img
           src={`data:${content.mimeType};base64,${content.content}`}
           alt="preview"
-          className="max-w-full h-auto rounded-lg"
-          style={{ background: 'var(--ema-surface-2)' }}
+          className="max-w-full h-auto rounded-lg bg-[var(--ema-surface-2)]"
         />
       </div>
     );

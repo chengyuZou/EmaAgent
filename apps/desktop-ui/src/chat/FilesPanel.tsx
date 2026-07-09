@@ -77,26 +77,22 @@ function FileRow({
 
   return (
     <div
-      className="flex items-center gap-1.5 px-2 py-0.5 rounded cursor-pointer group select-none transition-colors"
+      className="flex items-center gap-1.5 px-2 py-0.5 rounded cursor-pointer group select-none transition-colors hover:bg-[var(--ema-surface-2)]"
       style={{ paddingLeft: 8 + indent }}
-      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--ema-surface-2)'; }}
-      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = ''; }}
       onClick={handleClick}
       title={entry.path}
     >
       {/* Expand arrow / file icon */}
       {isDir ? (
         <span
-          className={`text-xs shrink-0 transition-transform duration-150 ${expanded ? 'rotate-90' : ''} ${loading ? 'animate-spin' : ''}`}
-          style={{ color: 'var(--ema-text-tertiary)' }}
+          className={`text-xs shrink-0 transition-transform duration-150 ${expanded ? 'rotate-90' : ''} ${loading ? 'animate-spin' : ''} text-[var(--ema-text-tertiary)]`}
         >
           {loading
             ? <span className="i-mdi:loading text-sm" />
             : <span className="i-mdi:chevron-right text-sm" />}
         </span>
       ) : (
-        <span className={`${fileIcon(entry.name)} text-sm shrink-0`}
-              style={{ color: 'var(--ema-text-tertiary)' }} aria-hidden />
+        <span className={`${fileIcon(entry.name)} text-sm shrink-0 text-[var(--ema-text-tertiary)]`} aria-hidden />
       )}
 
       {isDir && !loading && (
@@ -104,15 +100,13 @@ function FileRow({
       )}
 
       <span
-        className="flex-1 truncate text-[11px] leading-tight"
-        style={{ color: 'var(--ema-text-primary)' }}
+        className="flex-1 truncate text-[11px] leading-tight text-[var(--ema-text-primary)]"
       >
         {entry.name}
       </span>
 
       {!isDir && entry.size != null && (
-        <span className="text-[10px] shrink-0 opacity-0 group-hover:opacity-100 transition-opacity tabular-nums"
-              style={{ color: 'var(--ema-text-tertiary)' }}>
+        <span className="text-[10px] shrink-0 opacity-0 group-hover:opacity-100 transition-opacity tabular-nums text-[var(--ema-text-tertiary)]">
           {fmtSize(entry.size)}
         </span>
       )}
@@ -160,7 +154,7 @@ function DirSubtree({
         </div>
       ))}
       {node.error && (
-        <div className="px-3 py-0.5 text-[10px]" style={{ paddingLeft: 8 + depth * 14, color: 'var(--ema-danger)' }}>
+        <div className="px-3 py-0.5 text-[10px] text-[var(--ema-danger)]" style={{ paddingLeft: 8 + depth * 14 }}>
           读取失败
         </div>
       )}
@@ -231,12 +225,11 @@ export function FilesPanel(): JSX.Element {
   if (!root) {
     return (
       <div className="flex flex-col items-center justify-center gap-3 py-10 px-4 ema-fade-in">
-        <span className="i-mdi:folder-alert-outline text-3xl opacity-20"
-              style={{ color: 'var(--ema-primary)' }} aria-hidden />
-        <p className="text-xs text-center" style={{ color: 'var(--ema-text-tertiary)' }}>
+        <span className="i-mdi:folder-alert-outline text-3xl opacity-20 text-[var(--ema-primary)]" aria-hidden />
+        <p className="text-xs text-center text-[var(--ema-text-tertiary)]">
           当前会话未配置工作区
         </p>
-        <p className="text-[10px] text-center opacity-50" style={{ color: 'var(--ema-text-tertiary)' }}>
+        <p className="text-[10px] text-center opacity-50 text-[var(--ema-text-tertiary)]">
           在设置 → 工作区中添加目录
         </p>
       </div>
@@ -256,10 +249,9 @@ export function FilesPanel(): JSX.Element {
   return (
     <div className="flex flex-col h-full ema-fade-in">
       {/* Search */}
-      <div className="px-2 py-1.5 border-b shrink-0" style={{ borderColor: 'var(--ema-border)' }}>
+      <div className="px-2 py-1.5 border-b shrink-0 border-[var(--ema-border)]">
         <input
-          className="w-full rounded-md px-2 py-1 text-[11px] outline-none"
-          style={{ background: 'var(--ema-surface-2)', color: 'var(--ema-text-primary)' }}
+          className="w-full rounded-md px-2 py-1 text-[11px] outline-none bg-[var(--ema-surface-2)] text-[var(--ema-text-primary)]"
           placeholder="筛选文件…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
@@ -278,7 +270,7 @@ export function FilesPanel(): JSX.Element {
           onSelectFile={setSelectedFile}
         />
         {dirNodes.get(root)?.loading && (
-          <div className="px-3 py-1 text-[10px]" style={{ color: 'var(--ema-text-tertiary)' }}>加载中…</div>
+          <div className="px-3 py-1 text-[10px] text-[var(--ema-text-tertiary)]">加载中…</div>
         )}
       </ScrollArea>
     </div>

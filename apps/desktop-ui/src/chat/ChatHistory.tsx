@@ -50,7 +50,7 @@ export function ChatHistory(): JSX.Element {
 
   if (!viewedId) {
     return (
-      <div className="flex-1 flex items-center justify-center text-sm ema-slide-up" style={{ color: 'var(--ema-text-tertiary)' }}>
+      <div className="flex-1 flex items-center justify-center text-sm ema-slide-up text-[var(--ema-text-tertiary)]">
         选择或创建会话开始聊天
       </div>
     );
@@ -60,7 +60,7 @@ export function ChatHistory(): JSX.Element {
     <div className="flex-1 relative">
       <div ref={containerRef} className="absolute inset-0 overflow-y-auto px-4 py-4">
         {messages.length === 0 && !streaming && (
-          <div className="flex items-center justify-center h-full text-sm ema-slide-up" style={{ color: 'var(--ema-text-tertiary)' }}>
+          <div className="flex items-center justify-center h-full text-sm ema-slide-up text-[var(--ema-text-tertiary)]">
             开始聊天吧
           </div>
         )}
@@ -84,8 +84,8 @@ export function ChatHistory(): JSX.Element {
 
           {stopReason && !streaming && (
             <div className="flex justify-center">
-              <div className="ema-slide-up rounded-full px-4 py-1.5 text-xs"
-                   style={{ background: 'var(--ema-surface-2)', border: '1px solid var(--ema-border)', color: 'var(--ema-text-tertiary)' }}>
+              <div className="ema-slide-up rounded-full px-4 py-1.5 text-xs bg-[var(--ema-surface-2)] text-[var(--ema-text-tertiary)]"
+                   style={{ border: '1px solid var(--ema-border)' }}>
                 {stopReason}
               </div>
             </div>
@@ -127,22 +127,22 @@ function BubbleRouter({ message }: { message: ChatHistoryItem }): JSX.Element {
     case 'system':
       return (
         <div className="flex items-center justify-center gap-3 py-2">
-          <div className="flex-1 border-t" style={{ borderColor: 'var(--ema-border)' }} />
-          <span className="text-xs whitespace-nowrap" style={{ color: 'var(--ema-text-tertiary)' }}>{message.content}</span>
-          <div className="flex-1 border-t" style={{ borderColor: 'var(--ema-border)' }} />
+          <div className="flex-1 border-t border-[var(--ema-border)]" />
+          <span className="text-xs whitespace-nowrap text-[var(--ema-text-tertiary)]">{message.content}</span>
+          <div className="flex-1 border-t border-[var(--ema-border)]" />
         </div>
       );
     case 'error':
       return (
         <div className="flex justify-center">
-          <div className="rounded-xl px-4 py-2 text-sm max-w-md"
-               style={{ background: 'var(--ema-danger-muted)', border: '1px solid var(--ema-danger)', color: 'var(--ema-danger-text)' }}>
+          <div className="rounded-xl px-4 py-2 text-sm max-w-md bg-[var(--ema-danger-muted)] text-[var(--ema-danger-text)]"
+               style={{ border: '1px solid var(--ema-danger)' }}>
             {message.content}
           </div>
         </div>
       );
     default:
-      return <div className="text-xs text-center" style={{ color: 'var(--ema-text-tertiary)' }}>{message.content}</div>;
+      return <div className="text-xs text-center text-[var(--ema-text-tertiary)]">{message.content}</div>;
   }
 }
 

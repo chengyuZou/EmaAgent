@@ -61,10 +61,9 @@ export function AttachmentChip({ attachment, onRemove }: AttachmentChipProps): J
 
   return (
     <div
-      className="flex items-center gap-1.5 rounded-lg px-2 py-1.5 cursor-pointer group transition-colors ema-chip-in"
+      className="flex items-center gap-1.5 rounded-lg px-2 py-1.5 cursor-pointer group transition-colors ema-chip-in bg-[var(--ema-surface-2)]"
       style={{
         width:      152,
-        background: 'var(--ema-surface-2)',
         border:     '1px solid var(--ema-border)',
       }}
       onClick={handleOpen}
@@ -80,13 +79,12 @@ export function AttachmentChip({ attachment, onRemove }: AttachmentChipProps): J
       {/* Name + size */}
       <div className="flex-1 min-w-0">
         <div
-          className="text-[11px] leading-tight truncate font-medium"
-          style={{ color: 'var(--ema-text-primary)' }}
+          className="text-[11px] leading-tight truncate font-medium text-[var(--ema-text-primary)]"
         >
           {attachment.name}
         </div>
         {sizeStr && (
-          <div className="text-[10px] leading-none mt-0.5" style={{ color: 'var(--ema-text-tertiary)' }}>
+          <div className="text-[10px] leading-none mt-0.5 text-[var(--ema-text-tertiary)]">
             {sizeStr}
           </div>
         )}
@@ -95,10 +93,7 @@ export function AttachmentChip({ attachment, onRemove }: AttachmentChipProps): J
       {/* Remove button (input preview only) */}
       {onRemove && (
         <button
-          className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity -mr-0.5"
-          style={{ color: 'var(--ema-text-tertiary)' }}
-          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--ema-danger)'; }}
-          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--ema-text-tertiary)'; }}
+          className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity -mr-0.5 text-[var(--ema-text-tertiary)] hover:text-[var(--ema-danger)]"
           onClick={(e) => { e.stopPropagation(); onRemove(); }}
           aria-label={`移除 ${attachment.name}`}
         >

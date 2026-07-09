@@ -65,8 +65,8 @@ export function TaskPanel({ className = '' }: TaskPanelProps): JSX.Element {
     <div className={`flex flex-col gap-1 ${className}`}>
       {/* Stats row */}
       {stats.total > 0 && (
-        <div className="flex gap-4 px-3 py-2 rounded-lg mx-1 mb-0.5"
-             style={{ background: 'var(--ema-bg)', border: '1px solid var(--ema-border)' }}>
+        <div className="flex gap-4 px-3 py-2 rounded-lg mx-1 mb-0.5 bg-[var(--ema-bg)]"
+             style={{ border: '1px solid var(--ema-border)' }}>
           {([
             { label: '总计',   value: stats.total,     color: 'var(--ema-text-secondary)' },
             { label: '运行中', value: stats.running,   color: 'var(--ema-primary)'       },
@@ -75,7 +75,7 @@ export function TaskPanel({ className = '' }: TaskPanelProps): JSX.Element {
           ] as const).map(({ label, value, color }) => (
             <div key={label} className="flex flex-col items-center flex-1">
               <span className="text-sm font-bold leading-none" style={{ color }}>{value}</span>
-              <span className="text-[9px] mt-0.5" style={{ color: 'var(--ema-text-tertiary)' }}>{label}</span>
+              <span className="text-[9px] mt-0.5 text-[var(--ema-text-tertiary)]">{label}</span>
             </div>
           ))}
         </div>
@@ -99,8 +99,7 @@ export function TaskPanel({ className = '' }: TaskPanelProps): JSX.Element {
 
       {/* Empty state */}
       {sessionTasks.length === 0 && (
-        <div className="flex flex-col items-center justify-center gap-2 py-10 text-xs"
-             style={{ color: 'var(--ema-text-tertiary)' }}>
+        <div className="flex flex-col items-center justify-center gap-2 py-10 text-xs text-[var(--ema-text-tertiary)]">
           <span className="i-mdi:robot-outline text-2xl opacity-40" />
           <span>{search ? '无匹配任务' : '暂无 Agent 任务'}</span>
         </div>
@@ -145,8 +144,7 @@ export function TaskPanel({ className = '' }: TaskPanelProps): JSX.Element {
 
 function SectionLabel({ children }: { children: string }): JSX.Element {
   return (
-    <div className="px-2 pt-0.5 pb-0.5 text-xs font-medium tracking-wider uppercase"
-         style={{ color: 'var(--ema-text-tertiary)' }}>
+    <div className="px-2 pt-0.5 pb-0.5 text-xs font-medium tracking-wider uppercase text-[var(--ema-text-tertiary)]">
       {children}
     </div>
   );
@@ -185,9 +183,8 @@ function TaskCard({ task, expanded, onToggle, staggerIndex = 0 }: TaskCardProps)
 
   return (
     <div
-      className="relative rounded-lg overflow-hidden cursor-pointer transition-all flex ema-stagger-in"
+      className="relative rounded-lg overflow-hidden cursor-pointer transition-all flex ema-stagger-in bg-[var(--ema-surface-1)]"
       style={{
-        background:    'var(--ema-surface-1)',
         border:        `1px solid ${expanded ? 'var(--ema-border-hover)' : 'var(--ema-border)'}`,
         '--stagger-i': staggerIndex,
       } as CSSProperties}
@@ -208,7 +205,7 @@ function TaskCard({ task, expanded, onToggle, staggerIndex = 0 }: TaskCardProps)
         {/* Body */}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1.5">
-            <span className="text-xs truncate" style={{ color: 'var(--ema-text-secondary)' }}>
+            <span className="text-xs truncate text-[var(--ema-text-secondary)]">
               {task.live?.model ?? 'subagent'}
             </span>
             <Badge variant={STATUS_BADGE_VARIANT[task.status]} dot={isRunning}>
@@ -216,19 +213,19 @@ function TaskCard({ task, expanded, onToggle, staggerIndex = 0 }: TaskCardProps)
             </Badge>
           </div>
           {excerpt && (
-            <p className="text-xs mt-0.5 line-clamp-2" style={{ color: 'var(--ema-text-primary)' }}>
+            <p className="text-xs mt-0.5 line-clamp-2 text-[var(--ema-text-primary)]">
               {excerpt}
             </p>
           )}
           {task.error && (
-            <p className="text-xs mt-0.5 truncate" style={{ color: 'var(--ema-danger-text)' }}>
+            <p className="text-xs mt-0.5 truncate text-[var(--ema-danger-text)]">
               {task.error}
             </p>
           )}
 
           {/* Live progress row */}
           {task.live && (
-            <div className="flex items-center gap-3 mt-1 text-xs" style={{ color: 'var(--ema-text-tertiary)' }}>
+            <div className="flex items-center gap-3 mt-1 text-xs text-[var(--ema-text-tertiary)]">
               <span>轮次 {task.live.iteration}</span>
               <span>工具 {task.live.toolCallCount}</span>
               <span>{formatElapsed(task.live.elapsedMs)}</span>
@@ -237,7 +234,7 @@ function TaskCard({ task, expanded, onToggle, staggerIndex = 0 }: TaskCardProps)
 
           {/* Terminal stats */}
           {!task.live && task.iterations != null && (
-            <div className="flex items-center gap-3 mt-1 text-xs" style={{ color: 'var(--ema-text-tertiary)' }}>
+            <div className="flex items-center gap-3 mt-1 text-xs text-[var(--ema-text-tertiary)]">
               <span>{task.iterations} 轮次</span>
               {task.inputTokens != null && (
                 <span>{((task.inputTokens + (task.outputTokens ?? 0)) / 1000).toFixed(1)}k tokens</span>
@@ -272,7 +269,7 @@ function TaskTranscript({ taskId }: { taskId: string }): JSX.Element {
   }, [taskId, loadTranscript]);
 
   const divider = (
-    <div style={{ height: 1, background: 'var(--ema-border)', margin: '0 12px' }} />
+    <div className="bg-[var(--ema-border)]" style={{ height: 1, margin: '0 12px' }} />
   );
 
   if (messages === null || messages === undefined) {
@@ -290,7 +287,7 @@ function TaskTranscript({ taskId }: { taskId: string }): JSX.Element {
     return (
       <>
         {divider}
-        <div className="py-3 px-3 text-xs text-center" style={{ color: 'var(--ema-text-tertiary)' }}>
+        <div className="py-3 px-3 text-xs text-center text-[var(--ema-text-tertiary)]">
           无对话记录
         </div>
       </>
@@ -336,8 +333,7 @@ function ReasoningBlock({ text }: { text: string }): JSX.Element {
     <div className="py-0.5">
       <button
         className="flex items-center gap-1 text-xs select-none w-full text-left
-                   transition-colors duration-[var(--ema-duration-base)]"
-        style={{ color: 'var(--ema-text-tertiary)' }}
+                   transition-colors duration-[var(--ema-duration-base)] text-[var(--ema-text-tertiary)]"
         onClick={() => setOpen((v) => !v)}
       >
         <span className="i-mdi:brain text-sm" />
@@ -356,8 +352,8 @@ function ReasoningBlock({ text }: { text: string }): JSX.Element {
         <div>
           {mounted && (
             <p
-              className="mt-1 text-xs whitespace-pre-wrap break-words selectable pl-4 ema-fade-in"
-              style={{ color: 'var(--ema-text-tertiary)', fontStyle: 'italic' }}
+              className="mt-1 text-xs whitespace-pre-wrap break-words selectable pl-4 ema-fade-in text-[var(--ema-text-tertiary)]"
+              style={{ fontStyle: 'italic' }}
             >
               {text}
             </p>
@@ -377,8 +373,7 @@ function TranscriptRow({ msg }: { msg: AgentTaskMessageWire }): JSX.Element {
   if (msg.role === 'assistant') {
     const c = msg.content as AssistantMessageContent;
     return (
-      <p className="text-xs py-1 whitespace-pre-wrap break-words selectable"
-         style={{ color: 'var(--ema-text-primary)' }}>
+      <p className="text-xs py-1 whitespace-pre-wrap break-words selectable text-[var(--ema-text-primary)]">
         {c.text}
       </p>
     );
@@ -388,10 +383,9 @@ function TranscriptRow({ msg }: { msg: AgentTaskMessageWire }): JSX.Element {
     const c = msg.content as ToolCallMessageContent;
     return (
       <div className="flex items-center gap-1.5 py-0.5">
-        <span className="i-mdi:function-variant text-sm flex-shrink-0"
-              style={{ color: 'var(--ema-primary)' }} />
-        <span className="text-xs font-mono" style={{ color: 'var(--ema-primary)' }}>{c.name}</span>
-        <span className="text-xs" style={{ color: 'var(--ema-text-tertiary)' }}>
+        <span className="i-mdi:function-variant text-sm flex-shrink-0 text-[var(--ema-primary)]" />
+        <span className="text-xs font-mono text-[var(--ema-primary)]">{c.name}</span>
+        <span className="text-xs text-[var(--ema-text-tertiary)]">
           轮次 {c.iteration}
         </span>
       </div>
@@ -403,15 +397,12 @@ function TranscriptRow({ msg }: { msg: AgentTaskMessageWire }): JSX.Element {
     return (
       <div className="flex items-start gap-1.5 py-0.5">
         <span
-          className={`text-sm flex-shrink-0 mt-0.5 ${c.isError ? 'i-mdi:alert-circle-outline' : 'i-mdi:check-circle-outline'}`}
-          style={{ color: c.isError ? 'var(--ema-danger)' : 'var(--ema-success)' }}
+          className={`text-sm flex-shrink-0 mt-0.5 ${c.isError ? 'i-mdi:alert-circle-outline' : 'i-mdi:check-circle-outline'} ${c.isError ? 'text-[var(--ema-danger)]' : 'text-[var(--ema-success)]'}`}
         />
-        <span className="text-xs truncate selectable"
-              style={{ color: c.isError ? 'var(--ema-danger-text)' : 'var(--ema-text-secondary)' }}>
+        <span className={`text-xs truncate selectable ${c.isError ? 'text-[var(--ema-danger-text)]' : 'text-[var(--ema-text-secondary)]'}`}>
           {c.excerpt || (c.isError ? c.error ?? '失败' : '完成')}
         </span>
-        <span className="ml-auto text-xs flex-shrink-0"
-              style={{ color: 'var(--ema-text-tertiary)' }}>
+        <span className="ml-auto text-xs flex-shrink-0 text-[var(--ema-text-tertiary)]">
           {c.durationMs}ms
         </span>
       </div>

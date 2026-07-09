@@ -18,7 +18,7 @@ export function AskTextPrompt({ question, humanDescription, placeholder, onResol
     <Card variant="elevated" padding="lg" className="shadow-[var(--ema-shadow-3)] max-w-lg w-full">
       <HumanDescriptionPanel description={humanDescription ?? question} toolName="" pending={false} />
       {humanDescription && (
-        <p className="mt-1 mb-3 text-sm" style={{ color: 'var(--ema-text-secondary)' }}>{question}</p>
+        <p className="mt-1 mb-3 text-sm text-[var(--ema-text-secondary)]">{question}</p>
       )}
       <Textarea
         className="mt-2"

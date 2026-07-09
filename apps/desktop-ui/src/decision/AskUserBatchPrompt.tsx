@@ -78,8 +78,8 @@ export function AskUserBatchPrompt({
         pending={false}
       />
 
-      <p className="text-xs font-medium mb-1" style={{ color: 'var(--ema-primary)' }}>{current.header}</p>
-      <p className="text-base mb-4" style={{ color: 'var(--ema-text-primary)' }}>{current.question}</p>
+      <p className="text-xs font-medium mb-1 text-[var(--ema-primary)]">{current.header}</p>
+      <p className="text-base mb-4 text-[var(--ema-text-primary)]">{current.question}</p>
 
       {hasOptions ? (
         <div className="flex flex-col gap-2 mb-4">

@@ -36,7 +36,7 @@ export function AskChoicePrompt({
     <Card variant="elevated" padding="lg" className="shadow-[var(--ema-shadow-3)] max-w-lg w-full">
       <HumanDescriptionPanel description={humanDescription ?? question} toolName="" pending={false} />
       {humanDescription && (
-        <p className="mt-1 mb-3 text-sm" style={{ color: 'var(--ema-text-secondary)' }}>{question}</p>
+        <p className="mt-1 mb-3 text-sm text-[var(--ema-text-secondary)]">{question}</p>
       )}
 
       <div className="flex flex-col gap-2 mt-3">
@@ -44,12 +44,8 @@ export function AskChoicePrompt({
           multiSelect ? (
             <label
               key={opt.label}
-              className="flex items-start gap-3 px-3 py-2.5 rounded-lg cursor-pointer border transition-colors ema-stagger-in"
-              style={{
-                '--stagger-i':  i,
-                background:     selected.has(opt.label) ? 'var(--ema-primary-muted)' : 'var(--ema-surface-1)',
-                borderColor:    selected.has(opt.label) ? 'var(--ema-border-focus)' : 'var(--ema-border)',
-              } as CSSProperties}
+              className={`flex items-start gap-3 px-3 py-2.5 rounded-lg cursor-pointer border transition-colors ema-stagger-in ${selected.has(opt.label) ? 'bg-[var(--ema-primary-muted)] border-[var(--ema-border-focus)]' : 'bg-[var(--ema-surface-1)] border-[var(--ema-border)]'}`}
+              style={{ '--stagger-i': i } as CSSProperties}
             >
               <Checkbox
                 checked={selected.has(opt.label)}
@@ -57,9 +53,9 @@ export function AskChoicePrompt({
                 className="mt-0.5 shrink-0"
               />
               <div>
-                <div className="text-sm" style={{ color: 'var(--ema-text-primary)' }}>{opt.label}</div>
+                <div className="text-sm text-[var(--ema-text-primary)]">{opt.label}</div>
                 {opt.description && (
-                  <div className="text-xs mt-0.5" style={{ color: 'var(--ema-text-tertiary)' }}>{opt.description}</div>
+                  <div className="text-xs mt-0.5 text-[var(--ema-text-tertiary)]">{opt.description}</div>
                 )}
               </div>
             </label>

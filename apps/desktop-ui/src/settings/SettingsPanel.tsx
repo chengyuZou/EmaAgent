@@ -108,7 +108,7 @@ function KbNavIndicator(): JSX.Element | null {
   // (running count → done dot → failed dot all animate in, not just the first).
   if (sum.state === 'running') {
     return (
-      <span key="running" className="ema-scale-in text-[10px] font-mono shrink-0" style={{ color: 'var(--ema-info)' }}>
+      <span key="running" className="ema-scale-in text-[10px] font-mono shrink-0 text-[var(--ema-info)]">
         {sum.done}/{sum.total}
       </span>
     );

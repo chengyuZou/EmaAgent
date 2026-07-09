@@ -120,7 +120,7 @@ function FallbackDialog({ artifactId, defaultPath, onClose }: FallbackDialogProp
           onKeyDown={(e) => { if (e.key === 'Enter') void handleSubmit(); }}
           autoFocus
         />
-        {error && <p className="text-xs" style={{ color: 'var(--ema-danger)' }}>{error}</p>}
+        {error && <p className="text-xs text-[var(--ema-danger)]">{error}</p>}
         <div className="flex justify-end gap-2">
           <Button variant="secondary" size="sm" onClick={onClose}>取消</Button>
           <Button variant="primary" size="sm" loading={loading} onClick={() => void handleSubmit()}>
@@ -185,8 +185,8 @@ export function ArtifactCard({ artifact }: ArtifactCardProps): React.JSX.Element
       <Card variant="elevated" padding="sm" className="flex flex-col gap-2 min-w-0">
         {/* Header */}
         <div className="flex items-center gap-2 min-w-0">
-          <span className="i-mdi:file-document-outline shrink-0" style={{ color: 'var(--ema-text-tertiary)' }} aria-hidden />
-          <span className="truncate text-sm font-medium flex-1" style={{ color: 'var(--ema-text-primary)' }}>
+          <span className="i-mdi:file-document-outline shrink-0 text-[var(--ema-text-tertiary)]" aria-hidden />
+          <span className="truncate text-sm font-medium flex-1 text-[var(--ema-text-primary)]">
             {artifact.title}
           </span>
           <Badge variant="neutral" className="shrink-0 font-mono text-[10px]">

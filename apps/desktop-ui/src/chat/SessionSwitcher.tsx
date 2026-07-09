@@ -35,23 +35,22 @@ export function SessionSwitcher(): JSX.Element {
     filteredGroups.length > 0 || filteredArchived.length > 0;
 
   return (
-    <div className="relative shrink-0 border-b" style={{ borderColor: 'var(--ema-border)' }}>
+    <div className="relative shrink-0 border-b border-[var(--ema-border)]">
       <button
-        className="w-full flex items-center justify-between px-4 py-2.5 transition-colors"
-        style={{ color: 'var(--ema-text-secondary)' }}
+        className="w-full flex items-center justify-between px-4 py-2.5 transition-colors text-[var(--ema-text-secondary)]"
         onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--ema-surface-2)'; }}
         onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = ''; }}
         onClick={() => setOpen(!open)}
       >
         <span className="text-sm font-medium truncate">{activeSession?.title ?? '新对话'}</span>
-        <span className="i-mdi:chevron-down text-base ml-2" style={{ color: 'var(--ema-text-tertiary)' }} aria-hidden />
+        <span className="i-mdi:chevron-down text-base ml-2 text-[var(--ema-text-tertiary)]" aria-hidden />
       </button>
 
       {open && (
         <>
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-          <div className="ema-slide-up absolute top-full left-0 right-0 z-50 rounded-b-xl max-h-80 overflow-hidden flex flex-col shadow-[var(--ema-shadow-3)]"
-               style={{ background: 'var(--ema-surface-4)', border: '1px solid var(--ema-border)' }}>
+          <div className="ema-slide-up absolute top-full left-0 right-0 z-50 rounded-b-xl max-h-80 overflow-hidden flex flex-col shadow-[var(--ema-shadow-3)] bg-[var(--ema-surface-4)]"
+               style={{ border: '1px solid var(--ema-border)' }}>
             <div className="p-2">
               <Input
                 inputSize="sm"
@@ -64,7 +63,7 @@ export function SessionSwitcher(): JSX.Element {
 
             <div className="overflow-y-auto flex-1 px-1 pb-1">
               {!hasResults && (
-                <div className="text-center text-sm py-4" style={{ color: 'var(--ema-text-tertiary)' }}>
+                <div className="text-center text-sm py-4 text-[var(--ema-text-tertiary)]">
                   暂无会话，发消息自动创建
                 </div>
               )}
@@ -83,8 +82,7 @@ export function SessionSwitcher(): JSX.Element {
               )}
 
               <button
-                className="ema-stagger-in w-full px-3 py-2 mt-1 rounded-lg text-sm transition-colors text-left"
-                style={{ color: 'var(--ema-primary)' }}
+                className="ema-stagger-in w-full px-3 py-2 mt-1 rounded-lg text-sm transition-colors text-left text-[var(--ema-primary)]"
                 onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--ema-primary-muted)'; }}
                 onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = ''; }}
                 onClick={async () => {
@@ -117,15 +115,14 @@ function Section({
   return (
     <div className="mb-1">
       <button
-        className="flex items-center gap-1 px-2 py-1 text-xs w-full text-left transition-colors"
-        style={{ color: 'var(--ema-text-tertiary)' }}
+        className="flex items-center gap-1 px-2 py-1 text-xs w-full text-left transition-colors text-[var(--ema-text-tertiary)]"
         onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--ema-text-primary)'; }}
         onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--ema-text-tertiary)'; }}
         onClick={() => setCollapsed(!collapsed)}
       >
         <span className={`i-mdi:chevron-right text-sm transition-transform ${collapsed ? '' : 'rotate-90'}`} aria-hidden />
         {label}
-        <span className="ml-1" style={{ color: 'var(--ema-text-tertiary)' }}>({sessions.length})</span>
+        <span className="ml-1 text-[var(--ema-text-tertiary)]">({sessions.length})</span>
       </button>
       {!collapsed && (
         <div className="flex flex-col gap-0.5">
@@ -224,11 +221,11 @@ function SessionRow({ session, isActive, onSelect }: {
     >
       <div className="flex items-center gap-2 truncate min-w-0">
         {session.pinned && (
-          <span className="i-mdi:pin text-xs shrink-0" style={{ color: 'var(--ema-primary)' }} aria-hidden />
+          <span className="i-mdi:pin text-xs shrink-0 text-[var(--ema-primary)]" aria-hidden />
         )}
         <span className="truncate">{session.title || '新对话'}</span>
         {session.runningTurnCount > 0 && (
-          <span className="w-1.5 h-1.5 rounded-full animate-pulse shrink-0" style={{ background: 'var(--ema-primary)' }} aria-hidden />
+          <span className="w-1.5 h-1.5 rounded-full animate-pulse shrink-0 bg-[var(--ema-primary)]" aria-hidden />
         )}
       </div>
 

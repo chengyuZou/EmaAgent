@@ -14,7 +14,7 @@ export function AskConfirmPrompt({ question, humanDescription, onResolve, onCanc
     <Card variant="elevated" padding="lg" className="shadow-[var(--ema-shadow-3)] max-w-lg w-full">
       <HumanDescriptionPanel description={humanDescription ?? question} toolName="" pending={false} />
       {humanDescription && (
-        <p className="mt-2 text-sm" style={{ color: 'var(--ema-text-secondary)' }}>{question}</p>
+        <p className="mt-2 text-sm text-[var(--ema-text-secondary)]">{question}</p>
       )}
       <div className="flex gap-3 mt-5 justify-end">
         <Button variant="ghost" size="sm" onClick={onCancel}>取消</Button>

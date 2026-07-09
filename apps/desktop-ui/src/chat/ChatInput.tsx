@@ -203,9 +203,8 @@ export function ChatInput(): JSX.Element {
         {/* ── Unified input box ── */}
         <div
           ref={inputBoxRef}
-          className="relative rounded-2xl transition-shadow"
+          className="relative rounded-2xl transition-shadow bg-[var(--ema-surface-2)]"
           style={{
-            background: 'var(--ema-surface-2)',
             boxShadow: isDragOver
               ? '0 0 0 2px var(--ema-primary), 0 0 24px var(--ema-glow)'
               : undefined,
@@ -215,8 +214,7 @@ export function ChatInput(): JSX.Element {
           {isDragOver && (
             <div className="absolute inset-0 z-10 rounded-2xl flex items-center justify-center pointer-events-none ema-fade-in"
                  style={{ background: 'color-mix(in srgb, var(--ema-primary) 14%, transparent)' }}>
-              <div className="flex items-center gap-2 text-sm font-medium"
-                   style={{ color: 'var(--ema-text-primary)' }}>
+              <div className="flex items-center gap-2 text-sm font-medium text-[var(--ema-text-primary)]">
                 <span className="i-mdi:tray-arrow-down text-xl" aria-hidden />
                 放下以上传文件
               </div>
@@ -244,8 +242,8 @@ export function ChatInput(): JSX.Element {
           <div className="relative">
             <textarea
               ref={textareaRef}
-              className="relative w-full bg-transparent rounded-2xl px-4 py-3 pr-12 text-sm resize-none focus:outline-none overflow-y-auto"
-              style={{ color: 'var(--ema-text-secondary)', minHeight: 60, maxHeight: TEXTAREA_MAX_H }}
+              className="relative w-full bg-transparent rounded-2xl px-4 py-3 pr-12 text-sm resize-none focus:outline-none overflow-y-auto text-[var(--ema-text-secondary)]"
+              style={{ minHeight: 60, maxHeight: TEXTAREA_MAX_H }}
               rows={1}
               placeholder="输入消息…"
               value={text}
@@ -274,8 +272,7 @@ export function ChatInput(): JSX.Element {
                 onClick={() => void pickAttachment()}
               />
               {pendingAttachments.length > 0 && (
-                <span className="absolute -top-1 -right-1 min-w-[16px] h-4 flex items-center justify-center rounded-full text-[10px] font-medium px-0.5 pointer-events-none"
-                      style={{ background: 'var(--ema-primary)', color: 'var(--ema-text-primary)' }}>
+                <span className="absolute -top-1 -right-1 min-w-[16px] h-4 flex items-center justify-center rounded-full text-[10px] font-medium px-0.5 pointer-events-none bg-[var(--ema-primary)] text-[var(--ema-text-primary)]">
                   {pendingAttachments.length}
                 </span>
               )}
@@ -313,7 +310,7 @@ export function ChatInput(): JSX.Element {
                   onCheckedChange={setThinkingEnabled}
                   label="启用思考"
                 />
-                <span className="text-[11px] select-none" style={{ color: 'var(--ema-text-tertiary)' }}>
+                <span className="text-[11px] select-none text-[var(--ema-text-tertiary)]">
                   思考
                 </span>
               </div>
@@ -328,8 +325,8 @@ export function ChatInput(): JSX.Element {
           </div>
 
           {hasAnyStreaming && (
-            <div className="text-xs flex items-center gap-1.5" style={{ color: 'var(--ema-text-tertiary)' }}>
-              <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: 'var(--ema-primary)' }} aria-hidden />
+            <div className="text-xs flex items-center gap-1.5 text-[var(--ema-text-tertiary)]">
+              <span className="w-1.5 h-1.5 rounded-full animate-pulse bg-[var(--ema-primary)]" aria-hidden />
               {isStreamingHere ? '生成中…' : '其他会话生成中'}
             </div>
           )}
@@ -389,8 +386,7 @@ function KbButton({
                 </span>
               </Tooltip>
               {count > 0 && (
-                <span className="absolute -top-1 -right-1 min-w-[16px] h-4 flex items-center justify-center rounded-full text-[10px] font-medium px-0.5 pointer-events-none"
-                      style={{ background: 'var(--ema-primary)', color: 'var(--ema-text-primary)' }}>
+                <span className="absolute -top-1 -right-1 min-w-[16px] h-4 flex items-center justify-center rounded-full text-[10px] font-medium px-0.5 pointer-events-none bg-[var(--ema-primary)] text-[var(--ema-text-primary)]">
                   {count}
                 </span>
               )}
@@ -446,7 +442,7 @@ function KbDocList({
           {!loaded && loading ? (
             <div className="flex justify-center py-4 ema-fade-in"><Spinner size="sm" /></div>
           ) : items.length === 0 ? (
-            <p className="text-xs py-3 text-center ema-fade-in" style={{ color: 'var(--ema-text-tertiary)' }}>
+            <p className="text-xs py-3 text-center ema-fade-in text-[var(--ema-text-tertiary)]">
               此知识库暂无文档，去设置 → 知识库上传
             </p>
           ) : (
@@ -460,12 +456,11 @@ function KbDocList({
                   onClick={() => toggle(doc.id)}
                 >
                   <Checkbox checked={checked} className="pointer-events-none" label={doc.fileName} />
-                  <span className="text-xs truncate flex-1"
-                        style={{ color: 'var(--ema-text-secondary)' }} title={doc.fileName}>
+                  <span className="text-xs truncate flex-1 text-[var(--ema-text-secondary)]" title={doc.fileName}>
                     {doc.fileName}
                   </span>
                   {doc.status !== 'indexed' && (
-                    <span className="text-[10px] shrink-0" style={{ color: 'var(--ema-text-tertiary)' }}>
+                    <span className="text-[10px] shrink-0 text-[var(--ema-text-tertiary)]">
                       {doc.status === 'error' ? '错误' : '索引中'}
                     </span>
                   )}
@@ -524,11 +519,10 @@ function KbSelectorBody({
     <div className="flex flex-col gap-2">
       {/* ── Header row ── */}
       <div className="flex items-center justify-between px-1">
-        <p className="text-xs font-medium" style={{ color: 'var(--ema-text-secondary)' }}>知识库</p>
+        <p className="text-xs font-medium text-[var(--ema-text-secondary)]">知识库</p>
         {totalCount > 0 && (
           <button
-            className="text-xs transition-colors hover:text-[var(--ema-primary)]"
-            style={{ color: 'var(--ema-text-tertiary)' }}
+            className="text-xs transition-colors hover:text-[var(--ema-primary)] text-[var(--ema-text-tertiary)]"
             onClick={clearAll}
           >清空全部</button>
         )}
@@ -537,7 +531,7 @@ function KbSelectorBody({
       {!libsLoaded ? (
         <div className="flex justify-center py-3 ema-fade-in"><Spinner size="sm" /></div>
       ) : libs.length === 0 ? (
-        <p className="text-xs py-3 text-center ema-fade-in" style={{ color: 'var(--ema-text-tertiary)' }}>
+        <p className="text-xs py-3 text-center ema-fade-in text-[var(--ema-text-tertiary)]">
           暂无知识库，去设置 → 知识库创建
         </p>
       ) : (
@@ -550,11 +544,7 @@ function KbSelectorBody({
                 return (
                   <button
                     key={lib.id}
-                    className="text-xs px-2 py-0.5 rounded-full transition-ema relative"
-                    style={{
-                      background: lib.id === shownLibId ? 'var(--ema-primary)' : 'var(--ema-surface-2)',
-                      color:      lib.id === shownLibId ? 'var(--ema-text-on-primary)' : 'var(--ema-text-secondary)',
-                    }}
+                    className={`text-xs px-2 py-0.5 rounded-full transition-ema relative ${lib.id === shownLibId ? 'bg-[var(--ema-primary)] text-[var(--ema-text-on-primary)]' : 'bg-[var(--ema-surface-2)] text-[var(--ema-text-secondary)]'}`}
                     onClick={() => setShownLibId(lib.id)}
                   >
                     {lib.name}

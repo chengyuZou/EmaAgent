@@ -89,7 +89,7 @@ export function ToolCallBlock({ slice, streaming = false, turnId }: ToolCallBloc
         className="flex items-center gap-2 text-left w-full group"
         onClick={() => setOpen((v) => !v)}
       >
-        <span className={`text-[10px] w-3 shrink-0 ${open ? 'i-mdi:chevron-down' : 'i-mdi:chevron-right'}`} style={{ color: 'var(--ema-text-tertiary)' }} aria-hidden />
+        <span className={`text-[10px] w-3 shrink-0 ${open ? 'i-mdi:chevron-down' : 'i-mdi:chevron-right'} text-[var(--ema-text-tertiary)]`} aria-hidden />
 
         <span className={`font-mono text-xs transition-colors ${
           hasError   ? 'text-[var(--ema-danger)]' :
@@ -100,7 +100,7 @@ export function ToolCallBlock({ slice, streaming = false, turnId }: ToolCallBloc
         </span>
 
         {target && (
-          <span className="text-xs font-mono truncate max-w-[18rem]" style={{ color: 'var(--ema-text-tertiary)' }}>
+          <span className="text-xs font-mono truncate max-w-[18rem] text-[var(--ema-text-tertiary)]">
             · {target}
           </span>
         )}
@@ -186,9 +186,8 @@ export function ToolCallBlock({ slice, streaming = false, turnId }: ToolCallBloc
 
               {/* 错误区（denied/failed 状态） */}
               {hasError && (
-                <div className="border-l-2 pl-2 mt-1" style={{ borderColor: 'var(--ema-danger)' }}>
-                  <pre className="font-mono text-[11px] whitespace-pre-wrap break-all bg-transparent m-0 p-0"
-                       style={{ color: 'var(--ema-danger-text)' }}>
+                <div className="border-l-2 pl-2 mt-1 border-[var(--ema-danger)]">
+                  <pre className="font-mono text-[11px] whitespace-pre-wrap break-all bg-transparent m-0 p-0 text-[var(--ema-danger-text)]">
                     {status === 'denied' ? '已拒绝' : `[${slice.error!.code}]`} {slice.error!.message}
                   </pre>
                 </div>
@@ -232,13 +231,13 @@ function StatusDuration({
 
 function ToolArgsView({ name, args }: { name: string; args: unknown }): JSX.Element {
   const { rows } = renderToolArgs(name, args);
-  if (rows.length === 0) return <span className="text-[11px]" style={{ color: 'var(--ema-text-tertiary)' }}>（无参数）</span>;
+  if (rows.length === 0) return <span className="text-[11px] text-[var(--ema-text-tertiary)]">（无参数）</span>;
   return (
     <div className="flex flex-col gap-0.5 pr-6">
       {rows.map((r, i) => (
         <div key={i} className="flex items-baseline gap-2 text-[11px] leading-relaxed">
-          <span style={{ color: 'var(--ema-text-tertiary)' }} className="shrink-0">{r.key}:</span>
-          <span className={`break-all ${r.mono ? 'font-mono' : ''}`} style={{ color: 'var(--ema-text-secondary)' }}>
+          <span className="shrink-0 text-[var(--ema-text-tertiary)]">{r.key}:</span>
+          <span className={`break-all ${r.mono ? 'font-mono' : ''} text-[var(--ema-text-secondary)]`}>
             {r.value}
           </span>
         </div>
@@ -262,8 +261,8 @@ function ToolResultViewBlock({ view }: { view: ReturnType<typeof renderToolResul
       <div className="flex flex-col gap-0.5">
         {view.rows.map((r, i) => (
           <div key={i} className="flex items-baseline gap-2 text-[11px] leading-relaxed">
-            <span style={{ color: 'var(--ema-text-tertiary)' }} className="shrink-0">{r.key}:</span>
-            <span className={`break-all ${r.mono ? 'font-mono' : ''}`} style={{ color: 'var(--ema-text-secondary)' }}>
+            <span className="shrink-0 text-[var(--ema-text-tertiary)]">{r.key}:</span>
+            <span className={`break-all ${r.mono ? 'font-mono' : ''} text-[var(--ema-text-secondary)]`}>
               {r.value}
             </span>
           </div>

@@ -46,11 +46,11 @@ export function WorkspacePicker({
 
   return (
     <div
-      className={`ema-slide-up absolute z-50 rounded-xl p-3 shadow-[var(--ema-shadow-2)] w-72 ${positionClassName}`}
-      style={{ background: 'var(--ema-surface-4)', border: '1px solid var(--ema-border)' }}
+      className={`ema-slide-up absolute z-50 rounded-xl p-3 shadow-[var(--ema-shadow-2)] w-72 ${positionClassName} bg-[var(--ema-surface-4)]`}
+      style={{ border: '1px solid var(--ema-border)' }}
       onClick={(e) => e.stopPropagation()}
     >
-      <p className="text-xs mb-2 font-medium" style={{ color: 'var(--ema-text-secondary)' }}>工作区目录</p>
+      <p className="text-xs mb-2 font-medium text-[var(--ema-text-secondary)]">工作区目录</p>
 
       <div className="flex gap-1 mb-3">
         <Input
@@ -72,8 +72,7 @@ export function WorkspacePicker({
 
       <div className="flex gap-2">
         <button
-          className="px-3 py-1.5 rounded-lg text-xs transition-colors disabled:opacity-50"
-          style={{ background: 'var(--ema-primary-muted)', color: 'var(--ema-primary)' }}
+          className="px-3 py-1.5 rounded-lg text-xs transition-colors disabled:opacity-50 bg-[var(--ema-primary-muted)] text-[var(--ema-primary)]"
           disabled={saving}
           onClick={() => void save()}
         >{saving ? '保存中…' : '保存'}</button>

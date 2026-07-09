@@ -18,8 +18,7 @@ export function HumanDescriptionPanel({ description, toolName, pending }: HumanD
     <div className="mb-2">
       {description && (
         <p
-          className="text-base leading-relaxed"
-          style={{ color: toolName ? 'var(--ema-text-primary)' : 'var(--ema-text-secondary)' }}
+          className={`text-base leading-relaxed ${toolName ? 'text-[var(--ema-text-primary)]' : 'text-[var(--ema-text-secondary)]'}`}
         >
           {description}
         </p>

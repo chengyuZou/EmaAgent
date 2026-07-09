@@ -54,10 +54,7 @@ export function ContextPanel(): JSX.Element | null {
     <div className="relative">
       {/* Trigger */}
       <button
-        className="flex items-center gap-1 text-xs transition-colors"
-        style={{ color: 'var(--ema-text-tertiary)' }}
-        onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--ema-text-primary)'; }}
-        onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--ema-text-tertiary)'; }}
+        className="flex items-center gap-1 text-xs transition-colors text-[var(--ema-text-tertiary)] hover:text-[var(--ema-text-primary)]"
         onClick={() => setOpen((v) => !v)}
         title="查看记忆召回"
       >
@@ -73,12 +70,11 @@ export function ContextPanel(): JSX.Element | null {
         <>
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
           <div
-            className="ema-slide-up absolute bottom-full right-0 mb-2 z-50 w-72 rounded-xl p-3 shadow-[var(--ema-shadow-3)]"
-            style={{ background: 'var(--ema-surface-4)', border: '1px solid var(--ema-border)' }}
+            className="ema-slide-up absolute bottom-full right-0 mb-2 z-50 w-72 rounded-xl p-3 shadow-[var(--ema-shadow-3)] bg-[var(--ema-surface-4)]"
+            style={{ border: '1px solid var(--ema-border)' }}
             onClick={(e) => e.stopPropagation()}
           >
-            <p className="text-xs font-semibold mb-2.5 flex items-center gap-1.5"
-               style={{ color: 'var(--ema-text-tertiary)' }}>
+            <p className="text-xs font-semibold mb-2.5 flex items-center gap-1.5 text-[var(--ema-text-tertiary)]">
               <span className="i-mdi:brain text-sm" aria-hidden />
               记忆召回 — 本轮
             </p>
@@ -91,7 +87,7 @@ export function ContextPanel(): JSX.Element | null {
 
                 return (
                   <div key={layer} className="flex items-start gap-2 text-xs">
-                    <span className="w-14 shrink-0 pt-0.5 font-mono" style={{ color: 'var(--ema-text-tertiary)' }}>
+                    <span className="w-14 shrink-0 pt-0.5 font-mono text-[var(--ema-text-tertiary)]">
                       {LAYER_LABELS[layer]}
                     </span>
 
@@ -103,19 +99,19 @@ export function ContextPanel(): JSX.Element | null {
                           <>
                             <span className="text-[var(--ema-text-secondary)]">{report.itemCount} 条</span>
                             <span className="text-[var(--ema-text-tertiary)]">{report.tokenEstimate} tok</span>
-                            <span style={{ color: 'var(--ema-text-tertiary)' }}>{report.durationMs} ms</span>
+                            <span className="text-[var(--ema-text-tertiary)]">{report.durationMs} ms</span>
                           </>
                         )}
 
                         {report.status === 'skipped' && report.skippedReason && (
-                          <span className="truncate max-w-[10rem]" style={{ color: 'var(--ema-text-tertiary)' }} title={report.skippedReason}>
+                          <span className="truncate max-w-[10rem] text-[var(--ema-text-tertiary)]" title={report.skippedReason}>
                             {report.skippedReason}
                           </span>
                         )}
                       </div>
 
                       {report.error && (
-                        <p className="mt-1 line-clamp-2" style={{ color: 'var(--ema-danger)' }}>{report.error}</p>
+                        <p className="mt-1 line-clamp-2 text-[var(--ema-danger)]">{report.error}</p>
                       )}
                     </div>
                   </div>

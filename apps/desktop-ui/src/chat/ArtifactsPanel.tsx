@@ -29,8 +29,7 @@ export function ArtifactsPanel(): JSX.Element {
 
   if (!sessionId) {
     return (
-      <div className="flex items-center justify-center py-12 text-xs ema-fade-in"
-           style={{ color: 'var(--ema-text-tertiary)' }}>
+      <div className="flex items-center justify-center py-12 text-xs ema-fade-in text-[var(--ema-text-tertiary)]">
         无活跃会话
       </div>
     );
@@ -40,11 +39,10 @@ export function ArtifactsPanel(): JSX.Element {
     return (
       <div className="flex flex-col items-center justify-center gap-3 py-10 px-4 ema-fade-in">
         <span
-          className="i-mdi:file-document-multiple-outline text-3xl opacity-20"
-          style={{ color: 'var(--ema-primary)' }}
+          className="i-mdi:file-document-multiple-outline text-3xl opacity-20 text-[var(--ema-primary)]"
           aria-hidden
         />
-        <p className="text-xs text-center" style={{ color: 'var(--ema-text-tertiary)' }}>
+        <p className="text-xs text-center text-[var(--ema-text-tertiary)]">
           本次会话暂无 Artifact
         </p>
       </div>
@@ -55,10 +53,9 @@ export function ArtifactsPanel(): JSX.Element {
     <div className="flex flex-col h-full">
       {/* Toolbar */}
       <div
-        className="flex items-center px-3 py-1.5 border-b shrink-0"
-        style={{ borderColor: 'var(--ema-border)' }}
+        className="flex items-center px-3 py-1.5 border-b shrink-0 border-[var(--ema-border)]"
       >
-        <span className="text-xs" style={{ color: 'var(--ema-text-tertiary)' }}>
+        <span className="text-xs text-[var(--ema-text-tertiary)]">
           {artifacts.length} 个产物
         </span>
       </div>

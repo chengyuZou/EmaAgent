@@ -121,10 +121,10 @@ export function ChatPanel(): JSX.Element {
 
   if (sidecarStatus.kind === 'error') {
     return (
-      <div className="flex items-center justify-center h-screen ema-fade-in" style={{ color: 'var(--ema-text-tertiary)' }}>
+      <div className="flex items-center justify-center h-screen ema-fade-in text-[var(--ema-text-tertiary)]">
         <div className="text-center">
           <div className="text-lg mb-2 inline-flex items-center gap-1.5"><span className="i-mdi:flash-off-outline" aria-hidden />Sidecar 离线</div>
-          <div className="text-sm" style={{ color: 'var(--ema-text-tertiary)' }}>{sidecarStatus.reason}</div>
+          <div className="text-sm text-[var(--ema-text-tertiary)]">{sidecarStatus.reason}</div>
         </div>
       </div>
     );
@@ -132,7 +132,7 @@ export function ChatPanel(): JSX.Element {
 
   if (sidecarStatus.kind === 'pending' || sidecarStatus.kind === 'unknown') {
     return (
-      <div className="flex items-center justify-center h-screen ema-fade-in" style={{ color: 'var(--ema-text-tertiary)' }}>
+      <div className="flex items-center justify-center h-screen ema-fade-in text-[var(--ema-text-tertiary)]">
         连接中…
       </div>
     );
@@ -140,22 +140,21 @@ export function ChatPanel(): JSX.Element {
 
   return (
     <ErrorBoundary>
-      <div className="flex flex-row h-screen" style={{ background: 'var(--ema-bg)' }}>
+      <div className="flex flex-row h-screen bg-[var(--ema-bg)]">
         <SessionSidebar />
 
         {/* ── Main column ── */}
         <div className="flex flex-col flex-1 min-w-0">
 
           {/* Title bar + inspector dock */}
-          <div className="flex items-center justify-between px-4 py-2 border-b shrink-0"
-               style={{ borderColor: 'var(--ema-border)' }}>
+          <div className="flex items-center justify-between px-4 py-2 border-b shrink-0 border-[var(--ema-border)]">
             {/* Session title */}
             <div className="flex items-center gap-2 min-w-0">
-              <span className="text-sm font-medium truncate" style={{ color: 'var(--ema-text-secondary)' }}>
+              <span className="text-sm font-medium truncate text-[var(--ema-text-secondary)]">
                 {session?.title ?? (viewedSessionId ? '加载中…' : '无会话')}
               </span>
               {session?.parentSessionId && (
-                <span className="text-xs" style={{ color: 'var(--ema-text-tertiary)' }}>· 分支</span>
+                <span className="text-xs text-[var(--ema-text-tertiary)]">· 分支</span>
               )}
             </div>
 
@@ -187,16 +186,14 @@ export function ChatPanel(): JSX.Element {
                 >
                   <span className="i-mdi:dots-horizontal text-base" aria-hidden />
                   {runningTaskCount > 0 && (
-                    <span className="absolute -top-0.5 -right-0.5 min-w-[14px] h-3.5 flex items-center justify-center rounded-full text-[9px] font-bold px-0.5 pointer-events-none"
-                          style={{ background: 'var(--ema-primary)', color: 'var(--ema-text-primary)' }}>
+                    <span className="absolute -top-0.5 -right-0.5 min-w-[14px] h-3.5 flex items-center justify-center rounded-full text-[9px] font-bold px-0.5 pointer-events-none bg-[var(--ema-primary)] text-[var(--ema-text-primary)]">
                       {runningTaskCount}
                     </span>
                   )}
                 </button>
 
                 {overflowOpen && (
-                  <div className="ema-slide-up absolute top-full right-0 mt-1 z-50 w-44 rounded-xl border py-1 shadow-[var(--ema-shadow-3)]"
-                       style={{ background: 'var(--ema-surface-4)', borderColor: 'var(--ema-border-hover)' }}>
+                  <div className="ema-slide-up absolute top-full right-0 mt-1 z-50 w-44 rounded-xl border py-1 shadow-[var(--ema-shadow-3)] bg-[var(--ema-surface-4)] border-[var(--ema-border-hover)]">
                     <OverflowItem
                       icon="i-mdi:folder-outline"
                       label="文件浏览"
@@ -220,13 +217,12 @@ export function ChatPanel(): JSX.Element {
           <ChatInput />
 
           {/* Status bar */}
-          <div className="flex items-center justify-between px-4 py-1.5 border-t shrink-0 text-[11px]"
-               style={{ borderColor: 'var(--ema-border)', color: 'var(--ema-text-tertiary)' }}>
+          <div className="flex items-center justify-between px-4 py-1.5 border-t shrink-0 text-[11px] border-[var(--ema-border)] text-[var(--ema-text-tertiary)]">
             <div className="flex items-center gap-2">
               <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${sidecarStatus.kind === 'ok' ? 'bg-[var(--ema-success)]' : 'bg-[var(--ema-danger)]'}`} />
               <span>Sidecar</span>
               {sidecarStatus.kind === 'ok' && (
-                <span style={{ color: 'var(--ema-text-tertiary)' }}>{sidecarStatus.latencyMs}ms</span>
+                <span className="text-[var(--ema-text-tertiary)]">{sidecarStatus.latencyMs}ms</span>
               )}
             </div>
             <div className="flex items-center gap-3">
@@ -243,12 +239,11 @@ export function ChatPanel(): JSX.Element {
         {/* 宽度可拖拽(左边缘手柄)。hasInspector 切换走 ema-transition-width 过渡,
             拖拽中(resizing)禁过渡跟手。收起 width:0 滑出动画。 */}
         <div
-          className={`relative flex-none flex flex-col overflow-hidden border-l ${resizing ? '' : 'ema-transition-width'}`}
           style={{
             width: hasInspector ? inspectorWidth : 0,
             borderColor: hasInspector ? 'var(--ema-border)' : 'transparent',
-            background: 'var(--ema-surface-1)',
           }}
+          className={`relative flex-none flex flex-col overflow-hidden border-l bg-[var(--ema-surface-1)] ${resizing ? '' : 'ema-transition-width'}`}
         >
           {/* 拖拽手柄(左边缘)。hasInspector 才显示 */}
           {hasInspector && (
@@ -283,8 +278,7 @@ function InspectorDockBtn({
     >
       <span className={`${icon} text-base`} aria-hidden />
       {badge != null && badge > 0 && (
-        <span className="absolute -top-0.5 -right-0.5 min-w-[14px] h-3.5 flex items-center justify-center rounded-full text-[9px] font-bold px-0.5 pointer-events-none"
-              style={{ background: 'var(--ema-primary)', color: 'var(--ema-primary-text)' }}>
+        <span className="absolute -top-0.5 -right-0.5 min-w-[14px] h-3.5 flex items-center justify-center rounded-full text-[9px] font-bold px-0.5 pointer-events-none bg-[var(--ema-primary)] text-[var(--ema-primary-text)]">
           {badge}
         </span>
       )}
@@ -308,12 +302,11 @@ function OverflowItem({
       <span className={`${icon} text-base shrink-0`} aria-hidden />
       <span className="flex-1 text-left">{label}</span>
       {badge != null && badge > 0 && (
-        <span className="min-w-[18px] h-4 flex items-center justify-center rounded-full text-[10px] font-medium px-1"
-              style={{ background: 'var(--ema-primary-muted)', color: 'var(--ema-primary)' }}>
+        <span className="min-w-[18px] h-4 flex items-center justify-center rounded-full text-[10px] font-medium px-1 bg-[var(--ema-primary-muted)] text-[var(--ema-primary)]">
           {badge}
         </span>
       )}
-      {active && <span className="i-mdi:check text-sm shrink-0" style={{ color: 'var(--ema-primary)' }} aria-hidden />}
+      {active && <span className="i-mdi:check text-sm shrink-0 text-[var(--ema-primary)]" aria-hidden />}
     </button>
   );
 }
@@ -361,8 +354,7 @@ function InspectorContent({
         return (
           <div
             key={id}
-            className={`flex flex-col min-h-0 overflow-hidden border-r border-b ${colSpan ? 'col-span-2' : ''}`}
-            style={{ borderColor: 'var(--ema-border)' }}
+            className={`flex flex-col min-h-0 overflow-hidden border-r border-b border-[var(--ema-border)] ${colSpan ? 'col-span-2' : ''}`}
           >
             <InspectorPanelHeader id={id} compact />
             <div className="flex-1 overflow-hidden">
@@ -385,11 +377,9 @@ const PANEL_META: Record<InspectorPanelId, { label: string; icon: string }> = {
 function InspectorPanelHeader({ id, compact }: { id: InspectorPanelId; compact?: boolean }): JSX.Element {
   const meta = PANEL_META[id];
   return (
-    <div className={`flex items-center gap-1.5 px-3 shrink-0 border-b ${compact ? 'py-1.5' : 'py-2'}`}
-         style={{ borderColor: 'var(--ema-border)' }}>
-      <span className={`${meta.icon} text-sm`} style={{ color: 'var(--ema-text-tertiary)' }} aria-hidden />
-      <span className={`font-medium ${compact ? 'text-xs' : 'text-sm'}`}
-            style={{ color: 'var(--ema-text-secondary)' }}>
+    <div className={`flex items-center gap-1.5 px-3 shrink-0 border-b border-[var(--ema-border)] ${compact ? 'py-1.5' : 'py-2'}`}>
+      <span className={`${meta.icon} text-sm text-[var(--ema-text-tertiary)]`} aria-hidden />
+      <span className={`font-medium ${compact ? 'text-xs' : 'text-sm'} text-[var(--ema-text-secondary)]`}>
         {meta.label}
       </span>
     </div>
@@ -464,7 +454,7 @@ function ContextBall({ sessionId }: { sessionId: string | null }): JSX.Element |
           className="transition-[stroke-dasharray] duration-[400ms] ease-out"
         />
       </svg>
-      <span style={{ color: 'var(--ema-text-tertiary)' }} className="tabular-nums">
+      <span className="text-[var(--ema-text-tertiary)] tabular-nums">
         {fmtK(inputTok)}
       </span>
     </div>

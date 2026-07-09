@@ -29,8 +29,7 @@ export function UserBubble({ message }: UserBubbleProps): JSX.Element {
           </div>
         )}
 
-        <div className="rounded-2xl rounded-br-md px-5 py-3 border text-sm break-words"
-             style={{ background: 'var(--ema-surface-2)', borderColor: 'var(--ema-border)', color: 'var(--ema-text-secondary)' }}>
+        <div className="rounded-2xl rounded-br-md px-5 py-3 border text-sm break-words bg-[var(--ema-surface-2)] border-[var(--ema-border)] text-[var(--ema-text-secondary)]">
           <Markdown source={message.content} />
         </div>
 
@@ -41,8 +40,7 @@ export function UserBubble({ message }: UserBubbleProps): JSX.Element {
           className="ema-collapsible"
           style={{ gridTemplateRows: hasTurnId ? '1fr' : '0fr', opacity: hasTurnId ? 1 : 0 }}
         >
-          <div className="flex items-center justify-end gap-1 text-[11px] overflow-hidden"
-               style={{ color: 'var(--ema-text-tertiary)' }}>
+          <div className="flex items-center justify-end gap-1 text-[11px] overflow-hidden text-[var(--ema-text-tertiary)]">
             {message.turnId && <ForkButton turnId={message.turnId} />}
             {/* 9.D: <N/M> 导航注释掉,切分支走 Branch 面板。修好 9.D 再恢复。 */}
             {/* {message.turnId && <BranchSiblingNav turnId={message.turnId} />} */}

@@ -92,11 +92,11 @@ function DocumentRow({ doc, currentEmbedModel, onDelete }: {
           <p className="text-xs text-[var(--ema-text-tertiary)] mt-0.5">
             {doc.wordCount.toLocaleString()} 词{doc.pageCount ? ` · ${doc.pageCount} 页` : ''}
             {doc.ebdModel ? (
-              <span className="ml-2 font-mono ema-fade-in" style={{ color: embedStale ? 'var(--ema-danger)' : 'var(--ema-text-tertiary)' }}>
+              <span className={`ml-2 font-mono ema-fade-in ${embedStale ? 'text-[var(--ema-danger)]' : 'text-[var(--ema-text-tertiary)]'}`}>
                 {embedStale && <span className="i-mdi:alert-circle-outline mr-0.5 align-middle" aria-hidden />}{doc.ebdModel}{embedStale ? '（需重嵌）' : ''}
               </span>
             ) : currentEmbedModel ? (
-              <span className="ml-2 ema-fade-in inline-flex items-center gap-0.5" style={{ color: 'var(--ema-warning-text)' }}><span className="i-mdi:alert-circle-outline" aria-hidden />未嵌入</span>
+              <span className="ml-2 ema-fade-in inline-flex items-center gap-0.5 text-[var(--ema-warning-text)]"><span className="i-mdi:alert-circle-outline" aria-hidden />未嵌入</span>
             ) : null}
           </p>
         </div>
@@ -204,7 +204,7 @@ function ChunkViewer({ assetId, closing }: { assetId: string; closing?: boolean 
               <span className="font-mono shrink-0">#{i + 1}</span>
               {ch.page !== undefined && <span className="shrink-0">第 {ch.page} 页</span>}
               <span className="shrink-0">{ch.tokenCount} tok</span>
-              <span className="shrink-0 inline-flex items-center gap-0.5" style={{ color: ch.hasEmbedding ? 'var(--ema-success-text)' : 'var(--ema-text-tertiary)' }}>
+              <span className={`shrink-0 inline-flex items-center gap-0.5 ${ch.hasEmbedding ? 'text-[var(--ema-success-text)]' : 'text-[var(--ema-text-tertiary)]'}`}>
                 <span className={ch.hasEmbedding ? 'i-mdi:check-circle-outline' : 'i-mdi:circle-outline'} aria-hidden />
                 {ch.hasEmbedding ? '已嵌入' : '仅 FTS'}
               </span>
@@ -446,13 +446,11 @@ function ProcessingQueue(): JSX.Element | null {
                style={{ '--stagger-i': gi } as CSSProperties}>
             {/* Per-KB header with completion fraction */}
             <div className="flex items-center gap-2 px-1">
-              <span className="i-solar:database-linear text-sm shrink-0"
-                    style={{ color: 'var(--ema-text-tertiary)' }} aria-hidden />
+              <span className="i-solar:database-linear text-sm shrink-0 text-[var(--ema-text-tertiary)]" aria-hidden />
               <p className="text-xs font-medium text-[var(--ema-text-secondary)] truncate flex-1">
                 {libName(kbId)}
               </p>
-              <span className="text-[11px] font-mono shrink-0"
-                    style={{ color: 'var(--ema-text-tertiary)' }}>
+              <span className="text-[11px] font-mono shrink-0 text-[var(--ema-text-tertiary)]">
                 {done}/{total}
               </span>
             </div>
@@ -486,17 +484,16 @@ function IngestJobRow({ job }: { job: IngestJob }): JSX.Element {
                      ${done ? 'ema-fade-out' : ''}`}>
       <div className="flex items-center gap-2">
         {failed ? (
-          <span className="i-mdi:alert-circle text-base shrink-0" style={{ color: 'var(--ema-danger)' }} aria-hidden />
+          <span className="i-mdi:alert-circle text-base shrink-0 text-[var(--ema-danger)]" aria-hidden />
         ) : done ? (
-          <span className="i-mdi:check-circle text-base shrink-0" style={{ color: 'var(--ema-success)' }} aria-hidden />
+          <span className="i-mdi:check-circle text-base shrink-0 text-[var(--ema-success)]" aria-hidden />
         ) : (
           <Spinner size="sm" />
         )}
         <span className="text-sm truncate flex-1 text-[var(--ema-text-primary)]" title={job.fileName}>
           {label} · {job.fileName}
         </span>
-        <span className="text-xs shrink-0 font-mono"
-              style={{ color: failed ? 'var(--ema-danger)' : 'var(--ema-text-tertiary)' }}>
+        <span className={`text-xs shrink-0 font-mono ${failed ? 'text-[var(--ema-danger)]' : 'text-[var(--ema-text-tertiary)]'}`}>
           {status}
         </span>
         {failed && (
@@ -548,8 +545,7 @@ function LibraryRow({ lib, onActivate, onRename, onDelete }: {
                   ${lib.isActive ? 'bg-[var(--ema-primary-muted)] ring-1 ring-[var(--ema-primary)]' : 'bg-[var(--ema-surface-1)]'}`}
     >
       <span
-        className={`shrink-0 text-lg ${lib.isActive ? 'i-solar:database-bold' : 'i-solar:database-linear'}`}
-        style={{ color: lib.isActive ? 'var(--ema-primary)' : 'var(--ema-text-tertiary)' }}
+        className={`shrink-0 text-lg ${lib.isActive ? 'i-solar:database-bold text-[var(--ema-primary)]' : 'i-solar:database-linear text-[var(--ema-text-tertiary)]'}`}
         aria-hidden
       />
 
@@ -902,7 +898,7 @@ export function KnowledgeBaseTab(): JSX.Element {
             {documents.length > 0 && embedModel && (() => {
               const need = documents.filter((d) => d.ebdStale || (!!d.ebdModel && d.ebdModel !== embedModel) || (!d.ebdModel)).length;
               return need > 0 ? (
-                <span className="ml-2 text-xs font-mono" style={{ color: 'var(--ema-danger)' }}>
+                <span className="ml-2 text-xs font-mono text-[var(--ema-danger)]">
                   · {need}/{documents.length} 需重嵌
                 </span>
               ) : null;

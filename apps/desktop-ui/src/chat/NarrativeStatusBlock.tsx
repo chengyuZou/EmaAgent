@@ -24,25 +24,24 @@ export function NarrativeStatusBlock({ slice }: { slice: NarrativeSlice }): Reac
   const [outerOpen, setOuterOpen] = useState(false);
 
   return (
-    <div className="flex flex-col gap-2 text-xs rounded-lg px-2.5 py-1.5"
-         style={{ color: 'var(--ema-text-tertiary)', background: 'var(--ema-info-muted)', borderColor: 'var(--ema-info)', borderWidth: 1 }}>
+    <div className="flex flex-col gap-2 text-xs rounded-lg px-2.5 py-1.5 text-[var(--ema-text-tertiary)] bg-[var(--ema-info-muted)] border border-[var(--ema-info)]"
+         style={{ borderWidth: 1 }}>
 
       {/* header:始终可点击折叠 */}
       <button
         type="button"
         onClick={() => setOuterOpen((v) => !v)}
-        className="flex items-center gap-1.5 font-medium transition-colors text-left w-full hover:opacity-80"
-        style={{ color: 'var(--ema-info)' }}
+        className="flex items-center gap-1.5 font-medium transition-colors text-left w-full hover:opacity-80 text-[var(--ema-info)]"
         aria-expanded={outerOpen}
       >
         {allDone
-          ? <span className="i-mdi:check-circle-outline shrink-0" style={{ color: 'var(--ema-info)' }} aria-hidden />
+          ? <span className="i-mdi:check-circle-outline shrink-0 text-[var(--ema-info)]" aria-hidden />
           : <Spinner size="sm" />
         }
         <span className="flex-1">
           {allDone ? `已检索 ${timelines.length} 条剧情线` : '检索剧情线…'}
         </span>
-        <span className={`${outerOpen ? 'i-mdi:chevron-down' : 'i-mdi:chevron-right'}`} style={{ color: 'var(--ema-text-tertiary)' }} aria-hidden />
+        <span className={`${outerOpen ? 'i-mdi:chevron-down' : 'i-mdi:chevron-right'} text-[var(--ema-text-tertiary)]`} aria-hidden />
       </button>
 
       {/* 外层折叠区:ema-collapsible 双向动画。内层 gap-2 与 header 间距一致 */}
@@ -90,12 +89,12 @@ function TimelineRow({
         className="flex items-center gap-1.5 text-left w-full hover:opacity-80 disabled:cursor-default disabled:hover:opacity-100"
       >
         {completed
-          ? <span className="i-mdi:check shrink-0" style={{ color: 'var(--ema-info)' }} aria-hidden />
-          : <span className="i-mdi:dots-horizontal shrink-0" style={{ color: 'var(--ema-text-tertiary)' }} aria-hidden />
+          ? <span className="i-mdi:check shrink-0 text-[var(--ema-info)]" aria-hidden />
+          : <span className="i-mdi:dots-horizontal shrink-0 text-[var(--ema-text-tertiary)]" aria-hidden />
         }
-        <span style={{ color: completed ? 'var(--ema-text-secondary)' : 'var(--ema-text-tertiary)' }}>{name}</span>
+        <span className={completed ? 'text-[var(--ema-text-secondary)]' : 'text-[var(--ema-text-tertiary)]'}>{name}</span>
         {isMulti && completed && (
-          <span className={`ml-auto ${innerOpen ? 'i-mdi:chevron-down' : 'i-mdi:chevron-right'}`} style={{ color: 'var(--ema-text-tertiary)' }} aria-hidden />
+          <span className={`ml-auto ${innerOpen ? 'i-mdi:chevron-down' : 'i-mdi:chevron-right'} text-[var(--ema-text-tertiary)]`} aria-hidden />
         )}
       </button>
 
@@ -115,8 +114,7 @@ function TimelineRow({
                 opacity:   fullText ? 1 : 0.92,
               }}
             >
-              <p className="text-xs whitespace-pre-wrap break-words"
-                 style={{ color: 'var(--ema-text-tertiary)' }}>
+              <p className="text-xs whitespace-pre-wrap break-words text-[var(--ema-text-tertiary)]">
                 {displayText}
               </p>
             </div>
@@ -124,8 +122,7 @@ function TimelineRow({
               <button
                 type="button"
                 onClick={() => setFullText(true)}
-                className="text-left hover:opacity-80 w-fit"
-                style={{ color: 'var(--ema-info)' }}
+                className="text-left hover:opacity-80 w-fit text-[var(--ema-info)]"
               >
                 …展开全文
               </button>
@@ -134,15 +131,14 @@ function TimelineRow({
               <button
                 type="button"
                 onClick={() => setFullText(false)}
-                className="text-left hover:opacity-80 w-fit"
-                style={{ color: 'var(--ema-info)' }}
+                className="text-left hover:opacity-80 w-fit text-[var(--ema-info)]"
               >
                 收起全文
               </button>
             )}
           </div>
         ) : completed ? (
-          <p className="pl-5 text-xs italic" style={{ color: 'var(--ema-text-tertiary)' }}>
+          <p className="pl-5 text-xs italic text-[var(--ema-text-tertiary)]">
             （检索返回空,可能该周目无相关内容或 bridge 出错）
           </p>
         ) : null}

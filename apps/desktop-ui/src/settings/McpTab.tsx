@@ -501,7 +501,7 @@ export function McpTab(): JSX.Element {
 
           {probeResult?.ok && probeResult.tools && probeResult.tools.length > 0 && (
             <div className="flex flex-col gap-1.5 mt-2 ema-fade-in">
-              <span className="text-xs" style={{ color: 'var(--ema-text-tertiary)' }}>
+              <span className="text-xs text-[var(--ema-text-tertiary)]">
                 发现 {probeResult.tools.length} 个工具：
               </span>
               {probeResult.tools.map((t) => {

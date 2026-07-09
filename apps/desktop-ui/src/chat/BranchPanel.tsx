@@ -316,7 +316,7 @@ export function BranchPanel(): JSX.Element {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-12 text-xs ema-fade-in" style={{ color: 'var(--ema-text-tertiary)' }}>
+      <div className="flex items-center justify-center py-12 text-xs ema-fade-in text-[var(--ema-text-tertiary)]">
         加载中…
       </div>
     );
@@ -324,7 +324,7 @@ export function BranchPanel(): JSX.Element {
 
   if (error) {
     return (
-      <div className="flex flex-col items-center justify-center py-12 gap-2 text-xs ema-fade-in" style={{ color: 'var(--ema-text-tertiary)' }}>
+      <div className="flex flex-col items-center justify-center py-12 gap-2 text-xs ema-fade-in text-[var(--ema-text-tertiary)]">
         <span>{error}</span>
         <Button variant="ghost" size="sm" onClick={() => void load()}>重试</Button>
       </div>
@@ -333,7 +333,7 @@ export function BranchPanel(): JSX.Element {
 
   if (turns.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-12 gap-2 text-xs ema-fade-in" style={{ color: 'var(--ema-text-tertiary)' }}>
+      <div className="flex flex-col items-center justify-center py-12 gap-2 text-xs ema-fade-in text-[var(--ema-text-tertiary)]">
         <span className="i-mdi:source-branch text-3xl opacity-30" aria-hidden />
         <span>暂无对话</span>
       </div>
@@ -343,9 +343,8 @@ export function BranchPanel(): JSX.Element {
   return (
     <div className="flex flex-col h-full">
       {/* Toolbar — 仅统计 + 节点图，Fork 入口已移到消息气泡（ForkButton） */}
-      <div className="flex items-center justify-between px-3 py-1.5 border-b shrink-0"
-           style={{ borderColor: 'var(--ema-border)' }}>
-        <span className="text-xs" style={{ color: 'var(--ema-text-tertiary)' }}>
+      <div className="flex items-center justify-between px-3 py-1.5 border-b shrink-0 border-[var(--ema-border)]">
+        <span className="text-xs text-[var(--ema-text-tertiary)]">
           {branches.length > 0 ? `${branches.length} 条分支 · ${turns.length} 轮对话` : `${turns.length} 轮对话`}
         </span>
       </div>
@@ -394,14 +393,13 @@ export function BranchPanel(): JSX.Element {
               >
                 {/* Circle */}
                 <div
-                  className="flex items-center justify-center rounded-full transition-all duration-150 shrink-0 active:scale-90"
+                  className={`flex items-center justify-center rounded-full transition-all duration-150 shrink-0 active:scale-90 ${onLineage ? 'text-[var(--ema-text-primary)]' : 'text-[var(--ema-text-tertiary)]'}`}
                   style={{
                     width:     NODE_R * 2,
                     height:    NODE_R * 2,
                     background: onLineage ? color : 'var(--ema-surface-2)',
                     border:     `2px solid ${onLineage ? color : 'var(--ema-border)'}`,
                     boxShadow:  onLineage ? `0 0 12px color-mix(in srgb, ${color} 33%, transparent)` : 'none',
-                    color:      onLineage ? 'var(--ema-text-primary)' : 'var(--ema-text-tertiary)',
                   }}
                 >
                   <ModeIcon mode={turn.mode} />
@@ -409,10 +407,9 @@ export function BranchPanel(): JSX.Element {
 
                 {/* Label */}
                 <div
-                  className="mt-1 text-center leading-snug"
+                  className={`mt-1 text-center leading-snug ${onLineage ? 'text-[var(--ema-text-primary)]' : 'text-[var(--ema-text-tertiary)]'}`}
                   style={{
                     fontSize:   '10px',
-                    color:      onLineage ? 'var(--ema-text-primary)' : 'var(--ema-text-tertiary)',
                     fontWeight: onLineage ? 600 : 400,
                     maxWidth:   LABEL_W,
                     overflow:   'hidden',
@@ -430,8 +427,7 @@ export function BranchPanel(): JSX.Element {
 
         {/* Zoom hint */}
         <div
-          className="absolute bottom-2 right-2 text-[10px] rounded px-1.5 py-0.5 pointer-events-none"
-          style={{ color: 'var(--ema-text-tertiary)', background: 'var(--ema-surface-3)' }}
+          className="absolute bottom-2 right-2 text-[10px] rounded px-1.5 py-0.5 pointer-events-none text-[var(--ema-text-tertiary)] bg-[var(--ema-surface-3)]"
         >
           {Math.round(zoom * 100)}%
         </div>

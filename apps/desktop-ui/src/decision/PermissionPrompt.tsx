@@ -115,7 +115,7 @@ export function PermissionPrompt({
 
       {totalSeconds > 0 && (
         <div className="mt-3 flex flex-col gap-1.5">
-          <p className="text-xs text-right" style={{ color: 'var(--ema-text-tertiary)' }}>{secondsLeft} 秒后自动拒绝</p>
+          <p className="text-xs text-right text-[var(--ema-text-tertiary)]">{secondsLeft} 秒后自动拒绝</p>
           <Progress
             progress={progress}
             height="h-1"
