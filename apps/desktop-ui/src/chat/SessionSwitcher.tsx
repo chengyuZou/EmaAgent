@@ -1,5 +1,5 @@
 ﻿import { useState, useCallback, type JSX } from 'react';
-import { ConfirmDialog, DropdownMenu, Input, type MenuItem } from '@ema-agent/ui';
+import { ConfirmDialog, DropdownMenu, Input, PromptDialog, type MenuItem } from '@ema-agent/ui';
 import { useConversationStore } from '../stores/conversation-store.js';
 import { useSessionStore } from '../stores/session-store.js';
 import { runWithToast } from '../lib/toast.js';
@@ -157,6 +157,8 @@ function SessionRow({ session, isActive, onSelect }: {
 }): JSX.Element {
   const [showWorkspace, setShowWorkspace] = useState(false);
   const [pendingDelete, setPendingDelete] = useState(false);
+  const [promptRename, setPromptRename] = useState(false);
+  const [promptGroup,  setPromptGroup]  = useState(false);
 
   const menuItems: MenuItem[] = [
     {
@@ -169,10 +171,7 @@ function SessionRow({ session, isActive, onSelect }: {
       kind:     'item',
       label:    '重命名',
       icon:     'i-mdi:pencil-outline',
-      onSelect: () => {
-        const name = prompt('新名称', session.title);
-        if (name) void runWithToast(useSessionStore.getState().renameSession(session.id as SessionId, name), '重命名失败');
-      },
+      onSelect: () => setPromptRename(true),
     },
     {
       kind:     'item',
@@ -187,10 +186,7 @@ function SessionRow({ session, isActive, onSelect }: {
       kind:     'item',
       label:    '设置分组',
       icon:     'i-mdi:tag-outline',
-      onSelect: () => {
-        const label = prompt('分组名称(留空取消分组)', session.groupLabel ?? '');
-        if (label !== null) void runWithToast(useSessionStore.getState().setSessionGroup(session.id as SessionId, label.trim() || null), '分组失败');
-      },
+      onSelect: () => setPromptGroup(true),
     },
     {
       kind:     'item',
@@ -262,6 +258,26 @@ function SessionRow({ session, isActive, onSelect }: {
         confirmText="删除"
         onConfirm={confirmDelete}
         onCancel={() => setPendingDelete(false)}
+      />
+
+      <PromptDialog
+        open={promptRename}
+        title="重命名会话"
+        message="输入新的会话名称"
+        initialValue={session.title}
+        confirmText="重命名"
+        onConfirm={(name) => { setPromptRename(false); if (name) void runWithToast(useSessionStore.getState().renameSession(session.id as SessionId, name), '重命名失败'); }}
+        onCancel={() => setPromptRename(false)}
+      />
+
+      <PromptDialog
+        open={promptGroup}
+        title="设置分组"
+        message="输入分组名称(留空取消分组)"
+        initialValue={session.groupLabel ?? ''}
+        confirmText="保存"
+        onConfirm={(label) => { setPromptGroup(false); void runWithToast(useSessionStore.getState().setSessionGroup(session.id as SessionId, label.trim() || null), '分组失败'); }}
+        onCancel={() => setPromptGroup(false)}
       />
     </div>
   );

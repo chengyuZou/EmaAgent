@@ -1,5 +1,5 @@
 ﻿import { useState, type CSSProperties } from 'react';
-import { Button, Card, Checkbox, Input } from '@ema-agent/ui';
+import { Button, Card, CardButton, Checkbox, Input } from '@ema-agent/ui';
 import { HumanDescriptionPanel } from './HumanDescriptionPanel.js';
 
 export interface AskChoicePromptProps {
@@ -64,22 +64,19 @@ export function AskChoicePrompt({
               </div>
             </label>
           ) : (
-            <button
+            <CardButton
               key={opt.label}
-              className="text-left px-3 py-2.5 rounded-lg border transition-colors ema-stagger-in"
-              style={{
-                '--stagger-i':  i,
-                background:     selected.has(opt.label) ? 'var(--ema-primary-muted)' : 'var(--ema-surface-1)',
-                borderColor:    selected.has(opt.label) ? 'var(--ema-border-focus)' : 'var(--ema-border)',
-                color:          selected.has(opt.label) ? 'var(--ema-primary-text)'  : 'var(--ema-text-primary)',
-              } as CSSProperties}
+              selected={selected.has(opt.label)}
+              padding="sm"
+              className={`ema-stagger-in rounded-lg ${selected.has(opt.label) ? 'text-[var(--ema-primary-text)]' : 'text-[var(--ema-text-primary)]'}`}
+              style={{ '--stagger-i': i } as CSSProperties}
               onClick={() => toggle(opt.label)}
             >
               <div className="text-sm font-medium">{opt.label}</div>
               {opt.description && (
-                <div className="text-xs mt-0.5" style={{ color: 'var(--ema-text-tertiary)' }}>{opt.description}</div>
+                <div className="text-xs mt-0.5 text-[var(--ema-text-tertiary)]">{opt.description}</div>
               )}
-            </button>
+            </CardButton>
           ),
         )}
       </div>

@@ -1,5 +1,5 @@
 import { useState, type CSSProperties } from 'react';
-import { Button, Card, Textarea } from '@ema-agent/ui';
+import { Button, Card, CardButton, Textarea } from '@ema-agent/ui';
 import { HumanDescriptionPanel } from './HumanDescriptionPanel.js';
 import type { AskUserQuestionSpec } from '@ema-agent/contracts';
 
@@ -84,21 +84,19 @@ export function AskUserBatchPrompt({
       {hasOptions ? (
         <div className="flex flex-col gap-2 mb-4">
           {current.options!.map((opt, i) => (
-            <button
+            <CardButton
               key={opt.label}
-              className={`px-4 py-2.5 rounded-md text-left transition-colors border ema-stagger-in ${
-                choiceSelected.has(opt.label)
-                  ? 'bg-[var(--ema-primary-muted)] text-[var(--ema-primary)] border-[var(--ema-primary)]'
-                  : 'bg-[var(--ema-surface-2)] text-[var(--ema-text-secondary)] border-[var(--ema-border)] hover:bg-[var(--ema-surface-3)]'
-              }`}
+              selected={choiceSelected.has(opt.label)}
+              padding="sm"
+              className={`ema-stagger-in ${choiceSelected.has(opt.label) ? 'text-[var(--ema-primary)]' : 'text-[var(--ema-text-secondary)]'}`}
               style={{ '--stagger-i': i } as CSSProperties}
               onClick={() => toggleChoice(opt.label, current.multiSelect ?? false)}
             >
               <p className="font-medium text-sm">{opt.label}</p>
               {opt.description && (
-                <p className="text-xs mt-0.5" style={{ color: 'var(--ema-text-tertiary)' }}>{opt.description}</p>
+                <p className="text-xs mt-0.5 text-[var(--ema-text-tertiary)]">{opt.description}</p>
               )}
-            </button>
+            </CardButton>
           ))}
         </div>
       ) : (

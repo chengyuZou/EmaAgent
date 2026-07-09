@@ -343,9 +343,10 @@ function ReasoningBlock({ text }: { text: string }): JSX.Element {
         <span className="i-mdi:brain text-sm" />
         <span>思考过程</span>
         <span
-          className="ml-auto text-[10px] transition-transform duration-[var(--ema-duration-base)]"
+          className="ml-auto text-[10px] i-mdi:chevron-down transition-transform duration-[var(--ema-duration-base)]"
           style={{ transform: open ? 'rotate(180deg)' : 'rotate(0deg)' }}
-        >▾</span>
+          aria-hidden
+        />
       </button>
 
       <div

@@ -1,6 +1,6 @@
 ﻿import { useState, useCallback, useEffect, useMemo, useRef, type JSX } from 'react';
 import { useShallow } from 'zustand/react/shallow';
-import { ConfirmDialog, DropdownMenu, Input, type MenuItem } from '@ema-agent/ui';
+import { ConfirmDialog, DropdownMenu, Input, PromptDialog, type MenuItem } from '@ema-agent/ui';
 import { sessionsApi, type SessionWire, type SessionSearchItem } from '../api/sessions.js';
 import { useConversationStore } from '../stores/conversation-store.js';
 import { useSessionStore, type SessionsState } from '../stores/session-store.js';
@@ -417,6 +417,8 @@ function SidebarRow({ session, isActive, streaming, pendingCounts, nested = fals
 }): JSX.Element {
   const [showWorkspace, setShowWorkspace] = useState(false);
   const [pendingDelete, setPendingDelete] = useState(false);
+  const [promptRename, setPromptRename] = useState(false);
+  const [promptGroup,  setPromptGroup]  = useState(false);
   const dot = getStatusDot(session, streaming, pendingCounts);
   const isRunning = streaming.has(session.id);
   const timeLabel = formatRelativeTime(session.lastActivityAt);
@@ -432,10 +434,7 @@ function SidebarRow({ session, isActive, streaming, pendingCounts, nested = fals
       kind:     'item',
       label:    '重命名',
       icon:     'i-mdi:pencil-outline',
-      onSelect: () => {
-        const name = prompt('新名称', session.title);
-        if (name) void runWithToast(useSessionStore.getState().renameSession(session.id as SessionId, name), '重命名失败');
-      },
+      onSelect: () => setPromptRename(true),
     },
     {
       kind:     'item',
@@ -450,10 +449,7 @@ function SidebarRow({ session, isActive, streaming, pendingCounts, nested = fals
       kind:     'item',
       label:    '设置分组',
       icon:     'i-mdi:tag-outline',
-      onSelect: () => {
-        const label = prompt('分组名称(留空取消分组)', session.groupLabel ?? '');
-        if (label !== null) void runWithToast(useSessionStore.getState().setSessionGroup(session.id as SessionId, label.trim() || null), '分组失败');
-      },
+      onSelect: () => setPromptGroup(true),
     },
     {
       kind:     'item',
@@ -566,6 +562,26 @@ function SidebarRow({ session, isActive, streaming, pendingCounts, nested = fals
         confirmText="删除"
         onConfirm={confirmDelete}
         onCancel={() => setPendingDelete(false)}
+      />
+
+      <PromptDialog
+        open={promptRename}
+        title="重命名会话"
+        message="输入新的会话名称"
+        initialValue={session.title}
+        confirmText="重命名"
+        onConfirm={(name) => { setPromptRename(false); if (name) void runWithToast(useSessionStore.getState().renameSession(session.id as SessionId, name), '重命名失败'); }}
+        onCancel={() => setPromptRename(false)}
+      />
+
+      <PromptDialog
+        open={promptGroup}
+        title="设置分组"
+        message="输入分组名称(留空取消分组)"
+        initialValue={session.groupLabel ?? ''}
+        confirmText="保存"
+        onConfirm={(label) => { setPromptGroup(false); void runWithToast(useSessionStore.getState().setSessionGroup(session.id as SessionId, label.trim() || null), '分组失败'); }}
+        onCancel={() => setPromptGroup(false)}
       />
     </div>
   );

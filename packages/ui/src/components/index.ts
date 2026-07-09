@@ -25,6 +25,7 @@ export { MenuStatusItem } from './MenuStatusItem.js';
 // Layout / overlays
 export { Dialog }        from './Dialog.js';
 export { ConfirmDialog } from './ConfirmDialog.js';
+export { PromptDialog }  from './PromptDialog.js';
 export { Popover }      from './Popover.js';
 export { Tooltip, TooltipProvider } from './Tooltip.js';
 export { DropdownMenu } from './DropdownMenu.js';
@@ -60,6 +61,7 @@ export type { MenuIconItemProps } from './MenuIconItem.js';
 export type { MenuStatusItemProps } from './MenuStatusItem.js';
 export type { DialogProps } from './Dialog.js';
 export type { ConfirmDialogProps } from './ConfirmDialog.js';
+export type { PromptDialogProps } from './PromptDialog.js';
 export type { PopoverProps } from './Popover.js';
 export type { TooltipProps } from './Tooltip.js';
 export type { DropdownMenuProps, MenuItem } from './DropdownMenu.js';

@@ -100,8 +100,7 @@ function FileRow({
       )}
 
       {isDir && !loading && (
-        <span className={`i-mdi:folder${expanded ? '-open' : ''}-outline text-sm shrink-0`}
-              style={{ color: 'oklch(0.72 0.12 80)' }} aria-hidden />
+        <span className={`${expanded ? 'i-mdi:folder-open-outline' : 'i-mdi:folder-outline'} text-sm shrink-0 text-[var(--ema-warning)]`} aria-hidden />
       )}
 
       <span
