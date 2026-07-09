@@ -1,0 +1,59 @@
+/* ── highlight.js 主题:用 --ema-syntax-* token,亮暗双模自动 ──────────────────
+ *  替代 highlight.js/styles/github-dark.css(写死暗色,亮色下 code 块暗底浅字跟界面冲突)。
+ *  hljs-* class 映射到 syntax token(暗色浅字/亮色深字,跟 ToolCallBlock 一致)。
+ *  .hljs 背景透明,继承容器(markdown pre / FilePreview code 容器)。
+ */
+
+.hljs { color: var(--ema-text-secondary); background: transparent; }
+
+/* 关键字/类型/内置/属性 -> syntax-key(蓝) */
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-type,
+.hljs-built_in,
+.hljs-builtin-name,
+.hljs-class .hljs-title,
+.hljs-attr,
+.hljs-attribute { color: var(--ema-syntax-key); }
+
+/* 字符串/添加/模板标签 -> syntax-string(绿) */
+.hljs-string,
+.hljs-addition,
+.hljs-template-tag,
+.hljs-regexp,
+.hljs-link { color: var(--ema-syntax-string); }
+
+/* 数字/字面量/符号 -> syntax-number(橙) */
+.hljs-number,
+.hljs-literal,
+.hljs-symbol,
+.hljs-bullet { color: var(--ema-syntax-number); }
+
+/* 注释/引用/meta/tag -> syntax-comment(灰) */
+.hljs-comment,
+.hljs-quote,
+.hljs-meta,
+.hljs-meta .hljs-keyword,
+.hljs-doctag,
+.hljs-tag { color: var(--ema-syntax-comment); }
+
+/* 标题/名称/section -> text-primary */
+.hljs-title,
+.hljs-title.function_,
+.hljs-section,
+.hljs-name,
+.hljs-selector-id,
+.hljs-selector-class { color: var(--ema-text-primary); }
+
+/* 变量/参数 -> text-secondary */
+.hljs-variable,
+.hljs-template-variable,
+.hljs-params,
+.hljs-property { color: var(--ema-text-secondary); }
+
+/* 删除/警告 -> danger-text */
+.hljs-deletion { color: var(--ema-danger-text); }
+
+/* 强调/加粗 */
+.hljs-emphasis { font-style: italic; }
+.hljs-strong { font-weight: bold; }

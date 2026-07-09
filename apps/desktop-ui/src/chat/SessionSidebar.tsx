@@ -94,7 +94,7 @@ export function SessionSidebar(): JSX.Element {
             onClick={() => setCollapsed(false)}
             title="展开侧边栏"
           >
-            <span className="text-base leading-none" aria-hidden>◨</span>
+            <span className="i-mdi:panel-right text-base leading-none" aria-hidden />
           </button>
           <div className="flex flex-col items-center gap-1.5 mt-1">
             {sessions.recent.slice(0, 8).map((s) => {
@@ -187,7 +187,7 @@ function NewConversationCommand({
         title="折叠侧边栏"
         aria-label="折叠侧边栏"
       >
-        <span className="text-[15px] leading-none" aria-hidden>◧</span>
+        <span className="i-mdi:panel-left text-[15px] leading-none" aria-hidden />
       </button>
     </div>
   );

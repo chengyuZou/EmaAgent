@@ -19,8 +19,8 @@ import rehypeKatex from 'rehype-katex';
 import rehypeRaw from 'rehype-raw';
 import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
 import rehypeHighlight from 'rehype-highlight';
-// highlight.js 主题(深色,跟项目风格匹配)。全局引入一次。
-import 'highlight.js/styles/github-dark.css';
+// highlight.js 主题:用 --ema-syntax-* token,亮暗双模自动(替代 github-dark.css)。
+import '../styles/hljs-theme.css';
 
 // ── Props ─────────────────────────────────────────────────────────────────────
 
