@@ -1,4 +1,4 @@
-﻿import { useEffect, useRef, useState, type CSSProperties } from 'react';
+﻿import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import {
   Badge, Button, Callout, Card, ConfirmDialog, Dialog, Divider, DropdownMenu,
   Field, IconButton, Input, ScrollArea, Select, Spinner, Switch, Tabs, Textarea, Tooltip,
@@ -728,9 +728,9 @@ function Pager({
   const nums: number[] = [];
   for (let i = start; i < end; i++) nums.push(i);
 
-  const btn = (label: string, p: number, opts: { active?: boolean; disabled?: boolean } = {}): JSX.Element => (
+  const btn = (label: ReactNode, p: number, opts: { active?: boolean; disabled?: boolean; key?: string } = {}): JSX.Element => (
     <button
-      key={`${label}-${p}`}
+      key={opts.key ?? (typeof label === 'string' ? `${label}-${p}` : `btn-${p}`)}
       disabled={opts.disabled}
       onClick={() => go(p)}
       className={`min-w-7 h-7 px-1.5 rounded-lg text-xs transition-colors disabled:opacity-30 ${
@@ -745,11 +745,11 @@ function Pager({
 
   return (
     <div className="flex items-center justify-center gap-1.5 flex-wrap pt-3 shrink-0">
-      {btn('‹', page - 1, { disabled: page === 0 })}
+      {btn(<span className="i-mdi:chevron-left text-xs" aria-hidden />, page - 1, { disabled: page === 0, key: 'prev' })}
       {start > 0 && (<>{btn('1', 0)}<span className="text-[var(--ema-text-tertiary)] text-xs">…</span></>)}
       {nums.map((n) => btn(String(n + 1), n, { active: n === page }))}
       {end < totalPages && (<><span className="text-[var(--ema-text-tertiary)] text-xs">…</span>{btn(String(totalPages), totalPages - 1)}</>)}
-      {btn('›', page + 1, { disabled: page === totalPages - 1 })}
+      {btn(<span className="i-mdi:chevron-right text-xs" aria-hidden />, page + 1, { disabled: page === totalPages - 1, key: 'next' })}
 
       <span className="text-xs text-[var(--ema-text-tertiary)] ml-1">{page + 1} / {totalPages} 页</span>
       <input

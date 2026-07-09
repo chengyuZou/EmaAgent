@@ -1,8 +1,8 @@
 ﻿/**
  * VoiceTab — manage refAudios: upload, test listen, set primary, delete.
  */
-import { useState, useRef, type ChangeEvent, type CSSProperties, type JSX } from 'react';
-import { Button, Checkbox, Select, Textarea } from '@ema-agent/ui';
+import { useState, useRef, type CSSProperties, type JSX } from 'react';
+import { Button, Checkbox, FilePicker, Select, Textarea } from '@ema-agent/ui';
 import { useCardStore } from '../stores/card-store.js';
 import { cardsApi } from '../api/cards.js';
 import { showToast } from '../lib/toast.js';
@@ -171,7 +171,7 @@ function RefAudioRow({
     <div className="bg-[var(--ema-surface-1)] ema-glass-weak border border-[var(--ema-border)] rounded-xl p-3">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <span className={isPrimary ? 'text-[var(--ema-success)]' : 'text-[var(--ema-text-tertiary)]'}>●</span>
+          <span className={isPrimary ? 'size-2 rounded-full bg-[var(--ema-success)]' : 'size-2 rounded-full border border-[var(--ema-text-tertiary)]'} aria-hidden />
           <span className="text-sm font-medium text-[var(--ema-text-primary)]">{refAudio.label}</span>
         </div>
         <div className="flex gap-1.5">
@@ -218,11 +218,6 @@ function UploadForm({
   const [promptLang, setPromptLang] = useState('zh');
   const [setPrimary, setSetPrimary] = useState(false);
 
-  function handleFileChange(e: ChangeEvent<HTMLInputElement>): void {
-    const f = e.target.files?.[0];
-    if (f) setFile(f);
-  }
-
   function handleSubmit(): void {
     if (!file || !promptText.trim()) return;
     onUpload(file, promptText.trim(), promptLang, setPrimary);
@@ -233,12 +228,14 @@ function UploadForm({
       <h3 className="text-sm font-semibold text-[var(--ema-text-primary)] mb-3">上传参考音频</h3>
       <div className="flex flex-col gap-3">
         {/* File picker — no component equivalent */}
-        <input
-          type="file"
+        <FilePicker
           accept=".wav,.mp3,.flac,.ogg,.m4a"
-          onChange={handleFileChange}
-          className="text-sm text-[var(--ema-text-secondary)]"
-        />
+          onSelect={(files) => setFile(files[0] ?? null)}
+          className="self-start inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs border border-[var(--ema-border)] bg-[var(--ema-surface-1)] text-[var(--ema-text-secondary)] hover:bg-[var(--ema-surface-2)] transition-ema"
+        >
+          <span className="i-mdi:file-upload-outline text-sm" aria-hidden />
+          {file ? file.name : '选择文件'}
+        </FilePicker>
 
         <Textarea
           minRows={2}

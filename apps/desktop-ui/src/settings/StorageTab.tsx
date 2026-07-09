@@ -396,7 +396,7 @@ function StatsPanel({ stats, statsLoading }: {
     return (
       <div className="ema-slide-down flex flex-col items-center justify-center h-full gap-3 text-[var(--ema-text-tertiary)]">
         <span className="i-solar:database-bold-duotone text-4xl" aria-hidden />
-        <p className="text-sm">← 从左侧选择会话查看详情</p>
+        <p className="text-sm inline-flex items-center gap-1"><span className="i-mdi:arrow-left" aria-hidden />从左侧选择会话查看详情</p>
       </div>
     );
   }

@@ -152,8 +152,9 @@ function OverviewTab(): JSX.Element {
                   : <span className="opacity-40"> 未就绪</span>}
               </span>
               {(stats.nodes.staleEmbedCount > 0 || stats.items.staleEmbedCount > 0) && (
-                <span className="text-[var(--ema-warning)]">
-                  ⚠ 过期向量：{stats.nodes.staleEmbedCount + stats.items.staleEmbedCount} 条
+                <span className="inline-flex items-center gap-1 text-[var(--ema-warning)]">
+                  <span className="i-mdi:alert-outline" aria-hidden />
+                  过期向量：{stats.nodes.staleEmbedCount + stats.items.staleEmbedCount} 条
                 </span>
               )}
             </div>

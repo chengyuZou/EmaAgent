@@ -93,10 +93,10 @@ function DocumentRow({ doc, currentEmbedModel, onDelete }: {
             {doc.wordCount.toLocaleString()} 词{doc.pageCount ? ` · ${doc.pageCount} 页` : ''}
             {doc.ebdModel ? (
               <span className="ml-2 font-mono ema-fade-in" style={{ color: embedStale ? 'var(--ema-danger)' : 'var(--ema-text-tertiary)' }}>
-                {embedStale && '⚠️ '}{doc.ebdModel}{embedStale ? '（需重嵌）' : ''}
+                {embedStale && <span className="i-mdi:alert-circle-outline mr-0.5 align-middle" aria-hidden />}{doc.ebdModel}{embedStale ? '（需重嵌）' : ''}
               </span>
             ) : currentEmbedModel ? (
-              <span className="ml-2 ema-fade-in" style={{ color: 'var(--ema-warning-text)' }}>⚠️ 未嵌入</span>
+              <span className="ml-2 ema-fade-in inline-flex items-center gap-0.5" style={{ color: 'var(--ema-warning-text)' }}><span className="i-mdi:alert-circle-outline" aria-hidden />未嵌入</span>
             ) : null}
           </p>
         </div>
@@ -204,8 +204,9 @@ function ChunkViewer({ assetId, closing }: { assetId: string; closing?: boolean 
               <span className="font-mono shrink-0">#{i + 1}</span>
               {ch.page !== undefined && <span className="shrink-0">第 {ch.page} 页</span>}
               <span className="shrink-0">{ch.tokenCount} tok</span>
-              <span className="shrink-0" style={{ color: ch.hasEmbedding ? 'var(--ema-success-text)' : 'var(--ema-text-tertiary)' }}>
-                {ch.hasEmbedding ? '● 已嵌入' : '○ 仅 FTS'}
+              <span className="shrink-0 inline-flex items-center gap-0.5" style={{ color: ch.hasEmbedding ? 'var(--ema-success-text)' : 'var(--ema-text-tertiary)' }}>
+                <span className={ch.hasEmbedding ? 'i-mdi:check-circle-outline' : 'i-mdi:circle-outline'} aria-hidden />
+                {ch.hasEmbedding ? '已嵌入' : '仅 FTS'}
               </span>
               {ch.sectionPath.length > 0 && (
                 <span className="truncate opacity-70" title={ch.sectionPath.join(' / ')}>
@@ -408,7 +409,7 @@ const STAGE_LABEL: Record<IngestStage, string> = {
 const STAGE_BAR: Record<IngestStage, string> = {
   validate: 'bg-[var(--ema-info)]',
   parse:    'bg-[var(--ema-info)]',
-  chunk:    'bg-[#a855f7]',
+  chunk:    'bg-[var(--ema-violet)]',
   embed:    'bg-[var(--ema-warning)]',
 };
 
