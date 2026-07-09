@@ -25,6 +25,8 @@ export interface PermissionTimeoutResult {
 export interface ThemeConfig {
   hue:    number;
   radius: number;
+  /** 'light'(默认)| 'dark'。暗色 token 在 :root,亮色 [data-theme="light"] 覆盖 */
+  mode?:  'light' | 'dark';
 }
 
 /** KB's own embed/rerank model choice (decoupled from LightRAG's lightrag-embed binding). */

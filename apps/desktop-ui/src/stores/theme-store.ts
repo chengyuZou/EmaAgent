@@ -9,7 +9,7 @@ const THEME_ATTR  = 'data-theme';
 
 export type ThemeMode = 'dark' | 'light';
 
-const DEFAULTS: ThemeConfig = { hue: 200, radius: 1 };
+const DEFAULTS: ThemeConfig & { mode: ThemeMode } = { hue: 200, radius: 1, mode: 'light' };
 
 function applyMode(mode: ThemeMode): void {
   document.documentElement.setAttribute(THEME_ATTR, mode);
@@ -46,7 +46,9 @@ export const useThemeStore = create<ThemeStoreState>((set, get) => ({
       const config = await settingsApi.getTheme();
       setThemeHue(config.hue);
       setThemeRadius(config.radius);
-      const mode: ThemeMode = (config as any).mode === 'light' ? 'light' : 'light';
+      // 暗色是默认(:root 无 data-theme),亮色设 data-theme="light"。
+      // 之前三元 bug(=== 'light' ? 'light' : 'light')永远 light,暗色不可切。
+      const mode: ThemeMode = (config as any).mode === 'dark' ? 'dark' : 'light';
       applyMode(mode);
       set({ hue: config.hue, radius: config.radius, mode, ready: true });
     } catch {
@@ -62,7 +64,7 @@ export const useThemeStore = create<ThemeStoreState>((set, get) => ({
     set({ hue });
     const { radius, mode } = get();
     void emitTheme({ hue, radius, mode });
-    try { await settingsApi.putTheme({ hue, radius }); } catch { /* ok */ }
+    try { await settingsApi.putTheme({ hue, radius, mode }); } catch (err) { console.warn('[theme] putTheme(hue) failed:', err); }
   },
 
   async setRadius(radius) {
@@ -70,7 +72,7 @@ export const useThemeStore = create<ThemeStoreState>((set, get) => ({
     set({ radius });
     const { hue, mode } = get();
     void emitTheme({ hue, radius, mode });
-    try { await settingsApi.putTheme({ hue, radius }); } catch { /* ok */ }
+    try { await settingsApi.putTheme({ hue, radius, mode }); } catch (err) { console.warn('[theme] putTheme(radius) failed:', err); }
   },
 
   async setMode(mode) {
@@ -78,7 +80,8 @@ export const useThemeStore = create<ThemeStoreState>((set, get) => ({
     set({ mode });
     const { hue, radius } = get();
     void emitTheme({ hue, radius, mode });
-    try { await settingsApi.putTheme({ hue, radius }); } catch { /* ok */ }
+    // 持久化 mode(之前 putTheme 没传 mode,切换不保存)
+    try { await settingsApi.putTheme({ hue, radius, mode }); } catch (err) { console.warn('[theme] putTheme(mode) failed:', err); }
   },
 }));
 
@@ -101,7 +104,7 @@ export function useThemeSync(): void {
     void tauriBridge.listen<ThemeConfig & { mode?: ThemeMode }>(THEME_EVENT, (e) => {
       setThemeHue(e.payload.hue);
       setThemeRadius(e.payload.radius);
-      const mode: ThemeMode = e.payload.mode === 'light' ? 'light' : 'light';
+      const mode: ThemeMode = e.payload.mode === 'dark' ? 'dark' : 'light';
       applyMode(mode);
       useThemeStore.setState({ hue: e.payload.hue, radius: e.payload.radius, mode });
     }).then((fn) => {

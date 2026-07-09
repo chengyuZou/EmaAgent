@@ -42,12 +42,12 @@
   --ema-glass-strong: saturate(200%) blur(16px);
   --ema-mask: rgba(0, 0, 0, 0.45);
 
-  /* ── 语义色(暗色,从孤儿合并)── Ema 签名粉玫(hue 350 对应 chromatic)── */
-  --ema-primary:        oklch(0.72 0.18 350);
-  --ema-primary-hover:  oklch(0.76 0.16 350);
-  --ema-primary-active: oklch(0.65 0.20 350);
-  --ema-primary-muted:  oklch(0.72 0.18 350 / 0.20);
-  --ema-primary-text:   oklch(0.98 0.01 350);
+  /* ── 语义色(暗色)── Ema 签名色,跟随 --chromatic-hue(跟 UnoCSS bg-primary 对齐)── */
+  --ema-primary:        oklch(0.72 0.18 var(--chromatic-hue, 200));
+  --ema-primary-hover:  oklch(0.76 0.16 var(--chromatic-hue, 200));
+  --ema-primary-active: oklch(0.65 0.20 var(--chromatic-hue, 200));
+  --ema-primary-muted:  oklch(0.72 0.18 var(--chromatic-hue, 200) / 0.20);
+  --ema-primary-text:   oklch(0.98 0.01 var(--chromatic-hue, 200));
 
   /* Success - 绿 */
   --ema-success:        oklch(0.68 0.16 145);

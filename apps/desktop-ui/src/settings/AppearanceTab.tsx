@@ -144,7 +144,6 @@ export function AppearanceTab(): JSX.Element {
         </div>
 
         <div className="flex items-center gap-4">
-          {/* V1.5: 深色模式暂未想好配置方案，按钮先注释
           <button
             onClick={() => void setMode('dark')}
             className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border transition-all duration-[var(--ema-duration-base)] ${
@@ -156,7 +155,6 @@ export function AppearanceTab(): JSX.Element {
             <span className="i-solar:moon-bold-duotone text-lg" aria-hidden />
             <span className="text-sm font-medium">深色</span>
           </button>
-          */}
           <button
             onClick={() => void setMode('light')}
             className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border transition-all duration-[var(--ema-duration-base)] ${

@@ -106,11 +106,12 @@ const permissionTimeoutBodySchema = z.object({
 const themeBodySchema = z.object({
   hue:    z.number().min(0).max(360),
   radius: z.number().min(0).max(3),
+  mode:   z.enum(['light', 'dark']).optional(),
 });
 
 type ThemeConfig = z.infer<typeof themeBodySchema>;
 
-const DEFAULT_THEME: ThemeConfig = { hue: 200, radius: 1 };
+const DEFAULT_THEME: ThemeConfig = { hue: 200, radius: 1, mode: 'light' };
 
 // KB's own embed/rerank model choice — decoupled from LightRAG's lightrag-embed
 // binding so changing KB's model never touches narrative (and vice versa).
