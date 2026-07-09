@@ -295,8 +295,9 @@ function OverflowItem({
   icon: string; label: string; active: boolean; badge?: number; onClick(): void;
 }): JSX.Element {
   return (
-    <button
-      className={`w-full flex items-center gap-2.5 px-3 py-1.5 text-xs transition-colors
+    <Button
+      variant="ghost"
+      className={`w-full flex items-center gap-2.5 px-3 py-1.5 text-xs font-normal transition-colors
         ${active
           ? 'text-[var(--ema-primary)] bg-[var(--ema-primary-muted)]'
           : 'text-[var(--ema-text-tertiary)] hover:text-[var(--ema-text-primary)] hover:bg-[var(--ema-surface-3)]'}`}
@@ -310,7 +311,7 @@ function OverflowItem({
         </span>
       )}
       {active && <span className="i-mdi:check text-sm shrink-0 text-[var(--ema-primary)]" aria-hidden />}
-    </button>
+    </Button>
   );
 }
 

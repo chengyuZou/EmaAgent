@@ -6,6 +6,7 @@
  * Default: AI 与模型 expanded, 服务来源 selected.
  */
 import { useState, useEffect, type JSX } from 'react';
+import { Button } from '@ema-agent/ui';
 import { ErrorBoundary } from '../lib/error-boundary.js';
 import { useSettingsStore } from '../stores/settings-store.js';
 import { useCardStore } from '../stores/card-store.js';
@@ -180,9 +181,10 @@ export function SettingsPanel(): JSX.Element {
               const sec = group.sections[0]!;
               const isActive = activeSection === sec.id;
               return (
-                <button
+                <Button
+                  variant="ghost"
                   key={group.id}
-                  className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm
+                  className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-normal
                     transition-colors duration-[var(--ema-duration-fast)] ${
                     isActive
                       ? 'text-[var(--ema-primary)] bg-[var(--ema-primary-muted)]'
@@ -194,7 +196,7 @@ export function SettingsPanel(): JSX.Element {
                   <span className={`${group.icon} text-base flex-none`} aria-hidden />
                   <span className="flex-1 text-left">{sec.label}</span>
                   {sec.id === 'knowledge-base' && <KbNavIndicator />}
-                </button>
+                </Button>
               );
             }
 
@@ -202,8 +204,9 @@ export function SettingsPanel(): JSX.Element {
             return (
               <div key={group.id}>
                 {/* Group header */}
-                <button
-                  className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm
+                <Button
+                  variant="ghost"
+                  className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-normal
                              text-[var(--ema-text-tertiary)] hover:text-[var(--ema-text-primary)]
                              hover:bg-[var(--ema-surface-2)]/50
                              transition-colors duration-[var(--ema-duration-fast)]"
@@ -217,7 +220,7 @@ export function SettingsPanel(): JSX.Element {
                                 transition-transform duration-200 ${expanded ? 'rotate-90' : ''}`}
                     aria-hidden
                   />
-                </button>
+                </Button>
 
                 {/* Section items (visible when expanded) */}
                 {expanded && (
@@ -225,9 +228,10 @@ export function SettingsPanel(): JSX.Element {
                     {group.sections.map((sec) => {
                       const isActive = activeSection === sec.id;
                       return (
-                        <button
+                        <Button
+                          variant="ghost"
                           key={sec.id}
-                          className={`w-full text-left px-3 py-1.5 rounded-lg text-sm
+                          className={`w-full text-left px-3 py-1.5 rounded-lg text-sm font-normal
                             transition-colors duration-[var(--ema-duration-fast)] ${
                             isActive
                               ? 'text-[var(--ema-primary)] bg-[var(--ema-primary-muted)]'
@@ -237,7 +241,7 @@ export function SettingsPanel(): JSX.Element {
                           aria-current={isActive ? 'page' : undefined}
                         >
                           {sec.label}
-                        </button>
+                        </Button>
                       );
                     })}
                   </div>

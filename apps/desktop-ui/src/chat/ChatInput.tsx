@@ -541,9 +541,10 @@ function KbSelectorBody({
               {libs.map((lib) => {
                 const libCount = selectedScopes.get(lib.id)?.length ?? 0;
                 return (
-                  <button
+                  <Button
+                    variant="ghost"
                     key={lib.id}
-                    className={`text-xs px-2 py-0.5 rounded-full transition-ema relative ${lib.id === shownLibId ? 'bg-[var(--ema-primary)] text-[var(--ema-text-on-primary)]' : 'bg-[var(--ema-surface-2)] text-[var(--ema-text-secondary)]'}`}
+                    className={`text-xs px-2 py-0.5 rounded-full font-normal transition-ema relative ${lib.id === shownLibId ? 'bg-[var(--ema-primary)] text-[var(--ema-text-on-primary)]' : 'bg-[var(--ema-surface-2)] text-[var(--ema-text-secondary)]'}`}
                     onClick={() => setShownLibId(lib.id)}
                   >
                     {lib.name}
@@ -551,7 +552,7 @@ function KbSelectorBody({
                     {libCount > 0 && (
                       <span className="ml-1 text-[9px] font-mono opacity-80">{libCount}</span>
                     )}
-                  </button>
+                  </Button>
                 );
               })}
             </div>
