@@ -42,24 +42,18 @@ export function BranchSiblingNav({ turnId }: { turnId: string }): JSX.Element | 
   return (
     <span className="flex items-center gap-0.5 ml-1 tabular-nums">
       <button
-        className="w-3.5 h-3.5 flex items-center justify-center transition-colors leading-none disabled:opacity-25"
-        style={{ color: 'var(--ema-text-tertiary)' }}
-        onMouseEnter={(e) => { if (!e.currentTarget.disabled) e.currentTarget.style.color = 'var(--ema-text-primary)'; }}
-        onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--ema-text-tertiary)'; }}
+        className="w-3.5 h-3.5 flex items-center justify-center transition-colors leading-none disabled:opacity-25 disabled:pointer-events-none text-[var(--ema-text-tertiary)] hover:text-[var(--ema-text-primary)]"
         disabled={pos === 1}
         onClick={() => navigate(-1)}
         title="上一个分支"
-      >‹</button>
+      ><span className="i-mdi:chevron-left text-[10px]" aria-hidden /></button>
       <span className="text-[10px]" style={{ color: 'var(--ema-text-tertiary)' }}>{pos}/{total}</span>
       <button
-        className="w-3.5 h-3.5 flex items-center justify-center transition-colors leading-none disabled:opacity-25"
-        style={{ color: 'var(--ema-text-tertiary)' }}
-        onMouseEnter={(e) => { if (!e.currentTarget.disabled) e.currentTarget.style.color = 'var(--ema-text-primary)'; }}
-        onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--ema-text-tertiary)'; }}
+        className="w-3.5 h-3.5 flex items-center justify-center transition-colors leading-none disabled:opacity-25 disabled:pointer-events-none text-[var(--ema-text-tertiary)] hover:text-[var(--ema-text-primary)]"
         disabled={pos === total}
         onClick={() => navigate(1)}
         title="下一个分支"
-      >›</button>
+      ><span className="i-mdi:chevron-right text-[10px]" aria-hidden /></button>
     </span>
   );
 }

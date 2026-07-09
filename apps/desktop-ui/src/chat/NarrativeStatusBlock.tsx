@@ -42,7 +42,7 @@ export function NarrativeStatusBlock({ slice }: { slice: NarrativeSlice }): Reac
         <span className="flex-1">
           {allDone ? `已检索 ${timelines.length} 条剧情线` : '检索剧情线…'}
         </span>
-        <span style={{ color: 'var(--ema-text-tertiary)' }} aria-hidden>{outerOpen ? '▼' : '▶'}</span>
+        <span className={`${outerOpen ? 'i-mdi:chevron-down' : 'i-mdi:chevron-right'}`} style={{ color: 'var(--ema-text-tertiary)' }} aria-hidden />
       </button>
 
       {/* 外层折叠区:ema-collapsible 双向动画。内层 gap-2 与 header 间距一致 */}
@@ -95,7 +95,7 @@ function TimelineRow({
         }
         <span style={{ color: completed ? 'var(--ema-text-secondary)' : 'var(--ema-text-tertiary)' }}>{name}</span>
         {isMulti && completed && (
-          <span className="ml-auto" style={{ color: 'var(--ema-text-tertiary)' }} aria-hidden>{innerOpen ? '▼' : '▶'}</span>
+          <span className={`ml-auto ${innerOpen ? 'i-mdi:chevron-down' : 'i-mdi:chevron-right'}`} style={{ color: 'var(--ema-text-tertiary)' }} aria-hidden />
         )}
       </button>
 

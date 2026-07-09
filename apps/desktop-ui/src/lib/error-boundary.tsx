@@ -5,6 +5,7 @@
  */
 import { Component, type ReactNode } from 'react';
 import type { ErrorInfo } from 'react';
+import { Button } from '@ema-agent/ui';
 
 // ── Props ─────────────────────────────────────────────────────────────────────
 
@@ -45,22 +46,14 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, State> {
       }
       return (
         <div className="flex flex-col items-center justify-center h-full gap-4 p-8">
-          <div className="text-lg font-semibold" style={{ color: 'var(--ema-danger)' }}>
+          <div className="text-lg font-semibold text-[var(--ema-danger)]">
             出错了
           </div>
-          <pre className="text-xs max-w-md overflow-auto whitespace-pre-wrap rounded-xl p-4"
-               style={{ color: 'var(--ema-text-tertiary)', background: 'var(--ema-bg)' }}>
+          <pre className="text-xs max-w-md overflow-auto whitespace-pre-wrap rounded-xl p-4
+                          text-[var(--ema-text-tertiary)] bg-[var(--ema-bg)]">
             {this.state.error.message}
           </pre>
-          <button
-            className="px-4 py-2 rounded-xl transition-colors"
-            style={{ background: 'var(--ema-primary-muted)', color: 'var(--ema-primary)' }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--ema-primary-active)'; }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--ema-primary-muted)'; }}
-            onClick={this.reset}
-          >
-            重新加载
-          </button>
+          <Button variant="primary" onClick={this.reset}>重新加载</Button>
         </div>
       );
     }
