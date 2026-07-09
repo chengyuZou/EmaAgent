@@ -814,7 +814,7 @@ function ServerRow({
 
   return (
     <Card variant="elevated" padding="sm" className="active:scale-[0.98] transition-all duration-[var(--ema-duration-base)]">
-      <div className="flex items-start gap-3">
+      <div className="group flex items-start gap-3">
         {/* Status dot */}
         <div className="pt-0.5 shrink-0">
           <Badge variant={st.variant} dot />
@@ -884,15 +884,18 @@ function ServerRow({
               onCheckedChange={onToggleEnabled}
             />
           </Tooltip>
-          <DropdownMenu
-            trigger={
-              <Button variant="ghost" size="sm" className="px-1.5">
-                <span className="i-mdi:dots-vertical text-base text-[var(--ema-text-tertiary)]" aria-hidden />
-              </Button>
-            }
-            items={menuItems}
-            align="end"
-          />
+          {/* DropdownMenu hover 显隐(抄 session 列表 opacity-0 group-hover:opacity-100) */}
+          <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+            <DropdownMenu
+              trigger={
+                <Button variant="ghost" size="sm" className="px-1.5">
+                  <span className="i-mdi:dots-vertical text-base text-[var(--ema-text-tertiary)]" aria-hidden />
+                </Button>
+              }
+              items={menuItems}
+              align="end"
+            />
+          </div>
         </div>
       </div>
 

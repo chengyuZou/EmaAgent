@@ -290,7 +290,7 @@ function DataDirRow({
 
   return (
     <div
-      className={`ema-stagger-in flex flex-col gap-1.5 px-3 py-2.5 rounded-xl
+      className={`group ema-stagger-in flex flex-col gap-1.5 px-3 py-2.5 rounded-xl
         border transition-colors duration-[var(--ema-duration-base)]
         ${dir.isActive
           ? 'bg-[var(--ema-primary-muted)] border-[color:var(--ema-primary)]/30'
@@ -319,7 +319,8 @@ function DataDirRow({
         <span className="text-xs text-[var(--ema-text-tertiary)]">
           db {fmtBytes(dir.dataDbBytes)}
         </span>
-        <div className="flex items-center gap-1">
+        <div className={`flex items-center gap-1 transition-opacity duration-150
+                          ${dir.isActive ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
           {dir.isActive ? (
             <Button
               variant="ghost"

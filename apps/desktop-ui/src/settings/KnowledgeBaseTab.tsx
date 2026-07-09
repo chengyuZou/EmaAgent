@@ -543,7 +543,7 @@ function LibraryRow({ lib, onActivate, onRename, onDelete }: {
 
   return (
     <div
-      className={`ema-slide-up flex items-center gap-3 px-3 py-2.5 rounded-xl transition-ema
+      className={`group ema-slide-up flex items-center gap-3 px-3 py-2.5 rounded-xl transition-ema
                   ${lib.isActive ? 'bg-[var(--ema-primary-muted)] ring-1 ring-[var(--ema-primary)]' : 'bg-[var(--ema-surface-1)]'}`}
     >
       <span
@@ -573,7 +573,8 @@ function LibraryRow({ lib, onActivate, onRename, onDelete }: {
         )}
       </div>
 
-      <div className="flex items-center gap-1 shrink-0">
+      <div className="flex items-center gap-1 shrink-0 transition-opacity duration-150
+                      ${lib.isActive ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}">
         {lib.isActive ? (
           <Badge variant="success" className="text-xs">激活中</Badge>
         ) : (
