@@ -1,5 +1,5 @@
 ﻿import { useState, useCallback, useEffect, useRef, type KeyboardEvent, type JSX, type ChangeEvent } from 'react';
-import { IconButton, Input, Button, Popover, Tooltip, TooltipProvider, Checkbox, ScrollArea, Spinner, Switch } from '@ema-agent/ui';
+import { IconButton, Input, Button, Popover, Textarea, type TextareaHandle, Tooltip, TooltipProvider, Checkbox, ScrollArea, Spinner, Switch } from '@ema-agent/ui';
 import { kbApi, type DocumentAssetWire, type KbLibraryWire } from '../api/knowledge-base.js';
 import { useConversationStore } from '../stores/conversation-store.js';
 import { useSessionStore } from '../stores/session-store.js';
@@ -57,7 +57,7 @@ export function ChatInput(): JSX.Element {
   const [thinkingEnabled,  setThinkingEnabled]  = useState(false);
   // 拖动上传：文件拖入对话框区域时高亮
   const [isDragOver,       setIsDragOver]       = useState(false);
-  const textareaRef     = useRef<HTMLTextAreaElement>(null);
+  const textareaRef     = useRef<TextareaHandle>(null);
   const inputBoxRef     = useRef<HTMLDivElement>(null); // 拖放命中检测基准
   const prevViewedIdRef = useRef(viewedId);
   const TEXTAREA_MAX_H  = 200; // px — beyond this the textarea scrolls
@@ -71,7 +71,7 @@ export function ChatInput(): JSX.Element {
 
   // Auto-resize textarea height based on content, capped at TEXTAREA_MAX_H.
   useEffect(() => {
-    const el = textareaRef.current;
+    const el = textareaRef.current?.el();
     if (!el) return;
     el.style.height = 'auto';
     el.style.height = `${Math.min(el.scrollHeight, TEXTAREA_MAX_H)}px`;
@@ -239,21 +239,19 @@ export function ChatInput(): JSX.Element {
           )}
 
           {/* Textarea + send button (bottom half) */}
-          <div className="relative">
-            <textarea
-              ref={textareaRef}
-              className="relative w-full bg-transparent rounded-2xl px-4 py-3 pr-12 text-sm resize-none focus:outline-none overflow-y-auto text-[var(--ema-text-secondary)]"
-              style={{ minHeight: 60, maxHeight: TEXTAREA_MAX_H }}
-              rows={1}
-              placeholder="输入消息…"
-              value={text}
-              onChange={(e: ChangeEvent<HTMLTextAreaElement>) => handleChange(e.target.value)}
-              onKeyDown={handleKeyDown}
-            />
-            <div className="absolute right-2 bottom-2">
-              {embeddedAction}
-            </div>
-          </div>
+          <Textarea
+            containerless
+            autoGrow={false}
+            ref={textareaRef}
+            className="w-full bg-transparent rounded-2xl px-4 py-3 pr-12 text-sm resize-none focus:outline-none overflow-y-auto text-[var(--ema-text-secondary)]"
+            style={{ minHeight: 60, maxHeight: TEXTAREA_MAX_H }}
+            rows={1}
+            placeholder="输入消息…"
+            value={text}
+            onChange={(e: ChangeEvent<HTMLTextAreaElement>) => handleChange(e.target.value)}
+            onKeyDown={handleKeyDown}
+            embeddedAction={embeddedAction}
+          />
         </div>
 
         {/* Bottom toolbar */}

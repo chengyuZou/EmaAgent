@@ -25,6 +25,10 @@ export interface TextareaProps extends TextareaHTMLAttributes<HTMLTextAreaElemen
   /** Min rows shown before any content. Default 3. */
   minRows?:        number;
   error?:          boolean;
+  /** Skip the outer border/bg/focus-within wrapper - render only textarea + embeddedAction
+   *  in a bare relative div. For composite containers (e.g. ChatInput's input box with
+   *  drag-drop + attachments) where the caller already provides the visual container. */
+  containerless?:  boolean;
 }
 
 // 反向 ref handle for callers that want to imperatively focus / clear
@@ -43,6 +47,7 @@ export const Textarea = forwardRef<TextareaHandle, TextareaProps>(
       maxRows  = 8,
       minRows  = 3,
       error,
+      containerless = false,
       className,
       value,
       onChange,
@@ -101,6 +106,39 @@ export const Textarea = forwardRef<TextareaHandle, TextareaProps>(
     // Reserve room for action (~44px wide + 16px padding on right + 12px bottom)
     const reserveAction = embeddedAction ? { paddingRight: 52, paddingBottom: 48 } : null;
 
+    const textareaEl = (
+      <textarea
+        ref={innerRef}
+        aria-invalid={error || undefined}
+        value={value}
+        onChange={onChange}
+        rows={minRows}
+        className={cn(
+          containerless
+            ? 'block w-full resize-none bg-transparent outline-none focus:outline-none'
+            : 'block w-full resize-none rounded-md bg-transparent px-3 py-2.5 text-sm text-[var(--ema-text-primary)] placeholder:text-[var(--ema-text-tertiary)] outline-none focus:outline-none disabled:cursor-not-allowed disabled:opacity-50',
+          className,
+        )}
+        style={containerless ? style : { ...reserveAction, ...style }}
+        {...rest}
+      />
+    );
+
+    const actionSlot = embeddedAction ? (
+      <div className="pointer-events-none absolute bottom-3 right-3">
+        <div className="pointer-events-auto">{embeddedAction}</div>
+      </div>
+    ) : null;
+
+    if (containerless) {
+      return (
+        <div className="relative">
+          {textareaEl}
+          {actionSlot}
+        </div>
+      );
+    }
+
     return (
       <div
         className={cn(
@@ -111,27 +149,8 @@ export const Textarea = forwardRef<TextareaHandle, TextareaProps>(
             : 'border-[var(--ema-border)] hover:border-[var(--ema-border-hover)]',
         )}
       >
-        <textarea
-          ref={innerRef}
-          aria-invalid={error || undefined}
-          value={value}
-          onChange={onChange}
-          rows={minRows}
-          className={cn(
-            'block w-full resize-none rounded-md bg-transparent px-3 py-2.5',
-            'text-sm text-[var(--ema-text-primary)] placeholder:text-[var(--ema-text-tertiary)]',
-            'outline-none focus:outline-none',
-            'disabled:cursor-not-allowed disabled:opacity-50',
-            className,
-          )}
-          style={{ ...reserveAction, ...style }}
-          {...rest}
-        />
-        {embeddedAction && (
-          <div className="pointer-events-none absolute bottom-3 right-3">
-            <div className="pointer-events-auto">{embeddedAction}</div>
-          </div>
-        )}
+        {textareaEl}
+        {actionSlot}
       </div>
     );
   },
