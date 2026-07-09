@@ -48,10 +48,10 @@ const variantStyles: Record<ToastItem['variant'], string> = {
 };
 
 const variantBg: Record<ToastItem['variant'], string> = {
-  info:    'var(--ema-info-muted)',
-  success: 'var(--ema-success-muted)',
-  warning: 'var(--ema-warning-muted)',
-  danger:  'var(--ema-danger-muted)',
+  info:    'bg-[var(--ema-info-muted)]',
+  success: 'bg-[var(--ema-success-muted)]',
+  warning: 'bg-[var(--ema-warning-muted)]',
+  danger:  'bg-[var(--ema-danger-muted)]',
 };
 
 function ToastContainer(): JSX.Element {
@@ -70,8 +70,7 @@ function ToastContainer(): JSX.Element {
       {toasts.map((t) => (
         <div
           key={t.id}
-          className={`pointer-events-auto px-4 py-2 rounded-xl border text-sm ${variantStyles[t.variant]} ema-fade-in`}
-          style={{ background: variantBg[t.variant] }}
+          className={`pointer-events-auto px-4 py-2 rounded-xl border text-sm ${variantStyles[t.variant]} ${variantBg[t.variant]} ema-fade-in`}
         >
           {t.message}
         </div>

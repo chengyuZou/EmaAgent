@@ -3,7 +3,7 @@ import {
   type JSX, type CSSProperties,
 } from 'react';
 import {
-  Button, IconButton, Input, Spinner, Badge, Callout,
+  Button, CardButton, IconButton, Input, Spinner, Badge, Callout,
   ScrollArea, Skeleton, Dialog, Divider, Tabs, Progress,
 } from '@ema-agent/ui';
 import { useStorageStore }  from '../stores/storage-store.js';
@@ -458,14 +458,14 @@ function SessionRow({
   onClick(): void;
 }): JSX.Element {
   return (
-    <button
-      type="button"
+    <CardButton
+      selected={selected}
+      padding="sm"
       onClick={onClick}
-      className={`ema-stagger-in w-full text-left px-3 py-2.5 rounded-xl
-        transition-colors duration-[var(--ema-duration-base)]
+      className={`ema-stagger-in w-full rounded-xl font-normal
         ${selected
-          ? 'bg-[var(--ema-primary-muted)] text-[var(--ema-text-primary)] shadow-[var(--ema-shadow-1)]'
-          : 'text-[var(--ema-text-secondary)] hover:bg-[var(--ema-surface-2)] hover:text-[var(--ema-text-primary)]'
+          ? 'shadow-[var(--ema-shadow-1)] text-[var(--ema-text-primary)]'
+          : 'text-[var(--ema-text-secondary)] hover:text-[var(--ema-text-primary)]'
         }`}
       style={{ '--stagger-i': index } as CSSProperties}
     >
@@ -480,7 +480,7 @@ function SessionRow({
           <span className="i-solar:pin-bold text-[10px] text-[var(--ema-primary)]" aria-hidden />
         )}
       </div>
-    </button>
+    </CardButton>
   );
 }
 
