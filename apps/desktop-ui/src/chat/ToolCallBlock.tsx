@@ -148,7 +148,7 @@ export function ToolCallBlock({ slice, streaming = false, turnId }: ToolCallBloc
             onMouseLeave={(e) => { const t = e.currentTarget as HTMLElement; t.style.color = 'var(--ema-text-tertiary)'; t.style.background = ''; }}
             onClick={(e) => { e.stopPropagation(); copy(); }}
           >
-            {copied ? '✓' : '⎘'}
+            {copied ? <span className="i-mdi:check text-xs" aria-hidden /> : <span className="i-mdi:content-copy text-xs" aria-hidden />}
           </button>
 
           {/* Bash: 融合终端视图（命令 + 输出，不走通用平铺） */}

@@ -10,9 +10,9 @@ interface ModeSelectorProps {
 }
 
 const MODES: Array<{ id: TurnMode; label: string; icon: string }> = [
-  { id: 'chat',      label: '聊天', icon: '💬' },
-  { id: 'narrative', label: '叙事', icon: '📖' },
-  { id: 'agent',     label: 'Agent', icon: '🛠' },
+  { id: 'chat',      label: '聊天', icon: 'i-mdi:chat-outline' },
+  { id: 'narrative', label: '叙事', icon: 'i-mdi:book-open-variant-outline' },
+  { id: 'agent',     label: 'Agent', icon: 'i-mdi:robot-outline' },
 ];
 
 export function ModeSelector({ mode, onModeChange }: ModeSelectorProps): JSX.Element {
@@ -28,9 +28,9 @@ export function ModeSelector({ mode, onModeChange }: ModeSelectorProps): JSX.Ele
                    transition-colors duration-[var(--ema-duration-base)]"
         onClick={() => setOpen(!open)}
       >
-        <span>{current.icon}</span>
+        <span className={current.icon + ' text-sm'} aria-hidden />
         <span>{current.label}</span>
-        <span className="text-[10px]">▴</span>
+        <span className="i-mdi:chevron-up text-[10px]" aria-hidden />
       </button>
 
       {open && (
@@ -56,10 +56,10 @@ export function ModeSelector({ mode, onModeChange }: ModeSelectorProps): JSX.Ele
                   setOpen(false);
                 }}
               >
-                <span className="mr-2">{m.icon}</span>
+                <span className={`${m.icon} text-sm mr-2`} aria-hidden />
                 <span className="flex-1">{m.label}</span>
                 {mode === m.id && (
-                  <span className="text-[var(--ema-primary)] text-[10px]">✓</span>
+                  <span className="i-mdi:check text-[var(--ema-primary)] text-xs" aria-hidden />
                 )}
               </button>
             ))}

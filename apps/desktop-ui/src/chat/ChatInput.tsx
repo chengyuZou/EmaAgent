@@ -382,7 +382,7 @@ function KbButton({
                   <IconButton
                     variant={count > 0 ? 'primary' : 'default'}
                     size="sm"
-                    icon="i-solar:database-bold"
+                    icon="i-mdi:database"
                     label="选择知识库"
                     toggled={count > 0}
                   />
