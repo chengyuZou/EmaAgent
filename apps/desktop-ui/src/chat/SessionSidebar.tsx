@@ -1,6 +1,6 @@
 ﻿import { useState, useCallback, useEffect, useMemo, useRef, type JSX } from 'react';
 import { useShallow } from 'zustand/react/shallow';
-import { DropdownMenu, Input, type MenuItem } from '@ema-agent/ui';
+import { ConfirmDialog, DropdownMenu, Input, type MenuItem } from '@ema-agent/ui';
 import { sessionsApi, type SessionWire, type SessionSearchItem } from '../api/sessions.js';
 import { useConversationStore } from '../stores/conversation-store.js';
 import { useSessionStore, type SessionsState } from '../stores/session-store.js';
@@ -416,6 +416,7 @@ function SidebarRow({ session, isActive, streaming, pendingCounts, nested = fals
   nested?:   boolean;
 }): JSX.Element {
   const [showWorkspace, setShowWorkspace] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState(false);
   const dot = getStatusDot(session, streaming, pendingCounts);
   const isRunning = streaming.has(session.id);
   const timeLabel = formatRelativeTime(session.lastActivityAt);
@@ -472,13 +473,14 @@ function SidebarRow({ session, isActive, streaming, pendingCounts, nested = fals
       label:    '删除',
       icon:     'i-mdi:delete-outline',
       danger:   true,
-      onSelect: () => {
-        if (confirm('确定删除这个会话？')) {
-          void runWithToast(useSessionStore.getState().deleteSession(session.id as SessionId), '删除失败');
-        }
-      },
+      onSelect: () => setPendingDelete(true),
     },
   ];
+
+  function confirmDelete(): void {
+    setPendingDelete(false);
+    void runWithToast(useSessionStore.getState().deleteSession(session.id as SessionId), '删除失败');
+  }
 
   return (
     <div
@@ -558,6 +560,13 @@ function SidebarRow({ session, isActive, streaming, pendingCounts, nested = fals
         )}
       </div>
 
+      <ConfirmDialog
+        open={pendingDelete}
+        message={`确定删除会话"${session.title || '新对话'}"？此操作不可撤销。`}
+        confirmText="删除"
+        onConfirm={confirmDelete}
+        onCancel={() => setPendingDelete(false)}
+      />
     </div>
   );
 }

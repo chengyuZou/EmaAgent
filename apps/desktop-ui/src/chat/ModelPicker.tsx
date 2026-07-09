@@ -96,9 +96,9 @@ export function ModelPicker({ selected, onSelect, onClear }: ModelPickerProps): 
         onClick={() => setOpen(!open)}
         title={triggerTitle}
       >
-        <span className="text-[10px]">🤖</span>
+        <span className="i-mdi:robot-outline text-[10px]" aria-hidden />
         <span className="truncate">{triggerLabel}</span>
-        <span className="text-[10px] shrink-0">▴</span>
+        <span className="i-mdi:chevron-up text-[10px] shrink-0" aria-hidden />
       </button>
 
       {/* Dropdown — pops UPWARD (bottom-full) since it's in the bottom toolbar */}
@@ -137,7 +137,7 @@ export function ModelPicker({ selected, onSelect, onClear }: ModelPickerProps): 
                   }}
                   title="恢复默认模型"
                 >
-                  ✕
+                  <span className="i-mdi:close text-[10px]" aria-hidden />
                 </button>
               )}
             </div>
@@ -186,7 +186,7 @@ export function ModelPicker({ selected, onSelect, onClear }: ModelPickerProps): 
                             {fmtCtx(m.contextWindow)}
                           </span>
                           {isSelected && (
-                            <span className="text-[var(--ema-primary)] text-[10px] shrink-0">✓</span>
+                            <span className="i-mdi:check text-[var(--ema-primary)] text-[10px] shrink-0" aria-hidden />
                           )}
                         </button>
                       );

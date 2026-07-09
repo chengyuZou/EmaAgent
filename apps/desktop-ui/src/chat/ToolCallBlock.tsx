@@ -89,9 +89,7 @@ export function ToolCallBlock({ slice, streaming = false, turnId }: ToolCallBloc
         className="flex items-center gap-2 text-left w-full group"
         onClick={() => setOpen((v) => !v)}
       >
-        <span className="text-[10px] w-3 shrink-0" style={{ color: 'var(--ema-text-tertiary)' }}>
-          {open ? '▾' : '▸'}
-        </span>
+        <span className={`text-[10px] w-3 shrink-0 ${open ? 'i-mdi:chevron-down' : 'i-mdi:chevron-right'}`} style={{ color: 'var(--ema-text-tertiary)' }} aria-hidden />
 
         <span className={`font-mono text-xs transition-colors ${
           hasError   ? 'text-[var(--ema-danger)]' :
@@ -142,10 +140,7 @@ export function ToolCallBlock({ slice, streaming = false, turnId }: ToolCallBloc
         <div className="relative ml-3 pl-3" style={{ borderLeftColor: 'var(--ema-border)', borderLeftWidth: 1 }}>
           {/* Copy button */}
           <button
-            className="absolute top-0 right-0 px-1.5 py-0.5 rounded text-[10px] transition-colors"
-            style={{ color: 'var(--ema-text-tertiary)' }}
-            onMouseEnter={(e) => { const t = e.currentTarget as HTMLElement; t.style.color = 'var(--ema-text-primary)'; t.style.background = 'var(--ema-surface-2)'; }}
-            onMouseLeave={(e) => { const t = e.currentTarget as HTMLElement; t.style.color = 'var(--ema-text-tertiary)'; t.style.background = ''; }}
+            className="absolute top-0 right-0 px-1.5 py-0.5 rounded text-[10px] transition-colors text-[var(--ema-text-tertiary)] hover:text-[var(--ema-text-primary)] hover:bg-[var(--ema-surface-2)]"
             onClick={(e) => { e.stopPropagation(); copy(); }}
           >
             {copied ? <span className="i-mdi:check text-xs" aria-hidden /> : <span className="i-mdi:content-copy text-xs" aria-hidden />}
@@ -172,14 +167,14 @@ export function ToolCallBlock({ slice, streaming = false, turnId }: ToolCallBloc
               {argsReady ? (
                 <ToolArgsView name={slice.name} args={slice.args} />
               ) : slice.partialArgs ? (
-                <pre className="font-mono text-[11px] text-neutral-400 whitespace-pre-wrap break-all leading-relaxed bg-transparent m-0 p-0 pr-6">
+                <pre className="font-mono text-[11px] text-[var(--ema-text-tertiary)] whitespace-pre-wrap break-all leading-relaxed bg-transparent m-0 p-0 pr-6">
                   {slice.partialArgs}
                 </pre>
               ) : null}
 
               {/* 透明横线（分隔参数与结果，仅当两者都有时） */}
               {(argsReady || slice.partialArgs) && resultView !== null && (
-                <div className="my-2 mx-4 border-t border-white/[0.05]" />
+                <div className="my-2 mx-4 border-t border-[var(--ema-border)]" />
               )}
 
               {/* 结果区 */}
@@ -257,7 +252,7 @@ function ToolArgsView({ name, args }: { name: string; args: unknown }): JSX.Elem
 function ToolResultViewBlock({ view }: { view: ReturnType<typeof renderToolResult> }): JSX.Element {
   if (view.kind === 'text') {
     return (
-      <pre className="font-mono text-[11px] text-neutral-300 whitespace-pre-wrap break-all leading-relaxed bg-transparent m-0 p-0">
+      <pre className="font-mono text-[11px] text-[var(--ema-text-secondary)] whitespace-pre-wrap break-all leading-relaxed bg-transparent m-0 p-0">
         {view.text}
       </pre>
     );
@@ -289,7 +284,7 @@ function BashBlock({ cmd, output, partialArgs, isPending }: {
   return (
     <pre className="font-mono text-[11px] whitespace-pre-wrap break-all leading-relaxed bg-transparent m-0 p-0">
       {displayCmd && (
-        <span className="text-yellow-300/90">{'$ '}{displayCmd}</span>
+        <span className="text-[var(--ema-syntax-prompt)]">{'$ '}{displayCmd}</span>
       )}
       {isPending && <span className="text-[var(--ema-text-tertiary)] animate-pulse"> ▌</span>}
       {output !== null && (
@@ -316,13 +311,13 @@ function JsonBlock({ code }: { code: string }): JSX.Element {
 }
 
 const JSON_COLORS: Record<string, string> = {
-  key:         'text-blue-300',
-  string:      'text-emerald-300',
-  number:      'text-orange-300',
-  boolean:     'text-violet-300',
-  null:        'text-neutral-500',
-  punctuation: 'text-neutral-500',
-  plain:       'text-neutral-300',
+  key:         'text-[var(--ema-syntax-key)]',
+  string:      'text-[var(--ema-syntax-string)]',
+  number:      'text-[var(--ema-syntax-number)]',
+  boolean:     'text-[var(--ema-syntax-boolean)]',
+  null:        'text-[var(--ema-syntax-comment)]',
+  punctuation: 'text-[var(--ema-syntax-comment)]',
+  plain:       'text-[var(--ema-text-secondary)]',
 };
 
 type JsonToken = { type: string; text: string };
@@ -385,10 +380,10 @@ function DiffBlock({ code }: { code: string }): JSX.Element {
     <pre className="font-mono text-[11px] whitespace-pre-wrap break-all leading-relaxed bg-transparent m-0 p-0">
       {code.split('\n').map((line, i) => {
         const cls =
-          line.startsWith('+') && !line.startsWith('+++') ? 'text-emerald-400' :
-          line.startsWith('-') && !line.startsWith('---') ? 'text-red-400' :
-          line.startsWith('@@')                           ? 'text-blue-300/70' :
-                                                            'text-neutral-500';
+          line.startsWith('+') && !line.startsWith('+++') ? 'text-[var(--ema-success-text)]' :
+          line.startsWith('-') && !line.startsWith('---') ? 'text-[var(--ema-danger-text)]' :
+          line.startsWith('@@')                           ? 'text-[var(--ema-info-text)]' :
+                                                            'text-[var(--ema-text-tertiary)]';
         return <span key={i} className={cls}>{line}{'\n'}</span>;
       })}
     </pre>

@@ -1,5 +1,5 @@
 ﻿import { useState, useCallback, type JSX } from 'react';
-import { DropdownMenu, Input, type MenuItem } from '@ema-agent/ui';
+import { ConfirmDialog, DropdownMenu, Input, type MenuItem } from '@ema-agent/ui';
 import { useConversationStore } from '../stores/conversation-store.js';
 import { useSessionStore } from '../stores/session-store.js';
 import { runWithToast } from '../lib/toast.js';
@@ -156,6 +156,7 @@ function SessionRow({ session, isActive, onSelect }: {
   session: SessionWire; isActive: boolean; onSelect(): void;
 }): JSX.Element {
   const [showWorkspace, setShowWorkspace] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState(false);
 
   const menuItems: MenuItem[] = [
     {
@@ -209,13 +210,14 @@ function SessionRow({ session, isActive, onSelect }: {
       label:    '删除',
       icon:     'i-mdi:delete-outline',
       danger:   true,
-      onSelect: () => {
-        if (confirm('确定删除这个会话？')) {
-          void runWithToast(useSessionStore.getState().deleteSession(session.id as SessionId), '删除失败');
-        }
-      },
+      onSelect: () => setPendingDelete(true),
     },
   ];
+
+  function confirmDelete(): void {
+    setPendingDelete(false);
+    void runWithToast(useSessionStore.getState().deleteSession(session.id as SessionId), '删除失败');
+  }
 
   return (
     <div
@@ -253,6 +255,14 @@ function SessionRow({ session, isActive, onSelect }: {
           </>
         )}
       </div>
+
+      <ConfirmDialog
+        open={pendingDelete}
+        message={`确定删除会话"${session.title || '新对话'}"？此操作不可撤销。`}
+        confirmText="删除"
+        onConfirm={confirmDelete}
+        onCancel={() => setPendingDelete(false)}
+      />
     </div>
   );
 }

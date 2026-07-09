@@ -123,7 +123,7 @@ export function ChatPanel(): JSX.Element {
     return (
       <div className="flex items-center justify-center h-screen ema-fade-in" style={{ color: 'var(--ema-text-tertiary)' }}>
         <div className="text-center">
-          <div className="text-lg mb-2">⚡ Sidecar 离线</div>
+          <div className="text-lg mb-2 inline-flex items-center gap-1.5"><span className="i-mdi:flash-off-outline" aria-hidden />Sidecar 离线</div>
           <div className="text-sm" style={{ color: 'var(--ema-text-tertiary)' }}>{sidecarStatus.reason}</div>
         </div>
       </div>
@@ -455,13 +455,13 @@ function ContextBall({ sessionId }: { sessionId: string | null }): JSX.Element |
     <div className="flex items-center gap-1.5"
          title={`上下文: ${fmtK(inputTok)} / ${fmtK(ctxWindow)} (${Math.round(pct * 100)}%)${isFallback ? ' · 选择模型后显示精确上限' : ''}`}>
       <svg width="18" height="18" viewBox="0 0 18 18" style={{ transform: 'rotate(-90deg)' }}>
-        <circle cx="9" cy="9" r={r} fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="2.5" />
+        <circle cx="9" cy="9" r={r} fill="none" stroke="var(--ema-surface-3)" strokeWidth="2.5" />
         <circle
           cx="9" cy="9" r={r} fill="none"
           stroke={color} strokeWidth="2.5"
           strokeDasharray={`${dash} ${circ - dash}`}
           strokeLinecap="round"
-          style={{ transition: 'stroke-dasharray 0.4s ease' }}
+          className="transition-[stroke-dasharray] duration-[400ms] ease-out"
         />
       </svg>
       <span style={{ color: 'var(--ema-text-tertiary)' }} className="tabular-nums">
