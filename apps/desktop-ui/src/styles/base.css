@@ -42,10 +42,13 @@ button, [role="button"], [data-tauri-drag-region], .ema-no-select, .ema-no-selec
 ::-webkit-scrollbar-thumb {
   background:    var(--ema-scrollbar-thumb, rgba(255, 255, 255, 0.15));
   border-radius: var(--ema-radius-pill);
-  transition:    background var(--ema-duration-base) var(--ema-ease);
+  /* hover 放大+换色(抄 AstrBot 滚动条 hover 放大+发光) */
+  transition:    background var(--ema-duration-base) var(--ema-ease),
+                 width     var(--ema-duration-base) var(--ema-ease);
 }
 ::-webkit-scrollbar-thumb:hover {
   background: var(--ema-scrollbar-thumb-hover, rgba(255, 255, 255, 0.28));
+  width: 8px;
 }
 ::-webkit-scrollbar-corner {
   background: transparent;

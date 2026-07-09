@@ -30,17 +30,19 @@
   --ema-shadow-focus:   0 0 0 3px oklch(0.72 0.18 var(--chromatic-hue, 200) / 0.28);
   --ema-shadow-danger:  0 0 0 3px oklch(0.62 0.22 25  / 0.28);
 
-  /* Surface layers - 半透明深色玻璃 */
-  --ema-surface-0:  rgba(10,  8, 16, 0.90);
-  --ema-surface-1:  rgba(18, 16, 28, 0.85);
-  --ema-surface-2:  rgba(26, 24, 38, 0.80);
-  --ema-surface-3:  rgba(34, 32, 48, 0.75);
-  --ema-surface-4:  rgba(42, 40, 58, 0.88);
+  /* Surface layers - 半透明中性深灰玻璃(抄 AstrBot 层差,保留半透明供桌宠玻璃感)。
+     0=最深背景,4=浮层最亮。中性灰非紫黑,跟 AstrBot #1a1a1a->#242424 对齐。 */
+  --ema-surface-0:  rgba(20, 20, 24, 0.92);
+  --ema-surface-1:  rgba(28, 28, 32, 0.88);
+  --ema-surface-2:  rgba(36, 36, 40, 0.82);
+  --ema-surface-3:  rgba(44, 44, 50, 0.78);
+  --ema-surface-4:  rgba(52, 52, 58, 0.90);
   --ema-bg:         var(--ema-surface-0);
   --ema-glass-weak:   saturate(150%) blur(4px);
   --ema-glass-base:   saturate(180%) blur(8px);
   --ema-glass-strong: saturate(200%) blur(16px);
-  --ema-mask: rgba(0, 0, 0, 0.45);
+  /* Mask 用暗灰非纯黑(抄 AstrBit:暗色遮罩用 background 色非黑,视觉更协调) */
+  --ema-mask: rgba(18, 18, 22, 0.65);
 
   /* ── 语义色(暗色)── Ema 签名色,跟随 --chromatic-hue(跟 UnoCSS bg-primary 对齐)── */
   --ema-primary:        oklch(0.72 0.18 var(--chromatic-hue, 200));
@@ -80,8 +82,8 @@
   --ema-text-inverse:   oklch(0.10 0.01 280);
   --ema-text-code:      oklch(0.85 0.04 280);
 
-  /* ── Border(暗色:浅描边)── */
-  --ema-border:         rgba(255, 255, 255, 0.08);
+  /* ── Border(暗色:浅描边,加浓 0.12 抄 AIRI 暗底 border 要更明显)── */
+  --ema-border:         rgba(255, 255, 255, 0.12);
   --ema-border-hover:   rgba(255, 255, 255, 0.14);
   --ema-border-focus:   var(--ema-primary);
   --ema-border-strong:  rgba(255, 255, 255, 0.18);
@@ -91,9 +93,9 @@
   --ema-glow:        rgba(180, 160, 200, 0.15);
   --ema-glow-strong: rgba(160, 130, 180, 0.35);
 
-  /* ── Scrollbar(暗色:浅 thumb)── */
-  --ema-scrollbar-thumb: rgba(255, 255, 255, 0.15);
-  --ema-scrollbar-thumb-hover: rgba(255, 255, 255, 0.28);
+  /* ── Scrollbar(暗色:跟 primary 联动,抄 AstrBot 滚动条 token 化)── */
+  --ema-scrollbar-thumb: oklch(0.72 0.18 var(--chromatic-hue, 200) / 0.50);
+  --ema-scrollbar-thumb-hover: oklch(0.72 0.18 var(--chromatic-hue, 200) / 0.72);
 }
 
 /* ── Light-mode overrides ──────────────────────────────────────────────────
@@ -152,7 +154,7 @@
   --ema-glow:        rgba(180, 160, 200, 0.15);
   --ema-glow-strong: rgba(160, 130, 180, 0.35);
 
-  /* Scrollbar: 可见 */
-  --ema-scrollbar-thumb: rgba(0, 0, 0, 0.20);
-  --ema-scrollbar-thumb-hover: rgba(0, 0, 0, 0.36);
+  /* Scrollbar: 可见(跟 primary,暗色透明度低/亮色透明度高) */
+  --ema-scrollbar-thumb: oklch(0.50 0.18 var(--chromatic-hue, 200) / 0.40);
+  --ema-scrollbar-thumb-hover: oklch(0.50 0.18 var(--chromatic-hue, 200) / 0.64);
 }

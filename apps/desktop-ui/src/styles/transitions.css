@@ -29,3 +29,17 @@
 .ema-press:active {
   transform: scale(0.97);
 }
+
+/* 主题切换双向动画(亮↔暗)。applyMode 切 data-theme 前给 <html> 加此类,
+   触发全局 color/background/border 过渡,过渡完移除。只过渡颜色,不过渡
+   transform/layout(防性能问题 + 防动画错位)。*/
+.ema-theme-transition,
+.ema-theme-transition *,
+.ema-theme-transition *::before,
+.ema-theme-transition *::after {
+  transition: background-color var(--ema-duration-base) var(--ema-ease),
+              color            var(--ema-duration-base) var(--ema-ease),
+              border-color     var(--ema-duration-base) var(--ema-ease),
+              fill             var(--ema-duration-base) var(--ema-ease),
+              box-shadow       var(--ema-duration-base) var(--ema-ease) !important;
+}

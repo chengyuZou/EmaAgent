@@ -12,16 +12,26 @@ export type ThemeMode = 'dark' | 'light';
 const DEFAULTS: ThemeConfig & { mode: ThemeMode } = { hue: 200, radius: 1, mode: 'light' };
 
 function applyMode(mode: ThemeMode): void {
-  document.documentElement.setAttribute(THEME_ATTR, mode);
-  if (mode === 'dark') document.documentElement.removeAttribute(THEME_ATTR);
+  // 切换双向动画:切前给 <html> 加 .ema-theme-transition 触发全局 color 过渡,
+  // 过渡完(400ms)移除。只过渡颜色不过渡 transform/layout(见 transitions.css)。
+  const html = document.documentElement;
+  html.classList.add('ema-theme-transition');
+
+  if (mode === 'dark') {
+    document.documentElement.removeAttribute(THEME_ATTR);
+  } else {
+    document.documentElement.setAttribute(THEME_ATTR, mode);
+  }
 
   // Sync native title bar (Tauri window)
   try {
-    // Dynamic import so it doesn't break in non-Tauri contexts
     import('@tauri-apps/api/window').then(({ getCurrentWindow }) => {
       getCurrentWindow().setTheme(mode).catch(() => {});
     }).catch(() => {});
   } catch { /* not in Tauri */ }
+
+  // 过渡完移除 class(过渡时长 base 200ms + buffer 200ms = 400ms)
+  window.setTimeout(() => html.classList.remove('ema-theme-transition'), 400);
 }
 
 export interface ThemeStoreState {

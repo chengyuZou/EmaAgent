@@ -1,6 +1,6 @@
-﻿import { useEffect, type JSX, type ChangeEvent } from 'react';
+﻿import { useEffect, useState, type JSX, type ChangeEvent } from 'react';
 import { Slider, type SliderStep } from '@ema-agent/ui';
-import { useThemeStore } from '../stores/theme-store.js';
+import { useThemeStore, type ThemeMode } from '../stores/theme-store.js';
 
 // ── Hue presets ───────────────────────────────────────────────────────────────
 
@@ -60,6 +60,17 @@ function HueSlider({ value, onChange }: { value: number; onChange: (h: number) =
 
 export function AppearanceTab(): JSX.Element {
   const { hue, radius, mode, ready, init, setHue, setRadius, setMode } = useThemeStore();
+  const [shaking, setShaking] = useState<ThemeMode | null>(null);
+
+  // 点当前已激活的主题按钮 -> shake 反馈(不 disabled,用户要知道点了)
+  function handleModeClick(target: ThemeMode): void {
+    if (mode === target) {
+      setShaking(target);
+      window.setTimeout(() => setShaking(null), 400);
+      return;
+    }
+    void setMode(target);
+  }
 
   useEffect(() => {
     if (!ready) void init();
@@ -145,23 +156,23 @@ export function AppearanceTab(): JSX.Element {
 
         <div className="flex items-center gap-4">
           <button
-            onClick={() => void setMode('dark')}
+            onClick={() => handleModeClick('dark')}
             className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border transition-all duration-[var(--ema-duration-base)] ${
               mode === 'dark'
                 ? 'border-[var(--ema-primary)] bg-[var(--ema-primary-muted)] text-[var(--ema-text-primary)]'
                 : 'border-[var(--ema-border)] bg-[var(--ema-surface-1)] text-[var(--ema-text-tertiary)] hover:border-[var(--ema-border-hover)]'
-            }`}
+            }${shaking === 'dark' ? ' ema-shake' : ''}`}
           >
             <span className="i-solar:moon-bold-duotone text-lg" aria-hidden />
             <span className="text-sm font-medium">深色</span>
           </button>
           <button
-            onClick={() => void setMode('light')}
+            onClick={() => handleModeClick('light')}
             className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border transition-all duration-[var(--ema-duration-base)] ${
               mode === 'light'
                 ? 'border-[var(--ema-primary)] bg-[var(--ema-primary-muted)] text-[var(--ema-text-primary)]'
                 : 'border-[var(--ema-border)] bg-[var(--ema-surface-1)] text-[var(--ema-text-tertiary)] hover:border-[var(--ema-border-hover)]'
-            }`}
+            }${shaking === 'light' ? ' ema-shake' : ''}`}
           >
             <span className="i-solar:sun-bold-duotone text-lg" aria-hidden />
             <span className="text-sm font-medium">浅色</span>
