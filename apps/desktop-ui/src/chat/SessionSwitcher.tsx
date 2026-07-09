@@ -1,5 +1,5 @@
 ﻿import { useState, useCallback, type JSX } from 'react';
-import { ConfirmDialog, DropdownMenu, Input, PromptDialog, type MenuItem } from '@ema-agent/ui';
+import { Button, ConfirmDialog, DropdownMenu, Input, PromptDialog, type MenuItem } from '@ema-agent/ui';
 import { useConversationStore } from '../stores/conversation-store.js';
 import { useSessionStore } from '../stores/session-store.js';
 import { runWithToast } from '../lib/toast.js';
@@ -36,13 +36,14 @@ export function SessionSwitcher(): JSX.Element {
 
   return (
     <div className="relative shrink-0 border-b border-[var(--ema-border)]">
-      <button
-        className="w-full flex items-center justify-between px-4 py-2.5 transition-colors text-[var(--ema-text-secondary)] hover:bg-[var(--ema-surface-2)]"
+      <Button
+        variant="ghost"
+        className="w-full flex items-center justify-between px-4 py-2.5 transition-colors text-[var(--ema-text-secondary)] hover:bg-[var(--ema-surface-2)] font-normal"
         onClick={() => setOpen(!open)}
       >
         <span className="text-sm font-medium truncate">{activeSession?.title ?? '新对话'}</span>
         <span className="i-mdi:chevron-down text-base ml-2 text-[var(--ema-text-tertiary)]" aria-hidden />
-      </button>
+      </Button>
 
       {open && (
         <>
@@ -79,8 +80,9 @@ export function SessionSwitcher(): JSX.Element {
                 <Section label="已归档" sessions={filteredArchived} viewedId={viewedId} collapsed onClose={() => setOpen(false)} />
               )}
 
-              <button
-                className="ema-stagger-in w-full px-3 py-2 mt-1 rounded-lg text-sm transition-colors text-left text-[var(--ema-primary)] hover:bg-[var(--ema-primary-muted)]"
+              <Button
+                variant="ghost"
+                className="ema-stagger-in w-full px-3 py-2 mt-1 rounded-lg text-sm transition-colors text-left text-[var(--ema-primary)] hover:bg-[var(--ema-primary-muted)] font-normal"
                 onClick={async () => {
                   const newId = await useSessionStore.getState().createSession();
                   if (newId) void useConversationStore.getState().viewSession(newId);
@@ -89,7 +91,7 @@ export function SessionSwitcher(): JSX.Element {
               >
                 <span className="i-mdi:plus text-base mr-1" aria-hidden />
                 新建会话
-              </button>
+              </Button>
             </div>
           </div>
         </>
@@ -110,14 +112,15 @@ function Section({
 
   return (
     <div className="mb-1">
-      <button
-        className="flex items-center gap-1 px-2 py-1 text-xs w-full text-left transition-colors text-[var(--ema-text-tertiary)] hover:text-[var(--ema-text-primary)]"
+      <Button
+        variant="ghost"
+        className="flex items-center gap-1 px-2 py-1 text-xs w-full text-left transition-colors text-[var(--ema-text-tertiary)] hover:text-[var(--ema-text-primary)] font-normal"
         onClick={() => setCollapsed(!collapsed)}
       >
         <span className={`i-mdi:chevron-right text-sm transition-transform ${collapsed ? '' : 'rotate-90'}`} aria-hidden />
         {label}
         <span className="ml-1 text-[var(--ema-text-tertiary)]">({sessions.length})</span>
-      </button>
+      </Button>
       {!collapsed && (
         <div className="flex flex-col gap-0.5">
           {sessions.map((s) => (
@@ -226,9 +229,9 @@ function SessionRow({ session, isActive, onSelect }: {
       <div className="relative shrink-0" onClick={(e) => e.stopPropagation()}>
         <DropdownMenu
           trigger={
-            <button className="opacity-0 group-hover:opacity-100 px-1 rounded transition-colors text-[var(--ema-text-tertiary)] hover:text-[var(--ema-text-primary)]">
+            <Button variant="ghost" className="opacity-0 group-hover:opacity-100 px-1 rounded transition-colors text-[var(--ema-text-tertiary)] hover:text-[var(--ema-text-primary)] font-normal">
               <span className="i-mdi:dots-horizontal text-base" aria-hidden />
-            </button>
+            </Button>
           }
           items={menuItems}
           side="bottom"

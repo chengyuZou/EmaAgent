@@ -1,6 +1,6 @@
 ﻿import { useState, useCallback, useEffect, useMemo, useRef, type JSX } from 'react';
 import { useShallow } from 'zustand/react/shallow';
-import { ConfirmDialog, DropdownMenu, Input, PromptDialog, type MenuItem } from '@ema-agent/ui';
+import { Button, ConfirmDialog, DropdownMenu, Input, PromptDialog, type MenuItem } from '@ema-agent/ui';
 import { sessionsApi, type SessionWire, type SessionSearchItem } from '../api/sessions.js';
 import { useConversationStore } from '../stores/conversation-store.js';
 import { useSessionStore, type SessionsState } from '../stores/session-store.js';
@@ -89,13 +89,14 @@ export function SessionSidebar(): JSX.Element {
       )}
       {collapsed ? (
         <div className="flex flex-col items-center py-2 gap-2">
-          <button
-            className="w-7 h-7 flex items-center justify-center rounded-md transition-colors text-[var(--ema-text-tertiary)] hover:text-[var(--ema-text-primary)] hover:bg-[var(--ema-surface-2)]"
+          <Button
+            variant="ghost"
+            className="w-7 h-7 flex items-center justify-center rounded-md transition-colors text-[var(--ema-text-tertiary)] hover:text-[var(--ema-text-primary)] hover:bg-[var(--ema-surface-2)] font-normal"
             onClick={() => setCollapsed(false)}
             title="展开侧边栏"
           >
             <span className="i-mdi:panel-right text-base leading-none" aria-hidden />
-          </button>
+          </Button>
           <div className="flex flex-col items-center gap-1.5 mt-1">
             {sessions.recent.slice(0, 8).map((s) => {
               const dot = getStatusDot(s, streaming, pendingCounts);
@@ -174,21 +175,23 @@ function NewConversationCommand({
 }): JSX.Element {
   return (
     <div className={`w-full ${sidebarBlockClass} pr-1`}>
-      <button
-        className="min-w-0 flex flex-1 items-center gap-2.5 text-left"
+      <Button
+        variant="ghost"
+        className="min-w-0 flex flex-1 items-center gap-2.5 text-left font-normal"
         onClick={() => void onCreate()}
       >
         <span className="i-mdi:square-edit-outline text-base text-[var(--ema-text-tertiary)]" aria-hidden />
         <span className="truncate">新对话</span>
-      </button>
-      <button
-        className="w-6 h-6 shrink-0 flex items-center justify-center rounded transition-colors text-[var(--ema-text-tertiary)] hover:text-[var(--ema-text-primary)] hover:bg-[var(--ema-surface-2)]"
+      </Button>
+      <Button
+        variant="ghost"
+        className="w-6 h-6 shrink-0 flex items-center justify-center rounded transition-colors text-[var(--ema-text-tertiary)] hover:text-[var(--ema-text-primary)] hover:bg-[var(--ema-surface-2)] font-normal"
         onClick={onCollapse}
         title="折叠侧边栏"
         aria-label="折叠侧边栏"
       >
         <span className="i-mdi:panel-left text-[15px] leading-none" aria-hidden />
-      </button>
+      </Button>
     </div>
   );
 }
@@ -201,13 +204,14 @@ function SidebarCommand({
   onClick(): void;
 }): JSX.Element {
   return (
-    <button
-      className={`w-full ${sidebarBlockClass}`}
+    <Button
+      variant="ghost"
+      className={`w-full ${sidebarBlockClass} font-normal`}
       onClick={onClick}
     >
       <span className={`${icon} text-base text-[var(--ema-text-tertiary)]`} aria-hidden />
       <span className="truncate">{label}</span>
-    </button>
+    </Button>
   );
 }
 
@@ -270,8 +274,9 @@ function ProjectNode({
 
   return (
     <div>
-      <button
-        className={`group/project w-full flex items-center gap-2 h-9 px-2 rounded-md text-sm transition-[background-color,color,box-shadow] duration-150 ease-out ${
+      <Button
+        variant="ghost"
+        className={`group/project w-full flex items-center gap-2 h-9 px-2 rounded-md text-sm transition-[background-color,color,box-shadow] duration-150 ease-out font-normal ${
           hasActive ? 'bg-[var(--ema-surface-2)] text-[var(--ema-text-primary)] shadow-[var(--ema-shadow-1)]' : 'text-[var(--ema-text-secondary)] hover:bg-[var(--ema-surface-2)] hover:text-[var(--ema-text-primary)]'
         }`}
         onClick={() => setCollapsed(!collapsed)}
@@ -280,7 +285,7 @@ function ProjectNode({
         <span className="flex-1 truncate text-left">{group.label}</span>
         <span className={`text-[11px] tabular-nums ${hasActive ? 'text-[var(--ema-text-secondary)]' : 'text-[var(--ema-text-tertiary)]'}`}>{group.sessions.length}</span>
         <span className={`i-mdi:chevron-down text-xs ${hasActive ? 'text-[var(--ema-text-secondary)]' : 'text-[var(--ema-text-tertiary)]'} transition-transform duration-200 ${collapsed ? '-rotate-90' : ''}`} aria-hidden />
-      </button>
+      </Button>
       <AnimatedCollapse open={!collapsed} maxHeight={maxHeight}>
         <div className="flex flex-col gap-0.5 pt-0.5">
           {group.sessions.map((s) => (
@@ -351,15 +356,16 @@ function SectionHeader({
   onToggle(): void;
 }): JSX.Element {
   return (
-    <button
-      className={`${sidebarBlockClass} mx-1.5 mb-0.5 w-[calc(100%-0.75rem)]`}
+    <Button
+      variant="ghost"
+      className={`${sidebarBlockClass} mx-1.5 mb-0.5 w-[calc(100%-0.75rem)] font-normal`}
       onClick={onToggle}
     >
       <span className={`${icon} text-base text-[var(--ema-text-tertiary)]`} aria-hidden />
       <span className="flex-1 truncate">{label}</span>
       <span className="text-[11px] tabular-nums text-[var(--ema-text-tertiary)]">{count}</span>
       <span className={`i-mdi:chevron-right text-xs transition-transform duration-200 ease-out ${collapsed ? '' : 'rotate-90'} text-[var(--ema-text-tertiary)]`} aria-hidden />
-    </button>
+    </Button>
   );
 }
 
@@ -524,11 +530,11 @@ function SidebarRow({ session, isActive, streaming, pendingCounts, nested = fals
         </span>
         <DropdownMenu
           trigger={
-            <button className={`absolute right-0 top-1/2 -translate-y-1/2 w-5 h-5 flex items-center justify-center rounded transition-[opacity,color,background-color] text-[var(--ema-text-tertiary)] hover:text-[var(--ema-text-primary)] hover:bg-[var(--ema-surface-3)] ${
+            <Button variant="ghost" className={`absolute right-0 top-1/2 -translate-y-1/2 w-5 h-5 flex items-center justify-center rounded transition-[opacity,color,background-color] text-[var(--ema-text-tertiary)] hover:text-[var(--ema-text-primary)] hover:bg-[var(--ema-surface-3)] font-normal ${
               isActive ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
             }`}>
               <span className="i-mdi:dots-horizontal text-xs" aria-hidden />
-            </button>
+            </Button>
           }
           items={menuItems}
           side="right"
@@ -683,8 +689,9 @@ function SearchResultRow({
     : '';
 
   return (
-    <button
-      className="w-full flex items-start gap-3 rounded-lg px-3 py-2 text-left transition-colors group text-[var(--ema-text-primary)] hover:bg-[var(--ema-surface-2)]"
+    <Button
+      variant="ghost"
+      className="w-full flex items-start gap-3 rounded-lg px-3 py-2 text-left transition-colors group text-[var(--ema-text-primary)] hover:bg-[var(--ema-surface-2)] font-normal"
       onClick={onSelect}
     >
       <span className={`mt-1 w-1.5 h-1.5 rounded-full shrink-0 ${
@@ -701,7 +708,7 @@ function SearchResultRow({
       <span className="shrink-0 max-w-28 truncate text-xs mt-0.5 text-[var(--ema-text-tertiary)]">
         {project}
       </span>
-    </button>
+    </Button>
   );
 }
 

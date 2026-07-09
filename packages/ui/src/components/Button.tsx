@@ -111,7 +111,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
           : icon
             ? <span className={icon} aria-hidden />
             : null}
-        {children && <span>{children}</span>}
+        {children}
       </button>
     );
   },
