@@ -40,14 +40,14 @@ export function Progress({
       className={cn('relative overflow-hidden rounded-md w-full', height, className)}
     >
       {/* Track (background) */}
-      <div className={cn('absolute inset-0 rounded-md bg-neutral-800', height)} />
+      <div className={cn('absolute inset-0 rounded-md bg-[var(--ema-surface-2)]', height)} />
 
       {/* Fill bar */}
       <div
         className={cn(
           'absolute left-0 top-0 rounded-md transition-[width] duration-500 ease-in-out will-change-[width]',
           height,
-          barClass || 'bg-primary-400/80',
+          barClass || 'bg-[var(--ema-primary)]',
         )}
         style={{ width: `${clamped}%` }}
       >

@@ -17,11 +17,11 @@ export interface BadgeProps {
 
 const VARIANT_CLASSES: Record<BadgeVariant, { bg: string; text: string; dot: string }> = {
   neutral: { bg: 'bg-[var(--ema-surface-2)]',  text: 'text-[var(--ema-text-secondary)]', dot: 'bg-[var(--ema-text-tertiary)]' },
-  primary: { bg: 'bg-primary-500/25',  text: 'text-primary-100', dot: 'bg-primary-300' },
-  violet:  { bg: 'bg-violet-500/25',   text: 'text-violet-100',  dot: 'bg-violet-300'  },
-  success: { bg: 'bg-green-500/20',    text: 'text-green-200',   dot: 'bg-green-400'   },
-  warn:    { bg: 'bg-amber-500/20',    text: 'text-amber-200',   dot: 'bg-amber-400'   },
-  danger:  { bg: 'bg-red-500/20',      text: 'text-red-200',     dot: 'bg-red-400'     },
+  primary: { bg: 'bg-[var(--ema-primary-muted)]', text: 'text-[var(--ema-primary-text)]', dot: 'bg-[var(--ema-primary)]' },
+  violet:  { bg: 'bg-[var(--ema-violet-muted)]',  text: 'text-[var(--ema-violet-text)]',  dot: 'bg-[var(--ema-violet)]'  },
+  success: { bg: 'bg-[var(--ema-success-muted)]', text: 'text-[var(--ema-success-text)]', dot: 'bg-[var(--ema-success)]' },
+  warn:    { bg: 'bg-[var(--ema-warning-muted)]', text: 'text-[var(--ema-warning-text)]', dot: 'bg-[var(--ema-warning)]' },
+  danger:  { bg: 'bg-[var(--ema-danger-muted)]',  text: 'text-[var(--ema-danger-text)]',  dot: 'bg-[var(--ema-danger)]'  },
 };
 
 export function Badge(props: BadgeProps): React.JSX.Element {

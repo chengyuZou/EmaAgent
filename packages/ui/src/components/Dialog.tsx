@@ -14,6 +14,8 @@ export interface DialogProps {
   description?: string;
   /** Hide the default close (X) button in the corner. */
   hideClose?:   boolean;
+  /** UnoCSS icon class for the close button. Defaults to "i-mdi:close". */
+  closeIcon?:   string;
   children:     ReactNode;
   /** Override max width. Must be a static UnoCSS class (e.g. 'max-w-lg', 'max-w-2xl').
    *  Do NOT pass dynamic bracket values like 'w-[500px]' — UnoCSS cannot scan them. */
@@ -24,7 +26,7 @@ export interface DialogProps {
 export function Dialog(props: DialogProps): React.JSX.Element {
   const {
     open, onOpenChange,
-    title, description, hideClose,
+    title, description, hideClose, closeIcon,
     children, widthClass = 'max-w-md', className,
   } = props;
 
@@ -71,7 +73,7 @@ export function Dialog(props: DialogProps): React.JSX.Element {
                 'focus-ring',
               )}
             >
-              <span className="i-mdi:close text-base" aria-hidden />
+              <span className={cn(closeIcon ?? 'i-mdi:close', 'text-base')} aria-hidden />
             </RadixDialog.Close>
           )}
         </RadixDialog.Content>

@@ -46,12 +46,12 @@ export function Slider<T extends string | number>(props: SliderProps<T>): React.
           disabled && 'opacity-50 cursor-not-allowed',
         )}
       >
-        <RadixSlider.Track className="relative h-1.5 grow rounded-pill bg-neutral-700/70">
-          <RadixSlider.Range className="absolute h-full rounded-pill bg-primary-400/70" />
+        <RadixSlider.Track className="relative h-1.5 grow rounded-pill bg-[var(--ema-surface-3)]">
+          <RadixSlider.Range className="absolute h-full rounded-pill bg-[var(--ema-primary)]" />
         </RadixSlider.Track>
         <RadixSlider.Thumb
           className={cn(
-            'block h-4 w-4 rounded-full bg-white border border-primary-300/60',
+            'block h-4 w-4 rounded-full bg-white border border-[var(--ema-primary)]/60',
             'shadow-md focus-ring',
             'transition-ema hover:scale-110',
           )}
@@ -60,13 +60,13 @@ export function Slider<T extends string | number>(props: SliderProps<T>): React.
       </RadixSlider.Root>
 
       {!hideLabels && (
-        <div className="mt-2 flex justify-between text-xs text-neutral-400">
+        <div className="mt-2 flex justify-between text-xs text-[var(--ema-text-tertiary)]">
           {steps.map((s, i) => (
             <span
               key={i}
               className={cn(
                 'cursor-pointer transition-ema',
-                i === currentIndex ? 'text-primary-200 font-medium' : 'hover:text-neutral-200',
+                i === currentIndex ? 'text-[var(--ema-primary-text)] font-medium' : 'hover:text-[var(--ema-text-primary)]',
               )}
               onClick={() => !disabled && onChange(s.value)}
             >

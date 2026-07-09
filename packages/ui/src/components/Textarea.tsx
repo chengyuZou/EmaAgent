@@ -104,11 +104,11 @@ export const Textarea = forwardRef<TextareaHandle, TextareaProps>(
     return (
       <div
         className={cn(
-          'relative rounded-md border bg-neutral-900/60 transition-ema',
-          'focus-within:border-primary-300 focus-within:ring-2 focus-within:ring-primary-300/40',
+          'relative rounded-md border bg-[var(--ema-surface-2)] transition-ema',
+          'focus-within:border-[var(--ema-primary)] focus-within:ring-2 focus-within:ring-[var(--ema-primary)]/40',
           error
-            ? 'border-red-400/60 focus-within:ring-red-400/40 focus-within:border-red-400'
-            : 'border-neutral-700/50 hover:border-neutral-600',
+            ? 'border-[var(--ema-danger)] focus-within:ring-[var(--ema-danger)]/40 focus-within:border-[var(--ema-danger)]'
+            : 'border-[var(--ema-border)] hover:border-[var(--ema-border-hover)]',
         )}
       >
         <textarea
@@ -119,7 +119,7 @@ export const Textarea = forwardRef<TextareaHandle, TextareaProps>(
           rows={minRows}
           className={cn(
             'block w-full resize-none rounded-md bg-transparent px-3 py-2.5',
-            'text-sm text-neutral-100 placeholder:text-neutral-500',
+            'text-sm text-[var(--ema-text-primary)] placeholder:text-[var(--ema-text-tertiary)]',
             'outline-none focus:outline-none',
             'disabled:cursor-not-allowed disabled:opacity-50',
             className,

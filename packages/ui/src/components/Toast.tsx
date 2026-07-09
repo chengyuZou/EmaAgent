@@ -19,6 +19,8 @@ export interface ToastItem {
   message:  string;
   variant:  ToastVariant;
   duration: number;
+  /** Override the default variant icon. UnoCSS class. */
+  icon?:    string;
 }
 
 // ── Module-level store ────────────────────────────────────────────────────────
@@ -52,27 +54,27 @@ function _push(item: Omit<ToastItem, 'id'>): void {
 // ── Public toast() API ────────────────────────────────────────────────────────
 
 export const toast = {
-  success(message: string, duration = 3000): void {
-    _push({ message, variant: 'success', duration });
+  success(message: string, duration = 3000, icon?: string): void {
+    _push({ message, variant: 'success', duration, icon });
   },
-  error(message: string, duration = 5000): void {
-    _push({ message, variant: 'error', duration });
+  error(message: string, duration = 5000, icon?: string): void {
+    _push({ message, variant: 'error', duration, icon });
   },
-  info(message: string, duration = 3000): void {
-    _push({ message, variant: 'info', duration });
+  info(message: string, duration = 3000, icon?: string): void {
+    _push({ message, variant: 'info', duration, icon });
   },
-  warning(message: string, duration = 4000): void {
-    _push({ message, variant: 'warning', duration });
+  warning(message: string, duration = 4000, icon?: string): void {
+    _push({ message, variant: 'warning', duration, icon });
   },
 };
 
 // ── Styles ────────────────────────────────────────────────────────────────────
 
 const VARIANT_CLASSES: Record<ToastVariant, string> = {
-  success: 'border-green-500/30  bg-green-500/10  text-green-200',
-  error:   'border-red-500/30    bg-red-500/10    text-red-200',
-  warning: 'border-amber-500/30  bg-amber-500/10  text-amber-200',
-  info:    'border-primary-400/30 bg-primary-500/10 text-primary-200',
+  success: 'border-[var(--ema-success)]/30  bg-[var(--ema-success-muted)]  text-[var(--ema-success-text)]',
+  error:   'border-[var(--ema-danger)]/30   bg-[var(--ema-danger-muted)]   text-[var(--ema-danger-text)]',
+  warning: 'border-[var(--ema-warning)]/30  bg-[var(--ema-warning-muted)]  text-[var(--ema-warning-text)]',
+  info:    'border-[var(--ema-primary)]/30  bg-[var(--ema-primary-muted)]  text-[var(--ema-primary-text)]',
 };
 
 const VARIANT_ICONS: Record<ToastVariant, string> = {
@@ -87,9 +89,11 @@ const VARIANT_ICONS: Record<ToastVariant, string> = {
 export interface ToasterProps {
   /** Max number of toasts visible at once. Default 5. */
   maxVisible?: number;
+  /** UnoCSS icon class for the close button. Defaults to "i-mdi:close". */
+  closeIcon?: string;
 }
 
-export function Toaster({ maxVisible = 5 }: ToasterProps): React.JSX.Element {
+export function Toaster({ maxVisible = 5, closeIcon }: ToasterProps): React.JSX.Element {
   const items = useSyncExternalStore(_subscribe, _snapshot, _snapshot);
   const visible = items.slice(-maxVisible);
 
@@ -112,7 +116,7 @@ export function Toaster({ maxVisible = 5 }: ToasterProps): React.JSX.Element {
             VARIANT_CLASSES[item.variant],
           )}
         >
-          <span className={cn(VARIANT_ICONS[item.variant], 'text-lg shrink-0 mt-0.5')} aria-hidden />
+          <span className={cn(item.icon ?? VARIANT_ICONS[item.variant], 'text-lg shrink-0 mt-0.5')} aria-hidden />
           <RadixToast.Description className="text-sm leading-snug flex-1">
             {item.message}
           </RadixToast.Description>
@@ -120,7 +124,7 @@ export function Toaster({ maxVisible = 5 }: ToasterProps): React.JSX.Element {
             aria-label="关闭"
             className="shrink-0 text-current opacity-50 hover:opacity-100 transition-ema"
           >
-            <span className="i-mdi:close text-base" aria-hidden />
+            <span className={cn(closeIcon ?? 'i-mdi:close', 'text-base')} aria-hidden />
           </RadixToast.Close>
         </RadixToast.Root>
       ))}

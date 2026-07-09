@@ -28,6 +28,8 @@ export interface ButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement
   block?:    boolean;
   /** UnoCSS icon class (e.g. "i-mdi:home") rendered left of label. */
   icon?:     string;
+  /** UnoCSS icon class for the loading spinner. Defaults to a ring spinner. */
+  loadingIcon?: string;
   children?: ReactNode;
   /** HTMLButton's type — defaults to 'button' (we never want accidental form submits). */
   type?:     'button' | 'submit' | 'reset';
@@ -37,18 +39,17 @@ export interface ButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement
 
 const VARIANT_CLASSES: Record<ButtonVariant, string> = {
   primary:
-    'bg-primary-500/20 hover:bg-primary-500/30 active:bg-primary-500/40 ' +
-    'text-primary-100 border-primary-300/40 ' +
-    'shadow-[0_0_12px_rgba(255,214,230,0.25)]',
+    'bg-[var(--ema-primary-muted)] hover:bg-[var(--ema-primary)]/30 active:bg-[var(--ema-primary)]/40 ' +
+    'text-[var(--ema-primary-text)] border-[var(--ema-primary)]/40',
   secondary:
-    'bg-neutral-800/70 hover:bg-neutral-700/80 active:bg-neutral-700/90 ' +
-    'text-neutral-100 border-neutral-600/40 backdrop-blur-sm',
+    'bg-[var(--ema-surface-3)] hover:bg-[var(--ema-surface-4)] active:bg-[var(--ema-surface-4)] ' +
+    'text-[var(--ema-text-primary)] border-[var(--ema-border)] backdrop-blur-sm',
   ghost:
-    'bg-transparent hover:bg-neutral-700/40 active:bg-neutral-700/60 ' +
-    'text-neutral-200 border-transparent',
+    'bg-transparent hover:bg-[var(--ema-surface-2)] active:bg-[var(--ema-surface-3)] ' +
+    'text-[var(--ema-text-secondary)] hover:text-[var(--ema-text-primary)] border-transparent',
   danger:
-    'bg-red-500/20 hover:bg-red-500/30 active:bg-red-500/40 ' +
-    'text-red-200 border-red-400/40',
+    'bg-[var(--ema-danger-muted)] hover:bg-[var(--ema-danger)]/30 active:bg-[var(--ema-danger)]/40 ' +
+    'text-[var(--ema-danger-text)] border-[var(--ema-danger)]/40',
 };
 
 const SIZE_CLASSES: Record<ButtonSize, string> = {
@@ -79,6 +80,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       loading  = false,
       block    = false,
       icon,
+      loadingIcon,
       children,
       type     = 'button',
       disabled,
@@ -105,7 +107,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
         {...rest}
       >
         {loading
-          ? <span className="i-svg-spinners:ring-resize" aria-hidden />
+          ? <span className={loadingIcon ?? 'i-svg-spinners:ring-resize'} aria-hidden />
           : icon
             ? <span className={icon} aria-hidden />
             : null}

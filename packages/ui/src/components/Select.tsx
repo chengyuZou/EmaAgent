@@ -24,29 +24,33 @@ export interface SelectProps {
   className?:    string;
   /** Trigger element override (e.g. ghost-styled in tight UIs). */
   trigger?:      ReactNode;
+  /** UnoCSS icon class for the trigger chevron. Defaults to "i-mdi:chevron-down". */
+  chevronIcon?:  string;
+  /** UnoCSS icon class for the selected-item checkmark. Defaults to "i-mdi:check". */
+  checkIcon?:    string;
 }
 
 export function Select(props: SelectProps): React.JSX.Element {
-  const { value, onChange, options, placeholder = '请选择…', disabled, className, trigger } = props;
+  const { value, onChange, options, placeholder = '请选择…', disabled, className, trigger, chevronIcon, checkIcon } = props;
 
   return (
     <RadixSelect.Root value={value} onValueChange={onChange} disabled={disabled}>
       <RadixSelect.Trigger
         className={cn(
           'inline-flex items-center justify-between gap-2 w-full',
-          'h-9 px-3 text-sm rounded-md border bg-neutral-900/60 text-neutral-100',
-          'border-neutral-700/50 hover:border-neutral-600',
-          'data-[state=open]:border-primary-300',
+          'h-9 px-3 text-sm rounded-md border bg-[var(--ema-surface-2)] text-[var(--ema-text-primary)]',
+          'border-[var(--ema-border)] hover:border-[var(--ema-border-hover)]',
+          'data-[state=open]:border-[var(--ema-primary)]',
           'disabled:cursor-not-allowed disabled:opacity-50',
           'focus-ring transition-ema',
           className,
         )}
       >
         {trigger ?? (
-          <RadixSelect.Value placeholder={<span className="text-neutral-500">{placeholder}</span>} />
+          <RadixSelect.Value placeholder={<span className="text-[var(--ema-text-tertiary)]">{placeholder}</span>} />
         )}
-        <RadixSelect.Icon className="text-neutral-400">
-          <span className="i-mdi:chevron-down text-base" aria-hidden />
+        <RadixSelect.Icon className="text-[var(--ema-text-tertiary)]">
+          <span className={cn(chevronIcon ?? 'i-mdi:chevron-down', 'text-base')} aria-hidden />
         </RadixSelect.Icon>
       </RadixSelect.Trigger>
 
@@ -69,15 +73,15 @@ export function Select(props: SelectProps): React.JSX.Element {
                 className={cn(
                   'flex items-center gap-2 px-2.5 py-1.5 rounded-sm text-sm cursor-pointer',
                   'outline-none transition-ema',
-                  'data-[highlighted]:bg-primary-500/20 data-[highlighted]:text-primary-100',
+                  'data-[highlighted]:bg-[var(--ema-primary-muted)] data-[highlighted]:text-[var(--ema-primary-text)]',
                   'data-[disabled]:opacity-40 data-[disabled]:cursor-not-allowed',
-                  'data-[state=checked]:text-primary-100',
+                  'data-[state=checked]:text-[var(--ema-primary-text)]',
                 )}
               >
                 {opt.icon && <span className={cn(opt.icon, 'text-base')} aria-hidden />}
                 <RadixSelect.ItemText>{opt.label}</RadixSelect.ItemText>
                 <RadixSelect.ItemIndicator className="ml-auto">
-                  <span className="i-mdi:check text-sm" aria-hidden />
+                  <span className={cn(checkIcon ?? 'i-mdi:check', 'text-sm')} aria-hidden />
                 </RadixSelect.ItemIndicator>
               </RadixSelect.Item>
             ))}

@@ -219,11 +219,11 @@ export function emaSharedTheme() {
 export function emaSharedShortcuts() {
   return {
     // Frosted glass panel — floating dock, popovers, dialogs
-    'panel-glass': 'bg-neutral-900/75 backdrop-blur-md border border-primary-200/15 shadow-lg',
-    // Lighter glass for cards inside a dark surface (settings cards, provider grid)
-    'card-glass': 'bg-neutral-900/80 backdrop-blur-sm border border-neutral-800/40',
-    // Pink-white focus ring on interactive elements
-    'focus-ring': 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-300 focus-visible:ring-offset-2 focus-visible:ring-offset-neutral-900',
+    'panel-glass': 'bg-[var(--ema-surface-4)] backdrop-blur-md border border-[var(--ema-border)] shadow-lg',
+    // Lighter glass for cards inside a surface (settings cards, provider grid)
+    'card-glass': 'bg-[var(--ema-surface-2)] backdrop-blur-sm border border-[var(--ema-border)]',
+    // Focus ring on interactive elements (token-driven, adapts to light/dark)
+    'focus-ring': 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ema-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--ema-bg)]',
     // Standard interactive transition — 250ms matches AIRI's feel
     'transition-ema': 'transition-all duration-250 ease-in-out',
     // Press-scale feedback (AIRI active:scale-95/98 pattern)

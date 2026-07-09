@@ -103,9 +103,9 @@ export function Combobox({
       onClick={() => setOpen(true)}
       className={cn(
         'w-full rounded-md border px-3 py-2 text-sm outline-none transition-ema',
-        'bg-neutral-900/60 text-neutral-100 placeholder:text-neutral-500',
-        'border-neutral-700/50 hover:border-neutral-600',
-        'focus:border-primary-300 focus:ring-2 focus:ring-primary-300/40',
+        'bg-[var(--ema-surface-2)] text-[var(--ema-text-primary)] placeholder:text-[var(--ema-text-tertiary)]',
+        'border-[var(--ema-border)] hover:border-[var(--ema-border-hover)]',
+        'focus:border-[var(--ema-primary)] focus:ring-2 focus:ring-[var(--ema-primary)]/40',
         disabled && 'cursor-not-allowed opacity-50',
         className,
       )}
@@ -125,7 +125,7 @@ export function Combobox({
     >
       <div className="max-h-64 overflow-y-auto">
         {filtered.length === 0 ? (
-          <p className="px-3 py-4 text-center text-xs text-neutral-500">无匹配结果</p>
+          <p className="px-3 py-4 text-center text-xs text-[var(--ema-text-tertiary)]">无匹配结果</p>
         ) : (
           <ul ref={listRef} role="listbox" className="flex flex-col gap-0.5">
             {filtered.map((opt, i) => (
@@ -137,17 +137,17 @@ export function Combobox({
                 className={cn(
                   'flex flex-col rounded-sm px-3 py-1.5 text-sm cursor-pointer transition-ema',
                   i === safeIdx
-                    ? 'bg-primary-500/20 text-primary-100'
+                    ? 'bg-[var(--ema-primary-muted)] text-[var(--ema-primary-text)]'
                     : opt.value === value
-                      ? 'bg-primary-500/10 text-primary-100'
-                      : 'text-neutral-200 hover:bg-neutral-800',
+                      ? 'bg-[var(--ema-surface-3)] text-[var(--ema-primary-text)]'
+                      : 'text-[var(--ema-text-primary)] hover:bg-[var(--ema-surface-2)]',
                   opt.disabled && 'cursor-not-allowed opacity-40',
                 )}
                 onClick={() => !opt.disabled && select(opt)}
                 onMouseEnter={() => setActiveIdx(i)}
               >
                 <span className="truncate">{opt.label}</span>
-                {opt.hint && <span className="text-xs text-neutral-500 truncate">{opt.hint}</span>}
+                {opt.hint && <span className="text-xs text-[var(--ema-text-tertiary)] truncate">{opt.hint}</span>}
               </li>
             ))}
           </ul>

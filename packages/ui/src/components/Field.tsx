@@ -42,20 +42,20 @@ export function Field({
           {label && (
             <label
               htmlFor={inputId}
-              className="flex items-center gap-1 text-sm font-medium text-neutral-200"
+              className="flex items-center gap-1 text-sm font-medium text-[var(--ema-text-primary)]"
             >
               {label}
-              {required && <span className="text-red-400" aria-hidden>*</span>}
+              {required && <span className="text-[var(--ema-danger)]" aria-hidden>*</span>}
             </label>
           )}
           {description && (
-            <p className="text-xs text-neutral-500 mt-0.5">{description}</p>
+            <p className="text-xs text-[var(--ema-text-tertiary)] mt-0.5">{description}</p>
           )}
         </div>
       )}
       {children}
       {error && (
-        <p className="text-xs text-red-400" role="alert">{error}</p>
+        <p className="text-xs text-[var(--ema-danger-text)]" role="alert">{error}</p>
       )}
     </div>
   );

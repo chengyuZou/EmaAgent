@@ -30,6 +30,8 @@ export interface IconButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonEle
   /** Visual "on" state — highlighted background + glow. */
   toggled?:   boolean;
   loading?:   boolean;
+  /** UnoCSS icon class for the loading spinner. Defaults to a ring spinner. */
+  loadingIcon?: string;
   type?:      'button' | 'submit' | 'reset';
 }
 
@@ -37,16 +39,16 @@ export interface IconButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonEle
 
 const VARIANT_CLASSES: Record<IconButtonVariant, { idle: string; toggled: string }> = {
   default: {
-    idle:    'bg-neutral-800/55 hover:bg-primary-200/22 hover:border-primary-300/40 text-neutral-100 border-neutral-700/50',
-    toggled: 'bg-primary-200/45 border-primary-300/70 text-primary-50 shadow-[0_0_12px_rgba(255,214,230,0.45)]',
+    idle:    'bg-[var(--ema-surface-3)] hover:bg-[var(--ema-primary-muted)] hover:border-[var(--ema-primary)]/40 text-[var(--ema-text-primary)] border-[var(--ema-border)]',
+    toggled: 'bg-[var(--ema-primary-muted)] border-[var(--ema-primary)]/70 text-[var(--ema-primary-text)] shadow-[var(--ema-shadow-focus)]',
   },
   primary: {
-    idle:    'bg-primary-500/30 hover:bg-primary-500/45 text-primary-100 border-primary-300/50',
-    toggled: 'bg-primary-400/60 border-primary-200/80 text-primary-50 shadow-[0_0_14px_rgba(255,214,230,0.55)]',
+    idle:    'bg-[var(--ema-primary-muted)] hover:bg-[var(--ema-primary)]/45 text-[var(--ema-primary-text)] border-[var(--ema-primary)]/50',
+    toggled: 'bg-[var(--ema-primary)] border-[var(--ema-primary)]/80 text-[var(--ema-primary-text)] shadow-[var(--ema-shadow-focus)]',
   },
   danger: {
-    idle:    'bg-neutral-800/55 hover:bg-red-500/60 hover:border-red-300/60 text-neutral-100 hover:text-white border-neutral-700/50',
-    toggled: 'bg-red-500/60 border-red-300/70 text-white',
+    idle:    'bg-[var(--ema-surface-3)] hover:bg-[var(--ema-danger)]/60 hover:border-[var(--ema-danger)]/60 text-[var(--ema-text-primary)] hover:text-white border-[var(--ema-border)]',
+    toggled: 'bg-[var(--ema-danger)]/60 border-[var(--ema-danger)]/70 text-white',
   },
 };
 
@@ -75,6 +77,7 @@ export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(
       size    = 'md',
       toggled = false,
       loading = false,
+      loadingIcon,
       type    = 'button',
       disabled,
       className,
@@ -102,7 +105,7 @@ export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(
         {...rest}
       >
         {loading
-          ? <span className={cn('i-svg-spinners:ring-resize', sizeCfg.icon)} aria-hidden />
+          ? <span className={cn(loadingIcon ?? 'i-svg-spinners:ring-resize', sizeCfg.icon)} aria-hidden />
           : icon
             ? <span className={cn(icon, sizeCfg.icon)} aria-hidden />
             : <span className={sizeCfg.icon} aria-hidden>{iconNode}</span>}

@@ -27,8 +27,8 @@ export function Switch(props: SwitchProps): React.JSX.Element {
       className={cn(
         'relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-pill border border-transparent',
         'transition-ema focus-ring',
-        'data-[state=unchecked]:bg-neutral-700/70',
-        'data-[state=checked]:bg-primary-400/75',
+        'data-[state=unchecked]:bg-[var(--ema-surface-3)]',
+        'data-[state=checked]:bg-[var(--ema-primary)]',
         'disabled:cursor-not-allowed disabled:opacity-50',
         className,
       )}
@@ -48,7 +48,7 @@ export function Switch(props: SwitchProps): React.JSX.Element {
     return (
       <label className="inline-flex items-center gap-2 cursor-pointer">
         {switchEl}
-        <span className="text-sm text-neutral-200 select-none">{label}</span>
+        <span className="text-sm text-[var(--ema-text-primary)] select-none">{label}</span>
       </label>
     );
   }

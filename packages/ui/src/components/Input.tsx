@@ -30,7 +30,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
         type={type}
         aria-invalid={error || undefined}
         className={cn(
-          'w-full rounded-md border bg-neutral-900/60 text-neutral-100 placeholder:text-neutral-500',
+          'w-full rounded-md border bg-[var(--ema-surface-2)] text-[var(--ema-text-primary)] placeholder:text-[var(--ema-text-tertiary)]',
           'transition-ema focus-ring',
           'disabled:cursor-not-allowed disabled:opacity-50',
           SIZE_CLASSES[inputSize],
@@ -39,8 +39,8 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
           type === 'number' &&
             '[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none',
           error
-            ? 'border-red-400/60 focus-visible:ring-red-400'
-            : 'border-neutral-700/50 hover:border-neutral-600 focus-visible:border-primary-300',
+            ? 'border-[var(--ema-danger)] focus-visible:ring-[var(--ema-danger)]/40'
+            : 'border-[var(--ema-border)] hover:border-[var(--ema-border-hover)] focus-visible:border-[var(--ema-primary)]',
           className,
         )}
         {...rest}

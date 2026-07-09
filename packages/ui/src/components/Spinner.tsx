@@ -26,7 +26,7 @@ export function Spinner(props: SpinnerProps): React.JSX.Element {
     <span
       role="status"
       aria-label={label}
-      className={cn('i-svg-spinners:ring-resize text-primary-300', SIZE_CLASSES[size], className)}
+      className={cn('i-svg-spinners:ring-resize text-[var(--ema-primary)]', SIZE_CLASSES[size], className)}
     />
   );
 }

@@ -14,11 +14,15 @@ export interface CheckboxProps {
   /** Accessible label; visible text when `showLabel` is true. */
   label?:          string;
   showLabel?:      boolean;
+  /** UnoCSS icon class for the checked state. Defaults to "i-mdi:check". */
+  checkIcon?:         string;
+  /** UnoCSS icon class for the indeterminate state. Defaults to "i-mdi:minus". */
+  indeterminateIcon?: string;
   className?:      string;
 }
 
 export function Checkbox(props: CheckboxProps): React.JSX.Element {
-  const { checked, defaultChecked, onCheckedChange, disabled, label, showLabel, className } = props;
+  const { checked, defaultChecked, onCheckedChange, disabled, label, showLabel, checkIcon, indeterminateIcon, className } = props;
 
   const box = (
     <RadixCheckbox.Root
@@ -29,19 +33,19 @@ export function Checkbox(props: CheckboxProps): React.JSX.Element {
       aria-label={label}
       className={cn(
         'flex h-4 w-4 shrink-0 items-center justify-center rounded-sm border transition-ema',
-        'border-neutral-600 bg-neutral-800/60',
-        'data-[state=checked]:border-primary-400 data-[state=checked]:bg-primary-500/30',
-        'data-[state=indeterminate]:border-primary-400 data-[state=indeterminate]:bg-primary-500/20',
-        'hover:border-primary-300',
+        'border-[var(--ema-border)] bg-[var(--ema-surface-2)]',
+        'data-[state=checked]:border-[var(--ema-primary)] data-[state=checked]:bg-[var(--ema-primary-muted)]',
+        'data-[state=indeterminate]:border-[var(--ema-primary)] data-[state=indeterminate]:bg-[var(--ema-primary-muted)]',
+        'hover:border-[var(--ema-primary)]',
         'focus-ring',
         'disabled:cursor-not-allowed disabled:opacity-50',
         className,
       )}
     >
-      <RadixCheckbox.Indicator className="flex items-center justify-center text-primary-200">
+      <RadixCheckbox.Indicator className="flex items-center justify-center text-[var(--ema-primary-text)]">
         {checked === 'indeterminate'
-          ? <span className="i-mdi:minus text-xs" aria-hidden />
-          : <span className="i-mdi:check text-xs" aria-hidden />}
+          ? <span className={cn(indeterminateIcon ?? 'i-mdi:minus', 'text-xs')} aria-hidden />
+          : <span className={cn(checkIcon ?? 'i-mdi:check', 'text-xs')} aria-hidden />}
       </RadixCheckbox.Indicator>
     </RadixCheckbox.Root>
   );
@@ -50,7 +54,7 @@ export function Checkbox(props: CheckboxProps): React.JSX.Element {
     return (
       <label className="inline-flex items-center gap-2 cursor-pointer select-none">
         {box}
-        <span className="text-sm text-neutral-200">{label}</span>
+        <span className="text-sm text-[var(--ema-text-primary)]">{label}</span>
       </label>
     );
   }

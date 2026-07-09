@@ -66,18 +66,18 @@ export function Tabs(props: TabsProps): React.JSX.Element {
               'text-[var(--ema-text-tertiary)] hover:text-[var(--ema-text-primary)]',
               variant === 'underline' && cn(
                 'border-b-2 border-transparent -mb-px',
-                'data-[state=active]:text-primary-100',
-                'data-[state=active]:border-primary-300',
+                'data-[state=active]:text-[var(--ema-primary-text)]',
+                'data-[state=active]:border-[var(--ema-primary)]',
               ),
               variant === 'pill' && cn(
                 'rounded-pill',
-                'data-[state=active]:bg-primary-500/25',
-                'data-[state=active]:text-primary-100',
+                'data-[state=active]:bg-[var(--ema-primary-muted)]',
+                'data-[state=active]:text-[var(--ema-primary-text)]',
               ),
               variant === 'sidebar' && cn(
                 'rounded-md justify-start text-left w-full',
-                'data-[state=active]:bg-primary-500/15',
-                'data-[state=active]:text-primary-100',
+                'data-[state=active]:bg-[var(--ema-primary-muted)]/60',
+                'data-[state=active]:text-[var(--ema-primary-text)]',
               ),
             )}
           >

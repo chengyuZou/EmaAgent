@@ -17,7 +17,7 @@ export function Divider(props: DividerProps): React.JSX.Element {
       role="separator"
       aria-orientation={orientation}
       className={cn(
-        'bg-neutral-700/40',
+        'bg-[var(--ema-border)]',
         orientation === 'horizontal'
           ? cn('h-px w-full', spaced && 'my-3')
           : cn('w-px h-full self-stretch', spaced && 'mx-3'),

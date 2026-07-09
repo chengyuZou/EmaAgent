@@ -44,10 +44,10 @@ export function ScrollArea(props: ScrollAreaProps): React.JSX.Element {
           className={cn(
             'flex touch-none select-none p-0.5 transition-colors',
             'w-2 hover:w-2.5',
-            'bg-transparent hover:bg-neutral-800/30',
+            'bg-transparent hover:bg-[var(--ema-surface-2)]',
           )}
         >
-          <RadixScrollArea.Thumb className="relative flex-1 rounded-pill bg-neutral-500/60 hover:bg-neutral-400/80" />
+          <RadixScrollArea.Thumb className="relative flex-1 rounded-pill bg-[var(--ema-scrollbar-thumb)] hover:bg-[var(--ema-scrollbar-thumb-hover)]" />
         </RadixScrollArea.Scrollbar>
       )}
 
@@ -57,10 +57,10 @@ export function ScrollArea(props: ScrollAreaProps): React.JSX.Element {
           className={cn(
             'flex touch-none select-none p-0.5 transition-colors',
             'h-2 hover:h-2.5',
-            'bg-transparent hover:bg-neutral-800/30',
+            'bg-transparent hover:bg-[var(--ema-surface-2)]',
           )}
         >
-          <RadixScrollArea.Thumb className="relative flex-1 rounded-pill bg-neutral-500/60 hover:bg-neutral-400/80" />
+          <RadixScrollArea.Thumb className="relative flex-1 rounded-pill bg-[var(--ema-scrollbar-thumb)] hover:bg-[var(--ema-scrollbar-thumb-hover)]" />
         </RadixScrollArea.Scrollbar>
       )}
 
