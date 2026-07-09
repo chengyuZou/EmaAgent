@@ -5,7 +5,7 @@
  * Level 2: single-select — provider cards (horizontal scroll) → model grid (2-col).
  */
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { Button, IconButton, Input, Callout } from '@ema-agent/ui';
+import { Button, CardButton, IconButton, Input, Callout } from '@ema-agent/ui';
 import {
   modelBindingsApi,
   type BindingModule,
@@ -81,14 +81,11 @@ function ProviderCardRow({
       {providerIds.map((pcId) => {
         const isSel = selectedId === pcId;
         return (
-          <button
+          <CardButton
             key={pcId}
-            className={`flex-shrink-0 rounded-xl p-4 min-w-[180px] text-left border-2
-                        active:scale-[0.98] transition-all duration-[var(--ema-duration-base)] ${
-              isSel
-                ? 'bg-[var(--ema-primary-muted)] border-[var(--ema-primary)] shadow-[var(--ema-shadow-2)]'
-                : 'bg-[var(--ema-surface-1)] ema-glass-weak border-[var(--ema-border)] hover:border-[var(--ema-primary)] hover:bg-[var(--ema-surface-2)]'
-            }`}
+            selected={isSel}
+            padding="md"
+            className={`flex-shrink-0 rounded-xl border-2 min-w-[180px] ema-glass-weak hover:border-[var(--ema-primary)] ${isSel ? 'shadow-[var(--ema-shadow-2)]' : 'hover:shadow-[var(--ema-shadow-2)]'}`}
             onClick={() => onSelect(pcId)}
           >
             {/* Radio dot */}
@@ -109,7 +106,7 @@ function ProviderCardRow({
             <p className="text-xs text-[var(--ema-text-tertiary)] truncate">
               {isSel ? '已选择' : '点击选择'}
             </p>
-          </button>
+          </CardButton>
         );
       })}
     </div>
@@ -255,13 +252,10 @@ export function BindingsTab(): JSX.Element {
             const cap = MODULE_CAPABILITY[m.id];
             const isBound = boundModules.has(m.id);
             return (
-              <button
+              <CardButton
                 key={m.id}
-                className="relative bg-[var(--ema-surface-1)] ema-glass-weak border border-[var(--ema-border)]
-                           rounded-2xl p-4 text-left
-                           hover:border-[var(--ema-primary)] hover:bg-[var(--ema-surface-2)]
-                           hover:shadow-[var(--ema-shadow-2)]
-                           active:scale-[0.98] transition-all duration-[var(--ema-duration-base)] ema-stagger-in"
+                padding="md"
+                className="relative rounded-2xl ema-glass-weak hover:border-[var(--ema-primary)] hover:shadow-[var(--ema-shadow-2)] ema-stagger-in"
                 style={{ '--stagger-i': i } as React.CSSProperties}
                 onClick={() => goDetail(m.id)}
               >
@@ -280,7 +274,7 @@ export function BindingsTab(): JSX.Element {
                   <span className="text-base font-medium text-[var(--ema-text-primary)] truncate">{m.label}</span>
                 </div>
                 <p className="text-xs text-[var(--ema-text-tertiary)] line-clamp-2">{m.desc}</p>
-              </button>
+              </CardButton>
             );
           })}
         </div>
@@ -409,15 +403,12 @@ export function BindingsTab(): JSX.Element {
                     const isSaving = savingKey === key;
 
                     return (
-                      <button
+                      <CardButton
                         key={key}
+                        selected={isBound}
                         disabled={isBound || isSaving}
-                        className={`rounded-xl p-3.5 text-left border-2 transition-all
-                                    duration-[var(--ema-duration-base)] ${
-                          isBound
-                            ? 'bg-[var(--ema-primary-muted)] border-[var(--ema-primary)]'
-                            : 'bg-[var(--ema-surface-1)] border-[var(--ema-border)] hover:border-[var(--ema-primary)]'
-                        } disabled:cursor-default`}
+                        padding="sm"
+                        className={`rounded-xl border-2 disabled:cursor-default`}
                         onClick={() => handleSelect(m.providerConfigId, m.model)}
                       >
                         <div className="flex items-start gap-2.5">
@@ -442,7 +433,7 @@ export function BindingsTab(): JSX.Element {
                             </span>
                           </div>
                         </div>
-                      </button>
+                      </CardButton>
                     );
                   })}
                 </div>

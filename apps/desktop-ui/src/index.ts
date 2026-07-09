@@ -171,7 +171,6 @@ export { AskUserBatchPrompt }      from './decision/AskUserBatchPrompt.js';
 // Settings
 export { SettingsPanel }           from './settings/SettingsPanel.js';
 export { ProvidersTab }            from './settings/ProvidersTab.js';
-export { ProviderCard }            from './settings/ProviderCard.js';
 export { ProviderForm }            from './settings/ProviderForm.js';
 export { BindingsTab }             from './settings/BindingsTab.js';
 export { CardsTab }                from './settings/CardsTab.js';
