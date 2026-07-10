@@ -40,12 +40,20 @@ export default defineConfig({
     react(),
   ],
 
-  // Point @ema-agent/desktop-ui directly at its TypeScript source so Vite
+  // Point workspace packages directly at their TypeScript source so Vite
   // processes the TSX files through its transform pipeline (and UnoCSS can
   // extract class names from them) instead of loading the pre-built dist/.
+  //
+  // @ema-agent/ui MUST be aliased too: without this, Vite resolves it via
+  // package.json exports -> dist/ and pre-bundles dist into .vite/deps. Vite
+  // only re-optimizes pre-bundled deps when package.json/lockfile change, NOT
+  // when dist content changes - so a rebuilt ui/dist was silently served stale
+  // from .vite/deps (the same trap that bit live2d-react's registerTicker fix).
+  // Aliasing to src makes dev read the live source on every reload.
   resolve: {
     alias: {
       '@ema-agent/desktop-ui': resolve(__dirname, '../desktop-ui/src/index.ts'),
+      '@ema-agent/ui':         resolve(__dirname, '../../packages/ui/src'),
       '@ema-agent/live2d-react': resolve(__dirname, '../../packages/live2d-react/src/index.ts'),
     },
   },
@@ -62,7 +70,7 @@ export default defineConfig({
     // 'oxc-parser' excluded so its optional wasm binding (absent on Windows)
     // never enters the pre-bundler. Vite's esbuildOptions type omits
     // `external`, so exclusion is the only supported lever here.
-    exclude: ['@ema-agent/desktop-ui', '@ema-agent/contracts', '@ema-agent/live2d-react', 'oxc-parser'],
+    exclude: ['@ema-agent/desktop-ui', '@ema-agent/ui', '@ema-agent/contracts', '@ema-agent/live2d-react', 'oxc-parser'],
   },
 
   // Prevent vite from clobbering Rust errors with the spinner UI.
