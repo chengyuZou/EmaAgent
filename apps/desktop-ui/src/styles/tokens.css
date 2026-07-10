@@ -29,6 +29,10 @@
   --ema-shadow-3:  0 4px 8px rgba(0,0,0,0.28), 0 8px 20px rgba(0,0,0,0.20), 0 16px 40px rgba(0,0,0,0.14), 0 1px 2px rgba(0,0,0,0.10);
   --ema-shadow-focus:   0 0 0 3px oklch(0.72 0.18 var(--chromatic-hue, 200) / 0.28);
   --ema-shadow-danger:  0 0 0 3px oklch(0.62 0.22 25  / 0.28);
+  /* Soft shadow(负 spread 收拢不发散,抄 AIRI,浮层/卡片 hover 用)*/
+  --ema-shadow-soft: 0 8px 32px -12px rgba(0, 0, 0, 0.18);
+  /* Primary glow(FAB/发送按钮 hover 主题色发光,抄 AstrBot)*/
+  --ema-shadow-primary-glow: 0 8px 24px -4px oklch(0.72 0.18 var(--chromatic-hue, 200) / 0.40);
 
   /* Surface layers - 半透明中性深灰玻璃(抄 AstrBot 层差,保留半透明供桌宠玻璃感)。
      0=最深背景,4=浮层最亮。中性灰非紫黑,跟 AstrBot #1a1a1a->#242424 对齐。 */
@@ -148,6 +152,7 @@
   --ema-shadow-3:  0 4px 12px rgba(0, 0, 0, 0.15), 0 8px 24px rgba(0, 0, 0, 0.10), 0 1px 3px rgba(0, 0, 0, 0.06);
   --ema-shadow-focus:   0 0 0 3px oklch(0.65 0.18 var(--chromatic-hue, 200) / 0.25);
   --ema-shadow-danger:  0 0 0 3px oklch(0.55 0.20 25  / 0.25);
+  --ema-shadow-soft: 0 8px 32px -12px rgba(0, 0, 0, 0.12);
 
   /* Semantic: 翻 text & muted 背景可读 */
   --ema-primary-text: oklch(0.25 0.14 var(--chromatic-hue, 200));

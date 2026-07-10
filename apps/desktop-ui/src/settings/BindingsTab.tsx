@@ -85,7 +85,7 @@ function ProviderCardRow({
             key={pcId}
             selected={isSel}
             padding="md"
-            className={`flex-shrink-0 rounded-xl border-2 min-w-[180px] ema-glass-weak hover:border-[var(--ema-primary)] ${isSel ? 'shadow-[var(--ema-shadow-2)]' : 'hover:shadow-[var(--ema-shadow-2)]'}`}
+            className={`flex-shrink-0 rounded-xl border-2 min-w-[180px] ema-glass-weak ema-card-decorate hover:border-[var(--ema-primary)] ${isSel ? 'shadow-[var(--ema-shadow-2)]' : 'hover:shadow-[var(--ema-shadow-2)]'}`}
             onClick={() => onSelect(pcId)}
           >
             {/* Radio dot */}
@@ -255,7 +255,7 @@ export function BindingsTab(): JSX.Element {
               <CardButton
                 key={m.id}
                 padding="md"
-                className="relative rounded-2xl ema-glass-weak hover:border-[var(--ema-primary)] hover:shadow-[var(--ema-shadow-2)] ema-stagger-in"
+                className="relative rounded-2xl ema-glass-weak hover:border-[var(--ema-primary)] hover:shadow-[var(--ema-shadow-2)] ema-stagger-in ema-card-decorate"
                 style={{ '--stagger-i': i } as React.CSSProperties}
                 onClick={() => goDetail(m.id)}
               >
@@ -408,7 +408,7 @@ export function BindingsTab(): JSX.Element {
                         selected={isBound}
                         disabled={isBound || isSaving}
                         padding="sm"
-                        className={`rounded-xl border-2 disabled:cursor-default`}
+                        className={`rounded-xl border-2 disabled:cursor-default ema-card-decorate`}
                         onClick={() => handleSelect(m.providerConfigId, m.model)}
                       >
                         <div className="flex items-start gap-2.5">

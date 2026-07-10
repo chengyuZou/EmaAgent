@@ -29,7 +29,7 @@ export function ModelToggleCard({ id, badge, enabled, onToggle, action }: ModelT
                   transition-all duration-[var(--ema-duration-base)] active:scale-[0.97]
                   ${enabled
                     ? 'border-[var(--ema-primary)] bg-[var(--ema-primary-muted)]'
-                    : 'border-[var(--ema-border)] bg-[var(--ema-surface-1)] ema-glass-weak hover:border-[var(--ema-border-hover)]'
+                    : 'border-[var(--ema-border)] bg-[var(--ema-surface-1)] ema-glass-weak hover:border-[var(--ema-border-hover)] ema-card-decorate'
                   }`}
     >
       {enabled && (

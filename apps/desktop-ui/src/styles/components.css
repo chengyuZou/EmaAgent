@@ -168,3 +168,101 @@
   transition: left var(--ema-duration-base) var(--ema-ease);
   z-index: 0;
 }
+
+/* ── 2px 胶囊 active 指示条(抄 AstrBot,选中项左侧胶囊圆头条)──────────────
+ *  容器 position:relative。::before 左侧 2px 胶囊条,上下内缩 8px,primary 70%。
+ *  比 border-left 精致:圆头 + 不占布局空间。*/
+.ema-active-rail { position: relative; }
+.ema-active-rail::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 8px; bottom: 8px;
+  width: 2px;
+  border-radius: var(--ema-radius-pill);
+  background: var(--ema-primary);
+  opacity: 0.7;
+  pointer-events: none;
+}
+
+/* ── Timeline 点+竖线 rail(抄 AstrBot,步骤序列左侧连接)──────────────────
+ *  每行 .ema-timeline-row:左侧 6px 点 + 竖线连下一行。末行不画线。点比线深一档。*/
+.ema-timeline-row { position: relative; padding-left: 14px; }
+.ema-timeline-row::before {
+  content: '';
+  position: absolute;
+  left: 2px; top: 6px;
+  width: 6px; height: 6px;
+  border-radius: 999px;
+  background: var(--ema-text-tertiary);
+  opacity: 0.5;
+}
+.ema-timeline-row::after {
+  content: '';
+  position: absolute;
+  left: 4px; top: 14px; bottom: -4px;
+  width: 1px;
+  background: var(--ema-text-tertiary);
+  opacity: 0.25;
+}
+.ema-timeline-row:last-child::after { display: none; }
+
+/* ── 角落气泡装饰(抄 AstrBot bubble-shape,::before/::after 大圆溢出)──────
+ *  容器 position:relative + overflow:hidden。两圆错落溢出右上角,色用 token。*/
+.ema-bubble-corner { position: relative; overflow: hidden; }
+.ema-bubble-corner::before,
+.ema-bubble-corner::after {
+  content: '';
+  position: absolute;
+  border-radius: 50%;
+  pointer-events: none;
+}
+.ema-bubble-corner::before {
+  top: -120px; right: -20px;
+  width: 180px; height: 180px;
+  background: var(--ema-primary-muted);
+  opacity: 0.5;
+}
+.ema-bubble-corner::after {
+  top: -80px; right: -100px;
+  width: 140px; height: 140px;
+  background: var(--ema-violet-muted);
+  opacity: 0.4;
+}
+
+/* ── 卡片装饰(抄 MenuStatusItem,::before 光扫 + ::after 点纹)────────────────
+ *  任意卡片加 .ema-card-decorate 即有光扫+点纹。isolation 让伪元素 z-1 在内容
+ *  下,overflow hidden 裁溢出。hover 光扫从 25% 展开 85%(primary 渐变左->右淡出)。*/
+.ema-card-decorate {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+.ema-card-decorate::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  width: 25%;
+  opacity: 0;
+  transition: width 250ms var(--ema-ease), opacity 250ms var(--ema-ease);
+  -webkit-mask-image: linear-gradient(120deg, white 30%, transparent 50%);
+  mask-image: linear-gradient(120deg, white 30%, transparent 50%);
+  background: linear-gradient(to right, var(--ema-primary-muted), transparent);
+  pointer-events: none;
+}
+.ema-card-decorate:hover::before {
+  width: 85%;
+  opacity: 1;
+}
+.ema-card-decorate::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background-image: radial-gradient(circle, var(--ema-text-tertiary) 1px, transparent 1px);
+  background-size: 10px 10px;
+  -webkit-mask-image: linear-gradient(165deg, white 30%, transparent 50%);
+  mask-image: linear-gradient(165deg, white 30%, transparent 50%);
+  opacity: 0.25;
+  pointer-events: none;
+}

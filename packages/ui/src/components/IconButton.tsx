@@ -43,7 +43,7 @@ const VARIANT_CLASSES: Record<IconButtonVariant, { idle: string; toggled: string
     toggled: 'bg-[var(--ema-primary-muted)] border-[var(--ema-primary)]/70 text-[var(--ema-primary-text)] shadow-[var(--ema-shadow-focus)]',
   },
   primary: {
-    idle:    'bg-[var(--ema-primary-muted)] hover:bg-[var(--ema-primary)]/45 text-[var(--ema-primary-text)] border-[var(--ema-primary)]/50',
+    idle:    'bg-[var(--ema-primary-muted)] hover:bg-[var(--ema-primary)]/45 hover:shadow-[var(--ema-shadow-primary-glow)] text-[var(--ema-primary-text)] border-[var(--ema-primary)]/50',
     toggled: 'bg-[var(--ema-primary)] border-[var(--ema-primary)]/80 text-[var(--ema-primary-text)] shadow-[var(--ema-shadow-focus)]',
   },
   danger: {

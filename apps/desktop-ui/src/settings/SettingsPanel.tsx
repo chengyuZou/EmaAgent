@@ -191,7 +191,7 @@ export function SettingsPanel(): JSX.Element {
                   className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-normal
                     transition-colors duration-[var(--ema-duration-fast)] ${
                     isActive
-                      ? 'text-[var(--ema-primary)] bg-[var(--ema-primary-muted)]'
+                      ? 'ema-active-rail text-[var(--ema-primary)] bg-[var(--ema-primary-muted)]'
                       : 'text-[var(--ema-text-tertiary)] hover:text-[var(--ema-text-primary)] hover:bg-[var(--ema-surface-2)]/50'
                   }`}
                   onClick={() => setActiveSection(sec.id)}
@@ -243,7 +243,7 @@ export function SettingsPanel(): JSX.Element {
                           className={`w-full text-left px-3 py-1.5 rounded-lg text-sm font-normal
                             transition-colors duration-[var(--ema-duration-fast)] ${
                             isActive
-                              ? 'text-[var(--ema-primary)] bg-[var(--ema-primary-muted)]'
+                              ? 'ema-active-rail text-[var(--ema-primary)] bg-[var(--ema-primary-muted)]'
                               : 'text-[var(--ema-text-tertiary)] hover:text-[var(--ema-text-primary)] hover:bg-[var(--ema-surface-2)]/40'
                           }`}
                           onClick={() => setActiveSection(sec.id)}

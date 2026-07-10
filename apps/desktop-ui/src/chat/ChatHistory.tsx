@@ -51,7 +51,7 @@ export function ChatHistory(): JSX.Element {
 
   if (!viewedId) {
     return (
-      <div className="flex-1 flex items-center justify-center text-sm ema-slide-up text-[var(--ema-text-tertiary)]">
+      <div className="flex-1 flex items-center justify-center text-sm ema-slide-up text-[var(--ema-text-tertiary)] ema-bubble-corner">
         选择或创建会话开始聊天
       </div>
     );

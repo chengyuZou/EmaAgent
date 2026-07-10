@@ -482,7 +482,7 @@ function SidebarRow({ session, isActive, streaming, pendingCounts, nested = fals
         nested ? 'pl-6' : 'pl-2'
       } ${
         isActive
-          ? 'bg-[var(--ema-surface-2)] text-[var(--ema-text-primary)] shadow-[var(--ema-shadow-1)]'
+          ? 'ema-active-rail bg-[var(--ema-surface-2)] text-[var(--ema-text-primary)] shadow-[var(--ema-shadow-1)]'
           : 'text-[var(--ema-text-secondary)] hover:bg-[var(--ema-surface-2)] hover:text-[var(--ema-text-primary)]'
       }`}
       onClick={() => void useConversationStore.getState().viewSession(session.id as SessionId)}

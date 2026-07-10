@@ -302,7 +302,9 @@ function TaskTranscript({ taskId }: { taskId: string }): JSX.Element {
         onClick={(e) => e.stopPropagation()}
       >
         {messages.map((msg) => (
-          <TranscriptRow key={msg.id} msg={msg} />
+          <div key={msg.id} className="ema-timeline-row">
+            <TranscriptRow msg={msg} />
+          </div>
         ))}
       </div>
     </>

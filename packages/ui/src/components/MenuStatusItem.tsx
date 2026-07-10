@@ -33,7 +33,7 @@ export function MenuStatusItem(props: MenuStatusItemProps): React.JSX.Element {
       className={cn(
         'group relative w-full flex flex-col overflow-hidden box-border text-left cursor-pointer',
         'rounded-xl bg-[var(--ema-surface-1)] ema-glass-weak border-2 border-solid border-[var(--ema-border)]',
-        'hover:border-[var(--ema-primary)]/30 hover:bg-[var(--ema-surface-2)] hover:shadow-[var(--ema-shadow-2)]',
+        'hover:border-[var(--ema-primary)]/30 hover:bg-[var(--ema-surface-2)] hover:shadow-[var(--ema-shadow-soft)]',
         'active:scale-[0.98]',
         'transition-all duration-[var(--ema-duration-base)] ease-in-out',
         // Light sweep on hover (::before)
