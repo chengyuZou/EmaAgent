@@ -146,6 +146,10 @@ export function SettingsPanel(): JSX.Element {
   const [expandedGroups, setExpandedGroups] = useState<Set<GroupId>>(new Set(['ai']));
   const [activeSection,  setActiveSection]  = useState<SectionId>('providers');
 
+  // 水印图标:当前 section 所属 group 的 icon(右下角巨型背景水印用)
+  const activeGroup = GROUPS.find((g) => g.sections.some((s) => s.id === activeSection));
+  const activeGroupIcon = activeGroup?.icon ?? 'i-solar:box-minimalistic-bold-duotone';
+
   useEffect(() => {
     void useSettingsStore.getState().loadAll();
     void useCardStore.getState().load();
@@ -222,9 +226,14 @@ export function SettingsPanel(): JSX.Element {
                   />
                 </Button>
 
-                {/* Section items (visible when expanded) */}
-                {expanded && (
-                  <div className="ml-4 mt-0.5 mb-1 flex flex-col gap-0.5">
+                {/* Section items - ema-collapsible 保持 DOM 挂载,grid-rows 0fr↔1fr + opacity
+                    双向过渡(展开滑入淡入,收起滑出淡出),不条件 unmount。内层用 padding
+                    替代 margin(margin 不被 overflow:hidden 裁,0fr 时会露出)。 */}
+                <div
+                  className="ema-collapsible"
+                  style={{ gridTemplateRows: expanded ? '1fr' : '0fr', opacity: expanded ? 1 : 0 }}
+                >
+                  <div className="ml-4 pt-0.5 pb-1 flex flex-col gap-0.5">
                     {group.sections.map((sec) => {
                       const isActive = activeSection === sec.id;
                       return (
@@ -245,7 +254,7 @@ export function SettingsPanel(): JSX.Element {
                       );
                     })}
                   </div>
-                )}
+                </div>
               </div>
             );
           })}
@@ -254,7 +263,7 @@ export function SettingsPanel(): JSX.Element {
         {/* ── Right content ── */}
         <main
           key={activeSection}
-          className={`flex-1 min-w-0 ema-slide-right ${
+          className={`flex-1 min-w-0 relative z-10 ema-slide-right ${
             FULL_HEIGHT_SECTIONS.has(activeSection)
               ? 'overflow-hidden'
               : 'overflow-y-auto px-8 py-6'
@@ -263,6 +272,17 @@ export function SettingsPanel(): JSX.Element {
         >
           <SectionContent id={activeSection} />
         </main>
+
+        {/* 右下角巨型背景图标水印(抄 AIRI settings,主题锚点)。fixed 贴视口不随
+            滚动,pointer-events-none + opacity 0.04 不挡交互不抢内容;z-0 在 main(z-10)
+            之下,透过 main 透明背景在内容间隙可见。切 section 时 ema-fade-in 换图标。 */}
+        <div
+          key={`watermark-${activeSection}`}
+          className="fixed bottom-4 right-8 z-0 pointer-events-none ema-fade-in"
+          aria-hidden
+        >
+          <span className={`${activeGroupIcon} text-[12rem] leading-none text-[var(--ema-text-tertiary)] opacity-[0.04]`} />
+        </div>
       </div>
     </ErrorBoundary>
   );

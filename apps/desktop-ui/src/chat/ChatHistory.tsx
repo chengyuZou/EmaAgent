@@ -58,7 +58,7 @@ export function ChatHistory(): JSX.Element {
   }
 
   return (
-    <div className="flex-1 relative">
+    <div className="flex-1 relative ema-fade-mask-top">
       <div ref={containerRef} className="absolute inset-0 overflow-y-auto px-4 py-4">
         {messages.length === 0 && !streaming && (
           <div className="flex items-center justify-center h-full text-sm ema-slide-up text-[var(--ema-text-tertiary)]">

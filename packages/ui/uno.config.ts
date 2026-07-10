@@ -184,6 +184,8 @@ export function emaSharedPreset(options: EmaSharedPresetOptions = {}): Preset[] 
           'slide-down':  'ema-slide-down  220ms cubic-bezier(0.16,1,0.3,1) both',
           'slide-right': 'ema-slide-right 220ms cubic-bezier(0.16,1,0.3,1) both',
           'slide-left':  'ema-slide-left  220ms cubic-bezier(0.16,1,0.3,1) both',
+          // Progress 流光(Progress 组件专用;@keyframes 在下方 preflight 定义)
+          'progress-shine': 'progress-shine 2s cubic-bezier(0.35,0.08,0.04,0.99) infinite',
         },
       },
       preflights: [

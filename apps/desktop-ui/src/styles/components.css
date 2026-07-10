@@ -128,3 +128,43 @@
     oklch(65% 0.18 0), oklch(65% 0.18 60), oklch(65% 0.18 120),
     oklch(65% 0.18 180), oklch(65% 0.18 240), oklch(65% 0.18 300), oklch(65% 0.18 360));
 }
+
+/* ── 顶部渐隐遮罩(抄 AstrBot,::before 渐变带让内容滚出顶部柔和淡出)──────
+ *  容器需 position:relative。pointer-events-none 不挡交互。z-1 盖滚动内容顶部。*/
+.ema-fade-mask-top::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 40px;
+  background: linear-gradient(var(--ema-bg), transparent);
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* ── Tab 滑动指示器(抄 AIRI select-tab,::before calc 按选中 index 平滑滑动)──
+ *  List 加 .ema-tab-slider + --tab-active-index/--tab-count 变量。::before 滑块
+ *  left/width 由 calc(100%/count * index)算,transition 平滑滑。要求 trigger 等宽
+ *  (flex-1)+ 无 gap。underline=底部 2px 条;pill=背景块。仅 horizontal。*/
+.ema-tab-slider { position: relative; }
+.ema-tab-slider--underline::before {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: calc(var(--tab-active-index, 0) * (100% / var(--tab-count, 1)));
+  width: calc(100% / var(--tab-count, 1));
+  height: 2px;
+  background: var(--ema-primary);
+  transition: left var(--ema-duration-base) var(--ema-ease);
+  z-index: 1;
+}
+.ema-tab-slider--pill::before {
+  content: '';
+  position: absolute;
+  top: 0; bottom: 0;
+  left: calc(var(--tab-active-index, 0) * (100% / var(--tab-count, 1)));
+  width: calc(100% / var(--tab-count, 1));
+  background: var(--ema-primary-muted);
+  border-radius: var(--ema-radius-pill);
+  transition: left var(--ema-duration-base) var(--ema-ease);
+  z-index: 0;
+}

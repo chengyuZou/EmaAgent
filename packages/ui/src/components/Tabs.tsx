@@ -1,11 +1,15 @@
 import * as RadixTabs from '@radix-ui/react-tabs';
-import type { ReactNode } from 'react';
+import type { ReactNode, CSSProperties } from 'react';
 import { cn } from '../utils/cn.js';
 
 // ── Tabs ────────────────────────────────────────────────────────────────────
 //
 // Horizontal or vertical Tabs. Mostly a thin Radix wrap with styled triggers
 // and content panes.
+//
+// horizontal underline/pill 用滑动指示器(抄 AIRI select-tab):List ::before 滑块
+// 按 --tab-active-index/--tab-count calc 平滑滑动,trigger 等宽(flex-1)。
+// vertical sidebar 保留各自 active bg(无横向滑块)。
 
 export interface TabItem {
   value:    string;
@@ -38,6 +42,9 @@ export function Tabs(props: TabsProps): React.JSX.Element {
     className,
   } = props;
 
+  // 滑动指示器:当前选中 trigger 的 index(驱动 ::before calc)
+  const activeIndex = Math.max(0, items.findIndex((it) => it.value === value));
+
   return (
     <RadixTabs.Root
       value={value}
@@ -49,10 +56,16 @@ export function Tabs(props: TabsProps): React.JSX.Element {
       )}
     >
       <RadixTabs.List
+        style={
+          orientation === 'horizontal'
+            ? ({ '--tab-active-index': activeIndex, '--tab-count': items.length } as CSSProperties)
+            : undefined
+        }
         className={cn(
           'flex',
-          orientation === 'vertical' ? 'flex-col gap-1 min-w-44 shrink-0' : 'flex-row gap-1',
-          variant === 'underline' && orientation === 'horizontal' && 'border-b border-[var(--ema-border)]',
+          orientation === 'vertical' ? 'flex-col gap-1 min-w-44 shrink-0' : 'flex-row',
+          variant === 'underline' && orientation === 'horizontal' && 'ema-tab-slider ema-tab-slider--underline border-b border-[var(--ema-border)]',
+          variant === 'pill' && orientation === 'horizontal' && 'ema-tab-slider ema-tab-slider--pill',
         )}
       >
         {items.map((it) => (
@@ -64,15 +77,16 @@ export function Tabs(props: TabsProps): React.JSX.Element {
               'inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium transition-ema cursor-pointer',
               'disabled:opacity-40 disabled:cursor-not-allowed',
               'text-[var(--ema-text-tertiary)] hover:text-[var(--ema-text-primary)]',
+              // horizontal: 等宽 + 居中,让滑块 calc(100%/count * index) 定位准确
+              orientation === 'horizontal' && 'flex-1 justify-center text-center',
               variant === 'underline' && cn(
-                'border-b-2 border-transparent -mb-px',
                 'data-[state=active]:text-[var(--ema-primary-text)]',
-                'data-[state=active]:border-[var(--ema-primary)]',
+                // 滑块(ema-tab-slider--underline::before)代替 active border-b
               ),
               variant === 'pill' && cn(
-                'rounded-pill',
-                'data-[state=active]:bg-[var(--ema-primary-muted)]',
+                'relative z-1',
                 'data-[state=active]:text-[var(--ema-primary-text)]',
+                // 滑块(ema-tab-slider--pill::before)代替 active bg
               ),
               variant === 'sidebar' && cn(
                 'rounded-md justify-start text-left w-full',
