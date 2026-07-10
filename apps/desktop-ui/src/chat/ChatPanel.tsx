@@ -182,7 +182,7 @@ export function ChatPanel(): JSX.Element {
                   className={`relative size-7 rounded-md flex items-center justify-center text-sm transition-colors
                     ${overflowOpen
                       ? 'text-[var(--ema-primary)] bg-[var(--ema-primary-muted)]'
-                      : 'text-[var(--ema-text-tertiary)] hover:text-[var(--ema-text-primary)] hover:bg-[var(--ema-surface-2)]'}`}
+                      : 'text-[var(--ema-text-primary)] hover:bg-[var(--ema-surface-2)]'}`}
                   onClick={() => setOverflowOpen((v) => !v)}
                   title="更多面板"
                 >
@@ -275,7 +275,7 @@ function InspectorDockBtn({
       className={`relative size-7 rounded-md flex items-center justify-center text-sm transition-colors
         ${active
           ? 'text-[var(--ema-primary)] bg-[var(--ema-primary-muted)]'
-          : 'text-[var(--ema-text-secondary)] hover:text-[var(--ema-text-primary)] hover:bg-[var(--ema-surface-2)]'}`}
+          : 'text-[var(--ema-text-primary)] hover:bg-[var(--ema-surface-2)]'}`}
       onClick={onClick}
       title={label}
     >
@@ -300,7 +300,7 @@ function OverflowItem({
       className={`w-full flex items-center gap-2.5 px-3 py-1.5 text-xs font-normal transition-colors
         ${active
           ? 'text-[var(--ema-primary)] bg-[var(--ema-primary-muted)]'
-          : 'text-[var(--ema-text-tertiary)] hover:text-[var(--ema-text-primary)] hover:bg-[var(--ema-surface-3)]'}`}
+          : 'text-[var(--ema-text-primary)] hover:bg-[var(--ema-surface-3)]'}`}
       onClick={onClick}
     >
       <span className={`${icon} text-base shrink-0`} aria-hidden />

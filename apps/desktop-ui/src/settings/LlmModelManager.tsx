@@ -7,7 +7,7 @@ import { providersApi, type AvailableModelWire } from '../api/providers.js';
 import { showToast } from '../lib/toast.js';
 import { ModelToggleCard } from './ModelToggleCard.js';
 
-export function LlmModelManager({ providerId }: { providerId: string }): JSX.Element {
+export function LlmModelManager({ providerId, iconKey }: { providerId: string; iconKey?: string }): JSX.Element {
   const [models, setModels]   = useState<AvailableModelWire[]>([]);
   const [source, setSource]   = useState<'live' | 'catalog'>('catalog');
   const [loading, setLoading] = useState(true);
@@ -148,6 +148,7 @@ export function LlmModelManager({ providerId }: { providerId: string }): JSX.Ele
               badge={m.contextWindow != null ? `${(m.contextWindow / 1000).toFixed(0)}K ctx` : undefined}
               enabled={m.enabled}
               onToggle={() => handleToggle(m)}
+              logo={iconKey}
             />
           ))}
         </div>

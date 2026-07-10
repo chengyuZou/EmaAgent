@@ -4,7 +4,7 @@ import { providersApi, type AvailableSimpleModelWire } from '../api/providers.js
 import { showToast } from '../lib/toast.js';
 import { ModelToggleCard } from './ModelToggleCard.js';
 
-export function VisionModelManager({ providerId }: { providerId: string }): JSX.Element {
+export function VisionModelManager({ providerId, iconKey }: { providerId: string; iconKey?: string }): JSX.Element {
   const [models, setModels]   = useState<AvailableSimpleModelWire[]>([]);
   const [source, setSource]   = useState<'static' | 'catalog'>('static');
   const [loading, setLoading] = useState(true);
@@ -77,6 +77,7 @@ export function VisionModelManager({ providerId }: { providerId: string }): JSX.
               id={m.id}
               enabled={m.enabled}
               onToggle={() => void (m.enabled ? setConfirmModel(m.id) : enable(m.id))}
+              logo={iconKey}
             />
           ))}
         </div>

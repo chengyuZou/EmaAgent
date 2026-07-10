@@ -12,6 +12,7 @@ import {
   type ResolvedModelBinding,
   type AvailableBindingModel,
 } from '../api/model-bindings.js';
+import { providersApi, type ProviderDefinition } from '../api/providers.js';
 import { useSettingsStore } from '../stores/settings-store.js';
 import { showToast } from '../lib/toast.js';
 
@@ -68,11 +69,13 @@ const CAP_ICON: Record<string, string> = {
 function ProviderCardRow({
   providerIds,
   providerName,
+  providerIcon,
   selectedId,
   onSelect,
 }: {
   providerIds: string[];
   providerName: (id: string) => string;
+  providerIcon?: (id: string) => string | undefined;
   selectedId: string | null;
   onSelect: (id: string) => void;
 }) {
@@ -80,12 +83,13 @@ function ProviderCardRow({
     <div className="flex flex-row gap-4 overflow-x-auto pb-1">
       {providerIds.map((pcId) => {
         const isSel = selectedId === pcId;
+        const logo = providerIcon?.(pcId);
         return (
           <CardButton
             key={pcId}
             selected={isSel}
             padding="md"
-            className={`flex-shrink-0 rounded-xl border-2 min-w-[180px] ema-glass-weak ema-card-decorate hover:border-[var(--ema-primary)] ${isSel ? 'shadow-[var(--ema-shadow-2)]' : 'hover:shadow-[var(--ema-shadow-2)]'}`}
+            className={`group flex-shrink-0 rounded-xl border-2 min-w-[180px] ema-glass-weak ema-card-decorate hover:border-[var(--ema-primary)] ${isSel ? 'shadow-[var(--ema-shadow-2)]' : 'hover:shadow-[var(--ema-shadow-2)]'}`}
             onClick={() => onSelect(pcId)}
           >
             {/* Radio dot */}
@@ -106,6 +110,12 @@ function ProviderCardRow({
             <p className="text-xs text-[var(--ema-text-tertiary)] truncate">
               {isSel ? '已选择' : '点击选择'}
             </p>
+            {logo && (
+              <span
+                className={`absolute right-3 top-1/2 -translate-y-1/2 size-6 opacity-30 group-hover:opacity-60 transition-opacity ${logo}`}
+                aria-hidden
+              />
+            )}
           </CardButton>
         );
       })}
@@ -131,6 +141,15 @@ export function BindingsTab(): JSX.Element {
   const allProviders = useSettingsStore((s) => s.providers);
   const requiredCap = MODULE_CAPABILITY[activeModule];
   const hasPool = POOL_CAPABILITIES.has(requiredCap);
+
+  // provider definition iconKey lookup (for logo peek on cards)
+  const [definitions, setDefinitions] = useState<ProviderDefinition[]>([]);
+  useEffect(() => { void providersApi.listDefinitions().then(setDefinitions).catch(() => {}); }, []);
+  const iconKeyFor = useCallback((pcId: string): string | undefined => {
+    const p = allProviders.find((x) => x.id === pcId);
+    const def = definitions.find((d) => d.id === p?.definitionId);
+    return def?.iconKey;
+  }, [allProviders, definitions]);
 
   // provider display-name lookup
   const providerNames = useMemo(() => {
@@ -368,6 +387,7 @@ export function BindingsTab(): JSX.Element {
                 <ProviderCardRow
                   providerIds={poolProviderIds}
                   providerName={providerName}
+                  providerIcon={iconKeyFor}
                   selectedId={selectedProviderId}
                   onSelect={setSelectedProviderId}
                 />
@@ -401,6 +421,7 @@ export function BindingsTab(): JSX.Element {
                     const key = `${m.providerConfigId}|${m.model}`;
                     const isBound = boundKey === key;
                     const isSaving = savingKey === key;
+                    const logo = iconKeyFor(m.providerConfigId);
 
                     return (
                       <CardButton
@@ -408,7 +429,7 @@ export function BindingsTab(): JSX.Element {
                         selected={isBound}
                         disabled={isBound || isSaving}
                         padding="sm"
-                        className={`rounded-xl border-2 disabled:cursor-default ema-card-decorate`}
+                        className={`group rounded-xl border-2 disabled:cursor-default ema-card-decorate`}
                         onClick={() => handleSelect(m.providerConfigId, m.model)}
                       >
                         <div className="flex items-start gap-2.5">
@@ -433,6 +454,12 @@ export function BindingsTab(): JSX.Element {
                             </span>
                           </div>
                         </div>
+                        {logo && (
+                          <span
+                            className={`absolute right-2 top-1/2 -translate-y-1/2 size-5 opacity-25 group-hover:opacity-60 transition-opacity ${logo}`}
+                            aria-hidden
+                          />
+                        )}
                       </CardButton>
                     );
                   })}

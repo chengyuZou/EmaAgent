@@ -4,7 +4,7 @@ import { providersApi, type AvailableRerankModelWire } from '../api/providers.js
 import { showToast } from '../lib/toast.js';
 import { ModelToggleCard } from './ModelToggleCard.js';
 
-export function RerankModelManager({ providerId }: { providerId: string }): JSX.Element {
+export function RerankModelManager({ providerId, iconKey }: { providerId: string; iconKey?: string }): JSX.Element {
   const [models, setModels]   = useState<AvailableRerankModelWire[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState<string | null>(null);
@@ -79,6 +79,7 @@ export function RerankModelManager({ providerId }: { providerId: string }): JSX.
                 badge={m.maxChunks != null ? `max ${m.maxChunks}` : undefined}
                 enabled={m.enabled}
                 onToggle={() => void (m.enabled ? setConfirmModel(m.id) : enable(m.id))}
+              logo={iconKey}
               />
             ))}
           </div>

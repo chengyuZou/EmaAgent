@@ -4,7 +4,7 @@ import { providersApi, type AvailableSimpleModelWire } from '../api/providers.js
 import { showToast } from '../lib/toast.js';
 import { ModelToggleCard } from './ModelToggleCard.js';
 
-export function SttModelManager({ providerId }: { providerId: string }): JSX.Element {
+export function SttModelManager({ providerId, iconKey }: { providerId: string; iconKey?: string }): JSX.Element {
   const [models, setModels]   = useState<AvailableSimpleModelWire[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState<string | null>(null);
@@ -69,6 +69,7 @@ export function SttModelManager({ providerId }: { providerId: string }): JSX.Ele
               id={m.id}
               enabled={m.enabled}
               onToggle={() => void (m.enabled ? setConfirmModel(m.id) : enable(m.id))}
+              logo={iconKey}
             />
           ))}
         </div>

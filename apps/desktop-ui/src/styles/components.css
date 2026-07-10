@@ -13,7 +13,7 @@
  *  Tooltip/Toast/Tabs)。data-state 驱动进出场,全用 ema-* keyframes。
  */
 .ema-anim-scale[data-state="open"]   { animation: ema-scale-in var(--ema-duration-base) var(--ema-ease) both; }
-.ema-anim-scale[data-state="closed"] { animation: ema-fade-out var(--ema-duration-fast) var(--ema-ease) both; }
+.ema-anim-scale[data-state="closed"] { animation: ema-scale-out var(--ema-duration-base) var(--ema-ease) both; }
 
 .ema-anim-dialog[data-state="open"]   { animation: ema-dialog-in  var(--ema-duration-base) var(--ema-ease) both; }
 .ema-anim-dialog[data-state="closed"] { animation: ema-dialog-out var(--ema-duration-fast) var(--ema-ease) both; }

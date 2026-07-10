@@ -4,7 +4,7 @@ import { providersApi, type AvailableEmbedModelWire } from '../api/providers.js'
 import { showToast } from '../lib/toast.js';
 import { ModelToggleCard } from './ModelToggleCard.js';
 
-export function EmbedModelManager({ providerId }: { providerId: string }): JSX.Element {
+export function EmbedModelManager({ providerId, iconKey }: { providerId: string; iconKey?: string }): JSX.Element {
   const [models, setModels]   = useState<AvailableEmbedModelWire[]>([]);
   const [source, setSource]   = useState<'live' | 'static'>('static');
   const [loading, setLoading] = useState(true);
@@ -86,6 +86,7 @@ export function EmbedModelManager({ providerId }: { providerId: string }): JSX.E
               badge={m.dim != null ? `${m.dim}d` : undefined}
               enabled={m.enabled}
               onToggle={() => handleToggle(m)}
+              logo={iconKey}
             />
           ))}
         </div>

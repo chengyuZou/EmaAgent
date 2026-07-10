@@ -277,37 +277,37 @@ export function ProviderForm({
       {instance && activeCap === 'llm' && (
         <>
           <div className="border-t border-[var(--ema-border)]" />
-          <LlmModelManager providerId={instance.id} />
+          <LlmModelManager providerId={instance.id} iconKey={definition?.iconKey} />
         </>
       )}
       {instance && activeCap === 'embed' && (
         <>
           <div className="border-t border-[var(--ema-border)]" />
-          <EmbedModelManager providerId={instance.id} />
+          <EmbedModelManager providerId={instance.id} iconKey={definition?.iconKey} />
         </>
       )}
       {instance && activeCap === 'rerank' && (
         <>
           <div className="border-t border-[var(--ema-border)]" />
-          <RerankModelManager providerId={instance.id} />
+          <RerankModelManager providerId={instance.id} iconKey={definition?.iconKey} />
         </>
       )}
       {instance && activeCap === 'tts' && (
         <>
           <div className="border-t border-[var(--ema-border)]" />
-          <TtsModelManager providerId={instance.id} />
+          <TtsModelManager providerId={instance.id} iconKey={definition?.iconKey} />
         </>
       )}
       {instance && activeCap === 'stt' && (
         <>
           <div className="border-t border-[var(--ema-border)]" />
-          <SttModelManager providerId={instance.id} />
+          <SttModelManager providerId={instance.id} iconKey={definition?.iconKey} />
         </>
       )}
       {instance && activeCap === 'vision' && (
         <>
           <div className="border-t border-[var(--ema-border)]" />
-          <VisionModelManager providerId={instance.id} />
+          <VisionModelManager providerId={instance.id} iconKey={definition?.iconKey} />
         </>
       )}
     </div>

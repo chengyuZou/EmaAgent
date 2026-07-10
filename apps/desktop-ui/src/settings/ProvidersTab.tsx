@@ -50,12 +50,14 @@ export function ProvidersTab(): JSX.Element {
   if (selectedDef && selectedDefinition) {
     const config = providers.find((p) => p.definitionId === selectedDef) ?? null;
     return (
-      <ProviderConfigPanel
-        definition={selectedDefinition}
-        capability={selectedCapability}
-        config={config}
-        onBack={() => { setSelectedDef(null); setSelectedCapability(null); }}
-      />
+      <div key={selectedDef} className="ema-slide-right">
+        <ProviderConfigPanel
+          definition={selectedDefinition}
+          capability={selectedCapability}
+          config={config}
+          onBack={() => { setSelectedDef(null); setSelectedCapability(null); }}
+        />
+      </div>
     );
   }
 
@@ -63,7 +65,7 @@ export function ProvidersTab(): JSX.Element {
   let cardIdx = 0;
 
   return (
-    <div className="flex flex-col gap-8 pb-10">
+    <div key="providers-grid" className="flex flex-col gap-8 pb-10 ema-fade-in">
       {!anyConfigured && (
         <Callout variant="info">
           <span className="font-medium">第一次使用？</span>

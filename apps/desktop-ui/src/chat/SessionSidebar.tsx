@@ -91,7 +91,7 @@ export function SessionSidebar(): JSX.Element {
         <div className="flex flex-col items-center py-2 gap-2">
           <Button
             variant="ghost"
-            className="w-7 h-7 flex items-center justify-center rounded-md transition-colors text-[var(--ema-text-tertiary)] hover:text-[var(--ema-text-primary)] hover:bg-[var(--ema-surface-2)] font-normal"
+            className="w-7 h-7 flex items-center justify-center rounded-md transition-colors text-[var(--ema-text-primary)] hover:bg-[var(--ema-surface-2)] font-normal"
             onClick={() => setCollapsed(false)}
             title="展开侧边栏"
           >
@@ -185,7 +185,7 @@ function NewConversationCommand({
       </Button>
       <Button
         variant="ghost"
-        className="w-6 h-6 shrink-0 flex items-center justify-center rounded transition-colors text-[var(--ema-text-tertiary)] hover:text-[var(--ema-text-primary)] hover:bg-[var(--ema-surface-2)] font-normal"
+        className="w-6 h-6 shrink-0 flex items-center justify-center rounded transition-colors text-[var(--ema-text-primary)] hover:bg-[var(--ema-surface-2)] font-normal"
         onClick={onCollapse}
         title="折叠侧边栏"
         aria-label="折叠侧边栏"

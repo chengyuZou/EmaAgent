@@ -6,7 +6,7 @@ import { ModelToggleCard } from './ModelToggleCard.js';
 
 const DEFAULT_TEST_TEXT = '你好，我是艾玛，很高兴认识你。';
 
-export function TtsModelManager({ providerId }: { providerId: string }): JSX.Element {
+export function TtsModelManager({ providerId, iconKey }: { providerId: string; iconKey?: string }): JSX.Element {
   const [models, setModels]     = useState<AvailableSimpleModelWire[]>([]);
   const [loading, setLoading]   = useState(true);
   const [error, setError]       = useState<string | null>(null);
@@ -89,6 +89,7 @@ export function TtsModelManager({ providerId }: { providerId: string }): JSX.Ele
               id={m.id}
               enabled={m.enabled}
               onToggle={() => void (m.enabled ? setConfirmModel(m.id) : enable(m.id))}
+              logo={iconKey}
               action={m.enabled ? (
                 <IconButton
                   label="测试声音"

@@ -231,7 +231,7 @@ export function SettingsPanel(): JSX.Element {
                     替代 margin(margin 不被 overflow:hidden 裁,0fr 时会露出)。 */}
                 <div
                   className="ema-collapsible"
-                  style={{ gridTemplateRows: expanded ? '1fr' : '0fr', opacity: expanded ? 1 : 0 }}
+                  style={{ gridTemplateRows: expanded ? '1fr' : '0fr' }}
                 >
                   <div className="ml-4 pt-0.5 pb-1 flex flex-col gap-0.5">
                     {group.sections.map((sec) => {

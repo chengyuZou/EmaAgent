@@ -14,11 +14,13 @@
               opacity    var(--ema-duration-base) var(--ema-ease);
 }
 
-/* 平滑折叠:grid-template-rows 0fr ↔ 1fr。配 opacity 双向。内层 > * overflow:hidden */
+/* 平滑折叠:grid-template-rows 0fr ↔ 1fr。grid-rows 用 280ms ease-out-expo(快出慢收),
+   opacity 180ms(其他用处用,SettingsPanel 折叠不设 opacity 避免先消失再收缩的僵硬感)。
+   内层 > * overflow:hidden 裁剪,内容随高度自然渐显/渐隐。*/
 .ema-collapsible {
   display:    grid;
-  transition: grid-template-rows var(--ema-duration-base) var(--ema-ease),
-              opacity             var(--ema-duration-base) var(--ema-ease);
+  transition: grid-template-rows 280ms cubic-bezier(0.16, 1, 0.3, 1),
+              opacity             180ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 .ema-collapsible > * { overflow: hidden; }
 
