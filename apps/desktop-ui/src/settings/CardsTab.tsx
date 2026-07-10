@@ -95,13 +95,13 @@ function CardListItem({
       padding="sm"
       className={`cursor-pointer transition-all duration-[var(--ema-duration-base)] active:scale-[0.98] ${
         isSelected
-          ? 'border border-[var(--ema-primary)] bg-[var(--ema-primary-muted)]'
-          : 'hover:bg-[var(--ema-surface-2)]'
+          ? 'border-2 border-solid border-[var(--ema-primary)] bg-[var(--ema-primary-muted)] ema-card-decorate'
+          : 'border-2 border-solid border-[var(--ema-border)] hover:border-[var(--ema-primary)]/30 hover:bg-[var(--ema-surface-2)] hover:shadow-[var(--ema-shadow-soft)] ema-card-decorate'
       }`}
       onClick={onSelect}
     >
       <div className="flex items-start justify-between gap-2">
-        <span className="text-sm font-medium text-[var(--ema-text-primary)] leading-snug">{card.name}</span>
+        <span className="text-sm font-semibold text-[var(--ema-text-primary)] leading-snug">{card.name}</span>
         <div className="flex items-center gap-1 shrink-0 mt-0.5">
           {isActive && <Badge variant="success" dot>当前</Badge>}
           {card.isBuiltin && <Badge variant="neutral">内置</Badge>}

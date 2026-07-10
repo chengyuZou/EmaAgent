@@ -188,7 +188,7 @@ export function SettingsPanel(): JSX.Element {
                 <Button
                   variant="ghost"
                   key={group.id}
-                  className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-normal
+                  className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold
                     transition-colors duration-[var(--ema-duration-fast)] ${
                     isActive
                       ? 'ema-active-rail text-[var(--ema-primary)] bg-[var(--ema-primary-muted)]'
@@ -210,7 +210,7 @@ export function SettingsPanel(): JSX.Element {
                 {/* Group header */}
                 <Button
                   variant="ghost"
-                  className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-normal
+                  className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold
                              text-[var(--ema-text-tertiary)] hover:text-[var(--ema-text-primary)]
                              hover:bg-[var(--ema-surface-2)]/50
                              transition-colors duration-[var(--ema-duration-fast)]"
@@ -240,7 +240,7 @@ export function SettingsPanel(): JSX.Element {
                         <Button
                           variant="ghost"
                           key={sec.id}
-                          className={`w-full text-left px-3 py-1.5 rounded-lg text-sm font-normal
+                          className={`w-full flex items-center px-3 py-1.5 rounded-lg text-sm font-semibold
                             transition-colors duration-[var(--ema-duration-fast)] ${
                             isActive
                               ? 'ema-active-rail text-[var(--ema-primary)] bg-[var(--ema-primary-muted)]'
@@ -249,7 +249,7 @@ export function SettingsPanel(): JSX.Element {
                           onClick={() => setActiveSection(sec.id)}
                           aria-current={isActive ? 'page' : undefined}
                         >
-                          {sec.label}
+                          <span className="flex-1 text-left">{sec.label}</span>
                         </Button>
                       );
                     })}

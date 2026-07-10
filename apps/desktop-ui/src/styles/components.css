@@ -244,10 +244,13 @@
   z-index: -1;
   width: 25%;
   opacity: 0;
-  transition: width 250ms var(--ema-ease), opacity 250ms var(--ema-ease);
+  transition: width 280ms var(--ema-ease), opacity 280ms var(--ema-ease);
   -webkit-mask-image: linear-gradient(120deg, white 30%, transparent 50%);
   mask-image: linear-gradient(120deg, white 30%, transparent 50%);
-  background: linear-gradient(to right, var(--ema-primary-muted), transparent);
+  background: linear-gradient(to right,
+    color-mix(in srgb, var(--ema-primary) 28%, transparent),
+    color-mix(in srgb, var(--ema-primary) 14%, transparent),
+    transparent);
   pointer-events: none;
 }
 .ema-card-decorate:hover::before {
@@ -259,6 +262,49 @@
   position: absolute;
   inset: 0;
   z-index: -1;
+  background-image: radial-gradient(circle, var(--ema-text-tertiary) 1px, transparent 1px);
+  background-size: 10px 10px;
+  -webkit-mask-image: linear-gradient(165deg, white 30%, transparent 50%);
+  mask-image: linear-gradient(165deg, white 30%, transparent 50%);
+  opacity: 0.25;
+  pointer-events: none;
+}
+
+/* ── ema-card-glow ───────────────────────────────────────────────────────────
+ *  供应商同款发光(直接抄 MenuStatusItem):::before z-0 三段梯形光扫 + ::after 点纹.
+ *  与 .ema-card-decorate 区别:光扫 z-0(浮在 static 内容上),用此类的卡片内容须包
+ *  relative z-1 兜底,否则光扫盖文字. 模型卡等小卡用这个(.ema-card-decorate 的
+ *  z-index:-1 在小卡内容贴边时光带被 static 盒压蔫).*/
+.ema-card-glow {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+.ema-card-glow::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  width: 25%;
+  opacity: 0;
+  transition: width 280ms var(--ema-ease), opacity 280ms var(--ema-ease);
+  -webkit-mask-image: linear-gradient(120deg, white 30%, transparent 50%);
+  mask-image: linear-gradient(120deg, white 30%, transparent 50%);
+  background: linear-gradient(to right,
+    color-mix(in srgb, var(--ema-primary) 20%, transparent),
+    color-mix(in srgb, var(--ema-primary) 10%, transparent),
+    transparent);
+  pointer-events: none;
+}
+.ema-card-glow:hover::before {
+  width: 85%;
+  opacity: 1;
+}
+.ema-card-glow::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
   background-image: radial-gradient(circle, var(--ema-text-tertiary) 1px, transparent 1px);
   background-size: 10px 10px;
   -webkit-mask-image: linear-gradient(165deg, white 30%, transparent 50%);

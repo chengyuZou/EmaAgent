@@ -98,7 +98,7 @@ function MarketView({
         return (
           <div
             key={entry.name}
-            className="bg-[var(--ema-surface-1)] ema-glass-weak border border-[var(--ema-border)] rounded-xl px-4 py-3
+            className="bg-[var(--ema-surface-1)] ema-glass-weak border-2 border-solid border-[var(--ema-border)] rounded-xl px-4 py-3 ema-card-decorate hover:border-[var(--ema-primary)]/30 hover:bg-[var(--ema-surface-2)] hover:shadow-[var(--ema-shadow-soft)]
                        ema-stagger-in"
             style={{ '--stagger-i': i } as React.CSSProperties}
           >

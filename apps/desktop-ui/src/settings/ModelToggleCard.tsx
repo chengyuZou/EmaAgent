@@ -4,6 +4,9 @@
  * Click the whole card to toggle enable/disable. Enabled shows a coloured dot
  * (system primary/success); disabled shows nothing - mirrors the provider card
  * dot. Replaces the old long Switch rows in the model managers.
+ *
+ * Light sweep + dotted texture mirror MenuStatusItem (provider card) exactly:
+ * ::before z-0 三段光扫, ::after 点纹, 内容 relative z-1 兜底 -- 直接复用供应商发光.
  */
 import type { JSX, ReactNode } from 'react';
 
@@ -27,31 +30,34 @@ export function ModelToggleCard({ id, badge, enabled, onToggle, action, logo }: 
       onClick={onToggle}
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onToggle(); } }}
       title={id}
-      className={`group relative text-left rounded-lg border px-2.5 py-2 min-w-0 cursor-pointer outline-none
+      className={`group relative text-left rounded-lg border-2 border-solid px-2.5 py-2 min-w-0 cursor-pointer outline-none
+                  ema-card-glow
                   transition-all duration-[var(--ema-duration-base)] active:scale-[0.97]
                   ${enabled
                     ? 'border-[var(--ema-primary)] bg-[var(--ema-primary-muted)]'
-                    : 'border-[var(--ema-border)] bg-[var(--ema-surface-1)] ema-glass-weak hover:border-[var(--ema-border-hover)] ema-card-decorate'
+                    : 'border-[var(--ema-border)] bg-[var(--ema-surface-1)] ema-glass-weak hover:border-[var(--ema-primary)]/30 hover:bg-[var(--ema-surface-2)] hover:shadow-[var(--ema-shadow-soft)]'
                   }`}
     >
       {enabled && (
         <span
-          className="absolute top-1.5 right-1.5 size-2 rounded-full bg-[var(--ema-success)] ema-scale-in"
+          className="absolute top-1.5 right-1.5 z-1 size-2 rounded-full bg-[var(--ema-success)] ema-scale-in"
           aria-hidden
         />
       )}
       {logo && (
         <span
-          className={`absolute right-1 top-1/2 -translate-y-1/2 size-5 opacity-25 group-hover:opacity-60 transition-opacity ${logo}`}
+          className={`absolute right-1 top-1/2 z-1 -translate-y-1/2 size-6 opacity-40 group-hover:opacity-70 group-hover:scale-110 transition-all duration-[var(--ema-duration-base)] ${logo}`}
           aria-hidden
         />
       )}
-      <p className="text-xs font-mono text-[var(--ema-text-primary)] truncate pr-7 leading-tight">{id}</p>
-      <div className="flex items-center justify-between gap-1 mt-0.5">
-        {badge ? <p className="text-[10px] text-[var(--ema-text-tertiary)]">{badge}</p> : <span />}
-        {action && (
-          <span onClick={(e) => e.stopPropagation()}>{action}</span>
-        )}
+      <div className="relative z-1">
+        <p className="text-[13px] font-mono font-semibold text-[var(--ema-text-primary)] group-hover:text-[var(--ema-primary-text)] truncate pr-7 leading-tight">{id}</p>
+        <div className="flex items-center justify-between gap-1 mt-0.5">
+          {badge ? <p className="text-[11px] font-medium text-[var(--ema-text-tertiary)]">{badge}</p> : <span />}
+          {action && (
+            <span onClick={(e) => e.stopPropagation()}>{action}</span>
+          )}
+        </div>
       </div>
     </div>
   );

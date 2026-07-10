@@ -103,8 +103,8 @@ function OverviewTab(): JSX.Element {
           {/* By-type breakdown */}
           <div className="grid grid-cols-2 gap-3">
             {/* Nodes by type */}
-            <Card variant="elevated" padding="sm" className="active:scale-[0.98] transition-all duration-[var(--ema-duration-base)]">
-              <p className="text-xs font-medium text-[var(--ema-text-tertiary)] mb-2">节点类型分布</p>
+            <Card variant="elevated" padding="sm" className="active:scale-[0.98] transition-all duration-[var(--ema-duration-base)] ema-card-decorate hover:border-[var(--ema-primary)]/30 hover:bg-[var(--ema-surface-2)] hover:shadow-[var(--ema-shadow-soft)]">
+              <p className="text-xs font-semibold text-[var(--ema-text-tertiary)] mb-2">节点类型分布</p>
               <div className="flex flex-col gap-1.5">
                 {(Object.entries(stats.nodes.byType) as [MemoryNodeType, number][])
                   .filter(([, n]) => n > 0)
@@ -119,8 +119,8 @@ function OverviewTab(): JSX.Element {
             </Card>
 
             {/* Items by kind */}
-            <Card variant="elevated" padding="sm" className="active:scale-[0.98] transition-all duration-[var(--ema-duration-base)]">
-              <p className="text-xs font-medium text-[var(--ema-text-tertiary)] mb-2">条目类型分布</p>
+            <Card variant="elevated" padding="sm" className="active:scale-[0.98] transition-all duration-[var(--ema-duration-base)] ema-card-decorate hover:border-[var(--ema-primary)]/30 hover:bg-[var(--ema-surface-2)] hover:shadow-[var(--ema-shadow-soft)]">
+              <p className="text-xs font-semibold text-[var(--ema-text-tertiary)] mb-2">条目类型分布</p>
               <div className="flex flex-col gap-1.5">
                 {(Object.entries(stats.items.byKind) as [MemoryItemKind, number][])
                   .filter(([, n]) => n > 0)
@@ -136,8 +136,8 @@ function OverviewTab(): JSX.Element {
           </div>
 
           {/* Index + embedding health */}
-          <Card variant="elevated" padding="sm" className="active:scale-[0.98] transition-all duration-[var(--ema-duration-base)]">
-            <p className="text-xs font-medium text-[var(--ema-text-tertiary)] mb-2">向量索引</p>
+          <Card variant="elevated" padding="sm" className="active:scale-[0.98] transition-all duration-[var(--ema-duration-base)] ema-card-decorate hover:border-[var(--ema-primary)]/30 hover:bg-[var(--ema-surface-2)] hover:shadow-[var(--ema-shadow-soft)]">
+            <p className="text-xs font-semibold text-[var(--ema-text-tertiary)] mb-2">向量索引</p>
             <div className="flex gap-4 flex-wrap text-xs text-[var(--ema-text-tertiary)]">
               <span>
                 节点索引：
@@ -186,7 +186,7 @@ function OverviewTab(): JSX.Element {
 
             <div className="grid grid-cols-2 gap-x-6 gap-y-3">
               <div>
-                <p className="text-xs text-[var(--ema-text-tertiary)] mb-2 font-medium uppercase tracking-wide">召回(读)</p>
+                <p className="text-xs text-[var(--ema-text-tertiary)] mb-2 font-semibold uppercase tracking-wide">召回(读)</p>
                 <div className="flex flex-col gap-2">
                   <OverrideSwitch label="L0 锚点召回" desc="全局身份图" checked={sessionOverrides?.layer0 ?? true}
                     onChange={(v) => setOverride('layer0', v)} />
@@ -198,7 +198,7 @@ function OverviewTab(): JSX.Element {
               </div>
 
               <div>
-                <p className="text-xs text-[var(--ema-text-tertiary)] mb-2 font-medium uppercase tracking-wide">写入(写)</p>
+                <p className="text-xs text-[var(--ema-text-tertiary)] mb-2 font-semibold uppercase tracking-wide">写入(写)</p>
                 <div className="flex flex-col gap-2">
                   <OverrideSwitch label="提取"   desc="turn 结束后写入待处理片段" checked={sessionOverrides?.extraction    ?? true}
                     onChange={(v) => setOverride('extraction', v)} />
@@ -218,7 +218,7 @@ function OverviewTab(): JSX.Element {
 
 function StatCard({ label, value, sub }: { label: string; value: number; sub: string }): JSX.Element {
   return (
-    <Card variant="elevated" padding="sm" className="active:scale-[0.98] transition-all duration-[var(--ema-duration-base)]">
+    <Card variant="elevated" padding="sm" className="active:scale-[0.98] transition-all duration-[var(--ema-duration-base)] ema-card-decorate hover:border-[var(--ema-primary)]/30 hover:bg-[var(--ema-surface-2)] hover:shadow-[var(--ema-shadow-soft)]">
       <p className="text-xs text-[var(--ema-text-tertiary)]">{label}</p>
       <p className="text-2xl font-bold text-[var(--ema-text-primary)] tabular-nums">{value.toLocaleString()}</p>
       <p className="text-xs text-[var(--ema-text-tertiary)] opacity-60 mt-0.5">{sub}</p>

@@ -17,21 +17,21 @@ import { FilePreview } from './FilePreview.js';
 
 function fileIcon(name: string): string {
   const ext = name.split('.').pop()?.toLowerCase() ?? '';
-  if (['ts', 'tsx', 'js', 'jsx', 'mjs', 'cjs'].includes(ext)) return 'i-lucide:file-code';
-  if (['py'].includes(ext))                     return 'i-lucide:file-code';
-  if (['rs'].includes(ext))                     return 'i-lucide:file-code';
-  if (['go'].includes(ext))                     return 'i-lucide:file-code';
-  if (['md', 'mdx'].includes(ext))              return 'i-lucide:file-text';
-  if (['json', 'jsonl', 'jsonc'].includes(ext)) return 'i-lucide:braces';
-  if (['yaml', 'yml'].includes(ext))            return 'i-lucide:file-code';
-  if (['css', 'scss', 'sass'].includes(ext))    return 'i-lucide:file-code';
-  if (['html', 'htm'].includes(ext))            return 'i-lucide:file-code';
-  if (['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp'].includes(ext)) return 'i-lucide:image';
-  if (['pdf'].includes(ext))                    return 'i-lucide:file-text';
-  if (['sh', 'bash', 'zsh', 'fish'].includes(ext)) return 'i-lucide:terminal';
-  if (['toml', 'ini', 'cfg', 'conf'].includes(ext)) return 'i-lucide:settings';
-  if (['lock'].includes(ext) || name.endsWith('.lock')) return 'i-lucide:lock';
-  return 'i-lucide:file';
+  if (['ts', 'tsx', 'js', 'jsx', 'mjs', 'cjs'].includes(ext)) return 'i-mdi:language-typescript';
+  if (['py'].includes(ext))                     return 'i-mdi:language-python';
+  if (['rs'].includes(ext))                     return 'i-mdi:language-rust';
+  if (['go'].includes(ext))                     return 'i-mdi:language-go';
+  if (['md', 'mdx'].includes(ext))              return 'i-mdi:language-markdown';
+  if (['json', 'jsonl', 'jsonc'].includes(ext)) return 'i-mdi:code-json';
+  if (['yaml', 'yml'].includes(ext))            return 'i-mdi:file-code-outline';
+  if (['css', 'scss', 'sass'].includes(ext))    return 'i-mdi:language-css3';
+  if (['html', 'htm'].includes(ext))            return 'i-mdi:language-html5';
+  if (['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp'].includes(ext)) return 'i-mdi:image-outline';
+  if (['pdf'].includes(ext))                    return 'i-mdi:file-pdf-box';
+  if (['sh', 'bash', 'zsh', 'fish'].includes(ext)) return 'i-mdi:console';
+  if (['toml', 'ini', 'cfg', 'conf'].includes(ext)) return 'i-mdi:file-cog-outline';
+  if (['lock'].includes(ext) || name.endsWith('.lock')) return 'i-mdi:lock-outline';
+  return 'i-mdi:file-outline';
 }
 
 function fmtSize(bytes: number): string {

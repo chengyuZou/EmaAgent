@@ -530,8 +530,10 @@ function SidebarRow({ session, isActive, streaming, pendingCounts, nested = fals
         </span>
         <DropdownMenu
           trigger={
-            <Button variant="ghost" className="absolute right-0 top-1/2 -translate-y-1/2 w-5 h-5 p-0 flex items-center justify-center rounded transition-[color,background-color,border-color] border bg-[var(--ema-surface-3)] border-[var(--ema-border)] text-[var(--ema-text-primary)] hover:bg-[var(--ema-primary-muted)] hover:border-[var(--ema-primary)]/40 font-normal">
-              <span className="i-solar:menu-dots-bold-duotone text-xs" aria-hidden />
+            <Button variant="ghost" className={`absolute right-0 top-1/2 -translate-y-1/2 w-5 h-5 p-0 flex items-center justify-center rounded transition-[opacity,color,background-color] text-[var(--ema-text-tertiary)] hover:text-[var(--ema-text-primary)] hover:bg-[var(--ema-surface-2)] font-normal ${
+              isActive ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+            }`}>
+              <span className="i-solar:menu-dots-bold-duotone text-xs shrink-0" aria-hidden />
             </Button>
           }
           items={menuItems}

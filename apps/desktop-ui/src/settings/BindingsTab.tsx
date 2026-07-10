@@ -290,7 +290,7 @@ export function BindingsTab(): JSX.Element {
                     className={`${CAP_ICON[cap] ?? 'i-solar:box-bold-duotone'} text-2xl shrink-0 text-[var(--ema-text-tertiary)]`}
                     aria-hidden
                   />
-                  <span className="text-base font-medium text-[var(--ema-text-primary)] truncate">{m.label}</span>
+                  <span className="text-base font-semibold text-[var(--ema-text-primary)] truncate">{m.label}</span>
                 </div>
                 <p className="text-xs text-[var(--ema-text-tertiary)] line-clamp-2">{m.desc}</p>
               </CardButton>

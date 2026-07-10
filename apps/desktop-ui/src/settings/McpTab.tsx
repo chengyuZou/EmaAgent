@@ -367,7 +367,7 @@ export function McpTab(): JSX.Element {
               <div
                 key={r.name}
                 className="flex items-start gap-3 px-3 py-2 rounded-lg
-                           border border-[var(--ema-border)] bg-[var(--ema-surface-1)] ema-stagger-in"
+                           border-2 border-solid border-[var(--ema-border)] bg-[var(--ema-surface-1)] ema-stagger-in ema-card-decorate hover:border-[var(--ema-primary)]/30 hover:bg-[var(--ema-surface-2)] hover:shadow-[var(--ema-shadow-soft)]"
                 style={{ '--stagger-i': i } as CSSProperties}
               >
                 <Badge variant={r.ok ? 'success' : 'danger'} dot className="mt-0.5 shrink-0" />
