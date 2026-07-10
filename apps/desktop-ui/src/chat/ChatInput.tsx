@@ -184,7 +184,7 @@ export function ChatInput(): JSX.Element {
       variant="danger"
       size="sm"
       label="停止生成"
-      icon="i-mdi:stop"
+      icon="i-lucide:square"
       onClick={() => { if (viewedId) useConversationStore.getState().stopStreaming(viewedId); }}
     />
   ) : (
@@ -192,7 +192,7 @@ export function ChatInput(): JSX.Element {
       variant="primary"
       size="sm"
       label="发送"
-      icon="i-mdi:send"
+      icon="i-lucide:send"
       onClick={send}
     />
   );
@@ -215,7 +215,7 @@ export function ChatInput(): JSX.Element {
             <div className="absolute inset-0 z-10 rounded-2xl flex items-center justify-center pointer-events-none ema-fade-in"
                  style={{ background: 'color-mix(in srgb, var(--ema-primary) 14%, transparent)' }}>
               <div className="flex items-center gap-2 text-sm font-medium text-[var(--ema-text-primary)]">
-                <span className="i-mdi:tray-arrow-down text-xl" aria-hidden />
+                <span className="i-lucide:download text-xl" aria-hidden />
                 放下以上传文件
               </div>
             </div>
@@ -265,7 +265,7 @@ export function ChatInput(): JSX.Element {
                 variant={pendingAttachments.length > 0 ? 'primary' : 'default'}
                 size="sm"
                 label="添加附件"
-                icon="i-mdi:paperclip"
+                icon="i-lucide:paperclip"
                 toggled={pendingAttachments.length > 0}
                 onClick={() => void pickAttachment()}
               />
@@ -286,7 +286,7 @@ export function ChatInput(): JSX.Element {
               variant={ttsEnabled ? 'primary' : 'default'}
               size="sm"
               label="切换 TTS"
-              icon="i-mdi:volume-high"
+              icon="i-lucide:volume-2"
               toggled={ttsEnabled}
               onClick={() => useUiStore.getState().setTtsEnabled(!ttsEnabled)}
             />
@@ -377,7 +377,7 @@ function KbButton({
                   <IconButton
                     variant={count > 0 ? 'primary' : 'default'}
                     size="sm"
-                    icon="i-mdi:database"
+                    icon="i-lucide:database"
                     label="选择知识库"
                     toggled={count > 0}
                   />
@@ -594,7 +594,7 @@ function WorkspaceButton({ sessionId }: { sessionId: string | null }): JSX.Eleme
       <IconButton
         variant={hasRoot ? 'primary' : 'default'}
         size="sm"
-        icon="i-mdi:folder-outline"
+        icon="i-lucide:folder"
         label={hasRoot ? '工作区目录' : '未设置工作区目录'}
         toggled={hasRoot}
         onClick={handleClick}

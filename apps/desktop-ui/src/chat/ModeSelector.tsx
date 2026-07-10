@@ -11,9 +11,9 @@ interface ModeSelectorProps {
 }
 
 const MODES: Array<{ id: TurnMode; label: string; icon: string }> = [
-  { id: 'chat',      label: '聊天', icon: 'i-mdi:chat-outline' },
-  { id: 'narrative', label: '叙事', icon: 'i-mdi:book-open-variant-outline' },
-  { id: 'agent',     label: 'Agent', icon: 'i-mdi:robot-outline' },
+  { id: 'chat',      label: '聊天', icon: 'i-lucide:message-circle' },
+  { id: 'narrative', label: '叙事', icon: 'i-lucide:book-open' },
+  { id: 'agent',     label: 'Agent', icon: 'i-lucide:bot' },
 ];
 
 export function ModeSelector({ mode, onModeChange }: ModeSelectorProps): JSX.Element {
@@ -25,14 +25,14 @@ export function ModeSelector({ mode, onModeChange }: ModeSelectorProps): JSX.Ele
       <Button
         variant="ghost"
         className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs
-                   text-[var(--ema-text-tertiary)] hover:text-[var(--ema-text-primary)]
+                   text-[var(--ema-text-secondary)] hover:text-[var(--ema-text-primary)]
                    hover:bg-[var(--ema-surface-2)]
                    transition-colors duration-[var(--ema-duration-base)]"
         onClick={() => setOpen(!open)}
       >
         <span className={current.icon + ' text-sm'} aria-hidden />
         <span>{current.label}</span>
-        <span className="i-mdi:chevron-up text-[10px]" aria-hidden />
+        <span className="i-lucide:chevron-up text-[10px]" aria-hidden />
       </Button>
 
       {open && (
@@ -41,14 +41,14 @@ export function ModeSelector({ mode, onModeChange }: ModeSelectorProps): JSX.Ele
           <div
             className="ema-slide-up absolute bottom-full left-0 mb-1 z-50
                        bg-[var(--ema-surface-4)] border border-[var(--ema-border)]
-                       rounded-xl py-1 shadow-[var(--ema-shadow-3)] min-w-32"
+                       rounded-xl p-1 shadow-[var(--ema-shadow-3)] min-w-32"
           >
             {MODES.map((m) => (
               <Button
                 key={m.id}
                 variant="ghost"
                 className={
-                  'w-full flex items-center text-left px-3 py-1.5 text-sm ' +
+                  'w-full flex items-center text-left px-3 py-1.5 text-sm rounded-lg ' +
                   `transition-colors duration-[var(--ema-duration-base)] ` +
                   (mode === m.id
                     ? 'text-[var(--ema-primary)] bg-[var(--ema-primary-muted)]'
@@ -62,7 +62,7 @@ export function ModeSelector({ mode, onModeChange }: ModeSelectorProps): JSX.Ele
                 <span className={`${m.icon} text-sm mr-2`} aria-hidden />
                 <span className="flex-1">{m.label}</span>
                 {mode === m.id && (
-                  <span className="i-mdi:check text-[var(--ema-primary)] text-xs" aria-hidden />
+                  <span className="i-lucide:check text-[var(--ema-primary)] text-xs" aria-hidden />
                 )}
               </Button>
             ))}

@@ -124,7 +124,7 @@ export function ChatPanel(): JSX.Element {
     return (
       <div className="flex items-center justify-center h-screen ema-fade-in text-[var(--ema-text-tertiary)]">
         <div className="text-center">
-          <div className="text-lg mb-2 inline-flex items-center gap-1.5"><span className="i-mdi:flash-off-outline" aria-hidden />Sidecar 离线</div>
+          <div className="text-lg mb-2 inline-flex items-center gap-1.5"><span className="i-lucide:unplug" aria-hidden />Sidecar 离线</div>
           <div className="text-sm text-[var(--ema-text-tertiary)]">{sidecarStatus.reason}</div>
         </div>
       </div>
@@ -163,14 +163,14 @@ export function ChatPanel(): JSX.Element {
             <div className="flex items-center gap-0.5 shrink-0">
               {/* ⑂ Branches */}
               <InspectorDockBtn
-                icon="i-mdi:source-fork"
+                icon="i-lucide:git-fork"
                 label="会话分支"
                 active={activePanels.has('branches')}
                 onClick={() => togglePanel('branches')}
               />
               {/* ▣ Artifacts */}
               <InspectorDockBtn
-                icon="i-mdi:layers-outline"
+                icon="i-lucide:layers"
                 label="产物"
                 active={activePanels.has('artifacts')}
                 onClick={() => togglePanel('artifacts')}
@@ -186,7 +186,7 @@ export function ChatPanel(): JSX.Element {
                   onClick={() => setOverflowOpen((v) => !v)}
                   title="更多面板"
                 >
-                  <span className="i-mdi:dots-horizontal text-base" aria-hidden />
+                  <span className="i-lucide:ellipsis text-base" aria-hidden />
                   {runningTaskCount > 0 && (
                     <span className="absolute -top-0.5 -right-0.5 min-w-[14px] h-3.5 flex items-center justify-center rounded-full text-[9px] font-bold px-0.5 pointer-events-none bg-[var(--ema-primary)] text-[var(--ema-text-primary)]">
                       {runningTaskCount}
@@ -197,13 +197,13 @@ export function ChatPanel(): JSX.Element {
                 {overflowOpen && (
                   <div className="ema-slide-up absolute top-full right-0 mt-1 z-50 w-44 rounded-xl border py-1 shadow-[var(--ema-shadow-3)] bg-[var(--ema-surface-4)] border-[var(--ema-border-hover)]">
                     <OverflowItem
-                      icon="i-mdi:folder-outline"
+                      icon="i-lucide:folder"
                       label="文件浏览"
                       active={activePanels.has('files')}
                       onClick={() => { togglePanel('files'); setOverflowOpen(false); }}
                     />
                     <OverflowItem
-                      icon="i-mdi:robot-outline"
+                      icon="i-lucide:bot"
                       label="后台任务"
                       active={activePanels.has('tasks')}
                       badge={runningTaskCount}
@@ -275,7 +275,7 @@ function InspectorDockBtn({
       className={`relative size-7 rounded-md flex items-center justify-center text-sm transition-colors
         ${active
           ? 'text-[var(--ema-primary)] bg-[var(--ema-primary-muted)]'
-          : 'text-[var(--ema-text-tertiary)] hover:text-[var(--ema-text-primary)] hover:bg-[var(--ema-surface-2)]'}`}
+          : 'text-[var(--ema-text-secondary)] hover:text-[var(--ema-text-primary)] hover:bg-[var(--ema-surface-2)]'}`}
       onClick={onClick}
       title={label}
     >
@@ -310,7 +310,7 @@ function OverflowItem({
           {badge}
         </span>
       )}
-      {active && <span className="i-mdi:check text-sm shrink-0 text-[var(--ema-primary)]" aria-hidden />}
+      {active && <span className="i-lucide:check text-sm shrink-0 text-[var(--ema-primary)]" aria-hidden />}
     </Button>
   );
 }
@@ -372,10 +372,10 @@ function InspectorContent({
 }
 
 const PANEL_META: Record<InspectorPanelId, { label: string; icon: string }> = {
-  branches:  { label: '会话分支', icon: 'i-mdi:source-fork' },
-  artifacts: { label: '产物',     icon: 'i-mdi:layers-outline' },
-  files:     { label: '文件',     icon: 'i-mdi:folder-outline' },
-  tasks:     { label: '后台任务', icon: 'i-mdi:robot-outline' },
+  branches:  { label: '会话分支', icon: 'i-lucide:git-fork' },
+  artifacts: { label: '产物',     icon: 'i-lucide:layers' },
+  files:     { label: '文件',     icon: 'i-lucide:folder' },
+  tasks:     { label: '后台任务', icon: 'i-lucide:bot' },
 };
 
 function InspectorPanelHeader({ id, compact }: { id: InspectorPanelId; compact?: boolean }): JSX.Element {

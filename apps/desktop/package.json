@@ -27,6 +27,7 @@
     "unocss": "^66.0.0"
   },
   "devDependencies": {
+    "@iconify-json/lucide": "^1.2.116",
     "@iconify-json/mdi": "^1.2.3",
     "@iconify-json/solar": "^1.2.5",
     "@iconify-json/svg-spinners": "^1.2.4",
