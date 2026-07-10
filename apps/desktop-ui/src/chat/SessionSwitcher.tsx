@@ -42,7 +42,7 @@ export function SessionSwitcher(): JSX.Element {
         onClick={() => setOpen(!open)}
       >
         <span className="text-sm font-medium truncate">{activeSession?.title ?? '新对话'}</span>
-        <span className="i-mdi:chevron-down text-base ml-2 text-[var(--ema-text-tertiary)]" aria-hidden />
+        <span className="i-lucide:chevron-down text-base ml-2 text-[var(--ema-text-tertiary)]" aria-hidden />
       </Button>
 
       {open && (
@@ -89,7 +89,7 @@ export function SessionSwitcher(): JSX.Element {
                   setOpen(false);
                 }}
               >
-                <span className="i-mdi:plus text-base mr-1" aria-hidden />
+                <span className="i-lucide:plus text-base mr-1" aria-hidden />
                 新建会话
               </Button>
             </div>
@@ -117,7 +117,7 @@ function Section({
         className="flex items-center gap-1 px-2 py-1 text-xs w-full text-left transition-colors text-[var(--ema-text-tertiary)] hover:text-[var(--ema-text-primary)] font-normal"
         onClick={() => setCollapsed(!collapsed)}
       >
-        <span className={`i-mdi:chevron-right text-sm transition-transform ${collapsed ? '' : 'rotate-90'}`} aria-hidden />
+        <span className={`i-lucide:chevron-right text-sm transition-transform ${collapsed ? '' : 'rotate-90'}`} aria-hidden />
         {label}
         <span className="ml-1 text-[var(--ema-text-tertiary)]">({sessions.length})</span>
       </Button>
@@ -158,19 +158,19 @@ function SessionRow({ session, isActive, onSelect }: {
     {
       kind:     'item',
       label:    session.pinned ? '取消固定' : '固定',
-      icon:     session.pinned ? 'i-mdi:pin-off-outline' : 'i-mdi:pin-outline',
+      icon:     session.pinned ? 'i-lucide:pin-off' : 'i-lucide:pin',
       onSelect: () => void runWithToast(useSessionStore.getState().pinSession(session.id as SessionId, !session.pinned), '固定失败'),
     },
     {
       kind:     'item',
       label:    '重命名',
-      icon:     'i-mdi:pencil-outline',
+      icon:     'i-lucide:pencil',
       onSelect: () => setPromptRename(true),
     },
     {
       kind:     'item',
       label:    'Fork',
-      icon:     'i-mdi:source-fork',
+      icon:     'i-lucide:git-fork',
       onSelect: () => void (async () => {
         const newId = await useSessionStore.getState().forkSession(session.id as SessionId);
         void useConversationStore.getState().viewSession(newId);
@@ -179,26 +179,26 @@ function SessionRow({ session, isActive, onSelect }: {
     {
       kind:     'item',
       label:    '设置分组',
-      icon:     'i-mdi:tag-outline',
+      icon:     'i-lucide:tag',
       onSelect: () => setPromptGroup(true),
     },
     {
       kind:     'item',
       label:    '工作区目录',
-      icon:     'i-mdi:folder-outline',
+      icon:     'i-lucide:folder',
       onSelect: () => setShowWorkspace(true),
     },
     {
       kind:     'item',
       label:    '归档',
-      icon:     'i-mdi:archive-outline',
+      icon:     'i-lucide:archive',
       onSelect: () => void runWithToast(useSessionStore.getState().archiveSession(session.id as SessionId), '归档失败'),
     },
     { kind: 'separator' },
     {
       kind:     'item',
       label:    '删除',
-      icon:     'i-mdi:delete-outline',
+      icon:     'i-lucide:trash-2',
       danger:   true,
       onSelect: () => setPendingDelete(true),
     },
@@ -218,7 +218,7 @@ function SessionRow({ session, isActive, onSelect }: {
     >
       <div className="flex items-center gap-2 truncate min-w-0">
         {session.pinned && (
-          <span className="i-mdi:pin text-xs shrink-0 text-[var(--ema-primary)]" aria-hidden />
+          <span className="i-lucide:pin text-xs shrink-0 text-[var(--ema-primary)]" aria-hidden />
         )}
         <span className="truncate">{session.title || '新对话'}</span>
         {session.runningTurnCount > 0 && (
@@ -230,7 +230,7 @@ function SessionRow({ session, isActive, onSelect }: {
         <DropdownMenu
           trigger={
             <Button variant="ghost" className="opacity-0 group-hover:opacity-100 px-1 rounded transition-colors text-[var(--ema-text-tertiary)] hover:text-[var(--ema-text-primary)] font-normal">
-              <span className="i-mdi:dots-horizontal text-base" aria-hidden />
+              <span className="i-lucide:ellipsis text-base" aria-hidden />
             </Button>
           }
           items={menuItems}

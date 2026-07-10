@@ -7,7 +7,7 @@
  *   - 文本    -> <pre> 纯文本(代码无高亮,Shiki 禁用)
  *   - 过大    -> 提示
  *   - 二进制  -> 提示
- * 顶部回退按钮(IconButton i-mdi:arrow-left)+ 文件名 + 大小。
+ * 顶部回退按钮(IconButton i-lucide:arrow-left)+ 文件名 + 大小。
  * 入场 ema-fade-in(style.css)。ScrollArea 包裹(@ema-agent/ui)。
  */
 import { useEffect, useState, type JSX } from 'react';
@@ -73,7 +73,7 @@ export function FilePreview({ path, onBack }: { path: string; onBack: () => void
         <IconButton
           size="sm"
           label="返回文件列表"
-          icon="i-mdi:arrow-left"
+          icon="i-lucide:arrow-left"
           onClick={onBack}
         />
         <span className="flex-1 truncate text-xs font-mono text-[var(--ema-text-primary)]" title={path}>

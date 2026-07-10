@@ -10,28 +10,28 @@ import type { AttachmentInputWire } from '../api/turns.js';
 
 function chipMeta(mime: string, name: string): { icon: string; color: string } {
   if (mime.startsWith('image/'))
-    return { icon: 'i-mdi:image-outline',          color: 'oklch(0.72 0.14 160)' };  // teal
+    return { icon: 'i-lucide:image',          color: 'oklch(0.72 0.14 160)' };  // teal
 
   if (mime === 'application/pdf')
-    return { icon: 'i-mdi:file-pdf-box',            color: 'oklch(0.65 0.20 25)'  };  // red
+    return { icon: 'i-lucide:file-text',            color: 'oklch(0.65 0.20 25)'  };  // red
 
   if (mime.includes('wordprocessingml') || mime.includes('msword') || name.endsWith('.doc') || name.endsWith('.docx'))
-    return { icon: 'i-mdi:file-word',               color: 'oklch(0.60 0.18 255)' };  // blue
+    return { icon: 'i-lucide:file-text',               color: 'oklch(0.60 0.18 255)' };  // blue
 
   if (mime.includes('presentationml') || mime.includes('powerpoint') || name.endsWith('.ppt') || name.endsWith('.pptx'))
-    return { icon: 'i-mdi:file-powerpoint',         color: 'oklch(0.65 0.19 45)'  };  // orange
+    return { icon: 'i-lucide:file-text',         color: 'oklch(0.65 0.19 45)'  };  // orange
 
   if (mime.includes('spreadsheetml') || mime.includes('excel') || name.endsWith('.xls') || name.endsWith('.xlsx'))
-    return { icon: 'i-mdi:file-excel',              color: 'oklch(0.65 0.18 150)' };  // green
+    return { icon: 'i-lucide:file-text',              color: 'oklch(0.65 0.18 150)' };  // green
 
   if (mime.startsWith('text/x-') || mime === 'application/json' ||
       /\.(ts|tsx|js|jsx|py|rs|go|cpp|c|java|rb|php|sh|yaml|yml|toml|sql)$/.test(name))
-    return { icon: 'i-mdi:file-code-outline',       color: 'oklch(0.72 0.14 75)'  };  // amber
+    return { icon: 'i-lucide:file-code',       color: 'oklch(0.72 0.14 75)'  };  // amber
 
   if (mime.startsWith('text/'))
-    return { icon: 'i-mdi:file-document-outline',   color: 'oklch(0.65 0.04 250)' };  // neutral
+    return { icon: 'i-lucide:file-text',   color: 'oklch(0.65 0.04 250)' };  // neutral
 
-  return   { icon: 'i-mdi:paperclip',               color: 'oklch(0.60 0.04 250)' };
+  return   { icon: 'i-lucide:paperclip',               color: 'oklch(0.60 0.04 250)' };
 }
 
 function fmtSize(bytes: number): string {
@@ -97,7 +97,7 @@ export function AttachmentChip({ attachment, onRemove }: AttachmentChipProps): J
           onClick={(e) => { e.stopPropagation(); onRemove(); }}
           aria-label={`移除 ${attachment.name}`}
         >
-          <span className="i-mdi:close text-sm" aria-hidden />
+          <span className="i-lucide:x text-sm" aria-hidden />
         </button>
       )}
     </div>

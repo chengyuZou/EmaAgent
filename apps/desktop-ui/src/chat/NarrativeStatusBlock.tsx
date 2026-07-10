@@ -36,13 +36,13 @@ export function NarrativeStatusBlock({ slice }: { slice: NarrativeSlice }): Reac
         aria-expanded={outerOpen}
       >
         {allDone
-          ? <span className="i-mdi:check-circle-outline shrink-0 text-[var(--ema-info)]" aria-hidden />
+          ? <span className="i-lucide:circle-check shrink-0 text-[var(--ema-info)]" aria-hidden />
           : <Spinner size="sm" />
         }
         <span className="flex-1">
           {allDone ? `已检索 ${timelines.length} 条剧情线` : '检索剧情线…'}
         </span>
-        <span className={`${outerOpen ? 'i-mdi:chevron-down' : 'i-mdi:chevron-right'} text-[var(--ema-text-tertiary)]`} aria-hidden />
+        <span className={`${outerOpen ? 'i-lucide:chevron-down' : 'i-lucide:chevron-right'} text-[var(--ema-text-tertiary)]`} aria-hidden />
       </Button>
 
       {/* 外层折叠区:ema-collapsible 双向动画。内层 gap-2 与 header 间距一致 */}
@@ -91,12 +91,12 @@ function TimelineRow({
         className="flex items-center gap-1.5 text-left w-full hover:opacity-80 disabled:cursor-default disabled:hover:opacity-100"
       >
         {completed
-          ? <span className="i-mdi:check shrink-0 text-[var(--ema-info)]" aria-hidden />
-          : <span className="i-mdi:dots-horizontal shrink-0 text-[var(--ema-text-tertiary)]" aria-hidden />
+          ? <span className="i-lucide:check shrink-0 text-[var(--ema-info)]" aria-hidden />
+          : <span className="i-lucide:ellipsis shrink-0 text-[var(--ema-text-tertiary)]" aria-hidden />
         }
         <span className={completed ? 'text-[var(--ema-text-secondary)]' : 'text-[var(--ema-text-tertiary)]'}>{name}</span>
         {isMulti && completed && (
-          <span className={`ml-auto ${innerOpen ? 'i-mdi:chevron-down' : 'i-mdi:chevron-right'} text-[var(--ema-text-tertiary)]`} aria-hidden />
+          <span className={`ml-auto ${innerOpen ? 'i-lucide:chevron-down' : 'i-lucide:chevron-right'} text-[var(--ema-text-tertiary)]`} aria-hidden />
         )}
       </Button>
 

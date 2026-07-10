@@ -64,7 +64,7 @@ export function WorkspacePicker({
         <IconButton
           size="sm"
           label="浏览…"
-          icon="i-mdi:folder-open-outline"
+          icon="i-lucide:folder-open"
           className="px-2 rounded-md text-xs transition-colors text-[var(--ema-text-secondary)] bg-[var(--ema-surface-3)] hover:bg-[var(--ema-surface-2)]"
           onClick={() => void pick()}
           title="浏览…"

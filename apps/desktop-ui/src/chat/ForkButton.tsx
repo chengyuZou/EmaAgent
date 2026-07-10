@@ -40,7 +40,7 @@ export function ForkButton({ turnId }: { turnId: string }): JSX.Element | null {
     <IconButton
       variant="default"
       size="sm"
-      icon="i-mdi:source-fork"
+      icon="i-lucide:git-fork"
       label="从此处分叉新分支"
       className="opacity-30 hover:opacity-80 -ml-0.5"
       onClick={() => void handleFork()}

@@ -89,7 +89,7 @@ export function ToolCallBlock({ slice, streaming = false, turnId }: ToolCallBloc
         className="flex items-center gap-2 text-left w-full group"
         onClick={() => setOpen((v) => !v)}
       >
-        <span className={`text-[10px] w-3 shrink-0 ${open ? 'i-mdi:chevron-down' : 'i-mdi:chevron-right'} text-[var(--ema-text-tertiary)]`} aria-hidden />
+        <span className={`text-[10px] w-3 shrink-0 ${open ? 'i-lucide:chevron-down' : 'i-lucide:chevron-right'} text-[var(--ema-text-tertiary)]`} aria-hidden />
 
         <span className={`font-mono text-xs transition-colors ${
           hasError   ? 'text-[var(--ema-danger)]' :
@@ -120,7 +120,7 @@ export function ToolCallBlock({ slice, streaming = false, turnId }: ToolCallBloc
           <span className="ema-chip-in shrink-0">
             <IconButton
               label="中止该工具"
-              icon="i-mdi:stop-circle-outline"
+              icon="i-lucide:circle-stop"
               variant="danger"
               size="sm"
               onClick={(e) => {
@@ -143,7 +143,7 @@ export function ToolCallBlock({ slice, streaming = false, turnId }: ToolCallBloc
             className="absolute top-0 right-0 px-1.5 py-0.5 rounded text-[10px] transition-colors text-[var(--ema-text-tertiary)] hover:text-[var(--ema-text-primary)] hover:bg-[var(--ema-surface-2)]"
             onClick={(e) => { e.stopPropagation(); copy(); }}
           >
-            {copied ? <span className="i-mdi:check text-xs" aria-hidden /> : <span className="i-mdi:content-copy text-xs" aria-hidden />}
+            {copied ? <span className="i-lucide:check text-xs" aria-hidden /> : <span className="i-lucide:copy text-xs" aria-hidden />}
           </button>
 
           {/* Bash: 融合终端视图（命令 + 输出，不走通用平铺） */}

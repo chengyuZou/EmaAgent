@@ -41,7 +41,7 @@ export function ModeSelector({ mode, onModeChange }: ModeSelectorProps): JSX.Ele
           <div
             className="ema-slide-up absolute bottom-full left-0 mb-1 z-50
                        bg-[var(--ema-surface-4)] border border-[var(--ema-border)]
-                       rounded-xl p-1 shadow-[var(--ema-shadow-3)] min-w-32"
+                       rounded-xl p-1 flex flex-col gap-0.5 shadow-[var(--ema-shadow-3)] min-w-32"
           >
             {MODES.map((m) => (
               <Button

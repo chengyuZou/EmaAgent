@@ -17,21 +17,21 @@ import { FilePreview } from './FilePreview.js';
 
 function fileIcon(name: string): string {
   const ext = name.split('.').pop()?.toLowerCase() ?? '';
-  if (['ts', 'tsx', 'js', 'jsx', 'mjs', 'cjs'].includes(ext)) return 'i-mdi:language-typescript';
-  if (['py'].includes(ext))                     return 'i-mdi:language-python';
-  if (['rs'].includes(ext))                     return 'i-mdi:language-rust';
-  if (['go'].includes(ext))                     return 'i-mdi:language-go';
-  if (['md', 'mdx'].includes(ext))              return 'i-mdi:language-markdown';
-  if (['json', 'jsonl', 'jsonc'].includes(ext)) return 'i-mdi:code-json';
-  if (['yaml', 'yml'].includes(ext))            return 'i-mdi:file-code-outline';
-  if (['css', 'scss', 'sass'].includes(ext))    return 'i-mdi:language-css3';
-  if (['html', 'htm'].includes(ext))            return 'i-mdi:language-html5';
-  if (['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp'].includes(ext)) return 'i-mdi:image-outline';
-  if (['pdf'].includes(ext))                    return 'i-mdi:file-pdf-box';
-  if (['sh', 'bash', 'zsh', 'fish'].includes(ext)) return 'i-mdi:console';
-  if (['toml', 'ini', 'cfg', 'conf'].includes(ext)) return 'i-mdi:file-cog-outline';
-  if (['lock'].includes(ext) || name.endsWith('.lock')) return 'i-mdi:lock-outline';
-  return 'i-mdi:file-outline';
+  if (['ts', 'tsx', 'js', 'jsx', 'mjs', 'cjs'].includes(ext)) return 'i-lucide:file-code';
+  if (['py'].includes(ext))                     return 'i-lucide:file-code';
+  if (['rs'].includes(ext))                     return 'i-lucide:file-code';
+  if (['go'].includes(ext))                     return 'i-lucide:file-code';
+  if (['md', 'mdx'].includes(ext))              return 'i-lucide:file-text';
+  if (['json', 'jsonl', 'jsonc'].includes(ext)) return 'i-lucide:braces';
+  if (['yaml', 'yml'].includes(ext))            return 'i-lucide:file-code';
+  if (['css', 'scss', 'sass'].includes(ext))    return 'i-lucide:file-code';
+  if (['html', 'htm'].includes(ext))            return 'i-lucide:file-code';
+  if (['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp'].includes(ext)) return 'i-lucide:image';
+  if (['pdf'].includes(ext))                    return 'i-lucide:file-text';
+  if (['sh', 'bash', 'zsh', 'fish'].includes(ext)) return 'i-lucide:terminal';
+  if (['toml', 'ini', 'cfg', 'conf'].includes(ext)) return 'i-lucide:settings';
+  if (['lock'].includes(ext) || name.endsWith('.lock')) return 'i-lucide:lock';
+  return 'i-lucide:file';
 }
 
 function fmtSize(bytes: number): string {
@@ -88,15 +88,15 @@ function FileRow({
           className={`text-xs shrink-0 transition-transform duration-150 ${expanded ? 'rotate-90' : ''} ${loading ? 'animate-spin' : ''} text-[var(--ema-text-tertiary)]`}
         >
           {loading
-            ? <span className="i-mdi:loading text-sm" />
-            : <span className="i-mdi:chevron-right text-sm" />}
+            ? <span className="i-lucide:loader-circle text-sm" />
+            : <span className="i-lucide:chevron-right text-sm" />}
         </span>
       ) : (
         <span className={`${fileIcon(entry.name)} text-sm shrink-0 text-[var(--ema-text-tertiary)]`} aria-hidden />
       )}
 
       {isDir && !loading && (
-        <span className={`${expanded ? 'i-mdi:folder-open-outline' : 'i-mdi:folder-outline'} text-sm shrink-0 text-[var(--ema-warning)]`} aria-hidden />
+        <span className={`${expanded ? 'i-lucide:folder-open' : 'i-lucide:folder'} text-sm shrink-0 text-[var(--ema-warning)]`} aria-hidden />
       )}
 
       <span
@@ -225,7 +225,7 @@ export function FilesPanel(): JSX.Element {
   if (!root) {
     return (
       <div className="flex flex-col items-center justify-center gap-3 py-10 px-4 ema-fade-in">
-        <span className="i-mdi:folder-alert-outline text-3xl opacity-20 text-[var(--ema-primary)]" aria-hidden />
+        <span className="i-lucide:folder-x text-3xl opacity-20 text-[var(--ema-primary)]" aria-hidden />
         <p className="text-xs text-center text-[var(--ema-text-tertiary)]">
           当前会话未配置工作区
         </p>

@@ -91,11 +91,11 @@ export function SessionSidebar(): JSX.Element {
         <div className="flex flex-col items-center py-2 gap-2">
           <Button
             variant="ghost"
-            className="w-7 h-7 flex items-center justify-center rounded-md transition-colors text-[var(--ema-text-primary)] hover:bg-[var(--ema-surface-2)] font-normal"
+            className="w-7 h-7 flex items-center justify-center rounded-md transition-colors border bg-[var(--ema-surface-3)] border-[var(--ema-border)] text-[var(--ema-text-primary)] hover:bg-[var(--ema-primary-muted)] hover:border-[var(--ema-primary)]/40 font-normal"
             onClick={() => setCollapsed(false)}
             title="展开侧边栏"
           >
-            <span className="i-mdi:panel-right text-base leading-none" aria-hidden />
+            <span className="i-lucide:panel-right text-base shrink-0 leading-none" aria-hidden />
           </Button>
           <div className="flex flex-col items-center gap-1.5 mt-1">
             {sessions.recent.slice(0, 8).map((s) => {
@@ -122,7 +122,7 @@ export function SessionSidebar(): JSX.Element {
               onCollapse={() => setCollapsed(true)}
             />
             <SidebarCommand
-              icon="i-mdi:magnify"
+              icon="i-lucide:search"
               label="搜索"
               onClick={() => setSearchOpen(true)}
             />
@@ -180,17 +180,17 @@ function NewConversationCommand({
         className="min-w-0 flex flex-1 items-center gap-2.5 text-left font-normal"
         onClick={() => void onCreate()}
       >
-        <span className="i-mdi:square-edit-outline text-base text-[var(--ema-text-tertiary)]" aria-hidden />
+        <span className="i-lucide:square-pen text-base text-[var(--ema-text-tertiary)]" aria-hidden />
         <span className="truncate">新对话</span>
       </Button>
       <Button
         variant="ghost"
-        className="w-6 h-6 shrink-0 flex items-center justify-center rounded transition-colors text-[var(--ema-text-primary)] hover:bg-[var(--ema-surface-2)] font-normal"
+        className="w-6 h-6 shrink-0 flex items-center justify-center rounded transition-colors border bg-[var(--ema-surface-3)] border-[var(--ema-border)] text-[var(--ema-text-primary)] hover:bg-[var(--ema-primary-muted)] hover:border-[var(--ema-primary)]/40 font-normal"
         onClick={onCollapse}
         title="折叠侧边栏"
         aria-label="折叠侧边栏"
       >
-        <span className="i-mdi:panel-left text-[15px] leading-none" aria-hidden />
+        <span className="i-lucide:panel-left text-[15px] shrink-0 leading-none" aria-hidden />
       </Button>
     </div>
   );
@@ -232,7 +232,7 @@ function ProjectListSection({
     <div className="mb-1">
       <SectionHeader
         label={label}
-        icon="i-mdi:folder-multiple-outline"
+        icon="i-lucide:folders"
         count={groups.length}
         collapsed={collapsed}
         onToggle={() => setCollapsed(!collapsed)}
@@ -281,10 +281,10 @@ function ProjectNode({
         }`}
         onClick={() => setCollapsed(!collapsed)}
       >
-        <span className={`i-mdi:folder-outline text-base ${hasActive ? 'text-[var(--ema-text-secondary)]' : 'text-[var(--ema-text-tertiary)]'}`} aria-hidden />
+        <span className={`i-lucide:folder text-base ${hasActive ? 'text-[var(--ema-text-secondary)]' : 'text-[var(--ema-text-tertiary)]'}`} aria-hidden />
         <span className="flex-1 truncate text-left">{group.label}</span>
         <span className={`text-[11px] tabular-nums ${hasActive ? 'text-[var(--ema-text-secondary)]' : 'text-[var(--ema-text-tertiary)]'}`}>{group.sessions.length}</span>
-        <span className={`i-mdi:chevron-down text-xs ${hasActive ? 'text-[var(--ema-text-secondary)]' : 'text-[var(--ema-text-tertiary)]'} transition-transform duration-200 ${collapsed ? '-rotate-90' : ''}`} aria-hidden />
+        <span className={`i-lucide:chevron-down text-xs ${hasActive ? 'text-[var(--ema-text-secondary)]' : 'text-[var(--ema-text-tertiary)]'} transition-transform duration-200 ${collapsed ? '-rotate-90' : ''}`} aria-hidden />
       </Button>
       <AnimatedCollapse open={!collapsed} maxHeight={maxHeight}>
         <div className="flex flex-col gap-0.5 pt-0.5">
@@ -322,7 +322,7 @@ function SidebarSection({
     <div className="mb-1">
       <SectionHeader
         label={label}
-        icon={label === '归档' ? 'i-mdi:archive-outline' : 'i-mdi:message-outline'}
+        icon={label === '归档' ? 'i-lucide:archive' : 'i-lucide:message-circle'}
         count={sessions.length}
         collapsed={collapsed}
         onToggle={() => setCollapsed(!collapsed)}
@@ -364,7 +364,7 @@ function SectionHeader({
       <span className={`${icon} text-base text-[var(--ema-text-tertiary)]`} aria-hidden />
       <span className="flex-1 truncate">{label}</span>
       <span className="text-[11px] tabular-nums text-[var(--ema-text-tertiary)]">{count}</span>
-      <span className={`i-mdi:chevron-right text-xs transition-transform duration-200 ease-out ${collapsed ? '' : 'rotate-90'} text-[var(--ema-text-tertiary)]`} aria-hidden />
+      <span className={`i-lucide:chevron-right text-xs transition-transform duration-200 ease-out ${collapsed ? '' : 'rotate-90'} text-[var(--ema-text-tertiary)]`} aria-hidden />
     </Button>
   );
 }
@@ -425,19 +425,19 @@ function SidebarRow({ session, isActive, streaming, pendingCounts, nested = fals
     {
       kind:     'item',
       label:    session.pinned ? '取消固定' : '固定',
-      icon:     session.pinned ? 'i-mdi:pin-off-outline' : 'i-mdi:pin-outline',
+      icon:     session.pinned ? 'i-lucide:pin-off' : 'i-lucide:pin',
       onSelect: () => void runWithToast(useSessionStore.getState().pinSession(session.id as SessionId, !session.pinned), '固定失败'),
     },
     {
       kind:     'item',
       label:    '重命名',
-      icon:     'i-mdi:pencil-outline',
+      icon:     'i-lucide:pencil',
       onSelect: () => setPromptRename(true),
     },
     {
       kind:     'item',
       label:    'Fork',
-      icon:     'i-mdi:source-fork',
+      icon:     'i-lucide:git-fork',
       onSelect: () => void (async () => {
         const newId = await useSessionStore.getState().forkSession(session.id as SessionId);
         void useConversationStore.getState().viewSession(newId);
@@ -446,26 +446,26 @@ function SidebarRow({ session, isActive, streaming, pendingCounts, nested = fals
     {
       kind:     'item',
       label:    '设置分组',
-      icon:     'i-mdi:tag-outline',
+      icon:     'i-lucide:tag',
       onSelect: () => setPromptGroup(true),
     },
     {
       kind:     'item',
       label:    '工作区目录',
-      icon:     'i-mdi:folder-outline',
+      icon:     'i-lucide:folder',
       onSelect: () => setShowWorkspace(true),
     },
     {
       kind:     'item',
       label:    '归档',
-      icon:     'i-mdi:archive-outline',
+      icon:     'i-lucide:archive',
       onSelect: () => void runWithToast(useSessionStore.getState().archiveSession(session.id as SessionId), '归档失败'),
     },
     { kind: 'separator' },
     {
       kind:     'item',
       label:    '删除',
-      icon:     'i-mdi:delete-outline',
+      icon:     'i-lucide:trash-2',
       danger:   true,
       onSelect: () => setPendingDelete(true),
     },
@@ -507,7 +507,7 @@ function SidebarRow({ session, isActive, streaming, pendingCounts, nested = fals
 
       <div className="flex items-center gap-1.5 min-w-0 flex-1">
         {session.pinned && (
-          <span className={`i-mdi:pin-outline text-[11px] shrink-0 ${isActive ? 'text-[var(--ema-text-secondary)]' : 'text-[var(--ema-text-tertiary)]'}`} aria-hidden />
+          <span className={`i-lucide:pin text-[11px] shrink-0 ${isActive ? 'text-[var(--ema-text-secondary)]' : 'text-[var(--ema-text-tertiary)]'}`} aria-hidden />
         )}
         <span className="truncate min-w-0 leading-snug">
           {session.title || '新对话'}
@@ -530,10 +530,8 @@ function SidebarRow({ session, isActive, streaming, pendingCounts, nested = fals
         </span>
         <DropdownMenu
           trigger={
-            <Button variant="ghost" className={`absolute right-0 top-1/2 -translate-y-1/2 w-5 h-5 flex items-center justify-center rounded transition-[opacity,color,background-color] text-[var(--ema-text-tertiary)] hover:text-[var(--ema-text-primary)] hover:bg-[var(--ema-surface-3)] font-normal ${
-              isActive ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
-            }`}>
-              <span className="i-mdi:dots-horizontal text-xs" aria-hidden />
+            <Button variant="ghost" className="absolute right-0 top-1/2 -translate-y-1/2 w-5 h-5 p-0 flex items-center justify-center rounded transition-[color,background-color,border-color] border bg-[var(--ema-surface-3)] border-[var(--ema-border)] text-[var(--ema-text-primary)] hover:bg-[var(--ema-primary-muted)] hover:border-[var(--ema-primary)]/40 font-normal">
+              <span className="i-solar:menu-dots-bold-duotone text-xs" aria-hidden />
             </Button>
           }
           items={menuItems}

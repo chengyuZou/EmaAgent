@@ -185,7 +185,7 @@ export function ArtifactCard({ artifact }: ArtifactCardProps): React.JSX.Element
       <Card variant="elevated" padding="sm" className="flex flex-col gap-2 min-w-0">
         {/* Header */}
         <div className="flex items-center gap-2 min-w-0">
-          <span className="i-mdi:file-document-outline shrink-0 text-[var(--ema-text-tertiary)]" aria-hidden />
+          <span className="i-lucide:file-text shrink-0 text-[var(--ema-text-tertiary)]" aria-hidden />
           <span className="truncate text-sm font-medium flex-1 text-[var(--ema-text-primary)]">
             {artifact.title}
           </span>
@@ -209,7 +209,7 @@ export function ArtifactCard({ artifact }: ArtifactCardProps): React.JSX.Element
             <Button
               variant="primary"
               size="sm"
-              icon="i-mdi:folder-arrow-right-outline"
+              icon="i-lucide:folder-open"
               loading={applying}
               onClick={() => void handlePickAndApply()}
             >
@@ -223,7 +223,7 @@ export function ArtifactCard({ artifact }: ArtifactCardProps): React.JSX.Element
             <Button
               variant="ghost"
               size="sm"
-              icon="i-mdi:folder-move-outline"
+              icon="i-lucide:folder-open"
               loading={applying}
               onClick={() => void handlePickAndApply()}
             >

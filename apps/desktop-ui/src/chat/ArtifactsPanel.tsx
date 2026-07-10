@@ -39,7 +39,7 @@ export function ArtifactsPanel(): JSX.Element {
     return (
       <div className="flex flex-col items-center justify-center gap-3 py-10 px-4 ema-fade-in">
         <span
-          className="i-mdi:file-document-multiple-outline text-3xl opacity-20 text-[var(--ema-primary)]"
+          className="i-lucide:files text-3xl opacity-20 text-[var(--ema-primary)]"
           aria-hidden
         />
         <p className="text-xs text-center text-[var(--ema-text-tertiary)]">

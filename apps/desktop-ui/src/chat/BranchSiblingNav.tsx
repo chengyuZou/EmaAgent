@@ -46,14 +46,14 @@ export function BranchSiblingNav({ turnId }: { turnId: string }): JSX.Element | 
         disabled={pos === 1}
         onClick={() => navigate(-1)}
         title="上一个分支"
-      ><span className="i-mdi:chevron-left text-[10px]" aria-hidden /></button>
+      ><span className="i-lucide:chevron-left text-[10px]" aria-hidden /></button>
       <span className="text-[10px] text-[var(--ema-text-tertiary)]">{pos}/{total}</span>
       <button
         className="w-3.5 h-3.5 flex items-center justify-center transition-colors leading-none disabled:opacity-25 disabled:pointer-events-none text-[var(--ema-text-tertiary)] hover:text-[var(--ema-text-primary)]"
         disabled={pos === total}
         onClick={() => navigate(1)}
         title="下一个分支"
-      ><span className="i-mdi:chevron-right text-[10px]" aria-hidden /></button>
+      ><span className="i-lucide:chevron-right text-[10px]" aria-hidden /></button>
     </span>
   );
 }

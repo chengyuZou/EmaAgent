@@ -10,6 +10,8 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { UserConfig } from '@unocss/core';
 import { createExternalPackageIconLoader } from '@iconify/utils/lib/loader/external-pkg';
+import lucideIcons from '@iconify-json/lucide/icons.json';
+import solarIcons from '@iconify-json/solar/icons.json';
 
 // ── Build-time path assertions ────────────────────────────────────────────────
 // Fail fast if a scanned directory is missing — catches typos or deleted
@@ -58,7 +60,13 @@ const PROVIDER_ICON_SAFELIST = [
 
 const config: UserConfig = {
   presets: emaSharedPreset({
-    iconCollections: createExternalPackageIconLoader('@proj-airi/lobe-icons'),
+    iconCollections: {
+      ...createExternalPackageIconLoader('@proj-airi/lobe-icons'),
+      // 显式传 lucide/solar collection,绕过 preset-icons 自动发现(自动发现时 dev 给 icon
+      // 名加 "icon-" 前缀 -> lucide:icon-git-fork failed to load,icon 不显示)
+      lucide: lucideIcons,
+      solar: solarIcons,
+    },
   }),
   theme:     emaSharedTheme(),
   shortcuts: emaSharedShortcuts(),

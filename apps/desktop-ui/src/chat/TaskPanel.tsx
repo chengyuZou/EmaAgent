@@ -100,7 +100,7 @@ export function TaskPanel({ className = '' }: TaskPanelProps): JSX.Element {
       {/* Empty state */}
       {sessionTasks.length === 0 && (
         <div className="flex flex-col items-center justify-center gap-2 py-10 text-xs text-[var(--ema-text-tertiary)]">
-          <span className="i-mdi:robot-outline text-2xl opacity-40" />
+          <span className="i-lucide:bot text-2xl opacity-40" />
           <span>{search ? '无匹配任务' : '暂无 Agent 任务'}</span>
         </div>
       )}
@@ -246,7 +246,7 @@ function TaskCard({ task, expanded, onToggle, staggerIndex = 0 }: TaskCardProps)
         <IconButton
           variant="danger"
           size="sm"
-          icon={isRunning ? 'i-mdi:stop-circle-outline' : 'i-mdi:trash-can-outline'}
+          icon={isRunning ? 'i-lucide:circle-stop' : 'i-lucide:trash-2'}
           label={isRunning ? '取消' : '删除'}
           onClick={handleDelete}
         />
@@ -338,10 +338,10 @@ function ReasoningBlock({ text }: { text: string }): JSX.Element {
                    transition-colors duration-[var(--ema-duration-base)] text-[var(--ema-text-tertiary)]"
         onClick={() => setOpen((v) => !v)}
       >
-        <span className="i-mdi:brain text-sm" />
+        <span className="i-lucide:brain text-sm" />
         <span>思考过程</span>
         <span
-          className="ml-auto text-[10px] i-mdi:chevron-down transition-transform duration-[var(--ema-duration-base)]"
+          className="ml-auto text-[10px] i-lucide:chevron-down transition-transform duration-[var(--ema-duration-base)]"
           style={{ transform: open ? 'rotate(180deg)' : 'rotate(0deg)' }}
           aria-hidden
         />
@@ -385,7 +385,7 @@ function TranscriptRow({ msg }: { msg: AgentTaskMessageWire }): JSX.Element {
     const c = msg.content as ToolCallMessageContent;
     return (
       <div className="flex items-center gap-1.5 py-0.5">
-        <span className="i-mdi:function-variant text-sm flex-shrink-0 text-[var(--ema-primary)]" />
+        <span className="i-lucide:square-code text-sm flex-shrink-0 text-[var(--ema-primary)]" />
         <span className="text-xs font-mono text-[var(--ema-primary)]">{c.name}</span>
         <span className="text-xs text-[var(--ema-text-tertiary)]">
           轮次 {c.iteration}
@@ -399,7 +399,7 @@ function TranscriptRow({ msg }: { msg: AgentTaskMessageWire }): JSX.Element {
     return (
       <div className="flex items-start gap-1.5 py-0.5">
         <span
-          className={`text-sm flex-shrink-0 mt-0.5 ${c.isError ? 'i-mdi:alert-circle-outline' : 'i-mdi:check-circle-outline'} ${c.isError ? 'text-[var(--ema-danger)]' : 'text-[var(--ema-success)]'}`}
+          className={`text-sm flex-shrink-0 mt-0.5 ${c.isError ? 'i-lucide:circle-alert' : 'i-lucide:circle-check'} ${c.isError ? 'text-[var(--ema-danger)]' : 'text-[var(--ema-success)]'}`}
         />
         <span className={`text-xs truncate selectable ${c.isError ? 'text-[var(--ema-danger-text)]' : 'text-[var(--ema-text-secondary)]'}`}>
           {c.excerpt || (c.isError ? c.error ?? '失败' : '完成')}
@@ -436,11 +436,11 @@ type StatusMeta = { icon: string; color: string };
 
 function statusMeta(status: AgentTaskState['status']): StatusMeta {
   switch (status) {
-    case 'running':      return { icon: 'i-mdi:loading animate-spin', color: 'var(--ema-primary)' };
-    case 'waiting_user': return { icon: 'i-mdi:help-circle-outline',  color: 'var(--ema-warning)' };
-    case 'completed':    return { icon: 'i-mdi:check-circle-outline', color: 'var(--ema-success)' };
-    case 'failed':       return { icon: 'i-mdi:alert-circle-outline', color: 'var(--ema-danger)' };
-    case 'cancelled':    return { icon: 'i-mdi:cancel',               color: 'var(--ema-text-tertiary)' };
+    case 'running':      return { icon: 'i-lucide:loader-circle animate-spin', color: 'var(--ema-primary)' };
+    case 'waiting_user': return { icon: 'i-lucide:circle-question-mark',  color: 'var(--ema-warning)' };
+    case 'completed':    return { icon: 'i-lucide:circle-check', color: 'var(--ema-success)' };
+    case 'failed':       return { icon: 'i-lucide:circle-alert', color: 'var(--ema-danger)' };
+    case 'cancelled':    return { icon: 'i-lucide:circle-x',               color: 'var(--ema-text-tertiary)' };
   }
 }
 

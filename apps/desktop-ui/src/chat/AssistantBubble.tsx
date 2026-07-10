@@ -143,7 +143,7 @@ export function AssistantBubble({ message, isStreaming }: AssistantBubbleProps):
             <IconButton
               size="sm"
               label={isPlayingThis ? '停止播放' : '重播语音'}
-              icon={isPlayingThis ? 'i-mdi:stop' : 'i-mdi:replay'}
+              icon={isPlayingThis ? 'i-lucide:square' : 'i-lucide:rotate-ccw'}
               className="opacity-30 hover:opacity-80 -ml-0.5"
               onClick={handleAudioClick}
             />

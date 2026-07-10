@@ -111,9 +111,9 @@ function buildTurnLayout(
 
 function ModeIcon({ mode }: { mode: TurnMode | null }): JSX.Element {
   const icon =
-    mode === 'agent'     ? 'i-mdi:robot-outline' :
-    mode === 'narrative' ? 'i-mdi:book-open-variant-outline' :
-                           'i-mdi:chat-outline';
+    mode === 'agent'     ? 'i-lucide:bot' :
+    mode === 'narrative' ? 'i-lucide:book-open' :
+                           'i-lucide:message-circle';
   return <span className={`${icon} text-sm`} aria-hidden />;
 }
 
@@ -334,7 +334,7 @@ export function BranchPanel(): JSX.Element {
   if (turns.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-12 gap-2 text-xs ema-fade-in text-[var(--ema-text-tertiary)]">
-        <span className="i-mdi:source-branch text-3xl opacity-30" aria-hidden />
+        <span className="i-lucide:git-branch text-3xl opacity-30" aria-hidden />
         <span>暂无对话</span>
       </div>
     );

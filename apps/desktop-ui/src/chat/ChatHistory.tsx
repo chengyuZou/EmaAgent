@@ -100,7 +100,7 @@ export function ChatHistory(): JSX.Element {
           className="ema-slide-up absolute bottom-4 left-1/2 -translate-x-1/2 px-3 py-1.5 rounded-full text-xs transition-colors shadow-lg bg-[var(--ema-surface-2)] hover:bg-[var(--ema-surface-3)] border border-[var(--ema-border)] text-[var(--ema-text-secondary)]"
           onClick={resetUserScrolled}
         >
-          <span className="i-mdi:arrow-down text-xs mr-1 align-middle" aria-hidden />回到底部
+          <span className="i-lucide:arrow-down text-xs mr-1 align-middle" aria-hidden />回到底部
         </Button>
       )}
     </div>

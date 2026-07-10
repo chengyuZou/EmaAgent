@@ -163,14 +163,14 @@ export function ChatPanel(): JSX.Element {
             <div className="flex items-center gap-0.5 shrink-0">
               {/* ⑂ Branches */}
               <InspectorDockBtn
-                icon="i-lucide:git-fork"
+                icon="i-solar:branching-paths-down-bold-duotone"
                 label="会话分支"
                 active={activePanels.has('branches')}
                 onClick={() => togglePanel('branches')}
               />
               {/* ▣ Artifacts */}
               <InspectorDockBtn
-                icon="i-lucide:layers"
+                icon="i-solar:layers-bold-duotone"
                 label="产物"
                 active={activePanels.has('artifacts')}
                 onClick={() => togglePanel('artifacts')}
@@ -179,14 +179,14 @@ export function ChatPanel(): JSX.Element {
               <div className="relative" ref={overflowRef}>
                 <Button
                   variant="ghost"
-                  className={`relative size-7 rounded-md flex items-center justify-center text-sm transition-colors
+                  className={`relative size-7 p-0 rounded-md flex items-center justify-center text-sm transition-colors
                     ${overflowOpen
                       ? 'text-[var(--ema-primary)] bg-[var(--ema-primary-muted)]'
                       : 'text-[var(--ema-text-primary)] hover:bg-[var(--ema-surface-2)]'}`}
                   onClick={() => setOverflowOpen((v) => !v)}
                   title="更多面板"
                 >
-                  <span className="i-lucide:ellipsis text-base" aria-hidden />
+                  <span className="i-solar:menu-dots-bold-duotone text-base shrink-0" aria-hidden />
                   {runningTaskCount > 0 && (
                     <span className="absolute -top-0.5 -right-0.5 min-w-[14px] h-3.5 flex items-center justify-center rounded-full text-[9px] font-bold px-0.5 pointer-events-none bg-[var(--ema-primary)] text-[var(--ema-text-primary)]">
                       {runningTaskCount}
@@ -195,15 +195,15 @@ export function ChatPanel(): JSX.Element {
                 </Button>
 
                 {overflowOpen && (
-                  <div className="ema-slide-up absolute top-full right-0 mt-1 z-50 w-44 rounded-xl border py-1 shadow-[var(--ema-shadow-3)] bg-[var(--ema-surface-4)] border-[var(--ema-border-hover)]">
+                  <div className="ema-slide-up absolute top-full right-0 mt-1 z-50 w-44 rounded-xl border p-1 shadow-[var(--ema-shadow-3)] bg-[var(--ema-surface-4)] border-[var(--ema-border-hover)]">
                     <OverflowItem
-                      icon="i-lucide:folder"
+                      icon="i-solar:folder-bold-duotone"
                       label="文件浏览"
                       active={activePanels.has('files')}
                       onClick={() => { togglePanel('files'); setOverflowOpen(false); }}
                     />
                     <OverflowItem
-                      icon="i-lucide:bot"
+                      icon="i-solar:cpu-bold-duotone"
                       label="后台任务"
                       active={activePanels.has('tasks')}
                       badge={runningTaskCount}
@@ -272,14 +272,14 @@ function InspectorDockBtn({
   return (
     <Button
       variant="ghost"
-      className={`relative size-7 rounded-md flex items-center justify-center text-sm transition-colors
+      className={`relative size-7 p-0 rounded-md flex items-center justify-center text-sm transition-colors
         ${active
           ? 'text-[var(--ema-primary)] bg-[var(--ema-primary-muted)]'
           : 'text-[var(--ema-text-primary)] hover:bg-[var(--ema-surface-2)]'}`}
       onClick={onClick}
       title={label}
     >
-      <span className={`${icon} text-base`} aria-hidden />
+      <span className={`${icon} text-base shrink-0`} aria-hidden />
       {badge != null && badge > 0 && (
         <span className="absolute -top-0.5 -right-0.5 min-w-[14px] h-3.5 flex items-center justify-center rounded-full text-[9px] font-bold px-0.5 pointer-events-none bg-[var(--ema-primary)] text-[var(--ema-primary-text)]">
           {badge}
@@ -297,7 +297,7 @@ function OverflowItem({
   return (
     <Button
       variant="ghost"
-      className={`w-full flex items-center gap-2.5 px-3 py-1.5 text-xs font-normal transition-colors
+      className={`w-full flex items-center gap-2.5 px-3 py-1.5 text-xs font-normal rounded-lg transition-colors
         ${active
           ? 'text-[var(--ema-primary)] bg-[var(--ema-primary-muted)]'
           : 'text-[var(--ema-text-primary)] hover:bg-[var(--ema-surface-3)]'}`}
@@ -372,10 +372,10 @@ function InspectorContent({
 }
 
 const PANEL_META: Record<InspectorPanelId, { label: string; icon: string }> = {
-  branches:  { label: '会话分支', icon: 'i-lucide:git-fork' },
-  artifacts: { label: '产物',     icon: 'i-lucide:layers' },
-  files:     { label: '文件',     icon: 'i-lucide:folder' },
-  tasks:     { label: '后台任务', icon: 'i-lucide:bot' },
+  branches:  { label: '会话分支', icon: 'i-solar:branching-paths-down-bold-duotone' },
+  artifacts: { label: '产物',     icon: 'i-solar:layers-bold-duotone' },
+  files:     { label: '文件',     icon: 'i-solar:folder-bold-duotone' },
+  tasks:     { label: '后台任务', icon: 'i-solar:cpu-bold-duotone' },
 };
 
 function InspectorPanelHeader({ id, compact }: { id: InspectorPanelId; compact?: boolean }): JSX.Element {

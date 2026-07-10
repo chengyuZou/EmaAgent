@@ -6,7 +6,7 @@
  * bottom toolbar, uses @ema-agent/ui ScrollArea for the model list.
  */
 import { useState, useEffect, useMemo, useRef, type JSX } from 'react';
-import { ScrollArea, Badge } from '@ema-agent/ui';
+import { Input, ScrollArea, Badge } from '@ema-agent/ui';
 import { modelsApi, type EnabledModelWire } from '../api/models.js';
 import { useUiStore } from '../stores/ui-store.js';
 
@@ -96,9 +96,9 @@ export function ModelPicker({ selected, onSelect, onClear }: ModelPickerProps): 
         onClick={() => setOpen(!open)}
         title={triggerTitle}
       >
-        <span className="i-mdi:robot-outline text-[10px]" aria-hidden />
+        <span className="i-lucide:bot text-[10px]" aria-hidden />
         <span className="truncate">{triggerLabel}</span>
-        <span className="i-mdi:chevron-up text-[10px] shrink-0" aria-hidden />
+        <span className="i-lucide:chevron-up text-[10px] shrink-0" aria-hidden />
       </button>
 
       {/* Dropdown — pops UPWARD (bottom-full) since it's in the bottom toolbar */}
@@ -114,10 +114,10 @@ export function ModelPicker({ selected, onSelect, onClear }: ModelPickerProps): 
           >
             {/* Search + clear */}
             <div className="flex items-center gap-1 px-3 py-2 border-b border-[var(--ema-border)] shrink-0">
-              <input
+              <Input
                 ref={searchRef}
-                className="flex-1 bg-transparent text-xs outline-none
-                           text-[var(--ema-text-primary)] placeholder-[var(--ema-text-tertiary)]"
+                inputSize="sm"
+                className="flex-1"
                 placeholder="搜索模型…"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
@@ -127,7 +127,7 @@ export function ModelPicker({ selected, onSelect, onClear }: ModelPickerProps): 
               />
               {selected && (
                 <button
-                  className="shrink-0 text-[10px] px-1
+                  className="shrink-0 text-[10px] px-1 rounded
                              text-[var(--ema-text-tertiary)] hover:text-[var(--ema-danger)]
                              transition-colors duration-[var(--ema-duration-base)]"
                   onClick={() => {
@@ -137,13 +137,13 @@ export function ModelPicker({ selected, onSelect, onClear }: ModelPickerProps): 
                   }}
                   title="恢复默认模型"
                 >
-                  <span className="i-mdi:close text-[10px]" aria-hidden />
+                  <span className="i-lucide:x text-[10px]" aria-hidden />
                 </button>
               )}
             </div>
 
             {/* Model list */}
-            <ScrollArea orientation="vertical" className="flex-1" viewportClassName="py-1">
+            <ScrollArea orientation="vertical" className="flex-1" viewportClassName="p-1">
               {loading ? (
                 <div className="px-3 py-6 text-xs text-[var(--ema-text-tertiary)] text-center">加载中…</div>
               ) : grouped.length === 0 ? (
@@ -165,7 +165,7 @@ export function ModelPicker({ selected, onSelect, onClear }: ModelPickerProps): 
                         <button
                           key={`${m.providerId}:${m.model}`}
                           className={
-                            'w-full flex items-center gap-2 text-left px-3 py-1.5 text-xs ' +
+                            'w-full flex items-center gap-2 text-left px-3 py-1.5 text-xs rounded-lg ' +
                             `transition-colors duration-[var(--ema-duration-base)] ` +
                             (isSelected
                               ? 'text-[var(--ema-primary)] bg-[var(--ema-primary-muted)]'
@@ -186,7 +186,7 @@ export function ModelPicker({ selected, onSelect, onClear }: ModelPickerProps): 
                             {fmtCtx(m.contextWindow)}
                           </span>
                           {isSelected && (
-                            <span className="i-mdi:check text-[var(--ema-primary)] text-[10px] shrink-0" aria-hidden />
+                            <span className="i-lucide:check text-[var(--ema-primary)] text-[10px] shrink-0" aria-hidden />
                           )}
                         </button>
                       );
