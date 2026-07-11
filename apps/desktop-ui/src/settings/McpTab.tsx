@@ -367,13 +367,13 @@ export function McpTab(): JSX.Element {
               <div
                 key={r.name}
                 className="flex items-start gap-3 px-3 py-2 rounded-lg
-                           border-2 border-solid border-[var(--ema-border)] bg-[var(--ema-surface-1)] ema-stagger-in ema-card-decorate hover:border-[var(--ema-primary)]/30 hover:bg-[var(--ema-surface-2)] hover:shadow-[var(--ema-shadow-soft)]"
+                           border-2 border-solid border-[var(--ema-border)] bg-[var(--ema-surface-1)] ema-stagger-in ema-card-decorate ema-card-decorate--circuit hover:border-[var(--ema-primary)]/30 hover:bg-[var(--ema-surface-2)] hover:shadow-[var(--ema-shadow-soft)]"
                 style={{ '--stagger-i': i } as CSSProperties}
               >
                 <Badge variant={r.ok ? 'success' : 'danger'} dot className="mt-0.5 shrink-0" />
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium text-[var(--ema-text-primary)]">{r.name}</span>
+                    <span className="text-sm font-semibold text-[var(--ema-text-primary)]">{r.name}</span>
                     <Badge variant={r.ok ? 'success' : 'danger'}>{r.ok ? '成功' : '失败'}</Badge>
                   </div>
                   {r.error && (
@@ -657,13 +657,13 @@ function McpMarketView({
               <div
                 key={entry.name}
                 className="bg-[var(--ema-surface-1)] ema-glass-weak border border-[var(--ema-border)]
-                           rounded-xl px-4 py-3 ema-stagger-in"
+                           rounded-xl px-4 py-3 ema-stagger-in ema-card-decorate ema-card-decorate--circuit"
                 style={{ '--stagger-i': i } as CSSProperties}
               >
               <div className="flex items-start gap-3">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-sm font-medium text-[var(--ema-text-primary)] truncate">
+                    <span className="text-sm font-semibold text-[var(--ema-text-primary)] truncate">
                       {entry.title || entry.name}
                     </span>
                     {entry.version && <Badge variant="neutral">v{entry.version}</Badge>}
@@ -828,7 +828,7 @@ function ServerRow({
   ];
 
   return (
-    <Card variant="elevated" padding="sm" className="active:scale-[0.98] transition-all duration-[var(--ema-duration-base)]">
+    <Card variant="elevated" padding="sm" className="active:scale-[0.98] transition-all duration-[var(--ema-duration-base)] ema-card-decorate ema-card-decorate--circuit">
       <div className="group flex items-start gap-3">
         {/* Status dot */}
         <div className="pt-0.5 shrink-0">
@@ -838,7 +838,7 @@ function ServerRow({
         {/* Info */}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-sm font-medium text-[var(--ema-text-primary)]">{server.name}</span>
+            <span className="text-sm font-semibold text-[var(--ema-text-primary)]">{server.name}</span>
             <Badge variant={st.variant}>{st.label}</Badge>
             {toolCount > 0 && (
               <button

@@ -40,8 +40,8 @@ export function ModelToggleCard({ id, badge, enabled, onToggle, action, logo }: 
                   hover:before:opacity-100 hover:before:w-[85%]
                   hover:before:bg-gradient-to-r hover:before:from-[var(--ema-primary)]/20 hover:before:via-[var(--ema-primary)]/10 hover:before:to-transparent
                   after:content-empty after:absolute after:inset-0 after:z-0 after:w-full after:h-full
-                  after:[background-image:radial-gradient(circle,var(--ema-text-tertiary)_1px,transparent_1px)]
-                  after:[background-size:10px_10px]
+                  after:[background-image:radial-gradient(ellipse_60%_40%_at_25%_25%,color-mix(in_srgb,var(--ema-text-tertiary)_18%,transparent)_0%,transparent_70%),radial-gradient(ellipse_50%_35%_at_75%_60%,color-mix(in_srgb,var(--ema-text-tertiary)_15%,transparent)_0%,transparent_75%)]
+                  after:[background-size:100%_100%,100%_100%]
                   after:[mask-image:linear-gradient(165deg,white_30%,transparent_50%)]
                   after:transition-all after:duration-250
                   after:opacity-25

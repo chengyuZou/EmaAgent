@@ -149,7 +149,7 @@ export function AppearanceTab(): JSX.Element {
         <div className="flex items-center gap-4">
           <button
             onClick={() => handleModeClick('dark')}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border transition-all duration-[var(--ema-duration-base)] ${
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border transition-all duration-[var(--ema-duration-base)] ema-card-decorate ema-card-decorate--mesh ${
               mode === 'dark'
                 ? 'border-[var(--ema-primary)] bg-[var(--ema-primary-muted)] text-[var(--ema-text-primary)]'
                 : 'border-[var(--ema-border)] bg-[var(--ema-surface-1)] text-[var(--ema-text-tertiary)] hover:border-[var(--ema-border-hover)]'
@@ -160,7 +160,7 @@ export function AppearanceTab(): JSX.Element {
           </button>
           <button
             onClick={() => handleModeClick('light')}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border transition-all duration-[var(--ema-duration-base)] ${
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border transition-all duration-[var(--ema-duration-base)] ema-card-decorate ema-card-decorate--mesh ${
               mode === 'light'
                 ? 'border-[var(--ema-primary)] bg-[var(--ema-primary-muted)] text-[var(--ema-text-primary)]'
                 : 'border-[var(--ema-border)] bg-[var(--ema-surface-1)] text-[var(--ema-text-tertiary)] hover:border-[var(--ema-border-hover)]'

@@ -293,8 +293,8 @@ function DataDirRow({
       className={`group ema-stagger-in flex flex-col gap-1.5 px-3 py-2.5 rounded-xl
         border-2 border-solid transition-colors duration-[var(--ema-duration-base)]
         ${dir.isActive
-          ? 'bg-[var(--ema-primary-muted)] border-[color:var(--ema-primary)]/30'
-          : 'bg-[var(--ema-surface-1)] border-[var(--ema-border)] hover:border-[var(--ema-primary)]/30 hover:bg-[var(--ema-surface-2)] hover:shadow-[var(--ema-shadow-soft)] ema-card-decorate'
+          ? 'bg-[var(--ema-primary-muted)] border-[color:var(--ema-primary)]/30 ema-card-decorate ema-card-decorate--diagonal'
+          : 'bg-[var(--ema-surface-1)] border-[var(--ema-border)] hover:border-[var(--ema-primary)]/30 hover:bg-[var(--ema-surface-2)] hover:shadow-[var(--ema-shadow-soft)] ema-card-decorate ema-card-decorate--diagonal'
         }`}
       style={{ '--stagger-i': index } as CSSProperties}
     >
@@ -365,7 +365,7 @@ function StatCard({
 }): JSX.Element {
   return (
     <div
-      className="ema-stagger-in ema-glass-weak ema-card-decorate bg-[var(--ema-surface-1)] rounded-xl border-2 border-solid border-[var(--ema-border)] hover:border-[var(--ema-primary)]/30 hover:bg-[var(--ema-surface-2)] hover:shadow-[var(--ema-shadow-soft)]
+      className="ema-stagger-in ema-glass-weak ema-card-decorate ema-card-decorate--diagonal bg-[var(--ema-surface-1)] rounded-xl border-2 border-solid border-[var(--ema-border)] hover:border-[var(--ema-primary)]/30 hover:bg-[var(--ema-surface-2)] hover:shadow-[var(--ema-shadow-soft)]
                  px-4 py-3 flex items-start gap-3 shadow-[var(--ema-shadow-1)]"
       style={{ '--stagger-i': index } as CSSProperties}
     >
@@ -417,7 +417,7 @@ function StatsPanel({ stats, statsLoading }: {
         <StatCard index={5} icon="i-solar:magic-stick-3-bold-duotone"   label="Agent 任务" value={String(stats.agentTaskCount)} />
       </div>
 
-      <div className="ema-stagger-in ema-glass-weak ema-card-decorate bg-[var(--ema-surface-1)] rounded-xl border-2 border-solid border-[var(--ema-border)] hover:border-[var(--ema-primary)]/30 hover:bg-[var(--ema-surface-2)] hover:shadow-[var(--ema-shadow-soft)] p-4 shadow-[var(--ema-shadow-1)]"
+      <div className="ema-stagger-in ema-glass-weak ema-card-decorate ema-card-decorate--diagonal bg-[var(--ema-surface-1)] rounded-xl border-2 border-solid border-[var(--ema-border)] hover:border-[var(--ema-primary)]/30 hover:bg-[var(--ema-surface-2)] hover:shadow-[var(--ema-shadow-soft)] p-4 shadow-[var(--ema-shadow-1)]"
            style={{ '--stagger-i': 6 } as CSSProperties}>
         <p className="text-xs font-medium text-[var(--ema-text-secondary)] mb-3">磁盘占用</p>
         <div className="flex flex-col gap-2">
@@ -462,7 +462,7 @@ function SessionRow({
       selected={selected}
       padding="sm"
       onClick={onClick}
-      className={`ema-stagger-in w-full rounded-xl font-normal ema-card-decorate
+      className={`ema-stagger-in w-full rounded-xl font-normal ema-card-decorate ema-card-decorate--diagonal
         ${selected
           ? 'shadow-[var(--ema-shadow-1)] text-[var(--ema-text-primary)]'
           : 'text-[var(--ema-text-secondary)] hover:text-[var(--ema-text-primary)]'
@@ -504,7 +504,7 @@ function OverviewTab({ d }: { d: SessionDashboardWire }): JSX.Element {
       {cards.map((c, i) => (
         <div
           key={c.label}
-          className="ema-stagger-in ema-glass-weak ema-card-decorate bg-[var(--ema-surface-1)] rounded-xl border-2 border-solid border-[var(--ema-border)] hover:border-[var(--ema-primary)]/30 hover:bg-[var(--ema-surface-2)] hover:shadow-[var(--ema-shadow-soft)] px-4 py-3
+          className="ema-stagger-in ema-glass-weak ema-card-decorate ema-card-decorate--diagonal bg-[var(--ema-surface-1)] rounded-xl border-2 border-solid border-[var(--ema-border)] hover:border-[var(--ema-primary)]/30 hover:bg-[var(--ema-surface-2)] hover:shadow-[var(--ema-shadow-soft)] px-4 py-3
                      flex flex-col gap-0.5 shadow-[var(--ema-shadow-1)]"
           style={{ '--stagger-i': i } as CSSProperties}
         >
@@ -530,7 +530,7 @@ function ArtifactsTab({ artifacts }: { artifacts: ArtifactSummaryWire[] }): JSX.
       {artifacts.map((a, i) => (
         <div
           key={a.id}
-          className="ema-stagger-in ema-glass-weak ema-card-decorate bg-[var(--ema-surface-1)] rounded-xl border-2 border-solid border-[var(--ema-border)] hover:border-[var(--ema-primary)]/30 hover:bg-[var(--ema-surface-2)] hover:shadow-[var(--ema-shadow-soft)]
+          className="ema-stagger-in ema-glass-weak ema-card-decorate ema-card-decorate--diagonal bg-[var(--ema-surface-1)] rounded-xl border-2 border-solid border-[var(--ema-border)] hover:border-[var(--ema-primary)]/30 hover:bg-[var(--ema-surface-2)] hover:shadow-[var(--ema-shadow-soft)]
                      px-3 py-2.5 flex items-center gap-3 shadow-[var(--ema-shadow-1)]"
           style={{ '--stagger-i': i } as CSSProperties}
         >
@@ -560,7 +560,7 @@ function AudioTab({ entries }: { entries: AudioEntryWire[] }): JSX.Element {
       {entries.map((e, i) => (
         <div
           key={e.turnId}
-          className="ema-stagger-in ema-glass-weak ema-card-decorate bg-[var(--ema-surface-1)] rounded-xl border-2 border-solid border-[var(--ema-border)] hover:border-[var(--ema-primary)]/30 hover:bg-[var(--ema-surface-2)] hover:shadow-[var(--ema-shadow-soft)]
+          className="ema-stagger-in ema-glass-weak ema-card-decorate ema-card-decorate--diagonal bg-[var(--ema-surface-1)] rounded-xl border-2 border-solid border-[var(--ema-border)] hover:border-[var(--ema-primary)]/30 hover:bg-[var(--ema-surface-2)] hover:shadow-[var(--ema-shadow-soft)]
                      px-3 py-2.5 flex items-center gap-3 shadow-[var(--ema-shadow-1)]"
           style={{ '--stagger-i': i } as CSSProperties}
         >
@@ -596,7 +596,7 @@ function MemoryTab({ notes }: { notes: SessionDashboardWire['notes'] }): JSX.Ele
       {(notes.entries as SessionNoteEntryWire[]).map((entry, i) => (
         <div
           key={i}
-          className="ema-stagger-in ema-glass-weak ema-card-decorate bg-[var(--ema-surface-1)] rounded-xl border-2 border-solid border-[var(--ema-border)] hover:border-[var(--ema-primary)]/30 hover:bg-[var(--ema-surface-2)] hover:shadow-[var(--ema-shadow-soft)]
+          className="ema-stagger-in ema-glass-weak ema-card-decorate ema-card-decorate--diagonal bg-[var(--ema-surface-1)] rounded-xl border-2 border-solid border-[var(--ema-border)] hover:border-[var(--ema-primary)]/30 hover:bg-[var(--ema-surface-2)] hover:shadow-[var(--ema-shadow-soft)]
                      px-3 py-2.5 shadow-[var(--ema-shadow-1)]"
           style={{ '--stagger-i': i } as CSSProperties}
         >

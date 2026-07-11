@@ -75,7 +75,7 @@ function DocumentRow({ doc, currentEmbedModel, onDelete }: {
   }
 
   return (
-    <div className="flex flex-col rounded-xl bg-[var(--ema-surface-1)] overflow-hidden">
+    <div className="flex flex-col rounded-xl bg-[var(--ema-surface-1)] overflow-hidden ema-card-decorate ema-card-decorate--starfield">
       <div
         className="flex items-center gap-3 px-3 py-2.5 cursor-pointer
                    hover:bg-[var(--ema-surface-2)] transition-ema"
@@ -197,7 +197,7 @@ function ChunkViewer({ assetId, closing }: { assetId: string; closing?: boolean 
         items.map((ch, i) => (
           <div
             key={ch.id}
-            className="ema-stagger-in rounded-lg bg-[var(--ema-surface-1)] px-2.5 py-2"
+            className="ema-stagger-in rounded-lg bg-[var(--ema-surface-1)] px-2.5 py-2 ema-card-decorate ema-card-decorate--starfield"
             style={{ '--stagger-i': i % 20 } as CSSProperties}
           >
             <div className="flex items-center gap-2 mb-1 text-[10px] text-[var(--ema-text-tertiary)]">
@@ -267,7 +267,7 @@ function IngestForm({ onDone }: { onDone(): void }): JSX.Element {
 
   return (
     <div className="flex flex-col gap-3 p-4 rounded-xl
-                    bg-[var(--ema-surface-1)] border border-[var(--ema-border)]">
+                    bg-[var(--ema-surface-1)] border border-[var(--ema-border)] ema-card-decorate ema-card-decorate--starfield">
       <p className="text-sm font-semibold text-[var(--ema-text-primary)]">导入文档</p>
 
       <div className="flex gap-2">
@@ -374,7 +374,7 @@ function SearchTest(): JSX.Element {
               {searchResult.hits.map((hit, i) => (
                 <div
                   key={hit.chunkId}
-                  className="p-3 rounded-xl bg-[var(--ema-surface-1)] border border-[var(--ema-border)] ema-stagger-in"
+                  className="p-3 rounded-xl bg-[var(--ema-surface-1)] border border-[var(--ema-border)] ema-stagger-in ema-card-decorate ema-card-decorate--starfield"
                   style={{ '--stagger-i': i } as CSSProperties}
                 >
                   <div className="flex items-center gap-2 mb-1.5">
@@ -480,7 +480,7 @@ function IngestJobRow({ job }: { job: IngestJob }): JSX.Element {
     : `${job.stage ? STAGE_LABEL[job.stage] : ''} · ${pct}%`;
 
   return (
-    <div className={`rounded-xl bg-[var(--ema-surface-1)] px-3 py-2.5 flex flex-col gap-1.5
+    <div className={`rounded-xl bg-[var(--ema-surface-1)] px-3 py-2.5 flex flex-col gap-1.5 ema-card-decorate ema-card-decorate--starfield
                      ${done ? 'ema-fade-out' : ''}`}>
       <div className="flex items-center gap-2">
         {failed ? (
@@ -541,7 +541,7 @@ function LibraryRow({ lib, onActivate, onRename, onDelete }: {
 
   return (
     <div
-      className={`group ema-slide-up flex items-center gap-3 px-3 py-2.5 rounded-xl transition-ema
+      className={`group ema-slide-up flex items-center gap-3 px-3 py-2.5 rounded-xl transition-ema ema-card-decorate ema-card-decorate--starfield
                   ${lib.isActive ? 'bg-[var(--ema-primary-muted)] ring-1 ring-[var(--ema-primary)]' : 'bg-[var(--ema-surface-1)]'}`}
     >
       <span

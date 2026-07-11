@@ -103,7 +103,7 @@ function OverviewTab(): JSX.Element {
           {/* By-type breakdown */}
           <div className="grid grid-cols-2 gap-3">
             {/* Nodes by type */}
-            <Card variant="elevated" padding="sm" className="active:scale-[0.98] transition-all duration-[var(--ema-duration-base)] ema-card-decorate hover:border-[var(--ema-primary)]/30 hover:bg-[var(--ema-surface-2)] hover:shadow-[var(--ema-shadow-soft)]">
+            <Card variant="elevated" padding="sm" className="active:scale-[0.98] transition-all duration-[var(--ema-duration-base)] ema-card-decorate ema-card-decorate--starfield hover:border-[var(--ema-primary)]/30 hover:bg-[var(--ema-surface-2)] hover:shadow-[var(--ema-shadow-soft)]">
               <p className="text-xs font-semibold text-[var(--ema-text-tertiary)] mb-2">节点类型分布</p>
               <div className="flex flex-col gap-1.5">
                 {(Object.entries(stats.nodes.byType) as [MemoryNodeType, number][])
@@ -119,7 +119,7 @@ function OverviewTab(): JSX.Element {
             </Card>
 
             {/* Items by kind */}
-            <Card variant="elevated" padding="sm" className="active:scale-[0.98] transition-all duration-[var(--ema-duration-base)] ema-card-decorate hover:border-[var(--ema-primary)]/30 hover:bg-[var(--ema-surface-2)] hover:shadow-[var(--ema-shadow-soft)]">
+            <Card variant="elevated" padding="sm" className="active:scale-[0.98] transition-all duration-[var(--ema-duration-base)] ema-card-decorate ema-card-decorate--starfield hover:border-[var(--ema-primary)]/30 hover:bg-[var(--ema-surface-2)] hover:shadow-[var(--ema-shadow-soft)]">
               <p className="text-xs font-semibold text-[var(--ema-text-tertiary)] mb-2">条目类型分布</p>
               <div className="flex flex-col gap-1.5">
                 {(Object.entries(stats.items.byKind) as [MemoryItemKind, number][])
@@ -136,7 +136,7 @@ function OverviewTab(): JSX.Element {
           </div>
 
           {/* Index + embedding health */}
-          <Card variant="elevated" padding="sm" className="active:scale-[0.98] transition-all duration-[var(--ema-duration-base)] ema-card-decorate hover:border-[var(--ema-primary)]/30 hover:bg-[var(--ema-surface-2)] hover:shadow-[var(--ema-shadow-soft)]">
+          <Card variant="elevated" padding="sm" className="active:scale-[0.98] transition-all duration-[var(--ema-duration-base)] ema-card-decorate ema-card-decorate--starfield hover:border-[var(--ema-primary)]/30 hover:bg-[var(--ema-surface-2)] hover:shadow-[var(--ema-shadow-soft)]">
             <p className="text-xs font-semibold text-[var(--ema-text-tertiary)] mb-2">向量索引</p>
             <div className="flex gap-4 flex-wrap text-xs font-semibold text-[var(--ema-text-tertiary)]">
               <span>
@@ -218,7 +218,7 @@ function OverviewTab(): JSX.Element {
 
 function StatCard({ label, value, sub }: { label: string; value: number; sub: string }): JSX.Element {
   return (
-    <Card variant="elevated" padding="sm" className="active:scale-[0.98] transition-all duration-[var(--ema-duration-base)] ema-card-decorate hover:border-[var(--ema-primary)]/30 hover:bg-[var(--ema-surface-2)] hover:shadow-[var(--ema-shadow-soft)]">
+    <Card variant="elevated" padding="sm" className="active:scale-[0.98] transition-all duration-[var(--ema-duration-base)] ema-card-decorate ema-card-decorate--starfield hover:border-[var(--ema-primary)]/30 hover:bg-[var(--ema-surface-2)] hover:shadow-[var(--ema-shadow-soft)]">
       <p className="text-xs font-semibold text-[var(--ema-text-tertiary)]">{label}</p>
       <p className="text-2xl font-bold text-[var(--ema-text-primary)] tabular-nums">{value.toLocaleString()}</p>
       <p className="text-xs font-semibold text-[var(--ema-text-tertiary)] opacity-60 mt-0.5">{sub}</p>
@@ -340,7 +340,7 @@ function NodesTab(): JSX.Element {
           <div className="flex flex-col gap-1.5 pr-2">
             {filtered.map((node, idx) => (
               <Card key={node.id} variant="elevated" padding="sm"
-                className="ema-stagger-in" style={{ '--stagger-i': idx } as CSSProperties}>
+                className="ema-stagger-in ema-card-decorate ema-card-decorate--starfield" style={{ '--stagger-i': idx } as CSSProperties}>
                 <div className="flex items-start gap-3">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
@@ -497,7 +497,7 @@ function ItemsTab(): JSX.Element {
           <div className="flex flex-col gap-1.5 pr-2">
             {filtered.map((item, idx) => (
               <Card key={item.id} variant="elevated" padding="sm"
-                className="ema-stagger-in" style={{ '--stagger-i': idx } as CSSProperties}>
+                className="ema-stagger-in ema-card-decorate ema-card-decorate--starfield" style={{ '--stagger-i': idx } as CSSProperties}>
                 <div className="flex items-start gap-3">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">

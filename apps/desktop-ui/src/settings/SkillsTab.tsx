@@ -98,14 +98,14 @@ function MarketView({
         return (
           <div
             key={entry.name}
-            className="bg-[var(--ema-surface-1)] ema-glass-weak border-2 border-solid border-[var(--ema-border)] rounded-xl px-4 py-3 ema-card-decorate hover:border-[var(--ema-primary)]/30 hover:bg-[var(--ema-surface-2)] hover:shadow-[var(--ema-shadow-soft)]
+            className="bg-[var(--ema-surface-1)] ema-glass-weak border-2 border-solid border-[var(--ema-border)] rounded-xl px-4 py-3 ema-card-decorate ema-card-decorate--diamond hover:border-[var(--ema-primary)]/30 hover:bg-[var(--ema-surface-2)] hover:shadow-[var(--ema-shadow-soft)]
                        ema-stagger-in"
             style={{ '--stagger-i': i } as React.CSSProperties}
           >
             <div className="flex items-start gap-3">
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-sm font-medium text-[var(--ema-text-primary)]">{entry.name}</span>
+                  <span className="text-sm font-semibold text-[var(--ema-text-primary)]">{entry.name}</span>
                   <Badge variant="neutral">v{entry.version}</Badge>
                   {entry.tags?.map((t) => (
                     <Badge key={t} variant="neutral">{t}</Badge>
@@ -194,13 +194,13 @@ function InstalledList({
             key={sk.name}
             variant="elevated"
             padding="sm"
-            className="ema-stagger-in active:scale-[0.98] transition-all duration-[var(--ema-duration-base)]"
+            className="ema-stagger-in active:scale-[0.98] transition-all duration-[var(--ema-duration-base)] ema-card-decorate ema-card-decorate--diamond"
             style={{ '--stagger-i': i } as React.CSSProperties}
           >
             <div className="flex items-start gap-3">
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-sm font-medium text-[var(--ema-text-primary)]">{sk.name}</span>
+                  <span className="text-sm font-semibold text-[var(--ema-text-primary)]">{sk.name}</span>
                   <Badge variant="neutral">v{sk.version}</Badge>
                 </div>
                 {sk.description && (

@@ -25,7 +25,7 @@ export function ShortcutsTab(): JSX.Element {
             key={s.keys}
             variant="elevated"
             padding="none"
-            className="flex items-center justify-between px-4 py-2 ema-stagger-in"
+            className="flex items-center justify-between px-4 py-2 ema-stagger-in ema-card-decorate ema-card-decorate--diamond"
             style={{ '--stagger-i': i } as React.CSSProperties}
           >
             <span className="text-sm text-[var(--ema-text-secondary)]">{s.action}</span>

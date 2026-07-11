@@ -10,10 +10,10 @@ export function Live2DTab(): JSX.Element {
         V1 暂不支持模型上传。当前使用内置 Ema 模型。
       </div>
       <div
-        className="mt-4 flex items-center gap-3 rounded-xl px-4 py-3 border ema-glass-weak bg-[var(--ema-surface-1)] border-[var(--ema-border)]"
+        className="mt-4 flex items-center gap-3 rounded-xl px-4 py-3 border ema-glass-weak bg-[var(--ema-surface-1)] border-[var(--ema-border)] ema-card-decorate ema-card-decorate--mesh"
       >
         <div className="w-2 h-2 rounded-full bg-[var(--ema-success)]" />
-        <span className="text-sm font-medium text-[var(--ema-text-primary)]">ema-v1</span>
+        <span className="text-sm font-semibold text-[var(--ema-text-primary)]">ema-v1</span>
         <Badge variant="neutral">内置</Badge>
       </div>
     </div>

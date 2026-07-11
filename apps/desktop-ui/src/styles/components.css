@@ -262,8 +262,8 @@
   position: absolute;
   inset: 0;
   z-index: -1;
-  background-image: radial-gradient(circle, var(--ema-text-tertiary) 1px, transparent 1px);
-  background-size: 10px 10px;
+  background-image: radial-gradient(circle 80% 80% at 50% 0%, color-mix(in srgb, var(--ema-text-tertiary) 22%, transparent) 0%, transparent 60%);
+  background-size: 100% 100%;
   -webkit-mask-image: linear-gradient(165deg, white 30%, transparent 50%);
   mask-image: linear-gradient(165deg, white 30%, transparent 50%);
   opacity: 0.25;
@@ -311,4 +311,69 @@
   mask-image: linear-gradient(165deg, white 30%, transparent 50%);
   opacity: 0.25;
   pointer-events: none;
+}
+
+/* ── ema-card-decorate 修饰类:按块换纹理 ──────────────────────────────────────
+ *  只覆盖 ::after 的 background-image + size,保留 mask(165deg 渐隐)+ opacity:0.25。
+ *  纯 CSS 渐变(非 SVG),var(--ema-text-tertiary) 亮/暗自动跟随。
+ *  出处:Hero Patterns https://heropatterns.com / CSS3 Gallery https://verou.me/css3patterns/
+ *  / MagicPattern https://www.magicpattern.design/tools/css-backgrounds / pattern.monster https://pattern.monster/ */
+
+/* bindings - Mesh Blob 多 radial 叠加 (二次元) - GradientMagic https://www.gradientmagic.com/ */
+.ema-card-decorate--plus::after {
+  background-image:
+    radial-gradient(circle at 20% 30%, color-mix(in srgb, var(--ema-text-tertiary) 22%, transparent) 0%, transparent 45%),
+    radial-gradient(circle at 80% 20%, color-mix(in srgb, var(--ema-text-tertiary) 18%, transparent) 0%, transparent 40%),
+    radial-gradient(circle at 70% 80%, color-mix(in srgb, var(--ema-text-tertiary) 20%, transparent) 0%, transparent 50%),
+    radial-gradient(circle at 30% 70%, color-mix(in srgb, var(--ema-text-tertiary) 15%, transparent) 0%, transparent 45%);
+  background-size: 100% 100%;
+}
+
+/* cards 角色卡 - Dreamy Haze 梦幻角晕 (二次元) - GradientMagic */
+.ema-card-decorate--mesh::after {
+  background-image:
+    radial-gradient(circle at 0% 0%, color-mix(in srgb, var(--ema-text-tertiary) 20%, transparent) 0%, transparent 35%),
+    radial-gradient(circle at 100% 100%, color-mix(in srgb, var(--ema-text-tertiary) 18%, transparent) 0%, transparent 40%),
+    radial-gradient(circle at 100% 0%, color-mix(in srgb, var(--ema-text-tertiary) 12%, transparent) 0%, transparent 30%);
+  background-size: 100% 100%;
+}
+
+/* skills - Pastel Wash 粉彩多停 (二次元) - GradientMagic */
+.ema-card-decorate--diamond::after {
+  background-image: linear-gradient(135deg,
+    color-mix(in srgb, var(--ema-text-tertiary) 18%, transparent) 0%,
+    color-mix(in srgb, var(--ema-text-tertiary) 8%, transparent) 35%,
+    color-mix(in srgb, var(--ema-text-tertiary) 20%, transparent) 70%,
+    color-mix(in srgb, var(--ema-text-tertiary) 10%, transparent) 100%);
+  background-size: 100% 100%;
+}
+
+/* mcp - Aurora 极光流带 (二次元) - GradientMagic */
+.ema-card-decorate--circuit::after {
+  background-image: conic-gradient(from 90deg at 50% 50%,
+    transparent 0%,
+    color-mix(in srgb, var(--ema-text-tertiary) 12%, transparent) 15%,
+    transparent 30%,
+    color-mix(in srgb, var(--ema-text-tertiary) 18%, transparent) 50%,
+    transparent 65%,
+    color-mix(in srgb, var(--ema-text-tertiary) 10%, transparent) 85%,
+    transparent 100%);
+  background-size: 200% 200%;
+}
+
+/* memory - Starlight Bloom 星光晕染 (二次元) - GradientMagic */
+.ema-card-decorate--starfield::after {
+  background-image: radial-gradient(circle at 50% 50%,
+    color-mix(in srgb, var(--ema-text-tertiary) 24%, transparent) 0%,
+    color-mix(in srgb, var(--ema-text-tertiary) 12%, transparent) 15%,
+    transparent 45%);
+  background-size: 100% 100%;
+}
+
+/* storage - Soft Glow 大半径单光晕 (二次元) - GradientMagic */
+.ema-card-decorate--diagonal::after {
+  background-image: radial-gradient(circle 80% 80% at 50% 0%,
+    color-mix(in srgb, var(--ema-text-tertiary) 22%, transparent) 0%,
+    transparent 60%);
+  background-size: 100% 100%;
 }

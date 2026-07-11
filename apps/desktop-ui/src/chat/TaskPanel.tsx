@@ -183,7 +183,7 @@ function TaskCard({ task, expanded, onToggle, staggerIndex = 0 }: TaskCardProps)
 
   return (
     <div
-      className="relative rounded-lg overflow-hidden cursor-pointer transition-all flex ema-stagger-in bg-[var(--ema-surface-1)]"
+      className="relative rounded-lg overflow-hidden cursor-pointer transition-all flex ema-stagger-in bg-[var(--ema-surface-1)] ema-card-decorate ema-card-decorate--starfield"
       style={{
         border:        `1px solid ${expanded ? 'var(--ema-border-hover)' : 'var(--ema-border)'}`,
         '--stagger-i': staggerIndex,

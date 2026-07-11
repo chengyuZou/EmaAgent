@@ -95,8 +95,8 @@ function CardListItem({
       padding="sm"
       className={`cursor-pointer transition-all duration-[var(--ema-duration-base)] active:scale-[0.98] ${
         isSelected
-          ? 'border-2 border-solid border-[var(--ema-primary)] bg-[var(--ema-primary-muted)] ema-card-decorate'
-          : 'border-2 border-solid border-[var(--ema-border)] hover:border-[var(--ema-primary)]/30 hover:bg-[var(--ema-surface-2)] hover:shadow-[var(--ema-shadow-soft)] ema-card-decorate'
+          ? 'border-2 border-solid border-[var(--ema-primary)] bg-[var(--ema-primary-muted)] ema-card-decorate ema-card-decorate--mesh'
+          : 'border-2 border-solid border-[var(--ema-border)] hover:border-[var(--ema-primary)]/30 hover:bg-[var(--ema-surface-2)] hover:shadow-[var(--ema-shadow-soft)] ema-card-decorate ema-card-decorate--mesh'
       }`}
       onClick={onSelect}
     >

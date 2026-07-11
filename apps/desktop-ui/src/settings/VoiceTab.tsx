@@ -168,11 +168,11 @@ function RefAudioRow({
   onDelete?():   void;
 }): JSX.Element {
   return (
-    <div className="bg-[var(--ema-surface-1)] ema-glass-weak border border-[var(--ema-border)] rounded-xl p-3">
+    <div className="bg-[var(--ema-surface-1)] ema-glass-weak border border-[var(--ema-border)] rounded-xl p-3 ema-card-decorate ema-card-decorate--mesh">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <span className={isPrimary ? 'size-2 rounded-full bg-[var(--ema-success)]' : 'size-2 rounded-full border border-[var(--ema-text-tertiary)]'} aria-hidden />
-          <span className="text-sm font-medium text-[var(--ema-text-primary)]">{refAudio.label}</span>
+          <span className="text-sm font-semibold text-[var(--ema-text-primary)]">{refAudio.label}</span>
         </div>
         <div className="flex gap-1.5">
           <Button

@@ -90,7 +90,7 @@ export function MarketSourceManager({ kind }: { kind: 'mcp' | 'skill' }): JSX.El
   const enabledCount = sources.filter((s) => s.enabled).length;
 
   return (
-    <div className="rounded-xl border border-[var(--ema-border)] bg-[var(--ema-surface-1)]">
+    <div className="rounded-xl border border-[var(--ema-border)] bg-[var(--ema-surface-1)] ema-card-decorate ema-card-decorate--circuit">
       {/* Header(点击展开/收起)*/}
       <button
         type="button"
@@ -98,7 +98,7 @@ export function MarketSourceManager({ kind }: { kind: 'mcp' | 'skill' }): JSX.El
         className="flex items-center justify-between w-full px-4 py-2.5 text-left
                    hover:bg-[var(--ema-surface-2)] transition-colors rounded-xl"
       >
-        <span className="flex items-center gap-2 text-sm font-medium text-[var(--ema-text-primary)]">
+        <span className="flex items-center gap-2 text-sm font-semibold text-[var(--ema-text-primary)]">
           <span className="i-mdi:source-branch-sync text-base text-[var(--ema-text-tertiary)]" aria-hidden />
           市场源({sources.length} · 启用 {enabledCount})
         </span>
@@ -179,10 +179,10 @@ function SourceRow({
 }): JSX.Element {
   const configLabel = configToLabel(source);
   return (
-    <div className="flex items-center gap-3 px-3 py-2 rounded-lg bg-[var(--ema-surface-2)]">
+    <div className="flex items-center gap-3 px-3 py-2 rounded-lg bg-[var(--ema-surface-2)] ema-card-decorate ema-card-decorate--circuit">
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-sm font-medium text-[var(--ema-text-primary)] truncate">{source.label}</span>
+          <span className="text-sm font-semibold text-[var(--ema-text-primary)] truncate">{source.label}</span>
           <Badge variant="neutral">{source.type}</Badge>
           {source.builtin && <Badge variant="neutral">内置</Badge>}
           {!source.enabled && <Badge variant="warn">已禁用</Badge>}
