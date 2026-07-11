@@ -112,7 +112,7 @@ function OverviewTab(): JSX.Element {
                   .map(([type, count]) => (
                     <div key={type} className="flex items-center gap-2">
                       <Badge variant={NODE_TYPE_VARIANT[type]}>{NODE_TYPE_LABEL[type]}</Badge>
-                      <span className="text-xs text-[var(--ema-text-secondary)] tabular-nums">{count}</span>
+                      <span className="text-xs font-semibold text-[var(--ema-text-secondary)] tabular-nums">{count}</span>
                     </div>
                   ))}
               </div>
@@ -128,7 +128,7 @@ function OverviewTab(): JSX.Element {
                   .map(([kind, count]) => (
                     <div key={kind} className="flex items-center gap-2">
                       <Badge variant={ITEM_KIND_VARIANT[kind]}>{ITEM_KIND_LABEL[kind]}</Badge>
-                      <span className="text-xs text-[var(--ema-text-secondary)] tabular-nums">{count}</span>
+                      <span className="text-xs font-semibold text-[var(--ema-text-secondary)] tabular-nums">{count}</span>
                     </div>
                   ))}
               </div>
@@ -138,22 +138,22 @@ function OverviewTab(): JSX.Element {
           {/* Index + embedding health */}
           <Card variant="elevated" padding="sm" className="active:scale-[0.98] transition-all duration-[var(--ema-duration-base)] ema-card-decorate hover:border-[var(--ema-primary)]/30 hover:bg-[var(--ema-surface-2)] hover:shadow-[var(--ema-shadow-soft)]">
             <p className="text-xs font-semibold text-[var(--ema-text-tertiary)] mb-2">向量索引</p>
-            <div className="flex gap-4 flex-wrap text-xs text-[var(--ema-text-tertiary)]">
+            <div className="flex gap-4 flex-wrap text-xs font-semibold text-[var(--ema-text-tertiary)]">
               <span>
                 节点索引：
                 {stats.index.nodes
-                  ? <span className="text-[var(--ema-text-primary)]"> {stats.index.nodes.size} 条 ({stats.index.nodes.backend})</span>
-                  : <span className="opacity-40"> 未就绪</span>}
+                  ? <span className="font-semibold text-[var(--ema-text-primary)]"> {stats.index.nodes.size} 条 ({stats.index.nodes.backend})</span>
+                  : <span className="opacity-40 font-semibold"> 未就绪</span>}
               </span>
               <span>
                 条目索引：
                 {stats.index.items
-                  ? <span className="text-[var(--ema-text-primary)]"> {stats.index.items.size} 条 ({stats.index.items.backend})</span>
-                  : <span className="opacity-40"> 未就绪</span>}
+                  ? <span className="font-semibold text-[var(--ema-text-primary)]"> {stats.index.items.size} 条 ({stats.index.items.backend})</span>
+                  : <span className="opacity-40 font-semibold"> 未就绪</span>}
               </span>
               {(stats.nodes.staleEmbedCount > 0 || stats.items.staleEmbedCount > 0) && (
-                <span className="inline-flex items-center gap-1 text-[var(--ema-warning)]">
-                  <span className="i-mdi:alert-outline" aria-hidden />
+                <span className="inline-flex items-center gap-1 font-semibold text-[var(--ema-warning)]">
+                  <span className="font-semibold i-mdi:alert-outline" aria-hidden />
                   过期向量：{stats.nodes.staleEmbedCount + stats.items.staleEmbedCount} 条
                 </span>
               )}
@@ -165,7 +165,7 @@ function OverviewTab(): JSX.Element {
       {/* Active tasks */}
       {activeTasks.size > 0 && (
         <Callout variant="warn">
-          <span className="font-medium">后台任务进行中</span>
+          <span className="font-semibold">后台任务进行中</span>
           <div className="mt-1 flex flex-col gap-0.5">
             {[...activeTasks.values()].map((t) => (
               <div key={t.taskId} className="text-xs text-[var(--ema-warning-text)]">
@@ -182,11 +182,11 @@ function OverviewTab(): JSX.Element {
           <Divider />
           <div>
             <p className="text-sm font-semibold text-[var(--ema-text-primary)] mb-0.5">当前会话记忆开关</p>
-            <p className="text-xs text-[var(--ema-text-tertiary)] mb-3">仅影响当前会话，不影响全局配置</p>
+            <p className="text-xs font-semibold text-[var(--ema-text-tertiary)] mb-3">仅影响当前会话，不影响全局配置</p>
 
             <div className="grid grid-cols-2 gap-x-6 gap-y-3">
               <div>
-                <p className="text-xs text-[var(--ema-text-tertiary)] mb-2 font-semibold uppercase tracking-wide">召回(读)</p>
+                <p className="text-xs font-semibold text-[var(--ema-text-tertiary)] mb-2 uppercase tracking-wide">召回(读)</p>
                 <div className="flex flex-col gap-2">
                   <OverrideSwitch label="L0 锚点召回" desc="全局身份图" checked={sessionOverrides?.layer0 ?? true}
                     onChange={(v) => setOverride('layer0', v)} />
@@ -198,7 +198,7 @@ function OverviewTab(): JSX.Element {
               </div>
 
               <div>
-                <p className="text-xs text-[var(--ema-text-tertiary)] mb-2 font-semibold uppercase tracking-wide">写入(写)</p>
+                <p className="text-xs font-semibold text-[var(--ema-text-tertiary)] mb-2 uppercase tracking-wide">写入(写)</p>
                 <div className="flex flex-col gap-2">
                   <OverrideSwitch label="提取"   desc="turn 结束后写入待处理片段" checked={sessionOverrides?.extraction    ?? true}
                     onChange={(v) => setOverride('extraction', v)} />
@@ -219,9 +219,9 @@ function OverviewTab(): JSX.Element {
 function StatCard({ label, value, sub }: { label: string; value: number; sub: string }): JSX.Element {
   return (
     <Card variant="elevated" padding="sm" className="active:scale-[0.98] transition-all duration-[var(--ema-duration-base)] ema-card-decorate hover:border-[var(--ema-primary)]/30 hover:bg-[var(--ema-surface-2)] hover:shadow-[var(--ema-shadow-soft)]">
-      <p className="text-xs text-[var(--ema-text-tertiary)]">{label}</p>
+      <p className="text-xs font-semibold text-[var(--ema-text-tertiary)]">{label}</p>
       <p className="text-2xl font-bold text-[var(--ema-text-primary)] tabular-nums">{value.toLocaleString()}</p>
-      <p className="text-xs text-[var(--ema-text-tertiary)] opacity-60 mt-0.5">{sub}</p>
+      <p className="text-xs font-semibold text-[var(--ema-text-tertiary)] opacity-60 mt-0.5">{sub}</p>
     </Card>
   );
 }
@@ -234,8 +234,8 @@ function OverrideSwitch({
   return (
     <div className="flex items-center justify-between gap-3">
       <div className="min-w-0">
-        <p className="text-xs text-[var(--ema-text-secondary)]">{label}</p>
-        <p className="text-xs text-[var(--ema-text-tertiary)] opacity-60">{desc}</p>
+        <p className="text-xs font-semibold text-[var(--ema-text-secondary)]">{label}</p>
+        <p className="text-xs font-semibold text-[var(--ema-text-tertiary)] opacity-60">{desc}</p>
       </div>
       <Switch checked={checked} label={label} onCheckedChange={onChange} />
     </div>
@@ -331,7 +331,7 @@ function NodesTab(): JSX.Element {
       {!loading && filtered.length === 0 && (
         <div className="flex flex-col items-center justify-center py-12 text-[var(--ema-text-tertiary)]">
           <span className="i-mdi:graph-outline text-4xl opacity-30 mb-2" />
-          <p className="text-sm">{nodes.length === 0 ? '暂无节点' : '无匹配节点'}</p>
+          <p className="text-sm font-semibold">{nodes.length === 0 ? '暂无节点' : '无匹配节点'}</p>
         </div>
       )}
 
@@ -345,10 +345,10 @@ function NodesTab(): JSX.Element {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <Badge variant={NODE_TYPE_VARIANT[node.node_type]}>{NODE_TYPE_LABEL[node.node_type]}</Badge>
-                      <span className="text-sm font-medium text-[var(--ema-text-primary)] truncate">{node.label}</span>
+                      <span className="text-sm font-semibold text-[var(--ema-text-primary)] truncate">{node.label}</span>
                     </div>
                     {node.description && (
-                      <p className="text-xs text-[var(--ema-text-tertiary)] mt-0.5 line-clamp-1">{node.description}</p>
+                      <p className="text-xs font-semibold text-[var(--ema-text-tertiary)] mt-0.5 line-clamp-1">{node.description}</p>
                     )}
                     <div className="flex items-center gap-3 mt-1.5">
                       <Tooltip content={`重要度 ${(node.importance * 100).toFixed(0)}%`}>
@@ -361,7 +361,7 @@ function NodesTab(): JSX.Element {
                           />
                         </div>
                       </Tooltip>
-                      <span className="text-xs text-[var(--ema-text-tertiary)] opacity-60">
+                      <span className="text-xs font-semibold text-[var(--ema-text-tertiary)] opacity-60">
                         {relativeTime(node.last_referenced_at)}
                       </span>
                     </div>
@@ -385,7 +385,7 @@ function NodesTab(): JSX.Element {
       )}
 
       {!loading && nodes.length > 0 && (
-        <p className="text-xs text-[var(--ema-text-tertiary)] opacity-40 shrink-0 text-right">
+        <p className="text-xs font-semibold text-[var(--ema-text-tertiary)] opacity-40 shrink-0 text-right">
           显示 {filtered.length} / {nodes.length} 个节点
         </p>
       )}
@@ -488,7 +488,7 @@ function ItemsTab(): JSX.Element {
       {!loading && filtered.length === 0 && (
         <div className="flex flex-col items-center justify-center py-12 text-[var(--ema-text-tertiary)]">
           <span className="i-mdi:note-outline text-4xl opacity-30 mb-2" />
-          <p className="text-sm">{items.length === 0 ? '暂无条目' : '无匹配条目'}</p>
+          <p className="text-sm font-semibold">{items.length === 0 ? '暂无条目' : '无匹配条目'}</p>
         </div>
       )}
 
@@ -502,10 +502,10 @@ function ItemsTab(): JSX.Element {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <Badge variant={ITEM_KIND_VARIANT[item.kind]}>{ITEM_KIND_LABEL[item.kind]}</Badge>
-                      <span className="text-sm font-medium text-[var(--ema-text-primary)] truncate">{item.title}</span>
+                      <span className="text-sm font-semibold text-[var(--ema-text-primary)] truncate">{item.title}</span>
                     </div>
                     {item.body && (
-                      <p className="text-xs text-[var(--ema-text-tertiary)] mt-0.5 line-clamp-2">{item.body}</p>
+                      <p className="text-xs font-semibold text-[var(--ema-text-tertiary)] mt-0.5 line-clamp-2">{item.body}</p>
                     )}
                     <div className="flex items-center gap-3 mt-1.5">
                       <Tooltip content={`重要度 ${(item.importance * 100).toFixed(0)}%`}>
@@ -518,7 +518,7 @@ function ItemsTab(): JSX.Element {
                           />
                         </div>
                       </Tooltip>
-                      <span className="text-xs text-[var(--ema-text-tertiary)] opacity-60">
+                      <span className="text-xs font-semibold text-[var(--ema-text-tertiary)] opacity-60">
                         {relativeTime(item.last_referenced_at)}
                       </span>
                     </div>
@@ -542,7 +542,7 @@ function ItemsTab(): JSX.Element {
       )}
 
       {!loading && items.length > 0 && (
-        <p className="text-xs text-[var(--ema-text-tertiary)] opacity-40 shrink-0 text-right">
+        <p className="text-xs font-semibold text-[var(--ema-text-tertiary)] opacity-40 shrink-0 text-right">
           显示 {filtered.length} / {items.length} 个条目
         </p>
       )}
@@ -588,7 +588,7 @@ function MaintenanceTab(): JSX.Element {
     <div className="flex flex-col gap-4">
       <div className="ema-slide-down">
         <h3 className="text-sm font-semibold text-[var(--ema-text-primary)]">重要度衰减</h3>
-        <p className="text-xs text-[var(--ema-text-tertiary)] mt-0.5">
+        <p className="text-xs font-semibold text-[var(--ema-text-tertiary)] mt-0.5">
           降低长期未引用记忆的重要度，使其在召回时权重降低。受保护类型(事实/偏好/关系)永远不衰减。
         </p>
       </div>
@@ -658,21 +658,21 @@ function MaintenanceTab(): JSX.Element {
             <div className="flex items-center gap-2 mb-3">
               <p className="text-sm font-semibold text-[var(--ema-text-primary)]">执行结果</p>
               {maintenanceReport.dryRun && <Badge variant="warn">预演</Badge>}
-              <span className="text-xs text-[var(--ema-text-tertiary)]">
+              <span className="text-xs font-semibold text-[var(--ema-text-tertiary)]">
                 衰减节点 {maintenanceReport.decayedNodes}，衰减条目 {maintenanceReport.decayedItems}
               </span>
             </div>
 
             {maintenanceReport.preview.nodes.length > 0 && (
               <div className="mb-3">
-                <p className="text-xs text-[var(--ema-text-tertiary)] mb-1.5">受影响节点(前 {maintenanceReport.preview.nodes.length} 条)</p>
+                <p className="text-xs font-semibold text-[var(--ema-text-tertiary)] mb-1.5">受影响节点(前 {maintenanceReport.preview.nodes.length} 条)</p>
                 <ScrollArea viewportClassName="max-h-40">
                   <div className="flex flex-col gap-1 pr-1">
                     {maintenanceReport.preview.nodes.map((n) => (
                       <div key={n.id} className="flex items-center gap-2 text-xs">
                         <Badge variant={NODE_TYPE_VARIANT[n.nodeType]}>{NODE_TYPE_LABEL[n.nodeType]}</Badge>
-                        <span className="flex-1 truncate text-[var(--ema-text-secondary)]">{n.label}</span>
-                        <span className="text-[var(--ema-text-tertiary)] opacity-60 tabular-nums shrink-0">
+                        <span className="flex-1 truncate font-semibold text-[var(--ema-text-secondary)]">{n.label}</span>
+                        <span className="font-semibold text-[var(--ema-text-tertiary)] opacity-60 tabular-nums shrink-0">
                           {(n.currentImportance * 100).toFixed(0)}% → {(n.newImportance * 100).toFixed(0)}%
                         </span>
                       </div>
@@ -684,13 +684,13 @@ function MaintenanceTab(): JSX.Element {
 
             {maintenanceReport.preview.items.length > 0 && (
               <div>
-                <p className="text-xs text-[var(--ema-text-tertiary)] mb-1.5">受影响条目(前 {maintenanceReport.preview.items.length} 条)</p>
+                <p className="text-xs font-semibold text-[var(--ema-text-tertiary)] mb-1.5">受影响条目(前 {maintenanceReport.preview.items.length} 条)</p>
                 <ScrollArea viewportClassName="max-h-40">
                   <div className="flex flex-col gap-1 pr-1">
                     {maintenanceReport.preview.items.map((item) => (
                       <div key={item.id} className="flex items-center gap-2 text-xs">
-                        <span className="flex-1 truncate text-[var(--ema-text-secondary)]">{item.title}</span>
-                        <span className="text-[var(--ema-text-tertiary)] opacity-60 tabular-nums shrink-0">
+                        <span className="flex-1 truncate font-semibold text-[var(--ema-text-secondary)]">{item.title}</span>
+                        <span className="font-semibold text-[var(--ema-text-tertiary)] opacity-60 tabular-nums shrink-0">
                           {(item.currentImportance * 100).toFixed(0)}% → {(item.newImportance * 100).toFixed(0)}%
                         </span>
                       </div>
@@ -701,7 +701,7 @@ function MaintenanceTab(): JSX.Element {
             )}
 
             {maintenanceReport.preview.nodes.length === 0 && maintenanceReport.preview.items.length === 0 && (
-              <p className="text-xs text-[var(--ema-text-tertiary)] opacity-40">此次无需衰减的记忆</p>
+              <p className="text-xs font-semibold text-[var(--ema-text-tertiary)] opacity-40">此次无需衰减的记忆</p>
             )}
           </div>
         </>
@@ -728,7 +728,7 @@ export function MemoryTab(): JSX.Element {
     <div className="flex flex-col gap-4">
       <div className="shrink-0">
         <h2 className="text-base font-semibold text-[var(--ema-text-primary)]">记忆系统</h2>
-        <p className="text-xs text-[var(--ema-text-tertiary)] mt-0.5">浏览和管理 Agent 的长期记忆节点与条目</p>
+        <p className="text-xs font-semibold text-[var(--ema-text-tertiary)] mt-0.5">浏览和管理 Agent 的长期记忆节点与条目</p>
       </div>
 
       <Tabs

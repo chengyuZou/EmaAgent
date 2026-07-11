@@ -145,7 +145,7 @@ export function LlmModelManager({ providerId, iconKey }: { providerId: string; i
             <ModelToggleCard
               key={m.id}
               id={m.id}
-              badge={m.contextWindow != null ? `${(m.contextWindow / 1000).toFixed(0)}K ctx` : undefined}
+              badge={m.contextWindow != null ? (m.contextWindow >= 1000000 ? `${(m.contextWindow / 1000000).toFixed(0)}M` : `${(m.contextWindow / 1000).toFixed(0)}K`) : undefined}
               enabled={m.enabled}
               onToggle={() => handleToggle(m)}
               logo={iconKey}
@@ -237,7 +237,7 @@ function ManualAddModel({ onAdd, existing, available }: {
                 >
                   <span className="text-sm font-mono">{highlight(s.id, query.trim())}</span>
                   <span className="text-xs text-[var(--ema-text-tertiary)]">
-                    {(s.contextWindow / 1000).toFixed(0)}K
+                    {s.contextWindow >= 1000000 ? `${(s.contextWindow / 1000000).toFixed(0)}M` : `${(s.contextWindow / 1000).toFixed(0)}K`}
                   </span>
                 </button>
               ))}

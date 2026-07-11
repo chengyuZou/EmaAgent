@@ -31,8 +31,20 @@ export function ModelToggleCard({ id, badge, enabled, onToggle, action, logo }: 
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onToggle(); } }}
       title={id}
       className={`group relative text-left rounded-lg border-2 border-solid px-2.5 py-2 min-w-0 cursor-pointer outline-none
-                  ema-card-glow
+                  overflow-hidden isolate
                   transition-all duration-[var(--ema-duration-base)] active:scale-[0.97]
+                  before:content-empty before:absolute before:inset-0 before:z-0
+                  before:w-1/4 before:h-full before:opacity-0
+                  before:transition-all before:duration-250 before:ease-in-out
+                  before:[mask-image:linear-gradient(120deg,white_30%,transparent_50%)]
+                  hover:before:opacity-100 hover:before:w-[85%]
+                  hover:before:bg-gradient-to-r hover:before:from-[var(--ema-primary)]/20 hover:before:via-[var(--ema-primary)]/10 hover:before:to-transparent
+                  after:content-empty after:absolute after:inset-0 after:z-0 after:w-full after:h-full
+                  after:[background-image:radial-gradient(circle,var(--ema-text-tertiary)_1px,transparent_1px)]
+                  after:[background-size:10px_10px]
+                  after:[mask-image:linear-gradient(165deg,white_30%,transparent_50%)]
+                  after:transition-all after:duration-250
+                  after:opacity-25
                   ${enabled
                     ? 'border-[var(--ema-primary)] bg-[var(--ema-primary-muted)]'
                     : 'border-[var(--ema-border)] bg-[var(--ema-surface-1)] ema-glass-weak hover:border-[var(--ema-primary)]/30 hover:bg-[var(--ema-surface-2)] hover:shadow-[var(--ema-shadow-soft)]'

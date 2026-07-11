@@ -448,7 +448,7 @@ export function BindingsTab(): JSX.Element {
                               {m.model}
                             </span>
                             <span className="text-xs text-[var(--ema-text-tertiary)]">
-                              {m.contextWindow > 0 && `${(m.contextWindow / 1000).toFixed(0)}K`}
+                              {m.contextWindow > 0 && (m.contextWindow >= 1000000 ? `${(m.contextWindow / 1000000).toFixed(0)}M` : `${(m.contextWindow / 1000).toFixed(0)}K`)}
                               {m.dim !== undefined && m.dim > 0 && ` · ${m.dim}d`}
                               {isSaving && ' · 保存中…'}
                             </span>
