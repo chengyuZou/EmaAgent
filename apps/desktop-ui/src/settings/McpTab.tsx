@@ -1,7 +1,7 @@
 ﻿import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import {
   Badge, Button, Callout, Card, ConfirmDialog, Dialog, Divider, DropdownMenu,
-  Field, IconButton, Input, ScrollArea, Select, Spinner, Switch, Tabs, Textarea, Tooltip,
+  EmptyState, Field, IconButton, Input, ScrollArea, Select, Spinner, Switch, Tabs, Textarea, ToolSpecItem, Tooltip,
 } from '@ema-agent/ui';
 import { useMcpStore, type McpServerEntry, type McpServerConfig, type McpProbeResult, type McpImportResult, type McpMarketEntry } from '../stores/mcp-store.js';
 import { showToast } from '../lib/toast.js';
@@ -318,11 +318,7 @@ export function McpTab(): JSX.Element {
                   <div className="flex justify-center py-10"><Spinner size="md" /></div>
                 )}
                 {!loading && servers.length === 0 && (
-                  <div className="flex flex-col items-center justify-center py-16 text-[var(--ema-text-tertiary)] gap-2 ema-fade-in">
-                    <span className="i-mdi:server-outline text-4xl opacity-40" />
-                    <p className="text-sm">暂无 MCP 服务器</p>
-                    <p className="text-xs">点击"添加服务器"或到「浏览市场」挑选</p>
-                  </div>
+                  <EmptyState icon="i-mdi:server-outline" title="暂无 MCP 服务器" hint='点击"添加服务器"或到「浏览市场」挑选' animate className="py-16" />
                 )}
                 {!loading && servers.length > 0 && (
                   <ScrollArea className="flex-1" viewportClassName="pb-2">
@@ -507,17 +503,7 @@ export function McpTab(): JSX.Element {
               {probeResult.tools.map((t) => {
                 const params = toolParamNames(t.inputSchema);
                 return (
-                  <div key={t.serverToolName} className="rounded-lg px-2.5 py-1.5 bg-[var(--ema-surface-1)] border border-[var(--ema-border)]">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-xs font-mono font-medium text-[var(--ema-text-primary)]">{t.serverToolName}</span>
-                      {params.length > 0 && (
-                        <span className="text-[10px] text-[var(--ema-text-tertiary)] font-mono">({params.join(', ')})</span>
-                      )}
-                    </div>
-                    {t.description && (
-                      <p className="text-[11px] text-[var(--ema-text-tertiary)] mt-0.5 line-clamp-2">{t.description}</p>
-                    )}
-                  </div>
+                  <ToolSpecItem key={t.serverToolName} name={t.serverToolName} params={params} description={t.description} />
                 );
               })}
             </div>
@@ -634,10 +620,7 @@ function McpMarketView({
 
   if (marketServers.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-16 text-[var(--ema-text-tertiary)] gap-2">
-        <span className="i-mdi:store-outline text-4xl opacity-40" aria-hidden />
-        <p className="text-sm">市场暂无可用服务器</p>
-      </div>
+      <EmptyState icon="i-mdi:store-outline" title="市场暂无可用服务器" className="py-16" />
     );
   }
 
@@ -873,17 +856,7 @@ function ServerRow({
               {tools.map((t) => {
                 const params = toolParamNames(t.inputSchema);
                 return (
-                  <div key={t.serverToolName} className="rounded-lg px-2.5 py-1.5 bg-[var(--ema-surface-1)] border border-[var(--ema-border)]">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-xs font-mono font-medium text-[var(--ema-text-primary)]">{t.serverToolName}</span>
-                      {params.length > 0 && (
-                        <span className="text-[10px] text-[var(--ema-text-tertiary)] font-mono">({params.join(', ')})</span>
-                      )}
-                    </div>
-                    {t.description && (
-                      <p className="text-[11px] text-[var(--ema-text-tertiary)] mt-0.5 line-clamp-2">{t.description}</p>
-                    )}
-                  </div>
+                  <ToolSpecItem key={t.serverToolName} name={t.serverToolName} params={params} description={t.description} />
                 );
               })}
             </div>

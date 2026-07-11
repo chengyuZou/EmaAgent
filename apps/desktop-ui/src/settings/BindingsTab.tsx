@@ -5,7 +5,7 @@
  * Level 2: single-select — provider cards (horizontal scroll) → model grid (2-col).
  */
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { Button, CardButton, IconButton, Input, Callout } from '@ema-agent/ui';
+import { Button, CardButton, IconButton, Input, Callout, RadioDot } from '@ema-agent/ui';
 import {
   modelBindingsApi,
   type BindingModule,
@@ -94,13 +94,7 @@ function ProviderCardRow({
           >
             {/* Radio dot */}
             <div className="flex items-center gap-2 mb-2">
-              <span
-                className={`size-4 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${
-                  isSel ? 'border-[var(--ema-primary)]' : 'border-[var(--ema-border-strong)]'
-                }`}
-              >
-                {isSel && <span className="size-2 rounded-full bg-[var(--ema-primary)]" />}
-              </span>
+              <RadioDot selected={isSel} />
               <span className={`text-sm font-medium truncate ${
                 isSel ? 'text-[var(--ema-primary-text)]' : 'text-[var(--ema-text-secondary)]'
               }`}>
@@ -260,8 +254,8 @@ export function BindingsTab(): JSX.Element {
     return (
       <div className="flex flex-col gap-6">
         <div>
-          <h2 className="text-2xl font-semibold text-[var(--ema-text-primary)]">模型绑定</h2>
-          <p className="text-[var(--ema-text-tertiary)] text-sm mt-1">
+          <h2 className="text-base font-semibold text-[var(--ema-text-primary)]">模型绑定</h2>
+          <p className="text-[var(--ema-text-tertiary)] text-xs mt-1">
             为每个模块选择要使用的模型。先在"服务来源"启用模型，再在此绑定。
           </p>
         </div>
@@ -317,7 +311,7 @@ export function BindingsTab(): JSX.Element {
           onClick={goGrid}
         />
         <div>
-          <h2 className="text-2xl font-semibold text-[var(--ema-text-primary)]">{moduleLabel} 绑定
+          <h2 className="text-base font-semibold text-[var(--ema-text-primary)]">{moduleLabel} 绑定
             <span className="text-[10px] px-2 py-0.5 rounded-full
                              bg-[var(--ema-surface-2)] text-[var(--ema-text-tertiary)]
                              ml-2 align-middle uppercase">
@@ -434,13 +428,7 @@ export function BindingsTab(): JSX.Element {
                       >
                         <div className="flex items-start gap-2.5">
                           {/* Radio dot */}
-                          <span
-                            className={`mt-0.5 size-4 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${
-                              isBound ? 'border-[var(--ema-primary)]' : 'border-[var(--ema-border-strong)]'
-                            }`}
-                          >
-                            {isBound && <span className="size-2 rounded-full bg-[var(--ema-primary)]" />}
-                          </span>
+                          <RadioDot selected={isBound} className="mt-0.5" />
                           <div className="min-w-0 flex flex-col gap-0.5">
                             <span className={`text-sm truncate ${
                               isBound ? 'text-[var(--ema-primary-text)]' : 'text-[var(--ema-text-primary)]'

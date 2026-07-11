@@ -1,7 +1,7 @@
 ﻿import { useState, useEffect, useCallback, type CSSProperties, type JSX } from 'react';
 import {
   Badge, Button, Callout, Card, ConfirmDialog, Divider, Field,
-  Input, Progress, ScrollArea, Select, Spinner, Switch, Tabs, Tooltip,
+  Input, Progress, ScrollArea, Select, Spinner, StatCard, EmptyState, Switch, Tabs, Tooltip,
 } from '@ema-agent/ui';
 import { useMemoryStore, type MemorySessionOverrides } from '../stores/memory-store.js';
 import { useConversationStore } from '../stores/conversation-store.js';
@@ -95,9 +95,9 @@ function OverviewTab(): JSX.Element {
       {stats && (
         <>
           <div className="grid grid-cols-3 gap-3">
-            <div className="ema-stagger-in" style={{ '--stagger-i': 0 } as CSSProperties}><StatCard label="节点" value={stats.nodes.total} sub={`avg 重要度 ${(stats.nodes.avgImportance * 100).toFixed(0)}%`} /></div>
-            <div className="ema-stagger-in" style={{ '--stagger-i': 1 } as CSSProperties}><StatCard label="条目" value={stats.items.total} sub={`avg 重要度 ${(stats.items.avgImportance * 100).toFixed(0)}%`} /></div>
-            <div className="ema-stagger-in" style={{ '--stagger-i': 2 } as CSSProperties}><StatCard label="边"   value={stats.edges.total} sub={`avg 引用 ${stats.edges.avgMentionCount.toFixed(1)}`} /></div>
+            <StatCard label="节点" value={stats.nodes.total} sub={`avg 重要度 ${(stats.nodes.avgImportance * 100).toFixed(0)}%`} index={0} size="lg" decorate="ema-card-decorate--starfield" />
+            <StatCard label="条目" value={stats.items.total} sub={`avg 重要度 ${(stats.items.avgImportance * 100).toFixed(0)}%`} index={1} size="lg" decorate="ema-card-decorate--starfield" />
+            <StatCard label="边"   value={stats.edges.total} sub={`avg 引用 ${stats.edges.avgMentionCount.toFixed(1)}`} index={2} size="lg" decorate="ema-card-decorate--starfield" />
           </div>
 
           {/* By-type breakdown */}
@@ -216,16 +216,6 @@ function OverviewTab(): JSX.Element {
   );
 }
 
-function StatCard({ label, value, sub }: { label: string; value: number; sub: string }): JSX.Element {
-  return (
-    <Card variant="elevated" padding="sm" className="active:scale-[0.98] transition-all duration-[var(--ema-duration-base)] ema-card-decorate ema-card-decorate--starfield hover:border-[var(--ema-primary)]/30 hover:bg-[var(--ema-surface-2)] hover:shadow-[var(--ema-shadow-soft)]">
-      <p className="text-xs font-semibold text-[var(--ema-text-tertiary)]">{label}</p>
-      <p className="text-2xl font-bold text-[var(--ema-text-primary)] tabular-nums">{value.toLocaleString()}</p>
-      <p className="text-xs font-semibold text-[var(--ema-text-tertiary)] opacity-60 mt-0.5">{sub}</p>
-    </Card>
-  );
-}
-
 function OverrideSwitch({
   label, desc, checked, onChange,
 }: {
@@ -329,10 +319,7 @@ function NodesTab(): JSX.Element {
       )}
 
       {!loading && filtered.length === 0 && (
-        <div className="flex flex-col items-center justify-center py-12 text-[var(--ema-text-tertiary)]">
-          <span className="i-mdi:graph-outline text-4xl opacity-30 mb-2" />
-          <p className="text-sm font-semibold">{nodes.length === 0 ? '暂无节点' : '无匹配节点'}</p>
-        </div>
+        <EmptyState icon="i-mdi:graph-outline" title={nodes.length === 0 ? '暂无节点' : '无匹配节点'} />
       )}
 
       {!loading && filtered.length > 0 && (
@@ -486,10 +473,7 @@ function ItemsTab(): JSX.Element {
       )}
 
       {!loading && filtered.length === 0 && (
-        <div className="flex flex-col items-center justify-center py-12 text-[var(--ema-text-tertiary)]">
-          <span className="i-mdi:note-outline text-4xl opacity-30 mb-2" />
-          <p className="text-sm font-semibold">{items.length === 0 ? '暂无条目' : '无匹配条目'}</p>
-        </div>
+        <EmptyState icon="i-mdi:note-outline" title={items.length === 0 ? '暂无条目' : '无匹配条目'} />
       )}
 
       {!loading && filtered.length > 0 && (

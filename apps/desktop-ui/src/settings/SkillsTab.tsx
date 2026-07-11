@@ -1,6 +1,6 @@
 ﻿import React, { useEffect, useRef, useState } from 'react';
 import {
-  Badge, Button, Callout, Card, ConfirmDialog, Dialog, Field,
+  Badge, Button, Callout, Card, ConfirmDialog, Dialog, EmptyState, Field,
   Input, ScrollArea, Spinner, Switch, Tabs, Textarea, Tooltip,
 } from '@ema-agent/ui';
 import { useSkillStore, type MarketSkillEntry } from '../stores/skill-store.js';
@@ -80,10 +80,7 @@ function MarketView({
 
   if (marketSkills.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-16 text-[var(--ema-text-tertiary)] gap-2">
-        <span className="i-mdi:store-outline text-4xl opacity-40" aria-hidden />
-        <p className="text-sm">市场暂无技能</p>
-      </div>
+      <EmptyState icon="i-mdi:store-outline" title="市场暂无技能" className="py-16" />
     );
   }
 
@@ -178,11 +175,7 @@ function InstalledList({
 
   if (skills.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-16 text-[var(--ema-text-tertiary)] gap-2">
-        <span className="i-mdi:puzzle-outline text-4xl opacity-40" aria-hidden />
-        <p className="text-sm">暂无已安装技能</p>
-        <p className="text-xs">切换到「浏览市场」或点击右上角安装</p>
-      </div>
+      <EmptyState icon="i-mdi:puzzle-outline" title="暂无已安装技能" hint="切换到「浏览市场」或点击右上角安装" className="py-16" />
     );
   }
 

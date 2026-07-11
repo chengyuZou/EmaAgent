@@ -7,6 +7,10 @@ export { Input }      from './Input.js';
 export { Textarea }   from './Textarea.js';
 export { Card }       from './Card.js';
 export { CardButton } from './CardButton.js';
+export { StatCard }  from './StatCard.js';
+export { EmptyState } from './EmptyState.js';
+export { ToolSpecItem } from './ToolSpecItem.js';
+export { RadioDot } from './RadioDot.js';
 
 // Feedback
 export { Skeleton } from './Skeleton.js';
@@ -51,6 +55,10 @@ export type { InputProps, InputSize } from './Input.js';
 export type { TextareaProps, TextareaHandle } from './Textarea.js';
 export type { CardProps, CardVariant, CardPadding } from './Card.js';
 export type { CardButtonProps, CardButtonPadding } from './CardButton.js';
+export type { StatCardProps } from './StatCard.js';
+export type { EmptyStateProps } from './EmptyState.js';
+export type { ToolSpecItemProps } from './ToolSpecItem.js';
+export type { RadioDotProps } from './RadioDot.js';
 export type { SkeletonProps, SkeletonAnimation } from './Skeleton.js';
 export type { SpinnerProps, SpinnerSize } from './Spinner.js';
 export type { CalloutProps, CalloutVariant } from './Callout.js';

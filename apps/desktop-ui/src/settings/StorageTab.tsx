@@ -4,6 +4,7 @@ import {
 } from 'react';
 import {
   Button, CardButton, IconButton, Input, Spinner, Badge, Callout,
+  StatCard as UIStatCard,
   ScrollArea, Skeleton, Dialog, Divider, Tabs, Progress,
 } from '@ema-agent/ui';
 import { useStorageStore }  from '../stores/storage-store.js';
@@ -364,18 +365,7 @@ function StatCard({
   label: string; value: string; sub?: string; icon: string; index: number;
 }): JSX.Element {
   return (
-    <div
-      className="ema-stagger-in ema-glass-weak ema-card-decorate ema-card-decorate--diagonal bg-[var(--ema-surface-1)] rounded-xl border-2 border-solid border-[var(--ema-border)] hover:border-[var(--ema-primary)]/30 hover:bg-[var(--ema-surface-2)] hover:shadow-[var(--ema-shadow-soft)]
-                 px-4 py-3 flex items-start gap-3 shadow-[var(--ema-shadow-1)]"
-      style={{ '--stagger-i': index } as CSSProperties}
-    >
-      <span className={`${icon} text-xl shrink-0 mt-0.5 text-[var(--ema-primary)]`} aria-hidden />
-      <div className="min-w-0">
-        <p className="text-xs text-[var(--ema-text-tertiary)]">{label}</p>
-        <p className="text-base font-semibold text-[var(--ema-text-primary)] truncate">{value}</p>
-        {sub && <p className="text-xs text-[var(--ema-text-tertiary)] mt-0.5">{sub}</p>}
-      </div>
-    </div>
+    <UIStatCard label={label} value={value} sub={sub} icon={icon} index={index} size="md" decorate="ema-card-decorate--diagonal" />
   );
 }
 
