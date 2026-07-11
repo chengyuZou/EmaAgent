@@ -45,11 +45,11 @@ export function MenuStatusItem(props: MenuStatusItemProps): React.JSX.Element {
         'hover:before:bg-gradient-to-r hover:before:from-[var(--ema-primary)]/20 hover:before:via-[var(--ema-primary)]/10 hover:before:to-transparent',
         // Dotted texture (::after)
         'after:content-empty after:absolute after:inset-0 after:z-0 after:w-full after:h-full',
-        'after:[background-image:radial-gradient(ellipse_70%_50%_at_40%_50%,color-mix(in_srgb,var(--ema-text-tertiary)_16%,transparent)_0%,transparent_60%),radial-gradient(ellipse_60%_45%_at_60%_50%,color-mix(in_srgb,var(--ema-text-tertiary)_14%,transparent)_0%,transparent_65%)]',
-        'after:[background-size:100%_100%,100%_100%]',
+        'after:[background-image:radial-gradient(circle_at_30%_30%,color-mix(in_srgb,var(--ema-primary)_30%,transparent),transparent_45%),radial-gradient(circle_at_70%_70%,color-mix(in_srgb,var(--ema-violet)_28%,transparent),transparent_50%),radial-gradient(circle,color-mix(in_srgb,var(--ema-text-tertiary)_30%,transparent)_1px,transparent_1.5px)]',
+        'after:[background-size:100%_100%,100%_100%,10px_10px]',
         'after:[mask-image:linear-gradient(165deg,white_30%,transparent_50%)]',
         'after:transition-all after:duration-250',
-        'after:opacity-25',
+        'after:opacity-100 hover:after:[background-size:102%_102%]',
         className,
       )}
       {...rest}

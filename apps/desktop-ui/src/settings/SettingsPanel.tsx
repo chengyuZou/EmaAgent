@@ -281,7 +281,7 @@ export function SettingsPanel(): JSX.Element {
           className="fixed bottom-4 right-8 z-0 pointer-events-none ema-fade-in"
           aria-hidden
         >
-          <span className={`${activeGroupIcon} text-[12rem] leading-none text-[var(--ema-text-tertiary)] opacity-[0.04]`} />
+          <span className={`${activeGroupIcon} text-[12rem] leading-none text-[var(--ema-text-tertiary)] opacity-[0.18]`} />
         </div>
       </div>
     </ErrorBoundary>

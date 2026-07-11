@@ -729,18 +729,21 @@ function Pager({
   for (let i = start; i < end; i++) nums.push(i);
 
   const btn = (label: ReactNode, p: number, opts: { active?: boolean; disabled?: boolean; key?: string } = {}): JSX.Element => (
-    <button
+    <Button
       key={opts.key ?? (typeof label === 'string' ? `${label}-${p}` : `btn-${p}`)}
+      variant="ghost"
+      size="sm"
+      shape="rounded"
       disabled={opts.disabled}
       onClick={() => go(p)}
-      className={`min-w-7 h-7 px-1.5 rounded-lg text-xs transition-colors disabled:opacity-30 ${
+      className={`min-w-7 h-7 px-1.5 rounded-lg text-xs ${
         opts.active
-          ? 'bg-[var(--ema-primary)] text-[var(--ema-primary-text)] font-medium'
-          : 'bg-[var(--ema-surface-2)] text-[var(--ema-text-secondary)] hover:bg-[var(--ema-surface-3)]'
+          ? 'bg-[var(--ema-primary)] text-[var(--ema-primary-text)] border-transparent'
+          : 'bg-[var(--ema-surface-2)] text-[var(--ema-text-secondary)] border-transparent hover:bg-[var(--ema-surface-3)]'
       }`}
     >
       {label}
-    </button>
+    </Button>
   );
 
   return (
@@ -752,15 +755,12 @@ function Pager({
       {btn(<span className="i-mdi:chevron-right text-xs" aria-hidden />, page + 1, { disabled: page === totalPages - 1, key: 'next' })}
 
       <span className="text-xs text-[var(--ema-text-tertiary)] ml-1">{page + 1} / {totalPages} 页</span>
-      <input
+      <Input
         value={jump}
         onChange={(e) => setJump(e.target.value.replace(/\D/g, ''))}
         onKeyDown={(e) => { if (e.key === 'Enter' && jump) { go(Number(jump) - 1); setJump(''); } }}
         placeholder="跳转"
-        className="w-14 h-7 px-2 text-xs rounded-lg text-center outline-none
-                   bg-[var(--ema-surface-1)] border border-[var(--ema-border)]
-                   text-[var(--ema-text-primary)] placeholder:text-[var(--ema-text-tertiary)]
-                   focus:border-[var(--ema-primary)]"
+        className="w-14 h-7 px-2 text-xs rounded-lg text-center"
       />
     </div>
   );

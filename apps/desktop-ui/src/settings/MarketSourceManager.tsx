@@ -90,7 +90,7 @@ export function MarketSourceManager({ kind }: { kind: 'mcp' | 'skill' }): JSX.El
   const enabledCount = sources.filter((s) => s.enabled).length;
 
   return (
-    <div className="rounded-xl border border-[var(--ema-border)] bg-[var(--ema-surface-1)] ema-card-decorate ema-card-decorate--circuit">
+    <div className={`rounded-xl border border-[var(--ema-border)] bg-[var(--ema-surface-1)] ema-card-decorate ema-card-decorate--${kind === 'skill' ? 'diamond' : 'circuit'}`}>
       {/* Header(点击展开/收起)*/}
       <button
         type="button"
@@ -130,6 +130,7 @@ export function MarketSourceManager({ kind }: { kind: 'mcp' | 'skill' }): JSX.El
               <SourceRow
                 key={source.id}
                 source={source}
+                kind={kind}
                 testing={testingId === source.id}
                 onToggle={(enabled) => void handleToggle(source, enabled)}
                 onRemove={() => void handleRemove(source)}
@@ -169,17 +170,18 @@ export function MarketSourceManager({ kind }: { kind: 'mcp' | 'skill' }): JSX.El
 // ── 源行 ───────────────────────────────────────────────────────────────────────
 
 function SourceRow({
-  source, testing, onToggle, onRemove, onTest,
+  source, testing, onToggle, onRemove, onTest, kind,
 }: {
   source:    MarketSourceRecord;
   testing:   boolean;
   onToggle:  (enabled: boolean) => void;
   onRemove:  () => void;
   onTest:    () => void;
+  kind:      'mcp' | 'skill';
 }): JSX.Element {
   const configLabel = configToLabel(source);
   return (
-    <div className="flex items-center gap-3 px-3 py-2 rounded-lg bg-[var(--ema-surface-2)] ema-card-decorate ema-card-decorate--circuit">
+    <div className={`flex items-center gap-3 px-3 py-2 rounded-lg bg-[var(--ema-surface-2)] ema-card-decorate ema-card-decorate--${kind === 'skill' ? 'diamond' : 'circuit'}`}>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
           <span className="text-sm font-semibold text-[var(--ema-text-primary)] truncate">{source.label}</span>

@@ -40,11 +40,11 @@ export function ModelToggleCard({ id, badge, enabled, onToggle, action, logo }: 
                   hover:before:opacity-100 hover:before:w-[85%]
                   hover:before:bg-gradient-to-r hover:before:from-[var(--ema-primary)]/20 hover:before:via-[var(--ema-primary)]/10 hover:before:to-transparent
                   after:content-empty after:absolute after:inset-0 after:z-0 after:w-full after:h-full
-                  after:[background-image:radial-gradient(ellipse_60%_40%_at_25%_25%,color-mix(in_srgb,var(--ema-text-tertiary)_18%,transparent)_0%,transparent_70%),radial-gradient(ellipse_50%_35%_at_75%_60%,color-mix(in_srgb,var(--ema-text-tertiary)_15%,transparent)_0%,transparent_75%)]
-                  after:[background-size:100%_100%,100%_100%]
+                  after:[background-image:radial-gradient(circle_at_25%_25%,color-mix(in_srgb,var(--ema-violet)_32%,transparent),transparent_45%),radial-gradient(circle_at_75%_75%,color-mix(in_srgb,var(--ema-info)_28%,transparent),transparent_50%),radial-gradient(circle,color-mix(in_srgb,var(--ema-text-tertiary)_30%,transparent)_1px,transparent_1.5px)]
+                  after:[background-size:100%_100%,100%_100%,10px_10px]
                   after:[mask-image:linear-gradient(165deg,white_30%,transparent_50%)]
                   after:transition-all after:duration-250
-                  after:opacity-25
+                  after:opacity-100 hover:after:[background-size:102%_102%]
                   ${enabled
                     ? 'border-[var(--ema-primary)] bg-[var(--ema-primary-muted)]'
                     : 'border-[var(--ema-border)] bg-[var(--ema-surface-1)] ema-glass-weak hover:border-[var(--ema-primary)]/30 hover:bg-[var(--ema-surface-2)] hover:shadow-[var(--ema-shadow-soft)]'

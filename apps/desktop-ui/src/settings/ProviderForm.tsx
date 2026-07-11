@@ -197,8 +197,8 @@ export function ProviderForm({
             />
           </button>
 
-          {advancedOpen && (
-            <div className="flex flex-col gap-4 mt-1">
+          <div className="ema-collapsible" style={{ gridTemplateRows: advancedOpen ? '1fr' : '0fr' }}>
+            <div className="overflow-hidden flex flex-col gap-4 mt-1">
               {protocolChoices.length > 1 && (
                 <div className="flex flex-col gap-2">
                   <div className="text-sm font-medium text-[var(--ema-text-secondary)]">协议</div>
@@ -222,7 +222,7 @@ export function ProviderForm({
                 />
               </div>
             </div>
-          )}
+          </div>
         </section>
 
         {/* ── 验证状态条 ────────────────────────────────────────────────────── */}

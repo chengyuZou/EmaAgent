@@ -1,5 +1,5 @@
 ﻿import { useEffect, useState, type JSX, type ChangeEvent } from 'react';
-import { Slider, type SliderStep } from '@ema-agent/ui';
+import { Button, Slider, type SliderStep } from '@ema-agent/ui';
 import { useThemeStore, type ThemeMode } from '../stores/theme-store.js';
 
 // ── Hue presets ───────────────────────────────────────────────────────────────
@@ -89,11 +89,13 @@ export function AppearanceTab(): JSX.Element {
         {/* Preset swatches */}
         <div className="flex flex-wrap gap-2 pt-1">
           {HUE_PRESETS.map((p) => (
-            <button
+            <Button
               key={p.hue}
+              variant="ghost"
+              size="sm"
               title={p.label}
               onClick={() => void setHue(p.hue)}
-              className="group flex flex-col items-center gap-1"
+              className="group flex-col gap-1 p-0 h-auto border-transparent bg-transparent hover:bg-transparent active:bg-transparent"
             >
               <span
                 className={`block w-7 h-7 rounded-full border-2 transition-ema hover:scale-110 ${
@@ -106,7 +108,7 @@ export function AppearanceTab(): JSX.Element {
               <span className="text-xs transition-ema text-[var(--ema-text-tertiary)] hover:text-[var(--ema-text-primary)]">
                 {p.label}
               </span>
-            </button>
+            </Button>
           ))}
         </div>
       </section>
@@ -147,9 +149,10 @@ export function AppearanceTab(): JSX.Element {
         </div>
 
         <div className="flex items-center gap-4">
-          <button
+          <Button
+            variant="ghost"
             onClick={() => handleModeClick('dark')}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border transition-all duration-[var(--ema-duration-base)] ema-card-decorate ema-card-decorate--mesh ${
+            className={`flex items-center gap-2 px-4 py-2.5 h-auto rounded-xl border transition-all duration-[var(--ema-duration-base)] ema-card-decorate ema-card-decorate--mesh ${
               mode === 'dark'
                 ? 'border-[var(--ema-primary)] bg-[var(--ema-primary-muted)] text-[var(--ema-text-primary)]'
                 : 'border-[var(--ema-border)] bg-[var(--ema-surface-1)] text-[var(--ema-text-tertiary)] hover:border-[var(--ema-border-hover)]'
@@ -157,10 +160,11 @@ export function AppearanceTab(): JSX.Element {
           >
             <span className="i-solar:moon-bold-duotone text-lg" aria-hidden />
             <span className="text-sm font-medium">深色</span>
-          </button>
-          <button
+          </Button>
+          <Button
+            variant="ghost"
             onClick={() => handleModeClick('light')}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border transition-all duration-[var(--ema-duration-base)] ema-card-decorate ema-card-decorate--mesh ${
+            className={`flex items-center gap-2 px-4 py-2.5 h-auto rounded-xl border transition-all duration-[var(--ema-duration-base)] ema-card-decorate ema-card-decorate--mesh ${
               mode === 'light'
                 ? 'border-[var(--ema-primary)] bg-[var(--ema-primary-muted)] text-[var(--ema-text-primary)]'
                 : 'border-[var(--ema-border)] bg-[var(--ema-surface-1)] text-[var(--ema-text-tertiary)] hover:border-[var(--ema-border-hover)]'
@@ -168,7 +172,7 @@ export function AppearanceTab(): JSX.Element {
           >
             <span className="i-solar:sun-bold-duotone text-lg" aria-hidden />
             <span className="text-sm font-medium">浅色</span>
-          </button>
+          </Button>
         </div>
       </section>
     </div>

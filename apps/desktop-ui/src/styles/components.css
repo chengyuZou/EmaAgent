@@ -254,20 +254,26 @@
   pointer-events: none;
 }
 .ema-card-decorate:hover::before {
-  width: 85%;
-  opacity: 1;
+  width: 60%;
+  opacity: 0.5;
 }
 .ema-card-decorate::after {
   content: '';
   position: absolute;
   inset: 0;
   z-index: -1;
-  background-image: radial-gradient(circle 80% 80% at 50% 0%, color-mix(in srgb, var(--ema-text-tertiary) 22%, transparent) 0%, transparent 60%);
-  background-size: 100% 100%;
+  background-image:
+    radial-gradient(circle at 50% 0%, color-mix(in srgb, var(--ema-primary) 25%, transparent), transparent 60%),
+    radial-gradient(circle, color-mix(in srgb, var(--ema-text-tertiary) 30%, transparent) 1px, transparent 1.5px);
+  background-size: 100% 100%, 10px 10px;
   -webkit-mask-image: linear-gradient(165deg, white 30%, transparent 50%);
   mask-image: linear-gradient(165deg, white 30%, transparent 50%);
-  opacity: 0.25;
+  opacity: 1;
   pointer-events: none;
+  transition: background-size 280ms var(--ema-ease);
+}
+.ema-card-decorate:hover::after {
+  background-size: 108% 108%;
 }
 
 /* ── ema-card-glow ───────────────────────────────────────────────────────────
@@ -319,61 +325,80 @@
  *  出处:Hero Patterns https://heropatterns.com / CSS3 Gallery https://verou.me/css3patterns/
  *  / MagicPattern https://www.magicpattern.design/tools/css-backgrounds / pattern.monster https://pattern.monster/ */
 
-/* bindings - Mesh Blob 多 radial 叠加 (二次元) - GradientMagic https://www.gradientmagic.com/ */
+/* bindings - simplecircles 半圆 (二次元) - info->violet - GradientMagic simplecircles */
 .ema-card-decorate--plus::after {
   background-image:
-    radial-gradient(circle at 20% 30%, color-mix(in srgb, var(--ema-text-tertiary) 22%, transparent) 0%, transparent 45%),
-    radial-gradient(circle at 80% 20%, color-mix(in srgb, var(--ema-text-tertiary) 18%, transparent) 0%, transparent 40%),
-    radial-gradient(circle at 70% 80%, color-mix(in srgb, var(--ema-text-tertiary) 20%, transparent) 0%, transparent 50%),
-    radial-gradient(circle at 30% 70%, color-mix(in srgb, var(--ema-text-tertiary) 15%, transparent) 0%, transparent 45%);
+    radial-gradient(circle at 75% 26%, color-mix(in srgb, var(--ema-info) 30%, transparent) 0 50%, transparent 50%),
+    radial-gradient(circle at 25% 74%, color-mix(in srgb, var(--ema-violet) 30%, transparent) 0 50%, transparent 50%),
+    linear-gradient(90deg, color-mix(in srgb, var(--ema-info) 50%, transparent), color-mix(in srgb, var(--ema-violet) 50%, transparent));
   background-size: 100% 100%;
 }
 
-/* cards 角色卡 - Dreamy Haze 梦幻角晕 (二次元) - GradientMagic */
+/* cards 角色卡 - complexcircles 多圆圈 (二次元) - primary->violet - GradientMagic complexcircles */
 .ema-card-decorate--mesh::after {
   background-image:
-    radial-gradient(circle at 0% 0%, color-mix(in srgb, var(--ema-text-tertiary) 20%, transparent) 0%, transparent 35%),
-    radial-gradient(circle at 100% 100%, color-mix(in srgb, var(--ema-text-tertiary) 18%, transparent) 0%, transparent 40%),
-    radial-gradient(circle at 100% 0%, color-mix(in srgb, var(--ema-text-tertiary) 12%, transparent) 0%, transparent 30%);
+    radial-gradient(circle at 67% 83%, color-mix(in srgb, var(--ema-text-tertiary) 14%, transparent) 0 1%, transparent 1%),
+    radial-gradient(circle at 24% 80%, color-mix(in srgb, var(--ema-text-tertiary) 14%, transparent) 0 27%, transparent 27%),
+    radial-gradient(circle at 23% 5%, color-mix(in srgb, var(--ema-text-tertiary) 14%, transparent) 0 26%, transparent 26%),
+    radial-gradient(circle at 21% 11%, color-mix(in srgb, var(--ema-text-tertiary) 14%, transparent) 0 35%, transparent 35%),
+    linear-gradient(90deg, color-mix(in srgb, var(--ema-primary) 50%, transparent), color-mix(in srgb, var(--ema-violet) 50%, transparent));
   background-size: 100% 100%;
 }
 
-/* skills - Pastel Wash 粉彩多停 (二次元) - GradientMagic */
+/* skills - angular 棱角 (二次元) - info->primary - GradientMagic angular */
 .ema-card-decorate--diamond::after {
-  background-image: linear-gradient(135deg,
-    color-mix(in srgb, var(--ema-text-tertiary) 18%, transparent) 0%,
-    color-mix(in srgb, var(--ema-text-tertiary) 8%, transparent) 35%,
-    color-mix(in srgb, var(--ema-text-tertiary) 20%, transparent) 70%,
-    color-mix(in srgb, var(--ema-text-tertiary) 10%, transparent) 100%);
+  background-image:
+    linear-gradient(45deg, color-mix(in srgb, var(--ema-info) 35%, transparent) 0 25%, transparent 25% 75%, color-mix(in srgb, var(--ema-primary) 35%, transparent) 75%),
+    linear-gradient(135deg, color-mix(in srgb, var(--ema-primary) 35%, transparent) 0 30%, transparent 30% 70%, color-mix(in srgb, var(--ema-info) 35%, transparent) 70%),
+    linear-gradient(90deg, color-mix(in srgb, var(--ema-info) 50%, transparent), color-mix(in srgb, var(--ema-primary) 50%, transparent));
   background-size: 100% 100%;
 }
 
-/* mcp - Aurora 极光流带 (二次元) - GradientMagic */
+/* mcp - complexcircles 多圆圈 (二次元) - info->violet - GradientMagic complexcircles */
 .ema-card-decorate--circuit::after {
-  background-image: conic-gradient(from 90deg at 50% 50%,
-    transparent 0%,
-    color-mix(in srgb, var(--ema-text-tertiary) 12%, transparent) 15%,
-    transparent 30%,
-    color-mix(in srgb, var(--ema-text-tertiary) 18%, transparent) 50%,
-    transparent 65%,
-    color-mix(in srgb, var(--ema-text-tertiary) 10%, transparent) 85%,
-    transparent 100%);
-  background-size: 200% 200%;
+  background-image:
+    radial-gradient(circle at 85% 1%, color-mix(in srgb, var(--ema-text-tertiary) 14%, transparent) 0 96%, transparent 96%),
+    radial-gradient(circle at 14% 15%, color-mix(in srgb, var(--ema-text-tertiary) 14%, transparent) 0 1%, transparent 1%),
+    radial-gradient(circle at 60% 90%, color-mix(in srgb, var(--ema-text-tertiary) 14%, transparent) 0 20%, transparent 20%),
+    radial-gradient(circle at 79% 7%, color-mix(in srgb, var(--ema-text-tertiary) 14%, transparent) 0 78%, transparent 78%),
+    linear-gradient(135deg, color-mix(in srgb, var(--ema-info) 50%, transparent), color-mix(in srgb, var(--ema-violet) 50%, transparent));
+  background-size: 100% 100%;
 }
 
-/* memory - Starlight Bloom 星光晕染 (二次元) - GradientMagic */
+/* memory - simplecircles 圆环 (二次元) - violet->info - GradientMagic simplecircles */
 .ema-card-decorate--starfield::after {
-  background-image: radial-gradient(circle at 50% 50%,
-    color-mix(in srgb, var(--ema-text-tertiary) 24%, transparent) 0%,
-    color-mix(in srgb, var(--ema-text-tertiary) 12%, transparent) 15%,
-    transparent 45%);
+  background-image:
+    radial-gradient(circle at 29% 55%, color-mix(in srgb, var(--ema-violet) 30%, transparent) 0 4%, transparent 4%),
+    radial-gradient(circle at 85% 89%, color-mix(in srgb, var(--ema-info) 30%, transparent) 0 51%, transparent 51%),
+    radial-gradient(circle at 6% 90%, color-mix(in srgb, var(--ema-violet) 30%, transparent) 0 53%, transparent 53%),
+    linear-gradient(45deg, color-mix(in srgb, var(--ema-violet) 50%, transparent), color-mix(in srgb, var(--ema-info) 50%, transparent));
   background-size: 100% 100%;
 }
 
-/* storage - Soft Glow 大半径单光晕 (二次元) - GradientMagic */
+/* storage - angular 棱角 (二次元) - primary->info - GradientMagic angular */
 .ema-card-decorate--diagonal::after {
-  background-image: radial-gradient(circle 80% 80% at 50% 0%,
-    color-mix(in srgb, var(--ema-text-tertiary) 22%, transparent) 0%,
-    transparent 60%);
+  background-image:
+    linear-gradient(45deg, color-mix(in srgb, var(--ema-primary) 35%, transparent) 0 25%, transparent 25% 75%, color-mix(in srgb, var(--ema-info) 35%, transparent) 75%),
+    linear-gradient(-45deg, color-mix(in srgb, var(--ema-info) 35%, transparent) 0 30%, transparent 30% 70%, color-mix(in srgb, var(--ema-primary) 35%, transparent) 70%),
+    linear-gradient(90deg, color-mix(in srgb, var(--ema-primary) 50%, transparent), color-mix(in srgb, var(--ema-info) 50%, transparent));
   background-size: 100% 100%;
+}
+
+/* ── ema-dialog-decorate ─────────────────────────────────────────────────────
+ *  Dialog 专用纹理:只 ::after background,不设 position/overflow/isolate,
+ *  避免覆盖 Dialog Content 的 fixed 定位。紫蓝渐变 + 点纹(二次元)。*/
+.ema-dialog-decorate::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background-image:
+    radial-gradient(circle at 0% 0%, color-mix(in srgb, var(--ema-violet) 48%, transparent), transparent 35%),
+    radial-gradient(circle at 100% 100%, color-mix(in srgb, var(--ema-info) 42%, transparent), transparent 40%),
+    radial-gradient(circle, color-mix(in srgb, var(--ema-text-tertiary) 35%, transparent) 1px, transparent 1.5px);
+  background-size: 100% 100%, 100% 100%, 10px 10px;
+  -webkit-mask-image: linear-gradient(165deg, white 30%, transparent 50%);
+  mask-image: linear-gradient(165deg, white 30%, transparent 50%);
+  opacity: 1;
+  pointer-events: none;
 }

@@ -42,8 +42,8 @@ export function Dialog(props: DialogProps): React.JSX.Element {
           className={cn(
             'fixed left-1/2 top-1/2 z-50 -translate-x-1/2 -translate-y-1/2',
             'w-[92vw]', widthClass,
-            'rounded-lg border border-[var(--ema-border)] bg-[var(--ema-surface-4)] p-5 shadow-[var(--ema-shadow-3)]',
-            'focus:outline-none ema-anim-dialog',
+            'rounded-lg border border-[var(--ema-border)] bg-[var(--ema-surface-4)] p-5 shadow-[var(--ema-shadow-3)] max-h-[90vh] overflow-auto',
+            'focus:outline-none ema-anim-dialog ema-dialog-decorate',
             className,
           )}
         >

@@ -1,4 +1,5 @@
 ﻿/** ShortcutsTab — keyboard shortcuts reference (V1 read-only). */
+import { type CSSProperties } from 'react';
 import { Card } from '@ema-agent/ui';
 
 export function ShortcutsTab(): JSX.Element {
@@ -26,7 +27,7 @@ export function ShortcutsTab(): JSX.Element {
             variant="elevated"
             padding="none"
             className="flex items-center justify-between px-4 py-2 ema-stagger-in ema-card-decorate ema-card-decorate--diamond"
-            style={{ '--stagger-i': i } as React.CSSProperties}
+            style={{ '--stagger-i': i } as CSSProperties}
           >
             <span className="text-sm text-[var(--ema-text-secondary)]">{s.action}</span>
             <kbd className="px-2 py-0.5 rounded-lg bg-[var(--ema-surface-2)] text-xs text-[var(--ema-text-tertiary)] font-mono">{s.keys}</kbd>

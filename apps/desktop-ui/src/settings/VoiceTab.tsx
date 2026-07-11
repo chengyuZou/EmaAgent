@@ -224,7 +224,7 @@ function UploadForm({
   }
 
   return (
-    <div className="bg-[var(--ema-surface-1)] ema-glass-weak border border-[var(--ema-border)] rounded-2xl p-4">
+    <div className="bg-[var(--ema-surface-1)] ema-glass-weak border border-[var(--ema-border)] rounded-xl p-4 ema-card-decorate ema-card-decorate--mesh">
       <h3 className="text-sm font-semibold text-[var(--ema-text-primary)] mb-3">上传参考音频</h3>
       <div className="flex flex-col gap-3">
         {/* File picker — no component equivalent */}
