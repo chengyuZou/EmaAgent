@@ -1,4 +1,4 @@
-﻿import type { SqliteDb } from '../database.js';
+import type { SqliteDb } from '../database.js';
 import type { SessionId, TurnId, CharacterCardId, BranchId } from '@ema-agent/contracts';
 
 export interface SessionRow {
@@ -7,9 +7,9 @@ export interface SessionRow {
   character_card_id: string;
   workspace_root:     string | null;
   created_at: number;
-  /** Row metadata update time: title/group/pin/workspace/mode/meta edits. Not used for recent-session ordering. */
+  /** 行元数据更新时间:title/group/pin/workspace/mode/meta 编辑。不用于 recent-session 排序。 */
   updated_at: number;
-  /** Conversation activity time: advanced when a new turn/message starts. Used for recent-session ordering. */
+  /** 对话活动时间:新 turn/message 开始时推进。用于 recent-session 排序。 */
   last_activity_at: number;
   archived_at: number | null;
   pinned:        number;        // 0 | 1
@@ -21,7 +21,7 @@ export interface SessionRow {
   active_branch_id: string | null;
 }
 
-/** SessionRow with derived turn fields from a JOIN query. */
+/** SessionRow 带 JOIN 查询派生的 turn 字段。 */
 export interface SessionRowEnriched extends SessionRow {
   last_turn_status:       string | null;
   last_turn_completed_at: number | null;
@@ -77,16 +77,16 @@ export class SessionsRepo {
   }
 
   /**
-   * Cursor-based listing. Pass `cursor` from previous response's `nextCursor`.
+   * 基于 cursor 的列表。传入上次响应的 `nextCursor` 作为 `cursor`。
    *
-   * Cursor format: `"<pinned>.<last_activity_at>"` (opaque to client; encoded by
-   * `nextCursorFor` below). This composite cursor is required because the
-   * sort key is `(pinned DESC, last_activity_at DESC)` — a single-field cursor on
-   * `last_activity_at` would skip items across the pinned/unpinned boundary when
-   * a pinned item has an older timestamp than the last unpinned item shown.
+   * Cursor 格式:`"<pinned>.<last_activity_at>"`(对客户端不透明;由下方
+   * `nextCursorFor` 编码)。需要复合 cursor 是因为排序键是
+   * `(pinned DESC, last_activity_at DESC)`--单字段 cursor 在
+   * `last_activity_at` 上会在 pinned/unpinned 边界处跳过条目
+   * (当某个 pinned 条目的时间戳比最后展示的 unpinned 条目还旧时)。
    *
-   * SQL keyset condition: "give me items strictly AFTER (lastPinned, lastTs)
-   * in the sort order", which is:
+   * SQL keyset 条件:"给我在排序顺序中严格在 (lastPinned, lastTs) 之后
+   * 的条目",即:
    *   pinned < lastPinned   OR   (pinned = lastPinned AND last_activity_at < lastTs)
    */
   listActive(limit: number, cursor?: string): SessionRow[] {
@@ -113,20 +113,20 @@ export class SessionsRepo {
   }
 
   /**
-   * Grouped listing for the sidebar UI:
-   *   pinned   — pinned sessions (most-recent-updated first)
-   *   byGroup  — sessions WITH a group_label, grouped by label
-   *   recent   — unpinned, ungrouped, active sessions
-   *   archived — soft-deleted sessions
+   * 侧边栏 UI 的分组列表:
+   *   pinned   - 置顶 session(最近更新优先)
+   *   byGroup  - 带 group_label 的 session,按 label 分组
+   *   recent   - 未置顶、未分组、活跃 session
+   *   archived - 软删除 session
    */
   /**
-   * Sidebar layout:
-   *   byGroup  — sessions WITH group_label, pinned-first within each group
-   *   pinned   — sessions pinned but WITHOUT group_label
-   *   recent   — everything else (non-archived, non-pinned, no group)
-   *   archived — soft-deleted
+   * 侧边栏布局:
+   *   byGroup  - 带 group_label 的 session,每组内置顶优先
+   *   pinned   - 置顶但无 group_label 的 session
+   *   recent   - 其余(未归档、未置顶、无分组)
+   *   archived - 软删除
    *
-   * Fold/unfold is purely a frontend concern — backend returns flat buckets.
+   * 折叠/展开纯前端逻辑--后端返回扁平 bucket。
    */
   listGrouped(): { pinned: SessionRowEnriched[]; byGroup: Array<{ label: string; sessions: SessionRowEnriched[] }>; recent: SessionRowEnriched[]; archived: SessionRowEnriched[] } {
     const all = this.db
@@ -147,8 +147,8 @@ export class SessionsRepo {
     for (const s of all) {
       if (s.archived_at) { archived.push(s); continue; }
 
-      // Grouped sessions include BOTH pinned and non-pinned — frontend sorts
-      // pinned-first within each group visual section.
+      // 分组 session 同时包含置顶和非置顶--前端在每个分组视觉区段内
+      // 按置顶优先排序。
       if (s.group_label) {
         const list = groupedMap.get(s.group_label) ?? ([] as SessionRowEnriched[]);
         list.push(s);
@@ -156,7 +156,7 @@ export class SessionsRepo {
         continue;
       }
 
-      // Ungrouped
+      // 未分组
       if (s.pinned) { pinned.push(s); continue; }
       recent.push(s);
     }
@@ -249,7 +249,7 @@ export class SessionsRepo {
       .run(at, at, id);
   }
 
-  // ── Pin / Unpin ───────────────────────────────────────────────────────────
+  // ── 置顶 / 取消置顶 ────────────────────────────────────────────────────────
 
   pin(id: SessionId, pinnedAt: number): void {
     this.db
@@ -264,7 +264,7 @@ export class SessionsRepo {
       .run(now, id);
   }
 
-  // ── Group ──────────────────────────────────────────────────────────────────
+  // ── 分组 ──────────────────────────────────────────────────────────────────────
 
   setGroup(id: SessionId, label: string | null): void {
     const now = Date.now();
@@ -273,7 +273,7 @@ export class SessionsRepo {
       .run(label, now, id);
   }
 
-  // ── Archive / Unarchive ────────────────────────────────────────────────────
+  // ── 归档 / 取消归档 ────────────────────────────────────────────────────────────
 
   archive(id: SessionId, archivedAt: number): void {
     this.db
@@ -287,19 +287,18 @@ export class SessionsRepo {
       .run(Date.now(), id);
   }
 
-  // ── Fork ───────────────────────────────────────────────────────────────────
+  // ── Fork ──────────────────────────────────────────────────────────────────────
 
   /**
-   * Clone a session's messages into a new session row.
+   * 把一个 session 的 message 克隆到新 session 行。
    *
-   * Each copied message gets a fresh random ID so there are no primary-key
-   * collisions. turn_id is set to NULL because turns belong to the source
-   * session and cross-session turn references are dangling references.
+   * 每条复制的 message 获得新的随机 ID,避免主键冲突。turn_id 置 NULL,
+   * 因为 turn 属于源 session,跨 session 的 turn 引用是悬空引用。
    *
-   * `untilTurnId` — when provided, only messages whose created_at is ≤ the
-   * latest message in that turn are copied (branch-at-point semantics).
+   * `untilTurnId` --提供时,只复制 created_at ≤ 该 turn 最新 message
+   * 的 message(branch-at-point 语义)。
    *
-   * Returns the number of messages copied.
+   * 返回复制的 message 数量。
    */
   forkInto(
     srcId:       SessionId,
@@ -312,9 +311,9 @@ export class SessionsRepo {
     if (!src) throw new Error(`Source session not found: ${srcId}`);
 
     this.db.transaction(() => {
-      // 1. New session row — copy character_card_id + workspace_root + last_mode,
-      //    parent_session_id points back to src (provenance). New session starts
-      //    flat (no branches, active_branch_id NULL).
+      // 1. 新 session 行--复制 character_card_id + workspace_root + last_mode,
+      //    parent_session_id 指回 src(溯源)。新 session 起始为扁平
+      //    (无 branch,active_branch_id NULL)。
       this.db.prepare(
         `INSERT INTO sessions
            (id, title, character_card_id, workspace_root,
@@ -323,10 +322,10 @@ export class SessionsRepo {
       ).run(newId, title, src.character_card_id, src.workspace_root,
         srcId, src.last_mode, createdAt, createdAt, createdAt);
 
-      // 2. Build old→new turn id map. Turns are copied so the forked session
-      //    retains mode / status / usage / timing — without them, the frontend
-      //    loses token stats, mode chip, TTS replay button, and tool_result
-      //    grouping. branch_id is cleared (new session is flat).
+      // 2. 构建 old->new turn id 映射。Turn 被复制以使 fork 出的 session
+      //    保留 mode / status / usage / 时序--没有它们,前端会丢失
+      //    token 统计、mode 标签、TTS 重播按钮和 tool_result 分组。
+      //    branch_id 清空(新 session 扁平)。
       this.db.prepare('CREATE TEMP TABLE _turn_id_map (old_id TEXT PRIMARY KEY, new_id TEXT NOT NULL)').run();
 
       const untilStartedAt = untilTurnId
@@ -342,7 +341,7 @@ export class SessionsRepo {
              SELECT id, lower(hex(randomblob(16))) FROM turns WHERE session_id = ?`,
       ).run(srcId, ...(untilStartedAt !== undefined ? [untilStartedAt] : []));
 
-      // 3. Copy turns with fresh ids, branch_id = NULL.
+      // 3. 复制 turn(新 id,branch_id = NULL)
       this.db.prepare(
         `INSERT INTO turns
            (id, session_id, mode, branch_id, status, user_input, started_at, completed_at,
@@ -354,9 +353,9 @@ export class SessionsRepo {
          ORDER BY t.started_at ASC`,
       ).run(newId);
 
-      // 4. Copy messages — fresh ids, turn_id remapped via the temp map (NULL
-      //    for messages with no turn). Cutoff aligns with the original: messages
-      //    up to and including the last message of the cutoff turn.
+      // 4. 复制 message--新 id,turn_id 通过 temp 映射重映射(无 turn 的
+      //    message 为 NULL)。截断点与原始对齐:截至截断 turn 的最后一条
+      //    message(含)。
       const msgCutoff = untilTurnId
         ? (this.db.prepare('SELECT COALESCE(MAX(created_at), 0) AS m FROM messages WHERE turn_id = ?').get(untilTurnId) as { m: number }).m
         : undefined;
@@ -381,9 +380,9 @@ export class SessionsRepo {
              ORDER BY created_at ASC`,
       ).run(newId, srcId, ...(msgCutoff !== undefined ? [msgCutoff] : []));
 
-      // 5. Copy turn_attachments — fresh ids, turn_id remapped, session_id = new.
-      //    Without this, user-message attachment chips disappear in the fork
-      //    (attachmentStore.listByTurn(newTurnId) would be empty).
+      // 5. 复制 turn_attachments--新 id,turn_id 重映射,session_id = 新。
+      //    不复制的话,fork 中用户消息的 attachment 角标会消失
+      //    (attachmentStore.listByTurn(newTurnId) 会是空的)。
       this.db.prepare(
         `INSERT INTO turn_attachments
            (id, turn_id, session_id, name, mime, size, mtime, local_path, created_at)
@@ -401,7 +400,7 @@ export class SessionsRepo {
     return count.cnt;
   }
 
-  // ── Branch ────────────────────────────────────────────────────────────────
+  // ── Branch ────────────────────────────────────────────────────────────────────
 
   setActiveBranch(id: SessionId, branchId: BranchId | null): void {
     this.db
@@ -409,9 +408,9 @@ export class SessionsRepo {
       .run(branchId, Date.now(), id);
   }
 
-  // ── Running turn count ─────────────────────────────────────────────────────
+  // ── 运行中 turn 计数 ───────────────────────────────────────────────────────────
 
-  /** How many turns are currently running for this session. */
+  /** 该 session 当前有多少 turn 正在运行。 */
   runningTurnCount(id: SessionId): number {
     const row = this.db
       .prepare("SELECT COUNT(*) as cnt FROM turns WHERE session_id = ? AND status = 'running'")
@@ -419,24 +418,24 @@ export class SessionsRepo {
     return row.cnt;
   }
 
-  // ── Delete ─────────────────────────────────────────────────────────────────
+  // ── 删除 ──────────────────────────────────────────────────────────────────────
 
   delete(id: SessionId): void {
     this.db.prepare('DELETE FROM sessions WHERE id = ?').run(id);
   }
 
 
-  // ── Patch (transactional partial update) ───────────────────────────────────
+  // ── Patch(事务性部分更新)──────────────────────────────────────────────────────
 
   /**
-   * Apply a partial update atomically. Used by `PUT /api/sessions/:id` where
-   * the client can change `title` + `pinned` + `groupLabel` in one request.
+   * 原子地应用部分更新。用于 `PUT /api/sessions/:id`,
+   * 客户端可在一次请求中改 `title` + `pinned` + `groupLabel`。
    *
-   * All sub-updates run inside a single SQLite transaction; any failure rolls
-   * back the whole patch so the row never sits in a half-changed state.
+   * 所有子更新在单个 SQLite 事务内执行;任何失败回滚整个 patch,
+   * 行不会处于半改状态。
    *
-   * `groupLabel === null` is the explicit "move out of group" signal; the
-   * caller must distinguish that from `undefined` (don't touch).
+   * `groupLabel === null` 是显式的"移出分组"信号;
+   * 调用方必须区分它与 `undefined`(不触碰)。
    */
   patch(
     id: SessionId,
@@ -489,7 +488,7 @@ export class SessionsRepo {
   }
 }
 
-// ── Cursor helpers ──────────────────────────────────────────────────────────
+// ── Cursor 辅助 ─────────────────────────────────────────────────────────────────
 
 interface ParsedCursor {
   pinned:    number;     // 0 | 1
@@ -497,8 +496,8 @@ interface ParsedCursor {
 }
 
 /**
- * Parse the opaque cursor string `"<pinned>.<lastActivityAt>"`. Returns `null`
- * when the cursor is absent or malformed (callers fall back to "first page").
+ * 解析不透明 cursor 字符串 `"<pinned>.<lastActivityAt>"`。cursor 缺失
+ * 或格式错误时返回 `null`(调用方回退到"第一页")。
  *
  * @example parseCursor("1.1700000000")  // { pinned: 1, lastActivityAt: 1700000000 }
  * @example parseCursor(undefined)       // null
@@ -515,8 +514,8 @@ function parseCursor(cursor: string | undefined): ParsedCursor | null {
 }
 
 /**
- * Build a cursor from a session row. Pass the LAST row of the current page;
- * the next page query will use this to keyset-skip into the right spot.
+ * 从 session 行构建 cursor。传入当前页最后一行;
+ * 下一页查询将用它 keyset 跳到正确位置。
  */
 export function nextCursorFor(row: SessionRow): string {
   return `${row.pinned}.${row.last_activity_at}`;

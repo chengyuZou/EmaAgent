@@ -1,22 +1,22 @@
 import type { SqliteDb } from '../database.js';
 import type { Capability } from '@ema-agent/contracts';
 
-// ── Types ─────────────────────────────────────────────────────────────────────
+// ── 类型─────────────────────────────────────────────────────────────────────
 
 export type HealthStatus = 'ok' | 'failed' | 'probing' | 'unknown';
 
 export interface ProviderConfigRow {
   id: string;
-  /** Key into the TS registry (e.g. "siliconflow", "deepseek"). */
+  /** TS 注册表的 key（如 "siliconflow"、"deepseek"）。 */
   definition_id: string;
   display_name: string;
   api_key_plain: string | null;
-  /** Optional override of registry's defaultBaseUrl. */
+  /** 可选，覆盖注册表的 defaultBaseUrl。 */
   base_url: string | null;
   enabled: number;
-  /** JSON object — provider-specific extras (e.g. { defaultModel: "..." }). */
+  /** JSON 对象 — Provider 特有的额外配置（如 { defaultModel: "..." }）。 */
   config_json: string;
-  /** JSON array of capability strings, e.g. '["llm","embed","rerank"]'. */
+  /** capability 字符串的 JSON 数组，如 '["llm","embed","rerank"]'。 */
   capabilities_json: string;
   created_at: number;
   updated_at: number;
@@ -27,12 +27,12 @@ export interface ProviderConfigInsert {
   definitionId: string;
   displayName: string;
   apiKey?: string;
-  /** Leave undefined to fall back to the registry's defaultBaseUrl. */
+  /** 留空则回退到注册表的 defaultBaseUrl。 */
   baseUrl?: string;
   enabled?: boolean;
-  /** Provider-specific extras — stored as JSON. */
+  /** Provider 特有的额外配置 — 以 JSON 存储。 */
   config?: Record<string, unknown>;
-  /** Which capabilities the user wants enabled (subset of the definition's capabilities). */
+  /** 用户希望启用的 capability（definition capabilities 的子集）。 */
   capabilities?: Capability[];
 }
 
@@ -53,22 +53,22 @@ export interface ProviderWithHealth {
 // ── Repo ──────────────────────────────────────────────────────────────────────
 
 /**
- * Unified Repo for the provider lifecycle.
+ * Provider 生命周期的统一 Repo。
  *
- * Manages two tables that share the same conceptual entity:
- *   provider_configs  — connection info (slow-changing)
- *   provider_health   — probe status keyed by config id (fast-changing)
+ * 管理共享同一概念实体的两张表：
+ *   provider_configs  — 连接信息（变化慢）
+ *   provider_health   — 按 config id 索引的 probe 状态（变化快）
  *
- * The settings UI always wants both together (list provider cards with
- * a health indicator), so exposing them through one Repo eliminates
- * dual-fetching coordination at the caller side.
+ * 设置 UI 总是需要两者一起（列表展示 Provider 卡片带
+ * 健康状态指示），通过单一 Repo 暴露可消除调用方的
+ * 双取协调。
  */
 export class ProvidersRepo {
   constructor(private readonly db: SqliteDb) {}
 
-  // ── Config write ───────────────────────────────────────────────────────────
+  // ── 配置写入───────────────────────────────────────────────────────────
 
-  /** Insert or fully replace a provider config. */
+  /** 插入或完全替换 Provider 配置。 */
   upsert(data: ProviderConfigInsert): void {
     const now = Date.now();
     this.db
@@ -113,12 +113,12 @@ export class ProvidersRepo {
       .run(enabled ? 1 : 0, Date.now(), id);
   }
 
-  /** Cascades to provider_health via FK. */
+  /** 通过 FK 级联到 provider_health。 */
   delete(id: string): void {
     this.db.prepare('DELETE FROM provider_configs WHERE id = ?').run(id);
   }
 
-  // ── Config read ────────────────────────────────────────────────────────────
+  // ── 配置读取────────────────────────────────────────────────────────────
 
   get(id: string): ProviderConfigRow | undefined {
     return this.db
@@ -126,7 +126,7 @@ export class ProvidersRepo {
       .get(id) as ProviderConfigRow | undefined;
   }
 
-  /** All providers, enabled or not — for the settings UI list. */
+  /** 所有 Provider（不论是否启用） — 供设置 UI 列表使用。 */
   list(): ProviderConfigRow[] {
     return this.db
       .prepare('SELECT * FROM provider_configs ORDER BY created_at ASC')
@@ -140,8 +140,8 @@ export class ProvidersRepo {
   }
 
   /**
-   * Providers that support a given capability (enabled only).
-   * Uses LIKE on the JSON-stringified array — fine for the small arrays we store.
+   * 支持某 capability 的 Provider（仅启用的）。
+   * 对 JSON 字符串数组使用 LIKE — 对存储的小数组足够用。
    */
   listByCapability(capability: string): ProviderConfigRow[] {
     return this.db
@@ -154,12 +154,12 @@ export class ProvidersRepo {
       .all(`%"${capability}"%`) as ProviderConfigRow[];
   }
 
-  // ── Health write ───────────────────────────────────────────────────────────
+  // ── 健康状态写入───────────────────────────────────────────────────────────
 
   /**
-   * Upsert health record for a provider.
-   * On status=failed, consecutive_fails is incremented atomically;
-   * any other status resets it to 0.
+   * Upsert Provider 的健康状态记录。
+   * status=failed 时，consecutive_fails 原子递增；
+   * 其他 status 重置为 0。
    */
   recordHealth(
     providerConfigId: string,
@@ -192,7 +192,7 @@ export class ProvidersRepo {
       );
   }
 
-  // ── Health read ────────────────────────────────────────────────────────────
+  // ── 健康状态读取────────────────────────────────────────────────────────────
 
   getHealth(providerConfigId: string): ProviderHealthRow | undefined {
     return this.db
@@ -200,16 +200,16 @@ export class ProvidersRepo {
       .get(providerConfigId) as ProviderHealthRow | undefined;
   }
 
-  // ── Joined views ───────────────────────────────────────────────────────────
+  // ── 联合视图───────────────────────────────────────────────────────────
 
-  /** Provider config + health in one fetch. Used by the settings page. */
+  /** 一次获取 Provider 配置 + 健康状态。供设置页面使用。 */
   getWithHealth(id: string): ProviderWithHealth | undefined {
     const config = this.get(id);
     if (!config) return undefined;
     return { config, health: this.getHealth(id) ?? null };
   }
 
-  /** All providers with their health for the settings list view. */
+  /** 所有 Provider 及其健康状态，供设置列表视图使用。 */
   listWithHealth(): ProviderWithHealth[] {
     const rows = this.db
       .prepare(

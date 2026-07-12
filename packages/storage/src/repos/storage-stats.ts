@@ -8,7 +8,7 @@ import type { BranchRow }           from './branches.js';
 export type { AgentTaskMessageRow, KbActivationRow, AgentTaskRow, TurnUsageRow, BranchRow };
 
 // ════════════════════════════════════════════════════════════════════════════
-// DataDir-level aggregate stats
+// DataDir 级聚合统计
 // ════════════════════════════════════════════════════════════════════════════
 
 export interface DataDirStats {
@@ -52,10 +52,10 @@ export class DataDirStatsRepo {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// Session-level stats + export raw rows + import transaction
+// Session 级统计 + 导出原始行 + 导入事务
 // ════════════════════════════════════════════════════════════════════════════
 
-// ── Stats result ─────────────────────────────────────────────────────────────
+// ── 统计结果 ─────────────────────────────────────────────────────────────────────
 
 export interface SessionStats {
   turnCount:            number;
@@ -75,7 +75,7 @@ export interface SessionStats {
   attachmentTotalBytes: number;
 }
 
-// ── Export raw row types (snake_case — direct DB column names) ────────────────
+// ── 导出原始行类型(snake_case--直接对应 DB 列名)────────────────────────────────
 
 export interface AudioEntryRow {
   turn_id:       string;
@@ -104,7 +104,7 @@ export interface MemoryStateRow {
   overrides_json: string;
 }
 
-// ── Import (restore) payload types ───────────────────────────────────────────
+// ── 导入(恢复)payload 类型 ───────────────────────────────────────────────────
 
 export interface TurnRestoreRow {
   id: string; sessionId: string; branchId: string | null; mode: string;
@@ -169,7 +169,7 @@ export interface SessionRestorePayload {
 export class SessionStatsRepo {
   constructor(private readonly db: SqliteDb) {}
 
-  // ── Aggregate stats for dashboard ─────────────────────────────────────────
+  // ── 仪表盘聚合统计 ─────────────────────────────────────────────────────────
 
   getStats(sessionId: string): SessionStats {
     const row = this.db.prepare(`
@@ -225,7 +225,7 @@ export class SessionStatsRepo {
     };
   }
 
-  // ── Export: raw rows per table ────────────────────────────────────────────
+  // ── 导出:每表原始行 ────────────────────────────────────────────────────────
 
   listAudioEntries(sessionId: string): AudioEntryRow[] {
     return this.db.prepare(`
@@ -237,9 +237,8 @@ export class SessionStatsRepo {
   }
 
   /**
-   * Record a turn's merged audio file. Called by the orchestrator once TTS
-   * finalizes the merged file — without this, dashboard stats and export zip
-   * see no audio even though the file exists on disk.
+   * 记录一个 turn 的合并音频文件。由 orchestrator 在 TTS 完成合并文件后调用--
+   * 不调用的话,仪表盘统计和导出 zip 看不到音频,即使文件已在磁盘上。
    */
   recordAudioMerged(row: {
     turnId:       string;
@@ -328,14 +327,13 @@ export class SessionStatsRepo {
     `).all(sessionId) as TurnUsageRow[];
   }
 
-  // ── Import: full restore transaction ──────────────────────────────────────
-  // File I/O (audio, artifacts, attachments) is handled by the caller before
-  // invoking this method. All localPath / contentPath / storagePath fields in
-  // the payload must already point to files on disk.
+  // ── 导入:完整恢复事务 ──────────────────────────────────────────────────────
+  // 文件 I/O(音频、Artifact、Attachment)由调用方在调用此方法前处理。
+  // payload 中所有 localPath / contentPath / storagePath 字段必须已指向磁盘上的文件。
 
   restoreRows(p: SessionRestorePayload): void {
     this.db.transaction(() => {
-      // 1. Session — active_branch_id set to NULL first (circular FK: session→branch, branch→session)
+      // 1. Session--active_branch_id 先置 NULL(循环 FK:session->branch, branch->session)
       this.db.prepare(`
         INSERT INTO sessions
           (id, title, character_card_id, workspace_root, created_at, updated_at,
@@ -353,7 +351,7 @@ export class SessionStatsRepo {
         p.session.lastMode ?? null,
       );
 
-      // 2. Branches (must precede turns which reference branch_id)
+      // 2. Branch(必须在引用 branch_id 的 turn 之前)
       const stmtBranch = this.db.prepare(`
         INSERT OR IGNORE INTO branches (id, session_id, parent_branch_id, fork_from_turn_id, created_at)
         VALUES (?, ?, ?, ?, ?)
@@ -362,13 +360,13 @@ export class SessionStatsRepo {
         stmtBranch.run(b.id, p.session.id, b.parent_branch_id ?? null, b.fork_from_turn_id ?? null, b.created_at);
       }
 
-      // 3. Restore active_branch_id now that branches exist
+      // 3. branch 已存在,恢复 active_branch_id
       if (p.session.activeBranchId) {
         this.db.prepare('UPDATE sessions SET active_branch_id = ? WHERE id = ?')
           .run(p.session.activeBranchId, p.session.id);
       }
 
-      // 4. Turns
+      // 4. Turn
       const stmtTurn = this.db.prepare(`
         INSERT OR IGNORE INTO turns
           (id, session_id, mode, branch_id, status, user_input,
@@ -385,7 +383,7 @@ export class SessionStatsRepo {
         );
       }
 
-      // 5. Messages
+      // 5. Message
       const stmtMsg = this.db.prepare(`
         INSERT OR IGNORE INTO messages
           (id, session_id, turn_id, role, kind, blocks_json, interrupted, created_at, meta_json)
@@ -398,7 +396,7 @@ export class SessionStatsRepo {
         );
       }
 
-      // 6. Artifacts
+      // 6. Artifact
       const stmtArt = this.db.prepare(`
         INSERT OR IGNORE INTO artifacts
           (id, session_id, turn_id, type, title, content, content_location,
@@ -415,7 +413,7 @@ export class SessionStatsRepo {
         );
       }
 
-      // 7. Audio merged rows (files already written by caller)
+      // 7. 音频合并行(文件已由调用方写入)
       const stmtAudio = this.db.prepare(`
         INSERT OR IGNORE INTO turn_audio_merged
           (turn_id, session_id, storage_path, mime_type, byte_size, duration_ms, segment_count, created_at)
@@ -429,7 +427,7 @@ export class SessionStatsRepo {
         );
       }
 
-      // 8. Attachments (files already written by caller)
+      // 8. Attachment(文件已由调用方写入)
       const stmtAtt = this.db.prepare(`
         INSERT OR IGNORE INTO turn_attachments
           (id, turn_id, session_id, name, mime, size, mtime, local_path, created_at)
@@ -443,7 +441,7 @@ export class SessionStatsRepo {
         );
       }
 
-      // 9. Agent tasks
+      // 9. Agent task
       const stmtTask = this.db.prepare(`
         INSERT OR IGNORE INTO agent_tasks
           (id, session_id, turn_id, parent_id, status, error, iterations,
@@ -459,7 +457,7 @@ export class SessionStatsRepo {
         );
       }
 
-      // 10. Agent task messages
+      // 10. Agent task message
       const stmtTaskMsg = this.db.prepare(`
         INSERT OR IGNORE INTO agent_task_messages (id, task_id, role, content_json, created_at)
         VALUES (?, ?, ?, ?, ?)
@@ -468,7 +466,7 @@ export class SessionStatsRepo {
         stmtTaskMsg.run(m.id, m.task_id, m.role, m.content_json, m.created_at);
       }
 
-      // 11. Memory session state
+      // 11. Memory session 状态
       if (p.memoryState) {
         this.db.prepare(`
           INSERT OR IGNORE INTO memory_session_state (session_id, surfaced_json, overrides_json)
@@ -476,7 +474,7 @@ export class SessionStatsRepo {
         `).run(p.memoryState.session_id, p.memoryState.surfaced_json, p.memoryState.overrides_json);
       }
 
-      // 12. KB activations
+      // 12. KB activation
       const stmtKb = this.db.prepare(`
         INSERT OR IGNORE INTO kb_activations
           (id, call_id, kb_id, asset_id, session_id, turn_id, created_at)
@@ -499,7 +497,7 @@ export class SessionStatsRepo {
         );
       }
 
-      // 14. Session notes (upsert — notes may be updated post-import)
+      // 14. Session notes(upsert--notes 可能在导入后被更新)
       if (p.notes) {
         this.db.prepare(`
           INSERT OR REPLACE INTO session_notes

@@ -54,8 +54,8 @@ export class KbIngestTasksRepo {
     ).run(t.id, t.filePath, t.fileName, t.mimeType ?? null, now, now);
   }
 
-  /** Atomically take the oldest pending task and mark it running. Single-threaded
-   *  (Node + sync sqlite) so a transaction is enough to avoid double-claim. */
+  /** 原子地取最旧的 pending task 并标记为 running。单线程
+   *  (Node + 同步 sqlite)，一个事务即可避免重复认领。 */
   claimNextPending(): KbIngestTask | undefined {
     return this.db.transaction((): KbIngestTask | undefined => {
       const row = this.db
@@ -73,7 +73,7 @@ export class KbIngestTasksRepo {
       .run(stage, progress, Date.now(), id);
   }
 
-  /** Success → remove the task (the document now lives in document_assets). */
+  /** 成功 → 删除该 task（文档已存入 document_assets）。 */
   complete(id: string): void {
     this.db.prepare(`DELETE FROM kb_ingest_tasks WHERE id = ?`).run(id);
   }
@@ -83,13 +83,13 @@ export class KbIngestTasksRepo {
       .run(error, Date.now(), id);
   }
 
-  /** Retry a failed task → back to pending. */
+  /** 重试 failed task → 回到 pending。 */
   setPending(id: string): void {
     this.db.prepare(`UPDATE kb_ingest_tasks SET status = 'pending', error = NULL, progress = 0, stage = NULL, updated_at = ? WHERE id = ?`)
       .run(Date.now(), id);
   }
 
-  /** Active queue (pending / running / failed) for the UI, newest first. */
+  /** 活跃队列（pending / running / failed），供 UI 使用，按时间倒序。 */
   listActive(): KbIngestTask[] {
     const rows = this.db
       .prepare(`SELECT * FROM kb_ingest_tasks ORDER BY created_at DESC`)
@@ -102,7 +102,7 @@ export class KbIngestTasksRepo {
     return row ? rowToTask(row) : undefined;
   }
 
-  /** Crash recovery: any task left 'running' by a previous process → failed. */
+  /** 崩溃恢复：上一进程遗留的 'running' task → failed。 */
   recoverStuck(): number {
     const info = this.db.prepare(
       `UPDATE kb_ingest_tasks SET status = 'failed', error = '应用重启中断，可重试', updated_at = ? WHERE status = 'running'`,

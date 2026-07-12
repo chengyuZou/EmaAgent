@@ -1,7 +1,7 @@
 import type { SqliteDb } from '../database.js';
 import { randomUUID } from 'node:crypto';
 
-// ── Types ─────────────────────────────────────────────────────────────────────
+// ── 类型─────────────────────────────────────────────────────────────────────
 
 export type AgentTaskMessageRole = 'assistant' | 'tool_call' | 'tool_result' | 'reasoning';
 
@@ -16,20 +16,20 @@ export interface AgentTaskMessageRow {
 export interface AgentTaskMessageInsert {
   taskId:    string;
   role:      AgentTaskMessageRole;
-  content:   unknown;  // serialised to content_json
+  content:   unknown;  // 序列化为 content_json
   createdAt: number;
 }
 
 // ── Repo ──────────────────────────────────────────────────────────────────────
 
 /**
- * Stores the conversation transcript produced by a subagent run.
+ * 存储 subagent 运行产生的对话 transcript。
  *
- * Written exclusively by the SSE fan-out layer (turns.ts), never by the engine.
- * The schema enforces ON DELETE CASCADE from agent_tasks so deleting a task
- * automatically removes its messages.
+ * 仅由 SSE fan-out 层 (turns.ts) 写入，engine 不直接写。
+ * schema 通过 ON DELETE CASCADE 关联 agent_tasks，删除 task 时
+ * 自动删除其 message。
  *
- * content_json shape by role:
+ * 各 role 的 content_json 结构：
  *   assistant   — { text: string }
  *   tool_call   — { callId, name, args, iteration }
  *   tool_result — { callId, name, excerpt, isError, error?, durationMs }

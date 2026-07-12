@@ -15,9 +15,9 @@ export class KbActivationsRepo {
   constructor(private readonly db: SqliteDb) {}
 
   /**
-   * Record one kb_search call: inserts a row per selected asset, all sharing a
-   * single call_id so call-count and per-asset-usage can both be derived.
-   * No-op when assetIds is empty (e.g. an unscoped "all KBs" search).
+   * 记录一次 kb_search 调用：每个选中的 asset 插一行，共享同一个 call_id，
+   * 使调用次数和 per-asset 使用量都可推导。
+   * assetIds 为空时为 no-op（如无 scope 的"所有 KB"搜索）。
    */
   recordCall(args: {
     kbId:      string;
@@ -40,7 +40,7 @@ export class KbActivationsRepo {
     })();
   }
 
-  /** How many kb_search calls happened in this session (distinct call_id). */
+  /** 该 session 中发生了多少次 kb_search 调用（按 call_id 去重）。 */
   countCallsForSession(sessionId: string): number {
     const row = this.db
       .prepare('SELECT COUNT(DISTINCT call_id) AS n FROM kb_activations WHERE session_id = ?')
@@ -48,7 +48,7 @@ export class KbActivationsRepo {
     return row.n;
   }
 
-  /** Distinct sessions in which this KB document was used. */
+  /** 使用过该 KB 文档的去重 session 列表。 */
   sessionsForAsset(assetId: string): string[] {
     const rows = this.db
       .prepare('SELECT DISTINCT session_id FROM kb_activations WHERE asset_id = ?')
@@ -56,7 +56,7 @@ export class KbActivationsRepo {
     return rows.map(r => r.session_id);
   }
 
-  /** Distinct KB documents used in this session. */
+  /** 该 session 中使用过的去重 KB 文档列表。 */
   assetsForSession(sessionId: string): string[] {
     const rows = this.db
       .prepare('SELECT DISTINCT asset_id FROM kb_activations WHERE session_id = ?')
@@ -64,7 +64,7 @@ export class KbActivationsRepo {
     return rows.map(r => r.asset_id);
   }
 
-  /** Per-session usage breakdown for one KB document (with session titles). */
+  /** 单个 KB 文档的 per-session 使用明细（含 session 标题）。 */
   usageForAsset(assetId: string): AssetUsage {
     const sessions = this.db.prepare(`
       SELECT a.session_id            AS sessionId,

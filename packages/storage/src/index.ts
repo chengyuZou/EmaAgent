@@ -31,7 +31,7 @@ export type { SkillRow }   from './repos/skills.js';
 export { MarketSourcesRepo } from './repos/market-sources.js';
 export type { MarketSourceRow } from './repos/market-sources.js';
 
-// ── Memory subsystem ──────────────────────────────────────────────────────────
+// ── Memory 子系统 ──────────────────────────────────────────────────────────────
 export { MemoryNodesRepo }       from './repos/memory-nodes.js';
 export { MemoryEdgesRepo }       from './repos/memory-edges.js';
 export { MemoryLazyUpdatesRepo } from './repos/memory-lazy-updates.js';
@@ -65,7 +65,7 @@ export type {
   ResolvedModelBinding,
 } from './repos/model-bindings.js';
 
-// ── Memory subsystem types ────────────────────────────────────────────────────
+// ── Memory 子系统类型 ──────────────────────────────────────────────────────────
 export type {
   MemoryNodeRow,
   MemoryNodeInsert,
@@ -102,7 +102,7 @@ export type {
   PendingFragmentInsert,
 } from './repos/pending-fragments.js';
 
-// ── Per-provider model pools ──────────────────────────────────────────────────
+// ── 各 Provider 模型池 ─────────────────────────────────────────────────────────
 export { ProviderLlmModelsRepo } from './repos/provider-llm-models.js';
 export type { ProviderLlmModelRow, ProviderLlmModelInsert, ContextSource } from './repos/provider-llm-models.js';
 export { ProviderEmbedModelsRepo } from './repos/provider-embed-models.js';
@@ -116,13 +116,13 @@ export type { ProviderSttModelRow, ProviderSttModelInsert } from './repos/provid
 export { ProviderVisionModelsRepo } from './repos/provider-vision-models.js';
 export type { ProviderVisionModelRow, ProviderVisionModelInsert } from './repos/provider-vision-models.js';
 
-// ── Agent task repos ─────────────────────────────────────────────────────────
+// ── Agent task repo ───────────────────────────────────────────────────────────
 export { AgentTasksRepo }        from './repos/agent-tasks.js';
 export { AgentTaskMessagesRepo } from './repos/agent-task-messages.js';
 export type { AgentTaskRow, AgentTaskInsert, AgentTaskStatus }           from './repos/agent-tasks.js';
 export type { AgentTaskMessageRow, AgentTaskMessageInsert, AgentTaskMessageRole } from './repos/agent-task-messages.js';
 
-// ── Knowledge-base repos ──────────────────────────────────────────────────────
+// ── Knowledge-base repo ────────────────────────────────────────────────────────
 export { DocumentAssetRepo }   from './repos/document-asset.js';
 export { DocumentChunkRepo }   from './repos/document-chunk.js';
 export { DocumentPreviewRepo } from './repos/document-preview.js';

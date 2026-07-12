@@ -1,23 +1,22 @@
 import type { SqliteDb } from '../database.js';
 
-// ── Raw DB row ────────────────────────────────────────────────────────────────
+// ── 原始 DB 行 ────────────────────────────────────────────────────────────────
 
 export interface McpServerRow {
   id:           string;
   name:         string;
   source_url:   string | null;
-  config_json:  string;        // raw McpServerConfig JSON — parsed by mcp package
-  tools_cache:  string | null; // JSON McpToolInfo[] from last successful listTools
-  cached_at:    number;        // ms; 0 = never cached
+  config_json:  string;        // 原始 McpServerConfig JSON,由 mcp 包解析
+  tools_cache:  string | null; // 上次成功 listTools 返回的 JSON McpToolInfo[]
+  cached_at:    number;        // 毫秒;0 = 从未缓存
   enabled:      number;        // 0 | 1
   installed_at: number;
 }
 
 // ── McpServersRepo ─────────────────────────────────────────────────────────────
 //
-// Pure SQL — does NOT import from @ema-agent/mcp (avoids circular deps).
-// config_json is stored and returned as a raw string; schema validation
-// lives in McpServerStore in packages/mcp.
+// 纯 SQL,不 import @ema-agent/mcp(避免循环依赖)。
+// config_json 以原始字符串存取,结构校验在 packages/mcp 的 McpServerStore 里。
 
 export class McpServersRepo {
   constructor(private readonly db: SqliteDb) {}

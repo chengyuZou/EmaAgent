@@ -7,7 +7,7 @@ export interface MessageRow {
   turn_id:     string | null;
   role:        MessageRole;
   kind:        MessageKind;
-  /** JSON-encoded MessageBlocks — string literal, AssistantBlock[], or UserBlock[]. */
+  /** JSON 编码的 MessageBlocks—字符串字面量、AssistantBlock[] 或 UserBlock[]。 */
   blocks_json: string;
   interrupted: number;
   created_at:  number;
@@ -20,7 +20,7 @@ export interface MessageInsert {
   turnId?:    TurnId;
   role:       MessageRole;
   kind?:      MessageKind;
-  /** Pre-serialized JSON string (call JSON.stringify(blocks) before passing). */
+  /** 预序列化的 JSON 字符串（传入前调 JSON.stringify(blocks)）。 */
   blocksJson: string;
   interrupted?: boolean;
   createdAt:  number;
@@ -76,7 +76,7 @@ export class MessagesRepo {
     this.db.prepare('DELETE FROM messages WHERE turn_id = ?').run(turnId);
   }
 
-  /** Cursor pagination: rows with created_at < before, newest-first. */
+  /** Cursor 分页：created_at < before 的行，按最新优先。 */
   listBefore(sessionId: SessionId, before: number, limit: number): MessageRow[] {
     return this.db
       .prepare(
@@ -95,14 +95,13 @@ export class MessagesRepo {
     return row.n;
   }
 
-  // ── Branch-segment queries ────────────────────────────────────────────────
+  // ── Branch 段查询 ────────────────────────────────────────────────
 
   /**
-   * Root branch segment: all messages in the session whose turn belongs to
-   * rootBranchId, plus messages with no turn_id (system/context rows that
-   * pre-date branching). Optionally capped at turns started at or before
-   * `beforeTurnStartedAt` (set to the fork point's started_at when this
-   * branch has a child).
+   * 根 Branch 段：session 中 turn 属于 rootBranchId 的所有 message，
+   * 加上无 turn_id 的 message（早于分支的 system/context 行）。
+   * 可选地截止到 `beforeTurnStartedAt` 之前开始的 turn
+   * （当该分支有子分支时设为 fork 点的 started_at）。
    */
   listForRootSegment(
     sessionId:           SessionId,
@@ -132,9 +131,9 @@ export class MessagesRepo {
   }
 
   /**
-   * Non-root branch segment: only messages whose turn has branch_id = branchId,
-   * optionally capped at the fork point. Does NOT include turnless messages
-   * (those are already in the root segment).
+   * 非根 Branch 段：仅 turn 的 branch_id = branchId 的 message，
+   * 可选地截止到 fork 点。不包含无 turn 的 message
+   * （那些已在根段中）。
    */
   listForChildSegment(branchId: BranchId, beforeTurnStartedAt?: number): MessageRow[] {
     return this.db
@@ -154,9 +153,9 @@ export class MessagesRepo {
       ) as MessageRow[];
   }
 
-  // ── Summary / compaction boundary helpers ──────────────────────────────────
+  // ── Summary / compaction 边界辅助 ──────────────────────────────────
 
-  /** Most recent message with kind='summary' for this session, if any. */
+  /** 该 session 中最近一条 kind='summary' 的 message（若有）。 */
   findLastSummary(sessionId: SessionId): MessageRow | undefined {
     return this.db
       .prepare(
@@ -169,10 +168,9 @@ export class MessagesRepo {
   }
 
   /**
-   * Returns all messages from the last `summary` row onward (inclusive of the
-   * summary itself), capped at `limit`. When no summary exists this is
-   * equivalent to listForSession(). Used by the LLM-facing history loader so
-   * engines automatically see only post-compaction history.
+   * 返回从最近一条 `summary` 行开始（含 summary 本身）的所有 message，
+   * 上限 `limit`。无 summary 时等价于 listForSession()。
+   * 供面向 LLM 的历史加载器使用，使 engine 自动只见 compaction 后的历史。
    */
   listForSessionFromSummary(sessionId: SessionId, limit = 500): MessageRow[] {
     return this.db

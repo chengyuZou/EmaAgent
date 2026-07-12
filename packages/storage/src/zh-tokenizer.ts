@@ -1,18 +1,15 @@
-// Chinese word segmentation for FTS5 (RAGFlow-style: segment, then BM25 over words).
+// FTS5 中文分词(RAGFlow 风格:先分词,再对词做 BM25)。
 //
-// jieba's general dict (@node-rs/jieba/dict) is the portable equivalent of
-// RAGFlow's trie dict. We segment chunk text at index time into a space-joined
-// `tokens` string that FTS5 indexes word-by-word, and segment the query the same
-// way at search time so 2-char Chinese words match (which trigram's 3-char window
-// could not). Latin/ASCII runs are left intact by jieba.
+// jieba 的通用 dict(@node-rs/jieba/dict)是 RAGFlow trie dict 的可移植等价物。
+// 索引时将 chunk 文本分词为空格连接的 `tokens` 字符串,FTS5 按词索引;
+// 查询时同样分词,使 2 字中文词能命中(trigram 的 3 字窗口做不到)。
+// Latin/ASCII 连续段由 jieba 原样保留。
 //
-// The native module + dict are loaded lazily on first use and cached. If the
-// native binary is unavailable (e.g. unsupported platform), we degrade to the raw
-// text so FTS still works (Latin) rather than throwing.
+// native module + dict 在首次使用时懒加载并缓存。若 native 二进制不可用
+// (如平台不支持),降级为原始文本,FTS 仍可工作(Latin),而非抛异常。
 
 import { Jieba } from '@node-rs/jieba';
-// Explicit .js: @node-rs/jieba has no package `exports` map, so ESM subpath
-// resolution won't append the extension for us.
+// 显式 .js:@node-rs/jieba 无 package `exports` map,ESM 子路径解析不会自动补扩展名。
 import { dict } from '@node-rs/jieba/dict.js';
 
 let _jieba: Jieba | null | undefined;
@@ -30,8 +27,8 @@ function getJieba(): Jieba | null {
 }
 
 /**
- * Segment text into a space-joined token string for FTS indexing / querying.
- * Returns the original text (lightly space-normalized) when jieba is unavailable.
+ * 将文本分词为空格连接的 token 字符串,供 FTS 索引/查询。
+ * jieba 不可用时返回原始文本(仅做空格归一化)。
  */
 export function segmentForFts(text: string): string {
   if (!text.trim()) return '';

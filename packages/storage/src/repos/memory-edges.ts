@@ -1,6 +1,6 @@
 import type { SqliteDb } from '../database.js';
 
-// ── Types ─────────────────────────────────────────────────────────────────────
+// ── 类型 ─────────────────────────────────────────────────────────────────────
 
 export interface MemoryEdgeRow {
   id:                  string;
@@ -29,19 +29,18 @@ export interface MemoryEdgeStats {
 // ── Repo ──────────────────────────────────────────────────────────────────────
 
 /**
- * Layer-0 directed edges. Edge weight in recall is computed as
- * log(1 + mention_count) — heavier mentions float to the top during BFS.
+ * Layer-0 有向边。召回时边权重计算为
+ * log(1 + mention_count)-提及次数多的在 BFS 中浮到顶部。
  *
- * Concurrency: UNIQUE(from, to, relation) + ON CONFLICT DO UPDATE makes the
- * upsert+increment atomic, so multiple concurrent extractions can't lose count.
+ * 并发：UNIQUE(from, to, relation) + ON CONFLICT DO UPDATE 使
+ * upsert+自增原子化，多个并发 extraction 不会丢失计数。
  */
 export class MemoryEdgesRepo {
   constructor(private readonly db: SqliteDb) {}
 
   /**
-   * Insert or bump an edge. If the (from, to, relation) tuple already exists,
-   * its mention_count is incremented by 1; the `id` argument is ignored when
-   * conflicting.
+   * 插入或自增一条边。若 (from, to, relation) 三元组已存在，
+   * 其 mention_count 自增 1；冲突时 `id` 参数被忽略。
    */
   upsert(e: MemoryEdgeUpsert): void {
     this.db
@@ -56,7 +55,7 @@ export class MemoryEdgesRepo {
       .run(e.id, e.fromNodeId, e.toNodeId, e.relation, e.at, e.at);
   }
 
-  // ── Read ────────────────────────────────────────────────────────────────────
+  // ── 读取 ────────────────────────────────────────────────────────────────────
 
   listOutFrom(nodeId: string): MemoryEdgeRow[] {
     return this.db
@@ -74,7 +73,7 @@ export class MemoryEdgesRepo {
       .all(nodeId) as MemoryEdgeRow[];
   }
 
-  /** All edges touching any of the given node ids (in either direction). */
+  /** 触及任一给定 node id 的所有边（任一方向）。 */
   listForNodes(nodeIds: string[]): MemoryEdgeRow[] {
     if (nodeIds.length === 0) return [];
     const placeholders = nodeIds.map(() => '?').join(',');
@@ -106,7 +105,7 @@ export class MemoryEdgesRepo {
       .get() as MemoryEdgeStats;
   }
 
-  // ── Delete ──────────────────────────────────────────────────────────────────
+  // ── 删除 ──────────────────────────────────────────────────────────────────
 
   delete(id: string): void {
     this.db.prepare('DELETE FROM memory_edges WHERE id = ?').run(id);

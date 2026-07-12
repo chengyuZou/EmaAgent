@@ -1,6 +1,6 @@
 import type { SqliteDb } from '../database.js';
 
-// ── Types ─────────────────────────────────────────────────────────────────────
+// ── 类型 ─────────────────────────────────────────────────────────────────────
 
 export interface ProviderTtsModelRow {
   provider_config_id: string;
@@ -24,7 +24,7 @@ export class ProviderTtsModelsRepo {
       .all(providerConfigId) as ProviderTtsModelRow[];
   }
 
-  /** All providers that have this TTS model enabled. */
+  /** 所有启用了该 TTS 模型的 provider。 */
   listByModel(model: string): ProviderTtsModelRow[] {
     return this.db
       .prepare('SELECT * FROM provider_tts_models WHERE model = ? ORDER BY provider_config_id')

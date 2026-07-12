@@ -1,7 +1,7 @@
 import type { SqliteDb } from '../database.js';
 import type { SessionId, TurnId } from '@ema-agent/contracts';
 
-// ── Types ─────────────────────────────────────────────────────────────────────
+// ── 类型 ─────────────────────────────────────────────────────────────────────
 
 export type MemoryItemKind = 'user' | 'feedback' | 'project' | 'reference';
 
@@ -30,7 +30,7 @@ export interface MemoryItemInsert {
   kind:                MemoryItemKind;
   title:               string;
   body:                string;
-  modes:               string[];                  // serialised into modes_json
+  modes:               string[];                  // 序列化到 modes_json
   embedding?:          Buffer;
   embeddingProviderId?: string;
   embeddingModel?:     string;
@@ -83,20 +83,19 @@ export interface MemoryItemsBrowseOptions {
 // ── Repo ──────────────────────────────────────────────────────────────────────
 
 /**
- * Layer-2 episodic memory + Agent long-term memory (4 kinds).
+ * Layer-2 情景记忆 + Agent 长期记忆（4 种 kind）。
  *
- * `modes` controls which conversation modes recall this item:
- *   ["chat"]              — only surfaced in chat mode
- *   ["agent"]             — only surfaced in agent mode
- *   ["chat","agent"]      — surfaced in both (default for items extracted from
- *                           cross-cutting facts)
- * Mode filtering is a soft weighting in the planner — the repo just stores
- * the tag and exposes a listByMode for the cheap path.
+ * `modes` 控制哪些对话 mode 会召回此 item：
+ *   ["chat"]              - 仅在 chat mode 出现
+ *   ["agent"]             - 仅在 agent mode 出现
+ *   ["chat","agent"]      - 两者都出现（从跨 mode 事实提取的 item 默认值）
+ * Mode 过滤在 planner 中是软加权-repo 只存标签，
+ * 并为低成本路径暴露 listByMode。
  */
 export class MemoryItemsRepo {
   constructor(private readonly db: SqliteDb) {}
 
-  // ── Insert ──────────────────────────────────────────────────────────────────
+  // ── 插入 ──────────────────────────────────────────────────────────────────
 
   insert(m: MemoryItemInsert): void {
     this.db
@@ -124,7 +123,7 @@ export class MemoryItemsRepo {
       );
   }
 
-  // ── Read ────────────────────────────────────────────────────────────────────
+  // ── 读取 ────────────────────────────────────────────────────────────────────
 
   findById(id: string): MemoryItemRow | undefined {
     return this.db
@@ -132,8 +131,8 @@ export class MemoryItemsRepo {
       .get(id) as MemoryItemRow | undefined;
   }
 
-  /** Idempotency check: same session + same title = same item. Used to skip
-   *  duplicate inserts when the extraction pipeline retries. */
+  /** 幂等校验：同一 session + 同一 title = 同一 item。用于在 extraction
+   *  pipeline 重试时跳过重复插入。 */
   findBySourceAndTitle(sourceSessionId: string, title: string): MemoryItemRow | undefined {
     return this.db
       .prepare(
@@ -156,8 +155,8 @@ export class MemoryItemsRepo {
   }
 
   /**
-   * List items whose modes_json array contains the given mode tag.
-   * Uses JSON1 — every SQLite build we ship has it (better-sqlite3 default).
+   * 列出 modes_json 数组中包含给定 mode 标签的 item。
+   * 使用 JSON1-我们打包的每个 SQLite 构建都有（better-sqlite3 默认）。
    */
   listByMode(mode: string, limit = 500): MemoryItemRow[] {
     return this.db
@@ -173,7 +172,7 @@ export class MemoryItemsRepo {
       .all(mode, Date.now(), limit) as MemoryItemRow[];
   }
 
-  /** Non-expired items embedded with the given model — dim guard is done in the capability layer. */
+  /** 用指定 model embedding 的非过期 item-维度校验在 capability 层做。 */
   listEmbeddable(model: string, limit = 5000): MemoryItemRow[] {
     return this.db
       .prepare(
@@ -186,9 +185,9 @@ export class MemoryItemsRepo {
   }
 
   /**
-   * Cursor page for bulk index building.
-   * Returns non-expired rows with updated_at > afterUpdatedAt, ordered ascending, up to limit.
-   * Start with afterUpdatedAt = 0; advance cursor to last row's updated_at each page.
+   * 用于批量构建索引的 cursor 分页。
+   * 返回 updated_at > afterUpdatedAt 的非过期行，升序排列，上限 limit。
+   * 起始 afterUpdatedAt = 0；每页后将 cursor 推进到最后一行的 updated_at。
    */
   listEmbeddablePage(model: string, afterUpdatedAt: number, limit: number): MemoryItemRow[] {
     return this.db
@@ -235,13 +234,13 @@ export class MemoryItemsRepo {
     return this.db.prepare(sql).all(...params) as MemoryItemRow[];
   }
 
-  // ── Update ──────────────────────────────────────────────────────────────────
+  // ── 更新 ──────────────────────────────────────────────────────────────────
 
   /**
-   * Merge an updated extraction result into an existing item.
-   * Called when the same title is re-extracted in a DIFFERENT turn — the knowledge
-   * has evolved, so we overwrite body + importance and replace the embedding.
-   * `sourceTurnId` is updated to the new turn so the next retry recognises it.
+   * 将更新的 extraction 结果合并到已有 item 中。
+   * 在不同 turn 中重新提取同一 title 时调用-知识已演进，
+   * 故覆盖 body + importance 并替换 embedding。
+   * `sourceTurnId` 更新为新 turn，使下次重试能识别。
    */
   updateBody(u: {
     id:                  string;
@@ -366,7 +365,7 @@ export class MemoryItemsRepo {
     txn();
   }
 
-  // ── Counts / startup diagnostics ────────────────────────────────────────────
+  // ── 计数 / 启动诊断 ────────────────────────────────────────────
 
   countStaleEmbeddings(currentProviderId: string): number {
     const row = this.db
@@ -402,13 +401,13 @@ export class MemoryItemsRepo {
     return info.changes;
   }
 
-  // ── Delete ──────────────────────────────────────────────────────────────────
+  // ── 删除 ──────────────────────────────────────────────────────────────────
 
   delete(id: string): void {
     this.db.prepare('DELETE FROM memory_items WHERE id = ?').run(id);
   }
 
-  /** Sweep expired rows. Run periodically as a maintenance task. */
+  /** 清扫过期行。作为维护任务定期执行。 */
   deleteExpired(now: number): number {
     const info = this.db
       .prepare('DELETE FROM memory_items WHERE expires_at IS NOT NULL AND expires_at <= ?')

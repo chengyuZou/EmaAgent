@@ -1,6 +1,6 @@
 import type { SqliteDb } from '../database.js';
 
-// ── Raw DB row ────────────────────────────────────────────────────────────────
+// ── 原始 DB 行 ────────────────────────────────────────────────────────────────
 
 export interface MarketSourceRow {
   id:         string;

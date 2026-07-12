@@ -35,7 +35,7 @@ export class BranchesRepo {
       .get(id) as BranchRow | undefined;
   }
 
-  /** Root branch for a session (parent_branch_id IS NULL). */
+  /** Session 的根分支（parent_branch_id IS NULL）。 */
   findRoot(sessionId: SessionId): BranchRow | undefined {
     return this.db
       .prepare(
@@ -51,9 +51,8 @@ export class BranchesRepo {
   }
 
   /**
-   * All branches that forked from the same turn — used to render the < N/M >
-   * sibling navigator in the chat UI. Does NOT include the parent branch itself
-   * (the caller adds it at position 0 when building the sibling list).
+   * 从同一 turn fork 出的所有分支—用于在 chat UI 渲染 < N/M > 兄弟导航。
+   * 不包含父分支本身（调用方在构建兄弟列表时将其放在位置 0）。
    */
   listSiblingsAt(forkFromTurnId: TurnId): BranchRow[] {
     return this.db

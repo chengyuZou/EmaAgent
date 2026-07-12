@@ -1,6 +1,6 @@
 import type { SqliteDb } from '../database.js';
 
-// ── Types ─────────────────────────────────────────────────────────────────────
+// ── 类型 ─────────────────────────────────────────────────────────────────────
 
 export interface ProviderRerankModelRow {
   provider_config_id: string;
@@ -26,7 +26,7 @@ export class ProviderRerankModelsRepo {
       .all(providerConfigId) as ProviderRerankModelRow[];
   }
 
-  /** All providers that have this rerank model enabled. */
+  /** 所有启用了该 rerank 模型的 provider。 */
   listByModel(model: string): ProviderRerankModelRow[] {
     return this.db
       .prepare('SELECT * FROM provider_rerank_models WHERE model = ? ORDER BY provider_config_id')

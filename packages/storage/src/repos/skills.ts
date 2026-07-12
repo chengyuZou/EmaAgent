@@ -1,41 +1,39 @@
 import type { SqliteDb } from '../database.js';
 
-// ── Raw DB row ────────────────────────────────────────────────────────────────
+// ── 原始 DB 行 ────────────────────────────────────────────────────────────────
 //
-// File-backed model: this row is an INDEX over <dir_path>/SKILL.md. The body is
-// NOT stored here — it is read lazily from disk on activation. Frontmatter
-// fields are mirrored so the catalog can be built without opening files.
+// 文件驱动模型:此行是 <dir_path>/SKILL.md 的索引。body 不存这里,
+// 激活时才从磁盘懒读。Frontmatter 字段镜像存储,以便构建 catalog 时无需打开文件。
 
 export interface SkillRow {
   id:             string;
   name:           string;
   version:        string;
   description:    string;
-  arg_hint:       string | null;   // frontmatter argument-hint
-  dir_path:       string;          // absolute path to the skill directory
+  arg_hint:       string | null;   // frontmatter 的 argument-hint
+  dir_path:       string;          // skill 目录的绝对路径
   source:         string;          // 'builtin' | 'user' | 'market'
   source_url:     string | null;
   sha256:         string | null;
-  size_bytes:     number;          // total size of the skill dir (bytes)
+  size_bytes:     number;          // skill 目录总大小(字节)
   enabled:        number;          // 0 | 1
-  content_mtime:  number;          // SKILL.md mtime (ms)
+  content_mtime:  number;          // SKILL.md 的 mtime(毫秒)
   installed_at:   number;
 }
 
 // ── SkillsRepo ────────────────────────────────────────────────────────────────
 //
-// Pure SQL layer — does NOT import from @ema-agent/skill.
-// Schema validation, frontmatter parsing, and filesystem reconciliation live in
-// SkillStore. This repo just persists/reads the index.
+// 纯 SQL 层,不 import @ema-agent/skill。
+// 结构校验、frontmatter 解析、文件系统对账都在 SkillStore 里。
+// 本 repo 只负责持久化/读取索引。
 
 export class SkillsRepo {
   constructor(private readonly db: SqliteDb) {}
 
   /**
-   * Insert or update by unique `name`. The reconcile scan and the installer both
-   * upsert, so a single idempotent entry point avoids insert/update branching
-   * at call sites. `enabled` and `installed_at` are preserved on update so a
-   * reconcile scan never re-enables a user-disabled skill or resets its age.
+   * 按唯一 `name` 插入或更新。reconcile 扫描和 installer 都走 upsert,
+   * 单一幂等入口避免调用方区分 insert/update 分支。更新时保留 `enabled` 和
+   * `installed_at`,确保 reconcile 扫描不会重新启用用户禁用的 skill 或重置其 age。
    */
   upsertByName(row: SkillRow): void {
     this.db.prepare(`

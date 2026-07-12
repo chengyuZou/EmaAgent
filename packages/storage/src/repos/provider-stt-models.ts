@@ -1,6 +1,6 @@
 import type { SqliteDb } from '../database.js';
 
-// ── Types ─────────────────────────────────────────────────────────────────────
+// ── 类型 ─────────────────────────────────────────────────────────────────────
 
 export interface ProviderSttModelRow {
   provider_config_id: string;
@@ -24,7 +24,7 @@ export class ProviderSttModelsRepo {
       .all(providerConfigId) as ProviderSttModelRow[];
   }
 
-  /** All providers that have this STT model enabled. */
+  /** 所有启用了该 STT 模型的 provider。 */
   listByModel(model: string): ProviderSttModelRow[] {
     return this.db
       .prepare('SELECT * FROM provider_stt_models WHERE model = ? ORDER BY provider_config_id')

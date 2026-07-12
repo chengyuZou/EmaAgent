@@ -1,12 +1,12 @@
 -- ════════════════════════════════════════════════════════════════════════════
--- DATA stream — one data.db per workspace (dataDir). Sessions / turns / messages
--- / per-session memory / audio / artifacts / agent tasks. KB *documents* live in
--- per-KB kb.db (kb stream); only kb_activations (session→KB usage) stays here.
+-- DATA 流--每个 workspace(dataDir)一个 data.db。Session / Turn / Message
+-- / per-session Memory / 音频 / Artifact / Agent task。KB *文档* 存在于
+-- 每个 KB 独立的 kb.db(kb 流)中;只有 kb_activations(session->KB 使用记录)留在这。
 --
--- Consolidated initial schema (replaces the old incremental migrations 001–016).
+-- 合并后的初始 schema(替代旧的增量迁移 001–016)。
 -- ════════════════════════════════════════════════════════════════════════════
 
--- ── Sessions / branches / turns / messages ─────────────────────────────────────
+-- ── Session / branch / Turn / Message ──────────────────────────────────────────
 
 CREATE TABLE sessions (
   id                   TEXT PRIMARY KEY,
@@ -89,7 +89,7 @@ CREATE TABLE pending_fragments (
 
 CREATE INDEX idx_pending_fragments_session ON pending_fragments(session_id, created_at ASC);
 
--- ── Per-session memory (L1 notes + queue + recall state) ───────────────────────
+-- ── Per-session Memory(L1 notes + 队列 + 召回状态)───────────────────────────────
 
 CREATE TABLE session_notes (
   session_id            TEXT PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE,
@@ -120,7 +120,7 @@ CREATE TABLE memory_session_state (
   overrides_json TEXT NOT NULL DEFAULT '{}'
 );
 
--- ── Audio (TTS segments + merged) ──────────────────────────────────────────────
+-- ── 音频(TTS 分段 + 合并)─────────────────────────────────────────────────────────
 
 CREATE TABLE turn_audio_segments (
   id             TEXT PRIMARY KEY,
@@ -152,7 +152,7 @@ CREATE TABLE turn_audio_merged (
 
 CREATE INDEX idx_audio_merged_session ON turn_audio_merged(session_id, created_at DESC);
 
--- ── Turn attachments (per-turn local-file references) ─────────────────────────
+-- ── Turn attachment(per-turn 本地文件引用)──────────────────────────────────────
 
 CREATE TABLE turn_attachments (
   id         TEXT    PRIMARY KEY,
@@ -169,7 +169,7 @@ CREATE TABLE turn_attachments (
 CREATE INDEX idx_turn_attachments_turn    ON turn_attachments(turn_id);
 CREATE INDEX idx_turn_attachments_session ON turn_attachments(session_id, created_at DESC);
 
--- ── Artifacts ──────────────────────────────────────────────────────────────────
+-- ── Artifact ──────────────────────────────────────────────────────────────────
 
 CREATE TABLE artifacts (
   id               TEXT PRIMARY KEY,
@@ -190,7 +190,7 @@ CREATE TABLE artifacts (
 CREATE INDEX idx_artifacts_session ON artifacts(session_id, created_at DESC);
 CREATE INDEX idx_artifacts_turn    ON artifacts(turn_id);
 
--- ── Permission grants / telemetry / usage ──────────────────────────────────────
+-- ── 权限授权 / telemetry / usage ──────────────────────────────────────────────────
 
 CREATE TABLE permission_grants (
   id           TEXT PRIMARY KEY,
@@ -227,7 +227,7 @@ CREATE TABLE turn_usage (
   created_at    INTEGER NOT NULL
 );
 
--- ── Agent tasks (SQL-backed; replaces JSONL transcript) ────────────────────────
+-- ── Agent task(SQL-backed;替代 JSONL transcript)─────────────────────────────────
 
 CREATE TABLE agent_tasks (
   id                     TEXT    PRIMARY KEY,
@@ -260,9 +260,9 @@ CREATE TABLE agent_task_messages (
 
 CREATE INDEX idx_atm_task_created ON agent_task_messages(task_id, created_at ASC);
 
--- ── KB activations (session → KB-doc usage) ────────────────────────────────────
--- Stays in data.db (session-scoped). kb_id + asset_id are PLAIN refs into a
--- per-KB kb.db (no FK — cross-database). session_id keeps its FK.
+-- ── KB activation(session -> KB 文档使用记录)──────────────────────────────────────
+-- 留在 data.db(session 作用域)。kb_id + asset_id 是指向各自 KB kb.db 的裸引用
+-- (无 FK--跨库)。session_id 保留 FK。
 
 CREATE TABLE kb_activations (
   id          TEXT    PRIMARY KEY,

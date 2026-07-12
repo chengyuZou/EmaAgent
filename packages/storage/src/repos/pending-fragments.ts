@@ -1,7 +1,7 @@
 import type { SqliteDb } from '../database.js';
 import type { SessionId, TurnId } from '@ema-agent/contracts';
 
-// ── Types ─────────────────────────────────────────────────────────────────────
+// ── 类型─────────────────────────────────────────────────────────────────────
 
 export interface PendingFragmentRow {
   id:         string;
@@ -9,7 +9,7 @@ export interface PendingFragmentRow {
   turn_id:    string;
   role:       'user' | 'assistant';
   content:    string;
-  /** unix ms — timestamp of this side of the conversation turn */
+  /** unix 毫秒时间戳 — 对话该侧的时间点 */
   at:         number;
   created_at: number;
 }
@@ -27,22 +27,22 @@ export interface PendingFragmentInsert {
 // ── Repo ──────────────────────────────────────────────────────────────────────
 
 /**
- * Stores raw conversation text (user + assistant turns) waiting to be
- * processed by the extraction LLM pipeline.
+ * 存储等待提取 LLM pipeline 处理的
+ * 原始对话文本（user + assistant turn）。
  *
- * Lifecycle:
- *   appendPending() → onTurnEnd — adds a row per conversation side
- *   listBySession() → pipeline reads all pending rows before extraction
- *   clearBySession() → pipeline deletes them after successful clearPending()
+ * 生命周期：
+ *   appendPending() → onTurnEnd — 每个对话侧添加一行
+ *   listBySession() → pipeline 在提取前读取所有待处理行
+ *   clearBySession() → pipeline 在 clearPending() 成功后删除这些行
  *
- * FK ON DELETE CASCADE ensures:
- *   - session deleted → all its fragments auto-deleted
- *   - turn deleted   → that turn's fragments auto-deleted
+ * FK ON DELETE CASCADE 确保：
+ *   - session 删除 → 其所有 fragment 自动删除
+ *   - turn 删除   → 该 turn 的 fragment 自动删除
  */
 export class PendingFragmentsRepo {
   constructor(private readonly db: SqliteDb) {}
 
-  // ── Write ───────────────────────────────────────────────────────────────────
+  // ── 写入───────────────────────────────────────────────────────────────────
 
   insert(f: PendingFragmentInsert): void {
     this.db
@@ -54,16 +54,16 @@ export class PendingFragmentsRepo {
       .run(f.id, f.sessionId, f.turnId, f.role, f.content, f.at, f.createdAt);
   }
 
-  /** Delete all fragments for a session. Called after extraction succeeds. */
+  /** 删除某 session 的所有 fragment。在提取成功后调用。 */
   clearBySession(sessionId: SessionId): void {
     this.db
       .prepare('DELETE FROM pending_fragments WHERE session_id = ?')
       .run(sessionId);
   }
 
-  // ── Read ────────────────────────────────────────────────────────────────────
+  // ── 读取────────────────────────────────────────────────────────────────────
 
-  /** All unprocessed fragments for a session, oldest-first. */
+  /** 某 session 的所有未处理 fragment，按时间正序。 */
   listBySession(sessionId: SessionId): PendingFragmentRow[] {
     return this.db
       .prepare(
@@ -74,7 +74,7 @@ export class PendingFragmentsRepo {
       .all(sessionId) as PendingFragmentRow[];
   }
 
-  /** Sessions that have at least one pending fragment. Used by recovery + stats. */
+  /** 至少有一个 pending fragment 的 session。用于恢复和统计。 */
   listSessionsWithPending(): string[] {
     const rows = this.db
       .prepare('SELECT DISTINCT session_id FROM pending_fragments')

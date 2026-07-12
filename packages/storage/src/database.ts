@@ -8,19 +8,17 @@ export type DatabaseOptions =
   | { memory: true;  kind: DatabaseKind; path?: never };
 
 /**
- * SQLite wrapper. Two flavours coexist in V1:
+ * SQLite 封装。V1 中两种 kind 共存：
  *
- *   kind: 'profile' — `~/.ema-agent/profile.db`
- *     provider configs, model bindings, character cards, app settings.
- *     One per process, shared across all registered data dirs.
+ *   kind: 'profile' - `~/.ema-agent/profile.db`
+ *     Provider 配置、模型绑定、角色卡、应用设置。
+ *     每进程一个,跨所有已注册数据目录共享。
  *
- *   kind: 'data'    — `{activeDataDir}/data.db`
- *     sessions, memory, audio, artifacts, etc. Swapped when the user
- *     switches data dir.
+ *   kind: 'data'    - `{activeDataDir}/data.db`
+ *     Session / Memory / 音频 / Artifact 等。用户切换数据目录时随之切换。
  *
- * The runtime keeps one of each open simultaneously. Repos take `SqliteDb`
- * directly and don't care which kind they're attached to — the wiring layer
- * pairs each repo with the correct DB.
+ * 运行时同时各开一个。Repo 直接接收 `SqliteDb`,不关心 kind——
+ * 由装配层把每个 repo 和正确的 DB 配对。
  */
 export class Database {
   readonly sqlite: SqliteDb;
@@ -40,7 +38,7 @@ export class Database {
     this.migrations = new MigrationsRunner(this.sqlite, this.kind);
   }
 
-  /** Apply pending migrations for this DB's kind. Call once at startup. */
+  /** 应用该 DB kind 的待执行迁移。启动时调用一次。 */
   migrate(): void {
     this.migrations.run();
   }

@@ -10,8 +10,8 @@ export interface TelemetryEventRow {
 }
 
 /**
- * Generic event-stream sink — hooks, errors, state transitions.
- * Token usage and cost belong in UsageRepo, not here.
+ * 通用事件流 sink — hook、错误、状态转换。
+ * token 用量和费用属于 UsageRepo，不在此处。
  */
 export class TelemetryRepo {
   constructor(private readonly db: SqliteDb) {}

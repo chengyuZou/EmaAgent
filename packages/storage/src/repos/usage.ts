@@ -13,15 +13,15 @@ export interface TurnUsageRow {
 }
 
 /**
- * Per-turn LLM token usage and cost — the billing/analytics side of telemetry.
+ * 每个 turn 的 LLM token 用量和费用 — telemetry 的计费/分析侧。
  *
- * `turns.usage_input_tokens` / `usage_output_tokens` (in TurnsRepo) still hold
- * the same numbers for fast list display. This table adds model_id, provider,
- * and duration for detailed cost breakdowns.
+ * `turns.usage_input_tokens` / `usage_output_tokens` （在 TurnsRepo 中）仍存
+ * 相同数值，用于快速列表展示。此表增加 model_id、provider
+ * 和 duration，用于详细的费用分解。
  *
- * The denormalisation is intentional: turn list views read TurnsRepo only,
- * cost-attribution reports read UsageRepo only. The two-write coordination
- * is owned by the caller (SessionStore.completeTurn).
+ * 此反规范化是有意为之：turn 列表视图只读 TurnsRepo，
+ * 费用归因报告只读 UsageRepo。双写协调由
+ * 调用方（SessionStore.completeTurn）负责。
  */
 export class UsageRepo {
   constructor(private readonly db: SqliteDb) {}

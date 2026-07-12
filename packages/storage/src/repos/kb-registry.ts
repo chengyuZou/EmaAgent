@@ -30,10 +30,10 @@ function rowToKb(r: KbRecordRow): KbRecord {
 }
 
 /**
- * Registry of named knowledge bases (profile.db). Each KB's documents/vectors
- * live in its own kb.db under `path`; this table is just the index + which one
- * is active. Mirrors the dataDir registry's single-active semantics, enforced by
- * the partial unique index `idx_kb_active`.
+ * 命名知识库的注册表（profile.db）。每个 KB 的文档/向量
+ * 存在其 `path` 下的独立 kb.db 中；此表仅作索引 + 标记哪个
+ * 处于活跃。镜像 dataDir 注册表的单活跃语义，由
+ * partial unique index `idx_kb_active` 强制约束。
  */
 export class KbRegistryRepo {
   constructor(private readonly db: SqliteDb) {}
@@ -62,7 +62,7 @@ export class KbRegistryRepo {
     return r ? rowToKb(r) : undefined;
   }
 
-  /** Insert a KB (inactive). Call setActive() to make it the active one. */
+  /** 插入 KB（非活跃）。调用 setActive() 将其设为活跃。 */
   insert(kb: { id: string; name: string; path: string }): void {
     const now = Date.now();
     this.db.prepare(
@@ -71,7 +71,7 @@ export class KbRegistryRepo {
     ).run(kb.id, kb.name, kb.path, now, now);
   }
 
-  /** Single-active: clear every is_active, then set this one. */
+  /** 单活跃：清除所有 is_active，再设置当前项。 */
   setActive(id: string): void {
     this.db.transaction(() => {
       this.db.prepare('UPDATE knowledge_bases SET is_active = 0, updated_at = ? WHERE is_active = 1').run(Date.now());

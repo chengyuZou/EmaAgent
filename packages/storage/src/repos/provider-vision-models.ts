@@ -1,6 +1,6 @@
 import type { SqliteDb } from '../database.js';
 
-// ── Types ─────────────────────────────────────────────────────────────────────
+// ── 类型 ─────────────────────────────────────────────────────────────────────
 
 export interface ProviderVisionModelRow {
   provider_config_id: string;
@@ -16,14 +16,14 @@ export interface ProviderVisionModelInsert {
 // ── Repo ──────────────────────────────────────────────────────────────────────
 
 /**
- * Per-provider ENABLED vision model pool. A row ⟺ the user toggled the model ON.
- * Vision models have no extra metadata columns — capability flags
- * (inputModalities etc.) come from the models.dev catalog at runtime.
+ * Per-provider 的已启用 vision 模型池。一行 ⟺ 用户开启了该模型。
+ * Vision 模型无额外元数据列,capability 标志(inputModalities 等)
+ * 运行时从 models.dev catalog 获取。
  */
 export class ProviderVisionModelsRepo {
   constructor(private readonly db: SqliteDb) {}
 
-  // ── Queries by provider ──────────────────────────────────────────────────
+  // ── 按 provider 查询 ──────────────────────────────────────────────────────
 
   listByProvider(providerConfigId: string): ProviderVisionModelRow[] {
     return this.db
@@ -31,16 +31,16 @@ export class ProviderVisionModelsRepo {
       .all(providerConfigId) as ProviderVisionModelRow[];
   }
 
-  // ── Queries by model ─────────────────────────────────────────────────────
+  // ── 按 model 查询 ─────────────────────────────────────────────────────────
 
-  /** All providers that have this vision model enabled. */
+  /** 所有启用了该 vision 模型的 provider。 */
   listByModel(model: string): ProviderVisionModelRow[] {
     return this.db
       .prepare('SELECT * FROM provider_vision_models WHERE model = ? ORDER BY provider_config_id')
       .all(model) as ProviderVisionModelRow[];
   }
 
-  // ── Exact lookup ─────────────────────────────────────────────────────────
+  // ── 精确查询 ─────────────────────────────────────────────────────────────
 
   get(providerConfigId: string, model: string): ProviderVisionModelRow | undefined {
     return this.db
@@ -48,7 +48,7 @@ export class ProviderVisionModelsRepo {
       .get(providerConfigId, model) as ProviderVisionModelRow | undefined;
   }
 
-  // ── Whole pool ───────────────────────────────────────────────────────────
+  // ── 整个池 ───────────────────────────────────────────────────────────────
 
   listAll(): ProviderVisionModelRow[] {
     return this.db
@@ -56,7 +56,7 @@ export class ProviderVisionModelsRepo {
       .all() as ProviderVisionModelRow[];
   }
 
-  // ── Existence checks ─────────────────────────────────────────────────────
+  // ── 存在性检查 ───────────────────────────────────────────────────────────
 
   hasProviderModel(providerConfigId: string, model: string): boolean {
     return this.db
@@ -70,7 +70,7 @@ export class ProviderVisionModelsRepo {
       .get(model) !== undefined;
   }
 
-  // ── Mutations ────────────────────────────────────────────────────────────
+  // ── 写操作 ────────────────────────────────────────────────────────────────
 
   upsert(input: ProviderVisionModelInsert): void {
     this.db

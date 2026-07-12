@@ -4,16 +4,16 @@ import path from 'node:path';
 import os   from 'node:os';
 import fs   from 'node:fs';
 
-// ── CLI: migrate profile + data DBs ──────────────────────────────────────────
+// ── CLI:迁移 profile + data DB ───────────────────────────────────────────────
 //
-// Usage:
-//   tsx src/migrate-cli.ts                      # apply both
-//   tsx src/migrate-cli.ts --status             # show versions
-//   tsx src/migrate-cli.ts --data-dir D:\X      # override active dataDir
+// 用法:
+//   tsx src/migrate-cli.ts                      # 两者都执行
+//   tsx src/migrate-cli.ts --status             # 查看版本
+//   tsx src/migrate-cli.ts --data-dir D:\X      # 覆盖激活的 dataDir
 //
-// Default paths:
-//   profile.db  → ~/.ema-agent/profile.db
-//   data.db     → ~/.ema-agent/data.db  (V1 default; UI lets users move it)
+// 默认路径:
+//   profile.db  -> ~/.ema-agent/profile.db
+//   data.db     -> ~/.ema-agent/data.db  (V1 默认;UI 允许用户移动)
 
 const HOME = os.homedir();
 
@@ -32,8 +32,8 @@ const data    = new Database({ path: dataPath,    kind: 'data' });
 
 const status = process.argv.includes('--status');
 if (status) {
-  console.log(`profile.db @ ${profilePath}  →  v${profile.currentVersion()}`);
-  console.log(`data.db    @ ${dataPath}     →  v${data.currentVersion()}`);
+  console.log(`profile.db @ ${profilePath}  ->  v${profile.currentVersion()}`);
+  console.log(`data.db    @ ${dataPath}     ->  v${data.currentVersion()}`);
 } else {
   profile.migrate();
   data.migrate();

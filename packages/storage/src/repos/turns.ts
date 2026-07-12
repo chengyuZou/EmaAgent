@@ -1,4 +1,4 @@
-﻿import type { SqliteDb } from '../database.js';
+import type { SqliteDb } from '../database.js';
 import type { TurnId, SessionId, TurnMode, TurnStatus, BranchId } from '@ema-agent/contracts';
 
 export interface TurnRow {
@@ -51,10 +51,10 @@ export class TurnsRepo {
   }
 
   /**
-   * Copy a completed turn row to a new session with a fresh id. Used by fork
-   * (both forkInto and the branch-aware path) so the forked session retains
-   * mode / status / usage / timing. branch_id is always cleared — the new
-   * session starts flat (no branches).
+   * 把一个已完成 turn 行复制到新 session(新 id)。用于 fork
+   * (forkInto 和 branch 感知路径都用到),使 fork 出的 session 保留
+   * mode / status / usage / 时序。branch_id 总是清空--新 session 起始
+   * 扁平(无 branch)。
    */
   copyTurn(src: TurnRow, newSessionId: SessionId, newId: TurnId): void {
     this.db
@@ -122,7 +122,7 @@ export class TurnsRepo {
       .run(now, sessionId);
   }
 
-  /** Process-crash recovery: mark every still-running turn across ALL sessions as aborted. */
+  /** 进程崩溃恢复:把所有 session 中仍在运行的 turn 标记为 aborted。 */
   abortAllStale(now: number): number {
     const result = this.db
       .prepare(
@@ -134,9 +134,9 @@ export class TurnsRepo {
   }
 
   /**
-   * Turns on a specific branch, optionally capped at a started_at cutoff.
-   * Used when reconstructing the linear message history for a forked branch:
-   * each ancestor branch only contributes turns up to its fork point.
+   * 某个 branch 上的 turn,可选 started_at 截断点。
+   * 用于重建 fork branch 的线性消息历史:
+   * 每个祖先 branch 只贡献到其 fork 点为止的 turn。
    */
   listForBranch(branchId: BranchId, beforeStartedAt?: number): TurnRow[] {
     if (beforeStartedAt === undefined) {
@@ -152,9 +152,9 @@ export class TurnsRepo {
   }
 
   /**
-   * Backfill all pre-fork turns (branch_id IS NULL) to the given branch.
-   * Called once when the first fork occurs in a session so the root branch
-   * owns all existing turns. Returns the number of rows updated.
+   * 把所有 fork 前的 turn(branch_id IS NULL)回填到给定 branch。
+   * 在 session 中首次 fork 时调用一次,使 root branch 拥有所有既有 turn。
+   * 返回更新的行数。
    */
   assignBranch(sessionId: SessionId, branchId: BranchId): number {
     const result = this.db

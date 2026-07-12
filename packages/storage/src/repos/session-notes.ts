@@ -1,7 +1,7 @@
 import type { SqliteDb } from '../database.js';
 import type { SessionId, MessageId } from '@ema-agent/contracts';
 
-// ── Types ─────────────────────────────────────────────────────────────────────
+// ── 类型─────────────────────────────────────────────────────────────────────
 
 export interface SessionNoteRow {
   session_id:             string;
@@ -27,9 +27,9 @@ export interface SessionNotesStats {
 // ── Repo ──────────────────────────────────────────────────────────────────────
 
 /**
- * Layer-1 session note - one row per session. Body is a JSON-encoded
- * SessionNoteEntry[] owned by the memory package. Each entry.delta is markdown;
- * callers must render the JSON body before injecting it into an LLM context.
+ * Layer-1 session note - 每个 session 一行。body 是 JSON 编码的
+ * SessionNoteEntry[]，由 memory 包管理。每个 entry.delta 是 markdown；
+ * 调用方在注入 LLM context 前必须渲染 JSON body。
  */
 export class SessionNotesRepo {
   constructor(private readonly db: SqliteDb) {}

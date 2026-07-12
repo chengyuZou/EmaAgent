@@ -1,8 +1,8 @@
 import type { SqliteDb } from '../database.js';
 
-// ── Types ─────────────────────────────────────────────────────────────────────
+// ── 类型 ─────────────────────────────────────────────────────────────────────
 
-// TODO - V1.1 consolidate with BackgroundTask in contracts, but for now we want the freedom to
+// TODO-V1.1 与 contracts 中的 BackgroundTask 合并，但目前我们需要自由度来
 export type MemoryTaskKind =
   | 'extraction'
   | 'embedding_refresh'
@@ -38,20 +38,20 @@ export interface MemoryTaskEnqueue {
 // ── Repo ──────────────────────────────────────────────────────────────────────
 
 /**
- * Durable queue for fire-and-forget memory work (extraction, consolidation,
- * maintenance, embedding refresh). The lifecycle is:
+ * fire-and-forget memory 工作的持久队列（extraction、consolidation、
+ * maintenance、embedding refresh）。生命周期：
  *
- *   enqueue() → pending
- *   claimNext() → running (atomic UPDATE … RETURNING)
- *   markCompleted() / markFailed() → completed / failed
+ *   enqueue() -> pending
+ *   claimNext() -> running（atomic UPDATE … RETURNING）
+ *   markCompleted() / markFailed() -> completed / failed
  *
- * Process crash recovery is `resetStuckRunning()` — any task that was running
- * when the process died is reset to pending so it'll be retried.
+ * 进程崩溃恢复靠 `resetStuckRunning()`-进程死亡时处于 running
+ * 的任务被重置为 pending 以便重试。
  */
 export class MemoryTasksRepo {
   constructor(private readonly db: SqliteDb) {}
 
-  // ── Enqueue ─────────────────────────────────────────────────────────────────
+  // ── 入队 ─────────────────────────────────────────────────────────────────
 
   enqueue(t: MemoryTaskEnqueue): void {
     this.db
@@ -63,16 +63,16 @@ export class MemoryTasksRepo {
       .run(t.id, t.kind, t.sessionId, JSON.stringify(t.payload), t.createdAt, t.createdAt);
   }
 
-  // ── Claim ───────────────────────────────────────────────────────────────────
+  // ── 认领 ───────────────────────────────────────────────────────────────────
 
   /**
-   * Atomically pick the oldest pending task and mark it running.
-   * Returns the claimed row, or undefined if no work is available.
-   * Filter by kind when a worker handles only one task kind.
+   * 原子地取最老的 pending 任务并标记为 running。
+   * 返回认领的行，无可用工作时返回 undefined。
+   * 当 worker 只处理一种 task kind 时按 kind 过滤。
    */
   claimNext(now: number, kind?: MemoryTaskKind): MemoryTaskRow | undefined {
     const whereKind = kind ? 'AND kind = ?' : '';
-    // SQL has exactly 1 `?` (updated_at) when no kind, 2 when kind is provided.
+    // 无 kind 时 SQL 恰好 1 个 `?`（updated_at），有 kind 时 2 个。
     const params: Array<string | number> = kind ? [now, kind] : [now];
     const row = this.db
       .prepare(
@@ -92,7 +92,7 @@ export class MemoryTasksRepo {
     return row;
   }
 
-  // ── Settlements ─────────────────────────────────────────────────────────────
+  // ── 收尾 ─────────────────────────────────────────────────────────────
 
   markCompleted(id: string, at: number): void {
     this.db
@@ -101,9 +101,8 @@ export class MemoryTasksRepo {
   }
 
   /**
-   * Mark this attempt failed. If attempts already exceeded `maxAttempts`,
-   * the task is left in 'failed'; otherwise it goes back to 'pending' for
-   * another worker to claim later.
+   * 标记本次尝试失败。若 attempts 已超过 `maxAttempts`，
+   * 任务留在 'failed'；否则回到 'pending' 等其他 worker 后续认领。
    */
   markFailed(id: string, error: string, at: number, maxAttempts = 3): void {
     const row = this.db
@@ -124,7 +123,7 @@ export class MemoryTasksRepo {
       .run(nextStatus, error, at, id);
   }
 
-  // ── Read ────────────────────────────────────────────────────────────────────
+  // ── 读取 ────────────────────────────────────────────────────────────────────
 
   findById(id: string): MemoryTaskRow | undefined {
     return this.db
@@ -169,11 +168,11 @@ export class MemoryTasksRepo {
     return out;
   }
 
-  // ── Startup recovery ────────────────────────────────────────────────────────
+  // ── 启动恢复 ────────────────────────────────────────────────────────
 
   /**
-   * Any task whose status is 'running' at startup was orphaned by a crash —
-   * reset to 'pending' so the worker re-picks it up. Returns the count moved.
+   * 启动时状态为 'running' 的任务是被崩溃遗留的-
+   * 重置为 'pending' 使 worker 重新认领。返回迁移的数量。
    */
   resetStuckRunning(now: number): number {
     const info = this.db
@@ -187,7 +186,7 @@ export class MemoryTasksRepo {
     return info.changes;
   }
 
-  /** Periodic / on-demand cleanup. */
+  /** 定期 / 按需清理。 */
   deleteCompleted(olderThan: number): number {
     const info = this.db
       .prepare(`DELETE FROM memory_tasks WHERE status = 'completed' AND updated_at < ?`)

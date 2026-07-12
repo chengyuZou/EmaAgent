@@ -1,6 +1,6 @@
 import type { SqliteDb } from '../database.js';
 
-// ── Types ─────────────────────────────────────────────────────────────────────
+// ── 类型 ─────────────────────────────────────────────────────────────────────
 
 export type MemoryNodeType =
   | 'user_fact' | 'entity' | 'event'
@@ -84,11 +84,10 @@ export interface MemoryNodesBrowseOptions {
 // ── Repo ──────────────────────────────────────────────────────────────────────
 
 /**
- * Layer-0 entity graph nodes — cross-session, shared across all modes.
+ * Layer-0 实体图节点-跨 session，所有 mode 共享。
  *
- * Concurrency: relies on the UNIQUE(label, node_type) index so concurrent
- * extraction runs can use INSERT ... ON CONFLICT to coalesce duplicates
- * without explicit locking.
+ * 并发：依赖 UNIQUE(label, node_type) 索引，使并发 extraction
+ * 可用 INSERT ... ON CONFLICT 合并重复项，无需显式锁。
  */
 export class MemoryNodesRepo {
   constructor(private readonly db: SqliteDb) {}
@@ -115,7 +114,7 @@ export class MemoryNodesRepo {
       );
   }
 
-  // ── Read ────────────────────────────────────────────────────────────────────
+  // ── 读取 ────────────────────────────────────────────────────────────────────
 
   findById(id: string): MemoryNodeRow | undefined {
     return this.db
@@ -141,7 +140,7 @@ export class MemoryNodesRepo {
       .all(nodeType, limit) as MemoryNodeRow[];
   }
 
-  /** Nodes embedded with the given model — dim guard is done in the capability layer. */
+  /** 用指定 model embedding 的节点-维度校验在 capability 层做。 */
   listEmbeddable(model: string, limit = 5000): MemoryNodeRow[] {
     return this.db
       .prepare(
@@ -153,9 +152,9 @@ export class MemoryNodesRepo {
   }
 
   /**
-   * Cursor page for bulk index building.
-   * Returns rows with updated_at > afterUpdatedAt, ordered ascending, up to limit.
-   * Start with afterUpdatedAt = 0; advance cursor to last row's updated_at each page.
+   * 用于批量构建索引的 cursor 分页。
+   * 返回 updated_at > afterUpdatedAt 的行，升序排列，上限 limit。
+   * 起始 afterUpdatedAt = 0；每页后将 cursor 推进到最后一行的 updated_at。
    */
   listEmbeddablePage(model: string, afterUpdatedAt: number, limit: number): MemoryNodeRow[] {
     return this.db
@@ -198,9 +197,9 @@ export class MemoryNodesRepo {
     return this.db.prepare(sql).all(...params) as MemoryNodeRow[];
   }
 
-  // ── Update ──────────────────────────────────────────────────────────────────
+  // ── 更新 ──────────────────────────────────────────────────────────────────
 
-  /** Used by consolidation LLM after draining lazy_updates. */
+  /** consolidation LLM 在消费完 lazy_updates 后使用。 */
   updateDescription(u: MemoryNodeDescriptionUpdate): void {
     this.db
       .prepare(
@@ -314,7 +313,7 @@ export class MemoryNodesRepo {
     return info.changes;
   }
 
-  // ── Counts (startup recovery + diagnostics) ─────────────────────────────────
+  // ── 计数（启动恢复 + 诊断） ─────────────────────────────────
 
   countStaleEmbeddings(currentProviderId: string): number {
     const row = this.db
@@ -341,7 +340,7 @@ export class MemoryNodesRepo {
       .all() as MemoryNodeStatsRow[];
   }
 
-  // ── Delete ──────────────────────────────────────────────────────────────────
+  // ── 删除 ──────────────────────────────────────────────────────────────────
 
   delete(id: string): void {
     this.db.prepare('DELETE FROM memory_nodes WHERE id = ?').run(id);

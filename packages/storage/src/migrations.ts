@@ -7,14 +7,12 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const MIGRATIONS_DIR = path.join(__dirname, 'migrations');
 
 /**
- * Two independent migration streams — profile and data — each tracked by its
- * own DB's `user_version` pragma.
+ * 两条独立迁移流——profile 和 data,各自由所属 DB 的 `user_version` pragma 追踪。
  *
- *   profile.db migrations live under `migrations/profile/`
- *   data.db    migrations live under `migrations/data/`
+ *   profile.db 迁移位于 `migrations/profile/`
+ *   data.db    迁移位于 `migrations/data/`
  *
- * Each stream is independent: profile can be on version 3 while data is on
- * version 7 (or vice versa). Versions advance only inside their own folder.
+ * 每条流独立:profile 可以在 v3 而 data 在 v7(反之亦然)。版本号只在各自文件夹内推进。
  */
 export type DatabaseKind = 'profile' | 'data' | 'kb';
 
@@ -25,10 +23,10 @@ export class MigrationsRunner {
   ) {}
 
   /**
-   * Apply every pending migration in `migrations/{kind}/`.
+   * 应用 `migrations/{kind}/` 下所有待执行迁移。
    *
-   * Each migration runs inside a single transaction together with the
-   * `user_version` bump, so a half-applied migration cannot be left behind.
+   * 每条迁移与 `user_version` 自增在单个事务内执行,
+   * 不会残留半应用的迁移。
    */
   run(): void {
     const folder  = path.join(MIGRATIONS_DIR, this.kind);

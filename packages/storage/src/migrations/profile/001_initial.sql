@@ -1,13 +1,13 @@
 -- ════════════════════════════════════════════════════════════════════════════
--- PROFILE stream — ~/.ema-agent/profile.db. Global, cross-workspace state that
--- follows the *user*: provider configs, model bindings, character cards, app
--- settings, skills index, global memory (entity graph + episodic items), and the
--- knowledge_bases registry (named KBs, each living in its own kb.db elsewhere).
+-- PROFILE 流--~/.ema-agent/profile.db。全局、跨 workspace 的状态,
+-- 跟随*用户*:Provider 配置、模型绑定、角色卡、应用设置、Skill 索引、
+-- 全局 Memory(entity graph + episodic item),以及 knowledge_bases 注册表
+-- (命名 KB,各自存于别处的 kb.db)。
 --
--- Consolidated initial schema (replaces 001–004).
+-- 合并后的初始 schema(替代 001–004)。
 -- ════════════════════════════════════════════════════════════════════════════
 
--- ── Providers ──────────────────────────────────────────────────────────────────
+-- ── Provider ──────────────────────────────────────────────────────────────────
 
 CREATE TABLE provider_configs (
   id                TEXT PRIMARY KEY,
@@ -82,7 +82,7 @@ CREATE TABLE provider_vision_models (
   PRIMARY KEY (provider_config_id, model)
 );
 
--- ── Model bindings ─────────────────────────────────────────────────────────────
+-- ── 模型绑定 ─────────────────────────────────────────────────────────────────────
 
 CREATE TABLE model_bindings (
   module             TEXT    NOT NULL
@@ -101,7 +101,7 @@ CREATE TABLE model_bindings (
   PRIMARY KEY (module, provider_config_id, model)
 );
 
--- ── Character cards + Live2D ───────────────────────────────────────────────────
+-- ── 角色卡 + Live2D ───────────────────────────────────────────────────────────
 
 CREATE TABLE live2d_models (
   id           TEXT PRIMARY KEY,
@@ -134,7 +134,7 @@ CREATE TABLE character_cards (
 
 CREATE UNIQUE INDEX idx_character_cards_active ON character_cards(is_active) WHERE is_active = 1;
 
--- ── Settings (generic key-value JSON) ──────────────────────────────────────────
+-- ── 设置(通用 key-value JSON)─────────────────────────────────────────────────────
 
 CREATE TABLE settings (
   key        TEXT PRIMARY KEY,
@@ -142,7 +142,7 @@ CREATE TABLE settings (
   updated_at INTEGER NOT NULL
 );
 
--- ── MCP servers ────────────────────────────────────────────────────────────────
+-- ── MCP server ────────────────────────────────────────────────────────────────
 
 CREATE TABLE mcp_servers (
   id           TEXT PRIMARY KEY,
@@ -155,10 +155,10 @@ CREATE TABLE mcp_servers (
   installed_at INTEGER NOT NULL
 );
 
--- ── Market sources(MCP / Skill / 未来 integration 共用)──────────────────────
+-- ── Market source(MCP / Skill / 未来 integration 共用)──────────────────────
 -- 一个"市场源"= 一个可浏览可装条目的来源(官方 registry / GitHub 仓库 / 用户自传 JSON 索引)。
 -- 与 mcp_servers / skills 区分:那俩是"已装实例",这张表是"从哪浏览"。
--- kind 不加 CHECK —— 业务包(mcp='mcp'/skill='skill'/未来 integration='integration')自由填,
+-- kind 不加 CHECK -- 业务包(mcp='mcp'/skill='skill'/未来 integration='integration')自由填,
 -- 底层 marketplace 包不约束语义,保证未来加新 kind 零迁移。
 -- config 结构由各业务包的 adapter 定义(github: owner/repo/ref; mcp-registry: baseUrl/mirrorUrl; ...)。
 
@@ -176,7 +176,7 @@ CREATE TABLE market_sources (
 
 CREATE INDEX idx_market_sources_kind ON market_sources(kind);
 
--- ── Skills index (SKILL.md files live on disk; this is the cache) ──────────────
+-- ── Skill 索引(SKILL.md 文件在磁盘上;这是缓存)──────────────────────────────
 
 CREATE TABLE skills (
   id            TEXT PRIMARY KEY,
@@ -194,7 +194,7 @@ CREATE TABLE skills (
   installed_at  INTEGER NOT NULL
 );
 
--- ── Global memory (L0 entity graph + L2 episodic items) ────────────────────────
+-- ── 全局 Memory(L0 entity graph + L2 episodic item)───────────────────────────────
 
 CREATE TABLE memory_nodes (
   id                    TEXT PRIMARY KEY,
@@ -270,12 +270,12 @@ CREATE INDEX idx_memory_items_updated    ON memory_items(updated_at DESC);
 CREATE INDEX idx_memory_items_importance ON memory_items(importance DESC);
 CREATE INDEX idx_memory_items_lastref    ON memory_items(last_referenced_at DESC);
 
--- ── Knowledge-base registry (named KBs; each lives in its own kb.db at `path`) ──
+-- ── Knowledge-base 注册表(命名 KB;各自存于 `path` 处的 kb.db)──────────────────
 
 CREATE TABLE knowledge_bases (
   id         TEXT    PRIMARY KEY,
   name       TEXT    NOT NULL,
-  path       TEXT    NOT NULL,          -- absolute folder: {path}/kb.db + {path}/files/
+  path       TEXT    NOT NULL,          -- 绝对文件夹:{path}/kb.db + {path}/files/
   is_active  INTEGER NOT NULL DEFAULT 0,
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL

@@ -34,7 +34,7 @@ export interface DocumentChunkInsert {
 
 export interface ChunkSearchHit { chunkId: string; score: number }
 
-/** Chunk summary for the document detail viewer (no embedding BLOB). */
+/** 供文档详情视图用的 chunk 摘要（不含 embedding BLOB）。 */
 export interface ChunkSummary {
   id:           string;
   text:         string;
@@ -103,7 +103,7 @@ export class DocumentChunkRepo {
     );
     this.db.transaction(() => {
       for (const c of chunks) {
-        // tokens = jieba-segmented text; FTS trigger copies this column so BM25 scores over whole Chinese words.
+        // tokens = jieba 分词文本；FTS trigger 复制此列，使 BM25 对整词中文打分。
         stmt.run(c.id, c.assetId, c.text, segmentForFts(c.text), c.markdown ?? null,
           JSON.stringify(c.blockKinds), c.tokenCount,
           c.page ?? null, JSON.stringify(c.sectionPath),
@@ -121,10 +121,10 @@ export class DocumentChunkRepo {
   }
 
   /**
-   * Cursor-paginated chunk summaries for one asset (for the document detail
-   * viewer). Ordered by insert order (rowid); cursor = previous page's last
-   * rowid. Deliberately does NOT load the embedding BLOB — only a hasEmbedding
-   * flag — so paging a large doc stays cheap.
+   * 单个 asset 的 cursor 分页 chunk 摘要（供文档详情视图用）。
+   * 按插入顺序（rowid）排序；cursor = 上一页最后一条的 rowid。
+   * 刻意不加载 embedding BLOB-只返回 hasEmbedding 标志-
+   * 使大文档分页保持低开销。
    */
   findByAssetPaged(
     assetId: string,
@@ -174,26 +174,25 @@ export class DocumentChunkRepo {
       .run(vecToBlob(vector), id);
   }
 
-  /** FTS5 BM25 full-text search, scope-filtered via JOIN.
+  /** FTS5 BM25 全文检索，通过 JOIN 做 scope 过滤。
    *
-   * Query is jieba-segmented the same way as indexed text so 2-char Chinese
-   * words match. Each token is quoted as an FTS phrase to prevent punctuation
-   * being misread as FTS operators.
+   * Query 与索引文本同样走 jieba 分词，使 2 字中文词能命中。
+   * 每个 token 作为 FTS phrase 加引号，避免标点被误读为 FTS operator。
    */
   searchFts(
     query:    string,
-    assetIds: string[] | undefined,   // undefined = all KBs; [] = none
+    assetIds: string[] | undefined,   // undefined = 所有 KB；[] = 无
     topK:     number,
   ): ChunkSearchHit[] {
     if (!query.trim()) return [];
     if (assetIds && assetIds.length === 0) return [];
 
-    // Segment the query with jieba (same pipeline as indexing), strip any FTS
-    // operator chars from each token, then quote each as a phrase below.
+    // 用 jieba 对 query 分词（与索引同管线），去除每个 token 中的 FTS
+    // operator 字符，然后下方将每个 token 作为 phrase 加引号。
     const terms = segmentForFts(query)
       .split(/\s+/)
       .map(t => t.replace(/"/g, '').trim())
-      .filter(Boolean); // jieba words can be 1–2 chars; no trigram length floor anymore
+      .filter(Boolean); // jieba 词可能 1-2 字；不再设 trigram 最小长度
     if (terms.length === 0) return [];
     const ftsQuery = terms.map(t => `"${t}"`).join(' OR ');
 
@@ -207,14 +206,14 @@ export class DocumentChunkRepo {
       LIMIT  ?
     `).all(ftsQuery, ...(assetIds ?? []), topK) as Array<{ chunk_id: string; score: number }>;
 
-    // bm25() returns negative values (lower = better match); negate for ascending scores
+    // bm25() 返回负值（越小匹配越好）；取反使分数升序
     return rows.map(r => ({ chunkId: r.chunk_id, score: -r.score }));
   }
 
-  /** Cosine similarity search over stored BLOB embeddings, filtered to assetIds. */
+  /** 对已存储的 BLOB embedding 做余弦相似度检索，按 assetIds 过滤。 */
   searchByEmbedding(
     queryVec: number[],
-    assetIds: string[] | undefined,   // undefined = all KBs; [] = none
+    assetIds: string[] | undefined,   // undefined = 所有 KB；[] = 无
     topK:     number,
   ): ChunkSearchHit[] {
     if (assetIds && assetIds.length === 0) return [];
@@ -236,8 +235,8 @@ export class DocumentChunkRepo {
       .slice(0, topK);
   }
 
-  /** Load all non-stale embedded chunks for building the in-memory HNSW index.
-   *  Only chunks whose asset has ebd_stale = 0 and a stored embedding are returned. */
+  /** 加载所有非 stale 的已 embedding chunk，用于构建内存 HNSW 索引。
+   *  仅返回 asset 的 ebd_stale = 0 且有 stored embedding 的 chunk。 */
   getAllEmbeddings(): Array<{ id: string; assetId: string; embedding: Buffer }> {
     return this.db.prepare(`
       SELECT dc.id, dc.asset_id AS assetId, dc.embedding

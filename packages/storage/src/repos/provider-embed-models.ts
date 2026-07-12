@@ -1,6 +1,6 @@
 import type { SqliteDb } from '../database.js';
 
-// ── Types ─────────────────────────────────────────────────────────────────────
+// ── 类型 ─────────────────────────────────────────────────────────────────────
 
 export type DimSource = 'live' | 'table' | 'manual';
 
@@ -22,14 +22,13 @@ export interface ProviderEmbedModelInsert {
 // ── Repo ──────────────────────────────────────────────────────────────────────
 
 /**
- * Per-provider ENABLED embed model pool. A row ⟺ the user toggled the model ON.
- * `dim` is denormalized at enable time (static table > manual) so the memory
- * pipeline can size vector stores without a second lookup.
+ * Per-provider 的已启用 embed 模型池。一行 ⟺ 用户开启了该模型。
+ * `dim` 在启用时反范式存入(静态表 > 手动),memory 管线无需二次查询即可确定向量存储大小。
  */
 export class ProviderEmbedModelsRepo {
   constructor(private readonly db: SqliteDb) {}
 
-  // ── Queries by provider ──────────────────────────────────────────────────
+  // ── 按 provider 查询 ──────────────────────────────────────────────────────
 
   listByProvider(providerConfigId: string): ProviderEmbedModelRow[] {
     return this.db
@@ -37,16 +36,16 @@ export class ProviderEmbedModelsRepo {
       .all(providerConfigId) as ProviderEmbedModelRow[];
   }
 
-  // ── Queries by model ─────────────────────────────────────────────────────
+  // ── 按 model 查询 ─────────────────────────────────────────────────────────
 
-  /** All providers that have this embed model enabled. */
+  /** 所有启用了该 embed 模型的 provider。 */
   listByModel(model: string): ProviderEmbedModelRow[] {
     return this.db
       .prepare('SELECT * FROM provider_embed_models WHERE model = ? ORDER BY provider_config_id')
       .all(model) as ProviderEmbedModelRow[];
   }
 
-  // ── Exact lookup ─────────────────────────────────────────────────────────
+  // ── 精确查询 ─────────────────────────────────────────────────────────────
 
   get(providerConfigId: string, model: string): ProviderEmbedModelRow | undefined {
     return this.db
@@ -54,7 +53,7 @@ export class ProviderEmbedModelsRepo {
       .get(providerConfigId, model) as ProviderEmbedModelRow | undefined;
   }
 
-  // ── Whole pool ───────────────────────────────────────────────────────────
+  // ── 整个池 ───────────────────────────────────────────────────────────────
 
   listAll(): ProviderEmbedModelRow[] {
     return this.db
@@ -62,7 +61,7 @@ export class ProviderEmbedModelsRepo {
       .all() as ProviderEmbedModelRow[];
   }
 
-  // ── Existence checks ─────────────────────────────────────────────────────
+  // ── 存在性检查 ───────────────────────────────────────────────────────────
 
   hasProviderModel(providerConfigId: string, model: string): boolean {
     return this.db
@@ -76,7 +75,7 @@ export class ProviderEmbedModelsRepo {
       .get(model) !== undefined;
   }
 
-  /** Vector dimension for a model name, across any provider. Fallback for memory pipeline. */
+  /** 某模型名的向量维度,跨所有 provider。memory 管线的兜底。 */
   dimFor(model: string): number | undefined {
     const row = this.db
       .prepare('SELECT dim FROM provider_embed_models WHERE model = ? LIMIT 1')

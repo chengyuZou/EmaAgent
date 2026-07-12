@@ -1,6 +1,6 @@
 import type { SqliteDb } from '../database.js';
 
-// ── Types ─────────────────────────────────────────────────────────────────────
+// ── 类型 ─────────────────────────────────────────────────────────────────────
 
 export type ContextSource = 'live' | 'table' | 'manual';
 
@@ -10,7 +10,7 @@ export interface ProviderLlmModelRow {
   context_window:     number;
   context_source:     ContextSource;
   created_at:         number;
-  /** Joined from provider_configs — used for capability lookups (modelsDevId). */
+  /** 从 provider_configs JOIN 而来,用于 capability 查询(modelsDevId)。 */
   definition_id:      string | null;
 }
 
@@ -24,28 +24,27 @@ export interface ProviderLlmModelInsert {
 // ── Repo ──────────────────────────────────────────────────────────────────────
 
 /**
- * Per-provider ENABLED LLM model pool. A row ⟺ the user toggled the model ON
- * for that provider config. `model_bindings` (per module) draws from this pool;
- * disabling a model cascades to its bindings (handled in the providers route).
+ * Per-provider 的已启用 LLM 模型池。一行 ⟺ 用户为该 provider config 开启了该模型。
+ * `model_bindings`(per module)从此池取;禁用模型会级联到其 binding(在 providers 路由处理)。
  */
 export class ProviderLlmModelsRepo {
   constructor(private readonly db: SqliteDb) {}
 
-  // ── Queries by provider ────────────────────────────────────────────────────
+  // ── 按 provider 查询 ────────────────────────────────────────────────────────
 
-  /** Enabled models for one provider config — drives the provider page list. */
+  /** 某 provider config 的已启用模型,驱动 provider 页面列表。 */
   listByProvider(providerConfigId: string): ProviderLlmModelRow[] {
     return this.db
       .prepare('SELECT * FROM provider_llm_models WHERE provider_config_id = ? ORDER BY created_at ASC')
       .all(providerConfigId) as ProviderLlmModelRow[];
   }
 
-  // ── Queries by model ───────────────────────────────────────────────────────
+  // ── 按 model 查询 ───────────────────────────────────────────────────────────
 
   /**
-   * All providers that have this model enabled — drives the frontend model
-   * picker (same model name may exist under multiple provider configs).
-   * JOINs definition_id so the caller can resolve modelsDevId for capability checks.
+   * 所有启用了该模型的 provider,驱动前端 model picker
+   * (同名模型可能存在于多个 provider config 下)。
+   * JOIN definition_id,供调用方解析 modelsDevId 做 capability 检查。
    */
   listByModel(model: string): ProviderLlmModelRow[] {
     return this.db
@@ -57,9 +56,9 @@ export class ProviderLlmModelsRepo {
       .all(model) as ProviderLlmModelRow[];
   }
 
-  // ── Exact lookup ───────────────────────────────────────────────────────────
+  // ── 精确查询 ───────────────────────────────────────────────────────────────
 
-  /** Returns the full row (including definition_id) for a specific enabled model. */
+  /** 返回指定已启用模型的完整行(含 definition_id)。 */
   get(providerConfigId: string, model: string): ProviderLlmModelRow | undefined {
     return this.db
       .prepare(`SELECT plm.*, pc.definition_id
@@ -69,16 +68,16 @@ export class ProviderLlmModelsRepo {
       .get(providerConfigId, model) as ProviderLlmModelRow | undefined;
   }
 
-  // ── Whole pool ─────────────────────────────────────────────────────────────
+  // ── 整个池 ─────────────────────────────────────────────────────────────────
 
-  /** All enabled models across every provider. */
+  /** 所有 provider 的全部已启用模型。 */
   listAll(): ProviderLlmModelRow[] {
     return this.db
       .prepare('SELECT * FROM provider_llm_models ORDER BY provider_config_id, created_at ASC')
       .all() as ProviderLlmModelRow[];
   }
 
-  /** All enabled models with provider display_name (for ModelPicker). */
+  /** 所有已启用模型,附带 provider display_name(供 ModelPicker 用)。 */
   listAllWithProvider(): Array<ProviderLlmModelRow & { display_name: string }> {
     return this.db
       .prepare(`SELECT plm.*, pc.display_name, pc.definition_id
@@ -88,16 +87,16 @@ export class ProviderLlmModelsRepo {
       .all() as Array<ProviderLlmModelRow & { display_name: string }>;
   }
 
-  // ── Existence checks ───────────────────────────────────────────────────────
+  // ── 存在性检查 ─────────────────────────────────────────────────────────────
 
-  /** Check whether a specific (provider, model) pair is enabled. */
+  /** 检查特定 (provider, model) 对是否已启用。 */
   hasProviderModel(providerConfigId: string, model: string): boolean {
     return this.db
       .prepare('SELECT 1 FROM provider_llm_models WHERE provider_config_id = ? AND model = ?')
       .get(providerConfigId, model) !== undefined;
   }
 
-  /** Check whether ANY provider has this model enabled. */
+  /** 检查是否有任意 provider 启用了该模型。 */
   hasModel(model: string): boolean {
     return this.db
       .prepare('SELECT 1 FROM provider_llm_models WHERE model = ?')
@@ -105,9 +104,9 @@ export class ProviderLlmModelsRepo {
   }
 
   /**
-   * Context window for a model name, across any provider that has it enabled.
-   * Used by memory budgeting (getContextWindow). Returns undefined when no
-   * enabled model matches → caller falls back to the static token table.
+   * 某模型名的 context window,跨所有启用了该模型的 provider。
+   * 供 memory 预算用(getContextWindow)。无匹配已启用模型时返回 undefined,
+   * 调用方回退到静态 token 表。
    */
   contextWindowFor(model: string): number | undefined {
     const row = this.db
@@ -116,7 +115,7 @@ export class ProviderLlmModelsRepo {
     return row?.context_window;
   }
 
-  /** Enable a model (or update its context window). */
+  /** 启用模型(或更新其 context window)。 */
   upsert(input: ProviderLlmModelInsert): void {
     this.db
       .prepare(
@@ -136,7 +135,7 @@ export class ProviderLlmModelsRepo {
       );
   }
 
-  /** Disable a model. Returns true if a row was removed. */
+  /** 禁用模型。移除了行则返回 true。 */
   remove(providerConfigId: string, model: string): boolean {
     const info = this.db
       .prepare('DELETE FROM provider_llm_models WHERE provider_config_id = ? AND model = ?')

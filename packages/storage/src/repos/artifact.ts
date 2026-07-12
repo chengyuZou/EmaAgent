@@ -33,7 +33,7 @@ function rowToArtifact(row: ArtifactRow): Artifact {
     ...(row.rejected_at != null ? { rejectedAt: row.rejected_at } : {}),
   };
 
-  // file-backed: content stored as null in DB, Store fills it on read
+  // file-backed：DB 中 content 存为 null，读取时由 Store 填充
   if (row.content_location === 'file') {
     return { ...base, contentLocation: 'file', content: null, contentPath: row.content_path! } as Artifact;
   }
@@ -140,7 +140,7 @@ export class ArtifactRepo {
     });
   }
 
-  /** Export-only: returns all artifacts with full content (inline text + contentPath for file-backed). */
+  /** 仅用于导出：返回所有 Artifact 的完整内容（inline 文本 + file-backed 的 contentPath）。 */
   listForExport(sessionId: SessionId): Artifact[] {
     const rows = this.db
       .prepare(`SELECT * FROM artifacts WHERE session_id = ? ORDER BY created_at ASC`)

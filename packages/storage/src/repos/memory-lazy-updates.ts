@@ -1,6 +1,6 @@
 import type { SqliteDb } from '../database.js';
 
-// ── Types ─────────────────────────────────────────────────────────────────────
+// ── 类型 ─────────────────────────────────────────────────────────────────────
 
 export interface MemoryNodeLazyUpdateRow {
   id:                 string;
@@ -23,12 +23,10 @@ export interface MemoryNodeLazyUpdateInsert {
 // ── Repo ──────────────────────────────────────────────────────────────────────
 
 /**
- * Append-only buffer of pending fragments for each node. Consolidation drains
- * them by primary key (not by node_id) so updates arriving during the LLM
- * round-trip are not accidentally dropped.
+ * 每个 node 的 pending fragment 的只追加缓冲区。Consolidation 按
+ * 主键（非 node_id）消费，使 LLM 往返期间到达的更新不被意外丢弃。
  *
- * Concurrency: pure INSERT — no read-modify-write — so unlimited concurrent
- * appends are safe.
+ * 并发：纯 INSERT-无 read-modify-write-故无限并发追加是安全的。
  */
 export class MemoryLazyUpdatesRepo {
   constructor(private readonly db: SqliteDb) {}
@@ -51,7 +49,7 @@ export class MemoryLazyUpdatesRepo {
       .all(nodeId) as MemoryNodeLazyUpdateRow[];
   }
 
-  /** All nodes that currently have at least one pending fragment. */
+  /** 当前至少有一个 pending fragment 的所有 node。 */
   listNodesWithPending(): string[] {
     const rows = this.db
       .prepare('SELECT DISTINCT node_id FROM memory_node_lazy_updates')
@@ -67,8 +65,8 @@ export class MemoryLazyUpdatesRepo {
   }
 
   /**
-   * Delete a specific set of update rows. Use the ids returned from listByNode
-   * — fragments arriving between listByNode and this call survive.
+   * 删除指定集合的更新行。使用 listByNode 返回的 id-
+   * 在 listByNode 和此调用之间到达的 fragment 会保留。
    */
   deleteByIds(ids: string[]): void {
     if (ids.length === 0) return;
@@ -78,7 +76,7 @@ export class MemoryLazyUpdatesRepo {
       .run(...ids);
   }
 
-  /** Orphan cleanup — should be a no-op given ON DELETE CASCADE. */
+  /** 孤儿清理-有 ON DELETE CASCADE 时应为 no-op。 */
   cleanOrphans(): number {
     const info = this.db
       .prepare(

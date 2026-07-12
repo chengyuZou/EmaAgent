@@ -35,7 +35,7 @@ export interface DocumentAssetInsert {
 
 export interface AssetPage {
   items:      ReturnType<typeof rowToAsset>[];
-  nextCursor: number | null;   // created_at cursor for the next page (null = end)
+  nextCursor: number | null;   // 下一页的 created_at cursor（null = 结束）
 }
 
 function rowToAsset(row: DocumentAssetRow) {
@@ -84,16 +84,15 @@ export class DocumentAssetRepo {
     return row ? rowToAsset(row) : undefined;
   }
 
-  /** All assets (no pagination) — used by indexing/HNSW priming, not the UI list. */
+  /** 所有 asset（不分页）-用于索引/HNSW 预热，非 UI 列表。 */
   listAll(): ReturnType<typeof rowToAsset>[] {
     const rows = this.db.prepare('SELECT * FROM document_assets ORDER BY created_at DESC').all() as DocumentAssetRow[];
     return rows.map(rowToAsset);
   }
 
   /**
-   * Cursor-paginated list for the UI, newest first. Cursor = the previous page's
-   * last created_at; pass undefined for the first page. Optional case-insensitive
-   * keyword over file_name/title.
+   * 面向 UI 的 cursor 分页列表，最新优先。Cursor = 上一页最后一条的 created_at；
+   * 首页传 undefined。可选对 file_name/title 做大小写不敏感的关键词搜索。
    */
   listPaged(opts: { cursor?: number; limit?: number; keyword?: string } = {}): AssetPage {
     const limit = Math.min(Math.max(opts.limit ?? 20, 1), 100);
@@ -106,7 +105,7 @@ export class DocumentAssetRepo {
       params.push(like, like);
     }
     const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
-    // Fetch limit+1 to detect whether another page exists.
+    // 取 limit+1 条以检测是否还有下一页。
     const rows = this.db
       .prepare(`SELECT * FROM document_assets ${whereSql} ORDER BY created_at DESC LIMIT ?`)
       .all(...params, limit + 1) as DocumentAssetRow[];
@@ -115,7 +114,7 @@ export class DocumentAssetRepo {
     return { items: page, nextCursor: hasMore ? page[page.length - 1]!.createdAt : null };
   }
 
-  /** KBs not selected since `beforeTs` (last_activated_at, falling back to created_at). */
+  /** 自 `beforeTs` 起未被选中的 KB（以 last_activated_at 为准，回退到 created_at）。 */
   listInactiveSince(beforeTs: number): ReturnType<typeof rowToAsset>[] {
     const rows = this.db.prepare(`
       SELECT * FROM document_assets
@@ -125,7 +124,7 @@ export class DocumentAssetRepo {
     return rows.map(rowToAsset);
   }
 
-  /** Record a turn selecting these KBs: bump use_count + stamp last_activated_at. */
+  /** 记录某 turn 选中这些 KB：自增 use_count + 更新 last_activated_at。 */
   recordActivation(ids: string[], ts: number): void {
     if (ids.length === 0) return;
     const stmt = this.db.prepare(
@@ -157,8 +156,7 @@ export class DocumentAssetRepo {
       .run(model, dim, Date.now(), id);
   }
 
-  /** Mark every indexed asset NOT embedded with currentModel as stale — both
-  /** 标不匹配 currentModel 的 asset 为 stale,同时清匹配的 stale=0。
+  /** 将未用 currentModel embedding 的 indexed asset 标为 stale，同时清匹配的 stale=0。
    *  切换模型后调:新模型不匹配的标 stale(需重嵌),切回原模型时匹配的清 stale
    *  (之前只标不清,导致切回原模型按钮还在)。返回更新的行数。 */
   markStaleExcept(currentModel: string): number {
@@ -170,7 +168,7 @@ export class DocumentAssetRepo {
       .run(currentModel, Date.now());
     return info.changes;
   }
-  /** Assets whose embeddings are stale (model changed) — needs re-embedding. */
+  /** embedding 已 stale 的 asset（模型变更）-需重新 embedding。 */
   listEbdStale(): ReturnType<typeof rowToAsset>[] {
     const rows = this.db
       .prepare('SELECT * FROM document_assets WHERE ebd_stale = 1 ORDER BY created_at')

@@ -1,7 +1,7 @@
 import type { SqliteDb } from '../database.js';
 import type { AskUserQuestionSpec } from '@ema-agent/contracts';
 
-// ── Types ─────────────────────────────────────────────────────────────────────
+// ── 类型─────────────────────────────────────────────────────────────────────
 
 export type AgentTaskStatus =
   | 'running'
@@ -39,9 +39,9 @@ export interface AgentTaskInsert {
 export class AgentTasksRepo {
   constructor(private readonly db: SqliteDb) {}
 
-  // ── Write ────────────────────────────────────────────────────────────────────
+  // ── 写入────────────────────────────────────────────────────────────────────
 
-  /** Idempotent: INSERT OR IGNORE so duplicate claim() calls are harmless. */
+  /** 幂等：INSERT OR IGNORE，重复 claim() 调用无副作用。 */
   insert(t: AgentTaskInsert): void {
     this.db
       .prepare(
@@ -124,7 +124,7 @@ export class AgentTasksRepo {
     this.db.prepare('DELETE FROM agent_tasks WHERE id = ?').run(id);
   }
 
-  /** Batch-delete terminal tasks for a session. Returns count deleted. */
+  /** 批量删除某 session 的终态 task。返回删除数量。 */
   deleteTerminalForSession(sessionId: string): number {
     const info = this.db
       .prepare(
@@ -135,7 +135,7 @@ export class AgentTasksRepo {
     return info.changes;
   }
 
-  // ── Read ─────────────────────────────────────────────────────────────────────
+  // ── 读取─────────────────────────────────────────────────────────────────────
 
   findById(id: string): AgentTaskRow | undefined {
     return this.db
@@ -162,8 +162,8 @@ export class AgentTasksRepo {
   }
 
   /**
-   * Crash recovery: mark all tasks still in a non-terminal state as failed.
-   * Returns the rows that were changed (for startup logging).
+   * 崩溃恢复：将所有仍处于非终态的 task 标记为 failed。
+   * 返回被修改的行（用于启动日志）。
    */
   markStuckFailed(at: number): AgentTaskRow[] {
     return this.db
