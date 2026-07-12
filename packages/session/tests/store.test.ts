@@ -18,7 +18,6 @@ describe('SessionStore — session', () => {
 
     expect(s.id).toBeTypeOf('string');
     expect(s.title).toBe('新对话');
-    expect(s.characterCardId).toBe('ema');
     expect(s.archivedAt).toBeNull();
   });
 

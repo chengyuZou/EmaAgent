@@ -3,7 +3,6 @@ import type {
   TurnId,
   MessageId,
   BranchId,
-  CharacterCardId,
   TurnMode,
   TurnStatus,
   MessageRole,
@@ -35,7 +34,6 @@ export interface BranchSibling {
 export interface Session {
   id: SessionId;
   title: string;
-  characterCardId: CharacterCardId;
   workspaceRoot:  string | null;
   createdAt: number;
   /** Row metadata update time: title/group/pin/workspace/mode/meta edits. */
@@ -104,7 +102,6 @@ export interface SwitchBranchInput {
 
 export interface CreateSessionInput {
   title?: string;
-  characterCardId?: CharacterCardId;
   workspaceRoot?:  string | null;
   parentSessionId?: string;
 }
@@ -134,12 +131,8 @@ export interface ListSessionsInput {
   /** Max results per page. */
   limit?: number;
   /**
-   * Opaque cursor from the previous page's `nextCursor`. Format is internal
-   * (`"<pinned>.<last_activity_at>"`), callers should NOT parse or construct it.
-   *
-   * Composite keyset cursor is required because the sort key is
-   * `(pinned DESC, last_activity_at DESC)` — a single-field cursor would skip
-   * items across the pinned/unpinned boundary.
+   * 上一页返回的不透明 V1 cursor。调用方只能原样回传，不能解析或构造。
+   * 服务端使用 `(pinned DESC, last_activity_at DESC, id DESC)` 做稳定分页。
    */
   cursor?: string;
 }

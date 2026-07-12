@@ -169,7 +169,7 @@ SQLite 封装。构造时:
 
 ### 游标分页
 大列表不用 `OFFSET`(慢),用 keyset 游标:
-- `sessions.listActive`:游标 `<pinned>.<last_activity_at>`,按 `(pinned DESC, last_activity_at DESC)` 翻页
+- `sessions.listActive`:使用 Base64URL 编码的 V1 不透明游标，按 `(pinned DESC, last_activity_at DESC, id DESC)` 稳定翻页
 - `document_chunks.findByAssetPaged`:游标 = 上一页最后一条的 `rowid`
 - `document_assets.listPaged`:游标 = 上一页最后一条的 `created_at`
 

@@ -371,7 +371,7 @@ export function storageStatsRoute(bindings: AppBindings): Hono {
     if (!sessionRaw) return c.json({ error: 'invalid_format', message: '缺少 session.json' }, 400);
 
     interface SessionExport {
-      id: string; title: string; characterCardId: string; workspaceRoot: string | null;
+      id: string; title: string; workspaceRoot: string | null;
       createdAt: number; updatedAt: number; lastActivityAt: number;
       archivedAt: number | null; pinned: boolean; pinnedAt: number | null;
       groupLabel: string | null; parentSessionId: string | null;
@@ -461,7 +461,7 @@ export function storageStatsRoute(bindings: AppBindings): Hono {
 
     const payload: SessionRestorePayload = {
       session: {
-        id: sd.id, title: sd.title, characterCardId: sd.characterCardId ?? 'ema',
+        id: sd.id, title: sd.title,
         workspaceRoot: sd.workspaceRoot ?? null,
         createdAt: sd.createdAt, updatedAt: sd.updatedAt,
         lastActivityAt: sd.lastActivityAt ?? sd.updatedAt,

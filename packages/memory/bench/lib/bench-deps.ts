@@ -81,7 +81,6 @@ function makeBenchSessionStore(): MemoryDeps['session'] {
     getSession: (id: string) => ({
       id,
       title:            'bench',
-      characterCardId:  'ema',
       workspaceRoot:    null,
       createdAt:        Date.now(),
       updatedAt:        Date.now(),

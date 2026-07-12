@@ -62,7 +62,7 @@ export type {
 
 export const sessionsApi = {
   /** POST /api/sessions — create a new empty session. */
-  async create(opts?: { title?: string; characterCardId?: string }): Promise<SessionWire> {
+  async create(opts?: { title?: string }): Promise<SessionWire> {
     return sidecarClient.request<SessionWire>('/api/sessions', {
       method: 'POST',
       json: opts ?? {},

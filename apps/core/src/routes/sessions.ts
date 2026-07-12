@@ -20,11 +20,9 @@ const TITLE_MAX_CHARS = 60;
 const listSessionsSchema = z.object({
   limit:  z.coerce.number().int().min(1).max(100).default(50),
   /**
-   * Opaque cursor returned by the previous response. Internal format
-   * (`"<pinned>.<last_activity_at>"`); the repo parses it and silently falls back
-   * to "first page" if malformed.
+   * 上一页返回的不透明 V1 cursor。长度只做边界防御，结构由 session façade 校验。
    */
-  cursor: z.string().min(1).max(64).optional(),
+  cursor: z.string().min(1).max(256).optional(),
 });
 
 const listMessagesSchema = z.object({
@@ -97,8 +95,15 @@ export function sessionsRoute(bindings: AppBindings): Hono {
     if (!query.success) {
       return c.json({ error: 'invalid_request', details: query.error.flatten() }, 400);
     }
-    const sessions = bindings.session.listSessions(query.data);
-    return c.json(sessions satisfies SessionsListResult);
+    try {
+      const sessions = bindings.session.listSessions(query.data);
+      return c.json(sessions satisfies SessionsListResult);
+    } catch (error) {
+      if (error instanceof Error && error.message === 'Invalid sessions cursor') {
+        return c.json({ error: 'invalid_cursor' }, 400);
+      }
+      throw error;
+    }
   });
 
   // ── GET /api/sessions/grouped — sidebar-ready grouped listing ──────────────

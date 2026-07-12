@@ -17,7 +17,6 @@ import {
   type TurnId,
   type MessageId,
   type BranchId,
-  type CharacterCardId,
   type TurnMode,
   type MessageBlocks,
   asSessionId,
@@ -53,7 +52,6 @@ function toSession(row: SessionRow): Session {
   return {
     id: row.id as SessionId,
     title: row.title,
-    characterCardId: row.character_card_id as CharacterCardId,
     workspaceRoot:  row.workspace_root ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -78,7 +76,12 @@ function toSessionEnriched(row: SessionRowEnriched): Session {
   const lastTurnCompletedAt = row.last_turn_completed_at ?? 0;
   const hasUnread = lastTurnStatus === 'completed'
     && lastTurnCompletedAt > (row.last_viewed_at ?? 0);
-  return { ...s, lastTurnStatus, hasUnread };
+  return {
+    ...s,
+    runningTurnCount: row.running_turn_count,
+    lastTurnStatus,
+    hasUnread,
+  };
 }
 
 function toTurn(row: TurnRow): Turn {
@@ -224,7 +227,6 @@ export class SessionStore {
     this.sessionsRepo.insert({
       id,
       title,
-      characterCardId:  input.characterCardId  ?? ('ema' as CharacterCardId),
       workspaceRoot:    input.workspaceRoot,
       parentSessionId:  input.parentSessionId,
       createdAt:        now,
@@ -250,11 +252,7 @@ export class SessionStore {
     const rows = this.sessionsRepo.listActive(limit + 1, input.cursor);
     const hasMore = rows.length > limit;
     const visible = hasMore ? rows.slice(0, limit) : rows;
-    const sessions = visible.map(r => {
-      const s = toSession(r);
-      s.runningTurnCount = this.sessionsRepo.runningTurnCount(s.id);
-      return s;
-    });
+    const sessions = visible.map(toSessionEnriched);
     const nextCursor = hasMore
       ? nextCursorFor(visible[visible.length - 1]!)
       : undefined;
@@ -269,11 +267,7 @@ export class SessionStore {
     archived: Session[];
   } {
     const grouped = this.sessionsRepo.listGrouped();
-    const map = (rows: SessionRowEnriched[]) => rows.map(r => {
-      const s = toSessionEnriched(r);
-      s.runningTurnCount = this.sessionsRepo.runningTurnCount(s.id);
-      return s;
-    });
+    const map = (rows: SessionRowEnriched[]) => rows.map(toSessionEnriched);
     return {
       pinned:   map(grouped.pinned),
       byGroup:  grouped.byGroup.map(g => ({ label: g.label, sessions: map(g.sessions) })),
@@ -288,7 +282,6 @@ export class SessionStore {
     const rows = this.sessionsRepo.search(query, input.limit ?? 20);
     const results = rows.map((r) => {
       const hit = toSearchHit(r);
-      hit.session.runningTurnCount = this.sessionsRepo.runningTurnCount(hit.session.id);
       return hit;
     });
     return { results };
@@ -416,7 +409,6 @@ export class SessionStore {
     this.sessionsRepo.insert({
       id:              newId,
       title,
-      characterCardId: src.characterCardId,
       workspaceRoot:   src.workspaceRoot,
       parentSessionId: srcId,
       lastMode:        src.lastMode,

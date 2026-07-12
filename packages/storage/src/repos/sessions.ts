@@ -1,5 +1,5 @@
 import type { SqliteDb } from '../database.js';
-import type { SessionId, TurnId, CharacterCardId, BranchId } from '@ema-agent/contracts';
+import type { SessionId, TurnId, BranchId, TurnStatus } from '@ema-agent/contracts';
 
 export interface SessionRow {
   id: string;
@@ -14,7 +14,7 @@ export interface SessionRow {
   pinned:        number;        // 0 | 1
   pinned_at:     number | null;
   group_label:   string | null;
-  /** 用于 session 内 Branch分支找自己的父节点使用 */
+  /** 整个session fork 使用 表示 fork 溯源 */
   parent_session_id: string | null;
   last_mode:        string | null;
   last_viewed_at:   number | null;
@@ -24,8 +24,9 @@ export interface SessionRow {
 
 /** SessionRow 带 JOIN 查询派生的 turn 字段。 */
 export interface SessionRowEnriched extends SessionRow {
-  last_turn_status:       string | null;
+  last_turn_status:       TurnStatus | null;
   last_turn_completed_at: number | null;
+  running_turn_count:     number;
 }
 
 /** SessionRow 带 JOIN 查询派生的 turn 字段 + 搜索匹配字段 用于查找 session标题/session内Message */
@@ -78,39 +79,89 @@ export class SessionsRepo {
   }
 
   /**
-   * 基于 cursor 的列表。传入上次响应的 `nextCursor` 作为 `cursor`。
+   * 基于 V1 不透明 cursor 的稳定 keyset 分页。
    *
-   * Cursor 格式:`"<pinned>.<last_activity_at>"`(对客户端不透明;由下方
-   * `nextCursorFor` 编码)。需要复合 cursor 是因为排序键是
-   * `(pinned DESC, last_activity_at DESC)`--单字段 cursor 在
-   * `last_activity_at` 上会在 pinned/unpinned 边界处跳过条目
-   * (当某个 pinned 条目的时间戳比最后展示的 unpinned 条目还旧时)。
-   *
-   * SQL keyset 条件:"给我在排序顺序中严格在 (lastPinned, lastTs) 之后
-   * 的条目",即:
-   *   pinned < lastPinned   OR   (pinned = lastPinned AND last_activity_at < lastTs)
+   * 排序键为 `(pinned DESC, last_activity_at DESC, id DESC)`。随机文本 ID
+   * 不需要具备时间含义，只负责在前两个字段相同时提供稳定且唯一的
+   * 最终顺序，避免翻页边界丢失或重复 session。
    */
-  listActive(limit: number, cursor?: string): SessionRow[] {
+  listActive(limit: number, cursor?: string): SessionRowEnriched[] {
     const parsed = parseCursor(cursor);
     if (parsed) {
       return this.db
         .prepare(
-          `SELECT * FROM sessions
-           WHERE archived_at IS NULL
-             AND (pinned < ? OR (pinned = ? AND last_activity_at < ?))
-           ORDER BY pinned DESC, last_activity_at DESC
+          `WITH turn_projection AS (
+             SELECT
+               t.session_id,
+               t.status,
+               t.completed_at,
+               ROW_NUMBER() OVER (
+                 PARTITION BY t.session_id
+                 ORDER BY t.started_at DESC, t.id DESC
+               ) AS row_number,
+               SUM(CASE WHEN t.status = 'running' THEN 1 ELSE 0 END) OVER (
+                 PARTITION BY t.session_id
+               ) AS running_turn_count
+             FROM turns t
+           )
+           SELECT
+             s.*,
+             tp.status AS last_turn_status,
+             tp.completed_at AS last_turn_completed_at,
+             COALESCE(tp.running_turn_count, 0) AS running_turn_count
+           FROM sessions s
+           LEFT JOIN turn_projection tp
+             ON tp.session_id = s.id
+            AND tp.row_number = 1
+           WHERE s.archived_at IS NULL
+             AND (
+               s.pinned < ?
+               OR (s.pinned = ? AND s.last_activity_at < ?)
+               OR (s.pinned = ? AND s.last_activity_at = ? AND s.id < ?)
+             )
+           ORDER BY s.pinned DESC, s.last_activity_at DESC, s.id DESC
            LIMIT ?`,
         )
-        .all(parsed.pinned, parsed.pinned, parsed.lastActivityAt, limit) as SessionRow[];
+        .all(
+          parsed.pinned,
+          parsed.pinned,
+          parsed.lastActivityAt,
+          parsed.pinned,
+          parsed.lastActivityAt,
+          parsed.id,
+          limit,
+        ) as SessionRowEnriched[];
     }
     return this.db
       .prepare(
-        `SELECT * FROM sessions
-         WHERE archived_at IS NULL
-         ORDER BY pinned DESC, last_activity_at DESC
+        `WITH turn_projection AS (
+           SELECT
+             t.session_id,
+             t.status,
+             t.completed_at,
+             ROW_NUMBER() OVER (
+               PARTITION BY t.session_id
+               ORDER BY t.started_at DESC, t.id DESC
+             ) AS row_number,
+             SUM(CASE WHEN t.status = 'running' THEN 1 ELSE 0 END) OVER (
+               PARTITION BY t.session_id
+             ) AS running_turn_count
+           FROM turns t
+         )
+         SELECT
+           s.*,
+           tp.status AS last_turn_status,
+           tp.completed_at AS last_turn_completed_at,
+           COALESCE(tp.running_turn_count, 0) AS running_turn_count
+         FROM sessions s
+         LEFT JOIN turn_projection tp
+           ON tp.session_id = s.id
+          AND tp.row_number = 1
+         WHERE s.archived_at IS NULL
+         ORDER BY s.pinned DESC, s.last_activity_at DESC, s.id DESC
          LIMIT ?`,
       )
-      .all(limit) as SessionRow[];
+      .all(limit) as SessionRowEnriched[];
   }
 
   /**
@@ -132,11 +183,30 @@ export class SessionsRepo {
   listGrouped(): { pinned: SessionRowEnriched[]; byGroup: Array<{ label: string; sessions: SessionRowEnriched[] }>; recent: SessionRowEnriched[]; archived: SessionRowEnriched[] } {
     const all = this.db
       .prepare(`
-        SELECT s.*,
-          (SELECT t.status FROM turns t WHERE t.session_id = s.id ORDER BY t.started_at DESC LIMIT 1) AS last_turn_status,
-          (SELECT t.completed_at FROM turns t WHERE t.session_id = s.id ORDER BY t.started_at DESC LIMIT 1) AS last_turn_completed_at
+        WITH turn_projection AS (
+          SELECT
+            t.session_id,
+            t.status,
+            t.completed_at,
+            ROW_NUMBER() OVER (
+              PARTITION BY t.session_id
+              ORDER BY t.started_at DESC, t.id DESC
+            ) AS row_number,
+            SUM(CASE WHEN t.status = 'running' THEN 1 ELSE 0 END) OVER (
+              PARTITION BY t.session_id
+            ) AS running_turn_count
+          FROM turns t
+        )
+        SELECT
+          s.*,
+          tp.status AS last_turn_status,
+          tp.completed_at AS last_turn_completed_at,
+          COALESCE(tp.running_turn_count, 0) AS running_turn_count
         FROM sessions s
-        ORDER BY s.pinned DESC, s.last_activity_at DESC
+        LEFT JOIN turn_projection tp
+          ON tp.session_id = s.id
+         AND tp.row_number = 1
+        ORDER BY s.pinned DESC, s.last_activity_at DESC, s.id DESC
       `)
       .all() as SessionRowEnriched[];
 
@@ -173,63 +243,69 @@ export class SessionsRepo {
   search(query: string, limit: number): SessionSearchRow[] {
     const q = query.trim().toLowerCase();
     if (!q) return [];
-    const pattern = `%${q}%`;
+    const pattern = `%${escapeLikePattern(q)}%`;
 
     return this.db
       .prepare(`
-        SELECT s.*,
-          (SELECT t.status FROM turns t WHERE t.session_id = s.id ORDER BY t.started_at DESC LIMIT 1) AS last_turn_status,
-          (SELECT t.completed_at FROM turns t WHERE t.session_id = s.id ORDER BY t.started_at DESC LIMIT 1) AS last_turn_completed_at,
+        WITH turn_projection AS (
+          SELECT
+            t.session_id,
+            t.status,
+            t.completed_at,
+            ROW_NUMBER() OVER (
+              PARTITION BY t.session_id
+              ORDER BY t.started_at DESC, t.id DESC
+            ) AS row_number,
+            SUM(CASE WHEN t.status = 'running' THEN 1 ELSE 0 END) OVER (
+              PARTITION BY t.session_id
+            ) AS running_turn_count
+          FROM turns t
+        ),
+        matched_message AS (
+          SELECT
+            m.session_id,
+            m.id,
+            m.blocks_json,
+            m.created_at,
+            ROW_NUMBER() OVER (
+              PARTITION BY m.session_id
+              ORDER BY m.created_at DESC, m.id DESC
+            ) AS row_number
+          FROM messages m
+          WHERE m.kind IN ('normal', 'summary')
+            AND lower(m.blocks_json) LIKE ? ESCAPE '\\'
+        )
+        SELECT
+          s.*,
+          tp.status AS last_turn_status,
+          tp.completed_at AS last_turn_completed_at,
+          COALESCE(tp.running_turn_count, 0) AS running_turn_count,
           CASE
-            WHEN lower(s.title) LIKE ? THEN 'title'
+            WHEN lower(s.title) LIKE ? ESCAPE '\\' THEN 'title'
             ELSE 'message'
           END AS match_kind,
           CASE
-            WHEN lower(s.title) LIKE ? THEN s.title
-            ELSE (
-              SELECT m.blocks_json
-                FROM messages m
-               WHERE m.session_id = s.id
-                 AND m.kind IN ('normal', 'summary')
-                 AND lower(m.blocks_json) LIKE ?
-               ORDER BY m.created_at DESC
-               LIMIT 1
-            )
+            WHEN lower(s.title) LIKE ? ESCAPE '\\' THEN s.title
+            ELSE mm.blocks_json
           END AS snippet_json,
-          (
-            SELECT m.id
-              FROM messages m
-             WHERE m.session_id = s.id
-               AND m.kind IN ('normal', 'summary')
-               AND lower(m.blocks_json) LIKE ?
-             ORDER BY m.created_at DESC
-             LIMIT 1
-          ) AS message_id,
-          (
-            SELECT m.created_at
-              FROM messages m
-             WHERE m.session_id = s.id
-               AND m.kind IN ('normal', 'summary')
-               AND lower(m.blocks_json) LIKE ?
-             ORDER BY m.created_at DESC
-             LIMIT 1
-          ) AS message_created_at
+          mm.id AS message_id,
+          mm.created_at AS message_created_at
         FROM sessions s
+        LEFT JOIN turn_projection tp
+          ON tp.session_id = s.id
+         AND tp.row_number = 1
+        LEFT JOIN matched_message mm
+          ON mm.session_id = s.id
+         AND mm.row_number = 1
         WHERE s.archived_at IS NULL
           AND (
-            lower(s.title) LIKE ?
-            OR EXISTS (
-              SELECT 1
-                FROM messages m
-               WHERE m.session_id = s.id
-                 AND m.kind IN ('normal', 'summary')
-                 AND lower(m.blocks_json) LIKE ?
-            )
+            lower(s.title) LIKE ? ESCAPE '\\'
+            OR mm.id IS NOT NULL
           )
-        ORDER BY s.pinned DESC, s.last_activity_at DESC
+        ORDER BY s.pinned DESC, s.last_activity_at DESC, s.id DESC
         LIMIT ?
       `)
-      .all(pattern, pattern, pattern, pattern, pattern, pattern, pattern, limit) as SessionSearchRow[];
+      .all(pattern, pattern, pattern, pattern, limit) as SessionSearchRow[];
   }
 
   setViewedAt(id: SessionId, now: number): void {
@@ -312,8 +388,9 @@ export class SessionsRepo {
     if (!src) throw new Error(`Source session not found: ${srcId}`);
 
     this.db.transaction(() => {
-      // 1. 新 session 行--复制 character_card_id + workspace_root + last_mode,
-      //    parent_session_id 指回 src(溯源)。新 session 起始为扁平
+      // 1. 新 session 行复制 workspace_root + last_mode。
+      //    parent_session_id 指回来源 session，用于 fork 溯源，不表示 Branch 父节点。
+      //    新 session 起始为扁平
       //    (无 branch,active_branch_id NULL)。
       this.db.prepare(
         `INSERT INTO sessions
@@ -329,18 +406,30 @@ export class SessionsRepo {
       //    branch_id 清空(新 session 扁平)。
       this.db.prepare('CREATE TEMP TABLE _turn_id_map (old_id TEXT PRIMARY KEY, new_id TEXT NOT NULL)').run();
 
-      const untilStartedAt = untilTurnId
-        ? (this.db.prepare('SELECT started_at FROM turns WHERE id = ?').get(untilTurnId) as { started_at: number } | undefined)?.started_at
+      const cutoffTurn = untilTurnId
+        ? this.db.prepare(
+          'SELECT id, started_at FROM turns WHERE id = ? AND session_id = ?',
+        ).get(untilTurnId, srcId) as { id: string; started_at: number } | undefined
         : undefined;
 
+      if (untilTurnId && !cutoffTurn) {
+        throw new Error(`Fork cutoff turn does not belong to source session: ${untilTurnId}`);
+      }
+
       this.db.prepare(
-        untilStartedAt !== undefined
+        cutoffTurn
           ? `INSERT INTO _turn_id_map (old_id, new_id)
              SELECT id, lower(hex(randomblob(16))) FROM turns
-             WHERE session_id = ? AND started_at <= ?`
+             WHERE session_id = ?
+               AND (
+                 started_at < ?
+                 OR (started_at = ? AND id <= ?)
+               )`
           : `INSERT INTO _turn_id_map (old_id, new_id)
              SELECT id, lower(hex(randomblob(16))) FROM turns WHERE session_id = ?`,
-      ).run(srcId, ...(untilStartedAt !== undefined ? [untilStartedAt] : []));
+      ).run(srcId, ...(cutoffTurn
+        ? [cutoffTurn.started_at, cutoffTurn.started_at, cutoffTurn.id]
+        : []));
 
       // 3. 复制 turn(新 id,branch_id = NULL)
       this.db.prepare(
@@ -354,23 +443,40 @@ export class SessionsRepo {
          ORDER BY t.started_at ASC`,
       ).run(newId);
 
-      // 4. 复制 message--新 id,turn_id 通过 temp 映射重映射(无 turn 的
-      //    message 为 NULL)。截断点与原始对齐:截至截断 turn 的最后一条
-      //    message(含)。
-      const msgCutoff = untilTurnId
-        ? (this.db.prepare('SELECT COALESCE(MAX(created_at), 0) AS m FROM messages WHERE turn_id = ?').get(untilTurnId) as { m: number }).m
+      // 4. 复制 message。带 turn_id 的消息严格跟随已选 Turn 集合，不能只按
+      //    created_at 截断，否则相同时间戳的后续 Turn 会混入 fork。
+      //    无 turn_id 的 session 级消息按目标 Turn 最后一条消息的稳定复合边界复制。
+      const messageCutoff = untilTurnId
+        ? this.db.prepare(`
+            SELECT created_at, id
+            FROM messages
+            WHERE session_id = ? AND turn_id = ?
+            ORDER BY created_at DESC, id DESC
+            LIMIT 1
+          `).get(srcId, untilTurnId) as { created_at: number; id: string } | undefined
         : undefined;
 
       this.db.prepare(
-        msgCutoff !== undefined
+        untilTurnId
           ? `INSERT INTO messages
                (id, session_id, turn_id, role, kind, blocks_json, interrupted, created_at, meta_json)
              SELECT lower(hex(randomblob(16))), ?,
                     (SELECT m.new_id FROM _turn_id_map m WHERE m.old_id = messages.turn_id),
                     role, kind, blocks_json, interrupted, created_at, meta_json
              FROM messages
-             WHERE session_id = ? AND created_at <= ?
-             ORDER BY created_at ASC`
+             WHERE session_id = ?
+               AND (
+                 turn_id IN (SELECT old_id FROM _turn_id_map)
+                 OR (
+                   turn_id IS NULL
+                   AND ? IS NOT NULL
+                   AND (
+                     created_at < ?
+                     OR (created_at = ? AND id <= ?)
+                   )
+                 )
+               )
+             ORDER BY created_at ASC, id ASC`
           : `INSERT INTO messages
                (id, session_id, turn_id, role, kind, blocks_json, interrupted, created_at, meta_json)
              SELECT lower(hex(randomblob(16))), ?,
@@ -378,8 +484,15 @@ export class SessionsRepo {
                     role, kind, blocks_json, interrupted, created_at, meta_json
              FROM messages
              WHERE session_id = ?
-             ORDER BY created_at ASC`,
-      ).run(newId, srcId, ...(msgCutoff !== undefined ? [msgCutoff] : []));
+             ORDER BY created_at ASC, id ASC`,
+      ).run(newId, srcId, ...(untilTurnId
+        ? [
+          messageCutoff?.id ?? null,
+          messageCutoff?.created_at ?? 0,
+          messageCutoff?.created_at ?? 0,
+          messageCutoff?.id ?? '',
+        ]
+        : []));
 
       // 5. 复制 turn_attachments--新 id,turn_id 重映射,session_id = 新。
       //    不复制的话,fork 中用户消息的 attachment 角标会消失
@@ -492,26 +605,30 @@ export class SessionsRepo {
 // ── Cursor 辅助 ─────────────────────────────────────────────────────────────────
 
 interface ParsedCursor {
+  version: 1;
   pinned:    number;     // 0 | 1
   lastActivityAt: number;
+  id: string;
 }
 
 /**
- * 解析不透明 cursor 字符串 `"<pinned>.<lastActivityAt>"`。cursor 缺失
- * 或格式错误时返回 `null`(调用方回退到"第一页")。
- *
- * @example parseCursor("1.1700000000")  // { pinned: 1, lastActivityAt: 1700000000 }
- * @example parseCursor(undefined)       // null
+ * 解析 Base64URL 编码的 V1 cursor。畸形 cursor 会明确抛错，
+ * 防止客户端静默回到第一页后产生重复分页循环。
  */
 function parseCursor(cursor: string | undefined): ParsedCursor | null {
   if (!cursor) return null;
-  const [pinnedStr, tsStr] = cursor.split('.');
-  if (pinnedStr === undefined || tsStr === undefined) return null;
-  const pinned    = parseInt(pinnedStr, 10);
-  const lastActivityAt = parseInt(tsStr, 10);
-  if (!Number.isFinite(pinned) || !Number.isFinite(lastActivityAt)) return null;
-  if (pinned !== 0 && pinned !== 1) return null;
-  return { pinned, lastActivityAt };
+  try {
+    const decoded = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8')) as unknown;
+    if (!isCursorV1(decoded)) throw new Error('cursor payload schema mismatch');
+    return {
+      version: 1,
+      pinned: decoded.p,
+      lastActivityAt: decoded.a,
+      id: decoded.i,
+    };
+  } catch (error) {
+    throw new Error('Invalid sessions cursor', { cause: error });
+  }
 }
 
 /**
@@ -519,5 +636,26 @@ function parseCursor(cursor: string | undefined): ParsedCursor | null {
  * 下一页查询将用它 keyset 跳到正确位置。
  */
 export function nextCursorFor(row: SessionRow): string {
-  return `${row.pinned}.${row.last_activity_at}`;
+  return Buffer.from(JSON.stringify({
+    v: 1,
+    p: row.pinned,
+    a: row.last_activity_at,
+    i: row.id,
+  }), 'utf8').toString('base64url');
+}
+
+function isCursorV1(value: unknown): value is { v: 1; p: 0 | 1; a: number; i: string } {
+  if (typeof value !== 'object' || value === null) return false;
+  const candidate = value as Record<string, unknown>;
+  return candidate.v === 1
+    && (candidate.p === 0 || candidate.p === 1)
+    && typeof candidate.a === 'number'
+    && Number.isSafeInteger(candidate.a)
+    && typeof candidate.i === 'string'
+    && candidate.i.length > 0;
+}
+
+/** 转义 SQLite LIKE 中具有通配语义的字符，使用户输入按字面匹配。 */
+function escapeLikePattern(value: string): string {
+  return value.replace(/[\\%_]/g, '\\$&');
 }

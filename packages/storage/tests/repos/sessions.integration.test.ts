@@ -69,7 +69,19 @@ describe('SessionsRepo integration', () => {
       id: 's1',
       last_turn_status: 'failed',
       last_turn_completed_at: 120,
+      running_turn_count: 0,
     });
+  });
+
+  it('derives the running turn count in every session read projection', () => {
+    insertSession({ id: 's1' });
+    insertTurn({ id: 'running-a', sessionId: 's1', status: 'running', startedAt: 100 });
+    insertTurn({ id: 'running-b', sessionId: 's1', status: 'running', startedAt: 200 });
+    insertTurn({ id: 'completed', sessionId: 's1', status: 'completed', startedAt: 300 });
+
+    expect(repo.listActive(10)[0]?.running_turn_count).toBe(2);
+    expect(repo.listGrouped().recent[0]?.running_turn_count).toBe(2);
+    expect(repo.search('s1', 10)[0]?.running_turn_count).toBe(2);
   });
 
   it('returns all fields from the same newest matching message', () => {
@@ -123,7 +135,36 @@ describe('SessionsRepo integration', () => {
     expect(turns.some((turn) => turn.id === copiedAttachment.turn_id)).toBe(true);
   });
 
-  it.fails('does not lose sessions sharing a keyset page boundary', () => {
+  it('uses stable turn and message boundaries when fork timestamps are equal', () => {
+    insertSession({ id: 'source' });
+    insertTurn({ id: 'turn-a', sessionId: 'source', startedAt: 100 });
+    insertTurn({ id: 'turn-b', sessionId: 'source', startedAt: 100 });
+    insertTurn({ id: 'turn-c', sessionId: 'source', startedAt: 100 });
+    insertMessage({ id: 'message-a', sessionId: 'source', turnId: 'turn-a', text: 'a', createdAt: 200 });
+    insertMessage({ id: 'message-b', sessionId: 'source', turnId: 'turn-b', text: 'b', createdAt: 200 });
+    insertMessage({ id: 'message-c', sessionId: 'source', turnId: 'turn-c', text: 'c', createdAt: 200 });
+    insertMessage({ id: 'message-aa-global', sessionId: 'source', text: 'global before', createdAt: 200 });
+    insertMessage({ id: 'message-z-global', sessionId: 'source', text: 'global after', createdAt: 200 });
+
+    repo.forkInto(asSessionId('source'), asSessionId('fork'), 'Fork', 1_000, asTurnId('turn-b'));
+
+    const copiedTurns = database.db
+      .prepare('SELECT user_input, started_at FROM turns WHERE session_id = ? ORDER BY started_at, id')
+      .all('fork');
+    expect(copiedTurns).toHaveLength(2);
+
+    const copiedText = (database.db
+      .prepare('SELECT blocks_json FROM messages WHERE session_id = ? ORDER BY created_at, id')
+      .all('fork') as Array<{ blocks_json: string }>)
+      .map((row) => row.blocks_json);
+    expect(copiedText).toContain(blocks('a'));
+    expect(copiedText).toContain(blocks('b'));
+    expect(copiedText).not.toContain(blocks('c'));
+    expect(copiedText).toContain(blocks('global before'));
+    expect(copiedText).not.toContain(blocks('global after'));
+  });
+
+  it('does not lose sessions sharing a keyset page boundary', () => {
     for (const id of ['session-a', 'session-b', 'session-c', 'session-d']) {
       insertSession({ id, pinned: true, lastActivityAt: 1_000 });
     }
@@ -137,7 +178,13 @@ describe('SessionsRepo integration', () => {
     expect(new Set(ids).size).toBe(4);
   });
 
-  it.fails('rejects a missing cutoff turn and rolls back the fork', () => {
+  it('rejects malformed cursors instead of silently restarting pagination', () => {
+    insertSession({ id: 'session-a' });
+
+    expect(() => repo.listActive(10, 'not-base64url-json')).toThrow('Invalid sessions cursor');
+  });
+
+  it('rejects a missing cutoff turn and rolls back the fork', () => {
     insertSession({ id: 'source' });
     insertTurn({ id: 'turn-1', sessionId: 'source', startedAt: 100 });
 
@@ -151,7 +198,7 @@ describe('SessionsRepo integration', () => {
     expect(repo.findById(asSessionId('fork'))).toBeUndefined();
   });
 
-  it.fails('rejects a cutoff turn owned by another session', () => {
+  it('rejects a cutoff turn owned by another session', () => {
     insertSession({ id: 'source' });
     insertSession({ id: 'other' });
     insertTurn({ id: 'source-turn', sessionId: 'source', startedAt: 100 });
@@ -167,7 +214,7 @@ describe('SessionsRepo integration', () => {
     expect(repo.findById(asSessionId('fork'))).toBeUndefined();
   });
 
-  it.fails('treats LIKE wildcard characters in search input literally', () => {
+  it('treats LIKE wildcard characters in search input literally', () => {
     insertSession({ id: 'percent', title: 'Progress 100%' });
     insertSession({ id: 'underscore', title: 'user_name' });
     insertSession({ id: 'plain', title: 'ordinary session' });

@@ -143,7 +143,7 @@ export interface NotesRestoreData {
 
 export interface SessionRestorePayload {
   session: {
-    id: string; title: string; characterCardId: string;
+    id: string; title: string;
     workspaceRoot: string | null; createdAt: number; updatedAt: number;
     lastActivityAt: number; archivedAt: number | null;
     pinned: boolean; pinnedAt: number | null;
@@ -336,13 +336,12 @@ export class SessionStatsRepo {
       // 1. Session--active_branch_id 先置 NULL(循环 FK:session->branch, branch->session)
       this.db.prepare(`
         INSERT INTO sessions
-          (id, title, character_card_id, workspace_root, created_at, updated_at,
+          (id, title, workspace_root, created_at, updated_at,
            last_activity_at, archived_at, pinned, pinned_at, group_label,
            parent_session_id, last_mode, active_branch_id, meta_json)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, '{}')
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, '{}')
       `).run(
-        p.session.id, p.session.title, p.session.characterCardId ?? 'ema',
-        p.session.workspaceRoot ?? null,
+        p.session.id, p.session.title, p.session.workspaceRoot ?? null,
         p.session.createdAt, p.session.updatedAt,
         p.session.lastActivityAt ?? p.session.updatedAt,
         p.session.archivedAt ?? null,
