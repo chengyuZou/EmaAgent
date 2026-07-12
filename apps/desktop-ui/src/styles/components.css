@@ -393,6 +393,22 @@
   background-size: 100% 100%;
 }
 
+/* storage - complexcircles 同心圆色环 (二次元) - primary->info 双色相 - GradientMagic complexcircles
+   primary 跟主题 hue(粉红主题=粉,天蓝主题=天蓝),info 固定蓝;5 段锐利色带从 primary 渐变到 info,
+   从右上角发散成同心圆色环。覆盖 opacity 0.5 让色环半透(等效 color-mix transparent,底色透出不盖文字),
+   亮暗自动适配(primary/info 亮暗同值,靠 surface 底色透出调和)。*/
+.ema-card-decorate--storage::after {
+  background-image:
+    radial-gradient(circle at top right,
+      color-mix(in srgb, var(--ema-primary) 100%, var(--ema-info)) 0 20%,
+      color-mix(in srgb, var(--ema-primary) 75%, var(--ema-info)) 20% 40%,
+      color-mix(in srgb, var(--ema-primary) 50%, var(--ema-info)) 40% 60%,
+      color-mix(in srgb, var(--ema-primary) 25%, var(--ema-info)) 60% 80%,
+      var(--ema-info) 80% 100%);
+  background-size: 100% 100%;
+  opacity: 0.5;
+}
+
 /* ── ema-dialog-decorate ─────────────────────────────────────────────────────
  *  Dialog 专用纹理:只 ::after background,不设 position/overflow/isolate,
  *  避免覆盖 Dialog Content 的 fixed 定位。紫蓝渐变 + 点纹(二次元)。*/
