@@ -17,6 +17,8 @@
   "scripts": {
     "build": "rimraf dist && tsc -p tsconfig.json && node --input-type=module -e \"import{cpSync}from'fs';cpSync('src/migrations','dist/migrations',{recursive:true})\"",
     "dev": "tsc -p tsconfig.json --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "migrate": "tsx src/migrate-cli.ts",
     "migrate:status": "tsx src/migrate-cli.ts --status",

@@ -4,20 +4,21 @@ import type { SessionId, TurnId, CharacterCardId, BranchId } from '@ema-agent/co
 export interface SessionRow {
   id: string;
   title: string;
-  character_card_id: string;
   workspace_root:     string | null;
   created_at: number;
-  /** 行元数据更新时间:title/group/pin/workspace/mode/meta 编辑。不用于 recent-session 排序。 */
+  /** 行元数据更新时间:title/group/pin/workspace/mode/meta 编辑。不用于UI中session侧栏排序。 */
   updated_at: number;
-  /** 对话活动时间:新 turn/message 开始时推进。用于 recent-session 排序。 */
+  /** 对话活动时间:新 turn/message 开始时推进。用于UI中session侧栏排序。 */
   last_activity_at: number;
   archived_at: number | null;
   pinned:        number;        // 0 | 1
   pinned_at:     number | null;
   group_label:   string | null;
+  /** 用于 session 内 Branch分支找自己的父节点使用 */
   parent_session_id: string | null;
   last_mode:        string | null;
   last_viewed_at:   number | null;
+  /** 当前 session 的 active branch,用于在UI的Branch界面中使用 */
   active_branch_id: string | null;
 }
 
@@ -27,6 +28,7 @@ export interface SessionRowEnriched extends SessionRow {
   last_turn_completed_at: number | null;
 }
 
+/** SessionRow 带 JOIN 查询派生的 turn 字段 + 搜索匹配字段 用于查找 session标题/session内Message */
 export interface SessionSearchRow extends SessionRowEnriched {
   match_kind:         'title' | 'message';
   snippet_json:       string | null;
@@ -37,7 +39,6 @@ export interface SessionSearchRow extends SessionRowEnriched {
 export interface SessionInsert {
   id: SessionId;
   title: string;
-  characterCardId: CharacterCardId;
   workspaceRoot?:  string | null;
   parentSessionId?: string;
   lastMode?:        string | null;
@@ -60,11 +61,11 @@ export class SessionsRepo {
     this.db
       .prepare(
         `INSERT INTO sessions
-           (id, title, character_card_id, workspace_root,
+           (id, title, workspace_root,
             parent_session_id, last_mode, created_at, updated_at, last_activity_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       )
-      .run(s.id, s.title, s.characterCardId,
+      .run(s.id, s.title,
         s.workspaceRoot ?? null,
         s.parentSessionId ?? null, s.lastMode ?? null, s.createdAt, s.updatedAt,
         s.lastActivityAt ?? s.createdAt);
@@ -316,10 +317,10 @@ export class SessionsRepo {
       //    (无 branch,active_branch_id NULL)。
       this.db.prepare(
         `INSERT INTO sessions
-           (id, title, character_card_id, workspace_root,
+           (id, title, workspace_root,
             parent_session_id, last_mode, created_at, updated_at, last_activity_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      ).run(newId, title, src.character_card_id, src.workspace_root,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      ).run(newId, title, src.workspace_root,
         srcId, src.last_mode, createdAt, createdAt, createdAt);
 
       // 2. 构建 old->new turn id 映射。Turn 被复制以使 fork 出的 session

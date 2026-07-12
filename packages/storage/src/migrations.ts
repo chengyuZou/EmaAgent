@@ -3,16 +3,20 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const MIGRATIONS_DIR = path.join(__dirname, 'migrations');
+const dirname = path.dirname(fileURLToPath(import.meta.url));
+const MIGRATIONS_DIR = path.join(dirname, 'migrations');
 
 /**
- * 两条独立迁移流——profile 和 data,各自由所属 DB 的 `user_version` pragma 追踪。
+ * 三条独立迁移流,各自 DB 的 `user_version` pragma 跟踪:
+ *   profile.db -> migrations/profile/  Provider 配置/模型绑定/角色卡/设置/全局记忆/KB 注册
+ *   data.db    -> migrations/data/     sessions/turns/messages/音频/artifacts/agent tasks
+ *   kb.db      -> migrations/kb/       单个命名 KB 的文档/分块/FTS5 索引
  *
- *   profile.db 迁移位于 `migrations/profile/`
- *   data.db    迁移位于 `migrations/data/`
+ * 三条流独立:profile 可 v3 而 data v7(或反之)。版本只在自己文件夹内推进。
  *
- * 每条流独立:profile 可以在 v3 而 data 在 v7(反之亦然)。版本号只在各自文件夹内推进。
+ * 铁律:迁移**只追加,不 squash(合并),编号发布后不可改**。否则老库 `user_version > latest`
+ * 会被 compatibility gate 拦下(见 `run()`)。未来确需 squash,引入 `_migrations` checksum 表
+ * + baseline 机制(参考 Flyway),V1 不需要。
  */
 export type DatabaseKind = 'profile' | 'data' | 'kb';
 
@@ -23,28 +27,50 @@ export class MigrationsRunner {
   ) {}
 
   /**
-   * 应用 `migrations/{kind}/` 下所有待执行迁移。
-   *
-   * 每条迁移与 `user_version` 自增在单个事务内执行,
-   * 不会残留半应用的迁移。
+   * 应用 `migrations/{kind}/` 下每个 pending 迁移。每个迁移与 `user_version` bump 在单个事务内,
+   * 不留半成品。幂等:已应用的跳过,崩溃后重跑从下一条开始。
    */
   run(): void {
-    const folder  = path.join(MIGRATIONS_DIR, this.kind);
-    const entries = fs.readdirSync(folder)
-      .filter(f => f.endsWith('.sql'))
-      .sort();
+    const folder = path.join(MIGRATIONS_DIR, this.kind);
+    let entries: string[];
+    try {
+      entries = fs.readdirSync(folder).filter(f => f.endsWith('.sql'));
+    } catch (err) {
+      throw new Error(
+        `[${this.kind}] 迁移目录不存在或不可读: ${folder} (${(err as NodeJS.ErrnoException).code ?? err})`,
+      );
+    }
+
+    // 从文件名前缀解析版本号(001_xxx.sql -> 1),取最大值。不靠 entries.length,
+    // 避免 squash(编号回退)或跳号时 latest 算错。
+    const versions = entries
+      .map(f => parseInt(f.slice(0, 3), 10))
+      .filter(n => Number.isInteger(n) && n > 0);
+    const latest = versions.length ? Math.max(...versions) : 0;
 
     const current = this.db.pragma('user_version', { simple: true }) as number;
-    const latest  = entries.length;
+
+    // compatibility gate:老库 user_version 高于本包最新,说明用了更新版本的应用,
+    // 本包无法降级迁移。fail-closed,防静默跳过致 schema 不一致。
+    if (current > latest) {
+      throw new Error(
+        `[${this.kind}] 数据库版本 v${current} 高于本包最新 v${latest},可能用了更新版本的应用。请升级应用或备份数据后重建`,
+      );
+    }
 
     for (let v = current + 1; v <= latest; v++) {
+      if (!Number.isInteger(v) || v <= 0) {
+        throw new Error(`[${this.kind}] 非法迁移版本号: ${v}`);
+      }
       const prefix   = String(v).padStart(3, '0') + '_';
       const filename = entries.find(f => f.startsWith(prefix));
       if (!filename) {
-        throw new Error(`[${this.kind}] migration ${v} not found in ${folder}`);
+        // 跳号(如 001/002/004 缺 003):明确报错,不静默跳过。
+        throw new Error(
+          `[${this.kind}] 迁移 ${v} 缺失(目录 ${folder} 有跳号),expected file ${prefix}*.sql`,
+        );
       }
-      const file = path.join(folder, filename);
-      const sql  = fs.readFileSync(file, 'utf8');
+      const sql = fs.readFileSync(path.join(folder, filename), 'utf8');
       this.db.transaction(() => {
         this.db.exec(sql);
         this.db.pragma(`user_version = ${v}`);

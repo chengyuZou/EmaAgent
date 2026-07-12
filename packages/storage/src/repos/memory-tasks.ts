@@ -38,8 +38,8 @@ export interface MemoryTaskEnqueue {
 // ── Repo ──────────────────────────────────────────────────────────────────────
 
 /**
- * fire-and-forget memory 工作的持久队列（extraction、consolidation、
- * maintenance、embedding refresh）。生命周期：
+ * memory 工作的持久队列(extraction、consolidation、
+ * maintenance、embedding refresh)。生命周期：
  *
  *   enqueue() -> pending
  *   claimNext() -> running（atomic UPDATE … RETURNING）
