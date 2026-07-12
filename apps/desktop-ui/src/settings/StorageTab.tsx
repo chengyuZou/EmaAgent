@@ -4,7 +4,7 @@ import {
 } from 'react';
 import {
   Button, CardButton, IconButton, Input, Spinner, Badge, Callout,
-  StatCard as UIStatCard,
+  EntityRow, StatCard as UIStatCard,
   ScrollArea, Skeleton, Dialog, Divider, Tabs, Progress,
 } from '@ema-agent/ui';
 import { useStorageStore }  from '../stores/storage-store.js';
@@ -290,14 +290,11 @@ function DataDirRow({
   }
 
   return (
-    <div
-      className={`group ema-stagger-in flex flex-col gap-1.5 px-3 py-2.5 rounded-xl
-        border-2 border-solid transition-colors duration-[var(--ema-duration-base)]
-        ${dir.isActive
-          ? 'bg-[var(--ema-primary-muted)] border-[color:var(--ema-primary)]/30 ema-card-decorate ema-card-decorate--diagonal'
-          : 'bg-[var(--ema-surface-1)] border-[var(--ema-border)] hover:border-[var(--ema-primary)]/30 hover:bg-[var(--ema-surface-2)] hover:shadow-[var(--ema-shadow-soft)] ema-card-decorate ema-card-decorate--diagonal'
-        }`}
-      style={{ '--stagger-i': index } as CSSProperties}
+    <EntityRow
+      decorate="ema-card-decorate--diagonal"
+      active={dir.isActive}
+      index={index}
+      className="group flex flex-col gap-1.5 px-3 py-2.5 transition-colors duration-[var(--ema-duration-base)]"
     >
       <div className="flex items-center gap-2">
         <span
@@ -352,7 +349,7 @@ function DataDirRow({
           )}
         </div>
       </div>
-    </div>
+    </EntityRow>
   );
 }
 

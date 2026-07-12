@@ -1,7 +1,7 @@
 ﻿import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import {
   Badge, Button, Callout, Card, ConfirmDialog, Dialog, Divider, DropdownMenu,
-  EmptyState, Field, IconButton, Input, ScrollArea, Select, Spinner, Switch, Tabs, Textarea, ToolSpecItem, Tooltip,
+  EmptyState, Field, IconButton, Input, MarketCard, ScrollArea, Select, Spinner, Switch, Tabs, Textarea, ToolSpecItem, Tooltip,
 } from '@ema-agent/ui';
 import { useMcpStore, type McpServerEntry, type McpServerConfig, type McpProbeResult, type McpImportResult, type McpMarketEntry } from '../stores/mcp-store.js';
 import { showToast } from '../lib/toast.js';
@@ -637,50 +637,34 @@ function McpMarketView({
           {pageServers.map((entry, i) => {
             const installed = installedNames.has(sanitizeServerName(entry.title || entry.name));
             return (
-              <div
+              <MarketCard
                 key={entry.name}
-                className="bg-[var(--ema-surface-1)] ema-glass-weak border border-[var(--ema-border)]
-                           rounded-xl px-4 py-3 ema-stagger-in ema-card-decorate ema-card-decorate--circuit"
-                style={{ '--stagger-i': i } as CSSProperties}
+                index={i}
+                decorate="ema-card-decorate--circuit"
+                installed={installed}
+                installing={installing === entry.name}
+                installLabel="添加"
+                installedLabel="已添加"
+                onInstall={() => void handleInstall(entry)}
               >
-              <div className="flex items-start gap-3">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-sm font-semibold text-[var(--ema-text-primary)] truncate">
-                      {entry.title || entry.name}
-                    </span>
-                    {entry.version && <Badge variant="neutral">v{entry.version}</Badge>}
-                    {entry.transport && (
-                      <Badge variant="neutral">{TRANSPORT_LABEL[entry.transport] ?? entry.transport}</Badge>
-                    )}
-                  </div>
-                  {entry.description && (
-                    <p className="text-xs text-[var(--ema-text-tertiary)] mt-1 line-clamp-2">{entry.description}</p>
-                  )}
-                  <p className="text-xs text-[var(--ema-text-tertiary)] mt-1 font-mono truncate opacity-60">
-                    {entry.transport === 'stdio'
-                      ? `${entry.command} ${entry.args?.join(' ') ?? ''}`.trim()
-                      : entry.url}
-                  </p>
-                </div>
-
-                <div className="shrink-0 pt-0.5">
-                  {installed ? (
-                    <Badge variant="success">已添加</Badge>
-                  ) : (
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      loading={installing === entry.name}
-                      disabled={installing !== null}
-                      onClick={() => void handleInstall(entry)}
-                    >
-                      添加
-                    </Button>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-sm font-semibold text-[var(--ema-text-primary)] truncate">
+                    {entry.title || entry.name}
+                  </span>
+                  {entry.version && <Badge variant="neutral">v{entry.version}</Badge>}
+                  {entry.transport && (
+                    <Badge variant="neutral">{TRANSPORT_LABEL[entry.transport] ?? entry.transport}</Badge>
                   )}
                 </div>
-              </div>
-            </div>
+                {entry.description && (
+                  <p className="text-xs text-[var(--ema-text-tertiary)] mt-1 line-clamp-2">{entry.description}</p>
+                )}
+                <p className="text-xs text-[var(--ema-text-tertiary)] mt-1 font-mono truncate opacity-60">
+                  {entry.transport === 'stdio'
+                    ? `${entry.command} ${entry.args?.join(' ') ?? ''}`.trim()
+                    : entry.url}
+                </p>
+              </MarketCard>
             );
           })}
         </div>

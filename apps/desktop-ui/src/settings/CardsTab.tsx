@@ -41,7 +41,7 @@ export function CardsTab(): JSX.Element {
       <Dialog
         open={!!selected}
         onOpenChange={(o) => { if (!o) setSelectedId(null); }}
-        widthClass="max-w-4xl"
+        widthClass="max-w-[80vw]"
         className="ema-dialog-decorate"
       >
         {selected && (

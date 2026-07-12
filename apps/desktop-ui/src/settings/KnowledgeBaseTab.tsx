@@ -2,7 +2,7 @@
  * KnowledgeBaseTab — document ingest, list, delete, and search test.
  */
 import { useState, useEffect, useCallback, type CSSProperties, type JSX } from 'react';
-import { Button, IconButton, Input, Spinner, Badge, Callout, ScrollArea, Select, Progress, Dialog } from '@ema-agent/ui';
+import { Button, IconButton, Input, Spinner, Badge, Callout, EmptyState, EntityRow, Select, Progress, Dialog } from '@ema-agent/ui';
 import { useKbStore, type IngestJob, type IngestStage, type KbLibraryWire } from '../stores/kb-store.js';
 import { tauriBridge } from '../lib/tauri-bridge.js';
 import { showToast } from '../lib/toast.js';
@@ -28,8 +28,8 @@ const STATUS_VARIANT: Record<string, 'success' | 'warn' | 'neutral' | 'danger'> 
 
 // ── DocumentRow ───────────────────────────────────────────────────────────────
 
-function DocumentRow({ doc, currentEmbedModel, onDelete }: {
-  doc: DocumentAssetWire; currentEmbedModel?: string; onDelete(): void;
+function DocumentRow({ doc, currentEmbedModel, onDelete, index }: {
+  doc: DocumentAssetWire; currentEmbedModel?: string; onDelete(): void; index?: number;
 }): JSX.Element {
   const [deleting, setDeleting] = useState(false);
   const [expanded, setExpanded] = useState(false);
@@ -75,10 +75,14 @@ function DocumentRow({ doc, currentEmbedModel, onDelete }: {
   }
 
   return (
-    <div className="flex flex-col rounded-xl bg-[var(--ema-surface-1)] overflow-hidden ema-card-decorate ema-card-decorate--starfield">
+    <EntityRow
+      decorate="ema-card-decorate--starfield"
+      active={expanded}
+      index={index}
+      className={`flex flex-col ${expanded ? 'ema-row-active' : ''}`}
+    >
       <div
-        className="flex items-center gap-3 px-3 py-2.5 cursor-pointer
-                   hover:bg-[var(--ema-surface-2)] transition-ema"
+        className="flex items-center gap-3 px-3 py-2.5 cursor-pointer transition-ema"
         onClick={() => setExpanded((v) => !v)}
       >
         <span
@@ -130,7 +134,7 @@ function DocumentRow({ doc, currentEmbedModel, onDelete }: {
       </div>
 
       {chunkMounted && <ChunkViewer assetId={doc.id} closing={!expanded} />}
-    </div>
+    </EntityRow>
   );
 }
 
@@ -480,8 +484,7 @@ function IngestJobRow({ job }: { job: IngestJob }): JSX.Element {
     : `${job.stage ? STAGE_LABEL[job.stage] : ''} · ${pct}%`;
 
   return (
-    <div className={`rounded-xl bg-[var(--ema-surface-1)] px-3 py-2.5 flex flex-col gap-1.5 ema-card-decorate ema-card-decorate--starfield
-                     ${done ? 'ema-fade-out' : ''}`}>
+    <EntityRow decorate="ema-card-decorate--starfield" className={`px-3 py-2.5 flex flex-col gap-1.5 ${done ? 'ema-fade-out' : ''}`}>
       <div className="flex items-center gap-2">
         {failed ? (
           <span className="i-mdi:alert-circle text-base shrink-0 text-[var(--ema-danger)]" aria-hidden />
@@ -509,7 +512,7 @@ function IngestJobRow({ job }: { job: IngestJob }): JSX.Element {
       {failed && job.error && (
         <p className="text-[11px] text-[var(--ema-danger)] truncate ema-fade-in" title={job.error}>{job.error}</p>
       )}
-    </div>
+    </EntityRow>
   );
 }
 
@@ -540,9 +543,10 @@ function LibraryRow({ lib, onActivate, onRename, onDelete }: {
   }
 
   return (
-    <div
-      className={`group ema-slide-up flex items-center gap-3 px-3 py-2.5 rounded-xl transition-ema ema-card-decorate ema-card-decorate--starfield
-                  ${lib.isActive ? 'bg-[var(--ema-primary-muted)] ring-1 ring-[var(--ema-primary)]' : 'bg-[var(--ema-surface-1)]'}`}
+    <EntityRow
+      decorate="ema-card-decorate--starfield"
+      active={lib.isActive}
+      className="group ema-slide-up flex items-center gap-3 px-3 py-2.5"
     >
       <span
         className={`shrink-0 text-lg ${lib.isActive ? 'i-solar:database-bold text-[var(--ema-primary)]' : 'i-solar:database-linear text-[var(--ema-text-tertiary)]'}`}
@@ -591,7 +595,7 @@ function LibraryRow({ lib, onActivate, onRename, onDelete }: {
           onClick={() => void handleDelete()}
         />
       </div>
-    </div>
+    </EntityRow>
   );
 }
 
@@ -708,10 +712,7 @@ function LibraryManager(): JSX.Element {
       {loading && libs.length === 0 ? (
         <div className="flex justify-center py-4"><Spinner size="sm" /></div>
       ) : libs.length === 0 ? (
-        <div className="flex flex-col items-center justify-center h-20 gap-2 text-[var(--ema-text-tertiary)] ema-fade-in">
-          <span className="i-solar:database-bold text-2xl opacity-40" aria-hidden />
-          <p className="text-sm">暂无知识库，点击「新建知识库」开始</p>
-        </div>
+        <EmptyState icon="i-solar:database-bold" title="暂无知识库，点击「新建知识库」开始" animate size="sm" className="h-20" />
       ) : (
         <div className="flex flex-col gap-2">
           {libs.map((lib, i) => (
@@ -929,24 +930,19 @@ export function KnowledgeBaseTab(): JSX.Element {
             <Spinner size="md" />
           </div>
         ) : documents.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-28 gap-2 text-[var(--ema-text-tertiary)] ema-fade-in">
-            <span className="i-solar:database-bold text-2xl opacity-40" aria-hidden />
-            <p className="text-sm">暂无文档，点击「导入文档」添加</p>
-          </div>
+          <EmptyState icon="i-solar:database-bold" title="暂无文档，点击「导入文档」添加" animate size="sm" className="h-28" />
         ) : (
-          <ScrollArea className="ema-fade-in" viewportClassName="max-h-72">
-            <div className="flex flex-col gap-1.5 pr-2">
-              {documents.map((doc, i) => (
-                <div key={doc.id} className="ema-stagger-in" style={{ '--stagger-i': i } as CSSProperties}>
-                <DocumentRow
-                  doc={doc}
-                  currentEmbedModel={embedModel}
-                  onDelete={() => void useKbStore.getState().loadDocuments()}
-                />
-                </div>
-              ))}
-            </div>
-          </ScrollArea>
+          <div className="ema-fade-in flex flex-col gap-1.5 pr-2">
+            {documents.map((doc, i) => (
+              <DocumentRow
+                key={doc.id}
+                doc={doc}
+                index={i}
+                currentEmbedModel={embedModel}
+                onDelete={() => void useKbStore.getState().loadDocuments()}
+              />
+            ))}
+          </div>
         )}
       </section>
 

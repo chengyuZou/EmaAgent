@@ -1,6 +1,6 @@
 ﻿import React, { useEffect, useRef, useState } from 'react';
 import {
-  Badge, Button, Callout, Card, ConfirmDialog, Dialog, EmptyState, Field,
+  Badge, Button, Callout, Card, ConfirmDialog, Dialog, EmptyState, Field, MarketCard,
   Input, ScrollArea, Spinner, Switch, Tabs, Textarea, Tooltip,
 } from '@ema-agent/ui';
 import { useSkillStore, type MarketSkillEntry } from '../stores/skill-store.js';
@@ -93,47 +93,31 @@ function MarketView({
       {marketSkills.map((entry, i) => {
         const installed = installedNames.has(entry.name);
         return (
-          <div
+          <MarketCard
             key={entry.name}
-            className="bg-[var(--ema-surface-1)] ema-glass-weak border-2 border-solid border-[var(--ema-border)] rounded-xl px-4 py-3 ema-card-decorate ema-card-decorate--diamond hover:border-[var(--ema-primary)]/30 hover:bg-[var(--ema-surface-2)] hover:shadow-[var(--ema-shadow-soft)]
-                       ema-stagger-in"
-            style={{ '--stagger-i': i } as React.CSSProperties}
+            index={i}
+            decorate="ema-card-decorate--diamond"
+            installed={installed}
+            installing={installing.has(entry.name)}
+            installLabel="安装"
+            installedLabel="已安装"
+            onInstall={() => void handleInstall(entry)}
           >
-            <div className="flex items-start gap-3">
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-sm font-semibold text-[var(--ema-text-primary)]">{entry.name}</span>
-                  <Badge variant="neutral">v{entry.version}</Badge>
-                  {entry.tags?.map((t) => (
-                    <Badge key={t} variant="neutral">{t}</Badge>
-                  ))}
-                </div>
-                {entry.description && (
-                  <p className="text-xs text-[var(--ema-text-tertiary)] mt-1 line-clamp-2">{entry.description}</p>
-                )}
-                <p className="text-xs text-[var(--ema-text-tertiary)] mt-1 opacity-60">
-                  {entry.author && `${entry.author} · `}
-                  {entry.sizeBytes != null && formatBytes(entry.sizeBytes)}
-                </p>
-              </div>
-
-              <div className="shrink-0 pt-0.5">
-                {installed ? (
-                  <Badge variant="success">已安装</Badge>
-                ) : (
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    loading={installing.has(entry.name)}
-                    disabled={installing.has(entry.name)}
-                    onClick={() => void handleInstall(entry)}
-                  >
-                    安装
-                  </Button>
-                )}
-              </div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-sm font-semibold text-[var(--ema-text-primary)]">{entry.name}</span>
+              <Badge variant="neutral">v{entry.version}</Badge>
+              {entry.tags?.map((t) => (
+                <Badge key={t} variant="neutral">{t}</Badge>
+              ))}
             </div>
-          </div>
+            {entry.description && (
+              <p className="text-xs text-[var(--ema-text-tertiary)] mt-1 line-clamp-2">{entry.description}</p>
+            )}
+            <p className="text-xs text-[var(--ema-text-tertiary)] mt-1 opacity-60">
+              {entry.author && `${entry.author} · `}
+              {entry.sizeBytes != null && formatBytes(entry.sizeBytes)}
+            </p>
+          </MarketCard>
         );
       })}
     </div>

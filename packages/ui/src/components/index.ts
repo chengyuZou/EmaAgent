@@ -11,6 +11,8 @@ export { StatCard }  from './StatCard.js';
 export { EmptyState } from './EmptyState.js';
 export { ToolSpecItem } from './ToolSpecItem.js';
 export { RadioDot } from './RadioDot.js';
+export { MarketCard } from './MarketCard.js';
+export { EntityRow } from './EntityRow.js';
 
 // Feedback
 export { Skeleton } from './Skeleton.js';
@@ -59,6 +61,8 @@ export type { StatCardProps } from './StatCard.js';
 export type { EmptyStateProps } from './EmptyState.js';
 export type { ToolSpecItemProps } from './ToolSpecItem.js';
 export type { RadioDotProps } from './RadioDot.js';
+export type { MarketCardProps } from './MarketCard.js';
+export type { EntityRowProps } from './EntityRow.js';
 export type { SkeletonProps, SkeletonAnimation } from './Skeleton.js';
 export type { SpinnerProps, SpinnerSize } from './Spinner.js';
 export type { CalloutProps, CalloutVariant } from './Callout.js';

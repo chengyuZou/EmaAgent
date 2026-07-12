@@ -2,7 +2,7 @@
  * VoiceTab — manage refAudios: upload, test listen, set primary, delete.
  */
 import { useState, useRef, type CSSProperties, type JSX } from 'react';
-import { Button, Checkbox, FilePicker, Select, Textarea } from '@ema-agent/ui';
+import { Button, Checkbox, EntityRow, FilePicker, Select, Textarea } from '@ema-agent/ui';
 import { useCardStore } from '../stores/card-store.js';
 import { cardsApi } from '../api/cards.js';
 import { showToast } from '../lib/toast.js';
@@ -168,7 +168,7 @@ function RefAudioRow({
   onDelete?():   void;
 }): JSX.Element {
   return (
-    <div className="bg-[var(--ema-surface-1)] ema-glass-weak border border-[var(--ema-border)] rounded-xl p-3 ema-card-decorate ema-card-decorate--mesh">
+    <EntityRow decorate="ema-card-decorate--mesh" className="p-3">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <span className={isPrimary ? 'size-2 rounded-full bg-[var(--ema-success)]' : 'size-2 rounded-full border border-[var(--ema-text-tertiary)]'} aria-hidden />
@@ -198,7 +198,7 @@ function RefAudioRow({
       <p className="text-xs text-[var(--ema-text-tertiary)] mt-1">
         prompt: "{refAudio.promptText}" · lang: {refAudio.promptLang}
       </p>
-    </div>
+    </EntityRow>
   );
 }
 
