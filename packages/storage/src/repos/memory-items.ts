@@ -1,6 +1,8 @@
 import type { SqliteDb } from '../database.js';
 import { createSqliteIdBatches } from '../sqlite-id-batches.js';
+import { escapeLikePattern } from '../like-utils.js';
 import type { SessionId, TurnId } from '@ema-agent/contracts';
+import type { MemoryEmbeddingPageCursor } from './memory-embedding-page.js';
 
 // ── 类型 ─────────────────────────────────────────────────────────────────────
 
@@ -149,7 +151,7 @@ export class MemoryItemsRepo {
       .prepare(
         `SELECT * FROM memory_items
           WHERE kind = ? AND (expires_at IS NULL OR expires_at > ?)
-          ORDER BY importance DESC, updated_at DESC
+          ORDER BY importance DESC, updated_at DESC, id DESC
           LIMIT ?`,
       )
       .all(kind, Date.now(), limit) as MemoryItemRow[];
@@ -167,7 +169,7 @@ export class MemoryItemsRepo {
             SELECT 1 FROM json_each(memory_items.modes_json)
              WHERE json_each.value = ?
           ) AND (expires_at IS NULL OR expires_at > ?)
-          ORDER BY importance DESC, updated_at DESC
+          ORDER BY importance DESC, updated_at DESC, id DESC
           LIMIT ?`,
       )
       .all(mode, Date.now(), limit) as MemoryItemRow[];
@@ -186,20 +188,30 @@ export class MemoryItemsRepo {
   }
 
   /**
-   * 用于批量构建索引的 cursor 分页。
-   * 返回 updated_at > afterUpdatedAt 的非过期行，升序排列，上限 limit。
-   * 起始 afterUpdatedAt = 0；每页后将 cursor 推进到最后一行的 updated_at。
+   * 用于批量构建索引的复合游标分页。
+   * 按 (updated_at, id) 升序读取非过期行，避免同毫秒数据跨页丢失。
    */
-  listEmbeddablePage(model: string, afterUpdatedAt: number, limit: number): MemoryItemRow[] {
-    return this.db
-      .prepare(
-        `SELECT * FROM memory_items
-          WHERE embedding IS NOT NULL AND embedding_model = ? AND updated_at > ?
-            AND (expires_at IS NULL OR expires_at > ?)
-          ORDER BY updated_at ASC
-          LIMIT ?`,
-      )
-      .all(model, afterUpdatedAt, Date.now(), limit) as MemoryItemRow[];
+  listEmbeddablePage(
+    model: string,
+    after: MemoryEmbeddingPageCursor | undefined,
+    limit: number,
+  ): MemoryItemRow[] {
+    const cursorPredicate = after
+      ? 'AND (updated_at > ? OR (updated_at = ? AND id > ?))'
+      : '';
+    const now = Date.now();
+    const params = after
+      ? [model, after.updatedAt, after.updatedAt, after.id, now, limit]
+      : [model, now, limit];
+
+    return this.db.prepare(
+      `SELECT * FROM memory_items
+       WHERE embedding IS NOT NULL AND embedding_model = ?
+       ${cursorPredicate}
+         AND (expires_at IS NULL OR expires_at > ?)
+       ORDER BY updated_at ASC, id ASC
+       LIMIT ?`,
+    ).all(...params) as MemoryItemRow[];
   }
 
   browse(opts: MemoryItemsBrowseOptions = {}, now = Date.now()): MemoryItemRow[] {
@@ -215,8 +227,8 @@ export class MemoryItemsRepo {
       params.push(opts.minImportance);
     }
     if (opts.search) {
-      where.push('(title LIKE ? OR body LIKE ?)');
-      const pattern = `%${opts.search}%`;
+      where.push(`(title LIKE ? ESCAPE '\\' OR body LIKE ? ESCAPE '\\')`);
+      const pattern = '%' + escapeLikePattern(opts.search) + '%';
       params.push(pattern, pattern);
     }
     if (opts.mode) {
@@ -224,9 +236,9 @@ export class MemoryItemsRepo {
       params.push(opts.mode);
     }
 
-    const orderBy = opts.orderBy === 'importance' ? 'importance DESC'
-                  : opts.orderBy === 'created'    ? 'created_at DESC'
-                  :                                  'last_referenced_at DESC';
+    const orderBy = opts.orderBy === 'importance' ? 'importance DESC, id DESC'
+                  : opts.orderBy === 'created'    ? 'created_at DESC, id DESC'
+                  :                                  'last_referenced_at DESC, id DESC';
     const sql =
       `SELECT * FROM memory_items WHERE ${where.join(' AND ')}` +
       ` ORDER BY ${orderBy} LIMIT ?`;
@@ -305,7 +317,7 @@ export class MemoryItemsRepo {
           WHERE last_referenced_at < ?
             AND importance > 0
             AND (expires_at IS NULL OR expires_at > ?)
-          ORDER BY last_referenced_at ASC
+          ORDER BY last_referenced_at ASC, id ASC
           LIMIT ?`,
       )
       .all(cutoff, now, limit) as Array<{ id: string; title: string; importance: number }>;

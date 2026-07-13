@@ -1,4 +1,8 @@
-import type { MemoryNodesRepo, MemoryItemsRepo } from '@ema-agent/storage';
+import type {
+  MemoryEmbeddingPageCursor,
+  MemoryItemsRepo,
+  MemoryNodesRepo,
+} from '@ema-agent/storage';
 import type { VectorIndex } from './vector-index.js';
 import { unpackEmbedding } from '../embed/similarity.js';
 
@@ -12,7 +16,7 @@ const PAGE_SIZE = 500;
  * (guards against malformed data). Incompatible rows are skipped —
  * they'll be re-embedded by the background `embedding_refresh` task.
  *
- * Uses cursor pagination (updated_at) to avoid loading all rows into memory
+ * Uses cursor pagination (updated_at, id) to avoid loading all rows into memory
  * at once — safe at any scale.
  *
  * Returns the number of vectors actually added.
@@ -22,7 +26,7 @@ export function rebuildNodesIndex(
   repo:  MemoryNodesRepo,
   model: string,
 ): number {
-  let after = 0;
+  let after: MemoryEmbeddingPageCursor | undefined;
   let added = 0;
   for (;;) {
     const rows = repo.listEmbeddablePage(model, after, PAGE_SIZE);
@@ -35,7 +39,8 @@ export function rebuildNodesIndex(
       index.add(row.id, vec);
       added++;
     }
-    after = rows.at(-1)!.updated_at;
+    const last = rows.at(-1)!;
+    after = { updatedAt: last.updated_at, id: last.id };
     if (rows.length < PAGE_SIZE) break;
   }
   return added;
@@ -46,7 +51,7 @@ export function rebuildItemsIndex(
   repo:  MemoryItemsRepo,
   model: string,
 ): number {
-  let after = 0;
+  let after: MemoryEmbeddingPageCursor | undefined;
   let added = 0;
   for (;;) {
     const rows = repo.listEmbeddablePage(model, after, PAGE_SIZE);
@@ -59,7 +64,8 @@ export function rebuildItemsIndex(
       index.add(row.id, vec);
       added++;
     }
-    after = rows.at(-1)!.updated_at;
+    const last = rows.at(-1)!;
+    after = { updatedAt: last.updated_at, id: last.id };
     if (rows.length < PAGE_SIZE) break;
   }
   return added;

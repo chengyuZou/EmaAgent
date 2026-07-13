@@ -232,6 +232,54 @@ describe('SessionsRepo integration', () => {
     expect(copiedText).not.toContain(blocks('global after'));
   });
 
+  it('uses the cutoff turn lifecycle when that turn has no message', () => {
+    insertSession({ id: 'source' });
+    insertTurn({ id: 'turn-1', sessionId: 'source', startedAt: 100, completedAt: 110 });
+    insertTurn({ id: 'turn-2', sessionId: 'source', startedAt: 200, completedAt: 210 });
+    insertTurn({ id: 'turn-3', sessionId: 'source', startedAt: 300, completedAt: 310 });
+    insertMessage({ id: 'message-1', sessionId: 'source', turnId: 'turn-1', text: 'one', createdAt: 105 });
+    insertMessage({ id: 'message-3', sessionId: 'source', turnId: 'turn-3', text: 'three', createdAt: 305 });
+    insertMessage({ id: 'global-before', sessionId: 'source', text: 'global before', createdAt: 150 });
+    insertMessage({ id: 'global-during', sessionId: 'source', text: 'global during', createdAt: 205 });
+    insertMessage({ id: 'global-at-completion', sessionId: 'source', text: 'global at completion', createdAt: 210 });
+    insertMessage({ id: 'global-after', sessionId: 'source', text: 'global after', createdAt: 211 });
+
+    repo.forkInto(asSessionId('source'), asSessionId('fork'), 'Fork', 1_000, asTurnId('turn-2'));
+
+    const copiedText = (database.db
+      .prepare('SELECT blocks_json FROM messages WHERE session_id = ? ORDER BY created_at, id')
+      .all('fork') as Array<{ blocks_json: string }>)
+      .map((row) => row.blocks_json);
+    expect(copiedText).toContain(blocks('one'));
+    expect(copiedText).toContain(blocks('global before'));
+    expect(copiedText).toContain(blocks('global during'));
+    expect(copiedText).toContain(blocks('global at completion'));
+    expect(copiedText).not.toContain(blocks('global after'));
+    expect(copiedText).not.toContain(blocks('three'));
+  });
+
+  it('uses started_at for an unfinished cutoff turn without messages', () => {
+    insertSession({ id: 'source' });
+    insertTurn({ id: 'turn-running', sessionId: 'source', status: 'running', startedAt: 200 });
+    insertMessage({ id: 'global-at-start', sessionId: 'source', text: 'global at start', createdAt: 200 });
+    insertMessage({ id: 'global-after-start', sessionId: 'source', text: 'global after start', createdAt: 201 });
+
+    repo.forkInto(
+      asSessionId('source'),
+      asSessionId('fork'),
+      'Fork',
+      1_000,
+      asTurnId('turn-running'),
+    );
+
+    const copiedText = (database.db
+      .prepare('SELECT blocks_json FROM messages WHERE session_id = ? ORDER BY created_at, id')
+      .all('fork') as Array<{ blocks_json: string }>)
+      .map((row) => row.blocks_json);
+    expect(copiedText).toContain(blocks('global at start'));
+    expect(copiedText).not.toContain(blocks('global after start'));
+  });
+
   it('does not lose sessions sharing a keyset page boundary', () => {
     for (const id of ['session-a', 'session-b', 'session-c', 'session-d']) {
       insertSession({ id, pinned: true, lastActivityAt: 1_000 });

@@ -427,8 +427,12 @@ export class SessionsRepo {
 
       const cutoffTurn = untilTurnId
         ? this.db.prepare(
-          'SELECT id, started_at FROM turns WHERE id = ? AND session_id = ?',
-        ).get(untilTurnId, srcId) as { id: string; started_at: number } | undefined
+          'SELECT id, started_at, completed_at FROM turns WHERE id = ? AND session_id = ?',
+        ).get(untilTurnId, srcId) as {
+          id: string;
+          started_at: number;
+          completed_at: number | null;
+        } | undefined
         : undefined;
 
       if (untilTurnId && !cutoffTurn) {
@@ -464,7 +468,9 @@ export class SessionsRepo {
 
       // 4. 复制 message。带 turn_id 的消息严格跟随已选 Turn 集合，不能只按
       //    created_at 截断，否则相同时间戳的后续 Turn 会混入 fork。
-      //    无 turn_id 的 session 级消息按目标 Turn 最后一条消息的稳定复合边界复制。
+      //    无 turn_id 的 session 级消息优先按目标 Turn 最后一条消息的稳定复合边界复制。
+      //    目标 Turn 没有消息时，已完成 Turn 回退到 completed_at，未完成 Turn 回退到
+      //    started_at，避免合法的 session 级系统上下文被整批丢弃。
       const messageCutoff = untilTurnId
         ? this.db.prepare(`
             SELECT created_at, id
@@ -474,6 +480,10 @@ export class SessionsRepo {
             LIMIT 1
           `).get(srcId, untilTurnId) as { created_at: number; id: string } | undefined
         : undefined;
+      const messageCutoffAt = messageCutoff?.created_at
+        ?? cutoffTurn?.completed_at
+        ?? cutoffTurn?.started_at;
+      const messageCutoffId = messageCutoff?.id;
 
       this.db.prepare(
         untilTurnId
@@ -490,10 +500,13 @@ export class SessionsRepo {
                    turn_id IS NULL
                    AND ? IS NOT NULL
                    AND (
-                     created_at < ?
-                     OR (created_at = ? AND id <= ?)
-                   )
-                 )
+                      created_at < ?
+                      OR (
+                        created_at = ?
+                        AND (? IS NULL OR id <= ?)
+                      )
+                    )
+                  )
                )
              ORDER BY created_at ASC, id ASC`
           : `INSERT INTO messages
@@ -505,11 +518,12 @@ export class SessionsRepo {
              WHERE session_id = ?
              ORDER BY created_at ASC, id ASC`,
       ).run(newId, srcId, ...(untilTurnId
-        ? [
-          messageCutoff?.id ?? null,
-          messageCutoff?.created_at ?? 0,
-          messageCutoff?.created_at ?? 0,
-          messageCutoff?.id ?? '',
+         ? [
+          messageCutoffAt ?? null,
+          messageCutoffAt ?? 0,
+          messageCutoffAt ?? 0,
+          messageCutoffId ?? null,
+          messageCutoffId ?? '',
         ]
         : []));
 

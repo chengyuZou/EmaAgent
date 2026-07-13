@@ -111,12 +111,14 @@ export interface TurnRestoreRow {
   status: string; userInput: string; startedAt: number;
   completedAt: number | null; errorCode: string | null; errorMessage: string | null;
   iterations: number; usageInputTokens: number; usageOutputTokens: number;
+  metaJson?: string;
 }
 
 export interface MessageRestoreRow {
   id: string; sessionId: string; turnId: string | null;
   role: string; kind: string; blocksJson: string;
   interrupted: boolean; createdAt: number;
+  metaJson?: string;
 }
 
 export interface ArtifactRestoreRow {
@@ -124,6 +126,7 @@ export interface ArtifactRestoreRow {
   content: string | null;
   contentPath: string | null;
   createdAt: number; appliedAt: number | null; rejectedAt: number | null;
+  metaJson?: string;
 }
 
 export interface AudioRestoreRow {
@@ -149,6 +152,7 @@ export interface SessionRestorePayload {
     pinned: boolean; pinnedAt: number | null;
     groupLabel: string | null; parentSessionId: string | null;
     lastMode: string | null; activeBranchId: string | null;
+    metaJson?: string;
   };
   branches:          BranchRow[];
   turns:             TurnRestoreRow[];
@@ -423,6 +427,7 @@ export class SessionStatsRepo {
   listAgentTasks(sessionId: string): AgentTaskRow[] {
     return this.db.prepare(`
       SELECT id, session_id, turn_id, parent_id, status, error,
+             pending_prompt_id, pending_questions_json, version,
              iterations, input_tokens, output_tokens, created_at, updated_at
       FROM agent_tasks WHERE session_id = ?
       ORDER BY created_at ASC
@@ -486,7 +491,7 @@ export class SessionStatsRepo {
           (id, title, workspace_root, created_at, updated_at,
            last_activity_at, archived_at, pinned, pinned_at, group_label,
            parent_session_id, last_mode, active_branch_id, meta_json)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, '{}')
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)
       `).run(
         p.session.id, p.session.title, p.session.workspaceRoot ?? null,
         p.session.createdAt, p.session.updatedAt,
@@ -495,6 +500,7 @@ export class SessionStatsRepo {
         p.session.pinned ? 1 : 0, p.session.pinnedAt ?? null,
         p.session.groupLabel ?? null, parentSessionId,
         p.session.lastMode ?? null,
+        p.session.metaJson ?? '{}',
       );
 
       // 2. 先插入 Turn 节点，但暂不恢复 branch_id，打断 Turn -> Branch 的环。
@@ -502,8 +508,8 @@ export class SessionStatsRepo {
         INSERT INTO turns
           (id, session_id, mode, branch_id, status, user_input,
            started_at, completed_at, error_code, error_message,
-           iterations, usage_input_tokens, usage_output_tokens)
-        VALUES (?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           iterations, usage_input_tokens, usage_output_tokens, meta_json)
+        VALUES (?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
       for (const t of p.turns) {
         stmtTurn.run(
@@ -511,6 +517,7 @@ export class SessionStatsRepo {
           t.status, t.userInput, t.startedAt, t.completedAt ?? null,
           t.errorCode ?? null, t.errorMessage ?? null,
           t.iterations ?? 0, t.usageInputTokens ?? 0, t.usageOutputTokens ?? 0,
+          t.metaJson ?? '{}',
         );
       }
 
@@ -567,12 +574,13 @@ export class SessionStatsRepo {
       const stmtMsg = this.db.prepare(`
         INSERT INTO messages
           (id, session_id, turn_id, role, kind, blocks_json, interrupted, created_at, meta_json)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, '{}')
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
       for (const m of p.messages) {
         stmtMsg.run(
           m.id, m.sessionId, m.turnId ?? null, m.role, m.kind ?? 'normal',
           m.blocksJson, m.interrupted ? 1 : 0, m.createdAt,
+          m.metaJson ?? '{}',
         );
       }
 
@@ -581,13 +589,14 @@ export class SessionStatsRepo {
         INSERT INTO artifacts
           (id, session_id, turn_id, type, title, content, content_location,
            content_path, meta_json, created_at, updated_at, applied_at, rejected_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, '{}', ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
       for (const a of p.artifacts) {
         stmtArt.run(
           a.id, p.session.id, a.turnId ?? null, a.type, a.title,
           a.content, a.contentLocation,
           a.contentPath ?? null,
+          a.metaJson ?? '{}',
           a.createdAt, a.createdAt,
           a.appliedAt ?? null, a.rejectedAt ?? null,
         );
@@ -625,14 +634,15 @@ export class SessionStatsRepo {
       const stmtTask = this.db.prepare(`
         INSERT INTO agent_tasks
           (id, session_id, turn_id, parent_id, status,
-           pending_prompt_id, pending_questions_json,
+           pending_prompt_id, pending_questions_json, version,
            error, iterations, input_tokens, output_tokens, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
       for (const t of p.agentTasks) {
         stmtTask.run(
           t.id, p.session.id, t.turn_id ?? null, t.parent_id ?? null,
           t.status, t.pending_prompt_id ?? null, t.pending_questions_json ?? null,
+          t.version ?? 0,
           t.error ?? null, t.iterations ?? null,
           t.input_tokens ?? null, t.output_tokens ?? null,
           t.created_at, t.updated_at,

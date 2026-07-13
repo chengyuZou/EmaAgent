@@ -294,7 +294,7 @@ export class DocumentChunkRepo {
         FROM   document_chunks_fts fts
         WHERE  document_chunks_fts MATCH ?
                ${assetFilter}
-        ORDER  BY score
+        ORDER  BY score, chunk_id
         LIMIT  ?
       `).all(ftsQuery, ...(batch ?? []), capacity) as Array<{ chunk_id: string; score: number }>;
       for (const row of rows) {

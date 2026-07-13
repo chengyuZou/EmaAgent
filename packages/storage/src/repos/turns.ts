@@ -103,7 +103,7 @@ export class TurnsRepo {
 
   listForSession(sessionId: SessionId, limit = 100): TurnRow[] {
     return this.db
-      .prepare('SELECT * FROM turns WHERE session_id = ? ORDER BY started_at DESC LIMIT ?')
+      .prepare('SELECT * FROM turns WHERE session_id = ? ORDER BY started_at DESC, id DESC LIMIT ?')
       .all(sessionId, limit) as TurnRow[];
   }
 

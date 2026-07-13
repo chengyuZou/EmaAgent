@@ -188,7 +188,7 @@ export class AgentTasksRepo {
   listForSession(sessionId: string, limit = 200): AgentTaskRow[] {
     return this.db
       .prepare(
-        'SELECT * FROM agent_tasks WHERE session_id = ? ORDER BY created_at DESC LIMIT ?',
+        'SELECT * FROM agent_tasks WHERE session_id = ? ORDER BY created_at DESC, id DESC LIMIT ?',
       )
       .all(sessionId, limit) as AgentTaskRow[];
   }

@@ -59,7 +59,7 @@ export class KbIngestTasksRepo {
   claimNextPending(): KbIngestTask | undefined {
     return this.db.transaction((): KbIngestTask | undefined => {
       const row = this.db
-        .prepare(`SELECT * FROM kb_ingest_tasks WHERE status = 'pending' ORDER BY created_at LIMIT 1`)
+        .prepare(`SELECT * FROM kb_ingest_tasks WHERE status = 'pending' ORDER BY created_at ASC, id ASC LIMIT 1`)
         .get() as KbIngestTaskRow | undefined;
       if (!row) return undefined;
       this.db.prepare(`UPDATE kb_ingest_tasks SET status = 'running', updated_at = ? WHERE id = ?`)

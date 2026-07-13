@@ -1,5 +1,7 @@
 import type { SqliteDb } from '../database.js';
 import { createSqliteIdBatches } from '../sqlite-id-batches.js';
+import { escapeLikePattern } from '../like-utils.js';
+import type { MemoryEmbeddingPageCursor } from './memory-embedding-page.js';
 
 // ── 类型 ─────────────────────────────────────────────────────────────────────
 
@@ -131,13 +133,13 @@ export class MemoryNodesRepo {
 
   listAll(limit = 5000): MemoryNodeRow[] {
     return this.db
-      .prepare('SELECT * FROM memory_nodes ORDER BY last_referenced_at DESC LIMIT ?')
+      .prepare('SELECT * FROM memory_nodes ORDER BY last_referenced_at DESC, id DESC LIMIT ?')
       .all(limit) as MemoryNodeRow[];
   }
 
   listByType(nodeType: MemoryNodeType, limit = 500): MemoryNodeRow[] {
     return this.db
-      .prepare('SELECT * FROM memory_nodes WHERE node_type = ? ORDER BY importance DESC LIMIT ?')
+      .prepare('SELECT * FROM memory_nodes WHERE node_type = ? ORDER BY importance DESC, id DESC LIMIT ?')
       .all(nodeType, limit) as MemoryNodeRow[];
   }
 
@@ -153,19 +155,28 @@ export class MemoryNodesRepo {
   }
 
   /**
-   * 用于批量构建索引的 cursor 分页。
-   * 返回 updated_at > afterUpdatedAt 的行，升序排列，上限 limit。
-   * 起始 afterUpdatedAt = 0；每页后将 cursor 推进到最后一行的 updated_at。
+   * 用于批量构建索引的复合游标分页。
+   * 按 (updated_at, id) 升序读取，避免同毫秒数据跨页丢失。
    */
-  listEmbeddablePage(model: string, afterUpdatedAt: number, limit: number): MemoryNodeRow[] {
-    return this.db
-      .prepare(
-        `SELECT * FROM memory_nodes
-         WHERE embedding IS NOT NULL AND embedding_model = ? AND updated_at > ?
-         ORDER BY updated_at ASC
-         LIMIT ?`,
-      )
-      .all(model, afterUpdatedAt, limit) as MemoryNodeRow[];
+  listEmbeddablePage(
+    model: string,
+    after: MemoryEmbeddingPageCursor | undefined,
+    limit: number,
+  ): MemoryNodeRow[] {
+    const cursorPredicate = after
+      ? 'AND (updated_at > ? OR (updated_at = ? AND id > ?))'
+      : '';
+    const params = after
+      ? [model, after.updatedAt, after.updatedAt, after.id, limit]
+      : [model, limit];
+
+    return this.db.prepare(
+      `SELECT * FROM memory_nodes
+       WHERE embedding IS NOT NULL AND embedding_model = ?
+       ${cursorPredicate}
+       ORDER BY updated_at ASC, id ASC
+       LIMIT ?`,
+    ).all(...params) as MemoryNodeRow[];
   }
 
   browse(opts: MemoryNodesBrowseOptions = {}): MemoryNodeRow[] {
@@ -181,14 +192,14 @@ export class MemoryNodesRepo {
       params.push(opts.minImportance);
     }
     if (opts.search) {
-      where.push('(label LIKE ? OR description LIKE ?)');
-      const pattern = `%${opts.search}%`;
+      where.push(`(label LIKE ? ESCAPE '\\' OR description LIKE ? ESCAPE '\\')`);
+      const pattern = '%' + escapeLikePattern(opts.search) + '%';
       params.push(pattern, pattern);
     }
 
-    const orderBy = opts.orderBy === 'importance' ? 'importance DESC'
-                  : opts.orderBy === 'created'    ? 'created_at DESC'
-                  :                                  'last_referenced_at DESC';
+    const orderBy = opts.orderBy === 'importance' ? 'importance DESC, id DESC'
+                  : opts.orderBy === 'created'    ? 'created_at DESC, id DESC'
+                  :                                  'last_referenced_at DESC, id DESC';
     const sql =
       `SELECT * FROM memory_nodes` +
       (where.length > 0 ? ` WHERE ${where.join(' AND ')}` : '') +
@@ -238,7 +249,7 @@ export class MemoryNodesRepo {
         `SELECT id, label, node_type, importance
            FROM memory_nodes
           WHERE last_referenced_at < ? AND importance > 0
-          ORDER BY last_referenced_at ASC
+          ORDER BY last_referenced_at ASC, id ASC
           LIMIT ?`,
       )
       .all(cutoff, limit) as Array<{

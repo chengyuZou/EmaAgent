@@ -113,7 +113,7 @@ describe('SessionStatsRepo restore integration', () => {
       status: 'waiting_user', pending_prompt_id: 'prompt-1',
       pending_questions_json: JSON.stringify([{ id: 'question-1', prompt: '继续吗？' }]),
       error: null, iterations: 2, input_tokens: 30, output_tokens: 40,
-      created_at: 150, updated_at: 160,
+      version: 7, created_at: 150, updated_at: 160,
     });
     payload.agentTaskMessages.push({
       id: 'task-message-1', task_id: 'task-1', role: 'assistant',
@@ -135,18 +135,29 @@ describe('SessionStatsRepo restore integration', () => {
     repo.restoreRows(payload);
 
     const task = database.db.prepare(`
-      SELECT status, pending_prompt_id, pending_questions_json
+      SELECT status, pending_prompt_id, pending_questions_json, version
       FROM agent_tasks WHERE id = 'task-1'
     `).get() as {
       status: string;
       pending_prompt_id: string | null;
       pending_questions_json: string | null;
+      version: number;
     };
     expect(task).toEqual({
       status: 'waiting_user',
       pending_prompt_id: 'prompt-1',
       pending_questions_json: JSON.stringify([{ id: 'question-1', prompt: '继续吗？' }]),
+      version: 7,
     });
+    expect(repo.listAgentTasks(payload.session.id)).toEqual([
+      expect.objectContaining({
+        id: 'task-1',
+        status: 'waiting_user',
+        pending_prompt_id: 'prompt-1',
+        pending_questions_json: JSON.stringify([{ id: 'question-1', prompt: '继续吗？' }]),
+        version: 7,
+      }),
+    ]);
     expect(database.db.prepare(`
       SELECT sequence FROM agent_task_messages WHERE id = 'task-message-1'
     `).pluck().get()).toBe(1);

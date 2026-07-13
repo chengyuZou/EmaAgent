@@ -1,4 +1,5 @@
 import type { SqliteDb } from '../database.js';
+import { escapeLikePattern } from '../like-utils.js';
 
 export interface DocumentAssetRow {
   id:                string;
@@ -121,8 +122,8 @@ export class DocumentAssetRepo {
       params.push(cursor.a, cursor.a, cursor.i);
     }
     if (opts.keyword?.trim()) {
-      where.push('(file_name LIKE ? COLLATE NOCASE OR IFNULL(title, \'\') LIKE ? COLLATE NOCASE)');
-      const like = `%${opts.keyword.trim()}%`;
+      where.push(`(file_name LIKE ? ESCAPE '\\' COLLATE NOCASE OR IFNULL(title, '') LIKE ? ESCAPE '\\' COLLATE NOCASE)`);
+      const like = '%' + escapeLikePattern(opts.keyword.trim()) + '%';
       params.push(like, like);
     }
     const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';

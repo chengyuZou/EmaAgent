@@ -42,6 +42,7 @@ export type { ProtectedDeleteResult } from './repos/mutation-results.js';
 
 // ── Memory 子系统 ──────────────────────────────────────────────────────────────
 export { MemoryNodesRepo }       from './repos/memory-nodes.js';
+export type { MemoryEmbeddingPageCursor } from './repos/memory-embedding-page.js';
 export { MemoryEdgesRepo }       from './repos/memory-edges.js';
 export { MemoryLazyUpdatesRepo } from './repos/memory-lazy-updates.js';
 export { MemoryItemsRepo }       from './repos/memory-items.js';

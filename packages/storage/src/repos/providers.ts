@@ -135,7 +135,7 @@ export class ProvidersRepo {
 
   listEnabled(): ProviderConfigRow[] {
     return this.db
-      .prepare('SELECT * FROM provider_configs WHERE enabled = 1')
+      .prepare('SELECT * FROM provider_configs WHERE enabled = 1 ORDER BY created_at ASC, id ASC')
       .all() as ProviderConfigRow[];
   }
 

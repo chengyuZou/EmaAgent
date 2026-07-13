@@ -84,7 +84,7 @@ export class MemoryTasksRepo {
           WHERE id = (
             SELECT id FROM memory_tasks
              WHERE status = 'pending' ${whereKind}
-             ORDER BY created_at ASC
+             ORDER BY created_at ASC, id ASC
              LIMIT 1
           )
           RETURNING *`,
