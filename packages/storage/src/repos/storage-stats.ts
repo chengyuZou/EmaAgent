@@ -164,6 +164,140 @@ export interface SessionRestorePayload {
   notes:             NotesRestoreData | null;
 }
 
+export class SessionRestoreValidationError extends Error {
+  readonly code = 'storage/session-restore-invalid';
+
+  constructor(message: string) {
+    super(message);
+    this.name = 'SessionRestoreValidationError';
+  }
+}
+
+function validateSessionRestorePayload(payload: SessionRestorePayload): void {
+  const sessionId = payload.session.id;
+  if (!sessionId) throw new SessionRestoreValidationError('Session id 不能为空');
+  if (payload.session.parentSessionId === sessionId) {
+    throw new SessionRestoreValidationError('Session 不能把自身设为 parentSessionId');
+  }
+
+  const turnIds = uniqueIds(payload.turns, 'Turn');
+  const branchIds = uniqueIds(payload.branches, 'Branch');
+  const taskIds = uniqueIds(payload.agentTasks, 'AgentTask');
+  uniqueIds(payload.messages, 'Message');
+  uniqueIds(payload.artifacts, 'Artifact');
+  uniqueIds(payload.attachments, 'Attachment');
+  uniqueIds(payload.agentTaskMessages, 'AgentTaskMessage');
+  uniqueIds(payload.kbActivations, 'KbActivation');
+
+  for (const turn of payload.turns) {
+    assertSessionOwnership('Turn', turn.id, turn.sessionId, sessionId);
+    assertOptionalReference('Turn.branchId', turn.id, turn.branchId, branchIds);
+  }
+  for (const branch of payload.branches) {
+    assertSessionOwnership('Branch', branch.id, branch.session_id, sessionId);
+    assertOptionalReference('Branch.parentBranchId', branch.id, branch.parent_branch_id, branchIds);
+    assertOptionalReference('Branch.forkFromTurnId', branch.id, branch.fork_from_turn_id, turnIds);
+  }
+  assertOptionalReference('Session.activeBranchId', sessionId, payload.session.activeBranchId, branchIds);
+  assertBranchParentGraph(payload.branches);
+
+  for (const message of payload.messages) {
+    assertSessionOwnership('Message', message.id, message.sessionId, sessionId);
+    assertOptionalReference('Message.turnId', message.id, message.turnId, turnIds);
+  }
+  for (const artifact of payload.artifacts) {
+    assertSessionOwnership('Artifact', artifact.id, artifact.sessionId, sessionId);
+    assertOptionalReference('Artifact.turnId', artifact.id, artifact.turnId, turnIds);
+  }
+  for (const audio of payload.audio) {
+    assertSessionOwnership('Audio', audio.turnId, audio.sessionId, sessionId);
+    assertReference('Audio.turnId', audio.turnId, audio.turnId, turnIds);
+  }
+  for (const attachment of payload.attachments) {
+    assertReference('Attachment.turnId', attachment.id, attachment.turnId, turnIds);
+  }
+  for (const task of payload.agentTasks) {
+    assertSessionOwnership('AgentTask', task.id, task.session_id, sessionId);
+    assertOptionalReference('AgentTask.turnId', task.id, task.turn_id, turnIds);
+    assertOptionalReference('AgentTask.parentId', task.id, task.parent_id, taskIds);
+  }
+  for (const message of payload.agentTaskMessages) {
+    assertReference('AgentTaskMessage.taskId', message.id, message.task_id, taskIds);
+  }
+  if (payload.memoryState) {
+    assertSessionOwnership('MemoryState', sessionId, payload.memoryState.session_id, sessionId);
+  }
+  for (const activation of payload.kbActivations) {
+    assertSessionOwnership('KbActivation', activation.id, activation.session_id, sessionId);
+    assertOptionalReference('KbActivation.turnId', activation.id, activation.turn_id, turnIds);
+  }
+  for (const usage of payload.turnUsage) {
+    assertReference('TurnUsage.turnId', usage.turn_id, usage.turn_id, turnIds);
+  }
+}
+
+function uniqueIds(rows: ReadonlyArray<{ id: string }>, label: string): Set<string> {
+  const ids = new Set<string>();
+  for (const row of rows) {
+    if (!row.id) throw new SessionRestoreValidationError(`${label} id 不能为空`);
+    if (ids.has(row.id)) throw new SessionRestoreValidationError(`${label} id 重复: ${row.id}`);
+    ids.add(row.id);
+  }
+  return ids;
+}
+
+function assertSessionOwnership(
+  label: string,
+  id: string,
+  actualSessionId: string,
+  expectedSessionId: string,
+): void {
+  if (actualSessionId !== expectedSessionId) {
+    throw new SessionRestoreValidationError(
+      `${label} ${id} 属于 Session ${actualSessionId}，预期 ${expectedSessionId}`,
+    );
+  }
+}
+
+function assertReference(
+  label: string,
+  ownerId: string,
+  referencedId: string,
+  availableIds: ReadonlySet<string>,
+): void {
+  if (!availableIds.has(referencedId)) {
+    throw new SessionRestoreValidationError(`${label} 引用不存在: ${ownerId} -> ${referencedId}`);
+  }
+}
+
+function assertOptionalReference(
+  label: string,
+  ownerId: string,
+  referencedId: string | null,
+  availableIds: ReadonlySet<string>,
+): void {
+  if (referencedId !== null) assertReference(label, ownerId, referencedId, availableIds);
+}
+
+function assertBranchParentGraph(branches: readonly BranchRow[]): void {
+  const parents = new Map(branches.map(branch => [branch.id, branch.parent_branch_id]));
+  const complete = new Set<string>();
+
+  for (const branch of branches) {
+    if (complete.has(branch.id)) continue;
+    const path = new Set<string>();
+    let current: string | null = branch.id;
+    while (current !== null && !complete.has(current)) {
+      if (path.has(current)) {
+        throw new SessionRestoreValidationError(`Branch parent graph 存在循环: ${current}`);
+      }
+      path.add(current);
+      current = parents.get(current) ?? null;
+    }
+    for (const id of path) complete.add(id);
+  }
+}
+
 // ── Repo ──────────────────────────────────────────────────────────────────────
 
 export class SessionStatsRepo {
@@ -332,7 +466,16 @@ export class SessionStatsRepo {
   // payload 中所有 localPath / contentPath / storagePath 字段必须已指向磁盘上的文件。
 
   restoreRows(p: SessionRestorePayload): void {
+    validateSessionRestorePayload(p);
+
     this.db.transaction(() => {
+      // 单 Session 备份不包含来源 Session。目标库已有来源时保留 fork 溯源，
+      // 否则降级为 NULL，保证备份可独立恢复且不制造悬空外键。
+      const parentSessionId = p.session.parentSessionId
+        && this.db.prepare('SELECT 1 FROM sessions WHERE id = ?').pluck().get(p.session.parentSessionId)
+        ? p.session.parentSessionId
+        : null;
+
       // 1. Session--active_branch_id 先置 NULL(循环 FK:session->branch, branch->session)
       this.db.prepare(`
         INSERT INTO sessions
@@ -346,45 +489,79 @@ export class SessionStatsRepo {
         p.session.lastActivityAt ?? p.session.updatedAt,
         p.session.archivedAt ?? null,
         p.session.pinned ? 1 : 0, p.session.pinnedAt ?? null,
-        p.session.groupLabel ?? null, p.session.parentSessionId ?? null,
+        p.session.groupLabel ?? null, parentSessionId,
         p.session.lastMode ?? null,
       );
 
-      // 2. Branch(必须在引用 branch_id 的 turn 之前)
-      const stmtBranch = this.db.prepare(`
-        INSERT OR IGNORE INTO branches (id, session_id, parent_branch_id, fork_from_turn_id, created_at)
-        VALUES (?, ?, ?, ?, ?)
-      `);
-      for (const b of p.branches) {
-        stmtBranch.run(b.id, p.session.id, b.parent_branch_id ?? null, b.fork_from_turn_id ?? null, b.created_at);
-      }
-
-      // 3. branch 已存在,恢复 active_branch_id
-      if (p.session.activeBranchId) {
-        this.db.prepare('UPDATE sessions SET active_branch_id = ? WHERE id = ?')
-          .run(p.session.activeBranchId, p.session.id);
-      }
-
-      // 4. Turn
+      // 2. 先插入 Turn 节点，但暂不恢复 branch_id，打断 Turn -> Branch 的环。
       const stmtTurn = this.db.prepare(`
-        INSERT OR IGNORE INTO turns
+        INSERT INTO turns
           (id, session_id, mode, branch_id, status, user_input,
            started_at, completed_at, error_code, error_message,
            iterations, usage_input_tokens, usage_output_tokens)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
       for (const t of p.turns) {
         stmtTurn.run(
-          t.id, t.sessionId, t.mode, t.branchId ?? null,
+          t.id, p.session.id, t.mode,
           t.status, t.userInput, t.startedAt, t.completedAt ?? null,
           t.errorCode ?? null, t.errorMessage ?? null,
           t.iterations ?? 0, t.usageInputTokens ?? 0, t.usageOutputTokens ?? 0,
         );
       }
 
-      // 5. Message
+      // 3. 再插入 Branch 节点，parent/fork 暂置 NULL，消除数组顺序依赖。
+      const stmtBranch = this.db.prepare(`
+        INSERT INTO branches (id, session_id, parent_branch_id, fork_from_turn_id, created_at)
+        VALUES (?, ?, NULL, NULL, ?)
+      `);
+      for (const b of p.branches) {
+        stmtBranch.run(b.id, p.session.id, b.created_at);
+      }
+
+      // 4. 所有节点已存在，恢复 Branch 的父节点与 fork Turn 引用。
+      const stmtBranchRefs = this.db.prepare(`
+        UPDATE branches
+        SET parent_branch_id = ?, fork_from_turn_id = ?
+        WHERE id = ? AND session_id = ?
+      `);
+      for (const b of p.branches) {
+        const info = stmtBranchRefs.run(
+          b.parent_branch_id ?? null,
+          b.fork_from_turn_id ?? null,
+          b.id,
+          p.session.id,
+        );
+        if (info.changes !== 1) {
+          throw new SessionRestoreValidationError(`恢复 Branch 引用失败: ${b.id}`);
+        }
+      }
+
+      // 5. 恢复 Turn -> Branch 引用。
+      const stmtTurnBranch = this.db.prepare(`
+        UPDATE turns SET branch_id = ? WHERE id = ? AND session_id = ?
+      `);
+      for (const t of p.turns) {
+        if (t.branchId === null) continue;
+        const info = stmtTurnBranch.run(t.branchId, t.id, p.session.id);
+        if (info.changes !== 1) {
+          throw new SessionRestoreValidationError(`恢复 Turn branch 引用失败: ${t.id}`);
+        }
+      }
+
+      // 6. 最后恢复 Session -> active Branch 引用。
+      if (p.session.activeBranchId) {
+        const info = this.db.prepare(
+          'UPDATE sessions SET active_branch_id = ? WHERE id = ?',
+        ).run(p.session.activeBranchId, p.session.id);
+        if (info.changes !== 1) {
+          throw new SessionRestoreValidationError(`恢复 active Branch 失败: ${p.session.activeBranchId}`);
+        }
+      }
+
+      // 7. Message
       const stmtMsg = this.db.prepare(`
-        INSERT OR IGNORE INTO messages
+        INSERT INTO messages
           (id, session_id, turn_id, role, kind, blocks_json, interrupted, created_at, meta_json)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, '{}')
       `);
@@ -395,9 +572,9 @@ export class SessionStatsRepo {
         );
       }
 
-      // 6. Artifact
+      // 8. Artifact
       const stmtArt = this.db.prepare(`
-        INSERT OR IGNORE INTO artifacts
+        INSERT INTO artifacts
           (id, session_id, turn_id, type, title, content, content_location,
            content_path, meta_json, created_at, updated_at, applied_at, rejected_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, '{}', ?, ?, ?, ?)
@@ -412,23 +589,23 @@ export class SessionStatsRepo {
         );
       }
 
-      // 7. 音频合并行(文件已由调用方写入)
+      // 9. 音频合并行(文件已由调用方写入)
       const stmtAudio = this.db.prepare(`
-        INSERT OR IGNORE INTO turn_audio_merged
+        INSERT INTO turn_audio_merged
           (turn_id, session_id, storage_path, mime_type, byte_size, duration_ms, segment_count, created_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       `);
       for (const r of p.audio) {
         stmtAudio.run(
-          r.turnId, r.sessionId, r.storagePath,
+          r.turnId, p.session.id, r.storagePath,
           r.mimeType, r.byteSize, r.durationMs,
           r.segmentCount, r.createdAt,
         );
       }
 
-      // 8. Attachment(文件已由调用方写入)
+      // 10. Attachment(文件已由调用方写入)
       const stmtAtt = this.db.prepare(`
-        INSERT OR IGNORE INTO turn_attachments
+        INSERT INTO turn_attachments
           (id, turn_id, session_id, name, mime, size, mtime, local_path, created_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
@@ -440,52 +617,54 @@ export class SessionStatsRepo {
         );
       }
 
-      // 9. Agent task
+      // 11. Agent task
       const stmtTask = this.db.prepare(`
-        INSERT OR IGNORE INTO agent_tasks
-          (id, session_id, turn_id, parent_id, status, error, iterations,
-           input_tokens, output_tokens, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO agent_tasks
+          (id, session_id, turn_id, parent_id, status,
+           pending_prompt_id, pending_questions_json,
+           error, iterations, input_tokens, output_tokens, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
       for (const t of p.agentTasks) {
         stmtTask.run(
-          t.id, t.session_id, t.turn_id ?? null, t.parent_id ?? null,
-          t.status, t.error ?? null, t.iterations ?? null,
+          t.id, p.session.id, t.turn_id ?? null, t.parent_id ?? null,
+          t.status, t.pending_prompt_id ?? null, t.pending_questions_json ?? null,
+          t.error ?? null, t.iterations ?? null,
           t.input_tokens ?? null, t.output_tokens ?? null,
           t.created_at, t.updated_at,
         );
       }
 
-      // 10. Agent task message
+      // 12. Agent task message
       const stmtTaskMsg = this.db.prepare(`
-        INSERT OR IGNORE INTO agent_task_messages (id, task_id, role, content_json, created_at)
+        INSERT INTO agent_task_messages (id, task_id, role, content_json, created_at)
         VALUES (?, ?, ?, ?, ?)
       `);
       for (const m of p.agentTaskMessages) {
         stmtTaskMsg.run(m.id, m.task_id, m.role, m.content_json, m.created_at);
       }
 
-      // 11. Memory session 状态
+      // 13. Memory session 状态
       if (p.memoryState) {
         this.db.prepare(`
-          INSERT OR IGNORE INTO memory_session_state (session_id, surfaced_json, overrides_json)
+          INSERT INTO memory_session_state (session_id, surfaced_json, overrides_json)
           VALUES (?, ?, ?)
-        `).run(p.memoryState.session_id, p.memoryState.surfaced_json, p.memoryState.overrides_json);
+        `).run(p.session.id, p.memoryState.surfaced_json, p.memoryState.overrides_json);
       }
 
-      // 12. KB activation
+      // 14. KB activation
       const stmtKb = this.db.prepare(`
-        INSERT OR IGNORE INTO kb_activations
+        INSERT INTO kb_activations
           (id, call_id, kb_id, asset_id, session_id, turn_id, created_at)
         VALUES (?, ?, ?, ?, ?, ?, ?)
       `);
       for (const k of p.kbActivations) {
-        stmtKb.run(k.id, k.call_id, k.kb_id, k.asset_id, k.session_id, k.turn_id ?? null, k.created_at);
+        stmtKb.run(k.id, k.call_id, k.kb_id, k.asset_id, p.session.id, k.turn_id ?? null, k.created_at);
       }
 
-      // 13. Turn usage
+      // 15. Turn usage
       const stmtUsage = this.db.prepare(`
-        INSERT OR IGNORE INTO turn_usage
+        INSERT INTO turn_usage
           (turn_id, llm_provider, model_id, input_tokens, output_tokens, cost_usd, duration_ms, created_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       `);
@@ -496,10 +675,10 @@ export class SessionStatsRepo {
         );
       }
 
-      // 14. Session notes(upsert--notes 可能在导入后被更新)
+      // 16. Session notes
       if (p.notes) {
         this.db.prepare(`
-          INSERT OR REPLACE INTO session_notes
+          INSERT INTO session_notes
             (session_id, body, tokens_at_last_update, updated_at)
           VALUES (?, ?, ?, ?)
         `).run(
@@ -507,6 +686,34 @@ export class SessionStatsRepo {
           p.notes.tokensAtLastUpdate ?? 0, p.notes.updatedAt,
         );
       }
+
+      // 17. 提交前执行数据库级完整性检查，并核对核心恢复数量。
+      const foreignKeyErrors = this.db.pragma('foreign_key_check') as Array<{
+        table: string;
+        rowid: number | null;
+        parent: string;
+        fkid: number;
+      }>;
+      if (foreignKeyErrors.length > 0) {
+        throw new SessionRestoreValidationError(
+          `恢复后外键检查失败: ${JSON.stringify(foreignKeyErrors[0])}`,
+        );
+      }
+
+      this.assertRestoreCount('turns', p.session.id, p.turns.length);
+      this.assertRestoreCount('branches', p.session.id, p.branches.length);
+      this.assertRestoreCount('messages', p.session.id, p.messages.length);
     })();
+  }
+
+  private assertRestoreCount(table: 'turns' | 'branches' | 'messages', sessionId: string, expected: number): void {
+    const actual = this.db.prepare(
+      `SELECT COUNT(*) FROM ${table} WHERE session_id = ?`,
+    ).pluck().get(sessionId) as number;
+    if (actual !== expected) {
+      throw new SessionRestoreValidationError(
+        `${table} 恢复数量不一致: expected=${expected}, actual=${actual}`,
+      );
+    }
   }
 }

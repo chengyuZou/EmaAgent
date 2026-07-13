@@ -15,7 +15,7 @@ export { ModelBindingsRepo } from './repos/model-bindings.js';
 export { ArtifactRepo }    from './repos/artifact.js';
 export { AttachmentRepo }  from './repos/attachment.js';
 export type { AttachmentRow, AttachmentInsert } from './repos/attachment.js';
-export { SessionStatsRepo, DataDirStatsRepo } from './repos/storage-stats.js';
+export { SessionStatsRepo, DataDirStatsRepo, SessionRestoreValidationError } from './repos/storage-stats.js';
 export type {
   SessionStats, AudioEntryRow, ArtifactSummaryRow,
   MemoryStateRow,
