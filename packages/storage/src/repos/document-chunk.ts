@@ -73,23 +73,105 @@ function vecToBlob(vector: number[]): Buffer {
   return buf;
 }
 
-function blobToVec(blob: Buffer): number[] {
-  const len = blob.byteLength / 4;
-  const out: number[] = new Array(len);
-  for (let i = 0; i < len; i++) out[i] = blob.readFloatLE(i * 4);
-  return out;
+function vectorNorm(vector: number[]): number {
+  let squared = 0;
+  for (const value of vector) squared += value * value;
+  return Number.isFinite(squared) ? Math.sqrt(squared) : 0;
 }
 
-function cosine(a: number[], b: number[]): number {
-  if (a.length !== b.length || a.length === 0) return 0;
-  let dot = 0, na = 0, nb = 0;
-  for (let i = 0; i < a.length; i++) {
-    dot += a[i]! * b[i]!;
-    na  += a[i]! * a[i]!;
-    nb  += b[i]! * b[i]!;
+/** 直接读取 Float32 BLOB，避免为每个 chunk 分配 number[]。 */
+function cosineFromBlob(query: number[], queryNorm: number, blob: Buffer): number {
+  if (query.length === 0 || queryNorm === 0 || blob.byteLength !== query.length * 4) return 0;
+
+  let dot = 0;
+  let blobSquared = 0;
+  for (let index = 0; index < query.length; index++) {
+    const value = blob.readFloatLE(index * 4);
+    if (!Number.isFinite(value)) return 0;
+    dot += query[index]! * value;
+    blobSquared += value * value;
   }
-  const d = Math.sqrt(na) * Math.sqrt(nb);
-  return d === 0 ? 0 : dot / d;
+
+  const denominator = queryNorm * Math.sqrt(blobSquared);
+  if (denominator === 0 || !Number.isFinite(denominator)) return 0;
+  const score = dot / denominator;
+  return Number.isFinite(score) ? score : 0;
+}
+
+/**
+ * 固定容量最小堆，根节点始终是当前 Top-K 中最差的一项。
+ * 同分时 chunkId 较小者优先，确保不同平台和扫描计划下结果一致。
+ */
+class ChunkTopKHeap {
+  private readonly values: ChunkSearchHit[] = [];
+
+  constructor(private readonly capacity: number) {}
+
+  offer(hit: ChunkSearchHit): void {
+    if (this.capacity <= 0) return;
+    if (this.values.length < this.capacity) {
+      this.values.push(hit);
+      this.siftUp(this.values.length - 1);
+      return;
+    }
+    if (compareHitQuality(hit, this.values[0]!) <= 0) return;
+
+    this.values[0] = hit;
+    this.siftDown(0);
+  }
+
+  toSortedArray(): ChunkSearchHit[] {
+    return [...this.values].sort((left, right) => {
+      if (left.score !== right.score) return right.score - left.score;
+      return compareChunkId(left.chunkId, right.chunkId);
+    });
+  }
+
+  private siftUp(start: number): void {
+    let index = start;
+    while (index > 0) {
+      const parent = Math.floor((index - 1) / 2);
+      if (compareHitQuality(this.values[index]!, this.values[parent]!) >= 0) return;
+      [this.values[index], this.values[parent]] = [this.values[parent]!, this.values[index]!];
+      index = parent;
+    }
+  }
+
+  private siftDown(start: number): void {
+    let index = start;
+    while (true) {
+      const left = index * 2 + 1;
+      const right = left + 1;
+      if (left >= this.values.length) return;
+
+      let worseChild = left;
+      if (
+        right < this.values.length
+        && compareHitQuality(this.values[right]!, this.values[left]!) < 0
+      ) {
+        worseChild = right;
+      }
+      if (compareHitQuality(this.values[worseChild]!, this.values[index]!) >= 0) return;
+
+      [this.values[index], this.values[worseChild]] = [
+        this.values[worseChild]!,
+        this.values[index]!,
+      ];
+      index = worseChild;
+    }
+  }
+}
+
+/** 正数表示 left 更好，负数表示 left 更差。 */
+function compareHitQuality(left: ChunkSearchHit, right: ChunkSearchHit): number {
+  if (left.score !== right.score) return left.score > right.score ? 1 : -1;
+  if (left.chunkId === right.chunkId) return 0;
+  return left.chunkId < right.chunkId ? 1 : -1;
+}
+
+function compareChunkId(left: string, right: string): number {
+  if (left === right) return 0;
+  return left < right ? -1 : 1;
 }
 
 export class DocumentChunkRepo {
@@ -217,22 +299,26 @@ export class DocumentChunkRepo {
     topK:     number,
   ): ChunkSearchHit[] {
     if (assetIds && assetIds.length === 0) return [];
+    const capacity = Number.isFinite(topK) ? Math.max(0, Math.trunc(topK)) : 0;
+    if (capacity === 0) return [];
+
     const assetFilter = assetIds ? `AND dc.asset_id IN (${assetIds.map(() => '?').join(',')})` : '';
     const rows = this.db.prepare(`
       SELECT dc.id, dc.embedding
       FROM   document_chunks dc
       WHERE  dc.embedding IS NOT NULL
              ${assetFilter}
-    `).all(...(assetIds ?? [])) as Array<{ id: string; embedding: Buffer }>;
+    `).iterate(...(assetIds ?? [])) as IterableIterator<{ id: string; embedding: Buffer }>;
 
-    const hits = rows.map(r => ({
-      chunkId: r.id,
-      score:   cosine(queryVec, blobToVec(r.embedding)),
-    }));
-
-    return hits
-      .sort((a, b) => b.score - a.score)
-      .slice(0, topK);
+    const queryNorm = vectorNorm(queryVec);
+    const heap = new ChunkTopKHeap(capacity);
+    for (const row of rows) {
+      heap.offer({
+        chunkId: row.id,
+        score: cosineFromBlob(queryVec, queryNorm, row.embedding),
+      });
+    }
+    return heap.toSortedArray();
   }
 
   /** 加载所有非 stale 的已 embedding chunk，用于构建内存 HNSW 索引。

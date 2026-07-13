@@ -194,10 +194,11 @@ SQLite 封装。构造时:
 
 ### 向量检索(KB fallback)
 - `document_chunks.embedding` 存 Float32 二进制 BLOB(4 字节 × dim)
-- `searchByEmbedding`:读所有 embedding -> cosine 相似度 -> 排序取 topK
+- `searchByEmbedding`:SQLite `iterate()` 流式读取 embedding，直接从 BLOB
+  计算 cosine，并用固定容量最小堆保留 Top-K
 - 主索引是 HNSW(在 `knowledge-base` 包),本 repo 是 fallback
-
-> ⚠️ 已知问题:fallback 全表反序列化 + O(N log N) 排序,大 KB 时冻结 UI(见 Batch-1 B-072)
+- fallback 复杂度为 O(N log K) 时间、O(K) 结果内存；不会一次性把所有
+  embedding BLOB 和命中结果装入 JS 堆
 
 ---
 
