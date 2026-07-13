@@ -213,6 +213,52 @@ describe('SessionStore — message', () => {
     expect(history[2]!.blocks).toBe('third');
   });
 
+  it('loadHistory limit 返回最新消息而不是最早消息', () => {
+    const store = makeStore();
+    const s = store.createSession();
+    const { turn } = store.startTurn({ sessionId: s.id, mode: 'chat', userInput: 'A' });
+
+    for (const text of ['first', 'second', 'third', 'fourth']) {
+      store.appendMessage({ sessionId: s.id, turnId: turn.id, role: 'user', blocks: text });
+    }
+
+    expect(store.loadHistory(s.id, 2).map((message) => message.blocks))
+      .toEqual(['third', 'fourth']);
+  });
+
+  it('loadHistory 保留 summary，并从其后选择最新消息', () => {
+    const store = makeStore();
+    const s = store.createSession();
+    const { turn } = store.startTurn({ sessionId: s.id, mode: 'chat', userInput: 'A' });
+
+    store.appendMessage({ sessionId: s.id, turnId: turn.id, role: 'user', blocks: 'before' });
+    store.appendMessage({ sessionId: s.id, turnId: turn.id, role: 'user', kind: 'summary', blocks: 'summary' });
+    store.appendMessage({ sessionId: s.id, turnId: turn.id, role: 'user', blocks: 'post-old' });
+    store.appendMessage({ sessionId: s.id, turnId: turn.id, role: 'user', blocks: 'post-new-a' });
+    store.appendMessage({ sessionId: s.id, turnId: turn.id, role: 'user', blocks: 'post-new-b' });
+
+    expect(store.loadHistory(s.id, 3).map((message) => message.blocks))
+      .toEqual(['summary', 'post-new-a', 'post-new-b']);
+  });
+
+  it('分支历史使用与普通历史相同的 summary 和 limit 规则', () => {
+    const store = makeStore();
+    const s = store.createSession();
+    const { turn: rootTurn } = store.startTurn({ sessionId: s.id, mode: 'chat', userInput: 'root' });
+    store.appendMessage({ sessionId: s.id, turnId: rootTurn.id, role: 'user', blocks: 'root-message' });
+    store.completeTurn(rootTurn.id);
+
+    store.forkMessage({ sessionId: s.id, fromTurnId: rootTurn.id });
+    const { turn: branchTurn } = store.startTurn({ sessionId: s.id, mode: 'chat', userInput: 'branch' });
+    store.appendMessage({ sessionId: s.id, turnId: branchTurn.id, role: 'user', kind: 'summary', blocks: 'branch-summary' });
+    store.appendMessage({ sessionId: s.id, turnId: branchTurn.id, role: 'user', blocks: 'branch-old' });
+    store.appendMessage({ sessionId: s.id, turnId: branchTurn.id, role: 'user', blocks: 'branch-new-a' });
+    store.appendMessage({ sessionId: s.id, turnId: branchTurn.id, role: 'user', blocks: 'branch-new-b' });
+
+    expect(store.loadHistory(s.id, 3).map((message) => message.blocks))
+      .toEqual(['branch-summary', 'branch-new-a', 'branch-new-b']);
+  });
+
   it('listMessages (cursor) returns newest-first on first page', () => {
     const store = makeStore();
     const s = store.createSession();

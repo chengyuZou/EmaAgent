@@ -164,6 +164,34 @@ function toSearchHit(row: SessionSearchRow): SearchSessionsOutput['results'][num
   };
 }
 
+const DEFAULT_HISTORY_LIMIT = 500;
+
+/**
+ * 从已经按时间正序排列的分支历史中截取 LLM 上下文窗口。
+ * 最新 summary 始终保留，其后的空间留给最新消息；没有 summary 时直接取最新 N 条。
+ */
+function selectSummaryAwareHistory(history: Message[], limit: number): Message[] {
+  const boundedLimit = Number.isSafeInteger(limit) && limit > 0
+    ? limit
+    : DEFAULT_HISTORY_LIMIT;
+
+  let summaryIndex = -1;
+  for (let index = history.length - 1; index >= 0; index--) {
+    if (history[index]!.kind === 'summary') {
+      summaryIndex = index;
+      break;
+    }
+  }
+
+  if (summaryIndex < 0) return history.slice(-boundedLimit);
+
+  const summary = history[summaryIndex]!;
+  const remaining = boundedLimit - 1;
+  if (remaining === 0) return [summary];
+
+  return [summary, ...history.slice(summaryIndex + 1).slice(-remaining)];
+}
+
 // ── SessionStore ──────────────────────────────────────────────────────────────
 
 export interface SessionStoreDeps {
@@ -636,7 +664,7 @@ export class SessionStore {
    *
    * For UI rendering, use listMessages() instead — it ignores summary slicing.
    */
-  loadHistory(sessionId: SessionId, limit = 500): Message[] {
+  loadHistory(sessionId: SessionId, limit = DEFAULT_HISTORY_LIMIT): Message[] {
     const session = this.requireSession(sessionId);
 
     if (!session.activeBranchId) {
@@ -644,13 +672,7 @@ export class SessionStore {
     }
 
     const all = this.loadBranchMessages(sessionId, session.activeBranchId);
-
-    // Find last summary boundary and slice from there.
-    let startIdx = 0;
-    for (let i = all.length - 1; i >= 0; i--) {
-      if (all[i]!.kind === 'summary') { startIdx = i; break; }
-    }
-    return all.slice(startIdx, startIdx + limit);
+    return selectSummaryAwareHistory(all, limit);
   }
 
   /** All messages belonging to one turn — used by post-turn extraction. */

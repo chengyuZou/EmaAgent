@@ -57,14 +57,14 @@ export class MessagesRepo {
   listForSession(sessionId: SessionId, limit = 500): MessageRow[] {
     return this.db
       .prepare(
-        'SELECT * FROM messages WHERE session_id = ? ORDER BY created_at DESC LIMIT ?',
+        'SELECT * FROM messages WHERE session_id = ? ORDER BY created_at DESC, id DESC LIMIT ?',
       )
       .all(sessionId, limit) as MessageRow[];
   }
 
   listForTurn(turnId: TurnId): MessageRow[] {
     return this.db
-      .prepare('SELECT * FROM messages WHERE turn_id = ? ORDER BY created_at ASC')
+      .prepare('SELECT * FROM messages WHERE turn_id = ? ORDER BY created_at ASC, id ASC')
       .all(turnId) as MessageRow[];
   }
 
@@ -82,7 +82,7 @@ export class MessagesRepo {
       .prepare(
         `SELECT * FROM messages
          WHERE session_id = ? AND created_at < ?
-         ORDER BY created_at DESC
+         ORDER BY created_at DESC, id DESC
          LIMIT ?`,
       )
       .all(sessionId, before, limit) as MessageRow[];
@@ -120,7 +120,7 @@ export class MessagesRepo {
                  AND (? IS NULL OR t.started_at <= ?)
              )
            )
-         ORDER BY m.created_at ASC`,
+         ORDER BY m.created_at ASC, m.id ASC`,
       )
       .all(
         sessionId,
@@ -144,7 +144,7 @@ export class MessagesRepo {
            WHERE t.branch_id = ?
              AND (? IS NULL OR t.started_at <= ?)
          )
-         ORDER BY m.created_at ASC`,
+         ORDER BY m.created_at ASC, m.id ASC`,
       )
       .all(
         branchId,
@@ -161,29 +161,61 @@ export class MessagesRepo {
       .prepare(
         `SELECT * FROM messages
           WHERE session_id = ? AND kind = 'summary'
-          ORDER BY created_at DESC
+          ORDER BY created_at DESC, id DESC
           LIMIT 1`,
       )
       .get(sessionId) as MessageRow | undefined;
   }
 
   /**
-   * 返回从最近一条 `summary` 行开始（含 summary 本身）的所有 message，
-   * 上限 `limit`。无 summary 时等价于 listForSession()。
-   * 供面向 LLM 的历史加载器使用，使 engine 自动只见 compaction 后的历史。
+   * 加载面向 LLM 的有界历史，最终按时间正序返回。
+   *
+   * - 无 summary：返回最新 `limit` 条消息。
+   * - 有 summary：始终保留最新 summary，并返回其后最新的 `limit - 1` 条消息。
+   *
+   * 两层排序是刻意的：内层倒序利用索引截取最新 N 条，外层再恢复为
+   * LLM 需要的正序。`id` 是同毫秒消息的稳定排序键。
    */
   listForSessionFromSummary(sessionId: SessionId, limit = 500): MessageRow[] {
+    const boundedLimit = Number.isSafeInteger(limit) && limit > 0 ? limit : 500;
+
     return this.db
       .prepare(
-        `SELECT * FROM messages
-          WHERE session_id = ?
-            AND created_at >= COALESCE((
-              SELECT MAX(created_at) FROM messages
-               WHERE session_id = ? AND kind = 'summary'
-            ), 0)
-          ORDER BY created_at ASC
-          LIMIT ?`,
+        `WITH latest_summary AS (
+           SELECT *
+             FROM messages
+            WHERE session_id = ? AND kind = 'summary'
+            ORDER BY created_at DESC, id DESC
+            LIMIT 1
+         ),
+         recent_messages AS (
+           SELECT m.*
+             FROM messages m
+            WHERE m.session_id = ?
+              AND NOT EXISTS (
+                SELECT 1 FROM latest_summary s WHERE s.id = m.id
+              )
+              AND (
+                NOT EXISTS (SELECT 1 FROM latest_summary)
+                OR EXISTS (
+                  SELECT 1
+                    FROM latest_summary s
+                   WHERE m.created_at > s.created_at
+                      OR (m.created_at = s.created_at AND m.id > s.id)
+                )
+              )
+            ORDER BY m.created_at DESC, m.id DESC
+            LIMIT MAX(0, ? - (SELECT COUNT(*) FROM latest_summary))
+         ),
+         selected_messages AS (
+           SELECT * FROM latest_summary
+           UNION ALL
+           SELECT * FROM recent_messages
+         )
+         SELECT *
+           FROM selected_messages
+          ORDER BY created_at ASC, id ASC`,
       )
-      .all(sessionId, sessionId, limit) as MessageRow[];
+      .all(sessionId, sessionId, boundedLimit) as MessageRow[];
   }
 }

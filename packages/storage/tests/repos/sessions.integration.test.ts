@@ -57,12 +57,14 @@ describe('SessionsRepo integration', () => {
           'idx_sessions_activity',
           'idx_turns_session_latest',
           'idx_turns_running_by_session',
-          'idx_messages_session_latest'
+          'idx_messages_session_latest',
+          'idx_messages_session_latest_summary'
         )
       ORDER BY name
     `).all() as Array<{ name: string }>;
     expect(indexes.map((row) => row.name)).toEqual([
       'idx_messages_session_latest',
+      'idx_messages_session_latest_summary',
       'idx_sessions_activity',
       'idx_turns_running_by_session',
       'idx_turns_session_latest',
