@@ -1,5 +1,12 @@
 export { Database, DatabaseCapabilityError } from './database.js';
 export { MigrationsRunner } from './migrations.js';
+export {
+  SQLITE_ID_BATCH_HARD_LIMIT,
+  SqliteVariableLimitError,
+  createSqliteIdBatches,
+  sqliteVariableLimit,
+} from './sqlite-id-batches.js';
+export type { SqliteIdBatchOptions } from './sqlite-id-batches.js';
 
 export { SessionsRepo, nextCursorFor } from './repos/sessions.js';
 export { TurnsRepo } from './repos/turns.js';

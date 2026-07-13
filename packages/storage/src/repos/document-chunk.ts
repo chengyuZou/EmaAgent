@@ -1,5 +1,6 @@
 import type { SqliteDb } from '../database.js';
 import { segmentForFts } from '../zh-tokenizer.js';
+import { createSqliteIdBatches } from '../sqlite-id-batches.js';
 
 export interface DocumentChunkRow {
   id:                string;
@@ -268,6 +269,8 @@ export class DocumentChunkRepo {
   ): ChunkSearchHit[] {
     if (!query.trim()) return [];
     if (assetIds && assetIds.length === 0) return [];
+    const capacity = Number.isFinite(topK) ? Math.max(0, Math.trunc(topK)) : 0;
+    if (capacity === 0) return [];
 
     // 用 jieba 对 query 分词（与索引同管线），去除每个 token 中的 FTS
     // operator 字符，然后下方将每个 token 作为 phrase 加引号。
@@ -278,18 +281,28 @@ export class DocumentChunkRepo {
     if (terms.length === 0) return [];
     const ftsQuery = terms.map(t => `"${t}"`).join(' OR ');
 
-    const assetFilter = assetIds ? `AND fts.asset_id IN (${assetIds.map(() => '?').join(',')})` : '';
-    const rows = this.db.prepare(`
-      SELECT fts.chunk_id, bm25(document_chunks_fts) AS score
-      FROM   document_chunks_fts fts
-      WHERE  document_chunks_fts MATCH ?
-             ${assetFilter}
-      ORDER  BY score
-      LIMIT  ?
-    `).all(ftsQuery, ...(assetIds ?? []), topK) as Array<{ chunk_id: string; score: number }>;
-
-    // bm25() 返回负值（越小匹配越好）；取反使分数升序
-    return rows.map(r => ({ chunkId: r.chunk_id, score: -r.score }));
+    const batches: Array<string[] | undefined> = assetIds
+      ? createSqliteIdBatches(this.db, assetIds, { fixedParameterCount: 2 })
+      : [undefined];
+    const heap = new ChunkTopKHeap(capacity);
+    for (const batch of batches) {
+      const assetFilter = batch
+        ? `AND fts.asset_id IN (${batch.map(() => '?').join(',')})`
+        : '';
+      const rows = this.db.prepare(`
+        SELECT fts.chunk_id, bm25(document_chunks_fts) AS score
+        FROM   document_chunks_fts fts
+        WHERE  document_chunks_fts MATCH ?
+               ${assetFilter}
+        ORDER  BY score
+        LIMIT  ?
+      `).all(ftsQuery, ...(batch ?? []), capacity) as Array<{ chunk_id: string; score: number }>;
+      for (const row of rows) {
+        // bm25() 返回负值且越小越好；取反后统一为越大越好。
+        heap.offer({ chunkId: row.chunk_id, score: -row.score });
+      }
+    }
+    return heap.toSortedArray();
   }
 
   /** 对已存储的 BLOB embedding 做余弦相似度检索，按 assetIds 过滤。 */
@@ -302,21 +315,28 @@ export class DocumentChunkRepo {
     const capacity = Number.isFinite(topK) ? Math.max(0, Math.trunc(topK)) : 0;
     if (capacity === 0) return [];
 
-    const assetFilter = assetIds ? `AND dc.asset_id IN (${assetIds.map(() => '?').join(',')})` : '';
-    const rows = this.db.prepare(`
-      SELECT dc.id, dc.embedding
-      FROM   document_chunks dc
-      WHERE  dc.embedding IS NOT NULL
-             ${assetFilter}
-    `).iterate(...(assetIds ?? [])) as IterableIterator<{ id: string; embedding: Buffer }>;
-
     const queryNorm = vectorNorm(queryVec);
     const heap = new ChunkTopKHeap(capacity);
-    for (const row of rows) {
-      heap.offer({
-        chunkId: row.id,
-        score: cosineFromBlob(queryVec, queryNorm, row.embedding),
-      });
+    const batches: Array<string[] | undefined> = assetIds
+      ? createSqliteIdBatches(this.db, assetIds)
+      : [undefined];
+    for (const batch of batches) {
+      const assetFilter = batch
+        ? `AND dc.asset_id IN (${batch.map(() => '?').join(',')})`
+        : '';
+      const rows = this.db.prepare(`
+        SELECT dc.id, dc.embedding
+        FROM   document_chunks dc
+        WHERE  dc.embedding IS NOT NULL
+               ${assetFilter}
+      `).iterate(...(batch ?? [])) as IterableIterator<{ id: string; embedding: Buffer }>;
+
+      for (const row of rows) {
+        heap.offer({
+          chunkId: row.id,
+          score: cosineFromBlob(queryVec, queryNorm, row.embedding),
+        });
+      }
     }
     return heap.toSortedArray();
   }

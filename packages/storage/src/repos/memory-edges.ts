@@ -1,4 +1,5 @@
 import type { SqliteDb } from '../database.js';
+import { createSqliteIdBatches } from '../sqlite-id-batches.js';
 
 // ── 类型 ─────────────────────────────────────────────────────────────────────
 
@@ -75,23 +76,33 @@ export class MemoryEdgesRepo {
 
   /** 触及任一给定 node id 的所有边（任一方向）。 */
   listForNodes(nodeIds: string[]): MemoryEdgeRow[] {
-    if (nodeIds.length === 0) return [];
-    const placeholders = nodeIds.map(() => '?').join(',');
-    return this.db
-      .prepare(
-        `SELECT * FROM memory_edges
-         WHERE from_node_id IN (${placeholders}) OR to_node_id IN (${placeholders})
-         ORDER BY mention_count DESC`,
-      )
-      .all(...nodeIds, ...nodeIds) as MemoryEdgeRow[];
+    const batches = createSqliteIdBatches(this.db, nodeIds, { occurrencesPerId: 2 });
+    const edgesById = new Map<string, MemoryEdgeRow>();
+    for (const batch of batches) {
+      const placeholders = batch.map(() => '?').join(',');
+      const rows = this.db
+        .prepare(
+          `SELECT * FROM memory_edges
+           WHERE from_node_id IN (${placeholders}) OR to_node_id IN (${placeholders})`,
+        )
+        .all(...batch, ...batch) as MemoryEdgeRow[];
+      for (const row of rows) edgesById.set(row.id, row);
+    }
+    return [...edgesById.values()].sort(
+      (a, b) => b.mention_count - a.mention_count || a.id.localeCompare(b.id),
+    );
   }
 
   touchReferenced(ids: string[], at: number): void {
-    if (ids.length === 0) return;
-    const placeholders = ids.map(() => '?').join(',');
-    this.db
-      .prepare(`UPDATE memory_edges SET last_referenced_at = ? WHERE id IN (${placeholders})`)
-      .run(at, ...ids);
+    const batches = createSqliteIdBatches(this.db, ids, { fixedParameterCount: 1 });
+    this.db.transaction(() => {
+      for (const batch of batches) {
+        const placeholders = batch.map(() => '?').join(',');
+        this.db
+          .prepare(`UPDATE memory_edges SET last_referenced_at = ? WHERE id IN (${placeholders})`)
+          .run(at, ...batch);
+      }
+    })();
   }
 
   stats(): MemoryEdgeStats {

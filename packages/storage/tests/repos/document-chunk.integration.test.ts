@@ -54,6 +54,20 @@ describe('B-072 embedding fallback 流式 Top-K', () => {
     expect(chunks.searchByEmbedding([1, 0], [], 10)).toEqual([]);
   });
 
+  it('超过单批上限的 asset scope 自动分批后仍返回全局 Top-K', () => {
+    const assetIds = Array.from(
+      { length: 1_001 },
+      (_, index) => `missing-asset-${String(index).padStart(4, '0')}`,
+    );
+    assetIds[100] = 'asset-a';
+    assetIds[900] = 'asset-b';
+
+    expect(chunks.searchByEmbedding([1, 0], assetIds, 3).map((hit) => hit.chunkId))
+      .toEqual(['chunk-a', 'chunk-b', 'chunk-c']);
+    expect(chunks.searchFts('chunk', assetIds, 10).map((hit) => hit.chunkId))
+      .toEqual(['chunk-a', 'chunk-b', 'chunk-c', 'chunk-d']);
+  });
+
   it('同分时按 chunkId 稳定排序且堆容量严格等于 K', () => {
     chunks.storeEmbedding('chunk-a', [1, 0]);
     chunks.storeEmbedding('chunk-b', [1, 0]);

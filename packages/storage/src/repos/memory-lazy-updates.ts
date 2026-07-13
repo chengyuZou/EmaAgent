@@ -1,4 +1,5 @@
 import type { SqliteDb } from '../database.js';
+import { createSqliteIdBatches } from '../sqlite-id-batches.js';
 
 // ── 类型 ─────────────────────────────────────────────────────────────────────
 
@@ -71,11 +72,15 @@ export class MemoryLazyUpdatesRepo {
    * 在 listByNode 和此调用之间到达的 fragment 会保留。
    */
   deleteByIds(ids: string[]): void {
-    if (ids.length === 0) return;
-    const placeholders = ids.map(() => '?').join(',');
-    this.db
-      .prepare(`DELETE FROM memory_node_lazy_updates WHERE id IN (${placeholders})`)
-      .run(...ids);
+    const batches = createSqliteIdBatches(this.db, ids);
+    this.db.transaction(() => {
+      for (const batch of batches) {
+        const placeholders = batch.map(() => '?').join(',');
+        this.db
+          .prepare(`DELETE FROM memory_node_lazy_updates WHERE id IN (${placeholders})`)
+          .run(...batch);
+      }
+    })();
   }
 
   /** 孤儿清理-有 ON DELETE CASCADE 时应为 no-op。 */

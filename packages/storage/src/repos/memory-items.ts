@@ -1,4 +1,5 @@
 import type { SqliteDb } from '../database.js';
+import { createSqliteIdBatches } from '../sqlite-id-batches.js';
 import type { SessionId, TurnId } from '@ema-agent/contracts';
 
 // ── 类型 ─────────────────────────────────────────────────────────────────────
@@ -325,23 +326,22 @@ export class MemoryItemsRepo {
   }
 
   touchReferenced(ids: string[], at: number, boost?: MemoryReferenceBoostOptions): void {
-    if (ids.length === 0) return;
-    const uniq = [...new Set(ids)];
-    const placeholders = uniq.map(() => '?').join(',');
+    const batches = createSqliteIdBatches(this.db, ids, {
+      fixedParameterCount: boost ? 0 : 1,
+    });
+    if (batches.length === 0) return;
 
     if (!boost) {
-      this.db
-        .prepare(`UPDATE memory_items SET last_referenced_at = ? WHERE id IN (${placeholders})`)
-        .run(at, ...uniq);
+      this.db.transaction(() => {
+        for (const batch of batches) {
+          const placeholders = batch.map(() => '?').join(',');
+          this.db
+            .prepare(`UPDATE memory_items SET last_referenced_at = ? WHERE id IN (${placeholders})`)
+            .run(at, ...batch);
+        }
+      })();
       return;
     }
-
-    const rows = this.db.prepare(
-      `SELECT id, importance, last_referenced_at
-         FROM memory_items
-        WHERE id IN (${placeholders})`,
-    )
-    .all(...uniq) as Array<{ id: string; importance: number; last_referenced_at: number }>;
 
     const stmt = this.db.prepare(
       `UPDATE memory_items
@@ -352,6 +352,15 @@ export class MemoryItemsRepo {
     );
 
     const txn = this.db.transaction(() => {
+      const rows: Array<{ id: string; importance: number; last_referenced_at: number }> = [];
+      for (const batch of batches) {
+        const placeholders = batch.map(() => '?').join(',');
+        rows.push(...this.db.prepare(
+          `SELECT id, importance, last_referenced_at
+             FROM memory_items
+            WHERE id IN (${placeholders})`,
+        ).all(...batch) as Array<{ id: string; importance: number; last_referenced_at: number }>);
+      }
       for (const row of rows) {
         const newImportance = boostedImportance(
           row.importance,
