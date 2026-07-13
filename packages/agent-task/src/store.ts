@@ -1,5 +1,10 @@
 import type { AskUserQuestionSpec } from '@ema-agent/contracts';
-import type { AgentTask, TaskStatus } from './types.js';
+import type {
+  AgentTask,
+  TaskStatus,
+  TaskTransitionAction,
+  TaskTransitionResult,
+} from './types.js';
 import type { AgentTasksRepo, AgentTaskRow } from '@ema-agent/storage';
 
 // ── Row → domain ──────────────────────────────────────────────────────────────
@@ -11,6 +16,7 @@ function rowToTask(row: AgentTaskRow): AgentTask {
     turnId:    row.turn_id,
     parentId:  row.parent_id,
     status:    row.status as TaskStatus,
+    version:   row.version,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     ...(row.pending_prompt_id
@@ -65,24 +71,89 @@ export class AgentTaskStore {
 
   // ── Status transitions ────────────────────────────────────────────────────
 
-  waitUser(taskId: string, promptId: string, questions: AskUserQuestionSpec[]): void {
-    this.repo.waitUser(taskId, promptId, questions, Date.now());
+  waitUser(
+    taskId: string,
+    promptId: string,
+    questions: AskUserQuestionSpec[],
+  ): TaskTransitionResult {
+    const current = this.currentFor('wait_user', taskId);
+    if (!current.ok) return current.result;
+    if (current.row.status === 'waiting_user' && current.row.pending_prompt_id === promptId) {
+      return { ok: true, changed: false, task: rowToTask(current.row) };
+    }
+    if (current.row.status !== 'running') return this.conflict('wait_user', current.row);
+
+    const updated = this.repo.waitUser(
+      taskId,
+      current.row.version,
+      promptId,
+      questions,
+      Date.now(),
+    );
+    return this.finishTransition('wait_user', taskId, updated);
   }
 
-  userAnswered(taskId: string, _promptId: string): void {
-    this.repo.userAnswered(taskId, Date.now());
+  userAnswered(taskId: string, promptId: string): TaskTransitionResult {
+    const current = this.currentFor('user_answered', taskId);
+    if (!current.ok) return current.result;
+    if (
+      current.row.status !== 'waiting_user'
+      || current.row.pending_prompt_id !== promptId
+    ) {
+      return this.conflict('user_answered', current.row);
+    }
+
+    const updated = this.repo.userAnswered(
+      taskId,
+      current.row.version,
+      promptId,
+      Date.now(),
+    );
+    return this.finishTransition('user_answered', taskId, updated);
   }
 
-  complete(taskId: string, stats: { iterations: number; inputTokens: number; outputTokens: number }): void {
-    this.repo.complete(taskId, stats, Date.now());
+  complete(
+    taskId: string,
+    stats: { iterations: number; inputTokens: number; outputTokens: number },
+  ): TaskTransitionResult {
+    const current = this.currentFor('complete', taskId);
+    if (!current.ok) return current.result;
+    if (current.row.status === 'completed') {
+      return { ok: true, changed: false, task: rowToTask(current.row) };
+    }
+    if (current.row.status !== 'running') return this.conflict('complete', current.row);
+
+    const updated = this.repo.complete(
+      taskId,
+      current.row.version,
+      stats,
+      Date.now(),
+    );
+    return this.finishTransition('complete', taskId, updated);
   }
 
-  fail(taskId: string, reason: string): void {
-    this.repo.fail(taskId, reason, Date.now());
+  fail(taskId: string, reason: string): TaskTransitionResult {
+    const current = this.currentFor('fail', taskId);
+    if (!current.ok) return current.result;
+    if (current.row.status === 'failed' && current.row.error === reason) {
+      return { ok: true, changed: false, task: rowToTask(current.row) };
+    }
+    if (!isNonTerminal(current.row.status)) return this.conflict('fail', current.row);
+
+    const updated = this.repo.fail(taskId, current.row.version, reason, Date.now());
+    return this.finishTransition('fail', taskId, updated);
   }
 
-  cancel(taskId: string, reason: string): void {
-    this.repo.cancel(taskId, reason, Date.now());
+  cancel(taskId: string, reason: string): TaskTransitionResult {
+    const current = this.currentFor('cancel', taskId);
+    if (!current.ok) return current.result;
+    if (current.row.status === 'cancelled') {
+      return { ok: true, changed: false, task: rowToTask(current.row) };
+    }
+    if (!isNonTerminal(current.row.status)) return this.conflict('cancel', current.row);
+
+    const updated = this.repo.cancel(taskId, current.row.version, reason, Date.now());
+    return this.finishTransition('cancel', taskId, updated);
   }
 
   // ── Queries ───────────────────────────────────────────────────────────────
@@ -124,4 +195,44 @@ export class AgentTaskStore {
   recoverInterrupted(): AgentTask[] {
     return this.repo.markStuckFailed(Date.now()).map(rowToTask);
   }
+
+  // ── CAS helpers ──────────────────────────────────────────────────────────
+
+  private currentFor(
+    action: TaskTransitionAction,
+    taskId: string,
+  ):
+    | { ok: true; row: AgentTaskRow }
+    | { ok: false; result: TaskTransitionResult } {
+    const row = this.repo.findById(taskId);
+    if (row) return { ok: true, row };
+    return { ok: false, result: { ok: false, reason: 'not_found', action } };
+  }
+
+  private finishTransition(
+    action: TaskTransitionAction,
+    taskId: string,
+    updated: AgentTaskRow | undefined,
+  ): TaskTransitionResult {
+    if (updated) return { ok: true, changed: true, task: rowToTask(updated) };
+
+    // UPDATE 影响 0 行意味着读取之后发生了并发状态或版本变化。
+    const current = this.repo.findById(taskId);
+    return current
+      ? this.conflict(action, current)
+      : { ok: false, reason: 'not_found', action };
+  }
+
+  private conflict(action: TaskTransitionAction, row: AgentTaskRow): TaskTransitionResult {
+    return {
+      ok: false,
+      reason: 'conflict',
+      action,
+      current: rowToTask(row),
+    };
+  }
+}
+
+function isNonTerminal(status: TaskStatus): boolean {
+  return status === 'running' || status === 'waiting_user';
 }

@@ -22,6 +22,7 @@ export interface AgentTaskRow {
   iterations:             number | null;
   input_tokens:           number | null;
   output_tokens:          number | null;
+  version:                number;
   created_at:             number;
   updated_at:             number;
 }
@@ -52,72 +53,113 @@ export class AgentTasksRepo {
       .run(t.id, t.sessionId, t.turnId, t.parentId, t.createdAt, t.createdAt);
   }
 
-  waitUser(id: string, promptId: string, questions: AskUserQuestionSpec[], at: number): void {
-    this.db
+  waitUser(
+    id: string,
+    expectedVersion: number,
+    promptId: string,
+    questions: AskUserQuestionSpec[],
+    at: number,
+  ): AgentTaskRow | undefined {
+    return this.db
       .prepare(
         `UPDATE agent_tasks
             SET status                 = 'waiting_user',
                 pending_prompt_id      = ?,
                 pending_questions_json = ?,
+                version                = version + 1,
                 updated_at             = ?
-          WHERE id = ?`,
+          WHERE id = ?
+            AND status = 'running'
+            AND version = ?
+          RETURNING *`,
       )
-      .run(promptId, JSON.stringify(questions), at, id);
+      .get(promptId, JSON.stringify(questions), at, id, expectedVersion) as AgentTaskRow | undefined;
   }
 
-  userAnswered(id: string, at: number): void {
-    this.db
+  userAnswered(
+    id: string,
+    expectedVersion: number,
+    promptId: string,
+    at: number,
+  ): AgentTaskRow | undefined {
+    return this.db
       .prepare(
         `UPDATE agent_tasks
             SET status                 = 'running',
                 pending_prompt_id      = NULL,
                 pending_questions_json = NULL,
+                version                = version + 1,
                 updated_at             = ?
-          WHERE id = ?`,
+          WHERE id = ?
+            AND status = 'waiting_user'
+            AND pending_prompt_id = ?
+            AND version = ?
+          RETURNING *`,
       )
-      .run(at, id);
+      .get(at, id, promptId, expectedVersion) as AgentTaskRow | undefined;
   }
 
   complete(
     id:    string,
+    expectedVersion: number,
     stats: { iterations: number; inputTokens: number; outputTokens: number },
     at:    number,
-  ): void {
-    this.db
+  ): AgentTaskRow | undefined {
+    return this.db
       .prepare(
         `UPDATE agent_tasks
             SET status        = 'completed',
                 iterations    = ?,
                 input_tokens  = ?,
                 output_tokens = ?,
+                error         = NULL,
+                version       = version + 1,
                 updated_at    = ?
-          WHERE id = ?`,
+          WHERE id = ?
+            AND status = 'running'
+            AND version = ?
+          RETURNING *`,
       )
-      .run(stats.iterations, stats.inputTokens, stats.outputTokens, at, id);
+      .get(
+        stats.iterations,
+        stats.inputTokens,
+        stats.outputTokens,
+        at,
+        id,
+        expectedVersion,
+      ) as AgentTaskRow | undefined;
   }
 
-  fail(id: string, error: string, at: number): void {
-    this.db
+  fail(id: string, expectedVersion: number, error: string, at: number): AgentTaskRow | undefined {
+    return this.db
       .prepare(
         `UPDATE agent_tasks
             SET status = 'failed', error = ?,
                 pending_prompt_id = NULL, pending_questions_json = NULL,
+                version = version + 1,
                 updated_at = ?
-          WHERE id = ?`,
+          WHERE id = ?
+            AND status IN ('running', 'waiting_user')
+            AND version = ?
+          RETURNING *`,
       )
-      .run(error, at, id);
+      .get(error, at, id, expectedVersion) as AgentTaskRow | undefined;
   }
 
-  cancel(id: string, reason: string, at: number): void {
-    this.db
+  cancel(id: string, expectedVersion: number, reason: string, at: number): AgentTaskRow | undefined {
+    return this.db
       .prepare(
         `UPDATE agent_tasks
             SET status = 'cancelled', error = ?,
                 pending_prompt_id = NULL, pending_questions_json = NULL,
+                version = version + 1,
                 updated_at = ?
-          WHERE id = ?`,
+          WHERE id = ?
+            AND status IN ('running', 'waiting_user')
+            AND version = ?
+          RETURNING *`,
       )
-      .run(reason, at, id);
+      .get(reason, at, id, expectedVersion) as AgentTaskRow | undefined;
   }
 
   delete(id: string): void {
@@ -171,6 +213,9 @@ export class AgentTasksRepo {
         `UPDATE agent_tasks
             SET status     = 'failed',
                 error      = 'Process terminated unexpectedly',
+                pending_prompt_id = NULL,
+                pending_questions_json = NULL,
+                version    = version + 1,
                 updated_at = ?
           WHERE status IN ('running','waiting_user')
           RETURNING *`,
