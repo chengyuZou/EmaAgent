@@ -11,7 +11,7 @@ export interface TelemetryEventRow {
 
 /**
  * 通用事件流 sink — hook、错误、状态转换。
- * token 用量和费用属于 UsageRepo，不在此处。
+ * LLM Token、费用和耗时指标属于 LlmTurnMetricsRepo，不在此处。
  */
 export class TelemetryRepo {
   constructor(private readonly db: SqliteDb) {}
@@ -34,5 +34,32 @@ export class TelemetryRepo {
           LIMIT ?`,
       )
       .all(kind, limit) as TelemetryEventRow[];
+  }
+
+  /**
+   * 按全局事件时间清理过期遥测。单批数量有硬上限，避免大量历史数据在一次
+   * DELETE 中长期占用 SQLite 写锁。调度频率和保留时间由 TelemetryRecorder
+   * Facade 决定，Storage 只保证清理原子、有界且顺序确定。
+   */
+  deleteOlderThan(olderThan: number, limit = 500): number {
+    if (!Number.isFinite(olderThan)) {
+      throw new RangeError('olderThan must be a finite timestamp');
+    }
+    if (!Number.isSafeInteger(limit) || limit <= 0 || limit > 1_000) {
+      throw new RangeError('limit must be an integer between 1 and 1000');
+    }
+
+    const info = this.db
+      .prepare(
+        `DELETE FROM telemetry_events
+          WHERE id IN (
+            SELECT id FROM telemetry_events
+             WHERE created_at < ?
+             ORDER BY created_at ASC, id ASC
+             LIMIT ?
+          )`,
+      )
+      .run(olderThan, limit);
+    return info.changes;
   }
 }

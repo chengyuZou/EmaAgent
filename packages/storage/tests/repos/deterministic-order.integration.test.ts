@@ -110,7 +110,7 @@ describe('N-012 Data DB 确定性事件顺序', () => {
       .toContain('pending_fragments(session_id, at ASC, created_at ASC, id ASC)');
     expect(indexSql(database, 'idx_telemetry_kind').replaceAll(/\s+/g, ' '))
       .toContain('telemetry_events(kind, created_at DESC, id DESC)');
-    expect(database.currentVersion()).toBe(9);
+    expect(database.currentVersion()).toBe(11);
   });
 });
 
@@ -162,6 +162,16 @@ describe('data v8 到 v9 迁移', () => {
           (id, session_id, status, created_at, updated_at)
         VALUES ('task-a', 'session-a', 'running', 1, 1)
       `).run();
+      sqlite.prepare(`
+        INSERT INTO turns
+          (id, session_id, mode, status, user_input, started_at)
+        VALUES ('turn-a', 'session-a', 'agent', 'completed', 'test', 1)
+      `).run();
+      sqlite.prepare(`
+        INSERT INTO turn_usage
+          (turn_id, llm_provider, model_id, input_tokens, output_tokens, cost_usd, duration_ms, created_at)
+        VALUES ('turn-a', 'openai-llm', 'model-a', 10, 20, 0.01, 500, 2)
+      `).run();
       const insert = sqlite.prepare(`
         INSERT INTO agent_task_messages
           (id, task_id, role, content_json, created_at)
@@ -180,7 +190,13 @@ describe('data v8 到 v9 迁移', () => {
         { id: 'message-m', sequence: 2 },
         { id: 'message-z', sequence: 3 },
       ]);
-      expect(sqlite.pragma('user_version', { simple: true })).toBe(9);
+      expect(sqlite.prepare(`
+        SELECT turn_id, model_id, duration_ms FROM llm_turn_metrics WHERE turn_id = 'turn-a'
+      `).get()).toEqual({ turn_id: 'turn-a', model_id: 'model-a', duration_ms: 500 });
+      expect(sqlite.prepare(`
+        SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'turn_usage'
+      `).get()).toBeUndefined();
+      expect(sqlite.pragma('user_version', { simple: true })).toBe(11);
     } finally {
       sqlite.close();
     }

@@ -263,7 +263,7 @@ export function storageStatsRoute(bindings: AppBindings): Hono {
     const agentTaskMsgs  = bindings.sessionStats.listAgentTaskMessages(sessionId);
     const memState       = bindings.sessionStats.getMemoryState(sessionId);
     const kbActivations  = bindings.sessionStats.listKbActivations(sessionId);
-    const turnUsage      = bindings.sessionStats.listTurnUsage(sessionId);
+    const llmTurnMetrics = bindings.sessionStats.listLlmTurnMetrics(sessionId);
 
     // Route is responsible only for fs reads + zip assembly
     const files: Record<string, Uint8Array> = {};
@@ -280,7 +280,7 @@ export function storageStatsRoute(bindings: AppBindings): Hono {
     files['agent_task_messages.json'] = strToU8(JSON.stringify(agentTaskMsgs, null, 2));
     if (memState)              files['memory_state.json']   = strToU8(JSON.stringify(memState,      null, 2));
     if (kbActivations.length)  files['kb_activations.json'] = strToU8(JSON.stringify(kbActivations, null, 2));
-    if (turnUsage.length)      files['usage.json']           = strToU8(JSON.stringify(turnUsage,     null, 2));
+    if (llmTurnMetrics.length) files['llm_turn_metrics.json'] = strToU8(JSON.stringify(llmTurnMetrics, null, 2));
 
     const artifactIndex = artifacts.map((a) => ({
       id: a.id, type: a.type, title: a.title, contentLocation: a.contentLocation,
@@ -454,7 +454,11 @@ export function storageStatsRoute(bindings: AppBindings): Hono {
     const agentTaskMsgs = unzipped['agent_task_messages.json'] ? JSON.parse(strFromU8(unzipped['agent_task_messages.json'])) : [];
     const memoryState   = unzipped['memory_state.json']        ? JSON.parse(strFromU8(unzipped['memory_state.json']))        : null;
     const kbActivations = unzipped['kb_activations.json']      ? JSON.parse(strFromU8(unzipped['kb_activations.json']))      : [];
-    const turnUsage     = unzipped['usage.json']               ? JSON.parse(strFromU8(unzipped['usage.json']))               : [];
+    // 旧备份使用 usage.json；仅在导入边界兼容，内部模型统一为 LlmTurnMetrics。
+    const llmTurnMetricsEntry = unzipped['llm_turn_metrics.json'] ?? unzipped['usage.json'];
+    const llmTurnMetrics = llmTurnMetricsEntry
+      ? JSON.parse(strFromU8(llmTurnMetricsEntry))
+      : [];
 
     interface NotesExport { body: string; tokensAtLastUpdate: number; updatedAt: number; }
     const notes: NotesExport | null = unzipped['notes.json'] ? JSON.parse(strFromU8(unzipped['notes.json'])) as NotesExport : null;
@@ -483,7 +487,7 @@ export function storageStatsRoute(bindings: AppBindings): Hono {
       agentTaskMessages: agentTaskMsgs,
       memoryState,
       kbActivations,
-      turnUsage,
+      llmTurnMetrics,
       notes: notes ? { body: notes.body, tokensAtLastUpdate: notes.tokensAtLastUpdate ?? 0, updatedAt: notes.updatedAt } : null,
     };
 

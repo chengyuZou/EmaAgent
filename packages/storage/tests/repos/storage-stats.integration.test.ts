@@ -126,7 +126,7 @@ describe('SessionStatsRepo restore integration', () => {
       id: 'activation-1', call_id: 'call-1', kb_id: 'kb-1', asset_id: 'asset-1',
       session_id: payload.session.id, turn_id: 'turn-child', created_at: 150,
     });
-    payload.turnUsage.push({
+    payload.llmTurnMetrics.push({
       turn_id: 'turn-child', llm_provider: 'openai-llm', model_id: 'model-1',
       input_tokens: 30, output_tokens: 40, cost_usd: 0.01, duration_ms: 500, created_at: 150,
     });
@@ -153,7 +153,7 @@ describe('SessionStatsRepo restore integration', () => {
 
     for (const table of [
       'artifacts', 'turn_audio_merged', 'turn_attachments', 'agent_task_messages',
-      'memory_session_state', 'kb_activations', 'turn_usage', 'session_notes',
+      'memory_session_state', 'kb_activations', 'llm_turn_metrics', 'session_notes',
     ]) {
       expect(database.db.prepare(`SELECT COUNT(*) FROM ${table}`).pluck().get(), table).toBe(1);
     }
@@ -283,7 +283,7 @@ function branchedPayload(): SessionRestorePayload {
     agentTaskMessages: [],
     memoryState: null,
     kbActivations: [],
-    turnUsage: [],
+    llmTurnMetrics: [],
     notes: null,
   };
 }

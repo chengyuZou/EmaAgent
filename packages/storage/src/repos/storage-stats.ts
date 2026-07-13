@@ -2,10 +2,10 @@ import type { SqliteDb } from '../database.js';
 import type { AgentTaskMessageRow } from './agent-task-messages.js';
 import type { KbActivationRow }     from './kb-activations.js';
 import type { AgentTaskRow }        from './agent-tasks.js';
-import type { TurnUsageRow }        from './usage.js';
+import type { LlmTurnMetricsRow }   from './llm-turn-metrics.js';
 import type { BranchRow }           from './branches.js';
 
-export type { AgentTaskMessageRow, KbActivationRow, AgentTaskRow, TurnUsageRow, BranchRow };
+export type { AgentTaskMessageRow, KbActivationRow, AgentTaskRow, LlmTurnMetricsRow, BranchRow };
 
 // ════════════════════════════════════════════════════════════════════════════
 // DataDir 级聚合统计
@@ -160,7 +160,7 @@ export interface SessionRestorePayload {
   agentTaskMessages: AgentTaskMessageRestoreRow[];
   memoryState:       MemoryStateRow | null;
   kbActivations:     KbActivationRow[];
-  turnUsage:         TurnUsageRow[];
+  llmTurnMetrics:    LlmTurnMetricsRow[];
   notes:             NotesRestoreData | null;
 }
 
@@ -235,8 +235,8 @@ function validateSessionRestorePayload(payload: SessionRestorePayload): void {
     assertSessionOwnership('KbActivation', activation.id, activation.session_id, sessionId);
     assertOptionalReference('KbActivation.turnId', activation.id, activation.turn_id, turnIds);
   }
-  for (const usage of payload.turnUsage) {
-    assertReference('TurnUsage.turnId', usage.turn_id, usage.turn_id, turnIds);
+  for (const metrics of payload.llmTurnMetrics) {
+    assertReference('LlmTurnMetrics.turnId', metrics.turn_id, metrics.turn_id, turnIds);
   }
 }
 
@@ -454,15 +454,15 @@ export class SessionStatsRepo {
     `).all(sessionId) as KbActivationRow[];
   }
 
-  listTurnUsage(sessionId: string): TurnUsageRow[] {
+  listLlmTurnMetrics(sessionId: string): LlmTurnMetricsRow[] {
     return this.db.prepare(`
       SELECT u.turn_id, u.llm_provider, u.model_id,
              u.input_tokens, u.output_tokens, u.cost_usd, u.duration_ms, u.created_at
-      FROM turn_usage u
+      FROM llm_turn_metrics u
       JOIN turns t ON t.id = u.turn_id
       WHERE t.session_id = ?
       ORDER BY u.created_at ASC
-    `).all(sessionId) as TurnUsageRow[];
+    `).all(sessionId) as LlmTurnMetricsRow[];
   }
 
   // ── 导入:完整恢复事务 ──────────────────────────────────────────────────────
@@ -684,14 +684,14 @@ export class SessionStatsRepo {
         stmtKb.run(k.id, k.call_id, k.kb_id, k.asset_id, p.session.id, k.turn_id ?? null, k.created_at);
       }
 
-      // 15. Turn usage
-      const stmtUsage = this.db.prepare(`
-        INSERT INTO turn_usage
+      // 15. LLM Turn 指标
+      const stmtLlmTurnMetrics = this.db.prepare(`
+        INSERT INTO llm_turn_metrics
           (turn_id, llm_provider, model_id, input_tokens, output_tokens, cost_usd, duration_ms, created_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       `);
-      for (const u of p.turnUsage) {
-        stmtUsage.run(
+      for (const u of p.llmTurnMetrics) {
+        stmtLlmTurnMetrics.run(
           u.turn_id, u.llm_provider, u.model_id,
           u.input_tokens, u.output_tokens, u.cost_usd, u.duration_ms, u.created_at,
         );
