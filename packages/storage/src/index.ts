@@ -123,7 +123,7 @@ export type { AgentTaskRow, AgentTaskInsert, AgentTaskStatus }           from '.
 export type { AgentTaskMessageRow, AgentTaskMessageInsert, AgentTaskMessageRole } from './repos/agent-task-messages.js';
 
 // ── Knowledge-base repo ────────────────────────────────────────────────────────
-export { DocumentAssetRepo }   from './repos/document-asset.js';
+export { DocumentAssetRepo, DocumentAssetCursorError } from './repos/document-asset.js';
 export { DocumentChunkRepo }   from './repos/document-chunk.js';
 export { DocumentPreviewRepo } from './repos/document-preview.js';
 export { KbActivationsRepo }   from './repos/kb-activations.js';
@@ -132,7 +132,7 @@ export { KbIngestTasksRepo }   from './repos/kb-ingest-tasks.js';
 export type { KbIngestTask, KbIngestStatus } from './repos/kb-ingest-tasks.js';
 export { KbRegistryRepo }      from './repos/kb-registry.js';
 export type { KbRecord }       from './repos/kb-registry.js';
-export type { DocumentAssetRow, DocumentAssetInsert }     from './repos/document-asset.js';
+export type { DocumentAssetRow, DocumentAssetInsert, AssetPage } from './repos/document-asset.js';
 export type { DocumentChunkRow, DocumentChunkInsert, ChunkSearchHit, ChunkSummary, ChunkPage }  from './repos/document-chunk.js';
 export type { DocumentPreviewRow, DocumentPreviewUpsert } from './repos/document-preview.js';
 export type { KbActivationRow }                           from './repos/kb-activations.js';

@@ -354,7 +354,7 @@ export class KnowledgeClient {
   getPreview(assetId: string): DocumentPreview | undefined     { return this.deps.store.getPreview(assetId); }
 
   /** Cursor-paginated KB list for the UI (newest first), optional keyword. */
-  listAssets(opts: { cursor?: number; limit?: number; keyword?: string } = {}): AssetListPage {
+  listAssets(opts: { cursor?: string; limit?: number; keyword?: string } = {}): AssetListPage {
     return this.deps.store.listAssetsPaged(opts);
   }
 
@@ -384,4 +384,3 @@ function bufferToFloat32(buf: Buffer): Float32Array {
   for (let i = 0; i < f32.length; i++) f32[i] = buf.readFloatLE(i * 4);
   return f32;
 }
-

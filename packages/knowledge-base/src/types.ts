@@ -53,8 +53,8 @@ export interface DocumentAsset {
 /** One page of a cursor-paginated asset list. */
 export interface AssetListPage {
   items:      DocumentAsset[];
-  /** createdAt cursor to pass for the next page; null = no more. */
-  nextCursor: number | null;
+  /** V1 opaque composite cursor to pass for the next page; null = no more. */
+  nextCursor: string | null;
 }
 
 // ── Document chunk (chunker output, stored in DB) ─────────────────────────────

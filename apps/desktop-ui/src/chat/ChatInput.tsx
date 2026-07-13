@@ -412,11 +412,11 @@ function KbDocList({
   onScopeChange(ids: string[]): void;
 }): JSX.Element {
   const [items, setItems]           = useState<DocumentAssetWire[]>([]);
-  const [nextCursor, setNextCursor] = useState<number | null>(null);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loading, setLoading]       = useState(false);
   const [loaded, setLoaded]         = useState(false);
 
-  const loadPage = useCallback(async (cursor?: number): Promise<void> => {
+  const loadPage = useCallback(async (cursor?: string): Promise<void> => {
     setLoading(true);
     try {
       const page = await kbApi.listDocuments({ cursor, limit: KB_PAGE_SIZE, kbId });
@@ -616,4 +616,3 @@ function WorkspaceButton({ sessionId }: { sessionId: string | null }): JSX.Eleme
 
 // ── WorkspaceEditor ───────────────────────────────────────────────────────────
 // (removed — replaced by the shared WorkspacePicker component)
-

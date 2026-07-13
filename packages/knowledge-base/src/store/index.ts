@@ -39,7 +39,7 @@ export class KnowledgeStore {
   }
 
   /** Cursor-paginated list for the UI (newest first), optional keyword filter. */
-  listAssetsPaged(opts: { cursor?: number; limit?: number; keyword?: string } = {}): AssetListPage {
+  listAssetsPaged(opts: { cursor?: string; limit?: number; keyword?: string } = {}): AssetListPage {
     return this.assets.listPaged(opts) as AssetListPage;
   }
 

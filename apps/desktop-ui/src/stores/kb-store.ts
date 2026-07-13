@@ -52,7 +52,7 @@ export interface KbStoreState {
   libsLoading:   boolean;
   libsError:     string | null;
 
-  loadDocuments(opts?: { cursor?: number; limit?: number; keyword?: string }): Promise<void>;
+  loadDocuments(opts?: { cursor?: string; limit?: number; keyword?: string }): Promise<void>;
   loadIngestTasks(): Promise<void>;
   ingest(filePath: string, opts?: KbIngestOptions): Promise<void>;
   retryIngest(assetId: string): Promise<void>;

@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { randomUUID } from 'node:crypto';
 import type { AppBindings } from '../wiring/index.js';
 import type { KbEntry } from '@ema-agent/knowledge-base';
+import { DocumentAssetCursorError } from '@ema-agent/storage';
 
 // ── Schemas ───────────────────────────────────────────────────────────────────
 
@@ -14,7 +15,7 @@ const ingestBody = z.object({
 });
 
 const listQuery = z.object({
-  cursor:  z.coerce.number().int().optional(),
+  cursor:  z.string().min(1).max(1024).optional(),
   limit:   z.coerce.number().int().min(1).max(100).optional(),
   keyword: z.string().optional(),
   /** Target KB id. Omit → active KB. */
@@ -136,7 +137,14 @@ export function kbRoute(bindings: AppBindings): Hono {
     const entry = await resolveEntry(bindings, kbId, c);
     if (entry instanceof Response) return entry;
 
-    return c.json(entry.client.listAssets(listOpts));
+    try {
+      return c.json(entry.client.listAssets(listOpts));
+    } catch (error) {
+      if (error instanceof DocumentAssetCursorError) {
+        return c.json({ error: error.code }, 400);
+      }
+      throw error;
+    }
   });
 
   // GET /api/kb/documents-stale — assets not selected in the last N days

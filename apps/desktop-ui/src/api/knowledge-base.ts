@@ -68,7 +68,7 @@ export interface KbIngestTaskWire {
 /** One cursor-paginated page of KB assets. */
 export interface AssetPageWire {
   items:      DocumentAssetWire[];
-  nextCursor: number | null;
+  nextCursor: string | null;
 }
 
 /** POST /api/kb/documents now returns immediately (202) — indexing runs in the
@@ -160,7 +160,7 @@ export const kbApi = {
 
   /** GET /api/kb/documents — cursor-paginated list (newest first), optional keyword.
    *  kbId omitted → active KB. */
-  async listDocuments(opts: { cursor?: number; limit?: number; keyword?: string; kbId?: string } = {}): Promise<AssetPageWire> {
+  async listDocuments(opts: { cursor?: string; limit?: number; keyword?: string; kbId?: string } = {}): Promise<AssetPageWire> {
     const qs = buildQs({ cursor: opts.cursor, limit: opts.limit, keyword: opts.keyword, kbId: opts.kbId });
     return sidecarClient.request<AssetPageWire>(`/api/kb/documents${qs}`);
   },

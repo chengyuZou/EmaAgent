@@ -35,7 +35,22 @@ export interface DocumentAssetInsert {
 
 export interface AssetPage {
   items:      ReturnType<typeof rowToAsset>[];
-  nextCursor: number | null;   // 下一页的 created_at cursor（null = 结束）
+  nextCursor: string | null;   // V1 不透明复合 cursor（null = 结束）
+}
+
+interface DocumentAssetCursorV1 {
+  v: 1;
+  a: number;
+  i: string;
+}
+
+export class DocumentAssetCursorError extends Error {
+  readonly code = 'invalid_document_asset_cursor' as const;
+
+  constructor(options?: ErrorOptions) {
+    super('Invalid document asset cursor', options);
+    this.name = 'DocumentAssetCursorError';
+  }
 }
 
 function rowToAsset(row: DocumentAssetRow) {
@@ -86,19 +101,25 @@ export class DocumentAssetRepo {
 
   /** 所有 asset（不分页）-用于索引/HNSW 预热，非 UI 列表。 */
   listAll(): ReturnType<typeof rowToAsset>[] {
-    const rows = this.db.prepare('SELECT * FROM document_assets ORDER BY created_at DESC').all() as DocumentAssetRow[];
+    const rows = this.db.prepare(
+      'SELECT * FROM document_assets ORDER BY created_at DESC, id DESC',
+    ).all() as DocumentAssetRow[];
     return rows.map(rowToAsset);
   }
 
   /**
-   * 面向 UI 的 cursor 分页列表，最新优先。Cursor = 上一页最后一条的 created_at；
-   * 首页传 undefined。可选对 file_name/title 做大小写不敏感的关键词搜索。
+   * 面向 UI 的 keyset 分页列表，最新优先。Cursor 封装上一页最后一条的
+   * `(created_at, id)`；首页传 undefined。可选对 file_name/title 搜索。
    */
-  listPaged(opts: { cursor?: number; limit?: number; keyword?: string } = {}): AssetPage {
+  listPaged(opts: { cursor?: string; limit?: number; keyword?: string } = {}): AssetPage {
     const limit = Math.min(Math.max(opts.limit ?? 20, 1), 100);
     const where: string[] = [];
     const params: unknown[] = [];
-    if (opts.cursor !== undefined) { where.push('created_at < ?'); params.push(opts.cursor); }
+    const cursor = parseDocumentAssetCursor(opts.cursor);
+    if (cursor) {
+      where.push('(created_at < ? OR (created_at = ? AND id < ?))');
+      params.push(cursor.a, cursor.a, cursor.i);
+    }
     if (opts.keyword?.trim()) {
       where.push('(file_name LIKE ? COLLATE NOCASE OR IFNULL(title, \'\') LIKE ? COLLATE NOCASE)');
       const like = `%${opts.keyword.trim()}%`;
@@ -107,11 +128,18 @@ export class DocumentAssetRepo {
     const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
     // 取 limit+1 条以检测是否还有下一页。
     const rows = this.db
-      .prepare(`SELECT * FROM document_assets ${whereSql} ORDER BY created_at DESC LIMIT ?`)
+      .prepare(
+        `SELECT * FROM document_assets ${whereSql}
+          ORDER BY created_at DESC, id DESC
+          LIMIT ?`,
+      )
       .all(...params, limit + 1) as DocumentAssetRow[];
     const hasMore = rows.length > limit;
-    const page = rows.slice(0, limit).map(rowToAsset);
-    return { items: page, nextCursor: hasMore ? page[page.length - 1]!.createdAt : null };
+    const pageRows = rows.slice(0, limit);
+    return {
+      items: pageRows.map(rowToAsset),
+      nextCursor: hasMore ? encodeDocumentAssetCursor(pageRows[pageRows.length - 1]!) : null,
+    };
   }
 
   /** 自 `beforeTs` 起未被选中的 KB（以 last_activated_at 为准，回退到 created_at）。 */
@@ -179,4 +207,33 @@ export class DocumentAssetRepo {
   delete(id: string): void {
     this.db.prepare('DELETE FROM document_assets WHERE id = ?').run(id);
   }
+}
+
+function encodeDocumentAssetCursor(row: Pick<DocumentAssetRow, 'created_at' | 'id'>): string {
+  const payload: DocumentAssetCursorV1 = { v: 1, a: row.created_at, i: row.id };
+  return Buffer.from(JSON.stringify(payload), 'utf8').toString('base64url');
+}
+
+function parseDocumentAssetCursor(cursor: string | undefined): DocumentAssetCursorV1 | null {
+  if (cursor === undefined) return null;
+  try {
+    const decoded = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8')) as unknown;
+    if (!isDocumentAssetCursorV1(decoded)) {
+      throw new Error('cursor payload schema mismatch');
+    }
+    return decoded;
+  } catch (error) {
+    throw new DocumentAssetCursorError({ cause: error });
+  }
+}
+
+function isDocumentAssetCursorV1(value: unknown): value is DocumentAssetCursorV1 {
+  if (typeof value !== 'object' || value === null) return false;
+  const candidate = value as Record<string, unknown>;
+  return candidate.v === 1
+    && typeof candidate.a === 'number'
+    && Number.isSafeInteger(candidate.a)
+    && typeof candidate.i === 'string'
+    && candidate.i.length > 0
+    && candidate.i.length <= 512;
 }
