@@ -45,8 +45,9 @@ export interface MemoryTaskEnqueue {
  *   claimNext() -> running（atomic UPDATE … RETURNING）
  *   markCompleted() / markFailed() -> completed / failed
  *
- * 进程崩溃恢复靠 `resetStuckRunning()`-进程死亡时处于 running
- * 的任务被重置为 pending 以便重试。
+ * 运行期间通过心跳租约识别失联 Worker；进程重启时，只有持有 Data Directory
+ * 独占锁的新进程才能立即恢复遗留的 running 任务。attempts 同时充当执行代次，
+ * 防止已经失去所有权的旧 Worker 覆盖新一轮执行结果。
  */
 export class MemoryTasksRepo {
   constructor(private readonly db: SqliteDb) {}
@@ -94,33 +95,66 @@ export class MemoryTasksRepo {
 
   // ── 收尾 ─────────────────────────────────────────────────────────────
 
-  markCompleted(id: string, at: number): void {
-    this.db
-      .prepare(`UPDATE memory_tasks SET status = 'completed', updated_at = ? WHERE id = ?`)
-      .run(at, id);
+  markCompleted(
+    id: string,
+    expectedAttempt: number,
+    at: number,
+  ): MemoryTaskRow | undefined {
+    return this.db
+      .prepare(
+        `UPDATE memory_tasks
+            SET status = 'completed', updated_at = ?
+          WHERE id = ?
+            AND status = 'running'
+            AND attempts = ?
+          RETURNING *`,
+      )
+      .get(at, id, expectedAttempt) as MemoryTaskRow | undefined;
   }
 
   /**
    * 标记本次尝试失败。若 attempts 已超过 `maxAttempts`，
    * 任务留在 'failed'；否则回到 'pending' 等其他 worker 后续认领。
    */
-  markFailed(id: string, error: string, at: number, maxAttempts = 3): void {
-    const row = this.db
-      .prepare('SELECT attempts FROM memory_tasks WHERE id = ?')
-      .get(id) as { attempts: number } | undefined;
-    if (!row) return;
-
-    const nextStatus: MemoryTaskStatus =
-      row.attempts >= maxAttempts ? 'failed' : 'pending';
-    this.db
+  markFailed(
+    id: string,
+    expectedAttempt: number,
+    error: string,
+    at: number,
+    maxAttempts = 3,
+  ): MemoryTaskRow | undefined {
+    if (!Number.isSafeInteger(maxAttempts) || maxAttempts <= 0) {
+      throw new RangeError('maxAttempts must be a positive integer');
+    }
+    return this.db
       .prepare(
         `UPDATE memory_tasks
-            SET status     = ?,
+            SET status     = CASE
+                               WHEN attempts >= ? THEN 'failed'
+                               ELSE 'pending'
+                             END,
                 last_error = ?,
                 updated_at = ?
-          WHERE id = ?`,
+          WHERE id = ?
+            AND status = 'running'
+            AND attempts = ?
+          RETURNING *`,
       )
-      .run(nextStatus, error, at, id);
+      .get(maxAttempts, error, at, id, expectedAttempt) as MemoryTaskRow | undefined;
+  }
+
+  /** 仅当前执行代次可以续租；返回 false 表示任务所有权已经丢失。 */
+  heartbeat(id: string, expectedAttempt: number, at: number): boolean {
+    const info = this.db
+      .prepare(
+        `UPDATE memory_tasks
+            SET updated_at = ?
+          WHERE id = ?
+            AND status = 'running'
+            AND attempts = ?`,
+      )
+      .run(at, id, expectedAttempt);
+    return info.changes === 1;
   }
 
   // ── 读取 ────────────────────────────────────────────────────────────────────
@@ -134,7 +168,10 @@ export class MemoryTasksRepo {
   listByStatus(status: MemoryTaskStatus, limit = 100): MemoryTaskRow[] {
     return this.db
       .prepare(
-        'SELECT * FROM memory_tasks WHERE status = ? ORDER BY created_at ASC LIMIT ?',
+        `SELECT * FROM memory_tasks
+          WHERE status = ?
+          ORDER BY created_at ASC, id ASC
+          LIMIT ?`,
       )
       .all(status, limit) as MemoryTaskRow[];
   }
@@ -142,7 +179,10 @@ export class MemoryTasksRepo {
   listForSession(sessionId: string, limit = 100): MemoryTaskRow[] {
     return this.db
       .prepare(
-        'SELECT * FROM memory_tasks WHERE session_id = ? ORDER BY created_at DESC LIMIT ?',
+        `SELECT * FROM memory_tasks
+          WHERE session_id = ?
+          ORDER BY created_at DESC, id DESC
+          LIMIT ?`,
       )
       .all(sessionId, limit) as MemoryTaskRow[];
   }
@@ -171,10 +211,10 @@ export class MemoryTasksRepo {
   // ── 启动恢复 ────────────────────────────────────────────────────────
 
   /**
-   * 启动时状态为 'running' 的任务是被崩溃遗留的-
-   * 重置为 'pending' 使 worker 重新认领。返回迁移的数量。
+   * 仅在获得 Data Directory 独占锁后的启动恢复阶段调用。
+   * 此时所有 running 都属于已经退出的旧进程，可以立即重新入队。
    */
-  resetStuckRunning(now: number): number {
+  recoverRunningAfterExclusiveStartup(now: number): number {
     const info = this.db
       .prepare(
         `UPDATE memory_tasks
@@ -186,11 +226,36 @@ export class MemoryTasksRepo {
     return info.changes;
   }
 
-  /** 定期 / 按需清理。 */
-  deleteCompleted(olderThan: number): number {
+  /** 运行期只回收超过心跳租约的任务。 */
+  requeueExpiredRunning(staleBefore: number, now: number): number {
     const info = this.db
-      .prepare(`DELETE FROM memory_tasks WHERE status = 'completed' AND updated_at < ?`)
-      .run(olderThan);
+      .prepare(
+        `UPDATE memory_tasks
+            SET status = 'pending', updated_at = ?
+          WHERE status = 'running'
+            AND updated_at <= ?`,
+      )
+      .run(now, staleBefore);
+    return info.changes;
+  }
+
+  /** completed 和 failed 都是可清理终态；单次删除有界，避免长写锁。 */
+  deleteTerminal(olderThan: number, limit = 500): number {
+    if (!Number.isSafeInteger(limit) || limit <= 0 || limit > 1_000) {
+      throw new RangeError('limit must be an integer between 1 and 1000');
+    }
+    const info = this.db
+      .prepare(
+        `DELETE FROM memory_tasks
+          WHERE id IN (
+            SELECT id FROM memory_tasks
+             WHERE status IN ('completed', 'failed')
+               AND updated_at < ?
+             ORDER BY updated_at ASC, id ASC
+             LIMIT ?
+          )`,
+      )
+      .run(olderThan, limit);
     return info.changes;
   }
 }

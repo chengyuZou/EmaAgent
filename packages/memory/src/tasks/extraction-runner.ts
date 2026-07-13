@@ -11,6 +11,13 @@ import { SessionTaskQueue } from './session-queue.js';
 import { runExtractionPipeline } from '../extract/pipeline.js';
 import type { VectorIndex } from '../vector-index/vector-index.js';
 import type { ResolvedSessionOverrides } from '../maintenance/overrides.js';
+import {
+  MEMORY_TASK_CLEANUP_BATCH_SIZE,
+  MEMORY_TASK_CLEANUP_INTERVAL_MS,
+  MEMORY_TASK_HEARTBEAT_INTERVAL_MS,
+  MEMORY_TASK_STALE_AFTER_MS,
+  MEMORY_TASK_TERMINAL_RETENTION_MS,
+} from './task-lease-policy.js';
 
 // ── Background task runner ───────────────────────────────────────────────────
 
@@ -40,6 +47,7 @@ export interface MemoryTaskRunnerDeps {
  */
 export class MemoryTaskRunner {
   private running = false;
+  private lastCleanupAt = 0;
 
   constructor(private readonly deps: MemoryTaskRunnerDeps) {}
 
@@ -66,6 +74,18 @@ export class MemoryTaskRunner {
     if (this.running) return;
     this.running = true;
     try {
+      const recoveryAt = Date.now();
+      this.deps.memory.memoryTasks.requeueExpiredRunning(
+        recoveryAt - MEMORY_TASK_STALE_AFTER_MS,
+        recoveryAt,
+      );
+      if (recoveryAt - this.lastCleanupAt >= MEMORY_TASK_CLEANUP_INTERVAL_MS) {
+        this.deps.memory.memoryTasks.deleteTerminal(
+          recoveryAt - MEMORY_TASK_TERMINAL_RETENTION_MS,
+          MEMORY_TASK_CLEANUP_BATCH_SIZE,
+        );
+        this.lastCleanupAt = recoveryAt;
+      }
       while (true) {
         const row = this.deps.memory.memoryTasks.claimNext(Date.now());
         if (!row) break;
@@ -80,6 +100,20 @@ export class MemoryTaskRunner {
 
   private async dispatch(row: MemoryTaskRow): Promise<void> {
     const t0 = Date.now();
+    let leaseLost = false;
+    const heartbeat = setInterval(() => {
+      try {
+        if (!this.deps.memory.memoryTasks.heartbeat(row.id, row.attempts, Date.now())) {
+          leaseLost = true;
+          clearInterval(heartbeat);
+        }
+      } catch (error) {
+        // 短暂的数据库错误不等同于失去所有权；最终 CAS 仍会阻止旧 Worker 收尾。
+        console.warn(`[memory] task heartbeat failed: ${row.id}`, error);
+      }
+    }, MEMORY_TASK_HEARTBEAT_INTERVAL_MS);
+    heartbeat.unref?.();
+
     const payload = bestEffort(`task ${row.id} payload_json parse`,
       () => JSON.parse(row.payload_json) as { sessionId?: string },
       {} as { sessionId?: string });
@@ -101,7 +135,13 @@ export class MemoryTaskRunner {
           // Reserved — runs when ebd provider changes; Round 4.5
           break;
       }
-      this.deps.memory.memoryTasks.markCompleted(row.id, Date.now());
+      if (leaseLost) return;
+      const completed = this.deps.memory.memoryTasks.markCompleted(
+        row.id,
+        row.attempts,
+        Date.now(),
+      );
+      if (!completed) return;
       this.deps.memory.emit?.({
         type:       'memory_task_completed',
         taskId:     row.id,
@@ -109,14 +149,24 @@ export class MemoryTaskRunner {
         durationMs: Date.now() - t0,
       });
     } catch (err) {
+      if (leaseLost) return;
       const msg = err instanceof Error ? err.message : String(err);
-      this.deps.memory.memoryTasks.markFailed(row.id, msg, Date.now(), 3);
+      const failed = this.deps.memory.memoryTasks.markFailed(
+        row.id,
+        row.attempts,
+        msg,
+        Date.now(),
+        3,
+      );
+      if (!failed) return;
       this.deps.memory.emit?.({
         type:   'memory_task_failed',
         taskId: row.id,
         kind:   row.kind,
         error:  msg,
       });
+    } finally {
+      clearInterval(heartbeat);
     }
   }
 

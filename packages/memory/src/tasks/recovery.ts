@@ -14,7 +14,7 @@ export interface RecoveryReport {
  * Run all startup hygiene checks for the memory subsystem.
  *
  * Steps:
- *   1. Reset background_tasks where status='running' → 'pending' (process crash recovery)
+ *   1. 在 Data Directory 独占锁保护下恢复旧进程遗留的 running 任务
  *   2. Clean orphan lazy_updates rows (defensive; ON DELETE CASCADE usually covers this)
  *   3. Count stale embeddings (provider mismatch) — enqueue a refresh task
  *   4. Find sessions with non-empty pending_fragments — caller can decide to
@@ -35,7 +35,11 @@ export function runStartupRecovery(
     orphanLazyUpdates: 0,
   };
 
-  report.resetTasks = bestEffort('recovery resetStuckRunning', () => deps.memoryTasks.resetStuckRunning(now), 0);
+  report.resetTasks = bestEffort(
+    'recovery recoverRunningAfterExclusiveStartup',
+    () => deps.memoryTasks.recoverRunningAfterExclusiveStartup(now),
+    0,
+  );
 
   report.orphanLazyUpdates = bestEffort('recovery cleanOrphans', () => deps.lazyUpdates.cleanOrphans(), 0);
 
