@@ -63,13 +63,13 @@ export class PendingFragmentsRepo {
 
   // ── 读取────────────────────────────────────────────────────────────────────
 
-  /** 某 session 的所有未处理 fragment，按时间正序。 */
+  /** 某 session 的所有未处理 fragment，按业务时间和稳定次序正序排列。 */
   listBySession(sessionId: SessionId): PendingFragmentRow[] {
     return this.db
       .prepare(
         `SELECT * FROM pending_fragments
           WHERE session_id = ?
-          ORDER BY created_at ASC`,
+          ORDER BY at ASC, created_at ASC, id ASC`,
       )
       .all(sessionId) as PendingFragmentRow[];
   }

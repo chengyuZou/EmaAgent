@@ -44,7 +44,9 @@ export class MemoryLazyUpdatesRepo {
   listByNode(nodeId: string): MemoryNodeLazyUpdateRow[] {
     return this.db
       .prepare(
-        'SELECT * FROM memory_node_lazy_updates WHERE node_id = ? ORDER BY created_at ASC',
+        `SELECT * FROM memory_node_lazy_updates
+          WHERE node_id = ?
+          ORDER BY created_at ASC, id ASC`,
       )
       .all(nodeId) as MemoryNodeLazyUpdateRow[];
   }

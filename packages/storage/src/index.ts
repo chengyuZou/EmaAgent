@@ -22,6 +22,7 @@ export type {
   TurnRestoreRow, MessageRestoreRow, ArtifactRestoreRow,
   AudioRestoreRow, AttachmentRestoreRow, NotesRestoreData,
   SessionRestorePayload,
+  AgentTaskMessageRestoreRow,
   DataDirStats,
 } from './repos/storage-stats.js';
 export { McpServersRepo }  from './repos/mcp-servers.js';

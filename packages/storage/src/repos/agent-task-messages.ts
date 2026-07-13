@@ -10,6 +10,7 @@ export interface AgentTaskMessageRow {
   task_id:      string;
   role:         AgentTaskMessageRole;
   content_json: string;
+  sequence:     number;
   created_at:   number;
 }
 
@@ -74,16 +75,19 @@ export class AgentTaskMessagesRepo {
     const contentJson = serializeContent(m);
     this.db
       .prepare(
-        `INSERT INTO agent_task_messages (id, task_id, role, content_json, created_at)
-         VALUES (?, ?, ?, ?, ?)`,
+        `INSERT INTO agent_task_messages
+           (id, task_id, role, content_json, sequence, created_at)
+         SELECT ?, ?, ?, ?, COALESCE(MAX(sequence), 0) + 1, ?
+           FROM agent_task_messages
+          WHERE task_id = ?`,
       )
-      .run(randomUUID(), m.taskId, m.role, contentJson, m.createdAt);
+      .run(randomUUID(), m.taskId, m.role, contentJson, m.createdAt, m.taskId);
   }
 
   listForTask(taskId: string): AgentTaskMessageRow[] {
     return this.db
       .prepare(
-        'SELECT * FROM agent_task_messages WHERE task_id = ? ORDER BY created_at ASC',
+        'SELECT * FROM agent_task_messages WHERE task_id = ? ORDER BY sequence ASC',
       )
       .all(taskId) as AgentTaskMessageRow[];
   }

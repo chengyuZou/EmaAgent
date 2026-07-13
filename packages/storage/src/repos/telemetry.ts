@@ -28,7 +28,10 @@ export class TelemetryRepo {
   listEvents(kind: string, limit = 100): TelemetryEventRow[] {
     return this.db
       .prepare(
-        'SELECT * FROM telemetry_events WHERE kind = ? ORDER BY created_at DESC LIMIT ?',
+        `SELECT * FROM telemetry_events
+          WHERE kind = ?
+          ORDER BY created_at DESC, id DESC
+          LIMIT ?`,
       )
       .all(kind, limit) as TelemetryEventRow[];
   }

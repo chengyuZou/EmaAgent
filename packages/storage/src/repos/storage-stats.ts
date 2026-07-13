@@ -157,12 +157,16 @@ export interface SessionRestorePayload {
   audio:             AudioRestoreRow[];
   attachments:       AttachmentRestoreRow[];
   agentTasks:        AgentTaskRow[];
-  agentTaskMessages: AgentTaskMessageRow[];
+  agentTaskMessages: AgentTaskMessageRestoreRow[];
   memoryState:       MemoryStateRow | null;
   kbActivations:     KbActivationRow[];
   turnUsage:         TurnUsageRow[];
   notes:             NotesRestoreData | null;
 }
+
+/** sequence 可选以兼容 data v9 之前导出的 Session 备份。 */
+export type AgentTaskMessageRestoreRow =
+  Omit<AgentTaskMessageRow, 'sequence'> & { sequence?: number };
 
 export class SessionRestoreValidationError extends Error {
   readonly code = 'storage/session-restore-invalid';
@@ -427,11 +431,11 @@ export class SessionStatsRepo {
 
   listAgentTaskMessages(sessionId: string): AgentTaskMessageRow[] {
     return this.db.prepare(`
-      SELECT m.id, m.task_id, m.role, m.content_json, m.created_at
+      SELECT m.id, m.task_id, m.role, m.content_json, m.sequence, m.created_at
       FROM agent_task_messages m
       JOIN agent_tasks t ON t.id = m.task_id
       WHERE t.session_id = ?
-      ORDER BY m.created_at ASC
+      ORDER BY t.created_at ASC, t.id ASC, m.sequence ASC
     `).all(sessionId) as AgentTaskMessageRow[];
   }
 
@@ -637,11 +641,29 @@ export class SessionStatsRepo {
 
       // 12. Agent task message
       const stmtTaskMsg = this.db.prepare(`
-        INSERT INTO agent_task_messages (id, task_id, role, content_json, created_at)
-        VALUES (?, ?, ?, ?, ?)
+        INSERT INTO agent_task_messages
+          (id, task_id, role, content_json, sequence, created_at)
+        VALUES (?, ?, ?, ?, ?, ?)
       `);
+      const nextTaskMessageSequence = new Map<string, number>();
       for (const m of p.agentTaskMessages) {
-        stmtTaskMsg.run(m.id, m.task_id, m.role, m.content_json, m.created_at);
+        const nextSequence = nextTaskMessageSequence.get(m.task_id) ?? 1;
+        // 兼容迁移前导出的旧备份；旧 payload 在运行时没有 sequence 字段。
+        const storedSequence = m.sequence;
+        const sequence = storedSequence !== undefined
+          && Number.isInteger(storedSequence)
+          && storedSequence > 0
+          ? storedSequence
+          : nextSequence;
+        stmtTaskMsg.run(
+          m.id,
+          m.task_id,
+          m.role,
+          m.content_json,
+          sequence,
+          m.created_at,
+        );
+        nextTaskMessageSequence.set(m.task_id, Math.max(nextSequence, sequence + 1));
       }
 
       // 13. Memory session 状态

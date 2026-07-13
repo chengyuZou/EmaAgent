@@ -147,6 +147,9 @@ describe('SessionStatsRepo restore integration', () => {
       pending_prompt_id: 'prompt-1',
       pending_questions_json: JSON.stringify([{ id: 'question-1', prompt: '继续吗？' }]),
     });
+    expect(database.db.prepare(`
+      SELECT sequence FROM agent_task_messages WHERE id = 'task-message-1'
+    `).pluck().get()).toBe(1);
 
     for (const table of [
       'artifacts', 'turn_audio_merged', 'turn_attachments', 'agent_task_messages',
