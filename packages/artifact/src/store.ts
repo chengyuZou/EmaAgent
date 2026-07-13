@@ -3,7 +3,14 @@ import * as path from 'node:path';
 import { randomUUID } from 'node:crypto';
 
 import type { ArtifactRepo } from '@ema-agent/storage';
-import type { Artifact, ArtifactId, SessionId } from '@ema-agent/contracts';
+import {
+  SessionOwnershipError,
+  asSessionId,
+  type Artifact,
+  type ArtifactId,
+  type SessionId,
+  type SessionOwnershipFacade,
+} from '@ema-agent/contracts';
 import type { IArtifactStore, ArtifactUpsertArgs } from '@ema-agent/tools';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -16,7 +23,7 @@ const SESSION_WARN_THRESHOLD = 100;
 // ── ArtifactStore ─────────────────────────────────────────────────────────────
 
 /**
- * Business-logic façade for artifact persistence.
+ * Business-logic Facade for artifact persistence.
  *
  * Storage split:
  *   inline (≤64 KB)  → content stored directly in the DB `content` column.
@@ -38,6 +45,7 @@ export class ArtifactStore implements IArtifactStore {
      * `removeSessionDir`.
      */
     private readonly sessionsRoot: string,
+    private readonly ownership: Pick<SessionOwnershipFacade, 'assertTurnOwnership'>,
   ) {
     // The per-session subdirectory is created on demand in upsert().
   }
@@ -48,6 +56,19 @@ export class ArtifactStore implements IArtifactStore {
     const now      = Date.now();
     const id       = (args.id ?? randomUUID()) as ArtifactId;
     const existing = args.id ? this.repo.findById(args.id as ArtifactId) : null;
+
+    // 所有归属检查必须早于文件 I/O，失败时不能留下临时文件或错误目录。
+    if (existing && existing.sessionId !== args.sessionId) {
+      throw new SessionOwnershipError(
+        'artifact',
+        id,
+        args.sessionId,
+        asSessionId(existing.sessionId),
+      );
+    }
+    if (args.turnId) {
+      this.ownership.assertTurnOwnership(args.sessionId, args.turnId);
+    }
 
     const isLarge = args.content.length > INLINE_SIZE_LIMIT;
 

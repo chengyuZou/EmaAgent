@@ -26,7 +26,7 @@ function createRerankAdapter(config: RerankProviderConfig): RerankAdapter {
 }
 
 /**
- * Single Façade for all embedding and reranking.
+ * Single Facade for all embedding and reranking.
  *
  * Keyed by provider_configs.id UUID — multiple providers can share the same
  * protocol (e.g. SiliconFlow + OpenAI are both 'openai-embed').

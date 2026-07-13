@@ -1,4 +1,4 @@
-// ── Public Façade ──────────────────────────────────────────────────────────────
+// ── Public Facade ──────────────────────────────────────────────────────────────
 export { KnowledgeClient }          from './client.js';
 export type { KnowledgeClientDeps } from './client.js';
 export { KnowledgeStore }           from './store/index.js';

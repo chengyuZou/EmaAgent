@@ -154,7 +154,7 @@ function hotReload(
   }
 
   // ── TTS / STT sync ─────────────────────────────────────────────────────────
-  // Rebuild the whole Façade rather than per-provider upsert — TTS adapters
+  // Rebuild the whole Facade rather than per-provider upsert — TTS adapters
   // are cheap to instantiate and the binding-lookup tables make targeted
   // updates not worth the complexity.
   if (capabilities.includes('tts')) reloadTtsClient(bindings.tts, bindings.profileDb);

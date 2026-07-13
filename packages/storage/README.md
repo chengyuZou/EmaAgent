@@ -190,7 +190,7 @@ SQLite 封装。构造时:
 - `Database` 启动时检测 SQLite `ENABLE_FTS5`，缺失时抛出带 capability/platform 的 `DatabaseCapabilityError`
 - jieba 使用可捕获的懒加载；native 二进制缺失时降级为 unicode61 原始文本分词，不阻断应用启动
 - lockfile 已包含 Windows x64/arm64、macOS x64/arm64、Linux glibc/musl 等 `@node-rs/jieba` 可选二进制
-- 路径、文件名、大小写与原子替换仍必须由 Tauri Host / Core 文件 façade 处理，storage SQL 不拼接操作系统路径
+- 路径、文件名、大小写与原子替换仍必须由 Tauri Host / Core 文件 Facade 处理，storage SQL 不拼接操作系统路径
 
 ### 向量检索(KB fallback)
 - `document_chunks.embedding` 存 Float32 二进制 BLOB(4 字节 × dim)

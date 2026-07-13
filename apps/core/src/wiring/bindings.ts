@@ -68,7 +68,7 @@ import {
 import { resolveBridgeUrl } from './bridge.js';
 import { SystemEventBus }  from '../sse/system-bus.js';
 
-// ── App-wide bindings (Façade set passed everywhere) ─────────────────────────
+// ── App-wide bindings (Facade set passed everywhere) ─────────────────────────
 
 /**
  * The complete dependency surface for all routes / orchestrator / engines.
@@ -102,15 +102,15 @@ export interface AppBindings {
   card:    CharacterCardStore;
   emotion: EmotionEngine;
 
-  // TTS façade — synthesizes assistant text. Voice identity always reads from
+  // TTS Facade — synthesizes assistant text. Voice identity always reads from
   // the active card; provider/model reads from the single `tts` model_bindings
   // row (one binding for all modes).
   tts:         TtsClient;
   // Audio archive — per-segment write + per-turn merge, under {activeDataDir}/audio.
   audioArchive: AudioArchive;
-  // STT façade — converts user audio → text (single binding in V1).
+  // STT Facade — converts user audio → text (single binding in V1).
   stt:          SttClient;
-  // Vision façade — image understanding; used by KB ingest (OCR fallback).
+  // Vision Facade — image understanding; used by KB ingest (OCR fallback).
   vision:       VisionRouter;
 
   // Agent stack
@@ -193,8 +193,8 @@ export interface AppBindings {
 // ── Build bindings ────────────────────────────────────────────────────────────
 
 /**
- * Construct every Façade. Pure data assembly: no hook registration, no
- * subscriber wiring, no side effects beyond DB reads and Façade construction.
+ * Construct every Facade. Pure data assembly: no hook registration, no
+ * subscriber wiring, no side effects beyond DB reads and Facade construction.
  *
  * The `wire(db)` entry point in ./index.ts orchestrates:
  *   buildBindings(db)      ← this function
@@ -387,10 +387,11 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
   const artifactStore = new ArtifactStore(
     new ArtifactRepo(dataDb.sqlite),
     nodePath.join(activeDataDir, 'sessions'),
+    session,
   );
 
   // ── Attachments ─────────────────────────────────────────────────────────────
-  const attachmentStore = new AttachmentStore(new AttachmentRepo(dataDb.sqlite));
+  const attachmentStore = new AttachmentStore(new AttachmentRepo(dataDb.sqlite), session);
 
   // ── Session detail (stats + notes) — used by /api/sessions/:id/dashboard ──
   const sessionStats = new SessionStatsRepo(dataDb.sqlite);

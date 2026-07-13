@@ -20,7 +20,7 @@ const TITLE_MAX_CHARS = 60;
 const listSessionsSchema = z.object({
   limit:  z.coerce.number().int().min(1).max(100).default(50),
   /**
-   * 上一页返回的不透明 V1 cursor。长度只做边界防御，结构由 session façade 校验。
+   * 上一页返回的不透明 V1 cursor。长度只做边界防御，结构由 Session Facade 校验。
    */
   cursor: z.string().min(1).max(256).optional(),
 });

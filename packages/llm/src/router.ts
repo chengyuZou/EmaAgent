@@ -39,7 +39,7 @@ function notConfigured(providerId: string): Error {
 // ── LlmRouter ─────────────────────────────────────────────────────────────────
 
 /**
- * Single Façade for all LLM access.
+ * Single Facade for all LLM access.
  *
  * Keyed by ProviderConfig.id (the provider_configs UUID from the DB), NOT by
  * protocol — multiple providers can share the same protocol (e.g. DeepSeek +

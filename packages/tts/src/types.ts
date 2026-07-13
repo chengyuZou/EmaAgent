@@ -50,7 +50,7 @@ export type TtsStreamEvent =
   | { type: 'done';             totalBytes: number; firstByteMs: number }
   | { type: 'error';            code: TtsErrorCode; message: string };
 
-// ── Public TTS request (Façade entry point) ───────────────────────────────────
+// ── Public TTS request (Facade entry point) ───────────────────────────────────
 //
 // Pattern-aligned with LlmRequest: pure data, no business semantics.
 // The caller (TtsCoordinator / apps/core orchestrator) is responsible for

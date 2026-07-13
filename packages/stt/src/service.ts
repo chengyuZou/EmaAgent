@@ -1,7 +1,7 @@
 import type { SttAdapter, SttAdapterCall, SttProviderConfig, SttRequest, SttResponse, SttHealthResult, SttProbeResult } from './types.js';
 import { OpenAiSttAdapter } from './adapters/openai-stt.js';
 
-// ── SttClient Façade ────────────────────────────────────────────────────────
+// ── SttClient Facade ────────────────────────────────────────────────────────
 //
 // Symmetric to TtsClient / LlmRouter:
 //   - Holds provider configs + adapters, keyed by provider_configs.id.

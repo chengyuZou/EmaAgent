@@ -17,7 +17,7 @@ const BRIDGE_HEARTBEAT_EVERY = 12;
 /**
  * Wire the full application:
  *
- *   1. buildBindings(db)        — construct every Façade (no side effects)
+ *   1. buildBindings(db)        — construct every Facade (no side effects)
  *   2. registerAllHooks(...)    — attach HookBus subscribers from every package
  *   3. registerAllEmitters(...) — attach module-emitter subscribers
  *

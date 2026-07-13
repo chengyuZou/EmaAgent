@@ -268,7 +268,7 @@ const result = archive.findMergedFor('turn-001');
 
 ### `TtsClient`
 
-主 Façade，负责路由到对应适配器。
+主 Facade，负责路由到对应适配器。
 
 ```typescript
 class TtsClient {

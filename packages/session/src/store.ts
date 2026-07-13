@@ -19,6 +19,8 @@ import {
   type BranchId,
   type TurnMode,
   type MessageBlocks,
+  type SessionOwnershipFacade,
+  SessionOwnershipError,
   asSessionId,
   asTurnId,
   asMessageId,
@@ -205,14 +207,14 @@ export interface SessionStoreDeps {
 }
 
 /**
- * SessionStore — single Façade for all session/turn/message state.
+ * SessionStore — single Facade for all session/turn/message state.
  *
  * Concurrency contract:
  *   One session allows at most ONE running turn at a time.
  *   startTurn() enforces this via RunRegistry (in-memory) + DB heal on startup.
  *   Multiple sessions can have concurrent running turns independently.
  */
-export class SessionStore {
+export class SessionStore implements SessionOwnershipFacade {
   private readonly sessionsRepo: SessionsRepo;
   private readonly turnsRepo:    TurnsRepo;
   private readonly messagesRepo: MessagesRepo;
@@ -631,9 +633,38 @@ export class SessionStore {
     return this.turnsRepo.listForSession(sessionId, limit).map(toTurn);
   }
 
+  /** 校验 turn 属于指定 session；供跨模块写入前通过 Facade 调用。 */
+  assertTurnOwnership(sessionId: SessionId, turnId: TurnId): void {
+    const turn = this.requireTurn(turnId);
+    if (turn.sessionId !== sessionId) {
+      throw new SessionOwnershipError('turn', turnId, sessionId, turn.sessionId);
+    }
+  }
+
+  /** 校验 message 属于指定 session；不向调用方暴露仓储。 */
+  assertMessageOwnership(sessionId: SessionId, messageId: MessageId): void {
+    const message = this.requireMessage(messageId);
+    if (message.sessionId !== sessionId) {
+      throw new SessionOwnershipError('message', messageId, sessionId, message.sessionId);
+    }
+  }
+
+  /** 校验 branch 属于指定 session；不向调用方暴露仓储。 */
+  assertBranchOwnership(sessionId: SessionId, branchId: BranchId): void {
+    const row = this.branchesRepo.findById(branchId);
+    if (!row) throw new Error(`branch_not_found: ${branchId}`);
+    const actualSessionId = asSessionId(row.session_id);
+    if (actualSessionId !== sessionId) {
+      throw new SessionOwnershipError('branch', branchId, sessionId, actualSessionId);
+    }
+  }
+
   // ── Message ─────────────────────────────────────────────────────────────────
 
   appendMessage(input: AppendMessageInput): Message {
+    if (input.turnId) {
+      this.assertTurnOwnership(input.sessionId, input.turnId);
+    }
     const id  = asMessageId(crypto.randomUUID());
     const now = this.nextTs();
     const blocksJson = JSON.stringify(input.blocks);

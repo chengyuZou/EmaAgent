@@ -20,7 +20,7 @@ export interface NarrativeClientOptions {
 }
 
 /**
- * Façade for the Python bridge's narrative endpoints.
+ * Facade for the Python bridge's narrative endpoints.
  *
  * Typical narrative turn flow:
  *   1. `route(query)`  — LLM selects timelines + rewrites sub-queries.

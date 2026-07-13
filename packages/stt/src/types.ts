@@ -3,7 +3,7 @@ import type { SttProtocol } from '@ema-agent/contracts';
 // Re-export protocol enum so consumers only import from this package
 export type { SttProtocol } from '@ema-agent/contracts';
 
-// ── Public STT request (Façade entry point) ───────────────────────────────────
+// ── Public STT request (Facade entry point) ───────────────────────────────────
 //
 // Defined here (not in contracts) — symmetric with LlmRequest in @ema-agent/llm.
 // Callers (orchestrator) resolve providerId + model from model_bindings before

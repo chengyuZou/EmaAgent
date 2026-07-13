@@ -18,7 +18,7 @@ import type {
 // ── PermissionEngine ──────────────────────────────────────────────────────────
 
 /**
- * Central permission Façade.
+ * Central permission Facade.
  *
  * Instantiate once per session and inject:
  *   - mode: 'ask' | 'auto' | 'bypass'

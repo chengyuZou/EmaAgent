@@ -8,3 +8,4 @@ export * from './artifact.js';
 export * from './wire.js';
 export * from './kb.js';
 export * from './agents.js';
+export * from './session-ownership.js';

@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { AttachmentRepo } from '@ema-agent/storage';
+import { asSessionId, asTurnId, type SessionOwnershipFacade } from '@ema-agent/contracts';
 import type { Attachment, AttachmentInput, ResolvedPrompt } from './types.js';
 import { AttachmentNotFoundError } from './errors.js';
 import { resolveForPrompt } from './resolver.js';
@@ -23,9 +24,14 @@ export interface IAttachmentStore {
 // ── Implementation ────────────────────────────────────────────────────────────
 
 export class AttachmentStore implements IAttachmentStore {
-  constructor(private readonly repo: AttachmentRepo) {}
+  constructor(
+    private readonly repo: AttachmentRepo,
+    private readonly ownership: Pick<SessionOwnershipFacade, 'assertTurnOwnership'>,
+  ) {}
 
   add(input: AttachmentInput, turnId: string, sessionId: string): Attachment {
+    // 文件元数据写入前先过 Session Facade，避免跨 Session 引用进入仓储层。
+    this.ownership.assertTurnOwnership(asSessionId(sessionId), asTurnId(turnId));
     const att: Attachment = {
       id:        input.id ?? randomUUID(),
       turnId,

@@ -674,7 +674,10 @@ function isCursorV1(value: unknown): value is { v: 1; p: 0 | 1; a: number; i: st
     && candidate.i.length > 0;
 }
 
-/** 转义 SQLite LIKE 中具有通配语义的字符，使用户输入按字面匹配。 */
+/** 转义 SQLite LIKE 中具有通配语义的字符，使用户输入按字面匹配。
+ * 用户搜 100% 会被解释成"100 后接任意串"(匹配所有 ≥100 的内容)。
+ * 必须转义:%->\%、_->\_、\->\\,SQL 加 ESCAPE '\' 声明转义符。
+ */
 function escapeLikePattern(value: string): string {
   return value.replace(/[\\%_]/g, '\\$&');
 }

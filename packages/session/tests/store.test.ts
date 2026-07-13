@@ -299,4 +299,23 @@ describe('SessionStore — message', () => {
     const history = store.loadHistory(s.id);
     expect(history[0]!.interrupted).toBe(true);
   });
+
+  it('rejects appending a message with a turn from another session', () => {
+    const store = makeStore();
+    const owner = store.createSession({ title: 'owner' });
+    const foreign = store.createSession({ title: 'foreign' });
+    const { turn } = store.startTurn({
+      sessionId: owner.id,
+      mode: 'chat',
+      userInput: 'owner turn',
+    });
+
+    expect(() => store.appendMessage({
+      sessionId: foreign.id,
+      turnId: turn.id,
+      role: 'user',
+      blocks: 'must fail',
+    })).toThrow('session_ownership_violation');
+    expect(store.listMessages(foreign.id)).toHaveLength(0);
+  });
 });
