@@ -1,5 +1,6 @@
 import type { SqliteDb } from '../database.js';
 import type { SessionId, TurnId, BranchId, TurnStatus } from '@ema-agent/contracts';
+import { buildFtsQuery } from '../zh-tokenizer.js';
 
 export interface SessionRow {
   id: string;
@@ -90,7 +91,7 @@ export class SessionsRepo {
     if (parsed) {
       return this.db
         .prepare(
-          `WITH turn_projection AS (
+          `WITH latest_turn AS (
              SELECT
                t.session_id,
                t.status,
@@ -98,21 +99,25 @@ export class SessionsRepo {
                ROW_NUMBER() OVER (
                  PARTITION BY t.session_id
                  ORDER BY t.started_at DESC, t.id DESC
-               ) AS row_number,
-               SUM(CASE WHEN t.status = 'running' THEN 1 ELSE 0 END) OVER (
-                 PARTITION BY t.session_id
-               ) AS running_turn_count
+               ) AS row_number
              FROM turns t
+           ),
+           running_turns AS (
+             SELECT session_id, COUNT(*) AS running_turn_count
+             FROM turns
+             WHERE status = 'running'
+             GROUP BY session_id
            )
            SELECT
              s.*,
-             tp.status AS last_turn_status,
-             tp.completed_at AS last_turn_completed_at,
-             COALESCE(tp.running_turn_count, 0) AS running_turn_count
+             lt.status AS last_turn_status,
+             lt.completed_at AS last_turn_completed_at,
+             COALESCE(rt.running_turn_count, 0) AS running_turn_count
            FROM sessions s
-           LEFT JOIN turn_projection tp
-             ON tp.session_id = s.id
-            AND tp.row_number = 1
+           LEFT JOIN latest_turn lt
+             ON lt.session_id = s.id
+            AND lt.row_number = 1
+           LEFT JOIN running_turns rt ON rt.session_id = s.id
            WHERE s.archived_at IS NULL
              AND (
                s.pinned < ?
@@ -134,7 +139,7 @@ export class SessionsRepo {
     }
     return this.db
       .prepare(
-        `WITH turn_projection AS (
+        `WITH latest_turn AS (
            SELECT
              t.session_id,
              t.status,
@@ -142,21 +147,25 @@ export class SessionsRepo {
              ROW_NUMBER() OVER (
                PARTITION BY t.session_id
                ORDER BY t.started_at DESC, t.id DESC
-             ) AS row_number,
-             SUM(CASE WHEN t.status = 'running' THEN 1 ELSE 0 END) OVER (
-               PARTITION BY t.session_id
-             ) AS running_turn_count
+             ) AS row_number
            FROM turns t
+         ),
+         running_turns AS (
+           SELECT session_id, COUNT(*) AS running_turn_count
+           FROM turns
+           WHERE status = 'running'
+           GROUP BY session_id
          )
          SELECT
            s.*,
-           tp.status AS last_turn_status,
-           tp.completed_at AS last_turn_completed_at,
-           COALESCE(tp.running_turn_count, 0) AS running_turn_count
+           lt.status AS last_turn_status,
+           lt.completed_at AS last_turn_completed_at,
+           COALESCE(rt.running_turn_count, 0) AS running_turn_count
          FROM sessions s
-         LEFT JOIN turn_projection tp
-           ON tp.session_id = s.id
-          AND tp.row_number = 1
+         LEFT JOIN latest_turn lt
+           ON lt.session_id = s.id
+          AND lt.row_number = 1
+         LEFT JOIN running_turns rt ON rt.session_id = s.id
          WHERE s.archived_at IS NULL
          ORDER BY s.pinned DESC, s.last_activity_at DESC, s.id DESC
          LIMIT ?`,
@@ -183,7 +192,7 @@ export class SessionsRepo {
   listGrouped(): { pinned: SessionRowEnriched[]; byGroup: Array<{ label: string; sessions: SessionRowEnriched[] }>; recent: SessionRowEnriched[]; archived: SessionRowEnriched[] } {
     const all = this.db
       .prepare(`
-        WITH turn_projection AS (
+        WITH latest_turn AS (
           SELECT
             t.session_id,
             t.status,
@@ -191,21 +200,25 @@ export class SessionsRepo {
             ROW_NUMBER() OVER (
               PARTITION BY t.session_id
               ORDER BY t.started_at DESC, t.id DESC
-            ) AS row_number,
-            SUM(CASE WHEN t.status = 'running' THEN 1 ELSE 0 END) OVER (
-              PARTITION BY t.session_id
-            ) AS running_turn_count
+            ) AS row_number
           FROM turns t
+        ),
+        running_turns AS (
+          SELECT session_id, COUNT(*) AS running_turn_count
+          FROM turns
+          WHERE status = 'running'
+          GROUP BY session_id
         )
         SELECT
           s.*,
-          tp.status AS last_turn_status,
-          tp.completed_at AS last_turn_completed_at,
-          COALESCE(tp.running_turn_count, 0) AS running_turn_count
+          lt.status AS last_turn_status,
+          lt.completed_at AS last_turn_completed_at,
+          COALESCE(rt.running_turn_count, 0) AS running_turn_count
         FROM sessions s
-        LEFT JOIN turn_projection tp
-          ON tp.session_id = s.id
-         AND tp.row_number = 1
+        LEFT JOIN latest_turn lt
+          ON lt.session_id = s.id
+         AND lt.row_number = 1
+        LEFT JOIN running_turns rt ON rt.session_id = s.id
         ORDER BY s.pinned DESC, s.last_activity_at DESC, s.id DESC
       `)
       .all() as SessionRowEnriched[];
@@ -244,10 +257,11 @@ export class SessionsRepo {
     const q = query.trim().toLowerCase();
     if (!q) return [];
     const pattern = `%${escapeLikePattern(q)}%`;
+    const ftsQuery = buildFtsQuery(q) ?? '"__ema_no_search_terms__"';
 
     return this.db
       .prepare(`
-        WITH turn_projection AS (
+        WITH latest_turn AS (
           SELECT
             t.session_id,
             t.status,
@@ -255,31 +269,35 @@ export class SessionsRepo {
             ROW_NUMBER() OVER (
               PARTITION BY t.session_id
               ORDER BY t.started_at DESC, t.id DESC
-            ) AS row_number,
-            SUM(CASE WHEN t.status = 'running' THEN 1 ELSE 0 END) OVER (
-              PARTITION BY t.session_id
-            ) AS running_turn_count
+            ) AS row_number
           FROM turns t
+        ),
+        running_turns AS (
+          SELECT session_id, COUNT(*) AS running_turn_count
+          FROM turns
+          WHERE status = 'running'
+          GROUP BY session_id
         ),
         matched_message AS (
           SELECT
-            m.session_id,
-            m.id,
+            d.session_id,
+            d.message_id AS id,
             m.blocks_json,
-            m.created_at,
+            d.created_at,
             ROW_NUMBER() OVER (
-              PARTITION BY m.session_id
-              ORDER BY m.created_at DESC, m.id DESC
+              PARTITION BY d.session_id
+              ORDER BY d.created_at DESC, d.message_id DESC
             ) AS row_number
-          FROM messages m
-          WHERE m.kind IN ('normal', 'summary')
-            AND lower(m.blocks_json) LIKE ? ESCAPE '\\'
+          FROM message_search_fts fts
+          JOIN message_search_documents d ON d.message_id = fts.message_id
+          JOIN messages m ON m.id = d.message_id
+          WHERE message_search_fts MATCH ?
         )
         SELECT
           s.*,
-          tp.status AS last_turn_status,
-          tp.completed_at AS last_turn_completed_at,
-          COALESCE(tp.running_turn_count, 0) AS running_turn_count,
+          lt.status AS last_turn_status,
+          lt.completed_at AS last_turn_completed_at,
+          COALESCE(rt.running_turn_count, 0) AS running_turn_count,
           CASE
             WHEN lower(s.title) LIKE ? ESCAPE '\\' THEN 'title'
             ELSE 'message'
@@ -291,9 +309,10 @@ export class SessionsRepo {
           mm.id AS message_id,
           mm.created_at AS message_created_at
         FROM sessions s
-        LEFT JOIN turn_projection tp
-          ON tp.session_id = s.id
-         AND tp.row_number = 1
+        LEFT JOIN latest_turn lt
+          ON lt.session_id = s.id
+         AND lt.row_number = 1
+        LEFT JOIN running_turns rt ON rt.session_id = s.id
         LEFT JOIN matched_message mm
           ON mm.session_id = s.id
          AND mm.row_number = 1
@@ -305,7 +324,7 @@ export class SessionsRepo {
         ORDER BY s.pinned DESC, s.last_activity_at DESC, s.id DESC
         LIMIT ?
       `)
-      .all(pattern, pattern, pattern, pattern, limit) as SessionSearchRow[];
+      .all(ftsQuery, pattern, pattern, pattern, limit) as SessionSearchRow[];
   }
 
   setViewedAt(id: SessionId, now: number): void {

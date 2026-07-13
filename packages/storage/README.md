@@ -104,6 +104,8 @@ SQLite 封装。构造时:
 | `agent_tasks` | agent 运行实例状态机(running/waiting_user/completed/failed/cancelled) |
 | `agent_task_messages` | agent 对话 transcript |
 | `kb_activations` | 哪个 session/turn 用了哪个 KB 文档(`call_id` 聚合) |
+| `message_search_documents` | Session 消息的用户可见纯文本与 jieba tokens 投影 |
+| `message_search_fts` | Session 消息 FTS5 倒排索引，不保存 thinking/tool 参数 |
 
 ### `profile.db`(全局用户级)
 
@@ -142,7 +144,7 @@ SQLite 封装。构造时:
    - 跳号(文件缺失)throw 明确错误,不静默跳过
    - 事务保证:中途失败全回滚,不留半成品
 
-**当前版本**:data 流 v2 / profile 流 v2 / kb 流 v1
+**当前版本**:data 流 v5 / profile 流 v2 / kb 流 v1
 
 **铁律(B-059 已修复)**:
 - 迁移**只追加,不回退,不 squash(合并)**。一旦发布,编号不可改
@@ -173,13 +175,22 @@ SQLite 封装。构造时:
 - `document_chunks.findByAssetPaged`:游标 = 上一页最后一条的 `rowid`
 - `document_assets.listPaged`:游标 = 上一页最后一条的 `created_at`
 
-> ⚠️ 已知问题:多数游标缺 ID tie-breaker,同时间戳翻页可能重复/丢失(见 Batch-1 B-060)
+> 其他 Repo 的游标必须分别验证稳定 tie-breaker，不能照搬 Session cursor 格式。
 
-### FTS5 中文全文检索(KB)
+### FTS5 中文全文检索(Session + KB)
+- Session 搜索以 `messages` 为事实表，由 trigger 同步到 `message_search_documents` 和 `message_search_fts`
+- 只提取字符串正文与 `type=text` block；thinking、tool_use、tool_result、媒体数据和内部 context 不进入索引
+- migration 会回填升级前已有的 `normal` / `summary` 消息；fork、恢复导入和普通 insert 共用同一 trigger 管线
 - `document_chunks.tokens` 列存 jieba 分词后的文本
 - 3 个触发器(`doc_chunks_fts_ai/ad/au`)在 insert/delete/update 时自动同步到 `document_chunks_fts` 虚拟表
 - `searchFts(query)` 查询时也用 jieba 分词,保证索引和查询用同一分词器(否则中文匹配不上)
 - BM25 评分:SQLite 返回负值(越小越好),代码 negate 成正值(越大越好)
+
+### 跨平台运行约束
+- `Database` 启动时检测 SQLite `ENABLE_FTS5`，缺失时抛出带 capability/platform 的 `DatabaseCapabilityError`
+- jieba 使用可捕获的懒加载；native 二进制缺失时降级为 unicode61 原始文本分词，不阻断应用启动
+- lockfile 已包含 Windows x64/arm64、macOS x64/arm64、Linux glibc/musl 等 `@node-rs/jieba` 可选二进制
+- 路径、文件名、大小写与原子替换仍必须由 Tauri Host / Core 文件 façade 处理，storage SQL 不拼接操作系统路径
 
 ### 向量检索(KB fallback)
 - `document_chunks.embedding` 存 Float32 二进制 BLOB(4 字节 × dim)

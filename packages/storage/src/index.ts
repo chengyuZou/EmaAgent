@@ -1,4 +1,4 @@
-export { Database } from './database.js';
+export { Database, DatabaseCapabilityError } from './database.js';
 export { MigrationsRunner } from './migrations.js';
 
 export { SessionsRepo, nextCursorFor } from './repos/sessions.js';

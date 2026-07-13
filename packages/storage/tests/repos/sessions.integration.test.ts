@@ -48,6 +48,25 @@ describe('SessionsRepo integration', () => {
 
     expect(tables.map((row) => row.name)).toEqual(['messages', 'sessions', 'turns']);
     expect(database.db.pragma('foreign_keys', { simple: true })).toBe(1);
+
+    const indexes = database.db.prepare(`
+      SELECT name
+      FROM sqlite_master
+      WHERE type = 'index'
+        AND name IN (
+          'idx_sessions_activity',
+          'idx_turns_session_latest',
+          'idx_turns_running_by_session',
+          'idx_messages_session_latest'
+        )
+      ORDER BY name
+    `).all() as Array<{ name: string }>;
+    expect(indexes.map((row) => row.name)).toEqual([
+      'idx_messages_session_latest',
+      'idx_sessions_activity',
+      'idx_turns_running_by_session',
+      'idx_turns_session_latest',
+    ]);
   });
 
   it('separates active and archived sessions in their documented read models', () => {
@@ -98,6 +117,52 @@ describe('SessionsRepo integration', () => {
     });
   });
 
+  it('searches Chinese visible text through FTS5 and excludes internal blocks', () => {
+    insertSession({ id: 'visible', title: 'Unrelated' });
+    insertSession({ id: 'internal', title: 'Unrelated' });
+    insertMessage({ id: 'visible-message', sessionId: 'visible', text: '今天一起整理桌面记忆', createdAt: 100 });
+    database.db.prepare(`
+      INSERT INTO messages
+        (id, session_id, role, kind, blocks_json, created_at)
+      VALUES (?, ?, 'assistant', 'normal', ?, ?)
+    `).run(
+      'internal-message',
+      'internal',
+      JSON.stringify([
+        { type: 'thinking', thinking: '桌面记忆不能暴露' },
+        { type: 'tool_use', id: 'tool-1', name: '桌面记忆', args: { secret: '桌面记忆' } },
+      ]),
+      100,
+    );
+
+    expect(repo.search('桌面记忆', 10).map((row) => row.id)).toEqual(['visible']);
+  });
+
+  it('keeps message search documents synchronized on delete', () => {
+    insertSession({ id: 's1', title: 'Unrelated' });
+    insertTurn({ id: 'turn-1', sessionId: 's1', startedAt: 100 });
+    insertMessage({ id: 'message-1', sessionId: 's1', turnId: 'turn-1', text: '可删除搜索正文', createdAt: 100 });
+    expect(repo.search('可删除搜索正文', 10)).toHaveLength(1);
+
+    database.db.prepare('DELETE FROM messages WHERE id = ?').run('message-1');
+
+    expect(repo.search('可删除搜索正文', 10)).toHaveLength(0);
+    expect(database.db.prepare(
+      'SELECT COUNT(*) FROM message_search_documents WHERE message_id = ?',
+    ).pluck().get('message-1')).toBe(0);
+  });
+
+  it('rebuilds the search projection when visible message blocks change', () => {
+    insertSession({ id: 's1', title: 'Unrelated' });
+    insertMessage({ id: 'message-1', sessionId: 's1', text: 'oldtokenalpha', createdAt: 100 });
+
+    database.db.prepare('UPDATE messages SET blocks_json = ? WHERE id = ?')
+      .run(blocks('newtokenbeta'), 'message-1');
+
+    expect(repo.search('oldtokenalpha', 10)).toHaveLength(0);
+    expect(repo.search('newtokenbeta', 10).map((row) => row.id)).toEqual(['s1']);
+  });
+
   it('forks through the requested turn and remaps message and attachment ownership', () => {
     insertSession({ id: 'source' });
     insertTurn({ id: 'turn-1', sessionId: 'source', status: 'completed', startedAt: 100, completedAt: 110 });
@@ -133,6 +198,7 @@ describe('SessionsRepo integration', () => {
       .get('fork') as { session_id: string; turn_id: string };
     expect(copiedAttachment.session_id).toBe('fork');
     expect(turns.some((turn) => turn.id === copiedAttachment.turn_id)).toBe(true);
+    expect(repo.search('two', 10).map((row) => row.id)).toContain('fork');
   });
 
   it('uses stable turn and message boundaries when fork timestamps are equal', () => {

@@ -1,11 +1,21 @@
 import BetterSqlite3 from 'better-sqlite3';
 import { MigrationsRunner, type DatabaseKind } from './migrations.js';
+import { extractMessageSearchText, tokenizeMessageSearchText } from './message-search.js';
 
 export type SqliteDb = BetterSqlite3.Database;
 
 export type DatabaseOptions =
   | { path: string; kind: DatabaseKind; memory?: false }
   | { memory: true;  kind: DatabaseKind; path?: never };
+
+export class DatabaseCapabilityError extends Error {
+  readonly code = 'storage/capability-unavailable';
+
+  constructor(readonly capability: 'fts5', readonly platform: NodeJS.Platform) {
+    super(`SQLite capability ${capability} is unavailable on ${platform}`);
+    this.name = 'DatabaseCapabilityError';
+  }
+}
 
 /**
  * SQLite 封装。V1 中三种 kind 共存,各开一个 Database 实例:
@@ -50,6 +60,19 @@ export class Database {
       sqlite.pragma('cache_size = -20000');
       sqlite.pragma('temp_store = MEMORY');
       if (!opts.memory) sqlite.pragma('mmap_size = 268435456');
+
+      const hasFts5 = sqlite
+        .prepare("SELECT sqlite_compileoption_used('ENABLE_FTS5') AS enabled")
+        .pluck()
+        .get() as number;
+      if (opts.kind !== 'profile' && hasFts5 !== 1) {
+        throw new DatabaseCapabilityError('fts5', process.platform);
+      }
+
+      // data migration 的 message search trigger 会调用这两个同步函数。
+      // 所有 repo 共用同一连接，因此普通 insert、fork 和恢复导入都走同一索引管线。
+      sqlite.function('ema_message_search_text', { deterministic: true }, extractMessageSearchText);
+      sqlite.function('ema_segment_fts', { deterministic: true }, tokenizeMessageSearchText);
     } catch (err) {
       // pragma 失败(如磁盘只读)时关闭已打开的句柄,避免泄漏 + -wal 残留。
       try { sqlite.close(); } catch { /* close 失败忽略,优先抛原错 */ }
