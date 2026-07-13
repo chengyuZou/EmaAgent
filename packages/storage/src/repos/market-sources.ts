@@ -2,6 +2,8 @@ import type { SqliteDb } from '../database.js';
 
 // ── 原始 DB 行 ────────────────────────────────────────────────────────────────
 
+import type { ProtectedDeleteResult } from './mutation-results.js';
+
 export interface MarketSourceRow {
   id:         string;
   kind:       string;        // 'mcp' | 'skill' | 未来 'integration' —— 业务包填,底层不约束
@@ -74,7 +76,17 @@ export class MarketSourcesRepo {
     ).all(kind) as MarketSourceRow[];
   }
 
-  deleteById(id: string): void {
-    this.db.prepare('DELETE FROM market_sources WHERE id = ?').run(id);
+  deleteById(id: string): ProtectedDeleteResult {
+    return this.db.transaction(() => {
+      const deleted = this.db
+        .prepare('DELETE FROM market_sources WHERE id = ? AND builtin = 0')
+        .run(id);
+      if (deleted.changes === 1) return 'deleted';
+
+      const existing = this.db
+        .prepare('SELECT 1 FROM market_sources WHERE id = ?')
+        .get(id);
+      return existing ? 'builtin_protected' : 'not_found';
+    })();
   }
 }

@@ -1,5 +1,7 @@
 ﻿import type { SqliteDb } from '../database.js';
 
+import type { ProtectedDeleteResult } from './mutation-results.js';
+
 export interface Live2DModelRow {
   id: string;
   name: string;
@@ -44,7 +46,17 @@ export class Live2DModelsRepo {
       .run(paramsJson, updatedAt, id);
   }
 
-  delete(id: string): void {
-    this.db.prepare('DELETE FROM live2d_models WHERE id = ? AND is_builtin = 0').run(id);
+  delete(id: string): ProtectedDeleteResult {
+    return this.db.transaction(() => {
+      const deleted = this.db
+        .prepare('DELETE FROM live2d_models WHERE id = ? AND is_builtin = 0')
+        .run(id);
+      if (deleted.changes === 1) return 'deleted';
+
+      const existing = this.db
+        .prepare('SELECT 1 FROM live2d_models WHERE id = ?')
+        .get(id);
+      return existing ? 'builtin_protected' : 'not_found';
+    })();
   }
 }

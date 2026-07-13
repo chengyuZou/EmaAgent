@@ -1,5 +1,6 @@
 ﻿import type { SqliteDb } from '../database.js';
 import type { CharacterCardId } from '@ema-agent/contracts';
+import type { ProtectedDeleteResult } from './mutation-results.js';
 
 export interface CharacterCardRow {
   id: string;
@@ -87,12 +88,21 @@ export class CharacterCardsRepo {
       .all() as CharacterCardRow[];
   }
 
-  activate(id: CharacterCardId, updatedAt: number): void {
-    this.db.transaction(() => {
-      this.db.prepare('UPDATE character_cards SET is_active = 0').run();
+  activate(id: CharacterCardId, updatedAt: number): boolean {
+    return this.db.transaction(() => {
+      const target = this.db
+        .prepare('SELECT is_active FROM character_cards WHERE id = ?')
+        .get(id) as { is_active: number } | undefined;
+
+      // 必须先确认目标存在，避免错误 ID 清空当前角色卡。
+      if (!target) return false;
+      if (target.is_active === 1) return true;
+
+      this.db.prepare('UPDATE character_cards SET is_active = 0 WHERE is_active = 1').run();
       this.db
         .prepare('UPDATE character_cards SET is_active = 1, updated_at = ? WHERE id = ?')
         .run(updatedAt, id);
+      return true;
     })();
   }
 
@@ -122,7 +132,17 @@ export class CharacterCardsRepo {
     this.db.prepare(`UPDATE character_cards SET ${fields.join(', ')} WHERE id = ?`).run(...values);
   }
 
-  delete(id: CharacterCardId): void {
-    this.db.prepare('DELETE FROM character_cards WHERE id = ? AND is_builtin = 0').run(id);
+  delete(id: CharacterCardId): ProtectedDeleteResult {
+    return this.db.transaction(() => {
+      const deleted = this.db
+        .prepare('DELETE FROM character_cards WHERE id = ? AND is_builtin = 0')
+        .run(id);
+      if (deleted.changes === 1) return 'deleted';
+
+      const existing = this.db
+        .prepare('SELECT 1 FROM character_cards WHERE id = ?')
+        .get(id);
+      return existing ? 'builtin_protected' : 'not_found';
+    })();
   }
 }

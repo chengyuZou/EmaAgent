@@ -30,6 +30,7 @@ export { SkillsRepo }      from './repos/skills.js';
 export type { SkillRow }   from './repos/skills.js';
 export { MarketSourcesRepo } from './repos/market-sources.js';
 export type { MarketSourceRow } from './repos/market-sources.js';
+export type { ProtectedDeleteResult } from './repos/mutation-results.js';
 
 // ── Memory 子系统 ──────────────────────────────────────────────────────────────
 export { MemoryNodesRepo }       from './repos/memory-nodes.js';

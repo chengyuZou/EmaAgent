@@ -71,11 +71,24 @@ export class KbRegistryRepo {
     ).run(kb.id, kb.name, kb.path, now, now);
   }
 
-  /** 单活跃：清除所有 is_active，再设置当前项。 */
-  setActive(id: string): void {
-    this.db.transaction(() => {
-      this.db.prepare('UPDATE knowledge_bases SET is_active = 0, updated_at = ? WHERE is_active = 1').run(Date.now());
-      this.db.prepare('UPDATE knowledge_bases SET is_active = 1, updated_at = ? WHERE id = ?').run(Date.now(), id);
+  /** 单活跃：目标存在时才切换；不存在时保留当前活跃知识库。 */
+  setActive(id: string): boolean {
+    return this.db.transaction(() => {
+      const target = this.db
+        .prepare('SELECT is_active FROM knowledge_bases WHERE id = ?')
+        .get(id) as { is_active: number } | undefined;
+
+      if (!target) return false;
+      if (target.is_active === 1) return true;
+
+      const now = Date.now();
+      this.db
+        .prepare('UPDATE knowledge_bases SET is_active = 0, updated_at = ? WHERE is_active = 1')
+        .run(now);
+      this.db
+        .prepare('UPDATE knowledge_bases SET is_active = 1, updated_at = ? WHERE id = ?')
+        .run(now, id);
+      return true;
     })();
   }
 
