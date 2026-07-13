@@ -47,8 +47,14 @@ export type { SessionRow, SessionRowEnriched, SessionSearchRow, SessionInsert, S
 export type { TurnRow, TurnInsert, TurnCompletion } from './repos/turns.js';
 export type { MessageRow, MessageInsert } from './repos/messages.js';
 export type { BranchRow, BranchInsert } from './repos/branches.js';
-export type { CharacterCardRow, CharacterCardInsert } from './repos/character-cards.js';
-export type { SettingRow } from './repos/settings.js';
+export { CharacterCardUpdateContractError } from './repos/character-cards.js';
+export type {
+  CharacterCardRow,
+  CharacterCardInsert,
+  CharacterCardUpdate,
+} from './repos/character-cards.js';
+export { SettingSerializationError } from './repos/settings.js';
+export type { SettingRow, SettingReadResult } from './repos/settings.js';
 export type { TelemetryEventRow } from './repos/telemetry.js';
 export type { TurnUsageRow } from './repos/usage.js';
 export type { Live2DModelRow } from './repos/live2d-models.js';
@@ -119,14 +125,20 @@ export type { ProviderVisionModelRow, ProviderVisionModelInsert } from './repos/
 
 // ── Agent task repo ───────────────────────────────────────────────────────────
 export { AgentTasksRepo }        from './repos/agent-tasks.js';
-export { AgentTaskMessagesRepo } from './repos/agent-task-messages.js';
+export {
+  AgentTaskMessagesRepo,
+  AgentTaskMessageSerializationError,
+} from './repos/agent-task-messages.js';
 export type { AgentTaskRow, AgentTaskInsert, AgentTaskStatus }           from './repos/agent-tasks.js';
 export type { AgentTaskMessageRow, AgentTaskMessageInsert, AgentTaskMessageRole } from './repos/agent-task-messages.js';
 
 // ── Knowledge-base repo ────────────────────────────────────────────────────────
 export { DocumentAssetRepo, DocumentAssetCursorError } from './repos/document-asset.js';
 export { DocumentChunkRepo }   from './repos/document-chunk.js';
-export { DocumentPreviewRepo } from './repos/document-preview.js';
+export {
+  DocumentPreviewRepo,
+  DocumentPreviewValidationError,
+} from './repos/document-preview.js';
 export { KbActivationsRepo }   from './repos/kb-activations.js';
 export type { AssetUsage }     from './repos/kb-activations.js';
 export { KbIngestTasksRepo }   from './repos/kb-ingest-tasks.js';
@@ -135,5 +147,10 @@ export { KbRegistryRepo }      from './repos/kb-registry.js';
 export type { KbRecord }       from './repos/kb-registry.js';
 export type { DocumentAssetRow, DocumentAssetInsert, AssetPage } from './repos/document-asset.js';
 export type { DocumentChunkRow, DocumentChunkInsert, ChunkSearchHit, ChunkSummary, ChunkPage }  from './repos/document-chunk.js';
-export type { DocumentPreviewRow, DocumentPreviewUpsert } from './repos/document-preview.js';
+export type {
+  DocumentPreview,
+  DocumentPreviewMime,
+  DocumentPreviewRow,
+  DocumentPreviewUpsert,
+} from './repos/document-preview.js';
 export type { KbActivationRow }                           from './repos/kb-activations.js';

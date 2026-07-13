@@ -38,6 +38,34 @@ export interface CharacterCardInsert {
   updatedAt: number;
 }
 
+/** 普通编辑允许修改的字段；激活状态和内置标记由专用流程管理。 */
+export interface CharacterCardUpdate {
+  name?: string;
+  version?: string;
+  description?: string;
+  systemPrompt?: string;
+  speechPatternsJson?: string;
+  forbiddenTopicsJson?: string;
+  emotionVocabJson?: string;
+  motionVocabJson?: string;
+  live2dModelId?: string;
+  voiceProfileJson?: string;
+  updatedAt?: number;
+}
+
+export class CharacterCardUpdateContractError extends Error {
+  readonly code = 'storage/character-card-reserved-field';
+
+  constructor(readonly field: 'isActive' | 'isBuiltin') {
+    super(
+      field === 'isActive'
+        ? 'Character card active state must be changed through activate()'
+        : 'Character card builtin state is immutable after insertion',
+    );
+    this.name = 'CharacterCardUpdateContractError';
+  }
+}
+
 export class CharacterCardsRepo {
   constructor(private readonly db: SqliteDb) {}
 
@@ -106,10 +134,14 @@ export class CharacterCardsRepo {
     })();
   }
 
-  update(
-    id: CharacterCardId,
-    patch: Partial<Omit<CharacterCardInsert, 'id' | 'createdAt'>>,
-  ): void {
+  update(id: CharacterCardId, patch: CharacterCardUpdate): void {
+    const untrustedPatch = patch as CharacterCardUpdate & Record<string, unknown>;
+    for (const field of ['isActive', 'isBuiltin'] as const) {
+      if (Object.prototype.hasOwnProperty.call(untrustedPatch, field)) {
+        throw new CharacterCardUpdateContractError(field);
+      }
+    }
+
     const now = patch.updatedAt ?? Date.now();
     const fields: string[] = [];
     const values: unknown[] = [];
