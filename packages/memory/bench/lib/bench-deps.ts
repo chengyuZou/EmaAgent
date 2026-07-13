@@ -142,7 +142,7 @@ export function createBenchDeps(embedCache: EmbedCache): BenchDeps {
     sessionNotes,
     backgroundTasks,
     sessions,
-    getEmbedDim:     (model) => model === BENCH_MODEL ? EMBED_DIM : 0,
+    getEmbedDim:     (_providerId, model) => model === BENCH_MODEL ? EMBED_DIM : 0,
   };
 
   return { deps, items, close: () => db.close() };

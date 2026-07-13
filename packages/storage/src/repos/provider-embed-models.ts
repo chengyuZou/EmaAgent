@@ -32,7 +32,9 @@ export class ProviderEmbedModelsRepo {
 
   listByProvider(providerConfigId: string): ProviderEmbedModelRow[] {
     return this.db
-      .prepare('SELECT * FROM provider_embed_models WHERE provider_config_id = ? ORDER BY created_at ASC')
+      .prepare(`SELECT * FROM provider_embed_models
+                WHERE provider_config_id = ?
+                ORDER BY created_at ASC, model ASC`)
       .all(providerConfigId) as ProviderEmbedModelRow[];
   }
 
@@ -57,7 +59,8 @@ export class ProviderEmbedModelsRepo {
 
   listAll(): ProviderEmbedModelRow[] {
     return this.db
-      .prepare('SELECT * FROM provider_embed_models ORDER BY provider_config_id, created_at ASC')
+      .prepare(`SELECT * FROM provider_embed_models
+                ORDER BY provider_config_id ASC, created_at ASC, model ASC`)
       .all() as ProviderEmbedModelRow[];
   }
 
@@ -75,11 +78,12 @@ export class ProviderEmbedModelsRepo {
       .get(model) !== undefined;
   }
 
-  /** 某模型名的向量维度,跨所有 provider。memory 管线的兜底。 */
-  dimFor(model: string): number | undefined {
+  /** 精确读取指定 Provider 实例中模型的向量维度，禁止跨 Provider 猜测。 */
+  dimFor(providerConfigId: string, model: string): number | undefined {
     const row = this.db
-      .prepare('SELECT dim FROM provider_embed_models WHERE model = ? LIMIT 1')
-      .get(model) as { dim: number } | undefined;
+      .prepare(`SELECT dim FROM provider_embed_models
+                WHERE provider_config_id = ? AND model = ?`)
+      .get(providerConfigId, model) as { dim: number } | undefined;
     return row?.dim;
   }
 

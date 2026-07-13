@@ -35,7 +35,9 @@ export class ProviderLlmModelsRepo {
   /** 某 provider config 的已启用模型,驱动 provider 页面列表。 */
   listByProvider(providerConfigId: string): ProviderLlmModelRow[] {
     return this.db
-      .prepare('SELECT * FROM provider_llm_models WHERE provider_config_id = ? ORDER BY created_at ASC')
+      .prepare(`SELECT * FROM provider_llm_models
+                WHERE provider_config_id = ?
+                ORDER BY created_at ASC, model ASC`)
       .all(providerConfigId) as ProviderLlmModelRow[];
   }
 
@@ -73,7 +75,8 @@ export class ProviderLlmModelsRepo {
   /** 所有 provider 的全部已启用模型。 */
   listAll(): ProviderLlmModelRow[] {
     return this.db
-      .prepare('SELECT * FROM provider_llm_models ORDER BY provider_config_id, created_at ASC')
+      .prepare(`SELECT * FROM provider_llm_models
+                ORDER BY provider_config_id ASC, created_at ASC, model ASC`)
       .all() as ProviderLlmModelRow[];
   }
 
@@ -83,7 +86,7 @@ export class ProviderLlmModelsRepo {
       .prepare(`SELECT plm.*, pc.display_name, pc.definition_id
                 FROM provider_llm_models plm
                 JOIN provider_configs pc ON pc.id = plm.provider_config_id
-                ORDER BY pc.display_name, plm.model`)
+                ORDER BY pc.display_name ASC, plm.model ASC, plm.provider_config_id ASC`)
       .all() as Array<ProviderLlmModelRow & { display_name: string }>;
   }
 
@@ -104,14 +107,14 @@ export class ProviderLlmModelsRepo {
   }
 
   /**
-   * 某模型名的 context window,跨所有启用了该模型的 provider。
-   * 供 memory 预算用(getContextWindow)。无匹配已启用模型时返回 undefined,
-   * 调用方回退到静态 token 表。
+   * 精确读取指定 Provider 实例中模型的 context window。
+   * model 名不是全局身份；同名模型在不同 Provider 下可能具有不同限制。
    */
-  contextWindowFor(model: string): number | undefined {
+  contextWindowFor(providerConfigId: string, model: string): number | undefined {
     const row = this.db
-      .prepare('SELECT context_window FROM provider_llm_models WHERE model = ? LIMIT 1')
-      .get(model) as { context_window: number } | undefined;
+      .prepare(`SELECT context_window FROM provider_llm_models
+                WHERE provider_config_id = ? AND model = ?`)
+      .get(providerConfigId, model) as { context_window: number } | undefined;
     return row?.context_window;
   }
 

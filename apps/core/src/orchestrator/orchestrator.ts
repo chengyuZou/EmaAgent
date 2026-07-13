@@ -336,8 +336,8 @@ export class Orchestrator {
           })();
         }
 
-        const contextWindow =  this.bindings.modelCatalog.contextWindowOf(model)
-          ?? this.bindings.providerLlmModels.contextWindowFor(model)
+        const contextWindow = this.bindings.providerLlmModels.contextWindowFor(providerId, model)
+          ?? this.bindings.modelCatalog.contextWindowOf(model)
           ?? 200_000;
 
         return this.agent.run({

@@ -38,11 +38,11 @@ export interface MemoryDeps {
   pendingFragments:  PendingFragmentsRepo; // extraction input queue
 
   /**
-   * Returns the vector dimension for a given embed model name.
-   * Looks up embed_model_catalog in profileDb — kept as a callback so the
+   * Returns the vector dimension for an exact Provider + embed model identity.
+   * Looks up provider_embed_models in profileDb — kept as a callback so the
    * memory package does not depend on @ema-agent/storage directly.
    */
-  getEmbedDim:    (model: string) => number;
+  getEmbedDim:    (providerId: string, model: string) => number;
 
   /**
    * Observability hook — pipeline / runner / maintenance push lifecycle

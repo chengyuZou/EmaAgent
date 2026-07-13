@@ -31,7 +31,7 @@ export interface MemoryHooksDeps {
    * Implemented by the orchestrator via llm_model_catalog (DB).
    * Returns 0 when the model is unknown → falls back to defaultContextWindow.
    */
-  getContextWindow: (model: string) => number;
+  getContextWindow: (providerId: string, model: string) => number;
   recentFiles?:  RecentFilesProvider;
 }
 
@@ -66,7 +66,7 @@ export function registerMemoryHooks(
       const model      = ctx.meta['model']      as string | undefined;
       const providerId = ctx.meta['providerId'] as string | undefined;
 
-      const window = resolveContextWindow(deps, model);
+      const window = resolveContextWindow(deps, providerId, model);
       const recent = deps.recentFiles?.(ctx.sessionId);
 
       const t0 = Date.now();
@@ -115,11 +115,12 @@ export function registerMemoryHooks(
 // ── Internals ────────────────────────────────────────────────────────────────
 
 function resolveContextWindow(
-  deps:  MemoryHooksDeps,
-  model: string | undefined,
+  deps:       MemoryHooksDeps,
+  providerId: string | undefined,
+  model:      string | undefined,
 ): number {
-  if (model) {
-    const fromCatalog = deps.getContextWindow(model);
+  if (providerId && model) {
+    const fromCatalog = deps.getContextWindow(providerId, model);
     if (fromCatalog > 0) return fromCatalog;
   }
   return deps.defaultContextWindow ?? 128_000;

@@ -376,7 +376,7 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
     pendingFragments:   new PendingFragmentsRepo(dataDb.sqlite),
     memorySessionState: new MemorySessionStateRepo(dataDb.sqlite),
     // dim is probed at enable time and stored on provider_embed_models (dim_source='probed').
-    getEmbedDim:      (model) => providerEmbedModels.dimFor(model) ?? 0,
+    getEmbedDim:      (providerId, model) => providerEmbedModels.dimFor(providerId, model) ?? 0,
     emit:             (ev) => systemBus.emit(ev),
     hookBus:          hooks,
   });

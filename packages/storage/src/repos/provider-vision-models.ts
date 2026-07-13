@@ -27,7 +27,9 @@ export class ProviderVisionModelsRepo {
 
   listByProvider(providerConfigId: string): ProviderVisionModelRow[] {
     return this.db
-      .prepare('SELECT * FROM provider_vision_models WHERE provider_config_id = ? ORDER BY created_at ASC')
+      .prepare(`SELECT * FROM provider_vision_models
+                WHERE provider_config_id = ?
+                ORDER BY created_at ASC, model ASC`)
       .all(providerConfigId) as ProviderVisionModelRow[];
   }
 
@@ -52,7 +54,8 @@ export class ProviderVisionModelsRepo {
 
   listAll(): ProviderVisionModelRow[] {
     return this.db
-      .prepare('SELECT * FROM provider_vision_models ORDER BY provider_config_id, created_at ASC')
+      .prepare(`SELECT * FROM provider_vision_models
+                ORDER BY provider_config_id ASC, created_at ASC, model ASC`)
       .all() as ProviderVisionModelRow[];
   }
 

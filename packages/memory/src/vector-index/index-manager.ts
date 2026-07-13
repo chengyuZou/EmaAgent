@@ -25,7 +25,7 @@ export class IndexManager {
     const p = this.embed.resolveEmbed();
     if (!p) return { nodes: 0, items: 0, backend: null };
 
-    const dim = this.deps.getEmbedDim(p.model);
+    const dim = this.deps.getEmbedDim(p.providerId, p.model);
     if (!dim) return { nodes: 0, items: 0, backend: null };
 
     const t0 = Date.now();
