@@ -1,8 +1,8 @@
-﻿import type { TurnId, SessionId, EmaStreamEvent } from '@ema-agent/contracts';
+import type { TurnId, SessionId, EmaStreamEvent } from '@ema-agent/contracts';
 import type { HookEvent, HookPayload } from './events.js';
 import { PRIORITY } from './priority.js';
 
-// ── Context & Result types ────────────────────────────────────────────────────
+// ── Context 与 Result 类型 ────────────────────────────────────────────────────
 
 export interface HookContext<E extends HookEvent> {
   event: E;
@@ -10,11 +10,10 @@ export interface HookContext<E extends HookEvent> {
   turnId: TurnId;
   sessionId: SessionId;
   /**
-   * Shared mutable bag for intra-turn handler communication.
-   * All handlers within a single trigger() call — including parallel ones —
-   * receive the same reference. Concurrent writes from parallel handlers are
-   * safe in Node.js (single-threaded event loop), but would not be safe with
-   * Worker Threads. Do not store promises or large objects here.
+   * turn 内 handler 间通信的共享可变容器。
+   * 单次 trigger() 调用内的所有 handler - 包括并行 handler - 拿到同一个引用。
+   * 在 Node.js(单线程事件循环)下并行 handler 的并发写是安全的,
+   * 但在 Worker Threads 下不安全。不要在此存 promise 或大对象。
    */
   meta: Record<string, unknown>;
   emit?: (event: EmaStreamEvent) => void;
@@ -24,10 +23,10 @@ export type HookTriggerContext<E extends HookEvent> =
   Omit<HookContext<E>, 'event'>;
 
 /**
- * Events whose handlers are allowed to alter control flow.
+ * 允许 handler 改变控制流的事件。
  *
- * Tool lifecycle events are intentionally absent: tool safety is owned by
- * PermissionEngine + Sandbox, while hooks are observation/UI extension points.
+ * 工具生命周期事件刻意不在此列:工具安全由 PermissionEngine + Sandbox 负责,
+ * hook 只是观察/UI 扩展点。
  */
 export type ControlHookEvent =
   | 'beforeLlm'
@@ -43,7 +42,7 @@ export type HookControlResult<E extends HookEvent> =
 
 export type HookObserverResult = { kind: 'continue' };
 
-/** Result returned by a single hook handler. */
+/** 单个 hook handler 返回的结果。 */
 export type HookResult<E extends HookEvent> =
   E extends ControlHookEvent
     ? HookControlResult<E>
@@ -51,7 +50,7 @@ export type HookResult<E extends HookEvent> =
 
 type HookRuntimeResult<E extends HookEvent> = HookControlResult<E>;
 
-/** Result returned by a whole trigger() chain. */
+/** 整条 trigger() 链返回的结果。 */
 export type HookTriggerResult<E extends HookEvent> =
   | {
       kind: 'continue';
@@ -80,7 +79,7 @@ export interface HookOptions {
   name?: string;
   critical?: boolean;
   parallel?: boolean;
-  /** Per-handler timeout in ms. Overrides the bus-level default. 0 = no timeout. */
+  /** 单 handler 超时(ms)。覆盖 bus 级默认值。0 = 不超时。 */
   timeoutMs?: number;
 }
 
@@ -88,24 +87,22 @@ export interface HookBusOptions {
   maxConcurrency?:   number;
   parallelEvents?:   ReadonlySet<HookEvent>;
   /**
-   * Called after EVERY handler execution (success or error).
-   * Use for structured logging, telemetry, or test assertions.
+   * 每次 handler 执行后(成功或出错)调用。
+   * 用于结构化日志、telemetry 或测试断言。
    *
-   * In production, wire this to emit `system_warning` for slow/errored
-   * handlers AND to a ring buffer so the settings diagnostics panel
-   * can display recent hook activity.
+   * 生产环境接两路:对慢/出错的 handler 发 `system_warning`,
+   * 同时写 ring buffer 供 settings 诊断面板展示近期 hook 活动。
    */
   traceSink?:        (entry: HookTraceEntry) => void;
   /**
-   * When true, registering a handler without `opts.name` AND whose
-   * function has no `.name` property prints a console warning.
-   * Defaults to false — set true in dev / debug builds.
+   * 为 true 时,注册既没传 `opts.name`、函数本身也无 `.name` 属性的 handler 会打印 console 警告。
+   * 默认 false - dev / debug 构建设 true。
    */
   warnAnonymous?:    boolean;
   /**
-   * Default handler timeout in ms. Handlers that don't resolve within this
-   * window are treated as errors (abort if critical, warning if not).
-   * 0 = no timeout. Per-handler `timeoutMs` overrides this.
+   * handler 默认超时(ms)。未在此窗口内 resolve 的 handler 视为出错
+   * (critical 则 abort,否则 warning)。
+   * 0 = 不超时。单 handler `timeoutMs` 覆盖此值。
    * @default 30_000
    */
   handlerTimeoutMs?: number;
@@ -121,19 +118,19 @@ export interface RegisteredHook {
 
 // ── Trace ────────────────────────────────────────────────────────────────────
 
-/** Emitted by traceSink after every handler run (success or error). */
+/** 每次 handler 运行后(成功或出错)由 traceSink 发出。 */
 export interface HookTraceEntry {
   event:          HookEvent;
   handlerName:    string;
   durationMs:     number;
   result:         'continue' | 'replace' | 'abort' | 'error';
-  /** Reason string for abort / error; absent for continue / replace. */
+  /** abort / error 的原因字符串;continue / replace 时缺省。 */
   reason?:        string;
-  /** True when the handler returned `kind: 'replace'`. */
+  /** handler 返回 `kind: 'replace'` 时为 true。 */
   payloadReplaced: boolean;
 }
 
-// ── Internal registration entry ───────────────────────────────────────────────
+// ── 内部注册条目 ───────────────────────────────────────────────
 
 interface HandlerEntry<E extends HookEvent> {
   event: E;
@@ -149,11 +146,11 @@ type HookBatch<E extends HookEvent> =
   | { kind: 'serial'; entries: HandlerEntry<E>[] }
   | { kind: 'parallel'; entries: HandlerEntry<E>[] };
 
-// ── Defaults ──────────────────────────────────────────────────────────────────
+// ── 默认值 ──────────────────────────────────────────────────────────────────
 
-// All ObserverHookEvents except beforeToolUse run in parallel by default.
-// beforeToolUse is intentionally serial: UI renderers need ordered delivery
-// (show "pending" before "running") and audit logs need call-order guarantees.
+// 除 beforeToolUse 外的所有 ObserverHookEvent 默认并行。
+// beforeToolUse 刻意串行:UI 渲染器需有序投递(先显示"pending"再"running"),
+// 审计日志也需保证调用顺序。
 const DEFAULT_PARALLEL_EVENTS = new Set<HookEvent>([
   'afterLlmComplete',
   'afterMessage',
@@ -170,7 +167,7 @@ const CONTROL_HOOK_EVENTS: ReadonlySet<HookEvent> = new Set<ControlHookEvent>([
   'onTurnStart',
 ]);
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// ── 辅助函数 ───────────────────────────────────────────────────────────────────
 
 function errorToReason(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
@@ -208,7 +205,7 @@ function chunkArray<T>(items: T[], size: number): T[][] {
   return chunks;
 }
 
-/** Returns a promise that rejects after `ms` with a timeout error. */
+/** 返回一个在 `ms` 后以超时错误 reject 的 promise。 */
 function timeout<T>(ms: number, handlerName: string): Promise<T> {
   return new Promise<T>((_, reject) => {
     setTimeout(() => reject(new Error(`Hook handler "${handlerName}" timed out after ${ms}ms`)), ms);
@@ -268,9 +265,9 @@ export class HookBus {
   }
 
   /**
-   * Register a handler for an event.
+   * 为某事件注册 handler。
    *
-   * @returns An unregister function — call it to remove this handler.
+   * @returns 返回一个反注册函数 - 调用它移除该 handler。
    */
   register<E extends HookEvent>(
     event: E,
@@ -288,7 +285,7 @@ export class HookBus {
     };
 
     if (this.options.warnAnonymous && entry.name === '<anonymous>') {
-      console.warn(`[HookBus] anonymous handler registered for "${event}" — pass opts.name for traceability`);
+      console.warn(`[HookBus] anonymous handler registered for "${event}" - pass opts.name for traceability`);
     }
 
     if (!this.registry.has(event)) {
@@ -309,17 +306,16 @@ export class HookBus {
   }
 
   /**
-   * Trigger all handlers for an event.
+   * 触发某事件的全部 handler。
    *
-   * Rules:
-   * - Handlers run by ascending priority.
-   * - If the event does not support parallel execution, all handlers run serially.
-   * - If the event supports parallel execution, consecutive parallel handlers run
-   *   together, bounded by maxConcurrency.
-   * - Serial handlers may return replace and update currentPayload.
-   * - Parallel handlers must not return replace.
-   * - A handler returning abort always aborts the trigger chain.
-   * - A thrown/rejected error aborts only if the hook is critical.
+   * 规则:
+   * - handler 按优先级升序执行。
+   * - 事件不支持并行时,所有 handler 串行执行。
+   * - 事件支持并行时,连续的并行 handler 一起跑,受 maxConcurrency 约束。
+   * - 串行 handler 可返回 replace 更新 currentPayload。
+   * - 并行 handler 不得返回 replace。
+   * - 返回 abort 的 handler 总是中止 trigger 链。
+   * - 抛错/reject 只在 hook 为 critical 时才 abort。
    */
   async trigger<E extends HookEvent>(
     event: E,
@@ -437,7 +433,7 @@ export class HookBus {
           reason:          result.kind === 'abort' ? result.reason : undefined,
           payloadReplaced: result.kind === 'replace',
         });
-      } catch { /* diagnostic sink must not affect turn flow */ }
+      } catch { /* 诊断 sink 不得影响 turn 流程 */ }
       return result;
     } catch (err) {
       const reason = errorToReason(err);
@@ -452,7 +448,7 @@ export class HookBus {
           reason,
           payloadReplaced: false,
         });
-      } catch { /* diagnostic sink must not affect turn flow */ }
+      } catch { /* 诊断 sink 不得影响 turn 流程 */ }
 
       if (entry.critical) {
         return {
@@ -491,7 +487,7 @@ export class HookBus {
         const entry = chunk[i]!;
 
         if (item.status === 'rejected') {
-          // runOne catches handler errors, so this is only a defensive fallback.
+          // runOne 已捕获 handler 错误,这里只是防御性兜底。
           const reason = errorToReason(item.reason);
 
           if (entry.critical) {
@@ -529,10 +525,9 @@ export class HookBus {
         }
 
         if (result.kind === 'replace') {
-          // Reachable only when a ControlHookEvent is placed in a parallel batch
-          // via a custom parallelEvents config — not possible with the default set.
-          // Parallel batches structurally cannot propagate payload replacements,
-          // so treat it as a protocol violation.
+          // 仅当通过自定义 parallelEvents 配置把 ControlHookEvent 放进并行批次时才可达
+          // - 默认配置下不可能。并行批次结构上无法传播 payload 替换,
+          // 故视为协议违规。
           const reason = `Parallel hook "${entry.name}" returned replace, but parallel hooks cannot replace payload`;
 
           if (entry.critical) {
@@ -551,14 +546,14 @@ export class HookBus {
           continue;
         }
 
-        // continue: no-op
+        // continue:无操作
       }
     }
 
     return { kind: 'continue' };
   }
 
-  /** List registered hooks, optionally filtered by event. */
+  /** 列出已注册 hook,可按事件过滤。 */
   list(event?: HookEvent): RegisteredHook[] {
     if (event) {
       return (this.registry.get(event) ?? []).map((entry) => ({

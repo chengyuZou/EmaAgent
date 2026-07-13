@@ -1,13 +1,12 @@
-﻿import type { TurnMode, MessageId, MessageRole, AssistantBlock, LlmMessage } from '@ema-agent/contracts';
+import type { TurnMode, MessageId, MessageRole, AssistantBlock, LlmMessage } from '@ema-agent/contracts';
 
 /**
- * All hook events are turn-scoped internal engine lifecycle events.
+ * 所有 hook 事件都是 turn 级别的 engine 内部生命周期事件。
  *
- * Two events from the CLAUDE.md spec are intentionally absent here:
- *   - onCharacterCardSwitch  → emitted directly as `character_card_switched` EmaStreamEvent
- *   - onEmotionChange        → emitted directly as `emotion_changed` EmaStreamEvent
- * These are app-level notifications with no need for hook interception or
- * priority ordering, so they skip the HookBus entirely.
+ * CLAUDE.md 规范中的两个事件在此刻意省略:
+ *   - onCharacterCardSwitch  -> 直接作为 `character_card_switched` EmaStreamEvent 发出
+ *   - onEmotionChange        -> 直接作为 `emotion_changed` EmaStreamEvent 发出
+ * 这两个是 app 级通知,无需 hook 拦截或优先级排序,因此完全绕过 HookBus。
  */
 export type HookEvent =
   | 'beforeLlm'
@@ -22,25 +21,23 @@ export type HookEvent =
   | 'onTurnEnd'
   | 'onTurnAbort';
 
-// ── Per-event payload shapes ──────────────────────────────────────────────────
+// ── 各事件 payload 结构 ──────────────────────────────────────────────────
 
 export interface HookPayload {
   beforeLlm: {
     /**
-     * Convenience copy of the system prompt text for hooks that need to read it
-     * without having to find it inside `messages`. Populated by the
-     * `prompts:buildSystem` hook registered in wiring.ts.
+     * system prompt 文本的便捷副本,供需要读取它的 hook 使用,无需从 `messages` 里翻找。
+     * 由 wiring.ts 注册的 `prompts:buildSystem` hook 填充。
      *
-     * The engine (conversation-flow) only consumes `messages` — it does not
-     * read this field. Hooks that want to replace the system prompt should
-     * update both this field AND messages[0] to keep them in sync.
+     * engine(conversation-flow)只消费 `messages` - 不读此字段。
+     * 想替换 system prompt 的 hook 应同时更新此字段和 messages[0],保持同步。
      */
     systemPrompt: string;
     messages: LlmMessage[];
   };
   afterLlmComplete: {
     content: string;
-    /** Tool-use blocks produced by this LLM response, in block order. */
+    /** 本次 LLM 响应产出的 tool-use 块,按 block 顺序。 */
     toolCalls?: Array<Extract<AssistantBlock, { type: 'tool_use' }>>;
   };
   afterMessage: {
@@ -49,12 +46,11 @@ export interface HookPayload {
     content: string;
   };
   /**
-   * Fires immediately before a tool executes — for UI and audit only.
+   * 工具执行前立即触发 - 仅用于 UI 和审计。
    *
-   * Tool permission decisions (allow / ask / deny) are made by PermissionEngine
-   * before this hook fires. The sandbox execution boundary is enforced by
-   * CommandRunner. This hook cannot intercept, modify, or cancel tool execution.
-   * Use it to update the UI (show "running tool…") or record audit logs.
+   * 工具权限决策(allow / ask / deny)由 PermissionEngine 在本 hook 触发前做出。
+   * 沙箱执行边界由 CommandRunner 强制。本 hook 无法拦截、修改或取消工具执行。
+   * 用它更新 UI(显示"正在运行工具…")或记录审计日志。
    */
   beforeToolUse: {
     callId: string;
