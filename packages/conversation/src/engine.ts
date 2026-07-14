@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { asLlmCallId } from '@ema-agent/contracts';
-import type { EmaStreamEvent, LlmMessage, AssistantBlock, UserBlock, MessageContentPart as LlmContentPart } from '@ema-agent/contracts';
+import type { EmaStreamEvent, ErrorCode, LlmMessage, AssistantBlock, UserBlock, MessageContentPart as LlmContentPart } from '@ema-agent/contracts';
 import type { MessageBlocks } from '@ema-agent/session';
-import type { HookBus, HookContext, HookTriggerResult } from '@ema-agent/hook';
+import type { HookBus, HookContext, HookTriggerResult, TurnFailurePhase } from '@ema-agent/hook';
 import type { ConversationDeps, ConversationRunInput } from './types.js';
 import { historyToLlmMessages } from '@ema-agent/session';
 
@@ -46,11 +46,29 @@ async function* runTurn(
   const emitHookEvent = (event: EmaStreamEvent): void => {
     pendingHookEvents.push(event);
   };
+  let activePhase: TurnFailurePhase = 'setup';
+  let failureReported = false;
+  const reportFailure = async (
+    code: ErrorCode,
+    message: string,
+    phase: TurnFailurePhase,
+  ): Promise<void> => {
+    if (failureReported) return;
+    failureReported = true;
+    session.failTurn(turnId, code, message);
+    await hooks.trigger('onTurnFailure', {
+      turnId,
+      sessionId: input.sessionId,
+      payload: { phase, code, message, durationMs: Date.now() - startedAt },
+      emit: emitHookEvent,
+    });
+  };
 
   try {
     emotion.beginTurn(input.sessionId);
 
     // ── onTurnStart ───────────────────────────────────────────────────────────
+    activePhase = 'hook';
     const startResult = await hooks.trigger('onTurnStart', {
       turnId,
       sessionId: input.sessionId,
@@ -60,7 +78,8 @@ async function* runTurn(
     });
     while (pendingHookEvents.length > 0) yield pendingHookEvents.shift()!;
     if (startResult.kind === 'abort') {
-      session.failTurn(turnId, 'turn/hook_aborted', startResult.reason);
+      await reportFailure('turn/hook_aborted', startResult.reason, 'hook');
+      while (pendingHookEvents.length > 0) yield pendingHookEvents.shift()!;
       yield { type: 'turn_failed', sessionId: input.sessionId, turnId, code: 'turn/hook_aborted', message: startResult.reason };
       return;
     }
@@ -70,17 +89,21 @@ async function* runTurn(
     // ── Provider resolution ──────────────────────────────────────────────────
     // Prefer explicit (providerId, model) from the orchestrator (frontend picker
     // or resolveLlmForTurn). Falls back to the first available LLM provider.
+    activePhase = 'provider';
     const providerId    = input.providerId ?? llm.firstProviderId();
     const resolvedModel = input.model
       ?? (providerId ? llm.defaultModelFor(providerId) : undefined);
 
     if (!providerId || !resolvedModel) {
-      session.failTurn(turnId, 'provider/not_configured', 'No LLM provider configured for this mode');
-      yield { type: 'turn_failed', sessionId: input.sessionId, turnId, code: 'provider/not_configured', message: 'No LLM provider configured for this mode' };
+      const message = 'No LLM provider configured for this mode';
+      await reportFailure('provider/not_configured', message, 'provider');
+      while (pendingHookEvents.length > 0) yield pendingHookEvents.shift()!;
+      yield { type: 'turn_failed', sessionId: input.sessionId, turnId, code: 'provider/not_configured', message };
       return;
     }
 
     // ── Context + user message ────────────────────────────────────────────────
+    activePhase = 'persistence';
     const history = session.loadHistory(input.sessionId);
 
     // userBlocks: plain string for text-only, or LlmContentPart[] for multimodal
@@ -111,6 +134,7 @@ async function* runTurn(
     const llmCallId = asLlmCallId(randomUUID());
 
     if (input.compactMessages) {
+      activePhase = 'unknown';
       messages = await input.compactMessages([...messages]);
     }
 
@@ -136,6 +160,7 @@ async function* runTurn(
     //
     // Pattern: run trigger() as a background task, yield events as emit() is
     // called, wait for the task to finish, then inspect the result.
+    activePhase = 'hook';
     const llmHookResult = yield* streamingBeforeLlm(hooks, {
       turnId,
       sessionId: input.sessionId,
@@ -152,7 +177,8 @@ async function* runTurn(
     });
 
     if (llmHookResult.kind === 'abort') {
-      session.failTurn(turnId, 'turn/hook_aborted', llmHookResult.reason);
+      await reportFailure('turn/hook_aborted', llmHookResult.reason, 'hook');
+      while (pendingHookEvents.length > 0) yield pendingHookEvents.shift()!;
       yield { type: 'turn_failed', sessionId: input.sessionId, turnId, code: 'turn/hook_aborted', message: llmHookResult.reason };
       return;
     }
@@ -165,6 +191,7 @@ async function* runTurn(
     // 临时 user message 看过检索内容(上面 finalMessages 里),这里落盘是给未来轮次 + 前端展示。
     const narrativeRecall = llmHookResult.payload.narrativeRecall;
     if (narrativeRecall && narrativeRecall.timelines.length > 0) {
+      activePhase = 'persistence';
       session.appendMessage({
         turnId,
         sessionId: input.sessionId,
@@ -184,6 +211,7 @@ async function* runTurn(
     const thinkingSignatureByIndex = new Map<number, string>();
     const completedThinkingIndexes = new Set<number>();
 
+    activePhase = 'provider';
     const stream = llm.stream({ providerId, model: resolvedModel, messages: finalMessages, thinking: input.thinking, signal });
 
     for await (const chunk of stream) {
@@ -240,6 +268,7 @@ async function* runTurn(
     }
 
     // ── Post-stream hooks + persist ───────────────────────────────────────────
+    activePhase = 'hook';
     await hooks.trigger('afterLlmComplete', {
       turnId,
       sessionId: input.sessionId,
@@ -249,6 +278,7 @@ async function* runTurn(
     });
     while (pendingHookEvents.length > 0) yield pendingHookEvents.shift()!;
 
+    activePhase = 'persistence';
     const msg = session.appendMessage({
       turnId,
       sessionId: input.sessionId,
@@ -264,6 +294,7 @@ async function* runTurn(
       ) as MessageBlocks,
     });
 
+    activePhase = 'hook';
     await hooks.trigger('afterMessage', {
       turnId,
       sessionId: input.sessionId,
@@ -283,6 +314,7 @@ async function* runTurn(
     });
     while (pendingHookEvents.length > 0) yield pendingHookEvents.shift()!;
 
+    activePhase = 'persistence';
     session.completeTurn(turnId, { usageInputTokens: inputTokens, usageOutputTokens: outputTokens });
     yield { type: 'turn_completed', sessionId: input.sessionId, turnId, stats: { inputTokens, outputTokens, durationMs } };
 
@@ -303,8 +335,12 @@ async function* runTurn(
       session.abortTurn(input.sessionId, turnId);
       yield { type: 'turn_aborted', sessionId: input.sessionId, turnId, reason: 'user_stop' };
     } else {
-      session.failTurn(turnId, 'provider/server_error', reason);
-      yield { type: 'turn_failed', sessionId: input.sessionId, turnId, code: 'provider/server_error', message: reason };
+      const code: ErrorCode = activePhase === 'provider'
+        ? 'provider/server_error'
+        : 'turn/execution_failed';
+      await reportFailure(code, reason, activePhase);
+      while (pendingHookEvents.length > 0) yield pendingHookEvents.shift()!;
+      yield { type: 'turn_failed', sessionId: input.sessionId, turnId, code, message: reason };
     }
   }
 }

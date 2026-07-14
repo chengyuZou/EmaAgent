@@ -1,7 +1,8 @@
-import type { EmaStreamEvent, LlmMessage, AssistantBlock, UserBlock } from '@ema-agent/contracts';
+import type { EmaStreamEvent, ErrorCode, LlmMessage, AssistantBlock, UserBlock } from '@ema-agent/contracts';
 import type { MessageBlocks } from '@ema-agent/session';
 import type { ToolExecutionContext, ReadFileState } from '@ema-agent/tools';
 import type { PermissionContext } from '@ema-agent/permission';
+import type { TurnFailurePhase } from '@ema-agent/hook';
 import type { AgentDeps, AgentRunInput } from './types.js';
 import { AgentPolicy } from './policy.js';
 import { TurnToolExecutor } from './tool-executor.js';
@@ -89,12 +90,31 @@ async function* runTurn(
   const emitHookEvent = (event: EmaStreamEvent): void => {
     pendingHookEvents.push(event);
   };
+  let activePhase: TurnFailurePhase = 'setup';
+  let failureReported = false;
+  const reportFailure = async (
+    code: ErrorCode,
+    message: string,
+    phase: TurnFailurePhase,
+  ): Promise<void> => {
+    if (failureReported) return;
+    failureReported = true;
+    session.failTurn(turnId, code, message);
+    deps.taskStore?.fail(turnId, message);
+    await hooks.trigger('onTurnFailure', {
+      turnId,
+      sessionId,
+      payload: { phase, code, message, durationMs: Date.now() - startedAt },
+      emit: emitHookEvent,
+    });
+  };
 
   try {
     emotion.beginTurn(sessionId);
     clearTodos(turnId);
 
     // ── onTurnStart ───────────────────────────────────────────────────────────
+    activePhase = 'hook';
     const startResult = await hooks.trigger('onTurnStart', {
       turnId, sessionId,
       payload: { mode: 'agent' },
@@ -103,7 +123,8 @@ async function* runTurn(
     });
     while (pendingHookEvents.length > 0) yield pendingHookEvents.shift()!;
     if (startResult.kind === 'abort') {
-      session.failTurn(turnId, 'turn/hook_aborted', startResult.reason);
+      await reportFailure('turn/hook_aborted', startResult.reason, 'hook');
+      while (pendingHookEvents.length > 0) yield pendingHookEvents.shift()!;
       yield { type: 'turn_failed', sessionId, turnId, code: 'turn/hook_aborted', message: startResult.reason };
       return;
     }
@@ -111,6 +132,7 @@ async function* runTurn(
     yield { type: 'turn_started', sessionId, turnId, mode: 'agent' };
 
     // ── Build initial message history ─────────────────────────────────────────
+    activePhase = 'persistence';
     const history = session.loadHistory(sessionId);
     session.appendMessage({
       turnId, sessionId, role: 'user',
@@ -197,6 +219,7 @@ async function* runTurn(
     }
 
     // ── Main loop — translate AgentLoopEvent → EmaStreamEvent ────────────────
+    activePhase = 'provider';
     for await (const ev of agentLoop({
       messages, policy, buildExecutor, llm,
       providerId, model, signal,
@@ -207,6 +230,7 @@ async function* runTurn(
         : undefined,
       compactMessages: input.compactMessages,
       prepareLlmCall: async ({ iteration, llmCallId, messages: callMessages }) => {
+        activePhase = 'hook';
         const result = await hooks.trigger('beforeLlm', {
           turnId, sessionId,
           payload: {
@@ -222,6 +246,7 @@ async function* runTurn(
           signal,
           emit: emitHookEvent,
         });
+        activePhase = 'provider';
         if (result.kind === 'abort') {
           return { kind: 'abort', reason: result.reason };
         }
@@ -296,6 +321,7 @@ async function* runTurn(
             .map(([, t]) => t)
             .join('');
 
+          activePhase = 'hook';
           await hooks.trigger('afterLlmComplete', {
             turnId, sessionId,
             payload: {
@@ -307,13 +333,14 @@ async function* runTurn(
             signal,
             emit: emitHookEvent,
           });
+          activePhase = 'provider';
           while (pendingHookEvents.length > 0) yield pendingHookEvents.shift()!;
           break;
         }
 
         case 'loop_hook_abort':
-          session.failTurn(turnId, 'turn/hook_aborted', ev.reason);
-          deps.taskStore?.fail(turnId, ev.reason);
+          await reportFailure('turn/hook_aborted', ev.reason, 'hook');
+          while (pendingHookEvents.length > 0) yield pendingHookEvents.shift()!;
           yield {
             type: 'turn_failed',
             sessionId,
@@ -325,6 +352,7 @@ async function* runTurn(
 
         case 'loop_tool_results': {
           // Persist mid-loop assistant message (with tool_use blocks) + tool results.
+          activePhase = 'persistence';
           const blockMap = new Map<number, AssistantBlock>();
           for (const [idx, text]     of iterTextByIndex)     blockMap.set(idx, { type: 'text', text });
           for (const [idx, thinking] of iterThinkingByIndex) blockMap.set(idx, { type: 'thinking', thinking });
@@ -333,6 +361,7 @@ async function* runTurn(
 
           session.appendMessage({ turnId, sessionId, role: 'assistant', blocks: allBlocks as MessageBlocks });
           session.appendMessage({ turnId, sessionId, role: 'user', kind: 'tool_results', blocks: ev.results as MessageBlocks });
+          activePhase = 'provider';
           break;
         }
 
@@ -351,7 +380,9 @@ async function* runTurn(
             for (const [idx, thinking] of iterThinkingByIndex) blockMap.set(idx, { type: 'thinking', thinking });
             const allBlocks = [...blockMap.entries()].sort(([a], [b]) => a - b).map(([, b]) => b);
 
+            activePhase = 'persistence';
             const msg = session.appendMessage({ turnId, sessionId, role: 'assistant', blocks: allBlocks as MessageBlocks });
+            activePhase = 'hook';
             await hooks.trigger('afterMessage', {
               turnId, sessionId,
               payload: { messageId: msg.id, role: 'assistant', content: ev.fullText },
@@ -359,6 +390,7 @@ async function* runTurn(
               emit: emitHookEvent,
             });
             while (pendingHookEvents.length > 0) yield pendingHookEvents.shift()!;
+            activePhase = 'provider';
           }
           break;
         }
@@ -380,6 +412,7 @@ async function* runTurn(
     }
 
     const durationMs = Date.now() - startedAt;
+    activePhase = 'hook';
     await hooks.trigger('onTurnEnd', {
       turnId, sessionId,
       payload: { durationMs },
@@ -388,6 +421,7 @@ async function* runTurn(
     });
     while (pendingHookEvents.length > 0) yield pendingHookEvents.shift()!;
 
+    activePhase = 'persistence';
     session.completeTurn(turnId, {
       usageInputTokens:  totalInput,
       usageOutputTokens: totalOutput,
@@ -412,9 +446,12 @@ async function* runTurn(
       deps.taskStore?.cancel(turnId, 'user_abort');
       yield { type: 'turn_aborted', sessionId, turnId, reason: 'user_stop' };
     } else {
-      session.failTurn(turnId, 'provider/server_error', reason);
-      deps.taskStore?.fail(turnId, reason);
-      yield { type: 'turn_failed', sessionId, turnId, code: 'provider/server_error', message: reason };
+      const code: ErrorCode = activePhase === 'provider'
+        ? 'provider/server_error'
+        : 'turn/execution_failed';
+      await reportFailure(code, reason, activePhase);
+      while (pendingHookEvents.length > 0) yield pendingHookEvents.shift()!;
+      yield { type: 'turn_failed', sessionId, turnId, code, message: reason };
     }
   } finally {
     // Cut the emitRef → pushEv → pendingRelayEvents reference chain before the

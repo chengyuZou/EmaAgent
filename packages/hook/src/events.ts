@@ -1,6 +1,7 @@
 import type {
   AssistantBlock,
   CompactionId,
+  ErrorCode,
   LlmCallId,
   LlmMessage,
   MessageId,
@@ -29,7 +30,8 @@ export type HookEvent =
   | 'afterCompact'
   | 'onTurnStart'
   | 'onTurnEnd'
-  | 'onTurnAbort';
+  | 'onTurnAbort'
+  | 'onTurnFailure';
 
 /**
  * 允许 handler 改变控制流的事件。
@@ -52,6 +54,21 @@ export type ToolFailurePhase =
   | 'permission'
   | 'validation'
   | 'execution';
+
+export type TurnFailurePhase =
+  | 'setup'
+  | 'hook'
+  | 'provider'
+  | 'persistence'
+  | 'tool'
+  | 'unknown';
+
+export interface TurnFailurePayload {
+  phase: TurnFailurePhase;
+  code: ErrorCode;
+  message: string;
+  durationMs: number;
+}
 
 // ── 各事件 payload 结构 ──────────────────────────────────────────────────
 
@@ -140,4 +157,5 @@ export interface HookPayload {
   onTurnAbort: {
     reason: string;
   };
+  onTurnFailure: TurnFailurePayload;
 }

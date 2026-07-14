@@ -57,6 +57,7 @@ const DEFAULT_PARALLEL_EVENTS = new Set<HookEvent>([
   'afterCompact',
   'onTurnEnd',
   'onTurnAbort',
+  'onTurnFailure',
 ]);
 
 const CONTROL_HOOK_EVENTS: ReadonlySet<HookEvent> = new Set<ControlHookEvent>([

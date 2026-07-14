@@ -111,4 +111,86 @@ describe('ConversationEngine Hook 诊断事件', () => {
     expect(beforeIdentity?.iteration).toBe(1);
     expect(beforeIdentity?.llmCallId).toBeTruthy();
   });
+
+  it('失败状态落盘后触发 onTurnFailure，并在 turn_failed 前输出 Hook 诊断', async () => {
+    const order: string[] = [];
+    const hooks = new HookBus();
+    let failurePayload: unknown;
+    hooks.register('onTurnFailure', (ctx) => {
+      order.push('onTurnFailure');
+      failurePayload = ctx.payload;
+      throw new Error('failure telemetry unavailable');
+    }, {
+      name: 'test:failure-telemetry',
+      critical: false,
+    });
+
+    let messageSeq = 0;
+    const session = {
+      loadHistory: () => [],
+      appendMessage: () => ({ id: `message-${++messageSeq}` as MessageId }),
+      completeTurn: () => undefined,
+      failTurn: () => { order.push('failTurn'); },
+      abortTurn: () => undefined,
+    };
+    const llm = {
+      firstProviderId: () => 'provider-1',
+      defaultModelFor: () => 'model-1',
+      warnUnsupportedParts: () => [],
+      stream: async function* () {
+        throw new Error('provider unavailable');
+      },
+    };
+    const deps: ConversationDeps = {
+      session: session as never,
+      hooks,
+      llm: llm as never,
+      emotion: {
+        beginTurn: () => undefined,
+        processChunk: (delta: string) => ({ cleaned: delta, events: [] }),
+        flush: () => ({ cleaned: '', events: [] }),
+      } as never,
+      narrative: {} as never,
+    };
+    const turn: Turn = {
+      id: turnId,
+      sessionId,
+      branchId: null,
+      mode: 'chat',
+      status: 'running',
+      userInput: 'hello',
+      startedAt: Date.now(),
+      completedAt: null,
+      errorCode: null,
+      errorMessage: null,
+      iterations: 0,
+      usageInputTokens: 0,
+      usageOutputTokens: 0,
+    };
+
+    const events: EmaStreamEvent[] = [];
+    const engine = new ConversationEngine(deps);
+    for await (const event of engine.run({
+      turn,
+      signal: new AbortController().signal,
+      sessionId,
+      mode: 'chat',
+      userInput: 'hello',
+      providerId: 'provider-1',
+      model: 'model-1',
+    })) {
+      events.push(event);
+      if (event.type === 'hook_warning') order.push('hook_warning');
+      if (event.type === 'turn_failed') order.push('turn_failed');
+    }
+
+    expect(order).toEqual(['failTurn', 'onTurnFailure', 'hook_warning', 'turn_failed']);
+    expect(failurePayload).toEqual(expect.objectContaining({
+      phase: 'provider',
+      code: 'provider/server_error',
+      message: 'provider unavailable',
+      durationMs: expect.any(Number),
+    }));
+    expect(events.at(-1)).toEqual(expect.objectContaining({ type: 'turn_failed' }));
+  });
 });

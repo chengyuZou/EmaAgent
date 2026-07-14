@@ -24,6 +24,9 @@ export type ErrorCode =
   | 'turn/aborted_by_user'
   | 'turn/max_iterations'
   | 'turn/hook_aborted'
+  | 'turn/attachment_failed'
+  | 'turn/setup_failed'
+  | 'turn/execution_failed'
   | 'system/bridge_crashed'
   | 'system/sidecar_crashed';
 

@@ -1,6 +1,6 @@
 import type { AppBindings } from '../wiring/index.js';
 import type {
-  TurnMode, EmaStreamEvent, TurnId, SessionId, KbAssetScope,
+  ErrorCode, TurnMode, EmaStreamEvent, TurnId, SessionId, KbAssetScope,
 } from '@ema-agent/contracts';
 import { getProviderDefinition } from '@ema-agent/contracts';
 import type { ThinkingMode } from '@ema-agent/llm';
@@ -17,6 +17,7 @@ import { resolveVoice, ensureVoiceUri, VoiceUriCache } from '../wiring/providers
 import { ensureSessionLayout } from '../storage-locations/index.js';
 import type { Turn }           from '@ema-agent/session';
 import type { VisionImageInput, VisionImageMime } from '@ema-agent/vision';
+import type { TurnFailurePhase } from '@ema-agent/hook';
 
 export interface TurnResult {
   turnId: TurnId;
@@ -178,7 +179,9 @@ export class Orchestrator {
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      try { this.bindings.session.failTurn(turnId, 'turn/attachment_failed', message); } catch { /* fall through to clear */ }
+      try {
+        await this.reportTurnFailure(turn, 'turn/attachment_failed', message, 'setup');
+      } catch { /* fall through to clear */ }
       this.bindings.session.clearRunning(sessionId);
       this.activeTurns.delete(turnId as string);
       throw err;
@@ -228,7 +231,9 @@ export class Orchestrator {
       const message = err instanceof Error ? err.message : String(err);
       // failTurn may itself throw (requireTurn / DB write) — guard it so the
       // unconditional clearRunning below still runs and the lock is released.
-      try { this.bindings.session.failTurn(turnId, 'turn/setup_failed', message); } catch { /* fall through to clear */ }
+      try {
+        await this.reportTurnFailure(turn, 'turn/setup_failed', message, 'setup');
+      } catch { /* fall through to clear */ }
       this.bindings.session.clearRunning(sessionId);
       this.activeTurns.delete(turnId as string);
       throw err;
@@ -340,10 +345,17 @@ export class Orchestrator {
 
         const { providerId, model } = this.resolveLlmForTurn(request);
         if (!providerId || !model) {
-          this.bindings.session.failTurn(turn.id, 'provider/not_configured',
-            'No LLM provider configured for agent mode');
+          const self = this;
+          const message = 'No LLM provider configured for agent mode';
           return (async function* () {
-            yield { type: 'turn_failed' as const, sessionId, turnId: turn.id, code: 'provider/not_configured', message: 'No LLM provider configured for agent mode' };
+            const diagnostics = await self.reportTurnFailure(
+              turn,
+              'provider/not_configured',
+              message,
+              'provider',
+            );
+            for (const event of diagnostics) yield event;
+            yield { type: 'turn_failed' as const, sessionId, turnId: turn.id, code: 'provider/not_configured' as const, message };
           })();
         }
 
@@ -377,6 +389,32 @@ export class Orchestrator {
         });
       }
     }
+  }
+
+  /**
+   * Core 在 Engine 接管前报告 Turn 失败。Session 状态必须先落盘，随后才允许
+   * Observer 读取终态；返回的诊断事件由仍然存在的 SSE 流负责转发。
+   */
+  private async reportTurnFailure(
+    turn: Turn,
+    code: ErrorCode,
+    message: string,
+    phase: TurnFailurePhase,
+  ): Promise<EmaStreamEvent[]> {
+    this.bindings.session.failTurn(turn.id, code, message);
+    const emitted: EmaStreamEvent[] = [];
+    await this.bindings.hooks.trigger('onTurnFailure', {
+      turnId: turn.id,
+      sessionId: turn.sessionId,
+      payload: {
+        phase,
+        code,
+        message,
+        durationMs: Date.now() - turn.startedAt,
+      },
+      emit: (event) => emitted.push(event),
+    });
+    return emitted;
   }
 
   /**
