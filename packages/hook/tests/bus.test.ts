@@ -1,7 +1,7 @@
 ﻿import { describe, it, expect, vi } from 'vitest';
-import { HookBus } from './bus.js';
-import { PRIORITY } from './priority.js';
-import type { HookPayload } from './events.js';
+import { HookBus } from '../src/bus.js';
+import { PRIORITY } from '../src/priority.js';
+import type { HookPayload } from '../src/events.js';
 import type { EmaStreamEvent, TurnId, SessionId } from '@ema-agent/contracts';
 
 const turnId = 'turn-1' as TurnId;
@@ -15,13 +15,32 @@ function beforeLlmPayload(
   overrides: Partial<HookPayload['beforeLlm']> = {},
 ): HookPayload['beforeLlm'] {
   return {
-    systemPrompt: 'base',
-    messages: [],
+    messages: [{ role: 'system', content: 'base' }],
     mode: 'chat',
     userInput: 'hello',
     providerId: 'provider-1',
     model: 'model-1',
     ...overrides,
+  };
+}
+
+function systemMessageContent(payload: HookPayload['beforeLlm']): string {
+  const first = payload.messages[0];
+  return first?.role === 'system' && typeof first.content === 'string'
+    ? first.content
+    : '';
+}
+
+function replaceSystemMessage(
+  payload: HookPayload['beforeLlm'],
+  content: string,
+): HookPayload['beforeLlm'] {
+  const tail = payload.messages[0]?.role === 'system'
+    ? payload.messages.slice(1)
+    : payload.messages;
+  return {
+    ...payload,
+    messages: [{ role: 'system', content }, ...tail],
   };
 }
 
@@ -208,27 +227,26 @@ describe('HookBus', () => {
         kind: 'replace',
         payload: {
           ...ctx.payload,
-          systemPrompt: 'new-system',
-          messages: [],
+          messages: [{ role: 'system', content: 'new-system' }],
         },
       }),
       { priority: PRIORITY.FIRST },
     );
 
     bus.register('beforeLlm', async (ctx) => {
-      seen = ctx.payload.systemPrompt;
+      seen = systemMessageContent(ctx.payload);
       return { kind: 'continue' };
     });
 
     const result = await bus.trigger('beforeLlm', {
       ...baseCtx(),
-      payload: beforeLlmPayload({ systemPrompt: 'old-system' }),
+      payload: beforeLlmPayload({ messages: [{ role: 'system', content: 'old-system' }] }),
     });
 
     expect(seen).toBe('new-system');
     expect(result).toEqual({
       kind: 'continue',
-      payload: beforeLlmPayload({ systemPrompt: 'new-system' }),
+      payload: beforeLlmPayload({ messages: [{ role: 'system', content: 'new-system' }] }),
       warnings: [],
     });
   });
@@ -240,10 +258,10 @@ describe('HookBus', () => {
       'beforeLlm',
       async (ctx) => ({
         kind: 'replace',
-        payload: {
-          ...ctx.payload,
-          systemPrompt: `${ctx.payload.systemPrompt} + memory`,
-        },
+        payload: replaceSystemMessage(
+          ctx.payload,
+          `${systemMessageContent(ctx.payload)} + memory`,
+        ),
       }),
       { priority: 10 },
     );
@@ -252,10 +270,10 @@ describe('HookBus', () => {
       'beforeLlm',
       async (ctx) => ({
         kind: 'replace',
-        payload: {
-          ...ctx.payload,
-          systemPrompt: `${ctx.payload.systemPrompt} + persona`,
-        },
+        payload: replaceSystemMessage(
+          ctx.payload,
+          `${systemMessageContent(ctx.payload)} + persona`,
+        ),
       }),
       { priority: 20 },
     );
@@ -267,7 +285,7 @@ describe('HookBus', () => {
 
     expect(result).toEqual({
       kind: 'continue',
-      payload: beforeLlmPayload({ systemPrompt: 'base + memory + persona' }),
+      payload: beforeLlmPayload({ messages: [{ role: 'system', content: 'base + memory + persona' }] }),
       warnings: [],
     });
   });
@@ -640,13 +658,13 @@ describe('HookBus', () => {
 
     const result = await bus.trigger('beforeLlm', {
       ...baseCtx(),
-      payload: beforeLlmPayload({ systemPrompt: 'done' }),
+      payload: beforeLlmPayload({ messages: [{ role: 'system', content: 'done' }] }),
     });
 
     expect(result).toEqual({
       kind: 'abort',
       reason: 'parallel boom',
-      payload: beforeLlmPayload({ systemPrompt: 'done' }),
+      payload: beforeLlmPayload({ messages: [{ role: 'system', content: 'done' }] }),
       warnings: [],
     });
   });
@@ -732,10 +750,13 @@ describe('HookBus', () => {
     bus.register(
       'beforeLlm',
       async (ctx) => {
-        seen = ctx.payload.systemPrompt;
+        seen = systemMessageContent(ctx.payload);
         return {
           kind: 'replace',
-          payload: { ...ctx.payload, systemPrompt: `${ctx.payload.systemPrompt}-serial` },
+          payload: replaceSystemMessage(
+            ctx.payload,
+            `${systemMessageContent(ctx.payload)}-serial`,
+          ),
         };
       },
       {
@@ -747,13 +768,13 @@ describe('HookBus', () => {
 
     const result = await bus.trigger('beforeLlm', {
       ...baseCtx(),
-      payload: beforeLlmPayload({ systemPrompt: 'original' }),
+      payload: beforeLlmPayload({ messages: [{ role: 'system', content: 'original' }] }),
     });
 
     expect(seen).toBe('original');
     expect(result).toEqual({
       kind: 'continue',
-      payload: beforeLlmPayload({ systemPrompt: 'original-serial' }),
+      payload: beforeLlmPayload({ messages: [{ role: 'system', content: 'original-serial' }] }),
       warnings: [],
     });
   });

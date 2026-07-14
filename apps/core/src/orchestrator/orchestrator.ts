@@ -9,7 +9,6 @@ import type { AttachmentInput } from '@ema-agent/attachment';
 import { asSessionId } from '@ema-agent/contracts';
 import { ConversationEngine } from '@ema-agent/conversation';
 import { AgentEngine }        from '@ema-agent/agent';
-import { buildSystemPrompt }  from '@ema-agent/prompts';
 import { TtsCoordinator }     from '@ema-agent/tts';
 import type { FinalizedAudio } from '@ema-agent/tts';
 import { SettingsRepo } from '@ema-agent/storage';
@@ -321,11 +320,6 @@ export class Orchestrator {
       case 'agent': {
         const sess          = this.bindings.session.getSession(sessionId);
         const workspaceRoot = sess.workspaceRoot ?? process.cwd();
-        const systemPrompt  = buildSystemPrompt(
-          this.bindings.card.current(),
-          'agent',
-          { workspaceRoot },
-        );
 
         const { providerId, model } = this.resolveLlmForTurn(request);
         if (!providerId || !model) {
@@ -345,7 +339,6 @@ export class Orchestrator {
           providerId,
           model,
           userInput:      request.contentParts?.length ? request.contentParts : (request.userInput ?? ''),
-          systemPrompt,
           workspaceRoot,
           kbIds:          request.kbIds,
           kbAssetScopes:  request.kbAssetScopes,

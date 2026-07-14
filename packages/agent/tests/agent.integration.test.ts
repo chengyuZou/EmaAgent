@@ -23,8 +23,8 @@ import { registerBuiltinTools } from '@ema-agent/tool-builtin';
 import type { Message, Turn } from '@ema-agent/session';
 import type { SessionId, TurnId, MessageId } from '@ema-agent/contracts';
 
-import { AgentEngine } from './engine.js';
-import type { AgentDeps } from './types.js';
+import { AgentEngine } from '../src/engine.js';
+import type { AgentDeps } from '../src/types.js';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -147,7 +147,6 @@ function makeInput(overrides: Partial<Parameters<AgentEngine['run']>[0]> = {}) {
     turn:          makeTurn(),
     signal:        AbortSignal.timeout(60_000),
     userInput:     'Hello',
-    systemPrompt:  'You are a helpful assistant.',
     workspaceRoot: WORKSPACE,
     providerId:    PROVIDER_ID,
     model:         MODEL,
@@ -164,7 +163,6 @@ describe.skipIf(!DS_KEY)('AgentEngine integration (DeepSeek)', () => {
     const engine = new AgentEngine(deps);
     const events = await collectEvents(engine, makeInput({
       userInput:    'Reply with exactly: PONG',
-      systemPrompt: 'You are a helpful assistant. Always follow instructions precisely.',
     }));
 
     const started   = events.find(e => e.type === 'turn_started');
@@ -188,7 +186,6 @@ describe.skipIf(!DS_KEY)('AgentEngine integration (DeepSeek)', () => {
     const events = await collectEvents(engine, makeInput({
       turn:      makeTurn('turn-2'),
       userInput: `Use the fs_read tool to read the file at path "${targetFile}" and tell me the package name.`,
-      systemPrompt: 'You are a helpful agent. Use tools when asked.',
     }));
 
     const completed  = events.find(e => e.type === 'turn_completed');
@@ -212,7 +209,6 @@ describe.skipIf(!DS_KEY)('AgentEngine integration (DeepSeek)', () => {
     const events = await collectEvents(engine, makeInput({
       turn:      makeTurn('turn-3'),
       userInput: `Use the glob_files tool with pattern "packages/*/package.json" in the workspace root "${WORKSPACE}" to list all package.json files. Tell me how many you found.`,
-      systemPrompt: 'You are a helpful agent. Use tools when asked and report the results.',
     }));
 
     const completed = events.find(e => e.type === 'turn_completed');

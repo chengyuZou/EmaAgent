@@ -112,8 +112,6 @@ export interface AgentRunInput {
    * concept — the engine picks them apart via Array.isArray.
    */
   userInput:             string | LlmContentPart[];
-  /** Pre-built system prompt (assembled by orchestrator). */
-  systemPrompt:          string;
   /** Resolved provider_configs.id — orchestrator responsibility. */
   providerId:            string;
   /** Resolved model name — orchestrator responsibility. */

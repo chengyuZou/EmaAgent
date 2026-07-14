@@ -56,7 +56,7 @@ async function* runTurn(
   activeExecutors: Map<string, TurnToolExecutor>,
 ): AsyncIterable<EmaStreamEvent> {
   const { session, hooks, llm, emotion, tools, permission, askUserRegistry } = deps;
-  const { turn, signal, userInput, systemPrompt, workspaceRoot, providerId, model } = input;
+  const { turn, signal, userInput, workspaceRoot, providerId, model } = input;
   const sessionId = turn.sessionId;
   const turnId    = turn.id;
   const startedAt = Date.now();
@@ -120,7 +120,6 @@ async function* runTurn(
     // messages is declared here so the spawner and executor factory can both
     // close over the same reference. The loop appends to this array each round.
     const messages: LlmMessage[] = [
-      { role: 'system', content: systemPrompt },
       ...historyToLlmMessages(history),
       { role: 'user', content: userInput as string | UserBlock[] },
     ];
@@ -129,7 +128,6 @@ async function* runTurn(
     const preLlm = await hooks.trigger('beforeLlm', {
       turnId, sessionId,
       payload: {
-        systemPrompt,
         messages,
         mode: 'agent',
         userInput: readableUserInput(userInput),

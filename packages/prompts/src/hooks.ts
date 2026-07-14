@@ -47,7 +47,6 @@ export function registerPromptsHooks(
         kind: 'replace',
         payload: {
           ...ctx.payload,
-          systemPrompt,
           messages: next,
         },
       };

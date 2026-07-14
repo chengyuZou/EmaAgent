@@ -129,7 +129,6 @@ async function* runTurn(
       turnId,
       sessionId: input.sessionId,
       payload: {
-        systemPrompt: '',
         messages,
         mode,
         userInput: input.userInput,

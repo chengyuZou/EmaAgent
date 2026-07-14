@@ -93,7 +93,7 @@ type HookEvent =
 
 ### `HookPayload` 接口
 
-一个映射类型，将每个事件名称映射到其对应的 payload 类型。这是此包的类型安全基础——`HookBus` 利用该映射来实现：当你触发 `'beforeLlm'` 时，处理器收到的 `ctx.payload` 会被自动推导为 `{ systemPrompt: string; messages: LlmMessage[] }`。
+一个映射类型，将每个事件名称映射到其对应的 payload 类型。这是此包的类型安全基础——`HookBus` 利用该映射来实现：当你触发 `'beforeLlm'` 时，处理器收到的 `ctx.payload.messages` 是完整 LLM 消息数组，也是 system prompt 的唯一事实来源。
 
 ---
 
@@ -103,7 +103,7 @@ type HookEvent =
 
 | 事件 | Payload | 触发时机 | 说明 |
 |---|---|---|---|
-| `beforeLlm` | `{ systemPrompt: string; messages: LlmMessage[] }` | 发送请求给 LLM 之前 | **串行专用事件**（不支持并行）。处理器可以修改 system prompt 和消息列表。典型用途：注入角色卡、记忆、上下文。 |
+| `beforeLlm` | `{ messages: LlmMessage[]; mode; userInput; providerId; model; workspaceRoot? }` | 发送请求给 LLM 之前 | **串行专用事件**。System prompt 只存在于 `messages` 的 system message 中，禁止维护第二份文本副本。 |
 | `afterLlmComplete` | `{ content: string; toolCalls?: unknown[] }` | LLM 响应完全接收后 | **支持并行**。`content` 是完整响应文本，`toolCalls` 可选，包含任何工具调用请求。 |
 
 流式文本 delta 不走 HookBus。需要消费 `output_text_delta` 的长生命周期 sidecar（例如 TTS）由 apps/core orchestrator 直接订阅 engine event stream，避免高频、有状态、需保序的管线被 HookBus 并行语义打乱。
@@ -519,8 +519,8 @@ export type {
 
 | 测试用例 | 测试内容 |
 |---|---|
-| `serial replace updates payload for subsequent handlers` | 第一个处理器返回 `replace` 修改 `systemPrompt`，验证第二个处理器收到的 `ctx.payload.systemPrompt` 是修改后的值。 |
-| `serial multiple replace returns final payload` | 两个处理器依次追加 `systemPrompt`（" + memory" 和 " + persona"），验证最终 payload 为 "base + memory + persona"。 |
+| `serial replace updates payload for subsequent handlers` | 第一个处理器返回 `replace` 修改 system message，验证第二个处理器从 `messages` 读到新值。 |
+| `serial multiple replace returns final payload` | 两个处理器依次替换 system message，验证最终 `messages` 只保留最终版本。 |
 | `serial hook after parallel batch sees unchanged payload` | 并行批次（不修改 payload）+ 后面的串行批次（修改 payload）。验证串行处理器收到的是原始 payload，最终 payload 被正确修改。 |
 
 ### 取消信号测试

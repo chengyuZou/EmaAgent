@@ -49,14 +49,7 @@ export type ObserverHookEvent = Exclude<HookEvent, ControlHookEvent>;
 
 export interface HookPayload {
   beforeLlm: {
-    /**
-     * system prompt 文本的便捷副本,供需要读取它的 hook 使用,无需从 `messages` 里翻找。
-     * 由 wiring.ts 注册的 `prompts:buildSystem` hook 填充。
-     *
-     * engine(conversation-flow)只消费 `messages` - 不读此字段。
-     * 想替换 system prompt 的 hook 应同时更新此字段和 messages[0],保持同步。
-     */
-    systemPrompt: string;
+    /** LLM 请求的唯一消息事实来源；system prompt 必须是其中的 system message。 */
     messages: LlmMessage[];
     /** 当前 Turn 的业务模式。 */
     mode: TurnMode;
