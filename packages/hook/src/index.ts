@@ -2,6 +2,7 @@
 export { PRIORITY } from './priority.js';
 
 export type {
+  AbortOnlyHookEvent,
   ControlHookEvent,
   HookEvent,
   HookPayload,

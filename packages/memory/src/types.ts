@@ -8,15 +8,36 @@ import type { LlmMessage } from '@ema-agent/llm';
 import type { MemoryNodeType, MemoryItemKind } from '@ema-agent/storage';
 
 
-export interface CompactResult {
+interface CompactResultBase {
   messages: LlmMessage[];
-  macroRan: boolean;
   microCleared: number;
-  succeeded: boolean;
   beforeTokens: number;
   afterTokens: number;
   savedTokens: number;
 }
+
+export type CompactResult =
+  | (CompactResultBase & {
+      status: 'not_needed';
+      macroRan: false;
+      reason: 'disabled' | 'session_disabled' | 'below_threshold' | 'insufficient_history';
+    })
+  | (CompactResultBase & {
+      status: 'skipped';
+      macroRan: false;
+      reason: 'no_safe_cut' | 'hook_aborted';
+      detail?: string;
+    })
+  | (CompactResultBase & {
+      status: 'failed';
+      macroRan: false;
+      reason: 'macro_failed';
+      detail: string;
+    })
+  | (CompactResultBase & {
+      status: 'completed';
+      macroRan: true;
+    });
 
 // ── Plan context (what the planner receives at beforeLlm) ────────────────────
 

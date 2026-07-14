@@ -4,6 +4,7 @@
   TurnMode,
   ArtifactId,
   CharacterCardId,
+  CompactionId,
 } from './ids.js';
 import type { ErrorCode } from './errors.js';
 import type { ProtocolFamily } from './providers/types.js';
@@ -227,9 +228,10 @@ export type EmaStreamEvent =
 
   // Memory compaction — turn-scoped. Emitted by MemoryPlanner.compact() via ctx.emit (beforeLlm hook).
   // Has turnId — belongs on the per-turn SSE channel, NOT the system bus.
-  | { type: 'memory_compaction_started';   sessionId: SessionId; turnId: TurnId; mode: TurnMode; beforeTokens: number }
-  | { type: 'memory_compaction_completed'; sessionId: SessionId; turnId: TurnId; mode: TurnMode; beforeTokens: number; afterTokens: number; savedTokens: number; durationMs: number }
-  | { type: 'memory_compaction_failed';    sessionId: SessionId; turnId: TurnId; mode: TurnMode; error: string; beforeTokens: number; afterTokens: number; durationMs: number }
+  | { type: 'memory_compaction_started';   compactionId: CompactionId; sessionId: SessionId; turnId: TurnId; mode: TurnMode; beforeTokens: number }
+  | { type: 'memory_compaction_completed'; compactionId: CompactionId; sessionId: SessionId; turnId: TurnId; mode: TurnMode; beforeTokens: number; afterTokens: number; savedTokens: number; durationMs: number }
+  | { type: 'memory_compaction_failed';    compactionId: CompactionId; sessionId: SessionId; turnId: TurnId; mode: TurnMode; error: string; beforeTokens: number; afterTokens: number; durationMs: number }
+  | { type: 'memory_compaction_skipped';   compactionId: CompactionId; sessionId: SessionId; turnId: TurnId; mode: TurnMode; reason: 'hook_aborted'; message: string; beforeTokens: number; afterTokens: number; durationMs: number }
 
   // Memory pipeline telemetry — system-scoped (emitted by MemoryTaskRunner / MemoryPlanner.initialize).
   | { type: 'memory_extraction_started';    sessionId: SessionId; turnId?: TurnId; queueDepth: number }

@@ -1,5 +1,6 @@
 import type {
   AssistantBlock,
+  CompactionId,
   LlmMessage,
   MessageId,
   MessageRole,
@@ -38,6 +39,9 @@ export type ControlHookEvent =
   | 'beforeLlm'
   | 'beforeCompact'
   | 'onTurnStart';
+
+/** 只能决定是否继续、不能替换 Payload 的控制事件。 */
+export type AbortOnlyHookEvent = 'beforeCompact';
 
 export type ObserverHookEvent = Exclude<HookEvent, ControlHookEvent>;
 
@@ -104,10 +108,12 @@ export interface HookPayload {
     error: unknown;
   };
   beforeCompact: {
+    compactionId: CompactionId;
     messageCount: number;
     tokenEstimate: number;
   };
   afterCompact: {
+    compactionId: CompactionId;
     before: number;
     after: number;
     method: string;

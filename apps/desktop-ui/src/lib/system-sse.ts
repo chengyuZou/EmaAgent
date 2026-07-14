@@ -10,7 +10,7 @@
  *   emotion_changed / stage_cue
  *   tts_chunk / tts_sentence_complete
  *   memory_recall_evidence
- *   memory_compaction_started / completed / failed   ← emitted via ctx.emit (beforeLlm), NOT system bus
+ *   memory_compaction_started / completed / failed / skipped ← emitted via ctx.emit (beforeLlm), NOT system bus
  *   artifact_upserted / artifact_applied
  */
 import { sseConsumer, type SseHandle } from './sse-consumer.js';

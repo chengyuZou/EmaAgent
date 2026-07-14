@@ -4,6 +4,7 @@ import type {
   TurnId,
 } from '@ema-agent/contracts';
 import type {
+  AbortOnlyHookEvent,
   ControlHookEvent,
   HookEvent,
   HookPayload,
@@ -32,8 +33,10 @@ export type HookTriggerContext<E extends HookEvent> =
 
 export type HookControlResult<E extends HookEvent> =
   | { kind: 'continue' }
-  | { kind: 'replace'; payload: HookPayload[E] }
-  | { kind: 'abort'; reason: string };
+  | { kind: 'abort'; reason: string }
+  | (E extends AbortOnlyHookEvent
+      ? never
+      : { kind: 'replace'; payload: HookPayload[E] });
 
 export type HookObserverResult = { kind: 'continue' };
 

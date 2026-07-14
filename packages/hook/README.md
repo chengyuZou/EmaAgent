@@ -123,8 +123,8 @@ type HookEvent =
 | 事件 | Payload | 触发时机 | 说明 |
 |---|---|---|---|
 | `afterMessage` | `{ messageId: MessageId; role: string; content: string }` | 消息被追加到对话后 | **支持并行**。用于消息后处理、持久化。 |
-| `beforeCompact` | `{ messageCount: number; tokenEstimate: number }` | 上下文压缩前 | **串行专用事件**。可以基于 token 估计来决定是否压缩。 |
-| `afterCompact` | `{ before: number; after: number; method: string }` | 上下文压缩后 | **支持并行**。`before` 和 `after` 记录压缩前后的消息数。 |
+| `beforeCompact` | `{ compactionId: CompactionId; messageCount: number; tokenEstimate: number }` | 上下文压缩前 | **串行、仅中止型事件**。只允许 `continue/abort`，不能替换 payload。 |
+| `afterCompact` | `{ compactionId: CompactionId; before: number; after: number; method: string }` | 上下文压缩后 | **支持并行**。同一 `compactionId` 与 before/SSE 生命周期关联。 |
 
 #### 回合生命周期
 
@@ -148,7 +148,7 @@ type HookEvent =
 
 `beforeLlm`、`beforeToolUse`、`beforeCompact`、`onTurnStart`
 
-其中只有 `beforeLlm`、`beforeCompact`、`onTurnStart` 是控制型事件，可以返回 `replace` 或 `abort`。`beforeToolUse` 虽然发生在工具调用前，但仍是观察型事件。
+其中 `beforeLlm`、`onTurnStart` 可以返回 `replace` 或 `abort`；`beforeCompact` 只能返回 `continue` 或 `abort`。`beforeToolUse` 虽然发生在工具调用前，但仍是观察型事件。
 
 ---
 
@@ -180,7 +180,7 @@ type HookEvent =
 | 变体 | 含义 |
 |---|---|
 | `{ kind: 'continue' }` | 处理完成，继续下一个处理器 |
-| `{ kind: 'replace'; payload: HookPayload[E] }` | 替换当前 payload（仅控制型串行事件可用） |
+| `{ kind: 'replace'; payload: HookPayload[E] }` | 替换当前 payload（仅允许替换的控制型串行事件可用；`beforeCompact` 禁止） |
 | `{ kind: 'abort'; reason: string }` | 立即中止触发链（仅控制型事件可用） |
 
 观察型事件（包括 `beforeToolUse`、`afterToolUse`、`onToolFailure`）的 handler 类型只允许返回 `{ kind: 'continue' }`。运行时遇到非法 `replace` / `abort` 会记录 warning 并继续，防止外部未按类型接入时污染主流程。
@@ -398,7 +398,8 @@ constructor(options: HookBusOptions = {}) {
 6. **全部完成**：返回 `{ kind: 'continue', payload: currentPayload, warnings }`。
 
 **关键规则**：
-- ✅ 控制型串行处理器可以 `replace` payload，下游处理器会看到修改后的值。
+- ✅ 允许替换的控制型串行处理器可以 `replace` payload，下游处理器会看到修改后的值。
+- ❌ `beforeCompact` 是仅中止型控制事件，不能 `replace` payload。
 - ❌ 观察型处理器不能返回 `replace` / `abort`；并行处理器也不能返回 `replace`。
 - 🛑 控制型处理器返回 `abort` 会立即中止整个链条（无论 `critical` 设置）。
 - ⚠️ `critical: false` 的处理器抛出错误，记录为 `HookWarning` 并继续执行。

@@ -483,6 +483,10 @@ export function dispatchSseEvent(
       showToast(`上下文压缩失败：${event.error}`, { variant: 'danger', duration: 6000 });
       break;
 
+    case 'memory_compaction_skipped':
+      console.info('[sse] memory_compaction_skipped:', event.compactionId, event.reason, event.message);
+      break;
+
     case 'memory_compaction_completed':
       useConversationStore.setState((s) => {
         const msgs    = new Map(s.messages);
