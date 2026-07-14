@@ -21,6 +21,7 @@ export { DocumentEventEmitter }                         from './events/index.js'
 export type { DocumentProgressEvent, DocumentProgressKind } from './events/index.js';
 
 // ── Adapters ───────────────────────────────────────────────────────────────────
+export { KbVisionAdapterError, isKbVisionAdapterError } from './adapters/vision.js';
 export type { KbVisionAdapter } from './adapters/vision.js';
 
 // ── Retrieval (hybrid only; FTS5 + vector live in storage repos) ───────────────

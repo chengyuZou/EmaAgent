@@ -11,6 +11,7 @@ const MIME_MAP: Record<string, string> = {
 export interface ImageReaderOptions {
   providerId: string;
   model:      string;
+  signal?:    AbortSignal;
 }
 
 export class ImageReader implements DocumentReader {
@@ -32,6 +33,7 @@ export class ImageReader implements DocumentReader {
       model:      this.opts.model,
       task:       'ocr',
       inputs:     [{ bytes, mimeType: mime, name }],
+      signal:     this.opts.signal,
     });
 
     return {

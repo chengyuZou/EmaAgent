@@ -27,8 +27,9 @@ class MockAdapter implements VisionAdapter {
 
 class BlockingAdapter implements VisionAdapter {
   readonly requests: VisionAdapterCall[] = [];
-  private releaseExtract: (() => void) | undefined;
+  private readonly releaseExtract: Array<() => void> = [];
   private resolveStarted: () => void = () => {};
+  private released = false;
 
   readonly started = new Promise<void>((resolve) => {
     this.resolveStarted = resolve;
@@ -37,9 +38,11 @@ class BlockingAdapter implements VisionAdapter {
   async extract(request: VisionAdapterCall): Promise<VisionExtractionResult> {
     this.requests.push(request);
     this.resolveStarted();
-    await new Promise<void>((resolve) => {
-      this.releaseExtract = resolve;
-    });
+    if (!this.released) {
+      await new Promise<void>((resolve) => {
+        this.releaseExtract.push(resolve);
+      });
+    }
     return {
       providerId: request.providerId,
       model: request.model,
@@ -52,7 +55,8 @@ class BlockingAdapter implements VisionAdapter {
   }
 
   release(): void {
-    this.releaseExtract?.();
+    this.released = true;
+    for (const release of this.releaseExtract.splice(0)) release();
   }
 }
 
@@ -170,7 +174,7 @@ describe('VisionRouter', () => {
     });
   });
 
-  it('shares concurrency limits inside the singleton router instance', async () => {
+  it('shares concurrency limits and applies backpressure instead of dropping work', async () => {
     const adapter = new BlockingAdapter();
     const vision = new VisionRouter({
       configs: [CONFIG],
@@ -190,7 +194,7 @@ describe('VisionRouter', () => {
     });
     await adapter.started;
 
-    await expect(vision.extract({
+    const queued = vision.extract({
       providerId: 'provider-1',
       model: 'vision-model',
       task: 'ocr',
@@ -199,12 +203,91 @@ describe('VisionRouter', () => {
         data: 'aGVsbG8=',
         mimeType: 'image/png',
       }],
-    })).rejects.toMatchObject({
-      code: 'vision/concurrency_limited',
     });
+
+    await Promise.resolve();
+    expect(adapter.requests).toHaveLength(1);
 
     adapter.release();
     await expect(running).resolves.toMatchObject({ text: 'done' });
+    await expect(queued).resolves.toMatchObject({ text: 'done' });
+    expect(adapter.requests).toHaveLength(2);
+  });
+
+  it('queues the third KB-style OCR request when the provider limit is two', async () => {
+    const adapter = new BlockingAdapter();
+    const vision = new VisionRouter({
+      configs: [CONFIG],
+      adapterOverrides: new Map([['provider-1', adapter]]),
+      limits: { maxConcurrentGlobal: 4, maxConcurrentPerProvider: 2 },
+    });
+    const request = {
+      providerId: 'provider-1',
+      model: 'vision-model',
+      task: 'ocr' as const,
+      inputs: [{ kind: 'base64' as const, data: 'aGVsbG8=', mimeType: 'image/png' as const }],
+    };
+
+    const calls = [vision.extract(request), vision.extract(request), vision.extract(request)];
+    await Promise.resolve();
+    expect(adapter.requests).toHaveLength(2);
+
+    adapter.release();
+    await expect(Promise.all(calls)).resolves.toHaveLength(3);
+    expect(adapter.requests).toHaveLength(3);
+  });
+
+  it('aborts a request while it is waiting for a concurrency slot', async () => {
+    const adapter = new BlockingAdapter();
+    const vision = new VisionRouter({
+      configs: [CONFIG],
+      adapterOverrides: new Map([['provider-1', adapter]]),
+      limits: { maxConcurrentGlobal: 1, maxConcurrentPerProvider: 1 },
+    });
+    const request = {
+      providerId: 'provider-1',
+      model: 'vision-model',
+      task: 'ocr' as const,
+      inputs: [{ kind: 'base64' as const, data: 'aGVsbG8=', mimeType: 'image/png' as const }],
+    };
+    const running = vision.extract(request);
+    await adapter.started;
+
+    const controller = new AbortController();
+    const queued = vision.extract({ ...request, signal: controller.signal });
+    controller.abort(new DOMException('cancelled', 'AbortError'));
+
+    await expect(queued).rejects.toMatchObject({ code: 'vision/aborted' });
+    expect(adapter.requests).toHaveLength(1);
+    adapter.release();
+    await running;
+  });
+
+  it('keeps the wait queue bounded', async () => {
+    const adapter = new BlockingAdapter();
+    const vision = new VisionRouter({
+      configs: [CONFIG],
+      adapterOverrides: new Map([['provider-1', adapter]]),
+      limits: {
+        maxConcurrentGlobal: 1,
+        maxConcurrentPerProvider: 1,
+        maxQueuedRequests: 0,
+      },
+    });
+    const request = {
+      providerId: 'provider-1',
+      model: 'vision-model',
+      task: 'ocr' as const,
+      inputs: [{ kind: 'base64' as const, data: 'aGVsbG8=', mimeType: 'image/png' as const }],
+    };
+    const running = vision.extract(request);
+    await adapter.started;
+
+    await expect(vision.extract(request)).rejects.toMatchObject({
+      code: 'vision/concurrency_limited',
+    });
+    adapter.release();
+    await running;
   });
 
   it('完整快照删除旧 Provider，但不会中断已经开始的识别', async () => {

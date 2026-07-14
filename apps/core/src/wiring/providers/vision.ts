@@ -1,9 +1,9 @@
 import type { Database, ProviderConfigRow } from '@ema-agent/storage';
 import { ProvidersRepo } from '@ema-agent/storage';
-import { VisionRouter } from '@ema-agent/vision';
+import { VisionRouter, isVisionError } from '@ema-agent/vision';
 import type { VisionProviderConfig, VisionImageMime } from '@ema-agent/vision';
 import type { ModelsDevCatalog } from '@ema-agent/llm';
-import type { KbVisionAdapter } from '@ema-agent/knowledge-base';
+import { KbVisionAdapterError, type KbVisionAdapter } from '@ema-agent/knowledge-base';
 import {
   getProviderDefinition,
   isVisionProtocol,
@@ -90,21 +90,29 @@ export function reloadVisionRouter(router: VisionRouter, profileDb: Database): v
 /** Wraps VisionRouter as the KB-internal KbVisionAdapter interface. */
 export function asKbVisionAdapter(router: VisionRouter): KbVisionAdapter {
   return {
-    async extract({ providerId, model, inputs }) {
-      const result = await router.extract({
-        providerId,
-        model,
-        task: 'ocr',
-        inputs: inputs.map((inp) => ({
-          kind: 'bytes' as const,
-          bytes: inp.bytes,
-          mimeType: inp.mimeType as VisionImageMime,
-          name: inp.name,
-        })),
-      });
-      return {
-        blocks: result.blocks.map((b) => ({ text: b.text, markdown: b.markdown })),
-      };
+    async extract({ providerId, model, inputs, signal }) {
+      try {
+        const result = await router.extract({
+          providerId,
+          model,
+          task: 'ocr',
+          inputs: inputs.map((inp) => ({
+            kind: 'bytes' as const,
+            bytes: inp.bytes,
+            mimeType: inp.mimeType as VisionImageMime,
+            name: inp.name,
+          })),
+          signal,
+        });
+        return {
+          blocks: result.blocks.map((b) => ({ text: b.text, markdown: b.markdown })),
+        };
+      } catch (error) {
+        if (isVisionError(error)) {
+          throw new KbVisionAdapterError(error.code, error.meta.retryable === true, { cause: error });
+        }
+        throw error;
+      }
     },
   };
 }

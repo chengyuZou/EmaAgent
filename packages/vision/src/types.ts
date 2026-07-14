@@ -115,6 +115,8 @@ export interface VisionLimits {
   maxTotalBytes: number;
   maxConcurrentGlobal: number;
   maxConcurrentPerProvider: number;
+  /** 等待并发槽位的请求上限，防止调用方突发流量形成无界 Promise 队列。 */
+  maxQueuedRequests: number;
   timeoutMs: number;
 }
 

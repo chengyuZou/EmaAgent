@@ -70,7 +70,7 @@ can use the same protocol with their own base URL and model names.
 VisionRequest
   -> normalize task / parse mode
   -> validate image count and byte budgets
-  -> acquire global + per-provider concurrency slot
+  -> wait for a global + per-provider concurrency slot (bounded queue)
   -> build extraction prompt
   -> convert image inputs into provider content parts
   -> call provider endpoint
@@ -102,7 +102,10 @@ vision/provider_failed
 ```
 
 The router enforces request size, image count, global concurrency,
-per-provider concurrency, timeout, and strict/best-effort output parsing.
+per-provider concurrency, bounded queue size, timeout, and strict/best-effort
+output parsing. Waiting for a slot is included in the request timeout and can be
+cancelled through the caller's `AbortSignal`. Per-request limits may tighten but
+cannot raise the router-level hard limits.
 
 ## Public API
 

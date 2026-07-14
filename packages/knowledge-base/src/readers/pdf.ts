@@ -3,6 +3,7 @@ import type { DocumentBlock } from '../types.js';
 import type { DocumentReader, ReadResult, ReaderSource } from './base.js';
 import { nextBlockId } from './base.js';
 import type { ImageReader } from './image.js';
+import { isKbVisionAdapterError } from '../adapters/vision.js';
 
 import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
@@ -86,7 +87,11 @@ export class PdfReader implements DocumentReader {
             if (ocrBlks.length > 0) { blocks.push(...ocrBlks); continue; }
           }
           blocks.push(scannedPlaceholder(p));
-        } catch {
+        } catch (error) {
+          // 配额、限流和取消不能伪装成“该页无 OCR”；交给持久任务状态机重试。
+          if (isKbVisionAdapterError(error) && (error.retryable || error.code === 'vision/aborted')) {
+            throw error;
+          }
           // OCR/render failed for THIS page only — keep going (缺页/断页).
           blocks.push(scannedPlaceholder(p));
         }

@@ -72,7 +72,11 @@ export async function ingest(
     // One vision-backed OCR reader, reused for image/* sources AND scanned PDF
     // pages. Same VisionRouter→KbVisionAdapter chain that already powers image OCR.
     const ocrReader = (visionAdapter && opts.visionProviderId && opts.visionModel)
-      ? new ImageReader(visionAdapter, { providerId: opts.visionProviderId, model: opts.visionModel })
+      ? new ImageReader(visionAdapter, {
+          providerId: opts.visionProviderId,
+          model: opts.visionModel,
+          signal: opts.signal,
+        })
       : undefined;
 
     const parsed = await parseDocument(

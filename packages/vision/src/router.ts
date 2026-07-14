@@ -15,11 +15,13 @@ import type {
 import type { VisionProtocol } from '@ema-agent/contracts';
 
 export interface VisionConcurrencyLimiter {
-  tryAcquire(
+  acquire(
     providerId: string,
     maxGlobal: number,
     maxPerProvider: number,
-  ): (() => void) | null;
+    maxQueued: number,
+    signal: AbortSignal,
+  ): Promise<() => void>;
 }
 
 export interface VisionRouterArgs {
@@ -56,6 +58,7 @@ const DEFAULT_LIMITS: VisionLimits = {
   maxTotalBytes: 20 * 1024 * 1024,
   maxConcurrentGlobal: 4,
   maxConcurrentPerProvider: 2,
+  maxQueuedRequests: 64,
   timeoutMs: 60_000,
 };
 
@@ -67,15 +70,61 @@ type NormalizedVisionRequest = Omit<VisionRequest, 'task' | 'parseMode'> & {
 export class VisionLimiter implements VisionConcurrencyLimiter {
   private total = 0;
   private readonly byProvider = new Map<string, number>();
+  private readonly waiters: Array<{
+    providerId: string;
+    maxGlobal: number;
+    maxPerProvider: number;
+    signal: AbortSignal;
+    resolve: (release: () => void) => void;
+    reject: (reason: unknown) => void;
+    onAbort: () => void;
+  }> = [];
 
-  tryAcquire(
+  async acquire(
     providerId: string,
     maxGlobal: number,
     maxPerProvider: number,
-  ): (() => void) | null {
-    const currentProvider = this.byProvider.get(providerId) ?? 0;
-    if (this.total >= maxGlobal || currentProvider >= maxPerProvider) return null;
+    maxQueued: number,
+    signal: AbortSignal,
+  ): Promise<() => void> {
+    if (signal.aborted) throw signal.reason ?? new DOMException('Aborted', 'AbortError');
+    if (this.canAcquire(providerId, maxGlobal, maxPerProvider)) {
+      return this.grant(providerId);
+    }
+    if (this.waiters.length >= maxQueued) {
+      throw new VisionError('vision/concurrency_limited', 'Vision wait queue is full', {
+        meta: { providerId, retryable: true },
+        details: { maxQueued },
+      });
+    }
 
+    return new Promise<() => void>((resolve, reject) => {
+      const waiter = {
+        providerId,
+        maxGlobal,
+        maxPerProvider,
+        signal,
+        resolve,
+        reject,
+        onAbort: () => {
+          const index = this.waiters.indexOf(waiter);
+          if (index >= 0) this.waiters.splice(index, 1);
+          reject(signal.reason ?? new DOMException('Aborted', 'AbortError'));
+        },
+      };
+      signal.addEventListener('abort', waiter.onAbort, { once: true });
+      this.waiters.push(waiter);
+      this.drain();
+    });
+  }
+
+  private canAcquire(providerId: string, maxGlobal: number, maxPerProvider: number): boolean {
+    const currentProvider = this.byProvider.get(providerId) ?? 0;
+    return this.total < maxGlobal && currentProvider < maxPerProvider;
+  }
+
+  private grant(providerId: string): () => void {
+    const currentProvider = this.byProvider.get(providerId) ?? 0;
     this.total++;
     this.byProvider.set(providerId, currentProvider + 1);
 
@@ -87,7 +136,28 @@ export class VisionLimiter implements VisionConcurrencyLimiter {
       const nextProvider = Math.max(0, (this.byProvider.get(providerId) ?? 1) - 1);
       if (nextProvider === 0) this.byProvider.delete(providerId);
       else this.byProvider.set(providerId, nextProvider);
+      this.drain();
     };
+  }
+
+  private drain(): void {
+    // 按到达顺序选择当前可运行的最早请求；某 Provider 饱和时不阻塞其他 Provider。
+    for (let index = 0; index < this.waiters.length;) {
+      const waiter = this.waiters[index]!;
+      if (waiter.signal.aborted) {
+        this.waiters.splice(index, 1);
+        waiter.signal.removeEventListener('abort', waiter.onAbort);
+        waiter.reject(waiter.signal.reason ?? new DOMException('Aborted', 'AbortError'));
+        continue;
+      }
+      if (!this.canAcquire(waiter.providerId, waiter.maxGlobal, waiter.maxPerProvider)) {
+        index++;
+        continue;
+      }
+      this.waiters.splice(index, 1);
+      waiter.signal.removeEventListener('abort', waiter.onAbort);
+      waiter.resolve(this.grant(waiter.providerId));
+    }
   }
 }
 
@@ -111,6 +181,7 @@ export class VisionRouter {
     this.adapterOverrides = args.adapterOverrides;
     this.limiter = args.limiter ?? new VisionLimiter();
     this.limits = { ...DEFAULT_LIMITS, ...args.limits };
+    validateLimits(this.limits);
 
     for (const config of args.configs) {
       this.configs.set(config.id, config);
@@ -120,7 +191,7 @@ export class VisionRouter {
 
   async extract(request: VisionRequest): Promise<VisionExtractionResult> {
     const normalized = normalizeRequest(request);
-    const limits = { ...this.limits, ...normalized.limits };
+    const limits = resolveLimits(this.limits, normalized.limits);
     const meta = {
       providerId: normalized.providerId,
       model: normalized.model,
@@ -128,6 +199,7 @@ export class VisionRouter {
       context: normalized.context,
     };
 
+    validateLimits(limits);
     validateRequest(normalized, limits);
 
     const adapter = this.adapters.get(normalized.providerId);
@@ -135,19 +207,16 @@ export class VisionRouter {
       throw notConfigured(normalized.providerId);
     }
 
-    const release = this.limiter.tryAcquire(
-      normalized.providerId,
-      limits.maxConcurrentGlobal,
-      limits.maxConcurrentPerProvider,
-    );
-    if (!release) {
-      throw new VisionError('vision/concurrency_limited', 'Vision concurrency limit reached', {
-        meta: { ...meta, retryable: true },
-      });
-    }
-
     const signalScope = createScopedSignal(normalized.signal, limits.timeoutMs);
+    let release: (() => void) | undefined;
     try {
+      release = await this.limiter.acquire(
+        normalized.providerId,
+        limits.maxConcurrentGlobal,
+        limits.maxConcurrentPerProvider,
+        limits.maxQueuedRequests,
+        signalScope.signal,
+      );
       return await adapter.extract({
         ...normalized,
         signal: signalScope.signal,
@@ -156,7 +225,7 @@ export class VisionRouter {
       throw classifyVisionError(error, meta, signalScope.timedOut());
     } finally {
       signalScope.dispose();
-      release();
+      release?.();
     }
   }
 
@@ -218,6 +287,29 @@ function normalizeRequest(request: VisionRequest): NormalizedVisionRequest {
   };
 }
 
+function resolveLimits(base: VisionLimits, requested?: Partial<VisionLimits>): VisionLimits {
+  if (!requested) return base;
+  // 单次调用只能收紧限制，不能绕过 Router/Settings 给出的运行时硬上限。
+  const maxConcurrentGlobal = Math.min(
+    base.maxConcurrentGlobal,
+    requested.maxConcurrentGlobal ?? base.maxConcurrentGlobal,
+  );
+  const maxConcurrentPerProvider = Math.min(
+    base.maxConcurrentPerProvider,
+    requested.maxConcurrentPerProvider ?? base.maxConcurrentPerProvider,
+    maxConcurrentGlobal,
+  );
+  return {
+    maxImages: Math.min(base.maxImages, requested.maxImages ?? base.maxImages),
+    maxBytesPerImage: Math.min(base.maxBytesPerImage, requested.maxBytesPerImage ?? base.maxBytesPerImage),
+    maxTotalBytes: Math.min(base.maxTotalBytes, requested.maxTotalBytes ?? base.maxTotalBytes),
+    maxConcurrentGlobal,
+    maxConcurrentPerProvider,
+    maxQueuedRequests: Math.min(base.maxQueuedRequests, requested.maxQueuedRequests ?? base.maxQueuedRequests),
+    timeoutMs: Math.min(base.timeoutMs, requested.timeoutMs ?? base.timeoutMs),
+  };
+}
+
 function validateRequest(request: NormalizedVisionRequest, limits: VisionLimits): void {
   if (!request.providerId.trim()) {
     throw new VisionError('vision/invalid_request', 'providerId is required', {
@@ -258,6 +350,32 @@ function validateRequest(request: NormalizedVisionRequest, limits: VisionLimits)
       meta: { providerId: request.providerId, model: request.model, task: request.task, context: request.context },
       details: { totalBytes, maxTotalBytes: limits.maxTotalBytes },
     });
+  }
+}
+
+function validateLimits(limits: VisionLimits): void {
+  const positiveIntegers: Array<keyof VisionLimits> = [
+    'maxImages',
+    'maxBytesPerImage',
+    'maxTotalBytes',
+    'maxConcurrentGlobal',
+    'maxConcurrentPerProvider',
+    'timeoutMs',
+  ];
+  for (const key of positiveIntegers) {
+    const value = limits[key];
+    if (!Number.isSafeInteger(value) || value <= 0) {
+      throw new VisionError('vision/invalid_request', `${key} must be a positive safe integer`);
+    }
+  }
+  if (!Number.isSafeInteger(limits.maxQueuedRequests) || limits.maxQueuedRequests < 0) {
+    throw new VisionError('vision/invalid_request', 'maxQueuedRequests must be a non-negative safe integer');
+  }
+  if (limits.maxConcurrentPerProvider > limits.maxConcurrentGlobal) {
+    throw new VisionError(
+      'vision/invalid_request',
+      'maxConcurrentPerProvider must not exceed maxConcurrentGlobal',
+    );
   }
 }
 
