@@ -6,6 +6,7 @@ import type {
   MessageId,
   MessageRole,
   NarrativeTimelineRecall,
+  ToolCallId,
   TurnMode,
 } from '@ema-agent/contracts';
 
@@ -45,6 +46,12 @@ export type ControlHookEvent =
 export type AbortOnlyHookEvent = 'beforeCompact';
 
 export type ObserverHookEvent = Exclude<HookEvent, ControlHookEvent>;
+
+export type ToolFailurePhase =
+  | 'policy'
+  | 'permission'
+  | 'validation'
+  | 'execution';
 
 // ── 各事件 payload 结构 ──────────────────────────────────────────────────
 
@@ -95,19 +102,23 @@ export interface HookPayload {
    * 用它更新 UI(显示"准备调用工具…")或记录审计日志。
    */
   beforeToolUse: {
-    callId: string;
+    callId: ToolCallId;
     name: string;
     args: unknown;
   };
   afterToolUse: {
-    callId: string;
+    callId: ToolCallId;
     name: string;
     output: unknown;
   };
   onToolFailure: {
-    callId: string;
+    callId: ToolCallId;
     name: string;
-    error: unknown;
+    phase: ToolFailurePhase;
+    code: string;
+    message: string;
+    /** 模型是否可以通过修正参数或稍后重试来恢复；不代表自动重试。 */
+    retryable: boolean;
   };
   beforeCompact: {
     compactionId: CompactionId;

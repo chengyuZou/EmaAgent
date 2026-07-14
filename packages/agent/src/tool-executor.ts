@@ -12,10 +12,12 @@
  *    signalled via signal() so the engine can yield them between LLM stream chunks.
  */
 
-import type { EmaStreamEvent, ToolResultBlock, SessionId, TurnId } from '@ema-agent/contracts';
+import { asToolCallId } from '@ema-agent/contracts';
+import type { EmaStreamEvent, ToolResultBlock, SessionId, ToolCallId, TurnId } from '@ema-agent/contracts';
+import { ToolInputError } from '@ema-agent/tools';
 import type { ToolExecutionContext, ICommandRunner } from '@ema-agent/tools';
 import type { PermissionEngine, PermissionContext } from '@ema-agent/permission';
-import type { HookBus } from '@ema-agent/hook';
+import type { HookBus, ToolFailurePhase } from '@ema-agent/hook';
 import type { AgentToolResultStore } from '@ema-agent/agent-context';
 import type { AgentDeps } from './types.js';
 
@@ -23,7 +25,7 @@ import type { AgentDeps } from './types.js';
 
 interface TrackedTool {
   blockIndex:        number;
-  id:                string;
+  id:                ToolCallId;
   name:              string;
   args:              unknown;
   isConcurrencySafe: boolean;
@@ -31,6 +33,14 @@ interface TrackedTool {
   done:              boolean;
   result?:           ToolResultBlock;
   promise?:          Promise<void>;
+  preflightFailure?: ToolFailure;
+}
+
+interface ToolFailure {
+  phase:     ToolFailurePhase;
+  code:      string;
+  message:   string;
+  retryable: boolean;
 }
 
 // ── Public options ────────────────────────────────────────────────────────────
@@ -105,52 +115,50 @@ export class TurnToolExecutor {
    * May be called while the LLM stream is still in progress.
    */
   addTool(blockIndex: number, id: string, name: string, args: unknown): void {
-    const { allows, tools, pushEv } = this.opts;
-    const startMs = Date.now();
-
-    // ── Synchronous rejection paths (no async needed) ───────────────────────
+    const { allows, tools } = this.opts;
+    const callId = asToolCallId(id);
+    let preflightFailure: ToolFailure | undefined;
+    let isConcurrencySafe = true;
 
     if (!allows(name)) {
-      const msg = `Tool "${name}" is not available in this mode`;
-      this.tracked.push({
-        blockIndex, id, name, args, isConcurrencySafe: true, startMs, done: true,
-        result: { type: 'tool_result', toolUseId: id, content: msg, isError: true, durationMs: 0, errorCode: 'policy/denied' },
-      });
-      pushEv({ type: 'tool_result', sessionId: this.opts.sessionId, callId: id, name, error: { code: 'policy/denied', message: msg }, durationMs: 0 });
-      return;
-    }
-
-    if (!tools.has(name)) {
-      const msg = `Unknown tool: "${name}"`;
-      this.tracked.push({
-        blockIndex, id, name, args, isConcurrencySafe: true, startMs, done: true,
-        result: { type: 'tool_result', toolUseId: id, content: msg, isError: true, durationMs: 0, errorCode: 'tool/not_found' },
-      });
-      pushEv({ type: 'tool_result', sessionId: this.opts.sessionId, callId: id, name, error: { code: 'tool/not_found', message: msg }, durationMs: 0 });
-      return;
-    }
-
-    // ── Args parse error (LLM output truncated by max_tokens or provider bug) ──
-    // The OpenAI adapter tags unparseable argsJson with __parse_error rather than
-    // silently falling back to {} — calling a tool with wrong args causes silent
-    // misbehaviour that is much harder to diagnose than an explicit error result.
-    if (args !== null && typeof args === 'object' && (args as Record<string, unknown>)['__parse_error'] === true) {
+      preflightFailure = {
+        phase: 'policy',
+        code: 'policy/denied',
+        message: `Tool "${name}" is not available in this mode`,
+        retryable: false,
+      };
+    } else if (!tools.has(name)) {
+      preflightFailure = {
+        phase: 'validation',
+        code: 'tool/not_found',
+        message: `Unknown tool: "${name}"`,
+        retryable: true,
+      };
+    } else if (isArgsParseFailure(args)) {
       const raw = (args as Record<string, unknown>)['raw'];
       const snippet = typeof raw === 'string' ? raw.slice(0, 200) : '';
-      const msg = `工具参数解析失败（模型输出可能被截断），请重试或缩短回复长度。${snippet ? `原始片段：${snippet}` : ''}`;
-      this.tracked.push({
-        blockIndex, id, name, args, isConcurrencySafe: true, startMs, done: true,
-        result: { type: 'tool_result', toolUseId: id, content: msg, isError: true },
-      });
-      pushEv({ type: 'tool_result', sessionId: this.opts.sessionId, callId: id, name, error: { code: 'tool/args_parse_error', message: msg }, durationMs: 0 });
-      return;
+      preflightFailure = {
+        phase: 'validation',
+        code: 'tool/args_parse_error',
+        message: `工具参数解析失败（模型输出可能被截断），请重试或缩短回复长度。${snippet ? `原始片段：${snippet}` : ''}`,
+        retryable: true,
+      };
+    } else {
+      isConcurrencySafe = tools.get(name).isConcurrencySafe();
     }
 
-    // ── Async execution path ─────────────────────────────────────────────────
-
-    const toolEntry        = tools.get(name);
-    const isConcurrencySafe = toolEntry.isConcurrencySafe();
-    const track: TrackedTool = { blockIndex, id, name, args, isConcurrencySafe, startMs: Date.now(), done: false };
+    // 所有模型工具意图都进入同一异步状态机。即使预检失败，也必须先发出
+    // beforeToolUse，再以同一个 ToolCallId 发出 onToolFailure。
+    const track: TrackedTool = {
+      blockIndex,
+      id: callId,
+      name,
+      args,
+      isConcurrencySafe,
+      startMs: Date.now(),
+      done: false,
+      preflightFailure,
+    };
 
     // Snapshot the promises of all tools added before this one.
     // Used by non-concurrent tools to wait for currently-running concurrent-safe ones.
@@ -221,6 +229,11 @@ export class TurnToolExecutor {
         emit: pushEv,
       });
 
+      if (track.preflightFailure) {
+        await this.completeFailure(track, track.preflightFailure, perToolCtrl.signal);
+        return;
+      }
+
       // ── Permission gate ───────────────────────────────────────────────────
       // In production, buildAsk routes permission_required events through pushEv
       // into the engine's pending queue so the SSE stream delivers them immediately.
@@ -229,18 +242,30 @@ export class TurnToolExecutor {
         ? { ...permCtx, ask: buildAsk({ sessionId, turnId, emit: pushEv }) }
         : permCtx;
 
-      const outcome = await permission.gate(name, args, tools.get(name).permissionMeta, permCtxWithAsk);
+      let outcome;
+      try {
+        outcome = await permission.gate(name, args, tools.get(name).permissionMeta, permCtxWithAsk);
+      } catch (err) {
+        if (isCancelled(perToolCtrl.signal, toolCtx.signal)) {
+          this.completeCancellation(track);
+          return;
+        }
+        await this.completeFailure(track, {
+          phase: 'permission',
+          code: 'permission/error',
+          message: errorMessage(err),
+          retryable: true,
+        }, perToolCtrl.signal);
+        return;
+      }
 
       if (!outcome.granted) {
-        const reason = `Permission denied: ${outcome.reason}`;
-        track.result = { type: 'tool_result', toolUseId: id, content: reason, isError: true, durationMs: Date.now() - track.startMs, errorCode: 'permission/denied' };
-        pushEv({ type: 'tool_result', sessionId: this.opts.sessionId, callId: id, name, error: { code: 'permission/denied', message: reason }, durationMs: Date.now() - track.startMs });
-        await hooks.trigger('onToolFailure', {
-          turnId, sessionId,
-          payload: { callId: id, name, error: reason },
-          signal: perToolCtrl.signal,
-          emit: pushEv,
-        });
+        await this.completeFailure(track, {
+          phase: 'permission',
+          code: 'permission/denied',
+          message: `Permission denied: ${outcome.reason}`,
+          retryable: false,
+        }, perToolCtrl.signal);
         return;
       }
 
@@ -272,16 +297,13 @@ export class TurnToolExecutor {
           output  = '[用户中途终止]';
           isError = false;
           pushEv({ type: 'tool_result', sessionId: this.opts.sessionId, callId: id, name, output, durationMs: Date.now() - track.startMs });
+        } else if (toolCtx.signal.aborted) {
+          this.completeCancellation(track);
+          return;
         } else {
-          isError = true;
-          output  = (err as Error).message;
-          pushEv({ type: 'tool_result', sessionId: this.opts.sessionId, callId: id, name, error: { code: 'tool/error', message: output as string }, durationMs: Date.now() - track.startMs });
-          await hooks.trigger('onToolFailure', {
-            turnId, sessionId,
-            payload: { callId: id, name, error: err },
-            signal: perToolCtrl.signal,
-            emit: pushEv,
-          });
+          const failure = classifyDispatchFailure(err);
+          await this.completeFailure(track, failure, perToolCtrl.signal);
+          return;
         }
       }
 
@@ -294,6 +316,17 @@ export class TurnToolExecutor {
       }
       track.result = { type: 'tool_result', toolUseId: id, content, isError, durationMs: Date.now() - track.startMs, errorCode: isError ? 'tool/error' : undefined };
 
+    } catch (err) {
+      if (isCancelled(perToolCtrl.signal, toolCtx.signal)) {
+        this.completeCancellation(track);
+      } else if (!track.result) {
+        await this.completeFailure(track, {
+          phase: 'execution',
+          code: 'tool/internal_error',
+          message: errorMessage(err),
+          retryable: false,
+        }, perToolCtrl.signal);
+      }
     } finally {
       toolCtx.signal.removeEventListener('abort', onTurnAbort);
       this.toolAborts.delete(id);
@@ -303,8 +336,8 @@ export class TurnToolExecutor {
       if (!track.done) {
         if (!track.result) {
           const msg = 'Tool execution failed unexpectedly';
-          track.result = { type: 'tool_result', toolUseId: id, content: msg, isError: true, durationMs: Date.now() - track.startMs, errorCode: 'tool/error' };
-          pushEv({ type: 'tool_result', sessionId: this.opts.sessionId, callId: id, name, error: { code: 'tool/error', message: msg }, durationMs: Date.now() - track.startMs });
+          track.result = { type: 'tool_result', toolUseId: id, content: msg, isError: true, durationMs: Date.now() - track.startMs, errorCode: 'tool/internal_error' };
+          pushEv({ type: 'tool_result', sessionId: this.opts.sessionId, callId: id, name, error: { code: 'tool/internal_error', message: msg }, durationMs: Date.now() - track.startMs });
         }
       }
       track.done = true;
@@ -314,6 +347,54 @@ export class TurnToolExecutor {
       // so we need a second signal here to wake the loop after done is set.)
       signal();
     }
+  }
+
+  private async completeFailure(
+    track: TrackedTool,
+    failure: ToolFailure,
+    hookSignal: AbortSignal,
+  ): Promise<void> {
+    const durationMs = Date.now() - track.startMs;
+    track.result = {
+      type: 'tool_result',
+      toolUseId: track.id,
+      content: failure.message,
+      isError: true,
+      durationMs,
+      errorCode: failure.code,
+    };
+    this.opts.pushEv({
+      type: 'tool_result',
+      sessionId: this.opts.sessionId,
+      callId: track.id,
+      name: track.name,
+      error: { code: failure.code, message: failure.message },
+      durationMs,
+    });
+    await this.opts.hooks.trigger('onToolFailure', {
+      turnId: this.opts.turnId,
+      sessionId: this.opts.sessionId,
+      payload: {
+        callId: track.id,
+        name: track.name,
+        phase: failure.phase,
+        code: failure.code,
+        message: failure.message,
+        retryable: failure.retryable,
+      },
+      signal: hookSignal,
+      emit: this.opts.pushEv,
+    });
+  }
+
+  private completeCancellation(track: TrackedTool): void {
+    track.result = {
+      type: 'tool_result',
+      toolUseId: track.id,
+      content: '[用户中途终止]',
+      isError: false,
+      durationMs: Date.now() - track.startMs,
+    };
   }
 }
 
@@ -333,4 +414,35 @@ function annotateAborted(output: unknown): unknown {
   }
   if (typeof output === 'string') return output + notice;
   return String(JSON.stringify(output) ?? '') + notice;
+}
+
+function isArgsParseFailure(args: unknown): args is Record<string, unknown> {
+  return args !== null
+    && typeof args === 'object'
+    && (args as Record<string, unknown>)['__parse_error'] === true;
+}
+
+function classifyDispatchFailure(err: unknown): ToolFailure {
+  if (err instanceof ToolInputError) {
+    return {
+      phase: 'validation',
+      code: 'tool/validation_failed',
+      message: err.message,
+      retryable: true,
+    };
+  }
+  return {
+    phase: 'execution',
+    code: 'tool/error',
+    message: errorMessage(err),
+    retryable: false,
+  };
+}
+
+function isCancelled(perToolSignal: AbortSignal, turnSignal: AbortSignal): boolean {
+  return perToolSignal.aborted || turnSignal.aborted;
+}
+
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
 }

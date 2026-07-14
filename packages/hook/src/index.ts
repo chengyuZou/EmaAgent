@@ -6,6 +6,7 @@ export type {
   ControlHookEvent,
   HookEvent,
   HookPayload,
+  ToolFailurePhase,
   ObserverHookEvent,
 } from './events.js';
 
