@@ -11,6 +11,7 @@ import type {
   UserBlock,
 } from '../types.js';
 import { ContextWindowExceededError } from '../types.js';
+import { createLlmUsage } from '../usage.js';
 import type { ToolResultBlock, MessageContentPart } from '@ema-agent/contracts';
 
 function isContextWindowError(err: unknown): boolean {
@@ -334,8 +335,11 @@ export class OpenAiResponsesAdapter implements LlmAdapter {
             if (usage) {
               yield {
                 type:         'usage',
-                inputTokens:  usage.input_tokens,
-                outputTokens: usage.output_tokens,
+                ...createLlmUsage({
+                  inputTokens: usage.input_tokens,
+                  outputTokens: usage.output_tokens,
+                  cacheReadInputTokens: usage.input_tokens_details.cached_tokens,
+                }),
               };
             }
             // 若尚未是 tool_use,把 incomplete_details 映射到 stop reason。

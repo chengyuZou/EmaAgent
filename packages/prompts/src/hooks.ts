@@ -39,9 +39,14 @@ export function registerPromptsHooks(
       // start with one. (Defensive — callers that pre-seed messages with a
       // system row are still supported.)
       const messages = ctx.payload.messages;
+      const stableSystem = {
+        role: 'system' as const,
+        content: systemPrompt,
+        cacheBreakpoint: true as const,
+      };
       const next = messages[0]?.role === 'system'
-        ? [{ role: 'system' as const, content: systemPrompt }, ...messages.slice(1)]
-        : [{ role: 'system' as const, content: systemPrompt }, ...messages];
+        ? [stableSystem, ...messages.slice(1)]
+        : [stableSystem, ...messages];
 
       return {
         kind: 'replace',

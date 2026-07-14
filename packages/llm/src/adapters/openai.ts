@@ -12,6 +12,7 @@ import type {
   UserBlock,
 } from '../types.js';
 import { ContextWindowExceededError } from '../types.js';
+import { createLlmUsage } from '../usage.js';
 import type { ToolResultBlock } from '@ema-agent/contracts';
 
 function isContextWindowError(err: unknown): boolean {
@@ -294,8 +295,11 @@ export class OpenAiAdapter implements LlmAdapter {
       if (chunk.usage) {
         yield {
           type:         'usage',
-          inputTokens:  chunk.usage.prompt_tokens,
-          outputTokens: chunk.usage.completion_tokens,
+          ...createLlmUsage({
+            inputTokens: chunk.usage.prompt_tokens,
+            outputTokens: chunk.usage.completion_tokens,
+            cacheReadInputTokens: chunk.usage.prompt_tokens_details?.cached_tokens,
+          }),
         };
       }
     }

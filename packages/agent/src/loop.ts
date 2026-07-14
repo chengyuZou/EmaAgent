@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { asLlmCallId } from '@ema-agent/contracts';
-import type { LlmMessage, AssistantBlock, UserBlock, ToolResultBlock, EmaStreamEvent, LlmCallId } from '@ema-agent/contracts';
+import type { LlmMessage, AssistantBlock, UserBlock, ToolResultBlock, EmaStreamEvent, LlmCallId, LlmUsage } from '@ema-agent/contracts';
 import type { LlmRouter, ThinkingMode, StopReason } from '@ema-agent/llm';
-import { ContextWindowExceededError } from '@ema-agent/llm';
+import { computePromptPrefixHash, ContextWindowExceededError } from '@ema-agent/llm';
 import type { AgentPolicy } from './policy.js';
 import type { TurnToolExecutor } from './tool-executor.js';
 import { advanceState, addUsage, createLoopState } from './loop-state.js';
@@ -29,7 +29,13 @@ export type AgentLoopEvent =
   | { type: 'loop_tool_partial';  callId: string; name: string; argsDelta: string; blockIndex: number }
   | { type: 'loop_tool_complete'; callId: string; name: string; args: unknown; blockIndex: number }
   | { type: 'loop_relay';         ev: EmaStreamEvent }
-  | { type: 'loop_llm_complete'; iteration: number; llmCallId: LlmCallId }
+  | {
+      type: 'loop_llm_complete';
+      iteration: number;
+      llmCallId: LlmCallId;
+      usage: LlmUsage;
+      promptPrefixHash: string | null;
+    }
   | { type: 'loop_hook_abort'; reason: string }
   | { type: 'loop_tool_results';  results: ToolResultBlock[]; fullText: string }
   | { type: 'loop_breaker';       reason: string }
@@ -196,6 +202,9 @@ export async function* agentLoop(input: AgentLoopInput): AsyncIterable<AgentLoop
     }
 
     let lastStopReason: StopReason = 'end_turn';
+    const tools = policy.toolDefs();
+    let callUsage: LlmUsage = { inputTokens: 0, outputTokens: 0 };
+    let promptPrefixHash: string | null = null;
 
     // ── Inner retry loop: handles reactive compact on ContextWindowExceededError ──
     let streamRetry = false;
@@ -205,11 +214,13 @@ export async function* agentLoop(input: AgentLoopInput): AsyncIterable<AgentLoop
       thinkingByIndex.clear();
       toolUseByIndex.clear();
       lastStopReason = 'end_turn';
+      callUsage = { inputTokens: 0, outputTokens: 0 };
+      promptPrefixHash = computePromptPrefixHash({ messages: requestMessages, tools });
 
       const stream = llm.stream({
         providerId, model,
         messages:   requestMessages,
-        tools:      policy.toolDefs(),
+        tools,
         toolChoice: 'auto',
         thinking,
         signal,
@@ -247,7 +258,18 @@ export async function* agentLoop(input: AgentLoopInput): AsyncIterable<AgentLoop
               break;
 
             case 'usage':
-              state = addUsage(state, { inputTokens: chunk.inputTokens, outputTokens: chunk.outputTokens });
+              callUsage = {
+                inputTokens: chunk.inputTokens,
+                outputTokens: chunk.outputTokens,
+                ...(chunk.cacheReadInputTokens !== undefined
+                  ? { cacheReadInputTokens: chunk.cacheReadInputTokens }
+                  : {}),
+                ...(chunk.cacheWriteInputTokens !== undefined
+                  ? { cacheWriteInputTokens: chunk.cacheWriteInputTokens }
+                  : {}),
+                ...(chunk.cacheHitRate !== undefined ? { cacheHitRate: chunk.cacheHitRate } : {}),
+              };
+              state = addUsage(state, callUsage);
               break;
 
             case 'done':
@@ -283,7 +305,13 @@ export async function* agentLoop(input: AgentLoopInput): AsyncIterable<AgentLoop
       .join('');
 
     // Signal LLM stream end — engine flushes emotion + fires afterLlmComplete.
-    yield { type: 'loop_llm_complete', iteration: state.iteration, llmCallId };
+    yield {
+      type: 'loop_llm_complete',
+      iteration: state.iteration,
+      llmCallId,
+      usage: callUsage,
+      promptPrefixHash,
+    };
 
     // ── max_output_tokens recovery ────────────────────────────────────────────
     // Router fills maxTokens from the catalog so the model always runs at its

@@ -12,7 +12,12 @@ describe('ConversationEngine Hook 诊断事件', () => {
   it('在 Turn 终态事件之前输出结构化 hook_warning', async () => {
     const hooks = new HookBus();
     let beforeIdentity: { iteration: number; llmCallId: string } | undefined;
-    let afterIdentity: { iteration: number; llmCallId: string } | undefined;
+    let afterIdentity: {
+      iteration: number;
+      llmCallId: string;
+      cacheReadInputTokens?: number;
+      promptPrefixHash: string | null;
+    } | undefined;
     let persistedAssistantBlocks: unknown;
     let persistedAssistantMessageId: MessageId | undefined;
     let assistantMessagePayload: unknown;
@@ -27,6 +32,8 @@ describe('ConversationEngine Hook 诊断事件', () => {
       afterIdentity = {
         iteration: ctx.payload.iteration,
         llmCallId: ctx.payload.llmCallId,
+        cacheReadInputTokens: ctx.payload.usage.cacheReadInputTokens,
+        promptPrefixHash: ctx.payload.promptPrefixHash,
       };
       return { kind: 'continue' };
     });
@@ -62,7 +69,13 @@ describe('ConversationEngine Hook 诊断事件', () => {
       warnUnsupportedParts: () => [],
       stream: async function* () {
         yield { type: 'text_delta', blockIndex: 0, delta: 'ok' };
-        yield { type: 'usage', inputTokens: 3, outputTokens: 1 };
+        yield {
+          type: 'usage',
+          inputTokens: 3,
+          outputTokens: 1,
+          cacheReadInputTokens: 2,
+          cacheHitRate: 2 / 3,
+        };
         yield { type: 'done', stopReason: 'end_turn' };
       },
     };
@@ -121,7 +134,11 @@ describe('ConversationEngine Hook 诊断事件', () => {
       failureKind: 'handler_error',
       message: 'telemetry unavailable',
     }));
-    expect(beforeIdentity).toEqual(afterIdentity);
+    expect(afterIdentity).toEqual({
+      ...beforeIdentity,
+      cacheReadInputTokens: 2,
+      promptPrefixHash: null,
+    });
     expect(beforeIdentity?.iteration).toBe(1);
     expect(beforeIdentity?.llmCallId).toBeTruthy();
     expect(assistantMessagePayload).toEqual({

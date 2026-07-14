@@ -10,6 +10,7 @@ import type {
   AssistantBlock,
 } from '../types.js';
 import { ContextWindowExceededError } from '../types.js';
+import { createLlmUsage } from '../usage.js';
 import type { UserBlock, ToolResultBlock, MessageContentPart } from '@ema-agent/contracts';
 
 function isContextWindowError(err: unknown): boolean {
@@ -34,7 +35,7 @@ function mapStopReason(reason: string | null | undefined): StopReason {
 }
 
 interface NormalizedMessages {
-  system: string | undefined;
+  system: Anthropic.MessageCreateParams['system'];
   messages: Anthropic.MessageParam[];
 }
 
@@ -88,13 +89,15 @@ function mediaPartToAnthropicBlock(
  * 3. tool 结果已在 `role: 'user'` 消息内作为 ToolResultBlock[]。
  *    无需分组循环 - 归一化格式已匹配 Anthropic 要求。
  */
-function toAnthropicMessages(msgs: LlmMessage[]): NormalizedMessages {
-  let system: string | undefined;
+export function toAnthropicMessages(msgs: LlmMessage[]): NormalizedMessages {
+  let system: Anthropic.MessageCreateParams['system'];
   const messages: Anthropic.MessageParam[] = [];
 
   for (const msg of msgs) {
     if (msg.role === 'system') {
-      system = msg.content;
+      system = msg.cacheBreakpoint
+        ? [{ type: 'text', text: msg.content, cache_control: { type: 'ephemeral' } }]
+        : msg.content;
       continue;
     }
 
@@ -246,6 +249,8 @@ export class AnthropicAdapter implements LlmAdapter {
 
     let inputTokens  = 0;
     let outputTokens = 0;
+    let cacheReadInputTokens: number | null | undefined;
+    let cacheWriteInputTokens: number | null | undefined;
     let stopReason: StopReason = 'end_turn';
 
     try {
@@ -253,6 +258,8 @@ export class AnthropicAdapter implements LlmAdapter {
       switch (event.type) {
         case 'message_start':
           inputTokens = event.message.usage.input_tokens;
+          cacheReadInputTokens = event.message.usage.cache_read_input_tokens;
+          cacheWriteInputTokens = event.message.usage.cache_creation_input_tokens;
           break;
 
         case 'content_block_start':
@@ -332,7 +339,17 @@ export class AnthropicAdapter implements LlmAdapter {
       throw err;
     }
 
-    yield { type: 'usage', inputTokens, outputTokens };
+    yield {
+      type: 'usage',
+      ...createLlmUsage({
+        inputTokens,
+        outputTokens,
+        cacheReadInputTokens,
+        cacheWriteInputTokens,
+        cacheEligibleInputTokens:
+          inputTokens + (cacheReadInputTokens ?? 0) + (cacheWriteInputTokens ?? 0),
+      }),
+    };
     yield { type: 'done', stopReason };
   }
 }

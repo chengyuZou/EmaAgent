@@ -15,6 +15,7 @@ import type {
   StopReason, ProviderConfig, AssistantBlock, UserBlock,
 } from '../types.js';
 import { ContextWindowExceededError } from '../types.js';
+import { createLlmUsage } from '../usage.js';
 import type { ToolResultBlock, MessageContentPart } from '@ema-agent/contracts';
 
 function isContextWindowError(err: unknown): boolean {
@@ -240,9 +241,7 @@ export class GeminiAdapter implements LlmAdapter {
     }
 
     let responseStream: AsyncGenerator<GenerateContentResponse>;
-    let lastUsage:
-      | { inputTokens: number; outputTokens: number }
-      | undefined;
+    let lastUsage: Extract<LlmStreamChunk, { type: 'usage' }> | undefined;
 
     try {
       responseStream = await this.ai.models.generateContentStream({
@@ -308,8 +307,12 @@ export class GeminiAdapter implements LlmAdapter {
 
         if (chunk.usageMetadata) {
           lastUsage = {
-            inputTokens: chunk.usageMetadata.promptTokenCount ?? 0,
-            outputTokens: chunk.usageMetadata.candidatesTokenCount ?? 0,
+            type: 'usage',
+            ...createLlmUsage({
+              inputTokens: chunk.usageMetadata.promptTokenCount ?? 0,
+              outputTokens: chunk.usageMetadata.candidatesTokenCount ?? 0,
+              cacheReadInputTokens: chunk.usageMetadata.cachedContentTokenCount,
+            }),
           };
         }
       }
@@ -323,7 +326,7 @@ export class GeminiAdapter implements LlmAdapter {
     }
 
     if (lastUsage) {
-      yield { type: 'usage', ...lastUsage };
+      yield lastUsage;
     }
     yield { type: 'done', stopReason };
   }

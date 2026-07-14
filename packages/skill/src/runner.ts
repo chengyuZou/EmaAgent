@@ -49,6 +49,7 @@ export class SkillRunner {
       updated[systemIdx] = {
         role:    'system',
         content: (typeof sys.content === 'string' ? sys.content : '') + catalog,
+        ...(sys.cacheBreakpoint ? { cacheBreakpoint: true as const } : {}),
       };
 
       return { kind: 'replace', payload: { ...ctx.payload, messages: updated } };

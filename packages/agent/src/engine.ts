@@ -328,6 +328,8 @@ async function* runTurn(
               iteration: ev.iteration,
               llmCallId: ev.llmCallId,
               content: fullText,
+              usage: ev.usage,
+              promptPrefixHash: ev.promptPrefixHash,
               toolCalls: [...iterToolCalls.values()],
             },
             signal,

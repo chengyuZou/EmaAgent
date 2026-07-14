@@ -29,7 +29,13 @@ function beforeLlmPayload(
 }
 
 function afterLlmPayload(content: string): HookPayload['afterLlmComplete'] {
-  return { iteration: 1, llmCallId, content };
+  return {
+    iteration: 1,
+    llmCallId,
+    content,
+    usage: { inputTokens: 10, outputTokens: 5 },
+    promptPrefixHash: null,
+  };
 }
 
 function systemMessageContent(payload: DeepReadonly<HookPayload['beforeLlm']>): string {

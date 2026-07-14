@@ -4,10 +4,11 @@ import type {
   UserBlock,
   LlmMessage,
   LlmProtocol,
+  LlmUsage,
 } from '@ema-agent/contracts';
 
 // 重新导出,调用方只需一次 import
-export type { LlmProtocol }                                                     from '@ema-agent/contracts';
+export type { LlmProtocol, LlmUsage }                                           from '@ema-agent/contracts';
 export type { AssistantBlock, UserBlock, MessageContentPart as LlmContentPart } from '@ema-agent/contracts';
 export type { LlmMessage }                                                       from '@ema-agent/contracts';
 
@@ -100,7 +101,7 @@ export type LlmStreamChunk =
   | { type: 'thinking_complete';  blockIndex: number; signature: string }
   | { type: 'tool_use_delta';    blockIndex: number; callId: string; name: string; argsDelta: string }
   | { type: 'tool_use_complete'; blockIndex: number; callId: string; name: string; args: unknown }
-  | { type: 'usage';             inputTokens: number; outputTokens: number }
+  | ({ type: 'usage' } & LlmUsage)
   | { type: 'done';              stopReason: StopReason };
 
 // ── 非流式输出 ──────────────────────────────────────────────────────
@@ -113,7 +114,7 @@ export type LlmStreamChunk =
 export interface LlmCompletion {
   blocks: AssistantBlock[];
   stopReason: StopReason;
-  usage: { inputTokens: number; outputTokens: number };
+  usage: LlmUsage;
 }
 
 // ── probe 结果 ──────────────────────────────────────────────────────

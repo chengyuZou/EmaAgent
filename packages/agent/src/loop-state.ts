@@ -7,6 +7,8 @@
 // Mirrors Claude Code's LoopState / LoopTransition pattern, simplified to
 // EmaAgent's subset of termination conditions.
 
+import type { LlmUsage } from '@ema-agent/contracts';
+
 export type LoopPhase =
   | 'preprocessing'  // running context budget + compaction checks
   | 'thinking'       // LLM streaming
@@ -37,7 +39,7 @@ export interface LoopState {
   readonly phase:      LoopPhase;
   readonly iteration:  number;
   readonly transition: LoopTransition;
-  readonly usage:      { inputTokens: number; outputTokens: number };
+  readonly usage:      LlmUsage;
   /** 0 = not attempted; 1 = continuation prompt sent (next truncation → loop_breaker). */
   readonly maxOutputTokensRecoveryCount: number;
   /** Whether a reactive compact has already been attempted this iteration. */
@@ -73,13 +75,27 @@ export function advanceState(
 
 export function addUsage(
   state:  LoopState,
-  delta:  { inputTokens: number; outputTokens: number },
+  delta:  LlmUsage,
 ): LoopState {
+  const cacheReadInputTokens = sumOptional(
+    state.usage.cacheReadInputTokens,
+    delta.cacheReadInputTokens,
+  );
+  const cacheWriteInputTokens = sumOptional(
+    state.usage.cacheWriteInputTokens,
+    delta.cacheWriteInputTokens,
+  );
   return Object.freeze({
     ...state,
     usage: {
       inputTokens:  state.usage.inputTokens  + delta.inputTokens,
       outputTokens: state.usage.outputTokens + delta.outputTokens,
+      ...(cacheReadInputTokens !== undefined ? { cacheReadInputTokens } : {}),
+      ...(cacheWriteInputTokens !== undefined ? { cacheWriteInputTokens } : {}),
     },
   });
+}
+
+function sumOptional(left: number | undefined, right: number | undefined): number | undefined {
+  return left === undefined && right === undefined ? undefined : (left ?? 0) + (right ?? 0);
 }

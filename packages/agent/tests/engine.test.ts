@@ -14,6 +14,11 @@ describe('AgentEngine 生命周期', () => {
     let persistedAssistantBlocks: unknown;
     let persistedAssistantMessageId: MessageId | undefined;
     let assistantMessagePayload: unknown;
+    let llmCompletePayload: unknown;
+    hooks.register('afterLlmComplete', (ctx) => {
+      llmCompletePayload = ctx.payload;
+      return { kind: 'continue' };
+    });
     hooks.register('afterAssistantMessage', (ctx) => {
       assistantMessagePayload = ctx.payload;
       return { kind: 'continue' };
@@ -52,7 +57,13 @@ describe('AgentEngine 生命周期', () => {
       stream: async function* () {
         yield { type: 'thinking_delta', blockIndex: 0, delta: 'reason' };
         yield { type: 'text_delta', blockIndex: 1, delta: 'answer' };
-        yield { type: 'usage', inputTokens: 3, outputTokens: 2 };
+        yield {
+          type: 'usage',
+          inputTokens: 3,
+          outputTokens: 2,
+          cacheReadInputTokens: 2,
+          cacheHitRate: 2 / 3,
+        };
         yield { type: 'done', stopReason: 'end_turn' };
       },
     };
@@ -109,6 +120,15 @@ describe('AgentEngine 生命周期', () => {
     expect(hookBlocks).not.toBe(persistedAssistantBlocks);
     expect(Object.isFrozen(hookBlocks)).toBe(true);
     expect(Object.isFrozen(persistedAssistantBlocks)).toBe(false);
+    expect(llmCompletePayload).toEqual(expect.objectContaining({
+      usage: {
+        inputTokens: 3,
+        outputTokens: 2,
+        cacheReadInputTokens: 2,
+        cacheHitRate: 2 / 3,
+      },
+      promptPrefixHash: null,
+    }));
     expect(events.at(-1)).toEqual(expect.objectContaining({ type: 'turn_completed' }));
   });
 

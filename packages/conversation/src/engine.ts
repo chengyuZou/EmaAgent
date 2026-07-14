@@ -1,6 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { asLlmCallId } from '@ema-agent/contracts';
 import type { EmaStreamEvent, ErrorCode, LlmMessage, AssistantBlock, UserBlock, MessageContentPart as LlmContentPart } from '@ema-agent/contracts';
+import type { LlmUsage } from '@ema-agent/contracts';
+import { computePromptPrefixHash } from '@ema-agent/llm';
 import type { MessageBlocks } from '@ema-agent/session';
 import type { HookBus, HookContext, HookTriggerResult, TurnFailurePhase } from '@ema-agent/hook';
 import type { ConversationDeps, ConversationRunInput } from './types.js';
@@ -205,6 +207,7 @@ async function* runTurn(
     let fullText = '';
     let inputTokens = 0;
     let outputTokens = 0;
+    let llmUsage: LlmUsage = { inputTokens: 0, outputTokens: 0 };
     let lastTextBlockIndex = 0;
     const textByIndex = new Map<number, string>();
     const thinkingByIndex = new Map<number, string>();
@@ -212,6 +215,7 @@ async function* runTurn(
     const completedThinkingIndexes = new Set<number>();
 
     activePhase = 'provider';
+    const promptPrefixHash = computePromptPrefixHash({ messages: finalMessages });
     const stream = llm.stream({ providerId, model: resolvedModel, messages: finalMessages, thinking: input.thinking, signal });
 
     for await (const chunk of stream) {
@@ -239,6 +243,17 @@ async function* runTurn(
         case 'usage':
           inputTokens = chunk.inputTokens;
           outputTokens = chunk.outputTokens;
+          llmUsage = {
+            inputTokens,
+            outputTokens,
+            ...(chunk.cacheReadInputTokens !== undefined
+              ? { cacheReadInputTokens: chunk.cacheReadInputTokens }
+              : {}),
+            ...(chunk.cacheWriteInputTokens !== undefined
+              ? { cacheWriteInputTokens: chunk.cacheWriteInputTokens }
+              : {}),
+            ...(chunk.cacheHitRate !== undefined ? { cacheHitRate: chunk.cacheHitRate } : {}),
+          };
           yield { type: 'usage_update', sessionId: input.sessionId, turnId, inputTokens, outputTokens };
           break;
         case 'done':
@@ -272,7 +287,13 @@ async function* runTurn(
     await hooks.trigger('afterLlmComplete', {
       turnId,
       sessionId: input.sessionId,
-      payload: { iteration, llmCallId, content: fullText },
+      payload: {
+        iteration,
+        llmCallId,
+        content: fullText,
+        usage: llmUsage,
+        promptPrefixHash,
+      },
       signal,
       emit: emitHookEvent,
     });

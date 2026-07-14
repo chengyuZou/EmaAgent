@@ -3,7 +3,7 @@ import { OpenAiResponsesAdapter } from './adapters/openai-responses.js';
 import { AnthropicAdapter }       from './adapters/anthropic.js';
 import { GeminiAdapter }          from './adapters/gemini.js';
 import type { LlmAdapter }        from './adapters/base.js';
-import { CircuitBreaker, CircuitOpenError } from './retry.js';
+import { CircuitBreaker, CircuitOpenError, isRetryable, sleep } from './retry.js';
 import { validateContentParts } from './validate.js';
 import type { UnsupportedPart } from './validate.js';
 import type {
@@ -15,9 +15,11 @@ import type {
   ProbeResult,
   StopReason,
   AssistantBlock,
+  LlmUsage,
 } from './types.js';
 import type { LlmProtocol } from '@ema-agent/contracts';
 import type { ModelsDevCatalog } from './models-dev-catalog.js';
+import { normalizeToolDefinitions } from './prompt-cache.js';
 
 // ── 内部工厂 ──────────────────────────────────────────────────────────
 
@@ -84,16 +86,22 @@ export class LlmRouter {
    * 未知 provider id 时同步抛错。
    */
   stream(request: LlmRequest): AsyncIterable<LlmStreamChunk> {
-    const enriched: LlmRequest = this.catalog ? {
+    const catalogEnriched: LlmRequest = this.catalog ? {
       ...request,
       supportsReasoning: request.supportsReasoning ?? this.catalog.hasReasoning(request.model),
       maxTokens:         request.maxTokens         ?? this.catalog.maxOutputOf(request.model),
     } : request;
-    return this.guardedStream(enriched.providerId, () => {
-      const adapter = this.adapters.get(enriched.providerId);
-      if (!adapter) throw notConfigured(enriched.providerId);
-      return adapter.stream(enriched, enriched.model);
-    });
+    const enriched: LlmRequest = catalogEnriched.tools ? {
+      ...catalogEnriched,
+      tools: normalizeToolDefinitions(catalogEnriched.tools),
+    } : catalogEnriched;
+    // Façade 必须同步拒绝未知 Provider，Engine 才能在创建异步迭代器时 fail-fast。
+    const adapter = this.adapters.get(enriched.providerId);
+    if (!adapter) throw notConfigured(enriched.providerId);
+    return this.guardedStream(
+      enriched.providerId,
+      () => adapter.stream(enriched, enriched.model),
+    );
   }
 
   // ── 非流式 ────────────────────────────────────────────────────
@@ -110,8 +118,7 @@ export class LlmRouter {
    */
   async complete(request: LlmRequest): Promise<LlmCompletion> {
     let stopReason: StopReason = 'end_turn';
-    let inputTokens             = 0;
-    let outputTokens            = 0;
+    let usage: LlmUsage = { inputTokens: 0, outputTokens: 0 };
     const textBufs             = new Map<number, string>();
     const thinkingBufs         = new Map<number, string>();
     const thinkingSignatureMap = new Map<number, string>();
@@ -132,8 +139,17 @@ export class LlmRouter {
           toolUseMap.set(chunk.blockIndex, { type: 'tool_use', id: chunk.callId, name: chunk.name, args: chunk.args });
           break;
         case 'usage':
-          inputTokens  = chunk.inputTokens;
-          outputTokens = chunk.outputTokens;
+          usage = {
+            inputTokens: chunk.inputTokens,
+            outputTokens: chunk.outputTokens,
+            ...(chunk.cacheReadInputTokens !== undefined
+              ? { cacheReadInputTokens: chunk.cacheReadInputTokens }
+              : {}),
+            ...(chunk.cacheWriteInputTokens !== undefined
+              ? { cacheWriteInputTokens: chunk.cacheWriteInputTokens }
+              : {}),
+            ...(chunk.cacheHitRate !== undefined ? { cacheHitRate: chunk.cacheHitRate } : {}),
+          };
           break;
         case 'done':
           stopReason = chunk.stopReason;
@@ -155,7 +171,7 @@ export class LlmRouter {
     blockEntries.sort((a, b) => a[0] - b[0]);
     const blocks: AssistantBlock[] = blockEntries.map(([, block]) => block);
 
-    return { blocks, stopReason, usage: { inputTokens, outputTokens } };
+    return { blocks, stopReason, usage };
   }
 
   // ── 熔断器 ──────────────────────────────────────────────────
@@ -182,22 +198,34 @@ export class LlmRouter {
     const breaker = this.breakerFor(breakerKey);
     breaker.guard();
 
-    let started = false;
-    try {
-      const stream = start();
-      for await (const chunk of stream) {
-        if (!started) {
-          started = true;
-          breaker.success();
+    const maxAttempts = 3;
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      let started = false;
+      try {
+        const stream = start();
+        for await (const chunk of stream) {
+          if (!started) {
+            started = true;
+            breaker.success();
+          }
+          yield chunk;
         }
-        yield chunk;
+        return;
+      } catch (error) {
+        // 已向上游交付过 chunk 后绝不重试，否则会重复文本或工具副作用。
+        if (started) throw error;
+
+        breaker.failure();
+        if (
+          error instanceof CircuitOpenError
+          || breaker.phase === 'open'
+          || !isRetryable(error)
+          || attempt === maxAttempts - 1
+        ) {
+          throw error;
+        }
+        await sleep(1_000 * 2 ** attempt);
       }
-    } catch (e) {
-      if (!started) breaker.failure();
-      // 重新抛出 CircuitOpenError,让调用方能区分"熔断器 open"
-      // 与真实 provider 错误。guard 抛的不计为失败。
-      if (e instanceof CircuitOpenError) throw e;
-      throw e;
     }
   }
 

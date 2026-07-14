@@ -83,6 +83,29 @@ describe('LlmRouter — routing', () => {
     expect(mock.calls[0]?.request.signal).toBe(signal);
   });
 
+  it('在 Adapter 边界规范化工具名称顺序和 Schema key 顺序', async () => {
+    const mock = new MockAdapter([{ type: 'done', stopReason: 'end_turn' }]);
+    const router = new LlmRouter([DS_CONFIG], new Map([['ds-001', mock]]));
+
+    await collect(router.stream({
+      providerId: 'ds-001',
+      model: 'm',
+      messages: [],
+      tools: [
+        { name: 'zeta', description: 'z', parameters: { type: 'object' } },
+        {
+          name: 'alpha',
+          description: 'a',
+          parameters: { required: ['path'], properties: {}, type: 'object' },
+        },
+      ],
+    }));
+
+    expect(mock.calls[0]?.request.tools?.map((tool) => tool.name)).toEqual(['alpha', 'zeta']);
+    expect(Object.keys(mock.calls[0]?.request.tools?.[0]?.parameters ?? {}))
+      .toEqual(['properties', 'required', 'type']);
+  });
+
   it('routes two providers with the same protocol independently by id', async () => {
     const mockDS = new MockAdapter([{ type: 'done', stopReason: 'end_turn' }]);
     const mockSF = new MockAdapter([{ type: 'done', stopReason: 'end_turn' }]);
@@ -228,6 +251,31 @@ describe('LlmRouter — complete()', () => {
     expect(result.blocks[0]).toEqual({ type: 'text', text: 'Hello world' });
     expect(result.stopReason).toBe('end_turn');
     expect(result.usage).toEqual({ inputTokens: 5, outputTokens: 3 });
+  });
+
+  it('完整保留 Provider 返回的缓存 Token 与命中率', async () => {
+    const chunks: LlmStreamChunk[] = [
+      {
+        type: 'usage',
+        inputTokens: 100,
+        outputTokens: 8,
+        cacheReadInputTokens: 75,
+        cacheWriteInputTokens: 10,
+        cacheHitRate: 0.75,
+      },
+      { type: 'done', stopReason: 'end_turn' },
+    ];
+    const router = new LlmRouter([CL_CONFIG], new Map([['cl-001', new MockAdapter(chunks)]]));
+
+    const result = await router.complete({ providerId: 'cl-001', model: 'm', messages: [] });
+
+    expect(result.usage).toEqual({
+      inputTokens: 100,
+      outputTokens: 8,
+      cacheReadInputTokens: 75,
+      cacheWriteInputTokens: 10,
+      cacheHitRate: 0.75,
+    });
   });
 
   it('reconstructs thinking block with signature from thinking_complete', async () => {

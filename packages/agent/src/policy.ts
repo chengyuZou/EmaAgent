@@ -11,7 +11,10 @@ export class AgentPolicy {
     allTools: BuiltTool[],
     private readonly maxIter = 30,
   ) {
-    this.allowed      = allTools;
+    // Provider KV Cache 对工具定义顺序敏感；使用跨平台一致的 UTF-16 code-unit 顺序。
+    this.allowed      = [...allTools].sort((left, right) =>
+      left.name < right.name ? -1 : left.name > right.name ? 1 : 0,
+    );
     this.allowedNames = new Set(allTools.map(t => t.name));
   }
 

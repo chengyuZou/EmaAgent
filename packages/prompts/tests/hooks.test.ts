@@ -53,6 +53,7 @@ describe('registerPromptsHooks', () => {
       expect(result.payload.messages[0]).toEqual(expect.objectContaining({
         role: 'system',
         content: expect.stringContaining('You are Ema.'),
+        cacheBreakpoint: true,
       }));
       expect(result.payload.messages[1]).toEqual({ role: 'user', content: 'hello' });
       expect('systemPrompt' in result.payload).toBe(false);
