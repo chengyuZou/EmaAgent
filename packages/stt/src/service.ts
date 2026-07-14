@@ -55,12 +55,14 @@ export class SttClient {
 
   /** Hot-reload: replace all provider configs atomically. */
   reload(configs: SttProviderConfig[]): void {
-    this.adapters = new Map();
-    this.configs  = new Map();
+    const nextAdapters = new Map<string, SttAdapter>();
+    const nextConfigs = new Map<string, SttProviderConfig>();
     for (const config of configs) {
-      this.configs.set(config.id, config);
-      this.adapters.set(config.id, createAdapter(config));
+      nextConfigs.set(config.id, config);
+      nextAdapters.set(config.id, createAdapter(config));
     }
+    this.configs = nextConfigs;
+    this.adapters = nextAdapters;
   }
 
   /**

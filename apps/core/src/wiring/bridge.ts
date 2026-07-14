@@ -2,10 +2,17 @@ import fs   from 'node:fs';
 import path from 'node:path';
 import os   from 'node:os';
 import { ProvidersRepo, ModelBindingsRepo } from '@ema-agent/storage';
-import type { Database } from '@ema-agent/storage';
+import type { Database, ProviderConfigRow } from '@ema-agent/storage';
 import { NarrativeClient } from '@ema-agent/narrative-client';
 import type { BridgeConfigurePayload } from '@ema-agent/narrative-client';
 import { getProviderDefinition } from '@ema-agent/contracts';
+import type { Capability } from '@ema-agent/contracts';
+
+function isEnabledFor(row: ProviderConfigRow | undefined, capability: Capability): row is ProviderConfigRow {
+  if (!row || row.enabled !== 1) return false;
+  const capabilities = JSON.parse(row.capabilities_json) as Capability[];
+  return capabilities.includes(capability);
+}
 
 // ── Bridge URL discovery ─────────────────────────────────────────────────────
 
@@ -47,12 +54,12 @@ export async function configureBridge(
   const providersRepo = new ProvidersRepo(profileDb.sqlite);
   const bindings      = new ModelBindingsRepo(profileDb.sqlite);
 
-  const payload: BridgeConfigurePayload = {};
+  const payload: BridgeConfigurePayload = { llm: null, embed: null };
 
   const llmBinding = bindings.get('lightrag-llm');
   if (llmBinding) {
     const row = providersRepo.get(llmBinding.providerConfigId);
-    if (row?.api_key_plain) {
+    if (isEnabledFor(row, 'llm') && row.api_key_plain) {
       payload.llm = {
         apiKey:  row.api_key_plain,
         baseUrl: row.base_url ?? getProviderDefinition(row.definition_id)?.defaultBaseUrl ?? '',
@@ -64,18 +71,19 @@ export async function configureBridge(
   const embedBinding = bindings.get('lightrag-embed');
   if (embedBinding) {
     const row = providersRepo.get(embedBinding.providerConfigId);
-    const def = row ? getProviderDefinition(row.definition_id) : undefined;
+    const enabledRow = isEnabledFor(row, 'embed') ? row : undefined;
+    const def = enabledRow ? getProviderDefinition(enabledRow.definition_id) : undefined;
     // protocols.embed is declared as `ProtocolFamily | readonly ProtocolFamily[]` —
     // every provider definition in this repo actually uses the array form, so
     // normalize to an array before checking membership (comparing the array
     // directly against a string literal with `===` is always false).
     const declared  = def?.protocols.embed;
     const protocols = declared === undefined ? [] : Array.isArray(declared) ? declared : [declared];
-    if (protocols.includes('openai-embed') && row) {
+    if (protocols.includes('openai-embed') && enabledRow) {
       payload.embed = {
         protocol: 'openai-embed',
-        apiKey:   row.api_key_plain ?? '',
-        baseUrl:  row.base_url ?? def?.defaultBaseUrl ?? '',
+        apiKey:   enabledRow.api_key_plain ?? '',
+        baseUrl:  enabledRow.base_url ?? def?.defaultBaseUrl ?? '',
         model:    embedBinding.model,
         dim:      (embedBinding.config['dim'] as number | undefined) ?? 1024,
       };
@@ -83,8 +91,6 @@ export async function configureBridge(
       console.warn(`[bridge] embed protocols [${protocols.join(', ')}] not yet supported in bridge`);
     }
   }
-
-  if (Object.keys(payload).length === 0) return;
 
   const ok = await narrative.configure(payload);
   if (ok) {

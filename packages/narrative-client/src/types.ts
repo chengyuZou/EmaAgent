@@ -16,10 +16,13 @@ export interface BridgeLlmCfg {
   model: string;
 }
 
-/** Payload for POST /internal/configure — no rerank (LightRAG doesn't use it). */
+/**
+ * POST /internal/configure 的完整配置快照。
+ * null 表示显式撤销该能力，避免 Bridge 继续持有已删除 Provider 的密钥。
+ */
 export interface BridgeConfigurePayload {
-  embed?: BridgeEmbedCfg;
-  llm?:   BridgeLlmCfg;
+  embed: BridgeEmbedCfg | null;
+  llm:   BridgeLlmCfg | null;
 }
 
 export interface BridgeCapabilities {

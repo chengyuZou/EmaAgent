@@ -49,9 +49,9 @@ function notConfigured(providerId: string): Error {
  */
 export class LlmRouter {
   /** id -> adapter 实例 */
-  private readonly adapters = new Map<string, LlmAdapter>();
+  private adapters = new Map<string, LlmAdapter>();
   /** id -> config(保留用于热重载和 probe) */
-  private readonly configs  = new Map<string, ProviderConfig>();
+  private configs  = new Map<string, ProviderConfig>();
   /** 流生命周期、重试边界与 per-provider 熔断状态。 */
   private readonly streamRuntime = new LlmStreamRuntime();
   /** 仅测试用的 adapter 替换,以 ProviderConfig.id 为 key。 */
@@ -207,6 +207,33 @@ export class LlmRouter {
   }
 
   // ── 热重载 ───────────────────────────────────────────────
+
+  /**
+   * 用完整 Provider 快照替换运行时配置。
+   *
+   * 新 Adapter 全部构造成功后才交换 Map；构造失败时旧运行时保持不变。
+   * 已经开始的请求持有旧 Adapter 的局部引用，可以自然完成；后续请求只会
+   * 从新 Map 取值。
+   */
+  reload(configs: ProviderConfig[]): void {
+    const nextConfigs = new Map<string, ProviderConfig>();
+    const nextAdapters = new Map<string, LlmAdapter>();
+
+    for (const config of configs) {
+      nextConfigs.set(config.id, config);
+      nextAdapters.set(config.id, this.createAdapterFor(config));
+    }
+
+    const affectedProviderIds = new Set([
+      ...this.configs.keys(),
+      ...nextConfigs.keys(),
+    ]);
+    this.configs = nextConfigs;
+    this.adapters = nextAdapters;
+    for (const providerId of affectedProviderIds) {
+      this.streamRuntime.reset(providerId);
+    }
+  }
 
   /** 运行时新增或替换 provider config(如用户更新了 API key)。 */
   upsertConfig(config: ProviderConfig): void {

@@ -6,6 +6,8 @@ import {
   KbRegistryRepo,
   Live2DModelsRepo,
   MarketSourcesRepo,
+  ModelBindingsRepo,
+  ProvidersRepo,
 } from '../../src/index.js';
 
 describe('profile 仓储防御性业务', () => {
@@ -118,5 +120,23 @@ describe('profile 仓储防御性业务', () => {
     expect(models.delete('builtin-model')).toBe('builtin_protected');
     expect(models.delete('user-model')).toBe('deleted');
     expect(models.delete('missing-model')).toBe('not_found');
+  });
+
+  it('删除 Provider 前可以确定性列出全部业务绑定', () => {
+    const providers = new ProvidersRepo(database.sqlite);
+    providers.upsert({
+      id: 'provider-1',
+      definitionId: 'siliconflow',
+      displayName: 'Provider',
+      apiKey: 'secret',
+      capabilities: ['llm', 'embed'],
+    });
+    const bindings = new ModelBindingsRepo(database.sqlite);
+    bindings.upsert({ module: 'lightrag-llm', providerConfigId: 'provider-1', model: 'z-model' });
+    bindings.upsert({ module: 'emotion', providerConfigId: 'provider-1', model: 'a-model' });
+
+    expect(bindings.listByProviderConfig('provider-1').map((binding) => binding.module))
+      .toEqual(['emotion', 'lightrag-llm']);
+    expect(() => providers.delete('provider-1')).toThrow(/FOREIGN KEY constraint failed/);
   });
 });

@@ -67,6 +67,7 @@ import {
 } from '@ema-agent/storage';
 import { resolveBridgeUrl } from './bridge.js';
 import { SystemEventBus }  from '../sse/system-bus.js';
+import { ProviderRuntimeFacade } from './provider-runtime.js';
 
 // ── App-wide bindings (Facade set passed everywhere) ─────────────────────────
 
@@ -112,6 +113,8 @@ export interface AppBindings {
   stt:          SttClient;
   // Vision Facade — image understanding; used by KB ingest (OCR fallback).
   vision:       VisionRouter;
+  /** Provider 配置到各能力运行时及 Python Bridge 的统一生命周期入口。 */
+  providerRuntime: ProviderRuntimeFacade;
 
   // Agent stack
   permission:        PermissionEngine;
@@ -282,6 +285,15 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
   const tts    = buildTtsClient({ profileDb });
   const stt    = buildSttClient({ profileDb });
   const vision = buildVisionRouter(profileDb);
+  const providerRuntime = new ProviderRuntimeFacade({
+    profileDb,
+    llm,
+    ebd,
+    tts,
+    stt,
+    vision,
+    narrative,
+  });
 
   // ── Audio archive ───────────────────────────────────────────────────────────
   // Per-session: {dataDir}/sessions/{sessionId}/audio/. Collocated with
@@ -524,7 +536,7 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
     hooks, session,
     llm, ebd, narrative, modelCatalog,
     card, emotion,
-    tts, audioArchive, stt, vision,
+    tts, audioArchive, stt, vision, providerRuntime,
     permission, permissionPrompts, askUserRegistry, tools, buildAskForTurn, getCommandRunner,
     invalidateSessionRuntime,
     getContextStores, toolResultCleaner, taskStore, agentTaskMessages,

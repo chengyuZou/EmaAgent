@@ -113,7 +113,10 @@ export class ProvidersRepo {
       .run(enabled ? 1 : 0, Date.now(), id);
   }
 
-  /** 通过 FK 级联到 provider_health。 */
+  /**
+   * 删除 Provider，并通过 FK 级联清理健康状态和模型池。
+   * model_bindings 使用 RESTRICT；调用方必须先检查引用并要求用户换绑。
+   */
   delete(id: string): void {
     this.db.prepare('DELETE FROM provider_configs WHERE id = ?').run(id);
   }

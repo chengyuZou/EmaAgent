@@ -206,4 +206,32 @@ describe('VisionRouter', () => {
     adapter.release();
     await expect(running).resolves.toMatchObject({ text: 'done' });
   });
+
+  it('完整快照删除旧 Provider，但不会中断已经开始的识别', async () => {
+    const adapter = new BlockingAdapter();
+    const vision = new VisionRouter({
+      configs: [CONFIG],
+      adapterOverrides: new Map([['provider-1', adapter]]),
+    });
+    const request = {
+      providerId: 'provider-1',
+      model: 'vision-model',
+      task: 'ocr' as const,
+      inputs: [{
+        kind: 'base64' as const,
+        data: 'aGVsbG8=',
+        mimeType: 'image/png' as const,
+      }],
+    };
+
+    const running = vision.extract(request);
+    await adapter.started;
+    vision.reload([]);
+
+    await expect(vision.extract(request)).rejects.toMatchObject({
+      code: 'vision/not_configured',
+    });
+    adapter.release();
+    await expect(running).resolves.toMatchObject({ text: 'done' });
+  });
 });

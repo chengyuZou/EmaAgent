@@ -11,13 +11,17 @@ if TYPE_CHECKING:
 
 def make_embedding_func(state: BridgeState):
     """Return a LightRAG-compatible async embedding function backed by state's embed config."""
+    # 冻结当前 generation，避免运行中的旧请求在重配置时读到新密钥。
+    api_key = state.embed_api_key
+    base_url = state.embed_base_url
+    model = state.embed_model
 
     async def _embed(texts: list[str]) -> np.ndarray:
-        if not state.embed_ready:
+        if not api_key or not model:
             raise RuntimeError("Embed not configured")
-        client = AsyncOpenAI(api_key=state.embed_api_key, base_url=state.embed_base_url)
+        client = AsyncOpenAI(api_key=api_key, base_url=base_url)
         response = await client.embeddings.create(
-            model=state.embed_model,
+            model=model,
             input=texts,
             encoding_format="float",
         )
@@ -32,6 +36,10 @@ def make_embedding_func(state: BridgeState):
 
 def make_llm_func(state: BridgeState):
     """Return a LightRAG-compatible async LLM function backed by state's llm config."""
+    # 与 Embed 一样冻结 generation；闭包不再读取全局可变状态。
+    api_key = state.llm_api_key
+    base_url = state.llm_base_url
+    model = state.llm_model
 
     async def _llm(
         prompt: str,
@@ -39,10 +47,10 @@ def make_llm_func(state: BridgeState):
         history_messages: list[dict] | None = None,
         **kwargs,
     ) -> str:
-        if not state.llm_ready:
+        if not api_key or not model:
             raise RuntimeError("LLM not configured")
 
-        client = AsyncOpenAI(api_key=state.llm_api_key, base_url=state.llm_base_url)
+        client = AsyncOpenAI(api_key=api_key, base_url=base_url)
         messages: list[dict] = []
         if system_prompt:
             messages.append({"role": "system", "content": system_prompt})
@@ -64,7 +72,7 @@ def make_llm_func(state: BridgeState):
         clean_kwargs = {k: v for k, v in kwargs.items() if k in _OPENAI_CHAT_KWARGS}
 
         response = await client.chat.completions.create(
-            model=state.llm_model,
+            model=model,
             messages=messages,
             **clean_kwargs,
         )

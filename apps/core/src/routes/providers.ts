@@ -1,7 +1,7 @@
 ﻿import { Hono, type Context } from 'hono';
 import { z } from 'zod';
 import { randomUUID } from 'node:crypto';
-import type { ProviderConfigRow, ProviderHealthRow } from '@ema-agent/storage';
+import type { BindingModule, ProviderConfigRow, ProviderHealthRow } from '@ema-agent/storage';
 import {
   getProviderDefinition,
   PROVIDER_DEFINITIONS,
@@ -10,16 +10,11 @@ import {
 } from '@ema-agent/contracts';
 import type { AppBindings } from '../wiring/index.js';
 import {
-  buildLlmProviderConfig,
-  buildEmbedProviderConfig,
-  buildRerankProviderConfig,
-  configureBridge,
   fetchLlmModels,
   fetchEmbedModels,
 } from '../wiring/index.js';
-import { reloadTtsClient, resolveVoice, ensureVoiceUri, VoiceUriCache } from '../wiring/providers/tts.js';
-import { reloadSttClient } from '../wiring/providers/stt.js';
-import { buildVisionProviderConfig, fetchVisionModels } from '../wiring/providers/vision.js';
+import { resolveVoice, ensureVoiceUri, VoiceUriCache } from '../wiring/providers/tts.js';
+import { fetchVisionModels } from '../wiring/providers/vision.js';
 
 // ── Response shaping ──────────────────────────────────────────────────────────
 
@@ -94,83 +89,18 @@ const enableRerankModelSchema = z.object({
   maxChunks: z.number().int().positive().optional(),
 });
 
-// ── Hot-reload ────────────────────────────────────────────────────────────────
-
-// The two model_bindings modules that feed LightRAG's internal config.
-// When a provider referenced by any of these changes, bridge must be re-pushed.
-const BRIDGE_MODULES = ['lightrag-embed', 'lightrag-llm'] as const;
-
-/**
- * After any provider write:
- *  1. Sync LlmRouter (only if this provider has the 'llm' capability).
- *  2. Re-push bridge config (only if this provider is referenced by a
- *     bridge-relevant model_binding: embed / lightrag-llm).
- */
-function hotReload(
-  bindings: AppBindings,
-  row: ProviderConfigRow,
-  deleted = false,
-): void {
-  const capabilities: string[] = JSON.parse(row.capabilities_json);
-
-  // ── LlmRouter sync ────────────────────────────────────────────────────────
-  if (capabilities.includes('llm')) {
-    if (deleted) {
-      bindings.llm.removeConfig(row.id);
-    } else {
-      const cfg = buildLlmProviderConfig(row);
-      if (cfg) bindings.llm.upsertConfig(cfg);
-      else     bindings.llm.removeConfig(row.id);
-    }
-  }
-
-  // ── EbdRouter sync ────────────────────────────────────────────────────────
-  if (capabilities.includes('embed')) {
-    if (deleted) {
-      bindings.ebd.removeEmbedConfig(row.id);
-    } else {
-      const cfg = buildEmbedProviderConfig(row);
-      if (cfg) bindings.ebd.upsertEmbedConfig(cfg);
-      else     bindings.ebd.removeEmbedConfig(row.id);
-    }
-  }
-
-  if (capabilities.includes('rerank')) {
-    if (deleted) {
-      bindings.ebd.removeRerankConfig(row.id);
-    } else {
-      const cfg = buildRerankProviderConfig(row);
-      if (cfg) bindings.ebd.upsertRerankConfig(cfg);
-      else     bindings.ebd.removeRerankConfig(row.id);
-    }
-  }
-
-  // ── Bridge sync ───────────────────────────────────────────────────────────
-  const bridgeUsesThisProvider = BRIDGE_MODULES.some(
-    mod => bindings.modelBindings.get(mod)?.providerConfigId === row.id,
-  );
-  if (bridgeUsesThisProvider) {
-    void configureBridge(bindings.profileDb, bindings.narrative);
-  }
-
-  // ── TTS / STT sync ─────────────────────────────────────────────────────────
-  // Rebuild the whole Facade rather than per-provider upsert — TTS adapters
-  // are cheap to instantiate and the binding-lookup tables make targeted
-  // updates not worth the complexity.
-  if (capabilities.includes('tts')) reloadTtsClient(bindings.tts, bindings.profileDb);
-  if (capabilities.includes('stt')) reloadSttClient(bindings.stt, bindings.profileDb);
-
-  // ── VisionRouter sync ──────────────────────────────────────────────────────
-  if (capabilities.includes('vision')) {
-    if (deleted) {
-      bindings.vision.removeConfig(row.id);
-    } else {
-      const cfg = buildVisionProviderConfig(row);
-      if (cfg) bindings.vision.upsertConfig(cfg);
-      else     bindings.vision.removeConfig(row.id);
-    }
-  }
-}
+const BINDING_CAPABILITIES: Partial<Record<BindingModule, Capability>> = {
+  emotion: 'llm',
+  memory: 'llm',
+  router: 'llm',
+  'plan-parse': 'llm',
+  title: 'llm',
+  'lightrag-llm': 'llm',
+  'lightrag-embed': 'embed',
+  tts: 'tts',
+  stt: 'stt',
+  vision: 'vision',
+};
 
 // ── Route factory ─────────────────────────────────────────────────────────────
 
@@ -252,7 +182,7 @@ export function providersRoute(bindings: AppBindings): Hono {
     });
 
     const row = repo.get(id)!;
-    hotReload(bindings, row);
+    bindings.providerRuntime.refresh();
 
     return c.json(shapeProvider(row, null, def), 201);
   });
@@ -301,6 +231,26 @@ export function providersRoute(bindings: AppBindings): Hono {
         ) as Capability[])
       : existingCaps;
 
+    if (body.capabilities !== undefined) {
+      const affectedBindings = bindings.modelBindings
+        .listByProviderConfig(id)
+        .filter((binding) => {
+          const requiredCapability = BINDING_CAPABILITIES[binding.module];
+          return requiredCapability !== undefined && !validCaps.includes(requiredCapability);
+        });
+      if (affectedBindings.length > 0) {
+        return c.json({
+          error: 'provider_capability_in_use',
+          message: '请先将使用该能力的业务模块换绑或解绑',
+          bindings: affectedBindings.map((binding) => ({
+            module: binding.module,
+            model: binding.model,
+            capability: BINDING_CAPABILITIES[binding.module],
+          })),
+        }, 409);
+      }
+    }
+
     repo.upsert({
       id,
       definitionId: existing.definition_id,
@@ -315,7 +265,7 @@ export function providersRoute(bindings: AppBindings): Hono {
     });
 
     const updated = repo.get(id)!;
-    hotReload(bindings, updated);
+    bindings.providerRuntime.refresh();
 
     return c.json(shapeProvider(updated, repo.getHealth(id) ?? null, def));
   });
@@ -328,8 +278,20 @@ export function providersRoute(bindings: AppBindings): Hono {
     const existing = repo.get(id);
     if (!existing) return c.json({ error: 'not_found' }, 404);
 
+    const bindingsInUse = bindings.modelBindings.listByProviderConfig(id);
+    if (bindingsInUse.length > 0) {
+      return c.json({
+        error: 'provider_in_use',
+        message: '请先将使用该 Provider 的业务模块换绑或解绑',
+        bindings: bindingsInUse.map((binding) => ({
+          module: binding.module,
+          model: binding.model,
+        })),
+      }, 409);
+    }
+
     repo.delete(id);
-    hotReload(bindings, existing, true);
+    bindings.providerRuntime.refresh();
 
     return c.body(null, 204);
   });

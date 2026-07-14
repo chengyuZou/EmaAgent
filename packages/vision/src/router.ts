@@ -101,8 +101,8 @@ export class VisionLimiter implements VisionConcurrencyLimiter {
  * overwrite each other.
  */
 export class VisionRouter {
-  private readonly adapters = new Map<string, VisionAdapter>();
-  private readonly configs = new Map<string, VisionProviderConfig>();
+  private adapters = new Map<string, VisionAdapter>();
+  private configs = new Map<string, VisionProviderConfig>();
   private readonly adapterOverrides?: ReadonlyMap<string, VisionAdapter>;
   private readonly limiter: VisionConcurrencyLimiter;
   private readonly limits: VisionLimits;
@@ -173,6 +173,18 @@ export class VisionRouter {
 
   getProtocol(providerId: string): VisionProtocol | undefined {
     return this.configs.get(providerId)?.protocol;
+  }
+
+  /** 使用完整 Provider 快照替换运行时 Adapter。 */
+  reload(configs: VisionProviderConfig[]): void {
+    const nextConfigs = new Map<string, VisionProviderConfig>();
+    const nextAdapters = new Map<string, VisionAdapter>();
+    for (const config of configs) {
+      nextConfigs.set(config.id, config);
+      nextAdapters.set(config.id, this.createAdapterFor(config));
+    }
+    this.configs = nextConfigs;
+    this.adapters = nextAdapters;
   }
 
   upsertConfig(config: VisionProviderConfig): void {
@@ -298,4 +310,3 @@ function createScopedSignal(
     },
   };
 }
-

@@ -90,7 +90,7 @@ async function main() {
 
   // Fire-and-forget: push provider config to bridge after server is up.
   // Bridge may not be running in dev — failures are logged as warnings.
-  void configureBridge(profileDb, bindings.narrative);
+  void bindings.providerRuntime.syncBridge();
 
   const server = serve({ fetch: app.fetch, port, hostname: '127.0.0.1' }, (info) => {
     console.log(`[core] ema-core listening on http://127.0.0.1:${info.port}`);

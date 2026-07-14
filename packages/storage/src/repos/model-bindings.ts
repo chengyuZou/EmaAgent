@@ -128,6 +128,18 @@ export class ModelBindingsRepo {
     return rows.map(r => this.resolve(r));
   }
 
+  /** 删除 Provider 前列出全部引用；供 API 返回可操作的 409 冲突信息。 */
+  listByProviderConfig(providerConfigId: string): ResolvedModelBinding[] {
+    const rows = this.db
+      .prepare(
+        `SELECT * FROM model_bindings
+         WHERE provider_config_id = ?
+         ORDER BY module ASC, model ASC`,
+      )
+      .all(providerConfigId) as ModelBindingRow[];
+    return rows.map((row) => this.resolve(row));
+  }
+
   /** 返回所有模块的全部绑定。 */
   list(): ResolvedModelBinding[] {
     const rows = this.db

@@ -43,7 +43,5 @@ export function buildSttClient(args: { profileDb: Database }): SttClient {
 
 /** Hot-reload after a provider config change. Binding resolution stays in the route. */
 export function reloadSttClient(client: SttClient, profileDb: Database): void {
-  for (const cfg of loadSttProviderConfigs(profileDb)) {
-    client.upsertConfig(cfg);
-  }
+  client.reload(loadSttProviderConfigs(profileDb));
 }

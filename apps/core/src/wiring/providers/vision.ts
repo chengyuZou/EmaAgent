@@ -84,9 +84,7 @@ export function buildVisionRouter(profileDb: Database): VisionRouter {
 }
 
 export function reloadVisionRouter(router: VisionRouter, profileDb: Database): void {
-  for (const cfg of loadVisionConfigs(profileDb)) {
-    router.upsertConfig(cfg);
-  }
+  router.reload(loadVisionConfigs(profileDb));
 }
 
 /** Wraps VisionRouter as the KB-internal KbVisionAdapter interface. */

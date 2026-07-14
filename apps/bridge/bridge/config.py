@@ -35,5 +35,6 @@ class ConfigureRequest(BaseModel):
     Payload for POST /internal/configure.
     No rerank — LightRAG only needs embed + llm internally.
     """
-    embed: EmbedCfg | None = Field(default=None)
-    llm:   LlmCfg   | None = Field(default=None)
+    # 这是完整快照而不是 PATCH：null 明确表示清除旧配置和密钥。
+    embed: EmbedCfg | None
+    llm:   LlmCfg   | None

@@ -165,20 +165,22 @@ class NarrativeRouter:
     """
 
     def __init__(self, state: BridgeState) -> None:
-        self._state = state
+        # Router 与 Manager 属于同一 generation，不能在请求中读取全局新配置。
+        self._api_key = state.llm_api_key
+        self._base_url = state.llm_base_url
+        self._model = state.llm_model
 
     async def route(self, query: str) -> dict[str, str]:
         if not query.strip():
             raise ValueError("query must not be empty")
 
-        s = self._state
-        if not s.llm_ready:
+        if not self._api_key or not self._model:
             raise RuntimeError("LLM not configured")
 
-        client = AsyncOpenAI(api_key=s.llm_api_key, base_url=s.llm_base_url)
+        client = AsyncOpenAI(api_key=self._api_key, base_url=self._base_url)
         system_prompt = _ROUTER_PROMPT_TEMPLATE.format(summary=STORY_SUMMARY)
         response = await client.chat.completions.create(
-            model=s.llm_model,
+            model=self._model,
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": query},

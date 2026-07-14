@@ -118,21 +118,19 @@ describe('TtsClient (dumb dispatcher)', () => {
 
   it('7. hot-reload replaces adapters', async () => {
     const ad1 = mockAdapter([{ type: 'done', totalBytes: 1, firstByteMs: 0 }]);
-    const ad2 = mockAdapter([{ type: 'done', totalBytes: 2, firstByteMs: 0 }]);
     const client = new TtsClient([mockConfig('p1')], new Map([['p1', ad1]]));
 
     await collect(client, 'p1', 'hello');
     expect(ad1.calls).toHaveLength(1);
-    expect(ad2.calls).toHaveLength(0);
 
-    client.reload([mockConfig('p1')]);
-    // After reload, adapter is recreated — override is gone, so we test upsertConfig
-    client.upsertConfig(mockConfig('p2'));
-    // Add a new adapter via upsert
-    const ad2b = mockAdapter([{ type: 'done', totalBytes: 2, firstByteMs: 0 }]);
-    // We can't inject mock into upsert, so test that old adapter no longer works
-    // and new provider is registered
-    expect(client.firstProviderId()).toBe('p1');
+    client.reload([]);
+
+    expect(client.firstProviderId()).toBeUndefined();
+    const events = await collect(client, 'p1', 'new request');
+    expect(events).toEqual([expect.objectContaining({
+      type: 'error',
+      message: expect.stringContaining('not registered'),
+    })]);
   });
 
   it('8. upsertConfig + removeConfig', () => {

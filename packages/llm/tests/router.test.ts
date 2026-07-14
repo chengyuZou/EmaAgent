@@ -163,6 +163,18 @@ describe('LlmRouter — error cases', () => {
 // ── Hot-reload ────────────────────────────────────────────────────────────────
 
 describe('LlmRouter — hot-reload', () => {
+  it('完整快照会删除旧 Provider，同时允许已取得的流自然结束', async () => {
+    const mock = new MockAdapter(TEXT_CHUNKS);
+    const router = new LlmRouter([DS_CONFIG], new Map([['ds-001', mock]]));
+    const inFlight = router.stream({ providerId: 'ds-001', model: 'm', messages: [] });
+
+    router.reload([]);
+
+    expect(() => router.stream({ providerId: 'ds-001', model: 'm', messages: [] }))
+      .toThrow('provider/not_configured');
+    await expect(collect(inFlight)).resolves.toEqual(TEXT_CHUNKS);
+  });
+
   it('upsertConfig makes a new provider available', async () => {
     const mock   = new MockAdapter([{ type: 'done', stopReason: 'end_turn' }]);
     const router = new LlmRouter([], new Map([['ds-001', mock]]));

@@ -59,12 +59,14 @@ export class TtsClient {
   // ── Hot-reload ─────────────────────────────────────────────────────────────
 
   reload(configs: TtsProviderConfig[]): void {
-    this.adapters = new Map();
-    this.configs  = new Map();
+    const nextAdapters = new Map<string, TtsAdapter>();
+    const nextConfigs = new Map<string, TtsProviderConfig>();
     for (const cfg of configs) {
-      this.configs.set(cfg.id, cfg);
-      this.adapters.set(cfg.id, this.createAdapter(cfg));
+      nextConfigs.set(cfg.id, cfg);
+      nextAdapters.set(cfg.id, this.createAdapter(cfg));
     }
+    this.configs = nextConfigs;
+    this.adapters = nextAdapters;
   }
 
   /** Symmetric with LlmRouter.upsertConfig(). */

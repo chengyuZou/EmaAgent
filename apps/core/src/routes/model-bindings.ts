@@ -2,9 +2,6 @@
 import { z } from 'zod';
 import type { BindingModule } from '@ema-agent/storage';
 import type { AppBindings } from '../wiring/index.js';
-import { configureBridge } from '../wiring/index.js';
-import { reloadTtsClient } from '../wiring/providers/tts.js';
-import { reloadSttClient } from '../wiring/providers/stt.js';
 
 // Keep in sync with BindingModule type and migration 001 CHECK constraint.
 const BINDING_MODULES = [
@@ -28,10 +25,6 @@ const BINDING_MODULES = [
 
 // Modules whose changes must be pushed to the Python bridge (LightRAG config).
 const BRIDGE_MODULES = new Set<string>(['lightrag-embed', 'lightrag-llm']);
-
-// Modules whose changes must trigger TtsClient / SttClient hot-reload.
-const TTS_MODULES = new Set<string>(['tts']);
-const STT_MODULES = new Set<string>(['stt']);
 
 const moduleSchema = z.enum(BINDING_MODULES);
 
@@ -181,10 +174,8 @@ export function modelBindingsRoute(bindings: AppBindings): Hono {
     });
 
     if (BRIDGE_MODULES.has(module)) {
-      void configureBridge(bindings.profileDb, bindings.narrative);
+      void bindings.providerRuntime.syncBridge();
     }
-    if (TTS_MODULES.has(module)) reloadTtsClient(bindings.tts, bindings.profileDb);
-    if (STT_MODULES.has(module)) reloadSttClient(bindings.stt, bindings.profileDb);
 
     return c.json(bindings.modelBindings.listByModule(module));
   });
@@ -213,10 +204,8 @@ export function modelBindingsRoute(bindings: AppBindings): Hono {
 
     // Bridge only cares about its two internal config modules.
     if (BRIDGE_MODULES.has(module)) {
-      void configureBridge(bindings.profileDb, bindings.narrative);
+      void bindings.providerRuntime.syncBridge();
     }
-    if (TTS_MODULES.has(module)) reloadTtsClient(bindings.tts, bindings.profileDb);
-    if (STT_MODULES.has(module)) reloadSttClient(bindings.stt, bindings.profileDb);
 
     // Return the updated list for this module
     return c.json(bindings.modelBindings.listByModule(module));
@@ -238,10 +227,8 @@ export function modelBindingsRoute(bindings: AppBindings): Hono {
     bindings.modelBindings.delete(module, queryParsed.data.providerConfigId, queryParsed.data.model);
 
     if (BRIDGE_MODULES.has(module)) {
-      void configureBridge(bindings.profileDb, bindings.narrative);
+      void bindings.providerRuntime.syncBridge();
     }
-    if (TTS_MODULES.has(module)) reloadTtsClient(bindings.tts, bindings.profileDb);
-    if (STT_MODULES.has(module)) reloadSttClient(bindings.stt, bindings.profileDb);
 
     return c.body(null, 204);
   });

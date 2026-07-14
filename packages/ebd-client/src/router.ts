@@ -34,10 +34,10 @@ function createRerankAdapter(config: RerankProviderConfig): RerankAdapter {
  * Calls provider APIs directly from TS — no Python bridge involved.
  */
 export class EbdRouter {
-  private readonly embedAdapters = new Map<string, EmbedAdapter>();
-  private readonly embedConfigs  = new Map<string, EmbedProviderConfig>();
-  private readonly rerankAdapters = new Map<string, RerankAdapter>();
-  private readonly rerankConfigs  = new Map<string, RerankProviderConfig>();
+  private embedAdapters = new Map<string, EmbedAdapter>();
+  private embedConfigs  = new Map<string, EmbedProviderConfig>();
+  private rerankAdapters = new Map<string, RerankAdapter>();
+  private rerankConfigs  = new Map<string, RerankProviderConfig>();
 
   constructor(
     embedConfigs:  EmbedProviderConfig[]  = [],
@@ -48,6 +48,31 @@ export class EbdRouter {
   }
 
   // ── Embed ──────────────────────────────────────────────────────────────────
+
+  /** 使用完整快照同时替换 Embed 与 Rerank Adapter。 */
+  reload(
+    embedConfigs: EmbedProviderConfig[],
+    rerankConfigs: RerankProviderConfig[],
+  ): void {
+    const nextEmbedConfigs = new Map<string, EmbedProviderConfig>();
+    const nextEmbedAdapters = new Map<string, EmbedAdapter>();
+    const nextRerankConfigs = new Map<string, RerankProviderConfig>();
+    const nextRerankAdapters = new Map<string, RerankAdapter>();
+
+    for (const config of embedConfigs) {
+      nextEmbedConfigs.set(config.id, config);
+      nextEmbedAdapters.set(config.id, createEmbedAdapter(config));
+    }
+    for (const config of rerankConfigs) {
+      nextRerankConfigs.set(config.id, config);
+      nextRerankAdapters.set(config.id, createRerankAdapter(config));
+    }
+
+    this.embedConfigs = nextEmbedConfigs;
+    this.embedAdapters = nextEmbedAdapters;
+    this.rerankConfigs = nextRerankConfigs;
+    this.rerankAdapters = nextRerankAdapters;
+  }
 
   async embed(req: EmbedRequest): Promise<EmbedResponse> {
     const adapter = this.embedAdapters.get(req.providerId);

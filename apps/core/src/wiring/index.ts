@@ -174,7 +174,7 @@ async function checkBridgeHeartbeat(
   if (!ready) {
     // Retry configure once before declaring it down — covers "bridge just
     // came up since the last tick" without waiting a full extra cycle.
-    await configureBridge(bindings.profileDb, bindings.narrative).catch(() => {});
+    await bindings.providerRuntime.syncBridge().catch(() => {});
     ready = await bindings.narrative.isReady();
   }
 
@@ -208,5 +208,7 @@ export {
 export { fetchLlmModels, type FetchedModels } from './providers/llm.js';
 export { fetchEmbedModels, type FetchedEmbedModels } from './providers/embed.js';
 export { resolveBridgeUrl, configureBridge } from './bridge.js';
+export { ProviderRuntimeFacade } from './provider-runtime.js';
+export type { ProviderRuntimeDependencies } from './provider-runtime.js';
 export { registerAllHooks }    from './register-hooks.js';
 export { registerAllEmitters } from './register-emitters.js';
