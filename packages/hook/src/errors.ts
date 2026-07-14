@@ -1,5 +1,4 @@
-/** Hook 执行失败的稳定分类，供 trace 和诊断层使用。 */
-export type HookFailureKind = 'handler_error' | 'timeout' | 'cancelled';
+import type { HookFailureKind } from './types.js';
 
 /** Hook 配置不合法，例如超时或并发数越界。 */
 export class HookConfigurationError extends Error {

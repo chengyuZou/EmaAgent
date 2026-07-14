@@ -28,6 +28,19 @@ export type HookEvent =
   | 'onTurnEnd'
   | 'onTurnAbort';
 
+/**
+ * 允许 handler 改变控制流的事件。
+ *
+ * 工具生命周期事件刻意不在此列：工具安全由 PermissionEngine 与 Sandbox
+ * 负责，Hook 只承担观察、审计和 UI 扩展职责。
+ */
+export type ControlHookEvent =
+  | 'beforeLlm'
+  | 'beforeCompact'
+  | 'onTurnStart';
+
+export type ObserverHookEvent = Exclude<HookEvent, ControlHookEvent>;
+
 // ── 各事件 payload 结构 ──────────────────────────────────────────────────
 
 export interface HookPayload {

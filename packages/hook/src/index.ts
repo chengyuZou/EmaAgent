@@ -2,22 +2,24 @@
 export { PRIORITY } from './priority.js';
 
 export type {
+  ControlHookEvent,
   HookEvent,
   HookPayload,
+  ObserverHookEvent,
 } from './events.js';
 
 export type {
+  HookBusOptions,
   HookContext,
-  HookHandler,
-  HookResult,
   HookControlResult,
+  HookFailureKind,
+  HookHandler,
   HookObserverResult,
-  ControlHookEvent,
-  ObserverHookEvent,
+  HookOptions,
+  HookResult,
+  HookTraceEntry,
+  HookTriggerContext,
   HookTriggerResult,
   HookWarning,
-  HookOptions,
-  HookBusOptions,
   RegisteredHook,
-  HookTraceEntry,
-} from './bus.js';
+} from './types.js';

@@ -1,143 +1,30 @@
-import type { TurnId, SessionId, EmaStreamEvent } from '@ema-agent/contracts';
-import type { HookEvent, HookPayload } from './events.js';
+import type {
+  ControlHookEvent,
+  HookEvent,
+  HookPayload,
+} from './events.js';
 import { PRIORITY } from './priority.js';
 import {
   classifyHookFailure,
   HookCancelledError,
   HookConfigurationError,
   HookTimeoutError,
-  type HookFailureKind,
 } from './errors.js';
-
-// ── Context 与 Result 类型 ────────────────────────────────────────────────────
-
-export interface HookContext<E extends HookEvent> {
-  event: E;
-  payload: HookPayload[E];
-  turnId: TurnId;
-  sessionId: SessionId;
-  /** 当前 handler 的组合取消信号：父任务取消或 handler 超时都会触发。 */
-  signal: AbortSignal;
-  emit?: (event: EmaStreamEvent) => void;
-}
-
-export type HookTriggerContext<E extends HookEvent> =
-  Omit<HookContext<E>, 'event' | 'signal'> & {
-    /** 父任务取消信号；没有父任务的内部事件可以省略。 */
-    signal?: AbortSignal;
-  };
-
-/**
- * 允许 handler 改变控制流的事件。
- *
- * 工具生命周期事件刻意不在此列:工具安全由 PermissionEngine + Sandbox 负责,
- * hook 只是观察/UI 扩展点。
- */
-export type ControlHookEvent =
-  | 'beforeLlm'
-  | 'beforeCompact'
-  | 'onTurnStart';
-
-export type ObserverHookEvent = Exclude<HookEvent, ControlHookEvent>;
-
-export type HookControlResult<E extends HookEvent> =
-  | { kind: 'continue' }
-  | { kind: 'replace'; payload: HookPayload[E] }
-  | { kind: 'abort'; reason: string };
-
-export type HookObserverResult = { kind: 'continue' };
-
-/** 单个 hook handler 返回的结果。 */
-export type HookResult<E extends HookEvent> =
-  E extends ControlHookEvent
-    ? HookControlResult<E>
-    : HookObserverResult;
+import type {
+  HookBusOptions,
+  HookContext,
+  HookControlResult,
+  HookHandler,
+  HookOptions,
+  HookTriggerContext,
+  HookTriggerResult,
+  HookWarning,
+  RegisteredHook,
+} from './types.js';
 
 type HookRuntimeResult<E extends HookEvent> =
   | HookControlResult<E>
   | { kind: 'cancelled'; reason: string };
-
-/** 整条 trigger() 链返回的结果。 */
-export type HookTriggerResult<E extends HookEvent> =
-  | {
-      kind: 'continue';
-      payload: HookPayload[E];
-      warnings: HookWarning[];
-    }
-  | {
-      kind: 'abort';
-      reason: string;
-      payload: HookPayload[E];
-      warnings: HookWarning[];
-    };
-
-export type HookHandler<E extends HookEvent> = (
-  ctx: HookContext<E>,
-) => Promise<HookResult<E>> | HookResult<E>;
-
-export interface HookWarning {
-  event: HookEvent;
-  hook: string;
-  reason: string;
-}
-
-export interface HookOptions {
-  priority?: number;
-  name?: string;
-  critical?: boolean;
-  parallel?: boolean;
-  /** 单 handler 超时(ms)。覆盖 bus 级默认值。0 = 不超时。 */
-  timeoutMs?: number;
-}
-
-export interface HookBusOptions {
-  maxConcurrency?:   number;
-  parallelEvents?:   ReadonlySet<HookEvent>;
-  /**
-   * 每次 handler 执行后(成功或出错)调用。
-   * 用于结构化日志、telemetry 或测试断言。
-   *
-   * 生产环境接两路:对慢/出错的 handler 发 `system_warning`,
-   * 同时写 ring buffer 供 settings 诊断面板展示近期 hook 活动。
-   */
-  traceSink?:        (entry: HookTraceEntry) => void;
-  /**
-   * 为 true 时,注册既没传 `opts.name`、函数本身也无 `.name` 属性的 handler 会打印 console 警告。
-   * 默认 false - dev / debug 构建设 true。
-   */
-  warnAnonymous?:    boolean;
-  /**
-   * handler 默认超时(ms)。未在此窗口内 resolve 的 handler 视为出错
-   * (critical 则 abort,否则 warning)。
-   * 0 = 不超时。单 handler `timeoutMs` 覆盖此值。
-   * @default 30_000
-   */
-  handlerTimeoutMs?: number;
-}
-
-export interface RegisteredHook {
-  event: HookEvent;
-  name: string;
-  priority: number;
-  critical: boolean;
-  parallel: boolean;
-}
-
-// ── Trace ────────────────────────────────────────────────────────────────────
-
-/** 每次 handler 运行后(成功或出错)由 traceSink 发出。 */
-export interface HookTraceEntry {
-  event:          HookEvent;
-  handlerName:    string;
-  durationMs:     number;
-  result:         'continue' | 'replace' | 'abort' | 'error';
-  /** abort / error 的原因字符串;continue / replace 时缺省。 */
-  reason?:        string;
-  /** handler 返回 `kind: 'replace'` 时为 true。 */
-  payloadReplaced: boolean;
-  /** 错误分类，供诊断层区分普通异常、超时和父任务取消。 */
-  failureKind?: HookFailureKind;
-}
 
 // ── 内部注册条目 ───────────────────────────────────────────────
 
