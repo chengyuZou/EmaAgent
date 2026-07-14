@@ -134,15 +134,6 @@ export class TurnToolExecutor {
         message: `Unknown tool: "${name}"`,
         retryable: true,
       };
-    } else if (isArgsParseFailure(args)) {
-      const raw = (args as Record<string, unknown>)['raw'];
-      const snippet = typeof raw === 'string' ? raw.slice(0, 200) : '';
-      preflightFailure = {
-        phase: 'validation',
-        code: 'tool/args_parse_error',
-        message: `工具参数解析失败（模型输出可能被截断），请重试或缩短回复长度。${snippet ? `原始片段：${snippet}` : ''}`,
-        retryable: true,
-      };
     } else {
       isConcurrencySafe = tools.get(name).isConcurrencySafe();
     }
@@ -414,12 +405,6 @@ function annotateAborted(output: unknown): unknown {
   }
   if (typeof output === 'string') return output + notice;
   return String(JSON.stringify(output) ?? '') + notice;
-}
-
-function isArgsParseFailure(args: unknown): args is Record<string, unknown> {
-  return args !== null
-    && typeof args === 'object'
-    && (args as Record<string, unknown>)['__parse_error'] === true;
 }
 
 function classifyDispatchFailure(err: unknown): ToolFailure {

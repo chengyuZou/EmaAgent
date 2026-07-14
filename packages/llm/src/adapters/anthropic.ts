@@ -11,6 +11,7 @@ import type {
 } from '../types.js';
 import {
   ContextWindowExceededError,
+  LlmToolArgumentsParseError,
   throwIfAborted,
   throwIfAbortError,
 } from '../errors.js';
@@ -313,8 +314,18 @@ export class AnthropicAdapter implements LlmAdapter {
         case 'content_block_stop': {
           const block = toolBlocks.get(event.index);
           if (block) {
-            let args: unknown = {};
-            try { args = JSON.parse(block.argsJson); } catch { /* 保持 {} */ }
+            let args: unknown;
+            try {
+              args = JSON.parse(block.argsJson);
+            } catch (error) {
+              throw new LlmToolArgumentsParseError(
+                request.providerId,
+                block.id,
+                block.name,
+                block.argsJson,
+                error,
+              );
+            }
             yield {
               type:       'tool_use_complete',
               blockIndex: event.index,

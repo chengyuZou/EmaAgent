@@ -1,3 +1,5 @@
+import type { ErrorCode } from '@ema-agent/contracts';
+
 interface ProviderErrorShape {
   status?: unknown;
   statusCode?: unknown;
@@ -35,6 +37,28 @@ export class LlmProviderResponseError extends Error {
   }
 }
 
+/** Provider 返回了无法解析的工具参数；该调用不得进入 Permission 或 Sandbox。 */
+export class LlmToolArgumentsParseError extends Error {
+  readonly code = 'provider/tool_arguments_invalid_json' as const;
+  readonly rawArgumentsExcerpt: string;
+
+  constructor(
+    readonly providerId: string,
+    readonly callId: string,
+    readonly toolName: string,
+    rawArguments: string,
+    cause?: unknown,
+  ) {
+    super(
+      `Provider "${providerId}" returned invalid JSON arguments for tool `
+      + `"${toolName}" (call "${callId}")`,
+    );
+    this.name = 'LlmToolArgumentsParseError';
+    this.rawArgumentsExcerpt = rawArguments.slice(0, 500);
+    if (cause !== undefined) this.cause = cause;
+  }
+}
+
 /** Provider 熔断器处于 open 状态，本次调用未进入 Adapter。 */
 export class CircuitOpenError extends Error {
   constructor(
@@ -66,6 +90,7 @@ export function normalizeLlmProviderError(error: unknown): Error {
 
   if (
     error instanceof LlmProviderResponseError
+    || error instanceof LlmToolArgumentsParseError
     || error instanceof LlmStreamProtocolError
   ) {
     return error;
@@ -91,6 +116,17 @@ export function createLlmProviderResponseError(input: {
     input.cause,
   );
   return normalizeLlmProviderError(error);
+}
+
+/** 编排层只消费稳定 ErrorCode，不需要了解各 SDK 或领域异常的内部字段。 */
+export function llmProviderErrorCode(error: unknown): ErrorCode {
+  if (error instanceof ContextWindowExceededError) {
+    return 'provider/context_too_long';
+  }
+  if (error instanceof LlmToolArgumentsParseError) {
+    return error.code;
+  }
+  return 'provider/server_error';
 }
 
 /**

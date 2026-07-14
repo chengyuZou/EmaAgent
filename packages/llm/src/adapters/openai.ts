@@ -13,6 +13,7 @@ import type {
 } from '../types.js';
 import {
   ContextWindowExceededError,
+  LlmToolArgumentsParseError,
   throwIfAborted,
   throwIfAbortError,
 } from '../errors.js';
@@ -288,11 +289,14 @@ export class OpenAiAdapter implements LlmAdapter {
           let args: unknown;
           try {
             args = JSON.parse(buf.argsJson);
-          } catch {
-            // argsJson 不是合法 JSON - 多半被 max_tokens 截断或 provider bug。
-            // 传原始片段,让 executor 能向模型报出有用错误,
-            // 而非用空 args 静默调用 tool。
-            args = { __parse_error: true, raw: buf.argsJson.slice(0, 500) };
+          } catch (error) {
+            throw new LlmToolArgumentsParseError(
+              request.providerId,
+              buf.id,
+              buf.name,
+              buf.argsJson,
+              error,
+            );
           }
           yield {
             type:       'tool_use_complete',

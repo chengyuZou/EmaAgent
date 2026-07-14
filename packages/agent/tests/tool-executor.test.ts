@@ -90,13 +90,6 @@ describe('TurnToolExecutor Hook 与权限边界', () => {
       expected: { phase: 'validation', code: 'tool/not_found', retryable: true },
     },
     {
-      name: '参数 JSON 解析失败',
-      allows: true,
-      hasTool: true,
-      args: { __parse_error: true, raw: '{"path":' },
-      expected: { phase: 'validation', code: 'tool/args_parse_error', retryable: true },
-    },
-    {
       name: '权限拒绝',
       allows: true,
       hasTool: true,

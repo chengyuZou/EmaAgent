@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { OpenAiAdapter } from '../src/adapters/openai.js';
+import { LlmToolArgumentsParseError } from '../src/errors.js';
 import type { LlmRequest, LlmStreamChunk, ProviderConfig } from '../src/types.js';
 
 const openAiMock = vi.hoisted(() => ({
@@ -150,5 +151,33 @@ describe('OpenAiAdapter — thinking controls', () => {
       request({ signal: controller.signal }),
       'deepseek-v4-flash',
     ))).rejects.toMatchObject({ name: 'AbortError' });
+  });
+
+  it('工具参数 JSON 损坏时抛出结构化协议错误', async () => {
+    openAiMock.create.mockResolvedValueOnce(streamOf([
+      {
+        choices: [{
+          delta: {
+            tool_calls: [{
+              index: 0,
+              id: 'call-invalid',
+              function: { name: 'delete_file', arguments: '{"path":' },
+            }],
+          },
+          finish_reason: null,
+        }],
+      },
+      { choices: [{ delta: {}, finish_reason: 'tool_calls' }] },
+    ]));
+    const adapter = new OpenAiAdapter(config());
+
+    await expect(collect(adapter.stream(request(), 'deepseek-v4-flash'))).rejects.toMatchObject({
+      name: 'LlmToolArgumentsParseError',
+      code: 'provider/tool_arguments_invalid_json',
+      providerId: 'deepseek-test',
+      callId: 'call-invalid',
+      toolName: 'delete_file',
+      rawArgumentsExcerpt: '{"path":',
+    } satisfies Partial<LlmToolArgumentsParseError>);
   });
 });

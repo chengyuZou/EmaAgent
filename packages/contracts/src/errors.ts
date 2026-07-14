@@ -6,6 +6,7 @@ export type ErrorCode =
   | 'provider/server_error'
   | 'provider/timeout'
   | 'provider/context_too_long'
+  | 'provider/tool_arguments_invalid_json'
   | 'provider/model_unavailable'
   | 'provider/not_configured'
   | 'tool/permission_denied'

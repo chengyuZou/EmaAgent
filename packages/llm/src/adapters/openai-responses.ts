@@ -13,6 +13,7 @@ import type {
 import {
   createLlmProviderResponseError,
   LlmStreamProtocolError,
+  LlmToolArgumentsParseError,
   normalizeLlmProviderError,
   throwIfAborted,
   throwIfAbortError,
@@ -302,8 +303,18 @@ export class OpenAiResponsesAdapter implements LlmAdapter {
           case 'response.function_call_arguments.done': {
             const meta = toolMeta.get(event.output_index);
             if (meta) {
-              let args: unknown = {};
-              try { args = JSON.parse(event.arguments); } catch { /* 保持 {} */ }
+              let args: unknown;
+              try {
+                args = JSON.parse(event.arguments);
+              } catch (error) {
+                throw new LlmToolArgumentsParseError(
+                  request.providerId,
+                  meta.callId,
+                  meta.name,
+                  event.arguments,
+                  error,
+                );
+              }
               yield {
                 type:       'tool_use_complete',
                 blockIndex: meta.blockIndex,

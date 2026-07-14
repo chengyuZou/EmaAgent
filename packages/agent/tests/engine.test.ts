@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { EmaStreamEvent, MessageId, SessionId, TurnId } from '@ema-agent/contracts';
 import type { Message, Turn } from '@ema-agent/session';
 import { HookBus } from '@ema-agent/hook';
+import { LlmToolArgumentsParseError } from '@ema-agent/llm';
 import { AgentEngine } from '../src/engine.js';
 import type { AgentDeps } from '../src/types.js';
 
@@ -315,5 +316,95 @@ describe('AgentEngine 生命周期', () => {
     });
     expect(events.some((event) => event.type === 'turn_completed')).toBe(false);
     expect(events.some((event) => event.type === 'turn_failed')).toBe(false);
+  });
+
+  it('损坏的 Tool JSON 以专用 Provider 错误失败且不进入工具执行', async () => {
+    const hooks = new HookBus();
+    let failedCode: string | undefined;
+    let toolLookupCount = 0;
+    const session = {
+      loadHistory: () => [],
+      appendMessage: (input: {
+        turnId: TurnId;
+        sessionId: SessionId;
+        role: Message['role'];
+        blocks: Message['blocks'];
+      }): Message => ({
+        id: 'message-tool-json' as MessageId,
+        sessionId: input.sessionId,
+        turnId: input.turnId,
+        role: input.role,
+        kind: 'normal',
+        blocks: input.blocks,
+        interrupted: false,
+        createdAt: Date.now(),
+      }),
+      completeTurn: () => undefined,
+      failTurn: (_id: TurnId, code: string) => { failedCode = code; },
+      abortTurn: () => undefined,
+    };
+    const llm = {
+      stream: async function* () {
+        throw new LlmToolArgumentsParseError(
+          'provider-1',
+          'call-invalid',
+          'delete_file',
+          '{"path":',
+        );
+      },
+    };
+    const deps: AgentDeps = {
+      session: session as never,
+      hooks,
+      llm: llm as never,
+      emotion: {
+        beginTurn: () => undefined,
+        processChunk: (delta: string) => ({ cleaned: delta, events: [] }),
+        flush: () => ({ cleaned: '', events: [] }),
+      } as never,
+      tools: {
+        list: () => [],
+        get: () => {
+          toolLookupCount++;
+          throw new Error('不应查询或执行工具');
+        },
+      } as never,
+      permission: {} as never,
+    };
+    const turn: Turn = {
+      id: turnId,
+      sessionId,
+      branchId: null,
+      mode: 'agent',
+      status: 'running',
+      userInput: 'hello',
+      startedAt: Date.now(),
+      completedAt: null,
+      errorCode: null,
+      errorMessage: null,
+      iterations: 0,
+      usageInputTokens: 0,
+      usageOutputTokens: 0,
+    };
+
+    const events: EmaStreamEvent[] = [];
+    const engine = new AgentEngine(deps);
+    for await (const event of engine.run({
+      turn,
+      signal: new AbortController().signal,
+      userInput: 'hello',
+      providerId: 'provider-1',
+      model: 'model-1',
+      workspaceRoot: '',
+    })) {
+      events.push(event);
+    }
+
+    expect(failedCode).toBe('provider/tool_arguments_invalid_json');
+    expect(toolLookupCount).toBe(0);
+    expect(events.at(-1)).toEqual(expect.objectContaining({
+      type: 'turn_failed',
+      code: 'provider/tool_arguments_invalid_json',
+    }));
   });
 });

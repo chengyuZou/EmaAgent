@@ -19,8 +19,10 @@ export type { UnsupportedPart }              from './validate.js';
 export {
   CircuitOpenError,
   ContextWindowExceededError,
+  llmProviderErrorCode,
   LlmProviderResponseError,
   LlmStreamProtocolError,
+  LlmToolArgumentsParseError,
 } from './errors.js';
 export type {
   LlmProtocol,

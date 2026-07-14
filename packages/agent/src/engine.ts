@@ -11,6 +11,7 @@ import { SubagentSpawner } from './spawner.js';
 import { historyToLlmMessages } from '@ema-agent/session';
 import { clearTodos } from '@ema-agent/tool-builtin';
 import { buildScratchpadContext } from './scratchpad-context.js';
+import { llmProviderErrorCode } from '@ema-agent/llm';
 import * as fs   from 'node:fs';
 import * as path from 'node:path';
 
@@ -449,7 +450,7 @@ async function* runTurn(
       yield { type: 'turn_aborted', sessionId, turnId, reason: 'user_stop' };
     } else {
       const code: ErrorCode = activePhase === 'provider'
-        ? 'provider/server_error'
+        ? llmProviderErrorCode(err)
         : 'turn/execution_failed';
       await reportFailure(code, reason, activePhase);
       while (pendingHookEvents.length > 0) yield pendingHookEvents.shift()!;

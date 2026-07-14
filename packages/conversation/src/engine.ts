@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { asLlmCallId } from '@ema-agent/contracts';
 import type { EmaStreamEvent, ErrorCode, LlmMessage, AssistantBlock, UserBlock, MessageContentPart as LlmContentPart } from '@ema-agent/contracts';
 import type { LlmUsage } from '@ema-agent/contracts';
-import { computePromptPrefixHash } from '@ema-agent/llm';
+import { computePromptPrefixHash, llmProviderErrorCode } from '@ema-agent/llm';
 import type { MessageBlocks } from '@ema-agent/session';
 import type { HookBus, HookTriggerContext, HookTriggerResult, TurnFailurePhase } from '@ema-agent/hook';
 import type { ConversationDeps, ConversationRunInput } from './types.js';
@@ -358,7 +358,7 @@ async function* runTurn(
       yield { type: 'turn_aborted', sessionId: input.sessionId, turnId, reason: 'user_stop' };
     } else {
       const code: ErrorCode = activePhase === 'provider'
-        ? 'provider/server_error'
+        ? llmProviderErrorCode(err)
         : 'turn/execution_failed';
       await reportFailure(code, reason, activePhase);
       while (pendingHookEvents.length > 0) yield pendingHookEvents.shift()!;

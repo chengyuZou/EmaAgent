@@ -4,6 +4,7 @@ import {
   ContextWindowExceededError,
   LlmProviderResponseError,
   LlmStreamProtocolError,
+  LlmToolArgumentsParseError,
 } from '../src/errors.js';
 import type { LlmRequest, LlmStreamChunk, ProviderConfig } from '../src/types.js';
 
@@ -192,5 +193,32 @@ describe('OpenAiResponsesAdapter — 统一错误与终态边界', () => {
       request({ signal: controller.signal }),
       'gpt-test',
     ))).rejects.toMatchObject({ name: 'AbortError' });
+  });
+
+  it('function_call_arguments.done 包含损坏 JSON 时抛出结构化协议错误', async () => {
+    openAiMock.create.mockResolvedValueOnce(streamOf([{
+      type: 'response.output_item.added',
+      output_index: 0,
+      item: {
+        type: 'function_call',
+        id: 'item-invalid',
+        call_id: 'call-invalid',
+        name: 'delete_file',
+        arguments: '',
+      },
+    }, {
+      type: 'response.function_call_arguments.done',
+      output_index: 0,
+      arguments: '{"path":',
+    }]));
+    const adapter = new OpenAiResponsesAdapter(config());
+
+    await expect(collect(adapter.stream(request(), 'gpt-test'))).rejects.toMatchObject({
+      name: 'LlmToolArgumentsParseError',
+      providerId: 'openai-responses-test',
+      callId: 'call-invalid',
+      toolName: 'delete_file',
+      rawArgumentsExcerpt: '{"path":',
+    } satisfies Partial<LlmToolArgumentsParseError>);
   });
 });
