@@ -20,6 +20,8 @@ export interface ProviderConfig {
   apiKey:       string;
   baseUrl?:     string;
   defaultModel?: string;
+  /** models.dev Provider id；用于按 Provider + Model 精确解析能力。 */
+  modelsDevId?: string;
 }
 
 // ── 工具定义 ──────────────────────────────────────────────────────────
@@ -96,6 +98,13 @@ export type StopReason = 'end_turn' | 'tool_use' | 'max_tokens' | 'stop_sequence
  * 与 Claude 的投递方式完全一致。
  */
 export type LlmStreamChunk =
+  | {
+      type: 'request_degraded';
+      attempt: number;
+      reason: string;
+      removed: Array<'image' | 'audio' | 'file' | 'parameter'>;
+      replacements: Array<'description' | 'placeholder' | 'parameter_omitted'>;
+    }
   | { type: 'text_delta';        blockIndex: number; delta: string }
   | { type: 'thinking_delta';    blockIndex: number; delta: string }
   | { type: 'thinking_complete';  blockIndex: number; signature: string }

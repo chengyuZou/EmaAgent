@@ -104,8 +104,17 @@ async function* runTurn(
       return;
     }
 
+    for (const degradation of input.requestDegradations ?? []) {
+      yield {
+        type: 'request_degraded',
+        sessionId: input.sessionId,
+        turnId,
+        ...degradation,
+      };
+    }
+
     // ── Context + user message ────────────────────────────────────────────────
-    activePhase = 'persistence';
+    activePhase = 'provider';
     const history = session.loadHistory(input.sessionId);
 
     // userBlocks: plain string for text-only, or LlmContentPart[] for multimodal
@@ -114,6 +123,27 @@ async function* runTurn(
         ? input.contentParts
         : input.userInput;
 
+    if (Array.isArray(userBlocks)) {
+      llm.assertCurrentContentCompatible(providerId, resolvedModel, userBlocks);
+    }
+    const historyView = llm.prepareHistoricalMessages(
+      providerId,
+      resolvedModel,
+      historyToLlmMessages(history),
+    );
+    if (historyView.actions.length > 0) {
+      yield {
+        type: 'request_degraded',
+        sessionId: input.sessionId,
+        turnId,
+        attempt: 1,
+        reason: '历史消息包含当前模型不支持或能力未知的媒体，已创建只读兼容视图',
+        removed: [...new Set(historyView.actions.map((action) => action.modality))],
+        replacements: ['placeholder'],
+      };
+    }
+
+    activePhase = 'persistence';
     session.appendMessage({
       turnId,
       sessionId: input.sessionId,
@@ -123,7 +153,7 @@ async function* runTurn(
     });
 
     let messages: LlmMessage[] = [
-      ...historyToLlmMessages(history),
+      ...historyView.messages,
       {
         role: 'user',
         content: userBlocks as string | UserBlock[],
@@ -184,6 +214,8 @@ async function* runTurn(
       yield { type: 'turn_failed', sessionId: input.sessionId, turnId, code: 'turn/hook_aborted', message: llmHookResult.reason };
       return;
     }
+    // Hook 新增内容没有可靠的历史/本轮来源标记，不能在这里猜测并静默替换。
+    // Router 会对最终组装结果执行 fail-closed 能力门禁。
     const finalMessages = llmHookResult.payload.messages;
 
     // ── narrative 检索结果落盘 ──────────────────────────────────────────────
@@ -220,6 +252,17 @@ async function* runTurn(
 
     for await (const chunk of stream) {
       switch (chunk.type) {
+        case 'request_degraded':
+          yield {
+            type: 'request_degraded',
+            sessionId: input.sessionId,
+            turnId,
+            attempt: chunk.attempt,
+            reason: chunk.reason,
+            removed: chunk.removed,
+            replacements: chunk.replacements,
+          };
+          break;
         case 'text_delta': {
           const { cleaned, events } = emotion.processChunk(chunk.delta, turnId, input.sessionId);
           fullText += cleaned;

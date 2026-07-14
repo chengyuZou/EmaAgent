@@ -214,6 +214,11 @@ export interface LlmStreamRuntimeOptions {
   circuitBreaker?: CircuitBreakerOptions;
 }
 
+export type LlmCompatibilityRecovery = (
+  error: unknown,
+  nextAttempt: number,
+) => LlmStreamChunk | undefined;
+
 /**
  * LLM Provider 流运行时。
  *
@@ -246,9 +251,10 @@ export class LlmStreamRuntime {
     providerId: string,
     start: () => AsyncIterable<LlmStreamChunk>,
     signal?: AbortSignal,
+    recoverCompatibility?: LlmCompatibilityRecovery,
   ): AsyncIterable<LlmStreamChunk> {
     const breaker = this.breakerFor(providerId);
-    return this.run(providerId, breaker, start, signal);
+    return this.run(providerId, breaker, start, signal, recoverCompatibility);
   }
 
   /** Provider 配置被替换或删除时丢弃旧健康状态。 */
@@ -270,6 +276,7 @@ export class LlmStreamRuntime {
     breaker: CircuitBreaker,
     start: () => AsyncIterable<LlmStreamChunk>,
     signal?: AbortSignal,
+    recoverCompatibility?: LlmCompatibilityRecovery,
   ): AsyncIterable<LlmStreamChunk> {
     const permit = breaker.guard();
 
@@ -298,6 +305,16 @@ export class LlmStreamRuntime {
         } catch (error) {
           // 用户取消不是 Provider 故障，不影响熔断统计，也不允许重试。
           if (isAbortError(error, signal)) throw error;
+
+          // 兼容恢复与网络重试共享 maxAttempts，且只能发生在首个 Provider
+          // chunk 前。request_degraded 是诊断，不属于模型输出。
+          const compatibilityEvent = !emittedChunk && attempt < this.maxAttempts - 1
+            ? recoverCompatibility?.(error, attempt + 2)
+            : undefined;
+          if (compatibilityEvent) {
+            yield compatibilityEvent;
+            continue;
+          }
 
           const countsAsProviderFailure =
             error instanceof LlmStreamProtocolError || isRetryable(error);

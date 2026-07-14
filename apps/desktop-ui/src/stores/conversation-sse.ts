@@ -515,6 +515,18 @@ export function dispatchSseEvent(
 
     // ── Misc ───────────────────────────────────────────────────────────────
 
+    case 'request_degraded':
+      // 自动兼容不打断用户，但必须保留可诊断的结构化记录。
+      console.info('[sse] request_degraded:', {
+        sessionId: event.sessionId,
+        turnId: event.turnId,
+        attempt: event.attempt,
+        reason: event.reason,
+        removed: event.removed,
+        replacements: event.replacements,
+      });
+      break;
+
     case 'hook_warning':
       console.warn('[sse] hook_warning:', {
         hookInvocationId: event.hookInvocationId,

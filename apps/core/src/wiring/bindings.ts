@@ -247,7 +247,10 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
   } catch {
     console.warn('[catalog] no bundled snapshot found, will rely on network refresh');
   }
-  const llm = new LlmRouter(loadLlmConfigs(profileDb), undefined, modelCatalog);
+  const llm = new LlmRouter(loadLlmConfigs(profileDb), undefined, modelCatalog, {
+    supportsManualImageInput: (providerId, model) =>
+      providerVisionModels.hasProviderModel(providerId, model),
+  });
   const ebd = new EbdRouter(loadEmbedConfigs(profileDb), loadRerankConfigs(profileDb));
 
   const narrative = new NarrativeClient({

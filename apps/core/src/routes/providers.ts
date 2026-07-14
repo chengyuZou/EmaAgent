@@ -137,7 +137,7 @@ export function providersRoute(bindings: AppBindings): Hono {
       contextWindow:   r.context_window,
       contextSource:   r.context_source,
       definitionId:    r.definition_id,
-      reasoning:       bindings.modelCatalog.hasReasoning(r.model),
+      reasoning:       bindings.llm.capabilitiesFor(r.provider_config_id, r.model).reasoning === 'supported',
     }));
     return c.json(result);
   });

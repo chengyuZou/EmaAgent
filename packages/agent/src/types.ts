@@ -1,4 +1,4 @@
-import type { SessionId, EmaStreamEvent, KbSearchResult, KbAssetScope } from '@ema-agent/contracts';
+import type { SessionId, EmaStreamEvent, KbSearchResult, KbAssetScope, RequestDegradationNotice } from '@ema-agent/contracts';
 import type { LlmRouter, LlmContentPart, LlmMessage, ThinkingMode } from '@ema-agent/llm';
 import type { SessionStore, Turn } from '@ema-agent/session';
 import type { HookBus } from '@ema-agent/hook';
@@ -133,4 +133,6 @@ export interface AgentRunInput {
   compactMessages?: (messages: LlmMessage[]) => Promise<LlmMessage[]>;
   /** User-requested thinking mode — forwarded to every LlmRequest in the agent loop. */
   thinking?: ThinkingMode;
+  /** Core 在 Engine 前完成的媒体降级。 */
+  requestDegradations?: RequestDegradationNotice[];
 }

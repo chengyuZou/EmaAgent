@@ -8,6 +8,7 @@ import { validateContentParts } from './validate.js';
 import type { UnsupportedPart } from './validate.js';
 import type {
   ProviderConfig,
+  LlmMessage,
   LlmRequest,
   LlmStreamChunk,
   LlmCompletion,
@@ -20,6 +21,20 @@ import type {
 import type { LlmProtocol } from '@ema-agent/contracts';
 import type { ModelsDevCatalog } from './models-dev-catalog.js';
 import { normalizeToolDefinitions } from './prompt-cache.js';
+import {
+  capabilitiesFromCatalog,
+  capabilitiesFromManualVision,
+  unknownModelCapabilities,
+  type ModelCapabilitySnapshot,
+} from './model-capabilities.js';
+import {
+  prepareHistoricalMessageView,
+  validateCurrentContent,
+  validateMessageCapabilities,
+  type CompatibleMessageView,
+} from './message-compatibility.js';
+import { LlmModelCapabilityError } from './errors.js';
+import { createCompatibilityRecovery } from './compatibility-recovery.js';
 
 // ── 内部工厂 ──────────────────────────────────────────────────────────
 
@@ -56,6 +71,7 @@ export class LlmRouter {
   private readonly streamRuntime = new LlmStreamRuntime();
   /** 仅测试用的 adapter 替换,以 ProviderConfig.id 为 key。 */
   private readonly adapterOverrides?: ReadonlyMap<string, LlmAdapter>;
+  private readonly supportsManualImageInput?: (providerId: string, model: string) => boolean;
 
   /**
    * @param configs           Provider 配置。
@@ -66,8 +82,12 @@ export class LlmRouter {
     configs: ProviderConfig[],
     adapterOverrides?: ReadonlyMap<string, LlmAdapter>,
     private readonly catalog?: ModelsDevCatalog,
+    options: {
+      supportsManualImageInput?: (providerId: string, model: string) => boolean;
+    } = {},
   ) {
     this.adapterOverrides = adapterOverrides;
+    this.supportsManualImageInput = options.supportsManualImageInput;
     for (const config of configs) {
       this.configs.set(config.id, config);
       this.adapters.set(config.id, this.createAdapterFor(config));
@@ -86,10 +106,11 @@ export class LlmRouter {
    * 未知 provider id 时同步抛错。
    */
   stream(request: LlmRequest): AsyncIterable<LlmStreamChunk> {
+    const capabilities = this.capabilitiesFor(request.providerId, request.model);
     const catalogEnriched: LlmRequest = this.catalog ? {
       ...request,
-      supportsReasoning: request.supportsReasoning ?? this.catalog.hasReasoning(request.model),
-      maxTokens:         request.maxTokens         ?? this.catalog.maxOutputOf(request.model),
+      supportsReasoning: request.supportsReasoning ?? capabilities.reasoning === 'supported',
+      maxTokens:         request.maxTokens         ?? capabilities.maxOutput,
     } : request;
     const enriched: LlmRequest = catalogEnriched.tools ? {
       ...catalogEnriched,
@@ -98,10 +119,20 @@ export class LlmRouter {
     // Façade 必须同步拒绝未知 Provider，Engine 才能在创建异步迭代器时 fail-fast。
     const adapter = this.adapters.get(enriched.providerId);
     if (!adapter) throw notConfigured(enriched.providerId);
+    const capabilityIssues = validateMessageCapabilities(enriched.messages, capabilities);
+    if (capabilityIssues.length > 0) {
+      throw new LlmModelCapabilityError(enriched.providerId, enriched.model, capabilityIssues);
+    }
+    const protocolIssues = validateProtocolMessages(enriched.messages, this.configs.get(enriched.providerId)!.protocol);
+    if (protocolIssues.length > 0) {
+      throw new LlmModelCapabilityError(enriched.providerId, enriched.model, protocolIssues);
+    }
+    const recovery = createCompatibilityRecovery(adapter, enriched);
     return this.streamRuntime.stream(
       enriched.providerId,
-      () => adapter.stream(enriched, enriched.model),
+      recovery.start,
       enriched.signal,
+      recovery.recover,
     );
   }
 
@@ -127,6 +158,9 @@ export class LlmRouter {
 
     for await (const chunk of this.stream(request)) {
       switch (chunk.type) {
+        case 'request_degraded':
+          // complete() 没有 SSE 消费者；降级已在请求内部完成，不影响结果聚合。
+          break;
         case 'text_delta':
           textBufs.set(chunk.blockIndex, (textBufs.get(chunk.blockIndex) ?? '') + chunk.delta);
           break;
@@ -206,6 +240,40 @@ export class LlmRouter {
     return this.configs.get(providerId)?.protocol;
   }
 
+  /** 按 Provider + Model 精确返回能力；同名模型不会跨 Provider 串数据。 */
+  capabilitiesFor(providerId: string, model: string): ModelCapabilitySnapshot {
+    const config = this.configs.get(providerId);
+    const spec = config?.modelsDevId && this.catalog
+      ? this.catalog.get(config.modelsDevId, model)
+      : undefined;
+    if (spec) return capabilitiesFromCatalog(spec);
+    if (this.supportsManualImageInput?.(providerId, model)) {
+      return capabilitiesFromManualVision();
+    }
+    return unknownModelCapabilities();
+  }
+
+  /** 历史消息只读降级；调用方负责把 actions 转成结构化 SSE。 */
+  prepareHistoricalMessages(
+    providerId: string,
+    model: string,
+    messages: readonly LlmMessage[],
+  ): CompatibleMessageView {
+    return prepareHistoricalMessageView(messages, this.capabilitiesFor(providerId, model));
+  }
+
+  /** 本轮新附件不允许静默丢弃；能力 unknown 也会 fail-closed。 */
+  assertCurrentContentCompatible(
+    providerId: string,
+    model: string,
+    parts: readonly LlmContentPart[],
+  ): void {
+    const issues = validateCurrentContent(parts, this.capabilitiesFor(providerId, model));
+    if (issues.length > 0) {
+      throw new LlmModelCapabilityError(providerId, model, issues);
+    }
+  }
+
   // ── 热重载 ───────────────────────────────────────────────
 
   /**
@@ -268,4 +336,45 @@ export class LlmRouter {
     if (!protocol) throw notConfigured(providerId);
     return validateContentParts(parts, protocol);
   }
+}
+
+function validateProtocolMessages(
+  messages: readonly LlmMessage[],
+  protocol: LlmProtocol,
+): Array<{
+  messageIndex: number;
+  partIndex: number;
+  modality: 'image' | 'audio' | 'file';
+  state: 'unsupported';
+  reason: string;
+}> {
+  const issues: Array<{
+    messageIndex: number;
+    partIndex: number;
+    modality: 'image' | 'audio' | 'file';
+    state: 'unsupported';
+    reason: string;
+  }> = [];
+  messages.forEach((message, messageIndex) => {
+    if (message.role !== 'user' || !Array.isArray(message.content)) return;
+    const parts = message.content.filter(
+      (block): block is LlmContentPart => block.type !== 'tool_result',
+    );
+    for (const issue of validateContentParts(parts, protocol)) {
+      const type = issue.part.type;
+      const modality = type === 'audio_data'
+        ? 'audio'
+        : type === 'file_data' || type === 'file_url'
+          ? 'file'
+          : 'image';
+      issues.push({
+        messageIndex,
+        partIndex: issue.index,
+        modality,
+        state: 'unsupported',
+        reason: issue.reason,
+      });
+    }
+  });
+  return issues;
 }

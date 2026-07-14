@@ -185,7 +185,8 @@ export class ModelsDevCatalog {
 
   /** Vision 门禁:该 LLM 是否接受图像输入?驱动 orchestrator 回退。 */
   supportsImageInput(modelsDevId: string, modelId: string): boolean {
-    return (this.get(modelsDevId, modelId) ?? this.flat.get(modelId))?.inputModalities.includes('image') ?? false;
+    // 能力门禁必须使用 Provider + Model 精确身份；同名模型禁止跨 Provider 回退。
+    return this.get(modelsDevId, modelId)?.inputModalities.includes('image') ?? false;
   }
 
   get size(): number {

@@ -8,6 +8,7 @@ export type ErrorCode =
   | 'provider/context_too_long'
   | 'provider/tool_arguments_invalid_json'
   | 'provider/model_unavailable'
+  | 'provider/model_capability_unsupported'
   | 'provider/not_configured'
   | 'tool/permission_denied'
   | 'tool/sandbox_violation'

@@ -11,6 +11,31 @@ interface ProviderErrorShape {
   } | null;
 }
 
+export interface LlmCapabilityIssue {
+  messageIndex: number;
+  partIndex: number;
+  modality: 'image' | 'audio' | 'file';
+  state: 'unsupported' | 'unknown';
+  reason: string;
+}
+
+/** 当前模型无法安全接收请求中的一种或多种输入模态。 */
+export class LlmModelCapabilityError extends Error {
+  readonly code = 'provider/model_capability_unsupported' as const;
+
+  constructor(
+    readonly providerId: string,
+    readonly model: string,
+    readonly issues: readonly LlmCapabilityIssue[],
+  ) {
+    super(
+      `Model "${model}" on provider "${providerId}" cannot accept: `
+      + issues.map((issue) => `${issue.modality}(${issue.state})`).join(', '),
+    );
+    this.name = 'LlmModelCapabilityError';
+  }
+}
+
 /** Provider 因上下文超限拒绝请求。Agent 可据此触发响应式压缩。 */
 export class ContextWindowExceededError extends Error {
   constructor(message?: string, cause?: unknown) {
@@ -90,6 +115,7 @@ export function normalizeLlmProviderError(error: unknown): Error {
 
   if (
     error instanceof LlmProviderResponseError
+    || error instanceof LlmModelCapabilityError
     || error instanceof LlmToolArgumentsParseError
     || error instanceof LlmStreamProtocolError
   ) {
@@ -124,6 +150,9 @@ export function llmProviderErrorCode(error: unknown): ErrorCode {
     return 'provider/context_too_long';
   }
   if (error instanceof LlmToolArgumentsParseError) {
+    return error.code;
+  }
+  if (error instanceof LlmModelCapabilityError) {
     return error.code;
   }
   return 'provider/server_error';

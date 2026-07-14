@@ -1,4 +1,4 @@
-import type { SessionId, TurnMode } from '@ema-agent/contracts';
+import type { RequestDegradationNotice, SessionId, TurnMode } from '@ema-agent/contracts';
 import type { LlmRouter, LlmContentPart, LlmMessage, ThinkingMode } from '@ema-agent/llm';
 import type { SessionStore, Turn } from '@ema-agent/session';
 import type { HookBus } from '@ema-agent/hook';
@@ -41,4 +41,6 @@ export interface ConversationRunInput {
   compactMessages?: (messages: LlmMessage[]) => Promise<LlmMessage[]>;
   /** User-requested thinking mode — forwarded directly to LlmRequest. */
   thinking?:     ThinkingMode;
+  /** Core 在 Engine 前完成的图片描述等降级，用结构化 SSE 告知前端。 */
+  requestDegradations?: RequestDegradationNotice[];
 }

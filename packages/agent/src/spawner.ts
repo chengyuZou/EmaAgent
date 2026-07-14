@@ -267,6 +267,19 @@ export class SubagentSpawner implements ISubagentSpawner {
             });
             break;
 
+          // 子 Agent 仍属于父 Turn；兼容降级必须进入同一条结构化 SSE，不能丢在内部循环。
+          case 'loop_request_degraded':
+            emit({
+              type: 'request_degraded',
+              sessionId,
+              turnId: parentTurnId,
+              attempt: ev.attempt,
+              reason: `子 Agent ${subagentId}：${ev.reason}`,
+              removed: ev.removed,
+              replacements: ev.replacements,
+            });
+            break;
+
           // ── Tool call dispatched ─────────────────────────────────────────
           case 'loop_tool_complete':
             toolCallCount++;

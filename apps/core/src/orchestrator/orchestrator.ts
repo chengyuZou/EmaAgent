@@ -1,10 +1,11 @@
 import type { AppBindings } from '../wiring/index.js';
 import type {
   ErrorCode, TurnMode, EmaStreamEvent, TurnId, SessionId, KbAssetScope,
+  RequestDegradationNotice,
 } from '@ema-agent/contracts';
-import { getProviderDefinition } from '@ema-agent/contracts';
 import type { ThinkingMode } from '@ema-agent/llm';
 import type { LlmContentPart } from '@ema-agent/llm';
+import { llmProviderErrorCode } from '@ema-agent/llm';
 import type { AttachmentInput } from '@ema-agent/attachment';
 import { asSessionId } from '@ema-agent/contracts';
 import { ConversationEngine } from '@ema-agent/conversation';
@@ -16,8 +17,8 @@ import type { BindingModule } from '@ema-agent/storage';
 import { resolveVoice, ensureVoiceUri, VoiceUriCache } from '../wiring/providers/tts.js';
 import { ensureSessionLayout } from '../storage-locations/index.js';
 import type { Turn }           from '@ema-agent/session';
-import type { VisionImageInput, VisionImageMime } from '@ema-agent/vision';
 import type { TurnFailurePhase } from '@ema-agent/hook';
+import { prepareImagesForModel, replaceImageParts } from './media-compatibility.js';
 
 export interface TurnResult {
   turnId: TurnId;
@@ -142,29 +143,21 @@ export class Orchestrator {
     const turnId = turn.id;
     this.activeTurns.set(turnId as string, sessionId);
 
-    // Persist per-turn attachments and merge them into the engine input.
-    // Images → prepended to contentParts as base64 parts (or described as text
-    //   if the active LLM does not support image input per the models.dev catalog).
-    // Other files → appended as a text block listing their paths.
+    // 持久化本轮附件并合并到 Engine 输入中。
+    // 图片以 base64 内容块加入；当前 LLM 不支持图片时，先转换成明确的文字描述。
+    // 其他文件由附件存储层整理为路径提示文本。
     let contentParts = request.contentParts;
     let userInput    = request.userInput;
-    // Attachment setup does DB writes + a vision LLM call and can throw. The
-    // turn is already registered at this point, so any throw must release the
-    // lock — otherwise the session is stuck on session_busy until restart.
+    const requestDegradations: RequestDegradationNotice[] = [];
+    // 附件准备包含数据库写入与 Vision 调用。此时 Turn 已注册，任何异常都必须
+    // 释放运行锁，否则 Session 会一直停留在 session_busy，直至进程重启。
     try {
       if (request.attachmentInputs?.length) {
         const stored   = this.bindings.attachmentStore.addAll(request.attachmentInputs, turnId, sessionId);
         const resolved = this.bindings.attachmentStore.resolveForPrompt(stored);
 
-        // Resolve provider + model early for vision fallback — reuse the same
-        // resolution logic as engineStreamFor so providerId is consistent.
-        const resolvedLlm = this.resolveLlmForTurn(request);
-        const imageParts = resolved.imageParts.length > 0 && resolvedLlm.providerId
-          ? await this.visionFallbackIfNeeded(resolvedLlm.providerId, resolvedLlm.model, resolved.imageParts, signal)
-          : resolved.imageParts;
-
-        if (imageParts.length > 0 || resolved.promptLines) {
-          const parts: LlmContentPart[] = [...imageParts];
+        if (resolved.imageParts.length > 0 || resolved.promptLines) {
+          const parts: LlmContentPart[] = [...resolved.imageParts];
           if (contentParts?.length) {
             parts.push(...contentParts);
           } else {
@@ -177,10 +170,46 @@ export class Orchestrator {
           userInput    = '';
         }
       }
+
+      // attachmentInputs 与直接 contentParts 统一走同一能力门禁，避免调用方
+      // 绕过附件存储路径后把图片直接塞给纯文本模型。
+      const imageParts = contentParts?.filter(
+        (part) => part.type === 'image_data' || part.type === 'image_url',
+      ) ?? [];
+      if (imageParts.length > 0) {
+        const resolvedLlm = this.resolveLlmForTurn(request);
+        if (!resolvedLlm.providerId || !resolvedLlm.model) {
+          throw new Error('provider/not_configured');
+        }
+        const fallback = await prepareImagesForModel({
+          capabilitiesFor: (providerId, model) => this.bindings.llm.capabilitiesFor(providerId, model),
+          visionBinding: () => this.bindings.modelBindings.get('vision'),
+          describeImages: async ({ providerId, model, inputs, signal: visionSignal }) => {
+            const result = await this.bindings.vision.extract({
+              providerId,
+              model,
+              task: 'caption',
+              inputs,
+              signal: visionSignal,
+            });
+            return result.text;
+          },
+        }, resolvedLlm.providerId, resolvedLlm.model, imageParts, signal);
+        contentParts = replaceImageParts(contentParts ?? [], fallback.parts);
+        if (fallback.degradation) requestDegradations.push(fallback.degradation);
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       try {
-        await this.reportTurnFailure(turn, 'turn/attachment_failed', message, 'setup');
+        const providerCode = llmProviderErrorCode(err);
+        await this.reportTurnFailure(
+          turn,
+          providerCode === 'provider/model_capability_unsupported'
+            ? providerCode
+            : 'turn/attachment_failed',
+          message,
+          'setup',
+        );
       } catch { /* fall through to clear */ }
       this.bindings.session.clearRunning(sessionId);
       this.activeTurns.delete(turnId as string);
@@ -226,7 +255,13 @@ export class Orchestrator {
       const resolvedRequest = contentParts !== request.contentParts || userInput !== request.userInput
         ? { ...request, contentParts, userInput }
         : request;
-      engineEvents = this.engineStreamFor(resolvedRequest, turn, signal, sessionId);
+      engineEvents = this.engineStreamFor(
+        resolvedRequest,
+        turn,
+        signal,
+        sessionId,
+        requestDegradations,
+      );
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       // failTurn may itself throw (requireTurn / DB write) — guard it so the
@@ -306,6 +341,7 @@ export class Orchestrator {
     turn:      Turn,
     signal:    AbortSignal,
     sessionId: ReturnType<typeof asSessionId>,
+    requestDegradations: RequestDegradationNotice[],
   ): AsyncIterable<EmaStreamEvent> {
     switch (request.mode) {
       case 'chat':
@@ -313,7 +349,7 @@ export class Orchestrator {
         const { providerId, model } = this.resolveLlmForTurn(request);
         const contextWindow = providerId && model
           ? this.bindings.providerLlmModels.contextWindowFor(providerId, model)
-            ?? this.bindings.modelCatalog.contextWindowOf(model)
+            ?? this.bindings.llm.capabilitiesFor(providerId, model).contextWindow
             ?? 200_000
           : 200_000;
         return this.conversation.run({
@@ -324,6 +360,7 @@ export class Orchestrator {
           providerId,
           model,
           thinking:     request.thinking,
+          requestDegradations,
           compactMessages: providerId && model ? (msgs) => this.bindings.memory.compact({
             sessionId:          turn.sessionId,
             turnId:             turn.id,
@@ -360,7 +397,7 @@ export class Orchestrator {
         }
 
         const contextWindow = this.bindings.providerLlmModels.contextWindowFor(providerId, model)
-          ?? this.bindings.modelCatalog.contextWindowOf(model)
+          ?? this.bindings.llm.capabilitiesFor(providerId, model).contextWindow
           ?? 200_000;
 
         return this.agent.run({
@@ -372,6 +409,7 @@ export class Orchestrator {
           kbIds:          request.kbIds,
           kbAssetScopes:  request.kbAssetScopes,
           thinking:       request.thinking,
+          requestDegradations,
           compactMessages: (msgs) => this.bindings.memory.compact({
             sessionId:          turn.sessionId,
             turnId:             turn.id,
@@ -437,55 +475,6 @@ export class Orchestrator {
       ?? (providerId ? this.bindings.llm.defaultModelFor(providerId) : undefined);
     if (!providerId || !model) return { providerId: undefined, model: undefined };
     return { providerId, model };
-  }
-
-  /**
-   * If the active LLM does not accept image input (per the models.dev catalog),
-   * describe the images via VisionRouter and return a single text part instead.
-   * Falls back to the original parts on any error or when no vision provider is
-   * configured — never throws.
-   */
-  private async visionFallbackIfNeeded(
-    providerId: string,
-    model:      string,
-    imageParts: LlmContentPart[],
-    signal:     AbortSignal,
-  ): Promise<LlmContentPart[]> {
-    const modelRow    = this.bindings.providerLlmModels.get(providerId, model);
-    const modelsDevId = modelRow?.definition_id ? getProviderDefinition(modelRow.definition_id)?.modelsDevId : undefined;
-    // Unknown provider (custom OpenAI-compat, etc.) → assume it handles images.
-    if (!modelsDevId) return imageParts;
-
-    if (this.bindings.modelCatalog.supportsImageInput(modelsDevId, model)) {
-      return imageParts;
-    }
-
-    // LLM does not support image input — describe via VisionRouter.
-    const visionBinding = this.bindings.modelBindings.get('vision');
-    if (!visionBinding) return imageParts;
-
-    const base64Inputs: VisionImageInput[] = imageParts
-      .filter((p): p is Extract<LlmContentPart, { type: 'image_data' }> => p.type === 'image_data')
-      .map((p) => ({
-        kind:     'base64' as const,
-        data:     p.data,
-        mimeType: p.mimeType as VisionImageMime,
-      }));
-
-    if (base64Inputs.length === 0) return imageParts; // image_url only → pass through
-
-    try {
-      const result = await this.bindings.vision.extract({
-        providerId: visionBinding.providerConfigId,
-        model:      visionBinding.model,
-        task:       'caption',
-        inputs:     base64Inputs,
-        signal,
-      });
-      return [{ type: 'text', text: `[图片内容]\n${result.text}` }];
-    } catch {
-      return imageParts;
-    }
   }
 
   private async maybeBuildCoordinator(

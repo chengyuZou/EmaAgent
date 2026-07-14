@@ -4,9 +4,19 @@ import type { Turn } from '@ema-agent/session';
 import { HookBus } from '@ema-agent/hook';
 import { ConversationEngine } from '../src/engine.js';
 import type { ConversationDeps } from '../src/types.js';
+import { LlmRouter, ModelsDevCatalog } from '@ema-agent/llm';
+import type { LlmAdapter, LlmRequest } from '@ema-agent/llm';
 
 const sessionId = 'session-hook-sse' as SessionId;
 const turnId = 'turn-hook-sse' as TurnId;
+
+const compatibilityMethods = {
+  assertCurrentContentCompatible: () => undefined,
+  prepareHistoricalMessages: (_providerId: string, _model: string, messages: unknown[]) => ({
+    messages,
+    actions: [],
+  }),
+};
 
 describe('ConversationEngine Hook 诊断事件', () => {
   it('在 Turn 终态事件之前输出结构化 hook_warning', async () => {
@@ -64,6 +74,7 @@ describe('ConversationEngine Hook 诊断事件', () => {
       abortTurn: () => undefined,
     };
     const llm = {
+      ...compatibilityMethods,
       firstProviderId: () => 'provider-1',
       defaultModelFor: () => 'model-1',
       warnUnsupportedParts: () => [],
@@ -174,6 +185,7 @@ describe('ConversationEngine Hook 诊断事件', () => {
       abortTurn: () => undefined,
     };
     const llm = {
+      ...compatibilityMethods,
       firstProviderId: () => 'provider-1',
       defaultModelFor: () => 'model-1',
       warnUnsupportedParts: () => [],
@@ -256,6 +268,7 @@ describe('ConversationEngine Hook 诊断事件', () => {
       abortTurn: () => { order.push('abortTurn'); },
     };
     const llm = {
+      ...compatibilityMethods,
       firstProviderId: () => 'provider-1',
       defaultModelFor: () => 'model-1',
       warnUnsupportedParts: () => [],
@@ -315,5 +328,99 @@ describe('ConversationEngine Hook 诊断事件', () => {
     });
     expect(events.some((event) => event.type === 'turn_completed')).toBe(false);
     expect(events.some((event) => event.type === 'turn_failed')).toBe(false);
+  });
+});
+
+describe('ConversationEngine 多模态历史兼容视图', () => {
+  it('切换纯文本模型后只降级请求副本，原始历史保持不变', async () => {
+    const catalog = new ModelsDevCatalog();
+    catalog.loadFromJson({
+      testProvider: {
+        models: {
+          textOnly: { modalities: { input: ['text'], output: ['text'] } },
+        },
+      },
+    });
+    const requests: LlmRequest[] = [];
+    const adapter: LlmAdapter = {
+      async *stream(request) {
+        requests.push(request);
+        yield { type: 'usage', inputTokens: 1, outputTokens: 1 };
+        yield { type: 'done', stopReason: 'end_turn' };
+      },
+    };
+    const llm = new LlmRouter([
+      {
+        id: 'provider-1',
+        protocol: 'openai-llm',
+        apiKey: 'secret',
+        modelsDevId: 'testProvider',
+      },
+    ], new Map([['provider-1', adapter]]), catalog);
+    const storedBlocks = [
+      { type: 'text' as const, text: '上一轮图片' },
+      { type: 'image_data' as const, data: 'base64', mimeType: 'image/png', name: 'history.png' },
+    ];
+    const before = structuredClone(storedBlocks);
+    let messageSeq = 0;
+    const session = {
+      loadHistory: () => [{ role: 'user', kind: 'normal', blocks: storedBlocks }],
+      appendMessage: () => ({ id: `message-${++messageSeq}` as MessageId }),
+      completeTurn: () => undefined,
+      failTurn: () => undefined,
+      abortTurn: () => undefined,
+    };
+    const engine = new ConversationEngine({
+      session: session as never,
+      hooks: new HookBus(),
+      llm,
+      emotion: {
+        beginTurn: () => undefined,
+        processChunk: (delta: string) => ({ cleaned: delta, events: [] }),
+        flush: () => ({ cleaned: '', events: [] }),
+      } as never,
+      narrative: {} as never,
+    });
+    const turn: Turn = {
+      id: turnId,
+      sessionId,
+      branchId: null,
+      mode: 'chat',
+      status: 'running',
+      userInput: '继续',
+      startedAt: Date.now(),
+      completedAt: null,
+      errorCode: null,
+      errorMessage: null,
+      iterations: 0,
+      usageInputTokens: 0,
+      usageOutputTokens: 0,
+    };
+
+    const events: EmaStreamEvent[] = [];
+    for await (const event of engine.run({
+      turn,
+      signal: new AbortController().signal,
+      sessionId,
+      mode: 'chat',
+      userInput: '继续',
+      providerId: 'provider-1',
+      model: 'textOnly',
+    })) events.push(event);
+
+    expect(storedBlocks).toEqual(before);
+    expect(events).toContainEqual(expect.objectContaining({
+      type: 'request_degraded',
+      removed: ['image'],
+      replacements: ['placeholder'],
+    }));
+    expect(requests[0]?.messages).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        role: 'user',
+        content: expect.arrayContaining([
+          expect.objectContaining({ type: 'text', text: expect.stringContaining('历史图片') }),
+        ]),
+      }),
+    ]));
   });
 });

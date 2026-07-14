@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { LlmRouter } from '../src/router.js';
+import { ModelsDevCatalog } from '../src/models-dev-catalog.js';
+import { LlmModelCapabilityError } from '../src/errors.js';
 import type { LlmAdapter } from '../src/adapters/base.js';
 import type { LlmContentPart, LlmRequest, LlmStreamChunk, ProviderConfig } from '../src/types.js';
 
@@ -198,6 +200,130 @@ describe('LlmRouter — hot-reload', () => {
 
     expect(() => router.stream({ providerId: 'ds-001', model: 'm', messages: [] }))
       .toThrow('provider/not_configured');
+  });
+});
+
+describe('LlmRouter — model capability + compatibility recovery', () => {
+  it('按 modelsDevId + model 精确解析同名模型能力', () => {
+    const catalog = new ModelsDevCatalog();
+    catalog.loadFromJson({
+      providerA: {
+        models: {
+          shared: { modalities: { input: ['text', 'image'], output: ['text'] } },
+        },
+      },
+      providerB: {
+        models: {
+          shared: { modalities: { input: ['text'], output: ['text'] } },
+        },
+      },
+    });
+    const router = new LlmRouter([
+      { ...DS_CONFIG, id: 'a', modelsDevId: 'providerA' },
+      { ...DS_CONFIG, id: 'b', modelsDevId: 'providerB' },
+    ], undefined, catalog);
+
+    expect(router.capabilitiesFor('a', 'shared').input.image).toBe('supported');
+    expect(router.capabilitiesFor('b', 'shared').input.image).toBe('unsupported');
+  });
+
+  it('首 chunk 前明确拒绝可选参数时省略参数重试，并发出结构化降级', async () => {
+    const requests: LlmRequest[] = [];
+    const adapter: LlmAdapter = {
+      async *stream(request) {
+        requests.push(request);
+        if (request.temperature !== undefined) {
+          throw Object.assign(new Error('unsupported parameter: temperature'), { status: 400 });
+        }
+        yield { type: 'done', stopReason: 'end_turn' };
+      },
+    };
+    const router = new LlmRouter([DS_CONFIG], new Map([['ds-001', adapter]]));
+
+    const chunks = await collect(router.stream({
+      providerId: 'ds-001', model: 'm', messages: [], temperature: 0.2,
+    }));
+
+    expect(requests).toHaveLength(2);
+    expect(requests[0]?.temperature).toBe(0.2);
+    expect(requests[1]?.temperature).toBeUndefined();
+    expect(chunks).toEqual([
+      expect.objectContaining({ type: 'request_degraded', attempt: 2, removed: ['parameter'] }),
+      { type: 'done', stopReason: 'end_turn' },
+    ]);
+  });
+
+  it('兼容恢复与其他重试共享最多三次总预算', async () => {
+    let calls = 0;
+    const adapter: LlmAdapter = {
+      async *stream(request) {
+        calls++;
+        if (request.temperature !== undefined) {
+          throw Object.assign(new Error('unsupported temperature'), { status: 400 });
+        }
+        if (request.thinking !== undefined) {
+          throw Object.assign(new Error('unsupported thinking parameter'), { status: 400 });
+        }
+        throw Object.assign(new Error('unsupported tool_choice parameter'), { status: 400 });
+      },
+    };
+    const router = new LlmRouter([DS_CONFIG], new Map([['ds-001', adapter]]));
+
+    await expect(collect(router.stream({
+      providerId: 'ds-001',
+      model: 'm',
+      messages: [],
+      temperature: 0.2,
+      thinking: { enabled: 'auto' },
+      toolChoice: 'auto',
+    }))).rejects.toThrow('unsupported tool_choice');
+    expect(calls).toBe(3);
+  });
+
+  it('首个 Provider chunk 产生后不执行参数兼容恢复', async () => {
+    let calls = 0;
+    const adapter: LlmAdapter = {
+      async *stream() {
+        calls++;
+        yield { type: 'text_delta', blockIndex: 0, delta: 'partial' };
+        throw Object.assign(new Error('unsupported parameter: temperature'), { status: 400 });
+      },
+    };
+    const router = new LlmRouter([DS_CONFIG], new Map([['ds-001', adapter]]));
+
+    await expect(collect(router.stream({
+      providerId: 'ds-001', model: 'm', messages: [], temperature: 0.2,
+    }))).rejects.toThrow('unsupported parameter: temperature');
+    expect(calls).toBe(1);
+  });
+
+  it('Agent 工具结果重新组装后，最终门禁阻止嵌套图片进入纯文本模型', () => {
+    const catalog = new ModelsDevCatalog();
+    catalog.loadFromJson({
+      providerA: {
+        models: {
+          textOnly: { modalities: { input: ['text'], output: ['text'] } },
+        },
+      },
+    });
+    const adapter = new MockAdapter();
+    const router = new LlmRouter([
+      { ...DS_CONFIG, modelsDevId: 'providerA' },
+    ], new Map([['ds-001', adapter]]), catalog);
+
+    expect(() => router.stream({
+      providerId: 'ds-001',
+      model: 'textOnly',
+      messages: [{
+        role: 'user',
+        content: [{
+          type: 'tool_result',
+          toolUseId: 'call-1',
+          content: [{ type: 'image_data', data: 'base64', mimeType: 'image/png' }],
+        }],
+      }],
+    })).toThrow(LlmModelCapabilityError);
+    expect(adapter.calls).toHaveLength(0);
   });
 });
 

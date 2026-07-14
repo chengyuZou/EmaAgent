@@ -35,6 +35,7 @@ export function buildLlmProviderConfig(row: ProviderConfigRow): ProviderConfig |
     apiKey:       row.api_key_plain ?? '',
     baseUrl:      row.base_url ?? resolveBaseUrl(def, protocol),
     defaultModel: typeof extra['defaultModel'] === 'string' ? extra['defaultModel'] : undefined,
+    modelsDevId:  def.modelsDevId,
   };
 }
 

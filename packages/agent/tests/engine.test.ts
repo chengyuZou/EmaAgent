@@ -6,6 +6,14 @@ import { LlmToolArgumentsParseError } from '@ema-agent/llm';
 import { AgentEngine } from '../src/engine.js';
 import type { AgentDeps } from '../src/types.js';
 
+const compatibilityMethods = {
+  assertCurrentContentCompatible: () => undefined,
+  prepareHistoricalMessages: (_providerId: string, _model: string, messages: unknown[]) => ({
+    messages,
+    actions: [],
+  }),
+};
+
 const sessionId = 'session-agent-failure' as SessionId;
 const turnId = 'turn-agent-failure' as TurnId;
 
@@ -55,6 +63,7 @@ describe('AgentEngine 生命周期', () => {
       abortTurn: () => undefined,
     };
     const llm = {
+      ...compatibilityMethods,
       stream: async function* () {
         yield { type: 'thinking_delta', blockIndex: 0, delta: 'reason' };
         yield { type: 'text_delta', blockIndex: 1, delta: 'answer' };
@@ -166,6 +175,7 @@ describe('AgentEngine 生命周期', () => {
       abortTurn: () => undefined,
     };
     const llm = {
+      ...compatibilityMethods,
       stream: async function* () {
         throw new Error('provider unavailable');
       },
@@ -260,6 +270,7 @@ describe('AgentEngine 生命周期', () => {
       abortTurn: () => { order.push('abortTurn'); },
     };
     const llm = {
+      ...compatibilityMethods,
       stream: async function* () {
         controller.abort();
         throw controller.signal.reason;
@@ -344,6 +355,7 @@ describe('AgentEngine 生命周期', () => {
       abortTurn: () => undefined,
     };
     const llm = {
+      ...compatibilityMethods,
       stream: async function* () {
         throw new LlmToolArgumentsParseError(
           'provider-1',

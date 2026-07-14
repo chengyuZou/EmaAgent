@@ -124,6 +124,14 @@ export interface MemoryRecallLayerReport {
   skippedReason?: string;
 }
 
+/** 请求在调用 Provider 前执行的可观测兼容降级。 */
+export interface RequestDegradationNotice {
+  attempt: number;
+  reason: string;
+  removed: Array<'image' | 'audio' | 'file' | 'parameter'>;
+  replacements: Array<'description' | 'placeholder' | 'parameter_omitted'>;
+}
+
 // ── EmaStreamEvent union ──────────────────────────────────────────────────────
 
 export type EmaStreamEvent =
@@ -133,6 +141,11 @@ export type EmaStreamEvent =
   | { type: 'turn_completed'; sessionId: SessionId; turnId: TurnId; stats: TurnStats }
   | { type: 'turn_failed';    sessionId: SessionId; turnId: TurnId; code: ErrorCode; message: string }
   | { type: 'turn_aborted';   sessionId: SessionId; turnId: TurnId; reason: string }
+  | {
+      type: 'request_degraded';
+      sessionId: SessionId;
+      turnId: TurnId;
+    } & RequestDegradationNotice
 
   // Text streaming — blockIndex tracks position within the assistant's block array
   | { type: 'output_text_delta';    sessionId: SessionId; blockIndex: number; delta: string }

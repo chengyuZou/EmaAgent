@@ -9,6 +9,7 @@ export { CircuitBreaker, LlmStreamRuntime } from './stream-runtime.js';
 export type {
   CircuitBreakerOptions,
   CircuitPermit,
+  LlmCompatibilityRecovery,
   LlmStreamRuntimeOptions,
 } from './stream-runtime.js';
 
@@ -23,7 +24,32 @@ export {
   LlmProviderResponseError,
   LlmStreamProtocolError,
   LlmToolArgumentsParseError,
+  LlmModelCapabilityError,
 } from './errors.js';
+export type { LlmCapabilityIssue } from './errors.js';
+export {
+  capabilitiesFromCatalog,
+  capabilitiesFromManualVision,
+  unknownModelCapabilities,
+} from './model-capabilities.js';
+export type {
+  ModelCapabilitySnapshot,
+  ModelCapabilitySource,
+  ModelCapabilityState,
+} from './model-capabilities.js';
+export {
+  prepareHistoricalMessageView,
+  validateCurrentContent,
+  validateMessageCapabilities,
+} from './message-compatibility.js';
+export { createCompatibilityRecovery } from './compatibility-recovery.js';
+export type { CompatibilityRecoveryController } from './compatibility-recovery.js';
+export type {
+  CompatibleMessageView,
+  InputModality,
+  MessageCompatibilityAction,
+  MessageCompatibilityIssue,
+} from './message-compatibility.js';
 export type {
   LlmProtocol,
   LlmUsage,

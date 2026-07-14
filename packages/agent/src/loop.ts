@@ -28,6 +28,13 @@ export type AgentLoopEvent =
   | { type: 'loop_thinking_delta';delta: string; blockIndex: number }
   | { type: 'loop_tool_partial';  callId: string; name: string; argsDelta: string; blockIndex: number }
   | { type: 'loop_tool_complete'; callId: string; name: string; args: unknown; blockIndex: number }
+  | {
+      type: 'loop_request_degraded';
+      attempt: number;
+      reason: string;
+      removed: Array<'image' | 'audio' | 'file' | 'parameter'>;
+      replacements: Array<'description' | 'placeholder' | 'parameter_omitted'>;
+    }
   | { type: 'loop_relay';         ev: EmaStreamEvent }
   | {
       type: 'loop_llm_complete';
@@ -234,6 +241,15 @@ export async function* agentLoop(input: AgentLoopInput): AsyncIterable<AgentLoop
           }
 
           switch (chunk.type) {
+            case 'request_degraded':
+              yield {
+                type: 'loop_request_degraded',
+                attempt: chunk.attempt,
+                reason: chunk.reason,
+                removed: chunk.removed,
+                replacements: chunk.replacements,
+              };
+              break;
             case 'text_delta':
               textByIndex.set(chunk.blockIndex, (textByIndex.get(chunk.blockIndex) ?? '') + chunk.delta);
               yield { type: 'loop_text_delta', delta: chunk.delta, blockIndex: chunk.blockIndex };

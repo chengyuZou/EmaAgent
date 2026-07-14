@@ -132,9 +132,33 @@ async function* runTurn(
 
     yield { type: 'turn_started', sessionId, turnId, mode: 'agent' };
 
+    for (const degradation of input.requestDegradations ?? []) {
+      yield { type: 'request_degraded', sessionId, turnId, ...degradation };
+    }
+
     // ── Build initial message history ─────────────────────────────────────────
-    activePhase = 'persistence';
+    activePhase = 'provider';
     const history = session.loadHistory(sessionId);
+    if (Array.isArray(userInput)) {
+      llm.assertCurrentContentCompatible(providerId, model, userInput);
+    }
+    const historyView = llm.prepareHistoricalMessages(
+      providerId,
+      model,
+      historyToLlmMessages(history),
+    );
+    if (historyView.actions.length > 0) {
+      yield {
+        type: 'request_degraded',
+        sessionId,
+        turnId,
+        attempt: 1,
+        reason: '历史消息包含当前模型不支持或能力未知的媒体，已创建只读兼容视图',
+        removed: [...new Set(historyView.actions.map((action) => action.modality))],
+        replacements: ['placeholder'],
+      };
+    }
+    activePhase = 'persistence';
     session.appendMessage({
       turnId, sessionId, role: 'user',
       blocks: userInput as MessageBlocks,
@@ -143,7 +167,7 @@ async function* runTurn(
     // messages is declared here so the spawner and executor factory can both
     // close over the same reference. The loop appends to this array each round.
     const messages: LlmMessage[] = [
-      ...historyToLlmMessages(history),
+      ...historyView.messages,
       { role: 'user', content: userInput as string | UserBlock[] },
     ];
 
@@ -251,12 +275,15 @@ async function* runTurn(
         if (result.kind === 'abort') {
           return { kind: 'abort', reason: result.reason };
         }
+        // 初始 Session 历史已建立兼容副本。Hook/Tool 新增内容来源不明确，
+        // 不允许猜成历史后静默替换；Router 负责最终 fail-closed 门禁。
+        const finalMessages = result.payload.messages;
         subagentContextMessages.splice(
           0,
           subagentContextMessages.length,
-          ...result.payload.messages,
+          ...finalMessages,
         );
-        return { kind: 'continue', messages: result.payload.messages };
+        return { kind: 'continue', messages: finalMessages };
       },
       thinking:        input.thinking,
     })) {
@@ -340,6 +367,18 @@ async function* runTurn(
           while (pendingHookEvents.length > 0) yield pendingHookEvents.shift()!;
           break;
         }
+
+        case 'loop_request_degraded':
+          yield {
+            type: 'request_degraded',
+            sessionId,
+            turnId,
+            attempt: ev.attempt,
+            reason: ev.reason,
+            removed: ev.removed,
+            replacements: ev.replacements,
+          };
+          break;
 
         case 'loop_hook_abort':
           await reportFailure('turn/hook_aborted', ev.reason, 'hook');
