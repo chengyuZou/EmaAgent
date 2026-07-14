@@ -1,6 +1,5 @@
 import type { HookBus } from '@ema-agent/hook';
 import type { CharacterCardStore } from '@ema-agent/character-card';
-import type { TurnMode } from '@ema-agent/contracts';
 import { buildSystemPrompt } from './build.js';
 
 // ── Hook deps ────────────────────────────────────────────────────────────────
@@ -31,8 +30,8 @@ export function registerPromptsHooks(
     'beforeLlm',
     async (ctx) => {
       const card    = deps.card.current();
-      const mode    = (ctx.meta['mode'] as TurnMode | undefined) ?? 'chat';
-      const workspaceRoot = ctx.meta['workspaceRoot'] as string | null | undefined;
+      const mode = ctx.payload.mode;
+      const workspaceRoot = ctx.payload.workspaceRoot;
 
       const systemPrompt = buildSystemPrompt(card, mode, { workspaceRoot });
 
@@ -47,6 +46,7 @@ export function registerPromptsHooks(
       return {
         kind: 'replace',
         payload: {
+          ...ctx.payload,
           systemPrompt,
           messages: next,
         },

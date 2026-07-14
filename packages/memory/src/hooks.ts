@@ -1,7 +1,5 @@
 import type { HookBus } from '@ema-agent/hook';
-import type {
-  TurnMode, SessionId, TurnId,
-} from '@ema-agent/contracts';
+import type { SessionId, TurnId } from '@ema-agent/contracts';
 import type { LlmRouter } from '@ema-agent/llm';
 import type { SessionStore } from '@ema-agent/session';
 import type { MemoryPlanner } from './planner.js';
@@ -24,7 +22,7 @@ export interface MemoryHooksDeps {
   planner:       MemoryPlanner;
   session:       SessionStore;
   llm:           LlmRouter;
-  /** Fallback when the engine doesn't pass model in meta. Defaults to 128K. */
+  /** 模型目录没有记录时使用的上下文窗口，默认 128K。 */
   defaultContextWindow?: number;
   /**
    * Look up the context window for a model name.
@@ -58,13 +56,8 @@ export function registerMemoryHooks(
   const offBeforeLlm = bus.register(
     'beforeLlm',
     async (ctx) => {
-      const mode       = (ctx.meta['mode']       as TurnMode | undefined) ?? 'chat';
-      const userInput  = (ctx.meta['userInput']  as string   | undefined) ?? '';
-      const signal     = ctx.meta['signal']      as AbortSignal | undefined;
-      // Engine sets model + providerId in meta so context window + compaction
-      // are always per-turn accurate.
-      const model      = ctx.meta['model']      as string | undefined;
-      const providerId = ctx.meta['providerId'] as string | undefined;
+      const { mode, userInput, model, providerId } = ctx.payload;
+      const signal = ctx.signal;
 
       const window = resolveContextWindow(deps, providerId, model);
       const recent = deps.recentFiles?.(ctx.sessionId);
@@ -87,8 +80,8 @@ export function registerMemoryHooks(
       return {
         kind: 'replace',
         payload: {
-          systemPrompt: ctx.payload.systemPrompt,
-          messages:     result.messages,
+          ...ctx.payload,
+          messages: result.messages,
         },
       };
     },

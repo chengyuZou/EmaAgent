@@ -1,13 +1,28 @@
 ﻿import { describe, it, expect, vi } from 'vitest';
 import { HookBus } from './bus.js';
 import { PRIORITY } from './priority.js';
+import type { HookPayload } from './events.js';
 import type { TurnId, SessionId } from '@ema-agent/contracts';
 
 const turnId = 'turn-1' as TurnId;
 const sessionId = 'session-1' as SessionId;
 
-function baseCtx(meta: Record<string, unknown> = {}) {
-  return { turnId, sessionId, meta };
+function baseCtx(signal?: AbortSignal) {
+  return { turnId, sessionId, ...(signal ? { signal } : {}) };
+}
+
+function beforeLlmPayload(
+  overrides: Partial<HookPayload['beforeLlm']> = {},
+): HookPayload['beforeLlm'] {
+  return {
+    systemPrompt: 'base',
+    messages: [],
+    mode: 'chat',
+    userInput: 'hello',
+    providerId: 'provider-1',
+    model: 'model-1',
+    ...overrides,
+  };
 }
 
 function sleep(ms: number): Promise<void> {
@@ -189,9 +204,10 @@ describe('HookBus', () => {
 
     bus.register(
       'beforeLlm',
-      async () => ({
+      async (ctx) => ({
         kind: 'replace',
         payload: {
+          ...ctx.payload,
           systemPrompt: 'new-system',
           messages: [],
         },
@@ -206,19 +222,13 @@ describe('HookBus', () => {
 
     const result = await bus.trigger('beforeLlm', {
       ...baseCtx(),
-      payload: {
-        systemPrompt: 'old-system',
-        messages: [],
-      },
+      payload: beforeLlmPayload({ systemPrompt: 'old-system' }),
     });
 
     expect(seen).toBe('new-system');
     expect(result).toEqual({
       kind: 'continue',
-      payload: {
-        systemPrompt: 'new-system',
-        messages: [],
-      },
+      payload: beforeLlmPayload({ systemPrompt: 'new-system' }),
       warnings: [],
     });
   });
@@ -252,52 +262,32 @@ describe('HookBus', () => {
 
     const result = await bus.trigger('beforeLlm', {
       ...baseCtx(),
-      payload: {
-        systemPrompt: 'base',
-        messages: [],
-      },
+      payload: beforeLlmPayload(),
     });
 
     expect(result).toEqual({
       kind: 'continue',
-      payload: {
-        systemPrompt: 'base + memory + persona',
-        messages: [],
-      },
+      payload: beforeLlmPayload({ systemPrompt: 'base + memory + persona' }),
       warnings: [],
     });
   });
 
-  it('keeps meta shared across handlers in the same trigger call', async () => {
+  it('provides each handler with a first-class AbortSignal', async () => {
     const bus = new HookBus();
-    const meta: Record<string, unknown> = {};
-    let seen: unknown;
+    let seen: AbortSignal | undefined;
 
-    bus.register(
-      'onTurnStart',
-      async (ctx) => {
-        ctx.meta.started = true;
-        return { kind: 'continue' };
-      },
-      { priority: 10 },
-    );
-
-    bus.register(
-      'onTurnStart',
-      async (ctx) => {
-        seen = ctx.meta.started;
-        return { kind: 'continue' };
-      },
-      { priority: 20 },
-    );
+    bus.register('onTurnStart', async (ctx) => {
+      seen = ctx.signal;
+      return { kind: 'continue' };
+    });
 
     await bus.trigger('onTurnStart', {
-      ...baseCtx(meta),
+      ...baseCtx(),
       payload: { mode: 'chat' },
     });
 
-    expect(seen).toBe(true);
-    expect(meta.started).toBe(true);
+    expect(seen).toBeInstanceOf(AbortSignal);
+    expect(seen?.aborted).toBe(false);
   });
 
   it('ignores parallel option when event does not support parallel execution', async () => {
@@ -332,10 +322,7 @@ describe('HookBus', () => {
 
     await bus.trigger('beforeLlm', {
       ...baseCtx(),
-      payload: {
-        systemPrompt: 'base',
-        messages: [],
-      },
+      payload: beforeLlmPayload(),
     });
 
     expect(order).toEqual(['A', 'B']);
@@ -640,13 +627,13 @@ describe('HookBus', () => {
 
     const result = await bus.trigger('beforeLlm', {
       ...baseCtx(),
-      payload: { systemPrompt: 'done', messages: [] },
+      payload: beforeLlmPayload({ systemPrompt: 'done' }),
     });
 
     expect(result).toEqual({
       kind: 'abort',
       reason: 'parallel boom',
-      payload: { systemPrompt: 'done', messages: [] },
+      payload: beforeLlmPayload({ systemPrompt: 'done' }),
       warnings: [],
     });
   });
@@ -737,15 +724,92 @@ describe('HookBus', () => {
 
     const result = await bus.trigger('beforeLlm', {
       ...baseCtx(),
-      payload: { systemPrompt: 'original', messages: [] },
+      payload: beforeLlmPayload({ systemPrompt: 'original' }),
     });
 
     expect(seen).toBe('original');
     expect(result).toEqual({
       kind: 'continue',
-      payload: { systemPrompt: 'original-serial', messages: [] },
+      payload: beforeLlmPayload({ systemPrompt: 'original-serial' }),
       warnings: [],
     });
+  });
+
+  it('aborts a timed-out critical handler and propagates cancellation to it', async () => {
+    const traces: Array<{ failureKind?: string }> = [];
+    const bus = new HookBus({
+      handlerTimeoutMs: 10,
+      traceSink: (entry) => traces.push(entry),
+    });
+    let handlerSawAbort = false;
+
+    bus.register('onTurnStart', async (ctx) => {
+      await new Promise<void>((resolve) => {
+        ctx.signal.addEventListener('abort', () => {
+          handlerSawAbort = true;
+          resolve();
+        }, { once: true });
+      });
+      return { kind: 'continue' };
+    }, { name: 'slow-critical' });
+
+    const result = await bus.trigger('onTurnStart', {
+      ...baseCtx(),
+      payload: { mode: 'chat' },
+    });
+
+    expect(result.kind).toBe('abort');
+    expect(result.kind === 'abort' ? result.reason : '').toContain('timed out after 10ms');
+    expect(handlerSawAbort).toBe(true);
+    expect(traces).toEqual([expect.objectContaining({ failureKind: 'timeout' })]);
+  });
+
+  it('stops the chain when the parent task is cancelled', async () => {
+    const bus = new HookBus({ handlerTimeoutMs: 0 });
+    const parent = new AbortController();
+    const reached = vi.fn();
+
+    bus.register('onTurnStart', async (ctx) => {
+      await new Promise<void>((resolve) => {
+        ctx.signal.addEventListener('abort', () => resolve(), { once: true });
+      });
+      return { kind: 'continue' };
+    }, { name: 'active-handler', priority: 10 });
+    bus.register('onTurnStart', async () => {
+      reached();
+      return { kind: 'continue' };
+    }, { priority: 20 });
+
+    setTimeout(() => parent.abort(new Error('stop')), 5);
+    const result = await bus.trigger('onTurnStart', {
+      ...baseCtx(parent.signal),
+      payload: { mode: 'chat' },
+    });
+
+    expect(result).toEqual({
+      kind: 'abort',
+      reason: 'Hook execution cancelled by parent task: stop',
+      payload: { mode: 'chat' },
+      warnings: [],
+    });
+    expect(reached).not.toHaveBeenCalled();
+  });
+
+  it('clears a pending timeout after a successful handler', async () => {
+    vi.useFakeTimers();
+    try {
+      const bus = new HookBus({ handlerTimeoutMs: 30_000 });
+      bus.register('onTurnStart', async () => ({ kind: 'continue' }));
+
+      await bus.trigger('onTurnStart', {
+        ...baseCtx(),
+        payload: { mode: 'chat' },
+      });
+
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('list returns registered hook metadata in priority order', () => {
@@ -787,11 +851,22 @@ describe('HookBus', () => {
 
   it('throws when maxConcurrency is invalid', () => {
     expect(() => new HookBus({ maxConcurrency: 0 })).toThrow(
-      'maxConcurrency must be greater than 0, got 0',
+      'maxConcurrency must be a positive safe integer, got 0',
     );
 
     expect(() => new HookBus({ maxConcurrency: -1 })).toThrow(
-      'maxConcurrency must be greater than 0, got -1',
+      'maxConcurrency must be a positive safe integer, got -1',
     );
+  });
+
+  it('rejects invalid timeout configuration', () => {
+    expect(() => new HookBus({ handlerTimeoutMs: -1 })).toThrow(
+      'handlerTimeoutMs must be an integer between 0',
+    );
+
+    const bus = new HookBus();
+    expect(() => bus.register('onTurnStart', async () => ({ kind: 'continue' }), {
+      timeoutMs: Number.NaN,
+    })).toThrow('HookOptions.timeoutMs must be an integer between 0');
   });
 });

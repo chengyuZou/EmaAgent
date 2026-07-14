@@ -23,7 +23,7 @@ function isContextWindowError(err: unknown): boolean {
   );
 }
 
-// ── Types (narrowed from openai SDK namespace) ────────────────────────────────
+// ── 类型(从 openai SDK 命名空间收窄) ────────────────────────────────────────
 
 type ResponseInput     = OpenAI.Responses.ResponseInput;
 type ResponseInputItem = OpenAI.Responses.ResponseInputItem;
@@ -32,11 +32,11 @@ type ToolChoiceOptions = OpenAI.Responses.ToolChoiceOptions;
 type ToolChoiceFunction= OpenAI.Responses.ToolChoiceFunction;
 type ResponseStreamEvent = OpenAI.Responses.ResponseStreamEvent;
 
-// ── Message conversion ────────────────────────────────────────────────────────
+// ── 消息转换 ────────────────────────────────────────────────────────────────
 
 /**
- * Map a single MessageContentPart to a Responses API input content item.
- * Returns null for unsupported types (audio).
+ * 把单个 MessageContentPart 映射成 Responses API input content item。
+ * 不支持的类型(audio)返回 null。
  */
 function mediaPartToResponsesContent(
   part: MessageContentPart,
@@ -59,28 +59,28 @@ function mediaPartToResponsesContent(
         filename:  part.filename,
       };
     case 'file_url':
-      // Treat as an OpenAI Files API file_id if it matches the pattern,
-      // otherwise pass as file_data URL.
+      // 若匹配模式则当作 OpenAI Files API file_id,
+      // 否则作为 file_data URL 传。
       return {
         type:    'input_file',
         file_id: part.url,
       };
     case 'audio_data':
-      // Responses API does not support audio input in regular messages.
-      // Caller should use validateContentParts() to screen this out first.
+      // Responses API 普通消息不支持音频输入。
+      // 调用方应先用 validateContentParts() 过滤。
       return null;
   }
 }
 
 /**
- * Convert our normalized LlmMessage[] to the Responses API input format.
+ * 把归一化 LlmMessage[] 转成 Responses API input 格式。
  *
- * Key differences from Chat Completions:
- * 1. `system` message → `instructions` string param (multiple merged with \n\n).
- * 2. `assistant` tool_use blocks → separate `function_call` items in the input array.
- * 3. `user` tool_result blocks → separate `function_call_output` items.
- * 4. Thinking blocks in assistant history are silently dropped — the model will
- *    re-generate reasoning if needed. (No round-trip needed unlike Anthropic.)
+ * 与 Chat Completions 的关键差异:
+ * 1. `system` 消息 -> `instructions` 字符串参数(多条用 \n\n 合并)。
+ * 2. `assistant` tool_use block -> input 数组里单独的 `function_call` item。
+ * 3. `user` tool_result block -> 单独的 `function_call_output` item。
+ * 4. assistant 历史里的 thinking block 静默丢弃 - 模型会在需要时重新生成推理。
+ *    (与 Anthropic 不同,无需往返。)
  */
 function toResponsesInput(
   msgs: LlmMessage[],
@@ -110,9 +110,9 @@ function toResponsesInput(
       for (const block of msg.content as UserBlock[]) {
         if (block.type === 'tool_result') {
           const tb = block as ToolResultBlock;
-          // Tool results are top-level items in the Responses API input.
-          // They must precede the next user message when mixed together.
-          // Flush any buffered content parts first so ordering is preserved.
+          // tool 结果在 Responses API input 里是顶层 item。
+          // 与其他内容混在一起时,必须先于下一条 user 消息。
+          // 先 flush 已缓冲的 content part,以保留顺序。
           if (contentParts.length > 0) {
             input.push({ role: 'user', content: [...contentParts] });
             contentParts.length = 0;
@@ -154,7 +154,7 @@ function toResponsesInput(
           arguments: JSON.stringify(block.args),
         });
       }
-      // thinking blocks: silently skip — no round-trip in Responses API
+      // thinking block:静默跳过 - Responses API 无往返
     }
 
     if (assistantText) {
@@ -168,7 +168,7 @@ function toResponsesInput(
   return { instructions, input };
 }
 
-// ── Tool conversion ───────────────────────────────────────────────────────────
+// ── 工具转换 ───────────────────────────────────────────────────────────────────
 
 function toResponsesTool(tool: LlmToolDef): FunctionTool {
   return {
@@ -192,17 +192,17 @@ function toResponsesToolChoice(
 // ── Adapter ───────────────────────────────────────────────────────────────────
 
 /**
- * OpenAI Responses API adapter (/v1/responses).
+ * OpenAI Responses API adapter(/v1/responses)。
  *
- * Advantages over Chat Completions (`openai-llm`):
- * - `response.function_call_arguments.done` provides a reliable per-tool end
- *   event, enabling early tool_use_complete without waiting for finish_reason.
- * - o-series reasoning is exposed via `response.reasoning_summary_text.delta`.
- * - Parallel tool calls are natively supported without delta interleaving issues.
+ * 相对 Chat Completions(`openai-llm`)的优势:
+ * - `response.function_call_arguments.done` 提供可靠的 per-tool 结束事件,
+ *   无需等 finish_reason 即可早发 tool_use_complete。
+ * - o-series 推理通过 `response.reasoning_summary_text.delta` 暴露。
+ * - 原生支持并行 tool call,无 delta 交错问题。
  *
- * Use this protocol (`openai-responses-llm`) for OpenAI native models.
- * Use `openai-llm` (Chat Completions) for any OpenAI-compatible third-party
- * provider (DeepSeek, SiliconFlow, Ollama, LM Studio, etc.).
+ * OpenAI 原生模型用此协议(`openai-responses-llm`)。
+ * 任意 OpenAI 兼容第三方 provider(DeepSeek、SiliconFlow、Ollama、LM Studio 等)
+ * 用 `openai-llm`(Chat Completions)。
  */
 export class OpenAiResponsesAdapter implements LlmAdapter {
   private readonly client: OpenAI;
@@ -247,20 +247,20 @@ export class OpenAiResponsesAdapter implements LlmAdapter {
       throw err;
     }
 
-    // Track state across events.
+    // 跨事件跟踪状态。
     let stopReason: StopReason = 'end_turn';
     let hasReasoning           = false;
     let toolBlockCount         = 0;
 
-    // output_index → { name, blockIndex } — populated on output_item.added,
-    // consumed when arguments.delta / arguments.done arrive (they carry output_index).
+    // output_index -> { name, blockIndex } - 在 output_item.added 时填,
+    // 在 arguments.delta / arguments.done 到达时消费(它们带 output_index)。
     const toolMeta = new Map<number, { name: string; callId: string; blockIndex: number }>();
 
     try {
       for await (const event of responseStream) {
         switch (event.type) {
 
-          // ── Reasoning summary (o-series) ─────────────────────────────────
+          // ── 推理摘要(o-series) ─────────────────────────────────
           case 'response.reasoning_summary_text.delta': {
             hasReasoning = true;
             yield { type: 'thinking_delta', blockIndex: 0, delta: event.delta };
@@ -269,7 +269,7 @@ export class OpenAiResponsesAdapter implements LlmAdapter {
 
           // ── Text ──────────────────────────────────────────────────────────
           case 'response.output_text.delta': {
-            // blockIndex 0 when no reasoning; 1 when reasoning preceded text.
+            // 无推理时 blockIndex 0;推理先于 text 时 blockIndex 1。
             yield {
               type:       'text_delta',
               blockIndex: hasReasoning ? 1 : 0,
@@ -278,13 +278,13 @@ export class OpenAiResponsesAdapter implements LlmAdapter {
             break;
           }
 
-          // ── Function call started — capture name + assign blockIndex ──────
+          // ── Function call 开始 - 捕获 name + 分配 blockIndex ──────
           case 'response.output_item.added': {
             const item = event.item;
             if (item.type === 'function_call') {
               const blockIndex = 1000 + toolBlockCount++;
-              // `call_id` is the stable ID that ties arguments.delta/done to this call.
-              // `id` is the internal item ID. Use `call_id` as our `callId`.
+              // `call_id` 是把 arguments.delta/done 绑到本 call 的稳定 ID。
+              // `id` 是内部 item ID。用 `call_id` 作为我们的 `callId`。
               toolMeta.set(event.output_index, {
                 name:       item.name,
                 callId:     item.call_id,
@@ -309,12 +309,12 @@ export class OpenAiResponsesAdapter implements LlmAdapter {
             break;
           }
 
-          // ── Function call args complete — EARLY tool_use_complete ─────────
+          // ── Function call args 完成 - 早发 tool_use_complete ─────────
           case 'response.function_call_arguments.done': {
             const meta = toolMeta.get(event.output_index);
             if (meta) {
               let args: unknown = {};
-              try { args = JSON.parse(event.arguments); } catch { /* keep {} */ }
+              try { args = JSON.parse(event.arguments); } catch { /* 保持 {} */ }
               yield {
                 type:       'tool_use_complete',
                 blockIndex: meta.blockIndex,
@@ -328,7 +328,7 @@ export class OpenAiResponsesAdapter implements LlmAdapter {
             break;
           }
 
-          // ── Response completed — usage ─────────────────────────────────────
+          // ── Response 完成 - usage ─────────────────────────────────────
           case 'response.completed': {
             const usage = event.response.usage;
             if (usage) {
@@ -338,7 +338,7 @@ export class OpenAiResponsesAdapter implements LlmAdapter {
                 outputTokens: usage.output_tokens,
               };
             }
-            // Map incomplete_details to stop reason if not already tool_use.
+            // 若尚未是 tool_use,把 incomplete_details 映射到 stop reason。
             if (stopReason === 'end_turn') {
               const reason = event.response.incomplete_details?.reason;
               if (reason === 'max_output_tokens') stopReason = 'max_tokens';
@@ -347,10 +347,10 @@ export class OpenAiResponsesAdapter implements LlmAdapter {
             break;
           }
 
-          // ── Error event ───────────────────────────────────────────────────
+          // ── 错误事件 ───────────────────────────────────────────────────
           case 'response.failed':
           case 'response.incomplete': {
-            // Surface as stop_sequence so the engine knows this wasn't a clean end.
+            // 作为 stop_sequence 上报,让 engine 知道这不是干净结束。
             if (stopReason === 'end_turn') stopReason = 'stop_sequence';
             break;
           }

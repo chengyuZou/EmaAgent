@@ -151,14 +151,14 @@ ConversationEngine.run(input)
 
 | 事件 | 名称 | 优先级 | 生效条件 |
 |---|---|---|---|
-| `beforeLlm` | `narrative:recall` | 5 | `ctx.meta['mode'] === 'narrative'` |
+| `beforeLlm` | `narrative:recall` | 5 | `ctx.payload.mode === 'narrative'` |
 
 ### 执行流程
 
 ```
 narrative:recall (beforeLlm, priority 5)
   │
-  ├─ ctx.meta['mode'] !== 'narrative' → return continue（跳过）
+  ├─ ctx.payload.mode !== 'narrative' → return continue（跳过）
   │
   ├─ await narrative.route(userInput)
   │     ctx.emit({ narrative_route_resolved, timelines })

@@ -6,12 +6,12 @@ import type {
   LlmProtocol,
 } from '@ema-agent/contracts';
 
-// Re-export so callers only need one import
+// 重新导出,调用方只需一次 import
 export type { LlmProtocol }                                                     from '@ema-agent/contracts';
 export type { AssistantBlock, UserBlock, MessageContentPart as LlmContentPart } from '@ema-agent/contracts';
 export type { LlmMessage }                                                       from '@ema-agent/contracts';
 
-// ── Provider config ───────────────────────────────────────────────────────────
+// ── Provider 配置 ───────────────────────────────────────────────────────────
 
 export interface ProviderConfig {
   id:           string;
@@ -21,7 +21,7 @@ export interface ProviderConfig {
   defaultModel?: string;
 }
 
-// ── Tool definitions ──────────────────────────────────────────────────────────
+// ── 工具定义 ──────────────────────────────────────────────────────────
 
 export interface LlmToolDef {
   name: string;
@@ -29,15 +29,15 @@ export interface LlmToolDef {
   parameters: Record<string, unknown>;
 }
 
-// ── Thinking control ─────────────────────────────────────────────────────────
+// ── thinking 控制 ─────────────────────────────────────────────────────
 
 export type ThinkingEffort = 'high' | 'max';
 
 export type ThinkingMode =
   | {
       /**
-       * Leave the provider/model default intact. `effort` may still be sent when
-       * a provider supports effort control without an explicit on/off flag.
+       * 保留 provider/model 默认行为。当 provider 支持不带显式开关的 effort 控制时,
+       * 仍可能发送 `effort`。
        */
       enabled: 'auto';
       effort?: ThinkingEffort;
@@ -45,20 +45,20 @@ export type ThinkingMode =
       includeThoughts?: boolean;
     }
   | {
-      /** Force provider-side thinking on for this request. */
+      /** 本次请求强制开启 provider 侧 thinking。 */
       enabled: true;
       effort?: ThinkingEffort;
       budgetTokens?: number;
       includeThoughts?: boolean;
     }
   | {
-      /** Force provider-side thinking off for this request when supported. */
+      /** 支持时,本次请求强制关闭 provider 侧 thinking。 */
       enabled: false;
     };
 
-// ── Normalized message format ─────────────────────────────────────────────────
-// LlmMessage is defined in @ema-agent/contracts and re-exported above.
-// Adapters translate FROM that format to provider wire protocol.
+// ── 归一化消息格式 ─────────────────────────────────────────────────
+// LlmMessage 定义在 @ema-agent/contracts,上方已重新导出。
+// adapter 把该格式翻译成 provider 线路协议。
 
 export interface LlmRequest {
   providerId: string;
@@ -67,32 +67,32 @@ export interface LlmRequest {
   tools?: LlmToolDef[];
   toolChoice?: 'auto' | 'none' | { name: string };
   thinking?: ThinkingMode;
-  /** Set by LlmRouter from ModelsDevCatalog. Adapters use this to pre-initialize
-   *  hasThinking so blockIndex stays stable even when reasoning_content arrives late. */
+  /** 由 LlmRouter 从 ModelsDevCatalog 设置。adapter 用它预初始化
+   *  hasThinking,这样即使 reasoning_content 迟到,blockIndex 也保持稳定。 */
   supportsReasoning?: boolean;
   maxTokens?: number;
   temperature?: number;
   signal?: AbortSignal;
 }
 
-// ── Stream output ─────────────────────────────────────────────────────────────
+// ── 流式输出 ─────────────────────────────────────────────────────
 
 export type StopReason = 'end_turn' | 'tool_use' | 'max_tokens' | 'stop_sequence';
 
 /**
- * Unified stream chunk emitted by every adapter.
+ * 每个 adapter 发出的统一流式 chunk。
  *
- * `blockIndex` appears on all content-bearing chunks and reflects the position
- * of the block within the assistant's content array. The engine uses it to:
- *   1. Reconstruct the correct interleaving order for storage.
- *   2. Detect when an OpenAI index jump signals a completed tool call.
+ * `blockIndex` 出现在所有承载内容的 chunk 上,反映该 block 在 assistant 内容数组中的位置。
+ * engine 用它来:
+ *   1. 重建正确的交错顺序以入库。
+ *   2. 检测 OpenAI 的 index 跳变是否表示一个 tool call 已完成。
  *
- * Sequence per stream:
+ * 单次流的序列:
  *   (text_delta | thinking_delta | tool_use_delta | tool_use_complete)*
- *   → usage → done
+ *   -> usage -> done
  *
- * A single stream may interleave text and tool blocks at different indices,
- * matching exactly how Claude delivers them.
+ * 单次流可在不同 index 处交错 text 与 tool block,
+ * 与 Claude 的投递方式完全一致。
  */
 export type LlmStreamChunk =
   | { type: 'text_delta';        blockIndex: number; delta: string }
@@ -103,12 +103,12 @@ export type LlmStreamChunk =
   | { type: 'usage';             inputTokens: number; outputTokens: number }
   | { type: 'done';              stopReason: StopReason };
 
-// ── Non-streaming output ──────────────────────────────────────────────────────
+// ── 非流式输出 ──────────────────────────────────────────────────────
 
 /**
- * Collected result of a complete() call.
- * `blocks` is the full AssistantBlock[] in original order — text, thinking, and
- * tool_use blocks interleaved exactly as the model produced them.
+ * complete() 调用收集到的结果。
+ * `blocks` 是完整 AssistantBlock[],保持原始顺序 - text、thinking 与
+ * tool_use block 按模型产出的顺序交错。
  */
 export interface LlmCompletion {
   blocks: AssistantBlock[];
@@ -116,7 +116,7 @@ export interface LlmCompletion {
   usage: { inputTokens: number; outputTokens: number };
 }
 
-// ── Probe result ──────────────────────────────────────────────────────────────
+// ── probe 结果 ──────────────────────────────────────────────────────
 
 export interface ProbeResult {
   ok:         boolean;
@@ -124,12 +124,11 @@ export interface ProbeResult {
   error?:     string;
 }
 
-// ── Well-known errors ─────────────────────────────────────────────────────────
+// ── 已知错误 ─────────────────────────────────────────────────────────
 
 /**
- * Thrown by adapters when the provider rejects the request because the prompt
- * exceeds the model's context window.  The agent loop catches this to trigger
- * a reactive compaction pass instead of failing the turn immediately.
+ * 当 provider 因 prompt 超出模型上下文窗口而拒绝请求时,由 adapter 抛出。
+ * agent loop 捕获它以触发响应式 compaction,而非立即让 turn 失败。
  */
 export class ContextWindowExceededError extends Error {
   constructor(message?: string) {

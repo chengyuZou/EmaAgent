@@ -19,7 +19,7 @@ import type {
 import type { LlmProtocol } from '@ema-agent/contracts';
 import type { ModelsDevCatalog } from './models-dev-catalog.js';
 
-// ── Internal factory ──────────────────────────────────────────────────────────
+// ── 内部工厂 ──────────────────────────────────────────────────────────
 
 function createAdapter(config: ProviderConfig): LlmAdapter {
   switch (config.protocol) {
@@ -36,29 +36,29 @@ function notConfigured(providerId: string): Error {
   return err;
 }
 
-// ── LlmRouter ─────────────────────────────────────────────────────────────────
+// ── LlmRouter ─────────────────────────────────────────────────────────
 
 /**
- * Single Facade for all LLM access.
+ * 所有 LLM 访问的单一 Facade。
  *
- * Keyed by ProviderConfig.id (the provider_configs UUID from the DB), NOT by
- * protocol — multiple providers can share the same protocol (e.g. DeepSeek +
- * SiliconFlow are both 'openai-llm') and each deserves its own adapter entry.
+ * 以 ProviderConfig.id(DB 里 provider_configs 的 UUID)为 key,而非 protocol -
+ * 多个 provider 可共享同一 protocol(如 DeepSeek + SiliconFlow 都是 'openai-llm'),
+ * 每个都该有独立的 adapter 条目。
  */
 export class LlmRouter {
-  /** id → adapter instance */
+  /** id -> adapter 实例 */
   private readonly adapters = new Map<string, LlmAdapter>();
-  /** id → config (kept for hot-reload and probe) */
+  /** id -> config(保留用于热重载和 probe) */
   private readonly configs  = new Map<string, ProviderConfig>();
-  /** id → circuit breaker (per-provider failure isolation) */
+  /** id -> 熔断器(per-provider 失败隔离) */
   private readonly breakers = new Map<string, CircuitBreaker>();
-  /** Test-only adapter replacements keyed by ProviderConfig.id. */
+  /** 仅测试用的 adapter 替换,以 ProviderConfig.id 为 key。 */
   private readonly adapterOverrides?: ReadonlyMap<string, LlmAdapter>;
 
   /**
-   * @param configs           Provider configurations.
-   * @param adapterOverrides  Pre-built adapters keyed by provider id. Ignored until
-   *                          a matching ProviderConfig is registered.
+   * @param configs           Provider 配置。
+   * @param adapterOverrides  预构建的 adapter,以 provider id 为 key。
+   *                          在匹配的 ProviderConfig 注册前被忽略。
    */
   constructor(
     configs: ProviderConfig[],
@@ -76,12 +76,12 @@ export class LlmRouter {
     return this.adapterOverrides?.get(config.id) ?? createAdapter(config);
   }
 
-  // ── Streaming ───────────────────────────────────────────────────────────────
+  // ── 流式 ───────────────────────────────────────────────
 
   /**
-   * Stream a completion from the specified provider instance.
-   * Throws CircuitOpenError when the provider's circuit breaker is open.
-   * Throws synchronously on unknown provider id.
+   * 从指定 provider 实例流式产出 completion。
+   * provider 熔断器 open 时抛 CircuitOpenError。
+   * 未知 provider id 时同步抛错。
    */
   stream(request: LlmRequest): AsyncIterable<LlmStreamChunk> {
     const enriched: LlmRequest = this.catalog ? {
@@ -96,17 +96,17 @@ export class LlmRouter {
     });
   }
 
-  // ── Non-streaming ────────────────────────────────────────────────────────────
+  // ── 非流式 ────────────────────────────────────────────────────
 
   /**
-   * Collect the full completion into a single object.
-   * Use for internal calls: compaction, emotion extraction, plan parsing.
+   * 把完整 completion 收集成单个对象。
+   * 用于内部调用:compaction、emotion 抽取、plan 解析。
    *
-   * No built-in retry — callers (compaction, extraction) own their retry
-   * policy. The circuit breaker on stream() protects against provider outages.
+   * 无内置重试 - 调用方(compaction、extraction)自管重试策略。
+   * stream() 上的熔断器防护 provider 故障。
    *
-   * Blocks are sorted by blockIndex so text/tool_use order is preserved even
-   * though thinking_delta and tool_use_complete may arrive interleaved.
+   * blocks 按 blockIndex 排序,这样即使 thinking_delta 与 tool_use_complete
+   * 交错到达,text/tool_use 顺序也得以保留。
    */
   async complete(request: LlmRequest): Promise<LlmCompletion> {
     let stopReason: StopReason = 'end_turn';
@@ -158,7 +158,7 @@ export class LlmRouter {
     return { blocks, stopReason, usage: { inputTokens, outputTokens } };
   }
 
-  // ── Circuit breaker ──────────────────────────────────────────────────────────
+  // ── 熔断器 ──────────────────────────────────────────────────
 
   private breakerFor(providerId: string): CircuitBreaker {
     let cb = this.breakers.get(providerId);
@@ -170,10 +170,10 @@ export class LlmRouter {
   }
 
   /**
-   * Wrap an adapter stream with circuit breaker gating.
-   * - guard() before the call → throws CircuitOpenError if open.
-   * - First successful chunk → breaker.success().
-   * - Error thrown before any chunk → breaker.failure().
+   * 用熔断器门禁包裹 adapter stream。
+   * - 调用前 guard() -> open 时抛 CircuitOpenError。
+   * - 首个成功 chunk -> breaker.success()。
+   * - 任何 chunk 之前抛错 -> breaker.failure()。
    */
   private async *guardedStream(
     breakerKey: string,
@@ -194,21 +194,21 @@ export class LlmRouter {
       }
     } catch (e) {
       if (!started) breaker.failure();
-      // Re-throw CircuitOpenError so the caller can distinguish "breaker open"
-      // from a real provider error. Don't count guard throws as failures.
+      // 重新抛出 CircuitOpenError,让调用方能区分"熔断器 open"
+      // 与真实 provider 错误。guard 抛的不计为失败。
       if (e instanceof CircuitOpenError) throw e;
       throw e;
     }
   }
 
-  // ── Health check ─────────────────────────────────────────────────────────────
+  // ── 健康检查 ─────────────────────────────────────────────
 
   /**
-   * Verify a provider endpoint is reachable and the API key is valid.
-   * Used by the settings page when the user saves a new key.
+   * 验证 provider endpoint 可达且 API key 有效。
+   * 用户在设置页保存新 key 时使用。
    *
-   * @param providerId  The provider_configs.id to probe.
-   * @param model       A model known to exist on this provider.
+   * @param providerId  待 probe 的 provider_configs.id。
+   * @param model       该 provider 上已知存在的模型。
    */
   async probe(providerId: string, model: string): Promise<ProbeResult> {
     const adapter = this.adapters.get(providerId);
@@ -232,9 +232,9 @@ export class LlmRouter {
     return this.configs.get(providerId)?.protocol;
   }
 
-  // ── Hot-reload ───────────────────────────────────────────────────────────────
+  // ── 热重载 ───────────────────────────────────────────────
 
-  /** Add or replace a provider config at runtime (e.g. user updated API key). */
+  /** 运行时新增或替换 provider config(如用户更新了 API key)。 */
   upsertConfig(config: ProviderConfig): void {
     this.configs.set(config.id, config);
     this.adapters.set(config.id, this.createAdapterFor(config));
@@ -245,21 +245,20 @@ export class LlmRouter {
     this.adapters.delete(providerId);
   }
 
-  /** Returns the first registered config id, or undefined if none. Used as a last-resort fallback. */
+  /** 返回首个已注册 config id,无则 undefined。用作最后兜底。 */
   firstProviderId(): string | undefined {
     return this.configs.keys().next().value;
   }
 
-  /** Returns the defaultModel for a given provider id, or undefined. */
+  /** 返回给定 provider id 的 defaultModel,无则 undefined。 */
   defaultModelFor(providerId: string): string | undefined {
     return this.configs.get(providerId)?.defaultModel;
   }
 
   /**
-   * Check which content parts are incompatible with the given provider.
-   * Looks up the provider's protocol internally — callers never need to know
-   * which wire format the provider uses.
-   * Returns an empty array when everything is compatible.
+   * 检查哪些 content part 与给定 provider 不兼容。
+   * 内部查 provider 的 protocol - 调用方无需知道 provider 用哪种线路格式。
+   * 全部兼容时返回空数组。
    */
   warnUnsupportedParts(providerId: string, parts: LlmContentPart[]): UnsupportedPart[] {
     const protocol = this.configs.get(providerId)?.protocol;

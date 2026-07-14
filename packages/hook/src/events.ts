@@ -1,4 +1,11 @@
-import type { TurnMode, MessageId, MessageRole, AssistantBlock, LlmMessage } from '@ema-agent/contracts';
+import type {
+  AssistantBlock,
+  LlmMessage,
+  MessageId,
+  MessageRole,
+  NarrativeTimelineRecall,
+  TurnMode,
+} from '@ema-agent/contracts';
 
 /**
  * 所有 hook 事件都是 turn 级别的 engine 内部生命周期事件。
@@ -34,6 +41,20 @@ export interface HookPayload {
      */
     systemPrompt: string;
     messages: LlmMessage[];
+    /** 当前 Turn 的业务模式。 */
+    mode: TurnMode;
+    /** 当前用户输入的可读文本；多模态输入只提取 text part。 */
+    userInput: string;
+    /** 本次调用已经解析完成的 Provider 实例 ID。 */
+    providerId: string;
+    /** 本次调用已经解析完成的模型名。 */
+    model: string;
+    /** Agent workspace；普通对话没有 workspace。 */
+    workspaceRoot?: string | null;
+    /** Narrative Hook 产生的正式流水线结果，供 Engine 落盘和前端展示。 */
+    narrativeRecall?: {
+      timelines: NarrativeTimelineRecall[];
+    };
   };
   afterLlmComplete: {
     content: string;

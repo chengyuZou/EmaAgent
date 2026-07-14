@@ -94,7 +94,7 @@ async function* runTurn(
     const startResult = await hooks.trigger('onTurnStart', {
       turnId, sessionId,
       payload: { mode: 'agent' },
-      meta: {},
+      signal,
     });
     if (startResult.kind === 'abort') {
       session.failTurn(turnId, 'turn/hook_aborted', startResult.reason);
@@ -122,8 +122,16 @@ async function* runTurn(
     // ── beforeLlm hook ────────────────────────────────────────────────────────
     const preLlm = await hooks.trigger('beforeLlm', {
       turnId, sessionId,
-      payload: { systemPrompt, messages },
-      meta: { mode: 'agent', userInput, signal, providerId, model, workspaceRoot },
+      payload: {
+        systemPrompt,
+        messages,
+        mode: 'agent',
+        userInput: readableUserInput(userInput),
+        providerId,
+        model,
+        workspaceRoot,
+      },
+      signal,
     });
     if (preLlm.kind === 'abort') {
       session.failTurn(turnId, 'turn/hook_aborted', preLlm.reason);
@@ -272,7 +280,7 @@ async function* runTurn(
           await hooks.trigger('afterLlmComplete', {
             turnId, sessionId,
             payload: { content: fullText, toolCalls: [...iterToolCalls.values()] },
-            meta: {},
+            signal,
           });
           break;
         }
@@ -309,7 +317,7 @@ async function* runTurn(
             await hooks.trigger('afterMessage', {
               turnId, sessionId,
               payload: { messageId: msg.id, role: 'assistant', content: ev.fullText },
-              meta: {},
+              signal,
             });
           }
           break;
@@ -319,7 +327,7 @@ async function* runTurn(
 
     // ── Turn teardown ─────────────────────────────────────────────────────────
     if (signal.aborted) {
-      await hooks.trigger('onTurnAbort', { turnId, sessionId, payload: { reason: 'user_stop' }, meta: {} });
+      await hooks.trigger('onTurnAbort', { turnId, sessionId, payload: { reason: 'user_stop' } });
       session.abortTurn(sessionId, turnId);
       deps.taskStore?.cancel(turnId, 'user_abort');
       yield { type: 'turn_aborted', sessionId, turnId, reason: 'user_stop' };
@@ -327,7 +335,7 @@ async function* runTurn(
     }
 
     const durationMs = Date.now() - startedAt;
-    await hooks.trigger('onTurnEnd', { turnId, sessionId, payload: { durationMs }, meta: {} });
+    await hooks.trigger('onTurnEnd', { turnId, sessionId, payload: { durationMs }, signal });
 
     session.completeTurn(turnId, {
       usageInputTokens:  totalInput,
@@ -343,7 +351,7 @@ async function* runTurn(
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
     if (signal.aborted) {
-      await hooks.trigger('onTurnAbort', { turnId, sessionId, payload: { reason: 'user_stop' }, meta: {} });
+      await hooks.trigger('onTurnAbort', { turnId, sessionId, payload: { reason: 'user_stop' } });
       session.abortTurn(sessionId, turnId);
       deps.taskStore?.cancel(turnId, 'user_abort');
       yield { type: 'turn_aborted', sessionId, turnId, reason: 'user_stop' };
@@ -364,5 +372,13 @@ async function* runTurn(
       try { fs.rmSync(scratchpadDir, { recursive: true, force: true }); } catch { /* non-fatal */ }
     }
   }
+}
+
+function readableUserInput(input: AgentRunInput['userInput']): string {
+  if (typeof input === 'string') return input;
+  return input
+    .filter((part): part is Extract<(typeof input)[number], { type: 'text' }> => part.type === 'text')
+    .map((part) => part.text)
+    .join('\n');
 }
 

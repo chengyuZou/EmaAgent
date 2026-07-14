@@ -1,38 +1,36 @@
 /**
- * models.dev catalog — LLM/Vision model facts pulled from https://models.dev/api.json
- * instead of hardcoding context windows and capability flags.
+ * models.dev catalog - 从 https://models.dev/api.json 拉取 LLM/Vision 模型事实,
+ * 而非硬编码上下文窗口和能力标志。
  *
- * Shape of api.json (verified against models.dev build):
- *   { [providerId]: { ...provider fields, models: { [modelId]: ModelSpec } } }
+ * api.json 结构(已对照 models.dev 构建验证):
+ *   { [providerId]: { ...provider 字段, models: { [modelId]: ModelSpec } } }
  *   ModelSpec: { id, name, reasoning, tool_call, temperature, structured_output?,
  *               modalities: { input: string[], output: string[] }, limit: { context, output? } }
  *
- * Indexed by `modelsDevId` (the provider's models.dev folder id — see
- * ProviderDefinition.modelsDevId), so a configured EmaAgent provider resolves to
- * the right models.dev provider. Providers models.dev doesn't track (local
- * runtimes, embed/rerank/tts-only) simply have no entry and fall back to the
- * provider's own `/models` endpoint or manual entry.
+ * 以 `modelsDevId`(provider 的 models.dev 文件夹 id - 见
+ * ProviderDefinition.modelsDevId)为索引,这样配置好的 EmaAgent provider 能解析到
+ * 对应的 models.dev provider。models.dev 未收录的 provider(本地运行时、
+ * 仅 embed/rerank/tts)没有条目,回退到 provider 自己的 `/models` endpoint 或手填。
  *
- * Pure logic: no fs, no hardcoded I/O beyond an injectable fetch. apps/core owns
- * cache persistence (write the raw payload to disk, re-`loadFromJson` on startup)
- * and the startup background `refresh()`.
+ * 纯逻辑:无 fs,除可注入的 fetch 外无硬编码 I/O。apps/core 负责缓存持久化
+ * (把原始 payload 写盘,启动时 re-`loadFromJson`)和启动后台 `refresh()`。
  */
 
 export const MODELS_DEV_API_URL = 'https://models.dev/api.json';
 
 export interface ModelsDevSpec {
   id:                string;
-  /** Context window in tokens. undefined when models.dev doesn't state it. */
+  /** 上下文窗口(token)。models.dev 未声明时 undefined。 */
   contextWindow?:    number;
-  /** Max output tokens. undefined when unstated. */
+  /** 最大输出 token。未声明时 undefined。 */
   maxOutput?:        number;
-  /** Input modalities, e.g. ['text','image','file']. */
+  /** 输入模态,如 ['text','image','file']。 */
   inputModalities:   string[];
-  /** Output modalities, e.g. ['text'] or ['image']. */
+  /** 输出模态,如 ['text'] 或 ['image']。 */
   outputModalities:  string[];
   toolCall:          boolean;
   reasoning:         boolean;
-  /** false → the model rejects `temperature` (o-series / reasoning models). */
+  /** false -> 模型拒绝 `temperature`(o-series / reasoning 模型)。 */
   temperature:       boolean;
   structuredOutput:  boolean;
 }
@@ -48,13 +46,13 @@ function asNumber(v: unknown): number | undefined {
 }
 
 export class ModelsDevCatalog {
-  /** modelsDevId → (modelId → spec) */
+  /** modelsDevId -> (modelId -> spec) */
   private readonly index = new Map<string, Map<string, ModelsDevSpec>>();
-  /** modelId → spec — flat secondary index for O(1) provider-agnostic lookups. */
+  /** modelId -> spec - 扁平二级索引,供 O(1) 不分 provider 查询。 */
   private readonly flat  = new Map<string, ModelsDevSpec>();
   private loadedAt: number | null = null;
 
-  /** Parse a models.dev api.json payload. Tolerant of missing/extra fields. */
+  /** 解析 models.dev api.json payload。对缺失/多余字段容错。 */
   loadFromJson(payload: unknown): void {
     const providers = asRecord(payload);
     if (!providers) return;
@@ -80,18 +78,18 @@ export class ModelsDevCatalog {
           outputModalities: modalities ? asStringArray(modalities['output']) : [],
           toolCall:         m['tool_call'] === true,
           reasoning:        m['reasoning'] === true,
-          // Absent temperature flag → assume supported (most chat models accept it).
+          // temperature 标志缺失 -> 假定支持(大多数 chat 模型接受)。
           temperature:      m['temperature'] !== false,
           structuredOutput: m['structured_output'] === true,
         };
         modelMap.set(modelId, spec);
-        // Flat index: first provider entry wins for a given modelId.
+        // 扁平索引:同一 modelId 首个 provider 条目胜出。
         if (!nextFlat.has(modelId)) nextFlat.set(modelId, spec);
       }
       if (modelMap.size > 0) next.set(providerId, modelMap);
     }
 
-    // Replace wholesale — a refresh always reflects the latest snapshot.
+    // 整体替换 - refresh 总是反映最新快照。
     this.index.clear();
     this.flat.clear();
     for (const [k, v] of next) this.index.set(k, v);
@@ -100,8 +98,8 @@ export class ModelsDevCatalog {
   }
 
   /**
-   * Fetch + parse from models.dev. Returns the raw payload on success (so the
-   * caller can cache it) or null on failure — the existing index is preserved.
+   * 从 models.dev 拉取 + 解析。成功返回原始 payload(供调用方缓存),
+   * 失败返回 null - 保留现有索引。
    */
   async refresh(opts: { fetchFn?: typeof fetch; url?: string; signal?: AbortSignal } = {}): Promise<unknown | null> {
     const doFetch = opts.fetchFn ?? fetch;
@@ -120,30 +118,30 @@ export class ModelsDevCatalog {
     return this.index.get(modelsDevId)?.get(modelId);
   }
 
-  /** Provider-agnostic spec lookup via the flat secondary index. O(1). */
+  /** 通过扁平二级索引做不分 provider 的 spec 查询。O(1)。 */
   getByModelId(modelId: string): ModelsDevSpec | undefined {
     return this.flat.get(modelId);
   }
 
-  /** Context window for a model, searching by bare model id. */
+  /** 模型的上下文窗口,按裸 model id 查找。 */
   contextWindowOf(modelId: string): number | undefined {
     return this.flat.get(modelId)?.contextWindow;
   }
 
-  /** Max output tokens for a model, searching by bare model id. */
+  /** 模型的最大输出 token,按裸 model id 查找。 */
   maxOutputOf(modelId: string): number | undefined {
     return this.flat.get(modelId)?.maxOutput;
   }
 
-  /** True if the model is marked as reasoning-capable. */
+  /** 模型是否标记为具备 reasoning 能力。 */
   hasReasoning(modelId: string): boolean {
     return this.flat.get(modelId)?.reasoning === true;
   }
 
   /**
-   * Provider-agnostic fuzzy suggestions for a model-name input (settings UI).
-   * Returns LLM model ids whose id contains `query`, with their context window.
-   * Deduped across providers (first context wins).
+   * 不分 provider 的模糊建议(供模型名输入的设置 UI)。
+   * 返回 id 含 `query` 的 LLM 模型 id 及其上下文窗口。
+   * 跨 provider 去重(首个 context 胜出)。
    */
   suggest(query: string, limit = 8): Array<{ id: string; contextWindow: number }> {
     const q = query.trim().toLowerCase();
@@ -151,7 +149,7 @@ export class ModelsDevCatalog {
     const results: Array<{ id: string; contextWindow: number }> = [];
     for (const spec of this.flat.values()) {
       if (!spec.id.toLowerCase().includes(q)) continue;
-      // LLM-ish only: output text (skip pure image/video gen).
+      // 仅 LLM 类:输出 text(跳过纯图像/视频生成)。
       if (spec.outputModalities.length > 0 && !spec.outputModalities.includes('text')) continue;
       results.push({ id: spec.id, contextWindow: spec.contextWindow ?? 0 });
       if (results.length >= limit) break;
@@ -159,12 +157,12 @@ export class ModelsDevCatalog {
     return results;
   }
 
-  /** All model ids models.dev lists for this provider. */
+  /** models.dev 为该 provider 列出的全部模型 id。 */
   listModelIds(modelsDevId: string): string[] {
     return [...(this.index.get(modelsDevId)?.keys() ?? [])];
   }
 
-  /** Chat/LLM model ids — output includes 'text' (excludes pure image/video gen). */
+  /** Chat/LLM 模型 id - 输出含 'text'(排除纯图像/视频生成)。 */
   listLlmModelIds(modelsDevId: string): string[] {
     const map = this.index.get(modelsDevId);
     if (!map) return [];
@@ -173,7 +171,7 @@ export class ModelsDevCatalog {
       .map(s => s.id);
   }
 
-  /** Vision model ids — output includes 'text' AND input includes 'image'. */
+  /** Vision 模型 id - 输出含 'text' 且输入含 'image'。 */
   listVisionModelIds(modelsDevId: string): string[] {
     const map = this.index.get(modelsDevId);
     if (!map) return [];
@@ -185,7 +183,7 @@ export class ModelsDevCatalog {
       .map(s => s.id);
   }
 
-  /** Vision gate: does this LLM accept image input? Drives orchestrator fallback. */
+  /** Vision 门禁:该 LLM 是否接受图像输入?驱动 orchestrator 回退。 */
   supportsImageInput(modelsDevId: string, modelId: string): boolean {
     return (this.get(modelsDevId, modelId) ?? this.flat.get(modelId))?.inputModalities.includes('image') ?? false;
   }

@@ -27,14 +27,14 @@ export interface RetryOptions {
 const DEFAULT_OPTS: RetryOptions = { maxAttempts: 3, baseDelayMs: 1_000 };
 
 /**
- * Wrap an async factory with exponential-backoff retry.
+ * 用指数退避重试包裹一个 async factory。
  *
- * | HTTP status        | Thrown error code              |
+ * | HTTP 状态码        | 抛出的 error code              |
  * |--------------------|-------------------------------|
  * | 401 / 403          | auth/api_key_invalid           |
  * | 413                | provider/context_too_long      |
- * | 429                | provider/rate_limit  (retried) |
- * | 408 / 5xx          | provider/timeout or /server_error (retried) |
+ * | 429                | provider/rate_limit(会重试)    |
+ * | 408 / 5xx          | provider/timeout 或 /server_error(会重试) |
  */
 export async function withRetry<T>(
   fn: () => Promise<T>,
@@ -56,19 +56,19 @@ export async function withRetry<T>(
   throw lastErr;
 }
 
-// ── Circuit breaker ──────────────────────────────────────────────────────────
+// ── 熔断器 ──────────────────────────────────────────────────────────
 //
-// Per-provider state machine: closed → open → half-open → closed.
+// per-provider 状态机:closed -> open -> half-open -> closed。
 //
-//   closed:     normal operation, counting consecutive 5xx failures.
-//   open:       N consecutive failures within the window → block ALL calls
-//               for cooldownMs. Returns a fast-fail CircuitOpenError.
-//   half-open:  after cooldown, allow ONE probe call.
-//               success → reset to closed; failure → back to open.
+//   closed:     正常运行,累计连续 5xx 失败。
+//   open:       窗口内 N 次连续失败 -> 阻断所有调用 cooldownMs。
+//               快速失败返回 CircuitOpenError。
+//   half-open:  冷却后允许一次 probe 调用。
+//               成功 -> 重置为 closed;失败 -> 回到 open。
 
-const CB_FAILURE_THRESHOLD = 3;       // consecutive 5xx to trip
-const CB_WINDOW_MS         = 60_000;  // reset failure count after this
-const CB_COOLDOWN_MS       = 30_000;  // stay open for this long
+const CB_FAILURE_THRESHOLD = 3;       // 触发熔断的连续 5xx 次数
+const CB_WINDOW_MS         = 60_000;  // 超过此时间重置失败计数
+const CB_COOLDOWN_MS       = 30_000;  // open 持续时长
 
 export class CircuitOpenError extends Error {
   constructor(
@@ -88,38 +88,38 @@ type CbState =
 export class CircuitBreaker {
   private state: CbState = { phase: 'closed', failures: 0, firstFailureAt: 0 };
 
-  /** Call before every request. Throws CircuitOpenError when the breaker is open. */
+  /** 每次请求前调用。熔断器 open 时抛 CircuitOpenError。 */
   guard(now = Date.now()): void {
     switch (this.state.phase) {
       case 'closed': {
-        // Expire old failure window.
+        // 过期旧的失败窗口。
         if (this.state.failures > 0 && now - this.state.firstFailureAt > CB_WINDOW_MS) {
           this.state = { phase: 'closed', failures: 0, firstFailureAt: 0 };
         }
-        return; // allow
+        return; // 放行
       }
       case 'open': {
         if (now - this.state.since >= CB_COOLDOWN_MS) {
           this.state = { phase: 'half-open' };
-          return; // allow one probe
+          return; // 放行一次 probe
         }
         throw new CircuitOpenError(
-          `LLM circuit breaker open — cooling down until ${new Date(this.state.since + CB_COOLDOWN_MS).toISOString()}`,
+          `LLM circuit breaker open - cooling down until ${new Date(this.state.since + CB_COOLDOWN_MS).toISOString()}`,
           this.state.since,
         );
       }
       case 'half-open': {
-        return; // allow probe
+        return; // 放行 probe
       }
     }
   }
 
-  /** Call after a successful response. Resets the breaker. */
+  /** 成功响应后调用。重置熔断器。 */
   success(): void {
     this.state = { phase: 'closed', failures: 0, firstFailureAt: 0 };
   }
 
-  /** Call after a failure. Increments the failure counter; trips to open if threshold reached. */
+  /** 失败后调用。递增失败计数;达到阈值则跳转 open。 */
   failure(now = Date.now()): void {
     switch (this.state.phase) {
       case 'closed': {
@@ -133,12 +133,12 @@ export class CircuitBreaker {
         return;
       }
       case 'half-open': {
-        // Probe failed — back to open.
+        // probe 失败 - 回到 open。
         this.state = { phase: 'open', since: now };
         return;
       }
       case 'open': {
-        // Already open; no-op.
+        // 已 open;无操作。
         return;
       }
     }

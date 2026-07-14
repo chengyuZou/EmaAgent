@@ -1,6 +1,13 @@
 import type { TurnId, SessionId, EmaStreamEvent } from '@ema-agent/contracts';
 import type { HookEvent, HookPayload } from './events.js';
 import { PRIORITY } from './priority.js';
+import {
+  classifyHookFailure,
+  HookCancelledError,
+  HookConfigurationError,
+  HookTimeoutError,
+  type HookFailureKind,
+} from './errors.js';
 
 // ── Context 与 Result 类型 ────────────────────────────────────────────────────
 
@@ -9,18 +16,16 @@ export interface HookContext<E extends HookEvent> {
   payload: HookPayload[E];
   turnId: TurnId;
   sessionId: SessionId;
-  /**
-   * turn 内 handler 间通信的共享可变容器。
-   * 单次 trigger() 调用内的所有 handler - 包括并行 handler - 拿到同一个引用。
-   * 在 Node.js(单线程事件循环)下并行 handler 的并发写是安全的,
-   * 但在 Worker Threads 下不安全。不要在此存 promise 或大对象。
-   */
-  meta: Record<string, unknown>;
+  /** 当前 handler 的组合取消信号：父任务取消或 handler 超时都会触发。 */
+  signal: AbortSignal;
   emit?: (event: EmaStreamEvent) => void;
 }
 
 export type HookTriggerContext<E extends HookEvent> =
-  Omit<HookContext<E>, 'event'>;
+  Omit<HookContext<E>, 'event' | 'signal'> & {
+    /** 父任务取消信号；没有父任务的内部事件可以省略。 */
+    signal?: AbortSignal;
+  };
 
 /**
  * 允许 handler 改变控制流的事件。
@@ -48,7 +53,9 @@ export type HookResult<E extends HookEvent> =
     ? HookControlResult<E>
     : HookObserverResult;
 
-type HookRuntimeResult<E extends HookEvent> = HookControlResult<E>;
+type HookRuntimeResult<E extends HookEvent> =
+  | HookControlResult<E>
+  | { kind: 'cancelled'; reason: string };
 
 /** 整条 trigger() 链返回的结果。 */
 export type HookTriggerResult<E extends HookEvent> =
@@ -128,6 +135,8 @@ export interface HookTraceEntry {
   reason?:        string;
   /** handler 返回 `kind: 'replace'` 时为 true。 */
   payloadReplaced: boolean;
+  /** 错误分类，供诊断层区分普通异常、超时和父任务取消。 */
+  failureKind?: HookFailureKind;
 }
 
 // ── 内部注册条目 ───────────────────────────────────────────────
@@ -179,12 +188,79 @@ function isControlHookEvent(event: HookEvent): event is ControlHookEvent {
 
 function observerControlFlowWarning(
   hookName: string,
-  result: Exclude<HookRuntimeResult<HookEvent>, HookObserverResult>,
+  result: Extract<HookRuntimeResult<HookEvent>, { kind: 'abort' | 'replace' }>,
 ): string {
   if (result.kind === 'abort') {
     return `Observer hook "${hookName}" returned abort (${result.reason}), but observer hooks cannot alter control flow`;
   }
   return `Observer hook "${hookName}" returned replace, but observer hooks cannot alter control flow`;
+}
+
+const DEFAULT_MAX_CONCURRENCY = 8;
+const MAX_TIMER_MS = 2_147_483_647;
+
+interface HandlerAbortScope {
+  signal: AbortSignal;
+  interruption: Promise<never>;
+  cleanup(): void;
+}
+
+function validateTimeoutMs(value: number, label: string): void {
+  if (!Number.isSafeInteger(value) || value < 0 || value > MAX_TIMER_MS) {
+    throw new HookConfigurationError(
+      `${label} must be an integer between 0 and ${MAX_TIMER_MS}, got ${value}`,
+    );
+  }
+}
+
+function createHandlerAbortScope(
+  parentSignal: AbortSignal | undefined,
+  timeoutMs: number,
+  handlerName: string,
+): HandlerAbortScope {
+  const controller = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let rejectInterruption!: (reason: Error) => void;
+
+  const interruption = new Promise<never>((_, reject) => {
+    rejectInterruption = reject;
+  });
+
+  const abort = (reason: Error): void => {
+    if (controller.signal.aborted) return;
+    // 先让执行竞速确定为中断，再广播 signal。否则同步 abort 监听器若立即
+    // resolve handler，可能抢在 interruption 前被 Promise.race 选中。
+    rejectInterruption(reason);
+    controller.abort(reason);
+  };
+
+  const onParentAbort = (): void => {
+    const reason = parentSignal?.reason === undefined
+      ? 'Hook execution cancelled by parent task'
+      : `Hook execution cancelled by parent task: ${errorToReason(parentSignal.reason)}`;
+    abort(new HookCancelledError(reason));
+  };
+
+  if (parentSignal?.aborted) {
+    onParentAbort();
+  } else {
+    parentSignal?.addEventListener('abort', onParentAbort, { once: true });
+  }
+
+  if (timeoutMs > 0 && !controller.signal.aborted) {
+    timer = setTimeout(() => {
+      abort(new HookTimeoutError(handlerName, timeoutMs));
+    }, timeoutMs);
+  }
+
+  return {
+    signal: controller.signal,
+    interruption,
+    cleanup(): void {
+      if (timer !== undefined) clearTimeout(timer);
+      parentSignal?.removeEventListener('abort', onParentAbort);
+    },
+  };
 }
 
 function chunkArray<T>(items: T[], size: number): T[][] {
@@ -203,13 +279,6 @@ function chunkArray<T>(items: T[], size: number): T[][] {
   }
 
   return chunks;
-}
-
-/** 返回一个在 `ms` 后以超时错误 reject 的 promise。 */
-function timeout<T>(ms: number, handlerName: string): Promise<T> {
-  return new Promise<T>((_, reject) => {
-    setTimeout(() => reject(new Error(`Hook handler "${handlerName}" timed out after ${ms}ms`)), ms);
-  });
 }
 
 function buildBatches<E extends HookEvent>(
@@ -253,15 +322,16 @@ export class HookBus {
 
   constructor(options: HookBusOptions = {}) {
     this.options          = options;
-    this.maxConcurrency   = options.maxConcurrency ?? Number.POSITIVE_INFINITY;
+    this.maxConcurrency   = options.maxConcurrency ?? DEFAULT_MAX_CONCURRENCY;
     this.parallelEvents   = options.parallelEvents ?? DEFAULT_PARALLEL_EVENTS;
     this.defaultTimeoutMs = options.handlerTimeoutMs ?? 30_000;
 
-    if (this.maxConcurrency <= 0) {
-      throw new Error(
-        `maxConcurrency must be greater than 0, got ${this.maxConcurrency}`,
+    if (!Number.isSafeInteger(this.maxConcurrency) || this.maxConcurrency <= 0) {
+      throw new HookConfigurationError(
+        `maxConcurrency must be a positive safe integer, got ${this.maxConcurrency}`,
       );
     }
+    validateTimeoutMs(this.defaultTimeoutMs, 'handlerTimeoutMs');
   }
 
   /**
@@ -274,6 +344,9 @@ export class HookBus {
     handler: HookHandler<E>,
     opts: HookOptions = {},
   ): () => void {
+    const timeoutMs = opts.timeoutMs ?? this.defaultTimeoutMs;
+    validateTimeoutMs(timeoutMs, 'HookOptions.timeoutMs');
+
     const entry: HandlerEntry<E> = {
       event,
       handler,
@@ -281,7 +354,7 @@ export class HookBus {
       name: opts.name ?? (handler.name || '<anonymous>'),
       critical: opts.critical ?? true,
       parallel: opts.parallel ?? false,
-      timeoutMs: opts.timeoutMs ?? this.defaultTimeoutMs,
+      timeoutMs,
     };
 
     if (this.options.warnAnonymous && entry.name === '<anonymous>') {
@@ -339,6 +412,7 @@ export class HookBus {
       ...ctx,
       event,
       payload: currentPayload,
+      signal: ctx.signal ?? new AbortController().signal,
     } as HookContext<E>;
 
     const eventAllowsParallel = this.parallelEvents.has(event);
@@ -354,6 +428,15 @@ export class HookBus {
             currentPayload,
             warnings,
           );
+
+          if (result.kind === 'cancelled') {
+            return {
+              kind: 'abort',
+              reason: result.reason,
+              payload: currentPayload,
+              warnings,
+            };
+          }
 
           if (!isControlHookEvent(event) && result.kind !== 'continue') {
             warnings.push({
@@ -413,17 +496,21 @@ export class HookBus {
     payload: HookPayload[E],
     warnings: HookWarning[],
   ): Promise<HookRuntimeResult<E>> {
-    const handlerCtx: HookContext<E> = { ...baseCtx, payload } as HookContext<E>;
+    const scope = createHandlerAbortScope(baseCtx.signal, entry.timeoutMs, entry.name);
+    const handlerCtx: HookContext<E> = {
+      ...baseCtx,
+      payload,
+      signal: scope.signal,
+    } as HookContext<E>;
     const t0 = performance.now();
 
     try {
-      const promise = entry.handler(handlerCtx) as Promise<HookRuntimeResult<E>>;
-      const result  = entry.timeoutMs > 0
-        ? await Promise.race([
-            promise,
-            timeout<HookRuntimeResult<E>>(entry.timeoutMs, entry.name),
-          ])
-        : await promise;
+      const result = scope.signal.aborted
+        ? await scope.interruption
+        : await Promise.race([
+            Promise.resolve().then(() => entry.handler(handlerCtx)),
+            scope.interruption,
+          ]);
       try {
         this.options.traceSink?.({
           event:           event,
@@ -434,10 +521,13 @@ export class HookBus {
           payloadReplaced: result.kind === 'replace',
         });
       } catch { /* 诊断 sink 不得影响 turn 流程 */ }
-      return result;
+      // TypeScript 无法在条件泛型 HookResult<E> 上保持 payload 与 E 的关联；
+      // handlerCtx 与 entry 已由同一个 E 构造，此处只恢复该关联，不改变运行时值。
+      return result as HookRuntimeResult<E>;
     } catch (err) {
       const reason = errorToReason(err);
       const durationMs = performance.now() - t0;
+      const failureKind = classifyHookFailure(err);
 
       try {
         this.options.traceSink?.({
@@ -447,8 +537,13 @@ export class HookBus {
           result:          'error',
           reason,
           payloadReplaced: false,
+          failureKind,
         });
       } catch { /* 诊断 sink 不得影响 turn 流程 */ }
+
+      if (err instanceof HookCancelledError) {
+        return { kind: 'cancelled', reason };
+      }
 
       if (entry.critical) {
         return {
@@ -464,6 +559,8 @@ export class HookBus {
       });
 
       return { kind: 'continue' };
+    } finally {
+      scope.cleanup();
     }
   }
 
@@ -507,6 +604,13 @@ export class HookBus {
         }
 
         const result = item.value;
+
+        if (result.kind === 'cancelled') {
+          return {
+            kind: 'abort',
+            reason: result.reason,
+          };
+        }
 
         if (!isControlHookEvent(event) && result.kind !== 'continue') {
           warnings.push({

@@ -8,13 +8,12 @@ export interface UnsupportedPart {
 }
 
 /**
- * Check which content parts are incompatible with the given provider.
+ * 检查哪些 content part 与给定 provider 不兼容。
  *
- * Call this before startTurn() and surface the result to the user so they can
- * choose to remove the offending parts or cancel. Do NOT throw on incompatibility
- * — that would kill the whole turn for a single bad attachment.
+ * 在 startTurn() 前调用,把结果呈现给用户,让其选择移除违规 part 或取消。
+ * 不要在 incompatible 时抛错 - 那会因单个坏附件杀掉整个 turn。
  *
- * Returns an empty array when everything is compatible.
+ * 全部兼容时返回空数组。
  */
 export function validateContentParts(
   parts: MessageContentPart[],
@@ -35,9 +34,9 @@ function checkPart(part: MessageContentPart, provider: LlmProtocol): string | nu
   switch (provider) {
     case 'openai-llm':
     case 'openai-responses-llm':
-      // Responses API shares the same content-part rules as Chat Completions.
-      // audio_data is technically supported (mp3/wav) but the adapter silently
-      // drops it — warn the caller so they can handle it at a higher level.
+      // Responses API 与 Chat Completions 共享相同 content-part 规则。
+      // audio_data 技术上受支持(mp3/wav),但 adapter 会静默丢弃 -
+      // 在此警告调用方,让其在上层处理。
       return checkOpenAi(part);
     case 'anthropic-llm': return checkAnthropic(part);
     case 'gemini-llm':    return checkGemini(part);
@@ -46,7 +45,7 @@ function checkPart(part: MessageContentPart, provider: LlmProtocol): string | nu
 
 function checkOpenAi(part: MessageContentPart): string | null {
   if (part.type === 'file_data' || part.type === 'file_url') {
-    return 'OpenAI does not support inline file attachments — use the Files API separately';
+    return 'OpenAI does not support inline file attachments - use the Files API separately';
   }
   if (part.type === 'audio_data') {
     const ok = part.mimeType === 'audio/wav'
@@ -71,11 +70,11 @@ function checkAnthropic(part: MessageContentPart): string | null {
 }
 
 function checkGemini(part: MessageContentPart): string | null {
-  // Gemini handles everything via inlineData; the only caveat is image_url / file_url
-  // which require GCS or Files API URIs — plain https:// will fail at runtime.
+  // Gemini 一切走 inlineData;唯一坑是 image_url / file_url
+  // 需要 GCS 或 Files API URI - 纯 https:// 运行时会失败。
   if (part.type === 'image_url' || part.type === 'file_url') {
     if (!part.url.startsWith('gs://')) {
-      return 'Gemini only accepts gs:// or Files API URIs for URL-based content — download the file and use image_data / file_data instead';
+      return 'Gemini only accepts gs:// or Files API URIs for URL-based content - download the file and use image_data / file_data instead';
     }
   }
   return null;

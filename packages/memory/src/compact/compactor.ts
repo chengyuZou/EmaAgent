@@ -72,7 +72,13 @@ export async function runCompaction(
   const tail    = working.slice(safeCut);
 
   args.emit?.({ type: 'memory_compaction_started', sessionId: args.sessionId, turnId: args.turnId, mode: args.mode, beforeTokens });
-  await deps.hookBus?.trigger('beforeCompact', { payload: { messageCount: working.length, tokenEstimate: estimated }, turnId: args.turnId, sessionId: args.sessionId, meta: {} });
+  await deps.hookBus?.trigger('beforeCompact', {
+    payload: { messageCount: working.length, tokenEstimate: estimated },
+    turnId: args.turnId,
+    sessionId: args.sessionId,
+    signal: args.signal,
+    emit: args.emit,
+  });
 
   const result = await runMacroCompaction({
     llm:                deps.llm,
@@ -113,7 +119,13 @@ export async function runCompaction(
     beforeTokens, afterTokens, savedTokens: Math.max(0, beforeTokens - afterTokens),
     durationMs: Date.now() - now,
   });
-  await deps.hookBus?.trigger('afterCompact', { payload: { before: beforeTokens, after: afterTokens, method: 'macro' }, turnId: args.turnId, sessionId: args.sessionId, meta: {} });
+  await deps.hookBus?.trigger('afterCompact', {
+    payload: { before: beforeTokens, after: afterTokens, method: 'macro' },
+    turnId: args.turnId,
+    sessionId: args.sessionId,
+    signal: args.signal,
+    emit: args.emit,
+  });
 
   return { messages: working, macroRan: true, microCleared: micro.cleared, succeeded: true, beforeTokens, afterTokens, savedTokens: Math.max(0, beforeTokens - afterTokens) };
 }

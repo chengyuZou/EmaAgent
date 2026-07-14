@@ -49,7 +49,7 @@ async function* runTurn(
       turnId,
       sessionId: input.sessionId,
       payload: { mode },
-      meta: {},
+      signal,
     });
     if (startResult.kind === 'abort') {
       session.failTurn(turnId, 'turn/hook_aborted', startResult.reason);
@@ -119,14 +119,18 @@ async function* runTurn(
     //
     // Pattern: run trigger() as a background task, yield events as emit() is
     // called, wait for the task to finish, then inspect the result.
-    // meta 是 shared bag 引用,hook(narrative:recall)往里写 narrativeRecall,
-    // trigger 返回后 engine 读它落盘成 kind='narrative_context' message。
-    const hookMeta: Record<string, unknown> = { mode, userInput: input.userInput, signal, providerId, model: resolvedModel };
     const llmHookResult = yield* streamingBeforeLlm(hooks, {
       turnId,
       sessionId: input.sessionId,
-      payload: { systemPrompt: '', messages },
-      meta: hookMeta,
+      payload: {
+        systemPrompt: '',
+        messages,
+        mode,
+        userInput: input.userInput,
+        providerId,
+        model: resolvedModel,
+      },
+      signal,
     });
 
     if (llmHookResult.kind === 'abort') {
@@ -137,13 +141,11 @@ async function* runTurn(
     const finalMessages = llmHookResult.payload.messages;
 
     // ── narrative 检索结果落盘 ──────────────────────────────────────────────
-    // narrative:recall hook 把检索结果写进 hookMeta.narrativeRecall。落盘成
+    // narrative:recall hook 通过 replace payload 返回检索结果。落盘成
     // kind='narrative_context' message:既回灌 LLM(下一轮 historyToLlmMessages
     // 转文本)又前端显示(检索块气泡)。一份内容不拆。本轮 LLM 已通过 inject 的
     // 临时 user message 看过检索内容(上面 finalMessages 里),这里落盘是给未来轮次 + 前端展示。
-    const narrativeRecall = hookMeta['narrativeRecall'] as
-      | { timelines: Array<{ name: string; charCount: number; text: string }> }
-      | undefined;
+    const narrativeRecall = llmHookResult.payload.narrativeRecall;
     if (narrativeRecall && narrativeRecall.timelines.length > 0) {
       session.appendMessage({
         turnId,
@@ -224,7 +226,7 @@ async function* runTurn(
       turnId,
       sessionId: input.sessionId,
       payload: { content: fullText },
-      meta: {},
+      signal,
     });
 
     const msg = session.appendMessage({
@@ -246,7 +248,7 @@ async function* runTurn(
       turnId,
       sessionId: input.sessionId,
       payload: { messageId: msg.id, role: 'assistant', content: fullText },
-      meta: {},
+      signal,
     });
 
     const durationMs = Date.now() - startedAt;
@@ -254,7 +256,7 @@ async function* runTurn(
       turnId,
       sessionId: input.sessionId,
       payload: { durationMs },
-      meta: {},
+      signal,
     });
 
     session.completeTurn(turnId, { usageInputTokens: inputTokens, usageOutputTokens: outputTokens });
@@ -271,7 +273,6 @@ async function* runTurn(
         turnId,
         sessionId: input.sessionId,
         payload: { reason: 'user_stop' },
-        meta: {},
       });
       session.abortTurn(input.sessionId, turnId);
       yield { type: 'turn_aborted', sessionId: input.sessionId, turnId, reason: 'user_stop' };

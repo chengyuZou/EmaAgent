@@ -515,11 +515,14 @@ export type {
 | `serial multiple replace returns final payload` | 两个处理器依次追加 `systemPrompt`（" + memory" 和 " + persona"），验证最终 payload 为 "base + memory + persona"。 |
 | `serial hook after parallel batch sees unchanged payload` | 并行批次（不修改 payload）+ 后面的串行批次（修改 payload）。验证串行处理器收到的是原始 payload，最终 payload 被正确修改。 |
 
-### Meta 共享测试
+### 取消信号测试
 
 | 测试用例 | 测试内容 |
 |---|---|
-| `keeps meta shared across handlers in the same trigger call` | 第一个处理器在 `ctx.meta` 上设置 `started = true`，验证第二个处理器能读到该值，且原始 `meta` 对象也被修改。 |
+| `provides each handler with a first-class AbortSignal` | 验证每个处理器都能通过 `ctx.signal` 获得正式取消信号。 |
+| `aborts a timed-out critical handler and propagates cancellation to it` | 验证超时会中止关键 Hook，并实际触发处理器的 `AbortSignal`。 |
+| `stops the chain when the parent task is cancelled` | 验证 Turn 的父取消信号会终止当前处理器，且后续处理器不再执行。 |
+| `clears a pending timeout after a successful handler` | 验证处理器成功完成后会清理定时器，不遗留无效任务。 |
 
 ### 并行执行测试
 
@@ -551,6 +554,7 @@ export type {
 |---|---|
 | `list returns registered hook metadata in priority order` | 注册 2 个处理器后调用 `list('beforeLlm')`，验证返回的元数据按优先级排序、包含所有字段。 |
 | `throws when maxConcurrency is invalid` | `maxConcurrency: 0` 和 `maxConcurrency: -1` 都应抛出错误。 |
+| `rejects invalid timeout configuration` | bus 默认超时和单处理器超时必须是合法的非负整数。 |
 
 ---
 
@@ -560,6 +564,6 @@ export type {
 
 2. **观察型处理器只能观察**：并行事件和 Tool 生命周期事件用于 UI、遥测、日志、审计。它们不能安全或合法地修改主流程 payload，因此 handler 类型只允许返回 `continue`。
 
-3. **`meta` 生命周期由调用者决定**：`HookBus` 完全透传 `meta` 对象，不创建、不复制、不清理。这给予调用者最大的灵活性来管理跨回合或单次调用的中间状态。
+3. **显式契约代替 JSON 旁路**：业务输入和中间结果必须声明在对应事件的 `HookPayload` 中，并通过串行 `replace` 传递；取消统一使用 `ctx.signal`，禁止用无类型共享对象传递隐藏状态。
 
 4. **Priority 数字设计**：使用连续数字而非枚举，允许在预定义槽位之间插入自定义优先级，非常灵活。

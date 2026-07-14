@@ -1,6 +1,5 @@
 import type { HookBus, HookContext, HookResult } from '@ema-agent/hook';
 import { PRIORITY } from '@ema-agent/hook';
-import type { TurnMode } from '@ema-agent/contracts';
 import type { SkillStore } from './store.js';
 import type { SkillSummary } from './types.js';
 
@@ -32,7 +31,7 @@ export class SkillRunner {
     const handler = async (
       ctx: HookContext<'beforeLlm'>,
     ): Promise<HookResult<'beforeLlm'>> => {
-      const mode = ctx.meta['mode'] as TurnMode | undefined;
+      const mode = ctx.payload.mode;
       // skill_call is an agent-mode tool; advertising skills elsewhere is dead
       // weight (the model could not invoke them).
       if (mode !== 'agent') return { kind: 'continue' };

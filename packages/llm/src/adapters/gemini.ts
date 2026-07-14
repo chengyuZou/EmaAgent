@@ -27,7 +27,7 @@ function isContextWindowError(err: unknown): boolean {
   );
 }
 
-// ── Stop reason ────────────────────────────────────────────────────────────────
+// ── 停止原因 ────────────────────────────────────────────────────────────────
 
 function mapStopReason(reason: string | undefined): StopReason {
   switch (reason) {
@@ -45,7 +45,7 @@ function mapStopReason(reason: string | undefined): StopReason {
   }
 }
 
-// ── Message conversion ────────────────────────────────────────────────────────
+// ── 消息转换 ────────────────────────────────────────────────────────────────
 
 function mediaPartToGeminiPart(part: MessageContentPart): Part | null {
   switch (part.type) {
@@ -92,7 +92,7 @@ function toGeminiContents(
   let system: string | undefined;
   const contents: Content[] = [];
 
-  // 先扫一遍 assistant 消息建立 callId → functionName 映射
+  // 先扫一遍 assistant 消息建立 callId -> functionName 映射
   // （Gemini functionResponse 需要 name 字段对应 functionCall.name）
   const callIdToName = new Map<string, string>();
   for (const msg of msgs) {
@@ -141,7 +141,7 @@ function toGeminiContents(
       continue;
     }
 
-    // assistant → model
+    // assistant -> model
     const parts: Part[] = [];
     for (const block of msg.content as AssistantBlock[]) {
       if (block.type === 'text') {
@@ -162,7 +162,7 @@ function toGeminiContents(
   return { system, contents };
 }
 
-// ── Tool conversion ───────────────────────────────────────────────────────────
+// ── 工具转换 ───────────────────────────────────────────────────────────────────
 
 function toGeminiFunctionDeclaration(tool: LlmToolDef): FunctionDeclaration {
   // 剥掉 Gemini 不认识的 JSON Schema 字段
@@ -252,10 +252,10 @@ export class GeminiAdapter implements LlmAdapter {
       });
     } catch (err) {
       // NOTE:
-      // On user abort we intentionally do NOT emit usage.
-      // For streaming requests, provider usage is only reliable after normal completion.
-      // If the request is aborted midway, partial usage may be missing or inaccurate.
-      // Upstream billing/telemetry should treat aborted runs as "usage unavailable".
+      // 用户 abort 时有意不发 usage。
+      // 流式请求的 provider usage 只有正常完成后才可靠。
+      // 若请求中途 abort,部分 usage 可能缺失或不准。
+      // 上游计费/telemetry 应把 abort 的运行视为"usage 不可用"。
       if (request.signal?.aborted) {
         yield { type: 'done', stopReason: 'end_turn' };
         return;

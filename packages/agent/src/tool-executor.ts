@@ -217,7 +217,7 @@ export class TurnToolExecutor {
       await hooks.trigger('beforeToolUse', {
         turnId, sessionId,
         payload: { callId: id, name, args },
-        meta:    {},
+        signal: perToolCtrl.signal,
       });
 
       // ── Permission gate ───────────────────────────────────────────────────
@@ -237,7 +237,7 @@ export class TurnToolExecutor {
         await hooks.trigger('onToolFailure', {
           turnId, sessionId,
           payload: { callId: id, name, error: reason },
-          meta:    {},
+          signal: perToolCtrl.signal,
         });
         return;
       }
@@ -261,7 +261,7 @@ export class TurnToolExecutor {
         await hooks.trigger('afterToolUse', {
           turnId, sessionId,
           payload: { callId: id, name, output },
-          meta:    {},
+          signal: perToolCtrl.signal,
         });
       } catch (err) {
         // Per-tool abort (user cancelled this tool) — not an error from the LLM's perspective.
@@ -276,7 +276,7 @@ export class TurnToolExecutor {
           await hooks.trigger('onToolFailure', {
             turnId, sessionId,
             payload: { callId: id, name, error: err },
-            meta:    {},
+            signal: perToolCtrl.signal,
           });
         }
       }

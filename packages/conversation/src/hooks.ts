@@ -6,6 +6,7 @@ import type { ConversationDeps } from './types.js';
 
 interface NarrativeRecallContext {
   message: LlmMessage;
+  timelines: NarrativeTimelineRecall[];
 }
 
 /**
@@ -23,10 +24,10 @@ export function registerConversationHooks(bus: HookBus, deps: ConversationDeps):
   return bus.register(
     'beforeLlm',
     async (ctx) => {
-      if (ctx.meta['mode'] !== 'narrative') return { kind: 'continue' };
+      if (ctx.payload.mode !== 'narrative') return { kind: 'continue' };
 
-      const userInput = ctx.meta['userInput'] as string | undefined;
-      const signal    = ctx.meta['signal']    as AbortSignal | undefined;
+      const userInput = ctx.payload.userInput;
+      const signal = ctx.signal;
       if (!userInput) return { kind: 'continue' };
 
       try {
@@ -35,7 +36,6 @@ export function registerConversationHooks(bus: HookBus, deps: ConversationDeps):
           userInput,
           signal,
           emit: ctx.emit,
-          meta: ctx.meta,  // 写 narrativeRecall,engine trigger 后落盘用
         });
         if (!recalled) return { kind: 'continue' };
 
@@ -51,6 +51,7 @@ export function registerConversationHooks(bus: HookBus, deps: ConversationDeps):
           payload: {
             ...ctx.payload,
             messages: [...msgs.slice(0, -1), recalled.message, last],
+            narrativeRecall: { timelines: recalled.timelines },
           },
         };
       } catch (err) {
@@ -77,8 +78,6 @@ async function recallNarrativeContext(
     userInput: string;
     signal?: AbortSignal;
     emit?: (event: EmaStreamEvent) => void;
-    /** HookContext.shared bag -- 写 narrativeRecall 让 engine 落盘 */
-    meta?: Record<string, unknown>;
   },
 ): Promise<NarrativeRecallContext | null> {
   const routeResp = await deps.narrative.route(args.userInput, args.signal);
@@ -124,13 +123,8 @@ async function recallNarrativeContext(
   if (fatalError !== undefined) throw fatalError;
   if (recallParts.length === 0) return null;
 
-  // 写 shared bag:engine 在 trigger 返回后读 meta.narrativeRecall 落盘成
-  // kind='narrative_context' message(既回灌 LLM 又前端显示),一份内容不拆。
-  if (args.meta && recallTimelines.length > 0) {
-    args.meta['narrativeRecall'] = { timelines: recallTimelines };
-  }
-
   recallParts.sort(([a], [b]) => routeOrder.indexOf(a) - routeOrder.indexOf(b));
+  recallTimelines.sort((a, b) => routeOrder.indexOf(a.name) - routeOrder.indexOf(b.name));
 
   // inject 给 LLM 的只含有内容的 timeline(空 section 对 LLM 无意义)。
   // 落盘的 recallTimelines 保留全部(含空,前端展示"检索了但无内容")。
@@ -144,6 +138,7 @@ async function recallNarrativeContext(
       role: 'user',
       content: `[NARRATIVE CONTEXT — do not quote verbatim; use as background]\n\n${sections}`,
     },
+    timelines: recallTimelines,
   };
 }
 

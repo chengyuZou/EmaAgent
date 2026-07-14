@@ -22,7 +22,7 @@ function isContextWindowError(err: unknown): boolean {
   );
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// ── 辅助函数 ───────────────────────────────────────────────────────────────────
 
 function mapStopReason(reason: string | null | undefined): StopReason {
   switch (reason) {
@@ -39,8 +39,8 @@ interface NormalizedMessages {
 }
 
 /**
- * Map a MessageContentPart (media) to an Anthropic content block param.
- * Returns undefined for unsupported types (audio_data — Anthropic has no audio input).
+ * 把 MessageContentPart(媒体)映射成 Anthropic content block param。
+ * 不支持的类型(audio_data - Anthropic 无音频输入)返回 undefined。
  */
 function mediaPartToAnthropicBlock(
   part: MessageContentPart,
@@ -74,19 +74,19 @@ function mediaPartToAnthropicBlock(
         source: { type: 'url', url: part.url },
       } as Anthropic.ContentBlockParam;
     case 'audio_data':
-      // Anthropic does not support audio input; callers should use validateContentParts() first.
+      // Anthropic 不支持音频输入;调用方应先用 validateContentParts() 过滤。
       return undefined;
   }
 }
 
 /**
- * Convert our normalized LlmMessage[] to Anthropic's wire format.
+ * 把归一化 LlmMessage[] 转成 Anthropic 线路格式。
  *
- * Key differences from the old flat format:
- * 1. `system` is a top-level field, not a message.
- * 2. assistant content is an ordered block array — text + thinking + tool_use interleaved.
- * 3. tool results are already inside `role: 'user'` messages as ToolResultBlock[].
- *    No grouping loop needed — the normalized format already matches Anthropic's requirements.
+ * 与旧扁平格式的关键差异:
+ * 1. `system` 是顶层字段,非消息。
+ * 2. assistant content 是有序 block 数组 - text + thinking + tool_use 交错。
+ * 3. tool 结果已在 `role: 'user'` 消息内作为 ToolResultBlock[]。
+ *    无需分组循环 - 归一化格式已匹配 Anthropic 要求。
  */
 function toAnthropicMessages(msgs: LlmMessage[]): NormalizedMessages {
   let system: string | undefined;
@@ -100,7 +100,7 @@ function toAnthropicMessages(msgs: LlmMessage[]): NormalizedMessages {
 
     if (msg.role === 'user') {
       if (typeof msg.content === 'string') {
-        // cacheBreakpoint: convert string to block so we can attach cache_control.
+        // cacheBreakpoint:把字符串转 block,以便挂 cache_control。
         if (msg.cacheBreakpoint) {
           messages.push({
             role:    'user',
@@ -112,13 +112,13 @@ function toAnthropicMessages(msgs: LlmMessage[]): NormalizedMessages {
         continue;
       }
 
-      // UserBlock[] — may contain media parts and/or ToolResultBlock entries
+      // UserBlock[] - 可能含媒体 part 和/或 ToolResultBlock 条目
       const content: Anthropic.ContentBlockParam[] = [];
       for (const block of msg.content as UserBlock[]) {
         if (block.type === 'tool_result') {
           const tb = block as ToolResultBlock;
-          // Anthropic's ToolResultBlockParam.content only accepts string or
-          // (TextBlockParam | ImageBlockParam)[] — cast after filtering.
+          // Anthropic 的 ToolResultBlockParam.content 只接受 string 或
+          // (TextBlockParam | ImageBlockParam)[] - 过滤后 cast。
           const resultContent: Anthropic.ToolResultBlockParam['content'] =
             typeof tb.content === 'string'
               ? tb.content
@@ -137,7 +137,7 @@ function toAnthropicMessages(msgs: LlmMessage[]): NormalizedMessages {
           if (mapped) content.push(mapped);
         }
       }
-      // cacheBreakpoint: spread cache_control onto the last block.
+      // cacheBreakpoint:把 cache_control 扩展到最后一个 block。
       if (msg.cacheBreakpoint && content.length > 0) {
         const last = content.pop()!;
         content.push({ ...last, cache_control: { type: 'ephemeral' } } as Anthropic.ContentBlockParam);
@@ -146,14 +146,14 @@ function toAnthropicMessages(msgs: LlmMessage[]): NormalizedMessages {
       continue;
     }
 
-    // assistant — blocks preserve text/thinking/tool_use interleaving
+    // assistant - block 保留 text/thinking/tool_use 交错
     const content: Anthropic.ContentBlockParam[] = [];
     for (const block of msg.content as AssistantBlock[]) {
       if (block.type === 'text') {
         content.push({ type: 'text', text: block.text });
       } else if (block.type === 'thinking') {
-        // Round-trip requires the original signature Anthropic issued.
-        // If missing (e.g. injected by us), omit — Anthropic will re-generate thinking.
+        // 往返需要 Anthropic 原发的 signature。
+        // 若缺失(如我们注入的),省略 - Anthropic 会重新生成 thinking。
         if (block.signature) {
           content.push({
             type:      'thinking',
@@ -170,7 +170,7 @@ function toAnthropicMessages(msgs: LlmMessage[]): NormalizedMessages {
         });
       }
     }
-    // cacheBreakpoint on assistant messages.
+    // assistant 消息上的 cacheBreakpoint。
     if (msg.cacheBreakpoint && content.length > 0) {
       const last = content.pop()!;
       content.push({ ...last, cache_control: { type: 'ephemeral' } } as Anthropic.ContentBlockParam);
@@ -186,7 +186,7 @@ function toAnthropicToolChoice(
 ): Anthropic.ToolChoiceAuto | Anthropic.ToolChoiceAny | Anthropic.ToolChoiceTool | undefined {
   if (tc === undefined) return undefined;
   if (tc === 'auto')    return { type: 'auto' };
-  // Anthropic has no 'none' — caller should omit tools entirely; fall back to auto.
+  // Anthropic 无 'none' - 调用方应整体省略 tools;回退到 auto。
   if (tc === 'none')    return { type: 'auto' };
   return { type: 'tool', name: tc.name };
 }
@@ -237,11 +237,11 @@ export class AnthropicAdapter implements LlmAdapter {
       },
     );
 
-    // Track in-progress blocks keyed by Anthropic content_block index.
+    // 以 Anthropic content_block index 为 key 跟踪进行中的 block。
     const toolBlocks = new Map<number, { id: string; name: string; argsJson: string }>();
-    // Track Anthropic thinking signatures.
-    // Anthropic streams signature via content_block_delta.signature_delta,
-    // not on content_block_stop.
+    // 跟踪 Anthropic thinking signature。
+    // Anthropic 通过 content_block_delta.signature_delta 流式传 signature,
+    // 而非在 content_block_stop 上。
     const thinkingSignatures = new Map<number, string>();
 
     let inputTokens  = 0;
@@ -294,7 +294,7 @@ export class AnthropicAdapter implements LlmAdapter {
           const block = toolBlocks.get(event.index);
           if (block) {
             let args: unknown = {};
-            try { args = JSON.parse(block.argsJson); } catch { /* keep {} */ }
+            try { args = JSON.parse(block.argsJson); } catch { /* 保持 {} */ }
             yield {
               type:       'tool_use_complete',
               blockIndex: event.index,

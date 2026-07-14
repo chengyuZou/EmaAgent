@@ -24,18 +24,18 @@ function isContextWindowError(err: unknown): boolean {
   );
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// ── 辅助函数 ───────────────────────────────────────────────────────────────────
 
 type CompatThinkingParam = { type: 'enabled' | 'disabled' };
 
 type OpenAiChatParamsWithCompatThinking =
   Omit<OpenAI.ChatCompletionCreateParamsStreaming, 'reasoning_effort'> & {
     /**
-     * OpenAI-compatible providers can expose non-OpenAI thinking controls while
-     * still using the Chat Completions wire format. DeepSeek accepts this field.
+     * OpenAI 兼容 provider 可在仍使用 Chat Completions 线路格式的情况下,
+     * 暴露非 OpenAI 的 thinking 控制。DeepSeek 接受此字段。
      */
     thinking?: CompatThinkingParam;
-    /** DeepSeek accepts `max`; OpenAI's SDK type only includes OpenAI-native values. */
+    /** DeepSeek 接受 `max`;OpenAI SDK 类型只含 OpenAI 原生值。 */
     reasoning_effort?: 'high' | 'max';
   };
 
@@ -64,13 +64,13 @@ function applyCompatThinkingParams(
 }
 
 /**
- * Convert normalized LlmMessage[] to OpenAI's ChatCompletion wire format.
+ * 把归一化 LlmMessage[] 转成 OpenAI ChatCompletion 线路格式。
  *
- * OpenAI still uses a flat protocol:
- * - assistant: { content: string | null, tool_calls: [...] }
- * - tool results: separate `role: 'tool'` messages (one per call)
+ * OpenAI 仍用扁平协议:
+ * - assistant:{ content: string | null, tool_calls: [...] }
+ * - tool 结果:单独的 `role: 'tool'` 消息(每个 call 一条)
  *
- * We unpack our block arrays back to the flat form here.
+ * 在此把我们的 block 数组拆回扁平形式。
  */
 function toOpenAiMessages(messages: LlmMessage[]): OpenAI.ChatCompletionMessageParam[] {
   const out: OpenAI.ChatCompletionMessageParam[] = [];
@@ -87,15 +87,15 @@ function toOpenAiMessages(messages: LlmMessage[]): OpenAI.ChatCompletionMessageP
         continue;
       }
 
-      // UserBlock[] — split into multimodal user message + individual tool messages.
-      // ToolResultBlock entries become separate `role: 'tool'` messages (OpenAI protocol).
-      // Non-tool blocks become one `role: 'user'` multimodal message.
+      // UserBlock[] - 拆成多模态 user 消息 + 各条 tool 消息。
+      // ToolResultBlock 条目变成单独的 `role: 'tool'` 消息(OpenAI 协议)。
+      // 非 tool block 变成一条 `role: 'user'` 多模态消息。
       const mediaParts: OpenAI.ChatCompletionContentPart[] = [];
 
       for (const block of msg.content as UserBlock[]) {
         if (block.type === 'tool_result') {
           const tb = block as ToolResultBlock;
-          // Tool result content: OpenAI only accepts strings here
+          // tool 结果内容:OpenAI 此处只接受字符串
           const content = typeof tb.content === 'string'
             ? tb.content
             : tb.content.map(p => (p.type === 'text' ? p.text : '[non-text content]')).join('\n');
@@ -103,7 +103,7 @@ function toOpenAiMessages(messages: LlmMessage[]): OpenAI.ChatCompletionMessageP
           continue;
         }
 
-        // Media part — map to OpenAI content part
+        // 媒体 part - 映射到 OpenAI content part
         const part = block as LlmContentPart;
         switch (part.type) {
           case 'text':
@@ -124,7 +124,7 @@ function toOpenAiMessages(messages: LlmMessage[]): OpenAI.ChatCompletionMessageP
             }
             break;
           }
-          // file_data / file_url — OpenAI requires the Files API; skip silently
+          // file_data / file_url - OpenAI 需 Files API;静默跳过
         }
       }
 
@@ -134,7 +134,7 @@ function toOpenAiMessages(messages: LlmMessage[]): OpenAI.ChatCompletionMessageP
       continue;
     }
 
-    // assistant — unpack blocks to flat OpenAI shape
+    // assistant - 把 block 拆成扁平 OpenAI 形状
     let textContent = '';
     const toolCalls: OpenAI.ChatCompletionMessageToolCall[] = [];
 
@@ -148,7 +148,7 @@ function toOpenAiMessages(messages: LlmMessage[]): OpenAI.ChatCompletionMessageP
           function: { name: block.name, arguments: JSON.stringify(block.args) },
         });
       }
-      // thinking blocks have no OpenAI equivalent; skip silently
+      // thinking block 无 OpenAI 等价物;静默跳过
     }
 
     out.push({
@@ -184,8 +184,8 @@ function toOpenAiToolChoice(
 // ── Adapter ───────────────────────────────────────────────────────────────────
 
 /**
- * Handles both 'openai' and 'openai-compat' providers.
- * Pass baseURL to point at any OpenAI-compatible server (Ollama, LM Studio, …).
+ * 同时处理 'openai' 与 'openai-compat' provider。
+ * 传 baseURL 指向任意 OpenAI 兼容服务器(Ollama、LM Studio 等)。
  */
 export class OpenAiAdapter implements LlmAdapter {
   private readonly client: OpenAI;
@@ -215,15 +215,14 @@ export class OpenAiAdapter implements LlmAdapter {
       { signal: request.signal },
     );
 
-    // Tool call buffers keyed by OpenAI's delta index.
-    // OpenAI Chat Completions has no per-tool-call end event — only finish_reason marks
-    // the end of all tool calls. We accumulate every tool's args here and flush all at
-    // finish_reason time. This is slower than early-complete (tools only execute after
-    // the full round-trip) but correct for both serial and parallel tool calls.
+    // 以 OpenAI delta index 为 key 的 tool call 缓冲。
+    // OpenAI Chat Completions 没有 per-tool-call 结束事件 - 只有 finish_reason 标记
+    // 所有 tool call 的结束。在此累计每个 tool 的 args,在 finish_reason 时一次性 flush。
+    // 比早完成慢(tools 只在全往返后执行),但对串行和并行 tool call 都正确。
     const toolBufs = new Map<number, { id: string; name: string; argsJson: string }>();
     let stopReason: StopReason = 'end_turn';
-    // Pre-initialize from catalog so blockIndex stays stable even when reasoning_content
-    // arrives after the first text chunk (DeepSeek-reasoner real-world order).
+    // 从 catalog 预初始化,这样即使 reasoning_content 在首个 text chunk 之后到达
+    // (DeepSeek-reasoner 真实顺序),blockIndex 也保持稳定。
     let hasThinking = request.supportsReasoning ?? false;
 
     try {
@@ -231,8 +230,8 @@ export class OpenAiAdapter implements LlmAdapter {
       const choice = chunk.choices[0];
       const delta  = choice?.delta;
 
-      // DeepSeek-reasoner (and compatible models) expose chain-of-thought in
-      // `reasoning_content` — a non-standard field not in the OpenAI SDK types.
+      // DeepSeek-reasoner(及兼容模型)在 `reasoning_content` 里暴露思维链 -
+      // 一个 OpenAI SDK 类型里没有的非标准字段。
       const deltaAny = delta as Record<string, unknown> | undefined;
       if (typeof deltaAny?.reasoning_content === 'string' && deltaAny.reasoning_content) {
         hasThinking = true;
@@ -240,7 +239,7 @@ export class OpenAiAdapter implements LlmAdapter {
       }
 
       if (delta?.content) {
-        // If thinking arrived, text is blockIndex 1; otherwise it is blockIndex 0.
+        // 若已出现 thinking,text 是 blockIndex 1;否则 blockIndex 0。
         yield { type: 'text_delta', blockIndex: hasThinking ? 1 : 0, delta: delta.content };
       }
 
@@ -267,8 +266,8 @@ export class OpenAiAdapter implements LlmAdapter {
         }
       }
 
-      // finish_reason — flush all tool buffers at once.
-      // This is the only reliable completion boundary in Chat Completions streaming.
+      // finish_reason - 一次性 flush 所有 tool 缓冲。
+      // 这是 Chat Completions 流式里唯一可靠的完成边界。
       if (choice?.finish_reason) {
         stopReason = mapStopReason(choice.finish_reason);
         for (const [idx, buf] of toolBufs) {
@@ -276,9 +275,9 @@ export class OpenAiAdapter implements LlmAdapter {
           try {
             args = JSON.parse(buf.argsJson);
           } catch {
-            // argsJson is not valid JSON — likely truncated by max_tokens or a provider bug.
-            // Pass the raw fragment so the executor can surface a useful error to the model
-            // rather than silently calling the tool with empty args.
+            // argsJson 不是合法 JSON - 多半被 max_tokens 截断或 provider bug。
+            // 传原始片段,让 executor 能向模型报出有用错误,
+            // 而非用空 args 静默调用 tool。
             args = { __parse_error: true, raw: buf.argsJson.slice(0, 500) };
           }
           yield {
