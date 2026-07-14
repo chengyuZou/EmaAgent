@@ -1,23 +1,14 @@
 /**
- * diagnostic-sink.ts — HookBus trace → 三层自动诊断
+ * diagnostic-sink.ts — HookBus trace → 后端诊断
  *
- * Layer 1 (即时可见): emit system_warning SSE for errored/aborted handlers
- * Layer 2 (环形缓冲): 内存保留最近 200 条 trace，设置页可一键导出
- * Layer 3 (控制台): 结构化 JSON 写入 stderr，grep 友好
+ * 1. 环形缓冲：内存保留最近 200 条 trace，设置页可一键导出
+ * 2. 控制台：失败记录写入 stderr
  *
- * Usage in bindings.ts:
- *   const hooks = new HookBus({
- *     traceSink: createTraceSink(emit),
- *     warnAnonymous: process.env['NODE_ENV'] !== 'production',
- *   });
- *
- * Then in a diagnostic route:
- *   import { getDiagnostics } from './wiring/diagnostic-sink.js';
- *   app.get('/api/diagnostics/hooks', (c) => c.json(getDiagnostics()));
+ * 用户可见的结构化 hook_warning 由 HookBus 通过每个 Turn 的 ctx.emit
+ * 发出。这里没有全局 SSE emitter，避免并发 Turn 的诊断串流。
  */
 
 import type { HookTraceEntry } from '@ema-agent/hook';
-import type { EmaStreamEvent } from '@ema-agent/contracts';
 
 // ── Ring buffer ──────────────────────────────────────────────────────────────
 
@@ -34,33 +25,14 @@ function pushRing(entry: HookTraceEntry): void {
 // ── Sink factory ─────────────────────────────────────────────────────────────
 
 /**
- * Create a `traceSink` that captures every handler execution and optionally
- * emits user-visible warnings for slow / errored handlers.
- *
- * @param emit  SSE emitter — if missing, Layer 1 (user-visible warning) is skipped.
- *              The ring buffer and console logging always run regardless.
+ * 创建捕获每次 handler 执行结果的后端 trace sink。
  */
-export function createTraceSink(
-  emit?: (ev: EmaStreamEvent) => void,
-): (entry: HookTraceEntry) => void {
+export function createTraceSink(): (entry: HookTraceEntry) => void {
   return (entry: HookTraceEntry) => {
-    // ── Layer 2: ring buffer (always on) ─────────────────────────────────
     pushRing(entry);
 
-    // ── Layer 3: structured console log (only on error/abort — no duration threshold) ──
     if (entry.result === 'error' || entry.result === 'abort') {
-      console.error(`[hook] ${entry.event} ${entry.handlerName} ${entry.durationMs.toFixed(1)}ms ${entry.result} — ${entry.reason ?? ''}`);
-    }
-
-    // ── Layer 1: SSE user-visible warning (only on error/abort — no duration threshold) ──
-    if (!emit) return;
-
-    if (entry.result === 'error' || entry.result === 'abort') {
-      emit({
-        type:    'system_warning',
-        level:   'error',
-        message: `Hook ${entry.handlerName} (${entry.event}) ${entry.result}: ${entry.reason ?? 'unknown'}`,
-      });
+      console.error(`[hook] ${entry.sessionId}/${entry.turnId} ${entry.event} ${entry.handlerName} ${entry.durationMs.toFixed(1)}ms ${entry.result} — ${entry.reason ?? ''}`);
     }
   };
 }

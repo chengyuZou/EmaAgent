@@ -40,6 +40,10 @@ async function* runTurn(
   // distinguish a genuine user abort (mid-stream) from a post-stream error
   // where signal.aborted might coincidentally be true.
   let llmStreamDone = false;
+  const pendingHookEvents: EmaStreamEvent[] = [];
+  const emitHookEvent = (event: EmaStreamEvent): void => {
+    pendingHookEvents.push(event);
+  };
 
   try {
     emotion.beginTurn(input.sessionId);
@@ -50,7 +54,9 @@ async function* runTurn(
       sessionId: input.sessionId,
       payload: { mode },
       signal,
+      emit: emitHookEvent,
     });
+    while (pendingHookEvents.length > 0) yield pendingHookEvents.shift()!;
     if (startResult.kind === 'abort') {
       session.failTurn(turnId, 'turn/hook_aborted', startResult.reason);
       yield { type: 'turn_failed', sessionId: input.sessionId, turnId, code: 'turn/hook_aborted', message: startResult.reason };
@@ -227,7 +233,9 @@ async function* runTurn(
       sessionId: input.sessionId,
       payload: { content: fullText },
       signal,
+      emit: emitHookEvent,
     });
+    while (pendingHookEvents.length > 0) yield pendingHookEvents.shift()!;
 
     const msg = session.appendMessage({
       turnId,
@@ -249,7 +257,9 @@ async function* runTurn(
       sessionId: input.sessionId,
       payload: { messageId: msg.id, role: 'assistant', content: fullText },
       signal,
+      emit: emitHookEvent,
     });
+    while (pendingHookEvents.length > 0) yield pendingHookEvents.shift()!;
 
     const durationMs = Date.now() - startedAt;
     await hooks.trigger('onTurnEnd', {
@@ -257,7 +267,9 @@ async function* runTurn(
       sessionId: input.sessionId,
       payload: { durationMs },
       signal,
+      emit: emitHookEvent,
     });
+    while (pendingHookEvents.length > 0) yield pendingHookEvents.shift()!;
 
     session.completeTurn(turnId, { usageInputTokens: inputTokens, usageOutputTokens: outputTokens });
     yield { type: 'turn_completed', sessionId: input.sessionId, turnId, stats: { inputTokens, outputTokens, durationMs } };
@@ -273,7 +285,9 @@ async function* runTurn(
         turnId,
         sessionId: input.sessionId,
         payload: { reason: 'user_stop' },
+        emit: emitHookEvent,
       });
+      while (pendingHookEvents.length > 0) yield pendingHookEvents.shift()!;
       session.abortTurn(input.sessionId, turnId);
       yield { type: 'turn_aborted', sessionId: input.sessionId, turnId, reason: 'user_stop' };
     } else {

@@ -34,7 +34,7 @@
 - **受控 Payload 修改**：只有控制型事件可以替换 payload，下游处理器将收到修改后的值。
 - **观察型事件**：工具生命周期和事后通知只用于 UI、遥测、审计，不参与权限放行或参数改写。
 - **中止与警告语义**：控制型处理器可中止链条；非关键处理器的失败只记录警告，不中断执行。
-- **共享上下文 (`meta`)**：调用者拥有的暂存对象，在同一个 `trigger()` 调用中的所有处理器之间共享。
+- **结构化诊断**：失败、超时和协议违规通过当前 Turn 的 `hook_warning` SSE 上报；完整 trace 留在后端诊断环。
 
 ---
 
@@ -45,6 +45,8 @@ src/
 ├── index.ts       # 入口，统一导出
 ├── bus.ts         # HookBus 核心实现
 ├── events.ts      # 事件定义与 payload 类型
+├── types.ts       # 公共执行协议与 trace 类型
+├── errors.ts      # 稳定错误类型与失败分类
 ├── priority.ts    # 优先级常量
 └── bus.test.ts    # 测试文件
 ```
@@ -110,11 +112,11 @@ type HookEvent =
 
 | 事件 | Payload | 触发时机 | 说明 |
 |---|---|---|---|
-| `beforeToolUse` | `{ callId: string; name: string; args: unknown }` | 工具调用之前 | **观察型事件**。只用于 UI 展示、审计、trace；不得修改参数或决定放行。 |
+| `beforeToolUse` | `{ callId: string; name: string; args: unknown }` | PermissionEngine 决策之前 | **观察型事件**。只观察模型的工具意图；不得授权、拒绝、修改参数或绕过沙箱。 |
 | `afterToolUse` | `{ callId: string; name: string; output: unknown }` | 工具调用成功之后 | **观察型事件，支持并行**。用于记录、后处理工具输出、UI 展示。 |
 | `onToolFailure` | `{ callId: string; name: string; error: unknown }` | 工具调用失败时 | **观察型事件，支持并行**。用于错误展示、日志记录、审计。 |
 
-工具调用的安全链路固定为：`Agent ToolExecutor → PermissionEngine.gate() → ToolRegistry.dispatch() → Tool execute() → CommandRunner/Sandbox`。HookBus 不承担权限拦截、参数改写或沙箱隔离职责。
+工具调用的安全链路固定为：`Agent ToolExecutor → beforeToolUse（观察意图）→ PermissionEngine.gate() → ToolRegistry.dispatch() → Tool execute() → CommandRunner/Sandbox`。HookBus 不承担权限拦截、参数改写或沙箱隔离职责。
 
 #### 消息与压缩
 
@@ -231,10 +233,11 @@ type HookHandler<E extends HookEvent> = (
 
 | 字段 | 类型 | 默认值 | 说明 |
 |---|---|---|---|
-| `maxConcurrency` | `number` | `Infinity` | 并行处理器的最大并发数。必须 ≥ 1 |
+| `maxConcurrency` | `number` | `8` | 并行处理器的最大并发数。必须为正安全整数 |
 | `parallelEvents` | `ReadonlySet<HookEvent>` | `DEFAULT_PARALLEL_EVENTS` | 允许并行执行的事件集合 |
 | `traceSink` | `(entry: HookTraceEntry) => void` | `undefined` | 每次 handler 执行完毕后回调（无论成功/失败）。用于结构化日志、遥测、诊断面板。 |
 | `warnAnonymous` | `boolean` | `false` | 为 `true` 时，注册匿名 handler 会在控制台打印警告。建议 dev 环境开启。 |
+| `handlerTimeoutMs` | `number` | `30000` | 单个 handler 默认超时；`0` 表示不设超时 |
 
 #### `HookTraceEntry`
 
@@ -242,12 +245,16 @@ type HookHandler<E extends HookEvent> = (
 
 | 字段 | 类型 | 说明 |
 |---|---|---|
+| `sessionId` | `SessionId` | 所属 Session，用于并发 Turn 归因 |
+| `turnId` | `TurnId` | 所属 Turn |
+| `timestampMs` | `number` | trace 完成时的 Unix epoch 毫秒时间 |
 | `event` | `HookEvent` | 触发的事件名 |
 | `handlerName` | `string` | 处理器名称 |
 | `durationMs` | `number` | 执行耗时（毫秒） |
 | `result` | `'continue' \| 'replace' \| 'abort' \| 'error'` | 执行结果 |
 | `reason` | `string?` | 仅在 abort/error 时有值，描述原因 |
 | `payloadReplaced` | `boolean` | handler 是否返回了 `replace` |
+| `failureKind` | `'handler_error' \| 'timeout' \| 'cancelled'?` | 失败的稳定分类 |
 
 #### `RegisteredHook`
 

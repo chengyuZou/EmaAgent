@@ -511,6 +511,18 @@ export function dispatchSseEvent(
 
     // ── Misc ───────────────────────────────────────────────────────────────
 
+    case 'hook_warning':
+      console.warn('[sse] hook_warning:', {
+        sessionId: event.sessionId,
+        turnId: event.turnId,
+        hookEvent: event.hookEvent,
+        handlerName: event.handlerName,
+        failureKind: event.failureKind,
+        message: event.message,
+        durationMs: event.durationMs,
+      });
+      break;
+
     case 'system_warning':
       console.warn('[sse] system_warning:', event.level, event.message);
       break;

@@ -85,6 +85,10 @@ async function* runTurn(
   // buildExecutor (inside the loop) and cleared in finally to cut the reference
   // chain to pendingRelayEvents before the spawner is released.
   const emitRef: { fn?: (ev: EmaStreamEvent) => void } = {};
+  const pendingHookEvents: EmaStreamEvent[] = [];
+  const emitHookEvent = (event: EmaStreamEvent): void => {
+    pendingHookEvents.push(event);
+  };
 
   try {
     emotion.beginTurn(sessionId);
@@ -95,7 +99,9 @@ async function* runTurn(
       turnId, sessionId,
       payload: { mode: 'agent' },
       signal,
+      emit: emitHookEvent,
     });
+    while (pendingHookEvents.length > 0) yield pendingHookEvents.shift()!;
     if (startResult.kind === 'abort') {
       session.failTurn(turnId, 'turn/hook_aborted', startResult.reason);
       yield { type: 'turn_failed', sessionId, turnId, code: 'turn/hook_aborted', message: startResult.reason };
@@ -132,7 +138,9 @@ async function* runTurn(
         workspaceRoot,
       },
       signal,
+      emit: emitHookEvent,
     });
+    while (pendingHookEvents.length > 0) yield pendingHookEvents.shift()!;
     if (preLlm.kind === 'abort') {
       session.failTurn(turnId, 'turn/hook_aborted', preLlm.reason);
       yield { type: 'turn_failed', sessionId, turnId, code: 'turn/hook_aborted', message: preLlm.reason };
@@ -281,7 +289,9 @@ async function* runTurn(
             turnId, sessionId,
             payload: { content: fullText, toolCalls: [...iterToolCalls.values()] },
             signal,
+            emit: emitHookEvent,
           });
+          while (pendingHookEvents.length > 0) yield pendingHookEvents.shift()!;
           break;
         }
 
@@ -318,7 +328,9 @@ async function* runTurn(
               turnId, sessionId,
               payload: { messageId: msg.id, role: 'assistant', content: ev.fullText },
               signal,
+              emit: emitHookEvent,
             });
+            while (pendingHookEvents.length > 0) yield pendingHookEvents.shift()!;
           }
           break;
         }
@@ -327,7 +339,12 @@ async function* runTurn(
 
     // ── Turn teardown ─────────────────────────────────────────────────────────
     if (signal.aborted) {
-      await hooks.trigger('onTurnAbort', { turnId, sessionId, payload: { reason: 'user_stop' } });
+      await hooks.trigger('onTurnAbort', {
+        turnId, sessionId,
+        payload: { reason: 'user_stop' },
+        emit: emitHookEvent,
+      });
+      while (pendingHookEvents.length > 0) yield pendingHookEvents.shift()!;
       session.abortTurn(sessionId, turnId);
       deps.taskStore?.cancel(turnId, 'user_abort');
       yield { type: 'turn_aborted', sessionId, turnId, reason: 'user_stop' };
@@ -335,7 +352,13 @@ async function* runTurn(
     }
 
     const durationMs = Date.now() - startedAt;
-    await hooks.trigger('onTurnEnd', { turnId, sessionId, payload: { durationMs }, signal });
+    await hooks.trigger('onTurnEnd', {
+      turnId, sessionId,
+      payload: { durationMs },
+      signal,
+      emit: emitHookEvent,
+    });
+    while (pendingHookEvents.length > 0) yield pendingHookEvents.shift()!;
 
     session.completeTurn(turnId, {
       usageInputTokens:  totalInput,
@@ -351,7 +374,12 @@ async function* runTurn(
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
     if (signal.aborted) {
-      await hooks.trigger('onTurnAbort', { turnId, sessionId, payload: { reason: 'user_stop' } });
+      await hooks.trigger('onTurnAbort', {
+        turnId, sessionId,
+        payload: { reason: 'user_stop' },
+        emit: emitHookEvent,
+      });
+      while (pendingHookEvents.length > 0) yield pendingHookEvents.shift()!;
       session.abortTurn(sessionId, turnId);
       deps.taskStore?.cancel(turnId, 'user_abort');
       yield { type: 'turn_aborted', sessionId, turnId, reason: 'user_stop' };

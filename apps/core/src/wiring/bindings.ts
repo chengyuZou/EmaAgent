@@ -212,7 +212,7 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
 
   // ── Core infra ──────────────────────────────────────────────────────────────
   const hooks   = new HookBus({
-    traceSink:     createTraceSink(),   // ring buffer + console; SSE layer added by orchestrator
+    traceSink:     createTraceSink(),   // 后端 ring + console；Turn SSE 由 HookBus 的 ctx.emit 发出
     warnAnonymous: process.env['NODE_ENV'] !== 'production',
   });
   const session = new SessionStore({

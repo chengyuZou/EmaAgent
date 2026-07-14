@@ -97,6 +97,10 @@ export interface RegisteredHook {
 
 /** 每次 handler 运行后由 traceSink 发出的结构化记录。 */
 export interface HookTraceEntry {
+  sessionId: SessionId;
+  turnId: TurnId;
+  /** 记录完成时的 Unix epoch 毫秒时间，便于导出后跨日志对齐。 */
+  timestampMs: number;
   event: HookEvent;
   handlerName: string;
   durationMs: number;

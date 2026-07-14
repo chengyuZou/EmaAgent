@@ -20,6 +20,12 @@ export interface ToolError {
   message: string;
 }
 
+/** Hook 运行时告警的稳定分类；协议层不依赖 Hook 包，避免反向耦合。 */
+export type HookWarningFailureKind =
+  | 'handler_error'
+  | 'timeout'
+  | 'protocol_violation';
+
 /**
  * High-frequency detail stream inside the subagent_stream envelope.
  * Mirrors the main agent's event taxonomy — the frontend can render a
@@ -323,4 +329,16 @@ export type EmaStreamEvent =
   | { type: 'character_card_switched'; cardId: CharacterCardId; name: string }
 
   // System
+  | {
+      type: 'hook_warning';
+      sessionId: SessionId;
+      turnId: TurnId;
+      hookEvent: string;
+      handlerName: string;
+      severity: 'warn' | 'error';
+      failureKind: HookWarningFailureKind;
+      message: string;
+      timestampMs: number;
+      durationMs?: number;
+    }
   | { type: 'system_warning'; level: 'info' | 'warn' | 'error'; message: string }

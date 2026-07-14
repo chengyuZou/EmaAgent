@@ -218,6 +218,7 @@ export class TurnToolExecutor {
         turnId, sessionId,
         payload: { callId: id, name, args },
         signal: perToolCtrl.signal,
+        emit: pushEv,
       });
 
       // ── Permission gate ───────────────────────────────────────────────────
@@ -238,6 +239,7 @@ export class TurnToolExecutor {
           turnId, sessionId,
           payload: { callId: id, name, error: reason },
           signal: perToolCtrl.signal,
+          emit: pushEv,
         });
         return;
       }
@@ -262,6 +264,7 @@ export class TurnToolExecutor {
           turnId, sessionId,
           payload: { callId: id, name, output },
           signal: perToolCtrl.signal,
+          emit: pushEv,
         });
       } catch (err) {
         // Per-tool abort (user cancelled this tool) — not an error from the LLM's perspective.
@@ -277,6 +280,7 @@ export class TurnToolExecutor {
             turnId, sessionId,
             payload: { callId: id, name, error: err },
             signal: perToolCtrl.signal,
+            emit: pushEv,
           });
         }
       }

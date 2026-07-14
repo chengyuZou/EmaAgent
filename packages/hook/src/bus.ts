@@ -22,6 +22,8 @@ import type {
   RegisteredHook,
 } from './types.js';
 
+type ReportableHookFailureKind = 'handler_error' | 'timeout' | 'protocol_violation';
+
 type HookRuntimeResult<E extends HookEvent> =
   | HookControlResult<E>
   | { kind: 'cancelled'; reason: string };
@@ -81,6 +83,52 @@ function observerControlFlowWarning(
     return `Observer hook "${hookName}" returned abort (${result.reason}), but observer hooks cannot alter control flow`;
   }
   return `Observer hook "${hookName}" returned replace, but observer hooks cannot alter control flow`;
+}
+
+function emitHookWarning<E extends HookEvent>(
+  ctx: HookContext<E>,
+  input: {
+    handlerName: string;
+    severity: 'warn' | 'error';
+    failureKind: ReportableHookFailureKind;
+    message: string;
+    durationMs?: number;
+  },
+): void {
+  try {
+    ctx.emit?.({
+      type: 'hook_warning',
+      sessionId: ctx.sessionId,
+      turnId: ctx.turnId,
+      hookEvent: ctx.event,
+      handlerName: input.handlerName,
+      severity: input.severity,
+      failureKind: input.failureKind,
+      message: input.message,
+      timestampMs: Date.now(),
+      ...(input.durationMs === undefined ? {} : { durationMs: input.durationMs }),
+    });
+  } catch {
+    // SSE 诊断是旁路能力，消费者异常不得反向破坏 Turn 主流程。
+  }
+}
+
+function appendWarning<E extends HookEvent>(
+  warnings: HookWarning[],
+  ctx: HookContext<E>,
+  handlerName: string,
+  reason: string,
+  failureKind: ReportableHookFailureKind,
+  durationMs?: number,
+): void {
+  warnings.push({ event: ctx.event, hook: handlerName, reason });
+  emitHookWarning(ctx, {
+    handlerName,
+    severity: failureKind === 'protocol_violation' ? 'warn' : 'error',
+    failureKind,
+    message: reason,
+    durationMs,
+  });
 }
 
 const DEFAULT_MAX_CONCURRENCY = 8;
@@ -326,11 +374,13 @@ export class HookBus {
           }
 
           if (!isControlHookEvent(event) && result.kind !== 'continue') {
-            warnings.push({
-              event,
-              hook: entry.name,
-              reason: observerControlFlowWarning(entry.name, result),
-            });
+            appendWarning(
+              warnings,
+              baseCtx,
+              entry.name,
+              observerControlFlowWarning(entry.name, result),
+              'protocol_violation',
+            );
             continue;
           }
 
@@ -400,6 +450,9 @@ export class HookBus {
           ]);
       try {
         this.options.traceSink?.({
+          sessionId:       baseCtx.sessionId,
+          turnId:          baseCtx.turnId,
+          timestampMs:     Date.now(),
           event:           event,
           handlerName:     entry.name,
           durationMs:      performance.now() - t0,
@@ -418,6 +471,9 @@ export class HookBus {
 
       try {
         this.options.traceSink?.({
+          sessionId:       baseCtx.sessionId,
+          turnId:          baseCtx.turnId,
+          timestampMs:     Date.now(),
           event:           event,
           handlerName:     entry.name,
           durationMs,
@@ -432,18 +488,31 @@ export class HookBus {
         return { kind: 'cancelled', reason };
       }
 
+      const reportableFailureKind: ReportableHookFailureKind =
+        failureKind === 'timeout' ? 'timeout' : 'handler_error';
+
       if (entry.critical) {
+        emitHookWarning(baseCtx, {
+          handlerName: entry.name,
+          severity: 'error',
+          failureKind: reportableFailureKind,
+          message: reason,
+          durationMs,
+        });
         return {
           kind: 'abort',
           reason,
         };
       }
 
-      warnings.push({
-        event,
-        hook: entry.name,
+      appendWarning(
+        warnings,
+        baseCtx,
+        entry.name,
         reason,
-      });
+        reportableFailureKind,
+        durationMs,
+      );
 
       return { kind: 'continue' };
     } finally {
@@ -481,11 +550,13 @@ export class HookBus {
             };
           }
 
-          warnings.push({
-            event,
-            hook: entry.name,
+          appendWarning(
+            warnings,
+            baseCtx,
+            entry.name,
             reason,
-          });
+            'handler_error',
+          );
 
           continue;
         }
@@ -500,11 +571,13 @@ export class HookBus {
         }
 
         if (!isControlHookEvent(event) && result.kind !== 'continue') {
-          warnings.push({
-            event,
-            hook: entry.name,
-            reason: observerControlFlowWarning(entry.name, result),
-          });
+          appendWarning(
+            warnings,
+            baseCtx,
+            entry.name,
+            observerControlFlowWarning(entry.name, result),
+            'protocol_violation',
+          );
           continue;
         }
 
@@ -528,11 +601,13 @@ export class HookBus {
             };
           }
 
-          warnings.push({
-            event,
-            hook: entry.name,
+          appendWarning(
+            warnings,
+            baseCtx,
+            entry.name,
             reason,
-          });
+            'protocol_violation',
+          );
 
           continue;
         }

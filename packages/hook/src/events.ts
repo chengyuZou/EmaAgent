@@ -80,11 +80,13 @@ export interface HookPayload {
     content: string;
   };
   /**
-   * 工具执行前立即触发 - 仅用于 UI 和审计。
+   * PermissionEngine 决策前观察模型的工具意图 - 仅用于 UI 和审计。
    *
-   * 工具权限决策(allow / ask / deny)由 PermissionEngine 在本 hook 触发前做出。
+   * 顺序固定为 beforeToolUse -> PermissionEngine -> Sandbox。
+   * Hook 只能观察意图，不能授权、拒绝、改参或绕过沙箱；权限决策
+   * (allow / ask / deny)仍只由 PermissionEngine 作出。
    * 沙箱执行边界由 CommandRunner 强制。本 hook 无法拦截、修改或取消工具执行。
-   * 用它更新 UI(显示"正在运行工具…")或记录审计日志。
+   * 用它更新 UI(显示"准备调用工具…")或记录审计日志。
    */
   beforeToolUse: {
     callId: string;

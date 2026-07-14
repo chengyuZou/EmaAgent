@@ -2,7 +2,7 @@
 import { HookBus } from './bus.js';
 import { PRIORITY } from './priority.js';
 import type { HookPayload } from './events.js';
-import type { TurnId, SessionId } from '@ema-agent/contracts';
+import type { EmaStreamEvent, TurnId, SessionId } from '@ema-agent/contracts';
 
 const turnId = 'turn-1' as TurnId;
 const sessionId = 'session-1' as SessionId;
@@ -500,9 +500,11 @@ describe('HookBus', () => {
       },
     );
 
+    const emitted: EmaStreamEvent[] = [];
     const result = await bus.trigger('afterLlmComplete', {
       ...baseCtx(),
       payload: { content: 'original' },
+      emit: (event) => emitted.push(event),
     });
 
     expect(result).toEqual({
@@ -517,6 +519,17 @@ describe('HookBus', () => {
         },
       ],
     });
+    expect(emitted).toEqual([
+      expect.objectContaining({
+        type: 'hook_warning',
+        sessionId,
+        turnId,
+        hookEvent: 'afterLlmComplete',
+        handlerName: 'bad-parallel-replace',
+        severity: 'warn',
+        failureKind: 'protocol_violation',
+      }),
+    ]);
   });
 
   it('observer hook returning replace records warning when non-critical', async () => {
@@ -644,6 +657,7 @@ describe('HookBus', () => {
     });
 
     const reached = vi.fn();
+    const emitted: EmaStreamEvent[] = [];
 
     bus.register(
       'afterLlmComplete',
@@ -673,6 +687,7 @@ describe('HookBus', () => {
     const result = await bus.trigger('afterLlmComplete', {
       ...baseCtx(),
       payload: { content: 'done' },
+      emit: (event) => emitted.push(event),
     });
 
     expect(reached).toHaveBeenCalledTimes(1);
@@ -687,6 +702,14 @@ describe('HookBus', () => {
         },
       ],
     });
+    expect(emitted).toEqual([
+      expect.objectContaining({
+        type: 'hook_warning',
+        hookEvent: 'afterLlmComplete',
+        handlerName: 'parallel-telemetry',
+        failureKind: 'handler_error',
+      }),
+    ]);
   });
 
   it('serial hook after parallel batch sees unchanged payload', async () => {
@@ -736,7 +759,8 @@ describe('HookBus', () => {
   });
 
   it('aborts a timed-out critical handler and propagates cancellation to it', async () => {
-    const traces: Array<{ failureKind?: string }> = [];
+    const traces: Array<{ failureKind?: string; sessionId?: SessionId; turnId?: TurnId; timestampMs?: number }> = [];
+    const emitted: EmaStreamEvent[] = [];
     const bus = new HookBus({
       handlerTimeoutMs: 10,
       traceSink: (entry) => traces.push(entry),
@@ -756,18 +780,37 @@ describe('HookBus', () => {
     const result = await bus.trigger('onTurnStart', {
       ...baseCtx(),
       payload: { mode: 'chat' },
+      emit: (event) => emitted.push(event),
     });
 
     expect(result.kind).toBe('abort');
     expect(result.kind === 'abort' ? result.reason : '').toContain('timed out after 10ms');
     expect(handlerSawAbort).toBe(true);
-    expect(traces).toEqual([expect.objectContaining({ failureKind: 'timeout' })]);
+    expect(traces).toEqual([expect.objectContaining({
+      sessionId,
+      turnId,
+      timestampMs: expect.any(Number),
+      failureKind: 'timeout',
+    })]);
+    expect(emitted).toEqual([
+      expect.objectContaining({
+        type: 'hook_warning',
+        sessionId,
+        turnId,
+        hookEvent: 'onTurnStart',
+        handlerName: 'slow-critical',
+        severity: 'error',
+        failureKind: 'timeout',
+        durationMs: expect.any(Number),
+      }),
+    ]);
   });
 
   it('stops the chain when the parent task is cancelled', async () => {
     const bus = new HookBus({ handlerTimeoutMs: 0 });
     const parent = new AbortController();
     const reached = vi.fn();
+    const emitted: EmaStreamEvent[] = [];
 
     bus.register('onTurnStart', async (ctx) => {
       await new Promise<void>((resolve) => {
@@ -784,6 +827,7 @@ describe('HookBus', () => {
     const result = await bus.trigger('onTurnStart', {
       ...baseCtx(parent.signal),
       payload: { mode: 'chat' },
+      emit: (event) => emitted.push(event),
     });
 
     expect(result).toEqual({
@@ -793,6 +837,7 @@ describe('HookBus', () => {
       warnings: [],
     });
     expect(reached).not.toHaveBeenCalled();
+    expect(emitted).toEqual([]);
   });
 
   it('clears a pending timeout after a successful handler', async () => {
