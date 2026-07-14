@@ -65,7 +65,7 @@ describe('LlmRouter — routing', () => {
   });
 
   it('passes modelName directly to the adapter', async () => {
-    const mock   = new MockAdapter();
+    const mock   = new MockAdapter([{ type: 'done', stopReason: 'end_turn' }]);
     const router = new LlmRouter([DS_CONFIG], new Map([['ds-001', mock]]));
 
     await collect(router.stream({ providerId: 'ds-001', model: 'deepseek-v4-pro', messages: [] }));
@@ -74,9 +74,9 @@ describe('LlmRouter — routing', () => {
   });
 
   it('passes AbortSignal through to the adapter', async () => {
-    const mock   = new MockAdapter();
+    const mock   = new MockAdapter([{ type: 'done', stopReason: 'end_turn' }]);
     const router = new LlmRouter([DS_CONFIG], new Map([['ds-001', mock]]));
-    const signal = AbortSignal.abort();
+    const signal = new AbortController().signal;
 
     await collect(router.stream({ providerId: 'ds-001', model: 'deepseek-v4-flash', messages: [], signal }));
 

@@ -11,7 +11,7 @@ import type {
   AssistantBlock,
   UserBlock,
 } from '../types.js';
-import { ContextWindowExceededError } from '../types.js';
+import { ContextWindowExceededError } from '../errors.js';
 import { createLlmUsage } from '../usage.js';
 import type { ToolResultBlock } from '@ema-agent/contracts';
 

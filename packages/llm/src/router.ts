@@ -3,7 +3,7 @@ import { OpenAiResponsesAdapter } from './adapters/openai-responses.js';
 import { AnthropicAdapter }       from './adapters/anthropic.js';
 import { GeminiAdapter }          from './adapters/gemini.js';
 import type { LlmAdapter }        from './adapters/base.js';
-import { CircuitBreaker, CircuitOpenError, isRetryable, sleep } from './retry.js';
+import { LlmStreamRuntime } from './stream-runtime.js';
 import { validateContentParts } from './validate.js';
 import type { UnsupportedPart } from './validate.js';
 import type {
@@ -52,8 +52,8 @@ export class LlmRouter {
   private readonly adapters = new Map<string, LlmAdapter>();
   /** id -> config(保留用于热重载和 probe) */
   private readonly configs  = new Map<string, ProviderConfig>();
-  /** id -> 熔断器(per-provider 失败隔离) */
-  private readonly breakers = new Map<string, CircuitBreaker>();
+  /** 流生命周期、重试边界与 per-provider 熔断状态。 */
+  private readonly streamRuntime = new LlmStreamRuntime();
   /** 仅测试用的 adapter 替换,以 ProviderConfig.id 为 key。 */
   private readonly adapterOverrides?: ReadonlyMap<string, LlmAdapter>;
 
@@ -98,9 +98,10 @@ export class LlmRouter {
     // Façade 必须同步拒绝未知 Provider，Engine 才能在创建异步迭代器时 fail-fast。
     const adapter = this.adapters.get(enriched.providerId);
     if (!adapter) throw notConfigured(enriched.providerId);
-    return this.guardedStream(
+    return this.streamRuntime.stream(
       enriched.providerId,
       () => adapter.stream(enriched, enriched.model),
+      enriched.signal,
     );
   }
 
@@ -174,61 +175,6 @@ export class LlmRouter {
     return { blocks, stopReason, usage };
   }
 
-  // ── 熔断器 ──────────────────────────────────────────────────
-
-  private breakerFor(providerId: string): CircuitBreaker {
-    let cb = this.breakers.get(providerId);
-    if (!cb) {
-      cb = new CircuitBreaker();
-      this.breakers.set(providerId, cb);
-    }
-    return cb;
-  }
-
-  /**
-   * 用熔断器门禁包裹 adapter stream。
-   * - 调用前 guard() -> open 时抛 CircuitOpenError。
-   * - 首个成功 chunk -> breaker.success()。
-   * - 任何 chunk 之前抛错 -> breaker.failure()。
-   */
-  private async *guardedStream(
-    breakerKey: string,
-    start: () => AsyncIterable<LlmStreamChunk>,
-  ): AsyncIterable<LlmStreamChunk> {
-    const breaker = this.breakerFor(breakerKey);
-    breaker.guard();
-
-    const maxAttempts = 3;
-    for (let attempt = 0; attempt < maxAttempts; attempt++) {
-      let started = false;
-      try {
-        const stream = start();
-        for await (const chunk of stream) {
-          if (!started) {
-            started = true;
-            breaker.success();
-          }
-          yield chunk;
-        }
-        return;
-      } catch (error) {
-        // 已向上游交付过 chunk 后绝不重试，否则会重复文本或工具副作用。
-        if (started) throw error;
-
-        breaker.failure();
-        if (
-          error instanceof CircuitOpenError
-          || breaker.phase === 'open'
-          || !isRetryable(error)
-          || attempt === maxAttempts - 1
-        ) {
-          throw error;
-        }
-        await sleep(1_000 * 2 ** attempt);
-      }
-    }
-  }
-
   // ── 健康检查 ─────────────────────────────────────────────
 
   /**
@@ -266,11 +212,13 @@ export class LlmRouter {
   upsertConfig(config: ProviderConfig): void {
     this.configs.set(config.id, config);
     this.adapters.set(config.id, this.createAdapterFor(config));
+    this.streamRuntime.reset(config.id);
   }
 
   removeConfig(providerId: string): void {
     this.configs.delete(providerId);
     this.adapters.delete(providerId);
+    this.streamRuntime.reset(providerId);
   }
 
   /** 返回首个已注册 config id,无则 undefined。用作最后兜底。 */

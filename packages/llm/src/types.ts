@@ -124,16 +124,3 @@ export interface ProbeResult {
   latencyMs?: number;
   error?:     string;
 }
-
-// ── 已知错误 ─────────────────────────────────────────────────────────
-
-/**
- * 当 provider 因 prompt 超出模型上下文窗口而拒绝请求时,由 adapter 抛出。
- * agent loop 捕获它以触发响应式 compaction,而非立即让 turn 失败。
- */
-export class ContextWindowExceededError extends Error {
-  constructor(message?: string) {
-    super(message ?? 'Context window exceeded');
-    this.name = 'ContextWindowExceededError';
-  }
-}
