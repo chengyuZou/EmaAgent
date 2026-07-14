@@ -10,19 +10,13 @@ import type {
   AssistantBlock,
   UserBlock,
 } from '../types.js';
-import { ContextWindowExceededError } from '../errors.js';
+import {
+  createLlmProviderResponseError,
+  LlmStreamProtocolError,
+  normalizeLlmProviderError,
+} from '../errors.js';
 import { createLlmUsage } from '../usage.js';
 import type { ToolResultBlock, MessageContentPart } from '@ema-agent/contracts';
-
-function isContextWindowError(err: unknown): boolean {
-  const msg = (err instanceof Error ? err.message : String(err)).toLowerCase();
-  const status = (err as { status?: number }).status;
-  return status === 400 && (
-    msg.includes('maximum context length') ||
-    msg.includes('context_length_exceeded') ||
-    msg.includes('context window')
-  );
-}
 
 // ── 类型(从 openai SDK 命名空间收窄) ────────────────────────────────────────
 
@@ -235,19 +229,6 @@ export class OpenAiResponsesAdapter implements LlmAdapter {
       params.reasoning = { effort: effort as 'low' | 'medium' | 'high' };
     }
 
-    let responseStream: AsyncIterable<ResponseStreamEvent>;
-    try {
-      responseStream = await this.client.responses.create(params, {
-        signal: request.signal,
-      });
-    } catch (err) {
-      if (request.signal?.aborted) {
-        yield { type: 'done', stopReason: 'end_turn' };
-        return;
-      }
-      throw err;
-    }
-
     // 跨事件跟踪状态。
     let stopReason: StopReason = 'end_turn';
     let hasReasoning           = false;
@@ -258,6 +239,11 @@ export class OpenAiResponsesAdapter implements LlmAdapter {
     const toolMeta = new Map<number, { name: string; callId: string; blockIndex: number }>();
 
     try {
+      const responseStream: AsyncIterable<ResponseStreamEvent> =
+        await this.client.responses.create(params, {
+          signal: request.signal,
+        });
+
       for await (const event of responseStream) {
         switch (event.type) {
 
@@ -330,7 +316,8 @@ export class OpenAiResponsesAdapter implements LlmAdapter {
           }
 
           // ── Response 完成 - usage ─────────────────────────────────────
-          case 'response.completed': {
+          case 'response.completed':
+          case 'response.incomplete': {
             const usage = event.response.usage;
             if (usage) {
               yield {
@@ -343,35 +330,48 @@ export class OpenAiResponsesAdapter implements LlmAdapter {
               };
             }
             // 若尚未是 tool_use,把 incomplete_details 映射到 stop reason。
-            if (stopReason === 'end_turn') {
+            if (event.type === 'response.incomplete' && stopReason === 'end_turn') {
               const reason = event.response.incomplete_details?.reason;
               if (reason === 'max_output_tokens') stopReason = 'max_tokens';
               else if (reason === 'content_filter') stopReason = 'stop_sequence';
+              else stopReason = 'stop_sequence';
             }
-            break;
+            yield { type: 'done', stopReason };
+            return;
           }
 
-          // ── 错误事件 ───────────────────────────────────────────────────
-          case 'response.failed':
-          case 'response.incomplete': {
-            // 作为 stop_sequence 上报,让 engine 知道这不是干净结束。
-            if (stopReason === 'end_turn') stopReason = 'stop_sequence';
-            break;
+          // ── 错误终态 ───────────────────────────────────────────────────
+          case 'response.failed': {
+            throw createLlmProviderResponseError({
+              providerId: request.providerId,
+              providerCode: event.response.error?.code,
+              message: event.response.error?.message
+                ?? 'OpenAI Responses API reported a failed response',
+              cause: event,
+            });
+          }
+
+          case 'error': {
+            throw createLlmProviderResponseError({
+              providerId: request.providerId,
+              providerCode: event.code,
+              message: event.message,
+              cause: event,
+            });
           }
 
           default:
             break;
         }
       }
+
+      throw new LlmStreamProtocolError(request.providerId);
     } catch (err) {
       if (request.signal?.aborted) {
         yield { type: 'done', stopReason };
         return;
       }
-      if (isContextWindowError(err)) throw new ContextWindowExceededError(err instanceof Error ? err.message : String(err));
-      throw err;
+      throw normalizeLlmProviderError(err);
     }
-
-    yield { type: 'done', stopReason };
   }
 }
