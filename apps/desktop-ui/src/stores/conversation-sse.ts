@@ -517,6 +517,7 @@ export function dispatchSseEvent(
 
     case 'hook_warning':
       console.warn('[sse] hook_warning:', {
+        hookInvocationId: event.hookInvocationId,
         sessionId: event.sessionId,
         turnId: event.turnId,
         hookEvent: event.hookEvent,

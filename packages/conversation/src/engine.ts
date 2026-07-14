@@ -4,7 +4,7 @@ import type { EmaStreamEvent, ErrorCode, LlmMessage, AssistantBlock, UserBlock, 
 import type { LlmUsage } from '@ema-agent/contracts';
 import { computePromptPrefixHash } from '@ema-agent/llm';
 import type { MessageBlocks } from '@ema-agent/session';
-import type { HookBus, HookContext, HookTriggerResult, TurnFailurePhase } from '@ema-agent/hook';
+import type { HookBus, HookTriggerContext, HookTriggerResult, TurnFailurePhase } from '@ema-agent/hook';
 import type { ConversationDeps, ConversationRunInput } from './types.js';
 import { historyToLlmMessages } from '@ema-agent/session';
 
@@ -384,7 +384,7 @@ async function* runTurn(
  */
 async function* streamingBeforeLlm(
   hooks: HookBus,
-  ctx: Omit<HookContext<'beforeLlm'>, 'event' | 'emit'>,
+  ctx: Omit<HookTriggerContext<'beforeLlm'>, 'emit'>,
 ): AsyncGenerator<EmaStreamEvent, HookTriggerResult<'beforeLlm'>> {
   const queue: EmaStreamEvent[] = [];
   let notify: (() => void) | null = null;

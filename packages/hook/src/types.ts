@@ -1,5 +1,6 @@
 import type {
   EmaStreamEvent,
+  HookInvocationId,
   SessionId,
   TurnId,
 } from '@ema-agent/contracts';
@@ -29,6 +30,8 @@ export type HookFailureKind = 'handler_error' | 'timeout' | 'cancelled';
 /** 单个 Hook handler 获得的强类型执行上下文。 */
 export interface HookContext<E extends HookEvent> {
   readonly event: E;
+  /** 单次 HookBus.trigger() 的运行身份；同次触发的所有 handler 共享。 */
+  readonly invocationId: HookInvocationId;
   readonly payload: DeepReadonly<HookPayload[E]>;
   readonly turnId: TurnId;
   readonly sessionId: SessionId;
@@ -39,7 +42,7 @@ export interface HookContext<E extends HookEvent> {
 
 /** 调用 HookBus.trigger() 时提供的上下文。 */
 export type HookTriggerContext<E extends HookEvent> =
-  Omit<HookContext<E>, 'event' | 'signal'> & {
+  Omit<HookContext<E>, 'event' | 'invocationId' | 'signal'> & {
     /** 父任务取消信号；没有父任务的内部事件可以省略。 */
     signal?: AbortSignal;
   };
@@ -64,6 +67,7 @@ export type HookHandler<E extends HookEvent> = (
 ) => Promise<HookResult<E>> | HookResult<E>;
 
 export interface HookWarning {
+  invocationId: HookInvocationId;
   event: HookEvent;
   hook: string;
   reason: string;
@@ -113,6 +117,7 @@ export interface RegisteredHook {
 
 /** 每次 handler 运行后由 traceSink 发出的结构化记录。 */
 export interface HookTraceEntry {
+  invocationId: HookInvocationId;
   sessionId: SessionId;
   turnId: TurnId;
   /** 记录完成时的 Unix epoch 毫秒时间，便于导出后跨日志对齐。 */

@@ -32,7 +32,7 @@ export function createTraceSink(): (entry: HookTraceEntry) => void {
     pushRing(entry);
 
     if (entry.result === 'error' || entry.result === 'abort') {
-      console.error(`[hook] ${entry.sessionId}/${entry.turnId} ${entry.event} ${entry.handlerName} ${entry.durationMs.toFixed(1)}ms ${entry.result} — ${entry.reason ?? ''}`);
+      console.error(`[hook] ${entry.sessionId}/${entry.turnId} ${entry.invocationId} ${entry.event} ${entry.handlerName} ${entry.durationMs.toFixed(1)}ms ${entry.result} — ${entry.reason ?? ''}`);
     }
   };
 }

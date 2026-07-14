@@ -5,6 +5,7 @@
 import { sidecarClient } from './sidecar-client.js';
 
 export interface HookTraceEntry {
+  invocationId:    string;
   sessionId:       string;
   turnId:          string;
   timestampMs:     number;

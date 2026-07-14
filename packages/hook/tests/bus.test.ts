@@ -3,7 +3,14 @@ import { HookBus } from '../src/bus.js';
 import { PRIORITY } from '../src/priority.js';
 import type { HookPayload } from '../src/events.js';
 import type { DeepReadonly } from '../src/types.js';
-import type { EmaStreamEvent, LlmCallId, MessageId, TurnId, SessionId } from '@ema-agent/contracts';
+import type {
+  EmaStreamEvent,
+  HookInvocationId,
+  LlmCallId,
+  MessageId,
+  SessionId,
+  TurnId,
+} from '@ema-agent/contracts';
 
 const turnId = 'turn-1' as TurnId;
 const sessionId = 'session-1' as SessionId;
@@ -202,12 +209,55 @@ describe('HookBus', () => {
       payload: afterLlmPayload('hello'),
       warnings: [
         {
+          invocationId: expect.any(String),
           event: 'afterLlmComplete',
           hook: 'telemetry',
           reason: 'telemetry failed',
         },
       ],
     });
+  });
+
+  it('为一次 trigger 的上下文、trace、warning 和 SSE 复用同一 invocationId', async () => {
+    const traces: Array<{ invocationId: HookInvocationId }> = [];
+    const handlerInvocationIds: HookInvocationId[] = [];
+    const emitted: EmaStreamEvent[] = [];
+    const bus = new HookBus({
+      traceSink: (entry) => traces.push(entry),
+    });
+
+    bus.register('afterLlmComplete', (ctx) => {
+      handlerInvocationIds.push(ctx.invocationId);
+      throw new Error('diagnostic failure');
+    }, {
+      name: 'diagnostic-handler',
+      critical: false,
+    });
+
+    const first = await bus.trigger('afterLlmComplete', {
+      ...baseCtx(),
+      payload: afterLlmPayload('first'),
+      emit: (event) => emitted.push(event),
+    });
+    const second = await bus.trigger('afterLlmComplete', {
+      ...baseCtx(),
+      payload: afterLlmPayload('second'),
+    });
+
+    const firstInvocationId = handlerInvocationIds[0]!;
+    const firstSse = emitted.find((event) => event.type === 'hook_warning');
+
+    expect(firstInvocationId).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+    );
+    expect(first.warnings[0]?.invocationId).toBe(firstInvocationId);
+    expect(traces[0]?.invocationId).toBe(firstInvocationId);
+    expect(firstSse).toEqual(expect.objectContaining({
+      type: 'hook_warning',
+      hookInvocationId: firstInvocationId,
+    }));
+    expect(handlerInvocationIds[1]).not.toBe(firstInvocationId);
+    expect(second.warnings[0]?.invocationId).toBe(handlerInvocationIds[1]);
   });
 
   it('unregisters handler', async () => {
@@ -607,6 +657,7 @@ describe('HookBus', () => {
       payload: afterLlmPayload('original'),
       warnings: [
         {
+          invocationId: expect.any(String),
           event: 'afterLlmComplete',
           hook: 'bad-parallel-replace',
           reason:
@@ -655,6 +706,7 @@ describe('HookBus', () => {
       payload: afterLlmPayload('original'),
       warnings: [
         {
+          invocationId: expect.any(String),
           event: 'afterLlmComplete',
           hook: 'bad-parallel-replace',
           reason:
@@ -704,6 +756,7 @@ describe('HookBus', () => {
       payload: afterLlmPayload('done'),
       warnings: [
         {
+          invocationId: expect.any(String),
           event: 'afterLlmComplete',
           hook: 'parallel-abort',
           reason:
@@ -791,6 +844,7 @@ describe('HookBus', () => {
       payload: afterLlmPayload('done'),
       warnings: [
         {
+          invocationId: expect.any(String),
           event: 'afterLlmComplete',
           hook: 'parallel-telemetry',
           reason: 'parallel telemetry failed',

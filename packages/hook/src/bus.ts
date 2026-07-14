@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+import { asHookInvocationId } from '@ema-agent/contracts';
 import type {
   ControlHookEvent,
   HookEvent,
@@ -102,6 +104,7 @@ function emitHookWarning<E extends HookEvent>(
       type: 'hook_warning',
       sessionId: ctx.sessionId,
       turnId: ctx.turnId,
+      hookInvocationId: ctx.invocationId,
       hookEvent: ctx.event,
       handlerName: input.handlerName,
       severity: input.severity,
@@ -123,7 +126,12 @@ function appendWarning<E extends HookEvent>(
   failureKind: ReportableHookFailureKind,
   durationMs?: number,
 ): void {
-  warnings.push({ event: ctx.event, hook: handlerName, reason });
+  warnings.push({
+    invocationId: ctx.invocationId,
+    event: ctx.event,
+    hook: handlerName,
+    reason,
+  });
   emitHookWarning(ctx, {
     handlerName,
     severity: failureKind === 'protocol_violation' ? 'warn' : 'error',
@@ -329,8 +337,9 @@ export class HookBus {
    */
   async trigger<E extends HookEvent>(
     event: E,
-    ctx: Omit<HookTriggerContext<E>, 'event'>,
+    ctx: HookTriggerContext<E>,
   ): Promise<HookTriggerResult<E>> {
+    const invocationId = asHookInvocationId(randomUUID());
     const entries =
       (this.registry.get(event) ?? []) as unknown as HandlerEntry<E>[];
 
@@ -348,6 +357,7 @@ export class HookBus {
     const baseCtx: HookContext<E> = {
       ...ctx,
       event,
+      invocationId,
       payload: currentPayload,
       signal: ctx.signal ?? new AbortController().signal,
     } as HookContext<E>;
@@ -453,6 +463,7 @@ export class HookBus {
           ]);
       try {
         this.options.traceSink?.({
+          invocationId:    baseCtx.invocationId,
           sessionId:       baseCtx.sessionId,
           turnId:          baseCtx.turnId,
           timestampMs:     Date.now(),
@@ -474,6 +485,7 @@ export class HookBus {
 
       try {
         this.options.traceSink?.({
+          invocationId:    baseCtx.invocationId,
           sessionId:       baseCtx.sessionId,
           turnId:          baseCtx.turnId,
           timestampMs:     Date.now(),

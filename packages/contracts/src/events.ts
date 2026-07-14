@@ -5,6 +5,7 @@
   ArtifactId,
   CharacterCardId,
   CompactionId,
+  HookInvocationId,
 } from './ids.js';
 import type { ErrorCode } from './errors.js';
 import type { ProtocolFamily } from './providers/types.js';
@@ -335,6 +336,7 @@ export type EmaStreamEvent =
       type: 'hook_warning';
       sessionId: SessionId;
       turnId: TurnId;
+      hookInvocationId: HookInvocationId;
       hookEvent: string;
       handlerName: string;
       severity: 'warn' | 'error';
