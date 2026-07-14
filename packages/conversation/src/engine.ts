@@ -279,6 +279,12 @@ async function* runTurn(
     while (pendingHookEvents.length > 0) yield pendingHookEvents.shift()!;
 
     activePhase = 'persistence';
+    const assistantBlocks = buildAssistantBlocks(
+      textByIndex,
+      thinkingByIndex,
+      thinkingSignatureByIndex,
+      fullText,
+    );
     const msg = session.appendMessage({
       turnId,
       sessionId: input.sessionId,
@@ -286,19 +292,14 @@ async function* runTurn(
       // Persist visible text and provider reasoning for UI/debug history.
       // Replay to the next LLM call is handled by historyToLlmMessages(), which
       // deliberately filters thinking/tool blocks out for provider safety.
-      blocks: buildAssistantBlocks(
-        textByIndex,
-        thinkingByIndex,
-        thinkingSignatureByIndex,
-        fullText,
-      ) as MessageBlocks,
+      blocks: assistantBlocks as MessageBlocks,
     });
 
     activePhase = 'hook';
-    await hooks.trigger('afterMessage', {
+    await hooks.trigger('afterAssistantMessage', {
       turnId,
       sessionId: input.sessionId,
-      payload: { messageId: msg.id, role: 'assistant', content: fullText },
+      payload: { messageId: msg.id, blocks: assistantBlocks },
       signal,
       emit: emitHookEvent,
     });

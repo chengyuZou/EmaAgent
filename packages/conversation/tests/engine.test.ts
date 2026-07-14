@@ -13,6 +13,9 @@ describe('ConversationEngine Hook 诊断事件', () => {
     const hooks = new HookBus();
     let beforeIdentity: { iteration: number; llmCallId: string } | undefined;
     let afterIdentity: { iteration: number; llmCallId: string } | undefined;
+    let persistedAssistantBlocks: unknown;
+    let persistedAssistantMessageId: MessageId | undefined;
+    let assistantMessagePayload: unknown;
     hooks.register('beforeLlm', (ctx) => {
       beforeIdentity = {
         iteration: ctx.payload.iteration,
@@ -27,6 +30,10 @@ describe('ConversationEngine Hook 诊断事件', () => {
       };
       return { kind: 'continue' };
     });
+    hooks.register('afterAssistantMessage', (ctx) => {
+      assistantMessagePayload = ctx.payload;
+      return { kind: 'continue' };
+    });
     hooks.register('onTurnEnd', () => {
       throw new Error('telemetry unavailable');
     }, {
@@ -37,7 +44,14 @@ describe('ConversationEngine Hook 诊断事件', () => {
     let messageSeq = 0;
     const session = {
       loadHistory: () => [],
-      appendMessage: () => ({ id: `message-${++messageSeq}` as MessageId }),
+      appendMessage: (input: { role: string; blocks: unknown }) => {
+        const id = `message-${++messageSeq}` as MessageId;
+        if (input.role === 'assistant') {
+          persistedAssistantBlocks = input.blocks;
+          persistedAssistantMessageId = id;
+        }
+        return { id };
+      },
       completeTurn: () => undefined,
       failTurn: () => undefined,
       abortTurn: () => undefined,
@@ -110,6 +124,11 @@ describe('ConversationEngine Hook 诊断事件', () => {
     expect(beforeIdentity).toEqual(afterIdentity);
     expect(beforeIdentity?.iteration).toBe(1);
     expect(beforeIdentity?.llmCallId).toBeTruthy();
+    expect(assistantMessagePayload).toEqual({
+      messageId: persistedAssistantMessageId,
+      blocks: [{ type: 'text', text: 'ok' }],
+    });
+    expect((assistantMessagePayload as { blocks: unknown }).blocks).toBe(persistedAssistantBlocks);
   });
 
   it('失败状态落盘后触发 onTurnFailure，并在 turn_failed 前输出 Hook 诊断', async () => {

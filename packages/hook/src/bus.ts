@@ -51,7 +51,7 @@ type HookBatch<E extends HookEvent> =
 // 审计日志也需保证调用顺序。
 const DEFAULT_PARALLEL_EVENTS = new Set<HookEvent>([
   'afterLlmComplete',
-  'afterMessage',
+  'afterAssistantMessage',
   'afterToolUse',
   'onToolFailure',
   'afterCompact',

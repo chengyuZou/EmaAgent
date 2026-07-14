@@ -5,7 +5,6 @@ import type {
   LlmCallId,
   LlmMessage,
   MessageId,
-  MessageRole,
   NarrativeTimelineRecall,
   ToolCallId,
   TurnMode,
@@ -22,7 +21,7 @@ import type {
 export type HookEvent =
   | 'beforeLlm'
   | 'afterLlmComplete'
-  | 'afterMessage'
+  | 'afterAssistantMessage'
   | 'beforeToolUse'
   | 'afterToolUse'
   | 'onToolFailure'
@@ -104,10 +103,11 @@ export interface HookPayload {
     /** 本次 LLM 响应产出的 tool-use 块,按 block 顺序。 */
     toolCalls?: Array<Extract<AssistantBlock, { type: 'tool_use' }>>;
   };
-  afterMessage: {
+  /** assistant 消息成功持久化后的观察事件。 */
+  afterAssistantMessage: {
     messageId: MessageId;
-    role: MessageRole;
-    content: string;
+    /** 与 Session 中该消息完全一致的结构化内容块。 */
+    blocks: AssistantBlock[];
   };
   /**
    * PermissionEngine 决策前观察模型的工具意图 - 仅用于 UI 和审计。

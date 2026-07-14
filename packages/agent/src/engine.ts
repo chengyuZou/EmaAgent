@@ -383,9 +383,9 @@ async function* runTurn(
             activePhase = 'persistence';
             const msg = session.appendMessage({ turnId, sessionId, role: 'assistant', blocks: allBlocks as MessageBlocks });
             activePhase = 'hook';
-            await hooks.trigger('afterMessage', {
+            await hooks.trigger('afterAssistantMessage', {
               turnId, sessionId,
-              payload: { messageId: msg.id, role: 'assistant', content: ev.fullText },
+              payload: { messageId: msg.id, blocks: allBlocks },
               signal,
               emit: emitHookEvent,
             });
