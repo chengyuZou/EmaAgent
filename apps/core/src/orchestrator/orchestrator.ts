@@ -306,6 +306,11 @@ export class Orchestrator {
       case 'chat':
       case 'narrative': {
         const { providerId, model } = this.resolveLlmForTurn(request);
+        const contextWindow = providerId && model
+          ? this.bindings.providerLlmModels.contextWindowFor(providerId, model)
+            ?? this.bindings.modelCatalog.contextWindowOf(model)
+            ?? 200_000
+          : 200_000;
         return this.conversation.run({
           turn, signal, sessionId,
           mode:         request.mode,
@@ -314,6 +319,18 @@ export class Orchestrator {
           providerId,
           model,
           thinking:     request.thinking,
+          compactMessages: providerId && model ? (msgs) => this.bindings.memory.compact({
+            sessionId:          turn.sessionId,
+            turnId:             turn.id,
+            mode:               request.mode,
+            messages:           msgs,
+            modelContextWindow: contextWindow,
+            providerId,
+            model,
+            emit:               this.bindings.systemBus
+              ? (ev) => this.bindings.systemBus.emit(ev)
+              : undefined,
+          }).then(r => r.messages) : undefined,
         });
       }
 
@@ -351,6 +368,8 @@ export class Orchestrator {
             modelContextWindow: contextWindow,
             providerId,
             model,
+            recentFiles:        this.bindings.getContextStores(turn.sessionId)
+              .fileStateStore.recentEntries(20),
             emit:               this.bindings.systemBus
               ? (ev) => this.bindings.systemBus.emit(ev)
               : undefined,

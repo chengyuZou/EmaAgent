@@ -86,44 +86,30 @@ export class MemoryPlanner {
     );
   }
 
-  // ── Combined beforeLlm orchestration ────────────────────────────────────────
+  // ── LLM recall view ─────────────────────────────────────────────────────────
 
-  async applyToBeforeLlm(args: {
+  /**
+   * 构造仅属于当前 LLM 请求的记忆视图。上下文压缩由调用方的 Engine Facade
+   * 在触发 beforeLlm 之前完成，避免压缩与 Recall 在 Hook 中形成重复职责。
+   */
+  async applyRecallToMessages(args: {
     sessionId:          SessionId;
     turnId:             TurnId;
     mode:               TurnMode;
     userInput:          string;
     messages:           LlmMessage[];
-    modelContextWindow: number;
-    providerId?:        string;
-    compactionModel?:   string;
-    recentFiles?:       ReadonlyArray<{ path: string; content: string; mtimeMs: number }>;
     signal?:            AbortSignal;
     emit?:              (event: EmaStreamEvent) => void;
   }): Promise<{
     messages:      LlmMessage[];
-    compactionRan: boolean;
-    microCleared:  number;
     recallSummary: { layer0: number; layer1: boolean; layer2: number };
     tokenEstimate: number;
   }> {
     if (!this.settings.enabled) {
-      return { messages: args.messages, compactionRan: false, microCleared: 0, recallSummary: { layer0: 0, layer1: false, layer2: 0 }, tokenEstimate: 0 };
+      return { messages: args.messages, recallSummary: { layer0: 0, layer1: false, layer2: 0 }, tokenEstimate: 0 };
     }
 
-    const compactRes = await this.compact({
-      sessionId:          args.sessionId,
-      turnId:             args.turnId,
-      mode:               args.mode,
-      messages:           args.messages,
-      modelContextWindow: args.modelContextWindow,
-      providerId:         args.providerId,
-      model:              args.compactionModel,
-      recentFiles:        args.recentFiles,
-      signal:             args.signal,
-      emit:               args.emit,
-    });
-    let working = compactRes.messages;
+    let working = args.messages;
 
     const bundle = await this.plan({
       sessionId: args.sessionId,
@@ -147,8 +133,6 @@ export class MemoryPlanner {
 
     return {
       messages:      working,
-      compactionRan: compactRes.macroRan,
-      microCleared:  compactRes.microCleared,
       tokenEstimate,
       recallSummary: {
         layer0: bundle.layer0?.nodes.length ?? 0,

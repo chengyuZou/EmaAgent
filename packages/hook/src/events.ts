@@ -1,6 +1,7 @@
 import type {
   AssistantBlock,
   CompactionId,
+  LlmCallId,
   LlmMessage,
   MessageId,
   MessageRole,
@@ -49,6 +50,10 @@ export type ObserverHookEvent = Exclude<HookEvent, ControlHookEvent>;
 
 export interface HookPayload {
   beforeLlm: {
+    /** 当前 Turn 内的逻辑推理轮次；单轮 Conversation 固定为 1。 */
+    iteration: number;
+    /** 逻辑 LLM 调用 ID；Provider 内部重试必须保持同一个 ID。 */
+    llmCallId: LlmCallId;
     /** LLM 请求的唯一消息事实来源；system prompt 必须是其中的 system message。 */
     messages: LlmMessage[];
     /** 当前 Turn 的业务模式。 */
@@ -67,6 +72,10 @@ export interface HookPayload {
     };
   };
   afterLlmComplete: {
+    /** 与对应 beforeLlm 完全相同的逻辑推理轮次。 */
+    iteration: number;
+    /** 与对应 beforeLlm 完全相同的逻辑 LLM 调用 ID。 */
+    llmCallId: LlmCallId;
     content: string;
     /** 本次 LLM 响应产出的 tool-use 块,按 block 顺序。 */
     toolCalls?: Array<Extract<AssistantBlock, { type: 'tool_use' }>>;

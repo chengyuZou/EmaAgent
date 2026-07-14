@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import type { CharacterCardId, SessionId, TurnId } from '@ema-agent/contracts';
+import type { CharacterCardId, LlmCallId, SessionId, TurnId } from '@ema-agent/contracts';
 import { HookBus } from '@ema-agent/hook';
 import { registerPromptsHooks } from '../src/hooks.js';
 
 const sessionId = 'session-prompts' as SessionId;
 const turnId = 'turn-prompts' as TurnId;
+const llmCallId = 'llm-call-prompts' as LlmCallId;
 
 describe('registerPromptsHooks', () => {
   it('只通过 messages 写入 system prompt，并替换旧 system message', async () => {
@@ -34,6 +35,8 @@ describe('registerPromptsHooks', () => {
         sessionId,
         turnId,
         payload: {
+          iteration: 1,
+          llmCallId,
           messages: [
             { role: 'system', content: 'stale system prompt' },
             { role: 'user', content: 'hello' },

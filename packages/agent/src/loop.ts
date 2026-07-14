@@ -1,4 +1,6 @@
-import type { LlmMessage, AssistantBlock, UserBlock, ToolResultBlock, EmaStreamEvent } from '@ema-agent/contracts';
+import { randomUUID } from 'node:crypto';
+import { asLlmCallId } from '@ema-agent/contracts';
+import type { LlmMessage, AssistantBlock, UserBlock, ToolResultBlock, EmaStreamEvent, LlmCallId } from '@ema-agent/contracts';
 import type { LlmRouter, ThinkingMode, StopReason } from '@ema-agent/llm';
 import { ContextWindowExceededError } from '@ema-agent/llm';
 import type { AgentPolicy } from './policy.js';
@@ -27,7 +29,8 @@ export type AgentLoopEvent =
   | { type: 'loop_tool_partial';  callId: string; name: string; argsDelta: string; blockIndex: number }
   | { type: 'loop_tool_complete'; callId: string; name: string; args: unknown; blockIndex: number }
   | { type: 'loop_relay';         ev: EmaStreamEvent }
-  | { type: 'loop_llm_complete' }
+  | { type: 'loop_llm_complete'; iteration: number; llmCallId: LlmCallId }
+  | { type: 'loop_hook_abort'; reason: string }
   | { type: 'loop_tool_results';  results: ToolResultBlock[]; fullText: string }
   | { type: 'loop_breaker';       reason: string }
   | { type: 'loop_done';          fullText: string; state: LoopState };
@@ -45,6 +48,16 @@ export type ExecutorFactory = (internals: {
   /** Called by executor when a tool finishes, so the loop's drain-wait unparks. */
   signal:  () => void;
 }) => TurnToolExecutor;
+
+export interface PrepareLlmCallInput {
+  iteration: number;
+  llmCallId: LlmCallId;
+  messages: LlmMessage[];
+}
+
+export type PrepareLlmCallResult =
+  | { kind: 'continue'; messages: LlmMessage[] }
+  | { kind: 'abort'; reason: string };
 
 export interface AgentLoopInput {
   /** Mutable messages array. Loop appends each round's assistant + tool-result messages. */
@@ -81,6 +94,11 @@ export interface AgentLoopInput {
    * Engine wires this to MemoryPlanner.compact(); spawner omits it (ephemeral).
    */
   compactMessages?: (messages: LlmMessage[]) => Promise<LlmMessage[]>;
+  /**
+   * 每个逻辑 LLM 调用前执行的窄 Facade。Loop 不依赖 HookBus；主 Engine
+   * 用它触发 beforeLlm，并返回只属于本次请求的消息视图。
+   */
+  prepareLlmCall?: (input: PrepareLlmCallInput) => Promise<PrepareLlmCallResult>;
   thinking?: ThinkingMode;
 }
 
@@ -100,7 +118,7 @@ export interface AgentLoopInput {
  * if the last tool finishes between the allDone() check and await.
  */
 export async function* agentLoop(input: AgentLoopInput): AsyncIterable<AgentLoopEvent> {
-  const { messages, policy, llm, providerId, model, signal, maxIterations, getScratchpadContext, getMailboxMessages, compactMessages, thinking } = input;
+  const { messages, policy, llm, providerId, model, signal, maxIterations, getScratchpadContext, getMailboxMessages, compactMessages, prepareLlmCall, thinking } = input;
 
   const pendingRelayEvents: EmaStreamEvent[] = [];
   let wakeUp: (() => void) | null = null;
@@ -125,7 +143,10 @@ export async function* agentLoop(input: AgentLoopInput): AsyncIterable<AgentLoop
       transition: state.iteration === 0 ? 'initial' : 'next_turn',
       iteration:  state.iteration + 1,
       // Reset per-iteration recovery flags on every new iteration.
-      maxOutputTokensRecoveryCount: 0,
+      maxOutputTokensRecoveryCount:
+        state.transition === 'max_output_tokens_recovery'
+          ? state.maxOutputTokensRecoveryCount
+          : 0,
       hasAttemptedReactiveCompact:  false,
     });
     yield { type: 'loop_iteration', n: state.iteration, state };
@@ -157,6 +178,23 @@ export async function* agentLoop(input: AgentLoopInput): AsyncIterable<AgentLoop
       ...mailboxMsgs.map(m => ({ role: 'user' as const, content: `[Coordinator]: ${m}` })),
     ];
 
+    const llmCallId = asLlmCallId(randomUUID());
+    let requestMessages = buildEffectiveMessages();
+    if (prepareLlmCall) {
+      const prepared = await prepareLlmCall({
+        iteration: state.iteration,
+        llmCallId,
+        messages: requestMessages,
+      });
+      if (prepared.kind === 'abort') {
+        state = advanceState(state, { phase: 'aborted', transition: 'hook_abort' });
+        yield { type: 'loop_hook_abort', reason: prepared.reason };
+        yield { type: 'loop_done', fullText: '', state };
+        return;
+      }
+      requestMessages = prepared.messages;
+    }
+
     let lastStopReason: StopReason = 'end_turn';
 
     // ── Inner retry loop: handles reactive compact on ContextWindowExceededError ──
@@ -170,7 +208,7 @@ export async function* agentLoop(input: AgentLoopInput): AsyncIterable<AgentLoop
 
       const stream = llm.stream({
         providerId, model,
-        messages:   buildEffectiveMessages(),
+        messages:   requestMessages,
         tools:      policy.toolDefs(),
         toolChoice: 'auto',
         thinking,
@@ -224,8 +262,9 @@ export async function* agentLoop(input: AgentLoopInput): AsyncIterable<AgentLoop
           compactMessages &&
           !state.hasAttemptedReactiveCompact
         ) {
-          const compacted = await compactMessages([...messages]);
-          messages.splice(0, messages.length, ...compacted);
+          // Hook 链只执行一次。响应式重试压缩本次请求视图，不重复执行
+          // Prompt/Memory/Skill 等可能有外部副作用的 beforeLlm handler。
+          requestMessages = await compactMessages([...requestMessages]);
           state = advanceState(state, {
             phase:                       state.phase,
             hasAttemptedReactiveCompact: true,
@@ -244,7 +283,7 @@ export async function* agentLoop(input: AgentLoopInput): AsyncIterable<AgentLoop
       .join('');
 
     // Signal LLM stream end — engine flushes emotion + fires afterLlmComplete.
-    yield { type: 'loop_llm_complete' };
+    yield { type: 'loop_llm_complete', iteration: state.iteration, llmCallId };
 
     // ── max_output_tokens recovery ────────────────────────────────────────────
     // Router fills maxTokens from the catalog so the model always runs at its

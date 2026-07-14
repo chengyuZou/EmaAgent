@@ -1,36 +1,14 @@
 import type { HookBus } from '@ema-agent/hook';
 import type { SessionId, TurnId } from '@ema-agent/contracts';
-import type { LlmRouter } from '@ema-agent/llm';
 import type { SessionStore } from '@ema-agent/session';
 import type { MemoryPlanner } from './planner.js';
 import { bestEffortAsync } from './best-effort.js';
-
-// ── Recent files extractor (agent restore) ───────────────────────────────────
-
-/**
- * Caller plugs in a function that returns the recently-touched files for a
- * given session. Conversation engine has no notion of file reads, so this is
- * optional and defaults to "none". Agent engine wires its readFileState here.
- */
-export type RecentFilesProvider = (
-  sessionId: SessionId,
-) => ReadonlyArray<{ path: string; content: string; mtimeMs: number }>;
 
 // ── Hook deps ────────────────────────────────────────────────────────────────
 
 export interface MemoryHooksDeps {
   planner:       MemoryPlanner;
   session:       SessionStore;
-  llm:           LlmRouter;
-  /** 模型目录没有记录时使用的上下文窗口，默认 128K。 */
-  defaultContextWindow?: number;
-  /**
-   * Look up the context window for a model name.
-   * Implemented by the orchestrator via llm_model_catalog (DB).
-   * Returns 0 when the model is unknown → falls back to defaultContextWindow.
-   */
-  getContextWindow: (providerId: string, model: string) => number;
-  recentFiles?:  RecentFilesProvider;
 }
 
 // ── Hook registration ────────────────────────────────────────────────────────
@@ -38,7 +16,7 @@ export interface MemoryHooksDeps {
 /**
  * Register all memory hooks on the provided bus.
  *
- *   beforeLlm (priority 20): compaction check + recall + context injection
+ *   beforeLlm (priority 20): 首次逻辑调用的 recall + context injection
  *   onTurnEnd (priority 50): pending fragments append + maybe enqueue extraction
  *
  * Priority 20 runs AFTER prompts:buildSystem (10) so the system prompt is
@@ -56,25 +34,21 @@ export function registerMemoryHooks(
   const offBeforeLlm = bus.register(
     'beforeLlm',
     async (ctx) => {
-      const { mode, userInput, model, providerId } = ctx.payload;
+      // 同一 Turn 的 Agent 多轮共享用户问题；记忆不会在 Turn 中途写入，
+      // 因此只在第一次逻辑调用检索一次。Hook 本身仍会在每轮触发。
+      if (ctx.payload.iteration !== 1) return { kind: 'continue' };
+
+      const { mode, userInput } = ctx.payload;
       const signal = ctx.signal;
 
-      const window = resolveContextWindow(deps, providerId, model);
-      const recent = deps.recentFiles?.(ctx.sessionId);
-
-      const t0 = Date.now();
-      const result = await planner.applyToBeforeLlm({
-        sessionId:          ctx.sessionId,
-        turnId:             ctx.turnId,
+      const result = await planner.applyRecallToMessages({
+        sessionId: ctx.sessionId,
+        turnId:    ctx.turnId,
         mode,
         userInput,
-        messages:           ctx.payload.messages,
-        modelContextWindow: window,
-        providerId,
-        compactionModel:    model,
-        recentFiles:        recent,
+        messages: ctx.payload.messages,
         signal,
-        emit:               ctx.emit,
+        emit:      ctx.emit,
       });
 
       return {
@@ -103,20 +77,6 @@ export function registerMemoryHooks(
     offBeforeLlm();
     offOnTurnEnd();
   };
-}
-
-// ── Internals ────────────────────────────────────────────────────────────────
-
-function resolveContextWindow(
-  deps:       MemoryHooksDeps,
-  providerId: string | undefined,
-  model:      string | undefined,
-): number {
-  if (providerId && model) {
-    const fromCatalog = deps.getContextWindow(providerId, model);
-    if (fromCatalog > 0) return fromCatalog;
-  }
-  return deps.defaultContextWindow ?? 128_000;
 }
 
 async function runOnTurnEnd(

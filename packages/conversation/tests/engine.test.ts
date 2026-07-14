@@ -11,6 +11,22 @@ const turnId = 'turn-hook-sse' as TurnId;
 describe('ConversationEngine Hook 诊断事件', () => {
   it('在 Turn 终态事件之前输出结构化 hook_warning', async () => {
     const hooks = new HookBus();
+    let beforeIdentity: { iteration: number; llmCallId: string } | undefined;
+    let afterIdentity: { iteration: number; llmCallId: string } | undefined;
+    hooks.register('beforeLlm', (ctx) => {
+      beforeIdentity = {
+        iteration: ctx.payload.iteration,
+        llmCallId: ctx.payload.llmCallId,
+      };
+      return { kind: 'continue' };
+    });
+    hooks.register('afterLlmComplete', (ctx) => {
+      afterIdentity = {
+        iteration: ctx.payload.iteration,
+        llmCallId: ctx.payload.llmCallId,
+      };
+      return { kind: 'continue' };
+    });
     hooks.register('onTurnEnd', () => {
       throw new Error('telemetry unavailable');
     }, {
@@ -91,5 +107,8 @@ describe('ConversationEngine Hook 诊断事件', () => {
       failureKind: 'handler_error',
       message: 'telemetry unavailable',
     }));
+    expect(beforeIdentity).toEqual(afterIdentity);
+    expect(beforeIdentity?.iteration).toBe(1);
+    expect(beforeIdentity?.llmCallId).toBeTruthy();
   });
 });

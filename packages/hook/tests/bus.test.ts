@@ -2,10 +2,11 @@
 import { HookBus } from '../src/bus.js';
 import { PRIORITY } from '../src/priority.js';
 import type { HookPayload } from '../src/events.js';
-import type { EmaStreamEvent, TurnId, SessionId } from '@ema-agent/contracts';
+import type { EmaStreamEvent, LlmCallId, TurnId, SessionId } from '@ema-agent/contracts';
 
 const turnId = 'turn-1' as TurnId;
 const sessionId = 'session-1' as SessionId;
+const llmCallId = 'llm-call-1' as LlmCallId;
 
 function baseCtx(signal?: AbortSignal) {
   return { turnId, sessionId, ...(signal ? { signal } : {}) };
@@ -15,6 +16,8 @@ function beforeLlmPayload(
   overrides: Partial<HookPayload['beforeLlm']> = {},
 ): HookPayload['beforeLlm'] {
   return {
+    iteration: 1,
+    llmCallId,
     messages: [{ role: 'system', content: 'base' }],
     mode: 'chat',
     userInput: 'hello',
@@ -22,6 +25,10 @@ function beforeLlmPayload(
     model: 'model-1',
     ...overrides,
   };
+}
+
+function afterLlmPayload(content: string): HookPayload['afterLlmComplete'] {
+  return { iteration: 1, llmCallId, content };
 }
 
 function systemMessageContent(payload: HookPayload['beforeLlm']): string {
@@ -180,13 +187,13 @@ describe('HookBus', () => {
 
     const result = await bus.trigger('afterLlmComplete', {
       ...baseCtx(),
-      payload: { content: 'hello' },
+      payload: afterLlmPayload('hello'),
     });
 
     expect(reached).toHaveBeenCalledTimes(1);
     expect(result).toEqual({
       kind: 'continue',
-      payload: { content: 'hello' },
+      payload: afterLlmPayload('hello'),
       warnings: [
         {
           event: 'afterLlmComplete',
@@ -382,13 +389,13 @@ describe('HookBus', () => {
 
     const result = await bus.trigger('afterLlmComplete', {
       ...baseCtx(),
-      payload: { content: 'done' },
+      payload: afterLlmPayload('done'),
     });
 
     expect(order).toEqual(['fast', 'slow']);
     expect(result).toEqual({
       kind: 'continue',
-      payload: { content: 'done' },
+      payload: afterLlmPayload('done'),
       warnings: [],
     });
   });
@@ -422,7 +429,7 @@ describe('HookBus', () => {
 
     await bus.trigger('afterLlmComplete', {
       ...baseCtx(),
-      payload: { content: 'done' },
+      payload: afterLlmPayload('done'),
     });
 
     // maxConcurrency = 1 means the second parallel hook waits for the first.
@@ -489,7 +496,7 @@ describe('HookBus', () => {
 
     await bus.trigger('afterLlmComplete', {
       ...baseCtx(),
-      payload: { content: 'done' },
+      payload: afterLlmPayload('done'),
     });
 
     expect(order).toEqual([
@@ -509,7 +516,7 @@ describe('HookBus', () => {
       'afterLlmComplete',
       async () => ({
         kind: 'replace',
-        payload: { content: 'illegal' },
+        payload: afterLlmPayload('illegal'),
       }) as never,
       {
         name: 'bad-parallel-replace',
@@ -521,13 +528,13 @@ describe('HookBus', () => {
     const emitted: EmaStreamEvent[] = [];
     const result = await bus.trigger('afterLlmComplete', {
       ...baseCtx(),
-      payload: { content: 'original' },
+      payload: afterLlmPayload('original'),
       emit: (event) => emitted.push(event),
     });
 
     expect(result).toEqual({
       kind: 'continue',
-      payload: { content: 'original' },
+      payload: afterLlmPayload('original'),
       warnings: [
         {
           event: 'afterLlmComplete',
@@ -559,7 +566,7 @@ describe('HookBus', () => {
       'afterLlmComplete',
       async () => ({
         kind: 'replace',
-        payload: { content: 'illegal' },
+        payload: afterLlmPayload('illegal'),
       }) as never,
       {
         name: 'bad-parallel-replace',
@@ -570,12 +577,12 @@ describe('HookBus', () => {
 
     const result = await bus.trigger('afterLlmComplete', {
       ...baseCtx(),
-      payload: { content: 'original' },
+      payload: afterLlmPayload('original'),
     });
 
     expect(result).toEqual({
       kind: 'continue',
-      payload: { content: 'original' },
+      payload: afterLlmPayload('original'),
       warnings: [
         {
           event: 'afterLlmComplete',
@@ -619,12 +626,12 @@ describe('HookBus', () => {
 
     const result = await bus.trigger('afterLlmComplete', {
       ...baseCtx(),
-      payload: { content: 'done' },
+      payload: afterLlmPayload('done'),
     });
 
     expect(result).toEqual({
       kind: 'continue',
-      payload: { content: 'done' },
+      payload: afterLlmPayload('done'),
       warnings: [
         {
           event: 'afterLlmComplete',
@@ -704,14 +711,14 @@ describe('HookBus', () => {
 
     const result = await bus.trigger('afterLlmComplete', {
       ...baseCtx(),
-      payload: { content: 'done' },
+      payload: afterLlmPayload('done'),
       emit: (event) => emitted.push(event),
     });
 
     expect(reached).toHaveBeenCalledTimes(1);
     expect(result).toEqual({
       kind: 'continue',
-      payload: { content: 'done' },
+      payload: afterLlmPayload('done'),
       warnings: [
         {
           event: 'afterLlmComplete',

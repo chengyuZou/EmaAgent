@@ -124,39 +124,22 @@ async function* runTurn(
       { role: 'user', content: userInput as string | UserBlock[] },
     ];
 
-    // ── beforeLlm hook ────────────────────────────────────────────────────────
-    const preLlm = await hooks.trigger('beforeLlm', {
-      turnId, sessionId,
-      payload: {
-        messages,
-        mode: 'agent',
-        userInput: readableUserInput(userInput),
-        providerId,
-        model,
-        workspaceRoot,
-      },
-      signal,
-      emit: emitHookEvent,
-    });
-    while (pendingHookEvents.length > 0) yield pendingHookEvents.shift()!;
-    if (preLlm.kind === 'abort') {
-      session.failTurn(turnId, 'turn/hook_aborted', preLlm.reason);
-      yield { type: 'turn_failed', sessionId, turnId, code: 'turn/hook_aborted', message: preLlm.reason };
-      return;
-    }
-    messages.splice(0, messages.length, ...preLlm.payload.messages);
-
     // ── Spawner + ExecutorFactory ─────────────────────────────────────────────
-    // Both close over the same messages[] reference. Spawner snapshots it at
-    // spawn() time (fork semantics). Factory is called once by agentLoop().
+    // Executor closes over Turn 运行时依赖；Spawner 持有最新一次 beforeLlm
+    // 产生的完整请求视图，并在 spawn() 时按 fork 语义创建快照。
     //
     // emitRef lets the spawner forward subagent_progress to the parent SSE stream.
     // The ref is filled in by buildExecutor (called by agentLoop before any tools
     // run), so spawn() always sees a populated emitter.
     // (emitRef is declared before try{} so finally can clear it on turn end.)
 
+    // beforeLlm 返回的是每次请求的临时视图，不能写回原始历史，否则下一轮
+    // 会重复注入 Memory/Skill 等上下文。Spawner 需要继承完整视图，因此维护
+    // 一个稳定数组引用，每次 prepare 完成后原地刷新。
+    const subagentContextMessages: LlmMessage[] = [];
+
     const spawner = new SubagentSpawner(
-      deps, sessionId, turnId, providerId, model, messages,
+      deps, sessionId, turnId, providerId, model, subagentContextMessages,
       scratchpadDir,
       scratchpadDir ? () => buildScratchpadContext(scratchpadDir) : undefined,
       (ev) => emitRef.fn?.(ev),
@@ -223,8 +206,38 @@ async function* runTurn(
         ? () => buildScratchpadContext(scratchpadDir)
         : undefined,
       compactMessages: input.compactMessages,
+      prepareLlmCall: async ({ iteration, llmCallId, messages: callMessages }) => {
+        const result = await hooks.trigger('beforeLlm', {
+          turnId, sessionId,
+          payload: {
+            iteration,
+            llmCallId,
+            messages: callMessages,
+            mode: 'agent',
+            userInput: readableUserInput(userInput),
+            providerId,
+            model,
+            workspaceRoot,
+          },
+          signal,
+          emit: emitHookEvent,
+        });
+        if (result.kind === 'abort') {
+          return { kind: 'abort', reason: result.reason };
+        }
+        subagentContextMessages.splice(
+          0,
+          subagentContextMessages.length,
+          ...result.payload.messages,
+        );
+        return { kind: 'continue', messages: result.payload.messages };
+      },
       thinking:        input.thinking,
     })) {
+      // prepareLlmCall 在 Loop 内运行，Hook 发出的诊断事件会先进入本地队列。
+      // 在处理随后的 LLM/终态事件前排空，保证 SSE 生命周期顺序稳定。
+      while (pendingHookEvents.length > 0) yield pendingHookEvents.shift()!;
+
       switch (ev.type) {
 
         case 'loop_iteration':
@@ -285,13 +298,30 @@ async function* runTurn(
 
           await hooks.trigger('afterLlmComplete', {
             turnId, sessionId,
-            payload: { content: fullText, toolCalls: [...iterToolCalls.values()] },
+            payload: {
+              iteration: ev.iteration,
+              llmCallId: ev.llmCallId,
+              content: fullText,
+              toolCalls: [...iterToolCalls.values()],
+            },
             signal,
             emit: emitHookEvent,
           });
           while (pendingHookEvents.length > 0) yield pendingHookEvents.shift()!;
           break;
         }
+
+        case 'loop_hook_abort':
+          session.failTurn(turnId, 'turn/hook_aborted', ev.reason);
+          deps.taskStore?.fail(turnId, ev.reason);
+          yield {
+            type: 'turn_failed',
+            sessionId,
+            turnId,
+            code: 'turn/hook_aborted',
+            message: ev.reason,
+          };
+          return;
 
         case 'loop_tool_results': {
           // Persist mid-loop assistant message (with tool_use blocks) + tool results.

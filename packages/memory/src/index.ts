@@ -64,7 +64,7 @@ export type { RestoreContext }                from './compact/restore.js';
 
 // ── Hooks ────────────────────────────────────────────────────────────────────
 export { registerMemoryHooks }                from './hooks.js';
-export type { MemoryHooksDeps, RecentFilesProvider } from './hooks.js';
+export type { MemoryHooksDeps } from './hooks.js';
 
 // ── Maintenance: overrides ───────────────────────────────────────────────────
 export { DEFAULT_OVERRIDES }                  from './maintenance/overrides.js';

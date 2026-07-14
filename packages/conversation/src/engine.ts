@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+import { asLlmCallId } from '@ema-agent/contracts';
 import type { EmaStreamEvent, LlmMessage, AssistantBlock, UserBlock, MessageContentPart as LlmContentPart } from '@ema-agent/contracts';
 import type { MessageBlocks } from '@ema-agent/session';
 import type { HookBus, HookContext, HookTriggerResult } from '@ema-agent/hook';
@@ -95,13 +97,22 @@ async function* runTurn(
       blocks: userBlocks as MessageBlocks,
     });
 
-    const messages: LlmMessage[] = [
+    let messages: LlmMessage[] = [
       ...historyToLlmMessages(history),
       {
         role: 'user',
         content: userBlocks as string | UserBlock[],
       },
     ];
+
+    // Conversation 当前只有一次逻辑推理，但仍使用与 Agent 完全相同的身份
+    // 契约。未来 chat/narrative 升级为多轮时只需让 iteration 递增。
+    const iteration = 1;
+    const llmCallId = asLlmCallId(randomUUID());
+
+    if (input.compactMessages) {
+      messages = await input.compactMessages([...messages]);
+    }
 
     // Warn about attachments the resolved provider can't handle.
     // LlmRouter looks up the protocol internally — engine never needs to know it.
@@ -129,6 +140,8 @@ async function* runTurn(
       turnId,
       sessionId: input.sessionId,
       payload: {
+        iteration,
+        llmCallId,
         messages,
         mode,
         userInput: input.userInput,
@@ -230,7 +243,7 @@ async function* runTurn(
     await hooks.trigger('afterLlmComplete', {
       turnId,
       sessionId: input.sessionId,
-      payload: { content: fullText },
+      payload: { iteration, llmCallId, content: fullText },
       signal,
       emit: emitHookEvent,
     });

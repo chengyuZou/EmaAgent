@@ -1,5 +1,5 @@
 import type { SessionId, TurnMode } from '@ema-agent/contracts';
-import type { LlmRouter, LlmContentPart, ThinkingMode } from '@ema-agent/llm';
+import type { LlmRouter, LlmContentPart, LlmMessage, ThinkingMode } from '@ema-agent/llm';
 import type { SessionStore, Turn } from '@ema-agent/session';
 import type { HookBus } from '@ema-agent/hook';
 import type { EmotionEngine } from '@ema-agent/emotion';
@@ -37,6 +37,8 @@ export interface ConversationRunInput {
   providerId?:   string;
   /** Model name — resolved by orchestrator from request or legacy binding. */
   model?:        string;
+  /** 每次逻辑推理前压缩原始历史；由 Orchestrator 注入 Memory Facade。 */
+  compactMessages?: (messages: LlmMessage[]) => Promise<LlmMessage[]>;
   /** User-requested thinking mode — forwarded directly to LlmRequest. */
   thinking?:     ThinkingMode;
 }

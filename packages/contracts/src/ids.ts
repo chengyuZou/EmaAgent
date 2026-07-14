@@ -9,6 +9,7 @@ export type BranchId     = Brand<string, 'BranchId'>;
 export type CharacterCardId = Brand<string, 'CharacterCardId'>;
 export type ArtifactId   = Brand<string, 'ArtifactId'>;
 export type CompactionId = Brand<string, 'CompactionId'>;
+export type LlmCallId    = Brand<string, 'LlmCallId'>;
 
 export function asSessionId(s: string): SessionId       { return s as SessionId; }
 export function asTurnId(s: string): TurnId             { return s as TurnId; }
@@ -17,6 +18,7 @@ export function asBranchId(s: string): BranchId         { return s as BranchId; 
 export function asCharacterCardId(s: string): CharacterCardId { return s as CharacterCardId; }
 export function asArtifactId(s: string): ArtifactId     { return s as ArtifactId; }
 export function asCompactionId(s: string): CompactionId { return s as CompactionId; }
+export function asLlmCallId(s: string): LlmCallId       { return s as LlmCallId; }
 
 
 export type TurnMode      = 'chat' | 'narrative' | 'agent';

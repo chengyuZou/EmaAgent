@@ -11,7 +11,7 @@ import type { AppBindings } from './bindings.js';
  * beforeLlm hooks (run in priority order before each LLM call):
  *   priority  5   narrative:recall       (RAG recall for narrative mode)
  *   priority 10   prompts:buildSystem    (build + prepend system message)
- *   priority 20   memory:beforeLlm       (compaction check + recall injection)
+ *   priority 20   memory:beforeLlm       (first-call recall injection)
  *   priority 50   skill:inject-prompts   (append active skill bodies to system)
  *
  * onTurnEnd hooks (run after the turn stream closes):
@@ -36,25 +36,10 @@ export function registerAllHooks(bindings: AppBindings): () => void {
     narrative: bindings.narrative,
   }));
 
-  // ── memory: compaction + recall + post-turn extraction ────────────────────
+  // ── memory: recall + post-turn extraction ─────────────────────────────────
   offs.push(registerMemoryHooks(bindings.hooks, {
     planner:      bindings.memory,
     session:      bindings.session,
-    llm:          bindings.llm,
-    // Context window resolution: user-enabled models first (provider_llm_models,
-    // which stores the window picked at enable time), then the static knowledge
-    // table (@ema-agent/token json). Returns 0 when unknown → hooks.ts falls
-    // back to defaultContextWindow (128K). Replaces the never-populated
-    // llm_model_catalog (was always 0 → memory silently ran at the 128K default).
-    getContextWindow: (providerId, model) =>
-      bindings.providerLlmModels.contextWindowFor(providerId, model)
-        ?? bindings.modelCatalog.contextWindowOf(model)
-        ?? 0,
-    // Agent sessions: supply the 20 most recently touched files so the post-compact
-    // restore step can re-inject their content without a redundant LLM round-trip.
-    // Conversation sessions have no file state — the store simply returns [].
-    recentFiles: (sessionId) =>
-      bindings.getContextStores(sessionId).fileStateStore.recentEntries(20),
   }));
 
   // ── skill: system prompt injection ───────────────────────────────────────
