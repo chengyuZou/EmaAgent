@@ -10,18 +10,31 @@ import type {
   HookPayload,
 } from './events.js';
 
+/**
+ * 递归只读视图。Hook handler 只能观察输入；需要改变控制流时必须返回新的 replace payload。
+ * 函数保持可调用，Map/Set 收敛为各自的只读接口。
+ */
+export type DeepReadonly<T> =
+  T extends string | number | boolean | bigint | symbol | null | undefined ? T
+    : T extends (...args: never[]) => unknown ? T
+      : T extends ReadonlyMap<infer K, infer V> ? ReadonlyMap<DeepReadonly<K>, DeepReadonly<V>>
+        : T extends ReadonlySet<infer U> ? ReadonlySet<DeepReadonly<U>>
+          : T extends readonly unknown[] ? { readonly [K in keyof T]: DeepReadonly<T[K]> }
+            : T extends object ? { readonly [K in keyof T]: DeepReadonly<T[K]> }
+              : T;
+
 /** Hook 执行失败的稳定分类，供 trace 和诊断层使用。 */
 export type HookFailureKind = 'handler_error' | 'timeout' | 'cancelled';
 
 /** 单个 Hook handler 获得的强类型执行上下文。 */
 export interface HookContext<E extends HookEvent> {
-  event: E;
-  payload: HookPayload[E];
-  turnId: TurnId;
-  sessionId: SessionId;
+  readonly event: E;
+  readonly payload: DeepReadonly<HookPayload[E]>;
+  readonly turnId: TurnId;
+  readonly sessionId: SessionId;
   /** 父任务取消或 handler 超时时都会触发。 */
-  signal: AbortSignal;
-  emit?: (event: EmaStreamEvent) => void;
+  readonly signal: AbortSignal;
+  readonly emit?: (event: EmaStreamEvent) => void;
 }
 
 /** 调用 HookBus.trigger() 时提供的上下文。 */
@@ -36,7 +49,7 @@ export type HookControlResult<E extends HookEvent> =
   | { kind: 'abort'; reason: string }
   | (E extends AbortOnlyHookEvent
       ? never
-      : { kind: 'replace'; payload: HookPayload[E] });
+      : { kind: 'replace'; payload: DeepReadonly<HookPayload[E]> });
 
 export type HookObserverResult = { kind: 'continue' };
 

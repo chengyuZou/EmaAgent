@@ -2,7 +2,8 @@
 import { HookBus } from '../src/bus.js';
 import { PRIORITY } from '../src/priority.js';
 import type { HookPayload } from '../src/events.js';
-import type { EmaStreamEvent, LlmCallId, TurnId, SessionId } from '@ema-agent/contracts';
+import type { DeepReadonly } from '../src/types.js';
+import type { EmaStreamEvent, LlmCallId, MessageId, TurnId, SessionId } from '@ema-agent/contracts';
 
 const turnId = 'turn-1' as TurnId;
 const sessionId = 'session-1' as SessionId;
@@ -31,7 +32,7 @@ function afterLlmPayload(content: string): HookPayload['afterLlmComplete'] {
   return { iteration: 1, llmCallId, content };
 }
 
-function systemMessageContent(payload: HookPayload['beforeLlm']): string {
+function systemMessageContent(payload: DeepReadonly<HookPayload['beforeLlm']>): string {
   const first = payload.messages[0];
   return first?.role === 'system' && typeof first.content === 'string'
     ? first.content
@@ -39,16 +40,15 @@ function systemMessageContent(payload: HookPayload['beforeLlm']): string {
 }
 
 function replaceSystemMessage(
-  payload: HookPayload['beforeLlm'],
+  payload: DeepReadonly<HookPayload['beforeLlm']>,
   content: string,
 ): HookPayload['beforeLlm'] {
-  const tail = payload.messages[0]?.role === 'system'
-    ? payload.messages.slice(1)
-    : payload.messages;
-  return {
-    ...payload,
-    messages: [{ role: 'system', content }, ...tail],
-  };
+  const next = structuredClone(payload) as HookPayload['beforeLlm'];
+  const tail = next.messages[0]?.role === 'system'
+    ? next.messages.slice(1)
+    : next.messages;
+  next.messages = [{ role: 'system', content }, ...tail];
+  return next;
 }
 
 function sleep(ms: number): Promise<void> {
@@ -227,16 +227,18 @@ describe('HookBus', () => {
   it('serial replace updates payload for subsequent handlers', async () => {
     const bus = new HookBus();
     let seen = '';
+    let handlerInputFrozen = false;
 
     bus.register(
       'beforeLlm',
-      async (ctx) => ({
-        kind: 'replace',
-        payload: {
-          ...ctx.payload,
-          messages: [{ role: 'system', content: 'new-system' }],
-        },
-      }),
+      async (ctx) => {
+        handlerInputFrozen = Object.isFrozen(ctx.payload)
+          && Object.isFrozen(ctx.payload.messages);
+        return {
+          kind: 'replace',
+          payload: replaceSystemMessage(ctx.payload, 'new-system'),
+        };
+      },
       { priority: PRIORITY.FIRST },
     );
 
@@ -245,12 +247,19 @@ describe('HookBus', () => {
       return { kind: 'continue' };
     });
 
+    const source = beforeLlmPayload({ messages: [{ role: 'system', content: 'old-system' }] });
     const result = await bus.trigger('beforeLlm', {
       ...baseCtx(),
-      payload: beforeLlmPayload({ messages: [{ role: 'system', content: 'old-system' }] }),
+      payload: source,
     });
 
     expect(seen).toBe('new-system');
+    expect(handlerInputFrozen).toBe(true);
+    expect(Object.isFrozen(source)).toBe(false);
+    expect(Object.isFrozen(source.messages)).toBe(false);
+    expect(Object.isFrozen(result.payload)).toBe(false);
+    expect(Object.isFrozen(result.payload.messages)).toBe(false);
+    expect(systemMessageContent(source)).toBe('old-system');
     expect(result).toEqual({
       kind: 'continue',
       payload: beforeLlmPayload({ messages: [{ role: 'system', content: 'new-system' }] }),
@@ -398,6 +407,61 @@ describe('HookBus', () => {
       payload: afterLlmPayload('done'),
       warnings: [],
     });
+  });
+
+  it('隔离并冻结并行 Observer 的嵌套 Payload，不冻结业务原对象', async () => {
+    const bus = new HookBus();
+    const source: HookPayload['afterAssistantMessage'] = {
+      messageId: 'message-1' as MessageId,
+      blocks: [
+        { type: 'thinking', thinking: 'private' },
+        { type: 'text', text: 'answer' },
+      ],
+    };
+    let secondHandlerTypes: string[] = [];
+    let receivedIndependentSnapshot = false;
+    let nestedSnapshotFrozen = false;
+
+    bus.register('afterAssistantMessage', (ctx) => {
+      receivedIndependentSnapshot = ctx.payload !== source;
+      nestedSnapshotFrozen = Object.isFrozen(ctx.payload)
+        && Object.isFrozen(ctx.payload.blocks)
+        && Object.isFrozen(ctx.payload.blocks[0]);
+      (ctx.payload.blocks as unknown as Array<{ type: string }>).push({ type: 'corrupted' });
+      return { kind: 'continue' };
+    }, {
+      name: 'mutating-observer',
+      critical: false,
+      parallel: true,
+    });
+
+    bus.register('afterAssistantMessage', (ctx) => {
+      secondHandlerTypes = ctx.payload.blocks.map((block) => block.type);
+      return { kind: 'continue' };
+    }, {
+      name: 'clean-observer',
+      critical: false,
+      parallel: true,
+    });
+
+    const result = await bus.trigger('afterAssistantMessage', {
+      ...baseCtx(),
+      payload: source,
+    });
+
+    expect(receivedIndependentSnapshot).toBe(true);
+    expect(nestedSnapshotFrozen).toBe(true);
+    expect(secondHandlerTypes).toEqual(['thinking', 'text']);
+    expect(result.payload).toBe(source);
+    expect(result.warnings).toEqual([
+      expect.objectContaining({
+        event: 'afterAssistantMessage',
+        hook: 'mutating-observer',
+      }),
+    ]);
+    expect(Object.isFrozen(source)).toBe(false);
+    expect(Object.isFrozen(source.blocks)).toBe(false);
+    expect(source.blocks).toHaveLength(2);
   });
 
   it('respects maxConcurrency for parallel hooks', async () => {

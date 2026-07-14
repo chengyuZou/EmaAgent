@@ -104,7 +104,11 @@ describe('AgentEngine 生命周期', () => {
         { type: 'text', text: 'answer' },
       ],
     });
-    expect((assistantMessagePayload as { blocks: unknown }).blocks).toBe(persistedAssistantBlocks);
+    const hookBlocks = (assistantMessagePayload as { blocks: unknown }).blocks;
+    expect(hookBlocks).toEqual(persistedAssistantBlocks);
+    expect(hookBlocks).not.toBe(persistedAssistantBlocks);
+    expect(Object.isFrozen(hookBlocks)).toBe(true);
+    expect(Object.isFrozen(persistedAssistantBlocks)).toBe(false);
     expect(events.at(-1)).toEqual(expect.objectContaining({ type: 'turn_completed' }));
   });
 

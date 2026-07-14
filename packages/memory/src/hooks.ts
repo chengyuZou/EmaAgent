@@ -1,5 +1,5 @@
 import type { HookBus } from '@ema-agent/hook';
-import type { SessionId, TurnId } from '@ema-agent/contracts';
+import type { LlmMessage, SessionId, TurnId } from '@ema-agent/contracts';
 import type { SessionStore } from '@ema-agent/session';
 import type { MemoryPlanner } from './planner.js';
 import { bestEffortAsync } from './best-effort.js';
@@ -46,7 +46,8 @@ export function registerMemoryHooks(
         turnId:    ctx.turnId,
         mode,
         userInput,
-        messages: ctx.payload.messages,
+        // Planner 仍使用可变业务类型；不得把 Hook 的冻结快照直接泄漏到模块边界之外。
+        messages: structuredClone(ctx.payload.messages) as LlmMessage[],
         signal,
         emit:      ctx.emit,
       });

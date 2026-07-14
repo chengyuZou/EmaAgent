@@ -13,6 +13,7 @@ export type {
 } from './events.js';
 
 export type {
+  DeepReadonly,
   HookBusOptions,
   HookContext,
   HookControlResult,

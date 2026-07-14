@@ -128,7 +128,11 @@ describe('ConversationEngine Hook 诊断事件', () => {
       messageId: persistedAssistantMessageId,
       blocks: [{ type: 'text', text: 'ok' }],
     });
-    expect((assistantMessagePayload as { blocks: unknown }).blocks).toBe(persistedAssistantBlocks);
+    const hookBlocks = (assistantMessagePayload as { blocks: unknown }).blocks;
+    expect(hookBlocks).toEqual(persistedAssistantBlocks);
+    expect(hookBlocks).not.toBe(persistedAssistantBlocks);
+    expect(Object.isFrozen(hookBlocks)).toBe(true);
+    expect(Object.isFrozen(persistedAssistantBlocks)).toBe(false);
   });
 
   it('失败状态落盘后触发 onTurnFailure，并在 turn_failed 前输出 Hook 诊断', async () => {

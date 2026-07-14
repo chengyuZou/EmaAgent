@@ -10,6 +10,7 @@ import {
   HookConfigurationError,
   HookTimeoutError,
 } from './errors.js';
+import { cloneHookPayload, immutableHookPayload } from './payload-snapshot.js';
 import type {
   HookBusOptions,
   HookContext,
@@ -395,7 +396,8 @@ export class HookBus {
           }
 
           if (result.kind === 'replace') {
-            currentPayload = result.payload as HookPayload[E];
+            // replace 可能复用了只读输入中的嵌套对象；恢复为独立、未冻结的业务 Payload。
+            currentPayload = cloneHookPayload(result.payload as HookPayload[E]);
           }
         }
 
@@ -437,7 +439,7 @@ export class HookBus {
     const scope = createHandlerAbortScope(baseCtx.signal, entry.timeoutMs, entry.name);
     const handlerCtx: HookContext<E> = {
       ...baseCtx,
-      payload,
+      payload: immutableHookPayload(payload),
       signal: scope.signal,
     } as HookContext<E>;
     const t0 = performance.now();
