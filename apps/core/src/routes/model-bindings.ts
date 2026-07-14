@@ -3,7 +3,7 @@ import { z } from 'zod';
 import type { BindingModule } from '@ema-agent/storage';
 import type { AppBindings } from '../wiring/index.js';
 
-// Keep in sync with BindingModule type and migration 001 CHECK constraint.
+// Keep in sync with BindingModule type and migration 005 CHECK constraint.
 const BINDING_MODULES = [
   // TS-side LLM modules. (chat/narrative/agent/compaction retired — those模式
   // pick their model in the chat UI, and compaction reuses the turn's model.)
@@ -164,8 +164,7 @@ export function modelBindingsRoute(bindings: AppBindings): Hono {
     const module = moduleParsed.data as BindingModule;
 
     // Atomic: wipe old → insert new (single-select semantics)
-    bindings.modelBindings.deleteAllByModule(module);
-    bindings.modelBindings.upsert({
+    bindings.modelBindings.setSingle({
       module,
       providerConfigId: bodyParsed.data.providerConfigId,
       model:            bodyParsed.data.model,

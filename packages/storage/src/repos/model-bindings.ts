@@ -53,9 +53,9 @@ export interface ResolvedModelBinding {
  * 唯一键：(module, provider_config_id, model)。
  *
  * 示例：
- *   chat  → siliconflow / Qwen-72B   （第一行 = engine 默认）
- *   chat  → deepseek    / deepseek-v3
- *   agent → openai      / gpt-4o
+ *   router → siliconflow / Qwen-72B   （第一行 = engine 默认）
+ *   router → deepseek    / deepseek-v3
+ *   tts    → openai      / gpt-4o
  */
 export class ModelBindingsRepo {
   constructor(private readonly db: SqliteDb) {}
@@ -98,6 +98,18 @@ export class ModelBindingsRepo {
   }
 
   /**
+   * 单选原子替换：先删除该模块的全部绑定，再插入新绑定，两步在同一事务内。
+   * 用于 PUT /:module/set 路由。若 upsert 失败（如外键冲突、磁盘错误），
+   * 事务回滚，旧绑定保留——避免模块瞬间失去全部绑定导致配置丢失。
+   */
+  setSingle(data: ModelBindingUpsert): void {
+    this.db.transaction(() => {
+      this.deleteAllByModule(data.module);
+      this.upsert(data);
+    })();
+  }
+
+  /**
    * 删除引用某 Provider+model 的所有绑定
    * （跨所有模块）。在 provider 页面禁用 model 时调用 —
    * 启用池中的该行已删除，故其绑定也需移除。返回
@@ -112,18 +124,30 @@ export class ModelBindingsRepo {
 
   // ── 读取───────────────────────────────────────────────────────────────────
 
-  /** 返回某模块的第一个绑定（engine 用作默认值）。 */
+  /**
+   * 返回某模块的第一个绑定（engine 用作默认值）。
+   * 按 (provider_config_id, model) 稳定排序，保证多候选时默认绑定确定不跳变。
+   */
   get(module: BindingModule): ResolvedModelBinding | undefined {
     const row = this.db
-      .prepare('SELECT * FROM model_bindings WHERE module = ? LIMIT 1')
+      .prepare(
+        `SELECT * FROM model_bindings
+         WHERE module = ?
+         ORDER BY provider_config_id ASC, model ASC
+         LIMIT 1`,
+      )
       .get(module) as ModelBindingRow | undefined;
     return row ? this.resolve(row) : undefined;
   }
 
-  /** 返回某模块的所有绑定（UI 列表用）。 */
+  /** 返回某模块的所有绑定（UI 列表用），按 (provider_config_id, model) 稳定排序。 */
   listByModule(module: BindingModule): ResolvedModelBinding[] {
     const rows = this.db
-      .prepare('SELECT * FROM model_bindings WHERE module = ?')
+      .prepare(
+        `SELECT * FROM model_bindings
+         WHERE module = ?
+         ORDER BY provider_config_id ASC, model ASC`,
+      )
       .all(module) as ModelBindingRow[];
     return rows.map(r => this.resolve(r));
   }
