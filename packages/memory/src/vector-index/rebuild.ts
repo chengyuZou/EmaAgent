@@ -24,12 +24,12 @@ const PAGE_SIZE = 500;
 export function rebuildNodesIndex(
   index: VectorIndex,
   repo:  MemoryNodesRepo,
-  model: string,
+  spaceId: string,
 ): number {
   let after: MemoryEmbeddingPageCursor | undefined;
   let added = 0;
   for (;;) {
-    const rows = repo.listEmbeddablePage(model, after, PAGE_SIZE);
+    const rows = repo.listEmbeddablePage(spaceId, after, PAGE_SIZE);
     if (rows.length === 0) break;
     for (const row of rows) {
       if (!row.embedding)                   continue;
@@ -49,12 +49,12 @@ export function rebuildNodesIndex(
 export function rebuildItemsIndex(
   index: VectorIndex,
   repo:  MemoryItemsRepo,
-  model: string,
+  spaceId: string,
 ): number {
   let after: MemoryEmbeddingPageCursor | undefined;
   let added = 0;
   for (;;) {
-    const rows = repo.listEmbeddablePage(model, after, PAGE_SIZE);
+    const rows = repo.listEmbeddablePage(spaceId, after, PAGE_SIZE);
     if (rows.length === 0) break;
     for (const row of rows) {
       if (!row.embedding)                   continue;

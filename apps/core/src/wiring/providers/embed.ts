@@ -82,6 +82,9 @@ export function buildEmbedProviderConfig(row: ProviderConfigRow): EmbedProviderC
     apiKey:       row.api_key_plain ?? '',
     baseUrl:      row.base_url ?? def.defaultBaseUrl,
     defaultModel: typeof extra['defaultModel'] === 'string' ? extra['defaultModel'] : undefined,
+    embeddingRevision: typeof extra['embeddingRevision'] === 'string'
+      ? extra['embeddingRevision']
+      : undefined,
   };
 }
 

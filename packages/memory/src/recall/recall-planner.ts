@@ -108,6 +108,7 @@ export async function planRecall(
   settings:            MemorySettings,
   nodesIndex:          VectorIndex | null,
   itemsIndex:          VectorIndex | null,
+  indexSpaceId:        string | null,
   getSessionOverrides: (sessionId: SessionId) => ResolvedSessionOverrides,
   ctx:                 PlanContext,
 ): Promise<RecallBundle> {
@@ -126,6 +127,9 @@ export async function planRecall(
     : null;
   const queryVec   = embedded?.queryVec   ?? null;
   const queryEmbed = embedded?.embedded   ?? null;
+  // ANN 索引只允许服务于构建它的精确空间；不兼容时走带 space_id 的 SQL 扫描。
+  const compatibleNodesIndex = queryEmbed?.space.id === indexSpaceId ? nodesIndex : null;
+  const compatibleItemsIndex = queryEmbed?.space.id === indexSpaceId ? itemsIndex : null;
 
   let layer0: RecallBundle['layer0'] = null;
   let layer1: RecallBundle['layer1'] = null;
@@ -142,7 +146,7 @@ export async function planRecall(
       return;
     }
     try {
-      layer0 = recallGraph(deps, { queryVec, queryEmbed, index: nodesIndex, alreadySurfaced: new Set(prior.nodes), settings });
+      layer0 = recallGraph(deps, { queryVec, queryEmbed, index: compatibleNodesIndex, alreadySurfaced: new Set(prior.nodes), settings });
       if (settings.recall.useReranker && layer0.nodes.length > 1) {
         layer0 = await rerankLayer0(embed, ctx.userInput, layer0, ctx.signal);
       }
@@ -176,7 +180,7 @@ export async function planRecall(
     }
     try {
       const mode = ctx.mode === 'narrative' ? 'narrative' : ctx.mode;
-      layer2 = await recallEpisodic(deps, { query: ctx.userInput, queryVec, queryEmbed, index: itemsIndex, mode, alreadySurfaced: new Set(prior.items), settings });
+      layer2 = await recallEpisodic(deps, { query: ctx.userInput, queryVec, queryEmbed, index: compatibleItemsIndex, mode, alreadySurfaced: new Set(prior.items), settings });
       if (settings.recall.useReranker && (layer2.currentMode.length + layer2.otherModes.length) > 1) {
         layer2 = await rerankEpisodic(embed, ctx.userInput, layer2, ctx.signal);
       }

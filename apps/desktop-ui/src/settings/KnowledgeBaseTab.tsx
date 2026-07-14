@@ -772,9 +772,9 @@ function KbModelSettings({ onEmbedModelChanged }: { onEmbedModelChanged?: (model
       await settingsApi.putKbModels(next);
       // embed 模型变了 -> 自动 invalidate(标 stale),让不匹配 doc 立刻显 ⚠️ + 重嵌按钮。
       // 之前要手动点"重建索引"才标 stale,导致切换后按钮时有时无。
-      if (next.embed?.model !== prevEmbed?.model) {
+      if (enc(next.embed) !== enc(prevEmbed)) {
         if (next.embed) {
-          try { await kbApi.invalidate(next.embed.model); } catch { /* 标 stale 失败不阻断保存 */ }
+          try { await kbApi.invalidate(next.embed.providerConfigId, next.embed.model); } catch { /* 标 stale 失败不阻断保存 */ }
         }
         onEmbedModelChanged?.(next.embed?.model);
       }
@@ -794,7 +794,7 @@ function KbModelSettings({ onEmbedModelChanged }: { onEmbedModelChanged?: (model
     if (!config.embed) { showToast('请先选择嵌入模型', { variant: 'warning' }); return; }
     setRebuilding(true);
     try {
-      await kbApi.invalidate(config.embed.model);
+      await kbApi.invalidate(config.embed.providerConfigId, config.embed.model);
       const res = await kbApi.reembed({ ebdProviderId: config.embed.providerConfigId, ebdModel: config.embed.model });
       showToast(`重建完成：${res.done} 成功${res.failed ? `，${res.failed} 失败` : ''}`,
         { variant: res.failed ? 'warning' : 'success' });

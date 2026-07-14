@@ -59,6 +59,7 @@ export class MemoryPlanner {
       queue:               this.queue,
       getNodesIndex:       () => this.indexMgr.nodesIndex,
       getItemsIndex:       () => this.indexMgr.itemsIndex,
+      getIndexSpaceId:     () => this.indexMgr.currentSpaceId(),
       getSessionOverrides: (sid) => this.getSessionOverrides(sid),
     });
   }
@@ -81,6 +82,7 @@ export class MemoryPlanner {
     return planRecall(
       this.deps, this.embed, this.settings,
       this.indexMgr.nodesIndex, this.indexMgr.itemsIndex,
+      this.indexMgr.currentSpaceId(),
       (sid) => this.getSessionOverrides(sid),
       ctx,
     );
@@ -166,7 +168,7 @@ export class MemoryPlanner {
   // ── Stats / Inspection ──────────────────────────────────────────────────────
 
   getStats(): MemoryStats {
-    return collectStats(this.deps, { nodesIndex: this.indexMgr.nodesIndex, itemsIndex: this.indexMgr.itemsIndex }, this.embed.currentProviderId() ?? null);
+    return collectStats(this.deps, { nodesIndex: this.indexMgr.nodesIndex, itemsIndex: this.indexMgr.itemsIndex }, this.indexMgr.currentSpaceId());
   }
 
   listNodes(opts?: BrowseNodesOptions)          { return browseNodes(this.deps, opts); }

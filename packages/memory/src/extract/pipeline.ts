@@ -26,6 +26,7 @@ export interface ExtractionPipelineDeps {
   settings: MemorySettings;
   nodesIndex: VectorIndex | null;
   itemsIndex: VectorIndex | null;
+  indexSpaceId: string | null;
 }
 
 export interface PipelineResult {
@@ -185,4 +186,3 @@ export async function runExtractionPipeline(
 
 // Surface the type for orchestrators wanting to type the result
 export type { MemoryNodeRow, MemoryNodeType };
-

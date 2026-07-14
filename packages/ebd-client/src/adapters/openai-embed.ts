@@ -1,4 +1,4 @@
-import type { EmbedProviderConfig, EmbedResponse } from '../types.js';
+import type { EmbedProviderConfig, RawEmbedResponse } from '../types.js';
 import type { EmbedAdapter } from './base.js';
 
 /**
@@ -12,7 +12,7 @@ export class OpenAIEmbedAdapter implements EmbedAdapter {
     this.config = config;
   }
 
-  async embed(texts: string[], model: string, signal?: AbortSignal): Promise<EmbedResponse> {
+  async embed(texts: string[], model: string, signal?: AbortSignal): Promise<RawEmbedResponse> {
     const baseUrl = (this.config.baseUrl ?? 'https://api.openai.com/v1').replace(/\/$/, '');
     const timeout = AbortSignal.timeout(15_000);
     const res = await fetch(`${baseUrl}/embeddings`, {

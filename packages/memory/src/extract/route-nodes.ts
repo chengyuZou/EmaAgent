@@ -41,7 +41,7 @@ export function routeCandidateNode(
   }
 
   // 2. Embedding-based dedup against the index (current provider only)
-  if (embedded && deps.nodesIndex && deps.nodesIndex.dim === embedded.dim) {
+  if (embedded && deps.nodesIndex && deps.indexSpaceId === embedded.space.id && deps.nodesIndex.dim === embedded.dim) {
     const view = unpackEmbedding(embedded.embedding, embedded.dim);
     const hits = deps.nodesIndex.search(view, 3);
     const best = hits[0];
@@ -68,11 +68,14 @@ export function routeCandidateNode(
       embeddingProviderId: embedded?.providerId,
       embeddingModel:      embedded?.model,
       embeddingDim:        embedded?.dim,
+      embeddingNormalization: embedded?.space.normalization,
+      embeddingRevision:      embedded?.space.revision,
+      embeddingSpaceId:       embedded?.space.id,
       importance:  candidate.importance,
       createdAt:   now,
     });
     // Update in-memory vector index too
-    if (embedded && deps.nodesIndex && deps.nodesIndex.dim === embedded.dim) {
+    if (embedded && deps.nodesIndex && deps.indexSpaceId === embedded.space.id && deps.nodesIndex.dim === embedded.dim) {
       const view = unpackEmbedding(embedded.embedding, embedded.dim);
       deps.nodesIndex.add(id, view);
     }

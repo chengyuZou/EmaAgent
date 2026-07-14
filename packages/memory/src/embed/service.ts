@@ -1,4 +1,4 @@
-import type { EbdRouter } from '@ema-agent/ebd-client';
+import type { EbdRouter, EmbeddingSpace } from '@ema-agent/ebd-client';
 import { packEmbedding, normalizeQueryVector } from './similarity.js';
 import type { EmbeddedText, MemoryModelRef } from '../types.js';
 
@@ -36,6 +36,12 @@ export class EmbedService {
   /** Active embed provider id, used to stamp `embedding_provider_id` on new rows. */
   currentProviderId(): string | undefined { return this.resolveEmbed()?.providerId; }
 
+  /** 由当前配置和 catalog 维度解析空间，不从历史向量反推身份。 */
+  currentSpace(dim: number): EmbeddingSpace | null {
+    const p = this.resolveEmbed();
+    return p ? this.ebd.embeddingSpace(p.providerId, p.model, dim) : null;
+  }
+
   async embedOne(text: string): Promise<EmbeddedText | null> {
     const result = await this.embedMany([text]);
     if (!result) return null;
@@ -53,6 +59,7 @@ export class EmbedService {
       providerId: p.providerId,
       model:      p.model,
       dim:        resp.dim,
+      space:      resp.space,
     }));
   }
 
@@ -76,6 +83,7 @@ export class EmbedService {
         providerId: p.providerId,
         model:      p.model,
         dim:        resp.dim,
+        space:      resp.space,
       },
     };
   }

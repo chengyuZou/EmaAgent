@@ -6,6 +6,7 @@ import type {
 } from '@ema-agent/contracts';
 import type { LlmMessage } from '@ema-agent/llm';
 import type { MemoryNodeType, MemoryItemKind } from '@ema-agent/storage';
+import type { EmbeddingSpace } from '@ema-agent/ebd-client';
 
 
 interface CompactResultBase {
@@ -224,6 +225,7 @@ export interface EmbeddedText {
   providerId:  string;
   model:       string;
   dim:         number;
+  space:       EmbeddingSpace;
 }
 
 // ── alreadySurfaced tracker (session.meta_json bucket) ───────────────────────

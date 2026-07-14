@@ -7,6 +7,7 @@ import type { VectorIndex } from './vector-index.js';
 export class IndexManager {
   nodesIndex: VectorIndex | null = null;
   itemsIndex: VectorIndex | null = null;
+  private spaceId: string | null = null;
 
   constructor(
     private readonly deps:  MemoryDeps,
@@ -27,13 +28,16 @@ export class IndexManager {
 
     const dim = this.deps.getEmbedDim(p.providerId, p.model);
     if (!dim) return { nodes: 0, items: 0, backend: null };
+    const space = this.embed.currentSpace(dim);
+    if (!space) return { nodes: 0, items: 0, backend: null };
 
     const t0 = Date.now();
     this.nodesIndex = await createVectorIndex(dim);
     this.itemsIndex = await createVectorIndex(dim);
 
-    const nodes = rebuildNodesIndex(this.nodesIndex, this.deps.nodes, p.model);
-    const items = rebuildItemsIndex(this.itemsIndex, this.deps.items, p.model);
+    this.spaceId = space.id;
+    const nodes = rebuildNodesIndex(this.nodesIndex, this.deps.nodes, space.id);
+    const items = rebuildItemsIndex(this.itemsIndex, this.deps.items, space.id);
 
     this.deps.emit?.({
       type:       'memory_index_rebuilt',
@@ -49,6 +53,7 @@ export class IndexManager {
   async refreshIndexes(): Promise<void> {
     this.nodesIndex = null;
     this.itemsIndex = null;
+    this.spaceId = null;
     await this.initialize();
   }
 
@@ -56,6 +61,8 @@ export class IndexManager {
   removeNode(id: string): void                    { this.nodesIndex?.remove(id); }
   upsertItem(id: string, vec: Float32Array): void { this.itemsIndex?.update(id, vec); }
   removeItem(id: string): void                    { this.itemsIndex?.remove(id); }
+
+  currentSpaceId(): string | null { return this.spaceId; }
 
   stats(): {
     nodes: { size: number; backend: string } | null;

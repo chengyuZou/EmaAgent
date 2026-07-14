@@ -1,4 +1,4 @@
-import type { EmbedProviderConfig, EmbedResponse } from '../types.js';
+import type { EmbedProviderConfig, RawEmbedResponse } from '../types.js';
 import type { EmbedAdapter } from './base.js';
 
 /**
@@ -17,7 +17,7 @@ export class GeminiEmbedAdapter implements EmbedAdapter {
     this.config = config;
   }
 
-  async embed(texts: string[], model: string, signal?: AbortSignal): Promise<EmbedResponse> {
+  async embed(texts: string[], model: string, signal?: AbortSignal): Promise<RawEmbedResponse> {
     const baseUrl = (
       this.config.baseUrl ?? 'https://generativelanguage.googleapis.com/v1beta'
     ).replace(/\/$/, '');

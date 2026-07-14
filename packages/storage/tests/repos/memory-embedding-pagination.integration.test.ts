@@ -5,6 +5,7 @@ import { MemoryNodesRepo } from '../../src/repos/memory-nodes.js';
 import type { MemoryEmbeddingPageCursor } from '../../src/repos/memory-embedding-page.js';
 
 const MODEL = 'embedding-test';
+const SPACE = 'space-test';
 const EMBEDDING = Buffer.from(new Float32Array([1]).buffer);
 
 describe('Memory embedding 复合游标分页', () => {
@@ -31,12 +32,15 @@ describe('Memory embedding 复合游标分页', () => {
         embeddingProviderId: 'provider-test',
         embeddingModel: MODEL,
         embeddingDim: 1,
+        embeddingNormalization: 'l2',
+        embeddingRevision: 'provider-managed',
+        embeddingSpaceId: SPACE,
         createdAt: 0,
       });
     }
 
-    const first = repo.listEmbeddablePage(MODEL, undefined, 2);
-    const second = repo.listEmbeddablePage(MODEL, nextCursor(first), 2);
+    const first = repo.listEmbeddablePage(SPACE, undefined, 2);
+    const second = repo.listEmbeddablePage(SPACE, nextCursor(first), 2);
 
     expect(first.map((row) => row.id)).toEqual(['node-a', 'node-b']);
     expect(second.map((row) => row.id)).toEqual(['node-c']);
@@ -55,12 +59,15 @@ describe('Memory embedding 复合游标分页', () => {
         embeddingProviderId: 'provider-test',
         embeddingModel: MODEL,
         embeddingDim: 1,
+        embeddingNormalization: 'l2',
+        embeddingRevision: 'provider-managed',
+        embeddingSpaceId: SPACE,
         createdAt: 0,
       });
     }
 
-    const first = repo.listEmbeddablePage(MODEL, undefined, 2);
-    const second = repo.listEmbeddablePage(MODEL, nextCursor(first), 2);
+    const first = repo.listEmbeddablePage(SPACE, undefined, 2);
+    const second = repo.listEmbeddablePage(SPACE, nextCursor(first), 2);
 
     expect(first.map((row) => row.id)).toEqual(['item-a', 'item-b']);
     expect(second.map((row) => row.id)).toEqual(['item-c']);

@@ -9,6 +9,7 @@ import type { KbActivationsRepo }   from '@ema-agent/storage';
 import type { ChunkSearchHit }      from '@ema-agent/storage';
 import type { ChunkPage }           from '@ema-agent/storage';
 import type { AssetUsage }          from '@ema-agent/storage';
+import type { EmbeddingSpace }      from '@ema-agent/ebd-client';
 
 export interface KbSearchOpts {
   /** Document filter within this KB. undefined = search all docs; [] = unfiltered (same as undefined). */
@@ -97,8 +98,8 @@ export class KnowledgeStore {
     return this.chunks.findById(id) as DocumentChunk | undefined;
   }
 
-  storeEmbedding(chunkId: string, vector: number[]): void {
-    this.chunks.storeEmbedding(chunkId, vector);
+  storeEmbedding(chunkId: string, vector: number[], spaceId: string): void {
+    this.chunks.storeEmbedding(chunkId, vector, spaceId);
   }
 
   /** BM25 full-text search via SQLite FTS5. */
@@ -107,8 +108,8 @@ export class KnowledgeStore {
   }
 
   /** Cosine similarity search over persisted BLOB embeddings. */
-  searchByEmbedding(queryVec: number[], opts: KbSearchOpts): ChunkSearchHit[] {
-    return this.chunks.searchByEmbedding(queryVec, opts.assetIds, opts.topK ?? 10);
+  searchByEmbedding(queryVec: number[], spaceId: string, opts: KbSearchOpts): ChunkSearchHit[] {
+    return this.chunks.searchByEmbedding(queryVec, spaceId, opts.assetIds, opts.topK ?? 10);
   }
 
   // ── Preview ────────────────────────────────────────────────────────────────
@@ -121,13 +122,13 @@ export class KnowledgeStore {
 
   // ── Embedding model tracking ───────────────────────────────────────────────
 
-  setEbdModel(assetId: string, model: string, dim: number): void {
-    this.assets.setEbdModel(assetId, model, dim);
+  setEmbeddingSpace(assetId: string, space: EmbeddingSpace): void {
+    this.assets.setEmbeddingSpace(assetId, space);
   }
 
   /** Mark all assets with a different ebd_model as stale. Returns count. */
-  markStaleExcept(currentModel: string): number {
-    return this.assets.markStaleExcept(currentModel);
+  markStaleExcept(currentSpaceId: string): number {
+    return this.assets.markStaleExcept(currentSpaceId);
   }
 
   listStaleAssets(): DocumentAsset[] {
@@ -135,8 +136,8 @@ export class KnowledgeStore {
   }
 
   /** Load all non-stale embedded chunks for rebuilding the HNSW index. */
-  getAllEmbeddings(): Array<{ id: string; assetId: string; embedding: Buffer }> {
-    return this.chunks.getAllEmbeddings();
+  getAllEmbeddings(spaceId: string): Array<{ id: string; assetId: string; embedding: Buffer }> {
+    return this.chunks.getAllEmbeddings(spaceId);
   }
 
   // ── Delete ─────────────────────────────────────────────────────────────────

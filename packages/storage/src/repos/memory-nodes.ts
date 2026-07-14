@@ -18,6 +18,9 @@ export interface MemoryNodeRow {
   embedding_provider_id:  string | null;
   embedding_model:        string | null;
   embedding_dim:          number | null;
+  embedding_normalization: string | null;
+  embedding_revision:      string | null;
+  embedding_space_id:      string | null;
   importance:             number;
   created_at:             number;
   updated_at:             number;
@@ -34,6 +37,9 @@ export interface MemoryNodeInsert {
   embeddingProviderId?:  string;
   embeddingModel?:       string;
   embeddingDim?:         number;
+  embeddingNormalization?: string;
+  embeddingRevision?:    string;
+  embeddingSpaceId?:     string;
   importance?:           number;
   createdAt:             number;
 }
@@ -51,6 +57,9 @@ export interface MemoryNodeEmbeddingUpdate {
   embeddingProviderId:   string;
   embeddingModel:        string;
   embeddingDim:          number;
+  embeddingNormalization: string;
+  embeddingRevision:     string;
+  embeddingSpaceId:      string;
   updatedAt:             number;
 }
 
@@ -103,8 +112,9 @@ export class MemoryNodesRepo {
         `INSERT INTO memory_nodes
            (id, label, node_type, description, embedding,
             embedding_provider_id, embedding_model, embedding_dim,
+            embedding_normalization, embedding_revision, embedding_space_id,
             importance, created_at, updated_at, last_referenced_at, meta_json)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '{}')`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '{}')`,
       )
       .run(
         n.id, n.label, n.nodeType, n.description,
@@ -112,6 +122,9 @@ export class MemoryNodesRepo {
         n.embeddingProviderId ?? null,
         n.embeddingModel       ?? null,
         n.embeddingDim         ?? null,
+        n.embeddingNormalization ?? null,
+        n.embeddingRevision    ?? null,
+        n.embeddingSpaceId     ?? null,
         n.importance ?? 50,
         n.createdAt, n.createdAt, n.createdAt,
       );
@@ -143,15 +156,15 @@ export class MemoryNodesRepo {
       .all(nodeType, limit) as MemoryNodeRow[];
   }
 
-  /** 用指定 model embedding 的节点-维度校验在 capability 层做。 */
-  listEmbeddable(model: string, limit = 5000): MemoryNodeRow[] {
+  /** 只读取指定向量空间的节点；旧版 NULL 空间不会参与召回。 */
+  listEmbeddable(spaceId: string, limit = 5000): MemoryNodeRow[] {
     return this.db
       .prepare(
         `SELECT * FROM memory_nodes
-         WHERE embedding IS NOT NULL AND embedding_model = ?
+         WHERE embedding IS NOT NULL AND embedding_space_id = ?
          LIMIT ?`,
       )
-      .all(model, limit) as MemoryNodeRow[];
+      .all(spaceId, limit) as MemoryNodeRow[];
   }
 
   /**
@@ -159,7 +172,7 @@ export class MemoryNodesRepo {
    * 按 (updated_at, id) 升序读取，避免同毫秒数据跨页丢失。
    */
   listEmbeddablePage(
-    model: string,
+    spaceId: string,
     after: MemoryEmbeddingPageCursor | undefined,
     limit: number,
   ): MemoryNodeRow[] {
@@ -167,12 +180,12 @@ export class MemoryNodesRepo {
       ? 'AND (updated_at > ? OR (updated_at = ? AND id > ?))'
       : '';
     const params = after
-      ? [model, after.updatedAt, after.updatedAt, after.id, limit]
-      : [model, limit];
+      ? [spaceId, after.updatedAt, after.updatedAt, after.id, limit]
+      : [spaceId, limit];
 
     return this.db.prepare(
       `SELECT * FROM memory_nodes
-       WHERE embedding IS NOT NULL AND embedding_model = ?
+       WHERE embedding IS NOT NULL AND embedding_space_id = ?
        ${cursorPredicate}
        ORDER BY updated_at ASC, id ASC
        LIMIT ?`,
@@ -232,10 +245,17 @@ export class MemoryNodesRepo {
                 embedding_provider_id = ?,
                 embedding_model       = ?,
                 embedding_dim         = ?,
+                embedding_normalization = ?,
+                embedding_revision    = ?,
+                embedding_space_id    = ?,
                 updated_at            = ?
           WHERE id = ?`,
       )
-      .run(u.embedding, u.embeddingProviderId, u.embeddingModel, u.embeddingDim, u.updatedAt, u.id);
+      .run(
+        u.embedding, u.embeddingProviderId, u.embeddingModel, u.embeddingDim,
+        u.embeddingNormalization, u.embeddingRevision, u.embeddingSpaceId,
+        u.updatedAt, u.id,
+      );
   }
 
   listDecayCandidates(cutoff: number, limit = 5000): Array<{
@@ -336,13 +356,13 @@ export class MemoryNodesRepo {
 
   // ── 计数（启动恢复 + 诊断） ─────────────────────────────────
 
-  countStaleEmbeddings(currentProviderId: string): number {
+  countStaleEmbeddings(currentSpaceId: string): number {
     const row = this.db
       .prepare(
         `SELECT COUNT(*) AS n FROM memory_nodes
-         WHERE embedding IS NOT NULL AND embedding_provider_id != ?`,
+         WHERE embedding IS NOT NULL AND embedding_space_id IS NOT ?`,
       )
-      .get(currentProviderId) as { n: number };
+      .get(currentSpaceId) as { n: number };
     return row.n;
   }
 

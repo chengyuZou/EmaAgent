@@ -3,7 +3,7 @@ import type {
   IngestOptions, IngestResult, SearchOptions, AssetListPage,
 } from './types.js';
 import type { KbSearchResult, DocumentSourceRef } from '@ema-agent/contracts';
-import type { EbdRouter } from '@ema-agent/ebd-client';
+import type { EbdRouter, EmbeddingSpace } from '@ema-agent/ebd-client';
 import type { ChunkPage, AssetUsage } from '@ema-agent/storage';
 import { ingest as runIngest } from './ingest/index.js';
 import type { KnowledgeStore } from './store/index.js';
@@ -14,7 +14,7 @@ import { DocumentEventEmitter } from './events/emitter.js';
 import { weightedRank }         from './retrieval/hybrid.js';
 import type { VectorIndex }     from './index/vector-index.js';
 import { createVectorIndex }    from './index/factory.js';
-import { normalizeF32, normalizeVec } from './embed/normalize.js';
+import { normalizeF32 } from './embed/normalize.js';
 
 // Reranker scores below this threshold indicate the document does not actually
 // contain relevant content for the query. Filtering prevents cross-document
@@ -43,6 +43,7 @@ export class KnowledgeClient {
 
   // In-memory HNSW (or brute-force fallback). null until init() is called.
   private hnsw: VectorIndex | null = null;
+  private hnswSpaceId: string | null = null;
   // chunkId → assetId, so HNSW hits can be filtered to the turn's selected docs.
   private readonly chunkToAsset = new Map<string, string>();
 
@@ -54,18 +55,10 @@ export class KnowledgeClient {
    * Safe to call again — clears and rebuilds the index.
    */
   async init(): Promise<void> {
-    const rows = this.deps.store.getAllEmbeddings();
-    if (rows.length === 0) return;
-
-    const dim = rows[0]!.embedding.byteLength / 4;
-    this.hnsw = await createVectorIndex(dim);
+    // 当前空间要由一次真实 embedding 响应确定，不能从旧行猜测。
+    this.hnsw = null;
+    this.hnswSpaceId = null;
     this.chunkToAsset.clear();
-
-    for (const { id, assetId, embedding } of rows) {
-      const vec = normalizeF32(bufferToFloat32(embedding));
-      this.hnsw.add(id, vec);
-      this.chunkToAsset.set(id, assetId);
-    }
   }
 
   // ── Ingest ────────────────────────────────────────────────────────────────
@@ -78,38 +71,32 @@ export class KnowledgeClient {
       visionAdapter: this.deps.visionAdapter,
     });
 
-    // After ingest, update ebd model tracking + add new embeddings to HNSW
-    if (opts.ebdModel) {
-      const chunks = this.deps.store.getChunks(result.asset.id);
-      let dim = 0;
-      for (const chunk of chunks) {
-        // Determine dim from first chunk that has an embedding row (if any)
-        if (!dim) {
-          const raw = this.deps.store.getAllEmbeddings()
-            .find(r => r.id === chunk.id);
-          if (raw) dim = raw.embedding.byteLength / 4;
-        }
-      }
-      if (dim) {
-        this.deps.store.setEbdModel(result.asset.id, opts.ebdModel, dim);
-        await this._addAssetToHnsw(result.asset.id, opts.ebdModel, dim);
-      }
+    const stored = this.deps.store.getAsset(result.asset.id);
+    if (stored?.ebdSpaceId && stored.ebdDim) {
+      await this.rebuildIndex(stored.ebdSpaceId, stored.ebdDim);
     }
 
     return result;
   }
 
-  private async _addAssetToHnsw(assetId: string, model: string, dim: number): Promise<void> {
-    if (!this.hnsw) {
-      this.hnsw = await createVectorIndex(dim);
-    }
-    const rows = this.deps.store.getAllEmbeddings().filter(r => r.assetId === assetId);
-    for (const { id, embedding } of rows) {
+  private async rebuildIndex(spaceId: string, dim: number): Promise<void> {
+    this.hnsw = await createVectorIndex(dim);
+    this.hnswSpaceId = spaceId;
+    this.chunkToAsset.clear();
+    const rows = this.deps.store.getAllEmbeddings(spaceId);
+    for (const { id, assetId, embedding } of rows) {
       const vec = normalizeF32(bufferToFloat32(embedding));
       this.hnsw.add(id, vec);
       this.chunkToAsset.set(id, assetId);
     }
-    void model; // dim is used above; model is stored in DB by the caller
+  }
+
+  private async ensureIndex(space: EmbeddingSpace): Promise<void> {
+    // Provider 配置中的 revision 改变时前端未必能感知；真实响应是最终权威。
+    this.deps.store.markStaleExcept(space.id);
+    if (this.hnswSpaceId !== space.id || this.hnsw?.dim !== space.dim) {
+      await this.rebuildIndex(space.id, space.dim);
+    }
   }
 
   // ── Embedding model invalidation ──────────────────────────────────────────
@@ -120,20 +107,11 @@ export class KnowledgeClient {
    * their chunk vectors from the in-memory HNSW index.
    * Returns the number of assets marked stale.
    */
-  invalidateEmbeddings(newModel: string): number {
-    const count = this.deps.store.markStaleExcept(newModel);
-    if (count > 0 && this.hnsw) {
-      // Remove stale chunk vectors from the index. We identify them by checking
-      // which assetIds no longer appear in the fresh embedding list.
-      const freshIds = new Set(this.deps.store.getAllEmbeddings().map(r => r.id));
-      for (const [chunkId, assetId] of this.chunkToAsset) {
-        if (!freshIds.has(chunkId)) {
-          void assetId;
-          this.hnsw.remove(chunkId);
-          this.chunkToAsset.delete(chunkId);
-        }
-      }
-    }
+  invalidateEmbeddings(newSpaceId: string): number {
+    const count = this.deps.store.markStaleExcept(newSpaceId);
+    this.hnsw = null;
+    this.hnswSpaceId = null;
+    this.chunkToAsset.clear();
     return count;
   }
 
@@ -154,7 +132,7 @@ export class KnowledgeClient {
         if (chunks.length === 0) { done++; continue; }
 
         const BATCH = 32;
-        let dim = 0;
+        let space: EmbeddingSpace | undefined;
         for (let i = 0; i < chunks.length; i += BATCH) {
           const batch = chunks.slice(i, i + BATCH);
           const res = await this.deps.ebdRouter.embed({
@@ -163,17 +141,19 @@ export class KnowledgeClient {
             texts:      batch.map(c => c.text),
             signal:     opts.signal,
           });
+          if (space && space.id !== res.space.id) throw new Error('Embedding space changed during re-embed');
+          space = res.space;
           for (let j = 0; j < batch.length; j++) {
             const vec = res.embeddings[j];
             if (vec?.length) {
-              this.deps.store.storeEmbedding(batch[j]!.id, normalizeVec(vec));
-              if (!dim) dim = vec.length;
+              this.deps.store.storeEmbedding(batch[j]!.id, vec, res.space.id);
             }
           }
         }
 
-        this.deps.store.setEbdModel(asset.id, opts.ebdModel, dim);
-        if (dim) await this._addAssetToHnsw(asset.id, opts.ebdModel, dim);
+        if (!space) throw new Error('Embedding provider returned no space');
+        this.deps.store.setEmbeddingSpace(asset.id, space);
+        await this.ensureIndex(space);
         done++;
         opts.onProgress?.(done, stale.length);
       } catch {
@@ -190,7 +170,7 @@ export class KnowledgeClient {
     if (!this.deps.ebdRouter) return false;
     try {
       const chunks = this.deps.store.getChunks(assetId);
-      let dim = 0;
+      let space: EmbeddingSpace | undefined;
       const BATCH = 32;
       for (let i = 0; i < chunks.length; i += BATCH) {
         const batch = chunks.slice(i, i + BATCH);
@@ -200,16 +180,18 @@ export class KnowledgeClient {
           texts:      batch.map((c) => c.text),
           signal:     opts.signal,
         });
+        if (space && space.id !== res.space.id) throw new Error('Embedding space changed during re-embed');
+        space = res.space;
         for (let j = 0; j < batch.length; j++) {
           const vec = res.embeddings[j];
           if (vec?.length) {
-            this.deps.store.storeEmbedding(batch[j]!.id, normalizeVec(vec));
-            if (!dim) dim = vec.length;
+            this.deps.store.storeEmbedding(batch[j]!.id, vec, res.space.id);
           }
         }
       }
-      this.deps.store.setEbdModel(assetId, opts.ebdModel, dim);
-      if (dim) await this._addAssetToHnsw(assetId, opts.ebdModel, dim);
+      if (!space) return false;
+      this.deps.store.setEmbeddingSpace(assetId, space);
+      await this.ensureIndex(space);
       return true;
     } catch {
       return false;
@@ -258,6 +240,7 @@ export class KnowledgeClient {
         });
         const queryVec = res.embeddings[0];
         if (queryVec?.length) {
+          await this.ensureIndex(res.space);
           if (this.hnsw) {
             // HNSW path: search with extra budget, then filter by scope
             const f32 = normalizeF32(new Float32Array(queryVec));
@@ -273,7 +256,7 @@ export class KnowledgeClient {
               .map(h => ({ id: h.id, score: h.score }));
           } else {
             // Fallback: O(n) SQL cosine scan
-            denseHits = toRanked(this.deps.store.searchByEmbedding(queryVec, searchOpts));
+            denseHits = toRanked(this.deps.store.searchByEmbedding(queryVec, res.space.id, searchOpts));
           }
         }
       } catch {

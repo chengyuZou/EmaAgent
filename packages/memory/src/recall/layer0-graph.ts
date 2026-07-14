@@ -147,7 +147,7 @@ function findAnchors(
   }
 
   // Fallback: scan DB rows + brute-force cosine
-  const rows = deps.nodes.listEmbeddable(queryEmbed.model);
+  const rows = deps.nodes.listEmbeddable(queryEmbed.space.id);
   type Scored = { id: string; score: number };
   const scored: Scored[] = [];
   for (const row of rows) {

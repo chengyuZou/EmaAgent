@@ -57,7 +57,7 @@ export function collectStats(
     nodesIndex: VectorIndex | null;
     itemsIndex: VectorIndex | null;
   },
-  currentEmbedProviderId: string | null,
+  currentEmbedSpaceId: string | null,
 ): MemoryStats {
   const now = Date.now();
 
@@ -81,8 +81,8 @@ export function collectStats(
     if (r.oldest_ref_at !== null) oldestRef = oldestRef === null ? r.oldest_ref_at : Math.min(oldestRef, r.oldest_ref_at);
     if (r.newest_ref_at !== null) newestRef = newestRef === null ? r.newest_ref_at : Math.max(newestRef, r.newest_ref_at);
   }
-  const staleNodeEmbeds = currentEmbedProviderId
-    ? deps.nodes.countStaleEmbeddings(currentEmbedProviderId)
+  const staleNodeEmbeds = currentEmbedSpaceId
+    ? deps.nodes.countStaleEmbeddings(currentEmbedSpaceId)
     : 0;
 
   // ── Items ───────────────────────────────────────────────────────────────────
@@ -97,8 +97,8 @@ export function collectStats(
     embeddedItems += r.embedded_count;
     if (r.avg_importance !== null) itemImpSum += r.avg_importance * r.total;
   }
-  const staleItemEmbeds = currentEmbedProviderId
-    ? deps.items.countStaleEmbeddings(currentEmbedProviderId)
+  const staleItemEmbeds = currentEmbedSpaceId
+    ? deps.items.countStaleEmbeddings(currentEmbedSpaceId)
     : 0;
 
   // ── Edges ───────────────────────────────────────────────────────────────────

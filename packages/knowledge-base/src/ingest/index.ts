@@ -12,8 +12,7 @@ import { ImageReader }                   from '../readers/image.js';
 import type { KnowledgeStore }           from '../store/index.js';
 import type { DocumentEventEmitter }     from '../events/emitter.js';
 import type { KbVisionAdapter }          from '../adapters/vision.js';
-import type { EbdRouter }                from '@ema-agent/ebd-client';
-import { normalizeVec }                  from '../embed/normalize.js';
+import type { EbdRouter, EmbeddingSpace } from '@ema-agent/ebd-client';
 
 export interface IngestDeps {
   store:         KnowledgeStore;
@@ -162,6 +161,8 @@ async function embedChunks(
   events:  DocumentEventEmitter,
 ): Promise<void> {
   const BATCH = 32;
+  let space: EmbeddingSpace | undefined;
+  let failed = false;
   for (let i = 0; i < chunks.length; i += BATCH) {
     const batch = chunks.slice(i, i + BATCH);
     try {
@@ -171,15 +172,22 @@ async function embedChunks(
         texts:      batch.map(c => c.text),
         signal:     opts.signal,
       });
+      if (space && space.id !== res.space.id) {
+        throw new Error('Embedding provider returned multiple spaces during one ingest');
+      }
+      space = res.space;
       for (let j = 0; j < batch.length; j++) {
         const vec = res.embeddings[j];
-        if (vec?.length) store.storeEmbedding(batch[j]!.id, normalizeVec(vec));
+        if (vec?.length) store.storeEmbedding(batch[j]!.id, vec, res.space.id);
       }
     } catch {
       // Partial failure: skip this batch, chunk is still searchable via FTS5
+      failed = true;
     }
     events.emit({ assetId, kind: 'embed', progress: Math.min((i + BATCH) / chunks.length, 1) });
   }
+  // 只有全部批次成功时，文档才正式属于该向量空间；部分结果继续由 FTS5 兜底。
+  if (!failed && space) store.setEmbeddingSpace(assetId, space);
 }
 
 function buildDuplicateResult(existing: DocumentAsset, store: KnowledgeStore): IngestResult {

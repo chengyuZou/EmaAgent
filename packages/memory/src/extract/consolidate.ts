@@ -56,9 +56,12 @@ export async function consolidatePendingNodes(
         embeddingProviderId: reEmbed.providerId,
         embeddingModel:      reEmbed.model,
         embeddingDim:        reEmbed.dim,
+        embeddingNormalization: reEmbed.space.normalization,
+        embeddingRevision:      reEmbed.space.revision,
+        embeddingSpaceId:       reEmbed.space.id,
         updatedAt:           now,
       });
-      if (deps.nodesIndex && deps.nodesIndex.dim === reEmbed.dim) {
+      if (deps.nodesIndex && deps.indexSpaceId === reEmbed.space.id && deps.nodesIndex.dim === reEmbed.dim) {
         const view = unpackEmbedding(reEmbed.embedding, reEmbed.dim);
         deps.nodesIndex.update(node.id, view);
       }

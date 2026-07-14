@@ -11,6 +11,7 @@ import type {
   RerankResponse,
   EbdProbeResult,
 } from './types.js';
+import { createEmbeddingSpace, type EmbeddingSpace } from './embedding-space.js';
 
 function createEmbedAdapter(config: EmbedProviderConfig): EmbedAdapter {
   switch (config.protocol) {
@@ -77,7 +78,34 @@ export class EbdRouter {
   async embed(req: EmbedRequest): Promise<EmbedResponse> {
     const adapter = this.embedAdapters.get(req.providerId);
     if (!adapter) throw new Error(`ebd/embed: no provider registered for id "${req.providerId}"`);
-    return adapter.embed(req.texts, req.model, req.signal);
+    const config = this.embedConfigs.get(req.providerId)!;
+    const raw = await adapter.embed(req.texts, req.model, req.signal);
+    validateEmbedResponse(req.texts.length, raw.embeddings, raw.dim);
+    const space = createEmbeddingSpace({
+      providerId: req.providerId,
+      model: req.model,
+      dim: raw.dim,
+      normalization: 'l2',
+      revision: config.embeddingRevision,
+    });
+    return {
+      embeddings: raw.embeddings.map(normalizeEmbedding),
+      dim: raw.dim,
+      space,
+    };
+  }
+
+  /** 已知维度时无需调用 Provider 即可解析稳定空间身份。 */
+  embeddingSpace(providerId: string, model: string, dim: number): EmbeddingSpace {
+    const config = this.embedConfigs.get(providerId);
+    if (!config) throw new Error(`ebd/embed: no provider registered for id "${providerId}"`);
+    return createEmbeddingSpace({
+      providerId,
+      model,
+      dim,
+      normalization: 'l2',
+      revision: config.embeddingRevision,
+    });
   }
 
   upsertEmbedConfig(config: EmbedProviderConfig): void {
@@ -149,4 +177,26 @@ export class EbdRouter {
       return { ok: false, latencyMs: Date.now() - start, error: (e as Error).message };
     }
   }
+}
+
+function validateEmbedResponse(expectedCount: number, embeddings: number[][], dim: number): void {
+  if (!Number.isSafeInteger(dim) || dim <= 0) {
+    throw new Error(`ebd/embed: invalid dimension ${dim}`);
+  }
+  if (embeddings.length !== expectedCount) {
+    throw new Error(`ebd/embed: response count mismatch ${embeddings.length}/${expectedCount}`);
+  }
+  for (const vector of embeddings) {
+    if (vector.length !== dim || vector.some((value) => !Number.isFinite(value))) {
+      throw new Error(`ebd/embed: malformed ${vector.length}-dimensional vector, expected ${dim}`);
+    }
+  }
+}
+
+function normalizeEmbedding(vector: number[]): number[] {
+  let squared = 0;
+  for (const value of vector) squared += value * value;
+  const norm = Math.sqrt(squared);
+  if (!Number.isFinite(norm) || norm === 0) return [...vector];
+  return vector.map((value) => value / norm);
 }

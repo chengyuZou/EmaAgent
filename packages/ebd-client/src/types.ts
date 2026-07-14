@@ -1,4 +1,5 @@
 import type { EmbedProtocol, RerankProtocol } from '@ema-agent/contracts';
+import type { EmbeddingSpace } from './embedding-space.js';
 
 export type { EmbedProtocol, RerankProtocol };
 
@@ -11,6 +12,8 @@ export interface EmbedProviderConfig {
   apiKey: string;
   baseUrl?: string;
   defaultModel?: string;
+  /** Provider 能暴露固定模型版本时填写；缺省表示版本由 Provider 托管。 */
+  embeddingRevision?: string;
 }
 
 export interface RerankProviderConfig {
@@ -32,6 +35,13 @@ export interface EmbedRequest {
 
 export interface EmbedResponse {
   /** Row-major: embeddings[i] is the float vector for texts[i]. */
+  embeddings: number[][];
+  dim: number;
+  space: EmbeddingSpace;
+}
+
+/** Adapter 原始响应；空间身份和归一化只能由 EbdRouter Facade 统一生成。 */
+export interface RawEmbedResponse {
   embeddings: number[][];
   dim: number;
 }

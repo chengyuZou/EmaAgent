@@ -46,10 +46,12 @@ export function runStartupRecovery(
   report.pendingSessions = bestEffort('recovery listSessionsWithPending',
     () => deps.pendingFragments.listSessionsWithPending().length, 0);
 
-  const providerId = embed.currentProviderId();
-  if (providerId) {
-    report.staleNodeEmbeds = bestEffort('recovery countStaleEmbeddings(nodes)', () => deps.nodes.countStaleEmbeddings(providerId), 0);
-    report.staleItemEmbeds = bestEffort('recovery countStaleEmbeddings(items)', () => deps.items.countStaleEmbeddings(providerId), 0);
+  const model = embed.resolveEmbed();
+  const dim = model ? deps.getEmbedDim(model.providerId, model.model) : undefined;
+  const space = dim ? embed.currentSpace(dim) : null;
+  if (space) {
+    report.staleNodeEmbeds = bestEffort('recovery countStaleEmbeddings(nodes)', () => deps.nodes.countStaleEmbeddings(space.id), 0);
+    report.staleItemEmbeds = bestEffort('recovery countStaleEmbeddings(items)', () => deps.items.countStaleEmbeddings(space.id), 0);
   }
 
   return report;

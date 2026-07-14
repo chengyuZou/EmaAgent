@@ -16,6 +16,7 @@ export interface DocumentChunkRow {
   mom_id:            string | null;
   mom_text:          string | null;
   embedding:         Buffer | null;
+  embedding_space_id: string | null;
 }
 
 export interface DocumentChunkInsert {
@@ -251,10 +252,10 @@ export class DocumentChunkRepo {
     return row ? rowToChunk(row) : undefined;
   }
 
-  storeEmbedding(id: string, vector: number[]): void {
+  storeEmbedding(id: string, vector: number[], spaceId: string): void {
     this.db
-      .prepare('UPDATE document_chunks SET embedding = ? WHERE id = ?')
-      .run(vecToBlob(vector), id);
+      .prepare('UPDATE document_chunks SET embedding = ?, embedding_space_id = ? WHERE id = ?')
+      .run(vecToBlob(vector), spaceId, id);
   }
 
   /** FTS5 BM25 全文检索，通过 JOIN 做 scope 过滤。
@@ -308,6 +309,7 @@ export class DocumentChunkRepo {
   /** 对已存储的 BLOB embedding 做余弦相似度检索，按 assetIds 过滤。 */
   searchByEmbedding(
     queryVec: number[],
+    spaceId: string,
     assetIds: string[] | undefined,   // undefined = 所有 KB；[] = 无
     topK:     number,
   ): ChunkSearchHit[] {
@@ -327,9 +329,13 @@ export class DocumentChunkRepo {
       const rows = this.db.prepare(`
         SELECT dc.id, dc.embedding
         FROM   document_chunks dc
+        JOIN   document_assets da ON da.id = dc.asset_id
         WHERE  dc.embedding IS NOT NULL
+               AND dc.embedding_space_id = ?
+               AND da.ebd_space_id = ?
+               AND da.ebd_stale = 0
                ${assetFilter}
-      `).iterate(...(batch ?? [])) as IterableIterator<{ id: string; embedding: Buffer }>;
+      `).iterate(spaceId, spaceId, ...(batch ?? [])) as IterableIterator<{ id: string; embedding: Buffer }>;
 
       for (const row of rows) {
         heap.offer({
@@ -343,14 +349,16 @@ export class DocumentChunkRepo {
 
   /** 加载所有非 stale 的已 embedding chunk，用于构建内存 HNSW 索引。
    *  仅返回 asset 的 ebd_stale = 0 且有 stored embedding 的 chunk。 */
-  getAllEmbeddings(): Array<{ id: string; assetId: string; embedding: Buffer }> {
+  getAllEmbeddings(spaceId: string): Array<{ id: string; assetId: string; embedding: Buffer }> {
     return this.db.prepare(`
       SELECT dc.id, dc.asset_id AS assetId, dc.embedding
       FROM   document_chunks dc
       JOIN   document_assets da ON da.id = dc.asset_id
       WHERE  dc.embedding IS NOT NULL
+        AND  dc.embedding_space_id = ?
+        AND  da.ebd_space_id = ?
         AND  da.ebd_stale = 0
-    `).all() as Array<{ id: string; assetId: string; embedding: Buffer }>;
+    `).all(spaceId, spaceId) as Array<{ id: string; assetId: string; embedding: Buffer }>;
   }
 
   deleteByAsset(assetId: string): void {

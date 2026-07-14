@@ -3,6 +3,8 @@ import { Database } from '../../src/database.js';
 import { DocumentAssetRepo } from '../../src/repos/document-asset.js';
 import { DocumentChunkRepo } from '../../src/repos/document-chunk.js';
 
+const SPACE = 'space-test';
+
 describe('B-072 embedding fallback 流式 Top-K', () => {
   let database: Database;
   let chunks: DocumentChunkRepo;
@@ -23,6 +25,14 @@ describe('B-072 embedding fallback 流式 Top-K', () => {
         createdAt: 1,
         updatedAt: 1,
       });
+      assets.setEmbeddingSpace(assetId, {
+        id: SPACE,
+        providerId: 'provider-test',
+        model: 'model-test',
+        dim: 2,
+        normalization: 'l2',
+        revision: 'provider-managed',
+      });
     }
 
     chunks = new DocumentChunkRepo(database.sqlite);
@@ -32,16 +42,16 @@ describe('B-072 embedding fallback 流式 Top-K', () => {
       makeChunk('chunk-c', 'asset-b'),
       makeChunk('chunk-d', 'asset-b'),
     ]);
-    chunks.storeEmbedding('chunk-a', [1, 0]);
-    chunks.storeEmbedding('chunk-b', [0.8, 0.2]);
-    chunks.storeEmbedding('chunk-c', [0, 1]);
-    chunks.storeEmbedding('chunk-d', [-1, 0]);
+    chunks.storeEmbedding('chunk-a', [1, 0], SPACE);
+    chunks.storeEmbedding('chunk-b', [0.8, 0.2], SPACE);
+    chunks.storeEmbedding('chunk-c', [0, 1], SPACE);
+    chunks.storeEmbedding('chunk-d', [-1, 0], SPACE);
   });
 
   afterEach(() => database.close());
 
   it('返回与完整余弦排序一致的 Top-K', () => {
-    const hits = chunks.searchByEmbedding([1, 0], undefined, 3);
+    const hits = chunks.searchByEmbedding([1, 0], SPACE, undefined, 3);
 
     expect(hits.map((hit) => hit.chunkId)).toEqual(['chunk-a', 'chunk-b', 'chunk-c']);
     expect(hits[0]!.score).toBeCloseTo(1);
@@ -49,9 +59,9 @@ describe('B-072 embedding fallback 流式 Top-K', () => {
   });
 
   it('asset scope 在流式扫描前由 SQL 过滤', () => {
-    expect(chunks.searchByEmbedding([1, 0], ['asset-b'], 10).map((hit) => hit.chunkId))
+    expect(chunks.searchByEmbedding([1, 0], SPACE, ['asset-b'], 10).map((hit) => hit.chunkId))
       .toEqual(['chunk-c', 'chunk-d']);
-    expect(chunks.searchByEmbedding([1, 0], [], 10)).toEqual([]);
+    expect(chunks.searchByEmbedding([1, 0], SPACE, [], 10)).toEqual([]);
   });
 
   it('超过单批上限的 asset scope 自动分批后仍返回全局 Top-K', () => {
@@ -62,18 +72,18 @@ describe('B-072 embedding fallback 流式 Top-K', () => {
     assetIds[100] = 'asset-a';
     assetIds[900] = 'asset-b';
 
-    expect(chunks.searchByEmbedding([1, 0], assetIds, 3).map((hit) => hit.chunkId))
+    expect(chunks.searchByEmbedding([1, 0], SPACE, assetIds, 3).map((hit) => hit.chunkId))
       .toEqual(['chunk-a', 'chunk-b', 'chunk-c']);
     expect(chunks.searchFts('chunk', assetIds, 10).map((hit) => hit.chunkId))
       .toEqual(['chunk-a', 'chunk-b', 'chunk-c', 'chunk-d']);
   });
 
   it('同分时按 chunkId 稳定排序且堆容量严格等于 K', () => {
-    chunks.storeEmbedding('chunk-a', [1, 0]);
-    chunks.storeEmbedding('chunk-b', [1, 0]);
-    chunks.storeEmbedding('chunk-c', [1, 0]);
+    chunks.storeEmbedding('chunk-a', [1, 0], SPACE);
+    chunks.storeEmbedding('chunk-b', [1, 0], SPACE);
+    chunks.storeEmbedding('chunk-c', [1, 0], SPACE);
 
-    expect(chunks.searchByEmbedding([1, 0], undefined, 2).map((hit) => hit.chunkId))
+    expect(chunks.searchByEmbedding([1, 0], SPACE, undefined, 2).map((hit) => hit.chunkId))
       .toEqual(['chunk-a', 'chunk-b']);
   });
 
@@ -85,7 +95,7 @@ describe('B-072 embedding fallback 流式 Top-K', () => {
         ((index * 29) % 31) - 15,
       ];
       chunks.insertMany([makeChunk(id, 'asset-a')]);
-      chunks.storeEmbedding(id, vector);
+      chunks.storeEmbedding(id, vector, SPACE);
     }
 
     const allRows = database.sqlite.prepare(`
@@ -101,17 +111,28 @@ describe('B-072 embedding fallback 流式 Top-K', () => {
       .sort((left, right) => right.score - left.score || compareId(left.chunkId, right.chunkId))
       .slice(0, 7)
       .map((hit) => hit.chunkId);
-    const actualIds = chunks.searchByEmbedding([1, 0], undefined, 7)
+    const actualIds = chunks.searchByEmbedding([1, 0], SPACE, undefined, 7)
       .map((hit) => hit.chunkId);
 
     expect(actualIds).toEqual(expectedIds);
   });
 
   it('零向量、维度不匹配和非正 K 安全降级', () => {
-    expect(chunks.searchByEmbedding([0, 0], undefined, 1)[0]!.score).toBe(0);
-    expect(chunks.searchByEmbedding([1, 0, 0], undefined, 1)[0]!.score).toBe(0);
-    expect(chunks.searchByEmbedding([1, 0], undefined, 0)).toEqual([]);
-    expect(chunks.searchByEmbedding([1, 0], undefined, Number.NaN)).toEqual([]);
+    expect(chunks.searchByEmbedding([0, 0], SPACE, undefined, 1)[0]!.score).toBe(0);
+    expect(chunks.searchByEmbedding([1, 0, 0], SPACE, undefined, 1)[0]!.score).toBe(0);
+    expect(chunks.searchByEmbedding([1, 0], SPACE, undefined, 0)).toEqual([]);
+    expect(chunks.searchByEmbedding([1, 0], SPACE, undefined, Number.NaN)).toEqual([]);
+    expect(chunks.searchByEmbedding([1, 0], 'other-space', undefined, 10)).toEqual([]);
+  });
+
+  it('不会召回旧空间或已标记 stale 的文档向量', () => {
+    chunks.storeEmbedding('chunk-a', [1, 0], 'legacy-space');
+    expect(chunks.searchByEmbedding([1, 0], SPACE, undefined, 10).map((hit) => hit.chunkId))
+      .not.toContain('chunk-a');
+
+    database.sqlite.prepare('UPDATE document_assets SET ebd_stale = 1 WHERE id = ?').run('asset-b');
+    expect(chunks.searchByEmbedding([1, 0], SPACE, undefined, 10).map((hit) => hit.chunkId))
+      .not.toContain('chunk-c');
   });
 });
 

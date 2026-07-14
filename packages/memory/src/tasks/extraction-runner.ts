@@ -33,6 +33,7 @@ export interface MemoryTaskRunnerDeps {
    */
   getNodesIndex: () => VectorIndex | null;
   getItemsIndex: () => VectorIndex | null;
+  getIndexSpaceId: () => string | null;
   /** Resolves per-session overrides — used to skip consolidation when off. */
   getSessionOverrides: (sessionId: SessionId) => ResolvedSessionOverrides;
 }
@@ -203,6 +204,7 @@ export class MemoryTaskRunner {
             settings:   this.deps.settings,
             nodesIndex: this.deps.getNodesIndex(),
             itemsIndex: this.deps.getItemsIndex(),
+            indexSpaceId: this.deps.getIndexSpaceId(),
           },
           { sessionId: sid, mode: payload.mode!, skipConsolidation },
         );

@@ -109,7 +109,7 @@ function rankByVector(
   }
 
   // Fallback: DB scan + brute-force dot product
-  const rows = deps.items.listEmbeddable(queryEmbed.model);
+  const rows = deps.items.listEmbeddable(queryEmbed.space.id);
   type Scored = { row: MemoryItemRow; score: number };
   const scored: Scored[] = [];
   for (const row of rows) {

@@ -50,7 +50,8 @@ const kbIdQuery = z.object({
 });
 
 const invalidateBody = z.object({
-  newModel: z.string().min(1),
+  ebdProviderId: z.string().min(1),
+  ebdModel:      z.string().min(1),
   kbId:     z.string().optional(),
 });
 
@@ -310,11 +311,14 @@ export function kbRoute(bindings: AppBindings): Hono {
     if (!parsed.success)
       return c.json({ error: 'invalid_request', details: parsed.error.flatten() }, 400);
 
-    const { kbId, newModel } = parsed.data;
+    const { kbId, ebdProviderId, ebdModel } = parsed.data;
     const entry = await resolveEntry(bindings, kbId, c);
     if (entry instanceof Response) return entry;
 
-    const count = entry.client.invalidateEmbeddings(newModel);
+    const dim = bindings.providerEmbedModels.dimFor(ebdProviderId, ebdModel);
+    if (!dim) return c.json({ error: 'unknown_embed_dimension' }, 400);
+    const space = bindings.ebd.embeddingSpace(ebdProviderId, ebdModel, dim);
+    const count = entry.client.invalidateEmbeddings(space.id);
     return c.json({ markedStale: count });
   });
 

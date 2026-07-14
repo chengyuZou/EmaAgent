@@ -25,6 +25,11 @@ export interface DocumentAssetWire {
   lastActivatedAt?: number;
   /** Embedding model this doc was indexed with (undefined → not embedded yet). */
   ebdModel?:  string;
+  ebdProviderId?: string;
+  ebdDim?: number;
+  ebdNormalization?: string;
+  ebdRevision?: string;
+  ebdSpaceId?: string;
   /** True when the doc's embeddings were marked stale (model changed). */
   ebdStale?:  boolean;
 }
@@ -228,10 +233,10 @@ export const kbApi = {
 
   /** POST /api/kb/invalidate — mark all embeddings stale after embed model switch.
    *  kbId omitted → active KB. */
-  async invalidate(newModel: string, kbId?: string): Promise<{ markedStale: number }> {
+  async invalidate(ebdProviderId: string, ebdModel: string, kbId?: string): Promise<{ markedStale: number }> {
     return sidecarClient.request<{ markedStale: number }>('/api/kb/invalidate', {
       method: 'POST',
-      json: { newModel, kbId },
+      json: { ebdProviderId, ebdModel, kbId },
     });
   },
 

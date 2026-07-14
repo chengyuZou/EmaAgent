@@ -40,8 +40,11 @@ export function processItems(
         embeddingProviderId: e?.providerId,
         embeddingModel:      e?.model,
         embeddingDim:        e?.dim,
+        embeddingNormalization: e?.space.normalization,
+        embeddingRevision:      e?.space.revision,
+        embeddingSpaceId:       e?.space.id,
       });
-      if (e && deps.itemsIndex && deps.itemsIndex.dim === e.dim) {
+      if (e && deps.itemsIndex && deps.indexSpaceId === e.space.id && deps.itemsIndex.dim === e.dim) {
         const view = unpackEmbedding(e.embedding, e.dim);
         deps.itemsIndex.update(existing.id, view);
       }
@@ -61,13 +64,16 @@ export function processItems(
       embeddingProviderId: e?.providerId,
       embeddingModel:      e?.model,
       embeddingDim:        e?.dim,
+      embeddingNormalization: e?.space.normalization,
+      embeddingRevision:      e?.space.revision,
+      embeddingSpaceId:       e?.space.id,
       sourceSessionId:     sessionId,
       sourceTurnId:        extractionTurnId as never,
       importance:          item.importance,
       createdAt:           now,
     });
 
-    if (e && deps.itemsIndex && deps.itemsIndex.dim === e.dim) {
+    if (e && deps.itemsIndex && deps.indexSpaceId === e.space.id && deps.itemsIndex.dim === e.dim) {
       const view = unpackEmbedding(e.embedding, e.dim);
       deps.itemsIndex.add(id, view);
     }

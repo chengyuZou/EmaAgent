@@ -26,6 +26,9 @@ export interface MemoryItemRow {
   embedding_provider_id:  string | null;
   embedding_model:        string | null;
   embedding_dim:          number | null;
+  embedding_normalization: string | null;
+  embedding_revision:      string | null;
+  embedding_space_id:      string | null;
 }
 
 export interface MemoryItemInsert {
@@ -38,6 +41,9 @@ export interface MemoryItemInsert {
   embeddingProviderId?: string;
   embeddingModel?:     string;
   embeddingDim?:       number;
+  embeddingNormalization?: string;
+  embeddingRevision?:  string;
+  embeddingSpaceId?:   string;
   sourceSessionId?:    SessionId;
   sourceTurnId?:       TurnId;
   importance?:         number;
@@ -51,6 +57,9 @@ export interface MemoryItemEmbeddingUpdate {
   embeddingProviderId: string;
   embeddingModel:      string;
   embeddingDim:        number;
+  embeddingNormalization: string;
+  embeddingRevision:   string;
+  embeddingSpaceId:    string;
   updatedAt:           number;
 }
 
@@ -109,8 +118,9 @@ export class MemoryItemsRepo {
             created_at, updated_at, expires_at,
             importance, meta_json,
             modes_json, last_referenced_at,
-            embedding_provider_id, embedding_model, embedding_dim)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '{}', ?, ?, ?, ?, ?)`,
+            embedding_provider_id, embedding_model, embedding_dim,
+            embedding_normalization, embedding_revision, embedding_space_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '{}', ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         m.id, m.kind, m.title, m.body,
@@ -123,6 +133,9 @@ export class MemoryItemsRepo {
         m.embeddingProviderId ?? null,
         m.embeddingModel       ?? null,
         m.embeddingDim         ?? null,
+        m.embeddingNormalization ?? null,
+        m.embeddingRevision    ?? null,
+        m.embeddingSpaceId     ?? null,
       );
   }
 
@@ -175,16 +188,16 @@ export class MemoryItemsRepo {
       .all(mode, Date.now(), limit) as MemoryItemRow[];
   }
 
-  /** 用指定 model embedding 的非过期 item-维度校验在 capability 层做。 */
-  listEmbeddable(model: string, limit = 5000): MemoryItemRow[] {
+  /** 只读取指定向量空间的非过期 item；旧版 NULL 空间不会参与召回。 */
+  listEmbeddable(spaceId: string, limit = 5000): MemoryItemRow[] {
     return this.db
       .prepare(
         `SELECT * FROM memory_items
-          WHERE embedding IS NOT NULL AND embedding_model = ?
+          WHERE embedding IS NOT NULL AND embedding_space_id = ?
             AND (expires_at IS NULL OR expires_at > ?)
           LIMIT ?`,
       )
-      .all(model, Date.now(), limit) as MemoryItemRow[];
+      .all(spaceId, Date.now(), limit) as MemoryItemRow[];
   }
 
   /**
@@ -192,7 +205,7 @@ export class MemoryItemsRepo {
    * 按 (updated_at, id) 升序读取非过期行，避免同毫秒数据跨页丢失。
    */
   listEmbeddablePage(
-    model: string,
+    spaceId: string,
     after: MemoryEmbeddingPageCursor | undefined,
     limit: number,
   ): MemoryItemRow[] {
@@ -201,12 +214,12 @@ export class MemoryItemsRepo {
       : '';
     const now = Date.now();
     const params = after
-      ? [model, after.updatedAt, after.updatedAt, after.id, now, limit]
-      : [model, now, limit];
+      ? [spaceId, after.updatedAt, after.updatedAt, after.id, now, limit]
+      : [spaceId, now, limit];
 
     return this.db.prepare(
       `SELECT * FROM memory_items
-       WHERE embedding IS NOT NULL AND embedding_model = ?
+       WHERE embedding IS NOT NULL AND embedding_space_id = ?
        ${cursorPredicate}
          AND (expires_at IS NULL OR expires_at > ?)
        ORDER BY updated_at ASC, id ASC
@@ -265,6 +278,9 @@ export class MemoryItemsRepo {
     embeddingProviderId?: string;
     embeddingModel?:     string;
     embeddingDim?:       number;
+    embeddingNormalization?: string;
+    embeddingRevision?:  string;
+    embeddingSpaceId?:   string;
   }): void {
     this.db
       .prepare(
@@ -276,7 +292,10 @@ export class MemoryItemsRepo {
                 embedding          = COALESCE(?, embedding),
                 embedding_provider_id = COALESCE(?, embedding_provider_id),
                 embedding_model    = COALESCE(?, embedding_model),
-                embedding_dim      = COALESCE(?, embedding_dim)
+                embedding_dim      = COALESCE(?, embedding_dim),
+                embedding_normalization = COALESCE(?, embedding_normalization),
+                embedding_revision = COALESCE(?, embedding_revision),
+                embedding_space_id = COALESCE(?, embedding_space_id)
           WHERE id = ?`,
       )
       .run(
@@ -287,6 +306,9 @@ export class MemoryItemsRepo {
         u.embeddingProviderId ?? null,
         u.embeddingModel      ?? null,
         u.embeddingDim        ?? null,
+        u.embeddingNormalization ?? null,
+        u.embeddingRevision   ?? null,
+        u.embeddingSpaceId    ?? null,
         u.id,
       );
   }
@@ -299,10 +321,17 @@ export class MemoryItemsRepo {
                 embedding_provider_id = ?,
                 embedding_model       = ?,
                 embedding_dim         = ?,
+                embedding_normalization = ?,
+                embedding_revision    = ?,
+                embedding_space_id    = ?,
                 updated_at            = ?
           WHERE id = ?`,
       )
-      .run(u.embedding, u.embeddingProviderId, u.embeddingModel, u.embeddingDim, u.updatedAt, u.id);
+      .run(
+        u.embedding, u.embeddingProviderId, u.embeddingModel, u.embeddingDim,
+        u.embeddingNormalization, u.embeddingRevision, u.embeddingSpaceId,
+        u.updatedAt, u.id,
+      );
   }
 
   listDecayCandidates(cutoff: number, now: number, limit = 5000): Array<{
@@ -388,13 +417,13 @@ export class MemoryItemsRepo {
 
   // ── 计数 / 启动诊断 ────────────────────────────────────────────
 
-  countStaleEmbeddings(currentProviderId: string): number {
+  countStaleEmbeddings(currentSpaceId: string): number {
     const row = this.db
       .prepare(
         `SELECT COUNT(*) AS n FROM memory_items
-         WHERE embedding IS NOT NULL AND embedding_provider_id != ?`,
+         WHERE embedding IS NOT NULL AND embedding_space_id IS NOT ?`,
       )
-      .get(currentProviderId) as { n: number };
+      .get(currentSpaceId) as { n: number };
     return row.n;
   }
 

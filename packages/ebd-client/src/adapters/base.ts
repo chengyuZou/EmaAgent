@@ -1,7 +1,7 @@
-import type { EmbedResponse, RerankResponse } from '../types.js';
+import type { RawEmbedResponse, RerankResponse } from '../types.js';
 
 export interface EmbedAdapter {
-  embed(texts: string[], model: string, signal?: AbortSignal): Promise<EmbedResponse>;
+  embed(texts: string[], model: string, signal?: AbortSignal): Promise<RawEmbedResponse>;
 }
 
 export interface RerankAdapter {

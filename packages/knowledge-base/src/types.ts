@@ -48,6 +48,13 @@ export interface DocumentAsset {
   useCount:    number;
   /** Last time selected for a turn (ms). Undefined → never; UI falls back to createdAt. */
   lastActivatedAt?: number;
+  ebdProviderId?:   string;
+  ebdModel?:        string;
+  ebdDim?:          number;
+  ebdNormalization?: string;
+  ebdRevision?:     string;
+  ebdSpaceId?:      string;
+  ebdStale?:        boolean;
 }
 
 /** One page of a cursor-paginated asset list. */

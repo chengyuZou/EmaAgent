@@ -15,6 +15,10 @@ export interface DocumentAssetRow {
   updated_at:        number;
   ebd_model:         string | null;
   ebd_dim:           number | null;
+  ebd_provider_id:   string | null;
+  ebd_normalization: string | null;
+  ebd_revision:      string | null;
+  ebd_space_id:      string | null;
   ebd_stale:         number;
   use_count:         number;
   last_activated_at: number | null;
@@ -69,6 +73,10 @@ function rowToAsset(row: DocumentAssetRow) {
     updatedAt:       row.updated_at,
     ebdModel:        row.ebd_model ?? undefined,
     ebdDim:          row.ebd_dim ?? undefined,
+    ebdProviderId:   row.ebd_provider_id ?? undefined,
+    ebdNormalization: row.ebd_normalization ?? undefined,
+    ebdRevision:     row.ebd_revision ?? undefined,
+    ebdSpaceId:      row.ebd_space_id ?? undefined,
     ebdStale:        row.ebd_stale === 1,
     useCount:        row.use_count,
     lastActivatedAt: row.last_activated_at ?? undefined,
@@ -179,22 +187,38 @@ export class DocumentAssetRepo {
       .run(meta.title ?? null, meta.wordCount ?? null, meta.pageCount ?? null, Date.now(), id);
   }
 
-  setEbdModel(id: string, model: string, dim: number): void {
+  setEmbeddingSpace(id: string, space: {
+    id: string;
+    providerId: string;
+    model: string;
+    dim: number;
+    normalization: string;
+    revision: string;
+  }): void {
     this.db
-      .prepare('UPDATE document_assets SET ebd_model = ?, ebd_dim = ?, ebd_stale = 0, updated_at = ? WHERE id = ?')
-      .run(model, dim, Date.now(), id);
+      .prepare(`UPDATE document_assets
+        SET ebd_provider_id = ?, ebd_model = ?, ebd_dim = ?,
+            ebd_normalization = ?, ebd_revision = ?, ebd_space_id = ?,
+            ebd_stale = 0, updated_at = ?
+        WHERE id = ?`)
+      .run(
+        space.providerId, space.model, space.dim,
+        space.normalization, space.revision, space.id,
+        Date.now(), id,
+      );
   }
 
   /** 将未用 currentModel embedding 的 indexed asset 标为 stale，同时清匹配的 stale=0。
    *  切换模型后调:新模型不匹配的标 stale(需重嵌),切回原模型时匹配的清 stale
    *  (之前只标不清,导致切回原模型按钮还在)。返回更新的行数。 */
-  markStaleExcept(currentModel: string): number {
+  markStaleExcept(currentSpaceId: string): number {
     const info = this.db
       .prepare(`UPDATE document_assets
-        SET ebd_stale = CASE WHEN (ebd_model IS NULL OR ebd_model != ?) THEN 1 ELSE 0 END,
+        SET ebd_stale = CASE WHEN ebd_space_id IS ? THEN 0 ELSE 1 END,
             updated_at = ?
-        WHERE status = 'indexed'`)
-      .run(currentModel, Date.now());
+        WHERE status = 'indexed'
+          AND ebd_stale <> CASE WHEN ebd_space_id IS ? THEN 0 ELSE 1 END`)
+      .run(currentSpaceId, Date.now(), currentSpaceId);
     return info.changes;
   }
   /** embedding 已 stale 的 asset（模型变更）-需重新 embedding。 */
