@@ -42,11 +42,12 @@ function config(): ProviderConfig {
   };
 }
 
-function request(): LlmRequest {
+function request(overrides: Partial<LlmRequest> = {}): LlmRequest {
   return {
     providerId: 'openai-responses-test',
     model: 'gpt-test',
     messages: [{ role: 'user', content: 'hello' }],
+    ...overrides,
   };
 }
 
@@ -163,5 +164,33 @@ describe('OpenAiResponsesAdapter — 统一错误与终态边界', () => {
     await expect(collect(adapter.stream(request(), 'gpt-test'))).resolves.toEqual([
       { type: 'done', stopReason: 'end_turn' },
     ]);
+  });
+
+  it('请求创建阶段取消时抛出 AbortError 而不是 done', async () => {
+    const controller = new AbortController();
+    openAiMock.create.mockImplementationOnce(async () => {
+      controller.abort();
+      throw new Error('SDK wrapped cancellation');
+    });
+    const adapter = new OpenAiResponsesAdapter(config());
+
+    await expect(collect(adapter.stream(
+      request({ signal: controller.signal }),
+      'gpt-test',
+    ))).rejects.toMatchObject({ name: 'AbortError' });
+  });
+
+  it('流消费阶段静默取消时抛出 AbortError 而不是 done', async () => {
+    const controller = new AbortController();
+    const cancelledStream = async function* (): AsyncIterable<Record<string, unknown>> {
+      controller.abort();
+    };
+    openAiMock.create.mockResolvedValueOnce(cancelledStream());
+    const adapter = new OpenAiResponsesAdapter(config());
+
+    await expect(collect(adapter.stream(
+      request({ signal: controller.signal }),
+      'gpt-test',
+    ))).rejects.toMatchObject({ name: 'AbortError' });
   });
 });

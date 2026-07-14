@@ -222,4 +222,98 @@ describe('AgentEngine 生命周期', () => {
     }));
     expect(events.filter((event) => event.type === 'turn_failed')).toHaveLength(1);
   });
+
+  it('LLM 取消只落为 turn_aborted，不执行正常完成或失败终态', async () => {
+    const order: string[] = [];
+    const hooks = new HookBus();
+    hooks.register('onTurnAbort', () => {
+      order.push('onTurnAbort');
+      return { kind: 'continue' };
+    });
+    hooks.register('onTurnEnd', () => {
+      order.push('onTurnEnd');
+      return { kind: 'continue' };
+    });
+
+    const controller = new AbortController();
+    let messageSequence = 0;
+    const session = {
+      loadHistory: () => [],
+      appendMessage: (input: {
+        turnId: TurnId;
+        sessionId: SessionId;
+        role: Message['role'];
+        blocks: Message['blocks'];
+      }): Message => ({
+        id: `message-${++messageSequence}` as MessageId,
+        sessionId: input.sessionId,
+        turnId: input.turnId,
+        role: input.role,
+        kind: 'normal',
+        blocks: input.blocks,
+        interrupted: false,
+        createdAt: Date.now(),
+      }),
+      completeTurn: () => { order.push('completeTurn'); },
+      failTurn: () => { order.push('failTurn'); },
+      abortTurn: () => { order.push('abortTurn'); },
+    };
+    const llm = {
+      stream: async function* () {
+        controller.abort();
+        throw controller.signal.reason;
+      },
+    };
+    const deps: AgentDeps = {
+      session: session as never,
+      hooks,
+      llm: llm as never,
+      emotion: {
+        beginTurn: () => undefined,
+        processChunk: (delta: string) => ({ cleaned: delta, events: [] }),
+        flush: () => ({ cleaned: '', events: [] }),
+      } as never,
+      tools: { list: () => [] } as never,
+      permission: {} as never,
+    };
+    const turn: Turn = {
+      id: turnId,
+      sessionId,
+      branchId: null,
+      mode: 'agent',
+      status: 'running',
+      userInput: 'hello',
+      startedAt: Date.now(),
+      completedAt: null,
+      errorCode: null,
+      errorMessage: null,
+      iterations: 0,
+      usageInputTokens: 0,
+      usageOutputTokens: 0,
+    };
+
+    const events: EmaStreamEvent[] = [];
+    const engine = new AgentEngine(deps);
+    for await (const event of engine.run({
+      turn,
+      signal: controller.signal,
+      userInput: 'hello',
+      providerId: 'provider-1',
+      model: 'model-1',
+      workspaceRoot: '',
+    })) {
+      events.push(event);
+      if (event.type === 'turn_aborted') order.push('turn_aborted');
+    }
+
+    expect(order).toEqual(['onTurnAbort', 'abortTurn', 'turn_aborted']);
+    expect(events.at(-1)).toEqual({
+      type: 'turn_aborted',
+      sessionId,
+      turnId,
+      reason: 'user_stop',
+    });
+    expect(events.some((event) => event.type === 'turn_completed')).toBe(false);
+    expect(events.some((event) => event.type === 'turn_failed')).toBe(false);
+  });
 });

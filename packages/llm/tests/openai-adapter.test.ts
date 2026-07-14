@@ -123,4 +123,32 @@ describe('OpenAiAdapter — thinking controls', () => {
       { type: 'done', stopReason: 'end_turn' },
     ]);
   });
+
+  it('SDK 收到取消后静默结束流时不得伪造 done', async () => {
+    const controller = new AbortController();
+    const cancelledStream = async function* (): AsyncIterable<Record<string, unknown>> {
+      controller.abort();
+    };
+    openAiMock.create.mockResolvedValueOnce(cancelledStream());
+    const adapter = new OpenAiAdapter(config());
+
+    await expect(collect(adapter.stream(
+      request({ signal: controller.signal }),
+      'deepseek-v4-flash',
+    ))).rejects.toMatchObject({ name: 'AbortError' });
+  });
+
+  it('请求创建阶段取消时抛出 AbortError', async () => {
+    const controller = new AbortController();
+    openAiMock.create.mockImplementationOnce(async () => {
+      controller.abort();
+      throw new Error('SDK wrapped cancellation');
+    });
+    const adapter = new OpenAiAdapter(config());
+
+    await expect(collect(adapter.stream(
+      request({ signal: controller.signal }),
+      'deepseek-v4-flash',
+    ))).rejects.toMatchObject({ name: 'AbortError' });
+  });
 });

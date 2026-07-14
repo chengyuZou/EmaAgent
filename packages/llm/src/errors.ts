@@ -107,6 +107,22 @@ export function isAbortError(error: unknown, signal?: AbortSignal): boolean {
       || candidate.code === 'ABORT_ERR';
 }
 
+/** Adapter catch 的统一取消边界；命中后始终抛出，不允许伪装为 done。 */
+export function throwIfAbortError(error: unknown, signal?: AbortSignal): void {
+  if (!isAbortError(error, signal)) return;
+  if (signal?.aborted) throwAbortReason(signal);
+  if (error instanceof Error) throw error;
+
+  const abortError = new Error(String(error));
+  abortError.name = 'AbortError';
+  throw abortError;
+}
+
+/** 防御 SDK 在收到 AbortSignal 后静默结束迭代而不抛错。 */
+export function throwIfAborted(signal?: AbortSignal): void {
+  if (signal?.aborted) throwAbortReason(signal);
+}
+
 /** 抛出 AbortSignal 的原始 reason；没有 Error reason 时生成标准 AbortError。 */
 export function throwAbortReason(signal: AbortSignal): never {
   if (signal.reason instanceof Error) throw signal.reason;

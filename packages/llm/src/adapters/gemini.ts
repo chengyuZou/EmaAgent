@@ -14,7 +14,11 @@ import type {
   LlmRequest, LlmStreamChunk, LlmMessage, LlmToolDef,
   StopReason, ProviderConfig, AssistantBlock, UserBlock,
 } from '../types.js';
-import { ContextWindowExceededError } from '../errors.js';
+import {
+  ContextWindowExceededError,
+  throwIfAborted,
+  throwIfAbortError,
+} from '../errors.js';
 import { createLlmUsage } from '../usage.js';
 import type { ToolResultBlock, MessageContentPart } from '@ema-agent/contracts';
 
@@ -255,10 +259,7 @@ export class GeminiAdapter implements LlmAdapter {
       // 流式请求的 provider usage 只有正常完成后才可靠。
       // 若请求中途 abort,部分 usage 可能缺失或不准。
       // 上游计费/telemetry 应把 abort 的运行视为"usage 不可用"。
-      if (request.signal?.aborted) {
-        yield { type: 'done', stopReason: 'end_turn' };
-        return;
-      }
+      throwIfAbortError(err, request.signal);
       if (isContextWindowError(err)) throw new ContextWindowExceededError(err instanceof Error ? err.message : String(err));
       throw err;
     }
@@ -317,14 +318,12 @@ export class GeminiAdapter implements LlmAdapter {
         }
       }
     } catch (err) {
-      if (request.signal?.aborted) {
-        yield { type: 'done', stopReason };
-        return;
-      }
+      throwIfAbortError(err, request.signal);
       if (isContextWindowError(err)) throw new ContextWindowExceededError(err instanceof Error ? err.message : String(err));
       throw err;
     }
 
+    throwIfAborted(request.signal);
     if (lastUsage) {
       yield lastUsage;
     }

@@ -14,6 +14,8 @@ import {
   createLlmProviderResponseError,
   LlmStreamProtocolError,
   normalizeLlmProviderError,
+  throwIfAborted,
+  throwIfAbortError,
 } from '../errors.js';
 import { createLlmUsage } from '../usage.js';
 import type { ToolResultBlock, MessageContentPart } from '@ema-agent/contracts';
@@ -336,6 +338,7 @@ export class OpenAiResponsesAdapter implements LlmAdapter {
               else if (reason === 'content_filter') stopReason = 'stop_sequence';
               else stopReason = 'stop_sequence';
             }
+            throwIfAborted(request.signal);
             yield { type: 'done', stopReason };
             return;
           }
@@ -365,12 +368,10 @@ export class OpenAiResponsesAdapter implements LlmAdapter {
         }
       }
 
+      throwIfAborted(request.signal);
       throw new LlmStreamProtocolError(request.providerId);
     } catch (err) {
-      if (request.signal?.aborted) {
-        yield { type: 'done', stopReason };
-        return;
-      }
+      throwIfAbortError(err, request.signal);
       throw normalizeLlmProviderError(err);
     }
   }

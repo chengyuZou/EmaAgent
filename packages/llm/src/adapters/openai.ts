@@ -11,7 +11,11 @@ import type {
   AssistantBlock,
   UserBlock,
 } from '../types.js';
-import { ContextWindowExceededError } from '../errors.js';
+import {
+  ContextWindowExceededError,
+  throwIfAborted,
+  throwIfAbortError,
+} from '../errors.js';
 import { createLlmUsage } from '../usage.js';
 import type { ToolResultBlock } from '@ema-agent/contracts';
 
@@ -211,10 +215,19 @@ export class OpenAiAdapter implements LlmAdapter {
     };
     applyCompatThinkingParams(params, request.thinking);
 
-    const completion = await this.client.chat.completions.create(
-      params as unknown as OpenAI.ChatCompletionCreateParamsStreaming,
-      { signal: request.signal },
-    );
+    let completion: AsyncIterable<OpenAI.ChatCompletionChunk>;
+    try {
+      completion = await this.client.chat.completions.create(
+        params as unknown as OpenAI.ChatCompletionCreateParamsStreaming,
+        { signal: request.signal },
+      );
+    } catch (err) {
+      throwIfAbortError(err, request.signal);
+      if (isContextWindowError(err)) {
+        throw new ContextWindowExceededError(err instanceof Error ? err.message : String(err));
+      }
+      throw err;
+    }
 
     // 以 OpenAI delta index 为 key 的 tool call 缓冲。
     // OpenAI Chat Completions 没有 per-tool-call 结束事件 - 只有 finish_reason 标记
@@ -305,11 +318,12 @@ export class OpenAiAdapter implements LlmAdapter {
     }
 
     } catch (err) {
-      if (request.signal?.aborted) { yield { type: 'done', stopReason }; return; }
+      throwIfAbortError(err, request.signal);
       if (isContextWindowError(err)) throw new ContextWindowExceededError(err instanceof Error ? err.message : String(err));
       throw err;
     }
 
+    throwIfAborted(request.signal);
     yield { type: 'done', stopReason };
   }
 }

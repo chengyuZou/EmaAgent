@@ -9,7 +9,11 @@ import type {
   ProviderConfig,
   AssistantBlock,
 } from '../types.js';
-import { ContextWindowExceededError } from '../errors.js';
+import {
+  ContextWindowExceededError,
+  throwIfAborted,
+  throwIfAbortError,
+} from '../errors.js';
 import { createLlmUsage } from '../usage.js';
 import type { UserBlock, ToolResultBlock, MessageContentPart } from '@ema-agent/contracts';
 
@@ -230,15 +234,24 @@ export class AnthropicAdapter implements LlmAdapter {
         : {}),
     };
 
-    const anthropicStream = this.client.messages.stream(
-      streamBody,
-      {
-        signal:  request.signal,
-        headers: thinkingEnabled
-          ? { 'anthropic-beta': 'interleaved-thinking-2025-05-14' }
-          : undefined,
-      },
-    );
+    let anthropicStream: AsyncIterable<Anthropic.MessageStreamEvent>;
+    try {
+      anthropicStream = this.client.messages.stream(
+        streamBody,
+        {
+          signal:  request.signal,
+          headers: thinkingEnabled
+            ? { 'anthropic-beta': 'interleaved-thinking-2025-05-14' }
+            : undefined,
+        },
+      );
+    } catch (err) {
+      throwIfAbortError(err, request.signal);
+      if (isContextWindowError(err)) {
+        throw new ContextWindowExceededError(err instanceof Error ? err.message : String(err));
+      }
+      throw err;
+    }
 
     // 以 Anthropic content_block index 为 key 跟踪进行中的 block。
     const toolBlocks = new Map<number, { id: string; name: string; argsJson: string }>();
@@ -334,11 +347,12 @@ export class AnthropicAdapter implements LlmAdapter {
     }
 
     } catch (err) {
-      if (request.signal?.aborted) { yield { type: 'done', stopReason }; return; }
+      throwIfAbortError(err, request.signal);
       if (isContextWindowError(err)) throw new ContextWindowExceededError(err instanceof Error ? err.message : String(err));
       throw err;
     }
 
+    throwIfAborted(request.signal);
     yield {
       type: 'usage',
       ...createLlmUsage({
