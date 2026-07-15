@@ -3,17 +3,42 @@ import type { BuiltTool, ToolDescriptor, ToolExecutionContext } from './types.js
 import { freezePreparedInput } from './prepared-call.js';
 import type { PreparedToolCall } from './prepared-call.js';
 
-// Type alias for a BuiltTool with erased generics — safe for registry storage.
-// The `execute` parameter is contravariant so BuiltTool<X, Y> !<: BuiltTool<unknown, unknown>;
-// we bypass this by using `unsafeExecute` which is already typed as (unknown) => Promise<unknown>.
-type AnyBuiltTool = Omit<BuiltTool<never, unknown>, 'execute'> & {
-  execute: BuiltTool<unknown, unknown>['execute'];
-};
+// Registry 是泛型擦除边界；输入在 prepare() 中通过各工具自己的 Schema 恢复类型。
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AnyBuiltTool = BuiltTool<any, any>;
+
+/** MCP 注册所有者使用原始名称，不能使用经过清洗的 LLM 可见名称。 */
+export interface McpToolOwner {
+  readonly serverName: string;
+  readonly serverToolName: string;
+}
+
+export interface McpToolRegistration {
+  readonly tool: AnyBuiltTool;
+  readonly owner: McpToolOwner;
+}
+
+type ToolOwner = { readonly kind: 'builtin' } | ({ readonly kind: 'mcp' } & McpToolOwner);
 
 export class ToolRegistryError extends Error {
   constructor(message: string) {
     super(message);
     this.name = 'ToolRegistryError';
+  }
+}
+
+export class ToolRegistrationConflictError extends ToolRegistryError {
+  constructor(
+    public readonly toolName: string,
+    public readonly existingOwner: ToolOwner,
+    public readonly attemptedOwner: ToolOwner,
+  ) {
+    super(
+      `Tool "${toolName}" registration conflict: ` +
+      `${describeOwner(existingOwner)} already owns the name; ` +
+      `${describeOwner(attemptedOwner)} cannot replace it`,
+    );
+    this.name = 'ToolRegistrationConflictError';
   }
 }
 
@@ -31,13 +56,13 @@ export class ToolInputError extends Error {
  * Central registry for all BuiltTool instances.
  *
  * Tools are registered once at startup by tool-builtin's registerBuiltinTools().
- * The AgentEngine calls dispatch() after PermissionEngine.gate() approves the call.
+ * Agent 主链固定调用 prepare() → PermissionEngine.gate() → execute()。
  */
 export class ToolRegistry {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private readonly tools    = new Map<string, BuiltTool<any, any>>();
-  /** Separate set tracks MCP-registered names for safe hot-swap. */
-  private readonly mcpNames = new Set<string>();
+  /** 与 tools 同键，保存注册来源，确保热更新和注销只能操作自己的工具。 */
+  private readonly owners   = new Map<string, ToolOwner>();
   /** 运行时能力表：防止调用方伪造 PreparedToolCall 或跨 Registry 执行。 */
   private readonly preparedCalls = new WeakMap<object, BuiltTool<any, any>>();
 
@@ -47,27 +72,62 @@ export class ToolRegistry {
       throw new ToolRegistryError(`Tool "${tool.name}" is already registered`);
     }
     this.tools.set(tool.name, tool);
+    this.owners.set(tool.name, Object.freeze({ kind: 'builtin' }));
   }
 
   /**
-   * Register an MCP-sourced tool. Unlike register(), this is idempotent:
-   * registering the same name replaces the existing entry without throwing.
-   * Used by McpRegistry when a server (re)connects.
+   * 原子注册一批 MCP 工具。先验证整批所有权，再一次性提交：
+   * 同一原始 server/tool 重连可以替换自己；内置工具、其他 Server 及同批
+   * 清洗后重名都明确拒绝，不留下半注册状态。
    */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  registerMcp(tool: BuiltTool<any, any>): void {
-    this.tools.set(tool.name, tool);
-    this.mcpNames.add(tool.name);
+  registerMcpBatch(registrations: readonly McpToolRegistration[]): void {
+    const batchOwners = new Map<string, ToolOwner>();
+    const validated: Array<{ registration: McpToolRegistration; owner: ToolOwner }> = [];
+
+    for (const registration of registrations) {
+      const attemptedOwner = toMcpOwner(registration.owner);
+      const duplicateInBatch = batchOwners.get(registration.tool.name);
+      if (duplicateInBatch) {
+        throw new ToolRegistrationConflictError(
+          registration.tool.name,
+          duplicateInBatch,
+          attemptedOwner,
+        );
+      }
+      batchOwners.set(registration.tool.name, attemptedOwner);
+
+      const existingOwner = this.owners.get(registration.tool.name);
+      if (existingOwner && !sameOwner(existingOwner, attemptedOwner)) {
+        throw new ToolRegistrationConflictError(
+          registration.tool.name,
+          existingOwner,
+          attemptedOwner,
+        );
+      }
+      validated.push({ registration, owner: attemptedOwner });
+    }
+
+    for (const { registration, owner } of validated) {
+      this.tools.set(registration.tool.name, registration.tool);
+      this.owners.set(registration.tool.name, owner);
+    }
+  }
+
+  /** 注册单个 MCP 工具；同样遵守 registerMcpBatch() 的所有权规则。 */
+  registerMcp(registration: McpToolRegistration): void {
+    this.registerMcpBatch([registration]);
   }
 
   /**
-   * Remove an MCP-sourced tool. No-op if not registered.
-   * Used by McpRegistry when a server disconnects.
+   * 只注销属于指定原始 server/tool 的工具。
+   * 返回 false 表示名称不存在或所有者不匹配，绝不会误删其他来源的实现。
    */
-  unregisterMcp(name: string): void {
-    if (!this.mcpNames.has(name)) return;
+  unregisterMcp(name: string, owner: McpToolOwner): boolean {
+    const existingOwner = this.owners.get(name);
+    if (!existingOwner || !sameOwner(existingOwner, toMcpOwner(owner))) return false;
     this.tools.delete(name);
-    this.mcpNames.delete(name);
+    this.owners.delete(name);
+    return true;
   }
 
   /** Throws ToolRegistryError if the tool is not registered. */
@@ -156,4 +216,24 @@ export class ToolRegistry {
   ): Promise<unknown> {
     return this.execute(this.prepare(name, rawArgs), ctx);
   }
+}
+
+function toMcpOwner(owner: McpToolOwner): ToolOwner {
+  return Object.freeze({
+    kind: 'mcp',
+    serverName: owner.serverName,
+    serverToolName: owner.serverToolName,
+  });
+}
+
+function sameOwner(left: ToolOwner, right: ToolOwner): boolean {
+  if (left.kind !== right.kind) return false;
+  if (left.kind === 'builtin' || right.kind === 'builtin') return true;
+  return left.serverName === right.serverName && left.serverToolName === right.serverToolName;
+}
+
+function describeOwner(owner: ToolOwner): string {
+  return owner.kind === 'builtin'
+    ? 'builtin tool'
+    : `MCP tool "${owner.serverName}/${owner.serverToolName}"`;
 }

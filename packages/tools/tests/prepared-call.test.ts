@@ -73,13 +73,19 @@ describe('PreparedToolCall', () => {
   it('拒绝伪造、跨 Registry 和热更新前的旧快照', async () => {
     const first = new ToolRegistry();
     const second = new ToolRegistry();
-    first.registerMcp(makeTool('mcp__test__dynamic'));
+    first.registerMcp({
+      tool: makeTool('mcp__test__dynamic'),
+      owner: { serverName: 'test', serverToolName: 'dynamic' },
+    });
     second.register(makeTool('mcp__test__dynamic'));
 
     const prepared = first.prepare('mcp__test__dynamic', { path: 'a.txt' });
     await expect(second.execute(prepared, context)).rejects.toBeInstanceOf(ToolRegistryError);
 
-    first.registerMcp(makeTool('mcp__test__dynamic'));
+    first.registerMcp({
+      tool: makeTool('mcp__test__dynamic'),
+      owner: { serverName: 'test', serverToolName: 'dynamic' },
+    });
     await expect(first.execute(prepared, context)).rejects.toThrow(/stale/);
 
     await expect(first.execute({

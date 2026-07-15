@@ -1,5 +1,5 @@
 import { randomUUID }       from 'node:crypto';
-import type { ToolRegistry } from '@ema-agent/tools';
+import type { McpToolOwner, McpToolRegistration, ToolRegistry } from '@ema-agent/tools';
 import type { McpServerStore }                            from './store.js';
 import type { McpServerConfig, McpConnection, McpToolInfo } from './types.js';
 import { openConnection }                                from './connection.js';
@@ -75,11 +75,14 @@ export class McpRegistry {
       connectedAt: Date.now(),
     };
 
-    this.connections.set(serverName, { ...opened, info });
-
-    for (const toolInfo of tools) {
-      this.toolRegistry.registerMcp(buildMcpBuiltTool(toolInfo, this));
+    try {
+      this.toolRegistry.registerMcpBatch(toRegistrations(tools, this));
+    } catch (err) {
+      // 注册失败时连接尚未对外可见；必须关闭 transport，不能留下孤儿进程。
+      try { await opened.cleanup(); } catch { /* ignore cleanup failure */ }
+      throw err;
     }
+    this.connections.set(serverName, { ...opened, info });
 
     // Persist the live tool list so next startup can prime the registry without
     // connecting (fast/offline). Best-effort — caching failure must not break connect.
@@ -95,25 +98,28 @@ export class McpRegistry {
    * of an eager connect-all.
    */
   primeFromCache(): number {
-    let primedCount = 0;
+    const registrations: McpToolRegistration[] = [];
+    const pending = new Map<string, McpToolInfo[]>();
     for (const record of this.store.listEnabled()) {
       if (this.connections.has(record.name)) continue;          // already live
       const tools = record.cachedTools;
       if (!tools || tools.length === 0) continue;
-      for (const toolInfo of tools) {
-        this.toolRegistry.registerMcp(buildMcpBuiltTool(toolInfo, this));
-      }
-      this.primed.set(record.name, tools);
-      primedCount += tools.length;
+      registrations.push(...toRegistrations(tools, this));
+      pending.set(record.name, tools);
     }
-    return primedCount;
+
+    this.toolRegistry.registerMcpBatch(registrations);
+    for (const [serverName, tools] of pending) this.primed.set(serverName, tools);
+    return registrations.length;
   }
 
   async disconnect(serverName: string): Promise<void> {
     // Unregister cache-primed tools (registered without a live connection).
     const primedTools = this.primed.get(serverName);
     if (primedTools) {
-      for (const tool of primedTools) this.toolRegistry.unregisterMcp(tool.qualifiedName);
+      for (const tool of primedTools) {
+        this.toolRegistry.unregisterMcp(tool.qualifiedName, ownerOf(tool));
+      }
       this.primed.delete(serverName);
     }
 
@@ -121,7 +127,7 @@ export class McpRegistry {
     if (!conn) return;
 
     for (const tool of conn.info.tools) {
-      this.toolRegistry.unregisterMcp(tool.qualifiedName);
+      this.toolRegistry.unregisterMcp(tool.qualifiedName, ownerOf(tool));
     }
 
     try { await conn.cleanup(); } catch { /* ignore */ }
@@ -209,4 +215,21 @@ export class McpRegistry {
       return { ok: false, tools: [], error: (err as Error).message };
     }
   }
+}
+
+function ownerOf(tool: McpToolInfo): McpToolOwner {
+  return {
+    serverName: tool.originalServerName,
+    serverToolName: tool.serverToolName,
+  };
+}
+
+function toRegistrations(
+  tools: readonly McpToolInfo[],
+  registry: McpRegistry,
+): McpToolRegistration[] {
+  return tools.map((tool) => ({
+    tool: buildMcpBuiltTool(tool, registry),
+    owner: ownerOf(tool),
+  }));
 }
