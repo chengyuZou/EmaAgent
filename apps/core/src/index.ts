@@ -12,6 +12,10 @@ import {
 import { createServer } from 'node:net';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+import { verifyCoreBuildIntegrity } from './build-integrity.js';
+
+// 开发态直接运行 TypeScript；生产态拒绝缺失、陈旧或被混入旧文件的 dist。
+verifyCoreBuildIntegrity(import.meta.url);
 
 // ── Public re-exports (for embedding cores: CLI, tests, future hosts) ────────
 // The HTTP sidecar (this file's main()) is only one of several possible
