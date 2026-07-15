@@ -49,7 +49,7 @@ interface ToolFailure {
 export interface TurnToolExecutorOpts {
   sessionId:   SessionId;
   turnId:      TurnId;
-  /** Synchronous policy check — returns false for plan-mode-blocked tools. */
+  /** 同步策略检查；不在当前 Agent capability 集合中的工具直接拒绝。 */
   allows:      (name: string) => boolean;
   tools:       AgentDeps['tools'];
   permission:  PermissionEngine;

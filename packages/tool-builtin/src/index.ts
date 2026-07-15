@@ -43,9 +43,6 @@ export type { AskTextResult } from './tools/ask-text.js';
 export { askChoiceTool } from './tools/ask-choice.js';
 export type { AskChoiceResult } from './tools/ask-choice.js';
 
-export { planEnterTool, planExitTool } from './tools/plan-mode.js';
-export type { PlanModeResult } from './tools/plan-mode.js';
-
 export { artifactWriteTool, artifactReadTool, artifactListTool } from './tools/artifact.js';
 
 // NOTE: the legacy generic `mcp_call` dispatcher was retired. MCP tools are
@@ -83,7 +80,6 @@ import { askUserTool } from './tools/ask-user.js';
 import { askConfirmTool } from './tools/ask-confirm.js';
 import { askTextTool } from './tools/ask-text.js';
 import { askChoiceTool } from './tools/ask-choice.js';
-import { planEnterTool, planExitTool } from './tools/plan-mode.js';
 import { artifactWriteTool, artifactReadTool, artifactListTool } from './tools/artifact.js';
 import { skillCallTool } from './tools/skill-call.js';
 import { kbSearchTool } from './tools/kb-search.js';
@@ -107,8 +103,6 @@ const ALL_BUILTIN_TOOLS: BuiltTool<any, any>[] = [
   askConfirmTool,
   askTextTool,
   askChoiceTool,
-  planEnterTool,
-  planExitTool,
   artifactWriteTool,
   artifactReadTool,
   artifactListTool,

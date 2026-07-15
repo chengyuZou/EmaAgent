@@ -1,12 +1,18 @@
+/**
+ * ⚠ 暂未完成，等待 V1.5 更新。
+ *
+ * 当前文件只保留未来 PlanModeController 的接口草稿，尚未实现用户审批、
+ * 动态工具裁剪、Permission Engine 策略切换和持久状态机。禁止把这里的
+ * plan_enter / plan_exit 注册给模型，否则会制造“已进入安全计划模式”的
+ * 错误预期，而写文件、Shell 等工具实际上仍可继续执行。
+ *
+ * V1 的 Agent 只输出普通文字计划；完成真正的状态机前不要导出或注册本文件。
+ */
+
 import { z } from 'zod';
 import { buildTool } from '@ema-agent/tools';
 import type { ToolExecutionContext } from '@ema-agent/tools';
 import type { EmaStreamEvent } from '@ema-agent/contracts';
-
-// Stub: plan_enter / plan_exit are text-only signals to the frontend.
-// No permission gating, no tool blocking, no approval state machine.
-// Full PlanModeController (strips dangerous permissions, approval gate,
-// circuit breaker) is deferred to V1.5. See CLAUDE.md §6 for design.
 
 // ── Shared output type ────────────────────────────────────────────────────────
 
