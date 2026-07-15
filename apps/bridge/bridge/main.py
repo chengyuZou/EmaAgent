@@ -6,12 +6,16 @@ from fastapi.responses import JSONResponse
 from bridge.routes.health    import router as health_router
 from bridge.routes.internal  import router as internal_router
 from bridge.routes.narrative import router as narrative_router
+from bridge.narrative.manager import resolve_narrative_root, validate_narrative_root
 from bridge.state import state
 from bridge.auth import require_shared_secret, secrets_equal
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    narrative_root = resolve_narrative_root()
+    validate_narrative_root(narrative_root)
+    print(f"[bridge] narrative root: {narrative_root}", flush=True)
     yield
     if state.narrative_manager is not None:
         await state.narrative_manager.finalize()

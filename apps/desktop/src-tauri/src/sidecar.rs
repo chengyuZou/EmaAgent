@@ -198,6 +198,9 @@ pub async fn spawn(state: SidecarState, _app: AppHandle) -> Result<(), String> {
     let pnpm = locate_pnpm()?;
     let workspace_root = locate_workspace_root()?;
     let bridge_dir = workspace_root.join("apps/bridge");
+    // V1 的 Narrative 是所有 Session 共享的全局剧情库，继续固定在 Bridge
+    // 数据目录；显式传绝对路径，禁止 Python 端通过 cwd 猜测出另一套空库。
+    let narrative_dir = bridge_dir.join("data").join("narrative");
 
     let secret = crate::credential_key::generate_ephemeral_secret();
     let credential_master_key = crate::credential_key::load_or_create_master_key()?;
@@ -242,8 +245,12 @@ pub async fn spawn(state: SidecarState, _app: AppHandle) -> Result<(), String> {
                 .stderr(Stdio::piped())
                 .stdin(Stdio::null())
                 .env("EMA_SHARED_SECRET", &secret)
+                .env("EMA_NARRATIVE_DIR", &narrative_dir)
                 // bridge 扫端口 7421-7430，写 {EMA_DATA_DIR}/bridge.port 让 core 发现
-                .env("EMA_DATA_DIR", std::env::var("EMA_DATA_DIR").unwrap_or_else(|_| dirs_home()));
+                .env(
+                    "EMA_DATA_DIR",
+                    std::env::var("EMA_DATA_DIR").unwrap_or_else(|_| dirs_home()),
+                );
             apply_windows_flags(&mut bridge_cmd);
             match bridge_cmd.spawn() {
                 Ok(mut bridge_child) => {

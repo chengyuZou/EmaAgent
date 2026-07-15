@@ -1,16 +1,16 @@
 import asyncio
-import os
-
 from fastapi import APIRouter
 
 from bridge.config import ConfigureRequest
-from bridge.narrative.manager import NarrativeManager
+from bridge.narrative.manager import (
+    NarrativeManager,
+    resolve_narrative_root,
+    validate_narrative_root,
+)
 from bridge.narrative.router import NarrativeRouter
 from bridge.state import BridgeState, state
 
 router = APIRouter(prefix="/internal")
-
-_NARRATIVE_DIR = os.environ.get("EMA_NARRATIVE_DIR", "./data/narrative")
 
 # Serializes /internal/configure — without this, two overlapping requests
 # (e.g. a settings-page save racing the bridge heartbeat's retry) would each
@@ -43,7 +43,9 @@ async def configure(
 
         old_manager = state.narrative_manager
         if next_state.embed_ready and next_state.llm_ready:
-            manager = NarrativeManager(next_state, _NARRATIVE_DIR)
+            narrative_root = resolve_narrative_root()
+            validate_narrative_root(narrative_root)
+            manager = NarrativeManager(next_state, narrative_root)
             await manager.initialize()
             router = NarrativeRouter(next_state)
 

@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import asyncio
+import os
+import tempfile
+from collections.abc import Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -13,12 +16,52 @@ if TYPE_CHECKING:
     from bridge.state import BridgeState
 
 TIMELINES = ("1st_Loop", "2nd_Loop", "3rd_Loop")
+_BRIDGE_PROJECT_ROOT = Path(__file__).resolve().parents[2]
+_DEFAULT_NARRATIVE_ROOT = _BRIDGE_PROJECT_ROOT / "data" / "narrative"
 
 # How long finalize() waits for in-flight requests to drain before giving up
 # and closing storage handles anyway (best-effort — matches this codebase's
 # pattern of bounded waits over indefinite blocking, e.g. TtsCoordinator's
 # abort/finish race).
 _DRAIN_TIMEOUT_S = 30.0
+
+
+def resolve_narrative_root(environ: Mapping[str, str] | None = None) -> Path:
+    """解析 V1 全局 Narrative 目录，禁止重新引入依赖 cwd 的相对路径。"""
+    env = os.environ if environ is None else environ
+    configured = env.get("EMA_NARRATIVE_DIR")
+    candidate = Path(configured).expanduser() if configured else _DEFAULT_NARRATIVE_ROOT
+    if not candidate.is_absolute():
+        raise RuntimeError(
+            "EMA_NARRATIVE_DIR 必须是绝对路径，不能依赖 Bridge 当前工作目录"
+        )
+    return candidate.resolve(strict=False)
+
+
+def validate_narrative_root(root: Path) -> None:
+    """在启动和换代前确认三条剧情时间线存在且可写，禁止静默创建空世界。"""
+    if not root.is_dir():
+        raise RuntimeError(f"Narrative 全局目录不存在或不是目录: {root}")
+
+    missing = [timeline for timeline in TIMELINES if not (root / timeline).is_dir()]
+    if missing:
+        raise RuntimeError(
+            f"Narrative 全局目录缺少时间线 {', '.join(missing)}: {root}"
+        )
+
+    for timeline in TIMELINES:
+        timeline_dir = root / timeline
+        try:
+            with tempfile.NamedTemporaryFile(
+                dir=timeline_dir,
+                prefix=".ema-write-probe-",
+                delete=True,
+            ):
+                pass
+        except OSError as error:
+            raise RuntimeError(
+                f"Narrative 时间线目录不可写: {timeline_dir}"
+            ) from error
 
 
 class NarrativeManager:
@@ -34,7 +77,7 @@ class NarrativeManager:
     wait for those to finish instead of closing storage out from under them.
     """
 
-    def __init__(self, state: BridgeState, data_dir: str) -> None:
+    def __init__(self, state: BridgeState, data_dir: str | Path) -> None:
         embed_func = make_embedding_func(state)
         llm_func   = make_llm_func(state)
         dim        = state.embed_dim
