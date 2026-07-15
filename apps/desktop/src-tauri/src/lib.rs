@@ -43,10 +43,10 @@ fn set_passthrough(window: tauri::Window, value: bool) -> Result<(), String> {
 
 #[tauri::command]
 async fn quit_app(app: tauri::AppHandle) {
-    // Same cleanup as the main window's CloseRequested handler — without this,
-    // a UI-triggered quit (tray menu, settings "Exit" button, etc.) orphans
-    // the sidecar process tree and leaves the SQLite lockfile pointing at a
-    // dead-but-still-running pid.
+    // F-048 订正:窗口 X 是 prevent_close + hide,不触发 shutdown(见下方
+    // on_window_event)。真正退出只有托盘 "quit" 菜单、本 quit_app 命令、
+    // 或 RunEvent::Exit 最后防线。这里与托盘 "quit" 走相同的 shutdown + exit,
+    // 否则 UI 触发的退出会孤儿掉 sidecar 进程树,SQLite lockfile 指向死 pid。
     let state = app.state::<SidecarState>();
     state.shutdown().await;
     app.exit(0);

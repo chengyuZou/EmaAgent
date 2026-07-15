@@ -9,10 +9,11 @@
 // automatically kills the entire Job, so no orphan sidecar/bridge processes
 // survive to hold the SQLite lockfile (bug 4 fix).
 //
-// Wired in lib.rs:
-//   - setup()             → tauri::async_runtime::spawn(spawn(...))
-//   - WindowEvent::Close  → state.shutdown().await
-//   - RunEvent::Exit      → state.shutdown().await  (last-resort cleanup)
+// Wired in lib.rs (F-048 订正:窗口 X 是 prevent_close + hide,不触发 shutdown):
+//   - setup()                 → tauri::async_runtime::spawn(spawn(...))
+//   - WindowEvent::CloseRequested → api.prevent_close() + window.hide()  (不 shutdown)
+//   - 托盘菜单 "quit" / quit_app 命令 → state.shutdown().await + app.exit(0)
+//   - RunEvent::Exit           → state.shutdown().await  (最后防线清理)
 
 use std::path::PathBuf;
 use std::process::Stdio;

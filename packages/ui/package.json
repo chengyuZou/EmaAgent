@@ -16,10 +16,6 @@
       "import": "./dist/utils/index.js",
       "types": "./dist/utils/index.d.ts"
     },
-    "./uno": {
-      "import": "./dist/uno.config.js",
-      "types": "./dist/uno.config.d.ts"
-    },
     "./uno.config": {
       "import": "./uno.config.ts",
       "types": "./uno.config.ts"
