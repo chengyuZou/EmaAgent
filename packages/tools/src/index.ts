@@ -17,6 +17,7 @@ export type {
   ToolDef,
   BuiltTool,
 } from './types.js';
+export type { DeepReadonly, PreparedToolCall } from './prepared-call.js';
 
 export { buildTool } from './build-tool.js';
 export { ToolRegistry, ToolRegistryError, ToolInputError } from './registry.js';

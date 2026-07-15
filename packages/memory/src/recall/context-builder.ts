@@ -12,9 +12,11 @@ export function buildContextMessage(bundle: RecallBundle): LlmMessage | null {
     const nodes = bundle.layer0.nodes
       .map(n => `- (${n.nodeType}) ${n.label}: ${n.description}`)
       .join('\n');
+    const idToLabel = new Map(bundle.layer0.nodes.map(n => [n.id, n.label]));
+    const labelOf   = (id: string) => idToLabel.get(id) ?? '[unknown]';
     const edges = bundle.layer0.edges.length === 0 ? '' :
       '\n\n关系:\n' + bundle.layer0.edges
-        .map(e => `- ${e.from} —${e.relation}→ ${e.to}`)
+        .map(e => `- ${labelOf(e.from)} —${e.relation}→ ${labelOf(e.to)}`)
         .join('\n');
     parts.push(`## 我对你的了解\n${nodes}${edges}`);
   }

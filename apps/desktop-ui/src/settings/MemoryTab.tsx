@@ -550,7 +550,7 @@ function MaintenanceTab(): JSX.Element {
   const maintenanceError   = useMemoryStore((s) => s.maintenanceError);
 
   const [decayAfterDays, setDecayAfterDays] = useState('30');
-  const [decayAmount,    setDecayAmount]    = useState('0.1');
+  const [decayAmount,    setDecayAmount]    = useState('10');
   const [decayItems,     setDecayItems]     = useState(true);
   const [dryRun,         setDryRun]         = useState(true);
 
@@ -558,7 +558,7 @@ function MaintenanceTab(): JSX.Element {
     try {
       await useMemoryStore.getState().runMaintenance({
         decayAfterDays: Number(decayAfterDays) || 30,
-        decayAmount:    Number(decayAmount)    || 0.1,
+        decayAmount:    Number(decayAmount)    || 10,
         decayItems,
         dryRun,
       });
@@ -587,12 +587,12 @@ function MaintenanceTab(): JSX.Element {
           />
         </Field>
 
-        <Field label="单次衰减量" description="每次执行将重要度减少(0.0–1.0)">
+        <Field label="单次衰减量" description="每次执行将重要度减少(0–100)">
           <Input
             type="number"
-            min="0.01"
-            max="1"
-            step="0.01"
+            min="0"
+            max="100"
+            step="1"
             value={decayAmount}
             onChange={(e) => setDecayAmount(e.target.value)}
           />

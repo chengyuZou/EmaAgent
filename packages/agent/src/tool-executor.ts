@@ -4,7 +4,7 @@
  * Mirrors Claude Code's StreamingToolExecutor design:
  *  - addTool() is called immediately on each tool_use_complete event, starting
  *    permission check + execution without waiting for the full LLM stream to end.
- *  - Concurrent-safe tools (isConcurrencySafe() === true) run in parallel with
+ *  - Concurrent-safe tools (PreparedToolCall.isConcurrencySafe === true) run in parallel with
  *    each other, but still wait for any in-flight non-concurrent tool to finish.
  *  - Non-concurrent tools run exclusively: they wait for the serial fence AND all
  *    currently-queued concurrent-safe tools.
@@ -15,7 +15,7 @@
 import { asToolCallId } from '@ema-agent/contracts';
 import type { EmaStreamEvent, ToolResultBlock, SessionId, ToolCallId, TurnId } from '@ema-agent/contracts';
 import { ToolInputError } from '@ema-agent/tools';
-import type { ToolExecutionContext, ICommandRunner } from '@ema-agent/tools';
+import type { ToolExecutionContext, ICommandRunner, PreparedToolCall } from '@ema-agent/tools';
 import type { PermissionEngine, PermissionContext } from '@ema-agent/permission';
 import type { HookBus, ToolFailurePhase } from '@ema-agent/hook';
 import type { AgentToolResultStore } from '@ema-agent/agent-context';
@@ -28,6 +28,7 @@ interface TrackedTool {
   id:                ToolCallId;
   name:              string;
   args:              unknown;
+  prepared?:         PreparedToolCall;
   isConcurrencySafe: boolean;
   startMs:           number;
   done:              boolean;
@@ -119,6 +120,7 @@ export class TurnToolExecutor {
     const callId = asToolCallId(id);
     let preflightFailure: ToolFailure | undefined;
     let isConcurrencySafe = true;
+    let prepared: PreparedToolCall | undefined;
 
     if (!allows(name)) {
       preflightFailure = {
@@ -135,7 +137,12 @@ export class TurnToolExecutor {
         retryable: true,
       };
     } else {
-      isConcurrencySafe = tools.get(name).isConcurrencySafe();
+      try {
+        prepared = tools.prepare(name, args);
+        isConcurrencySafe = prepared.isConcurrencySafe;
+      } catch (err) {
+        preflightFailure = classifyPreparationFailure(err);
+      }
     }
 
     // 所有模型工具意图都进入同一异步状态机。即使预检失败，也必须先发出
@@ -145,6 +152,7 @@ export class TurnToolExecutor {
       id: callId,
       name,
       args,
+      prepared,
       isConcurrencySafe,
       startMs: Date.now(),
       done: false,
@@ -199,7 +207,7 @@ export class TurnToolExecutor {
     const {
       sessionId, turnId, permission, permCtx, hooks, toolCtx, tools, buildAsk, runner, pushEv, signal,
     } = this.opts;
-    const { id, name, args } = track;
+    const { id, name, args, prepared } = track;
 
     // ── Per-tool AbortController ──────────────────────────────────────────────
     // Cascades from the turn signal so turn-level abort fires all tool aborts.
@@ -215,13 +223,23 @@ export class TurnToolExecutor {
       // the execution gate, and the sandbox runner is the isolation boundary.
       await hooks.trigger('beforeToolUse', {
         turnId, sessionId,
-        payload: { callId: id, name, args },
+        payload: { callId: id, name, args: prepared?.input ?? args },
         signal: perToolCtrl.signal,
         emit: pushEv,
       });
 
       if (track.preflightFailure) {
         await this.completeFailure(track, track.preflightFailure, perToolCtrl.signal);
+        return;
+      }
+
+      if (!prepared) {
+        await this.completeFailure(track, {
+          phase: 'validation',
+          code: 'tool/preparation_missing',
+          message: `Tool "${name}" has no prepared input`,
+          retryable: false,
+        }, perToolCtrl.signal);
         return;
       }
 
@@ -235,7 +253,13 @@ export class TurnToolExecutor {
 
       let outcome;
       try {
-        outcome = await permission.gate(name, args, tools.get(name).permissionMeta, permCtxWithAsk);
+        // 权限审批和工具执行共享同一个深冻结 PreparedToolCall 输入。
+        outcome = await permission.gate(
+          name,
+          prepared.input,
+          prepared.permissionMeta,
+          permCtxWithAsk,
+        );
       } catch (err) {
         if (isCancelled(perToolCtrl.signal, toolCtx.signal)) {
           this.completeCancellation(track);
@@ -268,7 +292,7 @@ export class TurnToolExecutor {
       let isError = false;
 
       try {
-        output = await tools.dispatch(name, args, perToolCtx);
+        output = await tools.execute(prepared, perToolCtx);
 
         // If aborted mid-run but the turn is still alive, annotate the partial output.
         if (perToolCtrl.signal.aborted && !toolCtx.signal.aborted) {
@@ -407,7 +431,7 @@ function annotateAborted(output: unknown): unknown {
   return String(JSON.stringify(output) ?? '') + notice;
 }
 
-function classifyDispatchFailure(err: unknown): ToolFailure {
+function classifyPreparationFailure(err: unknown): ToolFailure {
   if (err instanceof ToolInputError) {
     return {
       phase: 'validation',
@@ -416,6 +440,15 @@ function classifyDispatchFailure(err: unknown): ToolFailure {
       retryable: true,
     };
   }
+  return {
+    phase: 'validation',
+    code: 'tool/preparation_failed',
+    message: errorMessage(err),
+    retryable: false,
+  };
+}
+
+function classifyDispatchFailure(err: unknown): ToolFailure {
   return {
     phase: 'execution',
     code: 'tool/error',

@@ -165,7 +165,7 @@ export interface MemorySettings {
   maintenance: {
     idleThresholdMs:       number;   // 空闲多久才触发（默认 3600_000 = 1h）
     maintenanceIntervalMs: number;   // 两次 maintenance 最小间隔（默认 259200_000 = 3天）
-    decayAmount:           number;   // 每次衰减扣多少 importance（0–1 标度，默认 0.1）
+    decayAmount:           number;   // 每次衰减扣多少 importance（0–100 标度，默认 10）
     decayAfterDays:        number;   // N 天未引用才衰减（默认 30）
     deleteThreshold:       number;   // importance 低于这个值（默认 15）
     deleteAfterDays:       number;   // 且超过这么久未引用（默认 30）才删除
@@ -207,7 +207,7 @@ export const DEFAULT_MEMORY_SETTINGS: MemorySettings = {
   maintenance: {
     idleThresholdMs:       3600_000,   // 1h
     maintenanceIntervalMs: 259200_000, // 3 days
-    decayAmount:           0.1,        // importance is 0–1; subtract 0.1 per pass
+    decayAmount:           10,         // importance is 0–100; subtract 10 per pass
     decayAfterDays:        30,
     deleteThreshold:       15,
     deleteAfterDays:       30,

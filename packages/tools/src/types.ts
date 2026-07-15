@@ -288,12 +288,12 @@ export interface ToolDef<TInput, TOutput> {
   inputSchema: z.ZodType<TInput, z.ZodTypeDef, unknown>;
 
   /** True → read-only, safe to auto-allow in any permission mode. */
-  isReadOnly: () => boolean;
+  isReadOnly: (input: TInput) => boolean;
   /**
    * True → multiple instances may run in parallel within the same turn.
    * Set false for tools that write shared state (session store, file system).
    */
-  isConcurrencySafe: () => boolean;
+  isConcurrencySafe: (input: TInput) => boolean;
 
   /** Permission metadata consulted by PermissionEngine.gate(). */
   permissionMeta: ToolPermissionMeta;
@@ -307,8 +307,8 @@ export interface BuiltTool<TInput = unknown, TOutput = unknown> {
   readonly name: string;
   readonly description: string;
   readonly inputSchema: z.ZodType<TInput, z.ZodTypeDef, unknown>;
-  readonly isReadOnly: () => boolean;
-  readonly isConcurrencySafe: () => boolean;
+  readonly isReadOnly: (input: TInput) => boolean;
+  readonly isConcurrencySafe: (input: TInput) => boolean;
   readonly permissionMeta: ToolPermissionMeta;
   readonly descriptor: () => ToolDescriptor;
   readonly execute: (input: TInput, ctx: ToolExecutionContext) => Promise<TOutput>;

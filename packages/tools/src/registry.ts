@@ -1,5 +1,7 @@
 import { ZodError } from 'zod';
 import type { BuiltTool, ToolDescriptor, ToolExecutionContext } from './types.js';
+import { freezePreparedInput } from './prepared-call.js';
+import type { PreparedToolCall } from './prepared-call.js';
 
 // Type alias for a BuiltTool with erased generics — safe for registry storage.
 // The `execute` parameter is contravariant so BuiltTool<X, Y> !<: BuiltTool<unknown, unknown>;
@@ -36,6 +38,8 @@ export class ToolRegistry {
   private readonly tools    = new Map<string, BuiltTool<any, any>>();
   /** Separate set tracks MCP-registered names for safe hot-swap. */
   private readonly mcpNames = new Set<string>();
+  /** 运行时能力表：防止调用方伪造 PreparedToolCall 或跨 Registry 执行。 */
+  private readonly preparedCalls = new WeakMap<object, BuiltTool<any, any>>();
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   register(tool: BuiltTool<any, any>): void {
@@ -88,18 +92,10 @@ export class ToolRegistry {
   }
 
   /**
-   * Parse, validate, and execute a tool by name.
-   *
-   * Throws:
-   *  - ToolRegistryError — tool not found
-   *  - ToolInputError    — input failed Zod validation
-   *  - anything thrown by the tool's execute() implementation
+   * 查找工具并完成一次且仅一次的输入解析。
+   * 返回值同时供 Hook、PermissionEngine 和 execute() 使用。
    */
-  async dispatch(
-    name: string,
-    rawArgs: unknown,
-    ctx: ToolExecutionContext,
-  ): Promise<unknown> {
+  prepare(name: string, rawArgs: unknown): PreparedToolCall {
     const tool = this.get(name);
     let parsed: unknown;
     try {
@@ -110,7 +106,54 @@ export class ToolRegistry {
       }
       throw err;
     }
-    return tool.unsafeExecute(parsed, ctx);
+
+    const input = freezePreparedInput(parsed);
+    // MCP 工具可能绕过 buildTool() 手工构造，因此这里统一建立权限策略快照。
+    const permissionMeta = Object.freeze({ ...tool.permissionMeta });
+    const prepared = Object.freeze({
+      name,
+      input,
+      permissionMeta,
+      isReadOnly: tool.isReadOnly(input),
+      isConcurrencySafe: tool.isConcurrencySafe(input),
+    }) satisfies PreparedToolCall;
+
+    this.preparedCalls.set(prepared, tool);
+    return prepared;
+  }
+
+  /**
+   * 执行由本 Registry 准备的不可变调用。
+   * MCP 热更新等注册表变化会让旧快照失效，避免审批旧实现却执行新实现。
+   */
+  async execute(
+    prepared: PreparedToolCall,
+    ctx: ToolExecutionContext,
+  ): Promise<unknown> {
+    const preparedObject = prepared as object;
+    const preparedTool = this.preparedCalls.get(preparedObject);
+    if (!preparedTool) {
+      throw new ToolRegistryError('Prepared tool call was not created by this registry');
+    }
+
+    const currentTool = this.tools.get(prepared.name);
+    if (currentTool !== preparedTool) {
+      this.preparedCalls.delete(preparedObject);
+      throw new ToolRegistryError(`Prepared tool call for "${prepared.name}" is stale`);
+    }
+
+    return preparedTool.unsafeExecute(prepared.input, ctx);
+  }
+
+  /**
+   * 兼容无需外部审批的可信调用方。Agent 主链必须显式使用 prepare() →
+   * PermissionEngine.gate() → execute()，不能通过此方法跨过审批快照边界。
+   */
+  async dispatch(
+    name: string,
+    rawArgs: unknown,
+    ctx: ToolExecutionContext,
+  ): Promise<unknown> {
+    return this.execute(this.prepare(name, rawArgs), ctx);
   }
 }
-

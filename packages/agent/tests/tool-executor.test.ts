@@ -17,6 +17,7 @@ describe('TurnToolExecutor Hook 与权限边界', () => {
   it('固定按工具意图 Hook、PermissionEngine、工具执行的顺序运行', async () => {
     const order: string[] = [];
     const emitted: EmaStreamEvent[] = [];
+    let approvedInput: unknown;
     const hooks = new HookBus();
 
     hooks.register('beforeToolUse', () => {
@@ -26,17 +27,22 @@ describe('TurnToolExecutor Hook 与权限边界', () => {
 
     const tools = {
       has: () => true,
-      get: () => ({
-        isConcurrencySafe: () => true,
+      prepare: (name: string, input: unknown) => ({
+        name,
+        input,
+        isReadOnly: true,
+        isConcurrencySafe: true,
         permissionMeta: {},
       }),
-      dispatch: async () => {
+      execute: async (prepared: { input: unknown }) => {
+        expect(prepared.input).toBe(approvedInput);
         order.push('dispatch');
         return 'ok';
       },
     };
     const permission = {
-      gate: async () => {
+      gate: async (_name: string, input: unknown) => {
+        approvedInput = input;
         order.push('permission');
         return { granted: true };
       },
@@ -102,7 +108,7 @@ describe('TurnToolExecutor Hook 与权限边界', () => {
       allows: true,
       hasTool: true,
       args: {},
-      dispatchError: makeToolInputError(),
+      preparationError: makeToolInputError(),
       expected: { phase: 'validation', code: 'tool/validation_failed', retryable: true },
     },
     {
@@ -144,11 +150,17 @@ describe('TurnToolExecutor Hook 与权限边界', () => {
 
       const tools = {
         has: () => failureCase.hasTool,
-        get: () => ({
-          isConcurrencySafe: () => true,
-          permissionMeta: {},
-        }),
-        dispatch: async () => {
+        prepare: (name: string, input: unknown) => {
+          if ('preparationError' in failureCase) throw failureCase.preparationError;
+          return {
+            name,
+            input,
+            isReadOnly: true,
+            isConcurrencySafe: true,
+            permissionMeta: {},
+          };
+        },
+        execute: async () => {
           if ('dispatchError' in failureCase) throw failureCase.dispatchError;
           return 'ok';
         },
@@ -209,8 +221,14 @@ describe('TurnToolExecutor Hook 与权限边界', () => {
       allows: () => true,
       tools: {
         has: () => true,
-        get: () => ({ isConcurrencySafe: () => true, permissionMeta: {} }),
-        dispatch: async (_name: string, _args: unknown, ctx: { signal: AbortSignal }) =>
+        prepare: (name: string, input: unknown) => ({
+          name,
+          input,
+          isReadOnly: true,
+          isConcurrencySafe: true,
+          permissionMeta: {},
+        }),
+        execute: async (_prepared: unknown, ctx: { signal: AbortSignal }) =>
           await new Promise((_resolve, reject) => {
             ctx.signal.addEventListener('abort', () => reject(new Error('aborted')), { once: true });
           }),

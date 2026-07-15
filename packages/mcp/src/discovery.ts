@@ -59,10 +59,10 @@ export function buildMcpBuiltTool(
   const serverName = info.originalServerName;
   const inputZod      = z.record(z.unknown()); // permissive — MCP server validates
 
-  const permissionMeta: ToolPermissionMeta = {
+  const permissionMeta: ToolPermissionMeta = Object.freeze({
     riskLevel:  info.isDestructive ? 'high' : info.isReadOnly ? 'low' : 'medium',
     accessType: info.isReadOnly ? 'read' : 'execute',
-  };
+  });
 
   const descriptor = (): ToolDescriptor => ({
     name:           info.qualifiedName,
@@ -78,16 +78,16 @@ export function buildMcpBuiltTool(
     return registry.callTool(serverName, info.serverToolName, input as Record<string, unknown>, ctx.signal);
   };
 
-  return {
+  return Object.freeze({
     name:              info.qualifiedName,
     description:       `[MCP:${serverName}] ${info.description}`,
     inputSchema:       inputZod,
-    isReadOnly:        () => info.isReadOnly,
-    isConcurrencySafe: () => info.isReadOnly,
+    isReadOnly:        (_input: unknown) => info.isReadOnly,
+    isConcurrencySafe: (_input: unknown) => info.isReadOnly,
     permissionMeta,
     descriptor,
     execute,
-    unsafeExecute:     (raw, ctx) => execute(inputZod.parse(raw), ctx),
-    parseInput:        (raw) => inputZod.parse(raw),
-  };
+    unsafeExecute:     (raw: unknown, ctx: ToolExecutionContext) => execute(inputZod.parse(raw), ctx),
+    parseInput:        (raw: unknown) => inputZod.parse(raw),
+  });
 }
