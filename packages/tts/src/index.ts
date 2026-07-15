@@ -17,6 +17,9 @@ export type {
   TtsHealthResult,
   TtsProviderHealth,
   TtsProbeResult,
+  TtsLimits,
+  TtsAudioDelivery,
+  TtsAdapterCapabilities,
 } from './types.js';
 
 export { SentenceSplitter } from './streaming/sentence-splitter.js';

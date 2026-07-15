@@ -26,9 +26,22 @@ import type { TtsAdapter, TtsProviderConfig, TtsProbeResult, TtsRequest, TtsStre
 // (object pool, 1.5-2x peak QPS) but桌宠 is single-user, ~1 QPS peak.
 
 const HOST_DEFAULT = 'wss://dashscope.aliyuncs.com';
+const MAX_REFERENCE_AUDIO_BYTES = 25 * 1024 * 1024;
 
 export class DashscopeTtsAdapter implements TtsAdapter {
   readonly protocol = 'dashscope-tts' as const;
+
+  capabilitiesFor(req: Pick<TtsRequest, 'model'>): {
+    audioDelivery: 'buffered' | 'websocket_frames';
+    supportsAbort: true;
+  } {
+    return {
+      audioDelivery: dashscopeModelFamily(req.model) === 'qwen-tts'
+        ? 'buffered'
+        : 'websocket_frames',
+      supportsAbort: true,
+    };
+  }
 
   constructor(private readonly config: TtsProviderConfig) {}
 
@@ -69,7 +82,11 @@ export class DashscopeTtsAdapter implements TtsAdapter {
       throw new Error(`dashscope-tts: uploadVoice not supported for model "${model}"`);
     }
 
-    // Read local file and encode as data URI for API transport.
+    const fileStat = await fs.stat(refAudioPath);
+    if (fileStat.size > MAX_REFERENCE_AUDIO_BYTES) {
+      throw new Error(`Reference audio exceeds ${MAX_REFERENCE_AUDIO_BYTES} bytes`);
+    }
+    // Data URI 必然需要一次有界缓冲；先检查文件大小，避免无上限读取和 base64 扩张。
     const audioBytes = await fs.readFile(refAudioPath);
     const ext  = path.extname(refAudioPath).slice(1).toLowerCase() || 'wav';
     const mime = ext === 'mp3' ? 'audio/mpeg' : ext === 'm4a' ? 'audio/mp4' : `audio/${ext}`;
@@ -98,6 +115,7 @@ export class DashscopeTtsAdapter implements TtsAdapter {
         'Content-Type':  'application/json',
       },
       body: JSON.stringify(body),
+      signal: AbortSignal.timeout(120_000),
     });
 
     if (!resp.ok) {
@@ -469,6 +487,7 @@ class QwenTtsRealtimeSession {
     // Qwen-TTS always delivers audio/L16 (raw PCM) — we convert to WAV so the
     // frontend can play it without a custom decoder.
     const pcmChunks: Buffer[] = [];
+    let pcmBytes = 0;
 
     let ws: WebSocket;
     try {
@@ -529,6 +548,16 @@ class QwenTtsRealtimeSession {
         case 'response.audio.delta': {
           if (typeof msg.delta !== 'string') break;
           const chunk = Buffer.from(msg.delta, 'base64');
+          pcmBytes += chunk.byteLength;
+          if (pcmBytes > 16 * 1024 * 1024) {
+            queue.closeWith({
+              type: 'error',
+              code: 'resource_exhausted',
+              message: 'qwen-tts sentence exceeded the 16MiB PCM buffer limit',
+            });
+            try { ws.close(1009, 'audio too large'); } catch { /* ignore */ }
+            break;
+          }
           if (firstByteMs === 0) firstByteMs = Date.now() - startedAt;
           pcmChunks.push(chunk);
           break;

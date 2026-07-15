@@ -53,7 +53,17 @@ export interface TtsCoordinatorArgs {
   format?:       'mp3' | 'pcm' | 'wav' | 'opus';
   /** Turn-level abort signal. Used to cancel in-flight provider requests. */
   signal?:       AbortSignal;
+  /** 单个 Turn 允许归档和推送的最大音频字节数。 */
+  maxBytesPerTurn?: number;
 }
+
+type TtsCoordinatorState =
+  | 'accepting'
+  | 'finishing'
+  | 'completed'
+  | 'aborting'
+  | 'aborted'
+  | 'failed';
 
 export class TtsCoordinator {
   private readonly turnId:      TurnId;
@@ -67,12 +77,15 @@ export class TtsCoordinator {
   private readonly format:      'mp3' | 'pcm' | 'wav' | 'opus';
   private readonly abortController = new AbortController();
   private readonly disposeExternalAbort: (() => void) | undefined;
+  private readonly maxBytesPerTurn: number;
 
   private readonly textFilter: TextFilterStream;
   private readonly splitter = new SentenceSplitter();
   private chain:      Promise<void>       = Promise.resolve();
-  private finishing                       = false;
-  private aborted                         = false;
+  private state: TtsCoordinatorState = 'accepting';
+  private finishPromise: Promise<{ audio: FinalizedAudio | null }> | undefined;
+  private abortPromise: Promise<void> | undefined;
+  private turnBytes = 0;
   private finalAudio: FinalizedAudio | null     = null;
   /**
    * Actual archive extension detected from the first audio_chunk MIME.
@@ -90,14 +103,19 @@ export class TtsCoordinator {
     this.emit       = args.emit;
     this.archive    = args.archive;
     this.format     = args.format ?? 'mp3';
+    this.maxBytesPerTurn = args.maxBytesPerTurn ?? 64 * 1024 * 1024;
+    if (!Number.isSafeInteger(this.maxBytesPerTurn) || this.maxBytesPerTurn <= 0) {
+      throw new TypeError('TTS maxBytesPerTurn must be a positive safe integer');
+    }
     this.textFilter = new TextFilterStream();
 
     const externalSignal = args.signal;
     if (externalSignal) {
       if (externalSignal.aborted) {
-        this.abortController.abort();
+        this.state = 'aborted';
+        this.abortController.abort('aborted');
       } else {
-        const onAbort = () => this.abortController.abort();
+        const onAbort = () => { void this.abort(); };
         externalSignal.addEventListener('abort', onAbort, { once: true });
         this.disposeExternalAbort = () => {
           externalSignal.removeEventListener('abort', onAbort);
@@ -108,7 +126,7 @@ export class TtsCoordinator {
 
   /** Feed one visible output_text_delta into the turn-scoped TTS pipeline. */
   acceptTextDelta(delta: string): void {
-    if (this.finishing || this.abortController.signal.aborted) return;
+    if (this.state !== 'accepting') return;
 
     const filtered = this.textFilter.feed(delta);
     if (filtered) {
@@ -124,9 +142,18 @@ export class TtsCoordinator {
    * the synthesis queue, and finalize the archive. Returns the merged audio
    * metadata if the archive wrote one.
    */
-  async finish(): Promise<{ audio: FinalizedAudio | null }> {
-    if (this.finishing) return { audio: this.finalAudio };
-    this.finishing = true;
+  finish(): Promise<{ audio: FinalizedAudio | null }> {
+    if (this.finishPromise) return this.finishPromise;
+    if (this.state === 'aborted' || this.state === 'aborting' || this.state === 'failed') {
+      return Promise.resolve({ audio: null });
+    }
+    if (this.state === 'completed') return Promise.resolve({ audio: this.finalAudio });
+    this.state = 'finishing';
+    this.finishPromise = this.finishInternal();
+    return this.finishPromise;
+  }
+
+  private async finishInternal(): Promise<{ audio: FinalizedAudio | null }> {
     this.disposeExternalAbort?.();
 
     // Flush the text filter first — it may emit a code-replacement string for
@@ -144,7 +171,7 @@ export class TtsCoordinator {
 
     // If abort() was called while we were waiting for the chain, it has already
     // set this.aborted and will call discardTurn — don't write a partial merged file.
-    if (this.aborted) return { audio: null };
+    if (this.state !== 'finishing') return { audio: null };
 
     if (this.archive) {
       try {
@@ -159,23 +186,27 @@ export class TtsCoordinator {
       }
     }
 
+    this.state = 'completed';
     return { audio: this.finalAudio };
   }
 
   /** Discard everything. Used when the turn aborts before completion. */
-  async abort(): Promise<void> {
-    if (this.abortController.signal.aborted) return;
-    // Set aborted BEFORE firing the signal so finish() sees it after chain settles.
-    // Also set finishing so any concurrent finish() call returns early rather than
-    // racing to finalizeTurn after the chain resolves.
-    this.aborted = true;
-    this.abortController.abort();
+  abort(): Promise<void> {
+    if (this.abortPromise) return this.abortPromise;
+    if (this.state === 'aborted' || this.state === 'completed') return Promise.resolve();
+    this.state = 'aborting';
+    this.abortController.abort('aborted');
     this.disposeExternalAbort?.();
-    this.finishing = true;
+    this.abortPromise = this.abortInternal();
+    return this.abortPromise;
+  }
+
+  private async abortInternal(): Promise<void> {
     try { await this.chain; } catch (err) {
       console.warn('[tts/coordinator] chain error during abort:', err instanceof Error ? err.message : err);
      }
     this.archive?.discardTurn(this.sessionId as string, this.turnId as string);
+    this.state = 'aborted';
   }
 
   // ── Internals ─────────────────────────────────────────────────────────────
@@ -187,6 +218,10 @@ export class TtsCoordinator {
    */
   private enqueue(index: number, text: string): void {
     this.chain = this.chain.then(() => this.synthesizeOne(index, text)).catch((err) => {
+      if (this.state === 'aborting' || this.state === 'aborted') return;
+      this.state = 'failed';
+      this.abortController.abort('failed');
+      this.archive?.discardTurn(this.sessionId as string, this.turnId as string);
       this.emit({
         type:    'system_warning',
         level:   'warn',
@@ -210,7 +245,12 @@ export class TtsCoordinator {
         format:     this.format,
         abortSignal: this.abortController.signal,
       })) {
+        if (this.state !== 'accepting' && this.state !== 'finishing') break;
         if (ev.type === 'audio_chunk') {
+          this.turnBytes += ev.bytes.byteLength;
+          if (this.turnBytes > this.maxBytesPerTurn) {
+            throw new Error(`TTS turn exceeded ${this.maxBytesPerTurn} bytes`);
+          }
           if (!writer && this.archive) {
             const ext = mimeToExt(ev.mime) ?? this.format;
             this.effectiveExt ??= ext;
@@ -219,13 +259,17 @@ export class TtsCoordinator {
           writer?.write(ev.bytes);
         }
         const transformed = ttsEventToEma(ev, { turnId: this.turnId, sessionId: this.sessionId }, index);
-        if (transformed) this.emit(transformed);
+        if (transformed && (this.state === 'accepting' || this.state === 'finishing')) {
+          this.emit(transformed);
+        }
       }
 
       // Always send a sentence_complete marker, even if the adapter produced
       // no audio (e.g. all-error path). The frontend uses it to detect that
       // the sentence is "done attempting" and won't get more chunks.
-      this.emit({ type: 'tts_sentence_complete', turnId: this.turnId, sentenceId, sessionId: this.sessionId });
+      if (this.state === 'accepting' || this.state === 'finishing') {
+        this.emit({ type: 'tts_sentence_complete', turnId: this.turnId, sentenceId, sessionId: this.sessionId });
+      }
     } finally {
       writer?.close();
     }

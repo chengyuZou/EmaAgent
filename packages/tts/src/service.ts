@@ -5,6 +5,8 @@ import type {
   TtsProviderConfig,
   TtsHealthResult,
   TtsProbeResult,
+  TtsLimits,
+  TtsAdapterCapabilities,
 } from './types.js';
 
 import { OpenAiTtsAdapter }   from './adapters/openai-tts.js';
@@ -12,6 +14,11 @@ import { GptSoVitsTtsAdapter } from './adapters/gpt-sovits-tts.js';
 import { DashscopeTtsAdapter } from './adapters/dashscope-tts.js';
 
 import { filterSentenceForTts } from './streaming/text-filter.js';
+
+const DEFAULT_LIMITS: Readonly<TtsLimits> = {
+  timeoutMsPerSentence: 120_000,
+  maxBytesPerSentence: 16 * 1024 * 1024,
+};
 
 // ── TtsClient ───────────────────────────────────────────────────────────────
 
@@ -34,6 +41,7 @@ export class TtsClient {
   private adapters = new Map<string, TtsAdapter>();
   /** providerId → config */
   private configs  = new Map<string, TtsProviderConfig>();
+  private readonly limits: Readonly<TtsLimits>;
 
   /**
    * @param configs           Provider configurations (from profile.db).
@@ -42,7 +50,9 @@ export class TtsClient {
   constructor(
     configs: TtsProviderConfig[],
     adapterOverrides?: ReadonlyMap<string, TtsAdapter>,
+    limits: Partial<TtsLimits> = {},
   ) {
+    this.limits = validateLimits({ ...DEFAULT_LIMITS, ...limits });
     for (const cfg of configs) {
       this.configs.set(cfg.id, cfg);
       const override = adapterOverrides?.get(cfg.id);
@@ -89,6 +99,11 @@ export class TtsClient {
   /** Get the adapter for a provider id (for voice resolution / cache management). */
   getAdapter(providerId: string): TtsAdapter | undefined {
     return this.adapters.get(providerId);
+  }
+
+  /** 返回当前适配器实现的真实交付能力，供诊断与后续设置页展示。 */
+  capabilitiesFor(providerId: string, model: string): TtsAdapterCapabilities | undefined {
+    return this.adapters.get(providerId)?.capabilitiesFor({ model });
   }
 
   /**
@@ -158,8 +173,123 @@ export class TtsClient {
     }
 
     // Build a normalized copy — never mutate the caller's request object.
-    const normalized: TtsRequest = { ...req, text: cleaned, format: req.format ?? 'mp3' };
+    const scope = createTtsScope(req.abortSignal, this.limits.timeoutMsPerSentence);
+    const normalized: TtsRequest = {
+      ...req,
+      text: cleaned,
+      format: req.format ?? 'mp3',
+      abortSignal: scope.signal,
+    };
+    const iterator = adapter.stream(normalized)[Symbol.asyncIterator]();
+    let totalBytes = 0;
+    let terminal = false;
+    let endedWithoutTerminal = false;
 
-    yield* adapter.stream(normalized);
+    try {
+      while (!terminal) {
+        const item = await nextWithAbort(iterator, scope.signal);
+        if (item.done) {
+          endedWithoutTerminal = true;
+          break;
+        }
+        const event = item.value;
+        if (event.type === 'audio_chunk') {
+          totalBytes += event.bytes.byteLength;
+          if (totalBytes > this.limits.maxBytesPerSentence) {
+            scope.abort('resource_exhausted');
+            yield {
+              type: 'error',
+              code: 'resource_exhausted',
+              message: `TTS sentence exceeded ${this.limits.maxBytesPerSentence} bytes`,
+            };
+            terminal = true;
+            continue;
+          }
+        }
+        yield event;
+        terminal = event.type === 'done' || event.type === 'error';
+      }
+      if (endedWithoutTerminal && !terminal) {
+        yield {
+          type: 'error',
+          code: 'invalid_stream',
+          message: 'TTS adapter ended without a terminal done or error event',
+        };
+      }
+    } catch (error) {
+      const reason = scope.reason();
+      yield {
+        type: 'error',
+        code: reason === 'timeout' ? 'transient_timeout'
+          : reason === 'resource_exhausted' ? 'resource_exhausted'
+          : reason === 'aborted' ? 'aborted'
+          : 'unknown',
+        message: reason === 'timeout'
+          ? `TTS sentence exceeded its ${this.limits.timeoutMsPerSentence}ms deadline`
+          : reason === 'aborted'
+            ? 'TTS sentence was aborted'
+            : error instanceof Error ? error.message : 'TTS adapter failed',
+      };
+    } finally {
+      const closing = iterator.return?.();
+      if (closing) {
+        if (scope.signal.aborted) void closing.catch(() => undefined);
+        else await closing;
+      }
+      scope.dispose();
+    }
   }
+}
+
+type TtsAbortReason = 'timeout' | 'aborted' | 'resource_exhausted';
+
+function createTtsScope(upstream: AbortSignal | undefined, timeoutMs: number): {
+  signal: AbortSignal;
+  abort(reason: TtsAbortReason): void;
+  reason(): TtsAbortReason | undefined;
+  dispose(): void;
+} {
+  const controller = new AbortController();
+  let abortReason: TtsAbortReason | undefined;
+  const abort = (reason: TtsAbortReason): void => {
+    if (controller.signal.aborted) return;
+    abortReason = reason;
+    controller.abort(reason);
+  };
+  const onUpstreamAbort = (): void => abort('aborted');
+  if (upstream?.aborted) onUpstreamAbort();
+  else upstream?.addEventListener('abort', onUpstreamAbort, { once: true });
+  const timer = setTimeout(() => abort('timeout'), timeoutMs);
+  return {
+    signal: controller.signal,
+    abort,
+    reason: () => abortReason,
+    dispose(): void {
+      clearTimeout(timer);
+      upstream?.removeEventListener('abort', onUpstreamAbort);
+    },
+  };
+}
+
+async function nextWithAbort<T>(
+  iterator: AsyncIterator<T>,
+  signal: AbortSignal,
+): Promise<IteratorResult<T>> {
+  if (signal.aborted) throw new Error(String(signal.reason ?? 'aborted'));
+  return new Promise<IteratorResult<T>>((resolve, reject) => {
+    const onAbort = (): void => reject(new Error(String(signal.reason ?? 'aborted')));
+    signal.addEventListener('abort', onAbort, { once: true });
+    iterator.next().then(resolve, reject).finally(() => {
+      signal.removeEventListener('abort', onAbort);
+    });
+  });
+}
+
+function validateLimits(limits: TtsLimits): Readonly<TtsLimits> {
+  for (const [key, value] of Object.entries(limits)) {
+    if (!Number.isSafeInteger(value) || value <= 0) {
+      throw new TypeError(`TTS ${key} must be a positive safe integer`);
+    }
+  }
+  return Object.freeze(limits);
 }

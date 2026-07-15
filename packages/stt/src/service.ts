@@ -1,5 +1,13 @@
 import type { SttAdapter, SttAdapterCall, SttProviderConfig, SttRequest, SttResponse, SttHealthResult, SttProbeResult } from './types.js';
 import { OpenAiSttAdapter } from './adapters/openai-stt.js';
+import { isSttError, SttError } from './errors.js';
+import { createSttRequestScope } from './request-scope.js';
+import type { SttLimits } from './types.js';
+
+const DEFAULT_LIMITS: Readonly<SttLimits> = {
+  maxAudioBytes: 25 * 1024 * 1024,
+  timeoutMs: 120_000,
+};
 
 // ── SttClient Facade ────────────────────────────────────────────────────────
 //
@@ -18,11 +26,14 @@ function createAdapter(cfg: SttProviderConfig): SttAdapter {
 export class SttClient {
   private adapters = new Map<string, SttAdapter>();
   private configs  = new Map<string, SttProviderConfig>();
+  private readonly limits: Readonly<SttLimits>;
 
   constructor(
     configs: SttProviderConfig[],
     adapterOverrides?: ReadonlyMap<string, SttAdapter>,
+    limits: Partial<SttLimits> = {},
   ) {
+    this.limits = validateLimits({ ...DEFAULT_LIMITS, ...limits });
     for (const config of configs) {
       this.configs.set(config.id, config);
       const override = adapterOverrides?.get(config.id);
@@ -87,18 +98,38 @@ export class SttClient {
 
   /** Transcribe audio. providerId + model are routing fields embedded in the request. */
   async transcribe(req: SttRequest): Promise<SttResponse> {
+    validateRequest(req, this.limits);
     const adapter = this.adapters.get(req.providerId);
     if (!adapter) {
-      throw new Error(`stt/not_configured: provider "${req.providerId}" not registered`);
+      throw new SttError(
+        'not_configured',
+        `stt/not_configured: provider "${req.providerId}" not registered`,
+      );
     }
+    const scope = createSttRequestScope(req.abortSignal, this.limits.timeoutMs);
     const call: SttAdapterCall = {
       audio:       req.audio,
       mime:        req.mime,
       model:       req.model,
       language:    req.language,
-      abortSignal: req.abortSignal,
+      abortSignal: scope.signal,
     };
-    return adapter.transcribe(call);
+    try {
+      const response = await adapter.transcribe(call);
+      if (scope.signal.aborted) throw scope.signal.reason;
+      return response;
+    } catch (error) {
+      if (isSttError(error)) throw error;
+      if (scope.signal.aborted && isSttError(scope.signal.reason)) {
+        throw scope.signal.reason;
+      }
+      throw new SttError('provider_failed', 'STT provider request failed', {
+        cause: error,
+        retryable: true,
+      });
+    } finally {
+      scope.dispose();
+    }
   }
 
   /** Hot-reload: add or replace a provider config. */
@@ -114,5 +145,30 @@ export class SttClient {
 
   firstProviderId(): string | undefined {
     return this.configs.keys().next().value;
+  }
+}
+
+function validateLimits(limits: SttLimits): Readonly<SttLimits> {
+  if (!Number.isSafeInteger(limits.maxAudioBytes) || limits.maxAudioBytes <= 0) {
+    throw new TypeError('STT maxAudioBytes must be a positive safe integer');
+  }
+  if (!Number.isSafeInteger(limits.timeoutMs) || limits.timeoutMs <= 0) {
+    throw new TypeError('STT timeoutMs must be a positive safe integer');
+  }
+  return Object.freeze(limits);
+}
+
+function validateRequest(req: SttRequest, limits: Readonly<SttLimits>): void {
+  if (!req.providerId.trim() || !req.model.trim() || !req.mime.trim()) {
+    throw new SttError('invalid_request', 'providerId, model and mime are required');
+  }
+  if (req.audio.byteLength === 0) {
+    throw new SttError('invalid_request', 'audio must not be empty');
+  }
+  if (req.audio.byteLength > limits.maxAudioBytes) {
+    throw new SttError(
+      'payload_too_large',
+      `audio payload is ${req.audio.byteLength} bytes; limit is ${limits.maxAudioBytes} bytes`,
+    );
   }
 }

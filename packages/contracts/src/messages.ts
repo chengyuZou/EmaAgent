@@ -140,8 +140,8 @@ export type MessageBlocks = string | AssistantBlock[] | UserBlock[] | NarrativeC
  * - MessageContentPart 是发给 LLM 的实际内容
  * - TurnAttachment 是 UI 渲染用的元数据（文件名、本地路径、大小）
  *
- * 存在 messages.attachments_json 列里，
- * 只出现在 role='user' 的消息上。
+ * 存在 turn_attachments 表里（per-turn，独立于 messages 表），
+ * UI 上渲染在 role='user' 的消息上。
  */
 export interface TurnAttachment {
   id:         string;   // 对应 MessageContentPart 的稳定 id（前端关联用）

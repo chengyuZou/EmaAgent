@@ -1,5 +1,5 @@
 import type { TtsAdapter, TtsProviderConfig, TtsProbeResult, TtsRequest, TtsStreamEvent, TtsErrorCode } from '../types.js';
-import { readFile } from 'node:fs/promises';
+import { readFile, stat } from 'node:fs/promises';
 import { basename } from 'node:path';
 
 // ── OpenAI-compatible /v1/audio/speech ──────────────────────────────────────
@@ -13,9 +13,13 @@ import { basename } from 'node:path';
 // CosyVoice2 models skip speed/gain parameters on the clone path.
 
 const CHUNK_BYTES = 8 * 1024;
+const MAX_REFERENCE_AUDIO_BYTES = 25 * 1024 * 1024;
 
 export class OpenAiTtsAdapter implements TtsAdapter {
   readonly protocol = 'openai-tts' as const;
+  capabilitiesFor(): { audioDelivery: 'http_chunks'; supportsAbort: true } {
+    return { audioDelivery: 'http_chunks', supportsAbort: true };
+  }
 
   constructor(private readonly config: TtsProviderConfig) {}
 
@@ -117,6 +121,10 @@ export class OpenAiTtsAdapter implements TtsAdapter {
     promptLang:   string,
     model:        string,
   ): Promise<string> {
+    const fileStat = await stat(refAudioPath);
+    if (fileStat.size > MAX_REFERENCE_AUDIO_BYTES) {
+      throw new Error(`Reference audio exceeds ${MAX_REFERENCE_AUDIO_BYTES} bytes`);
+    }
     const bytes = await readFile(refAudioPath);
     const blob  = new Blob([bytes], { type: mimeFromExt(refAudioPath) });
     const name  = basename(refAudioPath).replace(/\.[^.]+$/, '');
@@ -132,6 +140,7 @@ export class OpenAiTtsAdapter implements TtsAdapter {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${this.config.apiKey}` },
       body: form,
+      signal: AbortSignal.timeout(120_000),
     });
 
     if (!res.ok) {

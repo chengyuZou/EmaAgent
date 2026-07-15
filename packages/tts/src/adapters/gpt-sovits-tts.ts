@@ -25,6 +25,9 @@ const CHUNK_BYTES = 8 * 1024;
 
 export class GptSoVitsTtsAdapter implements TtsAdapter {
   readonly protocol = 'gpt-sovits-tts' as const;
+  capabilitiesFor(): { audioDelivery: 'http_chunks'; supportsAbort: true } {
+    return { audioDelivery: 'http_chunks', supportsAbort: true };
+  }
 
   constructor(private readonly config: TtsProviderConfig) {}
 

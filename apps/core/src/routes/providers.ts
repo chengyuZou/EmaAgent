@@ -312,23 +312,17 @@ export function providersRoute(bindings: AppBindings): Hono {
 
   const probeModelSchema = z.object({ model: z.string().optional() });
 
-  function requireProvider(c: Context, id: string) {
+  function requireProvider(c: Context, id: string): ProviderConfigRow | Response {
     const existing = bindings.providers.get(id);
-    if (!existing) {
-      c.json({ error: 'not_found' }, 404);
-      return null;
-    }
+    if (!existing) return c.json({ error: 'not_found' }, 404);
     return existing;
   }
 
   function requireCapability(c: Context, id: string, cap: Capability) {
     const existing = requireProvider(c, id);
-    if (!existing) return null;
+    if (existing instanceof Response) return existing;
     const capabilities: Capability[] = JSON.parse(existing.capabilities_json);
-    if (!capabilities.includes(cap)) {
-      c.json({ error: 'capability_not_supported', capability: cap }, 422);
-      return null;
-    }
+    if (!capabilities.includes(cap)) return c.json({ error: 'capability_not_supported', capability: cap }, 422);
     return { existing, def: getProviderDefinition(existing.definition_id) };
   }
 
@@ -344,7 +338,7 @@ export function providersRoute(bindings: AppBindings): Hono {
     const parsed = probeModelSchema.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) return c.json({ error: 'invalid_request', details: parsed.error.flatten() }, 400);
     const ctx = requireCapability(c, id, 'llm');
-    if (!ctx) return c.body(null);
+    if (ctx instanceof Response) return ctx;
     const enabledLlm    = bindings.providerLlmModels.listByProvider(id);
     const catalogLlmIds = ctx.def?.modelsDevId
       ? bindings.modelCatalog.listLlmModelIds(ctx.def.modelsDevId)
@@ -361,7 +355,7 @@ export function providersRoute(bindings: AppBindings): Hono {
     const parsed = probeModelSchema.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) return c.json({ error: 'invalid_request', details: parsed.error.flatten() }, 400);
     const ctx = requireCapability(c, id, 'vision');
-    if (!ctx) return c.body(null);
+    if (ctx instanceof Response) return ctx;
     const model = parsed.data.model ?? ctx.def?.defaultModels?.vision?.[0] ?? '';
     const result = await bindings.vision.probe(id, model || undefined);
     recordProbe(id, result);
@@ -373,7 +367,7 @@ export function providersRoute(bindings: AppBindings): Hono {
     const parsed = probeModelSchema.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) return c.json({ error: 'invalid_request', details: parsed.error.flatten() }, 400);
     const ctx = requireCapability(c, id, 'embed');
-    if (!ctx) return c.body(null);
+    if (ctx instanceof Response) return ctx;
     const enabledEmbed = bindings.providerEmbedModels.listByProvider(id);
     const model = parsed.data.model ?? enabledEmbed[0]?.model ?? ctx.def?.defaultModels?.embed?.[0];
     if (!model) return c.json({ ok: false, model: '', latencyMs: null, error: '没有可探测的模型，请先在下方「模型」启用一个' });
@@ -387,7 +381,7 @@ export function providersRoute(bindings: AppBindings): Hono {
     const parsed = probeModelSchema.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) return c.json({ error: 'invalid_request', details: parsed.error.flatten() }, 400);
     const ctx = requireCapability(c, id, 'rerank');
-    if (!ctx) return c.body(null);
+    if (ctx instanceof Response) return ctx;
     const enabledRerank = bindings.providerRerankModels.listByProvider(id);
     const model = parsed.data.model ?? enabledRerank[0]?.model ?? ctx.def?.defaultModels?.rerank?.[0] ?? '';
     if (!model) return c.json({ ok: false, model: '', latencyMs: null, error: '没有可探测的模型，请先在下方「模型」启用一个' });
@@ -398,7 +392,8 @@ export function providersRoute(bindings: AppBindings): Hono {
 
   app.post('/:id/probe/tts', async (c) => {
     const id = c.req.param('id');
-    if (!requireCapability(c, id, 'tts')) return c.body(null);
+    const ctx = requireCapability(c, id, 'tts');
+    if (ctx instanceof Response) return ctx;
     const result = await bindings.tts.probe(id);
     recordProbe(id, result);
     return c.json({ ok: result.ok, model: '', latencyMs: result.latencyMs ?? null, error: result.error });
@@ -406,7 +401,8 @@ export function providersRoute(bindings: AppBindings): Hono {
 
   app.post('/:id/probe/stt', async (c) => {
     const id = c.req.param('id');
-    if (!requireCapability(c, id, 'stt')) return c.body(null);
+    const ctx = requireCapability(c, id, 'stt');
+    if (ctx instanceof Response) return ctx;
     const result = await bindings.stt.probe(id);
     recordProbe(id, { ok: result.ok, latencyMs: result.latencyMs, error: result.error });
     return c.json({ ok: result.ok, model: '', latencyMs: result.latencyMs ?? null, error: result.error });

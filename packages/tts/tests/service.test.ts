@@ -21,6 +21,7 @@ function mockAdapter(chunks: TtsStreamEvent[] = []): TtsAdapter & { calls: TtsRe
   const calls: TtsRequest[] = [];
   return {
     protocol: 'openai-tts' as const,
+    capabilitiesFor: () => ({ audioDelivery: 'http_chunks', supportsAbort: true }),
     calls,
     stream: async function* (req: TtsRequest): AsyncIterable<TtsStreamEvent> {
       calls.push(req);
@@ -142,5 +143,56 @@ describe('TtsClient (dumb dispatcher)', () => {
     client.removeConfig('p1');
 
     expect(client.firstProviderId()).toBe('p2');
+  });
+});
+
+describe('TtsClient 资源边界', () => {
+  it('超过句级音频预算时终止流且只发一个终态错误', async () => {
+    const ad = mockAdapter([
+      { type: 'audio_chunk', bytes: new Uint8Array([1, 2]), mime: 'audio/mpeg' },
+      { type: 'audio_chunk', bytes: new Uint8Array([3, 4]), mime: 'audio/mpeg' },
+      { type: 'done', totalBytes: 4, firstByteMs: 1 },
+    ]);
+    const client = new TtsClient(
+      [mockConfig('p1')],
+      new Map([['p1', ad]]),
+      { maxBytesPerSentence: 3 },
+    );
+
+    const events = await collect(client, 'p1', 'hello');
+    expect(events.map((event) => event.type)).toEqual(['audio_chunk', 'error']);
+    expect(events[1]).toMatchObject({ code: 'resource_exhausted' });
+  });
+
+  it('适配器不返回时由句级 deadline 结束', async () => {
+    const adapter: TtsAdapter = {
+      protocol: 'openai-tts',
+      capabilitiesFor: () => ({ audioDelivery: 'http_chunks', supportsAbort: true }),
+      stream: async function* () {
+        await new Promise(() => undefined);
+      },
+    };
+    const client = new TtsClient(
+      [mockConfig('p1')],
+      new Map([['p1', adapter]]),
+      { timeoutMsPerSentence: 10 },
+    );
+
+    const events = await collect(client, 'p1', 'hello');
+    expect(events).toEqual([expect.objectContaining({
+      type: 'error',
+      code: 'transient_timeout',
+    })]);
+  });
+
+  it('适配器静默结束时补发 invalid_stream 终态', async () => {
+    const ad = mockAdapter([]);
+    const client = new TtsClient([mockConfig('p1')], new Map([['p1', ad]]));
+
+    const events = await collect(client, 'p1', 'hello');
+    expect(events).toEqual([expect.objectContaining({
+      type: 'error',
+      code: 'invalid_stream',
+    })]);
   });
 });

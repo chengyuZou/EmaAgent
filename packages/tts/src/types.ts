@@ -40,7 +40,23 @@ export type TtsErrorCode =
   | 'transient_network'
   | 'transient_timeout'
   | 'transient_server'
+  | 'aborted'
+  | 'resource_exhausted'
+  | 'invalid_stream'
   | 'unknown';
+
+/** 描述适配器当前真实交付方式，不根据模型名称猜测供应商能力。 */
+export type TtsAudioDelivery = 'buffered' | 'http_chunks' | 'websocket_frames';
+
+export interface TtsAdapterCapabilities {
+  audioDelivery: TtsAudioDelivery;
+  supportsAbort: boolean;
+}
+
+export interface TtsLimits {
+  timeoutMsPerSentence: number;
+  maxBytesPerSentence: number;
+}
 
 /** Wire events emitted by adapters. */
 export type TtsStreamEvent =
@@ -112,6 +128,9 @@ export interface TtsProbeResult {
 
 export interface TtsAdapter {
   readonly protocol: TtsProtocol;
+
+  /** 同一协议可按实现分支采用不同交付方式，例如 DashScope 的 Qwen/CosyVoice。 */
+  capabilitiesFor(req: Pick<TtsRequest, 'model'>): TtsAdapterCapabilities;
 
   /**
    * Stream audio for a single text segment.

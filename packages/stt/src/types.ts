@@ -20,6 +20,12 @@ export interface SttRequest {
   abortSignal?: AbortSignal;
 }
 
+/** Facade 级硬限制。V1 不做 STT 流式能力探测。 */
+export interface SttLimits {
+  maxAudioBytes: number;
+  timeoutMs: number;
+}
+
 // ── STT response ──────────────────────────────────────────────────────────────
 
 export interface SttResponse {

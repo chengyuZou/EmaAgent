@@ -1,4 +1,5 @@
 import type { SttAdapter, SttAdapterCall, SttProviderConfig, SttProbeResult, SttResponse } from '../types.js';
+import { SttError } from '../errors.js';
 
 // ── OpenAI-compatible /v1/audio/transcriptions (Whisper) ────────────────────
 //
@@ -59,13 +60,21 @@ export class OpenAiSttAdapter implements SttAdapter {
 
     if (!response.ok) {
       const text = await safeReadText(response);
-      throw new Error(`stt/${response.status}: ${text.slice(0, 200)}`);
+      throw new SttError(
+        'provider_failed',
+        `STT provider returned HTTP ${response.status}: ${text.slice(0, 200)}`,
+        { status: response.status, retryable: response.status === 429 || response.status >= 500 },
+      );
     }
 
     const body = await response.json() as {
       text: string;
       segments?: Array<{ start: number; end: number; text: string }>;
     };
+
+    if (typeof body.text !== 'string') {
+      throw new SttError('invalid_response', 'STT provider response is missing text');
+    }
 
     return {
       text:     body.text,
@@ -81,10 +90,15 @@ export class OpenAiSttAdapter implements SttAdapter {
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
 function toArrayBuffer(u8: Uint8Array): ArrayBuffer {
-  // Detach from any SharedArrayBuffer / offset to keep Blob constructor happy
-  const ab = new ArrayBuffer(u8.byteLength);
-  new Uint8Array(ab).set(u8);
-  return ab;
+  // 完整 ArrayBuffer 可直接交给 Blob；仅偏移视图或 SharedArrayBuffer 才复制。
+  if (
+    u8.buffer instanceof ArrayBuffer
+    && u8.byteOffset === 0
+    && u8.byteLength === u8.buffer.byteLength
+  ) {
+    return u8.buffer;
+  }
+  return u8.slice().buffer;
 }
 
 function filenameFor(mime: string): string {
