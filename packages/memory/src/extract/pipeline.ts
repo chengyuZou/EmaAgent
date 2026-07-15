@@ -17,6 +17,12 @@ import { processEdges } from './route-edges.js';
 import { processItems } from './route-items.js';
 import { appendSessionNote, compactSessionNoteIfNeeded } from './session-note.js';
 import { consolidatePendingNodes } from './consolidate.js';
+import {
+  applyIndexMutations,
+  type PendingIndexMutation,
+} from './index-mutations.js';
+import type { EmbeddedText } from '../types.js';
+import type { MemoryExtractionRunRow } from '@ema-agent/storage';
 
 // ── Pipeline ─────────────────────────────────────────────────────────────────
 
@@ -52,6 +58,8 @@ export async function runExtractionPipeline(
   args: {
     sessionId:           SessionId;
     mode:                TurnMode;
+    /** memory_tasks.id；同一任务重试时保持不变，用作跨数据库恢复键。 */
+    runId:               string;
     signal?:             AbortSignal;
     /** Skip the LLM-driven consolidation pass — used when overrides.consolidation = false. */
     skipConsolidation?:  boolean;
@@ -67,8 +75,14 @@ export async function runExtractionPipeline(
 
   const fragments = readPending(deps.memory.pendingFragments, args.sessionId);
   const hasPending = fragments.length > 0;
+  const recoveredRun = deps.memory.extractionRuns.findById(args.runId);
 
   if (!hasPending) {
+    // data.db 已提交但进程尚未来得及删除 profile.db 标记时，重试负责收尾。
+    if (recoveredRun) {
+      validateRecoveryRun(recoveredRun, args.sessionId);
+      deps.memory.extractionRuns.delete(args.runId);
+    }
     // Pending was already cleared by a prior run that failed AFTER clearPending.
     // Still check for unconsolidated lazy_updates and finish the work.
     if (!args.skipConsolidation) {
@@ -81,78 +95,110 @@ export async function runExtractionPipeline(
     return stats;
   }
 
-  // ── 1. Build prompt + run LLM ─────────────────────────────────────────────
-  const existingNodes = deps.memory.nodes.listAll(500);
-  const existingLabels = existingNodes.map(n => `${n.label} [${n.node_type}]`);
-
-  const prompt = buildExtractionPrompt({
-    mode: args.mode,
-    fragments,
-    existingNodeLabels: existingLabels,
-  });
-
-  const output = await runExtraction(
-    deps.memory.llm,
-    deps.memory.modelBindings,
-    prompt,
-    args.signal,
-  );
-  if (!output) {
-    // No memory model configured — clear buffer to avoid permanent build-up.
-    clearPending(deps.memory.pendingFragments, args.sessionId, Date.now());
-    return stats;
-  }
-
-  // ── 2. Pre-batch ALL external I/O (embed) ────────────────────────────────
-  // All async/fallible calls happen here, BEFORE any DB write.
-  // If embedding times out, no DB state has changed → safe to retry from scratch.
-  const [nodeResult, itemResult] = await Promise.allSettled([
-    output.new_nodes.length > 0
-      ? deps.embed.embedMany(output.new_nodes.map(n => `${n.label}: ${n.description}`))
-      : Promise.resolve(null),
-    output.memory_items.length > 0
-      ? deps.embed.embedMany(output.memory_items.map(i => `${i.title}: ${i.body}`))
-      : Promise.resolve(null),
-  ]);
-
-  // 任一失败就整体抛出，不做部分写入
-  if (nodeResult.status === 'rejected') throw nodeResult.reason;
-  if (itemResult.status === 'rejected') throw itemResult.reason;
-
-  const nodeEmbeddings = nodeResult.value;
-  const itemEmbeddings = itemResult.value;
-
   // Derive a per-extraction turnId from the first fragment so items can be
   // deduped by (session, title, turn) rather than (session, title) alone.
-  const extractionTurnId = fragments[0]?.turnId;
+  const extractionTurnId = fragments[0]!.turnId;
+  let noteDelta: string;
 
-  // ── 3. Route outputs (pure DB writes, no async) ───────────────────────────
+  if (recoveredRun) {
+    validateRecoveryRun(recoveredRun, args.sessionId, extractionTurnId);
+    restoreStats(stats, recoveredRun);
+    noteDelta = recoveredRun.note_delta;
+  } else {
+    // ── 1. Build prompt + run LLM ───────────────────────────────────────────
+    const existingNodes = deps.memory.nodes.listAll(500);
+    const existingLabels = existingNodes.map(n => `${n.label} [${n.node_type}]`);
+    const prompt = buildExtractionPrompt({
+      mode: args.mode,
+      fragments,
+      existingNodeLabels: existingLabels,
+    });
 
-  // Track labels of nodes that exist (existing + newly created) so edges can
-  // resolve their endpoints. Keyed by label string.
-  const labelToNodeId = new Map<string, string>();
-  for (const n of existingNodes) labelToNodeId.set(n.label, n.id);
+    const output = await runExtraction(
+      deps.memory.llm,
+      deps.memory.modelBindings,
+      prompt,
+      args.signal,
+    );
+    if (!output) {
+      // 未配置 memory model 时仍在 data.db 内原子清空，避免 buffer 永久堆积。
+      deps.memory.runDataTransaction(() => {
+        clearPending(deps.memory.pendingFragments, args.sessionId, Date.now());
+      });
+      return stats;
+    }
 
-  // Process new_nodes — dedup, route to either lazy_updates or insert
-  processNodes(deps, args.sessionId, output, fragments, stats, labelToNodeId, nodeEmbeddings);
+    // ── 2. 事务前完成全部外部 I/O 与结果验证 ───────────────────────────────
+    const [nodeResult, itemResult] = await Promise.allSettled([
+      output.new_nodes.length > 0
+        ? deps.embed.embedMany(output.new_nodes.map(n => `${n.label}: ${n.description}`))
+        : Promise.resolve(null),
+      output.memory_items.length > 0
+        ? deps.embed.embedMany(output.memory_items.map(i => `${i.title}: ${i.body}`))
+        : Promise.resolve(null),
+    ]);
+    if (nodeResult.status === 'rejected') throw nodeResult.reason;
+    if (itemResult.status === 'rejected') throw itemResult.reason;
 
-  // Process new_edges using the now-fresh labelToNodeId map
-  processEdges(deps, output, stats, labelToNodeId);
+    const nodeEmbeddings = nodeResult.value;
+    const itemEmbeddings = itemResult.value;
+    validatePreparedExtraction(output, nodeEmbeddings, itemEmbeddings);
 
-  // Process memory_items — upsert with turn-scoped idempotency
-  processItems(deps, args.sessionId, args.mode, output, stats, itemEmbeddings, extractionTurnId);
+    const labelToNodeId = new Map<string, string>();
+    for (const node of existingNodes) labelToNodeId.set(node.label, node.id);
+    const indexMutations: PendingIndexMutation[] = [];
 
-  // Process session_note_delta — append to session_notes.body
-  if (output.session_note_delta.trim()) {
-    appendSessionNote(deps, args.sessionId, output.session_note_delta, extractionTurnId!);
+    // ── 3. profile.db：业务表与恢复标记一次提交 ─────────────────────────────
+    deps.memory.runProfileTransaction(() => {
+      processNodes(
+        deps,
+        args.sessionId,
+        output,
+        fragments,
+        stats,
+        labelToNodeId,
+        nodeEmbeddings,
+        indexMutations,
+      );
+      processEdges(deps, output, stats, labelToNodeId);
+      processItems(
+        deps,
+        args.sessionId,
+        args.mode,
+        output,
+        stats,
+        itemEmbeddings,
+        extractionTurnId,
+        indexMutations,
+      );
+      deps.memory.extractionRuns.insert({
+        runId:            args.runId,
+        sessionId:        args.sessionId,
+        sourceTurnId:     extractionTurnId,
+        noteDelta:        output.session_note_delta,
+        nodesCount:       stats.extractedNodes,
+        edgesCount:       stats.extractedEdges,
+        itemsCount:       stats.extractedItems,
+        lazyUpdatesCount: stats.lazyUpdatesQueued,
+        committedAt:      Date.now(),
+      });
+    });
+
+    // 索引是派生缓存：只能在 SQLite 成功提交后更新。
+    applyIndexMutations(indexMutations);
+    noteDelta = output.session_note_delta;
   }
 
-  // ── 3. Clear pending fragments ───────────────────────────────────────────
-  // Moved BEFORE consolidation: if consolidation fails, pending is already
-  // cleared so a retry won't re-append the same session_note_delta or
-  // re-insert duplicate nodes/items. Consolidation failure is non-fatal —
-  // lazy_updates stay buffered and drain on the next extraction run.
-  clearPending(deps.memory.pendingFragments, args.sessionId, Date.now());
+  // ── 4. data.db：note 与 pending 消费一次提交 ──────────────────────────────
+  deps.memory.runDataTransaction(() => {
+    if (noteDelta.trim()) {
+      appendSessionNote(deps, args.sessionId, noteDelta, extractionTurnId);
+    }
+    clearPending(deps.memory.pendingFragments, args.sessionId, Date.now());
+  });
+
+  // data.db 已持久化；删除恢复标记。若此处失败，重试在无 pending 分支清理。
+  deps.memory.extractionRuns.delete(args.runId);
 
   // ── 4. Compact L1 note if it has grown over budget ────────────────────────
   // Non-fatal — note stays verbose, next run may compact. Logged for visibility.
@@ -186,3 +232,44 @@ export async function runExtractionPipeline(
 
 // Surface the type for orchestrators wanting to type the result
 export type { MemoryNodeRow, MemoryNodeType };
+
+function validatePreparedExtraction(
+  output: ExtractionOutput,
+  nodeEmbeddings: EmbeddedText[] | null,
+  itemEmbeddings: EmbeddedText[] | null,
+): void {
+  if (nodeEmbeddings && nodeEmbeddings.length !== output.new_nodes.length) {
+    throw new Error(
+      `memory.extract: node embedding count mismatch (${nodeEmbeddings.length}/${output.new_nodes.length})`,
+    );
+  }
+  if (itemEmbeddings && itemEmbeddings.length !== output.memory_items.length) {
+    throw new Error(
+      `memory.extract: item embedding count mismatch (${itemEmbeddings.length}/${output.memory_items.length})`,
+    );
+  }
+}
+
+function validateRecoveryRun(
+  run: MemoryExtractionRunRow,
+  sessionId: SessionId,
+  sourceTurnId?: string,
+): void {
+  if (run.session_id !== sessionId) {
+    throw new Error(
+      `memory.extract: recovery run ${run.run_id} belongs to another session`,
+    );
+  }
+  if (sourceTurnId !== undefined && run.source_turn_id !== sourceTurnId) {
+    throw new Error(
+      `memory.extract: recovery run ${run.run_id} source turn mismatch`,
+    );
+  }
+}
+
+function restoreStats(stats: PipelineResult, run: MemoryExtractionRunRow): void {
+  stats.extractedNodes    = run.nodes_count;
+  stats.extractedEdges    = run.edges_count;
+  stats.extractedItems    = run.items_count;
+  stats.lazyUpdatesQueued = run.lazy_updates_count;
+}

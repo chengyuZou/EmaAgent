@@ -3,7 +3,7 @@ import { buildTool } from '@ema-agent/tools';
 import type { ToolExecutionContext } from '@ema-agent/tools';
 import type { KbSearchResult } from '@ema-agent/contracts';
 
-// ── Input schema ──────────────────────────────────────────────────────────────
+// ── 输入 schema ──────────────────────────────────────────────────────────────
 
 const inputSchema = z.object({
   query: z.string().min(1).describe('Natural-language search query for the knowledge base.'),
@@ -26,17 +26,17 @@ const inputSchema = z.object({
 
 type KbSearchInput = z.infer<typeof inputSchema>;
 
-// ── Output type ───────────────────────────────────────────────────────────────
+// ── 输出类型 ───────────────────────────────────────────────────────────────────
 
 export type { KbSearchResult };
 
-// ── Tool definition ───────────────────────────────────────────────────────────
+// ── 工具定义 ───────────────────────────────────────────────────────────────────
 
 export const kbSearchTool = buildTool<KbSearchInput, KbSearchResult>({
   name: 'kb_search',
   description: `Search the user's knowledge-base documents and return the most relevant passages with source attribution (file name, page, section).
 
-Use this whenever the user's request might be answered by documents they have provided. The search is scoped to the documents the user selected for this turn — you only supply the query. Each returned hit includes a citation source so you can tell the user where the answer came from.
+Use this whenever the user's request might be answered by documents they have provided. The search is scoped to the documents the user selected for this turn - you only supply the query. Each returned hit includes a citation source so you can tell the user where the answer came from.
 
 If the user has multiple knowledge bases, you may specify kb_ids to target one or more of them explicitly; omit kb_ids to search the KB selected for this turn.`,
 

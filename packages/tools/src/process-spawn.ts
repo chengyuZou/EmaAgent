@@ -1,23 +1,23 @@
 import { spawn } from 'node:child_process';
 import type { RunResult } from './types.js';
 
-// ── Constants ─────────────────────────────────────────────────────────────────
+// ── 常量 ─────────────────────────────────────────────────────────────────────
 
 const MAX_OUTPUT_CHARS = 200_000;
 
-// ── Canonical process spawner ─────────────────────────────────────────────────
+// ── 规范进程 spawner ──────────────────────────────────────────────────────────
 
 /**
- * Spawn `executable args` and collect stdout/stderr with timeout + abort support.
+ * spawn `executable args` 并收集 stdout/stderr,支持超时 + 中止。
  *
- * Single source of truth shared by bash.ts (runShell) and sandbox/manager.ts —
- * eliminates the ~70-line duplication between the two packages.
+ * bash.ts(runShell)和 sandbox/manager.ts 共用的单一事实源 -
+ * 消除两包间约 70 行重复。
  *
- * @param executable  Absolute or PATH-resolvable executable (e.g. '/bin/bash', 'powershell.exe').
- * @param args        Arguments to pass to the executable.
- * @param cwd         Working directory for the child process.
- * @param timeoutMs   Hard kill timeout in milliseconds.
- * @param signal      Optional AbortSignal wired to turn cancellation.
+ * @param executable  绝对路径或 PATH 可解析的可执行文件(如 '/bin/bash'、'powershell.exe')。
+ * @param args        传给可执行文件的参数。
+ * @param cwd         子进程工作目录。
+ * @param timeoutMs   硬杀超时(毫秒)。
+ * @param signal      可选 AbortSignal,接 turn 取消。
  */
 export function spawnProcess(
   executable: string,
@@ -69,7 +69,7 @@ export function spawnProcess(
       const truncated  = totalChars > MAX_OUTPUT_CHARS;
       if (truncated) {
         const keep   = MAX_OUTPUT_CHARS / 2;
-        const notice = `\n[Output truncated: ${totalChars.toLocaleString()} chars → ${MAX_OUTPUT_CHARS.toLocaleString()} chars shown. Refine your command to see specific content.]`;
+        const notice = `\n[Output truncated: ${totalChars.toLocaleString()} chars -> ${MAX_OUTPUT_CHARS.toLocaleString()} chars shown. Refine your command to see specific content.]`;
         stdout = stdout.slice(0, keep) + (stdout.length > keep ? notice : '');
         stderr = stderr.slice(0, keep) + (stderr.length > keep ? notice : '');
       }

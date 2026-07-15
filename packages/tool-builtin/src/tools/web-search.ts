@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { buildTool } from '@ema-agent/tools';
 import type { ToolExecutionContext } from '@ema-agent/tools';
 
-// ── Input schema ──────────────────────────────────────────────────────────────
+// ── 输入 schema ──────────────────────────────────────────────────────────────
 
 const inputSchema = z.object({
   query: z.string().min(1).describe('Search query.'),
@@ -17,7 +17,7 @@ const inputSchema = z.object({
 
 type WebSearchInput = z.infer<typeof inputSchema>;
 
-// ── Output type ───────────────────────────────────────────────────────────────
+// ── 输出类型 ───────────────────────────────────────────────────────────────────
 
 export interface SearchResult {
   title: string;
@@ -30,7 +30,7 @@ export interface WebSearchResult {
   results: SearchResult[];
 }
 
-// ── Tool definition ───────────────────────────────────────────────────────────
+// ── 工具定义 ───────────────────────────────────────────────────────────────────
 
 export const webSearchTool = buildTool<WebSearchInput, WebSearchResult>({
   name: 'web_search',
@@ -57,7 +57,7 @@ Adapter priority (uses the first configured one):
   },
 });
 
-// ── Adapters ──────────────────────────────────────────────────────────────────
+// ── adapter ───────────────────────────────────────────────────────────────────
 
 async function search(
   query: string,
@@ -122,7 +122,7 @@ async function duckduckgoSearch(
   _count: number,
   signal: AbortSignal,
 ): Promise<SearchResult[]> {
-  // DuckDuckGo HTML endpoint — basic scraping, no official API
+  // DuckDuckGo HTML 端点 - 基础爬取,无官方 API
   const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
   const res = await fetch(url, {
     headers: { 'User-Agent': 'Mozilla/5.0 (compatible; EmaAgent/1.0)' },

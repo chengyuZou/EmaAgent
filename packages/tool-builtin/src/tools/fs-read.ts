@@ -4,11 +4,10 @@ import { z } from 'zod';
 import { buildTool } from '@ema-agent/tools';
 import type { ToolExecutionContext } from '@ema-agent/tools';
 
-// ── Constants ─────────────────────────────────────────────────────────────────
+// ── 常量 ─────────────────────────────────────────────────────────────────────
 
 /**
- * Device paths that would block the process indefinitely or produce infinite
- * output. Read is refused for any path that starts with one of these.
+ * 会无限阻塞进程或产生无限输出的设备路径。以这些开头的路径拒绝读取。
  */
 const BLOCKED_DEVICE_PATHS = new Set([
   '/dev/zero',
@@ -29,9 +28,9 @@ const BINARY_EXTENSIONS = new Set([
   '.a', '.pdb', '.class', '.pyc', '.pyo', '.wasm', '.node',
 ]);
 
-const TEXT_SIZE_LIMIT = 10 * 1024 * 1024; // 10 MiB — refuse reads beyond this
+const TEXT_SIZE_LIMIT = 10 * 1024 * 1024; // 10 MiB - 超此拒绝读取
 
-// ── Input schema ──────────────────────────────────────────────────────────────
+// ── 输入 schema ──────────────────────────────────────────────────────────────
 
 const inputSchema = z.object({
   file_path: z.string().min(1).describe('Absolute path to the file to read.'),
@@ -51,19 +50,19 @@ const inputSchema = z.object({
 
 type FsReadInput = z.infer<typeof inputSchema>;
 
-// ── Output type ───────────────────────────────────────────────────────────────
+// ── 输出类型 ───────────────────────────────────────────────────────────────────
 
 export interface FsReadResult {
   type: 'file_content' | 'file_unchanged';
   filePath: string;
-  /** Present when type === 'file_content'. cat -n formatted. */
+  /** type === 'file_content' 时存在。cat -n 格式。 */
   content?: string;
   totalLines?: number;
-  /** True when offset/limit were applied. */
+  /** 应用了 offset/limit 时为 true。 */
   isPartialView?: boolean;
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// ── 辅助函数 ───────────────────────────────────────────────────────────────────
 
 function isBlockedDevice(p: string): boolean {
   const normalized = path.normalize(p);
@@ -77,12 +76,12 @@ function isBinaryExtension(p: string): boolean {
   return BINARY_EXTENSIONS.has(path.extname(p).toLowerCase());
 }
 
-/** Windows UNC paths (\\server\share) — skip to prevent SMB credential leaks. */
+/** Windows UNC 路径(\\server\share)- 跳过以防 SMB 凭证泄露。 */
 function isUncPath(p: string): boolean {
   return p.startsWith('\\\\');
 }
 
-/** Format content as cat -n output (1-based line numbers). */
+/** 把内容格式化为 cat -n 输出(1 起行号)。 */
 function formatWithLineNumbers(lines: string[], startLine: number): string {
   return lines
     .map((line, i) => `${String(startLine + i).padStart(6)}\t${line}`)
@@ -93,7 +92,7 @@ function getMtimeMs(filePath: string): number {
   return fs.statSync(filePath).mtimeMs;
 }
 
-// ── Tool definition ───────────────────────────────────────────────────────────
+// ── 工具定义 ───────────────────────────────────────────────────────────────────
 
 export const fsReadTool = buildTool<FsReadInput, FsReadResult>({
   name: 'fs_read',
@@ -121,7 +120,7 @@ export const fsReadTool = buildTool<FsReadInput, FsReadResult>({
     const { file_path, offset, limit } = input;
     const fullPath = path.resolve(file_path);
 
-    // ── Pre-I/O validation ────────────────────────────────────────────────────
+    // ── I/O 前校验 ────────────────────────────────────────────────────────────
     if (isUncPath(fullPath)) {
       throw new Error(`UNC paths are not supported: ${fullPath}`);
     }
@@ -135,7 +134,7 @@ export const fsReadTool = buildTool<FsReadInput, FsReadResult>({
       );
     }
 
-    // ── Stat + existence check ────────────────────────────────────────────────
+    // ── Stat + 存在性检查 ────────────────────────────────────────────────────
     let stat: fs.Stats;
     try {
       stat = fs.statSync(fullPath);
@@ -159,7 +158,7 @@ export const fsReadTool = buildTool<FsReadInput, FsReadResult>({
 
     const mtimeMs = stat.mtimeMs;
 
-    // ── Dedup check ───────────────────────────────────────────────────────────
+    // ── 去重检查 ───────────────────────────────────────────────────────────────
     const existing = ctx.readFileState.get(fullPath);
     if (
       existing &&
@@ -171,7 +170,7 @@ export const fsReadTool = buildTool<FsReadInput, FsReadResult>({
       return { type: 'file_unchanged', filePath: file_path };
     }
 
-    // ── Read file ─────────────────────────────────────────────────────────────
+    // ── 读文件 ─────────────────────────────────────────────────────────────────
     const raw = fs.readFileSync(fullPath, 'utf8');
     const allLines = raw.split('\n');
     const totalLines = allLines.length;
@@ -181,7 +180,7 @@ export const fsReadTool = buildTool<FsReadInput, FsReadResult>({
     const slicedLines = allLines.slice(startLine - 1, endLine);
     const content = formatWithLineNumbers(slicedLines, startLine);
 
-    // ── Update dedup caches ───────────────────────────────────────────────────
+    // ── 更新去重缓存 ───────────────────────────────────────────────────────────
     ctx.readFileState.set(fullPath, {
       content: raw,
       timestamp: mtimeMs,
@@ -211,16 +210,16 @@ function findSimilarFile(filePath: string): string | undefined {
 
   try {
     const entries = fs.readdirSync(dir);
-    // Exact case-insensitive match
+    // 精确大小写不敏感匹配
     const ci = entries.find((e) => e.toLowerCase() === base.toLowerCase());
     if (ci) return path.join(dir, ci);
-    // Same stem, different extension
+    // 同词干,不同扩展名
     const diffExt = entries.find(
       (e) => path.basename(e, path.extname(e)).toLowerCase() === stem.toLowerCase(),
     );
     if (diffExt) return path.join(dir, diffExt);
   } catch {
-    // dir doesn't exist — no suggestion
+    // 目录不存在 - 无建议
   }
   return undefined;
 }

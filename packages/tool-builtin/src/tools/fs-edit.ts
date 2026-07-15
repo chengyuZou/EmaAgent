@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { buildTool } from '@ema-agent/tools';
 import type { ToolExecutionContext } from '@ema-agent/tools';
 
-// ── Input schema ──────────────────────────────────────────────────────────────
+// ── 输入 schema ──────────────────────────────────────────────────────────────
 
 const inputSchema = z.object({
   file_path: z
@@ -21,26 +21,25 @@ const inputSchema = z.object({
 
 type FsEditInput = z.infer<typeof inputSchema>;
 
-// ── Output type ───────────────────────────────────────────────────────────────
+// ── 输出类型 ───────────────────────────────────────────────────────────────────
 
 export interface FsEditResult {
   filePath: string;
   replacements: number;
 }
 
-// ── Quote normalization ───────────────────────────────────────────────────────
+// ── 引号归一化 ─────────────────────────────────────────────────────────────────
 
-/** Normalize typographic quotes to straight ASCII equivalents for matching. */
+/** 把排版引号归一化为直 ASCII 等价物以便匹配。 */
 function normalizeQuotes(s: string): string {
   return s
-    .replace(/[‘’‚‛′‵]/g, "'") // single curly → '
-    .replace(/[“”„‟″‶]/g, '"'); // double curly → "
+    .replace(/[‘’‚‛′‵]/g, "'") // 单弯引号 -> '
+    .replace(/[“”„‟″‶]/g, '"'); // 双弯引号 -> "
 }
 
 /**
- * Locate `search` in `fileContent`, trying exact match first then
- * quote-normalized fallback. Returns the actual substring from the file
- * so the replacement can use the file's own quote style.
+ * 在 `fileContent` 中定位 `search`,先精确匹配,再引号归一化兜底。
+ * 返回文件中的实际子串,以便替换用文件自己的引号风格。
  */
 function findActualString(fileContent: string, search: string): string | null {
   if (fileContent.includes(search)) return search;
@@ -57,7 +56,7 @@ function findActualString(fileContent: string, search: string): string | null {
   return null;
 }
 
-/** Count non-overlapping occurrences of `needle` in `haystack`. */
+/** 数 `haystack` 中 `needle` 的非重叠出现次数。 */
 function countOccurrences(haystack: string, needle: string): number {
   let count = 0;
   let pos = 0;
@@ -68,7 +67,7 @@ function countOccurrences(haystack: string, needle: string): number {
   return count;
 }
 
-// ── Tool definition ───────────────────────────────────────────────────────────
+// ── 工具定义 ───────────────────────────────────────────────────────────────────
 
 export const fsEditTool = buildTool<FsEditInput, FsEditResult>({
   name: 'fs_edit',
@@ -97,7 +96,7 @@ Rules:
     const { file_path, old_string, new_string, replace_all } = input;
     const fullPath = path.resolve(file_path);
 
-    // ── Must-read-first guard ─────────────────────────────────────────────────
+    // ── 必须先读守卫 ─────────────────────────────────────────────────────────
     const cached = ctx.readFileState.get(fullPath);
     if (!cached) {
       throw new Error(
@@ -111,8 +110,8 @@ Rules:
       );
     }
 
-    // ── mtime anti-overwrite ──────────────────────────────────────────────────
-    // Read the current file synchronously immediately before writing (atomic section).
+    // ── mtime 防覆盖 ──────────────────────────────────────────────────────────
+    // 写前立即同步读当前文件(原子段)。
     let currentContent: string;
     let currentMtime: number;
     try {
@@ -123,8 +122,8 @@ Rules:
       throw new Error(`File no longer exists: ${file_path}`);
     }
 
-    // On Windows, cloud sync / AV may bump mtime without changing content.
-    // Accept if mtime changed but content is identical to what was cached.
+    // Windows 上云同步/杀软可能不改内容却 bump mtime。
+    // mtime 变了但内容和缓存一致时接受。
     if (currentMtime !== cached.timestamp && currentContent !== cached.content) {
       throw new Error(
         `File "${file_path}" was modified externally since it was read. ` +
@@ -132,7 +131,7 @@ Rules:
       );
     }
 
-    // ── Find the target string ────────────────────────────────────────────────
+    // ── 查找目标字符串 ────────────────────────────────────────────────────────
     const actual = findActualString(currentContent, old_string);
     if (actual === null) {
       throw new Error(
@@ -150,7 +149,7 @@ Rules:
       );
     }
 
-    // ── Apply replacement (critical section — no await) ───────────────────────
+    // ── 应用替换(临界段 - 无 await)───────────────────────────────────────
     const newContent = replace_all
       ? currentContent.split(actual).join(new_string)
       : currentContent.replace(actual, new_string);
@@ -159,7 +158,7 @@ Rules:
 
     const newMtime = fs.statSync(fullPath).mtimeMs;
 
-    // Update caches with post-edit content
+    // 用编辑后内容更新缓存
     ctx.readFileState.set(fullPath, {
       content: newContent,
       timestamp: newMtime,

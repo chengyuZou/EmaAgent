@@ -5,7 +5,7 @@ import { buildTool } from '@ema-agent/tools';
 import type { ToolExecutionContext } from '@ema-agent/tools';
 import type { AskUserQuestionSpec, EmaStreamEvent, SessionId, TurnId } from '@ema-agent/contracts';
 
-// ── Input schema ──────────────────────────────────────────────────────────────
+// ── 输入 schema ──────────────────────────────────────────────────────────────
 
 const inputSchema = z.object({
   questions: z
@@ -40,13 +40,13 @@ const inputSchema = z.object({
 
 type AskUserInput = z.infer<typeof inputSchema>;
 
-// ── Output type ───────────────────────────────────────────────────────────────
+// ── 输出类型 ───────────────────────────────────────────────────────────────────
 
 export interface AskUserResult {
   answers: Record<string, string>;
 }
 
-// ── Tool definition ───────────────────────────────────────────────────────────
+// ── 工具定义 ───────────────────────────────────────────────────────────────────
 
 export const askUserTool = buildTool<AskUserInput, AskUserResult>({
   name: 'ask_user',
@@ -69,9 +69,8 @@ export const askUserTool = buildTool<AskUserInput, AskUserResult>({
     const { questions } = input;
 
     if (ctx.emit) {
-      // Desktop / SSE path — emit a structured event and wait for the answer
-      // to come back through a side-channel promise resolved by the orchestrator.
-      // The orchestrator injects an `askUser` resolver into ctx for this purpose.
+      // Desktop / SSE 路径 - emit 结构化事件,等答案经 side-channel promise
+      // 回来(由 orchestrator resolve)。orchestrator 为此向 ctx 注入 `askUser` resolver。
       if (ctx.askUser) {
         const askFn = ctx.askUser;
         const promptId = randomUUID();
@@ -88,23 +87,23 @@ export const askUserTool = buildTool<AskUserInput, AskUserResult>({
           ctx.emit({ type: 'ask_user_resolved', sessionId: ctx.sessionId as SessionId, promptId, answers: result.answers });
           return result;
         } catch (err: unknown) {
-          // Surface a resolved event so the frontend can clear the modal even on abort.
+          // 即使中止也 emit resolved 事件,让前端能清 modal。
           ctx.emit({ type: 'ask_user_resolved', sessionId: ctx.sessionId as SessionId, promptId, answers: {} });
           throw err;
         }
       }
     }
 
-    // CLI fallback — read answers from stdin line by line
+    // CLI 兜底 - 从 stdin 逐行读答案
     return cliAsk(questions, ctx.signal);
   },
 });
 
-// ── Types ─────────────────────────────────────────────────────────────────────
+// ── 类型 ─────────────────────────────────────────────────────────────────────
 
 type QuestionDef = AskUserInput['questions'][number];
 
-// ── CLI stdin path ────────────────────────────────────────────────────────────
+// ── CLI stdin 路径 ────────────────────────────────────────────────────────────
 
 async function cliAsk(questions: QuestionDef[], signal: AbortSignal): Promise<AskUserResult> {
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });

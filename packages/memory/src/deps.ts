@@ -8,6 +8,7 @@ import type {
   MemorySessionStateRepo,
   PendingFragmentsRepo,
   ModelBindingsRepo,
+  MemoryExtractionRunsRepo,
 } from '@ema-agent/storage';
 import type { SessionStore } from '@ema-agent/session';
 import type { LlmRouter } from '@ema-agent/llm';
@@ -36,6 +37,12 @@ export interface MemoryDeps {
   memoryTasks:   MemoryTasksRepo;
   memorySessionState: MemorySessionStateRepo;
   pendingFragments:  PendingFragmentsRepo; // extraction input queue
+  extractionRuns:    MemoryExtractionRunsRepo;
+
+  /** profile.db 内的同步短事务；回调不得执行网络或其他异步 I/O。 */
+  runProfileTransaction: <T>(work: () => T) => T;
+  /** data.db 内的同步短事务；用于原子提交 session note 与 pending 清理。 */
+  runDataTransaction:    <T>(work: () => T) => T;
 
   /**
    * Returns the vector dimension for an exact Provider + embed model identity.

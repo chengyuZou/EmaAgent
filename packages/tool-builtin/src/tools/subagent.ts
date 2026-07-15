@@ -3,14 +3,14 @@ import { z } from 'zod';
 import { buildTool } from '@ema-agent/tools';
 import type { ToolExecutionContext, ISubagentSpawner } from '@ema-agent/tools';
 
-// ── Input schema ──────────────────────────────────────────────────────────────
+// ── 输入 schema ──────────────────────────────────────────────────────────────
 
 const inputSchema = z.object({
   prompt: z
     .string()
     .min(1)
     .describe(
-      'Self-contained task prompt for the sub-agent. Must include all context needed — ' +
+      'Self-contained task prompt for the sub-agent. Must include all context needed - ' +
         'the sub-agent has no memory of the parent agent\'s conversation.',
     ),
   model: z
@@ -27,15 +27,15 @@ const inputSchema = z.object({
     .enum(['subagent', 'fork'])
     .optional()
     .describe(
-      'Context strategy. "fork" (default) inherits the parent conversation history — use when ' +
-        'the sub-agent needs prior context. "subagent" starts fresh with only the task prompt — ' +
+      'Context strategy. "fork" (default) inherits the parent conversation history - use when ' +
+        'the sub-agent needs prior context. "subagent" starts fresh with only the task prompt - ' +
         'use for independent parallel workers to save tokens and avoid context bleed.',
     ),
 });
 
 type SubagentInput = z.infer<typeof inputSchema>;
 
-// ── Output type ───────────────────────────────────────────────────────────────
+// ── 输出类型 ───────────────────────────────────────────────────────────────────
 
 // TODO 加一个时间算了? 此外改为status 里面放Token+时间
 export interface SubagentResult {
@@ -43,15 +43,15 @@ export interface SubagentResult {
   usage: { inputTokens: number; outputTokens: number };
 }
 
-// ── Tool definition ───────────────────────────────────────────────────────────
+// ── 工具定义 ───────────────────────────────────────────────────────────────────
 
 export const subagentTool = buildTool<SubagentInput, SubagentResult>({
   name: 'subagent',
   description: `Spawn a fresh sub-agent to handle a self-contained sub-task and return its final output.
 
 The sub-agent:
-- Has NO memory of the parent conversation — the \`prompt\` must be fully self-contained.
-- Runs its own think→act loop and reports back when done.
+- Has NO memory of the parent conversation - the \`prompt\` must be fully self-contained.
+- Runs its own think->act loop and reports back when done.
 - Is cancelled automatically if the parent turn is aborted.
 - Useful for parallelizable research, code review, or isolated refactors.`,
 
@@ -73,9 +73,9 @@ The sub-agent:
       );
     }
 
-    // Pre-allocate the ID so the spawner can emit subagent_started before blocking.
-    // All dashboard events (started/progress/stream/completed/failed/aborted) are
-    // emitted by the spawner — it has model, timing, and usage info the tool lacks.
+    // 预分配 ID,以便 spawner 在阻塞前 emit subagent_started。
+    // 所有 dashboard 事件(started/progress/stream/completed/failed/aborted)由
+    // spawner emit - 它有 model/timing/usage 信息,工具没有。
     const subagentId = randomUUID();
 
     return spawner.spawn(

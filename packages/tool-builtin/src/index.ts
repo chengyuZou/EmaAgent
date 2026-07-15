@@ -1,6 +1,6 @@
 import type { ToolRegistry, BuiltTool } from '@ema-agent/tools';
 
-// ── Individual tool exports ───────────────────────────────────────────────────
+// ── 单个工具导出 ──────────────────────────────────────────────────────────────
 
 export { fsReadTool } from './tools/fs-read.js';
 export type { FsReadResult } from './tools/fs-read.js';
@@ -45,9 +45,9 @@ export type { AskChoiceResult } from './tools/ask-choice.js';
 
 export { artifactWriteTool, artifactReadTool, artifactListTool } from './tools/artifact.js';
 
-// NOTE: the legacy generic `mcp_call` dispatcher was retired. MCP tools are
-// auto-expanded into the registry as `mcp__<server>__<tool>` (see
-// McpRegistry.registerMcp), so the model calls them directly — no套娃 dispatcher.
+// NOTE:旧的通用 `mcp_call` 分发器已退役。MCP 工具自动展开进注册表为
+// `mcp__<server>__<tool>`(见 McpRegistry.registerMcp),模型直接调用 -
+// 不需要套娃分发器。
 export type { IMcpClientBridge } from '@ema-agent/tools';
 
 export { skillCallTool } from './tools/skill-call.js';
@@ -64,7 +64,7 @@ export { subagentSpawnBgTool, subagentSendMessageTool, subagentAwaitTool } from 
 
 export { scratchpadWriteTool, scratchpadReadTool, scratchpadListTool, scratchpadDeleteTool, scratchpadClearAllTool } from './tools/scratchpad.js';
 
-// ── Registration ──────────────────────────────────────────────────────────────
+// ── 注册 ──────────────────────────────────────────────────────────────────────
 
 import { fsReadTool } from './tools/fs-read.js';
 import { fsWriteTool } from './tools/fs-write.js';
@@ -119,12 +119,12 @@ const ALL_BUILTIN_TOOLS: BuiltTool<any, any>[] = [
   scratchpadClearAllTool,
 ];
 
-/** Tools that require a physical OS-level sandbox to be safely exposed. */
+/** 需要物理 OS 级沙箱才能安全暴露的工具。 */
 const EXECUTE_TOOLS: ReadonlySet<string> = new Set(['bash', 'powershell']);
 
 /**
- * Tools gated on a runtime bridge being available.
- * Key = tool name, value = which RegisterOptions flag enables it.
+ * 受运行时桥可用性门禁的工具。
+ * key = 工具名,value = 哪个 RegisterOptions 标志启用它。
  */
 const BRIDGE_GATED: ReadonlyMap<string, keyof RegisterOptions> = new Map([
   ['skill_call',            'hasSkillBridge'],
@@ -136,24 +136,21 @@ const BRIDGE_GATED: ReadonlyMap<string, keyof RegisterOptions> = new Map([
 
 export interface RegisterOptions {
   /**
-   * When true, shell execution tools (bash, powershell) are omitted from the
-   * registry. Set this when `CommandRunner.backendName === 'app-layer'` —
-   * i.e. no physical sandbox is available. The tools can be re-enabled by
-   * setting AGEN_UNSAFE_SHELL=1 for development.
+   * true 时,shell 执行工具(bash、powershell)从注册表省略。
+   * `CommandRunner.backendName === 'app-layer'`(即无物理沙箱)时设此。
+   * 开发时可设 AGEN_UNSAFE_SHELL=1 重新启用。
    */
   disableExecuteTools?: boolean;
 
   /**
-   * Runtime bridge availability flags. Tools whose bridge is absent are
-   * omitted from the registry so the LLM never sees tools it cannot call.
-   * All default to false (tool hidden) — set to true only when the bridge
-   * is wired up in apps/core.
+   * 运行时桥可用性标志。桥缺失的工具从注册表省略,LLM 看不到它无法调用的工具。
+   * 全部默认 false(工具隐藏)- 仅在 apps/core 接好桥时设 true。
    *
-   * skill_call — SkillRunner bridge
-   * subagent   — subagent spawner bridge
+   * skill_call - SkillRunner 桥
+   * subagent   - subagent spawner 桥
    *
-   * hasMcpBridge is retained (apps/core still sets it) but no longer gates any
-   * tool: MCP tools are auto-expanded by McpRegistry, not exposed via mcp_call.
+   * hasMcpBridge 保留(apps/core 仍设它)但不再门禁任何工具:
+   * MCP 工具由 McpRegistry 自动展开,不经 mcp_call 暴露。
    */
   hasMcpBridge?:      boolean;
   hasSkillBridge?:    boolean;
@@ -161,19 +158,19 @@ export interface RegisterOptions {
 }
 
 /**
- * Register all builtin tools into a ToolRegistry.
+ * 把所有内置工具注册进 ToolRegistry。
  *
- * Called once at app startup by apps/core. Pass `disableExecuteTools: true`
- * when the active sandbox backend is `app-layer` (no OS-level isolation) to
- * prevent the LLM from invoking shell tools without a physical sandbox.
+ * apps/core 在应用启动时调一次。当前 sandbox 后端为 `app-layer`
+ * (无 OS 级隔离)时传 `disableExecuteTools: true`,防止 LLM 在无物理
+ * 沙箱时调 shell 工具。
  */
 export function registerBuiltinTools(registry: ToolRegistry, opts: RegisterOptions = {}): void {
   for (const tool of ALL_BUILTIN_TOOLS) {
-    // Skip execute-class tools when no physical sandbox is available.
+    // 无物理沙箱时跳过执行类工具。
     if (opts.disableExecuteTools && EXECUTE_TOOLS.has(tool.name)) continue;
 
-    // Skip bridge-gated tools when their runtime bridge is not wired up.
-    // This prevents the LLM from seeing tools it cannot actually use.
+    // 运行时桥未接时跳过桥门禁工具。
+    // 防止 LLM 看到它实际无法使用的工具。
     const bridgeFlag = BRIDGE_GATED.get(tool.name);
     if (bridgeFlag !== undefined && !opts[bridgeFlag]) continue;
 

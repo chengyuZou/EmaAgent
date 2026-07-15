@@ -50,6 +50,7 @@ export { SessionNotesRepo }      from './repos/session-notes.js';
 export { MemoryTasksRepo }   from './repos/memory-tasks.js';
 export { PendingFragmentsRepo }       from './repos/pending-fragments.js';
 export { MemorySessionStateRepo }     from './repos/memory-session-state.js';
+export { MemoryExtractionRunsRepo }   from './repos/memory-extraction-runs.js';
 
 export type { DatabaseOptions, SqliteDb } from './database.js';
 export type { SessionRow, SessionRowEnriched, SessionSearchRow, SessionInsert, SessionsGrouped } from './repos/sessions.js';
@@ -117,6 +118,10 @@ export type {
   PendingFragmentRow,
   PendingFragmentInsert,
 } from './repos/pending-fragments.js';
+export type {
+  MemoryExtractionRunRow,
+  MemoryExtractionRunInsert,
+} from './repos/memory-extraction-runs.js';
 
 // ── 各 Provider 模型池 ─────────────────────────────────────────────────────────
 export { ProviderLlmModelsRepo } from './repos/provider-llm-models.js';

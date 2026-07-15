@@ -8,7 +8,7 @@ import type { ToolExecutionContext } from '@ema-agent/tools';
 
 const execFileAsync = promisify(execFile);
 
-// ── Input schema ──────────────────────────────────────────────────────────────
+// ── 输入 schema ──────────────────────────────────────────────────────────────
 
 const inputSchema = z.object({
   pattern: z.string().min(1).describe(
@@ -23,26 +23,26 @@ const inputSchema = z.object({
 
 type GlobInput = z.infer<typeof inputSchema>;
 
-// ── Output type ───────────────────────────────────────────────────────────────
+// ── 输出类型 ───────────────────────────────────────────────────────────────────
 
 export interface GlobResult {
-  /** Matching file paths, sorted by mtime descending (most recently modified first). */
+  /** 匹配的文件路径,按 mtime 降序(最近修改的在前)。 */
   files: string[];
   truncated: boolean;
-  /** Present only when truncated=true. Human-readable notice for the model. */
+  /** 仅 truncated=true 时存在。给模型的人类可读提示。 */
   notice?: string;
 }
 
 const MAX_RESULTS = 1000;
 
-// ── Tool definition ───────────────────────────────────────────────────────────
+// ── 工具定义 ───────────────────────────────────────────────────────────────────
 
 export const globTool = buildTool<GlobInput, GlobResult>({
   name: 'glob',
   description: `Fast file pattern matching using ripgrep's --files mode.
 
 - Supports glob syntax: \`**/*.ts\`, \`src/**/*.{tsx,jsx}\`, etc.
-- Results are sorted by modification time (newest first) — up to ${MAX_RESULTS} files.
+- Results are sorted by modification time (newest first) - up to ${MAX_RESULTS} files.
 - Use \`path\` to restrict the search to a subdirectory.`,
 
   inputSchema,
@@ -52,10 +52,9 @@ export const globTool = buildTool<GlobInput, GlobResult>({
   permissionMeta: {
     riskLevel:   'low',
     accessType:  'read',
-    // When `path` is provided the search root is passed to PermissionEngine so
-    // it can enforce workspace boundary checks. When absent the tool defaults
-    // to ctx.workspaceRoot, which is always in-bounds, so we pass undefined and
-    // let the standard workspace-read fast-path apply.
+    // 提供 `path` 时,搜索根传给 PermissionEngine 以强制工作区边界检查。
+    // 缺失时工具默认 ctx.workspaceRoot(总在界内),故传 undefined,
+    // 让标准的 workspace-read 快速路径适用。
     extractPath: (input) => (input as { path?: string }).path,
   },
 
@@ -64,7 +63,7 @@ export const globTool = buildTool<GlobInput, GlobResult>({
       ? path.resolve(input.path)
       : (ctx.workspaceRoot || process.cwd());
 
-    // rg is preferred; Node glob is fallback.
+    // 优先 rg;Node glob 兜底。
     const allPaths: string[] = [];
     try {
       allPaths.push(...await rgGlob(input.pattern, searchDir, ctx.signal));
@@ -73,7 +72,7 @@ export const globTool = buildTool<GlobInput, GlobResult>({
     }
     const rawPaths = allPaths;
 
-    // Sort by mtime descending
+    // 按 mtime 降序排
     const withMtime = rawPaths.map((p) => {
       try {
         const { mtimeMs } = fs.statSync(p);
@@ -87,14 +86,14 @@ export const globTool = buildTool<GlobInput, GlobResult>({
     const truncated = withMtime.length > MAX_RESULTS;
     const files = withMtime.slice(0, MAX_RESULTS).map((x) => x.p);
     const notice = truncated
-      ? `[Output truncated: ${withMtime.length.toLocaleString()} matches → ${MAX_RESULTS} shown. Narrow your pattern or path to see more.]`
+      ? `[Output truncated: ${withMtime.length.toLocaleString()} matches -> ${MAX_RESULTS} shown. Narrow your pattern or path to see more.]`
       : undefined;
 
     return { files, truncated, notice };
   },
 });
 
-// ── Backends ──────────────────────────────────────────────────────────────────
+// ── 后端 ──────────────────────────────────────────────────────────────────────
 
 async function rgGlob(
   pattern: string,
@@ -114,7 +113,7 @@ async function nodeGlob(
   searchDir: string,
   signal: AbortSignal,
 ): Promise<string[]> {
-  // Dynamic import — glob is a common dep, we add it in package.json
+  // 动态 import - glob 是常用依赖,我们在 package.json 加了
   const { glob } = await import('glob');
   const results = await glob(pattern, {
     cwd: searchDir,

@@ -206,7 +206,12 @@ export class MemoryTaskRunner {
             itemsIndex: this.deps.getItemsIndex(),
             indexSpaceId: this.deps.getIndexSpaceId(),
           },
-          { sessionId: sid, mode: payload.mode!, skipConsolidation },
+          {
+            sessionId: sid,
+            mode: payload.mode!,
+            runId: row.id,
+            skipConsolidation,
+          },
         );
         this.deps.memory.emit?.({
           type:       'memory_extraction_completed',

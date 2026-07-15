@@ -2,10 +2,10 @@ import { zodToJsonSchema } from 'zod-to-json-schema';
 import type { ToolDef, BuiltTool, ToolDescriptor, ToolExecutionContext } from './types.js';
 
 /**
- * Seals a ToolDef into an immutable BuiltTool ready for registration.
+ * 把 ToolDef 封闭为不可变 BuiltTool,可注册。
  *
- * Computes the JSON Schema descriptor lazily (once, on first call) so packages
- * that only import ToolDef types at build time pay no schema-serialization cost.
+ * 懒计算 JSON Schema descriptor(首次调用时一次),以便只在 build 时
+ * import ToolDef 类型的包不付 schema 序列化代价。
  */
 export function buildTool<TInput, TOutput>(
   def: ToolDef<TInput, TOutput>,

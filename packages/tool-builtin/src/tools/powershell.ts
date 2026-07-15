@@ -3,7 +3,7 @@ import { buildTool } from '@ema-agent/tools';
 import type { ToolExecutionContext } from '@ema-agent/tools';
 import { runShell, type BashResult } from './bash.js';
 
-// ── Constants ─────────────────────────────────────────────────────────────────
+// ── 常量 ─────────────────────────────────────────────────────────────────────
 
 const DEFAULT_TIMEOUT_MS = 120_000;
 const MAX_TIMEOUT_MS = 600_000;
@@ -15,7 +15,7 @@ const BANNED_COMMAND_PATTERNS: RegExp[] = [
   /rm\s+(-rf|--recursive\s+--force)\b/i,
 ];
 
-// ── Input schema ──────────────────────────────────────────────────────────────
+// ── 输入 schema ──────────────────────────────────────────────────────────────
 
 const inputSchema = z.object({
   command: z
@@ -39,7 +39,7 @@ const inputSchema = z.object({
 
 type PowerShellInput = z.infer<typeof inputSchema>;
 
-// ── Tool definition ───────────────────────────────────────────────────────────
+// ── 工具定义 ───────────────────────────────────────────────────────────────────
 
 export const powershellTool = buildTool<PowerShellInput, BashResult>({
   name: 'powershell',
@@ -84,10 +84,9 @@ export const powershellTool = buildTool<PowerShellInput, BashResult>({
 
     const timeoutMs = Math.min(timeout ?? DEFAULT_TIMEOUT_MS, MAX_TIMEOUT_MS);
 
-    // Native PowerShell currently cannot be wrapped by CommandRunner: the V1
-    // sandbox backends are Unix-shell oriented, and CommandRunner selects bash
-    // on Windows. apps/core therefore hides this tool whenever shell execution
-    // would degrade to the app-layer backend.
+    // 原生 PowerShell 目前无法被 CommandRunner 包裹:V1 sandbox 后端面向
+    // Unix shell,CommandRunner 在 Windows 上选 bash。故 apps/core 在 shell
+    // 执行会降级为 app-layer 后端时隐藏此工具。
     return runShell(
       'powershell.exe',
       ['-NonInteractive', '-Command', command],

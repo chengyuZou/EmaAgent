@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { buildTool } from '@ema-agent/tools';
 import type { ToolExecutionContext } from '@ema-agent/tools';
 
-// ── Input schema ──────────────────────────────────────────────────────────────
+// ── 输入 schema ──────────────────────────────────────────────────────────────
 
 const inputSchema = z.object({
   file_path: z.string().min(1).describe('Absolute path to write. Created if it does not exist.'),
@@ -13,7 +13,7 @@ const inputSchema = z.object({
 
 type FsWriteInput = z.infer<typeof inputSchema>;
 
-// ── Output type ───────────────────────────────────────────────────────────────
+// ── 输出类型 ───────────────────────────────────────────────────────────────────
 
 export interface FsWriteResult {
   type: 'created' | 'updated';
@@ -21,13 +21,13 @@ export interface FsWriteResult {
   bytesWritten: number;
 }
 
-// ── Tool definition ───────────────────────────────────────────────────────────
+// ── 工具定义 ───────────────────────────────────────────────────────────────────
 
 export const fsWriteTool = buildTool<FsWriteInput, FsWriteResult>({
   name: 'fs_write',
   description: `Write full content to a file, creating it if it does not exist.
 
-- Replaces the entire file — for targeted in-place edits use \`fs_edit\` instead.
+- Replaces the entire file - for targeted in-place edits use \`fs_edit\` instead.
 - Parent directories are created automatically.
 - Line endings in \`content\` are written as-is (LF preserved, no rewriting).
 - After writing, the file is added to the read-state cache so subsequent \`fs_edit\` calls work without a separate read.`,
@@ -51,25 +51,24 @@ export const fsWriteTool = buildTool<FsWriteInput, FsWriteResult>({
 
     const existed = fs.existsSync(fullPath);
 
-    // Ensure parent directories exist
+    // 确保父目录存在
     fs.mkdirSync(path.dirname(fullPath), { recursive: true });
 
-    // ── Atomic write (write + rename avoids partial-file readers) ─────────────
-    // On Windows rename() is not atomic across volumes, but within the same dir
-    // it is. We fall back to direct write on rename failure.
+    // ── 原子写(write + rename 避免读到半成品文件)─────────────────
+    // Windows 上 rename() 跨卷不原子,但同目录内是。rename 失败回退直接写。
     const tmpPath = `${fullPath}.ema_tmp_${process.pid}`;
     try {
       fs.writeFileSync(tmpPath, content, { encoding: 'utf8', flag: 'w' });
       fs.renameSync(tmpPath, fullPath);
     } catch {
-      // Clean up temp file and write directly
+      // 清理临时文件并直接写
       try { fs.unlinkSync(tmpPath); } catch { /* ignore */ }
       fs.writeFileSync(fullPath, content, { encoding: 'utf8', flag: 'w' });
     }
 
     const mtimeMs = fs.statSync(fullPath).mtimeMs;
 
-    // Update read-state cache so a subsequent fs_edit can work without re-reading
+    // 更新 read-state 缓存,使后续 fs_edit 无需重新读即可工作
     ctx.readFileState.set(fullPath, {
       content,
       timestamp: mtimeMs,

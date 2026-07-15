@@ -5,9 +5,8 @@ import type { ToolExecutionContext } from '@ema-agent/tools';
 
 // ── subagent_spawn_bg ─────────────────────────────────────────────────────────
 //
-// Fires off a sub-agent asynchronously and returns its ID immediately.
-// The parent loop continues — use subagent_send_message to inject coordinator
-// instructions mid-execution, and subagent_await to collect the final output.
+// 异步拉起 sub-agent,立即返回其 ID。父循环继续 - 用 subagent_send_message
+// 在执行中注入 coordinator 指令,用 subagent_await 收最终输出。
 
 const spawnBgSchema = z.object({
   prompt: z.string().min(1).describe(
@@ -20,7 +19,7 @@ const spawnBgSchema = z.object({
     'Short role description shown in the sub-agent dashboard.',
   ),
   kind: z.enum(['subagent', 'fork']).optional().describe(
-    'Context strategy. Defaults to "subagent" (fresh context, no parent history) — appropriate ' +
+    'Context strategy. Defaults to "subagent" (fresh context, no parent history) - appropriate ' +
       'for independent background workers. Use "fork" only when the worker explicitly needs ' +
       'the parent conversation history.',
   ),
@@ -62,8 +61,8 @@ The sub-agent MUST be awaited before the parent turn ends.`,
 
 // ── subagent_send_message ─────────────────────────────────────────────────────
 //
-// Inject a coordinator message into a running background sub-agent's mailbox.
-// The message is delivered at the start of its next LLM iteration.
+// 向运行中的后台 sub-agent 邮箱注入一条 coordinator 消息。
+// 消息在其下一次 LLM 迭代开始时送达。
 
 const sendMsgSchema = z.object({
   subagentId: z.string().uuid().describe('ID returned by subagent_spawn_bg.'),
@@ -101,7 +100,7 @@ Returns queued:false if the sub-agent has already finished or was never started.
 
 // ── subagent_await ────────────────────────────────────────────────────────────
 //
-// Block until a background sub-agent finishes and return its output.
+// 阻塞直到后台 sub-agent 完成,返回其输出。
 
 const awaitSchema = z.object({
   subagentId: z.string().uuid().describe('ID returned by subagent_spawn_bg.'),

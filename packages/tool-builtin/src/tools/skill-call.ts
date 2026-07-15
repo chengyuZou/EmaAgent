@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { buildTool } from '@ema-agent/tools';
 import type { ToolExecutionContext, ISkillRunner } from '@ema-agent/tools';
 
-// ── Input schema ──────────────────────────────────────────────────────────────
+// ── 输入 schema ──────────────────────────────────────────────────────────────
 
 const inputSchema = z.object({
   skill: z.string().min(1).describe('Skill name (the /skill-name identifier without the slash).'),
@@ -11,14 +11,14 @@ const inputSchema = z.object({
 
 type SkillCallInput = z.infer<typeof inputSchema>;
 
-// ── Output type ───────────────────────────────────────────────────────────────
+// ── 输出类型 ───────────────────────────────────────────────────────────────────
 
 export interface SkillCallResult {
   skill: string;
   output: string;
 }
 
-// ── Tool definition ───────────────────────────────────────────────────────────
+// ── 工具定义 ───────────────────────────────────────────────────────────────────
 
 export const skillCallTool = buildTool<SkillCallInput, SkillCallResult>({
   name: 'skill_call',

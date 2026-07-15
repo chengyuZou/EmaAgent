@@ -130,7 +130,7 @@ export class ToolRegistry {
     return true;
   }
 
-  /** Throws ToolRegistryError if the tool is not registered. */
+  /** 工具未注册时抛 ToolRegistryError。 */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   get(name: string): BuiltTool<any, any> {
     const tool = this.tools.get(name);

@@ -22,9 +22,9 @@ const inputSchema = z.object({
 type AskChoiceInput = z.infer<typeof inputSchema>;
 
 export interface AskChoiceResult {
-  /** Labels of the selected options. Single-select: always one item. */
+  /** 选中项的 label。单选:始终一项。 */
   selected: string[];
-  /** Populated when allowCustom=true and the user typed a custom answer. */
+  /** allowCustom=true 且用户输入自定义答案时填入。 */
   customText?: string;
 }
 
@@ -34,7 +34,7 @@ export const askChoiceTool = buildTool<AskChoiceInput, AskChoiceResult>({
 
 Use this when you need the user to pick from a known set of choices (2–8 options).
 Set multiSelect=true to allow picking multiple. Set allowCustom=true to allow a free-text "Other" answer.
-Prefer this over ask_user for a single choice question — the UI shows a cleaner selection card.`,
+Prefer this over ask_user for a single choice question - the UI shows a cleaner selection card.`,
 
   inputSchema,
   isReadOnly: () => false,
@@ -61,7 +61,7 @@ Prefer this over ask_user for a single choice question — the UI shows a cleane
       } satisfies EmaStreamEvent);
 
       const { answers } = await ctx.askUser(promptId, []);
-      // Frontend posts: { selected: 'label1,label2', custom?: 'text' }
+      // 前端提交:{ selected: 'label1,label2', custom?: 'text' }
       const raw      = answers['selected'] ?? '';
       const selected = raw.split(',').map((s) => s.trim()).filter(Boolean);
       const customText = answers['custom'] || undefined;
@@ -77,7 +77,7 @@ Prefer this over ask_user for a single choice question — the UI shows a cleane
       return { selected, customText };
     }
 
-    // CLI fallback
+    // CLI 兜底
     const { createInterface } = await import('node:readline/promises');
     const rl = createInterface({ input: process.stdin, output: process.stdout });
     ctx.signal.addEventListener('abort', () => rl.close(), { once: true });

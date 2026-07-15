@@ -4,6 +4,7 @@ import type { EmbeddedText } from '../types.js';
 import type { ExtractedNode, ExtractionOutput, PendingFragment } from './types.js';
 import { unpackEmbedding } from '../embed/similarity.js';
 import type { ExtractionPipelineDeps, PipelineResult } from './pipeline.js';
+import type { PendingIndexMutation } from './index-mutations.js';
 
 const NODE_DEDUP_THRESHOLD = 0.85;
 
@@ -15,11 +16,21 @@ export function processNodes(
   stats: PipelineResult,
   labelToNodeId: Map<string, string>,
   precomputedEmbeddings: EmbeddedText[] | null,
+  indexMutations: PendingIndexMutation[],
 ): void {
   for (let i = 0; i < output.new_nodes.length; i++) {
     const candidate = output.new_nodes[i]!;
     const embedded  = precomputedEmbeddings?.[i] ?? null;
-    routeCandidateNode(deps, sessionId, candidate, embedded, fragments, stats, labelToNodeId);
+    routeCandidateNode(
+      deps,
+      sessionId,
+      candidate,
+      embedded,
+      fragments,
+      stats,
+      labelToNodeId,
+      indexMutations,
+    );
   }
 }
 
@@ -31,6 +42,7 @@ export function routeCandidateNode(
   fragments: PendingFragment[],
   stats: PipelineResult,
   labelToNodeId: Map<string, string>,
+  indexMutations: PendingIndexMutation[],
 ): void {
   // 1. Cheap label match first
   const labelHit = deps.memory.nodes.findByLabelAndType(candidate.label, candidate.nodeType);
@@ -77,7 +89,7 @@ export function routeCandidateNode(
     // Update in-memory vector index too
     if (embedded && deps.nodesIndex && deps.indexSpaceId === embedded.space.id && deps.nodesIndex.dim === embedded.dim) {
       const view = unpackEmbedding(embedded.embedding, embedded.dim);
-      deps.nodesIndex.add(id, view);
+      indexMutations.push({ index: deps.nodesIndex, operation: 'add', id, vector: view });
     }
     labelToNodeId.set(candidate.label, id);
     stats.extractedNodes++;

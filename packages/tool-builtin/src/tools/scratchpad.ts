@@ -5,20 +5,20 @@ import { buildTool } from '@ema-agent/tools';
 import type { ToolExecutionContext } from '@ema-agent/tools';
 import { estimateTextTokens } from '@ema-agent/token';
 
-// ── Constraints ───────────────────────────────────────────────────────────────
+// ── 约束 ───────────────────────────────────────────────────────────────────────
 
-/** Keys must be safe as filenames on all platforms (Windows + POSIX). */
+/** key 必须在所有平台(Windows + POSIX)作文件名安全。 */
 export const KEY_RE = /^[a-zA-Z0-9_-]{1,64}$/;
 const KEY_SCHEMA = z.string().regex(KEY_RE, 'Key must be 1–64 characters: letters, digits, _ or -');
 
-const MAX_VALUE_BYTES   = 256 * 1024;         // 256 KB per value
-const MAX_TOTAL_BYTES   = 8 * 1024 * 1024;    // 8 MB total per turn
-const MAX_KEYS          = 64;                  // guard against key explosion
+const MAX_VALUE_BYTES   = 256 * 1024;         // 每值 256 KB
+const MAX_TOTAL_BYTES   = 8 * 1024 * 1024;    // 每 turn 总共 8 MB
+const MAX_KEYS          = 64;                  // 防止 key 爆炸
 
-/** Hidden metadata file — dot prefix keeps it invisible to KEY_RE filter. */
+/** 隐藏元数据文件 - 点前缀让它在 KEY_RE 过滤里不可见。 */
 const META_FILE = '.meta.json';
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// ── 辅助函数 ───────────────────────────────────────────────────────────────────
 
 function requireDir(ctx: ToolExecutionContext): string {
   if (!ctx.scratchpadDir) {
@@ -34,7 +34,7 @@ function keyPath(dir: string, key: string): string {
   return path.join(dir, key);
 }
 
-/** Returns total bytes consumed by all existing keys. */
+/** 返回所有现有 key 占用的总字节。 */
 function totalBytesUsed(dir: string): number {
   if (!fs.existsSync(dir)) return 0;
   return fs.readdirSync(dir)
@@ -44,13 +44,13 @@ function totalBytesUsed(dir: string): number {
     }, 0);
 }
 
-/** Returns count of existing valid keys. */
+/** 返回现有有效 key 数。 */
 function keyCount(dir: string): number {
   if (!fs.existsSync(dir)) return 0;
   return fs.readdirSync(dir).filter(f => KEY_RE.test(f)).length;
 }
 
-// ── Author metadata ───────────────────────────────────────────────────────────
+// ── 作者元数据 ───────────────────────────────────────────────────────────────────
 
 type MetaStore = Record<string, { author: string }>;
 
@@ -90,7 +90,7 @@ export const scratchpadWriteTool = buildTool<
   { key: string; bytes: number; estimatedTokens: number }
 >({
   name: 'scratchpad_write',
-  description: `Write a value into the turn-scoped scratchpad — a shared key-value store accessible to the current agent and all its sub-agents.
+  description: `Write a value into the turn-scoped scratchpad - a shared key-value store accessible to the current agent and all its sub-agents.
 
 Use the scratchpad to:
 - Pass intermediate results between a main agent and sub-agents without bloating the main conversation context.
@@ -109,7 +109,7 @@ The scratchpad is automatically deleted when the turn ends.`,
   async execute(input, ctx) {
     const dir = requireDir(ctx);
 
-    // Byte-level size check (not character count — catches multi-byte Unicode)
+    // 字节级大小检查(非字符数 - 抓多字节 Unicode)
     const incomingBytes = Buffer.byteLength(input.value, 'utf8');
     if (incomingBytes > MAX_VALUE_BYTES) {
       throw new Error(
@@ -118,7 +118,7 @@ The scratchpad is automatically deleted when the turn ends.`,
       );
     }
 
-    // Total quota check
+    // 总配额检查
     const existingSize = fs.existsSync(keyPath(dir, input.key))
       ? fs.statSync(keyPath(dir, input.key)).size
       : 0;
@@ -130,7 +130,7 @@ The scratchpad is automatically deleted when the turn ends.`,
       );
     }
 
-    // Key count guard (only for new keys)
+    // Key 数量守卫(仅新 key)
     if (!fs.existsSync(keyPath(dir, input.key)) && keyCount(dir) >= MAX_KEYS) {
       throw new Error(
         `Too many scratchpad keys (max ${MAX_KEYS}). Delete keys you no longer need.`,
@@ -146,7 +146,7 @@ The scratchpad is automatically deleted when the turn ends.`,
         : '';
       finalValue = existing ? existing + '\n' + input.value : input.value;
 
-      // Re-check after append
+      // append 后重检
       const appendedBytes = Buffer.byteLength(finalValue, 'utf8');
       if (appendedBytes > MAX_VALUE_BYTES) {
         throw new Error(
@@ -157,7 +157,7 @@ The scratchpad is automatically deleted when the turn ends.`,
 
     fs.writeFileSync(keyPath(dir, input.key), finalValue, 'utf8');
 
-    // Record which agent wrote this key
+    // 记录哪个 agent 写了此 key
     writeMeta(dir, input.key, ctx.scratchpadAuthor ?? 'main');
 
     const bytes          = Buffer.byteLength(finalValue, 'utf8');
@@ -231,9 +231,9 @@ export const scratchpadListTool = buildTool<
         try {
           const filePath = path.join(dir, f);
           const bytes    = fs.statSync(filePath).size;
-          // Byte-based token estimate avoids reading file content for every key.
-          // ~4 bytes/token is a safe approximation for the mixed content stored here.
-          // Use scratchpad_read to get an exact count for a specific key.
+          // 基于字节的 token 估算,避免为每个 key 读文件内容。
+          // ~4 字节/token 对此处存的混合内容是安全近似。
+          // 用 scratchpad_read 取特定 key 的精确计数。
           return {
             key:            f,
             bytes,
@@ -274,7 +274,7 @@ export const scratchpadDeleteTool = buildTool<z.infer<typeof deleteSchema>, { de
     if (!fs.existsSync(fp)) return { deleted: false };
     fs.rmSync(fp, { force: true });
 
-    // Remove from metadata
+    // 从元数据移除
     const meta = readMeta(dir);
     if (input.key in meta) {
       delete meta[input.key];
@@ -313,7 +313,7 @@ export const scratchpadClearAllTool = buildTool<Record<never, never>, { cleared:
   },
 });
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// ── 辅助函数 ───────────────────────────────────────────────────────────────────
 
 function formatBytes(n: number): string {
   if (n < 1024)            return `${n} B`;

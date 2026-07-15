@@ -7,7 +7,7 @@ import type { ToolExecutionContext } from '@ema-agent/tools';
 
 const execFileAsync = promisify(execFile);
 
-// ── Input schema ──────────────────────────────────────────────────────────────
+// ── 输入 schema ──────────────────────────────────────────────────────────────
 
 const inputSchema = z.object({
   pattern: z.string().min(1).describe(
@@ -25,9 +25,9 @@ const inputSchema = z.object({
     .enum(['content', 'files_with_matches', 'count'])
     .default('files_with_matches')
     .describe(
-      'content — show matching lines with context; ' +
-        'files_with_matches — show file paths only; ' +
-        'count — show match count per file.',
+      'content - show matching lines with context; ' +
+        'files_with_matches - show file paths only; ' +
+        'count - show match count per file.',
     ),
   context: z
     .number()
@@ -47,23 +47,23 @@ const inputSchema = z.object({
 
 type GrepInput = z.infer<typeof inputSchema>;
 
-// ── Output type ───────────────────────────────────────────────────────────────
+// ── 输出类型 ───────────────────────────────────────────────────────────────────
 
 export interface GrepResult {
   output: string;
   truncated: boolean;
 }
 
-// ── Tool definition ───────────────────────────────────────────────────────────
+// ── 工具定义 ───────────────────────────────────────────────────────────────────
 
 export const grepTool = buildTool<GrepInput, GrepResult>({
   name: 'grep',
   description: `Regex content search powered by ripgrep.
 
 Output modes:
-- \`files_with_matches\` (default) — list file paths that contain the pattern
-- \`content\` — show matching lines, with optional surrounding context lines
-- \`count\` — show match count per file
+- \`files_with_matches\` (default) - list file paths that contain the pattern
+- \`content\` - show matching lines, with optional surrounding context lines
+- \`count\` - show match count per file
 
 Use \`glob\` to restrict which files are searched (e.g. \`"*.ts"\`).
 Results are capped at \`head_limit\` lines (default 250).`,
@@ -75,8 +75,8 @@ Results are capped at \`head_limit\` lines (default 250).`,
   permissionMeta: {
     riskLevel:   'low',
     accessType:  'read',
-    // Same rationale as glob: explicit path is workspace-boundary-checked;
-    // absent path defaults to workspaceRoot (always in-bounds).
+    // 同 glob 的理由:显式 path 做工作区边界检查;
+    // 缺失默认 workspaceRoot(总在界内)。
     extractPath: (input) => (input as { path?: string }).path,
   },
 
@@ -97,10 +97,10 @@ Results are capped at \`head_limit\` lines (default 250).`,
 
     const args: string[] = [pattern];
 
-    // Mode flags
+    // 模式标志
     if (output_mode === 'files_with_matches') args.push('--files-with-matches');
     else if (output_mode === 'count') args.push('--count');
-    // content mode: default rg behavior (show matching lines)
+    // content 模式:rg 默认行为(显示匹配行)
 
     if (contextLines !== undefined && output_mode === 'content') {
       args.push('-C', String(contextLines));
@@ -108,7 +108,7 @@ Results are capped at \`head_limit\` lines (default 250).`,
     if (case_insensitive) args.push('--ignore-case');
     if (globFilter) args.push('--glob', globFilter);
 
-    // Line numbers are helpful for content mode
+    // content 模式下行号有用
     if (output_mode === 'content') args.push('--line-number');
 
     args.push('--no-heading', '--color=never');
@@ -122,7 +122,7 @@ Results are capped at \`head_limit\` lines (default 250).`,
       });
       stdout = result.stdout;
     } catch (err: unknown) {
-      // rg exits with code 1 when no matches found — that is not an error
+      // rg 无匹配时退出码 1 - 不是错误
       const execErr = err as { code?: number; stdout?: string };
       if (execErr.code === 1) return { output: '', truncated: false };
       throw err;
@@ -132,7 +132,7 @@ Results are capped at \`head_limit\` lines (default 250).`,
     const truncated = lines.length > head_limit;
     const trimmed   = lines.slice(0, head_limit).join('\n');
     const output    = truncated
-      ? trimmed + `\n[Output truncated: ${lines.length.toLocaleString()} lines → ${head_limit} shown. Use a narrower pattern or glob filter to see more.]`
+      ? trimmed + `\n[Output truncated: ${lines.length.toLocaleString()} lines -> ${head_limit} shown. Use a narrower pattern or glob filter to see more.]`
       : trimmed;
 
     return { output, truncated };

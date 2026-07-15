@@ -21,7 +21,7 @@ export const askTextTool = buildTool<AskTextInput, AskTextResult>({
   description: `Ask the user a single open-ended question and wait for a free-text answer.
 
 Use this when you need a short string response from the user (a name, a path, a description, etc.).
-Prefer this over ask_user for a single freeform question — the UI shows a focused text input.`,
+Prefer this over ask_user for a single freeform question - the UI shows a focused text input.`,
 
   inputSchema,
   isReadOnly: () => false,
@@ -58,7 +58,7 @@ Prefer this over ask_user for a single freeform question — the UI shows a focu
       return { text };
     }
 
-    // CLI fallback
+    // CLI 兜底
     const { createInterface } = await import('node:readline/promises');
     const rl = createInterface({ input: process.stdin, output: process.stdout });
     ctx.signal.addEventListener('abort', () => rl.close(), { once: true });

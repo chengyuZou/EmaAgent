@@ -5,8 +5,8 @@ import type { Artifact, ArtifactId, EmaStreamEvent } from '@ema-agent/contracts'
 import { asSessionId, asTurnId } from '@ema-agent/contracts';
 import { randomUUID } from 'node:crypto';
 
-// ── In-memory fallback (no ArtifactStore injected) ───────────────────────────
-// Used in tests and minimal embedders that don't wire up the full store.
+// ── 内存兜底(未注入 ArtifactStore)──────────────────────────────────────────
+// 用于测试和未接完整 store 的最小嵌入方。
 
 const memoryStore = new Map<string, Artifact[]>();
 
@@ -47,14 +47,14 @@ Use artifact_write instead of fs_write when:
 - The user asked to "create", "generate", or "draft" something
 
 Common types:
-- text/markdown          — rendered as Markdown
-- text/html              — sandboxed iframe
-- text/csv               — table view
-- text/x-python          — code with syntax highlighting
-- application/json       — pretty-printed JSON
-- application/vnd.ema.diff   — Monaco DiffEditor
-- application/vnd.ema.table  — data table
-- application/vnd.ema.chart  — chart visualization
+- text/markdown          - rendered as Markdown
+- text/html              - sandboxed iframe
+- text/csv               - table view
+- text/x-python          - code with syntax highlighting
+- application/json       - pretty-printed JSON
+- application/vnd.ema.diff   - Monaco DiffEditor
+- application/vnd.ema.table  - data table
+- application/vnd.ema.chart  - chart visualization
 
 After writing, an artifact_upserted event opens WorkspacePane automatically.`,
 
@@ -64,7 +64,7 @@ After writing, an artifact_upserted event opens WorkspacePane automatically.`,
   permissionMeta: { riskLevel: 'low', accessType: 'write' },
 
   async execute(input: ArtifactWriteInput, ctx: ToolExecutionContext): Promise<Artifact> {
-    // ── Persistent store path ──────────────────────────────────────────────────
+    // ── 持久存储路径 ──────────────────────────────────────────────────────────
     if (ctx.artifactStore) {
       const artifact = ctx.artifactStore.upsert({
         id:        input.id as ArtifactId | undefined,
@@ -89,7 +89,7 @@ After writing, an artifact_upserted event opens WorkspacePane automatically.`,
       return artifact;
     }
 
-    // ── In-memory fallback ────────────────────────────────────────────────────
+    // ── 内存兜底 ────────────────────────────────────────────────────────────
     const now       = Date.now();
     const artifacts = sessionArtifacts(ctx.sessionId);
     const idx       = input.id ? artifacts.findIndex((a) => a.id === input.id) : -1;
@@ -167,7 +167,7 @@ export const artifactListTool = buildTool<z.infer<typeof listSchema>, Omit<Artif
     }
     const artifacts = sessionArtifacts(ctx.sessionId);
     const filtered  = input.type ? artifacts.filter((a) => a.type === input.type) : [...artifacts];
-    // Strip content for consistency with the store path
+    // 剥离 content,与存储路径一致
     return filtered.map(({ content: _, ...rest }) => rest);
   },
 });

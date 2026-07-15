@@ -4,6 +4,7 @@ import type { EmbeddedText } from '../types.js';
 import type { ExtractionOutput } from './types.js';
 import { unpackEmbedding } from '../embed/similarity.js';
 import type { ExtractionPipelineDeps, PipelineResult } from './pipeline.js';
+import type { PendingIndexMutation } from './index-mutations.js';
 
 export function processItems(
   deps: ExtractionPipelineDeps,
@@ -13,6 +14,7 @@ export function processItems(
   stats: PipelineResult,
   precomputedEmbeddings: EmbeddedText[] | null,
   extractionTurnId: string | undefined,
+  indexMutations: PendingIndexMutation[],
 ): void {
   if (output.memory_items.length === 0) return;
 
@@ -46,7 +48,12 @@ export function processItems(
       });
       if (e && deps.itemsIndex && deps.indexSpaceId === e.space.id && deps.itemsIndex.dim === e.dim) {
         const view = unpackEmbedding(e.embedding, e.dim);
-        deps.itemsIndex.update(existing.id, view);
+        indexMutations.push({
+          index: deps.itemsIndex,
+          operation: 'update',
+          id: existing.id,
+          vector: view,
+        });
       }
       stats.extractedItems++;
       continue;
@@ -75,7 +82,7 @@ export function processItems(
 
     if (e && deps.itemsIndex && deps.indexSpaceId === e.space.id && deps.itemsIndex.dim === e.dim) {
       const view = unpackEmbedding(e.embedding, e.dim);
-      deps.itemsIndex.add(id, view);
+      indexMutations.push({ index: deps.itemsIndex, operation: 'add', id, vector: view });
     }
     stats.extractedItems++;
   }

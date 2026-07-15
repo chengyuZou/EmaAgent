@@ -20,7 +20,7 @@ export const askConfirmTool = buildTool<AskConfirmInput, AskConfirmResult>({
   description: `Ask the user a single yes/no confirmation question and wait for their response.
 
 Use this when you need explicit approval before a consequential action. Returns { confirmed: true/false }.
-Prefer this over ask_user when you only need a binary decision — the UI shows a focused confirm dialog.`,
+Prefer this over ask_user when you only need a binary decision - the UI shows a focused confirm dialog.`,
 
   inputSchema,
   isReadOnly: () => false,
@@ -56,7 +56,7 @@ Prefer this over ask_user when you only need a binary decision — the UI shows 
       return { confirmed };
     }
 
-    // CLI fallback
+    // CLI 兜底
     const { createInterface } = await import('node:readline/promises');
     const rl = createInterface({ input: process.stdin, output: process.stdout });
     ctx.signal.addEventListener('abort', () => rl.close(), { once: true });

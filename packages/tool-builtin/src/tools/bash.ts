@@ -2,25 +2,25 @@ import { z } from 'zod';
 import { buildTool, spawnProcess } from '@ema-agent/tools';
 import type { ToolExecutionContext } from '@ema-agent/tools';
 
-// ── Constants ─────────────────────────────────────────────────────────────────
+// ── 常量 ─────────────────────────────────────────────────────────────────────
 
-const DEFAULT_TIMEOUT_MS = 120_000; // 2 minutes
-const MAX_TIMEOUT_MS = 600_000; // 10 minutes
+const DEFAULT_TIMEOUT_MS = 120_000; // 2 分钟
+const MAX_TIMEOUT_MS = 600_000; // 10 分钟
 
 /**
- * Commands that must never execute — even in bypass mode.
- * These could cause irreversible system damage.
+ * 绝不能执行的命令 - 即使 bypass 模式也不行。
+ * 这些会造成不可逆系统损害。
  */
 const BANNED_COMMAND_PATTERNS: RegExp[] = [
   /\brm\s+(-[a-zA-Z]*r[a-zA-Z]*f|--recursive.*--force|--force.*--recursive)\b/i,
   /\bformat\s+(c:|\/dev\/)/i,
   /\bmkfs\b/i,
-  /:\(\)\{\s*:\|:\s*&\s*\};:/,  // fork bomb
+  /:\(\)\{\s*:\|:\s*&\s*\};:/,  // fork 炸弹
   /\bdd\s+.*of=\/dev\/(s|h)d/i,
   /\bsudo\s+rm\b/i,
 ];
 
-// ── Input schema ──────────────────────────────────────────────────────────────
+// ── 输入 schema ──────────────────────────────────────────────────────────────
 
 const inputSchema = z.object({
   command: z
@@ -46,7 +46,7 @@ const inputSchema = z.object({
 
 type BashInput = z.infer<typeof inputSchema>;
 
-// ── Output type ───────────────────────────────────────────────────────────────
+// ── 输出类型 ───────────────────────────────────────────────────────────────────
 
 export interface BashResult {
   stdout:     string;
@@ -55,11 +55,11 @@ export interface BashResult {
   timedOut:   boolean;
   truncated:  boolean;
   durationMs: number;
-  /** True when the process was killed via a per-tool abort (not a timeout or turn abort). */
+  /** 进程被 per-tool abort 杀掉(非超时或 turn abort)时为 true。 */
   aborted?:   boolean;
 }
 
-// ── Tool definition ───────────────────────────────────────────────────────────
+// ── 工具定义 ───────────────────────────────────────────────────────────────────
 
 export const bashTool = buildTool<BashInput, BashResult>({
   name: 'bash',
@@ -78,7 +78,7 @@ Safety rules:
   permissionMeta: {
     riskLevel: 'high',
     accessType: 'execute',
-    bypassImmune: true, // safety check runs even in bypass mode
+    bypassImmune: true, // 安全检查即使 bypass 模式也跑
     safetyCheck: (input: unknown) => {
       const parsed = inputSchema.safeParse(input);
       if (!parsed.success) return 'continue';
@@ -93,7 +93,7 @@ Safety rules:
   async execute(input: BashInput, ctx: ToolExecutionContext): Promise<BashResult> {
     const { command, timeout, run_in_background } = input;
 
-    // Safety check duplicated here so it also fires when dispatched directly
+    // 安全检查在此重复,以便直接分发时也触发
     for (const re of BANNED_COMMAND_PATTERNS) {
       if (re.test(command)) {
         throw new Error(`Command blocked by safety policy: ${command}`);
@@ -105,9 +105,9 @@ Safety rules:
     const timeoutMs = Math.min(timeout ?? DEFAULT_TIMEOUT_MS, MAX_TIMEOUT_MS);
     const startMs = Date.now();
 
-    // Delegate to sandbox CommandRunner when available — gets OS-level sandboxing.
-    // run_in_background also goes through CommandRunner so it respects sandbox
-    // rules and produces a trackable task rather than a detached orphan process.
+    // 有 sandbox CommandRunner 时委托 - 获得 OS 级沙箱。
+    // run_in_background 也走 CommandRunner,以尊重 sandbox 规则并产出
+    // 可追踪任务,而非 detached 孤儿进程。
     if (ctx.commandRunner) {
       const result = await ctx.commandRunner.run(command, {
         cwd,
@@ -119,7 +119,7 @@ Safety rules:
     }
 
     if (run_in_background) {
-      // No CommandRunner — fall back to detached spawn, but only as last resort.
+      // 无 CommandRunner - 回退 detached spawn,但仅作最后手段。
       const { spawn } = await import('node:child_process');
       spawn(shell, ['-c', command], { cwd, stdio: 'ignore', detached: true }).unref();
       return { stdout: '', stderr: '', exitCode: 0, timedOut: false, truncated: false, durationMs: 0 };
@@ -132,8 +132,8 @@ Safety rules:
 // ── runShell ─────────────────────────────────────────────────────────────────
 
 /**
- * Thin wrapper kept for backward-compat (powershell.ts imports it).
- * Real implementation lives in @ema-agent/tool spawnProcess.
+ * 为向后兼容保留的薄封装(powershell.ts import 它)。
+ * 真实实现在 @ema-agent/tool spawnProcess。
  */
 export async function runShell(
   shell: string,

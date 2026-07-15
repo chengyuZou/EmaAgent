@@ -3,7 +3,7 @@ import { buildTool } from '@ema-agent/tools';
 import type { ToolExecutionContext } from '@ema-agent/tools';
 import type { EmaStreamEvent } from '@ema-agent/contracts';
 
-// ── Types ─────────────────────────────────────────────────────────────────────
+// ── 类型 ─────────────────────────────────────────────────────────────────────
 
 const todoStatusSchema = z.enum(['pending', 'in_progress', 'completed', 'cancelled']);
 
@@ -16,10 +16,10 @@ const todoSchema = z.object({
 
 export type Todo = z.infer<typeof todoSchema>;
 
-// ── In-memory store (per-process, keyed by turnId) ────────────────────────────
-// Keyed by turnId (not sessionId) so sub-agents — which share the parent's
-// sessionId but carry their own subagentId as turnId — get an isolated list.
-// AgentEngine resets this at turn start by calling clearTodos(turnId).
+// ── 内存存储(每进程,按 turnId 索引)──────────────────────────────────────
+// 按 turnId(非 sessionId)索引,以便 sub-agent - 共享父 sessionId 但
+// 以自己的 subagentId 作 turnId - 拿到独立列表。
+// AgentEngine 在 turn 开始时调 clearTodos(turnId) 重置。
 
 const store = new Map<string, Todo[]>();
 
@@ -31,7 +31,7 @@ export function clearTodos(turnId: string): void {
   store.delete(turnId);
 }
 
-// ── Input schema ──────────────────────────────────────────────────────────────
+// ── 输入 schema ──────────────────────────────────────────────────────────────
 
 const inputSchema = z.object({
   todos: z
@@ -43,20 +43,20 @@ const inputSchema = z.object({
 
 type TodoWriteInput = z.infer<typeof inputSchema>;
 
-// ── Output type ───────────────────────────────────────────────────────────────
+// ── 输出类型 ───────────────────────────────────────────────────────────────────
 
 export interface TodoWriteResult {
   count: number;
   todos: Todo[];
 }
 
-// ── Tool definition ───────────────────────────────────────────────────────────
+// ── 工具定义 ───────────────────────────────────────────────────────────────────
 
 export const todoWriteTool = buildTool<TodoWriteInput, TodoWriteResult>({
   name: 'todo_write',
   description: `Manage the agent's structured task list for the current agent run.
 
-Always pass the COMPLETE list — previous todos are fully replaced on each call.
+Always pass the COMPLETE list - previous todos are fully replaced on each call.
 Call this at the start of a task to plan, after each step to mark progress, and at the end to confirm all tasks completed.
 
 Status values: \`pending\` | \`in_progress\` | \`completed\` | \`cancelled\`
@@ -75,11 +75,11 @@ Priority values: \`high\` | \`medium\` | \`low\``,
     const { todos } = input;
     store.set(ctx.turnId, todos);
 
-    // Emit a system_warning as a lightweight "todos updated" signal so the
-    // frontend can display progress without a dedicated event type.
+    // emit 一个 system_warning 作为轻量"todos 已更新"信号,前端无需
+    // 专用事件类型即可显示进度。
     const completedCount = todos.filter((t) => t.status === 'completed').length;
     const totalCount = todos.length;
-    const msg = `[${completedCount}/${totalCount} completed] ${todos.map((t) => `${t.status === 'completed' ? '✓' : t.status === 'in_progress' ? '→' : '·'} ${t.content}`).join(' | ')}`;
+    const msg = `[${completedCount}/${totalCount} completed] ${todos.map((t) => `${t.status === 'completed' ? '✓' : t.status === 'in_progress' ? '->' : '·'} ${t.content}`).join(' | ')}`;
 
     ctx.emit?.({
       type: 'system_warning',
