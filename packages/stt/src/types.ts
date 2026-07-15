@@ -1,18 +1,18 @@
 import type { SttProtocol } from '@ema-agent/contracts';
 
-// Re-export protocol enum so consumers only import from this package
+// 重新导出 protocol 枚举,消费者只从此包 import
 export type { SttProtocol } from '@ema-agent/contracts';
 
-// ── Public STT request (Facade entry point) ───────────────────────────────────
+// ── 公共 STT 请求(Facade 入口)────────────────────────────────────────────
 //
-// Defined here (not in contracts) — symmetric with LlmRequest in @ema-agent/llm.
-// Callers (orchestrator) resolve providerId + model from model_bindings before
-// calling SttClient. The client is a thin adapter dispatcher only.
+// 定义在此(不在 contracts)- 与 @ema-agent/llm 的 LlmRequest 对称。
+// 调用方(orchestrator)在调 SttClient 前从 model_bindings 解析 providerId + model。
+// client 只是一个薄 adapter 分发器。
 
 export interface SttRequest {
-  /** provider_configs.id UUID — which adapter instance to use. */
+  /** provider_configs.id UUID - 用哪个 adapter 实例。 */
   providerId:   string;
-  /** Model name as the provider expects it (e.g. "whisper-1"). */
+  /** provider 期望的模型名(如 "whisper-1")。 */
   model:        string;
   audio:        Uint8Array;
   mime:         string;
@@ -26,7 +26,7 @@ export interface SttLimits {
   timeoutMs: number;
 }
 
-// ── STT response ──────────────────────────────────────────────────────────────
+// ── STT 响应 ──────────────────────────────────────────────────────────────────
 
 export interface SttResponse {
   text:      string;
@@ -39,21 +39,21 @@ export interface SttSegment {
   text:    string;
 }
 
-// ── Provider config ───────────────────────────────────────────────────────────
+// ── Provider 配置 ─────────────────────────────────────────────────────────────
 
 export interface SttProviderConfig {
-  /** matches provider_configs.id in profile.db */
+  /** 对应 profile.db 的 provider_configs.id */
   id:       string;
   protocol: SttProtocol;
   apiKey:   string;
   baseUrl:  string;
 }
 
-// ── Adapter call arguments (constructed by SttClient, consumed by adapter) ───
+// ── Adapter 调用参数(SttClient 构造,adapter 消费)─────────────────────────
 
 /**
- * What an adapter actually receives. Routing fields (providerId) are stripped
- * by SttClient — adapters never need to know which provider they are.
+ * adapter 实际接收的内容。路由字段(providerId)由 SttClient 剥离 -
+ * adapter 无需知道自己属于哪个 provider。
  */
 export interface SttAdapterCall {
   audio:        Uint8Array;
@@ -63,7 +63,7 @@ export interface SttAdapterCall {
   abortSignal?: AbortSignal;
 }
 
-// ── Health check ─────────────────────────────────────────────────────────────
+// ── 健康检查 ──────────────────────────────────────────────────────────────────
 
 export interface SttProviderHealth {
   providerId: string;
@@ -77,29 +77,28 @@ export interface SttHealthResult {
   providers: SttProviderHealth[];
 }
 
-// ── Live probe ────────────────────────────────────────────────────────────────
+// ── 实时探测 ──────────────────────────────────────────────────────────────────
 
 export interface SttProbeResult {
   providerId: string;
   ok:         boolean;
   latencyMs?: number;
-  /** Present when ok=false. */
+  /** ok=false 时存在。 */
   error?:     string;
 }
 
-// ── Adapter contract ──────────────────────────────────────────────────────────
+// ── Adapter 契约 ──────────────────────────────────────────────────────────────
 
 export interface SttAdapter {
   readonly protocol: SttProtocol;
   /**
-   * Transcribe audio. Implementations should honor `abortSignal` and surface
-   * provider errors as thrown Errors with a descriptive message.
+   * 转录音频。实现应尊重 `abortSignal`,并把 provider 错误作为带描述信息
+   * 的抛出 Error 上报。
    */
   transcribe(call: SttAdapterCall): Promise<SttResponse>;
   /**
-   * Live probe — verifies credentials with a lightweight real API call
-   * (no audio upload required). Used by the settings page "Test connection"
-   * button. Optional; SttClient.probe() returns ok=false when not implemented.
+   * 实时探测 - 用一次轻量真实 API 调用验证凭证(无需上传音频)。
+   * 供设置页"测试连接"按钮用。可选;未实现时 SttClient.probe() 返回 ok=false。
    */
   probe?(): Promise<Omit<SttProbeResult, 'providerId'>>;
 }

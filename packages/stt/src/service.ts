@@ -11,11 +11,11 @@ const DEFAULT_LIMITS: Readonly<SttLimits> = {
 
 // ── SttClient Facade ────────────────────────────────────────────────────────
 //
-// Symmetric to TtsClient / LlmRouter:
-//   - Holds provider configs + adapters, keyed by provider_configs.id.
-//   - Routing (which providerId + model to use) is always decided by the
-//     caller (route handler reads model_bindings.get('stt')).
-//   - No binding stored here — binding is a business-layer concern.
+// 与 TtsClient / LlmRouter 对称:
+//   - 持有 provider configs + adapters,按 provider_configs.id 索引。
+//   - 路由(用哪个 providerId + model)总由调用方决定
+//     (route handler 读 model_bindings.get('stt'))。
+//   - 这里不存 binding - binding 是业务层的事。
 
 function createAdapter(cfg: SttProviderConfig): SttAdapter {
   switch (cfg.protocol) {
@@ -46,12 +46,12 @@ export class SttClient {
     }
   }
 
-  /** True when at least one STT provider is registered. */
+  /** 至少注册了一个 STT provider 时为 true。 */
   isAvailable(): boolean {
     return this.adapters.size > 0;
   }
 
-  /** Health check — verifies that at least one STT provider is configured. V1 is config-only, no live API call. */
+  /** 健康检查 - 验证至少配置了一个 STT provider。V1 只查配置,无实时 API 调用。 */
   healthCheck(): SttHealthResult {
     const providers = [...this.configs.entries()].map(([id, cfg]) => ({
       providerId: id,
@@ -64,7 +64,7 @@ export class SttClient {
     };
   }
 
-  /** Hot-reload: replace all provider configs atomically. */
+  /** 热重载:原子替换所有 provider 配置。 */
   reload(configs: SttProviderConfig[]): void {
     const nextAdapters = new Map<string, SttAdapter>();
     const nextConfigs = new Map<string, SttProviderConfig>();
@@ -77,12 +77,11 @@ export class SttClient {
   }
 
   /**
-   * Live probe — makes a real API call to verify credentials.
-   * Symmetric with LlmRouter.probe() / TtsClient equivalent.
+   * 实时探测 - 发真实 API 调用验证凭证。
+   * 与 LlmRouter.probe() / TtsClient 对应物对称。
    *
-   * Delegates to adapter.probe() when available; falls back to
-   * ok=false + "probe not supported" when the adapter has no probe
-   * (should not happen in V1 since openai-stt implements it).
+   * adapter 有 probe() 时委托;adapter 无 probe 时回退
+   * ok=false + "probe not supported"(V1 不会发生,openai-stt 实现了)。
    */
   async probe(providerId: string): Promise<SttProbeResult> {
     const adapter = this.adapters.get(providerId);
@@ -96,7 +95,7 @@ export class SttClient {
     return { providerId, ...result };
   }
 
-  /** Transcribe audio. providerId + model are routing fields embedded in the request. */
+  /** 转录音频。providerId + model 是嵌在请求里的路由字段。 */
   async transcribe(req: SttRequest): Promise<SttResponse> {
     validateRequest(req, this.limits);
     const adapter = this.adapters.get(req.providerId);
@@ -132,7 +131,7 @@ export class SttClient {
     }
   }
 
-  /** Hot-reload: add or replace a provider config. */
+  /** 热重载:新增或替换一个 provider 配置。 */
   upsertConfig(config: SttProviderConfig): void {
     this.configs.set(config.id, config);
     this.adapters.set(config.id, createAdapter(config));

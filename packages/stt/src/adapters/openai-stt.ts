@@ -1,15 +1,15 @@
 import type { SttAdapter, SttAdapterCall, SttProviderConfig, SttProbeResult, SttResponse } from '../types.js';
 import { SttError } from '../errors.js';
 
-// ── OpenAI-compatible /v1/audio/transcriptions (Whisper) ────────────────────
+// ── OpenAI 兼容 /v1/audio/transcriptions(Whisper)────────────────────────
 //
-// Body is multipart/form-data:
-//   - file:           the audio bytes (any format Whisper accepts)
+// Body 是 multipart/form-data:
+//   - file:           音频字节(Whisper 接受的任意格式)
 //   - model:          whisper-1 / gpt-4o-transcribe / FunAudioLLM/SenseVoiceSmall
-//   - language:       optional ISO 639-1 (en / zh / ...)
-//   - response_format: 'verbose_json' to get segment timestamps
+//   - language:       可选 ISO 639-1(en / zh / ...)
+//   - response_format:'verbose_json' 以拿分段时间戳
 //
-// Returns either { text: "..." } (json) or full segment list (verbose_json).
+// 返回 { text: "..." }(json)或完整分段列表(verbose_json)。
 
 export class OpenAiSttAdapter implements SttAdapter {
   readonly protocol = 'openai-stt' as const;
@@ -17,9 +17,8 @@ export class OpenAiSttAdapter implements SttAdapter {
   constructor(private readonly config: SttProviderConfig) {}
 
   /**
-   * Live probe via GET /v1/models — a lightweight auth check that works on
-   * all OpenAI-compatible providers without needing to upload audio.
-   * Returns ok=true when the provider responds with any 2xx status.
+   * 通过 GET /v1/models 实时探测 - 轻量鉴权检查,所有 OpenAI 兼容
+   * provider 都适用,无需上传音频。provider 返任意 2xx 即 ok=true。
    */
   async probe(): Promise<Omit<SttProbeResult, 'providerId'>> {
     const url = `${this.config.baseUrl.replace(/\/$/, '')}/models`;
@@ -87,10 +86,10 @@ export class OpenAiSttAdapter implements SttAdapter {
   }
 }
 
-// ── Helpers ─────────────────────────────────────────────────────────────────
+// ── 辅助函数 ─────────────────────────────────────────────────────────────────
 
 function toArrayBuffer(u8: Uint8Array): ArrayBuffer {
-  // 完整 ArrayBuffer 可直接交给 Blob；仅偏移视图或 SharedArrayBuffer 才复制。
+  // 完整 ArrayBuffer 可直接交给 Blob;仅偏移视图或 SharedArrayBuffer 才复制。
   if (
     u8.buffer instanceof ArrayBuffer
     && u8.byteOffset === 0

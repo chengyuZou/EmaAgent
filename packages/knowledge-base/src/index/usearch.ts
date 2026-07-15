@@ -26,6 +26,14 @@ interface UsearchHandle {
 
 let cached: UsearchModule | null | undefined = undefined;
 
+/**
+ * USearch 的 IP 指标返回 `1 - innerProduct` 距离；VectorIndex 对外则统一
+ * 使用“越大越相似”的分数。转换必须留在适配器边界，避免上层感知底层实现。
+ */
+export function innerProductDistanceToSimilarity(distance: number): number {
+  return 1 - distance;
+}
+
 async function loadUsearch(): Promise<UsearchModule | null> {
   if (cached !== undefined) return cached;
   try {
@@ -100,7 +108,10 @@ export class UsearchIndex implements VectorIndex {
       if (key === BigInt(-1) || key === BigInt('18446744073709551615')) continue;
       const id = this.keyToUuid.get(key);
       if (!id) continue;
-      hits.push({ id, score: result.distances[i]! });
+      hits.push({
+        id,
+        score: innerProductDistanceToSimilarity(result.distances[i]!),
+      });
     }
     return hits;
   }
