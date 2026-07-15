@@ -259,6 +259,18 @@ export function turnsRoute(bindings: AppBindings): Hono {
     return c.json({ turnId, sessionId: effectiveSessionId });
   });
 
+  // ── GET /api/turns/:turnId/tool-executions ────────────────────────────────
+  //
+  // Session 消息可能因 Provider 流中断而来不及投影；该接口读取持久化执行日志，
+  // 供审计页解释“Turn 失败但文件为何发生变化”。
+  app.get('/:turnId/tool-executions', (c) => {
+    const turnId = asTurnId(c.req.param('turnId'));
+    if (!bindings.session.getTurn(turnId)) {
+      return c.json({ error: 'turn_not_found' }, 404);
+    }
+    return c.json({ executions: bindings.toolExecutionJournal.listForTurn(turnId) });
+  });
+
   // ── GET /api/turns/:turnId/events (SSE) ────────────────────────────────────
   app.get('/:turnId/events', (c) => {
     const turnId = asTurnId(c.req.param('turnId'));

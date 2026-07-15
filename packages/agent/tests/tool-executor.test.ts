@@ -47,6 +47,15 @@ describe('TurnToolExecutor Hook 与权限边界', () => {
         return { granted: true };
       },
     };
+    const toolExecutionJournal = {
+      prepare: () => order.push('journal:prepared'),
+      authorize: () => order.push('journal:authorized'),
+      start: () => order.push('journal:running'),
+      succeed: () => order.push('journal:succeeded'),
+      fail: () => order.push('journal:failed'),
+      cancel: () => order.push('journal:cancelled'),
+      outcomeUnknown: () => order.push('journal:outcome_unknown'),
+    };
     const turnAbort = new AbortController();
 
     const opts: TurnToolExecutorOpts = {
@@ -65,13 +74,22 @@ describe('TurnToolExecutor Hook 与权限边界', () => {
       } as never,
       pushEv: (event) => emitted.push(event),
       signal: () => undefined,
+      toolExecutionJournal,
     };
 
     const executor = new TurnToolExecutor(opts);
     executor.addTool(0, 'call-1', 'read_file', { path: 'README.md' });
     await waitUntilDone(executor);
 
-    expect(order).toEqual(['beforeToolUse', 'permission', 'dispatch']);
+    expect(order).toEqual([
+      'journal:prepared',
+      'beforeToolUse',
+      'permission',
+      'journal:authorized',
+      'journal:running',
+      'dispatch',
+      'journal:succeeded',
+    ]);
     expect(emitted.at(-1)).toEqual(expect.objectContaining({
       type: 'tool_result',
       callId: 'call-1',
@@ -262,6 +280,62 @@ describe('TurnToolExecutor Hook 与权限边界', () => {
       toolUseId: 'call-cancel',
       isError: false,
     }));
+  });
+
+  it('Turn 终止时先取消并等待 running 工具', async () => {
+    const hooks = new HookBus();
+    const journalStates: string[] = [];
+    let notifyStarted!: () => void;
+    const started = new Promise<void>((resolve) => { notifyStarted = resolve; });
+    const turnAbort = new AbortController();
+    const executor = new TurnToolExecutor({
+      sessionId,
+      turnId,
+      allows: () => true,
+      tools: {
+        has: () => true,
+        prepare: (name: string, input: unknown) => ({
+          name,
+          input,
+          isReadOnly: false,
+          isConcurrencySafe: true,
+          permissionMeta: {},
+        }),
+        execute: async (_prepared: unknown, ctx: { signal: AbortSignal }) => {
+          notifyStarted();
+          return await new Promise((_resolve, reject) => {
+            ctx.signal.addEventListener('abort', () => reject(new Error('aborted')), { once: true });
+          });
+        },
+      } as never,
+      permission: { gate: async () => ({ granted: true }) } as never,
+      permCtx: { workspaceRoot: null, sessionId } as never,
+      hooks,
+      toolCtx: {
+        sessionId,
+        turnId,
+        workspaceRoot: null,
+        signal: turnAbort.signal,
+      } as never,
+      pushEv: () => undefined,
+      signal: () => undefined,
+      toolExecutionJournal: {
+        prepare: () => journalStates.push('prepared'),
+        authorize: () => journalStates.push('authorized'),
+        start: () => journalStates.push('running'),
+        succeed: () => journalStates.push('succeeded'),
+        fail: () => journalStates.push('failed'),
+        cancel: () => journalStates.push('cancelled'),
+        outcomeUnknown: () => journalStates.push('outcome_unknown'),
+      },
+    });
+
+    executor.addTool(0, 'call-shutdown', 'write_file', {});
+    await started;
+    await executor.shutdown('provider_failed');
+
+    expect(executor.allDone()).toBe(true);
+    expect(journalStates).toEqual(['prepared', 'authorized', 'running', 'outcome_unknown']);
   });
 });
 

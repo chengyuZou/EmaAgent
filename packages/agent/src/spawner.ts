@@ -178,6 +178,7 @@ export class SubagentSpawner implements ISubagentSpawner {
       messages = [...sharedPrefix, { role: 'user', content: prompt }];
     }
 
+    let subagentExecutor: TurnToolExecutor | undefined;
     const buildExecutor: ExecutorFactory = ({ pushEv, signal: wakeSignal }) => {
       // Intentionally omitting `subagentSpawner` from the sub-agent's toolCtx.
       // This enforces depth=1: sub-agents cannot recursively spawn further sub-agents.
@@ -195,15 +196,19 @@ export class SubagentSpawner implements ISubagentSpawner {
         scratchpadAuthor: `subagent:${subagentId.slice(0, 8)}`,
       };
 
-      return new TurnToolExecutor({
+      const executor = new TurnToolExecutor({
         sessionId,
         turnId:     subagentId as TurnId,
+        journalTurnId: this.parentTurnId as TurnId,
         allows:     name => policy.allows(name),
         tools, permission, permCtx, hooks, toolCtx,
         buildAsk:   this.deps.buildAsk,
         pushEv,
         signal:     wakeSignal,
+        toolExecutionJournal: this.deps.toolExecutionJournal,
       });
+      subagentExecutor = executor;
+      return executor;
     };
 
     let fullText = '';
@@ -344,6 +349,12 @@ export class SubagentSpawner implements ISubagentSpawner {
         }
       }
 
+      // agentLoop 在 AbortSignal 触发时会以 loop_done 正常收束；这里必须重新映射
+      // 为子任务取消，不能把用户取消误报成 subagent_completed。
+      if (childCtrl.signal.aborted) {
+        throw new Error(signal.aborted ? 'Parent turn aborted' : 'Sub-agent aborted by user');
+      }
+
       // ── subagent_completed ──────────────────────────────────────────────
       const durationMs = Date.now() - startedAtMs;
       emit({
@@ -369,6 +380,9 @@ export class SubagentSpawner implements ISubagentSpawner {
       // Distinguish reason by checking the parent signal separately.
       const isAbort = childCtrl.signal.aborted;
       const message = err instanceof Error ? err.message : String(err);
+
+      // 子 Agent 也必须遵守 Turn 终态晚于工具终态的约束。
+      await subagentExecutor?.shutdown(isAbort ? 'subagent_aborted' : 'subagent_failed');
 
       if (isAbort) {
         const reason = signal.aborted ? 'parent_aborted' : 'user_aborted';

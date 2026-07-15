@@ -11,7 +11,7 @@ import {
   ProviderRerankModelsRepo, ProviderTtsModelsRepo, ProviderSttModelsRepo, ProviderVisionModelsRepo,
   McpServersRepo, SkillsRepo,
   MarketSourcesRepo,
-  AgentTasksRepo, AgentTaskMessagesRepo,
+  AgentTasksRepo, AgentTaskMessagesRepo, ToolExecutionsRepo,
   SessionStatsRepo, DataDirStatsRepo,
 } from '@ema-agent/storage';
 import { AttachmentStore } from '@ema-agent/attachment';
@@ -57,7 +57,7 @@ import type { ICommandRunner, IMcpClientBridge, ISkillRunner } from '@ema-agent/
 import {
   AgentFileStateStore, AgentToolResultStore, ToolResultCleaner,
 } from '@ema-agent/agent-context';
-import { AgentTaskStore } from '@ema-agent/agent-task';
+import { AgentTaskStore, ToolExecutionJournal } from '@ema-agent/agent-task';
 import { MemoryPlanner } from '@ema-agent/memory';
 import {
   KbManager,
@@ -148,6 +148,8 @@ export interface AppBindings {
   toolResultCleaner: ToolResultCleaner;
   /** Cross-session agent task registry — used for crash recovery and task visibility. */
   taskStore:          AgentTaskStore;
+  /** 工具副作用执行日志的唯一业务入口。 */
+  toolExecutionJournal: ToolExecutionJournal;
   /** Direct repo access for the SSE fan-out to write subagent transcript messages. */
   agentTaskMessages:  AgentTaskMessagesRepo;
 
@@ -373,6 +375,19 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
   const toolResultCleaner    = new ToolResultCleaner(sessionsDir);
   const agentTaskMessages    = new AgentTaskMessagesRepo(dataDb.sqlite);
   const taskStore            = new AgentTaskStore(new AgentTasksRepo(dataDb.sqlite));
+  const toolExecutionJournal = new ToolExecutionJournal(
+    new ToolExecutionsRepo(dataDb.sqlite),
+  );
+  const interruptedTools = toolExecutionJournal.recoverInterrupted();
+  if (interruptedTools.length > 0) {
+    const unknownCount = interruptedTools.filter(
+      execution => execution.status === 'outcome_unknown',
+    ).length;
+    console.warn(
+      `[tool-execution] recovered ${interruptedTools.length} interrupted calls; `
+      + `${unknownCount} may have produced side effects`,
+    );
+  }
 
   // ── System event bus ────────────────────────────────────────────────────────
   const systemBus = new SystemEventBus();
@@ -553,7 +568,7 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
     tts, audioArchive, stt, vision, providerRuntime,
     permission, permissionPrompts, askUserRegistry, tools, buildAskForTurn, getCommandRunner,
     invalidateSessionRuntime,
-    getContextStores, toolResultCleaner, taskStore, agentTaskMessages,
+    getContextStores, toolResultCleaner, taskStore, toolExecutionJournal, agentTaskMessages,
     memory,
     systemBus,
     providers, settings: settingsRepo,

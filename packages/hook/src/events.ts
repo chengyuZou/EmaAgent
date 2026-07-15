@@ -53,6 +53,7 @@ export type ToolFailurePhase =
   | 'policy'
   | 'permission'
   | 'validation'
+  | 'persistence'
   | 'execution';
 
 export type TurnFailurePhase =

@@ -93,6 +93,7 @@ async function* runTurn(
   };
   let activePhase: TurnFailurePhase = 'setup';
   let failureReported = false;
+  let turnExecutor: TurnToolExecutor | undefined;
   const reportFailure = async (
     code: ErrorCode,
     message: string,
@@ -231,7 +232,9 @@ async function* runTurn(
         pushEv,
         signal:          wakeSignal,
         toolResultStore: contextStores?.toolResultStore,
+        toolExecutionJournal: deps.toolExecutionJournal,
       });
+      turnExecutor = executor;
       activeExecutors.set(turnId, executor);
       return executor;
     };
@@ -381,6 +384,7 @@ async function* runTurn(
           break;
 
         case 'loop_hook_abort':
+          await turnExecutor?.shutdown('hook_abort');
           await reportFailure('turn/hook_aborted', ev.reason, 'hook');
           while (pendingHookEvents.length > 0) yield pendingHookEvents.shift()!;
           yield {
@@ -441,6 +445,7 @@ async function* runTurn(
 
     // ── Turn teardown ─────────────────────────────────────────────────────────
     if (signal.aborted) {
+      await turnExecutor?.shutdown('user_abort');
       await hooks.trigger('onTurnAbort', {
         turnId, sessionId,
         payload: { reason: 'user_stop' },
@@ -477,6 +482,8 @@ async function* runTurn(
 
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
+    // Turn 终态必须晚于工具终态：先取消并等待，防止 failed/aborted 之后仍产生副作用。
+    await turnExecutor?.shutdown(signal.aborted ? 'user_abort' : 'turn_failed');
     if (signal.aborted) {
       await hooks.trigger('onTurnAbort', {
         turnId, sessionId,

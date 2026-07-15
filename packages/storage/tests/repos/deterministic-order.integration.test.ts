@@ -110,7 +110,7 @@ describe('N-012 Data DB 确定性事件顺序', () => {
       .toContain('pending_fragments(session_id, at ASC, created_at ASC, id ASC)');
     expect(indexSql(database, 'idx_telemetry_kind').replaceAll(/\s+/g, ' '))
       .toContain('telemetry_events(kind, created_at DESC, id DESC)');
-    expect(database.currentVersion()).toBe(11);
+    expect(database.currentVersion()).toBe(12);
   });
 });
 
@@ -196,7 +196,7 @@ describe('data v8 到 v9 迁移', () => {
       expect(sqlite.prepare(`
         SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'turn_usage'
       `).get()).toBeUndefined();
-      expect(sqlite.pragma('user_version', { simple: true })).toBe(11);
+      expect(sqlite.pragma('user_version', { simple: true })).toBe(12);
     } finally {
       sqlite.close();
     }

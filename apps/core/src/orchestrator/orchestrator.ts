@@ -109,6 +109,7 @@ export class Orchestrator {
       kbSearch:          bindings.kbSearch,
       getContextStores:  bindings.getContextStores,
       taskStore:         bindings.taskStore,
+      toolExecutionJournal: bindings.toolExecutionJournal,
       dataDir:           bindings.activeDataDir,
     });
   }

@@ -234,9 +234,11 @@ describe('B-005 Session ownership 数据库约束', () => {
        ORDER BY name
     `).pluck().all() as string[];
 
-    expect(triggerNames).toHaveLength(27);
+    expect(triggerNames).toHaveLength(29);
     expect(triggerNames).toContain('trg_sessions_owner_insert');
     expect(triggerNames).toContain('trg_turns_owner_delete_cleanup');
+    expect(triggerNames).toContain('trg_tool_executions_owner_insert');
+    expect(triggerNames).toContain('trg_tool_executions_owner_update');
     expect(triggerNames).toContain('trg_agent_tasks_owner_delete_cleanup');
   });
 

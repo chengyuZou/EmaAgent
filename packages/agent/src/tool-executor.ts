@@ -13,13 +13,20 @@
  */
 
 import { asToolCallId } from '@ema-agent/contracts';
-import type { EmaStreamEvent, ToolResultBlock, SessionId, ToolCallId, TurnId } from '@ema-agent/contracts';
+import type {
+  EmaStreamEvent,
+  ToolResultBlock,
+  SessionId,
+  ToolCallId,
+  ToolExecutionStatus,
+  TurnId,
+} from '@ema-agent/contracts';
 import { ToolInputError } from '@ema-agent/tools';
 import type { ToolExecutionContext, ICommandRunner, PreparedToolCall } from '@ema-agent/tools';
 import type { PermissionEngine, PermissionContext } from '@ema-agent/permission';
 import type { HookBus, ToolFailurePhase } from '@ema-agent/hook';
 import type { AgentToolResultStore } from '@ema-agent/agent-context';
-import type { AgentDeps } from './types.js';
+import type { AgentDeps, IToolExecutionJournal } from './types.js';
 
 // ── Internal per-tool state ───────────────────────────────────────────────────
 
@@ -35,6 +42,8 @@ interface TrackedTool {
   result?:           ToolResultBlock;
   promise?:          Promise<void>;
   preflightFailure?: ToolFailure;
+  journalStatus?:    ToolExecutionStatus;
+  suppressEvents?:   boolean;
 }
 
 interface ToolFailure {
@@ -49,6 +58,8 @@ interface ToolFailure {
 export interface TurnToolExecutorOpts {
   sessionId:   SessionId;
   turnId:      TurnId;
+  /** 子 Agent 共享父 Turn 的数据库 ownership；主 Agent 省略时等于 turnId。 */
+  journalTurnId?: TurnId;
   /** 同步策略检查；不在当前 Agent capability 集合中的工具直接拒绝。 */
   allows:      (name: string) => boolean;
   tools:       AgentDeps['tools'];
@@ -74,6 +85,8 @@ export interface TurnToolExecutorOpts {
    * Absent in tests and non-agent callers — falls back to full inline content.
    */
   toolResultStore?: AgentToolResultStore;
+  /** 工具执行审计 Facade；生产环境必须注入，测试可省略。 */
+  toolExecutionJournal?: IToolExecutionJournal;
 }
 
 // ── TurnToolExecutor ──────────────────────────────────────────────────────────
@@ -93,6 +106,7 @@ export class TurnToolExecutor {
    * abortTool(callId) fires only one without touching the parent turn.
    */
   private readonly toolAborts = new Map<string, AbortController>();
+  private stoppingReason?: string;
 
   constructor(private readonly opts: TurnToolExecutorOpts) {}
 
@@ -104,10 +118,46 @@ export class TurnToolExecutor {
     return true;
   }
 
+  /** 停止接收新调用并取消本 Turn 尚未结束的全部工具。 */
+  abortAll(reason: string): void {
+    this.stoppingReason = reason;
+    for (const controller of this.toolAborts.values()) controller.abort();
+  }
+
+  /** 等待当前已登记的工具全部退出。 */
+  async join(): Promise<void> {
+    await Promise.allSettled(
+      this.tracked
+        .map(track => track.promise)
+        .filter((promise): promise is Promise<void> => promise !== undefined),
+    );
+  }
+
+  /** Turn 进入终态前统一取消并等待工具；超时的副作用只能记为结果未知。 */
+  async shutdown(reason: string, timeoutMs = 5_000): Promise<void> {
+    this.abortAll(reason);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const joined = this.join().then(() => true);
+    const timedOut = new Promise<false>((resolve) => {
+      timer = setTimeout(() => resolve(false), timeoutMs);
+      timer.unref?.();
+    });
+    const completed = await Promise.race([joined, timedOut]);
+    if (timer) clearTimeout(timer);
+    if (completed) return;
+
+    for (const track of this.tracked) {
+      if (track.done) continue;
+      track.suppressEvents = true;
+      this.closeJournalAfterShutdown(track, reason);
+    }
+  }
+
   /** Reset between LLM iterations. */
   reset(): void {
     this.tracked    = [];
     this.serialTail = Promise.resolve();
+    this.stoppingReason = undefined;
   }
 
   /**
@@ -159,6 +209,19 @@ export class TurnToolExecutor {
       preflightFailure,
     };
 
+    // 任何权限检查或副作用之前，先持久化规范化后的工具意图。日志写入失败时
+    // addTool 直接抛错，让 Turn fail-closed，绝不继续执行工具。
+    if (this.opts.toolExecutionJournal) {
+      this.opts.toolExecutionJournal.prepare({
+        callId,
+        sessionId: this.opts.sessionId,
+        turnId: this.opts.journalTurnId ?? this.opts.turnId,
+        toolName: name,
+        input: prepared?.input ?? args,
+      });
+      track.journalStatus = 'prepared';
+    }
+
     // Snapshot the promises of all tools added before this one.
     // Used by non-concurrent tools to wait for currently-running concurrent-safe ones.
     const priorPromises = this.tracked
@@ -205,9 +268,16 @@ export class TurnToolExecutor {
 
   private async executeOne(track: TrackedTool): Promise<void> {
     const {
-      sessionId, turnId, permission, permCtx, hooks, toolCtx, tools, buildAsk, runner, pushEv, signal,
+      sessionId, turnId, permission, permCtx, hooks, toolCtx, tools, buildAsk, runner, signal,
     } = this.opts;
     const { id, name, args, prepared } = track;
+
+    if (this.stoppingReason) {
+      this.completeCancellation(track, this.stoppingReason);
+      track.done = true;
+      signal();
+      return;
+    }
 
     // ── Per-tool AbortController ──────────────────────────────────────────────
     // Cascades from the turn signal so turn-level abort fires all tool aborts.
@@ -225,7 +295,7 @@ export class TurnToolExecutor {
         turnId, sessionId,
         payload: { callId: id, name, args: prepared?.input ?? args },
         signal: perToolCtrl.signal,
-        emit: pushEv,
+        emit: event => this.emit(track, event),
       });
 
       if (track.preflightFailure) {
@@ -248,7 +318,11 @@ export class TurnToolExecutor {
       // into the engine's pending queue so the SSE stream delivers them immediately.
       // Tests/minimal hosts that omit buildAsk fall back to the engine-level config.ask.
       const permCtxWithAsk: PermissionContext = buildAsk
-        ? { ...permCtx, ask: buildAsk({ sessionId, turnId, emit: pushEv }) }
+        ? { ...permCtx, ask: buildAsk({
+            sessionId,
+            turnId,
+            emit: event => this.emit(track, event),
+          }) }
         : permCtx;
 
       let outcome;
@@ -262,7 +336,7 @@ export class TurnToolExecutor {
         );
       } catch (err) {
         if (isCancelled(perToolCtrl.signal, toolCtx.signal)) {
-          this.completeCancellation(track);
+          this.completeCancellation(track, this.stoppingReason ?? 'user_abort');
           return;
         }
         await this.completeFailure(track, {
@@ -284,6 +358,9 @@ export class TurnToolExecutor {
         return;
       }
 
+      this.opts.toolExecutionJournal?.authorize(id);
+      if (this.opts.toolExecutionJournal) track.journalStatus = 'authorized';
+
       // ── Execute ───────────────────────────────────────────────────────────
       // Tools receive the per-tool signal so abortTool() can cancel just this
       // invocation. The turn-level signal is cascaded so both fire on turn abort.
@@ -292,6 +369,9 @@ export class TurnToolExecutor {
       let isError = false;
 
       try {
+        // running 是副作用边界：只有该状态成功落库后才能真正 dispatch。
+        this.opts.toolExecutionJournal?.start(id);
+        if (this.opts.toolExecutionJournal) track.journalStatus = 'running';
         output = await tools.execute(prepared, perToolCtx);
 
         // If aborted mid-run but the turn is still alive, annotate the partial output.
@@ -299,21 +379,36 @@ export class TurnToolExecutor {
           output = annotateAborted(output);
         }
 
-        pushEv({ type: 'tool_result', sessionId: this.opts.sessionId, callId: id, name, output, durationMs: Date.now() - track.startMs });
+        try {
+          this.opts.toolExecutionJournal?.succeed(id, output);
+          if (this.opts.toolExecutionJournal) track.journalStatus = 'succeeded';
+        } catch (err) {
+          this.tryMarkOutcomeUnknown(track, `工具已返回，但结果日志写入失败：${errorMessage(err)}`);
+          await this.completeFailure(track, {
+            phase: 'persistence',
+            code: 'tool/outcome_unknown',
+            message: '工具可能已经产生副作用，但执行结果未能可靠持久化，请勿自动重试',
+            retryable: false,
+          }, perToolCtrl.signal, true);
+          return;
+        }
+
+        this.emit(track, { type: 'tool_result', sessionId: this.opts.sessionId, callId: id, name, output, durationMs: Date.now() - track.startMs });
         await hooks.trigger('afterToolUse', {
           turnId, sessionId,
           payload: { callId: id, name, output },
           signal: perToolCtrl.signal,
-          emit: pushEv,
+          emit: event => this.emit(track, event),
         });
       } catch (err) {
         // Per-tool abort (user cancelled this tool) — not an error from the LLM's perspective.
         if (perToolCtrl.signal.aborted && !toolCtx.signal.aborted) {
           output  = '[用户中途终止]';
           isError = false;
-          pushEv({ type: 'tool_result', sessionId: this.opts.sessionId, callId: id, name, output, durationMs: Date.now() - track.startMs });
+          this.completeCancellation(track, 'user_abort');
+          this.emit(track, { type: 'tool_result', sessionId: this.opts.sessionId, callId: id, name, output, durationMs: Date.now() - track.startMs });
         } else if (toolCtx.signal.aborted) {
-          this.completeCancellation(track);
+          this.completeCancellation(track, 'turn_abort');
           return;
         } else {
           const failure = classifyDispatchFailure(err);
@@ -333,7 +428,7 @@ export class TurnToolExecutor {
 
     } catch (err) {
       if (isCancelled(perToolCtrl.signal, toolCtx.signal)) {
-        this.completeCancellation(track);
+        this.completeCancellation(track, this.stoppingReason ?? 'user_abort');
       } else if (!track.result) {
         await this.completeFailure(track, {
           phase: 'execution',
@@ -352,7 +447,7 @@ export class TurnToolExecutor {
         if (!track.result) {
           const msg = 'Tool execution failed unexpectedly';
           track.result = { type: 'tool_result', toolUseId: id, content: msg, isError: true, durationMs: Date.now() - track.startMs, errorCode: 'tool/internal_error' };
-          pushEv({ type: 'tool_result', sessionId: this.opts.sessionId, callId: id, name, error: { code: 'tool/internal_error', message: msg }, durationMs: Date.now() - track.startMs });
+          this.emit(track, { type: 'tool_result', sessionId: this.opts.sessionId, callId: id, name, error: { code: 'tool/internal_error', message: msg }, durationMs: Date.now() - track.startMs });
         }
       }
       track.done = true;
@@ -368,7 +463,9 @@ export class TurnToolExecutor {
     track: TrackedTool,
     failure: ToolFailure,
     hookSignal: AbortSignal,
+    skipJournal = false,
   ): Promise<void> {
+    if (!skipJournal) this.failJournal(track, failure.code, failure.message);
     const durationMs = Date.now() - track.startMs;
     track.result = {
       type: 'tool_result',
@@ -378,7 +475,7 @@ export class TurnToolExecutor {
       durationMs,
       errorCode: failure.code,
     };
-    this.opts.pushEv({
+    this.emit(track, {
       type: 'tool_result',
       sessionId: this.opts.sessionId,
       callId: track.id,
@@ -398,11 +495,21 @@ export class TurnToolExecutor {
         retryable: failure.retryable,
       },
       signal: hookSignal,
-      emit: this.opts.pushEv,
+      emit: event => this.emit(track, event),
     });
   }
 
-  private completeCancellation(track: TrackedTool): void {
+  private completeCancellation(track: TrackedTool, reason = 'user_abort'): void {
+    if (track.journalStatus === 'running') {
+      this.tryMarkOutcomeUnknown(track, `运行中的工具被取消，副作用是否完成未知：${reason}`);
+    } else if (track.journalStatus === 'prepared' || track.journalStatus === 'authorized') {
+      try {
+        this.opts.toolExecutionJournal?.cancel(track.id, reason);
+        if (this.opts.toolExecutionJournal) track.journalStatus = 'cancelled';
+      } catch {
+        // 终止路径不能因审计库故障再次阻塞；启动恢复会继续清理非终态记录。
+      }
+    }
     track.result = {
       type: 'tool_result',
       toolUseId: track.id,
@@ -410,6 +517,45 @@ export class TurnToolExecutor {
       isError: false,
       durationMs: Date.now() - track.startMs,
     };
+  }
+
+  private emit(track: TrackedTool, event: EmaStreamEvent): void {
+    if (!track.suppressEvents) this.opts.pushEv(event);
+  }
+
+  private failJournal(track: TrackedTool, code: string, message: string): void {
+    if (!isJournalNonTerminal(track.journalStatus)) return;
+    try {
+      this.opts.toolExecutionJournal?.fail(track.id, code, message);
+      if (this.opts.toolExecutionJournal) track.journalStatus = 'failed';
+    } catch {
+      // 工具未成功时仍可返回错误；原状态留给启动恢复处理。
+    }
+  }
+
+  private tryMarkOutcomeUnknown(track: TrackedTool, reason: string): void {
+    if (track.journalStatus !== 'running') return;
+    try {
+      this.opts.toolExecutionJournal?.outcomeUnknown(track.id, reason);
+      if (this.opts.toolExecutionJournal) track.journalStatus = 'outcome_unknown';
+    } catch {
+      // 数据库不可用时保留 running，下一次启动恢复会转换为 outcome_unknown。
+    }
+  }
+
+  private closeJournalAfterShutdown(track: TrackedTool, reason: string): void {
+    if (track.journalStatus === 'running') {
+      this.tryMarkOutcomeUnknown(track, `Turn 已终止但工具未在时限内退出：${reason}`);
+      return;
+    }
+    if (track.journalStatus === 'prepared' || track.journalStatus === 'authorized') {
+      try {
+        this.opts.toolExecutionJournal?.cancel(track.id, reason);
+        if (this.opts.toolExecutionJournal) track.journalStatus = 'cancelled';
+      } catch {
+        // 启动恢复会清理尚未越过副作用边界的记录。
+      }
+    }
   }
 }
 
@@ -459,6 +605,10 @@ function classifyDispatchFailure(err: unknown): ToolFailure {
 
 function isCancelled(perToolSignal: AbortSignal, turnSignal: AbortSignal): boolean {
   return perToolSignal.aborted || turnSignal.aborted;
+}
+
+function isJournalNonTerminal(status: ToolExecutionStatus | undefined): boolean {
+  return status === 'prepared' || status === 'authorized' || status === 'running';
 }
 
 function errorMessage(err: unknown): string {
