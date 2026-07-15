@@ -1,4 +1,5 @@
 mod sidecar;
+mod credential_key;
 
 use tauri::{Manager, RunEvent, WindowEvent};
 use tauri::tray::{TrayIconBuilder, TrayIconEvent, MouseButton, MouseButtonState};

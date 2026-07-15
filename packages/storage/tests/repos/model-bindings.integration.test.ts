@@ -8,6 +8,7 @@ import {
   MigrationsRunner,
   ProvidersRepo,
 } from '../../src/index.js';
+import { createTestCredentialFacade } from '../helpers/test-credential-facade.js';
 
 // B-024：setSingle 必须把“删旧 + 插新”包进同一事务，upsert 失败时旧绑定回滚保留。
 describe('B-024 ModelBindings setSingle 事务原子性', () => {
@@ -16,7 +17,7 @@ describe('B-024 ModelBindings setSingle 事务原子性', () => {
   beforeEach(() => {
     database = new Database({ memory: true, kind: 'profile' });
     database.migrate();
-    new ProvidersRepo(database.sqlite).upsert({
+    new ProvidersRepo(database.sqlite, createTestCredentialFacade()).upsert({
       id: 'provider-1',
       definitionId: 'siliconflow',
       displayName: 'Provider',
@@ -58,7 +59,7 @@ describe('B-058 ModelBindings 确定性排序', () => {
   beforeEach(() => {
     database = new Database({ memory: true, kind: 'profile' });
     database.migrate();
-    const providers = new ProvidersRepo(database.sqlite);
+    const providers = new ProvidersRepo(database.sqlite, createTestCredentialFacade());
     providers.upsert({ id: 'p-zeta', definitionId: 'siliconflow', displayName: 'Z', apiKey: 'x', capabilities: ['llm'] });
     providers.upsert({ id: 'p-alpha', definitionId: 'siliconflow', displayName: 'A', apiKey: 'x', capabilities: ['llm'] });
   });
@@ -128,7 +129,7 @@ describe('profile v4 到当前版本迁移：model_bindings CHECK 收紧到 11',
       // 11 模块写入仍正常
       expect(() => insBinding.run('vision', 'v-model')).not.toThrow();
 
-      expect(sqlite.pragma('user_version', { simple: true })).toBe(6);
+      expect(sqlite.pragma('user_version', { simple: true })).toBe(7);
     } finally {
       sqlite.close();
     }

@@ -15,6 +15,11 @@ import {
 } from '../wiring/index.js';
 import { resolveVoice, ensureVoiceUri, VoiceUriCache } from '../wiring/providers/tts.js';
 import { fetchVisionModels } from '../wiring/providers/vision.js';
+import {
+  providerCredentialOperationSchema,
+  registerProviderCredentialRoutes,
+  resolveProviderCredential,
+} from './provider-credential.js';
 
 // ── Response shaping ──────────────────────────────────────────────────────────
 
@@ -27,7 +32,7 @@ function shapeProvider(
     id:           config.id,
     definitionId: config.definition_id,
     displayName:  config.display_name,
-    hasApiKey:    !!config.api_key_plain,
+    hasApiKey:    !!config.credential,
     baseUrl:      config.base_url,
     enabled:      config.enabled === 1,
     capabilities: JSON.parse(config.capabilities_json) as Capability[],
@@ -66,12 +71,12 @@ const createSchema = z.object({
 
 const patchSchema = z.object({
   displayName:  z.string().optional(),
-  apiKey:       z.string().optional(),
+  credential:   providerCredentialOperationSchema.optional(),
   baseUrl:      z.string().optional().nullable(),
   enabled:      z.boolean().optional(),
   capabilities: z.array(z.string()).optional(),
   config:       z.record(z.unknown()).optional(),
-});
+}).strict();
 
 const enableModelSchema = z.object({
   contextWindow: z.number().int().positive(),
@@ -106,6 +111,7 @@ const BINDING_CAPABILITIES: Partial<Record<BindingModule, Capability>> = {
 
 export function providersRoute(bindings: AppBindings): Hono {
   const app = new Hono();
+  registerProviderCredentialRoutes(app, bindings);
 
   // GET /api/providers/definitions  — full registry for the "Add Provider" picker
   app.get('/definitions', (c) => {
@@ -196,17 +202,6 @@ export function providersRoute(bindings: AppBindings): Hono {
     return c.json(shapeProvider(config, health, getProviderDefinition(config.definition_id)));
   });
 
-  // Reveal the stored API key so the edit form can prefill it (so the field
-  // shows the configured key instead of staying blank). V1: keys are plaintext
-  // in profile.db on the user's own machine; sidecar is localhost + secret
-  // gated, so this stays local. V2/Stronghold would gate or remove it.
-  app.get('/:id/key', (c) => {
-    const repo = bindings.providers;
-    const row = repo.get(c.req.param('id'));
-    if (!row) return c.json({ error: 'not_found' }, 404);
-    return c.json({ apiKey: row.api_key_plain ?? '' });
-  });
-
   // PATCH /api/providers/:id
   app.patch('/:id', async (c) => {
     const id = c.req.param('id');
@@ -255,7 +250,7 @@ export function providersRoute(bindings: AppBindings): Hono {
       id,
       definitionId: existing.definition_id,
       displayName:  body.displayName ?? existing.display_name,
-      apiKey:       body.apiKey ?? existing.api_key_plain ?? undefined,
+      apiKey:       resolveProviderCredential(existing.credential, body.credential),
       baseUrl:      body.baseUrl !== undefined
         ? (body.baseUrl ?? undefined)
         : (existing.base_url ?? undefined),

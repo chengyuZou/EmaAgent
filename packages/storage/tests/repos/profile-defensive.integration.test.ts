@@ -9,6 +9,7 @@ import {
   ModelBindingsRepo,
   ProvidersRepo,
 } from '../../src/index.js';
+import { createTestCredentialFacade } from '../helpers/test-credential-facade.js';
 
 describe('profile 仓储防御性业务', () => {
   let database: Database;
@@ -123,7 +124,7 @@ describe('profile 仓储防御性业务', () => {
   });
 
   it('删除 Provider 前可以确定性列出全部业务绑定', () => {
-    const providers = new ProvidersRepo(database.sqlite);
+    const providers = new ProvidersRepo(database.sqlite, createTestCredentialFacade());
     providers.upsert({
       id: 'provider-1',
       definitionId: 'siliconflow',

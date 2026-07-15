@@ -1,6 +1,8 @@
 import { serve } from '@hono/node-server';
 import { Database } from '@ema-agent/storage';
 import { buildServer } from './server.js';
+import { requireSharedSecret } from './auth.js';
+import { CredentialFacade, requireCredentialMasterKey } from '@ema-agent/credential';
 import { wire, configureBridge } from './wiring/index.js';
 import { startBackgroundWork } from './wiring/index.js';
 import {
@@ -42,6 +44,10 @@ async function findOpenPort(start: number, max: number): Promise<number> {
 }
 
 async function main() {
+  // 认证配置必须先于数据库、锁文件和监听端口完成校验，禁止无密钥启动。
+  const sharedSecret = requireSharedSecret();
+  const credentials = new CredentialFacade(requireCredentialMasterKey());
+
   // ── 1. Resolve storage locations ───────────────────────────────────────────
   const registry  = loadRegistry();
   const activeDir = activeDirEntry(registry);
@@ -72,7 +78,12 @@ async function main() {
   console.log(`[storage] active dataDir: ${activeDir.name} (${activeDir.path})`);
 
   // ── 4. Wire + start ────────────────────────────────────────────────────────
-  const bindings = wire({ profileDb, dataDb, activeDataDir: activeDir.path });
+  const bindings = wire({
+    profileDb,
+    dataDb,
+    activeDataDir: activeDir.path,
+    credentials,
+  });
 
   // Ensure at least one KB exists; if registry is empty auto-create a default
   // KB under the active dataDir so the app works out of the box.
@@ -84,7 +95,7 @@ async function main() {
     console.warn('[kb] initAll() failed:', err);
   });
   const bgWork   = startBackgroundWork(bindings);
-  const app = buildServer(bindings);
+  const app = buildServer(bindings, sharedSecret);
 
   const port = await findOpenPort(PORT_DEFAULT, PORT_MAX);
 

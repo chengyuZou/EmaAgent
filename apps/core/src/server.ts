@@ -25,7 +25,7 @@ import { storageStatsRoute }     from './routes/storage-stats.js';
 import { systemRoute }           from './routes/system.js';
 import type { AppBindings } from './wiring/index.js';
 
-export function buildServer(bindings: AppBindings): Hono {
+export function buildServer(bindings: AppBindings, sharedSecret: string): Hono {
   const app = new Hono();
 
   // CORS — 仅允许 localhost 源(禁止外部访问)
@@ -47,7 +47,7 @@ export function buildServer(bindings: AppBindings): Hono {
   );
 
   // Auth 中间件 — 所有非 health 路由校验 X-Ema-Secret
-  app.use('*', emaAuth());
+  app.use('*', emaAuth(sharedSecret));
 
   // 路由
   app.route('/health', healthRoute());

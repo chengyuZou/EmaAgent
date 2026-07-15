@@ -6,6 +6,7 @@ import {
   providersApi,
   type ProviderConfigWire,
   type ProviderConfigInput,
+  type ProviderConfigPatchInput,
   type ProviderDefinition,
   type ProbeResultWire,
 } from '../api/providers.js';
@@ -39,18 +40,22 @@ export function ProviderForm({
 }: ProviderFormProps): JSX.Element {
   const [apiKey,       setApiKey]       = useState('');
   const [showApiKey,   setShowApiKey]   = useState(false);
+  const [credentialDirty, setCredentialDirty] = useState(false);
+  const [credentialLoaded, setCredentialLoaded] = useState(false);
+  const [revealingCredential, setRevealingCredential] = useState(false);
   const [advancedOpen, setAdvancedOpen] = useState(false);
 
   const activeCap: Capability | undefined = capability ?? definition?.capabilities?.[0];
 
   useEffect(() => {
-    if (!instance) return;
-    let cancelled = false;
-    void providersApi.getKey(instance.id)
-      .then((k) => { if (!cancelled) setApiKey(k); })
-      .catch(() => {});
-    return () => { cancelled = true; };
-  }, [instance]);
+    if (!instance || !showApiKey || !credentialLoaded || credentialDirty) return;
+    const timer = window.setTimeout(() => {
+      setShowApiKey(false);
+      setCredentialLoaded(false);
+      setApiKey('');
+    }, 30_000);
+    return () => window.clearTimeout(timer);
+  }, [credentialDirty, credentialLoaded, instance, showApiKey]);
 
   const protocolChoices: string[] = activeCap
     ? resolveProtocols(definition?.protocols?.[activeCap])
@@ -82,16 +87,30 @@ export function ProviderForm({
     if (!instance && !apiKey.trim()) return;
     setSubmitting(true);
     try {
-      const input: ProviderConfigInput = {
-        definitionId,
-        apiKey:  apiKey.trim() || undefined,
-        baseUrl: baseUrl.trim() || null,
-        config:  { ...(selectedProtocol ? { protocol: selectedProtocol } : {}) },
-      };
       if (instance) {
+        const trimmedApiKey = apiKey.trim();
+        const input: ProviderConfigPatchInput = {
+          credential: !credentialDirty
+            ? { type: 'keep' }
+            : trimmedApiKey
+              ? { type: 'replace', value: trimmedApiKey }
+              : { type: 'clear' },
+          baseUrl: baseUrl.trim() || null,
+          config:  { ...(selectedProtocol ? { protocol: selectedProtocol } : {}) },
+        };
         await providersApi.patch(instance.id, input);
+        setApiKey('');
+        setShowApiKey(false);
+        setCredentialDirty(false);
+        setCredentialLoaded(false);
         showToast('已更新', { variant: 'success' });
       } else {
+        const input: ProviderConfigInput = {
+          definitionId,
+          apiKey:  apiKey.trim() || undefined,
+          baseUrl: baseUrl.trim() || null,
+          config:  { ...(selectedProtocol ? { protocol: selectedProtocol } : {}) },
+        };
         await providersApi.create(input);
         showToast('已创建', { variant: 'success' });
       }
@@ -106,6 +125,36 @@ export function ProviderForm({
   async function handleSubmit(e: FormEvent): Promise<void> {
     e.preventDefault();
     await doSave();
+  }
+
+  async function handleCredentialVisibility(): Promise<void> {
+    if (showApiKey) {
+      setShowApiKey(false);
+      if (instance && credentialLoaded && !credentialDirty) {
+        setApiKey('');
+        setCredentialLoaded(false);
+      }
+      return;
+    }
+
+    if (!instance || credentialDirty || credentialLoaded) {
+      setShowApiKey(true);
+      return;
+    }
+
+    setRevealingCredential(true);
+    try {
+      const credential = await providersApi.revealCredential(instance.id);
+      setApiKey(credential);
+      setCredentialLoaded(true);
+      setShowApiKey(true);
+    } catch (err: unknown) {
+      showToast(`读取密钥失败: ${err instanceof Error ? err.message : 'Unknown'}`, {
+        variant: 'danger',
+      });
+    } finally {
+      setRevealingCredential(false);
+    }
   }
 
   async function handleProbe(): Promise<void> {
@@ -160,9 +209,13 @@ export function ProviderForm({
             <div className="relative">
               <Input
                 type={showApiKey ? 'text' : 'password'}
-                placeholder="sk-..."
+                placeholder={instance?.hasApiKey ? '已配置；输入新密钥可替换' : 'sk-...'}
                 value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
+                onChange={(e) => {
+                  setApiKey(e.target.value);
+                  setCredentialDirty(true);
+                  setCredentialLoaded(false);
+                }}
                 onBlur={() => { void doSave(); }}
                 autoComplete="off"
                 className="pr-10"
@@ -172,9 +225,10 @@ export function ProviderForm({
                 icon={showApiKey ? 'i-solar:eye-closed-linear' : 'i-solar:eye-linear'}
                 size="sm"
                 type="button"
+                disabled={revealingCredential}
                 tabIndex={-1}
                 className="absolute right-1.5 top-1/2 -translate-y-1/2"
-                onClick={() => setShowApiKey((v) => !v)}
+                onClick={() => { void handleCredentialVisibility(); }}
               />
             </div>
           </div>

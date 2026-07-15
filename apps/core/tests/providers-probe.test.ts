@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { Database, ProvidersRepo } from '@ema-agent/storage';
 import type { AppBindings } from '../src/wiring/index.js';
 import { providersRoute } from '../src/routes/providers.js';
+import { createTestCredentialFacade } from './helpers/test-credential-facade.js';
 
 // B-061：probe 路由的前置校验（not_found / capability_not_supported）必须把
 // 构造好的 404/422 响应真正返回给调用方，而不是被 204 空响应覆盖。
@@ -13,7 +14,7 @@ describe('B-061 probe 路由错误响应不被 204 覆盖', () => {
   beforeEach(() => {
     profileDb = new Database({ memory: true, kind: 'profile' });
     profileDb.migrate();
-    providers = new ProvidersRepo(profileDb.sqlite);
+    providers = new ProvidersRepo(profileDb.sqlite, createTestCredentialFacade());
     providers.upsert({
       id: 'provider-1',
       definitionId: 'siliconflow',

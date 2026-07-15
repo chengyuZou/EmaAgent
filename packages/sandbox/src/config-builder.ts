@@ -56,7 +56,7 @@ export function buildSandboxConfig(
   const deniedDomains:  string[] = [];
 
   // Protect EmaAgent settings — deny both read and write.
-  // settings.json stores api_key_plain; a sandboxed process must not exfiltrate it.
+  // Provider 凭据只应由 CredentialFacade 解密；沙箱进程不得继承或外传它。
   const settingsPath = path.join(os.homedir(), '.ema-agent', 'settings.json');
   denyWrite.push(settingsPath);
   denyRead.push(settingsPath);

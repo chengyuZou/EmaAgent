@@ -9,6 +9,7 @@ import {
   ProviderVisionModelsRepo,
   ProvidersRepo,
 } from '../../src/index.js';
+import { createTestCredentialFacade } from '../helpers/test-credential-facade.js';
 
 describe('N-008 Provider + Model 复合身份', () => {
   let database: Database;
@@ -23,7 +24,7 @@ describe('N-008 Provider + Model 复合身份', () => {
     database = new Database({ memory: true, kind: 'profile' });
     database.migrate();
 
-    const providers = new ProvidersRepo(database.sqlite);
+    const providers = new ProvidersRepo(database.sqlite, createTestCredentialFacade());
     providers.upsert({
       id: 'provider-a',
       definitionId: 'provider-a',

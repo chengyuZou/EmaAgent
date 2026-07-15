@@ -1,5 +1,6 @@
 import type { Database, ProviderConfigRow } from '@ema-agent/storage';
 import { ProvidersRepo, SettingsRepo } from '@ema-agent/storage';
+import type { CredentialFacade } from '@ema-agent/credential';
 
 import {
   TtsClient,
@@ -31,18 +32,21 @@ export function buildTtsProviderConfig(row: ProviderConfigRow): TtsProviderConfi
   const protocol = resolveProtocols(def.protocols.tts)[0] as ProtocolFamily | undefined;
   if (!isTtsProtocol(protocol)) return null;
 
-  if (def.requiresCredentials !== false && !row.api_key_plain) return null;
+  if (def.requiresCredentials !== false && !row.credential) return null;
 
   return {
     id:      row.id,
     protocol,
-    apiKey:  row.api_key_plain ?? '',
+    apiKey:  row.credential ?? '',
     baseUrl: row.base_url ?? def.defaultBaseUrl ?? '',
   };
 }
 
-function loadTtsProviderConfigs(profileDb: Database): TtsProviderConfig[] {
-  const repo = new ProvidersRepo(profileDb.sqlite);
+function loadTtsProviderConfigs(
+  profileDb: Database,
+  credentials: CredentialFacade,
+): TtsProviderConfig[] {
+  const repo = new ProvidersRepo(profileDb.sqlite, credentials);
   const out: TtsProviderConfig[] = [];
   for (const row of repo.listByCapability('tts')) {
     const cfg = buildTtsProviderConfig(row);
@@ -167,10 +171,11 @@ function pickPrimaryRefAudio(profile: CharacterVoiceProfile | null) {
 
 export interface BuildTtsClientArgs {
   profileDb: Database;
+  credentials: CredentialFacade;
 }
 
 export function buildTtsClient(args: BuildTtsClientArgs): TtsClient {
-  return new TtsClient(loadTtsProviderConfigs(args.profileDb));
+  return new TtsClient(loadTtsProviderConfigs(args.profileDb, args.credentials));
 }
 
 /**
@@ -178,6 +183,10 @@ export function buildTtsClient(args: BuildTtsClientArgs): TtsClient {
  * Call after PUT /api/providers/:id (tts capability) or
  * PUT /api/model-bindings/:module (tts_* rows).
  */
-export function reloadTtsClient(client: TtsClient, profileDb: Database): void {
-  client.reload(loadTtsProviderConfigs(profileDb));
+export function reloadTtsClient(
+  client: TtsClient,
+  profileDb: Database,
+  credentials: CredentialFacade,
+): void {
+  client.reload(loadTtsProviderConfigs(profileDb, credentials));
 }

@@ -4,6 +4,7 @@ import {
   type Database,
 } from '@ema-agent/storage';
 import type { RerankProviderConfig } from '@ema-agent/ebd-client';
+import type { CredentialFacade } from '@ema-agent/credential';
 import {
   getProviderDefinition,
   isRerankProtocol,
@@ -21,20 +22,20 @@ export function buildRerankProviderConfig(row: ProviderConfigRow): RerankProvide
   const protocol = resolveProtocols(def.protocols.rerank)[0] as ProtocolFamily | undefined;
   if (!isRerankProtocol(protocol)) return null;
 
-  if (def.requiresCredentials !== false && !row.api_key_plain) return null;
+  if (def.requiresCredentials !== false && !row.credential) return null;
 
   const extra = JSON.parse(row.config_json) as Record<string, unknown>;
   return {
     id:           row.id,
     protocol,
-    apiKey:       row.api_key_plain ?? '',
+    apiKey:       row.credential ?? '',
     baseUrl:      row.base_url ?? def.defaultBaseUrl,
     defaultModel: typeof extra['defaultModel'] === 'string' ? extra['defaultModel'] : undefined,
   };
 }
 
-export function loadRerankConfigs(db: Database): RerankProviderConfig[] {
-  const repo = new ProvidersRepo(db.sqlite);
+export function loadRerankConfigs(db: Database, credentials: CredentialFacade): RerankProviderConfig[] {
+  const repo = new ProvidersRepo(db.sqlite, credentials);
   const out: RerankProviderConfig[] = [];
   for (const row of repo.listByCapability('rerank')) {
     const cfg = buildRerankProviderConfig(row);

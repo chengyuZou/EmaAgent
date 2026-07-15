@@ -39,10 +39,11 @@ def main() -> None:
 
     try:
         uvicorn.run(
-            "bridge.main:app",
+            "bridge.main:build_app",
             host="127.0.0.1",
             port=port,
             log_level="info",
+            factory=True,
         )
     finally:
         port_file.unlink(missing_ok=True)

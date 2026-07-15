@@ -7,6 +7,7 @@ import { NarrativeClient } from '@ema-agent/narrative-client';
 import type { BridgeConfigurePayload } from '@ema-agent/narrative-client';
 import { getProviderDefinition } from '@ema-agent/contracts';
 import type { Capability } from '@ema-agent/contracts';
+import type { CredentialFacade } from '@ema-agent/credential';
 
 function isEnabledFor(row: ProviderConfigRow | undefined, capability: Capability): row is ProviderConfigRow {
   if (!row || row.enabled !== 1) return false;
@@ -47,11 +48,12 @@ export function resolveBridgeUrl(): string {
 export async function configureBridge(
   profileDb: Database,
   narrative: NarrativeClient,
+  credentials: CredentialFacade,
 ): Promise<void> {
   // Re-resolve at call time: bridge may have started after core and picked a
   // different port than what was read during wire().
   narrative.updateBaseUrl(resolveBridgeUrl());
-  const providersRepo = new ProvidersRepo(profileDb.sqlite);
+  const providersRepo = new ProvidersRepo(profileDb.sqlite, credentials);
   const bindings      = new ModelBindingsRepo(profileDb.sqlite);
 
   const payload: BridgeConfigurePayload = { llm: null, embed: null };
@@ -59,9 +61,9 @@ export async function configureBridge(
   const llmBinding = bindings.get('lightrag-llm');
   if (llmBinding) {
     const row = providersRepo.get(llmBinding.providerConfigId);
-    if (isEnabledFor(row, 'llm') && row.api_key_plain) {
+    if (isEnabledFor(row, 'llm') && row.credential) {
       payload.llm = {
-        apiKey:  row.api_key_plain,
+        apiKey:  row.credential,
         baseUrl: row.base_url ?? getProviderDefinition(row.definition_id)?.defaultBaseUrl ?? '',
         model:   llmBinding.model,
       };
@@ -82,7 +84,7 @@ export async function configureBridge(
     if (protocols.includes('openai-embed') && enabledRow) {
       payload.embed = {
         protocol: 'openai-embed',
-        apiKey:   enabledRow.api_key_plain ?? '',
+        apiKey:   enabledRow.credential ?? '',
         baseUrl:  enabledRow.base_url ?? def?.defaultBaseUrl ?? '',
         model:    embedBinding.model,
         dim:      (embedBinding.config['dim'] as number | undefined) ?? 1024,

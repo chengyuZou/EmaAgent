@@ -105,6 +105,7 @@ export type {
   ProviderHealthWire,
   ProviderConfigWire,
   ProviderConfigInput,
+  ProviderConfigPatchInput,
   ProbeResultWire,
 } from './api/providers.js';
 

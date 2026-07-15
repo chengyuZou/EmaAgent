@@ -16,7 +16,6 @@ tauri-build = { version = "2.0", features = [] }
 tauri               = { version = "2.0", features = ["tray-icon"] }
 tauri-plugin-dialog = "2"
 tauri-plugin-opener = "2"
-uuid               = { version = "1", features = ["v4"] }
 serde              = { version = "1", features = ["derive"] }
 serde_json         = "1"
 tokio              = { version = "1", features = ["process", "io-util", "macros", "rt-multi-thread", "sync", "signal", "time"] }
@@ -24,6 +23,7 @@ which              = "6"
 regex              = "1"
 tracing            = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+rand                = "0.8.5"
 
 # Windows 进程树清理：Job Object + KILL_ON_JOB_CLOSE，Rust 进程退出时 OS 自动 kill
 # 整个 Job 内子进程（sidecar + bridge），不依赖 taskkill /T 进程树完整性（bug 4 修法）。
@@ -31,6 +31,13 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 win32job = "2"
 # OpenProcess 从 pid 拿进程 handle，assign 到 Job Object（win32job 只暴露 handle 接口）
 windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_System_Threading"] }
+keyring = { version = "3.6.3", default-features = false, features = ["windows-native"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+keyring = { version = "3.6.3", default-features = false, features = ["apple-native"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+keyring = { version = "3.6.3", default-features = false, features = ["linux-native-sync-persistent", "crypto-rust"] }
 
 [features]
 default = ["custom-protocol"]

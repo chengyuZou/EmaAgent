@@ -9,6 +9,7 @@ import type { BridgeConfigurePayload, NarrativeClient } from '@ema-agent/narrati
 import { ProviderRuntimeFacade } from '../src/wiring/provider-runtime.js';
 import type { AppBindings } from '../src/wiring/index.js';
 import { providersRoute } from '../src/routes/providers.js';
+import { createTestCredentialFacade } from './helpers/test-credential-facade.js';
 
 class NarrativeClientSpy {
   readonly payloads: BridgeConfigurePayload[] = [];
@@ -35,7 +36,7 @@ describe('ProviderRuntimeFacade', () => {
   beforeEach(() => {
     profileDb = new Database({ memory: true, kind: 'profile' });
     profileDb.migrate();
-    providers = new ProvidersRepo(profileDb.sqlite);
+    providers = new ProvidersRepo(profileDb.sqlite, createTestCredentialFacade());
     llm = new LlmRouter([]);
     ebd = new EbdRouter();
     tts = new TtsClient([]);
@@ -50,6 +51,7 @@ describe('ProviderRuntimeFacade', () => {
       stt,
       vision,
       narrative: narrative as unknown as NarrativeClient,
+      credentials: createTestCredentialFacade(),
     });
   });
 

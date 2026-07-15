@@ -5,6 +5,7 @@ import type { TtsClient } from '@ema-agent/tts';
 import type { SttClient } from '@ema-agent/stt';
 import type { VisionRouter } from '@ema-agent/vision';
 import type { NarrativeClient } from '@ema-agent/narrative-client';
+import type { CredentialFacade } from '@ema-agent/credential';
 import { loadLlmConfigs } from './providers/llm.js';
 import { loadEmbedConfigs } from './providers/embed.js';
 import { loadRerankConfigs } from './providers/rerank.js';
@@ -21,6 +22,7 @@ export interface ProviderRuntimeDependencies {
   stt: SttClient;
   vision: VisionRouter;
   narrative: NarrativeClient;
+  credentials: CredentialFacade;
 }
 
 /**
@@ -39,16 +41,16 @@ export class ProviderRuntimeFacade {
    * 各 Router 会先构造下一代 Adapter Map，再交换引用。
    */
   refreshProviders(): void {
-    const { profileDb, llm, ebd, tts, stt, vision } = this.deps;
-    const llmConfigs = loadLlmConfigs(profileDb);
-    const embedConfigs = loadEmbedConfigs(profileDb);
-    const rerankConfigs = loadRerankConfigs(profileDb);
+    const { profileDb, llm, ebd, tts, stt, vision, credentials } = this.deps;
+    const llmConfigs = loadLlmConfigs(profileDb, credentials);
+    const embedConfigs = loadEmbedConfigs(profileDb, credentials);
+    const rerankConfigs = loadRerankConfigs(profileDb, credentials);
 
     llm.reload(llmConfigs);
     ebd.reload(embedConfigs, rerankConfigs);
-    reloadTtsClient(tts, profileDb);
-    reloadSttClient(stt, profileDb);
-    reloadVisionRouter(vision, profileDb);
+    reloadTtsClient(tts, profileDb, credentials);
+    reloadSttClient(stt, profileDb, credentials);
+    reloadVisionRouter(vision, profileDb, credentials);
   }
 
   /**
@@ -59,7 +61,11 @@ export class ProviderRuntimeFacade {
     this.bridgeQueue = this.bridgeQueue
       .catch(() => undefined)
       .then(async () => {
-        await configureBridge(this.deps.profileDb, this.deps.narrative);
+        await configureBridge(
+          this.deps.profileDb,
+          this.deps.narrative,
+          this.deps.credentials,
+        );
       });
     return this.bridgeQueue;
   }

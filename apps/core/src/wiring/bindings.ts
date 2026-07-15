@@ -70,6 +70,7 @@ import { resolveBridgeUrl } from './bridge.js';
 import { SystemEventBus }  from '../sse/system-bus.js';
 import { ProviderRuntimeFacade } from './provider-runtime.js';
 import { SessionBackupFacade } from '@ema-agent/backup';
+import type { CredentialFacade } from '@ema-agent/credential';
 
 // ── App-wide bindings (Facade set passed everywhere) ─────────────────────────
 
@@ -90,6 +91,8 @@ export interface AppBindings {
   dataDb:        Database;
   /** Absolute path of the currently-active data dir — used for file storage. */
   activeDataDir: string;
+  /** Provider 凭据加解密的唯一入口；主密钥由 Tauri/OS keychain 提供。 */
+  credentials: CredentialFacade;
 
   hooks:   HookBus;
   session: SessionStore;
@@ -226,12 +229,13 @@ export interface BuildBindingsArgs {
   profileDb:     Database;
   dataDb:        Database;
   activeDataDir: string;
+  credentials:   CredentialFacade;
   /** 仅用于测试显式注入;正常生产不传,始终采用 V1_RELEASE_FEATURES。 */
   releaseFeatures?: ReleaseFeaturesWire;
 }
 
 export function buildBindings(args: BuildBindingsArgs): AppBindings {
-  const { profileDb, dataDb, activeDataDir } = args;
+  const { profileDb, dataDb, activeDataDir, credentials } = args;
   const releaseFeatures = args.releaseFeatures ?? V1_RELEASE_FEATURES;
 
   // ── Core infra ──────────────────────────────────────────────────────────────
@@ -247,7 +251,11 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
   });
 
   // ── Per-provider model pools (profileDb) ────────────────────────────────────
-  const providers            = new ProvidersRepo(profileDb.sqlite);
+  const providers            = new ProvidersRepo(profileDb.sqlite, credentials);
+  const migratedCredentials  = providers.protectLegacyCredentials();
+  if (migratedCredentials > 0) {
+    console.info(`[credential] 已加密迁移 ${migratedCredentials} 个旧 Provider 凭据`);
+  }
   const providerLlmModels    = new ProviderLlmModelsRepo(profileDb.sqlite);
   const providerEmbedModels  = new ProviderEmbedModelsRepo(profileDb.sqlite);
   const providerRerankModels = new ProviderRerankModelsRepo(profileDb.sqlite);
@@ -268,11 +276,14 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
   } catch {
     console.warn('[catalog] no bundled snapshot found, will rely on network refresh');
   }
-  const llm = new LlmRouter(loadLlmConfigs(profileDb), undefined, modelCatalog, {
+  const llm = new LlmRouter(loadLlmConfigs(profileDb, credentials), undefined, modelCatalog, {
     supportsManualImageInput: (providerId, model) =>
       providerVisionModels.hasProviderModel(providerId, model),
   });
-  const ebd = new EbdRouter(loadEmbedConfigs(profileDb), loadRerankConfigs(profileDb));
+  const ebd = new EbdRouter(
+    loadEmbedConfigs(profileDb, credentials),
+    loadRerankConfigs(profileDb, credentials),
+  );
 
   const narrative = new NarrativeClient({
     baseUrl:   resolveBridgeUrl(),
@@ -306,9 +317,9 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
   const emotion = new EmotionEngine({ vocabulary: card.current().emotionVocabulary });
 
   // ── TTS / STT ───────────────────────────────────────────────────────────────
-  const tts    = buildTtsClient({ profileDb });
-  const stt    = buildSttClient({ profileDb });
-  const vision = buildVisionRouter(profileDb);
+  const tts    = buildTtsClient({ profileDb, credentials });
+  const stt    = buildSttClient({ profileDb, credentials });
+  const vision = buildVisionRouter(profileDb, credentials);
   const providerRuntime = new ProviderRuntimeFacade({
     profileDb,
     llm,
@@ -317,6 +328,7 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
     stt,
     vision,
     narrative,
+    credentials,
   });
 
   // ── Audio archive ───────────────────────────────────────────────────────────
@@ -652,7 +664,7 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
   });
 
   return {
-    profileDb, dataDb, activeDataDir,
+    profileDb, dataDb, activeDataDir, credentials,
     hooks, session, sessionBackup,
     llm, ebd, narrative, modelCatalog,
     card, emotion,

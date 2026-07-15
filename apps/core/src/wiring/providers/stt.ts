@@ -1,6 +1,7 @@
 import type { Database, ProviderConfigRow } from '@ema-agent/storage';
 import { ProvidersRepo } from '@ema-agent/storage';
 import { SttClient, type SttProviderConfig } from '@ema-agent/stt';
+import type { CredentialFacade } from '@ema-agent/credential';
 import { getProviderDefinition, isSttProtocol, resolveProtocols, type ProtocolFamily } from '@ema-agent/contracts';
 
 // ── Provider config builder (exported — reused by providers route hot-reload) ─
@@ -15,18 +16,21 @@ export function buildSttProviderConfig(row: ProviderConfigRow): SttProviderConfi
   const protocol = resolveProtocols(def.protocols.stt)[0] as ProtocolFamily | undefined;
   if (!isSttProtocol(protocol)) return null;
 
-  if (def.requiresCredentials !== false && !row.api_key_plain) return null;
+  if (def.requiresCredentials !== false && !row.credential) return null;
 
   return {
     id:      row.id,
     protocol,
-    apiKey:  row.api_key_plain ?? '',
+    apiKey:  row.credential ?? '',
     baseUrl: row.base_url ?? def.defaultBaseUrl ?? '',
   };
 }
 
-function loadSttProviderConfigs(profileDb: Database): SttProviderConfig[] {
-  const repo = new ProvidersRepo(profileDb.sqlite);
+function loadSttProviderConfigs(
+  profileDb: Database,
+  credentials: CredentialFacade,
+): SttProviderConfig[] {
+  const repo = new ProvidersRepo(profileDb.sqlite, credentials);
   const out: SttProviderConfig[] = [];
   for (const row of repo.listByCapability('stt')) {
     const cfg = buildSttProviderConfig(row);
@@ -37,11 +41,18 @@ function loadSttProviderConfigs(profileDb: Database): SttProviderConfig[] {
 
 // ── Top-level builder ───────────────────────────────────────────────────────
 
-export function buildSttClient(args: { profileDb: Database }): SttClient {
-  return new SttClient(loadSttProviderConfigs(args.profileDb));
+export function buildSttClient(args: {
+  profileDb: Database;
+  credentials: CredentialFacade;
+}): SttClient {
+  return new SttClient(loadSttProviderConfigs(args.profileDb, args.credentials));
 }
 
 /** Hot-reload after a provider config change. Binding resolution stays in the route. */
-export function reloadSttClient(client: SttClient, profileDb: Database): void {
-  client.reload(loadSttProviderConfigs(profileDb));
+export function reloadSttClient(
+  client: SttClient,
+  profileDb: Database,
+  credentials: CredentialFacade,
+): void {
+  client.reload(loadSttProviderConfigs(profileDb, credentials));
 }

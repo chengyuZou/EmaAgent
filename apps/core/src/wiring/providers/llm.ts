@@ -4,6 +4,7 @@ import {
   type Database,
 } from '@ema-agent/storage';
 import type { ProviderConfig, ModelsDevCatalog } from '@ema-agent/llm';
+import type { CredentialFacade } from '@ema-agent/credential';
 import {
   getProviderDefinition,
   isLlmProtocol,
@@ -27,20 +28,20 @@ export function buildLlmProviderConfig(row: ProviderConfigRow): ProviderConfig |
   if (!isLlmProtocol(protocol)) return null;
 
   const needsKey = def.requiresCredentials !== false;
-  if (needsKey && !row.api_key_plain) return null;
+  if (needsKey && !row.credential) return null;
 
   return {
     id:           row.id,
     protocol,
-    apiKey:       row.api_key_plain ?? '',
+    apiKey:       row.credential ?? '',
     baseUrl:      row.base_url ?? resolveBaseUrl(def, protocol),
     defaultModel: typeof extra['defaultModel'] === 'string' ? extra['defaultModel'] : undefined,
     modelsDevId:  def.modelsDevId,
   };
 }
 
-export function loadLlmConfigs(db: Database): ProviderConfig[] {
-  const repo = new ProvidersRepo(db.sqlite);
+export function loadLlmConfigs(db: Database, credentials: CredentialFacade): ProviderConfig[] {
+  const repo = new ProvidersRepo(db.sqlite, credentials);
   const out: ProviderConfig[] = [];
   for (const row of repo.listByCapability('llm')) {
     const cfg = buildLlmProviderConfig(row);

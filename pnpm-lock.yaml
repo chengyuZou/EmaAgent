@@ -58,6 +58,9 @@ importers:
       '@ema-agent/conversation':
         specifier: workspace:*
         version: link:../../packages/conversation
+      '@ema-agent/credential':
+        specifier: workspace:*
+        version: link:../../packages/credential
       '@ema-agent/ebd-client':
         specifier: workspace:*
         version: link:../../packages/ebd-client
@@ -571,6 +574,21 @@ importers:
         specifier: ^2.0.0
         version: 2.1.9(@types/node@20.19.39)(msw@2.14.6(@types/node@20.19.39)(typescript@5.9.3))
 
+  packages/credential:
+    devDependencies:
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.39
+      rimraf:
+        specifier: ^5.0.0
+        version: 5.0.10
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: ^2.0.0
+        version: 2.1.9(@types/node@20.19.39)(msw@2.14.6(@types/node@20.19.39)(typescript@5.9.3))
+
   packages/ebd-client:
     dependencies:
       '@ema-agent/contracts':
@@ -982,6 +1000,9 @@ importers:
       '@ema-agent/contracts':
         specifier: workspace:*
         version: link:../contracts
+      '@ema-agent/credential':
+        specifier: workspace:*
+        version: link:../credential
       '@node-rs/jieba':
         specifier: ^2.0.1
         version: 2.0.1

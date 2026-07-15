@@ -4,6 +4,7 @@ import {
   type Database,
 } from '@ema-agent/storage';
 import type { EmbedProviderConfig } from '@ema-agent/ebd-client';
+import type { CredentialFacade } from '@ema-agent/credential';
 import {
   getProviderDefinition,
   isEmbedProtocol,
@@ -73,13 +74,13 @@ export function buildEmbedProviderConfig(row: ProviderConfigRow): EmbedProviderC
   const protocol = resolveProtocols(def.protocols.embed)[0] as ProtocolFamily | undefined;
   if (!isEmbedProtocol(protocol)) return null;
 
-  if (def.requiresCredentials !== false && !row.api_key_plain) return null;
+  if (def.requiresCredentials !== false && !row.credential) return null;
 
   const extra = JSON.parse(row.config_json) as Record<string, unknown>;
   return {
     id:           row.id,
     protocol,
-    apiKey:       row.api_key_plain ?? '',
+    apiKey:       row.credential ?? '',
     baseUrl:      row.base_url ?? def.defaultBaseUrl,
     defaultModel: typeof extra['defaultModel'] === 'string' ? extra['defaultModel'] : undefined,
     embeddingRevision: typeof extra['embeddingRevision'] === 'string'
@@ -88,8 +89,8 @@ export function buildEmbedProviderConfig(row: ProviderConfigRow): EmbedProviderC
   };
 }
 
-export function loadEmbedConfigs(db: Database): EmbedProviderConfig[] {
-  const repo = new ProvidersRepo(db.sqlite);
+export function loadEmbedConfigs(db: Database, credentials: CredentialFacade): EmbedProviderConfig[] {
+  const repo = new ProvidersRepo(db.sqlite, credentials);
   const out: EmbedProviderConfig[] = [];
   for (const row of repo.listByCapability('embed')) {
     const cfg = buildEmbedProviderConfig(row);

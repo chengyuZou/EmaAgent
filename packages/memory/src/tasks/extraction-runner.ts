@@ -133,7 +133,11 @@ export class MemoryTaskRunner {
         case 'maintenance':
         case 'embedding_refresh':
         case 'consolidation':
-          // Reserved — runs when ebd provider changes; Round 4.5
+          // B-050:这三个 kind 暂未实现,空 break 后会落到下面的 markCompleted
+          // 谎报完成(状态机不该允许空 handler 返回 completed)。
+          // 当前不动代码,等 Sol 决定:实现它们,或改成标 unsupported 不重试。
+          // 注:目前无入队点(dispatcher 只入队 extraction),不会实际触发,
+          // 但 recovery requeue 历史遗留行仍会命中此分支。
           break;
       }
       if (leaseLost) return;

@@ -1,7 +1,7 @@
 import asyncio
 import os
 
-from fastapi import APIRouter, Header, HTTPException
+from fastapi import APIRouter
 
 from bridge.config import ConfigureRequest
 from bridge.narrative.manager import NarrativeManager
@@ -10,7 +10,6 @@ from bridge.state import BridgeState, state
 
 router = APIRouter(prefix="/internal")
 
-_SECRET        = os.environ.get("EMA_SHARED_SECRET", "")
 _NARRATIVE_DIR = os.environ.get("EMA_NARRATIVE_DIR", "./data/narrative")
 
 # Serializes /internal/configure — without this, two overlapping requests
@@ -20,22 +19,14 @@ _NARRATIVE_DIR = os.environ.get("EMA_NARRATIVE_DIR", "./data/narrative")
 _configure_lock = asyncio.Lock()
 
 
-def _check_secret(x_ema_secret: str | None) -> None:
-    if _SECRET and x_ema_secret != _SECRET:
-        raise HTTPException(status_code=403, detail="forbidden")
-
-
 @router.post("/configure", status_code=204)
 async def configure(
     body: ConfigureRequest,
-    x_ema_secret: str | None = Header(default=None),
 ) -> None:
     """
     Push LightRAG config from apps/core.
     Called on startup and whenever embed or lightrag-llm bindings change.
     """
-    _check_secret(x_ema_secret)
-
     async with _configure_lock:
         # 先在隔离快照中构造下一代运行时；初始化失败时不污染当前 generation。
         next_state = BridgeState()

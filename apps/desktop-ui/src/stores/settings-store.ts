@@ -94,7 +94,15 @@ export const useSettingsStore = create<SettingsStoreState>((set, get) => ({
   async upsertProvider(input, id) {
     try {
       if (id) {
-        await providersApi.patch(id, input);
+        const { apiKey, definitionId: _definitionId, ...fields } = input;
+        await providersApi.patch(id, {
+          ...fields,
+          credential: apiKey === undefined
+            ? { type: 'keep' }
+            : apiKey.trim()
+              ? { type: 'replace', value: apiKey.trim() }
+              : { type: 'clear' },
+        });
       } else {
         await providersApi.create(input);
       }

@@ -3,6 +3,7 @@ import { ProvidersRepo } from '@ema-agent/storage';
 import { VisionRouter, isVisionError } from '@ema-agent/vision';
 import type { VisionProviderConfig, VisionImageMime } from '@ema-agent/vision';
 import type { ModelsDevCatalog } from '@ema-agent/llm';
+import type { CredentialFacade } from '@ema-agent/credential';
 import { KbVisionAdapterError, type KbVisionAdapter } from '@ema-agent/knowledge-base';
 import {
   getProviderDefinition,
@@ -57,20 +58,23 @@ export function buildVisionProviderConfig(row: ProviderConfigRow): VisionProvide
   const protocol = resolveProtocols(def.protocols.vision)[0] as ProtocolFamily | undefined;
   if (!isVisionProtocol(protocol)) return null;
 
-  if (def.requiresCredentials !== false && !row.api_key_plain) return null;
+  if (def.requiresCredentials !== false && !row.credential) return null;
 
   const extra = JSON.parse(row.config_json) as Record<string, unknown>;
   return {
     id:           row.id,
     protocol,
-    apiKey:       row.api_key_plain ?? '',
+    apiKey:       row.credential ?? '',
     baseUrl:      row.base_url ?? def.defaultBaseUrl,
     defaultModel: typeof extra['defaultModel'] === 'string' ? extra['defaultModel'] : undefined,
   };
 }
 
-function loadVisionConfigs(profileDb: Database): VisionProviderConfig[] {
-  const repo = new ProvidersRepo(profileDb.sqlite);
+function loadVisionConfigs(
+  profileDb: Database,
+  credentials: CredentialFacade,
+): VisionProviderConfig[] {
+  const repo = new ProvidersRepo(profileDb.sqlite, credentials);
   const out: VisionProviderConfig[] = [];
   for (const row of repo.listByCapability('vision')) {
     const cfg = buildVisionProviderConfig(row);
@@ -79,12 +83,19 @@ function loadVisionConfigs(profileDb: Database): VisionProviderConfig[] {
   return out;
 }
 
-export function buildVisionRouter(profileDb: Database): VisionRouter {
-  return new VisionRouter({ configs: loadVisionConfigs(profileDb) });
+export function buildVisionRouter(
+  profileDb: Database,
+  credentials: CredentialFacade,
+): VisionRouter {
+  return new VisionRouter({ configs: loadVisionConfigs(profileDb, credentials) });
 }
 
-export function reloadVisionRouter(router: VisionRouter, profileDb: Database): void {
-  router.reload(loadVisionConfigs(profileDb));
+export function reloadVisionRouter(
+  router: VisionRouter,
+  profileDb: Database,
+  credentials: CredentialFacade,
+): void {
+  router.reload(loadVisionConfigs(profileDb, credentials));
 }
 
 /** Wraps VisionRouter as the KB-internal KbVisionAdapter interface. */

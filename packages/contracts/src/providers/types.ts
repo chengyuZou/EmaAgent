@@ -7,6 +7,15 @@
 export type Capability = 'llm' | 'embed' | 'rerank' | 'vision' | 'tts' | 'stt';
 
 /**
+ * 修改 Provider 凭据时的显式操作。
+ * 不再用 undefined 或空字符串猜测用户意图，避免编辑其他字段时误删密钥。
+ */
+export type ProviderCredentialOperation =
+  | { type: 'keep' }
+  | { type: 'replace'; value: string }
+  | { type: 'clear' };
+
+/**
  * Wire-format protocol families. Names follow the pattern
  *   `{capability}-{format-origin}`
  * to stay honest about which capability uses which body/response shape.

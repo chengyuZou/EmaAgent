@@ -199,7 +199,8 @@ pub async fn spawn(state: SidecarState, _app: AppHandle) -> Result<(), String> {
     let workspace_root = locate_workspace_root()?;
     let bridge_dir = workspace_root.join("apps/bridge");
 
-    let secret = uuid::Uuid::new_v4().to_string();
+    let secret = crate::credential_key::generate_ephemeral_secret();
+    let credential_master_key = crate::credential_key::load_or_create_master_key()?;
     state.set_secret(secret.clone());
 
     // ── 1. sidecar (Node) ──
@@ -215,7 +216,8 @@ pub async fn spawn(state: SidecarState, _app: AppHandle) -> Result<(), String> {
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .stdin(Stdio::null())
-        .env("EMA_SHARED_SECRET", &secret);
+        .env("EMA_SHARED_SECRET", &secret)
+        .env("EMA_CREDENTIAL_MASTER_KEY", &credential_master_key);
     apply_windows_flags(&mut sidecar_cmd);
     let mut sidecar_child = sidecar_cmd.spawn().map_err(|e| format!("spawn pnpm: {e}"))?;
     if let Some(pid) = sidecar_child.id() {

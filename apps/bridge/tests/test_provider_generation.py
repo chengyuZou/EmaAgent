@@ -56,7 +56,6 @@ class ProviderGenerationTest(unittest.IsolatedAsyncioTestCase):
 
         await internal.configure(
             ConfigureRequest(embed=None, llm=None),
-            internal._SECRET or None,
         )
 
         self.assertEqual(state.embed_api_key, "")
@@ -87,7 +86,7 @@ class ProviderGenerationTest(unittest.IsolatedAsyncioTestCase):
 
         with patch.object(internal, "NarrativeManager", _NewManager):
             with self.assertRaisesRegex(RuntimeError, "initialize failed"):
-                await internal.configure(request, internal._SECRET or None)
+                await internal.configure(request)
 
         self.assertEqual(state.embed_api_key, "old-embed-key")
         self.assertEqual(state.llm_api_key, "old-llm-key")
@@ -116,7 +115,7 @@ class ProviderGenerationTest(unittest.IsolatedAsyncioTestCase):
             patch.object(internal, "NarrativeManager", _NewManager),
             patch.object(internal, "NarrativeRouter", lambda snapshot: ("router", snapshot)),
         ):
-            await internal.configure(request, internal._SECRET or None)
+            await internal.configure(request)
 
         self.assertIsNotNone(_NewManager.last)
         self.assertTrue(_NewManager.last.initialized)

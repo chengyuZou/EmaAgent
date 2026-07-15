@@ -3,7 +3,7 @@
  * ProviderDefinition imported from @ema-agent/contracts.
  */
 import { sidecarClient } from './sidecar-client.js';
-import type { ProviderDefinition } from '@ema-agent/contracts';
+import type { ProviderCredentialOperation, ProviderDefinition } from '@ema-agent/contracts';
 
 export type { ProviderDefinition };
 
@@ -35,6 +35,15 @@ export interface ProviderConfigInput {
   enabled?:     boolean;
   capabilities?: string[];
   config?:      Record<string, unknown>;
+}
+
+export interface ProviderConfigPatchInput {
+  displayName?:   string;
+  credential?:    ProviderCredentialOperation;
+  baseUrl?:       string | null;
+  enabled?:       boolean;
+  capabilities?:  string[];
+  config?:        Record<string, unknown>;
 }
 
 export interface ProbeResultWire {
@@ -106,10 +115,13 @@ export const providersApi = {
     return sidecarClient.request<ProviderConfigWire>(`/api/providers/${id}`);
   },
 
-  /** GET /api/providers/:id/key — reveal stored key so the edit form prefills it. */
-  async getKey(id: string): Promise<string> {
-    const r = await sidecarClient.request<{ apiKey: string }>(`/api/providers/${id}/key`);
-    return r.apiKey;
+  /** 用户主动操作时才请求明文凭据；响应不得写入全局状态或持久化缓存。 */
+  async revealCredential(id: string): Promise<string> {
+    const result = await sidecarClient.request<{ credential: string }>(
+      `/api/providers/${id}/credential/reveal`,
+      { method: 'POST' },
+    );
+    return result.credential;
   },
 
   /** POST /api/providers */
@@ -121,7 +133,7 @@ export const providersApi = {
   },
 
   /** PATCH /api/providers/:id */
-  async patch(id: string, input: Partial<ProviderConfigInput>): Promise<ProviderConfigWire> {
+  async patch(id: string, input: ProviderConfigPatchInput): Promise<ProviderConfigWire> {
     return sidecarClient.request<ProviderConfigWire>(`/api/providers/${id}`, {
       method: 'PATCH',
       json: input,

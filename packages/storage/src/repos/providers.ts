@@ -1,5 +1,6 @@
 import type { SqliteDb } from '../database.js';
 import type { Capability } from '@ema-agent/contracts';
+import type { CredentialFacade } from '@ema-agent/credential';
 
 // ── 类型─────────────────────────────────────────────────────────────────────
 
@@ -10,7 +11,8 @@ export interface ProviderConfigRow {
   /** TS 注册表的 key（如 "siliconflow"、"deepseek"）。 */
   definition_id: string;
   display_name: string;
-  api_key_plain: string | null;
+  /** 仅为当前进程内解密值；SQLite 对应列 credential_envelope 始终保存密文。 */
+  credential: string | null;
   /** 可选，覆盖注册表的 defaultBaseUrl。 */
   base_url: string | null;
   enabled: number;
@@ -22,11 +24,15 @@ export interface ProviderConfigRow {
   updated_at: number;
 }
 
+interface StoredProviderConfigRow extends Omit<ProviderConfigRow, 'credential'> {
+  credential_envelope: string | null;
+}
+
 export interface ProviderConfigInsert {
   id: string;
   definitionId: string;
   displayName: string;
-  apiKey?: string;
+  apiKey?: string | null;
   /** 留空则回退到注册表的 defaultBaseUrl。 */
   baseUrl?: string;
   enabled?: boolean;
@@ -64,23 +70,63 @@ export interface ProviderWithHealth {
  * 双取协调。
  */
 export class ProvidersRepo {
-  constructor(private readonly db: SqliteDb) {}
+  constructor(
+    private readonly db: SqliteDb,
+    private readonly credentials: CredentialFacade,
+  ) {}
+
+  private revealRow(row: StoredProviderConfigRow): ProviderConfigRow {
+    const { credential_envelope: envelope, ...metadata } = row;
+    return {
+      ...metadata,
+      credential: envelope === null ? null : this.credentials.reveal(row.id, envelope),
+    };
+  }
+
+  /**
+   * 将旧版本遗留的明文凭据原地升级为加密信封。
+   * 整批写入在同一事务中完成；任意一行失败都不会留下半迁移状态。
+   */
+  protectLegacyCredentials(): number {
+    const rows = this.db
+      .prepare('SELECT id, credential_envelope FROM provider_configs WHERE credential_envelope IS NOT NULL')
+      .all() as Array<Pick<StoredProviderConfigRow, 'id' | 'credential_envelope'>>;
+    const legacyRows = rows.filter(
+      (row): row is { id: string; credential_envelope: string } =>
+        row.credential_envelope !== null && !this.credentials.isProtected(row.credential_envelope),
+    );
+    if (legacyRows.length === 0) return 0;
+
+    const update = this.db.prepare(
+      'UPDATE provider_configs SET credential_envelope = ?, updated_at = ? WHERE id = ?',
+    );
+    const now = Date.now();
+    this.db.transaction(() => {
+      for (const row of legacyRows) {
+        update.run(this.credentials.protect(row.id, row.credential_envelope), now, row.id);
+      }
+    })();
+    return legacyRows.length;
+  }
 
   // ── 配置写入───────────────────────────────────────────────────────────
 
   /** 插入或完全替换 Provider 配置。 */
   upsert(data: ProviderConfigInsert): void {
     const now = Date.now();
+    const protectedApiKey = data.apiKey === undefined || data.apiKey === null
+      ? null
+      : this.credentials.protect(data.id, data.apiKey);
     this.db
       .prepare(
         `INSERT INTO provider_configs
-           (id, definition_id, display_name, api_key_plain, base_url,
+           (id, definition_id, display_name, credential_envelope, base_url,
             enabled, config_json, capabilities_json, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(id) DO UPDATE SET
            definition_id     = excluded.definition_id,
            display_name      = excluded.display_name,
-           api_key_plain     = excluded.api_key_plain,
+           credential_envelope = excluded.credential_envelope,
            base_url          = excluded.base_url,
            enabled           = excluded.enabled,
            config_json       = excluded.config_json,
@@ -91,7 +137,7 @@ export class ProvidersRepo {
         data.id,
         data.definitionId,
         data.displayName,
-        data.apiKey ?? null,
+        protectedApiKey,
         data.baseUrl ?? null,
         data.enabled !== false ? 1 : 0,
         JSON.stringify(data.config ?? {}),
@@ -101,10 +147,11 @@ export class ProvidersRepo {
       );
   }
 
-  updateApiKey(id: string, apiKey: string): void {
+  updateApiKey(id: string, apiKey: string | null): void {
+    const protectedApiKey = apiKey === null ? null : this.credentials.protect(id, apiKey);
     this.db
-      .prepare('UPDATE provider_configs SET api_key_plain = ?, updated_at = ? WHERE id = ?')
-      .run(apiKey, Date.now(), id);
+      .prepare('UPDATE provider_configs SET credential_envelope = ?, updated_at = ? WHERE id = ?')
+      .run(protectedApiKey, Date.now(), id);
   }
 
   setEnabled(id: string, enabled: boolean): void {
@@ -124,22 +171,25 @@ export class ProvidersRepo {
   // ── 配置读取────────────────────────────────────────────────────────────
 
   get(id: string): ProviderConfigRow | undefined {
-    return this.db
+    const row = this.db
       .prepare('SELECT * FROM provider_configs WHERE id = ?')
-      .get(id) as ProviderConfigRow | undefined;
+      .get(id) as StoredProviderConfigRow | undefined;
+    return row ? this.revealRow(row) : undefined;
   }
 
   /** 所有 Provider（不论是否启用） — 供设置 UI 列表使用。 */
   list(): ProviderConfigRow[] {
-    return this.db
+    const rows = this.db
       .prepare('SELECT * FROM provider_configs ORDER BY created_at ASC')
-      .all() as ProviderConfigRow[];
+      .all() as StoredProviderConfigRow[];
+    return rows.map((row) => this.revealRow(row));
   }
 
   listEnabled(): ProviderConfigRow[] {
-    return this.db
+    const rows = this.db
       .prepare('SELECT * FROM provider_configs WHERE enabled = 1 ORDER BY created_at ASC, id ASC')
-      .all() as ProviderConfigRow[];
+      .all() as StoredProviderConfigRow[];
+    return rows.map((row) => this.revealRow(row));
   }
 
   /**
@@ -147,14 +197,15 @@ export class ProvidersRepo {
    * 对 JSON 字符串数组使用 LIKE — 对存储的小数组足够用。
    */
   listByCapability(capability: string): ProviderConfigRow[] {
-    return this.db
+    const rows = this.db
       .prepare(
         `SELECT * FROM provider_configs
          WHERE enabled = 1
            AND capabilities_json LIKE ?
          ORDER BY created_at ASC`,
       )
-      .all(`%"${capability}"%`) as ProviderConfigRow[];
+      .all(`%"${capability}"%`) as StoredProviderConfigRow[];
+    return rows.map((row) => this.revealRow(row));
   }
 
   // ── 健康状态写入───────────────────────────────────────────────────────────
@@ -227,7 +278,7 @@ export class ProvidersRepo {
          LEFT JOIN provider_health ph ON ph.provider_config_id = pc.id
          ORDER BY pc.created_at ASC`,
       )
-      .all() as Array<ProviderConfigRow & {
+      .all() as Array<StoredProviderConfigRow & {
         h_status: HealthStatus | null;
         h_last_probed_at: number | null;
         h_latency_ms: number | null;
@@ -236,18 +287,18 @@ export class ProvidersRepo {
       }>;
 
     return rows.map(r => ({
-      config: {
+      config: this.revealRow({
         id: r.id,
         definition_id: r.definition_id,
         display_name: r.display_name,
-        api_key_plain: r.api_key_plain,
+        credential_envelope: r.credential_envelope,
         base_url: r.base_url,
         enabled: r.enabled,
         config_json: r.config_json,
         capabilities_json: r.capabilities_json,
         created_at: r.created_at,
         updated_at: r.updated_at,
-      },
+      }),
       health: r.h_status === null ? null : {
         provider_config_id: r.id,
         status: r.h_status,
