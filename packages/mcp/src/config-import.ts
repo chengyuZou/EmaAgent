@@ -1,19 +1,18 @@
 import { McpServerConfigSchema } from './types.js';
 import type { McpServerConfig } from './types.js';
 
-// ── Config import / interop ───────────────────────────────────────────────────
+// ── 配置导入 / 互操作 ───────────────────────────────────────────────────────────
 //
-// Users acquire MCP servers by copy-pasting JSON from mcp.so, Claude Desktop, or
-// a README. Those shapes do NOT carry our `type` discriminator and are often
-// nested under a `mcpServers` / `servers` map. This parser normalizes the common
-// shapes into validated McpServerConfig[] so pasted configs "just work" instead
-// of failing schema validation.
+// 用户从 mcp.so、Claude Desktop 或 README 复制粘贴 JSON 获取 MCP 服务器。
+// 这些形态不带我们的 `type` 判别字段,且常嵌在 `mcpServers` / `servers` map 下。
+// 本解析器把常见形态归一化成已校验的 McpServerConfig[],让粘贴的配置"直接能用",
+// 而非校验失败。
 //
-// Accepted inputs (any of):
+// 接受输入(任一):
 //   { "mcpServers": { "<name>": { command, args, env } | { url, headers } } }   // Claude Desktop / mcp.so
 //   { "servers":    { "<name>": { ... } } }                                     // VS Code
-//   { "<name>":     { command|url, ... } }                                      // bare map
-//   { command|url, ... }                                                        // single server (name optional)
+//   { "<name>":     { command|url, ... } }                                      // 裸 map
+//   { command|url, ... }                                                        // 单服务器(name 可选)
 
 export interface ImportedServer {
   name:   string;
@@ -24,7 +23,7 @@ export function parseImportedMcpServers(input: unknown, fallbackName = 'mcp-serv
   const root = coerceObject(input);
   if (!root) throw new Error('Invalid MCP config: expected a JSON object.');
 
-  // Unwrap the common wrapper keys.
+  // 解开常见包装键。
   const map =
     coerceObject(root['mcpServers']) ??
     coerceObject(root['servers']) ??
@@ -39,7 +38,7 @@ export function parseImportedMcpServers(input: unknown, fallbackName = 'mcp-serv
     return out;
   }
 
-  // Maybe a bare map of name → server (heuristic: every value is an object with command|url).
+  // 可能是 name -> server 的裸 map(启发式:每个值都是带 command|url 的对象)。
   const entries = Object.entries(root);
   const looksLikeMap = entries.length > 0 && entries.every(([, v]) => {
     const o = coerceObject(v);
@@ -49,12 +48,12 @@ export function parseImportedMcpServers(input: unknown, fallbackName = 'mcp-serv
     return entries.map(([name, raw]) => ({ name, config: normalizeOne(raw, name) }));
   }
 
-  // Single server object.
+  // 单服务器对象。
   const name = typeof root['name'] === 'string' ? root['name'] : fallbackName;
   return [{ name, config: normalizeOne(root, name) }];
 }
 
-// ── Normalize one raw server object into a validated McpServerConfig ───────────
+// ── 把一个裸服务器对象归一化成已校验的 McpServerConfig ───
 
 function normalizeOne(raw: unknown, name: string): McpServerConfig {
   const o = coerceObject(raw);
@@ -75,7 +74,7 @@ function normalizeOne(raw: unknown, name: string): McpServerConfig {
     const url = o['url'];
     const type = explicit === 'sse' || explicit === 'http'
       ? explicit
-      : url.toLowerCase().includes('/sse') ? 'sse' : 'http';   // infer: legacy SSE endpoints usually end in /sse
+      : url.toLowerCase().includes('/sse') ? 'sse' : 'http';   // 推断:旧式 SSE 端点通常以 /sse 结尾
     candidate = {
       type,
       url,
@@ -92,7 +91,7 @@ function normalizeOne(raw: unknown, name: string): McpServerConfig {
   return result.data;
 }
 
-// ── Helpers ────────────────────────────────────────────────────────────────────
+// ── 辅助函数 ────────────────────────────────────────────────────────────────────
 
 function coerceObject(v: unknown): Record<string, unknown> | null {
   return v !== null && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : null;

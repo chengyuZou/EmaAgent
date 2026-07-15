@@ -6,13 +6,13 @@ import { McpServerNotFoundError } from './errors.js';
 
 // ── McpServerStore ────────────────────────────────────────────────────────────
 //
-// Business-logic layer over McpServersRepo.
+// McpServersRepo 之上的业务逻辑层。
 //
-// Responsibilities:
-//   - Parse/serialize McpServerConfig (JSON Schema validation)
-//   - CRUD operations expressed in domain types (not raw DB rows)
+// 职责:
+//   - 解析/序列化 McpServerConfig(JSON Schema 校验)
+//   - 用领域类型(非裸 DB 行)表达 CRUD
 //
-// Does NOT manage connections — that is McpRegistry's job.
+// 不管连接 - 那是 McpRegistry 的事。
 
 export class McpServerStore {
   constructor(private readonly repo: McpServersRepo) {}
@@ -40,7 +40,7 @@ export class McpServerStore {
     return id;
   }
 
-  /** Persist the tool list discovered on a successful connect (fast/offline startup). */
+  /** 持久化成功连接时发现的工具列表(快速/离线启动)。 */
   cacheTools(name: string, tools: McpToolInfo[]): void {
     const row = this.repo.findByName(name);
     if (!row) return;
@@ -72,7 +72,7 @@ export class McpServerStore {
     return this.repo.listEnabled().map((r) => this.rowToRecord(r));
   }
 
-  // ── Private ──────────────────────────────────────────────────────────────
+  // ── 私有 ──────────────────────────────────────────────────────────────
 
   private rowToRecord(row: {
     id: string; name: string; source_url: string | null;

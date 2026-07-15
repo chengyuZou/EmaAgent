@@ -1,8 +1,8 @@
-﻿import { Client }             from '@modelcontextprotocol/sdk/client/index.js';
+import { Client }             from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport, getDefaultEnvironment } from '@modelcontextprotocol/sdk/client/stdio.js';
-// SSEClientTransport is deprecated in the MCP SDK (prefer StreamableHTTPClientTransport),
-// but many published servers (e.g. Zhipu, Baidu) still use the legacy SSE protocol.
-// We keep it for backward compatibility during the migration period.
+// SSEClientTransport 在 MCP SDK 已弃用(优先 StreamableHTTPClientTransport),
+// 但很多已发布服务器(如智谱、百度)仍用旧式 SSE 协议。
+// 迁移期保留向后兼容。
 // eslint-disable-next-line @typescript-eslint/no-deprecated
 import { SSEClientTransport }   from '@modelcontextprotocol/sdk/client/sse.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
@@ -13,17 +13,15 @@ const CLIENT_NAME    = 'ema-agent';
 const CLIENT_VERSION = '1.0.0';
 const CONNECT_TIMEOUT_MS = 30_000;
 
-// 鈹€鈹€ stdio safety validation (defense-in-depth on top of the permission gate) 鈹€鈹€
+// ── stdio 安全校验(权限门禁之上的纵深防御)────────────────────────────────────
 
 const SHELL_META_RE   = /[;&|`$(){}<>\n\r]/;
 // eslint-disable-next-line no-control-regex
 const CONTROL_CHAR_RE = /[\x00-\x1f]/;
 
 /**
- * Reject obviously-unsafe stdio configs before spawning a subprocess: shell
- * metacharacters in the command, control characters in args, and inline-code
- * flags (python -c, node -e/--eval) that would run arbitrary code outside the
- * intended MCP server entrypoint.
+ * 拉起子进程前拒绝明显不安全的 stdio 配置:命令含 shell 元字符、args 含控制字符、
+ * 以及会在预期 MCP server 入口外跑任意代码的内联代码标志(python -c、node -e/--eval)。
  */
 function assertSafeStdioConfig(command: string, args: readonly string[]): void {
   if (!command.trim()) throw new Error('MCP stdio command must not be empty.');
@@ -55,8 +53,9 @@ function buildTransport(config: McpServerConfig): StdioClientTransport | SSEClie
       command: config.command,
       args:    config.args,
       cwd:     config.cwd,
-      // MUST merge the SDK's default env (PATH, HOME, 鈥?. Passing only the
-      // user's env would strip PATH and break `npx`/`node`/`uvx` resolution 鈥?      // the #1 cause of "stdio server won't start". User keys override defaults.
+      // 必须合并 SDK 默认 env(PATH、HOME 等)。只传用户 env 会丢 PATH,
+      // 破坏 `npx`/`node`/`uvx` 解析 - 这是"stdio server 起不来"的头号原因。
+      // 用户键覆盖默认。
       env:     { ...getDefaultEnvironment(), ...(config.env ?? {}) },
     });
   }
@@ -79,8 +78,8 @@ export interface OpenedConnection {
 }
 
 /**
- * Open a connection to an MCP server. Resolves when the SDK handshake
- * completes (initialize 鈫?initialized). Throws on timeout or protocol error.
+ * 打开到 MCP 服务器的连接。SDK 握手完成(initialize -> initialized)时 resolve。
+ * 超时或协议错误时抛错。
  */
 export async function openConnection(
   serverName: string,
@@ -92,10 +91,9 @@ export async function openConnection(
     { capabilities: {} },
   );
 
-  // Wrap connect in a timeout. The timer MUST be cleared once the race
-  // settles 鈥?otherwise every successful connect leaves a 30s-delayed
-  // rejection with no listener (unhandledRejection; fatal under
-  // --unhandled-rejections=strict). Same pattern as execution.ts.
+  // 用超时包 connect。race 定局后必须清 timer - 否则每次成功 connect 都留一个
+  // 30s 延迟的无监听 reject(unhandledRejection;--unhandled-rejections=strict 下致命)。
+  // 同 execution.ts 模式。
   const connectPromise = client.connect(transport);
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<never>((_, reject) => {
@@ -108,7 +106,7 @@ export async function openConnection(
   try {
     await Promise.race([connectPromise, timeout]);
   } catch (err) {
-    // Attempt graceful transport close on failure
+    // 失败时尝试优雅关闭 transport
     try { await transport.close(); } catch { /* ignore */ }
     if (err instanceof McpTimeoutError) throw err;
     throw new McpConnectionError(serverName, (err as Error).message ?? String(err));

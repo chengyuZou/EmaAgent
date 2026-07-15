@@ -2,20 +2,20 @@ import { CallToolResultSchema } from '@modelcontextprotocol/sdk/types.js';
 import type { Client }          from '@modelcontextprotocol/sdk/client/index.js';
 import { McpToolCallError }     from './errors.js';
 
-const DEFAULT_TOOL_TIMEOUT_MS = 120_000; // 2 min — same as bash default
+const DEFAULT_TOOL_TIMEOUT_MS = 120_000; // 2 分钟 - 同 bash 默认
 
 export interface CallToolOptions {
   client:      Client;
   serverName:  string;
-  toolName:    string;            // unqualified, as registered on the server
+  toolName:    string;            // 未限定,服务器上注册的原样
   args:        Record<string, unknown>;
   signal?:     AbortSignal;
   timeoutMs?:  number;
 }
 
 /**
- * Call a tool on an already-connected MCP server client.
- * Returns the raw MCP result content.
+ * 在已连接的 MCP 服务器 client 上调一个工具。
+ * 返回原始 MCP result content。
  */
 export async function callMcpTool(opts: CallToolOptions): Promise<unknown> {
   const { client, serverName, toolName, args, signal, timeoutMs } = opts;

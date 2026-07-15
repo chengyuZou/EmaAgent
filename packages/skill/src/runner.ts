@@ -5,16 +5,14 @@ import type { SkillSummary } from './types.js';
 
 // ── SkillRunner ───────────────────────────────────────────────────────────────
 //
-// Injects a lightweight "available skills" CATALOG into the system message via
-// the beforeLlm hook — NOT the full bodies. The model picks a skill and calls
-// `skill_call(skill, arguments)`; the body is read lazily from disk only then
-// (see SkillStore.renderBody). This keeps the prompt small and, because the
-// catalog only changes on install/enable (not per-turn), preserves prompt cache.
+// 经 beforeLlm hook 向 system message 注入轻量"可用技能"CATALOG -
+// 不是完整 body。模型选一个 skill 调 `skill_call(skill, arguments)`;
+// body 只在那时从磁盘懒读(见 SkillStore.renderBody)。这保持 prompt 小,
+// 且因 catalog 只在 install/enable 时变(非 per-turn),保住 prompt cache。
 //
-// Skills are NOT gated per-mode. The catalog is injected only in `agent` mode
-// because skill_call is an agent-mode tool — there is no per-skill mode tag.
-// allowed-tools is enforced at activation time (skill_call → temp permission
-// grant), not here; the runner only advertises availability.
+// skill 不按模式门禁。catalog 只在 `agent` 模式注入,因 skill_call 是
+// agent 模式工具 - 没有 per-skill 模式标签。allowed-tools 在激活时强制
+// (skill_call -> 临时权限授予),不在这里;runner 只广播可用性。
 
 export class SkillRunner {
   private unregister: (() => void) | null = null;
@@ -24,7 +22,7 @@ export class SkillRunner {
     private readonly hooks: HookBus,
   ) {}
 
-  /** Register the beforeLlm hook. Call once at app startup. */
+  /** 注册 beforeLlm hook。应用启动时调一次。 */
   start(): void {
     if (this.unregister) return;
 
@@ -32,8 +30,8 @@ export class SkillRunner {
       ctx: HookContext<'beforeLlm'>,
     ): Promise<HookResult<'beforeLlm'>> => {
       const mode = ctx.payload.mode;
-      // skill_call is an agent-mode tool; advertising skills elsewhere is dead
-      // weight (the model could not invoke them).
+      // skill_call 是 agent 模式工具;在别处广播 skill 是死重
+      // (模型无法调用)。
       if (mode !== 'agent') return { kind: 'continue' };
 
       const summaries = this.store.listSummaries();
@@ -56,15 +54,15 @@ export class SkillRunner {
     };
 
     this.unregister = this.hooks.register('beforeLlm', handler, {
-      priority: PRIORITY.NORMAL,  // after memory recall (EARLY=20), before default handlers (DEFAULT=100)
+      priority: PRIORITY.NORMAL,  // 在 memory recall(EARLY=20)后,默认 handler(DEFAULT=100)前
       name:     'skill:inject-catalog',
       parallel: false,
     });
   }
 
   /**
-   * Activate one skill: read its body from disk and substitute arguments.
-   * Wired to the `skill_call` tool via the ISkillRunner adapter in apps/core.
+   * 激活一个 skill:从磁盘读其 body 并替换参数。
+   * 经 apps/core 的 ISkillRunner adapter 接到 `skill_call` 工具。
    */
   async render(name: string, args: string | undefined): Promise<string> {
     return this.store.renderBody(name, args);
@@ -76,7 +74,7 @@ export class SkillRunner {
   }
 }
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
+// ── 辅助函数 ──────────────────────────────────────────────────────────────────
 
 function renderCatalog(summaries: SkillSummary[]): string {
   const lines = summaries.map((s) => {

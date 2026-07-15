@@ -8,11 +8,11 @@ import type { McpRegistry }      from './registry.js';
 
 const MAX_DESCRIPTION_LEN = 2048;
 
-// ── Tool discovery ────────────────────────────────────────────────────────────
+// ── 工具发现 ────────────────────────────────────────────────────────────────────
 
 /**
- * Fetch the tool list from a connected MCP server and return structured info.
- * Returns [] if the server has no tools capability or listing fails.
+ * 从已连接的 MCP 服务器拉取工具列表,返回结构化信息。
+ * 服务器无 tools 能力或拉取失败时返回 []。
  */
 export async function discoverServerTools(
   serverName: string,
@@ -30,7 +30,7 @@ export async function discoverServerTools(
     return {
       serverToolName:     tool.name,
       qualifiedName:      buildMcpToolName(serverName, tool.name),
-      originalServerName: serverName,   // preserved verbatim for connection lookup
+      originalServerName: serverName,   // 原样保留,供连接查找
       description:        desc.length > MAX_DESCRIPTION_LEN
         ? desc.slice(0, MAX_DESCRIPTION_LEN) + '… [truncated]'
         : desc,
@@ -41,23 +41,20 @@ export async function discoverServerTools(
   });
 }
 
-// ── BuiltTool factory for MCP tools ──────────────────────────────────────────
+// ── MCP 工具的 BuiltTool 工厂 ──────────────────────────────────────────────────
 //
-// MCP tools can't use the standard buildTool() helper because their input
-// schema comes from the server as JSON Schema, not as a Zod schema. We build
-// the BuiltTool object directly so the LLM sees the real JSON Schema while
-// the Zod validation stays permissive (validation is the server's job anyway).
+// MCP 工具不能用标准 buildTool() 辅助,因其 input schema 来自服务器(JSON Schema,
+// 非 Zod schema)。我们直接构造 BuiltTool 对象,让 LLM 看到真实 JSON Schema,
+// 而 Zod 校验保持宽松(校验本就是服务器的事)。
 
 export function buildMcpBuiltTool(
   info:     McpToolInfo,
   registry: McpRegistry,
 ): BuiltTool {
-  // Use the original (non-sanitized) server name to look up the connection.
-  // qualifiedName has hyphens/dots replaced with underscores; the connection
-  // map is keyed by the original name, so splitting qualifiedName would break
-  // any server whose name contains non-alphanumeric characters.
+  // 用原始(未清洗)服务器名查连接。qualifiedName 的连字符/点已替换成下划线;
+  // 连接 map 按原始名索引,故拆分 qualifiedName 会破坏名字含非字母数字的服务器。
   const serverName = info.originalServerName;
-  const inputZod      = z.record(z.unknown()); // permissive — MCP server validates
+  const inputZod      = z.record(z.unknown()); // 宽松 - MCP 服务器校验
 
   const permissionMeta: ToolPermissionMeta = Object.freeze({
     riskLevel:  info.isDestructive ? 'high' : info.isReadOnly ? 'low' : 'medium',
@@ -67,10 +64,10 @@ export function buildMcpBuiltTool(
   const descriptor = (): ToolDescriptor => ({
     name:           info.qualifiedName,
     description:    `[MCP:${serverName}] ${info.description}`,
-    inputJsonSchema: info.inputSchema,         // ← real MCP schema for the LLM
+    inputJsonSchema: info.inputSchema,         // ← 给 LLM 的真实 MCP schema
   });
 
-  // execute takes `unknown` for contravariance compatibility with BuiltTool<unknown, unknown>
+  // execute 接 `unknown`,为与 BuiltTool<unknown, unknown> 的逆变兼容
   const execute = async (
     input: unknown,
     ctx:   ToolExecutionContext,

@@ -25,12 +25,12 @@ const SKILL_FILE = 'SKILL.md';
 
 // ── SkillStore ────────────────────────────────────────────────────────────────
 //
-// File-backed Skill store. The source of truth is `<root>/<slug>/SKILL.md` on
-// disk; the SQL index (SkillsRepo) is a cache that lets the catalog be built
-// without opening every file. The body is read lazily on activation (renderBody).
+// 文件支撑的 skill 存储。事实来源是磁盘上的 `<root>/<slug>/SKILL.md`;
+// SQL 索引(SkillsRepo)是缓存,让 catalog 无需打开每个文件即可构建。
+// body 在激活时懒读(renderBody)。
 //
-// Roots are scanned in order; later roots override same-named skills, so build
-// roots in [builtin, user] order to make user customization win.
+// root 按序扫描;后扫的 root 覆盖同名 skill,故按 [builtin, user] 顺序建 root,
+// 让用户定制优先。
 
 export class SkillStore {
   constructor(
@@ -44,10 +44,10 @@ export class SkillStore {
     return root;
   }
 
-  // ── Reconcile (startup + after external edits) ─────────────────────────────
+  // ── 对账(启动 + 外部编辑后)────────────────────────────────────────────
   //
-  // Scan every root, upsert valid skills into the index, prune rows whose
-  // directory no longer exists. Returns { indexed, pruned, errors }.
+  // 扫描每个 root,把有效 skill upsert 进索引,修剪目录已不存在的行。
+  // 返回 { indexed, pruned, errors }。
 
   async scanAndReconcile(): Promise<{ indexed: number; pruned: number; errors: string[] }> {
     const errors: string[] = [];
@@ -67,7 +67,7 @@ export class SkillStore {
       }
     }
 
-    // Prune index rows whose on-disk skill is gone (file deleted out-of-band).
+    // 修剪磁盘 skill 已不存在的索引行(文件被带外删了)。
     let pruned = 0;
     for (const row of this.repo.listAll()) {
       if (!seenNames.has(row.name)) {
@@ -83,7 +83,7 @@ export class SkillStore {
     try {
       dirents = await readdir(rootPath, { withFileTypes: true });
     } catch {
-      return []; // root missing → no skills from it
+      return []; // root 缺失 -> 无 skill
     }
     const dirs: string[] = [];
     for (const d of dirents) {
@@ -95,7 +95,7 @@ export class SkillStore {
   async #indexOne(dirPath: string, source: SkillSource): Promise<SkillRecord> {
     const file = join(dirPath, SKILL_FILE);
     const raw  = await readFile(file, 'utf8');
-    const manifest = parseSkillMd(raw); // throws on invalid frontmatter
+    const manifest = parseSkillMd(raw); // 无效 frontmatter 时抛错
     const st = await stat(file);
 
     const existing = this.repo.findByName(manifest.name);
@@ -118,7 +118,7 @@ export class SkillStore {
     return this.#rowToRecord(row);
   }
 
-  // ── Queries (DB only — no file I/O) ────────────────────────────────────────
+  // ── 查询(仅 DB - 无文件 I/O)────────────────────────────────────────────
 
   listAll(): SkillRecord[] {
     return this.repo.listAll().map((r) => this.#rowToRecord(r));
@@ -129,7 +129,7 @@ export class SkillStore {
     return row ? this.#rowToRecord(row) : null;
   }
 
-  /** Lightweight catalog for prompt injection — all enabled skills. */
+  /** 供 prompt 注入的轻量 catalog - 所有启用的 skill。 */
   listSummaries(): SkillSummary[] {
     return this.repo.listEnabled().map((r) => ({
       name:         r.name,
@@ -138,7 +138,7 @@ export class SkillStore {
     }));
   }
 
-  // ── Read raw SKILL.md for viewing (frontmatter + body, no substitution) ────
+  // ── 读原始 SKILL.md 供查看(frontmatter + body,无替换)───────────────────
 
   async readRawMd(name: string): Promise<string> {
     const rec = this.findByName(name);
@@ -147,7 +147,7 @@ export class SkillStore {
     return readFile(file, 'utf8');
   }
 
-  // ── Activation: read body lazily from disk (with path guard) ───────────────
+  // ── 激活:从磁盘懒读 body(带路径守卫)──────────────────────────────────────
 
   async renderBody(name: string, args: string | undefined): Promise<string> {
     const rec = this.findByName(name);
@@ -163,9 +163,8 @@ export class SkillStore {
   }
 
   /**
-   * Resolve `<dirPath>/SKILL.md` to its real path and assert it stays inside a
-   * known root — defends against a malicious skill symlinking out to read e.g.
-   * ~/.ssh into the prompt.
+   * 把 `<dirPath>/SKILL.md` 解析为真实路径并断言它在已知 root 内 -
+   * 防御恶意 skill 软链出界,把如 ~/.ssh 读进 prompt。
    */
   async #guardedSkillFile(dirPath: string): Promise<string> {
     const canonical = await realpath(join(dirPath, SKILL_FILE));
@@ -181,27 +180,27 @@ export class SkillStore {
       try {
         const rootReal = await realpath(root.path);
         if (target === rootReal || target.startsWith(rootReal + sep)) return true;
-      } catch { /* root missing — skip */ }
+      } catch { /* root 缺失 - 跳过 */ }
     }
     return false;
   }
 
-  // ── Mutations (writable roots only) ────────────────────────────────────────
+  // ── 变更(仅可写 root)────────────────────────────────────────────────────
 
   validate(rawMd: string) {
     return validateSkillMd(rawMd);
   }
 
   /**
-   * Install raw SKILL.md text into the user root as `<slug>/SKILL.md`.
-   * Atomic: write to a temp dir then rename into place. Returns the record.
-   * `extra` carries provenance (sourceUrl / sha256) for market installs.
+   * 把原始 SKILL.md 文本装进 user root 作 `<slug>/SKILL.md`。
+   * 原子:写到临时目录再 rename 到位。返回 record。
+   * `extra` 带来源(sourceUrl / sha256),供 market 安装用。
    */
   async install(
     rawMd: string,
     extra: { sourceUrl?: string; sha256?: string; assets?: Record<string, Uint8Array> } = {},
   ): Promise<SkillRecord> {
-    const manifest = parseSkillMd(rawMd); // throws on invalid frontmatter
+    const manifest = parseSkillMd(rawMd); // 无效 frontmatter 时抛错
     const root = this.userRoot;
     const slug = slugify(manifest.name);
     const finalDir = join(root.path, slug);
@@ -243,18 +242,18 @@ export class SkillStore {
     this.repo.setEnabled(name, enabled ? 1 : 0);
   }
 
-  /** Rename: rewrite frontmatter `name` in the file + update the index key. */
+  /** 重命名:改写文件里的 frontmatter `name` + 更新索引键。 */
   async rename(name: string, newName: string): Promise<void> {
     const row = this.#requireWritable(name);
     const file = await this.#guardedSkillFile(row.dir_path);
     const raw  = await readFile(file, 'utf8');
-    // Replace the first `name:` frontmatter line. Keep it conservative.
+    // 替换第一行 `name:` frontmatter。保守起见。
     const next = raw.replace(/^(name:\s*).*/m, `$1${newName}`);
     await writeFile(file, next, 'utf8');
     this.repo.rename(name, newName);
   }
 
-  /** Relocate: move the skill directory to a new parent, re-point the index. */
+  /** 迁移:把 skill 目录移到新父目录,重指索引。 */
   async relocate(name: string, newParentDir: string): Promise<void> {
     const row = this.#requireWritable(name);
     const dest = join(newParentDir, slugify(name));
@@ -263,12 +262,12 @@ export class SkillStore {
     this.repo.setDirPath(name, resolve(dest));
   }
 
-  /** Remove: delete the skill directory (writable roots) + the index row. */
+  /** 移除:删 skill 目录(可写 root)+ 索引行。 */
   async remove(name: string): Promise<void> {
     const row = this.repo.findByName(name);
     if (!row) return;
     if (this.#sourceIsReadonly(row.source)) {
-      // builtin skills can be disabled but not deleted
+      // builtin skill 可禁用但不能删
       this.repo.setEnabled(name, 0);
       return;
     }
@@ -276,12 +275,12 @@ export class SkillStore {
     this.repo.deleteByName(name);
   }
 
-  /** Absolute skill dir — used by the UI "open in editor / file manager". */
+  /** skill 绝对目录 - UI"在编辑器/文件管理器打开"用。 */
   dirPathOf(name: string): string | null {
     return this.repo.findByName(name)?.dir_path ?? null;
   }
 
-  // ── Private ────────────────────────────────────────────────────────────────
+  // ── 私有 ────────────────────────────────────────────────────────────────
 
   #requireWritable(name: string): SkillRow {
     const row = this.repo.findByName(name);
@@ -311,13 +310,13 @@ export class SkillStore {
   }
 }
 
-// ── Helpers ────────────────────────────────────────────────────────────────────
+// ── 辅助函数 ────────────────────────────────────────────────────────────────────
 
 function slugify(name: string): string {
   return name.trim().toLowerCase().replace(/[^a-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '') || 'skill';
 }
 
-/** Recursive total byte size of a skill directory (SKILL.md + assets). */
+/** skill 目录的递归总字节(SKILL.md + assets)。 */
 async function dirSize(dir: string): Promise<number> {
   let total = 0;
   let entries;
@@ -331,7 +330,7 @@ async function dirSize(dir: string): Promise<number> {
     if (e.isDirectory()) {
       total += await dirSize(p);
     } else if (e.isFile()) {
-      try { total += (await stat(p)).size; } catch { /* ignore */ }
+      try { total += (await stat(p)).size; } catch { /* 忽略 */ }
     }
   }
   return total;

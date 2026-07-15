@@ -3,8 +3,8 @@ import { SkillFrontmatterSchema, type SkillManifest } from './types.js';
 
 // ── parseSkillMd ─────────────────────────────────────────────────────────────
 //
-// Parses a SKILL.md string into a SkillManifest.
-// Throws a descriptive error if frontmatter is missing or invalid.
+// 把 SKILL.md 字符串解析成 SkillManifest。
+// frontmatter 缺失或无效时抛描述性错误。
 
 export function parseSkillMd(rawMd: string): SkillManifest {
   const { data, content } = matter(rawMd);
@@ -30,7 +30,7 @@ export function parseSkillMd(rawMd: string): SkillManifest {
 
 // ── validateSkillMd ──────────────────────────────────────────────────────────
 //
-// Returns { ok, error } without throwing — useful for UI validation.
+// 返回 { ok, error } 不抛错 - 供 UI 校验用。
 
 export function validateSkillMd(rawMd: string): { ok: true; manifest: SkillManifest } | { ok: false; error: string } {
   try {

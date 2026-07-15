@@ -13,32 +13,31 @@ import {
 //
 // 从不同来源获取 SKILL.md 内容,委托 SkillStore 写入 user root(<slug>/SKILL.md,
 // 原子写)+ 索引。GitHub-raw URL 会下载整个 skill 目录(SKILL.md + scripts/ + refs/),
-// 让带可运行脚本的 skill 也能工作 —— 不只是 markdown。
+// 让带可运行脚本的 skill 也能工作 -- 不只是 markdown。
 //
 // URL 拼接 / fetch / 镜像降级统一走 @ema-agent/marketplace 底座,不在本包重复实现。
 
-const MAX_SKILL_BYTES   = 512 * 1024;      // a SKILL.md is prose; cap to defend against abuse
-const MAX_BUNDLE_BYTES  = 8 * 1024 * 1024; // whole skill folder (SKILL.md + scripts/ + refs)
+const MAX_SKILL_BYTES   = 512 * 1024;      // SKILL.md 是文本;设上限防滥用
+const MAX_BUNDLE_BYTES  = 8 * 1024 * 1024; // 整个 skill 目录(SKILL.md + scripts/ + refs)
 const MAX_BUNDLE_FILES  = 80;
 const FETCH_TIMEOUT_MS  = 30_000;          // skill 文件下载允许比默认 15s 更久
 
 export class SkillInstaller {
   constructor(private readonly store: SkillStore) {}
 
-  /** Install from raw SKILL.md text (local paste or file read). */
+  /** 从原始 SKILL.md 文本安装(本地粘贴或文件读)。 */
   async installFromText(rawMd: string): Promise<SkillRecord> {
     assertSize(rawMd);
     return this.store.install(rawMd);
   }
 
   /**
-   * Install a skill from a URL. When the URL is a GitHub-raw `SKILL.md`, the
-   * WHOLE skill folder (scripts/, references/, assets) is downloaded so skills
-   * that ship runnable scripts work — not just the markdown. Other URLs fall
-   * back to a single-file install.
-   * `expectedSha256` (from a market manifest) is verified against SKILL.md.
+   * 从 URL 安装 skill。URL 是 GitHub-raw `SKILL.md` 时,下载整个 skill 目录
+   * (scripts/、references/、assets),让带可运行脚本的 skill 也能工作 - 不只 markdown。
+   * 其他 URL 回退单文件安装。
+   * `expectedSha256`(来自 market manifest)对 SKILL.md 校验。
    * `signal` 透传给所有 fetch,调用方可中止安装。
-   * `coords`   market entry 携带的 GitHub 坐标,优先于 URL 反解析 ——
+   * `coords`   market entry 携带的 GitHub 坐标,优先于 URL 反解析 --
    *            jsDelivr URL 也能正确触发 bundle 下载(不丢 sibling assets)。
    */
   async installFromUrl(
@@ -59,7 +58,7 @@ export class SkillInstaller {
     return this.store.install(rawMd, { sourceUrl: url, sha256, assets: bundle?.assets });
   }
 
-  /** Validate without installing — used by the UI preview step. */
+  /** 只校验不安装 - UI 预览步骤用。 */
   validate(rawMd: string) {
     return this.store.validate(rawMd);
   }
@@ -88,7 +87,7 @@ function assertSize(rawMd: string): void {
 
 interface SkillBundle {
   skillMd: string;
-  /** Sibling files keyed by path relative to the skill dir (excludes SKILL.md). */
+  /** sibling 文件,按相对 skill 目录的路径索引(不含 SKILL.md)。 */
   assets:  Record<string, Uint8Array>;
 }
 

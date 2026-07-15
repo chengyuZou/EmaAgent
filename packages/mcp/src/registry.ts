@@ -24,12 +24,11 @@ const TOOL_DISCOVERY_TIMEOUT_MS = 15_000;
 // ── McpRegistry ───────────────────────────────────────────────────────────────
 
 /**
- * Optional callback injected by apps/core to gate stdio MCP server spawning
- * through PermissionEngine before the subprocess is created.
+ * apps/core 注入的可选回调,在创建子进程前经 PermissionEngine 门禁 stdio MCP server 拉起。
  *
- * Return true to allow the connection, false to block it.
- * Only called for `type === 'stdio'` configs; HTTP/SSE servers connect freely
- * (they don't spawn local subprocesses under the sidecar's privileges).
+ * 返回 true 允许连接,false 阻止。
+ * 仅对 `type === 'stdio'` 配置调用;HTTP/SSE 服务器自由连接
+ * (它们不在 sidecar 权限下拉起本地子进程)。
  */
 export type McpStdioPermissionGate = (
   intent: McpStdioLaunchIntent,
@@ -37,22 +36,21 @@ export type McpStdioPermissionGate = (
 
 export class McpRegistry {
   private connections = new Map<string, OpenedConnection & { info: McpConnection }>();
-  /** Tools registered from cache (server not yet connected). Keyed by server name. */
+  /** 从缓存注册的工具(服务器尚未连接)。按服务器名索引。 */
   private primed = new Map<string, McpToolInfo[]>();
 
   constructor(
     private readonly store:        McpServerStore,
     private readonly toolRegistry: ToolRegistry,
     /**
-     * When provided, stdio server connections are gated through this callback.
-     * Apps/core wires a PermissionEngine.gate() call here so that enabling a
-     * stdio MCP server requires explicit user approval — identical to how
-     * shell tool calls are gated.
+     * 提供时,stdio 服务器连接经此回调门禁。
+     * apps/core 在此接 PermissionEngine.gate() 调用,使启用 stdio MCP server
+     * 需用户显式批准 - 与 shell 工具调用门禁一致。
      */
     private readonly stdioGate?:   McpStdioPermissionGate,
   ) {}
 
-  // ── Connection management ─────────────────────────────────────────────────
+  // ── 连接管理 ─────────────────────────────────────────────────────────────
 
   async connect(serverName: string): Promise<McpConnection> {
     const record = this.store.findByName(serverName);
@@ -84,13 +82,13 @@ export class McpRegistry {
       this.connections.set(serverName, { ...opened, info });
       retained = true;
 
-      // Persist the live tool list so next startup can prime the registry without
-      // connecting (fast/offline). Best-effort — caching failure must not break connect.
+      // 持久化实时工具列表,使下次启动可不连接即 priming 注册表(快速/离线)。
+      // 尽力而为 - 缓存失败不能破坏 connect。
       try { this.store.cacheTools(serverName, tools); } catch { /* ignore */ }
 
       return info;
     } finally {
-      // 只有成功写入 connections 后，transport 生命周期才移交给 disconnect()。
+      // 只有成功写入 connections 后,transport 生命周期才移交给 disconnect()。
       if (!retained) {
         try { await opened.cleanup(); } catch { /* ignore cleanup failure */ }
       }
@@ -98,16 +96,15 @@ export class McpRegistry {
   }
 
   /**
-   * Register cached tools for all enabled servers WITHOUT connecting. Tools
-   * become visible to the LLM immediately at startup; the actual transport is
-   * opened lazily on first callTool (see below). Call once at boot, before/instead
-   * of an eager connect-all.
+   * 为所有启用的服务器注册缓存工具,不连接。工具在启动时即对 LLM 可见;
+   * 实际 transport 在首次 callTool 时懒开(见下)。启动时调一次,
+   * 在/替代急切 connect-all 之前。
    */
   primeFromCache(): number {
     const registrations: McpToolRegistration[] = [];
     const pending = new Map<string, McpToolInfo[]>();
     for (const record of this.store.listEnabled()) {
-      if (this.connections.has(record.name)) continue;          // already live
+      if (this.connections.has(record.name)) continue;          // 已在线
       const tools = record.cachedTools;
       if (!tools || tools.length === 0) continue;
       registrations.push(...toRegistrations(tools, this));
@@ -120,7 +117,7 @@ export class McpRegistry {
   }
 
   async disconnect(serverName: string): Promise<void> {
-    // Unregister cache-primed tools (registered without a live connection).
+    // 注销缓存 primed 的工具(无实时连接时注册的)。
     const primedTools = this.primed.get(serverName);
     if (primedTools) {
       for (const tool of primedTools) {
@@ -144,7 +141,7 @@ export class McpRegistry {
     await Promise.all([...this.connections.keys()].map((n) => this.disconnect(n)));
   }
 
-  // ── Tool call ─────────────────────────────────────────────────────────────
+  // ── 工具调用 ─────────────────────────────────────────────────────────────
 
   async callTool(
     serverName: string,
@@ -153,8 +150,7 @@ export class McpRegistry {
     signal?:    AbortSignal,
   ): Promise<unknown> {
     let conn = this.connections.get(serverName);
-    // Lazy connect: tools may have been primed from cache (visible but not yet
-    // connected). Open the transport on first actual call.
+    // 懒连接:工具可能从缓存 primed(可见但未连接)。首次实际调用时开 transport。
     if (!conn || conn.info.status !== 'connected') {
       await this.connect(serverName);                 // throws if server unknown / connect fails
       conn = this.connections.get(serverName);
@@ -165,7 +161,7 @@ export class McpRegistry {
     return callMcpTool({ client: conn.client, serverName, toolName, args, signal });
   }
 
-  // ── Introspection ─────────────────────────────────────────────────────────
+  // ── 自省 ─────────────────────────────────────────────────────────────────
 
   getConnection(serverName: string): McpConnection | null {
     return this.connections.get(serverName)?.info ?? null;
@@ -179,7 +175,7 @@ export class McpRegistry {
     return this.connections.get(serverName)?.info.tools ?? [];
   }
 
-  // ── Server CRUD (delegated to store) ─────────────────────────────────────
+  // ── 服务器 CRUD(委托 store)─────────────────────────────────────────────
 
   register(name: string, config: McpServerConfig, sourceUrl?: string): string {
     return this.store.register(name, config, sourceUrl);
@@ -208,7 +204,7 @@ export class McpRegistry {
     );
   }
 
-  // ── Probe ────────────────────────────────────────────────────────────────
+  // ── 探测 ────────────────────────────────────────────────────────────────
 
   async probe(serverName: string, config: McpServerConfig): Promise<McpProbeResult> {
     const probeName = serverName.trim() || `probe-${randomUUID()}`;
@@ -238,7 +234,7 @@ export class McpRegistry {
   ): Promise<McpServerConfig> {
     if (config.type !== 'stdio') return config;
 
-    // 建立一份审批与执行共享的运行时不可变快照，等待用户期间不能原地改参。
+    // 建立一份审批与执行共享的运行时不可变快照,等待用户期间不能原地改参。
     const snapshot = freezeStdioConfig(config);
     if (!this.stdioGate) {
       throw new McpStdioPermissionError(operation, serverName, 'gate_unavailable');
