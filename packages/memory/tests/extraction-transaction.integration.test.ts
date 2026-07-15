@@ -52,8 +52,8 @@ function createHarness(): Harness {
   dataDb.sqlite
     .prepare(
       `INSERT INTO sessions
-         (id, title, character_card_id, last_activity_at, created_at, updated_at)
-       VALUES (?, ?, 'ema', ?, ?, ?)`,
+         (id, title, last_activity_at, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?)`,
     )
     .run(sessionId, 'B-015', 1, 1, 1);
   dataDb.sqlite

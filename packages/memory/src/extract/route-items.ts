@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import type { SessionId, TurnMode } from '@ema-agent/contracts';
+import type { SessionId, TurnId, TurnMode } from '@ema-agent/contracts';
 import type { EmbeddedText } from '../types.js';
 import type { ExtractionOutput } from './types.js';
 import { unpackEmbedding } from '../embed/similarity.js';
@@ -13,7 +13,7 @@ export function processItems(
   output: ExtractionOutput,
   stats: PipelineResult,
   precomputedEmbeddings: EmbeddedText[] | null,
-  extractionTurnId: string | undefined,
+  extractionTurnId: TurnId,
   indexMutations: PendingIndexMutation[],
 ): void {
   if (output.memory_items.length === 0) return;
@@ -30,7 +30,7 @@ export function processItems(
       // Same session + same title: distinguish retry from legitimate update.
       //   - Same turnId → retry of the same extraction → skip entirely.
       //   - Different turnId → knowledge evolved in a new turn → update body.
-      if (existing.source_turn_id === (extractionTurnId ?? null)) continue;
+      if (existing.source_turn_id === extractionTurnId) continue;
 
       deps.memory.items.updateBody({
         id:                  existing.id,
@@ -75,7 +75,7 @@ export function processItems(
       embeddingRevision:      e?.space.revision,
       embeddingSpaceId:       e?.space.id,
       sourceSessionId:     sessionId,
-      sourceTurnId:        extractionTurnId as never,
+      sourceTurnId:        extractionTurnId,
       importance:          item.importance,
       createdAt:           now,
     });

@@ -6,7 +6,7 @@ import {
   MemoryNodesRepo, MemoryEdgesRepo, MemoryLazyUpdatesRepo,
   MemoryItemsRepo, SessionNotesRepo, MemoryTasksRepo, PendingFragmentsRepo,
   ArtifactRepo, AttachmentRepo,
-  MemorySessionStateRepo,
+  MemorySessionStateRepo, MemoryExtractionRunsRepo,
   ProviderLlmModelsRepo, ProviderEmbedModelsRepo,
   ProviderRerankModelsRepo, ProviderTtsModelsRepo, ProviderSttModelsRepo, ProviderVisionModelsRepo,
   McpServersRepo, SkillsRepo,
@@ -393,19 +393,30 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
   const systemBus = new SystemEventBus();
 
   // ── Memory ──────────────────────────────────────────────────────────────────
+  const memoryNodes          = new MemoryNodesRepo(profileDb.sqlite);
+  const memoryEdges          = new MemoryEdgesRepo(profileDb.sqlite);
+  const memoryLazyUpdates    = new MemoryLazyUpdatesRepo(profileDb.sqlite);
+  const memoryItems          = new MemoryItemsRepo(profileDb.sqlite);
+  const memoryExtractionRuns = new MemoryExtractionRunsRepo(profileDb.sqlite);
+  const memorySessionNotes   = new SessionNotesRepo(dataDb.sqlite);
+  const pendingFragments     = new PendingFragmentsRepo(dataDb.sqlite);
+
   const memory = new MemoryPlanner({
     session,
     llm,
     ebd,
     modelBindings,
-    nodes:            new MemoryNodesRepo(profileDb.sqlite),
-    edges:            new MemoryEdgesRepo(profileDb.sqlite),
-    lazyUpdates:      new MemoryLazyUpdatesRepo(profileDb.sqlite),
-    items:            new MemoryItemsRepo(profileDb.sqlite),
-    sessionNotes:     new SessionNotesRepo(dataDb.sqlite),
+    nodes:            memoryNodes,
+    edges:            memoryEdges,
+    lazyUpdates:      memoryLazyUpdates,
+    items:            memoryItems,
+    sessionNotes:     memorySessionNotes,
     memoryTasks:      new MemoryTasksRepo(dataDb.sqlite),
-    pendingFragments:   new PendingFragmentsRepo(dataDb.sqlite),
+    pendingFragments,
     memorySessionState: new MemorySessionStateRepo(dataDb.sqlite),
+    extractionRuns:     memoryExtractionRuns,
+    runProfileTransaction: <T>(work: () => T): T => profileDb.sqlite.transaction(work)(),
+    runDataTransaction:    <T>(work: () => T): T => dataDb.sqlite.transaction(work)(),
     // dim is probed at enable time and stored on provider_embed_models (dim_source='probed').
     getEmbedDim:      (providerId, model) => providerEmbedModels.dimFor(providerId, model) ?? 0,
     emit:             (ev) => systemBus.emit(ev),

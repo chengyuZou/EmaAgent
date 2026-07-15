@@ -64,10 +64,4 @@ export class MemoryExtractionRunsRepo {
     this.db.prepare('DELETE FROM memory_extraction_runs WHERE run_id = ?').run(runId);
   }
 
-  deleteCommittedBefore(cutoff: number): number {
-    const result = this.db
-      .prepare('DELETE FROM memory_extraction_runs WHERE committed_at < ?')
-      .run(cutoff);
-    return result.changes;
-  }
 }

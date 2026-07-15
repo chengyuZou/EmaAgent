@@ -1,4 +1,5 @@
 import type { MemoryNodeType, MemoryItemKind } from '@ema-agent/storage';
+import type { TurnId } from '@ema-agent/contracts';
 
 // ── Extraction LLM output ────────────────────────────────────────────────────
 
@@ -46,7 +47,7 @@ export interface ConsolidationOutput {
 // ── Pending fragment (lives in sessions.pending_fragments_json) ─────────────
 
 export interface PendingFragment {
-  turnId:   string;
+  turnId:   TurnId;
   role:     'user' | 'assistant';
   content:  string;
   at:       number;

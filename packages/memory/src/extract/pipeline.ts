@@ -49,9 +49,9 @@ export interface PipelineResult {
  * existing nodes, and finally consolidate any nodes whose lazy buffer is
  * non-empty.
  *
- * Idempotent at the buffer level: if extraction fails halfway, the buffer
- * is *not* cleared and the task will retry. Once we hit the "clear buffer"
- * step, everything else is best-effort — failures don't poison the queue.
+ * 以 memory task id 作为 run id 保证重试幂等：profile.db 先在单事务内
+ * 提交全局记忆和恢复标记，data.db 再原子提交 session note 与 pending 消费。
+ * 两段之间失败时，重试读取恢复标记并只补完 data.db，不重复写全局记忆。
  */
 export async function runExtractionPipeline(
   deps: ExtractionPipelineDeps,
@@ -65,6 +65,8 @@ export async function runExtractionPipeline(
     skipConsolidation?:  boolean;
   },
 ): Promise<PipelineResult> {
+  if (!args.runId.trim()) throw new Error('memory.extract: runId must not be empty');
+
   const stats: PipelineResult = {
     extractedNodes:    0,
     extractedEdges:    0,
@@ -200,16 +202,15 @@ export async function runExtractionPipeline(
   // data.db 已持久化；删除恢复标记。若此处失败，重试在无 pending 分支清理。
   deps.memory.extractionRuns.delete(args.runId);
 
-  // ── 4. Compact L1 note if it has grown over budget ────────────────────────
+  // ── 5. Compact L1 note if it has grown over budget ────────────────────────
   // Non-fatal — note stays verbose, next run may compact. Logged for visibility.
   await bestEffortAsync('compactSessionNoteIfNeeded',
     () => compactSessionNoteIfNeeded(deps, args.sessionId, args.mode, args.signal), undefined);
 
-  // ── 5. Consolidate any nodes with lazy_updates ───────────────────────────
-  // NOT wrapped in try/catch: if this throws, the task runner marks the task
-  // failed and retries. Because clearPending already ran (step 3), the retry
-  // sees empty fragments, falls into the early-return path above, and runs
-  // ONLY consolidation — no duplicate extraction, no double session_note append.
+  // ── 6. Consolidate any nodes with lazy_updates ───────────────────────────
+  // 不吞异常：失败后由 task runner 重试。data.db 已在 step 4 消费 pending，
+  // 因此重试会进入上面的空 fragment 分支，只继续 consolidation，
+  // 不会重新提取或重复追加 session note。
   if (!args.skipConsolidation) {
     const pendingNodeIds = deps.memory.lazyUpdates.listNodesWithPending();
     if (pendingNodeIds.length > 0) {

@@ -86,7 +86,7 @@ export function routeCandidateNode(
       importance:  candidate.importance,
       createdAt:   now,
     });
-    // Update in-memory vector index too
+    // SQLite 提交后再更新派生向量索引，避免回滚留下幽灵向量。
     if (embedded && deps.nodesIndex && deps.indexSpaceId === embedded.space.id && deps.nodesIndex.dim === embedded.dim) {
       const view = unpackEmbedding(embedded.embedding, embedded.dim);
       indexMutations.push({ index: deps.nodesIndex, operation: 'add', id, vector: view });

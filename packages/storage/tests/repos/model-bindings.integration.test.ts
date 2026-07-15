@@ -93,7 +93,7 @@ describe('B-058 ModelBindings 确定性排序', () => {
 });
 
 // 005 迁移：清理 retired 模块残留行 + CHECK 从 17 收紧到 11。
-describe('profile v4 到 v5 迁移：model_bindings CHECK 收紧到 11', () => {
+describe('profile v4 到当前版本迁移：model_bindings CHECK 收紧到 11', () => {
   it('清理 retired 模块残留行并收紧 CHECK，保留 11 模块存量', () => {
     const sqlite = new BetterSqlite3(':memory:');
     try {
@@ -128,7 +128,7 @@ describe('profile v4 到 v5 迁移：model_bindings CHECK 收紧到 11', () => {
       // 11 模块写入仍正常
       expect(() => insBinding.run('vision', 'v-model')).not.toThrow();
 
-      expect(sqlite.pragma('user_version', { simple: true })).toBe(5);
+      expect(sqlite.pragma('user_version', { simple: true })).toBe(6);
     } finally {
       sqlite.close();
     }
