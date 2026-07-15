@@ -11,47 +11,43 @@ import type { AudioArchive, FinalizedAudio } from './archive.js';
 
 // ── TtsCoordinator ──────────────────────────────────────────────────────────
 //
-// A per-turn object that:
-//   1. Receives visible `output_text_delta` chunks from apps/core orchestrator.
-//      Each delta feeds a sentence splitter; completed sentences enter a
-//      synthesis queue.
-//   2. Drains the queue **sequentially** (concurrency = 1 in V1) — each
-//      sentence's audio is fully streamed out before the next starts.
-//      Sequential output means the frontend doesn't need to buffer/reorder
-//      across sentences; in-order playback is the SSE order.
-//   3. Optionally writes each segment to an `AudioArchive` for later merge
-//      (turn-complete file at GET /api/turns/:turnId/audio).
+// 一个 per-turn 对象,负责:
+//   1. 接收 apps/core orchestrator 的可见 `output_text_delta` 块。
+//      每个 delta 喂入句子切分器;完整句子进入合成队列。
+//   2. **顺序**排空队列(V1 并发 = 1)- 每句音频完整流完才开始下一句。
+//      顺序输出意味着前端无需跨句缓冲/重排;按序播放 = SSE 顺序。
+//   3. 可选地把每段写入 `AudioArchive`,供后续合并
+//      (turn 完成文件在 GET /api/turns/:turnId/audio)。
 //
-// Lifecycle:
-//   - `acceptTextDelta(delta)` feeds cleaned visible text into the stream.
-//   - `finish()` unregisters, flushes the splitter, awaits the queue drain,
-//     finalizes the archive. Idempotent; safe to call from a `finally` block.
+// 生命周期:
+//   - `acceptTextDelta(delta)` 把清洗后的可见文本喂入流。
+//   - `finish()` 注销、flush 切分器、等队列排空、归档。幂等;
+//     可安全从 `finally` 块调用。
 //
-// Single-instance per turn. The orchestrator creates and owns it; engines
-// never touch it. TTS is a stream sidecar, not a HookBus participant.
+// 每个 turn 单实例。orchestrator 创建并持有;engine 不碰。
+// TTS 是流式 sidecar,不是 HookBus 参与者。
 
 export interface TtsCoordinatorArgs {
   turnId:        TurnId;
   sessionId:     SessionId;
-  /** Pre-resolved voice spec (apps/core resolves from character card + binding). */
+  /** 预解析的 voice 规格(apps/core 从角色卡 + binding 解析)。 */
   voice:         TtsVoiceRef;
-  /** provider_configs.id — which TTS provider to use for this turn. */
+  /** provider_configs.id - 本 turn 用哪个 TTS provider。 */
   providerId:    string;
-  /** Model name for the provider (e.g. "tts-1", "cosyvoice-v1"). */
+  /** 该 provider 的模型名(如 "tts-1"、"cosyvoice-v1")。 */
   model:         string;
   ttsClient:     TtsClient;
-  /** Push an EmaStreamEvent into the merged turn SSE queue. */
+  /** 把一个 EmaStreamEvent 推入合并的 turn SSE 队列。 */
   emit:          (event: EmaStreamEvent) => void;
-  /** If set, segments + merged file are persisted via this archive. */
+  /** 若设置,分段 + 合并文件经此归档持久化。 */
   archive?:      AudioArchive;
   /**
-   * Preferred output format. Defaults to 'mp3'. The actual segment extension
-   * is inferred from the first audio_chunk MIME emitted by the adapter, so
-   * Qwen-TTS (which always delivers WAV after PCM→WAV wrapping) writes .wav
-   * segments regardless of this hint.
+   * 偏好的输出格式。默认 'mp3'。实际分段扩展名从 adapter 产出的第一个
+   * audio_chunk MIME 推断,所以 Qwen-TTS(PCM->WAV 包封后总是交付 WAV)
+   * 不管这个提示都写 .wav 分段。
    */
   format?:       'mp3' | 'pcm' | 'wav' | 'opus';
-  /** Turn-level abort signal. Used to cancel in-flight provider requests. */
+  /** Turn 级中止信号。用于取消进行中的 provider 请求。 */
   signal?:       AbortSignal;
   /** 单个 Turn 允许归档和推送的最大音频字节数。 */
   maxBytesPerTurn?: number;
@@ -88,8 +84,8 @@ export class TtsCoordinator {
   private turnBytes = 0;
   private finalAudio: FinalizedAudio | null     = null;
   /**
-   * Actual archive extension detected from the first audio_chunk MIME.
-   * Set once on the first synthesized sentence; used by finish() for finalizeTurn.
+   * 从第一个 audio_chunk MIME 探测到的实际归档扩展名。
+   * 在第一句合成时设置一次;finish() 用它做 finalizeTurn。
    */
   private effectiveExt: string | null = null;
 
@@ -124,7 +120,7 @@ export class TtsCoordinator {
     }
   }
 
-  /** Feed one visible output_text_delta into the turn-scoped TTS pipeline. */
+  /** 把一个可见 output_text_delta 喂入 turn 作用域的 TTS 管线。 */
   acceptTextDelta(delta: string): void {
     if (this.state !== 'accepting') return;
 
@@ -138,9 +134,8 @@ export class TtsCoordinator {
   }
 
   /**
-   * Stop accepting new deltas, flush the splitter's trailing buffer, drain
-   * the synthesis queue, and finalize the archive. Returns the merged audio
-   * metadata if the archive wrote one.
+   * 停止接收新 delta,flush 切分器尾部缓冲,排空合成队列,归档。
+   * 若归档写了合并文件,返回其元数据。
    */
   finish(): Promise<{ audio: FinalizedAudio | null }> {
     if (this.finishPromise) return this.finishPromise;
@@ -156,8 +151,8 @@ export class TtsCoordinator {
   private async finishInternal(): Promise<{ audio: FinalizedAudio | null }> {
     this.disposeExternalAbort?.();
 
-    // Flush the text filter first — it may emit a code-replacement string for
-    // an unclosed block. Then flush the sentence splitter for any trailing text.
+    // 先 flush 文本过滤器 - 它可能为未闭合块 emit 一个替换词。
+    // 再 flush 句子切分器,处理尾部文本。
     const filterRemnant = this.textFilter.flush();
     const tail = [
       ...(filterRemnant ? this.splitter.feed(filterRemnant) : []),
@@ -169,8 +164,8 @@ export class TtsCoordinator {
 
     await this.chain;
 
-    // If abort() was called while we were waiting for the chain, it has already
-    // set this.aborted and will call discardTurn — don't write a partial merged file.
+    // 如果等 chain 时调了 abort(),它已设 this.aborted 并会调 discardTurn -
+    // 不写半成品合并文件。
     if (this.state !== 'finishing') return { audio: null };
 
     if (this.archive) {
@@ -181,7 +176,7 @@ export class TtsCoordinator {
           this.effectiveExt ?? this.format,
         );
       } catch {
-        // archive failure is non-fatal — audio already streamed live
+        // 归档失败非致命 - 音频已实时流式播出
         this.finalAudio = null;
       }
     }
@@ -190,7 +185,7 @@ export class TtsCoordinator {
     return { audio: this.finalAudio };
   }
 
-  /** Discard everything. Used when the turn aborts before completion. */
+  /** 丢弃一切。turn 完成前中止时用。 */
   abort(): Promise<void> {
     if (this.abortPromise) return this.abortPromise;
     if (this.state === 'aborted' || this.state === 'completed') return Promise.resolve();
@@ -209,12 +204,11 @@ export class TtsCoordinator {
     this.state = 'aborted';
   }
 
-  // ── Internals ─────────────────────────────────────────────────────────────
+  // ── 内部实现 ─────────────────────────────────────────────────────────────
 
   /**
-   * Chain a new sentence behind any in-flight synthesis. Concurrency = 1 so
-   * audio chunks emerge in sentence order. Per-sentence errors are caught and
-   * surfaced as `system_warning` events — they don't break the chain.
+   * 在进行中的合成后串一句新句。并发 = 1,音频块按句序产出。
+   * 单句错误被捕获并以 `system_warning` 事件上报 - 不打断链。
    */
   private enqueue(index: number, text: string): void {
     this.chain = this.chain.then(() => this.synthesizeOne(index, text)).catch((err) => {
@@ -232,8 +226,8 @@ export class TtsCoordinator {
 
   private async synthesizeOne(index: number, text: string): Promise<void> {
     const sentenceId = makeSentenceId(this.turnId, index);
-    // Segment is opened lazily on the first audio_chunk so we can infer the
-    // actual file extension from the chunk's MIME (e.g. Qwen-TTS delivers WAV).
+    // 分段在第一个 audio_chunk 时懒开,以便从块 MIME 推断实际文件扩展名
+    // (如 Qwen-TTS 交付 WAV)。
     let writer: ReturnType<NonNullable<typeof this.archive>['openSegment']> | undefined;
 
     try {
@@ -264,9 +258,8 @@ export class TtsCoordinator {
         }
       }
 
-      // Always send a sentence_complete marker, even if the adapter produced
-      // no audio (e.g. all-error path). The frontend uses it to detect that
-      // the sentence is "done attempting" and won't get more chunks.
+      // 总是发一个 sentence_complete 标记,即使 adapter 没产出音频
+      // (如全错路径)。前端据此判定这句话"已尝试完",不会再有 chunk。
       if (this.state === 'accepting' || this.state === 'finishing') {
         this.emit({ type: 'tts_sentence_complete', turnId: this.turnId, sentenceId, sessionId: this.sessionId });
       }
@@ -276,7 +269,7 @@ export class TtsCoordinator {
   }
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// ── 辅助函数 ───────────────────────────────────────────────────────────────────
 
 function mimeToExt(mime: string): string | null {
   if (mime.startsWith('audio/mpeg'))                     return 'mp3';

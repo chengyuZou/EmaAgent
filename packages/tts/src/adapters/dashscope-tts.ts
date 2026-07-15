@@ -1,29 +1,28 @@
-﻿import { randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import fs   from 'node:fs/promises';
 import path from 'node:path';
 import WebSocket from 'ws';
 
 import type { TtsAdapter, TtsProviderConfig, TtsProbeResult, TtsRequest, TtsStreamEvent, TtsErrorCode } from '../types.js';
 
-// ── DashScope (Aliyun百炼) TTS ──────────────────────────────────────────────
+// ── DashScope(阿里云百炼)TTS ──────────────────────────────────────────────
 //
-// One adapter, two WS protocols routed by model prefix:
+// 一个 adapter,两个 WS 协议,按模型前缀路由:
 //
-//   - cosyvoice-*        → wss://{host}/api-ws/v1/inference/
-//                          actions: run-task → continue-task → finish-task
-//                          audio: binary frames
-//                          control: text JSON frames
+//   - cosyvoice-*        -> wss://{host}/api-ws/v1/inference/
+//                          actions:run-task -> continue-task -> finish-task
+//                          音频:二进制帧
+//                          控制:文本 JSON 帧
 //
-//   - qwen*-tts*         → wss://{host}/api-ws/v1/realtime?model={model}
-//                          flow:    session.update → input_text_buffer.append
-//                                   → input_text_buffer.commit → response.done
-//                                   → session.finish → session.finished
-//                          audio: base64 in `response.audio.delta.delta`
+//   - qwen*-tts*         -> wss://{host}/api-ws/v1/realtime?model={model}
+//                          流程:session.update -> input_text_buffer.append
+//                               -> input_text_buffer.commit -> response.done
+//                               -> session.finish -> session.finished
+//                          音频:base64 在 `response.audio.delta.delta`
 //
-// Both protocols deliver per-call audio over a single WS connection. We do
-// NOT pool / reuse connections in V1 — one synthesize() = one WS.
-// Connection pooling is a documented阿里 best practice for high-concurrency
-// (object pool, 1.5-2x peak QPS) but桌宠 is single-user, ~1 QPS peak.
+// 两个协议都通过单个 WS 连接交付 per-call 音频。V1 不做连接池/复用 -
+// 一次 synthesize() = 一个 WS。连接池是阿里官方推荐的高并发最佳实践
+// (对象池,1.5-2x 峰值 QPS),但桌宠单用户,峰值 ~1 QPS。
 
 const HOST_DEFAULT = 'wss://dashscope.aliyuncs.com';
 const MAX_REFERENCE_AUDIO_BYTES = 25 * 1024 * 1024;
@@ -33,7 +32,7 @@ export class DashscopeTtsAdapter implements TtsAdapter {
 
   capabilitiesFor(req: Pick<TtsRequest, 'model'>): {
     audioDelivery: 'buffered' | 'websocket_frames';
-    supportsAbort: true;
+    supportsAbort: boolean;
   } {
     return {
       audioDelivery: dashscopeModelFamily(req.model) === 'qwen-tts'
@@ -58,18 +57,17 @@ export class DashscopeTtsAdapter implements TtsAdapter {
   }
 
   /**
-   * Upload a local reference audio file to DashScope for voice cloning.
-   * Returns the provider-assigned voice ID to store in VoiceUriCache.
+   * 上传本地参考音频文件到 DashScope 做 voice cloning。
+   * 返回 provider 分配的 voice ID,存入 VoiceUriCache。
    *
-   * Protocol routing:
-   *   cosyvoice-*  → model=voice-enrollment,      input.url
-   *   qwen*-tts*   → model=qwen-voice-enrollment,  input.audio.data
+   * 协议路由:
+   *   cosyvoice-*  -> model=voice-enrollment,      input.url
+   *   qwen*-tts*   -> model=qwen-voice-enrollment,  input.audio.data
    *
-   * Audio transport: the file is base64-encoded and sent as a data URI.
-   * DashScope docs show https:// URLs, but data URIs work in practice.
-   * If a future DashScope update rejects data URIs, switch to a two-step
-   * approach: first upload the file via the compatible-mode Files API
-   * (POST /compatible-mode/v1/files) to get a hosted URL, then use that URL.
+   * 音频传输:文件 base64 编码后作为 data URI 发送。
+   * DashScope 文档用 https:// URL,但 data URI 实际可用。
+   * 若未来 DashScope 拒绝 data URI,改两步:先经兼容模式 Files API
+   * (POST /compatible-mode/v1/files)上传文件拿托管 URL,再用该 URL。
    */
   async uploadVoice(
     refAudioPath: string,
@@ -86,7 +84,7 @@ export class DashscopeTtsAdapter implements TtsAdapter {
     if (fileStat.size > MAX_REFERENCE_AUDIO_BYTES) {
       throw new Error(`Reference audio exceeds ${MAX_REFERENCE_AUDIO_BYTES} bytes`);
     }
-    // Data URI 必然需要一次有界缓冲；先检查文件大小，避免无上限读取和 base64 扩张。
+    // Data URI 必然需要一次有界缓冲;先检查文件大小,避免无上限读取和 base64 扩张。
     const audioBytes = await fs.readFile(refAudioPath);
     const ext  = path.extname(refAudioPath).slice(1).toLowerCase() || 'wav';
     const mime = ext === 'mp3' ? 'audio/mpeg' : ext === 'm4a' ? 'audio/mp4' : `audio/${ext}`;
@@ -123,15 +121,15 @@ export class DashscopeTtsAdapter implements TtsAdapter {
       throw new Error(`dashscope voice enrollment failed (${resp.status}): ${text}`);
     }
 
-    // CosyVoice response: { output: { voice_id: "prefix-xxxx" } }
-    // Qwen-TTS response:  { output: { voice: "name-xxxx" } }
+    // CosyVoice 响应:{ output: { voice_id: "prefix-xxxx" } }
+    // Qwen-TTS 响应: { output: { voice: "name-xxxx" } }
     const json   = await resp.json() as Record<string, unknown>;
     const output = json['output'] as Record<string, unknown> | undefined;
     const voiceId = (output?.['voice_id'] ?? output?.['voice']) as string | undefined;
 
     if (!voiceId) {
       throw new Error(
-        `dashscope voice enrollment: unexpected response shape — ${JSON.stringify(json)}`,
+        `dashscope voice enrollment: unexpected response shape - ${JSON.stringify(json)}`,
       );
     }
 
@@ -139,7 +137,7 @@ export class DashscopeTtsAdapter implements TtsAdapter {
   }
 
   async probe(): Promise<TtsProbeResult> {
-    // DashScope uses WebSocket; probe via their REST models API instead.
+    // DashScope 用 WebSocket;改用其 REST models API 探测。
     const url = 'https://dashscope.aliyuncs.com/api/v1/models';
     const startedAt = Date.now();
     try {
@@ -157,7 +155,7 @@ export class DashscopeTtsAdapter implements TtsAdapter {
   }
 }
 
-// ── Model family detection ──────────────────────────────────────────────────
+// ── 模型族检测 ──────────────────────────────────────────────────────────────
 
 export function dashscopeModelFamily(model: string): 'cosyvoice' | 'qwen-tts' | 'unknown' {
   if (model.startsWith('cosyvoice')) return 'cosyvoice';
@@ -165,11 +163,11 @@ export function dashscopeModelFamily(model: string): 'cosyvoice' | 'qwen-tts' | 
   return 'unknown';
 }
 
-// ── Shared helpers ──────────────────────────────────────────────────────────
+// ── 共享辅助函数 ──────────────────────────────────────────────────────────────
 
 function wsHostFromConfig(baseUrl: string): string {
-  // baseUrl in provider config is HTTPS-form (https://dashscope.aliyuncs.com).
-  // Convert to WSS for both protocols.
+  // provider config 的 baseUrl 是 HTTPS 形式(https://dashscope.aliyuncs.com)。
+  // 两个协议都转成 WSS。
   if (baseUrl.startsWith('wss://') || baseUrl.startsWith('ws://')) return baseUrl;
   if (baseUrl.startsWith('https://')) return 'wss://' + baseUrl.slice('https://'.length);
   if (baseUrl.startsWith('http://')) return 'ws://' + baseUrl.slice('http://'.length);
@@ -177,7 +175,7 @@ function wsHostFromConfig(baseUrl: string): string {
 }
 
 function httpHostFromConfig(baseUrl: string): string {
-  // Inverse of wsHostFromConfig — needed for REST enrollment API calls.
+  // wsHostFromConfig 的逆操作 - REST enrollment API 调用需要。
   if (baseUrl.startsWith('https://') || baseUrl.startsWith('http://')) return baseUrl;
   if (baseUrl.startsWith('wss://')) return 'https://' + baseUrl.slice('wss://'.length);
   if (baseUrl.startsWith('ws://')) return 'http://' + baseUrl.slice('ws://'.length);
@@ -188,11 +186,10 @@ async function* errorOnce(code: TtsErrorCode, message: string): AsyncGenerator<T
   yield { type: 'error', code, message };
 }
 
-// ── PCM → WAV conversion ──────────────────────────────────────────────────────
+// ── PCM -> WAV 转换 ────────────────────────────────────────────────────────────
 //
-// Wraps raw 16-bit signed LE mono PCM into a standard RIFF/WAV container so
-// browsers can play it without additional codec negotiation.
-// Only called for Qwen-TTS which always delivers audio/L16 over its WS protocol.
+// 把裸 16-bit 有符号 LE 单声道 PCM 包进标准 RIFF/WAV 容器,让浏览器无需
+// 额外编解码协商即可播放。仅用于 Qwen-TTS(其 WS 协议总是交付 audio/L16)。
 
 function pcmToWav(pcm: Buffer, sampleRate: number): Buffer {
   const numChannels  = 1;
@@ -237,11 +234,10 @@ function classifyCloseCode(code: number): TtsErrorCode {
   return 'transient_server';
 }
 
-// ── Event-driven queue: bridges ws callbacks → AsyncIterable ───────────────
+// ── 事件驱动队列:桥接 ws 回调 -> AsyncIterable ──────────────────────────────
 //
-// Used by both session classes. The pattern: WS handlers push() events into
-// the queue, the consumer awaits dequeue(). On close, finalize() unblocks
-// any pending dequeue with a sentinel.
+// 两个 session 类都用。模式:WS 处理器 push() 事件进队列,消费者 await
+// dequeue()。关闭时 finalize() 用哨兵值解锁所有 pending dequeue。
 
 class EventQueue<T> {
   private items: T[] = [];
@@ -256,7 +252,7 @@ class EventQueue<T> {
     this.items.push(item);
   }
 
-  /** Push a final value and mark stream closed. */
+  /** 推入最终值并标记流关闭。 */
   closeWith(item: T): void {
     if (this.closed) return;
     this.closeValue = item;
@@ -285,20 +281,20 @@ class EventQueue<T> {
     }
   }
 
-  // Silence "unused" — kept for future debugging / abort flow inspection.
+  // 静默 "unused" - 留作未来调试 / abort 流程检查。
   hasFinal(): boolean { return this.closeValue !== null; }
 }
 
 // ── CosyVoice session ───────────────────────────────────────────────────────
 //
-// Wire protocol per阿里 docs:
-//   1. Open WS to /api-ws/v1/inference/ with `Authorization: bearer <key>`
-//   2. Send run-task → wait for task-started event
-//   3. Send continue-task with text → server sends binary audio frames
-//   4. Send finish-task → wait for task-finished → close
+// 线协议(阿里文档):
+//   1. 开 WS 到 /api-ws/v1/inference/,带 `Authorization: bearer <key>`
+//   2. 发 run-task -> 等 task-started 事件
+//   3. 发 continue-task 带 text -> 服务器发二进制音频帧
+//   4. 发 finish-task -> 等 task-finished -> 关闭
 //
-// V1 clone-only: voice.voiceUri carries the provider-side voice ID from
-// voice enrollment (声音复刻). uploadVoice() will be implemented later.
+// V1 只支持 clone:voice.voiceUri 带 voice enrollment(声音复刻)的
+// provider 端 voice ID。uploadVoice() 后续实现。
 
 class CosyVoiceSession {
   private readonly mime: string;
@@ -376,7 +372,7 @@ class CosyVoiceSession {
       if (aborted) return;
 
       if (isBinary) {
-        // Audio frame
+        // 音频帧
         const buf = data as Buffer;
         if (firstByteMs === 0) firstByteMs = Date.now() - startedAt;
         totalBytes += buf.length;
@@ -384,7 +380,7 @@ class CosyVoiceSession {
         return;
       }
 
-      // Text frame — JSON event
+      // 文本帧 - JSON 事件
       let msg: { header?: { event?: string; error_message?: string } };
       try {
         msg = JSON.parse(typeof data === 'string' ? data : data.toString('utf8'));
@@ -393,7 +389,7 @@ class CosyVoiceSession {
       const event = msg.header?.event;
       switch (event) {
         case 'task-started': {
-          // Send continue-task with full text (single segment for V1 — coordinator already split sentences)
+          // 发 continue-task 带完整文本(V1 单段 - coordinator 已切句)
           ws.send(JSON.stringify({
             header:  { action: 'continue-task', task_id: taskId, streaming: 'duplex' },
             payload: { input: { text: this.req.text } },
@@ -421,7 +417,7 @@ class CosyVoiceSession {
           break;
         }
         default:
-          // result-generated and other intermediate events — ignore
+          // result-generated 等中间事件 - 忽略
           break;
       }
     });
@@ -454,12 +450,12 @@ class CosyVoiceSession {
 
 // ── Qwen-TTS Realtime session ───────────────────────────────────────────────
 //
-// Wire protocol per阿里 docs:
-//   1. Open WS to /api-ws/v1/realtime?model=<model> with `Authorization: Bearer <key>`
-//   2. Send session.update with voice + response_format + mode='commit'
-//   3. Send input_text_buffer.append, then input_text_buffer.commit
-//   4. Server sends response.audio.delta (base64) + response.done
-//   5. Send session.finish → wait for session.finished → close
+// 线协议(阿里文档):
+//   1. 开 WS 到 /api-ws/v1/realtime?model=<model>,带 `Authorization: Bearer <key>`
+//   2. 发 session.update 带 voice + response_format + mode='commit'
+//   3. 发 input_text_buffer.append,再 input_text_buffer.commit
+//   4. 服务器发 response.audio.delta(base64)+ response.done
+//   5. 发 session.finish -> 等 session.finished -> 关闭
 
 class QwenTtsRealtimeSession {
   private readonly pcmSr: number;
@@ -483,9 +479,8 @@ class QwenTtsRealtimeSession {
     const queue = new EventQueue<TtsStreamEvent>();
     const startedAt = Date.now();
     let firstByteMs = 0;
-    // Accumulate raw PCM so we can wrap it in a WAV header after all deltas arrive.
-    // Qwen-TTS always delivers audio/L16 (raw PCM) — we convert to WAV so the
-    // frontend can play it without a custom decoder.
+    // 累积裸 PCM,以便所有 delta 到齐后包 WAV 头。
+    // Qwen-TTS 总是交付 audio/L16(裸 PCM)- 我们转成 WAV,前端无需自定义解码器即可播放。
     const pcmChunks: Buffer[] = [];
     let pcmBytes = 0;
 
@@ -563,12 +558,12 @@ class QwenTtsRealtimeSession {
           break;
         }
         case 'response.done': {
-          // Audio complete — send session.finish to gracefully close
+          // 音频完成 - 发 session.finish 优雅关闭
           ws.send(JSON.stringify({ type: 'session.finish', event_id: makeEventId() }));
           break;
         }
         case 'session.finished': {
-          // Wrap accumulated PCM into a WAV container and emit as one chunk.
+          // 把累积的 PCM 包进 WAV 容器,作为一个 chunk emit。
           const pcm    = Buffer.concat(pcmChunks);
           const wav    = pcmToWav(pcm, pcmSr);
           const bytes  = new Uint8Array(wav.buffer, wav.byteOffset, wav.byteLength);
@@ -589,7 +584,7 @@ class QwenTtsRealtimeSession {
           break;
         }
         // session.created / session.updated / response.created / response.output_item.added
-        // are lifecycle events with no consumer-facing equivalent — ignored
+        // 是生命周期事件,无消费者对应 - 忽略
         default:
           break;
       }
@@ -621,11 +616,11 @@ class QwenTtsRealtimeSession {
   }
 }
 
-// ── Qwen Realtime audio format selection ───────────────────────────────────
+// ── Qwen Realtime 音频格式选择 ───────────────────────────────────────────────
 
 function audioFormatForSampleRate(sr: number): string {
-  // Per阿里 docs: AudioFormat enum — PCM_{rate}HZ_MONO_16BIT
-  if (sr === 16000) return 'pcm';   // server accepts simple "pcm" alias
+  // 阿里文档:AudioFormat 枚举 - PCM_{rate}HZ_MONO_16BIT
+  if (sr === 16000) return 'pcm';   // 服务器接受简单的 "pcm" 别名
   if (sr === 24000) return 'pcm';
   if (sr === 48000) return 'pcm';
   return 'pcm';

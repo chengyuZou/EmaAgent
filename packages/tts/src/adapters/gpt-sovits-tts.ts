@@ -1,25 +1,24 @@
 import type { TtsAdapter, TtsProviderConfig, TtsProbeResult, TtsRequest, TtsStreamEvent, TtsErrorCode } from '../types.js';
 
-// ── GPT-SoVITS local server (api_v2.py) ─────────────────────────────────────
+// ── GPT-SoVITS 本地服务器(api_v2.py)─────────────────────────────────────
 //
-// POST {baseUrl}/tts  with JSON body:
+// POST {baseUrl}/tts,JSON body:
 //   {
 //     text:                 "...",
-//     text_lang:            "zh",          // text language
+//     text_lang:            "zh",          // 文本语言
 //     ref_audio_path:       "/path/to/ref.wav",
 //     prompt_text:          "...",
 //     prompt_lang:          "zh",
 //     media_type:           "wav" | "raw" | "ogg" | "aac",
-//     streaming_mode:       true,           // chunked response
-//     ...other GPT-SoVITS knobs
+//     streaming_mode:       true,           // chunked 响应
+//     ...其他 GPT-SoVITS 旋钮
 //   }
 //
-// Response: chunked audio body, content-type matches media_type.
-// On error, body is JSON: { "message": "..." }.
+// 响应:chunked 音频体,content-type 匹配 media_type。
+// 出错时,body 是 JSON:{ "message": "..." }。
 //
-// V1 clone-only: voice carries refAudioPath, promptText, promptLang.
-// `model` field is informational only (GPT-SoVITS doesn't switch weights
-// per-request; users restart the server with different weights).
+// V1 只支持 clone:voice 带 refAudioPath、promptText、promptLang。
+// `model` 字段仅作信息(GPT-SoVITS 不按请求切权重;用户重启服务器换权重)。
 
 const CHUNK_BYTES = 8 * 1024;
 
@@ -65,8 +64,8 @@ export class GptSoVitsTtsAdapter implements TtsAdapter {
 
     if (!response.ok) {
       const text = await safeReadText(response);
-      // GPT-SoVITS returns 400 with { "message": "ref_audio_path not exists" }
-      // when refAudio is missing — surface as permanent_refaudio_missing.
+      // GPT-SoVITS 在 refAudio 缺失时返 400 { "message": "ref_audio_path not exists" }
+      // - 作为 permanent_refaudio_missing 上报。
       const code = looksLikeMissingRef(text)
         ? 'permanent_refaudio_missing'
         : classifyHttpStatus(response.status);
@@ -115,7 +114,7 @@ export class GptSoVitsTtsAdapter implements TtsAdapter {
     try {
       const res = await fetch(url, { signal: AbortSignal.timeout(8_000) });
       const latencyMs = Date.now() - startedAt;
-      // GPT-SoVITS server may return 404 on GET / but that still means it's up.
+      // GPT-SoVITS 服务器 GET / 可能返 404,但仍说明它在线。
       return { ok: res.status < 500, latencyMs };
     } catch (err) {
       return { ok: false, error: (err as Error).message };
@@ -123,7 +122,7 @@ export class GptSoVitsTtsAdapter implements TtsAdapter {
   }
 }
 
-// ── Helpers ─────────────────────────────────────────────────────────────────
+// ── 辅助函数 ─────────────────────────────────────────────────────────────────
 
 function errorEvent(code: TtsErrorCode, message: string): TtsStreamEvent {
   return { type: 'error', code, message };
@@ -149,9 +148,9 @@ function looksLikeMissingRef(body: string): boolean {
 }
 
 function mapFormatToGptSovits(format: string): string {
-  // GPT-SoVITS api_v2 accepts: wav, raw, ogg, aac
+  // GPT-SoVITS api_v2 接受:wav、raw、ogg、aac
   switch (format) {
-    case 'mp3':  return 'aac';   // closest available
+    case 'mp3':  return 'aac';   // 最接近的可用项
     case 'opus': return 'ogg';
     case 'pcm':  return 'raw';
     default:     return 'wav';
@@ -169,10 +168,9 @@ function mimeForFormat(format: string): string {
 }
 
 function detectLangHint(text: string, fallback: string): string {
-  // Very rough heuristic — GPT-SoVITS accepts the prompt_lang for both, but
-  // text_lang is what affects synthesis pronunciation. If the text is mostly
-  // CJK, use 'zh'; if mostly ASCII letters, use 'en'; else fall back to the
-  // prompt language.
+  // 非常粗的启发式 - GPT-SoVITS 两边都接受 prompt_lang,但 text_lang
+  // 影响合成发音。文本主要 CJK 用 'zh';主要 ASCII 字母用 'en';
+  // 否则回退到 prompt 语言。
   const cjk = (text.match(/[一-鿿぀-ヿ]/g) ?? []).length;
   const ascii = (text.match(/[A-Za-z]/g) ?? []).length;
   if (cjk > ascii) return 'zh';

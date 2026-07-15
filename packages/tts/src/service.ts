@@ -23,29 +23,27 @@ const DEFAULT_LIMITS: Readonly<TtsLimits> = {
 // ── TtsClient ───────────────────────────────────────────────────────────────
 
 /**
- * Text-to-Speech router. Pattern aligned with LlmRouter:
+ * Text-to-Speech 路由器。模式与 LlmRouter 对齐:
  *
- *   - adapters: Map<providerId, TtsAdapter>     (id → instance)
- *   - configs:  Map<providerId, TtsProviderConfig> (id → config)
+ *   - adapters: Map<providerId, TtsAdapter>     (id -> 实例)
+ *   - configs:  Map<providerId, TtsProviderConfig> (id -> 配置)
  *
- * TtsClient is a DUMB DISPATCHER. It has no knowledge of characters,
- * voice profiles, file paths, URI caching, or fallback strategies.
- * Those concerns live in apps/core (the orchestrator layer).
+ * TtsClient 是一个"哑分发器"。它不感知角色卡、voice profile、
+ * 文件路径、URI 缓存或 fallback 策略。这些职责在 apps/core(orchestrator 层)。
  *
- * synthesize(request) receives a fully-resolved TtsVoiceRef — the caller
- * is responsible for resolving the voice from the character card and
- * ensuring voiceUri is populated before calling.
+ * synthesize(request) 接收完全解析的 TtsVoiceRef - 调用方负责
+ * 从角色卡解析 voice,并在调用前确保 voiceUri 已填。
  */
 export class TtsClient {
-  /** providerId → adapter instance (hot-reloadable) */
+  /** providerId -> adapter 实例(可热重载)*/
   private adapters = new Map<string, TtsAdapter>();
-  /** providerId → config */
+  /** providerId -> 配置 */
   private configs  = new Map<string, TtsProviderConfig>();
   private readonly limits: Readonly<TtsLimits>;
 
   /**
-   * @param configs           Provider configurations (from profile.db).
-   * @param adapterOverrides  Pre-built adapters keyed by provider id (tests inject mocks here).
+   * @param configs           Provider 配置(来自 profile.db)。
+   * @param adapterOverrides  预构建的 adapter,按 provider id 索引(测试在此注入 mock)。
    */
   constructor(
     configs: TtsProviderConfig[],
@@ -58,7 +56,7 @@ export class TtsClient {
       const override = adapterOverrides?.get(cfg.id);
       this.adapters.set(cfg.id, override ?? this.createAdapter(cfg));
     }
-    // Allow overrides for provider ids that have no ProviderConfig (pure mock injection)
+    // 允许覆盖没有 ProviderConfig 的 provider id(纯 mock 注入)
     if (adapterOverrides) {
       for (const [id, adapter] of adapterOverrides) {
         if (!this.adapters.has(id)) this.adapters.set(id, adapter);
@@ -66,7 +64,7 @@ export class TtsClient {
     }
   }
 
-  // ── Hot-reload ─────────────────────────────────────────────────────────────
+  // ── 热重载 ──────────────────────────────────────────────────────────────
 
   reload(configs: TtsProviderConfig[]): void {
     const nextAdapters = new Map<string, TtsAdapter>();
@@ -79,40 +77,39 @@ export class TtsClient {
     this.adapters = nextAdapters;
   }
 
-  /** Symmetric with LlmRouter.upsertConfig(). */
+  /** 与 LlmRouter.upsertConfig() 对称。 */
   upsertConfig(config: TtsProviderConfig): void {
     this.configs.set(config.id, config);
     this.adapters.set(config.id, this.createAdapter(config));
   }
 
-  /** Symmetric with LlmRouter.removeConfig(). */
+  /** 与 LlmRouter.removeConfig() 对称。 */
   removeConfig(providerId: string): void {
     this.configs.delete(providerId);
     this.adapters.delete(providerId);
   }
 
-  /** Symmetric with LlmRouter.firstProviderId(). */
+  /** 与 LlmRouter.firstProviderId() 对称。 */
   firstProviderId(): string | undefined {
     return this.configs.keys().next().value;
   }
 
-  /** Get the adapter for a provider id (for voice resolution / cache management). */
+  /** 按 provider id 取 adapter(用于 voice 解析 / 缓存管理)。 */
   getAdapter(providerId: string): TtsAdapter | undefined {
     return this.adapters.get(providerId);
   }
 
-  /** 返回当前适配器实现的真实交付能力，供诊断与后续设置页展示。 */
+  /** 返回当前适配器实现的真实交付能力,供诊断与后续设置页展示。 */
   capabilitiesFor(providerId: string, model: string): TtsAdapterCapabilities | undefined {
     return this.adapters.get(providerId)?.capabilitiesFor({ model });
   }
 
   /**
-   * Health check — verifies that at least one TTS provider is configured.
+   * 健康检查 - 验证至少配置了一个 TTS provider。
    *
-   * V1 is a configuration check only (no live API call). A provider is
-   * considered healthy when its adapter was successfully registered (i.e.
-   * its config passed `buildTtsProviderConfig` validation in the wiring layer).
-   * Actual API key validity is verified on first synthesis call.
+   * V1 只做配置检查(无实时 API 调用)。provider 的 adapter 成功注册
+   * 即视为健康(即其 config 通过了 wiring 层的 `buildTtsProviderConfig`
+   * 校验)。API key 的实际有效性在首次合成调用时验证。
    */
   healthCheck(): TtsHealthResult {
     const providers = [...this.configs.entries()].map(([id, cfg]) => ({
@@ -141,22 +138,22 @@ export class TtsClient {
     }
   }
 
-  // ── Public API ────────────────────────────────────────────────────────────
+  // ── 公共 API ─────────────────────────────────────────────────────────────
 
   /**
-   * Synthesize a single text segment into audio chunks.
+   * 将单个文本段合成为音频块。
    *
-   * The caller (TtsCoordinator) is responsible for:
-   *   1. Sentence splitting — each synthesize() call receives ONE sentence.
-   *   2. Voice resolution — request.voice is a fully-resolved TtsVoiceRef
-   *      with voiceUri already populated (by apps/core before calling).
-   *   3. Error handling — TtsClient emits TtsStreamEvent.error; the caller
-   *      decides whether to retry, fall back, or surface to the user.
+   * 调用方(TtsCoordinator)负责:
+   *   1. 句子切分 - 每次 synthesize() 调用接收一句话。
+   *   2. Voice 解析 - request.voice 是完全解析的 TtsVoiceRef,
+   *      voiceUri 已填(由 apps/core 在调用前填好)。
+   *   3. 错误处理 - TtsClient 产出 TtsStreamEvent.error;调用方
+   *      决定重试、fallback 还是上报用户。
    *
-   * TtsClient only:
-   *   1. Cleans text (strip markdown/code/ACT markers).
-   *   2. Looks up the adapter by request.providerId.
-   *   3. Delegates to adapter.stream().
+   * TtsClient 只负责:
+   *   1. 清洗文本(剥离 markdown/code/ACT 标记)。
+   *   2. 按 request.providerId 查 adapter。
+   *   3. 委托 adapter.stream()。
    */
   async *synthesize(req: TtsRequest): AsyncIterable<TtsStreamEvent> {
     const cleaned = filterSentenceForTts(req.text);
@@ -172,7 +169,7 @@ export class TtsClient {
       return;
     }
 
-    // Build a normalized copy — never mutate the caller's request object.
+    // 构造归一化副本 - 永不修改调用方的 request 对象。
     const scope = createTtsScope(req.abortSignal, this.limits.timeoutMsPerSentence);
     const normalized: TtsRequest = {
       ...req,

@@ -1,36 +1,35 @@
 import type { TtsProtocol } from '@ema-agent/contracts';
 
-// Re-export TtsProtocol — it lives in contracts because it's derived from
-// ProtocolFamily (the provider registry needs it). Everything else is
-// TTS-package–internal.
+// 重新导出 TtsProtocol - 它放在 contracts 里,因为派生自 ProtocolFamily
+// (provider registry 需要它)。其余都是 TTS 包内部的。
 export type { TtsProtocol } from '@ema-agent/contracts';
 
-// ── TTS-internal types ────────────────────────────────────────────────────────
+// ── TTS 内部类型 ──────────────────────────────────────────────────────────────
 
-/** Resolved voice reference passed into every synthesize call. */
+/** 传给每次 synthesize 调用的已解析 voice 引用。 */
 export interface TtsVoiceRef {
-  /** Profile-scoped relative path to the reference audio file. */
+  /** 引用音频文件的 profile 作用域相对路径。 */
   refAudioPath: string;
-  /** Prompt text used for voice cloning (empty ok for some providers). */
+  /** 用于 voice cloning 的提示文本(部分 provider 允许空)。 */
   promptText:   string;
-  /** Language code, e.g. 'zh', 'en'. */
+  /** 语言代码,如 'zh'、'en'。 */
   promptLang:   string;
   /**
-   * Provider-assigned voice URI.
-   * Required by openai-tts and dashscope-tts — those adapters check and yield
-   * a `permanent_unsupported_voice_kind` error when absent.
-   * gpt-sovits-tts ignores this field and uses `refAudioPath` directly.
+   * Provider 分配的 voice URI。
+   * openai-tts 和 dashscope-tts 必需 - 这两个 adapter 会检查,缺失时产出
+   * `permanent_unsupported_voice_kind` 错误。
+   * gpt-sovits-tts 忽略此字段,直接用 `refAudioPath`。
    *
-   * Populated lazily by `ensureVoiceUri()` in apps/core before the coordinator
-   * starts. Never hardcode a value here.
+   * 由 apps/core 的 `ensureVoiceUri()` 在 coordinator 启动前懒填。
+   * 禁止在此硬编码值。
    */
   voiceUri?: string;
 }
 
-/** Output audio format requested from the adapter. */
+/** 向 adapter 请求的输出音频格式。 */
 export type TtsAudioFormat = 'mp3' | 'pcm' | 'wav' | 'opus';
 
-/** Coarse error classes emitted by adapters. */
+/** adapter 产出的粗粒度错误类别。 */
 export type TtsErrorCode =
   | 'permanent_refaudio_missing'
   | 'permanent_credentials'
@@ -58,7 +57,7 @@ export interface TtsLimits {
   maxBytesPerSentence: number;
 }
 
-/** Wire events emitted by adapters. */
+/** adapter 产出的 wire 事件。 */
 export type TtsStreamEvent =
   | { type: 'audio_chunk';     bytes: Uint8Array<ArrayBufferLike>; mime: string }
   | { type: 'sentence_started'; index: number; text: string }
@@ -66,21 +65,19 @@ export type TtsStreamEvent =
   | { type: 'done';             totalBytes: number; firstByteMs: number }
   | { type: 'error';            code: TtsErrorCode; message: string };
 
-// ── Public TTS request (Facade entry point) ───────────────────────────────────
+// ── 公共 TTS 请求(Facade 入口)────────────────────────────────────────────
 //
-// Pattern-aligned with LlmRequest: pure data, no business semantics.
-// The caller (TtsCoordinator / apps/core orchestrator) is responsible for
-// resolving the voice from the character card and ensuring voiceUri is
-// populated before calling synthesize for cloud adapters.
+// 与 LlmRequest 模式对齐:纯数据,无业务语义。
+// 调用方(TtsCoordinator / apps/core orchestrator)负责从角色卡解析 voice,
+// 并在调 cloud adapter 的 synthesize 前确保 voiceUri 已填。
 
 /**
- * Fully-resolved synthesis request.
+ * 完全解析后的合成请求。
  *
- * `voice` is resolved from the active character card by apps/core.
- * For openai-tts and dashscope-tts protocols `voice.voiceUri` must be
- * populated before calling `synthesize()`; the adapter will yield
- * `permanent_unsupported_voice_kind` otherwise.
- * gpt-sovits-tts reads `voice.refAudioPath` directly and never needs voiceUri.
+ * `voice` 由 apps/core 从当前角色卡解析。
+ * openai-tts 和 dashscope-tts 协议下,调 `synthesize()` 前必须填好
+ * `voice.voiceUri`,否则 adapter 产出 `permanent_unsupported_voice_kind`。
+ * gpt-sovits-tts 直接读 `voice.refAudioPath`,从不需要 voiceUri。
  */
 export interface TtsRequest {
   providerId:   string;
@@ -93,23 +90,23 @@ export interface TtsRequest {
   abortSignal?: AbortSignal;
 }
 
-// ── Provider config (per-protocol credentials & endpoint) ────────────────────
+// ── Provider 配置(每协议的凭证与端点)────────────────────────────────────
 
 export interface TtsProviderConfig {
-  /** matches provider_configs.id in profile.db */
+  /** 对应 profile.db 的 provider_configs.id */
   id:       string;
   protocol: TtsProtocol;
   apiKey:   string;
   baseUrl:  string;
 }
 
-// ── Health check ─────────────────────────────────────────────────────────────
+// ── 健康检查 ──────────────────────────────────────────────────────────────────
 
 export interface TtsProviderHealth {
   providerId: string;
   protocol:   TtsProtocol;
   ok:         boolean;
-  /** Present when ok=false. */
+  /** ok=false 时存在。 */
   reason?:    string;
 }
 
@@ -124,7 +121,7 @@ export interface TtsProbeResult {
   error?:    string;
 }
 
-// ── Adapter contract ────────────────────────────────────────────────────────
+// ── Adapter 契约 ──────────────────────────────────────────────────────────────
 
 export interface TtsAdapter {
   readonly protocol: TtsProtocol;
@@ -133,18 +130,18 @@ export interface TtsAdapter {
   capabilitiesFor(req: Pick<TtsRequest, 'model'>): TtsAdapterCapabilities;
 
   /**
-   * Stream audio for a single text segment.
-   * Receives the full TtsRequest — symmetric with LlmAdapter.stream(LlmRequest).
+   * 流式产出单个文本段的音频。
+   * 接收完整 TtsRequest - 与 LlmAdapter.stream(LlmRequest) 对称。
    */
   stream(req: TtsRequest): AsyncIterable<TtsStreamEvent>;
 
   /**
-   * Upload a reference audio file for voice cloning.
-   * Returns a URI that can be used as `voiceUri` in subsequent clone calls.
-   * Not all adapters support this — unsupported adapters throw.
+   * 上传参考音频文件用于 voice cloning。
+   * 返回一个 URI,后续 clone 调用可用作 `voiceUri`。
+   * 并非所有 adapter 都支持 - 不支持的 adapter 抛错。
    */
   uploadVoice?(refAudioPath: string, promptText: string, promptLang: string, model: string): Promise<string>;
 
-  /** Live connectivity check. Optional — service falls back to ok=false when absent. */
+  /** 实时连通性检查。可选 - 缺失时 service 回退 ok=false。 */
   probe?(): Promise<Omit<TtsProbeResult, never>>;
 }

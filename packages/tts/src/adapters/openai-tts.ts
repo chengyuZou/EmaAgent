@@ -2,15 +2,14 @@ import type { TtsAdapter, TtsProviderConfig, TtsProbeResult, TtsRequest, TtsStre
 import { readFile, stat } from 'node:fs/promises';
 import { basename } from 'node:path';
 
-// ── OpenAI-compatible /v1/audio/speech ──────────────────────────────────────
+// ── OpenAI 兼容 /v1/audio/speech ─────────────────────────────────────────────
 //
-// Single request returns the full audio body. We stream the response body in
-// reasonable chunks so the caller can start playback early; this is not true
-// sentence-level streaming (OpenAI doesn't expose it), but the response starts
-// arriving faster than waiting for the full body.
+// 单次请求返回完整音频体。我们把响应体按合理块流式传出,让调用方能尽早
+// 开始播放;这不是真正的句子级流式(OpenAI 不暴露),但响应比等完整体
+// 更早开始到达。
 //
-// V1 is clone-only: voice must carry a voiceUri (lazy-uploaded by service).
-// CosyVoice2 models skip speed/gain parameters on the clone path.
+// V1 只支持 clone:voice 必须带 voiceUri(由 service 懒上传)。
+// CosyVoice2 模型在 clone 路径上跳过 speed/gain 参数。
 
 const CHUNK_BYTES = 8 * 1024;
 const MAX_REFERENCE_AUDIO_BYTES = 25 * 1024 * 1024;
@@ -31,7 +30,7 @@ export class OpenAiTtsAdapter implements TtsAdapter {
     }
 
     const voiceParam = req.voice.voiceUri;
-    // Clone path always skips speed/gain (CosyVoice2 doesn't accept them).
+    // Clone 路径总是跳过 speed/gain(CosyVoice2 不接受)。
     const skipSpeedGain = true;
 
     const url = `${this.config.baseUrl.replace(/\/$/, '')}/audio/speech`;
@@ -89,7 +88,7 @@ export class OpenAiTtsAdapter implements TtsAdapter {
         if (firstByteMs === 0) firstByteMs = Date.now() - startedAt;
         totalBytes += value.length;
 
-        // Re-chunk to ~8KB so SSE frames stay reasonable
+        // 重新分块到 ~8KB,让 SSE 帧保持合理大小
         pending = concat(pending, value);
         while (pending.length >= CHUNK_BYTES) {
           yield { type: 'audio_chunk', bytes: pending.slice(0, CHUNK_BYTES), mime };
@@ -108,12 +107,12 @@ export class OpenAiTtsAdapter implements TtsAdapter {
   }
 
   /**
-   * Upload a reference audio file for voice cloning.
+   * 上传参考音频文件用于 voice cloning。
    *
-   * SiliconFlow / OpenAI-compatible flow:
+   * SiliconFlow / OpenAI 兼容流程:
    *   POST /v1/uploads/audio/voice
    *   multipart/form-data: file, model, customName, text
-   *   Response: { uri: "speech:xxx:xxx" }
+   *   响应:{ uri: "speech:xxx:xxx" }
    */
   async uploadVoice(
     refAudioPath: string,
@@ -173,7 +172,7 @@ export class OpenAiTtsAdapter implements TtsAdapter {
   }
 }
 
-// ── Helpers ─────────────────────────────────────────────────────────────────
+// ── 辅助函数 ─────────────────────────────────────────────────────────────────
 
 function errorEvent(code: TtsErrorCode, message: string): TtsStreamEvent {
   return { type: 'error', code, message };
