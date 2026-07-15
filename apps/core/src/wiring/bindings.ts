@@ -18,6 +18,7 @@ import { AttachmentStore } from '@ema-agent/attachment';
 import { ArtifactStore }                               from '@ema-agent/artifact';
 import { McpRegistry, McpServerStore }                 from '@ema-agent/mcp';
 import { McpMarketAdapter, MCP_SEEDS }                 from '@ema-agent/mcp';
+import type { McpStdioLaunchIntent }                   from '@ema-agent/mcp';
 import { SkillStore, SkillRunner, SkillInstaller }     from '@ema-agent/skill';
 import { SkillMarketAdapter, SKILL_SEEDS }             from '@ema-agent/skill';
 import { MarketRegistry, MarketSourceStore }           from '@ema-agent/marketplace';
@@ -414,10 +415,20 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
   const sessionNotes = new SessionNotesRepo(dataDb.sqlite);
 
   // ── MCP registry ────────────────────────────────────────────────────────────
-  const mcpStdioGate = async (serverName: string, command: string): Promise<boolean> => {
+  const mcpStdioGate = async (intent: McpStdioLaunchIntent): Promise<boolean> => {
+    // 环境变量值可能包含 API Key；授权界面只展示键名，但 Registry 会把批准
+    // 绑定在这次冻结 intent 上，并使用同一份配置启动进程。
+    const environmentKeys = Object.keys(intent.environment ?? {}).sort();
     const outcome = await permission.gate(
-      'mcp_stdio_connect',
-      { serverName, command },
+      'mcp_stdio_launch',
+      {
+        operation: intent.operation,
+        serverName: intent.serverName,
+        command: intent.command,
+        args: [...intent.args],
+        cwd: intent.cwd ?? null,
+        environmentKeys,
+      },
       { riskLevel: 'high', accessType: 'execute' },
       { workspaceRoot: process.cwd() },
     );

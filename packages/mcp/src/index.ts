@@ -12,12 +12,14 @@ export {
 }                                    from './types.js';
 export type {
   McpServerConfig,
+  McpStdioLaunchIntent,
   McpStdioConfig,
   McpSseConfig,
   McpHttpConfig,
   McpServerRecord,
   McpConnection,
   McpConnectionStatus,
+  McpProbeResult,
   McpToolInfo,
 }                                    from './types.js';
 export {
@@ -25,6 +27,7 @@ export {
   McpToolCallError,
   McpTimeoutError,
   McpServerNotFoundError,
+  McpStdioPermissionError,
 }                                    from './errors.js';
 export { McpMarketAdapter, MCP_SEEDS } from './market/index.js';
 export type {

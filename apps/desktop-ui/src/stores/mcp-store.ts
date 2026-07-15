@@ -48,7 +48,7 @@ export interface McpStoreState {
    * Probe a server config without registering it.
    * Used to validate before saving (e.g. in the "Add server" dialog).
    */
-  probe(config: McpServerConfig): Promise<McpProbeResult>;
+  probe(serverName: string, config: McpServerConfig): Promise<McpProbeResult>;
 
   /**
    * Bulk-import servers from a Claude Desktop / mcp.so JSON config.
@@ -163,8 +163,8 @@ export const useMcpStore = create<McpStoreState>((set, get) => ({
     }
   },
 
-  async probe(config) {
-    return mcpApi.probe(config);
+  async probe(serverName, config) {
+    return mcpApi.probe(serverName, config);
   },
 
   async importFromJson(payload) {

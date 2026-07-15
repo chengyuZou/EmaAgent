@@ -11,9 +11,3 @@ export function extractSummary(blocks: DocumentBlock[]): string {
     .trim()
     .slice(0, PREVIEW_CHARS);
 }
-
-export function countWords(blocks: DocumentBlock[]): number {
-  return blocks
-    .filter(b => b.kind !== 'image')
-    .reduce((n, b) => n + b.text.split(/\s+/).filter(Boolean).length, 0);
-}

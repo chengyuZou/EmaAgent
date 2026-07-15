@@ -26,6 +26,11 @@ const registerSchema = z.object({
   connect:   z.boolean().default(true),
 });
 
+const probeSchema = z.object({
+  serverName: z.string().trim().min(1).max(100),
+  config: McpServerConfigSchema,
+});
+
 // ── Marketplace ──────────────────────────────────────────────────────────────
 //
 // 市场源从 market_sources 表读(marketplace 底座),聚合所有 enabled 源并发 fetch。
@@ -185,13 +190,13 @@ export function createMcpRouter(bindings: AppBindings) {
 
   // ── Probe (test without saving) ───────────────────────────────────────────
   router.post('/probe', async (c) => {
-    let config: z.infer<typeof McpServerConfigSchema>;
+    let body: z.infer<typeof probeSchema>;
     try {
-      config = McpServerConfigSchema.parse(await c.req.json());
+      body = probeSchema.parse(await c.req.json());
     } catch (err) {
       return c.json({ error: String(err) }, 400);
     }
-    const result = await mcpRegistry.probe(config);
+    const result = await mcpRegistry.probe(body.serverName, body.config);
     return c.json(result, result.ok ? 200 : 500);
   });
 

@@ -2,15 +2,15 @@
  * MCP API — MCP server management.
  */
 import { sidecarClient } from './sidecar-client.js';
-import type { McpServerConfig, McpServerRecord, McpConnection, McpToolInfo } from '@ema-agent/mcp';
+import type {
+  McpServerConfig,
+  McpServerRecord,
+  McpConnection,
+  McpToolInfo,
+  McpProbeResult,
+} from '@ema-agent/mcp';
 
-export type { McpServerConfig, McpServerRecord, McpConnection, McpToolInfo };
-
-export interface McpProbeResult {
-  ok:      boolean;
-  error?:  string;
-  tools?:  McpToolInfo[];
-}
+export type { McpServerConfig, McpServerRecord, McpConnection, McpToolInfo, McpProbeResult };
 
 export interface McpImportResult {
   name:          string;
@@ -101,10 +101,10 @@ export const mcpApi = {
   },
 
   /** POST /api/mcp/probe */
-  async probe(config: McpServerConfig): Promise<McpProbeResult> {
+  async probe(serverName: string, config: McpServerConfig): Promise<McpProbeResult> {
     return sidecarClient.request<McpProbeResult>('/api/mcp/probe', {
       method: 'POST',
-      json: config,
+      json: { serverName, config },
     });
   },
 

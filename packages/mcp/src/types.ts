@@ -42,6 +42,17 @@ export type McpSseConfig    = z.infer<typeof McpSseConfigSchema>;
 export type McpHttpConfig   = z.infer<typeof McpHttpConfigSchema>;
 export type McpServerConfig = z.infer<typeof McpServerConfigSchema>;
 
+/** 一次 stdio 子进程启动的完整、不可变授权意图。 */
+export interface McpStdioLaunchIntent {
+  readonly operation: 'connect' | 'probe';
+  readonly serverName: string;
+  readonly command: string;
+  readonly args: readonly string[];
+  readonly cwd?: string;
+  /** 仅供授权适配器做脱敏展示；执行仍使用同一份冻结配置中的真实值。 */
+  readonly environment?: Readonly<Record<string, string>>;
+}
+
 // ── Persisted server record ───────────────────────────────────────────────────
 
 export interface McpServerRecord {
@@ -91,6 +102,12 @@ export interface McpConnection {
   tools:      McpToolInfo[];
   error?:     string;
   connectedAt?: number;
+}
+
+export interface McpProbeResult {
+  ok: boolean;
+  tools: McpToolInfo[];
+  error?: string;
 }
 
 // ── Tool naming ───────────────────────────────────────────────────────────────

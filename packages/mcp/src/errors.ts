@@ -25,3 +25,18 @@ export class McpServerNotFoundError extends Error {
     this.name = 'McpServerNotFoundError';
   }
 }
+
+export class McpStdioPermissionError extends Error {
+  constructor(
+    public readonly operation: 'connect' | 'probe',
+    public readonly serverName: string,
+    reason: 'gate_unavailable' | 'denied',
+  ) {
+    super(
+      reason === 'gate_unavailable'
+        ? `MCP stdio ${operation} for "${serverName}" is disabled because no permission gate is configured`
+        : `MCP stdio ${operation} for "${serverName}" was denied by the permission system`,
+    );
+    this.name = 'McpStdioPermissionError';
+  }
+}

@@ -5,6 +5,7 @@ import { HtmlReader }  from '../readers/html.js';
 import { DocxReader }  from '../readers/docx.js';
 import { PdfReader }   from '../readers/pdf.js';
 import type { ImageReader } from '../readers/image.js';
+import { countWords }  from '../words.js';
 
 const MIME_TO_READER: Record<string, 'text' | 'html' | 'docx' | 'pdf'> = {
   'text/plain':    'text', 'text/markdown': 'text',
@@ -64,7 +65,7 @@ export async function parseDocument(source: ReaderSource, opts: ParseOptions = {
     blocks,
     mimeType,
     title:     blocks.find(b => b.kind === 'title')?.text,
-    wordCount: blocks.reduce((n, b) => n + b.text.split(/\s+/).filter(Boolean).length, 0),
+    wordCount: countWords(blocks),
     pageCount,
   };
 }

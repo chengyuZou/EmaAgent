@@ -1,5 +1,6 @@
 import type { DocumentBlock, DocumentPreview } from '../types.js';
-import { extractSummary, countWords } from './summary.js';
+import { extractSummary } from './summary.js';
+import { countWords } from '../words.js';
 import { imageThumbnail, pdfThumbnail } from './thumbnail.js';
 
 export interface BuildPreviewOpts {

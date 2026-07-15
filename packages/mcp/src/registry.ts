@@ -1,12 +1,25 @@
 import { randomUUID }       from 'node:crypto';
 import type { McpToolOwner, McpToolRegistration, ToolRegistry } from '@ema-agent/tools';
 import type { McpServerStore }                            from './store.js';
-import type { McpServerConfig, McpConnection, McpToolInfo } from './types.js';
+import type {
+  McpServerConfig,
+  McpStdioConfig,
+  McpStdioLaunchIntent,
+  McpConnection,
+  McpProbeResult,
+  McpToolInfo,
+} from './types.js';
 import { openConnection }                                from './connection.js';
 import type { OpenedConnection }                         from './connection.js';
 import { discoverServerTools, buildMcpBuiltTool }       from './discovery.js';
 import { callMcpTool }                                   from './execution.js';
-import { McpServerNotFoundError }                        from './errors.js';
+import {
+  McpServerNotFoundError,
+  McpStdioPermissionError,
+  McpTimeoutError,
+} from './errors.js';
+
+const TOOL_DISCOVERY_TIMEOUT_MS = 15_000;
 
 // ── McpRegistry ───────────────────────────────────────────────────────────────
 
@@ -19,9 +32,7 @@ import { McpServerNotFoundError }                        from './errors.js';
  * (they don't spawn local subprocesses under the sidecar's privileges).
  */
 export type McpStdioPermissionGate = (
-  serverName: string,
-  command:    string,
-  args?:      string[],
+  intent: McpStdioLaunchIntent,
 ) => Promise<boolean>;
 
 export class McpRegistry {
@@ -50,45 +61,40 @@ export class McpRegistry {
   }
 
   async connectConfig(serverName: string, config: McpServerConfig): Promise<McpConnection> {
-    // Gate stdio connections through PermissionEngine BEFORE spawning.
-    // stdio servers run as subprocesses with the sidecar's full OS privileges;
-    // they must be treated as execute-class actions, not passive config.
-    if (config.type === 'stdio' && this.stdioGate) {
-      const allowed = await this.stdioGate(serverName, config.command, config.args);
-      if (!allowed) {
-        throw new Error(
-          `MCP stdio server "${serverName}" was blocked by the permission system. ` +
-          `Approve it from Settings → MCP Servers to connect.`,
-        );
-      }
-    }
+    const authorizedConfig = await this.authorizeLaunch('connect', serverName, config);
 
     await this.disconnect(serverName);
 
-    const opened = await openConnection(serverName, config);
-    const tools  = await discoverServerTools(serverName, opened.client);
-
-    const info: McpConnection = {
-      serverName,
-      status:      'connected',
-      tools,
-      connectedAt: Date.now(),
-    };
-
+    const opened = await openConnection(serverName, authorizedConfig);
+    let retained = false;
     try {
+      const tools = await withTimeout(
+        discoverServerTools(serverName, opened.client),
+        TOOL_DISCOVERY_TIMEOUT_MS,
+        () => new McpTimeoutError(serverName, 'tool discovery', TOOL_DISCOVERY_TIMEOUT_MS),
+      );
+      const info: McpConnection = {
+        serverName,
+        status:      'connected',
+        tools,
+        connectedAt: Date.now(),
+      };
+
       this.toolRegistry.registerMcpBatch(toRegistrations(tools, this));
-    } catch (err) {
-      // 注册失败时连接尚未对外可见；必须关闭 transport，不能留下孤儿进程。
-      try { await opened.cleanup(); } catch { /* ignore cleanup failure */ }
-      throw err;
+      this.connections.set(serverName, { ...opened, info });
+      retained = true;
+
+      // Persist the live tool list so next startup can prime the registry without
+      // connecting (fast/offline). Best-effort — caching failure must not break connect.
+      try { this.store.cacheTools(serverName, tools); } catch { /* ignore */ }
+
+      return info;
+    } finally {
+      // 只有成功写入 connections 后，transport 生命周期才移交给 disconnect()。
+      if (!retained) {
+        try { await opened.cleanup(); } catch { /* ignore cleanup failure */ }
+      }
     }
-    this.connections.set(serverName, { ...opened, info });
-
-    // Persist the live tool list so next startup can prime the registry without
-    // connecting (fast/offline). Best-effort — caching failure must not break connect.
-    try { this.store.cacheTools(serverName, tools); } catch { /* ignore */ }
-
-    return info;
   }
 
   /**
@@ -204,16 +210,52 @@ export class McpRegistry {
 
   // ── Probe ────────────────────────────────────────────────────────────────
 
-  async probe(config: McpServerConfig): Promise<{ ok: boolean; tools: string[]; error?: string }> {
-    const tempName = `__probe_${randomUUID()}`;
+  async probe(serverName: string, config: McpServerConfig): Promise<McpProbeResult> {
+    const probeName = serverName.trim() || `probe-${randomUUID()}`;
+    let connection: OpenedConnection | undefined;
     try {
-      const conn  = await openConnection(tempName, config);
-      const tools = await discoverServerTools(tempName, conn.client);
-      await conn.cleanup();
-      return { ok: true, tools: tools.map((t) => t.serverToolName) };
+      const authorizedConfig = await this.authorizeLaunch('probe', probeName, config);
+      connection = await openConnection(probeName, authorizedConfig);
+      const tools = await withTimeout(
+        discoverServerTools(probeName, connection.client),
+        TOOL_DISCOVERY_TIMEOUT_MS,
+        () => new McpTimeoutError(probeName, 'tool discovery', TOOL_DISCOVERY_TIMEOUT_MS),
+      );
+      return { ok: true, tools };
     } catch (err) {
       return { ok: false, tools: [], error: (err as Error).message };
+    } finally {
+      if (connection) {
+        try { await connection.cleanup(); } catch { /* ignore cleanup failure */ }
+      }
     }
+  }
+
+  private async authorizeLaunch(
+    operation: 'connect' | 'probe',
+    serverName: string,
+    config: McpServerConfig,
+  ): Promise<McpServerConfig> {
+    if (config.type !== 'stdio') return config;
+
+    // 建立一份审批与执行共享的运行时不可变快照，等待用户期间不能原地改参。
+    const snapshot = freezeStdioConfig(config);
+    if (!this.stdioGate) {
+      throw new McpStdioPermissionError(operation, serverName, 'gate_unavailable');
+    }
+
+    const intent: McpStdioLaunchIntent = Object.freeze({
+      operation,
+      serverName,
+      command: snapshot.command,
+      args: snapshot.args,
+      cwd: snapshot.cwd,
+      environment: snapshot.env,
+    });
+    if (!await this.stdioGate(intent)) {
+      throw new McpStdioPermissionError(operation, serverName, 'denied');
+    }
+    return snapshot;
   }
 }
 
@@ -232,4 +274,34 @@ function toRegistrations(
     tool: buildMcpBuiltTool(tool, registry),
     owner: ownerOf(tool),
   }));
+}
+
+function freezeStdioConfig(config: McpStdioConfig): McpStdioConfig {
+  const args = [...config.args];
+  Object.freeze(args);
+  const env = config.env ? { ...config.env } : undefined;
+  if (env) Object.freeze(env);
+  return Object.freeze({
+    type: 'stdio',
+    command: config.command,
+    args,
+    cwd: config.cwd,
+    env,
+  });
+}
+
+async function withTimeout<T>(
+  operation: Promise<T>,
+  timeoutMs: number,
+  timeoutError: () => Error,
+): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => reject(timeoutError()), timeoutMs);
+  });
+  try {
+    return await Promise.race([operation, timeout]);
+  } finally {
+    if (timeoutId !== undefined) clearTimeout(timeoutId);
+  }
 }

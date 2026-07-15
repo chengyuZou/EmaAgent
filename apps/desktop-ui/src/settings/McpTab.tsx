@@ -190,10 +190,15 @@ export function McpTab(): JSX.Element {
     setProbing(true);
     setProbeResult(null);
     try {
-      const result = await useMcpStore.getState().probe(buildConfig(form));
+      const serverName = form.name.trim() || '未命名 MCP';
+      const result = await useMcpStore.getState().probe(serverName, buildConfig(form));
       setProbeResult(result);
     } catch (err) {
-      setProbeResult({ ok: false, error: err instanceof Error ? err.message : String(err) });
+      setProbeResult({
+        ok: false,
+        tools: [],
+        error: err instanceof Error ? err.message : String(err),
+      });
     } finally {
       setProbing(false);
     }
