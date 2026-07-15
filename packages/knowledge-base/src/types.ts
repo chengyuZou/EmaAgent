@@ -106,6 +106,14 @@ export interface IngestOptions {
   /** Pre-generated asset id (so the caller can return it before ingest finishes
    *  and correlate background progress events). Defaults to a fresh uuid. */
   assetId?: string;
+  /** 持久队列任务 ID；与 assetId 分离，只由 IngestQueue 注入。 */
+  taskId?: string;
+  /** 当前任务尝试次数，用于拒绝上一轮迟到的进度事件。 */
+  attempt?: number;
+  /** partial_failed 重试时只处理这些失败 chunk。 */
+  retryChunkIds?: string[];
+  /** 页级解析失败重试时替换上一轮的文档、chunk 与 preview。 */
+  replaceExistingAsset?: boolean;
   /** Vision provider id for image/scanned-PDF OCR. */
   visionProviderId?: string;
   visionModel?:      string;
@@ -117,10 +125,28 @@ export interface IngestOptions {
   signal?:   AbortSignal;
 }
 
+export interface IngestFailureShard {
+  stage:      'parse' | 'embed';
+  shardKey:   string;
+  itemIds:    string[];
+  retryable:  boolean;
+  errorCode?: string;
+  error:      string;
+}
+
+export interface IngestItemCounts {
+  total:     number;
+  completed: number;
+  failed:    number;
+}
+
 export interface IngestResult {
-  asset:   DocumentAsset;
-  chunks:  number;
-  preview: DocumentPreview;
+  asset:        DocumentAsset;
+  chunks:       number;
+  preview:      DocumentPreview;
+  outcome:      'completed' | 'partial_failed';
+  counts:       IngestItemCounts;
+  failureShards: IngestFailureShard[];
 }
 
 // ── Search ────────────────────────────────────────────────────────────────────

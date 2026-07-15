@@ -152,11 +152,21 @@ function dispatchSystemEvent(event: EmaStreamEvent): void {
 
     // ── Knowledge-base ingest progress (background indexing) ──────────────
     case 'kb_ingest_progress':
-      useKbStore.getState().onIngestProgress(event.kbId, event.assetId, event.stage, event.progress);
+      useKbStore.getState().onIngestProgress(event.kbId, event.taskId, event.assetId, event.stage, event.progress);
       break;
 
     case 'kb_ingest_completed':
       useKbStore.getState().onIngestCompleted(event.kbId, event.assetId);
+      break;
+
+    case 'kb_ingest_partial_failed':
+      useKbStore.getState().onIngestPartialFailed(
+        event.kbId,
+        event.taskId,
+        event.assetId,
+        event.error,
+        { total: event.totalItems, completed: event.completedItems, failed: event.failedItems },
+      );
       break;
 
     case 'kb_ingest_failed':

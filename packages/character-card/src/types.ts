@@ -45,12 +45,14 @@ export interface CharacterCard {
 export interface CharacterCardInput {
   name:             string;
   version?:         string;
-  description?:     string;
+  /** null = 显式清空(B-055:PATCH 传 null → storage SET NULL);undefined = 不更新。 */
+  description?:     string | null;
   systemPrompt:     string;
   speechPatterns?:  string[];
   forbiddenTopics?: string[];
   emotionVocabulary?: string[];
   motionVocabulary?:  string[];
-  live2dModelId?:   string;
+  /** null = 显式清空(B-055)。 */
+  live2dModelId?:   string | null;
   voiceProfile?:    CharacterVoiceProfile;
 }

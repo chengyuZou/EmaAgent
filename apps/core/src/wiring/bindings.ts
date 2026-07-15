@@ -518,11 +518,40 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
   // kbId is now injected by KbManager.openEntry; forward it on every event type.
   kb.events.on((e) => {
     const kbId = e.kbId ?? '';
-    if (e.kind === 'complete') { systemBus.emit({ type: 'kb_ingest_completed', kbId, assetId: e.assetId }); return; }
-    if (e.kind === 'error')    { systemBus.emit({ type: 'kb_ingest_failed', kbId, assetId: e.assetId, error: e.error ?? 'unknown' }); return; }
+    if (e.kind === 'complete') {
+      systemBus.emit({ type: 'kb_ingest_completed', kbId, taskId: e.taskId, assetId: e.assetId });
+      return;
+    }
+    if (e.kind === 'partial_failed') {
+      systemBus.emit({
+        type: 'kb_ingest_partial_failed',
+        kbId,
+        taskId: e.taskId,
+        assetId: e.assetId,
+        error: e.error ?? '部分处理项失败',
+        totalItems: e.totalItems ?? 0,
+        completedItems: e.completedItems ?? 0,
+        failedItems: e.failedItems ?? 0,
+      });
+      return;
+    }
+    if (e.kind === 'error') {
+      systemBus.emit({ type: 'kb_ingest_failed', kbId, taskId: e.taskId, assetId: e.assetId, error: e.error ?? 'unknown' });
+      return;
+    }
     const base: Record<string, number> = { validate: 0.05, parse: 0.25, chunk: 0.45, embed: 0.5 };
     const progress = e.kind === 'embed' ? 0.5 + 0.5 * (e.progress ?? 0) : (base[e.kind] ?? 0);
-    systemBus.emit({ type: 'kb_ingest_progress', kbId, assetId: e.assetId, stage: e.kind, progress });
+    systemBus.emit({
+      type: 'kb_ingest_progress',
+      kbId,
+      taskId: e.taskId,
+      assetId: e.assetId,
+      stage: e.kind,
+      progress,
+      totalItems: e.totalItems,
+      completedItems: e.completedItems,
+      failedItems: e.failedItems,
+    });
   });
 
   // kb_search tool injection: resolves bound embed/rerank models and threads

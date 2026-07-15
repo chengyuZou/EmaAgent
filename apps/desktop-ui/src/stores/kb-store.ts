@@ -16,9 +16,10 @@ export type { DocumentAssetWire, KbSearchResultWire, KbSearchHitWire, KbLibraryW
 // ── Ingest job (background processing queue) ────────────────────────────────────
 
 export type IngestStage = 'validate' | 'parse' | 'chunk' | 'embed';
-export type IngestJobStatus = 'pending' | 'running' | 'failed' | 'done';
+export type IngestJobStatus = 'pending' | 'running' | 'failed' | 'partial_failed' | 'done';
 
 export interface IngestJob {
+  taskId:   string;
   assetId:  string;
   kbId:     string;   // which KB this document belongs to
   fileName: string;
@@ -26,6 +27,9 @@ export interface IngestJob {
   progress: number;            // 0–1
   status:   IngestJobStatus;
   error?:   string;
+  totalItems?: number;
+  completedItems?: number;
+  failedItems?: number;
 }
 
 // ── Store interface ───────────────────────────────────────────────────────────
@@ -69,8 +73,9 @@ export interface KbStoreState {
   deleteLib(id: string): Promise<void>;
 
   // Driven by the system SSE (kb_ingest_* events).
-  onIngestProgress(kbId: string, assetId: string, stage: IngestStage, progress: number): void;
+  onIngestProgress(kbId: string, taskId: string | undefined, assetId: string, stage: IngestStage, progress: number): void;
   onIngestCompleted(kbId: string, assetId: string): void;
+  onIngestPartialFailed(kbId: string, taskId: string | undefined, assetId: string, error: string, counts: { total: number; completed: number; failed: number }): void;
   onIngestFailed(kbId: string, assetId: string, error: string): void;
 }
 
@@ -112,14 +117,18 @@ export const useKbStore = create<KbStoreState>((set, get) => ({
       const tasks = await kbApi.getIngestTasks(); // no kbId → all KBs
       const jobs: Record<string, IngestJob> = {};
       for (const t of tasks) {
-        jobs[t.id] = {
-          assetId:  t.id,
+        jobs[t.assetId] = {
+          taskId:   t.id,
+          assetId:  t.assetId,
           kbId:     t.kbId,
           fileName: t.fileName,
           stage:    t.stage as IngestStage | undefined,
           progress: t.progress,
           status:   t.status,
           error:    t.error,
+          totalItems: t.totalItems,
+          completedItems: t.completedItems,
+          failedItems: t.failedItems,
         };
       }
       set({ ingestJobs: jobs });
@@ -153,7 +162,7 @@ export const useKbStore = create<KbStoreState>((set, get) => ({
       if (!job) return {};
       return { ingestJobs: { ...s.ingestJobs, [assetId]: { ...job, status: 'pending', stage: undefined, progress: 0, error: undefined } } };
     });
-    try { await kbApi.retryIngest(assetId, kbId); }
+    try { await kbApi.retryIngest(get().ingestJobs[assetId]?.taskId ?? assetId, kbId); }
     catch { void get().loadIngestTasks(); }  // resync on failure
   },
 
@@ -244,14 +253,14 @@ export const useKbStore = create<KbStoreState>((set, get) => ({
     }
   },
 
-  onIngestProgress(kbId, assetId, stage, progress) {
+  onIngestProgress(kbId, taskId, assetId, stage, progress) {
     set((s) => {
       const job = s.ingestJobs[assetId];
       if (!job) {
         // First SSE event for this asset — create the job entry (loadIngestTasks may not have run yet).
-        return { ingestJobs: { ...s.ingestJobs, [assetId]: { assetId, kbId, fileName: assetId, status: 'running', stage, progress } } };
+        return { ingestJobs: { ...s.ingestJobs, [assetId]: { taskId: taskId ?? assetId, assetId, kbId, fileName: assetId, status: 'running', stage, progress } } };
       }
-      return { ingestJobs: { ...s.ingestJobs, [assetId]: { ...job, kbId, status: 'running', stage, progress } } };
+      return { ingestJobs: { ...s.ingestJobs, [assetId]: { ...job, taskId: taskId ?? job.taskId, kbId, status: 'running', stage, progress } } };
     });
   },
 
@@ -272,6 +281,37 @@ export const useKbStore = create<KbStoreState>((set, get) => ({
         return { ingestJobs: rest };
       });
     }, 350);
+  },
+
+  onIngestPartialFailed(kbId, taskId, assetId, error, counts) {
+    set((s) => {
+      const job = s.ingestJobs[assetId];
+      const base = job ?? {
+        taskId: taskId ?? assetId,
+        assetId,
+        kbId,
+        fileName: assetId,
+        status: 'partial_failed' as const,
+        progress: 1,
+      };
+      return {
+        ingestJobs: {
+          ...s.ingestJobs,
+          [assetId]: {
+            ...base,
+            taskId: taskId ?? base.taskId,
+            kbId,
+            status: 'partial_failed',
+            progress: 1,
+            error,
+            totalItems: counts.total,
+            completedItems: counts.completed,
+            failedItems: counts.failed,
+          },
+        },
+      };
+    });
+    void get().loadDocuments();
   },
 
   onIngestFailed(kbId, assetId, error) {
@@ -297,7 +337,7 @@ export interface IngestSummary {
 export function selectIngestSummary(s: KbStoreState): IngestSummary {
   const jobs   = Object.values(s.ingestJobs);
   const active = jobs.filter((j) => j.status === 'pending' || j.status === 'running').length;
-  const failed = jobs.filter((j) => j.status === 'failed').length;
+  const failed = jobs.filter((j) => j.status === 'failed' || j.status === 'partial_failed').length;
   const done   = s.ingestDoneCount;
   const total  = done + active + failed;
 

@@ -471,7 +471,7 @@ function ProcessingQueue(): JSX.Element | null {
 }
 
 function IngestJobRow({ job }: { job: IngestJob }): JSX.Element {
-  const failed  = job.status === 'failed';
+  const failed  = job.status === 'failed' || job.status === 'partial_failed';
   const done    = job.status === 'done';
   const pending = job.status === 'pending';
   const pct     = Math.round(job.progress * 100);
@@ -479,7 +479,9 @@ function IngestJobRow({ job }: { job: IngestJob }): JSX.Element {
     : done ? 'bg-[var(--ema-success)]'
     : job.stage ? STAGE_BAR[job.stage] : 'bg-[var(--ema-info)]';
 
-  const label = failed ? '处理失败' : done ? '已完成' : pending ? '排队中' : '正在处理';
+  const label = job.status === 'partial_failed'
+    ? '部分处理失败'
+    : failed ? '处理失败' : done ? '已完成' : pending ? '排队中' : '正在处理';
   const status = failed ? '错误' : done ? '100%' : pending ? '等待'
     : `${job.stage ? STAGE_LABEL[job.stage] : ''} · ${pct}%`;
 

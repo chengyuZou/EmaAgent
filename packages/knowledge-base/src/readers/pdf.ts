@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import type { DocumentBlock } from '../types.js';
-import type { DocumentReader, ReadResult, ReaderSource } from './base.js';
+import type { DocumentReader, ReadFailure, ReadResult, ReaderSource } from './base.js';
 import { nextBlockId } from './base.js';
 import type { ImageReader } from './image.js';
 import { isKbVisionAdapterError } from '../adapters/vision.js';
@@ -41,6 +41,7 @@ export class PdfReader implements DocumentReader {
 
     const pdf       = await pdfjs.getDocument({ data, verbosity: 0 }).promise;
     const blocks:   DocumentBlock[] = [];
+    const failures: ReadFailure[] = [];
     const stack:    string[] = [];
     const pageCount = pdf.numPages;
 
@@ -50,19 +51,22 @@ export class PdfReader implements DocumentReader {
       let page;
       try {
         page = await pdf.getPage(p);
-      } catch {
+      } catch (error) {
         blocks.push(brokenPageBlock(p));
+        failures.push(pageFailure(p, 'kb/pdf-page-unreadable', false, error));
         continue;
       }
 
       let items: PdfItem[] = [];
+      let textLayerError: unknown;
       try {
         const content = await page.getTextContent();
         items = content.items
           .filter((it): it is typeof it & { str: string } => 'str' in it)
           .map(it => ({ str: (it as { str: string }).str, height: (it as { height?: number }).height ?? 0 }));
-      } catch {
+      } catch (error) {
         items = [];
+        textLayerError = error;
       }
 
       const pageTextLen = items.reduce((n, it) => n + it.str.replace(/\s/g, '').length, 0);
@@ -87,22 +91,37 @@ export class PdfReader implements DocumentReader {
             if (ocrBlks.length > 0) { blocks.push(...ocrBlks); continue; }
           }
           blocks.push(scannedPlaceholder(p));
+          failures.push(pageFailure(
+            p,
+            'kb/pdf-ocr-empty',
+            true,
+            textLayerError ?? new Error('OCR 未返回可索引文本'),
+          ));
         } catch (error) {
-          // 配额、限流和取消不能伪装成“该页无 OCR”；交给持久任务状态机重试。
-          if (isKbVisionAdapterError(error) && (error.retryable || error.code === 'vision/aborted')) {
-            throw error;
-          }
-          // OCR/render failed for THIS page only — keep going (缺页/断页).
+          if (isKbVisionAdapterError(error) && error.code === 'vision/aborted') throw error;
+          // 单页失败不终止其他页面，但必须写入持久失败分片，不能伪装成完整成功。
           blocks.push(scannedPlaceholder(p));
+          failures.push(pageFailure(
+            p,
+            isKbVisionAdapterError(error) ? error.code : 'kb/pdf-ocr-failed',
+            isKbVisionAdapterError(error) ? error.retryable : true,
+            error,
+          ));
         }
         continue;
       }
 
       // No OCR capability: keep a placeholder so the page isn't silently dropped.
       blocks.push(scannedPlaceholder(p));
+      failures.push(pageFailure(
+        p,
+        'kb/pdf-ocr-unavailable',
+        false,
+        textLayerError ?? new Error('当前未配置 PDF OCR 能力'),
+      ));
     }
 
-    return { blocks, pageCount };
+    return { blocks, pageCount, failures };
   }
 }
 
@@ -150,6 +169,21 @@ function scannedPlaceholder(page: number): DocumentBlock {
 }
 function brokenPageBlock(page: number): DocumentBlock {
   return { id: nextBlockId(), kind: 'image', text: `[Page ${page} could not be read]`, page, sectionPath: [] };
+}
+
+function pageFailure(
+  page: number,
+  errorCode: string,
+  retryable: boolean,
+  error: unknown,
+): ReadFailure {
+  return {
+    shardKey: `parse:page:${page}`,
+    itemIds: [String(page)],
+    retryable,
+    errorCode,
+    error: error instanceof Error ? error.message : String(error),
+  };
 }
 
 // ── Text-layer → blocks ─────────────────────────────────────────────────────────

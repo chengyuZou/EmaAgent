@@ -5,6 +5,7 @@ import { HtmlReader }  from '../readers/html.js';
 import { DocxReader }  from '../readers/docx.js';
 import { PdfReader }   from '../readers/pdf.js';
 import type { ImageReader } from '../readers/image.js';
+import type { ReadFailure } from '../readers/base.js';
 import { countWords }  from '../words.js';
 
 const MIME_TO_READER: Record<string, 'text' | 'html' | 'docx' | 'pdf'> = {
@@ -41,6 +42,7 @@ export interface ParseResult {
   title?:    string;
   wordCount: number;
   pageCount?: number;
+  failures:  ReadFailure[];
 }
 
 export async function parseDocument(source: ReaderSource, opts: ParseOptions = {}): Promise<ParseResult> {
@@ -50,6 +52,7 @@ export async function parseDocument(source: ReaderSource, opts: ParseOptions = {
 
   let blocks: DocumentBlock[];
   let pageCount: number | undefined;
+  let failures: ReadFailure[] = [];
 
   if (mimeType.startsWith('image/')) {
     if (!opts.imageReader) throw new Error('[kb/parse] imageReader required for image/* sources');
@@ -59,6 +62,7 @@ export async function parseDocument(source: ReaderSource, opts: ParseOptions = {
     const result = await selectReader(MIME_TO_READER[mimeType] ?? 'text', opts).read(source);
     blocks    = result.blocks;
     pageCount = result.pageCount;
+    failures  = result.failures ?? [];
   }
 
   return {
@@ -67,6 +71,7 @@ export async function parseDocument(source: ReaderSource, opts: ParseOptions = {
     title:     blocks.find(b => b.kind === 'title')?.text,
     wordCount: countWords(blocks),
     pageCount,
+    failures,
   };
 }
 

@@ -192,10 +192,16 @@ export class KbManager {
     // Wire this KB's events → aggregated bus + persist task progress in kb.db.
     // Inject kbId so consumers (bindings SSE bridge, frontend) can identify the source KB.
     client.events.on((e) => {
-      if (e.kind !== 'complete' && e.kind !== 'error') {
+      if (
+        e.kind !== 'complete'
+        && e.kind !== 'partial_failed'
+        && e.kind !== 'error'
+        && e.taskId
+        && e.attempt !== undefined
+      ) {
         const base: Record<string, number> = { validate: 0.05, parse: 0.25, chunk: 0.45, embed: 0.5 };
         const progress = e.kind === 'embed' ? 0.5 + 0.5 * (e.progress ?? 0) : (base[e.kind] ?? 0);
-        ingestTasks.updateProgress(e.assetId, e.kind, progress);
+        ingestTasks.updateProgress(e.taskId, e.attempt, e.kind, progress);
       }
       this.events.emit({ ...e, kbId: rec.id });
     });

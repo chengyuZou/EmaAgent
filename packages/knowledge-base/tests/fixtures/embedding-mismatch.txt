@@ -1,0 +1,1 @@
+This single paragraph intentionally contains enough words to produce a document chunk while remaining one sentence for the semantic chunker fallback path

@@ -123,9 +123,9 @@ export function kbRoute(bindings: AppBindings): Hono {
     const assetId  = randomUUID();
     const fileName = filePath.split(/[\\/]/).pop() ?? filePath;
 
-    entry.ingestQueue.enqueue({ id: assetId, filePath, fileName, mimeType });
+    const task = entry.ingestQueue.enqueue({ assetId, filePath, fileName, mimeType });
 
-    return c.json({ assetId, fileName, status: 'pending' }, 202);
+    return c.json({ taskId: task.id, assetId, fileName, status: 'pending' }, 202);
   });
 
   // GET /api/kb/documents — cursor-paginated list (newest first), optional keyword
@@ -244,7 +244,17 @@ export function kbRoute(bindings: AppBindings): Hono {
     const entry = await resolveEntry(bindings, kbId, c);
     if (entry instanceof Response) return entry;
 
-    const ok = entry.ingestQueue.retry(c.req.param('id'));
+    const ok = entry.ingestQueue.retryByTaskOrAssetId(c.req.param('id'));
+    if (!ok) return c.json({ error: 'not_failed_or_not_found' }, 404);
+    return c.json({ ok: true });
+  });
+
+  // 新契约明确使用 taskId；旧 documents/:id/retry 暂留给开发期客户端过渡。
+  app.post('/ingest-tasks/:taskId/retry', async (c) => {
+    const parsed = kbIdQuery.safeParse(c.req.query());
+    const entry = await resolveEntry(bindings, parsed.success ? parsed.data.kbId : undefined, c);
+    if (entry instanceof Response) return entry;
+    const ok = entry.ingestQueue.retry(c.req.param('taskId'));
     if (!ok) return c.json({ error: 'not_failed_or_not_found' }, 404);
     return c.json({ ok: true });
   });

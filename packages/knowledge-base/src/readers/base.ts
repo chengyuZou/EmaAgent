@@ -7,6 +7,15 @@ export type ReaderSource =
 export interface ReadResult {
   blocks:     DocumentBlock[];
   pageCount?: number;
+  failures?:  ReadFailure[];
+}
+
+export interface ReadFailure {
+  shardKey:   string;
+  itemIds:    string[];
+  retryable:  boolean;
+  errorCode?: string;
+  error:      string;
 }
 
 export interface DocumentReader {

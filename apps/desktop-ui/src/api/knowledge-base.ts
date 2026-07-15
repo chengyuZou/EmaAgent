@@ -54,10 +54,11 @@ export interface AssetUsageWire {
   sessions:   Array<{ sessionId: string; title: string; calls: number }>;
 }
 
-export type KbIngestStatus = 'pending' | 'running' | 'failed';
+export type KbIngestStatus = 'pending' | 'running' | 'failed' | 'partial_failed';
 
 export interface KbIngestTaskWire {
   id:        string;
+  assetId:   string;
   kbId:      string;   // which KB this task belongs to (injected by the route)
   filePath:  string;
   fileName:  string;
@@ -66,6 +67,12 @@ export interface KbIngestTaskWire {
   stage?:    string;
   progress:  number;
   error?:    string;
+  errorCode?: string;
+  attempt: number;
+  version: number;
+  totalItems: number;
+  completedItems: number;
+  failedItems: number;
   createdAt: number;
   updatedAt: number;
 }
@@ -79,6 +86,7 @@ export interface AssetPageWire {
 /** POST /api/kb/documents now returns immediately (202) — indexing runs in the
  *  background and progress arrives via the system SSE (kb_ingest_* events). */
 export interface IngestStartedWire {
+  taskId:   string;
   assetId:  string;
   fileName: string;
   status:   DocumentIndexStatus;
@@ -207,8 +215,8 @@ export const kbApi = {
 
   /** POST /api/kb/documents/:id/retry — re-queue a failed ingest task.
    *  kbId omitted → active KB. */
-  async retryIngest(id: string, kbId?: string): Promise<void> {
-    await sidecarClient.request(`/api/kb/documents/${id}/retry${buildQs({ kbId })}`, { method: 'POST' });
+  async retryIngest(taskId: string, kbId?: string): Promise<void> {
+    await sidecarClient.request(`/api/kb/ingest-tasks/${taskId}/retry${buildQs({ kbId })}`, { method: 'POST' });
   },
 
   /** POST /api/kb/documents/:id/reembed — re-embed one doc.

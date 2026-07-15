@@ -84,6 +84,18 @@ export class KnowledgeStore {
     return this.chunks.findByAsset(assetId) as DocumentChunk[];
   }
 
+  getChunksByIds(assetId: string, ids: readonly string[]): DocumentChunk[] {
+    return this.chunks.findByIdsForAsset(assetId, ids) as DocumentChunk[];
+  }
+
+  embeddingCoverage(assetId: string, spaceId: string): { total: number; embedded: number } {
+    return this.chunks.embeddingCoverage(assetId, spaceId);
+  }
+
+  findMissingEmbeddingIds(assetId: string, spaceId: string): string[] {
+    return this.chunks.findMissingEmbeddingIds(assetId, spaceId);
+  }
+
   /** Cursor-paginated chunk summaries for the document detail viewer. */
   getChunksPaged(assetId: string, opts: { cursor?: number; limit?: number } = {}): ChunkPage {
     return this.chunks.findByAssetPaged(assetId, opts);

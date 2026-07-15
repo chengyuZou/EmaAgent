@@ -30,7 +30,7 @@ export type { RankedHit }       from './retrieval/hybrid.js';
 
 // ── Ingest queue (concurrency-limited, persistent — package owns its task runner) ─
 export { IngestQueue }          from './ingest/queue.js';
-export type { IngestQueueDeps } from './ingest/queue.js';
+export type { IngestQueueDeps, IngestRuntimeOptions } from './ingest/queue.js';
 
 // ── Chunkers ───────────────────────────────────────────────────────────────────
 export { RecursiveChunker, recursiveChunk }                            from './chunking/recursive.js';

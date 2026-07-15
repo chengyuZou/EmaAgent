@@ -204,6 +204,44 @@ export class DocumentChunkRepo {
     return rows.map(rowToChunk);
   }
 
+  /** 只加载指定文档中的失败 chunk，供 partial_failed 精确重嵌。 */
+  findByIdsForAsset(assetId: string, ids: readonly string[]): ReturnType<typeof rowToChunk>[] {
+    if (ids.length === 0) return [];
+    const rows: DocumentChunkRow[] = [];
+    for (const batch of createSqliteIdBatches(this.db, ids, { fixedParameterCount: 1 })) {
+      rows.push(...this.db.prepare(
+        `SELECT * FROM document_chunks
+          WHERE asset_id = ? AND id IN (${batch.map(() => '?').join(', ')})`,
+      ).all(assetId, ...batch) as DocumentChunkRow[]);
+    }
+    const byId = new Map(rows.map(row => [row.id, row]));
+    return [...new Set(ids)]
+      .map(id => byId.get(id))
+      .filter((row): row is DocumentChunkRow => row !== undefined)
+      .map(rowToChunk);
+  }
+
+  embeddingCoverage(assetId: string, spaceId: string): { total: number; embedded: number } {
+    return this.db.prepare(
+      `SELECT COUNT(*) AS total,
+              SUM(CASE
+                    WHEN embedding IS NOT NULL AND embedding_space_id = ? THEN 1
+                    ELSE 0
+                  END) AS embedded
+         FROM document_chunks
+        WHERE asset_id = ?`,
+    ).get(spaceId, assetId) as { total: number; embedded: number };
+  }
+
+  findMissingEmbeddingIds(assetId: string, spaceId: string): string[] {
+    return this.db.prepare(
+      `SELECT id FROM document_chunks
+        WHERE asset_id = ?
+          AND (embedding IS NULL OR embedding_space_id IS NULL OR embedding_space_id <> ?)
+        ORDER BY rowid ASC`,
+    ).pluck().all(assetId, spaceId) as string[];
+  }
+
   /**
    * 单个 asset 的 cursor 分页 chunk 摘要（供文档详情视图用）。
    * 按插入顺序（rowid）排序；cursor = 上一页最后一条的 rowid。

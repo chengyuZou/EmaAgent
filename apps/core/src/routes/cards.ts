@@ -139,11 +139,9 @@ export function cardsRoute(bindings: AppBindings): Hono {
     if (!body.success) {
       return c.json({ error: 'invalid_request', details: body.error.flatten() }, 400);
     }
-    const card = bindings.card.update(id, {
-      ...body.data,
-      description:   body.data.description ?? undefined,
-      live2dModelId: body.data.live2dModelId ?? undefined,
-    });
+    // B-055:不把 null 转 undefined —— storage update 用 `!== undefined` 判断,
+    // null 会 SET NULL(清空),undefined 跳过(不更新)。`?? undefined` 会让清空失败。
+    const card = bindings.card.update(id, body.data);
     return c.json(card);
   });
 
@@ -152,6 +150,8 @@ export function cardsRoute(bindings: AppBindings): Hono {
     const card = bindings.card.get(id);
     if (!card) return c.json({ error: 'card_not_found' }, 404);
     if (card.isBuiltin) return c.json({ error: 'cannot_delete_builtin_card' }, 403);
+    // B-055:禁止删除当前 active 卡,否则留下零 active 状态。用户须先 activate 别的卡。
+    if (card.isActive) return c.json({ error: 'cannot_delete_active_card' }, 409);
     bindings.card.delete(id);
     return c.body(null, 204);
   });

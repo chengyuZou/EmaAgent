@@ -268,9 +268,10 @@ export type EmaStreamEvent =
   // Knowledge-base ingest progress — system-scoped (background document indexing).
   // sessionId is optional: absent for global settings-page uploads; set later for
   // chat-dropped scope:session ingests. progress is a 0–1 fraction for the bar.
-  | { type: 'kb_ingest_progress';  kbId: string; assetId: string; stage: 'validate' | 'parse' | 'chunk' | 'embed'; progress: number; sessionId?: SessionId }
-  | { type: 'kb_ingest_completed'; kbId: string; assetId: string; sessionId?: SessionId }
-  | { type: 'kb_ingest_failed';    kbId: string; assetId: string; error: string; sessionId?: SessionId }
+  | { type: 'kb_ingest_progress';  kbId: string; taskId?: string; assetId: string; stage: 'validate' | 'parse' | 'chunk' | 'embed'; progress: number; totalItems?: number; completedItems?: number; failedItems?: number; sessionId?: SessionId }
+  | { type: 'kb_ingest_completed'; kbId: string; taskId?: string; assetId: string; sessionId?: SessionId }
+  | { type: 'kb_ingest_partial_failed'; kbId: string; taskId?: string; assetId: string; error: string; totalItems: number; completedItems: number; failedItems: number; sessionId?: SessionId }
+  | { type: 'kb_ingest_failed';    kbId: string; taskId?: string; assetId: string; error: string; sessionId?: SessionId }
 
   // Agent
   | { type: 'agent_iteration';     sessionId: SessionId; n: number }

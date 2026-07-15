@@ -24,13 +24,13 @@ export interface CharacterCardInsert {
   id: CharacterCardId;
   name: string;
   version?: string;
-  description?: string;
+  description?: string | null;
   systemPrompt: string;
   speechPatternsJson?: string;
   forbiddenTopicsJson?: string;
   emotionVocabJson?: string;
   motionVocabJson?: string;
-  live2dModelId?: string;
+  live2dModelId?: string | null;
   voiceProfileJson?: string;
   isActive?: boolean;
   isBuiltin?: boolean;
@@ -42,13 +42,13 @@ export interface CharacterCardInsert {
 export interface CharacterCardUpdate {
   name?: string;
   version?: string;
-  description?: string;
+  description?: string | null;
   systemPrompt?: string;
   speechPatternsJson?: string;
   forbiddenTopicsJson?: string;
   emotionVocabJson?: string;
   motionVocabJson?: string;
-  live2dModelId?: string;
+  live2dModelId?: string | null;
   voiceProfileJson?: string;
   updatedAt?: number;
 }
