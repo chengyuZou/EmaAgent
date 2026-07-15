@@ -1,6 +1,7 @@
 import { serve } from '@hono/node-server';
 import { Database } from '@ema-agent/storage';
 import { buildServer } from './server.js';
+import { HTTP_SERVER_TIMEOUTS } from './http/request-budget.js';
 import { requireSharedSecret } from './auth.js';
 import { CredentialFacade, requireCredentialMasterKey } from '@ema-agent/credential';
 import { wire, configureBridge } from './wiring/index.js';
@@ -110,6 +111,13 @@ async function main() {
   const server = serve({ fetch: app.fetch, port, hostname: '127.0.0.1' }, (info) => {
     console.log(`[core] ema-core listening on http://127.0.0.1:${info.port}`);
   });
+  // 只限制请求头和请求体的接收时间，不限制可能运行数小时的 Agent/Task。
+  if ('headersTimeout' in server) {
+    server.headersTimeout = HTTP_SERVER_TIMEOUTS.headersMs;
+  }
+  if ('requestTimeout' in server) {
+    server.requestTimeout = HTTP_SERVER_TIMEOUTS.requestBodyMs;
+  }
 
   // Graceful shutdown — drain memory work, stop accepting requests, close DBs.
   let shuttingDown = false;

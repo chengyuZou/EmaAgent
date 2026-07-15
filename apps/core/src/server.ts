@@ -23,6 +23,7 @@ import { kbRoute }               from './routes/knowledge-base.js';
 import { agentTasksRoute }       from './routes/agent-tasks.js';
 import { storageStatsRoute }     from './routes/storage-stats.js';
 import { systemRoute }           from './routes/system.js';
+import { requestBudgetMiddleware } from './http/request-budget.js';
 import type { AppBindings } from './wiring/index.js';
 
 export function buildServer(bindings: AppBindings, sharedSecret: string): Hono {
@@ -48,6 +49,10 @@ export function buildServer(bindings: AppBindings, sharedSecret: string): Hono {
 
   // Auth 中间件 — 所有非 health 路由校验 X-Ema-Secret
   app.use('*', emaAuth(sharedSecret));
+
+  // 在任何 JSON/multipart 解析前统一执行传输预算；各业务 Facade 继续校验
+  // 解码后的真实字节、数量和时长，形成两道独立防线。
+  app.use('*', requestBudgetMiddleware());
 
   // 路由
   app.route('/health', healthRoute());

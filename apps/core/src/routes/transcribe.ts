@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { isSttError } from '@ema-agent/stt';
 import type { AppBindings } from '../wiring/index.js';
 
 // ── POST /api/transcribe ────────────────────────────────────────────────────
@@ -45,9 +46,17 @@ export function transcribeRoute(bindings: AppBindings): Hono {
         audio:      buf,
         mime,
         language,
+        abortSignal: c.req.raw.signal,
       });
       return c.json(result);
     } catch (err) {
+      if (isSttError(err)) {
+        const status = err.code === 'payload_too_large' ? 413
+          : err.code === 'invalid_request' ? 400
+          : err.code === 'aborted' ? 408
+          : 502;
+        return c.json({ error: err.code, message: err.message }, status);
+      }
       const message = (err as Error).message;
       return c.json({ error: 'stt_failed', message }, 502);
     }

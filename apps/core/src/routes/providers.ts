@@ -20,6 +20,7 @@ import {
   registerProviderCredentialRoutes,
   resolveProviderCredential,
 } from './provider-credential.js';
+import { REQUEST_VALUE_LIMITS } from '../http/request-budget.js';
 
 // ── Response shaping ──────────────────────────────────────────────────────────
 
@@ -92,6 +93,11 @@ const enableEmbedModelSchema = z.object({
 
 const enableRerankModelSchema = z.object({
   maxChunks: z.number().int().positive().optional(),
+});
+
+const ttsTestSchema = z.object({
+  text: z.string().max(REQUEST_VALUE_LIMITS.maxTtsTestTextChars).optional(),
+  model: z.string().min(1),
 });
 
 const BINDING_CAPABILITIES: Partial<Record<BindingModule, Capability>> = {
@@ -478,9 +484,12 @@ export function providersRoute(bindings: AppBindings): Hono {
   // and returns the audio bytes for the frontend to play.
   app.post('/:id/tts-test', async (c) => {
     const providerId = c.req.param('id');
-    const body = await c.req.json().catch(() => null) as { text?: string; model?: string } | null;
-    const text  = body?.text?.trim() || '你好，我是艾玛，很高兴认识你。';
-    const model = body?.model?.trim();
+    const body = ttsTestSchema.safeParse(await c.req.json().catch(() => null));
+    if (!body.success) {
+      return c.json({ error: 'invalid_request', details: body.error.flatten() }, 400);
+    }
+    const text  = body.data.text?.trim() || '你好，我是艾玛，很高兴认识你。';
+    const model = body.data.model.trim();
     if (!model) return c.json({ error: 'model_required' }, 400);
 
     const adapter = bindings.tts.getAdapter(providerId);

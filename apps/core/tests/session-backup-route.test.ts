@@ -1,7 +1,11 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { SessionBackupFacade, type SessionExportSnapshot } from '@ema-agent/backup';
+import {
+  SessionBackupFacade,
+  SessionExportError,
+  type SessionExportSnapshot,
+} from '@ema-agent/backup';
 import { SessionRestoreValidationError, type SessionRestorePayload } from '@ema-agent/storage';
 import { strToU8, unzipSync, zipSync } from 'fflate';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -114,5 +118,22 @@ describe('SessionBackupFacade 的 Core HTTP 接线', () => {
     expect(response.headers.get('content-type')).toBe('application/zip');
     const entries = unzipSync(new Uint8Array(await response.arrayBuffer()));
     expect(entries['manifest.json']).toBeDefined();
+  });
+
+  it('把 Facade 的导出预算错误映射为结构化 413', async () => {
+    const app = storageStatsRoute({
+      sessionBackup: {
+        exportSession() {
+          throw new SessionExportError('超出同步 ZIP 安全预算');
+        },
+      },
+    } as unknown as AppBindings);
+
+    const response = await app.request('/sessions/session-1/export', { method: 'POST' });
+    expect(response.status).toBe(413);
+    expect(await response.json()).toEqual({
+      error: 'export_too_large',
+      message: '超出同步 ZIP 安全预算',
+    });
   });
 });

@@ -1,12 +1,12 @@
 import { Hono } from 'hono';
-import { bodyLimit } from 'hono/body-limit';
 import { z }    from 'zod';
 import fs   from 'node:fs';
 import path from 'node:path';
 import {
-  SESSION_IMPORT_LIMITS,
+  SessionExportError,
   SessionImportError,
   type BackupArchiveSource,
+  type SessionExportResult,
 } from '@ema-agent/backup';
 import type {
   SessionDashboardWire,
@@ -249,9 +249,17 @@ export function storageStatsRoute(bindings: AppBindings): Hono {
   // ── POST /:id/export ───────────────────────────────────────────────────────
 
   app.post('/sessions/:id/export', (c) => {
-    const result = bindings.sessionBackup.exportSession({
-      sessionId: c.req.param('id'),
-    });
+    let result: SessionExportResult | null;
+    try {
+      result = bindings.sessionBackup.exportSession({
+        sessionId: c.req.param('id'),
+      });
+    } catch (error) {
+      if (error instanceof SessionExportError) {
+        return c.json({ error: error.code, message: error.message }, error.status);
+      }
+      throw error;
+    }
     if (!result) return c.json({ error: 'session_not_found' }, 404);
 
     // Uint8Array 的底层可能是 SharedArrayBufferLike，复制为标准 ArrayBuffer
@@ -272,14 +280,6 @@ export function storageStatsRoute(bindings: AppBindings): Hono {
 
   app.post(
     '/sessions/import',
-    bodyLimit({
-      // multipart 自身有少量边界开销，文件大小仍由 Backup Facade 再次复核。
-      maxSize: SESSION_IMPORT_LIMITS.maxArchiveBytes + 1024 * 1024,
-      onError: (c) => c.json({
-        error: 'archive_too_large',
-        message: 'ZIP 文件超过 V1 导入大小限制',
-      }, 413),
-    }),
     async (c) => {
       try {
         const body = await c.req.parseBody();

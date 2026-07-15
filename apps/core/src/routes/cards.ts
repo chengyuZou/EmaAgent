@@ -12,6 +12,7 @@ import {
   type CharacterVoiceProfile,
 } from '@ema-agent/character-card';
 import { cardDir, cardResourcePath, resolveCardVoiceRefPath } from '../storage-locations/index.js';
+import { REQUEST_VALUE_LIMITS } from '../http/request-budget.js';
 import { z } from 'zod';
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -187,10 +188,20 @@ export function cardsRoute(bindings: AppBindings): Hono {
     if (!(file instanceof File) && !(file instanceof Blob)) {
       return c.json({ error: 'missing_file_field' }, 400);
     }
+    if (file.size > REQUEST_VALUE_LIMITS.maxCardVoiceFileBytes) {
+      return c.json({
+        error: 'payload_too_large',
+        message: `参考音频超过 ${REQUEST_VALUE_LIMITS.maxCardVoiceFileBytes} 字节限制`,
+        maxBytes: REQUEST_VALUE_LIMITS.maxCardVoiceFileBytes,
+      }, 413);
+    }
     const promptText = form.get('promptText');
     const promptLang = form.get('promptLang');
     if (typeof promptText !== 'string' || promptText.length === 0) {
       return c.json({ error: 'missing_promptText' }, 400);
+    }
+    if (promptText.length > REQUEST_VALUE_LIMITS.maxCardVoicePromptChars) {
+      return c.json({ error: 'promptText_too_long' }, 400);
     }
     if (typeof promptLang !== 'string' || promptLang.length === 0) {
       return c.json({ error: 'missing_promptLang' }, 400);

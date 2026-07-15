@@ -12,6 +12,8 @@ import {
 import { SessionImportError } from '../src/import/errors.js';
 import { SessionImportFileCommit } from '../src/import/file-commit.js';
 import { assertPortableImportId, resolvePathInside } from '../src/import/path-policy.js';
+import { exportSessionZipV1, SessionExportError } from '../src/export/zip-v1.js';
+import type { SessionExportSnapshot } from '../src/types.js';
 
 const roots: string[] = [];
 function tempRoot(): string {
@@ -173,5 +175,30 @@ describe('SessionBackupFacade 演进契约', () => {
       version: '1', sessionId: 'session-123456',
     });
     expect(JSON.parse(strFromU8(entries['turns.json']!))).toEqual([{ id: 'turn-1' }]);
+  });
+
+  it('ZIP v1 在读取无界文件前执行导出预算', () => {
+    const root = tempRoot();
+    const largeFile = path.join(root, 'large.bin');
+    fs.writeFileSync(largeFile, new Uint8Array(32));
+    const snapshot: SessionExportSnapshot = {
+      session: { id: 'session-1', title: 'Budget' },
+      turns: [], messages: [], artifacts: [],
+      attachments: [{
+        id: 'attachment-1', name: 'large.bin', mime: 'application/octet-stream',
+        size: 32, turnId: 'turn-1', mtime: 0, createdAt: 1, localPath: largeFile,
+      }],
+      audio: [], notes: null, branches: [], agentTasks: [], agentTaskMessages: [],
+      memoryState: null, kbActivations: [], llmTurnMetrics: [],
+    };
+
+    expect(() => exportSessionZipV1(snapshot, false, {
+      maxEntryBytes: 16,
+      maxExpandedBytes: 1024,
+      maxArchiveBytes: 1024,
+    })).toThrowError(expect.objectContaining<Partial<SessionExportError>>({
+      code: 'export_too_large',
+      status: 413,
+    }));
   });
 });

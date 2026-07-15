@@ -9,6 +9,7 @@ import { encodeEvent, encodePing } from '../sse/writer.js';
 import type { AppBindings } from '../wiring/index.js';
 import type { EmaStreamEvent, TurnId, TurnRequest } from '@ema-agent/contracts';
 import { asTurnId, asSessionId } from '@ema-agent/contracts';
+import { REQUEST_VALUE_LIMITS } from '../http/request-budget.js';
 
 // ── UTF-8 safe body decoder ───────────────────────────────────────────────────
 
@@ -50,17 +51,19 @@ const contentPartSchema = z.discriminatedUnion('type', [
 const turnBodySchema = z.object({
   sessionId: z.string().optional(),
   mode: z.enum(['chat', 'narrative', 'agent']).default('chat'),
-  userInput: z.string().optional(),
-  contentParts: z.array(contentPartSchema).optional(),
-  attachments:  z.array(attachmentInputSchema).optional(),
+  userInput: z.string().max(REQUEST_VALUE_LIMITS.maxTurnTextChars).optional(),
+  contentParts: z.array(contentPartSchema).max(REQUEST_VALUE_LIMITS.maxTurnContentParts).optional(),
+  attachments:  z.array(attachmentInputSchema).max(REQUEST_VALUE_LIMITS.maxTurnAttachments).optional(),
   providerId: z.string().optional(),
   model: z.string().optional(),
   ttsEnabled:       z.boolean().optional(),
   thinkingEnabled:  z.boolean().optional(),
   /** KB ids the user selected in the chat picker (turn-level search scope). */
-  kbIds:         z.array(z.string()).optional(),
+  kbIds:         z.array(z.string()).max(REQUEST_VALUE_LIMITS.maxTurnKbIds).optional(),
   /** Per-KB document scopes: which docs within each KB are selected. */
-  kbAssetScopes: z.array(z.object({ kbId: z.string(), assetIds: z.array(z.string()) })).optional(),
+  kbAssetScopes: z.array(z.object({ kbId: z.string(), assetIds: z.array(z.string()) }))
+    .max(REQUEST_VALUE_LIMITS.maxTurnKbAssetScopes)
+    .optional(),
 }).refine(
   (data) => data.userInput
     || (data.contentParts && data.contentParts.length > 0)
