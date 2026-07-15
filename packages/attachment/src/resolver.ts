@@ -37,7 +37,15 @@ export function resolveForPrompt(attachments: Attachment[]): ResolvedPrompt {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function tryInlineImage(att: Attachment): MessageContentPart | null {
-  if (att.size > IMAGE_INLINE_LIMIT) return null;
+  // B-071:不信任客户端传入的 att.size(可伪造),用 fs.statSync 真实字节判断。
+  // 否则声明 1KB、实际 2GB 的文件会绕过 inline 限制,readFileSync 把整个 2GB 读进内存。
+  let realSize: number;
+  try {
+    realSize = fs.statSync(att.localPath).size;
+  } catch {
+    return null;   // 文件不存在/不可 stat → 降级路径引用
+  }
+  if (realSize > IMAGE_INLINE_LIMIT) return null;
 
   try {
     const data = fs.readFileSync(att.localPath).toString('base64');
