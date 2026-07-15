@@ -34,9 +34,13 @@ export type { IngestQueueDeps, IngestRuntimeOptions } from './ingest/queue.js';
 
 // ── Chunkers ───────────────────────────────────────────────────────────────────
 export { RecursiveChunker, recursiveChunk }                            from './chunking/recursive.js';
-export { SemanticChunker, EmbeddingCallError, SemanticFallbackWarning } from './chunking/semantic.js';
+export { SemanticChunker, SemanticFallbackWarning }                    from './chunking/semantic.js';
 export type { ChunkOptions, Chunker }                                   from './chunking/base.js';
 export type { SemanticChunkOptions }                                    from './chunking/semantic.js';
+
+// ── Errors (embed 路径统一错误码) ──────────────────────────────────────────────
+export { KbError, isKbError, classifyKbError } from './errors.js';
+export type { KbErrorCode, KbErrorMeta }       from './errors.js';
 
 // ── Vector index (exposed for benchmarking / advanced callers) ─────────────────
 export { BruteForceIndex }       from './index/brute-force.js';

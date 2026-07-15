@@ -5,6 +5,7 @@ import type { ChunkOptions } from './base.js';
 import { chunkId, linkChunks, normalizeChunkSizes } from './base.js';
 import { recursiveChunk, RecursiveChunker } from './recursive.js';
 import { splitSentences, cosineSimilarity, smoothSimilarities, percentile } from './utils/sentences.js';
+import { KbError, classifyKbError } from '../errors.js';
 
 // ── Public option type ────────────────────────────────────────────────────────
 
@@ -17,6 +18,8 @@ export interface SemanticChunkOptions extends ChunkOptions {
   smoothWindow?:       number;   // default 3
   bufferSize?:         number;   // default 1
   batchSize?:          number;   // default 32
+  /** embed 批次有界并发上限。default 4。大文档上千句时防止一次性打满云 API 限流。 */
+  concurrency?:        number;   // default 4
   maxSentencesPerGroup?: number; // default 50
   timeoutMs?:          number;   // default 30_000
   maxRetries?:         number;   // default 2
@@ -26,17 +29,10 @@ export interface SemanticChunkOptions extends ChunkOptions {
 }
 
 // ── Error types ───────────────────────────────────────────────────────────────
-
-export class EmbeddingCallError extends Error {
-  readonly retryable:  boolean;
-  readonly batchIndex: number;
-  override readonly cause: unknown;
-  constructor(message: string, opts: { cause: unknown; retryable: boolean; batchIndex: number }) {
-    super(message);
-    this.name = 'EmbeddingCallError';
-    this.cause = opts.cause; this.retryable = opts.retryable; this.batchIndex = opts.batchIndex;
-  }
-}
+//
+// embed 路径的错误统一走 ../errors.ts 的 KbError(classifyKbError 集中分类 +
+// retryable 标记)。这里只保留 SemanticFallbackWarning——它是"降级到递归分块"
+// 的观察性警告,不是 embed 调用错误,语义独立。
 
 export class SemanticFallbackWarning extends Error {
   readonly reason: string;
@@ -47,6 +43,10 @@ export class SemanticFallbackWarning extends Error {
 }
 
 // ── SemanticChunker ───────────────────────────────────────────────────────────
+// Intentionally does NOT implement Chunker — requires SemanticChunkOptions.
+
+/** embed 批次默认并发上限。与 VisionRouter 全局并发一致(4)。 */
+const DEFAULT_EMBED_CONCURRENCY = 4;
 // Intentionally does NOT implement Chunker — requires SemanticChunkOptions.
 
 export class SemanticChunker {
@@ -75,6 +75,7 @@ export class SemanticChunker {
 
   private async chunkTextRun(blks: DocumentBlock[], opts: SemanticChunkOptions, assetId: string, startIdx: number): Promise<DocumentChunk[]> {
     const batchSize       = opts.batchSize            ?? 32;
+    const concurrency     = opts.concurrency          ?? DEFAULT_EMBED_CONCURRENCY;
     const smoothWindow    = opts.smoothWindow         ?? 3;
     const bufferSize      = opts.bufferSize           ?? 1;
     const maxSentGroup    = opts.maxSentencesPerGroup ?? 50;
@@ -89,7 +90,7 @@ export class SemanticChunker {
     if (sents.length < 2) return recursiveChunk(blks, opts, assetId);
 
     const inputs = buildBufferWindow(sents.map(s => s.text), bufferSize);
-    const { embeddings, failedBatches } = await embedBatches(inputs, opts.ebdRouter, { providerId: opts.providerId, model: opts.model, batchSize, timeoutMs, maxRetries, signal: opts.signal });
+    const { embeddings, failedBatches } = await embedBatches(inputs, opts.ebdRouter, { providerId: opts.providerId, model: opts.model, batchSize, concurrency, timeoutMs, maxRetries, signal: opts.signal });
 
     if (failedBatches.length > 0) opts.onBatchFailure?.(failedBatches);
     if (opts.signal?.aborted) return this.fallback(blks, opts, 'aborted');
@@ -178,25 +179,72 @@ function buildBufferWindow(sents: string[], buf: number): string[] {
 
 interface BatchResult { embeddings: number[][]; failedBatches: Array<{ batchIndex: number; error: string; sentenceCount: number }> }
 
-async function embedBatches(texts: string[], router: EbdRouter, opts: { providerId: string; model: string; batchSize: number; timeoutMs: number; maxRetries: number; signal?: AbortSignal }): Promise<BatchResult> {
+interface EmbedBatchOpts { providerId: string; model: string; batchSize: number; concurrency: number; timeoutMs: number; maxRetries: number; signal?: AbortSignal }
+
+/**
+ * 有界并发 embed。N 个 worker 从共享 `next` 索引领 batch,结果按原下标写回 →
+ * embeddings 顺序与输入 texts 严格对齐(失败位填 [],与 sents 长度守恒)。
+ *
+ * 边界:
+ * - batches 为空 → 直接返回空,不起 worker。
+ * - concurrency clamp 到 [1, batches.length],不起比任务多的 worker。
+ * - abort:worker 入口 + 每轮循环检查,已 abort 不领新任务;运行中的 batch 由
+ *   embedWithRetry 内部 abort 传播。已完成的向量保留(上层 fallback 自行决定)。
+ * - 部分失败:某 batch 失败不杀其他 worker,failedBatches 记录,其余继续。
+ */
+export async function embedBatches(texts: string[], router: EbdRouter, opts: EmbedBatchOpts): Promise<BatchResult> {
   const batches = chunk(texts, opts.batchSize);
-  const settled = await Promise.allSettled(batches.map((b, i) => embedWithRetry(b, router, { ...opts, batchIndex: i })));
-  const embeddings: number[][] = [];
   const failedBatches: BatchResult['failedBatches'] = [];
-  for (let i = 0; i < settled.length; i++) {
-    const r = settled[i]!;
-    if (r.status === 'fulfilled') { embeddings.push(...r.value); }
-    else { for (let j = 0; j < batches[i]!.length; j++) embeddings.push([]); failedBatches.push({ batchIndex: i, error: r.reason instanceof Error ? r.reason.message : String(r.reason), sentenceCount: batches[i]!.length }); }
+  if (batches.length === 0) return { embeddings: [], failedBatches };
+
+  const concurrency = Math.max(1, Math.min(opts.concurrency, batches.length));
+  const results: Array<{ ok: true; vec: number[][] } | { ok: false; err: KbError; count: number }> = new Array(batches.length);
+  let next = 0;
+
+  async function worker(): Promise<void> {
+    for (;;) {
+      if (opts.signal?.aborted) return;
+      const i = next++;
+      if (i >= batches.length) return;
+      const batch = batches[i]!;
+      try {
+        const vec = await embedWithRetry(batch, router, { ...opts, batchIndex: i });
+        results[i] = { ok: true, vec };
+      } catch (err) {
+        const kbErr = err instanceof KbError ? err : classifyKbError(err, { providerId: opts.providerId, model: opts.model, batchIndex: i });
+        results[i] = { ok: false, err: kbErr, count: batch.length };
+      }
+    }
+  }
+
+  await Promise.all(Array.from({ length: concurrency }, () => worker()));
+
+  const embeddings: number[][] = [];
+  for (let i = 0; i < results.length; i++) {
+    const r = results[i];
+    // r === undefined:abort 时 worker 未领到该 batch。填 [] 保长度守恒,
+    // 不进 failedBatches(上层 `if (aborted) fallback` 自行处理,不算 embed 失败)。
+    if (r && r.ok) {
+      embeddings.push(...r.vec);
+    } else {
+      const count = r ? r.count : batches[i]!.length;
+      for (let j = 0; j < count; j++) embeddings.push([]);
+      if (r) failedBatches.push({ batchIndex: i, error: `${r.err.code}: ${r.err.message}`, sentenceCount: r.count });
+    }
   }
   return { embeddings, failedBatches };
 }
 
-async function embedWithRetry(texts: string[], router: EbdRouter, opts: { providerId: string; model: string; timeoutMs: number; maxRetries: number; signal?: AbortSignal; batchIndex: number }): Promise<number[][]> {
-  let lastErr: unknown;
+async function embedWithRetry(texts: string[], router: EbdRouter, opts: EmbedBatchOpts & { batchIndex: number }): Promise<number[][]> {
+  const meta = { providerId: opts.providerId, model: opts.model, batchIndex: opts.batchIndex };
+  let lastErr: KbError | undefined;
   for (let attempt = 0; attempt <= opts.maxRetries; attempt++) {
-    if (opts.signal?.aborted) throw new EmbeddingCallError('aborted', { cause: opts.signal.reason, retryable: false, batchIndex: opts.batchIndex });
+    if (opts.signal?.aborted) {
+      throw new KbError('kb/embed_aborted', 'Embedding batch aborted before start', { cause: opts.signal.reason, meta: { ...meta, retryable: false } });
+    }
     const ctrl = new AbortController();
-    const tid  = setTimeout(() => ctrl.abort(), opts.timeoutMs);
+    let timedOut = false;
+    const tid  = setTimeout(() => { timedOut = true; ctrl.abort(new Error('kb/embed_timeout')); }, opts.timeoutMs);
     const onAbort = (): void => ctrl.abort(opts.signal!.reason);
     opts.signal?.addEventListener('abort', onAbort, { once: true });
     try {
@@ -205,13 +253,16 @@ async function embedWithRetry(texts: string[], router: EbdRouter, opts: { provid
       return res.embeddings;
     } catch (err) {
       clearTimeout(tid); opts.signal?.removeEventListener('abort', onAbort);
-      lastErr = err;
-      if (opts.signal?.aborted) throw new EmbeddingCallError('aborted', { cause: err, retryable: false, batchIndex: opts.batchIndex });
-      if (err instanceof EmbeddingCallError && !err.retryable) throw err;
+      if (opts.signal?.aborted) {
+        throw new KbError('kb/embed_aborted', 'Embedding batch aborted by upstream', { cause: err, meta: { ...meta, retryable: false } });
+      }
+      const classified = classifyKbError(err, meta, timedOut);
+      if (!classified.meta.retryable) throw classified;
+      lastErr = classified;
       if (attempt < opts.maxRetries) await sleep(500 * 2 ** attempt, opts.signal);
     }
   }
-  throw new EmbeddingCallError(`batch ${opts.batchIndex} failed after ${opts.maxRetries + 1} attempts`, { cause: lastErr, retryable: false, batchIndex: opts.batchIndex });
+  throw new KbError('kb/embed_batch_failed', `batch ${opts.batchIndex} failed after ${opts.maxRetries + 1} attempts`, { cause: lastErr, meta: { ...meta, retryable: false } });
 }
 
 function sleep(ms: number, signal?: AbortSignal): Promise<void> {

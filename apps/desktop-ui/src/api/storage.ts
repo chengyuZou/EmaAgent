@@ -1,6 +1,6 @@
 import { sidecarClient } from './sidecar-client.js';
 import type { SessionId } from '@ema-agent/contracts';
-import type { SessionDashboardWire, SessionNoteWire } from '@ema-agent/contracts';
+import type { SessionDashboardWire, SessionNoteWire, ImportWarningWire } from '@ema-agent/contracts';
 
 // ── DataDir wire types ────────────────────────────────────────────────────────
 
@@ -102,7 +102,7 @@ export const storageApi = {
   },
 
   /** POST /api/storage/sessions/import — upload a ZIP and restore the session. */
-  async importSession(file: File): Promise<{ id: string; title: string }> {
+  async importSession(file: File): Promise<{ id: string; title: string; warnings?: ImportWarningWire[] }> {
     const form = new FormData();
     form.append('file', file);
     const res = await sidecarClient.requestRaw('/api/storage/sessions/import', {
@@ -113,6 +113,6 @@ export const storageApi = {
       const body = await res.json().catch(() => ({ message: res.statusText })) as { message?: string };
       throw new Error(body.message ?? `Import failed: ${res.status}`);
     }
-    return res.json() as Promise<{ id: string; title: string }>;
+    return res.json() as Promise<{ id: string; title: string; warnings?: ImportWarningWire[] }>;
   },
 };

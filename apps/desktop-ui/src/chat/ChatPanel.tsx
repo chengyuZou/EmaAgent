@@ -6,6 +6,7 @@ import { useSessionStore } from '../stores/session-store.js';
 import { useSidecarStore } from '../stores/sidecar-store.js';
 import { useAgentTaskStore } from '../stores/agent-task-store.js';
 import { useUiStore } from '../stores/ui-store.js';
+import { useCapabilitiesStore } from '../stores/capabilities-store.js';
 import { useThemeSync } from '../stores/theme-store.js';
 import { startSystemSse } from '../lib/system-sse.js';
 import { ErrorBoundary } from '../lib/error-boundary.js';
@@ -27,6 +28,8 @@ type InspectorPanelId = 'branches' | 'artifacts' | 'files' | 'tasks';
 export function ChatPanel(): JSX.Element {
   const viewedSessionId = useConversationStore((s) => s.viewedSessionId);
   const sidecarStatus   = useSidecarStore((s) => s.status);
+  // Artifact 入口受 V1 发布特性门禁(fail-closed:未加载/失败 → false,按钮不显示)。
+  const artifactsEnabled = useCapabilitiesStore((s) => s.features.artifacts);
 
   useThemeSync();
 
@@ -77,6 +80,18 @@ export function ChatPanel(): JSX.Element {
   });
 
   useEffect(() => { void startSystemSse(); }, []);
+  // 拉一次 V1 发布特性开关(fail-closed,失败不抛)。
+  useEffect(() => { void useCapabilitiesStore.getState().load(); }, []);
+  // 特性从 true→false 时(理论上 V1 不会,但防御),把已打开的 artifacts 面板踢出。
+  useEffect(() => {
+    if (artifactsEnabled) return;
+    setActivePanels((prev) => {
+      if (!prev.has('artifacts')) return prev;
+      const next = new Set(prev);
+      next.delete('artifacts');
+      return next;
+    });
+  }, [artifactsEnabled]);
   useEffect(() => {
     const stop = useSidecarStore.getState().startPolling();
     return stop;
@@ -168,13 +183,15 @@ export function ChatPanel(): JSX.Element {
                 active={activePanels.has('branches')}
                 onClick={() => togglePanel('branches')}
               />
-              {/* ▣ Artifacts */}
-              <InspectorDockBtn
-                icon="i-solar:layers-bold-duotone"
-                label="产物"
-                active={activePanels.has('artifacts')}
-                onClick={() => togglePanel('artifacts')}
-              />
+              {/* ▣ Artifacts — V1 发布特性门禁,artifacts=false 时不渲染入口 */}
+              {artifactsEnabled && (
+                <InspectorDockBtn
+                  icon="i-solar:layers-bold-duotone"
+                  label="产物"
+                  active={activePanels.has('artifacts')}
+                  onClick={() => togglePanel('artifacts')}
+                />
+              )}
               {/* ⋮ Overflow */}
               <div className="relative" ref={overflowRef}>
                 <Button

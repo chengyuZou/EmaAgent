@@ -6,6 +6,7 @@ export * from './messages.js';
 export * from './providers/index.js';
 export * from './artifact.js';
 export * from './wire.js';
+export * from './capabilities.js';
 export * from './kb.js';
 export * from './agents.js';
 export * from './session-ownership.js';

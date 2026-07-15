@@ -49,7 +49,7 @@ import { PermissionEngine } from '@ema-agent/permission';
 import type { AskPermissionFn } from '@ema-agent/permission';
 import { PermissionPromptRegistry } from '../permissions/registry.js';
 import { AskUserRegistry }          from '../ask-user/registry.js';
-import type { EmaStreamEvent, KbAssetScope, SessionId, KbSearchResult } from '@ema-agent/contracts';
+import type { EmaStreamEvent, KbAssetScope, SessionId, KbSearchResult, ReleaseFeaturesWire } from '@ema-agent/contracts';
 import { ToolRegistry }        from '@ema-agent/tools';
 import { registerBuiltinTools } from '@ema-agent/tool-builtin';
 import { detectBackend, CommandRunner } from '@ema-agent/sandbox';
@@ -69,6 +69,7 @@ import {
 import { resolveBridgeUrl } from './bridge.js';
 import { SystemEventBus }  from '../sse/system-bus.js';
 import { ProviderRuntimeFacade } from './provider-runtime.js';
+import { SessionBackupFacade } from '@ema-agent/backup';
 
 // ── App-wide bindings (Facade set passed everywhere) ─────────────────────────
 
@@ -92,6 +93,8 @@ export interface AppBindings {
 
   hooks:   HookBus;
   session: SessionStore;
+  /** Session 备份导入的唯一业务入口；流式导出在 ZIP v2 接入同一 Facade。 */
+  sessionBackup: SessionBackupFacade;
 
   // AI clients
   llm:       LlmRouter;
@@ -194,7 +197,19 @@ export interface AppBindings {
    *  assetScopes: per-KB doc filters from the chat picker (each scope targets one KB).
    *  KBs without a matching scope are searched unfiltered.  */
   kbSearch: (query: string, topK?: number, kbIds?: string[], assetScopes?: KbAssetScope[], sessionId?: string, turnId?: string) => Promise<KbSearchResult>;
+
+  /** V1 发布特性开关。工具注册、路由挂载、capabilities endpoint 都从此读取。 */
+  releaseFeatures: ReleaseFeaturesWire;
 }
+
+// ── V1 发布特性 ────────────────────────────────────────────────────────────────
+
+/**
+ * V1 默认发布特性。Artifact 属于 V1.5 预留能力,V1 默认关闭。
+ * 完成状态机(B-003/B-068/B-069)前不得在生产开启。
+ * 测试可通过 BuildBindingsArgs.releaseFeatures 显式注入。
+ */
+const V1_RELEASE_FEATURES: ReleaseFeaturesWire = Object.freeze({ artifacts: false });
 
 // ── Build bindings ────────────────────────────────────────────────────────────
 
@@ -211,10 +226,13 @@ export interface BuildBindingsArgs {
   profileDb:     Database;
   dataDb:        Database;
   activeDataDir: string;
+  /** 仅用于测试显式注入;正常生产不传,始终采用 V1_RELEASE_FEATURES。 */
+  releaseFeatures?: ReleaseFeaturesWire;
 }
 
 export function buildBindings(args: BuildBindingsArgs): AppBindings {
   const { profileDb, dataDb, activeDataDir } = args;
+  const releaseFeatures = args.releaseFeatures ?? V1_RELEASE_FEATURES;
 
   // ── Core infra ──────────────────────────────────────────────────────────────
   const hooks   = new HookBus({
@@ -327,6 +345,7 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
   const tools = new ToolRegistry();
   registerBuiltinTools(tools, {
     disableExecuteTools,
+    enableArtifacts:   releaseFeatures.artifacts,
     hasSubagentBridge: true,   // SubagentSpawner wired inside AgentEngine per turn
     hasMcpBridge:      true,   // mcpBridge adapter injected into toolCtx
     hasSkillBridge:    true,   // skillBridge adapter injected into toolCtx
@@ -439,6 +458,38 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
   const sessionStats = new SessionStatsRepo(dataDb.sqlite);
   const storageStats = new DataDirStatsRepo(dataDb.sqlite);
   const sessionNotes = new SessionNotesRepo(dataDb.sqlite);
+  const sessionBackup = new SessionBackupFacade({
+    activeDataDir,
+    artifactsEnabled: releaseFeatures.artifacts,
+    sessionExists: (sessionId) => session.sessionExists(sessionId as SessionId),
+    restoreRows: (payload) => sessionStats.restoreRows(payload),
+    collectExport: (sessionId) => {
+      const id = sessionId as SessionId;
+      if (!session.sessionExists(id)) return null;
+      const sessionRow = session.getSession(id);
+      const noteRow = sessionNotes.findBySession(id);
+      return {
+        session: { ...sessionRow },
+        turns: session.listTurns(id, 10_000),
+        messages: session.listMessages(id, { limit: 10_000 }),
+        artifacts: releaseFeatures.artifacts ? artifactStore.listForExport(id) : [],
+        attachments: attachmentStore.listBySession(sessionId),
+        audio: sessionStats.listAudioEntries(sessionId),
+        notes: noteRow ? {
+          sessionId,
+          body: noteRow.body,
+          tokensAtLastUpdate: noteRow.tokens_at_last_update,
+          updatedAt: noteRow.updated_at,
+        } : null,
+        branches: sessionStats.listBranches(sessionId),
+        agentTasks: sessionStats.listAgentTasks(sessionId),
+        agentTaskMessages: sessionStats.listAgentTaskMessages(sessionId),
+        memoryState: sessionStats.getMemoryState(sessionId) ?? null,
+        kbActivations: sessionStats.listKbActivations(sessionId),
+        llmTurnMetrics: sessionStats.listLlmTurnMetrics(sessionId),
+      };
+    },
+  });
 
   // ── MCP registry ────────────────────────────────────────────────────────────
   const mcpStdioGate = async (intent: McpStdioLaunchIntent): Promise<boolean> => {
@@ -602,7 +653,7 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
 
   return {
     profileDb, dataDb, activeDataDir,
-    hooks, session,
+    hooks, session, sessionBackup,
     llm, ebd, narrative, modelCatalog,
     card, emotion,
     tts, audioArchive, stt, vision, providerRuntime,
@@ -619,6 +670,7 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
     marketRegistry, marketSourceStore,
     skillStore, skillRunner, skillInstaller, skillBridge,
     kb, kbSearch,
+    releaseFeatures,
   };
 }
 

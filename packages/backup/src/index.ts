@@ -1,0 +1,19 @@
+export { SessionBackupFacade } from './facade.js';
+export { SessionImportError } from './import/errors.js';
+export { SESSION_IMPORT_LIMITS } from './import/archive.js';
+export type { SessionImportLimits } from './import/archive.js';
+export type {
+  BackupArchiveSource,
+  BackupArtifactExportEntry,
+  BackupAttachmentExportEntry,
+  BackupAudioExportEntry,
+  BackupOutputSink,
+  SessionBackupCapabilities,
+  SessionBackupFormat,
+  SessionBackupPorts,
+  SessionImportRequest,
+  SessionImportResult,
+  SessionExportRequest,
+  SessionExportResult,
+  SessionExportSnapshot,
+} from './types.js';

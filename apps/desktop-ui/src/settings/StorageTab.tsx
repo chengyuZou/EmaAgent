@@ -772,9 +772,15 @@ export function StorageTab(): JSX.Element {
   async function handleImport(file: File): Promise<void> {
     setImporting(true);
     try {
-      await storageApi.importSession(file);
+      const result = await storageApi.importSession(file);
       await useSessionStore.getState().loadSessions();
       showToast('会话导入成功', { variant: 'success' });
+      // V1 跳过的未启用特性(如 Artifact)在此提示用户。
+      for (const w of result.warnings ?? []) {
+        if (w.feature === 'artifacts') {
+          showToast('已跳过备份中的产物数据(V1 未启用产物功能)', { variant: 'warning' });
+        }
+      }
     } catch (err) {
       showToast(err instanceof Error ? `导入失败：${err.message}` : '导入失败', { variant: 'danger' });
     } finally {

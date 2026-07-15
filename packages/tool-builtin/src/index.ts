@@ -123,6 +123,17 @@ const ALL_BUILTIN_TOOLS: BuiltTool<any, any>[] = [
 const EXECUTE_TOOLS: ReadonlySet<string> = new Set(['bash', 'powershell']);
 
 /**
+ * Artifact 工具集。V1 默认不注册(Artifact 属于 V1.5 预留能力,
+ * 完成状态机 B-003/B-068/B-069 前不得在生产注册)。
+ * 源码保留(packages/tool-builtin/src/tools/artifact.ts),不删除。
+ */
+const ARTIFACT_TOOLS: ReadonlySet<string> = new Set([
+  'artifact_write',
+  'artifact_read',
+  'artifact_list',
+]);
+
+/**
  * 受运行时桥可用性门禁的工具。
  * key = 工具名,value = 哪个 RegisterOptions 标志启用它。
  */
@@ -155,6 +166,12 @@ export interface RegisterOptions {
   hasMcpBridge?:      boolean;
   hasSkillBridge?:    boolean;
   hasSubagentBridge?: boolean;
+  /**
+   * Artifact 工具(artifact_write/read/list)是否注册。
+   * V1 默认 false(Artifact 属于 V1.5 预留,完成 B-003/B-068/B-069 前不得启用)。
+   * 测试或 V1.5 接线时设 true。
+   */
+  enableArtifacts?:   boolean;
 }
 
 /**
@@ -168,6 +185,10 @@ export function registerBuiltinTools(registry: ToolRegistry, opts: RegisterOptio
   for (const tool of ALL_BUILTIN_TOOLS) {
     // 无物理沙箱时跳过执行类工具。
     if (opts.disableExecuteTools && EXECUTE_TOOLS.has(tool.name)) continue;
+
+    // Artifact 属于 V1.5 预留能力,V1 默认不注册。
+    // 完成状态机 B-003/B-068/B-069 前不得启用。
+    if (!opts.enableArtifacts && ARTIFACT_TOOLS.has(tool.name)) continue;
 
     // 运行时桥未接时跳过桥门禁工具。
     // 防止 LLM 看到它实际无法使用的工具。

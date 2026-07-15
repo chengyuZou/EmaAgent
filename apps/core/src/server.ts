@@ -1,4 +1,4 @@
-﻿import { Hono } from 'hono';
+import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { emaAuth } from './auth.js';
 import { healthRoute } from './routes/health.js';
@@ -28,7 +28,7 @@ import type { AppBindings } from './wiring/index.js';
 export function buildServer(bindings: AppBindings): Hono {
   const app = new Hono();
 
-  // CORS — only localhost origins allowed (no external access)
+  // CORS — 仅允许 localhost 源(禁止外部访问)
   app.use(
     '*',
     cors({
@@ -46,10 +46,10 @@ export function buildServer(bindings: AppBindings): Hono {
     }),
   );
 
-  // Auth middleware — validates X-Ema-Secret on all non-health routes
+  // Auth 中间件 — 所有非 health 路由校验 X-Ema-Secret
   app.use('*', emaAuth());
 
-  // Routes
+  // 路由
   app.route('/health', healthRoute());
   app.route('/api/turns',          turnsRoute(bindings));
   app.route('/api/providers',      providersRoute(bindings));
@@ -66,17 +66,23 @@ export function buildServer(bindings: AppBindings): Hono {
   app.route('/api/diagnostics',    diagnosticRoute());
   app.route('/api/transcribe',     transcribeRoute(bindings));
   app.route('/api/cards',          cardsRoute(bindings));
-  app.route('/api',                createArtifactsRouter(bindings));
+
+  // Artifact 路由:V1 默认不挂载(releaseFeatures.artifacts === true 时才挂)。
+  // 源码保留(routes/artifacts.ts),V1.5 完成状态机(B-003/B-068/B-069)后启用。
+  if (bindings.releaseFeatures.artifacts) {
+    app.route('/api', createArtifactsRouter(bindings));
+  }
+
   app.route('/api',                createSkillsRouter(bindings));
   app.route('/api/mcp',            createMcpRouter(bindings));
   app.route('/api/market',         createMarketRouter(bindings));
   app.route('/api/kb',             kbRoute(bindings));
   app.route('/api/agent-tasks',    agentTasksRoute(bindings));
 
-  // 404 fallback
+  // 404 兜底
   app.notFound((c) => c.json({ error: 'not_found' }, 404));
 
-  // Unhandled error fallback
+  // 未处理错误兜底
   app.onError((err, c) => {
     console.error('[server] unhandled error', err);
     return c.json({ error: 'internal_server_error', message: err.message }, 500);
