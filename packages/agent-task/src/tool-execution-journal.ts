@@ -1,3 +1,5 @@
+// 这里记录每次工具调用的执行状态推进（prepared->authorized->running->succeeded/failed），用 version CAS 防过期覆盖。
+
 import { createHash } from 'node:crypto';
 import type {
   SessionId,

@@ -1,23 +1,24 @@
+// 这里读取本机磁盘信息（Windows 用 PowerShell、POSIX 用 df），供设置页存储位置显示用。
+
 import { execSync } from 'node:child_process';
 import * as os from 'node:os';
 
 export interface DiskInfo {
-  /** Drive letter or mount point, e.g. "C:" or "/dev/sda1" */
+  /** 盘符或挂载点，如 "C:" 或 "/dev/sda1" */
   mount:     string;
-  /** Human-readable label, e.g. "Windows-SSD" */
+  /** 人可读的卷标，如 "Windows-SSD" */
   label:     string;
-  /** Total bytes */
+  /** 总字节数 */
   total:     number;
-  /** Free bytes */
+  /** 可用字节数 */
   free:      number;
 }
 
-// ── Platform implementations ──────────────────────────────────────────────────
+// ── 各平台实现 ─────────────────────────────────────────────────────────────────
 
 function getDisksWindows(): DiskInfo[] {
-  // wmic is deprecated and emits the OEM codepage (e.g. GBK on zh-CN), which
-  // garbles non-ASCII volume labels when decoded as UTF-8. PowerShell lets us
-  // force UTF-8 on stdout and emit clean JSON.
+  // wmic 已废弃，且输出 OEM 代码页（zh-CN 是 GBK），按 UTF-8 解会乱码卷标。
+  // PowerShell 能强制 stdout 为 UTF-8 并输出干净 JSON。
   const script =
     '[Console]::OutputEncoding=[System.Text.Encoding]::UTF8;' +
     'Get-CimInstance Win32_LogicalDisk | ' +
@@ -48,9 +49,9 @@ function getDisksWindows(): DiskInfo[] {
 }
 
 function getDisksPosix(): DiskInfo[] {
-  // df -Pk gives POSIX output: Filesystem, 1024-blocks, Used, Available, Capacity%, Mounted on
+  // df -Pk 输出 POSIX 格式：Filesystem、1024-块、已用、可用、容量%、挂载点
   const raw = execSync('df -Pk', { encoding: 'utf8', timeout: 5000 });
-  const lines = raw.trim().split('\n').slice(1); // skip header
+  const lines = raw.trim().split('\n').slice(1); // 跳过表头
 
   return lines
     .map(line => {
@@ -60,14 +61,14 @@ function getDisksPosix(): DiskInfo[] {
       const used     = parseInt(parts[2]!, 10) * 1024;
       const free     = total - used;
       const mount    = parts[5]!;
-      // Skip pseudo-filesystems
+      // 跳过伪文件系统
       if (mount.startsWith('/sys') || mount.startsWith('/proc') || mount === '/dev') return null;
       return { mount, label: mount, total, free };
     })
     .filter((d): d is DiskInfo => d !== null && d.total > 0);
 }
 
-// ── Public API ────────────────────────────────────────────────────────────────
+// ── 对外接口 ───────────────────────────────────────────────────────────────────
 
 export function getDisksInfo(): DiskInfo[] {
   try {
@@ -78,5 +79,5 @@ export function getDisksInfo(): DiskInfo[] {
 }
 
 // TODO: getDirSize(dirPath: string): number
-// Recursively stat all files under dirPath and sum their sizes.
-// Needed for per-session data footprint display.
+// 递归 stat dirPath 下所有文件并累加大小。
+// 用于按 Session 展示数据占用。

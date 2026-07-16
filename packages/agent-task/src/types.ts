@@ -1,6 +1,8 @@
+// 这里放 AgentTask 模块的基础类型：任务状态、任务记录、状态转换动作和结果。
+
 import type { AskUserQuestionSpec } from '@ema-agent/contracts';
 
-// ── TaskStatus ────────────────────────────────────────────────────────────────
+// ── 任务状态 ───────────────────────────────────────────────────────────────────
 
 export type TaskStatus =
   | 'running'
@@ -9,13 +11,13 @@ export type TaskStatus =
   | 'failed'
   | 'cancelled';
 
-// ── AgentTask ─────────────────────────────────────────────────────────────────
+// ── Agent 任务 ─────────────────────────────────────────────────────────────────
 
 export interface AgentTask {
-  /** Root tasks: equals turnId.  Subagent tasks: a fresh UUID. */
+  /** 根任务：等于 turnId。子 Agent 任务：全新的 UUID。 */
   id:        string;
   sessionId: string;
-  /** null for subagent tasks that have no DB turn record. */
+  /** 子 Agent 任务没有 DB turn 记录时为 null。 */
   turnId:    string | null;
   parentId:  string | null;
   status:    TaskStatus;

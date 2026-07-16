@@ -1,3 +1,5 @@
+// 这里加密和解密 Provider 凭据：用主密钥 AES-256-GCM，Provider ID 作为完整性校验绑定。
+
 import {
   createCipheriv,
   createDecipheriv,

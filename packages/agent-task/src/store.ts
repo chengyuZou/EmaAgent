@@ -1,3 +1,5 @@
+// 这里管理 Agent 任务的生命周期：认领、状态转换（CAS 防过期覆盖）、查询、删除、崩溃恢复。
+
 import type { AskUserQuestionSpec } from '@ema-agent/contracts';
 import type {
   AgentTask,
@@ -7,7 +9,7 @@ import type {
 } from './types.js';
 import type { AgentTasksRepo, AgentTaskRow } from '@ema-agent/storage';
 
-// ── Row → domain ──────────────────────────────────────────────────────────────
+// ── 数据库行 -> 领域对象 ──────────────────────────────────────────────────────────
 
 function rowToTask(row: AgentTaskRow): AgentTask {
   return {
@@ -31,23 +33,21 @@ function rowToTask(row: AgentTaskRow): AgentTask {
 
 // ── AgentTaskStore ────────────────────────────────────────────────────────────
 //
-// SQL-backed registry for all agent runs (root turns + subagent spawns).
+// 所有 Agent 运行（根 turn + 子 Agent spawn）的 SQL 持久化注册表。
 //
-// Concurrency model: JS is single-threaded; claim() is synchronous inside
-// SQLite's synchronous driver, so no two microtasks race on the same taskId.
+// 并发模型：JS 单线程；claim() 在 SQLite 同步驱动里同步执行，
+// 所以不会有两个微任务在同一个 taskId 上竞争。
 //
-// Crash recovery: at startup call recoverInterrupted() to mark orphaned
-// 'running'/'waiting_user' tasks as 'failed' and surface any 'waiting_user'
-// tasks that need their question widgets re-presented.
+// 崩溃恢复：启动时调 recoverInterrupted()，把孤儿 'running'/'waiting_user'
+// 任务标为 'failed'，并把需要重新展示问题组件的 'waiting_user' 任务暴露出来。
 
 export class AgentTaskStore {
   constructor(private readonly repo: AgentTasksRepo) {}
 
-  // ── Claim ─────────────────────────────────────────────────────────────────
+  // ── 认领 ───────────────────────────────────────────────────────────────────
 
   /**
-   * Atomically create and register a task. Idempotent: if taskId already
-   * exists (duplicate call) returns the existing row unchanged.
+   * 原子地创建并注册一个任务。幂等：taskId 已存在（重复调用）时原样返回已有行。
    */
   claim(args: {
     taskId:    string;
@@ -69,7 +69,7 @@ export class AgentTaskStore {
     return rowToTask(this.repo.findById(args.taskId)!);
   }
 
-  // ── Status transitions ────────────────────────────────────────────────────
+  // ── 状态转换 ────────────────────────────────────────────────────────────────
 
   waitUser(
     taskId: string,
@@ -156,7 +156,7 @@ export class AgentTaskStore {
     return this.finishTransition('cancel', taskId, updated);
   }
 
-  // ── Queries ───────────────────────────────────────────────────────────────
+  // ── 查询 ───────────────────────────────────────────────────────────────────
 
   get(taskId: string): AgentTask | undefined {
     const row = this.repo.findById(taskId);
@@ -171,32 +171,32 @@ export class AgentTaskStore {
     return this.repo.listRunning().map(rowToTask);
   }
 
-  // ── Deletion ──────────────────────────────────────────────────────────────
+  // ── 删除 ───────────────────────────────────────────────────────────────────
 
-  /** Hard-delete a task and its messages (cascades via FK). */
+  /** 硬删除一个任务及其消息（通过 FK 级联）。 */
   delete(taskId: string): void {
     this.repo.delete(taskId);
   }
 
   /**
-   * Batch-delete all terminal tasks for a session (completed/failed/cancelled).
-   * Returns the count deleted.
+   * 批量删除一个 Session 的所有终态任务（completed/failed/cancelled）。
+   * 返回删除数量。
    */
   clearTerminalForSession(sessionId: string): number {
     return this.repo.deleteTerminalForSession(sessionId);
   }
 
-  // ── Startup crash recovery ────────────────────────────────────────────────
+  // ── 启动崩溃恢复 ────────────────────────────────────────────────────────────
 
   /**
-   * Mark all orphaned tasks (running or waiting_user) as failed.
-   * Returns the rows that were changed, for startup logging.
+   * 把所有孤儿任务（running 或 waiting_user）标为 failed。
+   * 返回被改动的行，供启动日志用。
    */
   recoverInterrupted(): AgentTask[] {
     return this.repo.markStuckFailed(Date.now()).map(rowToTask);
   }
 
-  // ── CAS helpers ──────────────────────────────────────────────────────────
+  // ── CAS 辅助 ───────────────────────────────────────────────────────────────
 
   private currentFor(
     action: TaskTransitionAction,
