@@ -25,6 +25,21 @@ afterEach(async () => {
 });
 
 describe('SkillStore', () => {
+  it('激活时同时返回替换后的正文和 allowed-tools', async () => {
+    await store.install(
+      '---\nname: review\nversion: 1.0.0\ndescription: test\n' +
+      'allowed-tools:\n  - Read\n  - "mcp__github__*"\n---\n' +
+      '检查 $ARGUMENTS\n目录 ${SKILL_DIR}\n',
+    );
+
+    const activation = await store.activate('review', 'packages/agent');
+
+    expect(activation.name).toBe('review');
+    expect(activation.allowedTools).toEqual(['Read', 'mcp__github__*']);
+    expect(activation.content).toContain('检查 packages/agent');
+    expect(activation.content).toContain(rootPath.replaceAll('\\', '/'));
+  });
+
   it('SQL 更新失败时恢复旧目录和旧正文', async () => {
     await store.install(skillMd('demo', 'old body'));
     vi.spyOn(repo, 'upsertByName').mockImplementationOnce(() => {

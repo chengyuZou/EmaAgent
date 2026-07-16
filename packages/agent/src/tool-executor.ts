@@ -307,6 +307,18 @@ export class TurnToolExecutor {
         emit: event => this.emit(track, event),
       });
 
+      // 工具入队后，SkillCall 或未来运行模式可能已经收窄能力。这里在权限审批和
+      // 副作用之前重新检查，封住同一轮多个工具调用的策略变更竞态。
+      if (!this.opts.allows(name)) {
+        await this.completeFailure(track, {
+          phase: 'policy',
+          code: 'policy/denied',
+          message: `Tool "${name}" is no longer available in the current capability scope`,
+          retryable: false,
+        }, perToolCtrl.signal);
+        return;
+      }
+
       if (track.preflightFailure) {
         await this.completeFailure(track, track.preflightFailure, perToolCtrl.signal);
         return;

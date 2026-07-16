@@ -217,6 +217,7 @@ async function* runTurn(
         artifactStore:   deps.artifactStore,
         mcpClient:       deps.mcpClient,
         skillRunner:     deps.skillRunner,
+        toolCapabilities: policy.capabilities(),
         kbSearch:        deps.kbSearch
           ? (query, topK, kbIds) => {
               // Tool-supplied kbIds = explicit LLM override; pass assetScopes only for user selection.

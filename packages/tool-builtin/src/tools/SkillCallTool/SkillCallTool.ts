@@ -18,6 +18,8 @@ type SkillCallInput = z.infer<typeof inputSchema>;
 export interface SkillCallResult {
   skill: string;
   output: string;
+  /** Skill 限制生效后，下一次模型调用实际可见的工具名称。 */
+  availableTools?: readonly string[];
 }
 
 // ── 工具定义 ───────────────────────────────────────────────────────────────────
@@ -46,7 +48,25 @@ Skills are pre-defined prompt templates or automation sequences registered in se
       );
     }
 
-    const output = await skillRunner.run(input.skill, input.args, ctx);
-    return { skill: input.skill, output };
+    const activation = await skillRunner.run(input.skill, input.args, ctx);
+    if (activation.allowedToolPatterns.length === 0) {
+      return { skill: input.skill, output: activation.content };
+    }
+
+    if (!ctx.toolCapabilities) {
+      throw new Error(
+        `Skill "${input.skill}" declares allowed-tools, but the Agent capability scope is unavailable.`,
+      );
+    }
+
+    const snapshot = ctx.toolCapabilities.restrict({
+      source: `skill:${input.skill}`,
+      allowedToolPatterns: activation.allowedToolPatterns,
+    });
+    return {
+      skill: input.skill,
+      output: activation.content,
+      availableTools: snapshot.allowedToolNames,
+    };
   },
 });

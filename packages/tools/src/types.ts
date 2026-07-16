@@ -181,8 +181,40 @@ export interface IMcpClientBridge {
   call(server: string, tool: string, args: Record<string, unknown>): Promise<unknown>;
 }
 
+/** Skill Facade 返回给调用工具的结构化激活结果。 */
+export interface SkillRunResult {
+  /** 替换完参数、准备注入模型上下文的 Skill 正文。 */
+  content: string;
+  /** Skill 声明的工具名称或稳定工具 ID glob；空数组表示不额外收窄。 */
+  allowedToolPatterns: readonly string[];
+}
+
 export interface ISkillRunner {
-  run(skill: string, args: string | undefined, ctx: ToolExecutionContext): Promise<string>;
+  run(
+    skill: string,
+    args: string | undefined,
+    ctx: ToolExecutionContext,
+  ): Promise<SkillRunResult>;
+}
+
+/** 一项只能收窄、不能扩大当前 Agent 工具能力的限制。 */
+export interface ToolCapabilityRestriction {
+  /** 便于审计和报错的来源，例如 skill:pdf。 */
+  source: string;
+  /** 对模型可见工具名或稳定内部 ID 进行匹配。 */
+  allowedToolPatterns: readonly string[];
+}
+
+/** 应用限制后可供模型和执行器共同使用的只读快照。 */
+export interface ToolCapabilitySnapshot {
+  allowedToolNames: readonly string[];
+  restrictionSources: readonly string[];
+}
+
+/** Agent 注入工具上下文的能力边界；Skill、运行模式等只能调用 restrict。 */
+export interface IToolCapabilityScope {
+  restrict(restriction: ToolCapabilityRestriction): ToolCapabilitySnapshot;
+  snapshot(): ToolCapabilitySnapshot;
 }
 
 // ── ToolExecutionContext ───────────────────────────────────────────────────────
@@ -243,6 +275,11 @@ export interface ToolExecutionContext {
    * 测试和最小嵌入方缺失。
    */
   skillRunner?: ISkillRunner;
+  /**
+   * 当前 Agent 的工具能力作用域。限制只能做交集收窄；Permission Engine 仍负责
+   * 审批每一次具体调用。非 Agent 嵌入方和简单单元测试可以不提供。
+   */
+  toolCapabilities?: IToolCapabilityScope;
   /**
    * 知识库检索(AgenticRAG)。host adapter 解析绑定的 embedding/rerank 模型,
    * 并把检索限定在 turn 选中的 KB 文档(每个选中文档记一次使用计数)。

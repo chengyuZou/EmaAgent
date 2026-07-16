@@ -31,6 +31,7 @@ import {
 import { parseSkillMd, validateSkillMd } from './parser.js';
 import { SkillRootBoundary } from './root-boundary.js';
 import type {
+  ActivatedSkill,
   SkillIndexRepository,
   SkillRecord,
   SkillRoot,
@@ -110,17 +111,26 @@ export class SkillStore {
     });
   }
 
-  async renderBody(name: string, args: string | undefined): Promise<string> {
+  async activate(name: string, args: string | undefined): Promise<ActivatedSkill> {
     return this.operations.run(async () => {
       const row = this.requireRow(name);
       if (row.enabled !== 1) throw new Error(`Skill "${name}" is disabled`);
       const file = await this.rootBoundary.guardedSkillFile(row);
       const raw = await readUtf8Bounded(file, MAX_SKILL_BYTES);
-      const { body } = parseSkillMd(raw);
-      return body
-        .replaceAll('$ARGUMENTS', args ?? '')
-        .replaceAll('${SKILL_DIR}', dirname(file).replaceAll('\\', '/'));
+      const manifest = parseSkillMd(raw);
+      return Object.freeze({
+        name: manifest.name,
+        content: manifest.body
+          .replaceAll('$ARGUMENTS', args ?? '')
+          .replaceAll('${SKILL_DIR}', dirname(file).replaceAll('\\', '/')),
+        allowedTools: Object.freeze([...manifest.allowedTools]),
+      });
     });
+  }
+
+  /** 兼容只需要正文的管理端调用；Agent 主链使用 activate()。 */
+  async renderBody(name: string, args: string | undefined): Promise<string> {
+    return (await this.activate(name, args)).content;
   }
 
   validate(rawMd: string) {

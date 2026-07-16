@@ -29,8 +29,8 @@ export const SkillFrontmatterSchema = z.object({
   description: z.string().default(''),
   // 在 catalog 中展示,让模型知道 `arguments` 传什么。
   'argument-hint': z.string().optional(),
-  // 此 skill 激活时临时允许的工具名 glob(激活时经 turn 作用域权限授予强制)。
-  'allowed-tools': z.array(z.string()).optional(),
+  // 此 skill 激活时用于收窄 Agent 能力的工具名称或稳定工具 ID glob。
+  'allowed-tools': z.array(z.string().trim().min(1).max(256)).max(64).optional(),
 });
 
 export type SkillFrontmatter = z.infer<typeof SkillFrontmatterSchema>;
@@ -42,10 +42,17 @@ export interface SkillManifest {
   version:      string;
   description:  string;
   argumentHint?: string;
-  /** 此 skill 激活时临时允许的工具名 glob。 */
+  /** 此 skill 激活时用于收窄 Agent 能力的工具名称或稳定工具 ID glob。 */
   allowedTools: string[];
   /** markdown body(system prompt 内容)- 事实来源是文件。 */
   body:         string;
+}
+
+/** Skill Facade 从磁盘校验并渲染后的结构化激活结果。 */
+export interface ActivatedSkill {
+  name:         string;
+  content:      string;
+  allowedTools: readonly string[];
 }
 
 // ── 索引记录(磁盘上一个 SKILL.md 的 SQL 索引一行)──────────────────────────

@@ -215,6 +215,7 @@ export class SubagentSpawner implements ISubagentSpawner {
         readFileState:    new Map(),
         emit:             pushEv,
         artifactStore:    this.deps.artifactStore,
+        toolCapabilities: policy.capabilities(),
         scratchpadDir:    this.scratchpadDir,
         scratchpadAuthor: `subagent:${subagentId.slice(0, 8)}`,
       };

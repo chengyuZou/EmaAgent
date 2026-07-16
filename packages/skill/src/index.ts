@@ -1,3 +1,4 @@
+// 这里统一导出 Skill 的存储、运行、安装、解析和 Marketplace 接口。
 export { SkillStore, SkillNotFoundError, SkillReadonlyError } from './store.js';
 export { SkillRunner }                   from './runner.js';
 export { SkillInstaller }                from './installer.js';
@@ -12,6 +13,7 @@ export type {
 } from './market/index.js';
 export type {
   SkillManifest,
+  ActivatedSkill,
   SkillRecord,
   SkillSummary,
   SkillRoot,

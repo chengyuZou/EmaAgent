@@ -2,7 +2,7 @@
 import type { HookBus, HookContext, HookResult } from '@ema-agent/hook';
 import { PRIORITY } from '@ema-agent/hook';
 import type { SkillStore } from './store.js';
-import type { SkillSummary } from './types.js';
+import type { ActivatedSkill, SkillSummary } from './types.js';
 
 // ── SkillRunner ───────────────────────────────────────────────────────────────
 //
@@ -12,8 +12,8 @@ import type { SkillSummary } from './types.js';
 // 且因 catalog 只在 install/enable 时变(非 per-turn),保住 prompt cache。
 //
 // skill 不按模式门禁。catalog 只在 `agent` 模式注入,因 SkillCall 是
-// agent 模式工具 - 没有 per-skill 模式标签。allowed-tools 在激活时强制
-// (SkillCall -> 临时权限授予),不在这里;runner 只广播可用性。
+// agent 模式工具 - 没有 per-skill 模式标签。allowed-tools 由 SkillCall
+// 交给 Agent capability scope 做交集收窄,不能授予权限。
 
 export class SkillRunner {
   private unregister: (() => void) | null = null;
@@ -65,8 +65,13 @@ export class SkillRunner {
    * 激活一个 skill:从磁盘读其 body 并替换参数。
    * 经 apps/core 的 ISkillRunner adapter 接到 `SkillCall` 工具。
    */
+  async activate(name: string, args: string | undefined): Promise<ActivatedSkill> {
+    return this.store.activate(name, args);
+  }
+
+  /** 兼容管理端只渲染正文的调用。 */
   async render(name: string, args: string | undefined): Promise<string> {
-    return this.store.renderBody(name, args);
+    return (await this.activate(name, args)).content;
   }
 
   stop(): void {

@@ -635,10 +635,15 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
   const skillRunner    = new SkillRunner(skillStore, hooks);
   const skillInstaller = new SkillInstaller(skillStore);
   // Adapter: expose the SkillRunner as ISkillRunner for the skill_call tool.
-  // Reads the skill body lazily from disk and substitutes $ARGUMENTS — the
-  // calling LLM receives the instructions as the tool result and acts on them.
+  // 懒读正文并返回能力限制；Agent 负责应用限制，Skill 包不能直接修改权限。
   const skillBridge: ISkillRunner = {
-    run: async (skillName, args) => skillRunner.render(skillName, args),
+    run: async (skillName, args) => {
+      const activation = await skillRunner.activate(skillName, args);
+      return {
+        content: activation.content,
+        allowedToolPatterns: activation.allowedTools,
+      };
+    },
   };
 
   // ── Knowledge base ───────────────────────────────────────────────────────────

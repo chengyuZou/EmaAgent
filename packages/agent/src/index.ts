@@ -1,5 +1,10 @@
+// 这里统一导出 Agent 运行时、策略、循环状态和依赖接口。
 export { AgentEngine } from './engine.js';
 export { AgentPolicy } from './policy.js';
+export {
+  AgentToolCapabilityScope,
+  ToolCapabilityRestrictionError,
+} from './tool-capability-scope.js';
 export { SubagentSpawner } from './spawner.js';
 export type {
   AgentDeps,
