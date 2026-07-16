@@ -589,7 +589,7 @@ function McpMarketView({
   }, [active]);
 
   async function handleInstall(entry: McpMarketEntry): Promise<void> {
-    if (!entry.transport) return;
+    if (!entry.transport || !entry.installable || !entry.marketSourceId || !entry.marketSourceType) return;
     const cleanName = sanitizeServerName(entry.title || entry.name);
     const config: McpServerConfig = entry.transport === 'stdio'
       ? { type: 'stdio', command: entry.command ?? '', args: entry.args ?? [] }
@@ -598,7 +598,21 @@ function McpMarketView({
     try {
       // connect: false — many registry servers need env/keys or a local runtime;
       // save it disconnected and let the user connect from 「已配置」 afterwards.
-      await useMcpStore.getState().register(cleanName, config, entry.websiteUrl ?? entry.repository, false);
+      await useMcpStore.getState().register(
+        cleanName,
+        config,
+        entry.websiteUrl ?? entry.repository,
+        false,
+        {
+          sourceKind: 'market',
+          marketSourceId: entry.marketSourceId,
+          marketSourceType: entry.marketSourceType,
+          packageRegistry: entry.packageRegistry,
+          packageName: entry.packageName,
+          packageVersion: entry.packageVersion,
+          packageIntegrity: entry.packageIntegrity,
+        },
+      );
       showToast(`已添加 ${cleanName}，请在「已配置」补全环境后连接`, { variant: 'success' });
     } catch (err) {
       showToast(`添加失败: ${err instanceof Error ? err.message : String(err)}`, { variant: 'danger' });
@@ -648,7 +662,8 @@ function McpMarketView({
                 decorate="ema-card-decorate--circuit"
                 installed={installed}
                 installing={installing === entry.name}
-                installLabel="添加"
+                installDisabled={!entry.installable}
+                installLabel={entry.installable ? '添加' : '不可安装'}
                 installedLabel="已添加"
                 onInstall={() => void handleInstall(entry)}
               >
@@ -660,9 +675,14 @@ function McpMarketView({
                   {entry.transport && (
                     <Badge variant="neutral">{TRANSPORT_LABEL[entry.transport] ?? entry.transport}</Badge>
                   )}
+                  {entry.packageVersion && <Badge variant="success">已锁定包版本</Badge>}
+                  {!entry.installable && <Badge variant="warn">版本未锁定</Badge>}
                 </div>
                 {entry.description && (
                   <p className="text-xs text-[var(--ema-text-tertiary)] mt-1 line-clamp-2">{entry.description}</p>
+                )}
+                {entry.unavailableReason && (
+                  <p className="text-xs text-[var(--ema-warning)] mt-1">{entry.unavailableReason}</p>
                 )}
                 <p className="text-xs text-[var(--ema-text-tertiary)] mt-1 font-mono truncate opacity-60">
                   {entry.transport === 'stdio'

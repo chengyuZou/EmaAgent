@@ -11,6 +11,7 @@ import type {
   McpConnection,
   McpProbeResult,
   McpToolInfo,
+  McpInstallProvenance,
 } from './types.js';
 import { openConnection }                                from './connection.js';
 import type { OpenedConnection }                         from './connection.js';
@@ -204,8 +205,13 @@ export class McpRegistry {
 
   // ── 服务器 CRUD(委托 store)─────────────────────────────────────────────
 
-  register(name: string, config: McpServerConfig, sourceUrl?: string): string {
-    return this.store.register(name, config, sourceUrl);
+  register(
+    name: string,
+    config: McpServerConfig,
+    sourceUrl?: string,
+    provenance?: McpInstallProvenance,
+  ): string {
+    return this.store.register(name, config, sourceUrl, provenance);
   }
 
   setEnabled(name: string, enabled: boolean): void {

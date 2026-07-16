@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { mcpApi, type McpServerConfig, type McpServerRecord, type McpConnection, type McpProbeResult, type McpImportResult, type McpMarketEntry } from '../api/mcp.js';
+import { mcpApi, type McpServerConfig, type McpServerRecord, type McpConnection, type McpProbeResult, type McpImportResult, type McpMarketEntry, type McpInstallProvenance } from '../api/mcp.js';
 
 export type { McpServerConfig, McpServerRecord, McpConnection, McpProbeResult, McpImportResult, McpMarketEntry };
 
@@ -29,7 +29,7 @@ export interface McpStoreState {
    * `connect: false` saves it disconnected (market installs needing env first).
    * Returns the connection status from the registration attempt.
    */
-  register(name: string, config: McpServerConfig, sourceUrl?: string, connect?: boolean): Promise<McpConnection>;
+  register(name: string, config: McpServerConfig, sourceUrl?: string, connect?: boolean, provenance?: McpInstallProvenance): Promise<McpConnection>;
 
   /** Enable a server (persists to DB + attempts reconnect). */
   enable(name: string): Promise<void>;
@@ -90,9 +90,9 @@ export const useMcpStore = create<McpStoreState>((set, get) => ({
     }
   },
 
-  async register(name, config, sourceUrl, connect = true) {
+  async register(name, config, sourceUrl, connect = true, provenance) {
     try {
-      const { connection } = await mcpApi.register(name, config, sourceUrl, connect);
+      const { connection } = await mcpApi.register(name, config, sourceUrl, connect, provenance);
       await get().refresh();
       return connection;
     } catch (err: unknown) {

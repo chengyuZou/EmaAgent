@@ -1,7 +1,11 @@
 // 这里提供 MCP 市场浏览, 配置管理, 连接和工具发现 API.
 import { Hono }                from 'hono';
 import { z }                   from 'zod';
-import { McpServerConfigSchema, parseImportedMcpServers } from '@ema-agent/mcp';
+import {
+  McpInstallProvenanceSchema,
+  McpServerConfigSchema,
+  parseImportedMcpServers,
+} from '@ema-agent/mcp';
 import { mergeByName }         from '@ema-agent/marketplace';
 import type { McpMarketEntry } from '@ema-agent/mcp';
 import type { AppBindings }    from '../wiring/index.js';
@@ -22,6 +26,7 @@ const registerSchema = z.object({
   name:      z.string().min(1).max(100),
   config:    McpServerConfigSchema,
   sourceUrl: z.string().url().optional(),
+  provenance: McpInstallProvenanceSchema.optional(),
   // Market installs save the entry without connecting — many servers need env
   // vars / API keys / a local npx-uvx runtime before they can start.
   connect:   z.boolean().default(true),
@@ -53,7 +58,14 @@ export function createMcpRouter(bindings: AppBindings) {
         c.req.raw.signal,
       );
       // 跨源按 name 去重,sortOrder 小的优先(底座 mergeByName 保策略一致)
-      const servers = mergeByName(results);
+      const servers = mergeByName(results.map((result) => ({
+        ...result,
+        entries: result.entries.map((entry) => ({
+          ...entry,
+          marketSourceId: result.sourceId,
+          marketSourceType: result.sourceType,
+        })),
+      })));
       return c.json({
         sources: results.map((r) => ({ id: r.sourceId, label: r.sourceLabel, type: r.sourceType, error: r.error, count: r.entries.length })),
         servers,
@@ -86,7 +98,7 @@ export function createMcpRouter(bindings: AppBindings) {
       return c.json({ error: String(err) }, 400);
     }
 
-    const id = mcpRegistry.register(body.name, body.config, body.sourceUrl);
+    const id = mcpRegistry.register(body.name, body.config, body.sourceUrl, body.provenance);
 
     if (!body.connect) {
       // Saved as a disconnected candidate — user connects after filling env/keys.
@@ -125,7 +137,12 @@ export function createMcpRouter(bindings: AppBindings) {
     const results = [];
     for (const { name, config } of servers) {
       try {
-        const id = mcpRegistry.register(name, config);
+        const id = mcpRegistry.register(
+          name,
+          config,
+          undefined,
+          { sourceKind: 'import' },
+        );
         try {
           await mcpRegistry.connectConfig(name, config);
           results.push({ name, id, ok: true });

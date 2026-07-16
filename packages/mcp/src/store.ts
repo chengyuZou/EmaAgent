@@ -1,9 +1,10 @@
 // 这里管理 MCP 服务器配置与工具缓存的持久化转换和运行时校验。
 import { randomUUID }            from 'node:crypto';
 import type { McpServersRepo }   from '@ema-agent/storage';
-import type { McpServerConfig, McpServerRecord, McpToolInfo } from './types.js';
-import { McpServerConfigSchema, McpToolInfoListSchema } from './types.js';
+import type { McpInstallProvenance, McpServerConfig, McpServerRecord, McpToolInfo } from './types.js';
+import { McpInstallProvenanceSchema, McpServerConfigSchema, McpToolInfoListSchema } from './types.js';
 import { McpServerNotFoundError, McpUnsupportedTransportError } from './errors.js';
+import { buildLockedPackageLaunch } from './market/package-spec.js';
 
 // ── McpServerStore ────────────────────────────────────────────────────────────
 //
@@ -18,12 +19,20 @@ import { McpServerNotFoundError, McpUnsupportedTransportError } from './errors.j
 export class McpServerStore {
   constructor(private readonly repo: McpServersRepo) {}
 
-  register(name: string, config: McpServerConfig, sourceUrl?: string): string {
+  register(
+    name: string,
+    config: McpServerConfig,
+    sourceUrl?: string,
+    provenance: McpInstallProvenance = { sourceKind: 'manual' },
+  ): string {
+    const trustedProvenance = McpInstallProvenanceSchema.parse(provenance);
+    assertMarketPackageLock(config, trustedProvenance);
     const existing = this.repo.findByName(name);
     if (existing) {
       this.repo.update(existing.id, {
         configJson: JSON.stringify(config),
         sourceUrl:  sourceUrl ?? null,
+        ...provenancePatch(trustedProvenance),
       });
       return existing.id;
     }
@@ -32,6 +41,13 @@ export class McpServerStore {
       id,
       name,
       source_url:   sourceUrl ?? null,
+      install_source: trustedProvenance.sourceKind,
+      market_source_id: trustedProvenance.marketSourceId ?? null,
+      market_source_type: trustedProvenance.marketSourceType ?? null,
+      package_registry: trustedProvenance.packageRegistry ?? null,
+      package_name: trustedProvenance.packageName ?? null,
+      package_version: trustedProvenance.packageVersion ?? null,
+      package_integrity: trustedProvenance.packageIntegrity ?? null,
       config_json:  JSON.stringify(config),
       tools_cache:  null,
       cached_at:    0,
@@ -77,6 +93,10 @@ export class McpServerStore {
 
   private rowToRecord(row: {
     id: string; name: string; source_url: string | null;
+    install_source?: 'manual' | 'import' | 'market';
+    market_source_id?: string | null; market_source_type?: string | null;
+    package_registry?: string | null; package_name?: string | null;
+    package_version?: string | null; package_integrity?: string | null;
     config_json: string; tools_cache?: string | null; cached_at?: number;
     enabled: number; installed_at: number;
   }): McpServerRecord {
@@ -99,10 +119,25 @@ export class McpServerStore {
         cachedTools = undefined;
       }
     }
+    const parsedProvenance = McpInstallProvenanceSchema.safeParse({
+      sourceKind: row.install_source ?? 'manual',
+      ...(row.market_source_id ? { marketSourceId: row.market_source_id } : {}),
+      ...(row.market_source_type ? { marketSourceType: row.market_source_type } : {}),
+      ...(row.package_registry === 'npm' || row.package_registry === 'pypi'
+        ? { packageRegistry: row.package_registry }
+        : {}),
+      ...(row.package_name ? { packageName: row.package_name } : {}),
+      ...(row.package_version ? { packageVersion: row.package_version } : {}),
+      ...(row.package_integrity ? { packageIntegrity: row.package_integrity } : {}),
+    });
     return {
       id:          row.id,
       name:        row.name,
       sourceUrl:   row.source_url ?? undefined,
+      // 损坏或旧版不完整 provenance 降级为 manual，绝不虚报“市场版本已锁定”。
+      provenance: parsedProvenance.success
+        ? parsedProvenance.data
+        : { sourceKind: 'manual' },
       config:      McpServerConfigSchema.parse(rawConfig),
       cachedTools,
       cachedAt:    row.cached_at ?? 0,
@@ -110,4 +145,45 @@ export class McpServerStore {
       installedAt: row.installed_at,
     };
   }
+}
+
+function provenancePatch(provenance: McpInstallProvenance) {
+  return {
+    installSource: provenance.sourceKind,
+    marketSourceId: provenance.marketSourceId ?? null,
+    marketSourceType: provenance.marketSourceType ?? null,
+    packageRegistry: provenance.packageRegistry ?? null,
+    packageName: provenance.packageName ?? null,
+    packageVersion: provenance.packageVersion ?? null,
+    packageIntegrity: provenance.packageIntegrity ?? null,
+  };
+}
+
+function assertMarketPackageLock(
+  config: McpServerConfig,
+  provenance: McpInstallProvenance,
+): void {
+  if (provenance.sourceKind !== 'market' || config.type !== 'stdio') return;
+  const command = config.command.replace(/\\/g, '/').split('/').pop()?.toLowerCase();
+  if (command !== 'npx' && command !== 'npx.cmd' && command !== 'uvx' && command !== 'uvx.exe') {
+    return;
+  }
+  if (!provenance.packageRegistry || !provenance.packageName || !provenance.packageVersion) {
+    throw new Error('Market package MCP config requires explicit registry, package name and exact version');
+  }
+  const lockedLaunch = buildLockedPackageLaunch(
+    provenance.packageRegistry,
+    provenance.packageName,
+    provenance.packageVersion,
+  );
+  if (!lockedLaunch) {
+    throw new Error('Market package MCP config requires a valid package name and exact version');
+  }
+  if (!command.startsWith(lockedLaunch.command) || !sameStrings(config.args, lockedLaunch.args)) {
+    throw new Error('Market package MCP launch config does not match its locked package provenance');
+  }
+}
+
+function sameStrings(left: readonly string[], right: readonly string[]): boolean {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
 }

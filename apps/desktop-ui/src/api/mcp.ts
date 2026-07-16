@@ -8,9 +8,17 @@ import type {
   McpConnection,
   McpToolInfo,
   McpProbeResult,
+  McpInstallProvenance,
 } from '@ema-agent/mcp';
 
-export type { McpServerConfig, McpServerRecord, McpConnection, McpToolInfo, McpProbeResult };
+export type {
+  McpServerConfig,
+  McpServerRecord,
+  McpConnection,
+  McpToolInfo,
+  McpProbeResult,
+  McpInstallProvenance,
+};
 
 export interface McpImportResult {
   name:          string;
@@ -31,6 +39,14 @@ export interface McpMarketEntry {
   url?:         string;
   command?:     string;
   args?:        string[];
+  installable:  boolean;
+  unavailableReason?: string;
+  marketSourceId?: string;
+  marketSourceType?: string;
+  packageRegistry?: 'npm' | 'pypi';
+  packageName?: string;
+  packageVersion?: string;
+  packageIntegrity?: string;
 }
 
 export interface MarketSourceMeta {
@@ -58,10 +74,16 @@ export const mcpApi = {
   },
 
   /** POST /api/mcp/servers. `connect: false` saves without connecting (market installs). */
-  async register(name: string, config: McpServerConfig, sourceUrl?: string, connect = true): Promise<{ id: string; connection: McpConnection }> {
+  async register(
+    name: string,
+    config: McpServerConfig,
+    sourceUrl?: string,
+    connect = true,
+    provenance?: McpInstallProvenance,
+  ): Promise<{ id: string; connection: McpConnection }> {
     return sidecarClient.request<{ id: string; connection: McpConnection }>('/api/mcp/servers', {
       method: 'POST',
-      json: { name, config, sourceUrl, connect },
+      json: { name, config, sourceUrl, connect, provenance },
     });
   },
 

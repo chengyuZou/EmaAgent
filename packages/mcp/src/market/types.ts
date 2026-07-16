@@ -14,6 +14,15 @@ export interface McpMarketEntry {
   url?:         string;
   command?:     string;
   args?:        string[];
+  /** false 时只展示，后端没有足够信息生成不可漂移的安装配置。 */
+  installable:  boolean;
+  unavailableReason?: string;
+  marketSourceId?:   string;
+  marketSourceType?: string;
+  packageRegistry?:  'npm' | 'pypi';
+  packageName?:      string;
+  packageVersion?:   string;
+  packageIntegrity?: string;
 }
 
 // ── 各 source type 的 config 结构(存 market_sources.config JSON)───────────────
@@ -46,6 +55,10 @@ export interface McpJsonIndexEntry {
   url?:        string;
   command?:    string;
   args?:       string[];
+  packageRegistry?: 'npm' | 'pypi';
+  packageName?: string;
+  packageVersion?: string;
+  packageIntegrity?: string;
 }
 
 export interface McpJsonIndex {

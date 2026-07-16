@@ -31,6 +31,36 @@ export type McpStdioConfig  = z.infer<typeof McpStdioConfigSchema>;
 export type McpHttpConfig   = z.infer<typeof McpHttpConfigSchema>;
 export type McpServerConfig = z.infer<typeof McpServerConfigSchema>;
 
+export const McpInstallProvenanceSchema = z.object({
+  sourceKind: z.enum(['manual', 'import', 'market']),
+  marketSourceId: z.string().min(1).max(200).optional(),
+  marketSourceType: z.string().min(1).max(100).optional(),
+  packageRegistry: z.enum(['npm', 'pypi']).optional(),
+  packageName: z.string().min(1).max(300).optional(),
+  packageVersion: z.string().min(1).max(128).optional(),
+  packageIntegrity: z.string().min(1).max(500).optional(),
+}).superRefine((value, context) => {
+  if (value.sourceKind === 'market' && (!value.marketSourceId || !value.marketSourceType)) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Market MCP installs require marketSourceId and marketSourceType',
+    });
+  }
+  const packageFields = [value.packageRegistry, value.packageName, value.packageVersion];
+  const presentPackageFields = packageFields.filter((field) => field !== undefined).length;
+  if (
+    (presentPackageFields !== 0 && presentPackageFields !== packageFields.length)
+    || (value.packageIntegrity !== undefined && presentPackageFields !== packageFields.length)
+  ) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'MCP package provenance requires registry, name and exact version together',
+    });
+  }
+});
+
+export type McpInstallProvenance = z.infer<typeof McpInstallProvenanceSchema>;
+
 /** 一次 stdio 子进程启动的完整、不可变授权意图。 */
 export interface McpStdioLaunchIntent {
   readonly operation: 'connect' | 'probe';
@@ -48,6 +78,7 @@ export interface McpServerRecord {
   id:          string;
   name:        string;           // 用户可见别名
   sourceUrl?:  string;           // mcp.so 页面 URL(可选)
+  provenance:  McpInstallProvenance;
   config:      McpServerConfig;  // 解析后的传输配置
   /** 最近一次成功 listTools 的工具 - 启动时不连接即可 priming 注册表,
    *  并在服务器离线时展示工具。 */

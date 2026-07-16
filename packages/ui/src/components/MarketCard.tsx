@@ -14,6 +14,7 @@ export interface MarketCardProps {
   index?:          number;
   installed:       boolean;
   installing?:     boolean;
+  installDisabled?: boolean;
   installLabel?:   string;
   installedLabel?: string;
   onInstall:       () => void;
@@ -21,7 +22,7 @@ export interface MarketCardProps {
   children:        ReactNode;
 }
 
-export function MarketCard({ decorate, index, installed, installing, installLabel = '安装', installedLabel = '已安装', onInstall, className, children }: MarketCardProps): JSX.Element {
+export function MarketCard({ decorate, index, installed, installing, installDisabled = false, installLabel = '安装', installedLabel = '已安装', onInstall, className, children }: MarketCardProps): JSX.Element {
   return (
     <div
       className={cn(
@@ -38,7 +39,7 @@ export function MarketCard({ decorate, index, installed, installing, installLabe
           {installed ? (
             <Badge variant="success">{installedLabel}</Badge>
           ) : (
-            <Button variant="secondary" size="sm" loading={installing} disabled={installing} onClick={onInstall}>
+            <Button variant="secondary" size="sm" loading={installing} disabled={installing || installDisabled} onClick={onInstall}>
               {installLabel}
             </Button>
           )}

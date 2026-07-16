@@ -2,6 +2,7 @@
 import { fetchJson } from '@ema-agent/marketplace';
 import type { MarketSourceRecord, MarketSourceTypeSchema } from '@ema-agent/marketplace';
 import type { McpJsonIndex, McpJsonIndexConfig, McpJsonIndexEntry, McpMarketEntry } from '../types.js';
+import { buildLockedPackageLaunch } from '../package-spec.js';
 
 // ── json-index source type ────────────────────────────────────────────────────
 //
@@ -35,6 +36,12 @@ function toMarketEntry(raw: McpJsonIndexEntry): McpMarketEntry | null {
   if (!raw.name) return null;
   const transport = inferTransport(raw);
   if (transport === null) return null;
+  const lockedLaunch = buildLockedPackageLaunch(
+    raw.packageRegistry,
+    raw.packageName,
+    raw.packageVersion,
+  );
+  const packageManaged = raw.command === 'npx' || raw.command === 'uvx' || raw.packageRegistry !== undefined;
   return {
     name:        raw.name,
     title:       raw.title,
@@ -44,8 +51,16 @@ function toMarketEntry(raw: McpJsonIndexEntry): McpMarketEntry | null {
     websiteUrl:  raw.websiteUrl,
     transport,
     url:         raw.url,
-    command:     raw.command,
-    args:        raw.args,
+    command:     lockedLaunch?.command ?? raw.command,
+    args:        lockedLaunch?.args ?? raw.args,
+    installable: transport === 'http' || !packageManaged || lockedLaunch !== null,
+    ...(packageManaged && !lockedLaunch
+      ? { unavailableReason: '包启动配置没有合法的精确版本，已阻止未锁定安装' }
+      : {}),
+    packageRegistry: lockedLaunch?.registry,
+    packageName: lockedLaunch?.packageName,
+    packageVersion: lockedLaunch?.packageVersion,
+    packageIntegrity: raw.packageIntegrity,
   };
 }
 

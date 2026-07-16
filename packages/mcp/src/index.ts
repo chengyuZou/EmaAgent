@@ -8,6 +8,7 @@ export {
   McpServerConfigSchema,
   McpStdioConfigSchema,
   McpHttpConfigSchema,
+  McpInstallProvenanceSchema,
   buildMcpToolName,
 }                                    from './types.js';
 export type {
@@ -16,6 +17,7 @@ export type {
   McpStdioConfig,
   McpHttpConfig,
   McpServerRecord,
+  McpInstallProvenance,
   McpConnection,
   McpConnectionStatus,
   McpProbeResult,
