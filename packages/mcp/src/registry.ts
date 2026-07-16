@@ -17,11 +17,20 @@ import { discoverServerTools, buildMcpBuiltTool }       from './discovery.js';
 import { callMcpTool }                                   from './execution.js';
 import {
   McpServerNotFoundError,
+  McpConnectionSupersededError,
   McpStdioPermissionError,
   McpTimeoutError,
 } from './errors.js';
 
 const TOOL_DISCOVERY_TIMEOUT_MS = 15_000;
+
+interface McpServerRuntime {
+  generation: number;
+  configKey?: string;
+  info: McpConnection;
+  opened?: OpenedConnection;
+  connectTask?: Promise<McpConnection>;
+}
 
 // ── McpRegistry ───────────────────────────────────────────────────────────────
 
@@ -37,7 +46,8 @@ export type McpStdioPermissionGate = (
 ) => Promise<boolean>;
 
 export class McpRegistry {
-  private connections = new Map<string, OpenedConnection & { info: McpConnection }>();
+  /** 每个 Server 只有一个生命周期槽，generation 阻止迟到任务复活旧连接。 */
+  private runtimes = new Map<string, McpServerRuntime>();
   /** 从缓存注册的工具(服务器尚未连接)。按服务器名索引。 */
   private primed = new Map<string, McpToolInfo[]>();
 
@@ -62,41 +72,19 @@ export class McpRegistry {
     return this.connectConfig(serverName, record.config);
   }
 
-  async connectConfig(serverName: string, config: McpServerConfig): Promise<McpConnection> {
-    const authorizedConfig = await this.authorizeLaunch('connect', serverName, config);
+  connectConfig(serverName: string, config: McpServerConfig): Promise<McpConnection> {
+    const runtime = this.runtimeFor(serverName);
+    const configKey = JSON.stringify(config);
 
-    await this.disconnect(serverName);
-
-    const opened = await openConnection(serverName, authorizedConfig);
-    let retained = false;
-    try {
-      const tools = await withTimeout(
-        discoverServerTools(serverName, opened.client),
-        TOOL_DISCOVERY_TIMEOUT_MS,
-        () => new McpTimeoutError(serverName, 'tool discovery', TOOL_DISCOVERY_TIMEOUT_MS),
-      );
-      const info: McpConnection = {
-        serverName,
-        status:      'connected',
-        tools,
-        connectedAt: Date.now(),
-      };
-
-      this.toolRegistry.registerMcpBatch(toRegistrations(tools, this));
-      this.connections.set(serverName, { ...opened, info });
-      retained = true;
-
-      // 持久化实时工具列表,使下次启动可不连接即 priming 注册表(快速/离线)。
-      // 尽力而为 - 缓存失败不能破坏 connect。
-      try { this.store.cacheTools(serverName, tools); } catch { /* ignore */ }
-
-      return info;
-    } finally {
-      // 只有成功写入 connections 后,transport 生命周期才移交给 disconnect()。
-      if (!retained) {
-        try { await opened.cleanup(); } catch { /* ignore cleanup failure */ }
+    // 相同配置的启动、手动连接和首次工具调用共享同一条连接流水线。
+    if (runtime.configKey === configKey) {
+      if (runtime.connectTask) return runtime.connectTask;
+      if (runtime.opened && runtime.info.status === 'connected') {
+        return Promise.resolve(copyConnection(runtime.info));
       }
     }
+
+    return this.startConnection(serverName, config, configKey, runtime);
   }
 
   /**
@@ -109,7 +97,8 @@ export class McpRegistry {
     const pending = new Map<string, McpToolInfo[]>();
     for (const record of this.store.listEnabled()) {
       if (record.config.type === 'stdio' && !this.stdioEnabled) continue;
-      if (this.connections.has(record.name)) continue;          // 已在线
+      const runtime = this.runtimes.get(record.name);
+      if (runtime?.opened || runtime?.connectTask) continue;    // 已在线或正在连接
       const tools = record.cachedTools;
       if (!tools || tools.length === 0) continue;
       registrations.push(...toRegistrations(tools, this));
@@ -117,11 +106,26 @@ export class McpRegistry {
     }
 
     this.toolRegistry.registerMcpBatch(registrations);
-    for (const [serverName, tools] of pending) this.primed.set(serverName, tools);
+    for (const [serverName, tools] of pending) {
+      this.primed.set(serverName, tools);
+      const runtime = this.runtimeFor(serverName);
+      if (runtime.info.status === 'disconnected') {
+        runtime.info = connectionInfo(serverName, 'disconnected', tools);
+      }
+    }
     return registrations.length;
   }
 
   async disconnect(serverName: string): Promise<void> {
+    const runtime = this.runtimeFor(serverName);
+    runtime.generation += 1;
+    const opened = runtime.opened;
+    const liveTools = runtime.info.status === 'connected' ? runtime.info.tools : [];
+    runtime.opened = undefined;
+    runtime.connectTask = undefined;
+    runtime.configKey = undefined;
+    runtime.info = connectionInfo(serverName, 'disconnected', []);
+
     // 注销缓存 primed 的工具(无实时连接时注册的)。
     const primedTools = this.primed.get(serverName);
     if (primedTools) {
@@ -131,19 +135,17 @@ export class McpRegistry {
       this.primed.delete(serverName);
     }
 
-    const conn = this.connections.get(serverName);
-    if (!conn) return;
-
-    for (const tool of conn.info.tools) {
-      this.toolRegistry.unregisterMcp(tool.qualifiedName, ownerOf(tool));
-    }
-
-    try { await conn.cleanup(); } catch { /* ignore */ }
-    this.connections.delete(serverName);
+    unregisterTools(this.toolRegistry, liveTools);
+    if (opened) await cleanupQuietly(opened);
   }
 
   async disconnectAll(): Promise<void> {
-    await Promise.all([...this.connections.keys()].map((n) => this.disconnect(n)));
+    const pendingTasks = [...this.runtimes.values()]
+      .map((runtime) => runtime.connectTask)
+      .filter((task): task is Promise<McpConnection> => task !== undefined);
+    const names = new Set([...this.runtimes.keys(), ...this.primed.keys()]);
+    await Promise.all([...names].map((name) => this.disconnect(name)));
+    await Promise.allSettled(pendingTasks);
   }
 
   // ── 工具调用 ─────────────────────────────────────────────────────────────
@@ -154,13 +156,13 @@ export class McpRegistry {
     args:       Record<string, unknown>,
     signal?:    AbortSignal,
   ): Promise<unknown> {
-    let conn = this.connections.get(serverName);
+    let conn = this.runtimes.get(serverName)?.opened;
     // 懒连接:工具可能从缓存 primed(可见但未连接)。首次实际调用时开 transport。
-    if (!conn || conn.info.status !== 'connected') {
+    if (!conn) {
       await this.connect(serverName);                 // throws if server unknown / connect fails
-      conn = this.connections.get(serverName);
+      conn = this.runtimes.get(serverName)?.opened;
     }
-    if (!conn || conn.info.status !== 'connected') {
+    if (!conn) {
       throw new McpServerNotFoundError(`${serverName} (not connected)`);
     }
     return callMcpTool({ client: conn.client, serverName, toolName, args, signal });
@@ -169,15 +171,16 @@ export class McpRegistry {
   // ── 自省 ─────────────────────────────────────────────────────────────────
 
   getConnection(serverName: string): McpConnection | null {
-    return this.connections.get(serverName)?.info ?? null;
+    const info = this.runtimes.get(serverName)?.info;
+    return info ? copyConnection(info) : null;
   }
 
   getAllConnections(): McpConnection[] {
-    return [...this.connections.values()].map((c) => c.info);
+    return [...this.runtimes.values()].map((runtime) => copyConnection(runtime.info));
   }
 
   getTools(serverName: string): McpToolInfo[] {
-    return this.connections.get(serverName)?.info.tools ?? [];
+    return [...(this.runtimes.get(serverName)?.info.tools ?? [])];
   }
 
   // ── 服务器 CRUD(委托 store)─────────────────────────────────────────────
@@ -263,6 +266,113 @@ export class McpRegistry {
     }
     return snapshot;
   }
+
+  private runtimeFor(serverName: string): McpServerRuntime {
+    let runtime = this.runtimes.get(serverName);
+    if (!runtime) {
+      runtime = {
+        generation: 0,
+        info: connectionInfo(serverName, 'disconnected', this.primed.get(serverName) ?? []),
+      };
+      this.runtimes.set(serverName, runtime);
+    }
+    return runtime;
+  }
+
+  private startConnection(
+    serverName: string,
+    config: McpServerConfig,
+    configKey: string,
+    runtime: McpServerRuntime,
+  ): Promise<McpConnection> {
+    runtime.generation += 1;
+    const generation = runtime.generation;
+    const previous = runtime.opened;
+    const previousTools = runtime.info.status === 'connected' ? runtime.info.tools : [];
+
+    runtime.opened = undefined;
+    runtime.configKey = configKey;
+    runtime.info = connectionInfo(serverName, 'connecting', this.primed.get(serverName) ?? []);
+    unregisterTools(this.toolRegistry, previousTools);
+
+    const task = this.runConnection(serverName, config, runtime, generation, previous);
+    runtime.connectTask = task;
+    return task;
+  }
+
+  private async runConnection(
+    serverName: string,
+    config: McpServerConfig,
+    runtime: McpServerRuntime,
+    generation: number,
+    previous?: OpenedConnection,
+  ): Promise<McpConnection> {
+    let opened: OpenedConnection | undefined;
+    let retained = false;
+    try {
+      if (previous) await cleanupQuietly(previous);
+      this.assertCurrent(serverName, runtime, generation);
+
+      const authorizedConfig = await this.authorizeLaunch('connect', serverName, config);
+      this.assertCurrent(serverName, runtime, generation);
+
+      opened = await openConnection(serverName, authorizedConfig);
+      this.assertCurrent(serverName, runtime, generation);
+
+      const tools = await withTimeout(
+        discoverServerTools(serverName, opened.client),
+        TOOL_DISCOVERY_TIMEOUT_MS,
+        () => new McpTimeoutError(serverName, 'tool discovery', TOOL_DISCOVERY_TIMEOUT_MS),
+      );
+      this.assertCurrent(serverName, runtime, generation);
+
+      // 新批次先整体校验并提交，再移除缓存中已经消失的旧工具，避免半注册。
+      this.toolRegistry.registerMcpBatch(toRegistrations(tools, this));
+      const primedTools = this.primed.get(serverName) ?? [];
+      const liveNames = new Set(tools.map((tool) => tool.qualifiedName));
+      unregisterTools(
+        this.toolRegistry,
+        primedTools.filter((tool) => !liveNames.has(tool.qualifiedName)),
+      );
+      this.primed.delete(serverName);
+
+      const info = connectionInfo(serverName, 'connected', tools, undefined, Date.now());
+      runtime.info = info;
+      runtime.opened = opened;
+      retained = true;
+
+      // 工具缓存失败不能破坏已经建立的实时连接。
+      try { this.store.cacheTools(serverName, tools); } catch { /* ignore */ }
+      return copyConnection(info);
+    } catch (err) {
+      if (runtime.generation !== generation) {
+        throw err instanceof McpConnectionSupersededError
+          ? err
+          : new McpConnectionSupersededError(serverName);
+      }
+      const error = err instanceof Error ? err.message : String(err);
+      runtime.info = connectionInfo(
+        serverName,
+        'failed',
+        this.primed.get(serverName) ?? [],
+        error,
+      );
+      throw err;
+    } finally {
+      if (!retained && opened) await cleanupQuietly(opened);
+      if (runtime.generation === generation) runtime.connectTask = undefined;
+    }
+  }
+
+  private assertCurrent(
+    serverName: string,
+    runtime: McpServerRuntime,
+    generation: number,
+  ): void {
+    if (runtime.generation !== generation) {
+      throw new McpConnectionSupersededError(serverName);
+    }
+  }
 }
 
 function ownerOf(tool: McpToolInfo): McpToolOwner {
@@ -280,6 +390,36 @@ function toRegistrations(
     tool: buildMcpBuiltTool(tool, registry),
     owner: ownerOf(tool),
   }));
+}
+
+function unregisterTools(toolRegistry: ToolRegistry, tools: readonly McpToolInfo[]): void {
+  for (const tool of tools) {
+    toolRegistry.unregisterMcp(tool.qualifiedName, ownerOf(tool));
+  }
+}
+
+async function cleanupQuietly(connection: OpenedConnection): Promise<void> {
+  try { await connection.cleanup(); } catch { /* ignore cleanup failure */ }
+}
+
+function connectionInfo(
+  serverName: string,
+  status: McpConnection['status'],
+  tools: readonly McpToolInfo[],
+  error?: string,
+  connectedAt?: number,
+): McpConnection {
+  return {
+    serverName,
+    status,
+    tools: [...tools],
+    ...(error ? { error } : {}),
+    ...(connectedAt !== undefined ? { connectedAt } : {}),
+  };
+}
+
+function copyConnection(info: McpConnection): McpConnection {
+  return { ...info, tools: [...info.tools] };
 }
 
 function freezeStdioConfig(config: McpStdioConfig): McpStdioConfig {

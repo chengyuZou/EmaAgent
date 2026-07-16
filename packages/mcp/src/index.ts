@@ -26,6 +26,7 @@ export {
   McpToolCallError,
   McpTimeoutError,
   McpServerNotFoundError,
+  McpConnectionSupersededError,
   McpStdioPermissionError,
   McpUnsupportedTransportError,
 }                                    from './errors.js';

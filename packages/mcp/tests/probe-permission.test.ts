@@ -91,7 +91,7 @@ describe('MCP Probe stdio 权限与资源边界', () => {
     expect(Object.isFrozen(observed?.environment)).toBe(true);
   });
 
-  it('正式连接在工具发现失败时也会清理且不暴露半连接状态', async () => {
+  it('正式连接在工具发现失败时清理资源并公开失败状态', async () => {
     const cleanup = vi.fn(async () => undefined);
     mocks.openConnection.mockResolvedValue({ client: {}, cleanup });
     mocks.discoverServerTools.mockRejectedValue(new Error('connect discovery failed'));
@@ -103,7 +103,12 @@ describe('MCP Probe stdio 权限与资源边界', () => {
     })).rejects.toThrow('connect discovery failed');
 
     expect(cleanup).toHaveBeenCalledTimes(1);
-    expect(registry.getConnection('remote-connect')).toBeNull();
+    expect(registry.getConnection('remote-connect')).toMatchObject({
+      serverName: 'remote-connect',
+      status: 'failed',
+      tools: [],
+      error: 'connect discovery failed',
+    });
   });
 
   it('没有权限 Gate 时 stdio Probe 默认拒绝', async () => {

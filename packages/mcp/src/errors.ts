@@ -27,6 +27,14 @@ export class McpServerNotFoundError extends Error {
   }
 }
 
+/** 连接期间发生了断开或配置替换，旧任务不得再提交连接和工具。 */
+export class McpConnectionSupersededError extends Error {
+  constructor(serverName: string) {
+    super(`MCP server "${serverName}" connection was superseded by a newer lifecycle operation`);
+    this.name = 'McpConnectionSupersededError';
+  }
+}
+
 export class McpStdioPermissionError extends Error {
   constructor(
     public readonly operation: 'connect' | 'probe',
