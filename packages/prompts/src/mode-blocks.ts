@@ -1,14 +1,15 @@
+// 这里按 turn 模式（chat/narrative/agent）生成行为约束块，拼在角色块后面。
+
 import type { TurnMode } from '@ema-agent/contracts';
 
 export interface ModeBlockOpts {
-  /** The workspace root the agent is allowed to operate in. null/undefined = not set. */
+  /** Agent 允许操作的工作区根目录。null/undefined = 未设置。 */
   workspaceRoot?: string | null;
 }
 
 /**
- * Returns the mode-specific instruction block to append after the character block.
- * Keeps concerns clean: the character block owns persona + ACT vocab;
- * this block owns behavioural constraints for the current session mode.
+ * 返回模式专属的指令块，拼在角色块后面。
+ * 职责分明：角色块管人设 + ACT 词汇；本块管当前 session 模式的行为约束。
  */
 export function buildModeBlock(mode: TurnMode, opts: ModeBlockOpts = {}): string {
   switch (mode) {

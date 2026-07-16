@@ -1,3 +1,5 @@
+// 这里注册 conversation 层的 hook：narrative 模式下在 beforeLlm 并发检索各 timeline，逐条 emit 进度。
+
 import type { HookBus } from '@ema-agent/hook';
 import type { EmaStreamEvent, NarrativeTimelineRecall, SessionId } from '@ema-agent/contracts';
 import type { LlmMessage } from '@ema-agent/contracts';
@@ -10,15 +12,14 @@ interface NarrativeRecallContext {
 }
 
 /**
- * Register all conversation-layer hooks onto the provided bus.
- * Returns an unregister function (useful in tests).
+ * 把 conversation 层所有 hook 注册到给定总线。
+ * 返回反注册函数（测试有用）。
  *
- * Registered hooks:
- *   - `narrative:recall` (beforeLlm, priority 5)
- *     Fires only when mode=narrative. Queries each timeline independently and
- *     in parallel — each completion emits `narrative_timeline_complete`
- *     immediately so the frontend can update its per-timeline status block
- *     without waiting for slower timelines.
+ * 注册的 hook：
+ *   - `narrative:recall`（beforeLlm，优先级 5）
+ *     只在 mode=narrative 时触发。各 timeline 独立并行查询--每条完成立即
+ *     emit `narrative_timeline_complete`，前端不用等慢的 timeline 就能更新
+ *     每条 timeline 的状态块。
  */
 export function registerConversationHooks(bus: HookBus, deps: ConversationDeps): () => void {
   return bus.register(
@@ -39,9 +40,8 @@ export function registerConversationHooks(bus: HookBus, deps: ConversationDeps):
         });
         if (!recalled) return { kind: 'continue' };
 
-        // Inject narrative context as a user message immediately before the latest
-        // user turn. This leaves system prompt construction and memory recall to
-        // their own hooks; ctx.emit is only the current turn's event outlet.
+        // 把 narrative 上下文作为 user message 插到最新 user turn 之前。
+        // system prompt 构造和 memory 召回留给它们自己的 hook；ctx.emit 只是当前 turn 的事件出口。
         const msgs = ctx.payload.messages;
         const last = msgs[msgs.length - 1];
         if (!last) return { kind: 'continue' };
@@ -60,7 +60,7 @@ export function registerConversationHooks(bus: HookBus, deps: ConversationDeps):
           ctx.emit?.({
             type: 'system_warning',
             level: 'warn',
-            message: 'Narrative bridge unavailable — falling back to chat mode',
+            message: 'Narrative bridge unavailable - falling back to chat mode',
           });
           return { kind: 'continue' };
         }
@@ -114,7 +114,7 @@ async function recallNarrativeContext(
         args.emit?.({
           type: 'system_warning',
           level: 'warn',
-          message: `Timeline ${timeline} recall failed — excluded from context`,
+          message: `Timeline ${timeline} recall failed - excluded from context`,
         });
       }
     }),
@@ -136,7 +136,7 @@ async function recallNarrativeContext(
   return {
     message: {
       role: 'user',
-      content: `[NARRATIVE CONTEXT — do not quote verbatim; use as background]\n\n${sections}`,
+      content: `[NARRATIVE CONTEXT - do not quote verbatim; use as background]\n\n${sections}`,
     },
     timelines: recallTimelines,
   };

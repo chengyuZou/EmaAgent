@@ -1,3 +1,5 @@
+// 这里跑 chat/narrative 一次完整 turn：onTurnStart -> provider 解析 -> beforeLlm hook（含 narrative 召回）-> LLM 流式 -> 落盘 -> afterLlm/onTurnEnd。
+
 import { randomUUID } from 'node:crypto';
 import { asLlmCallId } from '@ema-agent/contracts';
 import type { EmaStreamEvent, ErrorCode, LlmMessage, AssistantBlock, UserBlock, MessageContentPart as LlmContentPart } from '@ema-agent/contracts';
@@ -11,14 +13,13 @@ import { historyToLlmMessages } from '@ema-agent/session';
 // ── ConversationEngine ────────────────────────────────────────────────────────
 
 /**
- * Handles chat and narrative turns via a single unified flow.
+ * 用一条统一流程处理 chat 和 narrative turn。
  *
- * Narrative-specific logic (RAG recall) lives entirely in the `narrative:recall`
- * beforeLlm hook registered by registerConversationHooks() — the engine itself
- * has zero mode branching.
+ * Narrative 专属逻辑（RAG 召回）全在 registerConversationHooks() 注册的
+ * `narrative:recall` beforeLlm hook 里--engine 本身没有 mode 分支。
  *
- * Transport-agnostic: returns AsyncIterable<EmaStreamEvent>.
- * Consumed by apps/core orchestrator (SSE) and future CLI (stdout).
+ * 与传输无关：返回 AsyncIterable<EmaStreamEvent>。
+ * 由 apps/core orchestrator（SSE）和未来 CLI（stdout）消费。
  */
 export class ConversationEngine {
   constructor(private readonly deps: ConversationDeps) {}
@@ -28,7 +29,7 @@ export class ConversationEngine {
   }
 }
 
-// ── Single unified turn flow ──────────────────────────────────────────────────
+// ── 单条统一 turn 流程 ──────────────────────────────────────────────────────────
 
 async function* runTurn(
   deps: ConversationDeps,
@@ -40,9 +41,8 @@ async function* runTurn(
   const turnId = turn.id;
   const mode = turn.mode;
 
-  // Bug #2: track whether the LLM stream finished normally so we can
-  // distinguish a genuine user abort (mid-stream) from a post-stream error
-  // where signal.aborted might coincidentally be true.
+  // Bug #2：记录 LLM 流是否正常结束，用来区分真正的用户中途 abort
+  // 和流结束后的错误（那时 signal.aborted 可能恰好为 true）。
   let llmStreamDone = false;
   const pendingHookEvents: EmaStreamEvent[] = [];
   const emitHookEvent = (event: EmaStreamEvent): void => {
@@ -88,9 +88,9 @@ async function* runTurn(
 
     yield { type: 'turn_started', sessionId: input.sessionId, turnId, mode };
 
-    // ── Provider resolution ──────────────────────────────────────────────────
-    // Prefer explicit (providerId, model) from the orchestrator (frontend picker
-    // or resolveLlmForTurn). Falls back to the first available LLM provider.
+    // ── Provider 解析 ──────────────────────────────────────────────────────────
+    // 优先用 orchestrator 给的显式 (providerId, model)（前端 picker 或
+    // resolveLlmForTurn）。没有就退回第一个可用 LLM provider。
     activePhase = 'provider';
     const providerId    = input.providerId ?? llm.firstProviderId();
     const resolvedModel = input.model
@@ -113,11 +113,11 @@ async function* runTurn(
       };
     }
 
-    // ── Context + user message ────────────────────────────────────────────────
+    // ── 上下文 + user 消息 ──────────────────────────────────────────────────────
     activePhase = 'provider';
     const history = session.loadHistory(input.sessionId);
 
-    // userBlocks: plain string for text-only, or LlmContentPart[] for multimodal
+    // userBlocks：纯文本用 string，多模态用 LlmContentPart[]
     const userBlocks: string | LlmContentPart[] =
       input.contentParts && input.contentParts.length > 0
         ? input.contentParts
@@ -148,7 +148,7 @@ async function* runTurn(
       turnId,
       sessionId: input.sessionId,
       role: 'user',
-      // LlmContentPart (= MessageContentPart) is a subtype of UserBlock — safe cast
+      // LlmContentPart（= MessageContentPart）是 UserBlock 的子类型，安全转型
       blocks: userBlocks as MessageBlocks,
     });
 
@@ -170,8 +170,8 @@ async function* runTurn(
       messages = await input.compactMessages([...messages]);
     }
 
-    // Warn about attachments the resolved provider can't handle.
-    // LlmRouter looks up the protocol internally — engine never needs to know it.
+    // 检查当前 provider 处理不了的附件并警告。
+    // LlmRouter 内部查协议--engine 不需要知道它。
     const partsToCheck = Array.isArray(userBlocks) ? userBlocks : [];
     if (partsToCheck.length > 0) {
       const issues = llm.warnUnsupportedParts(providerId, partsToCheck);
@@ -184,14 +184,12 @@ async function* runTurn(
       }
     }
 
-    // ── beforeLlm hook (concurrent drain) ────────────────────────────────────
-    // narrative:recall fires per-timeline queries in parallel and emits
-    // `narrative_timeline_complete` as each one finishes. We must yield each
-    // emitted event immediately — not buffer-then-drain — so the frontend sees
-    // progressive timeline completion instead of all results at once.
+    // ── beforeLlm hook（并发排空）──────────────────────────────────────────────
+    // narrative:recall 并发查各 timeline，每条完成就 emit
+    // `narrative_timeline_complete`。必须立即 yield 每个 emit 的事件--不能
+    // 缓冲后排空--前端才能看到逐条 timeline 完成而不是一次性全到。
     //
-    // Pattern: run trigger() as a background task, yield events as emit() is
-    // called, wait for the task to finish, then inspect the result.
+    // 模式：把 trigger() 当后台任务跑，emit() 时就 yield，等任务结束再看结果。
     activePhase = 'hook';
     const llmHookResult = yield* streamingBeforeLlm(hooks, {
       turnId,
@@ -235,7 +233,7 @@ async function* runTurn(
       });
     }
 
-    // ── LLM stream ────────────────────────────────────────────────────────────
+    // ── LLM 流 ────────────────────────────────────────────────────────────────
     let fullText = '';
     let inputTokens = 0;
     let outputTokens = 0;
@@ -313,11 +311,10 @@ async function* runTurn(
       }
     }
 
-    // Bug #2: mark stream done before any post-stream work so the catch block
-    // knows an abort here is not a mid-stream user stop.
+    // Bug #2：在任何流后工作之前标记流结束，这样 catch 块知道这里的 abort 不是流中用户停止。
     llmStreamDone = true;
 
-    // Flush scanner tail (model may have stopped mid-tag)
+    // 冲刷扫描器尾部（模型可能在标签中途停止）
     const { cleaned: tail } = emotion.flush(turnId, input.sessionId);
     if (tail) {
       fullText += tail;
@@ -325,7 +322,7 @@ async function* runTurn(
       yield { type: 'output_text_delta', sessionId: input.sessionId, blockIndex: lastTextBlockIndex, delta: tail };
     }
 
-    // ── Post-stream hooks + persist ───────────────────────────────────────────
+    // ── 流后 hook + 落盘 ───────────────────────────────────────────────────────
     activePhase = 'hook';
     await hooks.trigger('afterLlmComplete', {
       turnId,
@@ -353,9 +350,9 @@ async function* runTurn(
       turnId,
       sessionId: input.sessionId,
       role: 'assistant',
-      // Persist visible text and provider reasoning for UI/debug history.
-      // Replay to the next LLM call is handled by historyToLlmMessages(), which
-      // deliberately filters thinking/tool blocks out for provider safety.
+      // 持久化可见文本和 provider reasoning，供 UI/调试历史。
+      // 下一轮 LLM 调用的回灌由 historyToLlmMessages() 处理，它故意过滤掉
+      // thinking/tool block 以保 provider 安全。
       blocks: assistantBlocks as MessageBlocks,
     });
 
@@ -386,9 +383,8 @@ async function* runTurn(
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
 
-    // Bug #2: only treat as user abort if the LLM stream was still in progress.
-    // A post-stream error (hook failure, persist error) goes to failTurn even if
-    // signal happens to be aborted.
+    // Bug #2：只有 LLM 流还在进行时才当用户 abort。
+    // 流后错误（hook 失败、落盘失败）即使 signal 恰好 aborted 也走 failTurn。
     if (signal.aborted && !llmStreamDone) {
       await hooks.trigger('onTurnAbort', {
         turnId,
@@ -413,17 +409,15 @@ async function* runTurn(
 // ── streamingBeforeLlm ────────────────────────────────────────────────────────
 
 /**
- * Run the beforeLlm hook chain as a background task and yield emitted SSE
- * events immediately as they arrive — not after the whole chain finishes.
+ * 把 beforeLlm hook 链当后台任务跑，emit 的 SSE 事件一到就立即 yield--
+ * 不是等整条链结束才 yield。
  *
- * This is what enables per-timeline progressive rendering: the narrative:recall
- * hook emits `narrative_timeline_complete` as each queryOne() resolves, and
- * this function forwards each one to the SSE stream without waiting for the
- * slower timelines to finish.
+ * 这是逐条 timeline 渐进渲染的基础：narrative:recall hook 每条 queryOne()
+ * 完成就 emit `narrative_timeline_complete`，本函数把它直接转发到 SSE 流，
+ * 不等慢的 timeline。
  *
- * Usage:  const result = yield* streamingBeforeLlm(hooks, ctx);
- * `yield*` propagates emitted events to the outer generator and captures the
- * HookTriggerResult as the expression value.
+ * 用法：  const result = yield* streamingBeforeLlm(hooks, ctx);
+ * `yield*` 把 emit 的事件传给外层 generator，并把 HookTriggerResult 作为表达式值。
  */
 async function* streamingBeforeLlm(
   hooks: HookBus,
@@ -455,7 +449,7 @@ async function* streamingBeforeLlm(
   return result;
 }
 
-// ── History → LlmMessage conversion ──────────────────────────────────────────
+// ── History -> LlmMessage 转换 ──────────────────────────────────────────────────
 
 function buildAssistantBlocks(
   textByIndex: Map<number, string>,
@@ -487,4 +481,4 @@ function buildAssistantBlocks(
   return blockEntries.map(([, block]) => block);
 }
 
-// historyToLlmMessages is shared with AgentEngine — defined in @ema-agent/session.
+// historyToLlmMessages 与 AgentEngine 共享--定义在 @ema-agent/session。

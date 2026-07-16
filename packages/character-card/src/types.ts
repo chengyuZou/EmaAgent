@@ -1,14 +1,15 @@
-﻿import type { CharacterCardId } from '@ema-agent/contracts';
+// 这里放角色卡的基础类型：角色卡、卡输入、语音档案。
 
-// ── Voice profile ─────────────────────────────────────────────────────────────
-// Defined here (character-card package) rather than contracts because it's a
-// character-card domain type. Consumers outside this package import from
-// @ema-agent/character-card, not contracts.
+import type { CharacterCardId } from '@ema-agent/contracts';
+
+// ── 语音档案 ───────────────────────────────────────────────────────────────────
+// 定义在这里（character-card 包）而不是 contracts，因为它是 character-card 的
+// 领域类型。包外消费者从 @ema-agent/character-card 导入，不从 contracts。
 
 export interface CharacterRefAudio {
   id:           string;
   label:        string;
-  /** Profile-scoped relative path: <cardId>/<filename> */
+  /** 档案内相对路径：<cardId>/<filename> */
   refAudioPath: string;
   promptText:   string;
   promptLang:   string;
@@ -16,7 +17,7 @@ export interface CharacterRefAudio {
 
 export interface CharacterVoiceProfile {
   refAudios: CharacterRefAudio[];
-  /** Which refAudio is active. null = use first entry. */
+  /** 当前激活的 refAudio。null = 用第一条。 */
   primaryId: string | null;
 }
 
@@ -45,7 +46,7 @@ export interface CharacterCard {
 export interface CharacterCardInput {
   name:             string;
   version?:         string;
-  /** null = 显式清空(B-055:PATCH 传 null → storage SET NULL);undefined = 不更新。 */
+  /** null = 显式清空(B-055:PATCH 传 null -> storage SET NULL);undefined = 不更新。 */
   description?:     string | null;
   systemPrompt:     string;
   speechPatterns?:  string[];

@@ -1,15 +1,16 @@
+// 这里汇总所有内置角色卡种子，启动时 sidecar 遍历它幂等注册。
+
 /**
- * Built-in character card seeds.
+ * 内置角色卡种子。
  *
- * One file per built-in character. Add a new built-in by:
- *   1. Create `<id>-seed.ts` here with a `CharacterCardInput`
- *   2. Drop the character's resources into `apps/desktop/public/cards/<id>/`
- *      (live2d/ + voiceRefs/ + live2d/runtime-config.json)
- *   3. Push the seed into BUILTIN_CARDS below
+ * 每个内置角色一个文件。新增内置角色：
+ *   1. 在这里建 `<id>-seed.ts`，导出一个 `CharacterCardInput`
+ *   2. 把角色资源放进 `apps/desktop/public/cards/<id>/`
+ *      （live2d/ + voiceRefs/ + live2d/runtime-config.json）
+ *   3. 把种子 push 进下面的 BUILTIN_CARDS
  *
- * The sidecar auto-registers every entry in BUILTIN_CARDS at startup
- * (idempotent — skips ones already in the DB). No dead code: a new character
- * is just data + a push, no wiring changes.
+ * sidecar 启动时自动注册 BUILTIN_CARDS 里每条（幂等--已在 DB 的跳过）。
+ * 没有死代码：新角色就是数据 + 一次 push，无需改接线。
  */
 import type { CharacterCardInput } from '../types.js';
 import { EMA_CARD_INPUT, EMA_CARD_ID } from './ema-seed.js';
@@ -17,10 +18,10 @@ import { EMA_CARD_INPUT, EMA_CARD_ID } from './ema-seed.js';
 export { EMA_CARD_INPUT, EMA_CARD_ID };
 
 /**
- * All built-in character cards. The startup seeder iterates this list and
- * upserts each into character_cards + live2d_models (is_builtin=1).
+ * 所有内置角色卡。启动 seeder 遍历此列表，逐条 upsert 进
+ * character_cards + live2d_models（is_builtin=1）。
  */
 export const BUILTIN_CARDS: CharacterCardInput[] = [
   EMA_CARD_INPUT,
-  // Future built-in characters go here — just push the seed.
+  // 未来的内置角色放这里--push 种子即可。
 ];

@@ -1,3 +1,5 @@
+// 这里放 ConversationEngine 的依赖接口和单次运行的输入类型。
+
 import type { RequestDegradationNotice, SessionId, TurnMode } from '@ema-agent/contracts';
 import type { LlmRouter, LlmContentPart, LlmMessage, ThinkingMode } from '@ema-agent/llm';
 import type { SessionStore, Turn } from '@ema-agent/session';
@@ -6,12 +8,11 @@ import type { EmotionEngine } from '@ema-agent/emotion';
 import type { NarrativeClient } from '@ema-agent/narrative-client';
 import type { ModelBindingsRepo } from '@ema-agent/storage';
 
-// ── Dependency surface ────────────────────────────────────────────────────────
+// ── 依赖表面 ───────────────────────────────────────────────────────────────────
 
 /**
- * Everything ConversationEngine needs — a strict subset of AppBindings.
- * Both apps/core (Hono sidecar) and the future CLI can satisfy this interface
- * without pulling in HTTP-layer concerns.
+ * ConversationEngine 需要的全部依赖--AppBindings 的严格子集。
+ * apps/core（Hono sidecar）和未来的 CLI 都能满足这个接口，不用引入 HTTP 层概念。
  */
 export interface ConversationDeps {
   session:       SessionStore;
@@ -21,25 +22,25 @@ export interface ConversationDeps {
   narrative:     NarrativeClient;
 }
 
-// ── Run input ─────────────────────────────────────────────────────────────────
+// ── 运行输入 ───────────────────────────────────────────────────────────────────
 
 export interface ConversationRunInput {
-  /** Already-started turn (caller is responsible for session.startTurn). */
+  /** 已开始的 turn（调用方负责 session.startTurn）。 */
   turn:          Turn;
-  /** Abort signal wired from session.startTurn — fires on user Stop. */
+  /** 从 session.startTurn 接来的 abort signal，用户点 Stop 时触发。 */
   signal:        AbortSignal;
   sessionId:     SessionId;
-  /** 'chat' or 'narrative'; agent is handled by AgentEngine. */
+  /** 'chat' 或 'narrative'；agent 由 AgentEngine 处理。 */
   mode:          Exclude<TurnMode, 'agent'>;
   userInput:     string;
   contentParts?: LlmContentPart[];
-  /** provider_configs.id — resolved by orchestrator from request or legacy binding. */
+  /** provider_configs.id--由 orchestrator 从请求或旧绑定解析。 */
   providerId?:   string;
-  /** Model name — resolved by orchestrator from request or legacy binding. */
+  /** 模型名--由 orchestrator 从请求或旧绑定解析。 */
   model?:        string;
   /** 每次逻辑推理前压缩原始历史；由 Orchestrator 注入 Memory Facade。 */
   compactMessages?: (messages: LlmMessage[]) => Promise<LlmMessage[]>;
-  /** User-requested thinking mode — forwarded directly to LlmRequest. */
+  /** 用户请求的 thinking 模式，直接透传给 LlmRequest。 */
   thinking?:     ThinkingMode;
   /** Core 在 Engine 前完成的图片描述等降级，用结构化 SSE 告知前端。 */
   requestDegradations?: RequestDegradationNotice[];

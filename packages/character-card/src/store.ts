@@ -1,3 +1,5 @@
+// 这里是角色卡的 Facade：CRUD + 激活切换 + 启动种子 + 切卡事件广播。
+
 import type { Database, CharacterCardsRepo } from '@ema-agent/storage';
 import { CharacterCardsRepo as Repo } from '@ema-agent/storage';
 import type { CharacterCardId } from '@ema-agent/contracts';
@@ -6,23 +8,21 @@ import type { CharacterCard, CharacterCardInput } from './types.js';
 import { CharacterCardRepository } from './repository.js';
 import { EMA_CARD_ID, EMA_CARD_INPUT, BUILTIN_CARDS } from './seed/index.js';
 
-// ── Event listener types ─────────────────────────────────────────────────────
+// ── 事件监听器类型 ─────────────────────────────────────────────────────────────
 
 /**
- * Fires after the active card changes. `previous` is null only on first
- * activation (e.g. during ensureSeed). Subscribers re-initialise per-card
- * state:
+ * 激活卡变更后触发。`previous` 只在首次激活时（如 ensureSeed 期间）为 null。
+ * 订阅者重新初始化每张卡的状态：
  *
  *   emotion.updateVocabulary + emotion.reset
- *   stage.loadModel       (V1.5)
- *   tts.setReferenceAudio (V1.5)
+ *   stage.loadModel      （V1.5）
+ *   tts.setReferenceAudio（V1.5）
  *
- * NOT a HookBus — this is a fire-and-forget broadcast. Multiple subscribers
- * (emotion / stage / tts) each react independently; the store doesn't wait
- * for them and doesn't aggregate their results.
+ * 不是 HookBus--这是 fire-and-forget 广播。多个订阅者（emotion / stage / tts）
+ * 各自独立反应；store 不等它们，也不聚合结果。
  *
- * Listeners are called synchronously inside activate(); throwing handlers are
- * logged and swallowed so a buggy subscriber can't block the activation.
+ * 监听器在 activate() 内同步调用；抛错的 handler 会被记日志并吞掉，
+ * 这样一个有 bug 的订阅者不会卡住激活。
  */
 export type CardSwitchedListener = (
   next: CharacterCard,
@@ -38,11 +38,10 @@ export class CharacterCardStore {
     this.repository = new CharacterCardRepository(repo);
   }
 
-  // ── Event subscription ──────────────────────────────────────────────────────
+  // ── 事件订阅 ──────────────────────────────────────────────────────────────────
 
   /**
-   * Subscribe to active-card changes. Returns an unregister function for
-   * deterministic cleanup (tests, mode swaps, etc.).
+   * 订阅激活卡变更。返回反注册函数，便于确定性清理（测试、模式切换等）。
    */
   onSwitched(handler: CardSwitchedListener): () => void {
     this.switchedListeners.add(handler);
@@ -61,9 +60,8 @@ export class CharacterCardStore {
   }
 
   ensureSeed(): void {
-    // Seed ALL built-in cards (not just Ema). Each is inserted if missing.
-    // New built-in characters are added by pushing into BUILTIN_CARDS in
-    // seed/index.ts — no wiring changes needed here.
+    // 种子所有内置卡（不只 Ema）。每张缺失则插入。
+    // 新增内置角色只需在 seed/index.ts 的 BUILTIN_CARDS 里 push--这里不用改接线。
     for (const cardInput of BUILTIN_CARDS) {
       const cardId = asCharacterCardId(cardInput === EMA_CARD_INPUT ? EMA_CARD_ID : cardInput.name);
       if (!this.repository.findById(cardId)) {
@@ -71,7 +69,7 @@ export class CharacterCardStore {
       }
     }
 
-    // Activate Ema if no card is active yet.
+    // 没有激活卡时激活 Ema。
     const before = this.repository.findActive();
     if (!before) {
       const emaId = asCharacterCardId(EMA_CARD_ID);
@@ -83,7 +81,7 @@ export class CharacterCardStore {
 
   current(): CharacterCard {
     const card = this.repository.findActive();
-    if (!card) throw new Error('no active character card — call ensureSeed() at startup');
+    if (!card) throw new Error('no active character card - call ensureSeed() at startup');
     return card;
   }
 
@@ -103,8 +101,8 @@ export class CharacterCardStore {
     this.repository.activate(id);
     const after = this.repository.findActive() ?? target;
 
-    // Only emit when the active id actually changed. Re-activating the same
-    // card is a no-op — saves subscribers from spurious reset cycles.
+    // 只有激活 id 真的变了才 emit。重新激活同一张卡是 no-op--
+    // 省得订阅者跑多余的 reset 循环。
     if (!before || before.id !== after.id) {
       this.emitSwitched(after, before);
     }

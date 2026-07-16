@@ -1,26 +1,27 @@
+// 这里注册 prompts:buildSystem hook：在 beforeLlm 把 system prompt（角色卡 + 模式块）插到 messages[0]。
+
 import type { HookBus } from '@ema-agent/hook';
 import type { CharacterCardStore } from '@ema-agent/character-card';
 import { buildSystemPrompt } from './build.js';
 
-// ── Hook deps ────────────────────────────────────────────────────────────────
+// ── Hook 依赖 ──────────────────────────────────────────────────────────────────
 
 export interface PromptsHooksDeps {
   card: CharacterCardStore;
 }
 
-// ── Hook registration ────────────────────────────────────────────────────────
+// ── Hook 注册 ──────────────────────────────────────────────────────────────────
 
 /**
- * Register the `prompts:buildSystem` hook on the provided bus.
+ * 在给定总线上注册 `prompts:buildSystem` hook。
  *
- *   beforeLlm (priority 10): prepends a system-role message at messages[0]
- *   built from the currently-active character card + the turn's mode block.
+ *   beforeLlm（优先级 10）：用当前激活的角色卡 + turn 的模式块构造 system
+ *   角色消息，插到 messages[0]。
  *
- * Priority 10 places this BEFORE memory's beforeLlm hook (priority 20), so
- * by the time memory's compaction + recall runs, the system prompt is already
- * the first element of payload.messages.
+ * 优先级 10 让它排在 memory 的 beforeLlm hook（优先级 20）之前，这样
+ * memory 的压缩 + 召回跑的时候，system prompt 已经是 payload.messages 的第一个元素。
  *
- * Returns an unregister function for tests.
+ * 返回反注册函数供测试用。
  */
 export function registerPromptsHooks(
   bus: HookBus,
@@ -35,9 +36,8 @@ export function registerPromptsHooks(
 
       const systemPrompt = buildSystemPrompt(card, mode, { workspaceRoot });
 
-      // Prepend the system message if the messages array doesn't already
-      // start with one. (Defensive — callers that pre-seed messages with a
-      // system row are still supported.)
+      // messages 数组不是以 system 开头时，前面插一条 system 消息。
+      // （防御性--调用方预先塞了 system 行的也支持。）
       const messages = ctx.payload.messages;
       const stableSystem = {
         role: 'system' as const,

@@ -1,11 +1,13 @@
-﻿import { randomUUID } from 'node:crypto';
+// 这里把角色卡领域对象和数据库行互相转换，是 store 和 storage repo 之间的薄适配层。
+
+import { randomUUID } from 'node:crypto';
 import type { CharacterCardsRepo, CharacterCardRow } from '@ema-agent/storage';
 import { asCharacterCardId } from '@ema-agent/contracts';
 import type { CharacterCardId } from '@ema-agent/contracts';
 import type { CharacterCard, CharacterCardInput, CharacterVoiceProfile } from './types.js';
 import { emptyVoiceProfile } from './types.js';
 
-// ── Row -> Domain ────────────────────────────────────────────────────────────
+// ── 数据库行 -> 领域对象 ──────────────────────────────────────────────────────────
 
 function parseVoiceProfile(json: string): CharacterVoiceProfile {
   if (!json) return emptyVoiceProfile();
@@ -42,7 +44,7 @@ function fromRow(row: CharacterCardRow): CharacterCard {
 
 // ── CharacterCardRepository ──────────────────────────────────────────────────
 
-/** Thin domain adapter over CharacterCardsRepo — maps domain types -> DB rows. */
+/** CharacterCardsRepo 上的薄领域适配层--领域类型 <-> DB 行。 */
 export class CharacterCardRepository {
   constructor(private readonly repo: CharacterCardsRepo) {}
 
@@ -113,7 +115,7 @@ export class CharacterCardRepository {
     this.repo.activate(id, Date.now());
   }
 
-  /** Silently refuses to delete built-in cards (enforced by storage repo). */
+  /** 静默拒绝删除内置卡（由 storage repo 强制）。 */
   delete(id: CharacterCardId): void {
     this.repo.delete(id);
   }
