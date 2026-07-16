@@ -1,3 +1,4 @@
+// 这里持久化文件型 Skill 的可重建 SQL 索引.
 import type { SqliteDb } from '../database.js';
 
 // ── 原始 DB 行 ────────────────────────────────────────────────────────────────
@@ -56,12 +57,29 @@ export class SkillsRepo {
     `).run(row);
   }
 
-  setEnabled(name: string, enabled: number): void {
-    this.db.prepare('UPDATE skills SET enabled = ? WHERE name = ?').run(enabled, name);
+  /** 在一个 SQL UPDATE 中同步修改名称, 路径和 manifest 索引字段. */
+  replaceByName(oldName: string, row: SkillRow): void {
+    const result = this.db.prepare(`
+      UPDATE skills SET
+        name          = @name,
+        version       = @version,
+        description   = @description,
+        arg_hint      = @arg_hint,
+        dir_path      = @dir_path,
+        source        = @source,
+        source_url    = @source_url,
+        sha256        = @sha256,
+        size_bytes    = @size_bytes,
+        enabled       = @enabled,
+        content_mtime = @content_mtime,
+        installed_at  = @installed_at
+      WHERE name = @old_name
+    `).run({ ...row, old_name: oldName });
+    if (result.changes !== 1) throw new Error(`Skill index row not found: ${oldName}`);
   }
 
-  rename(oldName: string, newName: string): void {
-    this.db.prepare('UPDATE skills SET name = ? WHERE name = ?').run(newName, oldName);
+  setEnabled(name: string, enabled: number): void {
+    this.db.prepare('UPDATE skills SET enabled = ? WHERE name = ?').run(enabled, name);
   }
 
   setDirPath(name: string, dirPath: string): void {

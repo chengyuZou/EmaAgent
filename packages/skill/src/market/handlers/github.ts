@@ -1,3 +1,4 @@
+// 这里从 GitHub 仓库文件树中发现可安装的 Skill 条目.
 import { fetchGithubTree } from '@ema-agent/marketplace';
 import type { MarketSourceRecord, MarketSourceTypeSchema } from '@ema-agent/marketplace';
 import type { MarketSkillEntry } from '../../types.js';
@@ -9,13 +10,13 @@ import type { GithubSkillSourceConfig } from '../types.js';
 // mirrorUrl 提供时,条目 url 用 mirror base 拼接(jsDelivr CN 可达);否则用 raw.githubusercontent。
 
 /** 从 market_sources 行解析 config 并列出可装 skill。 */
-export async function list(source: MarketSourceRecord): Promise<MarketSkillEntry[]> {
+export async function list(source: MarketSourceRecord, signal?: AbortSignal): Promise<MarketSkillEntry[]> {
   const cfg = JSON.parse(source.config) as GithubSkillSourceConfig;
   if (!cfg.owner || !cfg.repo || !cfg.ref) {
     throw new Error('github skill source missing owner/repo/ref');
   }
   // api.github.com 不被 CDN 代理,失败就抛错;条目 url 用 mirrorUrl 拼(CN 可达)
-  const tree = await fetchGithubTree(cfg.owner, cfg.repo, cfg.ref);
+  const tree = await fetchGithubTree(cfg.owner, cfg.repo, cfg.ref, { signal });
 
   const entries: MarketSkillEntry[] = [];
   for (const node of tree) {

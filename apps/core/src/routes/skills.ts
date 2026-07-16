@@ -1,3 +1,4 @@
+// 这里提供 Skill 扫描, 市场浏览, 安装和启停 API.
 import { Hono } from 'hono';
 import { z }    from 'zod';
 import { GithubSkillCoordsSchema } from '@ema-agent/skill';
@@ -52,7 +53,11 @@ export function createSkillsRouter(bindings: AppBindings) {
   router.get('/skills/market', async (c) => {
     try {
       const sources = bindings.marketSourceStore.listEnabled('skill');
-      const results = await bindings.marketRegistry.listAll<MarketSkillEntry>('skill', sources);
+      const results = await bindings.marketRegistry.listAll<MarketSkillEntry>(
+        'skill',
+        sources,
+        c.req.raw.signal,
+      );
       // 跨源按 name 去重,sortOrder 小的优先(与 mcp 对称,底座 mergeByName)
       const skills = mergeByName(results);
       return c.json({
@@ -73,7 +78,7 @@ export function createSkillsRouter(bindings: AppBindings) {
     }
     try {
       const record = body.source === 'url'
-        ? await skillInstaller.installFromUrl(body.url, body.sha256, undefined, body.coords)
+        ? await skillInstaller.installFromUrl(body.url, body.sha256, c.req.raw.signal, body.coords)
         : await skillInstaller.installFromText(body.content);
       return c.json({ skill: record }, 201);
     } catch (err) {

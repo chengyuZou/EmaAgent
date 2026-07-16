@@ -766,6 +766,9 @@ importers:
       '@ema-agent/contracts':
         specifier: workspace:*
         version: link:../contracts
+      '@ema-agent/public-http':
+        specifier: workspace:*
+        version: link:../public-http
       '@ema-agent/storage':
         specifier: workspace:*
         version: link:../storage
@@ -779,6 +782,9 @@ importers:
       typescript:
         specifier: ^5.9.3
         version: 5.9.3
+      vitest:
+        specifier: ^2.0.0
+        version: 2.1.9(@types/node@20.19.39)(msw@2.14.6(@types/node@20.19.39)(typescript@5.9.3))
 
   packages/mcp:
     dependencies:
@@ -920,6 +926,21 @@ importers:
         specifier: ^2.0.0
         version: 2.1.9(@types/node@20.19.39)(msw@2.14.6(@types/node@20.19.39)(typescript@5.9.3))
 
+  packages/public-http:
+    devDependencies:
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.39
+      rimraf:
+        specifier: ^5.0.0
+        version: 5.0.10
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: ^2.0.0
+        version: 2.1.9(@types/node@20.19.39)(msw@2.14.6(@types/node@20.19.39)(typescript@5.9.3))
+
   packages/sandbox:
     dependencies:
       '@ema-agent/permission':
@@ -994,6 +1015,9 @@ importers:
       typescript:
         specifier: ^5.9.3
         version: 5.9.3
+      vitest:
+        specifier: ^2.0.0
+        version: 2.1.9(@types/node@20.19.39)(msw@2.14.6(@types/node@20.19.39)(typescript@5.9.3))
 
   packages/storage:
     dependencies:
@@ -1090,6 +1114,9 @@ importers:
       '@ema-agent/permission':
         specifier: workspace:*
         version: link:../permission
+      '@ema-agent/public-http':
+        specifier: workspace:*
+        version: link:../public-http
       '@ema-agent/token':
         specifier: workspace:*
         version: link:../token

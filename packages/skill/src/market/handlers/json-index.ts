@@ -1,3 +1,4 @@
+// 这里读取用户配置的 JSON 索引并转换为 Skill 市场条目.
 import { fetchJson } from '@ema-agent/marketplace';
 import type { MarketSourceRecord, MarketSourceTypeSchema } from '@ema-agent/marketplace';
 import type { MarketSkillEntry } from '../../types.js';
@@ -9,12 +10,13 @@ import type { SkillJsonIndex, SkillJsonIndexConfig } from '../types.js';
 // 用户可自 host 一个 skill 列表,或镜像官方列表。url 字段是 SKILL.md 直链。
 
 /** 列出某 json-index 源的所有可装 skill。 */
-export async function list(source: MarketSourceRecord): Promise<MarketSkillEntry[]> {
+export async function list(source: MarketSourceRecord, signal?: AbortSignal): Promise<MarketSkillEntry[]> {
   const cfg = JSON.parse(source.config) as SkillJsonIndexConfig;
   if (!cfg.indexUrl) throw new Error('json-index source missing indexUrl');
 
   const data = await fetchJson<SkillJsonIndex>(cfg.indexUrl, cfg.mirrorUrl, {
     timeoutMs: 10_000,
+    signal,
     headers:   { Accept: 'application/json' },
   });
 

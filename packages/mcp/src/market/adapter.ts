@@ -1,3 +1,4 @@
+// 这里把 MCP 各类市场源注册为 Marketplace 可以统一调度的 Adapter.
 import type { MarketSourceAdapter, MarketSourceRecord, MarketSourceTypeSchema } from '@ema-agent/marketplace';
 import type { McpMarketEntry } from './types.js';
 import { MCP_TYPE_HANDLERS, MCP_SUPPORTED_TYPES } from './handlers/index.js';
@@ -12,10 +13,10 @@ export class McpMarketAdapter implements MarketSourceAdapter<McpMarketEntry> {
   readonly kind  = 'mcp';
   readonly types = MCP_SUPPORTED_TYPES;
 
-  async list(source: MarketSourceRecord): Promise<McpMarketEntry[]> {
+  async list(source: MarketSourceRecord, signal?: AbortSignal): Promise<McpMarketEntry[]> {
     const handler = MCP_TYPE_HANDLERS[source.type];
     if (!handler) throw new Error(`Unsupported mcp market source type: ${source.type}`);
-    return handler.list(source);
+    return handler.list(source, signal);
   }
 
   validateConfig(type: string, config: unknown): { ok: true; config: string } | { ok: false; error: string } {

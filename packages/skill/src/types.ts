@@ -1,4 +1,17 @@
+// 这里定义 Skill manifest, 索引记录, 文件根目录和 Marketplace 业务类型.
 import { z } from 'zod';
+import type { SkillRow } from '@ema-agent/storage';
+
+export interface SkillIndexRepository {
+  upsertByName(row: SkillRow): void;
+  replaceByName(oldName: string, row: SkillRow): void;
+  setEnabled(name: string, enabled: number): void;
+  setDirPath(name: string, dirPath: string): void;
+  findByName(name: string): SkillRow | null;
+  listAll(): SkillRow[];
+  listEnabled(): SkillRow[];
+  deleteByName(name: string): void;
+}
 
 // ── 来源 ─────────────────────────────────────────────────────────────────────
 

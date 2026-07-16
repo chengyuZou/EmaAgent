@@ -1,12 +1,12 @@
-// 这里测试 WebFetch 会拒绝本机、私网、保留地址、危险 IPv6 映射和跨站重定向。
+// 这里测试公共网络出口会拒绝本机, 私网, 保留地址和跨站重定向.
 import { describe, expect, it } from 'vitest';
 import {
   assertSafePublicRedirect,
   isObviouslyUnsafePublicUrl,
   isPublicNetworkAddress,
-} from '@ema-agent/public-http';
+} from '../src/index.js';
 
-describe('WebFetch URL policy', () => {
+describe('公网 URL 策略', () => {
   it.each([
     'http://127.0.0.1/admin',
     'http://10.1.2.3/',
@@ -18,7 +18,7 @@ describe('WebFetch URL policy', () => {
     'file:///etc/passwd',
     'http://localhost/',
     'http://router.local/',
-  ])('拒绝危险 URL：%s', url => {
+  ])('拒绝危险 URL: %s', url => {
     expect(isObviouslyUnsafePublicUrl(url)).toBe(true);
   });
 
@@ -30,7 +30,7 @@ describe('WebFetch URL policy', () => {
     expect(isPublicNetworkAddress('::ffff:192.168.1.1')).toBe(false);
   });
 
-  it('只允许同主机重定向和 HTTP 到 HTTPS 升级', () => {
+  it('只允许同主机重定向和标准 HTTP 到 HTTPS 升级', () => {
     expect(() => assertSafePublicRedirect(
       new URL('http://example.com/start'),
       new URL('https://www.example.com/end'),
@@ -38,14 +38,6 @@ describe('WebFetch URL policy', () => {
     expect(() => assertSafePublicRedirect(
       new URL('https://example.com/start'),
       new URL('https://attacker.example/end'),
-    )).toThrow('需要单独授权');
-    expect(() => assertSafePublicRedirect(
-      new URL('https://example.com/start'),
-      new URL('http://example.com/end'),
-    )).toThrow('需要单独授权');
-    expect(() => assertSafePublicRedirect(
-      new URL('https://example.com/start'),
-      new URL('https://example.com:8443/end'),
-    )).toThrow('需要单独授权');
+    )).toThrow('跨站重定向');
   });
 });

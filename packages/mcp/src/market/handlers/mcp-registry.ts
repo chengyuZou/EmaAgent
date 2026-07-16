@@ -1,3 +1,4 @@
+// 这里分页读取 MCP Registry, 并转换为可以安装或连接的 MCP 市场条目.
 import { fetchJson } from '@ema-agent/marketplace';
 import type { MarketSourceRecord, MarketSourceTypeSchema } from '@ema-agent/marketplace';
 import type { McpMarketEntry, McpRegistryConfig } from '../types.js';
@@ -67,7 +68,7 @@ function normaliseRegistryServer(s: RegistryServer): McpMarketEntry {
 }
 
 /** 列出某 mcp-registry 源的所有可装 server(去重 by name,留最新版本)。 */
-export async function list(source: MarketSourceRecord): Promise<McpMarketEntry[]> {
+export async function list(source: MarketSourceRecord, signal?: AbortSignal): Promise<McpMarketEntry[]> {
   const cfg = JSON.parse(source.config) as McpRegistryConfig;
   if (!cfg.baseUrl) throw new Error('mcp-registry source missing baseUrl');
 
@@ -84,6 +85,7 @@ export async function list(source: MarketSourceRecord): Promise<McpMarketEntry[]
       metadata?: { nextCursor?: string };
     }>(url.toString(), cfg.mirrorUrl, {
       timeoutMs: 10_000,
+      signal,
       headers:   { Accept: 'application/json' },
     });
 

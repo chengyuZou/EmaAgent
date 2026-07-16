@@ -1,81 +1,82 @@
-// ── 通用 fetch 基建(业务包 adapter 复用)──────────────────────────────────────
-//
-// 主 URL 失败降级 mirrorUrl(CN 友好 —— skill installer 已有此模式,提到通用层)。
-// 所有 fetch 带 timeout,避免卡死聚合。
+// 这里为市场 Adapter 提供安全, 有界, 可取消并支持镜像降级的公网下载.
+import { fetchPublicResource } from '@ema-agent/public-http';
+import type { PublicHttpResponse } from '@ema-agent/public-http';
 
 export interface FetchOpts {
   timeoutMs?: number;
-  headers?:   Record<string, string>;
-  /** 调用方取消信号(如用户中止安装)。与 timeoutMs 兜底合并,任一触发即中止。 */
-  signal?:    AbortSignal;
+  headers?: Readonly<Record<string, string>>;
+  signal?: AbortSignal;
+  /** 下载到内存前允许读取的最大字节数. */
+  maxBytes?: number;
 }
 
-const DEFAULT_TIMEOUT = 15_000;
-
-/** 合并调用方 signal 与 timeout 兜底,任一触发即中止。无 signal 时只用 timeout。 */
-function mergeSignal(signal: AbortSignal | undefined, timeoutMs: number): AbortSignal {
-  const timeout = AbortSignal.timeout(timeoutMs);
-  if (!signal) return timeout;
-  // AbortSignal.any 浏览器/Node 18+ 都支持;若已被 abort 直接透传
-  if (signal.aborted) return signal;
-  return AbortSignal.any([signal, timeout]);
+export interface MarketFetchResponse {
+  readonly url: string;
+  readonly status: number;
+  readonly statusText: string;
+  readonly headers: PublicHttpResponse['headers'];
+  readonly bytes: Uint8Array;
+  text(): string;
+  json<T>(): T;
+  arrayBuffer(): ArrayBuffer;
 }
 
-/** 主 URL 失败(网络错或非 2xx)则尝试 mirrorUrl。两者都失败抛主 URL 的错。 */
+const DEFAULT_TIMEOUT_MS = 15_000;
+const DEFAULT_RESPONSE_BYTES = 8 * 1024 * 1024;
+const DEFAULT_JSON_BYTES = 5 * 1024 * 1024;
+const DEFAULT_TEXT_BYTES = 1024 * 1024;
+
+/** 主地址确实失败时才尝试镜像; 调用方取消后绝不再产生第二次请求. */
 export async function fetchWithMirror(
-  url:       string,
+  url: string,
   mirrorUrl: string | undefined,
-  opts:      FetchOpts = {},
-): Promise<Response> {
-  const { timeoutMs = DEFAULT_TIMEOUT, headers, signal } = opts;
+  opts: FetchOpts = {},
+): Promise<MarketFetchResponse> {
   try {
-    const res = await fetch(url, {
-      headers,
-      signal: mergeSignal(signal, timeoutMs),
-    });
-    if (res.ok) return res;
-    throw new Error(`HTTP ${res.status}`);
-  } catch (err) {
-    if (!mirrorUrl) throw err;
-    // 降级镜像
-    const mirror = await fetch(mirrorUrl, {
-      headers,
-      signal: mergeSignal(signal, timeoutMs),
-    });
-    if (!mirror.ok) throw new Error(`HTTP ${mirror.status} (mirror also failed: ${(err as Error).message})`);
-    return mirror;
+    return toMarketResponse(await fetchOne(url, opts));
+  } catch (primaryError) {
+    if (!mirrorUrl || opts.signal?.aborted) throw primaryError;
+    try {
+      return toMarketResponse(await fetchOne(mirrorUrl, opts));
+    } catch (mirrorError) {
+      const primaryMessage = errorMessage(primaryError);
+      const mirrorMessage = errorMessage(mirrorError);
+      throw new Error(`市场主地址和镜像均请求失败; 主地址: ${primaryMessage}; 镜像: ${mirrorMessage}`, {
+        cause: primaryError,
+      });
+    }
   }
 }
 
 export async function fetchJson<T>(
-  url:       string,
+  url: string,
   mirrorUrl: string | undefined,
-  opts:      FetchOpts = {},
+  opts: FetchOpts = {},
 ): Promise<T> {
-  const res = await fetchWithMirror(url, mirrorUrl, {
+  const response = await fetchWithMirror(url, mirrorUrl, {
     ...opts,
+    maxBytes: opts.maxBytes ?? DEFAULT_JSON_BYTES,
     headers: { Accept: 'application/json', ...opts.headers },
   });
-  return (await res.json()) as T;
+  return response.json<T>();
 }
 
 export async function fetchText(
-  url:       string,
+  url: string,
   mirrorUrl: string | undefined,
-  opts:      FetchOpts = {},
+  opts: FetchOpts = {},
 ): Promise<string> {
-  const res = await fetchWithMirror(url, mirrorUrl, {
+  const response = await fetchWithMirror(url, mirrorUrl, {
     ...opts,
+    maxBytes: opts.maxBytes ?? DEFAULT_TEXT_BYTES,
     headers: { Accept: 'text/plain, text/markdown, */*', ...opts.headers },
   });
-  return res.text();
+  return response.text();
 }
-
-// ── GitHub git tree API ────────────────────────────────────────────────────────
 
 export interface GitTreeNode {
   path: string;
-  type: string;   // 'blob' | 'tree' | ...
+  type: string;
   size?: number;
 }
 
@@ -83,34 +84,62 @@ interface GitTreeResponse {
   tree?: Array<{ path: string; type: string; size?: number }>;
 }
 
-/**
- * 递归拉取仓库 git tree(一次请求拿全文件列表)。
- * owner/repo/ref 指定仓库。返回 blob 节点列表(业务包自行 filter 路径)。
- *
- * 注意:api.github.com 不被 jsDelivr 等 CDN 代理,所以此处不接 mirrorUrl ——
- * api 失败就抛错,调用方若需要可对 raw URL 单独走 githubRawToJsdelivr 降级。
- */
+/** 通过 GitHub API 拉取仓库文件树; 响应同样经过公网与体积边界. */
 export async function fetchGithubTree(
   owner: string,
-  repo:  string,
-  ref:   string,
-  opts:  FetchOpts = {},
+  repo: string,
+  ref: string,
+  opts: FetchOpts = {},
 ): Promise<GitTreeNode[]> {
-  const api = `https://api.github.com/repos/${owner}/${repo}/git/trees/${ref}?recursive=1`;
+  const api = `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/git/trees/${encodeURIComponent(ref)}?recursive=1`;
   const data = await fetchJson<GitTreeResponse>(api, undefined, {
     ...opts,
-    headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'ema-agent', ...opts.headers },
+    headers: {
+      Accept: 'application/vnd.github+json',
+      'User-Agent': 'EmaAgent/1.0',
+      ...opts.headers,
+    },
   });
   return data.tree ?? [];
 }
 
-/**
- * raw.githubusercontent.com → jsDelivr CDN(中国可达)。
- * 返回 null 表示不是 GitHub raw URL。
- */
+/** 将 GitHub raw 文件地址转换为 jsDelivr 镜像地址. */
 export function githubRawToJsdelivr(url: string): string | null {
-  const m = url.match(/^https?:\/\/raw\.githubusercontent\.com\/([^/]+)\/([^/]+)\/([^/]+)\/(.+)$/);
-  if (!m) return null;
-  const [, owner, repo, ref, path] = m;
+  const match = url.match(/^https?:\/\/raw\.githubusercontent\.com\/([^/]+)\/([^/]+)\/([^/]+)\/(.+)$/);
+  if (!match) return null;
+  const [, owner, repo, ref, path] = match;
   return `https://cdn.jsdelivr.net/gh/${owner}/${repo}@${ref}/${path}`;
+}
+
+function fetchOne(url: string, opts: FetchOpts): Promise<PublicHttpResponse> {
+  return fetchPublicResource(url, {
+    signal: opts.signal,
+    timeoutMs: opts.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+    maxBytes: opts.maxBytes ?? DEFAULT_RESPONSE_BYTES,
+    maxRedirects: 5,
+    headers: opts.headers,
+  });
+}
+
+function toMarketResponse(response: PublicHttpResponse): MarketFetchResponse {
+  // 直接复用有界 Buffer 的底层视图, 避免 Bundle asset 在进入 Store 前再复制一份.
+  const bytes = new Uint8Array(
+    response.body.buffer,
+    response.body.byteOffset,
+    response.body.byteLength,
+  );
+  return {
+    url: response.finalUrl,
+    status: response.status,
+    statusText: response.statusText,
+    headers: response.headers,
+    bytes,
+    text: () => response.body.toString('utf8'),
+    json: <T>() => JSON.parse(response.body.toString('utf8')) as T,
+    arrayBuffer: () => bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer,
+  };
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }

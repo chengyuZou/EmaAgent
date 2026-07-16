@@ -1,3 +1,4 @@
+// 这里注册各业务市场 Adapter, 并以有界并发和稳定顺序聚合启用的市场源.
 import type { MarketSourceAdapter, MarketSourceRecord } from './types.js';
 
 // ── 单源聚合结果 ──────────────────────────────────────────────────────────────
@@ -20,8 +21,18 @@ export class MarketRegistry {
   /** kind → adapter */
   private readonly adapters = new Map<string, MarketSourceAdapter<unknown>>();
 
-  /** 注册一个业务包的 adapter。同 kind 重复注册覆盖(后注册者赢)。 */
+  constructor(private readonly maxConcurrency = 4) {
+    if (!Number.isInteger(maxConcurrency) || maxConcurrency <= 0) {
+      throw new RangeError('maxConcurrency 必须是正整数');
+    }
+  }
+
+  /** 注册一个业务包的 adapter; 同 kind 重复注册说明接线冲突, 启动时直接失败. */
   registerAdapter<Entry>(adapter: MarketSourceAdapter<Entry>): void {
+    if (!adapter.kind.trim()) throw new Error('市场 Adapter kind 不能为空');
+    if (this.adapters.has(adapter.kind)) {
+      throw new Error(`市场 Adapter kind 重复注册: ${adapter.kind}`);
+    }
     this.adapters.set(adapter.kind, adapter as MarketSourceAdapter<unknown>);
   }
 
@@ -32,7 +43,7 @@ export class MarketRegistry {
 
   /** 列出已注册的所有 kind(调试/UI 用)。 */
   registeredKinds(): string[] {
-    return [...this.adapters.keys()];
+    return [...this.adapters.keys()].sort();
   }
 
   /**
@@ -43,15 +54,21 @@ export class MarketRegistry {
   async listAll<Entry>(
     kind:    string,
     sources: readonly MarketSourceRecord[],
+    signal?: AbortSignal,
   ): Promise<MarketSourceResult<Entry>[]> {
     const adapter = this.getAdapter(kind);
     if (!adapter) return [];
 
-    const enabled = sources.filter((s) => s.enabled && s.kind === kind);
-    return Promise.all(
-      enabled.map(async (source): Promise<MarketSourceResult<Entry>> => {
+    const enabled = sources
+      .filter((source) => source.enabled && source.kind === kind)
+      .sort(compareSources);
+    return mapWithConcurrency(
+      enabled,
+      this.maxConcurrency,
+      async (source): Promise<MarketSourceResult<Entry>> => {
+        if (signal?.aborted) throw abortReason(signal);
         try {
-          const entries = await (adapter as MarketSourceAdapter<Entry>).list(source);
+          const entries = await (adapter as MarketSourceAdapter<Entry>).list(source, signal);
           return {
             sourceId:    source.id,
             sourceLabel: source.label,
@@ -59,6 +76,7 @@ export class MarketRegistry {
             entries,
           };
         } catch (err) {
+          if (signal?.aborted) throw abortReason(signal);
           return {
             sourceId:    source.id,
             sourceLabel: source.label,
@@ -67,9 +85,42 @@ export class MarketRegistry {
             error:       err instanceof Error ? err.message : String(err),
           };
         }
-      }),
+      },
+      signal,
     );
   }
+}
+
+function compareSources(left: MarketSourceRecord, right: MarketSourceRecord): number {
+  return left.sortOrder - right.sortOrder
+    || left.createdAt - right.createdAt
+    || left.id.localeCompare(right.id);
+}
+
+async function mapWithConcurrency<Input, Output>(
+  values: readonly Input[],
+  concurrency: number,
+  worker: (value: Input) => Promise<Output>,
+  signal?: AbortSignal,
+): Promise<Output[]> {
+  const results = new Array<Output>(values.length);
+  let nextIndex = 0;
+  const runners = Array.from(
+    { length: Math.min(concurrency, values.length) },
+    async () => {
+      while (nextIndex < values.length) {
+        if (signal?.aborted) throw abortReason(signal);
+        const index = nextIndex++;
+        results[index] = await worker(values[index]!);
+      }
+    },
+  );
+  await Promise.all(runners);
+  return results;
+}
+
+function abortReason(signal: AbortSignal): Error {
+  return signal.reason instanceof Error ? signal.reason : new Error('市场聚合请求已取消');
 }
 
 // ── 合并 helper(业务包共用,保证跨源去重策略一致)──────────────────────────────

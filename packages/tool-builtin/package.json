@@ -24,6 +24,7 @@
     "@ema-agent/contracts": "workspace:*",
     "@ema-agent/llm": "workspace:*",
     "@ema-agent/permission": "workspace:*",
+    "@ema-agent/public-http": "workspace:*",
     "@ema-agent/tools": "workspace:*",
     "@ema-agent/token": "workspace:*",
     "diff": "^9.0.0",

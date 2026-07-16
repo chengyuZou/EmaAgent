@@ -1,3 +1,4 @@
+// 这里定义市场源, Adapter 和动态配置表单使用的通用类型.
 import type { MarketSourceRow } from '@ema-agent/storage';
 
 // ── marketplace 底座 ──────────────────────────────────────────────────────────
@@ -52,7 +53,7 @@ export interface MarketSourceAdapter<Entry> {
   /** 该 kind 支持的 source type 列表,如 ['mcp-registry', 'json-index'] */
   readonly types:  readonly string[];
   /** 列出该源所有可装条目。单源失败应抛 Error,由 registry 捕获标记 error */
-  list(source: MarketSourceRecord): Promise<Entry[]>;
+  list(source: MarketSourceRecord, signal?: AbortSignal): Promise<Entry[]>;
   /**
    * 校验用户自传 config(业务包各自规则),返回标准化 config JSON 字符串。
    * 用于 POST /api/market/sources 时在写入前校验。

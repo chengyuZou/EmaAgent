@@ -1,3 +1,4 @@
+// 这里提供市场源管理和连通性测试 API, 实际抓取与校验由 Marketplace 和业务 Adapter 完成.
 import { Hono } from 'hono';
 import { z }    from 'zod';
 import type { AppBindings } from '../wiring/index.js';
@@ -164,7 +165,7 @@ export function createMarketRouter(bindings: AppBindings) {
       createdAt: Date.now(),
     };
     try {
-      const entries = await adapter.list(tempSource) as unknown[];
+      const entries = await adapter.list(tempSource, c.req.raw.signal) as unknown[];
       return c.json({ ok: true, count: entries.length, sample: entries.slice(0, 3) });
     } catch (err) {
       return c.json({ ok: false, error: (err as Error).message });
@@ -182,7 +183,7 @@ export function createMarketRouter(bindings: AppBindings) {
     if (!adapter) return c.json({ error: `kind "${source.kind}" 未注册 adapter` }, 400);
 
     try {
-      const entries = await adapter.list(source) as unknown[];
+      const entries = await adapter.list(source, c.req.raw.signal) as unknown[];
       return c.json({ ok: true, count: entries.length, sample: entries.slice(0, 3) });
     } catch (err) {
       return c.json({ ok: false, error: (err as Error).message });

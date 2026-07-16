@@ -1,3 +1,4 @@
+// 这里提供 MCP 市场浏览, 配置管理, 连接和工具发现 API.
 import { Hono }                from 'hono';
 import { z }                   from 'zod';
 import { McpServerConfigSchema, parseImportedMcpServers } from '@ema-agent/mcp';
@@ -46,7 +47,11 @@ export function createMcpRouter(bindings: AppBindings) {
   router.get('/market', async (c) => {
     try {
       const sources = bindings.marketSourceStore.listEnabled('mcp');
-      const results = await bindings.marketRegistry.listAll<McpMarketEntry>('mcp', sources);
+      const results = await bindings.marketRegistry.listAll<McpMarketEntry>(
+        'mcp',
+        sources,
+        c.req.raw.signal,
+      );
       // 跨源按 name 去重,sortOrder 小的优先(底座 mergeByName 保策略一致)
       const servers = mergeByName(results);
       return c.json({

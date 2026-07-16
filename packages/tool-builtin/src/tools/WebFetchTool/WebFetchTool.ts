@@ -1,11 +1,11 @@
 // 这个工具负责在网络安全和响应大小边界内获取公开网页内容。
 import { z } from 'zod';
+import { isObviouslyUnsafePublicUrl } from '@ema-agent/public-http';
 import { buildTool } from '@ema-agent/tools';
 import type { ToolExecutionContext } from '@ema-agent/tools';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 import { fetchPublicPage } from './httpClient.js';
 import { htmlToMarkdown } from './htmlToMarkdown.js';
-import { isObviouslyUnsafeUrl } from './urlPolicy.js';
 
 // ── 常量 ─────────────────────────────────────────────────────────────────────
 
@@ -69,7 +69,7 @@ export const WebFetchTool = buildTool<WebFetchInput, WebFetchResult>({
     safetyCheck: (input: unknown) => {
       const parsed = inputSchema.safeParse(input);
       if (!parsed.success) return 'continue';
-      return isObviouslyUnsafeUrl(parsed.data.url) ? 'deny' : 'continue';
+      return isObviouslyUnsafePublicUrl(parsed.data.url) ? 'deny' : 'continue';
     },
   },
 

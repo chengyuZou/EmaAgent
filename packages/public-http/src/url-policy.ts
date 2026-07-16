@@ -1,17 +1,12 @@
-// 这里负责解析 WebFetch URL、解析 DNS，并拒绝所有本机、私网、保留和非 HTTP 目标。
+// 这里解析公网 URL 和 DNS, 拒绝本机, 私网, 保留地址以及危险重定向.
 import dns from 'node:dns/promises';
 import net from 'node:net';
-import { WebFetchPolicyError } from './errors.js';
+import { PublicHttpPolicyError } from './errors.js';
+import type { ApprovedPublicTarget } from './types.js';
 
 const MAX_URL_LENGTH = 2_048;
 
-export interface ApprovedWebTarget {
-  url: URL;
-  address: string;
-  family: 4 | 6;
-}
-
-export function isObviouslyUnsafeUrl(rawUrl: string): boolean {
+export function isObviouslyUnsafePublicUrl(rawUrl: string): boolean {
   try {
     const parsed = parsePublicHttpUrl(rawUrl);
     const hostname = normalizeIpHostname(parsed.hostname);
@@ -21,26 +16,29 @@ export function isObviouslyUnsafeUrl(rawUrl: string): boolean {
   }
 }
 
-export async function approveWebTarget(rawUrl: string): Promise<ApprovedWebTarget> {
+export async function approvePublicTarget(rawUrl: string): Promise<ApprovedPublicTarget> {
   const url = parsePublicHttpUrl(rawUrl);
   const hostname = normalizeIpHostname(url.hostname);
   const addresses = await dns.lookup(hostname, { all: true, verbatim: true });
   if (addresses.length === 0) {
-    throw new WebFetchPolicyError(`域名 ${url.hostname} 没有可用地址`);
+    throw new PublicHttpPolicyError(`域名 ${url.hostname} 没有可用地址`);
   }
   for (const candidate of addresses) {
     if (!isPublicNetworkAddress(candidate.address)) {
-      throw new WebFetchPolicyError(
-        `拒绝访问 ${url.hostname}：DNS 解析包含本机、私网或保留地址 ${candidate.address}`,
+      throw new PublicHttpPolicyError(
+      `拒绝访问 ${url.hostname}: DNS 解析包含本机, 私网或保留地址 ${candidate.address}`,
       );
     }
   }
   const selected = addresses[0]!;
-  const family = selected.family === 6 ? 6 : 4;
-  return { url, address: selected.address, family };
+  return {
+    url,
+    address: selected.address,
+    family: selected.family === 6 ? 6 : 4,
+  };
 }
 
-export function assertSafeRedirect(previous: URL, next: URL): void {
+export function assertSafePublicRedirect(previous: URL, next: URL): void {
   const previousHost = stripWww(previous.hostname);
   const nextHost = stripWww(next.hostname);
   const sameHost = previousHost === nextHost;
@@ -51,32 +49,39 @@ export function assertSafeRedirect(previous: URL, next: URL): void {
     && effectivePort(previous) === '80'
     && effectivePort(next) === '443';
   if (!sameHost || (!sameProtocol && !upgradesToHttps) || (!samePort && !standardHttpsUpgrade)) {
-    throw new WebFetchPolicyError(
-      `重定向目标 ${next.origin} 需要单独授权，请对该 URL 再调用一次 WebFetch`,
+    throw new PublicHttpPolicyError(
+      `重定向目标 ${next.origin} 需要单独授权, 拒绝跨站重定向`,
     );
   }
 }
 
+export function isPublicNetworkAddress(address: string): boolean {
+  const family = net.isIP(address);
+  if (family === 4) return isPublicIpv4(address);
+  if (family === 6) return isPublicIpv6(address);
+  return false;
+}
+
 function parsePublicHttpUrl(rawUrl: string): URL {
-  if (rawUrl.length > MAX_URL_LENGTH) throw new WebFetchPolicyError('URL 过长');
+  if (rawUrl.length > MAX_URL_LENGTH) throw new PublicHttpPolicyError('URL 过长');
   let url: URL;
   try {
     url = new URL(rawUrl);
   } catch {
-    throw new WebFetchPolicyError(`无法解析 URL：${rawUrl}`);
+    throw new PublicHttpPolicyError(`无法解析 URL: ${rawUrl}`);
   }
   if (url.protocol !== 'http:' && url.protocol !== 'https:') {
-    throw new WebFetchPolicyError(`不支持协议 ${url.protocol}`);
+    throw new PublicHttpPolicyError(`不支持协议 ${url.protocol}`);
   }
   if (url.username || url.password) {
-    throw new WebFetchPolicyError('URL 不能携带用户名或密码');
+    throw new PublicHttpPolicyError('URL 不能携带用户名或密码');
   }
   const normalizedHostname = normalizeIpHostname(url.hostname);
   if (!normalizedHostname.includes('.') && net.isIP(normalizedHostname) === 0) {
-    throw new WebFetchPolicyError(`拒绝访问单标签主机 ${url.hostname}`);
+    throw new PublicHttpPolicyError(`拒绝访问单标签主机 ${url.hostname}`);
   }
   if (url.hostname.toLowerCase() === 'localhost' || url.hostname.toLowerCase().endsWith('.local')) {
-    throw new WebFetchPolicyError(`拒绝访问本地主机 ${url.hostname}`);
+    throw new PublicHttpPolicyError(`拒绝访问本地主机 ${url.hostname}`);
   }
   return url;
 }
@@ -88,13 +93,6 @@ function stripWww(hostname: string): string {
 function effectivePort(url: URL): string {
   if (url.port) return url.port;
   return url.protocol === 'https:' ? '443' : '80';
-}
-
-export function isPublicNetworkAddress(address: string): boolean {
-  const family = net.isIP(address);
-  if (family === 4) return isPublicIpv4(address);
-  if (family === 6) return isPublicIpv6(address);
-  return false;
 }
 
 function isPublicIpv4(address: string): boolean {
@@ -127,18 +125,12 @@ function isPublicIpv6(address: string): boolean {
 
   const isMappedIpv4 = groups.slice(0, 5).every(group => group === 0) && groups[5] === 0xffff;
   if (isMappedIpv4) return isPublicIpv4(groupsToIpv4(groups[6]!, groups[7]!));
-
   if ((first & 0xfe00) === 0xfc00) return false;
   if ((first & 0xffc0) === 0xfe80) return false;
   if ((first & 0xff00) === 0xff00) return false;
-  // 只允许 IANA 全局单播 2000::/3，并排除文档地址 2001:db8::/32。
   if ((first & 0xe000) !== 0x2000) return false;
   if (first === 0x2001 && groups[1] === 0x0db8) return false;
-
-  // 6to4 会在地址中编码 IPv4；编码的是私网/保留地址时同样拒绝。
-  if (first === 0x2002) {
-    return isPublicIpv4(groupsToIpv4(groups[1]!, groups[2]!));
-  }
+  if (first === 0x2002) return isPublicIpv4(groupsToIpv4(groups[1]!, groups[2]!));
   return true;
 }
 
@@ -158,7 +150,6 @@ function parseIpv6Groups(address: string): number[] | null {
     const low = (octets[2]! << 8) | octets[3]!;
     normalized = normalized.slice(0, -dottedTail.length) + `${high.toString(16)}:${low.toString(16)}`;
   }
-
   const halves = normalized.split('::');
   if (halves.length > 2) return null;
   const left = halves[0] ? halves[0].split(':') : [];

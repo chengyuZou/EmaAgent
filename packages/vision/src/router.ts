@@ -1,4 +1,4 @@
-// 这里是 Vision 运行时 facade：管 provider 配置 + 并发限流（全局 + per-provider）+ 超时，把请求交给对应协议 adapter。
+// 这里是 Vision 运行时 facade：管 provider 配置 + 并发限流(全局 + per-provider)+ 超时，把请求交给对应协议 adapter。
 
 import { OpenAiVisionAdapter }    from './adapters/openai-vision.js';
 import { AnthropicVisionAdapter } from './adapters/anthropic-vision.js';
@@ -70,8 +70,11 @@ type NormalizedVisionRequest = Omit<VisionRequest, 'task' | 'parseMode'> & {
 };
 
 export class VisionLimiter implements VisionConcurrencyLimiter {
+  /** 当前全局并发数 */
   private total = 0;
+  /** 各 provider 当前并发数 */
   private readonly byProvider = new Map<string, number>();
+  /**  FIFO 等待队列(拿不到槽位的请求) */
   private readonly waiters: Array<{
     providerId: string;
     maxGlobal: number;

@@ -1,3 +1,4 @@
+// 这里读取用户配置的 JSON 索引并转换为 MCP 市场条目.
 import { fetchJson } from '@ema-agent/marketplace';
 import type { MarketSourceRecord, MarketSourceTypeSchema } from '@ema-agent/marketplace';
 import type { McpJsonIndex, McpJsonIndexConfig, McpJsonIndexEntry, McpMarketEntry } from '../types.js';
@@ -38,12 +39,13 @@ function toMarketEntry(raw: McpJsonIndexEntry): McpMarketEntry | null {
 }
 
 /** 列出某 json-index 源的所有可装 server。 */
-export async function list(source: MarketSourceRecord): Promise<McpMarketEntry[]> {
+export async function list(source: MarketSourceRecord, signal?: AbortSignal): Promise<McpMarketEntry[]> {
   const cfg = JSON.parse(source.config) as McpJsonIndexConfig;
   if (!cfg.indexUrl) throw new Error('json-index source missing indexUrl');
 
   const data = await fetchJson<McpJsonIndex>(cfg.indexUrl, cfg.mirrorUrl, {
     timeoutMs: 10_000,
+    signal,
     headers:   { Accept: 'application/json' },
   });
 

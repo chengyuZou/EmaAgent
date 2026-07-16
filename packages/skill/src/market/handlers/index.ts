@@ -1,3 +1,4 @@
+// 这里汇总 Skill 支持的市场源处理器, 供 Adapter 按 source type 分发.
 import type { MarketSourceRecord, MarketSourceTypeSchema } from '@ema-agent/marketplace';
 import type { MarketSkillEntry } from '../../types.js';
 import * as github from './github.js';
@@ -9,7 +10,7 @@ import * as jsonIndex from './json-index.js';
 // 此文件聚合 Map,adapter.ts 查表 dispatch + describeTypes 暴露 schema。加新 type = 加一个文件 + 在此注册。
 
 export interface SkillSourceTypeHandler {
-  list:           (source: MarketSourceRecord) => Promise<MarketSkillEntry[]>;
+  list:           (source: MarketSourceRecord, signal?: AbortSignal) => Promise<MarketSkillEntry[]>;
   validateConfig: (config: unknown) => { ok: true; config: string } | { ok: false; error: string };
   /** 该 type 的 config 表单 schema(前端动态渲染用) */
   schema:         MarketSourceTypeSchema;

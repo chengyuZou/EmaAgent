@@ -1,3 +1,4 @@
+// 这里从文本或受信公网来源下载 Skill, 校验完整性并交给 SkillStore 安装.
 import { createHash } from 'node:crypto';
 import type { SkillStore } from './store.js';
 import type { GithubSkillCoords, SkillRecord } from './types.js';
@@ -8,6 +9,11 @@ import {
   githubRawToJsdelivr,
   type GitTreeNode,
 } from '@ema-agent/marketplace';
+import {
+  MAX_SKILL_BUNDLE_BYTES,
+  MAX_SKILL_BUNDLE_FILES,
+  MAX_SKILL_BYTES,
+} from './limits.js';
 
 // ── SkillInstaller ────────────────────────────────────────────────────────────
 //
@@ -17,9 +23,6 @@ import {
 //
 // URL 拼接 / fetch / 镜像降级统一走 @ema-agent/marketplace 底座,不在本包重复实现。
 
-const MAX_SKILL_BYTES   = 512 * 1024;      // SKILL.md 是文本;设上限防滥用
-const MAX_BUNDLE_BYTES  = 8 * 1024 * 1024; // 整个 skill 目录(SKILL.md + scripts/ + refs)
-const MAX_BUNDLE_FILES  = 80;
 const FETCH_TIMEOUT_MS  = 30_000;          // skill 文件下载允许比默认 15s 更久
 
 export class SkillInstaller {
@@ -71,7 +74,11 @@ async function downloadSkillText(
   mirror: string | undefined,
   signal: AbortSignal | undefined,
 ): Promise<string> {
-  const rawMd = await fetchText(url, mirror, { timeoutMs: FETCH_TIMEOUT_MS, signal });
+  const rawMd = await fetchText(url, mirror, {
+    timeoutMs: FETCH_TIMEOUT_MS,
+    signal,
+    maxBytes: MAX_SKILL_BYTES,
+  });
   assertSize(rawMd);
   return rawMd;
 }
@@ -147,13 +154,8 @@ async function tryFetchGithubBundle(
   if (!c) return null;
   const { owner, repo, ref, dir } = c;
 
-  // api.github.com 不被 CDN 代理,失败就降级单文件下载
-  let tree: GitTreeNode[];
-  try {
-    tree = await fetchGithubTree(owner, repo, ref, { signal });
-  } catch {
-    return null;
-  }
+  // 已确认是 GitHub Bundle 时必须完整取得 tree. 静默降级单文件会制造表面成功的残缺 Skill.
+  const tree: GitTreeNode[] = await fetchGithubTree(owner, repo, ref, { signal });
 
   const prefix    = dir ? `${dir}/` : '';
   const skillPath = `${prefix}SKILL.md`;
@@ -164,8 +166,8 @@ async function tryFetchGithubBundle(
   const skillMdUrls = githubFileUrls(c, skillPath);
   const skillMd = await downloadSkillText(skillMdUrls.url, skillMdUrls.mirror, signal);
   if (blobs.length === 0) return { skillMd, assets: {} };
-  if (blobs.length > MAX_BUNDLE_FILES) {
-    throw new Error(`Skill bundle has too many files (${blobs.length} > ${MAX_BUNDLE_FILES}).`);
+  if (blobs.length > MAX_SKILL_BUNDLE_FILES) {
+    throw new Error(`Skill Bundle has too many files (${blobs.length} > ${MAX_SKILL_BUNDLE_FILES})`);
   }
 
   const assets: Record<string, Uint8Array> = {};
@@ -176,11 +178,15 @@ async function tryFetchGithubBundle(
     if (rel.startsWith('/') || rel.split('/').includes('..')) {
       throw new Error(`Skill bundle contains an unsafe path: ${rel}`);
     }
+    const remainingBytes = MAX_SKILL_BUNDLE_BYTES - total;
+    if (remainingBytes <= 0 || (blob.size !== undefined && blob.size > remainingBytes)) {
+      throw new Error(`Skill Bundle exceeds ${MAX_SKILL_BUNDLE_BYTES} byte limit`);
+    }
     const assetUrls = githubFileUrls(c, blob.path);
-    const bytes = await downloadAssetBytes(assetUrls.url, assetUrls.mirror, signal);
+    const bytes = await downloadAssetBytes(assetUrls.url, assetUrls.mirror, signal, remainingBytes);
     total += bytes.byteLength;
-    if (total > MAX_BUNDLE_BYTES) {
-      throw new Error(`Skill bundle too large (> ${MAX_BUNDLE_BYTES} bytes).`);
+    if (total > MAX_SKILL_BUNDLE_BYTES) {
+      throw new Error(`Skill Bundle exceeds ${MAX_SKILL_BUNDLE_BYTES} byte limit`);
     }
     assets[rel] = bytes;
   }
@@ -192,7 +198,12 @@ async function downloadAssetBytes(
   url:    string,
   mirror: string | undefined,
   signal: AbortSignal | undefined,
+  maxBytes: number,
 ): Promise<Uint8Array> {
-  const res = await fetchWithMirror(url, mirror, { timeoutMs: FETCH_TIMEOUT_MS, signal });
-  return new Uint8Array(await res.arrayBuffer());
+  const response = await fetchWithMirror(url, mirror, {
+    timeoutMs: FETCH_TIMEOUT_MS,
+    signal,
+    maxBytes,
+  });
+  return response.bytes;
 }

@@ -17,4 +17,5 @@ export {
   githubRawToJsdelivr,
   type FetchOpts,
   type GitTreeNode,
+  type MarketFetchResponse,
 } from './fetch.js';

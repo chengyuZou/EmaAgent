@@ -1,3 +1,4 @@
+// 这里把 Skill 各类市场源注册为 Marketplace 可以统一调度的 Adapter.
 import type { MarketSourceAdapter, MarketSourceRecord, MarketSourceTypeSchema } from '@ema-agent/marketplace';
 import type { MarketSkillEntry } from '../types.js';
 import { SKILL_TYPE_HANDLERS, SKILL_SUPPORTED_TYPES } from './handlers/index.js';
@@ -12,10 +13,10 @@ export class SkillMarketAdapter implements MarketSourceAdapter<MarketSkillEntry>
   readonly kind  = 'skill';
   readonly types = SKILL_SUPPORTED_TYPES;
 
-  async list(source: MarketSourceRecord): Promise<MarketSkillEntry[]> {
+  async list(source: MarketSourceRecord, signal?: AbortSignal): Promise<MarketSkillEntry[]> {
     const handler = SKILL_TYPE_HANDLERS[source.type];
     if (!handler) throw new Error(`Unsupported skill market source type: ${source.type}`);
-    return handler.list(source);
+    return handler.list(source, signal);
   }
 
   validateConfig(type: string, config: unknown): { ok: true; config: string } | { ok: false; error: string } {
