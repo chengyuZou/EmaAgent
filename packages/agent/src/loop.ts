@@ -8,6 +8,9 @@ import type { TurnToolExecutor } from './tool-executor.js';
 import { advanceState, addUsage, createLoopState } from './loop-state.js';
 import type { LoopState } from './loop-state.js';
 
+const MAX_CONSECUTIVE_PERMISSION_DENIALS = 3;
+const MAX_TOTAL_PERMISSION_DENIALS = 20;
+
 // ── AgentLoopEvent — internal, not EmaStreamEvent ────────────────────────────
 //
 // Loop yields only the events it generates itself.  Tool events (tool_result,
@@ -143,6 +146,8 @@ export async function* agentLoop(input: AgentLoopInput): AsyncIterable<AgentLoop
   });
 
   let state = createLoopState();
+  let consecutivePermissionDenials = 0;
+  let totalPermissionDenials = 0;
 
   while (true) {
     if (signal.aborted) {
@@ -395,6 +400,15 @@ export async function* agentLoop(input: AgentLoopInput): AsyncIterable<AgentLoop
 
     const resultBlocks: ToolResultBlock[] = executor.getResults();
 
+    const permissionDenials = resultBlocks.filter(
+      result => result.isError && result.errorCode === 'permission/denied',
+    ).length;
+    totalPermissionDenials += permissionDenials;
+    consecutivePermissionDenials =
+      resultBlocks.length > 0 && permissionDenials === resultBlocks.length
+        ? consecutivePermissionDenials + permissionDenials
+        : 0;
+
     // Persist round: assistant (tool_use) + user (tool_result) into messages[].
     const allBlocks    = buildBlockMap(textByIndex, thinkingByIndex, toolUseByIndex);
     const replayBlocks = allBlocks.filter(b => b.type !== 'thinking');
@@ -403,6 +417,19 @@ export async function* agentLoop(input: AgentLoopInput): AsyncIterable<AgentLoop
 
     // Signal engine to persist tool results to session DB.
     yield { type: 'loop_tool_results', results: resultBlocks, fullText };
+
+    if (
+      consecutivePermissionDenials >= MAX_CONSECUTIVE_PERMISSION_DENIALS ||
+      totalPermissionDenials >= MAX_TOTAL_PERMISSION_DENIALS
+    ) {
+      const reason = totalPermissionDenials >= MAX_TOTAL_PERMISSION_DENIALS
+        ? `permission denied ${totalPermissionDenials} times in this turn`
+        : `permission denied ${consecutivePermissionDenials} consecutive times`;
+      state = advanceState(state, { phase: 'done', transition: 'permission_denial_loop' });
+      yield { type: 'loop_breaker', reason };
+      yield { type: 'loop_done', fullText, state };
+      return;
+    }
 
     // ── Circuit breaker ──────────────────────────────────────────────────────
     if (state.iteration >= maxIterations) {

@@ -28,6 +28,7 @@ export type LoopTransition =
   | 'max_iterations'
   | 'hook_abort'
   | 'llm_error'
+  | 'permission_denial_loop'
   | 'waiting_user'
   | 'user_answered'
   | 'user_timeout'

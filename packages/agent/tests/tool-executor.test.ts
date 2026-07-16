@@ -14,6 +14,63 @@ async function waitUntilDone(executor: TurnToolExecutor): Promise<void> {
 }
 
 describe('TurnToolExecutor Hook 与权限边界', () => {
+  it('把 Session、Turn、ToolCall 身份传给同一次权限审批', async () => {
+    const hooks = new HookBus();
+    let gateContext: unknown;
+    let askIdentity: unknown;
+    const executor = new TurnToolExecutor({
+      sessionId,
+      turnId,
+      allows: () => true,
+      tools: {
+        has: () => true,
+        prepare: (name: string, input: unknown) => ({
+          name,
+          input,
+          isReadOnly: true,
+          isConcurrencySafe: true,
+          permissionMeta: {},
+        }),
+        execute: async () => 'ok',
+      } as never,
+      permission: {
+        gate: async (_name: string, _input: unknown, _meta: unknown, context: unknown) => {
+          gateContext = context;
+          return { granted: true };
+        },
+      } as never,
+      permCtx: { workspaceRoot: null } as never,
+      hooks,
+      toolCtx: {
+        sessionId,
+        turnId,
+        workspaceRoot: null,
+        signal: new AbortController().signal,
+      } as never,
+      buildAsk: (identity) => {
+        askIdentity = identity;
+        return async () => ({ action: 'allow' });
+      },
+      pushEv: () => undefined,
+      signal: () => undefined,
+    });
+
+    executor.addTool(0, 'call-identity', 'read_file', { path: 'README.md' });
+    await waitUntilDone(executor);
+
+    expect(askIdentity).toEqual(expect.objectContaining({
+      sessionId,
+      turnId,
+      toolCallId: 'call-identity',
+    }));
+    expect(gateContext).toEqual(expect.objectContaining({
+      sessionId,
+      turnId,
+      toolCallId: 'call-identity',
+      ask: expect.any(Function),
+    }));
+  });
+
   it('固定按工具意图 Hook、PermissionEngine、工具执行的顺序运行', async () => {
     const order: string[] = [];
     const emitted: EmaStreamEvent[] = [];

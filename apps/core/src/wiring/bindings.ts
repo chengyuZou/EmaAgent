@@ -49,7 +49,7 @@ import { PermissionEngine } from '@ema-agent/permission';
 import type { AskPermissionFn } from '@ema-agent/permission';
 import { PermissionPromptRegistry } from '../permissions/registry.js';
 import { AskUserRegistry }          from '../ask-user/registry.js';
-import type { EmaStreamEvent, KbAssetScope, SessionId, KbSearchResult, ReleaseFeaturesWire } from '@ema-agent/contracts';
+import type { EmaStreamEvent, KbAssetScope, SessionId, ToolCallId, TurnId, KbSearchResult, ReleaseFeaturesWire } from '@ema-agent/contracts';
 import { ToolRegistry }        from '@ema-agent/tools';
 import { registerBuiltinTools } from '@ema-agent/tool-builtin';
 import { detectBackend, CommandRunner } from '@ema-agent/sandbox';
@@ -132,7 +132,8 @@ export interface AppBindings {
   /** Per-turn factory that yields an askPermission callback wired to SSE emit. */
   buildAskForTurn: (args: {
     sessionId: string;
-    turnId:    string;
+    turnId:    TurnId;
+    toolCallId: ToolCallId;
     emit:      (ev: EmaStreamEvent) => void;
   }) => AskPermissionFn;
   /** Per-session sandbox runner — memoised on first call per sessionId. */

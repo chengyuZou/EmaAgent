@@ -1,6 +1,7 @@
 ﻿import type {
   SessionId,
   TurnId,
+  ToolCallId,
   TurnMode,
   ArtifactId,
   CharacterCardId,
@@ -166,13 +167,22 @@ export type EmaStreamEvent =
   | {
       type: 'permission_required';
       sessionId: SessionId;
+      turnId: TurnId;
+      callId: ToolCallId;
       promptId: string;
       tool: string;
       args: unknown;
       hint: string;
       humanDescription?: string;
     }
-  | { type: 'permission_resolved'; sessionId: SessionId; promptId: string; decision: 'allow' | 'deny' }
+  | {
+      type: 'permission_resolved';
+      sessionId: SessionId;
+      turnId: TurnId;
+      callId: ToolCallId;
+      promptId: string;
+      decision: 'allow' | 'deny';
+    }
 
   // Ask-user — emitted by the built-in `ask_user` tool when it runs under a
   // streaming context (Tauri / SSE). One event carries the full question

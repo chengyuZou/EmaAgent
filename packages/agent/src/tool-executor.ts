@@ -318,12 +318,13 @@ export class TurnToolExecutor {
       // into the engine's pending queue so the SSE stream delivers them immediately.
       // Tests/minimal hosts that omit buildAsk fall back to the engine-level config.ask.
       const permCtxWithAsk: PermissionContext = buildAsk
-        ? { ...permCtx, ask: buildAsk({
+        ? { ...permCtx, sessionId, turnId, toolCallId: id, ask: buildAsk({
             sessionId,
             turnId,
+            toolCallId: id,
             emit: event => this.emit(track, event),
           }) }
-        : permCtx;
+        : { ...permCtx, sessionId, turnId, toolCallId: id };
 
       let outcome;
       try {

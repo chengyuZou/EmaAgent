@@ -21,6 +21,59 @@ function makeExecutor(): TurnToolExecutor {
 }
 
 describe('agentLoop LLM 生命周期', () => {
+  it('连续三次权限拒绝后终止当前 Turn，避免模型无限重试', async () => {
+    let call = 0;
+    const stream = vi.fn(() => (async function* () {
+      call++;
+      yield {
+        type: 'tool_use_complete' as const,
+        callId: `call-${call}`,
+        name: 'shell_command',
+        args: { command: 'npm publish' },
+        blockIndex: 0,
+      };
+      yield { type: 'done' as const, stopReason: 'tool_use' as const };
+    })());
+    const executor = {
+      reset: () => undefined,
+      addTool: () => undefined,
+      allDone: () => true,
+      hasWaitingUserTool: () => false,
+      getResults: () => [{
+        type: 'tool_result' as const,
+        toolUseId: `call-${call}`,
+        content: 'Permission denied: user denied',
+        isError: true,
+        errorCode: 'permission/denied',
+      }],
+    } as unknown as TurnToolExecutor;
+    const events = [];
+
+    for await (const event of agentLoop({
+      messages: [{ role: 'user', content: 'publish it' }],
+      policy: makePolicy(),
+      buildExecutor: () => executor,
+      llm: { stream } as never,
+      providerId: 'provider-1',
+      model: 'model-1',
+      signal: new AbortController().signal,
+      maxIterations: 10,
+      sessionId: 'session-1',
+    })) {
+      events.push(event);
+    }
+
+    expect(stream).toHaveBeenCalledTimes(3);
+    expect(events).toContainEqual({
+      type: 'loop_breaker',
+      reason: 'permission denied 3 consecutive times',
+    });
+    expect(events.at(-1)).toEqual(expect.objectContaining({
+      type: 'loop_done',
+      state: expect.objectContaining({ transition: 'permission_denial_loop' }),
+    }));
+  });
+
   it('每个逻辑轮次配对 iteration + llmCallId，并限制 max_tokens 恢复次数', async () => {
     const stream = vi.fn(() => (async function* () {
       yield {

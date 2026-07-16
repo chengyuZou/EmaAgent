@@ -3,6 +3,7 @@ import { checkPathSafety, getDangerousPathReason, getPathsForPermissionCheck, no
 import { findDenyRule, findAskRule, findAllowRule, upsertRule } from './rules.js';
 import { pathInAnyWorkingDir } from './workspace.js';
 import { checkEditableInternalPath, checkReadableInternalPath } from './internal-paths.js';
+import { SessionGrantStore } from './session-grants.js';
 import type {
   PermissionConfig,
   PermissionContext,
@@ -20,7 +21,7 @@ import type {
 /**
  * Central permission Facade.
  *
- * Instantiate once per session and inject:
+ * Instantiate once in the application composition root and inject:
  *   - mode: 'ask' | 'auto' | 'bypass'
  *   - rules: loaded from global + project + session settings
  *   - ask: UI/CLI callback for interactive permission prompts
@@ -33,20 +34,11 @@ export class PermissionEngine {
   /** Global default mode (used when no session-specific override applies). */
   private mode: PermissionMode;
   /**
-   * Per-session mode overrides.
-   * When `allow_session` is approved, only the requesting session is promoted
-   * to bypass — other sessions keep their own mode.
+   * Per-session mode overrides. This is an explicit host setting and is not
+   * changed by a single `allow_session` response.
    */
   private readonly sessionModes = new Map<string, PermissionMode>();
-
-  /**
-   * Per-session denial counters for loop detection.
-   * Resets the consecutive counter on any successful grant.
-   */
-  private readonly denialCounters = new Map<string, { consecutive: number; total: number }>();
-
-  private static readonly MAX_CONSECUTIVE_DENIALS = 3;
-  private static readonly MAX_TOTAL_DENIALS        = 20;
+  private readonly sessionGrants = new SessionGrantStore();
 
   constructor(private readonly config: PermissionConfig) {
     this.rules = [...config.rules];
@@ -70,24 +62,10 @@ export class PermissionEngine {
     this.sessionModes.set(sessionId, mode);
   }
 
-  /**
-   * Returns true when a session has accumulated enough denials to suggest
-   * the model is stuck in a loop. The AgentEngine should inject a hint into
-   * the system prompt and consider interrupting rather than retrying.
-   */
-  isLooping(sessionId: string): boolean {
-    const c = this.denialCounters.get(sessionId);
-    if (!c) return false;
-    return (
-      c.consecutive >= PermissionEngine.MAX_CONSECUTIVE_DENIALS ||
-      c.total       >= PermissionEngine.MAX_TOTAL_DENIALS
-    );
-  }
-
-  /** Reset the consecutive denial counter for a session on a successful grant. */
-  recordSuccess(sessionId: string): void {
-    const c = this.denialCounters.get(sessionId);
-    if (c) c.consecutive = 0;
+  /** 清理只属于一个 Session 的模式和临时授权。 */
+  clearSession(sessionId: string): void {
+    this.sessionModes.delete(sessionId);
+    this.sessionGrants.clear(sessionId);
   }
 
   // ── Public API ────────────────────────────────────────────────────────────
@@ -128,6 +106,7 @@ export class PermissionEngine {
     // Resolve all paths once (original + symlink-resolved forms)
     const extractedPath = meta.extractPath?.(input);
     const allPaths      = extractedPath ? getPathsForPermissionCheck(extractedPath) : [];
+    const sessionAction = { toolName, input, meta, resolvedPaths: allPaths, context };
 
     // ── Step 1: bypass-immune tool safety check ────────────────────────────
     if (meta.bypassImmune && meta.safetyCheck) {
@@ -171,7 +150,6 @@ export class PermissionEngine {
       : this.mode;
 
     if (effectiveMode === 'bypass') {
-      if (context.sessionId) this.recordSuccess(context.sessionId);
       return { granted: true, decisionReason: { type: 'mode', mode: 'bypass' } };
     }
 
@@ -195,8 +173,8 @@ export class PermissionEngine {
     // a chance to explicitly approve — mirrors Claude Code's behaviour.
     for (const p of allPaths) {
       const reason = getDangerousPathReason(p);
-      if (reason) {
-        return this.promptUser(toolName, input, meta, reason, context);
+      if (reason && !this.sessionGrants.has(context.sessionId, sessionAction)) {
+        return this.promptUser(toolName, input, meta, reason, allPaths, context);
       }
     }
 
@@ -207,9 +185,19 @@ export class PermissionEngine {
         return this.promptUser(
           toolName, input, meta,
           `an "ask" rule requires confirmation for ${toolName}`,
+          allPaths,
           context,
         );
       }
+    }
+
+    // 精确 Session Grant 低于 deny/ask 规则和不可绕过安全检查，但高于
+    // 普通 allow/default 决策。它只允许用户此前批准过的同一规范化操作。
+    if (this.sessionGrants.has(context.sessionId, sessionAction)) {
+      return {
+        granted: true,
+        decisionReason: { type: 'sessionGrant', sessionId: context.sessionId! },
+      };
     }
 
     // ── Step 8: allow rules ────────────────────────────────────────────────
@@ -264,7 +252,7 @@ export class PermissionEngine {
     }
 
     // ── Step 12: ask user ──────────────────────────────────────────────────
-    return this.promptUser(toolName, input, meta, undefined, context);
+    return this.promptUser(toolName, input, meta, undefined, allPaths, context);
   }
 
   getRules(): ReadonlyArray<PermissionRule> {
@@ -280,12 +268,18 @@ export class PermissionEngine {
    * Used when the user deletes a persisted rule from the settings UI.
    * No-op if the rule does not exist.
    */
-  removeRule(tool: string, pathGlob: string | undefined, scope: RuleScope): void {
+  removeRule(
+    tool: string,
+    pathGlob: string | undefined,
+    scope: RuleScope,
+    sessionId?: string,
+  ): void {
     this.rules = this.rules.filter(
       r => !(
         normalizeCaseForComparison(r.tool)     === normalizeCaseForComparison(tool) &&
         r.pathGlob === pathGlob &&
-        r.scope    === scope
+        r.scope    === scope &&
+        r.sessionId === sessionId
       ),
     );
   }
@@ -297,6 +291,7 @@ export class PermissionEngine {
     input:    unknown,
     meta:     ToolPermissionMeta,
     reason:   string | undefined,
+    resolvedPaths: readonly string[],
     context:  PermissionContext,
   ): Promise<PermissionOutcome> {
     // Per-call override wins (lets each turn route the prompt through its
@@ -317,27 +312,56 @@ export class PermissionEngine {
       riskLevel:  meta.riskLevel,
       accessType: meta.accessType,
       gateReason: reason,
+      sessionId:  context.sessionId,
+      turnId:     context.turnId,
+      toolCallId: context.toolCallId,
     };
 
     const response = await askFn(prompt);
 
+    if (response.action !== 'deny') {
+      const currentExtractedPath = meta.extractPath?.(input);
+      const currentPaths = currentExtractedPath
+        ? getPathsForPermissionCheck(currentExtractedPath)
+        : [];
+      if (!sameResolvedPaths(resolvedPaths, currentPaths)) {
+        return {
+          granted: false,
+          reason: 'permission target changed while awaiting approval',
+          decisionReason: {
+            type: 'safetyCheck',
+            reason: 'resolved path changed during approval',
+          },
+        };
+      }
+    }
+
     switch (response.action) {
       case 'allow':
-        if (context.sessionId) this.recordSuccess(context.sessionId);
         return { granted: true };
 
       case 'allow_session': {
-        // Add a session-scoped allow rule for THIS specific tool only.
-        // Users see "此会话允许" and expect only this tool to be approved —
-        // not a full-session bypass of all tools.
-        const rule: PermissionRule = { action: 'allow', tool: toolName, scope: 'session' };
-        this.rules = upsertRule(this.rules, rule);
-        if (context.sessionId) this.recordSuccess(context.sessionId);
-        return { granted: true, decisionReason: { type: 'rule', rule } };
+        if (!context.sessionId) {
+          return {
+            granted: false,
+            reason: 'session-scoped approval requires a sessionId',
+            decisionReason: { type: 'other', reason: 'missing session identity' },
+          };
+        }
+        this.sessionGrants.allow(context.sessionId, {
+          toolName,
+          input,
+          meta,
+          resolvedPaths,
+          context,
+        });
+        return {
+          granted: true,
+          decisionReason: { type: 'sessionGrant', sessionId: context.sessionId },
+        };
       }
 
       case 'deny':
-        this.trackDenial(context.sessionId);
         return {
           granted:        false,
           reason:         response.reason ?? 'denied by user',
@@ -346,15 +370,16 @@ export class PermissionEngine {
     }
   }
 
-  private trackDenial(sessionId: string | undefined): void {
-    if (!sessionId) return;
-    const c = this.denialCounters.get(sessionId) ?? { consecutive: 0, total: 0 };
-    c.consecutive++;
-    c.total++;
-    this.denialCounters.set(sessionId, c);
-  }
 }
 
 // ── Convenience type re-export ────────────────────────────────────────────────
 
 export type { DecisionReason };
+
+function sameResolvedPaths(left: readonly string[], right: readonly string[]): boolean {
+  if (left.length !== right.length) return false;
+  const normalize = (value: string): string => normalizeCaseForComparison(path.resolve(value));
+  const normalizedLeft = left.map(normalize).sort();
+  const normalizedRight = right.map(normalize).sort();
+  return normalizedLeft.every((value, index) => value === normalizedRight[index]);
+}

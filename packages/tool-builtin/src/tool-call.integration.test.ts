@@ -345,7 +345,7 @@ describe('permission tests', () => {
     expect(outcome.granted).toBe(false);
   });
 
-  it('ask-mode: "allow_session" adds a session-scoped rule for this tool only', async () => {
+  it('ask-mode: "allow_session" only caches the exact action in this Session', async () => {
     const permEngine = new PermissionEngine({
       mode:  'ask',
       rules: [],
@@ -360,11 +360,13 @@ describe('permission tests', () => {
 
     console.log('[permission] allow_session outcome:', outcome);
     expect(outcome.granted).toBe(true);
-    // Second call for same tool: session rule auto-allows without prompting
+    // Second call for the exact action: Session Grant auto-allows without prompting
     const outcome2 = await permEngine.gate('fs_read', input, fsReadMeta, makePermCtx());
-    expect(outcome2.granted).toBe(true);
-    // Session rule is tool-scoped: rules list has exactly one entry for fs_read
-    expect(permEngine.getRules()).toHaveLength(1);
-    expect(permEngine.getRules()[0]).toMatchObject({ action: 'allow', tool: 'fs_read', scope: 'session' });
+    expect(outcome2).toEqual({
+      granted: true,
+      decisionReason: { type: 'sessionGrant', sessionId: 'test-session' },
+    });
+    // 临时授权不污染持久化规则集合。
+    expect(permEngine.getRules()).toHaveLength(0);
   });
 });

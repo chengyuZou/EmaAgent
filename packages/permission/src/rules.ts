@@ -142,8 +142,11 @@ export function ruleMatches(
   rule:       PermissionRule,
   toolName:   string,
   targetPath: string | undefined,
-  context:    Pick<PermissionContext, 'workspaceRoot'>,
+  context:    Pick<PermissionContext, 'workspaceRoot' | 'sessionId'>,
 ): boolean {
+  if (rule.scope === 'session' && (!rule.sessionId || rule.sessionId !== context.sessionId)) {
+    return false;
+  }
   if (rule.tool !== '*' && normalizeCaseForComparison(rule.tool) !== normalizeCaseForComparison(toolName)) {
     return false;
   }
@@ -156,21 +159,21 @@ export function ruleMatches(
 
 export function findDenyRule(
   rules: PermissionRule[], toolName: string, targetPath: string | undefined,
-  context: Pick<PermissionContext, 'workspaceRoot'>,
+  context: Pick<PermissionContext, 'workspaceRoot' | 'sessionId'>,
 ): PermissionRule | undefined {
   return rules.find(r => r.action === 'deny' && ruleMatches(r, toolName, targetPath, context));
 }
 
 export function findAskRule(
   rules: PermissionRule[], toolName: string, targetPath: string | undefined,
-  context: Pick<PermissionContext, 'workspaceRoot'>,
+  context: Pick<PermissionContext, 'workspaceRoot' | 'sessionId'>,
 ): PermissionRule | undefined {
   return rules.find(r => r.action === 'ask' && ruleMatches(r, toolName, targetPath, context));
 }
 
 export function findAllowRule(
   rules: PermissionRule[], toolName: string, targetPath: string | undefined,
-  context: Pick<PermissionContext, 'workspaceRoot'>,
+  context: Pick<PermissionContext, 'workspaceRoot' | 'sessionId'>,
 ): PermissionRule | undefined {
   return rules.find(r => r.action === 'allow' && ruleMatches(r, toolName, targetPath, context));
 }
@@ -182,7 +185,8 @@ export function upsertRule(rules: PermissionRule[], incoming: PermissionRule): P
     r => !(
       normalizeCaseForComparison(r.tool) === normalizeCaseForComparison(incoming.tool) &&
       r.pathGlob === incoming.pathGlob &&
-      r.scope    === incoming.scope
+      r.scope    === incoming.scope &&
+      r.sessionId === incoming.sessionId
     ),
   );
   return [...filtered, incoming];

@@ -263,15 +263,14 @@ export function dispatchSseEvent(
       };
       useDecisionStore.getState().push(p);
       void tauriBridge.emit('decision:push', p);
-      // 关联到当前 streaming 的 tool_use slice（用 tool name 匹配最近的 pending 工具）
-      // permission 事件不带 callId，同名并发概率低，取最后一个无 result 的同名 slice
+      // 使用后端提供的 ToolCallId 精确关联；同名工具允许在一个 Turn 内并发。
       useConversationStore.setState((s) => {
         const sm = s.streamingMap.get(sessionId as string);
         if (!sm) return {};
         let set = false;
         const slices = sm.slices.map((sl) => {
           if (set) return sl;
-          if (sl.type === 'tool_use' && sl.name === event.tool && sl.result === undefined && !sl.permissionPromptId) {
+          if (sl.type === 'tool_use' && sl.callId === event.callId) {
             set = true;
             return { ...sl, permissionPromptId: event.promptId };
           }

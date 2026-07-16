@@ -7,7 +7,7 @@
 
 import { PermissionEngine } from '@ema-agent/permission';
 import type { AskPermissionFn } from '@ema-agent/permission';
-import type { EmaStreamEvent, SessionId } from '@ema-agent/contracts';
+import type { EmaStreamEvent, SessionId, ToolCallId, TurnId } from '@ema-agent/contracts';
 import { PermissionPromptRegistry } from '../permissions/registry.js';
 import { AskUserRegistry } from '../ask-user/registry.js';
 import type { SettingsRepo } from '@ema-agent/storage';
@@ -20,7 +20,8 @@ export interface PermissionBootstrapResult {
   askUserRegistry:   AskUserRegistry;
   buildAskForTurn: (args: {
     sessionId: string;
-    turnId:    string;
+    turnId:    TurnId;
+    toolCallId: ToolCallId;
     emit:      (ev: EmaStreamEvent) => void;
   }) => AskPermissionFn;
 }
@@ -63,17 +64,21 @@ export function buildPermissionSubsystem(settingsRepo: SettingsRepo): Permission
 
   const buildAskForTurn = (args: {
     sessionId: string;
-    turnId:    string;
+    turnId:    TurnId;
+    toolCallId: ToolCallId;
     emit:      (ev: EmaStreamEvent) => void;
   }): AskPermissionFn => {
     return async (prompt) => {
       const { promptId, promise } = permissionPrompts.create({
         sessionId: args.sessionId,
         turnId:    args.turnId,
+        toolCallId: args.toolCallId,
       });
       args.emit({
         type:      'permission_required',
         sessionId: args.sessionId as SessionId,
+        turnId:    args.turnId,
+        callId:    args.toolCallId,
         promptId,
         tool:      prompt.toolName,
         args:      prompt.input,
@@ -83,6 +88,8 @@ export function buildPermissionSubsystem(settingsRepo: SettingsRepo): Permission
       args.emit({
         type:      'permission_resolved',
         sessionId: args.sessionId as SessionId,
+        turnId:    args.turnId,
+        callId:    args.toolCallId,
         promptId,
         decision: response.action === 'allow' || response.action === 'allow_session'
                   ? 'allow' : 'deny',

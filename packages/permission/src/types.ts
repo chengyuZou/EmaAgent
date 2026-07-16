@@ -38,6 +38,8 @@ export interface PermissionRule {
   /** Gitignore-style path pattern. Absent = match all paths for this tool. */
   pathGlob?: string
   scope:     RuleScope
+  /** scope=session 时必须提供；缺失时规则按 fail-closed 原则永不匹配。 */
+  sessionId?: string
 }
 
 // ── Decision Reason ───────────────────────────────────────────────────────────
@@ -46,6 +48,7 @@ export interface PermissionRule {
 export type DecisionReason =
   | { type: 'rule';         rule: PermissionRule }
   | { type: 'mode';         mode: PermissionMode }
+  | { type: 'sessionGrant'; sessionId: string }
   | { type: 'workingDir' }
   | { type: 'internalPath'; path: string }
   | { type: 'safetyCheck';  reason: string }
@@ -65,6 +68,10 @@ export interface PermissionContext {
   workspaceRoot:   string
   /** Current session ID — used for internal path carve-outs (e.g. session memory). */
   sessionId?:      string
+  /** 当前 Turn 标识，用于把并发审批精确关联到产生它的事件流。 */
+  turnId?:         string
+  /** 当前工具调用标识；同一 Turn 内同名工具并发时不能依赖工具名猜测。 */
+  toolCallId?:     string
   /**
    * Per-call askPermission override. When set, takes precedence over
    * `PermissionConfig.ask`. AgentEngine injects this so each turn can route
@@ -87,6 +94,9 @@ export interface PermissionPrompt {
   accessType?:      AccessType
   /** Human-readable reason why this call is being gated (shown in the dialog). */
   gateReason?:      string
+  sessionId?:       string
+  turnId?:          string
+  toolCallId?:      string
 }
 
 export type PermissionResponse =

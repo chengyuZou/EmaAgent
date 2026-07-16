@@ -8,6 +8,7 @@ interface PendingPrompt {
   timer:     ReturnType<typeof setTimeout>;
   sessionId: string;
   turnId:    string;
+  toolCallId: string;
   createdAt: number;
 }
 
@@ -47,6 +48,7 @@ export class PermissionPromptRegistry {
   create(args: {
     sessionId: string;
     turnId:    string;
+    toolCallId: string;
     timeoutMs?: number;
   }): { promptId: string; promise: Promise<PermissionResponse> } {
     const promptId = crypto.randomUUID();
@@ -64,6 +66,7 @@ export class PermissionPromptRegistry {
         timer,
         sessionId: args.sessionId,
         turnId:    args.turnId,
+        toolCallId: args.toolCallId,
         createdAt: Date.now(),
       });
     });
@@ -102,6 +105,19 @@ export class PermissionPromptRegistry {
     let n = 0;
     for (const [promptId, entry] of this.prompts.entries()) {
       if (entry.turnId !== turnId) continue;
+      clearTimeout(entry.timer);
+      this.prompts.delete(promptId);
+      entry.resolve({ action: 'deny', reason });
+      n++;
+    }
+    return n;
+  }
+
+  /** Session 删除时取消其全部待审批请求，避免留下悬挂 Promise。 */
+  cancelForSession(sessionId: string, reason = 'session deleted'): number {
+    let n = 0;
+    for (const [promptId, entry] of this.prompts.entries()) {
+      if (entry.sessionId !== sessionId) continue;
       clearTimeout(entry.timer);
       this.prompts.delete(promptId);
       entry.resolve({ action: 'deny', reason });

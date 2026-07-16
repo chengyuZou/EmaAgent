@@ -54,7 +54,8 @@ export interface AgentDeps {
    */
   buildAsk?: (args: {
     sessionId: SessionId;
-    turnId:    string;
+    turnId:    TurnId;
+    toolCallId: ToolCallId;
     emit:      (ev: EmaStreamEvent) => void;
   }) => AskPermissionFn;
   /**

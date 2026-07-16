@@ -291,6 +291,9 @@ export function sessionsRoute(bindings: AppBindings): Hono {
   // ── DELETE /api/sessions/:id ───────────────────────────────────────────────
   app.delete('/:id', (c) => {
     const sessionId = asSessionId(c.req.param('id'));
+    bindings.permissionPrompts.cancelForSession(sessionId, 'session deleted');
+    bindings.permission.clearSession(sessionId);
+    bindings.invalidateSessionRuntime(sessionId);
     bindings.session.deleteSession(sessionId);
     return c.body(null, 204);
   });
