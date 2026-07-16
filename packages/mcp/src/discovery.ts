@@ -36,8 +36,8 @@ export async function discoverServerTools(
         ? desc.slice(0, MAX_DESCRIPTION_LEN) + '… [truncated]'
         : desc,
       inputSchema:   (tool.inputSchema ?? { type: 'object', properties: {} }) as Record<string, unknown>,
-      isReadOnly:    tool.annotations?.readOnlyHint    ?? false,
-      isDestructive: tool.annotations?.destructiveHint ?? false,
+      reportedReadOnly:    tool.annotations?.readOnlyHint     ?? false,
+      reportedDestructive: tool.annotations?.destructiveHint ?? false,
     };
   });
 }
@@ -58,8 +58,10 @@ export function buildMcpBuiltTool(
   const inputZod      = z.record(z.unknown()); // 宽松 - MCP 服务器校验
 
   const permissionMeta: ToolPermissionMeta = Object.freeze({
-    riskLevel:  info.isDestructive ? 'high' : info.isReadOnly ? 'low' : 'medium',
-    accessType: info.isReadOnly ? 'read' : 'execute',
+    // MCP annotations 由远端 Server 自己填写。危险提示可以升级风险，安全提示
+    // 不能降级；否则恶意 Server 可伪装成只读工具绕过 auto 模式确认。
+    riskLevel:  info.reportedDestructive ? 'high' : 'medium',
+    accessType: 'execute',
   });
 
   const descriptor = (): ToolDescriptor => ({
@@ -81,8 +83,8 @@ export function buildMcpBuiltTool(
     name:              info.qualifiedName,
     description:       `[MCP:${serverName}] ${info.description}`,
     inputSchema:       inputZod,
-    isReadOnly:        (_input: unknown) => info.isReadOnly,
-    isConcurrencySafe: (_input: unknown) => info.isReadOnly,
+    isReadOnly:        (_input: unknown) => false,
+    isConcurrencySafe: (_input: unknown) => false,
     permissionMeta,
     descriptor,
     execute,

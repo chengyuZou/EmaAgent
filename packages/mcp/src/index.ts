@@ -1,3 +1,4 @@
+// 这里统一导出 MCP Facade、配置、错误、市场和公开业务类型。
 export { McpRegistry }               from './registry.js';
 export type { McpStdioPermissionGate } from './registry.js';
 export { McpServerStore }            from './store.js';
@@ -6,7 +7,6 @@ export type { ImportedServer }       from './config-import.js';
 export {
   McpServerConfigSchema,
   McpStdioConfigSchema,
-  McpSseConfigSchema,
   McpHttpConfigSchema,
   buildMcpToolName,
 }                                    from './types.js';
@@ -14,7 +14,6 @@ export type {
   McpServerConfig,
   McpStdioLaunchIntent,
   McpStdioConfig,
-  McpSseConfig,
   McpHttpConfig,
   McpServerRecord,
   McpConnection,
@@ -28,6 +27,7 @@ export {
   McpTimeoutError,
   McpServerNotFoundError,
   McpStdioPermissionError,
+  McpUnsupportedTransportError,
 }                                    from './errors.js';
 export { McpMarketAdapter, MCP_SEEDS } from './market/index.js';
 export type {

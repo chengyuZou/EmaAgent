@@ -27,7 +27,7 @@ export interface McpMarketEntry {
   version?:     string;
   repository?:  string;
   websiteUrl?:  string;
-  transport:    'stdio' | 'sse' | 'http' | null;
+  transport:    'stdio' | 'http' | null;
   url?:         string;
   command?:     string;
   args?:        string[];

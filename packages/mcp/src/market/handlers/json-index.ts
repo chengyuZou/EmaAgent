@@ -9,15 +9,26 @@ import type { McpJsonIndex, McpJsonIndexConfig, McpJsonIndexEntry, McpMarketEntr
 // 用户可自 host 一个 MCP 列表(json-index),或镜像官方列表。
 // transport 缺失时按 url/command 推断,保证宽松输入也能用。
 
-function inferTransport(entry: McpJsonIndexEntry): 'stdio' | 'sse' | 'http' | null {
-  if (entry.transport === 'stdio' || entry.transport === 'sse' || entry.transport === 'http') {
-    return entry.transport;
+function inferTransport(entry: McpJsonIndexEntry): 'stdio' | 'http' | null {
+  const reportedTransport = (entry as { transport?: unknown }).transport;
+  if (reportedTransport === 'sse') return null;
+  if (reportedTransport === 'stdio' || reportedTransport === 'http') {
+    return reportedTransport;
   }
   if (entry.url) {
-    return entry.url.toLowerCase().includes('/sse') ? 'sse' : 'http';
+    return looksLikeLegacySseEndpoint(entry.url) ? null : 'http';
   }
   if (entry.command) return 'stdio';
   return null;
+}
+
+function looksLikeLegacySseEndpoint(value: string): boolean {
+  try {
+    const pathname = new URL(value).pathname.replace(/\/+$/, '').toLowerCase();
+    return pathname.endsWith('/sse');
+  } catch {
+    return false;
+  }
 }
 
 function toMarketEntry(raw: McpJsonIndexEntry): McpMarketEntry | null {

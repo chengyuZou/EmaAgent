@@ -1,3 +1,4 @@
+// 这里集中定义 MCP 连接、调用、超时、权限和协议迁移错误。
 export class McpConnectionError extends Error {
   constructor(serverName: string, message: string) {
     super(`[MCP:${serverName}] Connection failed: ${message}`);
@@ -38,5 +39,16 @@ export class McpStdioPermissionError extends Error {
         : `MCP stdio ${operation} for "${serverName}" was denied by the permission system`,
     );
     this.name = 'McpStdioPermissionError';
+  }
+}
+
+/** 旧 SSE transport 已退出 MCP 当前协议，必须由用户提供新的 HTTP endpoint。 */
+export class McpUnsupportedTransportError extends Error {
+  constructor(serverName: string, transport: string) {
+    super(
+      `MCP server "${serverName}" uses unsupported transport "${transport}". ` +
+      'Legacy SSE endpoints cannot be converted safely; configure a Streamable HTTP endpoint or stdio.',
+    );
+    this.name = 'McpUnsupportedTransportError';
   }
 }

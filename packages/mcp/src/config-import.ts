@@ -1,5 +1,7 @@
+// 这里把常见 MCP JSON 配置归一化为 Ema 支持的 stdio 或 Streamable HTTP 配置。
 import { McpServerConfigSchema } from './types.js';
 import type { McpServerConfig } from './types.js';
+import { McpUnsupportedTransportError } from './errors.js';
 
 // ── 配置导入 / 互操作 ───────────────────────────────────────────────────────────
 //
@@ -72,16 +74,16 @@ function normalizeOne(raw: unknown, name: string): McpServerConfig {
   } else if (typeof o['url'] === 'string') {
     const explicit = o['type'];
     const url = o['url'];
-    const type = explicit === 'sse' || explicit === 'http'
-      ? explicit
-      : url.toLowerCase().includes('/sse') ? 'sse' : 'http';   // 推断:旧式 SSE 端点通常以 /sse 结尾
+    if (explicit === 'sse' || (explicit === undefined && looksLikeLegacySseEndpoint(url))) {
+      throw new McpUnsupportedTransportError(name, 'sse');
+    }
     candidate = {
-      type,
+      type: 'http',
       url,
       ...(isStringRecord(o['headers']) ? { headers: o['headers'] } : {}),
     };
   } else {
-    throw new Error(`Invalid MCP server "${name}": needs a "command" (stdio) or "url" (sse/http).`);
+    throw new Error(`Invalid MCP server "${name}": needs a "command" (stdio) or Streamable HTTP "url".`);
   }
 
   const result = McpServerConfigSchema.safeParse(candidate);
@@ -89,6 +91,15 @@ function normalizeOne(raw: unknown, name: string): McpServerConfig {
     throw new Error(`Invalid MCP server "${name}": ${result.error.issues.map((i) => i.message).join('; ')}`);
   }
   return result.data;
+}
+
+function looksLikeLegacySseEndpoint(value: string): boolean {
+  try {
+    const pathname = new URL(value).pathname.replace(/\/+$/, '').toLowerCase();
+    return pathname.endsWith('/sse');
+  } catch {
+    return false;
+  }
 }
 
 // ── 辅助函数 ────────────────────────────────────────────────────────────────────

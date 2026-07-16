@@ -1,10 +1,6 @@
+// 这里为 stdio 或 Streamable HTTP 配置创建 MCP SDK 连接并负责清理。
 import { Client }             from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport, getDefaultEnvironment } from '@modelcontextprotocol/sdk/client/stdio.js';
-// SSEClientTransport 在 MCP SDK 已弃用(优先 StreamableHTTPClientTransport),
-// 但很多已发布服务器(如智谱、百度)仍用旧式 SSE 协议。
-// 迁移期保留向后兼容。
-// eslint-disable-next-line @typescript-eslint/no-deprecated
-import { SSEClientTransport }   from '@modelcontextprotocol/sdk/client/sse.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import type { McpServerConfig } from './types.js';
 import { McpConnectionError, McpTimeoutError } from './errors.js';
@@ -46,7 +42,7 @@ function assertSafeStdioConfig(command: string, args: readonly string[]): void {
 }
 
 
-function buildTransport(config: McpServerConfig): StdioClientTransport | SSEClientTransport | StreamableHTTPClientTransport {
+function buildTransport(config: McpServerConfig): StdioClientTransport | StreamableHTTPClientTransport {
   if (config.type === 'stdio') {
     assertSafeStdioConfig(config.command, config.args);
     return new StdioClientTransport({
@@ -59,13 +55,7 @@ function buildTransport(config: McpServerConfig): StdioClientTransport | SSEClie
       env:     { ...getDefaultEnvironment(), ...(config.env ?? {}) },
     });
   }
-  if (config.type === 'sse') {
-    return new SSEClientTransport(
-      new URL(config.url),
-      config.headers ? { requestInit: { headers: config.headers } } : undefined,
-    );
-  }
-  // http
+  // 远程 MCP 统一使用 Streamable HTTP；旧 SSE transport 已从配置层移除。
   return new StreamableHTTPClientTransport(
     new URL(config.url),
     config.headers ? { requestInit: { headers: config.headers } } : undefined,

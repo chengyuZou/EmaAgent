@@ -1,4 +1,5 @@
-﻿import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+// 这里提供 MCP 服务器配置、连接测试、导入和市场浏览界面。
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import {
   Badge, Button, Callout, Card, ConfirmDialog, Dialog, Divider, DropdownMenu,
   EmptyState, Field, IconButton, Input, MarketCard, ScrollArea, Select, Spinner, Switch, Tabs, Textarea, ToolSpecItem, Tooltip,
@@ -17,11 +18,10 @@ const STATUS_BADGE: Record<McpConnectionStatus, { variant: 'success' | 'warn' | 
   disconnected: { variant: 'neutral', label: '未连接' },
 };
 
-type TransportType = 'stdio' | 'sse' | 'http';
+type TransportType = 'stdio' | 'http';
 
 const TRANSPORT_OPTIONS = [
   { value: 'stdio', label: 'Stdio(本地进程)' },
-  { value: 'sse',   label: 'SSE(远程 HTTP)'  },
   { value: 'http',  label: 'Streamable HTTP'  },
 ];
 
@@ -37,7 +37,7 @@ interface AddFormState {
   url:         string;
   /** Environment variables for stdio (API keys etc., e.g. AMAP_MAPS_API_KEY). */
   env:         KvPair[];
-  /** Request headers for sse/http (auth, e.g. Authorization: Bearer …). */
+  /** Streamable HTTP 请求头，例如 Authorization: Bearer …。 */
   headers:     KvPair[];
 }
 
@@ -67,7 +67,7 @@ function buildConfig(form: AddFormState): McpServerConfig {
     };
   }
   return {
-    type:    form.transport as 'sse' | 'http',
+    type:    'http',
     url:     form.url.trim(),
     headers: kvToRecord(form.headers),
   };
@@ -477,7 +477,7 @@ export function McpTab(): JSX.Element {
             <>
               <Field label="服务器 URL" required>
                 <Input
-                  placeholder="http://localhost:3000/sse"
+                  placeholder="http://localhost:3000/mcp"
                   value={form.url}
                   onChange={(e) => setForm({ ...form, url: e.target.value })}
                 />
@@ -557,7 +557,7 @@ function sanitizeServerName(raw: string): string {
 }
 
 const TRANSPORT_LABEL: Record<string, string> = {
-  stdio: '本地进程', sse: 'SSE 远程', http: 'HTTP 远程',
+  stdio: '本地进程', http: 'Streamable HTTP',
 };
 
 function McpMarketView({

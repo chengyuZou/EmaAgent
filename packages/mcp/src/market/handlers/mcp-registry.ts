@@ -47,9 +47,9 @@ function normaliseRegistryServer(s: RegistryServer): McpMarketEntry {
   };
 
   // 优先 hosted remote(无需本地安装)
-  const remote = s.remotes?.find((r) => r.url);
+  const remote = s.remotes?.find((r) => r.url && r.type !== 'sse');
   if (remote?.url) {
-    return { ...base, transport: remote.type === 'sse' ? 'sse' : 'http', url: remote.url };
+    return { ...base, transport: 'http', url: remote.url };
   }
 
   // 否则从第一个 package 推 stdio 启动命令

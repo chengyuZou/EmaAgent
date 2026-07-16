@@ -1,3 +1,4 @@
+// 这里定义 MCP 市场条目和不同市场源的配置类型。
 // ── MCP market 条目类型 ───────────────────────────────────────────────────────
 //
 // 从路由层搬来(原 apps/core/src/routes/mcp.ts:37-48),供 adapter + 路由共用。
@@ -9,7 +10,7 @@ export interface McpMarketEntry {
   version?:     string;
   repository?:  string;
   websiteUrl?:  string;
-  transport:    'stdio' | 'sse' | 'http' | null;
+  transport:    'stdio' | 'http' | null;
   url?:         string;
   command?:     string;
   args?:        string[];
@@ -41,7 +42,7 @@ export interface McpJsonIndexEntry {
   version?:    string;
   repository?: string;
   websiteUrl?: string;
-  transport?:  'stdio' | 'sse' | 'http';
+  transport?:  'stdio' | 'http';
   url?:        string;
   command?:    string;
   args?:       string[];

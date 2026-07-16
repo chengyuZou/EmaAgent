@@ -35,8 +35,8 @@ const discoveredTool: McpToolInfo = {
   originalServerName: 'test',
   description: '搜索',
   inputSchema: { type: 'object' },
-  isReadOnly: true,
-  isDestructive: false,
+  reportedReadOnly: true,
+  reportedDestructive: false,
 };
 
 beforeEach(() => {

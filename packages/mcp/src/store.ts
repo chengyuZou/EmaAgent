@@ -1,8 +1,9 @@
+// 这里管理 MCP 服务器配置与工具缓存的持久化转换和运行时校验。
 import { randomUUID }            from 'node:crypto';
 import type { McpServersRepo }   from '@ema-agent/storage';
 import type { McpServerConfig, McpServerRecord, McpToolInfo } from './types.js';
-import { McpServerConfigSchema } from './types.js';
-import { McpServerNotFoundError } from './errors.js';
+import { McpServerConfigSchema, McpToolInfoListSchema } from './types.js';
+import { McpServerNotFoundError, McpUnsupportedTransportError } from './errors.js';
 
 // ── McpServerStore ────────────────────────────────────────────────────────────
 //
@@ -79,15 +80,30 @@ export class McpServerStore {
     config_json: string; tools_cache?: string | null; cached_at?: number;
     enabled: number; installed_at: number;
   }): McpServerRecord {
+    const rawConfig = JSON.parse(row.config_json) as unknown;
+    if (
+      rawConfig !== null &&
+      typeof rawConfig === 'object' &&
+      !Array.isArray(rawConfig) &&
+      (rawConfig as { type?: unknown }).type === 'sse'
+    ) {
+      throw new McpUnsupportedTransportError(row.name, 'sse');
+    }
+
     let cachedTools: McpToolInfo[] | undefined;
     if (row.tools_cache) {
-      try { cachedTools = JSON.parse(row.tools_cache) as McpToolInfo[]; } catch { cachedTools = undefined; }
+      try {
+        const parsed = McpToolInfoListSchema.safeParse(JSON.parse(row.tools_cache));
+        cachedTools = parsed.success ? parsed.data : undefined;
+      } catch {
+        cachedTools = undefined;
+      }
     }
     return {
       id:          row.id,
       name:        row.name,
       sourceUrl:   row.source_url ?? undefined,
-      config:      McpServerConfigSchema.parse(JSON.parse(row.config_json)),
+      config:      McpServerConfigSchema.parse(rawConfig),
       cachedTools,
       cachedAt:    row.cached_at ?? 0,
       enabled:     row.enabled === 1,

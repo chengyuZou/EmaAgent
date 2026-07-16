@@ -1,11 +1,11 @@
+// 这里定义 MCP 服务器配置、工具发现结果、连接状态和公开 Schema。
 import { z } from 'zod';
 
 // ── 服务器配置 ──────────────────────────────────────────────────────────────
 //
-// V1 支持三种传输类型,覆盖 mcp.so 上绝大多数服务器:
+// V1 只支持当前 MCP 协议使用的两种传输:
 //   stdio   - 拉起本地子进程(npx、uvx、node、python 等)
-//   sse     - 连远程 SSE 端点(旧式 HTTP 流)
-//   http    - 连远程 HTTP 端点(现代 MCP 协议)
+//   http    - 连接 Streamable HTTP 端点
 
 export const McpStdioConfigSchema = z.object({
   type:    z.literal('stdio').default('stdio'),
@@ -16,15 +16,6 @@ export const McpStdioConfigSchema = z.object({
   cwd:     z.string().optional(),
 });
 
-// 'sse' 用旧式 SSEClientTransport(MCP SDK ≥1.x 已弃用)。
-// mcp.so 上很多服务器(智谱、百度等)仍发布 SSE 端点。
-// 服务器支持时,新注册服务器仍优先用 'http'。
-export const McpSseConfigSchema = z.object({
-  type:    z.literal('sse'),
-  url:     z.string().url(),
-  headers: z.record(z.string(), z.string()).optional(),
-});
-
 export const McpHttpConfigSchema = z.object({
   type:    z.literal('http'),
   url:     z.string().url(),
@@ -33,12 +24,10 @@ export const McpHttpConfigSchema = z.object({
 
 export const McpServerConfigSchema = z.discriminatedUnion('type', [
   McpStdioConfigSchema,
-  McpSseConfigSchema,
   McpHttpConfigSchema,
 ]);
 
 export type McpStdioConfig  = z.infer<typeof McpStdioConfigSchema>;
-export type McpSseConfig    = z.infer<typeof McpSseConfigSchema>;
 export type McpHttpConfig   = z.infer<typeof McpHttpConfigSchema>;
 export type McpServerConfig = z.infer<typeof McpServerConfigSchema>;
 
@@ -77,23 +66,32 @@ export interface McpServerRecord {
 
 export type McpConnectionStatus = 'connecting' | 'connected' | 'failed' | 'disconnected';
 
-export interface McpToolInfo {
+export const McpToolInfoSchema = z.preprocess((value) => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
+  const raw = value as Record<string, unknown>;
+  return {
+    ...raw,
+    // 兼容旧缓存字段；迁移后仍只是远端提示，绝不恢复为安全事实。
+    reportedReadOnly: raw.reportedReadOnly ?? raw.isReadOnly ?? false,
+    reportedDestructive: raw.reportedDestructive ?? raw.isDestructive ?? false,
+  };
+}, z.object({
   /** 服务器上报的未限定工具名,如 "search"。 */
-  serverToolName:     string;
+  serverToolName: z.string().min(1),
   /** 注册进 ToolRegistry 的限定名,如 "mcp__brave_search__search"。 */
-  qualifiedName:      string;
-  /**
-   * 用户配置的原始服务器名,如 "brave-search"。
-   * 用作 McpRegistry.connections 的键 - 不可清洗。
-   * 与 qualifiedName 分开,因 buildMcpToolName() 把连字符/点/空格替换成
-   * 下划线作 LLM 可见标识,但连接 map 按原始名索引。
-   */
-  originalServerName: string;
-  description:        string;
-  inputSchema:        Record<string, unknown>;
-  isReadOnly:         boolean;
-  isDestructive:      boolean;
-}
+  qualifiedName: z.string().min(1),
+  /** 用户配置的原始服务器名,不可从清洗后的 qualifiedName 反推。 */
+  originalServerName: z.string().min(1),
+  description: z.string(),
+  inputSchema: z.record(z.unknown()),
+  /** 远端 Server 自报的只读提示，只能展示，不能降低本地风险等级。 */
+  reportedReadOnly: z.boolean().default(false),
+  /** 远端 Server 自报的破坏性提示，可以单向提升本地风险等级。 */
+  reportedDestructive: z.boolean().default(false),
+}));
+
+export const McpToolInfoListSchema = z.array(McpToolInfoSchema).max(1_000);
+export type McpToolInfo = z.infer<typeof McpToolInfoSchema>;
 
 export interface McpConnection {
   serverName: string;
