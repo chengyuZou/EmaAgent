@@ -93,7 +93,8 @@ describe('MCP Probe stdio 权限与资源边界', () => {
 
   it('正式连接在工具发现失败时清理资源并公开失败状态', async () => {
     const cleanup = vi.fn(async () => undefined);
-    mocks.openConnection.mockResolvedValue({ client: {}, cleanup });
+    const client = { setNotificationHandler: vi.fn() };
+    mocks.openConnection.mockResolvedValue({ client, cleanup });
     mocks.discoverServerTools.mockRejectedValue(new Error('connect discovery failed'));
     const registry = new McpRegistry(store, toolRegistry);
 

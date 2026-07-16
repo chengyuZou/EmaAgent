@@ -1,6 +1,7 @@
 // 这里管理 MCP 服务器的连接、工具发现、调用和本地进程启动门禁。
 
 import { randomUUID }       from 'node:crypto';
+import { ToolListChangedNotificationSchema } from '@modelcontextprotocol/sdk/types.js';
 import type { McpToolOwner, McpToolRegistration, ToolRegistry } from '@ema-agent/tools';
 import type { McpServerStore }                            from './store.js';
 import type {
@@ -16,6 +17,15 @@ import type { OpenedConnection }                         from './connection.js';
 import { discoverServerTools, buildMcpBuiltTool }       from './discovery.js';
 import { callMcpTool }                                   from './execution.js';
 import {
+  cleanupQuietly,
+  connectionInfo,
+  copyConnection,
+  linkedAbortController,
+  runWithConcurrency,
+  waitForPromise,
+  withTimeout,
+} from './runtime-utils.js';
+import {
   McpServerNotFoundError,
   McpConnectionSupersededError,
   McpStdioPermissionError,
@@ -23,6 +33,7 @@ import {
 } from './errors.js';
 
 const TOOL_DISCOVERY_TIMEOUT_MS = 15_000;
+const STARTUP_CONNECT_CONCURRENCY = 4;
 
 interface McpServerRuntime {
   generation: number;
@@ -31,6 +42,8 @@ interface McpServerRuntime {
   opened?: OpenedConnection;
   connectTask?: Promise<McpConnection>;
   lifecycleAbort?: AbortController;
+  refreshTask?: Promise<void>;
+  refreshRequested?: boolean;
 }
 
 // ── McpRegistry ───────────────────────────────────────────────────────────────
@@ -127,6 +140,8 @@ export class McpRegistry {
     runtime.opened = undefined;
     runtime.connectTask = undefined;
     runtime.lifecycleAbort = undefined;
+    runtime.refreshTask = undefined;
+    runtime.refreshRequested = false;
     runtime.configKey = undefined;
     runtime.info = connectionInfo(serverName, 'disconnected', []);
 
@@ -145,8 +160,8 @@ export class McpRegistry {
 
   async disconnectAll(): Promise<void> {
     const pendingTasks = [...this.runtimes.values()]
-      .map((runtime) => runtime.connectTask)
-      .filter((task): task is Promise<McpConnection> => task !== undefined);
+      .flatMap((runtime) => [runtime.connectTask, runtime.refreshTask])
+      .filter((task) => task !== undefined);
     const names = new Set([...this.runtimes.keys(), ...this.primed.keys()]);
     await Promise.all([...names].map((name) => this.disconnect(name)));
     await Promise.allSettled(pendingTasks);
@@ -209,13 +224,13 @@ export class McpRegistry {
     const enabled = this.store.listEnabled().filter(
       record => record.config.type !== 'stdio' || this.stdioEnabled,
     );
-    await Promise.allSettled(
-      enabled.map((r) =>
-        this.connectConfig(r.name, r.config).catch((err) => {
-          console.warn(`[mcp] Failed to connect "${r.name}": ${(err as Error).message}`);
-        }),
-      ),
-    );
+    await runWithConcurrency(enabled, STARTUP_CONNECT_CONCURRENCY, async (record) => {
+      try {
+        await this.connectConfig(record.name, record.config);
+      } catch (err) {
+        console.warn(`[mcp] Failed to connect "${record.name}": ${(err as Error).message}`);
+      }
+    });
   }
 
   // ── 探测 ────────────────────────────────────────────────────────────────
@@ -309,6 +324,8 @@ export class McpRegistry {
     runtime.opened = undefined;
     runtime.configKey = configKey;
     runtime.lifecycleAbort = lifecycleAbort;
+    runtime.refreshTask = undefined;
+    runtime.refreshRequested = false;
     runtime.info = connectionInfo(serverName, 'connecting', this.primed.get(serverName) ?? []);
     unregisterTools(this.toolRegistry, previousTools);
 
@@ -344,6 +361,12 @@ export class McpRegistry {
       opened = await openConnection(serverName, authorizedConfig, lifecycleAbort.signal);
       this.assertCurrent(serverName, runtime, generation);
 
+      // 先监听变化，再做初次 listTools。连接阶段收到的通知会先记账，
+      // 初次提交完成后立即刷新，避免 handler 安装窗口丢失变化事件。
+      opened.client.setNotificationHandler(ToolListChangedNotificationSchema, () => {
+        this.requestToolRefresh(serverName, runtime, generation, opened?.client);
+      });
+
       const tools = await withTimeout(
         discoverServerTools(serverName, opened.client, lifecycleAbort.signal),
         TOOL_DISCOVERY_TIMEOUT_MS,
@@ -369,6 +392,7 @@ export class McpRegistry {
 
       // 工具缓存失败不能破坏已经建立的实时连接。
       try { this.store.cacheTools(serverName, tools); } catch { /* ignore */ }
+      this.startRequestedToolRefresh(serverName, runtime, generation, opened.client);
       return copyConnection(info);
     } catch (err) {
       if (runtime.generation !== generation) {
@@ -402,6 +426,98 @@ export class McpRegistry {
       throw new McpConnectionSupersededError(serverName);
     }
   }
+
+  private requestToolRefresh(
+    serverName: string,
+    runtime: McpServerRuntime,
+    generation: number,
+    client: OpenedConnection['client'] | undefined,
+  ): void {
+    if (runtime.generation !== generation || !client) return;
+    runtime.refreshRequested = true;
+    this.startRequestedToolRefresh(serverName, runtime, generation, client);
+  }
+
+  private startRequestedToolRefresh(
+    serverName: string,
+    runtime: McpServerRuntime,
+    generation: number,
+    client: OpenedConnection['client'],
+  ): void {
+    if (
+      !runtime.refreshRequested ||
+      runtime.refreshTask ||
+      runtime.generation !== generation ||
+      runtime.info.status !== 'connected' ||
+      runtime.opened?.client !== client
+    ) {
+      return;
+    }
+
+    const task = this.runToolRefreshLoop(serverName, runtime, generation, client);
+    runtime.refreshTask = task;
+    void task.catch((err) => {
+      console.warn(`[mcp] Failed to refresh tools for "${serverName}": ${(err as Error).message}`);
+    });
+  }
+
+  private async runToolRefreshLoop(
+    serverName: string,
+    runtime: McpServerRuntime,
+    generation: number,
+    client: OpenedConnection['client'],
+  ): Promise<void> {
+    try {
+      while (runtime.refreshRequested && runtime.generation === generation) {
+        runtime.refreshRequested = false;
+        const linked = linkedAbortController(runtime.lifecycleAbort?.signal);
+        try {
+          const tools = await withTimeout(
+            discoverServerTools(serverName, client, linked.controller.signal),
+            TOOL_DISCOVERY_TIMEOUT_MS,
+            () => new McpTimeoutError(serverName, 'tool refresh', TOOL_DISCOVERY_TIMEOUT_MS),
+            (error) => linked.controller.abort(error),
+          );
+          this.assertCurrent(serverName, runtime, generation);
+          if (runtime.opened?.client !== client || runtime.info.status !== 'connected') return;
+
+          this.replaceRegisteredTools(runtime.info.tools, tools);
+          runtime.info = connectionInfo(
+            serverName,
+            'connected',
+            tools,
+            undefined,
+            runtime.info.connectedAt,
+          );
+          try { this.store.cacheTools(serverName, tools); } catch { /* ignore */ }
+        } finally {
+          linked.dispose();
+        }
+      }
+    } finally {
+      if (runtime.generation === generation) {
+        runtime.refreshTask = undefined;
+        if (runtime.refreshRequested) {
+          queueMicrotask(() => {
+            this.startRequestedToolRefresh(serverName, runtime, generation, client);
+          });
+        }
+      }
+    }
+  }
+
+  private replaceRegisteredTools(
+    previousTools: readonly McpToolInfo[],
+    nextTools: readonly McpToolInfo[],
+  ): void {
+    // registerMcpBatch 会先验证整批再同步提交；随后在同一事件循环片段移除旧工具。
+    this.toolRegistry.registerMcpBatch(toRegistrations(nextTools, this));
+    const nextNames = new Set(nextTools.map((tool) => tool.qualifiedName));
+    unregisterTools(
+      this.toolRegistry,
+      previousTools.filter((tool) => !nextNames.has(tool.qualifiedName)),
+    );
+  }
 }
 
 function ownerOf(tool: McpToolInfo): McpToolOwner {
@@ -427,30 +543,6 @@ function unregisterTools(toolRegistry: ToolRegistry, tools: readonly McpToolInfo
   }
 }
 
-async function cleanupQuietly(connection: OpenedConnection): Promise<void> {
-  try { await connection.cleanup(); } catch { /* ignore cleanup failure */ }
-}
-
-function connectionInfo(
-  serverName: string,
-  status: McpConnection['status'],
-  tools: readonly McpToolInfo[],
-  error?: string,
-  connectedAt?: number,
-): McpConnection {
-  return {
-    serverName,
-    status,
-    tools: [...tools],
-    ...(error ? { error } : {}),
-    ...(connectedAt !== undefined ? { connectedAt } : {}),
-  };
-}
-
-function copyConnection(info: McpConnection): McpConnection {
-  return { ...info, tools: [...info.tools] };
-}
-
 function freezeStdioConfig(config: McpStdioConfig): McpStdioConfig {
   const args = [...config.args];
   Object.freeze(args);
@@ -463,59 +555,4 @@ function freezeStdioConfig(config: McpStdioConfig): McpStdioConfig {
     cwd: config.cwd,
     env,
   });
-}
-
-async function withTimeout<T>(
-  operation: Promise<T>,
-  timeoutMs: number,
-  timeoutError: () => Error,
-  onTimeout?: (error: Error) => void,
-): Promise<T> {
-  let timeoutId: ReturnType<typeof setTimeout> | undefined;
-  const timeout = new Promise<never>((_, reject) => {
-    timeoutId = setTimeout(() => {
-      const error = timeoutError();
-      onTimeout?.(error);
-      reject(error);
-    }, timeoutMs);
-  });
-  try {
-    return await Promise.race([operation, timeout]);
-  } finally {
-    if (timeoutId !== undefined) clearTimeout(timeoutId);
-  }
-}
-
-function linkedAbortController(signal?: AbortSignal): {
-  controller: AbortController;
-  dispose: () => void;
-} {
-  const controller = new AbortController();
-  const relayAbort = () => controller.abort(signal?.reason);
-  if (signal?.aborted) relayAbort();
-  else signal?.addEventListener('abort', relayAbort, { once: true });
-  return {
-    controller,
-    dispose: () => signal?.removeEventListener('abort', relayAbort),
-  };
-}
-
-async function waitForPromise<T>(operation: Promise<T>, signal?: AbortSignal): Promise<T> {
-  if (!signal) return operation;
-  signal.throwIfAborted();
-
-  let onAbort: (() => void) | undefined;
-  const cancelled = new Promise<never>((_, reject) => {
-    onAbort = () => reject(
-      signal.reason instanceof Error
-        ? signal.reason
-        : new DOMException('The MCP operation was aborted', 'AbortError'),
-    );
-    signal.addEventListener('abort', onAbort, { once: true });
-  });
-  try {
-    return await Promise.race([operation, cancelled]);
-  } finally {
-    if (onAbort) signal.removeEventListener('abort', onAbort);
-  }
 }
