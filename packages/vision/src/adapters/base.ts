@@ -1,4 +1,4 @@
-// 这里定义所有 provider 适配器必须满足的接口（extract + probe）和 router 填好默认值后的标准化调用形状。
+// 这里定义所有 provider 适配器必须满足的接口(extract + probe)和 router 填好默认值后的标准化调用形状。
 
 import type {
   VisionExtractionResult,

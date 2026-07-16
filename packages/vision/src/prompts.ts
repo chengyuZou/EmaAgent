@@ -1,4 +1,4 @@
-// 这里构造给 LLM 的视觉提取 prompt（按 5 种任务给不同指令）和按任务的 token 上限。
+// 这里构造给 LLM 的视觉提取 prompt(按 5 种任务给不同指令)和按任务的 token 上限。
 
 import type { VisionTask } from './types.js';
 

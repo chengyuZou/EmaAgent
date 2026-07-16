@@ -24,7 +24,8 @@
   "dependencies": {
     "@ema-agent/contracts": "workspace:*",
     "@anthropic-ai/sdk": "^0.39.0",
-    "@google/genai": "^2.7.0"
+    "@google/genai": "^2.7.0",
+    "openai": "^4.98.0"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
