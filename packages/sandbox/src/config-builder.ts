@@ -23,6 +23,8 @@ export interface ConfigContext {
   sessionId?:    string;
   /** Core 指定的私有文件或目录，沙箱进程一律不能读取或修改。 */
   protectedPaths: readonly string[];
+  /** V1 只有完全断网和全网访问两档。 */
+  networkAccess: 'none' | 'full';
 }
 
 // ── Builder output ────────────────────────────────────────────────────────────
@@ -56,9 +58,6 @@ export function buildSandboxConfig(
   const denyRead:   string[] = [];
   const allowRead:  string[] = [];
 
-  const allowedDomains: string[] = [];
-  const deniedDomains:  string[] = [];
-
   // 这些路径由 Core 提供，Sandbox 不再猜 profile 或 data 目录。
   for (const protectedPath of ctx.protectedPaths) {
     const absolutePath = path.resolve(protectedPath);
@@ -86,17 +85,9 @@ export function buildSandboxConfig(
     }
   }
 
-  // Permission rules → sandbox paths / domains ───────────────────────────────
+  // Permission rules → sandbox filesystem paths ─────────────────────────────
   for (const rule of rules) {
     if (!rule.pathGlob) continue;
-
-    const domainMatch = rule.pathGlob.match(/^domain:(.+)$/);
-
-    if (rule.tool === 'web-fetch' && domainMatch?.[1]) {
-      if (rule.action === 'allow') allowedDomains.push(domainMatch[1]);
-      else if (rule.action === 'deny') deniedDomains.push(domainMatch[1]);
-      continue;
-    }
 
     const base = resolveGlobBase(rule.pathGlob, ctx.workspaceRoot || '');
 
@@ -114,7 +105,7 @@ export function buildSandboxConfig(
   return {
     config: {
       filesystem: { allowWrite, denyWrite, denyRead, allowRead },
-      network:    { allowedDomains, deniedDomains },
+      network:    { access: ctx.networkAccess },
     },
     scrubPaths,
   };

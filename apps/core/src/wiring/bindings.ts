@@ -67,7 +67,10 @@ import type {
   SandboxStatusWire,
 } from '@ema-agent/contracts';
 import { ToolRegistry }        from '@ema-agent/tools';
-import { registerBuiltinTools } from '@ema-agent/tool-builtin';
+import {
+  cleanupInterruptedFsWriteTemps,
+  registerBuiltinTools,
+} from '@ema-agent/tool-builtin';
 import { detectBackend, CommandRunner } from '@ema-agent/sandbox';
 import type { ICommandRunner, IMcpClientBridge, ISkillRunner } from '@ema-agent/tools';
 import {
@@ -371,6 +374,9 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
   const sandboxDetection   = detectBackend();
   const unsafeShellOverride = process.env['AGEN_UNSAFE_SHELL'] === '1';
   const unsafeMcpOverride   = process.env['AGEN_UNSAFE_MCP_STDIO'] === '1';
+  const sandboxNetworkAccess = process.env['AGEN_UNSAFE_SANDBOX_NETWORK'] === '1'
+    ? 'full' as const
+    : 'none' as const;
   const disableExecuteTools =
     sandboxDetection.backend === 'app-layer' &&
     !unsafeShellOverride;
@@ -386,6 +392,9 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
     localMcpStdioEnabled
       ? 'Local stdio MCP processes are running without OS-level isolation because AGEN_UNSAFE_MCP_STDIO=1.'
       : 'Local stdio MCP processes are disabled until they are routed through the sandbox runner.',
+    sandboxNetworkAccess === 'full'
+      ? 'Sandboxed shell commands have full network access because AGEN_UNSAFE_SANDBOX_NETWORK=1.'
+      : undefined,
   ].filter((message): message is string => Boolean(message));
   const sandboxStatus: SandboxStatusWire = Object.freeze({
     backend: sandboxDetection.backend,
@@ -396,6 +405,7 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
         ? 'unsafe-override'
         : 'isolated',
     localMcpStdio: localMcpStdioEnabled ? 'unsafe-override' : 'disabled',
+    sandboxNetwork: sandboxNetworkAccess,
     ...(sandboxWarnings.length > 0 ? { warning: sandboxWarnings.join(' ') } : {}),
   });
 
@@ -425,6 +435,7 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
       sessionId,
       permission,
       protectedPaths: protectedSandboxPaths,
+      networkAccess:  sandboxNetworkAccess,
     });
     runnerCache.set(sessionId, runner);
     return runner;
@@ -461,6 +472,7 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
     new ToolExecutionsRepo(dataDb.sqlite),
   );
   const interruptedTools = toolExecutionJournal.recoverInterrupted();
+  const fsWriteRecovery = cleanupInterruptedFsWriteTemps(interruptedTools);
   if (interruptedTools.length > 0) {
     const unknownCount = interruptedTools.filter(
       execution => execution.status === 'outcome_unknown',
@@ -468,6 +480,16 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
     console.warn(
       `[tool-execution] recovered ${interruptedTools.length} interrupted calls; `
       + `${unknownCount} may have produced side effects`,
+    );
+  }
+  if (fsWriteRecovery.failed.length > 0) {
+    console.warn(
+      `[fs_write] failed to remove ${fsWriteRecovery.failed.length} interrupted temporary files`,
+    );
+  }
+  if (fsWriteRecovery.removed.length > 0) {
+    console.info(
+      `[fs_write] removed ${fsWriteRecovery.removed.length} interrupted temporary files`,
     );
   }
 

@@ -25,6 +25,8 @@ export interface CommandRunnerOptions {
   sessionId?:     string;
   /** Core 给出的私有路径，命令不得读取或修改。 */
   protectedPaths: readonly string[];
+  /** V1 只有完全断网和全网访问两档。 */
+  networkAccess: 'none' | 'full';
   /** Live permission engine — rules are re-read on every refreshConfig(). */
   permission:     PermissionEngine;
 }
@@ -123,6 +125,7 @@ export class CommandRunner {
       workspaceRoot: this.opts.workspaceRoot,
       sessionId:      this.opts.sessionId,
       protectedPaths: this.opts.protectedPaths,
+      networkAccess:  this.opts.networkAccess,
     };
   }
 }

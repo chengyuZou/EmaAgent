@@ -11,6 +11,7 @@ describe('buildSandboxConfig 私有路径', () => {
     const result = buildSandboxConfig([], {
       workspaceRoot: path.resolve('D:/workspace'),
       protectedPaths: [profileDir, dataDb, `${dataDb}-wal`, `${dataDb}-shm`, dataDb],
+      networkAccess: 'none',
     });
 
     expect(result.config.filesystem.denyRead).toEqual([
@@ -31,9 +32,26 @@ describe('buildSandboxConfig 私有路径', () => {
     const result = buildSandboxConfig([], {
       workspaceRoot: '',
       protectedPaths: [],
+      networkAccess: 'none',
     });
 
     expect(result.config.filesystem.denyRead).toEqual([]);
     expect(result.config.filesystem.denyWrite).toEqual([]);
+  });
+
+  it('网络只保留 none 和 full 两档，不再生成域名白名单', () => {
+    const denied = buildSandboxConfig([], {
+      workspaceRoot: '',
+      protectedPaths: [],
+      networkAccess: 'none',
+    });
+    const full = buildSandboxConfig([], {
+      workspaceRoot: '',
+      protectedPaths: [],
+      networkAccess: 'full',
+    });
+
+    expect(denied.config.network).toEqual({ access: 'none' });
+    expect(full.config.network).toEqual({ access: 'full' });
   });
 });

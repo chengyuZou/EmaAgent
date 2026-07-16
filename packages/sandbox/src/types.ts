@@ -10,8 +10,8 @@ export interface SandboxFilesystemConfig {
 
 /** 沙箱内进程可以或禁止访问的网络域名。 */
 export interface SandboxNetworkConfig {
-  allowedDomains: string[]
-  deniedDomains: string[]
+  /** V1 只支持完全断网或全网访问，不声称支持域名白名单。 */
+  access: 'none' | 'full'
 }
 
 export interface SandboxConfig {

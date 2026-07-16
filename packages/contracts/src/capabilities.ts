@@ -16,6 +16,7 @@ export interface SandboxStatusWire {
   readonly backend: 'bubblewrap' | 'sandbox-exec' | 'app-layer';
   readonly isolation: 'os' | 'application-only';
   readonly shellExecution: 'isolated' | 'disabled' | 'unsafe-override';
+  readonly sandboxNetwork: 'none' | 'full';
   readonly localMcpStdio: 'isolated' | 'disabled' | 'unsafe-override';
   readonly warning?: string;
 }

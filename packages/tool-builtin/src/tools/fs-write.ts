@@ -1,8 +1,9 @@
-import fs from 'node:fs';
-import path from 'node:path';
+// 这个内置工具负责把完整文本安全地写入文件，并同步后续编辑所需的文件状态。
+import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { buildTool } from '@ema-agent/tools';
 import type { ToolExecutionContext } from '@ema-agent/tools';
+import { atomicWriteUtf8 } from '../files/atomic-write.js';
 
 // ── 输入 schema ──────────────────────────────────────────────────────────────
 
@@ -47,26 +48,10 @@ export const fsWriteTool = buildTool<FsWriteInput, FsWriteResult>({
 
   async execute(input: FsWriteInput, ctx: ToolExecutionContext): Promise<FsWriteResult> {
     const { file_path, content } = input;
-    const fullPath = path.resolve(file_path);
-
-    const existed = fs.existsSync(fullPath);
-
-    // 确保父目录存在
-    fs.mkdirSync(path.dirname(fullPath), { recursive: true });
-
-    // ── 原子写(write + rename 避免读到半成品文件)─────────────────
-    // Windows 上 rename() 跨卷不原子,但同目录内是。rename 失败回退直接写。
-    const tmpPath = `${fullPath}.ema_tmp_${process.pid}`;
-    try {
-      fs.writeFileSync(tmpPath, content, { encoding: 'utf8', flag: 'w' });
-      fs.renameSync(tmpPath, fullPath);
-    } catch {
-      // 清理临时文件并直接写
-      try { fs.unlinkSync(tmpPath); } catch { /* ignore */ }
-      fs.writeFileSync(fullPath, content, { encoding: 'utf8', flag: 'w' });
-    }
-
-    const mtimeMs = fs.statSync(fullPath).mtimeMs;
+    const operationId = ctx.toolCallId ?? randomUUID();
+    const written = await atomicWriteUtf8(file_path, content, operationId, ctx.signal);
+    const fullPath = written.targetPath;
+    const mtimeMs = written.mtimeMs;
 
     // 更新 read-state 缓存,使后续 fs_edit 无需重新读即可工作
     ctx.readFileState.set(fullPath, {
@@ -76,9 +61,16 @@ export const fsWriteTool = buildTool<FsWriteInput, FsWriteResult>({
       limit: undefined,
       isPartialView: false,
     });
+    ctx.fileStateStore?.record(fullPath, {
+      content,
+      mtimeMs,
+      offset: undefined,
+      limit: undefined,
+      isPartialView: false,
+    });
 
     return {
-      type: existed ? 'updated' : 'created',
+      type: written.existed ? 'updated' : 'created',
       filePath: file_path,
       bytesWritten: Buffer.byteLength(content, 'utf8'),
     };

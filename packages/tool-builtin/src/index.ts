@@ -1,3 +1,4 @@
+// 这里统一导出并注册 EmaAgent 自带的工具，也提供这些工具启动恢复所需的入口。
 import type { ToolRegistry, BuiltTool } from '@ema-agent/tools';
 
 // ── 单个工具导出 ──────────────────────────────────────────────────────────────
@@ -7,6 +8,7 @@ export type { FsReadResult } from './tools/fs-read.js';
 
 export { fsWriteTool } from './tools/fs-write.js';
 export type { FsWriteResult } from './tools/fs-write.js';
+export { cleanupInterruptedFsWriteTemps } from './files/fs-write-recovery.js';
 
 export { fsEditTool } from './tools/fs-edit.js';
 export type { FsEditResult } from './tools/fs-edit.js';
