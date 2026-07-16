@@ -98,6 +98,14 @@ async function* runTurn(
   let activePhase: TurnFailurePhase = 'setup';
   let failureReported = false;
   let turnExecutor: TurnToolExecutor | undefined;
+  let turnSpawner: SubagentSpawner | undefined;
+  let spawnerStopped = false;
+  const stopSpawner = async (reason: string): Promise<void> => {
+    if (spawnerStopped) return;
+    spawnerStopped = true;
+    emitRef.fn = undefined;
+    await turnSpawner?.shutdown(reason);
+  };
   const reportFailure = async (
     code: ErrorCode,
     message: string,
@@ -196,6 +204,7 @@ async function* runTurn(
       scratchpadDir ? () => buildScratchpadContext(scratchpadDir) : undefined,
       (ev) => emitRef.fn?.(ev),
     );
+    turnSpawner = spawner;
     activeSpawners.set(turnId, spawner);
 
     const buildExecutor: ExecutorFactory = ({ pushEv, signal: wakeSignal }) => {
@@ -389,6 +398,7 @@ async function* runTurn(
 
         case 'loop_hook_abort':
           await turnExecutor?.shutdown('hook_abort');
+          await stopSpawner('parent_turn_failed');
           await reportFailure('turn/hook_aborted', ev.reason, 'hook');
           while (pendingHookEvents.length > 0) yield pendingHookEvents.shift()!;
           yield {
@@ -450,6 +460,7 @@ async function* runTurn(
     // ── Turn teardown ─────────────────────────────────────────────────────────
     if (signal.aborted) {
       await turnExecutor?.shutdown('user_abort');
+      await stopSpawner('parent_turn_aborted');
       await hooks.trigger('onTurnAbort', {
         turnId, sessionId,
         payload: { reason: 'user_stop' },
@@ -462,6 +473,7 @@ async function* runTurn(
       return;
     }
 
+    await stopSpawner('parent_turn_completed');
     const durationMs = Date.now() - startedAt;
     activePhase = 'hook';
     await hooks.trigger('onTurnEnd', {
@@ -488,6 +500,7 @@ async function* runTurn(
     const reason = err instanceof Error ? err.message : String(err);
     // Turn 终态必须晚于工具终态：先取消并等待，防止 failed/aborted 之后仍产生副作用。
     await turnExecutor?.shutdown(signal.aborted ? 'user_abort' : 'turn_failed');
+    await stopSpawner(signal.aborted ? 'parent_turn_aborted' : 'parent_turn_failed');
     if (signal.aborted) {
       await hooks.trigger('onTurnAbort', {
         turnId, sessionId,
@@ -512,8 +525,10 @@ async function* runTurn(
     // (LLM forgot to call subagent_await) will call emit() which is now a no-op
     // instead of pushing into a GC'd array, preventing a silent memory leak.
     emitRef.fn = undefined;
+    await stopSpawner('parent_turn_finished');
     activeSpawners.delete(turnId);
     activeExecutors.delete(turnId);
+    clearTodos(turnId);
     if (scratchpadDir) {
       try { fs.rmSync(scratchpadDir, { recursive: true, force: true }); } catch { /* non-fatal */ }
     }

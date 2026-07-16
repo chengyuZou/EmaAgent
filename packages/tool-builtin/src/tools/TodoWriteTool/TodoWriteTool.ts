@@ -1,4 +1,4 @@
-// 这个工具负责更新当前 Session 的结构化待办列表并发送展示事件。
+// 这个工具负责更新当前 Agent Run 的结构化待办列表并发送展示事件。
 import { z } from 'zod';
 import { buildTool } from '@ema-agent/tools';
 import type { ToolExecutionContext } from '@ema-agent/tools';
@@ -23,10 +23,10 @@ export type Todo = z.infer<typeof todoSchema>;
 // 以自己的 subagentId 作 turnId - 拿到独立列表。
 // AgentEngine 在 turn 开始时调 clearTodos(turnId) 重置。
 
-const store = new Map<string, Todo[]>();
+const store = new Map<string, readonly Todo[]>();
 
 export function getTodos(turnId: string): Todo[] {
-  return store.get(turnId) ?? [];
+  return (store.get(turnId) ?? []).map((todo) => ({ ...todo }));
 }
 
 export function clearTodos(turnId: string): void {
@@ -75,8 +75,8 @@ Priority values: \`high\` | \`medium\` | \`low\``,
   },
 
   async execute(input: TodoWriteInput, ctx: ToolExecutionContext): Promise<TodoWriteResult> {
-    const { todos } = input;
-    store.set(ctx.turnId, todos);
+    const todos = input.todos.map((todo) => Object.freeze({ ...todo }));
+    store.set(ctx.turnId, Object.freeze(todos));
 
     // emit 一个 system_warning 作为轻量"todos 已更新"信号,前端无需
     // 专用事件类型即可显示进度。
@@ -90,6 +90,6 @@ Priority values: \`high\` | \`medium\` | \`low\``,
       message: msg,
     } satisfies EmaStreamEvent);
 
-    return { count: todos.length, todos };
+    return { count: todos.length, todos: todos.map((todo) => ({ ...todo })) };
   },
 });

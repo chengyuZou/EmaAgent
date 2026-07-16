@@ -1,25 +1,24 @@
 // 这里提供当前 Turn 内主 Agent 和子 Agent 共用的临时读写工具。
 
-import * as fs   from 'node:fs';
-import * as path from 'node:path';
 import { z } from 'zod';
 import { buildTool } from '@ema-agent/tools';
 import type { ToolExecutionContext } from '@ema-agent/tools';
 import { estimateTextTokens } from '@ema-agent/token';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
+import {
+  SCRATCHPAD_KEY_RE,
+  writeScratchpadEntry,
+  readScratchpadEntry,
+  listScratchpadEntries,
+  deleteScratchpadEntry,
+  clearScratchpad,
+} from './ScratchpadStore.js';
 
 // ── 约束 ───────────────────────────────────────────────────────────────────────
 
 /** key 必须在所有平台(Windows + POSIX)作文件名安全。 */
-export const KEY_RE = /^[a-zA-Z0-9_-]{1,64}$/;
+export const KEY_RE = SCRATCHPAD_KEY_RE;
 const KEY_SCHEMA = z.string().regex(KEY_RE, 'Key must be 1–64 characters: letters, digits, _ or -');
-
-const MAX_VALUE_BYTES   = 256 * 1024;         // 每值 256 KB
-const MAX_TOTAL_BYTES   = 8 * 1024 * 1024;    // 每 turn 总共 8 MB
-const MAX_KEYS          = 64;                  // 防止 key 爆炸
-
-/** 隐藏元数据文件 - 点前缀让它在 KEY_RE 过滤里不可见。 */
-const META_FILE = '.meta.json';
 
 // ── 辅助函数 ───────────────────────────────────────────────────────────────────
 
@@ -33,46 +32,6 @@ function requireDir(ctx: ToolExecutionContext): string {
   return ctx.scratchpadDir;
 }
 
-function keyPath(dir: string, key: string): string {
-  return path.join(dir, key);
-}
-
-/** 返回所有现有 key 占用的总字节。 */
-function totalBytesUsed(dir: string): number {
-  if (!fs.existsSync(dir)) return 0;
-  return fs.readdirSync(dir)
-    .filter(f => KEY_RE.test(f))
-    .reduce((sum, f) => {
-      try { return sum + fs.statSync(path.join(dir, f)).size; } catch { return sum; }
-    }, 0);
-}
-
-/** 返回现有有效 key 数。 */
-function keyCount(dir: string): number {
-  if (!fs.existsSync(dir)) return 0;
-  return fs.readdirSync(dir).filter(f => KEY_RE.test(f)).length;
-}
-
-// ── 作者元数据 ───────────────────────────────────────────────────────────────────
-
-type MetaStore = Record<string, { author: string }>;
-
-function readMeta(dir: string): MetaStore {
-  const fp = path.join(dir, META_FILE);
-  if (!fs.existsSync(fp)) return {};
-  try { return JSON.parse(fs.readFileSync(fp, 'utf8')) as MetaStore; } catch { return {}; }
-}
-
-function writeMeta(dir: string, key: string, author: string): void {
-  const meta = readMeta(dir);
-  meta[key] = { author };
-  fs.writeFileSync(path.join(dir, META_FILE), JSON.stringify(meta), 'utf8');
-}
-
-function clearMeta(dir: string): void {
-  const fp = path.join(dir, META_FILE);
-  if (fs.existsSync(fp)) fs.rmSync(fp, { force: true });
-}
 
 // ── ScratchpadWrite ───────────────────────────────────────────────────────────
 
@@ -115,61 +74,15 @@ The scratchpad is automatically deleted when the turn ends.`,
   },
 
   async execute(input, ctx) {
-    const dir = requireDir(ctx);
-
-    // 字节级大小检查(非字符数 - 抓多字节 Unicode)
-    const incomingBytes = Buffer.byteLength(input.value, 'utf8');
-    if (incomingBytes > MAX_VALUE_BYTES) {
-      throw new Error(
-        `Value too large: ${formatBytes(incomingBytes)} (max ${formatBytes(MAX_VALUE_BYTES)} per key). ` +
-        'Consider splitting into multiple keys or summarising first.',
-      );
-    }
-
-    // 总配额检查
-    const existingSize = fs.existsSync(keyPath(dir, input.key))
-      ? fs.statSync(keyPath(dir, input.key)).size
-      : 0;
-    const projectedTotal = totalBytesUsed(dir) - existingSize + incomingBytes;
-    if (projectedTotal > MAX_TOTAL_BYTES) {
-      throw new Error(
-        `Turn scratchpad quota exceeded: writing this value would use ${formatBytes(projectedTotal)} ` +
-        `(max ${formatBytes(MAX_TOTAL_BYTES)}). Delete unused keys first.`,
-      );
-    }
-
-    // Key 数量守卫(仅新 key)
-    if (!fs.existsSync(keyPath(dir, input.key)) && keyCount(dir) >= MAX_KEYS) {
-      throw new Error(
-        `Too many scratchpad keys (max ${MAX_KEYS}). Delete keys you no longer need.`,
-      );
-    }
-
-    fs.mkdirSync(dir, { recursive: true });
-
-    let finalValue = input.value;
-    if (input.append) {
-      const existing = fs.existsSync(keyPath(dir, input.key))
-        ? fs.readFileSync(keyPath(dir, input.key), 'utf8')
-        : '';
-      finalValue = existing ? existing + '\n' + input.value : input.value;
-
-      // append 后重检
-      const appendedBytes = Buffer.byteLength(finalValue, 'utf8');
-      if (appendedBytes > MAX_VALUE_BYTES) {
-        throw new Error(
-          `Appended value would be ${formatBytes(appendedBytes)}, exceeding the ${formatBytes(MAX_VALUE_BYTES)} per-key limit.`,
-        );
-      }
-    }
-
-    fs.writeFileSync(keyPath(dir, input.key), finalValue, 'utf8');
-
-    // 记录哪个 agent 写了此 key
-    writeMeta(dir, input.key, ctx.scratchpadAuthor ?? 'main');
-
-    const bytes          = Buffer.byteLength(finalValue, 'utf8');
-    const estimatedTokens = estimateTextTokens(finalValue);
+    const { value, bytes } = await writeScratchpadEntry({
+      dir: requireDir(ctx),
+      key: input.key,
+      value: input.value,
+      append: input.append ?? false,
+      author: ctx.scratchpadAuthor ?? 'main',
+      signal: ctx.signal,
+    });
+    const estimatedTokens = estimateTextTokens(value);
     return { key: input.key, bytes, estimatedTokens };
   },
 });
@@ -201,11 +114,8 @@ export const ScratchpadReadTool = buildTool<
   },
 
   async execute(input, ctx) {
-    const dir = requireDir(ctx);
-    const fp  = keyPath(dir, input.key);
-    if (!fs.existsSync(fp)) return { value: null };
-
-    const value = fs.readFileSync(fp, 'utf8');
+    const value = await readScratchpadEntry(requireDir(ctx), input.key);
+    if (value === null) return { value: null };
     return {
       value,
       bytes:          Buffer.byteLength(value, 'utf8'),
@@ -238,30 +148,14 @@ export const ScratchpadListTool = buildTool<
   },
 
   async execute(_input, ctx) {
-    const dir = requireDir(ctx);
-    if (!fs.existsSync(dir)) return { keys: [], totalBytes: 0 };
-
-    const meta = readMeta(dir);
-
-    const keys = fs.readdirSync(dir)
-      .filter(f => KEY_RE.test(f))
-      .map(f => {
-        try {
-          const filePath = path.join(dir, f);
-          const bytes    = fs.statSync(filePath).size;
-          // 基于字节的 token 估算,避免为每个 key 读文件内容。
-          // ~4 字节/token 对此处存的混合内容是安全近似。
-          // 用 ScratchpadRead 取特定 key 的精确计数。
-          return {
-            key:            f,
-            bytes,
-            estimatedTokens: Math.ceil(bytes / 4),
-            author:         meta[f]?.author ?? 'main',
-          };
-        } catch {
-          return { key: f, bytes: 0, estimatedTokens: 0, author: meta[f]?.author ?? 'main' };
-        }
-      });
+    const entries = await listScratchpadEntries(requireDir(ctx));
+    const keys = entries.map(({ key, bytes, author }) => ({
+      key,
+      bytes,
+      // 基于字节估算；读取单个 key 时再计算精确文本 token。
+      estimatedTokens: Math.ceil(bytes / 4),
+      author,
+    }));
 
     const totalBytes = keys.reduce((s, e) => s + e.bytes, 0);
     return { keys, totalBytes };
@@ -292,19 +186,7 @@ export const ScratchpadDeleteTool = buildTool<z.infer<typeof deleteSchema>, { de
   },
 
   async execute(input, ctx) {
-    const dir = requireDir(ctx);
-    const fp  = keyPath(dir, input.key);
-    if (!fs.existsSync(fp)) return { deleted: false };
-    fs.rmSync(fp, { force: true });
-
-    // 从元数据移除
-    const meta = readMeta(dir);
-    if (input.key in meta) {
-      delete meta[input.key];
-      fs.writeFileSync(path.join(dir, META_FILE), JSON.stringify(meta), 'utf8');
-    }
-
-    return { deleted: true };
+    return { deleted: await deleteScratchpadEntry(requireDir(ctx), input.key) };
   },
 });
 
@@ -329,22 +211,6 @@ export const ScratchpadClearTool = buildTool<Record<never, never>, { cleared: nu
   },
 
   async execute(_input, ctx) {
-    const dir = requireDir(ctx);
-    if (!fs.existsSync(dir)) return { cleared: 0 };
-
-    const keys = fs.readdirSync(dir).filter(f => KEY_RE.test(f));
-    for (const f of keys) {
-      try { fs.rmSync(path.join(dir, f), { force: true }); } catch { /* best-effort */ }
-    }
-    clearMeta(dir);
-    return { cleared: keys.length };
+    return { cleared: await clearScratchpad(requireDir(ctx)) };
   },
 });
-
-// ── 辅助函数 ───────────────────────────────────────────────────────────────────
-
-function formatBytes(n: number): string {
-  if (n < 1024)            return `${n} B`;
-  if (n < 1024 * 1024)    return `${(n / 1024).toFixed(1)} KB`;
-  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
-}

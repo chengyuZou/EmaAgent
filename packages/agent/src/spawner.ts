@@ -3,6 +3,7 @@
 import { randomUUID } from 'node:crypto';
 import type { LlmMessage, SessionId, TurnId, EmaStreamEvent, ToolError } from '@ema-agent/contracts';
 import type { ISubagentSpawner, SubagentSpawnOpts, ToolExecutionContext } from '@ema-agent/tools';
+import { clearTodos } from '@ema-agent/tool-builtin';
 import type { AgentDeps } from './types.js';
 import { AgentPolicy } from './policy.js';
 import { TurnToolExecutor } from './tool-executor.js';
@@ -36,6 +37,7 @@ export class SubagentSpawner implements ISubagentSpawner {
   private readonly backgroundSpawns  = new Map<string, Promise<{ output: string; usage: { inputTokens: number; outputTokens: number } }>>();
   // Mailbox queues: subagentId → pending coordinator messages.
   private readonly pendingMessages   = new Map<string, string[]>();
+  private stoppingReason: string | undefined;
 
   constructor(
     private readonly deps:                  AgentDeps,
@@ -95,6 +97,17 @@ export class SubagentSpawner implements ISubagentSpawner {
     this.activeSubagents.get(subagentId)?.abort();
   }
 
+  /** 父 Turn 收口时取消并等待所有未显式 await 的后台子 Agent。 */
+  async shutdown(reason: string): Promise<void> {
+    this.stoppingReason = reason;
+    for (const controller of this.activeSubagents.values()) {
+      controller.abort(new Error(reason));
+    }
+    await Promise.allSettled(this.backgroundSpawns.values());
+    this.backgroundSpawns.clear();
+    this.pendingMessages.clear();
+  }
+
   // ── Spawn ─────────────────────────────────────────────────────────────────
 
   async spawn(
@@ -108,6 +121,7 @@ export class SubagentSpawner implements ISubagentSpawner {
     const sessionId     = this.parentSessionId as SessionId;
     const parentTurnId  = this.parentTurnId   as TurnId;
     const resolvedModel = opts.model ?? this.parentModel;
+    clearTodos(subagentId);
     // Subagents get no workspace: workspaceRoot='' means "no workspace" —
     // pathInAnyWorkingDir short-circuits to false and resolvePatternRoot
     // returns no-match for session-scoped relative patterns, so a subagent
@@ -394,7 +408,9 @@ export class SubagentSpawner implements ISubagentSpawner {
       await subagentExecutor?.shutdown(isAbort ? 'subagent_aborted' : 'subagent_failed');
 
       if (isAbort) {
-        const reason = signal.aborted ? 'parent_aborted' : 'user_aborted';
+        const reason = signal.aborted
+          ? 'parent_aborted'
+          : this.stoppingReason ?? 'user_aborted';
         emit({ type: 'subagent_aborted', sessionId, subagentId, reason, elapsedMs });
         this.deps.taskStore?.cancel(subagentId, reason);
       } else {
@@ -407,6 +423,7 @@ export class SubagentSpawner implements ISubagentSpawner {
     } finally {
       signal.removeEventListener('abort', onParentAbort);
       this.activeSubagents.delete(subagentId);
+      clearTodos(subagentId);
     }
   }
 }
