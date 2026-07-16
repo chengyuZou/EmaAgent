@@ -1,3 +1,4 @@
+// 这里把当前 Turn 的共享便笺整理成可控大小的 Agent 上下文。
 import { readScratchpadEntries } from './scratchpad-reader.js';
 
 // ── Scratchpad context injection ──────────────────────────────────────────────
@@ -20,7 +21,7 @@ export const SCRATCHPAD_INJECT_TOKEN_BUDGET = 2000;
  * Injection strategy:
  *   - Total estimated tokens ≤ budget  → include full values for all keys
  *   - Total estimated tokens > budget  → include only key names + sizes + author,
- *     prompt the agent to use scratchpad_read to fetch values it needs
+ *     prompt the agent to use ScratchpadRead to fetch values it needs
  */
 export function buildScratchpadContext(scratchpadDir: string): string | undefined {
   const entries = readScratchpadEntries(scratchpadDir);
@@ -35,7 +36,7 @@ export function buildScratchpadContext(scratchpadDir: string): string | undefine
     }
   } else {
     lines.push(`Total: ~${totalTokens} tokens across ${entries.length} key(s). Values not shown to save context.`);
-    lines.push('Use scratchpad_read to fetch the value you need.\n');
+    lines.push('Use ScratchpadRead to fetch the value you need.\n');
     for (const { key, value, tokens, author } of entries) {
       const preview = value.slice(0, 80).replace(/\n/g, ' ');
       lines.push(`• ${key}  (~${tokens} tok, by ${author})  ${preview}${value.length > 80 ? '…' : ''}`);

@@ -1,7 +1,9 @@
+// 这个工具负责把 PowerShell 命令交给独立 Sandbox Runner 执行，并返回有界输出。
 import { z } from 'zod';
 import { buildTool } from '@ema-agent/tools';
 import type { ToolExecutionContext } from '@ema-agent/tools';
-import { runShell, type BashResult } from './bash.js';
+import { BuiltinTools } from '../../BuiltinToolIdentity.js';
+import { runShell, type BashResult } from '../BashTool/BashTool.js';
 
 // ── 常量 ─────────────────────────────────────────────────────────────────────
 
@@ -41,8 +43,9 @@ type PowerShellInput = z.infer<typeof inputSchema>;
 
 // ── 工具定义 ───────────────────────────────────────────────────────────────────
 
-export const powershellTool = buildTool<PowerShellInput, BashResult>({
-  name: 'powershell',
+export const PowerShellTool = buildTool<PowerShellInput, BashResult>({
+  id: BuiltinTools.PowerShell.id,
+  name: BuiltinTools.PowerShell.name,
   description: `Execute a Windows PowerShell command.
 
 - Uses \`powershell.exe -NonInteractive -Command\` so interactive prompts error immediately.

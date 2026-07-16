@@ -29,6 +29,14 @@ import type { HookBus, ToolFailurePhase } from '@ema-agent/hook';
 import type { AgentToolResultStore } from '@ema-agent/agent-context';
 import type { AgentDeps, IToolExecutionJournal } from './types.js';
 
+/** 会暂停当前工具执行、等待用户从界面回答的内置工具。 */
+const USER_INPUT_TOOL_NAMES: ReadonlySet<string> = new Set([
+  'AskUser',
+  'AskText',
+  'AskChoice',
+  'AskConfirm',
+]);
+
 // ── Internal per-tool state ───────────────────────────────────────────────────
 
 interface TrackedTool {
@@ -252,9 +260,9 @@ export class TurnToolExecutor {
     return this.tracked.every(t => t.done);
   }
 
-  /** Returns true if any ask_user tool call is still pending a response. */
+  /** 只要任一询问用户的工具尚未收到回答，就保持 waiting_user 状态。 */
   hasWaitingUserTool(): boolean {
-    return this.tracked.some(t => t.name === 'ask_user' && !t.done);
+    return this.tracked.some(t => USER_INPUT_TOOL_NAMES.has(t.name) && !t.done);
   }
 
   /** Returns tool results sorted by blockIndex. Call after allDone(). */

@@ -9,9 +9,9 @@ const CLEARED_PLACEHOLDER = '[Old tool result content cleared — call the tool 
 // Only these tools' results are safe to clear: their output can be
 // re-fetched by calling the tool again. Tools whose results carry
 // irreversible side-effect records or self-managed storage are excluded:
-//   - artifact_*  → ArtifactStore owns the content; result is a slim ref
-//   - ask_user    → user's answer is unique, cannot re-fetch
-//   - skill_*     → may carry one-shot state
+//   - Artifact*   → ArtifactStore owns the content; result is a slim ref
+//   - AskUser*    → user's answer is unique, cannot re-fetch
+//   - SkillCall   → may carry one-shot state
 //   - mcp_call    → external side effects, not safely replayable in general
 //
 // Mirrors Claude Code's COMPACTABLE_TOOLS whitelist (microCompact.ts).
@@ -21,8 +21,8 @@ const COMPACTABLE_TOOLS = new Set<string>([
   'Write',     // write result is a confirmation — safe to discard
   'Glob',
   'Grep',
-  'bash',
-  'powershell',
+  'Bash',
+  'PowerShell',
   'WebFetch',
   'WebSearch',
 ]);

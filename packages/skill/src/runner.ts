@@ -1,3 +1,4 @@
+// 这里把可用 Skill 目录注入提示词，并在模型调用 SkillCall 时加载完整内容。
 import type { HookBus, HookContext, HookResult } from '@ema-agent/hook';
 import { PRIORITY } from '@ema-agent/hook';
 import type { SkillStore } from './store.js';
@@ -6,13 +7,13 @@ import type { SkillSummary } from './types.js';
 // ── SkillRunner ───────────────────────────────────────────────────────────────
 //
 // 经 beforeLlm hook 向 system message 注入轻量"可用技能"CATALOG -
-// 不是完整 body。模型选一个 skill 调 `skill_call(skill, arguments)`;
+// 不是完整 body。模型选一个 skill 调 `SkillCall(skill, args)`;
 // body 只在那时从磁盘懒读(见 SkillStore.renderBody)。这保持 prompt 小,
 // 且因 catalog 只在 install/enable 时变(非 per-turn),保住 prompt cache。
 //
-// skill 不按模式门禁。catalog 只在 `agent` 模式注入,因 skill_call 是
+// skill 不按模式门禁。catalog 只在 `agent` 模式注入,因 SkillCall 是
 // agent 模式工具 - 没有 per-skill 模式标签。allowed-tools 在激活时强制
-// (skill_call -> 临时权限授予),不在这里;runner 只广播可用性。
+// (SkillCall -> 临时权限授予),不在这里;runner 只广播可用性。
 
 export class SkillRunner {
   private unregister: (() => void) | null = null;
@@ -30,7 +31,7 @@ export class SkillRunner {
       ctx: HookContext<'beforeLlm'>,
     ): Promise<HookResult<'beforeLlm'>> => {
       const mode = ctx.payload.mode;
-      // skill_call 是 agent 模式工具;在别处广播 skill 是死重
+      // SkillCall 是 agent 模式工具;在别处广播 skill 是死重
       // (模型无法调用)。
       if (mode !== 'agent') return { kind: 'continue' };
 
@@ -62,7 +63,7 @@ export class SkillRunner {
 
   /**
    * 激活一个 skill:从磁盘读其 body 并替换参数。
-   * 经 apps/core 的 ISkillRunner adapter 接到 `skill_call` 工具。
+   * 经 apps/core 的 ISkillRunner adapter 接到 `SkillCall` 工具。
    */
   async render(name: string, args: string | undefined): Promise<string> {
     return this.store.renderBody(name, args);
@@ -83,7 +84,7 @@ function renderCatalog(summaries: SkillSummary[]): string {
   });
   return (
     '\n\n---\n## 可用技能\n' +
-    '需要时用 `skill_call(skill, arguments)` 激活以下技能(激活后才会注入其完整指令):\n' +
+    '需要时用 `SkillCall(skill, args)` 激活以下技能(激活后才会注入其完整指令):\n' +
     lines.join('\n')
   );
 }

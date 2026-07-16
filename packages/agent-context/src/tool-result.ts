@@ -12,16 +12,16 @@ import { createHash } from 'node:crypto';
 // Storage layout (per session, so deleting a session removes everything):
 //   {dataDir}/.ema-agent/sessions/{sessionId}/tool-results/{hash(callId)}
 //
-// Only "re-fetchable" command-style outputs are offloaded (bash/grep/web/etc.).
+// Only "re-fetchable" command-style outputs are offloaded (Bash/Grep/WebFetch 等)。
 // NOT offloaded:
 //   - Read     → file content IS the point of reading; truncating to a 2KB
 //                preview would starve the model of the file it's editing.
 //                Read does its own pagination / size limits.
-//   - artifact_* / ask_user → self-managed storage or unique state.
+//   - Artifact 工具 / AskUser → self-managed storage or unique state.
 
 /** 输出可以重新获取的工具；Read 故意不在这里。 */
 export const OFFLOADABLE_TOOLS = new Set<string>([
-  'Glob', 'Grep', 'bash', 'powershell', 'WebFetch', 'WebSearch',
+  'Glob', 'Grep', 'Bash', 'PowerShell', 'WebFetch', 'WebSearch',
 ]);
 
 const DEFAULT_OFFLOAD_THRESHOLD = 50 * 1024;  // 50 KB

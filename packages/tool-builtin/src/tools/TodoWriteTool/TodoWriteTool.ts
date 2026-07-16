@@ -1,7 +1,9 @@
+// 这个工具负责更新当前 Session 的结构化待办列表并发送展示事件。
 import { z } from 'zod';
 import { buildTool } from '@ema-agent/tools';
 import type { ToolExecutionContext } from '@ema-agent/tools';
 import type { EmaStreamEvent } from '@ema-agent/contracts';
+import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 
 // ── 类型 ─────────────────────────────────────────────────────────────────────
 
@@ -52,8 +54,9 @@ export interface TodoWriteResult {
 
 // ── 工具定义 ───────────────────────────────────────────────────────────────────
 
-export const todoWriteTool = buildTool<TodoWriteInput, TodoWriteResult>({
-  name: 'todo_write',
+export const TodoWriteTool = buildTool<TodoWriteInput, TodoWriteResult>({
+  id: BuiltinTools.TodoWrite.id,
+  name: BuiltinTools.TodoWrite.name,
   description: `Manage the agent's structured task list for the current agent run.
 
 Always pass the COMPLETE list - previous todos are fully replaced on each call.

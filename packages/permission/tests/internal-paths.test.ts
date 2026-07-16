@@ -42,7 +42,7 @@ describe('内部目录能力', () => {
       internalPathCapability: 'turnScratchpad',
     };
 
-    await expect(engine.gate('scratchpad_write', { key: 'a' }, meta, context())).resolves.toEqual({
+    await expect(engine.gate('ScratchpadWrite', { key: 'a' }, meta, context())).resolves.toEqual({
       granted: true,
       decisionReason: {
         type: 'internalCapability',
@@ -51,7 +51,7 @@ describe('内部目录能力', () => {
       },
     });
 
-    await expect(engine.gate('scratchpad_write', { key: 'a' }, meta, context(false))).resolves.toMatchObject({
+    await expect(engine.gate('ScratchpadWrite', { key: 'a' }, meta, context(false))).resolves.toMatchObject({
       granted: false,
     });
   });

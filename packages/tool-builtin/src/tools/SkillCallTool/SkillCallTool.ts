@@ -1,6 +1,8 @@
+// 这个工具负责加载指定 Skill 的指令，并通过 Skill Runner 注入当前 Agent。
 import { z } from 'zod';
 import { buildTool } from '@ema-agent/tools';
 import type { ToolExecutionContext, ISkillRunner } from '@ema-agent/tools';
+import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 
 // ── 输入 schema ──────────────────────────────────────────────────────────────
 
@@ -20,8 +22,9 @@ export interface SkillCallResult {
 
 // ── 工具定义 ───────────────────────────────────────────────────────────────────
 
-export const skillCallTool = buildTool<SkillCallInput, SkillCallResult>({
-  name: 'skill_call',
+export const SkillCallTool = buildTool<SkillCallInput, SkillCallResult>({
+  id: BuiltinTools.SkillCall.id,
+  name: BuiltinTools.SkillCall.name,
   description: `Invoke a named Skill (slash command) and return its output.
 
 Skills are pre-defined prompt templates or automation sequences registered in settings. The agent can use this to run complex multi-step skills as a single atomic action.`,
@@ -39,7 +42,7 @@ Skills are pre-defined prompt templates or automation sequences registered in se
     const skillRunner: ISkillRunner | undefined = ctx.skillRunner;
     if (!skillRunner) {
       throw new Error(
-        'Skill runner is not configured. Ensure skills are loaded before using skill_call.',
+        'Skill runner is not configured. Ensure skills are loaded before using SkillCall.',
       );
     }
 

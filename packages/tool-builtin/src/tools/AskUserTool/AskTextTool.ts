@@ -1,8 +1,11 @@
+// 这个工具负责向用户请求一段自由文本，并等待输入后继续 Agent。
 import { randomUUID } from 'node:crypto';
+import { createInterface } from 'node:readline/promises';
 import { z } from 'zod';
 import { buildTool } from '@ema-agent/tools';
 import type { ToolExecutionContext } from '@ema-agent/tools';
 import type { EmaStreamEvent, SessionId, TurnId } from '@ema-agent/contracts';
+import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 
 const inputSchema = z.object({
   question:         z.string().min(1).describe('The question to ask the user.'),
@@ -16,12 +19,13 @@ export interface AskTextResult {
   text: string;
 }
 
-export const askTextTool = buildTool<AskTextInput, AskTextResult>({
-  name: 'ask_text',
+export const AskTextTool = buildTool<AskTextInput, AskTextResult>({
+  id: BuiltinTools.AskText.id,
+  name: BuiltinTools.AskText.name,
   description: `Ask the user a single open-ended question and wait for a free-text answer.
 
 Use this when you need a short string response from the user (a name, a path, a description, etc.).
-Prefer this over ask_user for a single freeform question - the UI shows a focused text input.`,
+Prefer this over AskUser for a single freeform question - the UI shows a focused text input.`,
 
   inputSchema,
   isReadOnly: () => false,
@@ -59,7 +63,6 @@ Prefer this over ask_user for a single freeform question - the UI shows a focuse
     }
 
     // CLI 兜底
-    const { createInterface } = await import('node:readline/promises');
     const rl = createInterface({ input: process.stdin, output: process.stdout });
     ctx.signal.addEventListener('abort', () => rl.close(), { once: true });
     const text = await rl.question(`\n${input.question}\nAnswer: `);

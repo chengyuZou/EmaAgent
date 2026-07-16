@@ -401,7 +401,8 @@ function DiffBlock({ code }: { code: string }): JSX.Element {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-const BASH_TOOLS = new Set(['bash', 'powershell', 'run_command', 'execute_bash', 'shell']);
+// 新会话使用 PascalCase；其余名称只负责渲染升级前保存的历史消息。
+const BASH_TOOLS = new Set(['Bash', 'PowerShell', 'bash', 'powershell', 'run_command', 'execute_bash', 'shell']);
 const EDIT_TOOLS = new Set(['Edit', 'edit_file', 'str_replace', 'str_replace_editor', 'apply_diff', 'patch']);
 
 function getBashCommand(args: unknown): string {

@@ -1,8 +1,11 @@
+// 这个工具负责向用户展示一组明确选项，并等待用户选择后继续 Agent。
 import { randomUUID } from 'node:crypto';
+import { createInterface } from 'node:readline/promises';
 import { z } from 'zod';
 import { buildTool } from '@ema-agent/tools';
 import type { ToolExecutionContext } from '@ema-agent/tools';
 import type { EmaStreamEvent, SessionId, TurnId } from '@ema-agent/contracts';
+import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 
 const inputSchema = z.object({
   question: z.string().min(1).describe('The question to ask the user.'),
@@ -28,13 +31,14 @@ export interface AskChoiceResult {
   customText?: string;
 }
 
-export const askChoiceTool = buildTool<AskChoiceInput, AskChoiceResult>({
-  name: 'ask_choice',
+export const AskChoiceTool = buildTool<AskChoiceInput, AskChoiceResult>({
+  id: BuiltinTools.AskChoice.id,
+  name: BuiltinTools.AskChoice.name,
   description: `Present the user with a list of options and wait for their selection.
 
 Use this when you need the user to pick from a known set of choices (2–8 options).
 Set multiSelect=true to allow picking multiple. Set allowCustom=true to allow a free-text "Other" answer.
-Prefer this over ask_user for a single choice question - the UI shows a cleaner selection card.`,
+Prefer this over AskUser for a single choice question - the UI shows a cleaner selection card.`,
 
   inputSchema,
   isReadOnly: () => false,
@@ -78,7 +82,6 @@ Prefer this over ask_user for a single choice question - the UI shows a cleaner 
     }
 
     // CLI 兜底
-    const { createInterface } = await import('node:readline/promises');
     const rl = createInterface({ input: process.stdin, output: process.stdout });
     ctx.signal.addEventListener('abort', () => rl.close(), { once: true });
     const list = input.options.map((o, i) => `  ${i + 1}. ${o.label}`).join('\n');

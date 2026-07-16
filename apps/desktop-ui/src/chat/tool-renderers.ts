@@ -48,6 +48,9 @@ export function renderToolArgs(name: string, args: unknown): ToolArgView {
         ],
       };
 
+    case 'Bash':
+    case 'PowerShell':
+    // 本分支后续的小写/旧名称只用于展示升级前已经持久化的历史会话。
     case 'bash':
     case 'powershell':
     case 'run_command':
@@ -63,6 +66,7 @@ export function renderToolArgs(name: string, args: unknown): ToolArgView {
     case 'url_fetch':
       return { rows: [row('url', a.url, true)] };
 
+    case 'KnowledgeBaseSearch':
     case 'kb_search':
       return {
         rows: [
@@ -71,15 +75,23 @@ export function renderToolArgs(name: string, args: unknown): ToolArgView {
         ],
       };
 
+    case 'AskUser':
+    case 'AskText':
+    case 'AskChoice':
+    case 'AskConfirm':
     case 'ask_user':
     case 'ask_text':
     case 'ask_choice':
     case 'ask_confirm':
       return { rows: [row('prompt', a.prompt ?? a.message ?? a.question)] };
 
+    case 'TodoWrite':
     case 'todo_write':
       return { rows: [row('todos', `${Array.isArray(a.todos) ? a.todos.length : 0} items`)] };
 
+    case 'ArtifactWrite':
+    case 'ArtifactRead':
+    case 'ArtifactList':
     case 'artifact_write':
     case 'artifact_read':
     case 'artifact_list':

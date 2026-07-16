@@ -1,3 +1,4 @@
+// 这里测试单个 Turn 内工具调用的准备、权限、执行、等待用户和终态收口。
 import { describe, expect, it } from 'vitest';
 import type { EmaStreamEvent, SessionId, TurnId } from '@ema-agent/contracts';
 import { HookBus } from '@ema-agent/hook';
@@ -14,6 +15,36 @@ async function waitUntilDone(executor: TurnToolExecutor): Promise<void> {
 }
 
 describe('TurnToolExecutor Hook 与权限边界', () => {
+  it('四种询问用户工具都会让 Turn 保持 waiting_user', () => {
+    const makeExecutor = (): TurnToolExecutor => new TurnToolExecutor({
+      sessionId,
+      turnId,
+      allows: () => true,
+      tools: { has: () => false } as never,
+      permission: {} as never,
+      permCtx: { workspaceRoot: null } as never,
+      hooks: new HookBus(),
+      toolCtx: {
+        sessionId,
+        turnId,
+        workspaceRoot: null,
+        signal: new AbortController().signal,
+      } as never,
+      pushEv: () => undefined,
+      signal: () => undefined,
+    });
+
+    for (const name of ['AskUser', 'AskText', 'AskChoice', 'AskConfirm']) {
+      const executor = makeExecutor();
+      executor.addTool(0, `call-${name}`, name, {});
+      expect(executor.hasWaitingUserTool()).toBe(true);
+    }
+
+    const executor = makeExecutor();
+    executor.addTool(0, 'call-Bash', 'Bash', {});
+    expect(executor.hasWaitingUserTool()).toBe(false);
+  });
+
   it('把 Session、Turn、ToolCall 身份传给同一次权限审批', async () => {
     const hooks = new HookBus();
     let gateContext: unknown;
@@ -55,7 +86,7 @@ describe('TurnToolExecutor Hook 与权限边界', () => {
       signal: () => undefined,
     });
 
-    executor.addTool(0, 'call-identity', 'read_file', { path: 'README.md' });
+    executor.addTool(0, 'call-identity', 'Read', { path: 'README.md' });
     await waitUntilDone(executor);
 
     expect(askIdentity).toEqual(expect.objectContaining({
@@ -135,7 +166,7 @@ describe('TurnToolExecutor Hook 与权限边界', () => {
     };
 
     const executor = new TurnToolExecutor(opts);
-    executor.addTool(0, 'call-1', 'read_file', { path: 'README.md' });
+    executor.addTool(0, 'call-1', 'Read', { path: 'README.md' });
     await waitUntilDone(executor);
 
     expect(order).toEqual([
@@ -150,7 +181,7 @@ describe('TurnToolExecutor Hook 与权限边界', () => {
     expect(emitted.at(-1)).toEqual(expect.objectContaining({
       type: 'tool_result',
       callId: 'call-1',
-      name: 'read_file',
+      name: 'Read',
       output: 'ok',
     }));
   });
@@ -387,7 +418,7 @@ describe('TurnToolExecutor Hook 与权限边界', () => {
       },
     });
 
-    executor.addTool(0, 'call-shutdown', 'write_file', {});
+    executor.addTool(0, 'call-shutdown', 'Write', {});
     await started;
     await executor.shutdown('provider_failed');
 

@@ -263,10 +263,10 @@ describe('permission tests', () => {
       rules: [],
     });
 
-    const bashMeta = registry.get('bash').permissionMeta;
+    const bashMeta = registry.get('Bash').permissionMeta;
     const input    = { command: ':(){:|:&};:', description: 'fork bomb', timeout: 5000, run_in_background: false };
 
-    const outcome = await permEngine.gate('bash', input, bashMeta, makePermCtx());
+    const outcome = await permEngine.gate('Bash', input, bashMeta, makePermCtx());
 
     console.log('[permission] fork-bomb outcome:', outcome);
     expect(outcome.granted).toBe(false);
@@ -279,10 +279,10 @@ describe('permission tests', () => {
       rules: [],
     });
 
-    const bashMeta = registry.get('bash').permissionMeta;
+    const bashMeta = registry.get('Bash').permissionMeta;
     const input    = { command: 'echo hello', description: 'echo test', timeout: 5000, run_in_background: false };
 
-    const outcome = await permEngine.gate('bash', input, bashMeta, makePermCtx());
+    const outcome = await permEngine.gate('Bash', input, bashMeta, makePermCtx());
 
     console.log('[permission] safe-bash outcome:', outcome);
     expect(outcome.granted).toBe(true);

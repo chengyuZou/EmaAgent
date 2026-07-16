@@ -1,7 +1,9 @@
+// 这个工具负责同步启动一个子 Agent，并等待它完成后返回结果。
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { buildTool } from '@ema-agent/tools';
 import type { ToolExecutionContext, ISubagentSpawner } from '@ema-agent/tools';
+import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 
 // ── 输入 schema ──────────────────────────────────────────────────────────────
 
@@ -45,8 +47,9 @@ export interface SubagentResult {
 
 // ── 工具定义 ───────────────────────────────────────────────────────────────────
 
-export const subagentTool = buildTool<SubagentInput, SubagentResult>({
-  name: 'subagent',
+export const SubagentTool = buildTool<SubagentInput, SubagentResult>({
+  id: BuiltinTools.Subagent.id,
+  name: BuiltinTools.Subagent.name,
   description: `Spawn a fresh sub-agent to handle a self-contained sub-task and return its final output.
 
 The sub-agent:

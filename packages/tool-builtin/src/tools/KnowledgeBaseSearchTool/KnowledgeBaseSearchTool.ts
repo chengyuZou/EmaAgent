@@ -1,7 +1,9 @@
+// 这个工具负责从当前 Session 已激活的知识库中检索相关内容。
 import { z } from 'zod';
 import { buildTool } from '@ema-agent/tools';
 import type { ToolExecutionContext } from '@ema-agent/tools';
 import type { KbSearchResult } from '@ema-agent/contracts';
+import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 
 // ── 输入 schema ──────────────────────────────────────────────────────────────
 
@@ -32,8 +34,9 @@ export type { KbSearchResult };
 
 // ── 工具定义 ───────────────────────────────────────────────────────────────────
 
-export const kbSearchTool = buildTool<KbSearchInput, KbSearchResult>({
-  name: 'kb_search',
+export const KnowledgeBaseSearchTool = buildTool<KbSearchInput, KbSearchResult>({
+  id: BuiltinTools.KnowledgeBaseSearch.id,
+  name: BuiltinTools.KnowledgeBaseSearch.name,
   description: `Search the user's knowledge-base documents and return the most relevant passages with source attribution (file name, page, section).
 
 Use this whenever the user's request might be answered by documents they have provided. The search is scoped to the documents the user selected for this turn - you only supply the query. Each returned hit includes a citation source so you can tell the user where the answer came from.

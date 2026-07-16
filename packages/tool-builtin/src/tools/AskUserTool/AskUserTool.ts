@@ -1,9 +1,11 @@
+// 这个工具负责一次向用户提出一个或多个结构化问题，并等待统一回答。
 import * as readline from 'node:readline/promises';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { buildTool } from '@ema-agent/tools';
 import type { ToolExecutionContext } from '@ema-agent/tools';
 import type { AskUserQuestionSpec, EmaStreamEvent, SessionId, TurnId } from '@ema-agent/contracts';
+import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 
 // ── 输入 schema ──────────────────────────────────────────────────────────────
 
@@ -48,8 +50,9 @@ export interface AskUserResult {
 
 // ── 工具定义 ───────────────────────────────────────────────────────────────────
 
-export const askUserTool = buildTool<AskUserInput, AskUserResult>({
-  name: 'ask_user',
+export const AskUserTool = buildTool<AskUserInput, AskUserResult>({
+  id: BuiltinTools.AskUser.id,
+  name: BuiltinTools.AskUser.name,
   description: `Ask the user one or more questions and wait for their responses.
 
 - In desktop (Tauri) mode: emits an \`ask_user_required\` SSE event; the frontend shows a dialog and the response is delivered back via the per-turn SSE channel.

@@ -1,8 +1,11 @@
+// 这个工具负责向用户提出是非确认，并把确认结果交还给 Agent。
 import { randomUUID } from 'node:crypto';
+import { createInterface } from 'node:readline/promises';
 import { z } from 'zod';
 import { buildTool } from '@ema-agent/tools';
 import type { ToolExecutionContext } from '@ema-agent/tools';
 import type { EmaStreamEvent, SessionId, TurnId } from '@ema-agent/contracts';
+import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 
 const inputSchema = z.object({
   question: z.string().min(1).describe('The yes/no question to present to the user.'),
@@ -15,12 +18,13 @@ export interface AskConfirmResult {
   confirmed: boolean;
 }
 
-export const askConfirmTool = buildTool<AskConfirmInput, AskConfirmResult>({
-  name: 'ask_confirm',
+export const AskConfirmTool = buildTool<AskConfirmInput, AskConfirmResult>({
+  id: BuiltinTools.AskConfirm.id,
+  name: BuiltinTools.AskConfirm.name,
   description: `Ask the user a single yes/no confirmation question and wait for their response.
 
 Use this when you need explicit approval before a consequential action. Returns { confirmed: true/false }.
-Prefer this over ask_user when you only need a binary decision - the UI shows a focused confirm dialog.`,
+Prefer this over AskUser when you only need a binary decision - the UI shows a focused confirm dialog.`,
 
   inputSchema,
   isReadOnly: () => false,
@@ -57,7 +61,6 @@ Prefer this over ask_user when you only need a binary decision - the UI shows a 
     }
 
     // CLI 兜底
-    const { createInterface } = await import('node:readline/promises');
     const rl = createInterface({ input: process.stdin, output: process.stdout });
     ctx.signal.addEventListener('abort', () => rl.close(), { once: true });
     const answer = await rl.question(`\n${input.question} (y/n): `);

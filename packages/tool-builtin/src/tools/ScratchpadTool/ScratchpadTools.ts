@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { buildTool } from '@ema-agent/tools';
 import type { ToolExecutionContext } from '@ema-agent/tools';
 import { estimateTextTokens } from '@ema-agent/token';
+import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 
 // ── 约束 ───────────────────────────────────────────────────────────────────────
 
@@ -73,7 +74,7 @@ function clearMeta(dir: string): void {
   if (fs.existsSync(fp)) fs.rmSync(fp, { force: true });
 }
 
-// ── scratchpad_write ──────────────────────────────────────────────────────────
+// ── ScratchpadWrite ───────────────────────────────────────────────────────────
 
 const writeSchema = z.object({
   key: KEY_SCHEMA.describe(
@@ -87,11 +88,12 @@ const writeSchema = z.object({
   ),
 });
 
-export const scratchpadWriteTool = buildTool<
+export const ScratchpadWriteTool = buildTool<
   z.infer<typeof writeSchema>,
   { key: string; bytes: number; estimatedTokens: number }
 >({
-  name: 'scratchpad_write',
+  id: BuiltinTools.ScratchpadWrite.id,
+  name: BuiltinTools.ScratchpadWrite.name,
   description: `Write a value into the turn-scoped scratchpad - a shared key-value store accessible to the current agent and all its sub-agents.
 
 Use the scratchpad to:
@@ -172,17 +174,18 @@ The scratchpad is automatically deleted when the turn ends.`,
   },
 });
 
-// ── scratchpad_read ───────────────────────────────────────────────────────────
+// ── ScratchpadRead ────────────────────────────────────────────────────────────
 
 const readSchema = z.object({
   key: KEY_SCHEMA.describe('Identifier of the entry to read.'),
 });
 
-export const scratchpadReadTool = buildTool<
+export const ScratchpadReadTool = buildTool<
   z.infer<typeof readSchema>,
   { value: string; bytes: number; estimatedTokens: number } | { value: null }
 >({
-  name: 'scratchpad_read',
+  id: BuiltinTools.ScratchpadRead.id,
+  name: BuiltinTools.ScratchpadRead.name,
   description:
     'Read a value from the turn-scoped scratchpad by key. ' +
     'Returns null when the key has not been written yet.',
@@ -211,13 +214,14 @@ export const scratchpadReadTool = buildTool<
   },
 });
 
-// ── scratchpad_list ───────────────────────────────────────────────────────────
+// ── ScratchpadList ────────────────────────────────────────────────────────────
 
-export const scratchpadListTool = buildTool<
+export const ScratchpadListTool = buildTool<
   Record<never, never>,
   { keys: Array<{ key: string; bytes: number; estimatedTokens: number; author: string }>; totalBytes: number }
 >({
-  name: 'scratchpad_list',
+  id: BuiltinTools.ScratchpadList.id,
+  name: BuiltinTools.ScratchpadList.name,
   description:
     'List all keys currently stored in the turn-scoped scratchpad, with their sizes, ' +
     'token estimates, and which agent wrote them. ' +
@@ -247,7 +251,7 @@ export const scratchpadListTool = buildTool<
           const bytes    = fs.statSync(filePath).size;
           // 基于字节的 token 估算,避免为每个 key 读文件内容。
           // ~4 字节/token 对此处存的混合内容是安全近似。
-          // 用 scratchpad_read 取特定 key 的精确计数。
+          // 用 ScratchpadRead 取特定 key 的精确计数。
           return {
             key:            f,
             bytes,
@@ -264,14 +268,15 @@ export const scratchpadListTool = buildTool<
   },
 });
 
-// ── scratchpad_delete ─────────────────────────────────────────────────────────
+// ── ScratchpadDelete ──────────────────────────────────────────────────────────
 
 const deleteSchema = z.object({
   key: KEY_SCHEMA.describe('Key to delete. No-op if the key does not exist.'),
 });
 
-export const scratchpadDeleteTool = buildTool<z.infer<typeof deleteSchema>, { deleted: boolean }>({
-  name: 'scratchpad_delete',
+export const ScratchpadDeleteTool = buildTool<z.infer<typeof deleteSchema>, { deleted: boolean }>({
+  id: BuiltinTools.ScratchpadDelete.id,
+  name: BuiltinTools.ScratchpadDelete.name,
   description:
     'Delete a single key from the turn-scoped scratchpad. ' +
     'Use this to free quota after a sub-agent\'s output has been consumed.',
@@ -303,10 +308,11 @@ export const scratchpadDeleteTool = buildTool<z.infer<typeof deleteSchema>, { de
   },
 });
 
-// ── scratchpad_clear_all ──────────────────────────────────────────────────────
+// ── ScratchpadClear ───────────────────────────────────────────────────────────
 
-export const scratchpadClearAllTool = buildTool<Record<never, never>, { cleared: number }>({
-  name: 'scratchpad_clear_all',
+export const ScratchpadClearTool = buildTool<Record<never, never>, { cleared: number }>({
+  id: BuiltinTools.ScratchpadClear.id,
+  name: BuiltinTools.ScratchpadClear.name,
   description:
     'Delete every key in the turn-scoped scratchpad and reset the quota to zero. ' +
     'Use this when intermediate working state is no longer needed and you want a clean slate ' +

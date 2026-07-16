@@ -5,6 +5,7 @@ import type { ToolExecutionContext } from '@ema-agent/tools';
 import type { Artifact, ArtifactId, EmaStreamEvent } from '@ema-agent/contracts';
 import { asSessionId, asTurnId } from '@ema-agent/contracts';
 import { randomUUID } from 'node:crypto';
+import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 
 // ── 内存兜底(未注入 ArtifactStore)──────────────────────────────────────────
 // 用于测试和未接完整 store 的最小嵌入方。
@@ -17,7 +18,7 @@ function sessionArtifacts(sessionId: string): Artifact[] {
   return list;
 }
 
-// ── artifact_write ────────────────────────────────────────────────────────────
+// ── ArtifactWrite ─────────────────────────────────────────────────────────────
 
 const writeSchema = z.object({
   id: z.string().optional()
@@ -38,11 +39,12 @@ const writeSchema = z.object({
 
 type ArtifactWriteInput = z.infer<typeof writeSchema>;
 
-export const artifactWriteTool = buildTool<ArtifactWriteInput, Artifact>({
-  name: 'artifact_write',
+export const ArtifactWriteTool = buildTool<ArtifactWriteInput, Artifact>({
+  id: BuiltinTools.ArtifactWrite.id,
+  name: BuiltinTools.ArtifactWrite.name,
   description: `Create or update a named artifact rendered in the WorkspacePane.
 
-Use artifact_write instead of Write when:
+Use ArtifactWrite instead of Write when:
 - Generating content for the user to review before it lands on disk
 - Producing code examples, documents, data, or visualizations
 - The user asked to "create", "generate", or "draft" something
@@ -119,14 +121,15 @@ After writing, an artifact_upserted event opens WorkspacePane automatically.`,
   },
 });
 
-// ── artifact_read ─────────────────────────────────────────────────────────────
+// ── ArtifactRead ──────────────────────────────────────────────────────────────
 
 const readSchema = z.object({
   id: z.string().min(1).describe('Artifact ID to read.'),
 });
 
-export const artifactReadTool = buildTool<z.infer<typeof readSchema>, Artifact>({
-  name: 'artifact_read',
+export const ArtifactReadTool = buildTool<z.infer<typeof readSchema>, Artifact>({
+  id: BuiltinTools.ArtifactRead.id,
+  name: BuiltinTools.ArtifactRead.name,
   description: 'Read the current content of an artifact by ID.',
 
   inputSchema: readSchema,
@@ -146,15 +149,16 @@ export const artifactReadTool = buildTool<z.infer<typeof readSchema>, Artifact>(
   },
 });
 
-// ── artifact_list ─────────────────────────────────────────────────────────────
+// ── ArtifactList ──────────────────────────────────────────────────────────────
 
 const listSchema = z.object({
   type: z.string().optional()
     .describe('Filter by type, e.g. "text/markdown". Omit to list all.'),
 });
 
-export const artifactListTool = buildTool<z.infer<typeof listSchema>, Omit<Artifact, 'content'>[]>({
-  name: 'artifact_list',
+export const ArtifactListTool = buildTool<z.infer<typeof listSchema>, Omit<Artifact, 'content'>[]>({
+  id: BuiltinTools.ArtifactList.id,
+  name: BuiltinTools.ArtifactList.name,
   description: 'List artifacts in the current session (metadata only, no content). Filter by type optionally.',
 
   inputSchema: listSchema,

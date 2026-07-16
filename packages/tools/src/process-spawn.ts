@@ -1,3 +1,4 @@
+// 这里统一启动受控子进程，并处理输出上限、超时和取消信号。
 import { spawn } from 'node:child_process';
 import type { RunResult } from './types.js';
 
@@ -10,7 +11,7 @@ const MAX_OUTPUT_CHARS = 200_000;
 /**
  * spawn `executable args` 并收集 stdout/stderr,支持超时 + 中止。
  *
- * bash.ts(runShell)和 sandbox/manager.ts 共用的单一事实源 -
+ * BashTool(runShell)和 sandbox/manager.ts 共用的单一事实源 -
  * 消除两包间约 70 行重复。
  *
  * @param executable  绝对路径或 PATH 可解析的可执行文件(如 '/bin/bash'、'powershell.exe')。

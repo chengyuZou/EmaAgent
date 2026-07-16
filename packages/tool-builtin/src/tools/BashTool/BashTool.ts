@@ -1,6 +1,9 @@
+// 这个工具负责把 Bash 命令交给独立 Sandbox Runner 执行，并返回有界输出。
+import { spawn } from 'node:child_process';
 import { z } from 'zod';
 import { buildTool, spawnProcess } from '@ema-agent/tools';
 import type { ToolExecutionContext } from '@ema-agent/tools';
+import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 
 // ── 常量 ─────────────────────────────────────────────────────────────────────
 
@@ -61,8 +64,9 @@ export interface BashResult {
 
 // ── 工具定义 ───────────────────────────────────────────────────────────────────
 
-export const bashTool = buildTool<BashInput, BashResult>({
-  name: 'bash',
+export const BashTool = buildTool<BashInput, BashResult>({
+  id: BuiltinTools.Bash.id,
+  name: BuiltinTools.Bash.name,
   description: `Execute a bash/sh shell command and return stdout, stderr, and exit code.
 
 Safety rules:
@@ -120,7 +124,6 @@ Safety rules:
 
     if (run_in_background) {
       // 无 CommandRunner - 回退 detached spawn,但仅作最后手段。
-      const { spawn } = await import('node:child_process');
       spawn(shell, ['-c', command], { cwd, stdio: 'ignore', detached: true }).unref();
       return { stdout: '', stderr: '', exitCode: 0, timedOut: false, truncated: false, durationMs: 0 };
     }
@@ -132,7 +135,7 @@ Safety rules:
 // ── runShell ─────────────────────────────────────────────────────────────────
 
 /**
- * 为向后兼容保留的薄封装(powershell.ts import 它)。
+ * BashTool 与 PowerShellTool 共用的进程执行薄封装。
  * 真实实现在 @ema-agent/tool spawnProcess。
  */
 export async function runShell(
