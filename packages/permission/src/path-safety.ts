@@ -1,3 +1,4 @@
+// 这里规范化并解析工具路径，拦截跨平台危险路径、设备名和 symlink 越界。
 import fs   from 'node:fs';
 import os   from 'node:os';
 import path from 'node:path';
@@ -41,20 +42,36 @@ export function getPathsForPermissionCheck(rawPath: string): string[] {
     ? path.join(os.homedir(), rawPath.slice(1))
     : rawPath;
 
-  const paths = new Set<string>([expanded]);
+  const absolute = path.resolve(expanded);
+  const paths = new Set<string>([absolute]);
 
   try {
-    const resolved = fs.realpathSync(expanded);
+    const resolved = resolveExistingPathOrAncestor(absolute);
     paths.add(resolved);
     // Apply macOS alias normalisation to the resolved form as well
     if (getPlatform() === 'macos') {
       paths.add(normalizeMacOsSymlinks(resolved));
     }
   } catch {
-    // Path does not exist yet (new file being created) — that is fine
+    // 卷不可用或祖先不可访问时保留 absolute；后续仍不会获得额外放行。
   }
 
   return [...paths];
+}
+
+/** 新文件自身不存在时，解析最近存在的父目录，防止通过父目录 symlink 越出 workspace。 */
+function resolveExistingPathOrAncestor(absolutePath: string): string {
+  let cursor = absolutePath;
+  const missingSegments: string[] = [];
+
+  while (!fs.existsSync(cursor)) {
+    const parent = path.dirname(cursor);
+    if (parent === cursor) throw new Error(`找不到可解析的路径祖先：${absolutePath}`);
+    missingSegments.unshift(path.basename(cursor));
+    cursor = parent;
+  }
+
+  return path.join(fs.realpathSync(cursor), ...missingSegments);
 }
 
 // ── Dangerous file / directory constants ──────────────────────────────────────

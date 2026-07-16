@@ -1,3 +1,4 @@
+// 这里发现 MCP Server 暴露的工具，并把它们转换成 EmaAgent 的可注册工具。
 import type { Client }           from '@modelcontextprotocol/sdk/client/index.js';
 import { z }                     from 'zod';
 import type { BuiltTool, ToolDescriptor, ToolExecutionContext } from '@ema-agent/tools';
@@ -76,6 +77,7 @@ export function buildMcpBuiltTool(
   };
 
   return Object.freeze({
+    id:                mcpToolId(serverName, info.serverToolName),
     name:              info.qualifiedName,
     description:       `[MCP:${serverName}] ${info.description}`,
     inputSchema:       inputZod,
@@ -87,4 +89,9 @@ export function buildMcpBuiltTool(
     unsafeExecute:     (raw: unknown, ctx: ToolExecutionContext) => execute(inputZod.parse(raw), ctx),
     parseInput:        (raw: unknown) => inputZod.parse(raw),
   });
+}
+
+/** 编码分隔符，避免 `a.b/c` 与 `a/b.c` 之类的 server/tool 组合产生同一个稳定 id。 */
+function mcpToolId(serverName: string, serverToolName: string): string {
+  return `mcp:${encodeURIComponent(serverName)}:${encodeURIComponent(serverToolName)}`;
 }

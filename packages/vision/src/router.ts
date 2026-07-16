@@ -1,3 +1,5 @@
+// 这里是 Vision 运行时 facade：管 provider 配置 + 并发限流（全局 + per-provider）+ 超时，把请求交给对应协议 adapter。
+
 import { OpenAiVisionAdapter }    from './adapters/openai-vision.js';
 import { AnthropicVisionAdapter } from './adapters/anthropic-vision.js';
 import { GeminiVisionAdapter }    from './adapters/gemini-vision.js';
@@ -162,13 +164,12 @@ export class VisionLimiter implements VisionConcurrencyLimiter {
 }
 
 /**
- * Single Vision runtime facade.
+ * Vision 运行时唯一 facade。
  *
- * Construct once in apps/core wiring and share through AppBindings. The router
- * stores provider config, adapter instances, and lightweight concurrency state.
- * Per-call image payloads, prompts, parse state, and AbortControllers remain
- * local to extract(), so concurrent chat / attachment / knowledge calls cannot
- * overwrite each other.
+ * 在 apps/core wiring 里构造一次，通过 AppBindings 共享。router 持有
+ * provider 配置、adapter 实例和轻量并发状态。每次调用的图片载荷、prompt、
+ * 解析状态和 AbortController 都留在 extract() 局部，所以并发 chat / 附件 /
+ * 知识库调用不会互相覆盖。
  */
 export class VisionRouter {
   private adapters = new Map<string, VisionAdapter>();

@@ -126,7 +126,7 @@ describe('PermissionEngine Session Grant', () => {
     const engine = new PermissionEngine({ mode: 'ask', rules: [], ask });
 
     const outcome = await engine.gate(
-      'fs_write',
+      { id: 'builtin.file.write', name: 'Write' },
       { path: 'target.txt', content: 'hello' },
       changingMeta,
       context('session-a', ask),

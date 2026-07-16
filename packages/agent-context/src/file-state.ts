@@ -1,16 +1,17 @@
+// 这里保存 Agent 最近完整读取过的文件状态，供 Edit/Write 防止覆盖外部变更并在压缩后恢复上下文。
 import { normalize } from 'node:path';
 import type { IFileStateStore, IFileStateStoreEntry } from '@ema-agent/tools';
 
 // ── AgentFileStateStore ───────────────────────────────────────────────────────
 //
 // Per-session cache of files the agent has read, used for two purposes:
-//   1. fs_edit safety check — refuse to edit a file the agent hasn't read,
+//   1. Edit safety check — refuse to edit a file the agent hasn't read,
 //      or whose on-disk mtime changed since the read (stale-edit guard).
 //   2. post-compact restore — knows which files were recently in context so
 //      the memory planner can re-inject the most relevant ones.
 //
 // Keys are path-normalized so "./foo.ts", "foo.ts", and "a/../foo.ts" all
-// resolve to the same entry. Without this, fs_read("./x") then fs_edit("x")
+// resolve to the same entry. Without this, Read("./x") then Edit("x")
 // would miss the cache and the safety check would wrongly reject the edit.
 //
 // Bounded by entry count AND total byte size (LRU eviction). Caching file

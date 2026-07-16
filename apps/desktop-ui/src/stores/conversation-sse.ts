@@ -1,3 +1,4 @@
+// 这里负责把 Turn 的结构化 SSE 事件分发给会话状态和各业务回调。
 /**
  * conversation-sse.ts — SSE event dispatcher for per-turn streams.
  *
@@ -36,6 +37,7 @@ import type {
   EmaStreamEvent,
   MemoryRecallLayer,
   MemoryRecallLayerReport,
+  ToolPresentation,
 } from '@ema-agent/contracts';
 
 // ── StreamCallbacks ───────────────────────────────────────────────────────────
@@ -44,7 +46,7 @@ export type DeltaSlice = 'text' | 'thinking' | 'tool_use' | 'tool_result';
 export type DeltaPayload =
   | string
   | { callId: string; name: string; args: unknown }
-  | { callId: string; output?: unknown; error?: { code: string; message: string } };
+  | { callId: string; output?: unknown; presentation?: ToolPresentation; error?: { code: string; message: string }; durationMs?: number };
 
 export interface StreamCallbacks {
   beginStream(sessionId: SessionId, turnId: TurnId, mode?: TurnMode): void;
@@ -190,7 +192,13 @@ export function dispatchSseEvent(
       break;
 
     case 'tool_result':
-      cb.appendDelta(sessionId, 'tool_result', { callId: event.callId, output: event.output, error: event.error });
+      cb.appendDelta(sessionId, 'tool_result', {
+        callId: event.callId,
+        output: event.output,
+        presentation: event.presentation,
+        error: event.error,
+        durationMs: event.durationMs,
+      });
       break;
 
     // ── Decision events — push to decision-store + relay to pet window ────

@@ -1,3 +1,4 @@
+// 这里负责把数据库消息还原成前端会话历史和工具展示切片。
 /**
  * conversation-history.ts — pure history assembly helpers.
  *
@@ -15,6 +16,7 @@ import type {
   MessageContentPart,
   MessageId,
   TurnId,
+  ToolPresentation,
 } from '@ema-agent/contracts';
 import type { AttachmentInputWire } from '../api/turns.js';
 
@@ -30,6 +32,7 @@ export interface AssistantSliceToolUse {
   type: 'tool_use';         callId: string; name: string; args?: unknown;
                             partialArgs?: string;
                             result?: unknown; error?: { code: string; message: string };
+                            presentation?: ToolPresentation;
   // ── 状态展示字段（8.2 Tool 块重做）──
   /** 流式创建时间戳，running 时算实时耗时用。刷新后无（DB 不存）。 */
   startedAt?: number;
@@ -188,6 +191,7 @@ export function assembleHistory(messages: MessageWire[], turns: TurnWire[]): Cha
           ...target,
           result: block.content,
           durationMs: block.durationMs,
+          presentation: block.presentation,
           errorCode: block.errorCode ?? (block.isError ? 'tool/error' : undefined),
           ...(block.isError
             ? { error: { code: block.errorCode ?? 'tool/error', message: typeof block.content === 'string' ? block.content : '工具执行失败' } }

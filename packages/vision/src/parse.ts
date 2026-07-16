@@ -1,3 +1,5 @@
+// 这里把 LLM 返回的 JSON 解析成结构化 VisionBlock；strict 模式抛错、best_effort 降级成单 text 块。
+
 import type { VisionBlock, VisionBlockKind } from './types.js';
 import { VisionError } from './errors.js';
 import type { VisionParseMode } from './types.js';

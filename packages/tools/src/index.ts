@@ -1,3 +1,4 @@
+// 这里统一导出工具框架的注册、执行、结果展示和基础类型接口。
 export type {
   ReadFileEntry,
   ReadFileState,
@@ -18,6 +19,8 @@ export type {
   BuiltTool,
 } from './types.js';
 export type { DeepReadonly, PreparedToolCall } from './prepared-call.js';
+export { presentToolResult, splitToolResult } from './tool-result.js';
+export type { SplitToolResult } from './tool-result.js';
 
 export { buildTool } from './build-tool.js';
 export {

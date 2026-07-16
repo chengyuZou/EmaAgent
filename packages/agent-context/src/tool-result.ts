@@ -1,3 +1,4 @@
+// 这里负责把可重新获取的超大工具输出落盘，只在模型上下文中保留预览和引用。
 import * as fs     from 'node:fs';
 import * as path   from 'node:path';
 import { createHash } from 'node:crypto';
@@ -13,14 +14,14 @@ import { createHash } from 'node:crypto';
 //
 // Only "re-fetchable" command-style outputs are offloaded (bash/grep/web/etc.).
 // NOT offloaded:
-//   - fs_read  → file content IS the point of reading; truncating to a 2KB
+//   - Read     → file content IS the point of reading; truncating to a 2KB
 //                preview would starve the model of the file it's editing.
-//                fs_read does its own pagination / size limits.
+//                Read does its own pagination / size limits.
 //   - artifact_* / ask_user → self-managed storage or unique state.
 
-/** Tools whose output is safe to offload. fs_read deliberately excluded. */
+/** 输出可以重新获取的工具；Read 故意不在这里。 */
 export const OFFLOADABLE_TOOLS = new Set<string>([
-  'glob', 'grep', 'bash', 'powershell', 'web_fetch', 'web_search',
+  'Glob', 'Grep', 'bash', 'powershell', 'WebFetch', 'WebSearch',
 ]);
 
 const DEFAULT_OFFLOAD_THRESHOLD = 50 * 1024;  // 50 KB

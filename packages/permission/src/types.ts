@@ -52,6 +52,12 @@ export interface PermissionRule {
   sessionId?: string
 }
 
+/** 权限使用稳定 id 匹配规则，同时保留模型名称给用户界面展示。 */
+export interface PermissionToolIdentity {
+  id: string
+  name: string
+}
+
 // ── Decision Reason ───────────────────────────────────────────────────────────
 
 /** Structured explanation of why a permission outcome was reached. */
@@ -100,6 +106,7 @@ export interface PermissionContext {
  * Sent engine → UI when a tool call requires user confirmation.
  */
 export interface PermissionPrompt {
+  toolId:           string
   toolName:         string
   toolDescription?: string
   input:            unknown

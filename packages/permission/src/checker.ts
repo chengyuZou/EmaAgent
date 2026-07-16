@@ -16,6 +16,7 @@ import type {
   ToolPermissionMeta,
   DecisionReason,
   RuleScope,
+  PermissionToolIdentity,
 } from './types.js';
 
 // ── PermissionEngine ──────────────────────────────────────────────────────────
@@ -100,15 +101,20 @@ export class PermissionEngine {
    *  12. Ask user (default for ask mode / anything unresolved)
    */
   async gate(
-    toolName: string,
+    tool:     string | PermissionToolIdentity,
     input:    unknown,
     meta:     ToolPermissionMeta,
     context:  PermissionContext,
   ): Promise<PermissionOutcome> {
+    const toolId = typeof tool === 'string' ? tool : tool.id;
+    const toolName = typeof tool === 'string' ? tool : tool.name;
     // Resolve all paths once (original + symlink-resolved forms)
     const extractedPath = meta.extractPath?.(input);
-    const allPaths      = extractedPath ? getPathsForPermissionCheck(extractedPath) : [];
-    const sessionAction = { toolName, input, meta, resolvedPaths: allPaths, context };
+    const permissionPath = extractedPath
+      ? resolvePermissionPath(extractedPath, context.workspaceRoot)
+      : undefined;
+    const allPaths = permissionPath ? getPathsForPermissionCheck(permissionPath) : [];
+    const sessionAction = { toolName: toolId, input, meta, resolvedPaths: allPaths, context };
 
     // ── Step 1: bypass-immune tool safety check ────────────────────────────
     if (meta.bypassImmune && meta.safetyCheck) {
@@ -135,7 +141,7 @@ export class PermissionEngine {
 
     // ── Step 3: deny rules (checked against every resolved path) ──────────
     for (const p of allPaths.length ? allPaths : [undefined]) {
-      const rule = findDenyRule(this.rules, toolName, p, context);
+      const rule = findDenyRule(this.rules, toolId, p, context);
       if (rule) {
         return {
           granted:      false,
@@ -192,16 +198,16 @@ export class PermissionEngine {
     for (const p of allPaths) {
       const reason = getDangerousPathReason(p);
       if (reason && !this.sessionGrants.has(context.sessionId, sessionAction)) {
-        return this.promptUser(toolName, input, meta, reason, allPaths, context);
+        return this.promptUser(toolId, toolName, input, meta, reason, allPaths, context);
       }
     }
 
     // ── Step 7: ask rules ──────────────────────────────────────────────────
     for (const p of allPaths.length ? allPaths : [undefined]) {
-      const rule = findAskRule(this.rules, toolName, p, context);
+      const rule = findAskRule(this.rules, toolId, p, context);
       if (rule) {
         return this.promptUser(
-          toolName, input, meta,
+          toolId, toolName, input, meta,
           `an "ask" rule requires confirmation for ${toolName}`,
           allPaths,
           context,
@@ -222,12 +228,12 @@ export class PermissionEngine {
     // BUG-05 fix: ALL resolved paths must be covered by an allow rule.
     // A single matching rule does not suffice if a symlink resolves outside it.
     if (allPaths.length === 0) {
-      const rule = findAllowRule(this.rules, toolName, undefined, context);
+      const rule = findAllowRule(this.rules, toolId, undefined, context);
       if (rule) return { granted: true, decisionReason: { type: 'rule', rule } };
     } else {
       let matchedRule: PermissionRule | undefined;
       const allCovered = allPaths.every(p => {
-        const r = findAllowRule(this.rules, toolName, p, context);
+        const r = findAllowRule(this.rules, toolId, p, context);
         if (r && !matchedRule) matchedRule = r;
         return !!r;
       });
@@ -270,7 +276,7 @@ export class PermissionEngine {
     }
 
     // ── Step 12: ask user ──────────────────────────────────────────────────
-    return this.promptUser(toolName, input, meta, undefined, allPaths, context);
+    return this.promptUser(toolId, toolName, input, meta, undefined, allPaths, context);
   }
 
   getRules(): ReadonlyArray<PermissionRule> {
@@ -305,6 +311,7 @@ export class PermissionEngine {
   // ── Private helpers ───────────────────────────────────────────────────────
 
   private async promptUser(
+    toolId:   string,
     toolName: string,
     input:    unknown,
     meta:     ToolPermissionMeta,
@@ -325,6 +332,7 @@ export class PermissionEngine {
     }
 
     const prompt: PermissionPrompt = {
+      toolId,
       toolName,
       input,
       riskLevel:  meta.riskLevel,
@@ -340,7 +348,7 @@ export class PermissionEngine {
     if (response.action !== 'deny') {
       const currentExtractedPath = meta.extractPath?.(input);
       const currentPaths = currentExtractedPath
-        ? getPathsForPermissionCheck(currentExtractedPath)
+        ? getPathsForPermissionCheck(resolvePermissionPath(currentExtractedPath, context.workspaceRoot))
         : [];
       if (!sameResolvedPaths(resolvedPaths, currentPaths)) {
         return {
@@ -367,7 +375,7 @@ export class PermissionEngine {
           };
         }
         this.sessionGrants.allow(context.sessionId, {
-          toolName,
+          toolName: toolId,
           input,
           meta,
           resolvedPaths,
@@ -388,6 +396,12 @@ export class PermissionEngine {
     }
   }
 
+}
+
+/** 工具的相对路径和实际执行保持一致：统一以当前 workspace 为基准。 */
+function resolvePermissionPath(candidate: string, workspaceRoot: string): string {
+  if (candidate.startsWith('~') || path.isAbsolute(candidate)) return candidate;
+  return path.resolve(workspaceRoot || process.cwd(), candidate);
 }
 
 // ── Convenience type re-export ────────────────────────────────────────────────

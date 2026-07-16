@@ -1,3 +1,5 @@
+// 这里把视觉提取请求转成 Anthropic Messages API 格式，用官方 SDK 调用。
+
 import Anthropic from '@anthropic-ai/sdk';
 import { buildVisionExtractionPrompt, defaultMaxTokensForVisionTask } from '../prompts.js';
 import { VisionError } from '../errors.js';

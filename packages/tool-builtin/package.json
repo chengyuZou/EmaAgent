@@ -26,6 +26,7 @@
     "@ema-agent/permission": "workspace:*",
     "@ema-agent/tools": "workspace:*",
     "@ema-agent/token": "workspace:*",
+    "diff": "^9.0.0",
     "glob": "^11.0.0",
     "zod": "^3.23.0"
   },

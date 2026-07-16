@@ -1,21 +1,27 @@
-// 这里根据中断的工具日志，只清理由对应 fs_write 调用留下的临时文件。
+// 这里根据中断日志，只清理由对应 FileWriteTool 调用留下的临时文件。
 import fs from 'node:fs';
 import path from 'node:path';
 import type { ToolExecutionRecord } from '@ema-agent/contracts';
-import { atomicTempPrefix, resolveAtomicTargetPath } from './atomic-write.js';
+import { BuiltinTools } from '../../BuiltinToolIdentity.js';
+import { atomicTempPrefix, resolveAtomicTargetPath } from './atomicWrite.js';
 
-export interface FsWriteRecoveryResult {
+export interface FileWriteRecoveryResult {
   removed: string[];
   failed: Array<{ path: string; message: string }>;
 }
 
-export function cleanupInterruptedFsWriteTemps(
+export function cleanupInterruptedFileWriteTemps(
   executions: readonly ToolExecutionRecord[],
-): FsWriteRecoveryResult {
-  const result: FsWriteRecoveryResult = { removed: [], failed: [] };
+): FileWriteRecoveryResult {
+  const result: FileWriteRecoveryResult = { removed: [], failed: [] };
 
   for (const execution of executions) {
-    if (execution.toolName !== 'fs_write' || execution.status !== 'outcome_unknown') continue;
+    if (
+      execution.toolName !== BuiltinTools.FileWrite.id
+      // 兼容升级前尚未完成的旧 journal 记录。
+      && execution.toolName !== 'fs_write'
+    ) continue;
+    if (execution.status !== 'outcome_unknown') continue;
     const targetPath = readTargetPath(execution.inputJson);
     if (!targetPath) continue;
 

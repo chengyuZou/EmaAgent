@@ -1,3 +1,4 @@
+// 这里用真实模型测试 Agent 循环、工具调用、结构化事件和上下文压缩能否贯通。
 /**
  * Integration test: AgentEngine — mini think→act loop with real DeepSeek API.
  *
@@ -6,7 +7,7 @@
  *
  * 覆盖场景:
  *   1. simple  — 无工具 agent turn，LLM 直接 end_turn 回答
- *   2. fs_read — LLM 主动调用 fs_read 读一个真实文件
+ *   2. Read — LLM 主动调用 Read 读一个真实文件
  *   3. glob    — LLM 调用 glob_files 列出 package.json
  *   4. circuit-breaker — 故意触发 plan 模式 10 次迭代熔断
  */
@@ -178,14 +179,14 @@ describe.skipIf(!DS_KEY)('AgentEngine integration (DeepSeek)', () => {
     console.log('[test 1] usage:', (completed as any)?.usage);
   }, TEST_TIMEOUT);
 
-  it('2. fs_read: LLM reads a real file', async () => {
+  it('2. Read: LLM reads a real file', async () => {
     sessionStore.clear();
     const engine = new AgentEngine(deps);
 
     const targetFile = path.join(WORKSPACE, 'packages/agent/package.json');
     const events = await collectEvents(engine, makeInput({
       turn:      makeTurn('turn-2'),
-      userInput: `Use the fs_read tool to read the file at path "${targetFile}" and tell me the package name.`,
+      userInput: `Use the Read tool to read the file at path "${targetFile}" and tell me the package name.`,
     }));
 
     const completed  = events.find(e => e.type === 'turn_completed');

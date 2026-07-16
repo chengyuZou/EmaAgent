@@ -1,14 +1,15 @@
-// 这里测试 fs_write 的原子替换、文件状态同步和崩溃临时文件清理。
+// 这里测试 FileWriteTool 的原子替换、覆盖前读取守卫、真实 diff 和崩溃临时文件清理。
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { asToolCallId, asSessionId, asTurnId } from '@ema-agent/contracts';
 import type { ToolExecutionRecord } from '@ema-agent/contracts';
+import { splitToolResult } from '@ema-agent/tools';
 import type { IFileStateStore, ToolExecutionContext } from '@ema-agent/tools';
-import { fsWriteTool } from '../src/tools/fs-write.js';
-import { atomicTempPrefix, atomicWriteUtf8 } from '../src/files/atomic-write.js';
-import { cleanupInterruptedFsWriteTemps } from '../src/files/fs-write-recovery.js';
+import { FileWriteTool } from '../src/tools/FileWriteTool/FileWriteTool.js';
+import { atomicTempPrefix, atomicWriteUtf8 } from '../src/tools/FileWriteTool/atomicWrite.js';
+import { cleanupInterruptedFileWriteTemps } from '../src/tools/FileWriteTool/recovery.js';
 
 const tempDirs: string[] = [];
 
@@ -19,24 +20,68 @@ afterEach(() => {
   }
 });
 
-describe('fs_write', () => {
+describe('FileWriteTool', () => {
   it('原子写入后同时更新 turn 缓存和 session 文件状态', async () => {
     const directory = makeTempDir();
     const target = path.join(directory, 'nested', 'answer.txt');
     const record = vi.fn<IFileStateStore['record']>();
     const ctx = makeContext({ fileStateStore: { record, get: vi.fn(), recentEntries: vi.fn() } });
 
-    const result = await fsWriteTool.unsafeExecute(
+    const result = await FileWriteTool.unsafeExecute(
       { file_path: target, content: '完整内容' },
       ctx,
     );
 
     const canonical = fs.realpathSync.native(target);
     expect(result).toMatchObject({ type: 'created', bytesWritten: 12 });
+    expect(splitToolResult(result).presentation).toMatchObject({
+      kind: 'file_change',
+      operation: 'create',
+      filePath: target,
+      additions: 1,
+    });
     expect(fs.readFileSync(target, 'utf8')).toBe('完整内容');
     expect(ctx.readFileState.get(canonical)?.content).toBe('完整内容');
     expect(record).toHaveBeenCalledWith(canonical, expect.objectContaining({ content: '完整内容' }));
     expect(listWriteTemps(path.dirname(target))).toEqual([]);
+  });
+
+  it('拒绝在没有完整 Read 状态时覆盖已有文件', async () => {
+    const directory = makeTempDir();
+    const target = path.join(directory, 'existing.txt');
+    fs.writeFileSync(target, '旧内容', 'utf8');
+
+    await expect(FileWriteTool.unsafeExecute(
+      { file_path: target, content: '新内容' },
+      makeContext(),
+    )).rejects.toThrow('read in full first');
+
+    expect(fs.readFileSync(target, 'utf8')).toBe('旧内容');
+    expect(listWriteTemps(directory)).toEqual([]);
+  });
+
+  it('已有文件完整读过且未变更时允许覆盖并展示真实 diff', async () => {
+    const directory = makeTempDir();
+    const target = path.join(directory, 'existing.txt');
+    fs.writeFileSync(target, '第一行\n旧内容\n', 'utf8');
+    const stat = fs.statSync(target);
+    const ctx = makeContext();
+    ctx.readFileState.set(path.resolve(target), {
+      content: '第一行\n旧内容\n',
+      timestamp: stat.mtimeMs,
+      isPartialView: false,
+    });
+
+    const result = await FileWriteTool.unsafeExecute(
+      { file_path: target, content: '第一行\n新内容\n' },
+      ctx,
+    );
+    const split = splitToolResult(result);
+
+    expect(split.modelOutput).toMatchObject({ type: 'updated' });
+    expect(split.presentation).toMatchObject({ additions: 1, deletions: 1 });
+    expect(split.presentation?.kind === 'file_change' && split.presentation.unifiedDiff)
+      .toContain('+新内容');
   });
 
   it('写入在替换前取消时保留旧文件且不遗留临时文件', async () => {
@@ -92,7 +137,7 @@ describe('fs_write', () => {
     fs.writeFileSync(matching, '半成品', 'utf8');
     fs.writeFileSync(unrelated, '别的调用', 'utf8');
 
-    const result = cleanupInterruptedFsWriteTemps([
+    const result = cleanupInterruptedFileWriteTemps([
       executionRecord(callId, target, 'outcome_unknown'),
       executionRecord(asToolCallId('call-finished'), target, 'succeeded'),
     ]);
@@ -134,7 +179,7 @@ function executionRecord(
     callId,
     sessionId: asSessionId('session-test'),
     turnId: asTurnId('turn-test'),
-    toolName: 'fs_write',
+    toolName: 'builtin.file.write',
     inputJson: JSON.stringify({ file_path: target, content: '内容' }),
     inputDigest: 'digest',
     status,

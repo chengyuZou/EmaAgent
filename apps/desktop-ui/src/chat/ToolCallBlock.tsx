@@ -1,3 +1,4 @@
+// 这个组件负责展示一次工具调用的状态、参数、结果和已经落盘的真实文件 diff。
 /**
  * ToolCallBlock — collapsible tool invocation.
  *
@@ -67,7 +68,10 @@ export function ToolCallBlock({ slice, streaming = false, turnId }: ToolCallBloc
   const target = argsReady ? getPrimaryTarget(slice.name, slice.args) : null;
 
   const isBash      = BASH_TOOLS.has(slice.name);
-  const editDiff    = argsReady ? buildEditDiff(slice.name, slice.args) : null;
+  const fileChange = slice.presentation?.kind === 'file_change' ? slice.presentation : null;
+  const editDiff = fileChange
+    ? fileChange.unifiedDiff
+    : argsReady ? buildEditDiff(slice.name, slice.args) : null;
 
   const resultView = hasResult && slice.result !== null ? renderToolResult(slice.name, slice.result) : null;
   // bash 结果沿用原终端融合渲染（不进 renderToolResult）
@@ -160,8 +164,14 @@ export function ToolCallBlock({ slice, streaming = false, turnId }: ToolCallBloc
             </div>
           )}
 
+          {!isBash && fileChange && !editDiff && (
+            <div className="pr-6 text-[11px] text-[var(--ema-text-tertiary)]">
+              {fileChange.omittedReason ?? '文件已更新，但没有可展示的文本差异。'}
+            </div>
+          )}
+
           {/* 通用工具：单块 = 参数 + 透明横线 + 结果 */}
-          {!isBash && !editDiff && (
+          {!isBash && !fileChange && !editDiff && (
             <>
               {/* 参数区 */}
               {argsReady ? (
@@ -392,7 +402,7 @@ function DiffBlock({ code }: { code: string }): JSX.Element {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 const BASH_TOOLS = new Set(['bash', 'powershell', 'run_command', 'execute_bash', 'shell']);
-const EDIT_TOOLS = new Set(['edit_file', 'str_replace', 'str_replace_editor', 'apply_diff', 'patch']);
+const EDIT_TOOLS = new Set(['Edit', 'edit_file', 'str_replace', 'str_replace_editor', 'apply_diff', 'patch']);
 
 function getBashCommand(args: unknown): string {
   if (!args || typeof args !== 'object') return '';
@@ -443,11 +453,11 @@ function getPrimaryTarget(name: string, args: unknown): string | null {
 
   const path = str(a.path ?? a.file_path ?? a.filepath ?? a.target_file ?? a.filename ?? '');
 
-  if (['read', 'read_file', 'write', 'write_file', 'view'].includes(name) && path) return path;
+  if (['Read', 'Write', 'read', 'read_file', 'write', 'write_file', 'view'].includes(name) && path) return path;
   if (EDIT_TOOLS.has(name) && path) return path;
-  if (name === 'glob' || name === 'list_files') return str(a.pattern ?? a.glob ?? a.path ?? '');
+  if (name === 'Glob' || name === 'glob' || name === 'list_files') return str(a.pattern ?? a.glob ?? a.path ?? '');
 
-  if (name === 'grep' || name === 'search_files') {
+  if (name === 'Grep' || name === 'grep' || name === 'search_files') {
     const pat = str(a.pattern ?? a.query ?? '');
     return path ? `${pat} in ${path}` : pat;
   }
@@ -457,8 +467,9 @@ function getPrimaryTarget(name: string, args: unknown): string | null {
     return (cmd.split('\n')[0] ?? '').slice(0, 60);
   }
 
-  if (['web_search', 'search'].includes(name)) return str(a.query ?? '');
-  if (['web_fetch', 'fetch', 'url_fetch'].includes(name)) return str(a.url ?? '');
+  // 旧名称只用于恢复升级前已经持久化的历史 Tool block。
+  if (['WebSearch', 'web_search', 'search'].includes(name)) return str(a.query ?? '');
+  if (['WebFetch', 'web_fetch', 'fetch', 'url_fetch'].includes(name)) return str(a.url ?? '');
 
   const first = Object.values(a).find(v => typeof v === 'string' && v.length > 0);
   return first ? String(first).slice(0, 60) : null;

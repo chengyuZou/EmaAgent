@@ -1,6 +1,33 @@
+// 这个工具负责通过已配置的搜索服务返回有界的网页搜索结果。
 import { z } from 'zod';
 import { buildTool } from '@ema-agent/tools';
 import type { ToolExecutionContext } from '@ema-agent/tools';
+import { BuiltinTools } from '../../BuiltinToolIdentity.js';
+import { fetchBounded } from '../shared/BoundedFetch.js';
+
+const SEARCH_TIMEOUT_MS = 20_000;
+const API_RESPONSE_LIMIT = 5 * 1024 * 1024;
+const HTML_RESPONSE_LIMIT = 2 * 1024 * 1024;
+
+const braveResponseSchema = z.object({
+  web: z.object({
+    results: z.array(z.object({
+      title: z.string(),
+      url: z.string(),
+      description: z.string().optional().default(''),
+    })).optional().default([]),
+  }).optional(),
+});
+
+const bingResponseSchema = z.object({
+  webPages: z.object({
+    value: z.array(z.object({
+      name: z.string(),
+      url: z.string(),
+      snippet: z.string().optional().default(''),
+    })).optional().default([]),
+  }).optional(),
+});
 
 // ── 输入 schema ──────────────────────────────────────────────────────────────
 
@@ -32,8 +59,9 @@ export interface WebSearchResult {
 
 // ── 工具定义 ───────────────────────────────────────────────────────────────────
 
-export const webSearchTool = buildTool<WebSearchInput, WebSearchResult>({
-  name: 'web_search',
+export const WebSearchTool = buildTool<WebSearchInput, WebSearchResult>({
+  id: BuiltinTools.WebSearch.id,
+  name: BuiltinTools.WebSearch.name,
   description: `Search the web and return a list of relevant results (title, URL, snippet).
 
 Adapter priority (uses the first configured one):
@@ -80,19 +108,22 @@ async function braveSearch(
   signal: AbortSignal,
 ): Promise<SearchResult[]> {
   const url = `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(query)}&count=${count}`;
-  const res = await fetch(url, {
-    headers: { Accept: 'application/json', 'X-Subscription-Token': apiKey },
+  const res = await fetchBounded(url, {
     signal,
+    timeoutMs: SEARCH_TIMEOUT_MS,
+    maxBytes: API_RESPONSE_LIMIT,
+    init: {
+      redirect: 'error',
+      headers: { Accept: 'application/json', 'X-Subscription-Token': apiKey },
+    },
   });
   if (!res.ok) throw new Error(`Brave Search API error: ${res.status}`);
-  const data = (await res.json()) as {
-    web?: { results?: Array<{ title: string; url: string; description: string }> };
-  };
-  return (data.web?.results ?? []).map((r) => ({
+  const data = braveResponseSchema.parse(parseJson(res.body));
+  return normalizeResults((data.web?.results ?? []).map((r) => ({
     title: r.title,
     url: r.url,
     snippet: r.description,
-  }));
+  })), count);
 }
 
 async function bingSearch(
@@ -102,34 +133,42 @@ async function bingSearch(
   signal: AbortSignal,
 ): Promise<SearchResult[]> {
   const url = `https://api.bing.microsoft.com/v7.0/search?q=${encodeURIComponent(query)}&count=${count}`;
-  const res = await fetch(url, {
-    headers: { 'Ocp-Apim-Subscription-Key': apiKey },
+  const res = await fetchBounded(url, {
     signal,
+    timeoutMs: SEARCH_TIMEOUT_MS,
+    maxBytes: API_RESPONSE_LIMIT,
+    init: {
+      redirect: 'error',
+      headers: { 'Ocp-Apim-Subscription-Key': apiKey },
+    },
   });
   if (!res.ok) throw new Error(`Bing Search API error: ${res.status}`);
-  const data = (await res.json()) as {
-    webPages?: { value?: Array<{ name: string; url: string; snippet: string }> };
-  };
-  return (data.webPages?.value ?? []).map((r) => ({
+  const data = bingResponseSchema.parse(parseJson(res.body));
+  return normalizeResults((data.webPages?.value ?? []).map((r) => ({
     title: r.name,
     url: r.url,
     snippet: r.snippet,
-  }));
+  })), count);
 }
 
 async function duckduckgoSearch(
   query: string,
-  _count: number,
+  count: number,
   signal: AbortSignal,
 ): Promise<SearchResult[]> {
   // DuckDuckGo HTML 端点 - 基础爬取,无官方 API
   const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
-  const res = await fetch(url, {
-    headers: { 'User-Agent': 'Mozilla/5.0 (compatible; EmaAgent/1.0)' },
+  const res = await fetchBounded(url, {
     signal,
+    timeoutMs: SEARCH_TIMEOUT_MS,
+    maxBytes: HTML_RESPONSE_LIMIT,
+    init: {
+      redirect: 'error',
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; EmaAgent/1.0)' },
+    },
   });
   if (!res.ok) throw new Error(`DuckDuckGo search failed: ${res.status}`);
-  const html = await res.text();
+  const html = res.body.toString('utf8');
 
   const results: SearchResult[] = [];
   const linkRe = /<a[^>]+class="result__a"[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi;
@@ -138,12 +177,54 @@ async function duckduckgoSearch(
   const links = [...html.matchAll(linkRe)];
   const snippets = [...html.matchAll(snippetRe)];
 
-  for (let i = 0; i < Math.min(links.length, _count); i++) {
-    const url = decodeURIComponent(links[i]![1]!.replace(/^\/\/duckduckgo\.com\/l\/\?uddg=/, ''));
+  for (let i = 0; i < Math.min(links.length, count); i++) {
+    const url = decodeDuckDuckGoUrl(links[i]![1]!);
     const title = links[i]![2]!.replace(/<[^>]+>/g, '').trim();
     const snippet = snippets[i]?.[1]?.replace(/<[^>]+>/g, '').trim() ?? '';
     if (url && title) results.push({ title, url, snippet });
   }
 
-  return results;
+  return normalizeResults(results, count);
+}
+
+function parseJson(body: Buffer): unknown {
+  try {
+    return JSON.parse(body.toString('utf8')) as unknown;
+  } catch {
+    throw new Error('Search provider returned invalid JSON');
+  }
+}
+
+function normalizeResults(results: readonly SearchResult[], limit: number): SearchResult[] {
+  const normalized: SearchResult[] = [];
+  for (const result of results) {
+    if (normalized.length >= limit) break;
+    const url = normalizePublicResultUrl(result.url);
+    if (!url) continue;
+    normalized.push({
+      title: String(result.title ?? '').slice(0, 500),
+      url,
+      snippet: String(result.snippet ?? '').slice(0, 4_000),
+    });
+  }
+  return normalized;
+}
+
+function normalizePublicResultUrl(value: string): string | null {
+  try {
+    const url = new URL(value);
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
+    return url.toString().slice(0, 2_048);
+  } catch {
+    return null;
+  }
+}
+
+function decodeDuckDuckGoUrl(value: string): string {
+  const stripped = value.replace(/^\/\/duckduckgo\.com\/l\/\?uddg=/, '');
+  try {
+    return decodeURIComponent(stripped);
+  } catch {
+    return '';
+  }
 }

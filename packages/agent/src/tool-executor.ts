@@ -22,7 +22,7 @@ import type {
   ToolExecutionStatus,
   TurnId,
 } from '@ema-agent/contracts';
-import { ToolInputError } from '@ema-agent/tools';
+import { splitToolResult, ToolInputError } from '@ema-agent/tools';
 import type { ToolExecutionContext, ICommandRunner, PreparedToolCall } from '@ema-agent/tools';
 import type { PermissionEngine, PermissionContext } from '@ema-agent/permission';
 import type { HookBus, ToolFailurePhase } from '@ema-agent/hook';
@@ -217,7 +217,7 @@ export class TurnToolExecutor {
         callId,
         sessionId: this.opts.sessionId,
         turnId: this.opts.journalTurnId ?? this.opts.turnId,
-        toolName: name,
+        toolName: prepared?.id ?? name,
         input: prepared?.input ?? args,
       });
       track.journalStatus = 'prepared';
@@ -331,7 +331,7 @@ export class TurnToolExecutor {
       try {
         // 权限审批和工具执行共享同一个深冻结 PreparedToolCall 输入。
         outcome = await permission.gate(
-          name,
+          { id: prepared.id, name },
           prepared.input,
           prepared.permissionMeta,
           permCtxWithAsk,
@@ -372,13 +372,16 @@ export class TurnToolExecutor {
         signal: perToolCtrl.signal,
       };
       let output: unknown;
+      let presentation: ToolResultBlock['presentation'];
       let isError = false;
 
       try {
         // running 是副作用边界：只有该状态成功落库后才能真正 dispatch。
         this.opts.toolExecutionJournal?.start(id);
         if (this.opts.toolExecutionJournal) track.journalStatus = 'running';
-        output = await tools.execute(prepared, perToolCtx);
+        const executed = splitToolResult(await tools.execute(prepared, perToolCtx));
+        output = executed.modelOutput;
+        presentation = executed.presentation;
 
         // If aborted mid-run but the turn is still alive, annotate the partial output.
         if (perToolCtrl.signal.aborted && !toolCtx.signal.aborted) {
@@ -399,7 +402,11 @@ export class TurnToolExecutor {
           return;
         }
 
-        this.emit(track, { type: 'tool_result', sessionId: this.opts.sessionId, callId: id, name, output, durationMs: Date.now() - track.startMs });
+        this.emit(track, {
+          type: 'tool_result', sessionId: this.opts.sessionId, callId: id, name, output,
+          ...(presentation ? { presentation } : {}),
+          durationMs: Date.now() - track.startMs,
+        });
         await hooks.trigger('afterToolUse', {
           turnId, sessionId,
           payload: { callId: id, name, output },
@@ -430,7 +437,12 @@ export class TurnToolExecutor {
         const norm = toolResultStore.maybeNormalize(id, name, serialized);
         if (norm.kind !== 'unchanged') content = norm.blockContent;
       }
-      track.result = { type: 'tool_result', toolUseId: id, content, isError, durationMs: Date.now() - track.startMs, errorCode: isError ? 'tool/error' : undefined };
+      track.result = {
+        type: 'tool_result', toolUseId: id, content, isError,
+        durationMs: Date.now() - track.startMs,
+        errorCode: isError ? 'tool/error' : undefined,
+        ...(presentation ? { presentation } : {}),
+      };
 
     } catch (err) {
       if (isCancelled(perToolCtrl.signal, toolCtx.signal)) {

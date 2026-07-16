@@ -1,8 +1,9 @@
+// 这里把各类工具的参数和结果转换成前端可以直接展示的行或文本。
 /**
  * tool-renderers — per-tool 参数/结果展示格式化注册表。
  *
  * 纯展示层，纯函数，可 mock。把"每个工具的字段语义"从 ToolCallBlock 的渲染逻辑里剥离：
- * ToolCallBlock 管容器/动画/高亮，这里管"fs_read 的 args 该显示哪些字段"。
+ * ToolCallBlock 管容器/动画/高亮，这里管“Read 的参数该显示哪些字段”。
  *
  * 核心目标：去掉 JSON.stringify 的 `{}` 包裹，参数/结果改成 key-value 平铺。
  * 新增工具展示 → 往 switch 加一个 case，不碰 ToolCallBlock。
@@ -31,15 +32,15 @@ export function renderToolArgs(name: string, args: unknown): ToolArgView {
   const row = (key: string, value: unknown, mono = false): ToolArgRow => ({ key, value: str(value), mono });
 
   switch (name) {
-    case 'fs_read':
-    case 'fs_write':
-    case 'fs_edit':
+    case 'Read':
+    case 'Write':
+    case 'Edit':
       return { rows: [row('path', a.path ?? a.file_path ?? a.filepath, true)] };
 
-    case 'glob':
+    case 'Glob':
       return { rows: [row('pattern', a.pattern ?? a.glob, true)] };
 
-    case 'grep':
+    case 'Grep':
       return {
         rows: [
           row('pattern', a.pattern ?? a.query, true),
@@ -53,11 +54,11 @@ export function renderToolArgs(name: string, args: unknown): ToolArgView {
     case 'shell':
       return { rows: [row('command', a.command ?? a.cmd, true)] };
 
-    case 'web_search':
+    case 'WebSearch':
     case 'search':
       return { rows: [row('query', a.query)] };
 
-    case 'web_fetch':
+    case 'WebFetch':
     case 'fetch':
     case 'url_fetch':
       return { rows: [row('url', a.url, true)] };

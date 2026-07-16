@@ -1,5 +1,12 @@
 import type { VisionProtocol } from '@ema-agent/contracts';
 
+/** 传给 LLM 告诉它这次任务目标
+ * - auto: 让 LLM 自行判断任务类型
+ * - caption: 生成图片描述
+ * - ocr: 识别图片中的文字
+ * - layout: 识别图片中的布局结构
+ * - table: 识别图片中的表格
+ */
 export type VisionTask =
   | 'auto'
   | 'caption'
@@ -9,6 +16,11 @@ export type VisionTask =
 
 export type VisionParseMode = 'strict' | 'best_effort';
 
+/** 谁在调用 vision
+ * - turn_attachment: 来自当前对话轮的附件
+ * - ema_live_vision: 来自 EMA Live Vision 功能(// TODO 想做成实时读屏幕那种暂时没想好等等后续扩展)
+ * - system: 系统调用--如 KB 文档解析时的 OCR(PDF 页面转文字)
+ */
 export type VisionCaller =
   | 'turn_attachment'
   | 'ema_live_vision'
@@ -21,7 +33,7 @@ export interface VisionInvocationContext {
   traceId?:   string;
 }
 
-// ── Provider config ───────────────────────────────────────────────────────────
+// ── Provider 配置 ─────────────────────────────────────────────────────────────
 
 export interface VisionProviderConfig {
   id:            string;
@@ -66,6 +78,14 @@ export type VisionImageInput =
       source?: VisionSourceRef;
     };
 
+/** LLM 返回的 blocks 数组里每个 block 的 kind 字段，parse.ts 的 BLOCK_KINDS 校验合法性(不合法退回 text)
+ * - text: 纯文本块
+ * - table: 表格块
+ * - image: 图片块
+ * - layout: 布局块
+ * - formula: 公式块
+ * - caption: 图片描述块
+ */
 export type VisionBlockKind =
   | 'text'
   | 'table'
@@ -80,8 +100,8 @@ export interface VisionBlock {
   text: string;
   markdown?: string;
   /**
-   * Normalized bounding box in reading coordinates: [x, y, width, height].
-   * Values should be between 0 and 1 when a provider can estimate layout.
+   * 归一化边界框（阅读坐标系）：[x, y, 宽, 高]。
+   * provider 能估布局时取值在 0-1 之间。
    */
   bbox?: [number, number, number, number];
   confidence?: number;
@@ -90,16 +110,16 @@ export interface VisionBlock {
 
 export interface VisionRequest {
   context?: VisionInvocationContext;
-  /** provider_configs.id for the underlying model provider. */
+  /** 底层模型 provider 的 provider_configs.id。 */
   providerId: string;
-  /** Raw model name expected by the selected provider. */
+  /** 所选 provider 期望的原始模型名。 */
   model: string;
   task?: VisionTask;
   inputs: VisionImageInput[];
   language?: string;
   /**
-   * Extra task instruction from the caller. This is appended to the system
-   * extraction prompt; do not put raw user chat history here.
+   * 调用方给的额外任务指令。追加到 system 提取 prompt 后面；
+   * 不要放原始用户聊天记录。
    */
   prompt?: string;
   parseMode?: VisionParseMode;

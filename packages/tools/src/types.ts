@@ -28,7 +28,7 @@ export type ReadFileState = Map<string, ReadFileEntry>;
 
 // ── IFileStateStore - 仅接口(由 @ema-agent/agent-context 实现)──────────────
 //
-// 定义在此,tools(fs_read、fs_edit)可调用而无需 import agent-context 包
+// 定义在此，Read/Edit/Write 可调用而无需 import agent-context 包
 // (避免 tools -> agent-context -> … 循环)。
 
 export interface IFileStateStoreEntry {
@@ -198,7 +198,7 @@ export interface ToolExecutionContext {
   signal: AbortSignal;
   /**
    * 当前 turn 内文件读/编辑的共享 mtime 去重缓存。
-   * 跨工具调用持久,以便 fs_edit 校验文件已被读过。
+   * 跨工具调用持久，以便 Edit/Write 校验文件已被完整读取。
    */
   readFileState: ReadFileState;
   /**
@@ -278,6 +278,8 @@ export interface ToolDescriptor {
 // ── ToolDef - 作者写的原始定义 ────────────────────────────────────────────────
 
 export interface ToolDef<TInput, TOutput> {
+  /** 不随模型展示名称变化的内部身份；权限、日志和恢复逻辑使用它。 */
+  id?: string;
   name: string;
   description: string;
   // ZodType<Output, Def, Input> - 我们把 input 侧放宽到 unknown,因为
@@ -302,6 +304,7 @@ export interface ToolDef<TInput, TOutput> {
 // ── BuiltTool - 封闭的、注册表就绪形态 ───────────────────────────────────────
 
 export interface BuiltTool<TInput = unknown, TOutput = unknown> {
+  readonly id: string;
   readonly name: string;
   readonly description: string;
   readonly inputSchema: z.ZodType<TInput, z.ZodTypeDef, unknown>;

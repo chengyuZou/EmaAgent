@@ -1,4 +1,5 @@
-﻿import type {
+// 这里定义后端通过统一事件流发送给客户端的所有结构化事件。
+import type {
   SessionId,
   TurnId,
   ToolCallId,
@@ -13,6 +14,7 @@ import type { ProtocolFamily } from './providers/types.js';
 import type { TurnStats } from './turns.js';
 import type { Artifact } from './artifact.js';
 import type { AgentKind } from './agents.js';
+import type { ToolPresentation } from './messages.js';
 
 // ── Shared sub-types ──────────────────────────────────────────────────────────
 
@@ -158,7 +160,7 @@ export type EmaStreamEvent =
   // Tool calls — blockIndex lets the frontend know where in the block list this tool sits
   | { type: 'tool_call_partial';  sessionId: SessionId; blockIndex: number; callId: string; name: string; argsDelta: string }
   | { type: 'tool_call_complete'; sessionId: SessionId; blockIndex: number; callId: string; name: string; args: unknown }
-  | { type: 'tool_result';        sessionId: SessionId; callId: string; name: string; output?: unknown; error?: ToolError; durationMs: number }
+  | { type: 'tool_result';        sessionId: SessionId; callId: string; name: string; output?: unknown; presentation?: ToolPresentation; error?: ToolError; durationMs: number }
 
   // Permission
   // `humanDescription` is an optional plain-language explanation of what the

@@ -1,3 +1,4 @@
+// 这里负责注册、查找和准备内置及 MCP 工具，并阻止名称或身份冲突。
 import { ZodError } from 'zod';
 import type { BuiltTool, ToolDescriptor, ToolExecutionContext } from './types.js';
 import { freezePreparedInput } from './prepared-call.js';
@@ -61,6 +62,8 @@ export class ToolInputError extends Error {
 export class ToolRegistry {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private readonly tools    = new Map<string, BuiltTool<any, any>>();
+  /** 内部稳定身份不能被另一个工具重复占用。 */
+  private readonly toolsById = new Map<string, BuiltTool<any, any>>();
   /** 与 tools 同键，保存注册来源，确保热更新和注销只能操作自己的工具。 */
   private readonly owners   = new Map<string, ToolOwner>();
   /** 运行时能力表：防止调用方伪造 PreparedToolCall 或跨 Registry 执行。 */
@@ -71,7 +74,11 @@ export class ToolRegistry {
     if (this.tools.has(tool.name)) {
       throw new ToolRegistryError(`Tool "${tool.name}" is already registered`);
     }
+    if (this.toolsById.has(tool.id)) {
+      throw new ToolRegistryError(`Tool id "${tool.id}" is already registered`);
+    }
     this.tools.set(tool.name, tool);
+    this.toolsById.set(tool.id, tool);
     this.owners.set(tool.name, Object.freeze({ kind: 'builtin' }));
   }
 
@@ -82,6 +89,7 @@ export class ToolRegistry {
    */
   registerMcpBatch(registrations: readonly McpToolRegistration[]): void {
     const batchOwners = new Map<string, ToolOwner>();
+    const batchIds = new Map<string, string>();
     const validated: Array<{ registration: McpToolRegistration; owner: ToolOwner }> = [];
 
     for (const registration of registrations) {
@@ -96,6 +104,14 @@ export class ToolRegistry {
       }
       batchOwners.set(registration.tool.name, attemptedOwner);
 
+      const duplicateIdName = batchIds.get(registration.tool.id);
+      if (duplicateIdName && duplicateIdName !== registration.tool.name) {
+        throw new ToolRegistryError(
+          `Tool id "${registration.tool.id}" is shared by "${duplicateIdName}" and "${registration.tool.name}"`,
+        );
+      }
+      batchIds.set(registration.tool.id, registration.tool.name);
+
       const existingOwner = this.owners.get(registration.tool.name);
       if (existingOwner && !sameOwner(existingOwner, attemptedOwner)) {
         throw new ToolRegistrationConflictError(
@@ -104,11 +120,18 @@ export class ToolRegistry {
           attemptedOwner,
         );
       }
+      const existingById = this.toolsById.get(registration.tool.id);
+      if (existingById && existingById.name !== registration.tool.name) {
+        throw new ToolRegistryError(`Tool id "${registration.tool.id}" is already registered`);
+      }
       validated.push({ registration, owner: attemptedOwner });
     }
 
     for (const { registration, owner } of validated) {
+      const previous = this.tools.get(registration.tool.name);
+      if (previous && previous.id !== registration.tool.id) this.toolsById.delete(previous.id);
       this.tools.set(registration.tool.name, registration.tool);
+      this.toolsById.set(registration.tool.id, registration.tool);
       this.owners.set(registration.tool.name, owner);
     }
   }
@@ -125,7 +148,9 @@ export class ToolRegistry {
   unregisterMcp(name: string, owner: McpToolOwner): boolean {
     const existingOwner = this.owners.get(name);
     if (!existingOwner || !sameOwner(existingOwner, toMcpOwner(owner))) return false;
+    const tool = this.tools.get(name);
     this.tools.delete(name);
+    if (tool) this.toolsById.delete(tool.id);
     this.owners.delete(name);
     return true;
   }
@@ -171,6 +196,7 @@ export class ToolRegistry {
     // MCP 工具可能绕过 buildTool() 手工构造，因此这里统一建立权限策略快照。
     const permissionMeta = Object.freeze({ ...tool.permissionMeta });
     const prepared = Object.freeze({
+      id: tool.id,
       name,
       input,
       permissionMeta,

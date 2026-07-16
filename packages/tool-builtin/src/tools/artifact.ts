@@ -1,3 +1,4 @@
+// 这些工具负责管理需要用户审阅后再应用的持久化 Artifact 草稿。
 import { z } from 'zod';
 import { buildTool } from '@ema-agent/tools';
 import type { ToolExecutionContext } from '@ema-agent/tools';
@@ -41,7 +42,7 @@ export const artifactWriteTool = buildTool<ArtifactWriteInput, Artifact>({
   name: 'artifact_write',
   description: `Create or update a named artifact rendered in the WorkspacePane.
 
-Use artifact_write instead of fs_write when:
+Use artifact_write instead of Write when:
 - Generating content for the user to review before it lands on disk
 - Producing code examples, documents, data, or visualizations
 - The user asked to "create", "generate", or "draft" something

@@ -1,4 +1,4 @@
-// 这里负责给文件写入加跨 Session 进程锁，并用同目录临时文件完成原子替换。
+// 这里负责给 FileWriteTool 加跨 Session 路径锁，并用同目录临时文件完成原子替换。
 import fs from 'node:fs';
 import path from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
@@ -8,7 +8,16 @@ const writeQueues = new Map<string, Promise<void>>();
 export interface AtomicWriteResult {
   targetPath: string;
   existed: boolean;
+  previousContent: string | null;
+  content: string;
   mtimeMs: number;
+}
+
+export interface AtomicTransformState {
+  targetPath: string;
+  existed: boolean;
+  content: string | null;
+  mtimeMs: number | null;
 }
 
 /** 临时文件名包含调用编号，应用崩溃后可以根据执行日志精确清理。 */
@@ -24,12 +33,37 @@ export async function atomicWriteUtf8(
   operationId: string,
   signal?: AbortSignal,
 ): Promise<AtomicWriteResult> {
-  const targetPath = resolveAtomicTargetPath(requestedPath);
+  return atomicTransformUtf8(
+    requestedPath,
+    operationId,
+    signal,
+    () => content,
+  );
+}
+
+/** 在同一条规范路径锁内完成读取、校验、转换和原子替换，避免并发写入穿过检查。 */
+export async function atomicTransformUtf8(
+  requestedPath: string,
+  operationId: string,
+  signal: AbortSignal | undefined,
+  transform: (state: AtomicTransformState) => string,
+  createParent = true,
+): Promise<AtomicWriteResult> {
+  const targetPath = resolveAtomicTargetPath(requestedPath, createParent);
   const lockKey = comparisonKey(targetPath);
 
   return withPathLock(lockKey, async () => {
     throwIfAborted(signal);
     const existed = fs.existsSync(targetPath);
+    const previousContent = existed ? fs.readFileSync(targetPath, 'utf8') : null;
+    const previousMtimeMs = existed ? fs.statSync(targetPath).mtimeMs : null;
+    const content = transform({
+      targetPath,
+      existed,
+      content: previousContent,
+      mtimeMs: previousMtimeMs,
+    });
+    throwIfAborted(signal);
     const tempPath = path.join(
       path.dirname(targetPath),
       `${atomicTempPrefix(targetPath, operationId)}${randomUUID()}.tmp`,
@@ -49,6 +83,8 @@ export async function atomicWriteUtf8(
       return {
         targetPath,
         existed,
+        previousContent,
+        content,
         mtimeMs: fs.statSync(targetPath).mtimeMs,
       };
     } catch (error) {

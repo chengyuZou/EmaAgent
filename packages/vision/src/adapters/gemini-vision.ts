@@ -1,3 +1,5 @@
+// 这里把视觉提取请求转成 Gemini generateContent 格式，只接受 bytes/base64 或 gs:// URL。
+
 import { GoogleGenAI } from '@google/genai';
 import type { Part } from '@google/genai';
 import { buildVisionExtractionPrompt, defaultMaxTokensForVisionTask } from '../prompts.js';
@@ -13,12 +15,11 @@ import type {
 } from '../types.js';
 
 /**
- * Convert VisionImageInput to a Gemini Part.
+ * 把 VisionImageInput 转成 Gemini Part。
  *
- * Gemini inlineData accepts base64 directly. URL inputs are only supported
- * when using Cloud Storage URIs (gs://...) or the Files API. Plain HTTP URLs
- * are not accepted by the inlineData path, so we skip them with a warning.
- * In practice, KB OCR and attachment vision always arrive as bytes/base64.
+ * Gemini inlineData 直接接受 base64。URL 输入只有用 Cloud Storage URI
+ * （gs://...）或 Files API 时才支持。普通 HTTP URL 走 inlineData 不接受，
+ * 所以这里跳过并给警告。实际中 KB OCR 和附件视觉都是 bytes/base64。
  */
 function toGeminiPart(input: VisionImageInput): Part | null {
   switch (input.kind) {
@@ -27,7 +28,7 @@ function toGeminiPart(input: VisionImageInput): Part | null {
     case 'base64':
       return { inlineData: { mimeType: input.mimeType, data: input.data } };
     case 'url':
-      // Only gs:// / Files API URIs work with Gemini; skip HTTP URLs.
+      // 只有 gs:// / Files API URI 能用于 Gemini；跳过 HTTP URL。
       if (input.url.startsWith('gs://') || input.url.includes('generativelanguage.googleapis.com')) {
         return { fileData: { mimeType: input.mimeType ?? 'image/jpeg', fileUri: input.url } };
       }

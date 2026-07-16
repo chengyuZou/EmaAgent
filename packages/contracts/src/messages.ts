@@ -1,3 +1,4 @@
+// 这里定义会话消息、工具调用结果和客户端展示数据的公共契约。
 import type { MessageId, MessageRole } from './ids.js';
 
 // ── 消息分类 ──────────────────────────────────────────────────────────────────
@@ -90,6 +91,21 @@ export type ToolResultContentPart =
   | { type: 'image_data'; data: string; mimeType: string }
   | { type: 'image_url';  url: string };
 
+/** 文件工具提交成功后给界面使用的有界真实变更；不会作为模型上下文正文发送。 */
+export interface FileChangePresentation {
+  kind: 'file_change';
+  operation: 'create' | 'update';
+  filePath: string;
+  unifiedDiff: string;
+  additions: number;
+  deletions: number;
+  truncated: boolean;
+  /** 文件过大时不计算完整 diff，客户端显示这个原因。 */
+  omittedReason?: string;
+}
+
+export type ToolPresentation = FileChangePresentation;
+
 export interface ToolResultBlock {
   type:      'tool_result';
   toolUseId: string;
@@ -99,6 +115,8 @@ export interface ToolResultBlock {
   durationMs?: number;
   /** 失败原因精确码：'permission/denied' | 'policy/denied' | 'tool/error'。成功时 undefined。 */
   errorCode?:  string;
+  /** 仅供客户端展示的结构化结果，与发给模型的 content 分离。 */
+  presentation?: ToolPresentation;
 }
 
 // ── 用户消息 block ────────────────────────────────────────────────────────────

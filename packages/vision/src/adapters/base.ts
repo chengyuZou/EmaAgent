@@ -1,3 +1,5 @@
+// 这里定义所有 provider 适配器必须满足的接口（extract + probe）和 router 填好默认值后的标准化调用形状。
+
 import type {
   VisionExtractionResult,
   VisionParseMode,
@@ -7,17 +9,17 @@ import type {
 } from '../types.js';
 
 /**
- * Normalized per-call shape passed to adapters after the router fills in
- * defaults (task, parseMode). Extends VisionRequest with required task/parseMode.
+ * router 填好默认值（task、parseMode）后传给 adapter 的标准化调用形状。
+ * 扩展 VisionRequest，把 task/parseMode 变成必填。
  */
 export interface VisionAdapterCall extends Omit<VisionRequest, 'task' | 'parseMode'> {
   task:      VisionTask;
   parseMode: VisionParseMode;
 }
 
-/** Contract every provider adapter must satisfy. */
+/** 每个 provider adapter 必须满足的契约。 */
 export interface VisionAdapter {
   extract(request: VisionAdapterCall): Promise<VisionExtractionResult>;
-  /** Optional health check — router falls back to a generic error if absent. */
+  /** 可选健康检查--没有时 router 退回通用错误。 */
   probe?(model: string, signal?: AbortSignal): Promise<VisionProbeResult>;
 }

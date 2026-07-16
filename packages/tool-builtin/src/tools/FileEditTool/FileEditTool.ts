@@ -1,8 +1,12 @@
-import fs from 'node:fs';
+// 这个工具负责在已读取的文件中执行受保护的精确文本替换。
+import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { z } from 'zod';
-import { buildTool } from '@ema-agent/tools';
+import { buildTool, presentToolResult } from '@ema-agent/tools';
 import type { ToolExecutionContext } from '@ema-agent/tools';
+import { BuiltinTools } from '../../BuiltinToolIdentity.js';
+import { buildFileChangePresentation } from '../shared/FileChangePresentation.js';
+import { atomicTransformUtf8 } from '../FileWriteTool/atomicWrite.js';
 
 // ── 输入 schema ──────────────────────────────────────────────────────────────
 
@@ -10,8 +14,8 @@ const inputSchema = z.object({
   file_path: z
     .string()
     .min(1)
-    .describe('Absolute path to the file to edit. Must have been read with fs_read first.'),
-  old_string: z.string().describe('Exact string to find and replace. Must be unique in the file.'),
+    .describe('Absolute path to the file to edit. Must have been read with Read first.'),
+  old_string: z.string().min(1).describe('Exact non-empty string to find and replace. Must be unique in the file.'),
   new_string: z.string().describe('Replacement string.'),
   replace_all: z
     .boolean()
@@ -19,11 +23,11 @@ const inputSchema = z.object({
     .describe('Replace every occurrence instead of requiring uniqueness.'),
 });
 
-type FsEditInput = z.infer<typeof inputSchema>;
+type FileEditInput = z.infer<typeof inputSchema>;
 
 // ── 输出类型 ───────────────────────────────────────────────────────────────────
 
-export interface FsEditResult {
+export interface FileEditResult {
   filePath: string;
   replacements: number;
 }
@@ -69,12 +73,13 @@ function countOccurrences(haystack: string, needle: string): number {
 
 // ── 工具定义 ───────────────────────────────────────────────────────────────────
 
-export const fsEditTool = buildTool<FsEditInput, FsEditResult>({
-  name: 'fs_edit',
+export const FileEditTool = buildTool<FileEditInput, FileEditResult>({
+  id: BuiltinTools.FileEdit.id,
+  name: BuiltinTools.FileEdit.name,
   description: `Replace an exact string in a file (str_replace semantics).
 
 Rules:
-- The file MUST have been read with \`fs_read\` in the current turn before editing.
+- The file MUST have been read with \`Read\` in the current turn before editing.
 - \`old_string\` must be unique in the file unless \`replace_all\` is true.
 - Typographic/curly quotes in \`old_string\` are normalized automatically, so literal quotes from AI output match curly-quote source files.
 - The file must not have been modified externally since it was read (mtime guard).`,
@@ -92,7 +97,7 @@ Rules:
     },
   },
 
-  async execute(input: FsEditInput, ctx: ToolExecutionContext): Promise<FsEditResult> {
+  async execute(input: FileEditInput, ctx: ToolExecutionContext): Promise<FileEditResult> {
     const { file_path, old_string, new_string, replace_all } = input;
     const fullPath = path.resolve(file_path);
 
@@ -100,77 +105,72 @@ Rules:
     const cached = ctx.readFileState.get(fullPath);
     if (!cached) {
       throw new Error(
-        `fs_edit requires the file to be read first. Call fs_read("${file_path}") before editing.`,
+        `Edit requires the file to be read first. Call Read("${file_path}") before editing.`,
       );
     }
     if (cached.isPartialView) {
       throw new Error(
-        `fs_edit requires a full read of the file. The cached view of "${file_path}" is partial ` +
-          `(offset/limit was used). Call fs_read("${file_path}") without offset/limit first.`,
+        `Edit requires a full read of the file. The cached view of "${file_path}" is partial ` +
+          `(offset/limit was used). Call Read("${file_path}") without offset/limit first.`,
       );
     }
 
-    // ── mtime 防覆盖 ──────────────────────────────────────────────────────────
-    // 写前立即同步读当前文件(原子段)。
-    let currentContent: string;
-    let currentMtime: number;
-    try {
-      const stat = fs.statSync(fullPath);
-      currentMtime = stat.mtimeMs;
-      currentContent = fs.readFileSync(fullPath, 'utf8');
-    } catch {
-      throw new Error(`File no longer exists: ${file_path}`);
-    }
+    let replacements = 0;
+    const operationId = ctx.toolCallId ?? randomUUID();
+    const written = await atomicTransformUtf8(
+      file_path,
+      operationId,
+      ctx.signal,
+      current => {
+        if (!current.existed || current.content === null || current.mtimeMs === null) {
+          throw new Error(`File no longer exists: ${file_path}`);
+        }
 
-    // Windows 上云同步/杀软可能不改内容却 bump mtime。
-    // mtime 变了但内容和缓存一致时接受。
-    if (currentMtime !== cached.timestamp && currentContent !== cached.content) {
-      throw new Error(
-        `File "${file_path}" was modified externally since it was read. ` +
-          `Re-read it with fs_read before editing.`,
-      );
-    }
+        // Windows 上云同步或杀毒软件可能只改变 mtime；内容一致时仍可安全继续。
+        if (current.mtimeMs !== cached.timestamp && current.content !== cached.content) {
+          throw new Error(
+            `File "${file_path}" was modified externally since it was read. ` +
+              'Re-read it with Read before editing.',
+          );
+        }
 
-    // ── 查找目标字符串 ────────────────────────────────────────────────────────
-    const actual = findActualString(currentContent, old_string);
-    if (actual === null) {
-      throw new Error(
-        `The string to replace was not found in "${file_path}".\n\n` +
-          `old_string:\n${old_string}\n\n` +
-          `Verify the exact text by re-reading the file.`,
-      );
-    }
+        const actual = findActualString(current.content, old_string);
+        if (actual === null) {
+          throw new Error(
+            `The string to replace was not found in "${file_path}".\n\n` +
+              `old_string:\n${old_string}\n\n` +
+              'Verify the exact text by re-reading the file.',
+          );
+        }
 
-    const occurrences = countOccurrences(currentContent, actual);
-    if (!replace_all && occurrences > 1) {
-      throw new Error(
-        `The string to replace appears ${occurrences} times in "${file_path}". ` +
-          `Provide more context to make it unique, or set replace_all: true.`,
-      );
-    }
-
-    // ── 应用替换(临界段 - 无 await)───────────────────────────────────────
-    const newContent = replace_all
-      ? currentContent.split(actual).join(new_string)
-      : currentContent.replace(actual, new_string);
-
-    fs.writeFileSync(fullPath, newContent, { encoding: 'utf8' });
-
-    const newMtime = fs.statSync(fullPath).mtimeMs;
+        const occurrences = countOccurrences(current.content, actual);
+        if (!replace_all && occurrences > 1) {
+          throw new Error(
+            `The string to replace appears ${occurrences} times in "${file_path}". ` +
+              'Provide more context to make it unique, or set replace_all: true.',
+          );
+        }
+        replacements = replace_all ? occurrences : 1;
+        return replace_all
+          ? current.content.split(actual).join(new_string)
+          : current.content.replace(actual, new_string);
+      },
+      false,
+    );
 
     // 用编辑后内容更新缓存
     ctx.readFileState.set(fullPath, {
-      content: newContent,
-      timestamp: newMtime,
+      content: written.content,
+      timestamp: written.mtimeMs,
       offset: undefined,
       limit: undefined,
       isPartialView: false,
     });
-    ctx.fileStateStore?.record(fullPath, { content: newContent, mtimeMs: newMtime, offset: undefined, limit: undefined, isPartialView: false });
+    ctx.fileStateStore?.record(fullPath, { content: written.content, mtimeMs: written.mtimeMs, offset: undefined, limit: undefined, isPartialView: false });
 
-    return {
+    return presentToolResult({
       filePath: file_path,
-      replacements: replace_all ? occurrences : 1,
-    };
+      replacements,
+    }, buildFileChangePresentation(file_path, written.previousContent, written.content));
   },
 });

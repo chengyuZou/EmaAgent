@@ -1,3 +1,4 @@
+// 这里把工具作者提供的定义封装成注册表可以安全使用的不可变工具。
 import { zodToJsonSchema } from 'zod-to-json-schema';
 import type { ToolDef, BuiltTool, ToolDescriptor, ToolExecutionContext } from './types.js';
 
@@ -33,6 +34,7 @@ export function buildTool<TInput, TOutput>(
     execute(input as TInput, ctx);
 
   return Object.freeze({
+    id: def.id ?? def.name,
     name: def.name,
     description: def.description,
     inputSchema: def.inputSchema,

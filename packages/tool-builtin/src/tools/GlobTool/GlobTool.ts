@@ -1,12 +1,12 @@
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
+// 这个工具负责在明确的目录和结果预算内按文件名模式查找文件。
 import fs from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
+import { globIterate } from 'glob';
 import { buildTool } from '@ema-agent/tools';
 import type { ToolExecutionContext } from '@ema-agent/tools';
-
-const execFileAsync = promisify(execFile);
+import { BuiltinTools } from '../../BuiltinToolIdentity.js';
+import { runBoundedProcess } from '../shared/BoundedProcess.js';
 
 // ── 输入 schema ──────────────────────────────────────────────────────────────
 
@@ -33,12 +33,15 @@ export interface GlobResult {
   notice?: string;
 }
 
-const MAX_RESULTS = 1000;
+const MAX_RESULTS = 100;
+const MAX_OUTPUT_BYTES = 2 * 1024 * 1024;
+const SEARCH_TIMEOUT_MS = 10_000;
 
 // ── 工具定义 ───────────────────────────────────────────────────────────────────
 
-export const globTool = buildTool<GlobInput, GlobResult>({
-  name: 'glob',
+export const GlobTool = buildTool<GlobInput, GlobResult>({
+  id: BuiltinTools.Glob.id,
+  name: BuiltinTools.Glob.name,
   description: `Fast file pattern matching using ripgrep's --files mode.
 
 - Supports glob syntax: \`**/*.ts\`, \`src/**/*.{tsx,jsx}\`, etc.
@@ -59,21 +62,22 @@ export const globTool = buildTool<GlobInput, GlobResult>({
   },
 
   async execute(input: GlobInput, ctx: ToolExecutionContext): Promise<GlobResult> {
+    const workspaceRoot = ctx.workspaceRoot || process.cwd();
     const searchDir = input.path
-      ? path.resolve(input.path)
-      : (ctx.workspaceRoot || process.cwd());
+      ? path.resolve(workspaceRoot, input.path)
+      : workspaceRoot;
 
     // 优先 rg;Node glob 兜底。
-    const allPaths: string[] = [];
+    let found: { paths: string[]; truncated: boolean; reason?: string };
     try {
-      allPaths.push(...await rgGlob(input.pattern, searchDir, ctx.signal));
-    } catch {
-      allPaths.push(...await nodeGlob(input.pattern, searchDir, ctx.signal));
+      found = await rgGlob(input.pattern, searchDir, ctx.signal);
+    } catch (error) {
+      if (ctx.signal.aborted) throw error;
+      found = await nodeGlob(input.pattern, searchDir, ctx.signal);
     }
-    const rawPaths = allPaths;
 
     // 按 mtime 降序排
-    const withMtime = rawPaths.map((p) => {
+    const withMtime = found.paths.map((p) => {
       try {
         const { mtimeMs } = fs.statSync(p);
         return { p, mtime: mtimeMs };
@@ -83,10 +87,10 @@ export const globTool = buildTool<GlobInput, GlobResult>({
     });
     withMtime.sort((a, b) => b.mtime - a.mtime);
 
-    const truncated = withMtime.length > MAX_RESULTS;
-    const files = withMtime.slice(0, MAX_RESULTS).map((x) => x.p);
+    const truncated = found.truncated;
+    const files = withMtime.map((x) => x.p);
     const notice = truncated
-      ? `[Output truncated: ${withMtime.length.toLocaleString()} matches -> ${MAX_RESULTS} shown. Narrow your pattern or path to see more.]`
+      ? `[Search stopped at the ${found.reason ?? 'result'} limit; ${files.length} files shown. Narrow the pattern or path to continue.]`
       : undefined;
 
     return { files, truncated, notice };
@@ -99,27 +103,45 @@ async function rgGlob(
   pattern: string,
   searchDir: string,
   signal: AbortSignal,
-): Promise<string[]> {
-  const { stdout } = await execFileAsync(
+): Promise<{ paths: string[]; truncated: boolean; reason?: string }> {
+  const result = await runBoundedProcess(
     'rg',
     ['--files', '--glob', pattern, '--null', '.'],
-    { cwd: searchDir, signal, maxBuffer: 50 * 1024 * 1024 },
+    {
+      cwd: searchDir,
+      signal,
+      delimiter: '\0',
+      maxRecords: MAX_RESULTS,
+      maxBytes: MAX_OUTPUT_BYTES,
+      timeoutMs: SEARCH_TIMEOUT_MS,
+    },
   );
-  return stdout.split('\0').filter(Boolean).map((p) => path.resolve(searchDir, p));
+  return {
+    paths: result.records.map(item => path.resolve(searchDir, item)),
+    truncated: result.truncated,
+    ...(result.stopReason ? { reason: result.stopReason } : {}),
+  };
 }
 
 async function nodeGlob(
   pattern: string,
   searchDir: string,
   signal: AbortSignal,
-): Promise<string[]> {
-  // 动态 import - glob 是常用依赖,我们在 package.json 加了
-  const { glob } = await import('glob');
-  const results = await glob(pattern, {
+): Promise<{ paths: string[]; truncated: boolean; reason?: string }> {
+  const paths: string[] = [];
+  const startedAt = Date.now();
+  let truncated = false;
+  for await (const item of globIterate(pattern, {
     cwd: searchDir,
     absolute: true,
     nodir: true,
     signal,
-  });
-  return results;
+  })) {
+    if (paths.length >= MAX_RESULTS || Date.now() - startedAt >= SEARCH_TIMEOUT_MS) {
+      truncated = true;
+      break;
+    }
+    paths.push(String(item));
+  }
+  return { paths, truncated, ...(truncated ? { reason: 'result/time' } : {}) };
 }

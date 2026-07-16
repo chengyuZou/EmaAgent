@@ -1,3 +1,4 @@
+// 这里测试 ToolRegistry 的名称所有权、稳定身份和 MCP 批量注册原子性。
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { buildTool } from '../src/build-tool.js';
@@ -6,8 +7,9 @@ import {
   ToolRegistry,
 } from '../src/registry.js';
 
-function makeTool(name: string, result: string) {
+function makeTool(name: string, result: string, id = name) {
   return buildTool({
+    id,
     name,
     description: '注册所有权测试工具',
     inputSchema: z.object({}),
@@ -73,6 +75,34 @@ describe('ToolRegistry MCP 注册所有权', () => {
     ])).toThrow(/github-local\/search-code.*github\.local\/search\.code/);
 
     expect(registry.has(name)).toBe(false);
+  });
+
+  it('稳定 id 冲突时整批拒绝且不留下先前条目', () => {
+    const registry = new ToolRegistry();
+
+    expect(() => registry.registerMcpBatch([
+      {
+        tool: makeTool('mcp__one__read', 'one', 'mcp.shared.read'),
+        owner: { serverName: 'one', serverToolName: 'read' },
+      },
+      {
+        tool: makeTool('mcp__two__read', 'two', 'mcp.shared.read'),
+        owner: { serverName: 'two', serverToolName: 'read' },
+      },
+    ])).toThrow('Tool id "mcp.shared.read" is shared');
+
+    expect(registry.has('mcp__one__read')).toBe(false);
+    expect(registry.has('mcp__two__read')).toBe(false);
+  });
+
+  it('准备调用时同时保留模型名称和内部稳定 id', () => {
+    const registry = new ToolRegistry();
+    registry.register(makeTool('Edit', 'ok', 'builtin.file.edit'));
+
+    expect(registry.prepare('Edit', {})).toEqual(expect.objectContaining({
+      id: 'builtin.file.edit',
+      name: 'Edit',
+    }));
   });
 
   it('错误所有者不能注销其他 MCP Server 的工具', () => {

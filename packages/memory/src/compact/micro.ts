@@ -1,3 +1,4 @@
+// 这里执行小型上下文压缩，并保留 Agent 后续继续工作所需的关键信息。
 import type {
   LlmMessage, AssistantBlock, UserBlock,
 } from '@ema-agent/llm';
@@ -15,15 +16,15 @@ const CLEARED_PLACEHOLDER = '[Old tool result content cleared — call the tool 
 //
 // Mirrors Claude Code's COMPACTABLE_TOOLS whitelist (microCompact.ts).
 const COMPACTABLE_TOOLS = new Set<string>([
-  'fs_read',
-  'fs_edit',   // edit result is a diff summary — safe to discard
-  'fs_write',  // write result is a confirmation — safe to discard
-  'glob',
-  'grep',
+  'Read',
+  'Edit',      // edit result is a diff summary — safe to discard
+  'Write',     // write result is a confirmation — safe to discard
+  'Glob',
+  'Grep',
   'bash',
   'powershell',
-  'web_fetch',
-  'web_search',
+  'WebFetch',
+  'WebSearch',
 ]);
 
 /**

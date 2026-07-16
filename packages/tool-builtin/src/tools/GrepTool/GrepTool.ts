@@ -1,11 +1,10 @@
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
+// 这个工具负责通过 ripgrep 在时间、输出和结果数量预算内搜索文件内容。
 import path from 'node:path';
 import { z } from 'zod';
 import { buildTool } from '@ema-agent/tools';
 import type { ToolExecutionContext } from '@ema-agent/tools';
-
-const execFileAsync = promisify(execFile);
+import { BuiltinTools } from '../../BuiltinToolIdentity.js';
+import { runBoundedProcess } from '../shared/BoundedProcess.js';
 
 // ── 输入 schema ──────────────────────────────────────────────────────────────
 
@@ -41,6 +40,7 @@ const inputSchema = z.object({
     .number()
     .int()
     .min(1)
+    .max(1000)
     .default(250)
     .describe('Maximum output lines / entries returned.'),
 });
@@ -52,12 +52,17 @@ type GrepInput = z.infer<typeof inputSchema>;
 export interface GrepResult {
   output: string;
   truncated: boolean;
+  stopReason?: 'records' | 'bytes' | 'timeout';
 }
+
+const MAX_OUTPUT_BYTES = 2 * 1024 * 1024;
+const SEARCH_TIMEOUT_MS = 15_000;
 
 // ── 工具定义 ───────────────────────────────────────────────────────────────────
 
-export const grepTool = buildTool<GrepInput, GrepResult>({
-  name: 'grep',
+export const GrepTool = buildTool<GrepInput, GrepResult>({
+  id: BuiltinTools.Grep.id,
+  name: BuiltinTools.Grep.name,
   description: `Regex content search powered by ripgrep.
 
 Output modes:
@@ -91,11 +96,12 @@ Results are capped at \`head_limit\` lines (default 250).`,
       head_limit,
     } = input;
 
+    const workspaceRoot = ctx.workspaceRoot || process.cwd();
     const searchTargets = inputPath
-      ? [path.resolve(inputPath)]
-      : [ctx.workspaceRoot || process.cwd()];
+      ? [path.resolve(workspaceRoot, inputPath)]
+      : [workspaceRoot];
 
-    const args: string[] = [pattern];
+    const args: string[] = [];
 
     // 模式标志
     if (output_mode === 'files_with_matches') args.push('--files-with-matches');
@@ -112,29 +118,32 @@ Results are capped at \`head_limit\` lines (default 250).`,
     if (output_mode === 'content') args.push('--line-number');
 
     args.push('--no-heading', '--color=never');
-    args.push(...searchTargets);
+    // `--` 把模型提供的 pattern/path 与 rg 自身参数隔开，避免以 `-` 开头的内容被当成选项。
+    args.push('--', pattern, ...searchTargets);
 
-    let stdout: string;
+    let result;
     try {
-      const result = await execFileAsync('rg', args, {
+      result = await runBoundedProcess('rg', args, {
         signal: ctx.signal,
-        maxBuffer: 50 * 1024 * 1024,
+        delimiter: '\n',
+        maxRecords: head_limit,
+        maxBytes: MAX_OUTPUT_BYTES,
+        timeoutMs: SEARCH_TIMEOUT_MS,
+        allowedExitCodes: [0, 1],
       });
-      stdout = result.stdout;
     } catch (err: unknown) {
-      // rg 无匹配时退出码 1 - 不是错误
-      const execErr = err as { code?: number; stdout?: string };
-      if (execErr.code === 1) return { output: '', truncated: false };
       throw err;
     }
 
-    const lines = stdout.split('\n').filter((l) => l.length > 0);
-    const truncated = lines.length > head_limit;
-    const trimmed   = lines.slice(0, head_limit).join('\n');
-    const output    = truncated
-      ? trimmed + `\n[Output truncated: ${lines.length.toLocaleString()} lines -> ${head_limit} shown. Use a narrower pattern or glob filter to see more.]`
+    const trimmed = result.records.join('\n');
+    const output = result.truncated
+      ? `${trimmed}${trimmed ? '\n' : ''}[Search stopped at the ${result.stopReason ?? 'output'} limit. Use a narrower pattern, path, or glob filter.]`
       : trimmed;
 
-    return { output, truncated };
+    return {
+      output,
+      truncated: result.truncated,
+      ...(result.stopReason ? { stopReason: result.stopReason } : {}),
+    };
   },
 });

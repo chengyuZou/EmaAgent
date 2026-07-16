@@ -68,7 +68,7 @@ import type {
 } from '@ema-agent/contracts';
 import { ToolRegistry }        from '@ema-agent/tools';
 import {
-  cleanupInterruptedFsWriteTemps,
+  cleanupInterruptedFileWriteTemps,
   registerBuiltinTools,
 } from '@ema-agent/tool-builtin';
 import { detectBackend, CommandRunner } from '@ema-agent/sandbox';
@@ -472,7 +472,7 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
     new ToolExecutionsRepo(dataDb.sqlite),
   );
   const interruptedTools = toolExecutionJournal.recoverInterrupted();
-  const fsWriteRecovery = cleanupInterruptedFsWriteTemps(interruptedTools);
+  const fileWriteRecovery = cleanupInterruptedFileWriteTemps(interruptedTools);
   if (interruptedTools.length > 0) {
     const unknownCount = interruptedTools.filter(
       execution => execution.status === 'outcome_unknown',
@@ -482,14 +482,14 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
       + `${unknownCount} may have produced side effects`,
     );
   }
-  if (fsWriteRecovery.failed.length > 0) {
+  if (fileWriteRecovery.failed.length > 0) {
     console.warn(
-      `[fs_write] failed to remove ${fsWriteRecovery.failed.length} interrupted temporary files`,
+      `[FileWriteTool] failed to remove ${fileWriteRecovery.failed.length} interrupted temporary files`,
     );
   }
-  if (fsWriteRecovery.removed.length > 0) {
+  if (fileWriteRecovery.removed.length > 0) {
     console.info(
-      `[fs_write] removed ${fsWriteRecovery.removed.length} interrupted temporary files`,
+      `[FileWriteTool] removed ${fileWriteRecovery.removed.length} interrupted temporary files`,
     );
   }
 

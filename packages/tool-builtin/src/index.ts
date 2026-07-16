@@ -3,32 +3,34 @@ import type { ToolRegistry, BuiltTool } from '@ema-agent/tools';
 
 // ── 单个工具导出 ──────────────────────────────────────────────────────────────
 
-export { fsReadTool } from './tools/fs-read.js';
-export type { FsReadResult } from './tools/fs-read.js';
+export { BuiltinTools } from './BuiltinToolIdentity.js';
 
-export { fsWriteTool } from './tools/fs-write.js';
-export type { FsWriteResult } from './tools/fs-write.js';
-export { cleanupInterruptedFsWriteTemps } from './files/fs-write-recovery.js';
+export { FileReadTool } from './tools/FileReadTool/FileReadTool.js';
+export type { FileReadResult } from './tools/FileReadTool/FileReadTool.js';
 
-export { fsEditTool } from './tools/fs-edit.js';
-export type { FsEditResult } from './tools/fs-edit.js';
+export { FileWriteTool } from './tools/FileWriteTool/FileWriteTool.js';
+export type { FileWriteResult } from './tools/FileWriteTool/FileWriteTool.js';
+export { cleanupInterruptedFileWriteTemps } from './tools/FileWriteTool/recovery.js';
 
-export { globTool } from './tools/glob.js';
-export type { GlobResult } from './tools/glob.js';
+export { FileEditTool } from './tools/FileEditTool/FileEditTool.js';
+export type { FileEditResult } from './tools/FileEditTool/FileEditTool.js';
 
-export { grepTool } from './tools/grep.js';
-export type { GrepResult } from './tools/grep.js';
+export { GlobTool } from './tools/GlobTool/GlobTool.js';
+export type { GlobResult } from './tools/GlobTool/GlobTool.js';
+
+export { GrepTool } from './tools/GrepTool/GrepTool.js';
+export type { GrepResult } from './tools/GrepTool/GrepTool.js';
 
 export { bashTool } from './tools/bash.js';
 export type { BashResult } from './tools/bash.js';
 
 export { powershellTool } from './tools/powershell.js';
 
-export { webFetchTool } from './tools/web-fetch.js';
-export type { WebFetchResult } from './tools/web-fetch.js';
+export { WebFetchTool } from './tools/WebFetchTool/WebFetchTool.js';
+export type { WebFetchResult } from './tools/WebFetchTool/WebFetchTool.js';
 
-export { webSearchTool } from './tools/web-search.js';
-export type { WebSearchResult, SearchResult } from './tools/web-search.js';
+export { WebSearchTool } from './tools/WebSearchTool/WebSearchTool.js';
+export type { WebSearchResult, SearchResult } from './tools/WebSearchTool/WebSearchTool.js';
 
 export { todoWriteTool, getTodos, clearTodos } from './tools/todo-write.js';
 export type { Todo, TodoWriteResult } from './tools/todo-write.js';
@@ -68,15 +70,15 @@ export { scratchpadWriteTool, scratchpadReadTool, scratchpadListTool, scratchpad
 
 // ── 注册 ──────────────────────────────────────────────────────────────────────
 
-import { fsReadTool } from './tools/fs-read.js';
-import { fsWriteTool } from './tools/fs-write.js';
-import { fsEditTool } from './tools/fs-edit.js';
-import { globTool } from './tools/glob.js';
-import { grepTool } from './tools/grep.js';
+import { FileReadTool } from './tools/FileReadTool/FileReadTool.js';
+import { FileWriteTool } from './tools/FileWriteTool/FileWriteTool.js';
+import { FileEditTool } from './tools/FileEditTool/FileEditTool.js';
+import { GlobTool } from './tools/GlobTool/GlobTool.js';
+import { GrepTool } from './tools/GrepTool/GrepTool.js';
 import { bashTool } from './tools/bash.js';
 import { powershellTool } from './tools/powershell.js';
-import { webFetchTool } from './tools/web-fetch.js';
-import { webSearchTool } from './tools/web-search.js';
+import { WebFetchTool } from './tools/WebFetchTool/WebFetchTool.js';
+import { WebSearchTool } from './tools/WebSearchTool/WebSearchTool.js';
 import { todoWriteTool } from './tools/todo-write.js';
 import { askUserTool } from './tools/ask-user.js';
 import { askConfirmTool } from './tools/ask-confirm.js';
@@ -91,15 +93,15 @@ import { scratchpadWriteTool, scratchpadReadTool, scratchpadListTool, scratchpad
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const ALL_BUILTIN_TOOLS: BuiltTool<any, any>[] = [
-  fsReadTool,
-  fsWriteTool,
-  fsEditTool,
-  globTool,
-  grepTool,
+  FileReadTool,
+  FileWriteTool,
+  FileEditTool,
+  GlobTool,
+  GrepTool,
   bashTool,
   powershellTool,
-  webFetchTool,
-  webSearchTool,
+  WebFetchTool,
+  WebSearchTool,
   todoWriteTool,
   askUserTool,
   askConfirmTool,

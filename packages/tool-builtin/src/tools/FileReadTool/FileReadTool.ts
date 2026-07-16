@@ -1,8 +1,10 @@
+// 这个工具负责按行读取文本文件，并维护后续编辑需要的文件状态。
 import fs from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
 import { buildTool } from '@ema-agent/tools';
 import type { ToolExecutionContext } from '@ema-agent/tools';
+import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 
 // ── 常量 ─────────────────────────────────────────────────────────────────────
 
@@ -48,11 +50,11 @@ const inputSchema = z.object({
     .describe('Maximum number of lines to read.'),
 });
 
-type FsReadInput = z.infer<typeof inputSchema>;
+type FileReadInput = z.infer<typeof inputSchema>;
 
 // ── 输出类型 ───────────────────────────────────────────────────────────────────
 
-export interface FsReadResult {
+export interface FileReadResult {
   type: 'file_content' | 'file_unchanged';
   filePath: string;
   /** type === 'file_content' 时存在。cat -n 格式。 */
@@ -94,8 +96,9 @@ function getMtimeMs(filePath: string): number {
 
 // ── 工具定义 ───────────────────────────────────────────────────────────────────
 
-export const fsReadTool = buildTool<FsReadInput, FsReadResult>({
-  name: 'fs_read',
+export const FileReadTool = buildTool<FileReadInput, FileReadResult>({
+  id: BuiltinTools.FileRead.id,
+  name: BuiltinTools.FileRead.name,
   description: `Read a file from the local filesystem.
 
 - Returns content with 1-based line numbers (cat -n format).
@@ -116,7 +119,7 @@ export const fsReadTool = buildTool<FsReadInput, FsReadResult>({
     },
   },
 
-  async execute(input: FsReadInput, ctx: ToolExecutionContext): Promise<FsReadResult> {
+  async execute(input: FileReadInput, ctx: ToolExecutionContext): Promise<FileReadResult> {
     const { file_path, offset, limit } = input;
     const fullPath = path.resolve(file_path);
 

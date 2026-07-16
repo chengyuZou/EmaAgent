@@ -1,3 +1,4 @@
+// 这里管理各 Session 的会话状态、发送队列和 SSE 生命周期。
 /**
  * conversation-store.ts — Zustand store for conversation state + SSE queue.
  *
@@ -15,7 +16,7 @@ import { createSendQueue, type SendQueue } from '../lib/send-queue.js';
 import { sseConsumer }     from '../lib/sse-consumer.js';
 import { sessionsApi, type BranchTreeWire } from '../api/sessions.js';
 import { turnsApi, type AttachmentInputWire } from '../api/turns.js';
-import type { KbAssetScope } from '@ema-agent/contracts';
+import type { KbAssetScope, ToolPresentation } from '@ema-agent/contracts';
 import { sidecarClient }   from '../api/sidecar-client.js';
 import {
   handleTurnAborted,
@@ -464,13 +465,13 @@ export const useConversationStore = create<ConversationStoreState>((set, get) =>
       }
 
       if (slice === 'tool_result' && typeof delta === 'object') {
-        const tr = delta as { callId: string; output?: unknown; error?: { code: string; message: string }; durationMs?: number };
+        const tr = delta as { callId: string; output?: unknown; presentation?: ToolPresentation; error?: { code: string; message: string }; durationMs?: number };
         const streaming = new Map(s.streamingMap);
         streaming.set(sessionId as string, {
           ...sm,
           slices: sm.slices.map((sl) =>
             sl.type === 'tool_use' && sl.callId === tr.callId
-              ? { ...sl, result: tr.output ?? null, error: tr.error, durationMs: tr.durationMs, errorCode: tr.error?.code, permissionPromptId: undefined }
+              ? { ...sl, result: tr.output ?? null, presentation: tr.presentation, error: tr.error, durationMs: tr.durationMs, errorCode: tr.error?.code, permissionPromptId: undefined }
               : sl,
           ),
         });
@@ -545,4 +546,3 @@ export const useConversationStore = create<ConversationStoreState>((set, get) =>
     }
   },
 }));
-

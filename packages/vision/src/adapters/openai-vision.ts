@@ -1,3 +1,5 @@
+// 这里把视觉提取请求转成 OpenAI Chat Completions 格式：图片转 base64、手写 fetch 调用、按 HTTP 状态分类错误。
+
 import { buildVisionExtractionPrompt, defaultMaxTokensForVisionTask } from '../prompts.js';
 import { VisionError, type VisionErrorCode, type VisionErrorMeta } from '../errors.js';
 import { parseVisionPayload } from '../parse.js';

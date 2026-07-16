@@ -1096,6 +1096,9 @@ importers:
       '@ema-agent/tools':
         specifier: workspace:*
         version: link:../tools
+      diff:
+        specifier: ^9.0.0
+        version: 9.0.0
       glob:
         specifier: ^11.0.0
         version: 11.1.0

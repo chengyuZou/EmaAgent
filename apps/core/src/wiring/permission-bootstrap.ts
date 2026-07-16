@@ -1,3 +1,4 @@
+// 这里根据运行模式创建权限引擎，并装入内置工具的默认权限规则。
 /**
  * permission-bootstrap.ts — PermissionEngine construction + per-turn ask factory.
  *
@@ -11,6 +12,7 @@ import type { EmaStreamEvent, SessionId, ToolCallId, TurnId } from '@ema-agent/c
 import { PermissionPromptRegistry } from '../permissions/registry.js';
 import { AskUserRegistry } from '../ask-user/registry.js';
 import type { SettingsRepo } from '@ema-agent/storage';
+import { BuiltinTools } from '@ema-agent/tool-builtin';
 
 // ── Result type ───────────────────────────────────────────────────────────────
 
@@ -35,8 +37,7 @@ export interface PermissionBootstrapResult {
  * tool surfaces a confirmation dialog. Set AGEN_PERMISSION_BYPASS=1 to skip
  * all prompts (automated tests / power-user CLI use only).
  *
- * Read-only tools (fs_read, glob, grep) are pre-allowed globally so they never
- * surface a prompt. Tool names must match the registered name strings exactly.
+ * Read、Glob、Grep 使用稳定内部 id 预授权，模型展示名称以后变化也不会丢规则。
  */
 export function buildPermissionSubsystem(settingsRepo: SettingsRepo): PermissionBootstrapResult {
   // Timeout from persistent settings; falls back to 120 s.
@@ -54,9 +55,9 @@ export function buildPermissionSubsystem(settingsRepo: SettingsRepo): Permission
     mode: permissionMode,
     rules: [
       // Read-only tools: no side effects, no prompt fatigue.
-      { tool: 'fs_read', action: 'allow', scope: 'global' },
-      { tool: 'glob',    action: 'allow', scope: 'global' },
-      { tool: 'grep',    action: 'allow', scope: 'global' },
+      { tool: BuiltinTools.FileRead.id, action: 'allow', scope: 'global' },
+      { tool: BuiltinTools.Glob.id,     action: 'allow', scope: 'global' },
+      { tool: BuiltinTools.Grep.id,     action: 'allow', scope: 'global' },
     ],
     // Placeholder — replaced per-turn by buildAskForTurn below.
     ask: async () => ({ action: 'deny', reason: 'no per-turn ask wired' }),
