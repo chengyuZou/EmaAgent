@@ -1,3 +1,5 @@
+// 这里创建和管理子 Agent，并处理它们的共享临时数据、取消和事件上报。
+
 import { randomUUID } from 'node:crypto';
 import type { LlmMessage, SessionId, TurnId, EmaStreamEvent, ToolError } from '@ema-agent/contracts';
 import type { ISubagentSpawner, SubagentSpawnOpts, ToolExecutionContext } from '@ema-agent/tools';
@@ -111,7 +113,14 @@ export class SubagentSpawner implements ISubagentSpawner {
     // returns no-match for session-scoped relative patterns, so a subagent
     // cannot touch the parent's workspace files unless an explicit global/
     // home-anchored (~/) allow rule permits it. Do NOT pass process.cwd().
-    const permCtx       = { workspaceRoot: '', sessionId: this.parentSessionId };
+    const permCtx       = {
+      workspaceRoot: '',
+      sessionId: this.parentSessionId,
+      turnId: subagentId,
+      internalPaths: this.scratchpadDir
+        ? { turnScratchpad: this.scratchpadDir }
+        : undefined,
+    };
 
     const startedAtMs = Date.now();
     const taskId      = opts.taskId;   // undefined until V1.5 task-store wiring

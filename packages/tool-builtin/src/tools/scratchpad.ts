@@ -1,3 +1,5 @@
+// 这里提供当前 Turn 内主 Agent 和子 Agent 共用的临时读写工具。
+
 import * as fs   from 'node:fs';
 import * as path from 'node:path';
 import { z } from 'zod';
@@ -104,7 +106,11 @@ The scratchpad is automatically deleted when the turn ends.`,
   isReadOnly:        () => false,
   isConcurrencySafe: () => false,
 
-  permissionMeta: { riskLevel: 'low', accessType: 'write' },
+  permissionMeta: {
+    riskLevel: 'low',
+    accessType: 'write',
+    internalPathCapability: 'turnScratchpad',
+  },
 
   async execute(input, ctx) {
     const dir = requireDir(ctx);
@@ -185,7 +191,11 @@ export const scratchpadReadTool = buildTool<
   isReadOnly:        () => true,
   isConcurrencySafe: () => true,
 
-  permissionMeta: { riskLevel: 'low', accessType: 'read' },
+  permissionMeta: {
+    riskLevel: 'low',
+    accessType: 'read',
+    internalPathCapability: 'turnScratchpad',
+  },
 
   async execute(input, ctx) {
     const dir = requireDir(ctx);
@@ -217,7 +227,11 @@ export const scratchpadListTool = buildTool<
   isReadOnly:        () => true,
   isConcurrencySafe: () => true,
 
-  permissionMeta: { riskLevel: 'low', accessType: 'read' },
+  permissionMeta: {
+    riskLevel: 'low',
+    accessType: 'read',
+    internalPathCapability: 'turnScratchpad',
+  },
 
   async execute(_input, ctx) {
     const dir = requireDir(ctx);
@@ -266,7 +280,11 @@ export const scratchpadDeleteTool = buildTool<z.infer<typeof deleteSchema>, { de
   isReadOnly:        () => false,
   isConcurrencySafe: () => false,
 
-  permissionMeta: { riskLevel: 'low', accessType: 'write' },
+  permissionMeta: {
+    riskLevel: 'low',
+    accessType: 'write',
+    internalPathCapability: 'turnScratchpad',
+  },
 
   async execute(input, ctx) {
     const dir = requireDir(ctx);
@@ -298,7 +316,11 @@ export const scratchpadClearAllTool = buildTool<Record<never, never>, { cleared:
   isReadOnly:        () => false,
   isConcurrencySafe: () => false,
 
-  permissionMeta: { riskLevel: 'low', accessType: 'write' },
+  permissionMeta: {
+    riskLevel: 'low',
+    accessType: 'write',
+    internalPathCapability: 'turnScratchpad',
+  },
 
   async execute(_input, ctx) {
     const dir = requireDir(ctx);

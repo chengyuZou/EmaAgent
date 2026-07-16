@@ -1,3 +1,5 @@
+// 这里根据权限规则和用户选择，决定一次工具调用能不能执行。
+
 import path from 'node:path';
 import { checkPathSafety, getDangerousPathReason, getPathsForPermissionCheck, normalizeCaseForComparison } from './path-safety.js';
 import { findDenyRule, findAskRule, findAllowRule, upsertRule } from './rules.js';
@@ -151,6 +153,22 @@ export class PermissionEngine {
 
     if (effectiveMode === 'bypass') {
       return { granted: true, decisionReason: { type: 'mode', mode: 'bypass' } };
+    }
+
+    // 封装型内部工具不暴露文件路径，因此用显式能力证明它只能操作 Core 授予的目录。
+    // 能力缺失时继续普通权限流程并最终询问/拒绝，避免仅凭工具名放行。
+    if (meta.internalPathCapability) {
+      const root = context.internalPaths?.[meta.internalPathCapability];
+      if (root) {
+        return {
+          granted: true,
+          decisionReason: {
+            type: 'internalCapability',
+            capability: meta.internalPathCapability,
+            root,
+          },
+        };
+      }
     }
 
     // ── Step 5: internal editable path carve-outs (write / execute) ───────

@@ -1,3 +1,5 @@
+// 这里放 Agent 运行时需要的输入、依赖和基础接口。
+
 import type {
   SessionId,
   EmaStreamEvent,
@@ -92,8 +94,6 @@ export interface AgentDeps {
   taskStore?: IAgentTaskStore;
   /** 工具副作用的持久化状态机；生产环境由 agent-task Facade 注入。 */
   toolExecutionJournal?: IToolExecutionJournal;
-  /** App data directory — used for turn-scoped scratchpad directories. */
-  dataDir?: string;
 }
 
 // ── IAgentTaskStore — minimal interface avoids hard dep on agent-task ─────────
@@ -129,6 +129,8 @@ export interface AgentRunInput {
   model:                 string;
   /** The workspace root. Empty string = no workspace (subagent). */
   workspaceRoot: string;
+  /** Core RuntimePaths 为当前 Turn 生成的临时目录；Agent 不负责拼接数据目录。 */
+  scratchpadDir?: string;
   /** KB ids the user selected in the chat picker. kbSearch searches across all of them.
    *  [] / omit → falls back to the active KB. */
   kbIds?:         string[];

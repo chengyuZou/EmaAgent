@@ -1,3 +1,5 @@
+// 这里接收一次 Turn 请求，选择执行方式，并把执行过程整理成前端需要的事件流。
+
 import type { AppBindings } from '../wiring/index.js';
 import type {
   ErrorCode, TurnMode, EmaStreamEvent, TurnId, SessionId, KbAssetScope,
@@ -15,7 +17,7 @@ import type { FinalizedAudio } from '@ema-agent/tts';
 import { SettingsRepo } from '@ema-agent/storage';
 import type { BindingModule } from '@ema-agent/storage';
 import { resolveVoice, ensureVoiceUri, VoiceUriCache } from '../wiring/providers/tts.js';
-import { ensureSessionLayout } from '../storage-locations/index.js';
+import { ensureSessionLayout, scratchpadTurnDir } from '../storage-locations/index.js';
 import type { Turn }           from '@ema-agent/session';
 import type { TurnFailurePhase } from '@ema-agent/hook';
 import { prepareImagesForModel, replaceImageParts } from './media-compatibility.js';
@@ -110,7 +112,6 @@ export class Orchestrator {
       getContextStores:  bindings.getContextStores,
       taskStore:         bindings.taskStore,
       toolExecutionJournal: bindings.toolExecutionJournal,
-      dataDir:           bindings.activeDataDir,
     });
   }
 
@@ -407,6 +408,11 @@ export class Orchestrator {
           model,
           userInput:      request.contentParts?.length ? request.contentParts : (request.userInput ?? ''),
           workspaceRoot,
+          scratchpadDir: scratchpadTurnDir(
+            this.bindings.activeDataDir,
+            sessionId,
+            turn.id as string,
+          ),
           kbIds:          request.kbIds,
           kbAssetScopes:  request.kbAssetScopes,
           thinking:       request.thinking,

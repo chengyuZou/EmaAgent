@@ -1,3 +1,5 @@
+// 这是 Permission 包的统一出口，外部代码从这里使用它的功能和类型。
+
 export { PermissionEngine }                           from './checker.js';
 export { getPlatform, resetPlatformCache }            from './platform.js';
 export {
@@ -10,7 +12,6 @@ export { ruleMatches, findAllowRule, findDenyRule, findAskRule, upsertRule, clea
 export { pathInWorkingDir, pathInAnyWorkingDir }      from './workspace.js';
 export {
   checkEditableInternalPath, checkReadableInternalPath,
-  sessionMemoryDir, artifactDir, scratchpadDir, sessionsRoot, emaHome,
 }                                                      from './internal-paths.js';
 
 export type {
@@ -28,4 +29,6 @@ export type {
   RuleScope,
   RiskLevel,
   AccessType,
+  InternalPathCapabilities,
+  InternalPathCapability,
 }                                                      from './types.js';

@@ -1,3 +1,5 @@
+// 这里运行一次 Agent Turn，并协调模型、工具、权限、Hook 和结果保存。
+
 import type { EmaStreamEvent, ErrorCode, LlmMessage, AssistantBlock, UserBlock } from '@ema-agent/contracts';
 import type { MessageBlocks } from '@ema-agent/session';
 import type { ToolExecutionContext, ReadFileState } from '@ema-agent/tools';
@@ -13,7 +15,6 @@ import { clearTodos } from '@ema-agent/tool-builtin';
 import { buildScratchpadContext } from './scratchpad-context.js';
 import { llmProviderErrorCode } from '@ema-agent/llm';
 import * as fs   from 'node:fs';
-import * as path from 'node:path';
 
 // ── AgentEngine ───────────────────────────────────────────────────────────────
 
@@ -66,14 +67,17 @@ async function* runTurn(
   const policy        = new AgentPolicy(tools.list());
   const readFileState = new Map() as ReadFileState;
   const contextStores = deps.getContextStores?.(sessionId);
-  const permCtx: PermissionContext = { workspaceRoot, sessionId };
   const resolvedRunner = deps.getCommandRunner?.(sessionId);
 
-  // Turn-scoped scratchpad: shared between main agent and all sub-agents.
-  // Created on demand by scratchpad_write; deleted in the finally block.
-  const scratchpadDir = deps.dataDir
-    ? path.join(deps.dataDir, 'sessions', sessionId, 'scratchpad', turnId)
-    : undefined;
+  // Core 生成根目录，Agent 只消费并把它转换成显式权限能力。
+  // 主 Agent 与子 Agent 共享该 Turn 目录；目录由 scratchpad_write 按需创建。
+  const scratchpadDir = input.scratchpadDir;
+  const permCtx: PermissionContext = {
+    workspaceRoot,
+    sessionId,
+    turnId,
+    internalPaths: scratchpadDir ? { turnScratchpad: scratchpadDir } : undefined,
+  };
 
   // Per-iteration accumulators — reset on each loop_iteration event.
   let iterTextByIndex     = new Map<number, string>();
