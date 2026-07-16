@@ -1,3 +1,5 @@
+// 这里提供磁盘、发布能力和沙箱安全状态等只读系统接口。
+
 import { Hono } from 'hono';
 import { getDisksInfo } from '@ema-agent/system';
 import type { AppCapabilitiesWire } from '@ema-agent/contracts';
@@ -23,6 +25,9 @@ export function systemRoute(bindings: AppBindings): Hono {
     };
     return c.json(body);
   });
+
+  // GET /api/system/sandbox — 当前机器真正启用的隔离等级。
+  app.get('/sandbox', (c) => c.json(bindings.sandboxStatus));
 
   return app;
 }

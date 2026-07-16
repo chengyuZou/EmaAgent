@@ -1,3 +1,5 @@
+// 这里把 Core 传入的真实路径和权限规则整理成各系统沙箱使用的配置。
+
 import { statSync } from 'node:fs';
 import os   from 'node:os';
 import path from 'node:path';
@@ -19,6 +21,8 @@ const BARE_REPO_FILES = ['HEAD', 'objects', 'refs', 'hooks', 'config'] as const;
 export interface ConfigContext {
   workspaceRoot: string;
   sessionId?:    string;
+  /** Core 指定的私有文件或目录，沙箱进程一律不能读取或修改。 */
+  protectedPaths: readonly string[];
 }
 
 // ── Builder output ────────────────────────────────────────────────────────────
@@ -55,11 +59,12 @@ export function buildSandboxConfig(
   const allowedDomains: string[] = [];
   const deniedDomains:  string[] = [];
 
-  // Protect EmaAgent settings — deny both read and write.
-  // Provider 凭据只应由 CredentialFacade 解密；沙箱进程不得继承或外传它。
-  const settingsPath = path.join(os.homedir(), '.ema-agent', 'settings.json');
-  denyWrite.push(settingsPath);
-  denyRead.push(settingsPath);
+  // 这些路径由 Core 提供，Sandbox 不再猜 profile 或 data 目录。
+  for (const protectedPath of ctx.protectedPaths) {
+    const absolutePath = path.resolve(protectedPath);
+    if (!denyWrite.includes(absolutePath)) denyWrite.push(absolutePath);
+    if (!denyRead.includes(absolutePath)) denyRead.push(absolutePath);
+  }
 
   // Bare-repo attack prevention ───────────────────────────────────────────────
   // A sandboxed command could plant HEAD/objects/refs/hooks/config in the

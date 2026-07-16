@@ -1,3 +1,5 @@
+// 这里管理 MCP 服务器的连接、工具发现、调用和本地进程启动门禁。
+
 import { randomUUID }       from 'node:crypto';
 import type { McpToolOwner, McpToolRegistration, ToolRegistry } from '@ema-agent/tools';
 import type { McpServerStore }                            from './store.js';
@@ -48,6 +50,8 @@ export class McpRegistry {
      * 需用户显式批准 - 与 shell 工具调用门禁一致。
      */
     private readonly stdioGate?:   McpStdioPermissionGate,
+    /** false 时不连接或展示需要启动本地进程的 stdio MCP。 */
+    private readonly stdioEnabled = true,
   ) {}
 
   // ── 连接管理 ─────────────────────────────────────────────────────────────
@@ -104,6 +108,7 @@ export class McpRegistry {
     const registrations: McpToolRegistration[] = [];
     const pending = new Map<string, McpToolInfo[]>();
     for (const record of this.store.listEnabled()) {
+      if (record.config.type === 'stdio' && !this.stdioEnabled) continue;
       if (this.connections.has(record.name)) continue;          // 已在线
       const tools = record.cachedTools;
       if (!tools || tools.length === 0) continue;
@@ -194,7 +199,9 @@ export class McpRegistry {
   }
 
   async startAll(): Promise<void> {
-    const enabled = this.store.listEnabled();
+    const enabled = this.store.listEnabled().filter(
+      record => record.config.type !== 'stdio' || this.stdioEnabled,
+    );
     await Promise.allSettled(
       enabled.map((r) =>
         this.connectConfig(r.name, r.config).catch((err) => {
@@ -233,6 +240,9 @@ export class McpRegistry {
     config: McpServerConfig,
   ): Promise<McpServerConfig> {
     if (config.type !== 'stdio') return config;
+    if (!this.stdioEnabled) {
+      throw new McpStdioPermissionError(operation, serverName, 'denied');
+    }
 
     // 建立一份审批与执行共享的运行时不可变快照,等待用户期间不能原地改参。
     const snapshot = freezeStdioConfig(config);

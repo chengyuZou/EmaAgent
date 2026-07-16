@@ -1,3 +1,5 @@
+// 这里创建 Core 运行所需的各个业务模块，并把它们连接到统一的 AppBindings。
+
 import type { Database } from '@ema-agent/storage';
 import {
   ModelBindingsRepo,
@@ -27,7 +29,12 @@ import { readFileSync } from 'node:fs';
 import * as os from 'node:os';
 import { HookBus }       from '@ema-agent/hook';
 import { createTraceSink } from './diagnostic-sink.js';
-import { removeSessionDir } from '../storage-locations/index.js';
+import {
+  dataDbPathFor,
+  profileDbPath,
+  removeSessionDir,
+  sqliteFileSet,
+} from '../storage-locations/index.js';
 import { LlmRouter, ModelsDevCatalog } from '@ema-agent/llm';
 import { EbdRouter }     from '@ema-agent/ebd-client';
 import { NarrativeClient } from '@ema-agent/narrative-client';
@@ -49,7 +56,16 @@ import { PermissionEngine } from '@ema-agent/permission';
 import type { AskPermissionFn } from '@ema-agent/permission';
 import { PermissionPromptRegistry } from '../permissions/registry.js';
 import { AskUserRegistry }          from '../ask-user/registry.js';
-import type { EmaStreamEvent, KbAssetScope, SessionId, ToolCallId, TurnId, KbSearchResult, ReleaseFeaturesWire } from '@ema-agent/contracts';
+import type {
+  EmaStreamEvent,
+  KbAssetScope,
+  SessionId,
+  ToolCallId,
+  TurnId,
+  KbSearchResult,
+  ReleaseFeaturesWire,
+  SandboxStatusWire,
+} from '@ema-agent/contracts';
 import { ToolRegistry }        from '@ema-agent/tools';
 import { registerBuiltinTools } from '@ema-agent/tool-builtin';
 import { detectBackend, CommandRunner } from '@ema-agent/sandbox';
@@ -93,6 +109,8 @@ export interface AppBindings {
   activeDataDir: string;
   /** Provider 凭据加解密的唯一入口；主密钥由 Tauri/OS keychain 提供。 */
   credentials: CredentialFacade;
+  /** 当前机器实际启用的沙箱等级，供系统接口和前端设置页展示。 */
+  sandboxStatus: SandboxStatusWire;
 
   hooks:   HookBus;
   session: SessionStore;
@@ -351,9 +369,40 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
   // On Windows without WSL2+bubblewrap the backend is 'app-layer' (no OS
   // isolation). Shell tools are disabled unless AGEN_UNSAFE_SHELL=1 is set.
   const sandboxDetection   = detectBackend();
+  const unsafeShellOverride = process.env['AGEN_UNSAFE_SHELL'] === '1';
+  const unsafeMcpOverride   = process.env['AGEN_UNSAFE_MCP_STDIO'] === '1';
   const disableExecuteTools =
     sandboxDetection.backend === 'app-layer' &&
-    process.env['AGEN_UNSAFE_SHELL'] !== '1';
+    !unsafeShellOverride;
+
+  // stdio MCP 目前由 SDK 直接启动，不经过 CommandRunner，所以默认禁用。
+  // 显式环境变量只用于开发者自行承担风险，不代表它获得了系统沙箱。
+  const localMcpStdioEnabled = unsafeMcpOverride;
+  const sandboxWarnings = [
+    sandboxDetection.degradeReason,
+    sandboxDetection.backend === 'app-layer' && unsafeShellOverride
+      ? 'Shell is running without OS-level isolation because AGEN_UNSAFE_SHELL=1.'
+      : undefined,
+    localMcpStdioEnabled
+      ? 'Local stdio MCP processes are running without OS-level isolation because AGEN_UNSAFE_MCP_STDIO=1.'
+      : 'Local stdio MCP processes are disabled until they are routed through the sandbox runner.',
+  ].filter((message): message is string => Boolean(message));
+  const sandboxStatus: SandboxStatusWire = Object.freeze({
+    backend: sandboxDetection.backend,
+    isolation: sandboxDetection.backend === 'app-layer' ? 'application-only' : 'os',
+    shellExecution: disableExecuteTools
+      ? 'disabled'
+      : sandboxDetection.backend === 'app-layer'
+        ? 'unsafe-override'
+        : 'isolated',
+    localMcpStdio: localMcpStdioEnabled ? 'unsafe-override' : 'disabled',
+    ...(sandboxWarnings.length > 0 ? { warning: sandboxWarnings.join(' ') } : {}),
+  });
+
+  const protectedSandboxPaths = [
+    ...sqliteFileSet(profileDbPath()),
+    ...sqliteFileSet(dataDbPathFor(activeDataDir)),
+  ];
 
   const tools = new ToolRegistry();
   registerBuiltinTools(tools, {
@@ -375,6 +424,7 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
       workspaceRoot: s.workspaceRoot || process.cwd(),
       sessionId,
       permission,
+      protectedPaths: protectedSandboxPaths,
     });
     runnerCache.set(sessionId, runner);
     return runner;
@@ -506,6 +556,7 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
 
   // ── MCP registry ────────────────────────────────────────────────────────────
   const mcpStdioGate = async (intent: McpStdioLaunchIntent): Promise<boolean> => {
+    if (!localMcpStdioEnabled) return false;
     // 环境变量值可能包含 API Key；授权界面只展示键名，但 Registry 会把批准
     // 绑定在这次冻结 intent 上，并使用同一份配置启动进程。
     const environmentKeys = Object.keys(intent.environment ?? {}).sort();
@@ -528,6 +579,7 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
     new McpServerStore(new McpServersRepo(profileDb.sqlite)),
     tools,
     mcpStdioGate,
+    localMcpStdioEnabled,
   );
   // Adapter: expose McpRegistry as IMcpClientBridge for mcp_call tool injection.
   const mcpBridge: IMcpClientBridge = {
@@ -665,7 +717,7 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
   });
 
   return {
-    profileDb, dataDb, activeDataDir, credentials,
+    profileDb, dataDb, activeDataDir, credentials, sandboxStatus,
     hooks, session, sessionBackup,
     llm, ebd, narrative, modelCatalog,
     card, emotion,

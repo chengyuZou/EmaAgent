@@ -1,3 +1,5 @@
+// 这里测试 MCP 本地进程的权限门禁、禁用开关、超时和连接清理。
+
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { McpStdioLaunchIntent, McpToolInfo } from '../src/types.js';
 
@@ -43,6 +45,21 @@ beforeEach(() => {
 });
 
 describe('MCP Probe stdio 权限与资源边界', () => {
+  it('全局禁用 stdio 时不询问权限也不启动本地进程', async () => {
+    const gate = vi.fn(async () => true);
+    const registry = new McpRegistry(store, toolRegistry, gate, false);
+
+    const result = await registry.probe('disabled-local', {
+      type: 'stdio',
+      command: 'node',
+      args: ['server.js'],
+    });
+
+    expect(result.ok).toBe(false);
+    expect(gate).not.toHaveBeenCalled();
+    expect(mocks.openConnection).not.toHaveBeenCalled();
+  });
+
   it('权限拒绝时绝不启动 stdio 子进程，并提交完整启动意图', async () => {
     let observed: McpStdioLaunchIntent | undefined;
     const gate = vi.fn(async (intent: McpStdioLaunchIntent) => {

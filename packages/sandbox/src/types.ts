@@ -1,20 +1,16 @@
-// ── Sandbox config (OS-agnostic) ─────────────────────────────────────────────
+// 这里放 Sandbox 使用的配置、运行参数和后端接口。
 
+/** 沙箱内进程可以或禁止访问的文件路径。 */
 export interface SandboxFilesystemConfig {
-  /** Paths the sandboxed process may write to. */
   allowWrite: string[]
-  /** Paths the sandboxed process must not write to (overrides allowWrite). */
   denyWrite: string[]
-  /** Paths the sandboxed process must not read. */
   denyRead: string[]
-  /** Extra paths explicitly allowed for read (informational; most backends allow-all-read by default). */
   allowRead: string[]
 }
 
+/** 沙箱内进程可以或禁止访问的网络域名。 */
 export interface SandboxNetworkConfig {
-  /** Domains the process may reach. Empty = deny all outbound (if backend supports it). */
   allowedDomains: string[]
-  /** Domains explicitly denied (for backends with domain-level filtering). */
   deniedDomains: string[]
 }
 
@@ -23,23 +19,10 @@ export interface SandboxConfig {
   network:    SandboxNetworkConfig
 }
 
-// ── Shell sentinel ────────────────────────────────────────────────────────────
-
-/**
- * Sentinel returned by `probeShell().path` on Windows when no native bash.exe
- * is found but WSL bash is usable. Backends recognise this and route through
- * `wsl.exe bash -c …` instead of spawning a bare shell. Lets users with WSL2
- * (and no Git for Windows) enter Agent mode — previously blocked by the
- * "bash 未找到" dialog.
- */
+/** Windows 没有原生 bash，但可以调用 WSL bash 时使用的内部标记。 */
 export const WSL_BASH_SENTINEL = 'wsl:bash'
 
-// ── Backend interface ─────────────────────────────────────────────────────────
-
-/**
- * What a backend returns when asked to wrap a command.
- * The runner spawns `executable` with `args` directly — no extra shell layer.
- */
+/** 后端包装命令后真正要启动的程序和参数。 */
 export interface WrappedCommand {
   executable: string
   args:       string[]
@@ -47,29 +30,21 @@ export interface WrappedCommand {
 
 export interface SandboxBackend {
   readonly name: string
-  /** Returns true if the required OS tools are installed and usable. */
   isAvailable(): boolean
-  /** Wrap a shell command so it runs inside the sandbox. */
   wrap(command: string, shell: string, config: SandboxConfig): WrappedCommand
 }
 
-// ── Run primitives ────────────────────────────────────────────────────────────
-
 export interface RunOptions {
-  /** Override working directory (defaults to workspaceRoot). */
   cwd?:        string
-  /** Milliseconds before SIGTERM + SIGKILL. */
   timeout?:    number
-  /** AbortSignal for turn cancellation. */
   signal?:     AbortSignal
-  /** Fire-and-forget: spawn detached through the sandbox backend, return immediately. */
   background?: boolean
 }
 
 export interface RunResult {
-  stdout:   string
-  stderr:   string
-  exitCode: number
-  timedOut: boolean
+  stdout:    string
+  stderr:    string
+  exitCode:  number
+  timedOut:  boolean
   truncated: boolean
 }

@@ -1,3 +1,5 @@
+// 这里运行经过沙箱包装的命令，并管理每个 Session 的沙箱配置和清理工作。
+
 import { existsSync, rmSync } from 'node:fs';
 import { spawn }               from 'node:child_process';
 import { spawnProcess }        from '@ema-agent/tools';
@@ -21,6 +23,8 @@ const MAX_TIMEOUT_MS     = 600_000;
 export interface CommandRunnerOptions {
   workspaceRoot:  string;
   sessionId?:     string;
+  /** Core 给出的私有路径，命令不得读取或修改。 */
+  protectedPaths: readonly string[];
   /** Live permission engine — rules are re-read on every refreshConfig(). */
   permission:     PermissionEngine;
 }
@@ -118,6 +122,7 @@ export class CommandRunner {
     return {
       workspaceRoot: this.opts.workspaceRoot,
       sessionId:      this.opts.sessionId,
+      protectedPaths: this.opts.protectedPaths,
     };
   }
 }
@@ -144,4 +149,3 @@ function getShell(): string {
   }
   return result.path;
 }
-

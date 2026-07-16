@@ -1,3 +1,5 @@
+// 这是 Sandbox 包的统一出口，外部代码从这里创建命令运行器并查看沙箱状态。
+
 export { CommandRunner }             from './manager.js';
 export type { CommandRunnerOptions } from './manager.js';
 

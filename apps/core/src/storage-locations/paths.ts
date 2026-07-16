@@ -1,3 +1,5 @@
+// 这里统一计算 EmaAgent 的 profile、数据、Session 和资源文件路径。
+
 import fs   from 'node:fs';
 import os   from 'node:os';
 import path from 'node:path';
@@ -25,6 +27,11 @@ export function profileDir(): string {
 
 export function profileDbPath(): string {
   return path.join(profileDir(), 'profile.db');
+}
+
+/** 返回 SQLite 主文件及其 WAL/SHM 辅助文件。 */
+export function sqliteFileSet(databasePath: string): string[] {
+  return [databasePath, `${databasePath}-wal`, `${databasePath}-shm`];
 }
 
 export function registryPath(): string {

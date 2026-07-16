@@ -1,7 +1,7 @@
 // 这是 Core 路径模块的统一出口，其他代码从这里取得各类数据目录的位置。
 
 export {
-  profileDir, profileDbPath, registryPath, lockfilePath,
+  profileDir, profileDbPath, sqliteFileSet, registryPath, lockfilePath,
   dataDbPathFor, trashDirFor,
   ensureDataDirLayout,
   sessionDirFor, sessionAudioDirFor, sessionArtifactsDirFor,
