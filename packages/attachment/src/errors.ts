@@ -1,3 +1,5 @@
+// 这里放 Attachment 模块抛出的错误类型：找不到附件、读附件文件失败。
+
 export class AttachmentNotFoundError extends Error {
   constructor(id: string) {
     super(`Attachment not found: ${id}`);

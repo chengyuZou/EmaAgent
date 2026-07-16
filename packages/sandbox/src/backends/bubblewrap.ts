@@ -1,3 +1,5 @@
+// 这里用 Bubblewrap 在 Linux 或 WSL2 中隔离命令的文件和网络访问。
+
 import path from 'node:path';
 import type { SandboxBackend, SandboxConfig, WrappedCommand } from '../types.js';
 import { getPlatform } from '../platform.js';
@@ -69,7 +71,7 @@ function buildBwrapArgs(config: SandboxConfig): string[] {
   // Network isolation
   // V1: binary choice — no allowed domains = isolate; any allowed domain = pass through.
   // Domain-level filtering inside the sandbox requires a local HTTP proxy (V2 work).
-  if (config.network.allowedDomains.length === 0) {
+  if (config.network.access === 'none') {
     args.push('--unshare-net');
   }
 

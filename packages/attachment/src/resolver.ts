@@ -1,18 +1,20 @@
+// 这里把附件解析成 LLM 能直接用的形式：小图片转 base64 内联进消息，其他文件转成路径文本塞进 prompt。
+
 import * as fs   from 'node:fs';
 import * as path from 'node:path';
 import type { MessageContentPart } from '@ema-agent/contracts';
 import type { Attachment, ResolvedPrompt } from './types.js';
 
-/** Images above this size are not inlined — too large for most provider limits. */
+/** 超过这个大小的图片不内联，对大多数 Provider 来说太大了。 */
 const IMAGE_INLINE_LIMIT = 5 * 1024 * 1024; // 5 MB
 
 /**
- * Resolve a list of attachments into LLM-ready form.
+ * 把一批附件解析成 LLM 能直接用的形式。
  *
- * image/* below the inline limit → base64 MessageContentPart (imageParts).
- * Everything else → formatted text lines for prompt injection (promptLines).
+ * 小于内联上限的 image/* -> base64 MessageContentPart（imageParts）。
+ * 其他所有附件 -> 格式化成文本行，追加到 prompt 末尾（promptLines）。
  *
- * Never throws: file read errors produce a warning line instead of crashing.
+ * 不抛错：读文件失败时降级成一行警告，不让整个解析挂掉。
  */
 export function resolveForPrompt(attachments: Attachment[]): ResolvedPrompt {
   const imageParts: MessageContentPart[] = [];
@@ -22,19 +24,19 @@ export function resolveForPrompt(attachments: Attachment[]): ResolvedPrompt {
     if (att.mime.startsWith('image/')) {
       const part = tryInlineImage(att);
       if (part) { imageParts.push(part); continue; }
-      // Fall through: image too large or unreadable → treat as path reference
+      // 走到这里：图片太大或读不了 -> 当路径引用处理
     }
     fileLines.push(formatFileLine(att));
   }
 
   const promptLines = fileLines.length === 0
     ? ''
-    : '[Attached files — file paths listed below for reference]\n' + fileLines.join('\n');
+    : '[Attached files - file paths listed below for reference]\n' + fileLines.join('\n');
 
   return { imageParts, promptLines };
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// ── 辅助函数 ───────────────────────────────────────────────────────────────────
 
 function tryInlineImage(att: Attachment): MessageContentPart | null {
   // B-071:不信任客户端传入的 att.size(可伪造),用 fs.statSync 真实字节判断。
@@ -43,7 +45,7 @@ function tryInlineImage(att: Attachment): MessageContentPart | null {
   try {
     realSize = fs.statSync(att.localPath).size;
   } catch {
-    return null;   // 文件不存在/不可 stat → 降级路径引用
+    return null;   // 文件不存在/不可 stat -> 降级路径引用
   }
   if (realSize > IMAGE_INLINE_LIMIT) return null;
 
@@ -70,7 +72,7 @@ function largeFileHint(size: number, ext: string): string {
   const MB = 1024 * 1024;
   if (size < 2 * MB) return '';
   if (['.pdf', '.docx', '.pptx', '.xlsx'].includes(ext.toLowerCase())) {
-    return '\n  [Large document — consider using knowledge-base search for repeated access]';
+    return '\n  [Large document - consider using knowledge-base search for repeated access]';
   }
   return '';
 }

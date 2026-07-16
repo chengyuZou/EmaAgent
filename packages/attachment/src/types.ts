@@ -1,8 +1,10 @@
+// 这里放 Attachment 模块用到的基础类型：附件记录、前端输入、解析给 LLM 的结果。
+
 import type { MessageContentPart, TurnAttachment } from '@ema-agent/contracts';
 
-// ── Domain type ───────────────────────────────────────────────────────────────
+// ── 领域类型 ───────────────────────────────────────────────────────────────────
 
-/** Persisted attachment record — maps 1:1 to the turn_attachments table. */
+/** 持久化的附件记录，和 turn_attachments 表一对一。 */
 export interface Attachment {
   id:        string;
   turnId:    string;
@@ -10,25 +12,24 @@ export interface Attachment {
   name:      string;
   mime:      string;
   size:      number;
-  mtime:     number;   // unix ms — lets tools detect post-attach file changes
+  mtime:     number;   // unix 毫秒，让工具能发现附件化之后文件又被改过
   localPath: string;
   createdAt: number;
 }
 
-/** What the turns route receives from the frontend. */
+/** turns 路由从前端收到的输入。 */
 export type AttachmentInput = Required<Pick<TurnAttachment, 'id' | 'name' | 'mimeType' | 'size' | 'mtime' | 'localPath'>>;
 
-// ── Resolver output ───────────────────────────────────────────────────────────
+// ── 解析器输出 ─────────────────────────────────────────────────────────────────
 
 /**
- * Result of resolving a list of attachments for a single LLM turn.
+ * 一次 LLM 调用里，把一批附件解析后的结果。
  *
- * imageParts  — image/* files below the inline limit, base64-encoded.
- *               These go into the user message's content parts array,
- *               before the text.
+ * imageParts  - 小于内联上限的 image/* 文件，转成 base64。
+ *               会放进 user 消息的 content parts 里，排在文本前面。
  *
- * promptLines — all other attachments formatted as a text block to append
- *               at the end of the user message. Empty string when none.
+ * promptLines - 其他所有附件，格式化成一段文本追加到 user 消息末尾。
+ *               没有时为空字符串。
  */
 export interface ResolvedPrompt {
   imageParts:  MessageContentPart[];

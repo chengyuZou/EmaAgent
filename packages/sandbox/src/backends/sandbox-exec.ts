@@ -1,3 +1,5 @@
+// 这里为 macOS sandbox-exec 生成文件和网络隔离规则。
+
 import type { SandboxBackend, SandboxConfig, WrappedCommand } from '../types.js';
 
 /**
@@ -63,31 +65,11 @@ function buildProfile(config: SandboxConfig): string {
     rules.push(`(deny file-write* (subpath "${p}"))`);
   }
 
-  // Network — deny first, then carve out what's always needed.
-  // Writing deny BEFORE the specific allows makes the intent explicit and does not
-  // rely on SBPL's "most specific wins" priority being stable across macOS versions.
-  if (config.network.allowedDomains.length === 0) {
-    // No permitted domains → full outbound isolation
+  // V1 不生成域名字符串规则：none 完全断网，full 不添加网络限制。
+  if (config.network.access === 'none') {
     rules.push('(deny network-outbound)');
     rules.push('(deny network-inbound)');
-  } else {
-    for (const domain of config.network.allowedDomains) {
-      // Allow both the domain and its wildcard subdomain form
-      rules.push(`(allow network-outbound (remote tcp "${domain}:*"))`);
-      rules.push(`(allow network-outbound (remote tcp "*.${domain}:*"))`);
-    }
-    for (const domain of config.network.deniedDomains) {
-      rules.push(`(deny network-outbound (remote tcp "${domain}:*"))`);
-      rules.push(`(deny network-outbound (remote tcp "*.${domain}:*"))`);
-    }
   }
-
-  // Always allow localhost and Unix domain sockets — required by npm, git, many tools
-  // These come AFTER any global deny so they form explicit overrides regardless of
-  // whether SBPL evaluates by first-match or most-specific-match semantics.
-  rules.push('(allow network-outbound (remote unix-socket))');
-  rules.push('(allow network-outbound (remote tcp "localhost:*"))');
-  rules.push('(allow network-outbound (remote tcp "127.0.0.1:*"))');
 
   return rules.join('\n');
 }

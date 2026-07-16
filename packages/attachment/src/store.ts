@@ -1,3 +1,5 @@
+// 这里管理一个 Turn 的附件：增删查，以及把附件解析成 LLM 能直接用的格式。
+
 import { randomUUID } from 'node:crypto';
 import type { AttachmentRepo } from '@ema-agent/storage';
 import { asSessionId, asTurnId, type SessionOwnershipFacade } from '@ema-agent/contracts';
@@ -5,11 +7,11 @@ import type { Attachment, AttachmentInput, ResolvedPrompt } from './types.js';
 import { AttachmentNotFoundError } from './errors.js';
 import { resolveForPrompt } from './resolver.js';
 
-// ── Per-turn limits (enforced server-side as a safety net) ────────────────────
+// ── 每个 Turn 的上限（服务端兜底强制）─────────────────────────────────────────
 const MAX_IMAGES_PER_TURN = 5;
 const MAX_FILES_PER_TURN  = 10;
 
-// ── Interface ─────────────────────────────────────────────────────────────────
+// ── 接口 ───────────────────────────────────────────────────────────────────────
 
 export interface IAttachmentStore {
   add(input: AttachmentInput, turnId: string, sessionId: string): Attachment;
@@ -21,7 +23,7 @@ export interface IAttachmentStore {
   resolveForPrompt(attachments: Attachment[]): ResolvedPrompt;
 }
 
-// ── Implementation ────────────────────────────────────────────────────────────
+// ── 实现 ───────────────────────────────────────────────────────────────────────
 
 export class AttachmentStore implements IAttachmentStore {
   constructor(
@@ -90,7 +92,7 @@ export class AttachmentStore implements IAttachmentStore {
   }
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// ── 辅助函数 ───────────────────────────────────────────────────────────────────
 
 function rowToAttachment(row: {
   id: string; turn_id: string; session_id: string;

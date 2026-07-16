@@ -1,7 +1,8 @@
+// 这里集中定义工具注册、权限检查和执行时共用的基础类型。
 import type { z } from 'zod';
 import type {
   EmaStreamEvent, Artifact, ArtifactId, ArtifactType, SessionId, TurnId,
-  AskUserQuestionSpec, AgentKind, KbSearchResult,
+  AskUserQuestionSpec, AgentKind, KbSearchResult, ToolCallId,
 } from '@ema-agent/contracts';
 import type { ToolPermissionMeta } from '@ema-agent/permission';
 
@@ -189,6 +190,8 @@ export interface ISkillRunner {
 export interface ToolExecutionContext {
   sessionId: string;
   turnId: string;
+  /** 当前这一次工具调用的唯一编号；直接调用工具的测试或适配器可以不传。 */
+  toolCallId?: ToolCallId;
   /** 工作区根。空串 = 无工作区(subagent)。shell 工具用此作 cwd。 */
   workspaceRoot: string;
   /** per-turn 取消信号 - 工具对长操作必须尊重此信号。 */

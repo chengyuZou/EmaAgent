@@ -1,3 +1,5 @@
+// 测试 resolver.ts：小图片转 base64 内联、大图或读不了降级路径引用、用 stat 真实 size 不信任客户端。
+
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import * as fs from 'node:fs';
 import * as os from 'node:os';

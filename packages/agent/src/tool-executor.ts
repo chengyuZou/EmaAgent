@@ -1,3 +1,4 @@
+// 这里负责把模型产生的工具调用依次完成权限检查、执行、记日志和结果回传。
 /**
  * TurnToolExecutor — streaming tool execution with concurrency control.
  *
@@ -365,7 +366,11 @@ export class TurnToolExecutor {
       // ── Execute ───────────────────────────────────────────────────────────
       // Tools receive the per-tool signal so abortTool() can cancel just this
       // invocation. The turn-level signal is cascaded so both fire on turn abort.
-      const perToolCtx = { ...toolCtx, signal: perToolCtrl.signal };
+      const perToolCtx: ToolExecutionContext = {
+        ...toolCtx,
+        toolCallId: id,
+        signal: perToolCtrl.signal,
+      };
       let output: unknown;
       let isError = false;
 
