@@ -7,6 +7,24 @@ import { McpToolInfoListSchema } from '../src/types.js';
 import { buildMcpBuiltTool, discoverServerTools } from '../src/discovery.js';
 
 describe('MCP 工具发现安全边界', () => {
+  it('把取消信号交给 SDK listTools', async () => {
+    const controller = new AbortController();
+    const listTools = vi.fn(async () => ({ tools: [] }));
+    const client = { listTools } as unknown as Client;
+
+    await expect(discoverServerTools('remote', client, controller.signal)).resolves.toEqual([]);
+
+    expect(listTools).toHaveBeenCalledWith(undefined, { signal: controller.signal });
+  });
+
+  it('工具发现失败时上抛，不能伪装成已连接的空工具 Server', async () => {
+    const client = {
+      listTools: vi.fn(async () => { throw new Error('list tools failed'); }),
+    } as unknown as Client;
+
+    await expect(discoverServerTools('broken', client)).rejects.toThrow('list tools failed');
+  });
+
   it('保留远端 annotations 供展示，但明确标记为 reported hints', async () => {
     const client = {
       listTools: async () => ({

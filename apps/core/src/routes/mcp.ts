@@ -201,7 +201,7 @@ export function createMcpRouter(bindings: AppBindings) {
     } catch (err) {
       return c.json({ error: String(err) }, 400);
     }
-    const result = await mcpRegistry.probe(body.serverName, body.config);
+    const result = await mcpRegistry.probe(body.serverName, body.config, c.req.raw.signal);
     return c.json(result, result.ok ? 200 : 500);
   });
 

@@ -18,13 +18,10 @@ const MAX_DESCRIPTION_LEN = 2048;
 export async function discoverServerTools(
   serverName: string,
   client:     Client,
+  signal?:    AbortSignal,
 ): Promise<McpToolInfo[]> {
-  let result: Awaited<ReturnType<typeof client.listTools>>;
-  try {
-    result = await client.listTools();
-  } catch {
-    return [];
-  }
+  // listTools 失败必须上抛给连接状态机；只有 Server 真正返回空数组才算成功。
+  const result = await client.listTools(undefined, { signal });
 
   return result.tools.map((tool) => {
     const desc = tool.description ?? '';

@@ -197,6 +197,8 @@ describe('MCP Probe stdio 权限与资源边界', () => {
 
     expect(result.ok).toBe(false);
     expect(result.error).toMatch(/timed out/i);
+    const discoverySignal = mocks.discoverServerTools.mock.calls[0]?.[2] as AbortSignal;
+    expect(discoverySignal.aborted).toBe(true);
     expect(cleanup).toHaveBeenCalledTimes(1);
   });
 });

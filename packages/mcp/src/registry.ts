@@ -30,6 +30,7 @@ interface McpServerRuntime {
   info: McpConnection;
   opened?: OpenedConnection;
   connectTask?: Promise<McpConnection>;
+  lifecycleAbort?: AbortController;
 }
 
 // ── McpRegistry ───────────────────────────────────────────────────────────────
@@ -119,10 +120,13 @@ export class McpRegistry {
   async disconnect(serverName: string): Promise<void> {
     const runtime = this.runtimeFor(serverName);
     runtime.generation += 1;
+    const superseded = new McpConnectionSupersededError(serverName);
+    runtime.lifecycleAbort?.abort(superseded);
     const opened = runtime.opened;
     const liveTools = runtime.info.status === 'connected' ? runtime.info.tools : [];
     runtime.opened = undefined;
     runtime.connectTask = undefined;
+    runtime.lifecycleAbort = undefined;
     runtime.configKey = undefined;
     runtime.info = connectionInfo(serverName, 'disconnected', []);
 
@@ -159,7 +163,7 @@ export class McpRegistry {
     let conn = this.runtimes.get(serverName)?.opened;
     // 懒连接:工具可能从缓存 primed(可见但未连接)。首次实际调用时开 transport。
     if (!conn) {
-      await this.connect(serverName);                 // throws if server unknown / connect fails
+      await waitForPromise(this.connect(serverName), signal);
       conn = this.runtimes.get(serverName)?.opened;
     }
     if (!conn) {
@@ -216,21 +220,30 @@ export class McpRegistry {
 
   // ── 探测 ────────────────────────────────────────────────────────────────
 
-  async probe(serverName: string, config: McpServerConfig): Promise<McpProbeResult> {
+  async probe(
+    serverName: string,
+    config: McpServerConfig,
+    signal?: AbortSignal,
+  ): Promise<McpProbeResult> {
     const probeName = serverName.trim() || `probe-${randomUUID()}`;
+    const linked = linkedAbortController(signal);
     let connection: OpenedConnection | undefined;
     try {
+      linked.controller.signal.throwIfAborted();
       const authorizedConfig = await this.authorizeLaunch('probe', probeName, config);
-      connection = await openConnection(probeName, authorizedConfig);
+      linked.controller.signal.throwIfAborted();
+      connection = await openConnection(probeName, authorizedConfig, linked.controller.signal);
       const tools = await withTimeout(
-        discoverServerTools(probeName, connection.client),
+        discoverServerTools(probeName, connection.client, linked.controller.signal),
         TOOL_DISCOVERY_TIMEOUT_MS,
         () => new McpTimeoutError(probeName, 'tool discovery', TOOL_DISCOVERY_TIMEOUT_MS),
+        (error) => linked.controller.abort(error),
       );
       return { ok: true, tools };
     } catch (err) {
       return { ok: false, tools: [], error: (err as Error).message };
     } finally {
+      linked.dispose();
       if (connection) {
         try { await connection.cleanup(); } catch { /* ignore cleanup failure */ }
       }
@@ -287,15 +300,26 @@ export class McpRegistry {
   ): Promise<McpConnection> {
     runtime.generation += 1;
     const generation = runtime.generation;
+    const superseded = new McpConnectionSupersededError(serverName);
+    runtime.lifecycleAbort?.abort(superseded);
+    const lifecycleAbort = new AbortController();
     const previous = runtime.opened;
     const previousTools = runtime.info.status === 'connected' ? runtime.info.tools : [];
 
     runtime.opened = undefined;
     runtime.configKey = configKey;
+    runtime.lifecycleAbort = lifecycleAbort;
     runtime.info = connectionInfo(serverName, 'connecting', this.primed.get(serverName) ?? []);
     unregisterTools(this.toolRegistry, previousTools);
 
-    const task = this.runConnection(serverName, config, runtime, generation, previous);
+    const task = this.runConnection(
+      serverName,
+      config,
+      runtime,
+      generation,
+      lifecycleAbort,
+      previous,
+    );
     runtime.connectTask = task;
     return task;
   }
@@ -305,6 +329,7 @@ export class McpRegistry {
     config: McpServerConfig,
     runtime: McpServerRuntime,
     generation: number,
+    lifecycleAbort: AbortController,
     previous?: OpenedConnection,
   ): Promise<McpConnection> {
     let opened: OpenedConnection | undefined;
@@ -316,13 +341,14 @@ export class McpRegistry {
       const authorizedConfig = await this.authorizeLaunch('connect', serverName, config);
       this.assertCurrent(serverName, runtime, generation);
 
-      opened = await openConnection(serverName, authorizedConfig);
+      opened = await openConnection(serverName, authorizedConfig, lifecycleAbort.signal);
       this.assertCurrent(serverName, runtime, generation);
 
       const tools = await withTimeout(
-        discoverServerTools(serverName, opened.client),
+        discoverServerTools(serverName, opened.client, lifecycleAbort.signal),
         TOOL_DISCOVERY_TIMEOUT_MS,
         () => new McpTimeoutError(serverName, 'tool discovery', TOOL_DISCOVERY_TIMEOUT_MS),
+        (error) => lifecycleAbort.abort(error),
       );
       this.assertCurrent(serverName, runtime, generation);
 
@@ -360,7 +386,10 @@ export class McpRegistry {
       throw err;
     } finally {
       if (!retained && opened) await cleanupQuietly(opened);
-      if (runtime.generation === generation) runtime.connectTask = undefined;
+      if (runtime.generation === generation) {
+        runtime.connectTask = undefined;
+        if (!retained) runtime.lifecycleAbort = undefined;
+      }
     }
   }
 
@@ -440,14 +469,53 @@ async function withTimeout<T>(
   operation: Promise<T>,
   timeoutMs: number,
   timeoutError: () => Error,
+  onTimeout?: (error: Error) => void,
 ): Promise<T> {
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<never>((_, reject) => {
-    timeoutId = setTimeout(() => reject(timeoutError()), timeoutMs);
+    timeoutId = setTimeout(() => {
+      const error = timeoutError();
+      onTimeout?.(error);
+      reject(error);
+    }, timeoutMs);
   });
   try {
     return await Promise.race([operation, timeout]);
   } finally {
     if (timeoutId !== undefined) clearTimeout(timeoutId);
+  }
+}
+
+function linkedAbortController(signal?: AbortSignal): {
+  controller: AbortController;
+  dispose: () => void;
+} {
+  const controller = new AbortController();
+  const relayAbort = () => controller.abort(signal?.reason);
+  if (signal?.aborted) relayAbort();
+  else signal?.addEventListener('abort', relayAbort, { once: true });
+  return {
+    controller,
+    dispose: () => signal?.removeEventListener('abort', relayAbort),
+  };
+}
+
+async function waitForPromise<T>(operation: Promise<T>, signal?: AbortSignal): Promise<T> {
+  if (!signal) return operation;
+  signal.throwIfAborted();
+
+  let onAbort: (() => void) | undefined;
+  const cancelled = new Promise<never>((_, reject) => {
+    onAbort = () => reject(
+      signal.reason instanceof Error
+        ? signal.reason
+        : new DOMException('The MCP operation was aborted', 'AbortError'),
+    );
+    signal.addEventListener('abort', onAbort, { once: true });
+  });
+  try {
+    return await Promise.race([operation, cancelled]);
+  } finally {
+    if (onAbort) signal.removeEventListener('abort', onAbort);
   }
 }

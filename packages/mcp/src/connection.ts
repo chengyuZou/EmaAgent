@@ -74,6 +74,7 @@ export interface OpenedConnection {
 export async function openConnection(
   serverName: string,
   config:     McpServerConfig,
+  signal?:    AbortSignal,
 ): Promise<OpenedConnection> {
   const transport = buildTransport(config);
   const client    = new Client(
@@ -81,27 +82,43 @@ export async function openConnection(
     { capabilities: {} },
   );
 
-  // 用超时包 connect。race 定局后必须清 timer - 否则每次成功 connect 都留一个
-  // 30s 延迟的无监听 reject(unhandledRejection;--unhandled-rejections=strict 下致命)。
-  // 同 execution.ts 模式。
-  const connectPromise = client.connect(transport);
+  // SDK 原生接收 AbortSignal；本地 timeout 触发时同时 abort 握手并关闭 transport，
+  // 不能只让外层 Promise 提前返回而让 stdio 子进程或 HTTP 请求继续运行。
+  const controller = new AbortController();
+  const relayAbort = () => controller.abort(signal?.reason);
+  if (signal?.aborted) relayAbort();
+  else signal?.addEventListener('abort', relayAbort, { once: true });
+
+  const connectPromise = client.connect(transport, {
+    signal: controller.signal,
+    timeout: CONNECT_TIMEOUT_MS,
+    maxTotalTimeout: CONNECT_TIMEOUT_MS,
+  });
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<never>((_, reject) => {
-    timeoutId = setTimeout(
-      () => reject(new McpTimeoutError(serverName, 'connect', CONNECT_TIMEOUT_MS)),
-      CONNECT_TIMEOUT_MS,
-    );
+    timeoutId = setTimeout(() => {
+      const error = new McpTimeoutError(serverName, 'connect', CONNECT_TIMEOUT_MS);
+      controller.abort(error);
+      reject(error);
+    }, CONNECT_TIMEOUT_MS);
+  });
+
+  const cancelled = new Promise<never>((_, reject) => {
+    const rejectAbort = () => reject(abortReason(controller.signal));
+    if (controller.signal.aborted) rejectAbort();
+    else controller.signal.addEventListener('abort', rejectAbort, { once: true });
   });
 
   try {
-    await Promise.race([connectPromise, timeout]);
+    await Promise.race([connectPromise, timeout, cancelled]);
   } catch (err) {
     // 失败时尝试优雅关闭 transport
     try { await transport.close(); } catch { /* ignore */ }
-    if (err instanceof McpTimeoutError) throw err;
+    if (err instanceof McpTimeoutError || controller.signal.aborted) throw err;
     throw new McpConnectionError(serverName, (err as Error).message ?? String(err));
   } finally {
     if (timeoutId !== undefined) clearTimeout(timeoutId);
+    signal?.removeEventListener('abort', relayAbort);
   }
 
   const cleanup = async () => {
@@ -109,4 +126,9 @@ export async function openConnection(
   };
 
   return { client, cleanup };
+}
+
+function abortReason(signal: AbortSignal): Error {
+  if (signal.reason instanceof Error) return signal.reason;
+  return new DOMException('The MCP connection was aborted', 'AbortError');
 }

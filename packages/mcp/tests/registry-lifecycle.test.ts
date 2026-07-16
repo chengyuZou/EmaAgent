@@ -100,7 +100,10 @@ describe('MCP Server 连接生命周期', () => {
 
     const pending = registry.connectConfig('remote', config);
     await vi.waitFor(() => expect(mocks.openConnection).toHaveBeenCalledTimes(1));
+    const lifecycleSignal = mocks.openConnection.mock.calls[0]?.[2] as AbortSignal;
+    expect(lifecycleSignal.aborted).toBe(false);
     await registry.disconnect('remote');
+    expect(lifecycleSignal.aborted).toBe(true);
     opened.resolve({ client: {}, cleanup });
 
     await expect(pending).rejects.toThrow(/superseded/i);
@@ -169,9 +172,11 @@ describe('MCP Server 连接生命周期', () => {
 
     const oldTask = registry.connectConfig('remote', config);
     await vi.waitFor(() => expect(mocks.openConnection).toHaveBeenCalledTimes(1));
+    const oldSignal = mocks.openConnection.mock.calls[0]?.[2] as AbortSignal;
     await expect(registry.connectConfig('remote', newConfig)).resolves.toMatchObject({
       status: 'connected',
     });
+    expect(oldSignal.aborted).toBe(true);
 
     oldOpened.resolve({ client: { generation: 'old' }, cleanup: oldCleanup });
     await expect(oldTask).rejects.toThrow(/superseded/i);

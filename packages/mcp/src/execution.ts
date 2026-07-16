@@ -20,24 +20,39 @@ export interface CallToolOptions {
 export async function callMcpTool(opts: CallToolOptions): Promise<unknown> {
   const { client, serverName, toolName, args, signal, timeoutMs } = opts;
   const ms = timeoutMs ?? DEFAULT_TOOL_TIMEOUT_MS;
+  const controller = new AbortController();
+  const relayAbort = () => controller.abort(signal?.reason);
+  if (signal?.aborted) relayAbort();
+  else signal?.addEventListener('abort', relayAbort, { once: true });
 
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
-
   const timeoutPromise = new Promise<never>((_, reject) => {
-    timeoutId = setTimeout(
-      () => reject(new McpToolCallError(serverName, toolName, `timed out after ${ms}ms`)),
-      ms,
-    );
+    timeoutId = setTimeout(() => {
+      const error = new McpToolCallError(serverName, toolName, `timed out after ${ms}ms`);
+      controller.abort(error);
+      reject(error);
+    }, ms);
+  });
+  const cancelled = new Promise<never>((_, reject) => {
+    const rejectAbort = () => reject(abortReason(controller.signal, serverName, toolName));
+    if (controller.signal.aborted) rejectAbort();
+    else controller.signal.addEventListener('abort', rejectAbort, { once: true });
   });
 
   try {
+    const callPromise = client.callTool(
+      { name: toolName, arguments: args },
+      CallToolResultSchema,
+      {
+        signal: controller.signal,
+        timeout: ms,
+        maxTotalTimeout: ms,
+      },
+    );
     const result = await Promise.race([
-      client.callTool(
-        { name: toolName, arguments: args },
-        CallToolResultSchema,
-        { signal },
-      ),
+      callPromise,
       timeoutPromise,
+      cancelled,
     ]);
 
     if (result.isError) {
@@ -50,5 +65,15 @@ export async function callMcpTool(opts: CallToolOptions): Promise<unknown> {
     return result.content;
   } finally {
     if (timeoutId !== undefined) clearTimeout(timeoutId);
+    signal?.removeEventListener('abort', relayAbort);
   }
+}
+
+function abortReason(
+  signal: AbortSignal,
+  serverName: string,
+  toolName: string,
+): Error {
+  if (signal.reason instanceof Error) return signal.reason;
+  return new McpToolCallError(serverName, toolName, 'aborted');
 }
