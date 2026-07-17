@@ -8,7 +8,7 @@ export type { TtsProtocol } from '@ema-agent/contracts';
 
 /** 传给每次 synthesize 调用的已解析 voice 引用。 */
 export interface TtsVoiceRef {
-  /** 引用音频文件的 profile 作用域相对路径。 */
+  /** 引用音频文件的 profile 作用域绝对路径。 */
   refAudioPath: string;
   /** 用于 voice cloning 的提示文本(部分 provider 允许空)。 */
   promptText:   string;

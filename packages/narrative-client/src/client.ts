@@ -1,3 +1,4 @@
+// 封装 Core 调用 Python Bridge 的 Narrative 查询与内部语料维护协议。
 import type {
   BridgeConfigurePayload,
   BridgeHealthResponse,
@@ -5,6 +6,11 @@ import type {
   NarrativeQueryResponse,
   NarrativeIngestResponse,
 } from './types.js';
+import {
+  NarrativeClientError,
+  NarrativeRequestError,
+  NarrativeUnavailableError,
+} from './errors.js';
 
 export interface NarrativeClientOptions {
   /** Bridge base URL. Default: http://127.0.0.1:7421 */
@@ -66,9 +72,9 @@ export class NarrativeClient {
   }
 
   /**
-   * Ingest documents into a specific timeline's LightRAG knowledge graph.
-   * LightRAG deduplicates by content hash — safe to call repeatedly.
-   * Throws NarrativeUnavailableError if bridge is not ready.
+   * 为未来续作或同世界观资料重建写入离线清洗文本。
+   * 这是内部内容维护接口，不属于普通 Turn 的 route/query 流程，也不向 V1 前端开放。
+   * LightRAG 按内容哈希去重；Bridge 未就绪时抛出 NarrativeUnavailableError。
    */
   async ingest(
     timeline: string,
@@ -167,33 +173,45 @@ export class NarrativeClient {
         signal,
       });
       if (!res.ok) {
-        throw new NarrativeUnavailableError(
-          `Bridge narrative not configured or unavailable (HTTP ${res.status}).`,
+        if (res.status === 503) {
+          throw new NarrativeUnavailableError(
+            `Bridge narrative not configured or unavailable (HTTP ${res.status}).`,
+            { status: res.status },
+          );
+        }
+        throw new NarrativeRequestError(
+          `Bridge narrative request failed (HTTP ${res.status}).`,
+          {
+            code: 'narrative/http_error',
+            retryable: res.status === 408 || res.status === 429 || res.status >= 500,
+            status: res.status,
+          },
         );
       }
-      return await res.json() as T;
+      try {
+        return await res.json() as T;
+      } catch (error) {
+        throw new NarrativeRequestError('Bridge narrative returned invalid JSON.', {
+          code: 'narrative/invalid_response',
+          retryable: false,
+          cause: error,
+        });
+      }
     } catch (err) {
-      if (err instanceof NarrativeUnavailableError) throw err;
-      if (err instanceof Error && err.name === 'AbortError')  throw err;
-      if (err instanceof DOMException && err.name === 'AbortError') throw err;
+      if (err instanceof NarrativeClientError) throw err;
+      if (externalSignal?.aborted) throw externalSignal.reason ?? err;
+      if (timeoutSignal.aborted) {
+        throw new NarrativeRequestError(`Bridge narrative request timed out: ${path}`, {
+          code: 'narrative/timeout',
+          retryable: true,
+          cause: err,
+        });
+      }
 
       throw new NarrativeUnavailableError(
         `Failed to ${path} on bridge: ${err instanceof Error ? err.message : String(err)}`,
+        { cause: err },
       );
     }
-  }
-}
-
-// ── Errors ────────────────────────────────────────────────────────────────────
-
-/**
- * Thrown when the bridge is reachable but narrative is not yet configured,
- * or the bridge is down entirely.
- * Catch this in ConversationEngine to fall back to non-RAG chat.
- */
-export class NarrativeUnavailableError extends Error {
-  override readonly name = 'NarrativeUnavailableError';
-  constructor(message: string) {
-    super(message);
   }
 }

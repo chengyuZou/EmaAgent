@@ -1,4 +1,4 @@
-// 这里负责把数据库消息还原成前端会话历史和工具展示切片。
+// 把数据库消息还原成前端会话历史和工具展示切片。
 /**
  * conversation-history.ts — pure history assembly helpers.
  *
@@ -46,6 +46,7 @@ export interface AssistantSliceToolUse {
 export interface AssistantSliceNarrative {
   type: 'narrative_status'; timelines: string[]; completedTimelines: string[];
                             snippets: Record<string, string>;
+                            failedTimelines: Record<string, string>;
 }
 export type AnyAssistantSlice =
   | AssistantSlice
@@ -165,6 +166,7 @@ export function assembleHistory(messages: MessageWire[], turns: TurnWire[]): Cha
           timelines:         timelines.map((t) => t.name),
           completedTimelines: timelines.map((t) => t.name),
           snippets:          Object.fromEntries(timelines.map((t) => [t.name, t.text])),
+          failedTimelines:   {},
         }],
       });
       continue;

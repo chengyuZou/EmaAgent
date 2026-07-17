@@ -1,4 +1,4 @@
-// 这里定义后端通过统一事件流发送给客户端的所有结构化事件。
+// 定义后端通过统一事件流发送给客户端的所有结构化事件。
 import type {
   SessionId,
   TurnId,
@@ -30,6 +30,13 @@ export type HookWarningFailureKind =
   | 'handler_error'
   | 'timeout'
   | 'protocol_violation';
+
+export type NarrativeTimelineFailureCode =
+  | 'narrative/unavailable'
+  | 'narrative/timeout'
+  | 'narrative/http_error'
+  | 'narrative/invalid_response'
+  | 'narrative/unknown';
 
 /**
  * High-frequency detail stream inside the subagent_stream envelope.
@@ -239,8 +246,9 @@ export type EmaStreamEvent =
   | { type: 'tts_sentence_complete'; sessionId: SessionId; turnId: TurnId; sentenceId: string }
 
   // Narrative
-  | { type: 'narrative_route_resolved';    sessionId: SessionId; timelines: string[] }
-  | { type: 'narrative_timeline_complete'; sessionId: SessionId; timeline: string; charCount: number; snippet: string }
+  | { type: 'narrative_route_resolved';    sessionId: SessionId; turnId: TurnId; timelines: string[] }
+  | { type: 'narrative_timeline_complete'; sessionId: SessionId; turnId: TurnId; timeline: string; charCount: number; snippet: string }
+  | { type: 'narrative_timeline_failed'; sessionId: SessionId; turnId: TurnId; timeline: string; code: NarrativeTimelineFailureCode; message: string; retryable: boolean }
 
   // Memory — turn-scoped. One event per recall layer; emitted as soon as that layer settles.
   | {

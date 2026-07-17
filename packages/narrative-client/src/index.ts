@@ -1,4 +1,11 @@
-export { NarrativeClient, NarrativeUnavailableError } from './client.js';
+// 导出 Narrative Client、错误类型和 Bridge 协议类型。
+export { NarrativeClient } from './client.js';
+export {
+  NarrativeClientError,
+  NarrativeRequestError,
+  NarrativeUnavailableError,
+} from './errors.js';
+export type { NarrativeClientErrorCode, NarrativeClientErrorOptions } from './errors.js';
 
 export type {
   BridgeConfigurePayload,

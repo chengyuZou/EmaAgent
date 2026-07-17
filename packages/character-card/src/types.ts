@@ -9,7 +9,7 @@ import type { CharacterCardId } from '@ema-agent/contracts';
 export interface CharacterRefAudio {
   id:           string;
   label:        string;
-  /** 档案内相对路径：<cardId>/<filename> */
+  /** 档案内相对路径：voiceRefs/<filename> */
   refAudioPath: string;
   promptText:   string;
   promptLang:   string;

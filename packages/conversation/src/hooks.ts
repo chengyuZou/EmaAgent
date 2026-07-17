@@ -1,9 +1,9 @@
-// 这里注册 conversation 层的 hook：narrative 模式下在 beforeLlm 并发检索各 timeline，逐条 emit 进度。
+// 注册 Narrative 模式的剧情路由、分时间线召回和部分失败降级 Hook。
 
 import type { HookBus } from '@ema-agent/hook';
-import type { EmaStreamEvent, NarrativeTimelineRecall, SessionId } from '@ema-agent/contracts';
+import type { EmaStreamEvent, NarrativeTimelineRecall, SessionId, TurnId } from '@ema-agent/contracts';
 import type { LlmMessage } from '@ema-agent/contracts';
-import { NarrativeUnavailableError } from '@ema-agent/narrative-client';
+import { NarrativeClientError } from '@ema-agent/narrative-client';
 import type { ConversationDeps } from './types.js';
 
 interface NarrativeRecallContext {
@@ -34,6 +34,7 @@ export function registerConversationHooks(bus: HookBus, deps: ConversationDeps):
       try {
         const recalled = await recallNarrativeContext(deps, {
           sessionId: ctx.sessionId,
+          turnId: ctx.turnId,
           userInput,
           signal,
           emit: ctx.emit,
@@ -56,7 +57,7 @@ export function registerConversationHooks(bus: HookBus, deps: ConversationDeps):
         };
       } catch (err) {
         if (isAbortLike(err, signal)) throw err;
-        if (err instanceof NarrativeUnavailableError) {
+        if (err instanceof NarrativeClientError) {
           ctx.emit?.({
             type: 'system_warning',
             level: 'warn',
@@ -75,6 +76,7 @@ async function recallNarrativeContext(
   deps: ConversationDeps,
   args: {
     sessionId: string;
+    turnId: TurnId;
     userInput: string;
     signal?: AbortSignal;
     emit?: (event: EmaStreamEvent) => void;
@@ -82,13 +84,19 @@ async function recallNarrativeContext(
 ): Promise<NarrativeRecallContext | null> {
   const routeResp = await deps.narrative.route(args.userInput, args.signal);
   const routeOrder = Object.keys(routeResp.routes);
-  args.emit?.({ type: 'narrative_route_resolved', sessionId: args.sessionId as SessionId, timelines: routeOrder });
+  args.emit?.({
+    type: 'narrative_route_resolved',
+    sessionId: args.sessionId as SessionId,
+    turnId: args.turnId,
+    timelines: routeOrder,
+  });
 
   if (routeOrder.length === 0) return null;
 
   const recallParts: Array<[string, string]> = [];
   const recallTimelines: NarrativeTimelineRecall[] = [];
-  let fatalError: unknown;
+  let failedCount = 0;
+  let cancellationError: unknown;
 
   await Promise.allSettled(
     routeOrder.map(async (timeline) => {
@@ -98,6 +106,7 @@ async function recallNarrativeContext(
         args.emit?.({
           type: 'narrative_timeline_complete',
           sessionId: args.sessionId as SessionId,
+          turnId: args.turnId,
           timeline,
           charCount: text.length,
           snippet: text.length > 100 ? text.slice(0, 100) + '…' : text,
@@ -107,21 +116,40 @@ async function recallNarrativeContext(
         recallParts.push([timeline, text]);
         recallTimelines.push({ name: timeline, charCount: text.length, text });
       } catch (err) {
-        if (isAbortLike(err, args.signal) || err instanceof NarrativeUnavailableError) {
-          fatalError ??= err;
+        if (isAbortLike(err, args.signal)) {
+          cancellationError ??= err;
           return;
         }
+        failedCount += 1;
+        const failure = err instanceof NarrativeClientError
+          ? { code: err.code, message: err.message, retryable: err.retryable }
+          : {
+              code: 'narrative/unknown' as const,
+              message: err instanceof Error ? err.message : String(err),
+              retryable: false,
+            };
         args.emit?.({
-          type: 'system_warning',
-          level: 'warn',
-          message: `Timeline ${timeline} recall failed - excluded from context`,
+          type: 'narrative_timeline_failed',
+          sessionId: args.sessionId as SessionId,
+          turnId: args.turnId,
+          timeline,
+          ...failure,
         });
       }
     }),
   );
 
-  if (fatalError !== undefined) throw fatalError;
-  if (recallParts.length === 0) return null;
+  if (cancellationError !== undefined) throw cancellationError;
+  if (recallParts.length === 0) {
+    if (failedCount > 0) {
+      args.emit?.({
+        type: 'system_warning',
+        level: 'warn',
+        message: 'Narrative timelines unavailable - continuing without narrative context',
+      });
+    }
+    return null;
+  }
 
   recallParts.sort(([a], [b]) => routeOrder.indexOf(a) - routeOrder.indexOf(b));
   recallTimelines.sort((a, b) => routeOrder.indexOf(a.name) - routeOrder.indexOf(b.name));

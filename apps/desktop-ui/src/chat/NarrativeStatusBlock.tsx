@@ -1,3 +1,4 @@
+// 展示 Narrative 各时间线的检索进度、召回内容和部分失败状态。
 import { useState } from 'react';
 import { Button, Spinner } from '@ema-agent/ui';
 import type { AssistantSlice } from '../stores/conversation-store.js';
@@ -17,7 +18,9 @@ const PREVIEW_CHARS = 500;
 export function NarrativeStatusBlock({ slice }: { slice: NarrativeSlice }): React.JSX.Element {
   const timelines = slice.timelines;
   const completed = new Set(slice.completedTimelines);
-  const allDone   = timelines.length > 0 && completed.size >= timelines.length;
+  const failed    = slice.failedTimelines ?? {};
+  const settledCount = completed.size + Object.keys(failed).length;
+  const allDone   = timelines.length > 0 && settledCount >= timelines.length;
   const isMulti   = timelines.length > 1;
 
   // 外层折叠 state:单/多周目都默认收起,用户主动展开
@@ -40,7 +43,11 @@ export function NarrativeStatusBlock({ slice }: { slice: NarrativeSlice }): Reac
           : <Spinner size="sm" />
         }
         <span className="flex-1">
-          {allDone ? `已检索 ${timelines.length} 条剧情线` : '检索剧情线…'}
+          {allDone
+            ? Object.keys(failed).length > 0
+              ? `已检索 ${completed.size}/${timelines.length} 条剧情线`
+              : `已检索 ${timelines.length} 条剧情线`
+            : '检索剧情线…'}
         </span>
         <span className={`${outerOpen ? 'i-lucide:chevron-down' : 'i-lucide:chevron-right'} text-[var(--ema-text-tertiary)]`} aria-hidden />
       </Button>
@@ -52,7 +59,14 @@ export function NarrativeStatusBlock({ slice }: { slice: NarrativeSlice }): Reac
       >
         <div className="flex flex-col gap-2">
           {timelines.map((t) => (
-            <TimelineRow key={t} name={t} completed={completed.has(t)} text={slice.snippets?.[t]} isMulti={isMulti} />
+            <TimelineRow
+              key={t}
+              name={t}
+              completed={completed.has(t)}
+              error={failed[t]}
+              text={slice.snippets?.[t]}
+              isMulti={isMulti}
+            />
           ))}
         </div>
       </div>
@@ -67,15 +81,17 @@ export function NarrativeStatusBlock({ slice }: { slice: NarrativeSlice }): Reac
  * 内容超 PREVIEW_CHARS 字:展开后先显示前 N 字 + "展开全文"按钮,点全文看全部。
  */
 function TimelineRow({
-  name, completed, text, isMulti,
+  name, completed, error, text, isMulti,
 }: {
   name:      string;
   completed: boolean;
+  error:     string | undefined;
   text:      string | undefined;
   isMulti:   boolean;
 }): React.JSX.Element {
   const [innerOpen, setInnerOpen] = useState(false);
   const [fullText, setFullText]   = useState(false);
+  const settled = completed || error !== undefined;
 
   const hasFull   = !!text && text.length > PREVIEW_CHARS;
   const displayText = fullText ? text : (text?.slice(0, PREVIEW_CHARS) ?? '');
@@ -86,16 +102,18 @@ function TimelineRow({
       <Button
         variant="ghost"
         type="button"
-        disabled={!isMulti || !completed}
-        onClick={isMulti && completed ? () => setInnerOpen((v) => !v) : undefined}
+        disabled={!isMulti || !settled}
+        onClick={isMulti && settled ? () => setInnerOpen((v) => !v) : undefined}
         className="flex items-center gap-1.5 text-left w-full hover:opacity-80 disabled:cursor-default disabled:hover:opacity-100"
       >
-        {completed
+        {error
+          ? <span className="i-lucide:triangle-alert shrink-0 text-[var(--ema-warning)]" aria-hidden />
+          : completed
           ? <span className="i-lucide:check shrink-0 text-[var(--ema-info)]" aria-hidden />
           : <span className="i-lucide:ellipsis shrink-0 text-[var(--ema-text-tertiary)]" aria-hidden />
         }
-        <span className={completed ? 'text-[var(--ema-text-secondary)]' : 'text-[var(--ema-text-tertiary)]'}>{name}</span>
-        {isMulti && completed && (
+        <span className={error ? 'text-[var(--ema-warning)]' : completed ? 'text-[var(--ema-text-secondary)]' : 'text-[var(--ema-text-tertiary)]'}>{name}</span>
+        {isMulti && settled && (
           <span className={`ml-auto ${innerOpen ? 'i-lucide:chevron-down' : 'i-lucide:chevron-right'} text-[var(--ema-text-tertiary)]`} aria-hidden />
         )}
       </Button>
@@ -105,7 +123,9 @@ function TimelineRow({
         className="ema-collapsible"
         style={{ gridTemplateRows: innerOpen || !isMulti ? '1fr' : '0fr', opacity: innerOpen || !isMulti ? 1 : 0 }}
       >
-        {completed && text ? (
+        {error ? (
+          <p className="pl-5 text-xs text-[var(--ema-warning)]">检索失败：{error}</p>
+        ) : completed && text ? (
           <div className="pl-5 flex flex-col gap-1">
             {/* 文本区:ema-transition-text-expand 双向动画,预览↔全文高度+淡入淡出。
                 预览 overflow-hidden 裁切,全文 overflow-y-auto 滚动(超 32rem) */}

@@ -1,3 +1,4 @@
+# 提供 Narrative 路由、查询和内部语料维护接口。
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
@@ -79,8 +80,11 @@ class IngestResponse(BaseModel):
 @router.post("/ingest", response_model=IngestResponse)
 async def ingest_narrative(body: IngestRequest) -> IngestResponse:
     """
-    Insert documents into a specific timeline's LightRAG knowledge graph.
-    LightRAG deduplicates by content hash — safe to call repeatedly.
+    为未来续作或同世界观资料重建，将离线清洗文本写入指定时间线。
+
+    该接口是内部内容维护能力，不属于 V1 用户运行时流程，也不应直接暴露给前端。
+    普通 Narrative Turn 只调用 route/query；查询产生的 LightRAG Cache 更新不是 ingest。
+    LightRAG 按内容哈希去重，因此重新写入相同文本是安全的。
     """
     if state.narrative_manager is None:
         raise _NOT_READY

@@ -1,4 +1,4 @@
-// 这里负责把 Turn 的结构化 SSE 事件分发给会话状态和各业务回调。
+// 把 Turn 的结构化 SSE 事件分发给会话状态和各业务回调。
 /**
  * conversation-sse.ts — SSE event dispatcher for per-turn streams.
  *
@@ -455,8 +455,33 @@ export function dispatchSseEvent(
         if (!sm) return {};
         const slices = [
           ...sm.slices.filter((sl) => sl.type !== 'narrative_status'),
-          { type: 'narrative_status' as const, timelines: event.timelines, completedTimelines: [], snippets: {} },
+          {
+            type: 'narrative_status' as const,
+            timelines: event.timelines,
+            completedTimelines: [],
+            snippets: {},
+            failedTimelines: {},
+          },
         ];
+        const streaming = new Map(s.streamingMap);
+        streaming.set(sessionId as string, { ...sm, slices });
+        return { streamingMap: streaming };
+      });
+      break;
+
+    case 'narrative_timeline_failed':
+      useConversationStore.setState((s) => {
+        const sm = s.streamingMap.get(sessionId as string);
+        if (!sm) return {};
+        const slices = sm.slices.map((sl) =>
+          sl.type !== 'narrative_status' ? sl : {
+            ...sl,
+            failedTimelines: {
+              ...(sl.failedTimelines ?? {}),
+              [event.timeline]: event.message,
+            },
+          },
+        );
         const streaming = new Map(s.streamingMap);
         streaming.set(sessionId as string, { ...sm, slices });
         return { streamingMap: streaming };
