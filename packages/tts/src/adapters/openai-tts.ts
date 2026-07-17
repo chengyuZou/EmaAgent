@@ -1,4 +1,5 @@
-import type { TtsAdapter, TtsProviderConfig, TtsProbeResult, TtsRequest, TtsStreamEvent, TtsErrorCode } from '../types.js';
+import type { TtsAdapter, TtsProviderConfig, TtsProbeResult, TtsRequest, TtsStreamEvent } from '../types.js';
+import { errorEvent, classifyFetchError, classifyHttpStatus } from '../errors.js';
 import { readFile, stat } from 'node:fs/promises';
 import { basename } from 'node:path';
 
@@ -173,25 +174,6 @@ export class OpenAiTtsAdapter implements TtsAdapter {
 }
 
 // ── 辅助函数 ─────────────────────────────────────────────────────────────────
-
-function errorEvent(code: TtsErrorCode, message: string): TtsStreamEvent {
-  return { type: 'error', code, message };
-}
-
-function classifyFetchError(err: unknown): TtsErrorCode {
-  const name = (err as { name?: string }).name;
-  if (name === 'AbortError') return 'transient_timeout';
-  return 'transient_network';
-}
-
-function classifyHttpStatus(status: number): TtsErrorCode {
-  if (status === 401 || status === 403) return 'permanent_credentials';
-  if (status === 400 || status === 422) return 'permanent_bad_request';
-  if (status === 404)                   return 'permanent_unsupported_model';
-  if (status === 408 || status === 429) return 'transient_timeout';
-  if (status >= 500)                    return 'transient_server';
-  return 'unknown';
-}
 
 function mimeForFormat(format: string): string {
   switch (format) {

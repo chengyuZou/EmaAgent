@@ -34,6 +34,10 @@ export {
 } from './bridge.js';
 export type { BridgeContext } from './bridge.js';
 
+export {
+  errorEvent, classifyFetchError, classifyHttpStatus, classifyCloseCode,
+} from './errors.js';
+
 export { OpenAiTtsAdapter }    from './adapters/openai-tts.js';
 export { GptSoVitsTtsAdapter } from './adapters/gpt-sovits-tts.js';
 export { DashscopeTtsAdapter, dashscopeModelFamily } from './adapters/dashscope-tts.js';

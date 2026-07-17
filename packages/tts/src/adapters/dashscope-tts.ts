@@ -4,6 +4,7 @@ import path from 'node:path';
 import WebSocket from 'ws';
 
 import type { TtsAdapter, TtsProviderConfig, TtsProbeResult, TtsRequest, TtsStreamEvent, TtsErrorCode } from '../types.js';
+import { classifyCloseCode } from '../errors.js';
 
 // ── DashScope(阿里云百炼)TTS ──────────────────────────────────────────────
 //
@@ -224,14 +225,6 @@ function mimeForFormat(format: string): string {
     case 'pcm':  return 'audio/L16';
     default:     return 'application/octet-stream';
   }
-}
-
-function classifyCloseCode(code: number): TtsErrorCode {
-  if (code === 1000) return 'unknown';            // normal close
-  if (code === 1006) return 'transient_network';  // abnormal close (network)
-  if (code === 1008) return 'permanent_bad_request'; // policy violation
-  if (code === 4001 || code === 4003) return 'permanent_credentials';
-  return 'transient_server';
 }
 
 // ── 事件驱动队列:桥接 ws 回调 -> AsyncIterable ──────────────────────────────
