@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { asSessionId, asTurnId, asBranchId } from '@ema-agent/contracts';
+import { asSessionId, asTurnId, asBranchId, SessionOwnershipError } from '@ema-agent/contracts';
 import type {
   SessionWire,
   SessionMessagesResult,
@@ -11,6 +11,7 @@ import type {
   TurnAttachment,
 } from '@ema-agent/contracts';
 import type { AppBindings } from '../wiring/index.js';
+import { removeTurnFiles } from '../storage-locations/index.js';
 
 const TITLE_PROMPT = `Generate a very short title (3–6 words, no quotes) that captures the topic of the following message. Reply with only the title.\n\nMessage: `;
 const TITLE_MAX_CHARS = 60;
@@ -296,6 +297,36 @@ export function sessionsRoute(bindings: AppBindings): Hono {
     bindings.invalidateSessionRuntime(sessionId);
     bindings.session.deleteSession(sessionId);
     return c.body(null, 204);
+  });
+
+  // ── DELETE /api/sessions/:id/turns/:turnId — 删除该 turn 及其全部下游(级联) ──
+  // 同分支尾部 + 所有锚定在删除集合上的分支(递归), 单事务按 FK 顺序删除;
+  // 返回删除清单, 物理文件(音频/scratchpad)按清单 best-effort 清理。
+  app.delete('/:id/turns/:turnId', (c) => {
+    const sessionId = asSessionId(c.req.param('id'));
+    const turnId    = asTurnId(c.req.param('turnId'));
+    try {
+      const result = bindings.session.deleteTurnCascade(sessionId, turnId);
+      for (const tid of result.deletedTurnIds) {
+        try {
+          removeTurnFiles(bindings.activeDataDir, sessionId as string, tid);
+        } catch (err) {
+          console.warn(`[sessions] 清理已删 turn 文件失败 ${tid}:`, err);
+        }
+      }
+      return c.json(result);
+    } catch (err) {
+      if (err instanceof SessionOwnershipError) {
+        return c.json({ error: 'forbidden', message: err.message }, 403);
+      }
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.startsWith('turn_running')) {
+        return c.json({ error: 'turn_running', message: msg }, 409);
+      }
+      if (msg.startsWith('turn_not_found')) return c.json({ error: 'turn_not_found' }, 404);
+      if (msg.startsWith('session_not_found')) return c.json({ error: 'session_not_found' }, 404);
+      throw err;
+    }
   });
 
   // ── GET /api/sessions/:id/branches ────────────────────────────────────────

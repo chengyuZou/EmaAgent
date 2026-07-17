@@ -152,6 +152,39 @@ export class TurnsRepo {
   }
 
   /**
+   * 某个 branch 上按 (started_at, id) 排序位于目标 turn 及其之后的全部 turn。
+   * 同毫秒 tie 用 id 决胜: 只含目标在分支自身排序中的位置及后继, 不误伤前驱。
+   */
+  listForBranchAfter(branchId: BranchId, fromTurnId: TurnId): TurnRow[] {
+    return this.db
+      .prepare(
+        `SELECT * FROM turns WHERE branch_id = ?
+           AND (started_at, id) >= (SELECT started_at, id FROM turns WHERE id = ?)
+         ORDER BY started_at ASC, id ASC`,
+      )
+      .all(branchId, fromTurnId) as TurnRow[];
+  }
+
+  /** 删除单个 turn 行; 调用方负责先行清理引用它的分支与消息(FK 约束)。 */
+  delete(id: TurnId): void {
+    this.db.prepare('DELETE FROM turns WHERE id = ?').run(id);
+  }
+
+  /**
+   * 整个 session 内按 (started_at, id) 排序位于目标 turn 及其之后的全部 turn。
+   * 删除级联用: 从未 fork 的会话(无分支)里, 目标 turn 及其全部后继。
+   */
+  listForSessionAfter(sessionId: SessionId, fromTurnId: TurnId): TurnRow[] {
+    return this.db
+      .prepare(
+        `SELECT * FROM turns WHERE session_id = ?
+           AND (started_at, id) >= (SELECT started_at, id FROM turns WHERE id = ?)
+         ORDER BY started_at ASC, id ASC`,
+      )
+      .all(sessionId, fromTurnId) as TurnRow[];
+  }
+
+  /**
    * 把所有 fork 前的 turn(branch_id IS NULL)回填到给定 branch。
    * 在 session 中首次 fork 时调用一次,使 root branch 拥有所有既有 turn。
    * 返回更新的行数。

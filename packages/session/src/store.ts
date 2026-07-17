@@ -221,6 +221,7 @@ export class SessionStore implements SessionOwnershipFacade {
   private readonly branchesRepo: BranchesRepo;
   private readonly attachmentsRepo: AttachmentRepo;
   private readonly registry:     RunRegistry;
+  private readonly db:           Database;
   private readonly onSessionRemoved?: (sessionId: string) => void;
   /** Monotonically increasing clock — ensures created_at is unique even for sub-ms bursts. */
   private lastTs = 0;
@@ -232,6 +233,7 @@ export class SessionStore implements SessionOwnershipFacade {
     this.branchesRepo = new BranchesRepo(db.sqlite);
     this.attachmentsRepo = new AttachmentRepo(db.sqlite);
     this.registry     = new RunRegistry();
+    this.db           = db;
     this.onSessionRemoved = onSessionRemoved;
   }
 
@@ -519,6 +521,114 @@ export class SessionStore implements SessionOwnershipFacade {
     this.onSessionRemoved?.(id as string);
   }
 
+  /**
+   * 删除目标 turn 及其全部下游(级联):
+   *   1. 目标 turn 所在分支上 started_at >= 目标的所有 turn;
+   *   2. fork_from_turn_id 落在删除集合内的分支(立身之本没了)整支删除, 递归收敛;
+   *   3. active branch 若被删, 回退到目标分支(目标分支必存活——其 fork 点在
+   *      目标 turn 之前; root 分支 fork_from 为空, 永不入删除集)。
+   *
+   * FK 顺序(单事务): 分支按深度从深到浅, 先删其 turn(解除 turns.branch_id 与
+   * 下游分支 fork_from_turn_id 的引用)再删分支行; 最后删目标分支尾部 turn。
+   * messages 必须显式删——messages.turn_id 是 ON DELETE SET NULL, 不删会
+   * 泄漏成"无 turn 消息"混进 root 段视图。
+   * turn_attachments / turn_audio_merged / llm_turn_metrics / tool_executions
+   * 随 turn ON DELETE CASCADE 清理; agent_tasks 为 SET NULL 保留任务历史。
+   *
+   * 运行中的 turn 拒绝删除(turn_running)。返回删除清单, 物理文件
+   * (音频/scratchpad)由调用方(Core 路由)按 deletedTurnIds 清理。
+   */
+  deleteTurnCascade(
+    sessionId: SessionId,
+    turnId: TurnId,
+  ): { deletedTurnIds: string[]; deletedBranchIds: string[] } {
+    const target = this.turnsRepo.findById(turnId);
+    if (!target) throw new Error(`turn_not_found: ${turnId}`);
+    if (target.session_id !== (sessionId as string)) {
+      throw new SessionOwnershipError('turn', turnId, sessionId, asSessionId(target.session_id));
+    }
+    const targetBranchId = (target.branch_id ?? null) as BranchId | null;
+
+    // ── 1. 计算删除集合 ─────────────────────────────────────────────────────
+    const deletedTurnIds = new Set<string>();
+    const deletedBranchIds = new Set<string>();
+    // 目标 turn 所在分支(或从未 fork 时的隐式主干)上, 目标及其全部后继。
+    const tailTurns = targetBranchId
+      ? this.turnsRepo.listForBranchAfter(targetBranchId, target.id as TurnId)
+      : this.turnsRepo.listForSessionAfter(sessionId, target.id as TurnId);
+    for (const t of tailTurns) {
+      deletedTurnIds.add(t.id);
+    }
+
+    // 传播: fork_from_turn_id ∈ 删除集合的分支整支删除, 递归到收敛。
+    const queue: string[] = [];
+    const enqueueAnchoredOn = (tid: string): void => {
+      for (const b of this.branchesRepo.listSiblingsAt(tid as TurnId)) {
+        if (!deletedBranchIds.has(b.id)) {
+          deletedBranchIds.add(b.id);
+          queue.push(b.id);
+        }
+      }
+    };
+    for (const tid of [...deletedTurnIds]) enqueueAnchoredOn(tid);
+    while (queue.length > 0) {
+      const branchId = queue.shift()!;
+      for (const t of this.turnsRepo.listForBranch(branchId as BranchId)) {
+        if (!deletedTurnIds.has(t.id)) {
+          deletedTurnIds.add(t.id);
+          enqueueAnchoredOn(t.id);
+        }
+      }
+    }
+
+    // 运行中的 turn 禁止删除。
+    const runningId = this.registry.getActiveTurnId(sessionId);
+    if (runningId && deletedTurnIds.has(runningId as string)) {
+      throw new Error(`turn_running: ${runningId} 正在运行, 请先停止再删除`);
+    }
+
+    // ── 2. 单事务按 FK 顺序删除 ─────────────────────────────────────────────
+    return this.db.sqlite.transaction(() => {
+      const session = this.requireSession(sessionId);
+      if (session.activeBranchId && deletedBranchIds.has(session.activeBranchId as string)) {
+        this.sessionsRepo.setActiveBranch(sessionId, targetBranchId);
+      }
+
+      const branchRows = this.branchesRepo.listForSession(sessionId);
+      const parentOf = new Map(branchRows.map(r => [r.id, r.parent_branch_id]));
+      const depthOf = (id: string): number => {
+        let depth = 0;
+        let cur = parentOf.get(id) ?? null;
+        const seen = new Set<string>([id]);
+        while (cur && !seen.has(cur)) {
+          seen.add(cur);
+          depth++;
+          cur = parentOf.get(cur) ?? null;
+        }
+        return depth;
+      };
+      const orderedBranches = [...deletedBranchIds].sort((a, b) => depthOf(b) - depthOf(a));
+
+      for (const branchId of orderedBranches) {
+        for (const t of this.turnsRepo.listForBranch(branchId as BranchId)) {
+          this.messagesRepo.deleteForTurn(t.id as TurnId);
+          this.turnsRepo.delete(t.id as TurnId);
+        }
+        this.branchesRepo.delete(branchId as BranchId);
+      }
+
+      for (const t of tailTurns) {
+        this.messagesRepo.deleteForTurn(t.id as TurnId);
+        this.turnsRepo.delete(t.id as TurnId);
+      }
+
+      return {
+        deletedTurnIds: [...deletedTurnIds],
+        deletedBranchIds: orderedBranches,
+      };
+    })();
+  }
+
   // ── Turn ────────────────────────────────────────────────────────────────────
 
   /**
@@ -534,7 +644,9 @@ export class SessionStore implements SessionOwnershipFacade {
       throw new Error('session_busy: a turn is already running for this session');
     }
 
-    const now = Date.now();
+    // 与消息/分支同一单调时钟: turn 的 started_at 在进程内严格递增,
+    // 同毫秒 tie 不再发生, 排序/游标/删除级联的"之后"语义才有唯一解。
+    const now = this.nextTs();
 
     // Heal stale 'running' rows left by a previous process crash.
     // better-sqlite3 is sync, so this + insert below are effectively atomic.

@@ -290,6 +290,114 @@ describe('SessionStore — message', () => {
     expect(ids).toContain(first.branchId);
   });
 
+  // ── deleteTurnCascade: 删除节点连同子树 ────────────────────────────────────
+
+  /** 构造三层树: root(T1,T2,T3) → B1(U1,U2, fork 自 T2) → B2(V1, fork 自 U1)。 */
+  function makeBranchTree(store: ReturnType<typeof makeStore>, sessionId: SessionId) {
+    const { turn: t1 } = store.startTurn({ sessionId, mode: 'chat', userInput: 'T1' });
+    store.appendMessage({ sessionId, turnId: t1.id, role: 'user', blocks: 'T1-user' });
+    store.completeTurn(t1.id);
+    const { turn: t2 } = store.startTurn({ sessionId, mode: 'chat', userInput: 'T2' });
+    store.appendMessage({ sessionId, turnId: t2.id, role: 'user', blocks: 'T2-user' });
+    store.completeTurn(t2.id);
+    const { turn: t3 } = store.startTurn({ sessionId, mode: 'chat', userInput: 'T3' });
+    store.completeTurn(t3.id);
+
+    const b1 = store.forkMessage({ sessionId, fromTurnId: t2.id });
+    const { turn: u1 } = store.startTurn({ sessionId, mode: 'chat', userInput: 'U1' });
+    store.appendMessage({ sessionId, turnId: u1.id, role: 'user', blocks: 'U1-user' });
+    store.completeTurn(u1.id);
+    const { turn: u2 } = store.startTurn({ sessionId, mode: 'chat', userInput: 'U2' });
+    store.completeTurn(u2.id);
+
+    const b2 = store.forkMessage({ sessionId, fromTurnId: u1.id });
+    const { turn: v1 } = store.startTurn({ sessionId, mode: 'chat', userInput: 'V1' });
+    store.appendMessage({ sessionId, turnId: v1.id, role: 'user', blocks: 'V1-user' });
+    store.completeTurn(v1.id);
+
+    return { t1, t2, t3, b1, u1, u2, b2, v1 };
+  }
+
+  it('删除 T2 级联: T2/T3 + B1(U1,U2) + B2(V1) 全删, root 只剩 T1, active 回退 root', () => {
+    const store = makeStore();
+    const s = store.createSession();
+    const tree = makeBranchTree(store, s.id);
+    const rootId = store.listBranches(s.id).find(b => b.parentBranchId === null)!.id;
+
+    const result = store.deleteTurnCascade(s.id, tree.t2.id);
+
+    expect(new Set(result.deletedTurnIds)).toEqual(
+      new Set([tree.t2.id, tree.t3.id, tree.u1.id, tree.u2.id, tree.v1.id] as string[]),
+    );
+    expect(new Set(result.deletedBranchIds)).toEqual(new Set([tree.b1.branchId, tree.b2.branchId] as string[]));
+
+    // root 分支只剩 T1; B1/B2 行已删; active 回退到 root。
+    expect(store.listTurns(s.id).map(t => t.id)).toEqual([tree.t1.id]);
+    expect(store.listBranches(s.id).map(b => b.id)).toEqual([rootId]);
+    expect(store.getSession(s.id).activeBranchId).toBe(rootId);
+
+    // 消息随 turn 显式删除, 不泄漏成无 turn 消息混进 root 视图。
+    expect(store.listMessages(s.id).map(m => m.blocks)).toEqual(['T1-user']);
+  });
+
+  it('删除 U1(中间分支): U1/U2 + B2(V1) 删, B1 留空但存活, active 回退 B1', () => {
+    const store = makeStore();
+    const s = store.createSession();
+    const tree = makeBranchTree(store, s.id);
+
+    const result = store.deleteTurnCascade(s.id, tree.u1.id);
+
+    expect(new Set(result.deletedTurnIds)).toEqual(new Set([tree.u1.id, tree.u2.id, tree.v1.id] as string[]));
+    expect(result.deletedBranchIds).toEqual([tree.b2.branchId]);
+
+    const remaining = store.listTurns(s.id).map(t => t.id);
+    expect(new Set(remaining)).toEqual(new Set([tree.t1.id, tree.t2.id, tree.t3.id] as string[]));
+    expect(store.listBranches(s.id).map(b => b.id)).toContain(tree.b1.branchId);
+    expect(store.getSession(s.id).activeBranchId).toBe(tree.b1.branchId);
+  });
+
+  it('运行中的 turn 拒绝删除(turn_running)', () => {
+    const store = makeStore();
+    const s = store.createSession();
+    const { turn: running } = store.startTurn({ sessionId: s.id, mode: 'chat', userInput: 'running' });
+    // root 无分支时先 fork 出分支再删? 不需要——root 首次 fork 后 turn 在 root 分支上。
+    const first = store.forkMessage({ sessionId: s.id, fromTurnId: running.id });
+
+    expect(() => store.deleteTurnCascade(s.id, running.id)).toThrow(/turn_running/);
+    store.abortTurn(s.id, running.id);
+    expect(first.branchId).toBeTypeOf('string');
+  });
+
+  it('从未 fork 的会话: 删除隐式主干上的 turn 及其后继', () => {
+    const store = makeStore();
+    const s = store.createSession();
+    const { turn: t1 } = store.startTurn({ sessionId: s.id, mode: 'chat', userInput: 'T1' });
+    store.appendMessage({ sessionId: s.id, turnId: t1.id, role: 'user', blocks: 'T1-user' });
+    store.completeTurn(t1.id);
+    const { turn: t2 } = store.startTurn({ sessionId: s.id, mode: 'chat', userInput: 'T2' });
+    store.appendMessage({ sessionId: s.id, turnId: t2.id, role: 'user', blocks: 'T2-user' });
+    store.completeTurn(t2.id);
+    const { turn: t3 } = store.startTurn({ sessionId: s.id, mode: 'chat', userInput: 'T3' });
+    store.completeTurn(t3.id);
+
+    const result = store.deleteTurnCascade(s.id, t2.id);
+
+    expect(new Set(result.deletedTurnIds)).toEqual(new Set([t2.id, t3.id] as string[]));
+    expect(result.deletedBranchIds).toEqual([]);
+    expect(store.listTurns(s.id).map(t => t.id)).toEqual([t1.id]);
+    expect(store.listMessages(s.id).map(m => m.blocks)).toEqual(['T1-user']);
+  });
+
+  it('跨 session 删除拒绝(ownership) + 不存在 turn 报 turn_not_found', () => {
+    const store = makeStore();
+    const s1 = store.createSession();
+    const s2 = store.createSession();
+    const tree = makeBranchTree(store, s1.id);
+
+    expect(() => store.deleteTurnCascade(s2.id, tree.t2.id)).toThrow(/ownership/);
+    expect(() => store.deleteTurnCascade(s1.id, 'turn-ghost' as TurnId)).toThrow(/turn_not_found/);
+  });
+
   it('listMessages (cursor) returns newest-first on first page', () => {
     const store = makeStore();
     const s = store.createSession();

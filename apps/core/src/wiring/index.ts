@@ -1,8 +1,10 @@
 import type { Database } from '@ema-agent/storage';
+import type { SessionId } from '@ema-agent/contracts';
 import { buildBindings, type AppBindings, type BuildBindingsArgs } from './bindings.js';
 import { registerAllHooks }    from './register-hooks.js';
 import { registerAllEmitters } from './register-emitters.js';
 import { configureBridge }     from './bridge.js';
+import { sweepOrphanTurnFiles } from '../storage-locations/index.js';
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -84,6 +86,19 @@ export function startBackgroundWork(bindings: AppBindings): BackgroundHandle {
     if (healed > 0) console.log(`[session] startup: aborted ${healed} stuck turn(s) from prior crash`);
   } catch (err) {
     console.warn('[session] startup turn recovery skipped:', err);
+  }
+
+  // 2b-2) Orphan turn files — 删除级联提交 DB 后, 若进程在逐 turn 文件清理中途
+  //       崩溃, DB 已是事实源但磁盘残留 turn 目录/文件。按 DB live 集合自检清除。
+  try {
+    const { removed } = sweepOrphanTurnFiles(bindings.activeDataDir, (sessionId) =>
+      new Set(
+        bindings.session.listTurns(sessionId as SessionId, 100_000).map(t => t.id as string),
+      ),
+    );
+    if (removed > 0) console.log(`[session] startup: removed ${removed} orphan turn file entrie(s)`);
+  } catch (err) {
+    console.warn('[session] startup orphan turn file sweep skipped:', err);
   }
 
   // 2c) Agent task crash recovery — any task still running or waiting_user at
