@@ -1,3 +1,5 @@
+// 把 TTS 分段音频存到磁盘，并在对话轮结束时按格式拼成整段（mp3/pcm/wav 可拼，ogg 不拼）。
+
 import fs from 'node:fs';
 import path from 'node:path';
 import { once } from 'node:events';

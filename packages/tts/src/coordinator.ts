@@ -1,3 +1,5 @@
+// 一次对话轮的 TTS 协调器：接文本流 -> 切句 -> 一句句串行合成 -> 推给前端 + 存档。
+
 import type {
   EmaStreamEvent, TurnId, SessionId,
 } from '@ema-agent/contracts';

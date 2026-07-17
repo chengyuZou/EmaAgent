@@ -1,3 +1,5 @@
+// TTS 哑分发器：按 provider 查 adapter，单句合成带超时和字节上限，不感知角色卡和 voice。
+
 import type {
   TtsRequest,
   TtsStreamEvent,

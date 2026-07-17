@@ -1,3 +1,5 @@
+// 把 TTS 内部音频事件翻译成前端 SSE 事件（字节转 base64、句子编号），是唯一的转换出口。
+
 import type { EmaStreamEvent, TurnId, SessionId } from '@ema-agent/contracts';
 import type { TtsStreamEvent } from './types.js';
 

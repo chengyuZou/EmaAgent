@@ -1,3 +1,5 @@
+// OpenAI 兼容协议的 adapter：POST /audio/speech 拿音频块，含参考音频上传做声音克隆。
+
 import type { TtsAdapter, TtsProviderConfig, TtsProbeResult, TtsRequest, TtsStreamEvent } from '../types.js';
 import { errorEvent, classifyFetchError, classifyHttpStatus } from '../errors.js';
 import { readFile, stat } from 'node:fs/promises';

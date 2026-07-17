@@ -1,3 +1,5 @@
+// 阿里 DashScope 的 adapter：按模型走两条 WebSocket 协议（CosyVoice 流式 / Qwen-TTS 攒完再发）。
+
 import { randomUUID } from 'node:crypto';
 import fs   from 'node:fs/promises';
 import path from 'node:path';

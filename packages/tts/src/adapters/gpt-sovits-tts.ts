@@ -1,3 +1,5 @@
+// GPT-SoVITS 本地服务的 adapter：POST /tts 拿音频块，用本地参考音频做克隆，不需要上传。
+
 import type { TtsAdapter, TtsProviderConfig, TtsProbeResult, TtsRequest, TtsStreamEvent } from '../types.js';
 import { errorEvent, classifyFetchError, classifyHttpStatus } from '../errors.js';
 
