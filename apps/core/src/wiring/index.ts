@@ -4,6 +4,7 @@ import { buildBindings, type AppBindings, type BuildBindingsArgs } from './bindi
 import { registerAllHooks }    from './register-hooks.js';
 import { registerAllEmitters } from './register-emitters.js';
 import { configureBridge }     from './bridge.js';
+import { createBackgroundTicker } from './background-tick.js';
 import { sweepOrphanTurnFiles } from '../storage-locations/index.js';
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -127,36 +128,36 @@ export function startBackgroundWork(bindings: AppBindings): BackgroundHandle {
 
   // 4) Periodic tick — drains background_tasks queue + sweeps tool-result files
   //    + bridge heartbeat (CLAUDE.md red line: ping /health, mark unavailable
-  //    on failure, never fail silently).
-  let tickCount = 0;
-  // null = not checked yet (don't emit a spurious "recovered" on the first tick).
+  //    on failure, never fail silently). Single-flight(B-025): 慢轮跳过不叠,
+  //    关机先等在途轮再 drain。
   let lastBridgeReady: boolean | null = null;
-  const ticker = setInterval(() => {
-    tickCount++;
-    void bindings.memory.tick().catch((err) => {
-      console.warn('[memory] background tick failed:', err);
-    });
-    if (tickCount % CLEANER_SWEEP_EVERY === 0) {
-      try {
-        const { deleted, freedBytes } = bindings.toolResultCleaner.sweep();
-        if (deleted > 0) {
-          console.log(`[agent-context] cleaner: removed ${deleted} file(s), freed ${(freedBytes / 1024).toFixed(0)} KB`);
-        }
-      } catch (err) {
-        console.warn('[agent-context] cleaner sweep failed:', err);
-      }
-    }
-    if (tickCount % BRIDGE_HEARTBEAT_EVERY === 0) {
-      void checkBridgeHeartbeat(bindings, lastBridgeReady).then((ready) => {
-        lastBridgeReady = ready;
+  const ticker = createBackgroundTicker({
+    intervalMs: BACKGROUND_TICK_MS,
+    onTick: async (tickCount) => {
+      await bindings.memory.tick().catch((err) => {
+        console.warn('[memory] background tick failed:', err);
       });
-    }
-  }, BACKGROUND_TICK_MS);
-  ticker.unref?.();
+      if (tickCount % CLEANER_SWEEP_EVERY === 0) {
+        try {
+          const { deleted, freedBytes } = bindings.toolResultCleaner.sweep();
+          if (deleted > 0) {
+            console.log(`[agent-context] cleaner: removed ${deleted} file(s), freed ${(freedBytes / 1024).toFixed(0)} KB`);
+          }
+        } catch (err) {
+          console.warn('[agent-context] cleaner sweep failed:', err);
+        }
+      }
+      if (tickCount % BRIDGE_HEARTBEAT_EVERY === 0) {
+        // heartbeat 异常由 ticker 统一捕获记录, lastBridgeReady 保持上次值。
+        lastBridgeReady = await checkBridgeHeartbeat(bindings, lastBridgeReady);
+      }
+    },
+  });
 
   return {
     async shutdown() {
-      clearInterval(ticker);
+      // 先停在途 tick(B-025), 再 drain——否则 drain 与在途 tick 并发写。
+      await ticker.stop();
       try { await bindings.memory.drain(); }
       catch (err) {
         console.warn('[memory] drain() failed during shutdown:', err);
