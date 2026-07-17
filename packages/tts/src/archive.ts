@@ -3,6 +3,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { once } from 'node:events';
+import { mimeFromExt } from './utils.js';
 
 export interface FinalizedAudio {
   path: string;
@@ -120,7 +121,7 @@ export class FsAudioArchive implements AudioArchive {
       const stat = await fs.promises.stat(target);
       return {
         path: target,
-        mime: mimeForExt(ext),
+        mime: mimeFromExt(ext),
         byteSize: stat.size,
         durationMs,
         segmentCount: segments.length,
@@ -150,7 +151,7 @@ export class FsAudioArchive implements AudioArchive {
     for (const file of fs.readdirSync(dir)) {
       if (!file.startsWith(`${turnId}.`)) continue;
       const ext = path.extname(file).slice(1).toLowerCase();
-      return { path: path.join(dir, file), mime: mimeForExt(ext) };
+      return { path: path.join(dir, file), mime: mimeFromExt(ext) };
     }
     return null;
   }
@@ -309,18 +310,6 @@ async function replaceFile(temporary: string, target: string): Promise<void> {
     // Windows 不允许 rename 覆盖已有目标；仅在平台拒绝覆盖时处理当前 Turn 的旧文件。
     await fs.promises.rm(target, { force: true });
     await fs.promises.rename(temporary, target);
-  }
-}
-
-function mimeForExt(ext: string): string {
-  switch (ext) {
-    case 'mp3': return 'audio/mpeg';
-    case 'wav': return 'audio/wav';
-    case 'ogg':
-    case 'opus': return 'audio/ogg';
-    case 'pcm': return 'audio/L16';
-    case 'aac': return 'audio/aac';
-    default: return 'application/octet-stream';
   }
 }
 

@@ -2,6 +2,7 @@
 
 import type { TtsAdapter, TtsProviderConfig, TtsProbeResult, TtsRequest, TtsStreamEvent } from '../types.js';
 import { errorEvent, classifyFetchError, classifyHttpStatus } from '../errors.js';
+import { concatBytes, safeReadText } from '../utils.js';
 
 // ── GPT-SoVITS 本地服务器(api_v2.py)─────────────────────────────────────
 //
@@ -94,7 +95,7 @@ export class GptSoVitsTtsAdapter implements TtsAdapter {
         if (firstByteMs === 0) firstByteMs = Date.now() - startedAt;
         totalBytes += value.length;
 
-        pending = concat(pending, value);
+        pending = concatBytes(pending, value);
         while (pending.length >= CHUNK_BYTES) {
           yield { type: 'audio_chunk', bytes: pending.slice(0, CHUNK_BYTES), mime };
           pending = pending.slice(CHUNK_BYTES);
@@ -126,6 +127,9 @@ export class GptSoVitsTtsAdapter implements TtsAdapter {
 }
 
 // ── 辅助函数 ─────────────────────────────────────────────────────────────────
+// concatBytes / safeReadText 已抽到 ../utils.ts 共用。
+// mimeForFormat 留本地:GPT-SoVITS api_v2 不接受 mp3,映射到最接近的 aac,
+// 和 openai/dashscope 的 mimeForFormat 不同,不能共用。
 
 function looksLikeMissingRef(body: string): boolean {
   const lower = body.toLowerCase();
@@ -161,15 +165,4 @@ function detectLangHint(text: string, fallback: string): string {
   if (cjk > ascii) return 'zh';
   if (ascii > cjk * 2) return 'en';
   return fallback;
-}
-
-async function safeReadText(response: Response): Promise<string> {
-  try { return await response.text(); } catch { return ''; }
-}
-
-function concat(a: Uint8Array<ArrayBufferLike>, b: Uint8Array<ArrayBufferLike>): Uint8Array<ArrayBufferLike> {
-  const out = new Uint8Array(a.length + b.length);
-  out.set(a, 0);
-  out.set(b, a.length);
-  return out;
 }

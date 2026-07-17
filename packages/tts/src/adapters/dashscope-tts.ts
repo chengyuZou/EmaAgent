@@ -7,6 +7,7 @@ import WebSocket from 'ws';
 
 import type { TtsAdapter, TtsProviderConfig, TtsProbeResult, TtsRequest, TtsStreamEvent, TtsErrorCode } from '../types.js';
 import { classifyCloseCode } from '../errors.js';
+import { mimeForFormat } from '../utils.js';
 
 // ── DashScope(阿里云百炼)TTS ──────────────────────────────────────────────
 //
@@ -217,16 +218,6 @@ function pcmToWav(pcm: Buffer, sampleRate: number): Buffer {
   header.writeUInt32LE(dataSize,      40);                    // Subchunk2Size
 
   return Buffer.concat([header, pcm]);
-}
-
-function mimeForFormat(format: string): string {
-  switch (format) {
-    case 'mp3':  return 'audio/mpeg';
-    case 'wav':  return 'audio/wav';
-    case 'opus': return 'audio/opus';
-    case 'pcm':  return 'audio/L16';
-    default:     return 'application/octet-stream';
-  }
 }
 
 // ── 事件驱动队列:桥接 ws 回调 -> AsyncIterable ──────────────────────────────

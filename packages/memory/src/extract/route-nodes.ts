@@ -5,6 +5,7 @@ import type { ExtractedNode, ExtractionOutput, PendingFragment } from './types.j
 import { unpackEmbedding } from '../embed/similarity.js';
 import type { ExtractionPipelineDeps, PipelineResult } from './pipeline.js';
 import type { PendingIndexMutation } from './index-mutations.js';
+import type { NodeDirectory } from './node-directory.js';
 
 const NODE_DEDUP_THRESHOLD = 0.85;
 
@@ -14,7 +15,7 @@ export function processNodes(
   output: ExtractionOutput,
   fragments: PendingFragment[],
   stats: PipelineResult,
-  labelToNodeId: Map<string, string>,
+  directory: NodeDirectory,
   precomputedEmbeddings: EmbeddedText[] | null,
   indexMutations: PendingIndexMutation[],
 ): void {
@@ -28,7 +29,7 @@ export function processNodes(
       embedded,
       fragments,
       stats,
-      labelToNodeId,
+      directory,
       indexMutations,
     );
   }
@@ -41,14 +42,14 @@ export function routeCandidateNode(
   embedded: EmbeddedText | null,
   fragments: PendingFragment[],
   stats: PipelineResult,
-  labelToNodeId: Map<string, string>,
+  directory: NodeDirectory,
   indexMutations: PendingIndexMutation[],
 ): void {
   // 1. Cheap label match first
   const labelHit = deps.memory.nodes.findByLabelAndType(candidate.label, candidate.nodeType);
   if (labelHit) {
     enqueueLazyUpdate(deps, labelHit.id, candidate, fragments, sessionId, stats);
-    labelToNodeId.set(candidate.label, labelHit.id);
+    directory.register(candidate.label, candidate.nodeType, labelHit.id);
     return;
   }
 
@@ -61,7 +62,7 @@ export function routeCandidateNode(
       const existing = deps.memory.nodes.findById(best.id);
       if (existing && existing.node_type === candidate.nodeType) {
         enqueueLazyUpdate(deps, existing.id, candidate, fragments, sessionId, stats);
-        labelToNodeId.set(candidate.label, existing.id);
+        directory.register(candidate.label, candidate.nodeType, existing.id);
         return;
       }
     }
@@ -91,7 +92,7 @@ export function routeCandidateNode(
       const view = unpackEmbedding(embedded.embedding, embedded.dim);
       indexMutations.push({ index: deps.nodesIndex, operation: 'add', id, vector: view });
     }
-    labelToNodeId.set(candidate.label, id);
+    directory.register(candidate.label, candidate.nodeType, id);
     stats.extractedNodes++;
   } catch (err) {
     // Another session concurrently inserted the same (label, node_type).
@@ -102,7 +103,7 @@ export function routeCandidateNode(
     const existing = deps.memory.nodes.findByLabelAndType(candidate.label, candidate.nodeType);
     if (existing) {
       enqueueLazyUpdate(deps, existing.id, candidate, fragments, sessionId, stats);
-      labelToNodeId.set(candidate.label, existing.id);
+      directory.register(candidate.label, candidate.nodeType, existing.id);
     }
   }
 }

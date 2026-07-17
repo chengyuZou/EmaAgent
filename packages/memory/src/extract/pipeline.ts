@@ -15,6 +15,7 @@ import type { VectorIndex } from '../vector-index/vector-index.js';
 import { processNodes } from './route-nodes.js';
 import { processEdges } from './route-edges.js';
 import { processItems } from './route-items.js';
+import { NodeDirectory } from './node-directory.js';
 import { appendSessionNote, compactSessionNoteIfNeeded } from './session-note.js';
 import { consolidatePendingNodes } from './consolidate.js';
 import {
@@ -41,6 +42,8 @@ export interface PipelineResult {
   extractedItems: number;
   lazyUpdatesQueued: number;
   consolidatedNodes: number;
+  /** 落点不明确被丢弃的边数(B-076): 同名多 type 或端点不存在的边不落库。 */
+  droppedEdges: number;
 }
 
 /**
@@ -73,6 +76,7 @@ export async function runExtractionPipeline(
     extractedItems:    0,
     lazyUpdatesQueued: 0,
     consolidatedNodes: 0,
+    droppedEdges:      0,
   };
 
   const fragments = readPending(deps.memory.pendingFragments, args.sessionId);
@@ -146,8 +150,9 @@ export async function runExtractionPipeline(
     const itemEmbeddings = itemResult.value;
     validatePreparedExtraction(output, nodeEmbeddings, itemEmbeddings);
 
-    const labelToNodeId = new Map<string, string>();
-    for (const node of existingNodes) labelToNodeId.set(node.label, node.id);
+    // B-076: 节点目录按 (label, type) 索引, 同名多 type 节点不再互相覆盖。
+    const directory = new NodeDirectory();
+    for (const node of existingNodes) directory.register(node.label, node.node_type, node.id);
     const indexMutations: PendingIndexMutation[] = [];
 
     // ── 3. profile.db：业务表与恢复标记一次提交 ─────────────────────────────
@@ -158,11 +163,11 @@ export async function runExtractionPipeline(
         output,
         fragments,
         stats,
-        labelToNodeId,
+        directory,
         nodeEmbeddings,
         indexMutations,
       );
-      processEdges(deps, output, stats, labelToNodeId);
+      processEdges(deps, output, stats, directory);
       processItems(
         deps,
         args.sessionId,

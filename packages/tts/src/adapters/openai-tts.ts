@@ -2,6 +2,7 @@
 
 import type { TtsAdapter, TtsProviderConfig, TtsProbeResult, TtsRequest, TtsStreamEvent } from '../types.js';
 import { errorEvent, classifyFetchError, classifyHttpStatus } from '../errors.js';
+import { mimeForFormat, mimeFromExt, concatBytes, safeReadText } from '../utils.js';
 import { readFile, stat } from 'node:fs/promises';
 import { basename } from 'node:path';
 
@@ -92,7 +93,7 @@ export class OpenAiTtsAdapter implements TtsAdapter {
         totalBytes += value.length;
 
         // 重新分块到 ~8KB,让 SSE 帧保持合理大小
-        pending = concat(pending, value);
+        pending = concatBytes(pending, value);
         while (pending.length >= CHUNK_BYTES) {
           yield { type: 'audio_chunk', bytes: pending.slice(0, CHUNK_BYTES), mime };
           pending = pending.slice(CHUNK_BYTES);
@@ -128,7 +129,8 @@ export class OpenAiTtsAdapter implements TtsAdapter {
       throw new Error(`Reference audio exceeds ${MAX_REFERENCE_AUDIO_BYTES} bytes`);
     }
     const bytes = await readFile(refAudioPath);
-    const blob  = new Blob([bytes], { type: mimeFromExt(refAudioPath) });
+    const ext = basename(refAudioPath).split('.').pop()?.toLowerCase() ?? '';
+    const blob  = new Blob([bytes], { type: mimeFromExt(ext) });
     const name  = basename(refAudioPath).replace(/\.[^.]+$/, '');
     const form  = new FormData();
     form.set('file', blob, basename(refAudioPath));
@@ -176,37 +178,5 @@ export class OpenAiTtsAdapter implements TtsAdapter {
 }
 
 // ── 辅助函数 ─────────────────────────────────────────────────────────────────
+// mimeForFormat / mimeFromExt / concatBytes / safeReadText 已抽到 ../utils.ts 共用。
 
-function mimeForFormat(format: string): string {
-  switch (format) {
-    case 'mp3':  return 'audio/mpeg';
-    case 'wav':  return 'audio/wav';
-    case 'opus': return 'audio/opus';
-    case 'pcm':  return 'audio/L16';
-    default:     return 'application/octet-stream';
-  }
-}
-
-async function safeReadText(response: Response): Promise<string> {
-  try { return await response.text(); } catch { return ''; }
-}
-
-function concat(a: Uint8Array<ArrayBufferLike>, b: Uint8Array<ArrayBufferLike>): Uint8Array<ArrayBufferLike> {
-  const out = new Uint8Array(a.length + b.length);
-  out.set(a, 0);
-  out.set(b, a.length);
-  return out;
-}
-
-function mimeFromExt(filePath: string): string {
-  const ext = basename(filePath).split('.').pop()?.toLowerCase();
-  switch (ext) {
-    case 'mp3':  return 'audio/mpeg';
-    case 'wav':  return 'audio/wav';
-    case 'flac': return 'audio/flac';
-    case 'ogg':
-    case 'opus': return 'audio/ogg';
-    case 'm4a':  return 'audio/mp4';
-    default:     return 'audio/mpeg';
-  }
-}

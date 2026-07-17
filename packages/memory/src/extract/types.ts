@@ -14,6 +14,12 @@ export interface ExtractedEdge {
   fromLabel: string;
   toLabel:   string;
   relation:  string;
+  /**
+   * 端点节点的 node_type, 可选。同名不同 type 的节点共存时用于精确落点;
+   * 缺省时只允许 label 全库唯一兜底(B-076)。
+   */
+  fromType?: MemoryNodeType;
+  toType?:   MemoryNodeType;
 }
 
 export interface ExtractedItem {

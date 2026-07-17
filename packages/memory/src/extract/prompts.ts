@@ -28,7 +28,10 @@ Respond with a single JSON object — no prose, no markdown fences. Schema:
   "new_edges": [
     {
       "from_label": string,   // must match an existing node OR a new_node label
+      "from_type":  string,   // optional node_type of the endpoint — REQUIRED when the
+                              // label is shared by multiple nodes (disambiguates which one)
       "to_label":   string,
+      "to_type":    string,   // same rule as from_type
       "relation":   string    // free-form verb / preposition: "养", "担心", "经历", "讨厌"
     }
   ],

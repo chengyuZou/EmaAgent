@@ -114,7 +114,20 @@ function sanitizeExtraction(raw: unknown): ExtractionOutput {
       const t = typeof entry['to_label']   === 'string' ? entry['to_label'].trim()   : '';
       const r = typeof entry['relation']   === 'string' ? entry['relation'].trim()   : '';
       if (!f || !t || !r) continue;
-      new_edges.push({ fromLabel: f, toLabel: t, relation: r });
+      // 端点 type 可选: 非法值按缺失处理, 走 label 唯一兜底, 不因此丢边。
+      const ft = typeof entry['from_type'] === 'string' && VALID_NODE_TYPES.has(entry['from_type'] as MemoryNodeType)
+        ? entry['from_type'] as MemoryNodeType
+        : undefined;
+      const tt = typeof entry['to_type'] === 'string' && VALID_NODE_TYPES.has(entry['to_type'] as MemoryNodeType)
+        ? entry['to_type'] as MemoryNodeType
+        : undefined;
+      new_edges.push({
+        fromLabel: f,
+        toLabel:   t,
+        relation:  r,
+        ...(ft ? { fromType: ft } : {}),
+        ...(tt ? { toType: tt } : {}),
+      });
     }
   }
 
