@@ -12,6 +12,9 @@ export interface VisionExtractBlock {
   markdown?: string;
 }
 
+/** KB 可调用的 Vision 任务: ocr=整页识字, caption=图表/画面内容描述。 */
+export type KbVisionTask = 'ocr' | 'caption';
+
 export class KbVisionAdapterError extends Error {
   constructor(
     readonly code: string,
@@ -31,7 +34,7 @@ export interface KbVisionAdapter {
   extract(opts: {
     providerId: string;
     model:      string;
-    task:       'ocr';
+    task:       KbVisionTask;
     inputs:     VisionExtractInput[];
     signal?:    AbortSignal;
   }): Promise<{ blocks: VisionExtractBlock[] }>;

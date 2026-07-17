@@ -101,12 +101,12 @@ export function reloadVisionRouter(
 /** Wraps VisionRouter as the KB-internal KbVisionAdapter interface. */
 export function asKbVisionAdapter(router: VisionRouter): KbVisionAdapter {
   return {
-    async extract({ providerId, model, inputs, signal }) {
+    async extract({ providerId, model, task, inputs, signal }) {
       try {
         const result = await router.extract({
           providerId,
           model,
-          task: 'ocr',
+          task,
           inputs: inputs.map((inp) => ({
             kind: 'bytes' as const,
             bytes: inp.bytes,

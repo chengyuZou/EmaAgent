@@ -22,7 +22,7 @@ export type { DocumentProgressEvent, DocumentProgressKind } from './events/index
 
 // ── Adapters ───────────────────────────────────────────────────────────────────
 export { KbVisionAdapterError, isKbVisionAdapterError } from './adapters/vision.js';
-export type { KbVisionAdapter } from './adapters/vision.js';
+export type { KbVisionAdapter, KbVisionTask } from './adapters/vision.js';
 
 // ── Retrieval (hybrid only; FTS5 + vector live in storage repos) ───────────────
 export { weightedRank }         from './retrieval/hybrid.js';

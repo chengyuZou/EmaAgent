@@ -21,6 +21,12 @@ export interface DocumentBlock {
   page?:       number;
   /** Ancestor heading breadcrumb, e.g. ['Intro', 'Motivation']. */
   sectionPath: string[];
+  /**
+   * 内容来源: text-layer=PDF 文本层, vision-ocr=Vision 整页识字,
+   * vision-figure=Vision 图表描述。reader 不负责填写时缺省,
+   * 供 provenance 追踪与后续按来源选择性重处理。
+   */
+  source?:     'text-layer' | 'vision-ocr' | 'vision-figure';
 }
 
 /** Reader output grouped by page (for preview/thumbnail generation). */
