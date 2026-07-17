@@ -1,4 +1,4 @@
-﻿import { useState, useCallback, useEffect, useMemo, useRef, type JSX } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef, type JSX } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { Button, ConfirmDialog, DropdownMenu, Input, PromptDialog, type MenuItem } from '@ema-agent/ui';
 import { sessionsApi, type SessionWire, type SessionSearchItem } from '../api/sessions.js';
@@ -116,7 +116,7 @@ export function SessionSidebar(): JSX.Element {
           <div className="px-1.5 py-2 border-b border-[var(--ema-border)]">
             <NewConversationCommand
               onCreate={async () => {
-                const newId = await useSessionStore.getState().createSession();
+                const newId = await useConversationStore.getState().createFreshSession();
                 if (newId) void useConversationStore.getState().viewSession(newId);
               }}
               onCollapse={() => setCollapsed(true)}

@@ -68,6 +68,11 @@ export interface SessionsSearchResult {
 export interface ForkResult {
   sessionId:    string;
   messageCount: number;
+  /**
+   * fork 来源会话在 fork 时的 active branch(平会话为 null)。
+   * Session fork 只物化当前分支的线性历史, 该字段是跨会话溯源的显式契约。
+   */
+  sourceBranchId: string | null;
 }
 
 /**

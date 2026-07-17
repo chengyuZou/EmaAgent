@@ -115,11 +115,21 @@ export class BranchAncestorTable {
    *
    * Used by SessionStore.loadBranchMessages() to collect branch segments
    * in the correct order for message reconstruction.
+   *
+   * 父图成环防护(B-060): forkMessage 正常路径不会成环(父指针插入后不可变),
+   * 但备份导入/手工改库/未来重挂代码可能把环带进库。一步一查 visited,
+   * 撞环即抛错并带上撞环节点——宁可明确失败, 不死循环到 OOM,
+   * 也不在残缺上下文上静默继续。
    */
   getAncestorChain(branchId: BranchId): BranchId[] {
     const chain: BranchId[] = [];
+    const visited = new Set<BranchId>();
     let cur: BranchId | null = branchId;
     while (cur !== null) {
+      if (visited.has(cur)) {
+        throw new Error(`branch_cycle_detected: ancestor chain revisits branch ${cur}`);
+      }
+      visited.add(cur);
       chain.unshift(cur);
       cur = this.pa.get(cur)?.[0] ?? null;
     }

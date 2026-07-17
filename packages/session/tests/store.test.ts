@@ -259,6 +259,37 @@ describe('SessionStore — message', () => {
       .toEqual(['branch-summary', 'branch-new-a', 'branch-new-b']);
   });
 
+  it('连续 fork 会清掉上一个空 active 分支, 不再堆积空分支(F-052)', () => {
+    const store = makeStore();
+    const s = store.createSession();
+    const { turn: rootTurn } = store.startTurn({ sessionId: s.id, mode: 'chat', userInput: 'root' });
+    store.completeTurn(rootTurn.id);
+
+    const first = store.forkMessage({ sessionId: s.id, fromTurnId: rootTurn.id });
+    // 不发消息直接再 fork: 上一个空分支(无 turn 无子)应被清掉。
+    const second = store.forkMessage({ sessionId: s.id, fromTurnId: rootTurn.id });
+
+    const ids = store.listBranches(s.id).map(b => b.id);
+    expect(ids).not.toContain(first.branchId);
+    expect(ids).toContain(second.branchId);
+  });
+
+  it('有消息的分支再 fork 时不会被误清(F-052)', () => {
+    const store = makeStore();
+    const s = store.createSession();
+    const { turn: rootTurn } = store.startTurn({ sessionId: s.id, mode: 'chat', userInput: 'root' });
+    store.completeTurn(rootTurn.id);
+
+    const first = store.forkMessage({ sessionId: s.id, fromTurnId: rootTurn.id });
+    // 在第一个分支上产生 turn 后再 fork: 第一个分支有内容, 必须保留。
+    const { turn: branchTurn } = store.startTurn({ sessionId: s.id, mode: 'chat', userInput: 'on-first-branch' });
+    store.completeTurn(branchTurn.id);
+    store.forkMessage({ sessionId: s.id, fromTurnId: rootTurn.id });
+
+    const ids = store.listBranches(s.id).map(b => b.id);
+    expect(ids).toContain(first.branchId);
+  });
+
   it('listMessages (cursor) returns newest-first on first page', () => {
     const store = makeStore();
     const s = store.createSession();

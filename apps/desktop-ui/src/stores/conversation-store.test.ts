@@ -14,6 +14,7 @@ vi.mock('../lib/tts-playback.js', () => ({
 }));
 
 import { useConversationStore } from './conversation-store.js';
+import { useSessionStore } from './session-store.js';
 import type { TurnId, SessionId } from '@ema-agent/contracts';
 
 const S1 = 'sess_1' as SessionId;
@@ -211,6 +212,79 @@ describe('conversation-store', () => {
 
       useConversationStore.getState().setDraft(S1, '');
       expect(useConversationStore.getState().draftMap.has(S1 as string)).toBe(false);
+    });
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // F-051 空会话复用 + F-052 分叉延迟创建
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  describe('createFreshSession (F-051)', () => {
+    function stubSessionStore(lastTurnStatus: string | null) {
+      const original = useSessionStore.getState().createSession;
+      const createMock = vi.fn(async () => S2);
+      useSessionStore.setState({
+        sessions: {
+          pinned: [], byGroup: [], recent: [], archived: [],
+          byId: new Map([[S1 as string, { id: S1, lastTurnStatus } as never]]),
+        },
+        createSession: createMock,
+      } as never);
+      return { original, createMock };
+    }
+
+    it('viewed 会话为空(无 turn)时复用, 不重复创建', async () => {
+      const { original, createMock } = stubSessionStore(null);
+      useConversationStore.setState({ viewedSessionId: S1 });
+      try {
+        const id = await useConversationStore.getState().createFreshSession();
+        expect(id).toBe(S1);
+        expect(createMock).not.toHaveBeenCalled();
+      } finally {
+        useSessionStore.setState({ createSession: original } as never);
+      }
+    });
+
+    it('viewed 会话已有 turn 时才真正新建', async () => {
+      const { original, createMock } = stubSessionStore('completed');
+      useConversationStore.setState({ viewedSessionId: S1 });
+      try {
+        const id = await useConversationStore.getState().createFreshSession();
+        expect(id).toBe(S2);
+        expect(createMock).toHaveBeenCalledTimes(1);
+      } finally {
+        useSessionStore.setState({ createSession: original } as never);
+      }
+    });
+
+    it('没有 viewed 会话时直接新建', async () => {
+      const original = useSessionStore.getState().createSession;
+      const createMock = vi.fn(async () => S2);
+      useSessionStore.setState({ createSession: createMock } as never);
+      useConversationStore.setState({ viewedSessionId: null });
+      try {
+        const id = await useConversationStore.getState().createFreshSession();
+        expect(id).toBe(S2);
+        expect(createMock).toHaveBeenCalledTimes(1);
+      } finally {
+        useSessionStore.setState({ createSession: original } as never);
+      }
+    });
+  });
+
+  describe('pendingFork (F-052)', () => {
+    it('armFork 记录分叉点, clearPendingFork 清除', () => {
+      useConversationStore.getState().armFork(T1);
+      expect(useConversationStore.getState().pendingForkFromTurnId).toBe(T1);
+      useConversationStore.getState().clearPendingFork();
+      expect(useConversationStore.getState().pendingForkFromTurnId).toBeNull();
+    });
+
+    it('切换到另一个会话时分叉点被清除', async () => {
+      useConversationStore.setState({ viewedSessionId: S1 });
+      useConversationStore.getState().armFork(T1);
+      await useConversationStore.getState().viewSession(S2);
+      expect(useConversationStore.getState().pendingForkFromTurnId).toBeNull();
     });
   });
 });

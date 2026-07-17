@@ -16,6 +16,7 @@ import { createSendQueue, type SendQueue } from '../lib/send-queue.js';
 import { sseConsumer }     from '../lib/sse-consumer.js';
 import { sessionsApi, type BranchTreeWire } from '../api/sessions.js';
 import { turnsApi, type AttachmentInputWire } from '../api/turns.js';
+import { showToast }       from '../lib/toast.js';
 import type { KbAssetScope, ToolPresentation } from '@ema-agent/contracts';
 import { sidecarClient }   from '../api/sidecar-client.js';
 import {
@@ -198,8 +199,14 @@ export interface ConversationStoreState {
   error:              string | null;
   scrollToTurnId:     string | null;
   branchDataBySession: Map<string, BranchTreeWire>;
+  /** 已标记的分叉点: 点击 ForkButton 只记录, 发送消息时才真正创建分支(F-052)。 */
+  pendingForkFromTurnId: TurnId | null;
 
   viewSession(id: SessionId):                                                Promise<void>;
+  /** 新建会话前先复用空会话(F-051): viewed 会话还没有任何 turn 时直接复用, 不重复创建。 */
+  createFreshSession():                                                      Promise<SessionId | null>;
+  armFork(turnId: TurnId):                                                   void;
+  clearPendingFork():                                                        void;
   scrollToTurn(turnId: string):                                              void;
   loadBranches(id: SessionId):                                               Promise<void>;
   /** 切换分支并重载 —— BranchPanel 节点点击 + BranchSiblingNav 切换统一走这里，保证双向联动。 */
@@ -234,8 +241,11 @@ export const useConversationStore = create<ConversationStoreState>((set, get) =>
   error:               null,
   scrollToTurnId:      null,
   branchDataBySession: new Map(),
+  pendingForkFromTurnId: null,
 
   scrollToTurn(turnId) { set({ scrollToTurnId: turnId }); },
+  armFork(turnId)      { set({ pendingForkFromTurnId: turnId }); },
+  clearPendingFork()   { set({ pendingForkFromTurnId: null }); },
 
   async loadBranches(id) {
     try {
@@ -267,7 +277,7 @@ export const useConversationStore = create<ConversationStoreState>((set, get) =>
 
   async viewSession(id) {
     if (get().viewedSessionId === id) return;
-    set({ viewedSessionId: id });
+    set({ viewedSessionId: id, pendingForkFromTurnId: null });
 
     void sessionsApi.markViewed(id)
       .then(() => useSessionStore.getState().loadSessions())
@@ -282,6 +292,16 @@ export const useConversationStore = create<ConversationStoreState>((set, get) =>
 
     await get().loadMessages(id);
     void get().loadBranches(id);
+  },
+
+  async createFreshSession() {
+    const viewedId = get().viewedSessionId;
+    if (viewedId) {
+      const viewed = useSessionStore.getState().sessions.byId.get(viewedId as string);
+      // 空会话(从未产生 turn)直接复用, 连点"新建会话"不再产生一串空会话。
+      if (viewed && viewed.lastTurnStatus === null) return viewedId;
+    }
+    return useSessionStore.getState().createSession();
   },
 
   // ── Messages ─────────────────────────────────────────────────────────────
@@ -325,6 +345,26 @@ export const useConversationStore = create<ConversationStoreState>((set, get) =>
       targetId = newSession.id as SessionId;
       void useSessionStore.getState().loadSessions();
       set({ viewedSessionId: targetId });
+    }
+
+    // F-052: 分叉延迟创建——点击只标记分叉点, 发送时才真正创建分支并切换;
+    // 创建失败则中止发送, 不把消息落到旧分支上。
+    const pendingFork = get().pendingForkFromTurnId;
+    if (pendingFork) {
+      set({ pendingForkFromTurnId: null });
+      try {
+        await sessionsApi.forkBranch(targetId, pendingFork);
+        await get().loadBranches(targetId);
+        useConversationStore.setState((s) => {
+          const m = new Map(s.messages);
+          m.delete(targetId as string);
+          return { messages: m };
+        });
+        await get().loadMessages(targetId);
+      } catch (err) {
+        showToast(err instanceof Error ? `分叉失败: ${err.message}` : '分叉失败', { variant: 'danger' });
+        return;
+      }
     }
 
     // Queue auto-title generation for a session's first completed assistant

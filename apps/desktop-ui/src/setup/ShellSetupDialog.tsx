@@ -1,7 +1,8 @@
-﻿import { useState } from 'react';
+import { useState } from 'react';
 import { Button, Card } from '@ema-agent/ui';
 import { shellApi } from '../api/shell.js';
 import type { ShellStatus } from '../api/shell.js';
+import { SidecarApiError } from '../api/sidecar-client.js';
 import { tauriBridge } from '../lib/tauri-bridge.js';
 
 const GIT_DOWNLOAD_URL = 'https://git-scm.com/download/win';
@@ -31,7 +32,14 @@ export function ShellSetupDialog({ status, onResolved }: ShellSetupDialogProps):
         setPhase('failed');
       }
     } catch (err) {
-      setLog(err instanceof Error ? err.message : String(err));
+      // B-064: 后端先经权限审批再安装。403=用户未批准; 409=已有安装在进行。
+      if (err instanceof SidecarApiError && err.status === 403) {
+        setLog('安装未获批准：请在权限确认弹窗中允许后重试。');
+      } else if (err instanceof SidecarApiError && err.status === 409) {
+        setLog('已有安装任务在进行中，请稍候。');
+      } else {
+        setLog(err instanceof Error ? err.message : String(err));
+      }
       setPhase('failed');
     }
   };

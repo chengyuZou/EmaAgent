@@ -1,4 +1,4 @@
-﻿import { useState, useCallback, type JSX } from 'react';
+import { useState, useCallback, type JSX } from 'react';
 import { Button, ConfirmDialog, DropdownMenu, Input, PromptDialog, type MenuItem } from '@ema-agent/ui';
 import { useConversationStore } from '../stores/conversation-store.js';
 import { useSessionStore } from '../stores/session-store.js';
@@ -84,7 +84,7 @@ export function SessionSwitcher(): JSX.Element {
                 variant="ghost"
                 className="ema-stagger-in w-full px-3 py-2 mt-1 rounded-lg text-sm transition-colors text-left text-[var(--ema-primary)] hover:bg-[var(--ema-primary-muted)] font-normal"
                 onClick={async () => {
-                  const newId = await useSessionStore.getState().createSession();
+                  const newId = await useConversationStore.getState().createFreshSession();
                   if (newId) void useConversationStore.getState().viewSession(newId);
                   setOpen(false);
                 }}

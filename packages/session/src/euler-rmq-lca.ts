@@ -1,5 +1,5 @@
-// 评估后暂未采用 — Euler Tour + RMQ O(1) LCA。当前使用 Binary Lifting (branch-ancestor.ts)。
-// 保留此文件供未来深度 > 500 且查询 QPS 极高的场景备选。
+// 参考实现, 不在主路径 — Euler Tour + RMQ O(1) LCA。主路径使用 Binary Lifting (branch-ancestor.ts)。
+// 保留此文件: 学习用途 + 未来深度 > 500 且查询 QPS 极高的高规模场景备选(2026-07-17 定)。
 
 import type { BranchId } from '@ema-agent/contracts';
 

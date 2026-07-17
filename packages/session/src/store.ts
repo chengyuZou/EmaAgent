@@ -424,7 +424,7 @@ export class SessionStore implements SessionOwnershipFacade {
   forkSession(
     srcId:        SessionId,
     untilTurnId?: TurnId,
-  ): { sessionId: SessionId; messageCount: number } {
+  ): { sessionId: SessionId; messageCount: number; sourceBranchId: BranchId | null } {
     const src   = this.requireSession(srcId);
     const newId = asSessionId(crypto.randomUUID());
     const title = `${src.title} (fork)`;
@@ -432,7 +432,7 @@ export class SessionStore implements SessionOwnershipFacade {
 
     if (!src.activeBranchId) {
       const count = this.sessionsRepo.forkInto(srcId, newId, title, now, untilTurnId);
-      return { sessionId: newId, messageCount: count };
+      return { sessionId: newId, messageCount: count, sourceBranchId: null };
     }
 
     // Branch-aware path: materialise the linear history, then bulk-insert.
@@ -506,7 +506,7 @@ export class SessionStore implements SessionOwnershipFacade {
       }
     }
 
-    return { sessionId: newId, messageCount: msgs.length };
+    return { sessionId: newId, messageCount: msgs.length, sourceBranchId: src.activeBranchId };
   }
 
   // ── Delete ─────────────────────────────────────────────────────────────────
@@ -786,6 +786,9 @@ export class SessionStore implements SessionOwnershipFacade {
 
     const parentBranchId = preForkBranchId ?? rootBranchId;
 
+    const session = this.requireSession(sessionId);
+    const currentActive = session.activeBranchId as BranchId | null;
+
     const newBranchId = asBranchId(crypto.randomUUID());
     this.branchesRepo.insert({
       id:              newBranchId,
@@ -795,7 +798,12 @@ export class SessionStore implements SessionOwnershipFacade {
       createdAt:       now + 1,
     });
 
+    // active 先指向新分支(sessions.active_branch_id 是 branches(id) 的外键,
+    // 旧 active 被引用时不能直接删), 再清掉上一个空 active fork(F-052)。
     this.sessionsRepo.setActiveBranch(sessionId, newBranchId);
+    if (currentActive && currentActive !== parentBranchId) {
+      this.deleteBranchIfEmpty(currentActive);
+    }
     return { branchId: newBranchId };
   }
 
@@ -812,14 +820,14 @@ export class SessionStore implements SessionOwnershipFacade {
         throw new Error(`branch_not_found: ${branchId}`);
       }
     }
-    // 切走前清理当前 active 分支:若是空 fork 分支(非主 + 无 turn + 无子)则删除,
-    // 防止疯狂 fork 堆积空 branch(9.A)
+    // 先切到目标分支(sessions.active_branch_id 是 branches(id) 的外键,
+    // 旧 active 被引用时不能直接删), 再清理上一个空 fork(非主 + 无 turn + 无子)。
     const session = this.requireSession(sessionId);
     const currentActive = session.activeBranchId as BranchId | null;
+    this.sessionsRepo.setActiveBranch(sessionId, branchId);
     if (currentActive && currentActive !== branchId) {
       this.deleteBranchIfEmpty(currentActive);
     }
-    this.sessionsRepo.setActiveBranch(sessionId, branchId);
   }
 
   /**
