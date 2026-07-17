@@ -192,4 +192,21 @@ export const sessionsApi = {
       json: { branchId },
     });
   },
+
+  /** DELETE /api/sessions/:id/turns/:turnId — 删除该 turn 及其全部下游(级联)。 */
+  async deleteTurn(id: SessionId, turnId: TurnId): Promise<DeleteTurnCascadeResult> {
+    return sidecarClient.request<DeleteTurnCascadeResult>(
+      `/api/sessions/${id}/turns/${turnId}`,
+      { method: 'DELETE' },
+    );
+  },
 };
+
+/** DELETE /api/sessions/:id/turns/:turnId 的级联删除清单。 */
+export interface DeleteTurnCascadeResult {
+  /** 被删除的 turn(目标及全部下游)。 */
+  deletedTurnIds:   string[];
+  /** 被整支删除的分支(按深度从深到浅)。 */
+  deletedBranchIds: string[];
+}
+

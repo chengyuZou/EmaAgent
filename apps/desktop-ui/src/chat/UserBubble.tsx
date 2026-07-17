@@ -4,6 +4,7 @@ import { Markdown } from '../markdown/renderer.js';
 import type { ChatHistoryItem } from '../stores/conversation-store.js';
 import { AttachmentChip } from './AttachmentChip.js';
 import { ForkButton } from './ForkButton.js';
+import { DeleteTurnButton } from './DeleteTurnButton.js';
 // 9.D: <N/M> 分支兄弟导航先注释掉——siblings<2 不显示 + branchData 刷新时序问题,
 // 底层未修前用户切分支走 Branch 面板。组件代码保留,修好 9.D 再恢复。
 // import { BranchSiblingNav } from './BranchSiblingNav.js';
@@ -42,6 +43,7 @@ export function UserBubble({ message }: UserBubbleProps): JSX.Element {
         >
           <div className="flex items-center justify-end gap-1 text-[11px] overflow-hidden text-[var(--ema-text-tertiary)]">
             {message.turnId && <ForkButton turnId={message.turnId} />}
+            {message.turnId && <DeleteTurnButton turnId={message.turnId} />}
             {/* 9.D: <N/M> 导航注释掉,切分支走 Branch 面板。修好 9.D 再恢复。 */}
             {/* {message.turnId && <BranchSiblingNav turnId={message.turnId} />} */}
           </div>
