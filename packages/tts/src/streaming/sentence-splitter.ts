@@ -122,6 +122,16 @@ export class SentenceSplitter {
     return -1;
   }
 
+  /**
+   * 判断 `this.buffer[i]` 是否是有效的句子终止符。
+   * 判断规则为
+   * - "." 不终止的情况:
+   *     * 前是数字且后是数字  (1.5、3.14)
+   *     * 前是已知缩写         (Mr. Dr. e.g. i.e. etc.)
+   *     * 紧跟字母/数字        (file.txt - 防御性)
+   * - 终止符后必须是空白、缓冲末尾或闭引号。
+   *   否则我们在一个 token 内(URL、版本号等)。
+   */
   private isValidTerminator(i: number): boolean {
     const ch   = this.buffer[i];
     const prev = this.buffer[i - 1];

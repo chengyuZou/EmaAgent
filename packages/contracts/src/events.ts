@@ -293,6 +293,13 @@ export type EmaStreamEvent =
   | { type: 'kb_ingest_partial_failed'; kbId: string; taskId?: string; assetId: string; error: string; totalItems: number; completedItems: number; failedItems: number; sessionId?: SessionId }
   | { type: 'kb_ingest_failed';    kbId: string; taskId?: string; assetId: string; error: string; sessionId?: SessionId }
 
+  // Knowledge-base re-embed progress — system-scoped (background index rebuild).
+  // 与 ingest 同型; assetId 为 '' 表示终态来自全库扫描而非单个文档。
+  | { type: 'kb_reembed_progress';  kbId: string; taskId?: string; assetId: string; progress: number; totalItems?: number; completedItems?: number; failedItems?: number }
+  | { type: 'kb_reembed_completed'; kbId: string; taskId?: string; assetId: string; totalItems: number; completedItems: number; failedItems: number }
+  | { type: 'kb_reembed_partial_failed'; kbId: string; taskId?: string; assetId: string; error: string; totalItems: number; completedItems: number; failedItems: number }
+  | { type: 'kb_reembed_failed';    kbId: string; taskId?: string; assetId: string; error: string }
+
   // Agent
   | { type: 'agent_iteration';     sessionId: SessionId; n: number }
   | { type: 'agent_breaker_tripped'; sessionId: SessionId; reason: string }

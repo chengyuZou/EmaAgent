@@ -25,7 +25,7 @@ const DEFAULT_LIMITS: Readonly<TtsLimits> = {
 // ── TtsClient ───────────────────────────────────────────────────────────────
 
 /**
- * Text-to-Speech 路由器。模式与 LlmRouter 对齐:
+ * 文本转语音的哑分发器。模式与 LlmRouter 对齐:
  *
  *   - adapters: Map<providerId, TtsAdapter>     (id -> 实例)
  *   - configs:  Map<providerId, TtsProviderConfig> (id -> 配置)
@@ -153,7 +153,9 @@ export class TtsClient {
    *      决定重试、fallback 还是上报用户。
    *
    * TtsClient 只负责:
-   *   1. 清洗文本(剥离 markdown/code/ACT 标记)。
+   *   1. 行内清洗 - 调 filterSentenceForTts 剥行内 markdown / 网址 / 路径。
+   *      (块级代码块/数学块由 coordinator 的 TextFilterStream 在切句前剥;
+   *      ACT 标签由 emotion 包在 engine 内剥,都不归本层。)
    *   2. 按 request.providerId 查 adapter。
    *   3. 委托 adapter.stream()。
    */

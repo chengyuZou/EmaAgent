@@ -114,7 +114,7 @@ export class OpenAiTtsAdapter implements TtsAdapter {
    *
    * SiliconFlow / OpenAI 兼容流程:
    *   POST /v1/uploads/audio/voice
-   *   multipart/form-data: file, model, customName, text
+   *   请求体 multipart/form-data，字段:file、model、customName、text
    *   响应:{ uri: "speech:xxx:xxx" }
    */
   async uploadVoice(

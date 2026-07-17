@@ -32,6 +32,23 @@ export interface IngestJob {
   failedItems?: number;
 }
 
+// ── Reembed task (background index rebuild; one active per KB) ──────────────────
+
+export type ReembedTaskStatus = 'pending' | 'running' | 'failed' | 'partial_failed' | 'done';
+
+export interface ReembedTask {
+  taskId:   string;
+  kbId:     string;
+  /** '' = 全库扫描的终态事件。 */
+  assetId:  string;
+  progress: number;            // 0–1
+  status:   ReembedTaskStatus;
+  error?:   string;
+  totalItems?: number;
+  completedItems?: number;
+  failedItems?: number;
+}
+
 // ── Store interface ───────────────────────────────────────────────────────────
 
 export interface KbStoreState {
@@ -41,6 +58,8 @@ export interface KbStoreState {
 
   /** assetId → in-flight ingest job (background processing queue). */
   ingestJobs:   Record<string, IngestJob>;
+  /** kbId → 重建索引任务(一个 KB 同时只有一场, 新任务覆盖旧记录)。 */
+  reembedTasks: Record<string, ReembedTask>;
   /** Completed count in the current batch (done jobs are removed from the map,
    *  so this is the reliable "succeeded" tally for the nav indicator). */
   ingestDoneCount: number;
@@ -77,6 +96,12 @@ export interface KbStoreState {
   onIngestCompleted(kbId: string, assetId: string): void;
   onIngestPartialFailed(kbId: string, taskId: string | undefined, assetId: string, error: string, counts: { total: number; completed: number; failed: number }): void;
   onIngestFailed(kbId: string, assetId: string, error: string): void;
+
+  // Driven by the system SSE (kb_reembed_* events).
+  onReembedProgress(kbId: string, taskId: string | undefined, assetId: string, progress: number, counts: { total?: number; completed?: number; failed?: number }): void;
+  onReembedCompleted(kbId: string, taskId: string | undefined, assetId: string, counts: { total: number; completed: number; failed: number }): void;
+  onReembedPartialFailed(kbId: string, taskId: string | undefined, assetId: string, error: string, counts: { total: number; completed: number; failed: number }): void;
+  onReembedFailed(kbId: string, taskId: string | undefined, assetId: string, error: string): void;
 }
 
 // ── Store ─────────────────────────────────────────────────────────────────────
@@ -87,6 +112,7 @@ export const useKbStore = create<KbStoreState>((set, get) => ({
   error:         null,
 
   ingestJobs:    {},
+  reembedTasks:  {},
   ingestDoneCount: 0,
   ingesting:     false,
   ingestError:   null,
@@ -319,6 +345,92 @@ export const useKbStore = create<KbStoreState>((set, get) => ({
       const job = s.ingestJobs[assetId];
       if (!job) return {};
       return { ingestJobs: { ...s.ingestJobs, [assetId]: { ...job, kbId, status: 'failed', error } } };
+    });
+  },
+
+  onReembedProgress(kbId, taskId, assetId, progress, counts) {
+    set((s) => {
+      const job = s.reembedTasks[kbId];
+      return {
+        reembedTasks: {
+          ...s.reembedTasks,
+          [kbId]: {
+            taskId:   taskId ?? job?.taskId ?? "",
+            kbId,
+            assetId,
+            progress,
+            status:   "running",
+            ...(counts.total !== undefined ? { totalItems: counts.total } : {}),
+            ...(counts.completed !== undefined ? { completedItems: counts.completed } : {}),
+            ...(counts.failed !== undefined ? { failedItems: counts.failed } : {}),
+          },
+        },
+      };
+    });
+  },
+
+  onReembedCompleted(kbId, taskId, assetId, counts) {
+    set((s) => {
+      const job = s.reembedTasks[kbId];
+      if (!job) return {};
+      return {
+        reembedTasks: {
+          ...s.reembedTasks,
+          [kbId]: {
+            ...job,
+            taskId: taskId ?? job.taskId,
+            assetId,
+            status: "done",
+            progress: 1,
+            totalItems: counts.total,
+            completedItems: counts.completed,
+            failedItems: counts.failed,
+          },
+        },
+      };
+    });
+    void get().loadDocuments();
+  },
+
+  onReembedPartialFailed(kbId, taskId, assetId, error, counts) {
+    set((s) => {
+      const job = s.reembedTasks[kbId];
+      const base: ReembedTask = job ?? {
+        taskId: taskId ?? "",
+        kbId,
+        assetId,
+        progress: 1,
+        status: "partial_failed",
+      };
+      return {
+        reembedTasks: {
+          ...s.reembedTasks,
+          [kbId]: {
+            ...base,
+            status: "partial_failed",
+            progress: 1,
+            error,
+            totalItems: counts.total,
+            completedItems: counts.completed,
+            failedItems: counts.failed,
+          },
+        },
+      };
+    });
+    void get().loadDocuments();
+  },
+
+  onReembedFailed(kbId, taskId, assetId, error) {
+    set((s) => {
+      const job = s.reembedTasks[kbId];
+      const base: ReembedTask = job ?? {
+        taskId: taskId ?? "",
+        kbId,
+        assetId,
+        progress: 0,
+        status: "failed",
+      };
+      return { reembedTasks: { ...s.reembedTasks, [kbId]: { ...base, status: "failed", error } } };
     });
   },
 }));

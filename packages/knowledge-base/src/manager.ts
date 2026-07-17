@@ -4,7 +4,7 @@ import path            from 'node:path';
 import {
   Database,
   DocumentAssetRepo, DocumentChunkRepo, DocumentPreviewRepo,
-  KbActivationsRepo, KbIngestTasksRepo,
+  KbActivationsRepo, KbIngestTasksRepo, KbReembedTasksRepo,
   type KbRecord,
 } from '@ema-agent/storage';
 import type { KbRegistryRepo }   from '@ema-agent/storage';
@@ -13,6 +13,7 @@ import type { KbSearchResult }   from '@ema-agent/contracts';
 import { KnowledgeClient }       from './client.js';
 import { KnowledgeStore }        from './store/index.js';
 import { IngestQueue }           from './ingest/queue.js';
+import { ReembedQueue }          from './reembed/queue.js';
 import { DocumentEventEmitter }  from './events/emitter.js';
 import type { KbVisionAdapter }  from './adapters/vision.js';
 import type { IngestOptions, SearchOptions } from './types.js';
@@ -21,10 +22,12 @@ import type { IngestOptions, SearchOptions } from './types.js';
 
 /** One open KB: its database, client (with HNSW), and ingest queue. */
 export interface KbEntry {
-  readonly db:          Database;
-  readonly client:      KnowledgeClient;
-  readonly ingestTasks: KbIngestTasksRepo;
-  readonly ingestQueue: IngestQueue;
+  readonly db:           Database;
+  readonly client:       KnowledgeClient;
+  readonly ingestTasks:  KbIngestTasksRepo;
+  readonly ingestQueue:  IngestQueue;
+  readonly reembedTasks: KbReembedTasksRepo;
+  readonly reembedQueue: ReembedQueue;
 }
 
 // ── Deps ──────────────────────────────────────────────────────────────────────
@@ -186,14 +189,23 @@ export class KbManager {
       concurrency:    this.deps.concurrency ?? 3,
     });
 
-    const entry: KbEntry = { db, client, ingestTasks, ingestQueue };
+    const reembedTasks = new KbReembedTasksRepo(db.sqlite);
+    const reembedQueue = new ReembedQueue({
+      tasks:  reembedTasks,
+      sweep:  (input) => client.reembedSweep(input),
+      events: client.events,
+    });
+
+    const entry: KbEntry = { db, client, ingestTasks, ingestQueue, reembedTasks, reembedQueue };
     this.cache.set(rec.id, entry);
 
     // Wire this KB's events → aggregated bus + persist task progress in kb.db.
     // Inject kbId so consumers (bindings SSE bridge, frontend) can identify the source KB.
+    // reembed 事件的进度由 ReembedQueue 自己持久化, 不写 ingest 任务表。
     client.events.on((e) => {
       if (
-        e.kind !== 'complete'
+        e.operation !== 'reembed'
+        && e.kind !== 'complete'
         && e.kind !== 'partial_failed'
         && e.kind !== 'error'
         && e.taskId
@@ -212,6 +224,7 @@ export class KbManager {
     });
 
     ingestQueue.resume();
+    reembedQueue.resume();
     return entry;
   }
 }

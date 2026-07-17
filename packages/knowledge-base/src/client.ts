@@ -31,13 +31,6 @@ export interface KnowledgeClientDeps {
   autoQuestionAdapter?: KbAutoQuestionAdapter;
 }
 
-export interface ReembedOptions {
-  ebdProviderId: string;
-  ebdModel:      string;
-  signal?:       AbortSignal;
-  onProgress?:   (done: number, total: number) => void;
-}
-
 export class KnowledgeClient {
   readonly events = new DocumentEventEmitter();
 
@@ -116,86 +109,101 @@ export class KnowledgeClient {
   }
 
   /**
-   * Re-embed all stale assets in the background. Updates HNSW on completion.
-   * Call this after `invalidateEmbeddings()` to restore dense-retrieval quality.
+   * 由 ReembedQueue 驱动的重建扫描: 逐资产重嵌, 单资产失败只记账不中断整场。
+   * 进度/终态事件经 client.events 发出(operation: 'reembed'), 任务状态由队列收口;
+   * 调用方取消时立即停扫并直接返回, 不发终态事件。
    */
-  async reembed(opts: ReembedOptions): Promise<{ done: number; failed: number }> {
-    if (!this.deps.ebdRouter) return { done: 0, failed: 0 };
+  async reembedSweep(opts: {
+    /** 缺省 = 全部 stale 资产; 有值 = 单文档重建。 */
+    assetId?: string;
+    ebdProviderId: string;
+    ebdModel: string;
+    taskId: string;
+    attempt: number;
+    signal: AbortSignal;
+    onProgress?: (done: number, total: number, failed: number) => void;
+  }): Promise<{
+    total: number;
+    done: number;
+    failed: Array<{ assetId: string; error: string }>;
+  }> {
+    if (!this.deps.ebdRouter) return { total: 0, done: 0, failed: [] };
 
-    const stale  = this.deps.store.listStaleAssets();
-    let done = 0, failed = 0;
+    const targets = opts.assetId
+      ? [opts.assetId]
+      : this.deps.store.listStaleAssets().map(asset => asset.id);
+    const total = targets.length;
+    let done = 0;
+    const failed: Array<{ assetId: string; error: string }> = [];
 
-    for (const asset of stale) {
-      if (opts.signal?.aborted) break;
+    for (const assetId of targets) {
+      if (opts.signal.aborted) break;
       try {
-        const chunks = this.deps.store.getChunks(asset.id);
-        if (chunks.length === 0) { done++; continue; }
-
-        const BATCH = 32;
-        let space: EmbeddingSpace | undefined;
-        for (let i = 0; i < chunks.length; i += BATCH) {
-          const batch = chunks.slice(i, i + BATCH);
-          const res = await this.deps.ebdRouter.embed({
-            providerId: opts.ebdProviderId,
-            model:      opts.ebdModel,
-            texts:      batch.map(c => c.text),
-            signal:     opts.signal,
-          });
-          if (space && space.id !== res.space.id) throw new Error('Embedding space changed during re-embed');
-          space = res.space;
-          for (let j = 0; j < batch.length; j++) {
-            const vec = res.embeddings[j];
-            if (vec?.length) {
-              this.deps.store.storeEmbedding(batch[j]!.id, vec, res.space.id);
-            }
-          }
-        }
-
-        if (!space) throw new Error('Embedding provider returned no space');
-        this.deps.store.setEmbeddingSpace(asset.id, space);
-        await this.ensureIndex(space);
+        await this.reembedAssetOrThrow(assetId, opts);
         done++;
-        opts.onProgress?.(done, stale.length);
-      } catch {
-        failed++;
+      } catch (error) {
+        failed.push({ assetId, error: error instanceof Error ? error.message : String(error) });
       }
+      opts.onProgress?.(done, total, failed.length);
+      this.events.emit({
+        assetId,
+        taskId: opts.taskId,
+        attempt: opts.attempt,
+        kind: 'embed',
+        progress: total === 0 ? 1 : (done + failed.length) / total,
+        totalItems: total,
+        completedItems: done,
+        failedItems: failed.length,
+        operation: 'reembed',
+      });
     }
 
-    return { done, failed };
+    if (opts.signal.aborted) return { total, done, failed };
+
+    this.events.emit({
+      assetId: opts.assetId ?? '',
+      taskId: opts.taskId,
+      attempt: opts.attempt,
+      kind: failed.length > 0 ? 'partial_failed' : 'complete',
+      progress: 1,
+      ...(failed.length > 0 ? { error: `${failed.length}/${total} 个文档重建失败` } : {}),
+      totalItems: total,
+      completedItems: done,
+      failedItems: failed.length,
+      operation: 'reembed',
+    });
+    return { total, done, failed };
   }
 
-  /** Re-embed a single asset's chunks with the given model (for the per-document
-   *  "重嵌" button). Returns false if no embed router is configured or it fails. */
-  async reembedAsset(assetId: string, opts: ReembedOptions): Promise<boolean> {
-    if (!this.deps.ebdRouter) return false;
-    try {
-      const chunks = this.deps.store.getChunks(assetId);
-      let space: EmbeddingSpace | undefined;
-      const BATCH = 32;
-      for (let i = 0; i < chunks.length; i += BATCH) {
-        const batch = chunks.slice(i, i + BATCH);
-        const res = await this.deps.ebdRouter.embed({
-          providerId: opts.ebdProviderId,
-          model:      opts.ebdModel,
-          texts:      batch.map((c) => c.text),
-          signal:     opts.signal,
-        });
-        if (space && space.id !== res.space.id) throw new Error('Embedding space changed during re-embed');
-        space = res.space;
-        for (let j = 0; j < batch.length; j++) {
-          const vec = res.embeddings[j];
-          if (vec?.length) {
-            this.deps.store.storeEmbedding(batch[j]!.id, vec, res.space.id);
-          }
+  /** 单资产重嵌, 失败原样抛出(由 sweep 逐资产捕获记账)。 */
+  private async reembedAssetOrThrow(
+    assetId: string,
+    opts: { ebdProviderId: string; ebdModel: string; signal?: AbortSignal },
+  ): Promise<void> {
+    if (!this.deps.ebdRouter) throw new Error('未配置 Embedding Provider');
+    const chunks = this.deps.store.getChunks(assetId);
+    let space: EmbeddingSpace | undefined;
+    const BATCH = 32;
+    for (let i = 0; i < chunks.length; i += BATCH) {
+      const batch = chunks.slice(i, i + BATCH);
+      const res = await this.deps.ebdRouter.embed({
+        providerId: opts.ebdProviderId,
+        model:      opts.ebdModel,
+        texts:      batch.map(c => c.text),
+        signal:     opts.signal,
+      });
+      if (space && space.id !== res.space.id) throw new Error('Embedding space changed during re-embed');
+      space = res.space;
+      for (let j = 0; j < batch.length; j++) {
+        const vec = res.embeddings[j];
+        if (vec?.length) {
+          this.deps.store.storeEmbedding(batch[j]!.id, vec, res.space.id);
         }
       }
-      if (!space) return false;
-      this.deps.store.setEmbeddingSpace(assetId, space);
-      await this.ensureIndex(space);
-      return true;
-    } catch {
-      return false;
     }
+    if (!space) throw new Error('Embedding provider returned no space');
+    this.deps.store.setEmbeddingSpace(assetId, space);
+    await this.ensureIndex(space);
   }
 
   // ── Search ────────────────────────────────────────────────────────────────

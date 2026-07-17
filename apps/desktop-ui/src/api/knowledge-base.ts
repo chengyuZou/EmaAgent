@@ -219,10 +219,13 @@ export const kbApi = {
     await sidecarClient.request(`/api/kb/ingest-tasks/${taskId}/retry${buildQs({ kbId })}`, { method: 'POST' });
   },
 
-  /** POST /api/kb/documents/:id/reembed — re-embed one doc.
+  /** POST /api/kb/documents/:id/reembed — 单文档重建入队(202 + taskId, 后台执行)。
    *  kbId omitted → active KB. */
-  async reembedDocument(id: string, kbId?: string): Promise<void> {
-    await sidecarClient.request(`/api/kb/documents/${id}/reembed${buildQs({ kbId })}`, { method: 'POST' });
+  async reembedDocument(id: string, kbId?: string): Promise<{ taskId: string; status: string }> {
+    return sidecarClient.request<{ taskId: string; status: string }>(
+      `/api/kb/documents/${id}/reembed${buildQs({ kbId })}`,
+      { method: 'POST' },
+    );
   },
 
   /** DELETE /api/kb/documents/:id — kbId omitted → active KB. */
@@ -248,13 +251,23 @@ export const kbApi = {
     });
   },
 
-  /** POST /api/kb/reembed — re-embed all stale assets in the background.
+  /** POST /api/kb/reembed — 全库 stale 重建入队(202 + taskId, 后台执行)。
    *  kbId omitted → active KB. */
-  async reembed(opts: { ebdProviderId: string; ebdModel: string; kbId?: string }): Promise<{ done: number; failed: number }> {
-    return sidecarClient.request<{ done: number; failed: number }>('/api/kb/reembed', {
+  async reembed(opts: { ebdProviderId: string; ebdModel: string; kbId?: string }): Promise<{ taskId: string; status: string }> {
+    return sidecarClient.request<{ taskId: string; status: string }>('/api/kb/reembed', {
       method: 'POST',
       json: opts,
     });
+  },
+
+  /** POST /api/kb/reembed-tasks/:taskId/cancel — 取消进行中的重建任务。 */
+  async cancelReembed(taskId: string, kbId?: string): Promise<void> {
+    await sidecarClient.request(`/api/kb/reembed-tasks/${taskId}/cancel${buildQs({ kbId })}`, { method: 'POST' });
+  },
+
+  /** POST /api/kb/reembed-tasks/:taskId/retry — 失败/取消后重试。 */
+  async retryReembed(taskId: string, kbId?: string): Promise<void> {
+    await sidecarClient.request(`/api/kb/reembed-tasks/${taskId}/retry${buildQs({ kbId })}`, { method: 'POST' });
   },
 
   // ── KB library registry ─────────────────────────────────────────────────────

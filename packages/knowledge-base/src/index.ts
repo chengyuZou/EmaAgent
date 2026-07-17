@@ -32,6 +32,10 @@ export type { RankedHit }       from './retrieval/hybrid.js';
 export { IngestQueue }          from './ingest/queue.js';
 export type { IngestQueueDeps, IngestRuntimeOptions } from './ingest/queue.js';
 
+// ── Reembed queue (重建索引后台任务, 与 ingest 队列同型) ──────────────────────────
+export { ReembedQueue }         from './reembed/queue.js';
+export type { ReembedQueueDeps, ReembedSweepInput, ReembedSweepOutcome } from './reembed/queue.js';
+
 // ── Chunkers ───────────────────────────────────────────────────────────────────
 export { RecursiveChunker, recursiveChunk }                            from './chunking/recursive.js';
 export { SemanticChunker, SemanticFallbackWarning }                    from './chunking/semantic.js';
@@ -50,4 +54,3 @@ export type { VectorIndex, SearchHit } from './index/vector-index.js';
 // ── Adapters (types only) ─────────────────────────────────────────────────────
 export type { KbHydeAdapter }          from './adapters/hyde.js';
 export type { KbAutoQuestionAdapter }  from './adapters/auto-questions.js';
-export type { ReembedOptions }         from './client.js';

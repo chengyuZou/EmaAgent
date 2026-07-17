@@ -259,7 +259,7 @@ export function kbRoute(bindings: AppBindings): Hono {
     return c.json({ ok: true });
   });
 
-  // POST /api/kb/documents/:id/reembed — re-embed a single doc
+  // POST /api/kb/documents/:id/reembed — 单文档重建索引入队(202 + taskId, 后台执行)
   app.post('/documents/:id/reembed', async (c) => {
     const parsed = kbIdQuery.safeParse(c.req.query());
     const kbId = parsed.success ? parsed.data.kbId : undefined;
@@ -267,13 +267,19 @@ export function kbRoute(bindings: AppBindings): Hono {
     const entry = await resolveEntry(bindings, kbId, c);
     if (entry instanceof Response) return entry;
 
+    if (!entry.client.getAsset(c.req.param('id')))
+      return c.json({ error: 'not_found' }, 404);
+
     const bound = resolveBoundModels(bindings);
     if (!bound.ebdProviderId || !bound.ebdModel)
       return c.json({ error: 'no_embed_model' }, 400);
 
-    const ok = await entry.client.reembedAsset(c.req.param('id'),
-      { ebdProviderId: bound.ebdProviderId, ebdModel: bound.ebdModel });
-    return ok ? c.json({ ok: true }) : c.json({ error: 'reembed_failed' }, 500);
+    const task = entry.reembedQueue.enqueue({
+      assetId: c.req.param('id'),
+      ebdProviderId: bound.ebdProviderId,
+      ebdModel: bound.ebdModel,
+    });
+    return c.json({ taskId: task.id, status: task.status }, 202);
   });
 
   // DELETE /api/kb/documents/:id — remove asset + all its chunks
@@ -332,7 +338,8 @@ export function kbRoute(bindings: AppBindings): Hono {
     return c.json({ markedStale: count });
   });
 
-  // POST /api/kb/reembed — re-embed all stale assets in the background
+  // POST /api/kb/reembed — 全库 stale 重建入队(202 + taskId, 后台执行;
+  // 已有 pending/running 任务时幂等复用, 不重复烧 embedding 配额)
   app.post('/reembed', async (c) => {
     const parsed = reembedBody.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success)
@@ -348,12 +355,36 @@ export function kbRoute(bindings: AppBindings): Hono {
     if (!ebdProviderId || !ebdModel)
       return c.json({ error: 'no_embed_binding', message: '未配置 Embedding 模型，无法重建索引' }, 400);
 
-    try {
-      const result = await entry.client.reembed({ ebdProviderId, ebdModel });
-      return c.json(result);
-    } catch (err) {
-      return c.json({ error: 'reembed_failed', message: (err as Error).message }, 500);
-    }
+    const task = entry.reembedQueue.enqueue({ ebdProviderId, ebdModel });
+    return c.json({ taskId: task.id, status: task.status }, 202);
+  });
+
+  // GET /api/kb/reembed-tasks — 重建任务列表(含失败/取消历史, 与 ingest-tasks 同型)
+  app.get('/reembed-tasks', async (c) => {
+    const parsed = kbIdQuery.safeParse(c.req.query());
+    const entry = await resolveEntry(bindings, parsed.success ? parsed.data.kbId : undefined, c);
+    if (entry instanceof Response) return entry;
+    return c.json(entry.reembedTasks.listActive());
+  });
+
+  // POST /api/kb/reembed-tasks/:taskId/cancel — 用户主动取消(运行中/排队中有效)
+  app.post('/reembed-tasks/:taskId/cancel', async (c) => {
+    const parsed = kbIdQuery.safeParse(c.req.query());
+    const entry = await resolveEntry(bindings, parsed.success ? parsed.data.kbId : undefined, c);
+    if (entry instanceof Response) return entry;
+    const ok = entry.reembedQueue.cancel(c.req.param('taskId'));
+    if (!ok) return c.json({ error: 'not_active_or_not_found' }, 404);
+    return c.json({ ok: true });
+  });
+
+  // POST /api/kb/reembed-tasks/:taskId/retry — 失败/部分失败/取消后重试
+  app.post('/reembed-tasks/:taskId/retry', async (c) => {
+    const parsed = kbIdQuery.safeParse(c.req.query());
+    const entry = await resolveEntry(bindings, parsed.success ? parsed.data.kbId : undefined, c);
+    if (entry instanceof Response) return entry;
+    const ok = entry.reembedQueue.retry(c.req.param('taskId'));
+    if (!ok) return c.json({ error: 'not_failed_or_not_found' }, 404);
+    return c.json({ ok: true });
   });
 
   // ── KB registry routes ────────────────────────────────────────────────────────

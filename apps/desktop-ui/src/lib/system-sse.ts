@@ -173,6 +173,29 @@ function dispatchSystemEvent(event: EmaStreamEvent): void {
       useKbStore.getState().onIngestFailed(event.kbId, event.assetId, event.error);
       break;
 
+    // ── Knowledge-base re-embed progress (background index rebuild) ──────
+    case 'kb_reembed_progress':
+      useKbStore.getState().onReembedProgress(event.kbId, event.taskId, event.assetId, event.progress, {
+        total: event.totalItems, completed: event.completedItems, failed: event.failedItems,
+      });
+      break;
+
+    case 'kb_reembed_completed':
+      useKbStore.getState().onReembedCompleted(event.kbId, event.taskId, event.assetId, {
+        total: event.totalItems, completed: event.completedItems, failed: event.failedItems,
+      });
+      break;
+
+    case 'kb_reembed_partial_failed':
+      useKbStore.getState().onReembedPartialFailed(event.kbId, event.taskId, event.assetId, event.error, {
+        total: event.totalItems, completed: event.completedItems, failed: event.failedItems,
+      });
+      break;
+
+    case 'kb_reembed_failed':
+      useKbStore.getState().onReembedFailed(event.kbId, event.taskId, event.assetId, event.error);
+      break;
+
     // ── Memory pipeline telemetry (Reserved — not yet emitted, Round 4.5) ─
     case 'memory_consolidation_started':
     case 'memory_consolidation_completed':

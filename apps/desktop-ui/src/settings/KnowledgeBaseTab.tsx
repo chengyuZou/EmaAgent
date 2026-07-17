@@ -64,9 +64,9 @@ function DocumentRow({ doc, currentEmbedModel, onDelete, index }: {
   async function handleReembed(): Promise<void> {
     setReembedding(true);
     try {
+      // 202 入队后立即返回; 重建在后台执行, 完成后文档列表由 SSE 驱动刷新。
       await kbApi.reembedDocument(doc.id);
-      await useKbStore.getState().loadDocuments();
-      showToast('已重新嵌入', { variant: 'success' });
+      showToast('已加入后台重建', { variant: 'success' });
     } catch {
       showToast('重嵌失败（请先在上方选择嵌入模型）', { variant: 'danger' });
     } finally {
@@ -748,6 +748,28 @@ function KbModelSettings({ onEmbedModelChanged }: { onEmbedModelChanged?: (model
   const [rerankModels, setRerankModels] = useState<AvailableBindingModel[]>([]);
   const [config, setConfig] = useState<KbModelsConfig>({});
   const [rebuilding, setRebuilding] = useState(false);
+  // 后台重建任务句柄: kb_reembed_* SSE 终态到达后由下方 useEffect 收口。
+  const [rebuildTaskId, setRebuildTaskId] = useState<string | null>(null);
+  const rebuildTask = useKbStore((s) =>
+    rebuildTaskId ? Object.values(s.reembedTasks).find((t) => t.taskId === rebuildTaskId) : undefined,
+  );
+
+  useEffect(() => {
+    if (!rebuildTask) return;
+    if (rebuildTask.status === 'done') {
+      setRebuilding(false);
+      setRebuildTaskId(null);
+      showToast(`重建完成：${rebuildTask.completedItems ?? 0} 个文档`, { variant: 'success' });
+    } else if (rebuildTask.status === 'partial_failed') {
+      setRebuilding(false);
+      setRebuildTaskId(null);
+      showToast(`部分重建失败：${rebuildTask.completedItems ?? 0} 成功，${rebuildTask.failedItems ?? 0} 失败`, { variant: 'warning' });
+    } else if (rebuildTask.status === 'failed') {
+      setRebuilding(false);
+      setRebuildTaskId(null);
+      showToast(rebuildTask.error === '已取消' ? '已取消重建' : `重建失败：${rebuildTask.error ?? ''}`, { variant: 'danger' });
+    }
+  }, [rebuildTask]);
 
   useEffect(() => {
     void (async () => {
@@ -790,21 +812,18 @@ function KbModelSettings({ onEmbedModelChanged }: { onEmbedModelChanged?: (model
     ...models.map((m) => ({ value: `${m.providerConfigId}|${m.model}`, label: `${m.providerName} / ${m.model}` })),
   ];
 
-  // Re-embed every doc not on the current embed model (changed OR never-embedded),
-  // then refresh so the ⚠️ stale flags clear.
+  // 提交后台重建任务(202 + taskId); 进度与结果由 kb_reembed_* SSE 驱动,
+  // 见上方 useEffect。先 invalidate 标 stale 再入队, 与旧同步流程语义一致。
   async function rebuildIndex(): Promise<void> {
     if (!config.embed) { showToast('请先选择嵌入模型', { variant: 'warning' }); return; }
     setRebuilding(true);
     try {
       await kbApi.invalidate(config.embed.providerConfigId, config.embed.model);
-      const res = await kbApi.reembed({ ebdProviderId: config.embed.providerConfigId, ebdModel: config.embed.model });
-      showToast(`重建完成：${res.done} 成功${res.failed ? `，${res.failed} 失败` : ''}`,
-        { variant: res.failed ? 'warning' : 'success' });
-      void useKbStore.getState().loadDocuments();
+      const task = await kbApi.reembed({ ebdProviderId: config.embed.providerConfigId, ebdModel: config.embed.model });
+      setRebuildTaskId(task.taskId);
     } catch {
-      showToast('重建失败', { variant: 'danger' });
-    } finally {
       setRebuilding(false);
+      showToast('重建任务提交失败', { variant: 'danger' });
     }
   }
 
@@ -842,15 +861,34 @@ function KbModelSettings({ onEmbedModelChanged }: { onEmbedModelChanged?: (model
         <p className="text-[11px] text-[var(--ema-text-tertiary)]">
           把所有「未嵌入 / 过期」的文档用当前嵌入模型重新建立向量索引。
         </p>
-        <Button
-          variant="secondary"
-          size="sm"
-          className="shrink-0"
-          disabled={rebuilding || !config.embed}
-          onClick={() => void rebuildIndex()}
-        >
-          {rebuilding ? <><Spinner size="sm" className="mr-1.5" />重建中…</> : '重建过期索引'}
-        </Button>
+        {rebuilding ? (
+          <div className="flex items-center gap-2 shrink-0">
+            <Button variant="secondary" size="sm" disabled>
+              <Spinner size="sm" className="mr-1.5" />重建中…
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => {
+                if (!rebuildTaskId) return;
+                void kbApi.cancelReembed(rebuildTaskId)
+                  .catch(() => showToast('取消失败', { variant: 'danger' }));
+              }}
+            >
+              取消
+            </Button>
+          </div>
+        ) : (
+          <Button
+            variant="secondary"
+            size="sm"
+            className="shrink-0"
+            disabled={!config.embed}
+            onClick={() => void rebuildIndex()}
+          >
+            重建过期索引
+          </Button>
+        )}
       </div>
     </section>
   );

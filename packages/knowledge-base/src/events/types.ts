@@ -23,4 +23,9 @@ export interface DocumentProgressEvent {
   totalItems?:     number;
   completedItems?: number;
   failedItems?:    number;
+  /**
+   * 事件来源的业务操作: 缺省为文档入库(ingest);
+   * 'reembed' 表示重建索引扫描, Core 据此映射到独立的 kb_reembed_* SSE。
+   */
+  operation?: 'reembed';
 }

@@ -168,6 +168,13 @@ export type {
   KbIngestFailureShard,
   KbIngestFailureStage,
 } from './repos/kb-ingest-tasks.js';
+export { KbReembedTasksRepo }  from './repos/kb-reembed-tasks.js';
+export type {
+  KbReembedTask,
+  KbReembedStatus,
+  KbReembedFailureShard,
+  KbReembedFailureStage,
+} from './repos/kb-reembed-tasks.js';
 export { KbRegistryRepo }      from './repos/kb-registry.js';
 export type { KbRecord }       from './repos/kb-registry.js';
 export type { DocumentAssetRow, DocumentAssetInsert, AssetPage } from './repos/document-asset.js';

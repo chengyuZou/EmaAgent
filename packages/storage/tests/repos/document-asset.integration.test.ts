@@ -70,7 +70,7 @@ describe('B-060 DocumentAsset 复合游标', () => {
 
     expect(indexSql.replaceAll(/\s+/g, ' '))
       .toContain('document_assets(created_at DESC, id DESC)');
-    expect(database.currentVersion()).toBe(4);
+    expect(database.currentVersion()).toBe(5);
   });
 });
 

@@ -5,20 +5,20 @@ import { errorEvent, classifyFetchError, classifyHttpStatus } from '../errors.js
 
 // ── GPT-SoVITS 本地服务器(api_v2.py)─────────────────────────────────────
 //
-// POST {baseUrl}/tts,JSON body:
+// POST {baseUrl}/tts，请求体是 JSON，字段如下:
 //   {
-//     text:                 "...",
+//     text:                 "...",          // 要合成的文本
 //     text_lang:            "zh",          // 文本语言
-//     ref_audio_path:       "/path/to/ref.wav",
-//     prompt_text:          "...",
-//     prompt_lang:          "zh",
-//     media_type:           "wav" | "raw" | "ogg" | "aac",
-//     streaming_mode:       true,           // chunked 响应
+//     ref_audio_path:       "/path/to/ref.wav",   // 参考音频路径(克隆用)
+//     prompt_text:          "...",          // 参考音频对应的提示文本
+//     prompt_lang:          "zh",          // 提示文本语言
+//     media_type:           "wav" | "raw" | "ogg" | "aac",   // 输出格式
+//     streaming_mode:       true,           // 开启 chunked 流式响应
 //     ...其他 GPT-SoVITS 旋钮
 //   }
 //
-// 响应:chunked 音频体,content-type 匹配 media_type。
-// 出错时,body 是 JSON:{ "message": "..." }。
+// 响应:chunked 音频体，content-type 匹配 media_type。
+// 出错时，响应体是 JSON:{ "message": "..." }。
 //
 // V1 只支持 clone:voice 带 refAudioPath、promptText、promptLang。
 // `model` 字段仅作信息(GPT-SoVITS 不按请求切权重;用户重启服务器换权重)。

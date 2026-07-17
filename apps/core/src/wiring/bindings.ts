@@ -672,6 +672,35 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
   // kbId is now injected by KbManager.openEntry; forward it on every event type.
   kb.events.on((e) => {
     const kbId = e.kbId ?? '';
+
+    // 重建索引事件走独立的 kb_reembed_* SSE, 不与入库进度混淆。
+    if (e.operation === 'reembed') {
+      if (e.kind === 'complete') {
+        systemBus.emit({
+          type: 'kb_reembed_completed', kbId, taskId: e.taskId, assetId: e.assetId,
+          totalItems: e.totalItems ?? 0, completedItems: e.completedItems ?? 0, failedItems: e.failedItems ?? 0,
+        });
+        return;
+      }
+      if (e.kind === 'partial_failed') {
+        systemBus.emit({
+          type: 'kb_reembed_partial_failed', kbId, taskId: e.taskId, assetId: e.assetId,
+          error: e.error ?? '部分文档重建失败',
+          totalItems: e.totalItems ?? 0, completedItems: e.completedItems ?? 0, failedItems: e.failedItems ?? 0,
+        });
+        return;
+      }
+      if (e.kind === 'error') {
+        systemBus.emit({ type: 'kb_reembed_failed', kbId, taskId: e.taskId, assetId: e.assetId, error: e.error ?? 'unknown' });
+        return;
+      }
+      systemBus.emit({
+        type: 'kb_reembed_progress', kbId, taskId: e.taskId, assetId: e.assetId,
+        progress: e.progress ?? 0,
+        totalItems: e.totalItems, completedItems: e.completedItems, failedItems: e.failedItems,
+      });
+      return;
+    }
     if (e.kind === 'complete') {
       systemBus.emit({ type: 'kb_ingest_completed', kbId, taskId: e.taskId, assetId: e.assetId });
       return;
