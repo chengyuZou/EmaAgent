@@ -167,6 +167,12 @@ export interface AppBindings {
    * sandbox keeps permitting writes) in the OLD workspace.
    */
   invalidateSessionRuntime: (sessionId: SessionId) => void;
+  /**
+   * 会话删除专用(B-026): 清掉该会话的 runner 缓存和 context stores。
+   * 与 invalidateSessionRuntime(workspace 变更, 文件状态历史仍有用)不同,
+   * 会话已删除时这些历史永久驻留即内存泄漏。
+   */
+  removeSessionRuntime: (sessionId: SessionId) => void;
   /** Per-session file-state + tool-result store — memoised on first call. */
   getContextStores: (sessionId: SessionId) => {
     fileStateStore:  AgentFileStateStore;
@@ -445,6 +451,14 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
     // contextStores intentionally survive — file-state history is not
     // workspace-scoped. Only the runner bakes workspaceRoot in.
     runnerCache.delete(sessionId);
+  };
+
+  const removeSessionRuntime = (sessionId: SessionId): void => {
+    // 会话删除专用: runner + context stores 全清(B-026)。
+    // 与 invalidateSessionRuntime 不同——那个是 workspace 变更,
+    // 文件状态历史还有用; 会话已删除时这些历史就是垃圾。
+    runnerCache.delete(sessionId);
+    contextStoresCache.delete(sessionId);
   };
 
   // ── Agent context stores ────────────────────────────────────────────────────
@@ -779,7 +793,7 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
     card, emotion,
     tts, audioArchive, stt, vision, providerRuntime,
     permission, permissionPrompts, askUserRegistry, tools, buildAskForTurn, getCommandRunner,
-    invalidateSessionRuntime,
+    invalidateSessionRuntime, removeSessionRuntime,
     getContextStores, toolResultCleaner, taskStore, toolExecutionJournal, agentTaskMessages,
     memory,
     systemBus,
