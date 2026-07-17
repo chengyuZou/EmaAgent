@@ -1,3 +1,4 @@
+// 执行 Memory 上下文压缩，并保证返回消息满足当前模型的硬 Token 预算。
 import { randomUUID } from 'node:crypto';
 import {
   asCompactionId,
@@ -5,6 +6,7 @@ import {
   type SessionId,
   type TurnId,
   type TurnMode,
+  type MessageBlocks,
 } from '@ema-agent/contracts';
 import type { LlmMessage } from '@ema-agent/llm';
 import { estimateMessagesTokens } from '@ema-agent/token';
@@ -15,6 +17,8 @@ import { microCompact }          from './micro.js';
 import { runMacroCompaction }    from './macro.js';
 import { buildPostCompactRestore } from './restore.js';
 import { findSafeCutPoint, macroFailureReason } from './safe-cut.js';
+import { sanitizeCompactionMessages } from './sanitize.js';
+import { fitCompactionContext } from './budget.js';
 
 export interface CompactionArgs {
   sessionId:           SessionId;
@@ -36,22 +40,23 @@ export async function runCompaction(
   args:                CompactionArgs,
 ): Promise<CompactResult> {
   const now          = Date.now();
-  const beforeTokens = estimateMessagesTokens(args.messages);
+  const safeMessages = sanitizeCompactionMessages(args.messages);
+  const beforeTokens = estimateMessagesTokens(safeMessages);
 
   if (!settings.enabled) {
-    return { status: 'not_needed', reason: 'disabled', messages: args.messages, macroRan: false, microCleared: 0, beforeTokens, afterTokens: beforeTokens, savedTokens: 0 };
+    return { status: 'not_needed', reason: 'disabled', messages: safeMessages, macroRan: false, microCleared: 0, beforeTokens, afterTokens: beforeTokens, savedTokens: 0 };
   }
 
   const overrides = getSessionOverrides(args.sessionId);
   if (!overrides.compaction) {
-    return { status: 'not_needed', reason: 'session_disabled', messages: args.messages, macroRan: false, microCleared: 0, beforeTokens, afterTokens: beforeTokens, savedTokens: 0 };
+    return { status: 'not_needed', reason: 'session_disabled', messages: safeMessages, macroRan: false, microCleared: 0, beforeTokens, afterTokens: beforeTokens, savedTokens: 0 };
   }
 
   const buffer    = settings.compaction.bufferTokens;
   const threshold = args.modelContextWindow - buffer;
 
   // Stage A: micro
-  const micro    = microCompact(args.messages, { keepRecent: 6 });
+  const micro    = microCompact(safeMessages, { keepRecent: 6 });
   let working    = micro.messages;
   let estimated  = estimateMessagesTokens(working);
 
@@ -121,9 +126,6 @@ export async function runCompaction(
     llm:                deps.llm,
     providerId:         args.providerId ?? deps.llm.firstProviderId() ?? '',
     model:              args.model      ?? deps.llm.defaultModelFor(args.providerId ?? deps.llm.firstProviderId() ?? '') ?? '',
-    session:            deps.session,
-    sessionId:          args.sessionId,
-    turnId:             args.turnId,
     mode:               args.mode,
     toCompact:          head,
     modelContextWindow: args.modelContextWindow,
@@ -152,14 +154,46 @@ export async function runCompaction(
     };
   }
 
-  const summaryMsg: LlmMessage = {
-    role:    'user',
-    content: `<context-summary mode="${args.mode}">\n${result.summary}\n</context-summary>`,
-  };
   const restore = buildPostCompactRestore(deps, { sessionId: args.sessionId, mode: args.mode, recentFiles: args.recentFiles });
+  const fitted = fitCompactionContext({
+    summary: result.summary,
+    restore,
+    tail,
+    mode: args.mode,
+    tokenLimit: threshold,
+  });
+  if (!fitted) {
+    const error = `Compacted context still exceeds hard token limit ${threshold}`;
+    args.emit?.({
+      type: 'memory_compaction_failed',
+      compactionId,
+      sessionId: args.sessionId, turnId: args.turnId, mode: args.mode,
+      beforeTokens, afterTokens: estimated,
+      error,
+      durationMs: Date.now() - now,
+    });
+    return {
+      status: 'failed',
+      reason: 'macro_failed',
+      detail: error,
+      messages: working,
+      macroRan: false,
+      microCleared: micro.cleared,
+      beforeTokens,
+      afterTokens: estimated,
+      savedTokens: beforeTokens - estimated,
+    };
+  }
 
-  working = [summaryMsg, ...restore, ...tail];
-  const afterTokens = estimateMessagesTokens(working);
+  deps.session.appendMessage({
+    turnId: args.turnId,
+    sessionId: args.sessionId,
+    role: 'user',
+    kind: 'summary',
+    blocks: fitted.summary satisfies MessageBlocks,
+  });
+  working = fitted.messages;
+  const afterTokens = fitted.afterTokens;
 
   args.emit?.({
     type: 'memory_compaction_completed',

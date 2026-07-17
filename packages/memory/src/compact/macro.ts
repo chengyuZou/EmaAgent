@@ -1,7 +1,6 @@
-import crypto from 'node:crypto';
+// 调用当前模型生成旧对话摘要，不负责持久化或最终上下文预算判定。
 import type { LlmRouter, LlmMessage, AssistantBlock, UserBlock } from '@ema-agent/llm';
-import type { TurnMode, SessionId, TurnId, MessageBlocks } from '@ema-agent/contracts';
-import type { SessionStore } from '@ema-agent/session';
+import type { TurnMode } from '@ema-agent/contracts';
 import { buildCompactionPrompt } from './compaction-prompts.js';
 import { estimateMessagesTokens } from '@ema-agent/token';
 
@@ -41,7 +40,7 @@ function formatBlock(blk: UserBlock | AssistantBlock): string {
   const tag = (blk as { type?: string }).type;
   switch (tag) {
     case 'text':         return (blk as { text: string }).text;
-    case 'thinking':     return `<thinking>${(blk as { thinking: string }).thinking}</thinking>`;
+    case 'thinking':     return '';
     case 'tool_use': {
       const t = blk as { name: string; args: unknown };
       return `<tool_use name="${t.name}">${JSON.stringify(t.args)}</tool_use>`;
@@ -97,9 +96,6 @@ export interface MacroCompactArgs {
   providerId:    string;
   /** Current turn's model. */
   model:         string;
-  session:       SessionStore;
-  sessionId:     SessionId;
-  turnId:        TurnId;
   mode:          TurnMode;
   /** Messages to summarise (older portion). */
   toCompact:     LlmMessage[];
@@ -115,8 +111,6 @@ export interface MacroCompactArgs {
 export interface MacroCompactResult {
   /** Compacted summary text. Empty string when compaction was a no-op or all retries exhausted. */
   summary:           string;
-  /** New `kind: 'summary'` message persisted to DB, or null when failed. */
-  summaryMessageId:  string | null;
   /** Whether the final attempt succeeded — false means the caller should bail on compaction. */
   succeeded:         boolean;
   /** Diagnostic — number of attempts made. */
@@ -124,17 +118,14 @@ export interface MacroCompactResult {
 }
 
 /**
- * Run macrocompaction: format slice, call LLM, retry-on-PTL, persist summary.
- *
- * Persistence: writes a single message with `kind: 'summary'` whose blocks
- * contain the summary text. This row doubles as the compaction boundary —
- * SessionStore.loadHistory() begins from this row on the next turn.
+ * Run macrocompaction: format slice, call LLM, and retry after context overflow.
+ * The caller validates the final context budget before persisting the summary.
  */
 export async function runMacroCompaction(
   args: MacroCompactArgs,
 ): Promise<MacroCompactResult> {
   if (args.toCompact.length === 0) {
-    return { summary: '', summaryMessageId: null, succeeded: false, attempts: 0 };
+    return { summary: '', succeeded: false, attempts: 0 };
   }
   // Compaction always uses the current turn's model — same (providerId, model)
   // the user picked in the frontend picker. No separate binding needed.
@@ -164,7 +155,7 @@ export async function runMacroCompaction(
     const threshold = Math.floor(args.modelContextWindow * COMPACTION_TRIGGER_RATIO);
     if (estimated > threshold) {
       if (toCompact.length <= MIN_PRESERVE_MESSAGES) {
-        return { summary: '', summaryMessageId: null, succeeded: false, attempts: attempt };
+        return { summary: '', succeeded: false, attempts: attempt };
       }
       if (attempt === 1) {
         const keepFraction = threshold / estimated;
@@ -177,11 +168,16 @@ export async function runMacroCompaction(
     }
 
     try {
+      const remainingOutputTokens = Math.max(1, args.modelContextWindow - estimated);
+      const desiredOutputTokens = Math.max(
+        MIN_COMPACTION_OUTPUT,
+        Math.floor(args.modelContextWindow * COMPACTION_OUTPUT_RATIO),
+      );
       const completion = await args.llm.complete({
         providerId,
         model,
         messages:    [{ role: 'user', content: prompt }],
-        maxTokens:   Math.max(MIN_COMPACTION_OUTPUT, Math.floor(args.modelContextWindow * COMPACTION_OUTPUT_RATIO)),
+        maxTokens:   Math.min(desiredOutputTokens, remainingOutputTokens),
         temperature: 0.2,
         signal:      args.signal,
       });
@@ -189,13 +185,12 @@ export async function runMacroCompaction(
       const summary = collectText(completion.blocks).trim();
       if (!summary) {
         return {
-          summary: '', summaryMessageId: null,
+          summary: '',
           succeeded: false, attempts: attempt,
         };
       }
 
-      const msgId = persistSummary(args.session, args.sessionId, args.turnId, summary);
-      return { summary, summaryMessageId: msgId, succeeded: true, attempts: attempt };
+      return { summary, succeeded: true, attempts: attempt };
 
     } catch (err) {
       const reason = err instanceof Error ? err.message.toLowerCase() : String(err).toLowerCase();
@@ -203,13 +198,13 @@ export async function runMacroCompaction(
       const isOverflow = reason.includes('context') && reason.includes('length');
       const retryable = isPTL || isOverflow;
       if (!retryable || toCompact.length <= MIN_PRESERVE_MESSAGES) {
-        return { summary: '', summaryMessageId: null, succeeded: false, attempts: attempt };
+        return { summary: '', succeeded: false, attempts: attempt };
       }
       toCompact = truncateOldest(toCompact, TRUNCATE_FRACTION);
     }
   }
 
-  return { summary: '', summaryMessageId: null, succeeded: false, attempts: MAX_RETRIES };
+  return { summary: '', succeeded: false, attempts: MAX_RETRIES };
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -224,22 +219,4 @@ function collectText(blocks: AssistantBlock[]): string {
     .filter((b): b is AssistantBlock & { type: 'text' } => b.type === 'text')
     .map(b => b.text)
     .join('');
-}
-
-function persistSummary(
-  session: SessionStore,
-  sessionId: SessionId,
-  turnId: TurnId,
-  summary: string,
-): string {
-  // appendMessage returns its own id (uuid); we relay it for telemetry
-  const msg = session.appendMessage({
-    turnId,
-    sessionId,
-    role:  'user',
-    kind:  'summary',
-    blocks: summary satisfies MessageBlocks,
-  });
-  
-  return msg.id;
 }
