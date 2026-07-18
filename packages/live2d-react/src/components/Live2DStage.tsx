@@ -1,3 +1,4 @@
+// 装配 Live2D 模型加载、渲染、动作与表情运行流水线。
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import * as PIXI from 'pixi.js';
 import { Live2DModel as PixiLive2DModel } from 'pixi-live2d-display/cubism4';
@@ -11,6 +12,7 @@ import { createIdleBeatPlugin } from '../composables/idle-beat.js';
 import { createAudioLipSyncPlugin } from '../composables/audio-lipsync.js';
 import { startRandomIdleScheduler } from '../composables/random-idle.js';
 import { createExpressionController, type CoreModelLike } from '../composables/expression-controller.js';
+import { Live2DLoadCoordinator } from '../composables/load-coordinator.js';
 import {
   createMotionManagerUpdate,
   createAutoEyeBlinkPlugin,
@@ -72,7 +74,11 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
     const appRef       = useRef<PIXI.Application | null>(null);
     const modelRef     = useRef<InstanceType<typeof PixiLive2DModel> | null>(null);
     const callbacksRef = useRef({ onReady, onError, runtimeConfig });
+    const loadCoordinatorRef = useRef<Live2DLoadCoordinator | null>(null);
     const [error, setError] = useState<Live2DError | null>(null);
+
+    const loadCoordinator = loadCoordinatorRef.current ?? new Live2DLoadCoordinator();
+    loadCoordinatorRef.current = loadCoordinator;
 
     useEffect(() => {
       callbacksRef.current = { onReady, onError, runtimeConfig };
@@ -99,8 +105,9 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
         return;
       }
 
-      let cancelled = false;
+      const load = loadCoordinator.begin();
       let app: PIXI.Application | null = null;
+      let ownedModel: InstanceType<typeof PixiLive2DModel> | null = null;
       try {
         app = new PIXI.Application({
           resizeTo:        host,
@@ -108,6 +115,7 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
           antialias:       true,
         });
       } catch (cause) {
+        load.cancel();
         const err: Live2DError = {
           kind:    'pixi_init_failed',
           message: (cause as Error).message ?? String(cause),
@@ -130,11 +138,12 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
             autoInteract:  false,
             autoUpdate:    true,
           });
-          if (cancelled || !app) {
+          if (!load.isCurrent() || !app) {
             model.destroy({ children: true });
             return;
           }
 
+          ownedModel = model;
           app.stage.addChild(model);
           modelRef.current = model;
 
@@ -173,7 +182,7 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
 
           // Pre stage: mouse-track (runs before idle motions, sets eye params)
           const mousePlugin = createMouseEyeTrackPlugin(
-            () => appRef.current?.view as HTMLCanvasElement ?? null,
+            () => app?.view as HTMLCanvasElement ?? null,
           );
           pipeline.register(mousePlugin, 'pre');
           cleanupTasks.push(() => mousePlugin.dispose());
@@ -218,12 +227,13 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
           await expressionController.initialise(
             expressionRefs,
             async (path) => {
-              const res = await fetch(path);
+              const res = await fetch(path, { signal: load.signal });
               if (!res.ok) throw new Error(`fetch ${path}: ${res.status}`);
               return res.text();
             },
             baseUrl,
           );
+          if (!load.isCurrent()) return;
 
           // ── Publish discovered state to store ─────────────────────────
           const store = useLive2DStore;
@@ -233,6 +243,7 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
 
           // Subscribe to motion changes (expression now flows through plugin)
           const unsubMotion = store.subscribe((s, prev) => {
+            if (!load.isCurrent()) return;
             if (s.currentMotion?.requestId !== prev.currentMotion?.requestId && s.currentMotion) {
               void model.motion(s.currentMotion.group, s.currentMotion.index);
             }
@@ -247,6 +258,7 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
           // per-parameter runtime values; activeExpressions[] is the
           // high-level intent that the stage reconciles.
           const unsubExpr = store.subscribe((s, prev) => {
+            if (!load.isCurrent()) return;
             const prevByName = new Map(prev.activeExpressions.map((intent) => [intent.name, intent]));
             const nextByName = new Map(s.activeExpressions.map((intent) => [intent.name, intent]));
 
@@ -272,14 +284,22 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
 
           // Best-effort idle motion
           for (const candidate of [runtime.randomIdle.group, 'Idle', 'idle', '']) {
-            try { await model.motion(candidate); break; }
-            catch { /* try next */ }
+            if (!load.isCurrent()) return;
+            try {
+              await model.motion(candidate);
+              if (!load.isCurrent()) return;
+              break;
+            } catch {
+              if (!load.isCurrent()) return;
+            }
           }
 
           // Start random idle motion scheduler (configurable, skips when speaking)
           const idleMotionCount = (extractMotionGroups(model)[runtime.randomIdle.group] ?? 0) as number;
           const stopIdleScheduler = startRandomIdleScheduler({
-            playMotion: (group, index) => { void model.motion(group, index); },
+            playMotion: (group, index) => {
+              if (load.isCurrent()) void model.motion(group, index);
+            },
             motionCount: idleMotionCount,
             group: runtime.randomIdle.group,
             minDelayMs: runtime.randomIdle.minDelayMs,
@@ -291,9 +311,10 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
           });
           cleanupTasks.push(stopIdleScheduler);
 
+          if (!load.isCurrent()) return;
           callbacksRef.current.onReady?.();
         } catch (cause) {
-          if (cancelled) return;
+          if (!load.isCurrent()) return;
           const err: Live2DError = {
             kind:    'model_load_failed',
             message: (cause as Error).message ?? String(cause),
@@ -305,21 +326,26 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
       })();
 
       return () => {
-        cancelled = true;
+        const ownsPublishedState = load.isCurrent();
+        load.cancel();
         for (const off of cleanupTasks) {
           try { off(); } catch { /* ignore */ }
         }
-        if (modelRef.current) {
-          modelRef.current.destroy({ children: true });
-          modelRef.current = null;
+        if (ownedModel) {
+          ownedModel.destroy({ children: true });
+          if (modelRef.current === ownedModel) modelRef.current = null;
+          ownedModel = null;
         }
-        if (appRef.current) {
-          appRef.current.destroy(true, { children: true, texture: true, baseTexture: true });
-          appRef.current = null;
+        if (app) {
+          app.destroy(true, { children: true, texture: true, baseTexture: true });
+          if (appRef.current === app) appRef.current = null;
+          app = null;
         }
-        useLive2DStore.getState().reset();
+        if (ownsPublishedState) {
+          useLive2DStore.getState().reset();
+        }
       };
-    }, [modelPath, framing]);
+    }, [modelPath, framing, loadCoordinator]);
 
     return (
       <div
