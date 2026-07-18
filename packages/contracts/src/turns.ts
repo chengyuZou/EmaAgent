@@ -9,7 +9,7 @@ import type { KbAssetScope } from './kb.js';
 // 与 SessionWire.id: string 同惯例。
 
 /**
- * userInput 和 contentParts 至少要有一个（Zod schema 在路由层做 refine 校验）。
+ * userInput、contentParts 和 attachments 至少要有一个有效输入。
  * sessionId 省略时后端自动创建新 session 并返回生成的 sessionId。
  * providerId + model 省略时使用 model_bindings 里对应 mode 的绑定。
  * providerId 和 model 应成对出现——前端选择器选的是 (provider, model) 组合，
@@ -36,6 +36,19 @@ export interface TurnRequest {
    * → agent mode searches all global KBs; chat/narrative RAG will reuse this.
    */
   kbAssetScopes?:   KbAssetScope[];
+}
+
+export type TurnRequestInput = Pick<
+  TurnRequest,
+  'userInput' | 'contentParts' | 'attachments'
+>;
+
+export function hasTurnRequestInput(input: TurnRequestInput): boolean {
+  return Boolean(
+    input.userInput?.trim()
+      || input.contentParts?.length
+      || input.attachments?.length,
+  );
 }
 
 // ── POST /api/turns 的响应体 ─────────────────────────────────────────────────

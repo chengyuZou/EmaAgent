@@ -27,6 +27,7 @@ function resetStore(): void {
     viewedSessionId:   null,
     ttsOwnerSessionId: null,
     messages:          new Map(),
+    loadedMessageSessions: new Set(),
     streamingMap:      new Map(),
     stopReasonMap:     new Map(),
     draftMap:          new Map(),

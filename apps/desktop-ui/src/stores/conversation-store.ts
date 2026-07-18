@@ -13,10 +13,14 @@
  */
 import { create }          from 'zustand';
 import { createSendQueue, type SendQueue } from '../lib/send-queue.js';
+import { createTurnAcceptance, type TurnAcceptance } from '../lib/turn-acceptance.js';
 import { sseConsumer }     from '../lib/sse-consumer.js';
 import { sessionsApi, type BranchTreeWire } from '../api/sessions.js';
-import { turnsApi, type AttachmentInputWire } from '../api/turns.js';
-import { showToast }       from '../lib/toast.js';
+import {
+  turnsApi,
+  type AttachmentInputWire,
+  type TurnCreatedResponse,
+} from '../api/turns.js';
 import type { KbAssetScope, ToolPresentation } from '@ema-agent/contracts';
 import { sidecarClient }   from '../api/sidecar-client.js';
 import {
@@ -37,6 +41,8 @@ import {
   assembleHistory,
   appendTextSlice,
   appendThinkingSlice,
+  createOptimisticUserMessage,
+  reconcileLoadedHistory,
   type AnyAssistantSlice,
   type ChatHistoryItem,
   type StreamingAssistantMessage,
@@ -81,18 +87,22 @@ interface SendInput {
   kbAssetScopes?:  KbAssetScope[];
 }
 
+interface QueuedSendInput extends SendInput {
+  acceptance: TurnAcceptance<TurnCreatedResponse>;
+}
+
 // ── Module-level per-session resources ────────────────────────────────────────
 
 const sseHandles         = new Map<string, { stop(): void }>();
-const sendQueues         = new Map<string, SendQueue<SendInput>>();
+const sendQueues         = new Map<string, SendQueue<QueuedSendInput>>();
 const pendingTitleSessions = new Set<string>();
 
-function getOrCreateQueue(sessionId: SessionId): SendQueue<SendInput> {
+function getOrCreateQueue(sessionId: SessionId): SendQueue<QueuedSendInput> {
   const key   = sessionId as string;
   const found = sendQueues.get(key);
   if (found) return found;
 
-  const queue = createSendQueue<SendInput>({
+  const queue = createSendQueue<QueuedSendInput>({
     async handler(input) {
       const { turnId, sessionId: actualSessionId } = await turnsApi.create({
         sessionId:    input.sessionId as string,
@@ -107,6 +117,7 @@ function getOrCreateQueue(sessionId: SessionId): SendQueue<SendInput> {
         kbIds:          input.kbIds,
         kbAssetScopes:  input.kbAssetScopes,
       });
+      input.acceptance.accept({ turnId, sessionId: actualSessionId });
 
       if ((actualSessionId as string) !== (input.sessionId as string)) {
         void useSessionStore.getState().loadSessions();
@@ -193,6 +204,7 @@ export interface ConversationStoreState {
   liveUsageMap:       Map<string, { inputTokens: number; outputTokens: number }>;
   thinkingActiveMap:  Map<string, boolean>;
   messages:           Map<string, ChatHistoryItem[]>;
+  loadedMessageSessions: Set<string>;
   streamingMap:       Map<string, StreamingAssistantMessage>;
   stopReasonMap:      Map<string, string>;
   draftMap:           Map<string, string>;
@@ -212,6 +224,7 @@ export interface ConversationStoreState {
   loadBranches(id: SessionId):                                               Promise<void>;
   /** 切换分支并重载 —— BranchPanel 节点点击 + BranchSiblingNav 切换统一走这里，保证双向联动。 */
   switchBranchAndLoad(sessionId: SessionId, branchId: BranchId | null):      Promise<void>;
+  /** Turn 创建成功后 resolve；后续 SSE 生命周期由会话状态独立管理。 */
   sendMessage(sessionId: SessionId | null, input: Omit<SendInput, 'sessionId'>): Promise<void>;
   stopStreaming(sessionId: SessionId):                                        void;
   setDraft(sessionId: SessionId, text: string):                              void;
@@ -235,6 +248,7 @@ export const useConversationStore = create<ConversationStoreState>((set, get) =>
   liveUsageMap:        new Map(),
   thinkingActiveMap:   new Map(),
   messages:            new Map(),
+  loadedMessageSessions: new Set(),
   streamingMap:        new Map(),
   stopReasonMap:       new Map(),
   draftMap:            new Map(),
@@ -269,7 +283,9 @@ export const useConversationStore = create<ConversationStoreState>((set, get) =>
     set((s) => {
       const m = new Map(s.messages);
       m.delete(sessionId as string);
-      return { messages: m };
+      const loaded = new Set(s.loadedMessageSessions);
+      loaded.delete(sessionId as string);
+      return { messages: m, loadedMessageSessions: loaded };
     });
     await get().loadMessages(sessionId);
   },
@@ -277,7 +293,10 @@ export const useConversationStore = create<ConversationStoreState>((set, get) =>
   // ── Navigation ───────────────────────────────────────────────────────────
 
   async viewSession(id) {
-    if (get().viewedSessionId === id) return;
+    if (get().viewedSessionId === id) {
+      await get().loadMessages(id);
+      return;
+    }
     set({ viewedSessionId: id, pendingForkFromTurnId: null });
 
     void sessionsApi.markViewed(id)
@@ -308,7 +327,8 @@ export const useConversationStore = create<ConversationStoreState>((set, get) =>
   // ── Messages ─────────────────────────────────────────────────────────────
 
   async loadMessages(id) {
-    if (get().messages.has(id as string)) return;
+    if (get().loadedMessageSessions.has(id as string)) return;
+    if (get().loading.messages.has(id as string)) return;
 
     set((s) => ({
       loading: { messages: new Set([...s.loading.messages, id as string]) },
@@ -319,10 +339,17 @@ export const useConversationStore = create<ConversationStoreState>((set, get) =>
 
       set((s) => {
         const msgs    = new Map(s.messages);
-        msgs.set(id as string, history);
+        const cached = msgs.get(id as string) ?? [];
+        msgs.set(id as string, reconcileLoadedHistory(history, cached));
         const loading = new Set(s.loading.messages);
         loading.delete(id as string);
-        return { messages: msgs, loading: { messages: loading } };
+        const loaded = new Set(s.loadedMessageSessions);
+        loaded.add(id as string);
+        return {
+          messages: msgs,
+          loading: { messages: loading },
+          loadedMessageSessions: loaded,
+        };
       });
     } catch (err: unknown) {
       set((s) => {
@@ -340,10 +367,12 @@ export const useConversationStore = create<ConversationStoreState>((set, get) =>
 
   async sendMessage(sessionId, input) {
     let targetId = sessionId;
+    let createdNewSession = false;
 
     if (!targetId) {
       const newSession = await sessionsApi.create();
       targetId = newSession.id as SessionId;
+      createdNewSession = true;
       void useSessionStore.getState().loadSessions();
       set({ viewedSessionId: targetId });
     }
@@ -359,45 +388,61 @@ export const useConversationStore = create<ConversationStoreState>((set, get) =>
         useConversationStore.setState((s) => {
           const m = new Map(s.messages);
           m.delete(targetId as string);
-          return { messages: m };
+          const loaded = new Set(s.loadedMessageSessions);
+          loaded.delete(targetId as string);
+          return { messages: m, loadedMessageSessions: loaded };
         });
         await get().loadMessages(targetId);
       } catch (err) {
-        showToast(err instanceof Error ? `分叉失败: ${err.message}` : '分叉失败', { variant: 'danger' });
-        return;
+        throw new Error(
+          err instanceof Error ? `分叉失败: ${err.message}` : '分叉失败',
+          { cause: err },
+        );
       }
     }
+
+    const acceptance = createTurnAcceptance<TurnCreatedResponse>();
+    const completion = getOrCreateQueue(targetId).enqueue({
+      ...input,
+      sessionId: targetId,
+      acceptance,
+    });
+    void completion.catch((err: unknown) => acceptance.reject(err));
+    const accepted = await acceptance.promise;
+    const acceptedSessionId = accepted.sessionId as SessionId;
 
     // Queue auto-title generation for a session's first completed assistant
     // turn. Covers both paths: lazy create (no targetId above) and pre-created
     // sessions (new-session button → createSession + viewSession). The set is
     // consumed in finalizeStream; checking "no assistant message yet" means a
     // session that already has replies won't re-trigger.
-    const existingMsgs = get().messages.get(targetId as string) ?? [];
+    const existingMsgs = get().messages.get(acceptedSessionId as string) ?? [];
     const hasAssistant = existingMsgs.some((m) => m.role === 'assistant');
     if (!hasAssistant) {
-      pendingTitleSessions.add(targetId as string);
-    }
-
-    if (input.text && get().messages.has(targetId as string)) {
-      set((s) => {
-        const msgs     = new Map(s.messages);
-        const existing = msgs.get(targetId as string) ?? [];
-        msgs.set(targetId as string, [
-          ...existing,
-          { role: 'user' as const, content: input.text!, createdAt: Date.now() },
-        ]);
-        return { messages: msgs };
-      });
+      pendingTitleSessions.add(acceptedSessionId as string);
     }
 
     set((s) => {
-      const drafts = new Map(s.draftMap);
-      drafts.delete(targetId as string);
-      return { draftMap: drafts };
+      const key = acceptedSessionId as string;
+      const msgs = new Map(s.messages);
+      const existing = msgs.get(key) ?? [];
+      const alreadyPresent = existing.some(
+        (message) => message.role === 'user' && message.turnId === accepted.turnId,
+      );
+      if (!alreadyPresent) {
+        msgs.set(key, [
+          ...existing,
+          createOptimisticUserMessage(
+            accepted.turnId,
+            input.text ?? '',
+            input.attachments,
+          ),
+        ]);
+      }
+      const loaded = new Set(s.loadedMessageSessions);
+      if (createdNewSession) loaded.add(key);
+      return { messages: msgs, loadedMessageSessions: loaded };
     });
-
-    await getOrCreateQueue(targetId).enqueue({ ...input, sessionId: targetId });
   },
 
   stopStreaming(sessionId) {
@@ -433,6 +478,7 @@ export const useConversationStore = create<ConversationStoreState>((set, get) =>
 
     set((s) => {
       const msgs      = new Map(s.messages);       msgs.delete(id as string);
+      const loaded    = new Set(s.loadedMessageSessions); loaded.delete(id as string);
       const streaming = new Map(s.streamingMap);   streaming.delete(id as string);
       const stops     = new Map(s.stopReasonMap);  stops.delete(id as string);
       const drafts    = new Map(s.draftMap);       drafts.delete(id as string);
@@ -446,7 +492,8 @@ export const useConversationStore = create<ConversationStoreState>((set, get) =>
       if (lastTurnId) { usageMap.delete(lastTurnId); thinking.delete(lastTurnId); }
 
       return {
-        messages: msgs, streamingMap: streaming, stopReasonMap: stops, draftMap: drafts,
+        messages: msgs, loadedMessageSessions: loaded,
+        streamingMap: streaming, stopReasonMap: stops, draftMap: drafts,
         emotionStateMap: emotions, iterationCountMap: iters, recallEvidenceMap: recalls,
         liveUsageMap: usageMap, thinkingActiveMap: thinking,
       };

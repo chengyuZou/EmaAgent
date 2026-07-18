@@ -2,6 +2,7 @@
  * Turns API — POST /api/turns, SSE events URL, merged audio URL.
  */
 import { sidecarClient } from './sidecar-client.js';
+import { hasTurnRequestInput } from '@ema-agent/contracts';
 import type { TurnId, TurnRequest, TurnCreatedResponse } from '@ema-agent/contracts';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -31,8 +32,9 @@ export const turnsApi = {
   async create(req: TurnRequest): Promise<TurnCreatedResponse> {
     // Local validation
     if (!req.mode) throw new Error('mode is required');
-    const hasInput = req.userInput || (req.contentParts && req.contentParts.length > 0);
-    if (!hasInput) throw new Error('either userInput or contentParts is required');
+    if (!hasTurnRequestInput(req)) {
+      throw new Error('either userInput, contentParts, or attachments is required');
+    }
     return sidecarClient.request<TurnCreatedResponse>('/api/turns', {
       method: 'POST',
       json: req,

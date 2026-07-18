@@ -77,6 +77,40 @@ export interface ChatHistoryItem {
   kind?:        'narrative_context';
 }
 
+export function createOptimisticUserMessage(
+  turnId: TurnId,
+  text: string,
+  attachments: AttachmentInputWire[] | undefined,
+  createdAt = Date.now(),
+): ChatHistoryItem {
+  return {
+    role: 'user',
+    content: text,
+    createdAt,
+    turnId,
+    attachments: attachments?.map((attachment) => ({ ...attachment })),
+  };
+}
+
+export function reconcileLoadedHistory(
+  loaded: ChatHistoryItem[],
+  cached: ChatHistoryItem[],
+): ChatHistoryItem[] {
+  const loadedUserTurns = new Set(
+    loaded
+      .filter((item) => item.role === 'user' && item.turnId)
+      .map((item) => item.turnId as string),
+  );
+  const pendingUsers = cached.filter((item) => (
+    item.role === 'user'
+      && item.messageId === undefined
+      && item.turnId !== undefined
+      && !loadedUserTurns.has(item.turnId as string)
+  ));
+
+  return [...loaded, ...pendingUsers].sort((left, right) => left.createdAt - right.createdAt);
+}
+
 // ── Streaming slice helpers ────────────────────────────────────────────────────
 
 export function appendTextSlice(slices: AnyAssistantSlice[], delta: string): AnyAssistantSlice[] {

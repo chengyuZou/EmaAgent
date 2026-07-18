@@ -36,7 +36,7 @@ export function UserBubble({ message }: UserBubbleProps): JSX.Element {
         useConversationStore.getState().branchDataBySession.get(viewedId as string),
       )
     : null;
-  const canEdit = hasTurnId && forkPoint !== null && !editing;
+  const canEdit = hasTurnId && forkPoint !== null && !editing && message.content.trim().length > 0;
 
   const startEdit = (): void => {
     setDraft(message.content);
@@ -95,11 +95,11 @@ export function UserBubble({ message }: UserBubbleProps): JSX.Element {
               </Button>
             </div>
           </div>
-        ) : (
+        ) : message.content.trim().length > 0 ? (
           <div className="rounded-2xl rounded-br-md px-5 py-3 border text-sm break-words bg-[var(--ema-surface-2)] border-[var(--ema-border)] text-[var(--ema-text-secondary)]">
             <Markdown source={message.content} />
           </div>
-        )}
+        ) : null}
 
         {/* ── 折叠 footer：fork / 编辑分叉 / 删除 + 分支兄弟导航 ──
             ema-collapsible 双向折叠（grid-rows 0fr↔1fr + opacity），DOM 常驻不 unmount。

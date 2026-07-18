@@ -1,3 +1,4 @@
+// 管理聊天文字、附件和模型选项，并在 Turn 创建成功后安全清理草稿。
 import { useState, useCallback, useEffect, useRef, type KeyboardEvent, type JSX, type ChangeEvent } from 'react';
 import { IconButton, Input, Button, Popover, Textarea, type TextareaHandle, Tooltip, TooltipProvider, Checkbox, ScrollArea, Spinner, Switch } from '@ema-agent/ui';
 import { kbApi, type DocumentAssetWire, type KbLibraryWire } from '../api/knowledge-base.js';
@@ -52,6 +53,7 @@ export function ChatInput(): JSX.Element {
   const initialDraft = useConversationStore.getState().draftMap.get(viewedId as string ?? '') ?? '';
   const [text, setText] = useState(initialDraft);
   const [pendingAttachments, setPendingAttachments] = useState<AttachmentInputWire[]>([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   // Map<kbId, assetId[]> — per-KB doc selection; persists when switching library tabs.
   const [selectedScopes,   setSelectedScopes]   = useState<Map<string, string[]>>(new Map());
   const [selectedModel,    setSelectedModel]    = useState<ModelSelection | null>(null);
@@ -88,7 +90,9 @@ export function ChatInput(): JSX.Element {
     viewedId ? s.streamingMap.has(viewedId as string) : false,
   );
   // 附件-only 也可发送（后端 turns.ts refine 同步放行）
-  const canSend = (text.trim().length > 0 || pendingAttachments.length > 0) && !isStreamingHere;
+  const canSend = (text.trim().length > 0 || pendingAttachments.length > 0)
+    && !isStreamingHere
+    && !isSubmitting;
 
   function handleChange(value: string): void {
     setText(value);
@@ -143,39 +147,71 @@ export function ChatInput(): JSX.Element {
     return () => unlisten();
   }, []);
 
-  const send = useCallback(() => {
+  const send = useCallback(async (): Promise<void> => {
     if (!canSend) return;
-    void useConversationStore.getState().sendMessage(viewedId, {
-      mode,
-      text: text.trim(),
-      attachments: pendingAttachments.length > 0 ? pendingAttachments : undefined,
-      providerId:      selectedModel?.providerId,
-      model:           selectedModel?.model,
-      ttsEnabled,
-      thinkingEnabled: thinkingEnabled || undefined,
-      // KB scope applies to agent mode only. Selection persists across sends.
-      ...(() => {
-        if (mode !== 'agent' || selectedScopes.size === 0) return {};
-        const scopes = [...selectedScopes.entries()]
-          .filter(([, ids]) => ids.length > 0)
-          .map(([kbId, assetIds]) => ({ kbId, assetIds }));
-        if (scopes.length === 0) return {};
-        return {
-          kbIds:         scopes.map((s) => s.kbId),
-          kbAssetScopes: scopes,
-        };
-      })(),
-    });
-    setText('');
-    setPendingAttachments([]);
-    if (viewedId) useConversationStore.getState().setDraft(viewedId, '');
-  }, [canSend, mode, text, pendingAttachments, ttsEnabled, thinkingEnabled, viewedId, selectedScopes]);
+    const submittedText = text;
+    const submittedAttachments = [...pendingAttachments];
+    const submittedAttachmentIds = new Set(submittedAttachments.map((attachment) => attachment.id));
+    setIsSubmitting(true);
+
+    try {
+      await useConversationStore.getState().sendMessage(viewedId, {
+        mode,
+        text: submittedText.trim(),
+        attachments: submittedAttachments.length > 0 ? submittedAttachments : undefined,
+        providerId:      selectedModel?.providerId,
+        model:           selectedModel?.model,
+        ttsEnabled,
+        thinkingEnabled: thinkingEnabled || undefined,
+        // KB scope applies to agent mode only. Selection persists across sends.
+        ...(() => {
+          if (mode !== 'agent' || selectedScopes.size === 0) return {};
+          const scopes = [...selectedScopes.entries()]
+            .filter(([, ids]) => ids.length > 0)
+            .map(([kbId, assetIds]) => ({ kbId, assetIds }));
+          if (scopes.length === 0) return {};
+          return {
+            kbIds:         scopes.map((s) => s.kbId),
+            kbAssetScopes: scopes,
+          };
+        })(),
+      });
+
+      setText((current) => current === submittedText ? '' : current);
+      setPendingAttachments((current) => current.filter(
+        (attachment) => !submittedAttachmentIds.has(attachment.id),
+      ));
+      if (viewedId) {
+        const store = useConversationStore.getState();
+        if (store.draftMap.get(viewedId as string) === submittedText) {
+          store.setDraft(viewedId, '');
+        }
+      }
+    } catch (err) {
+      showToast(
+        err instanceof Error ? `发送失败: ${err.message}` : '发送失败，请重试',
+        { variant: 'danger' },
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
+  }, [
+    canSend,
+    mode,
+    text,
+    pendingAttachments,
+    selectedModel,
+    ttsEnabled,
+    thinkingEnabled,
+    viewedId,
+    selectedScopes,
+  ]);
 
   function handleKeyDown(e: KeyboardEvent<HTMLTextAreaElement>): void {
     if (e.nativeEvent.isComposing || e.keyCode === 229) return;
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      send();
+      void send();
     }
   }
 
@@ -194,7 +230,7 @@ export function ChatInput(): JSX.Element {
       size="sm"
       label="发送"
       icon="i-lucide:send"
-      onClick={send}
+      onClick={() => void send()}
     />
   );
 

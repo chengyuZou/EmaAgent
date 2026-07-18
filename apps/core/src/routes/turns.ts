@@ -10,7 +10,7 @@ import { TurnEventStore } from '../sse/event-store.js';
 import { encodeEvent, encodePing } from '../sse/writer.js';
 import type { AppBindings } from '../wiring/index.js';
 import type { EmaStreamEvent, TurnId, TurnRequest } from '@ema-agent/contracts';
-import { asTurnId, asSessionId } from '@ema-agent/contracts';
+import { asTurnId, asSessionId, hasTurnRequestInput } from '@ema-agent/contracts';
 import { REQUEST_VALUE_LIMITS } from '../http/request-budget.js';
 import { SubagentTranscriptProjection } from '../turn-runtime/subagent-transcript-projection.js';
 
@@ -68,9 +68,7 @@ const turnBodySchema = z.object({
     .max(REQUEST_VALUE_LIMITS.maxTurnKbAssetScopes)
     .optional(),
 }).refine(
-  (data) => data.userInput
-    || (data.contentParts && data.contentParts.length > 0)
-    || (data.attachments && data.attachments.length > 0),
+  hasTurnRequestInput,
   { message: 'either userInput, contentParts, or attachments is required' },
 );
 
