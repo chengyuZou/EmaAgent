@@ -198,6 +198,7 @@ export class ToolRegistry {
     const prepared = Object.freeze({
       id: tool.id,
       name,
+      summary: tool.getToolUseSummary?.(input),
       input,
       permissionMeta,
       isReadOnly: tool.isReadOnly(input),

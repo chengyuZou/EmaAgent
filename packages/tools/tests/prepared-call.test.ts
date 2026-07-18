@@ -16,6 +16,7 @@ function makeTool(name = 'dynamic_tool'): BuiltTool<{ path: string; parallel: bo
   return buildTool({
     name,
     description: '测试工具',
+    getToolUseSummary: (input) => `处理 ${input.path}`,
     inputSchema: z.object({
       path: z.string(),
       parallel: z.boolean().default(false),
@@ -40,6 +41,7 @@ describe('PreparedToolCall', () => {
     const prepared = registry.prepare('dynamic_tool', raw);
 
     expect(prepared.input).toEqual(raw);
+    expect(prepared.summary).toBe('处理 notes.txt');
     expect(prepared.input).not.toBe(raw);
     expect(prepared.isReadOnly).toBe(true);
     expect(prepared.isConcurrencySafe).toBe(true);

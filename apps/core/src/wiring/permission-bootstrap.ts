@@ -81,9 +81,14 @@ export function buildPermissionSubsystem(settingsRepo: SettingsRepo): Permission
         turnId:    args.turnId,
         callId:    args.toolCallId,
         promptId,
+        toolId:    prompt.toolId,
         tool:      prompt.toolName,
+        toolDescription: prompt.toolDescription,
         args:      prompt.input,
         hint:      prompt.gateReason ?? '',
+        riskLevel: prompt.riskLevel,
+        accessType: prompt.accessType,
+        gateReason: prompt.gateReason,
       });
       const response = await promise;
       args.emit({

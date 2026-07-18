@@ -56,6 +56,8 @@ export interface PermissionRule {
 export interface PermissionToolIdentity {
   id: string
   name: string
+  /** Tool 自己提供的默认人类可读说明；它只参与展示，不参与权限判定。 */
+  description?: string
 }
 
 // ── Decision Reason ───────────────────────────────────────────────────────────

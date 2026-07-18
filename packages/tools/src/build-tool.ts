@@ -37,6 +37,7 @@ export function buildTool<TInput, TOutput>(
     id: def.id ?? def.name,
     name: def.name,
     description: def.description,
+    getToolUseSummary: def.getToolUseSummary,
     inputSchema: def.inputSchema,
     isReadOnly: def.isReadOnly,
     isConcurrencySafe: def.isConcurrencySafe,

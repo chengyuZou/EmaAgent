@@ -351,7 +351,7 @@ export class TurnToolExecutor {
       try {
         // 权限审批和工具执行共享同一个深冻结 PreparedToolCall 输入。
         outcome = await permission.gate(
-          { id: prepared.id, name },
+          { id: prepared.id, name, description: prepared.summary },
           prepared.input,
           prepared.permissionMeta,
           permCtxWithAsk,

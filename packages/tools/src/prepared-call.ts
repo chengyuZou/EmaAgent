@@ -18,6 +18,7 @@ export type DeepReadonly<T> =
 export interface PreparedToolCall<TInput = unknown> {
   readonly id: string;
   readonly name: string;
+  readonly summary?: string;
   readonly input: DeepReadonly<TInput>;
   readonly permissionMeta: ToolPermissionMeta;
   readonly isReadOnly: boolean;

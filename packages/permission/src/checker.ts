@@ -108,6 +108,7 @@ export class PermissionEngine {
   ): Promise<PermissionOutcome> {
     const toolId = typeof tool === 'string' ? tool : tool.id;
     const toolName = typeof tool === 'string' ? tool : tool.name;
+    const toolDescription = typeof tool === 'string' ? undefined : tool.description;
     // Resolve all paths once (original + symlink-resolved forms)
     const extractedPath = meta.extractPath?.(input);
     const permissionPath = extractedPath
@@ -198,7 +199,7 @@ export class PermissionEngine {
     for (const p of allPaths) {
       const reason = getDangerousPathReason(p);
       if (reason && !this.sessionGrants.has(context.sessionId, sessionAction)) {
-        return this.promptUser(toolId, toolName, input, meta, reason, allPaths, context);
+        return this.promptUser(toolId, toolName, toolDescription, input, meta, reason, allPaths, context);
       }
     }
 
@@ -207,7 +208,7 @@ export class PermissionEngine {
       const rule = findAskRule(this.rules, toolId, p, context);
       if (rule) {
         return this.promptUser(
-          toolId, toolName, input, meta,
+          toolId, toolName, toolDescription, input, meta,
           `an "ask" rule requires confirmation for ${toolName}`,
           allPaths,
           context,
@@ -276,7 +277,7 @@ export class PermissionEngine {
     }
 
     // ── Step 12: ask user ──────────────────────────────────────────────────
-    return this.promptUser(toolId, toolName, input, meta, undefined, allPaths, context);
+    return this.promptUser(toolId, toolName, toolDescription, input, meta, undefined, allPaths, context);
   }
 
   getRules(): ReadonlyArray<PermissionRule> {
@@ -313,6 +314,7 @@ export class PermissionEngine {
   private async promptUser(
     toolId:   string,
     toolName: string,
+    toolDescription: string | undefined,
     input:    unknown,
     meta:     ToolPermissionMeta,
     reason:   string | undefined,
@@ -334,6 +336,7 @@ export class PermissionEngine {
     const prompt: PermissionPrompt = {
       toolId,
       toolName,
+      toolDescription,
       input,
       riskLevel:  meta.riskLevel,
       accessType: meta.accessType,

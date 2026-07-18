@@ -1,221 +1,83 @@
-# `@ema-agent/llm`
+# @ema-agent/llm
 
-最后更新: 2026-06-03
-
-`@ema-agent/llm` 是 EmaAgent 的 LLM Facade。调用方只和 `LlmRouter`、`LlmRequest`、`LlmStreamChunk` 打交道，不直接依赖 OpenAI、Anthropic、Gemini 等 SDK。
+LLM Facade。4 家 provider 协议(OpenAI Chat Completions / OpenAI Responses / Anthropic Messages / Gemini generateContent)归一化成统一 `LlmRequest`/`LlmStreamChunk`,上层 engine 不感知 provider 差异。含熔断、重试、消息兼容性降级、prompt cache 前缀哈希。
 
 ## 架构
 
-```text
-apps/core 或 agent 包
-  -> LlmRouter
-    -> OpenAiAdapter          openai-llm
-    -> OpenAiResponsesAdapter openai-responses-llm
-    -> AnthropicAdapter       anthropic-llm
-    -> GeminiAdapter          gemini-llm
-      -> provider SDK / HTTP stream
+```
+LlmRequest(messages/tools/thinking/signal)
+   │
+   ▼
+LlmRouter(Facade)
+   ├─ catalog enrich(ModelsDevCatalog 补能力)
+   ├─ validate(内容 + 能力校验,fail-closed)
+   ├─ prepareHistoricalMessages(历史只读降级)
+   └─ LlmStreamRuntime
+        ├─ CircuitBreaker(per-provider 熔断)
+        ├─ 首包前可重试(收到首 chunk 后不重试,防前端重复)
+        └─ adapter.stream()
+              ├─ OpenAiAdapter       (openai-llm,Chat Completions + DeepSeek reasoning_content)
+              ├─ OpenAiResponsesAdapter(openai-responses-llm,OpenAI 原生 o-series)
+              ├─ AnthropicAdapter    (anthropic-llm,Messages + thinking signature 往返)
+              └─ GeminiAdapter       (gemini-llm,generateContent)
+   │
+   ▼
+AsyncIterable<LlmStreamChunk>(text_delta/tool_use_delta/tool_use_complete/thinking_delta/thinking_complete/usage/done)
 ```
 
-路由 key 是 `ProviderConfig.id`，不是 protocol。DeepSeek、SiliconFlow、Moonshot 这类供应商都可以使用 `openai-llm` 协议，但必须各自拥有独立 provider config id。
+## 4 协议差异
 
-```ts
-interface ProviderConfig {
-  id: string;
-  protocol: LlmProtocol;
-  apiKey: string;
-  baseUrl?: string;
-  defaultModel?: string;
-}
-```
+| 维度 | openai(Chat) | openai-responses | anthropic | gemini |
+|---|---|---|---|---|
+| system | messages 里 | 顶层 `instructions` | 顶层 `system` | `systemInstruction` |
+| assistant role | assistant | assistant | assistant | model |
+| tool_use 增量 | `delta.tool_calls` | `arguments.delta` | `input_json_delta` | 无(直接 complete) |
+| thinking 历史 | `reasoning_content` | 丢弃 | signature 往返 | 跳过 |
+| prompt cache | 自动 | 自动 | `cache_control` 断点 | 自动 |
+| audio 输入 | ✗ | ✗ | ✗ | ✓ |
 
-## 请求
+OpenAI 兼容第三方(DeepSeek/硅基流动/Ollama 等)用 `openai-llm`(Chat);OpenAI 原生 o-series 用 `openai-responses-llm`。
 
-```ts
-interface LlmRequest {
-  providerId: string;
-  model: string;
-  messages: LlmMessage[];
-  tools?: LlmToolDef[];
-  toolChoice?: 'auto' | 'none' | { name: string };
-  thinking?: ThinkingMode;
-  maxTokens?: number;
-  temperature?: number;
-  signal?: AbortSignal;
-}
-```
+## Facade
 
-`LlmMessage` 使用 Anthropic 风格的 block model 作为包内规范格式：
+| Facade | 职责 |
+|---|---|
+| `LlmRouter` | 主入口:`stream`/`complete`/`probe`/`capabilitiesFor`/热重载配置。catalog enrich + validate + 降级 + runtime |
+| `LlmAdapter` | 接口(仅 `stream`),4 个实现 |
+| `ModelsDevCatalog` | models.dev api.json 解析,动态 model 能力查询 |
 
-```ts
-type LlmMessage =
-  | { role: 'system'; content: string }
-  | { role: 'user'; content: string | UserBlock[] }
-  | { role: 'assistant'; content: AssistantBlock[] };
-```
+## 关键机制
 
-工具结果不使用独立 `role: 'tool'`，而是作为 `ToolResultBlock` 放在下一条 `role: 'user'` 消息里。各 adapter 自己转换成 provider wire format。
+- **熔断**: per-provider `CircuitBreaker`(closed/open/half-open),失败达阈值熔断,冷却后半开试探。`CircuitOpenError` 直接拒
+- **重试**: `withRetry`(非流式,指数退避)+ 首包前重试(流式,收到首 chunk 前失败才重试,防前端重复)。`isRetryable`:429/网络/5xx
+- **兼容性降级**: `prepareHistoricalMessages` 历史只读降级(占位符);`validateCurrentContent` 本轮 fail-closed(不支持直接拒,不偷偷丢)。两者策略不同:历史可损失,本轮不能丢
+- **兼容性恢复**: `createCompatibilityRecovery`--provider 拒绝可选参数(temperature/thinking/toolChoice)时省略重试
+- **usage 归一**: `createLlmTokenUsage` 统一 4 家 token 计数(含 cacheRead/cacheWrite/cacheEligible + cacheHitRate)
+- **prompt cache**: `computePromptPrefixHash`(SHA-256,诊断前缀稳定性)+ `normalizeToolDefinitions`(工具定义规范化)。实际命中看 provider `usage.cacheReadInputTokens`
+- **能力查询**: `ModelCapabilitySnapshot` + 3 工厂(catalog/manual/unknown);`capabilitiesFor` 查视觉/推理/工具/caching
 
-## Streaming Contract
+## 错误
 
-所有 adapter 都返回统一的 `AsyncIterable<LlmStreamChunk>`。
+6 类:`LlmModelCapabilityError`(能力不兼容)/ `ContextWindowExceededError`(超窗口)/ `LlmProviderResponseError`(provider 错误响应)/ `LlmToolArgumentsParseError`(args JSON 解析失败)/ `CircuitOpenError`(熔断)/ `LlmStreamProtocolError`(流无 done 终态)。`normalizeLlmProviderError` 归一,`isAbortError`/`throwIfAbortError` 处理取消。
 
-```ts
-type LlmStreamChunk =
-  | { type: 'text_delta'; blockIndex: number; delta: string }
-  | { type: 'thinking_delta'; blockIndex: number; delta: string }
-  | { type: 'thinking_complete'; blockIndex: number; signature: string }
-  | { type: 'tool_use_delta'; blockIndex: number; callId: string; name: string; argsDelta: string }
-  | { type: 'tool_use_complete'; blockIndex: number; callId: string; name: string; args: unknown }
-  | { type: 'usage'; inputTokens: number; outputTokens: number }
-  | { type: 'done'; stopReason: StopReason };
-```
+## 文件
 
-`blockIndex` 是 assistant block 数组里的位置。常见约定：
+| 文件 | 职责 |
+|---|---|
+| `router.ts` | `LlmRouter` Facade:stream/complete/probe/能力校验/热重载 + `createAdapter` 工厂 |
+| `stream-runtime.ts` | `CircuitBreaker` + `LlmStreamRuntime`(熔断 + 首包前重试 + done 终态验证) |
+| `adapters/openai.ts` / `openai-responses.ts` / `anthropic.ts` / `gemini.ts` | 4 协议 adapter |
+| `adapters/base.ts` | `LlmAdapter` 接口 |
+| `message-compatibility.ts` | 历史只读降级 + 本轮 fail-closed 校验 |
+| `compatibility-recovery.ts` | provider 拒绝可选参数时省略重试 |
+| `model-capabilities.ts` | `ModelCapabilitySnapshot` + 3 工厂 |
+| `models-dev-catalog.ts` | models.dev api.json 解析 + 双重索引查询 |
+| `usage.ts` / `prompt-cache.ts` / `validate.ts` / `retry.ts` | usage 归一 / 前缀哈希 / content 校验 / 非流式重试 |
+| `types.ts` / `errors.ts` | 契约 |
 
-- no thinking: text 通常是 `0`
-- thinking + text: thinking 是 `0`，text 是 `1`
-- OpenAI Chat Completions 工具调用: `1000 + toolIndex`
-- Anthropic 工具调用: provider 原始 content block index
+## 不做
 
-## Router
-
-`LlmRouter.stream()` 只做 provider id -> adapter 的同步路由。未知 provider 会同步抛 `provider/not_configured`，便于上游 fail-fast。
-
-`LlmRouter.complete()` 是 `stream()` 的聚合器，用于 compaction、内部分类、健康检查等非 UI 流式场景。它会把 text/thinking/tool chunks 重建成 `AssistantBlock[]`，并按 `blockIndex` 排序。
-
-Retry 边界：
-
-- 连接建立前失败，且错误可重试时，最多重试 3 次。
-- 已经收到任意 chunk 后失败，不重试，避免重复消耗 token 和产生不同结果。
-
-## Thinking V1
-
-V1 支持 thinking 控制和展示，不承诺完整 provider continuation round-trip。
-
-```ts
-type ThinkingMode =
-  | { enabled: 'auto'; effort?: 'high' | 'max'; budgetTokens?: number; includeThoughts?: boolean }
-  | { enabled: true; effort?: 'high' | 'max'; budgetTokens?: number; includeThoughts?: boolean }
-  | { enabled: false };
-```
-
-当前已实现：
-
-- `openai-llm` 显式传入 `thinking` 时，会发送 DeepSeek 兼容字段。
-- DeepSeek/OpenAI-compatible 的 `delta.reasoning_content` 会规范化成 `thinking_delta`。
-- Anthropic stream 会读取 `thinking_delta` 和 `signature_delta`，并在 thinking block 结束时 emit `thinking_complete`。
-- `complete()` 会把 `thinking_complete.signature` 聚合回 `AssistantBlock.signature`。
-
-OpenAI-compatible thinking 参数映射：
-
-```ts
-thinking: { enabled: false }
-// -> { thinking: { type: 'disabled' } }
-
-thinking: { enabled: true, effort: 'max' }
-// -> { thinking: { type: 'enabled' }, reasoning_effort: 'max' }
-
-thinking: { enabled: 'auto', effort: 'high' }
-// -> { reasoning_effort: 'high' }
-```
-
-默认不传 `thinking` 时，不发送 provider-specific thinking 字段，避免影响普通 OpenAI-compatible provider。
-
-V1 暂不处理：
-
-- DeepSeek/Kimi/Zhipu 等 provider 的完整 `reasoning_content` continuation 回传。
-- Gemini `thinkingConfig` / `thoughtSignature`。
-- MiniMax `<think>...</think>` 的 provider-specific history 保留。
-- 压缩后保留 provider thinking continuation。
-
-压缩边界原则：
-
-```text
-summary 可以保留 thinking 的语义摘要；
-summary 不能伪装成 provider 原始 thinking continuation。
-```
-
-如果历史被压缩，调用方应视为 fresh context，丢弃 provider continuation 状态。
-
-## Adapter 状态
-
-| Adapter | Protocol | 当前能力 | Thinking 状态 |
-| --- | --- | --- | --- |
-| `OpenAiAdapter` | `openai-llm` | text、image、wav/mp3 audio、tool calling | DeepSeek-style control + `reasoning_content` streaming |
-| `OpenAiResponsesAdapter` | `openai-responses-llm` | Responses API text、image/file、tool calling | o-series reasoning summary -> `thinking_delta` |
-| `AnthropicAdapter` | `anthropic-llm` | text、image、file、tool use | thinking/signature stream + history round-trip when signature exists |
-| `GeminiAdapter` | `gemini-llm` | text、image/file/audio data、function calling | V1 暂未接入 `thinkingConfig`/`thoughtSignature` |
-
-## Model Catalog
-
-`ModelCatalog` 用 `protocol:model` 做 key，不使用 provider instance id。
-
-```ts
-catalog.get('openai-llm', 'deepseek-v4-flash');
-catalog.get('openai-responses-llm', 'o4-mini');
-catalog.get('anthropic-llm', 'claude-sonnet-4-5');
-```
-
-Catalog 只描述模型能力，运行时 provider 实例仍由 `LlmRouter` 的 `providerId` 决定。
-
-## Tests
-
-默认测试不访问真实网络：
-
-```powershell
-pnpm --filter @ema-agent/llm test
-pnpm --filter @ema-agent/llm typecheck
-```
-
-默认 suite 当前覆盖：
-
-- `router.test.ts`: routing、hot reload、`getProtocol()`、`complete()` 聚合、retry 边界
-- `openai-adapter.test.ts`: OpenAI-compatible thinking 参数和 `reasoning_content` 规范化
-- `catalog.test.ts`: static model catalog
-- `validate.test.ts`: content-part compatibility
-- `retry.test.ts`: retry helper
-
-Live tests 被 `vitest.config.ts` 默认排除。显式运行 live tests 时需要打开开关：
-
-```powershell
-$env:DEEPSEEK_API_KEY = '...'
-$env:EMA_AGENT_RUN_LIVE_TESTS = '1'
-pnpm --filter @ema-agent/llm exec vitest run tests/live-deepseek-protocol-diff.test.ts --reporter verbose
-```
-
-`live-deepseek-protocol-diff.test.ts` 覆盖：
-
-- DeepSeek OpenAI-compatible URL text stream
-- DeepSeek Anthropic-compatible URL text stream
-- OpenAI vs Anthropic parallel tool-call yield timing
-- OpenAI-compatible two-turn `complete()` with previous assistant blocks
-
-不要把 API key 写入测试文件或 README。
-
-## 添加新供应商
-
-如果新供应商复用现有协议，只改 contracts provider registry 和 model catalog；不要新增 adapter。
-
-```text
-OpenAI-compatible provider
-  -> contracts/src/providers/<provider>/index.ts
-  -> contracts/src/providers/registry.ts
-  -> packages/llm/src/catalog.ts
-```
-
-如果是新 wire protocol：
-
-```text
-1. contracts: 增加 ProtocolFamily / LlmProtocol
-2. packages/llm/src/adapters/<provider>.ts: 实现 LlmAdapter
-3. router.ts: createAdapter() 增加分支
-4. validate.ts: 增加 content-part 兼容检查
-5. catalog.ts: 增加模型条目
-6. tests: 添加 adapter 单测和必要 live smoke
-```
-
-## 后续更新记录
-
-- 2026-06-03: 增加 `ThinkingMode`、OpenAI-compatible DeepSeek thinking 参数、OpenAI adapter 单测、DeepSeek protocol diff live test。
-- 2026-06-03: `LlmRouter` 以 `ProviderConfig.id` 作为唯一可用性事实来源；adapter override 只用于已注册 provider config 的测试替换。
-- 2026-06-03: 默认 Vitest 排除 `tests/live-*.test.ts`，通过 `EMA_AGENT_RUN_LIVE_TESTS=1` 手动开启 live tests。
+- 不含业务逻辑(不感知 session/turn/会话,engine 构造请求消费结果)
+- 不存 API key(经 `credential` 包 `reveal` 后传入,`apps/core` provider loader 加载配置)
+- 不执行工具(只产 `tool_use_complete` chunk,执行在 `tool-builtin`)
+- 不做流式 delta 之外的处理(text 拼装/ACT 解析在 engine/emotion)

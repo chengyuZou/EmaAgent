@@ -1,3 +1,4 @@
+// 展示单次工具权限请求，并把用户的允许或拒绝决定提交给后端。
 import { useEffect, useRef, useState } from 'react';
 import { Button, Card, Progress } from '@ema-agent/ui';
 import { permissionApi } from '../api/permission.js';
@@ -8,6 +9,7 @@ import type { PermissionResponse } from '@ema-agent/permission';
 export interface PermissionPromptProps {
   promptId:                 string;
   toolName:                 string;
+  toolDescription?:         string;
   args:                     unknown;
   hint:                     string;
   humanDescription?:        string;
@@ -24,6 +26,7 @@ export interface PermissionPromptProps {
 export function PermissionPrompt({
   promptId,
   toolName,
+  toolDescription,
   args,
   hint,
   humanDescription,
@@ -78,7 +81,7 @@ export function PermissionPrompt({
   return (
     <Card variant="elevated" padding="lg" className="shadow-[var(--ema-shadow-3)] max-w-lg w-full">
       <HumanDescriptionPanel
-        description={humanDescription ?? hint}
+        description={humanDescription ?? toolDescription ?? (hint || `即将运行 ${toolName}`)}
         toolName={toolName}
         pending={humanDescriptionPending ?? false}
       />

@@ -38,6 +38,7 @@ function PromptRouter({
         <PermissionPrompt
           promptId={prompt.promptId}
           toolName={prompt.toolName}
+          toolDescription={prompt.toolDescription}
           args={prompt.args}
           hint={prompt.hint}
           humanDescription={prompt.humanDescription}

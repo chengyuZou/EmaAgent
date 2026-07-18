@@ -16,7 +16,13 @@
  * This store mirrors that: dismiss(promptId) scans all session queues.
  */
 import { create } from 'zustand';
-import type { AskUserQuestionSpec, SessionId, TurnId } from '@ema-agent/contracts';
+import type {
+  AskUserQuestionSpec,
+  PermissionAccessType,
+  PermissionRiskLevel,
+  SessionId,
+  TurnId,
+} from '@ema-agent/contracts';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -25,9 +31,14 @@ export type DecisionPrompt =
       kind: 'permission';
       promptId: string;
       sessionId?: SessionId;
+      toolId: string;
       toolName: string;
+      toolDescription?: string;
       args: unknown;
       hint: string;
+      riskLevel: PermissionRiskLevel;
+      accessType?: PermissionAccessType;
+      gateReason?: string;
       humanDescription?: string;
       humanDescriptionPending?: boolean;
     }

@@ -53,6 +53,8 @@ export const PowerShellTool = buildTool<PowerShellInput, BashResult>({
 - Working directory is the workspace root.
 - Only available on Windows (throws on other platforms).`,
 
+  getToolUseSummary: (input) => input.description,
+
   inputSchema,
   isReadOnly: () => false,
   isConcurrencySafe: () => false,

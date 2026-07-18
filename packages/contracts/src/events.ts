@@ -38,6 +38,10 @@ export type NarrativeTimelineFailureCode =
   | 'narrative/invalid_response'
   | 'narrative/unknown';
 
+/** 权限事件展示使用的稳定风险等级；最终判定仍由 Permission Engine 负责。 */
+export type PermissionRiskLevel = 'low' | 'medium' | 'high';
+export type PermissionAccessType = 'read' | 'write' | 'execute';
+
 /**
  * High-frequency detail stream inside the subagent_stream envelope.
  * Mirrors the main agent's event taxonomy — the frontend can render a
@@ -188,9 +192,14 @@ export type EmaStreamEvent =
       turnId: TurnId;
       callId: ToolCallId;
       promptId: string;
+      toolId: string;
       tool: string;
+      toolDescription?: string;
       args: unknown;
       hint: string;
+      riskLevel: PermissionRiskLevel;
+      accessType?: PermissionAccessType;
+      gateReason?: string;
       humanDescription?: string;
     }
   | {

@@ -265,9 +265,12 @@ export function dispatchSseEvent(
     case 'permission_required': {
       const p = {
         kind: 'permission' as const, promptId: event.promptId, sessionId,
-        toolName: event.tool, args: event.args, hint: event.hint,
-        humanDescription: event.humanDescription ?? event.hint,
-        humanDescriptionPending: event.humanDescription === undefined,
+        toolId: event.toolId, toolName: event.tool, toolDescription: event.toolDescription,
+        args: event.args, hint: event.hint, riskLevel: event.riskLevel,
+        accessType: event.accessType, gateReason: event.gateReason,
+        humanDescription: event.humanDescription,
+        // LLM 解释尚未开始时不能显示加载态；后续由用户点击“解释”后再局部置为 true。
+        humanDescriptionPending: false,
       };
       useDecisionStore.getState().push(p);
       void tauriBridge.emit('decision:push', p);

@@ -75,6 +75,8 @@ Safety rules:
 - Commands are executed inside the workspace root as the working directory.
 - Timeout defaults to 2 minutes; use \`run_in_background: true\` for long-running daemons.`,
 
+  getToolUseSummary: (input) => input.description,
+
   inputSchema,
   isReadOnly: () => false,
   isConcurrencySafe: () => false,

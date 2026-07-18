@@ -319,6 +319,8 @@ export interface ToolDef<TInput, TOutput> {
   id?: string;
   name: string;
   description: string;
+  /** 根据本次规范化输入生成批准卡片摘要；与写给模型看的 description 分离。 */
+  getToolUseSummary?: (input: TInput) => string | undefined;
   // ZodType<Output, Def, Input> - 我们把 input 侧放宽到 unknown,因为
   // ZodDefault 和 ZodOptional 在 input 侧产出 `T | undefined`,
   // 当 TInput 全部默认值应用时会导致可赋值性失败。
@@ -344,6 +346,7 @@ export interface BuiltTool<TInput = unknown, TOutput = unknown> {
   readonly id: string;
   readonly name: string;
   readonly description: string;
+  readonly getToolUseSummary?: (input: TInput) => string | undefined;
   readonly inputSchema: z.ZodType<TInput, z.ZodTypeDef, unknown>;
   readonly isReadOnly: (input: TInput) => boolean;
   readonly isConcurrencySafe: (input: TInput) => boolean;
