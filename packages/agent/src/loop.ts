@@ -2,7 +2,7 @@
 import { randomUUID } from 'node:crypto';
 import { asLlmCallId } from '@ema-agent/contracts';
 import type { LlmMessage, AssistantBlock, UserBlock, ToolResultBlock, EmaStreamEvent, LlmCallId, LlmTokenUsage } from '@ema-agent/contracts';
-import type { LlmRouter, ThinkingMode, StopReason } from '@ema-agent/llm';
+import type { LlmRouter, LlmToolDef, ThinkingMode, StopReason } from '@ema-agent/llm';
 import { computePromptPrefixHash, ContextWindowExceededError } from '@ema-agent/llm';
 import type { AgentPolicy } from './policy.js';
 import type { TurnToolExecutor } from './tool-executor.js';
@@ -114,7 +114,7 @@ export interface AgentLoopInput {
    * iterations and the spawner both see the compacted history.
    * Engine wires this to MemoryPlanner.compact(); spawner omits it (ephemeral).
    */
-  compactMessages?: (messages: LlmMessage[]) => Promise<LlmMessage[]>;
+  compactMessages?: (messages: LlmMessage[], tools: readonly LlmToolDef[]) => Promise<LlmMessage[]>;
   /**
    * 每个逻辑 LLM 调用前执行的窄 Facade。Loop 不依赖 HookBus；主 Engine
    * 用它触发 beforeLlm，并返回只属于本次请求的消息视图。
@@ -186,11 +186,15 @@ export async function* agentLoop(input: AgentLoopInput): AsyncIterable<AgentLoop
     const thinkingByIndex = new Map<number, string>();
     const toolUseByIndex  = new Map<number, AssistantBlock & { type: 'tool_use' }>();
 
+    // Skill 调用可能收窄后续工具范围，因此每轮都重新取得工具定义。
+    // 工具定义虽然不在消息数组中，压缩时仍必须预留其序列化后的 Token 成本。
+    const tools = policy.toolDefs();
+
     // Per-iteration compaction: runs before every LLM call so agent loops that
     // accumulate many tool results don't overflow the context window mid-turn.
     // Mutates messages[] in place; spawner omits compactMessages (ephemeral ctx).
     if (compactMessages) {
-      const compacted = await compactMessages([...messages]);
+      const compacted = await compactMessages([...messages], tools);
       messages.splice(0, messages.length, ...compacted);
     }
 
@@ -224,7 +228,6 @@ export async function* agentLoop(input: AgentLoopInput): AsyncIterable<AgentLoop
     }
 
     let lastStopReason: StopReason = 'end_turn';
-    const tools = policy.toolDefs();
     let callUsage: LlmTokenUsage = { inputTokens: 0, outputTokens: 0 };
     let promptPrefixHash: string | null = null;
 
@@ -325,7 +328,7 @@ export async function* agentLoop(input: AgentLoopInput): AsyncIterable<AgentLoop
         ) {
           // Hook 链只执行一次。响应式重试压缩本次请求视图，不重复执行
           // Prompt/Memory/Skill 等可能有外部副作用的 beforeLlm handler。
-          requestMessages = await compactMessages([...requestMessages]);
+          requestMessages = await compactMessages([...requestMessages], tools);
           state = advanceState(state, {
             phase:                       state.phase,
             hasAttemptedReactiveCompact: true,

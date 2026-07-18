@@ -1,5 +1,4 @@
 // 这里定义会话消息、工具调用结果和客户端展示数据的公共契约。
-import type { MessageId, MessageRole } from './ids.js';
 
 // ── 消息分类 ──────────────────────────────────────────────────────────────────
 // 从 ids.ts 迁移过来：MessageKind 描述一条消息的"用途"，属于消息语义，不属于 ID
@@ -67,11 +66,11 @@ export interface NarrativeContextBlocks {
  */
 export type MessageContentPart =
   | { type: 'text';       text: string }
-  | { type: 'image_url';  url: string;  name?: string }
-  | { type: 'image_data'; data: string; mimeType: string; name?: string }
-  | { type: 'audio_data'; data: string; mimeType: string; name?: string }
-  | { type: 'file_data';  data: string; mimeType: string; filename?: string }
-  | { type: 'file_url';   url: string;  mimeType: string; filename?: string };
+  | { type: 'image_url';  url: string;  name?: string; width?: number; height?: number }
+  | { type: 'image_data'; data: string; mimeType: string; name?: string; width?: number; height?: number }
+  | { type: 'audio_data'; data: string; mimeType: string; name?: string; durationMs?: number }
+  | { type: 'file_data';  data: string; mimeType: string; filename?: string; pageCount?: number }
+  | { type: 'file_url';   url: string;  mimeType: string; filename?: string; pageCount?: number };
 
 // ── 助手消息 block ────────────────────────────────────────────────────────────
 
@@ -88,8 +87,8 @@ export type AssistantBlock =
  */
 export type ToolResultContentPart =
   | { type: 'text';       text: string }
-  | { type: 'image_data'; data: string; mimeType: string }
-  | { type: 'image_url';  url: string };
+  | { type: 'image_data'; data: string; mimeType: string; width?: number; height?: number }
+  | { type: 'image_url';  url: string; width?: number; height?: number };
 
 /** 文件工具提交成功后给界面使用的有界真实变更；不会作为模型上下文正文发送。 */
 export interface FileChangePresentation {

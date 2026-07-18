@@ -5,4 +5,16 @@
 //   - desktop-ui (streaming "~N tok" estimate before the authoritative usage
 //     event arrives — estimate-then-correct pattern)
 
-export { estimateTextTokens, estimateMessagesTokens } from './estimate.js';
+export {
+  estimateTextTokens,
+  estimateMessagesTokens,
+  estimateLlmInputTokens,
+} from './estimate.js';
+export type {
+  TokenEstimate,
+  TokenEstimateAccuracy,
+  TokenEstimateBreakdown,
+  TokenEstimateOptions,
+  TokenEstimateWarningCode,
+  TokenToolDefinition,
+} from './types.js';

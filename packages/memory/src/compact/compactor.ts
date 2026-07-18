@@ -8,8 +8,8 @@ import {
   type TurnMode,
   type MessageBlocks,
 } from '@ema-agent/contracts';
-import type { LlmMessage } from '@ema-agent/llm';
-import { estimateMessagesTokens } from '@ema-agent/token';
+import type { LlmMessage, LlmToolDef } from '@ema-agent/llm';
+import { estimateLlmInputTokens } from '@ema-agent/token';
 import type { MemoryDeps } from '../deps.js';
 import type { CompactResult, MemorySettings } from '../types.js';
 import type { ResolvedSessionOverrides } from '../maintenance/overrides.js';
@@ -26,6 +26,7 @@ export interface CompactionArgs {
   mode:                TurnMode;
   messages:            LlmMessage[];
   modelContextWindow:  number;
+  tools?:               readonly LlmToolDef[];
   providerId?:         string;
   model?:              string;
   recentFiles?:        ReadonlyArray<{ path: string; content: string; mtimeMs: number }>;
@@ -41,7 +42,10 @@ export async function runCompaction(
 ): Promise<CompactResult> {
   const now          = Date.now();
   const safeMessages = sanitizeCompactionMessages(args.messages);
-  const beforeTokens = estimateMessagesTokens(safeMessages);
+  const estimateContext = (messages: readonly LlmMessage[]): number =>
+    estimateLlmInputTokens(messages, { tools: args.tools }).totalTokens;
+  const toolTokens = estimateLlmInputTokens([], { tools: args.tools }).totalTokens;
+  const beforeTokens = estimateContext(safeMessages);
 
   if (!settings.enabled) {
     return { status: 'not_needed', reason: 'disabled', messages: safeMessages, macroRan: false, microCleared: 0, beforeTokens, afterTokens: beforeTokens, savedTokens: 0 };
@@ -58,7 +62,7 @@ export async function runCompaction(
   // Stage A: micro
   const micro    = microCompact(safeMessages, { keepRecent: 6 });
   let working    = micro.messages;
-  let estimated  = estimateMessagesTokens(working);
+  let estimated  = estimateContext(working);
 
   if (estimated <= threshold) {
     return { status: 'not_needed', reason: 'below_threshold', messages: working, macroRan: false, microCleared: micro.cleared, beforeTokens, afterTokens: estimated, savedTokens: beforeTokens - estimated };
@@ -161,6 +165,7 @@ export async function runCompaction(
     tail,
     mode: args.mode,
     tokenLimit: threshold,
+    fixedTokens: toolTokens,
   });
   if (!fitted) {
     const error = `Compacted context still exceeds hard token limit ${threshold}`;

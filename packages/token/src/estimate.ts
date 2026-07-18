@@ -1,4 +1,16 @@
-import type { LlmMessage } from '@ema-agent/contracts';
+// 估算消息、媒体和工具定义占用的上下文 Token，为压缩与预算决策提供统一依据。
+import type {
+  LlmMessage,
+  MessageContentPart,
+  ToolResultContentPart,
+} from '@ema-agent/contracts';
+import type {
+  TokenEstimate,
+  TokenEstimateBreakdown,
+  TokenEstimateOptions,
+  TokenEstimateWarningCode,
+  TokenToolDefinition,
+} from './types.js';
 
 // ── Heuristic token estimate ─────────────────────────────────────────────────
 
@@ -35,36 +47,179 @@ export function estimateTextTokens(text: string): number {
  * role markers and message envelopes).
  */
 export function estimateMessagesTokens(messages: LlmMessage[]): number {
-  let total = 0;
+  return estimateLlmInputTokens(messages).totalTokens;
+}
+
+/**
+ * 对完整 LLM 输入做快速保守估算。返回值只用于上下文预算和界面近似显示，
+ * Provider 返回的 usage 才能作为真实消耗与计费事实。
+ */
+export function estimateLlmInputTokens(
+  messages: readonly LlmMessage[],
+  options: TokenEstimateOptions = {},
+): TokenEstimate {
+  const breakdown = emptyBreakdown();
+  const warnings = new Set<TokenEstimateWarningCode>();
+
   for (const msg of messages) {
-    total += 10;   // per-message envelope (role marker, separators)
+    breakdown.messageEnvelopeTokens += 10;
 
     if (typeof msg.content === 'string') {
-      total += estimateTextTokens(msg.content);
+      breakdown.textTokens += estimateTextTokens(msg.content);
       continue;
     }
 
     for (const block of msg.content) {
-      if ('text' in block && typeof block.text === 'string') {
-        total += estimateTextTokens(block.text);
-      } else if (block.type === 'thinking' && typeof block.thinking === 'string') {
-        total += estimateTextTokens(block.thinking);
+      if (block.type === 'text') {
+        breakdown.textTokens += estimateTextTokens(block.text);
+      } else if (block.type === 'thinking') {
+        breakdown.textTokens += estimateTextTokens(block.thinking);
       } else if (block.type === 'tool_use') {
-        total += 20 + estimateTextTokens(JSON.stringify(block.args));
+        breakdown.otherTokens += 20 + estimateSerializedValue(block.args);
       } else if (block.type === 'tool_result') {
         if (typeof block.content === 'string') {
-          total += estimateTextTokens(block.content);
+          breakdown.textTokens += estimateTextTokens(block.content);
         } else {
           for (const part of block.content) {
-            if ('text' in part && typeof part.text === 'string') {
-              total += estimateTextTokens(part.text);
-            } else {
-              total += 200;   // image / file placeholder cost
-            }
+            estimateToolResultPart(part, breakdown, warnings);
           }
         }
+      } else {
+        estimateMediaPart(block, breakdown, warnings);
       }
     }
   }
-  return total;
+
+  for (const tool of options.tools ?? []) {
+    breakdown.toolDefinitionTokens += estimateToolDefinition(tool, warnings);
+  }
+
+  return {
+    totalTokens: sumBreakdown(breakdown),
+    accuracy: 'heuristic',
+    breakdown,
+    warnings: [...warnings],
+  };
+}
+
+const IMAGE_MAX_FALLBACK_TOKENS = 5_334;
+const AUDIO_UNKNOWN_FALLBACK_TOKENS = 8_000;
+const AUDIO_TOKENS_PER_SECOND = 32;
+const DOCUMENT_UNKNOWN_FALLBACK_TOKENS = 8_000;
+const DOCUMENT_TOKENS_PER_PAGE = 2_000;
+
+function estimateMediaPart(
+  part: MessageContentPart,
+  breakdown: TokenEstimateBreakdown,
+  warnings: Set<TokenEstimateWarningCode>,
+): void {
+  switch (part.type) {
+    case 'image_data':
+    case 'image_url':
+      breakdown.imageTokens += estimateImageTokens(part.width, part.height, warnings);
+      return;
+    case 'audio_data':
+      breakdown.audioTokens += estimateAudioTokens(part.durationMs, warnings);
+      return;
+    case 'file_data':
+    case 'file_url':
+      breakdown.documentTokens += estimateDocumentTokens(part.pageCount, warnings);
+      return;
+    case 'text':
+      breakdown.textTokens += estimateTextTokens(part.text);
+      return;
+  }
+}
+
+function estimateToolResultPart(
+  part: ToolResultContentPart,
+  breakdown: TokenEstimateBreakdown,
+  warnings: Set<TokenEstimateWarningCode>,
+): void {
+  if (part.type === 'text') {
+    breakdown.textTokens += estimateTextTokens(part.text);
+    return;
+  }
+  breakdown.imageTokens += estimateImageTokens(part.width, part.height, warnings);
+}
+
+function estimateImageTokens(
+  width: number | undefined,
+  height: number | undefined,
+  warnings: Set<TokenEstimateWarningCode>,
+): number {
+  if (!isPositiveFinite(width) || !isPositiveFinite(height)) {
+    warnings.add('imageDimensionsUnknown');
+    return IMAGE_MAX_FALLBACK_TOKENS;
+  }
+  return Math.min(
+    IMAGE_MAX_FALLBACK_TOKENS,
+    Math.max(85, Math.ceil((width * height) / 750)),
+  );
+}
+
+function estimateAudioTokens(
+  durationMs: number | undefined,
+  warnings: Set<TokenEstimateWarningCode>,
+): number {
+  if (!isPositiveFinite(durationMs)) {
+    warnings.add('audioDurationUnknown');
+    return AUDIO_UNKNOWN_FALLBACK_TOKENS;
+  }
+  return Math.max(1, Math.ceil((durationMs / 1_000) * AUDIO_TOKENS_PER_SECOND));
+}
+
+function estimateDocumentTokens(
+  pageCount: number | undefined,
+  warnings: Set<TokenEstimateWarningCode>,
+): number {
+  if (!isPositiveFinite(pageCount)) {
+    warnings.add('documentPageCountUnknown');
+    return DOCUMENT_UNKNOWN_FALLBACK_TOKENS;
+  }
+  return Math.ceil(pageCount) * DOCUMENT_TOKENS_PER_PAGE;
+}
+
+function estimateToolDefinition(
+  tool: TokenToolDefinition,
+  warnings: Set<TokenEstimateWarningCode>,
+): number {
+  try {
+    return 20 + estimateTextTokens(JSON.stringify({
+      name: tool.name,
+      description: tool.description,
+      parameters: tool.parameters,
+    }));
+  } catch {
+    warnings.add('toolDefinitionSerializationFailed');
+    return 1_000;
+  }
+}
+
+function estimateSerializedValue(value: unknown): number {
+  try {
+    return estimateTextTokens(JSON.stringify(value) ?? 'null');
+  } catch {
+    return 1_000;
+  }
+}
+
+function emptyBreakdown(): TokenEstimateBreakdown {
+  return {
+    textTokens: 0,
+    messageEnvelopeTokens: 0,
+    toolDefinitionTokens: 0,
+    imageTokens: 0,
+    audioTokens: 0,
+    documentTokens: 0,
+    otherTokens: 0,
+  };
+}
+
+function sumBreakdown(breakdown: TokenEstimateBreakdown): number {
+  return Object.values(breakdown).reduce((total, value) => total + value, 0);
+}
+
+function isPositiveFinite(value: number | undefined): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0;
 }

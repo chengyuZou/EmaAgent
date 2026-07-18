@@ -9,7 +9,7 @@ import type {
   ToolCallId,
   TurnId,
 } from '@ema-agent/contracts';
-import type { LlmRouter, LlmContentPart, LlmMessage, ThinkingMode } from '@ema-agent/llm';
+import type { LlmRouter, LlmContentPart, LlmMessage, LlmToolDef, ThinkingMode } from '@ema-agent/llm';
 import type { SessionStore, Turn } from '@ema-agent/session';
 import type { HookBus } from '@ema-agent/hook';
 import type { EmotionEngine } from '@ema-agent/emotion';
@@ -146,7 +146,7 @@ export interface AgentRunInput {
    * the context window mid-turn. Orchestrator wires this to MemoryPlanner.compact().
    * Omit in tests and sub-agent spawns (ephemeral context).
    */
-  compactMessages?: (messages: LlmMessage[]) => Promise<LlmMessage[]>;
+  compactMessages?: (messages: LlmMessage[], tools: readonly LlmToolDef[]) => Promise<LlmMessage[]>;
   /** User-requested thinking mode — forwarded to every LlmRequest in the agent loop. */
   thinking?: ThinkingMode;
   /** Core 在 Engine 前完成的媒体降级。 */

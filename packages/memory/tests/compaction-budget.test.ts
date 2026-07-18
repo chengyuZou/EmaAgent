@@ -120,6 +120,19 @@ describe('Compaction 硬 Token 预算', () => {
     expect(fitted).toBeNull();
   });
 
+  it('工具定义占满固定预算时不会错误接受消息摘要', () => {
+    const fitted = fitCompactionContext({
+      summary: '很短的摘要',
+      restore: [],
+      tail: [{ role: 'user', content: '近期消息' }],
+      mode: 'agent',
+      tokenLimit: 100,
+      fixedTokens: 100,
+    });
+
+    expect(fitted).toBeNull();
+  });
+
   it('只有收敛后的摘要会落盘，并以真实 Token 数报告完成', async () => {
     const appendMessage = vi.fn();
     const complete = vi.fn(async () => ({

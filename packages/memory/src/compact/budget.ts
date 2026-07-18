@@ -20,11 +20,15 @@ export function fitCompactionContext(args: {
   tail: LlmMessage[];
   mode: TurnMode;
   tokenLimit: number;
+  fixedTokens?: number;
 }): FittedCompactionContext | null {
-  if (args.tokenLimit <= 0 || estimateMessagesTokens(args.tail) >= args.tokenLimit) return null;
+  const fixedTokens = Math.max(0, args.fixedTokens ?? 0);
+  const estimateTotal = (messages: LlmMessage[]): number =>
+    fixedTokens + estimateMessagesTokens(messages);
+  if (args.tokenLimit <= fixedTokens || estimateTotal(args.tail) >= args.tokenLimit) return null;
 
   const full = buildCandidate(args.summary, args.restore, args.tail, args.mode);
-  const fullTokens = estimateMessagesTokens(full);
+  const fullTokens = estimateTotal(full);
   if (fullTokens <= args.tokenLimit) {
     return {
       messages: full,
@@ -36,7 +40,7 @@ export function fitCompactionContext(args: {
   }
 
   const withoutRestore = buildCandidate(args.summary, [], args.tail, args.mode);
-  const withoutRestoreTokens = estimateMessagesTokens(withoutRestore);
+  const withoutRestoreTokens = estimateTotal(withoutRestore);
   if (withoutRestoreTokens <= args.tokenLimit) {
     return {
       messages: withoutRestore,
@@ -55,7 +59,7 @@ export function fitCompactionContext(args: {
     const middle = Math.floor((low + high) / 2);
     const summary = `${codePoints.slice(0, middle).join('').trimEnd()}${TRUNCATED_MARKER}`;
     const messages = buildCandidate(summary, [], args.tail, args.mode);
-    const afterTokens = estimateMessagesTokens(messages);
+    const afterTokens = estimateTotal(messages);
     if (afterTokens <= args.tokenLimit) {
       best = {
         messages,

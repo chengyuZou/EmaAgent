@@ -1,3 +1,4 @@
+// 测试 Agent 循环的终止保护、LLM 调用标识和工具上下文预算接线。
 import { describe, expect, it, vi } from 'vitest';
 import type { LlmCallId, LlmMessage } from '@ema-agent/contracts';
 import type { AgentPolicy } from '../src/policy.js';
@@ -22,6 +23,44 @@ function makeExecutor(): TurnToolExecutor {
 }
 
 describe('agentLoop LLM 生命周期', () => {
+  it('把本轮工具定义同时交给上下文压缩和 LLM 请求', async () => {
+    const tools = [{
+      name: 'Read',
+      description: '读取文件',
+      parameters: {
+        type: 'object',
+        properties: { path: { type: 'string' } },
+        required: ['path'],
+      },
+    }];
+    const compactMessages = vi.fn(async (messages: LlmMessage[]) => messages);
+    const stream = vi.fn(() => (async function* () {
+      yield { type: 'done' as const, stopReason: 'end_turn' as const };
+    })());
+
+    for await (const event of agentLoop({
+      messages: [{ role: 'user', content: 'read it' }],
+      policy: { toolDefs: () => tools } as unknown as AgentPolicy,
+      buildExecutor: () => makeExecutor(),
+      llm: { stream } as never,
+      providerId: 'provider-1',
+      model: 'model-1',
+      signal: new AbortController().signal,
+      maxIterations: 1,
+      budget: new TurnBudget(),
+      sessionId: 'session-1',
+      compactMessages,
+    })) {
+      expect(event.type).toBeDefined();
+    }
+
+    expect(compactMessages).toHaveBeenCalledWith(
+      [{ role: 'user', content: 'read it' }],
+      tools,
+    );
+    expect(stream).toHaveBeenCalledWith(expect.objectContaining({ tools }));
+  });
+
   it('连续三次权限拒绝后终止当前 Turn，避免模型无限重试', async () => {
     let call = 0;
     const stream = vi.fn(() => (async function* () {

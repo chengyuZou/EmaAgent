@@ -422,11 +422,12 @@ export class Orchestrator {
           kbAssetScopes:  request.kbAssetScopes,
           thinking:       request.thinking,
           requestDegradations,
-          compactMessages: (msgs) => this.bindings.memory.compact({
+          compactMessages: (msgs, tools) => this.bindings.memory.compact({
             sessionId:          turn.sessionId,
             turnId:             turn.id,
             mode:               'agent',
             messages:           msgs,
+            tools,
             modelContextWindow: contextWindow,
             providerId,
             model,

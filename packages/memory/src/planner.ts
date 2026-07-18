@@ -1,5 +1,6 @@
+// 组织通用记忆的检索、写入和上下文压缩，并通过 Memory Facade 暴露给编排层。
 import type { SessionId, TurnId, TurnMode, EmaStreamEvent } from '@ema-agent/contracts';
-import type { LlmMessage } from '@ema-agent/llm';
+import type { LlmMessage, LlmToolDef } from '@ema-agent/llm';
 import { estimateTextTokens } from '@ema-agent/token';
 import type { MemoryDeps } from './deps.js';
 import type { PlanContext, RecallBundle, MemorySettings, CompactResult } from './types.js';
@@ -229,6 +230,7 @@ export class MemoryPlanner {
     turnId:              TurnId;
     mode:                TurnMode;
     messages:            LlmMessage[];
+    tools?:               readonly LlmToolDef[];
     modelContextWindow:  number;
     providerId?:         string;
     model?:              string;
