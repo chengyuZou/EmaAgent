@@ -1,4 +1,4 @@
-// 解析公网 URL 和 DNS, 拒绝本机, 私网, 保留地址, 非标准端口以及危险重定向.
+// 解析公网 URL 和 DNS，拒绝本机、私网、特殊用途地址以及危险重定向。
 import dns from 'node:dns/promises';
 import net from 'node:net';
 import ipaddr from 'ipaddr.js';
@@ -6,10 +6,6 @@ import { PublicHttpPolicyError } from './errors.js';
 import type { ApprovedPublicTarget } from './types.js';
 
 const MAX_URL_LENGTH = 2_048;
-
-// 默认只放行标准 Web 端口; 其他端口会让 Agent 变成端口扫描器。
-// 确有业务需要(自建服务)时, 调用方应在配置层显式放行, 不在此放宽。
-const ALLOWED_PUBLIC_PORTS = new Set(['80', '443']);
 
 // IANA 特殊用途 IPv4 网段: 全部不可作为公网目标。
 // 交给 ipaddr.js 匹配, 不再手写八位组判断(注册表会变, 手写表已出现漏判与误杀)。
@@ -20,6 +16,7 @@ const IPV4_DENY_CIDRS = [
   '127.0.0.0/8',      // 回环
   '169.254.0.0/16',   // 链路本地
   '172.16.0.0/12',    // RFC1918 私网
+  '192.0.0.0/24',     // IETF 协议分配(下方单独放行全球可达的 .9/.10)
   '192.0.2.0/24',     // TEST-NET-1 文档段
   '192.88.99.0/24',   // 6to4 中继任播
   '192.168.0.0/16',   // RFC1918 私网
@@ -30,10 +27,17 @@ const IPV4_DENY_CIDRS = [
   '240.0.0.0/4',      // 保留(含 255.255.255.255 广播)
 ] as const;
 
+// IANA 将 PCP/TURN Anycast 标为全球可达，不能因同属 192.0.0.0/24 而误杀。
+const IPV4_PUBLIC_EXCEPTIONS = new Set(['192.0.0.9', '192.0.0.10']);
+
 // IPv6 只放行全球单播(2000::/3)中的非特殊段;
 // 未指定/回环/ULA/链路本地/组播/保留段一律拒绝。
 const IPV6_GLOBAL_UNICAST = '2000::/3';
 const IPV6_DENY_CIDRS = [
+  '2001::/32',      // Teredo 隧道，内嵌地址会绕过普通目标审批
+  '2001:2::/48',    // 网络基准测试
+  '2001:10::/28',   // ORCHID(已弃用)
+  '2001:20::/28',   // ORCHIDv2，不作为普通公网目标
   '2001:db8::/32',  // 文档段
   '3fff::/20',      // 2024 新增文档段
 ] as const;
@@ -115,11 +119,6 @@ function parsePublicHttpUrl(rawUrl: string): URL {
   if (url.hostname.toLowerCase() === 'localhost' || url.hostname.toLowerCase().endsWith('.local')) {
     throw new PublicHttpPolicyError(`拒绝访问本地主机 ${url.hostname}`);
   }
-  // 默认只放行标准 Web 端口, 防止借 Agent 探测任意端口。
-  const port = effectivePort(url);
-  if (!ALLOWED_PUBLIC_PORTS.has(port)) {
-    throw new PublicHttpPolicyError(`拒绝访问非标准端口 ${port}(默认仅允许 80/443)`);
-  }
   return url;
 }
 
@@ -131,6 +130,7 @@ function effectivePort(url: URL): string {
 function isPublicIpv4(address: string): boolean {
   if (!ipaddr.IPv4.isIPv4(address)) return false;
   const ip = ipaddr.IPv4.parse(address);
+  if (IPV4_PUBLIC_EXCEPTIONS.has(ip.toString())) return true;
   return !IPV4_DENY_CIDRS.some(cidr => ip.match(ipaddr.IPv4.parseCIDR(cidr)));
 }
 

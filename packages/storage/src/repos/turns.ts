@@ -1,3 +1,4 @@
+// 管理 Turn 的创建、状态流转、分支查询、分页和运行指标。
 import type { SqliteDb } from '../database.js';
 import type { TurnId, SessionId, TurnMode, TurnStatus, BranchId } from '@ema-agent/contracts';
 
@@ -35,6 +36,16 @@ export interface TurnCompletion {
   iterations?: number;
   usageInputTokens?: number;
   usageOutputTokens?: number;
+}
+
+export interface TurnIdPageCursor {
+  startedAt: number;
+  id: string;
+}
+
+export interface TurnIdPage {
+  ids: string[];
+  nextCursor: TurnIdPageCursor | null;
 }
 
 export class TurnsRepo {
@@ -105,6 +116,38 @@ export class TurnsRepo {
     return this.db
       .prepare('SELECT * FROM turns WHERE session_id = ? ORDER BY started_at DESC, id DESC LIMIT ?')
       .all(sessionId, limit) as TurnRow[];
+  }
+
+  /** 按稳定复合游标遍历一个 Session 的全部 Turn ID，供启动恢复等内部任务使用。 */
+  listIdsForSessionPage(
+    sessionId: SessionId,
+    cursor?: TurnIdPageCursor,
+    limit = 1_000,
+  ): TurnIdPage {
+    const pageSize = Math.min(Math.max(limit, 1), 2_000);
+    const rows = cursor
+      ? this.db.prepare(`
+          SELECT id, started_at FROM turns
+          WHERE session_id = ?
+            AND (started_at < ? OR (started_at = ? AND id < ?))
+          ORDER BY started_at DESC, id DESC
+          LIMIT ?
+        `).all(sessionId, cursor.startedAt, cursor.startedAt, cursor.id, pageSize + 1)
+      : this.db.prepare(`
+          SELECT id, started_at FROM turns
+          WHERE session_id = ?
+          ORDER BY started_at DESC, id DESC
+          LIMIT ?
+        `).all(sessionId, pageSize + 1);
+    const typedRows = rows as Array<{ id: string; started_at: number }>;
+    const pageRows = typedRows.slice(0, pageSize);
+    const last = pageRows.at(-1);
+    return {
+      ids: pageRows.map((row) => row.id),
+      nextCursor: typedRows.length > pageSize && last
+        ? { startedAt: last.started_at, id: last.id }
+        : null,
+    };
   }
 
   findRunning(sessionId: SessionId): TurnRow | undefined {

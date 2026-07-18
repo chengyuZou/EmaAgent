@@ -62,6 +62,34 @@ describe('SessionStore — session', () => {
   });
 });
 
+describe('SessionStore — Turn ID 游标遍历', () => {
+  it('复合游标覆盖同一 Session 的全部 Turn 且不重复', () => {
+    const store = makeStore();
+    const session = store.createSession();
+    const expected = new Set<string>();
+    for (let index = 0; index < 5; index++) {
+      const { turn } = store.startTurn({
+        sessionId: session.id,
+        mode: 'chat',
+        userInput: `turn-${index}`,
+      });
+      expected.add(turn.id as string);
+      store.completeTurn(turn.id);
+    }
+
+    const actual: string[] = [];
+    let cursor: Parameters<typeof store.listTurnIdsPage>[1];
+    do {
+      const page = store.listTurnIdsPage(session.id, cursor, 2);
+      actual.push(...page.ids);
+      cursor = page.nextCursor ?? undefined;
+    } while (cursor);
+
+    expect(new Set(actual)).toEqual(expected);
+    expect(actual).toHaveLength(expected.size);
+  });
+});
+
 // ── Turn concurrency ──────────────────────────────────────────────────────────
 
 describe('SessionStore — turn concurrency', () => {

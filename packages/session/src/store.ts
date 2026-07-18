@@ -11,6 +11,8 @@ import {
   type SessionRowEnriched,
   type SessionSearchRow,
   type TurnRow,
+  type TurnIdPage,
+  type TurnIdPageCursor,
   type MessageRow,
 } from '@ema-agent/storage';
 import {
@@ -744,6 +746,15 @@ export class SessionStore implements SessionOwnershipFacade {
 
   listTurns(sessionId: SessionId, limit = 50): Turn[] {
     return this.turnsRepo.listForSession(sessionId, limit).map(toTurn);
+  }
+
+  /** 启动恢复等内部任务使用的轻量 Turn ID 游标页，不加载正文和其他领域对象。 */
+  listTurnIdsPage(
+    sessionId: SessionId,
+    cursor?: TurnIdPageCursor,
+    limit = 1_000,
+  ): TurnIdPage {
+    return this.turnsRepo.listIdsForSessionPage(sessionId, cursor, limit);
   }
 
   /** 校验 turn 属于指定 session；供跨模块写入前通过 Facade 调用。 */

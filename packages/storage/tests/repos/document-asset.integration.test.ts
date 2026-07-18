@@ -72,6 +72,21 @@ describe('B-060 DocumentAsset 复合游标', () => {
       .toContain('document_assets(created_at DESC, id DESC)');
     expect(database.currentVersion()).toBe(5);
   });
+
+  it('分批核对当前 KB 拥有的资源 ID，并保持输入顺序且去重', () => {
+    const existingIds = Array.from({ length: 405 }, (_, index) => `asset-${index}`);
+    for (const id of existingIds) insertAsset(repo, id, 1_000);
+
+    expect(repo.findExistingIds([
+      'asset-404',
+      'foreign-asset',
+      ...existingIds,
+      'asset-404',
+    ])).toEqual([
+      'asset-404',
+      ...existingIds.slice(0, 404),
+    ]);
+  });
 });
 
 function insertAsset(

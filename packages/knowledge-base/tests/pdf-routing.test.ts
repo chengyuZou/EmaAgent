@@ -133,6 +133,26 @@ describe('B-074 PDF 三路路由', () => {
     expect(result.failures).toEqual([]);
   });
 
+  it('上一页 Vision 段落不会与下一页文本层续写合并', async () => {
+    usePdf([
+      fakePage({
+        text: LONG_TEXT,
+        ops: [{ fn: OPS.paintImageXObject, args: ['img1'] }],
+        objs: { img1: { width: 800, height: 600 } },
+      }),
+      fakePage({ text: 'continues with enough lowercase explanatory text for the second page.' }),
+    ]);
+    const stub = stubImageReader('figure description without punctuation');
+    const result = await new PdfReader(stub.reader).read(SRC);
+
+    const figure = result.blocks.find((block) => block.source === 'vision-figure');
+    const secondPageText = result.blocks.find(
+      (block) => block.source === 'text-layer' && block.page === 2,
+    );
+    expect(figure?.text).toBe('figure description without punctuation');
+    expect(secondPageText?.text).toContain('continues with enough lowercase');
+  });
+
   it('小图标(20x20)不算显著图, 不触发 caption', async () => {
     usePdf([fakePage({
       text: LONG_TEXT,

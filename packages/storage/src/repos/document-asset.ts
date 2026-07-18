@@ -1,5 +1,7 @@
+// 管理知识库文档资源的元数据、分页、激活记录和向量空间状态。
 import type { SqliteDb } from '../database.js';
 import { escapeLikePattern } from '../like-utils.js';
+import { createSqliteIdBatches } from '../sqlite-id-batches.js';
 
 export interface DocumentAssetRow {
   id:                string;
@@ -206,6 +208,19 @@ export class DocumentAssetRepo {
         space.normalization, space.revision, space.id,
         Date.now(), id,
       );
+  }
+
+  /** 返回当前 KB 数据库中真实存在的 ID，并保持调用方顺序且去重。 */
+  findExistingIds(ids: readonly string[]): string[] {
+    const existing = new Set<string>();
+    for (const batch of createSqliteIdBatches(this.db, ids)) {
+      const placeholders = batch.map(() => '?').join(',');
+      const rows = this.db.prepare(
+        `SELECT id FROM document_assets WHERE id IN (${placeholders})`,
+      ).all(...batch) as Array<{ id: string }>;
+      for (const row of rows) existing.add(row.id);
+    }
+    return [...new Set(ids)].filter((id) => existing.has(id));
   }
 
   /** 将未用 currentModel embedding 的 indexed asset 标为 stale，同时清匹配的 stale=0。

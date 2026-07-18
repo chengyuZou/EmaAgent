@@ -49,17 +49,31 @@ export class KnowledgeStore {
     return this.assets.listInactiveSince(beforeTs) as DocumentAsset[];
   }
 
+  /** 把外部 asset scope 收窄到当前 KB 数据库真实拥有的文档。 */
+  filterExistingAssetIds(assetIds: readonly string[]): string[] {
+    return [...new Set(this.assets.findExistingIds(assetIds))];
+  }
+
   /** Record a turn selecting these KBs: bump use_count + stamp last_activated_at,
    *  and log one kb_activations call (per-asset rows) when a session is known. */
   recordActivation(
     assetIds: string[],
     opts: { sessionId?: string; turnId?: string; ts?: number } = {},
-  ): void {
+  ): string[] {
+    const ownedAssetIds = this.filterExistingAssetIds(assetIds);
+    if (ownedAssetIds.length === 0) return ownedAssetIds;
     const ts = opts.ts ?? Date.now();
-    this.assets.recordActivation(assetIds, ts);
+    this.assets.recordActivation(ownedAssetIds, ts);
     if (opts.sessionId) {
-      this.activations.recordCall({ kbId: this.kbId, assetIds, sessionId: opts.sessionId, turnId: opts.turnId, ts });
+      this.activations.recordCall({
+        kbId: this.kbId,
+        assetIds: ownedAssetIds,
+        sessionId: opts.sessionId,
+        turnId: opts.turnId,
+        ts,
+      });
     }
+    return ownedAssetIds;
   }
 
   findAssetByHash(hash: string): DocumentAsset | undefined {

@@ -390,7 +390,12 @@ function mergeContinuation(blocks: DocumentBlock[], pageBlks: DocumentBlock[]): 
   if (blocks.length > 0 && pageBlks.length > 0) {
     const last  = blocks[blocks.length - 1]!;
     const first = pageBlks[0]!;
-    if (last.kind === 'paragraph' && first.kind === 'paragraph' &&
+    const adjacentTextPages =
+      last.source === 'text-layer' &&
+      first.source === 'text-layer' &&
+      last.page !== undefined &&
+      first.page === last.page + 1;
+    if (adjacentTextPages && last.kind === 'paragraph' && first.kind === 'paragraph' &&
         !endsWithPunct(last.text) && looksLikeContinuation(first.text)) {
       last.text = last.text.trimEnd() + ' ' + first.text.trimStart();
       blocks.push(...pageBlks.slice(1));

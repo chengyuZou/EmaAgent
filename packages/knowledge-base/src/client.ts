@@ -227,14 +227,21 @@ export class KnowledgeClient {
   async search(query: string, opts: SearchOptions = {}): Promise<KbSearchResult> {
     const topK  = opts.topK  ?? 10;
     const alpha = opts.alpha ?? 0.5;
+    const scopedAssetIds = opts.assetIds && opts.assetIds.length > 0
+      ? this.deps.store.recordActivation(opts.assetIds, {
+          sessionId: opts.sessionId,
+          turnId: opts.turnId,
+        })
+      : opts.assetIds;
 
-    // Record this turn's KB selection (use_count + last_activated_at + kb_activations).
-    if (opts.assetIds && opts.assetIds.length > 0) {
-      this.deps.store.recordActivation(opts.assetIds, { sessionId: opts.sessionId, turnId: opts.turnId });
+    // 调用方明确指定了文档范围却没有任何 ID 属于当前 KB 时必须返回空结果。
+    // 不能把过滤后的 [] 解释成“不限文档”，否则恶意或过期 scope 会扩大读取范围。
+    if (opts.assetIds && opts.assetIds.length > 0 && scopedAssetIds?.length === 0) {
+      return { query, hits: [] };
     }
 
-    const searchOpts = { assetIds: opts.assetIds, topK: topK * 3 };
-    const selected = opts.assetIds ? new Set(opts.assetIds) : null;
+    const searchOpts = { assetIds: scopedAssetIds, topK: topK * 3 };
+    const selected = scopedAssetIds ? new Set(scopedAssetIds) : null;
 
     const toRanked = (hits: Array<{ chunkId: string; score: number }>) =>
       hits.map(h => ({ id: h.chunkId, score: h.score }));
