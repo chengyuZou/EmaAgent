@@ -1,4 +1,4 @@
-import type { VisionProtocol } from '@ema-agent/contracts';
+import type { UsageContext, VisionProtocol } from '@ema-agent/contracts';
 
 /** 传给 LLM 告诉它这次任务目标
  * - auto: 让 LLM 自行判断任务类型
@@ -110,6 +110,7 @@ export interface VisionBlock {
 
 export interface VisionRequest {
   context?: VisionInvocationContext;
+  usageContext?: UsageContext;
   /** 底层模型 provider 的 provider_configs.id。 */
   providerId: string;
   /** 所选 provider 期望的原始模型名。 */

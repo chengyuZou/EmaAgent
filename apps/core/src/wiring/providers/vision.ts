@@ -10,6 +10,8 @@ import {
   isVisionProtocol,
   resolveProtocols,
   type ProtocolFamily,
+  type UsageRecord,
+  type UsageRecorder,
 } from '@ema-agent/contracts';
 
 export interface FetchedVisionModels {
@@ -86,8 +88,14 @@ function loadVisionConfigs(
 export function buildVisionRouter(
   profileDb: Database,
   credentials: CredentialFacade,
+  usageRecorder?: UsageRecorder,
+  onUsageRecordError?: (error: unknown, record: UsageRecord) => void,
 ): VisionRouter {
-  return new VisionRouter({ configs: loadVisionConfigs(profileDb, credentials) });
+  return new VisionRouter({
+    configs: loadVisionConfigs(profileDb, credentials),
+    usageRecorder,
+    onUsageRecordError,
+  });
 }
 
 export function reloadVisionRouter(

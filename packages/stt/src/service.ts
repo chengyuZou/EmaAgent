@@ -1,8 +1,16 @@
+// STT Facade 负责请求限制、取消和 Provider 路由，并记录每次真实转录调用的用量。
+import { randomUUID } from 'node:crypto';
 import type { SttAdapter, SttAdapterCall, SttProviderConfig, SttRequest, SttResponse, SttHealthResult, SttProbeResult } from './types.js';
 import { OpenAiSttAdapter } from './adapters/openai-stt.js';
 import { isSttError, SttError } from './errors.js';
 import { createSttRequestScope } from './request-scope.js';
 import type { SttLimits } from './types.js';
+import type { UsageRecord, UsageRecorder } from '@ema-agent/contracts';
+
+export interface SttClientOptions {
+  usageRecorder?: UsageRecorder;
+  onUsageRecordError?: (error: unknown, record: UsageRecord) => void;
+}
 
 const DEFAULT_LIMITS: Readonly<SttLimits> = {
   maxAudioBytes: 25 * 1024 * 1024,
@@ -27,13 +35,18 @@ export class SttClient {
   private adapters = new Map<string, SttAdapter>();
   private configs  = new Map<string, SttProviderConfig>();
   private readonly limits: Readonly<SttLimits>;
+  private readonly usageRecorder?: UsageRecorder;
+  private readonly onUsageRecordError?: (error: unknown, record: UsageRecord) => void;
 
   constructor(
     configs: SttProviderConfig[],
     adapterOverrides?: ReadonlyMap<string, SttAdapter>,
     limits: Partial<SttLimits> = {},
+    options: SttClientOptions = {},
   ) {
     this.limits = validateLimits({ ...DEFAULT_LIMITS, ...limits });
+    this.usageRecorder = options.usageRecorder;
+    this.onUsageRecordError = options.onUsageRecordError;
     for (const config of configs) {
       this.configs.set(config.id, config);
       const override = adapterOverrides?.get(config.id);
@@ -106,6 +119,7 @@ export class SttClient {
       );
     }
     const scope = createSttRequestScope(req.abortSignal, this.limits.timeoutMs);
+    const startedAt = Date.now();
     const call: SttAdapterCall = {
       audio:       req.audio,
       mime:        req.mime,
@@ -116,16 +130,22 @@ export class SttClient {
     try {
       const response = await adapter.transcribe(call);
       if (scope.signal.aborted) throw scope.signal.reason;
+      this.recordUsage(req, startedAt, null);
       return response;
     } catch (error) {
-      if (isSttError(error)) throw error;
-      if (scope.signal.aborted && isSttError(scope.signal.reason)) {
-        throw scope.signal.reason;
+      let failure: SttError;
+      if (isSttError(error)) {
+        failure = error;
+      } else if (scope.signal.aborted && isSttError(scope.signal.reason)) {
+        failure = scope.signal.reason;
+      } else {
+        failure = new SttError('provider_failed', 'STT provider request failed', {
+          cause: error,
+          retryable: true,
+        });
       }
-      throw new SttError('provider_failed', 'STT provider request failed', {
-        cause: error,
-        retryable: true,
-      });
+      this.recordUsage(req, startedAt, `stt/${failure.code}`);
+      throw failure;
     } finally {
       scope.dispose();
     }
@@ -144,6 +164,37 @@ export class SttClient {
 
   firstProviderId(): string | undefined {
     return this.configs.keys().next().value;
+  }
+
+  private recordUsage(req: SttRequest, startedAt: number, errorCode: string | null): void {
+    const record: UsageRecord = {
+      id: req.usageContext?.callId ?? randomUUID(),
+      sessionId: req.usageContext?.sessionId ?? null,
+      turnId: req.usageContext?.turnId ?? null,
+      providerId: req.providerId,
+      modelId: req.model,
+      capability: 'stt',
+      status: errorCode === null ? 'completed' : 'failed',
+      inputTokens: null,
+      outputTokens: null,
+      cacheReadInputTokens: null,
+      cacheWriteInputTokens: null,
+      quantity: req.audio.byteLength,
+      unit: 'byte',
+      costUsd: null,
+      durationMs: Math.max(0, Date.now() - startedAt),
+      errorCode,
+      createdAt: startedAt,
+    };
+    try {
+      this.usageRecorder?.record(record);
+    } catch (error) {
+      try {
+        this.onUsageRecordError?.(error, record);
+      } catch {
+        // 记录失败不能覆盖真实的 STT 调用结果。
+      }
+    }
   }
 }
 

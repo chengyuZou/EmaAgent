@@ -65,6 +65,7 @@ import type {
   KbSearchResult,
   ReleaseFeaturesWire,
   SandboxStatusWire,
+  UsageRecord,
 } from '@ema-agent/contracts';
 import { ToolRegistry }        from '@ema-agent/tools';
 import {
@@ -291,6 +292,9 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
   const providerSttModels    = new ProviderSttModelsRepo(profileDb.sqlite);
   const providerVisionModels = new ProviderVisionModelsRepo(profileDb.sqlite);
   const usageRecords         = new UsageRecordsRepo(dataDb.sqlite);
+  const onUsageRecordError = (error: unknown, record: UsageRecord): void => {
+    console.error(`[usage] 调用记录写入失败: ${record.id}`, error);
+  };
 
   // ── AI clients (provider configs live in profileDb) ────────────────────────
   // models.dev catalog: load bundled snapshot first (instant, offline-safe),
@@ -309,13 +313,12 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
     supportsManualImageInput: (providerId, model) =>
       providerVisionModels.hasProviderModel(providerId, model),
     usageRecorder: usageRecords,
-    onUsageRecordError: (error, record) => {
-      console.error(`[usage] 调用记录写入失败: ${record.id}`, error);
-    },
+    onUsageRecordError,
   });
   const ebd = new EbdRouter(
     loadEmbedConfigs(profileDb, credentials),
     loadRerankConfigs(profileDb, credentials),
+    { usageRecorder: usageRecords, onUsageRecordError },
   );
 
   const narrative = new NarrativeClient({
@@ -350,9 +353,9 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
   const emotion = new EmotionEngine({ vocabulary: card.current().emotionVocabulary });
 
   // ── TTS / STT ───────────────────────────────────────────────────────────────
-  const tts    = buildTtsClient({ profileDb, credentials });
-  const stt    = buildSttClient({ profileDb, credentials });
-  const vision = buildVisionRouter(profileDb, credentials);
+  const tts    = buildTtsClient({ profileDb, credentials, usageRecorder: usageRecords, onUsageRecordError });
+  const stt    = buildSttClient({ profileDb, credentials, usageRecorder: usageRecords, onUsageRecordError });
+  const vision = buildVisionRouter(profileDb, credentials, usageRecords, onUsageRecordError);
   const providerRuntime = new ProviderRuntimeFacade({
     profileDb,
     llm,

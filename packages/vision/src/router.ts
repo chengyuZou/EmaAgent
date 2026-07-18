@@ -1,5 +1,6 @@
-// 这里是 Vision 运行时 facade：管 provider 配置 + 并发限流(全局 + per-provider)+ 超时，把请求交给对应协议 adapter。
+// Vision Facade 管理 Provider、并发和超时，并在真实提取调用边界记录用量。
 
+import { randomUUID } from 'node:crypto';
 import { OpenAiVisionAdapter }    from './adapters/openai-vision.js';
 import { AnthropicVisionAdapter } from './adapters/anthropic-vision.js';
 import { GeminiVisionAdapter }    from './adapters/gemini-vision.js';
@@ -14,7 +15,7 @@ import type {
   VisionRequest,
   VisionTask,
 } from './types.js';
-import type { VisionProtocol } from '@ema-agent/contracts';
+import type { UsageRecord, UsageRecorder, VisionProtocol } from '@ema-agent/contracts';
 
 export interface VisionConcurrencyLimiter {
   acquire(
@@ -31,6 +32,8 @@ export interface VisionRouterArgs {
   limits?: Partial<VisionLimits>;
   adapterOverrides?: ReadonlyMap<string, VisionAdapter>;
   limiter?: VisionConcurrencyLimiter;
+  usageRecorder?: UsageRecorder;
+  onUsageRecordError?: (error: unknown, record: UsageRecord) => void;
 }
 
 function createAdapter(config: VisionProviderConfig): VisionAdapter {
@@ -180,11 +183,15 @@ export class VisionRouter {
   private readonly adapterOverrides?: ReadonlyMap<string, VisionAdapter>;
   private readonly limiter: VisionConcurrencyLimiter;
   private readonly limits: VisionLimits;
+  private readonly usageRecorder?: UsageRecorder;
+  private readonly onUsageRecordError?: (error: unknown, record: UsageRecord) => void;
 
   constructor(args: VisionRouterArgs) {
     this.adapterOverrides = args.adapterOverrides;
     this.limiter = args.limiter ?? new VisionLimiter();
     this.limits = { ...DEFAULT_LIMITS, ...args.limits };
+    this.usageRecorder = args.usageRecorder;
+    this.onUsageRecordError = args.onUsageRecordError;
     validateLimits(this.limits);
 
     for (const config of args.configs) {
@@ -212,6 +219,7 @@ export class VisionRouter {
     }
 
     const signalScope = createScopedSignal(normalized.signal, limits.timeoutMs);
+    let providerStartedAt: number | undefined;
     let release: (() => void) | undefined;
     try {
       release = await this.limiter.acquire(
@@ -221,12 +229,20 @@ export class VisionRouter {
         limits.maxQueuedRequests,
         signalScope.signal,
       );
-      return await adapter.extract({
+      providerStartedAt = Date.now();
+      const result = await adapter.extract({
         ...normalized,
         signal: signalScope.signal,
       });
+      this.recordUsage(normalized, result, providerStartedAt, null);
+      return result;
     } catch (error) {
-      throw classifyVisionError(error, meta, signalScope.timedOut());
+      const classified = classifyVisionError(error, meta, signalScope.timedOut());
+      // 排队阶段失败没有触达 Provider，不能伪造模型消费记录。
+      if (providerStartedAt !== undefined) {
+        this.recordUsage(normalized, undefined, providerStartedAt, classified.code);
+      }
+      throw classified;
     } finally {
       signalScope.dispose();
       release?.();
@@ -272,6 +288,42 @@ export class VisionRouter {
 
   firstProviderId(): string | undefined {
     return this.configs.keys().next().value;
+  }
+
+  private recordUsage(
+    request: NormalizedVisionRequest,
+    result: VisionExtractionResult | undefined,
+    startedAt: number,
+    errorCode: string | null,
+  ): void {
+    const record: UsageRecord = {
+      id: request.usageContext?.callId ?? randomUUID(),
+      sessionId: request.usageContext?.sessionId ?? request.context?.sessionId ?? null,
+      turnId: request.usageContext?.turnId ?? request.context?.turnId ?? null,
+      providerId: request.providerId,
+      modelId: request.model,
+      capability: 'vision',
+      status: errorCode === null ? 'completed' : 'failed',
+      inputTokens: result?.usage?.inputTokens ?? null,
+      outputTokens: result?.usage?.outputTokens ?? null,
+      cacheReadInputTokens: null,
+      cacheWriteInputTokens: null,
+      quantity: request.inputs.length,
+      unit: 'image',
+      costUsd: null,
+      durationMs: Math.max(0, Date.now() - startedAt),
+      errorCode,
+      createdAt: startedAt,
+    };
+    try {
+      this.usageRecorder?.record(record);
+    } catch (error) {
+      try {
+        this.onUsageRecordError?.(error, record);
+      } catch {
+        // 用量写入属于观测链路，不能改变 Vision 主调用结果。
+      }
+    }
   }
 
   defaultModelFor(providerId: string): string | undefined {

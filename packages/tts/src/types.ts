@@ -1,4 +1,4 @@
-import type { TtsProtocol } from '@ema-agent/contracts';
+import type { TtsProtocol, UsageContext } from '@ema-agent/contracts';
 
 // 重新导出 TtsProtocol - 它放在 contracts 里,因为派生自 ProtocolFamily
 // (provider registry 需要它)。其余都是 TTS 包内部的。
@@ -88,6 +88,7 @@ export interface TtsRequest {
   sampleRate?:  number;
   speed?:       number;
   abortSignal?: AbortSignal;
+  usageContext?: UsageContext;
 }
 
 // ── Provider 配置(每协议的凭证与端点)────────────────────────────────────

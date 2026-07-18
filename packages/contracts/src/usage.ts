@@ -4,6 +4,13 @@ export type UsageCapability = 'llm' | 'vision' | 'embed' | 'rerank' | 'stt' | 't
 
 export type UsageRecordStatus = 'completed' | 'failed';
 
+/** 把一次模型调用关联到稳定的业务身份；未归属 Turn 的后台任务可以只传 callId。 */
+export interface UsageContext<TCallId extends string = string> {
+  callId: TCallId;
+  sessionId?: string;
+  turnId?: string;
+}
+
 /**
  * 单次逻辑 LLM 调用由 Provider 返回的 Token 指标。
  * cache 字段只在 Provider 明确返回对应计数时出现，禁止通过总输入量猜测。

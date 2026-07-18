@@ -2,7 +2,14 @@ import type { Database, ProviderConfigRow } from '@ema-agent/storage';
 import { ProvidersRepo } from '@ema-agent/storage';
 import { SttClient, type SttProviderConfig } from '@ema-agent/stt';
 import type { CredentialFacade } from '@ema-agent/credential';
-import { getProviderDefinition, isSttProtocol, resolveProtocols, type ProtocolFamily } from '@ema-agent/contracts';
+import {
+  getProviderDefinition,
+  isSttProtocol,
+  resolveProtocols,
+  type ProtocolFamily,
+  type UsageRecord,
+  type UsageRecorder,
+} from '@ema-agent/contracts';
 
 // ── Provider config builder (exported — reused by providers route hot-reload) ─
 
@@ -44,8 +51,18 @@ function loadSttProviderConfigs(
 export function buildSttClient(args: {
   profileDb: Database;
   credentials: CredentialFacade;
+  usageRecorder?: UsageRecorder;
+  onUsageRecordError?: (error: unknown, record: UsageRecord) => void;
 }): SttClient {
-  return new SttClient(loadSttProviderConfigs(args.profileDb, args.credentials));
+  return new SttClient(
+    loadSttProviderConfigs(args.profileDb, args.credentials),
+    undefined,
+    {},
+    {
+      usageRecorder: args.usageRecorder,
+      onUsageRecordError: args.onUsageRecordError,
+    },
+  );
 }
 
 /** Hot-reload after a provider config change. Binding resolution stays in the route. */

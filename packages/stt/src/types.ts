@@ -1,4 +1,4 @@
-import type { SttProtocol } from '@ema-agent/contracts';
+import type { SttProtocol, UsageContext } from '@ema-agent/contracts';
 
 // 重新导出 protocol 枚举,消费者只从此包 import
 export type { SttProtocol } from '@ema-agent/contracts';
@@ -18,6 +18,7 @@ export interface SttRequest {
   mime:         string;
   language?:    string;
   abortSignal?: AbortSignal;
+  usageContext?: UsageContext;
 }
 
 /** Facade 级硬限制。V1 不做 STT 流式能力探测。 */

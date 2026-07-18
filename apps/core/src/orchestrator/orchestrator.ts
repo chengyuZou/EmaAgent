@@ -192,6 +192,11 @@ export class Orchestrator {
               model,
               task: 'caption',
               inputs,
+              context: {
+                caller: 'turn_attachment',
+                sessionId: sessionId as string,
+                turnId: turnId as string,
+              },
               signal: visionSignal,
             });
             return result.text;

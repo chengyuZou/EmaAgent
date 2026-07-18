@@ -7,6 +7,7 @@ import type {
   LlmProtocol,
   LlmTokenUsage,
   LlmCallId,
+  UsageContext,
 } from '@ema-agent/contracts';
 
 // 重新导出,调用方只需一次 import
@@ -79,11 +80,7 @@ export interface LlmRequest {
   temperature?: number;
   signal?: AbortSignal;
   /** 业务调用身份由上层传入；省略时 Router 为内部调用生成独立身份。 */
-  usageContext?: {
-    callId: LlmCallId;
-    sessionId?: string;
-    turnId?: string;
-  };
+  usageContext?: UsageContext<LlmCallId>;
 }
 
 // ── 流式输出 ─────────────────────────────────────────────────────

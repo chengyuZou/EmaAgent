@@ -261,6 +261,11 @@ export class KnowledgeClient {
           model:      opts.ebdModel,
           texts:      [embedQuery],
           signal:     opts.signal,
+          usageContext: {
+            callId: randomUUID(),
+            sessionId: opts.sessionId,
+            turnId: opts.turnId,
+          },
         });
         const queryVec = res.embeddings[0];
         if (queryVec?.length) {
@@ -303,6 +308,11 @@ export class KnowledgeClient {
             return c?.text ?? '';
           }),
           topK,
+          usageContext: {
+            callId: randomUUID(),
+            sessionId: opts.sessionId,
+            turnId: opts.turnId,
+          },
         });
         ranked = rerankRes.results
           .filter(r => r.index >= 0 && r.index < ranked.length && r.score >= MIN_RERANK_SCORE)
@@ -391,3 +401,5 @@ function bufferToFloat32(buf: Buffer): Float32Array {
   for (let i = 0; i < f32.length; i++) f32[i] = buf.readFloatLE(i * 4);
   return f32;
 }
+// 知识库客户端负责文档检索、向量召回和重排，并把 Turn 身份传给模型调用账本。
+import { randomUUID } from 'node:crypto';

@@ -15,6 +15,8 @@ import {
   resolveProtocols,
   type ProtocolFamily,
   type CharacterCardId,
+  type UsageRecord,
+  type UsageRecorder,
 } from '@ema-agent/contracts';
 
 import type { CharacterCardStore, CharacterVoiceProfile } from '@ema-agent/character-card';
@@ -172,10 +174,20 @@ function pickPrimaryRefAudio(profile: CharacterVoiceProfile | null) {
 export interface BuildTtsClientArgs {
   profileDb: Database;
   credentials: CredentialFacade;
+  usageRecorder?: UsageRecorder;
+  onUsageRecordError?: (error: unknown, record: UsageRecord) => void;
 }
 
 export function buildTtsClient(args: BuildTtsClientArgs): TtsClient {
-  return new TtsClient(loadTtsProviderConfigs(args.profileDb, args.credentials));
+  return new TtsClient(
+    loadTtsProviderConfigs(args.profileDb, args.credentials),
+    undefined,
+    {},
+    {
+      usageRecorder: args.usageRecorder,
+      onUsageRecordError: args.onUsageRecordError,
+    },
+  );
 }
 
 /**

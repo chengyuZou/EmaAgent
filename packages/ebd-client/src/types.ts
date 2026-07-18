@@ -1,4 +1,4 @@
-import type { EmbedProtocol, RerankProtocol } from '@ema-agent/contracts';
+import type { EmbedProtocol, RerankProtocol, UsageContext } from '@ema-agent/contracts';
 import type { EmbeddingSpace } from './embedding-space.js';
 
 export type { EmbedProtocol, RerankProtocol };
@@ -31,6 +31,7 @@ export interface EmbedRequest {
   model: string;
   texts: string[];
   signal?: AbortSignal;
+  usageContext?: UsageContext;
 }
 
 export interface EmbedResponse {
@@ -53,6 +54,7 @@ export interface RerankRequest {
   documents: string[];
   topK?: number;
   signal?: AbortSignal;
+  usageContext?: UsageContext;
 }
 
 export interface RerankItem {

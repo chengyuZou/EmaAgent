@@ -1,3 +1,5 @@
+// 统一路由 Embedding 与 Rerank 请求，并在 Provider 调用边界记录可靠的原始用量。
+import { randomUUID } from 'node:crypto';
 import { OpenAIEmbedAdapter }  from './adapters/openai-embed.js';
 import { GeminiEmbedAdapter }  from './adapters/gemini-embed.js';
 import { CohereRerankAdapter } from './adapters/cohere-rerank.js';
@@ -12,6 +14,12 @@ import type {
   EbdProbeResult,
 } from './types.js';
 import { createEmbeddingSpace, type EmbeddingSpace } from './embedding-space.js';
+import type { UsageRecord, UsageRecorder } from '@ema-agent/contracts';
+
+export interface EbdRouterOptions {
+  usageRecorder?: UsageRecorder;
+  onUsageRecordError?: (error: unknown, record: UsageRecord) => void;
+}
 
 function createEmbedAdapter(config: EmbedProviderConfig): EmbedAdapter {
   switch (config.protocol) {
@@ -39,11 +47,16 @@ export class EbdRouter {
   private embedConfigs  = new Map<string, EmbedProviderConfig>();
   private rerankAdapters = new Map<string, RerankAdapter>();
   private rerankConfigs  = new Map<string, RerankProviderConfig>();
+  private readonly usageRecorder?: UsageRecorder;
+  private readonly onUsageRecordError?: (error: unknown, record: UsageRecord) => void;
 
   constructor(
     embedConfigs:  EmbedProviderConfig[]  = [],
     rerankConfigs: RerankProviderConfig[] = [],
+    options: EbdRouterOptions = {},
   ) {
+    this.usageRecorder = options.usageRecorder;
+    this.onUsageRecordError = options.onUsageRecordError;
     for (const c of embedConfigs)  this.upsertEmbedConfig(c);
     for (const c of rerankConfigs) this.upsertRerankConfig(c);
   }
@@ -79,20 +92,27 @@ export class EbdRouter {
     const adapter = this.embedAdapters.get(req.providerId);
     if (!adapter) throw new Error(`ebd/embed: no provider registered for id "${req.providerId}"`);
     const config = this.embedConfigs.get(req.providerId)!;
-    const raw = await adapter.embed(req.texts, req.model, req.signal);
-    validateEmbedResponse(req.texts.length, raw.embeddings, raw.dim);
-    const space = createEmbeddingSpace({
-      providerId: req.providerId,
-      model: req.model,
-      dim: raw.dim,
-      normalization: 'l2',
-      revision: config.embeddingRevision,
-    });
-    return {
-      embeddings: raw.embeddings.map(normalizeEmbedding),
-      dim: raw.dim,
-      space,
-    };
+    const startedAt = Date.now();
+    try {
+      const raw = await adapter.embed(req.texts, req.model, req.signal);
+      validateEmbedResponse(req.texts.length, raw.embeddings, raw.dim);
+      const space = createEmbeddingSpace({
+        providerId: req.providerId,
+        model: req.model,
+        dim: raw.dim,
+        normalization: 'l2',
+        revision: config.embeddingRevision,
+      });
+      this.recordUsage(req, 'embed', req.texts.length, 'text', startedAt, null);
+      return {
+        embeddings: raw.embeddings.map(normalizeEmbedding),
+        dim: raw.dim,
+        space,
+      };
+    } catch (error) {
+      this.recordUsage(req, 'embed', req.texts.length, 'text', startedAt, usageErrorCode('embed', error));
+      throw error;
+    }
   }
 
   /** 已知维度时无需调用 Provider 即可解析稳定空间身份。 */
@@ -131,7 +151,15 @@ export class EbdRouter {
   async rerank(req: RerankRequest): Promise<RerankResponse> {
     const adapter = this.rerankAdapters.get(req.providerId);
     if (!adapter) throw new Error(`ebd/rerank: no provider registered for id "${req.providerId}"`);
-    return adapter.rerank(req.query, req.documents, req.topK ?? 5, req.model, req.signal);
+    const startedAt = Date.now();
+    try {
+      const response = await adapter.rerank(req.query, req.documents, req.topK ?? 5, req.model, req.signal);
+      this.recordUsage(req, 'rerank', req.documents.length, 'document', startedAt, null);
+      return response;
+    } catch (error) {
+      this.recordUsage(req, 'rerank', req.documents.length, 'document', startedAt, usageErrorCode('rerank', error));
+      throw error;
+    }
   }
 
   upsertRerankConfig(config: RerankProviderConfig): void {
@@ -177,6 +205,53 @@ export class EbdRouter {
       return { ok: false, latencyMs: Date.now() - start, error: (e as Error).message };
     }
   }
+
+  private recordUsage(
+    request: Pick<EmbedRequest | RerankRequest, 'providerId' | 'model' | 'usageContext'>,
+    capability: 'embed' | 'rerank',
+    quantity: number,
+    unit: 'text' | 'document',
+    startedAt: number,
+    errorCode: string | null,
+  ): void {
+    const record: UsageRecord = {
+      id: request.usageContext?.callId ?? randomUUID(),
+      sessionId: request.usageContext?.sessionId ?? null,
+      turnId: request.usageContext?.turnId ?? null,
+      providerId: request.providerId,
+      modelId: request.model,
+      capability,
+      status: errorCode === null ? 'completed' : 'failed',
+      inputTokens: null,
+      outputTokens: null,
+      cacheReadInputTokens: null,
+      cacheWriteInputTokens: null,
+      quantity,
+      unit,
+      costUsd: null,
+      durationMs: Math.max(0, Date.now() - startedAt),
+      errorCode,
+      createdAt: startedAt,
+    };
+    try {
+      this.usageRecorder?.record(record);
+    } catch (error) {
+      try {
+        this.onUsageRecordError?.(error, record);
+      } catch {
+        // 观测链路不得破坏已经完成的模型调用。
+      }
+    }
+  }
+}
+
+function usageErrorCode(capability: 'embed' | 'rerank', error: unknown): string {
+  if (error instanceof Error) {
+    const code = (error as Error & { code?: unknown }).code;
+    if (typeof code === 'string' && code.length > 0) return code;
+    if (error.name === 'AbortError') return `${capability}/aborted`;
+  }
+  return `${capability}/provider_failed`;
 }
 
 function validateEmbedResponse(expectedCount: number, embeddings: number[][], dim: number): void {

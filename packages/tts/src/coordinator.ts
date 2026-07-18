@@ -240,6 +240,11 @@ export class TtsCoordinator {
         voice:      this.voice,
         format:     this.format,
         abortSignal: this.abortController.signal,
+        usageContext: {
+          callId: sentenceId,
+          sessionId: this.sessionId as string,
+          turnId: this.turnId as string,
+        },
       })) {
         if (this.state !== 'accepting' && this.state !== 'finishing') break;
         if (ev.type === 'audio_chunk') {

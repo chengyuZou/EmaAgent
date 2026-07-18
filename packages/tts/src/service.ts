@@ -1,5 +1,6 @@
 // TTS 哑分发器：按 provider 查 adapter，单句合成带超时和字节上限，不感知角色卡和 voice。
 
+import { randomUUID } from 'node:crypto';
 import type {
   TtsRequest,
   TtsStreamEvent,
@@ -16,6 +17,12 @@ import { GptSoVitsTtsAdapter } from './adapters/gpt-sovits-tts.js';
 import { DashscopeTtsAdapter } from './adapters/dashscope-tts.js';
 
 import { filterSentenceForTts } from './streaming/text-filter.js';
+import type { UsageRecord, UsageRecorder } from '@ema-agent/contracts';
+
+export interface TtsClientOptions {
+  usageRecorder?: UsageRecorder;
+  onUsageRecordError?: (error: unknown, record: UsageRecord) => void;
+}
 
 const DEFAULT_LIMITS: Readonly<TtsLimits> = {
   timeoutMsPerSentence: 120_000,
@@ -42,6 +49,8 @@ export class TtsClient {
   /** providerId -> 配置 */
   private configs  = new Map<string, TtsProviderConfig>();
   private readonly limits: Readonly<TtsLimits>;
+  private readonly usageRecorder?: UsageRecorder;
+  private readonly onUsageRecordError?: (error: unknown, record: UsageRecord) => void;
 
   /**
    * @param configs           Provider 配置(来自 profile.db)。
@@ -51,8 +60,11 @@ export class TtsClient {
     configs: TtsProviderConfig[],
     adapterOverrides?: ReadonlyMap<string, TtsAdapter>,
     limits: Partial<TtsLimits> = {},
+    options: TtsClientOptions = {},
   ) {
     this.limits = validateLimits({ ...DEFAULT_LIMITS, ...limits });
+    this.usageRecorder = options.usageRecorder;
+    this.onUsageRecordError = options.onUsageRecordError;
     for (const cfg of configs) {
       this.configs.set(cfg.id, cfg);
       const override = adapterOverrides?.get(cfg.id);
@@ -182,9 +194,11 @@ export class TtsClient {
       abortSignal: scope.signal,
     };
     const iterator = adapter.stream(normalized)[Symbol.asyncIterator]();
+    const startedAt = Date.now();
     let totalBytes = 0;
     let terminal = false;
     let endedWithoutTerminal = false;
+    let usageErrorCode: string | null = 'tts/stream_incomplete';
 
     try {
       while (!terminal) {
@@ -203,12 +217,15 @@ export class TtsClient {
               code: 'resource_exhausted',
               message: `TTS sentence exceeded ${this.limits.maxBytesPerSentence} bytes`,
             };
+            usageErrorCode = 'tts/resource_exhausted';
             terminal = true;
             continue;
           }
         }
         yield event;
         terminal = event.type === 'done' || event.type === 'error';
+        if (event.type === 'done') usageErrorCode = null;
+        if (event.type === 'error') usageErrorCode = `tts/${event.code}`;
       }
       if (endedWithoutTerminal && !terminal) {
         yield {
@@ -216,15 +233,18 @@ export class TtsClient {
           code: 'invalid_stream',
           message: 'TTS adapter ended without a terminal done or error event',
         };
+        usageErrorCode = 'tts/invalid_stream';
       }
     } catch (error) {
       const reason = scope.reason();
+      const code = reason === 'timeout' ? 'transient_timeout'
+        : reason === 'resource_exhausted' ? 'resource_exhausted'
+        : reason === 'aborted' ? 'aborted'
+        : 'unknown';
+      usageErrorCode = `tts/${code}`;
       yield {
         type: 'error',
-        code: reason === 'timeout' ? 'transient_timeout'
-          : reason === 'resource_exhausted' ? 'resource_exhausted'
-          : reason === 'aborted' ? 'aborted'
-          : 'unknown',
+        code,
         message: reason === 'timeout'
           ? `TTS sentence exceeded its ${this.limits.timeoutMsPerSentence}ms deadline`
           : reason === 'aborted'
@@ -232,12 +252,52 @@ export class TtsClient {
             : error instanceof Error ? error.message : 'TTS adapter failed',
       };
     } finally {
-      const closing = iterator.return?.();
-      if (closing) {
-        if (scope.signal.aborted) void closing.catch(() => undefined);
-        else await closing;
+      try {
+        const closing = iterator.return?.();
+        if (closing) {
+          if (scope.signal.aborted) void closing.catch(() => undefined);
+          else await closing;
+        }
+      } finally {
+        scope.dispose();
+        this.recordUsage(normalized, cleaned.length, startedAt, usageErrorCode);
       }
-      scope.dispose();
+    }
+  }
+
+  private recordUsage(
+    req: TtsRequest,
+    characterCount: number,
+    startedAt: number,
+    errorCode: string | null,
+  ): void {
+    const record: UsageRecord = {
+      id: req.usageContext?.callId ?? randomUUID(),
+      sessionId: req.usageContext?.sessionId ?? null,
+      turnId: req.usageContext?.turnId ?? null,
+      providerId: req.providerId,
+      modelId: req.model,
+      capability: 'tts',
+      status: errorCode === null ? 'completed' : 'failed',
+      inputTokens: null,
+      outputTokens: null,
+      cacheReadInputTokens: null,
+      cacheWriteInputTokens: null,
+      quantity: characterCount,
+      unit: 'character',
+      costUsd: null,
+      durationMs: Math.max(0, Date.now() - startedAt),
+      errorCode,
+      createdAt: startedAt,
+    };
+    try {
+      this.usageRecorder?.record(record);
+    } catch (error) {
+      try {
+        this.onUsageRecordError?.(error, record);
+      } catch {
+        // 用量记录失败不能改变已经产生的音频流。
+      }
     }
   }
 }
