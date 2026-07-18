@@ -1,10 +1,11 @@
+// 组装桌宠主窗口、Live2D 舞台、权限提示与桌面交互入口。
 import { useEffect, useState } from 'react';
 import { EmaStageView }          from './components/EmaStageView.js';
 import { SpeechBubble }          from './components/SpeechBubble.js';
 import { PermissionToastLayer }  from './components/PermissionToastLayer.js';
-import { useSpeechStore, type Live2DModelRuntimeConfig } from '@ema-agent/live2d-react';
+import { defaultLive2DRuntime, type Live2DModelRuntimeConfig } from '@ema-agent/live2d-react';
 import { FloatingDock, ShellSetupDialog, shellApi, useSidecarStore, useThemeSync, cardsApi, turnsApi } from '@ema-agent/desktop-ui';
-import type { ShellStatus } from '@ema-agent/desktop-ui';
+import type { ShellStatus, SidecarStatus } from '@ema-agent/desktop-ui';
 import type { TurnId } from '@ema-agent/contracts';
 
 // ── Main window ─────────────────────────────────────────────────────────────
@@ -210,7 +211,7 @@ const dragLayerStyle: React.CSSProperties = {
 
 // ── Sidecar status badge ────────────────────────────────────────────────────
 
-function SidecarBadge({ status }: { status: import('@ema-agent/desktop-ui').SidecarStatus }): React.JSX.Element {
+function SidecarBadge({ status }: { status: SidecarStatus }): React.JSX.Element {
   const [hover, setHover] = useState(false);
 
   const dotColor = status.kind === 'ok'      ? '#22c55e'
@@ -294,11 +295,11 @@ async function testTtsPlayback(arrayBuffer: ArrayBuffer): Promise<void> {
       const v = (rmsData[i]! - 128) / 128;
       sum += v * v;
     }
-    useSpeechStore.getState().setRms(Math.sqrt(sum / rmsData.length));
+    defaultLive2DRuntime.speechStore.getState().setRms(Math.sqrt(sum / rmsData.length));
     raf = requestAnimationFrame(loop);
   };
 
-  useSpeechStore.getState().setSpeaking(true);
+  defaultLive2DRuntime.speechStore.getState().setSpeaking(true);
   loop();
 
   try {
@@ -310,7 +311,7 @@ async function testTtsPlayback(arrayBuffer: ArrayBuffer): Promise<void> {
     await new Promise<void>((r) => { source.onended = () => r(); source.start(); });
   } finally {
     cancelAnimationFrame(raf);
-    useSpeechStore.getState().reset();
+    defaultLive2DRuntime.speechStore.getState().reset();
   }
 }
 

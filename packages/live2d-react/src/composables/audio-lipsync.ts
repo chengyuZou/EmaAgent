@@ -1,3 +1,4 @@
+// 根据指定舞台的语音能量驱动 Live2D 口型与轻微身体律动。
 // ── AudioLipSyncPlugin ───────────────────────────────────────────────────────
 //
 // Final-stage pipeline plugin. Reads real-time audio RMS from SpeechAnimationStore
@@ -10,7 +11,7 @@
 // so the character "bounces" slightly with speech emphasis.
 
 import type { MotionPlugin } from './motion-manager.js';
-import { useSpeechStore } from '../stores/speech-store.js';
+import type { SpeechAnimationStoreApi } from '../stores/speech-store.js';
 import type { Live2DParameterRuntimeConfig } from '../model-config.js';
 
 /** Per-frame release speed when not speaking (exponential decay). */
@@ -26,12 +27,13 @@ const RELEASE = 0.12;
 const RMS_GAIN = 13;
 
 export function createAudioLipSyncPlugin(
+  speechStore: SpeechAnimationStoreApi,
   readParameters: () => Live2DParameterRuntimeConfig,
 ): MotionPlugin {
   let currentMouth = 0;
 
   return (ctx) => {
-    const { speaking, rms, energy } = useSpeechStore.getState();
+    const { speaking, rms, energy } = speechStore.getState();
     const params = readParameters();
 
     if (speaking && rms > 0.01) {

@@ -1,4 +1,5 @@
-import { create } from 'zustand';
+// 保存单个 Live2D 舞台的动作、表情意图与运行开关。
+import { create, type StoreApi, type UseBoundStore } from 'zustand';
 
 // ── Live2D runtime store ────────────────────────────────────────────────────
 //
@@ -105,6 +106,7 @@ export interface Live2DStoreActions {
 }
 
 export type Live2DStore = Live2DStoreState & Live2DStoreActions;
+export type Live2DStoreApi = UseBoundStore<StoreApi<Live2DStore>>;
 
 // ── Initial state (data only — no method stubs) ──────────────────────────────
 
@@ -127,50 +129,54 @@ const initialState: Live2DStoreState = {
 // Not part of Zustand state — mutations are synchronous side effects that
 // don't need subscriber notification on their own.
 
-let expressionSeq = 0;
-let motionSeq     = 0;
-
-// Keyed by expression name. live2dStore is the sole owner of expression
-// duration timers; expressionStore only manages Cubism parameter values.
-const expressionTimers = new Map<string, ReturnType<typeof setTimeout>>();
-
-function clearExpressionTimer(name: string): void {
-  const t = expressionTimers.get(name);
-  if (t !== undefined) clearTimeout(t);
-  expressionTimers.delete(name);
+interface Live2DStoreResources {
+  expressionSeq: number;
+  motionSeq: number;
+  expressionTimers: Map<string, ReturnType<typeof setTimeout>>;
 }
 
-function clearAllExpressionTimers(): void {
-  for (const t of expressionTimers.values()) clearTimeout(t);
-  expressionTimers.clear();
+function clearExpressionTimer(resources: Live2DStoreResources, name: string): void {
+  const t = resources.expressionTimers.get(name);
+  if (t !== undefined) clearTimeout(t);
+  resources.expressionTimers.delete(name);
+}
+
+function clearAllExpressionTimers(resources: Live2DStoreResources): void {
+  for (const t of resources.expressionTimers.values()) clearTimeout(t);
+  resources.expressionTimers.clear();
 }
 
 // ── Intent factories ─────────────────────────────────────────────────────────
 
 function createExpressionIntent(
+  resources: Live2DStoreResources,
   name:    string,
   options: ExpressionIntentOptions = {},
 ): ActiveExpressionIntent {
-  expressionSeq += 1;
+  resources.expressionSeq += 1;
   const source    = options.source ?? 'system';
   const createdAt = Date.now();
   const intent: ActiveExpressionIntent = {
     name,
     value:     options.value ?? true,
     source,
-    requestId: `${source}:expr:${name}:${createdAt}:${expressionSeq}`,
+    requestId: `${source}:expr:${name}:${createdAt}:${resources.expressionSeq}`,
     createdAt,
   };
   if (options.durationSec !== undefined) intent.durationSec = options.durationSec;
   return intent;
 }
 
-function createMotionIntent(group: string, index?: number): MotionIntent {
-  motionSeq += 1;
+function createMotionIntent(
+  resources: Live2DStoreResources,
+  group: string,
+  index?: number,
+): MotionIntent {
+  resources.motionSeq += 1;
   const createdAt = Date.now();
   const intent: MotionIntent = {
     group,
-    requestId: `motion:${group}:${createdAt}:${motionSeq}`,
+    requestId: `motion:${group}:${createdAt}:${resources.motionSeq}`,
     createdAt,
   };
   if (index !== undefined) intent.index = index;
@@ -179,7 +185,14 @@ function createMotionIntent(group: string, index?: number): MotionIntent {
 
 // ── Store ────────────────────────────────────────────────────────────────────
 
-export const useLive2DStore = create<Live2DStore>((set, get) => {
+export function createLive2DStore(): Live2DStoreApi {
+  const resources: Live2DStoreResources = {
+    expressionSeq: 0,
+    motionSeq: 0,
+    expressionTimers: new Map(),
+  };
+
+  return create<Live2DStore>((set, get) => {
   // ── Duration expiry (scoped to create to access set/get) ─────────────────
   //
   // When the timer fires, removeExpression() updates activeExpressions.
@@ -193,8 +206,8 @@ export const useLive2DStore = create<Live2DStore>((set, get) => {
     const { name, requestId, durationSec } = intent;
     if (!durationSec || durationSec <= 0) return;
 
-    expressionTimers.set(name, setTimeout(() => {
-      expressionTimers.delete(name);
+    resources.expressionTimers.set(name, setTimeout(() => {
+      resources.expressionTimers.delete(name);
       const current = get().activeExpressions;
       if (current.some((i) => i.name === name && i.requestId === requestId)) {
         set({ activeExpressions: current.filter((i) => i.name !== name) });
@@ -208,19 +221,19 @@ export const useLive2DStore = create<Live2DStore>((set, get) => {
     // ── Expression management ────────────────────────────────────────────
 
     setExpression(name, options) {
-      clearAllExpressionTimers();
+      clearAllExpressionTimers(resources);
       if (name === null) {
         set({ activeExpressions: [] });
         return;
       }
-      const intent = createExpressionIntent(name, options);
+      const intent = createExpressionIntent(resources, name, options);
       set({ activeExpressions: [intent] });
       scheduleExpiry(intent);
     },
 
     addExpression(name, options) {
-      clearExpressionTimer(name);
-      const intent  = createExpressionIntent(name, options);
+      clearExpressionTimer(resources, name);
+      const intent  = createExpressionIntent(resources, name, options);
       const current = get().activeExpressions;
       const idx     = current.findIndex((i) => i.name === name);
       if (idx >= 0) {
@@ -234,7 +247,7 @@ export const useLive2DStore = create<Live2DStore>((set, get) => {
     },
 
     removeExpression(name) {
-      clearExpressionTimer(name);
+      clearExpressionTimer(resources, name);
       set((s) => ({
         activeExpressions: s.activeExpressions.filter((i) => i.name !== name),
       }));
@@ -244,26 +257,26 @@ export const useLive2DStore = create<Live2DStore>((set, get) => {
       const current = get().activeExpressions;
       const idx     = current.findIndex((i) => i.name === name);
       if (idx >= 0) {
-        clearExpressionTimer(name);
+        clearExpressionTimer(resources, name);
         set({ activeExpressions: current.filter((i) => i.name !== name) });
         return false;
       }
-      clearExpressionTimer(name); // safety clear
-      const intent = createExpressionIntent(name, options);
+      clearExpressionTimer(resources, name); // safety clear
+      const intent = createExpressionIntent(resources, name, options);
       set({ activeExpressions: [...current, intent] });
       scheduleExpiry(intent);
       return true;
     },
 
     clearExpressions() {
-      clearAllExpressionTimers();
+      clearAllExpressionTimers(resources);
       set({ activeExpressions: [] });
     },
 
     // ── Motion / parameters / flags ──────────────────────────────────────
 
     playMotion(group, index) {
-      set({ currentMotion: createMotionIntent(group, index) });
+      set({ currentMotion: createMotionIntent(resources, group, index) });
     },
 
     setModelParameters(patch) {
@@ -283,8 +296,11 @@ export const useLive2DStore = create<Live2DStore>((set, get) => {
     reset() {
       // Only spread data fields — action implementations are not in initialState
       // so Zustand's shallow merge leaves them intact.
-      clearAllExpressionTimers();
+      clearAllExpressionTimers(resources);
       set(initialState);
     },
-  };
-});
+    };
+  });
+}
+
+export const useLive2DStore = createLive2DStore();

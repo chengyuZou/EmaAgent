@@ -32,9 +32,9 @@ export interface Live2DError {
  * tests + ad-hoc scripts.
  *
  * For multi-expression control, prefer the store directly:
- *   useLive2DStore.getState().addExpression("Smile")
- *   useLive2DStore.getState().toggleExpression("Blush")
- *   useLive2DStore.getState().clearExpressions()
+ *   runtime.live2dStore.getState().addExpression("Smile")
+ *   runtime.live2dStore.getState().toggleExpression("Blush")
+ *   runtime.live2dStore.getState().clearExpressions()
  */
 export interface Live2DStageHandle {
   /** Replace all active expressions with a single one (or null = clear). */

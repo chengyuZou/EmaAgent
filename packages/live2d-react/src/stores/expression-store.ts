@@ -1,4 +1,5 @@
-import { create } from 'zustand';
+// 保存单个 Live2D 舞台解析后的表情参数与实时取值。
+import { create, type StoreApi, type UseBoundStore } from 'zustand';
 
 // ── Live2D expression store ─────────────────────────────────────────────────
 //
@@ -87,6 +88,7 @@ interface ExpressionStoreActions {
 }
 
 export type ExpressionStore = ExpressionStoreState & ExpressionStoreActions;
+export type ExpressionStoreApi = UseBoundStore<StoreApi<ExpressionStore>>;
 
 const initial: ExpressionStoreState = {
   expressions:      new Map(),
@@ -122,7 +124,8 @@ function savePersistedDefaults(modelId: string, defaults: Record<string, number>
 
 // ── Store ───────────────────────────────────────────────────────────────────
 
-export const useExpressionStore = create<ExpressionStore>((set, get) => {
+export function createExpressionStore(): ExpressionStoreApi {
+  return create<ExpressionStore>((set, get) => {
   const bump = (): void => {
     set((s) => ({ expressions: new Map(s.expressions) }));
   };
@@ -297,8 +300,11 @@ export const useExpressionStore = create<ExpressionStore>((set, get) => {
     dispose() {
       set({ ...initial });
     },
-  };
-});
+    };
+  });
+}
+
+export const useExpressionStore = createExpressionStore();
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 

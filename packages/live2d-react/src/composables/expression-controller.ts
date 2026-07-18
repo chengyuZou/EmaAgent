@@ -1,8 +1,9 @@
+// 解析表情文件并把指定舞台的表情参数应用到 Cubism 模型。
 import {
-  useExpressionStore,
   type ExpressionEntry,
   type ExpressionBlendMode,
   type ExpressionGroupDefinition,
+  type ExpressionStoreApi,
 } from '../stores/expression-store.js';
 
 // ── Live2D expression controller ────────────────────────────────────────────
@@ -44,6 +45,7 @@ export interface CoreModelLike {
 export interface ExpressionControllerOptions {
   /** Lazy accessor — controller may be created before the model loads. */
   getCoreModel(): CoreModelLike | undefined;
+  expressionStore: ExpressionStoreApi;
   modelId?: string;
 }
 
@@ -142,7 +144,7 @@ export function createExpressionController(opts: ExpressionControllerOptions): E
         }
       }
 
-      useExpressionStore.getState().registerExpressions(
+      opts.expressionStore.getState().registerExpressions(
         opts.modelId ?? 'unknown',
         groups,
         Array.from(entryMap.values()),
@@ -151,7 +153,7 @@ export function createExpressionController(opts: ExpressionControllerOptions): E
 
     applyExpressions(coreModel) {
       const activeThisFrame = new Set<string>();
-      const expressions = useExpressionStore.getState().expressions;
+      const expressions = opts.expressionStore.getState().expressions;
 
       for (const entry of expressions.values()) {
         if (isNoopValue(entry)) continue;
@@ -163,7 +165,7 @@ export function createExpressionController(opts: ExpressionControllerOptions): E
       // active→inactive transition reset
       for (const paramId of activeLastFrame) {
         if (!activeThisFrame.has(paramId)) {
-          const entry = findEntryByParameterId(paramId);
+          const entry = findEntryByParameterId(opts.expressionStore, paramId);
           if (entry) coreModel.setParameterValueById(paramId, entry.defaultValue);
         }
       }
@@ -174,7 +176,7 @@ export function createExpressionController(opts: ExpressionControllerOptions): E
 
     dispose() {
       activeLastFrame.clear();
-      useExpressionStore.getState().dispose();
+      opts.expressionStore.getState().dispose();
     },
   };
 }
@@ -225,8 +227,11 @@ function computeBlendedValue(entry: ExpressionEntry, coreModel: CoreModelLike): 
   }
 }
 
-function findEntryByParameterId(paramId: string): ExpressionEntry | undefined {
-  for (const entry of useExpressionStore.getState().expressions.values()) {
+function findEntryByParameterId(
+  expressionStore: ExpressionStoreApi,
+  paramId: string,
+): ExpressionEntry | undefined {
+  for (const entry of expressionStore.getState().expressions.values()) {
     if (entry.parameterId === paramId) return entry;
   }
   return undefined;

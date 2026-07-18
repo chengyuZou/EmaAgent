@@ -1,3 +1,4 @@
+// 保存单个 Live2D 舞台用于口型和身体律动的语音能量状态。
 // ── SpeechAnimationStore ─────────────────────────────────────────────────────
 //
 // Minimal Zustand bridge between TTS audio playback (desktop-ui) and
@@ -10,7 +11,7 @@
 // Single-direction data flow. No circular imports. No dependency on
 // SSE, Turn, LLM, or any other package.
 
-import { create } from 'zustand';
+import { create, type StoreApi, type UseBoundStore } from 'zustand';
 
 export interface SpeechAnimationState {
   /** True while TTS audio is actively playing (not just queued). */
@@ -29,21 +30,26 @@ export interface SpeechAnimationActions {
 }
 
 export type SpeechAnimationStore = SpeechAnimationState & SpeechAnimationActions;
+export type SpeechAnimationStoreApi = UseBoundStore<StoreApi<SpeechAnimationStore>>;
 
-export const useSpeechStore = create<SpeechAnimationStore>((set) => ({
-  speaking: false,
-  rms:      0,
-  energy:   0,
+export function createSpeechAnimationStore(): SpeechAnimationStoreApi {
+  return create<SpeechAnimationStore>((set) => ({
+    speaking: false,
+    rms:      0,
+    energy:   0,
 
-  setSpeaking(speaking) { set({ speaking }); },
-  setRms(rms) {
-    set((s) => ({
-      rms,
-      // energy decays slowly — rises fast, falls slow
-      energy: rms > s.energy
-        ? rms
-        : s.energy + (rms - s.energy) * 0.05,
-    }));
-  },
-  reset() { set({ speaking: false, rms: 0, energy: 0 }); },
-}));
+    setSpeaking(speaking) { set({ speaking }); },
+    setRms(rms) {
+      set((s) => ({
+        rms,
+        // energy decays slowly — rises fast, falls slow
+        energy: rms > s.energy
+          ? rms
+          : s.energy + (rms - s.energy) * 0.05,
+      }));
+    },
+    reset() { set({ speaking: false, rms: 0, energy: 0 }); },
+  }));
+}
+
+export const useSpeechStore = createSpeechAnimationStore();

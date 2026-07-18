@@ -6,32 +6,42 @@
  */
 import { useEffect, useRef, type JSX } from 'react';
 import {
+  defaultLive2DRuntime,
   Live2DStage,
-  useLive2DStore,
-  useSpeechStore,
   type Live2DModelRuntimeConfig,
+  type Live2DRuntime,
   type Live2DStageHandle,
 } from '@ema-agent/live2d-react';
 import { tauriBridge } from '@ema-agent/desktop-ui';
 
 export interface EmaStageViewProps {
   modelPath: string;
+  runtime?: Live2DRuntime;
   /** Live2D runtime config JSON (emotionMap, motionMap, etc.). */
   runtimeConfig?: Live2DModelRuntimeConfig;
 }
 
-export function EmaStageView({ modelPath, runtimeConfig }: EmaStageViewProps): JSX.Element {
+export function EmaStageView({
+  modelPath,
+  runtime = defaultLive2DRuntime,
+  runtimeConfig,
+}: EmaStageViewProps): JSX.Element {
   const stageRef = useRef<Live2DStageHandle>(null);
-
+  const { live2dStore, speechStore } = runtime;
 
   useEffect(() => {
+    const isTargetStage = (stageId?: string): boolean => {
+      if (stageId) return stageId === runtime.stageId;
+      return runtime.stageId === defaultLive2DRuntime.stageId;
+    };
+
     const applySpeechState = (payload: { speaking: boolean; rms: number }): void => {
       if (!payload.speaking) {
-        useSpeechStore.getState().reset();
+        speechStore.getState().reset();
         return;
       }
-      useSpeechStore.getState().setSpeaking(true);
-      useSpeechStore.getState().setRms(payload.rms);
+      speechStore.getState().setSpeaking(true);
+      speechStore.getState().setRms(payload.rms);
     };
 
     const applyEmotion = (primary: string): void => {
@@ -53,17 +63,23 @@ export function EmaStageView({ modelPath, runtimeConfig }: EmaStageViewProps): J
     };
 
     // Listen for stage:emotion-changed events from system-sse
-    const unlistenEmotion = tauriBridge.listen<{ primary: string }>(
+    const unlistenEmotion = tauriBridge.listen<{ primary: string; stageId?: string }>(
       'stage:emotion-changed',
       (event) => {
+        if (!isTargetStage(event.payload.stageId)) return;
         applyEmotion(event.payload.primary);
       },
     );
 
     // Listen for stage:cue events (motion + expression)
-    const unlistenCue = tauriBridge.listen<{ motion?: string; expression?: string }>(
+    const unlistenCue = tauriBridge.listen<{
+      motion?: string;
+      expression?: string;
+      stageId?: string;
+    }>(
       'stage:cue',
       (event) => {
+        if (!isTargetStage(event.payload.stageId)) return;
         if (event.payload.expression) {
           const target = runtimeConfig?.emotionMap?.[event.payload.expression];
           stageRef.current?.setExpression(target?.expression ?? event.payload.expression);
@@ -76,26 +92,37 @@ export function EmaStageView({ modelPath, runtimeConfig }: EmaStageViewProps): J
 
     // Speech RMS can originate in another webview (chat.html owns TTS
     // playback), so bridge it into the stage window's own speech store.
-    const unlistenSpeech = tauriBridge.listen<{ speaking: boolean; rms: number }>(
+    const unlistenSpeech = tauriBridge.listen<{
+      speaking: boolean;
+      rms: number;
+      stageId?: string;
+    }>(
       'stage:speech-state',
-      (event) => applySpeechState(event.payload),
+      (event) => {
+        if (isTargetStage(event.payload.stageId)) applySpeechState(event.payload);
+      },
     );
 
     const speechChannel = typeof BroadcastChannel === 'undefined'
       ? null
       : new BroadcastChannel('ema-stage-speech');
     if (speechChannel) {
-      speechChannel.onmessage = (event: MessageEvent<{ speaking: boolean; rms: number }>) => {
-        applySpeechState(event.data);
+      speechChannel.onmessage = (event: MessageEvent<{
+        speaking: boolean;
+        rms: number;
+        stageId?: string;
+      }>) => {
+        if (isTargetStage(event.data.stageId)) applySpeechState(event.data);
       };
     }
 
     // Listen for stage:cycle-expression (from FloatingDock)
     // live2d-react handle doesn't expose cycleExpression — use store directly.
-    const unlistenCycle = tauriBridge.listen<{}>(
+    const unlistenCycle = tauriBridge.listen<{ stageId?: string }>(
       'stage:cycle-expression',
-      () => {
-        const store = useLive2DStore.getState();
+      (event) => {
+        if (!isTargetStage(event.payload.stageId)) return;
+        const store = live2dStore.getState();
         const exps = store.availableExpressions;
         if (exps.length === 0) return;
         // Clear current and pick next in rotation (or random if only one).
@@ -118,12 +145,13 @@ export function EmaStageView({ modelPath, runtimeConfig }: EmaStageViewProps): J
       void unlistenCycle.then((fn) => fn());
       speechChannel?.close();
     };
-  }, [runtimeConfig]);
+  }, [live2dStore, runtime, runtimeConfig, speechStore]);
 
   return (
     <Live2DStage
       ref={stageRef}
       modelPath={modelPath}
+      runtime={runtime}
       runtimeConfig={runtimeConfig ?? undefined}
     />
   );

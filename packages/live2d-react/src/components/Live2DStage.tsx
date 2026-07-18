@@ -4,15 +4,14 @@ import * as PIXI from 'pixi.js';
 import { Live2DModel as PixiLive2DModel } from 'pixi-live2d-display/cubism4';
 
 import type { Live2DStageHandle, Live2DFraming, Live2DError } from '../types.js';
-import { useLive2DStore } from '../stores/live2d-store.js';
-import { useExpressionStore } from '../stores/expression-store.js';
-import { useSpeechStore } from '../stores/speech-store.js';
+import type { Live2DRuntime } from '../runtime.js';
 import { createMouseEyeTrackPlugin } from '../composables/mouse-track.js';
 import { createIdleBeatPlugin } from '../composables/idle-beat.js';
 import { createAudioLipSyncPlugin } from '../composables/audio-lipsync.js';
 import { startRandomIdleScheduler } from '../composables/random-idle.js';
 import { createExpressionController, type CoreModelLike } from '../composables/expression-controller.js';
 import { Live2DLoadCoordinator } from '../composables/load-coordinator.js';
+import { useLive2DRuntime } from './Live2DRuntimeProvider.js';
 import {
   createMotionManagerUpdate,
   createAutoEyeBlinkPlugin,
@@ -47,7 +46,7 @@ PixiLive2DModel.registerTicker(PIXI.Ticker);
 //        - auto-blink   (final, before expression)
 //        - expression   (final, after blink)
 //        - audio-sync   (final, after expression)
-//   5. Subscribes to useLive2DStore for expression / motion intents
+//   5. Subscribes to this stage runtime for expression / motion intents
 //
 // Cubism 4 (.moc3) only. Cubism 2 is intentionally not bundled.
 //
@@ -59,6 +58,7 @@ PixiLive2DModel.registerTicker(PIXI.Ticker);
 
 export interface Live2DStageProps {
   modelPath: string;
+  runtime?: Live2DRuntime;
   framing?:  Live2DFraming;
   runtimeConfig?: Live2DModelRuntimeConfig;
   onReady?:  () => void;
@@ -69,6 +69,8 @@ export interface Live2DStageProps {
 export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
   function Live2DStage(props, ref) {
     const { modelPath, framing = 'halfbody', runtimeConfig, onReady, onError, className } = props;
+    const runtime = useLive2DRuntime(props.runtime);
+    const { live2dStore, expressionStore, speechStore } = runtime;
 
     const containerRef = useRef<HTMLDivElement | null>(null);
     const appRef       = useRef<PIXI.Application | null>(null);
@@ -85,10 +87,10 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
     }, [onReady, onError, runtimeConfig]);
 
     useImperativeHandle(ref, () => ({
-      setExpression(name) { useLive2DStore.getState().setExpression(name); },
-      playMotion(group, index) { useLive2DStore.getState().playMotion(group, index); },
-      isReady() { return useLive2DStore.getState().ready; },
-    }), []);
+      setExpression(name) { live2dStore.getState().setExpression(name); },
+      playMotion(group, index) { live2dStore.getState().playMotion(group, index); },
+      isReady() { return live2dStore.getState().ready; },
+    }), [live2dStore]);
 
     useEffect(() => {
       const host = containerRef.current;
@@ -163,15 +165,16 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
 
           const expressionController = createExpressionController({
             getCoreModel: () => coreModel,
+            expressionStore,
             modelId:      modelIdHint,
           });
           cleanupTasks.push(() => expressionController.dispose());
 
           const pipeline = createMotionManagerUpdate({
             internalModel,
-            readModelParameters: () => useLive2DStore.getState().modelParameters,
+            readModelParameters: () => live2dStore.getState().modelParameters,
             readFlags: () => {
-              const s = useLive2DStore.getState();
+              const s = live2dStore.getState();
               return {
                 idleAnimationEnabled:  s.idleAnimationEnabled,
                 autoBlinkEnabled:      s.autoBlinkEnabled,
@@ -193,7 +196,7 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
           // Final stage runs AFTER the original update, so our values win.
           pipeline.register(
             createIdleBeatPlugin(
-              () => useLive2DStore.getState().idleBeatEnabled,
+              () => live2dStore.getState().idleBeatEnabled,
               () => readRuntimeConfig().parameters,
               () => readRuntimeConfig().idleBeat,
             ),
@@ -201,7 +204,7 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
           );
           pipeline.register(
             createAutoEyeBlinkPlugin({
-              readExpressionEnabled: () => useLive2DStore.getState().expressionEnabled,
+              readExpressionEnabled: () => live2dStore.getState().expressionEnabled,
             }),
             'final',
           );
@@ -209,7 +212,10 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
           // Audio-lip-sync: reads speech-store RMS, drives ParamMouthOpenY.
           // Runs AFTER expression so mouth shape overlays on top of any
           // active expression (e.g. smile + talking at the same time).
-          pipeline.register(createAudioLipSyncPlugin(() => readRuntimeConfig().parameters), 'final');
+          pipeline.register(
+            createAudioLipSyncPlugin(speechStore, () => readRuntimeConfig().parameters),
+            'final',
+          );
 
           // Hook the motionManager.update method. We capture the original so
           // the pipeline can call back into it when no plugin handles the frame.
@@ -236,7 +242,7 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
           if (!load.isCurrent()) return;
 
           // ── Publish discovered state to store ─────────────────────────
-          const store = useLive2DStore;
+          const store = live2dStore;
           store.getState()._setExpressionsAvailable(extractExpressionNames(model));
           store.getState()._setMotionsAvailable(extractMotionGroups(model));
           store.getState()._setReady(true);
@@ -271,11 +277,11 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
             if (changed.length === 0 && removed.length === 0) return;
 
             for (const intent of removed) {
-              useExpressionStore.getState().deactivate(intent.name);
+              expressionStore.getState().deactivate(intent.name);
             }
             for (const intent of changed) {
               // durationSec is owned by live2dStore timers — do not pass it here.
-              useExpressionStore.getState().set(intent.name, intent.value);
+              expressionStore.getState().set(intent.name, intent.value);
             }
           });
           cleanupTasks.push(unsubExpr);
@@ -305,8 +311,8 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
             minDelayMs: runtime.randomIdle.minDelayMs,
             maxDelayMs: runtime.randomIdle.maxDelayMs,
             readEnabled: () => {
-              const live2d = useLive2DStore.getState();
-              return live2d.idleAnimationEnabled && !useSpeechStore.getState().speaking;
+              const live2d = live2dStore.getState();
+              return live2d.idleAnimationEnabled && !speechStore.getState().speaking;
             },
           });
           cleanupTasks.push(stopIdleScheduler);
@@ -342,10 +348,18 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
           app = null;
         }
         if (ownsPublishedState) {
-          useLive2DStore.getState().reset();
+          runtime.reset();
         }
       };
-    }, [modelPath, framing, loadCoordinator]);
+    }, [
+      modelPath,
+      framing,
+      loadCoordinator,
+      live2dStore,
+      expressionStore,
+      speechStore,
+      runtime,
+    ]);
 
     return (
       <div
@@ -444,6 +458,5 @@ function deriveModelId(modelPath: string): string {
   }
 }
 
-// ── No bridge needed — Live2DStage directly calls expressionStore.getState()
-//    inside the activeExpressions subscription above. The old
-//    useExpressionStoreSet / useExpressionStoreReset helpers are removed.
+// ── No bridge needed — Live2DStage directly calls its runtime expression store
+//    inside the activeExpressions subscription above.
