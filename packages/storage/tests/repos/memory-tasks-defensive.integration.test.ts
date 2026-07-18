@@ -1,3 +1,4 @@
+// 测试 Memory 任务的重试、租约 fencing、Session 分区认领、恢复和有界清理。
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { MemoryTasksRepo } from '../../src/repos/memory-tasks.js';
 import { createTestDatabase, type TestDatabase } from '../helpers/create-test-database.js';
@@ -74,6 +75,26 @@ describe('N-005 MemoryTask 租约与原子状态转换', () => {
     expect(repo.heartbeat('task-long', 1, 1_000_000)).toBe(true);
     expect(repo.requeueExpiredRunning(999_999, 2_000_000)).toBe(0);
     expect(repo.findById('task-long')?.status).toBe('running');
+  });
+
+  it('同 Session 已有 running 时跳过其后续任务并认领其他 Session', () => {
+    database.db.prepare(`
+      INSERT INTO sessions (id, title, created_at, updated_at)
+      VALUES ('session-b', 'Session B', 1, 1)
+    `).run();
+    enqueue('session-a-first', 1);
+    enqueue('session-a-second', 2);
+    repo.enqueue({
+      id: 'session-b-first',
+      kind: 'extraction',
+      sessionId: 'session-b',
+      payload: { sessionId: 'session-b', mode: 'chat' },
+      createdAt: 3,
+    });
+
+    expect(repo.claimNext(10)?.id).toBe('session-a-first');
+    expect(repo.claimNext(11)?.id).toBe('session-b-first');
+    expect(repo.findById('session-a-second')?.status).toBe('pending');
   });
 
   it('独占启动恢复可以立即重置旧进程遗留的 running 任务', () => {

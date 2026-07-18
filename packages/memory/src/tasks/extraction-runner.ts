@@ -18,7 +18,9 @@ import {
   MEMORY_TASK_HEARTBEAT_INTERVAL_MS,
   MEMORY_TASK_STALE_AFTER_MS,
   MEMORY_TASK_TERMINAL_RETENTION_MS,
+  MEMORY_TASK_WORKER_CONCURRENCY,
 } from './task-lease-policy.js';
+import { MemoryCommitCoordinator } from './commit-coordinator.js';
 
 // ── Background task runner ───────────────────────────────────────────────────
 
@@ -37,6 +39,9 @@ export interface MemoryTaskRunnerDeps {
   getIndexSpaceId: () => string | null;
   /** Resolves per-session overrides — used to skip consolidation when off. */
   getSessionOverrides: (sessionId: SessionId) => ResolvedSessionOverrides;
+  commitCoordinator: MemoryCommitCoordinator;
+  /** 测试可替换模型流水线；生产默认使用 runExtractionPipeline。 */
+  runPipeline?: typeof runExtractionPipeline;
 }
 
 export type RunnableMemoryTaskKind = Extract<MemoryTaskKind, 'extraction'>;
@@ -59,7 +64,8 @@ export class UnsupportedMemoryTaskKindError extends Error {
  * via SessionTaskQueue.
  */
 export class MemoryTaskRunner {
-  private running = false;
+  private currentTick: Promise<void> | null = null;
+  private stopping = false;
   private lastCleanupAt = 0;
 
   constructor(private readonly deps: MemoryTaskRunnerDeps) {}
@@ -88,29 +94,54 @@ export class MemoryTaskRunner {
    * Process all available pending tasks until none remain. Re-entrant safe:
    * a second tick() while one is running is a no-op.
    */
-  async tick(): Promise<void> {
-    if (this.running) return;
-    this.running = true;
-    try {
-      const recoveryAt = Date.now();
-      this.deps.memory.memoryTasks.requeueExpiredRunning(
-        recoveryAt - MEMORY_TASK_STALE_AFTER_MS,
-        recoveryAt,
+  tick(): Promise<void> {
+    if (this.stopping) return Promise.resolve();
+    if (this.currentTick) return this.currentTick;
+    const run = this.runTick();
+    this.currentTick = run;
+    void run.then(
+      () => { if (this.currentTick === run) this.currentTick = null; },
+      () => { if (this.currentTick === run) this.currentTick = null; },
+    );
+    return run;
+  }
+
+  async shutdown(): Promise<void> {
+    this.stopping = true;
+    await this.currentTick;
+    await this.deps.queue.drainAll();
+    await this.deps.commitCoordinator.drain();
+  }
+
+  private async runTick(): Promise<void> {
+    const recoveryAt = Date.now();
+    this.deps.memory.memoryTasks.requeueExpiredRunning(
+      recoveryAt - MEMORY_TASK_STALE_AFTER_MS,
+      recoveryAt,
+    );
+    if (recoveryAt - this.lastCleanupAt >= MEMORY_TASK_CLEANUP_INTERVAL_MS) {
+      this.deps.memory.memoryTasks.deleteTerminal(
+        recoveryAt - MEMORY_TASK_TERMINAL_RETENTION_MS,
+        MEMORY_TASK_CLEANUP_BATCH_SIZE,
       );
-      if (recoveryAt - this.lastCleanupAt >= MEMORY_TASK_CLEANUP_INTERVAL_MS) {
-        this.deps.memory.memoryTasks.deleteTerminal(
-          recoveryAt - MEMORY_TASK_TERMINAL_RETENTION_MS,
-          MEMORY_TASK_CLEANUP_BATCH_SIZE,
-        );
-        this.lastCleanupAt = recoveryAt;
-      }
-      while (true) {
-        const row = this.deps.memory.memoryTasks.claimNext(Date.now());
-        if (!row) break;
-        await this.dispatch(row);
-      }
-    } finally {
-      this.running = false;
+      this.lastCleanupAt = recoveryAt;
+    }
+    const workers = Array.from(
+      { length: MEMORY_TASK_WORKER_CONCURRENCY },
+      () => this.runWorker(),
+    );
+    const results = await Promise.allSettled(workers);
+    const rejected = results.find(
+      (result): result is PromiseRejectedResult => result.status === 'rejected',
+    );
+    if (rejected) throw rejected.reason;
+  }
+
+  private async runWorker(): Promise<void> {
+    while (!this.stopping) {
+      const row = this.deps.memory.memoryTasks.claimNext(Date.now());
+      if (!row) return;
+      await this.dispatch(row);
     }
   }
 
@@ -215,7 +246,7 @@ export class MemoryTaskRunner {
 
       const t0 = Date.now();
       try {
-        const result = await runExtractionPipeline(
+        const result = await (this.deps.runPipeline ?? runExtractionPipeline)(
           {
             memory:     this.deps.memory,
             embed:      this.deps.embed,
@@ -223,6 +254,7 @@ export class MemoryTaskRunner {
             nodesIndex: this.deps.getNodesIndex(),
             itemsIndex: this.deps.getItemsIndex(),
             indexSpaceId: this.deps.getIndexSpaceId(),
+            commitCoordinator: this.deps.commitCoordinator,
           },
           {
             sessionId: sid,

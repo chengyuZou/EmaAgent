@@ -7,13 +7,16 @@ import {
   UnsupportedMemoryTaskKindError,
   type MemoryTaskRunnerDeps,
 } from '../src/tasks/extraction-runner.js';
+import { MemoryCommitCoordinator } from '../src/tasks/commit-coordinator.js';
+import { SessionTaskQueue } from '../src/tasks/session-queue.js';
 
 function baseDeps(memoryTasks: Record<string, unknown>): MemoryTaskRunnerDeps {
   return {
     memory: { memoryTasks } as unknown as MemoryTaskRunnerDeps['memory'],
     embed: {} as MemoryTaskRunnerDeps['embed'],
     settings: {} as MemoryTaskRunnerDeps['settings'],
-    queue: {} as MemoryTaskRunnerDeps['queue'],
+    queue: new SessionTaskQueue(),
+    commitCoordinator: new MemoryCommitCoordinator(),
     getNodesIndex: () => null,
     getItemsIndex: () => null,
     getIndexSpaceId: () => null,

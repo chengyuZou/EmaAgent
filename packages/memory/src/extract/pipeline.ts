@@ -1,3 +1,4 @@
+// 执行 Memory 提取的模型准备、跨库提交、恢复标记和全局索引更新流水线。
 import type { SessionId, TurnMode } from '@ema-agent/contracts';
 import type {
   MemoryNodeType,
@@ -24,6 +25,7 @@ import {
 } from './index-mutations.js';
 import type { EmbeddedText } from '../types.js';
 import type { MemoryExtractionRunRow } from '@ema-agent/storage';
+import type { MemoryCommitCoordinator } from '../tasks/commit-coordinator.js';
 
 // ── Pipeline ─────────────────────────────────────────────────────────────────
 
@@ -34,6 +36,7 @@ export interface ExtractionPipelineDeps {
   nodesIndex: VectorIndex | null;
   itemsIndex: VectorIndex | null;
   indexSpaceId: string | null;
+  commitCoordinator: MemoryCommitCoordinator;
 }
 
 export interface PipelineResult {
@@ -87,7 +90,9 @@ export async function runExtractionPipeline(
     // data.db 已提交但进程尚未来得及删除 profile.db 标记时，重试负责收尾。
     if (recoveredRun) {
       validateRecoveryRun(recoveredRun, args.sessionId);
-      deps.memory.extractionRuns.delete(args.runId);
+      await deps.commitCoordinator.runExclusive(() => {
+        deps.memory.extractionRuns.delete(args.runId);
+      });
     }
     // Pending was already cleared by a prior run that failed AFTER clearPending.
     // Still check for unconsolidated lazy_updates and finish the work.
@@ -95,7 +100,9 @@ export async function runExtractionPipeline(
       const lazyIds = deps.memory.lazyUpdates.listNodesWithPending();
       if (lazyIds.length > 0) {
         // This can throw: the task runner will retry until consolidation succeeds.
-        stats.consolidatedNodes = await consolidatePendingNodes(deps, args.signal);
+        stats.consolidatedNodes = await deps.commitCoordinator.runExclusive(
+          () => consolidatePendingNodes(deps, args.signal),
+        );
       }
     }
     return stats;
@@ -150,62 +157,69 @@ export async function runExtractionPipeline(
     const itemEmbeddings = itemResult.value;
     validatePreparedExtraction(output, nodeEmbeddings, itemEmbeddings);
 
-    // B-076: 节点目录按 (label, type) 索引, 同名多 type 节点不再互相覆盖。
-    const directory = new NodeDirectory();
-    for (const node of existingNodes) directory.register(node.label, node.node_type, node.id);
-    const indexMutations: PendingIndexMutation[] = [];
-
-    // ── 3. profile.db：业务表与恢复标记一次提交 ─────────────────────────────
-    deps.memory.runProfileTransaction(() => {
-      processNodes(
-        deps,
-        args.sessionId,
-        output,
-        fragments,
-        stats,
-        directory,
-        nodeEmbeddings,
-        indexMutations,
-      );
-      processEdges(deps, output, stats, directory);
-      processItems(
-        deps,
-        args.sessionId,
-        args.mode,
-        output,
-        stats,
-        itemEmbeddings,
-        extractionTurnId,
-        indexMutations,
-      );
-      deps.memory.extractionRuns.insert({
-        runId:            args.runId,
-        sessionId:        args.sessionId,
-        sourceTurnId:     extractionTurnId,
-        noteDelta:        output.session_note_delta,
-        nodesCount:       stats.extractedNodes,
-        edgesCount:       stats.extractedEdges,
-        itemsCount:       stats.extractedItems,
-        lazyUpdatesCount: stats.lazyUpdatesQueued,
-        committedAt:      Date.now(),
-      });
-    });
-
-    // 索引是派生缓存：只能在 SQLite 成功提交后更新。
-    applyIndexMutations(indexMutations);
     noteDelta = output.session_note_delta;
+
+    await deps.commitCoordinator.runExclusive(() => {
+      // 等待 gate 期间其他 Session 可能已经创建节点，因此提交前重建目录。
+      const directory = new NodeDirectory();
+      for (const node of deps.memory.nodes.listAll(500)) {
+        directory.register(node.label, node.node_type, node.id);
+      }
+      const indexMutations: PendingIndexMutation[] = [];
+
+      // ── 3. profile.db：业务表与恢复标记一次提交 ───────────────────────────
+      deps.memory.runProfileTransaction(() => {
+        processNodes(
+          deps,
+          args.sessionId,
+          output,
+          fragments,
+          stats,
+          directory,
+          nodeEmbeddings,
+          indexMutations,
+        );
+        processEdges(deps, output, stats, directory);
+        processItems(
+          deps,
+          args.sessionId,
+          args.mode,
+          output,
+          stats,
+          itemEmbeddings,
+          extractionTurnId,
+          indexMutations,
+        );
+        deps.memory.extractionRuns.insert({
+          runId:            args.runId,
+          sessionId:        args.sessionId,
+          sourceTurnId:     extractionTurnId,
+          noteDelta:        output.session_note_delta,
+          nodesCount:       stats.extractedNodes,
+          edgesCount:       stats.extractedEdges,
+          itemsCount:       stats.extractedItems,
+          lazyUpdatesCount: stats.lazyUpdatesQueued,
+          committedAt:      Date.now(),
+        });
+      });
+
+      // 索引是派生缓存：只能在 SQLite 成功提交后更新，且与下一次全局提交串行。
+      applyIndexMutations(indexMutations);
+    });
   }
 
-  // ── 4. data.db：note 与 pending 消费一次提交 ──────────────────────────────
-  deps.memory.runDataTransaction(() => {
-    if (noteDelta.trim()) {
-      appendSessionNote(deps, args.sessionId, noteDelta, extractionTurnId);
-    }
-    clearPending(deps.memory.pendingFragments, args.sessionId, Date.now());
-  });
+  await deps.commitCoordinator.runExclusive(() => {
+    // ── 4. data.db：note 与 pending 消费一次提交 ────────────────────────────
+    deps.memory.runDataTransaction(() => {
+      if (noteDelta.trim()) {
+        appendSessionNote(deps, args.sessionId, noteDelta, extractionTurnId);
+      }
+      clearPending(deps.memory.pendingFragments, args.sessionId, Date.now());
+    });
 
-  // data.db 已持久化；删除恢复标记。若此处失败，重试在无 pending 分支清理。
-  deps.memory.extractionRuns.delete(args.runId);
+    // data.db 已持久化；删除恢复标记。若此处失败，重试在无 pending 分支清理。
+    deps.memory.extractionRuns.delete(args.runId);
+  });
 
   // ── 5. Compact L1 note if it has grown over budget ────────────────────────
   // Non-fatal — note stays verbose, next run may compact. Logged for visibility.
@@ -224,7 +238,9 @@ export async function runExtractionPipeline(
         nodeCount: pendingNodeIds.length,
       });
       const t0 = Date.now();
-      stats.consolidatedNodes = await consolidatePendingNodes(deps, args.signal);
+      stats.consolidatedNodes = await deps.commitCoordinator.runExclusive(
+        () => consolidatePendingNodes(deps, args.signal),
+      );
       deps.memory.emit?.({
         type:          'memory_consolidation_completed',
         consolidated:  stats.consolidatedNodes,

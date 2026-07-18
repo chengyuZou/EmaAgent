@@ -8,6 +8,7 @@ import { DEFAULT_MEMORY_SETTINGS } from './types.js';
 import { EmbedService }     from './embed/service.js';
 import { SessionTaskQueue } from './tasks/session-queue.js';
 import { MemoryTaskRunner } from './tasks/extraction-runner.js';
+import { MemoryCommitCoordinator } from './tasks/commit-coordinator.js';
 import {
   readOverrides, writeOverrides,
   type MemorySessionOverrides, type ResolvedSessionOverrides,
@@ -37,6 +38,7 @@ export class MemoryPlanner {
   private readonly indexMgr: IndexManager;
   private readonly queue:    SessionTaskQueue;
   private readonly runner:   MemoryTaskRunner;
+  private readonly commitCoordinator: MemoryCommitCoordinator;
 
   constructor(
     private readonly deps: MemoryDeps,
@@ -53,6 +55,7 @@ export class MemoryPlanner {
     this.embed    = new EmbedService(deps.ebd, this.settings.models?.embed, this.settings.models?.rerank);
     this.indexMgr = new IndexManager(deps, this.embed);
     this.queue    = new SessionTaskQueue();
+    this.commitCoordinator = new MemoryCommitCoordinator();
     this.runner   = new MemoryTaskRunner({
       memory:              deps,
       embed:               this.embed,
@@ -62,6 +65,7 @@ export class MemoryPlanner {
       getItemsIndex:       () => this.indexMgr.itemsIndex,
       getIndexSpaceId:     () => this.indexMgr.currentSpaceId(),
       getSessionOverrides: (sid) => this.getSessionOverrides(sid),
+      commitCoordinator:   this.commitCoordinator,
     });
   }
 
@@ -219,7 +223,7 @@ export class MemoryPlanner {
   }
 
   async tick():  Promise<void> { await this.runner.tick(); }
-  async drain(): Promise<void> { await this.queue.drainAll(); }
+  async drain(): Promise<void> { await this.runner.shutdown(); }
 
   runStartupRecovery(): RecoveryReport { return doStartupRecovery(this.deps, this.embed); }
 

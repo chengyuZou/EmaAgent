@@ -51,6 +51,7 @@ export type {
 
 // ── Background tasks + recovery ──────────────────────────────────────────────
 export { SessionTaskQueue }                   from './tasks/session-queue.js';
+export { MemoryCommitCoordinator }            from './tasks/commit-coordinator.js';
 export {
   MemoryTaskRunner,
   UnsupportedMemoryTaskKindError,

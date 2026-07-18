@@ -3,6 +3,8 @@
  * 不是任务总时长限制。这些值属于内部并发安全策略，不暴露为用户设置。
  */
 export const MEMORY_TASK_HEARTBEAT_INTERVAL_MS = 30_000;
+/** V1 固定两个跨 Session worker，避免本地 Provider、网络和内存被后台任务挤满。 */
+export const MEMORY_TASK_WORKER_CONCURRENCY = 2;
 export const MEMORY_TASK_STALE_AFTER_MS = 10 * 60_000;
 
 /** 终态任务属于内部运行记录，保留 30 天足以排查问题。 */

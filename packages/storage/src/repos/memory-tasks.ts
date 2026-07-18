@@ -1,3 +1,4 @@
+// 持久化 Memory 后台任务，并用租约、执行代次和 Session 分区控制安全认领。
 import type { SqliteDb } from '../database.js';
 
 // ── 类型 ─────────────────────────────────────────────────────────────────────
@@ -68,11 +69,12 @@ export class MemoryTasksRepo {
 
   /**
    * 原子地取最老的 pending 任务并标记为 running。
-   * 返回认领的行，无可用工作时返回 undefined。
+   * 返回认领的行，无可用工作时返回 undefined。同 Session 已有 running 任务时
+   * 跳过该 Session，确保多个 worker 不会破坏 Session 内顺序。
    * 当 worker 只处理一种 task kind 时按 kind 过滤。
    */
   claimNext(now: number, kind?: MemoryTaskKind): MemoryTaskRow | undefined {
-    const whereKind = kind ? 'AND kind = ?' : '';
+    const whereKind = kind ? 'AND candidate.kind = ?' : '';
     // 无 kind 时 SQL 恰好 1 个 `?`（updated_at），有 kind 时 2 个。
     const params: Array<string | number> = kind ? [now, kind] : [now];
     const row = this.db
@@ -82,9 +84,14 @@ export class MemoryTasksRepo {
                 attempts   = attempts + 1,
                 updated_at = ?
           WHERE id = (
-            SELECT id FROM memory_tasks
-             WHERE status = 'pending' ${whereKind}
-             ORDER BY created_at ASC, id ASC
+            SELECT candidate.id FROM memory_tasks AS candidate
+             WHERE candidate.status = 'pending' ${whereKind}
+               AND NOT EXISTS (
+                 SELECT 1 FROM memory_tasks AS active
+                  WHERE active.session_id = candidate.session_id
+                    AND active.status = 'running'
+               )
+             ORDER BY candidate.created_at ASC, candidate.id ASC
              LIMIT 1
           )
           RETURNING *`,

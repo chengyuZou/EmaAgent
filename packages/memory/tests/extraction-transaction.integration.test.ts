@@ -1,3 +1,4 @@
+// 测试 Memory 提取在 profile/data 双数据库间失败后的事务回滚与幂等恢复。
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { SessionId, TurnId } from '@ema-agent/contracts';
 import {
@@ -14,6 +15,7 @@ import type { MemoryDeps } from '../src/deps.js';
 import { runExtractionPipeline } from '../src/extract/pipeline.js';
 import { DEFAULT_MEMORY_SETTINGS } from '../src/types.js';
 import type { EmbedService } from '../src/embed/service.js';
+import { MemoryCommitCoordinator } from '../src/tasks/commit-coordinator.js';
 
 const sessionId = 'session-b015' as SessionId;
 const turnId = 'turn-b015' as TurnId;
@@ -153,6 +155,7 @@ describe('B-015 Memory extraction 事务与跨库恢复', () => {
         nodesIndex: null,
         itemsIndex: null,
         indexSpaceId: null,
+        commitCoordinator: new MemoryCommitCoordinator(),
       },
       { sessionId, mode: 'chat', runId: 'run-rollback', skipConsolidation: true },
     )).rejects.toThrow('injected item failure');
@@ -179,6 +182,7 @@ describe('B-015 Memory extraction 事务与跨库恢复', () => {
       nodesIndex: null,
       itemsIndex: null,
       indexSpaceId: null,
+      commitCoordinator: new MemoryCommitCoordinator(),
     };
     const args = {
       sessionId,
