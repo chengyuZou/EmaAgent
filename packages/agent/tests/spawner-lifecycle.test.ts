@@ -19,6 +19,11 @@ describe('SubagentSpawner 生命周期', () => {
     };
     const deps: AgentDeps = {
       session: {} as never,
+      turnLifecycle: {
+        complete: () => undefined,
+        fail: () => undefined,
+        abort: () => undefined,
+      },
       hooks: new HookBus(),
       llm: llm as never,
       emotion: {} as never,

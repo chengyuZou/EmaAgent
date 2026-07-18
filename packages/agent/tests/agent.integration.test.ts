@@ -124,6 +124,11 @@ beforeAll(() => {
 
   deps = {
     session:   sessionStore as unknown as AgentDeps['session'],
+    turnLifecycle: {
+      complete: () => undefined,
+      fail: () => undefined,
+      abort: () => undefined,
+    },
     hooks,
     llm,
     emotion,

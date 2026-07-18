@@ -97,6 +97,7 @@ export class Orchestrator {
     this.conversation = new ConversationEngine(bindings);
     this.agent = new AgentEngine({
       session:           bindings.session,
+      turnLifecycle:     bindings.agentTurnLifecycle,
       hooks:             bindings.hooks,
       llm:               bindings.llm,
       emotion:           bindings.emotion,
@@ -119,7 +120,7 @@ export class Orchestrator {
   abort(turnId: TurnId): void {
     const sessionId = this.activeTurns.get(turnId as string);
     if (!sessionId) return;
-    this.bindings.session.abortTurn(sessionId, turnId);
+    this.bindings.session.requestAbort(sessionId);
   }
 
   /** Cancel a single sub-agent without aborting the parent turn. No-op if not found. */
@@ -137,11 +138,14 @@ export class Orchestrator {
     // Ensure the per-session directory tree exists before any audio/artifact
     // writes land in it. Cheap (mkdirSync recursive) and idempotent.
     ensureSessionLayout(this.bindings.activeDataDir, sessionId as string);
-    const { turn, signal } = this.bindings.session.startTurn({
+    const startInput = {
       sessionId,
       mode:      request.mode,
       userInput: request.userInput,
-    });
+    };
+    const { turn, signal } = request.mode === 'agent'
+      ? this.bindings.agentTurnLifecycle.start(startInput)
+      : this.bindings.session.startTurn(startInput);
     const turnId = turn.id;
     this.activeTurns.set(turnId as string, sessionId);
 
@@ -452,7 +456,11 @@ export class Orchestrator {
     message: string,
     phase: TurnFailurePhase,
   ): Promise<EmaStreamEvent[]> {
-    this.bindings.session.failTurn(turn.id, code, message);
+    if (turn.mode === 'agent') {
+      this.bindings.agentTurnLifecycle.fail({ turnId: turn.id, code, message });
+    } else {
+      this.bindings.session.failTurn(turn.id, code, message);
+    }
     const emitted: EmaStreamEvent[] = [];
     await this.bindings.hooks.trigger('onTurnFailure', {
       turnId: turn.id,

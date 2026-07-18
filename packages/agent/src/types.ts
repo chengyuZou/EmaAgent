@@ -3,6 +3,7 @@
 import type {
   SessionId,
   EmaStreamEvent,
+  ErrorCode,
   KbSearchResult,
   KbAssetScope,
   RequestDegradationNotice,
@@ -38,6 +39,8 @@ export interface AskUserRegistryLike {
  */
 export interface AgentDeps {
   session:    SessionStore;
+  /** 根 Agent Turn 与其 AgentTask 投影的统一终态入口。 */
+  turnLifecycle: IAgentTurnLifecycle;
   hooks:      HookBus;
   llm:        LlmRouter;
   emotion:    EmotionEngine;
@@ -106,6 +109,29 @@ export interface IAgentTaskStore {
   cancel(taskId: string, reason: string): void;
   waitUser(taskId: string, promptId: string, questions: import('@ema-agent/contracts').AskUserQuestionSpec[]): { ok: boolean };
   userAnswered(taskId: string, promptId: string): { ok: boolean };
+}
+
+/**
+ * 根 Agent Turn 的终态 Facade。生产实现必须把 Turn 与根 AgentTask 放在
+ * 同一个数据事务中推进；Agent 不得分别写两个 Store。
+ */
+export interface IAgentTurnLifecycle {
+  complete(input: {
+    turnId: TurnId;
+    iterations: number;
+    inputTokens: number;
+    outputTokens: number;
+  }): void;
+  fail(input: {
+    turnId: TurnId;
+    code: ErrorCode;
+    message: string;
+  }): void;
+  abort(input: {
+    sessionId: SessionId;
+    turnId: TurnId;
+    reason: string;
+  }): void;
 }
 
 // ── Run input ─────────────────────────────────────────────────────────────────

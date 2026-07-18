@@ -26,7 +26,7 @@ import { awaitAgentAnswer } from './ask-user-lifecycle.js';
  *
  * The pure think→act loop lives in loop.ts; spawner.ts handles sub-agents.
  * This class owns: hook triggers, emotion.processChunk / flush, session
- * DB persistence, taskStore transitions, and the ExecutorFactory that wires
+ * DB persistence through the unified Turn lifecycle Facade, and the ExecutorFactory that wires
  * the loop's internal relay callbacks to TurnToolExecutor.
  */
 export class AgentEngine {
@@ -60,7 +60,7 @@ async function* runTurn(
   activeSpawners:  Map<string, SubagentSpawner>,
   activeExecutors: Map<string, TurnToolExecutor>,
 ): AsyncIterable<EmaStreamEvent> {
-  const { session, hooks, llm, emotion, tools, permission, askUserRegistry } = deps;
+  const { session, turnLifecycle, hooks, llm, emotion, tools, permission, askUserRegistry } = deps;
   const { turn, signal, userInput, workspaceRoot, providerId, model } = input;
   const sessionId = turn.sessionId;
   const turnId    = turn.id;
@@ -116,8 +116,7 @@ async function* runTurn(
   ): Promise<void> => {
     if (failureReported) return;
     failureReported = true;
-    session.failTurn(turnId, code, message);
-    deps.taskStore?.fail(turnId, message);
+    turnLifecycle.fail({ turnId, code, message });
     await hooks.trigger('onTurnFailure', {
       turnId,
       sessionId,
@@ -272,13 +271,6 @@ async function* runTurn(
       activeExecutors.set(turnId, executor);
       return executor;
     };
-
-    // ── taskStore: claim turn ────────────────────────────────────────────────
-    if (deps.taskStore) {
-      deps.taskStore.claim({
-        taskId: turnId, sessionId, turnId, parentId: null,
-      });
-    }
 
     // ── Main loop — translate AgentLoopEvent → EmaStreamEvent ────────────────
     activePhase = 'provider';
@@ -500,8 +492,7 @@ async function* runTurn(
         emit: emitHookEvent,
       });
       while (pendingHookEvents.length > 0) yield pendingHookEvents.shift()!;
-      session.abortTurn(sessionId, turnId);
-      deps.taskStore?.cancel(turnId, 'user_abort');
+      turnLifecycle.abort({ sessionId, turnId, reason: 'user_abort' });
       yield { type: 'turn_aborted', sessionId, turnId, reason: 'user_stop' };
       return;
     }
@@ -518,12 +509,12 @@ async function* runTurn(
     while (pendingHookEvents.length > 0) yield pendingHookEvents.shift()!;
 
     activePhase = 'persistence';
-    session.completeTurn(turnId, {
-      usageInputTokens:  totalInput,
-      usageOutputTokens: totalOutput,
+    turnLifecycle.complete({
+      turnId,
       iterations,
+      inputTokens: totalInput,
+      outputTokens: totalOutput,
     });
-    deps.taskStore?.complete(turnId, { iterations, inputTokens: totalInput, outputTokens: totalOutput });
     yield {
       type: 'turn_completed', sessionId, turnId,
       stats: { inputTokens: totalInput, outputTokens: totalOutput, durationMs },
@@ -541,8 +532,7 @@ async function* runTurn(
         emit: emitHookEvent,
       });
       while (pendingHookEvents.length > 0) yield pendingHookEvents.shift()!;
-      session.abortTurn(sessionId, turnId);
-      deps.taskStore?.cancel(turnId, 'user_abort');
+      turnLifecycle.abort({ sessionId, turnId, reason: 'user_abort' });
       yield { type: 'turn_aborted', sessionId, turnId, reason: 'user_stop' };
     } else {
       const code: ErrorCode = err instanceof AgentBudgetExceededError

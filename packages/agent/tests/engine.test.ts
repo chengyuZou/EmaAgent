@@ -19,6 +19,15 @@ const compatibilityMethods = {
 const sessionId = 'session-agent-failure' as SessionId;
 const turnId = 'turn-agent-failure' as TurnId;
 
+function turnLifecycle(overrides: Partial<AgentDeps['turnLifecycle']> = {}): AgentDeps['turnLifecycle'] {
+  return {
+    complete: () => undefined,
+    fail: () => undefined,
+    abort: () => undefined,
+    ...overrides,
+  };
+}
+
 describe('AgentEngine 生命周期', () => {
   it('assistant 消息落盘后发送相同的结构化 blocks', async () => {
     const hooks = new HookBus();
@@ -81,6 +90,7 @@ describe('AgentEngine 生命周期', () => {
     };
     const deps: AgentDeps = {
       session: session as never,
+      turnLifecycle: turnLifecycle(),
       hooks,
       llm: llm as never,
       emotion: {
@@ -191,6 +201,7 @@ describe('AgentEngine 生命周期', () => {
     };
     const deps: AgentDeps = {
       session: session as never,
+      turnLifecycle: turnLifecycle({ fail: () => { order.push('failTurn'); } }),
       hooks,
       llm: llm as never,
       emotion: {
@@ -287,6 +298,7 @@ describe('AgentEngine 生命周期', () => {
     };
     const deps: AgentDeps = {
       session: session as never,
+      turnLifecycle: turnLifecycle({ abort: () => { order.push('abortTurn'); } }),
       hooks,
       llm: llm as never,
       emotion: {
@@ -376,6 +388,7 @@ describe('AgentEngine 生命周期', () => {
     };
     const deps: AgentDeps = {
       session: session as never,
+      turnLifecycle: turnLifecycle({ fail: ({ code }) => { failedCode = code; } }),
       hooks,
       llm: llm as never,
       emotion: {

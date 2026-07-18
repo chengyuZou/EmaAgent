@@ -91,6 +91,7 @@ import { SystemEventBus }  from '../sse/system-bus.js';
 import { ProviderRuntimeFacade } from './provider-runtime.js';
 import { SessionBackupFacade } from '@ema-agent/backup';
 import type { CredentialFacade } from '@ema-agent/credential';
+import { AgentTurnLifecycleFacade } from '../turn-runtime/agent-turn-lifecycle.js';
 
 // ── App-wide bindings (Facade set passed everywhere) ─────────────────────────
 
@@ -183,6 +184,8 @@ export interface AppBindings {
   toolResultCleaner: ToolResultCleaner;
   /** Cross-session agent task registry — used for crash recovery and task visibility. */
   taskStore:          AgentTaskStore;
+  /** 根 Agent Turn 与 AgentTask 的原子创建和终态入口。 */
+  agentTurnLifecycle: AgentTurnLifecycleFacade;
   /** 工具副作用执行日志的唯一业务入口。 */
   toolExecutionJournal: ToolExecutionJournal;
   /** Direct repo access for the SSE fan-out to write subagent transcript messages. */
@@ -490,6 +493,11 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
   const toolResultCleaner    = new ToolResultCleaner(sessionsDir);
   const agentTaskMessages    = new AgentTaskMessagesRepo(dataDb.sqlite);
   const taskStore            = new AgentTaskStore(new AgentTasksRepo(dataDb.sqlite));
+  const agentTurnLifecycle   = new AgentTurnLifecycleFacade(
+    session,
+    taskStore,
+    <T>(work: () => T): T => dataDb.sqlite.transaction(work)(),
+  );
   const toolExecutionJournal = new ToolExecutionJournal(
     new ToolExecutionsRepo(dataDb.sqlite),
   );
@@ -808,7 +816,7 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
     tts, audioArchive, stt, vision, providerRuntime,
     permission, permissionPrompts, askUserRegistry, tools, buildAskForTurn, getCommandRunner,
     invalidateSessionRuntime, removeSessionRuntime,
-    getContextStores, toolResultCleaner, taskStore, toolExecutionJournal, agentTaskMessages,
+    getContextStores, toolResultCleaner, taskStore, agentTurnLifecycle, toolExecutionJournal, agentTaskMessages,
     memory,
     systemBus,
     providers, settings: settingsRepo,

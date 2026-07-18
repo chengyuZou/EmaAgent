@@ -709,6 +709,14 @@ export class SessionStore implements SessionOwnershipFacade {
   }
 
   /**
+   * 只请求正在运行的执行流停止，不提前写数据库终态。执行流会先收拢工具和
+   * Subagent，再由对应生命周期 Facade 提交 aborted/cancelled。
+   */
+  requestAbort(sessionId: SessionId): void {
+    this.registry.abort(sessionId);
+  }
+
+  /**
    * Idempotent: release the in-memory running-turn lock for a session.
    *
    * Safe to call regardless of whether completeTurn/failTurn/abortTurn already

@@ -159,6 +159,21 @@ describe('SessionStore — turn concurrency', () => {
     expect(store.getTurn(turn.id)!.status).toBe('aborted');
   });
 
+  it('requestAbort 只触发信号，不提前写 Turn 终态', () => {
+    const store = makeStore();
+    const s = store.createSession();
+    const { turn, signal } = store.startTurn({
+      sessionId: s.id,
+      mode: 'agent',
+      userInput: 'Stop me safely',
+    });
+
+    store.requestAbort(s.id);
+
+    expect(signal.aborted).toBe(true);
+    expect(store.getTurn(turn.id)?.status).toBe('running');
+  });
+
   it('failTurn marks turn failed with error code', () => {
     const store = makeStore();
     const s = store.createSession();

@@ -10,6 +10,7 @@ export type {
   AgentDeps,
   AgentRunInput,
   IAgentTaskStore,
+  IAgentTurnLifecycle,
   IToolExecutionJournal,
 } from './types.js';
 export type { AgentLoopEvent, ExecutorFactory, AgentLoopInput } from './loop.js';
