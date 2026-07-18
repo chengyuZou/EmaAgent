@@ -105,6 +105,18 @@ describe('createSseConsumer', () => {
     expect(result.outcome.kind).toBe('protocol_error');
   });
 
+  it('要求回放游标时拒绝没有 SSE id 的业务事件', async () => {
+    const handle = createSseConsumer().start({
+      requireEventId: true,
+      openResponse: async () => mockSseResponse([
+        'data: {"type":"turn_started","turnId":"t1","mode":"chat"}',
+      ]),
+      onEvent() {},
+    });
+
+    expect((await handle.done).kind).toBe('protocol_error');
+  });
+
   it('保留 HTTP 错误状态', async () => {
     const handle = createSseConsumer().start({
       openResponse: async () => mockSseResponse([], 500),

@@ -80,10 +80,14 @@ export function startTurnSseLifecycle(
     const connection = connect({
       lastEventId: cursor,
       idleTimeoutMs: options.idleTimeoutMs,
+      requireEventId: true,
       openResponse: options.openResponse,
       onHeartbeat: () => {},
       onEvent(event, serverCursor) {
-        cursor = serverCursor ?? cursor + 1;
+        if (serverCursor === undefined) {
+          throw new Error('Turn SSE event has no server cursor');
+        }
+        cursor = serverCursor;
         options.onEvent(event, cursor);
         if (isTurnTerminalEvent(event)) finish();
       },

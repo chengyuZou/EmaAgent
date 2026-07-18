@@ -7,6 +7,7 @@ export interface SseStartOptions {
   signal?: AbortSignal;
   lastEventId?: number;
   idleTimeoutMs?: number;
+  requireEventId?: boolean;
   openResponse(signal: AbortSignal, lastEventId: number): Promise<Response>;
   onEvent(event: EmaStreamEvent, cursor?: number): void;
   onHeartbeat?(): void;
@@ -160,6 +161,9 @@ export function createSseConsumer(): {
           const decoded = JSON.parse(parsed.data) as Record<string, unknown>;
           if (typeof decoded.type !== 'string') {
             throw new Error('SSE event is missing a string type field');
+          }
+          if (options.requireEventId && parsed.cursor === undefined) {
+            throw new Error('SSE event is missing a valid id field');
           }
           event = decoded as unknown as EmaStreamEvent;
         } catch (cause) {
