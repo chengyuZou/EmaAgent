@@ -41,10 +41,14 @@ export const turnsApi = {
     });
   },
 
-  /** Build the SSE URL for a turn's event stream. */
-  async eventsUrl(turnId: TurnId, opts?: { lastEventId?: number }): Promise<string> {
-    return sidecarClient.streamUrl(`/api/turns/${turnId}/events`, {
-      lastEventId: opts?.lastEventId,
+  /** 打开 Turn 事件流，复用 Sidecar 的动态端口、认证与错误处理。 */
+  openEvents(turnId: TurnId, lastEventId: number, signal: AbortSignal): Promise<Response> {
+    const params = new URLSearchParams();
+    if (lastEventId > 0) params.set('lastEventId', String(lastEventId));
+    const query = params.size > 0 ? `?${params.toString()}` : '';
+    return sidecarClient.requestRaw(`/api/turns/${turnId}/events${query}`, {
+      signal,
+      headers: { Accept: 'text/event-stream' },
     });
   },
 

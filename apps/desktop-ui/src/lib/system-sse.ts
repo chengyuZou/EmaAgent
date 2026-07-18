@@ -13,7 +13,11 @@
  *   memory_compaction_started / completed / failed / skipped ← emitted via ctx.emit (beforeLlm), NOT system bus
  *   artifact_upserted / artifact_applied
  */
-import { sseConsumer, type SseHandle } from './sse-consumer.js';
+import {
+  getSseOutcomeError,
+  sseConsumer,
+  type SseHandle,
+} from './sse-consumer.js';
 import { sidecarClient } from '../api/sidecar-client.js';
 import { tauriBridge } from './tauri-bridge.js';
 import { showToast } from './toast.js';
@@ -50,26 +54,30 @@ function scheduleReconnect(delayMs: number): void {
 export async function startSystemSse(): Promise<void> {
   if (_handle) return;
 
-  const [url, authHeaders] = await Promise.all([
-    sidecarClient.streamUrl('/api/system/events'),
-    sidecarClient.getAuthHeaders(),
-  ]);
-
-  _handle = sseConsumer.start({
-    url,
-    headers: authHeaders,
+  const handle = sseConsumer.start({
+    openResponse: (signal) => sidecarClient.requestRaw('/api/system/events', {
+      signal,
+      headers: { Accept: 'text/event-stream' },
+    }),
     onEvent: (event) => dispatchSystemEvent(event),
     onHeartbeat: () => {},
-    onError: (err) => {
-      console.error('[system-sse] error, will retry in 5s', err.message);
-      showToast(`系统连接中断，正在重试…(${err.message})`, { variant: 'warning', duration: 5000 });
-      _handle = null;
-      scheduleReconnect(5000);
-    },
-    onComplete: () => {
-      _handle = null;
-      scheduleReconnect(3000);
-    },
+  });
+  _handle = handle;
+
+  void handle.done.then((outcome) => {
+    if (_handle !== handle) return;
+    _handle = null;
+    if (outcome.kind === 'cancelled') return;
+
+    const error = getSseOutcomeError(outcome);
+    if (error) {
+      console.error('[system-sse] connection ended, will retry', error.message);
+      showToast(`系统连接中断，正在重试…(${error.message})`, {
+        variant: 'warning',
+        duration: 5000,
+      });
+    }
+    scheduleReconnect(outcome.kind === 'eof' ? 3000 : 5000);
   });
 }
 

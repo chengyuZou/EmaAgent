@@ -14,7 +14,7 @@
 import { create }          from 'zustand';
 import { createSendQueue, type SendQueue } from '../lib/send-queue.js';
 import { createTurnAcceptance, type TurnAcceptance } from '../lib/turn-acceptance.js';
-import { sseConsumer }     from '../lib/sse-consumer.js';
+import { startTurnSseLifecycle } from '../lib/turn-sse-lifecycle.js';
 import { sessionsApi, type BranchTreeWire } from '../api/sessions.js';
 import {
   turnsApi,
@@ -22,7 +22,6 @@ import {
   type TurnCreatedResponse,
 } from '../api/turns.js';
 import type { KbAssetScope, ToolPresentation } from '@ema-agent/contracts';
-import { sidecarClient }   from '../api/sidecar-client.js';
 import {
   handleTurnAborted,
   evictSessionPlayers,
@@ -124,67 +123,40 @@ function getOrCreateQueue(sessionId: SessionId): SendQueue<QueuedSendInput> {
         useConversationStore.setState({ viewedSessionId: actualSessionId });
       }
 
-      const [url, authHeaders] = await Promise.all([
-        turnsApi.eventsUrl(turnId),
-        sidecarClient.getAuthHeaders(),
-      ]);
+      const callbacks: StreamCallbacks = {
+        beginStream: (sid, tid, mode) => useConversationStore.getState().beginStream(sid, tid, mode),
+        appendDelta: (sid, slice, delta) => useConversationStore.getState().appendDelta(sid, slice, delta),
+        finalizeStream: (sid, stats) => useConversationStore.getState().finalizeStream(sid, stats),
+        abortStream: (sid, reason) => useConversationStore.getState().abortStream(sid, reason),
+      };
 
-      // SSE with reconnect — backend buffers events, replay on reconnect.
-      const MAX_SSE_RETRIES = 3;
-      await new Promise<void>((resolve) => {
-        let cursor   = 0;
-        let finished = false;
-
-        const finish = (): void => { if (finished) return; finished = true; resolve(); };
-
-        const startSse = (attempt: number): void => {
-          if (finished) return;
-
-          const cb: StreamCallbacks = {
-            beginStream:    (sid, tid, mode) => useConversationStore.getState().beginStream(sid, tid, mode),
-            appendDelta:    (sid, slice, delta) => useConversationStore.getState().appendDelta(sid, slice, delta),
-            finalizeStream: (sid, stats) => { useConversationStore.getState().finalizeStream(sid, stats); finish(); },
-            abortStream:    (sid, reason) => { useConversationStore.getState().abortStream(sid, reason); finish(); },
-          };
-
-          const handle = sseConsumer.start({
-            url,
-            headers:     authHeaders,
-            lastEventId: cursor,
-            onEvent: (event, serverCursor) => {
-              // 新版 Core 发送绝对 SSE id；旧版 Sidecar 没有 id 时继续兼容本地递增。
-              cursor = serverCursor ?? cursor + 1;
-              const sid = ('sessionId' in event && event.sessionId)
-                ? event.sessionId as SessionId
-                : input.sessionId;
-              dispatchSseEvent(event, sid, cb);
-            },
-            onHeartbeat: () => {},
-            onError: (err) => {
-              if (!finished && attempt < MAX_SSE_RETRIES) {
-                const delay = 1000 * 2 ** attempt;
-                console.warn(`[conversation-store] SSE dropped, retry ${attempt + 1}/${MAX_SSE_RETRIES} in ${delay}ms:`, err.message);
-                setTimeout(() => {
-                  const stillStreaming = useConversationStore.getState()
-                    .streamingMap.has(input.sessionId as string);
-                  if (cursor > 0 && !stillStreaming) { finish(); return; }
-                  startSse(attempt + 1);
-                }, delay);
-                return;
-              }
-              console.error('[conversation-store] SSE failed permanently', err);
-              useConversationStore.getState().abortStream(input.sessionId, `连接中断：${err.message}`);
-              finish();
-            },
-            onComplete: () => finish(),
-          });
-          sseHandles.set(input.sessionId as string, handle);
-        };
-
-        startSse(0);
+      // Turn 生命周期统一持有当前连接和待重连计时器，用户停止时两者会一起取消。
+      const lifecycle = startTurnSseLifecycle({
+        openResponse: (signal, lastEventId) => turnsApi.openEvents(
+          turnId,
+          lastEventId,
+          signal,
+        ),
+        onEvent(event) {
+          const sid = ('sessionId' in event && event.sessionId)
+            ? event.sessionId as SessionId
+            : input.sessionId;
+          dispatchSseEvent(event, sid, callbacks);
+        },
+        onPermanentDisconnect(error) {
+          console.error('[conversation-store] SSE failed permanently', error);
+          useConversationStore.getState().abortStream(
+            input.sessionId,
+            `连接中断：${error.message}`,
+          );
+        },
       });
+      sseHandles.set(input.sessionId as string, lifecycle);
+      await lifecycle.done;
 
-      sseHandles.delete(input.sessionId as string);
+      if (sseHandles.get(input.sessionId as string) === lifecycle) {
+        sseHandles.delete(input.sessionId as string);
+      }
     },
     continueOnError: true,
   });
