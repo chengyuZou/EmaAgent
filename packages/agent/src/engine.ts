@@ -374,6 +374,16 @@ async function* runTurn(
           yield ev.ev;
           break;
 
+        case 'loop_usage':
+          yield {
+            type: 'usage_update',
+            sessionId,
+            turnId,
+            inputTokens: ev.usage.inputTokens,
+            outputTokens: ev.usage.outputTokens,
+          };
+          break;
+
         case 'loop_llm_complete': {
           // Flush emotion scanner tail (handles partial ACT tags at stream end).
           const { cleaned: tail } = emotion.flush(turnId, sessionId);

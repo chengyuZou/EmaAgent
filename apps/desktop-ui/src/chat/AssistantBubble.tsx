@@ -1,7 +1,4 @@
-/**
- * AssistantBubble — left-aligned assistant message. Layout from AIRI assistant-item.vue,
- * colors kept as original EmaAgent gray.
- */
+// 渲染左对齐的助手消息、流式状态、Token 用量、正文工具块和语音操作。
 import { useState, useEffect, useRef, type JSX } from 'react';
 import { IconButton } from '@ema-agent/ui';
 import { estimateTextTokens } from '@ema-agent/token';
@@ -54,15 +51,20 @@ export function AssistantBubble({ message, isStreaming }: AssistantBubbleProps):
     return () => clearInterval(id);
   }, [isStreaming, message.createdAt]);
 
-  // Real provider usage if available, else estimate from content
+  // Provider 尚未给出输出计数时保留文本估算，真实快照到达后立即校正。
   const liveUsage = useConversationStore((s) =>
     message.turnId ? s.liveUsageMap.get((message.turnId as string)) : undefined,
   );
   const thinkingActive = useConversationStore((s) =>
     message.turnId ? s.thinkingActiveMap.get((message.turnId as string)) : false,
   );
-  const estimatedOut = isStreaming ? (liveUsage?.outputTokens ?? estimateTextTokens(message.content)) : null;
-  const estimatedIn  = isStreaming ? liveUsage?.inputTokens : null;
+  const outputUsageIsEstimated = isStreaming && (liveUsage?.outputTokens ?? 0) === 0;
+  const displayedOutputTokens = isStreaming
+    ? outputUsageIsEstimated
+      ? estimateTextTokens(message.content)
+      : liveUsage?.outputTokens ?? 0
+    : null;
+  const providerInputTokens = isStreaming ? liveUsage?.inputTokens : null;
 
   const showAudioButton = !!message.turnId && (isPlayingThis || !isStreaming);
 
@@ -111,11 +113,13 @@ export function AssistantBubble({ message, isStreaming }: AssistantBubbleProps):
             <span className="flex items-center gap-1.5">
               <span className="w-1 h-1 rounded-full animate-pulse shrink-0 bg-[var(--ema-primary)]" />
               <span className="tabular-nums">{elapsed}s</span>
-              {estimatedIn != null && estimatedIn > 0 && (
-                <span className="tabular-nums text-[var(--ema-text-tertiary)]">↑{fmtTok(estimatedIn)}</span>
+              {providerInputTokens != null && providerInputTokens > 0 && (
+                <span className="tabular-nums text-[var(--ema-text-tertiary)]">↑{fmtTok(providerInputTokens)}</span>
               )}
-              {estimatedOut != null && estimatedOut > 0 && (
-                <span className="tabular-nums">↓{fmtTok(estimatedOut)}</span>
+              {displayedOutputTokens != null && displayedOutputTokens > 0 && (
+                <span className="tabular-nums">
+                  {outputUsageIsEstimated ? '≈↓' : '↓'}{fmtTok(displayedOutputTokens)}
+                </span>
               )}
               {thinkingActive && <span className="text-[var(--ema-info)]">· thinking</span>}
             </span>

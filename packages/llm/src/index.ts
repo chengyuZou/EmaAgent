@@ -44,6 +44,7 @@ export {
 } from './message-compatibility.js';
 export { createCompatibilityRecovery } from './compatibility-recovery.js';
 export type { CompatibilityRecoveryController } from './compatibility-recovery.js';
+export { advanceLlmUsageSnapshot } from './usage.js';
 export type {
   CompatibleMessageView,
   InputModality,

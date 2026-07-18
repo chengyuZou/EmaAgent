@@ -96,8 +96,11 @@ export type StopReason = 'end_turn' | 'tool_use' | 'max_tokens' | 'stop_sequence
  *   2. 检测 OpenAI 的 index 跳变是否表示一个 tool call 已完成。
  *
  * 单次流的序列:
- *   (text_delta | thinking_delta | tool_use_delta | tool_use_complete)*
- *   -> usage -> done
+ *   (text_delta | thinking_delta | tool_use_delta | tool_use_complete | usage)*
+ *   -> done
+ *
+ * `usage` 是当前逻辑调用的 Provider 累计快照，不是相对上一个事件的增量。
+ * Adapter 可以在 Provider 给出可靠计数时多次发送，上游必须按快照求差后聚合。
  *
  * 单次流可在不同 index 处交错 text 与 tool block,
  * 与 Claude 的投递方式完全一致。

@@ -86,7 +86,12 @@ export class AgentToolResultStore {
       `Preview (first ${PREVIEW_BYTES} bytes):\n${preview}${hasMore ? '\n...\n' : '\n'}` +
       PERSISTED_CLOSE;
 
-    return { kind: 'offloaded', blockContent, filePath, originalSize: content.length };
+    return {
+      kind: 'offloaded',
+      blockContent,
+      filePath,
+      originalSize: Buffer.byteLength(content, 'utf8'),
+    };
   }
 
   /** Read a previously offloaded result. Returns null if the file is gone. */
@@ -111,11 +116,28 @@ export class AgentToolResultStore {
 // ── Preview helper (truncate at newline boundary) ─────────────────────────────
 
 export function generatePreview(content: string, maxBytes: number): { preview: string; hasMore: boolean } {
+  if (!Number.isSafeInteger(maxBytes) || maxBytes < 0) {
+    throw new RangeError(`maxBytes must be a non-negative safe integer, got ${maxBytes}`);
+  }
   if (Buffer.byteLength(content, 'utf8') <= maxBytes) {
     return { preview: content, hasMore: false };
   }
-  const truncated  = content.slice(0, maxBytes);
-  const lastNl     = truncated.lastIndexOf('\n');
-  const cutPoint   = lastNl > maxBytes * 0.5 ? lastNl : maxBytes;
-  return { preview: content.slice(0, cutPoint), hasMore: true };
+
+  let usedBytes = 0;
+  let truncated = '';
+  for (const character of content) {
+    const characterBytes = Buffer.byteLength(character, 'utf8');
+    if (usedBytes + characterBytes > maxBytes) break;
+    truncated += character;
+    usedBytes += characterBytes;
+  }
+
+  const lastNewline = truncated.lastIndexOf('\n');
+  if (lastNewline >= 0) {
+    const lineBoundary = truncated.slice(0, lastNewline);
+    if (Buffer.byteLength(lineBoundary, 'utf8') > maxBytes * 0.5) {
+      return { preview: lineBoundary, hasMore: true };
+    }
+  }
+  return { preview: truncated, hasMore: true };
 }

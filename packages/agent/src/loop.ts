@@ -3,7 +3,11 @@ import { randomUUID } from 'node:crypto';
 import { asLlmCallId } from '@ema-agent/contracts';
 import type { LlmMessage, AssistantBlock, UserBlock, ToolResultBlock, EmaStreamEvent, LlmCallId, LlmTokenUsage } from '@ema-agent/contracts';
 import type { LlmRouter, LlmToolDef, ThinkingMode, StopReason } from '@ema-agent/llm';
-import { computePromptPrefixHash, ContextWindowExceededError } from '@ema-agent/llm';
+import {
+  advanceLlmUsageSnapshot,
+  computePromptPrefixHash,
+  ContextWindowExceededError,
+} from '@ema-agent/llm';
 import type { AgentPolicy } from './policy.js';
 import type { TurnToolExecutor } from './tool-executor.js';
 import { advanceState, addUsage, createLoopState } from './loop-state.js';
@@ -41,6 +45,7 @@ export type AgentLoopEvent =
       replacements: Array<'description' | 'placeholder' | 'parameter_omitted'>;
     }
   | { type: 'loop_relay';         ev: EmaStreamEvent }
+  | { type: 'loop_usage';         usage: LlmTokenUsage }
   | {
       type: 'loop_llm_complete';
       iteration: number;
@@ -298,8 +303,8 @@ export async function* agentLoop(input: AgentLoopInput): AsyncIterable<AgentLoop
               executor.addTool(chunk.blockIndex, chunk.callId, chunk.name, chunk.args);
               break;
 
-            case 'usage':
-              callUsage = {
+            case 'usage': {
+              const incomingUsage: LlmTokenUsage = {
                 inputTokens: chunk.inputTokens,
                 outputTokens: chunk.outputTokens,
                 ...(chunk.cacheReadInputTokens !== undefined
@@ -310,9 +315,19 @@ export async function* agentLoop(input: AgentLoopInput): AsyncIterable<AgentLoop
                   : {}),
                 ...(chunk.cacheHitRate !== undefined ? { cacheHitRate: chunk.cacheHitRate } : {}),
               };
-              budget.recordUsage(callUsage);
-              state = addUsage(state, callUsage);
+              const advanced = advanceLlmUsageSnapshot(callUsage, incomingUsage);
+              callUsage = advanced.snapshot;
+              const hasNewUsage = advanced.delta.inputTokens > 0
+                || advanced.delta.outputTokens > 0
+                || (advanced.delta.cacheReadInputTokens ?? 0) > 0
+                || (advanced.delta.cacheWriteInputTokens ?? 0) > 0;
+              if (hasNewUsage) {
+                budget.recordUsage(advanced.delta);
+                state = addUsage(state, advanced.delta);
+                yield { type: 'loop_usage', usage: state.usage };
+              }
               break;
+            }
 
             case 'done':
               lastStopReason = chunk.stopReason;

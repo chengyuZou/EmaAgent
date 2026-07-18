@@ -1,3 +1,4 @@
+// 测试 Anthropic/Gemini 的取消传播、协议错误和 Provider Usage 快照。
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AnthropicAdapter } from '../src/adapters/anthropic.js';
 import { GeminiAdapter } from '../src/adapters/gemini.js';
@@ -61,6 +62,46 @@ describe('Anthropic/Gemini Adapter — 取消传播', () => {
   beforeEach(() => {
     sdkMocks.anthropicStream.mockReset();
     sdkMocks.geminiStream.mockReset();
+  });
+
+  it('Anthropic 在输入和输出计数可用时分别发送累计 Usage 快照', async () => {
+    const completedStream = async function* (): AsyncIterable<Record<string, unknown>> {
+      yield {
+        type: 'message_start',
+        message: {
+          usage: {
+            input_tokens: 100,
+            cache_read_input_tokens: 40,
+            cache_creation_input_tokens: 10,
+          },
+        },
+      };
+      yield {
+        type: 'message_delta',
+        delta: { stop_reason: 'end_turn' },
+        usage: { output_tokens: 20 },
+      };
+    };
+    sdkMocks.anthropicStream.mockReturnValueOnce(completedStream());
+    const adapter = new AnthropicAdapter(anthropicConfig());
+
+    const chunks = await collect(adapter.stream(
+      request('anthropic-test', new AbortController().signal),
+      'claude-test',
+    ));
+    const usage = chunks.filter((chunk) => chunk.type === 'usage');
+
+    expect(usage.at(0)).toEqual(expect.objectContaining({
+      inputTokens: 150,
+      outputTokens: 0,
+      cacheReadInputTokens: 40,
+      cacheWriteInputTokens: 10,
+    }));
+    expect(usage.at(1)).toEqual(expect.objectContaining({
+      inputTokens: 150,
+      outputTokens: 20,
+    }));
+    expect(chunks.at(-1)).toEqual({ type: 'done', stopReason: 'end_turn' });
   });
 
   it('Anthropic 请求创建阶段取消时抛出 AbortError', async () => {

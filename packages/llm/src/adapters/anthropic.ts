@@ -1,3 +1,4 @@
+// 把 Ema 的统一 LLM 请求和 Anthropic Messages 流式协议相互转换。
 import Anthropic from '@anthropic-ai/sdk';
 import type { LlmAdapter } from './base.js';
 import type {
@@ -8,6 +9,7 @@ import type {
   StopReason,
   ProviderConfig,
   AssistantBlock,
+  LlmTokenUsage,
 } from '../types.js';
 import {
   ContextWindowExceededError,
@@ -17,6 +19,24 @@ import {
 } from '../errors.js';
 import { createLlmTokenUsage } from '../usage.js';
 import type { UserBlock, ToolResultBlock, MessageContentPart } from '@ema-agent/contracts';
+
+function createAnthropicUsage(
+  uncachedInputTokens: number,
+  outputTokens: number,
+  cacheReadInputTokens: number | null | undefined,
+  cacheWriteInputTokens: number | null | undefined,
+): LlmTokenUsage {
+  const inputTokens = uncachedInputTokens
+    + (cacheReadInputTokens ?? 0)
+    + (cacheWriteInputTokens ?? 0);
+  return createLlmTokenUsage({
+    inputTokens,
+    outputTokens,
+    cacheReadInputTokens,
+    cacheWriteInputTokens,
+    cacheEligibleInputTokens: inputTokens,
+  });
+}
 
 function isContextWindowError(err: unknown): boolean {
   const msg = (err instanceof Error ? err.message : String(err)).toLowerCase();
@@ -261,7 +281,7 @@ export class AnthropicAdapter implements LlmAdapter {
     // 而非在 content_block_stop 上。
     const thinkingSignatures = new Map<number, string>();
 
-    let inputTokens  = 0;
+    let uncachedInputTokens = 0;
     let outputTokens = 0;
     let cacheReadInputTokens: number | null | undefined;
     let cacheWriteInputTokens: number | null | undefined;
@@ -271,9 +291,18 @@ export class AnthropicAdapter implements LlmAdapter {
     for await (const event of anthropicStream) {
       switch (event.type) {
         case 'message_start':
-          inputTokens = event.message.usage.input_tokens;
+          uncachedInputTokens = event.message.usage.input_tokens;
           cacheReadInputTokens = event.message.usage.cache_read_input_tokens;
           cacheWriteInputTokens = event.message.usage.cache_creation_input_tokens;
+          yield {
+            type: 'usage',
+            ...createAnthropicUsage(
+              uncachedInputTokens,
+              outputTokens,
+              cacheReadInputTokens,
+              cacheWriteInputTokens,
+            ),
+          };
           break;
 
         case 'content_block_start':
@@ -350,6 +379,15 @@ export class AnthropicAdapter implements LlmAdapter {
         case 'message_delta':
           outputTokens = event.usage.output_tokens;
           stopReason   = mapStopReason(event.delta.stop_reason);
+          yield {
+            type: 'usage',
+            ...createAnthropicUsage(
+              uncachedInputTokens,
+              outputTokens,
+              cacheReadInputTokens,
+              cacheWriteInputTokens,
+            ),
+          };
           break;
 
         default:
@@ -366,14 +404,12 @@ export class AnthropicAdapter implements LlmAdapter {
     throwIfAborted(request.signal);
     yield {
       type: 'usage',
-      ...createLlmTokenUsage({
-        inputTokens,
+      ...createAnthropicUsage(
+        uncachedInputTokens,
         outputTokens,
         cacheReadInputTokens,
         cacheWriteInputTokens,
-        cacheEligibleInputTokens:
-          inputTokens + (cacheReadInputTokens ?? 0) + (cacheWriteInputTokens ?? 0),
-      }),
+      ),
     };
     yield { type: 'done', stopReason };
   }

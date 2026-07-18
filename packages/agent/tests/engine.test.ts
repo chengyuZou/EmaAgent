@@ -141,6 +141,13 @@ describe('AgentEngine 生命周期', () => {
       },
       promptPrefixHash: null,
     }));
+    expect(events).toContainEqual({
+      type: 'usage_update',
+      sessionId,
+      turnId,
+      inputTokens: 3,
+      outputTokens: 2,
+    });
     expect(events.at(-1)).toEqual(expect.objectContaining({ type: 'turn_completed' }));
   });
 

@@ -16,9 +16,12 @@ export interface UsageContext<TCallId extends string = string> {
  * cache 字段只在 Provider 明确返回对应计数时出现，禁止通过总输入量猜测。
  */
 export interface LlmTokenUsage {
+  /** Provider 本次调用的总输入，必须包含缓存读取和缓存写入部分。 */
   inputTokens: number;
   outputTokens: number;
+  /** inputTokens 中由 Provider 缓存命中的子集。 */
   cacheReadInputTokens?: number;
+  /** inputTokens 中在本次调用写入 Provider 缓存的子集。 */
   cacheWriteInputTokens?: number;
   /** Provider 语义下的缓存读取占可缓存输入比例，范围 0..1。 */
   cacheHitRate?: number;

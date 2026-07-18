@@ -23,6 +23,46 @@ function makeExecutor(): TurnToolExecutor {
 }
 
 describe('agentLoop LLM 生命周期', () => {
+  it('累计 Usage 快照只按差值计入 Turn，不重复计算输入 Token', async () => {
+    const stream = vi.fn(() => (async function* () {
+      yield { type: 'usage' as const, inputTokens: 100, outputTokens: 0 };
+      yield { type: 'text_delta' as const, blockIndex: 0, delta: 'done' };
+      yield { type: 'usage' as const, inputTokens: 100, outputTokens: 20 };
+      yield { type: 'done' as const, stopReason: 'end_turn' as const };
+    })());
+    const usageSnapshots: Array<{ inputTokens: number; outputTokens: number }> = [];
+    let finalUsage: { inputTokens: number; outputTokens: number } | undefined;
+
+    for await (const event of agentLoop({
+      messages: [{ role: 'user', content: 'hello' }],
+      policy: makePolicy(),
+      buildExecutor: () => makeExecutor(),
+      llm: { stream } as never,
+      providerId: 'provider-1',
+      model: 'model-1',
+      signal: new AbortController().signal,
+      maxIterations: 1,
+      budget: new TurnBudget({
+        maxWallTimeMs: 60_000,
+        maxInputTokens: 150,
+        maxOutputTokens: 30,
+        maxToolCalls: 1,
+        maxSubagents: 1,
+        maxConcurrentSubagents: 1,
+      }),
+      sessionId: 'session-1',
+    })) {
+      if (event.type === 'loop_usage') usageSnapshots.push(event.usage);
+      if (event.type === 'loop_done') finalUsage = event.state.usage;
+    }
+
+    expect(usageSnapshots).toEqual([
+      { inputTokens: 100, outputTokens: 0 },
+      { inputTokens: 100, outputTokens: 20 },
+    ]);
+    expect(finalUsage).toEqual({ inputTokens: 100, outputTokens: 20 });
+  });
+
   it('把本轮工具定义同时交给上下文压缩和 LLM 请求', async () => {
     const tools = [{
       name: 'Read',
