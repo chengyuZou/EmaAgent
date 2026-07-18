@@ -1,10 +1,42 @@
-// 这里解析公网 URL 和 DNS, 拒绝本机, 私网, 保留地址以及危险重定向.
+// 解析公网 URL 和 DNS, 拒绝本机, 私网, 保留地址, 非标准端口以及危险重定向.
 import dns from 'node:dns/promises';
 import net from 'node:net';
+import ipaddr from 'ipaddr.js';
 import { PublicHttpPolicyError } from './errors.js';
 import type { ApprovedPublicTarget } from './types.js';
 
 const MAX_URL_LENGTH = 2_048;
+
+// 默认只放行标准 Web 端口; 其他端口会让 Agent 变成端口扫描器。
+// 确有业务需要(自建服务)时, 调用方应在配置层显式放行, 不在此放宽。
+const ALLOWED_PUBLIC_PORTS = new Set(['80', '443']);
+
+// IANA 特殊用途 IPv4 网段: 全部不可作为公网目标。
+// 交给 ipaddr.js 匹配, 不再手写八位组判断(注册表会变, 手写表已出现漏判与误杀)。
+const IPV4_DENY_CIDRS = [
+  '0.0.0.0/8',        // 本机/未指定
+  '10.0.0.0/8',       // RFC1918 私网
+  '100.64.0.0/10',    // CGNAT 运营商级 NAT
+  '127.0.0.0/8',      // 回环
+  '169.254.0.0/16',   // 链路本地
+  '172.16.0.0/12',    // RFC1918 私网
+  '192.0.2.0/24',     // TEST-NET-1 文档段
+  '192.88.99.0/24',   // 6to4 中继任播
+  '192.168.0.0/16',   // RFC1918 私网
+  '198.18.0.0/15',    // 网络基准测试
+  '198.51.100.0/24',  // TEST-NET-2 文档段
+  '203.0.113.0/24',   // TEST-NET-3 文档段
+  '224.0.0.0/4',      // 组播
+  '240.0.0.0/4',      // 保留(含 255.255.255.255 广播)
+] as const;
+
+// IPv6 只放行全球单播(2000::/3)中的非特殊段;
+// 未指定/回环/ULA/链路本地/组播/保留段一律拒绝。
+const IPV6_GLOBAL_UNICAST = '2000::/3';
+const IPV6_DENY_CIDRS = [
+  '2001:db8::/32',  // 文档段
+  '3fff::/20',      // 2024 新增文档段
+] as const;
 
 export function isObviouslyUnsafePublicUrl(rawUrl: string): boolean {
   try {
@@ -39,9 +71,9 @@ export async function approvePublicTarget(rawUrl: string): Promise<ApprovedPubli
 }
 
 export function assertSafePublicRedirect(previous: URL, next: URL): void {
-  const previousHost = stripWww(previous.hostname);
-  const nextHost = stripWww(next.hostname);
-  const sameHost = previousHost === nextHost;
+  // 重定向只允许同一主机(严格相等, www 与裸域是两个主体)同端口;
+  // 标准 80 -> 443 的 HTTPS 升级是唯一例外。
+  const sameHost = previous.hostname.toLowerCase() === next.hostname.toLowerCase();
   const sameProtocol = previous.protocol === next.protocol;
   const upgradesToHttps = previous.protocol === 'http:' && next.protocol === 'https:';
   const samePort = effectivePort(previous) === effectivePort(next);
@@ -83,11 +115,12 @@ function parsePublicHttpUrl(rawUrl: string): URL {
   if (url.hostname.toLowerCase() === 'localhost' || url.hostname.toLowerCase().endsWith('.local')) {
     throw new PublicHttpPolicyError(`拒绝访问本地主机 ${url.hostname}`);
   }
+  // 默认只放行标准 Web 端口, 防止借 Agent 探测任意端口。
+  const port = effectivePort(url);
+  if (!ALLOWED_PUBLIC_PORTS.has(port)) {
+    throw new PublicHttpPolicyError(`拒绝访问非标准端口 ${port}(默认仅允许 80/443)`);
+  }
   return url;
-}
-
-function stripWww(hostname: string): string {
-  return hostname.toLowerCase().replace(/^www\./, '');
 }
 
 function effectivePort(url: URL): string {
@@ -96,41 +129,31 @@ function effectivePort(url: URL): string {
 }
 
 function isPublicIpv4(address: string): boolean {
-  const octets = address.split('.').map(Number);
-  if (octets.length !== 4 || octets.some(value => !Number.isInteger(value) || value < 0 || value > 255)) {
-    return false;
-  }
-  const [a, b, c] = octets as [number, number, number, number];
-  if (a === 0 || a === 10 || a === 127) return false;
-  if (a === 100 && b >= 64 && b <= 127) return false;
-  if (a === 169 && b === 254) return false;
-  if (a === 172 && b >= 16 && b <= 31) return false;
-  if (a === 192 && b === 0) return false;
-  if (a === 192 && b === 168) return false;
-  if (a === 192 && b === 88 && c === 99) return false;
-  if (a === 198 && (b === 18 || b === 19)) return false;
-  if (a === 198 && b === 51 && c === 100) return false;
-  if (a === 203 && b === 0 && c === 113) return false;
-  if (a >= 224) return false;
-  return true;
+  if (!ipaddr.IPv4.isIPv4(address)) return false;
+  const ip = ipaddr.IPv4.parse(address);
+  return !IPV4_DENY_CIDRS.some(cidr => ip.match(ipaddr.IPv4.parseCIDR(cidr)));
 }
 
 function isPublicIpv6(address: string): boolean {
-  const groups = parseIpv6Groups(address);
-  if (!groups) return false;
-  const first = groups[0]!;
-  const isAllZero = groups.every(group => group === 0);
-  const isLoopback = groups.slice(0, 7).every(group => group === 0) && groups[7] === 1;
-  if (isAllZero || isLoopback) return false;
+  if (!ipaddr.IPv6.isIPv6(address)) return false;
+  const ip = ipaddr.IPv6.parse(address);
 
-  const isMappedIpv4 = groups.slice(0, 5).every(group => group === 0) && groups[5] === 0xffff;
-  if (isMappedIpv4) return isPublicIpv4(groupsToIpv4(groups[6]!, groups[7]!));
-  if ((first & 0xfe00) === 0xfc00) return false;
-  if ((first & 0xffc0) === 0xfe80) return false;
-  if ((first & 0xff00) === 0xff00) return false;
-  if ((first & 0xe000) !== 0x2000) return false;
-  if (first === 0x2001 && groups[1] === 0x0db8) return false;
-  if (first === 0x2002) return isPublicIpv4(groupsToIpv4(groups[1]!, groups[2]!));
+  // IPv4 映射地址按 IPv4 规则判定(::ffff:a.b.c.d)。
+  if (ip.isIPv4MappedAddress()) {
+    return isPublicIpv4(ip.toIPv4Address().toString());
+  }
+
+  // 只放行全球单播段; 未指定/回环/ULA/链路本地/组播/保留段一律拒绝。
+  if (!ip.match(ipaddr.IPv6.parseCIDR(IPV6_GLOBAL_UNICAST))) return false;
+  if (IPV6_DENY_CIDRS.some(cidr => ip.match(ipaddr.IPv6.parseCIDR(cidr)))) return false;
+
+  // 6to4(2002::/16): 内嵌 IPv4 地址按 IPv4 规则判定。
+  if (ip.match(ipaddr.IPv6.parseCIDR('2002::/16'))) {
+    const parts = ip.parts;
+    return isPublicIpv4(
+      `${parts[1]! >>> 8}.${parts[1]! & 0xff}.${parts[2]! >>> 8}.${parts[2]! & 0xff}`,
+    );
+  }
   return true;
 }
 
@@ -138,35 +161,4 @@ function normalizeIpHostname(hostname: string): string {
   return hostname.startsWith('[') && hostname.endsWith(']')
     ? hostname.slice(1, -1)
     : hostname;
-}
-
-function parseIpv6Groups(address: string): number[] | null {
-  let normalized = normalizeIpHostname(address.toLowerCase()).split('%')[0]!;
-  const dottedTail = normalized.match(/(?:^|:)(\d+\.\d+\.\d+\.\d+)$/)?.[1];
-  if (dottedTail) {
-    if (!isValidIpv4(dottedTail)) return null;
-    const octets = dottedTail.split('.').map(Number);
-    const high = (octets[0]! << 8) | octets[1]!;
-    const low = (octets[2]! << 8) | octets[3]!;
-    normalized = normalized.slice(0, -dottedTail.length) + `${high.toString(16)}:${low.toString(16)}`;
-  }
-  const halves = normalized.split('::');
-  if (halves.length > 2) return null;
-  const left = halves[0] ? halves[0].split(':') : [];
-  const right = halves[1] ? halves[1].split(':') : [];
-  const missing = 8 - left.length - right.length;
-  if ((halves.length === 1 && missing !== 0) || (halves.length === 2 && missing < 1)) return null;
-  const texts = [...left, ...Array.from({ length: Math.max(0, missing) }, () => '0'), ...right];
-  if (texts.length !== 8 || texts.some(text => !/^[0-9a-f]{1,4}$/.test(text))) return null;
-  return texts.map(text => Number.parseInt(text, 16));
-}
-
-function groupsToIpv4(high: number, low: number): string {
-  return `${high >>> 8}.${high & 0xff}.${low >>> 8}.${low & 0xff}`;
-}
-
-function isValidIpv4(address: string): boolean {
-  const octets = address.split('.').map(Number);
-  return octets.length === 4
-    && octets.every(value => Number.isInteger(value) && value >= 0 && value <= 255);
 }

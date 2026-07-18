@@ -9,6 +9,21 @@ import { approvePublicTarget, assertSafePublicRedirect } from './url-policy.js';
 const DEFAULT_TIMEOUT_MS = 15_000;
 const DEFAULT_MAX_REDIRECTS = 5;
 
+// 轻量并发闸门: 防 Agent 失控时几十上百个公网请求同时起飞,
+// 把自己的内存和上游服务器一起打爆(单请求限字节不等于系统安全)。
+const MAX_CONCURRENT_GLOBAL = 8;
+const MAX_CONCURRENT_PER_HOST = 2;
+const MAX_QUEUED = 32;
+
+// 调用方允许补充的请求头(白名单); 其余一律剥离,
+// 防 Host/Cookie/Authorization/连接指令外发或覆盖安全默认头。
+const CALLER_HEADER_ALLOWLIST = new Set([
+  'accept',
+  'accept-language',
+  'if-none-match',
+  'if-modified-since',
+]);
+
 export async function fetchPublicResource(
   rawUrl: string,
   options: PublicHttpRequestOptions,
@@ -25,41 +40,62 @@ export async function fetchPublicResource(
     : timeoutSignal;
   let current = rawUrl;
 
-  for (let redirects = 0; redirects <= maxRedirects; redirects++) {
-    // DNS 查询本身没有 AbortSignal 参数, 通过竞速保证调用链可以按时退出.
-    // 即使底层系统解析稍后才返回, 也不会继续建立网络连接.
-    const target = await waitForSignal(approvePublicTarget(current), signal);
-    const response = await requestPinned(target.url, target.address, target.family, options.headers, signal);
-    const status = response.statusCode ?? 0;
-    const statusText = response.statusMessage ?? 'Unknown status';
+  // 重定向被严格限制在同主机, 所以整个循环可以用同一个 host 键控并发闸门。
+  const hostKey = (() => {
+    try { return new URL(rawUrl).hostname.toLowerCase(); } catch { return ''; }
+  })();
+  const release = await egressLimiter.acquire(hostKey, signal);
+  try {
+    for (let redirects = 0; redirects <= maxRedirects; redirects++) {
+      // DNS 查询本身没有 AbortSignal 参数, 通过竞速保证调用链可以按时退出.
+      // 即使底层系统解析稍后才返回, 也不会继续建立网络连接.
+      const target = await waitForSignal(approvePublicTarget(current), signal);
+      const response = await requestPinned(target.url, target.address, target.family, options.headers, signal);
+      const status = response.statusCode ?? 0;
+      const statusText = response.statusMessage ?? 'Unknown status';
 
-    if ([301, 302, 303, 307, 308].includes(status)) {
-      const location = response.headers.location;
-      response.destroy();
-      if (!location) throw new PublicHttpStatusError(status, 'Redirect without Location', current);
-      if (redirects === maxRedirects) {
-        throw new PublicHttpLimitError(`重定向次数超过 ${maxRedirects} 次`);
+      if ([301, 302, 303, 307, 308].includes(status)) {
+        const location = response.headers.location;
+        response.destroy();
+        if (!location) throw new PublicHttpStatusError(status, 'Redirect without Location', current);
+        if (redirects === maxRedirects) {
+          throw new PublicHttpLimitError(`重定向次数超过 ${maxRedirects} 次`);
+        }
+        const next = new URL(location, target.url);
+        assertSafePublicRedirect(target.url, next);
+        current = next.toString();
+        continue;
       }
-      const next = new URL(location, target.url);
-      assertSafePublicRedirect(target.url, next);
-      current = next.toString();
-      continue;
-    }
 
-    if (status < 200 || status >= 300) {
-      response.destroy();
-      throw new PublicHttpStatusError(status, statusText, current);
+      if (status < 200 || status >= 300) {
+        response.destroy();
+        throw new PublicHttpStatusError(status, statusText, current);
+      }
+      const body = await readBoundedResponseBody(response, options.maxBytes, signal);
+      return {
+        finalUrl: target.url.toString(),
+        status,
+        statusText,
+        headers: response.headers,
+        body,
+      };
     }
-    const body = await readBoundedResponseBody(response, options.maxBytes, signal);
-    return {
-      finalUrl: target.url.toString(),
-      status,
-      statusText,
-      headers: response.headers,
-      body,
-    };
+    throw new PublicHttpLimitError(`重定向次数超过 ${maxRedirects} 次`);
+  } finally {
+    release();
   }
-  throw new PublicHttpLimitError(`重定向次数超过 ${maxRedirects} 次`);
+}
+
+/** 构建出站请求头; 导出仅供包内测试验证白名单边界. */
+export function buildRequestHeaders(callerHeaders: Readonly<Record<string, string>> | undefined): Record<string, string> {
+  const headers: Record<string, string> = {
+    'Accept-Encoding': 'identity',
+    'User-Agent': 'EmaAgent/1.0',
+  };
+  for (const [name, value] of Object.entries(callerHeaders ?? {})) {
+    if (CALLER_HEADER_ALLOWLIST.has(name.toLowerCase())) headers[name] = value;
+  }
+  return headers;
 }
 
 function requestPinned(
@@ -79,11 +115,7 @@ function requestPinned(
       port: url.port || undefined,
       path: `${url.pathname}${url.search}`,
       method: 'GET',
-      headers: {
-        'Accept-Encoding': 'identity',
-        'User-Agent': 'EmaAgent/1.0',
-        ...headers,
-      },
+      headers: buildRequestHeaders(headers),
       lookup: (_hostname, _options, callback) => callback(null, address, family),
       signal,
     };
@@ -168,3 +200,80 @@ function assertPositiveInteger(name: string, value: number): void {
 function assertNonNegativeInteger(name: string, value: number): void {
   if (!Number.isInteger(value) || value < 0) throw new RangeError(`${name} 必须是非负整数`);
 }
+
+/** 全局+每 host 的轻量并发闸门(FIFO 排队, 可中止, 队满即拒); 导出仅供包内测试。 */
+export class PublicEgressLimiter {
+  private total = 0;
+  private readonly byHost = new Map<string, number>();
+  private readonly waiters: Array<{
+    host: string;
+    signal: AbortSignal;
+    resolve: (release: () => void) => void;
+    reject: (reason: unknown) => void;
+    onAbort: () => void;
+  }> = [];
+
+  async acquire(host: string, signal: AbortSignal): Promise<() => void> {
+    if (signal.aborted) throw signal.reason ?? new Error('公网请求已取消');
+    if (this.canAcquire(host)) return this.grant(host);
+    if (this.waiters.length >= MAX_QUEUED) {
+      throw new PublicHttpLimitError('公网请求并发排队已满');
+    }
+    return new Promise<() => void>((resolve, reject) => {
+      const waiter = {
+        host,
+        signal,
+        resolve,
+        reject,
+        onAbort: () => {
+          const index = this.waiters.indexOf(waiter);
+          if (index >= 0) this.waiters.splice(index, 1);
+          reject(signal.reason ?? new Error('公网请求已取消'));
+        },
+      };
+      signal.addEventListener('abort', waiter.onAbort, { once: true });
+      this.waiters.push(waiter);
+    });
+  }
+
+  private canAcquire(host: string): boolean {
+    return this.total < MAX_CONCURRENT_GLOBAL
+      && (this.byHost.get(host) ?? 0) < MAX_CONCURRENT_PER_HOST;
+  }
+
+  private grant(host: string): () => void {
+    this.total++;
+    this.byHost.set(host, (this.byHost.get(host) ?? 0) + 1);
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      this.total = Math.max(0, this.total - 1);
+      const next = Math.max(0, (this.byHost.get(host) ?? 1) - 1);
+      if (next === 0) this.byHost.delete(host);
+      else this.byHost.set(host, next);
+      this.drain();
+    };
+  }
+
+  private drain(): void {
+    for (let index = 0; index < this.waiters.length;) {
+      const waiter = this.waiters[index]!;
+      if (waiter.signal.aborted) {
+        this.waiters.splice(index, 1);
+        waiter.signal.removeEventListener('abort', waiter.onAbort);
+        waiter.reject(waiter.signal.reason ?? new Error('公网请求已取消'));
+        continue;
+      }
+      if (!this.canAcquire(waiter.host)) {
+        index++;
+        continue;
+      }
+      this.waiters.splice(index, 1);
+      waiter.signal.removeEventListener('abort', waiter.onAbort);
+      waiter.resolve(this.grant(waiter.host));
+    }
+  }
+}
+
+const egressLimiter = new PublicEgressLimiter();

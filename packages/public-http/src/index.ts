@@ -1,4 +1,7 @@
 // 这里导出所有需要访问公网的业务包共用的安全 HTTP 边界.
+// 边界: 本包只服务不可信来源发起的流量(LLM 工具调用/市场下载);
+// 用户配置的 provider 端点(GPT-SoVITS/STT/TTS/MCP/Bridge)不经过本包,
+// 私网/内网端点是用户的合法环境, 不得套用本包的公网检查.
 export {
   PublicHttpLimitError,
   PublicHttpPolicyError,
