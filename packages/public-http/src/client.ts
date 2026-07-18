@@ -1,4 +1,4 @@
-// 这里使用 DNS 审批后的固定 IP 发起公网请求, 并限制重定向, 时间和响应字节数.
+// 使用 DNS 审批后的固定 IP 发起公网请求, 并限制重定向, 时间和响应字节数.
 import http from 'node:http';
 import https from 'node:https';
 import type { IncomingMessage, RequestOptions } from 'node:http';

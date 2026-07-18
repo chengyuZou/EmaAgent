@@ -1,4 +1,4 @@
-// 这里测试公共 HTTP 客户端会在声明长度, 真实流量和取消边界处停止读取.
+// 测试公共 HTTP 客户端会在声明长度, 真实流量和取消边界处停止读取.
 import { PassThrough } from 'node:stream';
 import type { IncomingMessage } from 'node:http';
 import { describe, expect, it } from 'vitest';

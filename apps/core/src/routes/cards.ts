@@ -124,6 +124,20 @@ export function cardsRoute(bindings: AppBindings): Hono {
     if (!body.success) {
       return c.json({ error: 'invalid_request', details: body.error.flatten() }, 400);
     }
+    // B-055: 客户端提交的 refAudioPath 必须落在 voiceRefs/<单层文件名> 契约内,
+    // 否则后面 GET/DELETE/TTS 会以它为路径读写任意文件。
+    if (body.data.voiceProfile) {
+      for (const ref of body.data.voiceProfile.refAudios) {
+        try {
+          resolveCardVoiceRefPath('validation', false, ref.refAudioPath);
+        } catch {
+          return c.json({
+            error: 'invalid_voice_ref_path',
+            message: `refAudioPath 必须是 voiceRefs/<单层文件名>: ${ref.refAudioPath}`,
+          }, 400);
+        }
+      }
+    }
     const card = bindings.card.create({
       ...body.data,
       description:   body.data.description ?? undefined,
@@ -251,7 +265,13 @@ export function cardsRoute(bindings: AppBindings): Hono {
     const ref = found.card.voiceProfile.refAudios.find((r) => r.id === refId);
     if (!ref) return c.json({ error: 'ref_not_found' }, 404);
 
-    const absPath = resolveCardVoiceRefPath(found.id as string, found.card.isBuiltin, ref.refAudioPath);
+    // B-055: refAudioPath 来自数据库, 越界路径在此拦截, 不流出任意文件。
+    let absPath: string;
+    try {
+      absPath = resolveCardVoiceRefPath(found.id as string, found.card.isBuiltin, ref.refAudioPath);
+    } catch {
+      return c.json({ error: 'invalid_voice_ref_path' }, 400);
+    }
     if (!fs.existsSync(absPath)) return c.json({ error: 'file_missing' }, 410);
 
     const stat = await fs.promises.stat(absPath);
@@ -275,7 +295,13 @@ export function cardsRoute(bindings: AppBindings): Hono {
     const ref = found.card.voiceProfile.refAudios.find((r) => r.id === refId);
     if (!ref) return c.json({ error: 'ref_not_found' }, 404);
 
-    const absPath = resolveCardVoiceRefPath(found.id as string, found.card.isBuiltin, ref.refAudioPath);
+    // B-055: 越界路径在此拦截, 不删任意文件。
+    let absPath: string;
+    try {
+      absPath = resolveCardVoiceRefPath(found.id as string, found.card.isBuiltin, ref.refAudioPath);
+    } catch {
+      return c.json({ error: 'invalid_voice_ref_path' }, 400);
+    }
     try { fs.rmSync(absPath, { force: true }); } catch { /* ignore */ }
 
     const nextRefs = found.card.voiceProfile.refAudios.filter((r) => r.id !== refId);

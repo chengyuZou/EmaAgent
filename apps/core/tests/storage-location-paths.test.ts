@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { sqliteFileSet, sweepOrphanTurnFiles } from '../src/storage-locations/paths.js';
+import { sqliteFileSet, sweepOrphanTurnFiles, resolveCardVoiceRefPath } from '../src/storage-locations/paths.js';
 
 describe('sqliteFileSet', () => {
   it('返回同一个数据库对应的三个文件', () => {
@@ -44,5 +44,25 @@ describe('sweepOrphanTurnFiles(启动自检孤儿 turn 文件)', () => {
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
+  });
+});
+
+describe('resolveCardVoiceRefPath(B-055 路径安全)', () => {
+  it('放行 voiceRefs/ 单层文件名', () => {
+    expect(() => resolveCardVoiceRefPath('card-a', false, 'voiceRefs/ra_ema001.mp3')).not.toThrow();
+  });
+
+  it.each([
+    'voiceRefs/../../etc/passwd',
+    'voiceRefs/../secret.wav',
+    'voiceRefs/sub/dir/a.mp3',
+    'voiceRefs/..',
+    'voiceRefs/',
+    'voiceRefs\\..\\..\\secret.wav',
+    'C:\\Windows\\system.ini',
+    '/etc/passwd',
+    '../outside.mp3',
+  ])('拒绝越界路径: %s', (relPath) => {
+    expect(() => resolveCardVoiceRefPath('card-a', false, relPath)).toThrow(/invalid_voice_ref_path/);
   });
 });

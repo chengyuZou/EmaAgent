@@ -1,4 +1,4 @@
-// 这里测试公共网络出口会拒绝本机, 私网, 保留地址, 非标准端口和跨站重定向.
+// 测试公共网络出口会拒绝本机, 私网, 保留地址, 非标准端口和跨站重定向.
 import { describe, expect, it } from 'vitest';
 import {
   assertSafePublicRedirect,

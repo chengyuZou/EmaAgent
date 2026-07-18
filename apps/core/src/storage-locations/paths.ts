@@ -120,9 +120,20 @@ export function cardResourcePath(cardId: string, isBuiltin: boolean, relPath: st
  *
  * The relPath stored in CharacterRefAudio.refAudioPath is relative to the
  * card pack root (e.g. 'voiceRefs/ra_ema001.mp3').
+ *
+ * B-055 路径安全: 与 character-card 类型契约一致, 只允许 `voiceRefs/<单层文件名>`——
+ * 拒绝绝对路径, `..` 逃逸, 反斜杠与子目录。refAudioPath 来自数据库(可能被构造),
+ * 此函数是 GET 音频流, DELETE 文件, TTS 克隆上传与 GPT-SoVITS 读文件共用的
+ * 唯一咽喉点, 越界一律抛 invalid_voice_ref_path。
  */
 export function resolveCardVoiceRefPath(cardId: string, isBuiltin: boolean, relPath: string): string {
-  return cardResourcePath(cardId, isBuiltin, relPath);
+  const normalized = relPath.replaceAll('\\', '/');
+  const match = /^voiceRefs\/([^/]+)$/.exec(normalized);
+  const filename = match?.[1];
+  if (!filename || filename === '.' || filename === '..') {
+    throw new Error(`invalid_voice_ref_path: ${relPath}`);
+  }
+  return path.join(cardDir(cardId, isBuiltin), 'voiceRefs', filename);
 }
 
 /** Create the profile-side directories that aren't part of profile.db itself. */

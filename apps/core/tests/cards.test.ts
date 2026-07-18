@@ -3,6 +3,7 @@ import { Database } from '@ema-agent/storage';
 import { CharacterCardStore } from '@ema-agent/character-card';
 import type { AppBindings } from '../src/wiring/index.js';
 import { cardsRoute } from '../src/routes/cards.js';
+import { resolveCardVoiceRefPath } from '../src/storage-locations/index.js';
 
 // B-055:PATCH null 清空 + DELETE active 阻止。voice ref 路径安全留 Sol(需 storage-locations)。
 describe('B-055 cards route', () => {
@@ -58,5 +59,54 @@ describe('B-055 cards route', () => {
     const { id } = await createCard('Tmp');
     const res = await app.request(`/${id}`, { method: 'DELETE' });
     expect(res.status).toBe(204);
+  });
+
+  it('POST 创建卡时 refAudioPath 越界被拒 400(B-055)', async () => {
+    const res = await app.request('/', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        name: 'Evil',
+        systemPrompt: 'p',
+        voiceProfile: {
+          refAudios: [{
+            id: 'ra_evil',
+            label: 'evil',
+            refAudioPath: 'voiceRefs/../../etc/passwd',
+            promptText: 'x',
+            promptLang: 'zh',
+          }],
+          primaryId: 'ra_evil',
+        },
+      }),
+    });
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toMatchObject({ error: 'invalid_voice_ref_path' });
+  });
+
+  it('GET voice-ref 遇到库中构造的越界路径返回 400 而不是文件内容(B-055)', async () => {
+    // 绕过路由校验, 直接在库里放构造的卡(模拟 DB 被篡改)。
+    const created = card.create({
+      name: 'Crafted',
+      systemPrompt: 'p',
+      voiceProfile: {
+        refAudios: [{
+          id: 'ra_crafted',
+          label: 'crafted',
+          refAudioPath: 'voiceRefs/../../../package.json',
+          promptText: 'x',
+          promptLang: 'zh',
+        }],
+        primaryId: 'ra_crafted',
+      },
+    });
+    const res = await app.request(`/${created.id}/voice-refs/ra_crafted`);
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toMatchObject({ error: 'invalid_voice_ref_path' });
+  });
+
+  it('resolveCardVoiceRefPath 自身只放行 voiceRefs/ 单层文件名', () => {
+    expect(() => resolveCardVoiceRefPath('c', false, 'voiceRefs/ra_a.mp3')).not.toThrow();
+    expect(() => resolveCardVoiceRefPath('c', false, 'voiceRefs/../../etc/passwd')).toThrow(/invalid_voice_ref_path/);
   });
 });

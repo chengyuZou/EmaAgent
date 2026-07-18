@@ -1,4 +1,4 @@
-// 这里测试请求头白名单, 错误 URL 脱敏和并发闸门的边界.
+// 测试请求头白名单, 错误 URL 脱敏和并发闸门的边界.
 
 import { describe, expect, it } from 'vitest';
 import { buildRequestHeaders, PublicEgressLimiter } from '../src/client.js';
