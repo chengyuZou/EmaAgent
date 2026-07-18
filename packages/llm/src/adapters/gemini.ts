@@ -19,7 +19,7 @@ import {
   throwIfAborted,
   throwIfAbortError,
 } from '../errors.js';
-import { createLlmUsage } from '../usage.js';
+import { createLlmTokenUsage } from '../usage.js';
 import type { ToolResultBlock, MessageContentPart } from '@ema-agent/contracts';
 
 function isContextWindowError(err: unknown): boolean {
@@ -309,7 +309,7 @@ export class GeminiAdapter implements LlmAdapter {
         if (chunk.usageMetadata) {
           lastUsage = {
             type: 'usage',
-            ...createLlmUsage({
+            ...createLlmTokenUsage({
               inputTokens: chunk.usageMetadata.promptTokenCount ?? 0,
               outputTokens: chunk.usageMetadata.candidatesTokenCount ?? 0,
               cacheReadInputTokens: chunk.usageMetadata.cachedContentTokenCount,

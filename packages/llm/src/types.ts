@@ -1,14 +1,16 @@
+// 定义 LLM Provider 配置、统一请求、流式分块和完成结果。
 import type {
   MessageContentPart,
   AssistantBlock,
   UserBlock,
   LlmMessage,
   LlmProtocol,
-  LlmUsage,
+  LlmTokenUsage,
+  LlmCallId,
 } from '@ema-agent/contracts';
 
 // 重新导出,调用方只需一次 import
-export type { LlmProtocol, LlmUsage }                                           from '@ema-agent/contracts';
+export type { LlmProtocol, LlmTokenUsage }                                      from '@ema-agent/contracts';
 export type { AssistantBlock, UserBlock, MessageContentPart as LlmContentPart } from '@ema-agent/contracts';
 export type { LlmMessage }                                                       from '@ema-agent/contracts';
 
@@ -76,6 +78,12 @@ export interface LlmRequest {
   maxTokens?: number;
   temperature?: number;
   signal?: AbortSignal;
+  /** 业务调用身份由上层传入；省略时 Router 为内部调用生成独立身份。 */
+  usageContext?: {
+    callId: LlmCallId;
+    sessionId?: string;
+    turnId?: string;
+  };
 }
 
 // ── 流式输出 ─────────────────────────────────────────────────────
@@ -110,7 +118,7 @@ export type LlmStreamChunk =
   | { type: 'thinking_complete';  blockIndex: number; signature: string }
   | { type: 'tool_use_delta';    blockIndex: number; callId: string; name: string; argsDelta: string }
   | { type: 'tool_use_complete'; blockIndex: number; callId: string; name: string; args: unknown }
-  | ({ type: 'usage' } & LlmUsage)
+  | ({ type: 'usage' } & LlmTokenUsage)
   | { type: 'done';              stopReason: StopReason };
 
 // ── 非流式输出 ──────────────────────────────────────────────────────
@@ -123,7 +131,7 @@ export type LlmStreamChunk =
 export interface LlmCompletion {
   blocks: AssistantBlock[];
   stopReason: StopReason;
-  usage: LlmUsage;
+  usage: LlmTokenUsage;
 }
 
 // ── probe 结果 ──────────────────────────────────────────────────────

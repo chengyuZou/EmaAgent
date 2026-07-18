@@ -24,22 +24,35 @@ describe('B-075 ReembedQueue', () => {
   }
 
   it('入队后跑完即删除任务行; 重复入队幂等复用同一任务', async () => {
-    const { tasks, queue } = setup(async () => ({ total: 2, done: 2, failed: [] }));
+    const { tasks, queue, events } = setup(async () => ({ total: 2, done: 2, failed: [] }));
+    const terminalStates: Array<string | undefined> = [];
+    events.on((event) => {
+      if (event.operation === 'reembed' && event.kind === 'complete' && event.taskId) {
+        terminalStates.push(tasks.get(event.taskId)?.status);
+      }
+    });
 
     const first = queue.enqueue({ ebdProviderId: 'p1', ebdModel: 'm1' });
     const second = queue.enqueue({ ebdProviderId: 'p1', ebdModel: 'm1' });
     expect(second.id).toBe(first.id);
 
     await waitUntil(() => tasks.get(first.id) === undefined);
+    expect(terminalStates).toEqual([undefined]);
   });
 
   it('单资产失败记 partial_failed + 失败分片, 重试沿用同一任务身份', async () => {
     let calls = 0;
-    const { tasks, queue } = setup(async () => {
+    const { tasks, queue, events } = setup(async () => {
       calls++;
       return calls === 1
         ? { total: 3, done: 2, failed: [{ assetId: 'asset-x', error: 'provider unavailable' }] }
         : { total: 1, done: 1, failed: [] };
+    });
+    const terminalStates: Array<string | undefined> = [];
+    events.on((event) => {
+      if (event.operation === 'reembed' && event.kind === 'partial_failed' && event.taskId) {
+        terminalStates.push(tasks.get(event.taskId)?.status);
+      }
     });
 
     const task = queue.enqueue({ ebdProviderId: 'p1', ebdModel: 'm1' });
@@ -50,6 +63,7 @@ describe('B-075 ReembedQueue', () => {
       shardKey: 'reembed:asset:asset-x',
       retryable: true,
     });
+    expect(terminalStates).toEqual(['partial_failed']);
 
     expect(queue.retry(task.id)).toBe(true);
     await waitUntil(() => tasks.get(task.id) === undefined);
@@ -64,7 +78,7 @@ describe('B-075 ReembedQueue', () => {
     );
     const cancelNotices: string[] = [];
     events.on((e) => {
-      if (e.operation === 'reembed' && e.kind === 'error') cancelNotices.push(e.error ?? '');
+      if (e.operation === 'reembed' && e.kind === 'cancelled') cancelNotices.push(e.taskId ?? '');
     });
 
     const task = queue.enqueue({ ebdProviderId: 'p1', ebdModel: 'm1' });
@@ -75,7 +89,30 @@ describe('B-075 ReembedQueue', () => {
     // 给 Worker 一个兑现迟到终态的机会; cancelled 必须保持不变。
     await new Promise(resolve => setTimeout(resolve, 30));
     expect(tasks.get(task.id)?.status).toBe('cancelled');
-    expect(cancelNotices).toContain('已取消');
+    expect(cancelNotices).toEqual([task.id]);
+  });
+
+  it('扫描器抛错时先持久化 failed，再发布一次失败终态', async () => {
+    const { tasks, queue, events } = setup(async () => {
+      throw new Error('provider unavailable');
+    });
+    const terminalStates: Array<{ status: string | undefined; error: string | undefined }> = [];
+    events.on((event) => {
+      if (event.operation === 'reembed' && event.kind === 'error' && event.taskId) {
+        terminalStates.push({
+          status: tasks.get(event.taskId)?.status,
+          error: event.error,
+        });
+      }
+    });
+
+    const task = queue.enqueue({ ebdProviderId: 'p1', ebdModel: 'm1' });
+    await waitUntil(() => tasks.get(task.id)?.status === 'failed');
+
+    expect(terminalStates).toEqual([{
+      status: 'failed',
+      error: 'provider unavailable',
+    }]);
   });
 
   it('resume 把幽灵 running 重新排队并跑完', async () => {

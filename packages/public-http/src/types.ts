@@ -1,3 +1,4 @@
+// 定义公网 HTTP 安全出口的请求、响应和已审批目标。
 import type { IncomingHttpHeaders } from 'node:http';
 
 export interface ApprovedPublicTarget {

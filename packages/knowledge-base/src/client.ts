@@ -1,3 +1,5 @@
+// 负责知识库文档写入、重嵌入、混合检索与内存向量索引生命周期。
+
 import type {
   DocumentAsset, DocumentChunk, DocumentPreview,
   IngestOptions, IngestResult, SearchOptions, AssetListPage,
@@ -73,14 +75,21 @@ export class KnowledgeClient {
   }
 
   private async rebuildIndex(spaceId: string, dim: number): Promise<void> {
-    this.hnsw = await createVectorIndex(dim);
-    this.hnswSpaceId = spaceId;
-    this.chunkToAsset.clear();
+    // 先在局部变量中完整构建，再一次替换当前索引。构建中失败时，搜索仍可
+    // 使用上一份完整索引，不会观察到只写入一半的 HNSW 和映射表。
+    const nextIndex = await createVectorIndex(dim);
+    const nextChunkToAsset = new Map<string, string>();
     const rows = this.deps.store.getAllEmbeddings(spaceId);
     for (const { id, assetId, embedding } of rows) {
       const vec = normalizeF32(bufferToFloat32(embedding));
-      this.hnsw.add(id, vec);
-      this.chunkToAsset.set(id, assetId);
+      nextIndex.add(id, vec);
+      nextChunkToAsset.set(id, assetId);
+    }
+    this.hnsw = nextIndex;
+    this.hnswSpaceId = spaceId;
+    this.chunkToAsset.clear();
+    for (const [chunkId, assetId] of nextChunkToAsset) {
+      this.chunkToAsset.set(chunkId, assetId);
     }
   }
 
@@ -110,8 +119,8 @@ export class KnowledgeClient {
 
   /**
    * 由 ReembedQueue 驱动的重建扫描: 逐资产重嵌, 单资产失败只记账不中断整场。
-   * 进度/终态事件经 client.events 发出(operation: 'reembed'), 任务状态由队列收口;
-   * 调用方取消时立即停扫并直接返回, 不发终态事件。
+   * Client 只发送逐资产进度事件并返回业务结果；终态落库和终态事件由
+   * ReembedQueue 在 CAS 成功后统一发布，避免 SSE 与持久状态互相矛盾。
    */
   async reembedSweep(opts: {
     /** 缺省 = 全部 stale 资产; 有值 = 单文档重建。 */
@@ -127,7 +136,7 @@ export class KnowledgeClient {
     done: number;
     failed: Array<{ assetId: string; error: string }>;
   }> {
-    if (!this.deps.ebdRouter) return { total: 0, done: 0, failed: [] };
+    if (!this.deps.ebdRouter) throw new Error('未配置 Embedding Provider');
 
     const targets = opts.assetId
       ? [opts.assetId]
@@ -135,11 +144,13 @@ export class KnowledgeClient {
     const total = targets.length;
     let done = 0;
     const failed: Array<{ assetId: string; error: string }> = [];
+    let resolvedSpace: EmbeddingSpace | undefined;
 
     for (const assetId of targets) {
       if (opts.signal.aborted) break;
       try {
-        await this.reembedAssetOrThrow(assetId, opts);
+        const assetSpace = await this.reembedAssetOrThrow(assetId, opts, resolvedSpace);
+        resolvedSpace ??= assetSpace;
         done++;
       } catch (error) {
         failed.push({ assetId, error: error instanceof Error ? error.message : String(error) });
@@ -158,20 +169,21 @@ export class KnowledgeClient {
       });
     }
 
-    if (opts.signal.aborted) return { total, done, failed };
+    if (opts.signal.aborted) {
+      // 已经写入 SQLite 的成功分片仍然正确，但旧内存索引可能与数据库不一致。
+      // 取消时直接清空派生缓存，后续搜索按 SQL exact-space fallback 工作。
+      this.hnsw = null;
+      this.hnswSpaceId = null;
+      this.chunkToAsset.clear();
+      return { total, done, failed };
+    }
 
-    this.events.emit({
-      assetId: opts.assetId ?? '',
-      taskId: opts.taskId,
-      attempt: opts.attempt,
-      kind: failed.length > 0 ? 'partial_failed' : 'complete',
-      progress: 1,
-      ...(failed.length > 0 ? { error: `${failed.length}/${total} 个文档重建失败` } : {}),
-      totalItems: total,
-      completedItems: done,
-      failedItems: failed.length,
-      operation: 'reembed',
-    });
+    // 一场任务只重建一次索引。逐资产重建会导致同一空间的后续资产无法进入
+    // 已存在的 HNSW；统一在所有成功资产落库后，从 SQLite 事实源完整重建。
+    if (resolvedSpace) {
+      this.deps.store.markStaleExcept(resolvedSpace.id);
+      await this.rebuildIndex(resolvedSpace.id, resolvedSpace.dim);
+    }
     return { total, done, failed };
   }
 
@@ -179,7 +191,8 @@ export class KnowledgeClient {
   private async reembedAssetOrThrow(
     assetId: string,
     opts: { ebdProviderId: string; ebdModel: string; signal?: AbortSignal },
-  ): Promise<void> {
+    expectedSpace?: EmbeddingSpace,
+  ): Promise<EmbeddingSpace> {
     if (!this.deps.ebdRouter) throw new Error('未配置 Embedding Provider');
     const chunks = this.deps.store.getChunks(assetId);
     let space: EmbeddingSpace | undefined;
@@ -192,6 +205,9 @@ export class KnowledgeClient {
         texts:      batch.map(c => c.text),
         signal:     opts.signal,
       });
+      if (expectedSpace && expectedSpace.id !== res.space.id) {
+        throw new Error('Embedding space changed between assets during re-embed');
+      }
       if (space && space.id !== res.space.id) throw new Error('Embedding space changed during re-embed');
       space = res.space;
       for (let j = 0; j < batch.length; j++) {
@@ -203,7 +219,7 @@ export class KnowledgeClient {
     }
     if (!space) throw new Error('Embedding provider returned no space');
     this.deps.store.setEmbeddingSpace(assetId, space);
-    await this.ensureIndex(space);
+    return space;
   }
 
   // ── Search ────────────────────────────────────────────────────────────────

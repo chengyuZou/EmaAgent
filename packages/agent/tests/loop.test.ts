@@ -3,6 +3,7 @@ import type { LlmCallId, LlmMessage } from '@ema-agent/contracts';
 import type { AgentPolicy } from '../src/policy.js';
 import type { TurnToolExecutor } from '../src/tool-executor.js';
 import { agentLoop } from '../src/loop.js';
+import { TurnBudget } from '../src/turn-budget.js';
 
 function makePolicy(): AgentPolicy {
   return {
@@ -58,6 +59,7 @@ describe('agentLoop LLM 生命周期', () => {
       model: 'model-1',
       signal: new AbortController().signal,
       maxIterations: 10,
+      budget: new TurnBudget(),
       sessionId: 'session-1',
     })) {
       events.push(event);
@@ -109,6 +111,7 @@ describe('agentLoop LLM 生命周期', () => {
       model: 'model-1',
       signal: new AbortController().signal,
       maxIterations: 10,
+      budget: new TurnBudget(),
       sessionId: 'session-1',
       prepareLlmCall: async (call) => {
         before.push({

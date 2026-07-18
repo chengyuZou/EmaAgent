@@ -1,103 +1,179 @@
-﻿import type { EmaStreamEvent, TurnId } from '@ema-agent/contracts';
+// 保存 Turn 的有界 SSE 重放日志，并为每条事件分配稳定游标。
+
+import type { EmaStreamEvent, TurnId } from '@ema-agent/contracts';
+import type { PublishedTurnEvent } from './event-hub.js';
+
+const DEFAULT_TURN_BUDGET_BYTES = 8 * 1024 * 1024;
+const DEFAULT_TOTAL_BUDGET_BYTES = 64 * 1024 * 1024;
+
+export interface TurnEventStoreOptions {
+  ttlMs?: number;
+  maxBytesPerTurn?: number;
+  maxBytesTotal?: number;
+}
+
+export type TurnEventPushResult =
+  | { status: 'stored'; published: PublishedTurnEvent }
+  | { status: 'overflow' }
+  | { status: 'closed' };
+
+interface StoredTurnEvent extends PublishedTurnEvent {
+  bytes: number;
+}
+
+interface TurnEventEntry {
+  events: StoredTurnEvent[];
+  nextCursor: number;
+  bytes: number;
+  done: boolean;
+  doneAt?: number;
+  overflowed: boolean;
+}
 
 /**
- * In-memory store for SSE events keyed by turnId.
- * Allows reconnecting clients to replay missed events via ?lastEventId.
+ * 重放日志只负责短时断线恢复，不拥有 Turn 生命周期。
  *
- * Events are evicted after the turn reaches a terminal state
- * (turn_completed / turn_failed / turn_aborted) + a short TTL.
+ * 活跃 Turn 超过内存预算时拒绝继续写入，由调用方终止该 Turn；终态事件仍保留，
+ * 让已经收到前缀的客户端可以明确结束，而不是永久等待。
  */
 export class TurnEventStore {
-  private readonly store = new Map<string, { events: EmaStreamEvent[]; done: boolean; doneAt?: number }>();
-  private readonly cancelled = new Map<string, number>();
+  private readonly store = new Map<string, TurnEventEntry>();
   private readonly ttlMs: number;
+  private readonly maxBytesPerTurn: number;
+  private readonly maxBytesTotal: number;
+  private totalBytes = 0;
 
-  constructor(ttlMs = 60_000) {
-    this.ttlMs = ttlMs;
+  constructor(options: TurnEventStoreOptions | number = {}) {
+    const resolved = typeof options === 'number' ? { ttlMs: options } : options;
+    this.ttlMs = positiveInteger(resolved.ttlMs, 60_000);
+    this.maxBytesPerTurn = positiveInteger(
+      resolved.maxBytesPerTurn,
+      DEFAULT_TURN_BUDGET_BYTES,
+    );
+    this.maxBytesTotal = positiveInteger(
+      resolved.maxBytesTotal,
+      DEFAULT_TOTAL_BUDGET_BYTES,
+    );
   }
 
-  push(turnId: TurnId, event: EmaStreamEvent): number | null {
+  push(turnId: TurnId, event: EmaStreamEvent): TurnEventPushResult {
     const key = turnId as string;
-    if (this.cancelled.has(key)) return null;
-    if (!this.store.has(key)) {
-      this.store.set(key, { events: [], done: false });
-    }
-    const entry = this.store.get(key)!;
-    entry.events.push(event);
-    const cursor = entry.events.length;
+    const entry = this.getOrCreate(key);
+    if (entry.done) return { status: 'closed' };
 
-    if (
-      event.type === 'turn_completed' ||
-      event.type === 'turn_failed' ||
-      event.type === 'turn_aborted'
-    ) {
+    const terminal = isTerminalTurnEvent(event);
+    if (entry.overflowed && !terminal) return { status: 'overflow' };
+
+    // 在线订阅者收到原始音频；重放日志从一开始就去掉 base64，避免一句 TTS
+    // 同时占据归档缓冲、SSE 重放和浏览器三份内存。
+    const replayEvent = eventForReplay(event);
+    const bytes = eventBytes(replayEvent);
+    if (!terminal && (
+      entry.bytes + bytes > this.maxBytesPerTurn ||
+      this.totalBytes + bytes > this.maxBytesTotal
+    )) {
+      entry.overflowed = true;
+      return { status: 'overflow' };
+    }
+
+    const published: PublishedTurnEvent = {
+      cursor: entry.nextCursor++,
+      event: replayEvent,
+    };
+    entry.events.push({ ...published, bytes });
+    entry.bytes += bytes;
+    this.totalBytes += bytes;
+
+    if (terminal) {
       entry.done = true;
       entry.doneAt = Date.now();
     }
-
-    return cursor;
+    return { status: 'stored', published };
   }
 
-  /** Returns events after `sinceIndex` (0-based). Used for reconnect replay. */
-  replay(turnId: TurnId, sinceIndex: number): EmaStreamEvent[] {
+  /** 返回 cursor 严格大于 sinceCursor 的事件。 */
+  replay(turnId: TurnId, sinceCursor: number): PublishedTurnEvent[] {
     const entry = this.store.get(turnId as string);
     if (!entry) return [];
-    return entry.events.slice(sinceIndex);
+    return entry.events
+      .filter(item => item.cursor > sinceCursor)
+      .map(({ cursor, event }) => ({ cursor, event }));
   }
 
   isDone(turnId: TurnId): boolean {
     return this.store.get(turnId as string)?.done ?? false;
   }
 
-  /** Call periodically to free memory from completed turns. */
+  /** 定期释放已经完成且超过重连窗口的 Turn。 */
   evictExpired(): void {
     const now = Date.now();
-    for (const [key, entry] of this.store.entries()) {
+    for (const [key, entry] of this.store) {
       if (entry.done && entry.doneAt !== undefined && now - entry.doneAt > this.ttlMs) {
-        this.store.delete(key);
+        this.deleteEntry(key, entry);
       }
     }
-    for (const [key, cancelledAt] of this.cancelled.entries()) {
-      if (now - cancelledAt > this.ttlMs) {
-        this.cancelled.delete(key);
-      }
-    }
-  }
-
-
-  cancel(turnId: TurnId): void {
-    const key = turnId as string;
-    this.cancelled.set(key, Date.now());
-    this.store.delete(key);
   }
 
   clear(turnId: TurnId): void {
     const key = turnId as string;
-    this.cancelled.delete(key);
-    this.store.delete(key);
+    const entry = this.store.get(key);
+    if (entry) this.deleteEntry(key, entry);
   }
 
   /**
-   * Drop all `tts_chunk` events for a turn while keeping every other event
-   * (sentence boundaries, text deltas, lifecycle). Called by the TtsCoordinator
-   * after `archive.finalizeTurn()` writes a merged audio file — at that point
-   * the streamed audio is reconstructable from the file via the audio route,
-   * so holding hundreds of KB of base64 in memory for SSE replay is wasteful.
-   *
-   * Reconnecting clients can still see which sentences played
-   * (`tts_sentence_complete`) and fetch the full merged audio via
-   * `GET /api/turns/:turnId/audio` for replay.
+   * 兼容旧调用：已写入的音频事件再次做脱敏，并重新核算内存预算。
+   * 新事件在 push 时已经脱敏，因此正常情况下该方法不会改变字节数。
    */
   evictAudioChunks(turnId: TurnId): void {
     const entry = this.store.get(turnId as string);
     if (!entry) return;
-    // Replace, don't filter: the replay cursor is "index in this array", so
-    // removing elements would shift every later event and make reconnecting
-    // clients skip/duplicate events. An empty-audio chunk keeps the index
-    // space stable while freeing the base64 payload; the frontend's
-    // handleTtsChunk ignores chunks with no audio.
-    entry.events = entry.events.map((e) =>
-      e.type === 'tts_chunk' ? { ...e, audio: '', lipsync: undefined } : e,
-    );
+
+    let nextBytes = 0;
+    entry.events = entry.events.map((item) => {
+      const event = eventForReplay(item.event);
+      const bytes = eventBytes(event);
+      nextBytes += bytes;
+      return { cursor: item.cursor, event, bytes };
+    });
+    this.totalBytes += nextBytes - entry.bytes;
+    entry.bytes = nextBytes;
   }
+
+  private getOrCreate(key: string): TurnEventEntry {
+    const existing = this.store.get(key);
+    if (existing) return existing;
+    const created: TurnEventEntry = {
+      events: [],
+      nextCursor: 1,
+      bytes: 0,
+      done: false,
+      overflowed: false,
+    };
+    this.store.set(key, created);
+    return created;
+  }
+
+  private deleteEntry(key: string, entry: TurnEventEntry): void {
+    this.store.delete(key);
+    this.totalBytes = Math.max(0, this.totalBytes - entry.bytes);
+  }
+}
+
+function positiveInteger(value: number | undefined, fallback: number): number {
+  return Number.isSafeInteger(value) && value! > 0 ? value! : fallback;
+}
+
+function isTerminalTurnEvent(event: EmaStreamEvent): boolean {
+  return event.type === 'turn_completed' ||
+    event.type === 'turn_failed' ||
+    event.type === 'turn_aborted';
+}
+
+function eventForReplay(event: EmaStreamEvent): EmaStreamEvent {
+  if (event.type !== 'tts_chunk') return event;
+  return { ...event, audio: '', lipsync: undefined };
+}
+
+function eventBytes(event: EmaStreamEvent): number {
+  return Buffer.byteLength(JSON.stringify(event), 'utf8');
 }

@@ -1,8 +1,4 @@
-/**
- * SSE / fetch-stream consumer — parse `text/event-stream` from a sidecar
- * response using fetch + ReadableStream (NOT EventSource, because we need
- * custom headers + Last-Event-ID).
- */
+/** 使用 fetch 流解析 Sidecar SSE，并维护服务端 Last-Event-ID 游标。 */
 import type { EmaStreamEvent } from '@ema-agent/contracts';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -12,7 +8,7 @@ export interface SseStartOptions {
   signal?:       AbortSignal;
   lastEventId?:  number;
   headers?:      Record<string, string>;
-  onEvent:       (event: EmaStreamEvent) => void;
+  onEvent:       (event: EmaStreamEvent, cursor?: number) => void;
   onHeartbeat?:  () => void;
   onError?:      (err: Error) => void;
   onComplete?:   () => void;
@@ -61,12 +57,16 @@ function createFrameParser(onFrame: (frame: string) => void) {
  *   event: heartbeat
  *   data: {"type":"..."}
  */
-function parseFrame(frame: string): { event?: string; data: string } | null {
+function parseFrame(frame: string): { event?: string; data: string; cursor?: number } | null {
   let event: string | undefined;
   let data = '';
+  let cursor: number | undefined;
 
   for (const line of frame.split('\n')) {
-    if (line.startsWith('event:')) {
+    if (line.startsWith('id:')) {
+      const parsed = Number.parseInt(line.slice(3).trim(), 10);
+      if (Number.isSafeInteger(parsed) && parsed >= 0) cursor = parsed;
+    } else if (line.startsWith('event:')) {
       event = line.slice(6).trim();
     } else if (line.startsWith('data:')) {
       data = line.slice(5).trim();
@@ -74,7 +74,7 @@ function parseFrame(frame: string): { event?: string; data: string } | null {
   }
 
   if (!data) return null;
-  return { event: event || undefined, data };
+  return { event: event || undefined, data, cursor };
 }
 
 // ── Consumer ──────────────────────────────────────────────────────────────────
@@ -119,7 +119,7 @@ export function createSseConsumer(): {
         try {
           const obj = JSON.parse(parsed.data) as Record<string, unknown>;
           if (typeof obj.type === 'string') {
-            opts.onEvent(obj as unknown as EmaStreamEvent);
+            opts.onEvent(obj as unknown as EmaStreamEvent, parsed.cursor);
           } else {
             console.warn('[sse] event missing "type" field, skipping', obj);
           }

@@ -1,12 +1,14 @@
+// 执行 Agent 的多轮模型与工具循环，并维护每轮状态、预算和事件。
 import { randomUUID } from 'node:crypto';
 import { asLlmCallId } from '@ema-agent/contracts';
-import type { LlmMessage, AssistantBlock, UserBlock, ToolResultBlock, EmaStreamEvent, LlmCallId, LlmUsage } from '@ema-agent/contracts';
+import type { LlmMessage, AssistantBlock, UserBlock, ToolResultBlock, EmaStreamEvent, LlmCallId, LlmTokenUsage } from '@ema-agent/contracts';
 import type { LlmRouter, ThinkingMode, StopReason } from '@ema-agent/llm';
 import { computePromptPrefixHash, ContextWindowExceededError } from '@ema-agent/llm';
 import type { AgentPolicy } from './policy.js';
 import type { TurnToolExecutor } from './tool-executor.js';
 import { advanceState, addUsage, createLoopState } from './loop-state.js';
 import type { LoopState } from './loop-state.js';
+import type { TurnBudget } from './turn-budget.js';
 
 const MAX_CONSECUTIVE_PERMISSION_DENIALS = 3;
 const MAX_TOTAL_PERMISSION_DENIALS = 20;
@@ -43,7 +45,7 @@ export type AgentLoopEvent =
       type: 'loop_llm_complete';
       iteration: number;
       llmCallId: LlmCallId;
-      usage: LlmUsage;
+      usage: LlmTokenUsage;
       promptPrefixHash: string | null;
     }
   | { type: 'loop_hook_abort'; reason: string }
@@ -86,7 +88,10 @@ export interface AgentLoopInput {
   model:          string;
   signal:         AbortSignal;
   maxIterations:  number;
+  /** 主 Agent 与全部 Subagent 共享的原子资源预算。 */
+  budget:         TurnBudget;
   sessionId:      string;
+  turnId?:        string;
   /**
    * Called before each LLM call. When it returns a non-empty string, the loop
    * prepends an ephemeral user message containing that string to the messages
@@ -134,7 +139,11 @@ export interface AgentLoopInput {
  * if the last tool finishes between the allDone() check and await.
  */
 export async function* agentLoop(input: AgentLoopInput): AsyncIterable<AgentLoopEvent> {
-  const { messages, policy, llm, providerId, model, signal, maxIterations, getScratchpadContext, getMailboxMessages, compactMessages, prepareLlmCall, thinking } = input;
+  const {
+    messages, policy, llm, providerId, model, signal, maxIterations, budget,
+    sessionId, turnId, getScratchpadContext, getMailboxMessages, compactMessages,
+    prepareLlmCall, thinking,
+  } = input;
 
   const pendingRelayEvents: EmaStreamEvent[] = [];
   let wakeUp: (() => void) | null = null;
@@ -150,6 +159,7 @@ export async function* agentLoop(input: AgentLoopInput): AsyncIterable<AgentLoop
   let totalPermissionDenials = 0;
 
   while (true) {
+    budget.assertWithinLimits();
     if (signal.aborted) {
       state = advanceState(state, { phase: 'aborted', transition: 'user_abort' });
       yield { type: 'loop_done', fullText: '', state };
@@ -215,7 +225,7 @@ export async function* agentLoop(input: AgentLoopInput): AsyncIterable<AgentLoop
 
     let lastStopReason: StopReason = 'end_turn';
     const tools = policy.toolDefs();
-    let callUsage: LlmUsage = { inputTokens: 0, outputTokens: 0 };
+    let callUsage: LlmTokenUsage = { inputTokens: 0, outputTokens: 0 };
     let promptPrefixHash: string | null = null;
 
     // ── Inner retry loop: handles reactive compact on ContextWindowExceededError ──
@@ -236,10 +246,16 @@ export async function* agentLoop(input: AgentLoopInput): AsyncIterable<AgentLoop
         toolChoice: 'auto',
         thinking,
         signal,
+        usageContext: {
+          callId: llmCallId,
+          sessionId,
+          turnId,
+        },
       });
 
       try {
         for await (const chunk of stream) {
+          budget.assertWithinLimits();
           // Drain relay events between LLM chunks — tools may have fired concurrently.
           while (pendingRelayEvents.length > 0) {
             yield { type: 'loop_relay', ev: pendingRelayEvents.shift()! };
@@ -270,6 +286,7 @@ export async function* agentLoop(input: AgentLoopInput): AsyncIterable<AgentLoop
               break;
 
             case 'tool_use_complete':
+              budget.reserveToolCall();
               toolUseByIndex.set(chunk.blockIndex, {
                 type: 'tool_use', id: chunk.callId, name: chunk.name, args: chunk.args,
               });
@@ -290,6 +307,7 @@ export async function* agentLoop(input: AgentLoopInput): AsyncIterable<AgentLoop
                   : {}),
                 ...(chunk.cacheHitRate !== undefined ? { cacheHitRate: chunk.cacheHitRate } : {}),
               };
+              budget.recordUsage(callUsage);
               state = addUsage(state, callUsage);
               break;
 

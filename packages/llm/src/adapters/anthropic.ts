@@ -15,7 +15,7 @@ import {
   throwIfAborted,
   throwIfAbortError,
 } from '../errors.js';
-import { createLlmUsage } from '../usage.js';
+import { createLlmTokenUsage } from '../usage.js';
 import type { UserBlock, ToolResultBlock, MessageContentPart } from '@ema-agent/contracts';
 
 function isContextWindowError(err: unknown): boolean {
@@ -366,7 +366,7 @@ export class AnthropicAdapter implements LlmAdapter {
     throwIfAborted(request.signal);
     yield {
       type: 'usage',
-      ...createLlmUsage({
+      ...createLlmTokenUsage({
         inputTokens,
         outputTokens,
         cacheReadInputTokens,

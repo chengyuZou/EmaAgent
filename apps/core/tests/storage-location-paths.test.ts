@@ -59,6 +59,7 @@ describe('resolveCardVoiceRefPath(B-055 路径安全)', () => {
     'voiceRefs/..',
     'voiceRefs/',
     'voiceRefs\\..\\..\\secret.wav',
+    'voiceRefs\\valid-name.mp3',
     'C:\\Windows\\system.ini',
     '/etc/passwd',
     '../outside.mp3',

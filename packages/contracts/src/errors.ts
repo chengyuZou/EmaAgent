@@ -1,3 +1,4 @@
+// 定义跨进程和跨包传递的稳定错误码。
 export type ErrorCode =
   | 'auth/api_key_missing'
   | 'auth/api_key_invalid'
@@ -25,6 +26,7 @@ export type ErrorCode =
   | 'stt/transcribe_failed'
   | 'turn/aborted_by_user'
   | 'turn/max_iterations'
+  | 'turn/budget_exceeded'
   | 'turn/hook_aborted'
   | 'turn/attachment_failed'
   | 'turn/setup_failed'

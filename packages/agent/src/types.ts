@@ -1,4 +1,4 @@
-// 这里放 Agent 运行时需要的输入、依赖和基础接口。
+// 定义 Agent 运行时需要的输入、依赖和基础接口。
 
 import type {
   SessionId,
@@ -23,6 +23,7 @@ export interface AskUserRegistryLike {
   /** Keyed variant: registry uses the caller-supplied promptId, not a new UUID. */
   createWithId(promptId: string, timeoutMs?: number, turnId?: string): { promise: Promise<Record<string, string>> };
   respond(promptId: string, answers: Record<string, string>): boolean;
+  cancel(promptId: string): boolean;
 }
 
 // ── Dependency surface ────────────────────────────────────────────────────────
@@ -103,6 +104,8 @@ export interface IAgentTaskStore {
   complete(taskId: string, stats: { iterations: number; inputTokens: number; outputTokens: number }): void;
   fail(taskId: string, reason: string): void;
   cancel(taskId: string, reason: string): void;
+  waitUser(taskId: string, promptId: string, questions: import('@ema-agent/contracts').AskUserQuestionSpec[]): { ok: boolean };
+  userAnswered(taskId: string, promptId: string): { ok: boolean };
 }
 
 // ── Run input ─────────────────────────────────────────────────────────────────

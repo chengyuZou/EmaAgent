@@ -1,3 +1,4 @@
+// 运行已持久化的 Memory 提取任务，并拒绝尚未实现的任务类型进入成功终态。
 import crypto from 'node:crypto';
 import type { SessionId, TurnMode } from '@ema-agent/contracts';
 import type {
@@ -38,6 +39,17 @@ export interface MemoryTaskRunnerDeps {
   getSessionOverrides: (sessionId: SessionId) => ResolvedSessionOverrides;
 }
 
+export type RunnableMemoryTaskKind = Extract<MemoryTaskKind, 'extraction'>;
+
+export class UnsupportedMemoryTaskKindError extends Error {
+  readonly code = 'memory/task_kind_unsupported';
+
+  constructor(readonly kind: Exclude<MemoryTaskKind, RunnableMemoryTaskKind>) {
+    super(`Memory task kind is not implemented: ${kind}`);
+    this.name = 'UnsupportedMemoryTaskKindError';
+  }
+}
+
 /**
  * Drains the memory_tasks table using a polling loop. The orchestrator
  * is expected to invoke `tick()` periodically (e.g. every 5 s) AND ad-hoc
@@ -53,7 +65,12 @@ export class MemoryTaskRunner {
   constructor(private readonly deps: MemoryTaskRunnerDeps) {}
 
   /** Enqueue a fresh task. Returns the task id so callers can correlate. */
-  enqueue(kind: MemoryTaskKind, sessionId: SessionId, payload: Record<string, unknown>): string {
+  enqueue(kind: RunnableMemoryTaskKind, sessionId: SessionId, payload: Record<string, unknown>): string {
+    if (kind !== 'extraction') {
+      throw new UnsupportedMemoryTaskKindError(
+        kind as Exclude<MemoryTaskKind, RunnableMemoryTaskKind>,
+      );
+    }
     const id = crypto.randomUUID();
     this.deps.memory.memoryTasks.enqueue({
       id,
@@ -133,12 +150,8 @@ export class MemoryTaskRunner {
         case 'maintenance':
         case 'embedding_refresh':
         case 'consolidation':
-          // B-050:这三个 kind 暂未实现,空 break 后会落到下面的 markCompleted
-          // 谎报完成(状态机不该允许空 handler 返回 completed)。
-          // 当前不动代码,等 Sol 决定:实现它们,或改成标 unsupported 不重试。
-          // 注:目前无入队点(dispatcher 只入队 extraction),不会实际触发,
-          // 但 recovery requeue 历史遗留行仍会命中此分支。
-          break;
+          // 旧库可能残留早期任务。明确失败且不重试，不能让空处理器落到 completed。
+          throw new UnsupportedMemoryTaskKindError(row.kind);
       }
       if (leaseLost) return;
       const completed = this.deps.memory.memoryTasks.markCompleted(
@@ -156,12 +169,13 @@ export class MemoryTaskRunner {
     } catch (err) {
       if (leaseLost) return;
       const msg = err instanceof Error ? err.message : String(err);
+      const maxAttempts = err instanceof UnsupportedMemoryTaskKindError ? 1 : 3;
       const failed = this.deps.memory.memoryTasks.markFailed(
         row.id,
         row.attempts,
         msg,
         Date.now(),
-        3,
+        maxAttempts,
       );
       if (!failed) return;
       this.deps.memory.emit?.({

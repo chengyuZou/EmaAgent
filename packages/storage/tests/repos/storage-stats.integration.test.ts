@@ -126,9 +126,12 @@ describe('SessionStatsRepo restore integration', () => {
       id: 'activation-1', call_id: 'call-1', kb_id: 'kb-1', asset_id: 'asset-1',
       session_id: payload.session.id, turn_id: 'turn-child', created_at: 150,
     });
-    payload.llmTurnMetrics.push({
-      turn_id: 'turn-child', llm_provider: 'openai-llm', model_id: 'model-1',
-      input_tokens: 30, output_tokens: 40, cost_usd: 0.01, duration_ms: 500, created_at: 150,
+    payload.usageRecords.push({
+      id: 'usage-1', session_id: payload.session.id, turn_id: 'turn-child',
+      provider_id: 'provider-1', model_id: 'model-1', capability: 'llm', status: 'completed',
+      input_tokens: 30, output_tokens: 40, cache_read_input_tokens: null,
+      cache_write_input_tokens: null, quantity: null, unit: null, cost_usd: null,
+      duration_ms: 500, error_code: null, created_at: 150,
     });
     payload.notes = { body: 'session notes', tokensAtLastUpdate: 3, updatedAt: 160 };
 
@@ -164,7 +167,7 @@ describe('SessionStatsRepo restore integration', () => {
 
     for (const table of [
       'artifacts', 'turn_audio_merged', 'turn_attachments', 'agent_task_messages',
-      'memory_session_state', 'kb_activations', 'llm_turn_metrics', 'session_notes',
+      'memory_session_state', 'kb_activations', 'usage_records', 'session_notes',
     ]) {
       expect(database.db.prepare(`SELECT COUNT(*) FROM ${table}`).pluck().get(), table).toBe(1);
     }
@@ -294,7 +297,7 @@ function branchedPayload(): SessionRestorePayload {
     agentTaskMessages: [],
     memoryState: null,
     kbActivations: [],
-    llmTurnMetrics: [],
+    usageRecords: [],
     notes: null,
   };
 }

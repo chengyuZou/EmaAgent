@@ -1,3 +1,4 @@
+// 定义 Session 备份 Facade 的输入输出、能力和文件端口。
 import type { ImportWarningWire } from '@ema-agent/contracts';
 import type { SessionRestorePayload } from '@ema-agent/storage';
 
@@ -54,7 +55,7 @@ export interface SessionExportSnapshot {
   agentTaskMessages: readonly unknown[];
   memoryState: unknown | null;
   kbActivations: readonly unknown[];
-  llmTurnMetrics: readonly unknown[];
+  usageRecords: readonly unknown[];
 }
 
 export interface SessionExportRequest { sessionId: string; }

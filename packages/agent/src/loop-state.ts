@@ -7,7 +7,7 @@
 // Mirrors Claude Code's LoopState / LoopTransition pattern, simplified to
 // EmaAgent's subset of termination conditions.
 
-import type { LlmUsage } from '@ema-agent/contracts';
+import type { LlmTokenUsage } from '@ema-agent/contracts';
 
 export type LoopPhase =
   | 'preprocessing'  // running context budget + compaction checks
@@ -40,7 +40,7 @@ export interface LoopState {
   readonly phase:      LoopPhase;
   readonly iteration:  number;
   readonly transition: LoopTransition;
-  readonly usage:      LlmUsage;
+  readonly usage:      LlmTokenUsage;
   /** 0 = not attempted; 1 = continuation prompt sent (next truncation → loop_breaker). */
   readonly maxOutputTokensRecoveryCount: number;
   /** Whether a reactive compact has already been attempted this iteration. */
@@ -76,7 +76,7 @@ export function advanceState(
 
 export function addUsage(
   state:  LoopState,
-  delta:  LlmUsage,
+  delta:  LlmTokenUsage,
 ): LoopState {
   const cacheReadInputTokens = sumOptional(
     state.usage.cacheReadInputTokens,

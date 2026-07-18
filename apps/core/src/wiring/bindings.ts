@@ -1,4 +1,4 @@
-// 这里创建 Core 运行所需的各个业务模块，并把它们连接到统一的 AppBindings。
+// 创建 Core 运行所需的业务模块，并把它们装配到统一 AppBindings。
 
 import type { Database } from '@ema-agent/storage';
 import {
@@ -14,7 +14,7 @@ import {
   McpServersRepo, SkillsRepo,
   MarketSourcesRepo,
   AgentTasksRepo, AgentTaskMessagesRepo, ToolExecutionsRepo,
-  SessionStatsRepo, DataDirStatsRepo,
+  SessionStatsRepo, DataDirStatsRepo, UsageRecordsRepo,
 } from '@ema-agent/storage';
 import { AttachmentStore } from '@ema-agent/attachment';
 import { ArtifactStore }                               from '@ema-agent/artifact';
@@ -290,6 +290,7 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
   const providerTtsModels    = new ProviderTtsModelsRepo(profileDb.sqlite);
   const providerSttModels    = new ProviderSttModelsRepo(profileDb.sqlite);
   const providerVisionModels = new ProviderVisionModelsRepo(profileDb.sqlite);
+  const usageRecords         = new UsageRecordsRepo(dataDb.sqlite);
 
   // ── AI clients (provider configs live in profileDb) ────────────────────────
   // models.dev catalog: load bundled snapshot first (instant, offline-safe),
@@ -307,6 +308,10 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
   const llm = new LlmRouter(loadLlmConfigs(profileDb, credentials), undefined, modelCatalog, {
     supportsManualImageInput: (providerId, model) =>
       providerVisionModels.hasProviderModel(providerId, model),
+    usageRecorder: usageRecords,
+    onUsageRecordError: (error, record) => {
+      console.error(`[usage] 调用记录写入失败: ${record.id}`, error);
+    },
   });
   const ebd = new EbdRouter(
     loadEmbedConfigs(profileDb, credentials),
@@ -585,7 +590,7 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
         agentTaskMessages: sessionStats.listAgentTaskMessages(sessionId),
         memoryState: sessionStats.getMemoryState(sessionId) ?? null,
         kbActivations: sessionStats.listKbActivations(sessionId),
-        llmTurnMetrics: sessionStats.listLlmTurnMetrics(sessionId),
+        usageRecords: sessionStats.listUsageRecords(sessionId),
       };
     },
   });
@@ -704,6 +709,10 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
         });
         return;
       }
+      if (e.kind === 'cancelled') {
+        systemBus.emit({ type: 'kb_reembed_cancelled', kbId, taskId: e.taskId, assetId: e.assetId });
+        return;
+      }
       if (e.kind === 'error') {
         systemBus.emit({ type: 'kb_reembed_failed', kbId, taskId: e.taskId, assetId: e.assetId, error: e.error ?? 'unknown' });
         return;
@@ -736,6 +745,8 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
       systemBus.emit({ type: 'kb_ingest_failed', kbId, taskId: e.taskId, assetId: e.assetId, error: e.error ?? 'unknown' });
       return;
     }
+    // cancelled 只属于 reembed。畸形事件不得伪装成 ingest 进度进入前端状态机。
+    if (e.kind === 'cancelled') return;
     const base: Record<string, number> = { validate: 0.05, parse: 0.25, chunk: 0.45, embed: 0.5 };
     const progress = e.kind === 'embed' ? 0.5 + 0.5 * (e.progress ?? 0) : (base[e.kind] ?? 0);
     systemBus.emit({

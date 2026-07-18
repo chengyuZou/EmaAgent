@@ -127,8 +127,10 @@ export function cardResourcePath(cardId: string, isBuiltin: boolean, relPath: st
  * 唯一咽喉点, 越界一律抛 invalid_voice_ref_path。
  */
 export function resolveCardVoiceRefPath(cardId: string, isBuiltin: boolean, relPath: string): string {
-  const normalized = relPath.replaceAll('\\', '/');
-  const match = /^voiceRefs\/([^/]+)$/.exec(normalized);
+  if (relPath.includes('\\')) {
+    throw new Error(`invalid_voice_ref_path: ${relPath}`);
+  }
+  const match = /^voiceRefs\/([^/]+)$/.exec(relPath);
   const filename = match?.[1];
   if (!filename || filename === '.' || filename === '..') {
     throw new Error(`invalid_voice_ref_path: ${relPath}`);

@@ -1,3 +1,4 @@
+// 按安全预算把单个 Session 导出为 ZIP v1 归档。
 import fs from 'node:fs';
 import path from 'node:path';
 import { strToU8, zipSync } from 'fflate';
@@ -101,7 +102,7 @@ export function exportSessionZipV1(
   putJson('agent_task_messages.json', snapshot.agentTaskMessages);
   if (snapshot.memoryState) putJson('memory_state.json', snapshot.memoryState);
   if (snapshot.kbActivations.length > 0) putJson('kb_activations.json', snapshot.kbActivations);
-  if (snapshot.llmTurnMetrics.length > 0) putJson('llm_turn_metrics.json', snapshot.llmTurnMetrics);
+  if (snapshot.usageRecords.length > 0) putJson('usage_records.json', snapshot.usageRecords);
 
   if (artifactsEnabled) {
     putJson('artifacts/index.json', snapshot.artifacts.map((entry) => ({

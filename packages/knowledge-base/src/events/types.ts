@@ -1,3 +1,5 @@
+// 定义知识库文档处理与重嵌入过程对外发布的事件结构。
+
 export type DocumentProgressKind =
   | 'validate'
   | 'parse'
@@ -5,6 +7,7 @@ export type DocumentProgressKind =
   | 'embed'
   | 'partial_failed'
   | 'complete'
+  | 'cancelled'
   | 'error';
 
 export interface DocumentProgressEvent {

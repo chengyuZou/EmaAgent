@@ -1,4 +1,4 @@
-// ── Facade ───────────────────────────────────────────────────────────────────
+// 统一导出 Memory Facade、任务、压缩、向量索引和维护能力。
 export { MemoryPlanner } from './planner.js';
 
 // ── Public types ─────────────────────────────────────────────────────────────
@@ -51,7 +51,11 @@ export type {
 
 // ── Background tasks + recovery ──────────────────────────────────────────────
 export { SessionTaskQueue }                   from './tasks/session-queue.js';
-export { MemoryTaskRunner }               from './tasks/extraction-runner.js';
+export {
+  MemoryTaskRunner,
+  UnsupportedMemoryTaskKindError,
+} from './tasks/extraction-runner.js';
+export type { RunnableMemoryTaskKind } from './tasks/extraction-runner.js';
 export { runStartupRecovery }                 from './tasks/recovery.js';
 export type { RecoveryReport }                from './tasks/recovery.js';
 

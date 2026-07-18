@@ -44,32 +44,37 @@ function mockSseResponse(frames: string[], status = 200): Response {
  */
 function collectSse(frames: string[], timeoutMs = 3000): Promise<{
   events: EmaStreamEvent[];
+  cursors: Array<number | undefined>;
   heartbeats: number;
   errors: Error[];
   completed: boolean;
 }> {
   return new Promise((resolve) => {
     const events: EmaStreamEvent[] = [];
+    const cursors: Array<number | undefined> = [];
     let heartbeats = 0;
     const errors: Error[] = [];
     let completed = false;
 
     const timer = setTimeout(() => {
       handle.stop();
-      resolve({ events, heartbeats, errors, completed });
+      resolve({ events, cursors, heartbeats, errors, completed });
     }, timeoutMs);
 
     const consumer = createSseConsumer();
     const handle = consumer.start({
       url: 'http://127.0.0.1:3421/sse',
-      onEvent: (e) => events.push(e),
+      onEvent: (e, cursor) => {
+        events.push(e);
+        cursors.push(cursor);
+      },
       onHeartbeat: () => { heartbeats++; },
       onError: (e) => errors.push(e),
       onComplete: () => {
         completed = true;
         clearTimeout(timer);
         handle.stop();
-        resolve({ events, heartbeats, errors, completed });
+        resolve({ events, cursors, heartbeats, errors, completed });
       },
     });
   });
@@ -119,6 +124,18 @@ describe('createSseConsumer', () => {
     expect(result.events[0]!.type).toBe('turn_started');
     expect(result.events[1]!.type).toBe('output_text_delta');
     expect(result.events[2]!.type).toBe('turn_completed');
+  });
+
+  it('parses the server SSE id as an absolute replay cursor', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      mockSseResponse(['id: 42\ndata: {"type":"system_warning","level":"warn","message":"cursor"}']),
+    );
+
+    const result = await collectSse([
+      'id: 42\ndata: {"type":"system_warning","level":"warn","message":"cursor"}',
+    ]);
+
+    expect(result.cursors).toEqual([42]);
   });
 
   it('fires onHeartbeat for heartbeat events', async () => {

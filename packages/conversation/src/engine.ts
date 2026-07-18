@@ -1,9 +1,9 @@
-// 这里跑 chat/narrative 一次完整 turn：onTurnStart -> provider 解析 -> beforeLlm hook（含 narrative 召回）-> LLM 流式 -> 落盘 -> afterLlm/onTurnEnd。
+// 运行一次 chat/narrative Turn，并串联 Hook、召回、LLM 流和持久化。
 
 import { randomUUID } from 'node:crypto';
 import { asLlmCallId } from '@ema-agent/contracts';
 import type { EmaStreamEvent, ErrorCode, LlmMessage, AssistantBlock, UserBlock, MessageContentPart as LlmContentPart } from '@ema-agent/contracts';
-import type { LlmUsage } from '@ema-agent/contracts';
+import type { LlmTokenUsage } from '@ema-agent/contracts';
 import { computePromptPrefixHash, llmProviderErrorCode } from '@ema-agent/llm';
 import type { MessageBlocks } from '@ema-agent/session';
 import type { HookBus, HookTriggerContext, HookTriggerResult, TurnFailurePhase } from '@ema-agent/hook';
@@ -237,7 +237,7 @@ async function* runTurn(
     let fullText = '';
     let inputTokens = 0;
     let outputTokens = 0;
-    let llmUsage: LlmUsage = { inputTokens: 0, outputTokens: 0 };
+    let llmUsage: LlmTokenUsage = { inputTokens: 0, outputTokens: 0 };
     let lastTextBlockIndex = 0;
     const textByIndex = new Map<number, string>();
     const thinkingByIndex = new Map<number, string>();
@@ -246,7 +246,18 @@ async function* runTurn(
 
     activePhase = 'provider';
     const promptPrefixHash = computePromptPrefixHash({ messages: finalMessages });
-    const stream = llm.stream({ providerId, model: resolvedModel, messages: finalMessages, thinking: input.thinking, signal });
+    const stream = llm.stream({
+      providerId,
+      model: resolvedModel,
+      messages: finalMessages,
+      thinking: input.thinking,
+      signal,
+      usageContext: {
+        callId: llmCallId,
+        sessionId: input.sessionId,
+        turnId,
+      },
+    });
 
     for await (const chunk of stream) {
       switch (chunk.type) {

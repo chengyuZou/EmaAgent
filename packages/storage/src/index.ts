@@ -1,3 +1,4 @@
+// 统一导出 Storage 数据库、迁移和各业务 Repo。
 export { Database, DatabaseCapabilityError } from './database.js';
 export { MigrationsRunner } from './migrations.js';
 export {
@@ -15,7 +16,7 @@ export { BranchesRepo } from './repos/branches.js';
 export { CharacterCardsRepo } from './repos/character-cards.js';
 export { SettingsRepo } from './repos/settings.js';
 export { TelemetryRepo } from './repos/telemetry.js';
-export { LlmTurnMetricsRepo } from './repos/llm-turn-metrics.js';
+export { UsageRecordsRepo } from './repos/usage-records.js';
 export { Live2DModelsRepo } from './repos/live2d-models.js';
 export { ProvidersRepo } from './repos/providers.js';
 export { ModelBindingsRepo } from './repos/model-bindings.js';
@@ -66,7 +67,7 @@ export type {
 export { SettingSerializationError } from './repos/settings.js';
 export type { SettingRow, SettingReadResult } from './repos/settings.js';
 export type { TelemetryEventRow } from './repos/telemetry.js';
-export type { LlmTurnMetricsRow } from './repos/llm-turn-metrics.js';
+export type { UsageRecordRow } from './repos/usage-records.js';
 export type { Live2DModelRow } from './repos/live2d-models.js';
 export type {
   ProviderConfigRow,

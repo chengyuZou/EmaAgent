@@ -102,7 +102,7 @@ describe('SessionBackupFacade 的 Core HTTP 接线', () => {
       session: { id: 'session-123456', title: 'Route Export' },
       turns: [], messages: [], artifacts: [], attachments: [], audio: [],
       notes: null, branches: [], agentTasks: [], agentTaskMessages: [],
-      memoryState: null, kbActivations: [], llmTurnMetrics: [],
+      memoryState: null, kbActivations: [], usageRecords: [],
     };
     const sessionBackup = new SessionBackupFacade({
       activeDataDir: root,

@@ -5,7 +5,7 @@ import {
   normalizeToolDefinitions,
 } from '../src/prompt-cache.js';
 import { toAnthropicMessages } from '../src/adapters/anthropic.js';
-import { createLlmUsage } from '../src/usage.js';
+import { createLlmTokenUsage } from '../src/usage.js';
 
 const stableSystem: LlmMessage = {
   role: 'system',
@@ -95,7 +95,7 @@ describe('Prompt KV Cache 稳定前缀', () => {
   });
 
   it('只用 Provider 返回的缓存计数计算命中率', () => {
-    expect(createLlmUsage({
+    expect(createLlmTokenUsage({
       inputTokens: 10,
       outputTokens: 5,
       cacheReadInputTokens: 80,
@@ -109,7 +109,7 @@ describe('Prompt KV Cache 稳定前缀', () => {
       cacheHitRate: 0.8,
     });
 
-    expect(createLlmUsage({ inputTokens: 10, outputTokens: 5 }))
+    expect(createLlmTokenUsage({ inputTokens: 10, outputTokens: 5 }))
       .toEqual({ inputTokens: 10, outputTokens: 5 });
   });
 });

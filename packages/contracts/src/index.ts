@@ -1,4 +1,5 @@
-﻿export * from './ids.js';
+// 统一导出 EmaAgent 各模块共享的协议契约。
+export * from './ids.js';
 export * from './turns.js';
 export * from './errors.js';
 export * from './events.js';
@@ -10,3 +11,4 @@ export * from './capabilities.js';
 export * from './kb.js';
 export * from './agents.js';
 export * from './session-ownership.js';
+export * from './usage.js';

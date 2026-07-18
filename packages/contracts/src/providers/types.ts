@@ -59,19 +59,6 @@ export type VisionProtocol = Extract<ProtocolFamily, `${string}-vision`>;
 export type TtsProtocol    = Extract<ProtocolFamily, `${string}-tts`>;
 export type SttProtocol    = Extract<ProtocolFamily, `${string}-stt`>;
 
-/**
- * 单次逻辑 LLM 调用的统一 Token 指标。
- * cache 字段只在 Provider 明确返回对应计数时出现，禁止通过总输入量猜测。
- */
-export interface LlmUsage {
-  inputTokens: number;
-  outputTokens: number;
-  cacheReadInputTokens?: number;
-  cacheWriteInputTokens?: number;
-  /** Provider 语义下的缓存读取占可缓存输入比例，范围 0..1。 */
-  cacheHitRate?: number;
-}
-
 /** Type guard for narrowing ProtocolFamily down to LlmProtocol. */
 export function isLlmProtocol(p: ProtocolFamily | undefined): p is LlmProtocol {
   return p === 'openai-llm'

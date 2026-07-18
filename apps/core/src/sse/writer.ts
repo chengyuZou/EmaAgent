@@ -1,16 +1,15 @@
-﻿import type { EmaStreamEvent } from '@ema-agent/contracts';
+// 把结构化事件和服务端游标编码成标准 SSE 帧。
 
-/** Encode one EmaStreamEvent as an SSE data line. */
-export function encodeEvent(event: EmaStreamEvent): string {
-  return `data: ${JSON.stringify(event)}\n\n`;
+import type { EmaStreamEvent } from '@ema-agent/contracts';
+
+/** 编码一条业务事件；Turn SSE 传 cursor，系统 SSE 可以省略。 */
+export function encodeEvent(event: EmaStreamEvent, cursor?: number): string {
+  const id = cursor === undefined ? '' : `id: ${cursor}\n`;
+  return `${id}data: ${JSON.stringify(event)}\n\n`;
 }
 
 /**
- * Encode a keep-alive heartbeat as a raw SSE event.
- * Note: this is intentionally NOT an EmaStreamEvent — it bypasses the event
- * store entirely and is written directly to the ReadableStream by the GET
- * handler's setInterval. The frontend should listen on the `heartbeat` SSE
- * event name, not parse it as JSON.
+ * 心跳不是 EmaStreamEvent，不进入重放日志，只用于维持连接和发现断线。
  */
 export function encodePing(): string {
   return 'event: heartbeat\ndata: {}\n\n';

@@ -1,3 +1,5 @@
+// 统一校验并路由 LLM 请求，同时在调用边界记录真实的模型用量。
+import { randomUUID } from 'node:crypto';
 import { OpenAiAdapter }         from './adapters/openai.js';
 import { OpenAiResponsesAdapter } from './adapters/openai-responses.js';
 import { AnthropicAdapter }       from './adapters/anthropic.js';
@@ -16,9 +18,9 @@ import type {
   ProbeResult,
   StopReason,
   AssistantBlock,
-  LlmUsage,
+  LlmTokenUsage,
 } from './types.js';
-import type { LlmProtocol } from '@ema-agent/contracts';
+import type { LlmProtocol, UsageRecord, UsageRecorder } from '@ema-agent/contracts';
 import type { ModelsDevCatalog } from './models-dev-catalog.js';
 import { normalizeToolDefinitions } from './prompt-cache.js';
 import {
@@ -72,6 +74,8 @@ export class LlmRouter {
   /** 仅测试用的 adapter 替换,以 ProviderConfig.id 为 key。 */
   private readonly adapterOverrides?: ReadonlyMap<string, LlmAdapter>;
   private readonly supportsManualImageInput?: (providerId: string, model: string) => boolean;
+  private readonly usageRecorder?: UsageRecorder;
+  private readonly onUsageRecordError?: (error: unknown, record: UsageRecord) => void;
 
   /**
    * @param configs           Provider 配置。
@@ -84,10 +88,14 @@ export class LlmRouter {
     private readonly catalog?: ModelsDevCatalog,
     options: {
       supportsManualImageInput?: (providerId: string, model: string) => boolean;
+      usageRecorder?: UsageRecorder;
+      onUsageRecordError?: (error: unknown, record: UsageRecord) => void;
     } = {},
   ) {
     this.adapterOverrides = adapterOverrides;
     this.supportsManualImageInput = options.supportsManualImageInput;
+    this.usageRecorder = options.usageRecorder;
+    this.onUsageRecordError = options.onUsageRecordError;
     for (const config of configs) {
       this.configs.set(config.id, config);
       this.adapters.set(config.id, this.createAdapterFor(config));
@@ -128,12 +136,64 @@ export class LlmRouter {
       throw new LlmModelCapabilityError(enriched.providerId, enriched.model, protocolIssues);
     }
     const recovery = createCompatibilityRecovery(adapter, enriched);
-    return this.streamRuntime.stream(
+    const source = this.streamRuntime.stream(
       enriched.providerId,
       recovery.start,
       enriched.signal,
       recovery.recover,
     );
+    return this.recordStreamUsage(enriched, source);
+  }
+
+  /** 包装统一流，不让观测数据写入失败破坏模型主链路。 */
+  private async *recordStreamUsage(
+    request: LlmRequest,
+    source: AsyncIterable<LlmStreamChunk>,
+  ): AsyncIterable<LlmStreamChunk> {
+    const startedAt = Date.now();
+    let usage: LlmTokenUsage | undefined;
+    let completed = false;
+    let errorCode: string | null = null;
+
+    try {
+      for await (const chunk of source) {
+        if (chunk.type === 'usage') usage = chunk;
+        if (chunk.type === 'done') completed = true;
+        yield chunk;
+      }
+    } catch (error) {
+      errorCode = usageErrorCode(error);
+      throw error;
+    } finally {
+      const record: UsageRecord = {
+        id: request.usageContext?.callId ?? randomUUID(),
+        sessionId: request.usageContext?.sessionId ?? null,
+        turnId: request.usageContext?.turnId ?? null,
+        providerId: request.providerId,
+        modelId: request.model,
+        capability: 'llm',
+        status: completed ? 'completed' : 'failed',
+        inputTokens: usage?.inputTokens ?? null,
+        outputTokens: usage?.outputTokens ?? null,
+        cacheReadInputTokens: usage?.cacheReadInputTokens ?? null,
+        cacheWriteInputTokens: usage?.cacheWriteInputTokens ?? null,
+        quantity: null,
+        unit: null,
+        costUsd: null,
+        durationMs: Math.max(0, Date.now() - startedAt),
+        errorCode: completed ? null : errorCode ?? 'llm/stream_incomplete',
+        createdAt: startedAt,
+      };
+      try {
+        this.usageRecorder?.record(record);
+      } catch (error) {
+        try {
+          this.onUsageRecordError?.(error, record);
+        } catch {
+          // 诊断回调也不能反向破坏已经成功的模型流。
+        }
+      }
+    }
   }
 
   // ── 非流式 ────────────────────────────────────────────────────
@@ -150,7 +210,7 @@ export class LlmRouter {
    */
   async complete(request: LlmRequest): Promise<LlmCompletion> {
     let stopReason: StopReason = 'end_turn';
-    let usage: LlmUsage = { inputTokens: 0, outputTokens: 0 };
+    let usage: LlmTokenUsage = { inputTokens: 0, outputTokens: 0 };
     const textBufs             = new Map<number, string>();
     const thinkingBufs         = new Map<number, string>();
     const thinkingSignatureMap = new Map<number, string>();
@@ -336,6 +396,15 @@ export class LlmRouter {
     if (!protocol) throw notConfigured(providerId);
     return validateContentParts(parts, protocol);
   }
+}
+
+function usageErrorCode(error: unknown): string {
+  if (error instanceof Error) {
+    const candidate = (error as Error & { code?: unknown }).code;
+    if (typeof candidate === 'string' && candidate.length > 0) return candidate;
+    if (error.name === 'AbortError') return 'llm/aborted';
+  }
+  return 'llm/provider_failed';
 }
 
 function validateProtocolMessages(

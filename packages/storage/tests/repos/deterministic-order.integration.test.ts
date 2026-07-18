@@ -110,7 +110,7 @@ describe('N-012 Data DB 确定性事件顺序', () => {
       .toContain('pending_fragments(session_id, at ASC, created_at ASC, id ASC)');
     expect(indexSql(database, 'idx_telemetry_kind').replaceAll(/\s+/g, ' '))
       .toContain('telemetry_events(kind, created_at DESC, id DESC)');
-    expect(database.currentVersion()).toBe(12);
+    expect(database.currentVersion()).toBe(13);
   });
 });
 
@@ -191,12 +191,16 @@ describe('data v8 到 v9 迁移', () => {
         { id: 'message-z', sequence: 3 },
       ]);
       expect(sqlite.prepare(`
-        SELECT turn_id, model_id, duration_ms FROM llm_turn_metrics WHERE turn_id = 'turn-a'
-      `).get()).toEqual({ turn_id: 'turn-a', model_id: 'model-a', duration_ms: 500 });
+        SELECT id, turn_id, provider_id, model_id, duration_ms
+        FROM usage_records WHERE turn_id = 'turn-a'
+      `).get()).toEqual({
+        id: 'legacy:turn-a', turn_id: 'turn-a', provider_id: 'legacy-protocol:openai-llm',
+        model_id: 'model-a', duration_ms: 500,
+      });
       expect(sqlite.prepare(`
         SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'turn_usage'
       `).get()).toBeUndefined();
-      expect(sqlite.pragma('user_version', { simple: true })).toBe(12);
+      expect(sqlite.pragma('user_version', { simple: true })).toBe(13);
     } finally {
       sqlite.close();
     }

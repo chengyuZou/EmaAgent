@@ -572,6 +572,17 @@ export function dispatchSseEvent(
       });
       break;
 
+    case 'turn_projection_warning':
+      console.warn('[sse] turn_projection_warning:', {
+        sessionId: event.sessionId,
+        turnId: event.turnId,
+        projection: event.projection,
+        code: event.code,
+        message: event.message,
+        retryable: event.retryable,
+      });
+      break;
+
     case 'system_warning':
       console.warn('[sse] system_warning:', event.level, event.message);
       break;

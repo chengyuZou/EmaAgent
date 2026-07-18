@@ -1,5 +1,5 @@
 /**
- * KnowledgeBaseTab — document ingest, list, delete, and search test.
+ * 管理知识库文档导入、列表、删除、检索测试与重嵌入任务。
  */
 import { useState, useEffect, useCallback, type CSSProperties, type JSX } from 'react';
 import { Button, IconButton, Input, Spinner, Badge, Callout, EmptyState, EntityRow, Select, Progress, Dialog } from '@ema-agent/ui';
@@ -764,10 +764,14 @@ function KbModelSettings({ onEmbedModelChanged }: { onEmbedModelChanged?: (model
       setRebuilding(false);
       setRebuildTaskId(null);
       showToast(`部分重建失败：${rebuildTask.completedItems ?? 0} 成功，${rebuildTask.failedItems ?? 0} 失败`, { variant: 'warning' });
+    } else if (rebuildTask.status === 'cancelled') {
+      setRebuilding(false);
+      setRebuildTaskId(null);
+      showToast('已取消重建', { variant: 'warning' });
     } else if (rebuildTask.status === 'failed') {
       setRebuilding(false);
       setRebuildTaskId(null);
-      showToast(rebuildTask.error === '已取消' ? '已取消重建' : `重建失败：${rebuildTask.error ?? ''}`, { variant: 'danger' });
+      showToast(`重建失败：${rebuildTask.error ?? ''}`, { variant: 'danger' });
     }
   }, [rebuildTask]);
 

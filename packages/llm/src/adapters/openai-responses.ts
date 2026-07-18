@@ -18,7 +18,7 @@ import {
   throwIfAborted,
   throwIfAbortError,
 } from '../errors.js';
-import { createLlmUsage } from '../usage.js';
+import { createLlmTokenUsage } from '../usage.js';
 import type { ToolResultBlock, MessageContentPart } from '@ema-agent/contracts';
 
 // ── 类型(从 openai SDK 命名空间收窄) ────────────────────────────────────────
@@ -335,7 +335,7 @@ export class OpenAiResponsesAdapter implements LlmAdapter {
             if (usage) {
               yield {
                 type:         'usage',
-                ...createLlmUsage({
+                ...createLlmTokenUsage({
                   inputTokens: usage.input_tokens,
                   outputTokens: usage.output_tokens,
                   cacheReadInputTokens: usage.input_tokens_details.cached_tokens,

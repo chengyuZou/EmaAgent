@@ -1,11 +1,12 @@
+// 汇总数据目录与 Session 统计，并执行完整 Session 备份恢复事务。
 import type { SqliteDb } from '../database.js';
 import type { AgentTaskMessageRow } from './agent-task-messages.js';
 import type { KbActivationRow }     from './kb-activations.js';
 import type { AgentTaskRow }        from './agent-tasks.js';
-import type { LlmTurnMetricsRow }   from './llm-turn-metrics.js';
+import type { UsageRecordRow }      from './usage-records.js';
 import type { BranchRow }           from './branches.js';
 
-export type { AgentTaskMessageRow, KbActivationRow, AgentTaskRow, LlmTurnMetricsRow, BranchRow };
+export type { AgentTaskMessageRow, KbActivationRow, AgentTaskRow, UsageRecordRow, BranchRow };
 
 // ════════════════════════════════════════════════════════════════════════════
 // DataDir 级聚合统计
@@ -164,7 +165,7 @@ export interface SessionRestorePayload {
   agentTaskMessages: AgentTaskMessageRestoreRow[];
   memoryState:       MemoryStateRow | null;
   kbActivations:     KbActivationRow[];
-  llmTurnMetrics:    LlmTurnMetricsRow[];
+  usageRecords:      UsageRecordRow[];
   notes:             NotesRestoreData | null;
 }
 
@@ -239,8 +240,11 @@ function validateSessionRestorePayload(payload: SessionRestorePayload): void {
     assertSessionOwnership('KbActivation', activation.id, activation.session_id, sessionId);
     assertOptionalReference('KbActivation.turnId', activation.id, activation.turn_id, turnIds);
   }
-  for (const metrics of payload.llmTurnMetrics) {
-    assertReference('LlmTurnMetrics.turnId', metrics.turn_id, metrics.turn_id, turnIds);
+  for (const record of payload.usageRecords) {
+    assertSessionOwnership('UsageRecord', record.id, record.session_id ?? sessionId, sessionId);
+    if (record.turn_id !== null) {
+      assertReference('UsageRecord.turnId', record.id, record.turn_id, turnIds);
+    }
   }
 }
 
@@ -459,15 +463,12 @@ export class SessionStatsRepo {
     `).all(sessionId) as KbActivationRow[];
   }
 
-  listLlmTurnMetrics(sessionId: string): LlmTurnMetricsRow[] {
+  listUsageRecords(sessionId: string): UsageRecordRow[] {
     return this.db.prepare(`
-      SELECT u.turn_id, u.llm_provider, u.model_id,
-             u.input_tokens, u.output_tokens, u.cost_usd, u.duration_ms, u.created_at
-      FROM llm_turn_metrics u
-      JOIN turns t ON t.id = u.turn_id
-      WHERE t.session_id = ?
-      ORDER BY u.created_at ASC
-    `).all(sessionId) as LlmTurnMetricsRow[];
+      SELECT * FROM usage_records
+      WHERE session_id = ?
+      ORDER BY created_at ASC, id ASC
+    `).all(sessionId) as UsageRecordRow[];
   }
 
   // ── 导入:完整恢复事务 ──────────────────────────────────────────────────────
@@ -694,16 +695,19 @@ export class SessionStatsRepo {
         stmtKb.run(k.id, k.call_id, k.kb_id, k.asset_id, p.session.id, k.turn_id ?? null, k.created_at);
       }
 
-      // 15. LLM Turn 指标
-      const stmtLlmTurnMetrics = this.db.prepare(`
-        INSERT INTO llm_turn_metrics
-          (turn_id, llm_provider, model_id, input_tokens, output_tokens, cost_usd, duration_ms, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      // 15. 各类模型调用的用量记录
+      const stmtUsageRecord = this.db.prepare(`
+        INSERT INTO usage_records (
+          id, session_id, turn_id, provider_id, model_id, capability, status,
+          input_tokens, output_tokens, cache_read_input_tokens, cache_write_input_tokens,
+          quantity, unit, cost_usd, duration_ms, error_code, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
-      for (const u of p.llmTurnMetrics) {
-        stmtLlmTurnMetrics.run(
-          u.turn_id, u.llm_provider, u.model_id,
-          u.input_tokens, u.output_tokens, u.cost_usd, u.duration_ms, u.created_at,
+      for (const u of p.usageRecords) {
+        stmtUsageRecord.run(
+          u.id, p.session.id, u.turn_id, u.provider_id, u.model_id, u.capability, u.status,
+          u.input_tokens, u.output_tokens, u.cache_read_input_tokens, u.cache_write_input_tokens,
+          u.quantity, u.unit, u.cost_usd, u.duration_ms, u.error_code, u.created_at,
         );
       }
 

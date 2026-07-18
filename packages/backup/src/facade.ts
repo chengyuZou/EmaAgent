@@ -1,3 +1,4 @@
+// 编排 Session 备份导入导出，并统一处理校验、文件落盘和事务恢复。
 import fs from 'node:fs';
 import path from 'node:path';
 import type { ImportWarningWire } from '@ema-agent/contracts';
@@ -233,9 +234,15 @@ export class SessionBackupFacade {
     const agentTasks = readArray<SessionRestorePayload['agentTasks'][number]>(extracted, 'agent_tasks.json');
     const agentTaskMessages = readArray<SessionRestorePayload['agentTaskMessages'][number]>(extracted, 'agent_task_messages.json');
     const kbActivations = readArray<SessionRestorePayload['kbActivations'][number]>(extracted, 'kb_activations.json');
-    const llmTurnMetrics = extracted.has('llm_turn_metrics.json')
-      ? readArray<SessionRestorePayload['llmTurnMetrics'][number]>(extracted, 'llm_turn_metrics.json')
-      : readArray<SessionRestorePayload['llmTurnMetrics'][number]>(extracted, 'usage.json');
+    const usageRecords = extracted.has('usage_records.json')
+      ? readArray<SessionRestorePayload['usageRecords'][number]>(extracted, 'usage_records.json')
+      : legacyMetricsToUsageRecords(
+          extracted.has('llm_turn_metrics.json')
+            ? readArray<LegacyLlmTurnMetrics>(extracted, 'llm_turn_metrics.json')
+            : readArray<LegacyLlmTurnMetrics>(extracted, 'usage.json'),
+          turns,
+          session.id,
+        );
     const memoryState = extracted.readJson<SessionRestorePayload['memoryState']>('memory_state.json');
     const notes = extracted.readJson<NotesExport>('notes.json');
 
@@ -263,7 +270,7 @@ export class SessionBackupFacade {
       agentTaskMessages,
       memoryState,
       kbActivations,
-      llmTurnMetrics,
+      usageRecords,
       notes: notes ? {
         body: notes.body,
         tokensAtLastUpdate: notes.tokensAtLastUpdate ?? 0,
@@ -271,6 +278,44 @@ export class SessionBackupFacade {
       } : null,
     };
   }
+}
+
+interface LegacyLlmTurnMetrics {
+  turn_id: string;
+  llm_provider: string;
+  model_id: string;
+  input_tokens: number;
+  output_tokens: number;
+  cost_usd: number;
+  duration_ms: number;
+  created_at: number;
+}
+
+function legacyMetricsToUsageRecords(
+  rows: readonly LegacyLlmTurnMetrics[],
+  turns: readonly TurnRestoreRow[],
+  sessionId: string,
+): SessionRestorePayload['usageRecords'] {
+  const turnIds = new Set(turns.map((turn) => turn.id));
+  return rows.filter((row) => turnIds.has(row.turn_id)).map((row) => ({
+    id: `legacy:${row.turn_id}`,
+    session_id: sessionId,
+    turn_id: row.turn_id,
+    provider_id: `legacy-protocol:${row.llm_provider}`,
+    model_id: row.model_id,
+    capability: 'llm',
+    status: 'completed',
+    input_tokens: row.input_tokens,
+    output_tokens: row.output_tokens,
+    cache_read_input_tokens: null,
+    cache_write_input_tokens: null,
+    quantity: null,
+    unit: null,
+    cost_usd: row.cost_usd,
+    duration_ms: row.duration_ms,
+    error_code: null,
+    created_at: row.created_at,
+  }));
 }
 
 async function readBoundedSource(

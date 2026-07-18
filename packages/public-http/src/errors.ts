@@ -1,3 +1,4 @@
+// 定义公网 HTTP 出口的策略、体积和响应状态错误。
 export class PublicHttpPolicyError extends Error {
   constructor(message: string) {
     super(message);

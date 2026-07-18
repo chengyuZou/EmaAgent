@@ -44,6 +44,7 @@ export interface ReembedQueueDeps {
  */
 export class ReembedQueue {
   private running = false;
+  private runningTaskId: string | undefined;
   private controller: AbortController | undefined;
 
   constructor(private readonly deps: ReembedQueueDeps) {}
@@ -86,13 +87,14 @@ export class ReembedQueue {
     const current = this.deps.tasks.get(taskId);
     if (!current) return false;
     if (!this.deps.tasks.cancel(taskId)) return false;
-    this.controller?.abort(new Error('kb/reembed_cancelled'));
+    if (this.runningTaskId === taskId) {
+      this.controller?.abort(new Error('kb/reembed_cancelled'));
+    }
     this.deps.events?.emit({
       assetId: current.assetId ?? '',
       taskId,
       attempt: current.attempt,
-      kind: 'error',
-      error: '已取消',
+      kind: 'cancelled',
       operation: 'reembed',
     });
     return true;
@@ -115,8 +117,10 @@ export class ReembedQueue {
     });
     if (!task) return;
     this.running = true;
+    this.runningTaskId = task.id;
     void this.run(task).finally(() => {
       this.running = false;
+      this.runningTaskId = undefined;
       this.controller = undefined;
       this.tick();
     });
@@ -158,6 +162,10 @@ export class ReembedQueue {
         },
       });
 
+      // 用户取消或租约丢失时，持久状态已经由取消方/下一次 claim 接管。
+      // 当前 Worker 不再发布任何终态，避免迟到结果覆盖新所有者。
+      if (controller.signal.aborted) return;
+
       if (outcome.failed.length > 0) {
         const updated = this.deps.tasks.partialFail({
           id: task.id,
@@ -180,16 +188,46 @@ export class ReembedQueue {
         });
         // CAS 失败说明任务已被取消/重试，迟到终态不得覆盖。
         if (!updated) return;
+        this.deps.events?.emit({
+          assetId: task.assetId ?? '',
+          taskId: task.id,
+          attempt: task.attempt,
+          kind: 'partial_failed',
+          progress: 1,
+          error: `${outcome.failed.length}/${outcome.total} 个文档重建失败`,
+          totalItems: outcome.total,
+          completedItems: outcome.done,
+          failedItems: outcome.failed.length,
+          operation: 'reembed',
+        });
         return;
       }
 
-      this.deps.tasks.complete(task.id, leaseToken, task.version);
+      const completed = this.deps.tasks.complete(task.id, leaseToken, task.version);
+      if (!completed) return;
+      this.deps.events?.emit({
+        assetId: task.assetId ?? '',
+        taskId: task.id,
+        attempt: task.attempt,
+        kind: 'complete',
+        progress: 1,
+        totalItems: outcome.total,
+        completedItems: outcome.done,
+        failedItems: 0,
+        operation: 'reembed',
+      });
     } catch (error) {
-      if (controller.signal.aborted && controller.signal.reason instanceof Error) {
-        this.failIfOwned(task, leaseToken, 'kb/lease_lost', controller.signal.reason.message);
-      } else {
-        this.failIfOwned(task, leaseToken, 'kb/reembed_failed', errorMessage(error));
-      }
+      if (controller.signal.aborted) return;
+      const message = errorMessage(error);
+      if (!this.failIfOwned(task, leaseToken, 'kb/reembed_failed', message)) return;
+      this.deps.events?.emit({
+        assetId: task.assetId ?? '',
+        taskId: task.id,
+        attempt: task.attempt,
+        kind: 'error',
+        error: message,
+        operation: 'reembed',
+      });
     } finally {
       clearInterval(heartbeat);
     }
@@ -200,16 +238,16 @@ export class ReembedQueue {
     leaseToken: string,
     errorCode: string,
     error: string,
-  ): void {
+  ): boolean {
     // 如果 partial/complete/cancel 已成功，状态不再是 running，CAS 返回 undefined；
     // 这表示 catch 捕获的是终态后的观察性错误，不能覆盖合法终态。
-    this.deps.tasks.fail({
+    return this.deps.tasks.fail({
       id: task.id,
       leaseToken,
       version: task.version,
       errorCode,
       error,
-    });
+    }) !== undefined;
   }
 }
 

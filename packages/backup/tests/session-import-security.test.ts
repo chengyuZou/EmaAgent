@@ -164,7 +164,7 @@ describe('SessionBackupFacade 演进契约', () => {
         turns: [{ id: 'turn-1' }], messages: [], artifacts: [], attachments: [],
         audio: [], notes: null, branches: [], agentTasks: [],
         agentTaskMessages: [], memoryState: null, kbActivations: [],
-        llmTurnMetrics: [],
+        usageRecords: [],
       }),
     });
 
@@ -189,7 +189,7 @@ describe('SessionBackupFacade 演进契约', () => {
         size: 32, turnId: 'turn-1', mtime: 0, createdAt: 1, localPath: largeFile,
       }],
       audio: [], notes: null, branches: [], agentTasks: [], agentTaskMessages: [],
-      memoryState: null, kbActivations: [], llmTurnMetrics: [],
+      memoryState: null, kbActivations: [], usageRecords: [],
     };
 
     expect(() => exportSessionZipV1(snapshot, false, {

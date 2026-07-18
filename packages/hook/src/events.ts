@@ -4,7 +4,7 @@ import type {
   ErrorCode,
   LlmCallId,
   LlmMessage,
-  LlmUsage,
+  LlmTokenUsage,
   MessageId,
   NarrativeTimelineRecall,
   ToolCallId,
@@ -103,7 +103,7 @@ export interface HookPayload {
     llmCallId: LlmCallId;
     content: string;
     /** 本次逻辑 LLM 调用的真实 Provider usage；cache 字段不做推测。 */
-    usage: LlmUsage;
+    usage: LlmTokenUsage;
     /** 截止 cacheBreakpoint 的规范化 SHA-256；没有断点时为 null。 */
     promptPrefixHash: string | null;
     /** 本次 LLM 响应产出的 tool-use 块,按 block 顺序。 */

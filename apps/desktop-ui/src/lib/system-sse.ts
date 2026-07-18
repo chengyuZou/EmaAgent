@@ -1,5 +1,5 @@
 ﻿/**
- * System SSE — subscribe to /api/system/events for global events.
+ * 订阅全局系统 SSE，并把后台业务事件分发到对应前端 Store。
  *
  * System bus carries: character_card_switched, provider_health_changed,
  * memory pipeline telemetry, background task events.
@@ -190,6 +190,10 @@ function dispatchSystemEvent(event: EmaStreamEvent): void {
       useKbStore.getState().onReembedPartialFailed(event.kbId, event.taskId, event.assetId, event.error, {
         total: event.totalItems, completed: event.completedItems, failed: event.failedItems,
       });
+      break;
+
+    case 'kb_reembed_cancelled':
+      useKbStore.getState().onReembedCancelled(event.kbId, event.taskId, event.assetId);
       break;
 
     case 'kb_reembed_failed':

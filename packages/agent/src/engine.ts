@@ -1,4 +1,4 @@
-// 这里运行一次 Agent Turn，并协调模型、工具、权限、Hook 和结果保存。
+// 运行一次 Agent Turn，并协调模型、工具、权限、Hook 和结果保存。
 
 import type { EmaStreamEvent, ErrorCode, LlmMessage, AssistantBlock, UserBlock } from '@ema-agent/contracts';
 import type { MessageBlocks } from '@ema-agent/session';
@@ -15,6 +15,8 @@ import { clearTodos } from '@ema-agent/tool-builtin';
 import { buildScratchpadContext } from './scratchpad-context.js';
 import { llmProviderErrorCode } from '@ema-agent/llm';
 import * as fs   from 'node:fs';
+import { AgentBudgetExceededError, TurnBudget } from './turn-budget.js';
+import { awaitAgentAnswer } from './ask-user-lifecycle.js';
 
 // ── AgentEngine ───────────────────────────────────────────────────────────────
 
@@ -65,6 +67,7 @@ async function* runTurn(
   const startedAt = Date.now();
 
   const policy        = new AgentPolicy(tools.list());
+  const budget        = new TurnBudget();
   const readFileState = new Map() as ReadFileState;
   const contextStores = deps.getContextStores?.(sessionId);
   const resolvedRunner = deps.getCommandRunner?.(sessionId);
@@ -197,12 +200,29 @@ async function* runTurn(
     // 会重复注入 Memory/Skill 等上下文。Spawner 需要继承完整视图，因此维护
     // 一个稳定数组引用，每次 prepare 完成后原地刷新。
     const subagentContextMessages: LlmMessage[] = [];
+    const scopedKbSearch: ToolExecutionContext['kbSearch'] | undefined = deps.kbSearch
+      ? (query, topK, kbIds) => {
+          // Tool 指定 kbIds 时是显式覆盖；否则继承父 Turn 的用户选择范围。
+          const effectiveKbIds = kbIds ?? (input.kbIds?.length ? input.kbIds : []);
+          const effectiveScopes = kbIds ? undefined : input.kbAssetScopes;
+          return deps.kbSearch!(
+            query,
+            topK,
+            effectiveKbIds,
+            effectiveScopes,
+            sessionId,
+            turnId,
+          );
+        }
+      : undefined;
 
     const spawner = new SubagentSpawner(
       deps, sessionId, turnId, providerId, model, subagentContextMessages,
       scratchpadDir,
       scratchpadDir ? () => buildScratchpadContext(scratchpadDir) : undefined,
       (ev) => emitRef.fn?.(ev),
+      scopedKbSearch,
+      budget,
     );
     turnSpawner = spawner;
     activeSpawners.set(turnId, spawner);
@@ -218,21 +238,21 @@ async function* runTurn(
         mcpClient:       deps.mcpClient,
         skillRunner:     deps.skillRunner,
         toolCapabilities: policy.capabilities(),
-        kbSearch:        deps.kbSearch
-          ? (query, topK, kbIds) => {
-              // Tool-supplied kbIds = explicit LLM override; pass assetScopes only for user selection.
-              const effectiveKbIds  = kbIds ?? (input.kbIds?.length ? input.kbIds : []);
-              const effectiveScopes = kbIds ? undefined : input.kbAssetScopes;
-              return deps.kbSearch!(query, topK, effectiveKbIds, effectiveScopes, sessionId, turnId);
-            }
-          : undefined,
+        kbSearch:        scopedKbSearch,
         subagentSpawner: spawner,
         scratchpadDir,
         scratchpadAuthor: 'main',
         askUser: askUserRegistry
           ? async (promptId, _questions) => {
-              const { promise } = askUserRegistry.createWithId(promptId, undefined, turnId as string);
-              return { answers: await promise };
+              return awaitAgentAnswer({
+                taskId: turnId as string,
+                promptId,
+                questions: _questions,
+                turnId: turnId as string,
+                signal,
+                registry: askUserRegistry,
+                taskStore: deps.taskStore,
+              });
             }
           : undefined,
       };
@@ -266,7 +286,9 @@ async function* runTurn(
       messages, policy, buildExecutor, llm,
       providerId, model, signal,
       maxIterations: policy.maxIterations(),
+      budget,
       sessionId,
+      turnId,
       getScratchpadContext: scratchpadDir
         ? () => buildScratchpadContext(scratchpadDir)
         : undefined,
@@ -513,9 +535,11 @@ async function* runTurn(
       deps.taskStore?.cancel(turnId, 'user_abort');
       yield { type: 'turn_aborted', sessionId, turnId, reason: 'user_stop' };
     } else {
-      const code: ErrorCode = activePhase === 'provider'
-        ? llmProviderErrorCode(err)
-        : 'turn/execution_failed';
+      const code: ErrorCode = err instanceof AgentBudgetExceededError
+        ? err.code
+        : activePhase === 'provider'
+          ? llmProviderErrorCode(err)
+          : 'turn/execution_failed';
       await reportFailure(code, reason, activePhase);
       while (pendingHookEvents.length > 0) yield pendingHookEvents.shift()!;
       yield { type: 'turn_failed', sessionId, turnId, code, message: reason };

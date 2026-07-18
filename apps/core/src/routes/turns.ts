@@ -1,3 +1,5 @@
+// 接收 Turn 请求、发布有界 SSE 事件流并处理显式取消等运行时控制。
+
 import fs from 'node:fs';
 import { Readable } from 'node:stream';
 import { Hono } from 'hono';
@@ -10,6 +12,7 @@ import type { AppBindings } from '../wiring/index.js';
 import type { EmaStreamEvent, TurnId, TurnRequest } from '@ema-agent/contracts';
 import { asTurnId, asSessionId } from '@ema-agent/contracts';
 import { REQUEST_VALUE_LIMITS } from '../http/request-budget.js';
+import { SubagentTranscriptProjection } from '../turn-runtime/subagent-transcript-projection.js';
 
 // ── UTF-8 safe body decoder ───────────────────────────────────────────────────
 
@@ -106,18 +109,33 @@ export function turnsRoute(bindings: AppBindings): Hono {
   const orchestrator = new Orchestrator(bindings, {
     onAudioFinalized: (turnId, sessionId, audio) => {
       if (audio) {
-        // Record the merged audio in turn_audio_merged so dashboard stats and
-        // export zip can see it — the file alone on disk is not enough.
-        bindings.sessionStats.recordAudioMerged({
-          turnId:       turnId as string,
-          sessionId:    sessionId as string,
-          storagePath:  audio.path,
-          mimeType:     audio.mime,
-          byteSize:     audio.byteSize,
-          durationMs:   audio.durationMs,
-          segmentCount: audio.segmentCount,
-          createdAt:    Date.now(),
-        });
+        try {
+          // 音频统计是可重建的辅助投影，失败不能反向破坏已生成的语音与 Turn。
+          bindings.sessionStats.recordAudioMerged({
+            turnId:       turnId as string,
+            sessionId:    sessionId as string,
+            storagePath:  audio.path,
+            mimeType:     audio.mime,
+            byteSize:     audio.byteSize,
+            durationMs:   audio.durationMs,
+            segmentCount: audio.segmentCount,
+            createdAt:    Date.now(),
+          });
+        } catch (error) {
+          const warning: EmaStreamEvent = {
+            type: 'turn_projection_warning',
+            sessionId,
+            turnId,
+            projection: 'turn_audio',
+            code: 'storage/turn_audio_projection_failed',
+            message: error instanceof Error ? error.message : String(error),
+            retryable: true,
+          };
+          const result = eventStore.push(turnId, warning);
+          if (result.status === 'stored') {
+            eventHub.publish(turnId, { cursor: result.published.cursor, event: warning });
+          }
+        }
         eventStore.evictAudioChunks(turnId);
       }
     },
@@ -170,80 +188,36 @@ export function turnsRoute(bindings: AppBindings): Hono {
       return c.json({ error: 'internal', message }, 500);
     }
 
-    // ── Fan-out: push every event into TurnEventStore for replay ──────────
-    //
-    // Also intercepts subagent_stream events to persist the subagent's
-    // conversation transcript into agent_task_messages via the messages repo.
-    // Text and reasoning deltas are accumulated per-subagent and flushed on
-    // iteration boundaries or lifecycle terminal events.
-    const subagentTextAcc      = new Map<string, string>();
-    const subagentReasoningAcc = new Map<string, string>();
+    // Transcript 是旁路投影；它可以失败，但不能停止 Engine 事件消费。
+    const transcriptProjection = new SubagentTranscriptProjection(bindings.agentTaskMessages);
 
-    const flushSubagentText = (subagentId: string): void => {
-      const reasoning = subagentReasoningAcc.get(subagentId);
-      if (reasoning) {
-        subagentReasoningAcc.delete(subagentId);
-        bindings.agentTaskMessages.insert({
-          taskId:    subagentId,
-          role:      'reasoning',
-          content:   { text: reasoning },
-          createdAt: Date.now(),
-        });
+    const publishEvent = (event: EmaStreamEvent): boolean => {
+      const result = eventStore.push(turnId, event);
+      if (result.status === 'stored') {
+        // 重放日志可能对音频做脱敏，在线订阅者仍应收到原始事件。
+        eventHub.publish(turnId, { cursor: result.published.cursor, event });
+        return true;
       }
-      const text = subagentTextAcc.get(subagentId);
-      if (!text) return;
-      subagentTextAcc.delete(subagentId);
-      bindings.agentTaskMessages.insert({
-        taskId:    subagentId,
-        role:      'assistant',
-        content:   { text },
-        createdAt: Date.now(),
-      });
+      if (result.status === 'overflow') {
+        orchestrator.abort(turnId);
+      }
+      return false;
     };
 
     (async () => {
       for await (const event of events) {
         // Inject sessionId into events from engines that don't carry it.
         const enriched = enrichTurnEvent(event, effectiveSessionId);
-        const cursor = eventStore.push(turnId, enriched);
-        if (cursor !== null) {
-          eventHub.publish(turnId, { cursor, event: enriched });
+        const projectionWarning = transcriptProjection.apply(enriched);
+        if (projectionWarning) {
+          publishEvent({
+            type: 'turn_projection_warning',
+            sessionId: effectiveSessionId,
+            turnId,
+            ...projectionWarning,
+          });
         }
-
-        // ── Subagent transcript persistence ────────────────────────────────
-        if (enriched.type === 'subagent_stream') {
-          const { subagentId, ev: inner } = enriched;
-          if (inner.type === 'text_delta') {
-            subagentTextAcc.set(subagentId, (subagentTextAcc.get(subagentId) ?? '') + inner.delta);
-          } else if (inner.type === 'reasoning_delta') {
-            subagentReasoningAcc.set(subagentId, (subagentReasoningAcc.get(subagentId) ?? '') + inner.delta);
-          } else if (inner.type === 'iteration') {
-            flushSubagentText(subagentId);
-          } else if (inner.type === 'tool_call') {
-            flushSubagentText(subagentId);
-            bindings.agentTaskMessages.insert({
-              taskId:    subagentId,
-              role:      'tool_call',
-              content:   { callId: inner.callId, name: inner.name, args: inner.args, iteration: inner.iteration },
-              createdAt: Date.now(),
-            });
-          } else if (inner.type === 'tool_result') {
-            bindings.agentTaskMessages.insert({
-              taskId:    subagentId,
-              role:      'tool_result',
-              content:   { callId: inner.callId, name: inner.name, excerpt: inner.excerpt, isError: inner.isError, error: inner.error, durationMs: inner.durationMs },
-              createdAt: Date.now(),
-            });
-          }
-        } else if (
-          enriched.type === 'subagent_completed' ||
-          enriched.type === 'subagent_failed'    ||
-          enriched.type === 'subagent_aborted'
-        ) {
-          flushSubagentText(enriched.subagentId);
-          subagentTextAcc.delete(enriched.subagentId);
-          subagentReasoningAcc.delete(enriched.subagentId);
-        }
+        publishEvent(enriched);
 
         // Auto-cancel any in-flight permission prompts when the turn ends.
         // Otherwise an aborted turn leaves the prompt hanging in the
@@ -311,23 +285,23 @@ export function turnsRoute(bindings: AppBindings): Hono {
             }
           };
 
-          const writeEvent = (event: EmaStreamEvent): void => {
-            writeEncoded(encodeEvent(event));
-            if (isTerminalTurnEvent(event)) close();
+          const writeEvent = (published: { cursor: number; event: EmaStreamEvent }): void => {
+            writeEncoded(encodeEvent(published.event, published.cursor));
+            if (isTerminalTurnEvent(published.event)) close();
           };
 
           unsubscribe = eventHub.subscribe(turnId, (published) => {
             if (published.cursor <= cursor) return;
             cursor = published.cursor;
-            writeEvent(published.event);
+            writeEvent(published);
           });
 
           // ── Send missed events immediately ──────────────────────────────
           const missed = eventStore.replay(turnId, cursor);
-          for (const event of missed) {
+          for (const published of missed) {
             if (closed) break;
-            cursor += 1;
-            writeEvent(event);
+            cursor = published.cursor;
+            writeEvent(published);
           }
 
           if (closed || eventStore.isDone(turnId)) {
@@ -341,14 +315,9 @@ export function turnsRoute(bindings: AppBindings): Hono {
           }, 15_000);
         },
         cancel() {
-          // Client disconnected — abort the running turn so the LLM stream,
-          // tool calls, and TTS synthesis all stop. Also mark the event store
-          // as cancelled so further push() calls are dropped.
+          // 断开只结束当前订阅。Turn 生命周期由显式 /abort、预算或 Engine 终态
+          // 控制，窗口刷新和短暂断网不能偷偷取消仍在运行的工具或模型请求。
           cleanup();
-          if (!eventStore.isDone(turnId) && eventHub.subscriberCount(turnId) === 0) {
-            eventStore.cancel(turnId);
-            orchestrator.abort(turnId);
-          }
         },
       }),
       {

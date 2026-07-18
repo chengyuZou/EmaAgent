@@ -17,7 +17,7 @@ import {
   throwIfAborted,
   throwIfAbortError,
 } from '../errors.js';
-import { createLlmUsage } from '../usage.js';
+import { createLlmTokenUsage } from '../usage.js';
 import type { ToolResultBlock } from '@ema-agent/contracts';
 
 function isContextWindowError(err: unknown): boolean {
@@ -312,7 +312,7 @@ export class OpenAiAdapter implements LlmAdapter {
       if (chunk.usage) {
         yield {
           type:         'usage',
-          ...createLlmUsage({
+          ...createLlmTokenUsage({
             inputTokens: chunk.usage.prompt_tokens,
             outputTokens: chunk.usage.completion_tokens,
             cacheReadInputTokens: chunk.usage.prompt_tokens_details?.cached_tokens,

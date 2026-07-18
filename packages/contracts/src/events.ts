@@ -152,6 +152,15 @@ export type EmaStreamEvent =
   | { type: 'turn_failed';    sessionId: SessionId; turnId: TurnId; code: ErrorCode; message: string }
   | { type: 'turn_aborted';   sessionId: SessionId; turnId: TurnId; reason: string }
   | {
+      type: 'turn_projection_warning';
+      sessionId: SessionId;
+      turnId: TurnId;
+      projection: 'subagent_transcript' | 'turn_audio';
+      code: string;
+      message: string;
+      retryable: boolean;
+    }
+  | {
       type: 'request_degraded';
       sessionId: SessionId;
       turnId: TurnId;
@@ -298,6 +307,7 @@ export type EmaStreamEvent =
   | { type: 'kb_reembed_progress';  kbId: string; taskId?: string; assetId: string; progress: number; totalItems?: number; completedItems?: number; failedItems?: number }
   | { type: 'kb_reembed_completed'; kbId: string; taskId?: string; assetId: string; totalItems: number; completedItems: number; failedItems: number }
   | { type: 'kb_reembed_partial_failed'; kbId: string; taskId?: string; assetId: string; error: string; totalItems: number; completedItems: number; failedItems: number }
+  | { type: 'kb_reembed_cancelled'; kbId: string; taskId?: string; assetId: string }
   | { type: 'kb_reembed_failed';    kbId: string; taskId?: string; assetId: string; error: string }
 
   // Agent

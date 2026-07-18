@@ -1,4 +1,4 @@
-// 这里创建和管理子 Agent，并处理它们的共享临时数据、取消和事件上报。
+// 创建和管理子 Agent，并处理共享临时数据、取消、能力门禁和事件上报。
 
 import { randomUUID } from 'node:crypto';
 import type { LlmMessage, SessionId, TurnId, EmaStreamEvent, ToolError } from '@ema-agent/contracts';
@@ -8,6 +8,8 @@ import type { AgentDeps } from './types.js';
 import { AgentPolicy } from './policy.js';
 import { TurnToolExecutor } from './tool-executor.js';
 import { agentLoop, type ExecutorFactory } from './loop.js';
+import { selectSubagentTools } from './subagent-capabilities.js';
+import { TurnBudget } from './turn-budget.js';
 
 // ── SubagentSpawner ───────────────────────────────────────────────────────────
 //
@@ -49,6 +51,8 @@ export class SubagentSpawner implements ISubagentSpawner {
     private readonly scratchpadDir?:        string,
     private readonly getScratchpadContext?: () => string | undefined,
     private readonly parentEmit?:           (ev: EmaStreamEvent) => void,
+    private readonly kbSearch?:             ToolExecutionContext['kbSearch'],
+    private readonly budget:                TurnBudget = new TurnBudget(),
   ) {}
 
   // ── Background spawn ──────────────────────────────────────────────────────
@@ -115,8 +119,13 @@ export class SubagentSpawner implements ISubagentSpawner {
     opts:    SubagentSpawnOpts,
     signal:  AbortSignal,
   ): Promise<{ output: string; usage: { inputTokens: number; outputTokens: number } }> {
+    const releaseBudget = this.budget.enterSubagent();
     const { tools, llm, permission, hooks } = this.deps;
-    const policy        = new AgentPolicy(tools.list());
+    const policy = new AgentPolicy(selectSubagentTools(tools.list(), {
+      scratchpad: this.scratchpadDir !== undefined,
+      knowledgeBase: this.kbSearch !== undefined,
+      skills: this.deps.skillRunner !== undefined,
+    }));
     const subagentId    = opts.subagentId ?? randomUUID();
     const sessionId     = this.parentSessionId as SessionId;
     const parentTurnId  = this.parentTurnId   as TurnId;
@@ -177,6 +186,7 @@ export class SubagentSpawner implements ISubagentSpawner {
     } catch (err) {
       signal.removeEventListener('abort', onParentAbort);
       this.activeSubagents.delete(subagentId);
+      releaseBudget();
       throw err;
     }
 
@@ -215,6 +225,8 @@ export class SubagentSpawner implements ISubagentSpawner {
         readFileState:    new Map(),
         emit:             pushEv,
         artifactStore:    this.deps.artifactStore,
+        skillRunner:      this.deps.skillRunner,
+        kbSearch:         this.kbSearch,
         toolCapabilities: policy.capabilities(),
         scratchpadDir:    this.scratchpadDir,
         scratchpadAuthor: `subagent:${subagentId.slice(0, 8)}`,
@@ -245,7 +257,9 @@ export class SubagentSpawner implements ISubagentSpawner {
         model:                resolvedModel,
         signal:               childCtrl.signal,
         maxIterations:        policy.maxIterations(),
+        budget:                this.budget,
         sessionId:            this.parentSessionId,
+        turnId:               this.parentTurnId,
         getScratchpadContext: this.getScratchpadContext,
         // Drain mailbox queue atomically before each LLM call so coordinator
         // messages arrive exactly once at the next iteration boundary.
@@ -424,6 +438,7 @@ export class SubagentSpawner implements ISubagentSpawner {
     } finally {
       signal.removeEventListener('abort', onParentAbort);
       this.activeSubagents.delete(subagentId);
+      releaseBudget();
       clearTodos(subagentId);
     }
   }

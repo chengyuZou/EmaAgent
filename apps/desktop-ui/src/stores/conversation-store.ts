@@ -1,4 +1,4 @@
-// 这里管理各 Session 的会话状态、发送队列和 SSE 生命周期。
+// 管理各 Session 的会话状态、发送队列和 SSE 生命周期。
 /**
  * conversation-store.ts — Zustand store for conversation state + SSE queue.
  *
@@ -140,8 +140,9 @@ function getOrCreateQueue(sessionId: SessionId): SendQueue<SendInput> {
             url,
             headers:     authHeaders,
             lastEventId: cursor,
-            onEvent: (event) => {
-              cursor += 1;
+            onEvent: (event, serverCursor) => {
+              // 新版 Core 发送绝对 SSE id；旧版 Sidecar 没有 id 时继续兼容本地递增。
+              cursor = serverCursor ?? cursor + 1;
               const sid = ('sessionId' in event && event.sessionId)
                 ? event.sessionId as SessionId
                 : input.sessionId;

@@ -1,5 +1,5 @@
 /**
- * Knowledge-base store — document list, ingest, search.
+ * 管理知识库列表、文档导入、检索与后台重嵌入状态。
  */
 import { create } from 'zustand';
 import {
@@ -34,7 +34,7 @@ export interface IngestJob {
 
 // ── Reembed task (background index rebuild; one active per KB) ──────────────────
 
-export type ReembedTaskStatus = 'pending' | 'running' | 'failed' | 'partial_failed' | 'done';
+export type ReembedTaskStatus = 'pending' | 'running' | 'failed' | 'partial_failed' | 'cancelled' | 'done';
 
 export interface ReembedTask {
   taskId:   string;
@@ -101,6 +101,7 @@ export interface KbStoreState {
   onReembedProgress(kbId: string, taskId: string | undefined, assetId: string, progress: number, counts: { total?: number; completed?: number; failed?: number }): void;
   onReembedCompleted(kbId: string, taskId: string | undefined, assetId: string, counts: { total: number; completed: number; failed: number }): void;
   onReembedPartialFailed(kbId: string, taskId: string | undefined, assetId: string, error: string, counts: { total: number; completed: number; failed: number }): void;
+  onReembedCancelled(kbId: string, taskId: string | undefined, assetId: string): void;
   onReembedFailed(kbId: string, taskId: string | undefined, assetId: string, error: string): void;
 }
 
@@ -418,6 +419,30 @@ export const useKbStore = create<KbStoreState>((set, get) => ({
       };
     });
     void get().loadDocuments();
+  },
+
+  onReembedCancelled(kbId, taskId, assetId) {
+    set((s) => {
+      const job = s.reembedTasks[kbId];
+      const base: ReembedTask = job ?? {
+        taskId: taskId ?? '',
+        kbId,
+        assetId,
+        progress: 0,
+        status: 'cancelled',
+      };
+      return {
+        reembedTasks: {
+          ...s.reembedTasks,
+          [kbId]: {
+            ...base,
+            taskId: taskId ?? base.taskId,
+            assetId,
+            status: 'cancelled',
+          },
+        },
+      };
+    });
   },
 
   onReembedFailed(kbId, taskId, assetId, error) {

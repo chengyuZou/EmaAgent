@@ -1,3 +1,4 @@
+// 持久化有界诊断事件，不承载模型用量记录。
 import type { SqliteDb } from '../database.js';
 
 export interface TelemetryEventRow {
@@ -11,7 +12,7 @@ export interface TelemetryEventRow {
 
 /**
  * 通用事件流 sink — hook、错误、状态转换。
- * LLM Token、费用和耗时指标属于 LlmTurnMetricsRepo，不在此处。
+ * 模型 Token、费用和耗时指标属于 UsageRecordsRepo，不在此处。
  */
 export class TelemetryRepo {
   constructor(private readonly db: SqliteDb) {}

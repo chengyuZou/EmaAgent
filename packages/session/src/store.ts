@@ -1,3 +1,4 @@
+// 作为 Session 模块唯一 Facade，管理会话、Turn、消息、分支和恢复事务。
 import crypto from 'node:crypto';
 import {
   SessionsRepo,
@@ -532,7 +533,7 @@ export class SessionStore implements SessionOwnershipFacade {
    * 下游分支 fork_from_turn_id 的引用)再删分支行; 最后删目标分支尾部 turn。
    * messages 必须显式删——messages.turn_id 是 ON DELETE SET NULL, 不删会
    * 泄漏成"无 turn 消息"混进 root 段视图。
-   * turn_attachments / turn_audio_merged / llm_turn_metrics / tool_executions
+   * turn_attachments / turn_audio_merged / usage_records / tool_executions
    * 随 turn ON DELETE CASCADE 清理; agent_tasks 为 SET NULL 保留任务历史。
    *
    * 运行中的 turn 拒绝删除(turn_running)。返回删除清单, 物理文件

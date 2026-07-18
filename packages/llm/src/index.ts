@@ -52,7 +52,7 @@ export type {
 } from './message-compatibility.js';
 export type {
   LlmProtocol,
-  LlmUsage,
+  LlmTokenUsage,
   StopReason,
   ProviderConfig,
   ThinkingEffort,
