@@ -1,3 +1,4 @@
+// 组织设置页分组导航、全局数据预加载和各设置面板的切换。
 /**
  * SettingsPanel — two-column accordion layout.
  *
@@ -27,6 +28,7 @@ import { Live2DTab } from './Live2DTab.js';
 import { ShortcutsTab } from './ShortcutsTab.js';
 import { AppearanceTab } from './AppearanceTab.js';
 import { StorageTab }    from './StorageTab.js';
+import { DiagnosticsTab } from './DiagnosticsTab.js';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -36,7 +38,7 @@ type SectionId =
   | 'skills'    | 'mcp'
   | 'memory'
   | 'knowledge-base'
-  | 'storage'
+  | 'storage' | 'diagnostics'
   | 'live2d'    | 'shortcuts' | 'appearance';
 
 type GroupId = 'ai' | 'character' | 'agent' | 'memory' | 'knowledge' | 'data' | 'desktop';
@@ -86,6 +88,7 @@ const GROUPS: GroupDef[] = [
     id: 'data', label: '数据', icon: 'i-solar:history-bold-duotone',
     sections: [
       { id: 'storage', label: '存储位置' },
+      { id: 'diagnostics', label: '系统诊断' },
     ],
   },
   {
@@ -132,6 +135,7 @@ function SectionContent({ id }: { id: SectionId }): JSX.Element {
     case 'memory':         return <MemoryTab />;
     case 'knowledge-base': return <KnowledgeBaseTab />;
     case 'storage':        return <StorageTab />;
+    case 'diagnostics':    return <DiagnosticsTab />;
     case 'live2d':         return <Live2DTab />;
     case 'shortcuts':      return <ShortcutsTab />;
     case 'appearance':     return <AppearanceTab />;
