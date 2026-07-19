@@ -1,17 +1,14 @@
-/**
- * FilesPanel - workspace file browser for the Inspector dock.
- *
- * Root = session.workspaceRoot。直接列 root 内容(不套一层文件夹)。
- * 点文件 -> in-app 预览(FilePreview),不走 OS 程序。
- * 点目录 -> 展开/折叠(lazy load via GET /api/workspace/ls)。
- * 搜索框按名字过滤。列表 <-> 预览双向 ema-fade-in。
- */
-import { useState, useCallback, useMemo, useEffect, type JSX, type CSSProperties } from 'react';
+// 按 Session 与工作区根目录隔离文件树、目录请求和文件预览状态。
+import { useState, useCallback, useEffect, useRef, type JSX, type CSSProperties } from 'react';
 import { ScrollArea } from '@ema-agent/ui';
 import { workspaceApi, type FileEntry } from '../api/workspace.js';
 import { useConversationStore } from '../stores/conversation-store.js';
 import { useSessionStore } from '../stores/session-store.js';
 import { FilePreview } from './FilePreview.js';
+import {
+  DirectoryRequestGate,
+  workspaceBrowserScopeKey,
+} from './workspace-browser-cache.js';
 
 // ── File icon by extension ────────────────────────────────────────────────────
 
@@ -172,13 +169,37 @@ export function FilesPanel(): JSX.Element {
 
   const root: string | null = session?.workspaceRoot ?? null;
 
+  if (!sessionId || !root) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-3 py-10 px-4 ema-fade-in">
+        <span className="i-lucide:folder-x text-3xl opacity-20 text-[var(--ema-primary)]" aria-hidden />
+        <p className="text-xs text-center text-[var(--ema-text-tertiary)]">
+          当前会话未配置工作区
+        </p>
+        <p className="text-[10px] text-center opacity-50 text-[var(--ema-text-tertiary)]">
+          在设置 → 工作区中添加目录
+        </p>
+      </div>
+    );
+  }
+
+  const scopeKey = workspaceBrowserScopeKey(sessionId as string, root);
+  return <ScopedFilesPanel key={scopeKey} root={root} />;
+}
+
+function ScopedFilesPanel({ root }: { root: string }): JSX.Element {
+
   const [search,       setSearch]       = useState('');
   const [dirNodes,     setDirNodes]     = useState<Map<string, DirNode>>(new Map);
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
+  const requestGateRef = useRef<DirectoryRequestGate | null>(null);
+  const requestGate = requestGateRef.current ?? new DirectoryRequestGate();
+  requestGateRef.current = requestGate;
 
   const filter = search.trim().toLowerCase();
 
   const loadDir = useCallback(async (dirPath: string): Promise<void> => {
+    const token = requestGate.begin(dirPath);
     setDirNodes((prev) => {
       const next = new Map(prev);
       const existing = next.get(dirPath);
@@ -187,19 +208,23 @@ export function FilesPanel(): JSX.Element {
     });
     try {
       const entries = await workspaceApi.ls(dirPath);
+      if (!requestGate.isCurrent(token)) return;
       setDirNodes((prev) => {
         const next = new Map(prev);
         next.set(dirPath, { path: dirPath, children: entries, loading: false, error: false });
         return next;
       });
     } catch {
+      if (!requestGate.isCurrent(token)) return;
       setDirNodes((prev) => {
         const next = new Map(prev);
         next.set(dirPath, { path: dirPath, children: null, loading: false, error: true });
         return next;
       });
     }
-  }, []);
+  }, [requestGate]);
+
+  useEffect(() => () => requestGate.dispose(), [requestGate]);
 
   const toggleDir = useCallback((dirPath: string): void => {
     setDirNodes((prev) => {
@@ -221,20 +246,6 @@ export function FilesPanel(): JSX.Element {
   useEffect(() => {
     if (root && !dirNodes.has(root)) void loadDir(root);
   }, [root, dirNodes, loadDir]);
-
-  if (!root) {
-    return (
-      <div className="flex flex-col items-center justify-center gap-3 py-10 px-4 ema-fade-in">
-        <span className="i-lucide:folder-x text-3xl opacity-20 text-[var(--ema-primary)]" aria-hidden />
-        <p className="text-xs text-center text-[var(--ema-text-tertiary)]">
-          当前会话未配置工作区
-        </p>
-        <p className="text-[10px] text-center opacity-50 text-[var(--ema-text-tertiary)]">
-          在设置 → 工作区中添加目录
-        </p>
-      </div>
-    );
-  }
 
   // 选中文件 -> in-app 预览(双向 ema-fade-in)
   if (selectedFile) {

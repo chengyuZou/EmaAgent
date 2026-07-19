@@ -1,13 +1,6 @@
-/**
- * ArtifactsPanel — shows all artifacts produced in the current session.
- *
- * Lives in the Inspector dock (▣ button). Artifact data comes from
- * useArtifactStore which is already populated by SSE events during
- * generation; this component just loads any pre-existing artifacts
- * on mount and renders ArtifactCard for each one.
- */
+// 展示当前 Session 的 Artifact，并根据缓存代次自动加载或刷新权威列表。
 import { useEffect, type JSX, type CSSProperties } from 'react';
-import { ScrollArea } from '@ema-agent/ui';
+import { Button, Callout, ScrollArea, Spinner } from '@ema-agent/ui';
 import { useArtifactStore } from '../stores/artifact-store.js';
 import { useConversationStore } from '../stores/conversation-store.js';
 import { ArtifactCard } from './ArtifactCard.js';
@@ -22,15 +15,41 @@ export function ArtifactsPanel(): JSX.Element {
   const artifacts = useArtifactStore((s) =>
     sessionId ? (s.bySession.get(sessionId as string) ?? EMPTY_ARTIFACTS) : EMPTY_ARTIFACTS,
   );
+  const loadState = useArtifactStore((state) =>
+    sessionId ? state.loadStateBySession.get(sessionId as string) : undefined,
+  );
 
   useEffect(() => {
-    if (sessionId) void useArtifactStore.getState().loadForSession(sessionId);
-  }, [sessionId]);
+    const shouldLoad = !loadState
+      || loadState.status === 'idle'
+      || (loadState.status === 'stale' && loadState.error === null);
+    if (!sessionId || !shouldLoad) return;
+    void useArtifactStore.getState().loadForSession(sessionId).catch(() => {});
+  }, [sessionId, loadState?.generation, loadState?.status]);
 
   if (!sessionId) {
     return (
       <div className="flex items-center justify-center py-12 text-xs ema-fade-in text-[var(--ema-text-tertiary)]">
         无活跃会话
+      </div>
+    );
+  }
+
+  if (loadState?.status === 'loading' && artifacts.length === 0) {
+    return <div className="flex justify-center py-12"><Spinner size="sm" /></div>;
+  }
+
+  if (loadState?.status === 'error' && artifacts.length === 0) {
+    return (
+      <div className="flex flex-col gap-3 p-3">
+        <Callout variant="danger">Artifact 加载失败：{loadState.error}</Callout>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => useArtifactStore.getState().invalidateSession(sessionId)}
+        >
+          重试
+        </Button>
       </div>
     );
   }
@@ -51,6 +70,11 @@ export function ArtifactsPanel(): JSX.Element {
 
   return (
     <div className="flex flex-col h-full">
+      {loadState?.status === 'stale' && loadState.error && (
+        <Callout variant="warn" className="m-2 text-xs">
+          刷新失败，当前显示上一次缓存：{loadState.error}
+        </Callout>
+      )}
       {/* Toolbar */}
       <div
         className="flex items-center px-3 py-1.5 border-b shrink-0 border-[var(--ema-border)]"

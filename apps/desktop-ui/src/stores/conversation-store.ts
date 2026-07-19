@@ -598,6 +598,9 @@ export const useConversationStore = create<ConversationStoreState>((set, get) =>
       return { messages: msgs, streamingMap: streaming };
     });
 
+    // Turn 结束后重新读取权威列表，兜住丢失或乱序的 Artifact SSE 事件。
+    useArtifactStore.getState().invalidateSession(sessionId);
+
     if (pendingTitleSessions.has(sessionId as string)) {
       pendingTitleSessions.delete(sessionId as string);
       void sessionsApi.generateTitle(sessionId)
@@ -629,6 +632,9 @@ export const useConversationStore = create<ConversationStoreState>((set, get) =>
 
       return { streamingMap: streaming, stopReasonMap: stops };
     });
+
+    // 中止前工具仍可能已经落盘 Artifact，不能沿用本轮开始前的缓存。
+    useArtifactStore.getState().invalidateSession(sessionId);
 
     setTimeout(() => {
       set((s) => {
