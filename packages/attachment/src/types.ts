@@ -23,8 +23,15 @@ export interface InspectedAttachment extends Attachment {
   fileStatus: SessionAttachmentFileStatus;
 }
 
-/** turns 路由从前端收到的输入。 */
-export type AttachmentInput = Required<Pick<TurnAttachment, 'id' | 'name' | 'mimeType' | 'size' | 'mtime' | 'localPath'>>;
+/** 经过文件能力校验后交给 Orchestrator 的可信附件输入。 */
+export interface AttachmentInput {
+  id: string;
+  name: string;
+  mimeType: string;
+  size: number;
+  mtime: number;
+  localPath: string;
+}
 
 // ── 解析器输出 ─────────────────────────────────────────────────────────────────
 

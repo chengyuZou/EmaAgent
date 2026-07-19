@@ -127,7 +127,7 @@ export interface SessionAttachmentWire {
   mimeType:   string;
   size:       number;
   mtime:      number;
-  localPath:  string;
+  fileHandle: string | null;
   createdAt:  number;
   fileStatus: SessionAttachmentFileStatus;
 }

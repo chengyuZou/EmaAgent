@@ -54,8 +54,8 @@ export function AttachmentChip({ attachment, onRemove }: AttachmentChipProps): J
   const sizeStr = fmtSize(attachment.size);
 
   const handleOpen = (): void => {
-    if (attachment.localPath) {
-      void tauriBridge.openPath(attachment.localPath).catch(() => {});
+    if (attachment.fileHandle) {
+      void tauriBridge.openAuthorizedFile(attachment.fileHandle).catch(() => {});
     }
   };
 
@@ -67,7 +67,7 @@ export function AttachmentChip({ attachment, onRemove }: AttachmentChipProps): J
         border:     '1px solid var(--ema-border)',
       }}
       onClick={handleOpen}
-      title={attachment.localPath || attachment.name}
+      title={attachment.name}
     >
       {/* File type icon */}
       <span

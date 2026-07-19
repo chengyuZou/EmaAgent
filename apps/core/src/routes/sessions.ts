@@ -158,7 +158,7 @@ export function sessionsRoute(bindings: AppBindings): Hono {
         mimeType:  a.mime,
         size:      a.size,
         mtime:     a.mtime,
-        localPath: a.localPath,
+        fileHandle: issueStoredFileHandle(bindings, a.localPath),
       }));
       return { ...m, attachments };
     });
@@ -306,7 +306,7 @@ export function sessionsRoute(bindings: AppBindings): Hono {
         mimeType:   attachment.mime,
         size:       attachment.size,
         mtime:      attachment.mtime,
-        localPath:  attachment.localPath,
+        fileHandle: issueStoredFileHandle(bindings, attachment.localPath),
         createdAt:  attachment.createdAt,
         fileStatus: attachment.fileStatus,
       }));
@@ -435,4 +435,13 @@ export function sessionsRoute(bindings: AppBindings): Hono {
   });
 
   return app;
+}
+
+function issueStoredFileHandle(bindings: AppBindings, localPath: string): string | null {
+  try {
+    return bindings.fileAccess.issue(localPath);
+  } catch (error) {
+    console.warn('[attachments] 无法为历史路径签发文件能力:', error);
+    return null;
+  }
 }

@@ -2,6 +2,8 @@
 
 export { AttachmentStore }                      from './store.js';
 export type { IAttachmentStore }                from './store.js';
+export { FileAccessFacade } from './file-access.js';
+export type { AuthorizedAttachmentInput } from './file-access.js';
 export { resolveForPrompt }                     from './resolver.js';
 export { AttachmentNotFoundError, AttachmentFileError } from './errors.js';
 export type {

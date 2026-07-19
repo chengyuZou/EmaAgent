@@ -1,11 +1,15 @@
 // 组装 Tauri 桌面宿主、窗口生命周期、托盘与 Sidecar 进程管理。
 mod credential_key;
+mod file_access;
 mod runtime;
 
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{Emitter, Manager, RunEvent, WindowEvent};
 use tracing_subscriber::EnvFilter;
 
+use file_access::{
+    install_authorized_drop_handler, open_authorized_file, pick_authorized_files, FileAccessFacade,
+};
 use runtime::{DesktopRuntimeSupervisor, RuntimeSnapshot};
 
 const WINDOW_VISIBILITY_EVENT: &str = "ema://window-visibility";
@@ -95,40 +99,19 @@ fn open_window(app: tauri::AppHandle, label: String) -> Result<(), String> {
     }
 }
 
-/// 文件元数据 — 供前端附件上传时拿真实 size/mtime。
-/// 不引入 tauri-plugin-fs（避免 scope 配置），自定义命令聚焦且无路径白名单限制：
-/// 用户已通过 dialog 主动选了文件，读其元数据是合理操作。browser/Ladle 模式前端走 null 兜底。
-#[derive(serde::Serialize)]
-struct FileMeta {
-    size: u64,  // 字节
-    mtime: u64, // unix 毫秒
-    is_dir: bool,
-}
-
-#[tauri::command]
-fn file_metadata(path: String) -> Result<FileMeta, String> {
-    let meta = std::fs::metadata(&path).map_err(|e| e.to_string())?;
-    let mtime = meta
-        .modified()
-        .ok()
-        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-        .map(|d| d.as_millis() as u64)
-        .unwrap_or(0);
-    Ok(FileMeta {
-        size: meta.len(),
-        mtime,
-        is_dir: meta.is_dir(),
-    })
-}
-
 // ── App entry ───────────────────────────────────────────────────────────────
 
 pub fn run() {
     init_logging();
 
-    let runtime =
-        DesktopRuntimeSupervisor::new().expect("failed to initialize desktop runtime supervisor");
+    let credential_master_key = credential_key::load_or_create_master_key()
+        .expect("failed to initialize OS-protected desktop master key");
+    let runtime = DesktopRuntimeSupervisor::new(credential_master_key.clone())
+        .expect("failed to initialize desktop runtime supervisor");
+    let file_access = FileAccessFacade::new(&credential_master_key)
+        .expect("failed to initialize local file access facade");
     let runtime_for_setup = runtime.clone();
+    let file_access_for_setup = file_access.clone();
 
     tauri::Builder::default()
         // 单实例在 setup 之前取得所有权，第二个 Host 只能唤醒现有主窗口，
@@ -146,6 +129,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .manage(runtime)
+        .manage(file_access)
         .invoke_handler(tauri::generate_handler![
             get_sidecar_secret,
             get_sidecar_port,
@@ -154,7 +138,8 @@ pub fn run() {
             set_passthrough,
             quit_app,
             open_window,
-            file_metadata,
+            pick_authorized_files,
+            open_authorized_file,
         ])
         .setup(move |app| {
             let app_handle = app.handle().clone();
@@ -164,6 +149,11 @@ pub fn run() {
                     tracing::error!(%error, "desktop runtime startup failed");
                 }
             });
+
+            // 文件拖拽由 Rust 原生事件签发能力句柄，WebView 只接收不可伪造的结果。
+            if let Some(chat_window) = app.get_webview_window("chat") {
+                install_authorized_drop_handler(&chat_window, file_access_for_setup.clone());
+            }
 
             // ── System tray ────────────────────────────────────────────────
             let tray_menu = tauri::menu::MenuBuilder::new(app)

@@ -5,6 +5,7 @@ import { buildServer } from './server.js';
 import { HTTP_SERVER_TIMEOUTS } from './http/request-budget.js';
 import { requireSharedSecret } from './auth.js';
 import { CredentialFacade, requireCredentialMasterKey } from '@ema-agent/credential';
+import { FileAccessFacade } from '@ema-agent/attachment';
 import { wire, configureBridge } from './wiring/index.js';
 import { startBackgroundWork } from './wiring/index.js';
 import {
@@ -53,7 +54,9 @@ async function findOpenPort(start: number, max: number): Promise<number> {
 async function main() {
   // 认证配置必须先于数据库、锁文件和监听端口完成校验，禁止无密钥启动。
   const sharedSecret = requireSharedSecret();
-  const credentials = new CredentialFacade(requireCredentialMasterKey());
+  const credentialMasterKey = requireCredentialMasterKey();
+  const credentials = new CredentialFacade(credentialMasterKey);
+  const fileAccess = new FileAccessFacade(credentialMasterKey);
 
   // ── 1. Resolve storage locations ───────────────────────────────────────────
   const registry  = loadRegistry();
@@ -90,6 +93,7 @@ async function main() {
     dataDb,
     activeDataDir: activeDir.path,
     credentials,
+    fileAccess,
   });
 
   // Ensure at least one KB exists; if registry is empty auto-create a default

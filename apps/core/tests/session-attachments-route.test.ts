@@ -25,6 +25,9 @@ function bindings(sessionExists = true): AppBindings {
         fileStatus: 'modified',
       }]),
     },
+    fileAccess: {
+      issue: vi.fn(() => 'ema-file:v1:test-handle'),
+    },
   } as unknown as AppBindings;
 }
 
@@ -43,7 +46,7 @@ describe('Session attachments route', () => {
         mimeType: 'application/pdf',
         size: 42,
         mtime: 100,
-        localPath: 'D:\\资料\\资料.pdf',
+        fileHandle: 'ema-file:v1:test-handle',
         createdAt: 200,
         fileStatus: 'modified',
       }],

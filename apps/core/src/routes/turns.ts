@@ -33,13 +33,13 @@ async function safeJsonBody(c: import('hono').Context): Promise<unknown> {
   }
 }
 
-const attachmentInputSchema = z.object({
+export const attachmentInputSchema = z.object({
   id:        z.string(),
   name:      z.string(),
   mimeType:  z.string(),
   size:      z.number().int().nonnegative(),
   mtime:     z.number().int().nonnegative(),
-  localPath: z.string(),
+  fileHandle: z.string().min(1).max(16_384),
 });
 
 const contentPartSchema = z.discriminatedUnion('type', [
@@ -156,6 +156,19 @@ export function turnsRoute(bindings: AppBindings): Hono {
 
     const { sessionId, mode, userInput, contentParts, attachments, providerId, model, ttsEnabled, thinkingEnabled, kbIds, kbAssetScopes } = parsed.data;
 
+    // WebView 只提交加密能力句柄；路径和文件元数据必须由 Attachment Facade
+    // 解密并重新读取，禁止前端把任意绝对路径伪装成附件。
+    let attachmentInputs;
+    try {
+      attachmentInputs = attachments?.map((attachment) =>
+        bindings.fileAccess.prepareAttachment(attachment));
+    } catch (error) {
+      return c.json({
+        error: 'invalid_attachment',
+        message: error instanceof Error ? error.message : String(error),
+      }, 400);
+    }
+
     // Trust the client's sessionId only if it still exists. A stale id (e.g.
     // a viewedSessionId persisted across a DB reset) would otherwise FK-fail
     // the turn insert with an opaque 500 and block every send. Fall back to a
@@ -174,7 +187,7 @@ export function turnsRoute(bindings: AppBindings): Hono {
         mode,
         userInput:        userInput ?? '',
         contentParts,
-        attachmentInputs: attachments,
+        attachmentInputs,
         providerId,
         model,
         kbIds,

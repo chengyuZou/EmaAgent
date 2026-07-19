@@ -87,13 +87,8 @@ export interface TauriBridge {
     filters?: Array<{ name: string; extensions: string[] }>;
   }): Promise<string[]>;
 
-  /**
-   * Query real file metadata (size / mtime / isDir) for a local path.
-   * Used by attachment upload to avoid hardcoding size:0 (which bypasses the
-   * 5MB image-inline limit and silently turn_fails on large images).
-   * Returns null when Tauri is absent (browser / Ladle dev mode) — caller falls back to 0.
-   */
-  fileMetadata(path: string): Promise<{ size: number; mtime: number; isDir: boolean } | null>;
+  /** 由 Rust 原生选框选择附件，并返回不暴露绝对路径的持久能力句柄。 */
+  pickAuthorizedFiles(): Promise<AuthorizedFile[]>;
 
   /**
    * Subscribe to native OS-level file drag-and-drop events on the current webview.
@@ -104,7 +99,7 @@ export interface TauriBridge {
    */
   onDragDrop(handler: (event: {
     type: 'enter' | 'over' | 'drop' | 'leave';
-    paths?: string[];
+    files?: AuthorizedFile[];
     position?: { x: number; y: number };
   }) => void): Promise<() => void>;
 
@@ -116,11 +111,16 @@ export interface TauriBridge {
   openUrl(url: string): Promise<void>;
 
   /**
-   * Open a local file or folder path in its system default handler
-   * (Explorer on Windows, Finder on macOS, etc.).
-   * No-ops gracefully when Tauri is absent (browser / Ladle dev mode).
+   * 验证桌面宿主签发的能力句柄后，用系统默认程序打开附件。
    */
-  openPath(path: string): Promise<void>;
+  openAuthorizedFile(fileHandle: string): Promise<void>;
+}
+
+export interface AuthorizedFile {
+  fileHandle: string;
+  name: string;
+  size: number;
+  mtime: number;
 }
 
 // ── Detection ────────────────────────────────────────────────────────────────
@@ -312,31 +312,37 @@ export const tauriBridge: TauriBridge = {
     return result ? [result as string] : [];
   },
 
-  async fileMetadata(path: string): Promise<{ size: number; mtime: number; isDir: boolean } | null> {
-    return tauriBridge.invoke<{ size: number; mtime: number; is_dir: boolean }>('file_metadata', { path })
-      .then((m) => m ? { size: m.size, mtime: m.mtime, isDir: m.is_dir } : null)
-      .catch(() => null);
+  async pickAuthorizedFiles(): Promise<AuthorizedFile[]> {
+    return await tauriBridge.invoke<AuthorizedFile[]>('pick_authorized_files') ?? [];
   },
 
   async onDragDrop(handler: (event: {
     type: 'enter' | 'over' | 'drop' | 'leave';
-    paths?: string[];
+    files?: AuthorizedFile[];
     position?: { x: number; y: number };
   }) => void): Promise<() => void> {
     const webview = await getWebview();
     if (!webview) return () => {};
-    const unlisten = await webview.getCurrentWebview().onDragDropEvent((event) => {
+    const unlistenDrop = await tauriBridge.listen<{
+      files: AuthorizedFile[];
+      position: { x: number; y: number };
+    }>('ema://authorized-file-drop', (event) => {
+      handler({ type: 'drop', files: event.payload.files, position: event.payload.position });
+    });
+    const unlistenWebview = await webview.getCurrentWebview().onDragDropEvent((event) => {
       const p = event.payload;
       if (p.type === 'leave') {
         handler({ type: 'leave' });
       } else if (p.type === 'over') {
         handler({ type: 'over', position: { x: p.position.x, y: p.position.y } });
-      } else {
-        // enter / drop 都带 paths
-        handler({ type: p.type, paths: p.paths, position: { x: p.position.x, y: p.position.y } });
+      } else if (p.type === 'enter') {
+        handler({ type: 'enter', position: { x: p.position.x, y: p.position.y } });
       }
     });
-    return () => unlisten();
+    return () => {
+      unlistenDrop();
+      unlistenWebview();
+    };
   },
 
   async openUrl(url: string): Promise<void> {
@@ -352,17 +358,9 @@ export const tauriBridge: TauriBridge = {
     window.open(url, '_blank');
   },
 
-  async openPath(path: string): Promise<void> {
+  async openAuthorizedFile(fileHandle: string): Promise<void> {
     const core = await getCore();
-    if (!core) { console.warn('[openPath] no Tauri core (browser mode?)'); return; }
-    console.log('[openPath] invoking open_path:', path);
-    try {
-      await core.invoke('plugin:opener|open_path', { path });
-      console.log('[openPath] invoke OK');
-    } catch (err) {
-      console.error('[openPath] invoke failed:', err);
-      const msg = typeof err === 'string' ? err : (err instanceof Error ? err.message : JSON.stringify(err));
-      throw new Error('openPath: ' + msg);
-    }
+    if (!core) return;
+    await core.invoke('open_authorized_file', { fileHandle });
   },
 };

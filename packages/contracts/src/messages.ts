@@ -155,7 +155,7 @@ export type MessageBlocks = string | AssistantBlock[] | UserBlock[] | NarrativeC
 /**
  * 附件的显示信息，与 MessageContentPart 分离：
  * - MessageContentPart 是发给 LLM 的实际内容
- * - TurnAttachment 是 UI 渲染用的元数据（文件名、本地路径、大小）
+ * - TurnAttachment 是 UI 渲染用的元数据（文件名、能力句柄、大小）
  *
  * 存在 turn_attachments 表里（per-turn，独立于 messages 表），
  * UI 上渲染在 role='user' 的消息上。
@@ -166,7 +166,7 @@ export interface TurnAttachment {
   mimeType:   string;
   size?:      number;   // 字节数，用于显示 '2.3 MB'
   mtime?:     number;   // 文件修改时间（unix ms）；Tool 用来检测文件是否在附件后被修改
-  localPath?: string;   // 本机绝对路径，用于点击打开（单机应用）
+  fileHandle?: string | null; // 由桌面宿主签发；前端不能据此构造其他本机路径
 }
 
 // ── HTTP API 响应格式 ─────────────────────────────────────────────────────────

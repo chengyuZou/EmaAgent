@@ -175,7 +175,7 @@ export function assembleHistory(messages: MessageWire[], turns: TurnWire[]): Cha
     if (m.role === 'user' && m.attachments && m.attachments.length > 0) {
       item.attachments = m.attachments.map((a) => ({
         id: a.id, name: a.name, mimeType: a.mimeType,
-        size: a.size ?? 0, mtime: a.mtime ?? 0, localPath: a.localPath ?? '',
+        size: a.size ?? 0, mtime: a.mtime ?? 0, fileHandle: a.fileHandle ?? '',
       }));
     }
     return item;

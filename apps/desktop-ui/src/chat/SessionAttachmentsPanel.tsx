@@ -51,13 +51,15 @@ function attachmentIcon(attachment: SessionAttachmentWire): string {
 function AttachmentRow({ attachment }: { attachment: SessionAttachmentWire }): JSX.Element {
   const [openError, setOpenError] = useState<string | null>(null);
   const status = STATUS_META[attachment.fileStatus];
-  const canOpen = attachment.fileStatus === 'available' || attachment.fileStatus === 'modified';
+  const canOpen = Boolean(attachment.fileHandle)
+    && (attachment.fileStatus === 'available' || attachment.fileStatus === 'modified');
 
   const open = async (): Promise<void> => {
     if (!canOpen) return;
     setOpenError(null);
     try {
-      await tauriBridge.openPath(attachment.localPath);
+      if (!attachment.fileHandle) throw new Error('该历史附件没有可用的文件授权');
+      await tauriBridge.openAuthorizedFile(attachment.fileHandle);
     } catch {
       setOpenError('系统未能打开此文件');
     }
@@ -87,8 +89,8 @@ function AttachmentRow({ attachment }: { attachment: SessionAttachmentWire }): J
               {new Date(attachment.createdAt).toLocaleString()}
             </time>
           </div>
-          <p className="mt-1 truncate text-[10px] text-[var(--ema-text-tertiary)]" title={attachment.localPath}>
-            {attachment.localPath}
+          <p className="mt-1 truncate text-[10px] text-[var(--ema-text-tertiary)]">
+            本机附件
           </p>
           {openError && <p className="mt-1 text-[10px] text-[var(--ema-danger)]">{openError}</p>}
         </div>

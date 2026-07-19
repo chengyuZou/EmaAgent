@@ -7,6 +7,9 @@
     "core:default",
     "core:window:allow-start-dragging",
     "core:window:allow-is-visible",
-    "opener:allow-open-url"
+    {
+      "identifier": "opener:allow-open-url",
+      "allow": [{ "url": "https://*" }, { "url": "http://*" }]
+    }
   ]
 }

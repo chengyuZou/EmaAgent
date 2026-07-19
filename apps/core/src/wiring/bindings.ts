@@ -16,7 +16,7 @@ import {
   AgentTasksRepo, AgentTaskMessagesRepo, ToolExecutionsRepo,
   SessionStatsRepo, DataDirStatsRepo, UsageRecordsRepo,
 } from '@ema-agent/storage';
-import { AttachmentStore } from '@ema-agent/attachment';
+import { AttachmentStore, type FileAccessFacade } from '@ema-agent/attachment';
 import { ArtifactStore }                               from '@ema-agent/artifact';
 import { McpRegistry, McpServerStore }                 from '@ema-agent/mcp';
 import { McpMarketAdapter, MCP_SEEDS }                 from '@ema-agent/mcp';
@@ -114,6 +114,8 @@ export interface AppBindings {
   activeDataDir: string;
   /** Provider 凭据加解密的唯一入口；主密钥由 Tauri/OS keychain 提供。 */
   credentials: CredentialFacade;
+  /** 本地附件路径的签发、验证与权威元数据入口。 */
+  fileAccess: FileAccessFacade;
   /** 当前机器实际启用的沙箱等级，供系统接口和前端设置页展示。 */
   sandboxStatus: SandboxStatusWire;
 
@@ -262,12 +264,13 @@ export interface BuildBindingsArgs {
   dataDb:        Database;
   activeDataDir: string;
   credentials:   CredentialFacade;
+  fileAccess: FileAccessFacade;
   /** 仅用于测试显式注入;正常生产不传,始终采用 V1_RELEASE_FEATURES。 */
   releaseFeatures?: ReleaseFeaturesWire;
 }
 
 export function buildBindings(args: BuildBindingsArgs): AppBindings {
-  const { profileDb, dataDb, activeDataDir, credentials } = args;
+  const { profileDb, dataDb, activeDataDir, credentials, fileAccess } = args;
   const releaseFeatures = args.releaseFeatures ?? V1_RELEASE_FEATURES;
 
   // ── Core infra ──────────────────────────────────────────────────────────────
@@ -809,7 +812,7 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
   });
 
   return {
-    profileDb, dataDb, activeDataDir, credentials, sandboxStatus,
+    profileDb, dataDb, activeDataDir, credentials, fileAccess, sandboxStatus,
     hooks, session, sessionBackup,
     llm, ebd, narrative, modelCatalog,
     card, emotion,

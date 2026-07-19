@@ -12,8 +12,6 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::{Child, Command};
 use tokio::sync::{Mutex, RwLock};
 
-use crate::credential_key;
-
 use super::platform::NativeProcessTree;
 use super::readiness::wait_for_ready;
 use super::resources::{resolve_narrative_dir, resolve_service_launch, ServiceLaunch};
@@ -35,10 +33,11 @@ struct Inner {
     bridge: Mutex<Option<Child>>,
     runtime_dir: Mutex<Option<PathBuf>>,
     process_tree: NativeProcessTree,
+    credential_master_key: String,
 }
 
 impl DesktopRuntimeSupervisor {
-    pub fn new() -> Result<Self, String> {
+    pub fn new(credential_master_key: String) -> Result<Self, String> {
         Ok(Self(Arc::new(Inner {
             generation: AtomicU64::new(0),
             shutdown_requested: AtomicBool::new(false),
@@ -49,6 +48,7 @@ impl DesktopRuntimeSupervisor {
             bridge: Mutex::new(None),
             runtime_dir: Mutex::new(None),
             process_tree: NativeProcessTree::new()?,
+            credential_master_key,
         })))
     }
 
@@ -67,8 +67,8 @@ impl DesktopRuntimeSupervisor {
             .map(char::from)
             .collect();
         let runtime_dir = runtime_directory(generation, &nonce);
-        let secret = credential_key::generate_ephemeral_secret();
-        let credential_master_key = credential_key::load_or_create_master_key()?;
+        let secret = crate::credential_key::generate_ephemeral_secret();
+        let credential_master_key = self.0.credential_master_key.clone();
         prepare_runtime_directory(&runtime_dir).await?;
         *self.0.runtime_dir.lock().await = Some(runtime_dir.clone());
         *self.0.secret.write().await = Some(secret.clone());

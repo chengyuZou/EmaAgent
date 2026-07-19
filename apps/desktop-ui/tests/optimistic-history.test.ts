@@ -19,7 +19,7 @@ describe('optimistic user history', () => {
       mimeType: 'application/pdf',
       size: 1024,
       mtime: 123,
-      localPath: 'D:\\Documents\\report.pdf',
+      fileHandle: 'ema-file:v1:test-handle',
     }], 100);
 
     expect(item).toMatchObject({

@@ -8,8 +8,8 @@
     "dialog:allow-open",
     "dialog:allow-save",
     {
-      "identifier": "opener:allow-open-path",
-      "allow": [{ "path": "**" }]
+      "identifier": "opener:allow-open-url",
+      "allow": [{ "url": "https://*" }, { "url": "http://*" }]
     }
   ]
 }

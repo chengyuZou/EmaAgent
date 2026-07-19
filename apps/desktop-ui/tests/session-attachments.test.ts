@@ -13,7 +13,7 @@ function attachment(sessionId: string, id: string): SessionAttachmentWire {
     mimeType: 'text/plain',
     size: 1,
     mtime: 1,
-    localPath: `D:\\${id}.txt`,
+    fileHandle: `ema-file:v1:${id}`,
     createdAt: 1,
     fileStatus: 'available',
   };

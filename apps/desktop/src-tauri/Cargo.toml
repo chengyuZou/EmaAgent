@@ -25,6 +25,10 @@ regex              = "1"
 tracing            = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 rand                = "0.8.5"
+aes-gcm             = "0.10"
+base64              = "0.22"
+hkdf                = "0.12"
+sha2                = "0.10"
 
 # Windows 进程树清理：Job Object + KILL_ON_JOB_CLOSE，Rust 进程退出时 OS 自动 kill
 # 整个 Job 内子进程（sidecar + bridge），不依赖 taskkill /T 进程树完整性（bug 4 修法）。

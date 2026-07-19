@@ -12,7 +12,7 @@ import { ModelPicker, type ModelSelection } from './ModelPicker.js';
 import { findEnabledModel, useModelCatalogStore } from '../stores/model-catalog-store.js';
 import { AttachmentChip } from './AttachmentChip.js';
 import { showToast } from '../lib/toast.js';
-import { tauriBridge } from '../lib/tauri-bridge.js';
+import { tauriBridge, type AuthorizedFile } from '../lib/tauri-bridge.js';
 import type { AttachmentInputWire } from '../api/turns.js';
 import type { TurnMode } from '@ema-agent/contracts';
 import { WorkspacePicker } from './WorkspacePicker.js';
@@ -32,19 +32,15 @@ function mimeFromName(name: string): string {
   return map[ext] ?? 'application/octet-stream';
 }
 
-// 用 Tauri 拿真实 size/mtime，避免硬编码 0 绕过 5MB 图片内联限制（大图静默 turn_failed）。
-// browser/Ladle 模式 fileMetadata 返回 null，回退 0 保持兼容。目录不作为附件。
-async function pathToAttachmentAsync(localPath: string): Promise<AttachmentInputWire | null> {
-  const name = localPath.replace(/\\/g, '/').split('/').pop() ?? localPath;
-  const meta = await tauriBridge.fileMetadata(localPath);
-  if (meta?.isDir) return null;
+// Rust 已读取权威元数据并签发 fileHandle；前端只补 UI id 与 MIME 展示信息。
+function authorizedFileToAttachment(file: AuthorizedFile): AttachmentInputWire {
   return {
     id:        crypto.randomUUID(),
-    name,
-    mimeType:  mimeFromName(name),
-    size:      meta?.size ?? 0,
-    mtime:     meta?.mtime ?? 0,
-    localPath,
+    name:      file.name,
+    mimeType:  mimeFromName(file.name),
+    size:      file.size,
+    mtime:     file.mtime,
+    fileHandle: file.fileHandle,
   };
 }
 
@@ -158,10 +154,9 @@ export function ChatInput(): JSX.Element {
 
   // 多选文件 + 批量拿真实元数据。目录/不可访问文件过滤掉。
   async function pickAttachment(): Promise<void> {
-    const paths = await tauriBridge.openFileDialogMultiple();
-    if (paths.length === 0) return;
-    const atts = (await Promise.all(paths.map(pathToAttachmentAsync)))
-      .filter((a): a is AttachmentInputWire => a !== null);
+    const files = await tauriBridge.pickAuthorizedFiles();
+    if (files.length === 0) return;
+    const atts = files.map(authorizedFileToAttachment);
     if (atts.length === 0) {
       showToast('所选文件不可用', { variant: 'warning' });
       return;
@@ -190,13 +185,9 @@ export function ChatInput(): JSX.Element {
         setIsDragOver(inside);
       } else if (ev.type === 'drop') {
         setIsDragOver(false);
-        const paths = ev.paths ?? [];
-        if (!inside || paths.length === 0) return;
-        void (async () => {
-          const atts = (await Promise.all(paths.map(pathToAttachmentAsync)))
-            .filter((a): a is AttachmentInputWire => a !== null);
-          if (atts.length > 0) setPendingAttachments((prev) => [...prev, ...atts]);
-        })();
+        const files = ev.files ?? [];
+        if (!inside || files.length === 0) return;
+        setPendingAttachments((prev) => [...prev, ...files.map(authorizedFileToAttachment)]);
       } else if (ev.type === 'leave') {
         setIsDragOver(false);
       }
