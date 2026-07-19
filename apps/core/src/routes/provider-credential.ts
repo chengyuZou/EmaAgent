@@ -1,11 +1,17 @@
 import type { Hono } from 'hono';
 import { z } from 'zod';
-import type { ProviderCredentialOperation } from '@ema-agent/contracts';
+import {
+  PROVIDER_CONFIG_LIMITS,
+  type ProviderCredentialOperation,
+} from '@ema-agent/contracts';
 import type { AppBindings } from '../wiring/index.js';
 
 export const providerCredentialOperationSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('keep') }).strict(),
-  z.object({ type: z.literal('replace'), value: z.string().min(1) }).strict(),
+  z.object({
+    type: z.literal('replace'),
+    value: z.string().min(1).max(PROVIDER_CONFIG_LIMITS.apiKeyChars),
+  }).strict(),
   z.object({ type: z.literal('clear') }).strict(),
 ]);
 

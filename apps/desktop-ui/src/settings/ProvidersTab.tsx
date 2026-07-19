@@ -124,16 +124,25 @@ function ProviderConfigPanel({
   config:     ProviderConfigWire | null;
   onBack():   void;
 }): JSX.Element {
-  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [confirmAction, setConfirmAction] = useState<'delete' | 'discard' | null>(null);
+  const [formDirty, setFormDirty] = useState(false);
 
   function handleDelete(): void {
     if (!config) return;
-    setConfirmOpen(true);
+    setConfirmAction('delete');
+  }
+
+  function handleBack(): void {
+    if (formDirty) {
+      setConfirmAction('discard');
+      return;
+    }
+    onBack();
   }
 
   function confirmDelete(): void {
     if (!config) return;
-    setConfirmOpen(false);
+    setConfirmAction(null);
     void useSettingsStore.getState().deleteProvider(config.id).then(() => {
       showToast('已删除', { variant: 'success' });
       onBack();
@@ -151,7 +160,7 @@ function ProviderConfigPanel({
             icon="i-solar:alt-arrow-left-line-duotone"
             size="sm"
             className="-ml-1.5"
-            onClick={onBack}
+            onClick={handleBack}
           />
           <span className={`${definition.iconKey ?? 'i-solar:box-bold-duotone'} text-3xl`} aria-hidden />
           <h2 className="text-xl font-semibold text-[var(--ema-text-primary)]">{definition.name}</h2>
@@ -184,15 +193,18 @@ function ProviderConfigPanel({
         definition={definition}
         capability={capability ?? undefined}
         instance={config ?? undefined}
-        onClose={onBack}
+        onClose={handleBack}
+        onDirtyChange={setFormDirty}
       />
 
       <ConfirmDialog
-        open={confirmOpen}
-        message="确定删除这个服务来源？相关模型绑定也会失效。"
-        confirmText="删除"
-        onConfirm={confirmDelete}
-        onCancel={() => setConfirmOpen(false)}
+        open={confirmAction !== null}
+        message={confirmAction === 'delete'
+          ? '确定删除这个服务来源？相关模型绑定也会失效。'
+          : '当前配置尚未保存，确定放弃这些更改？'}
+        confirmText={confirmAction === 'delete' ? '删除' : '放弃更改'}
+        onConfirm={confirmAction === 'delete' ? confirmDelete : onBack}
+        onCancel={() => setConfirmAction(null)}
       />
     </div>
   );

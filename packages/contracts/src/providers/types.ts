@@ -15,6 +15,12 @@ export type ProviderCredentialOperation =
   | { type: 'replace'; value: string }
   | { type: 'clear' };
 
+/** Provider 配置字段的前后端统一长度上限。 */
+export const PROVIDER_CONFIG_LIMITS = Object.freeze({
+  apiKeyChars: 8_192,
+  baseUrlChars: 2_048,
+});
+
 /**
  * Wire-format protocol families. Names follow the pattern
  *   `{capability}-{format-origin}`

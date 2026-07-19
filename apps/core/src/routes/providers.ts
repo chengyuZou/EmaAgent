@@ -5,6 +5,7 @@ import type { BindingModule, ProviderConfigRow, ProviderHealthRow } from '@ema-a
 import {
   getProviderDefinition,
   PROVIDER_DEFINITIONS,
+  PROVIDER_CONFIG_LIMITS,
   type ProviderDefinition,
   type Capability,
 } from '@ema-agent/contracts';
@@ -63,8 +64,8 @@ function shapeProvider(
 const createSchema = z.object({
   definitionId: z.string(),
   displayName:  z.string().optional(),
-  apiKey:       z.string().optional(),
-  baseUrl:      z.string().optional().nullable(),
+  apiKey:       z.string().max(PROVIDER_CONFIG_LIMITS.apiKeyChars).optional(),
+  baseUrl:      z.string().max(PROVIDER_CONFIG_LIMITS.baseUrlChars).optional().nullable(),
   enabled:      z.boolean().default(true),
   capabilities: z.array(z.string()).optional(),
   config:       z.record(z.unknown()).default({}),
@@ -73,7 +74,7 @@ const createSchema = z.object({
 const patchSchema = z.object({
   displayName:  z.string().optional(),
   credential:   providerCredentialOperationSchema.optional(),
-  baseUrl:      z.string().optional().nullable(),
+  baseUrl:      z.string().max(PROVIDER_CONFIG_LIMITS.baseUrlChars).optional().nullable(),
   enabled:      z.boolean().optional(),
   capabilities: z.array(z.string()).optional(),
   config:       z.record(z.unknown()).optional(),

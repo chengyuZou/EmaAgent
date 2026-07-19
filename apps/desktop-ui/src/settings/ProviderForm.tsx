@@ -10,9 +10,18 @@ import {
   type ProviderDefinition,
   type ProbeResultWire,
 } from '../api/providers.js';
-import type { ProtocolFamily, Capability } from '@ema-agent/contracts';
-import { resolveProtocols } from '@ema-agent/contracts';
+import {
+  PROVIDER_CONFIG_LIMITS,
+  resolveProtocols,
+  type ProtocolFamily,
+  type Capability,
+} from '@ema-agent/contracts';
 import { showToast } from '../lib/toast.js';
+import {
+  resolveCredentialOperation,
+  resolveProviderSubmitState,
+  type ProviderFormSnapshot,
+} from './provider-form-state.js';
 import { LlmModelManager }    from './LlmModelManager.js';
 import { EmbedModelManager }  from './EmbedModelManager.js';
 import { RerankModelManager } from './RerankModelManager.js';
@@ -26,6 +35,7 @@ export interface ProviderFormProps {
   capability?:  Capability;
   instance?:    ProviderConfigWire;
   onClose():    void;
+  onDirtyChange?(dirty: boolean): void;
 }
 
 const PROTOCOL_LABELS: Record<string, string> = {
@@ -36,7 +46,7 @@ const PROTOCOL_LABELS: Record<string, string> = {
 };
 
 export function ProviderForm({
-  definitionId, definition, capability, instance, onClose,
+  definitionId, definition, capability, instance, onClose, onDirtyChange,
 }: ProviderFormProps): JSX.Element {
   const [apiKey,       setApiKey]       = useState('');
   const [showApiKey,   setShowApiKey]   = useState(false);
@@ -46,6 +56,7 @@ export function ProviderForm({
   const [advancedOpen, setAdvancedOpen] = useState(false);
 
   const activeCap: Capability | undefined = capability ?? definition?.capabilities?.[0];
+  const requiresCredentials = definition?.requiresCredentials !== false;
 
   useEffect(() => {
     if (!instance || !showApiKey || !credentialLoaded || credentialDirty) return;
@@ -60,15 +71,20 @@ export function ProviderForm({
   const protocolChoices: string[] = activeCap
     ? resolveProtocols(definition?.protocols?.[activeCap])
     : [];
-  const existingProtocol = (instance?.config?.['protocol'] as string | undefined)
-    ?? protocolChoices[0] ?? '';
-  const [selectedProtocol, setSelectedProtocol] = useState(existingProtocol);
-
   function defaultUrlFor(proto: string): string {
     return definition?.protocolBaseUrls?.[proto as ProtocolFamily]
       ?? definition?.defaultBaseUrl ?? '';
   }
-  const [baseUrl,       setBaseUrl]       = useState(instance?.baseUrl ?? defaultUrlFor(existingProtocol));
+
+  const existingProtocol = (instance?.config?.['protocol'] as string | undefined)
+    ?? protocolChoices[0] ?? '';
+  const initialSnapshot: ProviderFormSnapshot = {
+    baseUrl: instance?.baseUrl ?? defaultUrlFor(existingProtocol),
+    protocol: existingProtocol,
+  };
+  const [snapshot, setSnapshot] = useState<ProviderFormSnapshot>(initialSnapshot);
+  const [selectedProtocol, setSelectedProtocol] = useState(initialSnapshot.protocol);
+  const [baseUrl,       setBaseUrl]       = useState(initialSnapshot.baseUrl);
   const [baseUrlManual, setBaseUrlManual] = useState(false);
 
   function handleProtocolChange(proto: string): void {
@@ -83,22 +99,52 @@ export function ProviderForm({
   );
   const [probeMsg, setProbeMsg] = useState<string | null>(instance?.health?.lastError ?? null);
 
+  const submitState = resolveProviderSubmitState({
+    draft: { apiKey, credentialDirty, baseUrl, protocol: selectedProtocol },
+    snapshot,
+    existing: instance !== undefined,
+    requiresCredentials,
+  });
+  const dirty = submitState.dirty;
+
+  useEffect(() => {
+    onDirtyChange?.(dirty);
+  }, [dirty, onDirtyChange]);
+
+  useEffect(() => {
+    if (!dirty) return;
+    const preventAccidentalClose = (event: BeforeUnloadEvent): void => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', preventAccidentalClose);
+    return () => window.removeEventListener('beforeunload', preventAccidentalClose);
+  }, [dirty]);
+
   async function doSave(): Promise<void> {
-    if (!instance && !apiKey.trim()) return;
+    if (submitting || !submitState.submittable) return;
     setSubmitting(true);
     try {
       if (instance) {
-        const trimmedApiKey = apiKey.trim();
         const input: ProviderConfigPatchInput = {
-          credential: !credentialDirty
-            ? { type: 'keep' }
-            : trimmedApiKey
-              ? { type: 'replace', value: trimmedApiKey }
-              : { type: 'clear' },
+          credential: resolveCredentialOperation(apiKey, credentialDirty),
           baseUrl: baseUrl.trim() || null,
-          config:  { ...(selectedProtocol ? { protocol: selectedProtocol } : {}) },
+          config:  {
+            ...instance.config,
+            ...(selectedProtocol ? { protocol: selectedProtocol } : {}),
+          },
         };
-        await providersApi.patch(instance.id, input);
+        const saved = await providersApi.patch(instance.id, input);
+        const savedProtocol = (saved.config['protocol'] as string | undefined)
+          ?? selectedProtocol;
+        const savedSnapshot: ProviderFormSnapshot = {
+          baseUrl: saved.baseUrl ?? defaultUrlFor(savedProtocol),
+          protocol: savedProtocol,
+        };
+        setSnapshot(savedSnapshot);
+        setBaseUrl(savedSnapshot.baseUrl);
+        setSelectedProtocol(savedSnapshot.protocol);
+        setBaseUrlManual(false);
         setApiKey('');
         setShowApiKey(false);
         setCredentialDirty(false);
@@ -114,7 +160,7 @@ export function ProviderForm({
         await providersApi.create(input);
         showToast('已创建', { variant: 'success' });
       }
-      void useSettingsStore.getState().refreshProviders();
+      await useSettingsStore.getState().refreshProviders();
     } catch (err: unknown) {
       showToast(`操作失败: ${err instanceof Error ? err.message : 'Unknown'}`, { variant: 'danger' });
     } finally {
@@ -125,6 +171,22 @@ export function ProviderForm({
   async function handleSubmit(e: FormEvent): Promise<void> {
     e.preventDefault();
     await doSave();
+  }
+
+  function handleCancel(): void {
+    if (!instance) {
+      onClose();
+      return;
+    }
+    setApiKey('');
+    setShowApiKey(false);
+    setCredentialDirty(false);
+    setCredentialLoaded(false);
+    setSelectedProtocol(snapshot.protocol);
+    setBaseUrl(snapshot.baseUrl);
+    setBaseUrlManual(false);
+    setProbeOk(instance.health?.status === 'ok' ? true : null);
+    setProbeMsg(instance.health?.lastError ?? null);
   }
 
   async function handleCredentialVisibility(): Promise<void> {
@@ -199,7 +261,7 @@ export function ProviderForm({
             <p className="text-sm text-[var(--ema-text-tertiary)] mt-0.5">基本设置</p>
           </div>
 
-          <div className="flex flex-col gap-2">
+          {requiresCredentials && <div className="flex flex-col gap-2">
             <div>
               <div className="text-sm font-medium text-[var(--ema-text-secondary)]">API 密钥</div>
               <div className="text-xs text-[var(--ema-text-tertiary)] mt-0.5">
@@ -216,8 +278,8 @@ export function ProviderForm({
                   setCredentialDirty(true);
                   setCredentialLoaded(false);
                 }}
-                onBlur={() => { void doSave(); }}
                 autoComplete="off"
+                maxLength={PROVIDER_CONFIG_LIMITS.apiKeyChars}
                 className="pr-10"
               />
               <IconButton
@@ -231,7 +293,7 @@ export function ProviderForm({
                 onClick={() => { void handleCredentialVisibility(); }}
               />
             </div>
-          </div>
+          </div>}
         </section>
 
         {/* ── 高级配置(默认折叠)────────────────────────────────────────────── */}
@@ -272,6 +334,7 @@ export function ProviderForm({
                 <Input
                   placeholder={defaultUrlFor(selectedProtocol) || 'https://...'}
                   value={baseUrl}
+                  maxLength={PROVIDER_CONFIG_LIMITS.baseUrlChars}
                   onChange={(e) => { setBaseUrl(e.target.value); setBaseUrlManual(true); }}
                 />
               </div>
@@ -293,7 +356,7 @@ export function ProviderForm({
                 variant="danger"
                 size="sm"
                 loading={probing}
-                disabled={probing}
+                disabled={probing || dirty}
                 type="button"
                 onClick={() => void handleProbe()}
               >
@@ -311,7 +374,7 @@ export function ProviderForm({
                   variant="ghost"
                   size="sm"
                   loading={probing}
-                  disabled={probing}
+                  disabled={probing || dirty}
                   type="button"
                   onClick={() => void handleProbe()}
                 >
@@ -322,8 +385,39 @@ export function ProviderForm({
           </Callout>
         )}
         {!instance && (
-          <Callout variant="info">输入 API Key 后自动保存</Callout>
+          <Callout variant="info">填写配置后，点击“创建服务来源”保存</Callout>
         )}
+
+        {/* 保存栏属于 Provider 配置，固定放在模型池之前，避免与模型管理操作混淆。 */}
+        <div className="flex items-center justify-between gap-4 border-t border-[var(--ema-border)] pt-4">
+          <span className="text-xs text-[var(--ema-text-tertiary)]">
+            {!submitState.valid
+              ? '请填写 API Key'
+              : instance
+                ? dirty ? '有未保存的更改' : '配置已保存'
+                : '尚未创建服务来源'}
+          </span>
+          <div className="flex items-center justify-end gap-2">
+            <Button
+              type="submit"
+              variant="primary"
+              size="sm"
+              loading={submitting}
+              disabled={submitting || !submitState.submittable}
+            >
+              {instance ? '保存更改' : '创建服务来源'}
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              disabled={submitting || (instance !== undefined && !dirty)}
+              onClick={handleCancel}
+            >
+              取消
+            </Button>
+          </div>
+        </div>
 
       </form>
 
