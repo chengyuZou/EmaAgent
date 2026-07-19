@@ -16,6 +16,7 @@ import {
   createMotionManagerUpdate,
   createAutoEyeBlinkPlugin,
   createExpressionPlugin,
+  createExpressionResetPlugin,
   type InternalModelForPlugins,
 } from '../composables/motion-manager.js';
 import {
@@ -194,6 +195,10 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
               };
             },
           });
+
+          // 必须早于 mouse/motion 执行，只清除上一帧 expression 写入；
+          // 原生流水线随后重建当前帧的动作、眨眼和视线基值。
+          pipeline.register(createExpressionResetPlugin(expressionController), 'pre');
 
           // Pre stage: mouse-track (runs before idle motions, sets eye params)
           const mousePlugin = createMouseEyeTrackPlugin(

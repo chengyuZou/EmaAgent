@@ -379,3 +379,12 @@ export function createExpressionPlugin(
     controller.applyExpressions(ctx.model);
   };
 }
+
+/** 在原生 motion update 前清除上一帧 expression 参数，防止 Add 逐帧累积。 */
+export function createExpressionResetPlugin(
+  controller: ExpressionController,
+): MotionPlugin {
+  return (ctx) => {
+    controller.prepareFrame(ctx.model);
+  };
+}

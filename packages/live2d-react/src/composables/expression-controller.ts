@@ -1,7 +1,10 @@
 // 解析表情文件并把指定舞台的表情参数应用到 Cubism 模型。
 import {
+  compareContributions,
+  composeContributionValues,
   type ExpressionEntry,
   type ExpressionBlendMode,
+  type ExpressionContribution,
   type ExpressionGroupDefinition,
   type ExpressionStoreApi,
 } from '../stores/expression-store.js';
@@ -10,8 +13,8 @@ import {
 //
 // Two responsibilities:
 //   1. Parse exp3.json files at model load, populate the expression store
-//   2. Per-frame: apply current entry values to the Live2D model with proper
-//      blend math + noop detection + active-to-inactive transition reset
+//   2. Per-frame: reset previous writes, then compose all active sources with
+//      their own Blend mode onto the native motion/blink values
 //
 // Ported from AIRI's stage-ui-live2d/composables/live2d/expression-controller.ts.
 // Vue Refs → closures over the getter passed in at create time.
@@ -64,6 +67,9 @@ export interface ExpressionController {
     readExpFile:   (path: string) => Promise<string>,
     modelBaseUrl?: string,
   ): Promise<void>;
+
+  /** 在原生 motion/blink 前清除上一帧 expression 写入。 */
+  prepareFrame(coreModel: CoreModelLike): void;
 
   /**
    * Apply all current expression entries onto the core model. Call every
@@ -151,27 +157,33 @@ export function createExpressionController(opts: ExpressionControllerOptions): E
       );
     },
 
-    applyExpressions(coreModel) {
-      const activeThisFrame = new Set<string>();
+    prepareFrame(coreModel) {
       const expressions = opts.expressionStore.getState().expressions;
-
-      for (const entry of expressions.values()) {
-        if (isNoopValue(entry)) continue;
-        const blended = computeBlendedValue(entry, coreModel);
-        coreModel.setParameterValueById(entry.parameterId, blended);
-        activeThisFrame.add(entry.parameterId);
-      }
-
-      // active→inactive transition reset
       for (const paramId of activeLastFrame) {
-        if (!activeThisFrame.has(paramId)) {
-          const entry = findEntryByParameterId(opts.expressionStore, paramId);
-          if (entry) coreModel.setParameterValueById(paramId, entry.defaultValue);
-        }
+        const entry = expressions.get(paramId);
+        if (entry) coreModel.setParameterValueById(paramId, entry.defaultValue);
+      }
+      activeLastFrame.clear();
+    },
+
+    applyExpressions(coreModel) {
+      const state = opts.expressionStore.getState();
+      const byParameter = new Map<string, ExpressionContribution[]>();
+      for (const contribution of Array.from(state.contributions.values()).flat()) {
+        const bucket = byParameter.get(contribution.parameterId) ?? [];
+        bucket.push(contribution);
+        byParameter.set(contribution.parameterId, bucket);
       }
 
-      activeLastFrame.clear();
-      for (const id of activeThisFrame) activeLastFrame.add(id);
+      for (const [parameterId, contributions] of byParameter) {
+        const baseValue = coreModel.getParameterValueById(parameterId);
+        const blended = composeContributionValues(
+          baseValue,
+          contributions.sort(compareContributions),
+        );
+        coreModel.setParameterValueById(parameterId, blended);
+        activeLastFrame.add(parameterId);
+      }
     },
 
     dispose() {
@@ -189,52 +201,6 @@ function normaliseBlend(raw: string): ExpressionBlendMode {
     case 'Multiply': return 'Multiply';
     default:         return 'Overwrite';
   }
-}
-
-/**
- * Does this entry contribute nothing visually?
- *   Add:       currentValue === 0 (additive identity)
- *   Multiply:  currentValue === 1 (multiplicative identity)
- *   Overwrite: currentValue === modelDefault (no change)
- */
-function isNoopValue(entry: ExpressionEntry): boolean {
-  switch (entry.blend) {
-    case 'Add':      return entry.currentValue === 0;
-    case 'Multiply': return entry.currentValue === 1;
-    default:         return entry.currentValue === entry.modelDefault;
-  }
-}
-
-/**
- * Compute final blended value for one parameter.
- *
- *   Add:       modelDefault + currentValue (stable base — expression-only
- *              params aren't reset by motion, so we can't read "current frame
- *              value" as base or values would accumulate forever)
- *   Multiply:  currentFrameValue * currentValue (preserves blink/motion)
- *   Overwrite: currentValue (direct replacement)
- */
-function computeBlendedValue(entry: ExpressionEntry, coreModel: CoreModelLike): number {
-  switch (entry.blend) {
-    case 'Add':
-      return entry.modelDefault + entry.currentValue;
-    case 'Multiply': {
-      const current = coreModel.getParameterValueById(entry.parameterId);
-      return current * entry.currentValue;
-    }
-    default:
-      return entry.currentValue;
-  }
-}
-
-function findEntryByParameterId(
-  expressionStore: ExpressionStoreApi,
-  paramId: string,
-): ExpressionEntry | undefined {
-  for (const entry of expressionStore.getState().expressions.values()) {
-    if (entry.parameterId === paramId) return entry;
-  }
-  return undefined;
 }
 
 function readModelDefault(model: CoreModelLike | undefined, paramId: string): number {

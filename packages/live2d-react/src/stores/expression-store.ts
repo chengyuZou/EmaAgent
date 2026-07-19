@@ -7,9 +7,9 @@ import { create, type StoreApi, type UseBoundStore } from 'zustand';
 // UI or Agent tools directly. All intent changes must go through useLive2DStore.
 // Live2DStage is the only reconciler from intent → expression runtime values.
 //
-// Stores expression data after .exp3.json has been parsed. It does not fetch
-// model files and it does not render. expressionController reads this store
-// every frame and applies currentValue to the Cubism coreModel.
+// Stores expression definitions and per-source contributions after .exp3.json
+// has been parsed. It does not fetch model files and it does not render.
+// expressionController composes active contributions onto each frame's base.
 //
 // Duration/lifecycle: owned entirely by live2dStore (via expressionTimers).
 // This store only tracks the current parameter values — no timers here.
@@ -45,6 +45,20 @@ export interface ExpressionGroupDefinition {
   parameters: ExpressionGroupParam[];
 }
 
+export interface ExpressionContribution {
+  sourceKey: string;
+  sourceName: string;
+  parameterId: string;
+  blend: ExpressionBlendMode;
+  value: number;
+  /** 数值越大越晚合成；V1 内置来源均为 0。 */
+  priority: number;
+  /** 同优先级按激活顺序合成，后激活的 Overwrite 最终生效。 */
+  sequence: number;
+  /** 同一 exp3 内保持参数声明顺序。 */
+  order: number;
+}
+
 export interface ExpressionState {
   name:    string;
   value:   number;
@@ -64,6 +78,8 @@ interface ExpressionStoreState {
   expressions:      Map<string, ExpressionEntry>;
   /** Map<expressionName, groupDef>. */
   expressionGroups: Map<string, ExpressionGroupDefinition>;
+  /** Map<sourceKey, contributions>，停用来源时只删除自己的贡献。 */
+  contributions: Map<string, ExpressionContribution[]>;
   modelId:          string;
 }
 
@@ -77,8 +93,8 @@ interface ExpressionStoreActions {
     | { kind: 'group'; group: ExpressionGroupDefinition }
     | { kind: 'param'; entry: ExpressionEntry }
     | null;
-  set(name: string, value: boolean | number): ExpressionToolResult;
-  activate(name: string, value?: boolean | number): ExpressionToolResult;
+  set(name: string, value: boolean | number, priority?: number): ExpressionToolResult;
+  activate(name: string, value?: boolean | number, priority?: number): ExpressionToolResult;
   deactivate(name: string): ExpressionToolResult;
   get(name?: string): ExpressionToolResult;
   toggle(name: string): ExpressionToolResult;
@@ -93,6 +109,7 @@ export type ExpressionStoreApi = UseBoundStore<StoreApi<ExpressionStore>>;
 const initial: ExpressionStoreState = {
   expressions:      new Map(),
   expressionGroups: new Map(),
+  contributions:    new Map(),
   modelId:          '',
 };
 
@@ -125,181 +142,231 @@ function savePersistedDefaults(modelId: string, defaults: Record<string, number>
 // ── Store ───────────────────────────────────────────────────────────────────
 
 export function createExpressionStore(): ExpressionStoreApi {
+  let activationSequence = 0;
+
   return create<ExpressionStore>((set, get) => {
-  const bump = (): void => {
-    set((s) => ({ expressions: new Map(s.expressions) }));
-  };
+    const sourceKey = (
+      name: string,
+      kind: 'group' | 'param',
+    ): string => `${kind}:${name}`;
 
-  // Set entry.currentValue and trigger a re-render. No timer logic —
-  // duration is owned by live2dStore.
-  const applyEntryValue = (entry: ExpressionEntry, value: number): void => {
-    entry.currentValue = value;
-  };
+    const contributionsForParameter = (
+      state: ExpressionStoreState,
+      parameterId: string,
+    ): ExpressionContribution[] => Array.from(state.contributions.values())
+      .flat()
+      .filter((item) => item.parameterId === parameterId)
+      .sort(compareContributions);
 
-  const applyGroup = (
-    group: ExpressionGroupDefinition,
-    value: boolean | number,
-  ): ExpressionState[] => {
-    const states: ExpressionState[] = [];
-    for (const param of group.parameters) {
-      const entry = get().expressions.get(param.parameterId);
-      if (!entry) continue;
-
-      let nextValue: number;
-      if (typeof value === 'boolean') {
-        nextValue = value ? param.value : entry.defaultValue;
-      } else {
-        nextValue = param.value * value;
+    // Store 中的 currentValue 是 UI/工具查询投影；真实渲染仍由 Controller
+    // 使用本帧 motion/blink 基值重新合成，二者职责不能混用。
+    const refreshProjectedValues = (
+      expressions: Map<string, ExpressionEntry>,
+      contributions: Map<string, ExpressionContribution[]>,
+    ): void => {
+      const projectionState: ExpressionStoreState = {
+        expressions,
+        expressionGroups: get().expressionGroups,
+        contributions,
+        modelId: get().modelId,
+      };
+      for (const entry of expressions.values()) {
+        entry.currentValue = composeContributionValues(
+          entry.defaultValue,
+          contributionsForParameter(projectionState, entry.parameterId),
+        );
       }
+    };
 
-      applyEntryValue(entry, nextValue);
-      states.push(toState(entry));
-    }
-    return states;
-  };
+    const publishContributions = (
+      nextContributions: Map<string, ExpressionContribution[]>,
+    ): void => {
+      const nextExpressions = cloneExpressions(get().expressions);
+      refreshProjectedValues(nextExpressions, nextContributions);
+      set({
+        expressions: nextExpressions,
+        contributions: nextContributions,
+      });
+    };
 
-  return {
-    ...initial,
+    const statesForGroup = (
+      group: ExpressionGroupDefinition,
+      active: boolean,
+    ): ExpressionState[] => group.parameters.flatMap((param) => {
+      const entry = get().expressions.get(param.parameterId);
+      return entry ? [toState(entry, active)] : [];
+    });
 
-    registerExpressions(modelId, groups, entries) {
-      const expressionGroups = new Map<string, ExpressionGroupDefinition>();
-      for (const group of groups) expressionGroups.set(group.name, group);
+    return {
+      ...initial,
 
-      const expressions = new Map<string, ExpressionEntry>();
-      for (const entry of entries) expressions.set(entry.parameterId, { ...entry });
+      registerExpressions(modelId, groups, entries) {
+        activationSequence = 0;
+        const expressionGroups = new Map<string, ExpressionGroupDefinition>();
+        for (const group of groups) expressionGroups.set(group.name, group);
 
-      const persisted = loadPersistedDefaults(modelId);
-      if (persisted) {
-        for (const [name, value] of Object.entries(persisted)) {
-          const entry = expressions.get(name);
-          if (entry) {
-            entry.defaultValue = value;
-            entry.currentValue = value;
+        const expressions = new Map<string, ExpressionEntry>();
+        for (const entry of entries) expressions.set(entry.parameterId, { ...entry });
+
+        const persisted = loadPersistedDefaults(modelId);
+        if (persisted) {
+          for (const [name, value] of Object.entries(persisted)) {
+            const entry = expressions.get(name);
+            if (entry) {
+              entry.defaultValue = value;
+              entry.currentValue = value;
+            }
           }
         }
-      }
 
-      set({ expressions, expressionGroups, modelId });
-    },
-
-    resolve(name) {
-      const state = get();
-      const group = state.expressionGroups.get(name);
-      if (group) return { kind: 'group', group };
-      const entry = state.expressions.get(name);
-      if (entry) return { kind: 'param', entry };
-      return null;
-    },
-
-    set(name, value) {
-      const resolved = get().resolve(name);
-      if (!resolved) return notFound(name, get());
-
-      if (resolved.kind === 'group') {
-        const states = applyGroup(resolved.group, value);
-        bump();
-        return { success: true, state: states };
-      }
-
-      const entry     = resolved.entry;
-      const nextValue = typeof value === 'boolean'
-        ? (value ? entry.targetValue : entry.defaultValue)
-        : value;
-      applyEntryValue(entry, nextValue);
-      bump();
-      return { success: true, state: toState(entry) };
-    },
-
-    activate(name, value = true) {
-      return get().set(name, value);
-    },
-
-    deactivate(name) {
-      const resolved = get().resolve(name);
-      if (!resolved) return notFound(name, get());
-
-      if (resolved.kind === 'group') {
-        const states: ExpressionState[] = [];
-        for (const param of resolved.group.parameters) {
-          const entry = get().expressions.get(param.parameterId);
-          if (!entry) continue;
-          applyEntryValue(entry, entry.defaultValue);
-          states.push(toState(entry));
-        }
-        bump();
-        return { success: true, state: states };
-      }
-
-      applyEntryValue(resolved.entry, resolved.entry.defaultValue);
-      bump();
-      return { success: true, state: toState(resolved.entry) };
-    },
-
-    get(name) {
-      const state = get();
-      if (!name) {
-        return { success: true, state: Array.from(state.expressions.values()).map(toState) };
-      }
-
-      const resolved = state.resolve(name);
-      if (!resolved) return notFound(name, state);
-
-      if (resolved.kind === 'group') {
-        const states: ExpressionState[] = [];
-        for (const param of resolved.group.parameters) {
-          const entry = state.expressions.get(param.parameterId);
-          if (entry) states.push(toState(entry));
-        }
-        return { success: true, state: states };
-      }
-
-      return { success: true, state: toState(resolved.entry) };
-    },
-
-    toggle(name) {
-      const resolved = get().resolve(name);
-      if (!resolved) return notFound(name, get());
-
-      if (resolved.kind === 'group') {
-        const isActive = resolved.group.parameters.some((param) => {
-          const entry = get().expressions.get(param.parameterId);
-          return entry !== undefined && entry.currentValue !== entry.defaultValue;
+        set({
+          expressions,
+          expressionGroups,
+          contributions: new Map(),
+          modelId,
         });
-        return isActive ? get().deactivate(name) : get().activate(name, true);
-      }
+      },
 
-      const entry  = resolved.entry;
-      const active = entry.currentValue !== entry.defaultValue;
-      return active ? get().deactivate(name) : get().activate(name, true);
-    },
+      resolve(name) {
+        const state = get();
+        const group = state.expressionGroups.get(name);
+        if (group) return { kind: 'group', group };
+        const entry = state.expressions.get(name);
+        if (entry) return { kind: 'param', entry };
+        return null;
+      },
 
-    saveDefaults() {
-      const state = get();
-      if (!state.modelId) return { success: false, error: 'No model loaded' };
+      set(name, value, priority = 0) {
+        const resolved = get().resolve(name);
+        if (!resolved) return notFound(name, get());
+        if (value === false) return get().deactivate(name);
 
-      const defaults: Record<string, number> = {};
-      for (const [name, entry] of state.expressions) {
-        entry.defaultValue = entry.currentValue;
-        defaults[name]     = entry.currentValue;
-      }
-      savePersistedDefaults(state.modelId, defaults);
-      bump();
-      return { success: true };
-    },
+        activationSequence += 1;
+        const sequence = activationSequence;
+        const nextContributions = new Map(get().contributions);
 
-    resetAll() {
-      const states: ExpressionState[] = [];
-      for (const entry of get().expressions.values()) {
-        applyEntryValue(entry, entry.defaultValue);
-        states.push(toState(entry));
-      }
-      bump();
-      return { success: true, state: states };
-    },
+        if (resolved.kind === 'group') {
+          const key = sourceKey(name, 'group');
+          const multiplier = typeof value === 'number' ? value : 1;
+          const contributions = resolved.group.parameters.map((param, order) => ({
+            sourceKey: key,
+            sourceName: name,
+            parameterId: param.parameterId,
+            blend: param.blend,
+            value: param.value * multiplier,
+            priority,
+            sequence,
+            order,
+          }));
+          nextContributions.set(key, contributions);
+          publishContributions(nextContributions);
+          return { success: true, state: statesForGroup(resolved.group, true) };
+        }
 
-    dispose() {
-      set({ ...initial });
-    },
+        const key = sourceKey(name, 'param');
+        const nextValue = typeof value === 'boolean'
+          ? resolved.entry.targetValue
+          : value;
+        nextContributions.set(key, [{
+          sourceKey: key,
+          sourceName: name,
+          parameterId: resolved.entry.parameterId,
+          blend: resolved.entry.blend,
+          value: nextValue,
+          priority,
+          sequence,
+          order: 0,
+        }]);
+        publishContributions(nextContributions);
+        return { success: true, state: toState(get().expressions.get(name)!, true) };
+      },
+
+      activate(name, value = true, priority = 0) {
+        return get().set(name, value, priority);
+      },
+
+      deactivate(name) {
+        const resolved = get().resolve(name);
+        if (!resolved) return notFound(name, get());
+
+        const kind = resolved.kind === 'group' ? 'group' : 'param';
+        const key = sourceKey(name, kind);
+        const nextContributions = new Map(get().contributions);
+        nextContributions.delete(key);
+        publishContributions(nextContributions);
+
+        if (resolved.kind === 'group') {
+          return { success: true, state: statesForGroup(resolved.group, false) };
+        }
+        return {
+          success: true,
+          state: toState(get().expressions.get(resolved.entry.parameterId)!, false),
+        };
+      },
+
+      get(name) {
+        const state = get();
+        if (!name) {
+          const activeParameters = new Set(
+            Array.from(state.contributions.values()).flat().map((item) => item.parameterId),
+          );
+          return {
+            success: true,
+            state: Array.from(state.expressions.values()).map((entry) => (
+              toState(entry, activeParameters.has(entry.parameterId))
+            )),
+          };
+        }
+
+        const resolved = state.resolve(name);
+        if (!resolved) return notFound(name, state);
+        if (resolved.kind === 'group') {
+          const active = state.contributions.has(sourceKey(name, 'group'));
+          return { success: true, state: statesForGroup(resolved.group, active) };
+        }
+
+        const active = state.contributions.has(sourceKey(name, 'param'));
+        return { success: true, state: toState(resolved.entry, active) };
+      },
+
+      toggle(name) {
+        const resolved = get().resolve(name);
+        if (!resolved) return notFound(name, get());
+        const kind = resolved.kind === 'group' ? 'group' : 'param';
+        const active = get().contributions.has(sourceKey(name, kind));
+        return active ? get().deactivate(name) : get().activate(name, true);
+      },
+
+      saveDefaults() {
+        const state = get();
+        if (!state.modelId) return { success: false, error: 'No model loaded' };
+
+        const defaults: Record<string, number> = {};
+        const expressions = cloneExpressions(state.expressions);
+        for (const [name, entry] of expressions) {
+          entry.defaultValue = entry.currentValue;
+          defaults[name] = entry.currentValue;
+        }
+        savePersistedDefaults(state.modelId, defaults);
+        set({ expressions, contributions: new Map() });
+        return { success: true };
+      },
+
+      resetAll() {
+        const expressions = cloneExpressions(get().expressions);
+        const states: ExpressionState[] = [];
+        for (const entry of expressions.values()) {
+          entry.currentValue = entry.defaultValue;
+          states.push(toState(entry, false));
+        }
+        set({ expressions, contributions: new Map() });
+        return { success: true, state: states };
+      },
+
+      dispose() {
+        activationSequence = 0;
+        set({ ...initial });
+      },
     };
   });
 }
@@ -308,13 +375,52 @@ export const useExpressionStore = createExpressionStore();
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
-function toState(entry: ExpressionEntry): ExpressionState {
+function toState(entry: ExpressionEntry, active: boolean): ExpressionState {
   return {
     name:    entry.name,
     value:   entry.currentValue,
     default: entry.defaultValue,
-    active:  entry.currentValue !== entry.defaultValue,
+    active,
   };
+}
+
+function cloneExpressions(
+  expressions: Map<string, ExpressionEntry>,
+): Map<string, ExpressionEntry> {
+  return new Map(
+    Array.from(expressions, ([parameterId, entry]) => [parameterId, { ...entry }]),
+  );
+}
+
+export function compareContributions(
+  left: ExpressionContribution,
+  right: ExpressionContribution,
+): number {
+  return left.priority - right.priority
+    || left.sequence - right.sequence
+    || left.order - right.order
+    || left.sourceKey.localeCompare(right.sourceKey);
+}
+
+export function composeContributionValues(
+  baseValue: number,
+  contributions: ExpressionContribution[],
+): number {
+  let value = baseValue;
+  for (const contribution of [...contributions].sort(compareContributions)) {
+    switch (contribution.blend) {
+      case 'Add':
+        value += contribution.value;
+        break;
+      case 'Multiply':
+        value *= contribution.value;
+        break;
+      case 'Overwrite':
+        value = contribution.value;
+        break;
+    }
+  }
+  return value;
 }
 
 function availableNames(state: ExpressionStoreState): string[] {
