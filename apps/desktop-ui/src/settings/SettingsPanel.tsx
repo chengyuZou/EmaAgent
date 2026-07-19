@@ -15,6 +15,7 @@ import { useMcpStore } from '../stores/mcp-store.js';
 import { useShallow } from 'zustand/react/shallow';
 import { useKbStore, selectIngestSummary } from '../stores/kb-store.js';
 import { useThemeSync } from '../stores/theme-store.js';
+import { mountSystemEvents } from '../lib/system-sse.js';
 import { ProvidersTab } from './ProvidersTab.js';
 import { BindingsTab } from './BindingsTab.js';
 import { CardsTab } from './CardsTab.js';
@@ -141,6 +142,9 @@ function SectionContent({ id }: { id: SectionId }): JSX.Element {
 
 export function SettingsPanel(): JSX.Element {
   useThemeSync();
+
+  // 设置窗拥有独立 Store，通过主窗广播同步后台任务和 Provider 状态。
+  useEffect(() => mountSystemEvents({ ownsConnection: false }), []);
 
   // Default: AI 与模型 expanded, 服务来源 selected.
   const [expandedGroups, setExpandedGroups] = useState<Set<GroupId>>(new Set(['ai']));

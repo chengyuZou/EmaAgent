@@ -4,7 +4,16 @@ import { EmaStageView }          from './components/EmaStageView.js';
 import { SpeechBubble }          from './components/SpeechBubble.js';
 import { PermissionToastLayer }  from './components/PermissionToastLayer.js';
 import { defaultLive2DRuntime, type Live2DModelRuntimeConfig } from '@ema-agent/live2d-react';
-import { FloatingDock, ShellSetupDialog, shellApi, useSidecarStore, useThemeSync, cardsApi, turnsApi } from '@ema-agent/desktop-ui';
+import {
+  FloatingDock,
+  ShellSetupDialog,
+  cardsApi,
+  mountSystemEvents,
+  shellApi,
+  turnsApi,
+  useSidecarStore,
+  useThemeSync,
+} from '@ema-agent/desktop-ui';
 import type { ShellStatus, SidecarStatus } from '@ema-agent/desktop-ui';
 import type { TurnId } from '@ema-agent/contracts';
 
@@ -55,6 +64,9 @@ export function App(): React.JSX.Element {
 
   useDevTtsPlaybackFromUrl();
   useThemeSync();
+
+  // 主桌宠窗口与应用同生命周期，负责唯一的全局系统事件连接。
+  useEffect(() => mountSystemEvents({ ownsConnection: true }), []);
 
   // Shell availability check — runs once when the sidecar becomes reachable.
   // On non-Windows this always resolves to { available: true } immediately.

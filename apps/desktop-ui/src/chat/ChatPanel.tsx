@@ -1,3 +1,4 @@
+// 组装会话侧栏、消息历史、输入区和检查器面板，并维护聊天窗口生命周期。
 import { useEffect, useState, useRef, useCallback, type JSX } from 'react';
 import { Button } from '@ema-agent/ui';
 import type { SessionId } from '@ema-agent/contracts';
@@ -8,7 +9,7 @@ import { useAgentTaskStore } from '../stores/agent-task-store.js';
 import { useUiStore } from '../stores/ui-store.js';
 import { useCapabilitiesStore } from '../stores/capabilities-store.js';
 import { useThemeSync } from '../stores/theme-store.js';
-import { startSystemSse } from '../lib/system-sse.js';
+import { mountSystemEvents } from '../lib/system-sse.js';
 import { ErrorBoundary } from '../lib/error-boundary.js';
 import { SessionSidebar } from './SessionSidebar.js';
 import { ChatHistory } from './ChatHistory.js';
@@ -79,7 +80,8 @@ export function ChatPanel(): JSX.Element {
     ).length;
   });
 
-  useEffect(() => { void startSystemSse(); }, []);
+  // 聊天窗只消费主窗广播，不再自行建立全局 SSE 连接。
+  useEffect(() => mountSystemEvents({ ownsConnection: false }), []);
   // 拉一次 V1 发布特性开关(fail-closed,失败不抛)。
   useEffect(() => { void useCapabilitiesStore.getState().load(); }, []);
   // 特性从 true→false 时(理论上 V1 不会,但防御),把已打开的 artifacts 面板踢出。

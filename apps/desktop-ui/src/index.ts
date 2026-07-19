@@ -71,7 +71,8 @@ export type { SendQueue, SendQueueOptions, QueueEvent } from './lib/send-queue.j
 export { sseConsumer, createSseConsumer } from './lib/sse-consumer.js';
 export type { SseStartOptions, SseHandle } from './lib/sse-consumer.js';
 
-export { startSystemSse, stopSystemSse } from './lib/system-sse.js';
+export { mountSystemEvents, startSystemSse, stopSystemSse } from './lib/system-sse.js';
+export type { SystemEventWindowOptions } from './lib/system-sse.js';
 
 export { ErrorBoundary } from './lib/error-boundary.js';
 export type { ErrorBoundaryProps } from './lib/error-boundary.js';
