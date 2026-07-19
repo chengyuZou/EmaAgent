@@ -1,3 +1,4 @@
+# 解析 Bridge 启动参数、绑定本地端口并交给 Uvicorn 托管。
 """
 Entry point for `uv run ema-bridge` (and `python -m bridge`).
 
@@ -10,6 +11,8 @@ from __future__ import annotations
 import os
 import pathlib
 import socket
+
+import uvicorn
 
 
 def _data_dir() -> pathlib.Path:
@@ -30,10 +33,9 @@ def _find_port(start: int = 7421, end: int = 7430) -> int:
 
 
 def main() -> None:
-    import uvicorn  # imported late so --help works without uvicorn installed
-
     port_file = _data_dir() / "bridge.port"
     port = _find_port()
+    os.environ["EMA_BRIDGE_PORT"] = str(port)
     port_file.write_text(str(port), encoding="utf-8")
     print(f"[bridge] starting on http://127.0.0.1:{port}  (port file: {port_file})")
 

@@ -97,7 +97,9 @@ const GROUPS: GroupDef[] = [
     id: 'general', label: '通用设置', icon: 'i-solar:settings-bold-duotone',
     sections: [
       { id: 'general',    label: '通用设置' },
-      { id: 'live2d',     label: 'Live2D' },
+      // V1 内测暂不展示尚未闭环的 Live2D 设置入口。页面和运行时代码保留，
+      // 等模型选择、舞台参数、持久化与跨窗口同步完成后恢复这一项。
+      // { id: 'live2d',  label: 'Live2D' },
       { id: 'shortcuts',  label: '快捷键' },
       { id: 'appearance', label: '外观' },
     ],

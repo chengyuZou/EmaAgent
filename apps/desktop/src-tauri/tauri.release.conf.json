@@ -1,0 +1,9 @@
+{
+  "bundle": {
+    "active": true,
+    "externalBin": [
+      "binaries/ema-core",
+      "binaries/ema-bridge"
+    ]
+  }
+}

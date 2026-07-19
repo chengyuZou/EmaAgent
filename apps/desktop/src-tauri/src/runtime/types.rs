@@ -1,0 +1,81 @@
+// 定义桌面运行时、Core 与 Bridge 生命周期对外可见的状态结构。
+use serde::Serialize;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RuntimeService {
+    Core,
+    Bridge,
+}
+
+impl RuntimeService {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Core => "core",
+            Self::Bridge => "bridge",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RuntimePhase {
+    Stopped,
+    StartingBridge,
+    StartingCore,
+    Ready,
+    Stopping,
+    Failed,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ServicePhase {
+    Stopped,
+    Starting,
+    Ready,
+    Unavailable,
+    Failed,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ServiceSnapshot {
+    pub phase: ServicePhase,
+    pub pid: Option<u32>,
+    pub port: Option<u16>,
+    pub error: Option<String>,
+}
+
+impl ServiceSnapshot {
+    pub fn stopped() -> Self {
+        Self {
+            phase: ServicePhase::Stopped,
+            pid: None,
+            port: None,
+            error: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RuntimeSnapshot {
+    pub generation: u64,
+    pub phase: RuntimePhase,
+    pub core: ServiceSnapshot,
+    pub bridge: ServiceSnapshot,
+    pub last_error: Option<String>,
+}
+
+impl RuntimeSnapshot {
+    pub fn stopped() -> Self {
+        Self {
+            generation: 0,
+            phase: RuntimePhase::Stopped,
+            core: ServiceSnapshot::stopped(),
+            bridge: ServiceSnapshot::stopped(),
+            last_error: None,
+        }
+    }
+}

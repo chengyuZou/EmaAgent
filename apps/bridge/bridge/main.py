@@ -1,3 +1,4 @@
+# 组装 Bridge HTTP 应用、认证、Narrative 生命周期与桌面宿主就绪握手。
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -9,6 +10,7 @@ from bridge.routes.narrative import router as narrative_router
 from bridge.narrative.manager import resolve_narrative_root, validate_narrative_root
 from bridge.state import state
 from bridge.auth import require_shared_secret, secrets_equal
+from bridge.bootstrap.readiness import publish_runtime_ready
 
 
 @asynccontextmanager
@@ -16,9 +18,14 @@ async def lifespan(_app: FastAPI):
     narrative_root = resolve_narrative_root()
     validate_narrative_root(narrative_root)
     print(f"[bridge] narrative root: {narrative_root}", flush=True)
-    yield
-    if state.narrative_manager is not None:
-        await state.narrative_manager.finalize()
+    clear_runtime_ready = publish_runtime_ready()
+    try:
+        yield
+    finally:
+        if clear_runtime_ready is not None:
+            clear_runtime_ready()
+        if state.narrative_manager is not None:
+            await state.narrative_manager.finalize()
 
 
 def build_app(shared_secret: str | None = None) -> FastAPI:

@@ -1,0 +1,10 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "settings-window",
+  "description": "设置窗口只允许选择配置、知识库和存储目录。",
+  "windows": ["settings"],
+  "permissions": [
+    "core:default",
+    "dialog:allow-open"
+  ]
+}

@@ -1,12 +1,12 @@
 // 组装 Tauri 桌面宿主、窗口生命周期、托盘与 Sidecar 进程管理。
 mod credential_key;
-mod sidecar;
+mod runtime;
 
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{Emitter, Manager, RunEvent, WindowEvent};
 use tracing_subscriber::EnvFilter;
 
-use sidecar::SidecarState;
+use runtime::{DesktopRuntimeSupervisor, RuntimeSnapshot};
 
 const WINDOW_VISIBILITY_EVENT: &str = "ema://window-visibility";
 
@@ -18,22 +18,30 @@ struct WindowVisibilityPayload {
 // ── Tauri commands ──────────────────────────────────────────────────────────
 
 #[tauri::command]
-fn get_sidecar_secret(state: tauri::State<'_, SidecarState>) -> Result<String, String> {
+async fn get_sidecar_secret(
+    state: tauri::State<'_, DesktopRuntimeSupervisor>,
+) -> Result<String, String> {
     state
         .get_secret()
-        .map(|s| s.to_string())
+        .await
         .ok_or_else(|| "sidecar secret not yet available".to_string())
 }
 
 #[tauri::command]
-async fn get_sidecar_port(state: tauri::State<'_, SidecarState>) -> Result<u16, String> {
-    // Block-ish wait for the port — sidecar may not have logged it yet on
-    // very first launch. We poll the OnceCell for up to 30s; this matches the
-    // frontend's 2s retry loop in src/api/sidecar-status.ts.
+async fn get_sidecar_port(
+    state: tauri::State<'_, DesktopRuntimeSupervisor>,
+) -> Result<u16, String> {
     state
         .wait_for_port(std::time::Duration::from_secs(30))
         .await
         .ok_or_else(|| "sidecar port not yet available".to_string())
+}
+
+#[tauri::command]
+async fn get_runtime_snapshot(
+    state: tauri::State<'_, DesktopRuntimeSupervisor>,
+) -> Result<RuntimeSnapshot, String> {
+    Ok(state.snapshot().await)
 }
 
 #[tauri::command]
@@ -47,7 +55,9 @@ fn set_passthrough(window: tauri::Window, value: bool) -> Result<(), String> {
     // to whatever is behind it (desktop / other apps). The character pixels
     // and dock both become non-interactive. Frontend hides the dock when
     // toggling on, otherwise the user has no way to toggle it back off.
-    window.set_ignore_cursor_events(value).map_err(|e| e.to_string())
+    window
+        .set_ignore_cursor_events(value)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -56,7 +66,7 @@ async fn quit_app(app: tauri::AppHandle) {
     // on_window_event)。真正退出只有托盘 "quit" 菜单、本 quit_app 命令、
     // 或 RunEvent::Exit 最后防线。这里与托盘 "quit" 走相同的 shutdown + exit,
     // 否则 UI 触发的退出会孤儿掉 sidecar 进程树,SQLite lockfile 指向死 pid。
-    let state = app.state::<SidecarState>();
+    let state = app.state::<DesktopRuntimeSupervisor>();
     state.shutdown().await;
     app.exit(0);
 }
@@ -90,8 +100,8 @@ fn open_window(app: tauri::AppHandle, label: String) -> Result<(), String> {
 /// 用户已通过 dialog 主动选了文件，读其元数据是合理操作。browser/Ladle 模式前端走 null 兜底。
 #[derive(serde::Serialize)]
 struct FileMeta {
-    size: u64,    // 字节
-    mtime: u64,   // unix 毫秒
+    size: u64,  // 字节
+    mtime: u64, // unix 毫秒
     is_dir: bool,
 }
 
@@ -116,16 +126,30 @@ fn file_metadata(path: String) -> Result<FileMeta, String> {
 pub fn run() {
     init_logging();
 
-    let sidecar_state = SidecarState::new();
-    let handle_for_setup = sidecar_state.clone();
+    let runtime =
+        DesktopRuntimeSupervisor::new().expect("failed to initialize desktop runtime supervisor");
+    let runtime_for_setup = runtime.clone();
 
     tauri::Builder::default()
+        // 单实例在 setup 之前取得所有权，第二个 Host 只能唤醒现有主窗口，
+        // 不能启动另一套 Core/Bridge 或接触同一数据库。
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.show();
+                let _ = window.emit(
+                    WINDOW_VISIBILITY_EVENT,
+                    WindowVisibilityPayload { visible: true },
+                );
+                let _ = window.set_focus();
+            }
+        }))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
-        .manage(sidecar_state)
+        .manage(runtime)
         .invoke_handler(tauri::generate_handler![
             get_sidecar_secret,
             get_sidecar_port,
+            get_runtime_snapshot,
             set_always_on_top,
             set_passthrough,
             quit_app,
@@ -134,17 +158,29 @@ pub fn run() {
         ])
         .setup(move |app| {
             let app_handle = app.handle().clone();
-            let handle = handle_for_setup.clone();
+            let supervisor = runtime_for_setup.clone();
             tauri::async_runtime::spawn(async move {
-                if let Err(err) = sidecar::spawn(handle, app_handle).await {
-                    tracing::error!(?err, "sidecar spawn failed");
+                if let Err(error) = supervisor.start(app_handle).await {
+                    tracing::error!(%error, "desktop runtime startup failed");
                 }
             });
 
             // ── System tray ────────────────────────────────────────────────
             let tray_menu = tauri::menu::MenuBuilder::new(app)
-                .item(&tauri::menu::MenuItem::with_id(app, "show",  "显示 Ema",  true, None::<&str>)?)
-                .item(&tauri::menu::MenuItem::with_id(app, "quit",  "退出",       true, None::<&str>)?)
+                .item(&tauri::menu::MenuItem::with_id(
+                    app,
+                    "show",
+                    "显示 Ema",
+                    true,
+                    None::<&str>,
+                )?)
+                .item(&tauri::menu::MenuItem::with_id(
+                    app,
+                    "quit",
+                    "退出",
+                    true,
+                    None::<&str>,
+                )?)
                 .build()?;
 
             let _tray = TrayIconBuilder::new()
@@ -158,7 +194,8 @@ pub fn run() {
                         button: MouseButton::Left,
                         button_state: MouseButtonState::Up,
                         ..
-                    } = event {
+                    } = event
+                    {
                         let app = tray.app_handle();
                         if let Some(win) = app.get_webview_window("main") {
                             if win.is_visible().unwrap_or(false) {
@@ -193,7 +230,7 @@ pub fn run() {
                         // 不用 block_on 阻塞主线程；spawn 一个 async 任务跑 shutdown 后退出
                         let app = app.clone();
                         tauri::async_runtime::spawn(async move {
-                            let state = app.state::<SidecarState>();
+                            let state = app.state::<DesktopRuntimeSupervisor>();
                             state.shutdown().await;
                             app.exit(0);
                         });
@@ -220,13 +257,13 @@ pub fn run() {
         .expect("error while building tauri application")
         .run(|app_handle, event| {
             if let RunEvent::Exit = event {
-                // 最后防线：任何退出路径（崩溃、Task Manager 杀、系统关机）都尝试清理。
-                // 配合 Job Object，即使 shutdown 没跑完，OS 也会 kill 整个 Job（bug 4 兜底）。
-                let state = app_handle.state::<SidecarState>();
+                // 最后防线：正常 Tauri 退出路径都尝试清理。Windows Job Object
+                // 和 Unix process group 负责进程异常退出时的整棵进程树兜底。
+                let state = app_handle.state::<DesktopRuntimeSupervisor>();
                 tauri::async_runtime::block_on(async {
                     state.shutdown().await;
                 });
-                tracing::info!("tauri exit event — sidecar + bridge shutdown complete");
+                tracing::info!("tauri exit event — desktop runtime shutdown complete");
             }
         });
 }

@@ -10,7 +10,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build"
+    "tauri:build": "tauri build",
+    "tauri:build:release": "node scripts/verify-release-assets.mjs && tauri build --config src-tauri/tauri.release.conf.json"
   },
   "dependencies": {
     "@ema-agent/contracts": "workspace:*",

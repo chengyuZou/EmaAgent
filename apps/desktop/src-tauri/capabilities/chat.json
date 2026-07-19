@@ -1,0 +1,15 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "chat-window",
+  "description": "聊天窗口允许选择附件、保存产物和打开会话引用的本地文件。",
+  "windows": ["chat"],
+  "permissions": [
+    "core:default",
+    "dialog:allow-open",
+    "dialog:allow-save",
+    {
+      "identifier": "opener:allow-open-path",
+      "allow": [{ "path": "**" }]
+    }
+  ]
+}

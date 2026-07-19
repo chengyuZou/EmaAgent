@@ -1,3 +1,4 @@
+// 组装 Core 服务、监听本地端口，并协调桌面运行时就绪与安全退出。
 import { serve } from '@hono/node-server';
 import { Database } from '@ema-agent/storage';
 import { buildServer } from './server.js';
@@ -14,6 +15,7 @@ import { createServer } from 'node:net';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { verifyCoreBuildIntegrity } from './build-integrity.js';
+import { publishRuntimeReady } from './bootstrap/readiness.js';
 
 // 开发态直接运行 TypeScript；生产态拒绝缺失、陈旧或被混入旧文件的 dist。
 verifyCoreBuildIntegrity(import.meta.url);
@@ -108,7 +110,9 @@ async function main() {
   // Bridge may not be running in dev — failures are logged as warnings.
   void bindings.providerRuntime.syncBridge();
 
+  let clearRuntimeReady: (() => void) | null = null;
   const server = serve({ fetch: app.fetch, port, hostname: '127.0.0.1' }, (info) => {
+    clearRuntimeReady = publishRuntimeReady(info.port);
     console.log(`[core] ema-core listening on http://127.0.0.1:${info.port}`);
   });
   // 只限制请求头和请求体的接收时间，不限制可能运行数小时的 Agent/Task。
@@ -127,6 +131,7 @@ async function main() {
     console.log('[core] shutting down...');
     void (async () => {
       try { await bgWork.shutdown(); } catch { /* swallow */ }
+      clearRuntimeReady?.();
       lock.release();
       server.close(() => {
         profileDb.close();

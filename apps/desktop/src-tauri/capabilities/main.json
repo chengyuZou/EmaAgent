@@ -1,0 +1,12 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "main-window",
+  "description": "桌宠主窗口只允许窗口交互、事件通信和打开受信任网页。",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "core:window:allow-start-dragging",
+    "core:window:allow-is-visible",
+    "opener:allow-open-url"
+  ]
+}
