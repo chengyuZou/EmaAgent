@@ -29,6 +29,7 @@ type InspectorPanelId = 'branches' | 'artifacts' | 'files' | 'tasks';
 export function ChatPanel(): JSX.Element {
   const viewedSessionId = useConversationStore((s) => s.viewedSessionId);
   const sidecarStatus   = useSidecarStore((s) => s.status);
+  const hasConnected    = useSidecarStore((s) => s.lastKnownPort !== null);
   // Artifact 入口受 V1 发布特性门禁(fail-closed:未加载/失败 → false,按钮不显示)。
   const artifactsEnabled = useCapabilitiesStore((s) => s.features.artifacts);
 
@@ -137,7 +138,7 @@ export function ChatPanel(): JSX.Element {
 
   const hasInspector = activePanels.size > 0;
 
-  if (sidecarStatus.kind === 'error') {
+  if (sidecarStatus.kind === 'error' && !hasConnected) {
     return (
       <div className="flex items-center justify-center h-screen ema-fade-in text-[var(--ema-text-tertiary)]">
         <div className="text-center">
@@ -148,7 +149,7 @@ export function ChatPanel(): JSX.Element {
     );
   }
 
-  if (sidecarStatus.kind === 'pending' || sidecarStatus.kind === 'unknown') {
+  if (!hasConnected && (sidecarStatus.kind === 'pending' || sidecarStatus.kind === 'unknown')) {
     return (
       <div className="flex items-center justify-center h-screen ema-fade-in text-[var(--ema-text-tertiary)]">
         连接中…
@@ -233,6 +234,17 @@ export function ChatPanel(): JSX.Element {
               </div>
             </div>
           </div>
+
+          {sidecarStatus.kind === 'error' && (
+            <div
+              role="status"
+              className="flex items-center gap-2 px-4 py-2 border-b text-xs bg-[var(--ema-danger-muted)] border-[var(--ema-danger)]/30 text-[var(--ema-danger)]"
+            >
+              <span className="i-lucide:unplug shrink-0" aria-hidden />
+              <span className="truncate">Sidecar 暂时离线：{sidecarStatus.reason}</span>
+              <span className="ml-auto shrink-0 text-[var(--ema-text-tertiary)]">输入内容会保留</span>
+            </div>
+          )}
 
           <ChatHistory />
           <ChatInput />

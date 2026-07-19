@@ -3,19 +3,25 @@ import { useEffect, useState } from 'react';
 import { EmaStageView }          from './components/EmaStageView.js';
 import { SpeechBubble }          from './components/SpeechBubble.js';
 import { PermissionToastLayer }  from './components/PermissionToastLayer.js';
-import { defaultLive2DRuntime, type Live2DModelRuntimeConfig } from '@ema-agent/live2d-react';
+import { defaultLive2DRuntime } from '@ema-agent/live2d-react';
 import {
   FloatingDock,
   ShellSetupDialog,
+  SidecarApiError,
   cardsApi,
   mountSystemEvents,
   shellApi,
   turnsApi,
+  useCardStore,
   useSidecarStore,
   useThemeSync,
 } from '@ema-agent/desktop-ui';
 import type { ShellStatus, SidecarStatus } from '@ema-agent/desktop-ui';
-import type { TurnId } from '@ema-agent/contracts';
+import type { CharacterCardId, TurnId } from '@ema-agent/contracts';
+import {
+  StageSnapshotLoader,
+  type ActiveStageSnapshot,
+} from './stage-snapshot-loader.js';
 
 // ── Main window ─────────────────────────────────────────────────────────────
 //
@@ -32,35 +38,66 @@ import type { TurnId } from '@ema-agent/contracts';
 
 const DOCK_FADE_GRACE_MS = 600;
 
+type ActiveStageState =
+  | { kind: 'empty' }
+  | { kind: 'loading'; cardId: CharacterCardId }
+  | { kind: 'ready'; snapshot: ActiveStageSnapshot }
+  | { kind: 'error'; cardId: CharacterCardId; error: unknown };
+
 export function App(): React.JSX.Element {
   const sidecarStatus = useSidecarStore((s) => s.status);
+  const activeCardId = useCardStore((s) => s.activeCardId);
+  const activeLive2dModelId = useCardStore((s) => (
+    s.cards.find((card) => card.id === s.activeCardId)?.live2dModelId ?? null
+  ));
   const [dockVisible,  setDockVisible]  = useState(false);
   const [shellStatus,  setShellStatus]  = useState<ShellStatus | null>(null);
-  const [modelPath,    setModelPath]    = useState<string | null>(null);
-  const [runtimeConfig, setRuntimeConfig] = useState<Live2DModelRuntimeConfig | null>(null);
+  const [stageState, setStageState] = useState<ActiveStageState>({ kind: 'empty' });
+  const [stageLoader] = useState(() => new StageSnapshotLoader({
+    getModelPath: (cardId) => cardsApi.getLive2dModelPath(cardId),
+    async getRuntimeConfig(cardId) {
+      try {
+        return await cardsApi.getLive2dRuntimeConfig(cardId);
+      } catch (error: unknown) {
+        // 运行配置是可选资源；只有“确实不存在”才使用默认值，其他故障必须显式失败。
+        if (error instanceof SidecarApiError && error.status === 404) return null;
+        throw error;
+      }
+    },
+  }));
 
-  // Fetch the active card's Live2D model path + runtime config from the
-  // sidecar. No hardcoding — the card's live2dModelId → live2d_models table
-  // → storage_path tells us where the model lives.
-  // model-path is REQUIRED (stage can't mount without it); runtime-config is
-  // an OPTIONAL enhancement (emotion/motion map) whose 404 must NOT block
-  // model loading — fetch them independently.
+  // Sidecar 首次可用及角色切换事件都会刷新 card-store；舞台只订阅稳定的角色字段。
   useEffect(() => {
     if (sidecarStatus.kind !== 'ok') return;
-    void (async () => {
-      try {
-        const cards = await cardsApi.list();
-        const active = cards.find((c) => c.isActive);
-        if (!active?.live2dModelId) return;
-        const path = await cardsApi.getLive2dModelPath(active.id);
-        setModelPath(path);
-        try {
-          const config = await cardsApi.getLive2dRuntimeConfig(active.id);
-          setRuntimeConfig(config);
-        } catch { /* runtime-config missing — model loads with defaults */ }
-      } catch { /* sidecar not ready yet — will retry on next render */ }
-    })();
+    void useCardStore.getState().load();
   }, [sidecarStatus.kind]);
+
+  // 路径与配置必须作为同一快照提交，绝不展示“新模型 + 旧角色配置”。
+  useEffect(() => {
+    stageLoader.invalidate();
+
+    if (!activeCardId || !activeLive2dModelId) {
+      setStageState({ kind: 'empty' });
+      return;
+    }
+
+    let disposed = false;
+    setStageState({ kind: 'loading', cardId: activeCardId });
+    void stageLoader.load(activeCardId)
+      .then((snapshot) => {
+        if (!disposed && snapshot) setStageState({ kind: 'ready', snapshot });
+      })
+      .catch((error: unknown) => {
+        if (disposed) return;
+        console.error('[stage] failed to load active character', activeCardId, error);
+        setStageState({ kind: 'error', cardId: activeCardId, error });
+      });
+
+    return () => {
+      disposed = true;
+      stageLoader.invalidate();
+    };
+  }, [activeCardId, activeLive2dModelId, stageLoader]);
 
   useDevTtsPlaybackFromUrl();
   useThemeSync();
@@ -113,10 +150,11 @@ export function App(): React.JSX.Element {
 
       <GlowBorder />
 
-      {modelPath && (
+      {stageState.kind === 'ready' && (
         <EmaStageView
-          modelPath={modelPath}
-          runtimeConfig={runtimeConfig ?? undefined}
+          key={stageState.snapshot.cardId}
+          modelPath={stageState.snapshot.modelPath}
+          runtimeConfig={stageState.snapshot.runtimeConfig ?? undefined}
         />
       )}
 

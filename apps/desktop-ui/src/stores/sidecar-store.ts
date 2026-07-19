@@ -15,6 +15,10 @@ export type SidecarStatus =
 export interface SidecarStoreState {
   status:        SidecarStatus;
   lastKnownPort: number | null;
+  /** 后台健康检查正在执行；不会把已连接状态降成 pending。 */
+  checking: boolean;
+  lastCheckedAt: number | null;
+  consecutiveFailures: number;
 
   refresh():         Promise<void>;
   startPolling(intervalMs?: number): () => void;
@@ -22,35 +26,68 @@ export interface SidecarStoreState {
 
 // ── Store ─────────────────────────────────────────────────────────────────────
 
+const HEALTH_TIMEOUT_MS = 5_000;
+let refreshInFlight: Promise<void> | null = null;
+
 export const useSidecarStore = create<SidecarStoreState>((set, get) => ({
   status:        { kind: 'unknown' },
   lastKnownPort: null,
+  checking: false,
+  lastCheckedAt: null,
+  consecutiveFailures: 0,
 
-  async refresh() {
-    set({ status: { kind: 'pending' } });
+  refresh() {
+    if (refreshInFlight) return refreshInFlight;
 
-    try {
-      const port = await tauriBridge.invoke<number>('get_sidecar_port');
-      const effectivePort = (typeof port === 'number' && port > 0) ? port : 3421;
+    const run = async (): Promise<void> => {
+      const currentStatus = get().status;
+      set({
+        checking: true,
+        // pending 只表示首次连接；已建立连接后的复检不卸载任何业务 UI。
+        ...(currentStatus.kind === 'unknown' ? { status: { kind: 'pending' } as SidecarStatus } : {}),
+      });
 
-      const start = performance.now();
-      const res = await fetch(`http://127.0.0.1:${effectivePort}/health`);
-      const latencyMs = Math.round(performance.now() - start);
+      const controller = new AbortController();
+      const timeout = globalThis.setTimeout(() => controller.abort(), HEALTH_TIMEOUT_MS);
 
-      if (res.ok) {
+      try {
+        const port = await tauriBridge.invoke<number>('get_sidecar_port');
+        const effectivePort = (typeof port === 'number' && port > 0) ? port : 3421;
+
+        const start = performance.now();
+        const res = await fetch(`http://127.0.0.1:${effectivePort}/health`, {
+          signal: controller.signal,
+        });
+        const latencyMs = Math.round(performance.now() - start);
+
+        if (!res.ok) throw new Error(`Health returned ${res.status}`);
+
         set({
           status:        { kind: 'ok', port: effectivePort, latencyMs },
           lastKnownPort: effectivePort,
+          checking: false,
+          lastCheckedAt: Date.now(),
+          consecutiveFailures: 0,
         });
-      } else {
+      } catch (err: unknown) {
+        const reason = controller.signal.aborted
+          ? `Health check timed out after ${HEALTH_TIMEOUT_MS}ms`
+          : err instanceof Error ? err.message : 'Unknown error';
         set({
-          status: { kind: 'error', reason: `Health returned ${res.status}` },
+          status: { kind: 'error', reason },
+          checking: false,
+          lastCheckedAt: Date.now(),
+          consecutiveFailures: get().consecutiveFailures + 1,
         });
+      } finally {
+        globalThis.clearTimeout(timeout);
       }
-    } catch (err: unknown) {
-      const reason = err instanceof Error ? err.message : 'Unknown error';
-      set({ status: { kind: 'error', reason } });
-    }
+    };
+
+    refreshInFlight = run().finally(() => {
+      refreshInFlight = null;
+    });
+    return refreshInFlight;
   },
 
   startPolling(intervalMs = 5000): () => void {

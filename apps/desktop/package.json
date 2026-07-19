@@ -8,6 +8,7 @@
     "build": "tsc -p tsconfig.json && vite build",
     "preview": "vite preview",
     "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build"
   },
@@ -41,6 +42,7 @@
     "@unocss/preset-uno": "^66.7.0",
     "@vitejs/plugin-react": "^4.3.3",
     "typescript": "^5.9.3",
-    "vite": "^5.4.10"
+    "vite": "^5.4.10",
+    "vitest": "^2.0.0"
   }
 }

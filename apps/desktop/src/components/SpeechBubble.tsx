@@ -9,28 +9,80 @@
  * Only tracks the most recently started session (mirrors ttsOwnerSessionId).
  * Positioned at the top of the transparent window so it floats above Ema.
  */
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { tauriBridge } from '@ema-agent/desktop-ui';
 
 const FADE_DELAY_MS = 4000;
 const FADE_OUT_MS   = 600;
+
+/**
+ * 气泡淡出生命周期控制器(F-030)。旧实现只持有"延迟淡出"定时器, 匿名
+ * "淡出完成"定时器在新 turn 开始时无法取消, 到点把新回答清空。
+ * 两个定时器都严格持有; 新 turn/新文本/重复结束/销毁统一取消;
+ * 世代号兜底——已闭包的旧回调即使触发也不碰新消息。
+ */
+export interface FadeController {
+  /** 排程完整淡出流程(延迟 → 淡出 → 隐藏清空); 重复调用先取消旧任务。 */
+  scheduleFade(): void;
+  /** 取消全部挂起任务并使旧回调失效。 */
+  clear(): void;
+}
+
+export function createFadeController(opts: {
+  fadeDelayMs: number;
+  fadeOutMs: number;
+  onFadeStart: () => void;
+  onFadeDone: () => void;
+}): FadeController {
+  let delayTimer: ReturnType<typeof setTimeout> | null = null;
+  let outTimer: ReturnType<typeof setTimeout> | null = null;
+  let epoch = 0;
+
+  const clear = (): void => {
+    epoch += 1;
+    if (delayTimer !== null) { clearTimeout(delayTimer); delayTimer = null; }
+    if (outTimer !== null) { clearTimeout(outTimer); outTimer = null; }
+  };
+
+  const scheduleFade = (): void => {
+    clear();
+    const myEpoch = epoch;
+    delayTimer = setTimeout(() => {
+      delayTimer = null;
+      if (myEpoch !== epoch) return;
+      opts.onFadeStart();
+      outTimer = setTimeout(() => {
+        outTimer = null;
+        if (myEpoch !== epoch) return;
+        opts.onFadeDone();
+      }, opts.fadeOutMs);
+    }, opts.fadeDelayMs);
+  };
+
+  return { scheduleFade, clear };
+}
 
 export function SpeechBubble(): React.JSX.Element | null {
   const [text, setText]       = useState('');
   const [visible, setVisible] = useState(false);
   const [fading, setFading]   = useState(false);
   const activeSession         = useRef<string | null>(null);
-  const fadeTimer             = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const fade                  = useMemo(
+    () =>
+      createFadeController({
+        fadeDelayMs: FADE_DELAY_MS,
+        fadeOutMs:   FADE_OUT_MS,
+        onFadeStart: () => setFading(true),
+        onFadeDone:  () => { setVisible(false); setText(''); setFading(false); },
+      }),
+    [],
+  );
 
   useEffect(() => {
-    const clearFade = (): void => {
-      if (fadeTimer.current) { clearTimeout(fadeTimer.current); fadeTimer.current = null; }
-    };
-
     const unlistenStart = tauriBridge.listen<{ sessionId: string }>(
       'speech:start',
       (e) => {
-        clearFade();
+        fade.clear();
         activeSession.current = e.payload.sessionId;
         setText('');
         setFading(false);
@@ -42,6 +94,7 @@ export function SpeechBubble(): React.JSX.Element | null {
       'speech:delta',
       (e) => {
         if (e.payload.sessionId !== activeSession.current) return;
+        fade.clear();
         setText((prev) => prev + e.payload.text);
         setFading(false);
         setVisible(true);
@@ -52,20 +105,17 @@ export function SpeechBubble(): React.JSX.Element | null {
       'speech:end',
       (e) => {
         if (e.payload.sessionId !== activeSession.current) return;
-        fadeTimer.current = setTimeout(() => {
-          setFading(true);
-          setTimeout(() => { setVisible(false); setText(''); setFading(false); }, FADE_OUT_MS);
-        }, FADE_DELAY_MS);
+        fade.scheduleFade();
       },
     );
 
     return () => {
-      clearFade();
+      fade.clear();
       void unlistenStart.then((fn) => fn());
       void unlistenDelta.then((fn) => fn());
       void unlistenEnd.then((fn) => fn());
     };
-  }, []);
+  }, [fade]);
 
   if (!visible || !text) return null;
 

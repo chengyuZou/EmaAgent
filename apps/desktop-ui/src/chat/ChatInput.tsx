@@ -5,6 +5,7 @@ import { kbApi, type DocumentAssetWire, type KbLibraryWire } from '../api/knowle
 import { useConversationStore } from '../stores/conversation-store.js';
 import { useSessionStore } from '../stores/session-store.js';
 import { useUiStore } from '../stores/ui-store.js';
+import { useSidecarStore } from '../stores/sidecar-store.js';
 import { ModeSelector } from './ModeSelector.js';
 import { DecisionLayer } from '../decision/DecisionLayer.js';
 import { ModelPicker, type ModelSelection } from './ModelPicker.js';
@@ -51,6 +52,7 @@ export function ChatInput(): JSX.Element {
   const viewedId   = useConversationStore((s) => s.viewedSessionId);
   const pendingForkFromTurnId = useConversationStore((s) => s.pendingForkFromTurnId);
   const ttsEnabled = useUiStore((s) => s.ttsEnabled);
+  const sidecarReady = useSidecarStore((s) => s.status.kind === 'ok');
 
   const initialDraft = useConversationStore.getState().draftMap.get(viewedId as string ?? '') ?? '';
   const [text, setText] = useState(initialDraft);
@@ -145,6 +147,7 @@ export function ChatInput(): JSX.Element {
   );
   // 附件-only 也可发送（后端 turns.ts refine 同步放行）
   const canSend = (text.trim().length > 0 || pendingAttachments.length > 0)
+    && sidecarReady
     && !isStreamingHere
     && !isSubmitting;
 
