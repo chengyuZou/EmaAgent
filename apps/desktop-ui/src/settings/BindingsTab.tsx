@@ -29,7 +29,8 @@ const MODULE_CAPABILITY: Record<BindingModule, string> = {
   tts:              'tts',
   stt:              'stt',
   vision:           'vision',
-  imagegen:         'vision',
+  // V1 暂不展示 Image Gen，但保留真实能力名，禁止再次伪装成 Vision。
+  imagegen:         'imagegen',
 };
 
 const POOL_CAPABILITIES = new Set(['llm', 'embed', 'rerank', 'tts', 'stt', 'vision']);
@@ -45,7 +46,8 @@ const MODULES: Array<{ id: BindingModule; label: string; desc: string }> = [
   { id: 'tts',           label: 'TTS',          desc: '语音合成' },
   { id: 'stt',           label: 'STT',          desc: '语音识别' },
   { id: 'vision',        label: 'Vision',       desc: '图像理解' },
-  { id: 'imagegen',      label: 'Image Gen',    desc: '图像生成' },
+  // V1 暂不开放：Image Gen 的模型池、探测与执行链尚未完成端到端验收。
+  // { id: 'imagegen', label: 'Image Gen', desc: '图像生成' },
 ];
 
 const CAP_LABELS: Record<string, string> = {

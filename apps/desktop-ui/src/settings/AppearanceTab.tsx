@@ -1,5 +1,7 @@
-﻿import { useEffect, useState, type JSX, type ChangeEvent } from 'react';
-import { Button, Slider, type SliderStep } from '@ema-agent/ui';
+﻿// 展示并保存主题颜色、圆角、Markdown 字体和明暗模式。
+import { useEffect, useState, type JSX, type ChangeEvent } from 'react';
+import { Button, Input, Select, Slider, type SliderStep } from '@ema-agent/ui';
+import type { ContentFontPreset } from '../api/settings.js';
 import { useThemeStore, type ThemeMode } from '../stores/theme-store.js';
 
 // ── Hue presets ───────────────────────────────────────────────────────────────
@@ -32,6 +34,13 @@ const RADIUS_PREVIEW_CLASS: Record<'sm' | 'md' | 'lg' | 'xl', string> = {
   xl: 'rounded-xl',
 };
 
+const CONTENT_FONT_OPTIONS: Array<{ value: ContentFontPreset; label: string }> = [
+  { value: 'system', label: '跟随系统' },
+  { value: 'rounded', label: '柔和圆润' },
+  { value: 'reading', label: '人文阅读' },
+  { value: 'custom', label: '自定义本地字体' },
+];
+
 // ── Hue spectrum slider ───────────────────────────────────────────────────────
 //
 // Native <input type="range"> with a gradient track showing the full hue wheel.
@@ -55,8 +64,21 @@ function HueSlider({ value, onChange }: { value: number; onChange: (h: number) =
 // ── AppearanceTab ─────────────────────────────────────────────────────────────
 
 export function AppearanceTab(): JSX.Element {
-  const { hue, radius, mode, ready, init, setHue, setRadius, setMode } = useThemeStore();
+  const {
+    hue,
+    radius,
+    mode,
+    contentFontPreset,
+    contentFontFamily,
+    ready,
+    init,
+    setHue,
+    setRadius,
+    setMode,
+    setContentFont,
+  } = useThemeStore();
   const [shaking, setShaking] = useState<ThemeMode | null>(null);
+  const [customFontDraft, setCustomFontDraft] = useState(contentFontFamily);
 
   // 点当前已激活的主题按钮 -> shake 反馈(不 disabled,用户要知道点了)
   function handleModeClick(target: ThemeMode): void {
@@ -71,6 +93,14 @@ export function AppearanceTab(): JSX.Element {
   useEffect(() => {
     if (!ready) void init();
   }, [ready, init]);
+
+  useEffect(() => {
+    setCustomFontDraft(contentFontFamily);
+  }, [contentFontFamily]);
+
+  function saveCustomFont(): void {
+    void setContentFont('custom', customFontDraft);
+  }
 
   return (
     <div className="space-y-8 max-w-lg">
@@ -136,6 +166,46 @@ export function AppearanceTab(): JSX.Element {
               className={`w-12 h-12 ${RADIUS_PREVIEW_CLASS[size]} bg-[var(--ema-primary-muted)] border border-[var(--ema-primary)]`}
             />
           ))}
+        </div>
+      </section>
+
+      <div className="border-t border-[var(--ema-border)]" />
+
+      {/* Markdown 正文字体只影响消息内容，不改变界面控件、代码块和公式。 */}
+      <section className="space-y-4">
+        <div>
+          <p className="text-sm font-medium text-[var(--ema-text-secondary)]">Markdown 正文字体</p>
+          <p className="text-xs mt-0.5 text-[var(--ema-text-tertiary)]">
+            调整聊天正文和长文本的阅读观感，代码仍使用等宽字体
+          </p>
+        </div>
+
+        <Select
+          value={contentFontPreset}
+          onChange={(value) => void setContentFont(value as ContentFontPreset, customFontDraft)}
+          options={CONTENT_FONT_OPTIONS}
+        />
+
+        {contentFontPreset === 'custom' && (
+          <div className="space-y-1.5">
+            <Input
+              value={customFontDraft}
+              maxLength={80}
+              placeholder="输入已安装字体名称，如 LXGW WenKai"
+              onChange={(event) => setCustomFontDraft(event.target.value)}
+              onBlur={saveCustomFont}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') event.currentTarget.blur();
+              }}
+            />
+            <p className="text-xs text-[var(--ema-text-tertiary)]">
+              字体来自本机；其他操作系统未安装时会自动回退到系统字体
+            </p>
+          </div>
+        )}
+
+        <div className="markdown-content rounded-lg border border-[var(--ema-border)] bg-[var(--ema-surface-1)] px-4 py-3 text-sm text-[var(--ema-text-primary)]">
+          Ema 会用这种字体显示 Markdown 正文。The quick brown fox jumps over the lazy dog.
         </div>
       </section>
 

@@ -6,6 +6,12 @@
  */
 
 :root {
+  /* 字体分层：界面、Markdown 正文和代码互不串改。 */
+  --ema-font-ui: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Microsoft YaHei', sans-serif;
+  --ema-font-content-system: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Microsoft YaHei', sans-serif;
+  --ema-font-content: var(--ema-font-content-system);
+  --ema-font-mono: 'Cascadia Code', 'JetBrains Mono', 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+
   /* Easing */
   --ema-ease:   cubic-bezier(0.23, 1, 0.32, 1);
   --ema-ease-in: cubic-bezier(0.4, 0, 1, 1);

@@ -78,12 +78,17 @@
  *  Cascadia Code 优先(柔和+连字),字重 400 + 行高 1.7 + 连字 + 抗锯齿。
  */
 .hljs, .markdown-content pre, .markdown-content code, .ema-font-mono {
-  font-family: 'Cascadia Code', 'JetBrains Mono', 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace !important;
+  font-family: var(--ema-font-mono) !important;
   font-weight: 400;
   line-height: 1.7;
   font-feature-settings: 'liga' 1, 'calt' 1;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+/* 聊天、Skill 和 Markdown 文件预览共用正文变量；代码与 KaTeX 保持各自字体。 */
+.markdown-content {
+  font-family: var(--ema-font-content);
 }
 
 /* ── Hue spectrum slider(AppearanceTab)──────────────────────────────────────

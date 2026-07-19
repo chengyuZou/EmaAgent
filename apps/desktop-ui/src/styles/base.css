@@ -5,7 +5,7 @@ html, body {
   margin: 0;
   padding: 0;
   background: transparent;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Microsoft YaHei', sans-serif;
+  font-family: var(--ema-font-ui);
   font-size: 14px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;

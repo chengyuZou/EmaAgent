@@ -24,8 +24,9 @@ const SECTIONS = [
     description: '语音识别(语音转文字)' },
   { key: 'vision',   label: 'Vision',    icon: 'i-solar:eye-bold-duotone',
     description: '图像理解模型' },
-  { key: 'imagegen', label: 'Image Gen', icon: 'i-solar:gallery-bold-duotone',
-    description: '图像生成模型' },
+  // V1 暂不开放：保留 Provider 与后端预留实现，端到端接通后恢复入口。
+  // { key: 'imagegen', label: 'Image Gen', icon: 'i-solar:gallery-bold-duotone',
+  //   description: '图像生成模型' },
 ] as const;
 
 function hostOf(url: string | undefined): string {

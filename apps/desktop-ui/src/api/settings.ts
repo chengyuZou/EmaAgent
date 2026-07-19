@@ -1,5 +1,5 @@
 /**
- * Settings API — event-display / permission-timeout KV.
+ * 读写事件展示、权限超时、主题和知识库模型等通用设置。
  */
 import { sidecarClient } from './sidecar-client.js';
 
@@ -27,7 +27,13 @@ export interface ThemeConfig {
   radius: number;
   /** 'light'(默认)| 'dark'。暗色 token 在 :root,亮色 [data-theme="light"] 覆盖 */
   mode?:  'light' | 'dark';
+  /** Markdown 正文字体；不影响 UI 控件、代码块和数学公式。 */
+  contentFontPreset?: ContentFontPreset;
+  /** custom 模式下的单个本地字体名称。 */
+  contentFontFamily?: string;
 }
+
+export type ContentFontPreset = 'system' | 'rounded' | 'reading' | 'custom';
 
 /** KB's own embed/rerank model choice (decoupled from LightRAG's lightrag-embed binding). */
 export interface KbModelRef { providerConfigId: string; model: string }

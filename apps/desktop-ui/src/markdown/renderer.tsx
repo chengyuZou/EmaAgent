@@ -1,18 +1,8 @@
 /**
- * Markdown renderer — React component that transforms Markdown → safe HTML.
- *
- * Pipeline:
- *   markdown string
- *     → remark-parse → remark-math → remark-gfm
- *     → remark-rehype
- *     → rehype-raw → rehype-katex → rehype-sanitize
- *     → rehype-stringify
- *     → dangerouslySetInnerHTML
- *
- * Note: Shiki syntax highlighting is temporarily disabled due to a
- * `rehype-shiki` git dependency install issue.
+ * 将模型返回的 Markdown 渲染为安全内容，并在清洗后补充公式与代码高亮。
+ * 流程：Markdown -> raw HTML -> 安全清洗 -> KaTeX -> highlight.js -> React。
  */
-import ReactMarkdown from 'react-markdown';
+import ReactMarkdown, { type Components } from 'react-markdown';
 import remarkMath from 'remark-math';
 import remarkGfm from 'remark-gfm';
 import rehypeKatex from 'rehype-katex';
@@ -33,45 +23,67 @@ export interface MarkdownProps {
   className?: string;
 }
 
-// ── Sanitize schema (allow KaTeX + Shiki classes) ────────────────────────────
+// ── Raw HTML 安全边界 ───────────────────────────────────────────────────────
 
-const sanitizeSchema = {
+type SanitizeAttribute = string | [string, ...Array<unknown>];
+
+function attributeName(attribute: SanitizeAttribute): string {
+  return typeof attribute === 'string' ? attribute : attribute[0];
+}
+
+function removeLayoutAttributes(attributes: SanitizeAttribute[] | undefined): SanitizeAttribute[] {
+  return (attributes ?? []).filter((attribute) => {
+    const name = attributeName(attribute);
+    return name !== 'style' && name !== 'id' && name !== 'className' && name !== 'class';
+  });
+}
+
+const safeAttributes = Object.fromEntries(
+  Object.entries(defaultSchema.attributes ?? {}).map(([tagName, attributes]) => [
+    tagName,
+    removeLayoutAttributes(attributes as SanitizeAttribute[]),
+  ]),
+);
+
+export const markdownSanitizeSchema = {
   ...defaultSchema,
   attributes: {
-    ...defaultSchema.attributes,
+    ...safeAttributes,
+    '*': removeLayoutAttributes(defaultSchema.attributes?.['*'] as SanitizeAttribute[] | undefined),
+    // 只允许 fenced code 的 language-* 类，供可信的代码高亮器识别语言。
     code: [
-      ...(defaultSchema.attributes?.code ?? []),
-      ['className'],
+      ...removeLayoutAttributes(defaultSchema.attributes?.code as SanitizeAttribute[] | undefined),
+      ['className', /^language-[\w-]+$/],
     ],
-    span: [
-      ...(defaultSchema.attributes?.span ?? []),
-      ['className', 'style'],
-    ],
-    div: [
-      ...(defaultSchema.attributes?.div ?? []),
-      ['className'],
-    ],
-    // KaTeX elements
-    math:  [['display']],
-    mjx:   [['class']],
-    // Allow target on links
-    a: [
-      ...(defaultSchema.attributes?.a ?? []),
-      ['target', 'rel'],
-    ],
-    // Details/summary for collapsible content
+    // raw span/div 不接受任何布局属性；KaTeX 在清洗后运行，不受影响。
+    span: [],
+    div: [],
+    a: removeLayoutAttributes(defaultSchema.attributes?.a as SanitizeAttribute[] | undefined),
     details: [],
     summary: [],
     sup: [],
     sub: [],
   },
-  // Allow KaTeX + Shiki specific tags
   tagNames: [
     ...(defaultSchema.tagNames ?? []),
-    'math', 'semantics', 'annotation', 'mrow', 'mi', 'mo', 'mn', 'msup', 'msub',
-    'mfrac', 'msqrt', 'mtable', 'mtr', 'mtd', 'munder', 'mover',
     'details', 'summary',
   ],
+};
+
+const markdownComponents: Components = {
+  a({ node: _node, href, children, ...props }) {
+    const external = typeof href === 'string' && /^https?:\/\//i.test(href);
+    return (
+      <a
+        {...props}
+        href={href}
+        target={external ? '_blank' : undefined}
+        rel={external ? 'noopener noreferrer' : undefined}
+      >
+        {children}
+      </a>
+    );
+  },
 };
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -87,11 +99,12 @@ export function Markdown({ source, className }: MarkdownProps): JSX.Element {
         remarkPlugins={[remarkMath, remarkGfm]}
         rehypePlugins={[
           rehypeRaw,
+          // 先清洗模型、Skill 和文件提供的 raw HTML，再运行可信渲染器。
+          [rehypeSanitize, markdownSanitizeSchema],
           rehypeKatex,
-          [rehypeSanitize, sanitizeSchema],
-          // 高亮放 sanitize 之后:sanitize 已过,高亮加的 hljs-* class/span 不被清
           rehypeHighlight,
         ]}
+        components={markdownComponents}
         className={`markdown-content${className ? ` ${className}` : ''}`}
       >
         {source}

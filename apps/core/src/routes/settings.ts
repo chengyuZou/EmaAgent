@@ -1,4 +1,5 @@
-﻿import { Hono } from 'hono';
+﻿// 提供通用设置的读取、校验和持久化路由。
+import { Hono } from 'hono';
 import { z } from 'zod';
 import { SettingsRepo } from '@ema-agent/storage';
 import type { AppBindings } from '../wiring/index.js';
@@ -107,11 +108,23 @@ const themeBodySchema = z.object({
   hue:    z.number().min(0).max(360),
   radius: z.number().min(0).max(3),
   mode:   z.enum(['light', 'dark']).optional(),
+  contentFontPreset: z.enum(['system', 'rounded', 'reading', 'custom']).optional(),
+  contentFontFamily: z.string()
+    .trim()
+    .max(80)
+    .regex(/^[\p{L}\p{N} _.-]*$/u)
+    .optional(),
 });
 
 type ThemeConfig = z.infer<typeof themeBodySchema>;
 
-const DEFAULT_THEME: ThemeConfig = { hue: 200, radius: 1, mode: 'light' };
+const DEFAULT_THEME: ThemeConfig = {
+  hue: 200,
+  radius: 1,
+  mode: 'light',
+  contentFontPreset: 'system',
+  contentFontFamily: '',
+};
 
 // KB's own embed/rerank model choice — decoupled from LightRAG's lightrag-embed
 // binding so changing KB's model never touches narrative (and vice versa).
