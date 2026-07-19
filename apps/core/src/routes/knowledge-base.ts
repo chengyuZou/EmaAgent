@@ -335,7 +335,7 @@ export function kbRoute(bindings: AppBindings): Hono {
     if (!dim) return c.json({ error: 'unknown_embed_dimension' }, 400);
     const space = bindings.ebd.embeddingSpace(ebdProviderId, ebdModel, dim);
     const count = entry.client.invalidateEmbeddings(space.id);
-    return c.json({ markedStale: count });
+    return c.json({ markedStale: count, embeddingSpace: space });
   });
 
   // POST /api/kb/reembed — 全库 stale 重建入队(202 + taskId, 后台执行;

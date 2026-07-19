@@ -79,13 +79,26 @@ export function modelBindingsRoute(bindings: AppBindings): Hono {
       case 'embed': {
         const rows = bindings.providerEmbedModels.listAll();
         return c.json({
-          models: rows.map((r) => ({
-            providerConfigId: r.provider_config_id,
-            providerName:     resolveName(r.provider_config_id),
-            model:            r.model,
-            contextWindow:    0,
-            dim:              r.dim,
-          })),
+          models: rows.map((r) => {
+            let embeddingSpace = null;
+            try {
+              embeddingSpace = bindings.ebd.embeddingSpace(
+                r.provider_config_id,
+                r.model,
+                r.dim,
+              );
+            } catch {
+              // Provider 运行时尚未装载时仍展示已启用模型，但不伪造空间身份。
+            }
+            return {
+              providerConfigId: r.provider_config_id,
+              providerName:     resolveName(r.provider_config_id),
+              model:            r.model,
+              contextWindow:    0,
+              dim:              r.dim,
+              embeddingSpace,
+            };
+          }),
         });
       }
       case 'rerank': {

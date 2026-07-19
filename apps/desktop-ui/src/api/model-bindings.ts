@@ -23,6 +23,17 @@ export interface AvailableBindingModel {
   contextWindow:    number;
   dim?:             number;
   maxChunks?:       number;
+  /** 后端 B-049 根据 Provider 运行时生成；前端不得自行拼接或猜测。 */
+  embeddingSpace?:  EmbeddingSpaceWire | null;
+}
+
+export interface EmbeddingSpaceWire {
+  id:            string;
+  providerId:    string;
+  model:         string;
+  dim:           number;
+  normalization: 'l2';
+  revision:      string;
 }
 
 export const modelBindingsApi = {

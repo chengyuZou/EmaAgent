@@ -116,25 +116,13 @@ export function EmaStageView({
       };
     }
 
-    // Listen for stage:cycle-expression (from FloatingDock)
-    // live2d-react handle doesn't expose cycleExpression — use store directly.
+    // Listen for stage:cycle-expression (from FloatingDock):
+    // 轮换语义由 store 的 cycleExpression 原子完成, 此处只做 stage 过滤。
     const unlistenCycle = tauriBridge.listen<{ stageId?: string }>(
       'stage:cycle-expression',
       (event) => {
         if (!isTargetStage(event.payload.stageId)) return;
-        const store = live2dStore.getState();
-        const exps = store.availableExpressions;
-        if (exps.length === 0) return;
-        // Clear current and pick next in rotation (or random if only one).
-        store.clearExpressions();
-        if (exps.length === 1) {
-          store.addExpression(exps[0]!, { source: 'ui' });
-        } else {
-          const current = store.activeExpressions[0]?.name;
-          const idx = current ? exps.indexOf(current) : -1;
-          const next = exps[(idx + 1) % exps.length]!;
-          store.addExpression(next, { source: 'ui' });
-        }
+        live2dStore.getState().cycleExpression();
       },
     );
 

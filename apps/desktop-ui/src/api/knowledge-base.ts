@@ -3,6 +3,7 @@
  * Wire types defined here to avoid a frontend→backend package dependency.
  */
 import { sidecarClient } from './sidecar-client.js';
+import type { EmbeddingSpaceWire } from './model-bindings.js';
 
 // ── Wire types ────────────────────────────────────────────────────────────────
 
@@ -219,9 +220,8 @@ export const kbApi = {
     await sidecarClient.request(`/api/kb/ingest-tasks/${taskId}/retry${buildQs({ kbId })}`, { method: 'POST' });
   },
 
-  /** POST /api/kb/documents/:id/reembed — 单文档重建入队(202 + taskId, 后台执行)。
-   *  kbId omitted → active KB. */
-  async reembedDocument(id: string, kbId?: string): Promise<{ taskId: string; status: string }> {
+  /** POST /api/kb/documents/:id/reembed — 单文档重建必须明确目标 KB。 */
+  async reembedDocument(id: string, kbId: string): Promise<{ taskId: string; status: string }> {
     return sidecarClient.request<{ taskId: string; status: string }>(
       `/api/kb/documents/${id}/reembed${buildQs({ kbId })}`,
       { method: 'POST' },
@@ -242,18 +242,19 @@ export const kbApi = {
     });
   },
 
-  /** POST /api/kb/invalidate — mark all embeddings stale after embed model switch.
-   *  kbId omitted → active KB. */
-  async invalidate(ebdProviderId: string, ebdModel: string, kbId?: string): Promise<{ markedStale: number }> {
-    return sidecarClient.request<{ markedStale: number }>('/api/kb/invalidate', {
+  /** POST /api/kb/invalidate — 模型切换后必须明确失效哪个 KB。 */
+  async invalidate(ebdProviderId: string, ebdModel: string, kbId: string): Promise<{
+    markedStale: number;
+    embeddingSpace: EmbeddingSpaceWire;
+  }> {
+    return sidecarClient.request('/api/kb/invalidate', {
       method: 'POST',
       json: { ebdProviderId, ebdModel, kbId },
     });
   },
 
-  /** POST /api/kb/reembed — 全库 stale 重建入队(202 + taskId, 后台执行)。
-   *  kbId omitted → active KB. */
-  async reembed(opts: { ebdProviderId: string; ebdModel: string; kbId?: string }): Promise<{ taskId: string; status: string }> {
+  /** POST /api/kb/reembed — 指定 KB 的 stale 文档重建入队。 */
+  async reembed(opts: { ebdProviderId: string; ebdModel: string; kbId: string }): Promise<{ taskId: string; status: string }> {
     return sidecarClient.request<{ taskId: string; status: string }>('/api/kb/reembed', {
       method: 'POST',
       json: opts,
@@ -261,7 +262,7 @@ export const kbApi = {
   },
 
   /** POST /api/kb/reembed-tasks/:taskId/cancel — 取消进行中的重建任务。 */
-  async cancelReembed(taskId: string, kbId?: string): Promise<void> {
+  async cancelReembed(taskId: string, kbId: string): Promise<void> {
     await sidecarClient.request(`/api/kb/reembed-tasks/${taskId}/cancel${buildQs({ kbId })}`, { method: 'POST' });
   },
 

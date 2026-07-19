@@ -9,6 +9,12 @@ import { showToast } from '../lib/toast.js';
 import { kbApi, type DocumentAssetWire, type ChunkSummaryWire, type AssetUsageWire } from '../api/knowledge-base.js';
 import { settingsApi, type KbModelsConfig, type KbModelRef } from '../api/settings.js';
 import { modelBindingsApi, type AvailableBindingModel } from '../api/model-bindings.js';
+import {
+  documentNeedsReembed,
+  resolveEmbedSelection,
+  sameKbModelRef,
+  type ResolvedEmbedSelection,
+} from './knowledge-base-embedding-state.js';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -28,8 +34,12 @@ const STATUS_VARIANT: Record<string, 'success' | 'warn' | 'neutral' | 'danger'> 
 
 // ── DocumentRow ───────────────────────────────────────────────────────────────
 
-function DocumentRow({ doc, currentEmbedModel, onDelete, index }: {
-  doc: DocumentAssetWire; currentEmbedModel?: string; onDelete(): void; index?: number;
+function DocumentRow({ doc, currentEmbed, kbId, onDelete, index }: {
+  doc: DocumentAssetWire;
+  currentEmbed?: ResolvedEmbedSelection;
+  kbId: string;
+  onDelete(): void;
+  index?: number;
 }): JSX.Element {
   const [deleting, setDeleting] = useState(false);
   const [expanded, setExpanded] = useState(false);
@@ -43,11 +53,8 @@ function DocumentRow({ doc, currentEmbedModel, onDelete, index }: {
 
   const [reembedding, setReembedding] = useState(false);
 
-  // ebd 元信息：和当前 KB embed 模型不一致（或已标 stale）→ 需重嵌，标红
-  const embedMismatch = !!doc.ebdModel && !!currentEmbedModel && doc.ebdModel !== currentEmbedModel;
-  const embedStale    = !!doc.ebdStale || embedMismatch;
-  // Per-doc "重嵌" applies when stale, or never embedded while a model is set.
-  const needsReembed  = embedStale || (!doc.ebdModel && !!currentEmbedModel);
+  // 使用后端生成的完整空间身份，不能只比较同名模型。
+  const needsReembed = documentNeedsReembed(doc, currentEmbed);
 
   async function handleDelete(): Promise<void> {
     setDeleting(true);
@@ -62,10 +69,14 @@ function DocumentRow({ doc, currentEmbedModel, onDelete, index }: {
   }
 
   async function handleReembed(): Promise<void> {
+    if (!kbId) {
+      showToast('当前文档没有明确的知识库归属', { variant: 'danger' });
+      return;
+    }
     setReembedding(true);
     try {
       // 202 入队后立即返回; 重建在后台执行, 完成后文档列表由 SSE 驱动刷新。
-      await kbApi.reembedDocument(doc.id);
+      await kbApi.reembedDocument(doc.id, kbId);
       showToast('已加入后台重建', { variant: 'success' });
     } catch {
       showToast('重嵌失败（请先在上方选择嵌入模型）', { variant: 'danger' });
@@ -96,10 +107,10 @@ function DocumentRow({ doc, currentEmbedModel, onDelete, index }: {
           <p className="text-xs text-[var(--ema-text-tertiary)] mt-0.5">
             {doc.wordCount.toLocaleString()} 词{doc.pageCount ? ` · ${doc.pageCount} 页` : ''}
             {doc.ebdModel ? (
-              <span className={`ml-2 font-mono ema-fade-in ${embedStale ? 'text-[var(--ema-danger)]' : 'text-[var(--ema-text-tertiary)]'}`}>
-                {embedStale && <span className="i-mdi:alert-circle-outline mr-0.5 align-middle" aria-hidden />}{doc.ebdModel}{embedStale ? '（需重嵌）' : ''}
+              <span className={`ml-2 font-mono ema-fade-in ${needsReembed ? 'text-[var(--ema-danger)]' : 'text-[var(--ema-text-tertiary)]'}`}>
+                {needsReembed && <span className="i-mdi:alert-circle-outline mr-0.5 align-middle" aria-hidden />}{doc.ebdModel}{needsReembed ? '（需重嵌）' : ''}
               </span>
-            ) : currentEmbedModel ? (
+            ) : currentEmbed ? (
               <span className="ml-2 ema-fade-in inline-flex items-center gap-0.5 text-[var(--ema-warning-text)]"><span className="i-mdi:alert-circle-outline" aria-hidden />未嵌入</span>
             ) : null}
           </p>
@@ -743,13 +754,19 @@ function LibraryManager(): JSX.Element {
 
 const NONE = '__none__';
 
-function KbModelSettings({ onEmbedModelChanged }: { onEmbedModelChanged?: (model: string | undefined) => void }): JSX.Element {
+function KbModelSettings({ onEmbedModelChanged }: {
+  onEmbedModelChanged?: (selection: ResolvedEmbedSelection | undefined) => void;
+}): JSX.Element {
+  const libs = useKbStore((state) => state.libs);
+  const activeLib = libs.find((lib) => lib.isActive);
   const [embedModels,  setEmbedModels]  = useState<AvailableBindingModel[]>([]);
   const [rerankModels, setRerankModels] = useState<AvailableBindingModel[]>([]);
   const [config, setConfig] = useState<KbModelsConfig>({});
+  const [saving, setSaving] = useState(false);
   const [rebuilding, setRebuilding] = useState(false);
   // 后台重建任务句柄: kb_reembed_* SSE 终态到达后由下方 useEffect 收口。
   const [rebuildTaskId, setRebuildTaskId] = useState<string | null>(null);
+  const [rebuildKbId, setRebuildKbId] = useState<string | null>(null);
   const rebuildTask = useKbStore((s) =>
     rebuildTaskId ? Object.values(s.reembedTasks).find((t) => t.taskId === rebuildTaskId) : undefined,
   );
@@ -759,18 +776,22 @@ function KbModelSettings({ onEmbedModelChanged }: { onEmbedModelChanged?: (model
     if (rebuildTask.status === 'done') {
       setRebuilding(false);
       setRebuildTaskId(null);
+      setRebuildKbId(null);
       showToast(`重建完成：${rebuildTask.completedItems ?? 0} 个文档`, { variant: 'success' });
     } else if (rebuildTask.status === 'partial_failed') {
       setRebuilding(false);
       setRebuildTaskId(null);
+      setRebuildKbId(null);
       showToast(`部分重建失败：${rebuildTask.completedItems ?? 0} 成功，${rebuildTask.failedItems ?? 0} 失败`, { variant: 'warning' });
     } else if (rebuildTask.status === 'cancelled') {
       setRebuilding(false);
       setRebuildTaskId(null);
+      setRebuildKbId(null);
       showToast('已取消重建', { variant: 'warning' });
     } else if (rebuildTask.status === 'failed') {
       setRebuilding(false);
       setRebuildTaskId(null);
+      setRebuildKbId(null);
       showToast(`重建失败：${rebuildTask.error ?? ''}`, { variant: 'danger' });
     }
   }, [rebuildTask]);
@@ -782,9 +803,12 @@ function KbModelSettings({ onEmbedModelChanged }: { onEmbedModelChanged?: (model
         modelBindingsApi.listAvailable('rerank').catch(() => []),
         settingsApi.getKbModels().catch(() => ({} as KbModelsConfig)),
       ]);
-      setEmbedModels(emb); setRerankModels(rer); setConfig(cfg);
+      setEmbedModels(emb);
+      setRerankModels(rer);
+      setConfig(cfg);
+      onEmbedModelChanged?.(resolveEmbedSelection(emb, cfg.embed));
     })();
-  }, []);
+  }, [onEmbedModelChanged]);
 
   const enc = (r?: KbModelRef | null): string => (r ? `${r.providerConfigId}|${r.model}` : NONE);
   const dec = (v: string): KbModelRef | null => {
@@ -794,21 +818,47 @@ function KbModelSettings({ onEmbedModelChanged }: { onEmbedModelChanged?: (model
   };
 
   async function save(next: KbModelsConfig): Promise<void> {
+    if (saving) return;
     const prevEmbed = config.embed;
-    setConfig(next);
+    setSaving(true);
     try {
       await settingsApi.putKbModels(next);
-      // embed 模型变了 -> 自动 invalidate(标 stale),让不匹配 doc 立刻显 ⚠️ + 重嵌按钮。
-      // 之前要手动点"重建索引"才标 stale,导致切换后按钮时有时无。
-      if (enc(next.embed) !== enc(prevEmbed)) {
+      setConfig(next);
+
+      // kb.models 是全局配置；切换空间后逐个标记所有注册库，禁止遗漏非 active KB。
+      if (!sameKbModelRef(next.embed, prevEmbed)) {
+        let markedStale = 0;
+        const failedLibraries: string[] = [];
         if (next.embed) {
-          try { await kbApi.invalidate(next.embed.providerConfigId, next.embed.model); } catch { /* 标 stale 失败不阻断保存 */ }
+          for (const lib of libs) {
+            try {
+              const result = await kbApi.invalidate(
+                next.embed.providerConfigId,
+                next.embed.model,
+                lib.id,
+              );
+              markedStale += result.markedStale;
+            } catch {
+              failedLibraries.push(lib.name);
+            }
+          }
         }
-        onEmbedModelChanged?.(next.embed?.model);
+        onEmbedModelChanged?.(resolveEmbedSelection(embedModels, next.embed));
+        if (!next.embed) {
+          showToast('已保存，知识库将只使用关键词检索', { variant: 'success' });
+          return;
+        }
+        if (failedLibraries.length > 0) {
+          showToast(`模型已保存，但以下知识库标记失败：${failedLibraries.join('、')}`, { variant: 'warning' });
+          return;
+        }
+        showToast(`已保存，并标记 ${libs.length} 个知识库中的 ${markedStale} 个文档`, { variant: 'success' });
+        return;
       }
       showToast('已保存', { variant: 'success' });
     }
     catch { showToast('保存失败', { variant: 'danger' }); }
+    finally { setSaving(false); }
   }
 
   const opts = (models: AvailableBindingModel[], withNone: boolean) => [
@@ -820,11 +870,17 @@ function KbModelSettings({ onEmbedModelChanged }: { onEmbedModelChanged?: (model
   // 见上方 useEffect。先 invalidate 标 stale 再入队, 与旧同步流程语义一致。
   async function rebuildIndex(): Promise<void> {
     if (!config.embed) { showToast('请先选择嵌入模型', { variant: 'warning' }); return; }
+    if (!activeLib) { showToast('请先激活一个知识库', { variant: 'warning' }); return; }
     setRebuilding(true);
     try {
-      await kbApi.invalidate(config.embed.providerConfigId, config.embed.model);
-      const task = await kbApi.reembed({ ebdProviderId: config.embed.providerConfigId, ebdModel: config.embed.model });
+      await kbApi.invalidate(config.embed.providerConfigId, config.embed.model, activeLib.id);
+      const task = await kbApi.reembed({
+        ebdProviderId: config.embed.providerConfigId,
+        ebdModel: config.embed.model,
+        kbId: activeLib.id,
+      });
       setRebuildTaskId(task.taskId);
+      setRebuildKbId(activeLib.id);
     } catch {
       setRebuilding(false);
       showToast('重建任务提交失败', { variant: 'danger' });
@@ -843,6 +899,7 @@ function KbModelSettings({ onEmbedModelChanged }: { onEmbedModelChanged?: (model
             onChange={(v) => void save({ ...config, embed: dec(v) })}
             options={opts(embedModels, true)}
             placeholder="未设置 → 仅关键词检索"
+            disabled={saving || rebuilding}
           />
         </div>
         <div className="flex flex-col gap-1.5 ema-stagger-in" style={{ '--stagger-i': 1 } as CSSProperties}>
@@ -852,6 +909,7 @@ function KbModelSettings({ onEmbedModelChanged }: { onEmbedModelChanged?: (model
             onChange={(v) => void save({ ...config, rerank: dec(v) })}
             options={opts(rerankModels, true)}
             placeholder="（不使用）"
+            disabled={saving || rebuilding}
           />
         </div>
       </div>
@@ -860,6 +918,13 @@ function KbModelSettings({ onEmbedModelChanged }: { onEmbedModelChanged?: (model
         换<b>嵌入模型</b>会让已索引文档的向量与新查询<b>错配、检索骤减</b>——换完点下方<b>重建过期索引</b>。
         重排模型可随时更换，无需重建。此处与「叙事模式」的 LightRAG 嵌入互不影响。
       </Callout>
+
+      {libs.length > 0 && (
+        <p className="text-[11px] text-[var(--ema-text-tertiary)]">
+          影响范围：{libs.slice(0, 4).map((lib) => lib.name).join('、')}
+          {libs.length > 4 ? ` 等 ${libs.length} 个知识库` : `（${libs.length} 个知识库）`}
+        </p>
+      )}
 
       <div className="flex items-center justify-between gap-2 ema-fade-in">
         <p className="text-[11px] text-[var(--ema-text-tertiary)]">
@@ -875,7 +940,8 @@ function KbModelSettings({ onEmbedModelChanged }: { onEmbedModelChanged?: (model
               size="sm"
               onClick={() => {
                 if (!rebuildTaskId) return;
-                void kbApi.cancelReembed(rebuildTaskId)
+                if (!rebuildKbId) return;
+                void kbApi.cancelReembed(rebuildTaskId, rebuildKbId)
                   .catch(() => showToast('取消失败', { variant: 'danger' }));
               }}
             >
@@ -887,10 +953,10 @@ function KbModelSettings({ onEmbedModelChanged }: { onEmbedModelChanged?: (model
             variant="secondary"
             size="sm"
             className="shrink-0"
-            disabled={!config.embed}
+            disabled={!config.embed || !activeLib}
             onClick={() => void rebuildIndex()}
           >
-            重建过期索引
+            重建{activeLib ? `「${activeLib.name}」` : ''}过期索引
           </Button>
         )}
       </div>
@@ -906,7 +972,13 @@ export function KnowledgeBaseTab(): JSX.Element {
   const error     = useKbStore((s) => s.error);
   const [showIngest,       setShowIngest]       = useState(false);
   const [ingestFormMounted, setIngestFormMounted] = useState(false);
-  const [embedModel, setEmbedModel] = useState<string | undefined>();
+  const [embedSelection, setEmbedSelection] = useState<ResolvedEmbedSelection | undefined>();
+  const activeKbId = useKbStore((state) => state.libs.find((lib) => lib.isActive)?.id);
+
+  const handleEmbedModelChanged = useCallback((selection: ResolvedEmbedSelection | undefined): void => {
+    setEmbedSelection(selection);
+    void useKbStore.getState().loadDocuments();
+  }, []);
 
   // Delayed unmount so IngestForm exit animation plays.
   useEffect(() => {
@@ -917,7 +989,6 @@ export function KnowledgeBaseTab(): JSX.Element {
 
   useEffect(() => {
     void useKbStore.getState().loadDocuments();
-    void settingsApi.getKbModels().then((m) => setEmbedModel(m.embed?.model)).catch(() => { /* ignore */ });
   }, []);
 
   return (
@@ -927,7 +998,7 @@ export function KnowledgeBaseTab(): JSX.Element {
       <LibraryManager />
 
       {/* ── Retrieval models (embed + rerank) ── */}
-      <KbModelSettings onEmbedModelChanged={(m) => { setEmbedModel(m); void useKbStore.getState().loadDocuments(); }} />
+      <KbModelSettings onEmbedModelChanged={handleEmbedModelChanged} />
 
       {/* ── Background processing queue ── */}
       <ProcessingQueue />
@@ -940,8 +1011,9 @@ export function KnowledgeBaseTab(): JSX.Element {
             {documents.length > 0 && (
               <span className="ml-2 text-xs text-[var(--ema-text-tertiary)]">({documents.length})</span>
             )}
-            {documents.length > 0 && embedModel && (() => {
-              const need = documents.filter((d) => d.ebdStale || (!!d.ebdModel && d.ebdModel !== embedModel) || (!d.ebdModel)).length;
+            {documents.length > 0 && embedSelection && (() => {
+              const need = documents.filter((document) =>
+                documentNeedsReembed(document, embedSelection)).length;
               return need > 0 ? (
                 <span className="ml-2 text-xs font-mono text-[var(--ema-danger)]">
                   · {need}/{documents.length} 需重嵌
@@ -982,7 +1054,8 @@ export function KnowledgeBaseTab(): JSX.Element {
                 key={doc.id}
                 doc={doc}
                 index={i}
-                currentEmbedModel={embedModel}
+                currentEmbed={embedSelection}
+                kbId={activeKbId ?? ''}
                 onDelete={() => void useKbStore.getState().loadDocuments()}
               />
             ))}
