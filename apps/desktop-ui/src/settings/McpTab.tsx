@@ -1,4 +1,4 @@
-// 这里提供 MCP 服务器配置、连接测试、导入和市场浏览界面。
+// 提供 MCP 服务器配置、连接测试、导入和市场浏览界面。
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import {
   Badge, Button, Callout, Card, ConfirmDialog, Dialog, Divider, DropdownMenu,
@@ -8,6 +8,15 @@ import { useMcpStore, type McpServerEntry, type McpServerConfig, type McpProbeRe
 import { showToast } from '../lib/toast.js';
 import type { McpConnectionStatus } from '@ema-agent/mcp';
 import { MarketSourceManager } from './MarketSourceManager.js';
+import { McpArgumentEditor } from './McpArgumentEditor.js';
+import {
+  buildMcpServerConfig,
+  createEmptyMcpFormState,
+  mcpServerConfigToForm,
+  type McpKeyValuePair,
+  type McpServerFormState,
+  type McpTransportType,
+} from './mcp-form-state.js';
 
 // ── Status helpers ────────────────────────────────────────────────────────────
 
@@ -18,95 +27,24 @@ const STATUS_BADGE: Record<McpConnectionStatus, { variant: 'success' | 'warn' | 
   disconnected: { variant: 'neutral', label: '未连接' },
 };
 
-type TransportType = 'stdio' | 'http';
-
 const TRANSPORT_OPTIONS = [
   { value: 'stdio', label: 'Stdio(本地进程)' },
   { value: 'http',  label: 'Streamable HTTP'  },
 ];
-
-// ── Add-server form state ─────────────────────────────────────────────────────
-
-interface KvPair { key: string; value: string }
-
-interface AddFormState {
-  name:        string;
-  transport:   TransportType;
-  command:     string;
-  args:        string;   // space-separated
-  url:         string;
-  /** Environment variables for stdio (API keys etc., e.g. AMAP_MAPS_API_KEY). */
-  env:         KvPair[];
-  /** Streamable HTTP 请求头，例如 Authorization: Bearer …。 */
-  headers:     KvPair[];
-}
-
-const EMPTY_FORM: AddFormState = {
-  name: '', transport: 'stdio', command: '', args: '', url: '', env: [], headers: [],
-};
-
-function kvToRecord(pairs: KvPair[]): Record<string, string> | undefined {
-  const out: Record<string, string> = {};
-  for (const { key, value } of pairs) {
-    if (key.trim()) out[key.trim()] = value;
-  }
-  return Object.keys(out).length > 0 ? out : undefined;
-}
-
-function recordToKv(rec: Record<string, string> | undefined): KvPair[] {
-  return rec ? Object.entries(rec).map(([key, value]) => ({ key, value })) : [];
-}
-
-function buildConfig(form: AddFormState): McpServerConfig {
-  if (form.transport === 'stdio') {
-    return {
-      type:    'stdio',
-      command: form.command.trim(),
-      args:    form.args.trim() ? form.args.trim().split(/\s+/) : [],
-      env:     kvToRecord(form.env),
-    };
-  }
-  return {
-    type:    'http',
-    url:     form.url.trim(),
-    headers: kvToRecord(form.headers),
-  };
-}
-
-/** Pre-fill the form from an existing server (edit flow). */
-function configToForm(name: string, config: McpServerConfig): AddFormState {
-  if (config.type === 'stdio') {
-    return {
-      name, transport: 'stdio',
-      command: config.command,
-      args:    (config.args ?? []).join(' '),
-      url:     '',
-      env:     recordToKv(config.env),
-      headers: [],
-    };
-  }
-  return {
-    name, transport: config.type,
-    command: '', args: '',
-    url:     config.url,
-    env:     [],
-    headers: recordToKv(config.headers),
-  };
-}
 
 // ── Key-value editor (env vars / headers) ──────────────────────────────────────
 
 function KeyValueEditor({
   pairs, onChange, keyPlaceholder, valuePlaceholder, secret,
 }: {
-  pairs:             KvPair[];
-  onChange:          (pairs: KvPair[]) => void;
+  pairs:             McpKeyValuePair[];
+  onChange:          (pairs: McpKeyValuePair[]) => void;
   keyPlaceholder?:   string;
   valuePlaceholder?: string;
   secret?:           boolean;
 }): JSX.Element {
   const [reveal, setReveal] = useState(false);
-  const update = (i: number, patch: Partial<KvPair>): void =>
+  const update = (i: number, patch: Partial<McpKeyValuePair>): void =>
     onChange(pairs.map((p, idx) => (idx === i ? { ...p, ...patch } : p)));
 
   return (
@@ -150,7 +88,7 @@ export function McpTab(): JSX.Element {
   const error   = useMcpStore((s) => s.error);
 
   const [addOpen,   setAddOpen]   = useState(false);
-  const [form,      setForm]      = useState<AddFormState>(EMPTY_FORM);
+  const [form,      setForm]      = useState<McpServerFormState>(createEmptyMcpFormState);
   const [probeResult, setProbeResult] = useState<McpProbeResult | null>(null);
   const [probing,   setProbing]   = useState(false);
   const [adding,    setAdding]    = useState(false);
@@ -172,14 +110,14 @@ export function McpTab(): JSX.Element {
 
   function closeAdd(): void {
     setAddOpen(false);
-    setForm(EMPTY_FORM);
+    setForm(createEmptyMcpFormState());
     setProbeResult(null);
     setAddError(null);
     setEditingName(null);
   }
 
   function handleEdit(sv: McpServerEntry): void {
-    setForm(configToForm(sv.name, sv.config));
+    setForm(mcpServerConfigToForm(sv.name, sv.config));
     setEditingName(sv.name);
     setProbeResult(null);
     setAddError(null);
@@ -191,7 +129,7 @@ export function McpTab(): JSX.Element {
     setProbeResult(null);
     try {
       const serverName = form.name.trim() || '未命名 MCP';
-      const result = await useMcpStore.getState().probe(serverName, buildConfig(form));
+      const result = await useMcpStore.getState().probe(serverName, buildMcpServerConfig(form));
       setProbeResult(result);
     } catch (err) {
       setProbeResult({
@@ -211,7 +149,7 @@ export function McpTab(): JSX.Element {
     try {
       // register() upserts by name; editing re-registers + connects so the new
       // env/headers (API keys, Bearer token) take effect immediately.
-      await useMcpStore.getState().register(form.name.trim(), buildConfig(form), undefined, true);
+      await useMcpStore.getState().register(form.name.trim(), buildMcpServerConfig(form), undefined, true);
       showToast(editingName ? `已更新 ${form.name}` : `已注册 ${form.name}`, { variant: 'success' });
       closeAdd();
     } catch (err) {
@@ -442,7 +380,7 @@ export function McpTab(): JSX.Element {
           <Field label="传输类型" required>
             <Select
               value={form.transport}
-              onChange={(v) => setForm({ ...form, transport: v as TransportType })}
+              onChange={(v) => setForm({ ...form, transport: v as McpTransportType })}
               options={TRANSPORT_OPTIONS}
             />
           </Field>
@@ -456,11 +394,10 @@ export function McpTab(): JSX.Element {
                   onChange={(e) => setForm({ ...form, command: e.target.value })}
                 />
               </Field>
-              <Field label="参数" description="以空格分隔">
-                <Input
-                  placeholder="mcp-server-brave-search --port 8080"
+              <Field label="参数" description="每一项都会作为独立 argv 参数传给进程，不进行 Shell 解析">
+                <McpArgumentEditor
                   value={form.args}
-                  onChange={(e) => setForm({ ...form, args: e.target.value })}
+                  onChange={(args) => setForm({ ...form, args })}
                 />
               </Field>
               <Field label="环境变量" description="API Key 等，如 AMAP_MAPS_API_KEY">
