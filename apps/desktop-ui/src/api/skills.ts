@@ -1,6 +1,4 @@
-/**
- * Skills API — skill lifecycle management.
- */
+// 调用 Skill 的安装、校验、启停、重命名、内容读取与市场查询接口。
 import { sidecarClient } from './sidecar-client.js';
 import type { GithubSkillCoords, SkillRecord } from '@ema-agent/skill';
 
@@ -51,7 +49,7 @@ export const skillsApi = {
 
   /** GET /api/skills/:name */
   async get(name: string): Promise<{ skill: SkillRecord }> {
-    return sidecarClient.request<{ skill: SkillRecord }>(`/api/skills/${name}`);
+    return sidecarClient.request<{ skill: SkillRecord }>(`/api/skills/${encodeURIComponent(name)}`);
   },
 
   /** GET /api/skills/:name/content — raw SKILL.md for the in-app viewer. */
@@ -85,7 +83,7 @@ export const skillsApi = {
 
   /** PATCH /api/skills/:name */
   async setEnabled(name: string, enabled: boolean): Promise<{ ok: boolean }> {
-    return sidecarClient.request<{ ok: boolean }>(`/api/skills/${name}`, {
+    return sidecarClient.request<{ ok: boolean }>(`/api/skills/${encodeURIComponent(name)}`, {
       method: 'PATCH',
       json: { enabled },
     });
@@ -93,7 +91,7 @@ export const skillsApi = {
 
   /** DELETE /api/skills/:name */
   async remove(name: string): Promise<{ ok: boolean }> {
-    return sidecarClient.request<{ ok: boolean }>(`/api/skills/${name}`, {
+    return sidecarClient.request<{ ok: boolean }>(`/api/skills/${encodeURIComponent(name)}`, {
       method: 'DELETE',
     });
   },
@@ -107,8 +105,8 @@ export const skillsApi = {
   },
 
   /** POST /api/skills/:name/rename */
-  async rename(name: string, newName: string): Promise<{ ok: boolean }> {
-    return sidecarClient.request<{ ok: boolean }>(`/api/skills/${name}/rename`, {
+  async rename(name: string, newName: string): Promise<{ skill: SkillRecord }> {
+    return sidecarClient.request<{ skill: SkillRecord }>(`/api/skills/${encodeURIComponent(name)}/rename`, {
       method: 'POST',
       json:   { newName },
     });

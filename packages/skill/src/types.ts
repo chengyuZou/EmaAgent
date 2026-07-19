@@ -23,8 +23,15 @@ export type SkillSource = 'builtin' | 'user' | 'market';
 // (catalog 只在 skill_call 可调用处注入,即 agent 模式;这是机制决定,
 // 不是 per-skill 标签。)
 
+export const SkillNameSchema = z.string()
+  .trim()
+  .min(1)
+  .max(128)
+  .refine(name => !/[\\/\u0000-\u001f]/u.test(name), 'Skill name contains path separators or control characters')
+  .refine(name => /[\p{L}\p{N}]/u.test(name), 'Skill name must contain at least one letter or number');
+
 export const SkillFrontmatterSchema = z.object({
-  name:        z.string().min(1),
+  name:        SkillNameSchema,
   version:     z.string().default('1.0.0'),
   description: z.string().default(''),
   // 在 catalog 中展示,让模型知道 `arguments` 传什么。

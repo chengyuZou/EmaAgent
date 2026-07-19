@@ -183,9 +183,9 @@ export class SkillStore {
   }
 
   async rename(name: string, newName: string): Promise<void> {
-    if (name === newName) return;
     const trimmedName = newName.trim();
     if (!trimmedName) throw new Error('Skill name cannot be empty');
+    if (name === trimmedName) return;
 
     await this.operations.run(async () => {
       const row = this.requireWritable(name);

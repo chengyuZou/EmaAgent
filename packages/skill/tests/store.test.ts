@@ -58,6 +58,20 @@ describe('SkillStore', () => {
     expect(await store.readRawMd('Foo Bar')).toContain('first');
   });
 
+  it('中文名称生成不同的可移植目录，Windows 保留名会加安全前缀', async () => {
+    await store.install(skillMd('绘图助手', 'first'));
+    await store.install(skillMd('文档助手', 'second'));
+    await store.install(skillMd('CON', 'third'));
+
+    expect(store.findByName('绘图助手')?.dirPath).toBe(join(rootPath, '绘图助手'));
+    expect(store.findByName('文档助手')?.dirPath).toBe(join(rootPath, '文档助手'));
+    expect(store.findByName('CON')?.dirPath).toBe(join(rootPath, 'skill-con'));
+  });
+
+  it.each(['../escape', 'folder\\escape', '...'])('拒绝无法安全寻址的 Skill 名称: %s', async name => {
+    await expect(store.install(skillMd(name, 'body'))).rejects.toThrow();
+  });
+
   it.each([
     '../outside.txt',
     'scripts\\run.ps1',
@@ -118,6 +132,15 @@ describe('SkillStore', () => {
     expect(renamed?.dirPath).toBe(join(rootPath, 'new-name'));
     expect(await store.readRawMd('New Name')).toContain('name: "New Name"');
     expect(await readdir(rootPath)).toEqual(['new-name']);
+  });
+
+  it('仅增加首尾空白不触发伪重命名或名称碰撞', async () => {
+    await store.install(skillMd('demo', 'body'));
+
+    await expect(store.rename('demo', '  demo  ')).resolves.toBeUndefined();
+
+    expect(store.findByName('demo')).not.toBeNull();
+    expect(await readdir(rootPath)).toEqual(['demo']);
   });
 
   it('relocate 不能把 Skill 移到未配置目录', async () => {

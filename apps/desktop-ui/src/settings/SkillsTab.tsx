@@ -1,4 +1,5 @@
-﻿import React, { useEffect, useRef, useState } from 'react';
+// 展示已安装与市场 Skill，并提供安装、查看、启停、重命名和卸载操作。
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Badge, Button, Callout, Card, ConfirmDialog, Dialog, EmptyState, Field, MarketCard,
   Input, ScrollArea, Spinner, Switch, Tabs, Textarea, Tooltip,
@@ -128,8 +129,10 @@ function MarketView({
 
 function InstalledList({
   onRemove,
+  onRename,
 }: {
   onRemove: (name: string) => void;
+  onRename: (name: string) => void;
 }): JSX.Element {
   const skills  = useSkillStore((s) => s.skills);
   const loading = useSkillStore((s) => s.loading);
@@ -210,6 +213,17 @@ function InstalledList({
                     }}
                   />
                 </Tooltip>
+                <Tooltip content={sk.source === 'builtin' ? '内置技能不可重命名' : '重命名技能'}>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={sk.source === 'builtin'}
+                    className="text-[var(--ema-text-tertiary)] hover:text-[var(--ema-text-primary)] px-1.5"
+                    onClick={() => onRename(sk.name)}
+                  >
+                    <span className="i-mdi:pencil-outline text-base" aria-hidden />
+                  </Button>
+                </Tooltip>
                 <Tooltip content="卸载技能">
                   <Button
                     variant="ghost"
@@ -260,6 +274,11 @@ export function SkillsTab(): JSX.Element {
   const [installError, setInstallError] = useState<string | null>(null);
   const [activeTab,    setActiveTab]    = useState<string>('installed');
   const [pendingRemove, setPendingRemove] = useState<string | null>(null);
+  const [pendingRename, setPendingRename] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState('');
+  const [renameError, setRenameError] = useState<string | null>(null);
+  const [renameSaving, setRenameSaving] = useState(false);
+  const renameBusyRef = useRef(false);
 
   useEffect(() => { void useSkillStore.getState().load(); }, []);
 
@@ -311,6 +330,39 @@ export function SkillsTab(): JSX.Element {
     setPendingRemove(name);
   }
 
+  function openRename(name: string): void {
+    setPendingRename(name);
+    setRenameValue(name);
+    setRenameError(null);
+  }
+
+  function closeRename(): void {
+    if (renameBusyRef.current) return;
+    setPendingRename(null);
+    setRenameValue('');
+    setRenameError(null);
+  }
+
+  async function confirmRename(): Promise<void> {
+    if (!pendingRename || renameBusyRef.current) return;
+    const newName = renameValue.trim();
+    if (!newName || newName.length > 128 || /[\\/\u0000-\u001f]/u.test(newName) || newName === pendingRename) return;
+    renameBusyRef.current = true;
+    setRenameSaving(true);
+    setRenameError(null);
+    try {
+      const renamed = await useSkillStore.getState().rename(pendingRename, newName);
+      showToast(`已重命名为 ${renamed.name}`, { variant: 'success' });
+      setPendingRename(null);
+      setRenameValue('');
+    } catch (error: unknown) {
+      setRenameError(error instanceof Error ? error.message : '重命名失败');
+    } finally {
+      renameBusyRef.current = false;
+      setRenameSaving(false);
+    }
+  }
+
   async function confirmRemove(): Promise<void> {
     if (!pendingRemove) return;
     const name = pendingRemove;
@@ -329,7 +381,7 @@ export function SkillsTab(): JSX.Element {
     {
       value:   'installed',
       label:   `已安装 (${skills.length})`,
-      content: <InstalledList onRemove={handleRemove} />,
+      content: <InstalledList onRemove={handleRemove} onRename={openRename} />,
     },
     {
       value:   'market',
@@ -439,6 +491,49 @@ export function SkillsTab(): JSX.Element {
         onConfirm={() => void confirmRemove()}
         onCancel={() => setPendingRemove(null)}
       />
+
+      <Dialog
+        open={pendingRename !== null}
+        onOpenChange={(open) => { if (!open) closeRename(); }}
+        title="重命名技能"
+        description="名称会同步写入 SKILL.md frontmatter、目录名与本地索引。"
+      >
+        {renameError && <Callout variant="danger" className="mb-3">{renameError}</Callout>}
+        <Field label="技能名称" required>
+          <Input
+            value={renameValue}
+            maxLength={128}
+            autoFocus
+            disabled={renameSaving}
+            error={renameValue.trim().length === 0}
+            onChange={(event) => {
+              setRenameValue(event.target.value);
+              setRenameError(null);
+            }}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') void confirmRename();
+            }}
+          />
+        </Field>
+        {/[\\/\u0000-\u001f]/u.test(renameValue) && (
+          <Callout variant="danger" className="mt-3">技能名称不能包含斜杠、反斜杠或控制字符。</Callout>
+        )}
+        <div className="mt-4 flex justify-end gap-2">
+          <Button variant="ghost" size="sm" disabled={renameSaving} onClick={closeRename}>取消</Button>
+          <Button
+            variant="primary"
+            size="sm"
+            loading={renameSaving}
+            disabled={!renameValue.trim()
+              || renameValue.trim() === pendingRename
+              || renameValue.trim().length > 128
+              || /[\\/\u0000-\u001f]/u.test(renameValue)}
+            onClick={() => void confirmRename()}
+          >
+            保存更改
+          </Button>
+        </div>
+      </Dialog>
     </div>
   );
 }

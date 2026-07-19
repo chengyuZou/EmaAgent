@@ -22,4 +22,4 @@ export type {
   MarketSkillEntry,
   GithubSkillCoords,
 }                                        from './types.js';
-export { GithubSkillCoordsSchema }       from './types.js';
+export { GithubSkillCoordsSchema, SkillNameSchema } from './types.js';

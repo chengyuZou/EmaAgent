@@ -1,3 +1,4 @@
+// 管理已安装 Skill、市场列表及安装、启停、重命名和卸载操作。
 import { create } from 'zustand';
 import { skillsApi, type SkillValidateResult, type MarketSkillEntry } from '../api/skills.js';
 import type { GithubSkillCoords, SkillRecord } from '@ema-agent/skill';
@@ -34,6 +35,9 @@ export interface SkillStoreState {
 
   /** Uninstall a skill by name. Refreshes list on success. */
   remove(name: string): Promise<void>;
+
+  /** 重命名可写 Skill；成功响应直接替换本地记录，失败时保留原状态。 */
+  rename(name: string, newName: string): Promise<Omit<SkillRecord, 'rawMd'>>;
 
   /** Fetch installable skills from the market(聚合所有 enabled 源)。Results cached in store. */
   listMarket(): Promise<void>;
@@ -118,6 +122,20 @@ export const useSkillStore = create<SkillStoreState>((set, get) => ({
       set((s) => ({ skills: s.skills.filter((sk) => sk.name !== name) }));
     } catch (err: unknown) {
       set({ error: err instanceof Error ? err.message : 'Failed to remove skill' });
+      throw err;
+    }
+  },
+
+  async rename(name, newName) {
+    try {
+      const { skill } = await skillsApi.rename(name, newName);
+      set((state) => ({
+        skills: state.skills.map((item) => item.name === name ? skill : item),
+        error: null,
+      }));
+      return skill;
+    } catch (err: unknown) {
+      set({ error: err instanceof Error ? err.message : 'Failed to rename skill' });
       throw err;
     }
   },

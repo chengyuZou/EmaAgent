@@ -1,7 +1,7 @@
 // 这里提供 Skill 扫描, 市场浏览, 安装和启停 API.
 import { Hono } from 'hono';
 import { z }    from 'zod';
-import { GithubSkillCoordsSchema } from '@ema-agent/skill';
+import { GithubSkillCoordsSchema, SkillNameSchema } from '@ema-agent/skill';
 import { mergeByName } from '@ema-agent/marketplace';
 import type { MarketSkillEntry } from '@ema-agent/skill';
 import type { AppBindings } from '../wiring/index.js';
@@ -19,7 +19,7 @@ import type { AppBindings } from '../wiring/index.js';
 //   GET    /api/skills/:name           get single (metadata, incl. dirPath)
 //   PATCH  /api/skills/:name           enable/disable
 //   POST   /api/skills/:name/rename    rename (rewrites frontmatter + dir key)
-//   POST   /api/skills/:name/relocate  move the skill directory (搬家)
+//   POST   /api/skills/:name/relocate  V1 保留路由但 fail-closed，等待多 Root 事务
 //   DELETE /api/skills/:name           uninstall (deletes dir; builtin → disable)
 
 const installBodySchema = z.discriminatedUnion('source', [
@@ -36,7 +36,7 @@ const installBodySchema = z.discriminatedUnion('source', [
 
 const validateBodySchema = z.object({ content: z.string().min(1) });
 const patchBodySchema    = z.object({ enabled: z.boolean() });
-const renameBodySchema   = z.object({ newName: z.string().min(1) });
+const renameBodySchema   = z.object({ newName: SkillNameSchema });
 const relocateBodySchema = z.object({ dir: z.string().min(1) });
 
 export function createSkillsRouter(bindings: AppBindings) {
@@ -137,7 +137,9 @@ export function createSkillsRouter(bindings: AppBindings) {
     }
     try {
       await skillStore.rename(c.req.param('name'), body.newName);
-      return c.json({ ok: true });
+      const skill = skillStore.findByName(body.newName);
+      if (!skill) return c.json({ error: 'Renamed Skill was not indexed' }, 500);
+      return c.json({ skill });
     } catch (err) {
       return c.json({ error: (err as Error).message }, 422);
     }
@@ -150,12 +152,12 @@ export function createSkillsRouter(bindings: AppBindings) {
     } catch {
       return c.json({ error: 'dir is required' }, 400);
     }
-    try {
-      await skillStore.relocate(c.req.param('name'), body.dir);
-      return c.json({ ok: true });
-    } catch (err) {
-      return c.json({ error: (err as Error).message }, 422);
-    }
+    // V1 只有一个受信任 writable root；任意目录移动会在重启扫描时丢失索引。
+    // 保留稳定路由供多 Root + 双根 journal 落地后启用，但当前必须显式 fail-closed。
+    return c.json({
+      error: 'skill_relocation_unavailable',
+      message: 'Skill relocation requires multiple configured writable roots and is not available in V1',
+    }, 501);
   });
 
   router.delete('/skills/:name', async (c) => {

@@ -7,7 +7,15 @@ const WINDOWS_FORBIDDEN_CHARS = /[<>:"|?*\u0000-\u001f]/;
 const MAX_RELATIVE_PATH_LENGTH = 240;
 
 export function skillSlug(name: string): string {
-  return name.trim().toLowerCase().replace(/[^a-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '') || 'skill';
+  const normalized = name
+    .normalize('NFKC')
+    .trim()
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}._-]+/gu, '-')
+    .replace(/^[._-]+|[._-]+$/g, '');
+  const shortened = [...normalized].slice(0, 80).join('').replace(/[._-]+$/g, '');
+  const safeName = shortened || 'skill';
+  return WINDOWS_RESERVED_NAME.test(safeName) ? `skill-${safeName}` : safeName;
 }
 
 export function validateSkillAssets(
