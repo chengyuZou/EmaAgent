@@ -13,9 +13,11 @@
 import type { MotionPlugin } from './motion-manager.js';
 import type { SpeechAnimationStoreApi } from '../stores/speech-store.js';
 import type { Live2DParameterRuntimeConfig } from '../model-config.js';
+import { frameRateIndependentFactor } from './frame-timing.js';
 
 /** Per-frame release speed when not speaking (exponential decay). */
-const RELEASE = 0.12;
+const RELEASE_AT_60_FPS = 0.12;
+const ATTACK_AT_60_FPS = 0.35;
 
 /**
  * RMS→mouth gain. Speech RMS off a normalized waveform sits around 0.02–0.08
@@ -35,12 +37,14 @@ export function createAudioLipSyncPlugin(
   return (ctx) => {
     const { speaking, rms, energy } = speechStore.getState();
     const params = readParameters();
+    const attack = frameRateIndependentFactor(ATTACK_AT_60_FPS, ctx.timing.deltaMs);
+    const release = frameRateIndependentFactor(RELEASE_AT_60_FPS, ctx.timing.deltaMs);
 
     if (speaking && rms > 0.01) {
       const openness = Math.min(1, rms * RMS_GAIN);
-      currentMouth += (openness * params.mouthOpenMax - currentMouth) * 0.35;
+      currentMouth += (openness * params.mouthOpenMax - currentMouth) * attack;
     } else {
-      currentMouth += (0 - currentMouth) * RELEASE;
+      currentMouth += (0 - currentMouth) * release;
     }
 
     ctx.model.setParameterValueById(params.mouthOpenParam, currentMouth);

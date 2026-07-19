@@ -20,19 +20,20 @@ export function createIdleBeatPlugin(
   readParameters: () => Live2DParameterRuntimeConfig,
   readIdleBeat: () => Live2DIdleBeatRuntimeConfig,
 ): MotionPlugin {
-  let elapsed = 0;
+  let activeElapsedMs = 0;
 
   return (ctx) => {
     if (!readEnabled()) return;
 
-    elapsed += ctx.timeDelta;
+    activeElapsedMs += ctx.timing.deltaMs;
+    const elapsedSec = activeElapsedMs / 1_000;
 
     const params = readParameters();
     const idle = readIdleBeat();
-    const swayX = idle.swayAmplitude * Math.sin(elapsed * idle.swayFrequencyX);
-    const swayY = idle.swayAmplitude * 0.5 * Math.sin(elapsed * idle.swayFrequencyY);
-    const swayZ = idle.swayAmplitude * 0.3 * Math.sin(elapsed * idle.swayFrequencyZ);
-    const breath = (Math.sin(elapsed * idle.breathFrequency) + 1) * 0.5;
+    const swayX = idle.swayAmplitude * Math.sin(elapsedSec * idle.swayFrequencyX);
+    const swayY = idle.swayAmplitude * 0.5 * Math.sin(elapsedSec * idle.swayFrequencyY);
+    const swayZ = idle.swayAmplitude * 0.3 * Math.sin(elapsedSec * idle.swayFrequencyZ);
+    const breath = (Math.sin(elapsedSec * idle.breathFrequency) + 1) * 0.5;
 
     ctx.model.setParameterValueById(params.headInputX, Math.max(-30, Math.min(30, swayX)));
     ctx.model.setParameterValueById(params.headInputY, Math.max(-30, Math.min(30, swayY)));

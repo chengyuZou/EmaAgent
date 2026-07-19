@@ -1,5 +1,7 @@
+// 编排 Live2D 原生 motion update 与前置、后置、最终参数插件。
 import { clamp01 } from '../utils/math.js';
 import type { ExpressionController } from './expression-controller.js';
+import { FrameClock, type FrameTiming } from './frame-timing.js';
 
 // ── Live2D motion-manager update pipeline ───────────────────────────────────
 //
@@ -39,9 +41,8 @@ export interface InternalModelForPlugins {
 /** Per-frame plugin context. Each stage's plugins receive this. */
 export interface MotionPluginContext {
   model:          CubismCoreLike;
-  now:            number;
-  /** Seconds since last frame (NOT ms — caller normalizes). */
-  timeDelta:      number;
+  /** 统一为毫秒的插件时间；长卡顿单帧最多推进 100ms。 */
+  timing:         FrameTiming;
   internalModel:  InternalModelForPlugins;
   motionManager:  InternalModelForPlugins['motionManager'];
 
@@ -107,7 +108,7 @@ export function createMotionManagerUpdate(
   const postPlugins:  MotionPlugin[] = [];
   const finalPlugins: MotionPlugin[] = [];
 
-  let lastUpdateTime = 0;
+  const frameClock = new FrameClock();
 
   function register(plugin: MotionPlugin, stage: 'pre' | 'post' | 'final'): () => void {
     const bucket = stage === 'pre' ? prePlugins : stage === 'post' ? postPlugins : finalPlugins;
@@ -130,7 +131,9 @@ export function createMotionManagerUpdate(
     now:            number,
     originalUpdate?: (model: CubismCoreLike, now: number) => boolean,
   ): boolean {
-    const timeDelta = lastUpdateTime ? now - lastUpdateTime : 0;
+    // pixi-live2d-display Cubism 4 在调用 motionManager.update 前已把 now
+    // 从 performance.now() 毫秒转换为秒。这里只在唯一入口转换一次。
+    const timing = frameClock.advance(now);
     const mm = options.internalModel.motionManager;
     const idleGroupName = mm.groups.idle;
     const isIdleMotion = !mm.state.currentGroup
@@ -139,8 +142,7 @@ export function createMotionManagerUpdate(
     const flags = options.readFlags();
     const ctx: MotionPluginContext = {
       model,
-      now,
-      timeDelta,
+      timing,
       internalModel:  options.internalModel,
       motionManager:  mm,
       modelParameters: options.readModelParameters(),
@@ -164,7 +166,6 @@ export function createMotionManagerUpdate(
     // Final stage always runs — expression overlay must apply regardless
     runPlugins(finalPlugins, ctx, true);
 
-    lastUpdateTime = now;
     return ctx.handled;
   }
 
@@ -192,7 +193,7 @@ export function createIdleDisablePlugin(): MotionPlugin {
     if (!ctx.idleAnimationEnabled && ctx.isIdleMotion) {
       ctx.motionManager.stopAllMotions();
       if (ctx.internalModel.eyeBlink) {
-        ctx.internalModel.eyeBlink.updateParameters(ctx.model, ctx.timeDelta / 1000);
+        ctx.internalModel.eyeBlink.updateParameters(ctx.model, ctx.timing.deltaMs / 1000);
       }
       ctx.model.setParameterValueById('ParamEyeLOpen', ctx.modelParameters.leftEyeOpen);
       ctx.model.setParameterValueById('ParamEyeROpen', ctx.modelParameters.rightEyeOpen);
@@ -293,7 +294,7 @@ export function createAutoEyeBlinkPlugin(opts: {
 
       // Force-mode OR no native eyeBlink: state-machine blink + markHandled
       if (ctx.forceAutoBlinkEnabled || !ctx.internalModel.eyeBlink) {
-        const dtMs = normaliseDelta(ctx.timeDelta);
+        const dtMs = ctx.timing.deltaMs;
         const { eyeL, eyeR } = advanceForced(dtMs, baseLeft, baseRight);
         ctx.model.setParameterValueById('ParamEyeLOpen', eyeL);
         ctx.model.setParameterValueById('ParamEyeROpen', eyeR);
@@ -302,7 +303,7 @@ export function createAutoEyeBlinkPlugin(opts: {
       }
 
       // Native eyeBlink + multiply by base + markHandled
-      ctx.internalModel.eyeBlink.updateParameters(ctx.model, ctx.timeDelta);
+      ctx.internalModel.eyeBlink.updateParameters(ctx.model, ctx.timing.deltaMs / 1000);
       const blinkLeft  = ctx.model.getParameterValueById('ParamEyeLOpen');
       const blinkRight = ctx.model.getParameterValueById('ParamEyeROpen');
       ctx.model.setParameterValueById('ParamEyeLOpen', clamp01(blinkLeft * baseLeft));
@@ -352,7 +353,7 @@ export function createAutoEyeBlinkPlugin(opts: {
     }
 
     const wasActive = state.phase !== 'idle';
-    const dtMs = normaliseDelta(ctx.timeDelta);
+    const dtMs = ctx.timing.deltaMs;
     const { eyeL: factorL, eyeR: factorR } = advanceForced(dtMs, 1, 1);
 
     if (wasActive && state.phase === 'idle') {
@@ -377,19 +378,4 @@ export function createExpressionPlugin(
   return (ctx) => {
     controller.applyExpressions(ctx.model);
   };
-}
-
-// ── Helpers ─────────────────────────────────────────────────────────────────
-
-/**
- * `timeDelta` is in seconds (matching Cubism convention) but plugins do their
- * math in ms. Some pixi versions return it as ms already — detect the scale.
- *
- * NOTICE: We treat <5 as "almost certainly seconds" and multiply by 1000.
- * 5ms would mean 200fps which is fine; 5s would mean 0.2fps which is
- * unrealistic. The 5 boundary is the same heuristic AIRI uses.
- */
-function normaliseDelta(timeDelta: number): number {
-  const raw = Math.max(timeDelta, 0);
-  return raw < 5 ? raw * 1000 : raw;
 }

@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, useId } from 'react';
 import { cn } from '../utils/cn.js';
 import { Popover } from './Popover.js';
 
@@ -6,7 +6,10 @@ import { Popover } from './Popover.js';
 //
 // Searchable select built on the existing Popover component. Key behaviours:
 //   - Type to filter the list
-//   - ↓↑ arrow keys navigate, Enter selects, Esc closes
+//   - ↓↑ arrow keys cycle through ENABLED options only (wrap-around), Enter
+//     selects the highlighted option, Esc closes
+//   - Highlight never rests on a disabled option; filter change resets it to
+//     the first enabled option
 //   - Click outside closes
 //   - Selection callback fires with the chosen option value
 //
@@ -20,6 +23,31 @@ export interface ComboboxOption {
   label:    string;
   hint?:    string;
   disabled?: boolean;
+}
+
+// ── 键盘导航决策(纯函数, 供组件与测试共用; F-037) ────────────────────────────
+
+/** 第一个未禁用选项的下标; 没有可用项返回 -1。 */
+export function firstEnabledIndex(options: ComboboxOption[]): number {
+  return options.findIndex((o) => !o.disabled);
+}
+
+/** 从 fromIdx 沿 dir(1|-1) 环形移动到下一个未禁用选项; 没有可用项返回 -1。 */
+export function nextEnabledIndex(options: ComboboxOption[], fromIdx: number, dir: 1 | -1): number {
+  const n = options.length;
+  if (n === 0) return -1;
+  let i = fromIdx;
+  for (let step = 0; step < n; step++) {
+    i = (((i + dir) % n) + n) % n;
+    if (!options[i]!.disabled) return i;
+  }
+  return -1;
+}
+
+/** 高亮下标的唯一口径: 越界或指向 disabled 时回退第一个可用项; 全禁用返回 -1。 */
+export function deriveActiveIndex(options: ComboboxOption[], activeIdx: number): number {
+  const opt = options[activeIdx];
+  return opt !== undefined && !opt.disabled ? activeIdx : firstEnabledIndex(options);
 }
 
 export interface ComboboxProps {
@@ -55,8 +83,12 @@ export function Combobox({
   );
 
   const filtered = query ? options.filter((o) => match(query, o)) : options;
-  const safeIdx = Math.min(activeIdx, Math.max(0, filtered.length - 1));
+  const activeOption = deriveActiveIndex(filtered, activeIdx);
   const selectedLabel = options.find((o) => o.value === value)?.label ?? '';
+
+  const uid = useId();
+  const listboxId = `${uid}-listbox`;
+  const optionId = (i: number): string => `${uid}-option-${i}`;
 
   const reset = useCallback(() => {
     setQuery('');
