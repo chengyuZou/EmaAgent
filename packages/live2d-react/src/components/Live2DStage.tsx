@@ -22,6 +22,10 @@ import {
   resolveLive2DModelRuntimeConfig,
   type Live2DModelRuntimeConfig,
 } from '../model-config.js';
+import {
+  calculateLive2DFraming,
+  type Live2DNaturalBounds,
+} from '../framing.js';
 
 // pixi-live2d-display's `autoUpdate: true` is a NO-OP unless a Ticker class is
 // registered with the library first. Without this the model loads and renders
@@ -149,8 +153,16 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
           app.stage.addChild(model);
           modelRef.current = model;
 
-          // Framing
-          const fit = (): void => applyFraming(app!, model, framing);
+          // local bounds 不受 display scale 影响，只在模型加载后读取一次。
+          // 后续 resize 始终基于这份自然尺寸计算绝对 scale，杜绝累计漂移。
+          const localBounds = model.getLocalBounds();
+          const naturalBounds: Live2DNaturalBounds = {
+            x: localBounds.x,
+            y: localBounds.y,
+            width: localBounds.width,
+            height: localBounds.height,
+          };
+          const fit = (): void => applyFraming(app!, model, framing, naturalBounds);
           fit();
           window.addEventListener('resize', fit);
           cleanupTasks.push(() => window.removeEventListener('resize', fit));
@@ -407,21 +419,17 @@ function applyFraming(
   app:     PIXI.Application,
   model:   InstanceType<typeof PixiLive2DModel>,
   framing: Live2DFraming,
+  naturalBounds: Live2DNaturalBounds,
 ): void {
-  const w = app.renderer.width;
-  const h = app.renderer.height;
+  const placement = calculateLive2DFraming({
+    width: app.renderer.width,
+    height: app.renderer.height,
+  }, naturalBounds, framing);
+  if (!placement) return;
 
-  if (framing === 'halfbody') {
-    const scale = (w / model.width) * 1.55;
-    model.scale.set(scale);
-    model.x = (w - model.width) / 2;
-    model.y = -model.height * 0.05;
-  } else {
-    const scale = Math.min(w / model.width, h / model.height) * 0.95;
-    model.scale.set(scale);
-    model.x = (w - model.width) / 2;
-    model.y = h - model.height - 12;
-  }
+  model.scale.set(placement.scale);
+  model.x = placement.x;
+  model.y = placement.y;
 }
 
 function extractExpressionNames(model: InstanceType<typeof PixiLive2DModel>): string[] {
