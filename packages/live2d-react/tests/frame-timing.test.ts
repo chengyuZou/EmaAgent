@@ -1,6 +1,7 @@
 // 测试 Cubism 秒时间戳到插件毫秒时间的单一转换、钳制与帧率无关系数。
 import { describe, expect, it } from 'vitest';
 import {
+  ActiveFrameTimeline,
   FrameClock,
   frameRateIndependentFactor,
 } from '../src/composables/frame-timing.js';
@@ -28,6 +29,20 @@ describe('FrameClock', () => {
 
     expect(clock.advance(9)).toEqual({ deltaMs: 0, elapsedMs: 0 });
     expect(clock.advance(Number.NaN)).toEqual({ deltaMs: 0, elapsedMs: 0 });
+  });
+});
+
+describe('ActiveFrameTimeline', () => {
+  it('恢复首帧丢弃隐藏时长，下一帧继续正常推进', () => {
+    const timeline = new ActiveFrameTimeline();
+
+    expect(timeline.advance(10)).toBe(10);
+    expect(timeline.advance(10.016)).toBeCloseTo(10.016);
+
+    timeline.setSuspended(true);
+    timeline.setSuspended(false);
+    expect(timeline.advance(70)).toBeCloseTo(10.016);
+    expect(timeline.advance(70.016)).toBeCloseTo(10.032);
   });
 });
 

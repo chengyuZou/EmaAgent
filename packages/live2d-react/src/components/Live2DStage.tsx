@@ -18,6 +18,7 @@ import {
   createExpressionPlugin,
   createExpressionResetPlugin,
   type InternalModelForPlugins,
+  type MotionManagerUpdate,
 } from '../composables/motion-manager.js';
 import {
   resolveLive2DModelRuntimeConfig,
@@ -58,14 +59,18 @@ PixiLive2DModel.registerTicker(PIXI.Ticker);
 // PIXI.Application owns a WebGL context. Chrome caps these at ~16 per tab,
 // so mount/unmount cycles MUST destroy the app cleanly.
 
-// Register PIXI globally — pixi-live2d-display reads window.PIXI (≥0.5).
-(window as unknown as { PIXI: typeof PIXI }).PIXI = PIXI;
+// pixi-live2d-display 在浏览器运行时读取 window.PIXI；Node/SSR 只导入包时不得访问 window。
+if (typeof window !== 'undefined') {
+  (window as unknown as { PIXI: typeof PIXI }).PIXI = PIXI;
+}
 
 export interface Live2DStageProps {
   modelPath: string;
   runtime?: Live2DRuntime;
   framing?:  Live2DFraming;
   runtimeConfig?: Live2DModelRuntimeConfig;
+  /** 宿主窗口隐藏时暂停渲染与动作时间轴，不销毁已加载模型。 */
+  suspended?: boolean;
   onReady?:  () => void;
   onError?:  (err: Live2DError) => void;
   className?: string;
@@ -73,16 +78,30 @@ export interface Live2DStageProps {
 
 export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
   function Live2DStage(props, ref) {
-    const { modelPath, framing = 'halfbody', runtimeConfig, onReady, onError, className } = props;
+    const {
+      modelPath,
+      framing = 'halfbody',
+      runtimeConfig,
+      suspended = false,
+      onReady,
+      onError,
+      className,
+    } = props;
     const runtime = useLive2DRuntime(props.runtime);
     const { live2dStore, expressionStore, speechStore } = runtime;
 
     const containerRef = useRef<HTMLDivElement | null>(null);
     const appRef       = useRef<PIXI.Application | null>(null);
     const modelRef     = useRef<InstanceType<typeof PixiLive2DModel> | null>(null);
+    const motionPipelineRef = useRef<MotionManagerUpdate | null>(null);
     const callbacksRef = useRef({ onReady, onError, runtimeConfig });
     const loadCoordinatorRef = useRef<Live2DLoadCoordinator | null>(null);
     const [error, setError] = useState<Live2DError | null>(null);
+    const [pageHidden, setPageHidden] = useState(
+      () => typeof document !== 'undefined' && document.visibilityState === 'hidden',
+    );
+    const effectiveSuspended = suspended || pageHidden;
+    const suspendedRef = useRef(effectiveSuspended);
 
     const loadCoordinator = loadCoordinatorRef.current ?? new Live2DLoadCoordinator();
     loadCoordinatorRef.current = loadCoordinator;
@@ -90,6 +109,28 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
     useEffect(() => {
       callbacksRef.current = { onReady, onError, runtimeConfig };
     }, [onReady, onError, runtimeConfig]);
+
+    // 浏览器标签页隐藏是非 Tauri 宿主的兜底；桌面托盘隐藏由 suspended 显式传入。
+    useEffect(() => {
+      if (typeof document === 'undefined') return;
+      const updateVisibility = (): void => {
+        setPageHidden(document.visibilityState === 'hidden');
+      };
+      document.addEventListener('visibilitychange', updateVisibility);
+      updateVisibility();
+      return () => document.removeEventListener('visibilitychange', updateVisibility);
+    }, []);
+
+    useEffect(() => {
+      suspendedRef.current = effectiveSuspended;
+      motionPipelineRef.current?.setSuspended(effectiveSuspended);
+      const model = modelRef.current;
+      if (model) model.automator.autoUpdate = !effectiveSuspended;
+      const app = appRef.current;
+      if (!app) return;
+      if (effectiveSuspended) app.ticker.stop();
+      else app.ticker.start();
+    }, [effectiveSuspended]);
 
     useImperativeHandle(ref, () => ({
       setExpression(name) { live2dStore.getState().setExpression(name); },
@@ -134,6 +175,7 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
       }
       appRef.current = app;
       installRenderGuard(app);
+      if (suspendedRef.current) app.ticker.stop();
       host.appendChild(app.view as HTMLCanvasElement);
 
       const cleanupTasks: Array<() => void> = [];
@@ -151,6 +193,7 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
           }
 
           ownedModel = model;
+          model.automator.autoUpdate = !suspendedRef.current;
           app.stage.addChild(model);
           modelRef.current = model;
 
@@ -195,6 +238,8 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
               };
             },
           });
+          pipeline.setSuspended(suspendedRef.current);
+          motionPipelineRef.current = pipeline;
 
           // 必须早于 mouse/motion 执行，只清除上一帧 expression 写入；
           // 原生流水线随后重建当前帧的动作、眨眼和视线基值。
@@ -242,6 +287,7 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
             pipeline.hookUpdate(m, now, originalUpdate);
           cleanupTasks.push(() => {
             (mm as unknown as { update: typeof mm.update }).update = originalUpdate;
+            if (motionPipelineRef.current === pipeline) motionPipelineRef.current = null;
           });
 
           // ── Parse exp3 files + populate expression store ──────────────
@@ -329,7 +375,9 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
             maxDelayMs: runtime.randomIdle.maxDelayMs,
             readEnabled: () => {
               const live2d = live2dStore.getState();
-              return live2d.idleAnimationEnabled && !speechStore.getState().speaking;
+              return !suspendedRef.current
+                && live2d.idleAnimationEnabled
+                && !speechStore.getState().speaking;
             },
           });
           cleanupTasks.push(stopIdleScheduler);

@@ -22,6 +22,7 @@ import {
   StageSnapshotLoader,
   type ActiveStageSnapshot,
 } from './stage-snapshot-loader.js';
+import { useWindowSuspension } from './hooks/use-window-suspension.js';
 
 // ── Main window ─────────────────────────────────────────────────────────────
 //
@@ -45,6 +46,7 @@ type ActiveStageState =
   | { kind: 'error'; cardId: CharacterCardId; error: unknown };
 
 export function App(): React.JSX.Element {
+  const stageSuspended = useWindowSuspension();
   const sidecarStatus = useSidecarStore((s) => s.status);
   const activeCardId = useCardStore((s) => s.activeCardId);
   const activeLive2dModelId = useCardStore((s) => (
@@ -155,6 +157,7 @@ export function App(): React.JSX.Element {
           key={stageState.snapshot.cardId}
           modelPath={stageState.snapshot.modelPath}
           runtimeConfig={stageState.snapshot.runtimeConfig ?? undefined}
+          suspended={stageSuspended}
         />
       )}
 

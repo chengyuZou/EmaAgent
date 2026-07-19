@@ -1,9 +1,4 @@
-/**
- * EmaStageView — Live2D model wrapper with SSE event bridge.
- *
- * Listens to Tauri events (emitted by system-sse) for emotion/stage cues
- * and dispatches them to the Live2D model via live2d-react.
- */
+// 连接桌面系统事件与 Live2D 舞台，把情绪、动作、语音及暂停状态送入角色实例。
 import { useEffect, useRef, type JSX } from 'react';
 import {
   defaultLive2DRuntime,
@@ -19,12 +14,14 @@ export interface EmaStageViewProps {
   runtime?: Live2DRuntime;
   /** Live2D runtime config JSON (emotionMap, motionMap, etc.). */
   runtimeConfig?: Live2DModelRuntimeConfig;
+  suspended?: boolean;
 }
 
 export function EmaStageView({
   modelPath,
   runtime = defaultLive2DRuntime,
   runtimeConfig,
+  suspended = false,
 }: EmaStageViewProps): JSX.Element {
   const stageRef = useRef<Live2DStageHandle>(null);
   const { live2dStore, speechStore } = runtime;
@@ -141,6 +138,7 @@ export function EmaStageView({
       modelPath={modelPath}
       runtime={runtime}
       runtimeConfig={runtimeConfig ?? undefined}
+      suspended={suspended}
     />
   );
 }

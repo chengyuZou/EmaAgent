@@ -1,7 +1,7 @@
 // 编排 Live2D 原生 motion update 与前置、后置、最终参数插件。
 import { clamp01 } from '../utils/math.js';
 import type { ExpressionController } from './expression-controller.js';
-import { FrameClock, type FrameTiming } from './frame-timing.js';
+import { ActiveFrameTimeline, FrameClock, type FrameTiming } from './frame-timing.js';
 
 // ── Live2D motion-manager update pipeline ───────────────────────────────────
 //
@@ -86,6 +86,8 @@ export interface MotionManagerUpdateOptions {
 
 export interface MotionManagerUpdate {
   register(plugin: MotionPlugin, stage: 'pre' | 'post' | 'final'): () => void;
+  /** 暂停或恢复原生 motion 与插件共享的活动时间轴。 */
+  setSuspended(suspended: boolean): void;
   /**
    * Hooked replacement for `motionManager.update(model, now)`. Returns
    * whether the original update was "handled" (matches Cubism's bool result).
@@ -109,6 +111,12 @@ export function createMotionManagerUpdate(
   const finalPlugins: MotionPlugin[] = [];
 
   const frameClock = new FrameClock();
+  const activeTimeline = new ActiveFrameTimeline();
+
+  function setSuspended(suspended: boolean): void {
+    activeTimeline.setSuspended(suspended);
+    frameClock.reset();
+  }
 
   function register(plugin: MotionPlugin, stage: 'pre' | 'post' | 'final'): () => void {
     const bucket = stage === 'pre' ? prePlugins : stage === 'post' ? postPlugins : finalPlugins;
@@ -133,7 +141,8 @@ export function createMotionManagerUpdate(
   ): boolean {
     // pixi-live2d-display Cubism 4 在调用 motionManager.update 前已把 now
     // 从 performance.now() 毫秒转换为秒。这里只在唯一入口转换一次。
-    const timing = frameClock.advance(now);
+    const activeNow = activeTimeline.advance(now);
+    const timing = frameClock.advance(activeNow);
     const mm = options.internalModel.motionManager;
     const idleGroupName = mm.groups.idle;
     const isIdleMotion = !mm.state.currentGroup
@@ -157,7 +166,7 @@ export function createMotionManagerUpdate(
     runPlugins(prePlugins, ctx, false);
 
     if (!ctx.handled && originalUpdate) {
-      const result = originalUpdate.call(mm, model, now);
+      const result = originalUpdate.call(mm, model, activeNow);
       if (result) ctx.handled = true;
     }
 
@@ -169,7 +178,7 @@ export function createMotionManagerUpdate(
     return ctx.handled;
   }
 
-  return { register, hookUpdate };
+  return { register, setSuspended, hookUpdate };
 }
 
 // ── Built-in plugins ────────────────────────────────────────────────────────

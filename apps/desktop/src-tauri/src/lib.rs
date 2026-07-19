@@ -1,11 +1,19 @@
-mod sidecar;
+// 组装 Tauri 桌面宿主、窗口生命周期、托盘与 Sidecar 进程管理。
 mod credential_key;
+mod sidecar;
 
-use tauri::{Manager, RunEvent, WindowEvent};
-use tauri::tray::{TrayIconBuilder, TrayIconEvent, MouseButton, MouseButtonState};
+use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
+use tauri::{Emitter, Manager, RunEvent, WindowEvent};
 use tracing_subscriber::EnvFilter;
 
 use sidecar::SidecarState;
+
+const WINDOW_VISIBILITY_EVENT: &str = "ema://window-visibility";
+
+#[derive(Clone, serde::Serialize)]
+struct WindowVisibilityPayload {
+    visible: bool,
+}
 
 // ── Tauri commands ──────────────────────────────────────────────────────────
 
@@ -66,6 +74,10 @@ fn open_window(app: tauri::AppHandle, label: String) -> Result<(), String> {
     match app.get_webview_window(&label) {
         Some(window) => {
             window.show().map_err(|e| e.to_string())?;
+            let _ = window.emit(
+                WINDOW_VISIBILITY_EVENT,
+                WindowVisibilityPayload { visible: true },
+            );
             window.set_focus().map_err(|e| e.to_string())?;
             Ok(())
         }
@@ -151,8 +163,16 @@ pub fn run() {
                         if let Some(win) = app.get_webview_window("main") {
                             if win.is_visible().unwrap_or(false) {
                                 let _ = win.hide();
+                                let _ = win.emit(
+                                    WINDOW_VISIBILITY_EVENT,
+                                    WindowVisibilityPayload { visible: false },
+                                );
                             } else {
                                 let _ = win.show();
+                                let _ = win.emit(
+                                    WINDOW_VISIBILITY_EVENT,
+                                    WindowVisibilityPayload { visible: true },
+                                );
                                 let _ = win.set_focus();
                             }
                         }
@@ -162,6 +182,10 @@ pub fn run() {
                     "show" => {
                         if let Some(win) = app.get_webview_window("main") {
                             let _ = win.show();
+                            let _ = win.emit(
+                                WINDOW_VISIBILITY_EVENT,
+                                WindowVisibilityPayload { visible: true },
+                            );
                             let _ = win.set_focus();
                         }
                     }
@@ -186,6 +210,10 @@ pub fn run() {
                 // The only way to fully quit is via the tray menu "退出".
                 api.prevent_close();
                 let _ = window.hide();
+                let _ = window.emit(
+                    WINDOW_VISIBILITY_EVENT,
+                    WindowVisibilityPayload { visible: false },
+                );
             }
         })
         .build(tauri::generate_context!())

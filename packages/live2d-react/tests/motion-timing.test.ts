@@ -61,4 +61,21 @@ describe('motion pipeline 时间契约', () => {
     expect(updateParameters).toHaveBeenNthCalledWith(1, model, 0);
     expect(updateParameters.mock.calls[1]?.[1]).toBeCloseTo(0.02);
   });
+
+  it('隐藏恢复后第 0 帧不跳时钟，下一帧继续驱动原生 motion', () => {
+    const { model, pipeline } = createRuntime();
+    const originalUpdate = vi.fn(() => false);
+
+    pipeline.hookUpdate(model, 10, originalUpdate);
+    pipeline.hookUpdate(model, 10.016, originalUpdate);
+    pipeline.setSuspended(true);
+    pipeline.setSuspended(false);
+    pipeline.hookUpdate(model, 120, originalUpdate);
+    pipeline.hookUpdate(model, 120.016, originalUpdate);
+
+    expect(originalUpdate.mock.calls[0]?.[1]).toBe(10);
+    expect(originalUpdate.mock.calls[1]?.[1]).toBeCloseTo(10.016);
+    expect(originalUpdate.mock.calls[2]?.[1]).toBeCloseTo(10.016);
+    expect(originalUpdate.mock.calls[3]?.[1]).toBeCloseTo(10.032);
+  });
 });
