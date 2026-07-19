@@ -1,3 +1,4 @@
+// 管理前端 Session 列表、工作区、模式和下一轮模型偏好。
 import { create } from 'zustand';
 import { sessionsApi, type SessionWire } from '../api/sessions.js';
 import { useConversationStore } from './conversation-store.js';
@@ -27,6 +28,11 @@ export interface SessionStoreState {
   setSessionGroup(id: SessionId, label: string | null):              Promise<void>;
   setWorkspaceRoot(id: SessionId, path: string | null):              Promise<void>;
   setSessionMode(id: SessionId, mode: TurnMode): Promise<void>;
+  /** 保存用户希望该 Session 下一轮使用的供应商配置和模型。 */
+  setPreferredModel(
+    id: SessionId,
+    preferredModel: { providerConfigId: string; modelId: string } | null,
+  ): Promise<void>;
   forkSession(id: SessionId):                                        Promise<SessionId>;
   archiveSession(id: SessionId):                                     Promise<void>;
   unarchiveSession(id: SessionId):                                   Promise<void>;
@@ -46,6 +52,31 @@ function rebuildById(s: SessionsState): void {
   for (const x of s.recent)   s.byId.set(x.id, x);
   for (const x of s.archived) s.byId.set(x.id, x);
 }
+
+function replaceSession(
+  sessions: SessionsState,
+  id: string,
+  replacement: SessionWire,
+): SessionsState {
+  const replace = (session: SessionWire): SessionWire =>
+    session.id === id ? replacement : session;
+  const next: SessionsState = {
+    pinned: sessions.pinned.map(replace),
+    byGroup: sessions.byGroup.map((group) => ({
+      ...group,
+      sessions: group.sessions.map(replace),
+    })),
+    recent: sessions.recent.map(replace),
+    archived: sessions.archived.map(replace),
+    byId: new Map(sessions.byId),
+  };
+  next.byId.set(id, replacement);
+  return next;
+}
+
+// 同一 Session 的偏好写入必须按用户点击顺序落库，旧响应也不能覆盖新选择。
+const preferredModelWriteChains = new Map<string, Promise<void>>();
+const preferredModelGenerations = new Map<string, number>();
 
 // ── Store ─────────────────────────────────────────────────────────────────────
 
@@ -141,6 +172,52 @@ export const useSessionStore = create<SessionStoreState>((set, get) => ({
     }
   },
 
+  async setPreferredModel(id, preferredModel) {
+    const key = id as string;
+    const previous = get().sessions.byId.get(key);
+    if (!previous) throw new Error(`Session not loaded: ${key}`);
+    const generation = (preferredModelGenerations.get(key) ?? 0) + 1;
+    preferredModelGenerations.set(key, generation);
+
+    const optimistic: SessionWire = {
+      ...previous,
+      preferredProviderConfigId: preferredModel?.providerConfigId ?? null,
+      preferredModelId: preferredModel?.modelId ?? null,
+    };
+    set((state) => ({
+      sessions: replaceSession(state.sessions, key, optimistic),
+      error: null,
+    }));
+
+    const previousWrite = preferredModelWriteChains.get(key) ?? Promise.resolve();
+    let currentWrite!: Promise<void>;
+    currentWrite = previousWrite
+      .catch(() => {})
+      .then(async () => {
+        const updated = await sessionsApi.patch(id, { preferredModel });
+        if (preferredModelGenerations.get(key) !== generation) return;
+        set((state) => ({
+          sessions: replaceSession(state.sessions, key, updated),
+        }));
+      })
+      .catch((error: unknown) => {
+        // 已有更新选择时，旧请求失败不能回滚或向当前 UI 报错。
+        if (preferredModelGenerations.get(key) !== generation) return;
+        set((state) => ({
+          sessions: replaceSession(state.sessions, key, previous),
+          error: error instanceof Error ? error.message : '保存 Session 模型失败',
+        }));
+        throw error;
+      })
+      .finally(() => {
+        if (preferredModelWriteChains.get(key) === currentWrite) {
+          preferredModelWriteChains.delete(key);
+        }
+      });
+    preferredModelWriteChains.set(key, currentWrite);
+    return currentWrite;
+  },
+
   async forkSession(id) {
     try {
       const result = await sessionsApi.fork(id);
@@ -178,6 +255,8 @@ export const useSessionStore = create<SessionStoreState>((set, get) => ({
       await sessionsApi.delete(id);
       useConversationStore.getState().evictSession(id);
       useDecisionStore.getState().clearSession(id);
+      preferredModelWriteChains.delete(id as string);
+      preferredModelGenerations.delete(id as string);
       await get().loadSessions();
     } catch (err: unknown) {
       set({ error: err instanceof Error ? err.message : 'Failed to delete session' });

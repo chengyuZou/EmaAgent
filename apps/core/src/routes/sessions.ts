@@ -1,3 +1,4 @@
+// 提供 Session 创建、查询、偏好更新、分支与消息读取的 HTTP 边界。
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { asSessionId, asTurnId, asBranchId, SessionOwnershipError } from '@ema-agent/contracts';
@@ -42,6 +43,11 @@ const patchSessionSchema = z.object({
   groupLabel:     z.string().max(100).nullable().optional(),
   workspaceRoot: z.string().max(500).nullable().optional(),
   lastMode:       z.enum(['chat', 'narrative', 'agent']).nullable().optional(),
+  /** 用户希望该 Session 下一轮使用的模型；null 表示恢复系统默认选择。 */
+  preferredModel: z.object({
+    providerConfigId: z.string().min(1).max(200),
+    modelId: z.string().min(1).max(500),
+  }).strict().nullable().optional(),
 });
 
 const forkSchema = z.object({
@@ -174,6 +180,7 @@ export function sessionsRoute(bindings: AppBindings): Hono {
         groupLabel:     'groupLabel' in body.data ? body.data.groupLabel ?? null : undefined,
         workspaceRoot:  body.data.workspaceRoot,
         lastMode:       body.data.lastMode,
+        preferredModel: body.data.preferredModel,
       });
       if (body.data.workspaceRoot !== undefined) {
         // The cached CommandRunner baked the old root into its sandbox

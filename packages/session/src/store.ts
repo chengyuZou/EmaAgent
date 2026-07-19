@@ -69,6 +69,8 @@ function toSession(row: SessionRow): Session {
     activeBranchId:   (row.active_branch_id ?? null) as BranchId | null,
     runningTurnCount: 0,    // populated by caller
     lastMode:    (row.last_mode    ?? null) as TurnMode    | null,
+    preferredProviderConfigId: row.preferred_provider_config_id ?? null,
+    preferredModelId: row.preferred_model_id ?? null,
     lastViewedAt:   row.last_viewed_at ?? null,
     lastTurnStatus: null,
     hasUnread:      false,
@@ -353,6 +355,10 @@ export class SessionStore implements SessionOwnershipFacade {
       groupLabel?:     string | null;
       workspaceRoot?:  string | null;
       lastMode?:       TurnMode | null;
+      preferredModel?: {
+        providerConfigId: string;
+        modelId: string;
+      } | null;
     },
   ): void {
     const cleaned: Parameters<SessionsRepo['patch']>[1] = {};
@@ -372,6 +378,9 @@ export class SessionStore implements SessionOwnershipFacade {
       cleaned.workspaceRoot = patch.workspaceRoot;
     }
     if (patch.lastMode !== undefined) cleaned.lastMode = patch.lastMode;
+    if (patch.preferredModel !== undefined) {
+      cleaned.preferredModel = patch.preferredModel;
+    }
 
     if (Object.keys(cleaned).length === 0) return;
 
@@ -447,6 +456,12 @@ export class SessionStore implements SessionOwnershipFacade {
       workspaceRoot:   src.workspaceRoot,
       parentSessionId: srcId,
       lastMode:        src.lastMode,
+      preferredModel: src.preferredProviderConfigId && src.preferredModelId
+        ? {
+            providerConfigId: src.preferredProviderConfigId,
+            modelId: src.preferredModelId,
+          }
+        : null,
       createdAt:       now,
       updatedAt:       now,
       lastActivityAt:  now,

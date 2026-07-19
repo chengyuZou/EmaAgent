@@ -6,7 +6,7 @@ import { useConversationStore } from '../stores/conversation-store.js';
 import { useSessionStore } from '../stores/session-store.js';
 import { useSidecarStore } from '../stores/sidecar-store.js';
 import { useAgentTaskStore } from '../stores/agent-task-store.js';
-import { useUiStore } from '../stores/ui-store.js';
+import { findEnabledModel, useModelCatalogStore } from '../stores/model-catalog-store.js';
 import { useCapabilitiesStore } from '../stores/capabilities-store.js';
 import { useThemeSync } from '../stores/theme-store.js';
 import { mountSystemEvents } from '../lib/system-sse.js';
@@ -432,10 +432,18 @@ const FALLBACK_CTX = 200_000;
 const EMPTY_MSGS: never[] = [];
 
 function ContextBall({ sessionId }: { sessionId: string | null }): JSX.Element | null {
-  // Use the selected model's real context window; fall back to 200K if none selected.
-  const selectedCtx = useUiStore((s) => s.selectedContextWindow);
-  const ctxWindow = selectedCtx ?? FALLBACK_CTX;
-  const isFallback = selectedCtx === null;
+  const session = useSessionStore((state) =>
+    sessionId ? state.sessions.byId.get(sessionId) : undefined,
+  );
+  const models = useModelCatalogStore((state) => state.models);
+  const preferredModel = findEnabledModel(
+    models,
+    session?.preferredProviderConfigId,
+    session?.preferredModelId,
+  );
+  // 上下文上限来自当前 Session 的模型目录，不再读取跨 Session 的全局 UI 状态。
+  const ctxWindow = preferredModel?.contextWindow ?? FALLBACK_CTX;
+  const isFallback = preferredModel === undefined;
 
   const streaming = useConversationStore((s) =>
     sessionId ? s.streamingMap.get(sessionId) : undefined,

@@ -115,6 +115,7 @@ describe('SessionBackupFacade 演进契约', () => {
         createdAt: 1, updatedAt: 1, lastActivityAt: 1,
         archivedAt: null, pinned: false, pinnedAt: null,
         groupLabel: null, parentSessionId: null, lastMode: null,
+        preferredProviderConfigId: 'provider-config-1', preferredModelId: 'model-1',
         activeBranchId: null,
       })),
     });
@@ -132,6 +133,10 @@ describe('SessionBackupFacade 演进契约', () => {
 
     expect(result).toMatchObject({ sessionId: 'session-1', format: 'zip-v1' });
     expect(restoreRows).toHaveBeenCalledOnce();
+    expect(restoreRows.mock.calls[0]?.[0].session).toMatchObject({
+      preferredProviderConfigId: 'provider-config-1',
+      preferredModelId: 'model-1',
+    });
   });
 
   it('明确声明 ZIP v2 能力尚未启用', () => {
@@ -160,7 +165,12 @@ describe('SessionBackupFacade 演进契约', () => {
       sessionExists: () => false,
       restoreRows: vi.fn(),
       collectExport: () => ({
-        session: { id: 'session-123456', title: '导出测试' },
+        session: {
+          id: 'session-123456',
+          title: '导出测试',
+          preferredProviderConfigId: 'provider-config-1',
+          preferredModelId: 'model-1',
+        },
         turns: [{ id: 'turn-1' }], messages: [], artifacts: [], attachments: [],
         audio: [], notes: null, branches: [], agentTasks: [],
         agentTaskMessages: [], memoryState: null, kbActivations: [],
@@ -175,6 +185,10 @@ describe('SessionBackupFacade 演进契约', () => {
       version: '1', sessionId: 'session-123456',
     });
     expect(JSON.parse(strFromU8(entries['turns.json']!))).toEqual([{ id: 'turn-1' }]);
+    expect(JSON.parse(strFromU8(entries['session.json']!))).toMatchObject({
+      preferredProviderConfigId: 'provider-config-1',
+      preferredModelId: 'model-1',
+    });
   });
 
   it('ZIP v1 在读取无界文件前执行导出预算', () => {

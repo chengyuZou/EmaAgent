@@ -8,6 +8,7 @@ import { useUiStore } from '../stores/ui-store.js';
 import { ModeSelector } from './ModeSelector.js';
 import { DecisionLayer } from '../decision/DecisionLayer.js';
 import { ModelPicker, type ModelSelection } from './ModelPicker.js';
+import { findEnabledModel, useModelCatalogStore } from '../stores/model-catalog-store.js';
 import { AttachmentChip } from './AttachmentChip.js';
 import { showToast } from '../lib/toast.js';
 import { tauriBridge } from '../lib/tauri-bridge.js';
@@ -57,21 +58,73 @@ export function ChatInput(): JSX.Element {
   const [isSubmitting, setIsSubmitting] = useState(false);
   // Map<kbId, assetId[]> — per-KB doc selection; persists when switching library tabs.
   const [selectedScopes,   setSelectedScopes]   = useState<Map<string, string[]>>(new Map());
-  const [selectedModel,    setSelectedModel]    = useState<ModelSelection | null>(null);
   const [thinkingEnabled,  setThinkingEnabled]  = useState(false);
   // 拖动上传：文件拖入对话框区域时高亮
   const [isDragOver,       setIsDragOver]       = useState(false);
   const textareaRef     = useRef<TextareaHandle>(null);
   const inputBoxRef     = useRef<HTMLDivElement>(null); // 拖放命中检测基准
   const prevViewedIdRef = useRef(viewedId);
+  const invalidModelCleanupRef = useRef<string | null>(null);
   const TEXTAREA_MAX_H  = 200; // px — beyond this the textarea scrolls
+
+  const viewedSession = useSessionStore((state) =>
+    viewedId ? state.sessions.byId.get(viewedId as string) : undefined,
+  );
+  const modelCatalog = useModelCatalogStore((state) => state.models);
+  const modelCatalogStatus = useModelCatalogStore((state) => state.status);
+  const selectedModelDefinition = findEnabledModel(
+    modelCatalog,
+    viewedSession?.preferredProviderConfigId,
+    viewedSession?.preferredModelId,
+  );
+  const selectedModel: ModelSelection | null =
+    viewedSession?.preferredProviderConfigId && viewedSession.preferredModelId
+      ? {
+          providerId: viewedSession.preferredProviderConfigId,
+          model: viewedSession.preferredModelId,
+          reasoning: selectedModelDefinition?.reasoning,
+        }
+      : null;
 
   useEffect(() => {
     if (prevViewedIdRef.current === viewedId) return;
     prevViewedIdRef.current = viewedId;
     setText(useConversationStore.getState().draftMap.get(viewedId as string ?? '') ?? '');
     setSelectedScopes(new Map()); // KB selection is per-session; reset when switching sessions
+    setThinkingEnabled(false);
   }, [viewedId]);
+
+  // 目录成功加载后才清理已失效选择；网络失败不能误删用户的持久化偏好。
+  useEffect(() => {
+    if (modelCatalogStatus !== 'ready' || !viewedId) return;
+    const providerConfigId = viewedSession?.preferredProviderConfigId;
+    const modelId = viewedSession?.preferredModelId;
+    if (!providerConfigId || !modelId) {
+      invalidModelCleanupRef.current = null;
+      return;
+    }
+    if (selectedModelDefinition) {
+      invalidModelCleanupRef.current = null;
+      return;
+    }
+
+    const invalidKey = `${viewedId}:${providerConfigId}:${modelId}`;
+    if (invalidModelCleanupRef.current === invalidKey) return;
+    invalidModelCleanupRef.current = invalidKey;
+
+    void useSessionStore.getState().setPreferredModel(viewedId, null).catch((error: unknown) => {
+      showToast(
+        error instanceof Error ? `清理失效模型失败: ${error.message}` : '清理失效模型失败',
+        { variant: 'danger' },
+      );
+    });
+  }, [
+    modelCatalogStatus,
+    selectedModelDefinition,
+    viewedId,
+    viewedSession?.preferredModelId,
+    viewedSession?.preferredProviderConfigId,
+  ]);
 
   // Auto-resize textarea height based on content, capped at TEXTAREA_MAX_H.
   useEffect(() => {
@@ -349,10 +402,30 @@ export function ChatInput(): JSX.Element {
             <ModelPicker
               selected={selectedModel}
               onSelect={(sel) => {
-                setSelectedModel(sel);
+                if (viewedId) {
+                  void useSessionStore.getState().setPreferredModel(viewedId, {
+                    providerConfigId: sel.providerId,
+                    modelId: sel.model,
+                  }).catch((error: unknown) => {
+                    showToast(
+                      error instanceof Error ? `保存模型失败: ${error.message}` : '保存模型失败',
+                      { variant: 'danger' },
+                    );
+                  });
+                }
                 if (!sel.reasoning) setThinkingEnabled(false);
               }}
-              onClear={() => { setSelectedModel(null); setThinkingEnabled(false); }}
+              onClear={() => {
+                if (viewedId) {
+                  void useSessionStore.getState().setPreferredModel(viewedId, null).catch((error: unknown) => {
+                    showToast(
+                      error instanceof Error ? `恢复默认模型失败: ${error.message}` : '恢复默认模型失败',
+                      { variant: 'danger' },
+                    );
+                  });
+                }
+                setThinkingEnabled(false);
+              }}
             />
 
             {/* 启用思考 — 仅当所选模型支持思考时显示 */}

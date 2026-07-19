@@ -100,6 +100,11 @@ export const sessionsApi = {
       groupLabel?: string | null;
       workspaceRoot?: string | null;
       lastMode?: TurnMode | null;
+      /** 用户希望该 Session 下一轮使用的模型；null 表示恢复系统默认选择。 */
+      preferredModel?: {
+        providerConfigId: string;
+        modelId: string;
+      } | null;
     },
   ): Promise<SessionWire> {
     return sidecarClient.request<SessionWire>(`/api/sessions/${id}`, {

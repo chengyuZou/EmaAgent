@@ -7,8 +7,8 @@
  */
 import { useState, useEffect, useMemo, useRef, type JSX } from 'react';
 import { Input, ScrollArea, Badge } from '@ema-agent/ui';
-import { modelsApi, type EnabledModelWire } from '../api/models.js';
-import { useUiStore } from '../stores/ui-store.js';
+import type { EnabledModelWire } from '../api/models.js';
+import { findEnabledModel, useModelCatalogStore } from '../stores/model-catalog-store.js';
 
 export interface ModelSelection {
   providerId: string;
@@ -32,16 +32,15 @@ function fmtCtx(n: number): string {
 
 export function ModelPicker({ selected, onSelect, onClear }: ModelPickerProps): JSX.Element {
   const [open, setOpen]       = useState(false);
-  const [models, setModels]   = useState<EnabledModelWire[]>([]);
   const [search, setSearch]   = useState('');
-  const [loading, setLoading] = useState(true);
   const searchRef             = useRef<HTMLInputElement>(null);
+  const models                = useModelCatalogStore((state) => state.models);
+  const catalogStatus         = useModelCatalogStore((state) => state.status);
+  const catalogError          = useModelCatalogStore((state) => state.error);
+  const loading               = catalogStatus === 'idle' || catalogStatus === 'loading';
 
   useEffect(() => {
-    modelsApi.listEnabled()
-      .then(setModels)
-      .catch(() => setModels([]))
-      .finally(() => setLoading(false));
+    void useModelCatalogStore.getState().load();
   }, []);
 
   // Focus search input + reset search when dropdown opens
@@ -73,9 +72,11 @@ export function ModelPicker({ selected, onSelect, onClear }: ModelPickerProps): 
     );
   }, [models, search]);
 
-  const selectedModel = selected
-    ? models.find((m) => m.providerId === selected.providerId && m.model === selected.model)
-    : null;
+  const selectedModel = findEnabledModel(
+    models,
+    selected?.providerId,
+    selected?.model,
+  );
 
   const triggerLabel = selectedModel
     ? selectedModel.model
@@ -132,7 +133,6 @@ export function ModelPicker({ selected, onSelect, onClear }: ModelPickerProps): 
                              transition-colors duration-[var(--ema-duration-base)]"
                   onClick={() => {
                     onClear();
-                    useUiStore.getState().setSelectedContextWindow(null);
                     setOpen(false);
                   }}
                   title="恢复默认模型"
@@ -148,7 +148,9 @@ export function ModelPicker({ selected, onSelect, onClear }: ModelPickerProps): 
                 <div className="px-3 py-6 text-xs text-[var(--ema-text-tertiary)] text-center">加载中…</div>
               ) : grouped.length === 0 ? (
                 <div className="px-3 py-6 text-xs text-[var(--ema-text-tertiary)] text-center">
-                  {search ? '无匹配结果' : '暂无已启用的模型'}
+                  {catalogStatus === 'error'
+                    ? catalogError ?? '模型目录加载失败'
+                    : search ? '无匹配结果' : '暂无已启用的模型'}
                 </div>
               ) : (
                 grouped.map(([providerId, providerModels]) => (
@@ -173,7 +175,6 @@ export function ModelPicker({ selected, onSelect, onClear }: ModelPickerProps): 
                           }
                           onClick={() => {
                             onSelect({ providerId: m.providerId, model: m.model, reasoning: m.reasoning });
-                            useUiStore.getState().setSelectedContextWindow(m.contextWindow);
                             setOpen(false);
                           }}
                         >

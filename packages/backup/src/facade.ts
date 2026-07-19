@@ -44,6 +44,8 @@ interface SessionExport {
   archivedAt: number | null; pinned: boolean; pinnedAt: number | null;
   groupLabel: string | null; parentSessionId: string | null;
   lastMode: string | null; activeBranchId: string | null;
+  preferredProviderConfigId?: string | null;
+  preferredModelId?: string | null;
 }
 interface AudioMeta {
   turnId: string; mimeType: string; byteSize: number; durationMs: number | null;
@@ -256,6 +258,8 @@ export class SessionBackupFacade {
         pinnedAt: session.pinnedAt ?? null, groupLabel: session.groupLabel ?? null,
         parentSessionId: session.parentSessionId ?? null,
         lastMode: session.lastMode ?? null, activeBranchId: session.activeBranchId ?? null,
+        preferredProviderConfigId: session.preferredProviderConfigId ?? null,
+        preferredModelId: session.preferredModelId ?? null,
       },
       branches: branches.map((branch) => ({ ...branch, session_id: session.id })),
       turns,

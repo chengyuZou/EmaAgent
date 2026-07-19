@@ -48,6 +48,10 @@ export interface Session {
   activeBranchId:   BranchId | null;
   runningTurnCount: number;
   lastMode:     TurnMode | null;
+  /** 用户希望该 Session 下一轮默认使用的供应商配置；null 表示使用系统默认选择。 */
+  preferredProviderConfigId: string | null;
+  /** 用户希望该 Session 下一轮默认使用的模型；null 表示使用系统默认选择。 */
+  preferredModelId: string | null;
   lastViewedAt:   number | null;
   lastTurnStatus: TurnStatus | null;
   hasUnread:      boolean;

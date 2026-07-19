@@ -1,3 +1,4 @@
+// 读写 Session 行、稳定分页、搜索投影、Fork 和事务性偏好更新。
 import type { SqliteDb } from '../database.js';
 import type { SessionId, TurnId, BranchId, TurnStatus } from '@ema-agent/contracts';
 import { buildFtsQuery } from '../zh-tokenizer.js';
@@ -18,6 +19,10 @@ export interface SessionRow {
   /** 整个session fork 使用 表示 fork 溯源 */
   parent_session_id: string | null;
   last_mode:        string | null;
+  /** 用户希望该 Session 下一轮默认使用的供应商配置；null 表示使用系统默认选择。 */
+  preferred_provider_config_id: string | null;
+  /** 用户希望该 Session 下一轮默认使用的模型；null 表示使用系统默认选择。 */
+  preferred_model_id: string | null;
   last_viewed_at:   number | null;
   /** 当前 session 的 active branch,用于在UI的Branch界面中使用 */
   active_branch_id: string | null;
@@ -44,6 +49,10 @@ export interface SessionInsert {
   workspaceRoot?:  string | null;
   parentSessionId?: string;
   lastMode?:        string | null;
+  preferredModel?: {
+    providerConfigId: string;
+    modelId: string;
+  } | null;
   createdAt: number;
   updatedAt: number;
   lastActivityAt?: number;
@@ -64,12 +73,17 @@ export class SessionsRepo {
       .prepare(
         `INSERT INTO sessions
            (id, title, workspace_root,
-            parent_session_id, last_mode, created_at, updated_at, last_activity_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+            parent_session_id, last_mode,
+            preferred_provider_config_id, preferred_model_id,
+            created_at, updated_at, last_activity_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(s.id, s.title,
         s.workspaceRoot ?? null,
-        s.parentSessionId ?? null, s.lastMode ?? null, s.createdAt, s.updatedAt,
+        s.parentSessionId ?? null, s.lastMode ?? null,
+        s.preferredModel?.providerConfigId ?? null,
+        s.preferredModel?.modelId ?? null,
+        s.createdAt, s.updatedAt,
         s.lastActivityAt ?? s.createdAt);
   }
 
@@ -407,17 +421,21 @@ export class SessionsRepo {
     if (!src) throw new Error(`Source session not found: ${srcId}`);
 
     this.db.transaction(() => {
-      // 1. 新 session 行复制 workspace_root + last_mode。
+      // 1. 新 session 行复制 workspace、mode 和下一轮模型偏好。
       //    parent_session_id 指回来源 session，用于 fork 溯源，不表示 Branch 父节点。
       //    新 session 起始为扁平
       //    (无 branch,active_branch_id NULL)。
       this.db.prepare(
         `INSERT INTO sessions
            (id, title, workspace_root,
-            parent_session_id, last_mode, created_at, updated_at, last_activity_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+            parent_session_id, last_mode,
+            preferred_provider_config_id, preferred_model_id,
+            created_at, updated_at, last_activity_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       ).run(newId, title, src.workspace_root,
-        srcId, src.last_mode, createdAt, createdAt, createdAt);
+        srcId, src.last_mode,
+        src.preferred_provider_config_id, src.preferred_model_id,
+        createdAt, createdAt, createdAt);
 
       // 2. 构建 old->new turn id 映射。Turn 被复制以使 fork 出的 session
       //    保留 mode / status / usage / 时序--没有它们,前端会丢失
@@ -592,6 +610,10 @@ export class SessionsRepo {
       groupLabel?:     string | null;
       workspaceRoot?:  string | null;
       lastMode?:       string | null;
+      preferredModel?: {
+        providerConfigId: string;
+        modelId: string;
+      } | null;
     },
     now: number,
   ): void {
@@ -619,6 +641,13 @@ export class SessionsRepo {
     if (patch.lastMode !== undefined) {
       setClauses.push('last_mode = ?');
       values.push(patch.lastMode);
+    }
+    if (patch.preferredModel !== undefined) {
+      setClauses.push('preferred_provider_config_id = ?', 'preferred_model_id = ?');
+      values.push(
+        patch.preferredModel?.providerConfigId ?? null,
+        patch.preferredModel?.modelId ?? null,
+      );
     }
 
     if (setClauses.length === 0) return;

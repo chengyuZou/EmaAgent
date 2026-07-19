@@ -60,6 +60,52 @@ describe('SessionStore — session', () => {
 
     expect(store.getSession(s.id).title).toBe('Updated');
   });
+
+  it('保存和清除该 Session 下一轮想使用的模型', () => {
+    const store = makeStore();
+    const session = store.createSession();
+
+    store.patchSession(session.id, {
+      preferredModel: {
+        providerConfigId: 'provider-config-1',
+        modelId: 'model-1',
+      },
+    });
+    expect(store.getSession(session.id)).toMatchObject({
+      preferredProviderConfigId: 'provider-config-1',
+      preferredModelId: 'model-1',
+    });
+
+    store.patchSession(session.id, { preferredModel: null });
+    expect(store.getSession(session.id)).toMatchObject({
+      preferredProviderConfigId: null,
+      preferredModelId: null,
+    });
+  });
+
+  it('已有 Branch 的 Session fork 仍继承下一轮模型偏好', () => {
+    const store = makeStore();
+    const session = store.createSession();
+    store.patchSession(session.id, {
+      preferredModel: {
+        providerConfigId: 'provider-config-1',
+        modelId: 'model-1',
+      },
+    });
+    const { turn } = store.startTurn({
+      sessionId: session.id,
+      mode: 'chat',
+      userInput: 'root',
+    });
+    store.completeTurn(turn.id);
+    store.forkMessage({ sessionId: session.id, fromTurnId: turn.id });
+
+    const fork = store.forkSession(session.id);
+    expect(store.getSession(fork.sessionId)).toMatchObject({
+      preferredProviderConfigId: 'provider-config-1',
+      preferredModelId: 'model-1',
+    });
+  });
 });
 
 describe('SessionStore — Turn ID 游标遍历', () => {

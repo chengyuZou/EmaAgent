@@ -1,3 +1,4 @@
+// 定义 Core 与各客户端之间共享的 REST JSON 数据结构。
 import type { TurnMode, TurnStatus, MessageRole } from './ids.js';
 import type { MessageKind, MessageBlocks, TurnAttachment } from './messages.js';
 
@@ -33,6 +34,10 @@ export interface SessionWire {
   parentSessionId:  string | null;
   runningTurnCount: number;
   lastMode:         TurnMode | null;
+  /** 用户希望该 Session 下一轮默认使用的供应商配置；null 表示使用系统默认选择。 */
+  preferredProviderConfigId: string | null;
+  /** 用户希望该 Session 下一轮默认使用的模型；null 表示使用系统默认选择。 */
+  preferredModelId: string | null;
   /** Unix-ms timestamp when user last opened this session. Null = never explicitly viewed. */
   lastViewedAt:     number | null;
   /** Status of the most recent turn, or null if session has no turns. */

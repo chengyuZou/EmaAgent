@@ -49,6 +49,13 @@ describe('SessionsRepo integration', () => {
     expect(tables.map((row) => row.name)).toEqual(['messages', 'sessions', 'turns']);
     expect(database.db.pragma('foreign_keys', { simple: true })).toBe(1);
 
+    const sessionColumns = database.db.prepare('PRAGMA table_info(sessions)')
+      .all() as Array<{ name: string }>;
+    expect(sessionColumns.map((column) => column.name)).toEqual(expect.arrayContaining([
+      'preferred_provider_config_id',
+      'preferred_model_id',
+    ]));
+
     const indexes = database.db.prepare(`
       SELECT name
       FROM sqlite_master
@@ -201,6 +208,43 @@ describe('SessionsRepo integration', () => {
     expect(copiedAttachment.session_id).toBe('fork');
     expect(turns.some((turn) => turn.id === copiedAttachment.turn_id)).toBe(true);
     expect(repo.search('two', 10).map((row) => row.id)).toContain('fork');
+  });
+
+  it('原子保存下一轮模型偏好并在 Session fork 时继承', () => {
+    insertSession({ id: 'source' });
+    repo.patch(asSessionId('source'), {
+      preferredModel: {
+        providerConfigId: 'provider-config-1',
+        modelId: 'model-1',
+      },
+    }, 100);
+
+    expect(repo.findById(asSessionId('source'))).toMatchObject({
+      preferred_provider_config_id: 'provider-config-1',
+      preferred_model_id: 'model-1',
+    });
+
+    repo.forkInto(asSessionId('source'), asSessionId('fork'), 'Fork', 200);
+    expect(repo.findById(asSessionId('fork'))).toMatchObject({
+      preferred_provider_config_id: 'provider-config-1',
+      preferred_model_id: 'model-1',
+    });
+
+    repo.patch(asSessionId('source'), { preferredModel: null }, 300);
+    expect(repo.findById(asSessionId('source'))).toMatchObject({
+      preferred_provider_config_id: null,
+      preferred_model_id: null,
+    });
+  });
+
+  it('数据库拒绝只写供应商或只写模型的残缺偏好', () => {
+    insertSession({ id: 'source' });
+
+    expect(() => database.db.prepare(`
+      UPDATE sessions
+      SET preferred_provider_config_id = 'provider-config-1'
+      WHERE id = 'source'
+    `).run()).toThrow(/both provider and model/);
   });
 
   it('uses stable turn and message boundaries when fork timestamps are equal', () => {

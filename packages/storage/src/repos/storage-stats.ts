@@ -153,6 +153,9 @@ export interface SessionRestorePayload {
     pinned: boolean; pinnedAt: number | null;
     groupLabel: string | null; parentSessionId: string | null;
     lastMode: string | null; activeBranchId: string | null;
+    /** 旧 ZIP v1 没有这两个字段，导入时按 null 兼容。 */
+    preferredProviderConfigId?: string | null;
+    preferredModelId?: string | null;
     metaJson?: string;
   };
   branches:          BranchRow[];
@@ -187,6 +190,14 @@ function validateSessionRestorePayload(payload: SessionRestorePayload): void {
   if (!sessionId) throw new SessionRestoreValidationError('Session id 不能为空');
   if (payload.session.parentSessionId === sessionId) {
     throw new SessionRestoreValidationError('Session 不能把自身设为 parentSessionId');
+  }
+  const preferredProviderConfigId = payload.session.preferredProviderConfigId ?? null;
+  const preferredModelId = payload.session.preferredModelId ?? null;
+  if ((preferredProviderConfigId === null) !== (preferredModelId === null)) {
+    throw new SessionRestoreValidationError('Session 下一轮模型偏好必须同时包含供应商配置和模型');
+  }
+  if (preferredProviderConfigId !== null && (!preferredProviderConfigId.trim() || !preferredModelId?.trim())) {
+    throw new SessionRestoreValidationError('Session 下一轮模型偏好不能为空字符串');
   }
 
   const turnIds = uniqueIds(payload.turns, 'Turn');
@@ -491,8 +502,10 @@ export class SessionStatsRepo {
         INSERT INTO sessions
           (id, title, workspace_root, created_at, updated_at,
            last_activity_at, archived_at, pinned, pinned_at, group_label,
-           parent_session_id, last_mode, active_branch_id, meta_json)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)
+           parent_session_id, last_mode,
+           preferred_provider_config_id, preferred_model_id,
+           active_branch_id, meta_json)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)
       `).run(
         p.session.id, p.session.title, p.session.workspaceRoot ?? null,
         p.session.createdAt, p.session.updatedAt,
@@ -501,6 +514,8 @@ export class SessionStatsRepo {
         p.session.pinned ? 1 : 0, p.session.pinnedAt ?? null,
         p.session.groupLabel ?? null, parentSessionId,
         p.session.lastMode ?? null,
+        p.session.preferredProviderConfigId ?? null,
+        p.session.preferredModelId ?? null,
         p.session.metaJson ?? '{}',
       );
 

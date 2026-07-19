@@ -52,7 +52,7 @@ describe('N-006 Telemetry 有界保留策略', () => {
 
     expect(sql.replaceAll(/\s+/g, ' '))
       .toContain('telemetry_events(created_at ASC, id ASC)');
-    expect(database.db.pragma('user_version', { simple: true })).toBe(13);
+    expect(database.db.pragma('user_version', { simple: true })).toBe(14);
   });
 
   function eventIds(): string[] {
