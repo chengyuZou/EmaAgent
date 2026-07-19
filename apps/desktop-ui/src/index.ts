@@ -21,6 +21,7 @@ export type { UiStoreState, SubWindowName } from './stores/ui-store.js';
 
 export { useSettingsStore }  from './stores/settings-store.js';
 export type { SettingsStoreState } from './stores/settings-store.js';
+export { useRuntimeSettingsSync } from './stores/runtime-settings-sync.js';
 
 export { useCardStore }      from './stores/card-store.js';
 export type { CardStoreState } from './stores/card-store.js';
@@ -80,7 +81,7 @@ export { ErrorBoundary } from './lib/error-boundary.js';
 export type { ErrorBoundaryProps } from './lib/error-boundary.js';
 
 export { showToast } from './lib/toast.js';
-export type { ToastOptions } from './lib/toast.js';
+export type { ToastHandle, ToastOptions } from './lib/toast.js';
 
 // ── API ───────────────────────────────────────────────────────────────────────
 
@@ -123,6 +124,7 @@ export { settingsApi }       from './api/settings.js';
 export type {
   EventDisplayConfig,
   EventDisplayResult,
+  PermissionTimeoutResult,
 } from './api/settings.js';
 
 export { cardsApi }          from './api/cards.js';

@@ -1,12 +1,18 @@
-/**
- * Settings store — providers + bindings + settings cache (write-through).
- */
+// 管理 Provider、模型绑定与运行时设置，并在保存后同步其他桌面窗口。
 import { create } from 'zustand';
 import { providersApi, type ProviderConfigWire, type ProviderConfigInput, type ProviderDefinition } from '../api/providers.js';
 import { modelBindingsApi, type BindingModule, type ResolvedModelBinding, type BindingUpsertInput } from '../api/model-bindings.js';
 import { settingsApi, type EventDisplayConfig, type EventDisplayResult } from '../api/settings.js';
+import { tauriBridge } from '../lib/tauri-bridge.js';
 
 export type { EventDisplayConfig, EventDisplayResult };
+
+export const RUNTIME_SETTINGS_EVENT = 'settings:runtime-changed';
+
+export interface RuntimeSettingsPayload {
+  permissionTimeoutMs: number;
+  eventDisplay: EventDisplayResult | null;
+}
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -31,6 +37,7 @@ export interface SettingsStoreState {
   deleteBinding(module: BindingModule, providerConfigId: string, model: string): Promise<void>;
 
   putPermissionTimeout(ms: number):                    Promise<void>;
+  refreshRuntimeSettings():                            Promise<void>;
 
   /** Reload the full event-display config from the sidecar. */
   refreshEventDisplay():                              Promise<void>;
@@ -146,9 +153,27 @@ export const useSettingsStore = create<SettingsStoreState>((set, get) => ({
   async putPermissionTimeout(ms) {
     try {
       await settingsApi.putPermissionTimeout({ timeoutMs: ms });
-      set({ permissionTimeoutMs: ms });
+      set({ permissionTimeoutMs: ms, error: null });
+      broadcastRuntimeSettings(get());
     } catch (err: unknown) {
       set({ error: err instanceof Error ? err.message : 'Failed to save permission timeout' });
+      throw err;
+    }
+  },
+
+  async refreshRuntimeSettings() {
+    try {
+      const [permission, eventDisplay] = await Promise.all([
+        settingsApi.getPermissionTimeout(),
+        settingsApi.getEventDisplay(),
+      ]);
+      set({
+        permissionTimeoutMs: permission.timeoutMs,
+        eventDisplay,
+        error: null,
+      });
+    } catch (err: unknown) {
+      set({ error: err instanceof Error ? err.message : 'Failed to load runtime settings' });
       throw err;
     }
   },
@@ -156,19 +181,40 @@ export const useSettingsStore = create<SettingsStoreState>((set, get) => ({
   async refreshEventDisplay() {
     try {
       const eventDisplay = await settingsApi.getEventDisplay();
-      set({ eventDisplay });
+      set({ eventDisplay, error: null });
     } catch (err: unknown) {
       set({ error: err instanceof Error ? err.message : 'Failed to load event display config' });
+      throw err;
     }
   },
 
   async putEventDisplay(overrides) {
     try {
+      const current = get().eventDisplay;
+      if (!current) throw new Error('事件展示设置尚未加载');
       await settingsApi.putEventDisplay(overrides);
-      await get().refreshEventDisplay();
+      set({
+        eventDisplay: {
+          defaults: current.defaults,
+          overrides,
+          effective: { ...current.defaults, ...overrides },
+        },
+        error: null,
+      });
+      broadcastRuntimeSettings(get());
     } catch (err: unknown) {
       set({ error: err instanceof Error ? err.message : 'Failed to save event display config' });
       throw err;
     }
   },
 }));
+
+function broadcastRuntimeSettings(state: SettingsStoreState): void {
+  const payload: RuntimeSettingsPayload = {
+    permissionTimeoutMs: state.permissionTimeoutMs,
+    eventDisplay: state.eventDisplay,
+  };
+  void tauriBridge.emit(RUNTIME_SETTINGS_EVENT, payload).catch((error: unknown) => {
+    console.warn('[settings] failed to broadcast runtime settings', error);
+  });
+}

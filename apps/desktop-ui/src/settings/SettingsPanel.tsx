@@ -29,6 +29,7 @@ import { ShortcutsTab } from './ShortcutsTab.js';
 import { AppearanceTab } from './AppearanceTab.js';
 import { StorageTab }    from './StorageTab.js';
 import { DiagnosticsTab } from './DiagnosticsTab.js';
+import { GeneralTab } from './GeneralTab.js';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -39,9 +40,10 @@ type SectionId =
   | 'memory'
   | 'knowledge-base'
   | 'storage' | 'diagnostics'
+  | 'general'
   | 'live2d'    | 'shortcuts' | 'appearance';
 
-type GroupId = 'ai' | 'character' | 'agent' | 'memory' | 'knowledge' | 'data' | 'desktop';
+type GroupId = 'ai' | 'character' | 'agent' | 'memory' | 'knowledge' | 'data' | 'general';
 
 // Storage fills the entire content pane (no outer padding / scroll)
 const FULL_HEIGHT_SECTIONS = new Set<SectionId>(['storage']);
@@ -92,8 +94,9 @@ const GROUPS: GroupDef[] = [
     ],
   },
   {
-    id: 'desktop', label: '桌面与外观', icon: 'i-solar:pallete-2-bold-duotone',
+    id: 'general', label: '通用设置', icon: 'i-solar:settings-bold-duotone',
     sections: [
+      { id: 'general',    label: '通用设置' },
       { id: 'live2d',     label: 'Live2D' },
       { id: 'shortcuts',  label: '快捷键' },
       { id: 'appearance', label: '外观' },
@@ -136,6 +139,7 @@ function SectionContent({ id }: { id: SectionId }): JSX.Element {
     case 'knowledge-base': return <KnowledgeBaseTab />;
     case 'storage':        return <StorageTab />;
     case 'diagnostics':    return <DiagnosticsTab />;
+    case 'general':        return <GeneralTab />;
     case 'live2d':         return <Live2DTab />;
     case 'shortcuts':      return <ShortcutsTab />;
     case 'appearance':     return <AppearanceTab />;

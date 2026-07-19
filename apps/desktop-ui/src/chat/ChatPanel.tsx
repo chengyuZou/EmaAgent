@@ -9,6 +9,7 @@ import { useAgentTaskStore } from '../stores/agent-task-store.js';
 import { findEnabledModel, useModelCatalogStore } from '../stores/model-catalog-store.js';
 import { useCapabilitiesStore } from '../stores/capabilities-store.js';
 import { useThemeSync } from '../stores/theme-store.js';
+import { useRuntimeSettingsSync } from '../stores/runtime-settings-sync.js';
 import { mountSystemEvents } from '../lib/system-sse.js';
 import { ErrorBoundary } from '../lib/error-boundary.js';
 import { SessionSidebar } from './SessionSidebar.js';
@@ -34,6 +35,7 @@ export function ChatPanel(): JSX.Element {
   const artifactsEnabled = useCapabilitiesStore((s) => s.features.artifacts);
 
   useThemeSync();
+  useRuntimeSettingsSync(sidecarStatus.kind === 'ok');
 
   const [activePanels, setActivePanels] = useState<Set<InspectorPanelId>>(new Set());
   const [overflowOpen, setOverflowOpen] = useState(false);

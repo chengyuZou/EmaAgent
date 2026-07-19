@@ -1,23 +1,31 @@
+// 在当前窗口显示最多三条轻量通知，并支持语义颜色、自定义强调色和手动关闭。
 /**
  * Minimal toast notification system — portal-based, bottom-right stack.
  *
  * Self-contained — does NOT import from @ema-agent/ui (avoids circular deps).
  * Uses UnoCSS classes from the shared ui preset.
  */
-import { useState, useEffect, useCallback, type ReactNode } from 'react';
+import { useState, useEffect, useCallback, type CSSProperties, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 export interface ToastOptions {
   variant?:  'info' | 'success' | 'warning' | 'danger';
-  duration?: number;
+  /** null 表示保持显示，直到用户手动关闭。 */
+  duration?: number | null;
+  accentColor?: string;
+}
+
+export interface ToastHandle {
+  dismiss(): void;
 }
 
 interface ToastItem {
   id: number;
   message: string;
   variant: Required<ToastOptions>['variant'];
+  accentColor?: string;
 }
 
 // ── Internal state ────────────────────────────────────────────────────────────
@@ -26,9 +34,9 @@ let nextId = 1;
 const listeners = new Set<() => void>();
 let toasts: ToastItem[] = [];
 
-function addToast(message: string, variant: ToastItem['variant']): number {
+function addToast(message: string, variant: ToastItem['variant'], accentColor?: string): number {
   const id = nextId++;
-  toasts = [...toasts.slice(-2), { id, message, variant }]; // max 3
+  toasts = [...toasts.slice(-2), { id, message, variant, accentColor }]; // max 3
   listeners.forEach((fn) => fn());
   return id;
 }
@@ -70,9 +78,18 @@ function ToastContainer(): JSX.Element {
       {toasts.map((t) => (
         <div
           key={t.id}
-          className={`pointer-events-auto px-4 py-2 rounded-xl border text-sm ${variantStyles[t.variant]} ${variantBg[t.variant]} ema-fade-in`}
+          className={`pointer-events-auto flex items-start gap-2 px-4 py-2 rounded-xl border text-sm ${variantStyles[t.variant]} ${variantBg[t.variant]} ema-fade-in`}
+          style={t.accentColor ? { borderColor: t.accentColor } as CSSProperties : undefined}
         >
-          {t.message}
+          <span className="min-w-0 flex-1 break-words">{t.message}</span>
+          <button
+            type="button"
+            aria-label="关闭通知"
+            className="mt-0.5 shrink-0 cursor-pointer opacity-60 hover:opacity-100 transition-opacity"
+            onClick={() => removeToast(t.id)}
+          >
+            <span className="i-mdi:close text-sm" aria-hidden />
+          </button>
         </div>
       ))}
     </div>
@@ -81,11 +98,11 @@ function ToastContainer(): JSX.Element {
 
 // ── Lazy portal mount ─────────────────────────────────────────────────────────
 
-let _mounted = false;
+let mounted = false;
 
 function ensureMounted(): void {
-  if (_mounted) return;
-  _mounted = true;
+  if (mounted) return;
+  mounted = true;
   const el = document.createElement('div');
   el.id = 'desktop-ui-toast-root';
   document.body.appendChild(el);
@@ -101,13 +118,14 @@ function ensureMounted(): void {
  *   showToast('操作成功', { variant: 'success' });
  *   showToast('连接失败', { variant: 'danger', duration: 5000 });
  */
-export function showToast(message: string, opts?: ToastOptions): void {
+export function showToast(message: string, opts?: ToastOptions): ToastHandle {
   ensureMounted();
   const variant = opts?.variant ?? 'info';
   const duration = opts?.duration ?? 3000;
 
-  const id = addToast(message, variant);
-  setTimeout(() => removeToast(id), duration);
+  const id = addToast(message, variant, opts?.accentColor);
+  if (duration !== null) setTimeout(() => removeToast(id), Math.max(0, duration));
+  return { dismiss: () => removeToast(id) };
 }
 
 /**

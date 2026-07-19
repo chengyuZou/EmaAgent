@@ -14,7 +14,7 @@
  * neither module uses the other's exports at the top-level init phase.
  */
 import { tauriBridge }             from '../lib/tauri-bridge.js';
-import { showToast }               from '../lib/toast.js';
+import { presentConfiguredEvent } from '../lib/event-notifications.js';
 import {
   handleTtsChunk,
   handleTtsSentenceComplete,
@@ -67,6 +67,7 @@ export function dispatchSseEvent(
   sessionId: SessionId,
   cb:        StreamCallbacks,
 ): void {
+  presentConfiguredEvent(event);
   switch (event.type) {
 
     // ── Turn lifecycle ─────────────────────────────────────────────────────
@@ -511,11 +512,9 @@ export function dispatchSseEvent(
     // ── Memory ─────────────────────────────────────────────────────────────
 
     case 'memory_compaction_started':
-      showToast('正在压缩上下文…', { variant: 'info', duration: 8000 });
       break;
 
     case 'memory_compaction_failed':
-      showToast(`上下文压缩失败：${event.error}`, { variant: 'danger', duration: 6000 });
       break;
 
     case 'memory_compaction_skipped':

@@ -10,6 +10,7 @@ import {
 } from './sse-consumer.js';
 import { tauriBridge } from './tauri-bridge.js';
 import { showToast } from './toast.js';
+import { presentConfiguredEvent } from './event-notifications.js';
 
 const SYSTEM_EVENT_CHANNEL = 'ema://system-event';
 const EOF_RECONNECT_DELAY_MS = 3_000;
@@ -97,6 +98,8 @@ export function createSystemSseController(
 let publishChain: Promise<void> = Promise.resolve();
 
 function publishAcrossWindows(event: EmaStreamEvent): void {
+  // 系统事件只由唯一 owner 展示一次；各窗口仍会收到广播并更新自己的 Store。
+  presentConfiguredEvent(event);
   if (!tauriBridge.isTauri()) {
     dispatchSystemEvent(event);
     return;

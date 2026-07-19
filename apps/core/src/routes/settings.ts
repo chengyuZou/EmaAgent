@@ -2,6 +2,7 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { SettingsRepo } from '@ema-agent/storage';
+import type { EmaStreamEvent } from '@ema-agent/contracts';
 import type { AppBindings } from '../wiring/index.js';
 
 // ── Settings keys (typed) ────────────────────────────────────────────────────
@@ -29,7 +30,7 @@ interface EventDisplayConfig {
   truncateChars?: number;
 }
 
-const DEFAULT_EVENT_DISPLAY: Record<string, EventDisplayConfig> = {
+const DEFAULT_EVENT_DISPLAY: Partial<Record<EmaStreamEvent['type'], EventDisplayConfig>> = {
   // Tool execution
   tool_call_complete:           { enabled: true,  color: '#3b82f6', durationMs: 4000 },
   tool_result:                  { enabled: true,  color: '#22c55e', durationMs: 3000 },
@@ -41,36 +42,47 @@ const DEFAULT_EVENT_DISPLAY: Record<string, EventDisplayConfig> = {
   // Narrative recall
   narrative_route_resolved:     { enabled: true,  color: '#8b5cf6', durationMs: 3000 },
   narrative_timeline_complete:  { enabled: true,  color: '#8b5cf6', durationMs: 5000, truncateChars: 100 },
-  recall_evidence:              { enabled: true,  color: '#ec4899', durationMs: 3000 },
+  memory_recall_evidence:       { enabled: true,  color: '#ec4899', durationMs: 3000 },
 
   // Memory
-  context_compacted:            { enabled: true,  color: '#f59e0b', durationMs: 5000 },
+  memory_compaction_started:    { enabled: false, color: '#f59e0b', durationMs: 2000 },
+  memory_compaction_completed:  { enabled: true,  color: '#f59e0b', durationMs: 5000 },
+  memory_compaction_failed:     { enabled: true,  color: '#ef4444', durationMs: 5000 },
+  memory_compaction_skipped:    { enabled: false, color: '#64748b', durationMs: 2000 },
   memory_extraction_started:    { enabled: false, color: '#a855f7', durationMs: 2000 },
   memory_extraction_completed:  { enabled: true,  color: '#a855f7', durationMs: 4000 },
   memory_extraction_failed:     { enabled: true,  color: '#ef4444', durationMs: 5000 },
   memory_consolidation_started: { enabled: false, color: '#a855f7', durationMs: 2000 },
   memory_consolidation_completed: { enabled: true, color: '#a855f7', durationMs: 3000 },
+  memory_consolidation_failed:  { enabled: true,  color: '#ef4444', durationMs: 5000 },
   memory_maintenance_completed: { enabled: true,  color: '#0ea5e9', durationMs: 4000 },
+  memory_maintenance_failed:    { enabled: true,  color: '#ef4444', durationMs: 5000 },
   memory_node_merged:           { enabled: false, color: '#a855f7', durationMs: 2000 },
   memory_index_rebuilt:         { enabled: true,  color: '#0ea5e9', durationMs: 3000 },
 
   // Background tasks
-  background_task_started:      { enabled: false, color: '#64748b', durationMs: 1500 },
-  background_task_completed:    { enabled: false, color: '#64748b', durationMs: 1500 },
-  background_task_failed:       { enabled: true,  color: '#ef4444', durationMs: 5000 },
+  memory_task_started:           { enabled: false, color: '#64748b', durationMs: 1500 },
+  memory_task_completed:         { enabled: false, color: '#64748b', durationMs: 1500 },
+  memory_task_failed:            { enabled: true,  color: '#ef4444', durationMs: 5000 },
+
+  // Knowledge base
+  kb_ingest_completed:           { enabled: true,  color: '#22c55e', durationMs: 3000 },
+  kb_ingest_partial_failed:      { enabled: true,  color: '#f59e0b', durationMs: 5000 },
+  kb_ingest_failed:              { enabled: true,  color: '#ef4444', durationMs: 5000 },
+  kb_reembed_completed:          { enabled: true,  color: '#22c55e', durationMs: 3000 },
+  kb_reembed_partial_failed:     { enabled: true,  color: '#f59e0b', durationMs: 5000 },
+  kb_reembed_cancelled:          { enabled: true,  color: '#94a3b8', durationMs: 3000 },
+  kb_reembed_failed:             { enabled: true,  color: '#ef4444', durationMs: 5000 },
 
   // Stage / emotion
   emotion_changed:              { enabled: false, color: '#f472b6', durationMs: 1500 },
   stage_cue:                    { enabled: false, color: '#f472b6', durationMs: 1500 },
 
-  // TTS — audio, never bubble
-  tts_chunk:                    { enabled: false, color: '#000000', durationMs: 0 },
-  tts_sentence_complete:        { enabled: false, color: '#000000', durationMs: 0 },
-
   // System
   character_card_switched:      { enabled: true,  color: '#f59e0b', durationMs: 4000 },
   provider_health_changed:      { enabled: true,  color: '#0ea5e9', durationMs: 3000 },
   system_warning:               { enabled: true,  color: '#f59e0b', durationMs: 5000 },
+  hook_warning:                 { enabled: true,  color: '#f59e0b', durationMs: 5000 },
 
   // Sub-agent dashboard
   subagent_started:             { enabled: true,  color: '#8b5cf6', durationMs: null },
@@ -78,10 +90,6 @@ const DEFAULT_EVENT_DISPLAY: Record<string, EventDisplayConfig> = {
   subagent_completed:           { enabled: true,  color: '#22c55e', durationMs: 4000 },
   subagent_failed:              { enabled: true,  color: '#ef4444', durationMs: 5000 },
   subagent_aborted:             { enabled: true,  color: '#94a3b8', durationMs: 3000 },
-  // High-frequency detail stream — disabled in toast/notification by default;
-  // frontend subscribes to subagent_stream directly for the detail panel.
-  subagent_stream:              { enabled: false, color: '#8b5cf6', durationMs: null },
-
   // Agent
   agent_iteration:              { enabled: false, color: '#64748b', durationMs: 1000 },
   agent_breaker_tripped:        { enabled: true,  color: '#ef4444', durationMs: 5000 },
@@ -93,12 +101,35 @@ const DEFAULT_PERMISSION_TIMEOUT_MS = 120_000;
 
 const eventDisplayEntrySchema = z.object({
   enabled:       z.boolean(),
-  color:         z.string(),
-  durationMs:    z.number().nullable(),
+  color:         z.string().regex(/^#[0-9a-fA-F]{6}$/),
+  durationMs:    z.number().int().min(0).max(600_000).nullable(),
   truncateChars: z.number().int().min(1).max(10_000).optional(),
 });
 
 const eventDisplayBodySchema = z.record(z.string(), eventDisplayEntrySchema);
+
+const LEGACY_EVENT_DISPLAY_KEYS: Record<string, EmaStreamEvent['type']> = {
+  context_compacted: 'memory_compaction_completed',
+  recall_evidence: 'memory_recall_evidence',
+  background_task_started: 'memory_task_started',
+  background_task_completed: 'memory_task_completed',
+  background_task_failed: 'memory_task_failed',
+};
+
+function normalizeEventDisplayOverrides(value: unknown): Record<string, EventDisplayConfig> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  const normalized: Record<string, EventDisplayConfig> = {};
+  for (const [rawKey, rawConfig] of Object.entries(value)) {
+    const parsed = eventDisplayEntrySchema.safeParse(rawConfig);
+    if (!parsed.success) continue;
+    const key = LEGACY_EVENT_DISPLAY_KEYS[rawKey] ?? rawKey;
+    // 新字段优先；旧别名只在没有新字段时补位。
+    if (!(key in normalized) || !(rawKey in LEGACY_EVENT_DISPLAY_KEYS)) {
+      normalized[key] = parsed.data;
+    }
+  }
+  return normalized;
+}
 
 const permissionTimeoutBodySchema = z.object({
   timeoutMs: z.number().int().min(5_000).max(600_000),
@@ -156,13 +187,11 @@ export function settingsRoute(bindings: AppBindings): Hono {
 
   // ── Event-display ─────────────────────────────────────────────────────────
   app.get('/event-display', (c) => {
-    const stored = repo.get(SETTINGS_KEY_EVENT_DISPLAY) as
-      | Record<string, EventDisplayConfig>
-      | undefined;
+    const stored = normalizeEventDisplayOverrides(repo.get(SETTINGS_KEY_EVENT_DISPLAY));
     return c.json({
       defaults: DEFAULT_EVENT_DISPLAY,
-      overrides: stored ?? {},
-      effective: { ...DEFAULT_EVENT_DISPLAY, ...(stored ?? {}) },
+      overrides: stored,
+      effective: { ...DEFAULT_EVENT_DISPLAY, ...stored },
     });
   });
 
@@ -171,7 +200,7 @@ export function settingsRoute(bindings: AppBindings): Hono {
     if (!parsed.success) {
       return c.json({ error: 'invalid_request', details: parsed.error.flatten() }, 400);
     }
-    repo.set(SETTINGS_KEY_EVENT_DISPLAY, parsed.data);
+    repo.set(SETTINGS_KEY_EVENT_DISPLAY, normalizeEventDisplayOverrides(parsed.data));
     return c.json({ ok: true });
   });
 

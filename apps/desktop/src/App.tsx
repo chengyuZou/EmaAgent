@@ -14,6 +14,7 @@ import {
   turnsApi,
   useCardStore,
   useSidecarStore,
+  useRuntimeSettingsSync,
   useThemeSync,
 } from '@ema-agent/desktop-ui';
 import type { ShellStatus, SidecarStatus } from '@ema-agent/desktop-ui';
@@ -103,6 +104,7 @@ export function App(): React.JSX.Element {
 
   useDevTtsPlaybackFromUrl();
   useThemeSync();
+  useRuntimeSettingsSync(sidecarStatus.kind === 'ok');
 
   // 主桌宠窗口与应用同生命周期，负责唯一的全局系统事件连接。
   useEffect(() => mountSystemEvents({ ownsConnection: true }), []);
