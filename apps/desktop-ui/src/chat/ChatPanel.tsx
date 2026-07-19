@@ -20,10 +20,11 @@ import { TaskPanel } from './TaskPanel.js';
 import { BranchPanel } from './BranchPanel.js';
 import { ArtifactsPanel } from './ArtifactsPanel.js';
 import { FilesPanel } from './FilesPanel.js';
+import { SessionAttachmentsPanel } from './SessionAttachmentsPanel.js';
 
 // ── Inspector panel types ─────────────────────────────────────────────────────
 
-type InspectorPanelId = 'branches' | 'artifacts' | 'files' | 'tasks';
+type InspectorPanelId = 'branches' | 'artifacts' | 'attachments' | 'files' | 'tasks';
 
 // ── ChatPanel ─────────────────────────────────────────────────────────────────
 
@@ -219,6 +220,12 @@ export function ChatPanel(): JSX.Element {
                 {overflowOpen && (
                   <div className="ema-slide-up absolute top-full right-0 mt-1 z-50 w-44 rounded-xl border p-1 shadow-[var(--ema-shadow-3)] bg-[var(--ema-surface-4)] border-[var(--ema-border-hover)]">
                     <OverflowItem
+                      icon="i-lucide:paperclip"
+                      label="会话附件"
+                      active={activePanels.has('attachments')}
+                      onClick={() => { togglePanel('attachments'); setOverflowOpen(false); }}
+                    />
+                    <OverflowItem
                       icon="i-solar:folder-bold-duotone"
                       label="文件浏览"
                       active={activePanels.has('files')}
@@ -355,6 +362,7 @@ function OverflowItem({
 //   2 panels → [A][B]         side-by-side
 //   3 panels → [A][B] / [C  ] — C spans both columns
 //   4 panels → [A][B] / [C][D]
+//   5 panels → [A][B] / [C][D] / [E  ]
 
 function InspectorContent({
   activePanels, sessionId,
@@ -379,15 +387,18 @@ function InspectorContent({
     );
   }
 
-  // 2-4: CSS grid — 2 columns, 1-2 rows
-  const twoRows = count >= 3;
+  // 多面板统一使用两列网格；奇数项的最后一格横跨整行。
+  const rowCount = Math.ceil(count / 2);
   return (
     <div
-      className={`grid flex-1 min-h-0 grid-cols-2 ${twoRows ? 'grid-rows-2' : 'grid-rows-1'}`}
-      style={{ borderColor: 'var(--ema-border)' }}
+      className="grid flex-1 min-h-0 grid-cols-2"
+      style={{
+        borderColor: 'var(--ema-border)',
+        gridTemplateRows: `repeat(${rowCount}, minmax(0, 1fr))`,
+      }}
     >
       {panels.map((id, i) => {
-        const colSpan = count === 3 && i === 2; // bottom panel spans both cols when only 3
+        const colSpan = count % 2 === 1 && i === count - 1;
         return (
           <div
             key={id}
@@ -407,6 +418,7 @@ function InspectorContent({
 const PANEL_META: Record<InspectorPanelId, { label: string; icon: string }> = {
   branches:  { label: '会话分支', icon: 'i-solar:branching-paths-down-bold-duotone' },
   artifacts: { label: '产物',     icon: 'i-solar:layers-bold-duotone' },
+  attachments: { label: '会话附件', icon: 'i-lucide:paperclip' },
   files:     { label: '文件',     icon: 'i-solar:folder-bold-duotone' },
   tasks:     { label: '后台任务', icon: 'i-solar:cpu-bold-duotone' },
 };
@@ -431,6 +443,7 @@ function InspectorPanelBody({ id, sessionId }: { id: InspectorPanelId; sessionId
   if (id === 'tasks')     return wrap(<TaskPanel className="p-2" />);
   if (id === 'branches')  return wrap(<BranchPanel />);
   if (id === 'artifacts') return wrap(<ArtifactsPanel />);
+  if (id === 'attachments') return wrap(<SessionAttachmentsPanel sessionId={sessionId} />);
   if (id === 'files')     return wrap(<FilesPanel />);
   return <></>;
 }

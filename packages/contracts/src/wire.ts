@@ -111,6 +111,31 @@ export interface SessionMessagesResult {
   turns:    TurnWire[];
 }
 
+/** Session 附件引用当前对应的本地文件状态。 */
+export type SessionAttachmentFileStatus =
+  | 'available'
+  | 'modified'
+  | 'missing'
+  | 'inaccessible';
+
+/** GET /api/sessions/:id/attachments 返回的稳定跨进程附件结构。 */
+export interface SessionAttachmentWire {
+  id:         string;
+  turnId:     string;
+  sessionId:  string;
+  name:       string;
+  mimeType:   string;
+  size:       number;
+  mtime:      number;
+  localPath:  string;
+  createdAt:  number;
+  fileStatus: SessionAttachmentFileStatus;
+}
+
+export interface SessionAttachmentsResult {
+  attachments: SessionAttachmentWire[];
+}
+
 /**
  * GET /api/sessions/:id/messages 的单条消息。
  * 与 session 包的 Message 域对象逐字段对齐——后端路由用 `satisfies` 钉住，
@@ -129,7 +154,7 @@ export interface MessageWire {
   kind:         MessageKind;
   blocks:       MessageBlocks;
   interrupted:  boolean;
-  attachments?: TurnAttachment[];  // 只在 role='user' 消息上有值（预留，后端暂未填充）
+  attachments?: TurnAttachment[];  // 只在 role='user' 消息上有值，由后端按 turn 持久化记录填充
   createdAt:    number;
 }
 

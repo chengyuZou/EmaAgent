@@ -29,6 +29,7 @@ import {
 import { useSessionStore }     from './session-store.js';
 import { useArtifactStore }    from './artifact-store.js';
 import { useAgentTaskStore }   from './agent-task-store.js';
+import { useSessionAttachmentStore } from './session-attachment-store.js';
 import {
   dispatchSseEvent,
   breakerReasons,
@@ -416,6 +417,15 @@ export const useConversationStore = create<ConversationStoreState>((set, get) =>
     const accepted = await acceptance.promise;
     const acceptedSessionId = accepted.sessionId as SessionId;
 
+    // 附件在 POST /turns 返回前已经持久化；面板若已加载，立即刷新当前 Session，
+    // 未打开过的会话不额外发请求，首次打开时再按需加载。
+    if (input.attachments?.length
+      && useSessionAttachmentStore.getState().bySession.has(acceptedSessionId as string)) {
+      void useSessionAttachmentStore.getState()
+        .loadForSession(acceptedSessionId, true)
+        .catch(() => {});
+    }
+
     // Queue auto-title generation for a session's first completed assistant
     // turn. Covers both paths: lazy create (no targetId above) and pre-created
     // sessions (new-session button → createSession + viewSession). The set is
@@ -480,6 +490,7 @@ export const useConversationStore = create<ConversationStoreState>((set, get) =>
     evictSessionPlayers(id as string);
     useArtifactStore.getState().evictSession(id);
     useAgentTaskStore.getState().evictSession(id as string);
+    useSessionAttachmentStore.getState().evictSession(id);
 
     set((s) => {
       const msgs      = new Map(s.messages);       msgs.delete(id as string);

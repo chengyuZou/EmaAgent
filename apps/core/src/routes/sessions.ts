@@ -5,6 +5,7 @@ import { asSessionId, asTurnId, asBranchId, SessionOwnershipError } from '@ema-a
 import type {
   SessionWire,
   SessionMessagesResult,
+  SessionAttachmentsResult,
   SessionsListResult,
   SessionsGroupedResult,
   SessionsSearchResult,
@@ -290,10 +291,30 @@ export function sessionsRoute(bindings: AppBindings): Hono {
 
   // ── GET /api/sessions/:id/attachments ─────────────────────────────────────
   // Returns every turn_attachment for this session, ordered newest-first.
-  app.get('/:id/attachments', (c) => {
+  app.get('/:id/attachments', async (c) => {
     const sessionId = asSessionId(c.req.param('id'));
-    const attachments = bindings.attachmentStore.listBySession(sessionId);
-    return c.json({ attachments });
+    try {
+      // 先经 Session Facade 验证会话存在，再读取 Attachment 模块，避免不存在的
+      // Session 被静默伪装成“附件为空”。
+      bindings.session.getSession(sessionId);
+      const inspected = await bindings.attachmentStore.inspectBySession(sessionId);
+      const attachments = inspected.map((attachment) => ({
+        id:         attachment.id,
+        turnId:     attachment.turnId,
+        sessionId:  attachment.sessionId,
+        name:       attachment.name,
+        mimeType:   attachment.mime,
+        size:       attachment.size,
+        mtime:      attachment.mtime,
+        localPath:  attachment.localPath,
+        createdAt:  attachment.createdAt,
+        fileStatus: attachment.fileStatus,
+      }));
+      return c.json({ attachments } satisfies SessionAttachmentsResult);
+    } catch (error) {
+      if (isNotFound(error)) return c.json({ error: 'session_not_found' }, 404);
+      throw error;
+    }
   });
 
   // ── DELETE /api/sessions/:id ───────────────────────────────────────────────

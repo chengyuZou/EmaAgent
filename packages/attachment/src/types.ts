@@ -1,6 +1,7 @@
 // 这里放 Attachment 模块用到的基础类型：附件记录、前端输入、解析给 LLM 的结果。
 
 import type { MessageContentPart, TurnAttachment } from '@ema-agent/contracts';
+import type { SessionAttachmentFileStatus } from '@ema-agent/contracts';
 
 // ── 领域类型 ───────────────────────────────────────────────────────────────────
 
@@ -15,6 +16,11 @@ export interface Attachment {
   mtime:     number;   // unix 毫秒，让工具能发现附件化之后文件又被改过
   localPath: string;
   createdAt: number;
+}
+
+/** 附件记录与当前磁盘文件状态的组合，供模块边界查询使用。 */
+export interface InspectedAttachment extends Attachment {
+  fileStatus: SessionAttachmentFileStatus;
 }
 
 /** turns 路由从前端收到的输入。 */

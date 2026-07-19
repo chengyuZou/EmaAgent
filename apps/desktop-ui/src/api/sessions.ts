@@ -23,6 +23,7 @@ import type {
   SessionsSearchResult,
   SessionSearchItem,
   ForkResult,
+  SessionAttachmentsResult,
 } from '@ema-agent/contracts';
 
 // ── Branch wire types (session-layer only, not in contracts) ─────────────────
@@ -127,6 +128,13 @@ export const sessionsApi = {
     if (opts?.limit) params.set('limit', String(opts.limit ?? 100));
     const qs = params.toString();
     return sidecarClient.request<SessionMessagesResult>(`/api/sessions/${id}/messages${qs ? `?${qs}` : ''}`);
+  },
+
+  /** GET /api/sessions/:id/attachments — 当前会话的全部附件与本地文件状态。 */
+  async listAttachments(id: SessionId): Promise<SessionAttachmentsResult> {
+    return sidecarClient.request<SessionAttachmentsResult>(
+      `/api/sessions/${encodeURIComponent(id as string)}/attachments`,
+    );
   },
 
   /** POST /api/sessions/:id/fork — fork a session. */

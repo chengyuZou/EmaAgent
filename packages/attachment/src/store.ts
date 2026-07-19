@@ -1,9 +1,10 @@
 // 这里管理一个 Turn 的附件：增删查，以及把附件解析成 LLM 能直接用的格式。
 
 import { randomUUID } from 'node:crypto';
+import { stat } from 'node:fs/promises';
 import type { AttachmentRepo } from '@ema-agent/storage';
 import { asSessionId, asTurnId, type SessionOwnershipFacade } from '@ema-agent/contracts';
-import type { Attachment, AttachmentInput, ResolvedPrompt } from './types.js';
+import type { Attachment, AttachmentInput, InspectedAttachment, ResolvedPrompt } from './types.js';
 import { AttachmentNotFoundError } from './errors.js';
 import { resolveForPrompt } from './resolver.js';
 
@@ -19,6 +20,7 @@ export interface IAttachmentStore {
   get(id: string): Attachment;
   listByTurn(turnId: string): Attachment[];
   listBySession(sessionId: string): Attachment[];
+  inspectBySession(sessionId: string): Promise<InspectedAttachment[]>;
   remove(id: string): void;
   resolveForPrompt(attachments: Attachment[]): ResolvedPrompt;
 }
@@ -83,6 +85,22 @@ export class AttachmentStore implements IAttachmentStore {
     return this.repo.listBySession(sessionId).map(rowToAttachment);
   }
 
+  async inspectBySession(sessionId: string): Promise<InspectedAttachment[]> {
+    const attachments = this.listBySession(sessionId);
+    const inspected: InspectedAttachment[] = [];
+
+    // 一批只查询少量路径，避免超长 Session 同时向网络盘或文件系统发出大量请求。
+    const inspectionBatchSize = 16;
+    for (let offset = 0; offset < attachments.length; offset += inspectionBatchSize) {
+      const batch = attachments.slice(offset, offset + inspectionBatchSize);
+      inspected.push(...await Promise.all(batch.map(async (attachment) => ({
+        ...attachment,
+        fileStatus: await inspectFileStatus(attachment),
+      }))));
+    }
+    return inspected;
+  }
+
   remove(id: string): void {
     this.repo.deleteById(id);
   }
@@ -110,4 +128,24 @@ function rowToAttachment(row: {
     localPath: row.local_path,
     createdAt: row.created_at,
   };
+}
+
+async function inspectFileStatus(
+  attachment: Attachment,
+): Promise<InspectedAttachment['fileStatus']> {
+  try {
+    const file = await stat(attachment.localPath);
+    if (!file.isFile()) return 'missing';
+
+    // FAT/网络盘等文件系统的时间精度可能较低，允许 1 秒误差；大小变化始终视为修改。
+    const mtimeChanged = Math.abs(file.mtimeMs - attachment.mtime) > 1_000;
+    return file.size !== attachment.size || mtimeChanged ? 'modified' : 'available';
+  } catch (error: unknown) {
+    const code = isNodeError(error) ? error.code : undefined;
+    return code === 'ENOENT' || code === 'ENOTDIR' ? 'missing' : 'inaccessible';
+  }
+}
+
+function isNodeError(error: unknown): error is NodeJS.ErrnoException {
+  return error instanceof Error && 'code' in error;
 }
