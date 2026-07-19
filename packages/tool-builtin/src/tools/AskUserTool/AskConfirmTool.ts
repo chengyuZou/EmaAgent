@@ -38,16 +38,17 @@ Prefer this over AskUser when you only need a binary decision - the UI shows a f
   async execute(input: AskConfirmInput, ctx: ToolExecutionContext): Promise<AskConfirmResult> {
     if (ctx.emit && ctx.askUser) {
       const promptId = randomUUID();
-      ctx.emit({
+      const request = {
         type:             'ask_confirm_required',
         sessionId:        ctx.sessionId as SessionId,
         turnId:           ctx.turnId as TurnId,
         promptId,
         question:         input.question,
         humanDescription: input.humanDescription,
-      } satisfies EmaStreamEvent);
+      } satisfies EmaStreamEvent;
+      ctx.emit(request);
 
-      const { answers } = await ctx.askUser(promptId, []);
+      const { answers } = await ctx.askUser(promptId, [], request);
       const confirmed = answers['confirmed'] === 'true';
 
       ctx.emit({

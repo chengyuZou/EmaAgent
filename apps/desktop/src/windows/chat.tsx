@@ -2,7 +2,6 @@ import 'virtual:uno.css';
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { ChatPanel } from '@ema-agent/desktop-ui';
-import { DecisionLayer } from '@ema-agent/desktop-ui';
 import { TooltipProvider } from '@ema-agent/ui';
 
 // ── Chat sub-window entry ───────────────────────────────────────────────────
@@ -14,7 +13,6 @@ createRoot(container).render(
   <React.StrictMode>
     <TooltipProvider delayDuration={300}>
       <ChatPanel />
-      <DecisionLayer />
     </TooltipProvider>
   </React.StrictMode>,
 );

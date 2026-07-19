@@ -21,6 +21,7 @@ export type {
   PermissionRule,
   PermissionOutcome,
   PermissionPrompt,
+  PendingPermissionPrompt,
   PermissionResponse,
   PermissionContext,
   AskPermissionFn,

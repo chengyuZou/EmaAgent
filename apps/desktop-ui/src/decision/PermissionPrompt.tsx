@@ -1,8 +1,7 @@
 // 展示单次工具权限请求，并把用户的允许或拒绝决定提交给后端。
 import { useEffect, useRef, useState } from 'react';
 import { Button, Card, Progress } from '@ema-agent/ui';
-import { permissionApi } from '../api/permission.js';
-import { HumanDescriptionPanel } from './HumanDescriptionPanel.js';
+import { DecisionSubmissionFeedback, HumanDescriptionPanel } from './HumanDescriptionPanel.js';
 import { RawCommandPanel } from './RawCommandPanel.js';
 import type { PermissionResponse } from '@ema-agent/permission';
 
@@ -14,13 +13,11 @@ export interface PermissionPromptProps {
   hint:                     string;
   humanDescription?:        string;
   humanDescriptionPending?: boolean;
+  submitting:                boolean;
+  submissionError?:          string;
   /** If set, auto-deny after this many milliseconds. 0 or absent = no timeout. */
   timeoutMs?:               number;
-  /**
-   * Called after the backend has been notified.
-   * `decision` is 'allow' for any allow-family action, 'deny' for any deny-family action.
-   */
-  onResolve(decision: 'allow' | 'deny'): void;
+  onRespond(response: PermissionResponse): void;
 }
 
 export function PermissionPrompt({
@@ -31,29 +28,20 @@ export function PermissionPrompt({
   hint,
   humanDescription,
   humanDescriptionPending,
+  submitting,
+  submissionError,
   timeoutMs,
-  onResolve,
+  onRespond,
 }: PermissionPromptProps): JSX.Element {
   const totalSeconds = timeoutMs ? Math.ceil(timeoutMs / 1000) : 0;
   const [secondsLeft, setSecondsLeft] = useState(totalSeconds);
-  const resolved = useRef(false);
-
-  const handleResolve = (decision: 'allow' | 'deny'): void => {
-    if (resolved.current) return;
-    resolved.current = true;
-    onResolve(decision);
-  };
-
-  const respond = async (response: PermissionResponse, decision: 'allow' | 'deny'): Promise<void> => {
-    try { await permissionApi.respond(promptId, response); } catch { /* sidecar down */ }
-    handleResolve(decision);
-  };
+  const timeoutSubmitted = useRef(false);
 
   // ── Countdown ──────────────────────────────────────────────────────────────
 
   useEffect(() => {
     if (!totalSeconds) return;
-    resolved.current = false;
+    timeoutSubmitted.current = false;
     setSecondsLeft(totalSeconds);
 
     const id = setInterval(() => {
@@ -68,9 +56,9 @@ export function PermissionPrompt({
 
   // Side effects run outside the updater to avoid double-fire in Strict Mode.
   useEffect(() => {
-    if (secondsLeft !== 0 || !totalSeconds || resolved.current) return;
-    void permissionApi.respond(promptId, { action: 'deny' }).catch(() => {});
-    handleResolve('deny');
+    if (secondsLeft !== 0 || !totalSeconds || timeoutSubmitted.current) return;
+    timeoutSubmitted.current = true;
+    onRespond({ action: 'deny', reason: 'permission prompt timed out' });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [secondsLeft]);
 
@@ -93,7 +81,8 @@ export function PermissionPrompt({
         <Button
           variant="danger"
           size="sm"
-          onClick={() => void respond({ action: 'deny' }, 'deny')}
+          disabled={submitting}
+          onClick={() => onRespond({ action: 'deny' })}
         >
           拒绝
         </Button>
@@ -102,19 +91,23 @@ export function PermissionPrompt({
           <Button
             variant="secondary"
             size="sm"
-            onClick={() => void respond({ action: 'allow_session' }, 'allow')}
+            disabled={submitting}
+            onClick={() => onRespond({ action: 'allow_session' })}
           >
             此会话允许
           </Button>
           <Button
             variant="primary"
             size="sm"
-            onClick={() => void respond({ action: 'allow' }, 'allow')}
+            disabled={submitting}
+            onClick={() => onRespond({ action: 'allow' })}
           >
             允许
           </Button>
         </div>
       </div>
+
+      <DecisionSubmissionFeedback submitting={submitting} error={submissionError} />
 
       {totalSeconds > 0 && (
         <div className="mt-3 flex flex-col gap-1.5">

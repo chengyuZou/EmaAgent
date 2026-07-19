@@ -6,6 +6,7 @@ import { useConversationStore } from '../stores/conversation-store.js';
 import { useSessionStore } from '../stores/session-store.js';
 import { useUiStore } from '../stores/ui-store.js';
 import { ModeSelector } from './ModeSelector.js';
+import { DecisionLayer } from '../decision/DecisionLayer.js';
 import { ModelPicker, type ModelSelection } from './ModelPicker.js';
 import { AttachmentChip } from './AttachmentChip.js';
 import { showToast } from '../lib/toast.js';
@@ -237,6 +238,8 @@ export function ChatInput(): JSX.Element {
   return (
     <div className="shrink-0 px-4 py-3" style={{ borderTop: '1px solid var(--ema-border)' }}>
       <div className="max-w-2xl mx-auto">
+        <DecisionLayer />
+
         {/* 分叉点提示(F-052): 已标记分叉点, 发送消息即创建新分支 */}
         {pendingForkFromTurnId && (
           <div className="flex items-center gap-2 mb-2 px-3 py-1.5 rounded-xl text-xs ema-fade-in bg-[var(--ema-surface-2)] text-[var(--ema-text-secondary)]">

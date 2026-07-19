@@ -74,6 +74,7 @@ export function buildPermissionSubsystem(settingsRepo: SettingsRepo): Permission
         sessionId: args.sessionId,
         turnId:    args.turnId,
         toolCallId: args.toolCallId,
+        prompt,
       });
       args.emit({
         type:      'permission_required',

@@ -18,6 +18,7 @@ import { useEffect, useState, type CSSProperties } from 'react';
 import {
   tauriBridge,
   permissionApi,
+  SidecarApiError,
   turnsApi,
   type DecisionPrompt,
 } from '@ema-agent/desktop-ui';
@@ -95,24 +96,41 @@ function PermissionCard({
   toast: PermissionToast;
   onDismiss(promptId: string): void;
 }): React.JSX.Element {
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string>();
+
   const respond = async (action: 'allow' | 'allow_session' | 'deny'): Promise<void> => {
-    try { await permissionApi.respond(toast.promptId, { action }); } catch { /* sidecar down */ }
-    onDismiss(toast.promptId);
+    if (submitting) return;
+    setSubmitting(true);
+    setError(undefined);
+    try {
+      await permissionApi.respond(toast.promptId, { action });
+      onDismiss(toast.promptId);
+    } catch (cause: unknown) {
+      if (cause instanceof SidecarApiError && cause.status === 404) {
+        onDismiss(toast.promptId);
+        return;
+      }
+      setError(cause instanceof Error ? cause.message : '提交失败，请重试');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const desc = toast.humanDescriptionPending
     ? toast.hint
-    : (toast.humanDescription ?? toast.hint);
+    : (toast.humanDescription ?? toast.toolDescription ?? toast.hint);
 
   return (
     <ToastCard sessionId={toast.sessionId} label="工具请求">
       <p style={toolNameStyle}>{toast.toolName}</p>
       <p style={descStyle}>{desc}</p>
       <div style={rowStyle}>
-        <Btn variant="danger"   onClick={() => void respond('deny')}>拒绝</Btn>
-        <Btn variant="neutral"  onClick={() => void respond('allow_session')}>此会话</Btn>
-        <Btn variant="primary"  onClick={() => void respond('allow')}>允许</Btn>
+        <Btn variant="danger" disabled={submitting} onClick={() => void respond('deny')}>拒绝</Btn>
+        <Btn variant="neutral" disabled={submitting} onClick={() => void respond('allow_session')}>此会话</Btn>
+        <Btn variant="primary" disabled={submitting} onClick={() => void respond('allow')}>允许</Btn>
       </div>
+      {error && <p style={errorStyle}>{error}</p>}
     </ToastCard>
   );
 }
@@ -126,11 +144,25 @@ function AskConfirmCard({
   toast: AskConfirmToast;
   onDismiss(promptId: string): void;
 }): React.JSX.Element {
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string>();
+
   const respond = async (confirmed: boolean): Promise<void> => {
+    if (submitting) return;
+    setSubmitting(true);
+    setError(undefined);
     try {
       await turnsApi.respondAskUser(toast.turnId, toast.promptId, { confirmed: String(confirmed) });
-    } catch { /* sidecar down */ }
-    onDismiss(toast.promptId);
+      onDismiss(toast.promptId);
+    } catch (cause: unknown) {
+      if (cause instanceof SidecarApiError && cause.status === 404) {
+        onDismiss(toast.promptId);
+        return;
+      }
+      setError(cause instanceof Error ? cause.message : '提交失败，请重试');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const body = toast.humanDescription ?? toast.question;
@@ -141,9 +173,10 @@ function AskConfirmCard({
       <p style={descStyle}>{body}</p>
       {sub && <p style={subStyle}>{sub}</p>}
       <div style={rowStyle}>
-        <Btn variant="neutral" onClick={() => void respond(false)}>否</Btn>
-        <Btn variant="primary" onClick={() => void respond(true)}>确认</Btn>
+        <Btn variant="neutral" disabled={submitting} onClick={() => void respond(false)}>否</Btn>
+        <Btn variant="primary" disabled={submitting} onClick={() => void respond(true)}>确认</Btn>
       </div>
+      {error && <p style={errorStyle}>{error}</p>}
     </ToastCard>
   );
 }
@@ -194,10 +227,12 @@ const btnVars: Record<BtnVariant, { bg: string; bgHover: string; color: string }
 
 function Btn({
   variant,
+  disabled = false,
   onClick,
   children,
 }: {
   variant:  BtnVariant;
+  disabled?: boolean;
   onClick(): void;
   children: React.ReactNode;
 }): React.JSX.Element {
@@ -205,6 +240,7 @@ function Btn({
   return (
     <button
       onClick={onClick}
+      disabled={disabled}
       style={{
         background:   v.bg,
         color:        v.color,
@@ -213,11 +249,14 @@ function Btn({
         padding:      '4px 10px',
         fontSize:     11,
         fontWeight:   500,
-        cursor:       'pointer',
+        cursor:       disabled ? 'not-allowed' : 'pointer',
+        opacity:      disabled ? 0.6 : 1,
         whiteSpace:   'nowrap',
         transition:   `background var(--ema-duration-fast) var(--ema-ease)`,
       }}
-      onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = v.bgHover; }}
+      onMouseEnter={(e) => {
+        if (!disabled) (e.currentTarget as HTMLButtonElement).style.background = v.bgHover;
+      }}
       onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = v.bg; }}
     >
       {children}
@@ -286,6 +325,12 @@ const subStyle: CSSProperties = {
   fontSize:   11,
   color:      'var(--ema-text-tertiary)',
   lineHeight: 1.4,
+};
+
+const errorStyle: CSSProperties = {
+  margin:   0,
+  fontSize: 10.5,
+  color:    'var(--ema-danger-text)',
 };
 
 const rowStyle: CSSProperties = {

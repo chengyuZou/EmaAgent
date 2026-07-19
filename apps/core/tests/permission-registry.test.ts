@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { PermissionPromptRegistry } from '../src/permissions/registry.js';
 
+const prompt = {
+  toolId: 'file_edit',
+  toolName: 'FileEdit',
+  input: { path: 'D:/workspace/readme.md' },
+  riskLevel: 'medium' as const,
+  accessType: 'write' as const,
+};
+
 describe('PermissionPromptRegistry Session 生命周期', () => {
   it('删除 Session 时只取消该 Session 的待审批请求', async () => {
     const registry = new PermissionPromptRegistry(60_000);
@@ -8,11 +16,13 @@ describe('PermissionPromptRegistry Session 生命周期', () => {
       sessionId: 'session-a',
       turnId: 'turn-a',
       toolCallId: 'call-a',
+      prompt: { ...prompt, sessionId: 'session-a', turnId: 'turn-a', toolCallId: 'call-a' },
     });
     const second = registry.create({
       sessionId: 'session-b',
       turnId: 'turn-b',
       toolCallId: 'call-b',
+      prompt: { ...prompt, sessionId: 'session-b', turnId: 'turn-b', toolCallId: 'call-b' },
     });
 
     expect(registry.cancelForSession('session-a')).toBe(1);
@@ -21,6 +31,12 @@ describe('PermissionPromptRegistry Session 生命周期', () => {
       reason: 'session deleted',
     });
     expect(registry.size()).toBe(1);
+    expect(registry.listPending()).toEqual([
+      expect.objectContaining({
+        promptId: second.promptId,
+        prompt: expect.objectContaining({ sessionId: 'session-b' }),
+      }),
+    ]);
 
     registry.respond(second.promptId, { action: 'allow' });
     await expect(second.promise).resolves.toEqual({ action: 'allow' });

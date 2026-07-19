@@ -1,5 +1,9 @@
 import crypto from 'node:crypto';
-import type { PermissionResponse } from '@ema-agent/permission';
+import type {
+  PendingPermissionPrompt,
+  PermissionPrompt,
+  PermissionResponse,
+} from '@ema-agent/permission';
 
 // ── Permission prompt registry ───────────────────────────────────────────────
 
@@ -10,6 +14,7 @@ interface PendingPrompt {
   turnId:    string;
   toolCallId: string;
   createdAt: number;
+  prompt: PermissionPrompt;
 }
 
 /**
@@ -49,10 +54,12 @@ export class PermissionPromptRegistry {
     sessionId: string;
     turnId:    string;
     toolCallId: string;
+    prompt: PermissionPrompt;
     timeoutMs?: number;
-  }): { promptId: string; promise: Promise<PermissionResponse> } {
+  }): { promptId: string; createdAt: number; promise: Promise<PermissionResponse> } {
     const promptId = crypto.randomUUID();
     const timeoutMs = args.timeoutMs ?? this.defaultTimeoutMs;
+    const createdAt = Date.now();
 
     const promise = new Promise<PermissionResponse>((resolve) => {
       const timer = setTimeout(() => {
@@ -67,11 +74,12 @@ export class PermissionPromptRegistry {
         sessionId: args.sessionId,
         turnId:    args.turnId,
         toolCallId: args.toolCallId,
-        createdAt: Date.now(),
+        createdAt,
+        prompt: args.prompt,
       });
     });
 
-    return { promptId, promise };
+    return { promptId, createdAt, promise };
   }
 
   /**
@@ -129,5 +137,16 @@ export class PermissionPromptRegistry {
   /** Diagnostics — count of in-flight prompts. */
   size(): number {
     return this.prompts.size;
+  }
+
+  /** 按创建顺序返回可恢复的待审批快照，不暴露 Promise 和定时器。 */
+  listPending(): PendingPermissionPrompt[] {
+    return [...this.prompts.entries()]
+      .map(([promptId, entry]) => ({
+        promptId,
+        createdAt: entry.createdAt,
+        prompt: entry.prompt,
+      }))
+      .sort((left, right) => left.createdAt - right.createdAt);
   }
 }

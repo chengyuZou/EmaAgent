@@ -406,3 +406,20 @@ export type EmaStreamEvent =
       durationMs?: number;
     }
   | { type: 'system_warning'; level: 'info' | 'warn' | 'error'; message: string }
+
+/** 会暂停工具执行并等待用户回答的事件，Registry 用它恢复被重开的窗口。 */
+export type AskUserRequiredEvent = Extract<
+  EmaStreamEvent,
+  {
+    type:
+      | 'ask_user_required'
+      | 'ask_confirm_required'
+      | 'ask_text_required'
+      | 'ask_choice_required';
+  }
+>;
+
+export interface PendingAskUserPrompt {
+  createdAt: number;
+  request: AskUserRequiredEvent;
+}

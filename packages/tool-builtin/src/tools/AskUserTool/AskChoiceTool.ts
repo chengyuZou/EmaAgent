@@ -52,7 +52,7 @@ Prefer this over AskUser for a single choice question - the UI shows a cleaner s
   async execute(input: AskChoiceInput, ctx: ToolExecutionContext): Promise<AskChoiceResult> {
     if (ctx.emit && ctx.askUser) {
       const promptId = randomUUID();
-      ctx.emit({
+      const request = {
         type:             'ask_choice_required',
         sessionId:        ctx.sessionId as SessionId,
         turnId:           ctx.turnId as TurnId,
@@ -62,9 +62,10 @@ Prefer this over AskUser for a single choice question - the UI shows a cleaner s
         options:          input.options,
         multiSelect:      input.multiSelect,
         allowCustom:      input.allowCustom,
-      } satisfies EmaStreamEvent);
+      } satisfies EmaStreamEvent;
+      ctx.emit(request);
 
-      const { answers } = await ctx.askUser(promptId, []);
+      const { answers } = await ctx.askUser(promptId, [], request);
       // 前端提交:{ selected: 'label1,label2', custom?: 'text' }
       const raw      = answers['selected'] ?? '';
       const selected = raw.split(',').map((s) => s.trim()).filter(Boolean);

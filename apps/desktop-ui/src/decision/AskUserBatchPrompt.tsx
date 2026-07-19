@@ -1,11 +1,13 @@
 import { useState, type CSSProperties } from 'react';
 import { Button, Card, CardButton, Textarea } from '@ema-agent/ui';
-import { HumanDescriptionPanel } from './HumanDescriptionPanel.js';
+import { DecisionSubmissionFeedback, HumanDescriptionPanel } from './HumanDescriptionPanel.js';
 import type { AskUserQuestionSpec } from '@ema-agent/contracts';
 
 export interface AskUserBatchPromptProps {
   questions:         AskUserQuestionSpec[];
   humanDescription?: string;
+  submitting:         boolean;
+  submissionError?:   string;
   onResolve(answers: Record<string, string>): void;
   onCancel(): void;
 }
@@ -13,6 +15,8 @@ export interface AskUserBatchPromptProps {
 export function AskUserBatchPrompt({
   questions,
   humanDescription,
+  submitting,
+  submissionError,
   onResolve,
   onCancel,
 }: AskUserBatchPromptProps): JSX.Element {
@@ -111,11 +115,12 @@ export function AskUserBatchPrompt({
       )}
 
       <div className="flex gap-3 justify-end">
-        <Button variant="secondary" size="sm" onClick={onCancel}>取消</Button>
-        <Button variant="primary" size="sm" disabled={!canAdvance} onClick={handleNext}>
+        <Button variant="secondary" size="sm" disabled={submitting} onClick={onCancel}>取消</Button>
+        <Button variant="primary" size="sm" disabled={submitting || !canAdvance} onClick={handleNext}>
           {isLast ? '提交' : '下一步'}
         </Button>
       </div>
+      <DecisionSubmissionFeedback submitting={submitting} error={submissionError} />
     </Card>
   );
 }

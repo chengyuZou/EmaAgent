@@ -16,10 +16,12 @@
  * This store mirrors that: dismiss(promptId) scans all session queues.
  */
 import { create } from 'zustand';
+import type { PendingPermissionPrompt } from '@ema-agent/permission';
 import type {
   AskUserQuestionSpec,
   PermissionAccessType,
   PermissionRiskLevel,
+  PendingAskUserPrompt,
   SessionId,
   TurnId,
 } from '@ema-agent/contracts';
@@ -113,6 +115,12 @@ export interface DecisionStoreState {
   /** Drop a session's entire queue (called when the session is deleted). */
   clearSession(sessionId: SessionId): void;
 
+  /** 窗口重开时把 Core 仍在等待的权限请求补回各 Session FIFO。 */
+  restorePermissions(prompts: PendingPermissionPrompt[]): void;
+
+  /** 窗口重开时恢复 Core 仍在等待回答的 Ask User 请求。 */
+  restoreAskUser(prompts: PendingAskUserPrompt[]): void;
+
   /** Clear all queues. */
   clear(): void;
 }
@@ -179,6 +187,79 @@ export const useDecisionStore = create<DecisionStoreState>((set, get) => ({
       next.delete(sessionId);
       return { sessions: next };
     });
+  },
+
+  restorePermissions(prompts) {
+    for (const snapshot of prompts) {
+      const prompt = snapshot.prompt;
+      if (!prompt.sessionId) continue;
+      get().push({
+        kind: 'permission',
+        promptId: snapshot.promptId,
+        sessionId: prompt.sessionId as SessionId,
+        toolId: prompt.toolId,
+        toolName: prompt.toolName,
+        toolDescription: prompt.toolDescription,
+        args: prompt.input,
+        hint: prompt.gateReason ?? '',
+        riskLevel: prompt.riskLevel,
+        accessType: prompt.accessType,
+        gateReason: prompt.gateReason,
+        humanDescriptionPending: false,
+      });
+    }
+  },
+
+  restoreAskUser(prompts) {
+    for (const snapshot of prompts) {
+      const request = snapshot.request;
+      switch (request.type) {
+        case 'ask_user_required':
+          get().push({
+            kind: 'ask_user',
+            promptId: request.promptId,
+            sessionId: request.sessionId,
+            turnId: request.turnId,
+            questions: request.questions,
+            humanDescription: request.humanDescription,
+          });
+          break;
+        case 'ask_confirm_required':
+          get().push({
+            kind: 'ask_confirm',
+            promptId: request.promptId,
+            sessionId: request.sessionId,
+            turnId: request.turnId,
+            question: request.question,
+            humanDescription: request.humanDescription,
+          });
+          break;
+        case 'ask_text_required':
+          get().push({
+            kind: 'ask_text',
+            promptId: request.promptId,
+            sessionId: request.sessionId,
+            turnId: request.turnId,
+            question: request.question,
+            humanDescription: request.humanDescription,
+            placeholder: request.placeholder,
+          });
+          break;
+        case 'ask_choice_required':
+          get().push({
+            kind: 'ask_choice',
+            promptId: request.promptId,
+            sessionId: request.sessionId,
+            turnId: request.turnId,
+            question: request.question,
+            humanDescription: request.humanDescription,
+            options: request.options,
+            multiSelect: request.multiSelect ?? false,
+            allowCustom: request.allowCustom,
+          });
+          break;
+      }
+    }
   },
 
   clear() {

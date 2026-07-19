@@ -1,17 +1,19 @@
 import { useState } from 'react';
 import { Button, Card, Textarea } from '@ema-agent/ui';
-import { HumanDescriptionPanel } from './HumanDescriptionPanel.js';
+import { DecisionSubmissionFeedback, HumanDescriptionPanel } from './HumanDescriptionPanel.js';
 
 export interface AskTextPromptProps {
   promptId:          string;
   question:          string;
   humanDescription?: string;
   placeholder?:      string;
+  submitting:         boolean;
+  submissionError?:   string;
   onResolve(text: string): void;
   onCancel(): void;
 }
 
-export function AskTextPrompt({ question, humanDescription, placeholder, onResolve, onCancel }: AskTextPromptProps): JSX.Element {
+export function AskTextPrompt({ question, humanDescription, placeholder, submitting, submissionError, onResolve, onCancel }: AskTextPromptProps): JSX.Element {
   const [text, setText] = useState('');
 
   return (
@@ -30,11 +32,12 @@ export function AskTextPrompt({ question, humanDescription, placeholder, onResol
         autoFocus
       />
       <div className="flex gap-3 mt-4 justify-end">
-        <Button variant="ghost" size="sm" onClick={onCancel}>取消</Button>
-        <Button variant="primary" size="sm" disabled={!text.trim()} onClick={() => onResolve(text.trim())}>
+        <Button variant="ghost" size="sm" disabled={submitting} onClick={onCancel}>取消</Button>
+        <Button variant="primary" size="sm" disabled={submitting || !text.trim()} onClick={() => onResolve(text.trim())}>
           提交
         </Button>
       </div>
+      <DecisionSubmissionFeedback submitting={submitting} error={submissionError} />
     </Card>
   );
 }

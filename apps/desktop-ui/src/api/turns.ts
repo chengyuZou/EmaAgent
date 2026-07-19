@@ -3,7 +3,12 @@
  */
 import { sidecarClient } from './sidecar-client.js';
 import { hasTurnRequestInput } from '@ema-agent/contracts';
-import type { TurnId, TurnRequest, TurnCreatedResponse } from '@ema-agent/contracts';
+import type {
+  PendingAskUserPrompt,
+  TurnCreatedResponse,
+  TurnId,
+  TurnRequest,
+} from '@ema-agent/contracts';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -28,6 +33,11 @@ export type { TurnRequest, TurnCreatedResponse } from '@ema-agent/contracts';
 // ── API object ────────────────────────────────────────────────────────────────
 
 export const turnsApi = {
+  /** GET /api/turns/pending/ask-user — recover prompts after reopening the chat window. */
+  pendingAskUser(): Promise<{ count: number; prompts: PendingAskUserPrompt[] }> {
+    return sidecarClient.request('/api/turns/pending/ask-user');
+  },
+
   /** POST /api/turns — start a new turn. */
   async create(req: TurnRequest): Promise<TurnCreatedResponse> {
     // Local validation
@@ -90,6 +100,14 @@ export const turnsApi = {
     return sidecarClient.request(
       `/api/turns/${turnId}/ask-user/${promptId}/respond`,
       { method: 'POST', json: { answers } },
+    );
+  },
+
+  /** POST /api/turns/:turnId/ask-user/:promptId/cancel */
+  cancelAskUser(turnId: string, promptId: string): Promise<{ ok: boolean }> {
+    return sidecarClient.request(
+      `/api/turns/${turnId}/ask-user/${promptId}/cancel`,
+      { method: 'POST' },
     );
   },
 };

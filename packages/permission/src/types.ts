@@ -121,6 +121,13 @@ export interface PermissionPrompt {
   toolCallId?:      string
 }
 
+/** Core 暂存的一条待审批请求，供窗口重开或 SSE 重连后恢复界面。 */
+export interface PendingPermissionPrompt {
+  promptId: string
+  createdAt: number
+  prompt: PermissionPrompt
+}
+
 export type PermissionResponse =
   /** Allow this one call. */
   | { action: 'allow' }

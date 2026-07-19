@@ -3,6 +3,7 @@ import type { z } from 'zod';
 import type {
   EmaStreamEvent, Artifact, ArtifactId, ArtifactType, SessionId, TurnId,
   AskUserQuestionSpec, AgentKind, KbSearchResult, ToolCallId,
+  AskUserRequiredEvent,
 } from '@ema-agent/contracts';
 import type { ToolPermissionMeta } from '@ema-agent/permission';
 
@@ -254,7 +255,11 @@ export interface ToolExecutionContext {
    * 引擎接好 AskUserRegistry 时提供;测试和不支持交互 prompt 的最小嵌入方缺失。
    * `promptId` 必须与已在 `ask_user_required` 广播的 id 一致。
    */
-  askUser?: (promptId: string, questions: AskUserQuestionSpec[]) => Promise<{ answers: Record<string, string> }>;
+  askUser?: (
+    promptId: string,
+    questions: AskUserQuestionSpec[],
+    request: AskUserRequiredEvent,
+  ) => Promise<{ answers: Record<string, string> }>;
   /**
    * 持久 artifact 存储。存在时,artifact_write/read/list 委托到这里
    * 而非进程内内存兜底。

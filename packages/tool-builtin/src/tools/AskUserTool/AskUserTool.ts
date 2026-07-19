@@ -84,9 +84,16 @@ export const AskUserTool = buildTool<AskUserInput, AskUserResult>({
           options:     q.options,
           multiSelect: q.multiSelect,
         }));
-        ctx.emit({ type: 'ask_user_required', sessionId: ctx.sessionId as SessionId, turnId: ctx.turnId as TurnId, promptId, questions: specs });
+        const request = {
+          type: 'ask_user_required',
+          sessionId: ctx.sessionId as SessionId,
+          turnId: ctx.turnId as TurnId,
+          promptId,
+          questions: specs,
+        } as const;
+        ctx.emit(request);
         try {
-          const result = await askFn(promptId, specs);
+          const result = await askFn(promptId, specs, request);
           ctx.emit({ type: 'ask_user_resolved', sessionId: ctx.sessionId as SessionId, promptId, answers: result.answers });
           return result;
         } catch (err: unknown) {

@@ -1,6 +1,6 @@
 ﻿import { useState, type CSSProperties } from 'react';
 import { Button, Card, CardButton, Checkbox, Input } from '@ema-agent/ui';
-import { HumanDescriptionPanel } from './HumanDescriptionPanel.js';
+import { DecisionSubmissionFeedback, HumanDescriptionPanel } from './HumanDescriptionPanel.js';
 
 export interface AskChoicePromptProps {
   promptId:          string;
@@ -9,12 +9,15 @@ export interface AskChoicePromptProps {
   options:           Array<{ label: string; description?: string }>;
   multiSelect:       boolean;
   allowCustom?:      boolean;
+  submitting:         boolean;
+  submissionError?:   string;
   onResolve(answers: string[], customText?: string): void;
   onCancel(): void;
 }
 
 export function AskChoicePrompt({
-  question, humanDescription, options, multiSelect, allowCustom, onResolve, onCancel,
+  question, humanDescription, options, multiSelect, allowCustom,
+  submitting, submissionError, onResolve, onCancel,
 }: AskChoicePromptProps): JSX.Element {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [customText, setCustomText] = useState('');
@@ -87,16 +90,17 @@ export function AskChoicePrompt({
       )}
 
       <div className="flex gap-3 mt-4 justify-end">
-        <Button variant="ghost" size="sm" onClick={onCancel}>取消</Button>
+        <Button variant="ghost" size="sm" disabled={submitting} onClick={onCancel}>取消</Button>
         <Button
           variant="primary"
           size="sm"
-          disabled={selected.size === 0 && !customText}
+          disabled={submitting || (selected.size === 0 && !customText)}
           onClick={() => onResolve([...selected], customText || undefined)}
         >
           确定
         </Button>
       </div>
+      <DecisionSubmissionFeedback submitting={submitting} error={submissionError} />
     </Card>
   );
 }

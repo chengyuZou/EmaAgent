@@ -27,7 +27,7 @@ const respondSchema = z.discriminatedUnion('action', [
  *     dismisses the prompt (resolves as deny with reason='cancelled')
  *
  *   GET  /api/permission/pending
- *     diagnostics — current number of in-flight prompts
+ *     returns recoverable in-flight prompt snapshots
  */
 export function permissionRoute(bindings: AppBindings): Hono {
   const app = new Hono();
@@ -57,7 +57,8 @@ export function permissionRoute(bindings: AppBindings): Hono {
   });
 
   app.get('/pending', (c) => {
-    return c.json({ count: bindings.permissionPrompts.size() });
+    const prompts = bindings.permissionPrompts.listPending();
+    return c.json({ count: prompts.length, prompts });
   });
 
   return app;

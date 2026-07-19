@@ -141,6 +141,12 @@ export function turnsRoute(bindings: AppBindings): Hono {
   // Evict completed / cancelled turns every 30 s to prevent unbounded memory growth.
   setInterval(() => eventStore.evictExpired(), 30_000).unref?.();
 
+  // 窗口重开时恢复仍在等待回答的 Ask User 卡片；请求本身已包含 Session/Turn 身份。
+  app.get('/pending/ask-user', (c) => {
+    const prompts = bindings.askUserRegistry.listPending();
+    return c.json({ count: prompts.length, prompts });
+  });
+
   // ── POST /api/turns ────────────────────────────────────────────────────────
   app.post('/', async (c) => {
     const parsed = turnBodySchema.safeParse(await safeJsonBody(c).catch(() => null));
@@ -398,12 +404,22 @@ export function turnsRoute(bindings: AppBindings): Hono {
   // Resolves a pending ask_user prompt. The tool awaits a Promise stored in
   // AskUserRegistry; this POST resolves it with the user's answers map.
   app.post('/:turnId/ask-user/:promptId/respond', async (c) => {
+    const turnId = c.req.param('turnId');
     const promptId = c.req.param('promptId');
     const body = await c.req.json().catch(() => null) as { answers?: Record<string, string> } | null;
     if (!body || typeof body.answers !== 'object') {
       return c.json({ error: 'invalid_request' }, 400);
     }
-    const ok = bindings.askUserRegistry.respond(promptId, body.answers);
+    const ok = bindings.askUserRegistry.respond(promptId, body.answers, turnId);
+    if (!ok) return c.json({ error: 'not_found_or_expired', promptId }, 404);
+    return c.json({ ok: true });
+  });
+
+  // 取消不是“提交空答案”：单独的路由让前端意图和后端状态机保持一致。
+  app.post('/:turnId/ask-user/:promptId/cancel', (c) => {
+    const turnId = c.req.param('turnId');
+    const promptId = c.req.param('promptId');
+    const ok = bindings.askUserRegistry.cancel(promptId, turnId);
     if (!ok) return c.json({ error: 'not_found_or_expired', promptId }, 404);
     return c.json({ ok: true });
   });

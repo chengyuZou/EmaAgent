@@ -39,7 +39,7 @@ Prefer this over AskUser for a single freeform question - the UI shows a focused
   async execute(input: AskTextInput, ctx: ToolExecutionContext): Promise<AskTextResult> {
     if (ctx.emit && ctx.askUser) {
       const promptId = randomUUID();
-      ctx.emit({
+      const request = {
         type:             'ask_text_required',
         sessionId:        ctx.sessionId as SessionId,
         turnId:           ctx.turnId as TurnId,
@@ -47,9 +47,10 @@ Prefer this over AskUser for a single freeform question - the UI shows a focused
         question:         input.question,
         humanDescription: input.humanDescription,
         placeholder:      input.placeholder,
-      } satisfies EmaStreamEvent);
+      } satisfies EmaStreamEvent;
+      ctx.emit(request);
 
-      const { answers } = await ctx.askUser(promptId, []);
+      const { answers } = await ctx.askUser(promptId, [], request);
       const text = answers['text'] ?? '';
 
       ctx.emit({

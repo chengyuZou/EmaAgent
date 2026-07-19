@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import type { AskUserRequiredEvent, PendingAskUserPrompt } from '@ema-agent/contracts';
 
 /**
  * In-memory registry for ask_user tool prompts awaiting user answers.
@@ -15,6 +16,8 @@ export class AskUserRegistry {
       resolve: (answers: Record<string, string>) => void;
       timer:   ReturnType<typeof setTimeout>;
       turnId?: string;
+      createdAt: number;
+      request?: AskUserRequiredEvent;
     }
   >();
 
@@ -46,16 +49,22 @@ export class AskUserRegistry {
    *
    * Pass `turnId` so the prompt can be batch-cancelled when its turn ends.
    */
-  createWithId(promptId: string, timeoutMs?: number, turnId?: string): {
+  createWithId(
+    promptId: string,
+    timeoutMs?: number,
+    turnId?: string,
+    request?: AskUserRequiredEvent,
+  ): {
     promise: Promise<Record<string, string>>;
   } {
-    return { promise: this._makePromise(promptId, timeoutMs, turnId) };
+    return { promise: this._makePromise(promptId, timeoutMs, turnId, request) };
   }
 
   private _makePromise(
     promptId:  string,
     timeoutMs?: number,
     turnId?:   string,
+    request?:  AskUserRequiredEvent,
   ): Promise<Record<string, string>> {
     const ms = timeoutMs ?? this.defaultTimeoutMs;
 
@@ -72,7 +81,7 @@ export class AskUserRegistry {
           resolve({});
         }
       }, ms);
-      this.pending.set(promptId, { resolve, timer, turnId });
+      this.pending.set(promptId, { resolve, timer, turnId, createdAt: Date.now(), request });
     });
   }
 
@@ -80,9 +89,10 @@ export class AskUserRegistry {
    * Resolve a pending prompt with user-provided answers.
    * Returns false if the promptId was not found (already resolved / expired).
    */
-  respond(promptId: string, answers: Record<string, string>): boolean {
+  respond(promptId: string, answers: Record<string, string>, expectedTurnId?: string): boolean {
     const entry = this.pending.get(promptId);
     if (!entry) return false;
+    if (expectedTurnId && entry.turnId !== expectedTurnId) return false;
     clearTimeout(entry.timer);
     this.pending.delete(promptId);
     if (entry.turnId) this.byTurn.get(entry.turnId)?.delete(promptId);
@@ -91,9 +101,10 @@ export class AskUserRegistry {
   }
 
   /** Cancel a single pending prompt (resolves with empty answers). */
-  cancel(promptId: string): boolean {
+  cancel(promptId: string, expectedTurnId?: string): boolean {
     const entry = this.pending.get(promptId);
     if (!entry) return false;
+    if (expectedTurnId && entry.turnId !== expectedTurnId) return false;
     clearTimeout(entry.timer);
     this.pending.delete(promptId);
     if (entry.turnId) this.byTurn.get(entry.turnId)?.delete(promptId);
@@ -123,5 +134,13 @@ export class AskUserRegistry {
 
   size(): number {
     return this.pending.size;
+  }
+
+  /** 返回窗口可以重建的请求；旧式无结构化载荷的调用不会伪造恢复数据。 */
+  listPending(): PendingAskUserPrompt[] {
+    return [...this.pending.values()]
+      .filter((entry): entry is typeof entry & { request: AskUserRequiredEvent } => entry.request !== undefined)
+      .map((entry) => ({ createdAt: entry.createdAt, request: entry.request }))
+      .sort((left, right) => left.createdAt - right.createdAt);
   }
 }
