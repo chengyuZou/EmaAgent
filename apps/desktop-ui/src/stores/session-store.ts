@@ -109,8 +109,11 @@ export const useSessionStore = create<SessionStoreState>((set, get) => ({
       const session = await sessionsApi.create();
       await get().loadSessions();
       return session.id as SessionId;
-    } catch {
-      return null as unknown as SessionId;
+    } catch (error: unknown) {
+      set({
+        error: error instanceof Error ? error.message : 'Failed to create session',
+      });
+      throw error;
     }
   },
 

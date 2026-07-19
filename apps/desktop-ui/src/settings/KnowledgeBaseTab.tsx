@@ -431,6 +431,7 @@ const STAGE_BAR: Record<IngestStage, string> = {
 function ProcessingQueue(): JSX.Element | null {
   const jobs = useKbStore((s) => s.ingestJobs);
   const libs = useKbStore((s) => s.libs);
+  const queueError = useKbStore((s) => s.ingestQueueError);
 
   useEffect(() => {
     void useKbStore.getState().loadIngestTasks();  // hydrate from the persistent queue
@@ -438,7 +439,7 @@ function ProcessingQueue(): JSX.Element | null {
   }, []);
 
   const list = Object.values(jobs);
-  if (list.length === 0) return null;
+  if (list.length === 0 && !queueError) return null;
 
   // Group by kbId; preserve order of first appearance.
   const groups = new Map<string, typeof list>();
@@ -453,6 +454,11 @@ function ProcessingQueue(): JSX.Element | null {
   return (
     <section className="flex flex-col gap-3 ema-fade-in">
       <h2 className="text-base font-semibold text-[var(--ema-text-primary)]">处理队列</h2>
+      {queueError && (
+        <Callout variant="danger" className="text-xs">
+          任务队列刷新失败，当前内容可能已过期：{queueError}
+        </Callout>
+      )}
       {[...groups.entries()].map(([kbId, kbJobs], gi) => {
         const done  = kbJobs.filter((j) => j.status === 'done').length;
         const total = kbJobs.length;

@@ -1,14 +1,10 @@
-/**
- * TaskPanel — agent task list for the current session.
- *
- * Shows running tasks first, then terminal (completed/failed/cancelled).
- * Expanding a card loads and shows the subagent transcript.
- */
+// 展示当前 Session 的 Agent Task 状态、取消入口与子 Agent 对话记录。
 import { useState, useEffect, useCallback, useMemo, useRef, type JSX, type CSSProperties } from 'react';
 import { Badge, Button, IconButton, Input, Spinner, type BadgeVariant } from '@ema-agent/ui';
 import { useAgentTaskStore, type AgentTaskState, type AgentTaskMessageWire } from '../stores/agent-task-store.js';
 import { useConversationStore } from '../stores/conversation-store.js';
 import type { ToolCallMessageContent, AssistantMessageContent, ReasoningMessageContent, ToolResultMessageContent } from '../api/agent-tasks.js';
+import { showToast } from '../lib/toast.js';
 
 // ── TaskPanel ─────────────────────────────────────────────────────────────────
 
@@ -57,8 +53,12 @@ export function TaskPanel({ className = '' }: TaskPanelProps): JSX.Element {
 
   const handleClear = useCallback(async () => {
     if (!sessionId) return;
-    await clearTerminal(sessionId as string);
-    setExpandedId((id) => terminal.some((t) => t.id === id) ? null : id);
+    try {
+      await clearTerminal(sessionId as string);
+      setExpandedId((id) => terminal.some((t) => t.id === id) ? null : id);
+    } catch (error: unknown) {
+      showToast(error instanceof Error ? `清空失败：${error.message}` : '清空失败', { variant: 'danger' });
+    }
   }, [sessionId, clearTerminal, terminal]);
 
   return (
@@ -170,7 +170,14 @@ function TaskCard({ task, expanded, onToggle, staggerIndex = 0 }: TaskCardProps)
 
   const handleDelete = useCallback(async (e: React.MouseEvent) => {
     e.stopPropagation();
-    await deleteTask(task.id, task.parentTurnId);
+    try {
+      await deleteTask(task.id, task.parentTurnId);
+    } catch (error: unknown) {
+      showToast(
+        error instanceof Error ? `取消或删除失败：${error.message}` : '取消或删除失败',
+        { variant: 'danger' },
+      );
+    }
   }, [deleteTask, task.id, task.parentTurnId]);
 
   const barColor = {

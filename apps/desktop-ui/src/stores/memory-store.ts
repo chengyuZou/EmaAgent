@@ -1,3 +1,4 @@
+// 管理通用记忆统计、后台任务结果、维护操作与 Session 级开关。
 import { create } from 'zustand';
 import { memoryApi, type MemoryStats, type MaintenanceReport, type MemoryMaintenanceInput, type MemorySessionOverrides } from '../api/memory.js';
 import type { MemoryTaskKind } from '@ema-agent/storage';
@@ -23,18 +24,27 @@ export interface ExtractionResult {
   completedAt: number;
 }
 
+export interface MemoryTaskFailure {
+  taskId: string;
+  error: string;
+  failedAt: number;
+  task?: ActiveMemoryTask;
+}
+
 // ── Store interface ───────────────────────────────────────────────────────────
 
 export interface MemoryStoreState {
   /** Latest stats snapshot from the sidecar. Null until first fetch. */
   stats:        MemoryStats | null;
   statsLoading: boolean;
+  statsError:   string | null;
 
   /**
    * Currently-running background tasks (taskId → task info).
    * Used to show a "memory: extracting…" indicator in the UI.
    */
   activeTasks: Map<string, ActiveMemoryTask>;
+  failedTasks: Map<string, MemoryTaskFailure>;
 
   /**
    * Last successful extraction result per session.
@@ -63,6 +73,7 @@ export interface MemoryStoreState {
   onTaskStarted(taskId: string, kind: MemoryTaskKind, sessionId?: string): void;
   onTaskCompleted(taskId: string):                                     void;
   onTaskFailed(taskId: string, error: string):                         void;
+  clearTaskFailure(taskId: string):                                    void;
 
   onExtractionStarted(sessionId: string):                              void;
   onExtractionCompleted(sessionId: string, result: Omit<ExtractionResult, 'completedAt'>): void;
@@ -109,7 +120,9 @@ export interface MemoryStoreState {
 export const useMemoryStore = create<MemoryStoreState>((set, get) => ({
   stats:              null,
   statsLoading:       false,
+  statsError:         null,
   activeTasks:        new Map(),
+  failedTasks:        new Map(),
   lastExtractionMap:  new Map(),
   extractionErrorMap: new Map(),
   maintenanceReport:  null,
@@ -121,12 +134,15 @@ export const useMemoryStore = create<MemoryStoreState>((set, get) => ({
 
   async refreshStats() {
     if (get().statsLoading) return;
-    set({ statsLoading: true });
+    set({ statsLoading: true, statsError: null });
     try {
       const stats = await memoryApi.stats();
-      set({ stats, statsLoading: false });
-    } catch {
-      set({ statsLoading: false });
+      set({ stats, statsLoading: false, statsError: null });
+    } catch (error: unknown) {
+      set({
+        statsLoading: false,
+        statsError: error instanceof Error ? error.message : '加载记忆统计失败',
+      });
     }
   },
 
@@ -136,7 +152,9 @@ export const useMemoryStore = create<MemoryStoreState>((set, get) => ({
     set((s) => {
       const tasks = new Map(s.activeTasks);
       tasks.set(taskId, { taskId, kind, sessionId, startedAt: Date.now() });
-      return { activeTasks: tasks };
+      const failures = new Map(s.failedTasks);
+      failures.delete(taskId);
+      return { activeTasks: tasks, failedTasks: failures };
     });
   },
 
@@ -148,11 +166,22 @@ export const useMemoryStore = create<MemoryStoreState>((set, get) => ({
     });
   },
 
-  onTaskFailed(taskId, _error) {
+  onTaskFailed(taskId, error) {
     set((s) => {
       const tasks = new Map(s.activeTasks);
+      const task = tasks.get(taskId);
       tasks.delete(taskId);
-      return { activeTasks: tasks };
+      const failures = new Map(s.failedTasks);
+      failures.set(taskId, { taskId, error, failedAt: Date.now(), task });
+      return { activeTasks: tasks, failedTasks: failures };
+    });
+  },
+
+  clearTaskFailure(taskId) {
+    set((state) => {
+      const failures = new Map(state.failedTasks);
+      failures.delete(taskId);
+      return { failedTasks: failures };
     });
   },
 

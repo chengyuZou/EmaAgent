@@ -60,6 +60,13 @@ import type {
 
 export type { AttachmentInputWire };
 
+export type BranchLoadState =
+  | { status: 'idle'; error: null }
+  | { status: 'loading'; error: null }
+  | { status: 'ready'; error: null; updatedAt: number }
+  | { status: 'stale'; error: string; updatedAt: number }
+  | { status: 'error'; error: string };
+
 // ── Re-export types that consumers import from this module ────────────────────
 
 export type {
@@ -184,6 +191,7 @@ export interface ConversationStoreState {
   error:              string | null;
   scrollToTurnId:     string | null;
   branchDataBySession: Map<string, BranchTreeWire>;
+  branchLoadStateBySession: Map<string, BranchLoadState>;
   /** 已标记的分叉点: 点击 ForkButton 只记录, 发送消息时才真正创建分支(F-052)。 */
   pendingForkFromTurnId: TurnId | null;
 
@@ -228,6 +236,7 @@ export const useConversationStore = create<ConversationStoreState>((set, get) =>
   error:               null,
   scrollToTurnId:      null,
   branchDataBySession: new Map(),
+  branchLoadStateBySession: new Map(),
   pendingForkFromTurnId: null,
 
   scrollToTurn(turnId) { set({ scrollToTurnId: turnId }); },
@@ -235,14 +244,37 @@ export const useConversationStore = create<ConversationStoreState>((set, get) =>
   clearPendingFork()   { set({ pendingForkFromTurnId: null }); },
 
   async loadBranches(id) {
+    const key = id as string;
+    set((state) => {
+      const states = new Map(state.branchLoadStateBySession);
+      states.set(key, { status: 'loading', error: null });
+      return { branchLoadStateBySession: states };
+    });
     try {
       const data = await sessionsApi.listBranches(id);
       set((s) => {
         const m = new Map(s.branchDataBySession);
-        m.set(id as string, data);
-        return { branchDataBySession: m };
+        m.set(key, data);
+        const states = new Map(s.branchLoadStateBySession);
+        states.set(key, { status: 'ready', error: null, updatedAt: Date.now() });
+        return { branchDataBySession: m, branchLoadStateBySession: states };
       });
-    } catch { /* non-critical */ }
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : '加载分支失败';
+      set((state) => {
+        const states = new Map(state.branchLoadStateBySession);
+        const previous = states.get(key);
+        states.set(key, state.branchDataBySession.has(key)
+          ? {
+              status: 'stale',
+              error: message,
+              updatedAt: previous && 'updatedAt' in previous ? previous.updatedAt : Date.now(),
+            }
+          : { status: 'error', error: message });
+        return { branchLoadStateBySession: states };
+      });
+      throw error;
+    }
   },
 
   // 统一分支切换动作：BranchPanel 节点点击 + BranchSiblingNav ‹› 都走这里。
@@ -283,7 +315,8 @@ export const useConversationStore = create<ConversationStoreState>((set, get) =>
     }
 
     await get().loadMessages(id);
-    void get().loadBranches(id);
+    // 分支树属于辅助数据；失败状态已写入 Store，导航主流程仍可展示消息。
+    void get().loadBranches(id).catch(() => {});
   },
 
   async createFreshSession() {
@@ -457,6 +490,8 @@ export const useConversationStore = create<ConversationStoreState>((set, get) =>
       const emotions  = new Map(s.emotionStateMap); emotions.delete(id as string);
       const iters     = new Map(s.iterationCountMap); iters.delete(id as string);
       const recalls   = new Map(s.recallEvidenceMap); recalls.delete(id as string);
+      const branchData = new Map(s.branchDataBySession); branchData.delete(id as string);
+      const branchStates = new Map(s.branchLoadStateBySession); branchStates.delete(id as string);
 
       const lastTurnId = s.streamingMap.get(id as string)?.turnId as string | undefined;
       const usageMap   = new Map(s.liveUsageMap);
@@ -468,6 +503,8 @@ export const useConversationStore = create<ConversationStoreState>((set, get) =>
         streamingMap: streaming, stopReasonMap: stops, draftMap: drafts,
         emotionStateMap: emotions, iterationCountMap: iters, recallEvidenceMap: recalls,
         liveUsageMap: usageMap, thinkingActiveMap: thinking,
+        branchDataBySession: branchData,
+        branchLoadStateBySession: branchStates,
       };
     });
   },

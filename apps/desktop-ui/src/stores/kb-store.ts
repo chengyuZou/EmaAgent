@@ -63,8 +63,11 @@ export interface KbStoreState {
   /** Completed count in the current batch (done jobs are removed from the map,
    *  so this is the reliable "succeeded" tally for the nav indicator). */
   ingestDoneCount: number;
+  /** 当前批次已经消费的 completed asset，用于抵御 SSE 重放与重复投递。 */
+  ingestCompletedAssets: Set<string>;
   ingesting:    boolean;
   ingestError:  string | null;
+  ingestQueueError: string | null;
 
   searchResult:  KbSearchResultWire | null;
   searchLoading: boolean;
@@ -115,8 +118,10 @@ export const useKbStore = create<KbStoreState>((set, get) => ({
   ingestJobs:    {},
   reembedTasks:  {},
   ingestDoneCount: 0,
+  ingestCompletedAssets: new Set(),
   ingesting:     false,
   ingestError:   null,
+  ingestQueueError: null,
 
   searchResult:  null,
   searchLoading: false,
@@ -140,6 +145,7 @@ export const useKbStore = create<KbStoreState>((set, get) => ({
   },
 
   async loadIngestTasks() {
+    set({ ingestQueueError: null });
     try {
       const tasks = await kbApi.getIngestTasks(); // no kbId → all KBs
       const jobs: Record<string, IngestJob> = {};
@@ -158,15 +164,24 @@ export const useKbStore = create<KbStoreState>((set, get) => ({
           failedItems: t.failedItems,
         };
       }
-      set({ ingestJobs: jobs });
-    } catch { /* ignore — queue is advisory */ }
+      set({ ingestJobs: jobs, ingestQueueError: null });
+    } catch (error: unknown) {
+      // 队列刷新失败时保留旧快照；它可能过期，但不能伪装成“没有后台任务”。
+      set({
+        ingestQueueError: error instanceof Error ? error.message : '加载知识库任务队列失败',
+      });
+    }
   },
 
   async ingest(filePath, opts = {}) {
     // Starting a fresh batch (no active jobs) → reset the succeeded tally so the
     // nav indicator counts this batch, not the last one.
     const active = Object.values(get().ingestJobs).some((j) => j.status === 'pending' || j.status === 'running');
-    set({ ingesting: true, ingestError: null, ...(active ? {} : { ingestDoneCount: 0 }) });
+    set({
+      ingesting: true,
+      ingestError: null,
+      ...(active ? {} : { ingestDoneCount: 0, ingestCompletedAssets: new Set<string>() }),
+    });
     try {
       // Enqueue (POST returns 202 once the task row exists); hydrate the queue so
       // the new pending job shows. Progress/completion arrive via the system SSE.
@@ -294,10 +309,21 @@ export const useKbStore = create<KbStoreState>((set, get) => ({
   onIngestCompleted(kbId, assetId) {
     // Mark done (green, 100%) briefly so the row plays an exit animation, then drop it.
     set((s) => {
-      const job = s.ingestJobs[assetId];
-      if (!job) return {};
+      // SSE 可能早于 HTTP 队列水合到达；终态事件本身足以建立最小可信记录。
+      const job = s.ingestJobs[assetId] ?? {
+        taskId: assetId,
+        assetId,
+        kbId,
+        fileName: assetId,
+        status: 'done' as const,
+        progress: 1,
+      };
+      const completedAssets = new Set(s.ingestCompletedAssets);
+      const firstCompletion = !completedAssets.has(assetId);
+      completedAssets.add(assetId);
       return {
-        ingestDoneCount: s.ingestDoneCount + 1,
+        ingestDoneCount: s.ingestDoneCount + (firstCompletion ? 1 : 0),
+        ingestCompletedAssets: completedAssets,
         ingestJobs: { ...s.ingestJobs, [assetId]: { ...job, kbId, status: 'done', progress: 1 } },
       };
     });

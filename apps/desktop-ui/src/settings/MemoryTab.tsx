@@ -65,7 +65,9 @@ function importanceBarClass(importance: number): string {
 function OverviewTab(): JSX.Element {
   const stats        = useMemoryStore((s) => s.stats);
   const statsLoading = useMemoryStore((s) => s.statsLoading);
+  const statsError   = useMemoryStore((s) => s.statsError);
   const activeTasks  = useMemoryStore((s) => s.activeTasks);
+  const failedTasks  = useMemoryStore((s) => s.failedTasks);
   const viewedId     = useConversationStore((s) => s.viewedSessionId);
   const sessionOverrides = useMemoryStore((s) =>
     viewedId ? s.sessionOverrides.get(viewedId as string) : undefined,
@@ -91,6 +93,12 @@ function OverviewTab(): JSX.Element {
 
   return (
     <div className="flex flex-col gap-5">
+      {statsError && (
+        <Callout variant="danger">
+          记忆统计刷新失败：{statsError}
+        </Callout>
+      )}
+
       {/* Stat cards */}
       {stats && (
         <>
@@ -170,6 +178,29 @@ function OverviewTab(): JSX.Element {
             {[...activeTasks.values()].map((t) => (
               <div key={t.taskId} className="text-xs text-[var(--ema-warning-text)]">
                 {t.kind}{t.sessionId ? ` (${t.sessionId.slice(0, 8)}…)` : ''}
+              </div>
+            ))}
+          </div>
+        </Callout>
+      )}
+
+      {failedTasks.size > 0 && (
+        <Callout variant="danger">
+          <span className="font-semibold">后台记忆任务失败</span>
+          <div className="mt-1 flex flex-col gap-1">
+            {[...failedTasks.values()].map((failure) => (
+              <div key={failure.taskId} className="flex items-center justify-between gap-2 text-xs">
+                <span className="min-w-0 break-words">
+                  {failure.task?.kind ?? failure.taskId}：{failure.error}
+                </span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="shrink-0"
+                  onClick={() => useMemoryStore.getState().clearTaskFailure(failure.taskId)}
+                >
+                  知道了
+                </Button>
               </div>
             ))}
           </div>

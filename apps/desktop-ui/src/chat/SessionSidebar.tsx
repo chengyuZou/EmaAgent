@@ -1,3 +1,4 @@
+// 提供完整 Session 侧栏、项目分组、搜索、新建和会话管理操作。
 import { useState, useCallback, useEffect, useMemo, useRef, type JSX } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { Button, ConfirmDialog, DropdownMenu, Input, PromptDialog, type MenuItem } from '@ema-agent/ui';
@@ -116,7 +117,10 @@ export function SessionSidebar(): JSX.Element {
           <div className="px-1.5 py-2 border-b border-[var(--ema-border)]">
             <NewConversationCommand
               onCreate={async () => {
-                const newId = await useConversationStore.getState().createFreshSession();
+                const newId = await runWithToast(
+                  useConversationStore.getState().createFreshSession(),
+                  '新建会话失败',
+                );
                 if (newId) void useConversationStore.getState().viewSession(newId);
               }}
               onCollapse={() => setCollapsed(true)}

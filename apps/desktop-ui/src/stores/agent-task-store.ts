@@ -1,3 +1,4 @@
+// 管理 Agent Task 列表、运行态、取消删除与子 Agent 对话记录。
 import { create } from 'zustand';
 import {
   agentTasksApi,
@@ -111,18 +112,27 @@ export const useAgentTaskStore = create<AgentTaskStoreState>((set, get) => ({
   },
 
   async deleteTask(taskId, parentTurnId) {
-    // Cancel in-flight subagent first if we know the parent turn.
     const task = get().tasks.get(taskId);
-    if (task && (task.status === 'running' || task.status === 'waiting_user') && parentTurnId) {
-      await turnsApi.abortSubagent(parentTurnId, taskId).catch(() => {});
+    set({ error: null });
+    try {
+      // 活跃任务必须先确认运行时已取消；否则绝不能删除持久化记录并伪装成已停止。
+      if (task && (task.status === 'running' || task.status === 'waiting_user')) {
+        if (!parentTurnId) {
+          throw new Error('缺少父 Turn，无法安全取消仍在运行的 Agent Task');
+        }
+        await turnsApi.abortSubagent(parentTurnId, taskId);
+      }
+      await agentTasksApi.delete(taskId);
+    } catch (error: unknown) {
+      set({ error: error instanceof Error ? error.message : '删除 Agent Task 失败' });
+      throw error;
     }
-    await agentTasksApi.delete(taskId);
     set((s) => {
       const next = new Map(s.tasks);
       next.delete(taskId);
       const trans = new Map(s.transcripts);
       trans.delete(taskId);
-      return { tasks: next, transcripts: trans };
+      return { tasks: next, transcripts: trans, error: null };
     });
   },
 
