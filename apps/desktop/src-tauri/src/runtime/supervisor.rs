@@ -1,6 +1,5 @@
 // 统一编排 Bridge/Core 启动、结构化就绪、状态发布和可靠退出。
 use std::path::{Path, PathBuf};
-use std::process::Stdio;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
@@ -8,11 +7,11 @@ use std::time::Duration;
 use rand::distributions::Alphanumeric;
 use rand::{thread_rng, Rng};
 use tauri::AppHandle;
-use tokio::io::{AsyncBufReadExt, BufReader};
-use tokio::process::{Child, Command};
+use tokio::process::Child;
 use tokio::sync::{Mutex, RwLock};
 
 use super::platform::NativeProcessTree;
+use super::process::spawn_service;
 use super::readiness::wait_for_ready;
 use super::resources::{resolve_narrative_dir, resolve_service_launch, ServiceLaunch};
 use super::types::{RuntimePhase, RuntimeService, RuntimeSnapshot, ServicePhase, ServiceSnapshot};
@@ -216,44 +215,17 @@ impl DesktopRuntimeSupervisor {
         narrative_dir: Option<PathBuf>,
     ) -> Result<(u32, u16), String> {
         let _ = tokio::fs::remove_file(ready_file).await;
-        let mut command = Command::new(&launch.executable);
-        command
-            .args(&launch.args)
-            .current_dir(&launch.working_dir)
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .stdin(Stdio::null())
-            .env("EMA_SHARED_SECRET", secret)
-            .env("EMA_CREDENTIAL_MASTER_KEY", credential_master_key)
-            .env("EMA_READY_FILE", ready_file)
-            .env("EMA_RUNTIME_NONCE", nonce)
-            .env("EMA_RUNTIME_PROTOCOL_VERSION", "1");
-        if service == RuntimeService::Bridge {
-            command.env("EMA_DATA_DIR", profile_directory());
-        }
-        if let Some(path) = narrative_dir {
-            command.env("EMA_NARRATIVE_DIR", path);
-        }
-        self.0.process_tree.prepare_command(&mut command);
-
-        tracing::info!(
-            service = service.as_str(),
-            executable = %launch.executable.display(),
-            cwd = %launch.working_dir.display(),
-            "launching runtime service",
-        );
-        let mut child = command
-            .spawn()
-            .map_err(|error| format!("spawn {}: {error}", service.as_str()))?;
-        let pid = child
-            .id()
-            .ok_or_else(|| format!("{} child has no pid", service.as_str()))?;
-        if let Err(error) = self.0.process_tree.attach(pid) {
-            let _ = child.kill().await;
-            return Err(error);
-        }
-        pipe_stdout(child.stdout.take(), service);
-        pipe_stderr(child.stderr.take(), service);
+        let (child, pid) = spawn_service(
+            service,
+            launch,
+            ready_file,
+            nonce,
+            secret,
+            credential_master_key,
+            narrative_dir,
+            &self.0.process_tree,
+        )
+        .await?;
 
         let slot = self.child_slot(service);
         *slot.lock().await = Some(child);
@@ -461,36 +433,4 @@ async fn prepare_runtime_directory(path: &Path) -> Result<(), String> {
     tokio::fs::create_dir_all(path)
         .await
         .map_err(|error| format!("create runtime directory {}: {error}", path.display()))
-}
-
-fn profile_directory() -> PathBuf {
-    if let Ok(path) = std::env::var("EMA_DATA_DIR") {
-        return PathBuf::from(path);
-    }
-    std::env::var("USERPROFILE")
-        .or_else(|_| std::env::var("HOME"))
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| PathBuf::from("."))
-        .join(".ema-agent")
-}
-
-fn pipe_stdout(stdout: Option<tokio::process::ChildStdout>, service: RuntimeService) {
-    let Some(stdout) = stdout else { return };
-    tokio::spawn(async move {
-        let mut lines = BufReader::new(stdout).lines();
-        while let Ok(Some(line)) = lines.next_line().await {
-            tracing::debug!(service = service.as_str(), %line, "runtime stdout");
-        }
-        tracing::warn!(service = service.as_str(), "runtime stdout closed");
-    });
-}
-
-fn pipe_stderr(stderr: Option<tokio::process::ChildStderr>, service: RuntimeService) {
-    let Some(stderr) = stderr else { return };
-    tokio::spawn(async move {
-        let mut lines = BufReader::new(stderr).lines();
-        while let Ok(Some(line)) = lines.next_line().await {
-            tracing::warn!(service = service.as_str(), %line, "runtime stderr");
-        }
-    });
 }
