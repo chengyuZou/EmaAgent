@@ -1,3 +1,4 @@
+// 展示角色卡列表并在具名对话框中编辑选中的角色卡。
 import { useState, type JSX } from 'react';
 import { Badge, Card, Dialog, ScrollArea } from '@ema-agent/ui';
 import { useCardStore } from '../stores/card-store.js';
@@ -41,6 +42,7 @@ export function CardsTab(): JSX.Element {
       <Dialog
         open={!!selected}
         onOpenChange={(o) => { if (!o) setSelectedId(null); }}
+        ariaLabel="角色卡编辑器"
         widthClass="max-w-[80vw]"
         className="ema-dialog-decorate"
       >
