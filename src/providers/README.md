@@ -1,6 +1,8 @@
-# @ema-agent/provider
+# Ema Provider
 
-Provider 静态目录与能力查询模块。它描述供应商是谁、支持哪些能力、每项能力可用什么协议与模型来源，不保存用户密钥，也不直接发起模型 API 请求。
+Ema 产品源码中的 Provider 静态目录与能力查询模块。它描述供应商是谁、支持哪些能力、每项能力可用什么协议与模型来源，不保存用户密钥，也不直接发起模型 API 请求。
+
+目录位于根 `src`，因为供应商能力是 Ema 的产品业务；内部包名 `@ema-agent/provider` 仅用于建立稳定的 TypeScript 编译与依赖边界，不表示它是可独立发布的公共库。
 
 ```text
 ProviderCatalogFacade

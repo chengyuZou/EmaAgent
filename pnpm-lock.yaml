@@ -96,7 +96,7 @@ importers:
         version: link:../../packages/prompts
       '@ema-agent/provider':
         specifier: workspace:*
-        version: link:../../packages/provider
+        version: link:../../src/providers
       '@ema-agent/sandbox':
         specifier: workspace:*
         version: link:../../packages/sandbox
@@ -272,7 +272,7 @@ importers:
         version: link:../../packages/permission
       '@ema-agent/provider':
         specifier: workspace:*
-        version: link:../../packages/provider
+        version: link:../../src/providers
       '@ema-agent/skill':
         specifier: workspace:*
         version: link:../../packages/skill
@@ -544,7 +544,7 @@ importers:
     dependencies:
       '@ema-agent/provider':
         specifier: workspace:*
-        version: link:../provider
+        version: link:../../src/providers
     devDependencies:
       rimraf:
         specifier: ^5.0.0
@@ -612,7 +612,7 @@ importers:
         version: link:../contracts
       '@ema-agent/provider':
         specifier: workspace:*
-        version: link:../provider
+        version: link:../../src/providers
     devDependencies:
       '@types/node':
         specifier: ^20.0.0
@@ -759,7 +759,7 @@ importers:
         version: link:../contracts
       '@ema-agent/provider':
         specifier: workspace:*
-        version: link:../provider
+        version: link:../../src/providers
       '@google/genai':
         specifier: ^2.7.0
         version: 2.7.0(@modelcontextprotocol/sdk@1.29.0(zod@3.25.76))
@@ -948,18 +948,6 @@ importers:
         specifier: ^2.0.0
         version: 2.1.9(@types/node@20.19.39)(jsdom@26.1.0(canvas@2.11.2))(msw@2.14.6(@types/node@20.19.39)(typescript@5.9.3))
 
-  packages/provider:
-    devDependencies:
-      rimraf:
-        specifier: ^5.0.0
-        version: 5.0.10
-      typescript:
-        specifier: ^5.9.3
-        version: 5.9.3
-      vitest:
-        specifier: ^2.0.0
-        version: 2.1.9(@types/node@20.19.39)(jsdom@26.1.0(canvas@2.11.2))(msw@2.14.6(@types/node@20.19.39)(typescript@5.9.3))
-
   packages/public-http:
     dependencies:
       ipaddr.js:
@@ -1067,7 +1055,7 @@ importers:
         version: link:../credential
       '@ema-agent/provider':
         specifier: workspace:*
-        version: link:../provider
+        version: link:../../src/providers
       '@node-rs/jieba':
         specifier: ^2.0.1
         version: 2.0.1
@@ -1101,7 +1089,7 @@ importers:
         version: link:../contracts
       '@ema-agent/provider':
         specifier: workspace:*
-        version: link:../provider
+        version: link:../../src/providers
     devDependencies:
       '@types/node':
         specifier: ^20.0.0
@@ -1225,7 +1213,7 @@ importers:
         version: link:../contracts
       '@ema-agent/provider':
         specifier: workspace:*
-        version: link:../provider
+        version: link:../../src/providers
       ws:
         specifier: ^8.18.0
         version: 8.20.1
@@ -1356,7 +1344,7 @@ importers:
         version: link:../contracts
       '@ema-agent/provider':
         specifier: workspace:*
-        version: link:../provider
+        version: link:../../src/providers
       '@google/genai':
         specifier: ^2.7.0
         version: 2.7.0(@modelcontextprotocol/sdk@1.29.0(zod@3.25.76))
@@ -1367,6 +1355,18 @@ importers:
       '@types/node':
         specifier: ^20.0.0
         version: 20.19.39
+      rimraf:
+        specifier: ^5.0.0
+        version: 5.0.10
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: ^2.0.0
+        version: 2.1.9(@types/node@20.19.39)(jsdom@26.1.0(canvas@2.11.2))(msw@2.14.6(@types/node@20.19.39)(typescript@5.9.3))
+
+  src/providers:
+    devDependencies:
       rimraf:
         specifier: ^5.0.0
         version: 5.0.10

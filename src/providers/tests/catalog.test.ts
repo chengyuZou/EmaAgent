@@ -5,7 +5,7 @@ import {
   modelSourcesFor,
   protocolsForCapability,
   providerCatalog,
-} from '../src/index.js';
+} from '../index.js';
 
 describe('ProviderCatalogFacade', () => {
   it('目录身份唯一且可按 ID 完整取回', () => {

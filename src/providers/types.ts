@@ -28,8 +28,9 @@ export type VisionProtocol = Extract<ProtocolFamily, `${string}-vision`>;
 export type TtsProtocol = Extract<ProtocolFamily, `${string}-tts`>;
 export type SttProtocol = Extract<ProtocolFamily, `${string}-stt`>;
 
-/** 供应商有时提供不止一个端点
- * 比如 `DeepSeek` 同时提供了 `OpenAI` 和 `Anthropic` 的 LLM 端点，用户可以选择使用哪一个
+/**
+ * 同一供应商可能同时提供多种协议兼容端点。
+ * 例如 DeepSeek 的 LLM 可以按用户配置选择 OpenAI 或 Anthropic 协议。
  */
 export interface ProviderTransport<TProtocol extends ProtocolFamily = ProtocolFamily> {
   protocol: TProtocol;
@@ -37,11 +38,8 @@ export interface ProviderTransport<TProtocol extends ProtocolFamily = ProtocolFa
   baseUrl?: string;
 }
 
-
 export type ProviderModelSource =
-  /** 
-   * `llm` 与 `vision` 会从 `models-dev` 那里远程拉取每个供应商下的模型
-   */
+  /** LLM 与 Vision 通过 models.dev 获取供应商模型目录。 */
   | { type: 'models-dev'; providerId: string }
   | { type: 'static'; models: readonly string[] }
   | { type: 'live' }
@@ -54,6 +52,7 @@ export interface ProviderModelCatalogDefinition {
 export interface ProviderCapabilityDefinition<
   TProtocol extends ProtocolFamily = ProtocolFamily,
 > {
+  /** 同一能力可声明多种兼容协议，最终使用哪一种由用户的能力配置决定。 */
   transports: readonly ProviderTransport<TProtocol>[];
   models?: ProviderModelCatalogDefinition;
 }
@@ -82,7 +81,7 @@ export interface ProviderOnboardingField {
 }
 
 export interface ProviderDefinition {
-  /** 写入数据库的稳定供应商定义 ID。 */
+  /** 写入数据库和模型绑定的稳定身份，发布后不能随显示名称一起改动。 */
   id: string;
   name: string;
   branding: {

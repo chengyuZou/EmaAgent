@@ -21,6 +21,7 @@ import { provider as xai } from './definitions/xai/index.js';
 import { provider as zhipu } from './definitions/zhipu/index.js';
 import { providerSupportsCapability } from './definition-utils.js';
 
+// 顺序同时用于设置页展示；新增供应商时应显式选择位置，不能依赖文件系统遍历顺序。
 const ALL_DEFINITIONS: readonly ProviderDefinition[] = [
   openai,
   anthropic,
