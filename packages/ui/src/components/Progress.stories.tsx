@@ -1,3 +1,4 @@
+// 展示并目测验证 Progress 的进行中、完成、静态和危险状态。
 import { useState, useEffect } from 'react';
 import { Progress } from './Progress.js';
 
@@ -6,7 +7,7 @@ import { Progress } from './Progress.js';
 export default { title: 'Atoms / Progress' };
 
 const Frame = ({ children }: { children: React.ReactNode }): React.JSX.Element => (
-  <div className="min-h-screen bg-neutral-950 p-8 text-white max-w-md mx-auto space-y-6">{children}</div>
+  <div className="min-h-screen bg-[var(--ema-bg)] p-8 text-[var(--ema-text-primary)] max-w-md mx-auto space-y-6">{children}</div>
 );
 
 export const Determinate = (): React.JSX.Element => {

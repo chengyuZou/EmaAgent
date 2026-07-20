@@ -1,3 +1,4 @@
+// 提供带焦点管理、遮罩和强制无障碍名称的模态对话框。
 import * as RadixDialog from '@radix-ui/react-dialog';
 import type { ReactNode } from 'react';
 import { cn } from '../utils/cn.js';
@@ -7,10 +8,9 @@ import { cn } from '../utils/cn.js';
 // Modal dialog. Used for confirmations, prompts, dangerous-action gating.
 // Built on Radix — handles focus trap, escape close, scroll lock, a11y.
 
-export interface DialogProps {
+interface DialogBaseProps {
   open:         boolean;
   onOpenChange: (open: boolean) => void;
-  title?:       string;
   description?: string;
   /** Hide the default close (X) button in the corner. */
   hideClose?:   boolean;
@@ -23,10 +23,16 @@ export interface DialogProps {
   className?:   string;
 }
 
+type DialogAccessibleName =
+  | { title: string; ariaLabel?: never }
+  | { title?: never; ariaLabel: string };
+
+export type DialogProps = DialogBaseProps & DialogAccessibleName;
+
 export function Dialog(props: DialogProps): React.JSX.Element {
   const {
     open, onOpenChange,
-    title, description, hideClose, closeIcon,
+    title, ariaLabel, description, hideClose, closeIcon,
     children, widthClass = 'max-w-md', className,
   } = props;
 
@@ -39,6 +45,7 @@ export function Dialog(props: DialogProps): React.JSX.Element {
           )}
         />
         <RadixDialog.Content
+          aria-describedby={description ? undefined : undefined}
           className={cn(
             'fixed left-1/2 top-1/2 z-50 -translate-x-1/2 -translate-y-1/2',
             'w-[92vw]', widthClass,
@@ -47,6 +54,11 @@ export function Dialog(props: DialogProps): React.JSX.Element {
             className,
           )}
         >
+          {!title && (
+            <RadixDialog.Title className="sr-only">
+              {ariaLabel}
+            </RadixDialog.Title>
+          )}
           {(title || description) && (
             <div className="mb-4">
               {title && (

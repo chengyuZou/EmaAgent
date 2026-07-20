@@ -1,3 +1,4 @@
+// 展示并目测验证 Field 与不同表单控件的关联和错误状态。
 import { useState } from 'react';
 import { Field } from './Field.js';
 import { Input } from './Input.js';
@@ -9,7 +10,7 @@ import { Select } from './Select.js';
 export default { title: 'Atoms / Field' };
 
 const Frame = ({ children }: { children: React.ReactNode }): React.JSX.Element => (
-  <div className="min-h-screen bg-neutral-950 p-8 text-white max-w-md mx-auto space-y-6">{children}</div>
+  <div className="min-h-screen bg-[var(--ema-bg)] p-8 text-[var(--ema-text-primary)] max-w-md mx-auto space-y-6">{children}</div>
 );
 
 export const WithInput = (): React.JSX.Element => {

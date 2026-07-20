@@ -1,4 +1,4 @@
-// ── EmaAgent chromatic UnoCSS preset ─────────────────────────────────────────
+// 为 UnoCSS 生成可运行时换色的色阶与亮度、饱和度修饰符。
 //
 // Adapted from @proj-airi/unocss-preset-chromatic (D:\Github\chromatic).
 // Generates OKLCH-based color scales driven by CSS custom properties so the
@@ -71,6 +71,13 @@ export interface PresetChromaticOptions {
 
 const DEFAULT_MODIFIER_UTILITY_PREFIXES = ['bg', 'text', 'border', 'ring', 'fill', 'stroke'];
 const percentRE = /^\d{1,3}(?:\.\d+)?$/;
+const modifierTokenRE = /([*~])(\d{1,3}(?:\.\d+)?)/gy;
+
+export interface ChromaticModifierMatch {
+  base: string;
+  brightness?: string;
+  saturation?: string;
+}
 
 function escapeRegExp(raw: string): string {
   return raw.replaceAll(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -85,6 +92,38 @@ function toRatio(raw: string): string {
   const parsed  = Number.parseFloat(raw);
   const bounded = Number.isFinite(parsed) ? Math.min(200, Math.max(0, parsed)) : 100;
   return `${Number((bounded / 100).toFixed(4))}`;
+}
+
+export function parseChromaticModifiers(matcher: string): ChromaticModifierMatch | undefined {
+  const modifierStart = matcher.search(/[*~]/);
+  if (modifierStart <= 0) return undefined;
+
+  const base = matcher.slice(0, modifierStart);
+  const suffix = matcher.slice(modifierStart);
+  let brightness: string | undefined;
+  let saturation: string | undefined;
+  let cursor = 0;
+
+  modifierTokenRE.lastIndex = 0;
+  while (cursor < suffix.length) {
+    modifierTokenRE.lastIndex = cursor;
+    const match = modifierTokenRE.exec(suffix);
+    if (!match || match.index !== cursor) return undefined;
+
+    const operator = match[1];
+    const rawValue = match[2];
+    if (!rawValue || !percentRE.test(rawValue)) return undefined;
+    if (operator === '*') {
+      if (brightness !== undefined) return undefined;
+      brightness = rawValue;
+    } else {
+      if (saturation !== undefined) return undefined;
+      saturation = rawValue;
+    }
+    cursor = modifierTokenRE.lastIndex;
+  }
+
+  return brightness || saturation ? { base, brightness, saturation } : undefined;
 }
 
 /**
@@ -104,27 +143,9 @@ function variantChromaticAdjustments(
     match(matcher: string) {
       if (!colorUtilityPrefixRE.test(matcher)) return;
 
-      let base = matcher;
-      let brightness: string | undefined;
-      let saturation: string | undefined;
-
-      const starIndex = base.lastIndexOf('*');
-      if (starIndex >= 0) {
-        const bri = base.slice(starIndex + 1);
-        if (!percentRE.test(bri)) return;
-        brightness = bri;
-        base = base.slice(0, starIndex);
-      }
-
-      const tildeIndex = base.lastIndexOf('~');
-      if (tildeIndex >= 0) {
-        const sat = base.slice(tildeIndex + 1);
-        if (!percentRE.test(sat)) return;
-        saturation = sat;
-        base = base.slice(0, tildeIndex);
-      }
-
-      if (!base || (!brightness && !saturation)) return;
+      const modifiers = parseChromaticModifiers(matcher);
+      if (!modifiers) return;
+      const { base, brightness, saturation } = modifiers;
 
       return {
         matcher: base,

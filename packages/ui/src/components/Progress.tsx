@@ -1,4 +1,6 @@
+// 显示经过有限数值归一化的确定型进度。
 import { cn } from '../utils/cn.js';
+import { clampFinite } from '../utils/number.js';
 
 // ── Progress ────────────────────────────────────────────────────────────────
 //
@@ -29,7 +31,7 @@ export function Progress({
   barClass,
   className,
 }: ProgressProps): React.JSX.Element {
-  const clamped = Math.min(100, Math.max(0, progress));
+  const clamped = clampFinite(progress, 0, 100);
 
   return (
     <div

@@ -1,5 +1,6 @@
+// 提供可由 Field 注入无障碍关联信息的单选下拉组件。
 import * as RadixSelect from '@radix-ui/react-select';
-import type { ReactNode } from 'react';
+import type { AriaAttributes, ReactNode } from 'react';
 import { cn } from '../utils/cn.js';
 
 // ── Select ──────────────────────────────────────────────────────────────────
@@ -14,7 +15,11 @@ export interface SelectOption {
   disabled?: boolean;
 }
 
-export interface SelectProps {
+export interface SelectProps extends Pick<
+  AriaAttributes,
+  'aria-describedby' | 'aria-errormessage' | 'aria-invalid' | 'aria-required' | 'aria-label'
+> {
+  id?:           string;
   value?:        string;
   onChange:      (value: string) => void;
   options:       SelectOption[];
@@ -31,11 +36,25 @@ export interface SelectProps {
 }
 
 export function Select(props: SelectProps): React.JSX.Element {
-  const { value, onChange, options, placeholder = '请选择…', disabled, className, trigger, chevronIcon, checkIcon } = props;
+  const {
+    value,
+    onChange,
+    options,
+    placeholder = '请选择…',
+    disabled,
+    className,
+    trigger,
+    chevronIcon,
+    checkIcon,
+    id,
+    ...accessibilityProps
+  } = props;
 
   return (
     <RadixSelect.Root value={value} onValueChange={onChange} disabled={disabled}>
       <RadixSelect.Trigger
+        id={id}
+        {...accessibilityProps}
         className={cn(
           'inline-flex items-center justify-between gap-2 w-full',
           'h-9 px-3 text-sm rounded-md border bg-[var(--ema-surface-2)] text-[var(--ema-text-primary)]',

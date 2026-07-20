@@ -1,4 +1,6 @@
+// 读写经过有限数值校验的全局主题色相与圆角倍率。
 import { VAR_HUE, EMA_PRIMARY_HUE } from '../uno-preset-chromatic.js';
+import { clampFinite, finiteOr } from './number.js';
 
 /** Mirrors VAR_RADIUS exported from uno.config.ts — kept in sync manually. */
 const VAR_RADIUS = '--ema-radius';
@@ -19,7 +21,8 @@ const DEFAULT_RADIUS = 1;
  * palettes immediately — no page reload needed.
  */
 export function setThemeHue(hue: number): void {
-  const clamped = ((hue % 360) + 360) % 360;
+  const safeHue = finiteOr(hue, EMA_PRIMARY_HUE);
+  const clamped = ((safeHue % 360) + 360) % 360;
   document.documentElement.style.setProperty(VAR_HUE, String(clamped));
 }
 
@@ -50,7 +53,7 @@ export function resetThemeHue(): void {
  * pill/full radii are unaffected — they stay 9999px / 50%.
  */
 export function setThemeRadius(multiplier: number): void {
-  const clamped = Math.max(0, Math.min(3, multiplier));
+  const clamped = clampFinite(multiplier, 0, 3, DEFAULT_RADIUS);
   document.documentElement.style.setProperty(VAR_RADIUS, String(clamped));
 }
 

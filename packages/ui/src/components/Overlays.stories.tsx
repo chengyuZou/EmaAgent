@@ -1,4 +1,4 @@
-// Aggregated stories for Dialog / Popover / Tooltip / DropdownMenu / Select —
+// 展示并目测验证 Dialog、Popover、Tooltip、DropdownMenu 与 Select 浮层。
 // Radix overlays all rendered into portals. One stories file keeps the Ladle
 // sidebar cleaner since each only needs 1-2 examples.
 
@@ -15,7 +15,7 @@ export default { title: 'Atoms / Overlays' };
 
 const Frame = ({ children }: { children: React.ReactNode }): React.JSX.Element => (
   <TooltipProvider delayDuration={200}>
-    <div className="min-h-screen bg-neutral-950 p-8 text-white">{children}</div>
+    <div className="min-h-screen bg-[var(--ema-bg)] p-8 text-[var(--ema-text-primary)]">{children}</div>
   </TooltipProvider>
 );
 

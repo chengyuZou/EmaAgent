@@ -1,3 +1,4 @@
+// 展示并目测验证 Button 的变体、尺寸、形状和状态矩阵。
 import { Button } from './Button.js';
 import type { ButtonVariant, ButtonSize, ButtonShape } from './Button.js';
 
@@ -12,7 +13,7 @@ const SIZES:    ButtonSize[]    = ['sm', 'md', 'lg'];
 const SHAPES:   ButtonShape[]   = ['rounded', 'pill'];
 
 const Frame = ({ children }: { children: React.ReactNode }): React.JSX.Element => (
-  <div className="min-h-screen bg-neutral-950 p-8 text-white">{children}</div>
+  <div className="min-h-screen bg-[var(--ema-bg)] p-8 text-[var(--ema-text-primary)]">{children}</div>
 );
 
 export const Variants = (): React.JSX.Element => (

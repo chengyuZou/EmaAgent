@@ -1,3 +1,4 @@
+// 展示并目测验证 Combobox 的筛选、预选、长列表和空结果状态。
 import { useState } from 'react';
 import { Combobox } from './Combobox.js';
 import type { ComboboxOption } from './Combobox.js';
@@ -7,7 +8,7 @@ import type { ComboboxOption } from './Combobox.js';
 export default { title: 'Atoms / Combobox' };
 
 const Frame = ({ children }: { children: React.ReactNode }): React.JSX.Element => (
-  <div className="min-h-screen bg-neutral-950 p-8 text-white max-w-sm mx-auto space-y-6">{children}</div>
+  <div className="min-h-screen bg-[var(--ema-bg)] p-8 text-[var(--ema-text-primary)] max-w-sm mx-auto space-y-6">{children}</div>
 );
 
 const MODELS: ComboboxOption[] = [

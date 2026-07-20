@@ -1,4 +1,4 @@
-// Aggregated stories for the remaining simple atoms — one story per component.
+// 展示并目测验证基础原子组件在产品主题下的组合状态。
 
 import { useState } from 'react';
 import { Input }      from './Input.js';
@@ -16,8 +16,8 @@ import { ScrollArea } from './ScrollArea.js';
 export default { title: 'Atoms / Simple' };
 
 const Frame = ({ children, label }: { children: React.ReactNode; label: string }): React.JSX.Element => (
-  <div className="bg-neutral-950 p-8 text-white">
-    <h2 className="mb-3 text-sm uppercase tracking-wider text-neutral-400">{label}</h2>
+  <div className="bg-[var(--ema-bg)] p-8 text-[var(--ema-text-primary)]">
+    <h2 className="mb-3 text-sm uppercase tracking-wider text-[var(--ema-text-secondary)]">{label}</h2>
     {children}
   </div>
 );
@@ -133,7 +133,7 @@ export const SliderDemo = (): React.JSX.Element => {
             { value: 'max',    label: 'Max' },
           ]}
         />
-        <p className="mt-4 text-xs text-neutral-500">当前: {effort}</p>
+        <p className="mt-4 text-xs text-[var(--ema-text-tertiary)]">当前: {effort}</p>
       </div>
     </Frame>
   );

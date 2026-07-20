@@ -127,7 +127,8 @@ export function emaSharedPreset(options: EmaSharedPresetOptions = {}): Preset[] 
         violet:  EMA_VIOLET_OFFSET, // 350 + (-65) = 285 = violet
       },
     }) as unknown as Preset,
-    presetAttributify(),
+    // 仅识别 un-* 属性，避免把 React 的 icon/items/options props 误判成工具类。
+    presetAttributify({ prefixedOnly: true, prefix: 'un-' }),
     presetIcons({
       scale: 1.2,
       warn:  true,

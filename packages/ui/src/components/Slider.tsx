@@ -1,3 +1,4 @@
+// 提供能显式处理空步骤、未知值和非法数字步骤的离散滑块。
 import * as RadixSlider from '@radix-ui/react-slider';
 import { cn } from '../utils/cn.js';
 
@@ -25,22 +26,39 @@ export interface SliderProps<T = number> {
 export function Slider<T extends string | number>(props: SliderProps<T>): React.JSX.Element {
   const { value, onChange, steps, disabled, hideLabels, className } = props;
 
-  const currentIndex = Math.max(0, steps.findIndex((s) => s.value === value));
-  const max = Math.max(0, steps.length - 1);
+  const validSteps = steps.filter((item) => (
+    typeof item.value !== 'number' || Number.isFinite(item.value)
+  ));
+  const currentIndex = validSteps.findIndex((item) => item.value === value);
+  const isEmpty = validSteps.length === 0;
+  const max = Math.max(0, validSteps.length - 1);
+
+  if (isEmpty) {
+    return (
+      <div
+        className={cn('w-full h-5 opacity-50 cursor-not-allowed', className)}
+        aria-disabled="true"
+        data-empty="true"
+      />
+    );
+  }
 
   return (
     <div className={cn('w-full', className)}>
       <RadixSlider.Root
-        value={[currentIndex]}
+        value={currentIndex >= 0 ? [currentIndex] : []}
         onValueChange={(v) => {
-          const idx = v[0] ?? 0;
-          const next = steps[idx];
+          const rawIndex = v[0];
+          if (rawIndex === undefined || !Number.isFinite(rawIndex)) return;
+          const index = Math.round(rawIndex);
+          const next = validSteps[index];
           if (next) onChange(next.value);
         }}
         min={0}
         max={max}
         step={1}
         disabled={disabled}
+        aria-disabled={disabled || undefined}
         className={cn(
           'relative flex h-5 w-full touch-none select-none items-center',
           disabled && 'opacity-50 cursor-not-allowed',
@@ -61,7 +79,7 @@ export function Slider<T extends string | number>(props: SliderProps<T>): React.
 
       {!hideLabels && (
         <div className="mt-2 flex justify-between text-xs text-[var(--ema-text-tertiary)]">
-          {steps.map((s, i) => (
+          {validSteps.map((s, i) => (
             <span
               key={i}
               className={cn(

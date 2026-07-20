@@ -1,3 +1,4 @@
+// 展示并目测验证 IconButton 的外观、尺寸和交互状态。
 import { useState } from 'react';
 import { IconButton } from './IconButton.js';
 import type { IconButtonVariant, IconButtonSize } from './IconButton.js';
@@ -12,7 +13,7 @@ const VARIANTS: IconButtonVariant[] = ['default', 'primary', 'danger'];
 const SIZES:    IconButtonSize[]    = ['sm', 'md', 'lg'];
 
 const Frame = ({ children }: { children: React.ReactNode }): React.JSX.Element => (
-  <div className="min-h-screen bg-neutral-950 p-8 text-white">{children}</div>
+  <div className="min-h-screen bg-[var(--ema-bg)] p-8 text-[var(--ema-text-primary)]">{children}</div>
 );
 
 export const Variants = (): React.JSX.Element => (

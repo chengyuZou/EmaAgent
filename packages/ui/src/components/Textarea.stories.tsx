@@ -1,3 +1,4 @@
+// 展示并目测验证 Textarea 的自动增高、错误态和内嵌操作按钮。
 import { useState } from 'react';
 import { Textarea } from './Textarea.js';
 import { IconButton } from './IconButton.js';
@@ -7,7 +8,7 @@ import { IconButton } from './IconButton.js';
 export default { title: 'Atoms / Textarea' };
 
 const Frame = ({ children }: { children: React.ReactNode }): React.JSX.Element => (
-  <div className="min-h-screen bg-neutral-950 p-8 text-white max-w-xl mx-auto">{children}</div>
+  <div className="min-h-screen bg-[var(--ema-bg)] p-8 text-[var(--ema-text-primary)] max-w-xl mx-auto">{children}</div>
 );
 
 export const Basic = (): React.JSX.Element => {

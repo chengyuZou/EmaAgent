@@ -1,3 +1,4 @@
+// 提供不会为未知值或空集合伪造激活项的选项卡组件。
 import * as RadixTabs from '@radix-ui/react-tabs';
 import type { ReactNode, CSSProperties } from 'react';
 import { cn } from '../utils/cn.js';
@@ -43,7 +44,8 @@ export function Tabs(props: TabsProps): React.JSX.Element {
   } = props;
 
   // 滑动指示器:当前选中 trigger 的 index(驱动 ::before calc)
-  const activeIndex = Math.max(0, items.findIndex((it) => it.value === value));
+  const activeIndex = items.findIndex((it) => it.value === value);
+  const hasSlider = orientation === 'horizontal' && activeIndex >= 0 && items.length > 0;
 
   return (
     <RadixTabs.Root
@@ -57,15 +59,16 @@ export function Tabs(props: TabsProps): React.JSX.Element {
     >
       <RadixTabs.List
         style={
-          orientation === 'horizontal'
+          hasSlider
             ? ({ '--tab-active-index': activeIndex, '--tab-count': items.length } as CSSProperties)
             : undefined
         }
         className={cn(
           'flex',
           orientation === 'vertical' ? 'flex-col gap-1 min-w-44 shrink-0' : 'flex-row',
-          variant === 'underline' && orientation === 'horizontal' && 'ema-tab-slider ema-tab-slider--underline border-b border-[var(--ema-border)]',
-          variant === 'pill' && orientation === 'horizontal' && 'ema-tab-slider ema-tab-slider--pill',
+          variant === 'underline' && orientation === 'horizontal' && 'border-b border-[var(--ema-border)]',
+          hasSlider && variant === 'underline' && 'ema-tab-slider ema-tab-slider--underline',
+          hasSlider && variant === 'pill' && 'ema-tab-slider ema-tab-slider--pill',
         )}
       >
         {items.map((it) => (
