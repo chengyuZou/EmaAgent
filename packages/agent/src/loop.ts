@@ -2,7 +2,7 @@
 import { randomUUID } from 'node:crypto';
 import { asLlmCallId } from '@ema-agent/contracts';
 import type { LlmMessage, AssistantBlock, UserBlock, ToolResultBlock, EmaStreamEvent, LlmCallId, LlmTokenUsage } from '@ema-agent/contracts';
-import type { LlmRouter, LlmToolDef, ThinkingMode, StopReason } from '@ema-agent/llm';
+import type { LanguageModel, LlmToolDef, ThinkingMode, StopReason } from '@ema-agent/llm';
 import {
   advanceLlmUsageSnapshot,
   computePromptPrefixHash,
@@ -88,7 +88,7 @@ export interface AgentLoopInput {
   policy:         AgentPolicy;
   /** Called once at loop construction. Provides the loop's internal relay callbacks. */
   buildExecutor:  ExecutorFactory;
-  llm:            LlmRouter;
+  llm:            LanguageModel;
   providerId:     string;
   model:          string;
   signal:         AbortSignal;
@@ -371,10 +371,8 @@ export async function* agentLoop(input: AgentLoopInput): AsyncIterable<AgentLoop
     };
 
     // ── max_output_tokens recovery ────────────────────────────────────────────
-    // Router fills maxTokens from the catalog so the model always runs at its
-    // actual limit. A max_tokens stop therefore means the output genuinely
-    // exceeds the model's capacity — inject a continuation prompt once, then
-    // give up.
+    // Provider 到达本次调用的有效输出预算时，允许自动续写一次。
+    // 有效预算由上层决定，并由 LLM 请求准备器按模型最大输出上限裁剪。
     if (lastStopReason === 'max_tokens' && toolUseByIndex.size === 0) {
       if (state.maxOutputTokensRecoveryCount === 0) {
         const partialBlocks = buildBlockMap(textByIndex, thinkingByIndex, new Map());

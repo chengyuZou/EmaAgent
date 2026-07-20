@@ -7,7 +7,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { LlmRouter } from '../router.js';
+import { LanguageModelRuntime } from '../languageModelRuntime.js';
 import type { AssistantBlock, LlmMessage, LlmStreamChunk, LlmToolDef, ProviderConfig } from '../types.js';
 
 const API_KEY = process.env['DEEPSEEK_API_KEY'];
@@ -34,7 +34,7 @@ const PROVIDERS: ProviderConfig[] = [
   },
 ];
 
-const router = new LlmRouter(PROVIDERS);
+const router = new LanguageModelRuntime(PROVIDERS);
 
 interface ToolCompleteMetric {
   atMs: number;

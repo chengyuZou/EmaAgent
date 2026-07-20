@@ -308,7 +308,7 @@ async function* runTurn(
           return { kind: 'abort', reason: result.reason };
         }
         // 初始 Session 历史已建立兼容副本。Hook/Tool 新增内容来源不明确，
-        // 不允许猜成历史后静默替换；Router 负责最终 fail-closed 门禁。
+        // 不允许猜成历史后静默替换；LLM 请求准备器负责最终 fail-closed 门禁。
         const finalMessages = result.payload.messages;
         subagentContextMessages.splice(
           0,

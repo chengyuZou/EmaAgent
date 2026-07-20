@@ -17,6 +17,7 @@ import type {
 } from '../types.js';
 import {
   ContextWindowExceededError,
+  LlmStreamProtocolError,
   throwIfAborted,
   throwIfAbortError,
 } from '../errors.js';
@@ -266,8 +267,10 @@ export class GeminiAdapter implements LlmAdapter {
     }
 
     let stopReason: StopReason = 'end_turn';
-    let toolBlockIdx = 0;
-    let hasThinking  = false;
+    let receivedFinishReason = false;
+    let nextBlockIndex = 0;
+    let thinkingBlockIndex: number | undefined;
+    let textBlockIndex: number | undefined;
 
     try {
       for await (const chunk of responseStream) {
@@ -275,12 +278,13 @@ export class GeminiAdapter implements LlmAdapter {
 
         for (const part of parts) {
           if (part.thought && part.text) {
-            hasThinking = true;
-            yield { type: 'thinking_delta', blockIndex: 0, delta: part.text };
+            thinkingBlockIndex ??= nextBlockIndex++;
+            yield { type: 'thinking_delta', blockIndex: thinkingBlockIndex, delta: part.text };
             continue;
           }
           if (part.text) {
-            yield { type: 'text_delta', blockIndex: hasThinking ? 1 : 0, delta: part.text };
+            textBlockIndex ??= nextBlockIndex++;
+            yield { type: 'text_delta', blockIndex: textBlockIndex, delta: part.text };
           }
           if (part.functionCall) {
             const name = part.functionCall.name;
@@ -288,7 +292,7 @@ export class GeminiAdapter implements LlmAdapter {
               throw new Error('Gemini returned a functionCall without name.')
             }
             const callId     = `gemini-${randomUUID()}`;
-            const blockIndex = 1000 + toolBlockIdx++;
+            const blockIndex = nextBlockIndex++;
             yield {
               type:  'tool_use_complete',
               blockIndex,
@@ -302,6 +306,7 @@ export class GeminiAdapter implements LlmAdapter {
 
         const finishReason = chunk.candidates?.[0]?.finishReason;
         if (finishReason && String(finishReason) !== 'FINISH_REASON_UNSPECIFIED') {
+          receivedFinishReason = true;
           const mapped = mapStopReason(String(finishReason));
           // 只在还没因 tool_use 停止时才更新
           if (stopReason === 'end_turn') stopReason = mapped;
@@ -325,6 +330,7 @@ export class GeminiAdapter implements LlmAdapter {
     }
 
     throwIfAborted(request.signal);
+    if (!receivedFinishReason) throw new LlmStreamProtocolError(request.providerId);
     if (lastUsage) {
       yield lastUsage;
     }

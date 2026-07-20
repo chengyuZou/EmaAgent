@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { LlmRouter } from '../router.js';
+import { LanguageModelRuntime } from '../languageModelRuntime.js';
 import type { LlmRequest, ProviderConfig } from '../types.js';
 
 // 1. OpenAI 兼容配置
@@ -19,7 +19,7 @@ const ANTHROPIC_COMPAT_CONFIG: ProviderConfig = {
   baseUrl: 'https://dashscope.aliyuncs.com/apps/anthropic',
 };
 
-const router = new LlmRouter([OPENAI_COMPAT_CONFIG, ANTHROPIC_COMPAT_CONFIG]);
+const router = new LanguageModelRuntime([OPENAI_COMPAT_CONFIG, ANTHROPIC_COMPAT_CONFIG]);
 
 describe.only('Live Tool Streaming & Multi-Provider Tests', () => {
 

@@ -74,13 +74,10 @@ export interface LlmRequest {
   tools?: LlmToolDef[];
   toolChoice?: 'auto' | 'none' | { name: string };
   thinking?: ThinkingMode;
-  /** 由 LlmRouter 从 ModelsDevCatalog 设置。adapter 用它预初始化
-   *  hasThinking,这样即使 reasoning_content 迟到,blockIndex 也保持稳定。 */
-  supportsReasoning?: boolean;
   maxTokens?: number;
   temperature?: number;
   signal?: AbortSignal;
-  /** 业务调用身份由上层传入；省略时 Router 为内部调用生成独立身份。 */
+  /** 业务调用身份由上层传入；省略时运行时为内部调用生成独立身份。 */
   usageContext?: UsageContext<LlmCallId>;
 }
 

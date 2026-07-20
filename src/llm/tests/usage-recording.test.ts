@@ -1,8 +1,8 @@
-// 测试 LLM Router 在完成和失败时都写入调用级用量记录。
+// 测试语言模型运行时在完成和失败时都写入调用级用量记录。
 import { describe, expect, it } from 'vitest';
 import { asLlmCallId, type UsageRecord } from '@ema-agent/contracts';
 import type { LlmAdapter } from '../adapters/base.js';
-import { LlmRouter } from '../router.js';
+import { LanguageModelRuntime } from '../languageModelRuntime.js';
 import type { LlmStreamChunk, ProviderConfig } from '../types.js';
 
 const config: ProviderConfig = {
@@ -13,11 +13,11 @@ const config: ProviderConfig = {
 
 async function consume(stream: AsyncIterable<LlmStreamChunk>): Promise<void> {
   for await (const _chunk of stream) {
-    // 消费完整流，触发 Router 的终态记录。
+    // 消费完整流，触发运行时的终态记录。
   }
 }
 
-describe('LlmRouter usage recording', () => {
+describe('LanguageModelRuntime usage recording', () => {
   it('记录完成调用的真实 Provider 配置 ID 和 Token', async () => {
     const records: UsageRecord[] = [];
     const adapter: LlmAdapter = {
@@ -26,7 +26,7 @@ describe('LlmRouter usage recording', () => {
         yield { type: 'done', stopReason: 'end_turn' };
       },
     };
-    const router = new LlmRouter(
+    const router = new LanguageModelRuntime(
       [config],
       new Map([['provider-1', adapter]]),
       undefined,
@@ -60,7 +60,7 @@ describe('LlmRouter usage recording', () => {
         throw Object.assign(new Error('provider down'), { code: 'provider/down' });
       },
     };
-    const router = new LlmRouter(
+    const router = new LanguageModelRuntime(
       [config],
       new Map([['provider-1', adapter]]),
       undefined,

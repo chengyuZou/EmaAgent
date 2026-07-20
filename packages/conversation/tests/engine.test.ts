@@ -4,7 +4,7 @@ import type { Turn } from '@ema-agent/session';
 import { HookBus } from '@ema-agent/hook';
 import { ConversationEngine } from '../src/engine.js';
 import type { ConversationDeps } from '../src/types.js';
-import { LlmRouter, ModelsDevCatalog } from '@ema-agent/llm';
+import { LanguageModelRuntime, ModelsDevCatalog } from '@ema-agent/llm';
 import type { LlmAdapter, LlmRequest } from '@ema-agent/llm';
 
 const sessionId = 'session-hook-sse' as SessionId;
@@ -349,7 +349,7 @@ describe('ConversationEngine 多模态历史兼容视图', () => {
         yield { type: 'done', stopReason: 'end_turn' };
       },
     };
-    const llm = new LlmRouter([
+    const llm = new LanguageModelRuntime([
       {
         id: 'provider-1',
         protocol: 'openai-llm',

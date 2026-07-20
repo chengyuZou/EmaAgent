@@ -14,6 +14,7 @@ import type {
 } from '../types.js';
 import {
   ContextWindowExceededError,
+  LlmStreamProtocolError,
   LlmToolArgumentsParseError,
   throwIfAborted,
   throwIfAbortError,
@@ -235,11 +236,17 @@ export class OpenAiAdapter implements LlmAdapter {
     // OpenAI Chat Completions 没有 per-tool-call 结束事件 - 只有 finish_reason 标记
     // 所有 tool call 的结束。在此累计每个 tool 的 args,在 finish_reason 时一次性 flush。
     // 比早完成慢(tools 只在全往返后执行),但对串行和并行 tool call 都正确。
-    const toolBufs = new Map<number, { id: string; name: string; argsJson: string }>();
+    const toolBufs = new Map<number, {
+      id: string;
+      name: string;
+      argsJson: string;
+      blockIndex: number;
+    }>();
     let stopReason: StopReason = 'end_turn';
-    // 从 catalog 预初始化,这样即使 reasoning_content 在首个 text chunk 之后到达
-    // (DeepSeek-reasoner 真实顺序),blockIndex 也保持稳定。
-    let hasThinking = request.supportsReasoning ?? false;
+    let receivedFinishReason = false;
+    let nextBlockIndex = 0;
+    let thinkingBlockIndex: number | undefined;
+    let textBlockIndex: number | undefined;
 
     try {
     for await (const chunk of completion) {
@@ -250,13 +257,17 @@ export class OpenAiAdapter implements LlmAdapter {
       // 一个 OpenAI SDK 类型里没有的非标准字段。
       const deltaAny = delta as Record<string, unknown> | undefined;
       if (typeof deltaAny?.reasoning_content === 'string' && deltaAny.reasoning_content) {
-        hasThinking = true;
-        yield { type: 'thinking_delta', blockIndex: 0, delta: deltaAny.reasoning_content };
+        thinkingBlockIndex ??= nextBlockIndex++;
+        yield {
+          type: 'thinking_delta',
+          blockIndex: thinkingBlockIndex,
+          delta: deltaAny.reasoning_content,
+        };
       }
 
       if (delta?.content) {
-        // 若已出现 thinking,text 是 blockIndex 1;否则 blockIndex 0。
-        yield { type: 'text_delta', blockIndex: hasThinking ? 1 : 0, delta: delta.content };
+        textBlockIndex ??= nextBlockIndex++;
+        yield { type: 'text_delta', blockIndex: textBlockIndex, delta: delta.content };
       }
 
       if (delta?.tool_calls) {
@@ -264,7 +275,12 @@ export class OpenAiAdapter implements LlmAdapter {
           const idx = tc.index;
 
           if (!toolBufs.has(idx)) {
-            toolBufs.set(idx, { id: '', name: '', argsJson: '' });
+            toolBufs.set(idx, {
+              id: '',
+              name: '',
+              argsJson: '',
+              blockIndex: nextBlockIndex++,
+            });
           }
           const buf = toolBufs.get(idx)!;
           if (tc.id)                  buf.id       = tc.id;
@@ -273,7 +289,7 @@ export class OpenAiAdapter implements LlmAdapter {
             buf.argsJson += tc.function.arguments;
             yield {
               type:       'tool_use_delta',
-              blockIndex: 1000 + idx,
+              blockIndex: buf.blockIndex,
               callId:     buf.id,
               name:       buf.name,
               argsDelta:  tc.function.arguments,
@@ -285,6 +301,7 @@ export class OpenAiAdapter implements LlmAdapter {
       // finish_reason - 一次性 flush 所有 tool 缓冲。
       // 这是 Chat Completions 流式里唯一可靠的完成边界。
       if (choice?.finish_reason) {
+        receivedFinishReason = true;
         stopReason = mapStopReason(choice.finish_reason);
         for (const [idx, buf] of toolBufs) {
           let args: unknown;
@@ -301,7 +318,7 @@ export class OpenAiAdapter implements LlmAdapter {
           }
           yield {
             type:       'tool_use_complete',
-            blockIndex: 1000 + idx,
+            blockIndex: buf.blockIndex,
             callId:     buf.id,
             name:       buf.name,
             args,
@@ -329,6 +346,7 @@ export class OpenAiAdapter implements LlmAdapter {
     }
 
     throwIfAborted(request.signal);
+    if (!receivedFinishReason) throw new LlmStreamProtocolError(request.providerId);
     yield { type: 'done', stopReason };
   }
 }

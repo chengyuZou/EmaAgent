@@ -1,4 +1,5 @@
-export { LlmRouter }                                      from './router.js';
+export { LanguageModelRuntime }                           from './languageModelRuntime.js';
+export type { LanguageModel }                            from './languageModel.js';
 export { ModelsDevCatalog, MODELS_DEV_API_URL }           from './models-dev-catalog.js';
 export type { ModelsDevSpec }                             from './models-dev-catalog.js';
 export { validateContentParts }                           from './validate.js';
@@ -26,7 +27,11 @@ export {
   LlmToolArgumentsParseError,
   LlmModelCapabilityError,
 } from './errors.js';
-export type { LlmCapabilityIssue } from './errors.js';
+export type {
+  LlmCapabilityIssue,
+  LlmFeatureCapabilityIssue,
+  LlmInputCapabilityIssue,
+} from './errors.js';
 export {
   capabilitiesFromCatalog,
   capabilitiesFromManualVision,

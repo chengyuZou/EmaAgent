@@ -1,7 +1,7 @@
 // 这里放 ConversationEngine 的依赖接口和单次运行的输入类型。
 
 import type { RequestDegradationNotice, SessionId, TurnMode } from '@ema-agent/contracts';
-import type { LlmRouter, LlmContentPart, LlmMessage, ThinkingMode } from '@ema-agent/llm';
+import type { LanguageModel, LlmContentPart, LlmMessage, ThinkingMode } from '@ema-agent/llm';
 import type { SessionStore, Turn } from '@ema-agent/session';
 import type { HookBus } from '@ema-agent/hook';
 import type { EmotionEngine } from '@ema-agent/emotion';
@@ -17,7 +17,7 @@ import type { ModelBindingsRepo } from '@ema-agent/storage';
 export interface ConversationDeps {
   session:       SessionStore;
   hooks:         HookBus;
-  llm:           LlmRouter;
+  llm:           LanguageModel;
   emotion:       EmotionEngine;
   narrative:     NarrativeClient;
 }

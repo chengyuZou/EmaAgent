@@ -223,7 +223,7 @@ export type LlmCompatibilityRecovery = (
 /**
  * LLM Provider 流运行时。
  *
- * Router 只负责选择 Adapter；本类统一管理 per-provider 熔断、首 chunk 前重试、
+ * LanguageModelRuntime 传入已准备的调用；本类统一管理 per-provider 熔断、首 chunk 前重试、
  * 首 chunk 后禁止重试、取消分类和 done 终态验证。
  */
 export class LlmStreamRuntime {

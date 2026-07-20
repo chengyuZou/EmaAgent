@@ -5,7 +5,7 @@
  *   - An in-memory SQLite Database (no disk I/O, discarded after each case).
  *   - A mock EbdRouter that serves vectors from the bench/cache/bge-m3.json
  *     disk cache instead of calling the SiliconFlow API.
- *   - Stub implementations for LlmRouter, NarrativeClient, SessionStore,
+ *   - Stub implementations for LanguageModelRuntime, NarrativeClient, SessionStore,
  *     and ModelBindingsRepo — none of these are exercised during plan().
  *
  * Usage:

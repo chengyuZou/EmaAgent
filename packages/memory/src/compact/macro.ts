@@ -1,5 +1,5 @@
 // 调用当前模型生成旧对话摘要，不负责持久化或最终上下文预算判定。
-import type { LlmRouter, LlmMessage, AssistantBlock, UserBlock } from '@ema-agent/llm';
+import type { LanguageModel, LlmMessage, AssistantBlock, UserBlock } from '@ema-agent/llm';
 import type { TurnMode } from '@ema-agent/contracts';
 import { buildCompactionPrompt } from './compaction-prompts.js';
 import { estimateMessagesTokens } from '@ema-agent/token';
@@ -91,7 +91,7 @@ function stripImages(messages: LlmMessage[]): LlmMessage[] {
 // ── Macrocompaction core ─────────────────────────────────────────────────────
 
 export interface MacroCompactArgs {
-  llm:           LlmRouter;
+  llm:           LanguageModel;
   /** Current turn's provider — compaction uses the same model the user picked. */
   providerId:    string;
   /** Current turn's model. */

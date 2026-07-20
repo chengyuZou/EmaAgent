@@ -1,5 +1,6 @@
+// 测试语言模型运行时的 Provider 快照、能力检查、流式调用和完整结果聚合。
 import { describe, it, expect } from 'vitest';
-import { LlmRouter } from '../router.js';
+import { LanguageModelRuntime } from '../languageModelRuntime.js';
 import { ModelsDevCatalog } from '../models-dev-catalog.js';
 import { LlmModelCapabilityError } from '../errors.js';
 import type { LlmAdapter } from '../adapters/base.js';
@@ -40,7 +41,7 @@ const TEXT_CHUNKS: LlmStreamChunk[] = [
 ];
 
 const TOOL_CHUNKS: LlmStreamChunk[] = [
-  { type: 'tool_use_complete', blockIndex: 1000, callId: 'call-1', name: 'bash', args: { cmd: 'ls' } },
+  { type: 'tool_use_complete', blockIndex: 0, callId: 'call-1', name: 'bash', args: { cmd: 'ls' } },
   { type: 'done', stopReason: 'tool_use' },
 ];
 
@@ -54,10 +55,10 @@ const THINKING_CHUNKS: LlmStreamChunk[] = [
 
 // ── Routing ───────────────────────────────────────────────────────────────────
 
-describe('LlmRouter — routing', () => {
+describe('LanguageModelRuntime — routing', () => {
   it('streams all chunks through the correct adapter', async () => {
     const mock   = new MockAdapter(TEXT_CHUNKS);
-    const router = new LlmRouter([DS_CONFIG], new Map([['ds-001', mock]]));
+    const router = new LanguageModelRuntime([DS_CONFIG], new Map([['ds-001', mock]]));
 
     const chunks = await collect(
       router.stream({ providerId: 'ds-001', model: 'deepseek-v4-flash', messages: [{ role: 'user', content: 'Hi' }] }),
@@ -68,7 +69,7 @@ describe('LlmRouter — routing', () => {
 
   it('passes modelName directly to the adapter', async () => {
     const mock   = new MockAdapter([{ type: 'done', stopReason: 'end_turn' }]);
-    const router = new LlmRouter([DS_CONFIG], new Map([['ds-001', mock]]));
+    const router = new LanguageModelRuntime([DS_CONFIG], new Map([['ds-001', mock]]));
 
     await collect(router.stream({ providerId: 'ds-001', model: 'deepseek-v4-pro', messages: [] }));
 
@@ -77,7 +78,7 @@ describe('LlmRouter — routing', () => {
 
   it('passes AbortSignal through to the adapter', async () => {
     const mock   = new MockAdapter([{ type: 'done', stopReason: 'end_turn' }]);
-    const router = new LlmRouter([DS_CONFIG], new Map([['ds-001', mock]]));
+    const router = new LanguageModelRuntime([DS_CONFIG], new Map([['ds-001', mock]]));
     const signal = new AbortController().signal;
 
     await collect(router.stream({ providerId: 'ds-001', model: 'deepseek-v4-flash', messages: [], signal }));
@@ -87,7 +88,7 @@ describe('LlmRouter — routing', () => {
 
   it('在 Adapter 边界规范化工具名称顺序和 Schema key 顺序', async () => {
     const mock = new MockAdapter([{ type: 'done', stopReason: 'end_turn' }]);
-    const router = new LlmRouter([DS_CONFIG], new Map([['ds-001', mock]]));
+    const router = new LanguageModelRuntime([DS_CONFIG], new Map([['ds-001', mock]]));
 
     await collect(router.stream({
       providerId: 'ds-001',
@@ -111,7 +112,7 @@ describe('LlmRouter — routing', () => {
   it('routes two providers with the same protocol independently by id', async () => {
     const mockDS = new MockAdapter([{ type: 'done', stopReason: 'end_turn' }]);
     const mockSF = new MockAdapter([{ type: 'done', stopReason: 'end_turn' }]);
-    const router = new LlmRouter([DS_CONFIG, SF_CONFIG], new Map([['ds-001', mockDS], ['sf-001', mockSF]]));
+    const router = new LanguageModelRuntime([DS_CONFIG, SF_CONFIG], new Map([['ds-001', mockDS], ['sf-001', mockSF]]));
 
     await collect(router.stream({ providerId: 'ds-001', model: 'deepseek-v4-flash', messages: [] }));
     await collect(router.stream({ providerId: 'sf-001', model: 'Qwen2.5-72B',       messages: [] }));
@@ -122,7 +123,7 @@ describe('LlmRouter — routing', () => {
 
   it('streams tool_use_complete chunks unchanged', async () => {
     const mock   = new MockAdapter(TOOL_CHUNKS);
-    const router = new LlmRouter([DS_CONFIG], new Map([['ds-001', mock]]));
+    const router = new LanguageModelRuntime([DS_CONFIG], new Map([['ds-001', mock]]));
 
     const chunks = await collect(router.stream({ providerId: 'ds-001', model: 'deepseek-v4-flash', messages: [] }));
 
@@ -137,7 +138,7 @@ describe('LlmRouter — routing', () => {
       ['gm-001', new MockAdapter([{ type: 'done', stopReason: 'end_turn' }])],
       ['or-001', new MockAdapter([{ type: 'done', stopReason: 'end_turn' }])],
     ]);
-    const router = new LlmRouter(configs, mocks);
+    const router = new LanguageModelRuntime(configs, mocks);
 
     for (const cfg of configs) {
       const chunks = await collect(router.stream({ providerId: cfg.id, model: 'test', messages: [] }));
@@ -148,15 +149,15 @@ describe('LlmRouter — routing', () => {
 
 // ── Error cases ───────────────────────────────────────────────────────────────
 
-describe('LlmRouter — error cases', () => {
+describe('LanguageModelRuntime — error cases', () => {
   it('throws provider/not_configured for unknown provider id', () => {
-    const router = new LlmRouter([]);
+    const router = new LanguageModelRuntime([]);
     expect(() => router.stream({ providerId: 'ghost', model: 'gpt-4o', messages: [] }))
       .toThrow('provider/not_configured');
   });
 
   it('throws synchronously so engines can fail-fast', () => {
-    const router = new LlmRouter([]);
+    const router = new LanguageModelRuntime([]);
     expect(() => router.stream({ providerId: 'ghost', model: 'gpt-4o', messages: [] }))
       .toThrow();
   });
@@ -164,10 +165,10 @@ describe('LlmRouter — error cases', () => {
 
 // ── Hot-reload ────────────────────────────────────────────────────────────────
 
-describe('LlmRouter — hot-reload', () => {
+describe('LanguageModelRuntime — hot-reload', () => {
   it('完整快照会删除旧 Provider，同时允许已取得的流自然结束', async () => {
     const mock = new MockAdapter(TEXT_CHUNKS);
-    const router = new LlmRouter([DS_CONFIG], new Map([['ds-001', mock]]));
+    const router = new LanguageModelRuntime([DS_CONFIG], new Map([['ds-001', mock]]));
     const inFlight = router.stream({ providerId: 'ds-001', model: 'm', messages: [] });
 
     router.reload([]);
@@ -179,7 +180,7 @@ describe('LlmRouter — hot-reload', () => {
 
   it('upsertConfig makes a new provider available', async () => {
     const mock   = new MockAdapter([{ type: 'done', stopReason: 'end_turn' }]);
-    const router = new LlmRouter([], new Map([['ds-001', mock]]));
+    const router = new LanguageModelRuntime([], new Map([['ds-001', mock]]));
 
     // Before upsert: unknown
     expect(() => router.stream({ providerId: 'ds-001', model: 'm', messages: [] }))
@@ -194,7 +195,7 @@ describe('LlmRouter — hot-reload', () => {
 
   it('removeConfig makes a provider unavailable', () => {
     const mock   = new MockAdapter();
-    const router = new LlmRouter([DS_CONFIG], new Map([['ds-001', mock]]));
+    const router = new LanguageModelRuntime([DS_CONFIG], new Map([['ds-001', mock]]));
 
     router.removeConfig('ds-001');
 
@@ -203,7 +204,7 @@ describe('LlmRouter — hot-reload', () => {
   });
 });
 
-describe('LlmRouter — model capability + compatibility recovery', () => {
+describe('LanguageModelRuntime — model capability + compatibility recovery', () => {
   it('按 modelsDevId + model 精确解析同名模型能力', () => {
     const catalog = new ModelsDevCatalog();
     catalog.loadFromJson({
@@ -218,7 +219,7 @@ describe('LlmRouter — model capability + compatibility recovery', () => {
         },
       },
     });
-    const router = new LlmRouter([
+    const router = new LanguageModelRuntime([
       { ...DS_CONFIG, id: 'a', modelsDevId: 'providerA' },
       { ...DS_CONFIG, id: 'b', modelsDevId: 'providerB' },
     ], undefined, catalog);
@@ -238,7 +239,7 @@ describe('LlmRouter — model capability + compatibility recovery', () => {
         yield { type: 'done', stopReason: 'end_turn' };
       },
     };
-    const router = new LlmRouter([DS_CONFIG], new Map([['ds-001', adapter]]));
+    const router = new LanguageModelRuntime([DS_CONFIG], new Map([['ds-001', adapter]]));
 
     const chunks = await collect(router.stream({
       providerId: 'ds-001', model: 'm', messages: [], temperature: 0.2,
@@ -267,7 +268,7 @@ describe('LlmRouter — model capability + compatibility recovery', () => {
         throw Object.assign(new Error('unsupported tool_choice parameter'), { status: 400 });
       },
     };
-    const router = new LlmRouter([DS_CONFIG], new Map([['ds-001', adapter]]));
+    const router = new LanguageModelRuntime([DS_CONFIG], new Map([['ds-001', adapter]]));
 
     await expect(collect(router.stream({
       providerId: 'ds-001',
@@ -289,7 +290,7 @@ describe('LlmRouter — model capability + compatibility recovery', () => {
         throw Object.assign(new Error('unsupported parameter: temperature'), { status: 400 });
       },
     };
-    const router = new LlmRouter([DS_CONFIG], new Map([['ds-001', adapter]]));
+    const router = new LanguageModelRuntime([DS_CONFIG], new Map([['ds-001', adapter]]));
 
     await expect(collect(router.stream({
       providerId: 'ds-001', model: 'm', messages: [], temperature: 0.2,
@@ -307,7 +308,7 @@ describe('LlmRouter — model capability + compatibility recovery', () => {
       },
     });
     const adapter = new MockAdapter();
-    const router = new LlmRouter([
+    const router = new LanguageModelRuntime([
       { ...DS_CONFIG, modelsDevId: 'providerA' },
     ], new Map([['ds-001', adapter]]), catalog);
 
@@ -329,9 +330,9 @@ describe('LlmRouter — model capability + compatibility recovery', () => {
 
 // ── getProtocol ───────────────────────────────────────────────────────────────
 
-describe('LlmRouter — getProtocol', () => {
+describe('LanguageModelRuntime — getProtocol', () => {
   it('returns the protocol for a registered provider', () => {
-    const router = new LlmRouter([DS_CONFIG, CL_CONFIG, GM_CONFIG, OR_CONFIG]);
+    const router = new LanguageModelRuntime([DS_CONFIG, CL_CONFIG, GM_CONFIG, OR_CONFIG]);
     expect(router.getProtocol('ds-001')).toBe('openai-llm');
     expect(router.getProtocol('cl-001')).toBe('anthropic-llm');
     expect(router.getProtocol('gm-001')).toBe('gemini-llm');
@@ -339,21 +340,21 @@ describe('LlmRouter — getProtocol', () => {
   });
 
   it('returns undefined for an unknown provider', () => {
-    const router = new LlmRouter([DS_CONFIG]);
+    const router = new LanguageModelRuntime([DS_CONFIG]);
     expect(router.getProtocol('ghost')).toBeUndefined();
   });
 });
 
 // ── Content-part validation ──────────────────────────────────────────────────
 
-describe('LlmRouter — warnUnsupportedParts', () => {
+describe('LanguageModelRuntime — warnUnsupportedParts', () => {
   const HTTPS_IMAGE_URL: LlmContentPart = {
     type: 'image_url',
     url:  'https://example.test/image.png',
   };
 
   it('validates attachments against the registered provider protocol', () => {
-    const router = new LlmRouter([DS_CONFIG, GM_CONFIG]);
+    const router = new LanguageModelRuntime([DS_CONFIG, GM_CONFIG]);
 
     expect(router.warnUnsupportedParts('ds-001', [HTTPS_IMAGE_URL])).toEqual([]);
 
@@ -364,7 +365,7 @@ describe('LlmRouter — warnUnsupportedParts', () => {
   });
 
   it('throws provider/not_configured instead of falling back to OpenAI rules', () => {
-    const router = new LlmRouter([DS_CONFIG]);
+    const router = new LanguageModelRuntime([DS_CONFIG]);
 
     expect(() => router.warnUnsupportedParts('ghost', [HTTPS_IMAGE_URL]))
       .toThrow('provider/not_configured');
@@ -373,7 +374,7 @@ describe('LlmRouter — warnUnsupportedParts', () => {
 
 // ── complete() ────────────────────────────────────────────────────────────────
 
-describe('LlmRouter — complete()', () => {
+describe('LanguageModelRuntime — complete()', () => {
   it('accumulates text_delta into a text block sorted by blockIndex', async () => {
     const chunks: LlmStreamChunk[] = [
       { type: 'text_delta', blockIndex: 0, delta: 'Hello' },
@@ -381,7 +382,7 @@ describe('LlmRouter — complete()', () => {
       { type: 'usage',      inputTokens: 5, outputTokens: 3 },
       { type: 'done',       stopReason: 'end_turn' },
     ];
-    const router = new LlmRouter([DS_CONFIG], new Map([['ds-001', new MockAdapter(chunks)]]));
+    const router = new LanguageModelRuntime([DS_CONFIG], new Map([['ds-001', new MockAdapter(chunks)]]));
 
     const result = await router.complete({ providerId: 'ds-001', model: 'm', messages: [] });
 
@@ -403,7 +404,7 @@ describe('LlmRouter — complete()', () => {
       },
       { type: 'done', stopReason: 'end_turn' },
     ];
-    const router = new LlmRouter([CL_CONFIG], new Map([['cl-001', new MockAdapter(chunks)]]));
+    const router = new LanguageModelRuntime([CL_CONFIG], new Map([['cl-001', new MockAdapter(chunks)]]));
 
     const result = await router.complete({ providerId: 'cl-001', model: 'm', messages: [] });
 
@@ -417,7 +418,7 @@ describe('LlmRouter — complete()', () => {
   });
 
   it('reconstructs thinking block with signature from thinking_complete', async () => {
-    const router = new LlmRouter([CL_CONFIG], new Map([['cl-001', new MockAdapter(THINKING_CHUNKS)]]));
+    const router = new LanguageModelRuntime([CL_CONFIG], new Map([['cl-001', new MockAdapter(THINKING_CHUNKS)]]));
 
     const result = await router.complete({ providerId: 'cl-001', model: 'm', messages: [] });
 
@@ -429,12 +430,12 @@ describe('LlmRouter — complete()', () => {
   it('sorts interleaved blocks by blockIndex', async () => {
     const chunks: LlmStreamChunk[] = [
       { type: 'text_delta',       blockIndex: 2, delta: 'text' },
-      { type: 'tool_use_complete', blockIndex: 1000, callId: 'c1', name: 'bash', args: {} },
+      { type: 'tool_use_complete', blockIndex: 3, callId: 'c1', name: 'bash', args: {} },
       { type: 'thinking_delta',   blockIndex: 0, delta: 'think' },
       { type: 'thinking_complete', blockIndex: 0, signature: 's' },
       { type: 'done',             stopReason: 'tool_use' },
     ];
-    const router = new LlmRouter([DS_CONFIG], new Map([['ds-001', new MockAdapter(chunks)]]));
+    const router = new LanguageModelRuntime([DS_CONFIG], new Map([['ds-001', new MockAdapter(chunks)]]));
 
     const result = await router.complete({ providerId: 'ds-001', model: 'm', messages: [] });
 
@@ -450,7 +451,7 @@ describe('LlmRouter — complete()', () => {
         throw Object.assign(new Error('network drop'), { status: 500 });
       },
     };
-    const router = new LlmRouter([DS_CONFIG], new Map([['ds-001', failAfterFirstChunk]]));
+    const router = new LanguageModelRuntime([DS_CONFIG], new Map([['ds-001', failAfterFirstChunk]]));
 
     await expect(
       router.complete({ providerId: 'ds-001', model: 'm', messages: [] }),
@@ -470,7 +471,7 @@ describe('LlmRouter — complete()', () => {
         yield { type: 'done', stopReason: 'end_turn' };
       },
     };
-    const router = new LlmRouter([DS_CONFIG], new Map([['ds-001', failBeforeChunk]]));
+    const router = new LanguageModelRuntime([DS_CONFIG], new Map([['ds-001', failBeforeChunk]]));
 
     const result = await router.complete({ providerId: 'ds-001', model: 'm', messages: [] });
 
@@ -481,27 +482,27 @@ describe('LlmRouter — complete()', () => {
 
 // ── defaultModelFor / firstProviderId ─────────────────────────────────────────
 
-describe('LlmRouter — utility helpers', () => {
+describe('LanguageModelRuntime — utility helpers', () => {
   const CFG_WITH_DEFAULT: ProviderConfig = {
     id: 'x-001', protocol: 'openai-llm', apiKey: 'k', defaultModel: 'gpt-4o',
   };
 
   it('defaultModelFor returns the configured default', () => {
-    const router = new LlmRouter([CFG_WITH_DEFAULT]);
+    const router = new LanguageModelRuntime([CFG_WITH_DEFAULT]);
     expect(router.defaultModelFor('x-001')).toBe('gpt-4o');
   });
 
   it('defaultModelFor returns undefined when not set', () => {
-    const router = new LlmRouter([DS_CONFIG]);
+    const router = new LanguageModelRuntime([DS_CONFIG]);
     expect(router.defaultModelFor('ds-001')).toBeUndefined();
   });
 
   it('firstProviderId returns the first registered id', () => {
-    const router = new LlmRouter([DS_CONFIG, CL_CONFIG]);
+    const router = new LanguageModelRuntime([DS_CONFIG, CL_CONFIG]);
     expect(router.firstProviderId()).toBe('ds-001');
   });
 
   it('firstProviderId returns undefined when empty', () => {
-    expect(new LlmRouter([]).firstProviderId()).toBeUndefined();
+    expect(new LanguageModelRuntime([]).firstProviderId()).toBeUndefined();
   });
 });

@@ -11,7 +11,7 @@ import type {
   TurnId,
   AskUserRequiredEvent,
 } from '@ema-agent/contracts';
-import type { LlmRouter, LlmContentPart, LlmMessage, LlmToolDef, ThinkingMode } from '@ema-agent/llm';
+import type { LanguageModel, LlmContentPart, LlmMessage, LlmToolDef, ThinkingMode } from '@ema-agent/llm';
 import type { SessionStore, Turn } from '@ema-agent/session';
 import type { HookBus } from '@ema-agent/hook';
 import type { EmotionEngine } from '@ema-agent/emotion';
@@ -48,7 +48,7 @@ export interface AgentDeps {
   /** 根 Agent Turn 与其 AgentTask 投影的统一终态入口。 */
   turnLifecycle: IAgentTurnLifecycle;
   hooks:      HookBus;
-  llm:        LlmRouter;
+  llm:        LanguageModel;
   emotion:    EmotionEngine;
   tools:      ToolRegistry;
   permission: PermissionEngine;

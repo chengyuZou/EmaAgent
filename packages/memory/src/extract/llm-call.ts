@@ -1,4 +1,4 @@
-import type { LlmRouter, AssistantBlock } from '@ema-agent/llm';
+import type { LanguageModel, AssistantBlock } from '@ema-agent/llm';
 import type { ModelBindingsRepo } from '@ema-agent/storage';
 import type {
   ExtractionOutput, ConsolidationOutput, ExtractedNode,
@@ -14,7 +14,7 @@ interface ResolvedBinding {
 }
 
 function resolveMemoryBinding(
-  llm: LlmRouter,
+  llm: LanguageModel,
   modelBindings: ModelBindingsRepo,
 ): ResolvedBinding | null {
   const binding = modelBindings.get('memory');
@@ -32,7 +32,7 @@ function resolveMemoryBinding(
 // ── Generic JSON-only completion ─────────────────────────────────────────────
 
 async function runJsonCompletion(
-  llm: LlmRouter,
+  llm: LanguageModel,
   binding: ResolvedBinding,
   prompt: string,
   signal?: AbortSignal,
@@ -158,7 +158,7 @@ function sanitizeExtraction(raw: unknown): ExtractionOutput {
 // ── Public API ───────────────────────────────────────────────────────────────
 
 export async function runExtraction(
-  llm:           LlmRouter,
+  llm:           LanguageModel,
   modelBindings: ModelBindingsRepo,
   prompt:        string,
   signal?:       AbortSignal,
@@ -170,7 +170,7 @@ export async function runExtraction(
 }
 
 export async function runConsolidation(
-  llm:           LlmRouter,
+  llm:           LanguageModel,
   modelBindings: ModelBindingsRepo,
   prompt:        string,
   signal?:       AbortSignal,

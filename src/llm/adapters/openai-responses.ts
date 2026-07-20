@@ -235,8 +235,9 @@ export class OpenAiResponsesAdapter implements LlmAdapter {
 
     // 跨事件跟踪状态。
     let stopReason: StopReason = 'end_turn';
-    let hasReasoning           = false;
-    let toolBlockCount         = 0;
+    let nextBlockIndex = 0;
+    let reasoningBlockIndex: number | undefined;
+    let textBlockIndex: number | undefined;
 
     // output_index -> { name, blockIndex } - 在 output_item.added 时填,
     // 在 arguments.delta / arguments.done 到达时消费(它们带 output_index)。
@@ -253,17 +254,21 @@ export class OpenAiResponsesAdapter implements LlmAdapter {
 
           // ── 推理摘要(o-series) ─────────────────────────────────
           case 'response.reasoning_summary_text.delta': {
-            hasReasoning = true;
-            yield { type: 'thinking_delta', blockIndex: 0, delta: event.delta };
+            reasoningBlockIndex ??= nextBlockIndex++;
+            yield {
+              type: 'thinking_delta',
+              blockIndex: reasoningBlockIndex,
+              delta: event.delta,
+            };
             break;
           }
 
           // ── Text ──────────────────────────────────────────────────────────
           case 'response.output_text.delta': {
-            // 无推理时 blockIndex 0;推理先于 text 时 blockIndex 1。
+            textBlockIndex ??= nextBlockIndex++;
             yield {
               type:       'text_delta',
-              blockIndex: hasReasoning ? 1 : 0,
+              blockIndex: textBlockIndex,
               delta:      event.delta,
             };
             break;
@@ -273,7 +278,7 @@ export class OpenAiResponsesAdapter implements LlmAdapter {
           case 'response.output_item.added': {
             const item = event.item;
             if (item.type === 'function_call') {
-              const blockIndex = 1000 + toolBlockCount++;
+              const blockIndex = nextBlockIndex++;
               // `call_id` 是把 arguments.delta/done 绑到本 call 的稳定 ID。
               // `id` 是内部 item ID。用 `call_id` 作为我们的 `callId`。
               toolMeta.set(event.output_index, {

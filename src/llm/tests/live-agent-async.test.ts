@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { LlmRouter } from '../router.js';
+import { LanguageModelRuntime } from '../languageModelRuntime.js';
 import type { LlmRequest, ProviderConfig, LlmMessage } from '../types.js';
 
 const ALIYUN_CONFIG: ProviderConfig = {
@@ -9,7 +9,7 @@ const ALIYUN_CONFIG: ProviderConfig = {
   baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
 };
 
-const router = new LlmRouter([ALIYUN_CONFIG]);
+const router = new LanguageModelRuntime([ALIYUN_CONFIG]);
 
 describe.only('Advanced Live Tests: True Streaming Loops & Concurrency', () => {
 

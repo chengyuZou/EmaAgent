@@ -171,7 +171,7 @@ async function* runTurn(
     }
 
     // 检查当前 provider 处理不了的附件并警告。
-    // LlmRouter 内部查协议--engine 不需要知道它。
+    // 语言模型运行时内部查协议，Engine 不需要知道 Provider 线路。
     const partsToCheck = Array.isArray(userBlocks) ? userBlocks : [];
     if (partsToCheck.length > 0) {
       const issues = llm.warnUnsupportedParts(providerId, partsToCheck);
@@ -213,7 +213,7 @@ async function* runTurn(
       return;
     }
     // Hook 新增内容没有可靠的历史/本轮来源标记，不能在这里猜测并静默替换。
-    // Router 会对最终组装结果执行 fail-closed 能力门禁。
+    // LLM 请求准备器会对最终组装结果执行 fail-closed 能力门禁。
     const finalMessages = llmHookResult.payload.messages;
 
     // ── narrative 检索结果落盘 ──────────────────────────────────────────────

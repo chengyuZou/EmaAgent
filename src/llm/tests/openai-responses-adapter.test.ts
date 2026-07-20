@@ -221,4 +221,52 @@ describe('OpenAiResponsesAdapter — 统一错误与终态边界', () => {
       rawArgumentsExcerpt: '{"path":',
     } satisfies Partial<LlmToolArgumentsParseError>);
   });
+
+  it('按响应事件顺序为文本和工具分配连续 blockIndex', async () => {
+    openAiMock.create.mockResolvedValueOnce(streamOf([{
+      type: 'response.output_text.delta',
+      delta: '先检查',
+    }, {
+      type: 'response.output_item.added',
+      output_index: 0,
+      item: {
+        type: 'function_call',
+        id: 'item-1',
+        call_id: 'call-1',
+        name: 'read_file',
+        arguments: '',
+      },
+    }, {
+      type: 'response.function_call_arguments.delta',
+      output_index: 0,
+      delta: '{"path":"a.txt"}',
+    }, {
+      type: 'response.function_call_arguments.done',
+      output_index: 0,
+      arguments: '{"path":"a.txt"}',
+    }, {
+      type: 'response.completed',
+      response: { usage: null, incomplete_details: null },
+    }]));
+    const adapter = new OpenAiResponsesAdapter(config());
+
+    await expect(collect(adapter.stream(request(), 'gpt-test'))).resolves.toEqual([
+      { type: 'text_delta', blockIndex: 0, delta: '先检查' },
+      {
+        type: 'tool_use_delta',
+        blockIndex: 1,
+        callId: 'call-1',
+        name: 'read_file',
+        argsDelta: '{"path":"a.txt"}',
+      },
+      {
+        type: 'tool_use_complete',
+        blockIndex: 1,
+        callId: 'call-1',
+        name: 'read_file',
+        args: { path: 'a.txt' },
+      },
+      { type: 'done', stopReason: 'tool_use' },
+    ]);
+  });
 });

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { LlmRouter } from '../router.js';
+import { LanguageModelRuntime } from '../languageModelRuntime.js';
 import type { LlmRequest, ProviderConfig } from '../types.js';
 
 // 阿里云百炼 OpenAI 兼容配置
@@ -10,7 +10,7 @@ const ALIYUN_CONFIG: ProviderConfig = {
 };
 
 // 实例化您重构后的 Router 架构
-const router = new LlmRouter([ALIYUN_CONFIG]);
+const router = new LanguageModelRuntime([ALIYUN_CONFIG]);
 
 // 使用 describe.only 确保单测时只跑这些真实请求的网络测试
 describe.only('Live Aliyun Provider Tests (Qwen Models)', () => {
@@ -70,7 +70,7 @@ describe.only('Live Aliyun Provider Tests (Qwen Models)', () => {
       toolChoice: 'auto',
     };
 
-    // 使用我们刚在 LlmRouter 中发现的完整收集包装器
+    // 使用我们刚在 LanguageModelRuntime 中发现的完整收集包装器
     const completion = await router.complete(request);
 
     // 引擎应返回 tool_use 作为停止原因

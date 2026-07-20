@@ -10,6 +10,7 @@ import type { ModelCapabilitySnapshot, ModelCapabilityState } from './model-capa
 export type InputModality = 'image' | 'audio' | 'file';
 
 export interface MessageCompatibilityIssue {
+  kind: 'input';
   messageIndex: number;
   partIndex: number;
   nestedPartIndex?: number;
@@ -126,6 +127,7 @@ function validatePart(
   const state = capabilities.input[modality];
   if (state === 'supported') return undefined;
   return {
+    kind: 'input',
     messageIndex,
     partIndex,
     ...(nestedPartIndex !== undefined ? { nestedPartIndex } : {}),
@@ -154,6 +156,7 @@ function replaceHistoricalPart<T extends MessageContentPart | ToolResultContentP
     ? `当前模型的 ${modality} 输入能力未知`
     : `当前模型不支持 ${modality} 输入`;
   actions.push({
+    kind: 'input',
     messageIndex,
     partIndex,
     ...(nestedPartIndex !== undefined ? { nestedPartIndex } : {}),

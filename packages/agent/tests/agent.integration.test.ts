@@ -15,7 +15,7 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import path from 'node:path';
 
-import { LlmRouter } from '@ema-agent/llm';
+import { LanguageModelRuntime } from '@ema-agent/llm';
 import { HookBus } from '@ema-agent/hook';
 import { EmotionEngine } from '@ema-agent/emotion';
 import { PermissionEngine } from '@ema-agent/permission';
@@ -100,7 +100,7 @@ let deps: AgentDeps;
 let sessionStore: ReturnType<typeof makeSessionStore>;
 
 beforeAll(() => {
-  const llm = new LlmRouter([{
+  const llm = new LanguageModelRuntime([{
     id:           PROVIDER_ID,
     protocol:     'openai-llm',
     apiKey:       DS_KEY,

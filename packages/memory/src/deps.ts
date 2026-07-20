@@ -11,7 +11,7 @@ import type {
   MemoryExtractionRunsRepo,
 } from '@ema-agent/storage';
 import type { SessionStore } from '@ema-agent/session';
-import type { LlmRouter } from '@ema-agent/llm';
+import type { LanguageModel } from '@ema-agent/llm';
 import type { EbdRouter } from '@ema-agent/ebd-client';
 import type { EmaStreamEvent } from '@ema-agent/contracts';
 import type { HookBus } from '@ema-agent/hook';
@@ -24,7 +24,7 @@ import type { HookBus } from '@ema-agent/hook';
  */
 export interface MemoryDeps {
   session:        SessionStore;
-  llm:            LlmRouter;
+  llm:            LanguageModel;
   ebd:            EbdRouter;
   modelBindings:  ModelBindingsRepo;
 

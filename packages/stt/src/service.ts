@@ -19,7 +19,7 @@ const DEFAULT_LIMITS: Readonly<SttLimits> = {
 
 // ── SttClient Facade ────────────────────────────────────────────────────────
 //
-// 与 TtsClient / LlmRouter 对称:
+// 与 TtsClient / LanguageModelRuntime 对称:
 //   - 持有 provider configs + adapters,按 provider_configs.id 索引。
 //   - 路由(用哪个 providerId + model)总由调用方决定
 //     (route handler 读 model_bindings.get('stt'))。
@@ -91,7 +91,7 @@ export class SttClient {
 
   /**
    * 实时探测 - 发真实 API 调用验证凭证。
-   * 与 LlmRouter.probe() / TtsClient 对应物对称。
+   * 与 LanguageModelRuntime.probe() / TtsClient 对应物对称。
    *
    * adapter 有 probe() 时委托;adapter 无 probe 时回退
    * ok=false + "probe not supported"(V1 不会发生,openai-stt 实现了)。

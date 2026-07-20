@@ -45,7 +45,7 @@ Engine 需要的最小依赖面，是 `AppBindings` 的严格子集——CLI 也
 |---|---|---|
 | `session` | `SessionStore` | 加载历史、追加消息 |
 | `hooks` | `HookBus` | 触发生命周期事件 |
-| `llm` | `LlmRouter` | LLM 流式调用 |
+| `llm` | `LanguageModel` | LLM 流式调用与完整结果收集 |
 | `emotion` | `EmotionEngine` | 流式情绪检测（ACT 标签解析） |
 | `narrative` | `NarrativeClient` | 叙事桥客户端（仅 narrative:recall hook 使用） |
 | `modelBindings` | `ModelBindingsRepo` | 按 mode 查找 provider/model 绑定 |

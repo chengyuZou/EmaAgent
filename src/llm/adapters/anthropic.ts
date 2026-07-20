@@ -13,6 +13,7 @@ import type {
 } from '../types.js';
 import {
   ContextWindowExceededError,
+  LlmStreamProtocolError,
   LlmToolArgumentsParseError,
   throwIfAborted,
   throwIfAbortError,
@@ -286,6 +287,7 @@ export class AnthropicAdapter implements LlmAdapter {
     let cacheReadInputTokens: number | null | undefined;
     let cacheWriteInputTokens: number | null | undefined;
     let stopReason: StopReason = 'end_turn';
+    let receivedMessageStop = false;
 
     try {
     for await (const event of anthropicStream) {
@@ -390,6 +392,10 @@ export class AnthropicAdapter implements LlmAdapter {
           };
           break;
 
+        case 'message_stop':
+          receivedMessageStop = true;
+          break;
+
         default:
           break;
       }
@@ -402,6 +408,7 @@ export class AnthropicAdapter implements LlmAdapter {
     }
 
     throwIfAborted(request.signal);
+    if (!receivedMessageStop) throw new LlmStreamProtocolError(request.providerId);
     yield {
       type: 'usage',
       ...createAnthropicUsage(

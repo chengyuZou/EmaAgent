@@ -1,6 +1,6 @@
 // 这里用真实模型测试工具注册、调用循环和权限判断能否贯通。
 /**
- * Integration test: LlmRouter + ToolRegistry + PermissionEngine
+ * Integration test: LanguageModelRuntime + ToolRegistry + PermissionEngine
  *
  * 使用 DeepSeek (openai-llm 兼容) 跑真实 API 调用。
  * 运行: pnpm --filter @ema-agent/tool-builtin test
@@ -17,7 +17,7 @@
 
 import { describe, it, expect, beforeAll } from 'vitest';
 import path from 'node:path';
-import { LlmRouter } from '@ema-agent/llm';
+import { LanguageModelRuntime } from '@ema-agent/llm';
 import type { LlmMessage, LlmToolDef, AssistantBlock } from '@ema-agent/llm';
 import type { ToolResultBlock } from '@ema-agent/contracts';
 import { ToolRegistry } from '@ema-agent/tools';
@@ -39,7 +39,7 @@ const TEST_TIMEOUT  = 60_000;
 
 // ── Shared setup ──────────────────────────────────────────────────────────────
 
-let router:   LlmRouter;
+let router:   LanguageModelRuntime;
 let registry: ToolRegistry;
 
 function makeCtx(overrides: Partial<ToolExecutionContext> = {}): ToolExecutionContext {
@@ -159,7 +159,7 @@ async function agentLoop(
 // ── Test suite ────────────────────────────────────────────────────────────────
 
 beforeAll(() => {
-  router = new LlmRouter([{
+  router = new LanguageModelRuntime([{
     id:           PROVIDER_ID,
     protocol:     'openai-llm',
     apiKey:       DS_KEY,

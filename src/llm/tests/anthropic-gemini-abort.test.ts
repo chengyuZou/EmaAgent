@@ -81,6 +81,7 @@ describe('Anthropic/Gemini Adapter — 取消传播', () => {
         delta: { stop_reason: 'end_turn' },
         usage: { output_tokens: 20 },
       };
+      yield { type: 'message_stop' };
     };
     sdkMocks.anthropicStream.mockReturnValueOnce(completedStream());
     const adapter = new AnthropicAdapter(anthropicConfig());
@@ -132,6 +133,27 @@ describe('Anthropic/Gemini Adapter — 取消传播', () => {
     ))).rejects.toMatchObject({ name: 'AbortError' });
   });
 
+  it('Anthropic 缺少 message_stop 时报告协议不完整', async () => {
+    const incompleteStream = async function* (): AsyncIterable<Record<string, unknown>> {
+      yield {
+        type: 'message_delta',
+        delta: { stop_reason: 'end_turn' },
+        usage: { output_tokens: 1 },
+      };
+    };
+    sdkMocks.anthropicStream.mockReturnValueOnce(incompleteStream());
+    const adapter = new AnthropicAdapter(anthropicConfig());
+
+    await expect(collect(adapter.stream(
+      request('anthropic-test', new AbortController().signal),
+      'claude-test',
+    ))).rejects.toMatchObject({
+      name: 'LlmStreamProtocolError',
+      code: 'provider/incomplete_stream',
+      providerId: 'anthropic-test',
+    });
+  });
+
   it('Gemini 请求创建阶段取消时抛出 AbortError', async () => {
     const controller = new AbortController();
     sdkMocks.geminiStream.mockImplementationOnce(async () => {
@@ -158,6 +180,76 @@ describe('Anthropic/Gemini Adapter — 取消传播', () => {
       request('gemini-test', controller.signal),
       'gemini-test',
     ))).rejects.toMatchObject({ name: 'AbortError' });
+  });
+
+  it('Gemini 缺少 finishReason 时报告协议不完整', async () => {
+    const incompleteStream = async function* (): AsyncIterable<Record<string, unknown>> {
+      yield { candidates: [{ content: { parts: [{ text: 'partial' }] } }] };
+    };
+    sdkMocks.geminiStream.mockResolvedValueOnce(incompleteStream());
+    const adapter = new GeminiAdapter(geminiConfig());
+
+    await expect(collect(adapter.stream(
+      request('gemini-test', new AbortController().signal),
+      'gemini-test',
+    ))).rejects.toMatchObject({
+      name: 'LlmStreamProtocolError',
+      code: 'provider/incomplete_stream',
+      providerId: 'gemini-test',
+    });
+  });
+
+  it('Gemini 收到明确 finishReason 后才生成 done', async () => {
+    const completedStream = async function* (): AsyncIterable<Record<string, unknown>> {
+      yield {
+        candidates: [{
+          content: { parts: [{ text: 'done' }] },
+          finishReason: 'STOP',
+        }],
+      };
+    };
+    sdkMocks.geminiStream.mockResolvedValueOnce(completedStream());
+    const adapter = new GeminiAdapter(geminiConfig());
+
+    await expect(collect(adapter.stream(
+      request('gemini-test', new AbortController().signal),
+      'gemini-test',
+    ))).resolves.toEqual([
+      { type: 'text_delta', blockIndex: 0, delta: 'done' },
+      { type: 'done', stopReason: 'end_turn' },
+    ]);
+  });
+
+  it('Gemini 按响应 Part 顺序为文本和工具分配连续 blockIndex', async () => {
+    const completedStream = async function* (): AsyncIterable<Record<string, unknown>> {
+      yield {
+        candidates: [{
+          content: {
+            parts: [
+              { text: '先检查' },
+              { functionCall: { name: 'read_file', args: { path: 'a.txt' } } },
+            ],
+          },
+          finishReason: 'STOP',
+        }],
+      };
+    };
+    sdkMocks.geminiStream.mockResolvedValueOnce(completedStream());
+    const adapter = new GeminiAdapter(geminiConfig());
+
+    const chunks = await collect(adapter.stream(
+      request('gemini-test', new AbortController().signal),
+      'gemini-test',
+    ));
+
+    expect(chunks[0]).toEqual({ type: 'text_delta', blockIndex: 0, delta: '先检查' });
+    expect(chunks[1]).toEqual(expect.objectContaining({
+      type: 'tool_use_complete',
+      blockIndex: 1,
+      name: 'read_file',
+      args: { path: 'a.txt' },
+    }));
+    expect(chunks[2]).toEqual({ type: 'done', stopReason: 'tool_use' });
   });
 
   it('Anthropic 工具参数 JSON 损坏时抛出结构化协议错误', async () => {

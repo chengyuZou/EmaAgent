@@ -11,13 +11,23 @@ interface ProviderErrorShape {
   } | null;
 }
 
-export interface LlmCapabilityIssue {
+export interface LlmInputCapabilityIssue {
+  kind: 'input';
   messageIndex: number;
   partIndex: number;
   modality: 'image' | 'audio' | 'file';
   state: 'unsupported' | 'unknown';
   reason: string;
 }
+
+export interface LlmFeatureCapabilityIssue {
+  kind: 'feature';
+  feature: 'tools' | 'reasoning';
+  state: 'unsupported' | 'unknown';
+  reason: string;
+}
+
+export type LlmCapabilityIssue = LlmInputCapabilityIssue | LlmFeatureCapabilityIssue;
 
 /** 当前模型无法安全接收请求中的一种或多种输入模态。 */
 export class LlmModelCapabilityError extends Error {
@@ -30,7 +40,10 @@ export class LlmModelCapabilityError extends Error {
   ) {
     super(
       `Model "${model}" on provider "${providerId}" cannot accept: `
-      + issues.map((issue) => `${issue.modality}(${issue.state})`).join(', '),
+      + issues.map((issue) => {
+        const capability = issue.kind === 'input' ? issue.modality : issue.feature;
+        return `${capability}(${issue.state})`;
+      }).join(', '),
     );
     this.name = 'LlmModelCapabilityError';
   }
@@ -100,7 +113,7 @@ export class LlmStreamProtocolError extends Error {
   readonly code = 'provider/incomplete_stream' as const;
 
   constructor(readonly providerId: string) {
-    super(`LLM stream from provider "${providerId}" ended without a terminal done event`);
+    super(`LLM stream from provider "${providerId}" ended without an explicit provider terminal signal`);
     this.name = 'LlmStreamProtocolError';
   }
 }

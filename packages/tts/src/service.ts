@@ -32,7 +32,7 @@ const DEFAULT_LIMITS: Readonly<TtsLimits> = {
 // ── TtsClient ───────────────────────────────────────────────────────────────
 
 /**
- * 文本转语音的哑分发器。模式与 LlmRouter 对齐:
+ * 文本转语音的哑分发器。模式与 LanguageModelRuntime 对齐:
  *
  *   - adapters: Map<providerId, TtsAdapter>     (id -> 实例)
  *   - configs:  Map<providerId, TtsProviderConfig> (id -> 配置)
@@ -91,19 +91,19 @@ export class TtsClient {
     this.adapters = nextAdapters;
   }
 
-  /** 与 LlmRouter.upsertConfig() 对称。 */
+  /** 与 LanguageModelRuntime.upsertConfig() 对称。 */
   upsertConfig(config: TtsProviderConfig): void {
     this.configs.set(config.id, config);
     this.adapters.set(config.id, this.createAdapter(config));
   }
 
-  /** 与 LlmRouter.removeConfig() 对称。 */
+  /** 与 LanguageModelRuntime.removeConfig() 对称。 */
   removeConfig(providerId: string): void {
     this.configs.delete(providerId);
     this.adapters.delete(providerId);
   }
 
-  /** 与 LlmRouter.firstProviderId() 对称。 */
+  /** 与 LanguageModelRuntime.firstProviderId() 对称。 */
   firstProviderId(): string | undefined {
     return this.configs.keys().next().value;
   }

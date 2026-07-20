@@ -139,6 +139,22 @@ describe('OpenAiAdapter — thinking controls', () => {
     ))).rejects.toMatchObject({ name: 'AbortError' });
   });
 
+  it('没有 finish_reason 的自然断流必须报告协议不完整', async () => {
+    openAiMock.create.mockResolvedValueOnce(streamOf([
+      { choices: [{ delta: { content: 'partial' }, finish_reason: null }] },
+    ]));
+    const adapter = new OpenAiAdapter(config());
+
+    await expect(collect(adapter.stream(
+      request(),
+      'deepseek-v4-flash',
+    ))).rejects.toMatchObject({
+      name: 'LlmStreamProtocolError',
+      code: 'provider/incomplete_stream',
+      providerId: 'deepseek-test',
+    });
+  });
+
   it('请求创建阶段取消时抛出 AbortError', async () => {
     const controller = new AbortController();
     openAiMock.create.mockImplementationOnce(async () => {
@@ -179,5 +195,44 @@ describe('OpenAiAdapter — thinking controls', () => {
       toolName: 'delete_file',
       rawArgumentsExcerpt: '{"path":',
     } satisfies Partial<LlmToolArgumentsParseError>);
+  });
+
+  it('按 Provider 实际出现顺序为文本和工具分配连续 blockIndex', async () => {
+    openAiMock.create.mockResolvedValueOnce(streamOf([
+      { choices: [{ delta: { content: '先检查' }, finish_reason: null }] },
+      {
+        choices: [{
+          delta: {
+            tool_calls: [{
+              index: 0,
+              id: 'call-1',
+              function: { name: 'read_file', arguments: '{"path":"a.txt"}' },
+            }],
+          },
+          finish_reason: null,
+        }],
+      },
+      { choices: [{ delta: {}, finish_reason: 'tool_calls' }] },
+    ]));
+    const adapter = new OpenAiAdapter(config());
+
+    await expect(collect(adapter.stream(request(), 'deepseek-v4-flash'))).resolves.toEqual([
+      { type: 'text_delta', blockIndex: 0, delta: '先检查' },
+      {
+        type: 'tool_use_delta',
+        blockIndex: 1,
+        callId: 'call-1',
+        name: 'read_file',
+        argsDelta: '{"path":"a.txt"}',
+      },
+      {
+        type: 'tool_use_complete',
+        blockIndex: 1,
+        callId: 'call-1',
+        name: 'read_file',
+        args: { path: 'a.txt' },
+      },
+      { type: 'done', stopReason: 'tool_use' },
+    ]);
   });
 });

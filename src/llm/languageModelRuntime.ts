@@ -1,4 +1,4 @@
-// 统一校验并路由 LLM 请求，同时在调用边界记录真实的模型用量。
+// 运行语言模型调用，并协调 Provider 快照、请求准备、流生命周期与用量记录。
 import { randomUUID } from 'node:crypto';
 import { OpenAiAdapter }         from './adapters/openai.js';
 import { OpenAiResponsesAdapter } from './adapters/openai-responses.js';
@@ -20,10 +20,10 @@ import type {
   AssistantBlock,
   LlmTokenUsage,
 } from './types.js';
+import type { LanguageModel } from './languageModel.js';
 import type { UsageRecord, UsageRecorder } from '@ema-agent/contracts';
 import type { LlmProtocol } from '@ema-agent/provider';
 import type { ModelsDevCatalog } from './models-dev-catalog.js';
-import { normalizeToolDefinitions } from './prompt-cache.js';
 import {
   capabilitiesFromCatalog,
   capabilitiesFromManualVision,
@@ -33,11 +33,12 @@ import {
 import {
   prepareHistoricalMessageView,
   validateCurrentContent,
-  validateMessageCapabilities,
   type CompatibleMessageView,
 } from './message-compatibility.js';
 import { LlmModelCapabilityError } from './errors.js';
 import { createCompatibilityRecovery } from './compatibility-recovery.js';
+import { LlmRequestPreparer } from './llmRequestPreparer.js';
+import { ProviderRuntimeRegistry } from './providerRuntimeRegistry.js';
 
 // ── 内部工厂 ──────────────────────────────────────────────────────────
 
@@ -56,20 +57,19 @@ function notConfigured(providerId: string): Error {
   return err;
 }
 
-// ── LlmRouter ─────────────────────────────────────────────────────────
+// ── LanguageModelRuntime ───────────────────────────────────────────────
 
 /**
- * 所有 LLM 访问的单一 Facade。
+ * 语言模型调用的运行时实现。
  *
  * 以 ProviderConfig.id(DB 里 provider_configs 的 UUID)为 key,而非 protocol -
  * 多个 provider 可共享同一 protocol(如 DeepSeek + SiliconFlow 都是 'openai-llm'),
  * 每个都该有独立的 adapter 条目。
  */
-export class LlmRouter {
-  /** id -> adapter 实例 */
-  private adapters = new Map<string, LlmAdapter>();
-  /** id -> config(保留用于热重载和 probe) */
-  private configs  = new Map<string, ProviderConfig>();
+export class LanguageModelRuntime implements LanguageModel {
+  /** Provider 配置与 Adapter 作为同一快照换代，单次调用不会读到混合版本。 */
+  private readonly providerRegistry: ProviderRuntimeRegistry;
+  private readonly requestPreparer: LlmRequestPreparer;
   /** 流生命周期、重试边界与 per-provider 熔断状态。 */
   private readonly streamRuntime = new LlmStreamRuntime();
   /** 仅测试用的 adapter 替换,以 ProviderConfig.id 为 key。 */
@@ -97,10 +97,13 @@ export class LlmRouter {
     this.supportsManualImageInput = options.supportsManualImageInput;
     this.usageRecorder = options.usageRecorder;
     this.onUsageRecordError = options.onUsageRecordError;
-    for (const config of configs) {
-      this.configs.set(config.id, config);
-      this.adapters.set(config.id, this.createAdapterFor(config));
-    }
+    this.providerRegistry = new ProviderRuntimeRegistry(
+      configs,
+      (config) => this.createAdapterFor(config),
+    );
+    this.requestPreparer = new LlmRequestPreparer({
+      capabilitiesFor: (providerId, model) => this.capabilitiesFor(providerId, model),
+    });
   }
 
   private createAdapterFor(config: ProviderConfig): LlmAdapter {
@@ -115,35 +118,18 @@ export class LlmRouter {
    * 未知 provider id 时同步抛错。
    */
   stream(request: LlmRequest): AsyncIterable<LlmStreamChunk> {
-    const capabilities = this.capabilitiesFor(request.providerId, request.model);
-    const catalogEnriched: LlmRequest = this.catalog ? {
-      ...request,
-      supportsReasoning: request.supportsReasoning ?? capabilities.reasoning === 'supported',
-      maxTokens:         request.maxTokens         ?? capabilities.maxOutput,
-    } : request;
-    const enriched: LlmRequest = catalogEnriched.tools ? {
-      ...catalogEnriched,
-      tools: normalizeToolDefinitions(catalogEnriched.tools),
-    } : catalogEnriched;
-    // Façade 必须同步拒绝未知 Provider，Engine 才能在创建异步迭代器时 fail-fast。
-    const adapter = this.adapters.get(enriched.providerId);
-    if (!adapter) throw notConfigured(enriched.providerId);
-    const capabilityIssues = validateMessageCapabilities(enriched.messages, capabilities);
-    if (capabilityIssues.length > 0) {
-      throw new LlmModelCapabilityError(enriched.providerId, enriched.model, capabilityIssues);
-    }
-    const protocolIssues = validateProtocolMessages(enriched.messages, this.configs.get(enriched.providerId)!.protocol);
-    if (protocolIssues.length > 0) {
-      throw new LlmModelCapabilityError(enriched.providerId, enriched.model, protocolIssues);
-    }
-    const recovery = createCompatibilityRecovery(adapter, enriched);
+    // 公共入口必须同步拒绝未知 Provider，Engine 创建异步迭代器时即可 fail-fast。
+    const entry = this.providerRegistry.get(request.providerId);
+    if (!entry) throw notConfigured(request.providerId);
+    const prepared = this.requestPreparer.prepare(request, entry.config.protocol);
+    const recovery = createCompatibilityRecovery(entry.adapter, prepared);
     const source = this.streamRuntime.stream(
-      enriched.providerId,
+      prepared.providerId,
       recovery.start,
-      enriched.signal,
+      prepared.signal,
       recovery.recover,
     );
-    return this.recordStreamUsage(enriched, source);
+    return this.recordStreamUsage(prepared, source);
   }
 
   /** 包装统一流，不让观测数据写入失败破坏模型主链路。 */
@@ -280,12 +266,12 @@ export class LlmRouter {
    * @param model       该 provider 上已知存在的模型。
    */
   async probe(providerId: string, model: string): Promise<ProbeResult> {
-    const adapter = this.adapters.get(providerId);
-    if (!adapter) return { ok: false, error: `provider/not_configured: no config registered for "${providerId}"` };
+    const entry = this.providerRegistry.get(providerId);
+    if (!entry) return { ok: false, error: `provider/not_configured: no config registered for "${providerId}"` };
 
     const start = Date.now();
     try {
-      for await (const chunk of adapter.stream(
+      for await (const chunk of entry.adapter.stream(
         { providerId, model, messages: [{ role: 'user', content: 'hi' }], maxTokens: 8 },
         model,
       )) {
@@ -298,12 +284,12 @@ export class LlmRouter {
   }
 
   getProtocol(providerId: string): LlmProtocol | undefined {
-    return this.configs.get(providerId)?.protocol;
+    return this.providerRegistry.get(providerId)?.config.protocol;
   }
 
   /** 按 Provider + Model 精确返回能力；同名模型不会跨 Provider 串数据。 */
   capabilitiesFor(providerId: string, model: string): ModelCapabilitySnapshot {
-    const config = this.configs.get(providerId);
+    const config = this.providerRegistry.get(providerId)?.config;
     const spec = config?.modelsDevId && this.catalog
       ? this.catalog.get(config.modelsDevId, model)
       : undefined;
@@ -345,20 +331,7 @@ export class LlmRouter {
    * 从新 Map 取值。
    */
   reload(configs: ProviderConfig[]): void {
-    const nextConfigs = new Map<string, ProviderConfig>();
-    const nextAdapters = new Map<string, LlmAdapter>();
-
-    for (const config of configs) {
-      nextConfigs.set(config.id, config);
-      nextAdapters.set(config.id, this.createAdapterFor(config));
-    }
-
-    const affectedProviderIds = new Set([
-      ...this.configs.keys(),
-      ...nextConfigs.keys(),
-    ]);
-    this.configs = nextConfigs;
-    this.adapters = nextAdapters;
+    const affectedProviderIds = this.providerRegistry.replace(configs);
     for (const providerId of affectedProviderIds) {
       this.streamRuntime.reset(providerId);
     }
@@ -366,25 +339,23 @@ export class LlmRouter {
 
   /** 运行时新增或替换 provider config(如用户更新了 API key)。 */
   upsertConfig(config: ProviderConfig): void {
-    this.configs.set(config.id, config);
-    this.adapters.set(config.id, this.createAdapterFor(config));
+    this.providerRegistry.upsert(config);
     this.streamRuntime.reset(config.id);
   }
 
   removeConfig(providerId: string): void {
-    this.configs.delete(providerId);
-    this.adapters.delete(providerId);
+    this.providerRegistry.remove(providerId);
     this.streamRuntime.reset(providerId);
   }
 
   /** 返回首个已注册 config id,无则 undefined。用作最后兜底。 */
   firstProviderId(): string | undefined {
-    return this.configs.keys().next().value;
+    return this.providerRegistry.firstProviderId();
   }
 
   /** 返回给定 provider id 的 defaultModel,无则 undefined。 */
   defaultModelFor(providerId: string): string | undefined {
-    return this.configs.get(providerId)?.defaultModel;
+    return this.providerRegistry.defaultModelFor(providerId);
   }
 
   /**
@@ -393,7 +364,7 @@ export class LlmRouter {
    * 全部兼容时返回空数组。
    */
   warnUnsupportedParts(providerId: string, parts: LlmContentPart[]): UnsupportedPart[] {
-    const protocol = this.configs.get(providerId)?.protocol;
+    const protocol = this.providerRegistry.get(providerId)?.config.protocol;
     if (!protocol) throw notConfigured(providerId);
     return validateContentParts(parts, protocol);
   }
@@ -406,45 +377,4 @@ function usageErrorCode(error: unknown): string {
     if (error.name === 'AbortError') return 'llm/aborted';
   }
   return 'llm/provider_failed';
-}
-
-function validateProtocolMessages(
-  messages: readonly LlmMessage[],
-  protocol: LlmProtocol,
-): Array<{
-  messageIndex: number;
-  partIndex: number;
-  modality: 'image' | 'audio' | 'file';
-  state: 'unsupported';
-  reason: string;
-}> {
-  const issues: Array<{
-    messageIndex: number;
-    partIndex: number;
-    modality: 'image' | 'audio' | 'file';
-    state: 'unsupported';
-    reason: string;
-  }> = [];
-  messages.forEach((message, messageIndex) => {
-    if (message.role !== 'user' || !Array.isArray(message.content)) return;
-    const parts = message.content.filter(
-      (block): block is LlmContentPart => block.type !== 'tool_result',
-    );
-    for (const issue of validateContentParts(parts, protocol)) {
-      const type = issue.part.type;
-      const modality = type === 'audio_data'
-        ? 'audio'
-        : type === 'file_data' || type === 'file_url'
-          ? 'file'
-          : 'image';
-      issues.push({
-        messageIndex,
-        partIndex: issue.index,
-        modality,
-        state: 'unsupported',
-        reason: issue.reason,
-      });
-    }
-  });
-  return issues;
 }

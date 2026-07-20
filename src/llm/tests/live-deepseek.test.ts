@@ -15,7 +15,7 @@
  */
 
 import { describe, it, expect, beforeAll } from 'vitest';
-import { LlmRouter } from '../router.js';
+import { LanguageModelRuntime } from '../languageModelRuntime.js';
 import type { LlmStreamChunk, ProviderConfig, LlmToolDef } from '../types.js';
 
 // ── 环境变量检查 ──────────────────────────────────────────────────────────────
@@ -31,7 +31,7 @@ const PROVIDER_ID = 'deepseek-live-test';
 const MODEL_FLASH = 'deepseek-v4-flash';   // 快、便宜，用于大多数测试
 const MODEL_PRO   = 'deepseek-v4-pro';     // thinking 更强，用于思考测试
 
-let router: LlmRouter;
+let router: LanguageModelRuntime;
 
 beforeAll(() => {
   const cfg: ProviderConfig = {
@@ -40,7 +40,7 @@ beforeAll(() => {
     apiKey:   API_KEY ?? '',
     baseUrl:  'https://api.deepseek.com',
   };
-  router = new LlmRouter([cfg]);
+  router = new LanguageModelRuntime([cfg]);
 });
 
 // ── 辅助函数 ──────────────────────────────────────────────────────────────────
@@ -261,7 +261,7 @@ describe('DeepSeek — probe()', () => {
       apiKey:   'sk-invalid-key-xxx',
       baseUrl:  'https://api.deepseek.com',
     };
-    const badRouter = new LlmRouter([badCfg]);
+    const badRouter = new LanguageModelRuntime([badCfg]);
 
     const result = await badRouter.probe('ds-bad', MODEL_FLASH);
 
