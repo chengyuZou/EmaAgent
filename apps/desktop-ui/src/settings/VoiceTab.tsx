@@ -233,8 +233,12 @@ function UploadForm({
           onSelect={(files) => setFile(files[0] ?? null)}
           className="self-start inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs border border-[var(--ema-border)] bg-[var(--ema-surface-1)] text-[var(--ema-text-secondary)] hover:bg-[var(--ema-surface-2)] transition-ema"
         >
-          <span className="i-mdi:file-upload-outline text-sm" aria-hidden />
-          {file ? file.name : '选择文件'}
+          <Button
+            size="sm"
+            icon="i-mdi:file-upload-outline text-sm"
+          >
+            {file ? file.name : '选择文件'}
+          </Button>
         </FilePicker>
 
         <Textarea

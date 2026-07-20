@@ -1,4 +1,13 @@
-import { useRef, type ReactNode, type ChangeEvent } from 'react';
+// 将统一按钮连接到原生文件选择框，并把选中的文件交给业务层。
+import {
+  Children,
+  cloneElement,
+  useRef,
+  type ButtonHTMLAttributes,
+  type ChangeEvent,
+  type MouseEvent,
+  type ReactElement,
+} from 'react';
 import { cn } from '../utils/cn.js';
 
 // ── FilePicker ───────────────────────────────────────────────────────────────
@@ -13,8 +22,8 @@ export interface FilePickerProps {
   accept?:    string;
   multiple?:  boolean;
   onSelect:   (files: File[]) => void;
-  /** Trigger content (rendered inside a <button>). */
-  children:   ReactNode;
+  /** 单个按钮元素；FilePicker 只增强它，不会再额外包裹 button。 */
+  children:   ReactElement<ButtonHTMLAttributes<HTMLButtonElement>>;
   className?: string;
   disabled?:  boolean;
 }
@@ -22,6 +31,8 @@ export interface FilePickerProps {
 export function FilePicker(props: FilePickerProps): React.JSX.Element {
   const { accept, multiple = false, onSelect, children, className, disabled } = props;
   const ref = useRef<HTMLInputElement>(null);
+  const trigger = Children.only(children);
+  const triggerDisabled = Boolean(disabled || trigger.props.disabled);
 
   const onChange = (e: ChangeEvent<HTMLInputElement>): void => {
     const files = Array.from(e.target.files ?? []);
@@ -29,22 +40,32 @@ export function FilePicker(props: FilePickerProps): React.JSX.Element {
     e.target.value = '';
   };
 
+  const onTriggerClick = (event: MouseEvent<HTMLButtonElement>): void => {
+    trigger.props.onClick?.(event);
+    if (event.defaultPrevented || triggerDisabled) return;
+    ref.current?.click();
+  };
+
+  const enhancedTrigger = cloneElement(trigger, {
+    type: trigger.props.type ?? 'button',
+    disabled: triggerDisabled,
+    className: cn(
+      'inline-flex items-center justify-center',
+      trigger.props.className,
+      className,
+    ),
+    onClick: onTriggerClick,
+  });
+
   return (
     <>
-      <button
-        type="button"
-        disabled={disabled}
-        className={cn('inline-flex items-center justify-center', className)}
-        onClick={() => ref.current?.click()}
-      >
-        {children}
-      </button>
+      {enhancedTrigger}
       <input
         ref={ref}
         type="file"
         accept={accept}
         multiple={multiple}
-        disabled={disabled}
+        disabled={triggerDisabled}
         className="hidden"
         onChange={onChange}
       />

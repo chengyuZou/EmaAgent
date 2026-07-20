@@ -1,4 +1,12 @@
-import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react';
+// 提供可自动增高并支持内嵌操作按钮的多行文本输入组件。
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useLayoutEffect,
+  useRef,
+} from 'react';
 import type { ReactNode, TextareaHTMLAttributes } from 'react';
 import { cn } from '../utils/cn.js';
 
@@ -51,11 +59,14 @@ export const Textarea = forwardRef<TextareaHandle, TextareaProps>(
       className,
       value,
       onChange,
+      onInput,
       style,
       ...rest
     } = props;
 
     const innerRef = useRef<HTMLTextAreaElement>(null);
+    const containerRef = useRef<HTMLDivElement>(null);
+    const resizeFrameRef = useRef<number | null>(null);
 
     useImperativeHandle(ref, () => ({
       focus: () => innerRef.current?.focus(),
@@ -79,29 +90,60 @@ export const Textarea = forwardRef<TextareaHandle, TextareaProps>(
       el:    () => innerRef.current,
     }), []);
 
-    // ── Auto-grow ───────────────────────────────────────────────────────────
-    useEffect(() => {
-      if (!autoGrow) return;
+    const recomputeHeight = useCallback((): void => {
       const el = innerRef.current;
       if (!el) return;
 
-      const recompute = (): void => {
-        // Reset to auto so we can read the natural scroll height; then clamp.
-        el.style.height = 'auto';
-        const lineHeight = parseInt(getComputedStyle(el).lineHeight, 10) || 22;
-        const minH = lineHeight * minRows;
-        const maxH = lineHeight * maxRows;
-        const natural = el.scrollHeight;
-        const next = Math.min(maxH, Math.max(minH, natural));
-        el.style.height = `${next}px`;
-        el.style.overflowY = natural > maxH ? 'auto' : 'hidden';
-      };
+      // 先恢复自然高度，读取完整内容高度后再限制在配置的行数范围内。
+      el.style.height = 'auto';
+      const lineHeight = Number.parseFloat(getComputedStyle(el).lineHeight) || 22;
+      const minHeight = lineHeight * minRows;
+      const maxHeight = lineHeight * maxRows;
+      const naturalHeight = el.scrollHeight;
+      const nextHeight = Math.min(maxHeight, Math.max(minHeight, naturalHeight));
 
-      recompute();
-      const observer = new ResizeObserver(recompute);
-      observer.observe(el);
-      return () => observer.disconnect();
-    }, [autoGrow, maxRows, minRows, value]);
+      el.style.height = `${nextHeight}px`;
+      el.style.overflowY = naturalHeight > maxHeight ? 'auto' : 'hidden';
+    }, [maxRows, minRows]);
+
+    const scheduleHeightRecompute = useCallback((): void => {
+      if (!autoGrow || resizeFrameRef.current !== null) return;
+
+      resizeFrameRef.current = requestAnimationFrame(() => {
+        resizeFrameRef.current = null;
+        recomputeHeight();
+      });
+    }, [autoGrow, recomputeHeight]);
+
+    // 内容变化在浏览器绘制前完成测量，避免先显示旧高度再跳动。
+    useLayoutEffect(() => {
+      if (autoGrow) recomputeHeight();
+    }, [autoGrow, recomputeHeight, value]);
+
+    // 只观察外层容器的宽度变化。写入 textarea 高度不会反向触发该观察链。
+    useEffect(() => {
+      if (!autoGrow) return;
+      const container = containerRef.current;
+      if (!container) return;
+
+      let observedWidth = container.getBoundingClientRect().width;
+      const observer = new ResizeObserver((entries) => {
+        const nextWidth = entries[0]?.contentRect.width ?? observedWidth;
+        if (nextWidth === observedWidth) return;
+
+        observedWidth = nextWidth;
+        scheduleHeightRecompute();
+      });
+
+      observer.observe(container);
+      return () => {
+        observer.disconnect();
+        if (resizeFrameRef.current !== null) {
+          cancelAnimationFrame(resizeFrameRef.current);
+          resizeFrameRef.current = null;
+        }
+      };
+    }, [autoGrow, scheduleHeightRecompute]);
 
     // Reserve room for action (~44px wide + 16px padding on right + 12px bottom)
     const reserveAction = embeddedAction ? { paddingRight: 52, paddingBottom: 48 } : null;
@@ -112,6 +154,10 @@ export const Textarea = forwardRef<TextareaHandle, TextareaProps>(
         aria-invalid={error || undefined}
         value={value}
         onChange={onChange}
+        onInput={(event) => {
+          scheduleHeightRecompute();
+          onInput?.(event);
+        }}
         rows={minRows}
         className={cn(
           containerless
@@ -132,7 +178,7 @@ export const Textarea = forwardRef<TextareaHandle, TextareaProps>(
 
     if (containerless) {
       return (
-        <div className="relative">
+        <div ref={containerRef} className="relative">
           {textareaEl}
           {actionSlot}
         </div>
@@ -141,6 +187,7 @@ export const Textarea = forwardRef<TextareaHandle, TextareaProps>(
 
     return (
       <div
+        ref={containerRef}
         className={cn(
           'relative rounded-md border bg-[var(--ema-surface-2)] transition-ema',
           'focus-within:border-[var(--ema-primary)] focus-within:ring-2 focus-within:ring-[var(--ema-primary)]/40',
