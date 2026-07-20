@@ -11,6 +11,7 @@ import { createAudioLipSyncPlugin } from '../composables/audio-lipsync.js';
 import { startRandomIdleScheduler } from '../composables/random-idle.js';
 import { createExpressionController, type CoreModelLike } from '../composables/expression-controller.js';
 import { Live2DLoadCoordinator } from '../composables/load-coordinator.js';
+import { createLive2DRuntimeFaultBoundary } from '../composables/runtime-fault-boundary.js';
 import { useLive2DRuntime } from './Live2DRuntimeProvider.js';
 import {
   createMotionManagerUpdate,
@@ -21,6 +22,7 @@ import {
   type MotionManagerUpdate,
 } from '../composables/motion-manager.js';
 import {
+  live2DReloadConfigKey,
   resolveLive2DModelRuntimeConfig,
   type Live2DModelRuntimeConfig,
 } from '../model-config.js';
@@ -96,12 +98,15 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
     const motionPipelineRef = useRef<MotionManagerUpdate | null>(null);
     const callbacksRef = useRef({ onReady, onError, runtimeConfig });
     const loadCoordinatorRef = useRef<Live2DLoadCoordinator | null>(null);
+    const renderCircuitOpenRef = useRef(false);
     const [error, setError] = useState<Live2DError | null>(null);
+    const [rendererGeneration, setRendererGeneration] = useState(0);
     const [pageHidden, setPageHidden] = useState(
       () => typeof document !== 'undefined' && document.visibilityState === 'hidden',
     );
     const effectiveSuspended = suspended || pageHidden;
     const suspendedRef = useRef(effectiveSuspended);
+    const reloadConfigKey = live2DReloadConfigKey(runtimeConfig);
 
     const loadCoordinator = loadCoordinatorRef.current ?? new Live2DLoadCoordinator();
     loadCoordinatorRef.current = loadCoordinator;
@@ -129,7 +134,7 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
       const app = appRef.current;
       if (!app) return;
       if (effectiveSuspended) app.ticker.stop();
-      else app.ticker.start();
+      else if (!renderCircuitOpenRef.current) app.ticker.start();
     }, [effectiveSuspended]);
 
     useImperativeHandle(ref, () => ({
@@ -142,11 +147,14 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
       const host = containerRef.current;
       if (!host) return;
       setError(null);
+      renderCircuitOpenRef.current = false;
 
       if (typeof window.Live2DCubismCore === 'undefined') {
         const err: Live2DError = {
           kind:    'cubism_core_missing',
+          phase:   'initialization',
           message: 'window.Live2DCubismCore not found. Load live2dcubismcore.min.js before React mounts.',
+          recoverable: false,
         };
         setError(err);
         callbacksRef.current.onError?.(err);
@@ -156,6 +164,7 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
       const load = loadCoordinator.begin();
       let app: PIXI.Application | null = null;
       let ownedModel: InstanceType<typeof PixiLive2DModel> | null = null;
+      const cleanupTasks: Array<() => void> = [];
       try {
         app = new PIXI.Application({
           resizeTo:        host,
@@ -166,19 +175,40 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
         load.cancel();
         const err: Live2DError = {
           kind:    'pixi_init_failed',
+          phase:   'initialization',
           message: (cause as Error).message ?? String(cause),
           cause,
+          recoverable: false,
         };
         setError(err);
         callbacksRef.current.onError?.(err);
         return;
       }
       appRef.current = app;
-      installRenderGuard(app);
+      const faultBoundary = createLive2DRuntimeFaultBoundary({
+        emit: (fault) => {
+          if (!load.isCurrent()) return;
+          if (!fault.recoverable) {
+            renderCircuitOpenRef.current = true;
+            setError(fault);
+          }
+          callbacksRef.current.onError?.(fault);
+          // eslint-disable-next-line no-console
+          console.error('[Live2D runtime fault]', fault);
+        },
+        stopRendering: () => app?.ticker.stop(),
+      });
+      cleanupTasks.push(installRenderGuard(
+        app,
+        (cause) => faultBoundary.tripRender(cause),
+        () => {
+          if (load.isCurrent() && faultBoundary.isRenderCircuitOpen()) {
+            setRendererGeneration((generation) => generation + 1);
+          }
+        },
+      ));
       if (suspendedRef.current) app.ticker.stop();
       host.appendChild(app.view as HTMLCanvasElement);
-
-      const cleanupTasks: Array<() => void> = [];
 
       void (async () => {
         try {
@@ -293,7 +323,7 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
           // ── Parse exp3 files + populate expression store ──────────────
           const baseUrl = new URL('.', new URL(modelPath, window.location.href)).href;
           const expressionRefs = extractExpressionRefs(model);
-          await expressionController.initialise(
+          const availableExpressions = await expressionController.initialise(
             expressionRefs,
             async (path) => {
               const res = await fetch(path, { signal: load.signal });
@@ -306,7 +336,7 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
 
           // ── Publish discovered state to store ─────────────────────────
           const store = live2dStore;
-          store.getState()._setExpressionsAvailable(extractExpressionNames(model));
+          store.getState()._setExpressionsAvailable(availableExpressions);
           store.getState()._setMotionsAvailable(extractMotionGroups(model));
           store.getState()._setReady(true);
 
@@ -314,7 +344,11 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
           const unsubMotion = store.subscribe((s, prev) => {
             if (!load.isCurrent()) return;
             if (s.currentMotion?.requestId !== prev.currentMotion?.requestId && s.currentMotion) {
-              void model.motion(s.currentMotion.group, s.currentMotion.index);
+              const motion = s.currentMotion;
+              faultBoundary.captureMotion(
+                () => model.motion(motion.group, motion.index),
+                `intent:${motion.group}:${motion.index ?? 'random'}`,
+              );
             }
           });
           cleanupTasks.push(unsubMotion);
@@ -364,15 +398,24 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
           }
 
           // Start random idle motion scheduler (configurable, skips when speaking)
-          const idleMotionCount = (extractMotionGroups(model)[runtime.randomIdle.group] ?? 0) as number;
+          const motionGroups = extractMotionGroups(model);
           const stopIdleScheduler = startRandomIdleScheduler({
             playMotion: (group, index) => {
-              if (load.isCurrent()) void model.motion(group, index);
+              if (!load.isCurrent()) return;
+              faultBoundary.captureMotion(
+                () => model.motion(group, index),
+                `random-idle:${group}:${index ?? 'random'}`,
+              );
             },
-            motionCount: idleMotionCount,
-            group: runtime.randomIdle.group,
-            minDelayMs: runtime.randomIdle.minDelayMs,
-            maxDelayMs: runtime.randomIdle.maxDelayMs,
+            readConfig: () => {
+              const current = readRuntimeConfig().randomIdle;
+              return {
+                group: current.group,
+                motionCount: motionGroups[current.group] ?? 0,
+                minDelayMs: current.minDelayMs,
+                maxDelayMs: current.maxDelayMs,
+              };
+            },
             readEnabled: () => {
               const live2d = live2dStore.getState();
               return !suspendedRef.current
@@ -388,8 +431,10 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
           if (!load.isCurrent()) return;
           const err: Live2DError = {
             kind:    'model_load_failed',
+            phase:   'model_loading',
             message: (cause as Error).message ?? String(cause),
             cause,
+            recoverable: false,
           };
           setError(err);
           callbacksRef.current.onError?.(err);
@@ -413,6 +458,7 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
           app = null;
         }
         if (ownsPublishedState) {
+          renderCircuitOpenRef.current = false;
           runtime.reset();
         }
       };
@@ -424,6 +470,8 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
       expressionStore,
       speechStore,
       runtime,
+      reloadConfigKey,
+      rendererGeneration,
     ]);
 
     return (
@@ -456,16 +504,31 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
-function installRenderGuard(app: PIXI.Application): void {
+function installRenderGuard(
+  app: PIXI.Application,
+  onFailure: (cause: unknown) => void,
+  onContextRestored: () => void,
+): () => void {
   const guarded = (): void => {
     try { app.render(); }
-    catch (err) {
-      // eslint-disable-next-line no-console
-      console.error('[Live2D] pixi render error — frame skipped:', err);
-    }
+    catch (cause) { onFailure(cause); }
   };
+  const canvas = app.view as HTMLCanvasElement;
+  const onContextLost = (event: Event): void => {
+    event.preventDefault();
+    onFailure(new Error('WebGL context lost'));
+  };
+
   app.ticker.remove(app.render, app);
   app.ticker.add(guarded);
+  canvas.addEventListener('webglcontextlost', onContextLost);
+  canvas.addEventListener('webglcontextrestored', onContextRestored);
+
+  return () => {
+    app.ticker.remove(guarded);
+    canvas.removeEventListener('webglcontextlost', onContextLost);
+    canvas.removeEventListener('webglcontextrestored', onContextRestored);
+  };
 }
 
 function applyFraming(
@@ -483,11 +546,6 @@ function applyFraming(
   model.scale.set(placement.scale);
   model.x = placement.x;
   model.y = placement.y;
-}
-
-function extractExpressionNames(model: InstanceType<typeof PixiLive2DModel>): string[] {
-  const s = (model.internalModel as unknown as { settings?: { expressions?: Array<{ Name?: string }> } }).settings;
-  return (s?.expressions ?? []).map((e) => e.Name ?? '').filter((n) => n.length > 0);
 }
 
 function extractExpressionRefs(model: InstanceType<typeof PixiLive2DModel>): Array<{ Name: string; File: string }> {

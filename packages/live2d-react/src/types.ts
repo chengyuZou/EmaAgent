@@ -18,12 +18,23 @@ export type Live2DErrorKind =
   | 'cubism_core_missing'   // window.Live2DCubismCore not present at load time
   | 'model_load_failed'     // model3.json fetch / parse / texture decode failed
   | 'pixi_init_failed'      // PIXI Application could not be created (no WebGL?)
+  | 'motion_failed'
+  | 'render_failed'
   | 'unknown';
+
+export type Live2DErrorPhase =
+  | 'initialization'
+  | 'model_loading'
+  | 'expression_loading'
+  | 'motion'
+  | 'rendering';
 
 export interface Live2DError {
   kind:    Live2DErrorKind;
   message: string;
   cause?:  unknown;
+  phase?: Live2DErrorPhase;
+  recoverable?: boolean;
 }
 
 /**

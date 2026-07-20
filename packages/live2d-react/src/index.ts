@@ -30,6 +30,7 @@ export type {
 export type {
   Live2DFraming,
   Live2DErrorKind,
+  Live2DErrorPhase,
   Live2DError,
   Live2DStageHandle,
 } from './types.js';

@@ -1,4 +1,4 @@
-// ── Mouse eye tracking plugin ───────────────────────────────────────────────
+// 根据鼠标相对舞台的位置，以跨帧率一致的速度驱动 Live2D 视线参数。
 //
 // Pre-stage pipeline plugin. Uses window-level mousemove (not canvas-level)
 // because Tauri's drag region div sits above the canvas and blocks all
@@ -8,12 +8,13 @@
 // When cursor leaves canvas bounds, eyes glide back to center.
 
 import type { MotionPlugin } from './motion-manager.js';
+import { frameRateIndependentFactor } from './frame-timing.js';
 
 // ── Tuning ───────────────────────────────────────────────────────────────────
 
 const EYE_RANGE_X = 0.35;
 const EYE_RANGE_Y = 0.3;
-const SMOOTH      = 0.08;
+const SMOOTH_AT_60_FPS = 0.08;
 
 // ── Factory ──────────────────────────────────────────────────────────────────
 
@@ -31,16 +32,22 @@ export function createMouseEyeTrackPlugin(
 
   let bound = false;
   let onMouseMove: ((e: MouseEvent) => void) | null = null;
+  let onGeometryChange: (() => void) | null = null;
+  let resizeObserver: ResizeObserver | null = null;
+  let canvasBounds: DOMRect | null = null;
+
+  function refreshCanvasBounds(): void {
+    canvasBounds = getCanvas()?.getBoundingClientRect() ?? null;
+  }
 
   function bind(): void {
     if (bound) return;
     bound = true;
+    refreshCanvasBounds();
 
     onMouseMove = (e: MouseEvent) => {
-      const canvas = getCanvas();
-      if (!canvas) return;
-
-      const rect = canvas.getBoundingClientRect();
+      const rect = canvasBounds;
+      if (!rect || rect.width <= 0 || rect.height <= 0) return;
       mouseInBounds =
         e.clientX >= rect.left && e.clientX <= rect.right &&
         e.clientY >= rect.top  && e.clientY <= rect.bottom;
@@ -57,11 +64,28 @@ export function createMouseEyeTrackPlugin(
     };
 
     window.addEventListener('mousemove', onMouseMove);
+    onGeometryChange = refreshCanvasBounds;
+    window.addEventListener('resize', onGeometryChange);
+    window.addEventListener('scroll', onGeometryChange, true);
+
+    const canvas = getCanvas();
+    if (canvas && typeof ResizeObserver !== 'undefined') {
+      resizeObserver = new ResizeObserver(refreshCanvasBounds);
+      resizeObserver.observe(canvas);
+    }
   }
 
   function dispose(): void {
     if (onMouseMove) window.removeEventListener('mousemove', onMouseMove);
+    if (onGeometryChange) {
+      window.removeEventListener('resize', onGeometryChange);
+      window.removeEventListener('scroll', onGeometryChange, true);
+    }
+    resizeObserver?.disconnect();
+    resizeObserver = null;
+    canvasBounds = null;
     onMouseMove = null;
+    onGeometryChange = null;
     bound = false;
   }
 
@@ -78,13 +102,11 @@ export function createMouseEyeTrackPlugin(
       mouseInBounds = false;
     }
 
-    if (mouseInBounds) {
-      currentX += (targetX - currentX) * SMOOTH;
-      currentY += (targetY - currentY) * SMOOTH;
-    } else {
-      currentX += (0 - currentX) * SMOOTH;
-      currentY += (0 - currentY) * SMOOTH;
-    }
+    const smoothing = frameRateIndependentFactor(SMOOTH_AT_60_FPS, ctx.timing.deltaMs);
+    const destinationX = mouseInBounds ? targetX : 0;
+    const destinationY = mouseInBounds ? targetY : 0;
+    currentX += (destinationX - currentX) * smoothing;
+    currentY += (destinationY - currentY) * smoothing;
 
     ctx.model.setParameterValueById('ParamEyeBallX', currentX);
     ctx.model.setParameterValueById('ParamEyeBallY', currentY);

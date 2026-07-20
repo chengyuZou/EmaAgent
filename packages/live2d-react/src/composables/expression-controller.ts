@@ -66,7 +66,7 @@ export interface ExpressionController {
     expressionRefs: Model3ExpressionRef[],
     readExpFile:   (path: string) => Promise<string>,
     modelBaseUrl?: string,
-  ): Promise<void>;
+  ): Promise<string[]>;
 
   /** 在原生 motion/blink 前清除上一帧 expression 写入。 */
   prepareFrame(coreModel: CoreModelLike): void;
@@ -108,46 +108,41 @@ export function createExpressionController(opts: ExpressionControllerOptions): E
       const groups: ExpressionGroupDefinition[] = [];
       const entryMap = new Map<string, ExpressionEntry>();
 
-      for (const ref of expressionRefs) {
-        try {
-          const path = modelBaseUrl ? joinUrl(modelBaseUrl, ref.File) : ref.File;
-          const raw  = await readExpFile(path);
-          const exp3: Exp3Json = JSON.parse(raw);
-
-          const groupParams: ExpressionGroupDefinition['parameters'] = [];
-
-          for (const param of exp3.Parameters) {
-            const blend = normaliseBlend(param.Blend);
-            groupParams.push({
-              parameterId: param.Id,
-              blend,
-              value:       param.Value,
-            });
-
-            if (!entryMap.has(param.Id)) {
-              const modelDefault = readModelDefault(opts.getCoreModel(), param.Id);
-              entryMap.set(param.Id, {
-                name:         param.Id,
-                parameterId:  param.Id,
-                blend,
-                currentValue: modelDefault,
-                defaultValue: modelDefault,
-                modelDefault,
-                targetValue:  param.Value,
-              });
-            } else if (param.Value !== 0) {
-              // Prefer non-zero activation value (first-write wins for zero,
-              // but later non-zero overrides). Matches AIRI semantics.
-              const existing = entryMap.get(param.Id)!;
-              if (existing.targetValue === 0) existing.targetValue = param.Value;
-            }
-          }
-
-          groups.push({ name: ref.Name, parameters: groupParams });
-        } catch (err) {
+      // 表情文件彼此独立，最多同时读取四个，避免大模型串行等待或瞬间打爆资源协议。
+      const loaded = await loadExpressions(expressionRefs, readExpFile, modelBaseUrl, 4);
+      for (const result of loaded) {
+        if (!result.ok) {
           // eslint-disable-next-line no-console
-          console.warn(`[expression-controller] failed to load exp3 "${ref.Name}" (${ref.File}):`, err);
+          console.warn(
+            `[expression-controller] failed to load exp3 "${result.ref.Name}" (${result.ref.File}):`,
+            result.error,
+          );
+          continue;
         }
+
+        const groupParams: ExpressionGroupDefinition['parameters'] = [];
+        for (const param of result.expression.Parameters) {
+          const blend = normaliseBlend(param.Blend);
+          groupParams.push({ parameterId: param.Id, blend, value: param.Value });
+
+          if (!entryMap.has(param.Id)) {
+            const modelDefault = readModelDefault(opts.getCoreModel(), param.Id);
+            entryMap.set(param.Id, {
+              name:         param.Id,
+              parameterId:  param.Id,
+              blend,
+              currentValue: modelDefault,
+              defaultValue: modelDefault,
+              modelDefault,
+              targetValue:  param.Value,
+            });
+          } else if (param.Value !== 0) {
+            const existing = entryMap.get(param.Id)!;
+            if (existing.targetValue === 0) existing.targetValue = param.Value;
+          }
+        }
+
+        groups.push({ name: result.ref.Name, parameters: groupParams });
       }
 
       opts.expressionStore.getState().registerExpressions(
@@ -155,6 +150,7 @@ export function createExpressionController(opts: ExpressionControllerOptions): E
         groups,
         Array.from(entryMap.values()),
       );
+      return groups.map((group) => group.name);
     },
 
     prepareFrame(coreModel) {
@@ -201,6 +197,88 @@ function normaliseBlend(raw: string): ExpressionBlendMode {
     case 'Multiply': return 'Multiply';
     default:         return 'Overwrite';
   }
+}
+
+interface LoadedExpression {
+  ok: true;
+  ref: Model3ExpressionRef;
+  expression: Exp3Json;
+}
+
+interface FailedExpression {
+  ok: false;
+  ref: Model3ExpressionRef;
+  error: unknown;
+}
+
+type ExpressionLoadResult = LoadedExpression | FailedExpression;
+
+async function loadExpressions(
+  refs: Model3ExpressionRef[],
+  readExpFile: (path: string) => Promise<string>,
+  modelBaseUrl: string | undefined,
+  concurrency: number,
+): Promise<ExpressionLoadResult[]> {
+  const results = new Array<ExpressionLoadResult>(refs.length);
+  let nextIndex = 0;
+
+  async function worker(): Promise<void> {
+    while (nextIndex < refs.length) {
+      const index = nextIndex++;
+      const ref = refs[index]!;
+      try {
+        validateExpressionRef(ref);
+        const path = modelBaseUrl ? joinUrl(modelBaseUrl, ref.File) : ref.File;
+        const raw = await readExpFile(path);
+        results[index] = { ok: true, ref, expression: parseExp3(raw) };
+      } catch (error) {
+        results[index] = { ok: false, ref, error };
+      }
+    }
+  }
+
+  const workerCount = Math.min(Math.max(1, concurrency), refs.length);
+  await Promise.all(Array.from({ length: workerCount }, () => worker()));
+  return results;
+}
+
+function validateExpressionRef(ref: Model3ExpressionRef): void {
+  if (!ref.Name?.trim() || !ref.File?.trim()) {
+    throw new Error('exp3 reference requires non-empty Name and File');
+  }
+}
+
+function parseExp3(raw: string): Exp3Json {
+  const value: unknown = JSON.parse(raw);
+  if (!isRecord(value) || !Array.isArray(value.Parameters)) {
+    throw new Error('exp3 Parameters must be an array');
+  }
+
+  const parameters = value.Parameters.map((parameter, index): Exp3Parameter => {
+    if (!isRecord(parameter)) throw new Error(`exp3 Parameters[${index}] must be an object`);
+    const id = typeof parameter.Id === 'string' ? parameter.Id.trim() : '';
+    if (!id) throw new Error(`exp3 Parameters[${index}].Id must be a non-empty string`);
+    if (typeof parameter.Value !== 'number' || !Number.isFinite(parameter.Value)) {
+      throw new Error(`exp3 Parameters[${index}].Value must be finite`);
+    }
+    if (!isBlendMode(parameter.Blend)) {
+      throw new Error(`exp3 Parameters[${index}].Blend is unsupported`);
+    }
+    return { Id: id, Value: parameter.Value, Blend: parameter.Blend };
+  });
+
+  return {
+    Type: typeof value.Type === 'string' ? value.Type : 'Live2D Expression',
+    Parameters: parameters,
+  };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isBlendMode(value: unknown): value is Exp3Parameter['Blend'] {
+  return value === 'Add' || value === 'Multiply' || value === 'Overwrite';
 }
 
 function readModelDefault(model: CoreModelLike | undefined, paramId: string): number {
