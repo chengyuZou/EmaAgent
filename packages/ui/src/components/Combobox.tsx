@@ -1,3 +1,4 @@
+// 提供支持筛选、键盘导航和读屏状态同步的可搜索单选组件。
 import { useState, useRef, useEffect, useCallback, useId } from 'react';
 import { cn } from '../utils/cn.js';
 import { Popover } from './Popover.js';
@@ -30,6 +31,14 @@ export interface ComboboxOption {
 /** 第一个未禁用选项的下标; 没有可用项返回 -1。 */
 export function firstEnabledIndex(options: ComboboxOption[]): number {
   return options.findIndex((o) => !o.disabled);
+}
+
+/** 最后一个未禁用选项的下标; 没有可用项返回 -1。 */
+export function lastEnabledIndex(options: ComboboxOption[]): number {
+  for (let index = options.length - 1; index >= 0; index -= 1) {
+    if (!options[index]!.disabled) return index;
+  }
+  return -1;
 }
 
 /** 从 fromIdx 沿 dir(1|-1) 环形移动到下一个未禁用选项; 没有可用项返回 -1。 */
@@ -73,7 +82,7 @@ export function Combobox({
 }: ComboboxProps): React.JSX.Element {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
-  const [activeIdx, setActiveIdx] = useState(0);
+  const [activeIdx, setActiveIdx] = useState(() => firstEnabledIndex(options));
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef  = useRef<HTMLUListElement>(null);
 
@@ -83,18 +92,29 @@ export function Combobox({
   );
 
   const filtered = query ? options.filter((o) => match(query, o)) : options;
-  const activeOption = deriveActiveIndex(filtered, activeIdx);
+  const safeIdx = deriveActiveIndex(filtered, activeIdx);
   const selectedLabel = options.find((o) => o.value === value)?.label ?? '';
 
   const uid = useId();
   const listboxId = `${uid}-listbox`;
-  const optionId = (i: number): string => `${uid}-option-${i}`;
+  const optionId = (option: ComboboxOption): string =>
+    `${uid}-option-${encodeURIComponent(option.value)}`;
+
+  const initialActiveIndex = useCallback((): number => {
+    const selectedIndex = filtered.findIndex((option) => option.value === value && !option.disabled);
+    return selectedIndex >= 0 ? selectedIndex : firstEnabledIndex(filtered);
+  }, [filtered, value]);
+
+  const openList = useCallback(() => {
+    setOpen(true);
+    setActiveIdx(initialActiveIndex());
+  }, [initialActiveIndex]);
 
   const reset = useCallback(() => {
     setQuery('');
-    setActiveIdx(0);
+    setActiveIdx(firstEnabledIndex(options));
     setOpen(false);
-  }, []);
+  }, [options]);
 
   const select = useCallback((opt: ComboboxOption) => {
     onChange(opt.value);
@@ -104,19 +124,51 @@ export function Combobox({
 
   const onKeyDown = (e: React.KeyboardEvent): void => {
     switch (e.key) {
-      case 'ArrowDown': e.preventDefault(); if (!open) { setOpen(true); return; } setActiveIdx((i) => Math.min(i + 1, filtered.length - 1)); break;
-      case 'ArrowUp':   e.preventDefault(); setActiveIdx((i) => Math.max(i - 1, 0)); break;
-      case 'Enter':     e.preventDefault(); if (!open) { setOpen(true); return; } { const c = filtered[safeIdx]; if (c && !c.disabled) select(c); } break;
-      case 'Escape':    reset(); break;
+      case 'ArrowDown':
+        e.preventDefault();
+        if (!open) {
+          setOpen(true);
+          setActiveIdx(firstEnabledIndex(filtered));
+          return;
+        }
+        setActiveIdx(nextEnabledIndex(filtered, safeIdx, 1));
+        break;
+      case 'ArrowUp':
+        e.preventDefault();
+        if (!open) {
+          setOpen(true);
+          setActiveIdx(lastEnabledIndex(filtered));
+          return;
+        }
+        setActiveIdx(nextEnabledIndex(filtered, safeIdx, -1));
+        break;
+      case 'Enter': {
+        e.preventDefault();
+        if (!open) {
+          openList();
+          return;
+        }
+        const candidate = filtered[safeIdx];
+        if (candidate && !candidate.disabled) select(candidate);
+        break;
+      }
+      case 'Escape':
+        if (open) {
+          e.preventDefault();
+          reset();
+        }
+        break;
     }
   };
 
   useEffect(() => {
     if (listRef.current) {
-      const item = listRef.current.children[safeIdx] as HTMLLIElement | undefined;
-      item?.scrollIntoView({ block: 'nearest' });
+      const item = safeIdx >= 0
+        ? listRef.current.children[safeIdx] as HTMLLIElement | undefined
+        : undefined;
+      item?.scrollIntoView?.({ block: 'nearest' });
     }
-  }, [safeIdx]);
+  }, [open, safeIdx]);
 
   const trigger = (
     <input
@@ -126,13 +178,25 @@ export function Combobox({
       aria-expanded={open}
       aria-haspopup="listbox"
       aria-autocomplete="list"
+      aria-controls={listboxId}
+      aria-activedescendant={
+        open && safeIdx >= 0 ? optionId(filtered[safeIdx]!) : undefined
+      }
       disabled={disabled}
       value={open ? query : selectedLabel}
       placeholder={open ? '输入筛选…' : placeholder}
-      onFocus={() => setOpen(true)}
-      onChange={(e) => { setQuery(e.target.value); setOpen(true); setActiveIdx(0); }}
+      onFocus={openList}
+      onChange={(e) => {
+        const nextQuery = e.target.value;
+        const nextFiltered = nextQuery
+          ? options.filter((option) => match(nextQuery, option))
+          : options;
+        setQuery(nextQuery);
+        setOpen(true);
+        setActiveIdx(firstEnabledIndex(nextFiltered));
+      }}
       onKeyDown={onKeyDown}
-      onClick={() => setOpen(true)}
+      onClick={openList}
       className={cn(
         'w-full rounded-md border px-3 py-2 text-sm outline-none transition-ema',
         'bg-[var(--ema-surface-2)] text-[var(--ema-text-primary)] placeholder:text-[var(--ema-text-tertiary)]',
@@ -147,7 +211,10 @@ export function Combobox({
   return (
     <Popover
       open={open}
-      onOpenChange={(o) => { setOpen(o); if (!o) reset(); }}
+      onOpenChange={(nextOpen) => {
+        if (nextOpen) openList();
+        else reset();
+      }}
       trigger={trigger}
       side="bottom"
       align="start"
@@ -159,10 +226,11 @@ export function Combobox({
         {filtered.length === 0 ? (
           <p className="px-3 py-4 text-center text-xs text-[var(--ema-text-tertiary)]">无匹配结果</p>
         ) : (
-          <ul ref={listRef} role="listbox" className="flex flex-col gap-0.5">
+          <ul id={listboxId} ref={listRef} role="listbox" className="flex flex-col gap-0.5">
             {filtered.map((opt, i) => (
               <li
                 key={opt.value}
+                id={optionId(opt)}
                 role="option"
                 aria-selected={opt.value === value}
                 aria-disabled={opt.disabled || undefined}
@@ -176,7 +244,9 @@ export function Combobox({
                   opt.disabled && 'cursor-not-allowed opacity-40',
                 )}
                 onClick={() => !opt.disabled && select(opt)}
-                onMouseEnter={() => setActiveIdx(i)}
+                onMouseEnter={() => {
+                  if (!opt.disabled) setActiveIdx(i);
+                }}
               >
                 <span className="truncate">{opt.label}</span>
                 {opt.hint && <span className="text-xs text-[var(--ema-text-tertiary)] truncate">{opt.hint}</span>}

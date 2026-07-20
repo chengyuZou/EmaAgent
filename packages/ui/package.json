@@ -33,7 +33,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "ladle": "ladle serve",
     "ladle:build": "ladle build",
-    "test": "vitest run --passWithNoTests",
+    "test": "vitest run --environment jsdom --passWithNoTests",
     "clean": "rimraf dist"
   },
   "peerDependencies": {
@@ -65,6 +65,7 @@
     "@unocss/preset-icons": "^66.0.0",
     "@unocss/preset-typography": "^66.0.0",
     "@unocss/preset-wind3": "^66.0.0",
+    "jsdom": "26.1.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "rimraf": "^5.0.0",
