@@ -1,13 +1,13 @@
 // 将摘要、恢复上下文和近期消息收敛到目标模型的硬 Token 预算内。
 
-import type { LlmMessage } from '@ema-agent/llm';
+import type { Message as ModelMessage } from '@ema-agent/llm';
 import type { TurnMode } from '@ema-agent/contracts';
 import { estimateMessagesTokens } from '@ema-agent/token';
 
 const TRUNCATED_MARKER = '\n\n[摘要已按当前模型上下文预算截断]';
 
 export interface FittedCompactionContext {
-  messages: LlmMessage[];
+  messages: ModelMessage[];
   summary: string;
   afterTokens: number;
   restoreDropped: boolean;
@@ -16,14 +16,14 @@ export interface FittedCompactionContext {
 
 export function fitCompactionContext(args: {
   summary: string;
-  restore: LlmMessage[];
-  tail: LlmMessage[];
+  restore: ModelMessage[];
+  tail: ModelMessage[];
   mode: TurnMode;
   tokenLimit: number;
   fixedTokens?: number;
 }): FittedCompactionContext | null {
   const fixedTokens = Math.max(0, args.fixedTokens ?? 0);
-  const estimateTotal = (messages: LlmMessage[]): number =>
+  const estimateTotal = (messages: ModelMessage[]): number =>
     fixedTokens + estimateMessagesTokens(messages);
   if (args.tokenLimit <= fixedTokens || estimateTotal(args.tail) >= args.tokenLimit) return null;
 
@@ -78,10 +78,10 @@ export function fitCompactionContext(args: {
 
 function buildCandidate(
   summary: string,
-  restore: LlmMessage[],
-  tail: LlmMessage[],
+  restore: ModelMessage[],
+  tail: ModelMessage[],
   mode: TurnMode,
-): LlmMessage[] {
+): ModelMessage[] {
   return [
     {
       role: 'user',

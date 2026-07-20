@@ -1,4 +1,4 @@
-import type { UsageContext } from '@ema-agent/contracts';
+import type { UsageContext } from '@ema-agent/usage';
 import type { TtsProtocol } from '@ema-agent/provider';
 
 // 重新导出 TtsProtocol，调用方无需跨包拼装 Provider 协议类型。

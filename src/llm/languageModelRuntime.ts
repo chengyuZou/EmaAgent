@@ -1,16 +1,16 @@
 // 运行语言模型调用，并协调 Provider 快照、请求准备、流生命周期与用量记录。
 import { randomUUID } from 'node:crypto';
 import { OpenAiAdapter }         from './adapters/openai.js';
-import { OpenAiResponsesAdapter } from './adapters/openai-responses.js';
+import { OpenAiResponsesAdapter } from './adapters/openaiResponses.js';
 import { AnthropicAdapter }       from './adapters/anthropic.js';
 import { GeminiAdapter }          from './adapters/gemini.js';
 import type { LlmAdapter }        from './adapters/base.js';
-import { LlmStreamRuntime } from './stream-runtime.js';
+import { LlmStreamRuntime } from './streamRuntime.js';
 import { validateContentParts } from './validate.js';
 import type { UnsupportedPart } from './validate.js';
 import type {
   ProviderConfig,
-  LlmMessage,
+  Message,
   LlmRequest,
   LlmStreamChunk,
   LlmCompletion,
@@ -21,22 +21,22 @@ import type {
   LlmTokenUsage,
 } from './types.js';
 import type { LanguageModel } from './languageModel.js';
-import type { UsageRecord, UsageRecorder } from '@ema-agent/contracts';
+import type { UsageRecord, UsageRecorder } from '@ema-agent/usage';
 import type { LlmProtocol } from '@ema-agent/provider';
-import type { ModelsDevCatalog } from './models-dev-catalog.js';
+import type { ModelsDevCatalog } from './modelsDevCatalog.js';
 import {
   capabilitiesFromCatalog,
   capabilitiesFromManualVision,
   unknownModelCapabilities,
   type ModelCapabilitySnapshot,
-} from './model-capabilities.js';
+} from './modelCapabilities.js';
 import {
   prepareHistoricalMessageView,
   validateCurrentContent,
   type CompatibleMessageView,
-} from './message-compatibility.js';
+} from './messageCompatibility.js';
 import { LlmModelCapabilityError } from './errors.js';
-import { createCompatibilityRecovery } from './compatibility-recovery.js';
+import { createCompatibilityRecovery } from './compatibilityRecovery.js';
 import { LlmRequestPreparer } from './llmRequestPreparer.js';
 import { ProviderRuntimeRegistry } from './providerRuntimeRegistry.js';
 
@@ -304,7 +304,7 @@ export class LanguageModelRuntime implements LanguageModel {
   prepareHistoricalMessages(
     providerId: string,
     model: string,
-    messages: readonly LlmMessage[],
+    messages: readonly Message[],
   ): CompatibleMessageView {
     return prepareHistoricalMessageView(messages, this.capabilitiesFor(providerId, model));
   }

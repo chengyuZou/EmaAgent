@@ -1,6 +1,6 @@
 // 测试 STT 的音频字节数、调用身份和稳定错误码会写入统一用量账本。
 import { describe, expect, it } from 'vitest';
-import type { UsageRecord } from '@ema-agent/contracts';
+import type { UsageRecord } from '@ema-agent/usage';
 import { SttClient } from '../src/service.js';
 import type { SttAdapter, SttProviderConfig } from '../src/types.js';
 

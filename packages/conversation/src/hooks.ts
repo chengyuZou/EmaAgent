@@ -2,12 +2,12 @@
 
 import type { HookBus } from '@ema-agent/hook';
 import type { EmaStreamEvent, NarrativeTimelineRecall, SessionId, TurnId } from '@ema-agent/contracts';
-import type { LlmMessage } from '@ema-agent/contracts';
+import type { Message as ModelMessage } from '@ema-agent/llm';
 import { NarrativeClientError } from '@ema-agent/narrative-client';
 import type { ConversationDeps } from './types.js';
 
 interface NarrativeRecallContext {
-  message: LlmMessage;
+  message: ModelMessage;
   timelines: NarrativeTimelineRecall[];
 }
 

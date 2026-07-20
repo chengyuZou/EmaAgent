@@ -8,7 +8,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { LanguageModelRuntime } from '../languageModelRuntime.js';
-import type { AssistantBlock, LlmMessage, LlmStreamChunk, LlmToolDef, ProviderConfig } from '../types.js';
+import type { AssistantBlock, LlmStreamChunk, LlmToolDef, Message, ProviderConfig } from '../types.js';
 
 const API_KEY = process.env['DEEPSEEK_API_KEY'];
 const liveIt = API_KEY ? it : it.skip;
@@ -198,7 +198,7 @@ function textFromBlocks(blocks: AssistantBlock[]): string {
     .join('');
 }
 
-const TEXT_MESSAGES: LlmMessage[] = [
+const TEXT_MESSAGES: Message[] = [
   {
     role: 'system',
     content: 'You are a streaming transport smoke test. Answer with concise plain text.',
@@ -209,7 +209,7 @@ const TEXT_MESSAGES: LlmMessage[] = [
   },
 ];
 
-const PARALLEL_TOOL_MESSAGES: LlmMessage[] = [
+const PARALLEL_TOOL_MESSAGES: Message[] = [
   {
     role: 'system',
     content:
@@ -323,7 +323,7 @@ describe('DeepSeek live protocol diff', () => {
   }, LIVE_TIMEOUT_MS * 2);
 
   liveIt('runs a two-turn OpenAI-compatible call with previous assistant blocks', async () => {
-    const firstMessages: LlmMessage[] = [
+    const firstMessages: Message[] = [
       {
         role: 'system',
         content: 'You are a deterministic multi-turn smoke test. Keep replies short.',

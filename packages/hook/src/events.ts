@@ -2,14 +2,16 @@ import type {
   AssistantBlock,
   CompactionId,
   ErrorCode,
-  LlmCallId,
-  LlmMessage,
-  LlmTokenUsage,
   MessageId,
   NarrativeTimelineRecall,
   ToolCallId,
   TurnMode,
 } from '@ema-agent/contracts';
+import type {
+  LlmCallId,
+  LlmTokenUsage,
+  Message as ModelMessage,
+} from '@ema-agent/llm';
 
 /**
  * 所有 hook 事件都是 turn 级别的 engine 内部生命周期事件。
@@ -80,7 +82,7 @@ export interface HookPayload {
     /** 逻辑 LLM 调用 ID；Provider 内部重试必须保持同一个 ID。 */
     llmCallId: LlmCallId;
     /** LLM 请求的唯一消息事实来源；system prompt 必须是其中的 system message。 */
-    messages: LlmMessage[];
+    messages: ModelMessage[];
     /** 当前 Turn 的业务模式。 */
     mode: TurnMode;
     /** 当前用户输入的可读文本；多模态输入只提取 text part。 */

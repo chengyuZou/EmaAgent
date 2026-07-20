@@ -1,6 +1,6 @@
 // 测试 Agent 循环的终止保护、LLM 调用标识和工具上下文预算接线。
 import { describe, expect, it, vi } from 'vitest';
-import type { LlmCallId, LlmMessage } from '@ema-agent/contracts';
+import type { LlmCallId, Message as ModelMessage } from '@ema-agent/llm';
 import type { AgentPolicy } from '../src/policy.js';
 import type { TurnToolExecutor } from '../src/tool-executor.js';
 import { agentLoop } from '../src/loop.js';
@@ -73,7 +73,7 @@ describe('agentLoop LLM 生命周期', () => {
         required: ['path'],
       },
     }];
-    const compactMessages = vi.fn(async (messages: LlmMessage[]) => messages);
+    const compactMessages = vi.fn(async (messages: ModelMessage[]) => messages);
     const stream = vi.fn(() => (async function* () {
       yield { type: 'done' as const, stopReason: 'end_turn' as const };
     })());
@@ -170,7 +170,7 @@ describe('agentLoop LLM 生命周期', () => {
     const before: Array<{
       iteration: number;
       llmCallId: LlmCallId;
-      messages: LlmMessage[];
+      messages: ModelMessage[];
     }> = [];
     const completed: Array<{
       iteration: number;

@@ -10,4 +10,3 @@ export * from './capabilities.js';
 export * from './kb.js';
 export * from './agents.js';
 export * from './session-ownership.js';
-export * from './usage.js';

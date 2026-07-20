@@ -1,0 +1,24 @@
+{
+  "name": "@ema-agent/usage",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "clean": "rimraf dist"
+  },
+  "devDependencies": {
+    "rimraf": "^5.0.0",
+    "typescript": "^5.9.3"
+  }
+}

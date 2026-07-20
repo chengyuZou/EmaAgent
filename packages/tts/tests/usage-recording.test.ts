@@ -1,6 +1,6 @@
 // 测试 TTS 以清洗后字符数计量，并区分流式成功、Provider 错误和不完整终态。
 import { describe, expect, it } from 'vitest';
-import type { UsageRecord } from '@ema-agent/contracts';
+import type { UsageRecord } from '@ema-agent/usage';
 import { TtsClient } from '../src/service.js';
 import type { TtsAdapter, TtsProviderConfig, TtsRequest, TtsVoiceRef } from '../src/types.js';
 

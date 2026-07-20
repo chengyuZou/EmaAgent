@@ -17,7 +17,7 @@ import { GptSoVitsTtsAdapter } from './adapters/gpt-sovits-tts.js';
 import { DashscopeTtsAdapter } from './adapters/dashscope-tts.js';
 
 import { filterSentenceForTts } from './streaming/text-filter.js';
-import type { UsageRecord, UsageRecorder } from '@ema-agent/contracts';
+import type { UsageRecord, UsageRecorder } from '@ema-agent/usage';
 
 export interface TtsClientOptions {
   usageRecorder?: UsageRecorder;

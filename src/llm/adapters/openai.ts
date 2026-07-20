@@ -4,7 +4,7 @@ import type { LlmAdapter } from './base.js';
 import type {
   LlmRequest,
   LlmStreamChunk,
-  LlmMessage,
+  Message,
   LlmContentPart,
   LlmToolDef,
   StopReason,
@@ -20,7 +20,7 @@ import {
   throwIfAbortError,
 } from '../errors.js';
 import { createLlmTokenUsage } from '../usage.js';
-import type { ToolResultBlock } from '@ema-agent/contracts';
+import type { ToolResultBlock } from '../message.js';
 
 function isContextWindowError(err: unknown): boolean {
   const msg = (err instanceof Error ? err.message : String(err)).toLowerCase();
@@ -72,7 +72,7 @@ function applyCompatThinkingParams(
 }
 
 /**
- * 把归一化 LlmMessage[] 转成 OpenAI ChatCompletion 线路格式。
+ * 把归一化 Message[] 转成 OpenAI ChatCompletion 线路格式。
  *
  * OpenAI 仍用扁平协议:
  * - assistant:{ content: string | null, tool_calls: [...] }
@@ -80,7 +80,7 @@ function applyCompatThinkingParams(
  *
  * 在此把我们的 block 数组拆回扁平形式。
  */
-function toOpenAiMessages(messages: LlmMessage[]): OpenAI.ChatCompletionMessageParam[] {
+function toOpenAiMessages(messages: Message[]): OpenAI.ChatCompletionMessageParam[] {
   const out: OpenAI.ChatCompletionMessageParam[] = [];
 
   for (const msg of messages) {

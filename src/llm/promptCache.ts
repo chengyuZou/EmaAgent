@@ -1,9 +1,10 @@
-// 规范化工具定义并计算稳定的 Prompt 前缀指纹，用于诊断 Provider KV Cache。
+// 规范化工具定义并计算稳定的 Prompt 前缀指纹，供 Provider KV Cache 诊断使用。
 import { createHash } from 'node:crypto';
-import type { LlmMessage, LlmToolDef } from './types.js';
+import type { Message } from './message.js';
+import type { LlmToolDef } from './types.js';
 
 interface PromptPrefixInput {
-  messages: readonly LlmMessage[];
+  messages: readonly Message[];
   tools?: readonly LlmToolDef[];
 }
 

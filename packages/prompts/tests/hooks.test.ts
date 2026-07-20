@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import type { CharacterCardId, LlmCallId, SessionId, TurnId } from '@ema-agent/contracts';
+import type { CharacterCardId, SessionId, TurnId } from '@ema-agent/contracts';
 import { HookBus } from '@ema-agent/hook';
+import type { LlmCallId } from '@ema-agent/llm';
 import { registerPromptsHooks } from '../src/hooks.js';
 
 const sessionId = 'session-prompts' as SessionId;

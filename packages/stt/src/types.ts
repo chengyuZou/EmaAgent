@@ -1,4 +1,4 @@
-import type { UsageContext } from '@ema-agent/contracts';
+import type { UsageContext } from '@ema-agent/usage';
 import type { SttProtocol } from '@ema-agent/provider';
 
 // 重新导出 protocol 枚举,消费者只从此包 import

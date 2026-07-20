@@ -1,4 +1,4 @@
-// 在 Provider 明确拒绝可选参数时进行有界降级，不删除用户消息或附件。
+// 在 Provider 明确拒绝可选参数时执行有界降级，不删除用户消息或附件。
 import type { LlmAdapter } from './adapters/base.js';
 import type { LlmRequest, LlmStreamChunk } from './types.js';
 

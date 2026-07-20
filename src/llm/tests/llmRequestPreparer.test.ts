@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import { LlmRequestPreparer } from '../llmRequestPreparer.js';
 import { LlmModelCapabilityError } from '../errors.js';
-import type { ModelCapabilitySnapshot } from '../model-capabilities.js';
+import type { ModelCapabilitySnapshot } from '../modelCapabilities.js';
 import type { LlmRequest } from '../types.js';
 
 function capabilities(overrides: Partial<ModelCapabilitySnapshot> = {}): ModelCapabilitySnapshot {

@@ -1,10 +1,10 @@
-// 把 Ema 的统一 LLM 请求和 OpenAI Responses 流式协议相互转换。
+// 把 Ema 的统一 LLM 请求与 OpenAI Responses 流式协议相互转换。
 import OpenAI from 'openai';
 import type { LlmAdapter } from './base.js';
 import type {
   LlmRequest,
   LlmStreamChunk,
-  LlmMessage,
+  Message,
   LlmToolDef,
   StopReason,
   ProviderConfig,
@@ -20,7 +20,7 @@ import {
   throwIfAbortError,
 } from '../errors.js';
 import { createLlmTokenUsage } from '../usage.js';
-import type { ToolResultBlock, MessageContentPart } from '@ema-agent/contracts';
+import type { ContentPart, ToolResultBlock } from '../message.js';
 
 // ── 类型(从 openai SDK 命名空间收窄) ────────────────────────────────────────
 
@@ -34,11 +34,11 @@ type ResponseStreamEvent = OpenAI.Responses.ResponseStreamEvent;
 // ── 消息转换 ────────────────────────────────────────────────────────────────
 
 /**
- * 把单个 MessageContentPart 映射成 Responses API input content item。
+ * 把单个 ContentPart 映射成 Responses API input content item。
  * 不支持的类型(audio)返回 null。
  */
 function mediaPartToResponsesContent(
-  part: MessageContentPart,
+  part: ContentPart,
 ): OpenAI.Responses.ResponseInputContent | null {
   switch (part.type) {
     case 'text':
@@ -72,7 +72,7 @@ function mediaPartToResponsesContent(
 }
 
 /**
- * 把归一化 LlmMessage[] 转成 Responses API input 格式。
+ * 把归一化 Message[] 转成 Responses API input 格式。
  *
  * 与 Chat Completions 的关键差异:
  * 1. `system` 消息 -> `instructions` 字符串参数(多条用 \n\n 合并)。
@@ -82,7 +82,7 @@ function mediaPartToResponsesContent(
  *    (与 Anthropic 不同,无需往返。)
  */
 function toResponsesInput(
-  msgs: LlmMessage[],
+  msgs: Message[],
 ): { instructions: string | undefined; input: ResponseInput } {
   const input: ResponseInputItem[] = [];
   let instructions: string | undefined;
@@ -126,7 +126,7 @@ function toResponsesInput(
             output,
           } as OpenAI.Responses.ResponseInputItem.FunctionCallOutput);
         } else {
-          const mapped = mediaPartToResponsesContent(block as MessageContentPart);
+          const mapped = mediaPartToResponsesContent(block as ContentPart);
           if (mapped) contentParts.push(mapped);
         }
       }

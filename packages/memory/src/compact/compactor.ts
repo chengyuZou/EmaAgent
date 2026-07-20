@@ -8,7 +8,7 @@ import {
   type TurnMode,
   type MessageBlocks,
 } from '@ema-agent/contracts';
-import type { LlmMessage, LlmToolDef } from '@ema-agent/llm';
+import type { LlmToolDef, Message as ModelMessage } from '@ema-agent/llm';
 import { estimateLlmInputTokens } from '@ema-agent/token';
 import type { MemoryDeps } from '../deps.js';
 import type { CompactResult, MemorySettings } from '../types.js';
@@ -24,7 +24,7 @@ export interface CompactionArgs {
   sessionId:           SessionId;
   turnId:              TurnId;
   mode:                TurnMode;
-  messages:            LlmMessage[];
+  messages:            ModelMessage[];
   modelContextWindow:  number;
   tools?:               readonly LlmToolDef[];
   providerId?:         string;
@@ -42,7 +42,7 @@ export async function runCompaction(
 ): Promise<CompactResult> {
   const now          = Date.now();
   const safeMessages = sanitizeCompactionMessages(args.messages);
-  const estimateContext = (messages: readonly LlmMessage[]): number =>
+  const estimateContext = (messages: readonly ModelMessage[]): number =>
     estimateLlmInputTokens(messages, { tools: args.tools }).totalTokens;
   const toolTokens = estimateLlmInputTokens([], { tools: args.tools }).totalTokens;
   const beforeTokens = estimateContext(safeMessages);

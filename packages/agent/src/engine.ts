@@ -1,6 +1,6 @@
 // 运行一次 Agent Turn，并协调模型、工具、权限、Hook 和结果保存。
 
-import type { EmaStreamEvent, ErrorCode, LlmMessage, AssistantBlock, UserBlock } from '@ema-agent/contracts';
+import type { EmaStreamEvent, ErrorCode } from '@ema-agent/contracts';
 import type { MessageBlocks } from '@ema-agent/session';
 import type { ToolExecutionContext, ReadFileState } from '@ema-agent/tools';
 import type { PermissionContext } from '@ema-agent/permission';
@@ -10,10 +10,11 @@ import { AgentPolicy } from './policy.js';
 import { TurnToolExecutor } from './tool-executor.js';
 import { agentLoop, type ExecutorFactory } from './loop.js';
 import { SubagentSpawner } from './spawner.js';
-import { historyToLlmMessages } from '@ema-agent/session';
+import { buildModelMessages } from '@ema-agent/context';
 import { clearTodos } from '@ema-agent/tool-builtin';
 import { buildScratchpadContext } from './scratchpad-context.js';
 import { llmProviderErrorCode } from '@ema-agent/llm';
+import type { AssistantBlock, Message as ModelMessage, UserBlock } from '@ema-agent/llm';
 import * as fs   from 'node:fs';
 import { AgentBudgetExceededError, TurnBudget } from './turn-budget.js';
 import { awaitAgentAnswer } from './ask-user-lifecycle.js';
@@ -160,7 +161,7 @@ async function* runTurn(
     const historyView = llm.prepareHistoricalMessages(
       providerId,
       model,
-      historyToLlmMessages(history),
+      buildModelMessages(history),
     );
     if (historyView.actions.length > 0) {
       yield {
@@ -181,7 +182,7 @@ async function* runTurn(
 
     // messages is declared here so the spawner and executor factory can both
     // close over the same reference. The loop appends to this array each round.
-    const messages: LlmMessage[] = [
+    const messages: ModelMessage[] = [
       ...historyView.messages,
       { role: 'user', content: userInput as string | UserBlock[] },
     ];
@@ -198,7 +199,7 @@ async function* runTurn(
     // beforeLlm 返回的是每次请求的临时视图，不能写回原始历史，否则下一轮
     // 会重复注入 Memory/Skill 等上下文。Spawner 需要继承完整视图，因此维护
     // 一个稳定数组引用，每次 prepare 完成后原地刷新。
-    const subagentContextMessages: LlmMessage[] = [];
+    const subagentContextMessages: ModelMessage[] = [];
     const scopedKbSearch: ToolExecutionContext['kbSearch'] | undefined = deps.kbSearch
       ? (query, topK, kbIds) => {
           // Tool 指定 kbIds 时是显式覆盖；否则继承父 Turn 的用户选择范围。

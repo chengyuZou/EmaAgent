@@ -1,4 +1,4 @@
-import type { UsageContext } from '@ema-agent/contracts';
+import type { UsageContext } from '@ema-agent/usage';
 import type { VisionProtocol } from '@ema-agent/provider';
 
 /** 传给 LLM 告诉它这次任务目标

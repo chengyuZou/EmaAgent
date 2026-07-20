@@ -7,7 +7,7 @@
 // Mirrors Claude Code's LoopState / LoopTransition pattern, simplified to
 // EmaAgent's subset of termination conditions.
 
-import type { LlmTokenUsage } from '@ema-agent/contracts';
+import type { LlmTokenUsage } from '@ema-agent/llm';
 
 export type LoopPhase =
   | 'preprocessing'  // running context budget + compaction checks

@@ -1,7 +1,8 @@
 // 创建和管理子 Agent，并处理共享临时数据、取消、能力门禁和事件上报。
 
 import { randomUUID } from 'node:crypto';
-import type { LlmMessage, SessionId, TurnId, EmaStreamEvent, ToolError } from '@ema-agent/contracts';
+import type { SessionId, TurnId, EmaStreamEvent, ToolError } from '@ema-agent/contracts';
+import type { Message as ModelMessage } from '@ema-agent/llm';
 import type { ISubagentSpawner, SubagentSpawnOpts, ToolExecutionContext } from '@ema-agent/tools';
 import { clearTodos } from '@ema-agent/tool-builtin';
 import type { AgentDeps } from './types.js';
@@ -47,7 +48,7 @@ export class SubagentSpawner implements ISubagentSpawner {
     private readonly parentTurnId:          string,   // the main agent's turn — NOT the sub-agent's id
     private readonly parentProviderId:      string,
     private readonly parentModel:           string,
-    private readonly parentMessages:        LlmMessage[],
+    private readonly parentMessages:        ModelMessage[],
     private readonly scratchpadDir?:        string,
     private readonly getScratchpadContext?: () => string | undefined,
     private readonly parentEmit?:           (ev: EmaStreamEvent) => void,
@@ -201,7 +202,7 @@ export class SubagentSpawner implements ISubagentSpawner {
     //                so parallel sub-agents sharing the same prefix only pay for it once.
     //   'subagent' — fresh slate; only the task prompt, no parent history (saves tokens,
     //                avoids context bleed for independent workers).
-    let messages: LlmMessage[];
+    let messages: ModelMessage[];
     if (kind === 'subagent') {
       messages = [{ role: 'user', content: prompt }];
     } else {

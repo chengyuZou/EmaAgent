@@ -1,4 +1,4 @@
-import type { LlmMessage } from '@ema-agent/llm';
+import type { Message as ModelMessage } from '@ema-agent/llm';
 
 /**
  * Walk backward from `desiredCut` to find a safe message boundary that doesn't
@@ -6,7 +6,7 @@ import type { LlmMessage } from '@ema-agent/llm';
  * tool_result user-message to immediately follow the assistant tool_use —
  * a naive slice can land between them, producing an orphaned tool_result.
  */
-export function findSafeCutPoint(messages: LlmMessage[], desiredCut: number): number {
+export function findSafeCutPoint(messages: ModelMessage[], desiredCut: number): number {
   for (let i = desiredCut; i > 0; i--) {
     const msg = messages[i]!;
     if (msg.role === 'user' && Array.isArray(msg.content) && isAllToolResults(msg.content)) {

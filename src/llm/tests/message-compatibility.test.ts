@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import type { LlmMessage } from '../types.js';
+import type { Message } from '../types.js';
 import {
   prepareHistoricalMessageView,
   validateCurrentContent,
-} from '../message-compatibility.js';
-import type { ModelCapabilitySnapshot } from '../model-capabilities.js';
+} from '../messageCompatibility.js';
+import type { ModelCapabilitySnapshot } from '../modelCapabilities.js';
 
 const TEXT_ONLY: ModelCapabilitySnapshot = {
   input: {
@@ -21,7 +21,7 @@ const TEXT_ONLY: ModelCapabilitySnapshot = {
 
 describe('LLM 消息兼容请求视图', () => {
   it('只替换历史媒体，不修改原始 Session 消息对象', () => {
-    const original: LlmMessage[] = [{
+    const original: Message[] = [{
       role: 'user',
       content: [
         { type: 'text', text: '请看图片' },
@@ -64,7 +64,7 @@ describe('LLM 消息兼容请求视图', () => {
   });
 
   it('保留历史中已有的文字描述，仅替换原始媒体块', () => {
-    const original: LlmMessage[] = [{
+    const original: Message[] = [{
       role: 'user',
       content: [
         { type: 'text', text: '图片描述：一只黑猫坐在窗边。' },
@@ -84,7 +84,7 @@ describe('LLM 消息兼容请求视图', () => {
   });
 
   it('递归替换历史 tool_result 中的图片并保持工具结果结构', () => {
-    const original: LlmMessage[] = [{
+    const original: Message[] = [{
       role: 'user',
       content: [{
         type: 'tool_result',

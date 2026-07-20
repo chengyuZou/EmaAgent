@@ -165,7 +165,7 @@ Important methods:
 
 ```ts
 initialize(): Promise<{ nodes: number; items: number; backend: string | null }>
-applyToBeforeLlm(args): Promise<{ messages: LlmMessage[]; compactionRan: boolean; microCleared: number; recallSummary: unknown; tokenEstimate: number }>
+applyToBeforeLlm(args): Promise<{ messages: ModelMessage[]; compactionRan: boolean; microCleared: number; recallSummary: unknown; tokenEstimate: number }>
 plan(ctx: PlanContext): Promise<RecallBundle>
 afterTurn(ctx): Promise<void>
 forceExtract(sessionId, mode): Promise<void>

@@ -6,11 +6,11 @@ import type { DeepReadonly } from '../src/types.js';
 import type {
   EmaStreamEvent,
   HookInvocationId,
-  LlmCallId,
   MessageId,
   SessionId,
   TurnId,
 } from '@ema-agent/contracts';
+import type { LlmCallId } from '@ema-agent/llm';
 
 const turnId = 'turn-1' as TurnId;
 const sessionId = 'session-1' as SessionId;

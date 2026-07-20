@@ -1,5 +1,5 @@
 // 调用当前模型生成旧对话摘要，不负责持久化或最终上下文预算判定。
-import type { LanguageModel, LlmMessage, AssistantBlock, UserBlock } from '@ema-agent/llm';
+import type { AssistantBlock, LanguageModel, Message as ModelMessage, UserBlock } from '@ema-agent/llm';
 import type { TurnMode } from '@ema-agent/contracts';
 import { buildCompactionPrompt } from './compaction-prompts.js';
 import { estimateMessagesTokens } from '@ema-agent/token';
@@ -19,7 +19,7 @@ const MIN_COMPACTION_OUTPUT    = 2000;
 
 // ── Slice formatting (for the LLM input) ─────────────────────────────────────
 
-function formatHistory(messages: LlmMessage[]): string {
+function formatHistory(messages: ModelMessage[]): string {
   const lines: string[] = [];
   for (const msg of messages) {
     if (msg.role === 'system') continue;        // never feed system back to summariser
@@ -63,7 +63,7 @@ function formatBlock(blk: UserBlock | AssistantBlock): string {
 
 const MEDIA_TYPES = new Set(['image_url', 'image_data', 'audio_data', 'file_url', 'file_data']);
 
-function stripImages(messages: LlmMessage[]): LlmMessage[] {
+function stripImages(messages: ModelMessage[]): ModelMessage[] {
   return messages.map((msg) => {
     if (msg.role !== 'user' || !Array.isArray(msg.content)) return msg;
     const next: UserBlock[] = msg.content.map((blk) => {
@@ -98,7 +98,7 @@ export interface MacroCompactArgs {
   model:         string;
   mode:          TurnMode;
   /** Messages to summarise (older portion). */
-  toCompact:     LlmMessage[];
+  toCompact:     ModelMessage[];
   /**
    * Token limit we MUST land below. If the history slice exceeds this window,
    * the oldest messages are truncated to fit before summarisation (same
@@ -209,7 +209,7 @@ export async function runMacroCompaction(
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-function truncateOldest(messages: LlmMessage[], fraction: number): LlmMessage[] {
+function truncateOldest(messages: ModelMessage[], fraction: number): ModelMessage[] {
   const drop = Math.max(1, Math.floor(messages.length * fraction));
   return messages.slice(drop);
 }

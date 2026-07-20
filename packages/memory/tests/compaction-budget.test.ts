@@ -2,7 +2,7 @@
 
 import { describe, expect, it, vi } from 'vitest';
 import type { SessionId, TurnId } from '@ema-agent/contracts';
-import type { LlmMessage, LlmRequest } from '@ema-agent/llm';
+import type { LlmRequest, Message as ModelMessage } from '@ema-agent/llm';
 import { estimateMessagesTokens } from '@ema-agent/token';
 import { fitCompactionContext } from '../src/compact/budget.js';
 import { runCompaction } from '../src/compact/compactor.js';
@@ -16,7 +16,7 @@ const turnId = 'turn-compaction-budget' as TurnId;
 
 describe('Compaction Thinking 隔离', () => {
   it('删除 Assistant Thinking，同时保留同一条消息中的可回放 Block', () => {
-    const messages: LlmMessage[] = [{
+    const messages: ModelMessage[] = [{
       role: 'assistant',
       content: [
         { type: 'thinking', thinking: 'provider-private-reasoning' },
@@ -91,7 +91,7 @@ describe('Compaction Thinking 隔离', () => {
 
 describe('Compaction 硬 Token 预算', () => {
   it('优先丢弃恢复内容，再按 Unicode 字符边界截断超长摘要', () => {
-    const tail: LlmMessage[] = [{ role: 'user', content: '近期消息 '.repeat(20) }];
+    const tail: ModelMessage[] = [{ role: 'user', content: '近期消息 '.repeat(20) }];
     const fitted = fitCompactionContext({
       summary: '旧对话摘要🙂'.repeat(2_000),
       restore: [{ role: 'user', content: '可重新读取的文件内容 '.repeat(1_000) }],
@@ -140,7 +140,7 @@ describe('Compaction 硬 Token 预算', () => {
       stopReason: 'end_turn' as const,
       usage: { inputTokens: 100, outputTokens: 5_000 },
     }));
-    const messages: LlmMessage[] = Array.from({ length: 20 }, (_, index) => ({
+    const messages: ModelMessage[] = Array.from({ length: 20 }, (_, index) => ({
       role: index % 2 === 0 ? 'user' as const : 'assistant' as const,
       content: `message-${index} ${'long context '.repeat(50)}`,
     }));
@@ -187,7 +187,7 @@ describe('Compaction 硬 Token 预算', () => {
       stopReason: 'end_turn' as const,
       usage: { inputTokens: 100, outputTokens: 10 },
     }));
-    const messages: LlmMessage[] = Array.from({ length: 20 }, (_, index) => ({
+    const messages: ModelMessage[] = Array.from({ length: 20 }, (_, index) => ({
       role: index % 2 === 0 ? 'user' as const : 'assistant' as const,
       content: index < 12
         ? `old-${index} ${'history '.repeat(20)}`

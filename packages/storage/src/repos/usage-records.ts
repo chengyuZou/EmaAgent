@@ -1,5 +1,6 @@
 // 持久化各类模型的调用级用量，并按 Turn 或 Session 提供确定性查询。
-import type { SessionId, TurnId, UsageRecord } from '@ema-agent/contracts';
+import type { SessionId, TurnId } from '@ema-agent/contracts';
+import type { UsageRecord } from '@ema-agent/usage';
 import type { SqliteDb } from '../database.js';
 
 export interface UsageRecordRow {

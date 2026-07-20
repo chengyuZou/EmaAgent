@@ -1,5 +1,5 @@
 // 提供非流式请求的错误分类、指数退避和有界重试能力。
-import type { ErrorCode } from '@ema-agent/contracts';
+import type { LlmErrorCode } from './errors.js';
 
 export const sleep = (ms: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, ms));
@@ -17,7 +17,7 @@ export function isRetryable(error: unknown): boolean {
       || (status >= 500 && status < 600);
 }
 
-export function rethrowAs(code: ErrorCode, cause: unknown): never {
+export function rethrowAs(code: LlmErrorCode, cause: unknown): never {
   const error = new Error(code);
   error.cause = cause;
   throw error;

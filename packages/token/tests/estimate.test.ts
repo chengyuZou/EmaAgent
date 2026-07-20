@@ -1,6 +1,6 @@
 // 测试 LLM 输入预算不会漏掉顶层媒体、工具定义和工具结果中的图片。
 import { describe, expect, it } from 'vitest';
-import type { LlmMessage } from '@ema-agent/contracts';
+import type { Message as ModelMessage } from '@ema-agent/llm';
 import {
   estimateLlmInputTokens,
   estimateMessagesTokens,
@@ -8,7 +8,7 @@ import {
 
 describe('结构化 Token 估算', () => {
   it('顶层图片、音频和文件都占用预算，未知媒体信息会留下诊断', () => {
-    const messages: LlmMessage[] = [{
+    const messages: ModelMessage[] = [{
       role: 'user',
       content: [
         { type: 'text', text: '请分析附件' },

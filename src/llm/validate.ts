@@ -1,10 +1,10 @@
 // 检查消息内容是否满足目标 LLM 协议支持的输入类型。
-import type { MessageContentPart } from '@ema-agent/contracts';
+import type { ContentPart } from './message.js';
 import type { LlmProtocol } from './types.js';
 
 export interface UnsupportedPart {
   index: number;
-  part: MessageContentPart;
+  part: ContentPart;
   reason: string;
 }
 
@@ -17,7 +17,7 @@ export interface UnsupportedPart {
  * 全部兼容时返回空数组。
  */
 export function validateContentParts(
-  parts: MessageContentPart[],
+  parts: ContentPart[],
   provider: LlmProtocol,
 ): UnsupportedPart[] {
   const issues: UnsupportedPart[] = [];
@@ -31,7 +31,7 @@ export function validateContentParts(
   return issues;
 }
 
-function checkPart(part: MessageContentPart, provider: LlmProtocol): string | null {
+function checkPart(part: ContentPart, provider: LlmProtocol): string | null {
   switch (provider) {
     case 'openai-llm':
     case 'openai-responses-llm':
@@ -44,7 +44,7 @@ function checkPart(part: MessageContentPart, provider: LlmProtocol): string | nu
   }
 }
 
-function checkOpenAi(part: MessageContentPart): string | null {
+function checkOpenAi(part: ContentPart): string | null {
   if (part.type === 'file_data' || part.type === 'file_url') {
     return 'OpenAI does not support inline file attachments - use the Files API separately';
   }
@@ -57,7 +57,7 @@ function checkOpenAi(part: MessageContentPart): string | null {
   return null;
 }
 
-function checkAnthropic(part: MessageContentPart): string | null {
+function checkAnthropic(part: ContentPart): string | null {
   if (part.type === 'audio_data') {
     return 'Anthropic does not support audio input';
   }
@@ -70,7 +70,7 @@ function checkAnthropic(part: MessageContentPart): string | null {
   return null;
 }
 
-function checkGemini(part: MessageContentPart): string | null {
+function checkGemini(part: ContentPart): string | null {
   // Gemini 一切走 inlineData;唯一坑是 image_url / file_url
   // 需要 GCS 或 Files API URI - 纯 https:// 运行时会失败。
   if (part.type === 'image_url' || part.type === 'file_url') {

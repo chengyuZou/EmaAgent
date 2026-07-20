@@ -3,7 +3,7 @@ import {
   CircuitOpenError,
   LlmStreamProtocolError,
 } from '../errors.js';
-import { LlmStreamRuntime } from '../stream-runtime.js';
+import { LlmStreamRuntime } from '../streamRuntime.js';
 import type { LlmStreamChunk } from '../types.js';
 
 async function collect(stream: AsyncIterable<LlmStreamChunk>): Promise<LlmStreamChunk[]> {

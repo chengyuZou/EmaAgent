@@ -1,6 +1,6 @@
 // 测试 Vision 的 Token、图片数、Turn 身份和结构化失败会写入统一用量账本。
 import { describe, expect, it } from 'vitest';
-import type { UsageRecord } from '@ema-agent/contracts';
+import type { UsageRecord } from '@ema-agent/usage';
 import { VisionRouter } from '../src/router.js';
 import type { VisionAdapter } from '../src/adapters/base.js';
 import type { VisionProviderConfig } from '../src/types.js';

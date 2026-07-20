@@ -1,4 +1,4 @@
-// 管理流式请求的熔断、首包前重试、取消传播和 done 终态校验。
+// 管理流式请求的熔断、首包前重试、取消传播与 done 终态校验。
 import {
   CircuitOpenError,
   isAbortError,

@@ -1,4 +1,9 @@
-import type { ErrorCode } from '@ema-agent/contracts';
+export type LlmErrorCode =
+  | 'auth/api_key_invalid'
+  | 'provider/context_too_long'
+  | 'provider/model_capability_unsupported'
+  | 'provider/server_error'
+  | 'provider/tool_arguments_invalid_json';
 
 interface ProviderErrorShape {
   status?: unknown;
@@ -158,7 +163,7 @@ export function createLlmProviderResponseError(input: {
 }
 
 /** 编排层只消费稳定 ErrorCode，不需要了解各 SDK 或领域异常的内部字段。 */
-export function llmProviderErrorCode(error: unknown): ErrorCode {
+export function llmProviderErrorCode(error: unknown): LlmErrorCode {
   if (error instanceof ContextWindowExceededError) {
     return 'provider/context_too_long';
   }

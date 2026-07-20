@@ -1,6 +1,6 @@
 // 这里执行小型上下文压缩，并保留 Agent 后续继续工作所需的关键信息。
 import type {
-  LlmMessage, AssistantBlock, UserBlock,
+  Message as ModelMessage, AssistantBlock, UserBlock,
 } from '@ema-agent/llm';
 import type { ToolResultBlock } from '@ema-agent/contracts';
 
@@ -41,9 +41,9 @@ const COMPACTABLE_TOOLS = new Set<string>([
  * Also reports how many tool_results were cleared for telemetry.
  */
 export function microCompact(
-  messages: LlmMessage[],
+  messages: ModelMessage[],
   opts: { keepRecent: number } = { keepRecent: 6 },
-): { messages: LlmMessage[]; cleared: number } {
+): { messages: ModelMessage[]; cleared: number } {
   // Build toolUseId → toolName from assistant tool_use blocks.
   // tool_use always precedes its tool_result, so the map is complete by the
   // time we scan results.
@@ -83,7 +83,7 @@ export function microCompact(
   }
 
   // Build new messages with the targeted blocks replaced
-  const out: LlmMessage[] = messages.map((msg, mIdx) => {
+  const out: ModelMessage[] = messages.map((msg, mIdx) => {
     if (msg.role !== 'user' || typeof msg.content === 'string') return msg;
     const newContent: UserBlock[] = msg.content.map((blk, bIdx) => {
       if (!isToolResult(blk)) return blk;

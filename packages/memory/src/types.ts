@@ -4,13 +4,13 @@ import type {
   TurnMode,
   EmaStreamEvent,
 } from '@ema-agent/contracts';
-import type { LlmMessage } from '@ema-agent/llm';
+import type { Message as ModelMessage } from '@ema-agent/llm';
 import type { MemoryNodeType, MemoryItemKind } from '@ema-agent/storage';
 import type { EmbeddingSpace } from '@ema-agent/ebd-client';
 
 
 interface CompactResultBase {
-  messages: LlmMessage[];
+  messages: ModelMessage[];
   microCleared: number;
   beforeTokens: number;
   afterTokens: number;

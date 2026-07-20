@@ -1,20 +1,22 @@
 // 定义 LLM Provider 配置、统一请求、流式分块和完成结果。
-import type {
-  MessageContentPart,
-  AssistantBlock,
-  UserBlock,
-  LlmMessage,
-  LlmTokenUsage,
-  LlmCallId,
-  UsageContext,
-} from '@ema-agent/contracts';
+import type { UsageContext } from '@ema-agent/usage';
 import type { LlmProtocol } from '@ema-agent/provider';
+import type { LlmCallId } from './ids.js';
+import type { AssistantBlock, Message } from './message.js';
+import type { LlmTokenUsage } from './usage.js';
 
-// 重新导出,调用方只需一次 import
-export type { LlmProtocol }                                                      from '@ema-agent/provider';
-export type { LlmTokenUsage }                                                    from '@ema-agent/contracts';
-export type { AssistantBlock, UserBlock, MessageContentPart as LlmContentPart } from '@ema-agent/contracts';
-export type { LlmMessage }                                                       from '@ema-agent/contracts';
+// 公开类型由各自所有者定义，调用方仍可从 LLM 入口一次导入。
+export type { LlmProtocol } from '@ema-agent/provider';
+export type { LlmTokenUsage } from './usage.js';
+export type {
+  AssistantBlock,
+  ContentPart as LlmContentPart,
+  Message,
+  ToolResultBlock,
+  ToolResultContentPart,
+  UserBlock,
+} from './message.js';
+export type { LlmCallId } from './ids.js';
 
 // ── Provider 配置 ───────────────────────────────────────────────────────────
 
@@ -64,13 +66,12 @@ export type ThinkingMode =
     };
 
 // ── 归一化消息格式 ─────────────────────────────────────────────────
-// LlmMessage 定义在 @ema-agent/contracts,上方已重新导出。
-// adapter 把该格式翻译成 provider 线路协议。
+// Adapter 只能把 Message 翻译成 Provider 线路协议。
 
 export interface LlmRequest {
   providerId: string;
   model: string;
-  messages: LlmMessage[];
+  messages: Message[];
   tools?: LlmToolDef[];
   toolChoice?: 'auto' | 'none' | { name: string };
   thinking?: ThinkingMode;

@@ -4,7 +4,7 @@ import type { LlmAdapter } from './base.js';
 import type {
   LlmRequest,
   LlmStreamChunk,
-  LlmMessage,
+  Message,
   LlmToolDef,
   StopReason,
   ProviderConfig,
@@ -19,7 +19,7 @@ import {
   throwIfAbortError,
 } from '../errors.js';
 import { createLlmTokenUsage } from '../usage.js';
-import type { UserBlock, ToolResultBlock, MessageContentPart } from '@ema-agent/contracts';
+import type { ContentPart, ToolResultBlock, UserBlock } from '../message.js';
 
 function createAnthropicUsage(
   uncachedInputTokens: number,
@@ -66,11 +66,11 @@ interface NormalizedMessages {
 }
 
 /**
- * 把 MessageContentPart(媒体)映射成 Anthropic content block param。
+ * 把 ContentPart（媒体）映射成 Anthropic content block param。
  * 不支持的类型(audio_data - Anthropic 无音频输入)返回 undefined。
  */
 function mediaPartToAnthropicBlock(
-  part: MessageContentPart,
+  part: ContentPart,
 ): Anthropic.ContentBlockParam | undefined {
   switch (part.type) {
     case 'text':
@@ -107,7 +107,7 @@ function mediaPartToAnthropicBlock(
 }
 
 /**
- * 把归一化 LlmMessage[] 转成 Anthropic 线路格式。
+ * 把归一化 Message[] 转成 Anthropic 线路格式。
  *
  * 与旧扁平格式的关键差异:
  * 1. `system` 是顶层字段,非消息。
@@ -115,7 +115,7 @@ function mediaPartToAnthropicBlock(
  * 3. tool 结果已在 `role: 'user'` 消息内作为 ToolResultBlock[]。
  *    无需分组循环 - 归一化格式已匹配 Anthropic 要求。
  */
-export function toAnthropicMessages(msgs: LlmMessage[]): NormalizedMessages {
+export function toAnthropicMessages(msgs: Message[]): NormalizedMessages {
   let system: Anthropic.MessageCreateParams['system'];
   const messages: Anthropic.MessageParam[] = [];
 
@@ -151,7 +151,7 @@ export function toAnthropicMessages(msgs: LlmMessage[]): NormalizedMessages {
           const resultContent: Anthropic.ToolResultBlockParam['content'] =
             typeof tb.content === 'string'
               ? tb.content
-              : (tb.content as MessageContentPart[])
+              : (tb.content as ContentPart[])
                   .map(mediaPartToAnthropicBlock)
                   .filter((b): b is Anthropic.ContentBlockParam => b !== undefined) as
                   (Anthropic.TextBlockParam | Anthropic.ImageBlockParam)[];
@@ -162,7 +162,7 @@ export function toAnthropicMessages(msgs: LlmMessage[]): NormalizedMessages {
             is_error:    tb.isError,
           });
         } else {
-          const mapped = mediaPartToAnthropicBlock(block as MessageContentPart);
+          const mapped = mediaPartToAnthropicBlock(block as ContentPart);
           if (mapped) content.push(mapped);
         }
       }

@@ -1,11 +1,11 @@
-// 为历史消息生成只读兼容视图，并对当前输入执行不可静默降级的能力校验。
+// 为历史消息生成兼容视图，并对当前输入执行不可静默降级的能力校验。
 import type {
-  LlmMessage,
-  MessageContentPart,
+  ContentPart,
+  Message,
   ToolResultContentPart,
   UserBlock,
-} from '@ema-agent/contracts';
-import type { ModelCapabilitySnapshot, ModelCapabilityState } from './model-capabilities.js';
+} from './message.js';
+import type { ModelCapabilitySnapshot, ModelCapabilityState } from './modelCapabilities.js';
 
 export type InputModality = 'image' | 'audio' | 'file';
 
@@ -24,7 +24,7 @@ export interface MessageCompatibilityAction extends MessageCompatibilityIssue {
 }
 
 export interface CompatibleMessageView {
-  messages: LlmMessage[];
+  messages: Message[];
   actions: MessageCompatibilityAction[];
 }
 
@@ -33,11 +33,11 @@ export interface CompatibleMessageView {
  * 历史媒体没有可靠描述字段时使用明确占位，禁止伪装成模型已经看过内容。
  */
 export function prepareHistoricalMessageView(
-  messages: readonly LlmMessage[],
+  messages: readonly Message[],
   capabilities: ModelCapabilitySnapshot,
 ): CompatibleMessageView {
   const actions: MessageCompatibilityAction[] = [];
-  const next = messages.map((message, messageIndex): LlmMessage => {
+  const next = messages.map((message, messageIndex): Message => {
     if (message.role !== 'user' || !Array.isArray(message.content)) return cloneMessage(message);
 
     const content: UserBlock[] = message.content.map((block, partIndex) => {
@@ -72,7 +72,7 @@ export function prepareHistoricalMessageView(
 
 /** 本轮新内容必须得到明确支持；unknown 也不能静默发送。 */
 export function validateCurrentContent(
-  parts: readonly MessageContentPart[],
+  parts: readonly ContentPart[],
   capabilities: ModelCapabilitySnapshot,
 ): MessageCompatibilityIssue[] {
   return validateParts(parts, capabilities, 0);
@@ -80,7 +80,7 @@ export function validateCurrentContent(
 
 /** Adapter 前的最后一道 fail-closed 门禁，覆盖 Hook/Tool 新增的消息。 */
 export function validateMessageCapabilities(
-  messages: readonly LlmMessage[],
+  messages: readonly Message[],
   capabilities: ModelCapabilitySnapshot,
 ): MessageCompatibilityIssue[] {
   const issues: MessageCompatibilityIssue[] = [];
@@ -103,7 +103,7 @@ export function validateMessageCapabilities(
 }
 
 function validateParts(
-  parts: readonly MessageContentPart[],
+  parts: readonly ContentPart[],
   capabilities: ModelCapabilitySnapshot,
   messageIndex: number,
 ): MessageCompatibilityIssue[] {
@@ -116,7 +116,7 @@ function validateParts(
 }
 
 function validatePart(
-  part: MessageContentPart | ToolResultContentPart,
+  part: ContentPart | ToolResultContentPart,
   capabilities: ModelCapabilitySnapshot,
   messageIndex: number,
   partIndex: number,
@@ -139,7 +139,7 @@ function validatePart(
   };
 }
 
-function replaceHistoricalPart<T extends MessageContentPart | ToolResultContentPart>(
+function replaceHistoricalPart<T extends ContentPart | ToolResultContentPart>(
   part: T,
   capabilities: ModelCapabilitySnapshot,
   actions: MessageCompatibilityAction[],
@@ -168,7 +168,7 @@ function replaceHistoricalPart<T extends MessageContentPart | ToolResultContentP
   return { type: 'text', text: historicalPlaceholder(modality, part) };
 }
 
-function modalityOf(part: MessageContentPart | ToolResultContentPart): InputModality | undefined {
+function modalityOf(part: ContentPart | ToolResultContentPart): InputModality | undefined {
   if (part.type === 'image_data' || part.type === 'image_url') return 'image';
   if (part.type === 'audio_data') return 'audio';
   if (part.type === 'file_data' || part.type === 'file_url') return 'file';
@@ -177,7 +177,7 @@ function modalityOf(part: MessageContentPart | ToolResultContentPart): InputModa
 
 function historicalPlaceholder(
   modality: InputModality,
-  part: MessageContentPart | ToolResultContentPart,
+  part: ContentPart | ToolResultContentPart,
 ): string {
   const name = 'name' in part && typeof part.name === 'string'
     ? `“${part.name}”`
@@ -192,7 +192,7 @@ function historicalPlaceholder(
   return `[历史${labels[modality]}${name}未发送：当前模型不支持该输入，且没有可用描述]`;
 }
 
-function cloneMessage(message: LlmMessage): LlmMessage {
+function cloneMessage(message: Message): Message {
   switch (message.role) {
     case 'system':
       return { ...message };

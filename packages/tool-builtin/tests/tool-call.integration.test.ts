@@ -18,7 +18,7 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import path from 'node:path';
 import { LanguageModelRuntime } from '@ema-agent/llm';
-import type { LlmMessage, LlmToolDef, AssistantBlock } from '@ema-agent/llm';
+import type { AssistantBlock, LlmToolDef, Message as ModelMessage } from '@ema-agent/llm';
 import type { ToolResultBlock } from '@ema-agent/contracts';
 import { ToolRegistry } from '@ema-agent/tools';
 import type { ToolExecutionContext, ReadFileState } from '@ema-agent/tools';
@@ -92,7 +92,7 @@ interface AgentResult {
  *   5. Stop when stopReason = 'end_turn' or max iterations reached
  */
 async function agentLoop(
-  messages: LlmMessage[],
+  messages: ModelMessage[],
   toolNames: string[],
   ctx:      ToolExecutionContext,
   maxIter = 5,
@@ -192,7 +192,7 @@ itLive('sanity: plain completion without tools', async () => {
 // ── 2. Single tool: Glob ──────────────────────────────────────────────────────
 
 itLive('single-tool: LLM calls Glob to find TypeScript files', async () => {
-  const messages: LlmMessage[] = [{
+  const messages: ModelMessage[] = [{
     role:    'user',
     content: `Use the Glob tool to find all TypeScript source files (*.ts) ` +
              `in the workspace at path "packages/tool-builtin/src". ` +
@@ -212,7 +212,7 @@ itLive('single-tool: LLM calls Glob to find TypeScript files', async () => {
 // ── 3. Multi-tool: Glob + Grep in one turn ────────────────────────────────────
 
 itLive('multi-tool: LLM calls Glob and Grep in the same turn', async () => {
-  const messages: LlmMessage[] = [{
+  const messages: ModelMessage[] = [{
     role:    'user',
     content: `I need you to do two things at once using the available tools:\n` +
              `1. Use Glob to list all .ts files in "packages/tool-builtin/src/tools"\n` +
@@ -236,7 +236,7 @@ itLive('multi-tool: LLM calls Glob and Grep in the same turn', async () => {
 
 itLive('agent-loop: LLM reads a file and answers a question about it', async () => {
   const targetFile = path.join(WORKSPACE, 'packages/tool-builtin/src/tools/fs-read.ts');
-  const messages: LlmMessage[] = [{
+  const messages: ModelMessage[] = [{
     role:    'user',
     content: `Read the file at "${targetFile}" using the Read tool. ` +
              `Then tell me: what is the TEXT_SIZE_LIMIT constant set to?`,

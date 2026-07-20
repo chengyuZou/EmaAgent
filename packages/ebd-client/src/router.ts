@@ -14,7 +14,7 @@ import type {
   EbdProbeResult,
 } from './types.js';
 import { createEmbeddingSpace, type EmbeddingSpace } from './embedding-space.js';
-import type { UsageRecord, UsageRecorder } from '@ema-agent/contracts';
+import type { UsageRecord, UsageRecorder } from '@ema-agent/usage';
 
 export interface EbdRouterOptions {
   usageRecorder?: UsageRecorder;

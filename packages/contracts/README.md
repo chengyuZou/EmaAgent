@@ -1,29 +1,36 @@
-# @ema-agent/contracts
+# @ema-agent/contracts（迁移中，禁止新增）
 
-EmaAgent 的公共类型契约包。**纯类型导出,禁止引入任何运行时依赖**——所有跨包共享的 DTO、事件、ID、Provider 定义集中在此,业务包只 `import type` 不重复定义。
+中央 contracts 包正在按 [EmaRefactor.md](../../EmaRefactor.md) 的 C0～C5 路线拆除。它只承载尚未迁出的历史协议，不再是新类型、ID、错误或事件的默认落点。
 
-## 定位
+## 已迁出
 
-三层进程隔离架构(Tauri ⇄ ema-core ⇄ ema-bridge)中,contracts 是**唯一**的类型契约层。任何被 ≥2 个包使用的类型必须在此定义;业务包禁止跨包 import 内部类型,只能 import contracts。
-
-## 导出
-
-| 模块 | 内容 |
+| 类型 | 当前所有者 |
 |---|---|
-| `ids` | 品牌标量 ID(SessionId / TurnId / ArtifactId / EmbeddingSpaceId / HookInvocationId 等),nominal typing 防混用 |
-| `turns` | Turn/Run 状态机 + `contentParts`(text / image_url / image_data / audio_data / file_data / file_url) |
-| `events` | `EmaStreamEvent`(53 种 SSE 事件)+ `SubagentInnerEvent` |
-| `messages` | `LlmMessage` / `MessageBlocks` / `TurnAttachment`(UI 元数据,存 `turn_attachments` 表)/ `MessageContentPart` |
-| `artifact` | Artifact 区分联合(inline/file 内容 + applied/rejected 状态) |
-| `wire` | REST wire 类型(`MessageWire` 等,统一放 wire.ts) |
-| `kb` | KB 相关 DTO |
-| `agents` | Agent / Subagent 契约 |
-| `session-ownership` | `SessionOwnershipFacade` 接口 |
-| `errors` | 跨包错误码 |
+| 模型 `Message`、模型可见 Block | `@ema-agent/llm` |
+| `LlmCallId`、`LlmTokenUsage` | `@ema-agent/llm` |
+| `UsageContext/UsageRecord/UsageRecorder` | `@ema-agent/usage` |
+| Session Message → Model Message | `@ema-agent/context` 的 `messageBuilder` |
 
-## 红线
+contracts 不得重新导出这些类型，也不得增加兼容别名。
 
-- **禁引运行时依赖**——只导出 `type` / `interface` / `const`,不导出可执行逻辑
-- 前端只消费结构化 `EmaStreamEvent`,禁止解析日志字符串
-- 新增 interface / type 前先 grep 现有的,能 `extends` / `implements` 就别重写(见 Emabug B-066)
-- 注释要与真实存储/字段对齐,不承诺不存在的字段(见 B-067:`TurnAttachment` 注释曾误标 `messages.attachments_json` 列,实为 `turn_attachments` 独立表)
+## 尚待迁出
+
+| 当前文件 | 目标所有者 |
+|---|---|
+| `ids.ts` 中剩余 ID | Session、Turn、Tool、Hook、Artifact 等对应业务模块 |
+| `turns.ts` | Turn |
+| `events.ts` | 各业务模块拥有事件，Turn 组合 `EmaStreamEvent` |
+| `messages.ts` 中持久化 Block 与 Attachment 元数据 | Session、Tool、Attachment |
+| `artifact.ts` | Artifact，V1 继续禁用 |
+| `wire.ts` | 对应业务模块的 `protocol` 入口 |
+| `kb.ts` | Knowledge Base |
+| `agents.ts` | Agent |
+| `session-ownership.ts` | Session |
+| `errors.ts` | 各业务模块拥有错误码，Turn 组合客户端可见错误 |
+
+## 迁移红线
+
+- 只减不增；新业务类型直接归业务所有者。
+- 不能为了消除 import 而复制同名大联合。
+- 跨 HTTP/SSE 边界的稳定协议由业务模块 `protocol` 入口导出，并逐步补运行时 Schema。
+- 删除一个旧导出前必须保证生产、测试和脚本引用归零，并通过全仓 typecheck/test。

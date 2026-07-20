@@ -2,12 +2,12 @@
 import type { LlmProtocol } from '@ema-agent/provider';
 import { LlmModelCapabilityError } from './errors.js';
 import type { LlmCapabilityIssue } from './errors.js';
-import type { ModelCapabilitySnapshot } from './model-capabilities.js';
-import { validateMessageCapabilities } from './message-compatibility.js';
-import { normalizeToolDefinitions } from './prompt-cache.js';
+import type { ModelCapabilitySnapshot } from './modelCapabilities.js';
+import { validateMessageCapabilities } from './messageCompatibility.js';
+import { normalizeToolDefinitions } from './promptCache.js';
 import type {
   LlmContentPart,
-  LlmMessage,
+  Message,
   LlmRequest,
   LlmToolDef,
   UserBlock,
@@ -15,7 +15,7 @@ import type {
 import { validateContentParts } from './validate.js';
 
 export interface PreparedLlmRequest extends LlmRequest {
-  messages: LlmMessage[];
+  messages: Message[];
   tools?: LlmToolDef[];
 }
 
@@ -64,7 +64,7 @@ function createRequestSnapshot(
   };
 }
 
-function cloneMessage(message: LlmMessage): LlmMessage {
+function cloneMessage(message: Message): Message {
   if (message.role === 'system') return { ...message };
   if (message.role === 'assistant') {
     return { ...message, content: message.content.map((block) => ({ ...block })) };
@@ -87,7 +87,7 @@ function cloneUserBlock(block: UserBlock): UserBlock {
 }
 
 function validateProtocolMessages(
-  messages: readonly LlmMessage[],
+  messages: readonly Message[],
   protocol: LlmProtocol,
 ): Array<{
   kind: 'input';

@@ -1,9 +1,9 @@
 // 估算消息、媒体和工具定义占用的上下文 Token，为压缩与预算决策提供统一依据。
 import type {
-  LlmMessage,
-  MessageContentPart,
+  ContentPart as MessageContentPart,
+  Message as ModelMessage,
   ToolResultContentPart,
-} from '@ema-agent/contracts';
+} from '@ema-agent/llm';
 import type {
   TokenEstimate,
   TokenEstimateBreakdown,
@@ -42,11 +42,11 @@ export function estimateTextTokens(text: string): number {
 }
 
 /**
- * Estimate the input token cost of a full LlmMessage[] array. Each message
+ * Estimate the input token cost of a full ModelMessage[] array. Each message
  * gets a small per-message overhead (matches what Anthropic / OpenAI add for
  * role markers and message envelopes).
  */
-export function estimateMessagesTokens(messages: LlmMessage[]): number {
+export function estimateMessagesTokens(messages: ModelMessage[]): number {
   return estimateLlmInputTokens(messages).totalTokens;
 }
 
@@ -55,7 +55,7 @@ export function estimateMessagesTokens(messages: LlmMessage[]): number {
  * Provider 返回的 usage 才能作为真实消耗与计费事实。
  */
 export function estimateLlmInputTokens(
-  messages: readonly LlmMessage[],
+  messages: readonly ModelMessage[],
   options: TokenEstimateOptions = {},
 ): TokenEstimate {
   const breakdown = emptyBreakdown();

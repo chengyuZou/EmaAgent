@@ -5,7 +5,7 @@ import type {
   SessionId,
   TurnId,
 } from '@ema-agent/contracts';
-import type { LlmMessage } from '@ema-agent/llm';
+import type { Message as ModelMessage } from '@ema-agent/llm';
 import { HookBus } from '@ema-agent/hook';
 import { runCompaction } from '../src/compact/compactor.js';
 import { DEFAULT_MEMORY_SETTINGS } from '../src/types.js';
@@ -14,7 +14,7 @@ import { DEFAULT_OVERRIDES } from '../src/maintenance/overrides.js';
 const sessionId = 'session-compaction' as SessionId;
 const turnId = 'turn-compaction' as TurnId;
 
-function oversizedHistory(): LlmMessage[] {
+function oversizedHistory(): ModelMessage[] {
   return Array.from({ length: 20 }, (_, index) => ({
     role: index % 2 === 0 ? 'user' as const : 'assistant' as const,
     content: `message-${index} ${'long context '.repeat(100)}`,

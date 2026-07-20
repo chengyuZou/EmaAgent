@@ -1,4 +1,4 @@
-import type { UsageContext } from '@ema-agent/contracts';
+import type { UsageContext } from '@ema-agent/usage';
 import type { EmbedProtocol, RerankProtocol } from '@ema-agent/provider';
 import type { EmbeddingSpace } from './embedding-space.js';
 

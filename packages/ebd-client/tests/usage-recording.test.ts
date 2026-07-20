@@ -1,6 +1,6 @@
 // 测试 Embedding 与 Rerank 的调用数量、业务身份和失败状态会进入统一用量账本。
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { UsageRecord } from '@ema-agent/contracts';
+import type { UsageRecord } from '@ema-agent/usage';
 import { EbdRouter } from '../src/router.js';
 
 afterEach(() => vi.unstubAllGlobals());

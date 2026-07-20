@@ -1,5 +1,4 @@
 export { SessionStore } from './store.js';
-export { historyToLlmMessages } from './history.js';
 export type { SessionStoreDeps } from './store.js';
 export { RunRegistry } from './run-registry.js';
 export { BranchAncestorTable } from './branch-ancestor.js';

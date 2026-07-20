@@ -5,7 +5,7 @@ import { OpenAiSttAdapter } from './adapters/openai-stt.js';
 import { isSttError, SttError } from './errors.js';
 import { createSttRequestScope } from './request-scope.js';
 import type { SttLimits } from './types.js';
-import type { UsageRecord, UsageRecorder } from '@ema-agent/contracts';
+import type { UsageRecord, UsageRecorder } from '@ema-agent/usage';
 
 export interface SttClientOptions {
   usageRecorder?: UsageRecorder;

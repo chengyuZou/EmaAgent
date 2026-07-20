@@ -1,7 +1,7 @@
 // 测试语言模型运行时的 Provider 快照、能力检查、流式调用和完整结果聚合。
 import { describe, it, expect } from 'vitest';
 import { LanguageModelRuntime } from '../languageModelRuntime.js';
-import { ModelsDevCatalog } from '../models-dev-catalog.js';
+import { ModelsDevCatalog } from '../modelsDevCatalog.js';
 import { LlmModelCapabilityError } from '../errors.js';
 import type { LlmAdapter } from '../adapters/base.js';
 import type { LlmContentPart, LlmRequest, LlmStreamChunk, ProviderConfig } from '../types.js';

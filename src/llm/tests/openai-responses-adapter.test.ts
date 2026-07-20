@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { OpenAiResponsesAdapter } from '../adapters/openai-responses.js';
+import { OpenAiResponsesAdapter } from '../adapters/openaiResponses.js';
 import {
   ContextWindowExceededError,
   LlmProviderResponseError,

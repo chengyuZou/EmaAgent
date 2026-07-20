@@ -1,14 +1,19 @@
 // 运行一次 chat/narrative Turn，并串联 Hook、召回、LLM 流和持久化。
 
 import { randomUUID } from 'node:crypto';
-import { asLlmCallId } from '@ema-agent/contracts';
-import type { EmaStreamEvent, ErrorCode, LlmMessage, AssistantBlock, UserBlock, MessageContentPart as LlmContentPart } from '@ema-agent/contracts';
-import type { LlmTokenUsage } from '@ema-agent/contracts';
-import { computePromptPrefixHash, llmProviderErrorCode } from '@ema-agent/llm';
+import type { EmaStreamEvent, ErrorCode } from '@ema-agent/contracts';
+import { asLlmCallId, computePromptPrefixHash, llmProviderErrorCode } from '@ema-agent/llm';
+import type {
+  AssistantBlock,
+  LlmContentPart,
+  LlmTokenUsage,
+  Message as ModelMessage,
+  UserBlock,
+} from '@ema-agent/llm';
 import type { MessageBlocks } from '@ema-agent/session';
 import type { HookBus, HookTriggerContext, HookTriggerResult, TurnFailurePhase } from '@ema-agent/hook';
 import type { ConversationDeps, ConversationRunInput } from './types.js';
-import { historyToLlmMessages } from '@ema-agent/session';
+import { buildModelMessages } from '@ema-agent/context';
 
 // ── ConversationEngine ────────────────────────────────────────────────────────
 
@@ -129,7 +134,7 @@ async function* runTurn(
     const historyView = llm.prepareHistoricalMessages(
       providerId,
       resolvedModel,
-      historyToLlmMessages(history),
+      buildModelMessages(history),
     );
     if (historyView.actions.length > 0) {
       yield {
@@ -152,7 +157,7 @@ async function* runTurn(
       blocks: userBlocks as MessageBlocks,
     });
 
-    let messages: LlmMessage[] = [
+    let messages: ModelMessage[] = [
       ...historyView.messages,
       {
         role: 'user',
@@ -218,7 +223,7 @@ async function* runTurn(
 
     // ── narrative 检索结果落盘 ──────────────────────────────────────────────
     // narrative:recall hook 通过 replace payload 返回检索结果。落盘成
-    // kind='narrative_context' message:既回灌 LLM(下一轮 historyToLlmMessages
+    // kind='narrative_context' message:既回灌 LLM(下一轮 buildModelMessages
     // 转文本)又前端显示(检索块气泡)。一份内容不拆。本轮 LLM 已通过 inject 的
     // 临时 user message 看过检索内容(上面 finalMessages 里),这里落盘是给未来轮次 + 前端展示。
     const narrativeRecall = llmHookResult.payload.narrativeRecall;
@@ -362,7 +367,7 @@ async function* runTurn(
       sessionId: input.sessionId,
       role: 'assistant',
       // 持久化可见文本和 provider reasoning，供 UI/调试历史。
-      // 下一轮 LLM 调用的回灌由 historyToLlmMessages() 处理，它故意过滤掉
+      // 下一轮 LLM 调用的回灌由 buildModelMessages() 处理，它故意过滤掉
       // thinking/tool block 以保 provider 安全。
       blocks: assistantBlocks as MessageBlocks,
     });
@@ -460,7 +465,7 @@ async function* streamingBeforeLlm(
   return result;
 }
 
-// ── History -> LlmMessage 转换 ──────────────────────────────────────────────────
+// ── Session history → ModelMessage 投影 ─────────────────────────────────────────
 
 function buildAssistantBlocks(
   textByIndex: Map<number, string>,
@@ -492,4 +497,4 @@ function buildAssistantBlocks(
   return blockEntries.map(([, block]) => block);
 }
 
-// historyToLlmMessages 与 AgentEngine 共享--定义在 @ema-agent/session。
+// buildModelMessages 与 AgentEngine 共享，定义在 @ema-agent/context。

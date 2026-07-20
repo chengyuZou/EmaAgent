@@ -1,6 +1,7 @@
 // 测试语言模型运行时在完成和失败时都写入调用级用量记录。
 import { describe, expect, it } from 'vitest';
-import { asLlmCallId, type UsageRecord } from '@ema-agent/contracts';
+import type { UsageRecord } from '@ema-agent/usage';
+import { asLlmCallId } from '../ids.js';
 import type { LlmAdapter } from '../adapters/base.js';
 import { LanguageModelRuntime } from '../languageModelRuntime.js';
 import type { LlmStreamChunk, ProviderConfig } from '../types.js';

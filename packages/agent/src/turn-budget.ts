@@ -1,6 +1,6 @@
 // 统一限制一个 Agent Turn 及其全部 Subagent 的时间、Token 和并发资源。
 
-import type { LlmTokenUsage } from '@ema-agent/contracts';
+import type { LlmTokenUsage } from '@ema-agent/llm';
 
 export interface TurnBudgetLimits {
   maxWallTimeMs: number;

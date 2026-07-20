@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { LanguageModelRuntime } from '../languageModelRuntime.js';
-import type { LlmRequest, ProviderConfig, LlmMessage, LlmToolDef } from '../types.js';
+import type { LlmRequest, ProviderConfig, Message, LlmToolDef } from '../types.js';
 
 const ALIYUN_CONFIG: ProviderConfig = {
   id: 'aliyun',
@@ -139,7 +139,7 @@ async function executeTool(toolName: string, args: Record<string, unknown>): Pro
  */
 async function agentLoop(
   model: string,
-  initialMessages: LlmMessage[],
+  initialMessages: Message[],
   tools: LlmToolDef[],
   maxTurns = 5,
 ): Promise<{ finalAnswer: string; allToolCalls: Array<{ name: string; args: unknown }> }> {
@@ -247,7 +247,7 @@ describe.only('Real-Business Agent Tests: Multi-Tool, Image+Tool, Pure Text', ()
     console.log('\n━━�?场景 1: 多工具串�?━━�?);
     console.log('用户: "帮我查一下订�?ORD-20240511-001 的状态，以及里面商品的库存情�?');
 
-    const messages: LlmMessage[] = [
+    const messages: Message[] = [
       {
         role: 'system',
         content:
@@ -278,7 +278,7 @@ describe.only('Real-Business Agent Tests: Multi-Tool, Image+Tool, Pure Text', ()
     console.log('\n━━�?场景 2: 退款工作流 ━━�?);
     console.log('用户: "订单 ORD-20240511-001 收到的耳机有杂音，我要退�?');
 
-    const messages: LlmMessage[] = [
+    const messages: Message[] = [
       {
         role: 'system',
         content:
@@ -313,7 +313,7 @@ describe.only('Real-Business Agent Tests: Multi-Tool, Image+Tool, Pure Text', ()
     console.log('用户: "同时�?SKU-8891、SKU-9999、SKU-1000 �?WH-SH-01 的库�?');
 
     // 🔥 核心展示：prompt 要求模型「一次性」调用多�?check_inventory
-    const messages: LlmMessage[] = [
+    const messages: Message[] = [
       {
         role: 'system',
         content:
@@ -359,7 +359,7 @@ describe.only('Real-Business Agent Tests: Multi-Tool, Image+Tool, Pure Text', ()
     const chartImageUrl =
       'https://img1.baidu.com/it/u=2246695285,2988372152&fm=253&fmt=auto&app=138&f=PNG?w=500&h=300';
 
-    const messages: LlmMessage[] = [
+    const messages: Message[] = [
       {
         role: 'system',
         content:
@@ -399,7 +399,7 @@ describe.only('Real-Business Agent Tests: Multi-Tool, Image+Tool, Pure Text', ()
     console.log('\n━━�?场景 5: 纯文本对话（无工具） ━━�?);
     console.log('用户: "请用三句话总结大语言模型的工作原�?');
 
-    const messages: LlmMessage[] = [
+    const messages: Message[] = [
       {
         role: 'system',
         content: '你是一个知识渊博的 AI 助手。回答要简洁、专业�?,
@@ -447,7 +447,7 @@ function getUserData(id) {
 }
     `.trim();
 
-    const messages: LlmMessage[] = [
+    const messages: Message[] = [
       {
         role: 'system',
         content:

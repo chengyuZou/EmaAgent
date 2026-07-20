@@ -1,5 +1,5 @@
-// 统一表达模型的输入模态、工具、推理和窗口能力及其可信来源。
-import type { ModelsDevSpec } from './models-dev-catalog.js';
+// 统一表达模型的输入模态、工具、推理、窗口能力及其可信来源。
+import type { ModelsDevSpec } from './modelsDevCatalog.js';
 
 export type ModelCapabilityState = 'supported' | 'unsupported' | 'unknown';
 export type ModelCapabilitySource = 'catalog' | 'live' | 'manual' | 'unknown';

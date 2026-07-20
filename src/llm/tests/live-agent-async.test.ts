@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { LanguageModelRuntime } from '../languageModelRuntime.js';
-import type { LlmRequest, ProviderConfig, LlmMessage } from '../types.js';
+import type { LlmRequest, Message, ProviderConfig } from '../types.js';
 
 const ALIYUN_CONFIG: ProviderConfig = {
   id: 'aliyun',
@@ -15,7 +15,7 @@ describe.only('Advanced Live Tests: True Streaming Loops & Concurrency', () => {
 
   // ── 测试 1：纯流式拦截与即刻工具执行 ─────────────────────────────────────
   it('should execute tool immediately upon tool_use_complete in stream loop', async () => {
-    let messages: LlmMessage[] = [
+    let messages: Message[] = [
       { role: 'user', content: '查询一下深圳明天的天气如何？' }
     ];
 

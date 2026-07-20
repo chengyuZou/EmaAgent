@@ -1,5 +1,5 @@
 import { recallSessionNote } from '../recall/layer1-notes.js';
-import type { LlmMessage } from '@ema-agent/llm';
+import type { Message as ModelMessage } from '@ema-agent/llm';
 import type { TurnMode } from '@ema-agent/contracts';
 import type { MemoryDeps } from '../deps.js';
 import type { SessionId } from '@ema-agent/contracts';
@@ -27,7 +27,7 @@ export interface RestoreContext {
 }
 
 /**
- * Produce a list of LlmMessages to inject immediately AFTER the new summary
+ * Produce model messages to inject immediately after the new summary
  * message. These re-seed the model with the most concretely useful context so
  * the post-compaction turn doesn't feel amnesic.
  *
@@ -44,7 +44,7 @@ export interface RestoreContext {
 export function buildPostCompactRestore(
   deps: MemoryDeps,
   ctx:  RestoreContext,
-): LlmMessage[] {
+): ModelMessage[] {
   if (ctx.mode === 'agent') return restoreAgent(ctx);
   if (ctx.mode === 'chat')  return restoreChat(deps, ctx);
   return restoreNarrative(deps, ctx);
@@ -52,7 +52,7 @@ export function buildPostCompactRestore(
 
 // ── Agent: re-inject recent file reads ───────────────────────────────────────
 
-function restoreAgent(ctx: RestoreContext): LlmMessage[] {
+function restoreAgent(ctx: RestoreContext): ModelMessage[] {
   const files = (ctx.recentFiles ?? []).slice();
   if (files.length === 0) return [];
 
@@ -101,7 +101,7 @@ ${sections.join('\n\n')}
 
 // ── Chat: re-inject current emotion / mood snapshot ──────────────────────────
 
-function restoreChat(deps: MemoryDeps, ctx: RestoreContext): LlmMessage[] {
+function restoreChat(deps: MemoryDeps, ctx: RestoreContext): ModelMessage[] {
   const noteMarkdown = recallSessionNote(deps, ctx.sessionId);
   if (!noteMarkdown) return [];
 
@@ -118,7 +118,7 @@ ${emotionSection}
   }];
 }
 
-function restoreNarrative(deps: MemoryDeps, ctx: RestoreContext): LlmMessage[] {
+function restoreNarrative(deps: MemoryDeps, ctx: RestoreContext): ModelMessage[] {
   const noteMarkdown = recallSessionNote(deps, ctx.sessionId);
   if (!noteMarkdown) return [];
 

@@ -1,8 +1,18 @@
 // 执行 Agent 的多轮模型与工具循环，并维护每轮状态、预算和事件。
 import { randomUUID } from 'node:crypto';
-import { asLlmCallId } from '@ema-agent/contracts';
-import type { LlmMessage, AssistantBlock, UserBlock, ToolResultBlock, EmaStreamEvent, LlmCallId, LlmTokenUsage } from '@ema-agent/contracts';
-import type { LanguageModel, LlmToolDef, ThinkingMode, StopReason } from '@ema-agent/llm';
+import type { ToolResultBlock, EmaStreamEvent } from '@ema-agent/contracts';
+import { asLlmCallId } from '@ema-agent/llm';
+import type {
+  AssistantBlock,
+  LanguageModel,
+  LlmCallId,
+  LlmTokenUsage,
+  LlmToolDef,
+  Message as ModelMessage,
+  StopReason,
+  ThinkingMode,
+  UserBlock,
+} from '@ema-agent/llm';
 import {
   advanceLlmUsageSnapshot,
   computePromptPrefixHash,
@@ -75,16 +85,16 @@ export type ExecutorFactory = (internals: {
 export interface PrepareLlmCallInput {
   iteration: number;
   llmCallId: LlmCallId;
-  messages: LlmMessage[];
+  messages: ModelMessage[];
 }
 
 export type PrepareLlmCallResult =
-  | { kind: 'continue'; messages: LlmMessage[] }
+  | { kind: 'continue'; messages: ModelMessage[] }
   | { kind: 'abort'; reason: string };
 
 export interface AgentLoopInput {
   /** Mutable messages array. Loop appends each round's assistant + tool-result messages. */
-  messages:       LlmMessage[];
+  messages:       ModelMessage[];
   policy:         AgentPolicy;
   /** Called once at loop construction. Provides the loop's internal relay callbacks. */
   buildExecutor:  ExecutorFactory;
@@ -119,7 +129,7 @@ export interface AgentLoopInput {
    * iterations and the spawner both see the compacted history.
    * Engine wires this to MemoryPlanner.compact(); spawner omits it (ephemeral).
    */
-  compactMessages?: (messages: LlmMessage[], tools: readonly LlmToolDef[]) => Promise<LlmMessage[]>;
+  compactMessages?: (messages: ModelMessage[], tools: readonly LlmToolDef[]) => Promise<ModelMessage[]>;
   /**
    * 每个逻辑 LLM 调用前执行的窄 Facade。Loop 不依赖 HookBus；主 Engine
    * 用它触发 beforeLlm，并返回只属于本次请求的消息视图。
@@ -209,7 +219,7 @@ export async function* agentLoop(input: AgentLoopInput): AsyncIterable<AgentLoop
     const scratchpadCtx  = getScratchpadContext?.();
     const mailboxMsgs    = getMailboxMessages?.() ?? [];
 
-    const buildEffectiveMessages = (): LlmMessage[] => [
+    const buildEffectiveMessages = (): ModelMessage[] => [
       ...messages,
       ...(scratchpadCtx ? [{ role: 'user' as const, content: scratchpadCtx }] : []),
       ...mailboxMsgs.map(m => ({ role: 'user' as const, content: `[Coordinator]: ${m}` })),

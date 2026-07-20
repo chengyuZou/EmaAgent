@@ -1,10 +1,10 @@
 // 定义业务模块调用语言模型时可见的稳定边界，隐藏 Provider 热重载和 Adapter 管理。
-import type { CompatibleMessageView } from './message-compatibility.js';
+import type { CompatibleMessageView } from './messageCompatibility.js';
 import type { UnsupportedPart } from './validate.js';
 import type {
   LlmCompletion,
   LlmContentPart,
-  LlmMessage,
+  Message,
   LlmRequest,
   LlmStreamChunk,
 } from './types.js';
@@ -21,7 +21,7 @@ export interface LanguageModel {
   prepareHistoricalMessages(
     providerId: string,
     model: string,
-    messages: readonly LlmMessage[],
+    messages: readonly Message[],
   ): CompatibleMessageView;
   assertCurrentContentCompatible(
     providerId: string,

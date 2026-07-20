@@ -1,9 +1,9 @@
 // 清理不允许进入下一次 LLM 请求或 Compaction 摘要的 Provider 私有内容。
 
-import type { AssistantBlock, LlmMessage } from '@ema-agent/llm';
+import type { AssistantBlock, Message as ModelMessage } from '@ema-agent/llm';
 
-export function sanitizeCompactionMessages(messages: LlmMessage[]): LlmMessage[] {
-  const sanitized: LlmMessage[] = [];
+export function sanitizeCompactionMessages(messages: ModelMessage[]): ModelMessage[] {
+  const sanitized: ModelMessage[] = [];
   for (const message of messages) {
     if (message.role !== 'assistant' || typeof message.content === 'string') {
       sanitized.push(message);

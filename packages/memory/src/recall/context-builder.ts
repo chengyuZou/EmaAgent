@@ -1,8 +1,8 @@
-import type { LlmMessage } from '@ema-agent/llm';
+import type { Message as ModelMessage } from '@ema-agent/llm';
 import { estimateTextTokens } from '@ema-agent/token';
 import type { RecallBundle, GraphRecallResult, EpisodicRecallResult, PlanContext } from '../types.js';
 
-export function buildContextMessage(bundle: RecallBundle): LlmMessage | null {
+export function buildContextMessage(bundle: RecallBundle): ModelMessage | null {
   const parts: string[] = [];
 
   const fmtDate = (ms: number) =>

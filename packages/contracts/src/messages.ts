@@ -122,24 +122,6 @@ export interface ToolResultBlock {
 
 export type UserBlock = MessageContentPart | ToolResultBlock;
 
-// ── LLM 内部消息格式 ──────────────────────────────────────────────────────────
-
-/**
- * Internal wire-format for LLM conversations.
- *
- * Uses Anthropic's content-block model as the canonical shape:
- * - system:    plain string
- * - user:      plain string OR UserBlock[] (multimodal input + tool results)
- * - assistant: AssistantBlock[] — preserves text/thinking/tool_use interleaving order
- *
- * There is no `role: 'tool'` — tool results live as ToolResultBlock inside
- * a `role: 'user'` message so the history exactly mirrors what Anthropic expects.
- */
-export type LlmMessage =
-  | { role: 'system';    content: string;                      cacheBreakpoint?: true }
-  | { role: 'user';      content: string | UserBlock[];        cacheBreakpoint?: true }
-  | { role: 'assistant'; content: AssistantBlock[];            cacheBreakpoint?: true };
-
 // ── 存储格式 ──────────────────────────────────────────────────────────────────
 
 /**

@@ -12,7 +12,7 @@ import type {
 import { randomUUID } from 'node:crypto';
 import type { LlmAdapter } from './base.js';
 import type {
-  LlmRequest, LlmStreamChunk, LlmMessage, LlmToolDef,
+  LlmRequest, LlmStreamChunk, Message, LlmToolDef,
   StopReason, ProviderConfig, AssistantBlock, UserBlock,
 } from '../types.js';
 import {
@@ -22,7 +22,7 @@ import {
   throwIfAbortError,
 } from '../errors.js';
 import { createLlmTokenUsage } from '../usage.js';
-import type { ToolResultBlock, MessageContentPart } from '@ema-agent/contracts';
+import type { ContentPart, ToolResultBlock } from '../message.js';
 
 function isContextWindowError(err: unknown): boolean {
   const msg = (err instanceof Error ? err.message : String(err)).toLowerCase();
@@ -54,7 +54,7 @@ function mapStopReason(reason: string | undefined): StopReason {
 
 // ── 消息转换 ────────────────────────────────────────────────────────────────
 
-function mediaPartToGeminiPart(part: MessageContentPart): Part | null {
+function mediaPartToGeminiPart(part: ContentPart): Part | null {
   switch (part.type) {
     case 'text':
       return { text: part.text };
@@ -94,7 +94,7 @@ function mimeFromUri(uri: string): string {
 }
 
 function toGeminiContents(
-  msgs: LlmMessage[],
+  msgs: Message[],
 ): { system: string | undefined; contents: Content[] } {
   let system: string | undefined;
   const contents: Content[] = [];
@@ -140,7 +140,7 @@ function toGeminiContents(
           }
           parts.push({ functionResponse: { name, response } });
         } else {
-          const p = mediaPartToGeminiPart(block as MessageContentPart);
+          const p = mediaPartToGeminiPart(block as ContentPart);
           if (p) parts.push(p);
         }
       }

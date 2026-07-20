@@ -1,5 +1,17 @@
 // 归一化 Provider 用量，并把单次调用的累计快照安全转换为聚合增量。
-import type { LlmTokenUsage } from './types.js';
+
+/** 单次逻辑 LLM 调用由 Provider 返回的 Token 指标。 */
+export interface LlmTokenUsage {
+  /** Provider 本次调用的总输入，包含缓存读取和缓存写入部分。 */
+  inputTokens: number;
+  outputTokens: number;
+  /** inputTokens 中由 Provider 缓存命中的子集。 */
+  cacheReadInputTokens?: number;
+  /** inputTokens 中在本次调用写入 Provider 缓存的子集。 */
+  cacheWriteInputTokens?: number;
+  /** Provider 明确定义的缓存命中比例，范围 0..1。 */
+  cacheHitRate?: number;
+}
 
 export interface ProviderUsageInput {
   inputTokens: number;

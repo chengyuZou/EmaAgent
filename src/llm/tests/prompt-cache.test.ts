@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import type { LlmMessage, LlmToolDef } from '../types.js';
+import type { LlmToolDef, Message } from '../types.js';
 import {
   computePromptPrefixHash,
   normalizeToolDefinitions,
-} from '../prompt-cache.js';
+} from '../promptCache.js';
 import { toAnthropicMessages } from '../adapters/anthropic.js';
 import { createLlmTokenUsage } from '../usage.js';
 
-const stableSystem: LlmMessage = {
+const stableSystem: Message = {
   role: 'system',
   content: 'You are Ema.',
   cacheBreakpoint: true,
