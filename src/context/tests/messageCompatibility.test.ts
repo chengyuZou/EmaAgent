@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import type { Message } from '../types.js';
+import type { Message } from '@ema-agent/llm';
 import {
   prepareHistoricalMessageView,
   validateCurrentContent,
 } from '../messageCompatibility.js';
-import type { ModelCapabilitySnapshot } from '../modelCapabilities.js';
+import type { ModelCapabilitySnapshot } from '@ema-agent/provider';
 
 const TEXT_ONLY: ModelCapabilitySnapshot = {
   input: {

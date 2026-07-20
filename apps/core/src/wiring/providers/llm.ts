@@ -3,13 +3,14 @@ import {
   type ProviderConfigRow,
   type Database,
 } from '@ema-agent/storage';
-import type { ProviderConfig, ModelsDevCatalog } from '@ema-agent/llm';
+import type { ProviderConfig } from '@ema-agent/llm';
 import type { CredentialFacade } from '@ema-agent/credential';
 import {
   providerCatalog,
   isLlmProtocol,
   modelsDevIdFor,
   requiresCredentials,
+  type ModelsDevCatalog,
 } from '@ema-agent/provider';
 import {
   capabilityConfigFor,

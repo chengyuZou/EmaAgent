@@ -10,10 +10,14 @@ import { AgentPolicy } from './policy.js';
 import { TurnToolExecutor } from './tool-executor.js';
 import { agentLoop, type ExecutorFactory } from './loop.js';
 import { SubagentSpawner } from './spawner.js';
-import { buildModelMessages } from '@ema-agent/context';
+import {
+  buildModelMessages,
+  prepareHistoricalMessageView,
+  validateCurrentContent,
+} from '@ema-agent/context';
 import { clearTodos } from '@ema-agent/tool-builtin';
 import { buildScratchpadContext } from './scratchpad-context.js';
-import { llmProviderErrorCode } from '@ema-agent/llm';
+import { LlmModelCapabilityError, llmProviderErrorCode } from '@ema-agent/llm';
 import type { AssistantBlock, Message as ModelMessage, UserBlock } from '@ema-agent/llm';
 import * as fs   from 'node:fs';
 import { AgentBudgetExceededError, TurnBudget } from './turn-budget.js';
@@ -155,13 +159,16 @@ async function* runTurn(
     // ── Build initial message history ─────────────────────────────────────────
     activePhase = 'provider';
     const history = session.loadHistory(sessionId);
+    const capabilities = llm.capabilitiesFor(providerId, model);
     if (Array.isArray(userInput)) {
-      llm.assertCurrentContentCompatible(providerId, model, userInput);
+      const issues = validateCurrentContent(userInput, capabilities);
+      if (issues.length > 0) {
+        throw new LlmModelCapabilityError(providerId, model, issues);
+      }
     }
-    const historyView = llm.prepareHistoricalMessages(
-      providerId,
-      model,
+    const historyView = prepareHistoricalMessageView(
       buildModelMessages(history),
+      capabilities,
     );
     if (historyView.actions.length > 0) {
       yield {

@@ -2,7 +2,7 @@
 
 import { randomUUID } from 'node:crypto';
 import type { EmaStreamEvent, ErrorCode } from '@ema-agent/contracts';
-import { asLlmCallId, computePromptPrefixHash, llmProviderErrorCode } from '@ema-agent/llm';
+import { asLlmCallId, LlmModelCapabilityError, llmProviderErrorCode } from '@ema-agent/llm';
 import type {
   AssistantBlock,
   LlmContentPart,
@@ -13,7 +13,12 @@ import type {
 import type { MessageBlocks } from '@ema-agent/session';
 import type { HookBus, HookTriggerContext, HookTriggerResult, TurnFailurePhase } from '@ema-agent/hook';
 import type { ConversationDeps, ConversationRunInput } from './types.js';
-import { buildModelMessages } from '@ema-agent/context';
+import {
+  buildModelMessages,
+  computePromptPrefixHash,
+  prepareHistoricalMessageView,
+  validateCurrentContent,
+} from '@ema-agent/context';
 
 // ── ConversationEngine ────────────────────────────────────────────────────────
 
@@ -128,13 +133,16 @@ async function* runTurn(
         ? input.contentParts
         : input.userInput;
 
+    const capabilities = llm.capabilitiesFor(providerId, resolvedModel);
     if (Array.isArray(userBlocks)) {
-      llm.assertCurrentContentCompatible(providerId, resolvedModel, userBlocks);
+      const issues = validateCurrentContent(userBlocks, capabilities);
+      if (issues.length > 0) {
+        throw new LlmModelCapabilityError(providerId, resolvedModel, issues);
+      }
     }
-    const historyView = llm.prepareHistoricalMessages(
-      providerId,
-      resolvedModel,
+    const historyView = prepareHistoricalMessageView(
       buildModelMessages(history),
+      capabilities,
     );
     if (historyView.actions.length > 0) {
       yield {

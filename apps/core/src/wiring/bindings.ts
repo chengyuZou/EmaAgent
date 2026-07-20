@@ -35,7 +35,8 @@ import {
   removeSessionDir,
   sqliteFileSet,
 } from '../storage-locations/index.js';
-import { LanguageModelRuntime, ModelsDevCatalog } from '@ema-agent/llm';
+import { LanguageModelRuntime } from '@ema-agent/llm';
+import { createModelCapabilityResolver, ModelsDevCatalog } from '@ema-agent/provider';
 import { EbdRouter }     from '@ema-agent/ebd-client';
 import { NarrativeClient } from '@ema-agent/narrative-client';
 import { CharacterCardStore, BUILTIN_CARDS, EMA_CARD_INPUT, EMA_CARD_ID } from '@ema-agent/character-card';
@@ -315,9 +316,12 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
   } catch {
     console.warn('[catalog] no bundled snapshot found, will rely on network refresh');
   }
-  const llm = new LanguageModelRuntime(loadLlmConfigs(profileDb, credentials), undefined, modelCatalog, {
+  const modelCapabilities = createModelCapabilityResolver(modelCatalog, {
     supportsManualImageInput: (providerId, model) =>
       providerVisionModels.hasProviderModel(providerId, model),
+  });
+  const llm = new LanguageModelRuntime(loadLlmConfigs(profileDb, credentials), undefined, {
+    modelCapabilities,
     usageRecorder: usageRecords,
     onUsageRecordError,
   });

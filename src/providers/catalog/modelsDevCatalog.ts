@@ -1,4 +1,4 @@
-// 读取 models.dev 目录，并建立供应商与模型能力的只读查询索引。
+// 读取 models.dev 目录，并建立跨模态的供应商模型事实索引。
 /**
  * models.dev catalog - 从 https://models.dev/api.json 拉取 LLM/Vision 模型事实,
  * 而非硬编码上下文窗口和能力标志。

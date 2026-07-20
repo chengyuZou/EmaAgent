@@ -15,9 +15,9 @@ import type {
 } from '@ema-agent/llm';
 import {
   advanceLlmUsageSnapshot,
-  computePromptPrefixHash,
   ContextWindowExceededError,
 } from '@ema-agent/llm';
+import { computePromptPrefixHash, normalizeToolDefinitions } from '@ema-agent/context';
 import type { AgentPolicy } from './policy.js';
 import type { TurnToolExecutor } from './tool-executor.js';
 import { advanceState, addUsage, createLoopState } from './loop-state.js';
@@ -203,7 +203,7 @@ export async function* agentLoop(input: AgentLoopInput): AsyncIterable<AgentLoop
 
     // Skill 调用可能收窄后续工具范围，因此每轮都重新取得工具定义。
     // 工具定义虽然不在消息数组中，压缩时仍必须预留其序列化后的 Token 成本。
-    const tools = policy.toolDefs();
+    const tools = normalizeToolDefinitions(policy.toolDefs());
 
     // Per-iteration compaction: runs before every LLM call so agent loops that
     // accumulate many tool results don't overflow the context window mid-turn.

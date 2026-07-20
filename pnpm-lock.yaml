@@ -1357,10 +1357,16 @@ importers:
       '@ema-agent/llm':
         specifier: workspace:*
         version: link:../llm
+      '@ema-agent/provider':
+        specifier: workspace:*
+        version: link:../providers
       '@ema-agent/session':
         specifier: workspace:*
         version: link:../../packages/session
     devDependencies:
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.39
       rimraf:
         specifier: ^5.0.0
         version: 5.0.10

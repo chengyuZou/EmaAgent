@@ -1,7 +1,6 @@
-// 规范化工具定义并计算稳定的 Prompt 前缀指纹，供 Provider KV Cache 诊断使用。
+// 稳定 Tool Manifest 并计算 Prompt 前缀指纹，供 Context 缓存策略与诊断使用。
 import { createHash } from 'node:crypto';
-import type { Message } from './message.js';
-import type { LlmToolDef } from './types.js';
+import type { LlmToolDef, Message } from '@ema-agent/llm';
 
 interface PromptPrefixInput {
   messages: readonly Message[];

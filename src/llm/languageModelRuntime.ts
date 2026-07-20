@@ -10,7 +10,6 @@ import { validateContentParts } from './validate.js';
 import type { UnsupportedPart } from './validate.js';
 import type {
   ProviderConfig,
-  Message,
   LlmRequest,
   LlmStreamChunk,
   LlmCompletion,
@@ -22,20 +21,12 @@ import type {
 } from './types.js';
 import type { LanguageModel } from './languageModel.js';
 import type { UsageRecord, UsageRecorder } from '@ema-agent/usage';
-import type { LlmProtocol } from '@ema-agent/provider';
-import type { ModelsDevCatalog } from './modelsDevCatalog.js';
 import {
-  capabilitiesFromCatalog,
-  capabilitiesFromManualVision,
-  unknownModelCapabilities,
+  type LlmProtocol,
+  type ModelCapabilityResolver,
   type ModelCapabilitySnapshot,
-} from './modelCapabilities.js';
-import {
-  prepareHistoricalMessageView,
-  validateCurrentContent,
-  type CompatibleMessageView,
-} from './messageCompatibility.js';
-import { LlmModelCapabilityError } from './errors.js';
+  unknownModelCapabilities,
+} from '@ema-agent/provider';
 import { createCompatibilityRecovery } from './compatibilityRecovery.js';
 import { LlmRequestPreparer } from './llmRequestPreparer.js';
 import { ProviderRuntimeRegistry } from './providerRuntimeRegistry.js';
@@ -74,7 +65,7 @@ export class LanguageModelRuntime implements LanguageModel {
   private readonly streamRuntime = new LlmStreamRuntime();
   /** 仅测试用的 adapter 替换,以 ProviderConfig.id 为 key。 */
   private readonly adapterOverrides?: ReadonlyMap<string, LlmAdapter>;
-  private readonly supportsManualImageInput?: (providerId: string, model: string) => boolean;
+  private readonly modelCapabilities?: ModelCapabilityResolver;
   private readonly usageRecorder?: UsageRecorder;
   private readonly onUsageRecordError?: (error: unknown, record: UsageRecord) => void;
 
@@ -86,15 +77,14 @@ export class LanguageModelRuntime implements LanguageModel {
   constructor(
     configs: ProviderConfig[],
     adapterOverrides?: ReadonlyMap<string, LlmAdapter>,
-    private readonly catalog?: ModelsDevCatalog,
     options: {
-      supportsManualImageInput?: (providerId: string, model: string) => boolean;
+      modelCapabilities?: ModelCapabilityResolver;
       usageRecorder?: UsageRecorder;
       onUsageRecordError?: (error: unknown, record: UsageRecord) => void;
     } = {},
   ) {
     this.adapterOverrides = adapterOverrides;
-    this.supportsManualImageInput = options.supportsManualImageInput;
+    this.modelCapabilities = options.modelCapabilities;
     this.usageRecorder = options.usageRecorder;
     this.onUsageRecordError = options.onUsageRecordError;
     this.providerRegistry = new ProviderRuntimeRegistry(
@@ -290,35 +280,12 @@ export class LanguageModelRuntime implements LanguageModel {
   /** 按 Provider + Model 精确返回能力；同名模型不会跨 Provider 串数据。 */
   capabilitiesFor(providerId: string, model: string): ModelCapabilitySnapshot {
     const config = this.providerRegistry.get(providerId)?.config;
-    const spec = config?.modelsDevId && this.catalog
-      ? this.catalog.get(config.modelsDevId, model)
-      : undefined;
-    if (spec) return capabilitiesFromCatalog(spec);
-    if (this.supportsManualImageInput?.(providerId, model)) {
-      return capabilitiesFromManualVision();
-    }
-    return unknownModelCapabilities();
-  }
-
-  /** 历史消息只读降级；调用方负责把 actions 转成结构化 SSE。 */
-  prepareHistoricalMessages(
-    providerId: string,
-    model: string,
-    messages: readonly Message[],
-  ): CompatibleMessageView {
-    return prepareHistoricalMessageView(messages, this.capabilitiesFor(providerId, model));
-  }
-
-  /** 本轮新附件不允许静默丢弃；能力 unknown 也会 fail-closed。 */
-  assertCurrentContentCompatible(
-    providerId: string,
-    model: string,
-    parts: readonly LlmContentPart[],
-  ): void {
-    const issues = validateCurrentContent(parts, this.capabilitiesFor(providerId, model));
-    if (issues.length > 0) {
-      throw new LlmModelCapabilityError(providerId, model, issues);
-    }
+    if (!config || !this.modelCapabilities) return unknownModelCapabilities();
+    return this.modelCapabilities.resolve({
+      providerId,
+      model,
+      ...(config.modelsDevId ? { modelsDevId: config.modelsDevId } : {}),
+    });
   }
 
   // ── 热重载 ───────────────────────────────────────────────

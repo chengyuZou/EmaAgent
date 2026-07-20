@@ -9,10 +9,17 @@ import { AgentEngine } from '../src/engine.js';
 import type { AgentDeps } from '../src/types.js';
 
 const compatibilityMethods = {
-  assertCurrentContentCompatible: () => undefined,
-  prepareHistoricalMessages: (_providerId: string, _model: string, messages: unknown[]) => ({
-    messages,
-    actions: [],
+  capabilitiesFor: () => ({
+    input: {
+      text: 'supported' as const,
+      image: 'supported' as const,
+      audio: 'supported' as const,
+      file: 'supported' as const,
+    },
+    tools: 'supported' as const,
+    reasoning: 'supported' as const,
+    temperature: 'supported' as const,
+    source: 'manual' as const,
   }),
 };
 

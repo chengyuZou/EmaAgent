@@ -1,11 +1,11 @@
-// 为历史消息生成兼容视图，并对当前输入执行不可静默降级的能力校验。
+// 为历史消息生成兼容视图，并对本轮输入执行不可静默降级的能力校验。
 import type {
   ContentPart,
   Message,
   ToolResultContentPart,
   UserBlock,
-} from './message.js';
-import type { ModelCapabilitySnapshot, ModelCapabilityState } from './modelCapabilities.js';
+} from '@ema-agent/llm';
+import type { ModelCapabilitySnapshot, ModelCapabilityState } from '@ema-agent/provider';
 
 export type InputModality = 'image' | 'audio' | 'file';
 
@@ -76,30 +76,6 @@ export function validateCurrentContent(
   capabilities: ModelCapabilitySnapshot,
 ): MessageCompatibilityIssue[] {
   return validateParts(parts, capabilities, 0);
-}
-
-/** Adapter 前的最后一道 fail-closed 门禁，覆盖 Hook/Tool 新增的消息。 */
-export function validateMessageCapabilities(
-  messages: readonly Message[],
-  capabilities: ModelCapabilitySnapshot,
-): MessageCompatibilityIssue[] {
-  const issues: MessageCompatibilityIssue[] = [];
-  messages.forEach((message, messageIndex) => {
-    if (message.role !== 'user' || !Array.isArray(message.content)) return;
-    message.content.forEach((block, partIndex) => {
-      if (block.type === 'tool_result') {
-        if (typeof block.content === 'string') return;
-        block.content.forEach((part, nestedPartIndex) => {
-          const issue = validatePart(part, capabilities, messageIndex, partIndex, nestedPartIndex);
-          if (issue) issues.push(issue);
-        });
-        return;
-      }
-      const issue = validatePart(block, capabilities, messageIndex, partIndex);
-      if (issue) issues.push(issue);
-    });
-  });
-  return issues;
 }
 
 function validateParts(

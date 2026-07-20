@@ -4,5 +4,5 @@
     "rootDir": ".",
     "outDir": "dist"
   },
-  "include": ["*.ts", "definitions/**/*.ts"]
+  "include": ["*.ts", "catalog/**/*.ts", "definitions/**/*.ts"]
 }

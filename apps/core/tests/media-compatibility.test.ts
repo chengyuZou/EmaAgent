@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import { LlmModelCapabilityError, type ModelCapabilitySnapshot } from '@ema-agent/llm';
+import { LlmModelCapabilityError } from '@ema-agent/llm';
+import type { ModelCapabilitySnapshot } from '@ema-agent/provider';
 import {
   prepareImagesForModel,
   replaceImageParts,

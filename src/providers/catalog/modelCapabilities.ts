@@ -1,5 +1,5 @@
 // 统一表达模型的输入模态、工具、推理、窗口能力及其可信来源。
-import type { ModelsDevSpec } from './modelsDevCatalog.js';
+import type { ModelsDevCatalog, ModelsDevSpec } from './modelsDevCatalog.js';
 
 export type ModelCapabilityState = 'supported' | 'unsupported' | 'unknown';
 export type ModelCapabilitySource = 'catalog' | 'live' | 'manual' | 'unknown';
@@ -18,6 +18,38 @@ export interface ModelCapabilitySnapshot {
   contextWindow?: number;
   maxOutput?: number;
   source: ModelCapabilitySource;
+}
+
+/** 运行时 Provider 配置已经解析出的模型身份，不包含凭据。 */
+export interface ModelCapabilityQuery {
+  providerId: string;
+  model: string;
+  modelsDevId?: string;
+}
+
+/** Provider 模块向 Context、LLM 和设置页提供的统一能力查询边界。 */
+export interface ModelCapabilityResolver {
+  resolve(query: ModelCapabilityQuery): ModelCapabilitySnapshot;
+}
+
+export function createModelCapabilityResolver(
+  catalog: ModelsDevCatalog,
+  options: {
+    supportsManualImageInput?: (providerId: string, model: string) => boolean;
+  } = {},
+): ModelCapabilityResolver {
+  return {
+    resolve(query) {
+      const spec = query.modelsDevId
+        ? catalog.get(query.modelsDevId, query.model)
+        : undefined;
+      if (spec) return capabilitiesFromCatalog(spec);
+      if (options.supportsManualImageInput?.(query.providerId, query.model)) {
+        return capabilitiesFromManualVision();
+      }
+      return unknownModelCapabilities();
+    },
+  };
 }
 
 export function unknownModelCapabilities(): ModelCapabilitySnapshot {

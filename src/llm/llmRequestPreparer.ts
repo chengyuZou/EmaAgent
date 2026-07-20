@@ -1,10 +1,8 @@
 // 根据模型能力与线路协议生成单次调用快照，并在进入 Adapter 前拒绝不兼容输入。
-import type { LlmProtocol } from '@ema-agent/provider';
+import type { LlmProtocol, ModelCapabilitySnapshot } from '@ema-agent/provider';
 import { LlmModelCapabilityError } from './errors.js';
 import type { LlmCapabilityIssue } from './errors.js';
-import type { ModelCapabilitySnapshot } from './modelCapabilities.js';
-import { validateMessageCapabilities } from './messageCompatibility.js';
-import { normalizeToolDefinitions } from './promptCache.js';
+import { validateModelInputCapabilities } from './modelInputValidation.js';
 import type {
   LlmContentPart,
   Message,
@@ -30,7 +28,7 @@ export class LlmRequestPreparer {
     const capabilities = this.dependencies.capabilitiesFor(request.providerId, request.model);
     const prepared = createRequestSnapshot(request, capabilities);
     const capabilityIssues: LlmCapabilityIssue[] = [
-      ...validateMessageCapabilities(prepared.messages, capabilities),
+      ...validateModelInputCapabilities(prepared.messages, capabilities),
       ...validateModelFeatures(prepared, capabilities),
     ];
     if (capabilityIssues.length > 0) {
@@ -52,7 +50,10 @@ function createRequestSnapshot(
   const maxTokens = request.maxTokens !== undefined && capabilities.maxOutput !== undefined
     ? Math.min(request.maxTokens, capabilities.maxOutput)
     : request.maxTokens;
-  const tools = request.tools ? normalizeToolDefinitions(request.tools) : undefined;
+  const tools = request.tools?.map((tool) => ({
+    ...tool,
+    parameters: structuredClone(tool.parameters),
+  }));
 
   return {
     ...request,

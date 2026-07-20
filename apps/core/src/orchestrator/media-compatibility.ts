@@ -2,8 +2,8 @@ import type { RequestDegradationNotice } from '@ema-agent/contracts';
 import {
   LlmModelCapabilityError,
   type LlmContentPart,
-  type ModelCapabilitySnapshot,
 } from '@ema-agent/llm';
+import type { ModelCapabilitySnapshot } from '@ema-agent/provider';
 import type { VisionImageInput, VisionImageMime } from '@ema-agent/vision';
 
 export interface VisionModelBinding {

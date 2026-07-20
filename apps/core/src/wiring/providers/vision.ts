@@ -2,7 +2,6 @@ import type { Database, ProviderConfigRow } from '@ema-agent/storage';
 import { ProvidersRepo } from '@ema-agent/storage';
 import { VisionRouter, isVisionError } from '@ema-agent/vision';
 import type { VisionProviderConfig, VisionImageMime } from '@ema-agent/vision';
-import type { ModelsDevCatalog } from '@ema-agent/llm';
 import type { CredentialFacade } from '@ema-agent/credential';
 import { KbVisionAdapterError, type KbVisionAdapter } from '@ema-agent/knowledge-base';
 import {
@@ -10,6 +9,7 @@ import {
   isVisionProtocol,
   requiresCredentials,
   staticModelsFor,
+  type ModelsDevCatalog,
 } from '@ema-agent/provider';
 import type {
   UsageRecord,

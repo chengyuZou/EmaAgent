@@ -616,6 +616,10 @@ contracts 拆除与 Runtime 重构并行推进，但每批只迁一个明确所�
 - [x] 删除已损坏且重复实现旧 Agent 编排的 `live-agent-business.test.ts`，同时删除硬编码凭据与 `describe.only` 的旧阿里云 live 测试；
 - [x] 保留通过环境变量显式启用的 DeepSeek live 测试，用于验证真实 Provider、流式事件、工具调用和协议差异；
 - [x] Vision/Embed/Rerank/STT/TTS、Core 与 Storage 已切到 `@ema-agent/usage`，contracts 中旧 Usage 定义已删除。
+- [x] `ModelsDevCatalog` 与 `ModelCapabilitySnapshot` 迁入 `src/providers/catalog`，LLM 只依赖注入的 `ModelCapabilityResolver`；
+- [x] Prompt 前缀 Hash 与 Tool Manifest 稳定化迁入 `src/context/promptPrefix.ts`，LLM 不再制定 KV Cache 策略；
+- [x] 历史媒体降级与本轮附件门禁迁入 Context，LLM 只保留 Adapter 前覆盖 Hook/Tool 内容的最终能力校验；
+- [ ] 将 `packages/memory/src/compact` 迁入 Context，并让 Agent/Conversation 通过统一 Context 边界执行预算与压缩。
 
 #### C2：Turn + SSE Event
 

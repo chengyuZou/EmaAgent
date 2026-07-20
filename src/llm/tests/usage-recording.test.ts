@@ -30,7 +30,6 @@ describe('LanguageModelRuntime usage recording', () => {
     const router = new LanguageModelRuntime(
       [config],
       new Map([['provider-1', adapter]]),
-      undefined,
       { usageRecorder: { record: (record) => records.push(record) } },
     );
 
@@ -64,7 +63,6 @@ describe('LanguageModelRuntime usage recording', () => {
     const router = new LanguageModelRuntime(
       [config],
       new Map([['provider-1', adapter]]),
-      undefined,
       { usageRecorder: { record: (record) => records.push(record) } },
     );
 

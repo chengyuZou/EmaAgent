@@ -4,17 +4,24 @@ import type { Turn } from '@ema-agent/session';
 import { HookBus } from '@ema-agent/hook';
 import { ConversationEngine } from '../src/engine.js';
 import type { ConversationDeps } from '../src/types.js';
-import { LanguageModelRuntime, ModelsDevCatalog } from '@ema-agent/llm';
+import { LanguageModelRuntime } from '@ema-agent/llm';
 import type { LlmAdapter, LlmRequest } from '@ema-agent/llm';
 
 const sessionId = 'session-hook-sse' as SessionId;
 const turnId = 'turn-hook-sse' as TurnId;
 
 const compatibilityMethods = {
-  assertCurrentContentCompatible: () => undefined,
-  prepareHistoricalMessages: (_providerId: string, _model: string, messages: unknown[]) => ({
-    messages,
-    actions: [],
+  capabilitiesFor: () => ({
+    input: {
+      text: 'supported' as const,
+      image: 'supported' as const,
+      audio: 'supported' as const,
+      file: 'supported' as const,
+    },
+    tools: 'supported' as const,
+    reasoning: 'supported' as const,
+    temperature: 'supported' as const,
+    source: 'manual' as const,
   }),
 };
 
@@ -333,14 +340,6 @@ describe('ConversationEngine Hook 诊断事件', () => {
 
 describe('ConversationEngine 多模态历史兼容视图', () => {
   it('切换纯文本模型后只降级请求副本，原始历史保持不变', async () => {
-    const catalog = new ModelsDevCatalog();
-    catalog.loadFromJson({
-      testProvider: {
-        models: {
-          textOnly: { modalities: { input: ['text'], output: ['text'] } },
-        },
-      },
-    });
     const requests: LlmRequest[] = [];
     const adapter: LlmAdapter = {
       async *stream(request) {
@@ -356,7 +355,22 @@ describe('ConversationEngine 多模态历史兼容视图', () => {
         apiKey: 'secret',
         modelsDevId: 'testProvider',
       },
-    ], new Map([['provider-1', adapter]]), catalog);
+    ], new Map([['provider-1', adapter]]), {
+      modelCapabilities: {
+        resolve: () => ({
+          input: {
+            text: 'supported',
+            image: 'unsupported',
+            audio: 'unsupported',
+            file: 'unsupported',
+          },
+          tools: 'supported',
+          reasoning: 'unknown',
+          temperature: 'supported',
+          source: 'catalog',
+        }),
+      },
+    });
     const storedBlocks = [
       { type: 'text' as const, text: '上一轮图片' },
       { type: 'image_data' as const, data: 'base64', mimeType: 'image/png', name: 'history.png' },

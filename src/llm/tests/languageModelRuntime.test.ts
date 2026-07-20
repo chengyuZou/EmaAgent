@@ -1,7 +1,7 @@
 // 测试语言模型运行时的 Provider 快照、能力检查、流式调用和完整结果聚合。
 import { describe, it, expect } from 'vitest';
+import { createModelCapabilityResolver, ModelsDevCatalog } from '@ema-agent/provider';
 import { LanguageModelRuntime } from '../languageModelRuntime.js';
-import { ModelsDevCatalog } from '../modelsDevCatalog.js';
 import { LlmModelCapabilityError } from '../errors.js';
 import type { LlmAdapter } from '../adapters/base.js';
 import type { LlmContentPart, LlmRequest, LlmStreamChunk, ProviderConfig } from '../types.js';
@@ -86,7 +86,7 @@ describe('LanguageModelRuntime — routing', () => {
     expect(mock.calls[0]?.request.signal).toBe(signal);
   });
 
-  it('在 Adapter 边界规范化工具名称顺序和 Schema key 顺序', async () => {
+  it('Adapter 边界保留 Context 已准备好的 Tool Manifest 顺序', async () => {
     const mock = new MockAdapter([{ type: 'done', stopReason: 'end_turn' }]);
     const router = new LanguageModelRuntime([DS_CONFIG], new Map([['ds-001', mock]]));
 
@@ -104,9 +104,9 @@ describe('LanguageModelRuntime — routing', () => {
       ],
     }));
 
-    expect(mock.calls[0]?.request.tools?.map((tool) => tool.name)).toEqual(['alpha', 'zeta']);
-    expect(Object.keys(mock.calls[0]?.request.tools?.[0]?.parameters ?? {}))
-      .toEqual(['properties', 'required', 'type']);
+    expect(mock.calls[0]?.request.tools?.map((tool) => tool.name)).toEqual(['zeta', 'alpha']);
+    expect(Object.keys(mock.calls[0]?.request.tools?.[1]?.parameters ?? {}))
+      .toEqual(['required', 'properties', 'type']);
   });
 
   it('routes two providers with the same protocol independently by id', async () => {
@@ -222,7 +222,7 @@ describe('LanguageModelRuntime — model capability + compatibility recovery', (
     const router = new LanguageModelRuntime([
       { ...DS_CONFIG, id: 'a', modelsDevId: 'providerA' },
       { ...DS_CONFIG, id: 'b', modelsDevId: 'providerB' },
-    ], undefined, catalog);
+    ], undefined, { modelCapabilities: createModelCapabilityResolver(catalog) });
 
     expect(router.capabilitiesFor('a', 'shared').input.image).toBe('supported');
     expect(router.capabilitiesFor('b', 'shared').input.image).toBe('unsupported');
@@ -310,7 +310,9 @@ describe('LanguageModelRuntime — model capability + compatibility recovery', (
     const adapter = new MockAdapter();
     const router = new LanguageModelRuntime([
       { ...DS_CONFIG, modelsDevId: 'providerA' },
-    ], new Map([['ds-001', adapter]]), catalog);
+    ], new Map([['ds-001', adapter]]), {
+      modelCapabilities: createModelCapabilityResolver(catalog),
+    });
 
     expect(() => router.stream({
       providerId: 'ds-001',

@@ -1,11 +1,10 @@
+// 测试稳定 Prompt 前缀只受缓存边界之前的消息和规范化 Tool Manifest 影响。
 import { describe, expect, it } from 'vitest';
-import type { LlmToolDef, Message } from '../types.js';
+import type { LlmToolDef, Message } from '@ema-agent/llm';
 import {
   computePromptPrefixHash,
   normalizeToolDefinitions,
-} from '../promptCache.js';
-import { toAnthropicMessages } from '../adapters/anthropic.js';
-import { createLlmTokenUsage } from '../usage.js';
+} from '../promptPrefix.js';
 
 const stableSystem: Message = {
   role: 'system',
@@ -13,7 +12,7 @@ const stableSystem: Message = {
   cacheBreakpoint: true,
 };
 
-describe('Prompt KV Cache 稳定前缀', () => {
+describe('Prompt 前缀稳定性', () => {
   it('动态后缀变化不改变前缀 Hash，稳定内容变化会改变', () => {
     const first = computePromptPrefixHash({
       messages: [stableSystem, { role: 'user', content: 'first question' }],
@@ -33,7 +32,7 @@ describe('Prompt KV Cache 稳定前缀', () => {
     expect(changedSystem).not.toBe(first);
   });
 
-  it('工具注册顺序和 Schema key 构造顺序不会破坏前缀', () => {
+  it('Tool 注册顺序和 Schema key 构造顺序被整理成同一 Manifest', () => {
     const alpha: LlmToolDef = {
       name: 'alpha',
       description: 'alpha tool',
@@ -58,58 +57,18 @@ describe('Prompt KV Cache 稳定前缀', () => {
       parameters: { type: 'object', properties: {} },
     };
 
-    const first = computePromptPrefixHash({
-      messages: [stableSystem],
-      tools: [beta, alpha],
-    });
-    const second = computePromptPrefixHash({
-      messages: [stableSystem],
-      tools: [alphaDifferentKeyOrder, beta],
-    });
+    const firstTools = normalizeToolDefinitions([beta, alpha]);
+    const secondTools = normalizeToolDefinitions([alphaDifferentKeyOrder, beta]);
+    const first = computePromptPrefixHash({ messages: [stableSystem], tools: firstTools });
+    const second = computePromptPrefixHash({ messages: [stableSystem], tools: secondTools });
 
     expect(first).toBe(second);
-    expect(normalizeToolDefinitions([beta, alpha]).map((tool) => tool.name))
-      .toEqual(['alpha', 'beta']);
+    expect(firstTools.map((tool) => tool.name)).toEqual(['alpha', 'beta']);
   });
 
   it('没有显式 cacheBreakpoint 时不伪造前缀 Hash', () => {
     expect(computePromptPrefixHash({
       messages: [{ role: 'system', content: 'not cacheable yet' }],
     })).toBeNull();
-  });
-
-  it('Anthropic 把 system 断点映射为 cache_control block', () => {
-    const normalized = toAnthropicMessages([
-      stableSystem,
-      { role: 'user', content: 'hello' },
-    ]);
-
-    expect(normalized.system).toEqual([
-      {
-        type: 'text',
-        text: 'You are Ema.',
-        cache_control: { type: 'ephemeral' },
-      },
-    ]);
-    expect(normalized.messages).toEqual([{ role: 'user', content: 'hello' }]);
-  });
-
-  it('只用 Provider 返回的缓存计数计算命中率', () => {
-    expect(createLlmTokenUsage({
-      inputTokens: 10,
-      outputTokens: 5,
-      cacheReadInputTokens: 80,
-      cacheWriteInputTokens: 10,
-      cacheEligibleInputTokens: 100,
-    })).toEqual({
-      inputTokens: 10,
-      outputTokens: 5,
-      cacheReadInputTokens: 80,
-      cacheWriteInputTokens: 10,
-      cacheHitRate: 0.8,
-    });
-
-    expect(createLlmTokenUsage({ inputTokens: 10, outputTokens: 5 }))
-      .toEqual({ inputTokens: 10, outputTokens: 5 });
   });
 });

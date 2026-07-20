@@ -1,6 +1,6 @@
 // 测试 Provider 累计 Usage 快照只产生新增差值，并保持已经确认的单调计数。
 import { describe, expect, it } from 'vitest';
-import { advanceLlmUsageSnapshot } from '../usage.js';
+import { advanceLlmUsageSnapshot, createLlmTokenUsage } from '../usage.js';
 
 describe('LLM Usage 累计快照', () => {
   it('把同一输入量的后续快照转换为纯输出增量', () => {
@@ -33,6 +33,22 @@ describe('LLM Usage 累计快照', () => {
       inputTokens: 0,
       outputTokens: 0,
       cacheReadInputTokens: 0,
+    });
+  });
+
+  it('只使用 Provider 返回的可缓存输入量计算命中率', () => {
+    expect(createLlmTokenUsage({
+      inputTokens: 10,
+      outputTokens: 5,
+      cacheReadInputTokens: 80,
+      cacheWriteInputTokens: 10,
+      cacheEligibleInputTokens: 100,
+    })).toEqual({
+      inputTokens: 10,
+      outputTokens: 5,
+      cacheReadInputTokens: 80,
+      cacheWriteInputTokens: 10,
+      cacheHitRate: 0.8,
     });
   });
 });
