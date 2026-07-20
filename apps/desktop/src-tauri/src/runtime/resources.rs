@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 
 use tauri::{AppHandle, Manager};
 
+use super::narrative::provision_narrative_seed;
 use super::types::RuntimeService;
 
 #[derive(Debug)]
@@ -22,7 +23,7 @@ pub fn resolve_service_launch(
     resolve_bundled_launch(app, service)
 }
 
-pub fn resolve_narrative_dir(app: &AppHandle) -> Result<PathBuf, String> {
+pub async fn resolve_narrative_dir(app: &AppHandle) -> Result<PathBuf, String> {
     // 大体积世界观数据可以独立于安装包更新，显式路径始终优先于平台资源目录。
     if let Ok(path) = std::env::var("EMA_NARRATIVE_DIR") {
         return Ok(PathBuf::from(path));
@@ -34,10 +35,19 @@ pub fn resolve_narrative_dir(app: &AppHandle) -> Result<PathBuf, String> {
             .join("data")
             .join("narrative"));
     }
-    app.path()
+    let seed_root = app
+        .path()
         .resource_dir()
-        .map(|root| root.join("narrative"))
-        .map_err(|error| format!("resolve bundled narrative directory: {error}"))
+        .map(|root| root.join("narrative-seed"))
+        .map_err(|error| format!("resolve bundled Narrative seed: {error}"))?;
+    let destination = app
+        .path()
+        .app_data_dir()
+        .map_err(|error| format!("resolve writable Narrative directory: {error}"))?
+        .join("narrative")
+        .join("worlds")
+        .join("default");
+    provision_narrative_seed(seed_root, destination).await
 }
 
 fn resolve_development_launch(service: RuntimeService) -> Result<ServiceLaunch, String> {
@@ -85,6 +95,15 @@ fn resolve_bundled_launch(
         .ok()
         .and_then(|path| path.parent().map(Path::to_path_buf));
 
+    if service == RuntimeService::Bridge {
+        let bridge_executable = resource_dir
+            .join("bridge-runtime")
+            .join(platform_executable_name("ema-bridge"));
+        if bridge_executable.is_file() {
+            return launch_for_existing(bridge_executable, Vec::new());
+        }
+    }
+
     let mut candidates = vec![
         resource_dir.join("binaries").join(&executable_name),
         resource_dir.join("binaries").join(&target_name),
@@ -100,6 +119,18 @@ fn resolve_bundled_launch(
         .into_iter()
         .find(|path| path.is_file())
         .ok_or_else(|| format!("bundled {} executable not found", service.as_str()))?;
+    if service == RuntimeService::Core {
+        let runtime_root = resource_dir.join("core-runtime").join("app");
+        let entry = runtime_root.join("dist").join("index.js");
+        if !entry.is_file() {
+            return Err(format!("bundled Core entry not found: {}", entry.display()));
+        }
+        return launch_for_existing_at(
+            executable,
+            vec![entry.to_string_lossy().into_owned()],
+            runtime_root,
+        );
+    }
     launch_for_existing(executable, Vec::new())
 }
 
@@ -114,6 +145,20 @@ fn launch_for_existing(executable: PathBuf, args: Vec<String>) -> Result<Service
         .parent()
         .map(Path::to_path_buf)
         .ok_or_else(|| format!("executable has no parent: {}", executable.display()))?;
+    launch_for_existing_at(executable, args, working_dir)
+}
+
+fn launch_for_existing_at(
+    executable: PathBuf,
+    args: Vec<String>,
+    working_dir: PathBuf,
+) -> Result<ServiceLaunch, String> {
+    if !working_dir.is_dir() {
+        return Err(format!(
+            "runtime working directory does not exist: {}",
+            working_dir.display()
+        ));
+    }
     Ok(ServiceLaunch {
         executable,
         args,

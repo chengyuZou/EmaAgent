@@ -35,7 +35,7 @@ import {
   removeSessionDir,
   sqliteFileSet,
 } from '../storage-locations/index.js';
-import { LlmRouter, ModelsDevCatalog } from '@ema-agent/llm';
+import { LanguageModelRuntime, ModelsDevCatalog } from '@ema-agent/llm';
 import { EbdRouter }     from '@ema-agent/ebd-client';
 import { NarrativeClient } from '@ema-agent/narrative-client';
 import { CharacterCardStore, BUILTIN_CARDS, EMA_CARD_INPUT, EMA_CARD_ID } from '@ema-agent/character-card';
@@ -65,8 +65,8 @@ import type {
   KbSearchResult,
   ReleaseFeaturesWire,
   SandboxStatusWire,
-  UsageRecord,
 } from '@ema-agent/contracts';
+import type { UsageRecord } from '@ema-agent/usage';
 import { ToolRegistry }        from '@ema-agent/tools';
 import {
   cleanupInterruptedFileWriteTemps,
@@ -125,7 +125,7 @@ export interface AppBindings {
   sessionBackup: SessionBackupFacade;
 
   // AI clients
-  llm:       LlmRouter;
+  llm:       LanguageModelRuntime;
   ebd:       EbdRouter;
   /** models.dev LLM/Vision catalog — context window + capabilities by modelsDevId. */
   modelCatalog: ModelsDevCatalog;
@@ -306,7 +306,7 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
   // models.dev catalog: load bundled snapshot first (instant, offline-safe),
   // then refresh from network in the background. Consumers get catalog data
   // immediately from the snapshot; the refresh updates it silently.
-  // Must be created before LlmRouter so it can be passed in for reasoning lookup.
+  // 必须先构造模型目录，语言模型运行时才能据此解析推理与多模态能力。
   const modelCatalog = new ModelsDevCatalog();
   try {
     const snapshotPath = nodePath.join(import.meta.dirname!, '..', 'models-dev-snapshot.json');
@@ -315,7 +315,7 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
   } catch {
     console.warn('[catalog] no bundled snapshot found, will rely on network refresh');
   }
-  const llm = new LlmRouter(loadLlmConfigs(profileDb, credentials), undefined, modelCatalog, {
+  const llm = new LanguageModelRuntime(loadLlmConfigs(profileDb, credentials), undefined, modelCatalog, {
     supportsManualImageInput: (providerId, model) =>
       providerVisionModels.hasProviderModel(providerId, model),
     usageRecorder: usageRecords,

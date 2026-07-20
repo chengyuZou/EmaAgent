@@ -2,8 +2,12 @@
   "bundle": {
     "active": true,
     "externalBin": [
-      "binaries/ema-core",
-      "binaries/ema-bridge"
-    ]
+      "binaries/ema-core"
+    ],
+    "resources": {
+      "resources/core-runtime/": "core-runtime/",
+      "resources/bridge-runtime/": "bridge-runtime/",
+      "resources/narrative-seed/": "narrative-seed/"
+    }
   }
 }

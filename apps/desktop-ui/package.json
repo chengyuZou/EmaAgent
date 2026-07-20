@@ -43,6 +43,7 @@
     "@ema-agent/mcp": "workspace:*",
     "@ema-agent/memory": "workspace:*",
     "@ema-agent/permission": "workspace:*",
+    "@ema-agent/provider": "workspace:*",
     "@ema-agent/skill": "workspace:*",
     "@ema-agent/storage": "workspace:*",
     "@ema-agent/stt": "workspace:*",

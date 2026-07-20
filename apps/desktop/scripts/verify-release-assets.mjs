@@ -1,40 +1,134 @@
-// 校验当前目标平台的 Core、Bridge 与 Cubism 发布制品是否完整。
+// 严格验证当前目标平台的 Sidecar、Core runtime、Narrative seed 与 Cubism 发布制品。
 import { execFileSync } from 'node:child_process';
 import { existsSync, statSync } from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 
+import {
+  executableSuffix,
+  listRegularFiles,
+  parseTargetArgument,
+  readJson,
+  requireRegularFile,
+  sha256File,
+} from './release-utils.mjs';
+
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const desktopRoot = path.resolve(scriptDirectory, '..');
 const tauriRoot = path.join(desktopRoot, 'src-tauri');
+const config = readJson(path.join(desktopRoot, 'release-config.json'));
+const target = parseTargetArgument();
+const suffix = executableSuffix(target);
 
-function rustTargetTriple() {
-  const verbose = execFileSync('rustc', ['-Vv'], { encoding: 'utf8' });
-  const hostLine = verbose.split(/\r?\n/u).find((line) => line.startsWith('host: '));
-  if (!hostLine) throw new Error('rustc -Vv 未返回 host target triple');
-  return hostLine.slice('host: '.length).trim();
-}
-
-function requireNonEmptyFile(filePath, label) {
-  if (!existsSync(filePath) || !statSync(filePath).isFile() || statSync(filePath).size === 0) {
-    throw new Error(`${label} 缺失或为空: ${filePath}`);
+function requireExecutable(filePath, label) {
+  requireRegularFile(filePath, label);
+  if (!target.includes('windows') && (statSync(filePath).mode & 0o111) === 0) {
+    throw new Error(`${label} 缺少 Unix executable bit: ${filePath}`);
   }
 }
 
-const target = process.env['TAURI_ENV_TARGET_TRIPLE'] || rustTargetTriple();
-const executableSuffix = process.platform === 'win32' ? '.exe' : '';
-requireNonEmptyFile(
-  path.join(tauriRoot, 'binaries', `ema-core-${target}${executableSuffix}`),
-  'Core sidecar',
+const coreBinary = path.join(tauriRoot, 'binaries', `ema-core-${target}${suffix}`);
+const coreRuntime = path.join(tauriRoot, 'resources', 'core-runtime');
+const coreManifest = readJson(path.join(coreRuntime, 'release-manifest.json'));
+const coreEntry = path.join(coreRuntime, ...coreManifest.entry.split('/'));
+requireExecutable(coreBinary, 'Core sidecar');
+requireRegularFile(coreEntry, 'Core runtime 入口');
+if (coreManifest.target !== target || coreManifest.nodeVersion !== config.nodeVersion) {
+  throw new Error('Core release manifest 的 target 或 Node 版本不匹配');
+}
+if (sha256File(coreEntry) !== coreManifest.entrySha256) {
+  throw new Error('Core runtime 入口摘要与 manifest 不匹配');
+}
+const actualNodeVersion = execFileSync(coreBinary, ['--version'], { encoding: 'utf8' }).trim();
+if (actualNodeVersion !== `v${config.nodeVersion}`) {
+  throw new Error(`Core sidecar Node 版本错误: ${actualNodeVersion}`);
+}
+
+const bridgeRuntime = path.join(tauriRoot, 'resources', 'bridge-runtime');
+const bridgeBinary = path.join(bridgeRuntime, `ema-bridge${suffix}`);
+const bridgeManifestPath = path.join(bridgeRuntime, 'release-manifest.json');
+requireExecutable(bridgeBinary, 'Bridge sidecar');
+requireRegularFile(bridgeManifestPath, 'Bridge release manifest');
+const bridgeManifest = readJson(bridgeManifestPath);
+if (bridgeManifest.target !== target || bridgeManifest.fileName !== path.basename(bridgeBinary)) {
+  throw new Error('Bridge release manifest 的 target 或文件名不匹配');
+}
+if (
+  bridgeManifest.size !== statSync(bridgeBinary).size
+  || bridgeManifest.sha256 !== sha256File(bridgeBinary)
+) {
+  throw new Error('Bridge Sidecar 大小或摘要与 manifest 不匹配');
+}
+execFileSync(bridgeBinary, ['--version'], { stdio: 'inherit' });
+
+const cubismPath = path.join(
+  desktopRoot,
+  'public',
+  'cubism',
+  config.cubismCore.fileName,
 );
-requireNonEmptyFile(
-  path.join(tauriRoot, 'binaries', `ema-bridge-${target}${executableSuffix}`),
-  'Bridge sidecar',
+requireRegularFile(cubismPath, 'Cubism Core');
+const cubismHash = sha256File(cubismPath);
+if (!config.cubismCore.allowedSha256.includes(cubismHash)) {
+  throw new Error(`Cubism Core SHA-256 未被批准: ${cubismHash}`);
+}
+
+const narrativeRoot = path.join(tauriRoot, 'resources', 'narrative-seed');
+const narrativeManifestPath = path.join(narrativeRoot, 'release-manifest.json');
+requireRegularFile(narrativeManifestPath, 'Narrative seed manifest');
+const narrativeManifest = readJson(narrativeManifestPath);
+if (
+  narrativeManifest.schemaVersion !== 1
+  || narrativeManifest.contentVersion !== config.narrativeSeed.contentVersion
+) {
+  throw new Error('Narrative seed manifest 版本不匹配');
+}
+for (const [relativePath, expected] of Object.entries(narrativeManifest.files)) {
+  const filePath = path.join(narrativeRoot, ...relativePath.split('/'));
+  requireRegularFile(filePath, `Narrative seed ${relativePath}`);
+  if (statSync(filePath).size !== expected.size || sha256File(filePath) !== expected.sha256) {
+    throw new Error(`Narrative seed 文件摘要不匹配: ${relativePath}`);
+  }
+}
+const narrativeFiles = listRegularFiles(narrativeRoot);
+for (const excludedName of config.narrativeSeed.excludedFileNames) {
+  if (narrativeFiles.some((relativePath) => path.posix.basename(relativePath) === excludedName)) {
+    throw new Error(`Narrative seed 混入可再生缓存: ${excludedName}`);
+  }
+}
+if (!existsSync(path.join(narrativeRoot, '1st_Loop'))
+  || !existsSync(path.join(narrativeRoot, '2nd_Loop'))
+  || !existsSync(path.join(narrativeRoot, '3rd_Loop'))) {
+  throw new Error('Narrative seed 缺少必需时间线');
+}
+
+const smokeScript = path.join(scriptDirectory, 'smoke-runtime-service.mjs');
+execFileSync(
+  process.execPath,
+  [
+    smokeScript,
+    '--service',
+    'core',
+    '--executable',
+    coreBinary,
+    '--entry',
+    coreEntry,
+  ],
+  { stdio: 'inherit' },
 );
-requireNonEmptyFile(
-  path.join(desktopRoot, 'public', 'cubism', 'live2dcubismcore.min.js'),
-  'Cubism Core',
+execFileSync(
+  process.execPath,
+  [
+    smokeScript,
+    '--service',
+    'bridge',
+    '--executable',
+    bridgeBinary,
+    '--narrative',
+    narrativeRoot,
+  ],
+  { stdio: 'inherit' },
 );
 
 process.stdout.write(`release assets verified for ${target}\n`);

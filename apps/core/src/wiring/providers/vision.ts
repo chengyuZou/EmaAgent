@@ -14,7 +14,7 @@ import {
 import type {
   UsageRecord,
   UsageRecorder,
-} from '@ema-agent/contracts';
+} from '@ema-agent/usage';
 import {
   capabilityConfigFor,
   configuredBaseUrlFor,

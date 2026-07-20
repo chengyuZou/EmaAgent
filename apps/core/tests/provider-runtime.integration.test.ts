@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { Database, ModelBindingsRepo, ProvidersRepo } from '@ema-agent/storage';
-import { LlmRouter } from '@ema-agent/llm';
+import { LanguageModelRuntime } from '@ema-agent/llm';
 import { EbdRouter } from '@ema-agent/ebd-client';
 import { TtsClient } from '@ema-agent/tts';
 import { SttClient } from '@ema-agent/stt';
@@ -25,7 +25,7 @@ class NarrativeClientSpy {
 describe('ProviderRuntimeFacade', () => {
   let profileDb: Database;
   let providers: ProvidersRepo;
-  let llm: LlmRouter;
+  let llm: LanguageModelRuntime;
   let ebd: EbdRouter;
   let tts: TtsClient;
   let stt: SttClient;
@@ -37,7 +37,7 @@ describe('ProviderRuntimeFacade', () => {
     profileDb = new Database({ memory: true, kind: 'profile' });
     profileDb.migrate();
     providers = new ProvidersRepo(profileDb.sqlite, createTestCredentialFacade());
-    llm = new LlmRouter([]);
+    llm = new LanguageModelRuntime([]);
     ebd = new EbdRouter();
     tts = new TtsClient([]);
     stt = new SttClient([]);

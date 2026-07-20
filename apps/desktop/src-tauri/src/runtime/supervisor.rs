@@ -81,7 +81,7 @@ impl DesktopRuntimeSupervisor {
         match resolve_service_launch(&app, RuntimeService::Bridge) {
             Ok(launch) => {
                 self.set_service_starting(RuntimeService::Bridge).await;
-                let result = match resolve_narrative_dir(&app) {
+                let result = match resolve_narrative_dir(&app).await {
                     Ok(path) => {
                         self.start_service(
                             RuntimeService::Bridge,

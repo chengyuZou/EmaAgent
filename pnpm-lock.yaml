@@ -127,6 +127,9 @@ importers:
       '@ema-agent/tts':
         specifier: workspace:*
         version: link:../../packages/tts
+      '@ema-agent/usage':
+        specifier: workspace:*
+        version: link:../../src/usage
       '@ema-agent/vision':
         specifier: workspace:*
         version: link:../../packages/vision
@@ -361,6 +364,9 @@ importers:
       '@ema-agent/agent-context':
         specifier: workspace:*
         version: link:../agent-context
+      '@ema-agent/context':
+        specifier: workspace:*
+        version: link:../../src/context
       '@ema-agent/contracts':
         specifier: workspace:*
         version: link:../contracts
@@ -555,6 +561,9 @@ importers:
 
   packages/conversation:
     dependencies:
+      '@ema-agent/context':
+        specifier: workspace:*
+        version: link:../../src/context
       '@ema-agent/contracts':
         specifier: workspace:*
         version: link:../contracts
@@ -607,12 +616,12 @@ importers:
 
   packages/ebd-client:
     dependencies:
-      '@ema-agent/contracts':
-        specifier: workspace:*
-        version: link:../contracts
       '@ema-agent/provider':
         specifier: workspace:*
         version: link:../../src/providers
+      '@ema-agent/usage':
+        specifier: workspace:*
+        version: link:../../src/usage
     devDependencies:
       '@types/node':
         specifier: ^20.0.0
@@ -651,6 +660,9 @@ importers:
       '@ema-agent/contracts':
         specifier: workspace:*
         version: link:../contracts
+      '@ema-agent/llm':
+        specifier: workspace:*
+        version: link:../../src/llm
     devDependencies:
       '@types/node':
         specifier: ^20.0.0
@@ -900,6 +912,9 @@ importers:
       '@ema-agent/hook':
         specifier: workspace:*
         version: link:../hook
+      '@ema-agent/llm':
+        specifier: workspace:*
+        version: link:../../src/llm
     devDependencies:
       '@types/node':
         specifier: ^20.0.0
@@ -1022,6 +1037,9 @@ importers:
       '@ema-agent/provider':
         specifier: workspace:*
         version: link:../../src/providers
+      '@ema-agent/usage':
+        specifier: workspace:*
+        version: link:../../src/usage
       '@node-rs/jieba':
         specifier: ^2.0.1
         version: 2.0.1
@@ -1050,12 +1068,12 @@ importers:
 
   packages/stt:
     dependencies:
-      '@ema-agent/contracts':
-        specifier: workspace:*
-        version: link:../contracts
       '@ema-agent/provider':
         specifier: workspace:*
         version: link:../../src/providers
+      '@ema-agent/usage':
+        specifier: workspace:*
+        version: link:../../src/usage
     devDependencies:
       '@types/node':
         specifier: ^20.0.0
@@ -1084,9 +1102,9 @@ importers:
 
   packages/token:
     dependencies:
-      '@ema-agent/contracts':
+      '@ema-agent/llm':
         specifier: workspace:*
-        version: link:../contracts
+        version: link:../../src/llm
     devDependencies:
       '@types/node':
         specifier: ^20.0.0
@@ -1180,6 +1198,9 @@ importers:
       '@ema-agent/provider':
         specifier: workspace:*
         version: link:../../src/providers
+      '@ema-agent/usage':
+        specifier: workspace:*
+        version: link:../../src/usage
       ws:
         specifier: ^8.18.0
         version: 8.20.1
@@ -1305,12 +1326,12 @@ importers:
       '@anthropic-ai/sdk':
         specifier: ^0.39.0
         version: 0.39.0
-      '@ema-agent/contracts':
-        specifier: workspace:*
-        version: link:../contracts
       '@ema-agent/provider':
         specifier: workspace:*
         version: link:../../src/providers
+      '@ema-agent/usage':
+        specifier: workspace:*
+        version: link:../../src/usage
       '@google/genai':
         specifier: ^2.7.0
         version: 2.7.0(@modelcontextprotocol/sdk@1.29.0(zod@3.25.76))
@@ -1331,17 +1352,36 @@ importers:
         specifier: ^2.0.0
         version: 2.1.9(@types/node@20.19.39)(jsdom@26.1.0(canvas@2.11.2))(msw@2.14.6(@types/node@20.19.39)(typescript@5.9.3))
 
+  src/context:
+    dependencies:
+      '@ema-agent/llm':
+        specifier: workspace:*
+        version: link:../llm
+      '@ema-agent/session':
+        specifier: workspace:*
+        version: link:../../packages/session
+    devDependencies:
+      rimraf:
+        specifier: ^5.0.0
+        version: 5.0.10
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: ^2.0.0
+        version: 2.1.9(@types/node@20.19.39)(jsdom@26.1.0(canvas@2.11.2))(msw@2.14.6(@types/node@20.19.39)(typescript@5.9.3))
+
   src/llm:
     dependencies:
       '@anthropic-ai/sdk':
         specifier: ^0.39.0
         version: 0.39.0
-      '@ema-agent/contracts':
-        specifier: workspace:*
-        version: link:../../packages/contracts
       '@ema-agent/provider':
         specifier: workspace:*
         version: link:../providers
+      '@ema-agent/usage':
+        specifier: workspace:*
+        version: link:../usage
       '@google/genai':
         specifier: ^2.7.0
         version: 2.7.0(@modelcontextprotocol/sdk@1.29.0(zod@3.25.76))
@@ -1376,6 +1416,15 @@ importers:
       vitest:
         specifier: ^2.0.0
         version: 2.1.9(@types/node@20.19.39)(jsdom@26.1.0(canvas@2.11.2))(msw@2.14.6(@types/node@20.19.39)(typescript@5.9.3))
+
+  src/usage:
+    devDependencies:
+      rimraf:
+        specifier: ^5.0.0
+        version: 5.0.10
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
 
 packages:
 

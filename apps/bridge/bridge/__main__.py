@@ -11,8 +11,13 @@ from __future__ import annotations
 import os
 import pathlib
 import socket
+import sys
 
 import uvicorn
+
+from bridge.main import build_app
+
+BRIDGE_VERSION = "0.1.0"
 
 
 def _data_dir() -> pathlib.Path:
@@ -33,6 +38,10 @@ def _find_port(start: int = 7421, end: int = 7430) -> int:
 
 
 def main() -> None:
+    if "--version" in sys.argv[1:]:
+        print(f"ema-bridge {BRIDGE_VERSION}")
+        return
+
     port_file = _data_dir() / "bridge.port"
     port = _find_port()
     os.environ["EMA_BRIDGE_PORT"] = str(port)
@@ -41,11 +50,13 @@ def main() -> None:
 
     try:
         uvicorn.run(
-            "bridge.main:build_app",
+            build_app,
             host="127.0.0.1",
             port=port,
             log_level="info",
             factory=True,
+            loop="asyncio",
+            http="h11",
         )
     finally:
         port_file.unlink(missing_ok=True)

@@ -115,6 +115,7 @@ function imageCapabilityError(
   detail: string,
 ): LlmModelCapabilityError {
   return new LlmModelCapabilityError(providerId, model, [{
+    kind: 'input',
     messageIndex: 0,
     partIndex: 0,
     modality: 'image',

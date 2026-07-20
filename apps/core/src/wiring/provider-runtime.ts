@@ -1,5 +1,5 @@
 import type { Database } from '@ema-agent/storage';
-import type { LlmRouter } from '@ema-agent/llm';
+import type { LanguageModelRuntime } from '@ema-agent/llm';
 import type { EbdRouter } from '@ema-agent/ebd-client';
 import type { TtsClient } from '@ema-agent/tts';
 import type { SttClient } from '@ema-agent/stt';
@@ -16,7 +16,7 @@ import { configureBridge } from './bridge.js';
 
 export interface ProviderRuntimeDependencies {
   profileDb: Database;
-  llm: LlmRouter;
+  llm: LanguageModelRuntime;
   ebd: EbdRouter;
   tts: TtsClient;
   stt: SttClient;

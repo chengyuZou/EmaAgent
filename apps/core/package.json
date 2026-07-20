@@ -29,6 +29,7 @@
     "@ema-agent/token": "workspace:*",
     "@ema-agent/hook": "workspace:*",
     "@ema-agent/llm": "workspace:*",
+    "@ema-agent/usage": "workspace:*",
     "@ema-agent/prompts": "workspace:*",
     "@ema-agent/character-card": "workspace:*",
     "@ema-agent/session": "workspace:*",

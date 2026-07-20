@@ -34,8 +34,8 @@ pub fn load_or_create_master_key() -> Result<String, String> {
         return Err(format!("{ENV_NAME} 格式错误，必须是 32 字节十六进制"));
     }
 
-    let entry = Entry::new(SERVICE, ACCOUNT)
-        .map_err(|error| format!("打开 OS keychain 失败: {error}"))?;
+    let entry =
+        Entry::new(SERVICE, ACCOUNT).map_err(|error| format!("打开 OS keychain 失败: {error}"))?;
 
     match entry.get_password() {
         Ok(value) if is_valid_key(&value) => Ok(value),

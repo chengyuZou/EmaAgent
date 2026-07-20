@@ -1,0 +1,137 @@
+# 在每个受支持平台原生构建 Sidecar，并按需生成可安装的 Tauri 内测制品。
+name: Desktop release pipeline
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/desktop-release.yml'
+      - 'apps/core/**'
+      - 'apps/bridge/**'
+      - 'apps/desktop/**'
+      - 'packages/**'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+  workflow_dispatch:
+    inputs:
+      cubism_core_url:
+        description: '许可制 Cubism Core 下载地址；填写后才构建安装包'
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  native-sidecars:
+    name: ${{ matrix.target }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: windows-2022
+            target: x86_64-pc-windows-msvc
+          - runner: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+          - runner: macos-15-intel
+            target: x86_64-apple-darwin
+          - runner: macos-15
+            target: aarch64-apple-darwin
+
+    env:
+      TAURI_ENV_TARGET_TRIPLE: ${{ matrix.target }}
+      UV_LINK_MODE: copy
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.0.0
+          run_install: false
+
+      - name: Install release Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.14.0
+          cache: pnpm
+
+      - name: Install release Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Linux desktop dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+
+      - name: Install JavaScript dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify Bridge lock
+        working-directory: apps/bridge
+        run: uv lock --check
+
+      - name: Build Core Sidecar
+        run: pnpm --filter @ema-agent/desktop release:prepare:core -- --target ${{ matrix.target }}
+
+      - name: Build Bridge Sidecar
+        working-directory: apps/bridge
+        run: uv run --frozen --group build python packaging/build_sidecar.py --target ${{ matrix.target }}
+
+      - name: Build Narrative seed
+        run: pnpm --filter @ema-agent/desktop release:prepare:narrative
+
+      - name: Verify release versions
+        run: pnpm --filter @ema-agent/desktop release:verify:versions
+
+      - name: Inject approved Cubism Core
+        if: github.event_name == 'workflow_dispatch' && inputs.cubism_core_url != ''
+        shell: bash
+        env:
+          CUBISM_CORE_URL: ${{ inputs.cubism_core_url }}
+          CUBISM_ARTIFACT_TOKEN: ${{ secrets.CUBISM_ARTIFACT_TOKEN }}
+        run: |
+          curl --fail --location --retry 3 --header "Authorization: Bearer ${CUBISM_ARTIFACT_TOKEN}" "${CUBISM_CORE_URL}" --output "${RUNNER_TEMP}/live2dcubismcore.min.js"
+          pnpm --filter @ema-agent/desktop release:inject:cubism -- --source "${RUNNER_TEMP}/live2dcubismcore.min.js"
+
+      - name: Verify complete release assets
+        if: github.event_name == 'workflow_dispatch' && inputs.cubism_core_url != ''
+        run: pnpm --filter @ema-agent/desktop release:verify -- --target ${{ matrix.target }}
+
+      - name: Build unsigned Tauri bundle
+        if: github.event_name == 'workflow_dispatch' && inputs.cubism_core_url != ''
+        run: pnpm --filter @ema-agent/desktop tauri:build:release -- --target ${{ matrix.target }}
+
+      - name: Upload Sidecar assembly
+        uses: actions/upload-artifact@v4
+        with:
+          name: sidecars-${{ matrix.target }}
+          if-no-files-found: error
+          retention-days: 7
+          path: |
+            apps/desktop/src-tauri/binaries/
+            apps/desktop/src-tauri/resources/core-runtime/
+            apps/desktop/src-tauri/resources/bridge-runtime/
+
+      - name: Upload unsigned installer
+        if: github.event_name == 'workflow_dispatch' && inputs.cubism_core_url != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: ema-unsigned-${{ matrix.target }}
+          if-no-files-found: error
+          retention-days: 7
+          path: apps/desktop/src-tauri/target/${{ matrix.target }}/release/bundle/
