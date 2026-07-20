@@ -4,14 +4,15 @@ import type {
   AssistantBlock,
   UserBlock,
   LlmMessage,
-  LlmProtocol,
   LlmTokenUsage,
   LlmCallId,
   UsageContext,
 } from '@ema-agent/contracts';
+import type { LlmProtocol } from '@ema-agent/provider';
 
 // 重新导出,调用方只需一次 import
-export type { LlmProtocol, LlmTokenUsage }                                      from '@ema-agent/contracts';
+export type { LlmProtocol }                                                      from '@ema-agent/provider';
+export type { LlmTokenUsage }                                                    from '@ema-agent/contracts';
 export type { AssistantBlock, UserBlock, MessageContentPart as LlmContentPart } from '@ema-agent/contracts';
 export type { LlmMessage }                                                       from '@ema-agent/contracts';
 

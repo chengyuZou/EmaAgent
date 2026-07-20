@@ -130,7 +130,7 @@ describe('profile 仓储防御性业务', () => {
       definitionId: 'siliconflow',
       displayName: 'Provider',
       apiKey: 'secret',
-      capabilities: ['llm', 'embed'],
+      capabilities: [{ capability: 'llm' }, { capability: 'embed' }],
     });
     const bindings = new ModelBindingsRepo(database.sqlite);
     bindings.upsert({ module: 'lightrag-llm', providerConfigId: 'provider-1', model: 'z-model' });

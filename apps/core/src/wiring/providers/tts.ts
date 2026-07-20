@@ -10,14 +10,20 @@ import {
 } from '@ema-agent/tts';
 
 import {
-  getProviderDefinition,
+  providerCatalog,
   isTtsProtocol,
-  resolveProtocols,
-  type ProtocolFamily,
-  type CharacterCardId,
-  type UsageRecord,
-  type UsageRecorder,
+  requiresCredentials,
+} from '@ema-agent/provider';
+import type {
+  CharacterCardId,
+  UsageRecord,
+  UsageRecorder,
 } from '@ema-agent/contracts';
+import {
+  capabilityConfigFor,
+  configuredBaseUrlFor,
+  selectedProtocolFor,
+} from './config-resolution.js';
 
 import type { CharacterCardStore, CharacterVoiceProfile } from '@ema-agent/character-card';
 import { resolveCardVoiceRefPath } from '../../storage-locations/index.js';
@@ -25,22 +31,22 @@ import { resolveCardVoiceRefPath } from '../../storage-locations/index.js';
 // ── Provider config builder ─────────────────────────────────────────────────
 
 export function buildTtsProviderConfig(row: ProviderConfigRow): TtsProviderConfig | null {
-  const def = getProviderDefinition(row.definition_id);
+  const def = providerCatalog.get(row.definition_id);
   if (!def) return null;
 
-  const capabilities: string[] = JSON.parse(row.capabilities_json);
-  if (!capabilities.includes('tts')) return null;
+  const capability = capabilityConfigFor(row, 'tts');
+  if (!capability) return null;
 
-  const protocol = resolveProtocols(def.protocols.tts)[0] as ProtocolFamily | undefined;
+  const protocol = selectedProtocolFor(def, 'tts', capability);
   if (!isTtsProtocol(protocol)) return null;
 
-  if (def.requiresCredentials !== false && !row.credential) return null;
+  if (requiresCredentials(def) && !row.credential) return null;
 
   return {
     id:      row.id,
     protocol,
     apiKey:  row.credential ?? '',
-    baseUrl: row.base_url ?? def.defaultBaseUrl ?? '',
+    baseUrl: configuredBaseUrlFor(def, 'tts', capability, protocol) ?? '',
   };
 }
 

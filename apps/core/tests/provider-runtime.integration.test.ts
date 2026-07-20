@@ -65,7 +65,14 @@ describe('ProviderRuntimeFacade', () => {
       definitionId: 'siliconflow',
       displayName: 'SiliconFlow',
       apiKey: 'secret-v1',
-      capabilities: ['llm', 'embed', 'rerank', 'vision', 'tts', 'stt'],
+      capabilities: [
+        { capability: 'llm' },
+        { capability: 'embed' },
+        { capability: 'rerank' },
+        { capability: 'vision' },
+        { capability: 'tts' },
+        { capability: 'stt' },
+      ],
     });
 
     runtime.refreshProviders();
@@ -82,7 +89,7 @@ describe('ProviderRuntimeFacade', () => {
       definitionId: 'siliconflow',
       displayName: 'SiliconFlow',
       apiKey: 'secret-v2',
-      capabilities: ['llm'],
+      capabilities: [{ capability: 'llm' }],
     });
     runtime.refreshProviders();
 
@@ -100,7 +107,7 @@ describe('ProviderRuntimeFacade', () => {
       definitionId: 'openai',
       displayName: 'OpenAI',
       apiKey: 'secret',
-      capabilities: ['llm', 'vision'],
+      capabilities: [{ capability: 'llm' }, { capability: 'vision' }],
     });
     runtime.refreshProviders();
 
@@ -127,7 +134,7 @@ describe('ProviderRuntimeFacade', () => {
       definitionId: 'siliconflow',
       displayName: 'SiliconFlow',
       apiKey: 'bridge-secret',
-      capabilities: ['llm', 'embed'],
+      capabilities: [{ capability: 'llm' }, { capability: 'embed' }],
     });
     const modelBindings = new ModelBindingsRepo(profileDb.sqlite);
     modelBindings.upsert({
@@ -166,7 +173,7 @@ describe('ProviderRuntimeFacade', () => {
       definitionId: 'siliconflow',
       displayName: 'SiliconFlow',
       apiKey: 'secret',
-      capabilities: ['llm', 'embed'],
+      capabilities: [{ capability: 'llm' }, { capability: 'embed' }],
     });
     const modelBindings = new ModelBindingsRepo(profileDb.sqlite);
     modelBindings.upsert({
@@ -182,7 +189,9 @@ describe('ProviderRuntimeFacade', () => {
     const patchResponse = await app.request('/provider-1', {
       method: 'PATCH',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ capabilities: ['llm'] }),
+      body: JSON.stringify({
+        capability: { capability: 'embed', enabled: false },
+      }),
     });
     expect(patchResponse.status).toBe(409);
     await expect(patchResponse.json()).resolves.toMatchObject({

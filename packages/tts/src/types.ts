@@ -1,8 +1,8 @@
-import type { TtsProtocol, UsageContext } from '@ema-agent/contracts';
+import type { UsageContext } from '@ema-agent/contracts';
+import type { TtsProtocol } from '@ema-agent/provider';
 
-// 重新导出 TtsProtocol - 它放在 contracts 里,因为派生自 ProtocolFamily
-// (provider registry 需要它)。其余都是 TTS 包内部的。
-export type { TtsProtocol } from '@ema-agent/contracts';
+// 重新导出 TtsProtocol，调用方无需跨包拼装 Provider 协议类型。
+export type { TtsProtocol } from '@ema-agent/provider';
 
 // ── TTS 内部类型 ──────────────────────────────────────────────────────────────
 

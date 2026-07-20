@@ -8,7 +8,7 @@
  *               modalities: { input: string[], output: string[] }, limit: { context, output? } }
  *
  * 以 `modelsDevId`(provider 的 models.dev 文件夹 id - 见
- * ProviderDefinition.modelsDevId)为索引,这样配置好的 EmaAgent provider 能解析到
+ * Provider capability 的 models-dev source)为索引,这样配置好的 EmaAgent provider 能解析到
  * 对应的 models.dev provider。models.dev 未收录的 provider(本地运行时、
  * 仅 embed/rerank/tts)没有条目,回退到 provider 自己的 `/models` endpoint 或手填。
  *

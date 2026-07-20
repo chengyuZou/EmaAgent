@@ -29,13 +29,27 @@ describe('N-008 Provider + Model 复合身份', () => {
       id: 'provider-a',
       definitionId: 'provider-a',
       displayName: 'Provider A',
-      capabilities: ['llm', 'embed', 'rerank', 'tts', 'stt', 'vision'],
+      capabilities: [
+        { capability: 'llm' },
+        { capability: 'embed' },
+        { capability: 'rerank' },
+        { capability: 'tts' },
+        { capability: 'stt' },
+        { capability: 'vision' },
+      ],
     });
     providers.upsert({
       id: 'provider-b',
       definitionId: 'provider-b',
       displayName: 'Provider B',
-      capabilities: ['llm', 'embed', 'rerank', 'tts', 'stt', 'vision'],
+      capabilities: [
+        { capability: 'llm' },
+        { capability: 'embed' },
+        { capability: 'rerank' },
+        { capability: 'tts' },
+        { capability: 'stt' },
+        { capability: 'vision' },
+      ],
     });
 
     llmModels = new ProviderLlmModelsRepo(database.sqlite);

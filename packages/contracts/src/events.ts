@@ -10,7 +10,7 @@ import type {
   HookInvocationId,
 } from './ids.js';
 import type { ErrorCode } from './errors.js';
-import type { ProtocolFamily } from './providers/types.js';
+import type { ProtocolFamily } from '@ema-agent/provider';
 import type { TurnStats } from './turns.js';
 import type { Artifact } from './artifact.js';
 import type { AgentKind } from './agents.js';

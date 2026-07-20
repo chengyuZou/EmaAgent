@@ -15,7 +15,8 @@ import type {
   VisionRequest,
   VisionTask,
 } from './types.js';
-import type { UsageRecord, UsageRecorder, VisionProtocol } from '@ema-agent/contracts';
+import type { UsageRecord, UsageRecorder } from '@ema-agent/contracts';
+import type { VisionProtocol } from '@ema-agent/provider';
 
 export interface VisionConcurrencyLimiter {
   acquire(

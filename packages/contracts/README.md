@@ -14,7 +14,6 @@ EmaAgent 的公共类型契约包。**纯类型导出,禁止引入任何运行�
 | `turns` | Turn/Run 状态机 + `contentParts`(text / image_url / image_data / audio_data / file_data / file_url) |
 | `events` | `EmaStreamEvent`(53 种 SSE 事件)+ `SubagentInnerEvent` |
 | `messages` | `LlmMessage` / `MessageBlocks` / `TurnAttachment`(UI 元数据,存 `turn_attachments` 表)/ `MessageContentPart` |
-| `providers` | 19 个 `ProviderDefinition` + `Capability` / `ProtocolFamily` 联合 |
 | `artifact` | Artifact 区分联合(inline/file 内容 + applied/rejected 状态) |
 | `wire` | REST wire 类型(`MessageWire` 等,统一放 wire.ts) |
 | `kb` | KB 相关 DTO |

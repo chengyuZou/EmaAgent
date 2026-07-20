@@ -6,11 +6,16 @@ import {
 import type { EmbedProviderConfig } from '@ema-agent/ebd-client';
 import type { CredentialFacade } from '@ema-agent/credential';
 import {
-  getProviderDefinition,
+  providerCatalog,
   isEmbedProtocol,
-  resolveProtocols,
-  type ProtocolFamily,
-} from '@ema-agent/contracts';
+  requiresCredentials,
+  staticModelsFor,
+} from '@ema-agent/provider';
+import {
+  capabilityConfigFor,
+  configuredBaseUrlFor,
+  selectedProtocolFor,
+} from './config-resolution.js';
 
 // ── Live model listing ────────────────────────────────────────────────────────
 
@@ -34,8 +39,8 @@ function isEmbedModelId(id: string): boolean {
  * embed-like names and union with the definition's curated defaultModels.embed.
  */
 export async function fetchEmbedModels(row: ProviderConfigRow, signal?: AbortSignal): Promise<FetchedEmbedModels> {
-  const def = getProviderDefinition(row.definition_id);
-  const staticList = [...(def?.defaultModels?.embed ?? [])];
+  const def = providerCatalog.get(row.definition_id);
+  const staticList = def ? [...staticModelsFor(def, 'embed')] : [];
   const cfg = buildEmbedProviderConfig(row);
 
   if (!cfg || cfg.protocol !== 'openai-embed') {
@@ -65,27 +70,23 @@ export async function fetchEmbedModels(row: ProviderConfigRow, signal?: AbortSig
 }
 
 export function buildEmbedProviderConfig(row: ProviderConfigRow): EmbedProviderConfig | null {
-  const def = getProviderDefinition(row.definition_id);
+  const def = providerCatalog.get(row.definition_id);
   if (!def) return null;
 
-  const capabilities: string[] = JSON.parse(row.capabilities_json);
-  if (!capabilities.includes('embed')) return null;
+  const capability = capabilityConfigFor(row, 'embed');
+  if (!capability) return null;
 
-  const protocol = resolveProtocols(def.protocols.embed)[0] as ProtocolFamily | undefined;
+  const protocol = selectedProtocolFor(def, 'embed', capability);
   if (!isEmbedProtocol(protocol)) return null;
 
-  if (def.requiresCredentials !== false && !row.credential) return null;
+  if (requiresCredentials(def) && !row.credential) return null;
 
-  const extra = JSON.parse(row.config_json) as Record<string, unknown>;
   return {
     id:           row.id,
     protocol,
     apiKey:       row.credential ?? '',
-    baseUrl:      row.base_url ?? def.defaultBaseUrl,
-    defaultModel: typeof extra['defaultModel'] === 'string' ? extra['defaultModel'] : undefined,
-    embeddingRevision: typeof extra['embeddingRevision'] === 'string'
-      ? extra['embeddingRevision']
-      : undefined,
+    baseUrl:      configuredBaseUrlFor(def, 'embed', capability, protocol),
+    embeddingRevision: capability.embedding_revision ?? undefined,
   };
 }
 

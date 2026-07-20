@@ -20,6 +20,7 @@ describe('Provider 凭据落盘保护', () => {
       definitionId: 'openai',
       displayName: 'OpenAI',
       apiKey: 'sk-sensitive',
+      capabilities: [{ capability: 'llm' }],
     });
 
     const raw = database.sqlite

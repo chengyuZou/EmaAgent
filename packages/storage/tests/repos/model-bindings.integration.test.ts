@@ -22,7 +22,7 @@ describe('B-024 ModelBindings setSingle 事务原子性', () => {
       definitionId: 'siliconflow',
       displayName: 'Provider',
       apiKey: 'secret',
-      capabilities: ['llm'],
+      capabilities: [{ capability: 'llm' }],
     });
   });
 
@@ -60,8 +60,8 @@ describe('B-058 ModelBindings 确定性排序', () => {
     database = new Database({ memory: true, kind: 'profile' });
     database.migrate();
     const providers = new ProvidersRepo(database.sqlite, createTestCredentialFacade());
-    providers.upsert({ id: 'p-zeta', definitionId: 'siliconflow', displayName: 'Z', apiKey: 'x', capabilities: ['llm'] });
-    providers.upsert({ id: 'p-alpha', definitionId: 'siliconflow', displayName: 'A', apiKey: 'x', capabilities: ['llm'] });
+    providers.upsert({ id: 'p-zeta', definitionId: 'siliconflow', displayName: 'Z', apiKey: 'x', capabilities: [{ capability: 'llm' }] });
+    providers.upsert({ id: 'p-alpha', definitionId: 'siliconflow', displayName: 'A', apiKey: 'x', capabilities: [{ capability: 'llm' }] });
   });
 
   afterEach(() => database.close());
@@ -129,7 +129,7 @@ describe('profile v4 到当前版本迁移：model_bindings CHECK 收紧到 11',
       // 11 模块写入仍正常
       expect(() => insBinding.run('vision', 'v-model')).not.toThrow();
 
-      expect(sqlite.pragma('user_version', { simple: true })).toBe(8);
+      expect(sqlite.pragma('user_version', { simple: true })).toBe(9);
     } finally {
       sqlite.close();
     }

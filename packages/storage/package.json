@@ -27,6 +27,7 @@
   "dependencies": {
     "@ema-agent/credential": "workspace:*",
     "@ema-agent/contracts": "workspace:*",
+    "@ema-agent/provider": "workspace:*",
     "@node-rs/jieba": "^2.0.1",
     "better-sqlite3": "^12.9.0"
   },

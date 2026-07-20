@@ -73,6 +73,8 @@ export type { Live2DModelRow } from './repos/live2d-models.js';
 export type {
   ProviderConfigRow,
   ProviderConfigInsert,
+  ProviderCapabilityConfigRow,
+  ProviderCapabilityConfigInput,
   ProviderHealthRow,
   ProviderWithHealth,
   HealthStatus,

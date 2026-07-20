@@ -3,33 +3,39 @@ import { ProvidersRepo } from '@ema-agent/storage';
 import { SttClient, type SttProviderConfig } from '@ema-agent/stt';
 import type { CredentialFacade } from '@ema-agent/credential';
 import {
-  getProviderDefinition,
+  providerCatalog,
   isSttProtocol,
-  resolveProtocols,
-  type ProtocolFamily,
-  type UsageRecord,
-  type UsageRecorder,
+  requiresCredentials,
+} from '@ema-agent/provider';
+import type {
+  UsageRecord,
+  UsageRecorder,
 } from '@ema-agent/contracts';
+import {
+  capabilityConfigFor,
+  configuredBaseUrlFor,
+  selectedProtocolFor,
+} from './config-resolution.js';
 
 // ── Provider config builder (exported — reused by providers route hot-reload) ─
 
 export function buildSttProviderConfig(row: ProviderConfigRow): SttProviderConfig | null {
-  const def = getProviderDefinition(row.definition_id);
+  const def = providerCatalog.get(row.definition_id);
   if (!def) return null;
 
-  const capabilities: string[] = JSON.parse(row.capabilities_json);
-  if (!capabilities.includes('stt')) return null;
+  const capability = capabilityConfigFor(row, 'stt');
+  if (!capability) return null;
 
-  const protocol = resolveProtocols(def.protocols.stt)[0] as ProtocolFamily | undefined;
+  const protocol = selectedProtocolFor(def, 'stt', capability);
   if (!isSttProtocol(protocol)) return null;
 
-  if (def.requiresCredentials !== false && !row.credential) return null;
+  if (requiresCredentials(def) && !row.credential) return null;
 
   return {
     id:      row.id,
     protocol,
     apiKey:  row.credential ?? '',
-    baseUrl: row.base_url ?? def.defaultBaseUrl ?? '',
+    baseUrl: configuredBaseUrlFor(def, 'stt', capability, protocol) ?? '',
   };
 }
 

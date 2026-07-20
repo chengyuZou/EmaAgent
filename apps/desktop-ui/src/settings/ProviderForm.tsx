@@ -1,21 +1,32 @@
 ﻿/** ProviderForm — AIRI-style provider editor. */
 import { useState, useEffect, type FormEvent, type JSX } from 'react';
-import { Button, Callout, IconButton, Input, Select } from '@ema-agent/ui';
+import {
+  Button,
+  Callout,
+  IconButton,
+  Input,
+  Select,
+  resolveProviderIconClass,
+} from '@ema-agent/ui';
 import { useSettingsStore } from '../stores/settings-store.js';
 import {
   providersApi,
   type ProviderConfigWire,
+  type ProviderCapabilityConfigInput,
   type ProviderConfigInput,
   type ProviderConfigPatchInput,
   type ProviderDefinition,
   type ProbeResultWire,
 } from '../api/providers.js';
 import {
+  listProviderCapabilities,
+  protocolsForCapability,
   PROVIDER_CONFIG_LIMITS,
-  resolveProtocols,
-  type ProtocolFamily,
+  requiresCredentials as providerRequiresCredentials,
+  resolveBaseUrl,
   type Capability,
-} from '@ema-agent/contracts';
+  type ProtocolFamily,
+} from '@ema-agent/provider';
 import { showToast } from '../lib/toast.js';
 import {
   resolveCredentialOperation,
@@ -55,8 +66,9 @@ export function ProviderForm({
   const [revealingCredential, setRevealingCredential] = useState(false);
   const [advancedOpen, setAdvancedOpen] = useState(false);
 
-  const activeCap: Capability | undefined = capability ?? definition?.capabilities?.[0];
-  const requiresCredentials = definition?.requiresCredentials !== false;
+  const activeCap: Capability | undefined = capability
+    ?? (definition ? listProviderCapabilities(definition)[0] : undefined);
+  const requiresCredentials = definition ? providerRequiresCredentials(definition) : true;
 
   useEffect(() => {
     if (!instance || !showApiKey || !credentialLoaded || credentialDirty) return;
@@ -69,17 +81,20 @@ export function ProviderForm({
   }, [credentialDirty, credentialLoaded, instance, showApiKey]);
 
   const protocolChoices: string[] = activeCap
-    ? resolveProtocols(definition?.protocols?.[activeCap])
+    && definition
+    ? protocolsForCapability(definition, activeCap)
     : [];
   function defaultUrlFor(proto: string): string {
-    return definition?.protocolBaseUrls?.[proto as ProtocolFamily]
-      ?? definition?.defaultBaseUrl ?? '';
+    if (!definition || !activeCap) return '';
+    return resolveBaseUrl(definition, activeCap, proto as ProtocolFamily) ?? '';
   }
 
-  const existingProtocol = (instance?.config?.['protocol'] as string | undefined)
-    ?? protocolChoices[0] ?? '';
+  const activeCapabilityConfig = instance?.capabilities.find(
+    (item) => item.capability === activeCap,
+  );
+  const existingProtocol = activeCapabilityConfig?.protocol ?? protocolChoices[0] ?? '';
   const initialSnapshot: ProviderFormSnapshot = {
-    baseUrl: instance?.baseUrl ?? defaultUrlFor(existingProtocol),
+    baseUrl: activeCapabilityConfig?.baseUrl ?? defaultUrlFor(existingProtocol),
     protocol: existingProtocol,
   };
   const [snapshot, setSnapshot] = useState<ProviderFormSnapshot>(initialSnapshot);
@@ -126,19 +141,23 @@ export function ProviderForm({
     setSubmitting(true);
     try {
       if (instance) {
+        if (!activeCap) throw new Error('Provider capability is missing');
         const input: ProviderConfigPatchInput = {
           credential: resolveCredentialOperation(apiKey, credentialDirty),
-          baseUrl: baseUrl.trim() || null,
-          config:  {
-            ...instance.config,
-            ...(selectedProtocol ? { protocol: selectedProtocol } : {}),
+          capability: {
+            capability: activeCap,
+            protocol: selectedProtocol ? selectedProtocol as ProtocolFamily : null,
+            baseUrl: baseUrl.trim() || null,
+            enabled: true,
           },
         };
         const saved = await providersApi.patch(instance.id, input);
-        const savedProtocol = (saved.config['protocol'] as string | undefined)
-          ?? selectedProtocol;
+        const savedCapability = saved.capabilities.find(
+          (item) => item.capability === activeCap,
+        );
+        const savedProtocol = savedCapability?.protocol ?? selectedProtocol;
         const savedSnapshot: ProviderFormSnapshot = {
-          baseUrl: saved.baseUrl ?? defaultUrlFor(savedProtocol),
+          baseUrl: savedCapability?.baseUrl ?? defaultUrlFor(savedProtocol),
           protocol: savedProtocol,
         };
         setSnapshot(savedSnapshot);
@@ -151,11 +170,20 @@ export function ProviderForm({
         setCredentialLoaded(false);
         showToast('已更新', { variant: 'success' });
       } else {
+        if (!definition || !activeCap) throw new Error('Provider capability is missing');
+        const capabilities: ProviderCapabilityConfigInput[] = listProviderCapabilities(definition)
+          .map((candidate) => candidate === activeCap
+            ? {
+                capability: candidate,
+                protocol: selectedProtocol ? selectedProtocol as ProtocolFamily : null,
+                baseUrl: baseUrl.trim() || null,
+                enabled: true,
+              }
+            : { capability: candidate, enabled: true });
         const input: ProviderConfigInput = {
           definitionId,
           apiKey:  apiKey.trim() || undefined,
-          baseUrl: baseUrl.trim() || null,
-          config:  { ...(selectedProtocol ? { protocol: selectedProtocol } : {}) },
+          capabilities,
         };
         await providersApi.create(input);
         showToast('已创建', { variant: 'success' });
@@ -425,37 +453,37 @@ export function ProviderForm({
       {instance && activeCap === 'llm' && (
         <>
           <div className="border-t border-[var(--ema-border)]" />
-          <LlmModelManager providerId={instance.id} iconKey={definition?.iconKey} />
+          <LlmModelManager providerId={instance.id} iconKey={resolveProviderIconClass(definition?.branding.iconId)} />
         </>
       )}
       {instance && activeCap === 'embed' && (
         <>
           <div className="border-t border-[var(--ema-border)]" />
-          <EmbedModelManager providerId={instance.id} iconKey={definition?.iconKey} />
+          <EmbedModelManager providerId={instance.id} iconKey={resolveProviderIconClass(definition?.branding.iconId)} />
         </>
       )}
       {instance && activeCap === 'rerank' && (
         <>
           <div className="border-t border-[var(--ema-border)]" />
-          <RerankModelManager providerId={instance.id} iconKey={definition?.iconKey} />
+          <RerankModelManager providerId={instance.id} iconKey={resolveProviderIconClass(definition?.branding.iconId)} />
         </>
       )}
       {instance && activeCap === 'tts' && (
         <>
           <div className="border-t border-[var(--ema-border)]" />
-          <TtsModelManager providerId={instance.id} iconKey={definition?.iconKey} />
+          <TtsModelManager providerId={instance.id} iconKey={resolveProviderIconClass(definition?.branding.iconId)} />
         </>
       )}
       {instance && activeCap === 'stt' && (
         <>
           <div className="border-t border-[var(--ema-border)]" />
-          <SttModelManager providerId={instance.id} iconKey={definition?.iconKey} />
+          <SttModelManager providerId={instance.id} iconKey={resolveProviderIconClass(definition?.branding.iconId)} />
         </>
       )}
       {instance && activeCap === 'vision' && (
         <>
           <div className="border-t border-[var(--ema-border)]" />
-          <VisionModelManager providerId={instance.id} iconKey={definition?.iconKey} />
+          <VisionModelManager providerId={instance.id} iconKey={resolveProviderIconClass(definition?.branding.iconId)} />
         </>
       )}
     </div>

@@ -1,9 +1,14 @@
 /**
  * Providers API — CRUD + definitions + health probe.
- * ProviderDefinition imported from @ema-agent/contracts.
+ * ProviderDefinition imported from @ema-agent/provider.
  */
 import { sidecarClient } from './sidecar-client.js';
-import type { ProviderCredentialOperation, ProviderDefinition } from '@ema-agent/contracts';
+import type {
+  Capability,
+  ProtocolFamily,
+  ProviderCredentialOperation,
+  ProviderDefinition,
+} from '@ema-agent/provider';
 
 export type { ProviderDefinition };
 
@@ -19,31 +24,41 @@ export interface ProviderConfigWire {
   definitionId: string;
   displayName:  string;
   hasApiKey:    boolean;
-  baseUrl:      string | null;
   enabled:      boolean;
-  capabilities: string[];
-  config:       Record<string, unknown>;
+  capabilities: ProviderCapabilityConfigWire[];
   health:       ProviderHealthWire | null;
   definition:   ProviderDefinition | null;
+}
+
+export interface ProviderCapabilityConfigWire {
+  capability: Capability;
+  protocol: ProtocolFamily | null;
+  baseUrl: string | null;
+  embeddingRevision: string | null;
+  enabled: boolean;
+}
+
+export interface ProviderCapabilityConfigInput {
+  capability: Capability;
+  protocol?: ProtocolFamily | null;
+  baseUrl?: string | null;
+  embeddingRevision?: string | null;
+  enabled?: boolean;
 }
 
 export interface ProviderConfigInput {
   definitionId: string;
   displayName?: string;
   apiKey?:      string;
-  baseUrl?:     string | null;
   enabled?:     boolean;
-  capabilities?: string[];
-  config?:      Record<string, unknown>;
+  capabilities?: ProviderCapabilityConfigInput[];
 }
 
 export interface ProviderConfigPatchInput {
   displayName?:   string;
   credential?:    ProviderCredentialOperation;
-  baseUrl?:       string | null;
   enabled?:       boolean;
-  capabilities?:  string[];
-  config?:        Record<string, unknown>;
+  capability?:    ProviderCapabilityConfigInput;
 }
 
 export interface ProbeResultWire {

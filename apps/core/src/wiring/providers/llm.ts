@@ -6,37 +6,36 @@ import {
 import type { ProviderConfig, ModelsDevCatalog } from '@ema-agent/llm';
 import type { CredentialFacade } from '@ema-agent/credential';
 import {
-  getProviderDefinition,
+  providerCatalog,
   isLlmProtocol,
-  resolveProtocols, resolveBaseUrl,
-  type ProtocolFamily,
-} from '@ema-agent/contracts';
+  modelsDevIdFor,
+  requiresCredentials,
+} from '@ema-agent/provider';
+import {
+  capabilityConfigFor,
+  configuredBaseUrlFor,
+  selectedProtocolFor,
+} from './config-resolution.js';
 
 export function buildLlmProviderConfig(row: ProviderConfigRow): ProviderConfig | null {
-  const def = getProviderDefinition(row.definition_id);
+  const def = providerCatalog.get(row.definition_id);
   if (!def) return null;
 
-  const capabilities: string[] = JSON.parse(row.capabilities_json);
-  if (!capabilities.includes('llm')) return null;
+  const capability = capabilityConfigFor(row, 'llm');
+  if (!capability) return null;
 
-  // config_json may carry a user-selected protocol (when the definition offers
-  // multiple choices). Fall back to the first declared protocol.
-  const extra    = JSON.parse(row.config_json) as Record<string, unknown>;
-  const choices  = resolveProtocols(def.protocols.llm);
-  const stored   = typeof extra['protocol'] === 'string' ? extra['protocol'] : undefined;
-  const protocol = (stored && choices.includes(stored as never) ? stored : choices[0]) as ProtocolFamily | undefined;
+  const protocol = selectedProtocolFor(def, 'llm', capability);
   if (!isLlmProtocol(protocol)) return null;
 
-  const needsKey = def.requiresCredentials !== false;
+  const needsKey = requiresCredentials(def);
   if (needsKey && !row.credential) return null;
 
   return {
     id:           row.id,
     protocol,
     apiKey:       row.credential ?? '',
-    baseUrl:      row.base_url ?? resolveBaseUrl(def, protocol),
-    defaultModel: typeof extra['defaultModel'] === 'string' ? extra['defaultModel'] : undefined,
-    modelsDevId:  def.modelsDevId,
+    baseUrl:      configuredBaseUrlFor(def, 'llm', capability, protocol),
+    modelsDevId:  modelsDevIdFor(def, 'llm'),
   };
 }
 

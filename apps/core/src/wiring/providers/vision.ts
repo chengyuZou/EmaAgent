@@ -6,13 +6,20 @@ import type { ModelsDevCatalog } from '@ema-agent/llm';
 import type { CredentialFacade } from '@ema-agent/credential';
 import { KbVisionAdapterError, type KbVisionAdapter } from '@ema-agent/knowledge-base';
 import {
-  getProviderDefinition,
+  providerCatalog,
   isVisionProtocol,
-  resolveProtocols,
-  type ProtocolFamily,
-  type UsageRecord,
-  type UsageRecorder,
+  requiresCredentials,
+  staticModelsFor,
+} from '@ema-agent/provider';
+import type {
+  UsageRecord,
+  UsageRecorder,
 } from '@ema-agent/contracts';
+import {
+  capabilityConfigFor,
+  configuredBaseUrlFor,
+  selectedProtocolFor,
+} from './config-resolution.js';
 
 export interface FetchedVisionModels {
   models: string[];
@@ -45,30 +52,28 @@ export async function fetchVisionModels(
     return { models: catalogModels, source: 'catalog' };
   }
 
-  const def = getProviderDefinition(row.definition_id);
-  const staticModels = def?.defaultModels?.vision ?? [];
+  const def = providerCatalog.get(row.definition_id);
+  const staticModels = def ? staticModelsFor(def, 'vision') : [];
   return { models: [...staticModels], source: 'static' };
 }
 
 export function buildVisionProviderConfig(row: ProviderConfigRow): VisionProviderConfig | null {
-  const def = getProviderDefinition(row.definition_id);
+  const def = providerCatalog.get(row.definition_id);
   if (!def) return null;
 
-  const capabilities: string[] = JSON.parse(row.capabilities_json);
-  if (!capabilities.includes('vision')) return null;
+  const capability = capabilityConfigFor(row, 'vision');
+  if (!capability) return null;
 
-  const protocol = resolveProtocols(def.protocols.vision)[0] as ProtocolFamily | undefined;
+  const protocol = selectedProtocolFor(def, 'vision', capability);
   if (!isVisionProtocol(protocol)) return null;
 
-  if (def.requiresCredentials !== false && !row.credential) return null;
+  if (requiresCredentials(def) && !row.credential) return null;
 
-  const extra = JSON.parse(row.config_json) as Record<string, unknown>;
   return {
     id:           row.id,
     protocol,
     apiKey:       row.credential ?? '',
-    baseUrl:      row.base_url ?? def.defaultBaseUrl,
-    defaultModel: typeof extra['defaultModel'] === 'string' ? extra['defaultModel'] : undefined,
+    baseUrl:      configuredBaseUrlFor(def, 'vision', capability, protocol),
   };
 }
 

@@ -6,31 +6,33 @@ import {
 import type { RerankProviderConfig } from '@ema-agent/ebd-client';
 import type { CredentialFacade } from '@ema-agent/credential';
 import {
-  getProviderDefinition,
+  providerCatalog,
   isRerankProtocol,
-  resolveProtocols,
-  type ProtocolFamily,
-} from '@ema-agent/contracts';
+  requiresCredentials,
+} from '@ema-agent/provider';
+import {
+  capabilityConfigFor,
+  configuredBaseUrlFor,
+  selectedProtocolFor,
+} from './config-resolution.js';
 
 export function buildRerankProviderConfig(row: ProviderConfigRow): RerankProviderConfig | null {
-  const def = getProviderDefinition(row.definition_id);
+  const def = providerCatalog.get(row.definition_id);
   if (!def) return null;
 
-  const capabilities: string[] = JSON.parse(row.capabilities_json);
-  if (!capabilities.includes('rerank')) return null;
+  const capability = capabilityConfigFor(row, 'rerank');
+  if (!capability) return null;
 
-  const protocol = resolveProtocols(def.protocols.rerank)[0] as ProtocolFamily | undefined;
+  const protocol = selectedProtocolFor(def, 'rerank', capability);
   if (!isRerankProtocol(protocol)) return null;
 
-  if (def.requiresCredentials !== false && !row.credential) return null;
+  if (requiresCredentials(def) && !row.credential) return null;
 
-  const extra = JSON.parse(row.config_json) as Record<string, unknown>;
   return {
     id:           row.id,
     protocol,
     apiKey:       row.credential ?? '',
-    baseUrl:      row.base_url ?? def.defaultBaseUrl,
-    defaultModel: typeof extra['defaultModel'] === 'string' ? extra['defaultModel'] : undefined,
+    baseUrl:      configuredBaseUrlFor(def, 'rerank', capability, protocol),
   };
 }
 

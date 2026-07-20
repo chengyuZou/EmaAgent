@@ -3,7 +3,7 @@ import { z } from 'zod';
 import {
   PROVIDER_CONFIG_LIMITS,
   type ProviderCredentialOperation,
-} from '@ema-agent/contracts';
+} from '@ema-agent/provider';
 import type { AppBindings } from '../wiring/index.js';
 
 export const providerCredentialOperationSchema = z.discriminatedUnion('type', [

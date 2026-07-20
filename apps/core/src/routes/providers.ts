@@ -1,14 +1,21 @@
 ﻿import { Hono, type Context } from 'hono';
 import { z } from 'zod';
 import { randomUUID } from 'node:crypto';
-import type { BindingModule, ProviderConfigRow, ProviderHealthRow } from '@ema-agent/storage';
+import type {
+  BindingModule,
+  ProviderConfigRow,
+  ProviderHealthRow,
+} from '@ema-agent/storage';
 import {
-  getProviderDefinition,
-  PROVIDER_DEFINITIONS,
+  listProviderCapabilities,
+  modelsDevIdFor,
+  PROTOCOL_FAMILIES,
+  providerCatalog,
   PROVIDER_CONFIG_LIMITS,
+  staticModelsFor,
   type ProviderDefinition,
   type Capability,
-} from '@ema-agent/contracts';
+} from '@ema-agent/provider';
 import type { AppBindings } from '../wiring/index.js';
 import {
   fetchLlmModels,
@@ -22,6 +29,10 @@ import {
   resolveProviderCredential,
 } from './provider-credential.js';
 import { REQUEST_VALUE_LIMITS } from '../http/request-budget.js';
+import {
+  capabilityInputsFromProviderRow,
+  validateProviderCapabilityConfigs,
+} from './provider-capability-config.js';
 
 // ── Response shaping ──────────────────────────────────────────────────────────
 
@@ -35,49 +46,47 @@ function shapeProvider(
     definitionId: config.definition_id,
     displayName:  config.display_name,
     hasApiKey:    !!config.credential,
-    baseUrl:      config.base_url,
     enabled:      config.enabled === 1,
-    capabilities: JSON.parse(config.capabilities_json) as Capability[],
-    config:       JSON.parse(config.config_json) as Record<string, unknown>,
+    capabilities: config.capabilities.map((capability) => ({
+      capability: capability.capability,
+      protocol: capability.protocol,
+      baseUrl: capability.base_url,
+      embeddingRevision: capability.embedding_revision,
+      enabled: capability.enabled === 1,
+    })),
     health: health ? {
       status:       health.status,
       latencyMs:    health.latency_ms,
       lastError:    health.last_error,
       lastProbedAt: health.last_probed_at,
     } : null,
-    definition: def ? {
-      name:                def.name,
-      defaultBaseUrl:      def.defaultBaseUrl,
-      protocolBaseUrls:    def.protocolBaseUrls,
-      protocols:           def.protocols,
-      defaultModels:       def.defaultModels,
-      iconKey:             def.iconKey,
-      iconColor:           def.iconColor,
-      requiresCredentials: def.requiresCredentials,
-      onboardingFields:    def.onboardingFields,
-    } : null,
+    definition: def ?? null,
   };
 }
 
 // ── Schemas ───────────────────────────────────────────────────────────────────
 
+const capabilityConfigSchema = z.object({
+  capability: z.enum(['llm', 'embed', 'rerank', 'vision', 'tts', 'stt']),
+  protocol: z.enum(PROTOCOL_FAMILIES).optional().nullable(),
+  baseUrl: z.string().max(PROVIDER_CONFIG_LIMITS.baseUrlChars).optional().nullable(),
+  embeddingRevision: z.string().max(256).optional().nullable(),
+  enabled: z.boolean().optional(),
+}).strict();
+
 const createSchema = z.object({
   definitionId: z.string(),
   displayName:  z.string().optional(),
   apiKey:       z.string().max(PROVIDER_CONFIG_LIMITS.apiKeyChars).optional(),
-  baseUrl:      z.string().max(PROVIDER_CONFIG_LIMITS.baseUrlChars).optional().nullable(),
   enabled:      z.boolean().default(true),
-  capabilities: z.array(z.string()).optional(),
-  config:       z.record(z.unknown()).default({}),
+  capabilities: z.array(capabilityConfigSchema).optional(),
 });
 
 const patchSchema = z.object({
   displayName:  z.string().optional(),
   credential:   providerCredentialOperationSchema.optional(),
-  baseUrl:      z.string().max(PROVIDER_CONFIG_LIMITS.baseUrlChars).optional().nullable(),
   enabled:      z.boolean().optional(),
-  capabilities: z.array(z.string()).optional(),
-  config:       z.record(z.unknown()).optional(),
+  capability:   capabilityConfigSchema.optional(),
 }).strict();
 
 const enableModelSchema = z.object({
@@ -122,19 +131,7 @@ export function providersRoute(bindings: AppBindings): Hono {
 
   // GET /api/providers/definitions  — full registry for the "Add Provider" picker
   app.get('/definitions', (c) => {
-    const defs = Object.values(PROVIDER_DEFINITIONS).map(def => ({
-      id:                  def.id,
-      name:                def.name,
-      defaultBaseUrl:      def.defaultBaseUrl,
-      protocolBaseUrls:    def.protocolBaseUrls,
-      capabilities:        def.capabilities,
-      protocols:           def.protocols,
-      defaultModels:       def.defaultModels,
-      iconKey:             def.iconKey,
-      iconColor:           def.iconColor,
-      requiresCredentials: def.requiresCredentials,
-      onboardingFields:    def.onboardingFields,
-    }));
+    const defs = providerCatalog.list();
     return c.json(defs);
   });
 
@@ -160,7 +157,7 @@ export function providersRoute(bindings: AppBindings): Hono {
     const repo = bindings.providers;
     const rows = repo.listWithHealth();
     return c.json(rows.map(({ config, health }) =>
-      shapeProvider(config, health, getProviderDefinition(config.definition_id)),
+      shapeProvider(config, health, providerCatalog.get(config.definition_id)),
     ));
   });
 
@@ -172,14 +169,17 @@ export function providersRoute(bindings: AppBindings): Hono {
     }
     const body = parsed.data;
 
-    const def = getProviderDefinition(body.definitionId);
+    const def = providerCatalog.get(body.definitionId);
     if (!def) {
       return c.json({ error: 'unknown_definition', definitionId: body.definitionId }, 422);
     }
 
-    const validCaps = (body.capabilities ?? [...def.capabilities]).filter(
-      cap => (def.capabilities as readonly string[]).includes(cap),
-    );
+    const requestedCapabilities = body.capabilities
+      ?? listProviderCapabilities(def).map((capability) => ({ capability }));
+    const validCapabilities = validateProviderCapabilityConfigs(def, requestedCapabilities);
+    if (!validCapabilities.ok) {
+      return c.json({ error: 'invalid_capability_config', message: validCapabilities.message }, 422);
+    }
 
     const repo = bindings.providers;
     const id = randomUUID();
@@ -188,10 +188,8 @@ export function providersRoute(bindings: AppBindings): Hono {
       definitionId: body.definitionId,
       displayName:  body.displayName ?? def.name,
       apiKey:       body.apiKey,
-      baseUrl:      body.baseUrl ?? undefined,
       enabled:      body.enabled,
-      capabilities: validCaps as Capability[],
-      config:       body.config,
+      capabilities: validCapabilities.value,
     });
 
     const row = repo.get(id)!;
@@ -206,7 +204,7 @@ export function providersRoute(bindings: AppBindings): Hono {
     const result = repo.getWithHealth(c.req.param('id'));
     if (!result) return c.json({ error: 'not_found' }, 404);
     const { config, health } = result;
-    return c.json(shapeProvider(config, health, getProviderDefinition(config.definition_id)));
+    return c.json(shapeProvider(config, health, providerCatalog.get(config.definition_id)));
   });
 
   // PATCH /api/providers/:id
@@ -223,33 +221,39 @@ export function providersRoute(bindings: AppBindings): Hono {
     }
     const body = parsed.data;
 
-    const def = getProviderDefinition(existing.definition_id);
-    const existingConfig = JSON.parse(existing.config_json) as Record<string, unknown>;
-    const existingCaps   = JSON.parse(existing.capabilities_json) as Capability[];
+    const def = providerCatalog.get(existing.definition_id);
+    const currentCapabilities = capabilityInputsFromProviderRow(existing);
+    let nextCapabilities = currentCapabilities;
+    if (body.capability !== undefined) {
+      if (!def) return c.json({ error: 'unknown_definition' }, 422);
+      const validated = validateProviderCapabilityConfigs(def, [body.capability]);
+      if (!validated.ok) {
+        return c.json({ error: 'invalid_capability_config', message: validated.message }, 422);
+      }
+      const incoming = validated.value[0]!;
+      nextCapabilities = [
+        ...currentCapabilities.filter((item) => item.capability !== incoming.capability),
+        incoming,
+      ];
 
-    const validCaps = body.capabilities !== undefined
-      ? (body.capabilities.filter(
-          cap => !def || (def.capabilities as readonly string[]).includes(cap),
-        ) as Capability[])
-      : existingCaps;
-
-    if (body.capabilities !== undefined) {
-      const affectedBindings = bindings.modelBindings
-        .listByProviderConfig(id)
-        .filter((binding) => {
-          const requiredCapability = BINDING_CAPABILITIES[binding.module];
-          return requiredCapability !== undefined && !validCaps.includes(requiredCapability);
-        });
-      if (affectedBindings.length > 0) {
-        return c.json({
-          error: 'provider_capability_in_use',
-          message: '请先将使用该能力的业务模块换绑或解绑',
-          bindings: affectedBindings.map((binding) => ({
-            module: binding.module,
-            model: binding.model,
-            capability: BINDING_CAPABILITIES[binding.module],
-          })),
-        }, 409);
+      if (incoming.enabled === false) {
+        const affectedBindings = bindings.modelBindings
+          .listByProviderConfig(id)
+          .filter((binding) => {
+            const requiredCapability = BINDING_CAPABILITIES[binding.module];
+            return requiredCapability === incoming.capability;
+          });
+        if (affectedBindings.length > 0) {
+          return c.json({
+            error: 'provider_capability_in_use',
+            message: '请先将使用该能力的业务模块换绑或解绑',
+            bindings: affectedBindings.map((binding) => ({
+              module: binding.module,
+              model: binding.model,
+              capability: BINDING_CAPABILITIES[binding.module],
+            })),
+          }, 409);
+        }
       }
     }
 
@@ -258,12 +262,8 @@ export function providersRoute(bindings: AppBindings): Hono {
       definitionId: existing.definition_id,
       displayName:  body.displayName ?? existing.display_name,
       apiKey:       resolveProviderCredential(existing.credential, body.credential),
-      baseUrl:      body.baseUrl !== undefined
-        ? (body.baseUrl ?? undefined)
-        : (existing.base_url ?? undefined),
       enabled:      body.enabled ?? existing.enabled === 1,
-      capabilities: validCaps,
-      config:       body.config ?? existingConfig,
+      capabilities: nextCapabilities,
     });
 
     const updated = repo.get(id)!;
@@ -323,9 +323,11 @@ export function providersRoute(bindings: AppBindings): Hono {
   function requireCapability(c: Context, id: string, cap: Capability) {
     const existing = requireProvider(c, id);
     if (existing instanceof Response) return existing;
-    const capabilities: Capability[] = JSON.parse(existing.capabilities_json);
-    if (!capabilities.includes(cap)) return c.json({ error: 'capability_not_supported', capability: cap }, 422);
-    return { existing, def: getProviderDefinition(existing.definition_id) };
+    const capability = existing.capabilities.find(
+      (item) => item.capability === cap && item.enabled === 1,
+    );
+    if (!capability) return c.json({ error: 'capability_not_supported', capability: cap }, 422);
+    return { existing, def: providerCatalog.get(existing.definition_id) };
   }
 
   function recordProbe(id: string, result: { ok: boolean; latencyMs?: number; error?: string }): void {
@@ -342,8 +344,9 @@ export function providersRoute(bindings: AppBindings): Hono {
     const ctx = requireCapability(c, id, 'llm');
     if (ctx instanceof Response) return ctx;
     const enabledLlm    = bindings.providerLlmModels.listByProvider(id);
-    const catalogLlmIds = ctx.def?.modelsDevId
-      ? bindings.modelCatalog.listLlmModelIds(ctx.def.modelsDevId)
+    const modelsDevId = ctx.def ? modelsDevIdFor(ctx.def, 'llm') : undefined;
+    const catalogLlmIds = modelsDevId
+      ? bindings.modelCatalog.listLlmModelIds(modelsDevId)
       : [];
     const model = parsed.data.model ?? enabledLlm[0]?.model ?? catalogLlmIds[0];
     if (!model) return c.json({ ok: false, model: '', latencyMs: null, error: '没有可探测的模型，请先在下方「模型」启用一个' });
@@ -358,7 +361,9 @@ export function providersRoute(bindings: AppBindings): Hono {
     if (!parsed.success) return c.json({ error: 'invalid_request', details: parsed.error.flatten() }, 400);
     const ctx = requireCapability(c, id, 'vision');
     if (ctx instanceof Response) return ctx;
-    const model = parsed.data.model ?? ctx.def?.defaultModels?.vision?.[0] ?? '';
+    const model = parsed.data.model
+      ?? (ctx.def ? staticModelsFor(ctx.def, 'vision')[0] : undefined)
+      ?? '';
     const result = await bindings.vision.probe(id, model || undefined);
     recordProbe(id, result);
     return c.json({ ok: result.ok, model, latencyMs: result.latencyMs ?? null, error: result.error });
@@ -371,7 +376,9 @@ export function providersRoute(bindings: AppBindings): Hono {
     const ctx = requireCapability(c, id, 'embed');
     if (ctx instanceof Response) return ctx;
     const enabledEmbed = bindings.providerEmbedModels.listByProvider(id);
-    const model = parsed.data.model ?? enabledEmbed[0]?.model ?? ctx.def?.defaultModels?.embed?.[0];
+    const model = parsed.data.model
+      ?? enabledEmbed[0]?.model
+      ?? (ctx.def ? staticModelsFor(ctx.def, 'embed')[0] : undefined);
     if (!model) return c.json({ ok: false, model: '', latencyMs: null, error: '没有可探测的模型，请先在下方「模型」启用一个' });
     const result = await bindings.ebd.probeEmbed(id, model);
     recordProbe(id, result);
@@ -385,7 +392,10 @@ export function providersRoute(bindings: AppBindings): Hono {
     const ctx = requireCapability(c, id, 'rerank');
     if (ctx instanceof Response) return ctx;
     const enabledRerank = bindings.providerRerankModels.listByProvider(id);
-    const model = parsed.data.model ?? enabledRerank[0]?.model ?? ctx.def?.defaultModels?.rerank?.[0] ?? '';
+    const model = parsed.data.model
+      ?? enabledRerank[0]?.model
+      ?? (ctx.def ? staticModelsFor(ctx.def, 'rerank')[0] : undefined)
+      ?? '';
     if (!model) return c.json({ ok: false, model: '', latencyMs: null, error: '没有可探测的模型，请先在下方「模型」启用一个' });
     const result = await bindings.ebd.probeRerank(id, model);
     recordProbe(id, result);
@@ -422,12 +432,15 @@ export function providersRoute(bindings: AppBindings): Hono {
     if (!row) return c.json({ error: 'not_found' }, 404);
 
     const { models, source } = await fetchLlmModels(row, {
-      modelsDevId:  getProviderDefinition(row.definition_id)?.modelsDevId,
+      modelsDevId:  providerCatalog.get(row.definition_id)
+        ? modelsDevIdFor(providerCatalog.get(row.definition_id)!, 'llm')
+        : undefined,
       modelCatalog: bindings.modelCatalog,
     });
     const pool = bindings.providerLlmModels;
     const enabled = new Map(pool.listByProvider(id).map((m) => [m.model, m.context_window]));
-    const modelsDevId = getProviderDefinition(row.definition_id)?.modelsDevId;
+    const definition = providerCatalog.get(row.definition_id);
+    const modelsDevId = definition ? modelsDevIdFor(definition, 'llm') : undefined;
 
     return c.json({
       source,
@@ -593,8 +606,8 @@ export function providersRoute(bindings: AppBindings): Hono {
     const row = repo.get(id);
     if (!row) return c.json({ error: 'not_found' }, 404);
 
-    const def = getProviderDefinition(row.definition_id);
-    const models = def?.defaultModels?.rerank ?? [];
+    const def = providerCatalog.get(row.definition_id);
+    const models = def ? staticModelsFor(def, 'rerank') : [];
     const pool = bindings.providerRerankModels;
     const enabled = new Map(pool.listByProvider(id).map((m) => [m.model, m.max_chunks]));
 
@@ -643,8 +656,8 @@ export function providersRoute(bindings: AppBindings): Hono {
     const row = repo.get(id);
     if (!row) return c.json({ error: 'not_found' }, 404);
 
-    const def = getProviderDefinition(row.definition_id);
-    const models = def?.defaultModels?.tts ?? [];
+    const def = providerCatalog.get(row.definition_id);
+    const models = def ? staticModelsFor(def, 'tts') : [];
     const pool = bindings.providerTtsModels;
     const enabledSet = new Set(pool.listByProvider(id).map((m) => m.model));
 
@@ -682,8 +695,8 @@ export function providersRoute(bindings: AppBindings): Hono {
     const row = repo.get(id);
     if (!row) return c.json({ error: 'not_found' }, 404);
 
-    const def = getProviderDefinition(row.definition_id);
-    const models = def?.defaultModels?.stt ?? [];
+    const def = providerCatalog.get(row.definition_id);
+    const models = def ? staticModelsFor(def, 'stt') : [];
     const pool = bindings.providerSttModels;
     const enabledSet = new Set(pool.listByProvider(id).map((m) => m.model));
 
@@ -722,7 +735,9 @@ export function providersRoute(bindings: AppBindings): Hono {
     if (!row) return c.json({ error: 'not_found' }, 404);
 
     const { models, source } = await fetchVisionModels(row, {
-      modelsDevId:  getProviderDefinition(row.definition_id)?.modelsDevId,
+      modelsDevId:  providerCatalog.get(row.definition_id)
+        ? modelsDevIdFor(providerCatalog.get(row.definition_id)!, 'vision')
+        : undefined,
       modelCatalog: bindings.modelCatalog,
     });
     const pool = bindings.providerVisionModels;

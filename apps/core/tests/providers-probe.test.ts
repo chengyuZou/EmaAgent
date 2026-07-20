@@ -20,7 +20,7 @@ describe('B-061 probe 路由错误响应不被 204 覆盖', () => {
       definitionId: 'siliconflow',
       displayName: 'SiliconFlow',
       apiKey: 'secret',
-      capabilities: ['llm'],
+      capabilities: [{ capability: 'llm' }],
     });
   });
 

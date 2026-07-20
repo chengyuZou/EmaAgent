@@ -1,7 +1,8 @@
-import type { SttProtocol, UsageContext } from '@ema-agent/contracts';
+import type { UsageContext } from '@ema-agent/contracts';
+import type { SttProtocol } from '@ema-agent/provider';
 
 // 重新导出 protocol 枚举,消费者只从此包 import
-export type { SttProtocol } from '@ema-agent/contracts';
+export type { SttProtocol } from '@ema-agent/provider';
 
 // ── 公共 STT 请求(Facade 入口)────────────────────────────────────────────
 //

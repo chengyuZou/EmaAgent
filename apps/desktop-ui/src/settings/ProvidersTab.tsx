@@ -2,10 +2,17 @@
  * ProvidersTab — AIRI-style provider grid grouped by capability.
  */
 import React, { useState, useEffect } from 'react';
-import { Button, Callout, ConfirmDialog, IconButton, MenuStatusItem } from '@ema-agent/ui';
+import {
+  Button,
+  Callout,
+  ConfirmDialog,
+  IconButton,
+  MenuStatusItem,
+  resolveProviderIconClass,
+} from '@ema-agent/ui';
 import { useSettingsStore } from '../stores/settings-store.js';
 import { providersApi, type ProviderDefinition, type ProviderConfigWire } from '../api/providers.js';
-import type { Capability } from '@ema-agent/contracts';
+import { providerSupportsCapability, type Capability } from '@ema-agent/provider';
 import { showToast } from '../lib/toast.js';
 import { ProviderForm } from './ProviderForm.js';
 
@@ -76,7 +83,7 @@ export function ProvidersTab(): JSX.Element {
 
       {SECTIONS.map((section) => {
         const sectionDefs = definitions.filter((d) =>
-          (d.capabilities as readonly string[]).includes(section.key));
+          providerSupportsCapability(d, section.key));
         if (sectionDefs.length === 0) return null;
 
         return (
@@ -98,8 +105,8 @@ export function ProvidersTab(): JSX.Element {
                   <MenuStatusItem
                     key={def.id}
                     title={def.name}
-                    description={hostOf(def.defaultBaseUrl)}
-                    icon={def.iconKey ?? 'i-solar:box-bold-duotone'}
+                    description={hostOf(def.connection.defaultBaseUrl)}
+                    icon={resolveProviderIconClass(def.branding.iconId)}
                     configured={instances.length > 0}
                     onClick={() => { setSelectedDef(def.id); setSelectedCapability(section.key as Capability); }}
                     style={{ '--stagger-i': staggerI } as React.CSSProperties}
@@ -163,7 +170,7 @@ function ProviderConfigPanel({
             className="-ml-1.5"
             onClick={handleBack}
           />
-          <span className={`${definition.iconKey ?? 'i-solar:box-bold-duotone'} text-3xl`} aria-hidden />
+          <span className={`${resolveProviderIconClass(definition.branding.iconId)} text-3xl`} aria-hidden />
           <h2 className="text-xl font-semibold text-[var(--ema-text-primary)]">{definition.name}</h2>
           {config && (
             <span className={`size-2 rounded-full ${

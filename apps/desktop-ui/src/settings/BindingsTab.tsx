@@ -5,7 +5,15 @@
  * Level 2: single-select — provider cards (horizontal scroll) → model grid (2-col).
  */
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { Button, CardButton, IconButton, Input, Callout, RadioDot } from '@ema-agent/ui';
+import {
+  Button,
+  CardButton,
+  IconButton,
+  Input,
+  Callout,
+  RadioDot,
+  resolveProviderIconClass,
+} from '@ema-agent/ui';
 import {
   modelBindingsApi,
   type BindingModule,
@@ -144,7 +152,7 @@ export function BindingsTab(): JSX.Element {
   const iconKeyFor = useCallback((pcId: string): string | undefined => {
     const p = allProviders.find((x) => x.id === pcId);
     const def = definitions.find((d) => d.id === p?.definitionId);
-    return def?.iconKey;
+    return def ? resolveProviderIconClass(def.branding.iconId) : undefined;
   }, [allProviders, definitions]);
 
   // provider display-name lookup

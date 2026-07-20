@@ -22,6 +22,7 @@
   },
   "dependencies": {
     "@ema-agent/contracts": "workspace:*",
+    "@ema-agent/provider": "workspace:*",
     "ws": "^8.18.0"
   },
   "devDependencies": {

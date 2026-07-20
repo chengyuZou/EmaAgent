@@ -44,6 +44,7 @@ __pycache__/
 venv/
 
 # Narrative memory
+apps/bridge/data/narrative/**
 apps/bridge/data/narrative/memory/*/vdb_*.json
 apps/bridge/data/narrative/memory/*/graph_chunk_entity_relation.graphml
 apps/bridge/data/narrative/memory/*/kv_store_*.json
@@ -59,7 +60,17 @@ packages/tts/test-output/
 
 # Misc
 *.local
-uv.lock
+/apps/desktop/src-tauri/binaries/*
+!/apps/desktop/src-tauri/binaries/.gitkeep
+/apps/desktop/src-tauri/.release-staging/
+/apps/desktop/src-tauri/resources/core-runtime/*
+!/apps/desktop/src-tauri/resources/core-runtime/.gitkeep
+/apps/desktop/src-tauri/resources/bridge-runtime/*
+!/apps/desktop/src-tauri/resources/bridge-runtime/.gitkeep
+/apps/desktop/src-tauri/resources/narrative-seed/*
+!/apps/desktop/src-tauri/resources/narrative-seed/.gitkeep
+/apps/desktop/public/cubism/*
+!/apps/desktop/public/cubism/.gitkeep
 
 CLAUDE.md
 install.cmd

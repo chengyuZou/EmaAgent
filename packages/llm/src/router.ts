@@ -20,7 +20,8 @@ import type {
   AssistantBlock,
   LlmTokenUsage,
 } from './types.js';
-import type { LlmProtocol, UsageRecord, UsageRecorder } from '@ema-agent/contracts';
+import type { UsageRecord, UsageRecorder } from '@ema-agent/contracts';
+import type { LlmProtocol } from '@ema-agent/provider';
 import type { ModelsDevCatalog } from './models-dev-catalog.js';
 import { normalizeToolDefinitions } from './prompt-cache.js';
 import {

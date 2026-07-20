@@ -3,7 +3,7 @@ import { Database, ProvidersRepo } from '@ema-agent/storage';
 import type { AppBindings } from '../src/wiring/index.js';
 import { providersRoute } from '../src/routes/providers.js';
 import { createTestCredentialFacade } from './helpers/test-credential-facade.js';
-import { PROVIDER_CONFIG_LIMITS } from '@ema-agent/contracts';
+import { PROVIDER_CONFIG_LIMITS } from '@ema-agent/provider';
 
 describe('Provider 凭据契约', () => {
   let profileDb: Database;
@@ -19,7 +19,7 @@ describe('Provider 凭据契约', () => {
       definitionId: 'siliconflow',
       displayName: 'SiliconFlow',
       apiKey: 'secret-v1',
-      capabilities: ['llm'],
+      capabilities: [{ capability: 'llm' }],
     });
     app = providersRoute({
       providers,
@@ -78,7 +78,10 @@ describe('Provider 凭据契约', () => {
       credential: { type: 'replace', value: 'k'.repeat(PROVIDER_CONFIG_LIMITS.apiKeyChars + 1) },
     })).status).toBe(400);
     expect((await request({
-      baseUrl: 'h'.repeat(PROVIDER_CONFIG_LIMITS.baseUrlChars + 1),
+      capability: {
+        capability: 'llm',
+        baseUrl: 'h'.repeat(PROVIDER_CONFIG_LIMITS.baseUrlChars + 1),
+      },
     })).status).toBe(400);
     expect(providers.get('provider-1')?.credential).toBe('secret-v1');
   });

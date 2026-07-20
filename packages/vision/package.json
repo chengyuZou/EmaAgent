@@ -23,6 +23,7 @@
   },
   "dependencies": {
     "@ema-agent/contracts": "workspace:*",
+    "@ema-agent/provider": "workspace:*",
     "@anthropic-ai/sdk": "^0.39.0",
     "@google/genai": "^2.7.0",
     "openai": "^4.98.0"
