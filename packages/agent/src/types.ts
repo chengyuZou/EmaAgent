@@ -16,10 +16,13 @@ import type {
 import type {
   LanguageModel,
   LlmContentPart,
-  LlmToolDef,
-  Message as ModelMessage,
   ThinkingMode,
 } from '@ema-agent/llm';
+import type {
+  ContextContributionProvider,
+  ContextHistoryCompactor,
+} from '@ema-agent/context';
+import type { PromptSnapshot } from '@ema-agent/prompts';
 import type { SessionStore, Turn } from '@ema-agent/session';
 import type { HookBus } from '@ema-agent/hook';
 import type { EmotionEngine } from '@ema-agent/emotion';
@@ -166,6 +169,8 @@ export interface AgentRunInput {
    * concept — the engine picks them apart via Array.isArray.
    */
   userInput:             string | LlmContentPart[];
+  /** Turn 开始时冻结的 Prompt Slot 快照，Agent 多轮共享同一 revision。 */
+  prompt:                PromptSnapshot;
   /** Resolved provider_configs.id — orchestrator responsibility. */
   providerId:            string;
   /** Resolved model name — orchestrator responsibility. */
@@ -186,7 +191,8 @@ export interface AgentRunInput {
    * the context window mid-turn. Orchestrator wires this to ContextCompactor.compact().
    * Omit in tests and sub-agent spawns (ephemeral context).
    */
-  compactMessages?: (messages: ModelMessage[], tools: readonly LlmToolDef[]) => Promise<ModelMessage[]>;
+  prepareContextContributions?: ContextContributionProvider;
+  compactContext?: ContextHistoryCompactor;
   /** User-requested thinking mode — forwarded to every LlmRequest in the agent loop. */
   thinking?: ThinkingMode;
   /** Core 在 Engine 前完成的媒体降级。 */

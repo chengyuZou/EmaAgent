@@ -12,22 +12,28 @@ import type {
   UserBlock,
 } from '@ema-agent/llm';
 import type { MessageBlocks } from '@ema-agent/session';
+import { NarrativeClientError } from '@ema-agent/narrative';
 import type { HookBus, HookTriggerContext, HookTriggerResult, TurnFailurePhase } from '@ema-agent/hook';
 import type { ConversationDeps, ConversationRunInput } from './types.js';
 import {
   buildModelMessages,
   computePromptPrefixHash,
+  ContextAssembler,
   prepareHistoricalMessageView,
   validateCurrentContent,
 } from '@ema-agent/context';
+import type { ContextContribution } from '@ema-agent/context';
+import { prepareNarrativeContribution } from './narrativeRecall.js';
+
+const contextAssembler = new ContextAssembler();
 
 // ── ConversationEngine ────────────────────────────────────────────────────────
 
 /**
  * 用一条统一流程处理 chat 和 narrative turn。
  *
- * Narrative 专属逻辑（RAG 召回）全在 registerConversationHooks() 注册的
- * `narrative:recall` beforeLlm hook 里--engine 本身没有 mode 分支。
+ * Narrative 与 Memory 以结构化 ContextContribution 进入统一装配器；Hook
+ * 只观察已经完成的模型请求，不再承担内置上下文拼装。
  *
  * 与传输无关：返回 AsyncIterable<EmaStreamEvent>。
  * 由 apps/core orchestrator（SSE）和未来 CLI（stdout）消费。
@@ -164,8 +170,7 @@ async function* runTurn(
       blocks: userBlocks as MessageBlocks,
     });
 
-    let messages: ModelMessage[] = [
-      ...historyView.messages,
+    const currentTurn: ModelMessage[] = [
       {
         role: 'user',
         content: userBlocks as string | UserBlock[],
@@ -177,17 +182,64 @@ async function* runTurn(
     const iteration = 1;
     const llmCallId = asLlmCallId(randomUUID());
 
-    if (input.compactMessages) {
-      activePhase = 'unknown';
-      messages = await input.compactMessages([...messages]);
+    const contributions: ContextContribution[] = [];
+    let narrativeRecall: Awaited<ReturnType<typeof prepareNarrativeContribution>> = null;
+
+    if (mode === 'narrative' && input.userInput) {
+      activePhase = 'provider';
+      try {
+        narrativeRecall = yield* streamingOperation((emit) =>
+          prepareNarrativeContribution(deps, {
+            sessionId: input.sessionId,
+            turnId,
+            userInput: input.userInput,
+            signal,
+            emit,
+          }));
+      } catch (error) {
+        if (signal.aborted || isAbortError(error)) throw error;
+        if (!(error instanceof NarrativeClientError)) throw error;
+        yield {
+          type: 'system_warning',
+          level: 'warn',
+          message: 'Narrative bridge unavailable - continuing without narrative context',
+        };
+      }
+      if (narrativeRecall) contributions.push(narrativeRecall.contribution);
     }
 
-    // ── beforeLlm hook（并发排空）──────────────────────────────────────────────
-    // narrative:recall 并发查各 timeline，每条完成就 emit
-    // `narrative_timeline_complete`。必须立即 yield 每个 emit 的事件--不能
-    // 缓冲后排空--前端才能看到逐条 timeline 完成而不是一次性全到。
-    //
-    // 模式：把 trigger() 当后台任务跑，emit() 时就 yield，等任务结束再看结果。
+    if (input.prepareContextContributions) {
+      activePhase = 'unknown';
+      const prepared = yield* streamingOperation((emit) =>
+        input.prepareContextContributions!({
+          sessionId: input.sessionId,
+          turnId,
+          mode,
+          userInput: input.userInput,
+          signal,
+          emit,
+        }));
+      contributions.push(...prepared);
+    }
+
+    activePhase = 'unknown';
+    const contextSnapshot = input.compactContext
+      ? await contextAssembler.assembleCompacted({
+          prompt: input.prompt,
+          history: historyView.messages,
+          currentTurn,
+          contributions,
+        }, input.compactContext)
+      : contextAssembler.assemble({
+          prompt: input.prompt,
+          history: historyView.messages,
+          currentTurn,
+          contributions,
+        });
+    const messages = [...contextSnapshot.messages] as ModelMessage[];
+
+    // Context 已经装配完成；beforeLlm 只留给真正需要观察或调整最终请求的扩展 Hook。
+    // 把 trigger() 当后台任务跑，扩展 emit 的事件会立即进入 Turn 事件流。
     activePhase = 'hook';
     const llmHookResult = yield* streamingBeforeLlm(hooks, {
       turnId,
@@ -214,12 +266,7 @@ async function* runTurn(
     // LLM 请求准备器会对最终组装结果执行 fail-closed 能力门禁。
     const finalMessages = llmHookResult.payload.messages;
 
-    // ── narrative 检索结果落盘 ──────────────────────────────────────────────
-    // narrative:recall hook 通过 replace payload 返回检索结果。落盘成
-    // kind='narrative_context' message:既回灌 LLM(下一轮 buildModelMessages
-    // 转文本)又前端显示(检索块气泡)。一份内容不拆。本轮 LLM 已通过 inject 的
-    // 临时 user message 看过检索内容(上面 finalMessages 里),这里落盘是给未来轮次 + 前端展示。
-    const narrativeRecall = llmHookResult.payload.narrativeRecall;
+    // Narrative 正式结果单独落盘供未来 Turn 回放和前端剧情块展示。
     if (narrativeRecall && narrativeRecall.timelines.length > 0) {
       activePhase = 'persistence';
       session.appendMessage({
@@ -415,15 +462,45 @@ async function* runTurn(
   }
 }
 
+async function* streamingOperation<T>(
+  operation: (emit: (event: EmaStreamEvent) => void) => Promise<T>,
+): AsyncGenerator<EmaStreamEvent, T> {
+  const queue: EmaStreamEvent[] = [];
+  let notify: (() => void) | null = null;
+  let done = false;
+  let result!: T;
+  let error: unknown;
+
+  const emit = (event: EmaStreamEvent): void => {
+    queue.push(event);
+    notify?.();
+    notify = null;
+  };
+
+  operation(emit).then(
+    (value) => { result = value; done = true; notify?.(); notify = null; },
+    (reason: unknown) => { error = reason; done = true; notify?.(); notify = null; },
+  );
+
+  while (!done || queue.length > 0) {
+    while (queue.length > 0) yield queue.shift()!;
+    if (!done) await new Promise<void>((resolve) => { notify = resolve; });
+  }
+
+  if (error !== undefined) throw error;
+  return result;
+}
+
+function isAbortError(error: unknown): boolean {
+  if (error instanceof DOMException && error.name === 'AbortError') return true;
+  return error instanceof Error && error.name === 'AbortError';
+}
+
 // ── streamingBeforeLlm ────────────────────────────────────────────────────────
 
 /**
  * 把 beforeLlm hook 链当后台任务跑，emit 的 SSE 事件一到就立即 yield--
  * 不是等整条链结束才 yield。
- *
- * 这是逐条 timeline 渐进渲染的基础：narrative:recall hook 每条 queryOne()
- * 完成就 emit `narrative_timeline_complete`，本函数把它直接转发到 SSE 流，
- * 不等慢的 timeline。
  *
  * 用法：  const result = yield* streamingBeforeLlm(hooks, ctx);
  * `yield*` 把 emit 的事件传给外层 generator，并把 HookTriggerResult 作为表达式值。

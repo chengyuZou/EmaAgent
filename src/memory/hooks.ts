@@ -14,90 +14,22 @@ export interface MemoryHooksDeps {
 // ── Hook registration ────────────────────────────────────────────────────────
 
 /**
- * Register all memory hooks on the provided bus.
- *
- *   beforeLlm (priority 20): 首次逻辑调用的 recall + context injection
- *   onTurnEnd (priority 50): pending fragments append + maybe enqueue extraction
- *
- * Priority 20 runs AFTER prompts:buildSystem (10). Engine 接入 ContextAssembler
- * 前，兼容层仍把结构化贡献投影回旧 messages；Memory Planner 不再参与数组改写。
- *
- * Returns an unregister function for tests.
+ * Turn 完成后写入待提取片段，并按策略安排长期记忆提取。
+ * Recall 已由 Context Contribution 管线直接调用，不再经 beforeLlm 改写消息数组。
  */
 export function registerMemoryHooks(
   bus: HookBus,
   deps: MemoryHooksDeps,
 ): () => void {
-  const { planner } = deps;
-
-  // ── beforeLlm ───────────────────────────────────────────────────────────────
-  const offBeforeLlm = bus.register(
-    'beforeLlm',
-    async (ctx) => {
-      // 同一 Turn 的 Agent 多轮共享用户问题；记忆不会在 Turn 中途写入，
-      // 因此只在第一次逻辑调用检索一次。Hook 本身仍会在每轮触发。
-      if (ctx.payload.iteration !== 1) return { kind: 'continue' };
-
-      const { mode, userInput } = ctx.payload;
-      const signal = ctx.signal;
-
-      const result = await planner.prepareRecallContribution({
-        sessionId: ctx.sessionId,
-        turnId:    ctx.turnId,
-        mode,
-        userInput,
-        signal,
-        emit:      ctx.emit,
-      });
-
-      if (!result.contribution) return { kind: 'continue' };
-
-      const messages = ctx.payload.messages;
-      const lastIndex = messages.length - 1;
-      const lastMessage = messages[lastIndex];
-      const insertAt = lastMessage?.role === 'user' && !isToolResultMessage(lastMessage)
-        ? lastIndex
-        : messages.length;
-
-      return {
-        kind: 'replace',
-        payload: {
-          ...ctx.payload,
-          messages: [
-            ...messages.slice(0, insertAt),
-            result.contribution.message,
-            ...messages.slice(insertAt),
-          ],
-        },
-      };
-    },
-    { name: 'memory:beforeLlm', priority: 20, critical: false },
-  );
-
-  // ── onTurnEnd ───────────────────────────────────────────────────────────────
-  const offOnTurnEnd = bus.register(
+  return bus.register(
     'onTurnEnd',
     async (ctx) => {
       await bestEffortAsync('onTurnEnd extraction',
-        () => runOnTurnEnd(deps.session, planner, ctx.sessionId, ctx.turnId), undefined);
+        () => runOnTurnEnd(deps.session, deps.planner, ctx.sessionId, ctx.turnId), undefined);
       return { kind: 'continue' };
     },
     { name: 'memory:onTurnEnd', priority: 50, critical: false, parallel: true },
   );
-
-  return () => {
-    offBeforeLlm();
-    offOnTurnEnd();
-  };
-}
-
-function isToolResultMessage(message: {
-  readonly role: string;
-  readonly content: string | readonly { readonly type: string }[];
-}): boolean {
-  return message.role === 'user'
-    && Array.isArray(message.content)
-    && message.content.some((block) => block.type === 'tool_result');
 }
 
 async function runOnTurnEnd(

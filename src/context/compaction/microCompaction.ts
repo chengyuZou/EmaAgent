@@ -41,9 +41,9 @@ export function microCompact(
   messages: ModelMessage[],
   opts: { keepRecent: number } = { keepRecent: 6 },
 ): { messages: ModelMessage[]; cleared: number } {
-  // Build toolUseId → toolName from assistant tool_use blocks.
-  // tool_use always precedes its tool_result, so the map is complete by the
-  // time we scan results.
+  // 从 assistant 的 tool_use 块中构建 toolUseId → toolName 映射。
+  // tool_use 总是先于其 tool_result，因此在扫描结果时映射已完整。
+  // TODO 这俩不能一次遍历 ?
   const toolNameById = new Map<string, string>();
   for (const msg of messages) {
     if (msg.role !== 'assistant' || typeof msg.content === 'string') continue;
@@ -52,7 +52,7 @@ export function microCompact(
     }
   }
 
-  // First pass: find COMPACTABLE tool_result indices in chronological order.
+  // 第一次遍历：按时间顺序找到可压缩的 tool_result 索引。
   type ResultLoc = { msgIdx: number; blockIdx: number };
   const locs: ResultLoc[] = [];
   for (let m = 0; m < messages.length; m++) {
@@ -62,7 +62,7 @@ export function microCompact(
       const blk = msg.content[b]!;
       if (!isToolResult(blk)) continue;
       const toolName = toolNameById.get(blk.toolUseId);
-      if (!toolName || !COMPACTABLE_TOOLS.has(toolName)) continue; // skip non-compactable
+      if (!toolName || !COMPACTABLE_TOOLS.has(toolName)) continue;
       locs.push({ msgIdx: m, blockIdx: b });
     }
   }
@@ -71,7 +71,7 @@ export function microCompact(
     return { messages, cleared: 0 };
   }
 
-  // Determine which indices to clear (everything except the last `keepRecent`)
+  // 决定哪些索引需要清除(除了最近的 keepRecent 个)
   const cutoff = locs.length - opts.keepRecent;
   const clearSet = new Set<string>();
   for (let i = 0; i < cutoff; i++) {
@@ -79,7 +79,7 @@ export function microCompact(
     clearSet.add(`${loc.msgIdx}:${loc.blockIdx}`);
   }
 
-  // Build new messages with the targeted blocks replaced
+  // 建立新的消息数组，将目标块替换为占位符
   const out: ModelMessage[] = messages.map((msg, mIdx) => {
     if (msg.role !== 'user' || typeof msg.content === 'string') return msg;
     const newContent: UserBlock[] = msg.content.map((blk, bIdx) => {

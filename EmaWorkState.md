@@ -6,44 +6,27 @@
 
 ## 当前阶段
 
-根 `src` 模块迁移仍在进行。`narrative-client` 已完成迁移并改名为 `src/narrative`（包名 `@ema-agent/narrative`，类名 `NarrativeClient` 等保持不变）。R2 的 Prompt Slot 与 Tool Manifest 已完成首轮实现和主链接入，下一阶段进入 R3 ContextAssembler 边界收口。
+根 `src` 模块迁移仍在进行。R2 Prompt Slot / Tool Manifest 与 R3 ContextAssembler 已接入 Conversation、Agent 两条根 Turn 主链；Prompt、Skill Catalog、Memory Recall、Narrative Recall、历史、当前 Turn、Scratchpad、Mailbox 和可见 Tool Manifest 现在由一次 Context 快照统一装配。
 
 当前执行顺序：
 
-1. 继续收口剩余 Ema 专属包迁移（memory / knowledge / skills / mcp / marketplace / characters / sessions / tools / tool-builtin / permission / conversation / agent / agent-task / agent-context / hook / contracts 按需）；
-2. 收口 R2 遗留兼容入口，但不在 R3 前删除旧路径；
-3. R3 `ContextAssembler + Compaction`，先定义结构化贡献与唯一装配入口；
-4. 统一 `TurnRuntime/TurnLoop`，不提前改前端 Profile。
+1. 复查本轮 Context 主链 Diff 与真实前后端联调行为；
+2. 继续收口剩余 Ema 专属模块迁移，但不把纯目录迁移与业务语义重构混在同一批；
+3. 进入统一 `TurnRuntime/TurnLoop` 的设计与接线，不再创建第三套 Engine；
+4. Chat/Work 与 NarrativePolicy 的前端 Profile 切换留到 Turn 主链稳定后处理。
 
 ## 当前工作区
 
-记录时的 Git 状态：
+工作区包含尚未提交的 R3 Context 主链接线：`src/context`、`src/prompts`、`src/memory`、`src/skills`、`packages/conversation`、`packages/agent`、`packages/tools`、`packages/hook` 与 `apps/core`。旧 Prompt/Conversation `beforeLlm` Hook 文件及过时 Prompt Hook 测试已删除，新增 `packages/conversation/src/narrativeRecall.ts`。恢复工作后必须先重新运行 `git status --short` 和 `git diff`，不能依据本记录覆盖其他 Agent 的新改动。
+
+当前基线最近提交：
 
 ```text
-M  EmaClaudeArchitectureReview.md
-M  packages/character-card/src/index.ts
-M  packages/character-card/tests/store.spec.ts
-M  src/prompts/build.ts
-M  src/prompts/index.ts
-M  src/prompts/tests/build.spec.ts
-?? EmaWorkState.md
-?? packages/character-card/src/characterPrompt.ts
-?? src/prompts/errors.ts
-?? src/prompts/promptAssembler.ts
-?? src/prompts/tests/promptAssembler.test.ts
-?? src/prompts/types.ts
+8baa141 feat(memory): add concurrency tests for MemoryTaskRunner and task kind validation
+42b235c feat: add tests for reembedding functionality and semantic concurrency
 ```
 
-判断：`src/prompts` 下新增 `promptAssembler.ts` / `types.ts` / `errors.ts` 与测试，R2 Prompt Slot 已有 Agent 在动工；`packages/character-card` 同步在改（新增 `characterPrompt.ts`）。恢复工作后必须先重新运行 `git status --short` 和 `git diff`，确认最新归属，不能依据本快照覆盖或删除改动。
-
-最近一次提交：
-
-```text
-d5686d8 fix: narrative换目录
-9ec9588 feat: restructure artifact and attachment packages
-```
-
-`narrative` 已由 `d5686d8` 完成目录迁移与改名；`artifact` 与 `attachment` 由 `9ec9588` 完成结构迁移。除非发现明确回归，不要重新搬一次。
+本轮 R3 改动尚未提交；不要把 `8baa141` 误认为 Context 接线已经入库。
 
 ## 已确定的 V1 架构口径
 
@@ -104,7 +87,7 @@ History + Input            → Execution
 
 R2 只处理 Prompt 与 Tool Manifest，不同时搬 Context、切换 Chat/Work 或删除 ConversationEngine。
 
-当前进度：R2 首轮完成。`PromptSlot`、固定 Slot 规格、`PromptAssembler` 与 revision 已建立；产品固定规则和 Tool Guidance 已成为稳定 Slot；Character 负责产出 Identity/Presentation，ACT 文案不再属于 Prompt。`ToolManifestSnapshot` 已接入根 Agent 与 Subagent，模型定义、prepare 和执行使用同一份 Registry 来源快照。旧 `TurnMode` 已隔离在兼容模块，`registerPromptsHooks` 暂留到 R3/R5 接线完成后删除。
+当前进度：R2 主链接入完成。`PromptSlot`、固定 Slot 规格、`PromptAssembler` 与 revision 已建立；Skill Catalog 使用 `extension.skillCatalog` Slot；Character 负责产出 Identity/Presentation，ACT 文案不再属于 Prompt。`ToolManifestSnapshot` 已接入根 Agent 与 Subagent；Agent Skill 收窄后的可见 Manifest 也拥有独立快照，而执行仍校验原始 Registry 身份。`registerPromptsHooks` 已删除。
 
 计划步骤：
 
@@ -132,13 +115,13 @@ R2 只处理 Prompt 与 Tool Manifest，不同时搬 Context、切换 Chat/Work 
 2. 响应式压缩的 System Prompt 保护已完成：Compactor 先分离不可压缩 system 前缀，摘要模型只处理历史，结果再原样恢复前缀。
 3. 跨 Turn 工具事实重放已完成：`buildModelMessages()` 删除 Provider 私有 thinking 和 UI 展示字段，保留成对的 `tool_use/tool_result`，并过滤断电恢复后产生的孤立块。
 4. Prompt 的 `global/session/turn` Slot 已有明确类型，但兼容 Hook 把全部正文压成一个带断点的 system message，当前缓存范围尚未真正映射到请求结构。
-5. Memory、Narrative 和 Skill 仍通过 Hook 优先级直接替换整个 messages 数组；顺序属于隐式全局约定，也无法证明一次 LLM Call 使用的是同一份不可变上下文快照。
+5. Memory、Narrative 和 Skill 原先通过 Hook 优先级替换整个 messages 数组；该问题已修复，核心上下文改为显式 Prompt Slot / Context Contribution，Hook 不再负责核心装配。
 6. `ContextCompactor` 仍依赖旧 `TurnMode`，并从 Memory Session Note 恢复情绪/剧情状态；这与 Chat/Work、Narrative 仅为 RAG、Compaction 归 Context 的目标边界不一致。
 7. `promptPrefix.ts` 再次规范化 Tool 定义，与已经建立的 `ToolManifestSnapshot` 重复；后续应直接使用 Manifest revision，不维护第二份工具身份算法。
 
-当前实现进度：`buildPromptSnapshot()` 已让新主链直接取得 Prompt 版本快照；`ContextAssembler` 已建立明确输入并返回深冻结的完整请求快照，Tool 定义直接从 `ToolManifestSnapshot` 投影。`assembleCompacted()` 已按固定前缀、可压缩历史、固定尾部调用压缩器，三部分共同计入预算，只有历史允许进入摘要模型。Memory Planner 与 Narrative Recall 已改为返回带来源、唯一 ID 和插入位置的 `ContextContribution`；旧 Hook 目前只保留兼容投影，等待 Engine 接线后删除。Skill 仍属于 Prompt Slot，不混入数据贡献。
+当前实现进度：`buildPromptSnapshot()` 在 Turn 开始时冻结 Prompt；`ContextAssembler` 返回深冻结的完整请求快照，Tool 定义直接从 `ToolManifestSnapshot` 投影。`assembleCompacted()` 把固定前缀、可压缩历史、固定尾部分开交给压缩器，完整请求共同计入预算，只有历史允许进入摘要模型。Conversation 与 Agent 均已接线；Agent 每次迭代重装 Scratchpad、Mailbox 和 Skill 收窄后的 Tool Manifest，API 超限时可强制执行一次响应式压缩。Memory Planner 与 Narrative Recall 返回结构化 `ContextContribution`；Skill Catalog 属于 Prompt Slot。旧 Prompt/Narrative/Memory/Skill `beforeLlm` 核心注入链已删除，Memory Hook 只保留 `onTurnEnd` 生命周期。
 
-R3 建议顺序：先把 System Prompt 与可压缩历史从类型上分离，并修复工具调用/结果的安全重放；再建立返回不可变完整请求视图的 `ContextAssembler`；随后让 Memory/Narrative/Skill 返回结构化贡献，最后删除旧 `beforeLlm` messages replace 链。Context Collapse、服务端 cache edits 和异步 Memory Prefetch 仍留到 V1 数据证明必要后评估。
+R3 主实现已完成。下一步先做真实 Turn 联调和 Diff 复查，再决定是否随统一 TurnRuntime 清理 `ConversationEngine + AgentEngine` 过渡结构。Context Collapse、服务端 cache edits 和异步 Memory Prefetch 仍留到 V1 数据证明必要后评估。
 
 ## 工作规则
 
@@ -158,10 +141,10 @@ R3 建议顺序：先把 System Prompt 与可压缩历史从类型上分离，�
 - 两份文档通过 `git diff --check`。
 - 两份文档已验证为 UTF-8。
 - `narrative`（原 `narrative-client`）迁移并改名已完成：包名 `@ema-agent/narrative`，目录 `src/narrative`；自身 build/typecheck 通过，test 3/3；全仓 typecheck 84/84 通过；旧包名 `@ema-agent/narrative-client` 代码残留 0；提交 `d5686d8`。
-- Prompt 测试 17/17 通过，Prompt build 与 Core typecheck 通过。
-- Tools 测试 12/12 通过；Tool Manifest 已验证稳定排序、深冻结、来源校验及 MCP 同名热更新失效。
-- Agent typecheck 通过，非 Live 集成测试 31/31 通过；4 项真实 API 集成测试按既有规则跳过。
-- Context 测试现为 18/18；Memory 测试 20/20；Conversation 测试 7/7。Context、Memory、Conversation typecheck 均通过。
+- Prompt 16/16、Context 18/18、Memory 20/20、Skills 21/21、Tools 12/12、Conversation 7/7、Agent 32/32、Core 88/88 测试通过。
+- Agent 的 4 项真实 API 集成测试按既有环境变量规则跳过，未计入通过数。
+- Hook、Prompt、Context、Memory、Skills、Conversation、Agent 已按依赖顺序 build；Core typecheck 通过。
+- `git diff --check` 通过，仅有仓库既有的 Windows CRLF 提示。
 
 ## 恢复工作时使用的提示词
 
@@ -177,7 +160,7 @@ R3 建议顺序：先把 System Prompt 与可压缩历史从类型上分离，�
 D:\Github\EmaAgent\EmaClaudeArchitectureReview.md 中与当前阶段相关的章节。
 
 先检查 git status、当前 diff 和最近提交，保留用户及其他 Agent 的改动。
-先收口正在进行的 narrative-client 机械迁移；如果它已经由其他 Agent 完成，则审查迁移结果和验证记录，然后进入 R2 Prompt Slot。
+先复查尚未提交的 R3 Context 主链接线与验证记录；确认没有回归后，再进入统一 TurnRuntime/TurnLoop，不要重新实现 Prompt Slot、Context Contribution 或旧 beforeLlm 注入链。
 修改前先说明当前事实、模块边界和本轮范围。不要提交 Git。
 ```
 

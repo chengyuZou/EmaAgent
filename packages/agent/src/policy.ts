@@ -3,6 +3,7 @@ import type {
   IToolCapabilityScope,
   ToolManifestSnapshot,
 } from '@ema-agent/tools';
+import { createToolManifestSnapshotFromEntries } from '@ema-agent/tools';
 import type { LlmToolDef } from '@ema-agent/llm';
 import { AgentToolCapabilityScope } from './tool-capability-scope.js';
 
@@ -41,6 +42,14 @@ export class AgentPolicy {
 
   manifestSnapshot(): ToolManifestSnapshot {
     return this.manifest;
+  }
+
+  /** Skill 等能力收窄后的模型可见清单，执行仍受原 Manifest 与 allows 双重约束。 */
+  visibleManifestSnapshot(): ToolManifestSnapshot {
+    return createToolManifestSnapshotFromEntries(
+      this.scope.list(),
+      this.manifest.registryVersion,
+    );
   }
 
   maxIterations(): number {

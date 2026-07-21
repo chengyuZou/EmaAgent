@@ -709,7 +709,7 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
   ]);
   // Reconcile the index against disk on startup (fire-and-forget, like kb.init).
   void skillStore.scanAndReconcile().catch((err) => console.warn('[skill] reconcile failed:', err));
-  const skillRunner    = new SkillRunner(skillStore, hooks);
+  const skillRunner    = new SkillRunner(skillStore);
   const skillInstaller = new SkillInstaller(skillStore);
   // Adapter: expose the SkillRunner as ISkillRunner for the skill_call tool.
   // 懒读正文并返回能力限制；Agent 负责应用限制，Skill 包不能直接修改权限。

@@ -10,6 +10,11 @@ import type { LlmAdapter, LlmRequest } from '@ema-agent/llm';
 
 const sessionId = 'session-hook-sse' as SessionId;
 const turnId = 'turn-hook-sse' as TurnId;
+const prompt = {
+  revision: 'test-prompt-v1',
+  systemText: 'You are a test assistant.',
+  slots: [],
+};
 
 const modelCapabilities = {
   resolve: () => ({
@@ -130,6 +135,7 @@ describe('ConversationEngine Hook 诊断事件', () => {
       turn,
       signal: new AbortController().signal,
       sessionId,
+      prompt,
       mode: 'chat',
       userInput: 'hello',
       providerId: 'provider-1',
@@ -151,11 +157,11 @@ describe('ConversationEngine Hook 诊断事件', () => {
       failureKind: 'handler_error',
       message: 'telemetry unavailable',
     }));
-    expect(afterIdentity).toEqual({
+    expect(afterIdentity).toEqual(expect.objectContaining({
       ...beforeIdentity,
       cacheReadInputTokens: 2,
-      promptPrefixHash: null,
-    });
+    }));
+    expect(afterIdentity?.promptPrefixHash).toMatch(/^[a-f0-9]{64}$/);
     expect(beforeIdentity?.iteration).toBe(1);
     expect(beforeIdentity?.llmCallId).toBeTruthy();
     expect(assistantMessagePayload).toEqual({
@@ -230,6 +236,7 @@ describe('ConversationEngine Hook 诊断事件', () => {
       turn,
       signal: new AbortController().signal,
       sessionId,
+      prompt,
       mode: 'chat',
       userInput: 'hello',
       providerId: 'provider-1',
@@ -312,6 +319,7 @@ describe('ConversationEngine Hook 诊断事件', () => {
       turn,
       signal: controller.signal,
       sessionId,
+      prompt,
       mode: 'chat',
       userInput: 'hello',
       providerId: 'provider-1',
@@ -413,6 +421,7 @@ describe('ConversationEngine 多模态历史兼容视图', () => {
       turn,
       signal: new AbortController().signal,
       sessionId,
+      prompt,
       mode: 'chat',
       userInput: '继续',
       providerId: 'provider-1',

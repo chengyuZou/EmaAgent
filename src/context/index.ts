@@ -6,6 +6,8 @@ export type {
   ContextAssemblyInput,
   ContextCompactionView,
   ContextContribution,
+  ContextContributionProvider,
+  ContextContributionRequest,
   ContextContributionPlacement,
   ContextContributionSource,
   ContextHistoryCompactor,

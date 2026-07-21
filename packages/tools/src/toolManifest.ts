@@ -12,9 +12,25 @@ export function createToolManifestSnapshot(
   tools: readonly BuiltTool[],
   registryVersion: number,
 ): ToolManifestSnapshot {
-  const entries = [...tools]
+  return createToolManifestSnapshotFromEntries(
+    tools.map(toManifestEntry),
+    registryVersion,
+  );
+}
+
+/** 从既有 Manifest 条目创建能力收窄快照，不重新读取或替换工具实现。 */
+export function createToolManifestSnapshotFromEntries(
+  sourceEntries: readonly ToolManifestEntry[],
+  registryVersion: number,
+): ToolManifestSnapshot {
+  const entries = [...sourceEntries]
     .sort((left, right) => compareCodeUnits(left.name, right.name))
-    .map(toManifestEntry);
+    .map((entry) => Object.freeze({
+      id: entry.id,
+      name: entry.name,
+      description: entry.description,
+      inputJsonSchema: freezePreparedInput(structuredClone(entry.inputJsonSchema)),
+    }));
   const revision = createHash('sha256')
     .update(JSON.stringify({
       schemaVersion: 1,

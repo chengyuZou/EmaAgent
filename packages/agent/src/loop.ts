@@ -12,7 +12,6 @@ import type {
   LanguageModel,
   LlmCallId,
   LlmTokenUsage,
-  LlmToolDef,
   Message as ModelMessage,
   StopReason,
   ThinkingMode,
@@ -23,6 +22,7 @@ import {
   ContextWindowExceededError,
 } from '@ema-agent/llm';
 import { computePromptPrefixHash, normalizeToolDefinitions } from '@ema-agent/context';
+import type { ModelContextSnapshot } from '@ema-agent/context';
 import type { AgentPolicy } from './policy.js';
 import type { TurnToolExecutor } from './tool-executor.js';
 import { advanceState, addUsage, createLoopState } from './loop-state.js';
@@ -93,13 +93,23 @@ export interface PrepareLlmCallInput {
   messages: ModelMessage[];
 }
 
+export interface AssembleAgentContextInput {
+  history: readonly ModelMessage[];
+  currentTurn: readonly ModelMessage[];
+  scratchpadContext?: string;
+  mailboxMessages: readonly string[];
+  forceCompaction: boolean;
+}
+
 export type PrepareLlmCallResult =
   | { kind: 'continue'; messages: ModelMessage[] }
   | { kind: 'abort'; reason: string };
 
 export interface AgentLoopInput {
-  /** Mutable messages array. Loop appends each round's assistant + tool-result messages. */
+  /** 初始持久化历史与当前用户消息；启用 assembleContext 后 Loop 会建立独立工作副本。 */
   messages:       ModelMessage[];
+  /** messages 中属于已持久化 Session 历史的前缀长度。 */
+  historyMessageCount?: number;
   policy:         AgentPolicy;
   /** Called once at loop construction. Provides the loop's internal relay callbacks. */
   buildExecutor:  ExecutorFactory;
@@ -127,14 +137,10 @@ export interface AgentLoopInput {
    * Only populated for background sub-agents; always undefined for the main agent.
    */
   getMailboxMessages?: () => string[];
-  /**
-   * Called at the top of every iteration before the LLM call.
-   * Runs compaction on the accumulated messages and returns the (possibly
-   * compacted) replacement array. Mutates messages[] in place so subsequent
-   * iterations and the spawner both see the compacted history.
-   * Engine wires this to ContextCompactor.compact(); spawner omits it (ephemeral).
-   */
-  compactMessages?: (messages: ModelMessage[], tools: readonly LlmToolDef[]) => Promise<ModelMessage[]>;
+  /** 每轮 LLM 调用前生成不可变请求快照；Provider 报上下文超限时以 forceCompaction 再生成一次。 */
+  assembleContext?: (
+    input: AssembleAgentContextInput,
+  ) => Promise<ModelContextSnapshot>;
   /**
    * 每个逻辑 LLM 调用前执行的窄 Facade。Loop 不依赖 HookBus；主 Engine
    * 用它触发 beforeLlm，并返回只属于本次请求的消息视图。
@@ -161,7 +167,8 @@ export interface AgentLoopInput {
 export async function* agentLoop(input: AgentLoopInput): AsyncIterable<AgentLoopEvent> {
   const {
     messages, policy, llm, providerId, model, signal, maxIterations, budget,
-    sessionId, turnId, getScratchpadContext, getMailboxMessages, compactMessages,
+    sessionId, turnId, getScratchpadContext, getMailboxMessages,
+    assembleContext,
     prepareLlmCall, thinking,
   } = input;
 
@@ -175,6 +182,12 @@ export async function* agentLoop(input: AgentLoopInput): AsyncIterable<AgentLoop
   });
 
   let state = createLoopState();
+  let historyMessages = assembleContext
+    ? messages.slice(0, input.historyMessageCount ?? 0)
+    : [];
+  const turnMessages = assembleContext
+    ? messages.slice(input.historyMessageCount ?? 0)
+    : messages;
   let consecutivePermissionDenials = 0;
   let totalPermissionDenials = 0;
 
@@ -208,15 +221,7 @@ export async function* agentLoop(input: AgentLoopInput): AsyncIterable<AgentLoop
 
     // Skill 调用可能收窄后续工具范围，因此每轮都重新取得工具定义。
     // 工具定义虽然不在消息数组中，压缩时仍必须预留其序列化后的 Token 成本。
-    const tools = normalizeToolDefinitions(policy.toolDefs());
-
-    // Per-iteration compaction: runs before every LLM call so agent loops that
-    // accumulate many tool results don't overflow the context window mid-turn.
-    // Mutates messages[] in place; spawner omits compactMessages (ephemeral ctx).
-    if (compactMessages) {
-      const compacted = await compactMessages([...messages], tools);
-      messages.splice(0, messages.length, ...compacted);
-    }
+    let tools = normalizeToolDefinitions(policy.toolDefs());
 
     // Inject scratchpad context and mailbox messages as ephemeral user messages
     // before each LLM call — not persisted into messages[].
@@ -225,13 +230,27 @@ export async function* agentLoop(input: AgentLoopInput): AsyncIterable<AgentLoop
     const mailboxMsgs    = getMailboxMessages?.() ?? [];
 
     const buildEffectiveMessages = (): ModelMessage[] => [
-      ...messages,
+      ...turnMessages,
       ...(scratchpadCtx ? [{ role: 'user' as const, content: scratchpadCtx }] : []),
       ...mailboxMsgs.map(m => ({ role: 'user' as const, content: `[Coordinator]: ${m}` })),
     ];
 
     const llmCallId = asLlmCallId(randomUUID());
-    let requestMessages = buildEffectiveMessages();
+    let requestMessages: ModelMessage[];
+    if (assembleContext) {
+      const snapshot = await assembleContext({
+        history: [...historyMessages],
+        currentTurn: [...turnMessages],
+        ...(scratchpadCtx ? { scratchpadContext: scratchpadCtx } : {}),
+        mailboxMessages: mailboxMsgs,
+        forceCompaction: false,
+      });
+      historyMessages = [...snapshot.history];
+      requestMessages = [...snapshot.messages];
+      tools = [...snapshot.tools];
+    } else {
+      requestMessages = buildEffectiveMessages();
+    }
     if (prepareLlmCall) {
       const prepared = await prepareLlmCall({
         iteration: state.iteration,
@@ -353,12 +372,35 @@ export async function* agentLoop(input: AgentLoopInput): AsyncIterable<AgentLoop
         // ── Reactive compact: prompt too long → compact once and retry ────────
         if (
           err instanceof ContextWindowExceededError &&
-          compactMessages &&
+          assembleContext &&
           !state.hasAttemptedReactiveCompact
         ) {
-          // Hook 链只执行一次。响应式重试压缩本次请求视图，不重复执行
-          // Prompt/Memory/Skill 等可能有外部副作用的 beforeLlm handler。
-          requestMessages = await compactMessages([...requestMessages], tools);
+          const snapshot = await assembleContext({
+            history: [...historyMessages],
+            currentTurn: [...turnMessages],
+            ...(scratchpadCtx ? { scratchpadContext: scratchpadCtx } : {}),
+            mailboxMessages: mailboxMsgs,
+            forceCompaction: true,
+          });
+          historyMessages = [...snapshot.history];
+          requestMessages = [...snapshot.messages];
+          tools = [...snapshot.tools];
+          // 新快照不是第一次请求的同一份输入，必须重新经过最终请求 Hook。
+          // 使用相同 llmCallId 表明它仍是同一次逻辑调用的 Provider 重试。
+          if (prepareLlmCall) {
+            const prepared = await prepareLlmCall({
+              iteration: state.iteration,
+              llmCallId,
+              messages: requestMessages,
+            });
+            if (prepared.kind === 'abort') {
+              state = advanceState(state, { phase: 'aborted', transition: 'hook_abort' });
+              yield { type: 'loop_hook_abort', reason: prepared.reason };
+              yield { type: 'loop_done', fullText: '', state };
+              return;
+            }
+            requestMessages = prepared.messages;
+          }
           state = advanceState(state, {
             phase:                       state.phase,
             hasAttemptedReactiveCompact: true,
@@ -392,9 +434,9 @@ export async function* agentLoop(input: AgentLoopInput): AsyncIterable<AgentLoop
       if (state.maxOutputTokensRecoveryCount === 0) {
         const partialBlocks = buildBlockMap(textByIndex, thinkingByIndex, new Map());
         if (partialBlocks.length > 0) {
-          messages.push({ role: 'assistant', content: partialBlocks });
+          turnMessages.push({ role: 'assistant', content: partialBlocks });
         }
-        messages.push({ role: 'user', content: '[系统] 你的输出被截断，请从中断处继续输出剩余内容，不要重复已输出的部分。' });
+        turnMessages.push({ role: 'user', content: '[系统] 你的输出被截断，请从中断处继续输出剩余内容，不要重复已输出的部分。' });
         state = advanceState(state, {
           phase: 'thinking',
           transition: 'max_output_tokens_recovery',
@@ -413,7 +455,7 @@ export async function* agentLoop(input: AgentLoopInput): AsyncIterable<AgentLoop
     // ── End condition: no tool calls → done ──────────────────────────────────
     if (toolUseByIndex.size === 0) {
       const blockMap = buildBlockMap(textByIndex, thinkingByIndex, new Map());
-      messages.push({ role: 'assistant', content: blockMap });
+      turnMessages.push({ role: 'assistant', content: blockMap });
 
       state = advanceState(state, { phase: 'done', transition: 'no_tool_calls' });
       yield { type: 'loop_done', fullText, state };
@@ -461,8 +503,8 @@ export async function* agentLoop(input: AgentLoopInput): AsyncIterable<AgentLoop
     // Persist round: assistant (tool_use) + user (tool_result) into messages[].
     const allBlocks    = buildBlockMap(textByIndex, thinkingByIndex, toolUseByIndex);
     const replayBlocks = allBlocks.filter(b => b.type !== 'thinking');
-    messages.push({ role: 'assistant', content: replayBlocks });
-    messages.push({ role: 'user', content: resultBlocks as UserBlock[] });
+    turnMessages.push({ role: 'assistant', content: replayBlocks });
+    turnMessages.push({ role: 'user', content: resultBlocks as UserBlock[] });
 
     // Signal engine to persist tool results to session DB.
     yield { type: 'loop_tool_results', results: resultBlocks, fullText };

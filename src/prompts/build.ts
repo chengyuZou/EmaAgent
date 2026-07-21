@@ -15,6 +15,8 @@ const assembler = new PromptAssembler();
 export interface BuildSystemPromptOpts {
   /** Agent 允许操作的工作区根目录绝对路径。null/undefined = 未设置。 */
   workspaceRoot?: string | null;
+  /** 已启用扩展贡献显式进入固定 Slot；调用方不能选择顺序或信任级别。 */
+  extensionContributions?: readonly PromptSlotContribution[];
 }
 
 /**
@@ -47,7 +49,12 @@ export function buildPromptSnapshot(
     workspaceRoot: opts.workspaceRoot,
   });
 
-  return assembler.build([...productSlots, ...characterSlots, profileSlot]);
+  return assembler.build([
+    ...productSlots,
+    ...(opts.extensionContributions ?? []),
+    ...characterSlots,
+    profileSlot,
+  ]);
 }
 
 // ── 角色块（从 character-card/system-block.ts 迁来）────────────────────────────

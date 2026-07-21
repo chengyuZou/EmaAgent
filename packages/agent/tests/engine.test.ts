@@ -27,6 +27,11 @@ const modelCapabilities = {
 
 const sessionId = 'session-agent-failure' as SessionId;
 const turnId = 'turn-agent-failure' as TurnId;
+const prompt = {
+  slots: [],
+  revision: 'test-prompt-revision',
+  systemText: 'test system prompt',
+} as const;
 
 function turnLifecycle(overrides: Partial<AgentDeps['turnLifecycle']> = {}): AgentDeps['turnLifecycle'] {
   return {
@@ -132,6 +137,7 @@ describe('AgentEngine 生命周期', () => {
       turn,
       signal: new AbortController().signal,
       userInput: 'hello',
+      prompt,
       providerId: 'provider-1',
       model: 'model-1',
       workspaceRoot: '',
@@ -158,7 +164,7 @@ describe('AgentEngine 生命周期', () => {
         cacheReadInputTokens: 2,
         cacheHitRate: 2 / 3,
       },
-      promptPrefixHash: null,
+      promptPrefixHash: expect.stringMatching(/^[a-f0-9]{64}$/),
     }));
     expect(events).toContainEqual({
       type: 'usage_update',
@@ -250,6 +256,7 @@ describe('AgentEngine 生命周期', () => {
       turn,
       signal: new AbortController().signal,
       userInput: 'hello',
+      prompt,
       providerId: 'provider-1',
       model: 'model-1',
       workspaceRoot: '',
@@ -345,6 +352,7 @@ describe('AgentEngine 生命周期', () => {
       turn,
       signal: controller.signal,
       userInput: 'hello',
+      prompt,
       providerId: 'provider-1',
       model: 'model-1',
       workspaceRoot: '',
@@ -446,6 +454,7 @@ describe('AgentEngine 生命周期', () => {
       turn,
       signal: new AbortController().signal,
       userInput: 'hello',
+      prompt,
       providerId: 'provider-1',
       model: 'model-1',
       workspaceRoot: '',

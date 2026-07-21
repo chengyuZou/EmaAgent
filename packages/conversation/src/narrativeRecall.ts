@@ -1,82 +1,17 @@
-// 注册 Narrative 模式的剧情路由、分时间线召回和部分失败降级 Hook。
+// 把 Narrative 多时间线检索结果转换为 Context Contribution，并保留前端所需的逐线事件。
 
-import type { HookBus } from '@ema-agent/hook';
 import type { NarrativeTimelineRecall, SessionId, TurnId } from '@ema-agent/contracts';
 import type { EmaStreamEvent } from '@ema-agent/turn';
 import type { ContextContribution } from '@ema-agent/context';
 import { NarrativeClientError } from '@ema-agent/narrative';
 import type { ConversationDeps } from './types.js';
 
-interface NarrativeRecallContext {
+export interface NarrativeRecallContext {
   contribution: ContextContribution;
   timelines: NarrativeTimelineRecall[];
 }
 
-/**
- * 把 conversation 层所有 hook 注册到给定总线。
- * 返回反注册函数（测试有用）。
- *
- * 注册的 hook：
- *   - `narrative:recall`（beforeLlm，优先级 5）
- *     只在 mode=narrative 时触发。各 timeline 独立并行查询--每条完成立即
- *     emit `narrative_timeline_complete`，前端不用等慢的 timeline 就能更新
- *     每条 timeline 的状态块。
- */
-export function registerConversationHooks(bus: HookBus, deps: ConversationDeps): () => void {
-  return bus.register(
-    'beforeLlm',
-    async (ctx) => {
-      if (ctx.payload.mode !== 'narrative') return { kind: 'continue' };
-
-      const userInput = ctx.payload.userInput;
-      const signal = ctx.signal;
-      if (!userInput) return { kind: 'continue' };
-
-      try {
-        const recalled = await recallNarrativeContext(deps, {
-          sessionId: ctx.sessionId,
-          turnId: ctx.turnId,
-          userInput,
-          signal,
-          emit: ctx.emit,
-        });
-        if (!recalled) return { kind: 'continue' };
-
-        // ContextAssembler 接线完成前保留旧消息投影；Narrative 召回本身只返回结构化贡献。
-        const msgs = ctx.payload.messages;
-        const last = msgs[msgs.length - 1];
-        if (!last) return { kind: 'continue' };
-
-        return {
-          kind: 'replace',
-          payload: {
-            ...ctx.payload,
-            messages: [
-              ...msgs.slice(0, -1),
-              recalled.contribution.message,
-              last,
-            ],
-            narrativeRecall: { timelines: recalled.timelines },
-          },
-        };
-      } catch (err) {
-        if (isAbortLike(err, signal)) throw err;
-        if (err instanceof NarrativeClientError) {
-          ctx.emit?.({
-            type: 'system_warning',
-            level: 'warn',
-            message: 'Narrative bridge unavailable - falling back to chat mode',
-          });
-          return { kind: 'continue' };
-        }
-        throw err;
-      }
-    },
-    { name: 'narrative:recall', priority: 5 },
-  );
-}
-
-async function recallNarrativeContext(
+export async function prepareNarrativeContribution(
   deps: ConversationDeps,
   args: {
     sessionId: string;
@@ -115,8 +50,7 @@ async function recallNarrativeContext(
           charCount: text.length,
           snippet: text.length > 100 ? text.slice(0, 100) + '…' : text,
         });
-        // 不管 text 空不空都进 recallTimelines -- 落盘要完整(重开能看到所有 timeline,
-        // 哪怕检索返回空)。text 空前端展开显示"无内容"提示,不能整个 message 不落盘。
+        // 空结果也要进入 timeline 落盘数据，前端才能区分“检索过但无内容”和“未检索”。
         recallParts.push([timeline, text]);
         recallTimelines.push({ name: timeline, charCount: text.length, text });
       } catch (err) {
@@ -158,8 +92,7 @@ async function recallNarrativeContext(
   recallParts.sort(([a], [b]) => routeOrder.indexOf(a) - routeOrder.indexOf(b));
   recallTimelines.sort((a, b) => routeOrder.indexOf(a.name) - routeOrder.indexOf(b.name));
 
-  // inject 给 LLM 的只含有内容的 timeline(空 section 对 LLM 无意义)。
-  // 落盘的 recallTimelines 保留全部(含空,前端展示"检索了但无内容")。
+  // 空 timeline 保留在落盘数据中，但不浪费模型上下文。
   const sections = recallParts
     .filter(([, text]) => text.trim().length > 0)
     .map(([timeline, text]) => `## ${timeline}\n${text}`)

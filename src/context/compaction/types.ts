@@ -51,6 +51,8 @@ export interface ContextCompactionArgs {
   prefixMessages?: readonly Message[];
   /** 临时召回与当前 Turn 参与预算并原样保留，但不得进入摘要模型。 */
   suffixMessages?: readonly Message[];
+  /** Provider 已明确报告超限时跳过估算阈值，强制尝试安全压缩。 */
+  force?: boolean;
   modelContextWindow: number;
   modelMaxOutputTokens?: number;
   tools?: readonly LlmToolDef[];

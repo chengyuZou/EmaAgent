@@ -161,6 +161,11 @@ function makeInput(overrides: Partial<Parameters<AgentEngine['run']>[0]> = {}) {
     turn:          makeTurn(),
     signal:        AbortSignal.timeout(60_000),
     userInput:     'Hello',
+    prompt: {
+      slots: [],
+      revision: 'integration-prompt-revision',
+      systemText: 'You are EmaAgent.',
+    },
     workspaceRoot: WORKSPACE,
     providerId:    PROVIDER_ID,
     model:         MODEL,

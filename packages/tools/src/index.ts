@@ -29,7 +29,10 @@ export { presentToolResult, splitToolResult } from './tool-result.js';
 export type { SplitToolResult } from './tool-result.js';
 
 export { buildTool } from './build-tool.js';
-export { createToolManifestSnapshot } from './toolManifest.js';
+export {
+  createToolManifestSnapshot,
+  createToolManifestSnapshotFromEntries,
+} from './toolManifest.js';
 export {
   ToolRegistry,
   ToolRegistryError,

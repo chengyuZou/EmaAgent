@@ -32,6 +32,7 @@ import { ensureSessionLayout, scratchpadTurnDir } from '../storage-locations/ind
 import type { Turn }           from '@ema-agent/session';
 import type { TurnFailurePhase } from '@ema-agent/hook';
 import { prepareImagesForModel, replaceImageParts } from './media-compatibility.js';
+import { buildPromptSnapshot } from '@ema-agent/prompts';
 
 export interface TurnResult {
   turnId: TurnId;
@@ -382,16 +383,27 @@ export class Orchestrator {
           turn, signal, sessionId,
           mode:         request.mode,
           userInput:    request.userInput,
+          prompt:       buildPromptSnapshot(
+            this.bindings.card.current(),
+            request.mode,
+          ),
           contentParts: request.contentParts,
           providerId,
           model,
           thinking:     request.thinking,
           requestDegradations,
-          compactMessages: providerId && model ? (msgs) => this.bindings.contextCompactor.compact({
+          prepareContextContributions: async (contextRequest) => {
+            const recalled = await this.bindings.memory.prepareRecallContribution(contextRequest);
+            return recalled.contribution ? [recalled.contribution] : [];
+          },
+          compactContext: providerId && model ? (view) => this.bindings.contextCompactor.compact({
             sessionId:          turn.sessionId,
             turnId:             turn.id,
             mode:               request.mode,
-            messages:           msgs,
+            messages:           [...view.historyMessages],
+            prefixMessages:     view.prefixMessages,
+            suffixMessages:     view.suffixMessages,
+            tools:              view.tools,
             modelContextWindow: contextWindow,
             modelMaxOutputTokens,
             providerId,
@@ -432,6 +444,16 @@ export class Orchestrator {
           turn, signal,
           providerId,
           model,
+          prompt: buildPromptSnapshot(
+            this.bindings.card.current(),
+            'agent',
+            {
+              workspaceRoot,
+              extensionContributions: [
+                this.bindings.skillRunner.promptContribution('agent'),
+              ].filter((contribution) => contribution !== null),
+            },
+          ),
           userInput:      request.contentParts?.length ? request.contentParts : (request.userInput ?? ''),
           workspaceRoot,
           scratchpadDir: scratchpadTurnDir(
@@ -443,12 +465,19 @@ export class Orchestrator {
           kbAssetScopes:  request.kbAssetScopes,
           thinking:       request.thinking,
           requestDegradations,
-          compactMessages: (msgs, tools) => this.bindings.contextCompactor.compact({
+          prepareContextContributions: async (contextRequest) => {
+            const recalled = await this.bindings.memory.prepareRecallContribution(contextRequest);
+            return recalled.contribution ? [recalled.contribution] : [];
+          },
+          compactContext: (view, options) => this.bindings.contextCompactor.compact({
             sessionId:          turn.sessionId,
             turnId:             turn.id,
             mode:               'agent',
-            messages:           msgs,
-            tools,
+            messages:           [...view.historyMessages],
+            prefixMessages:     view.prefixMessages,
+            suffixMessages:     view.suffixMessages,
+            tools:              view.tools,
+            force:              options?.force,
             modelContextWindow: contextWindow,
             modelMaxOutputTokens,
             providerId,

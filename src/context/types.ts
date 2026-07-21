@@ -1,6 +1,8 @@
 import type { Message, LlmToolDef } from '@ema-agent/llm';
 import type { PromptSnapshot } from '@ema-agent/prompts';
 import type { ToolManifestSnapshot } from '@ema-agent/tools';
+import type { SessionId, TurnId, TurnMode } from '@ema-agent/contracts';
+import type { EmaStreamEvent } from '@ema-agent/turn';
 
 export type ContextContributionSource =
   | 'memory'
@@ -34,6 +36,8 @@ export interface ModelContextSnapshot {
   readonly promptRevision: string;
   readonly toolManifestRevision: string | null;
   readonly messages: readonly Message[];
+  /** 压缩后的可持久循环历史；Agent 下一次迭代复用它，避免重复生成摘要。 */
+  readonly history: readonly Message[];
   readonly tools: readonly LlmToolDef[];
 }
 
@@ -46,4 +50,18 @@ export interface ContextCompactionView {
 
 export type ContextHistoryCompactor = (
   view: ContextCompactionView,
+  options?: { readonly force?: boolean },
 ) => Promise<readonly Message[]>;
+
+export interface ContextContributionRequest {
+  readonly sessionId: SessionId;
+  readonly turnId: TurnId;
+  readonly mode: TurnMode;
+  readonly userInput: string;
+  readonly signal?: AbortSignal;
+  readonly emit?: (event: EmaStreamEvent) => void;
+}
+
+export type ContextContributionProvider = (
+  request: ContextContributionRequest,
+) => Promise<readonly ContextContribution[]>;

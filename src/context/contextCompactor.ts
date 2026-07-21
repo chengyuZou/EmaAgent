@@ -71,7 +71,7 @@ export class ContextCompactor {
     );
 
     // 活跃对话未接近阈值时保持历史字节稳定，避免无意义地破坏 KV Cache。
-    if (beforeTokens <= tokenLimit) {
+    if (!args.force && beforeTokens <= tokenLimit) {
       return unchanged('below_threshold', messages, beforeTokens);
     }
 
@@ -88,7 +88,7 @@ export class ContextCompactor {
     const micro = microCompact(history, { keepRecent: this.settings.keepRecentToolResults });
     let working = micro.messages;
     let estimated = estimate(working);
-    if (estimated <= tokenLimit) {
+    if (!args.force && estimated <= tokenLimit) {
       return {
         ...unchanged('below_threshold', assemble(working), beforeTokens),
         microCleared: micro.cleared,

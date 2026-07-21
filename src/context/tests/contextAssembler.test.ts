@@ -110,5 +110,6 @@ describe('ContextAssembler', () => {
       'recalled facts',
       'current question',
     ]);
+    expect(snapshot.history).toEqual([{ role: 'user', content: 'summary' }]);
   });
 });

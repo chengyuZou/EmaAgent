@@ -7,22 +7,22 @@ import { estimateMessagesTokens } from '@ema-agent/token';
 // ── Constants ────────────────────────────────────────────────────────────────
 
 const MAX_RETRIES = 3;
-const TRUNCATE_FRACTION = 0.2;   // each retry drops the oldest 20%
-const MIN_PRESERVE_MESSAGES = 4; // never compact below this many tail messages
+const TRUNCATE_FRACTION = 0.2;   // 每次重试丢弃最旧的 20%
+const MIN_PRESERVE_MESSAGES = 4; // 压缩后尾部至少保留这么多条消息
 
-/** Fraction of context window that triggers compaction (i.e. messages > 85% → compact). */
+/** 触发压缩的上下文窗口占比(消息 > 85% 触发压缩)。 */
 const COMPACTION_TRIGGER_RATIO = 0.85;
-/** Fraction of context window reserved for the compaction summary output. */
+/** 为压缩摘要输出预留的上下文窗口占比。 */
 const COMPACTION_OUTPUT_RATIO  = 0.20;
-/** Minimum output tokens for the compaction LLM call (small-model floor). */
+/** 压缩 LLM 调用的最小输出 token 数(小模型下限)。 */
 const MIN_COMPACTION_OUTPUT    = 2000;
 
-// ── Slice formatting (for the LLM input) ─────────────────────────────────────
+// ── 切片格式化(供 LLM 输入) ─────────────────────────────────────
 
 function formatHistory(messages: ModelMessage[]): string {
   const lines: string[] = [];
   for (const msg of messages) {
-    if (msg.role === 'system') continue;        // never feed system back to summariser
+    if (msg.role === 'system') continue;        // 永不把 system 喂回给摘要器
     if (typeof msg.content === 'string') {
       lines.push(`[${msg.role}]\n${msg.content}\n`);
       continue;
@@ -59,7 +59,7 @@ function formatBlock(blk: UserBlock | AssistantBlock): string {
   }
 }
 
-// ── Image stripping (preserve order, replace with placeholder text) ──────────
+// ── 图片剥离(保留顺序,用占位文本替换) ──────────
 
 const MEDIA_TYPES = new Set(['image_url', 'image_data', 'audio_data', 'file_url', 'file_data']);
 
@@ -69,7 +69,7 @@ function stripImages(messages: ModelMessage[]): ModelMessage[] {
     const next: UserBlock[] = msg.content.map((blk) => {
       const t = (blk as { type?: string }).type;
       if (t && MEDIA_TYPES.has(t)) return { type: 'text', text: `[${t}]` };
-      // Also strip media nested inside tool_result content arrays
+      // 同时剥离嵌套在 tool_result content 数组里的媒体
       if (t === 'tool_result') {
         const tr = blk as { type: 'tool_result'; toolUseId: string; content: string | unknown[]; isError?: boolean };
         if (Array.isArray(tr.content)) {
@@ -88,38 +88,37 @@ function stripImages(messages: ModelMessage[]): ModelMessage[] {
   });
 }
 
-// ── Macrocompaction core ─────────────────────────────────────────────────────
+// ── Macro 压缩核心 ─────────────────────────────────────────────────────
 
 export interface MacroCompactArgs {
   llm:           LanguageModel;
-  /** Current turn's provider — compaction uses the same model the user picked. */
+  /** 当前 Turn 的 provider - 压缩用用户选的同一个模型。 */
   providerId:    string;
-  /** Current turn's model. */
+  /** 当前 Turn 的模型。 */
   model:         string;
   mode:          TurnMode;
-  /** Messages to summarise (older portion). */
+  /** 待摘要的消息(较旧的部分)。 */
   toCompact:     ModelMessage[];
   /**
-   * Token limit we MUST land below. If the history slice exceeds this window,
-   * the oldest messages are truncated to fit before summarisation (same
-   * behaviour as Claude Code — truncate to current model's capacity).
+   * 必须落在这个 token 上限以下。若历史切片超出该窗口,
+   * 摘要前先截断最旧消息以适配(与 Claude Code 一致 - 按当前模型容量截断)。
    */
   modelContextWindow: number;
   signal?:       AbortSignal;
 }
 
 export interface MacroCompactResult {
-  /** Compacted summary text. Empty string when compaction was a no-op or all retries exhausted. */
+  /** 压缩后的摘要文本。空串表示压缩无操作或重试耗尽。 */
   summary:           string;
-  /** Whether the final attempt succeeded — false means the caller should bail on compaction. */
+  /** 最终尝试是否成功 - false 表示调用方应放弃压缩。 */
   succeeded:         boolean;
-  /** Diagnostic — number of attempts made. */
+   /** 诊断 - 已尝试次数。 */
   attempts:          number;
 }
 
 /**
- * Run macrocompaction: format slice, call LLM, and retry after context overflow.
- * The caller validates the final context budget before persisting the summary.
+ * 执行 macro 压缩:格式化切片、调 LLM、上下文溢出后重试。
+ * 调用方在持久化摘要前会校验最终上下文预算。
  */
 export async function runMacroCompaction(
   args: MacroCompactArgs,
@@ -127,10 +126,10 @@ export async function runMacroCompaction(
   if (args.toCompact.length === 0) {
     return { summary: '', succeeded: false, attempts: 0 };
   }
-  // Compaction always uses the current turn's model — same (providerId, model)
-  // the user picked in the frontend picker. No separate binding needed.
-  // If the history exceeds this model's context window, the truncate loop
-  // below drops the oldest 20% each retry until it fits.
+  // 压缩始终用当前 Turn 的模型 - 即用户在前端选择器里选的
+  // (providerId, model)。无需单独绑定。若历史超过该模型上下文窗口,
+  // 下面的截断循环每次重试丢弃最旧的 20%,直到塞得下。
+
   const { providerId, model } = args;
 
   let toCompact = stripImages(args.toCompact);
@@ -139,18 +138,15 @@ export async function runMacroCompaction(
     const history = formatHistory(toCompact);
     const prompt  = buildCompactionPrompt({ mode: args.mode, history });
 
-    // Pre-flight token estimate. If the prompt exceeds 85% of the model's
-    // context window, truncate and retry rather than sending a known-overlimit
-    // request.
+    // 发请求前的 token 预估。若 prompt 超过模型上下文窗口的 85%,
+    // 截断后重试,而不是明知超限还发出去。
     //
-    // Strategy:
-    //   attempt 1 — proportional cut: keep (threshold/estimated) fraction of
-    //               messages, landing just under the threshold in one step.
-    //               Handles large model switches (e.g. 1M → 200K) without
-    //               burning multiple retry slots.
-    //   attempt 2+ — small 20% cuts to correct for token-estimate imprecision.
-    //   MIN_PRESERVE_MESSAGES reached while still over limit → bail immediately
-    //               without calling the LLM (avoids a guaranteed PTL error).
+    // 策略:
+    //   第 1 次 - 比例裁剪:保留 (阈值/预估) 比例的消息,一步落到阈值
+    //             以下。处理大模型切换(如 1M -> 200K)不必烧多次重试。
+    //   第 2+ 次 - 每次 20% 小幅裁剪,修正 token 预估的误差。
+    //   已达 MIN_PRESERVE_MESSAGES 仍超限 -> 立即放弃,不调 LLM
+    //             (避免必定的 PTL 错误)。
     const estimated = estimateMessagesTokens([{ role: 'user', content: prompt }]);
     const threshold = Math.floor(args.modelContextWindow * COMPACTION_TRIGGER_RATIO);
     if (estimated > threshold) {
@@ -207,7 +203,7 @@ export async function runMacroCompaction(
   return { summary: '', succeeded: false, attempts: MAX_RETRIES };
 }
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
+// ── 辅助函数 ──────────────────────────────────────────────────────────────────
 
 function truncateOldest(messages: ModelMessage[], fraction: number): ModelMessage[] {
   const drop = Math.max(1, Math.floor(messages.length * fraction));

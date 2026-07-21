@@ -29,6 +29,7 @@
     "@ema-agent/emotion": "workspace:*",
     "@ema-agent/narrative": "workspace:*",
     "@ema-agent/provider": "workspace:*",
+    "@ema-agent/prompts": "workspace:*",
     "@ema-agent/storage": "workspace:*"
   },
   "devDependencies": {

@@ -12,12 +12,18 @@ import type {
 export class ContextAssembler {
   assemble(input: ContextAssemblyInput): ModelContextSnapshot {
     const parts = buildContextParts(input);
-    return buildSnapshot(input, [...parts.prefix, ...parts.history, ...parts.suffix], parts.tools);
+    return buildSnapshot(
+      input,
+      [...parts.prefix, ...parts.history, ...parts.suffix],
+      parts.history,
+      parts.tools,
+    );
   }
 
   async assembleCompacted(
     input: ContextAssemblyInput,
     compactHistory: ContextHistoryCompactor,
+    options?: { readonly force?: boolean },
   ): Promise<ModelContextSnapshot> {
     const parts = buildContextParts(input);
     const messages = await compactHistory({
@@ -25,8 +31,10 @@ export class ContextAssembler {
       historyMessages: parts.history,
       suffixMessages: parts.suffix,
       tools: parts.tools,
-    });
-    return buildSnapshot(input, messages, parts.tools);
+    }, options);
+    const historyEnd = Math.max(parts.prefix.length, messages.length - parts.suffix.length);
+    const compactedHistory = messages.slice(parts.prefix.length, historyEnd);
+    return buildSnapshot(input, messages, compactedHistory, parts.tools);
   }
 }
 
@@ -64,12 +72,14 @@ function buildContextParts(input: ContextAssemblyInput): ContextParts {
 function buildSnapshot(
   input: ContextAssemblyInput,
   messages: readonly Message[],
+  history: readonly Message[],
   tools: readonly LlmToolDef[],
 ): ModelContextSnapshot {
   return Object.freeze({
     promptRevision: input.prompt.revision,
     toolManifestRevision: input.toolManifest?.revision ?? null,
     messages: Object.freeze(messages.map(cloneAndFreeze)),
+    history: Object.freeze(history.map(cloneAndFreeze)),
     tools: Object.freeze(tools.map(cloneAndFreeze)),
   });
 }

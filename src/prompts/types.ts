@@ -1,6 +1,7 @@
 export type PromptSlotId =
   | 'product.rules'
   | 'product.toolGuidance'
+  | 'extension.skillCatalog'
   | 'character.identity'
   | 'character.presentation'
   | 'profile.execution';
@@ -8,6 +9,7 @@ export type PromptSlotId =
 export type PromptSlotKind =
   | 'rules'
   | 'guidance'
+  | 'extension'
   | 'identity'
   | 'presentation'
   | 'execution';

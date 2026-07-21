@@ -13,9 +13,11 @@ import { agentLoop, type ExecutorFactory } from './loop.js';
 import { SubagentSpawner } from './spawner.js';
 import {
   buildModelMessages,
+  ContextAssembler,
   prepareHistoricalMessageView,
   validateCurrentContent,
 } from '@ema-agent/context';
+import type { ContextContribution } from '@ema-agent/context';
 import { clearTodos } from '@ema-agent/tool-builtin';
 import { buildScratchpadContext } from './scratchpad-context.js';
 import { LlmModelCapabilityError, llmProviderErrorCode } from '@ema-agent/llm';
@@ -194,6 +196,21 @@ async function* runTurn(
       ...historyView.messages,
       { role: 'user', content: userInput as string | UserBlock[] },
     ];
+    const baseContributions: ContextContribution[] = [];
+    if (input.prepareContextContributions) {
+      activePhase = 'unknown';
+      const prepared = await input.prepareContextContributions({
+        sessionId,
+        turnId,
+        mode: 'agent',
+        userInput: readableUserInput(userInput),
+        signal,
+        emit: emitHookEvent,
+      });
+      baseContributions.push(...prepared);
+      while (pendingHookEvents.length > 0) yield pendingHookEvents.shift()!;
+    }
+    const contextAssembler = new ContextAssembler();
 
     // ── Spawner + ExecutorFactory ─────────────────────────────────────────────
     // Executor closes over Turn 运行时依赖；Spawner 持有最新一次 beforeLlm
@@ -285,6 +302,7 @@ async function* runTurn(
     activePhase = 'provider';
     for await (const ev of agentLoop({
       messages, policy, buildExecutor, llm,
+      historyMessageCount: historyView.messages.length,
       providerId, model, signal,
       maxIterations: policy.maxIterations(),
       budget,
@@ -293,7 +311,45 @@ async function* runTurn(
       getScratchpadContext: scratchpadDir
         ? () => buildScratchpadContext(scratchpadDir)
         : undefined,
-      compactMessages: input.compactMessages,
+      assembleContext: async ({
+        history: compactableHistory,
+        currentTurn,
+        scratchpadContext,
+        mailboxMessages,
+        forceCompaction,
+      }) => {
+        const contributions: ContextContribution[] = [...baseContributions];
+        if (scratchpadContext) {
+          contributions.push({
+            id: 'scratchpad.current',
+            source: 'scratchpad',
+            placement: 'afterCurrentTurn',
+            message: { role: 'user', content: scratchpadContext },
+          });
+        }
+        mailboxMessages.forEach((content, index) => {
+          contributions.push({
+            id: `mailbox.${index}`,
+            source: 'mailbox',
+            placement: 'afterCurrentTurn',
+            message: { role: 'user', content: `[Coordinator]: ${content}` },
+          });
+        });
+        const assemblyInput = {
+          prompt: input.prompt,
+          history: compactableHistory,
+          currentTurn,
+          contributions,
+          toolManifest: policy.visibleManifestSnapshot(),
+        };
+        return input.compactContext
+          ? contextAssembler.assembleCompacted(
+              assemblyInput,
+              input.compactContext,
+              { force: forceCompaction },
+            )
+          : contextAssembler.assemble(assemblyInput);
+      },
       prepareLlmCall: async ({ iteration, llmCallId, messages: callMessages }) => {
         activePhase = 'hook';
         const result = await hooks.trigger('beforeLlm', {

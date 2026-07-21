@@ -18,6 +18,3 @@ export type {
   PromptTrust,
 } from './types.js';
 export type { PromptAssemblyErrorCode } from './errors.js';
-
-export { registerPromptsHooks } from './hooks.js';
-export type { PromptsHooksDeps } from './hooks.js';

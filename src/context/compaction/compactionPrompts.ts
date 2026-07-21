@@ -1,13 +1,11 @@
 // 定义对话压缩与 Session Note 瘦身使用的结构化摘要提示词。
 import type { TurnMode } from '@ema-agent/contracts';
 
-// ── Mode-specific compaction templates ───────────────────────────────────────
+// ── 按模式区分的压缩模板 ──────────────────────────────────────────────────────
 //
-// Each prompt asks the LLM to compress a slice of conversation history into a
-// single structured summary. The structure differs by mode so the summary
-// captures what each mode cares about. Chat / narrative produce a few
-// emotional/narrative sections; agent produces Claude-Code's 9-section
-// engineering-task template.
+// 每个 prompt 让 LLM 把一段对话历史压缩成单个结构化摘要。结构按模式不同,
+// 让摘要抓住各模式关心的内容。chat / narrative 产出几段情感/剧情小结;
+// agent 产出 Claude Code 的 9 段工程任务模板。
 
 const SHARED_FOOTER = `
 Output rules:
@@ -99,13 +97,12 @@ work). Use the structured template below. Be thorough but compact.
 // ── Public builder ───────────────────────────────────────────────────────────
 
 /**
- * Prompt for compressing an over-grown session note in-place.
- * Unlike macrocompaction (which summarises a message slice), this takes the
- * existing note body and produces a tighter version in the same structure —
- * merging redundant entries, removing clearly stale facts, keeping the
- * latest state sections updated.
+ * 原地压缩过长的 session note 的 prompt。
+ * 与 macro 压缩(摘要消息切片)不同,它接收现有 note 正文,
+ * 产出同结构的更紧凑版本 - 合并冗余条目、删除明显过期的事实、
+ * 保留最新状态段落。
  *
- * Newest deltas are at the bottom; they carry more recency weight.
+ * 最新的增量在底部;它们的时效权重更高。
  */
 export function buildNoteCompactionPrompt(args: {
   mode:   TurnMode;

@@ -21,6 +21,9 @@ const SLOT_SPECS: Readonly<Record<PromptSlotId, PromptSlotSpec>> = Object.freeze
   'product.toolGuidance': Object.freeze({
     kind: 'guidance', order: 20, cacheScope: 'global', trust: 'product',
   }),
+  'extension.skillCatalog': Object.freeze({
+    kind: 'extension', order: 40, cacheScope: 'global', trust: 'extension',
+  }),
   'character.identity': Object.freeze({
     kind: 'identity', order: 60, cacheScope: 'session', trust: 'user-configured',
   }),

@@ -397,6 +397,9 @@ importers:
       '@ema-agent/permission':
         specifier: workspace:*
         version: link:../../src/permission
+      '@ema-agent/prompts':
+        specifier: workspace:*
+        version: link:../../src/prompts
       '@ema-agent/provider':
         specifier: workspace:*
         version: link:../../src/providers
@@ -508,6 +511,9 @@ importers:
       '@ema-agent/narrative':
         specifier: workspace:*
         version: link:../../src/narrative
+      '@ema-agent/prompts':
+        specifier: workspace:*
+        version: link:../../src/prompts
       '@ema-agent/provider':
         specifier: workspace:*
         version: link:../../src/providers
@@ -1264,12 +1270,6 @@ importers:
       '@ema-agent/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
-      '@ema-agent/hook':
-        specifier: workspace:*
-        version: link:../../packages/hook
-      '@ema-agent/llm':
-        specifier: workspace:*
-        version: link:../llm
     devDependencies:
       '@types/node':
         specifier: ^20.0.0
@@ -1323,12 +1323,12 @@ importers:
       '@ema-agent/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
-      '@ema-agent/hook':
-        specifier: workspace:*
-        version: link:../../packages/hook
       '@ema-agent/marketplace':
         specifier: workspace:*
         version: link:../marketplace
+      '@ema-agent/prompts':
+        specifier: workspace:*
+        version: link:../prompts
       '@ema-agent/storage':
         specifier: workspace:*
         version: link:../storage

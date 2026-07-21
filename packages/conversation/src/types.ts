@@ -5,7 +5,6 @@ import type { RequestDegradationNotice } from '@ema-agent/turn';
 import type {
   LanguageModel,
   LlmContentPart,
-  Message as ModelMessage,
   ThinkingMode,
 } from '@ema-agent/llm';
 import type { SessionStore, Turn } from '@ema-agent/session';
@@ -13,6 +12,11 @@ import type { HookBus } from '@ema-agent/hook';
 import type { EmotionEngine } from '@ema-agent/emotion';
 import type { NarrativeClient } from '@ema-agent/narrative';
 import type { ModelCapabilityResolver } from '@ema-agent/provider';
+import type {
+  ContextContributionProvider,
+  ContextHistoryCompactor,
+} from '@ema-agent/context';
+import type { PromptSnapshot } from '@ema-agent/prompts';
 
 // ── 依赖表面 ───────────────────────────────────────────────────────────────────
 
@@ -40,13 +44,17 @@ export interface ConversationRunInput {
   /** 'chat' 或 'narrative'；agent 由 AgentEngine 处理。 */
   mode:          Exclude<TurnMode, 'agent'>;
   userInput:     string;
+  /** Turn 开始时冻结的完整 Prompt Slot 快照。 */
+  prompt:        PromptSnapshot;
   contentParts?: LlmContentPart[];
   /** provider_configs.id--由 orchestrator 从请求或旧绑定解析。 */
   providerId?:   string;
   /** 模型名--由 orchestrator 从请求或旧绑定解析。 */
   model?:        string;
-  /** 每次逻辑推理前压缩原始历史；由 Orchestrator 注入 Memory Facade。 */
-  compactMessages?: (messages: ModelMessage[]) => Promise<ModelMessage[]>;
+  /** Memory 等本轮临时数据生产端；返回结构化贡献，不改写消息数组。 */
+  prepareContextContributions?: ContextContributionProvider;
+  /** 按固定前缀、历史和固定尾部执行完整请求预算与压缩。 */
+  compactContext?: ContextHistoryCompactor;
   /** 用户请求的 thinking 模式，直接透传给 LlmRequest。 */
   thinking?:     ThinkingMode;
   /** Core 在 Engine 前完成的图片描述等降级，用结构化 SSE 告知前端。 */

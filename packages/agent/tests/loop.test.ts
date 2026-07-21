@@ -1,6 +1,8 @@
 // 测试 Agent 循环的终止保护、LLM 调用标识和工具上下文预算接线。
 import { describe, expect, it, vi } from 'vitest';
+import { ContextWindowExceededError } from '@ema-agent/llm';
 import type { LlmCallId, Message as ModelMessage } from '@ema-agent/llm';
+import type { ModelContextSnapshot } from '@ema-agent/context';
 import type { AgentPolicy } from '../src/policy.js';
 import type { TurnToolExecutor } from '../src/tool-executor.js';
 import { agentLoop } from '../src/loop.js';
@@ -73,7 +75,20 @@ describe('agentLoop LLM 生命周期', () => {
         required: ['path'],
       },
     }];
-    const compactMessages = vi.fn(async (messages: ModelMessage[]) => messages);
+    const assembleContext = vi.fn(async ({
+      history,
+      currentTurn,
+    }: {
+      history: readonly ModelMessage[];
+      currentTurn: readonly ModelMessage[];
+    }): Promise<ModelContextSnapshot> => ({
+      messages: [...history, ...currentTurn],
+      history: [...history],
+      tools,
+      promptRevision: 'prompt-revision',
+      toolManifestRevision: 'tool-revision',
+      contextRevision: 'context-revision',
+    }));
     const stream = vi.fn(() => (async function* () {
       yield { type: 'done' as const, stopReason: 'end_turn' as const };
     })());
@@ -89,15 +104,17 @@ describe('agentLoop LLM 生命周期', () => {
       maxIterations: 1,
       budget: new TurnBudget(),
       sessionId: 'session-1',
-      compactMessages,
+      historyMessageCount: 0,
+      assembleContext,
     })) {
       expect(event.type).toBeDefined();
     }
 
-    expect(compactMessages).toHaveBeenCalledWith(
-      [{ role: 'user', content: 'read it' }],
-      tools,
-    );
+    expect(assembleContext).toHaveBeenCalledWith(expect.objectContaining({
+      history: [],
+      currentTurn: [{ role: 'user', content: 'read it' }],
+      forceCompaction: false,
+    }));
     expect(stream).toHaveBeenCalledWith(expect.objectContaining({ tools }));
   });
 
@@ -231,5 +248,59 @@ describe('agentLoop LLM 生命周期', () => {
     expect(before[1]?.messages.some((message) => message.role === 'system')).toBe(false);
     expect(eventTypes).toContain('loop_breaker');
     expect(eventTypes.at(-1)).toBe('loop_done');
+  });
+
+  it('响应式压缩生成新快照后重新应用最终请求 Hook，并保持同一 llmCallId', async () => {
+    let attempt = 0;
+    const stream = vi.fn(() => (async function* () {
+      attempt += 1;
+      if (attempt === 1) throw new ContextWindowExceededError();
+      yield { type: 'done' as const, stopReason: 'end_turn' as const };
+    })());
+    const hookCallIds: LlmCallId[] = [];
+    const assembleContext = vi.fn(async ({ forceCompaction }: { forceCompaction: boolean }) => ({
+      messages: [{ role: 'user' as const, content: forceCompaction ? 'compacted' : 'original' }],
+      history: [],
+      tools: [],
+      promptRevision: 'prompt-revision',
+      toolManifestRevision: 'tool-revision',
+      contextRevision: forceCompaction ? 'forced-revision' : 'initial-revision',
+    }));
+
+    for await (const _event of agentLoop({
+      messages: [{ role: 'user', content: 'hello' }],
+      historyMessageCount: 0,
+      policy: makePolicy(),
+      buildExecutor: () => makeExecutor(),
+      llm: { stream } as never,
+      providerId: 'provider-1',
+      model: 'model-1',
+      signal: new AbortController().signal,
+      maxIterations: 1,
+      budget: new TurnBudget(),
+      sessionId: 'session-1',
+      assembleContext,
+      prepareLlmCall: async (call) => {
+        hookCallIds.push(call.llmCallId);
+        return {
+          kind: 'continue',
+          messages: [{ role: 'system', content: 'hooked' }, ...call.messages],
+        };
+      },
+    })) {
+      // 排空循环事件。
+    }
+
+    expect(assembleContext).toHaveBeenLastCalledWith(expect.objectContaining({
+      forceCompaction: true,
+    }));
+    expect(hookCallIds).toHaveLength(2);
+    expect(new Set(hookCallIds).size).toBe(1);
+    expect(stream).toHaveBeenLastCalledWith(expect.objectContaining({
+      messages: [
+        { role: 'system', content: 'hooked' },
+        { role: 'user', content: 'compacted' },
+      ],
+    }));
   });
 });
