@@ -1,4 +1,16 @@
 export { buildModelMessages } from './messageBuilder.js';
+export { ContextAssembler } from './contextAssembler.js';
+export { ContextAssemblyError } from './errors.js';
+export type { ContextAssemblyErrorCode } from './errors.js';
+export type {
+  ContextAssemblyInput,
+  ContextCompactionView,
+  ContextContribution,
+  ContextContributionPlacement,
+  ContextContributionSource,
+  ContextHistoryCompactor,
+  ModelContextSnapshot,
+} from './types.js';
 export { computePromptPrefixHash, normalizeToolDefinitions } from './promptPrefix.js';
 export {
   prepareHistoricalMessageView,

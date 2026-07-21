@@ -2,10 +2,9 @@
 import type { Message as ModelMessage } from '@ema-agent/llm';
 
 /**
- * Walk backward from `desiredCut` to find a safe message boundary that doesn't
- * split a tool_use/tool_result pair. The Anthropic/OpenAI APIs require a
- * tool_result user-message to immediately follow the assistant tool_use —
- * a naive slice can land between them, producing an orphaned tool_result.
+ * 从 `desiredCut` 向后遍历，找到一个安全的消息边界，不会拆散 tool_use/tool_result 对。
+ * Anthropic/OpenAI API 要求 tool_result 用户消息必须紧接在助手 tool_use 之后
+ * 一个简单的切片可能会落在它们之间，产生一个孤立的 tool_result。
  */
 export function findSafeCutPoint(messages: ModelMessage[], desiredCut: number): number {
   for (let i = desiredCut; i > 0; i--) {

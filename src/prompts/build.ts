@@ -8,7 +8,7 @@ import {
 import { buildLegacyExecutionProfileContribution } from './legacyExecutionProfile.js';
 import { PromptAssembler } from './promptAssembler.js';
 import { buildProductPromptContributions } from './productPrompt.js';
-import type { PromptSlotContribution } from './types.js';
+import type { PromptSlotContribution, PromptSnapshot } from './types.js';
 
 const assembler = new PromptAssembler();
 
@@ -32,13 +32,22 @@ export function buildSystemPrompt(
   mode: TurnMode,
   opts: BuildSystemPromptOpts = {},
 ): string {
+  return buildPromptSnapshot(card, mode, opts).systemText;
+}
+
+/** 新 Context 主链消费完整快照，避免把 Prompt 版本和缓存边界压扁成裸字符串。 */
+export function buildPromptSnapshot(
+  card: CharacterCard,
+  mode: TurnMode,
+  opts: BuildSystemPromptOpts = {},
+): PromptSnapshot {
   const productSlots = buildProductPromptContributions();
   const characterSlots = buildCharacterSlots(card);
   const profileSlot = buildLegacyExecutionProfileContribution(mode, {
     workspaceRoot: opts.workspaceRoot,
   });
 
-  return assembler.build([...productSlots, ...characterSlots, profileSlot]).systemText;
+  return assembler.build([...productSlots, ...characterSlots, profileSlot]);
 }
 
 // ── 角色块（从 character-card/system-block.ts 迁来）────────────────────────────

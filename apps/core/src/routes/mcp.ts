@@ -42,7 +42,7 @@ const probeSchema = z.object({
 // 市场源从 market_sources 表读(marketplace 底座),聚合所有 enabled 源并发 fetch。
 // 单源失败不阻断。源管理走 /api/market/sources。
 // 旧的 inline registry fetch + normaliseRegistryServer 已搬到
-// packages/mcp/src/market/adapters/mcp-registry.ts。
+// src/mcp/src/market/adapters/mcp-registry.ts。
 
 export function createMcpRouter(bindings: AppBindings) {
   const router = new Hono();

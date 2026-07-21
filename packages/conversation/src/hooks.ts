@@ -3,12 +3,12 @@
 import type { HookBus } from '@ema-agent/hook';
 import type { NarrativeTimelineRecall, SessionId, TurnId } from '@ema-agent/contracts';
 import type { EmaStreamEvent } from '@ema-agent/turn';
-import type { Message as ModelMessage } from '@ema-agent/llm';
+import type { ContextContribution } from '@ema-agent/context';
 import { NarrativeClientError } from '@ema-agent/narrative';
 import type { ConversationDeps } from './types.js';
 
 interface NarrativeRecallContext {
-  message: ModelMessage;
+  contribution: ContextContribution;
   timelines: NarrativeTimelineRecall[];
 }
 
@@ -42,8 +42,7 @@ export function registerConversationHooks(bus: HookBus, deps: ConversationDeps):
         });
         if (!recalled) return { kind: 'continue' };
 
-        // 把 narrative 上下文作为 user message 插到最新 user turn 之前。
-        // system prompt 构造和 memory 召回留给它们自己的 hook；ctx.emit 只是当前 turn 的事件出口。
+        // ContextAssembler 接线完成前保留旧消息投影；Narrative 召回本身只返回结构化贡献。
         const msgs = ctx.payload.messages;
         const last = msgs[msgs.length - 1];
         if (!last) return { kind: 'continue' };
@@ -52,7 +51,11 @@ export function registerConversationHooks(bus: HookBus, deps: ConversationDeps):
           kind: 'replace',
           payload: {
             ...ctx.payload,
-            messages: [...msgs.slice(0, -1), recalled.message, last],
+            messages: [
+              ...msgs.slice(0, -1),
+              recalled.contribution.message,
+              last,
+            ],
             narrativeRecall: { timelines: recalled.timelines },
           },
         };
@@ -163,9 +166,14 @@ async function recallNarrativeContext(
     .join('\n\n');
 
   return {
-    message: {
-      role: 'user',
-      content: `[NARRATIVE CONTEXT - do not quote verbatim; use as background]\n\n${sections}`,
+    contribution: {
+      id: 'narrative.recall',
+      source: 'narrative',
+      placement: 'beforeCurrentTurn',
+      message: {
+        role: 'user',
+        content: `[NARRATIVE CONTEXT - do not quote verbatim; use as background]\n\n${sections}`,
+      },
     },
     timelines: recallTimelines,
   };

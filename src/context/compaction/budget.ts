@@ -18,6 +18,8 @@ export function fitCompactionContext(args: {
   summary: string;
   /** System Prompt 等不可压缩前缀，始终原样保留。 */
   prefix: ModelMessage[];
+  /** Memory、Narrative 与当前 Turn 等不可压缩尾部，始终原样保留。 */
+  suffix: ModelMessage[];
   restore: ModelMessage[];
   tail: ModelMessage[];
   mode: TurnMode;
@@ -29,10 +31,17 @@ export function fitCompactionContext(args: {
     fixedTokens + estimateMessagesTokens(messages);
   if (
     args.tokenLimit <= fixedTokens
-    || estimateTotal([...args.prefix, ...args.tail]) >= args.tokenLimit
+    || estimateTotal([...args.prefix, ...args.tail, ...args.suffix]) >= args.tokenLimit
   ) return null;
 
-  const full = buildCandidate(args.summary, args.prefix, args.restore, args.tail, args.mode);
+  const full = buildCandidate(
+    args.summary,
+    args.prefix,
+    args.restore,
+    args.tail,
+    args.suffix,
+    args.mode,
+  );
   const fullTokens = estimateTotal(full);
   if (fullTokens <= args.tokenLimit) {
     return {
@@ -44,7 +53,14 @@ export function fitCompactionContext(args: {
     };
   }
 
-  const withoutRestore = buildCandidate(args.summary, args.prefix, [], args.tail, args.mode);
+  const withoutRestore = buildCandidate(
+    args.summary,
+    args.prefix,
+    [],
+    args.tail,
+    args.suffix,
+    args.mode,
+  );
   const withoutRestoreTokens = estimateTotal(withoutRestore);
   if (withoutRestoreTokens <= args.tokenLimit) {
     return {
@@ -63,7 +79,14 @@ export function fitCompactionContext(args: {
   while (low <= high) {
     const middle = Math.floor((low + high) / 2);
     const summary = `${codePoints.slice(0, middle).join('').trimEnd()}${TRUNCATED_MARKER}`;
-    const messages = buildCandidate(summary, args.prefix, [], args.tail, args.mode);
+    const messages = buildCandidate(
+      summary,
+      args.prefix,
+      [],
+      args.tail,
+      args.suffix,
+      args.mode,
+    );
     const afterTokens = estimateTotal(messages);
     if (afterTokens <= args.tokenLimit) {
       best = {
@@ -86,6 +109,7 @@ function buildCandidate(
   prefix: ModelMessage[],
   restore: ModelMessage[],
   tail: ModelMessage[],
+  suffix: ModelMessage[],
   mode: TurnMode,
 ): ModelMessage[] {
   return [
@@ -96,5 +120,6 @@ function buildCandidate(
     },
     ...restore,
     ...tail,
+    ...suffix,
   ];
 }

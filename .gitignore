@@ -49,6 +49,8 @@ apps/bridge/data/narrative/memory/*/vdb_*.json
 apps/bridge/data/narrative/memory/*/graph_chunk_entity_relation.graphml
 apps/bridge/data/narrative/memory/*/kv_store_*.json
 
+src/memory/bench/**
+
 # 忽略 TypeScript 编译产物
 *.js
 *.js.map

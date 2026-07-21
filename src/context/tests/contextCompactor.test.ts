@@ -104,6 +104,38 @@ describe('ContextCompactor', () => {
     expect(request?.messages[0]?.content).not.toContain(system.content);
   });
 
+  it('固定前缀和尾部参与预算但不进入摘要，并在压缩后原样保留', async () => {
+    const complete = vi.fn(async (_request: LlmRequest) => ({
+      blocks: [{ type: 'text' as const, text: '压缩后的工作摘要' }],
+      stopReason: 'end_turn' as const,
+      usage: { inputTokens: 100, outputTokens: 10 },
+    }));
+    const compactor = new ContextCompactor(
+      { llm: { complete } as never, persistSummary: vi.fn() },
+      { bufferTokens: 2_000, defaultReservedOutputTokens: 0, maximumReservedOutputTokens: 0 },
+    );
+    const prefix: Message[] = [{ role: 'system', content: '固定产品规则' }];
+    const suffix: Message[] = [
+      { role: 'user', content: '<memory>本轮临时召回</memory>' },
+      { role: 'user', content: '当前用户问题' },
+    ];
+
+    const result = await compactor.compact({
+      ...args(oversizedHistory()),
+      prefixMessages: prefix,
+      suffixMessages: suffix,
+    });
+
+    expect(result.status).toBe('completed');
+    expect(result.messages[0]).toEqual(prefix[0]);
+    expect(result.messages.slice(-2)).toEqual(suffix);
+    const summaryRequest = complete.mock.calls[0]?.[0];
+    const summaryInput = JSON.stringify(summaryRequest?.messages);
+    expect(summaryInput).not.toContain('固定产品规则');
+    expect(summaryInput).not.toContain('本轮临时召回');
+    expect(summaryInput).not.toContain('当前用户问题');
+  });
+
   it('连续失败达到上限后打开熔断器，不再消耗模型调用', async () => {
     const complete = vi.fn(async () => {
       throw new Error('provider unavailable');

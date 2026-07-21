@@ -47,6 +47,10 @@ export interface ContextCompactionArgs {
   turnId: TurnId;
   mode: TurnMode;
   messages: Message[];
+  /** Prompt 等固定前缀参与预算，但不得进入摘要模型。 */
+  prefixMessages?: readonly Message[];
+  /** 临时召回与当前 Turn 参与预算并原样保留，但不得进入摘要模型。 */
+  suffixMessages?: readonly Message[];
   modelContextWindow: number;
   modelMaxOutputTokens?: number;
   tools?: readonly LlmToolDef[];
