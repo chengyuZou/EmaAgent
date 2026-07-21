@@ -2,7 +2,7 @@
 // 而不是死循环到 OOM(B-060); 正常树形行为不受影响; LCA/KthAncestor 基本语义回归。
 
 import { describe, expect, it } from 'vitest';
-import { BranchAncestorTable } from '../src/branch-ancestor.js';
+import { BranchAncestorTable } from '../branch-ancestor.js';
 import { asBranchId } from '@ema-agent/contracts';
 
 const A = asBranchId('branch-a');

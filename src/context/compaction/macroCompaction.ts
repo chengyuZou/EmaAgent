@@ -36,6 +36,7 @@ function formatHistory(messages: ModelMessage[]): string {
   return lines.join('\n');
 }
 
+// TODO thinking块这里也可以加上去
 function formatBlock(blk: UserBlock | AssistantBlock): string {
   const tag = (blk as { type?: string }).type;
   switch (tag) {

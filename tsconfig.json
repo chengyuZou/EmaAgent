@@ -19,7 +19,7 @@
     "noImplicitReturns": true,
     "noFallthroughCasesInSwitch": true,
     "paths": {
-      "@ema-agent/session": ["./packages/session/src/index.ts"],
+      "@ema-agent/session": ["./src/session/index.ts"],
       "@ema-agent/llm": ["./src/llm/index.ts"],
       "@ema-agent/context": ["./src/context/index.ts"],
       "@ema-agent/usage": ["./src/usage/index.ts"],
