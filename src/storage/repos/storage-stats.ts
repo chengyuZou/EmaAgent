@@ -442,8 +442,7 @@ export class SessionStatsRepo {
   listAgentTasks(sessionId: string): AgentTaskRow[] {
     return this.db.prepare(`
       SELECT id, session_id, turn_id, parent_id, status, error,
-             pending_prompt_id, pending_questions_json, version,
-             iterations, input_tokens, output_tokens, created_at, updated_at
+             version, iterations, input_tokens, output_tokens, created_at, updated_at
       FROM agent_tasks WHERE session_id = ?
       ORDER BY created_at ASC
     `).all(sessionId) as AgentTaskRow[];
@@ -650,15 +649,13 @@ export class SessionStatsRepo {
       const stmtTask = this.db.prepare(`
         INSERT INTO agent_tasks
           (id, session_id, turn_id, parent_id, status,
-           pending_prompt_id, pending_questions_json, version,
-           error, iterations, input_tokens, output_tokens, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           version, error, iterations, input_tokens, output_tokens, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
       for (const t of p.agentTasks) {
         stmtTask.run(
           t.id, p.session.id, t.turn_id ?? null, t.parent_id ?? null,
-          t.status, t.pending_prompt_id ?? null, t.pending_questions_json ?? null,
-          t.version ?? 0,
+          t.status, t.version ?? 0,
           t.error ?? null, t.iterations ?? null,
           t.input_tokens ?? null, t.output_tokens ?? null,
           t.created_at, t.updated_at,

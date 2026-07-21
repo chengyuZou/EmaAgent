@@ -40,7 +40,7 @@ export function agentTasksRoute(bindings: AppBindings): Hono {
     const task   = bindings.taskStore.get(taskId);
     if (!task) return c.json({ error: 'not_found' }, 404);
 
-    if (task.status === 'running' || task.status === 'waiting_user') {
+    if (task.status === 'running') {
       bindings.taskStore.cancel(taskId, 'user_deleted');
     }
     bindings.taskStore.delete(taskId);

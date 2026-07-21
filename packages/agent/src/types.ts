@@ -123,8 +123,6 @@ export interface IAgentTaskStore {
   complete(taskId: string, stats: { iterations: number; inputTokens: number; outputTokens: number }): void;
   fail(taskId: string, reason: string): void;
   cancel(taskId: string, reason: string): void;
-  waitUser(taskId: string, promptId: string, questions: import('@ema-agent/turn').AskUserQuestionSpec[]): { ok: boolean };
-  userAnswered(taskId: string, promptId: string): { ok: boolean };
 }
 
 /**

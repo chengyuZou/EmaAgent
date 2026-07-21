@@ -21,5 +21,5 @@ export {
   TurnBudget,
 } from './turn-budget.js';
 export type { TurnBudgetDimension, TurnBudgetLimits } from './turn-budget.js';
-export { AgentTaskPromptConflictError, awaitAgentAnswer } from './ask-user-lifecycle.js';
+export { awaitAgentAnswer } from './ask-user-lifecycle.js';
 export type { AwaitAgentAnswerInput } from './ask-user-lifecycle.js';

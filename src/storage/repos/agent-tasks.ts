@@ -1,11 +1,9 @@
 import type { SqliteDb } from '../database.js';
-import type { AskUserQuestionSpec } from '@ema-agent/turn';
 
 // ── 类型─────────────────────────────────────────────────────────────────────
 
 export type AgentTaskStatus =
   | 'running'
-  | 'waiting_user'
   | 'completed'
   | 'failed'
   | 'cancelled';
@@ -16,8 +14,6 @@ export interface AgentTaskRow {
   turn_id:                string | null;
   parent_id:              string | null;
   status:                 AgentTaskStatus;
-  pending_prompt_id:      string | null;
-  pending_questions_json: string | null;
   error:                  string | null;
   iterations:             number | null;
   input_tokens:           number | null;
@@ -51,52 +47,6 @@ export class AgentTasksRepo {
          VALUES (?, ?, ?, ?, 'running', ?, ?)`,
       )
       .run(t.id, t.sessionId, t.turnId, t.parentId, t.createdAt, t.createdAt);
-  }
-
-  waitUser(
-    id: string,
-    expectedVersion: number,
-    promptId: string,
-    questions: AskUserQuestionSpec[],
-    at: number,
-  ): AgentTaskRow | undefined {
-    return this.db
-      .prepare(
-        `UPDATE agent_tasks
-            SET status                 = 'waiting_user',
-                pending_prompt_id      = ?,
-                pending_questions_json = ?,
-                version                = version + 1,
-                updated_at             = ?
-          WHERE id = ?
-            AND status = 'running'
-            AND version = ?
-          RETURNING *`,
-      )
-      .get(promptId, JSON.stringify(questions), at, id, expectedVersion) as AgentTaskRow | undefined;
-  }
-
-  userAnswered(
-    id: string,
-    expectedVersion: number,
-    promptId: string,
-    at: number,
-  ): AgentTaskRow | undefined {
-    return this.db
-      .prepare(
-        `UPDATE agent_tasks
-            SET status                 = 'running',
-                pending_prompt_id      = NULL,
-                pending_questions_json = NULL,
-                version                = version + 1,
-                updated_at             = ?
-          WHERE id = ?
-            AND status = 'waiting_user'
-            AND pending_prompt_id = ?
-            AND version = ?
-          RETURNING *`,
-      )
-      .get(at, id, promptId, expectedVersion) as AgentTaskRow | undefined;
   }
 
   complete(
@@ -135,11 +85,10 @@ export class AgentTasksRepo {
       .prepare(
         `UPDATE agent_tasks
             SET status = 'failed', error = ?,
-                pending_prompt_id = NULL, pending_questions_json = NULL,
                 version = version + 1,
                 updated_at = ?
           WHERE id = ?
-            AND status IN ('running', 'waiting_user')
+            AND status = 'running'
             AND version = ?
           RETURNING *`,
       )
@@ -151,11 +100,10 @@ export class AgentTasksRepo {
       .prepare(
         `UPDATE agent_tasks
             SET status = 'cancelled', error = ?,
-                pending_prompt_id = NULL, pending_questions_json = NULL,
                 version = version + 1,
                 updated_at = ?
           WHERE id = ?
-            AND status IN ('running', 'waiting_user')
+            AND status = 'running'
             AND version = ?
           RETURNING *`,
       )
@@ -197,7 +145,7 @@ export class AgentTasksRepo {
     return this.db
       .prepare(
         `SELECT * FROM agent_tasks
-          WHERE status IN ('running','waiting_user')
+          WHERE status = 'running'
           ORDER BY created_at ASC`,
       )
       .all() as AgentTaskRow[];
@@ -205,6 +153,7 @@ export class AgentTasksRepo {
 
   /**
    * 崩溃恢复：将所有仍处于非终态的 task 标记为 failed。
+   * waiting_user 只用于兼容清理旧开发库，当前代码不会再写入该状态。
    * 返回被修改的行（用于启动日志）。
    */
   markStuckFailed(at: number): AgentTaskRow[] {

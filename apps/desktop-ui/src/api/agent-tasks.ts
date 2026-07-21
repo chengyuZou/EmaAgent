@@ -5,7 +5,7 @@ import { sidecarClient } from './sidecar-client.js';
 
 // ── Wire types (mirror backend response shapes) ───────────────────────────────
 
-export type TaskStatus = 'running' | 'waiting_user' | 'completed' | 'failed' | 'cancelled';
+export type TaskStatus = 'running' | 'completed' | 'failed' | 'cancelled';
 
 export interface AgentTaskWire {
   id:        string;
@@ -15,8 +15,6 @@ export interface AgentTaskWire {
   status:    TaskStatus;
   createdAt: number;
   updatedAt: number;
-  pendingPromptId?:  string;
-  pendingQuestions?: unknown[];
   error?:            string;
   iterations?:       number;
   inputTokens?:      number;

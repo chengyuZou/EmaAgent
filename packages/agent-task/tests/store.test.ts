@@ -61,25 +61,6 @@ describe('AgentTaskStore CAS Facade', () => {
     });
   });
 
-  it('只有当前 promptId 可以恢复 waiting_user', () => {
-    expect(store.waitUser('task-a', 'prompt-current', [])).toMatchObject({
-      ok: true,
-      changed: true,
-      task: { status: 'waiting_user', version: 1 },
-    });
-
-    expect(store.userAnswered('task-a', 'prompt-old')).toMatchObject({
-      ok: false,
-      reason: 'conflict',
-      current: { pendingPromptId: 'prompt-current', version: 1 },
-    });
-    expect(store.userAnswered('task-a', 'prompt-current')).toMatchObject({
-      ok: true,
-      changed: true,
-      task: { status: 'running', version: 2 },
-    });
-  });
-
   it('不存在的任务返回 not_found', () => {
     expect(store.cancel('missing', 'user_abort')).toEqual({
       ok: false,

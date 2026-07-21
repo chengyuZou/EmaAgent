@@ -97,7 +97,7 @@ export function startBackgroundWork(bindings: AppBindings): BackgroundHandle {
     console.warn('[session] startup orphan turn file sweep skipped:', err);
   }
 
-  // 2c) Agent task crash recovery — any task still running or waiting_user at
+  // 2c) Agent task crash recovery — any task still running at
   //     startup was orphaned by a process kill; mark them failed.
   try {
     const recovered = bindings.taskStore.recoverInterrupted();

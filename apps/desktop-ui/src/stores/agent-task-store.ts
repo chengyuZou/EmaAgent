@@ -116,7 +116,7 @@ export const useAgentTaskStore = create<AgentTaskStoreState>((set, get) => ({
     set({ error: null });
     try {
       // 活跃任务必须先确认运行时已取消；否则绝不能删除持久化记录并伪装成已停止。
-      if (task && (task.status === 'running' || task.status === 'waiting_user')) {
+      if (task?.status === 'running') {
         if (!parentTurnId) {
           throw new Error('缺少父 Turn，无法安全取消仍在运行的 Agent Task');
         }

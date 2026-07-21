@@ -1,12 +1,9 @@
 // 这里放 AgentTask 模块的基础类型：任务状态、任务记录、状态转换动作和结果。
 
-import type { AskUserQuestionSpec } from '@ema-agent/turn';
-
 // ── 任务状态 ───────────────────────────────────────────────────────────────────
 
 export type TaskStatus =
   | 'running'
-  | 'waiting_user'
   | 'completed'
   | 'failed'
   | 'cancelled';
@@ -25,14 +22,10 @@ export interface AgentTask {
   version:   number;
   createdAt: number;
   updatedAt: number;
-  pendingPromptId?:  string;
-  pendingQuestions?: AskUserQuestionSpec[];
-  error?:            string;
+  error?: string;
 }
 
 export type TaskTransitionAction =
-  | 'wait_user'
-  | 'user_answered'
   | 'complete'
   | 'fail'
   | 'cancel';

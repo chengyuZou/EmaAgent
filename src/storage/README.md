@@ -101,7 +101,7 @@ SQLite 封装。构造时:
 | `permission_grants` | 权限授予(allow/ask/forbidden,session/persistent) |
 | `telemetry_events` | 遥测事件 |
 | `turn_usage` | per-turn 用量(provider/model/token/cost) |
-| `agent_tasks` | agent 运行实例状态机(running/waiting_user/completed/failed/cancelled) |
+| `agent_tasks` | agent 运行实例状态机(running/completed/failed/cancelled) |
 | `agent_task_messages` | agent 对话 transcript |
 | `kb_activations` | 哪个 session/turn 用了哪个 KB 文档(`call_id` 聚合) |
 | `message_search_documents` | Session 消息的用户可见纯文本与 jieba tokens 投影 |

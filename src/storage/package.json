@@ -27,7 +27,6 @@
   "dependencies": {
     "@ema-agent/credential": "workspace:*",
     "@ema-agent/contracts": "workspace:*",
-    "@ema-agent/turn": "workspace:*",
     "@ema-agent/provider": "workspace:*",
     "@ema-agent/usage": "workspace:*",
     "@node-rs/jieba": "^2.0.1",

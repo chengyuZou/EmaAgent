@@ -252,15 +252,13 @@ async function* runTurn(
         scratchpadAuthor: 'main',
         askUser: askUserRegistry
           ? async (promptId, questions, request) => {
+              void questions;
               return awaitAgentAnswer({
-                taskId: turnId as string,
                 promptId,
-                questions,
                 request,
                 turnId: turnId as string,
                 signal,
                 registry: askUserRegistry,
-                taskStore: deps.taskStore,
               });
             }
           : undefined,

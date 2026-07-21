@@ -80,7 +80,7 @@ export function ChatPanel(): JSX.Element {
     if (!viewedSessionId) return 0;
     return [...s.tasks.values()].filter(
       (t) => t.sessionId === viewedSessionId as string &&
-             (t.status === 'running' || t.status === 'waiting_user'),
+             t.status === 'running',
     ).length;
   });
 

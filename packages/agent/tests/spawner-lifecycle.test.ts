@@ -43,8 +43,6 @@ describe('SubagentSpawner 生命周期', () => {
         complete: () => undefined,
         fail: () => undefined,
         cancel: (taskId: string, reason: string) => cancelled.push(`${taskId}:${reason}`),
-        waitUser: () => ({ ok: true }),
-        userAnswered: () => ({ ok: true }),
       },
     };
     const spawner = new SubagentSpawner(

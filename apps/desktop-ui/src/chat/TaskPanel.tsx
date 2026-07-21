@@ -38,7 +38,7 @@ export function TaskPanel({ className = '' }: TaskPanelProps): JSX.Element {
       : all;
   }, [tasks, sessionId, search]);
 
-  const running  = sessionTasks.filter((t) => t.status === 'running' || t.status === 'waiting_user');
+  const running  = sessionTasks.filter((t) => t.status === 'running');
   const terminal = sessionTasks.filter((t) => t.status === 'completed' || t.status === 'failed' || t.status === 'cancelled');
 
   const allForSession = sessionId
@@ -46,7 +46,7 @@ export function TaskPanel({ className = '' }: TaskPanelProps): JSX.Element {
     : [];
   const stats = {
     total:     allForSession.length,
-    running:   allForSession.filter((t) => t.status === 'running' || t.status === 'waiting_user').length,
+    running:   allForSession.filter((t) => t.status === 'running').length,
     completed: allForSession.filter((t) => t.status === 'completed').length,
     failed:    allForSession.filter((t) => t.status === 'failed' || t.status === 'cancelled').length,
   };
@@ -162,11 +162,11 @@ interface TaskCardProps {
 function TaskCard({ task, expanded, onToggle, staggerIndex = 0 }: TaskCardProps): JSX.Element {
   const deleteTask = useAgentTaskStore((s) => s.deleteTask);
   const { icon, color } = statusMeta(task.status);
-  const isRunning = task.status === 'running' || task.status === 'waiting_user';
+  const isRunning = task.status === 'running';
 
   const excerpt = task.live?.promptExcerpt
     ?? task.description
-    ?? (task.status === 'waiting_user' ? '等待用户确认…' : undefined);
+    ?? undefined;
 
   const handleDelete = useCallback(async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -182,7 +182,6 @@ function TaskCard({ task, expanded, onToggle, staggerIndex = 0 }: TaskCardProps)
 
   const barColor = {
     running:      'var(--ema-primary)',
-    waiting_user: 'var(--ema-warning)',
     completed:    'var(--ema-success)',
     failed:       'var(--ema-danger)',
     cancelled:    'var(--ema-text-tertiary)',
@@ -425,7 +424,6 @@ function TranscriptRow({ msg }: { msg: AgentTaskMessageWire }): JSX.Element {
 
 const STATUS_LABEL: Record<AgentTaskState['status'], string> = {
   running:      '运行中',
-  waiting_user: '等待确认',
   completed:    '已完成',
   failed:       '失败',
   cancelled:    '已取消',
@@ -433,7 +431,6 @@ const STATUS_LABEL: Record<AgentTaskState['status'], string> = {
 
 const STATUS_BADGE_VARIANT: Record<AgentTaskState['status'], BadgeVariant> = {
   running:      'primary',
-  waiting_user: 'warn',
   completed:    'success',
   failed:       'danger',
   cancelled:    'neutral',
@@ -444,7 +441,6 @@ type StatusMeta = { icon: string; color: string };
 function statusMeta(status: AgentTaskState['status']): StatusMeta {
   switch (status) {
     case 'running':      return { icon: 'i-lucide:loader-circle animate-spin', color: 'var(--ema-primary)' };
-    case 'waiting_user': return { icon: 'i-lucide:circle-question-mark',  color: 'var(--ema-warning)' };
     case 'completed':    return { icon: 'i-lucide:circle-check', color: 'var(--ema-success)' };
     case 'failed':       return { icon: 'i-lucide:circle-alert', color: 'var(--ema-danger)' };
     case 'cancelled':    return { icon: 'i-lucide:circle-x',               color: 'var(--ema-text-tertiary)' };

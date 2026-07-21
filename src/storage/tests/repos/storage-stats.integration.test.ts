@@ -93,7 +93,7 @@ describe('SessionStatsRepo restore integration', () => {
     ).pluck().get(payload.session.id)).toBe(0);
   });
 
-  it('restores dependent rows and preserves waiting-user task state', () => {
+  it('restores dependent rows and preserves agent task state', () => {
     const payload = branchedPayload();
     payload.artifacts.push({
       id: 'artifact-1', sessionId: payload.session.id, turnId: 'turn-child',
@@ -110,8 +110,7 @@ describe('SessionStatsRepo restore integration', () => {
     });
     payload.agentTasks.push({
       id: 'task-1', session_id: payload.session.id, turn_id: 'turn-child', parent_id: null,
-      status: 'waiting_user', pending_prompt_id: 'prompt-1',
-      pending_questions_json: JSON.stringify([{ id: 'question-1', prompt: '继续吗？' }]),
+      status: 'completed',
       error: null, iterations: 2, input_tokens: 30, output_tokens: 40,
       version: 7, created_at: 150, updated_at: 160,
     });
@@ -138,26 +137,20 @@ describe('SessionStatsRepo restore integration', () => {
     repo.restoreRows(payload);
 
     const task = database.db.prepare(`
-      SELECT status, pending_prompt_id, pending_questions_json, version
+      SELECT status, version
       FROM agent_tasks WHERE id = 'task-1'
     `).get() as {
       status: string;
-      pending_prompt_id: string | null;
-      pending_questions_json: string | null;
       version: number;
     };
     expect(task).toEqual({
-      status: 'waiting_user',
-      pending_prompt_id: 'prompt-1',
-      pending_questions_json: JSON.stringify([{ id: 'question-1', prompt: '继续吗？' }]),
+      status: 'completed',
       version: 7,
     });
     expect(repo.listAgentTasks(payload.session.id)).toEqual([
       expect.objectContaining({
         id: 'task-1',
-        status: 'waiting_user',
-        pending_prompt_id: 'prompt-1',
-        pending_questions_json: JSON.stringify([{ id: 'question-1', prompt: '继续吗？' }]),
+        status: 'completed',
         version: 7,
       }),
     ]);

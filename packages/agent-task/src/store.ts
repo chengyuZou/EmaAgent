@@ -1,6 +1,5 @@
 // 这里管理 Agent 任务的生命周期：认领、状态转换（CAS 防过期覆盖）、查询、删除、崩溃恢复。
 
-import type { AskUserQuestionSpec } from '@ema-agent/turn';
 import type {
   AgentTask,
   TaskStatus,
@@ -21,12 +20,6 @@ function rowToTask(row: AgentTaskRow): AgentTask {
     version:   row.version,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
-    ...(row.pending_prompt_id
-      ? { pendingPromptId: row.pending_prompt_id }
-      : {}),
-    ...(row.pending_questions_json
-      ? { pendingQuestions: JSON.parse(row.pending_questions_json) as AskUserQuestionSpec[] }
-      : {}),
     ...(row.error ? { error: row.error } : {}),
   };
 }
@@ -38,8 +31,7 @@ function rowToTask(row: AgentTaskRow): AgentTask {
 // 并发模型：JS 单线程；claim() 在 SQLite 同步驱动里同步执行，
 // 所以不会有两个微任务在同一个 taskId 上竞争。
 //
-// 崩溃恢复：启动时调 recoverInterrupted()，把孤儿 'running'/'waiting_user'
-// 任务标为 'failed'，并把需要重新展示问题组件的 'waiting_user' 任务暴露出来。
+// 崩溃恢复：启动时调 recoverInterrupted()，把孤儿 running 任务标为 failed。
 
 export class AgentTaskStore {
   constructor(private readonly repo: AgentTasksRepo) {}
@@ -70,47 +62,6 @@ export class AgentTaskStore {
   }
 
   // ── 状态转换 ────────────────────────────────────────────────────────────────
-
-  waitUser(
-    taskId: string,
-    promptId: string,
-    questions: AskUserQuestionSpec[],
-  ): TaskTransitionResult {
-    const current = this.currentFor('wait_user', taskId);
-    if (!current.ok) return current.result;
-    if (current.row.status === 'waiting_user' && current.row.pending_prompt_id === promptId) {
-      return { ok: true, changed: false, task: rowToTask(current.row) };
-    }
-    if (current.row.status !== 'running') return this.conflict('wait_user', current.row);
-
-    const updated = this.repo.waitUser(
-      taskId,
-      current.row.version,
-      promptId,
-      questions,
-      Date.now(),
-    );
-    return this.finishTransition('wait_user', taskId, updated);
-  }
-
-  userAnswered(taskId: string, promptId: string): TaskTransitionResult {
-    const current = this.currentFor('user_answered', taskId);
-    if (!current.ok) return current.result;
-    if (
-      current.row.status !== 'waiting_user'
-      || current.row.pending_prompt_id !== promptId
-    ) {
-      return this.conflict('user_answered', current.row);
-    }
-
-    const updated = this.repo.userAnswered(
-      taskId,
-      current.row.version,
-      promptId,
-      Date.now(),
-    );
-    return this.finishTransition('user_answered', taskId, updated);
-  }
 
   complete(
     taskId: string,
@@ -189,7 +140,7 @@ export class AgentTaskStore {
   // ── 启动崩溃恢复 ────────────────────────────────────────────────────────────
 
   /**
-   * 把所有孤儿任务（running 或 waiting_user）标为 failed。
+   * 把所有孤儿 running 任务标为 failed。
    * 返回被改动的行，供启动日志用。
    */
   recoverInterrupted(): AgentTask[] {
@@ -234,5 +185,5 @@ export class AgentTaskStore {
 }
 
 function isNonTerminal(status: TaskStatus): boolean {
-  return status === 'running' || status === 'waiting_user';
+  return status === 'running';
 }

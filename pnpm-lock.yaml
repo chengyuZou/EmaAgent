@@ -120,10 +120,10 @@ importers:
         version: link:../../src/stt
       '@ema-agent/system':
         specifier: workspace:*
-        version: link:../../packages/system
+        version: link:../../src/system
       '@ema-agent/token':
         specifier: workspace:*
-        version: link:../../packages/token
+        version: link:../../src/token
       '@ema-agent/tool-builtin':
         specifier: workspace:*
         version: link:../../packages/tool-builtin
@@ -299,7 +299,7 @@ importers:
         version: link:../../src/stt
       '@ema-agent/token':
         specifier: workspace:*
-        version: link:../../packages/token
+        version: link:../../src/token
       '@ema-agent/turn':
         specifier: workspace:*
         version: link:../../src/turn
@@ -411,7 +411,7 @@ importers:
         version: link:../../src/storage
       '@ema-agent/token':
         specifier: workspace:*
-        version: link:../token
+        version: link:../../src/token
       '@ema-agent/tool-builtin':
         specifier: workspace:*
         version: link:../tool-builtin
@@ -465,9 +465,6 @@ importers:
       '@ema-agent/storage':
         specifier: workspace:*
         version: link:../../src/storage
-      '@ema-agent/turn':
-        specifier: workspace:*
-        version: link:../../src/turn
     devDependencies:
       '@types/node':
         specifier: ^20.0.0
@@ -681,7 +678,7 @@ importers:
         version: link:../../src/storage
       '@ema-agent/token':
         specifier: workspace:*
-        version: link:../token
+        version: link:../../src/token
       cheerio:
         specifier: ^1.0.0
         version: 1.2.0
@@ -845,7 +842,7 @@ importers:
         version: link:../../src/storage
       '@ema-agent/token':
         specifier: workspace:*
-        version: link:../token
+        version: link:../../src/token
       '@ema-agent/turn':
         specifier: workspace:*
         version: link:../../src/turn
@@ -1001,37 +998,6 @@ importers:
         specifier: ^2.0.0
         version: 2.1.9(@types/node@20.19.39)(jsdom@26.1.0(canvas@2.11.2))(msw@2.14.6(@types/node@20.19.39)(typescript@5.9.3))
 
-  packages/system:
-    devDependencies:
-      '@types/node':
-        specifier: ^20.0.0
-        version: 20.19.39
-      rimraf:
-        specifier: ^5.0.0
-        version: 5.0.10
-      typescript:
-        specifier: ^5.9.3
-        version: 5.9.3
-
-  packages/token:
-    dependencies:
-      '@ema-agent/llm':
-        specifier: workspace:*
-        version: link:../../src/llm
-    devDependencies:
-      '@types/node':
-        specifier: ^20.0.0
-        version: 20.19.39
-      rimraf:
-        specifier: ^5.0.0
-        version: 5.0.10
-      typescript:
-        specifier: ^5.9.3
-        version: 5.9.3
-      vitest:
-        specifier: ^2.0.0
-        version: 2.1.9(@types/node@20.19.39)(jsdom@26.1.0(canvas@2.11.2))(msw@2.14.6(@types/node@20.19.39)(typescript@5.9.3))
-
   packages/tool-builtin:
     dependencies:
       '@ema-agent/contracts':
@@ -1048,7 +1014,7 @@ importers:
         version: link:../public-http
       '@ema-agent/token':
         specifier: workspace:*
-        version: link:../token
+        version: link:../../src/token
       '@ema-agent/tools':
         specifier: workspace:*
         version: link:../tools
@@ -1225,7 +1191,7 @@ importers:
         version: link:../../packages/session
       '@ema-agent/token':
         specifier: workspace:*
-        version: link:../../packages/token
+        version: link:../token
       '@ema-agent/turn':
         specifier: workspace:*
         version: link:../turn
@@ -1391,9 +1357,6 @@ importers:
       '@ema-agent/provider':
         specifier: workspace:*
         version: link:../providers
-      '@ema-agent/turn':
-        specifier: workspace:*
-        version: link:../turn
       '@ema-agent/usage':
         specifier: workspace:*
         version: link:../usage
@@ -1431,6 +1394,37 @@ importers:
       '@ema-agent/usage':
         specifier: workspace:*
         version: link:../usage
+    devDependencies:
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.39
+      rimraf:
+        specifier: ^5.0.0
+        version: 5.0.10
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: ^2.0.0
+        version: 2.1.9(@types/node@20.19.39)(jsdom@26.1.0(canvas@2.11.2))(msw@2.14.6(@types/node@20.19.39)(typescript@5.9.3))
+
+  src/system:
+    devDependencies:
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.39
+      rimraf:
+        specifier: ^5.0.0
+        version: 5.0.10
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
+  src/token:
+    dependencies:
+      '@ema-agent/llm':
+        specifier: workspace:*
+        version: link:../llm
     devDependencies:
       '@types/node':
         specifier: ^20.0.0
