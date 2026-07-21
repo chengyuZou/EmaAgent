@@ -30,9 +30,13 @@ export class ContextCompactor {
   async compact(args: ContextCompactionArgs): Promise<ContextCompactionResult> {
     const startedAt = Date.now();
     const messages = sanitizeCompactionMessages(args.messages);
-    const systemPrefix = messages.filter((message) => message.role === 'system');
-    const history = messages.filter((message) => message.role !== 'system');
-    const withSystemPrefix = (candidate: typeof history): typeof messages => [
+    const systemPrefix: ContextCompactionResult['messages'] = messages
+      .filter((message) => message.role === 'system');
+    const history: ContextCompactionResult['messages'] = messages
+      .filter((message) => message.role !== 'system');
+    const withSystemPrefix = (
+      candidate: ContextCompactionResult['messages'],
+    ): ContextCompactionResult['messages'] => [
       ...systemPrefix,
       ...candidate,
     ];

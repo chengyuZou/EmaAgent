@@ -3,17 +3,17 @@ import os from 'node:os';
 import path from 'node:path';
 import { strFromU8, strToU8, unzipSync, zipSync } from 'fflate';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { SessionBackupFacade } from '../src/facade.js';
+import { SessionBackupFacade } from '../facade.js';
 import {
   extractSessionArchive,
   SESSION_IMPORT_LIMITS,
   type SessionImportLimits,
-} from '../src/import/archive.js';
-import { SessionImportError } from '../src/import/errors.js';
-import { SessionImportFileCommit } from '../src/import/file-commit.js';
-import { assertPortableImportId, resolvePathInside } from '../src/import/path-policy.js';
-import { exportSessionZipV1, SessionExportError } from '../src/export/zip-v1.js';
-import type { SessionExportSnapshot } from '../src/types.js';
+} from '../import/archive.js';
+import { SessionImportError } from '../import/errors.js';
+import { SessionImportFileCommit } from '../import/file-commit.js';
+import { assertPortableImportId, resolvePathInside } from '../import/path-policy.js';
+import { exportSessionZipV1, SessionExportError } from '../export/zip-v1.js';
+import type { SessionExportSnapshot } from '../types.js';
 
 const roots: string[] = [];
 function tempRoot(): string {
