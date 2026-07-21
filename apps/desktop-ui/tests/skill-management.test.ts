@@ -1,6 +1,6 @@
 // 测试 Skill API 的安全路径编码，以及重命名成功与失败时的前端状态语义。
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { SkillRecord } from '@ema-agent/skill';
+import type { SkillRecord } from '@ema-agent/skills';
 import { sidecarClient } from '../src/api/sidecar-client.js';
 import { skillsApi } from '../src/api/skills.js';
 import { useSkillStore } from '../src/stores/skill-store.js';

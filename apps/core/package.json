@@ -54,7 +54,7 @@
     "@ema-agent/attachment": "workspace:*",
     "@ema-agent/agent-context": "workspace:*",
     "@ema-agent/agent-task": "workspace:*",
-    "@ema-agent/skill":    "workspace:*",
+    "@ema-agent/skills":    "workspace:*",
     "@ema-agent/mcp": "workspace:*",
     "@ema-agent/marketplace": "workspace:*",
     "@ema-agent/system": "workspace:*",

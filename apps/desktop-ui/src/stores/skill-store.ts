@@ -1,7 +1,7 @@
 // 管理已安装 Skill、市场列表及安装、启停、重命名和卸载操作。
 import { create } from 'zustand';
 import { skillsApi, type SkillValidateResult, type MarketSkillEntry } from '../api/skills.js';
-import type { GithubSkillCoords, SkillRecord } from '@ema-agent/skill';
+import type { GithubSkillCoords, SkillRecord } from '@ema-agent/skills';
 
 export type { SkillRecord, SkillValidateResult, MarketSkillEntry };
 

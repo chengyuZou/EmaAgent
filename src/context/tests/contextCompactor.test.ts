@@ -78,6 +78,32 @@ describe('ContextCompactor', () => {
     ]);
   });
 
+  it('响应式压缩始终原样保留 System Prompt，且不把它交给摘要模型', async () => {
+    const complete = vi.fn(async (request: LlmRequest) => ({
+      blocks: [{ type: 'text' as const, text: '压缩后的工作摘要' }],
+      stopReason: 'end_turn' as const,
+      usage: { inputTokens: 100, outputTokens: 10 },
+      request,
+    }));
+    const compactor = new ContextCompactor(
+      { llm: { complete } as never, persistSummary: vi.fn() },
+      { bufferTokens: 2_000, defaultReservedOutputTokens: 0, maximumReservedOutputTokens: 0 },
+    );
+    const system = {
+      role: 'system' as const,
+      content: '产品安全规则不得被压缩',
+      cacheBreakpoint: true as const,
+    };
+
+    const result = await compactor.compact(args([system, ...oversizedHistory()]));
+
+    expect(result.status).toBe('completed');
+    expect(result.messages[0]).toEqual(system);
+    expect(complete).toHaveBeenCalledTimes(1);
+    const request = complete.mock.calls[0]?.[0];
+    expect(request?.messages[0]?.content).not.toContain(system.content);
+  });
+
   it('连续失败达到上限后打开熔断器，不再消耗模型调用', async () => {
     const complete = vi.fn(async () => {
       throw new Error('provider unavailable');

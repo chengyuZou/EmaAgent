@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Database, SkillsRepo } from '@ema-agent/storage';
-import { SkillStore } from '../src/store.js';
+import { SkillStore } from '../store.js';
 
 let rootPath: string;
 let database: Database;

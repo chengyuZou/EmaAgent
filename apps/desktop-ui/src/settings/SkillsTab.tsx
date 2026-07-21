@@ -6,7 +6,7 @@ import {
 } from '@ema-agent/ui';
 import { useSkillStore, type MarketSkillEntry } from '../stores/skill-store.js';
 import { skillsApi } from '../api/skills.js';
-import type { GithubSkillCoords } from '@ema-agent/skill';
+import type { GithubSkillCoords } from '@ema-agent/skills';
 import { showToast } from '../lib/toast.js';
 import { Markdown } from '../markdown/renderer.js';
 import { MarketSourceManager } from './MarketSourceManager.js';

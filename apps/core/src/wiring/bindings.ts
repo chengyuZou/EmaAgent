@@ -21,8 +21,8 @@ import { ArtifactStore }                               from '@ema-agent/artifact
 import { McpRegistry, McpServerStore }                 from '@ema-agent/mcp';
 import { McpMarketAdapter, MCP_SEEDS }                 from '@ema-agent/mcp';
 import type { McpStdioLaunchIntent }                   from '@ema-agent/mcp';
-import { SkillStore, SkillRunner, SkillInstaller }     from '@ema-agent/skill';
-import { SkillMarketAdapter, SKILL_SEEDS }             from '@ema-agent/skill';
+import { SkillStore, SkillRunner, SkillInstaller }     from '@ema-agent/skills';
+import { SkillMarketAdapter, SKILL_SEEDS }             from '@ema-agent/skills';
 import { MarketRegistry, MarketSourceStore }           from '@ema-agent/marketplace';
 import * as nodePath from 'node:path';
 import { readFileSync } from 'node:fs';

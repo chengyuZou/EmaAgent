@@ -1,6 +1,6 @@
 // 测试 Skill 重命名返回权威记录，并确认 V1 的移动路由不会伪造成功。
 import { describe, expect, it, vi } from 'vitest';
-import type { SkillRecord } from '@ema-agent/skill';
+import type { SkillRecord } from '@ema-agent/skills';
 import type { AppBindings } from '../src/wiring/index.js';
 import { createSkillsRouter } from '../src/routes/skills.js';
 

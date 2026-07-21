@@ -1,9 +1,9 @@
 // 这里提供 Skill 扫描, 市场浏览, 安装和启停 API.
 import { Hono } from 'hono';
 import { z }    from 'zod';
-import { GithubSkillCoordsSchema, SkillNameSchema } from '@ema-agent/skill';
+import { GithubSkillCoordsSchema, SkillNameSchema } from '@ema-agent/skills';
 import { mergeByName } from '@ema-agent/marketplace';
-import type { MarketSkillEntry } from '@ema-agent/skill';
+import type { MarketSkillEntry } from '@ema-agent/skills';
 import type { AppBindings } from '../wiring/index.js';
 
 // ── Skills router ─────────────────────────────────────────────────────────────

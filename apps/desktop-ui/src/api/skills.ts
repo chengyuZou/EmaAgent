@@ -1,6 +1,6 @@
 // 调用 Skill 的安装、校验、启停、重命名、内容读取与市场查询接口。
 import { sidecarClient } from './sidecar-client.js';
-import type { GithubSkillCoords, SkillRecord } from '@ema-agent/skill';
+import type { GithubSkillCoords, SkillRecord } from '@ema-agent/skills';
 
 // File-backed model: records are metadata (no body). Body is read lazily on
 // activation server-side; the UI never receives it.

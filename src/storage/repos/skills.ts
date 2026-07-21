@@ -24,7 +24,7 @@ export interface SkillRow {
 
 // ── SkillsRepo ────────────────────────────────────────────────────────────────
 //
-// 纯 SQL 层,不 import @ema-agent/skill。
+// 纯 SQL 层,不 import @ema-agent/skills。
 // 结构校验、frontmatter 解析、文件系统对账都在 SkillStore 里。
 // 本 repo 只负责持久化/读取索引。
 

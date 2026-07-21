@@ -15,7 +15,7 @@ function message(input: Partial<SessionMessage> & Pick<SessionMessage, 'role' | 
 }
 
 describe('buildModelMessages', () => {
-  it('移除 thinking、tool_use、tool_result 与界面展示字段', () => {
+  it('移除 thinking 和界面展示字段，但保留成对的工具调用事实', () => {
     const result = buildModelMessages([
       message({
         role: 'assistant',
@@ -29,12 +29,58 @@ describe('buildModelMessages', () => {
       message({
         role: 'user',
         kind: 'tool_results',
-        blocks: [{ type: 'tool_result', toolUseId: 'call-1', content: 'secret output' }],
+        blocks: [{
+          type: 'tool_result',
+          toolUseId: 'call-1',
+          content: 'tool output',
+          durationMs: 12,
+          presentation: {
+            kind: 'file_change',
+            operation: 'update',
+            filePath: 'demo.ts',
+            unifiedDiff: 'private UI diff',
+            additions: 1,
+            deletions: 0,
+            truncated: false,
+          },
+        }],
       }),
     ]);
 
     expect(result).toEqual([
-      { role: 'assistant', content: [{ type: 'text', text: 'visible' }] },
+      {
+        role: 'assistant',
+        content: [
+          { type: 'text', text: 'visible' },
+          { type: 'tool_use', id: 'call-1', name: 'read', args: {} },
+        ],
+      },
+      {
+        role: 'user',
+        content: [{ type: 'tool_result', toolUseId: 'call-1', content: 'tool output' }],
+      },
+    ]);
+  });
+
+  it('移除崩溃恢复后没有配对的孤立工具块', () => {
+    const result = buildModelMessages([
+      message({
+        role: 'assistant',
+        kind: 'normal',
+        blocks: [
+          { type: 'text', text: 'before crash' },
+          { type: 'tool_use', id: 'orphan-use', name: 'read', args: {} },
+        ],
+      }),
+      message({
+        role: 'user',
+        kind: 'tool_results',
+        blocks: [{ type: 'tool_result', toolUseId: 'orphan-result', content: 'unknown' }],
+      }),
+    ]);
+
+    expect(result).toEqual([
+      { role: 'assistant', content: [{ type: 'text', text: 'before crash' }] },
     ]);
   });
 

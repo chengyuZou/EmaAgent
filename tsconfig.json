@@ -29,7 +29,7 @@
       "@ema-agent/attachment": ["./src/attachment/index.ts"],
       "@ema-agent/memory": ["./packages/memory/src/index.ts"],
       "@ema-agent/prompts": ["./src/prompts/index.ts"],
-      "@ema-agent/skill": ["./packages/skill/src/index.ts"]
+      "@ema-agent/skills": ["./src/skills/index.ts"]
     }
   },
   "exclude": ["node_modules", "dist", ".turbo"]

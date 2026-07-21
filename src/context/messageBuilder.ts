@@ -1,5 +1,11 @@
 // 把持久化 Session Message 投影为 Provider 无关的 LLM Message。
-import type { ContentPart, Message as ModelMessage } from '@ema-agent/llm';
+import type {
+  AssistantBlock,
+  ContentPart,
+  Message as ModelMessage,
+  ToolResultContentPart,
+  UserBlock,
+} from '@ema-agent/llm';
 import type { Message as SessionMessage } from '@ema-agent/session';
 
 interface NarrativeTimeline {
@@ -10,6 +16,7 @@ interface NarrativeTimeline {
 /** 历史投影只保留跨 Provider 可安全重放的内容。 */
 export function buildModelMessages(history: readonly SessionMessage[]): ModelMessage[] {
   const messages: ModelMessage[] = [];
+  const pairedToolIds = collectPairedToolIds(history);
 
   for (const message of history) {
     if (message.role === 'system') {
@@ -32,8 +39,8 @@ export function buildModelMessages(history: readonly SessionMessage[]): ModelMes
       }
       if (Array.isArray(message.blocks)) {
         const content = message.blocks
-          .map(projectContentPart)
-          .filter((part): part is ContentPart => part !== undefined);
+          .map((block) => projectUserBlock(block, pairedToolIds))
+          .filter((part): part is UserBlock => part !== undefined);
         if (content.length > 0) messages.push({ role: 'user', content });
       }
       continue;
@@ -41,8 +48,8 @@ export function buildModelMessages(history: readonly SessionMessage[]): ModelMes
 
     if (Array.isArray(message.blocks)) {
       const content = message.blocks
-        .map(projectAssistantText)
-        .filter((block): block is { type: 'text'; text: string } => block !== undefined);
+        .map((block) => projectAssistantBlock(block, pairedToolIds))
+        .filter((block): block is AssistantBlock => block !== undefined);
       if (content.length > 0) messages.push({ role: 'assistant', content });
     }
   }
@@ -73,12 +80,100 @@ function isNarrativeTimeline(value: unknown): value is NarrativeTimeline {
   return typeof candidate.name === 'string' && typeof candidate.text === 'string';
 }
 
-function projectAssistantText(block: unknown): { type: 'text'; text: string } | undefined {
+function projectAssistantBlock(
+  block: unknown,
+  pairedToolIds: ReadonlySet<string>,
+): AssistantBlock | undefined {
   if (!block || typeof block !== 'object') return undefined;
-  const candidate = block as { type?: unknown; text?: unknown };
-  return candidate.type === 'text' && typeof candidate.text === 'string'
-    ? { type: 'text', text: candidate.text }
+  const candidate = block as {
+    type?: unknown;
+    text?: unknown;
+    id?: unknown;
+    name?: unknown;
+    args?: unknown;
+  };
+  if (candidate.type === 'text' && typeof candidate.text === 'string') {
+    return { type: 'text', text: candidate.text };
+  }
+  if (
+    candidate.type === 'tool_use'
+    && typeof candidate.id === 'string'
+    && typeof candidate.name === 'string'
+    && pairedToolIds.has(candidate.id)
+  ) {
+    return {
+      type: 'tool_use',
+      id: candidate.id,
+      name: candidate.name,
+      args: candidate.args,
+    };
+  }
+  return undefined;
+}
+
+function projectUserBlock(
+  block: unknown,
+  pairedToolIds: ReadonlySet<string>,
+): UserBlock | undefined {
+  if (block && typeof block === 'object') {
+    const candidate = block as {
+      type?: unknown;
+      toolUseId?: unknown;
+      content?: unknown;
+      isError?: unknown;
+    };
+    if (candidate.type === 'tool_result') {
+      if (typeof candidate.toolUseId !== 'string' || !pairedToolIds.has(candidate.toolUseId)) {
+        return undefined;
+      }
+      const content = typeof candidate.content === 'string'
+        ? candidate.content
+        : Array.isArray(candidate.content)
+          ? candidate.content
+              .map(projectToolResultPart)
+              .filter((part): part is ToolResultContentPart => part !== undefined)
+          : undefined;
+      if (content === undefined) return undefined;
+      return {
+        type: 'tool_result',
+        toolUseId: candidate.toolUseId,
+        content,
+        ...(typeof candidate.isError === 'boolean' ? { isError: candidate.isError } : {}),
+      };
+    }
+  }
+  return projectContentPart(block);
+}
+
+function projectToolResultPart(block: unknown): ToolResultContentPart | undefined {
+  const projected = projectContentPart(block);
+  if (!projected) return undefined;
+  return projected.type === 'text'
+    || projected.type === 'image_data'
+    || projected.type === 'image_url'
+    ? projected
     : undefined;
+}
+
+function collectPairedToolIds(history: readonly SessionMessage[]): ReadonlySet<string> {
+  const toolUseIds = new Set<string>();
+  const toolResultIds = new Set<string>();
+
+  for (const message of history) {
+    if (!Array.isArray(message.blocks)) continue;
+    for (const block of message.blocks) {
+      if (!block || typeof block !== 'object') continue;
+      const candidate = block as { type?: unknown; id?: unknown; toolUseId?: unknown };
+      if (candidate.type === 'tool_use' && typeof candidate.id === 'string') {
+        toolUseIds.add(candidate.id);
+      }
+      if (candidate.type === 'tool_result' && typeof candidate.toolUseId === 'string') {
+        toolResultIds.add(candidate.toolUseId);
+      }
+    }
+  }
+
+  return new Set([...toolUseIds].filter((id) => toolResultIds.has(id)));
 }
 
 function projectContentPart(block: unknown): ContentPart | undefined {

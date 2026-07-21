@@ -16,6 +16,8 @@ export interface FittedCompactionContext {
 
 export function fitCompactionContext(args: {
   summary: string;
+  /** System Prompt 等不可压缩前缀，始终原样保留。 */
+  prefix: ModelMessage[];
   restore: ModelMessage[];
   tail: ModelMessage[];
   mode: TurnMode;
@@ -25,9 +27,12 @@ export function fitCompactionContext(args: {
   const fixedTokens = Math.max(0, args.fixedTokens ?? 0);
   const estimateTotal = (messages: ModelMessage[]): number =>
     fixedTokens + estimateMessagesTokens(messages);
-  if (args.tokenLimit <= fixedTokens || estimateTotal(args.tail) >= args.tokenLimit) return null;
+  if (
+    args.tokenLimit <= fixedTokens
+    || estimateTotal([...args.prefix, ...args.tail]) >= args.tokenLimit
+  ) return null;
 
-  const full = buildCandidate(args.summary, args.restore, args.tail, args.mode);
+  const full = buildCandidate(args.summary, args.prefix, args.restore, args.tail, args.mode);
   const fullTokens = estimateTotal(full);
   if (fullTokens <= args.tokenLimit) {
     return {
@@ -39,7 +44,7 @@ export function fitCompactionContext(args: {
     };
   }
 
-  const withoutRestore = buildCandidate(args.summary, [], args.tail, args.mode);
+  const withoutRestore = buildCandidate(args.summary, args.prefix, [], args.tail, args.mode);
   const withoutRestoreTokens = estimateTotal(withoutRestore);
   if (withoutRestoreTokens <= args.tokenLimit) {
     return {
@@ -58,7 +63,7 @@ export function fitCompactionContext(args: {
   while (low <= high) {
     const middle = Math.floor((low + high) / 2);
     const summary = `${codePoints.slice(0, middle).join('').trimEnd()}${TRUNCATED_MARKER}`;
-    const messages = buildCandidate(summary, [], args.tail, args.mode);
+    const messages = buildCandidate(summary, args.prefix, [], args.tail, args.mode);
     const afterTokens = estimateTotal(messages);
     if (afterTokens <= args.tokenLimit) {
       best = {
@@ -78,11 +83,13 @@ export function fitCompactionContext(args: {
 
 function buildCandidate(
   summary: string,
+  prefix: ModelMessage[],
   restore: ModelMessage[],
   tail: ModelMessage[],
   mode: TurnMode,
 ): ModelMessage[] {
   return [
+    ...prefix,
     {
       role: 'user',
       content: `<context-summary mode="${mode}">\n${summary}\n</context-summary>`,

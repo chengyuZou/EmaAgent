@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   recoverSkillDirectoryTransactions,
   SkillDirectoryTransaction,
-} from '../src/directory-transaction.js';
+} from '../directory-transaction.js';
 
 let rootPath: string;
 

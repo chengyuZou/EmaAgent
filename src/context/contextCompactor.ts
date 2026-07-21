@@ -30,9 +30,15 @@ export class ContextCompactor {
   async compact(args: ContextCompactionArgs): Promise<ContextCompactionResult> {
     const startedAt = Date.now();
     const messages = sanitizeCompactionMessages(args.messages);
-    const estimate = (candidate: typeof messages): number =>
-      estimateLlmInputTokens(candidate, { tools: args.tools }).totalTokens;
-    const beforeTokens = estimate(messages);
+    const systemPrefix = messages.filter((message) => message.role === 'system');
+    const history = messages.filter((message) => message.role !== 'system');
+    const withSystemPrefix = (candidate: typeof history): typeof messages => [
+      ...systemPrefix,
+      ...candidate,
+    ];
+    const estimate = (candidate: typeof history): number =>
+      estimateLlmInputTokens(withSystemPrefix(candidate), { tools: args.tools }).totalTokens;
+    const beforeTokens = estimate(history);
 
     if (!this.settings.enabled) {
       return unchanged('disabled', messages, beforeTokens);
@@ -64,12 +70,13 @@ export class ContextCompactor {
       );
     }
 
-    const micro = microCompact(messages, { keepRecent: this.settings.keepRecentToolResults });
+    // System Prompt 是不可压缩指令，不得进入 Tool 清理或摘要模型。
+    const micro = microCompact(history, { keepRecent: this.settings.keepRecentToolResults });
     let working = micro.messages;
     let estimated = estimate(working);
     if (estimated <= tokenLimit) {
       return {
-        ...unchanged('below_threshold', working, beforeTokens),
+        ...unchanged('below_threshold', withSystemPrefix(working), beforeTokens),
         microCleared: micro.cleared,
         afterTokens: estimated,
         savedTokens: Math.max(0, beforeTokens - estimated),
@@ -79,7 +86,7 @@ export class ContextCompactor {
     const tailSize = Math.max(8, Math.ceil(working.length * 0.25));
     if (working.length <= tailSize) {
       return {
-        ...unchanged('insufficient_history', working, beforeTokens),
+        ...unchanged('insufficient_history', withSystemPrefix(working), beforeTokens),
         microCleared: micro.cleared,
         afterTokens: estimated,
         savedTokens: Math.max(0, beforeTokens - estimated),
@@ -89,7 +96,7 @@ export class ContextCompactor {
     const safeCut = findSafeCutPoint(working, working.length - tailSize);
     if (safeCut === 0) {
       return {
-        ...skipped('no_safe_cut', undefined, working, beforeTokens),
+        ...skipped('no_safe_cut', undefined, withSystemPrefix(working), beforeTokens),
         microCleared: micro.cleared,
         afterTokens: estimated,
         savedTokens: Math.max(0, beforeTokens - estimated),
@@ -100,7 +107,7 @@ export class ContextCompactor {
     const tail = working.slice(safeCut);
     const compactionId = asCompactionId(randomUUID());
     const beforeHook = await this.deps.hookBus?.trigger('beforeCompact', {
-      payload: { compactionId, messageCount: working.length, tokenEstimate: estimated },
+      payload: { compactionId, messageCount: messages.length, tokenEstimate: estimated },
       turnId: args.turnId,
       sessionId: args.sessionId,
       signal: args.signal,
@@ -121,7 +128,7 @@ export class ContextCompactor {
         durationMs: Date.now() - startedAt,
       });
       return {
-        ...skipped('hook_aborted', beforeHook.reason, working, beforeTokens),
+        ...skipped('hook_aborted', beforeHook.reason, withSystemPrefix(working), beforeTokens),
         microCleared: micro.cleared,
         afterTokens: estimated,
         savedTokens: Math.max(0, beforeTokens - estimated),
@@ -148,7 +155,7 @@ export class ContextCompactor {
     });
 
     if (!macro.succeeded || !macro.summary) {
-      return this.fail(args, compactionId, working, micro.cleared, beforeTokens, estimated,
+      return this.fail(args, compactionId, withSystemPrefix(working), micro.cleared, beforeTokens, estimated,
         macroFailureReason(macro.attempts), startedAt);
     }
 
@@ -160,6 +167,7 @@ export class ContextCompactor {
     const toolTokens = estimateLlmInputTokens([], { tools: args.tools }).totalTokens;
     const fitted = fitCompactionContext({
       summary: macro.summary,
+      prefix: systemPrefix,
       restore,
       tail,
       mode: args.mode,
@@ -170,7 +178,7 @@ export class ContextCompactor {
       return this.fail(
         args,
         compactionId,
-        working,
+        withSystemPrefix(working),
         micro.cleared,
         beforeTokens,
         estimated,
