@@ -27,6 +27,7 @@
     "@ema-agent/hook": "workspace:*",
     "@ema-agent/emotion": "workspace:*",
     "@ema-agent/narrative-client": "workspace:*",
+    "@ema-agent/provider": "workspace:*",
     "@ema-agent/storage": "workspace:*"
   },
   "devDependencies": {

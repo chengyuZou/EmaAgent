@@ -100,6 +100,7 @@ export class Orchestrator {
       turnLifecycle:     bindings.agentTurnLifecycle,
       hooks:             bindings.hooks,
       llm:               bindings.llm,
+      modelCapabilities: bindings.modelCapabilities,
       emotion:           bindings.emotion,
       tools:             bindings.tools,
       permission:        bindings.permission,
@@ -188,7 +189,7 @@ export class Orchestrator {
           throw new Error('provider/not_configured');
         }
         const fallback = await prepareImagesForModel({
-          capabilitiesFor: (providerId, model) => this.bindings.llm.capabilitiesFor(providerId, model),
+          capabilitiesFor: (providerId, model) => this.bindings.modelCapabilities.resolve({ providerId, model }),
           visionBinding: () => this.bindings.modelBindings.get('vision'),
           describeImages: async ({ providerId, model, inputs, signal: visionSignal }) => {
             const result = await this.bindings.vision.extract({
@@ -360,11 +361,11 @@ export class Orchestrator {
         const { providerId, model } = this.resolveLlmForTurn(request);
         const contextWindow = providerId && model
           ? this.bindings.providerLlmModels.contextWindowFor(providerId, model)
-            ?? this.bindings.llm.capabilitiesFor(providerId, model).contextWindow
+            ?? this.bindings.modelCapabilities.resolve({ providerId, model }).contextWindow
             ?? 200_000
           : 200_000;
         const modelMaxOutputTokens = providerId && model
-          ? this.bindings.llm.capabilitiesFor(providerId, model).maxOutput
+          ? this.bindings.modelCapabilities.resolve({ providerId, model }).maxOutput
           : undefined;
         return this.conversation.run({
           turn, signal, sessionId,
@@ -412,9 +413,9 @@ export class Orchestrator {
         }
 
         const contextWindow = this.bindings.providerLlmModels.contextWindowFor(providerId, model)
-          ?? this.bindings.llm.capabilitiesFor(providerId, model).contextWindow
+          ?? this.bindings.modelCapabilities.resolve({ providerId, model }).contextWindow
           ?? 200_000;
-        const modelMaxOutputTokens = this.bindings.llm.capabilitiesFor(providerId, model).maxOutput;
+        const modelMaxOutputTokens = this.bindings.modelCapabilities.resolve({ providerId, model }).maxOutput;
 
         return this.agent.run({
           turn, signal,

@@ -6,14 +6,11 @@ import { AnthropicAdapter }       from './adapters/anthropic.js';
 import { GeminiAdapter }          from './adapters/gemini.js';
 import type { LlmAdapter }        from './adapters/base.js';
 import { LlmStreamRuntime } from './streamRuntime.js';
-import { validateContentParts } from './validate.js';
-import type { UnsupportedPart } from './validate.js';
 import type {
   ProviderConfig,
   LlmRequest,
   LlmStreamChunk,
   LlmCompletion,
-  LlmContentPart,
   ProbeResult,
   StopReason,
   AssistantBlock,
@@ -30,6 +27,9 @@ import {
 import { createCompatibilityRecovery } from './compatibilityRecovery.js';
 import { LlmRequestPreparer } from './llmRequestPreparer.js';
 import { ProviderRuntimeRegistry } from './providerRuntimeRegistry.js';
+import { LlmStreamProtocolError } from './errors.js';
+
+const PROBE_TIMEOUT_MS = 10_000;
 
 // ── 内部工厂 ──────────────────────────────────────────────────────────
 
@@ -255,21 +255,41 @@ export class LanguageModelRuntime implements LanguageModel {
    * @param providerId  待 probe 的 provider_configs.id。
    * @param model       该 provider 上已知存在的模型。
    */
-  async probe(providerId: string, model: string): Promise<ProbeResult> {
+  async probe(providerId: string, model: string, signal?: AbortSignal): Promise<ProbeResult> {
     const entry = this.providerRegistry.get(providerId);
     if (!entry) return { ok: false, error: `provider/not_configured: no config registered for "${providerId}"` };
 
     const start = Date.now();
+    const timeoutSignal = AbortSignal.timeout(PROBE_TIMEOUT_MS);
+    const probeSignal = signal
+      ? AbortSignal.any([signal, timeoutSignal])
+      : timeoutSignal;
     try {
+      if (probeSignal.aborted) throw probeSignal.reason;
+      let completed = false;
       for await (const chunk of entry.adapter.stream(
-        { providerId, model, messages: [{ role: 'user', content: 'hi' }], maxTokens: 8 },
+        {
+          providerId,
+          model,
+          messages: [{ role: 'user', content: 'hi' }],
+          maxTokens: 8,
+          signal: probeSignal,
+        },
         model,
       )) {
-        if (chunk.type === 'done') break;
+        if (chunk.type === 'done') {
+          completed = true;
+          break;
+        }
       }
+      if (!completed) throw new LlmStreamProtocolError(providerId);
       return { ok: true, latencyMs: Date.now() - start };
-    } catch (e) {
-      return { ok: false, latencyMs: Date.now() - start, error: (e as Error).message };
+    } catch (error) {
+      return {
+        ok: false,
+        latencyMs: Date.now() - start,
+        error: safeProbeError(error, signal, timeoutSignal),
+      };
     }
   }
 
@@ -278,7 +298,7 @@ export class LanguageModelRuntime implements LanguageModel {
   }
 
   /** 按 Provider + Model 精确返回能力；同名模型不会跨 Provider 串数据。 */
-  capabilitiesFor(providerId: string, model: string): ModelCapabilitySnapshot {
+  private capabilitiesFor(providerId: string, model: string): ModelCapabilitySnapshot {
     const config = this.providerRegistry.get(providerId)?.config;
     if (!config || !this.modelCapabilities) return unknownModelCapabilities();
     return this.modelCapabilities.resolve({
@@ -318,16 +338,6 @@ export class LanguageModelRuntime implements LanguageModel {
     }
   }
 
-  /**
-   * 检查哪些 content part 与给定 provider 不兼容。
-   * 内部查 provider 的 protocol - 调用方无需知道 provider 用哪种线路格式。
-   * 全部兼容时返回空数组。
-   */
-  warnUnsupportedParts(providerId: string, parts: LlmContentPart[]): UnsupportedPart[] {
-    const protocol = this.providerRegistry.get(providerId)?.config.protocol;
-    if (!protocol) throw notConfigured(providerId);
-    return validateContentParts(parts, protocol);
-  }
 }
 
 function usageErrorCode(error: unknown): string {
@@ -337,4 +347,31 @@ function usageErrorCode(error: unknown): string {
     if (error.name === 'AbortError') return 'llm/aborted';
   }
   return 'llm/provider_failed';
+}
+
+function safeProbeError(
+  error: unknown,
+  requestSignal: AbortSignal | undefined,
+  timeoutSignal: AbortSignal,
+): string {
+  if (requestSignal?.aborted) return 'provider/probe_cancelled';
+  if (timeoutSignal.aborted) return 'provider/probe_timeout';
+  if (error instanceof LlmStreamProtocolError) return error.code;
+
+  const shape = error && typeof error === 'object'
+    ? error as { status?: unknown; statusCode?: unknown; code?: unknown }
+    : undefined;
+  const status = typeof shape?.status === 'number'
+    ? shape.status
+    : typeof shape?.statusCode === 'number'
+      ? shape.statusCode
+      : undefined;
+  if (status === 401 || status === 403) return 'provider/auth_failed';
+  if (status === 404) return 'provider/model_not_found';
+  if (status === 429) return 'provider/rate_limited';
+  if (status !== undefined && status >= 500) return 'provider/unavailable';
+  if (shape?.code === 'ECONNREFUSED' || shape?.code === 'ENOTFOUND') {
+    return 'provider/unavailable';
+  }
+  return 'provider/probe_failed';
 }

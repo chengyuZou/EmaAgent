@@ -159,7 +159,7 @@ async function* runTurn(
     // ── Build initial message history ─────────────────────────────────────────
     activePhase = 'provider';
     const history = session.loadHistory(sessionId);
-    const capabilities = llm.capabilitiesFor(providerId, model);
+    const capabilities = deps.modelCapabilities.resolve({ providerId, model });
     if (Array.isArray(userInput)) {
       const issues = validateCurrentContent(userInput, capabilities);
       if (issues.length > 0) {

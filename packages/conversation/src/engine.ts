@@ -131,7 +131,7 @@ async function* runTurn(
         ? input.contentParts
         : input.userInput;
 
-    const capabilities = llm.capabilitiesFor(providerId, resolvedModel);
+    const capabilities = deps.modelCapabilities.resolve({ providerId, model: resolvedModel });
     if (Array.isArray(userBlocks)) {
       const issues = validateCurrentContent(userBlocks, capabilities);
       if (issues.length > 0) {
@@ -179,20 +179,6 @@ async function* runTurn(
     if (input.compactMessages) {
       activePhase = 'unknown';
       messages = await input.compactMessages([...messages]);
-    }
-
-    // 检查当前 provider 处理不了的附件并警告。
-    // 语言模型运行时内部查协议，Engine 不需要知道 Provider 线路。
-    const partsToCheck = Array.isArray(userBlocks) ? userBlocks : [];
-    if (partsToCheck.length > 0) {
-      const issues = llm.warnUnsupportedParts(providerId, partsToCheck);
-      if (issues.length > 0) {
-        yield {
-          type: 'system_warning',
-          level: 'warn',
-          message: `${issues.length} attachment(s) not supported by the current model: ${issues.map(i => i.reason).join('; ')}`,
-        };
-      }
     }
 
     // ── beforeLlm hook（并发排空）──────────────────────────────────────────────

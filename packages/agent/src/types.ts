@@ -24,6 +24,7 @@ import type { EmotionEngine } from '@ema-agent/emotion';
 import type { ICommandRunner, IArtifactStore, IMcpClientBridge, ISkillRunner, ToolRegistry } from '@ema-agent/tools';
 import type { PermissionEngine, AskPermissionFn } from '@ema-agent/permission';
 import type { AgentFileStateStore, AgentToolResultStore } from '@ema-agent/agent-context';
+import type { ModelCapabilityResolver } from '@ema-agent/provider';
 
 /** Minimal interface for the AskUser registry — avoids importing from core. */
 export interface AskUserRegistryLike {
@@ -55,6 +56,7 @@ export interface AgentDeps {
   turnLifecycle: IAgentTurnLifecycle;
   hooks:      HookBus;
   llm:        LanguageModel;
+  modelCapabilities: ModelCapabilityResolver;
   emotion:    EmotionEngine;
   tools:      ToolRegistry;
   permission: PermissionEngine;

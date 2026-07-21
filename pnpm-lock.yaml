@@ -385,6 +385,9 @@ importers:
       '@ema-agent/permission':
         specifier: workspace:*
         version: link:../permission
+      '@ema-agent/provider':
+        specifier: workspace:*
+        version: link:../../src/providers
       '@ema-agent/sandbox':
         specifier: workspace:*
         version: link:../sandbox
@@ -582,6 +585,9 @@ importers:
       '@ema-agent/narrative-client':
         specifier: workspace:*
         version: link:../narrative-client
+      '@ema-agent/provider':
+        specifier: workspace:*
+        version: link:../../src/providers
       '@ema-agent/session':
         specifier: workspace:*
         version: link:../session

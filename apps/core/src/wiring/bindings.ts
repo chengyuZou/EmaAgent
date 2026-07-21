@@ -36,7 +36,13 @@ import {
   sqliteFileSet,
 } from '../storage-locations/index.js';
 import { LanguageModelRuntime } from '@ema-agent/llm';
-import { createModelCapabilityResolver, ModelsDevCatalog } from '@ema-agent/provider';
+import {
+  createModelCapabilityResolver,
+  modelsDevIdFor,
+  providerCatalog,
+  ModelsDevCatalog,
+  type ModelCapabilityResolver,
+} from '@ema-agent/provider';
 import { EbdRouter }     from '@ema-agent/ebd-client';
 import { NarrativeClient } from '@ema-agent/narrative-client';
 import { CharacterCardStore, BUILTIN_CARDS, EMA_CARD_INPUT, EMA_CARD_ID } from '@ema-agent/character-card';
@@ -131,6 +137,8 @@ export interface AppBindings {
   ebd:       EbdRouter;
   /** models.dev LLM/Vision catalog — context window + capabilities by modelsDevId. */
   modelCatalog: ModelsDevCatalog;
+  /** 按已配置 Provider 身份解析模型能力，不经过 LLM 执行接口。 */
+  modelCapabilities: ModelCapabilityResolver;
   narrative: NarrativeClient;
 
   // Per-card runtime
@@ -319,10 +327,24 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
   } catch {
     console.warn('[catalog] no bundled snapshot found, will rely on network refresh');
   }
-  const modelCapabilities = createModelCapabilityResolver(modelCatalog, {
+  const catalogModelCapabilities = createModelCapabilityResolver(modelCatalog, {
     supportsManualImageInput: (providerId, model) =>
       providerVisionModels.hasProviderModel(providerId, model),
   });
+  const modelCapabilities: ModelCapabilityResolver = {
+    resolve(query) {
+      const providerRow = providers.get(query.providerId);
+      const definition = providerRow
+        ? providerCatalog.get(providerRow.definition_id)
+        : undefined;
+      const modelsDevId = query.modelsDevId
+        ?? (definition ? modelsDevIdFor(definition, 'llm') : undefined);
+      return catalogModelCapabilities.resolve({
+        ...query,
+        ...(modelsDevId ? { modelsDevId } : {}),
+      });
+    },
+  };
   const llm = new LanguageModelRuntime(loadLlmConfigs(profileDb, credentials), undefined, {
     modelCapabilities,
     usageRecorder: usageRecords,
@@ -827,7 +849,7 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
   return {
     profileDb, dataDb, activeDataDir, credentials, fileAccess, sandboxStatus,
     hooks, session, sessionBackup,
-    llm, ebd, narrative, modelCatalog,
+    llm, ebd, narrative, modelCatalog, modelCapabilities,
     card, emotion,
     tts, audioArchive, stt, vision, providerRuntime,
     permission, permissionPrompts, askUserRegistry, tools, buildAskForTurn, getCommandRunner,

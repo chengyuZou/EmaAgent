@@ -11,7 +11,7 @@ import type { SessionStore, Turn } from '@ema-agent/session';
 import type { HookBus } from '@ema-agent/hook';
 import type { EmotionEngine } from '@ema-agent/emotion';
 import type { NarrativeClient } from '@ema-agent/narrative-client';
-import type { ModelBindingsRepo } from '@ema-agent/storage';
+import type { ModelCapabilityResolver } from '@ema-agent/provider';
 
 // ── 依赖表面 ───────────────────────────────────────────────────────────────────
 
@@ -23,6 +23,7 @@ export interface ConversationDeps {
   session:       SessionStore;
   hooks:         HookBus;
   llm:           LanguageModel;
+  modelCapabilities: ModelCapabilityResolver;
   emotion:       EmotionEngine;
   narrative:     NarrativeClient;
 }

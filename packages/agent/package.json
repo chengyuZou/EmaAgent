@@ -26,6 +26,7 @@
     "@ema-agent/hook": "workspace:*",
     "@ema-agent/llm": "workspace:*",
     "@ema-agent/permission": "workspace:*",
+    "@ema-agent/provider": "workspace:*",
     "@ema-agent/session": "workspace:*",
     "@ema-agent/emotion": "workspace:*",
     "@ema-agent/tools": "workspace:*",

@@ -5,7 +5,7 @@ import { LanguageModelRuntime } from '../languageModelRuntime.js';
 import { ProviderRuntimeRegistry } from '../providerRuntimeRegistry.js';
 import { LlmModelCapabilityError } from '../errors.js';
 import type { LlmAdapter } from '../adapters/base.js';
-import type { LlmContentPart, LlmRequest, LlmStreamChunk, ProviderConfig } from '../types.js';
+import type { LlmRequest, LlmStreamChunk, ProviderConfig } from '../types.js';
 
 // ── Mock adapter ──────────────────────────────────────────────────────────────
 
@@ -225,7 +225,7 @@ describe('LanguageModelRuntime — hot-reload', () => {
 });
 
 describe('LanguageModelRuntime — model capability + compatibility recovery', () => {
-  it('按 modelsDevId + model 精确解析同名模型能力', () => {
+  it('按 modelsDevId + model 精确门禁同名模型的输入能力', async () => {
     const catalog = new ModelsDevCatalog();
     catalog.loadFromJson({
       providerA: {
@@ -239,13 +239,23 @@ describe('LanguageModelRuntime — model capability + compatibility recovery', (
         },
       },
     });
+    const adapterA = new MockAdapter([{ type: 'done', stopReason: 'end_turn' }]);
+    const adapterB = new MockAdapter([{ type: 'done', stopReason: 'end_turn' }]);
     const router = new LanguageModelRuntime([
       { ...DS_CONFIG, id: 'a', modelsDevId: 'providerA' },
       { ...DS_CONFIG, id: 'b', modelsDevId: 'providerB' },
-    ], undefined, { modelCapabilities: createModelCapabilityResolver(catalog) });
+    ], new Map([['a', adapterA], ['b', adapterB]]), {
+      modelCapabilities: createModelCapabilityResolver(catalog),
+    });
+    const messages: LlmRequest['messages'] = [{
+      role: 'user',
+      content: [{ type: 'image_data', data: 'base64', mimeType: 'image/png' }],
+    }];
 
-    expect(router.capabilitiesFor('a', 'shared').input.image).toBe('supported');
-    expect(router.capabilitiesFor('b', 'shared').input.image).toBe('unsupported');
+    await expect(collect(router.stream({ providerId: 'a', model: 'shared', messages })))
+      .resolves.toEqual([{ type: 'done', stopReason: 'end_turn' }]);
+    expect(() => router.stream({ providerId: 'b', model: 'shared', messages }))
+      .toThrow(LlmModelCapabilityError);
   });
 
   it('首 chunk 前明确拒绝可选参数时省略参数重试，并发出结构化降级', async () => {
@@ -367,30 +377,46 @@ describe('LanguageModelRuntime — getProtocol', () => {
   });
 });
 
-// ── Content-part validation ──────────────────────────────────────────────────
+describe('LanguageModelRuntime — probe', () => {
+  it('只有显式 done 才把探测记为成功', async () => {
+    const completed = new MockAdapter([{ type: 'done', stopReason: 'end_turn' }]);
+    const incomplete = new MockAdapter([{ type: 'text_delta', blockIndex: 0, delta: 'partial' }]);
+    const router = new LanguageModelRuntime(
+      [DS_CONFIG, SF_CONFIG],
+      new Map([['ds-001', completed], ['sf-001', incomplete]]),
+    );
 
-describe('LanguageModelRuntime — warnUnsupportedParts', () => {
-  const HTTPS_IMAGE_URL: LlmContentPart = {
-    type: 'image_url',
-    url:  'https://example.test/image.png',
-  };
-
-  it('validates attachments against the registered provider protocol', () => {
-    const router = new LanguageModelRuntime([DS_CONFIG, GM_CONFIG]);
-
-    expect(router.warnUnsupportedParts('ds-001', [HTTPS_IMAGE_URL])).toEqual([]);
-
-    const issues = router.warnUnsupportedParts('gm-001', [HTTPS_IMAGE_URL]);
-    expect(issues).toHaveLength(1);
-    expect(issues[0]?.index).toBe(0);
-    expect(issues[0]?.reason).toContain('Gemini');
+    await expect(router.probe('ds-001', 'model')).resolves.toMatchObject({ ok: true });
+    await expect(router.probe('sf-001', 'model')).resolves.toMatchObject({
+      ok: false,
+      error: 'provider/incomplete_stream',
+    });
   });
 
-  it('throws provider/not_configured instead of falling back to OpenAI rules', () => {
-    const router = new LanguageModelRuntime([DS_CONFIG]);
+  it('不把 Provider 原始错误和凭据返回给设置页', async () => {
+    const adapter: LlmAdapter = {
+      async *stream() {
+        throw new Error('request failed with sk-secret-value');
+      },
+    };
+    const router = new LanguageModelRuntime([DS_CONFIG], new Map([['ds-001', adapter]]));
 
-    expect(() => router.warnUnsupportedParts('ghost', [HTTPS_IMAGE_URL]))
-      .toThrow('provider/not_configured');
+    const result = await router.probe('ds-001', 'model');
+    expect(result).toMatchObject({ ok: false, error: 'provider/probe_failed' });
+    expect(result.error).not.toContain('sk-secret-value');
+  });
+
+  it('尊重调用方已经取消的探测请求', async () => {
+    const adapter = new MockAdapter([{ type: 'done', stopReason: 'end_turn' }]);
+    const router = new LanguageModelRuntime([DS_CONFIG], new Map([['ds-001', adapter]]));
+    const controller = new AbortController();
+    controller.abort();
+
+    await expect(router.probe('ds-001', 'model', controller.signal)).resolves.toMatchObject({
+      ok: false,
+      error: 'provider/probe_cancelled',
+    });
+    expect(adapter.calls).toHaveLength(0);
   });
 });
 

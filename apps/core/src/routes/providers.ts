@@ -147,7 +147,10 @@ export function providersRoute(bindings: AppBindings): Hono {
       contextWindow:   r.context_window,
       contextSource:   r.context_source,
       definitionId:    r.definition_id,
-      reasoning:       bindings.llm.capabilitiesFor(r.provider_config_id, r.model).reasoning === 'supported',
+      reasoning:       bindings.modelCapabilities.resolve({
+        providerId: r.provider_config_id,
+        model: r.model,
+      }).reasoning === 'supported',
     }));
     return c.json(result);
   });
@@ -350,7 +353,7 @@ export function providersRoute(bindings: AppBindings): Hono {
       : [];
     const model = parsed.data.model ?? enabledLlm[0]?.model ?? catalogLlmIds[0];
     if (!model) return c.json({ ok: false, model: '', latencyMs: null, error: '没有可探测的模型，请先在下方「模型」启用一个' });
-    const result = await bindings.llm.probe(id, model);
+    const result = await bindings.llm.probe(id, model, c.req.raw.signal);
     recordProbe(id, result);
     return c.json({ ...result, model });
   });

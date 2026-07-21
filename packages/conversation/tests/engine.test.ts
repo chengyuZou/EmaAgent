@@ -10,8 +10,8 @@ import type { LlmAdapter, LlmRequest } from '@ema-agent/llm';
 const sessionId = 'session-hook-sse' as SessionId;
 const turnId = 'turn-hook-sse' as TurnId;
 
-const compatibilityMethods = {
-  capabilitiesFor: () => ({
+const modelCapabilities = {
+  resolve: () => ({
     input: {
       text: 'supported' as const,
       image: 'supported' as const,
@@ -81,7 +81,6 @@ describe('ConversationEngine Hook 诊断事件', () => {
       abortTurn: () => undefined,
     };
     const llm = {
-      ...compatibilityMethods,
       warnUnsupportedParts: () => [],
       stream: async function* () {
         yield { type: 'text_delta', blockIndex: 0, delta: 'ok' };
@@ -104,6 +103,7 @@ describe('ConversationEngine Hook 诊断事件', () => {
       session: session as never,
       hooks,
       llm: llm as never,
+      modelCapabilities,
       emotion: emotion as never,
       narrative: {} as never,
     };
@@ -190,7 +190,6 @@ describe('ConversationEngine Hook 诊断事件', () => {
       abortTurn: () => undefined,
     };
     const llm = {
-      ...compatibilityMethods,
       warnUnsupportedParts: () => [],
       stream: async function* () {
         throw new Error('provider unavailable');
@@ -200,6 +199,7 @@ describe('ConversationEngine Hook 诊断事件', () => {
       session: session as never,
       hooks,
       llm: llm as never,
+      modelCapabilities,
       emotion: {
         beginTurn: () => undefined,
         processChunk: (delta: string) => ({ cleaned: delta, events: [] }),
@@ -271,7 +271,6 @@ describe('ConversationEngine Hook 诊断事件', () => {
       abortTurn: () => { order.push('abortTurn'); },
     };
     const llm = {
-      ...compatibilityMethods,
       warnUnsupportedParts: () => [],
       stream: async function* () {
         controller.abort();
@@ -282,6 +281,7 @@ describe('ConversationEngine Hook 诊断事件', () => {
       session: session as never,
       hooks,
       llm: llm as never,
+      modelCapabilities,
       emotion: {
         beginTurn: () => undefined,
         processChunk: (delta: string) => ({ cleaned: delta, events: [] }),
@@ -335,6 +335,20 @@ describe('ConversationEngine Hook 诊断事件', () => {
 describe('ConversationEngine 多模态历史兼容视图', () => {
   it('切换纯文本模型后只降级请求副本，原始历史保持不变', async () => {
     const requests: LlmRequest[] = [];
+    const textOnlyCapabilities = {
+      resolve: () => ({
+        input: {
+          text: 'supported' as const,
+          image: 'unsupported' as const,
+          audio: 'unsupported' as const,
+          file: 'unsupported' as const,
+        },
+        tools: 'supported' as const,
+        reasoning: 'unknown' as const,
+        temperature: 'supported' as const,
+        source: 'catalog' as const,
+      }),
+    };
     const adapter: LlmAdapter = {
       async *stream(request) {
         requests.push(request);
@@ -350,20 +364,7 @@ describe('ConversationEngine 多模态历史兼容视图', () => {
         modelsDevId: 'testProvider',
       },
     ], new Map([['provider-1', adapter]]), {
-      modelCapabilities: {
-        resolve: () => ({
-          input: {
-            text: 'supported',
-            image: 'unsupported',
-            audio: 'unsupported',
-            file: 'unsupported',
-          },
-          tools: 'supported',
-          reasoning: 'unknown',
-          temperature: 'supported',
-          source: 'catalog',
-        }),
-      },
+      modelCapabilities: textOnlyCapabilities,
     });
     const storedBlocks = [
       { type: 'text' as const, text: '上一轮图片' },
@@ -382,6 +383,7 @@ describe('ConversationEngine 多模态历史兼容视图', () => {
       session: session as never,
       hooks: new HookBus(),
       llm,
+      modelCapabilities: textOnlyCapabilities,
       emotion: {
         beginTurn: () => undefined,
         processChunk: (delta: string) => ({ cleaned: delta, events: [] }),

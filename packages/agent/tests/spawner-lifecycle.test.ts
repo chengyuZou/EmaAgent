@@ -26,6 +26,15 @@ describe('SubagentSpawner 生命周期', () => {
       },
       hooks: new HookBus(),
       llm: llm as never,
+      modelCapabilities: {
+        resolve: () => ({
+          input: { text: 'supported', image: 'unknown', audio: 'unknown', file: 'unknown' },
+          tools: 'unknown',
+          reasoning: 'unknown',
+          temperature: 'unknown',
+          source: 'unknown',
+        }),
+      },
       emotion: {} as never,
       tools: { list: () => [] } as never,
       permission: {} as never,

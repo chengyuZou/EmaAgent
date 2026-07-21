@@ -32,6 +32,7 @@ export function registerAllHooks(bindings: AppBindings): () => void {
     session:   bindings.session,
     hooks:     bindings.hooks,
     llm:       bindings.llm,
+    modelCapabilities: bindings.modelCapabilities,
     emotion:   bindings.emotion,
     narrative: bindings.narrative,
   }));

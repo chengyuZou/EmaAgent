@@ -8,8 +8,8 @@ import { LlmToolArgumentsParseError } from '@ema-agent/llm';
 import { AgentEngine } from '../src/engine.js';
 import type { AgentDeps } from '../src/types.js';
 
-const compatibilityMethods = {
-  capabilitiesFor: () => ({
+const modelCapabilities = {
+  resolve: () => ({
     input: {
       text: 'supported' as const,
       image: 'supported' as const,
@@ -81,7 +81,6 @@ describe('AgentEngine 生命周期', () => {
       abortTurn: () => undefined,
     };
     const llm = {
-      ...compatibilityMethods,
       stream: async function* () {
         yield { type: 'thinking_delta', blockIndex: 0, delta: 'reason' };
         yield { type: 'text_delta', blockIndex: 1, delta: 'answer' };
@@ -100,6 +99,7 @@ describe('AgentEngine 生命周期', () => {
       turnLifecycle: turnLifecycle(),
       hooks,
       llm: llm as never,
+      modelCapabilities,
       emotion: {
         beginTurn: () => undefined,
         processChunk: (delta: string) => ({ cleaned: delta, events: [] }),
@@ -201,7 +201,6 @@ describe('AgentEngine 生命周期', () => {
       abortTurn: () => undefined,
     };
     const llm = {
-      ...compatibilityMethods,
       stream: async function* () {
         throw new Error('provider unavailable');
       },
@@ -211,6 +210,7 @@ describe('AgentEngine 生命周期', () => {
       turnLifecycle: turnLifecycle({ fail: () => { order.push('failTurn'); } }),
       hooks,
       llm: llm as never,
+      modelCapabilities,
       emotion: {
         beginTurn: () => undefined,
         processChunk: (delta: string) => ({ cleaned: delta, events: [] }),
@@ -297,7 +297,6 @@ describe('AgentEngine 生命周期', () => {
       abortTurn: () => { order.push('abortTurn'); },
     };
     const llm = {
-      ...compatibilityMethods,
       stream: async function* () {
         controller.abort();
         throw controller.signal.reason;
@@ -308,6 +307,7 @@ describe('AgentEngine 生命周期', () => {
       turnLifecycle: turnLifecycle({ abort: () => { order.push('abortTurn'); } }),
       hooks,
       llm: llm as never,
+      modelCapabilities,
       emotion: {
         beginTurn: () => undefined,
         processChunk: (delta: string) => ({ cleaned: delta, events: [] }),
@@ -383,7 +383,6 @@ describe('AgentEngine 生命周期', () => {
       abortTurn: () => undefined,
     };
     const llm = {
-      ...compatibilityMethods,
       stream: async function* () {
         throw new LlmToolArgumentsParseError(
           'provider-1',
@@ -398,6 +397,7 @@ describe('AgentEngine 生命周期', () => {
       turnLifecycle: turnLifecycle({ fail: ({ code }) => { failedCode = code; } }),
       hooks,
       llm: llm as never,
+      modelCapabilities,
       emotion: {
         beginTurn: () => undefined,
         processChunk: (delta: string) => ({ cleaned: delta, events: [] }),

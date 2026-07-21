@@ -130,6 +130,15 @@ beforeAll(() => {
     },
     hooks,
     llm,
+    modelCapabilities: {
+      resolve: () => ({
+        input: { text: 'supported', image: 'unknown', audio: 'unknown', file: 'unknown' },
+        tools: 'unknown',
+        reasoning: 'unknown',
+        temperature: 'unknown',
+        source: 'unknown',
+      }),
+    },
     emotion,
     tools,
     permission,
