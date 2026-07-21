@@ -4,6 +4,8 @@
 > 日期：2026-07-21  
 > 范围：后端统一引擎、业务契约拆分、Prompt 插槽、Context/Compaction、Narrative Tool、前端 Chat/Work，以及剩余发布前问题  
 > Artifact：继续由 V1 Feature Gate 禁用，不进入本 RFC
+>
+> Claude Code 全量文档逐章 Diff、Ema 目标边界与迁移顺序见 `EmaClaudeArchitectureReview.md`。本 RFC 负责实施范围，评审文档负责参考依据；两者冲突时以本 RFC 后续明确决策和实际源码为准。
 
 ## 1. 为什么现在要重构
 
@@ -236,18 +238,18 @@ Profile 与运行环境
 ├─ FileStateStore      → tools/files 或 session-files
 ├─ ToolResultStore     → tools/results
 ├─ ToolResultCleaner   → tools/results 生命周期
-└─ AgentContextSnapshot→ 新 ContextManager 的明确输入
+└─ AgentContextSnapshot→ 新 ContextAssembler 的明确输入
 ```
 
 新的 `context` 只表达“即将送进模型的上下文窗口”：
 
 ```text
 context/
-├─ context-manager.ts        历史版本、替换、回滚
-├─ context-assembler.ts      Prompt Slot + messages + tool results
+├─ contextAssembler.ts       Prompt Slot + messages + tool results 的唯一组装入口
+├─ contextSnapshot.ts        本次组装输入、版本身份与可回放快照
 ├─ normalization.ts          Tool call/result 配对、多模态兼容
-├─ token-budget.ts           预算与可信 usage
-├─ tool-result-policy.ts     截断、外置和摘要
+├─ tokenBudget.ts            预算与可信 usage
+├─ toolResultPolicy.ts       截断、外置和摘要
 └─ compaction/
    ├─ service.ts
    ├─ strategy.ts
@@ -275,7 +277,7 @@ Context/Compaction 负责：
 - Compaction 后恢复稳定前缀和最近 Turn。
 
 ```ts
-export interface ContextFacade {
+export interface ContextAssembler {
   build(request: ContextBuildRequest): Promise<ModelContext>;
   compact(request: ContextCompactionRequest): Promise<ContextCompactionResult>;
 }
@@ -286,9 +288,9 @@ export interface MemoryFacade {
 }
 ```
 
-`ContextFacade` 可以调用 `MemoryFacade.recall()`，但不得 import Memory 内部 Repo、Runner 或 Prompt。
+`ContextAssembler` 可以调用 Memory 的公开 Recall 入口，但不得 import Memory 内部 Repo、Runner 或 Prompt。这里不为了形式再增加 `ContextFacade`：Assembler 已经是清楚的公共入口。
 
-Codex 的 `ContextManager + compact`、AstrBot 的 `agent/context/manager + compressor` 都支持这一边界。
+Codex 的 Context 管理与 compact、AstrBot 的 `agent/context/manager + compressor` 都支持“窗口组装与长期 Memory 分离”这一边界；Ema 按自身职责命名为 `ContextAssembler`，不照搬 Manager 后缀。
 
 ## 6. AgentTask 的去留与命名
 
@@ -299,6 +301,7 @@ Codex 的 `ContextManager + compact`、AstrBot 的 `agent/context/manager + comp
 ```text
 Turn       用户发起的一轮交互，唯一根生命周期
 ToolCall   一次工具执行
+Task       用户/模型可见的结构化工作清单项
 AgentRun   Work 模式创建的子 Agent 运行
 DomainJob  KB/Vision/Embedding 等各领域后台任务
 ```
@@ -311,6 +314,7 @@ DomainJob  KB/Vision/Embedding 等各领域后台任务
 - AskUser 等待状态归 Turn + Prompt Registry，不依赖根 AgentTask CAS；
 - Tool 副作用恢复继续由 `tool_executions` journal 承担；
 - KB、Vision、Memory 不继承 AgentRun，也不强行塞进一个通用 Task 表。
+- 当前内存 `TodoWrite` 不与未来结构化 TaskStore 长期双轨；Task 是否完整进入 V1 单独决策。
 
 在迁移前必须保留现有 CAS、恢复和 transcript 测试，避免“删了包但把断电恢复也删了”。
 
@@ -688,10 +692,10 @@ contracts 拆除与 Runtime 重构并行推进，但每批只迁一个明确所�
 
 ### R3：Context/Compaction
 
-1. 新建 ContextManager；
+1. 新建 ContextAssembler；
 2. 搬出 `memory/src/compact`，保持函数与测试行为不变；
 3. MemoryPlanner 不再暴露 `compact()`；
-4. Agent/Conversation 都先接 ContextFacade；
+4. Agent/Conversation 都先接 ContextAssembler；
 5. 工具结果清理从 `agent-context` 搬到 tools/results。
 
 ### R4：Narrative Tool

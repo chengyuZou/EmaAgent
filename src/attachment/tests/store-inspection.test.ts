@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { AttachmentRepo } from '@ema-agent/storage';
-import { AttachmentStore } from '../src/store.js';
+import { AttachmentStore } from '../store.js';
 
 const temporaryDirectories: string[] = [];
 

@@ -42,10 +42,10 @@ importers:
         version: link:../../packages/agent-task
       '@ema-agent/artifact':
         specifier: workspace:*
-        version: link:../../packages/artifact
+        version: link:../../src/artifact
       '@ema-agent/attachment':
         specifier: workspace:*
-        version: link:../../packages/attachment
+        version: link:../../src/attachment
       '@ema-agent/backup':
         specifier: workspace:*
         version: link:../../packages/backup
@@ -458,47 +458,6 @@ importers:
         version: 2.1.9(@types/node@20.19.39)(jsdom@26.1.0(canvas@2.11.2))(msw@2.14.6(@types/node@20.19.39)(typescript@5.9.3))
 
   packages/agent-task:
-    dependencies:
-      '@ema-agent/contracts':
-        specifier: workspace:*
-        version: link:../contracts
-      '@ema-agent/storage':
-        specifier: workspace:*
-        version: link:../../src/storage
-    devDependencies:
-      '@types/node':
-        specifier: ^20.0.0
-        version: 20.19.39
-      rimraf:
-        specifier: ^5.0.0
-        version: 5.0.10
-      typescript:
-        specifier: ^5.9.3
-        version: 5.9.3
-      vitest:
-        specifier: ^2.0.0
-        version: 2.1.9(@types/node@20.19.39)(jsdom@26.1.0(canvas@2.11.2))(msw@2.14.6(@types/node@20.19.39)(typescript@5.9.3))
-
-  packages/artifact:
-    dependencies:
-      '@ema-agent/contracts':
-        specifier: workspace:*
-        version: link:../contracts
-      '@ema-agent/storage':
-        specifier: workspace:*
-        version: link:../../src/storage
-      '@ema-agent/tools':
-        specifier: workspace:*
-        version: link:../tools
-    devDependencies:
-      rimraf:
-        specifier: ^5.0.0
-        version: 5.0.10
-      typescript:
-        specifier: ^5.9.3
-        version: 5.9.3
-
-  packages/attachment:
     dependencies:
       '@ema-agent/contracts':
         specifier: workspace:*
@@ -1168,6 +1127,47 @@ importers:
       unocss:
         specifier: ^66.0.0
         version: 66.7.0(vite@5.4.21(@types/node@20.19.39))
+      vitest:
+        specifier: ^2.0.0
+        version: 2.1.9(@types/node@20.19.39)(jsdom@26.1.0(canvas@2.11.2))(msw@2.14.6(@types/node@20.19.39)(typescript@5.9.3))
+
+  src/artifact:
+    dependencies:
+      '@ema-agent/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
+      '@ema-agent/storage':
+        specifier: workspace:*
+        version: link:../storage
+      '@ema-agent/tools':
+        specifier: workspace:*
+        version: link:../../packages/tools
+    devDependencies:
+      rimraf:
+        specifier: ^5.0.0
+        version: 5.0.10
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
+  src/attachment:
+    dependencies:
+      '@ema-agent/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
+      '@ema-agent/storage':
+        specifier: workspace:*
+        version: link:../storage
+    devDependencies:
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.39
+      rimraf:
+        specifier: ^5.0.0
+        version: 5.0.10
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
       vitest:
         specifier: ^2.0.0
         version: 2.1.9(@types/node@20.19.39)(jsdom@26.1.0(canvas@2.11.2))(msw@2.14.6(@types/node@20.19.39)(typescript@5.9.3))

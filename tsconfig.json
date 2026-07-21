@@ -26,7 +26,7 @@
       "@ema-agent/tools": ["./packages/tools/src/index.ts"],
       "@ema-agent/permission": ["./packages/permission/src/index.ts"],
       "@ema-agent/sandbox": ["./packages/sandbox/src/index.ts"],
-      "@ema-agent/attachment": ["./packages/attachment/src/index.ts"],
+      "@ema-agent/attachment": ["./src/attachment/index.ts"],
       "@ema-agent/memory": ["./packages/memory/src/index.ts"],
       "@ema-agent/prompts": ["./src/prompts/index.ts"],
       "@ema-agent/skill": ["./packages/skill/src/index.ts"]

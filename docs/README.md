@@ -1654,14 +1654,9 @@ export type ArtifactType =
 ### 12.3 包结构
 
 ```
-packages/artifact/
-├── src/
-│   ├── index.ts                # ArtifactStore Façade
-│   ├── store.ts
-│   ├── repository.ts           # SQLite artifacts 表读写
-│   ├── content-store.ts        # 大内容存文件系统 + path 索引
-│   ├── render-spec.ts          # 各 type 的渲染契约（zod schema）
-│   └── types.ts
+src/artifact/
+├── index.ts                # ArtifactStore Facade
+└── store.ts
 ```
 
 ### 12.4 Façade
