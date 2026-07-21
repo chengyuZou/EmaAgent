@@ -1,7 +1,7 @@
 // 调用当前模型生成旧对话摘要，不负责持久化或最终上下文预算判定。
 import type { AssistantBlock, LanguageModel, Message as ModelMessage, UserBlock } from '@ema-agent/llm';
 import type { TurnMode } from '@ema-agent/contracts';
-import { buildCompactionPrompt } from './compaction-prompts.js';
+import { buildCompactionPrompt } from './compactionPrompts.js';
 import { estimateMessagesTokens } from '@ema-agent/token';
 
 // ── Constants ────────────────────────────────────────────────────────────────

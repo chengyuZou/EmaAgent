@@ -15,7 +15,6 @@ import type { MemorySessionStateRepo } from '@ema-agent/storage';
  * Write controls (whether this session feeds back into memory):
  *   extraction    — append to pending_fragments + run extraction LLM
  *   consolidation — drain lazy_updates into node descriptions
- *   compaction    — micro/macro compaction during beforeLlm
  *
  * Empty object means "use all defaults" (everything on).
  */
@@ -25,7 +24,6 @@ export interface MemorySessionOverrides {
   layer2?:        boolean;
   extraction?:    boolean;
   consolidation?: boolean;
-  compaction?:    boolean;
 }
 
 export interface ResolvedSessionOverrides {
@@ -34,7 +32,6 @@ export interface ResolvedSessionOverrides {
   layer2:        boolean;
   extraction:    boolean;
   consolidation: boolean;
-  compaction:    boolean;
 }
 
 export const DEFAULT_OVERRIDES: ResolvedSessionOverrides = {
@@ -43,7 +40,6 @@ export const DEFAULT_OVERRIDES: ResolvedSessionOverrides = {
   layer2:        true,
   extraction:    true,
   consolidation: true,
-  compaction:    true,
 };
 
 // ── Read / write ──────────────────────────────────────────────────────────────
@@ -76,6 +72,5 @@ function resolveOverrides(partial: MemorySessionOverrides): ResolvedSessionOverr
     layer2:        partial.layer2        ?? DEFAULT_OVERRIDES.layer2,
     extraction:    partial.extraction    ?? DEFAULT_OVERRIDES.extraction,
     consolidation: partial.consolidation ?? DEFAULT_OVERRIDES.consolidation,
-    compaction:    partial.compaction    ?? DEFAULT_OVERRIDES.compaction,
   };
 }

@@ -23,7 +23,7 @@ describe('运行时设置路由', () => {
     const body = await response.json() as { defaults: Record<string, unknown> };
 
     expect(response.status).toBe(200);
-    expect(body.defaults).toHaveProperty('memory_compaction_completed');
+    expect(body.defaults).toHaveProperty('context_compaction_completed');
     expect(body.defaults).toHaveProperty('memory_recall_evidence');
     expect(body.defaults).toHaveProperty('memory_task_failed');
     expect(body.defaults).not.toHaveProperty('context_compacted');
@@ -56,7 +56,7 @@ describe('运行时设置路由', () => {
     const response = await app.request('/event-display');
     const body = await response.json() as { overrides: Record<string, unknown> };
 
-    expect(body.overrides).toHaveProperty('memory_compaction_completed');
+    expect(body.overrides).toHaveProperty('context_compaction_completed');
     expect(body.overrides).toHaveProperty('memory_task_failed');
     expect(body.overrides).not.toHaveProperty('context_compacted');
     expect(body.overrides).not.toHaveProperty('background_task_failed');

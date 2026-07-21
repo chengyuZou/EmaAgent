@@ -4,6 +4,6 @@
     "rootDir": ".",
     "outDir": "dist"
   },
-  "include": ["*.ts"],
+  "include": ["*.ts", "compaction/**/*.ts"],
   "exclude": ["tests", "dist", "node_modules", "vitest.config.ts"]
 }

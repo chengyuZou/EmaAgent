@@ -1,4 +1,4 @@
-// 这里执行小型上下文压缩，并保留 Agent 后续继续工作所需的关键信息。
+// 执行零模型调用的微压缩，并保留 Agent 继续工作所需的近期工具结果。
 import type {
   Message as ModelMessage, AssistantBlock, UserBlock,
 } from '@ema-agent/llm';

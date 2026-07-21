@@ -555,7 +555,7 @@ interface TurnExecutionSnapshot {
 - [ ] `TurnMode` 从 `chat/narrative/agent` 演进为 `executionProfile + narrativePolicy`；
 - [ ] Narrative Hook 改为 NarrativeSearchTool + NarrativeRecallFacade；
 - [ ] Prompt Mode block 改为显式 Slot；
-- [ ] Compaction 从 Memory 移入 Context；
+- [x] Compaction 从 Memory 移入 Context；
 - [ ] `agent-context` 拆分并删除；
 - [ ] 根 AgentTask 投影删除，子 Agent 迁移为 AgentRun；
 - [ ] B-065：Card/Session 等用户动作在各业务 Facade 上统一 ActionResult，不新建传统 application 层；
@@ -619,7 +619,7 @@ contracts 拆除与 Runtime 重构并行推进，但每批只迁一个明确所�
 - [x] `ModelsDevCatalog` 与 `ModelCapabilitySnapshot` 迁入 `src/providers/catalog`，LLM 只依赖注入的 `ModelCapabilityResolver`；
 - [x] Prompt 前缀 Hash 与 Tool Manifest 稳定化迁入 `src/context/promptPrefix.ts`，LLM 不再制定 KV Cache 策略；
 - [x] 历史媒体降级与本轮附件门禁迁入 Context，LLM 只保留 Adapter 前覆盖 Hook/Tool 内容的最终能力校验；
-- [ ] 将 `packages/memory/src/compact` 迁入 Context，并让 Agent/Conversation 通过统一 Context 边界执行预算与压缩。
+- [x] 将 `packages/memory/src/compact` 迁入 Context，并让 Agent/Conversation 通过统一 Context 边界执行预算与压缩；采用 ToolResult 落盘 → Micro → Macro → Reactive 的 V1 渐进策略，并加入三次失败熔断。
 
 #### C2：Turn + SSE Event
 

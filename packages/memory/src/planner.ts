@@ -1,9 +1,9 @@
 // 组织通用记忆的检索、写入和上下文压缩，并通过 Memory Facade 暴露给编排层。
 import type { SessionId, TurnId, TurnMode, EmaStreamEvent } from '@ema-agent/contracts';
-import type { LlmToolDef, Message as ModelMessage } from '@ema-agent/llm';
+import type { Message as ModelMessage } from '@ema-agent/llm';
 import { estimateTextTokens } from '@ema-agent/token';
 import type { MemoryDeps } from './deps.js';
-import type { PlanContext, RecallBundle, MemorySettings, CompactResult } from './types.js';
+import type { PlanContext, RecallBundle, MemorySettings } from './types.js';
 import { DEFAULT_MEMORY_SETTINGS } from './types.js';
 import { EmbedService }     from './embed/service.js';
 import { SessionTaskQueue } from './tasks/session-queue.js';
@@ -27,9 +27,9 @@ import {
   type RecoveryReport,
 } from './tasks/recovery.js';
 import { buildContextMessage } from './recall/context-builder.js';
+import { recallSessionNote } from './recall/layer1-notes.js';
 import { IndexManager }  from './vector-index/index-manager.js';
 import { planRecall }    from './recall/recall-planner.js';
-import { runCompaction } from './compact/compactor.js';
 import { handleAfterTurn, handleForceExtract } from './extract/dispatcher.js';
 
 export class MemoryPlanner {
@@ -49,7 +49,6 @@ export class MemoryPlanner {
       ...overrides,
       triggers:    { ...DEFAULT_MEMORY_SETTINGS.triggers,    ...overrides.triggers },
       recall:      { ...DEFAULT_MEMORY_SETTINGS.recall,      ...overrides.recall },
-      compaction:  { ...DEFAULT_MEMORY_SETTINGS.compaction,  ...overrides.compaction },
       maintenance: { ...DEFAULT_MEMORY_SETTINGS.maintenance, ...overrides.maintenance },
     };
     this.embed    = new EmbedService(deps.ebd, this.settings.models?.embed, this.settings.models?.rerank);
@@ -91,6 +90,11 @@ export class MemoryPlanner {
       (sid) => this.getSessionOverrides(sid),
       ctx,
     );
+  }
+
+  /** Context 压缩恢复只读取渲染后的 L1 Note，不接触 Memory 内部 Repo。 */
+  loadSessionNote(sessionId: SessionId): string | null {
+    return recallSessionNote(this.deps, sessionId);
   }
 
   // ── LLM recall view ─────────────────────────────────────────────────────────
@@ -227,23 +231,6 @@ export class MemoryPlanner {
 
   runStartupRecovery(): RecoveryReport { return doStartupRecovery(this.deps, this.embed); }
 
-  // ── Compaction (also called directly from tests / maintenance) ──────────────
-
-  async compact(args: {
-    sessionId:           SessionId;
-    turnId:              TurnId;
-    mode:                TurnMode;
-    messages:            ModelMessage[];
-    tools?:               readonly LlmToolDef[];
-    modelContextWindow:  number;
-    providerId?:         string;
-    model?:              string;
-    recentFiles?:        ReadonlyArray<{ path: string; content: string; mtimeMs: number }>;
-    signal?:             AbortSignal;
-    emit?:               (event: EmaStreamEvent) => void;
-  }): Promise<CompactResult> {
-    return runCompaction(this.deps, this.settings, (sid) => this.getSessionOverrides(sid), args);
-  }
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────

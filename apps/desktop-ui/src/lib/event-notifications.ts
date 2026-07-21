@@ -37,13 +37,13 @@ export function describeEventNotification(event: EmaStreamEvent): EventNotificat
         message: `${event.layer.toUpperCase()} 记忆召回 ${event.report.itemCount} 项`,
         variant: event.report.status === 'failed' ? 'warning' : 'info',
       };
-    case 'memory_compaction_started':
+    case 'context_compaction_started':
       return { message: '正在压缩上下文…', variant: 'info' };
-    case 'memory_compaction_completed':
+    case 'context_compaction_completed':
       return { message: `上下文压缩完成，节省 ${event.savedTokens.toLocaleString()} tokens`, variant: 'success' };
-    case 'memory_compaction_failed':
+    case 'context_compaction_failed':
       return { message: `上下文压缩失败：${event.error}`, variant: 'danger' };
-    case 'memory_compaction_skipped':
+    case 'context_compaction_skipped':
       return { message: `已跳过上下文压缩：${event.message}`, variant: 'warning' };
     case 'memory_extraction_started':
       return { message: `开始提取记忆，队列中还有 ${event.queueDepth} 项`, variant: 'info' };

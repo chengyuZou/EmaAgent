@@ -60,13 +60,6 @@ export type { RunnableMemoryTaskKind } from './tasks/extraction-runner.js';
 export { runStartupRecovery }                 from './tasks/recovery.js';
 export type { RecoveryReport }                from './tasks/recovery.js';
 
-// ── Compaction ───────────────────────────────────────────────────────────────
-export { microCompact }                       from './compact/micro.js';
-export { runMacroCompaction }                 from './compact/macro.js';
-export type { MacroCompactArgs, MacroCompactResult } from './compact/macro.js';
-export { buildPostCompactRestore }            from './compact/restore.js';
-export type { RestoreContext }                from './compact/restore.js';
-
 // ── Hooks ────────────────────────────────────────────────────────────────────
 export { registerMemoryHooks }                from './hooks.js';
 export type { MemoryHooksDeps } from './hooks.js';

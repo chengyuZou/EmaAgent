@@ -81,7 +81,6 @@ function createHarness(taskIds: Array<{ id: string; sessionId: string }>) {
       layer2: true,
       extraction: true,
       consolidation: true,
-      compaction: true,
     }),
     runPipeline,
   });

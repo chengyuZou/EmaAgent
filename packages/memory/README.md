@@ -1,6 +1,6 @@
 # @ema-agent/memory
 
-EmaAgent 通用记忆包。它负责轻量级通用对话记忆：三层召回、会话级提取、上下文压缩、维护与观测事件。Narrative/剧情记忆由 conversation/narrative-client 和 Python LightRAG bridge 负责，不属于本包职责。
+EmaAgent 通用记忆包。它负责轻量级通用对话记忆：三层召回、会话级提取、维护与观测事件。对话上下文压缩属于 `@ema-agent/context`；Narrative/剧情记忆由 conversation/narrative-client 和 Python LightRAG bridge 负责。
 
 ## Architecture
 
@@ -9,8 +9,7 @@ MemoryPlanner
   initialize()
     -> build in-memory vector indexes from storage repos
 
-  applyToBeforeLlm()
-    -> compact()
+  applyRecallToMessages()
     -> plan()
     -> inject one memory context message before the latest user message
 
@@ -90,17 +89,7 @@ The extraction pipeline writes:
 - `session_notes` for Layer 1.
 - `memory_node_lazy_updates` when an existing node should be consolidated later.
 
-`memory_tasks` is intended for session-scoped extraction work. Maintenance and compaction should not be queued there.
-
-## Compaction
-
-Compaction runs in `beforeLlm` before recall context is injected.
-
-- Micro compaction is local and does not emit UI events.
-- Macro compaction runs only when the post-micro estimate still exceeds the context budget.
-- Macro compaction emits `memory_compaction_started`, `memory_compaction_completed`, or `memory_compaction_failed` when an emit function is supplied.
-
-The macro result persists a summary message and rebuilds the outgoing message array as summary, restore context, then recent tail.
+`memory_tasks` is intended for session-scoped extraction work. Maintenance should not be queued there. Layer-1 Session Note 自身的瘦身仍是记忆数据维护，但对话历史压缩不再由 Memory 执行。
 
 ## Maintenance
 
@@ -144,9 +133,6 @@ Turn-scoped events:
 
 Pipeline/system events:
 
-- `memory_compaction_started`
-- `memory_compaction_completed`
-- `memory_compaction_failed`
 - `memory_extraction_started`
 - `memory_extraction_completed`
 - `memory_extraction_failed`
@@ -165,7 +151,7 @@ Important methods:
 
 ```ts
 initialize(): Promise<{ nodes: number; items: number; backend: string | null }>
-applyToBeforeLlm(args): Promise<{ messages: ModelMessage[]; compactionRan: boolean; microCleared: number; recallSummary: unknown; tokenEstimate: number }>
+applyRecallToMessages(args): Promise<{ messages: ModelMessage[]; recallSummary: unknown; tokenEstimate: number }>
 plan(ctx: PlanContext): Promise<RecallBundle>
 afterTurn(ctx): Promise<void>
 forceExtract(sessionId, mode): Promise<void>

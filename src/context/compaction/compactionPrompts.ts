@@ -1,3 +1,4 @@
+// 定义对话压缩与 Session Note 瘦身使用的结构化摘要提示词。
 import type { TurnMode } from '@ema-agent/contracts';
 
 // ── Mode-specific compaction templates ───────────────────────────────────────

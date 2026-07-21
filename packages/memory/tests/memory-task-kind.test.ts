@@ -22,7 +22,7 @@ function baseDeps(memoryTasks: Record<string, unknown>): MemoryTaskRunnerDeps {
     getIndexSpaceId: () => null,
     getSessionOverrides: () => ({
       layer0: true, layer1: true, layer2: true,
-      extraction: true, consolidation: true, compaction: true,
+      extraction: true, consolidation: true,
     }),
   };
 }

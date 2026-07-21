@@ -1,8 +1,8 @@
 import type { SessionId, TurnMode } from '@ema-agent/contracts';
 import { estimateTextTokens } from '@ema-agent/token';
+import { buildNoteCompactionPrompt } from '@ema-agent/context';
 import type { SessionNoteEntry } from './types.js';
 import { safeParseEntries } from './types.js';
-import { buildNoteCompactionPrompt } from '../compact/compaction-prompts.js';
 import type { ExtractionPipelineDeps } from './pipeline.js';
 
 export function appendSessionNote(
@@ -42,10 +42,10 @@ export async function compactSessionNoteIfNeeded(
   const totalTokens = estimateTextTokens(entries.map(e => e.delta).join('\n'));
   if (totalTokens <= deps.settings.recall.layer1MaxTokens) return;
 
-  const expiry_days = deps.settings.recall.layer1EntryExpiryDays;
-  const keep_recent = deps.settings.recall.layer1KeepRecentEntries;
+  const expiryDays = deps.settings.recall.layer1EntryExpiryDays;
+  const keepRecent = deps.settings.recall.layer1KeepRecentEntries;
 
-  const cutoff = Date.now() - expiry_days * 86400_000;
+  const cutoff = Date.now() - expiryDays * 86400_000;
 
   const fresh = entries.filter(e => e.at > cutoff);
 
@@ -59,8 +59,8 @@ export async function compactSessionNoteIfNeeded(
     return;
   }
 
-  const tail    = fresh.slice(-keep_recent);
-  const toMerge = fresh.slice(0, -keep_recent);
+  const tail    = fresh.slice(-keepRecent);
+  const toMerge = fresh.slice(0, -keepRecent);
 
   if (toMerge.length === 0) return;
 

@@ -52,6 +52,9 @@ importers:
       '@ema-agent/character-card':
         specifier: workspace:*
         version: link:../../packages/character-card
+      '@ema-agent/context':
+        specifier: workspace:*
+        version: link:../../src/context
       '@ema-agent/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
@@ -825,6 +828,9 @@ importers:
 
   packages/memory:
     dependencies:
+      '@ema-agent/context':
+        specifier: workspace:*
+        version: link:../../src/context
       '@ema-agent/contracts':
         specifier: workspace:*
         version: link:../contracts
@@ -1354,6 +1360,12 @@ importers:
 
   src/context:
     dependencies:
+      '@ema-agent/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
+      '@ema-agent/hook':
+        specifier: workspace:*
+        version: link:../../packages/hook
       '@ema-agent/llm':
         specifier: workspace:*
         version: link:../llm
@@ -1363,6 +1375,9 @@ importers:
       '@ema-agent/session':
         specifier: workspace:*
         version: link:../../packages/session
+      '@ema-agent/token':
+        specifier: workspace:*
+        version: link:../../packages/token
     devDependencies:
       '@types/node':
         specifier: ^20.0.0

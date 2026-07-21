@@ -181,7 +181,7 @@ export interface AgentRunInput {
   /**
    * Per-iteration compaction callback. Called at the top of every agentLoop
    * iteration before the LLM call so multi-step agent turns don't overflow
-   * the context window mid-turn. Orchestrator wires this to MemoryPlanner.compact().
+   * the context window mid-turn. Orchestrator wires this to ContextCompactor.compact().
    * Omit in tests and sub-agent spawns (ephemeral context).
    */
   compactMessages?: (messages: ModelMessage[], tools: readonly LlmToolDef[]) => Promise<ModelMessage[]>;

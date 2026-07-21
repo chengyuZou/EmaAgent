@@ -1,3 +1,4 @@
+// 寻找不会拆散 tool_use 与 tool_result 配对的安全压缩边界。
 import type { Message as ModelMessage } from '@ema-agent/llm';
 
 /**

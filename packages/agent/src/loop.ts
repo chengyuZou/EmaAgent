@@ -127,7 +127,7 @@ export interface AgentLoopInput {
    * Runs compaction on the accumulated messages and returns the (possibly
    * compacted) replacement array. Mutates messages[] in place so subsequent
    * iterations and the spawner both see the compacted history.
-   * Engine wires this to MemoryPlanner.compact(); spawner omits it (ephemeral).
+   * Engine wires this to ContextCompactor.compact(); spawner omits it (ephemeral).
    */
   compactMessages?: (messages: ModelMessage[], tools: readonly LlmToolDef[]) => Promise<ModelMessage[]>;
   /**

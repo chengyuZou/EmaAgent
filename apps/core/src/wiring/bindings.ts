@@ -80,6 +80,7 @@ import {
 } from '@ema-agent/agent-context';
 import { AgentTaskStore, ToolExecutionJournal } from '@ema-agent/agent-task';
 import { MemoryPlanner } from '@ema-agent/memory';
+import { ContextCompactor } from '@ema-agent/context';
 import {
   KbManager,
 } from '@ema-agent/knowledge-base';
@@ -196,6 +197,8 @@ export interface AppBindings {
 
   // Memory subsystem
   memory: MemoryPlanner;
+  // Context subsystem
+  contextCompactor: ContextCompactor;
 
   // System-wide pub/sub for cross-turn events (memory pipeline, background
   // tasks, card switches, provider health). Backs GET /api/system/events.
@@ -561,7 +564,13 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
     // dim is probed at enable time and stored on provider_embed_models (dim_source='probed').
     getEmbedDim:      (providerId, model) => providerEmbedModels.dimFor(providerId, model) ?? 0,
     emit:             (ev) => systemBus.emit(ev),
-    hookBus:          hooks,
+  });
+
+  const contextCompactor = new ContextCompactor({
+    llm,
+    hookBus: hooks,
+    loadSessionNote: (sessionId) => memory.loadSessionNote(sessionId),
+    persistSummary: (input) => session.appendMessage(input),
   });
 
   // ── Artifacts ───────────────────────────────────────────────────────────────
@@ -824,7 +833,7 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
     permission, permissionPrompts, askUserRegistry, tools, buildAskForTurn, getCommandRunner,
     invalidateSessionRuntime, removeSessionRuntime,
     getContextStores, toolResultCleaner, taskStore, agentTurnLifecycle, toolExecutionJournal, agentTaskMessages,
-    memory,
+    memory, contextCompactor,
     systemBus,
     providers, settings: settingsRepo,
     modelBindings, providerLlmModels, providerEmbedModels,

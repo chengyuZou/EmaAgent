@@ -34,7 +34,6 @@ const overridesSchema = z.object({
   layer2:        z.boolean().optional(),
   extraction:    z.boolean().optional(),
   consolidation: z.boolean().optional(),
-  compaction:    z.boolean().optional(),
 });
 
 const maintenanceSchema = z.object({

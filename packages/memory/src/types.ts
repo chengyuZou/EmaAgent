@@ -4,41 +4,9 @@ import type {
   TurnMode,
   EmaStreamEvent,
 } from '@ema-agent/contracts';
-import type { Message as ModelMessage } from '@ema-agent/llm';
 import type { MemoryNodeType, MemoryItemKind } from '@ema-agent/storage';
 import type { EmbeddingSpace } from '@ema-agent/ebd-client';
 
-
-interface CompactResultBase {
-  messages: ModelMessage[];
-  microCleared: number;
-  beforeTokens: number;
-  afterTokens: number;
-  savedTokens: number;
-}
-
-export type CompactResult =
-  | (CompactResultBase & {
-      status: 'not_needed';
-      macroRan: false;
-      reason: 'disabled' | 'session_disabled' | 'below_threshold' | 'insufficient_history';
-    })
-  | (CompactResultBase & {
-      status: 'skipped';
-      macroRan: false;
-      reason: 'no_safe_cut' | 'hook_aborted';
-      detail?: string;
-    })
-  | (CompactResultBase & {
-      status: 'failed';
-      macroRan: false;
-      reason: 'macro_failed';
-      detail: string;
-    })
-  | (CompactResultBase & {
-      status: 'completed';
-      macroRan: true;
-    });
 
 // ── Plan context (what the planner receives at beforeLlm) ────────────────────
 
@@ -158,10 +126,6 @@ export interface MemorySettings {
     layer1MaxTokens: number;
   };
 
-  compaction: {
-    bufferTokens: number;              // default 10000
-  };
-
   maintenance: {
     idleThresholdMs:       number;   // 空闲多久才触发（默认 3600_000 = 1h）
     maintenanceIntervalMs: number;   // 两次 maintenance 最小间隔（默认 259200_000 = 3天）
@@ -200,10 +164,6 @@ export const DEFAULT_MEMORY_SETTINGS: MemorySettings = {
     layer0AnchorConfidentScore: 0.45,
     layer1MaxTokens:            2000,
   },
-  compaction: {
-    bufferTokens: 10000,
-  },
-
   maintenance: {
     idleThresholdMs:       3600_000,   // 1h
     maintenanceIntervalMs: 259200_000, // 3 days

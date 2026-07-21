@@ -235,8 +235,6 @@ function OverviewTab(): JSX.Element {
                     onChange={(v) => setOverride('extraction', v)} />
                   <OverrideSwitch label="整合"   desc="合并 lazy 更新"            checked={sessionOverrides?.consolidation ?? true}
                     onChange={(v) => setOverride('consolidation', v)} />
-                  <OverrideSwitch label="压缩"   desc="micro/macro compaction"    checked={sessionOverrides?.compaction    ?? true}
-                    onChange={(v) => setOverride('compaction', v)} />
                 </div>
               </div>
             </div>

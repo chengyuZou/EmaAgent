@@ -19,9 +19,12 @@
     "clean": "rimraf dist"
   },
   "dependencies": {
+    "@ema-agent/contracts": "workspace:*",
+    "@ema-agent/hook": "workspace:*",
     "@ema-agent/llm": "workspace:*",
     "@ema-agent/provider": "workspace:*",
-    "@ema-agent/session": "workspace:*"
+    "@ema-agent/session": "workspace:*",
+    "@ema-agent/token": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

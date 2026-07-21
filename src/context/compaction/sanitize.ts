@@ -1,4 +1,4 @@
-// 清理不允许进入下一次 LLM 请求或 Compaction 摘要的 Provider 私有内容。
+// 清理不允许进入下一次 LLM 请求或压缩摘要的 Provider 私有内容。
 
 import type { AssistantBlock, Message as ModelMessage } from '@ema-agent/llm';
 

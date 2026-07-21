@@ -45,10 +45,10 @@ const DEFAULT_EVENT_DISPLAY: Partial<Record<EmaStreamEvent['type'], EventDisplay
   memory_recall_evidence:       { enabled: true,  color: '#ec4899', durationMs: 3000 },
 
   // Memory
-  memory_compaction_started:    { enabled: false, color: '#f59e0b', durationMs: 2000 },
-  memory_compaction_completed:  { enabled: true,  color: '#f59e0b', durationMs: 5000 },
-  memory_compaction_failed:     { enabled: true,  color: '#ef4444', durationMs: 5000 },
-  memory_compaction_skipped:    { enabled: false, color: '#64748b', durationMs: 2000 },
+  context_compaction_started:    { enabled: false, color: '#f59e0b', durationMs: 2000 },
+  context_compaction_completed:  { enabled: true,  color: '#f59e0b', durationMs: 5000 },
+  context_compaction_failed:     { enabled: true,  color: '#ef4444', durationMs: 5000 },
+  context_compaction_skipped:    { enabled: false, color: '#64748b', durationMs: 2000 },
   memory_extraction_started:    { enabled: false, color: '#a855f7', durationMs: 2000 },
   memory_extraction_completed:  { enabled: true,  color: '#a855f7', durationMs: 4000 },
   memory_extraction_failed:     { enabled: true,  color: '#ef4444', durationMs: 5000 },
@@ -109,7 +109,11 @@ const eventDisplayEntrySchema = z.object({
 const eventDisplayBodySchema = z.record(z.string(), eventDisplayEntrySchema);
 
 const LEGACY_EVENT_DISPLAY_KEYS: Record<string, EmaStreamEvent['type']> = {
-  context_compacted: 'memory_compaction_completed',
+  context_compacted: 'context_compaction_completed',
+  memory_compaction_started: 'context_compaction_started',
+  memory_compaction_completed: 'context_compaction_completed',
+  memory_compaction_failed: 'context_compaction_failed',
+  memory_compaction_skipped: 'context_compaction_skipped',
   recall_evidence: 'memory_recall_evidence',
   background_task_started: 'memory_task_started',
   background_task_completed: 'memory_task_completed',

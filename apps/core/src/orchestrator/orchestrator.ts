@@ -363,6 +363,9 @@ export class Orchestrator {
             ?? this.bindings.llm.capabilitiesFor(providerId, model).contextWindow
             ?? 200_000
           : 200_000;
+        const modelMaxOutputTokens = providerId && model
+          ? this.bindings.llm.capabilitiesFor(providerId, model).maxOutput
+          : undefined;
         return this.conversation.run({
           turn, signal, sessionId,
           mode:         request.mode,
@@ -372,12 +375,13 @@ export class Orchestrator {
           model,
           thinking:     request.thinking,
           requestDegradations,
-          compactMessages: providerId && model ? (msgs) => this.bindings.memory.compact({
+          compactMessages: providerId && model ? (msgs) => this.bindings.contextCompactor.compact({
             sessionId:          turn.sessionId,
             turnId:             turn.id,
             mode:               request.mode,
             messages:           msgs,
             modelContextWindow: contextWindow,
+            modelMaxOutputTokens,
             providerId,
             model,
             emit:               this.bindings.systemBus
@@ -410,6 +414,7 @@ export class Orchestrator {
         const contextWindow = this.bindings.providerLlmModels.contextWindowFor(providerId, model)
           ?? this.bindings.llm.capabilitiesFor(providerId, model).contextWindow
           ?? 200_000;
+        const modelMaxOutputTokens = this.bindings.llm.capabilitiesFor(providerId, model).maxOutput;
 
         return this.agent.run({
           turn, signal,
@@ -426,13 +431,14 @@ export class Orchestrator {
           kbAssetScopes:  request.kbAssetScopes,
           thinking:       request.thinking,
           requestDegradations,
-          compactMessages: (msgs, tools) => this.bindings.memory.compact({
+          compactMessages: (msgs, tools) => this.bindings.contextCompactor.compact({
             sessionId:          turn.sessionId,
             turnId:             turn.id,
             mode:               'agent',
             messages:           msgs,
             tools,
             modelContextWindow: contextWindow,
+            modelMaxOutputTokens,
             providerId,
             model,
             recentFiles:        this.bindings.getContextStores(turn.sessionId)
