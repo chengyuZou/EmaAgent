@@ -66,10 +66,10 @@ import {
 } from '@ema-agent/turn';
 import {
   TurnStats,
-  EmotionState,
   MemoryRecallLayer,
   MemoryRecallLayerReport,
 } from '@ema-agent/turn';
+import type { EmotionState } from '@ema-agent/emotion';
 
 export type { AttachmentInputWire };
 

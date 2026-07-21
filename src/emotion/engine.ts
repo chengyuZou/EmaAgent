@@ -1,5 +1,5 @@
 import type { TurnId, SessionId } from '@ema-agent/contracts';
-import type { EmaStreamEvent, EmotionState } from '@ema-agent/turn';
+import type { EmotionState, EmotionStreamEvent } from './events.js';
 import { StreamingActScanner } from './parser.js';
 import type { ParsedActTag } from './types.js';
 import {
@@ -112,7 +112,7 @@ export class EmotionEngine {
     delta:     string,
     turnId:    TurnId,
     sessionId: SessionId,
-  ): { cleaned: string; events: EmaStreamEvent[] } {
+  ): { cleaned: string; events: EmotionStreamEvent[] } {
     const s = this.sessions.get(sessionId as string);
     if (!s) return { cleaned: delta, events: [] };
 
@@ -128,7 +128,7 @@ export class EmotionEngine {
   flush(
     turnId:    TurnId,
     sessionId: SessionId,
-  ): { cleaned: string; events: EmaStreamEvent[] } {
+  ): { cleaned: string; events: EmotionStreamEvent[] } {
     const s = this.sessions.get(sessionId as string);
     if (!s) return { cleaned: '', events: [] };
 
@@ -145,8 +145,8 @@ export class EmotionEngine {
     turnId:    TurnId,
     sessionId: SessionId,
     s:         SessionEmotionState,
-  ): EmaStreamEvent[] {
-    const events: EmaStreamEvent[] = [];
+  ): EmotionStreamEvent[] {
+    const events: EmotionStreamEvent[] = [];
 
     for (const tag of tags) {
       switch (tag.kind) {

@@ -96,7 +96,7 @@ importers:
         version: link:../../packages/permission
       '@ema-agent/prompts':
         specifier: workspace:*
-        version: link:../../packages/prompts
+        version: link:../../src/prompts
       '@ema-agent/provider':
         specifier: workspace:*
         version: link:../../src/providers
@@ -270,6 +270,9 @@ importers:
       '@ema-agent/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@ema-agent/emotion':
+        specifier: workspace:*
+        version: link:../../src/emotion
       '@ema-agent/live2d-react':
         specifier: workspace:*
         version: link:../../packages/live2d-react
@@ -881,37 +884,12 @@ importers:
 
   packages/permission:
     dependencies:
-      ignore:
-        specifier: ^5.3.2
-        version: 5.3.2
-    devDependencies:
-      '@types/node':
-        specifier: ^20.0.0
-        version: 20.19.39
-      rimraf:
-        specifier: ^5.0.0
-        version: 5.0.10
-      typescript:
-        specifier: ^5.9.3
-        version: 5.9.3
-      vitest:
-        specifier: ^2.0.0
-        version: 2.1.9(@types/node@20.19.39)(jsdom@26.1.0(canvas@2.11.2))(msw@2.14.6(@types/node@20.19.39)(typescript@5.9.3))
-
-  packages/prompts:
-    dependencies:
-      '@ema-agent/character-card':
-        specifier: workspace:*
-        version: link:../character-card
       '@ema-agent/contracts':
         specifier: workspace:*
         version: link:../contracts
-      '@ema-agent/hook':
-        specifier: workspace:*
-        version: link:../hook
-      '@ema-agent/llm':
-        specifier: workspace:*
-        version: link:../../src/llm
+      ignore:
+        specifier: ^5.3.2
+        version: 5.3.2
     devDependencies:
       '@types/node':
         specifier: ^20.0.0
@@ -1292,9 +1270,6 @@ importers:
       '@ema-agent/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
-      '@ema-agent/turn':
-        specifier: workspace:*
-        version: link:../turn
     devDependencies:
       '@types/node':
         specifier: ^20.0.0
@@ -1329,6 +1304,34 @@ importers:
       openai:
         specifier: ^4.98.0
         version: 4.104.0(ws@8.20.1)(zod@3.25.76)
+    devDependencies:
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.39
+      rimraf:
+        specifier: ^5.0.0
+        version: 5.0.10
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: ^2.0.0
+        version: 2.1.9(@types/node@20.19.39)(jsdom@26.1.0(canvas@2.11.2))(msw@2.14.6(@types/node@20.19.39)(typescript@5.9.3))
+
+  src/prompts:
+    dependencies:
+      '@ema-agent/character-card':
+        specifier: workspace:*
+        version: link:../../packages/character-card
+      '@ema-agent/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
+      '@ema-agent/hook':
+        specifier: workspace:*
+        version: link:../../packages/hook
+      '@ema-agent/llm':
+        specifier: workspace:*
+        version: link:../llm
     devDependencies:
       '@types/node':
         specifier: ^20.0.0
@@ -1484,6 +1487,12 @@ importers:
       '@ema-agent/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@ema-agent/emotion':
+        specifier: workspace:*
+        version: link:../emotion
+      '@ema-agent/permission':
+        specifier: workspace:*
+        version: link:../../packages/permission
       '@ema-agent/provider':
         specifier: workspace:*
         version: link:../providers

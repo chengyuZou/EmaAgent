@@ -33,3 +33,9 @@ export type {
   InternalPathCapabilities,
   InternalPathCapability,
 }                                                      from './types.js';
+
+export type {
+  PermissionRequiredEvent,
+  PermissionResolvedEvent,
+  PermissionStreamEvent,
+}                                                      from './events.js';

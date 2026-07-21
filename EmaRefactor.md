@@ -639,7 +639,9 @@ contracts 拆除与 Runtime 重构并行推进，但每批只迁一个明确所�
 - [x] 新建 `src/turn` 与 `@ema-agent/turn` 公共入口，承接 Turn Request/Response/Stats、输入校验和 `EmaStreamEvent`；
 - [x] Core、Desktop UI、Agent、Conversation、Tool、Context、Memory、TTS 等消费者不再从 `contracts` 读取 Turn/SSE 类型；
 - [x] `contracts` 删除 `turns.ts`、`events.ts` 导出，并移除已无用途的 Provider 依赖；
-- [ ] 将当前聚合事件按 Tool、Permission、Context、Memory、Knowledge、TTS、Agent 等真实业务所有者继续拆分，再由 Turn 组合联合类型；
+- [x] Provider、Permission 与 Emotion 拥有各自的客户端事件类型，Turn 只组合 `ProviderStreamEvent`、`PermissionStreamEvent` 与 `EmotionStreamEvent`；
+- [ ] Knowledge Base 与 Character 事件迁移前先解除 `Knowledge/Character → Storage → Turn` 循环；Storage 不应为了持久化 AskUser JSON 反向依赖整个 Turn 协议；
+- [ ] 将当前聚合事件按 Tool、Context、Memory、Knowledge、TTS、Agent 等真实业务所有者继续拆分，再由 Turn 组合联合类型；
 - [ ] 把 Turn 执行快照迁入 Turn，并为关键 HTTP/SSE 输入补运行时 Schema。
 
 #### C3：Session + Wire

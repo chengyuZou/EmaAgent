@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { buildSystemBlock, buildSystemPrompt } from '../src/build.js';
-import { buildModeBlock } from '../src/mode-blocks.js';
+import { buildSystemBlock, buildSystemPrompt } from '../build.js';
+import { buildModeBlock } from '../mode-blocks.js';
 import type { CharacterCard } from '@ema-agent/character-card';
 import type { CharacterCardId, TurnMode } from '@ema-agent/contracts';
 

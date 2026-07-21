@@ -40,12 +40,13 @@
 ## 文件结构
 
 ```
-src/
 ├── index.ts           # 入口，统一导出组装相关的函数
 ├── build.ts           # 核心组装主逻辑，涵盖 buildSystemPrompt 与 buildSystemBlock
-└── mode-blocks.ts     # TurnMode 模式策略相关提示词组装实现
-tests/
-└── build.spec.ts      # Vitest 单元测试
+├── mode-blocks.ts     # TurnMode 模式策略相关提示词组装实现
+├── hooks.ts           # registerPromptsHooks，把 prompt 组装挂到 HookBus
+└── tests/
+    ├── build.spec.ts  # Vitest 单元测试
+    └── hooks.test.ts
 ```
 
 ---

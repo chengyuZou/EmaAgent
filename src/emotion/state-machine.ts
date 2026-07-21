@@ -1,4 +1,4 @@
-import type { EmotionState } from '@ema-agent/turn';
+import type { EmotionState } from './events.js';
 
 // ── Internal mutable state ────────────────────────────────────────────────────
 
