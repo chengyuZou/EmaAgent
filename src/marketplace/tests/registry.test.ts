@@ -1,7 +1,7 @@
 // 这里测试市场 Adapter 注册冲突, 有界并发, 稳定排序和请求取消.
 import { describe, expect, it } from 'vitest';
-import { MarketRegistry } from '../src/registry.js';
-import type { MarketSourceAdapter, MarketSourceRecord } from '../src/types.js';
+import { MarketRegistry } from '../registry.js';
+import type { MarketSourceAdapter, MarketSourceRecord } from '../types.js';
 
 function source(id: string, sortOrder: number, createdAt = 1): MarketSourceRecord {
   return {

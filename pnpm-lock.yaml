@@ -81,7 +81,7 @@ importers:
         version: link:../../src/llm
       '@ema-agent/marketplace':
         specifier: workspace:*
-        version: link:../../packages/marketplace
+        version: link:../../src/marketplace
       '@ema-agent/mcp':
         specifier: workspace:*
         version: link:../../packages/mcp
@@ -686,31 +686,6 @@ importers:
         specifier: ^2.0.0
         version: 2.1.9(@types/node@20.19.39)(jsdom@26.1.0(canvas@2.11.2))(msw@2.14.6(@types/node@20.19.39)(typescript@5.9.3))
 
-  packages/marketplace:
-    dependencies:
-      '@ema-agent/contracts':
-        specifier: workspace:*
-        version: link:../contracts
-      '@ema-agent/public-http':
-        specifier: workspace:*
-        version: link:../public-http
-      '@ema-agent/storage':
-        specifier: workspace:*
-        version: link:../../src/storage
-    devDependencies:
-      '@types/node':
-        specifier: ^20.0.0
-        version: 20.19.39
-      rimraf:
-        specifier: ^5.0.0
-        version: 5.0.10
-      typescript:
-        specifier: ^5.9.3
-        version: 5.9.3
-      vitest:
-        specifier: ^2.0.0
-        version: 2.1.9(@types/node@20.19.39)(jsdom@26.1.0(canvas@2.11.2))(msw@2.14.6(@types/node@20.19.39)(typescript@5.9.3))
-
   packages/mcp:
     dependencies:
       '@ema-agent/contracts':
@@ -718,7 +693,7 @@ importers:
         version: link:../contracts
       '@ema-agent/marketplace':
         specifier: workspace:*
-        version: link:../marketplace
+        version: link:../../src/marketplace
       '@ema-agent/permission':
         specifier: workspace:*
         version: link:../../src/permission
@@ -874,7 +849,7 @@ importers:
         version: link:../hook
       '@ema-agent/marketplace':
         specifier: workspace:*
-        version: link:../marketplace
+        version: link:../../src/marketplace
       '@ema-agent/storage':
         specifier: workspace:*
         version: link:../../src/storage
@@ -1233,6 +1208,31 @@ importers:
       openai:
         specifier: ^4.98.0
         version: 4.104.0(ws@8.20.1)(zod@3.25.76)
+    devDependencies:
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.39
+      rimraf:
+        specifier: ^5.0.0
+        version: 5.0.10
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: ^2.0.0
+        version: 2.1.9(@types/node@20.19.39)(jsdom@26.1.0(canvas@2.11.2))(msw@2.14.6(@types/node@20.19.39)(typescript@5.9.3))
+
+  src/marketplace:
+    dependencies:
+      '@ema-agent/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
+      '@ema-agent/public-http':
+        specifier: workspace:*
+        version: link:../../packages/public-http
+      '@ema-agent/storage':
+        specifier: workspace:*
+        version: link:../storage
     devDependencies:
       '@types/node':
         specifier: ^20.0.0

@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const fetchPublicResource = vi.hoisted(() => vi.fn());
 vi.mock('@ema-agent/public-http', () => ({ fetchPublicResource }));
 
-import { fetchWithMirror } from '../src/fetch.js';
+import { fetchWithMirror } from '../fetch.js';
 
 function response(url: string, body: string) {
   return {
