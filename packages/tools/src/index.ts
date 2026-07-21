@@ -19,6 +19,8 @@ export type {
   IToolCapabilityScope,
   ToolExecutionContext,
   ToolDescriptor,
+  ToolManifestEntry,
+  ToolManifestSnapshot,
   ToolDef,
   BuiltTool,
 } from './types.js';
@@ -27,6 +29,7 @@ export { presentToolResult, splitToolResult } from './tool-result.js';
 export type { SplitToolResult } from './tool-result.js';
 
 export { buildTool } from './build-tool.js';
+export { createToolManifestSnapshot } from './toolManifest.js';
 export {
   ToolRegistry,
   ToolRegistryError,

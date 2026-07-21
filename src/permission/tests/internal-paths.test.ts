@@ -2,12 +2,12 @@
 
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { PermissionEngine } from '../src/checker.js';
+import { PermissionEngine } from '../checker.js';
 import {
   checkEditableInternalPath,
   checkReadableInternalPath,
-} from '../src/internal-paths.js';
-import type { PermissionContext, ToolPermissionMeta } from '../src/types.js';
+} from '../internal-paths.js';
+import type { PermissionContext, ToolPermissionMeta } from '../types.js';
 
 const runtimeRoot = path.resolve('D:/ema-data/sessions/session-a/scratchpad/turn-a');
 

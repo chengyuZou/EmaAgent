@@ -1,7 +1,7 @@
 // 测试 Permission Engine 询问用户时完整保留工具说明和可信风险字段。
 import { describe, expect, it, vi } from 'vitest';
-import { PermissionEngine } from '../src/checker.js';
-import type { AskPermissionFn } from '../src/types.js';
+import { PermissionEngine } from '../checker.js';
+import type { AskPermissionFn } from '../types.js';
 
 describe('PermissionPrompt 展示字段', () => {
   it('把 Tool 身份中的说明与权限元数据交给询问回调', async () => {

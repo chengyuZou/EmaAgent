@@ -330,6 +330,21 @@ export interface ToolDescriptor {
   inputJsonSchema: Record<string, unknown>;
 }
 
+/** 一次模型请求可见的单个工具定义，不包含可执行函数。 */
+export interface ToolManifestEntry {
+  readonly id: string;
+  readonly name: string;
+  readonly description: string;
+  readonly inputJsonSchema: Readonly<Record<string, unknown>>;
+}
+
+/** ToolRegistry 在 Turn 开始时生成的不可变能力快照。 */
+export interface ToolManifestSnapshot {
+  readonly registryVersion: number;
+  readonly revision: string;
+  readonly entries: readonly ToolManifestEntry[];
+}
+
 // ── ToolDef - 作者写的原始定义 ────────────────────────────────────────────────
 
 export interface ToolDef<TInput, TOutput> {

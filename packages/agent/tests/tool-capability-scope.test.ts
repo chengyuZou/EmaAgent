@@ -1,6 +1,6 @@
 // 这里测试 Agent 工具能力只能按名称或稳定 ID 逐层收窄，不能被 Skill 扩大。
 import { describe, expect, it } from 'vitest';
-import type { BuiltTool } from '@ema-agent/tools';
+import type { ToolManifestEntry } from '@ema-agent/tools';
 import {
   AgentToolCapabilityScope,
   ToolCapabilityRestrictionError,
@@ -57,11 +57,11 @@ describe('AgentToolCapabilityScope', () => {
   });
 });
 
-function fakeTool(id: string, name: string): BuiltTool {
+function fakeTool(id: string, name: string): ToolManifestEntry {
   return {
     id,
     name,
     description: name,
-    descriptor: () => ({ name, description: name, inputJsonSchema: {} }),
-  } as BuiltTool;
+    inputJsonSchema: {},
+  };
 }

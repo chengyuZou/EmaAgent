@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { Database } from '@ema-agent/storage';
-import { CharacterCardStore } from '../src/store.js';
-import { EMA_CARD_ID } from '../src/seed.js';
-import type { CharacterCardInput } from '../src/types.js';
+import { CharacterCardStore } from '../store.js';
+import { EMA_CARD_ID } from '../seed/index.js';
+import type { CharacterCardInput } from '../types.js';
 import type { CharacterCardId } from '@ema-agent/contracts';
 
 // ── helpers ───────────────────────────────────────────────────────────────────

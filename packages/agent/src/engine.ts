@@ -72,7 +72,7 @@ async function* runTurn(
   const turnId    = turn.id;
   const startedAt = Date.now();
 
-  const policy        = new AgentPolicy(tools.list());
+  const policy        = new AgentPolicy(tools.manifestSnapshot());
   const budget        = new TurnBudget();
   const readFileState = new Map() as ReadFileState;
   const contextStores = deps.getContextStores?.(sessionId);
@@ -267,6 +267,7 @@ async function* runTurn(
       const executor = new TurnToolExecutor({
         sessionId, turnId,
         allows:          name => policy.allows(name),
+        toolManifest:    policy.manifestSnapshot(),
         tools, permission, permCtx, hooks, toolCtx,
         buildAsk:        deps.buildAsk,
         runner:          resolvedRunner,

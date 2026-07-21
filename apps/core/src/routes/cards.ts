@@ -10,7 +10,7 @@ import {
   emptyVoiceProfile,
   type CharacterRefAudio,
   type CharacterVoiceProfile,
-} from '@ema-agent/character-card';
+} from '@ema-agent/characters';
 import { cardDir, cardResourcePath, resolveCardVoiceRefPath } from '../storage-locations/index.js';
 import { REQUEST_VALUE_LIMITS } from '../http/request-budget.js';
 import { z } from 'zod';

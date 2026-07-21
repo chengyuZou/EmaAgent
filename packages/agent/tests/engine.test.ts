@@ -5,6 +5,7 @@ import type { MessageId, SessionId, TurnId } from '@ema-agent/contracts';
 import type { EmaStreamEvent } from '@ema-agent/turn';
 import type { Message, Turn } from '@ema-agent/session';
 import { HookBus } from '@ema-agent/hook';
+import { ToolRegistry } from '@ema-agent/tools';
 import { LlmToolArgumentsParseError } from '@ema-agent/llm';
 import { AgentEngine } from '../src/engine.js';
 import type { AgentDeps } from '../src/types.js';
@@ -106,7 +107,7 @@ describe('AgentEngine 生命周期', () => {
         processChunk: (delta: string) => ({ cleaned: delta, events: [] }),
         flush: () => ({ cleaned: '', events: [] }),
       } as never,
-      tools: { list: () => [] } as never,
+      tools: new ToolRegistry(),
       permission: {} as never,
     };
     const turn: Turn = {
@@ -219,6 +220,11 @@ describe('AgentEngine 生命周期', () => {
       } as never,
       tools: {
         list: () => [],
+        manifestSnapshot: () => ({
+          registryVersion: 0,
+          revision: 'test-empty-manifest',
+          entries: [],
+        }),
       } as never,
       permission: {} as never,
     };
@@ -314,7 +320,7 @@ describe('AgentEngine 生命周期', () => {
         processChunk: (delta: string) => ({ cleaned: delta, events: [] }),
         flush: () => ({ cleaned: '', events: [] }),
       } as never,
-      tools: { list: () => [] } as never,
+      tools: new ToolRegistry(),
       permission: {} as never,
     };
     const turn: Turn = {
@@ -406,6 +412,11 @@ describe('AgentEngine 生命周期', () => {
       } as never,
       tools: {
         list: () => [],
+        manifestSnapshot: () => ({
+          registryVersion: 0,
+          revision: 'test-empty-manifest',
+          entries: [],
+        }),
         get: () => {
           toolLookupCount++;
           throw new Error('不应查询或执行工具');

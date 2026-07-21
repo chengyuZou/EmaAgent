@@ -49,9 +49,9 @@ importers:
       '@ema-agent/backup':
         specifier: workspace:*
         version: link:../../packages/backup
-      '@ema-agent/character-card':
+      '@ema-agent/characters':
         specifier: workspace:*
-        version: link:../../packages/character-card
+        version: link:../../src/characters
       '@ema-agent/context':
         specifier: workspace:*
         version: link:../../src/context
@@ -93,7 +93,7 @@ importers:
         version: link:../../src/narrative
       '@ema-agent/permission':
         specifier: workspace:*
-        version: link:../../packages/permission
+        version: link:../../src/permission
       '@ema-agent/prompts':
         specifier: workspace:*
         version: link:../../src/prompts
@@ -264,9 +264,9 @@ importers:
 
   apps/desktop-ui:
     dependencies:
-      '@ema-agent/character-card':
+      '@ema-agent/characters':
         specifier: workspace:*
-        version: link:../../packages/character-card
+        version: link:../../src/characters
       '@ema-agent/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
@@ -284,7 +284,7 @@ importers:
         version: link:../../packages/memory
       '@ema-agent/permission':
         specifier: workspace:*
-        version: link:../../packages/permission
+        version: link:../../src/permission
       '@ema-agent/provider':
         specifier: workspace:*
         version: link:../../src/providers
@@ -396,7 +396,7 @@ importers:
         version: link:../../src/llm
       '@ema-agent/permission':
         specifier: workspace:*
-        version: link:../permission
+        version: link:../../src/permission
       '@ema-agent/provider':
         specifier: workspace:*
         version: link:../../src/providers
@@ -490,28 +490,6 @@ importers:
       fflate:
         specifier: ^0.8.2
         version: 0.8.3
-    devDependencies:
-      '@types/node':
-        specifier: ^20.0.0
-        version: 20.19.39
-      rimraf:
-        specifier: ^5.0.0
-        version: 5.0.10
-      typescript:
-        specifier: ^5.9.3
-        version: 5.9.3
-      vitest:
-        specifier: ^2.0.0
-        version: 2.1.9(@types/node@20.19.39)(jsdom@26.1.0(canvas@2.11.2))(msw@2.14.6(@types/node@20.19.39)(typescript@5.9.3))
-
-  packages/character-card:
-    dependencies:
-      '@ema-agent/contracts':
-        specifier: workspace:*
-        version: link:../contracts
-      '@ema-agent/storage':
-        specifier: workspace:*
-        version: link:../../src/storage
     devDependencies:
       '@types/node':
         specifier: ^20.0.0
@@ -743,7 +721,7 @@ importers:
         version: link:../marketplace
       '@ema-agent/permission':
         specifier: workspace:*
-        version: link:../permission
+        version: link:../../src/permission
       '@ema-agent/storage':
         specifier: workspace:*
         version: link:../../src/storage
@@ -823,28 +801,6 @@ importers:
         specifier: ^2.0.0
         version: 2.1.9(@types/node@20.19.39)(jsdom@26.1.0(canvas@2.11.2))(msw@2.14.6(@types/node@20.19.39)(typescript@5.9.3))
 
-  packages/permission:
-    dependencies:
-      '@ema-agent/contracts':
-        specifier: workspace:*
-        version: link:../contracts
-      ignore:
-        specifier: ^5.3.2
-        version: 5.3.2
-    devDependencies:
-      '@types/node':
-        specifier: ^20.0.0
-        version: 20.19.39
-      rimraf:
-        specifier: ^5.0.0
-        version: 5.0.10
-      typescript:
-        specifier: ^5.9.3
-        version: 5.9.3
-      vitest:
-        specifier: ^2.0.0
-        version: 2.1.9(@types/node@20.19.39)(jsdom@26.1.0(canvas@2.11.2))(msw@2.14.6(@types/node@20.19.39)(typescript@5.9.3))
-
   packages/public-http:
     dependencies:
       ipaddr.js:
@@ -868,7 +824,7 @@ importers:
     dependencies:
       '@ema-agent/permission':
         specifier: workspace:*
-        version: link:../permission
+        version: link:../../src/permission
       '@ema-agent/tools':
         specifier: workspace:*
         version: link:../tools
@@ -952,7 +908,7 @@ importers:
         version: link:../../src/llm
       '@ema-agent/permission':
         specifier: workspace:*
-        version: link:../permission
+        version: link:../../src/permission
       '@ema-agent/public-http':
         specifier: workspace:*
         version: link:../public-http
@@ -995,7 +951,7 @@ importers:
         version: link:../contracts
       '@ema-agent/permission':
         specifier: workspace:*
-        version: link:../permission
+        version: link:../../src/permission
       '@ema-agent/turn':
         specifier: workspace:*
         version: link:../../src/turn
@@ -1157,6 +1113,28 @@ importers:
         specifier: ^2.0.0
         version: 2.1.9(@types/node@20.19.39)(jsdom@26.1.0(canvas@2.11.2))(msw@2.14.6(@types/node@20.19.39)(typescript@5.9.3))
 
+  src/characters:
+    dependencies:
+      '@ema-agent/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
+      '@ema-agent/storage':
+        specifier: workspace:*
+        version: link:../storage
+    devDependencies:
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.39
+      rimraf:
+        specifier: ^5.0.0
+        version: 5.0.10
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: ^2.0.0
+        version: 2.1.9(@types/node@20.19.39)(jsdom@26.1.0(canvas@2.11.2))(msw@2.14.6(@types/node@20.19.39)(typescript@5.9.3))
+
   src/context:
     dependencies:
       '@ema-agent/contracts':
@@ -1284,11 +1262,33 @@ importers:
         specifier: ^2.0.0
         version: 2.1.9(@types/node@20.19.39)(jsdom@26.1.0(canvas@2.11.2))(msw@2.14.6(@types/node@20.19.39)(typescript@5.9.3))
 
+  src/permission:
+    dependencies:
+      '@ema-agent/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
+      ignore:
+        specifier: ^5.3.2
+        version: 5.3.2
+    devDependencies:
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.39
+      rimraf:
+        specifier: ^5.0.0
+        version: 5.0.10
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: ^2.0.0
+        version: 2.1.9(@types/node@20.19.39)(jsdom@26.1.0(canvas@2.11.2))(msw@2.14.6(@types/node@20.19.39)(typescript@5.9.3))
+
   src/prompts:
     dependencies:
-      '@ema-agent/character-card':
+      '@ema-agent/characters':
         specifier: workspace:*
-        version: link:../../packages/character-card
+        version: link:../characters
       '@ema-agent/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
@@ -1486,7 +1486,7 @@ importers:
         version: link:../emotion
       '@ema-agent/permission':
         specifier: workspace:*
-        version: link:../../packages/permission
+        version: link:../permission
       '@ema-agent/provider':
         specifier: workspace:*
         version: link:../providers

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { buildSystemBlock, buildSystemPrompt } from '../build.js';
 import { buildModeBlock } from '../mode-blocks.js';
-import type { CharacterCard } from '@ema-agent/character-card';
+import type { CharacterCard } from '@ema-agent/characters';
 import type { CharacterCardId, TurnMode } from '@ema-agent/contracts';
 
 // ── test fixtures ─────────────────────────────────────────────────────────────
@@ -97,8 +97,8 @@ describe('buildSystemBlock', () => {
 
   it('includes ACT usage example', () => {
     const block = buildSystemBlock(mockCard());
-    expect(block).toContain('示例：<|ACT:emotion:happy|>');
-    expect(block).toContain('示例：<|ACT:motion:wave|>');
+    expect(block).toContain('示例:<|ACT:emotion:happy|>');
+    expect(block).toContain('示例:<|ACT:motion:wave|>');
   });
 });
 
@@ -108,6 +108,8 @@ describe('buildSystemPrompt', () => {
   it('assembles character block + chat mode block', () => {
     const card = mockCard();
     const prompt = buildSystemPrompt(card, 'chat' as TurnMode);
+    expect(prompt).toContain('# Ema 基本行为');
+    expect(prompt).toContain('# 工具使用通用原则');
     expect(prompt).toContain(card.systemPrompt);
     expect(prompt).toContain('## 角色表达控制协议');
     expect(prompt).toContain('日常对话（chat）');
@@ -129,5 +131,15 @@ describe('buildSystemPrompt', () => {
     const charIndex = prompt.indexOf('## 角色表达控制协议');
     const modeIndex = prompt.indexOf('日常对话（chat）');
     expect(charIndex).toBeLessThan(modeIndex);
+  });
+
+  it('places immutable product rules before character instructions', () => {
+    const card = mockCard();
+    const prompt = buildSystemPrompt(card, 'chat' as TurnMode);
+    const productIndex = prompt.indexOf('# Ema 基本行为');
+    const characterIndex = prompt.indexOf(card.systemPrompt);
+
+    expect(productIndex).toBeGreaterThanOrEqual(0);
+    expect(productIndex).toBeLessThan(characterIndex);
   });
 });

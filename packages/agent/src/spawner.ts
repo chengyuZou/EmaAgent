@@ -129,11 +129,12 @@ export class SubagentSpawner implements ISubagentSpawner {
   ): Promise<{ output: string; usage: { inputTokens: number; outputTokens: number } }> {
     const releaseBudget = this.budget.enterSubagent();
     const { tools, llm, permission, hooks } = this.deps;
-    const policy = new AgentPolicy(selectSubagentTools(tools.list(), {
+    const selectedTools = selectSubagentTools(tools.list(), {
       scratchpad: this.scratchpadDir !== undefined,
       knowledgeBase: this.kbSearch !== undefined,
       skills: this.deps.skillRunner !== undefined,
-    }));
+    });
+    const policy = new AgentPolicy(tools.manifestSnapshot(selectedTools));
     const subagentId    = opts.subagentId ?? randomUUID();
     const sessionId     = this.parentSessionId as SessionId;
     const parentTurnId  = this.parentTurnId   as TurnId;
@@ -245,6 +246,7 @@ export class SubagentSpawner implements ISubagentSpawner {
         turnId:     subagentId as TurnId,
         journalTurnId: this.parentTurnId as TurnId,
         allows:     name => policy.allows(name),
+        toolManifest: policy.manifestSnapshot(),
         tools, permission, permCtx, hooks, toolCtx,
         buildAsk:   this.deps.buildAsk,
         pushEv,

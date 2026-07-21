@@ -4,9 +4,10 @@ import type { TurnMode } from '@ema-agent/contracts';
 import {
   buildCharacterPromptSections,
   type CharacterCard,
-} from '@ema-agent/character-card';
-import { buildModeBlock } from './mode-blocks.js';
+} from '@ema-agent/characters';
+import { buildLegacyExecutionProfileContribution } from './legacyExecutionProfile.js';
 import { PromptAssembler } from './promptAssembler.js';
+import { buildProductPromptContributions } from './productPrompt.js';
 import type { PromptSlotContribution } from './types.js';
 
 const assembler = new PromptAssembler();
@@ -31,17 +32,13 @@ export function buildSystemPrompt(
   mode: TurnMode,
   opts: BuildSystemPromptOpts = {},
 ): string {
+  const productSlots = buildProductPromptContributions();
   const characterSlots = buildCharacterSlots(card);
-  const modeBlock = buildModeBlock(mode, {
+  const profileSlot = buildLegacyExecutionProfileContribution(mode, {
     workspaceRoot: opts.workspaceRoot,
   });
-  const profileSlot: PromptSlotContribution = {
-    id: 'profile.execution',
-    content: modeBlock,
-    version: `legacy-turn-mode:${mode}`,
-  };
 
-  return assembler.build([...characterSlots, profileSlot]).systemText;
+  return assembler.build([...productSlots, ...characterSlots, profileSlot]).systemText;
 }
 
 // ── 角色块（从 character-card/system-block.ts 迁来）────────────────────────────

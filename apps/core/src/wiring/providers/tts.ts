@@ -24,7 +24,7 @@ import {
   selectedProtocolFor,
 } from './config-resolution.js';
 
-import type { CharacterCardStore, CharacterVoiceProfile } from '@ema-agent/character-card';
+import type { CharacterCardStore, CharacterVoiceProfile } from '@ema-agent/characters';
 import { resolveCardVoiceRefPath } from '../../storage-locations/index.js';
 
 // ── Provider config builder ─────────────────────────────────────────────────

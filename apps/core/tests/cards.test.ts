@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { Database } from '@ema-agent/storage';
-import { CharacterCardStore } from '@ema-agent/character-card';
+import { CharacterCardStore } from '@ema-agent/characters';
 import type { AppBindings } from '../src/wiring/index.js';
 import { cardsRoute } from '../src/routes/cards.js';
 import { resolveCardVoiceRefPath } from '../src/storage-locations/index.js';

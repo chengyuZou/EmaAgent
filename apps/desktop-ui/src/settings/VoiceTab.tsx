@@ -1,4 +1,4 @@
-﻿/**
+/**
  * VoiceTab — manage refAudios: upload, test listen, set primary, delete.
  */
 import { useState, useRef, type CSSProperties, type JSX } from 'react';
@@ -7,7 +7,7 @@ import { useCardStore } from '../stores/card-store.js';
 import { cardsApi } from '../api/cards.js';
 import { showToast } from '../lib/toast.js';
 import type { CharacterCardId } from '@ema-agent/contracts';
-import type { CharacterVoiceProfile, CharacterRefAudio } from '@ema-agent/character-card';
+import type { CharacterVoiceProfile, CharacterRefAudio } from '@ema-agent/characters';
 
 const LANG_OPTIONS = [
   { value: 'zh', label: '中文 (zh)' },

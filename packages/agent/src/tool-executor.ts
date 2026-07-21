@@ -26,6 +26,7 @@ import type {
 } from '@ema-agent/turn';
 import { splitToolResult, ToolInputError } from '@ema-agent/tools';
 import type { ToolExecutionContext, ICommandRunner, PreparedToolCall } from '@ema-agent/tools';
+import type { ToolManifestSnapshot } from '@ema-agent/tools';
 import type { PermissionEngine, PermissionContext } from '@ema-agent/permission';
 import type { HookBus, ToolFailurePhase } from '@ema-agent/hook';
 import type { AgentToolResultStore } from '@ema-agent/agent-context';
@@ -73,6 +74,8 @@ export interface TurnToolExecutorOpts {
   journalTurnId?: TurnId;
   /** 同步策略检查；不在当前 Agent capability 集合中的工具直接拒绝。 */
   allows:      (name: string) => boolean;
+  /** 模型看见的同一份不可变工具清单；旧测试适配器可以暂时省略。 */
+  toolManifest?: ToolManifestSnapshot;
   tools:       AgentDeps['tools'];
   permission:  PermissionEngine;
   permCtx:     PermissionContext;
@@ -190,7 +193,7 @@ export class TurnToolExecutor {
         message: `Tool "${name}" is not available in this mode`,
         retryable: false,
       };
-    } else if (!tools.has(name)) {
+    } else if (!this.opts.toolManifest && !tools.has(name)) {
       preflightFailure = {
         phase: 'validation',
         code: 'tool/not_found',
@@ -199,7 +202,7 @@ export class TurnToolExecutor {
       };
     } else {
       try {
-        prepared = tools.prepare(name, args);
+        prepared = tools.prepare(name, args, this.opts.toolManifest);
         isConcurrencySafe = prepared.isConcurrencySafe;
       } catch (err) {
         preflightFailure = classifyPreparationFailure(err);

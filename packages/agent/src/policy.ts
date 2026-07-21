@@ -1,5 +1,8 @@
-// 这里把 Agent 的工具能力作用域转换成模型工具定义和执行准入判断。
-import type { BuiltTool, IToolCapabilityScope } from '@ema-agent/tools';
+// 把 Agent 的工具能力作用域转换成模型工具定义和执行准入判断。
+import type {
+  IToolCapabilityScope,
+  ToolManifestSnapshot,
+} from '@ema-agent/tools';
 import type { LlmToolDef } from '@ema-agent/llm';
 import { AgentToolCapabilityScope } from './tool-capability-scope.js';
 
@@ -9,17 +12,20 @@ export class AgentPolicy {
   private readonly scope: AgentToolCapabilityScope;
 
   constructor(
-    allTools: BuiltTool[],
+    private readonly manifest: ToolManifestSnapshot,
     private readonly maxIter = 30,
   ) {
-    this.scope = new AgentToolCapabilityScope(allTools);
+    this.scope = new AgentToolCapabilityScope(manifest.entries);
   }
 
   /** LlmToolDef[] ready to pass straight to LlmRequest.tools. */
   toolDefs(): LlmToolDef[] {
     return this.scope.list().map((t) => {
-      const d = t.descriptor();
-      return { name: d.name, description: d.description, parameters: d.inputJsonSchema };
+      return {
+        name: t.name,
+        description: t.description,
+        parameters: t.inputJsonSchema as Record<string, unknown>,
+      };
     });
   }
 
@@ -31,6 +37,10 @@ export class AgentPolicy {
   /** 交给 ToolExecutionContext，使 Skill 和未来运行模式只能收窄能力。 */
   capabilities(): IToolCapabilityScope {
     return this.scope;
+  }
+
+  manifestSnapshot(): ToolManifestSnapshot {
+    return this.manifest;
   }
 
   maxIterations(): number {

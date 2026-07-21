@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import { HookBus } from '@ema-agent/hook';
 import { TodoWriteTool, getTodos } from '@ema-agent/tool-builtin';
-import type { ToolExecutionContext } from '@ema-agent/tools';
+import { ToolRegistry, type ToolExecutionContext } from '@ema-agent/tools';
 import { SubagentSpawner } from '../src/spawner.js';
 import type { AgentDeps } from '../src/types.js';
 
@@ -36,7 +36,7 @@ describe('SubagentSpawner 生命周期', () => {
         }),
       },
       emotion: {} as never,
-      tools: { list: () => [] } as never,
+      tools: new ToolRegistry(),
       permission: {} as never,
       taskStore: {
         claim: () => undefined,

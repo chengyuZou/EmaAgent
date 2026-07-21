@@ -4,7 +4,7 @@ import type { CharacterCardId } from '@ema-agent/contracts';
 
 // ── 语音档案 ───────────────────────────────────────────────────────────────────
 // 定义在这里（character-card 包）而不是 contracts，因为它是 character-card 的
-// 领域类型。包外消费者从 @ema-agent/character-card 导入，不从 contracts。
+// 领域类型。包外消费者从 @ema-agent/characters 导入，不从 contracts。
 
 export interface CharacterRefAudio {
   id:           string;

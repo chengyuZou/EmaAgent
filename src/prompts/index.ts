@@ -4,6 +4,8 @@ export { buildSystemPrompt, buildSystemBlock } from './build.js';
 export { buildModeBlock } from './mode-blocks.js';
 export { PromptAssembler } from './promptAssembler.js';
 export { PromptAssemblyError } from './errors.js';
+export { buildProductPromptContributions } from './productPrompt.js';
+export { buildLegacyExecutionProfileContribution } from './legacyExecutionProfile.js';
 export type { BuildSystemPromptOpts } from './build.js';
 export type { ModeBlockOpts } from './mode-blocks.js';
 export type {

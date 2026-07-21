@@ -1,9 +1,9 @@
 // 这里维护单个 Agent 在当前 Turn 内能看到和执行的工具集合。
 import type {
-  BuiltTool,
   IToolCapabilityScope,
   ToolCapabilityRestriction,
   ToolCapabilitySnapshot,
+  ToolManifestEntry,
 } from '@ema-agent/tools';
 
 /** Skill 或运行模式声明了不存在的工具模式时抛出，避免配置错误静默生效。 */
@@ -25,12 +25,12 @@ export class ToolCapabilityRestrictionError extends Error {
  * Manifest 中的模式在应用时解析成稳定工具 ID，后续判断不依赖展示名称变化。
  */
 export class AgentToolCapabilityScope implements IToolCapabilityScope {
-  private readonly tools: readonly BuiltTool[];
-  private readonly toolsByName: ReadonlyMap<string, BuiltTool>;
+  private readonly tools: readonly ToolManifestEntry[];
+  private readonly toolsByName: ReadonlyMap<string, ToolManifestEntry>;
   private allowedIds: Set<string>;
   private readonly restrictionSources: string[] = [];
 
-  constructor(allTools: readonly BuiltTool[]) {
+  constructor(allTools: readonly ToolManifestEntry[]) {
     this.tools = Object.freeze(
       [...allTools].sort((left, right) => compareToolNames(left.name, right.name)),
     );
@@ -39,7 +39,7 @@ export class AgentToolCapabilityScope implements IToolCapabilityScope {
   }
 
   /** 当前作用域内的工具，顺序固定以保持 Provider KV Cache 稳定。 */
-  list(): readonly BuiltTool[] {
+  list(): readonly ToolManifestEntry[] {
     return this.tools.filter(tool => this.allowedIds.has(tool.id));
   }
 

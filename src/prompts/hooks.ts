@@ -1,7 +1,7 @@
 // 这里注册 prompts:buildSystem hook：在 beforeLlm 把 system prompt（角色卡 + 模式块）插到 messages[0]。
 
 import type { HookBus } from '@ema-agent/hook';
-import type { CharacterCardStore } from '@ema-agent/character-card';
+import type { CharacterCardStore } from '@ema-agent/characters';
 import { buildSystemPrompt } from './build.js';
 
 // ── Hook 依赖 ──────────────────────────────────────────────────────────────────

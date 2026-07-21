@@ -3,7 +3,7 @@
  */
 import { sidecarClient } from './sidecar-client.js';
 import type { CharacterCardId } from '@ema-agent/contracts';
-import type { CharacterCard, CharacterCardInput, CharacterVoiceProfile } from '@ema-agent/character-card';
+import type { CharacterCard, CharacterCardInput, CharacterVoiceProfile } from '@ema-agent/characters';
 import type { Live2DModelRuntimeConfig } from '@ema-agent/live2d-react';
 
 export type { CharacterCard, CharacterCardInput, CharacterVoiceProfile };

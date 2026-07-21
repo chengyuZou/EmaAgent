@@ -33,7 +33,7 @@
     "@ema-agent/llm": "workspace:*",
     "@ema-agent/usage": "workspace:*",
     "@ema-agent/prompts": "workspace:*",
-    "@ema-agent/character-card": "workspace:*",
+    "@ema-agent/characters": "workspace:*",
     "@ema-agent/session": "workspace:*",
     "@ema-agent/emotion": "workspace:*",
     "@ema-agent/conversation": "workspace:*",

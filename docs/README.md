@@ -1063,14 +1063,17 @@ packages/tool-builtin/
 │   │   └── render-mermaid.ts   # 输出 mermaid artifact
 │   └── subagent.ts             # invoke_subagent（V1 抛 not_implemented）
 
-packages/permission/
-├── src/
-│   ├── index.ts                # PermissionEngine Façade
-│   ├── engine.ts
-│   ├── risk-classifier.ts
-│   ├── rule-engine.ts          # forbidden > prompt > allow
-│   ├── grant-store.ts          # SQLite permission_grants 表读写
-│   └── types.ts
+src/permission/
+├── index.ts                # PermissionEngine Facade
+├── checker.ts
+├── rules.ts                # forbidden > prompt > allow
+├── path-safety.ts
+├── internal-paths.ts
+├── session-grants.ts
+├── workspace.ts
+├── platform.ts
+├── events.ts
+└── types.ts
 
 packages/sandbox/
 ├── src/

@@ -1,8 +1,14 @@
-// 这里负责注册、查找和准备内置及 MCP 工具，并阻止名称或身份冲突。
+// 注册、查找和准备内置及 MCP 工具，并阻止名称或身份冲突。
 import { ZodError } from 'zod';
-import type { BuiltTool, ToolDescriptor, ToolExecutionContext } from './types.js';
+import type {
+  BuiltTool,
+  ToolDescriptor,
+  ToolExecutionContext,
+  ToolManifestSnapshot,
+} from './types.js';
 import { freezePreparedInput } from './prepared-call.js';
 import type { PreparedToolCall } from './prepared-call.js';
+import { createToolManifestSnapshot } from './toolManifest.js';
 
 // Registry 是泛型擦除边界；输入在 prepare() 中通过各工具自己的 Schema 恢复类型。
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -68,6 +74,9 @@ export class ToolRegistry {
   private readonly owners   = new Map<string, ToolOwner>();
   /** 运行时能力表：防止调用方伪造 PreparedToolCall 或跨 Registry 执行。 */
   private readonly preparedCalls = new WeakMap<object, BuiltTool<any, any>>();
+  /** Manifest provenance 只保存在 Registry 内，外部复制相同字段也不能用于执行。 */
+  private readonly manifestTools = new WeakMap<object, ReadonlyMap<string, AnyBuiltTool>>();
+  private manifestVersion = 0;
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   register(tool: BuiltTool<any, any>): void {
@@ -80,6 +89,7 @@ export class ToolRegistry {
     this.tools.set(tool.name, tool);
     this.toolsById.set(tool.id, tool);
     this.owners.set(tool.name, Object.freeze({ kind: 'builtin' }));
+    this.manifestVersion += 1;
   }
 
   /**
@@ -134,6 +144,7 @@ export class ToolRegistry {
       this.toolsById.set(registration.tool.id, registration.tool);
       this.owners.set(registration.tool.name, owner);
     }
+    if (validated.length > 0) this.manifestVersion += 1;
   }
 
   /** 注册单个 MCP 工具；同样遵守 registerMcpBatch() 的所有权规则。 */
@@ -152,6 +163,7 @@ export class ToolRegistry {
     this.tools.delete(name);
     if (tool) this.toolsById.delete(tool.id);
     this.owners.delete(name);
+    this.manifestVersion += 1;
     return true;
   }
 
@@ -177,11 +189,36 @@ export class ToolRegistry {
   }
 
   /**
+   * 固化一次 Turn 实际可见的工具。selection 必须来自当前 Registry，不能注入
+   * 同名伪造实现；MCP 热更新后旧 Manifest 会在 prepare() 阶段明确失效。
+   */
+  manifestSnapshot(selection: readonly AnyBuiltTool[] = this.list()): ToolManifestSnapshot {
+    const selected = new Map<string, AnyBuiltTool>();
+    for (const tool of selection) {
+      if (this.tools.get(tool.name) !== tool) {
+        throw new ToolRegistryError(`Tool "${tool.name}" does not belong to the current registry`);
+      }
+      if (selected.has(tool.name)) {
+        throw new ToolRegistryError(`Tool "${tool.name}" appears more than once in the manifest`);
+      }
+      selected.set(tool.name, tool);
+    }
+
+    const snapshot = createToolManifestSnapshot([...selected.values()], this.manifestVersion);
+    this.manifestTools.set(snapshot, selected);
+    return snapshot;
+  }
+
+  /**
    * 查找工具并完成一次且仅一次的输入解析。
    * 返回值同时供 Hook、PermissionEngine 和 execute() 使用。
    */
-  prepare(name: string, rawArgs: unknown): PreparedToolCall {
-    const tool = this.get(name);
+  prepare(
+    name: string,
+    rawArgs: unknown,
+    manifest?: ToolManifestSnapshot,
+  ): PreparedToolCall {
+    const tool = manifest ? this.toolFromManifest(manifest, name) : this.get(name);
     let parsed: unknown;
     try {
       parsed = tool.parseInput(rawArgs);
@@ -207,6 +244,21 @@ export class ToolRegistry {
 
     this.preparedCalls.set(prepared, tool);
     return prepared;
+  }
+
+  private toolFromManifest(manifest: ToolManifestSnapshot, name: string): AnyBuiltTool {
+    const snapshotTools = this.manifestTools.get(manifest);
+    if (!snapshotTools) {
+      throw new ToolRegistryError('Tool manifest was not created by this registry');
+    }
+    const tool = snapshotTools.get(name);
+    if (!tool) {
+      throw new ToolRegistryError(`Tool "${name}" is not present in the approved manifest`);
+    }
+    if (this.tools.get(name) !== tool) {
+      throw new ToolRegistryError(`Tool manifest for "${name}" is stale`);
+    }
+    return tool;
   }
 
   /**

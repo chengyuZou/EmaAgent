@@ -1,4 +1,4 @@
-// 这里按 turn 模式（chat/narrative/agent）生成行为约束块，拼在角色块后面。
+// 为旧 TurnMode 生成迁移期行为约束，Chat/Work 接入后删除。
 
 import type { TurnMode } from '@ema-agent/contracts';
 
@@ -9,7 +9,7 @@ export interface ModeBlockOpts {
 
 /**
  * 返回模式专属的指令块，拼在角色块后面。
- * 职责分明：角色块管人设 + ACT 词汇；本块管当前 session 模式的行为约束。
+ * Character 已独立提供角色表达片段；本模块只保留旧 session 模式行为。
  */
 export function buildModeBlock(mode: TurnMode, opts: ModeBlockOpts = {}): string {
   switch (mode) {

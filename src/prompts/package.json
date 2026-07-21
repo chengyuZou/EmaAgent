@@ -20,7 +20,7 @@
     "clean": "rimraf dist"
   },
   "dependencies": {
-    "@ema-agent/character-card": "workspace:*",
+    "@ema-agent/characters": "workspace:*",
     "@ema-agent/contracts": "workspace:*",
     "@ema-agent/hook": "workspace:*",
     "@ema-agent/llm": "workspace:*"
