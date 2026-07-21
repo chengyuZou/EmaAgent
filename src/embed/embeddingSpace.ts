@@ -1,9 +1,10 @@
+// 生成 Embedding 空间的稳定身份，防止不同模型、维度或版本的向量混用。
 import { createHash } from 'node:crypto';
 
 export type EmbeddingNormalization = 'l2';
 
 export interface EmbeddingSpace {
-  /** 向量空间的稳定内容身份，不包含 API Key、Base URL 等秘密或部署细节。 */
+  /** 不包含 API Key、Base URL 等秘密或部署细节。 */
   id: string;
   providerId: string;
   model: string;
@@ -20,10 +21,6 @@ export interface EmbeddingSpaceInput {
   revision?: string;
 }
 
-/**
- * 生成跨平台稳定的向量空间身份。
- * 字段按固定数组序列化，避免对象属性顺序或平台换行影响 hash。
- */
 export function createEmbeddingSpace(input: EmbeddingSpaceInput): EmbeddingSpace {
   const providerId = requiredText('providerId', input.providerId);
   const model = requiredText('model', input.model);

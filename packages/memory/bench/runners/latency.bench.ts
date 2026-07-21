@@ -238,7 +238,7 @@ function main(): void {
   // Thresholds guidance
   console.log('Thresholds (MemoryPlanner target):');
   console.log('  BM25 total  p95 < 5ms   (fast path reference point)');
-  console.log('  Embedding   p95 < 150ms (round-trip to ebd-client)');
+  console.log('  Embedding   p95 < 150ms (round-trip to EmbedRuntime)');
   console.log('  Full plan() p95 < 200ms (BM25 + embed + graph)');
 
   // Save

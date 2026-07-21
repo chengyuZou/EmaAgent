@@ -3,7 +3,7 @@ import {
   type ProviderConfigRow,
   type Database,
 } from '@ema-agent/storage';
-import type { EmbedProviderConfig } from '@ema-agent/ebd-client';
+import type { EmbedProviderConfig } from '@ema-agent/embed';
 import type { CredentialFacade } from '@ema-agent/credential';
 import {
   providerCatalog,

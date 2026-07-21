@@ -5,7 +5,7 @@
  * abort 不领新任务、concurrency clamp。
  */
 import { describe, expect, it } from 'vitest';
-import type { EbdRouter } from '@ema-agent/ebd-client';
+import type { EmbedRuntime } from '@ema-agent/embed';
 import { embedBatches } from '../src/chunking/semantic.js';
 
 interface MockState {
@@ -15,11 +15,11 @@ interface MockState {
 }
 
 /**
- * 构造 mock EbdRouter。每个 text 形如 "N"(数字字符串),返回向量 [N]。
+ * 构造 mock EmbedRuntime。每个 text 形如 "N"（数字字符串），返回向量 [N]。
  * failOnBatch:命中该 batchIndex(按调用顺序)时抛 429。
  * delayMs:每次 embed 人为延迟,用于放大并发窗口观测峰值。
  */
-function makeRouter(state: MockState, opts: { delayMs?: number; failOnCall?: Set<number>; failStatus?: number; failMessage?: string } = {}): EbdRouter {
+function makeRuntime(state: MockState, opts: { delayMs?: number; failOnCall?: Set<number>; failStatus?: number; failMessage?: string } = {}): EmbedRuntime {
   const { delayMs = 10, failOnCall, failStatus = 429, failMessage = 'Too Many Requests' } = opts;
   let callIdx = 0;
   const embed = async (req: { texts: string[]; signal?: AbortSignal }): Promise<{ embeddings: number[][] }> => {
@@ -45,7 +45,7 @@ function makeRouter(state: MockState, opts: { delayMs?: number; failOnCall?: Set
       state.inFlight--;
     }
   };
-  return { embed } as unknown as EbdRouter;
+  return { embed } as unknown as EmbedRuntime;
 }
 
 const BASE_OPTS = { providerId: 'p', model: 'm', batchSize: 2, concurrency: 3, timeoutMs: 5000, maxRetries: 0 };
@@ -53,9 +53,9 @@ const BASE_OPTS = { providerId: 'p', model: 'm', batchSize: 2, concurrency: 3, t
 describe('B-073 embedBatches 有界并发池', () => {
   it('峰值并发不超过 concurrency 上限(且确实并发)', async () => {
     const state: MockState = { calls: 0, inFlight: 0, peak: 0 };
-    const router = makeRouter(state, { delayMs: 20 });
+    const runtime = makeRuntime(state, { delayMs: 20 });
     const texts = Array.from({ length: 20 }, (_, i) => String(i)); // 10 batch
-    await embedBatches(texts, router, { ...BASE_OPTS, concurrency: 3 });
+    await embedBatches(texts, runtime, { ...BASE_OPTS, concurrency: 3 });
     expect(state.peak).toBeLessThanOrEqual(3);
     expect(state.peak).toBeGreaterThan(1); // 证明真的并发,非串行
     expect(state.calls).toBe(10);
@@ -63,18 +63,18 @@ describe('B-073 embedBatches 有界并发池', () => {
 
   it('concurrency > batch 数时 clamp 到 batch 数,不起多余 worker', async () => {
     const state: MockState = { calls: 0, inFlight: 0, peak: 0 };
-    const router = makeRouter(state, { delayMs: 20 });
+    const runtime = makeRuntime(state, { delayMs: 20 });
     const texts = ['0', '1', '2']; // batchSize=2 → 2 batch
-    await embedBatches(texts, router, { ...BASE_OPTS, concurrency: 100 });
+    await embedBatches(texts, runtime, { ...BASE_OPTS, concurrency: 100 });
     expect(state.peak).toBeLessThanOrEqual(2);
     expect(state.calls).toBe(2);
   });
 
   it('结果严格按输入顺序(embeddings[k] 编码原 text 数字)', async () => {
     const state: MockState = { calls: 0, inFlight: 0, peak: 0 };
-    const router = makeRouter(state, { delayMs: 5 });
+    const runtime = makeRuntime(state, { delayMs: 5 });
     const texts = Array.from({ length: 12 }, (_, i) => String(i));
-    const { embeddings } = await embedBatches(texts, router, { ...BASE_OPTS, concurrency: 4 });
+    const { embeddings } = await embedBatches(texts, runtime, { ...BASE_OPTS, concurrency: 4 });
     expect(embeddings.length).toBe(12);
     for (let i = 0; i < 12; i++) {
       expect(embeddings[i]).toEqual([i]); // 顺序与输入对齐,不受并发完成先后影响
@@ -85,9 +85,9 @@ describe('B-073 embedBatches 有界并发池', () => {
     const state: MockState = { calls: 0, inFlight: 0, peak: 0 };
     // 让第 1 次调用(batch 1,覆盖 text "2"/"3")抛 401(非 retryable)→ classify 直接透传,
     // 不进重试耗尽分支,可断言到具体错误码 kb/embed_auth_failed。
-    const router = makeRouter(state, { delayMs: 5, failOnCall: new Set([1]), failStatus: 401, failMessage: 'api_key_invalid' });
+    const runtime = makeRuntime(state, { delayMs: 5, failOnCall: new Set([1]), failStatus: 401, failMessage: 'api_key_invalid' });
     const texts = Array.from({ length: 8 }, (_, i) => String(i)); // 4 batch
-    const { embeddings, failedBatches } = await embedBatches(texts, router, { ...BASE_OPTS, concurrency: 2, maxRetries: 0 });
+    const { embeddings, failedBatches } = await embedBatches(texts, runtime, { ...BASE_OPTS, concurrency: 2, maxRetries: 0 });
     expect(embeddings.length).toBe(8);
     // batch 1 对应 text "2","3" → 失败位填 []
     expect(embeddings[2]).toEqual([]);
@@ -103,11 +103,11 @@ describe('B-073 embedBatches 有界并发池', () => {
 
   it('预先 abort:不领任何任务,embeddings 全 [] 保长度守恒,无 failedBatches', async () => {
     const state: MockState = { calls: 0, inFlight: 0, peak: 0 };
-    const router = makeRouter(state, { delayMs: 20 });
+    const runtime = makeRuntime(state, { delayMs: 20 });
     const ctrl = new AbortController();
     ctrl.abort(new Error('user cancelled'));
     const texts = Array.from({ length: 6 }, (_, i) => String(i)); // 3 batch
-    const { embeddings, failedBatches } = await embedBatches(texts, router, { ...BASE_OPTS, concurrency: 3, signal: ctrl.signal });
+    const { embeddings, failedBatches } = await embedBatches(texts, runtime, { ...BASE_OPTS, concurrency: 3, signal: ctrl.signal });
     // worker 入口即 return,embed 一次都没真正发出
     expect(state.calls).toBe(0);
     expect(embeddings.length).toBe(6);
@@ -117,8 +117,8 @@ describe('B-073 embedBatches 有界并发池', () => {
 
   it('空输入:不起 worker,返回空', async () => {
     const state: MockState = { calls: 0, inFlight: 0, peak: 0 };
-    const router = makeRouter(state);
-    const { embeddings, failedBatches } = await embedBatches([], router, { ...BASE_OPTS });
+    const runtime = makeRuntime(state);
+    const { embeddings, failedBatches } = await embedBatches([], runtime, { ...BASE_OPTS });
     expect(embeddings).toEqual([]);
     expect(failedBatches).toEqual([]);
     expect(state.calls).toBe(0);

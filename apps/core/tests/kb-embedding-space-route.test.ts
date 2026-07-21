@@ -14,7 +14,7 @@ const SPACE = {
 };
 
 describe('KB Embedding 空间路由', () => {
-  it('可用模型目录携带 EbdRouter 生成的完整空间身份', async () => {
+  it('可用模型目录携带 EmbedRuntime 生成的完整空间身份', async () => {
     const embeddingSpace = vi.fn(() => SPACE);
     const app = modelBindingsRoute({
       providerEmbedModels: {
@@ -23,7 +23,7 @@ describe('KB Embedding 空间路由', () => {
       providers: {
         get: () => ({ display_name: 'Provider A' }),
       },
-      ebd: { embeddingSpace },
+      embed: { embeddingSpace },
     } as unknown as AppBindings);
 
     const response = await app.request('/available/embed');
@@ -55,7 +55,7 @@ describe('KB Embedding 空间路由', () => {
         openActiveEntry,
       },
       providerEmbedModels: { dimFor: () => 1024 },
-      ebd: { embeddingSpace: () => SPACE },
+      embed: { embeddingSpace: () => SPACE },
     } as unknown as AppBindings);
 
     const response = await app.request('/invalidate', {

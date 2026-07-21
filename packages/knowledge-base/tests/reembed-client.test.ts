@@ -1,7 +1,7 @@
 // 测试知识库重嵌入扫描结束后，SQLite 向量与内存索引保持一致。
 
 import { describe, expect, it } from 'vitest';
-import type { EbdRouter, EmbeddingSpace } from '@ema-agent/ebd-client';
+import type { EmbedRuntime, EmbeddingSpace } from '@ema-agent/embed';
 import { KnowledgeClient } from '../src/client.js';
 import type { KnowledgeStore } from '../src/store/index.js';
 import type { DocumentAsset, DocumentChunk } from '../src/types.js';
@@ -24,10 +24,10 @@ describe('重嵌入索引一致性', () => {
         dim: SPACE.dim,
         space: SPACE,
       }),
-    } as unknown as EbdRouter;
+    } as unknown as EmbedRuntime;
     const client = new KnowledgeClient({
       store: store as unknown as KnowledgeStore,
-      ebdRouter: router,
+      embedRuntime: router,
     });
     const eventKinds: string[] = [];
     client.events.on(event => eventKinds.push(event.kind));

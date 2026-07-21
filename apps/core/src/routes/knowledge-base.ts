@@ -333,7 +333,7 @@ export function kbRoute(bindings: AppBindings): Hono {
 
     const dim = bindings.providerEmbedModels.dimFor(ebdProviderId, ebdModel);
     if (!dim) return c.json({ error: 'unknown_embed_dimension' }, 400);
-    const space = bindings.ebd.embeddingSpace(ebdProviderId, ebdModel, dim);
+    const space = bindings.embed.embeddingSpace(ebdProviderId, ebdModel, dim);
     const count = entry.client.invalidateEmbeddings(space.id);
     return c.json({ markedStale: count, embeddingSpace: space });
   });

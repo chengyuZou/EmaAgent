@@ -21,7 +21,8 @@
   },
   "dependencies": {
     "@ema-agent/contracts":  "workspace:*",
-    "@ema-agent/ebd-client": "workspace:*",
+    "@ema-agent/embed": "workspace:*",
+    "@ema-agent/rerank": "workspace:*",
     "@ema-agent/storage":    "workspace:*",
     "@ema-agent/token":      "workspace:*",
     "cheerio":     "^1.0.0",

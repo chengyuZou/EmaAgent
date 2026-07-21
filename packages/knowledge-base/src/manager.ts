@@ -8,7 +8,8 @@ import {
   type KbRecord,
 } from '@ema-agent/storage';
 import type { KbRegistryRepo }   from '@ema-agent/storage';
-import type { EbdRouter }        from '@ema-agent/ebd-client';
+import type { EmbedRuntime }     from '@ema-agent/embed';
+import type { RerankRuntime }    from '@ema-agent/rerank';
 import type { KbSearchResult }   from '@ema-agent/contracts';
 import { KnowledgeClient }       from './client.js';
 import { KnowledgeStore }        from './store/index.js';
@@ -35,7 +36,8 @@ export interface KbEntry {
 export interface KbManagerDeps {
   registry:             KbRegistryRepo;
   activations:          KbActivationsRepo;
-  ebdRouter?:           EbdRouter;
+  embedRuntime?:        EmbedRuntime;
+  rerankRuntime?:       RerankRuntime;
   visionAdapter?:       KbVisionAdapter;
   resolveIngestOptions: () => Partial<IngestOptions>;
   concurrency?:         number;
@@ -177,7 +179,8 @@ export class KbManager {
 
     const client = new KnowledgeClient({
       store,
-      ebdRouter:     this.deps.ebdRouter,
+      embedRuntime:  this.deps.embedRuntime,
+      rerankRuntime: this.deps.rerankRuntime,
       visionAdapter: this.deps.visionAdapter,
     });
 

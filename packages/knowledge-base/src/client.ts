@@ -5,7 +5,8 @@ import type {
   IngestOptions, IngestResult, SearchOptions, AssetListPage,
 } from './types.js';
 import type { KbSearchResult, DocumentSourceRef } from '@ema-agent/contracts';
-import type { EbdRouter, EmbeddingSpace } from '@ema-agent/ebd-client';
+import type { EmbedRuntime, EmbeddingSpace } from '@ema-agent/embed';
+import type { RerankRuntime } from '@ema-agent/rerank';
 import type { ChunkPage, AssetUsage } from '@ema-agent/storage';
 import { ingest as runIngest } from './ingest/index.js';
 import type { KnowledgeStore } from './store/index.js';
@@ -25,7 +26,8 @@ const MIN_RERANK_SCORE = 0.4;
 
 export interface KnowledgeClientDeps {
   store:          KnowledgeStore;
-  ebdRouter?:     EbdRouter;
+  embedRuntime?:  EmbedRuntime;
+  rerankRuntime?: RerankRuntime;
   visionAdapter?: KbVisionAdapter;
   hydeAdapter?:   KbHydeAdapter;
   /** Index-time question generation (RAGFlow-style). Interface only — unwired in V1,
@@ -62,7 +64,7 @@ export class KnowledgeClient {
     const result = await runIngest(filePath, opts, {
       store:         this.deps.store,
       events:        this.events,
-      ebdRouter:     this.deps.ebdRouter,
+      embedRuntime:  this.deps.embedRuntime,
       visionAdapter: this.deps.visionAdapter,
     });
 
@@ -136,7 +138,7 @@ export class KnowledgeClient {
     done: number;
     failed: Array<{ assetId: string; error: string }>;
   }> {
-    if (!this.deps.ebdRouter) throw new Error('未配置 Embedding Provider');
+    if (!this.deps.embedRuntime) throw new Error('未配置 Embedding Provider');
 
     const targets = opts.assetId
       ? [opts.assetId]
@@ -193,13 +195,13 @@ export class KnowledgeClient {
     opts: { ebdProviderId: string; ebdModel: string; signal?: AbortSignal },
     expectedSpace?: EmbeddingSpace,
   ): Promise<EmbeddingSpace> {
-    if (!this.deps.ebdRouter) throw new Error('未配置 Embedding Provider');
+    if (!this.deps.embedRuntime) throw new Error('未配置 Embedding Provider');
     const chunks = this.deps.store.getChunks(assetId);
     let space: EmbeddingSpace | undefined;
     const BATCH = 32;
     for (let i = 0; i < chunks.length; i += BATCH) {
       const batch = chunks.slice(i, i + BATCH);
-      const res = await this.deps.ebdRouter.embed({
+      const res = await this.deps.embedRuntime.embed({
         providerId: opts.ebdProviderId,
         model:      opts.ebdModel,
         texts:      batch.map(c => c.text),
@@ -251,7 +253,7 @@ export class KnowledgeClient {
 
     // ── Dense (HNSW in-memory, falls back to SQL cosine when not initialised) ─
     let denseHits: typeof sparseHits = [];
-    if (this.deps.ebdRouter && opts.ebdProviderId && opts.ebdModel) {
+    if (this.deps.embedRuntime && opts.ebdProviderId && opts.ebdModel) {
       try {
         // Optional HyDE: generate a hypothetical passage before embedding
         let embedQuery = query;
@@ -263,7 +265,7 @@ export class KnowledgeClient {
           }
         }
 
-        const res = await this.deps.ebdRouter.embed({
+        const res = await this.deps.embedRuntime.embed({
           providerId: opts.ebdProviderId,
           model:      opts.ebdModel,
           texts:      [embedQuery],
@@ -304,9 +306,9 @@ export class KnowledgeClient {
     let ranked = weightedRank(sparseHits, denseHits, alpha, topK * 2);
 
     // ── Optional rerank ───────────────────────────────────────────────────────
-    if (this.deps.ebdRouter && opts.rerankProviderId && opts.rerankModel && ranked.length > 0) {
+    if (this.deps.rerankRuntime && opts.rerankProviderId && opts.rerankModel && ranked.length > 0) {
       try {
-        const rerankRes = await this.deps.ebdRouter.rerank({
+        const rerankRes = await this.deps.rerankRuntime.rerank({
           providerId: opts.rerankProviderId,
           model:      opts.rerankModel,
           query,

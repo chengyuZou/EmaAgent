@@ -9,7 +9,7 @@ import type { KbActivationsRepo }   from '@ema-agent/storage';
 import type { ChunkSearchHit }      from '@ema-agent/storage';
 import type { ChunkPage }           from '@ema-agent/storage';
 import type { AssetUsage }          from '@ema-agent/storage';
-import type { EmbeddingSpace }      from '@ema-agent/ebd-client';
+import type { EmbeddingSpace }      from '@ema-agent/embed';
 
 export interface KbSearchOpts {
   /** Document filter within this KB. undefined = search all docs; [] = unfiltered (same as undefined). */

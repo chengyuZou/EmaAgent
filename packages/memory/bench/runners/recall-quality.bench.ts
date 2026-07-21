@@ -255,7 +255,7 @@ function bm25Retrieve(c: BenchCase, k: number): string[] {
 // ── Retriever 3: MemoryPlanner ────────────────────────────────────────────────
 //
 // The real planner integration lives in planner-recall.bench.ts which:
-//   - Creates per-case in-memory SQLite DBs with a mock EbdRouter (bench-deps.ts)
+//   - Creates per-case in-memory SQLite DBs with a mock EmbedRuntime (bench-deps.ts)
 //   - Inserts extracted items (from DeepSeek cache) with BGE-M3 embeddings
 //   - Calls MemoryPlanner.initialize() then plan() and evaluates the RecallBundle
 //

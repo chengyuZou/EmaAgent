@@ -622,6 +622,7 @@ contracts 拆除与 Runtime 重构并行推进，但每批只迁一个明确所�
 - [x] 将 `packages/memory/src/compact` 迁入 Context，并让 Agent/Conversation 通过统一 Context 边界执行预算与压缩；采用 ToolResult 落盘 → Micro → Macro → Reactive 的 V1 渐进策略，并加入三次失败熔断。
 - [x] Provider Runtime Entry 改为配置与 Adapter 共用冻结快照；热刷新只替换真实变化的 Provider，并移除 LLM 注册顺序兜底，Turn 与后台业务必须使用显式模型选择或专属 Binding。
 - [x] 模型能力查询从 `LanguageModel` 公共接口迁回 Provider Resolver，Agent、Conversation 与 Core 显式依赖能力边界；LLM 仅在发送前执行最终门禁。Probe 同步补齐明确终态、十秒超时、调用方取消和安全错误码。
+- [x] 删除混合 `packages/ebd-client`，拆为 `src/embed` 与 `src/rerank` 两个执行模块；Core、Memory 与 Knowledge Base 分别依赖实际使用的能力，不再共享注册顺序或默认模型兜底。
 
 #### C2：Turn + SSE Event
 

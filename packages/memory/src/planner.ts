@@ -51,7 +51,12 @@ export class MemoryPlanner {
       recall:      { ...DEFAULT_MEMORY_SETTINGS.recall,      ...overrides.recall },
       maintenance: { ...DEFAULT_MEMORY_SETTINGS.maintenance, ...overrides.maintenance },
     };
-    this.embed    = new EmbedService(deps.ebd, this.settings.models?.embed, this.settings.models?.rerank);
+    this.embed = new EmbedService(
+      deps.embedRuntime,
+      deps.rerankRuntime,
+      this.settings.models?.embed,
+      this.settings.models?.rerank,
+    );
     this.indexMgr = new IndexManager(deps, this.embed);
     this.queue    = new SessionTaskQueue();
     this.commitCoordinator = new MemoryCommitCoordinator();

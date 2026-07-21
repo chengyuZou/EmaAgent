@@ -5,7 +5,7 @@ import type {
   EmaStreamEvent,
 } from '@ema-agent/contracts';
 import type { MemoryNodeType, MemoryItemKind } from '@ema-agent/storage';
-import type { EmbeddingSpace } from '@ema-agent/ebd-client';
+import type { EmbeddingSpace } from '@ema-agent/embed';
 
 
 // ── Plan context (what the planner receives at beforeLlm) ────────────────────
@@ -82,7 +82,7 @@ export interface MemoryModelRef {
 export interface MemorySettings {
   enabled: boolean;
 
-  /** Optional explicit provider+model overrides. Absent → fallback to first registered. */
+  /** 显式 Provider + Model；缺失时对应向量能力不可用，不按注册顺序猜测。 */
   models?: {
     embed?:  MemoryModelRef;
     rerank?: MemoryModelRef;

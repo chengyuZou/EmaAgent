@@ -1,10 +1,12 @@
-import type { EbdRouter, EmbeddingSpace } from '@ema-agent/ebd-client';
+import type { EmbedRuntime, EmbeddingSpace } from '@ema-agent/embed';
+import type { RerankRuntime } from '@ema-agent/rerank';
 import { packEmbedding, normalizeQueryVector } from './similarity.js';
 import type { EmbeddedText, MemoryModelRef } from '../types.js';
 
 export class EmbedService {
   constructor(
-    private readonly ebd:            EbdRouter,
+    private readonly embedRuntime:   EmbedRuntime,
+    private readonly rerankRuntime:  RerankRuntime,
     private readonly embedOverride?:  MemoryModelRef,
     private readonly rerankOverride?: MemoryModelRef,
   ) {}
@@ -13,19 +15,11 @@ export class EmbedService {
 
   /** Resolve the active embed provider+model. Public — IndexManager uses it. */
   resolveEmbed(): { providerId: string; model: string } | null {
-    if (this.embedOverride) return this.embedOverride;
-    const providerId = this.ebd.firstEmbedId();
-    if (!providerId) return null;
-    const model = this.ebd.defaultEmbedModelFor(providerId);
-    return model ? { providerId, model } : null;
+    return this.embedOverride ?? null;
   }
 
   private resolveRerank(): { providerId: string; model: string } | null {
-    if (this.rerankOverride) return this.rerankOverride;
-    const providerId = this.ebd.firstRerankId();
-    if (!providerId) return null;
-    const model = this.ebd.defaultRerankModelFor(providerId);
-    return model ? { providerId, model } : null;
+    return this.rerankOverride ?? null;
   }
 
   // ── Embed ─────────────────────────────────────────────────────────────────
@@ -39,7 +33,7 @@ export class EmbedService {
   /** 由当前配置和 catalog 维度解析空间，不从历史向量反推身份。 */
   currentSpace(dim: number): EmbeddingSpace | null {
     const p = this.resolveEmbed();
-    return p ? this.ebd.embeddingSpace(p.providerId, p.model, dim) : null;
+    return p ? this.embedRuntime.embeddingSpace(p.providerId, p.model, dim) : null;
   }
 
   async embedOne(text: string): Promise<EmbeddedText | null> {
@@ -53,7 +47,7 @@ export class EmbedService {
     const p = this.resolveEmbed();
     if (!p) return null;
 
-    const resp = await this.ebd.embed({ providerId: p.providerId, model: p.model, texts });
+    const resp = await this.embedRuntime.embed({ providerId: p.providerId, model: p.model, texts });
     return resp.embeddings.map((vec) => ({
       embedding:  packEmbedding(vec),
       providerId: p.providerId,
@@ -71,7 +65,7 @@ export class EmbedService {
     const p = this.resolveEmbed();
     if (!p) return null;
 
-    const resp = await this.ebd.embed({ providerId: p.providerId, model: p.model, texts: [text] });
+    const resp = await this.embedRuntime.embed({ providerId: p.providerId, model: p.model, texts: [text] });
     const raw  = resp.embeddings[0];
     if (!raw) return null;
 
@@ -92,7 +86,7 @@ export class EmbedService {
 
   /**
    * Rerank `documents` against `query`. Returns a Map<originalIndex, score>
-   * so callers never need to import ebd-client types.
+   * so callers never need to import Rerank 模块类型。
    * Returns null when no rerank provider is configured or the call fails.
    */
   async rerank(
@@ -104,7 +98,7 @@ export class EmbedService {
     const p = this.resolveRerank();
     if (!p) return null;
     try {
-      const resp = await this.ebd.rerank({
+      const resp = await this.rerankRuntime.rerank({
         providerId: p.providerId,
         model:      p.model,
         query,

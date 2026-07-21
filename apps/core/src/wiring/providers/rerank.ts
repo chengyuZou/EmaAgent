@@ -3,7 +3,7 @@ import {
   type ProviderConfigRow,
   type Database,
 } from '@ema-agent/storage';
-import type { RerankProviderConfig } from '@ema-agent/ebd-client';
+import type { RerankProviderConfig } from '@ema-agent/rerank';
 import type { CredentialFacade } from '@ema-agent/credential';
 import {
   providerCatalog,

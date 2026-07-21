@@ -1,5 +1,5 @@
 {
-  "name": "@ema-agent/ebd-client",
+  "name": "@ema-agent/embed",
   "version": "0.1.0",
   "private": true,
   "type": "module",

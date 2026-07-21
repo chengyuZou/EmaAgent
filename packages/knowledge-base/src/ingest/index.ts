@@ -20,14 +20,14 @@ import type { KnowledgeStore } from '../store/index.js';
 import type { DocumentEventEmitter } from '../events/emitter.js';
 import type { DocumentProgressEvent } from '../events/types.js';
 import type { KbVisionAdapter } from '../adapters/vision.js';
-import type { EbdRouter, EmbeddingSpace } from '@ema-agent/ebd-client';
+import type { EmbedRuntime, EmbeddingSpace } from '@ema-agent/embed';
 
 const EMBED_BATCH_SIZE = 32;
 
 export interface IngestDeps {
   store:          KnowledgeStore;
   events:         DocumentEventEmitter;
-  ebdRouter?:     EbdRouter;
+  embedRuntime?:  EmbedRuntime;
   visionAdapter?: KbVisionAdapter;
 }
 
@@ -47,7 +47,7 @@ export async function ingest(
     return retryFailedEmbeddings(assetId, opts, deps);
   }
 
-  const { store, ebdRouter, visionAdapter } = deps;
+  const { store, embedRuntime, visionAdapter } = deps;
   const emit = createProgressEmitter(assetId, opts, deps.events);
 
   // 失败后的完整重试必须先删除旧的中间产物。文档、chunk、preview 通过 FK
@@ -126,12 +126,12 @@ export async function ingest(
 
     // ── 5. Chunk ────────────────────────────────────────────────────────────
     emit({ kind: 'chunk' });
-    const plan = planIngest(mimeType, !!(ebdRouter && opts.ebdProviderId && opts.ebdModel));
+    const plan = planIngest(mimeType, !!(embedRuntime && opts.ebdProviderId && opts.ebdModel));
     const chunkOpts = { maxTokens: 512, overlap: 64, minTokens: 20, assetId };
-    const rawChunks = plan.useSemanticChunking && ebdRouter && opts.ebdProviderId && opts.ebdModel
+    const rawChunks = plan.useSemanticChunking && embedRuntime && opts.ebdProviderId && opts.ebdModel
       ? await new SemanticChunker().chunk(parsed.blocks, {
           ...chunkOpts,
-          ebdRouter,
+          embedRuntime,
           providerId: opts.ebdProviderId,
           model: opts.ebdModel,
           signal: opts.signal,
@@ -147,9 +147,9 @@ export async function ingest(
       failures: [],
       counts: { total: chunks.length, completed: chunks.length, failed: 0 },
     };
-    if (ebdRouter && opts.ebdProviderId && opts.ebdModel && chunks.length > 0) {
+    if (embedRuntime && opts.ebdProviderId && opts.ebdModel && chunks.length > 0) {
       emit({ kind: 'embed', progress: 0 });
-      embeddingReport = await embedChunks(chunks, ebdRouter, opts, store, emit);
+      embeddingReport = await embedChunks(chunks, embedRuntime, opts, store, emit);
       // 即便部分失败，也登记成功批次所属空间，使这些向量可以参与检索；
       // failedItems 明确告诉上层当前索引并不完整。
       if (embeddingReport.space) store.setEmbeddingSpace(assetId, embeddingReport.space);
@@ -213,9 +213,9 @@ async function retryFailedEmbeddings(
   opts: IngestOptions,
   deps: IngestDeps,
 ): Promise<IngestResult> {
-  const { store, ebdRouter } = deps;
+  const { store, embedRuntime } = deps;
   const emit = createProgressEmitter(assetId, opts, deps.events);
-  if (!ebdRouter || !opts.ebdProviderId || !opts.ebdModel) {
+  if (!embedRuntime || !opts.ebdProviderId || !opts.ebdModel) {
     throw new Error('[kb/ingest] embedding provider is required for partial retry');
   }
 
@@ -230,7 +230,7 @@ async function retryFailedEmbeddings(
   }
 
   emit({ kind: 'embed', progress: 0 });
-  const report = await embedChunks(chunks, ebdRouter, opts, store, emit, asset.ebdSpaceId);
+  const report = await embedChunks(chunks, embedRuntime, opts, store, emit, asset.ebdSpaceId);
   const effectiveSpace = report.space;
   if (effectiveSpace) store.setEmbeddingSpace(assetId, effectiveSpace);
 
@@ -280,7 +280,7 @@ async function retryFailedEmbeddings(
 
 async function embedChunks(
   chunks: DocumentChunk[],
-  router: EbdRouter,
+  runtime: EmbedRuntime,
   opts: IngestOptions,
   store: KnowledgeStore,
   emit: (event: Omit<DocumentProgressEvent, 'assetId' | 'taskId' | 'attempt'>) => void,
@@ -293,7 +293,7 @@ async function embedChunks(
   for (let offset = 0; offset < chunks.length; offset += EMBED_BATCH_SIZE) {
     const batch = chunks.slice(offset, offset + EMBED_BATCH_SIZE);
     try {
-      const response = await router.embed({
+      const response = await runtime.embed({
         providerId: opts.ebdProviderId!,
         model: opts.ebdModel!,
         texts: batch.map(chunk => chunk.text),

@@ -1,6 +1,7 @@
 import type { Database } from '@ema-agent/storage';
 import type { LanguageModelRuntime } from '@ema-agent/llm';
-import type { EbdRouter } from '@ema-agent/ebd-client';
+import type { EmbedRuntime } from '@ema-agent/embed';
+import type { RerankRuntime } from '@ema-agent/rerank';
 import type { TtsClient } from '@ema-agent/tts';
 import type { SttClient } from '@ema-agent/stt';
 import type { VisionRouter } from '@ema-agent/vision';
@@ -17,7 +18,8 @@ import { configureBridge } from './bridge.js';
 export interface ProviderRuntimeDependencies {
   profileDb: Database;
   llm: LanguageModelRuntime;
-  ebd: EbdRouter;
+  embed: EmbedRuntime;
+  rerank: RerankRuntime;
   tts: TtsClient;
   stt: SttClient;
   vision: VisionRouter;
@@ -41,13 +43,14 @@ export class ProviderRuntimeFacade {
    * 各 Router 会先构造下一代 Adapter Map，再交换引用。
    */
   refreshProviders(): void {
-    const { profileDb, llm, ebd, tts, stt, vision, credentials } = this.deps;
+    const { profileDb, llm, embed, rerank, tts, stt, vision, credentials } = this.deps;
     const llmConfigs = loadLlmConfigs(profileDb, credentials);
     const embedConfigs = loadEmbedConfigs(profileDb, credentials);
     const rerankConfigs = loadRerankConfigs(profileDb, credentials);
 
     llm.reload(llmConfigs);
-    ebd.reload(embedConfigs, rerankConfigs);
+    embed.reload(embedConfigs);
+    rerank.reload(rerankConfigs);
     reloadTtsClient(tts, profileDb, credentials);
     reloadSttClient(stt, profileDb, credentials);
     reloadVisionRouter(vision, profileDb, credentials);

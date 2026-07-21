@@ -43,7 +43,8 @@ import {
   ModelsDevCatalog,
   type ModelCapabilityResolver,
 } from '@ema-agent/provider';
-import { EbdRouter }     from '@ema-agent/ebd-client';
+import { EmbedRuntime } from '@ema-agent/embed';
+import { RerankRuntime } from '@ema-agent/rerank';
 import { NarrativeClient } from '@ema-agent/narrative-client';
 import { CharacterCardStore, BUILTIN_CARDS, EMA_CARD_INPUT, EMA_CARD_ID } from '@ema-agent/character-card';
 import { Live2DModelsRepo } from '@ema-agent/storage';
@@ -134,7 +135,8 @@ export interface AppBindings {
 
   // AI clients
   llm:       LanguageModelRuntime;
-  ebd:       EbdRouter;
+  embed:     EmbedRuntime;
+  rerank:    RerankRuntime;
   /** models.dev LLM/Vision catalog — context window + capabilities by modelsDevId. */
   modelCatalog: ModelsDevCatalog;
   /** 按已配置 Provider 身份解析模型能力，不经过 LLM 执行接口。 */
@@ -350,8 +352,11 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
     usageRecorder: usageRecords,
     onUsageRecordError,
   });
-  const ebd = new EbdRouter(
+  const embed = new EmbedRuntime(
     loadEmbedConfigs(profileDb, credentials),
+    { usageRecorder: usageRecords, onUsageRecordError },
+  );
+  const rerank = new RerankRuntime(
     loadRerankConfigs(profileDb, credentials),
     { usageRecorder: usageRecords, onUsageRecordError },
   );
@@ -394,7 +399,8 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
   const providerRuntime = new ProviderRuntimeFacade({
     profileDb,
     llm,
-    ebd,
+    embed,
+    rerank,
     tts,
     stt,
     vision,
@@ -570,7 +576,8 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
   const memory = new MemoryPlanner({
     session,
     llm,
-    ebd,
+    embedRuntime: embed,
+    rerankRuntime: rerank,
     modelBindings,
     nodes:            memoryNodes,
     edges:            memoryEdges,
@@ -730,7 +737,8 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
   const kb = new KbManager({
     registry:             new KbRegistryRepo(profileDb.sqlite),
     activations:          new KbActivationsRepo(dataDb.sqlite),
-    ebdRouter:            ebd,
+    embedRuntime:         embed,
+    rerankRuntime:        rerank,
     visionAdapter:        asKbVisionAdapter(vision),
     resolveIngestOptions: resolveIngestModels,
     concurrency:          3,
@@ -849,7 +857,7 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
   return {
     profileDb, dataDb, activeDataDir, credentials, fileAccess, sandboxStatus,
     hooks, session, sessionBackup,
-    llm, ebd, narrative, modelCatalog, modelCapabilities,
+    llm, embed, rerank, narrative, modelCatalog, modelCapabilities,
     card, emotion,
     tts, audioArchive, stt, vision, providerRuntime,
     permission, permissionPrompts, askUserRegistry, tools, buildAskForTurn, getCommandRunner,

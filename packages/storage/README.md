@@ -14,7 +14,7 @@ EmaAgent 的 **SQLite 访问层**。`better-sqlite3` + 手写 SQL(禁 ORM)。只
 - 提供迁移器(`MigrationsRunner`)管理表结构演进
 
 **不做什么**(Facade 边界):
-- 不做业务逻辑(权限判断 / LLM 调用 / embedding 计算 -- 那是 `permission` / `llm` / `ebd-client` 包)
+- 不做业务逻辑（权限判断 / LLM 调用 / embedding 与 rerank 计算——分别由 `permission` / `llm` / `embed` / `rerank` 模块承担）
 - 不碰文件系统(音频 / Artifact 正文 / 附件文件由 `tts` / `artifact` / `attachment` 包管,storage 只存路径)
 - 不做路由 / 不接 HTTP
 - **例外**:`zh-tokenizer.ts`(jieba 中文分词)放在本包,因为 KB 的 FTS5 全文索引紧耦合分词策略(索引怎么建决定怎么查)。若未来其他包也要中文分词,应提取成独立包。

@@ -20,7 +20,7 @@
  *   │       │                                                             │
  *   │       ▼                                                             │
  *   │  [Online] MemoryPlanner.plan({ userInput: query })                 │
- *   │       → embedQuery() via mock EbdRouter (cache hit)               │
+ *   │       → embedQuery() via mock EmbedRuntime (cache hit)            │
  *   │       → recallEpisodic() → VectorIndex.search() → top-K items     │
  *   │       │                                                             │
  *   │       ▼                                                             │
@@ -31,8 +31,7 @@
  * Compared to extracted-recall.bench.ts:
  *   - Uses real MemoryPlanner instead of manual cosine search.
  *   - Tests the actual VectorIndex, mode-weighting, alreadySurfaced logic.
- *   - No reranker (planner uses its own reranker when EbdRouter supports it;
- *     the bench EbdRouter stubs rerank — we test the bi-encoder path only).
+ *   - No reranker; the bench only exercises the bi-encoder recall path.
  *   - Same evaluation metric (semantic cosine match to ground truth).
  *
  * Usage:
@@ -52,6 +51,7 @@ import {
   createBenchDeps,
   insertBenchItems,
   BENCH_PROVIDER_ID,
+  BENCH_MODEL,
 } from '../lib/bench-deps.js';
 import { MemoryPlanner }     from '../../src/planner.js';
 import { asSessionId, asTurnId } from '@ema-agent/contracts';
@@ -239,6 +239,7 @@ async function evalCase(
 
     // Build planner with per-case settings (disable L0/L1/narrative — empty DBs)
     const planner = new MemoryPlanner(bd.deps, {
+      models: { embed: { providerId: BENCH_PROVIDER_ID, model: BENCH_MODEL } },
       recall: { layer2TopK: TOP_K, currentModeWeight: 1.0 },  // all slots to current mode
     });
 

@@ -3,7 +3,7 @@
  *
  * Wires the real production classes (SQLite repos, MemoryPlanner) against:
  *   - An in-memory SQLite Database (no disk I/O, discarded after each case).
- *   - A mock EbdRouter that serves vectors from the bench/cache/bge-m3.json
+ *   - A mock EmbedRuntime that serves vectors from the bench/cache/bge-m3.json
  *     disk cache instead of calling the SiliconFlow API.
  *   - Stub implementations for LanguageModelRuntime, NarrativeClient, SessionStore,
  *     and ModelBindingsRepo — none of these are exercised during plan().
@@ -34,19 +34,25 @@ export { packEmbedding };
 export const BENCH_PROVIDER_ID = 'bench-bge-m3';
 export const BENCH_MODEL       = 'Pro/BAAI/bge-m3';
 
-// ── Mock EbdRouter ─────────────────────────────────────────────────────────────
+// ── Mock EmbedRuntime ──────────────────────────────────────────────────────────
 //
 // Returns vectors from the on-disk BGE-M3 cache.
 // Throws if a text is not cached (caller must precompute first).
 //
-// We duck-type against EbdRouter — the bench imports it as unknown to avoid
-// pulling in ebd-client's real adapter machinery.
+// Bench 只模拟实际使用的 EmbedRuntime 边界，避免执行真实网络请求。
 
-function makeBenchEbdRouter(cache: EmbedCache): MemoryDeps['ebd'] {
+function makeBenchEmbedRuntime(cache: EmbedCache): MemoryDeps['embedRuntime'] {
+  const space = {
+    id: `${BENCH_PROVIDER_ID}:${BENCH_MODEL}:${EMBED_DIM}:none:bench`,
+    providerId: BENCH_PROVIDER_ID,
+    model: BENCH_MODEL,
+    dim: EMBED_DIM,
+    normalization: 'none' as const,
+    revision: 'bench',
+  };
   return {
     // ── identity queries (used by EmbedService + planner initialize) ─────────
-    firstEmbedId:         ()  => BENCH_PROVIDER_ID,
-    defaultEmbedModelFor: (id: string) => id === BENCH_PROVIDER_ID ? BENCH_MODEL : undefined,
+    embeddingSpace: () => space,
 
     // ── embed ─────────────────────────────────────────────────────────────────
     embed: async ({ texts }: { texts: string[]; providerId: string; model: string }) => ({
@@ -56,19 +62,17 @@ function makeBenchEbdRouter(cache: EmbedCache): MemoryDeps['ebd'] {
         return vec;
       }),
       dim: EMBED_DIM,
+      space,
     }),
 
     // ── stubs — not called during plan() ─────────────────────────────────────
-    rerank:              async () => ({ results: [] }),
-    upsertEmbedConfig:   () => {},
-    removeEmbedConfig:   () => {},
-    upsertRerankConfig:  () => {},
-    removeRerankConfig:  () => {},
-    firstRerankId:       () => undefined,
-    defaultRerankModelFor: () => undefined,
-    probeEmbed:          async () => ({ ok: true }),
-    probeRerank:         async () => ({ ok: true }),
-  } as unknown as MemoryDeps['ebd'];
+  } as unknown as MemoryDeps['embedRuntime'];
+}
+
+function makeBenchRerankRuntime(): MemoryDeps['rerankRuntime'] {
+  return {
+    rerank: async () => ({ results: [] }),
+  } as unknown as MemoryDeps['rerankRuntime'];
 }
 
 // ── Mock SessionStore ─────────────────────────────────────────────────────────
@@ -132,7 +136,8 @@ export function createBenchDeps(embedCache: EmbedCache): BenchDeps {
     db,
     session:         makeBenchSessionStore(),
     llm:             {} as unknown as MemoryDeps['llm'],
-    ebd:             makeBenchEbdRouter(embedCache),
+    embedRuntime:    makeBenchEmbedRuntime(embedCache),
+    rerankRuntime:   makeBenchRerankRuntime(),
     narrative:       {} as unknown as MemoryDeps['narrative'],
     modelBindings,
     nodes,

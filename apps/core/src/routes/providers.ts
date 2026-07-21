@@ -383,7 +383,7 @@ export function providersRoute(bindings: AppBindings): Hono {
       ?? enabledEmbed[0]?.model
       ?? (ctx.def ? staticModelsFor(ctx.def, 'embed')[0] : undefined);
     if (!model) return c.json({ ok: false, model: '', latencyMs: null, error: '没有可探测的模型，请先在下方「模型」启用一个' });
-    const result = await bindings.ebd.probeEmbed(id, model);
+    const result = await bindings.embed.probe(id, model, c.req.raw.signal);
     recordProbe(id, result);
     return c.json({ ...result, model });
   });
@@ -400,7 +400,7 @@ export function providersRoute(bindings: AppBindings): Hono {
       ?? (ctx.def ? staticModelsFor(ctx.def, 'rerank')[0] : undefined)
       ?? '';
     if (!model) return c.json({ ok: false, model: '', latencyMs: null, error: '没有可探测的模型，请先在下方「模型」启用一个' });
-    const result = await bindings.ebd.probeRerank(id, model);
+    const result = await bindings.rerank.probe(id, model, c.req.raw.signal);
     recordProbe(id, result);
     return c.json({ ...result, model });
   });
@@ -579,7 +579,7 @@ export function providersRoute(bindings: AppBindings): Hono {
     let dim = body.data.dim;
     let dimSource: 'live' | 'table' | 'manual' = body.data.dimSource ?? 'manual';
     try {
-      const res = await bindings.ebd.embed({ providerId: id, model, texts: ['test'] });
+      const res = await bindings.embed.embed({ providerId: id, model, texts: ['test'] });
       if (res.dim > 0) { dim = res.dim; dimSource = 'live'; }
     } catch { /* keep fallback dim */ }
 

@@ -10,7 +10,7 @@ AgenticRAG 知识库包。用户给的资料(文档)经 **解析 → 分块 → 
 ## 架构
 
 ```
-文档 → parse(reader) → chunk(chunker) → embed(EbdRouter) → HNSW index
+文档 → parse(reader) → chunk(chunker) → embed(EmbedRuntime) → HNSW index
                                                                   ↓
               LLM kb_search 工具 → hybrid retrieval(FTS5 + vector) → RankedHit
 ```
@@ -43,6 +43,6 @@ AgenticRAG 知识库包。用户给的资料(文档)经 **解析 → 分块 → 
 
 ## 不做
 
-- 不做 LLM 调用(只 embed / rerank,经 `@ema-agent/ebd-client`)
+- 不做 LLM 调用（只通过 `@ema-agent/embed` 与 `@ema-agent/rerank` 使用对应能力）
 - 不做记忆 / 剧情(见上)
 - 不往 Python bridge 搬(纯 TS,bridge 只承载 LightRAG)

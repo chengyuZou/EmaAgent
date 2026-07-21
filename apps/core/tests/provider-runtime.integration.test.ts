@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { Database, ModelBindingsRepo, ProvidersRepo } from '@ema-agent/storage';
 import { LanguageModelRuntime } from '@ema-agent/llm';
-import { EbdRouter } from '@ema-agent/ebd-client';
+import { EmbedRuntime } from '@ema-agent/embed';
+import { RerankRuntime } from '@ema-agent/rerank';
 import { TtsClient } from '@ema-agent/tts';
 import { SttClient } from '@ema-agent/stt';
 import { VisionRouter } from '@ema-agent/vision';
@@ -26,7 +27,8 @@ describe('ProviderRuntimeFacade', () => {
   let profileDb: Database;
   let providers: ProvidersRepo;
   let llm: LanguageModelRuntime;
-  let ebd: EbdRouter;
+  let embed: EmbedRuntime;
+  let rerank: RerankRuntime;
   let tts: TtsClient;
   let stt: SttClient;
   let vision: VisionRouter;
@@ -38,7 +40,8 @@ describe('ProviderRuntimeFacade', () => {
     profileDb.migrate();
     providers = new ProvidersRepo(profileDb.sqlite, createTestCredentialFacade());
     llm = new LanguageModelRuntime([]);
-    ebd = new EbdRouter();
+    embed = new EmbedRuntime();
+    rerank = new RerankRuntime();
     tts = new TtsClient([]);
     stt = new SttClient([]);
     vision = new VisionRouter({ configs: [] });
@@ -46,7 +49,8 @@ describe('ProviderRuntimeFacade', () => {
     runtime = new ProviderRuntimeFacade({
       profileDb,
       llm,
-      ebd,
+      embed,
+      rerank,
       tts,
       stt,
       vision,
@@ -78,8 +82,8 @@ describe('ProviderRuntimeFacade', () => {
     runtime.refreshProviders();
 
     expect(llm.getProtocol('multi-provider')).toBe('openai-llm');
-    expect(ebd.firstEmbedId()).toBe('multi-provider');
-    expect(ebd.firstRerankId()).toBe('multi-provider');
+    expect(embed.getProtocol('multi-provider')).toBe('openai-embed');
+    expect(rerank.getProtocol('multi-provider')).toBe('cohere-rerank');
     expect(vision.firstProviderId()).toBe('multi-provider');
     expect(tts.firstProviderId()).toBe('multi-provider');
     expect(stt.firstProviderId()).toBe('multi-provider');
@@ -94,8 +98,8 @@ describe('ProviderRuntimeFacade', () => {
     runtime.refreshProviders();
 
     expect(llm.getProtocol('multi-provider')).toBe('openai-llm');
-    expect(ebd.firstEmbedId()).toBeUndefined();
-    expect(ebd.firstRerankId()).toBeUndefined();
+    expect(embed.getProtocol('multi-provider')).toBeUndefined();
+    expect(rerank.getProtocol('multi-provider')).toBeUndefined();
     expect(vision.firstProviderId()).toBeUndefined();
     expect(tts.firstProviderId()).toBeUndefined();
     expect(stt.firstProviderId()).toBeUndefined();

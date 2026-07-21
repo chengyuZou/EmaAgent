@@ -12,7 +12,8 @@ import type {
 } from '@ema-agent/storage';
 import type { SessionStore } from '@ema-agent/session';
 import type { LanguageModel } from '@ema-agent/llm';
-import type { EbdRouter } from '@ema-agent/ebd-client';
+import type { EmbedRuntime } from '@ema-agent/embed';
+import type { RerankRuntime } from '@ema-agent/rerank';
 import type { EmaStreamEvent } from '@ema-agent/contracts';
 
 // ── External dependencies ─────────────────────────────────────────────────────
@@ -24,7 +25,8 @@ import type { EmaStreamEvent } from '@ema-agent/contracts';
 export interface MemoryDeps {
   session:        SessionStore;
   llm:            LanguageModel;
-  ebd:            EbdRouter;
+  embedRuntime:   EmbedRuntime;
+  rerankRuntime:  RerankRuntime;
   modelBindings:  ModelBindingsRepo;
 
   // Storage repos owned by the memory subsystem

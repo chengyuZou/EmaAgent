@@ -1,6 +1,6 @@
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import type { EbdRouter, EmbeddingSpace } from '@ema-agent/ebd-client';
+import type { EmbedRuntime, EmbeddingSpace } from '@ema-agent/embed';
 import { DocumentEventEmitter } from '../src/events/emitter.js';
 import { ingest } from '../src/ingest/index.js';
 import type { KnowledgeStore } from '../src/store/index.js';
@@ -26,7 +26,7 @@ describe('B-012 embedding 局部失败', () => {
     };
     const router = {
       embed: async () => ({ embeddings: [], dim: 2, space }),
-    } as unknown as EbdRouter;
+    } as unknown as EmbedRuntime;
 
     const result = await ingest(
       fileURLToPath(new URL('./fixtures/embedding-mismatch.txt', import.meta.url)),
@@ -37,7 +37,7 @@ describe('B-012 embedding 局部失败', () => {
         ebdProviderId: 'provider-1',
         ebdModel: 'embed-1',
       },
-      { store: store as unknown as KnowledgeStore, events, ebdRouter: router },
+      { store: store as unknown as KnowledgeStore, events, embedRuntime: router },
     );
 
     expect(result.outcome).toBe('partial_failed');

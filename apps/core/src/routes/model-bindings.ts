@@ -82,7 +82,7 @@ export function modelBindingsRoute(bindings: AppBindings): Hono {
           models: rows.map((r) => {
             let embeddingSpace = null;
             try {
-              embeddingSpace = bindings.ebd.embeddingSpace(
+              embeddingSpace = bindings.embed.embeddingSpace(
                 r.provider_config_id,
                 r.model,
                 r.dim,
