@@ -45,7 +45,7 @@
     "@ema-agent/tools": "workspace:*",
     "@ema-agent/tool-builtin": "workspace:*",
     "@ema-agent/sandbox": "workspace:*",
-    "@ema-agent/knowledge-base": "workspace:*",
+    "@ema-agent/knowledge": "workspace:*",
     "@ema-agent/memory": "workspace:*",
     "@ema-agent/tts": "workspace:*",
     "@ema-agent/stt": "workspace:*",

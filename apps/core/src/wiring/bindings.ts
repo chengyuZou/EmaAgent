@@ -92,8 +92,8 @@ import { MemoryPlanner } from '@ema-agent/memory';
 import { ContextCompactor } from '@ema-agent/context';
 import {
   KbManager,
-} from '@ema-agent/knowledge-base';
-import type { IngestOptions } from '@ema-agent/knowledge-base';
+} from '@ema-agent/knowledge';
+import type { IngestOptions } from '@ema-agent/knowledge';
 import {
   KbActivationsRepo, KbRegistryRepo,
 } from '@ema-agent/storage';

@@ -1,4 +1,4 @@
-# @ema-agent/knowledge-base
+# @ema-agent/knowledge
 
 AgenticRAG 知识库包。用户给的资料(文档)经 **解析 → 分块 → embedding → HNSW 索引 → 混合检索**,由 LLM 通过 `kb_search` 工具**主动**检索。
 

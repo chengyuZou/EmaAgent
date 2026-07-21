@@ -73,9 +73,9 @@ importers:
       '@ema-agent/hook':
         specifier: workspace:*
         version: link:../../packages/hook
-      '@ema-agent/knowledge-base':
+      '@ema-agent/knowledge':
         specifier: workspace:*
-        version: link:../../packages/knowledge-base
+        version: link:../../src/knowledge
       '@ema-agent/llm':
         specifier: workspace:*
         version: link:../../src/llm
@@ -560,59 +560,6 @@ importers:
       '@ema-agent/turn':
         specifier: workspace:*
         version: link:../../src/turn
-    devDependencies:
-      '@types/node':
-        specifier: ^20.0.0
-        version: 20.19.39
-      rimraf:
-        specifier: ^5.0.0
-        version: 5.0.10
-      typescript:
-        specifier: ^5.9.3
-        version: 5.9.3
-      vitest:
-        specifier: ^2.0.0
-        version: 2.1.9(@types/node@20.19.39)(jsdom@26.1.0(canvas@2.11.2))(msw@2.14.6(@types/node@20.19.39)(typescript@5.9.3))
-
-  packages/knowledge-base:
-    dependencies:
-      '@ema-agent/contracts':
-        specifier: workspace:*
-        version: link:../contracts
-      '@ema-agent/embed':
-        specifier: workspace:*
-        version: link:../../src/embed
-      '@ema-agent/rerank':
-        specifier: workspace:*
-        version: link:../../src/rerank
-      '@ema-agent/storage':
-        specifier: workspace:*
-        version: link:../../src/storage
-      '@ema-agent/token':
-        specifier: workspace:*
-        version: link:../../src/token
-      cheerio:
-        specifier: ^1.0.0
-        version: 1.2.0
-      domhandler:
-        specifier: ^5.0.3
-        version: 5.0.3
-      mammoth:
-        specifier: ^1.8.0
-        version: 1.12.0
-      pdfjs-dist:
-        specifier: ^4.10.38
-        version: 4.10.38
-      sharp:
-        specifier: ^0.33.5
-        version: 0.33.5
-    optionalDependencies:
-      canvas:
-        specifier: ^2.11.2
-        version: 2.11.2
-      usearch:
-        specifier: ^2.25.1
-        version: 2.25.1
     devDependencies:
       '@types/node':
         specifier: ^20.0.0
@@ -1140,6 +1087,59 @@ importers:
       '@ema-agent/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+    devDependencies:
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.39
+      rimraf:
+        specifier: ^5.0.0
+        version: 5.0.10
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: ^2.0.0
+        version: 2.1.9(@types/node@20.19.39)(jsdom@26.1.0(canvas@2.11.2))(msw@2.14.6(@types/node@20.19.39)(typescript@5.9.3))
+
+  src/knowledge:
+    dependencies:
+      '@ema-agent/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
+      '@ema-agent/embed':
+        specifier: workspace:*
+        version: link:../embed
+      '@ema-agent/rerank':
+        specifier: workspace:*
+        version: link:../rerank
+      '@ema-agent/storage':
+        specifier: workspace:*
+        version: link:../storage
+      '@ema-agent/token':
+        specifier: workspace:*
+        version: link:../token
+      cheerio:
+        specifier: ^1.0.0
+        version: 1.2.0
+      domhandler:
+        specifier: ^5.0.3
+        version: 5.0.3
+      mammoth:
+        specifier: ^1.8.0
+        version: 1.12.0
+      pdfjs-dist:
+        specifier: ^4.10.38
+        version: 4.10.38
+      sharp:
+        specifier: ^0.33.5
+        version: 0.33.5
+    optionalDependencies:
+      canvas:
+        specifier: ^2.11.2
+        version: 2.11.2
+      usearch:
+        specifier: ^2.25.1
+        version: 2.25.1
     devDependencies:
       '@types/node':
         specifier: ^20.0.0

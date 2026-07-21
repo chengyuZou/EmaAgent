@@ -3,8 +3,8 @@
 
 import { afterEach, describe, expect, it } from 'vitest';
 import { Database, KbReembedTasksRepo } from '@ema-agent/storage';
-import { DocumentEventEmitter } from '../src/events/emitter.js';
-import { ReembedQueue, type ReembedSweepInput, type ReembedSweepOutcome } from '../src/reembed/queue.js';
+import { DocumentEventEmitter } from '../events/emitter.js';
+import { ReembedQueue, type ReembedSweepInput, type ReembedSweepOutcome } from '../reembed/queue.js';
 
 describe('B-075 ReembedQueue', () => {
   const databases: Database[] = [];

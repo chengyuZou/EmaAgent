@@ -1,7 +1,7 @@
 // ── Knowledge-base public API types ──────────────────────────────────────────
 // KbAssetScope + search result types are the only KB types that cross package
 // boundaries. Internal pipeline types (DocumentBlock, DocumentChunk, etc.) live
-// in packages/knowledge-base/src/types.ts and never escape that package.
+// in src/knowledge/types.ts and never escape that package.
 
 /** Per-KB document scope: which documents within a specific KB are selected for a turn.
  *  Sent by the chat picker when the user selects docs from one or more KBs. */

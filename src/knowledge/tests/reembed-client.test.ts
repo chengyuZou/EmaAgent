@@ -2,9 +2,9 @@
 
 import { describe, expect, it } from 'vitest';
 import type { EmbedRuntime, EmbeddingSpace } from '@ema-agent/embed';
-import { KnowledgeClient } from '../src/client.js';
-import type { KnowledgeStore } from '../src/store/index.js';
-import type { DocumentAsset, DocumentChunk } from '../src/types.js';
+import { KnowledgeClient } from '../client.js';
+import type { KnowledgeStore } from '../store/index.js';
+import type { DocumentAsset, DocumentChunk } from '../types.js';
 
 const SPACE: EmbeddingSpace = {
   id: 'space-1',

@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { randomUUID } from 'node:crypto';
 import type { AppBindings } from '../wiring/index.js';
-import type { KbEntry } from '@ema-agent/knowledge-base';
+import type { KbEntry } from '@ema-agent/knowledge';
 import { DocumentAssetCursorError } from '@ema-agent/storage';
 
 // ── Schemas ───────────────────────────────────────────────────────────────────

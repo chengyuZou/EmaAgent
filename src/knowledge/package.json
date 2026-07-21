@@ -1,5 +1,5 @@
 {
-  "name": "@ema-agent/knowledge-base",
+  "name": "@ema-agent/knowledge",
   "version": "0.1.0",
   "private": true,
   "type": "module",

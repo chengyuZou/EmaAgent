@@ -3,7 +3,7 @@ import { ProvidersRepo } from '@ema-agent/storage';
 import { VisionRuntime, isVisionError } from '@ema-agent/vision';
 import type { VisionProviderConfig, VisionImageMime } from '@ema-agent/vision';
 import type { CredentialFacade } from '@ema-agent/credential';
-import { KbVisionAdapterError, type KbVisionAdapter } from '@ema-agent/knowledge-base';
+import { KbVisionAdapterError, type KbVisionAdapter } from '@ema-agent/knowledge';
 import {
   providerCatalog,
   isVisionProtocol,

@@ -2,9 +2,9 @@
 // 乱码/扫描页降级整页 Vision OCR; 乱码检测覆盖 PUA 码点、子集字体门与代码页误判防护。
 
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import type { DocumentBlock } from '../src/types.js';
-import type { ImageReader } from '../src/readers/image.js';
-import { KbVisionAdapterError } from '../src/adapters/vision.js';
+import type { DocumentBlock } from '../types.js';
+import type { ImageReader } from '../readers/image.js';
+import { KbVisionAdapterError } from '../adapters/vision.js';
 
 // pdfjs 在本测试中整体 mock; OPS 值与真实 4.10.x 枚举一致(见 legacy/build/pdf.mjs)。
 const { mockGetDocument, OPS } = vi.hoisted(() => ({
@@ -31,7 +31,7 @@ vi.mock('canvas', () => ({
   }),
 }));
 
-import { PdfReader, garbledCharRatio, isPageTextGarbled } from '../src/readers/pdf.js';
+import { PdfReader, garbledCharRatio, isPageTextGarbled } from '../readers/pdf.js';
 
 interface FakePageSpec {
   text?: string;

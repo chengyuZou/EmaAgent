@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { countWords } from '../src/words.js';
-import type { DocumentBlock, DocumentBlockKind } from '../src/types.js';
+import { countWords } from '../words.js';
+import type { DocumentBlock, DocumentBlockKind } from '../types.js';
 
 function textBlock(text: string, kind: DocumentBlockKind = 'paragraph'): DocumentBlock {
   return {

@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { BruteForceIndex } from '../src/index/brute-force.js';
+import { BruteForceIndex } from '../index/brute-force.js';
 import {
   innerProductDistanceToSimilarity,
   UsearchIndex,
-} from '../src/index/usearch.js';
+} from '../index/usearch.js';
 
 describe('B-013 USearch IP 分数契约', () => {
   it('把 IP 距离转换为越大越相似的分数', () => {

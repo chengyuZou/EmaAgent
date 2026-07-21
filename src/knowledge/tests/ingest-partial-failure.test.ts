@@ -1,14 +1,14 @@
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import type { EmbedRuntime, EmbeddingSpace } from '@ema-agent/embed';
-import { DocumentEventEmitter } from '../src/events/emitter.js';
-import { ingest } from '../src/ingest/index.js';
-import type { KnowledgeStore } from '../src/store/index.js';
+import { DocumentEventEmitter } from '../events/emitter.js';
+import { ingest } from '../ingest/index.js';
+import type { KnowledgeStore } from '../store/index.js';
 import type {
   DocumentAsset,
   DocumentChunk,
   DocumentPreview,
-} from '../src/types.js';
+} from '../types.js';
 
 describe('B-012 embedding 局部失败', () => {
   it('Provider 返回的向量数量不一致时记录失败分片，不把任务伪装成完整成功', async () => {

@@ -6,7 +6,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import type { EmbedRuntime } from '@ema-agent/embed';
-import { embedBatches } from '../src/chunking/semantic.js';
+import { embedBatches } from '../chunking/semantic.js';
 
 interface MockState {
   calls:    number;

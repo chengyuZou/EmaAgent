@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Database, KbIngestTasksRepo } from '@ema-agent/storage';
-import type { IngestOptions, IngestResult } from '../src/types.js';
-import { IngestQueue } from '../src/ingest/queue.js';
+import type { IngestOptions, IngestResult } from '../types.js';
+import { IngestQueue } from '../ingest/queue.js';
 
 describe('B-011/B-012 IngestQueue', () => {
   const databases: Database[] = [];

@@ -6,8 +6,8 @@ import type {
   DocumentPreviewRepo,
   KbActivationsRepo,
 } from '@ema-agent/storage';
-import { KnowledgeStore } from '../src/store/index.js';
-import { KnowledgeClient } from '../src/client.js';
+import { KnowledgeStore } from '../store/index.js';
+import { KnowledgeClient } from '../client.js';
 
 describe('KB activation 资产归属', () => {
   it('只更新和记录当前 KB 中真实存在的 asset ID', () => {
