@@ -8,7 +8,7 @@ import type { AppBindings } from '../wiring/index.js';
 // Returns `{ text, segments? }` where segments may be absent if the provider
 // doesn't support timestamps.
 //
-// Binding resolution lives here (business layer), not inside SttClient.
+// Binding 在业务层解析，STT Runtime 不保存模型选择。
 
 export function transcribeRoute(bindings: AppBindings): Hono {
   const app = new Hono();
@@ -31,11 +31,15 @@ export function transcribeRoute(bindings: AppBindings): Hono {
     if (!(file instanceof File) && !(file instanceof Blob)) {
       return c.json({ error: 'missing_file_field' }, 400);
     }
+    if (file.size > bindings.stt.maximumAudioBytes()) {
+      return c.json({ error: 'payload_too_large' }, 413);
+    }
 
     const language = typeof form.get('language') === 'string'
       ? (form.get('language') as string)
       : undefined;
 
+    // 先用 Blob.size 拒绝超限输入，再分配 ArrayBuffer，避免大音频先占满内存后才校验。
     const buf  = new Uint8Array(await file.arrayBuffer());
     const mime = file.type || 'audio/webm';
 
@@ -57,8 +61,7 @@ export function transcribeRoute(bindings: AppBindings): Hono {
           : 502;
         return c.json({ error: err.code, message: err.message }, status);
       }
-      const message = (err as Error).message;
-      return c.json({ error: 'stt_failed', message }, 502);
+      return c.json({ error: 'stt_failed', message: 'STT request failed' }, 502);
     }
   });
 

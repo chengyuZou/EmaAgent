@@ -534,7 +534,7 @@ export class Orchestrator {
     }
     const model   = bindingRow.model;
     const cache = new VoiceUriCache(new SettingsRepo(this.bindings.profileDb.sqlite));
-    await ensureVoiceUri(voice, adapter, model, card.id, bindingRow.providerConfigId, cache);
+    await ensureVoiceUri(voice, adapter, model, card.id, bindingRow.providerConfigId, cache, signal);
 
     // GPT-SoVITS uses refAudioPath directly and never sets voiceUri.
     // Cloud adapters (DashScope, OpenAI-TTS) require voiceUri — reject if absent.

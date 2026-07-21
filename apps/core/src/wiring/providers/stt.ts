@@ -1,6 +1,6 @@
 import type { Database, ProviderConfigRow } from '@ema-agent/storage';
 import { ProvidersRepo } from '@ema-agent/storage';
-import { SttClient, type SttProviderConfig } from '@ema-agent/stt';
+import { SttRuntime, type SttProviderConfig } from '@ema-agent/stt';
 import type { CredentialFacade } from '@ema-agent/credential';
 import {
   providerCatalog,
@@ -54,28 +54,24 @@ function loadSttProviderConfigs(
 
 // ── Top-level builder ───────────────────────────────────────────────────────
 
-export function buildSttClient(args: {
+export function buildSttRuntime(args: {
   profileDb: Database;
   credentials: CredentialFacade;
   usageRecorder?: UsageRecorder;
   onUsageRecordError?: (error: unknown, record: UsageRecord) => void;
-}): SttClient {
-  return new SttClient(
-    loadSttProviderConfigs(args.profileDb, args.credentials),
-    undefined,
-    {},
-    {
-      usageRecorder: args.usageRecorder,
-      onUsageRecordError: args.onUsageRecordError,
-    },
-  );
+}): SttRuntime {
+  return new SttRuntime({
+    configs: loadSttProviderConfigs(args.profileDb, args.credentials),
+    usageRecorder: args.usageRecorder,
+    onUsageRecordError: args.onUsageRecordError,
+  });
 }
 
 /** Hot-reload after a provider config change. Binding resolution stays in the route. */
-export function reloadSttClient(
-  client: SttClient,
+export function reloadSttRuntime(
+  runtime: SttRuntime,
   profileDb: Database,
   credentials: CredentialFacade,
 ): void {
-  client.reload(loadSttProviderConfigs(profileDb, credentials));
+  runtime.reload(loadSttProviderConfigs(profileDb, credentials));
 }

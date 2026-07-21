@@ -409,7 +409,7 @@ export function providersRoute(bindings: AppBindings): Hono {
     const id = c.req.param('id');
     const ctx = requireCapability(c, id, 'tts');
     if (ctx instanceof Response) return ctx;
-    const result = await bindings.tts.probe(id);
+    const result = await bindings.tts.probe(id, c.req.raw.signal);
     recordProbe(id, result);
     return c.json({ ok: result.ok, model: '', latencyMs: result.latencyMs ?? null, error: result.error });
   });
@@ -418,7 +418,7 @@ export function providersRoute(bindings: AppBindings): Hono {
     const id = c.req.param('id');
     const ctx = requireCapability(c, id, 'stt');
     if (ctx instanceof Response) return ctx;
-    const result = await bindings.stt.probe(id);
+    const result = await bindings.stt.probe(id, c.req.raw.signal);
     recordProbe(id, { ok: result.ok, latencyMs: result.latencyMs, error: result.error });
     return c.json({ ok: result.ok, model: '', latencyMs: result.latencyMs ?? null, error: result.error });
   });
@@ -520,14 +520,21 @@ export function providersRoute(bindings: AppBindings): Hono {
 
     try {
       const cache = new VoiceUriCache(bindings.settings);
-      await ensureVoiceUri(voice, adapter, model, card.id, providerId, cache);
+      await ensureVoiceUri(voice, adapter, model, card.id, providerId, cache, c.req.raw.signal);
       if (!voice.voiceUri && adapter.protocol !== 'gpt-sovits-tts') {
         return c.json({ error: 'voice_upload_failed', message: '参考音频上传失败' }, 400);
       }
 
       const chunks: Uint8Array[] = [];
       let mime = 'audio/mpeg';
-      for await (const ev of bindings.tts.synthesize({ providerId, model, text, voice, format: 'mp3' })) {
+      for await (const ev of bindings.tts.synthesize({
+        providerId,
+        model,
+        text,
+        voice,
+        format: 'mp3',
+        abortSignal: c.req.raw.signal,
+      })) {
         if (ev.type === 'audio_chunk') { chunks.push(ev.bytes); mime = ev.mime; }
       }
       if (chunks.length === 0) return c.json({ error: 'no_audio', message: '合成未产生音频' }, 502);

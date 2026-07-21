@@ -2,16 +2,16 @@ import type { Database } from '@ema-agent/storage';
 import type { LanguageModelRuntime } from '@ema-agent/llm';
 import type { EmbedRuntime } from '@ema-agent/embed';
 import type { RerankRuntime } from '@ema-agent/rerank';
-import type { TtsClient } from '@ema-agent/tts';
-import type { SttClient } from '@ema-agent/stt';
+import type { TtsRuntime } from '@ema-agent/tts';
+import type { SttRuntime } from '@ema-agent/stt';
 import type { VisionRuntime } from '@ema-agent/vision';
 import type { NarrativeClient } from '@ema-agent/narrative-client';
 import type { CredentialFacade } from '@ema-agent/credential';
 import { loadLlmConfigs } from './providers/llm.js';
 import { loadEmbedConfigs } from './providers/embed.js';
 import { loadRerankConfigs } from './providers/rerank.js';
-import { reloadTtsClient } from './providers/tts.js';
-import { reloadSttClient } from './providers/stt.js';
+import { reloadTtsRuntime } from './providers/tts.js';
+import { reloadSttRuntime } from './providers/stt.js';
 import { reloadVisionRuntime } from './providers/vision.js';
 import { configureBridge } from './bridge.js';
 
@@ -20,8 +20,8 @@ export interface ProviderRuntimeDependencies {
   llm: LanguageModelRuntime;
   embed: EmbedRuntime;
   rerank: RerankRuntime;
-  tts: TtsClient;
-  stt: SttClient;
+  tts: TtsRuntime;
+  stt: SttRuntime;
   vision: VisionRuntime;
   narrative: NarrativeClient;
   credentials: CredentialFacade;
@@ -51,8 +51,8 @@ export class ProviderRuntimeFacade {
     llm.reload(llmConfigs);
     embed.reload(embedConfigs);
     rerank.reload(rerankConfigs);
-    reloadTtsClient(tts, profileDb, credentials);
-    reloadSttClient(stt, profileDb, credentials);
+    reloadTtsRuntime(tts, profileDb, credentials);
+    reloadSttRuntime(stt, profileDb, credentials);
     reloadVisionRuntime(vision, profileDb, credentials);
   }
 

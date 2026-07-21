@@ -117,7 +117,7 @@ importers:
         version: link:../../packages/storage
       '@ema-agent/stt':
         specifier: workspace:*
-        version: link:../../packages/stt
+        version: link:../../src/stt
       '@ema-agent/system':
         specifier: workspace:*
         version: link:../../packages/system
@@ -132,7 +132,7 @@ importers:
         version: link:../../packages/tools
       '@ema-agent/tts':
         specifier: workspace:*
-        version: link:../../packages/tts
+        version: link:../../src/tts
       '@ema-agent/usage':
         specifier: workspace:*
         version: link:../../src/usage
@@ -290,7 +290,7 @@ importers:
         version: link:../../packages/storage
       '@ema-agent/stt':
         specifier: workspace:*
-        version: link:../../packages/stt
+        version: link:../../src/stt
       '@ema-agent/token':
         specifier: workspace:*
         version: link:../../packages/token
@@ -1065,28 +1065,6 @@ importers:
         specifier: ^2.0.0
         version: 2.1.9(@types/node@20.19.39)(jsdom@26.1.0(canvas@2.11.2))(msw@2.14.6(@types/node@20.19.39)(typescript@5.9.3))
 
-  packages/stt:
-    dependencies:
-      '@ema-agent/provider':
-        specifier: workspace:*
-        version: link:../../src/providers
-      '@ema-agent/usage':
-        specifier: workspace:*
-        version: link:../../src/usage
-    devDependencies:
-      '@types/node':
-        specifier: ^20.0.0
-        version: 20.19.39
-      rimraf:
-        specifier: ^5.0.0
-        version: 5.0.10
-      typescript:
-        specifier: ^5.9.3
-        version: 5.9.3
-      vitest:
-        specifier: ^2.0.0
-        version: 2.1.9(@types/node@20.19.39)(jsdom@26.1.0(canvas@2.11.2))(msw@2.14.6(@types/node@20.19.39)(typescript@5.9.3))
-
   packages/system:
     devDependencies:
       '@types/node':
@@ -1182,40 +1160,6 @@ importers:
       rimraf:
         specifier: ^5.0.0
         version: 5.0.10
-      typescript:
-        specifier: ^5.9.3
-        version: 5.9.3
-      vitest:
-        specifier: ^2.0.0
-        version: 2.1.9(@types/node@20.19.39)(jsdom@26.1.0(canvas@2.11.2))(msw@2.14.6(@types/node@20.19.39)(typescript@5.9.3))
-
-  packages/tts:
-    dependencies:
-      '@ema-agent/contracts':
-        specifier: workspace:*
-        version: link:../contracts
-      '@ema-agent/provider':
-        specifier: workspace:*
-        version: link:../../src/providers
-      '@ema-agent/usage':
-        specifier: workspace:*
-        version: link:../../src/usage
-      ws:
-        specifier: ^8.18.0
-        version: 8.20.1
-    devDependencies:
-      '@types/node':
-        specifier: ^20.0.0
-        version: 20.19.39
-      '@types/ws':
-        specifier: ^8.5.13
-        version: 8.18.1
-      rimraf:
-        specifier: ^5.0.0
-        version: 5.0.10
-      tsx:
-        specifier: ^4.21.0
-        version: 4.21.0
       typescript:
         specifier: ^5.9.3
         version: 5.9.3
@@ -1437,6 +1381,62 @@ importers:
       rimraf:
         specifier: ^5.0.0
         version: 5.0.10
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: ^2.0.0
+        version: 2.1.9(@types/node@20.19.39)(jsdom@26.1.0(canvas@2.11.2))(msw@2.14.6(@types/node@20.19.39)(typescript@5.9.3))
+
+  src/stt:
+    dependencies:
+      '@ema-agent/provider':
+        specifier: workspace:*
+        version: link:../providers
+      '@ema-agent/usage':
+        specifier: workspace:*
+        version: link:../usage
+    devDependencies:
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.39
+      rimraf:
+        specifier: ^5.0.0
+        version: 5.0.10
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: ^2.0.0
+        version: 2.1.9(@types/node@20.19.39)(jsdom@26.1.0(canvas@2.11.2))(msw@2.14.6(@types/node@20.19.39)(typescript@5.9.3))
+
+  src/tts:
+    dependencies:
+      '@ema-agent/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
+      '@ema-agent/provider':
+        specifier: workspace:*
+        version: link:../providers
+      '@ema-agent/usage':
+        specifier: workspace:*
+        version: link:../usage
+      ws:
+        specifier: ^8.18.0
+        version: 8.20.1
+    devDependencies:
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.39
+      '@types/ws':
+        specifier: ^8.5.13
+        version: 8.18.1
+      rimraf:
+        specifier: ^5.0.0
+        version: 5.0.10
+      tsx:
+        specifier: ^4.21.0
+        version: 4.21.0
       typescript:
         specifier: ^5.9.3
         version: 5.9.3

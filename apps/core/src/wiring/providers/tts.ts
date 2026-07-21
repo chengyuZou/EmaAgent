@@ -3,7 +3,7 @@ import { ProvidersRepo, SettingsRepo } from '@ema-agent/storage';
 import type { CredentialFacade } from '@ema-agent/credential';
 
 import {
-  TtsClient,
+  TtsRuntime,
   type TtsProviderConfig,
   type TtsAdapter,
   type TtsVoiceRef,
@@ -139,6 +139,7 @@ export async function ensureVoiceUri(
   cardId:           CharacterCardId,
   providerConfigId: string,
   cache:            VoiceUriCache,
+  signal?:          AbortSignal,
 ): Promise<TtsVoiceRef> {
   if (voice.voiceUri) return voice;
 
@@ -159,6 +160,7 @@ export async function ensureVoiceUri(
     voice.promptText,
     voice.promptLang,
     model,
+    signal,
   );
   voice.voiceUri = uri;
   cache.set(cardId, providerConfigId, model, uri);
@@ -176,34 +178,30 @@ function pickPrimaryRefAudio(profile: CharacterVoiceProfile | null) {
 
 // ── Top-level builder ───────────────────────────────────────────────────────
 
-export interface BuildTtsClientArgs {
+export interface BuildTtsRuntimeArgs {
   profileDb: Database;
   credentials: CredentialFacade;
   usageRecorder?: UsageRecorder;
   onUsageRecordError?: (error: unknown, record: UsageRecord) => void;
 }
 
-export function buildTtsClient(args: BuildTtsClientArgs): TtsClient {
-  return new TtsClient(
-    loadTtsProviderConfigs(args.profileDb, args.credentials),
-    undefined,
-    {},
-    {
-      usageRecorder: args.usageRecorder,
-      onUsageRecordError: args.onUsageRecordError,
-    },
-  );
+export function buildTtsRuntime(args: BuildTtsRuntimeArgs): TtsRuntime {
+  return new TtsRuntime({
+    configs: loadTtsProviderConfigs(args.profileDb, args.credentials),
+    usageRecorder: args.usageRecorder,
+    onUsageRecordError: args.onUsageRecordError,
+  });
 }
 
 /**
- * Re-fetch TTS configs from DB and swap into the live TtsClient.
+ * 从数据库重新读取 TTS 配置，并原子替换运行时快照。
  * Call after PUT /api/providers/:id (tts capability) or
  * PUT /api/model-bindings/:module (tts_* rows).
  */
-export function reloadTtsClient(
-  client: TtsClient,
+export function reloadTtsRuntime(
+  runtime: TtsRuntime,
   profileDb: Database,
   credentials: CredentialFacade,
 ): void {
-  client.reload(loadTtsProviderConfigs(profileDb, credentials));
+  runtime.reload(loadTtsProviderConfigs(profileDb, credentials));
 }

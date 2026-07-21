@@ -48,10 +48,10 @@ import { RerankRuntime } from '@ema-agent/rerank';
 import { NarrativeClient } from '@ema-agent/narrative-client';
 import { CharacterCardStore, BUILTIN_CARDS, EMA_CARD_INPUT, EMA_CARD_ID } from '@ema-agent/character-card';
 import { Live2DModelsRepo } from '@ema-agent/storage';
-import { TtsClient, FsAudioArchive, type AudioArchive } from '@ema-agent/tts';
-import { SttClient }     from '@ema-agent/stt';
-import { buildTtsClient } from './providers/tts.js';
-import { buildSttClient } from './providers/stt.js';
+import { TtsRuntime, FsAudioArchive, type AudioArchive } from '@ema-agent/tts';
+import { SttRuntime } from '@ema-agent/stt';
+import { buildTtsRuntime } from './providers/tts.js';
+import { buildSttRuntime } from './providers/stt.js';
 import { buildVisionRuntime, asKbVisionAdapter } from './providers/vision.js';
 import { VisionRuntime } from '@ema-agent/vision';
 import { loadLlmConfigs }   from './providers/llm.js';
@@ -150,11 +150,11 @@ export interface AppBindings {
   // TTS Facade — synthesizes assistant text. Voice identity always reads from
   // the active card; provider/model reads from the single `tts` model_bindings
   // row (one binding for all modes).
-  tts:         TtsClient;
+  tts:         TtsRuntime;
   // Audio archive — per-segment write + per-turn merge, under {activeDataDir}/audio.
   audioArchive: AudioArchive;
   // STT Facade — converts user audio → text (single binding in V1).
-  stt:          SttClient;
+  stt:          SttRuntime;
   // Vision Facade — image understanding; used by KB ingest (OCR fallback).
   vision:       VisionRuntime;
   /** Provider 配置到各能力运行时及 Python Bridge 的统一生命周期入口。 */
@@ -393,8 +393,8 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
   const emotion = new EmotionEngine({ vocabulary: card.current().emotionVocabulary });
 
   // ── TTS / STT ───────────────────────────────────────────────────────────────
-  const tts    = buildTtsClient({ profileDb, credentials, usageRecorder: usageRecords, onUsageRecordError });
-  const stt    = buildSttClient({ profileDb, credentials, usageRecorder: usageRecords, onUsageRecordError });
+  const tts    = buildTtsRuntime({ profileDb, credentials, usageRecorder: usageRecords, onUsageRecordError });
+  const stt    = buildSttRuntime({ profileDb, credentials, usageRecorder: usageRecords, onUsageRecordError });
   const vision = buildVisionRuntime(profileDb, credentials, usageRecords, onUsageRecordError);
   const providerRuntime = new ProviderRuntimeFacade({
     profileDb,

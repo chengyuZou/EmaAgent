@@ -3,8 +3,8 @@ import { Database, ModelBindingsRepo, ProvidersRepo } from '@ema-agent/storage';
 import { LanguageModelRuntime } from '@ema-agent/llm';
 import { EmbedRuntime } from '@ema-agent/embed';
 import { RerankRuntime } from '@ema-agent/rerank';
-import { TtsClient } from '@ema-agent/tts';
-import { SttClient } from '@ema-agent/stt';
+import { TtsRuntime } from '@ema-agent/tts';
+import { SttRuntime } from '@ema-agent/stt';
 import { VisionRuntime } from '@ema-agent/vision';
 import type { BridgeConfigurePayload, NarrativeClient } from '@ema-agent/narrative-client';
 import { ProviderRuntimeFacade } from '../src/wiring/provider-runtime.js';
@@ -29,8 +29,8 @@ describe('ProviderRuntimeFacade', () => {
   let llm: LanguageModelRuntime;
   let embed: EmbedRuntime;
   let rerank: RerankRuntime;
-  let tts: TtsClient;
-  let stt: SttClient;
+  let tts: TtsRuntime;
+  let stt: SttRuntime;
   let vision: VisionRuntime;
   let narrative: NarrativeClientSpy;
   let runtime: ProviderRuntimeFacade;
@@ -42,8 +42,8 @@ describe('ProviderRuntimeFacade', () => {
     llm = new LanguageModelRuntime([]);
     embed = new EmbedRuntime();
     rerank = new RerankRuntime();
-    tts = new TtsClient([]);
-    stt = new SttClient([]);
+    tts = new TtsRuntime({ configs: [] });
+    stt = new SttRuntime({ configs: [] });
     vision = new VisionRuntime({ configs: [] });
     narrative = new NarrativeClientSpy();
     runtime = new ProviderRuntimeFacade({
@@ -85,8 +85,8 @@ describe('ProviderRuntimeFacade', () => {
     expect(embed.getProtocol('multi-provider')).toBe('openai-embed');
     expect(rerank.getProtocol('multi-provider')).toBe('cohere-rerank');
     expect(vision.getProtocol('multi-provider')).toBe('openai-vision');
-    expect(tts.firstProviderId()).toBe('multi-provider');
-    expect(stt.firstProviderId()).toBe('multi-provider');
+    expect(tts.healthCheck().providers.map((provider) => provider.providerId)).toEqual(['multi-provider']);
+    expect(stt.healthCheck().providers.map((provider) => provider.providerId)).toEqual(['multi-provider']);
 
     providers.upsert({
       id: 'multi-provider',
@@ -101,8 +101,8 @@ describe('ProviderRuntimeFacade', () => {
     expect(embed.getProtocol('multi-provider')).toBeUndefined();
     expect(rerank.getProtocol('multi-provider')).toBeUndefined();
     expect(vision.getProtocol('multi-provider')).toBeUndefined();
-    expect(tts.firstProviderId()).toBeUndefined();
-    expect(stt.firstProviderId()).toBeUndefined();
+    expect(tts.healthCheck().providers).toHaveLength(0);
+    expect(stt.healthCheck().providers).toHaveLength(0);
   });
 
   it('禁用或删除 Provider 后新请求不再能取得旧运行时', () => {
