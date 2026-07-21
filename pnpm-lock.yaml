@@ -114,7 +114,7 @@ importers:
         version: link:../../packages/skill
       '@ema-agent/storage':
         specifier: workspace:*
-        version: link:../../packages/storage
+        version: link:../../src/storage
       '@ema-agent/stt':
         specifier: workspace:*
         version: link:../../src/stt
@@ -287,7 +287,7 @@ importers:
         version: link:../../packages/skill
       '@ema-agent/storage':
         specifier: workspace:*
-        version: link:../../packages/storage
+        version: link:../../src/storage
       '@ema-agent/stt':
         specifier: workspace:*
         version: link:../../src/stt
@@ -399,7 +399,7 @@ importers:
         version: link:../session
       '@ema-agent/storage':
         specifier: workspace:*
-        version: link:../storage
+        version: link:../../src/storage
       '@ema-agent/token':
         specifier: workspace:*
         version: link:../token
@@ -452,7 +452,7 @@ importers:
         version: link:../contracts
       '@ema-agent/storage':
         specifier: workspace:*
-        version: link:../storage
+        version: link:../../src/storage
     devDependencies:
       '@types/node':
         specifier: ^20.0.0
@@ -474,7 +474,7 @@ importers:
         version: link:../contracts
       '@ema-agent/storage':
         specifier: workspace:*
-        version: link:../storage
+        version: link:../../src/storage
       '@ema-agent/tools':
         specifier: workspace:*
         version: link:../tools
@@ -493,7 +493,7 @@ importers:
         version: link:../contracts
       '@ema-agent/storage':
         specifier: workspace:*
-        version: link:../storage
+        version: link:../../src/storage
     devDependencies:
       '@types/node':
         specifier: ^20.0.0
@@ -515,7 +515,7 @@ importers:
         version: link:../contracts
       '@ema-agent/storage':
         specifier: workspace:*
-        version: link:../storage
+        version: link:../../src/storage
       fflate:
         specifier: ^0.8.2
         version: 0.8.3
@@ -540,7 +540,7 @@ importers:
         version: link:../contracts
       '@ema-agent/storage':
         specifier: workspace:*
-        version: link:../storage
+        version: link:../../src/storage
     devDependencies:
       '@types/node':
         specifier: ^20.0.0
@@ -596,7 +596,7 @@ importers:
         version: link:../session
       '@ema-agent/storage':
         specifier: workspace:*
-        version: link:../storage
+        version: link:../../src/storage
     devDependencies:
       '@types/node':
         specifier: ^20.0.0
@@ -680,7 +680,7 @@ importers:
         version: link:../../src/rerank
       '@ema-agent/storage':
         specifier: workspace:*
-        version: link:../storage
+        version: link:../../src/storage
       '@ema-agent/token':
         specifier: workspace:*
         version: link:../token
@@ -764,7 +764,7 @@ importers:
         version: link:../public-http
       '@ema-agent/storage':
         specifier: workspace:*
-        version: link:../storage
+        version: link:../../src/storage
     devDependencies:
       '@types/node':
         specifier: ^20.0.0
@@ -792,7 +792,7 @@ importers:
         version: link:../permission
       '@ema-agent/storage':
         specifier: workspace:*
-        version: link:../storage
+        version: link:../../src/storage
       '@ema-agent/tools':
         specifier: workspace:*
         version: link:../tools
@@ -844,7 +844,7 @@ importers:
         version: link:../session
       '@ema-agent/storage':
         specifier: workspace:*
-        version: link:../storage
+        version: link:../../src/storage
       '@ema-agent/token':
         specifier: workspace:*
         version: link:../token
@@ -976,7 +976,7 @@ importers:
         version: link:../contracts
       '@ema-agent/storage':
         specifier: workspace:*
-        version: link:../storage
+        version: link:../../src/storage
     devDependencies:
       '@types/node':
         specifier: ^20.0.0
@@ -1004,7 +1004,7 @@ importers:
         version: link:../marketplace
       '@ema-agent/storage':
         specifier: workspace:*
-        version: link:../storage
+        version: link:../../src/storage
       gray-matter:
         specifier: ^4.0.3
         version: 4.0.3
@@ -1018,46 +1018,6 @@ importers:
       rimraf:
         specifier: ^5.0.0
         version: 5.0.10
-      typescript:
-        specifier: ^5.9.3
-        version: 5.9.3
-      vitest:
-        specifier: ^2.0.0
-        version: 2.1.9(@types/node@20.19.39)(jsdom@26.1.0(canvas@2.11.2))(msw@2.14.6(@types/node@20.19.39)(typescript@5.9.3))
-
-  packages/storage:
-    dependencies:
-      '@ema-agent/contracts':
-        specifier: workspace:*
-        version: link:../contracts
-      '@ema-agent/credential':
-        specifier: workspace:*
-        version: link:../credential
-      '@ema-agent/provider':
-        specifier: workspace:*
-        version: link:../../src/providers
-      '@ema-agent/usage':
-        specifier: workspace:*
-        version: link:../../src/usage
-      '@node-rs/jieba':
-        specifier: ^2.0.1
-        version: 2.0.1
-      better-sqlite3:
-        specifier: ^12.9.0
-        version: 12.9.0
-    devDependencies:
-      '@types/better-sqlite3':
-        specifier: ^7.6.13
-        version: 7.6.13
-      '@types/node':
-        specifier: ^20.0.0
-        version: 20.19.39
-      rimraf:
-        specifier: ^5.0.0
-        version: 5.0.10
-      tsx:
-        specifier: ^4.21.0
-        version: 4.21.0
       typescript:
         specifier: ^5.9.3
         version: 5.9.3
@@ -1381,6 +1341,46 @@ importers:
       rimraf:
         specifier: ^5.0.0
         version: 5.0.10
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: ^2.0.0
+        version: 2.1.9(@types/node@20.19.39)(jsdom@26.1.0(canvas@2.11.2))(msw@2.14.6(@types/node@20.19.39)(typescript@5.9.3))
+
+  src/storage:
+    dependencies:
+      '@ema-agent/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
+      '@ema-agent/credential':
+        specifier: workspace:*
+        version: link:../../packages/credential
+      '@ema-agent/provider':
+        specifier: workspace:*
+        version: link:../providers
+      '@ema-agent/usage':
+        specifier: workspace:*
+        version: link:../usage
+      '@node-rs/jieba':
+        specifier: ^2.0.1
+        version: 2.0.1
+      better-sqlite3:
+        specifier: ^12.9.0
+        version: 12.9.0
+    devDependencies:
+      '@types/better-sqlite3':
+        specifier: ^7.6.13
+        version: 7.6.13
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.39
+      rimraf:
+        specifier: ^5.0.0
+        version: 5.0.10
+      tsx:
+        specifier: ^4.21.0
+        version: 4.21.0
       typescript:
         specifier: ^5.9.3
         version: 5.9.3

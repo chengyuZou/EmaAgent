@@ -625,6 +625,7 @@ contracts 拆除与 Runtime 重构并行推进，但每批只迁一个明确所�
 - [x] 删除混合 `packages/ebd-client`，拆为 `src/embed` 与 `src/rerank` 两个执行模块；Core、Memory 与 Knowledge Base 分别依赖实际使用的能力，不再共享注册顺序或默认模型兜底。
 - [x] `packages/vision` 迁入 `src/vision`；`VisionRuntime` 使用原子 Provider Entry，并将并发队列、请求校验和取消作用域从旧 Router 拆开。错误字段显式化，Gemini 不再静默丢弃不支持的 HTTP 图片。
 - [x] `packages/tts` 与 `packages/stt` 迁入 `src/tts`、`src/stt`；两者改用原子 Provider Entry，删除按插入顺序选择 Provider 的接口，并为 Probe 增加取消、超时和稳定错误码。
+- [x] `packages/storage` 以保持行为的方式迁入 `src/storage`；包名、Schema、Migration 顺序和 Repository 公共 API 不变，通用 SQLite 基础设施留待边界稳定后再评估。
 
 #### C2：Turn + SSE Event
 
