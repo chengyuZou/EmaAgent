@@ -7,8 +7,8 @@ import type { Message, Turn } from '@ema-agent/session';
 import { HookBus } from '@ema-agent/hooks';
 import { ToolRegistry } from '@ema-agent/tools';
 import { LlmToolArgumentsParseError } from '@ema-agent/llm';
-import { AgentEngine } from '../src/engine.js';
-import type { AgentDeps } from '../src/types.js';
+import { AgentEngine } from '../engine.js';
+import type { AgentDeps } from '../types.js';
 
 const modelCapabilities = {
   resolve: () => ({

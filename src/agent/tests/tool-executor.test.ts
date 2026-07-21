@@ -4,7 +4,7 @@ import type { SessionId, TurnId } from '@ema-agent/contracts';
 import type { EmaStreamEvent } from '@ema-agent/turn';
 import { HookBus } from '@ema-agent/hooks';
 import { ToolInputError } from '@ema-agent/tools';
-import { TurnToolExecutor, type TurnToolExecutorOpts } from '../src/tool-executor.js';
+import { TurnToolExecutor, type TurnToolExecutorOpts } from '../tool-executor.js';
 
 const sessionId = 'session-order' as SessionId;
 const turnId = 'turn-order' as TurnId;

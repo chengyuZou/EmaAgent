@@ -4,7 +4,7 @@ import type { ToolManifestEntry } from '@ema-agent/tools';
 import {
   AgentToolCapabilityScope,
   ToolCapabilityRestrictionError,
-} from '../src/tool-capability-scope.js';
+} from '../tool-capability-scope.js';
 
 describe('AgentToolCapabilityScope', () => {
   it('按固定顺序返回工具，并支持名称和稳定 ID glob', () => {

@@ -3,8 +3,8 @@ import { describe, expect, it } from 'vitest';
 import { HookBus } from '@ema-agent/hooks';
 import { TodoWriteTool, getTodos } from '@ema-agent/tool-builtin';
 import { ToolRegistry, type ToolExecutionContext } from '@ema-agent/tools';
-import { SubagentSpawner } from '../src/spawner.js';
-import type { AgentDeps } from '../src/types.js';
+import { SubagentSpawner } from '../spawner.js';
+import type { AgentDeps } from '../types.js';
 
 describe('SubagentSpawner 生命周期', () => {
   it('shutdown 等待后台任务结束并清理其 Todo', async () => {

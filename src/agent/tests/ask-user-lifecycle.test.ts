@@ -1,9 +1,9 @@
 // 测试根 Turn 的 AskUser 等待、回答和取消。
 
 import { describe, expect, it, vi } from 'vitest';
-import { awaitAgentAnswer } from '../src/ask-user-lifecycle.js';
+import { awaitAgentAnswer } from '../ask-user-lifecycle.js';
 import type { AskUserRequiredEvent } from '@ema-agent/turn';
-import type { AskUserRegistryLike } from '../src/types.js';
+import type { AskUserRegistryLike } from '../types.js';
 
 const request: AskUserRequiredEvent = {
   type: 'ask_user_required',

@@ -24,8 +24,8 @@ import { registerBuiltinTools } from '@ema-agent/tool-builtin';
 import type { Message, Turn } from '@ema-agent/session';
 import type { SessionId, TurnId, MessageId } from '@ema-agent/contracts';
 
-import { AgentEngine } from '../src/engine.js';
-import type { AgentDeps } from '../src/types.js';
+import { AgentEngine } from '../engine.js';
+import type { AgentDeps } from '../types.js';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 

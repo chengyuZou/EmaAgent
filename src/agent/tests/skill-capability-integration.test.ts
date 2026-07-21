@@ -2,8 +2,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createToolManifestSnapshot, type BuiltTool } from '@ema-agent/tools';
 import { HookBus } from '@ema-agent/hooks';
-import { AgentPolicy } from '../src/policy.js';
-import { TurnToolExecutor } from '../src/tool-executor.js';
+import { AgentPolicy } from '../policy.js';
+import { TurnToolExecutor } from '../tool-executor.js';
 
 describe('Skill capability 与工具执行器集成', () => {
   it('在 Permission Engine 前重新检查 Skill 更新后的能力作用域', async () => {

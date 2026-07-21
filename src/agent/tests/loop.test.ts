@@ -3,10 +3,10 @@ import { describe, expect, it, vi } from 'vitest';
 import { ContextWindowExceededError } from '@ema-agent/llm';
 import type { LlmCallId, Message as ModelMessage } from '@ema-agent/llm';
 import type { ModelContextSnapshot } from '@ema-agent/context';
-import type { AgentPolicy } from '../src/policy.js';
-import type { TurnToolExecutor } from '../src/tool-executor.js';
-import { agentLoop } from '../src/loop.js';
-import { TurnBudget } from '../src/turn-budget.js';
+import type { AgentPolicy } from '../policy.js';
+import type { TurnToolExecutor } from '../tool-executor.js';
+import { agentLoop } from '../loop.js';
+import { TurnBudget } from '../turn-budget.js';
 
 function makePolicy(): AgentPolicy {
   return {

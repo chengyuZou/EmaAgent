@@ -3,7 +3,7 @@
 import { describe, expect, it } from 'vitest';
 import { BuiltinTools } from '@ema-agent/tool-builtin';
 import type { BuiltTool } from '@ema-agent/tools';
-import { selectSubagentTools } from '../src/subagent-capabilities.js';
+import { selectSubagentTools } from '../subagent-capabilities.js';
 
 describe('selectSubagentTools', () => {
   const tools = [

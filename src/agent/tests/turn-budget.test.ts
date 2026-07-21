@@ -1,7 +1,7 @@
 // 测试主 Agent 与 Subagent 共用预算的 Token、工具、并发和配置校验。
 
 import { describe, expect, it } from 'vitest';
-import { AgentBudgetExceededError, TurnBudget, type TurnBudgetLimits } from '../src/turn-budget.js';
+import { AgentBudgetExceededError, TurnBudget, type TurnBudgetLimits } from '../turn-budget.js';
 
 const LIMITS: TurnBudgetLimits = {
   maxWallTimeMs: 60_000,

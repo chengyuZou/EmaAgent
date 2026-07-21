@@ -33,7 +33,7 @@ importers:
     dependencies:
       '@ema-agent/agent':
         specifier: workspace:*
-        version: link:../../packages/agent
+        version: link:../../src/agent
       '@ema-agent/agent-context':
         specifier: workspace:*
         version: link:../../packages/agent-context
@@ -364,70 +364,6 @@ importers:
       '@types/react-dom':
         specifier: ^18.3.0
         version: 18.3.7(@types/react@18.3.29)
-      rimraf:
-        specifier: ^5.0.0
-        version: 5.0.10
-      typescript:
-        specifier: ^5.9.3
-        version: 5.9.3
-      vitest:
-        specifier: ^2.0.0
-        version: 2.1.9(@types/node@20.19.39)(jsdom@26.1.0(canvas@2.11.2))(msw@2.14.6(@types/node@20.19.39)(typescript@5.9.3))
-
-  packages/agent:
-    dependencies:
-      '@ema-agent/agent-context':
-        specifier: workspace:*
-        version: link:../agent-context
-      '@ema-agent/context':
-        specifier: workspace:*
-        version: link:../../src/context
-      '@ema-agent/contracts':
-        specifier: workspace:*
-        version: link:../contracts
-      '@ema-agent/emotion':
-        specifier: workspace:*
-        version: link:../../src/emotion
-      '@ema-agent/hooks':
-        specifier: workspace:*
-        version: link:../../src/hooks
-      '@ema-agent/llm':
-        specifier: workspace:*
-        version: link:../../src/llm
-      '@ema-agent/permission':
-        specifier: workspace:*
-        version: link:../../src/permission
-      '@ema-agent/prompts':
-        specifier: workspace:*
-        version: link:../../src/prompts
-      '@ema-agent/provider':
-        specifier: workspace:*
-        version: link:../../src/providers
-      '@ema-agent/sandbox':
-        specifier: workspace:*
-        version: link:../sandbox
-      '@ema-agent/session':
-        specifier: workspace:*
-        version: link:../../src/session
-      '@ema-agent/storage':
-        specifier: workspace:*
-        version: link:../../src/storage
-      '@ema-agent/token':
-        specifier: workspace:*
-        version: link:../../src/token
-      '@ema-agent/tool-builtin':
-        specifier: workspace:*
-        version: link:../tool-builtin
-      '@ema-agent/tools':
-        specifier: workspace:*
-        version: link:../tools
-      '@ema-agent/turn':
-        specifier: workspace:*
-        version: link:../../src/turn
-    devDependencies:
-      '@types/node':
-        specifier: ^20.0.0
-        version: 20.19.39
       rimraf:
         specifier: ^5.0.0
         version: 5.0.10
@@ -800,6 +736,70 @@ importers:
       unocss:
         specifier: ^66.0.0
         version: 66.7.0(vite@5.4.21(@types/node@20.19.39))
+      vitest:
+        specifier: ^2.0.0
+        version: 2.1.9(@types/node@20.19.39)(jsdom@26.1.0(canvas@2.11.2))(msw@2.14.6(@types/node@20.19.39)(typescript@5.9.3))
+
+  src/agent:
+    dependencies:
+      '@ema-agent/agent-context':
+        specifier: workspace:*
+        version: link:../../packages/agent-context
+      '@ema-agent/context':
+        specifier: workspace:*
+        version: link:../context
+      '@ema-agent/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
+      '@ema-agent/emotion':
+        specifier: workspace:*
+        version: link:../emotion
+      '@ema-agent/hooks':
+        specifier: workspace:*
+        version: link:../hooks
+      '@ema-agent/llm':
+        specifier: workspace:*
+        version: link:../llm
+      '@ema-agent/permission':
+        specifier: workspace:*
+        version: link:../permission
+      '@ema-agent/prompts':
+        specifier: workspace:*
+        version: link:../prompts
+      '@ema-agent/provider':
+        specifier: workspace:*
+        version: link:../providers
+      '@ema-agent/sandbox':
+        specifier: workspace:*
+        version: link:../../packages/sandbox
+      '@ema-agent/session':
+        specifier: workspace:*
+        version: link:../session
+      '@ema-agent/storage':
+        specifier: workspace:*
+        version: link:../storage
+      '@ema-agent/token':
+        specifier: workspace:*
+        version: link:../token
+      '@ema-agent/tool-builtin':
+        specifier: workspace:*
+        version: link:../../packages/tool-builtin
+      '@ema-agent/tools':
+        specifier: workspace:*
+        version: link:../../packages/tools
+      '@ema-agent/turn':
+        specifier: workspace:*
+        version: link:../turn
+    devDependencies:
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.39
+      rimraf:
+        specifier: ^5.0.0
+        version: 5.0.10
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
       vitest:
         specifier: ^2.0.0
         version: 2.1.9(@types/node@20.19.39)(jsdom@26.1.0(canvas@2.11.2))(msw@2.14.6(@types/node@20.19.39)(typescript@5.9.3))
