@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import type { SessionId, TurnId } from '@ema-agent/contracts';
 import type { EmaStreamEvent } from '@ema-agent/turn';
 import { HookBus } from '@ema-agent/hook';
-import { NarrativeRequestError } from '@ema-agent/narrative-client';
+import { NarrativeRequestError } from '@ema-agent/narrative';
 import { registerConversationHooks } from '../src/hooks.js';
 
 const sessionId = 'session-narrative' as SessionId;

@@ -4,7 +4,7 @@ AgenticRAG 知识库包。用户给的资料(文档)经 **解析 → 分块 → 
 
 区别于另外两个"知识"概念:
 - **Memory**(`@ema-agent/memory`):被动,关于"用户是谁",graph-based
-- **Narrative**(`@ema-agent/narrative-client`):隔离,关于"故事世界",LightRAG(Python bridge)
+- **Narrative**(`@ema-agent/narrative`):隔离,关于"故事世界",LightRAG(Python bridge)
 - **KB**(本包):主动,关于"用户给的资料",AgenticRAG(纯 TS)
 
 ## 架构

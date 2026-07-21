@@ -11,7 +11,7 @@ import type {
 import type { SessionStore, Turn } from '@ema-agent/session';
 import type { HookBus } from '@ema-agent/hook';
 import type { EmotionEngine } from '@ema-agent/emotion';
-import type { NarrativeClient } from '@ema-agent/narrative-client';
+import type { NarrativeClient } from '@ema-agent/narrative';
 import type { ModelCapabilityResolver } from '@ema-agent/provider';
 
 // ── 依赖表面 ───────────────────────────────────────────────────────────────────

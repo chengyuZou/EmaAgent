@@ -40,7 +40,7 @@
     "@ema-agent/agent": "workspace:*",
     "@ema-agent/embed": "workspace:*",
     "@ema-agent/rerank": "workspace:*",
-    "@ema-agent/narrative-client": "workspace:*",
+    "@ema-agent/narrative": "workspace:*",
     "@ema-agent/permission": "workspace:*",
     "@ema-agent/tools": "workspace:*",
     "@ema-agent/tool-builtin": "workspace:*",

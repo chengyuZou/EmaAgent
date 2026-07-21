@@ -1879,12 +1879,11 @@ ema-bridge/data/
 ### 14.2 narrative-client（TS 端）
 
 ```
-packages/narrative-client/
-├── src/
-│   ├── index.ts                # NarrativeClient Façade
-│   ├── client.ts
-│   ├── router.ts               # 用 LLM 拆问 + 路由到周目
-│   └── types.ts
+src/narrative/
+├── index.ts                # NarrativeClient Facade
+├── client.ts
+├── errors.ts
+└── types.ts
 ```
 
 接口：

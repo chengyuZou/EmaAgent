@@ -5,7 +5,7 @@ import {
   NarrativeClient,
   NarrativeRequestError,
   NarrativeUnavailableError,
-} from '../src/index.js';
+} from '../index.js';
 
 afterEach(() => {
   vi.unstubAllGlobals();

@@ -6,7 +6,7 @@ import { RerankRuntime } from '@ema-agent/rerank';
 import { TtsRuntime } from '@ema-agent/tts';
 import { SttRuntime } from '@ema-agent/stt';
 import { VisionRuntime } from '@ema-agent/vision';
-import type { BridgeConfigurePayload, NarrativeClient } from '@ema-agent/narrative-client';
+import type { BridgeConfigurePayload, NarrativeClient } from '@ema-agent/narrative';
 import { ProviderRuntimeFacade } from '../src/wiring/provider-runtime.js';
 import type { AppBindings } from '../src/wiring/index.js';
 import { providersRoute } from '../src/routes/providers.js';

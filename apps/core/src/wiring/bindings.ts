@@ -45,7 +45,7 @@ import {
 } from '@ema-agent/provider';
 import { EmbedRuntime } from '@ema-agent/embed';
 import { RerankRuntime } from '@ema-agent/rerank';
-import { NarrativeClient } from '@ema-agent/narrative-client';
+import { NarrativeClient } from '@ema-agent/narrative';
 import { CharacterCardStore, BUILTIN_CARDS, EMA_CARD_INPUT, EMA_CARD_ID } from '@ema-agent/character-card';
 import { Live2DModelsRepo } from '@ema-agent/storage';
 import { TtsRuntime, FsAudioArchive, type AudioArchive } from '@ema-agent/tts';

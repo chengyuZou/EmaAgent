@@ -5,7 +5,7 @@ import type { RerankRuntime } from '@ema-agent/rerank';
 import type { TtsRuntime } from '@ema-agent/tts';
 import type { SttRuntime } from '@ema-agent/stt';
 import type { VisionRuntime } from '@ema-agent/vision';
-import type { NarrativeClient } from '@ema-agent/narrative-client';
+import type { NarrativeClient } from '@ema-agent/narrative';
 import type { CredentialFacade } from '@ema-agent/credential';
 import { loadLlmConfigs } from './providers/llm.js';
 import { loadEmbedConfigs } from './providers/embed.js';

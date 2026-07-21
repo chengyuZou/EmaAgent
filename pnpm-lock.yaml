@@ -88,9 +88,9 @@ importers:
       '@ema-agent/memory':
         specifier: workspace:*
         version: link:../../packages/memory
-      '@ema-agent/narrative-client':
+      '@ema-agent/narrative':
         specifier: workspace:*
-        version: link:../../packages/narrative-client
+        version: link:../../src/narrative
       '@ema-agent/permission':
         specifier: workspace:*
         version: link:../../packages/permission
@@ -552,9 +552,9 @@ importers:
       '@ema-agent/llm':
         specifier: workspace:*
         version: link:../../src/llm
-      '@ema-agent/narrative-client':
+      '@ema-agent/narrative':
         specifier: workspace:*
-        version: link:../narrative-client
+        version: link:../../src/narrative
       '@ema-agent/provider':
         specifier: workspace:*
         version: link:../../src/providers
@@ -787,9 +787,9 @@ importers:
       '@ema-agent/llm':
         specifier: workspace:*
         version: link:../../src/llm
-      '@ema-agent/narrative-client':
+      '@ema-agent/narrative':
         specifier: workspace:*
-        version: link:../narrative-client
+        version: link:../../src/narrative
       '@ema-agent/rerank':
         specifier: workspace:*
         version: link:../../src/rerank
@@ -809,21 +809,6 @@ importers:
       usearch:
         specifier: ^2.25.1
         version: 2.25.1
-    devDependencies:
-      '@types/node':
-        specifier: ^20.0.0
-        version: 20.19.39
-      rimraf:
-        specifier: ^5.0.0
-        version: 5.0.10
-      typescript:
-        specifier: ^5.9.3
-        version: 5.9.3
-      vitest:
-        specifier: ^2.0.0
-        version: 2.1.9(@types/node@20.19.39)(jsdom@26.1.0(canvas@2.11.2))(msw@2.14.6(@types/node@20.19.39)(typescript@5.9.3))
-
-  packages/narrative-client:
     devDependencies:
       '@types/node':
         specifier: ^20.0.0
@@ -1270,6 +1255,21 @@ importers:
       openai:
         specifier: ^4.98.0
         version: 4.104.0(ws@8.20.1)(zod@3.25.76)
+    devDependencies:
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.39
+      rimraf:
+        specifier: ^5.0.0
+        version: 5.0.10
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: ^2.0.0
+        version: 2.1.9(@types/node@20.19.39)(jsdom@26.1.0(canvas@2.11.2))(msw@2.14.6(@types/node@20.19.39)(typescript@5.9.3))
+
+  src/narrative:
     devDependencies:
       '@types/node':
         specifier: ^20.0.0

@@ -3,8 +3,8 @@ import path from 'node:path';
 import os   from 'node:os';
 import { ProvidersRepo, ModelBindingsRepo } from '@ema-agent/storage';
 import type { Database, ProviderConfigRow } from '@ema-agent/storage';
-import { NarrativeClient } from '@ema-agent/narrative-client';
-import type { BridgeConfigurePayload } from '@ema-agent/narrative-client';
+import { NarrativeClient } from '@ema-agent/narrative';
+import type { BridgeConfigurePayload } from '@ema-agent/narrative';
 import {
   providerCatalog,
   type Capability,
