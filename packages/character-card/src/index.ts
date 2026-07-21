@@ -12,3 +12,5 @@ export type {
 } from './types.js';
 
 export { emptyVoiceProfile } from './types.js';
+export { buildCharacterPromptSections } from './characterPrompt.js';
+export type { CharacterPromptSections } from './characterPrompt.js';

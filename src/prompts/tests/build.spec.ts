@@ -75,7 +75,7 @@ describe('buildSystemBlock', () => {
 
   it('contains the ACT protocol header', () => {
     const block = buildSystemBlock(mockCard());
-    expect(block).toContain('## 控制指令协议');
+    expect(block).toContain('## 角色表达控制协议');
     expect(block).toContain('<|ACT:emotion:NAME|>');
     expect(block).toContain('<|ACT:motion:NAME|>');
     expect(block).toContain('<|DELAY:N|>');
@@ -97,9 +97,8 @@ describe('buildSystemBlock', () => {
 
   it('includes ACT usage example', () => {
     const block = buildSystemBlock(mockCard());
-    expect(block).toContain('<|ACT:emotion:surprised|>');
-    expect(block).toContain('正确示例：');
-    expect(block).toContain('<|ACT:emotion:happy|>嘿嘿~今天也请多指教啦！');
+    expect(block).toContain('示例：<|ACT:emotion:happy|>');
+    expect(block).toContain('示例：<|ACT:motion:wave|>');
   });
 });
 
@@ -110,7 +109,7 @@ describe('buildSystemPrompt', () => {
     const card = mockCard();
     const prompt = buildSystemPrompt(card, 'chat' as TurnMode);
     expect(prompt).toContain(card.systemPrompt);
-    expect(prompt).toContain('## 控制指令协议');
+    expect(prompt).toContain('## 角色表达控制协议');
     expect(prompt).toContain('日常对话（chat）');
   });
 
@@ -127,7 +126,7 @@ describe('buildSystemPrompt', () => {
   it('places character block before mode block', () => {
     const card = mockCard();
     const prompt = buildSystemPrompt(card, 'chat' as TurnMode);
-    const charIndex = prompt.indexOf('## 控制指令协议');
+    const charIndex = prompt.indexOf('## 角色表达控制协议');
     const modeIndex = prompt.indexOf('日常对话（chat）');
     expect(charIndex).toBeLessThan(modeIndex);
   });

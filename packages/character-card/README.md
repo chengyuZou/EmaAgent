@@ -1,7 +1,7 @@
 # @ema-agent/character-card
 
-> EmaAgent 的角色卡领域模型 —— 提供纯粹的 CRUD 数据操作与 SQLite 持久化抽象。
-> 架构重构后，本包剥离了所有 Hook 事件总线和系统提示词组装逻辑，专注于角色卡数据领域。
+> EmaAgent 的角色卡领域模型 —— 管理角色数据、SQLite 持久化，以及角色身份与表达能力的模型可见投影。
+> 本包不依赖 HookBus，也不装配完整 System Prompt；它只把自己的角色语义输出为明确片段。
 
 ---
 
@@ -43,6 +43,7 @@ src/
 ├── store.ts           # 核心 Store 外观层，提供业务调用的 CRUD API
 ├── repository.ts      # 数据库仓储实现，直接对接 SQLite 底层
 ├── types.ts           # 角色卡数据的领域模型类型定义
+├── characterPrompt.ts # 角色身份与 ACT 表达能力的模型可见片段
 ├── ooc-detector.ts    # OOC (Out of Character) 基础校验抽象
 └── seed.ts            # 初始化所需的内置角色卡（EMA）数据种子
 tests/
@@ -56,8 +57,8 @@ tests/
 ### 1. 彻底与 HookBus 解耦
 在最初的设计中，角色卡的切换或状态修改会向 `HookBus` 发送触发事件。为了遵守**关注点分离**（Separation of Concerns），`store.ts` 将所有副作用剥除，不再依赖 `@ema-agent/hook`。角色卡切换相关的事件（如 `onCharacterCardSwitch`）交由消费此包的上层（例如 App 层）以回调或 emitter 的形式分发。`activate(id)` 现在是一个纯粹的同步操作，直接返回激活的 `CharacterCardId`。
 
-### 2. 移除 Prompt 注入职责
-不再持有或管理 `system-block.ts` 等 Prompt 组装逻辑。系统设定提示词（包含 `ACT` 标签定义等）仅仅作为 `systemPrompt`、`emotionVocabulary` 和 `motionVocabulary` 等结构化数据存储在本模块。渲染和映射交由 **`@ema-agent/prompts`** 包来处理。
+### 2. 角色语义与 Prompt 装配分离
+`characterPrompt.ts` 负责把 `systemPrompt`、`emotionVocabulary` 和 `motionVocabulary` 转成 Character Identity 与 Presentation 片段，因为这些语义属于角色。完整 Slot 排序、版本快照和 System Prompt 序列化仍由 **`@ema-agent/prompts`** 处理；Character 不读取其他上下文，也不修改消息数组。
 
 ### 3. 数据层外键约束强校验
 底层利用 SQLite 保障关系完整性（如关联的 `Live2DModel`）。如果业务层传入的 `live2dModelId` 在模型表中不存在，底层驱动会直接在事务中报告 `FOREIGN KEY constraint failed`，以确保数据的一致性。

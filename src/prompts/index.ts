@@ -2,8 +2,20 @@
 
 export { buildSystemPrompt, buildSystemBlock } from './build.js';
 export { buildModeBlock } from './mode-blocks.js';
+export { PromptAssembler } from './promptAssembler.js';
+export { PromptAssemblyError } from './errors.js';
 export type { BuildSystemPromptOpts } from './build.js';
 export type { ModeBlockOpts } from './mode-blocks.js';
+export type {
+  PromptCacheScope,
+  PromptSlot,
+  PromptSlotContribution,
+  PromptSlotId,
+  PromptSlotKind,
+  PromptSnapshot,
+  PromptTrust,
+} from './types.js';
+export type { PromptAssemblyErrorCode } from './errors.js';
 
 export { registerPromptsHooks } from './hooks.js';
 export type { PromptsHooksDeps } from './hooks.js';

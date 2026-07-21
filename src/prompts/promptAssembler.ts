@@ -1,0 +1,112 @@
+// 校验并稳定排序模型指令槽，生成可诊断、可版本化的 Prompt 快照。
+
+import { createHash } from 'node:crypto';
+import { PromptAssemblyError } from './errors.js';
+import type {
+  PromptSlot,
+  PromptSlotContribution,
+  PromptSlotId,
+  PromptSnapshot,
+} from './types.js';
+
+type PromptSlotSpec = Pick<
+  PromptSlot,
+  'kind' | 'order' | 'cacheScope' | 'trust'
+>;
+
+const SLOT_SPECS: Readonly<Record<PromptSlotId, PromptSlotSpec>> = Object.freeze({
+  'product.rules': Object.freeze({
+    kind: 'rules', order: 10, cacheScope: 'global', trust: 'product',
+  }),
+  'product.toolGuidance': Object.freeze({
+    kind: 'guidance', order: 20, cacheScope: 'global', trust: 'product',
+  }),
+  'character.identity': Object.freeze({
+    kind: 'identity', order: 60, cacheScope: 'session', trust: 'user-configured',
+  }),
+  'character.presentation': Object.freeze({
+    kind: 'presentation', order: 70, cacheScope: 'session', trust: 'user-configured',
+  }),
+  'profile.execution': Object.freeze({
+    kind: 'execution', order: 80, cacheScope: 'turn', trust: 'product',
+  }),
+});
+
+export class PromptAssembler {
+  build(input: readonly PromptSlotContribution[]): PromptSnapshot {
+    const slots = input.map(copyAndValidateSlot);
+    assertUniqueIds(slots);
+    slots.sort(compareSlots);
+
+    const frozenSlots = Object.freeze(
+      slots.map((slot) => Object.freeze(slot)),
+    );
+    const systemText = frozenSlots.map((slot) => slot.content).join('\n\n');
+    const revision = computeRevision(frozenSlots);
+
+    return Object.freeze({
+      slots: frozenSlots,
+      revision,
+      systemText,
+    });
+  }
+}
+
+function copyAndValidateSlot(contribution: PromptSlotContribution): PromptSlot {
+  const spec = SLOT_SPECS[contribution.id];
+  if (!spec) {
+    throw new PromptAssemblyError(
+      'prompt/invalid-slot',
+      `未知 Prompt 槽 ${String(contribution.id)}。`,
+    );
+  }
+  if (!contribution.content.trim()) {
+    throw new PromptAssemblyError(
+      'prompt/invalid-slot',
+      `Prompt 槽 ${contribution.id} 的 content 不能为空。`,
+    );
+  }
+  if (!contribution.version.trim()) {
+    throw new PromptAssemblyError(
+      'prompt/invalid-slot',
+      `Prompt 槽 ${contribution.id} 的 version 不能为空。`,
+    );
+  }
+
+  return { ...contribution, ...spec };
+}
+
+function assertUniqueIds(slots: readonly PromptSlot[]): void {
+  const ids = new Set<string>();
+  for (const slot of slots) {
+    if (ids.has(slot.id)) {
+      throw new PromptAssemblyError(
+        'prompt/duplicate-slot',
+        `Prompt 槽 ${slot.id} 重复，不能依赖后写覆盖前写。`,
+      );
+    }
+    ids.add(slot.id);
+  }
+}
+
+function compareSlots(left: PromptSlot, right: PromptSlot): number {
+  if (left.order !== right.order) return left.order - right.order;
+  return left.id < right.id ? -1 : left.id > right.id ? 1 : 0;
+}
+
+function computeRevision(slots: readonly PromptSlot[]): string {
+  const serialized = JSON.stringify({
+    schemaVersion: 1,
+    slots: slots.map((slot) => ({
+      id: slot.id,
+      kind: slot.kind,
+      order: slot.order,
+      content: slot.content,
+      version: slot.version,
+      cacheScope: slot.cacheScope,
+      trust: slot.trust,
+    })),
+  });
+
+  return createHash('sha256').update(serialized, 'utf8').digest('hex');
+}
