@@ -82,8 +82,6 @@ describe('ConversationEngine Hook 诊断事件', () => {
     };
     const llm = {
       ...compatibilityMethods,
-      firstProviderId: () => 'provider-1',
-      defaultModelFor: () => 'model-1',
       warnUnsupportedParts: () => [],
       stream: async function* () {
         yield { type: 'text_delta', blockIndex: 0, delta: 'ok' };
@@ -193,8 +191,6 @@ describe('ConversationEngine Hook 诊断事件', () => {
     };
     const llm = {
       ...compatibilityMethods,
-      firstProviderId: () => 'provider-1',
-      defaultModelFor: () => 'model-1',
       warnUnsupportedParts: () => [],
       stream: async function* () {
         throw new Error('provider unavailable');
@@ -276,8 +272,6 @@ describe('ConversationEngine Hook 诊断事件', () => {
     };
     const llm = {
       ...compatibilityMethods,
-      firstProviderId: () => 'provider-1',
-      defaultModelFor: () => 'model-1',
       warnUnsupportedParts: () => [],
       stream: async function* () {
         controller.abort();

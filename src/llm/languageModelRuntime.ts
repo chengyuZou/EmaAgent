@@ -293,7 +293,8 @@ export class LanguageModelRuntime implements LanguageModel {
   /**
    * 用完整 Provider 快照替换运行时配置。
    *
-   * 新 Adapter 全部构造成功后才交换 Map；构造失败时旧运行时保持不变。
+   * 未变化的 Provider 复用原 Entry；变化部分的 Adapter 全部构造成功后才交换 Map。
+   * 构造失败时旧运行时保持不变。
    * 已经开始的请求持有旧 Adapter 的局部引用，可以自然完成；后续请求只会
    * 从新 Map 取值。
    */
@@ -306,23 +307,15 @@ export class LanguageModelRuntime implements LanguageModel {
 
   /** 运行时新增或替换 provider config(如用户更新了 API key)。 */
   upsertConfig(config: ProviderConfig): void {
-    this.providerRegistry.upsert(config);
-    this.streamRuntime.reset(config.id);
+    if (this.providerRegistry.upsert(config)) {
+      this.streamRuntime.reset(config.id);
+    }
   }
 
   removeConfig(providerId: string): void {
-    this.providerRegistry.remove(providerId);
-    this.streamRuntime.reset(providerId);
-  }
-
-  /** 返回首个已注册 config id,无则 undefined。用作最后兜底。 */
-  firstProviderId(): string | undefined {
-    return this.providerRegistry.firstProviderId();
-  }
-
-  /** 返回给定 provider id 的 defaultModel,无则 undefined。 */
-  defaultModelFor(providerId: string): string | undefined {
-    return this.providerRegistry.defaultModelFor(providerId);
+    if (this.providerRegistry.remove(providerId)) {
+      this.streamRuntime.reset(providerId);
+    }
   }
 
   /**

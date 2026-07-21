@@ -14,19 +14,12 @@ interface ResolvedBinding {
 }
 
 function resolveMemoryBinding(
-  llm: LanguageModel,
   modelBindings: ModelBindingsRepo,
 ): ResolvedBinding | null {
   const binding = modelBindings.get('memory');
-  if (binding) {
-    return { providerId: binding.providerConfigId, model: binding.model };
-  }
-  // Last-resort: use whatever provider is available with its default model.
-  const providerId = llm.firstProviderId();
-  if (!providerId) return null;
-  const model = llm.defaultModelFor(providerId);
-  if (!model) return null;
-  return { providerId, model };
+  return binding
+    ? { providerId: binding.providerConfigId, model: binding.model }
+    : null;
 }
 
 // ── Generic JSON-only completion ─────────────────────────────────────────────
@@ -163,7 +156,7 @@ export async function runExtraction(
   prompt:        string,
   signal?:       AbortSignal,
 ): Promise<ExtractionOutput | null> {
-  const binding = resolveMemoryBinding(llm, modelBindings);
+  const binding = resolveMemoryBinding(modelBindings);
   if (!binding) return null;
   const text = await runJsonCompletion(llm, binding, prompt, signal);
   return sanitizeExtraction(extractJson(text));
@@ -175,7 +168,7 @@ export async function runConsolidation(
   prompt:        string,
   signal?:       AbortSignal,
 ): Promise<ConsolidationOutput | null> {
-  const binding = resolveMemoryBinding(llm, modelBindings);
+  const binding = resolveMemoryBinding(modelBindings);
   if (!binding) return null;
   const text = await runJsonCompletion(llm, binding, prompt, signal);
   const parsed = extractJson(text) as Record<string, unknown>;

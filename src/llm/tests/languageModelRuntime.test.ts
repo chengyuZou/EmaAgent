@@ -2,6 +2,7 @@
 import { describe, it, expect } from 'vitest';
 import { createModelCapabilityResolver, ModelsDevCatalog } from '@ema-agent/provider';
 import { LanguageModelRuntime } from '../languageModelRuntime.js';
+import { ProviderRuntimeRegistry } from '../providerRuntimeRegistry.js';
 import { LlmModelCapabilityError } from '../errors.js';
 import type { LlmAdapter } from '../adapters/base.js';
 import type { LlmContentPart, LlmRequest, LlmStreamChunk, ProviderConfig } from '../types.js';
@@ -166,6 +167,25 @@ describe('LanguageModelRuntime — error cases', () => {
 // ── Hot-reload ────────────────────────────────────────────────────────────────
 
 describe('LanguageModelRuntime — hot-reload', () => {
+  it('配置未变化时复用同一运行时条目，只重建真正变化的 Adapter', () => {
+    const createdConfigs: ProviderConfig[] = [];
+    const registry = new ProviderRuntimeRegistry([DS_CONFIG], (config) => {
+      createdConfigs.push(config);
+      return new MockAdapter();
+    });
+    const originalEntry = registry.get('ds-001');
+
+    expect(registry.replace([{ ...DS_CONFIG }])).toEqual(new Set());
+    expect(registry.get('ds-001')).toBe(originalEntry);
+    expect(createdConfigs).toHaveLength(1);
+
+    expect(registry.replace([{ ...DS_CONFIG, apiKey: 'sk-new' }]))
+      .toEqual(new Set(['ds-001']));
+    expect(registry.get('ds-001')).not.toBe(originalEntry);
+    expect(createdConfigs).toHaveLength(2);
+    expect(Object.isFrozen(createdConfigs[1])).toBe(true);
+  });
+
   it('完整快照会删除旧 Provider，同时允许已取得的流自然结束', async () => {
     const mock = new MockAdapter(TEXT_CHUNKS);
     const router = new LanguageModelRuntime([DS_CONFIG], new Map([['ds-001', mock]]));
@@ -479,32 +499,5 @@ describe('LanguageModelRuntime — complete()', () => {
 
     expect(result.blocks[0]).toEqual({ type: 'text', text: 'ok' });
     expect(callCount).toBe(3);
-  });
-});
-
-// ── defaultModelFor / firstProviderId ─────────────────────────────────────────
-
-describe('LanguageModelRuntime — utility helpers', () => {
-  const CFG_WITH_DEFAULT: ProviderConfig = {
-    id: 'x-001', protocol: 'openai-llm', apiKey: 'k', defaultModel: 'gpt-4o',
-  };
-
-  it('defaultModelFor returns the configured default', () => {
-    const router = new LanguageModelRuntime([CFG_WITH_DEFAULT]);
-    expect(router.defaultModelFor('x-001')).toBe('gpt-4o');
-  });
-
-  it('defaultModelFor returns undefined when not set', () => {
-    const router = new LanguageModelRuntime([DS_CONFIG]);
-    expect(router.defaultModelFor('ds-001')).toBeUndefined();
-  });
-
-  it('firstProviderId returns the first registered id', () => {
-    const router = new LanguageModelRuntime([DS_CONFIG, CL_CONFIG]);
-    expect(router.firstProviderId()).toBe('ds-001');
-  });
-
-  it('firstProviderId returns undefined when empty', () => {
-    expect(new LanguageModelRuntime([]).firstProviderId()).toBeUndefined();
   });
 });

@@ -620,6 +620,7 @@ contracts 拆除与 Runtime 重构并行推进，但每批只迁一个明确所�
 - [x] Prompt 前缀 Hash 与 Tool Manifest 稳定化迁入 `src/context/promptPrefix.ts`，LLM 不再制定 KV Cache 策略；
 - [x] 历史媒体降级与本轮附件门禁迁入 Context，LLM 只保留 Adapter 前覆盖 Hook/Tool 内容的最终能力校验；
 - [x] 将 `packages/memory/src/compact` 迁入 Context，并让 Agent/Conversation 通过统一 Context 边界执行预算与压缩；采用 ToolResult 落盘 → Micro → Macro → Reactive 的 V1 渐进策略，并加入三次失败熔断。
+- [x] Provider Runtime Entry 改为配置与 Adapter 共用冻结快照；热刷新只替换真实变化的 Provider，并移除 LLM 注册顺序兜底，Turn 与后台业务必须使用显式模型选择或专属 Binding。
 
 #### C2：Turn + SSE Event
 

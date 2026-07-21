@@ -103,10 +103,7 @@ export function resolveMemoryBindingLocal(
   deps: ExtractionPipelineDeps,
 ): { providerId: string; model: string } | null {
   const binding = deps.memory.modelBindings.get('memory');
-  if (binding) return { providerId: binding.providerConfigId, model: binding.model };
-  const providerId = deps.memory.llm.firstProviderId();
-  if (!providerId) return null;
-  const model = deps.memory.llm.defaultModelFor(providerId);
-  if (!model) return null;
-  return { providerId, model };
+  return binding
+    ? { providerId: binding.providerConfigId, model: binding.model }
+    : null;
 }

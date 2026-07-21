@@ -105,7 +105,6 @@ beforeAll(() => {
     protocol:     'openai-llm',
     apiKey:       DS_KEY,
     baseUrl:      'https://api.deepseek.com',
-    defaultModel: MODEL,
   }]);
 
   const hooks = new HookBus();

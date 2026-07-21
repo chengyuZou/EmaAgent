@@ -25,7 +25,6 @@ export interface ProviderConfig {
   protocol:     LlmProtocol;
   apiKey:       string;
   baseUrl?:     string;
-  defaultModel?: string;
   /** models.dev Provider id；用于按 Provider + Model 精确解析能力。 */
   modelsDevId?: string;
 }

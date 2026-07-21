@@ -77,7 +77,7 @@ describe('ProviderRuntimeFacade', () => {
 
     runtime.refreshProviders();
 
-    expect(llm.firstProviderId()).toBe('multi-provider');
+    expect(llm.getProtocol('multi-provider')).toBe('openai-llm');
     expect(ebd.firstEmbedId()).toBe('multi-provider');
     expect(ebd.firstRerankId()).toBe('multi-provider');
     expect(vision.firstProviderId()).toBe('multi-provider');
@@ -93,7 +93,7 @@ describe('ProviderRuntimeFacade', () => {
     });
     runtime.refreshProviders();
 
-    expect(llm.firstProviderId()).toBe('multi-provider');
+    expect(llm.getProtocol('multi-provider')).toBe('openai-llm');
     expect(ebd.firstEmbedId()).toBeUndefined();
     expect(ebd.firstRerankId()).toBeUndefined();
     expect(vision.firstProviderId()).toBeUndefined();
@@ -114,18 +114,18 @@ describe('ProviderRuntimeFacade', () => {
     providers.setEnabled('provider-1', false);
     runtime.refreshProviders();
 
-    expect(llm.firstProviderId()).toBeUndefined();
+    expect(llm.getProtocol('provider-1')).toBeUndefined();
     expect(vision.firstProviderId()).toBeUndefined();
     expect(() => llm.stream({ providerId: 'provider-1', model: 'gpt', messages: [] }))
       .toThrow('provider/not_configured');
 
     providers.setEnabled('provider-1', true);
     runtime.refreshProviders();
-    expect(llm.firstProviderId()).toBe('provider-1');
+    expect(llm.getProtocol('provider-1')).toBe('openai-llm');
 
     providers.delete('provider-1');
     runtime.refreshProviders();
-    expect(llm.firstProviderId()).toBeUndefined();
+    expect(llm.getProtocol('provider-1')).toBeUndefined();
   });
 
   it('Bridge 使用完整快照并在绑定消失后显式发送 null', async () => {

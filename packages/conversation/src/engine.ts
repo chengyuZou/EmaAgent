@@ -99,12 +99,10 @@ async function* runTurn(
     yield { type: 'turn_started', sessionId: input.sessionId, turnId, mode };
 
     // ── Provider 解析 ──────────────────────────────────────────────────────────
-    // 优先用 orchestrator 给的显式 (providerId, model)（前端 picker 或
-    // resolveLlmForTurn）。没有就退回第一个可用 LLM provider。
+    // Provider 与 Model 已由上层按本次 Turn 解析；缺少任一项都不能猜测注册表顺序。
     activePhase = 'provider';
-    const providerId    = input.providerId ?? llm.firstProviderId();
-    const resolvedModel = input.model
-      ?? (providerId ? llm.defaultModelFor(providerId) : undefined);
+    const providerId = input.providerId;
+    const resolvedModel = input.model;
 
     if (!providerId || !resolvedModel) {
       const message = 'No LLM provider configured for this mode';

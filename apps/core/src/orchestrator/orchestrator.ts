@@ -482,26 +482,22 @@ export class Orchestrator {
     return emitted;
   }
 
-  /**
-   * Resolve (providerId, model) for a turn. Prefers request.providerId/model
-   * (frontend model picker), falls back to the per-mode binding (legacy),
-   * then to the first available LLM provider.
-   */
+  /** Turn 选择必须提供完整 Provider + Model；非 Turn 业务才允许读取自己的显式 Binding。 */
   private resolveLlmForTurn(request: TurnRequest): { providerId: string; model: string } | { providerId: undefined; model: undefined } {
-    // Path 1: explicit (providerId, model) from frontend picker
-    if (request.providerId && request.model) {
-      return { providerId: request.providerId, model: request.model };
+    if (request.providerId || request.model) {
+      return request.providerId && request.model
+        ? { providerId: request.providerId, model: request.model }
+        : { providerId: undefined, model: undefined };
     }
-    // Path 2: model only — resolve provider from request.providerId.
-    // chat/narrative/agent no longer use model_bindings (model comes from
-    // the frontend picker). Other modes still read their binding.
+
+    // Chat、Narrative 与 Agent 的模型来自前端选择，不能用注册顺序或旧 Binding 猜测。
     const isTurnMode = request.mode === 'chat' || request.mode === 'narrative' || request.mode === 'agent';
-    const binding    = isTurnMode ? undefined : this.bindings.modelBindings.get(request.mode as BindingModule);
-    const providerId = request.providerId ?? binding?.providerConfigId ?? this.bindings.llm.firstProviderId();
-    const model      = request.model ?? binding?.model
-      ?? (providerId ? this.bindings.llm.defaultModelFor(providerId) : undefined);
-    if (!providerId || !model) return { providerId: undefined, model: undefined };
-    return { providerId, model };
+    if (isTurnMode) return { providerId: undefined, model: undefined };
+
+    const binding = this.bindings.modelBindings.get(request.mode as BindingModule);
+    return binding
+      ? { providerId: binding.providerConfigId, model: binding.model }
+      : { providerId: undefined, model: undefined };
   }
 
   private async maybeBuildCoordinator(

@@ -105,11 +105,11 @@ function createHarness(): Harness {
 
   const deps = {
     llm: {
-      firstProviderId: () => 'provider-test',
-      defaultModelFor: () => 'model-test',
       complete: llmComplete,
     },
-    modelBindings: { get: () => undefined },
+    modelBindings: {
+      get: () => ({ providerConfigId: 'provider-test', model: 'model-test' }),
+    },
     nodes,
     edges,
     lazyUpdates,

@@ -21,47 +21,69 @@ export class ProviderRuntimeRegistry {
   }
 
   replace(configs: readonly ProviderConfig[]): ReadonlySet<string> {
-    const nextEntries = this.buildEntries(configs);
-    const affectedProviderIds = new Set([
-      ...this.entries.keys(),
-      ...nextEntries.keys(),
-    ]);
+    const nextEntries = this.buildEntries(configs, this.entries);
+    const affectedProviderIds = new Set<string>();
+    for (const [providerId, previous] of this.entries) {
+      if (nextEntries.get(providerId) !== previous) affectedProviderIds.add(providerId);
+    }
+    for (const providerId of nextEntries.keys()) {
+      if (!this.entries.has(providerId)) affectedProviderIds.add(providerId);
+    }
     this.entries = nextEntries;
     return affectedProviderIds;
   }
 
-  upsert(config: ProviderConfig): void {
+  upsert(config: ProviderConfig): boolean {
+    const previous = this.entries.get(config.id);
+    if (previous && providerConfigsEqual(previous.config, config)) return false;
     const entry = this.createEntry(config);
     const nextEntries = new Map(this.entries);
     nextEntries.set(config.id, entry);
     this.entries = nextEntries;
+    return true;
   }
 
-  remove(providerId: string): void {
-    if (!this.entries.has(providerId)) return;
+  remove(providerId: string): boolean {
+    if (!this.entries.has(providerId)) return false;
     const nextEntries = new Map(this.entries);
     nextEntries.delete(providerId);
     this.entries = nextEntries;
+    return true;
   }
 
-  firstProviderId(): string | undefined {
-    return this.entries.keys().next().value;
-  }
-
-  defaultModelFor(providerId: string): string | undefined {
-    return this.entries.get(providerId)?.config.defaultModel;
-  }
-
-  private buildEntries(configs: readonly ProviderConfig[]): Map<string, ProviderRuntimeEntry> {
+  private buildEntries(
+    configs: readonly ProviderConfig[],
+    previousEntries?: ReadonlyMap<string, ProviderRuntimeEntry>,
+  ): Map<string, ProviderRuntimeEntry> {
     const entries = new Map<string, ProviderRuntimeEntry>();
-    for (const config of configs) entries.set(config.id, this.createEntry(config));
+    for (const config of configs) {
+      if (entries.has(config.id)) {
+        throw new Error(`provider/duplicate_config: ${config.id}`);
+      }
+      const previous = previousEntries?.get(config.id);
+      entries.set(
+        config.id,
+        previous && providerConfigsEqual(previous.config, config)
+          ? previous
+          : this.createEntry(config),
+      );
+    }
     return entries;
   }
 
   private createEntry(config: ProviderConfig): ProviderRuntimeEntry {
+    const configSnapshot = Object.freeze({ ...config });
     return Object.freeze({
-      config: Object.freeze({ ...config }),
-      adapter: this.createAdapter(config),
+      config: configSnapshot,
+      adapter: this.createAdapter(configSnapshot),
     });
   }
+}
+
+function providerConfigsEqual(left: ProviderConfig, right: ProviderConfig): boolean {
+  return left.id === right.id
+    && left.protocol === right.protocol
+    && left.apiKey === right.apiKey
+    && left.baseUrl === right.baseUrl
+    && left.modelsDevId === right.modelsDevId;
 }

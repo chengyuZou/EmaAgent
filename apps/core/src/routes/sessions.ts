@@ -213,8 +213,8 @@ export function sessionsRoute(bindings: AppBindings): Hono {
       let title: string;
 
       const binding    = bindings.modelBindings.get('title');
-      const providerId = binding?.providerConfigId ?? bindings.llm.firstProviderId();
-      const model      = binding?.model ?? (providerId ? bindings.llm.defaultModelFor(providerId) : undefined);
+      const providerId = binding?.providerConfigId;
+      const model = binding?.model;
 
       if (providerId && model) {
         try {

@@ -12,11 +12,6 @@ export interface LanguageModel {
   stream(request: LlmRequest): AsyncIterable<LlmStreamChunk>;
   complete(request: LlmRequest): Promise<LlmCompletion>;
 
-  /** 过渡期兼容接口；模型绑定接线完成后由调用方显式传入 Provider 与 Model。 */
-  firstProviderId(): string | undefined;
-  /** 过渡期兼容接口；模型绑定接线完成后由调用方显式传入 Provider 与 Model。 */
-  defaultModelFor(providerId: string): string | undefined;
-
   /** 过渡期能力查询；Context 完成独立装配后从模型调用接口移除。 */
   capabilitiesFor(providerId: string, model: string): ModelCapabilitySnapshot;
   warnUnsupportedParts(providerId: string, parts: LlmContentPart[]): UnsupportedPart[];
