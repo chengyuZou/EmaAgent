@@ -18,13 +18,15 @@
 import { create } from 'zustand';
 import type { PendingPermissionPrompt } from '@ema-agent/permission';
 import type {
+  SessionId,
+  TurnId,
+} from '@ema-agent/contracts';
+import type {
   AskUserQuestionSpec,
   PermissionAccessType,
   PermissionRiskLevel,
   PendingAskUserPrompt,
-  SessionId,
-  TurnId,
-} from '@ema-agent/contracts';
+} from '@ema-agent/turn';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 

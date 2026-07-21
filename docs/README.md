@@ -1806,15 +1806,12 @@ LLM 输出格式（在 systemPrompt 中要求）：
 ### 13.5 emotion 包
 
 ```
-packages/emotion/
-├── src/
-│   ├── index.ts                # EmotionEngine Façade
-│   ├── engine.ts
-│   ├── act-parser.ts           # 流式解析 <|ACT:...|> 标签
-│   ├── tag-stripper.ts         # 从渲染文本中剥离标签（前端 / TTS 用）
-│   ├── extractor-fallback.ts   # 兜底：调便宜 LLM 抽取
-│   ├── state-machine.ts        # 情绪过渡 + 时间衰减
-│   └── types.ts
+src/emotion/
+├── engine.ts
+├── index.ts
+├── parser.ts                  # 流式解析 <|ACT:...|> 标签
+├── state-machine.ts           # 情绪过渡 + 时间衰减
+└── types.ts
 ```
 
 接口：

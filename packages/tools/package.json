@@ -21,6 +21,7 @@
   },
   "dependencies": {
     "@ema-agent/contracts": "workspace:*",
+    "@ema-agent/turn": "workspace:*",
     "@ema-agent/permission": "workspace:*",
     "zod": "^3.23.0",
     "zod-to-json-schema": "^3.23.0"

@@ -1,4 +1,5 @@
-import type { EmaStreamEvent, EmotionState, TurnId, SessionId } from '@ema-agent/contracts';
+import type { TurnId, SessionId } from '@ema-agent/contracts';
+import type { EmaStreamEvent, EmotionState } from '@ema-agent/turn';
 import { StreamingActScanner } from './parser.js';
 import type { ParsedActTag } from './types.js';
 import {

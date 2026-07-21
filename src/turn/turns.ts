@@ -1,6 +1,12 @@
-﻿import type { SessionId, TurnId, TurnMode } from './ids.js';
-import type { MessageContentPart, TurnAttachment } from './messages.js';
-import type { KbAssetScope } from './kb.js';
+// 定义 Turn 的请求、创建响应、输入校验与终态统计。
+import type {
+  KbAssetScope,
+  MessageContentPart,
+  SessionId,
+  TurnAttachment,
+  TurnId,
+  TurnMode,
+} from '@ema-agent/contracts';
 
 // ── POST /api/turns 的请求体 ──────────────────────────────────────────────────
 //

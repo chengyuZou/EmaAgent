@@ -1,15 +1,26 @@
 // 这里接收一次 Turn 请求，选择执行方式，并把执行过程整理成前端需要的事件流。
 
-import type { AppBindings } from '../wiring/index.js';
 import type {
-  ErrorCode, TurnMode, EmaStreamEvent, TurnId, SessionId, KbAssetScope,
-  RequestDegradationNotice,
+  AppBindings } from '../wiring/index.js';
+import type {
+  ErrorCode,
+  TurnMode,
+  TurnId,
+  SessionId,
+  KbAssetScope,
 } from '@ema-agent/contracts';
+import type {
+  } from '@ema-agent/turn';
 import type { ThinkingMode } from '@ema-agent/llm';
 import type { LlmContentPart } from '@ema-agent/llm';
 import { llmProviderErrorCode } from '@ema-agent/llm';
 import type { AttachmentInput } from '@ema-agent/attachment';
-import { asSessionId } from '@ema-agent/contracts';
+import { asSessionId,
+} from '@ema-agent/contracts';
+import type {
+  EmaStreamEvent,
+  RequestDegradationNotice,
+} from '@ema-agent/turn';
 import { ConversationEngine } from '@ema-agent/conversation';
 import { AgentEngine }        from '@ema-agent/agent';
 import { TtsCoordinator }     from '@ema-agent/tts';

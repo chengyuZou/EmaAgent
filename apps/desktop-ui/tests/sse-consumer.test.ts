@@ -4,7 +4,7 @@ import {
   createSseConsumer,
   type SseConnectionOutcome,
 } from '../src/lib/sse-consumer.js';
-import type { EmaStreamEvent } from '@ema-agent/contracts';
+import type { EmaStreamEvent } from '@ema-agent/turn';
 
 function mockSseResponse(frames: string[], status = 200): Response {
   const encoder = new TextEncoder();

@@ -1,16 +1,31 @@
 // 接收 Turn 请求、发布有界 SSE 事件流并处理显式取消等运行时控制。
 
 import fs from 'node:fs';
-import { Readable } from 'node:stream';
+import {
+  Readable } from 'node:stream';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { Orchestrator } from '../orchestrator/orchestrator.js';
 import { TurnEventHub } from '../sse/event-hub.js';
 import { TurnEventStore } from '../sse/event-store.js';
-import { encodeEvent, encodePing } from '../sse/writer.js';
+import { encodeEvent,
+  encodePing } from '../sse/writer.js';
 import type { AppBindings } from '../wiring/index.js';
-import type { EmaStreamEvent, TurnId, TurnRequest } from '@ema-agent/contracts';
-import { asTurnId, asSessionId, hasTurnRequestInput } from '@ema-agent/contracts';
+import type {
+  TurnId,
+} from '@ema-agent/contracts';
+import type {
+  EmaStreamEvent,
+} from '@ema-agent/turn';
+import {
+  } from '@ema-agent/turn';
+import { asTurnId,
+  asSessionId,
+} from '@ema-agent/contracts';
+import {
+  TurnRequest,
+} from '@ema-agent/turn';
+import { hasTurnRequestInput } from '@ema-agent/turn';
 import { REQUEST_VALUE_LIMITS } from '../http/request-budget.js';
 import { SubagentTranscriptProjection } from '../turn-runtime/subagent-transcript-projection.js';
 

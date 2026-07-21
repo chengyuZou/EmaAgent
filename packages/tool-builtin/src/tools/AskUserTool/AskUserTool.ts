@@ -4,7 +4,14 @@ import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { buildTool } from '@ema-agent/tools';
 import type { ToolExecutionContext } from '@ema-agent/tools';
-import type { AskUserQuestionSpec, EmaStreamEvent, SessionId, TurnId } from '@ema-agent/contracts';
+import type {
+  SessionId,
+  TurnId,
+} from '@ema-agent/contracts';
+import type {
+  AskUserQuestionSpec,
+  EmaStreamEvent,
+} from '@ema-agent/turn';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 
 // ── 输入 schema ──────────────────────────────────────────────────────────────

@@ -1,7 +1,8 @@
 // 运行一次 chat/narrative Turn，并串联 Hook、召回、LLM 流和持久化。
 
 import { randomUUID } from 'node:crypto';
-import type { EmaStreamEvent, ErrorCode } from '@ema-agent/contracts';
+import type { ErrorCode } from '@ema-agent/contracts';
+import type { EmaStreamEvent } from '@ema-agent/turn';
 import { asLlmCallId, LlmModelCapabilityError, llmProviderErrorCode } from '@ema-agent/llm';
 import type {
   AssistantBlock,

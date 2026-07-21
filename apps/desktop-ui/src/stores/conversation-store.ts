@@ -11,21 +11,28 @@
  *   - conversation-history.ts: pure data helpers (assembleHistory, helpers)
  *   - conversation-sse.ts:     SSE event dispatch + Tauri relay
  */
-import { create }          from 'zustand';
-import { createSendQueue, type SendQueue } from '../lib/send-queue.js';
-import { createTurnAcceptance, type TurnAcceptance } from '../lib/turn-acceptance.js';
+import {
+  create }          from 'zustand';
+import { createSendQueue,
+  type SendQueue } from '../lib/send-queue.js';
+import { createTurnAcceptance,
+  type TurnAcceptance } from '../lib/turn-acceptance.js';
 import { startTurnSseLifecycle } from '../lib/turn-sse-lifecycle.js';
-import { sessionsApi, type BranchTreeWire } from '../api/sessions.js';
+import { sessionsApi,
+  type BranchTreeWire } from '../api/sessions.js';
 import {
   turnsApi,
   type AttachmentInputWire,
-  type TurnCreatedResponse,
-} from '../api/turns.js';
-import type { KbAssetScope, ToolPresentation } from '@ema-agent/contracts';
+  } from '../api/turns.js';
+import type { KbAssetScope,
+  ToolPresentation,
+} from '@ema-agent/contracts';
+import {
+  } from '@ema-agent/turn';
 import {
   handleTurnAborted,
   evictSessionPlayers,
-} from '../lib/tts-playback.js';
+  } from '../lib/tts-playback.js';
 import { useSessionStore }     from './session-store.js';
 import { useArtifactStore }    from './artifact-store.js';
 import { useAgentTaskStore }   from './agent-task-store.js';
@@ -36,7 +43,7 @@ import {
   type StreamCallbacks,
   type DeltaSlice,
   type DeltaPayload,
-} from './conversation-sse.js';
+  } from './conversation-sse.js';
 import {
   assembleHistory,
   appendTextSlice,
@@ -46,18 +53,23 @@ import {
   type AnyAssistantSlice,
   type ChatHistoryItem,
   type StreamingAssistantMessage,
-} from './conversation-history.js';
+  } from './conversation-history.js';
 import type {
   SessionId,
   TurnId,
   BranchId,
   TurnMode,
+  MessageContentPart,
+} from '@ema-agent/contracts';
+import {
+  type TurnCreatedResponse,
+} from '@ema-agent/turn';
+import {
   TurnStats,
   EmotionState,
   MemoryRecallLayer,
   MemoryRecallLayerReport,
-  MessageContentPart,
-} from '@ema-agent/contracts';
+} from '@ema-agent/turn';
 
 export type { AttachmentInputWire };
 

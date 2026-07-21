@@ -1,6 +1,6 @@
 // 这里放 AgentTask 模块的基础类型：任务状态、任务记录、状态转换动作和结果。
 
-import type { AskUserQuestionSpec } from '@ema-agent/contracts';
+import type { AskUserQuestionSpec } from '@ema-agent/turn';
 
 // ── 任务状态 ───────────────────────────────────────────────────────────────────
 

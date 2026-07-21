@@ -1,4 +1,4 @@
-import type { RequestDegradationNotice } from '@ema-agent/contracts';
+import type { RequestDegradationNotice } from '@ema-agent/turn';
 import {
   LlmModelCapabilityError,
   type LlmContentPart,

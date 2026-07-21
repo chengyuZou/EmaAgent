@@ -39,6 +39,7 @@
   "dependencies": {
     "@ema-agent/character-card": "workspace:*",
     "@ema-agent/contracts": "workspace:*",
+    "@ema-agent/turn": "workspace:*",
     "@ema-agent/live2d-react": "workspace:*",
     "@ema-agent/mcp": "workspace:*",
     "@ema-agent/memory": "workspace:*",

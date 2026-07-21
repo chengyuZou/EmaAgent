@@ -13,14 +13,15 @@
  * useConversationStore). ES module live bindings make this safe as long as
  * neither module uses the other's exports at the top-level init phase.
  */
-import { tauriBridge }             from '../lib/tauri-bridge.js';
+import {
+  tauriBridge }             from '../lib/tauri-bridge.js';
 import { presentConfiguredEvent } from '../lib/event-notifications.js';
 import {
   handleTtsChunk,
   handleTtsSentenceComplete,
   handleTurnCompleted,
   handleTurnAborted,
-} from '../lib/tts-playback.js';
+  } from '../lib/tts-playback.js';
 import { useDecisionStore }        from './decision-store.js';
 import { useArtifactStore }        from './artifact-store.js';
 import { useAgentTaskStore }       from './agent-task-store.js';
@@ -28,17 +29,19 @@ import { useConversationStore }    from './conversation-store.js';
 import {
   appendTextSlice,
   appendThinkingSlice,
-} from './conversation-history.js';
+  } from './conversation-history.js';
 import type {
   SessionId,
   TurnId,
   TurnMode,
+  ToolPresentation,
+} from '@ema-agent/contracts';
+import {
   TurnStats,
   EmaStreamEvent,
   MemoryRecallLayer,
   MemoryRecallLayerReport,
-  ToolPresentation,
-} from '@ema-agent/contracts';
+} from '@ema-agent/turn';
 
 // ── StreamCallbacks ───────────────────────────────────────────────────────────
 

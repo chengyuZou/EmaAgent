@@ -1,5 +1,5 @@
 import type { SqliteDb } from '../database.js';
-import type { AskUserQuestionSpec } from '@ema-agent/contracts';
+import type { AskUserQuestionSpec } from '@ema-agent/turn';
 
 // ── 类型─────────────────────────────────────────────────────────────────────
 

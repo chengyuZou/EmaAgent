@@ -1,20 +1,20 @@
-// 定义后端通过统一事件流发送给客户端的所有结构化事件。
+// 组合各业务域事件，形成 Turn 向客户端输出的统一结构化事件流。
 import type {
-  SessionId,
-  TurnId,
-  ToolCallId,
-  TurnMode,
+  AgentKind,
+  Artifact,
   ArtifactId,
   CharacterCardId,
   CompactionId,
+  ErrorCode,
   HookInvocationId,
-} from './ids.js';
-import type { ErrorCode } from './errors.js';
+  SessionId,
+  ToolCallId,
+  ToolPresentation,
+  TurnId,
+  TurnMode,
+} from '@ema-agent/contracts';
 import type { ProtocolFamily } from '@ema-agent/provider';
 import type { TurnStats } from './turns.js';
-import type { Artifact } from './artifact.js';
-import type { AgentKind } from './agents.js';
-import type { ToolPresentation } from './messages.js';
 
 // ── Shared sub-types ──────────────────────────────────────────────────────────
 

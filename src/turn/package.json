@@ -1,5 +1,5 @@
 {
-  "name": "@ema-agent/emotion",
+  "name": "@ema-agent/turn",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -16,16 +16,14 @@
     "build": "tsc -p tsconfig.json",
     "dev": "tsc -p tsconfig.json --watch",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "vitest run --passWithNoTests",
     "clean": "rimraf dist"
   },
   "dependencies": {
-    "@ema-agent/contracts": "workspace:*"
+    "@ema-agent/contracts": "workspace:*",
+    "@ema-agent/provider": "workspace:*"
   },
   "devDependencies": {
-    "@types/node": "^20.0.0",
     "rimraf": "^5.0.0",
-    "typescript": "^5.9.3",
-    "vitest": "^2.0.0"
+    "typescript": "^5.9.3"
   }
 }

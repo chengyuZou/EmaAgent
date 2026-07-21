@@ -2,15 +2,17 @@
 
 import type {
   SessionId,
-  EmaStreamEvent,
   ErrorCode,
   KbSearchResult,
   KbAssetScope,
-  RequestDegradationNotice,
   ToolCallId,
   TurnId,
-  AskUserRequiredEvent,
 } from '@ema-agent/contracts';
+import type {
+  EmaStreamEvent,
+  RequestDegradationNotice,
+  AskUserRequiredEvent,
+} from '@ema-agent/turn';
 import type {
   LanguageModel,
   LlmContentPart,
@@ -121,7 +123,7 @@ export interface IAgentTaskStore {
   complete(taskId: string, stats: { iterations: number; inputTokens: number; outputTokens: number }): void;
   fail(taskId: string, reason: string): void;
   cancel(taskId: string, reason: string): void;
-  waitUser(taskId: string, promptId: string, questions: import('@ema-agent/contracts').AskUserQuestionSpec[]): { ok: boolean };
+  waitUser(taskId: string, promptId: string, questions: import('@ema-agent/turn').AskUserQuestionSpec[]): { ok: boolean };
   userAnswered(taskId: string, promptId: string): { ok: boolean };
 }
 

@@ -2,8 +2,10 @@ import type {
   SessionId,
   TurnId,
   TurnMode,
-  EmaStreamEvent,
 } from '@ema-agent/contracts';
+import type {
+  EmaStreamEvent,
+} from '@ema-agent/turn';
 import type { MemoryNodeType, MemoryItemKind } from '@ema-agent/storage';
 import type { EmbeddingSpace } from '@ema-agent/embed';
 

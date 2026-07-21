@@ -10,7 +10,6 @@ import type {
   MessageWire,
   TurnWire,
   TurnMode,
-  TurnStats,
   ToolResultBlock,
   MessageBlocks,
   MessageContentPart,
@@ -18,6 +17,9 @@ import type {
   TurnId,
   ToolPresentation,
 } from '@ema-agent/contracts';
+import type {
+  TurnStats,
+} from '@ema-agent/turn';
 import type { AttachmentInputWire } from '../api/turns.js';
 
 // ── Types (re-exported so conversation-store.ts stays as the public facade) ──

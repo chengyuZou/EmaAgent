@@ -1,4 +1,5 @@
-import type { EmaStreamEvent, TurnId } from '@ema-agent/contracts';
+import type { TurnId } from '@ema-agent/contracts';
+import type { EmaStreamEvent } from '@ema-agent/turn';
 
 export interface PublishedTurnEvent {
   /**

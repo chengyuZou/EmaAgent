@@ -1,8 +1,12 @@
 // 协调单个 Turn 的文本切句、语音合成、前端事件与音频归档。
 
 import type {
-  EmaStreamEvent, TurnId, SessionId,
+  TurnId,
+  SessionId,
 } from '@ema-agent/contracts';
+import type {
+  EmaStreamEvent,
+} from '@ema-agent/turn';
 
 import { TtsRuntime } from './ttsRuntime.js';
 import type { TtsVoiceRef } from './types.js';

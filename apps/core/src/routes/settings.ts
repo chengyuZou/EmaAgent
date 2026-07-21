@@ -2,7 +2,7 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { SettingsRepo } from '@ema-agent/storage';
-import type { EmaStreamEvent } from '@ema-agent/contracts';
+import type { EmaStreamEvent } from '@ema-agent/turn';
 import type { AppBindings } from '../wiring/index.js';
 
 // ── Settings keys (typed) ────────────────────────────────────────────────────

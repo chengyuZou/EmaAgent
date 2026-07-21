@@ -1,10 +1,12 @@
 import type {
-  EmaStreamEvent,
   MessageBlocks,
   SessionId,
   TurnId,
   TurnMode,
 } from '@ema-agent/contracts';
+import type {
+  EmaStreamEvent,
+} from '@ema-agent/turn';
 import type { LanguageModel, LlmToolDef, Message } from '@ema-agent/llm';
 import type { HookBus } from '@ema-agent/hook';
 

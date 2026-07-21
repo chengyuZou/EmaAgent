@@ -1,5 +1,5 @@
 {
-  "name": "@ema-agent/tts",
+  "name": "@ema-agent/emotion",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -17,22 +17,15 @@
     "dev": "tsc -p tsconfig.json --watch",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run --passWithNoTests",
-    "test:live": "tsx tests/live.ts",
-    "benchmark": "tsx tests/benchmark.ts",
     "clean": "rimraf dist"
   },
   "dependencies": {
     "@ema-agent/contracts": "workspace:*",
-    "@ema-agent/turn": "workspace:*",
-    "@ema-agent/provider": "workspace:*",
-    "@ema-agent/usage": "workspace:*",
-    "ws": "^8.18.0"
+    "@ema-agent/turn": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
-    "@types/ws": "^8.5.13",
     "rimraf": "^5.0.0",
-    "tsx": "^4.21.0",
     "typescript": "^5.9.3",
     "vitest": "^2.0.0"
   }

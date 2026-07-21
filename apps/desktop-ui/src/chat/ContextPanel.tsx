@@ -1,7 +1,13 @@
-import { useState, type JSX } from 'react';
-import { Badge, Button } from '@ema-agent/ui';
+import {
+  useState,
+  type JSX } from 'react';
+import { Badge,
+  Button } from '@ema-agent/ui';
 import { useConversationStore } from '../stores/conversation-store.js';
-import type { MemoryRecallLayer, MemoryRecallLayerReport } from '@ema-agent/contracts';
+import type {
+  MemoryRecallLayer,
+  MemoryRecallLayerReport,
+} from '@ema-agent/turn';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 

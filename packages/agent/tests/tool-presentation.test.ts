@@ -1,6 +1,7 @@
 // 这里测试工具的客户端展示数据会进入 SSE 和消息块，但不会混进模型看到的工具结果。
 import { describe, expect, it } from 'vitest';
-import type { EmaStreamEvent, SessionId, TurnId } from '@ema-agent/contracts';
+import type { SessionId, TurnId } from '@ema-agent/contracts';
+import type { EmaStreamEvent } from '@ema-agent/turn';
 import { HookBus } from '@ema-agent/hook';
 import { presentToolResult } from '@ema-agent/tools';
 import { TurnToolExecutor } from '../src/tool-executor.js';

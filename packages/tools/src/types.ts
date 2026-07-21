@@ -1,10 +1,23 @@
 // 这里集中定义工具注册、权限检查和执行时共用的基础类型。
-import type { z } from 'zod';
 import type {
-  EmaStreamEvent, Artifact, ArtifactId, ArtifactType, SessionId, TurnId,
-  AskUserQuestionSpec, AgentKind, KbSearchResult, ToolCallId,
-  AskUserRequiredEvent,
+  z } from 'zod';
+import type {
+  Artifact,
+  ArtifactId,
+  ArtifactType,
+  SessionId,
+  TurnId,
+  AgentKind,
+  KbSearchResult,
+  ToolCallId,
 } from '@ema-agent/contracts';
+import type {
+  AskUserQuestionSpec,
+  EmaStreamEvent,
+} from '@ema-agent/turn';
+import type {
+  AskUserRequiredEvent,
+} from '@ema-agent/turn';
 import type { ToolPermissionMeta } from '@ema-agent/permission';
 
 // 重新导出,调用方可从任一包 import AgentKind。

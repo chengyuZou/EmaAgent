@@ -1,9 +1,11 @@
 import type {
-  EmaStreamEvent,
   HookInvocationId,
   SessionId,
   TurnId,
 } from '@ema-agent/contracts';
+import type {
+  EmaStreamEvent,
+} from '@ema-agent/turn';
 import type {
   AbortOnlyHookEvent,
   ControlHookEvent,

@@ -65,7 +65,6 @@ import type { AskPermissionFn } from '@ema-agent/permission';
 import { PermissionPromptRegistry } from '../permissions/registry.js';
 import { AskUserRegistry }          from '../ask-user/registry.js';
 import type {
-  EmaStreamEvent,
   KbAssetScope,
   SessionId,
   ToolCallId,
@@ -74,6 +73,9 @@ import type {
   ReleaseFeaturesWire,
   SandboxStatusWire,
 } from '@ema-agent/contracts';
+import type {
+  EmaStreamEvent,
+} from '@ema-agent/turn';
 import type { UsageRecord } from '@ema-agent/usage';
 import { ToolRegistry }        from '@ema-agent/tools';
 import {

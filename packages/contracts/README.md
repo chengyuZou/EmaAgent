@@ -10,6 +10,7 @@
 | `LlmCallId`、`LlmTokenUsage` | `@ema-agent/llm` |
 | `UsageContext/UsageRecord/UsageRecorder` | `@ema-agent/usage` |
 | Session Message → Model Message | `@ema-agent/context` 的 `messageBuilder` |
+| Turn Request/Response/Stats、`EmaStreamEvent` 聚合协议 | `@ema-agent/turn` |
 
 contracts 不得重新导出这些类型，也不得增加兼容别名。
 
@@ -18,8 +19,6 @@ contracts 不得重新导出这些类型，也不得增加兼容别名。
 | 当前文件 | 目标所有者 |
 |---|---|
 | `ids.ts` 中剩余 ID | Session、Turn、Tool、Hook、Artifact 等对应业务模块 |
-| `turns.ts` | Turn |
-| `events.ts` | 各业务模块拥有事件，Turn 组合 `EmaStreamEvent` |
 | `messages.ts` 中持久化 Block 与 Attachment 元数据 | Session、Tool、Attachment |
 | `artifact.ts` | Artifact，V1 继续禁用 |
 | `wire.ts` | 对应业务模块的 `protocol` 入口 |

@@ -15,13 +15,15 @@
 
 import { asToolCallId } from '@ema-agent/contracts';
 import type {
-  EmaStreamEvent,
   ToolResultBlock,
   SessionId,
   ToolCallId,
   ToolExecutionStatus,
   TurnId,
 } from '@ema-agent/contracts';
+import type {
+  EmaStreamEvent,
+} from '@ema-agent/turn';
 import { splitToolResult, ToolInputError } from '@ema-agent/tools';
 import type { ToolExecutionContext, ICommandRunner, PreparedToolCall } from '@ema-agent/tools';
 import type { PermissionEngine, PermissionContext } from '@ema-agent/permission';

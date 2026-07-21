@@ -1,7 +1,15 @@
 // 测试 Turn SSE 重放日志的游标、内存预算、终态与音频脱敏语义。
 
-import { describe, expect, it } from 'vitest';
-import { asSessionId, asTurnId, type EmaStreamEvent } from '@ema-agent/contracts';
+import {
+  describe,
+  expect,
+  it } from 'vitest';
+import { asSessionId,
+  asTurnId,
+} from '@ema-agent/contracts';
+import {
+  type EmaStreamEvent,
+} from '@ema-agent/turn';
 import { TurnEventStore } from '../src/sse/event-store.js';
 import { encodeEvent } from '../src/sse/writer.js';
 

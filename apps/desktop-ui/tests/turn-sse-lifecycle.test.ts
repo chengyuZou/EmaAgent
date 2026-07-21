@@ -1,6 +1,6 @@
 // 测试 Turn SSE 的断线续传、业务终态和待重连取消。
 import { describe, expect, it, vi } from 'vitest';
-import type { EmaStreamEvent } from '@ema-agent/contracts';
+import type { EmaStreamEvent } from '@ema-agent/turn';
 import type {
   SseConnectionOutcome,
   SseHandle,

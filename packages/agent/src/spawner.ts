@@ -1,7 +1,14 @@
 // 创建和管理子 Agent，并处理共享临时数据、取消、能力门禁和事件上报。
 
-import { randomUUID } from 'node:crypto';
-import type { SessionId, TurnId, EmaStreamEvent, ToolError } from '@ema-agent/contracts';
+import {
+  randomUUID } from 'node:crypto';
+import type { SessionId,
+  TurnId,
+} from '@ema-agent/contracts';
+import {
+  EmaStreamEvent,
+  ToolError,
+} from '@ema-agent/turn';
 import type { Message as ModelMessage } from '@ema-agent/llm';
 import type { ISubagentSpawner, SubagentSpawnOpts, ToolExecutionContext } from '@ema-agent/tools';
 import { clearTodos } from '@ema-agent/tool-builtin';

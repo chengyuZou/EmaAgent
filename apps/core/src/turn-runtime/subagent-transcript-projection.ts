@@ -1,7 +1,7 @@
 // 把 Subagent SSE 投影为持久 transcript，并隔离辅助落库故障。
 
 import type { AgentTaskMessageInsert } from '@ema-agent/storage';
-import type { EmaStreamEvent } from '@ema-agent/contracts';
+import type { EmaStreamEvent } from '@ema-agent/turn';
 
 export interface AgentTaskMessageWriter {
   insert(message: AgentTaskMessageInsert): void;

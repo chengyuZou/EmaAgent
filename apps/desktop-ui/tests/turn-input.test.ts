@@ -1,7 +1,7 @@
 // 测试文字、结构化内容和附件三种 Turn 输入使用同一有效性规则。
 import { describe, expect, it } from 'vitest';
 
-import { hasTurnRequestInput } from '@ema-agent/contracts';
+import { hasTurnRequestInput } from '@ema-agent/turn';
 
 describe('hasTurnRequestInput', () => {
   it('允许只携带本地附件引用的请求', () => {

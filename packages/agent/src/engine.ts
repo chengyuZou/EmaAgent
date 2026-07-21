@@ -1,6 +1,7 @@
 // 运行一次 Agent Turn，并协调模型、工具、权限、Hook 和结果保存。
 
-import type { EmaStreamEvent, ErrorCode } from '@ema-agent/contracts';
+import type { ErrorCode } from '@ema-agent/contracts';
+import type { EmaStreamEvent } from '@ema-agent/turn';
 import type { MessageBlocks } from '@ema-agent/session';
 import type { ToolExecutionContext, ReadFileState } from '@ema-agent/tools';
 import type { PermissionContext } from '@ema-agent/permission';

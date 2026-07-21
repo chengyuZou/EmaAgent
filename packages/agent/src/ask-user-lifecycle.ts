@@ -1,6 +1,7 @@
 // 把 AskUser 的 Promise 等待接入 AgentTask CAS 状态机和 Turn 取消信号。
 
-import type { AskUserQuestionSpec, AskUserRequiredEvent } from '@ema-agent/contracts';
+import type { AskUserQuestionSpec } from '@ema-agent/turn';
+import type { AskUserRequiredEvent } from '@ema-agent/turn';
 import type { AskUserRegistryLike, IAgentTaskStore } from './types.js';
 
 export interface AwaitAgentAnswerInput {

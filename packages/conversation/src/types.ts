@@ -1,6 +1,7 @@
 // 这里放 ConversationEngine 的依赖接口和单次运行的输入类型。
 
-import type { RequestDegradationNotice, SessionId, TurnMode } from '@ema-agent/contracts';
+import type { SessionId, TurnMode } from '@ema-agent/contracts';
+import type { RequestDegradationNotice } from '@ema-agent/turn';
 import type {
   LanguageModel,
   LlmContentPart,

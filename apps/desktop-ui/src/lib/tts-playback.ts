@@ -1,5 +1,6 @@
 import { create } from 'zustand';
-import type { EmaStreamEvent, TurnId } from '@ema-agent/contracts';
+import type { TurnId } from '@ema-agent/contracts';
+import type { EmaStreamEvent } from '@ema-agent/turn';
 import { useSpeechStore } from '@ema-agent/live2d-react';
 import type { SpeechAnimationState } from '@ema-agent/live2d-react';
 import { tauriBridge } from './tauri-bridge.js';

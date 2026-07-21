@@ -14,7 +14,7 @@ import type { SessionStore } from '@ema-agent/session';
 import type { LanguageModel } from '@ema-agent/llm';
 import type { EmbedRuntime } from '@ema-agent/embed';
 import type { RerankRuntime } from '@ema-agent/rerank';
-import type { EmaStreamEvent } from '@ema-agent/contracts';
+import type { EmaStreamEvent } from '@ema-agent/turn';
 
 // ── External dependencies ─────────────────────────────────────────────────────
 

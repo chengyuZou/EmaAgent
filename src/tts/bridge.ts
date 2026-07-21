@@ -1,6 +1,7 @@
 // 将 TTS 内部音频事件转换成前端 SSE 事件，是字节编码和句子编号的唯一出口。
 
-import type { EmaStreamEvent, TurnId, SessionId } from '@ema-agent/contracts';
+import type { TurnId, SessionId } from '@ema-agent/contracts';
+import type { EmaStreamEvent } from '@ema-agent/turn';
 import type { TtsStreamEvent } from './types.js';
 
 // ── TtsStreamEvent -> EmaStreamEvent 桥接 ────────────────────────────────────

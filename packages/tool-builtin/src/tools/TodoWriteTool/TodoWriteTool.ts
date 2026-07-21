@@ -2,7 +2,7 @@
 import { z } from 'zod';
 import { buildTool } from '@ema-agent/tools';
 import type { ToolExecutionContext } from '@ema-agent/tools';
-import type { EmaStreamEvent } from '@ema-agent/contracts';
+import type { EmaStreamEvent } from '@ema-agent/turn';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 
 // ── 类型 ─────────────────────────────────────────────────────────────────────

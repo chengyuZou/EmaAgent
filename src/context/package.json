@@ -20,6 +20,7 @@
   },
   "dependencies": {
     "@ema-agent/contracts": "workspace:*",
+    "@ema-agent/turn": "workspace:*",
     "@ema-agent/hook": "workspace:*",
     "@ema-agent/llm": "workspace:*",
     "@ema-agent/provider": "workspace:*",

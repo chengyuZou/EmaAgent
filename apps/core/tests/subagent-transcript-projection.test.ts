@@ -2,7 +2,7 @@
 
 import { describe, expect, it } from 'vitest';
 import type { AgentTaskMessageInsert } from '@ema-agent/storage';
-import type { EmaStreamEvent } from '@ema-agent/contracts';
+import type { EmaStreamEvent } from '@ema-agent/turn';
 import { SubagentTranscriptProjection } from '../src/turn-runtime/subagent-transcript-projection.js';
 
 describe('SubagentTranscriptProjection', () => {

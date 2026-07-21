@@ -1,6 +1,6 @@
 // 这里管理 Agent 任务的生命周期：认领、状态转换（CAS 防过期覆盖）、查询、删除、崩溃恢复。
 
-import type { AskUserQuestionSpec } from '@ema-agent/contracts';
+import type { AskUserQuestionSpec } from '@ema-agent/turn';
 import type {
   AgentTask,
   TaskStatus,

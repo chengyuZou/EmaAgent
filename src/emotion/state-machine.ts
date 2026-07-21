@@ -1,4 +1,4 @@
-import type { EmotionState } from '@ema-agent/contracts';
+import type { EmotionState } from '@ema-agent/turn';
 
 // ── Internal mutable state ────────────────────────────────────────────────────
 

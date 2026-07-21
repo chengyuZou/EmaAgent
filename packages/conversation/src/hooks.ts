@@ -1,7 +1,8 @@
 // 注册 Narrative 模式的剧情路由、分时间线召回和部分失败降级 Hook。
 
 import type { HookBus } from '@ema-agent/hook';
-import type { EmaStreamEvent, NarrativeTimelineRecall, SessionId, TurnId } from '@ema-agent/contracts';
+import type { NarrativeTimelineRecall, SessionId, TurnId } from '@ema-agent/contracts';
+import type { EmaStreamEvent } from '@ema-agent/turn';
 import type { Message as ModelMessage } from '@ema-agent/llm';
 import { NarrativeClientError } from '@ema-agent/narrative-client';
 import type { ConversationDeps } from './types.js';
