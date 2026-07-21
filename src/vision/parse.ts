@@ -1,4 +1,4 @@
-// 这里把 LLM 返回的 JSON 解析成结构化 VisionBlock；strict 模式抛错、best_effort 降级成单 text 块。
+// 将模型返回的 JSON 解析成结构化 VisionBlock，支持严格失败与尽力降级两种模式。
 
 import type { VisionBlock, VisionBlockKind } from './types.js';
 import { VisionError } from './errors.js';
@@ -95,8 +95,8 @@ function handleParseFailure(
 ): ParsedVisionPayload {
   if (mode === 'strict') {
     throw new VisionError('vision/output_parse_failed', warning, {
-      details: { rawText: raw.slice(0, 2000) },
-      meta: { retryable: true },
+      details: { rawTextExcerpt: raw.slice(0, 2000) },
+      retryable: true,
     });
   }
   return fallbackPayload(raw, warning);

@@ -45,7 +45,7 @@ export class SemanticFallbackWarning extends Error {
 // ── SemanticChunker ───────────────────────────────────────────────────────────
 // Intentionally does NOT implement Chunker — requires SemanticChunkOptions.
 
-/** embed 批次默认并发上限。与 VisionRouter 全局并发一致(4)。 */
+/** Embed 批次默认并发上限；数值暂与 Vision 全局默认并发一致，但两者独立控制。 */
 const DEFAULT_EMBED_CONCURRENCY = 4;
 // Intentionally does NOT implement Chunker — requires SemanticChunkOptions.
 

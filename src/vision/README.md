@@ -1,6 +1,6 @@
 # `@ema-agent/vision`
 
-`@ema-agent/vision` 是 EmaAgent 的独立视觉提取能力包。
+`@ema-agent/vision` 是 EmaAgent 产品源码中的独立视觉提取模块。
 
 它接收图片、截图、扫描页(以及未来的视频帧),返回文本 / markdown / 结构化块(block),供对话附件、文档导入、知识库索引和 Ema 实时视觉功能使用。
 
@@ -8,22 +8,22 @@
 
 ```text
 attachments / document ingest / knowledge ingest / Ema visual features
-  -> VisionRouter
+  -> VisionRuntime
     -> provider id -> VisionAdapter
       -> provider vision endpoint
 ```
 
 Vision 不负责文件存储、附件元数据、分块(chunking)、向量索引或知识库生命周期。它只把视觉输入转成稳定的 `VisionExtractionResult`。
 
-Vision 也独立于 `@ema-agent/llm`。某个 vision provider 可能暴露 OpenAI 兼容的 chat-completions 线路格式,但 Vision 包自带 adapter,不依赖 LLM 包。Core wiring 应把 vision 和 LLM / TTS / STT / EBD / rerank 同等对待: 独立的 provider 配置、独立的 router、独立的能力表面。
+Vision 也独立于 `@ema-agent/llm`。某个 Vision Provider 可能暴露 OpenAI 兼容的 Chat Completions 协议，但 Vision 模块自带 Adapter，不依赖 LLM 模块。Core wiring 将 Vision 与 LLM、TTS、STT、Embed、Rerank 同等对待：独立配置、独立运行时、独立能力表面。
 
 ## 运行时形态
 
-生产接线应在 `apps/core` 里创建一个 `VisionRouter`, 通过 `AppBindings` 暴露:
+生产接线在 `apps/core` 中创建一个 `VisionRuntime`，通过 `AppBindings` 暴露：
 
 ```text
 buildBindings()
-  -> vision = new VisionRouter({
+  -> vision = new VisionRuntime({
        configs: visionProviderConfigs,
        limits,
      })
@@ -32,7 +32,7 @@ routes / orchestrator / attachment ingest / knowledge ingest
   -> bindings.vision.extract(...)
 ```
 
-`VisionRouter` 只持有 provider 配置、adapter 实例和轻量并发计数器。每次调用的图片载荷、prompt、解析状态、AbortController 都留在 `extract()` 局部, 所以 chat / 附件 / 知识库任务不会互相覆盖请求状态。
+`VisionRuntime` 使用单张 Runtime Entry 表原子保存 Provider 配置与 Adapter。每次调用的图片载荷、Prompt、解析状态和 AbortController 都留在 `extract()` 局部，因此对话、附件和知识库任务不会互相覆盖。
 
 ## Provider 模型
 
@@ -47,13 +47,12 @@ Vision 支持三个协议, 每个协议一个 adapter, 各用官方 SDK:
 构造示例:
 
 ```ts
-const vision = new VisionRouter({
+const vision = new VisionRuntime({
   configs: [{
     id: 'openai-vision-main',
     protocol: 'openai-vision',
     apiKey,
     baseUrl: 'https://api.openai.com/v1',
-    defaultModel: 'gpt-4o-mini',
   }],
 });
 ```
@@ -66,7 +65,7 @@ OpenAI 兼容的 provider(如 SiliconFlow)可以用 `openai-vision` 协议, 配�
 
 - `bytes`: `Uint8Array` 原始字节, adapter 用 `Buffer.from(bytes).toString('base64')` 转 base64 再拼 data URL
 - `base64`: 已是 base64 字符串, 直接用
-- `url`: 图片 URL。OpenAI / Anthropic 直接传; Gemini 只接受 `gs://` 或 Files API URI, 普通 HTTP URL 会被跳过(返回 null, 全 null 抛 `invalid_request`)
+- `url`: 图片 URL。OpenAI / Anthropic 直接传；Gemini 只接受 `gs://` 或 Files API URI，普通 HTTP URL 会让整次请求以 `unsupported_input` 失败，禁止静默漏图
 
 ## 任务与块类型
 
@@ -84,9 +83,9 @@ OpenAI 兼容的 provider(如 SiliconFlow)可以用 `openai-vision` 协议, 配�
 
 ## 并发控制(VisionLimiter)
 
-`VisionRouter` 内置 `VisionLimiter`, 做全局 + per-provider 双限流, 防止撞 provider 限流(429)和内存峰值。它不创建进程, 只计数 in-flight 请求数, 是一个带 per-key 配额的信号量 + FIFO 等待队列。
+`VisionRuntime` 使用独立的 `VisionLimiter` 做全局和单 Provider 双限流，防止撞 Provider 限流与内存峰值。它不创建进程，只维护进行中请求计数和有界等待队列。
 
-默认上限(`DEFAULT_LIMITS`):
+默认上限（`DEFAULT_VISION_LIMITS`）：
 
 | 字段 | 默认值 | 含义 |
 |---|---|---|
@@ -107,7 +106,7 @@ OpenAI 兼容的 provider(如 SiliconFlow)可以用 `openai-vision` 协议, 配�
 - 排队期间用户取消 -> `AbortSignal` 触发 `onAbort` -> waiter 从队列移除 + reject(立即生效, 不等调度)
 - `release` 幂等(released flag), 多次调不穿计数
 
-单次调用可传 `limits?: Partial<VisionLimits>` 收紧上限, 但只能往下压(`Math.min`), 不能突破 router 级硬上限。
+单次调用可传 `limits?: Partial<VisionLimits>` 收紧上限，但不能突破 Runtime 级硬上限。
 
 ## 数据流
 
@@ -116,7 +115,7 @@ VisionRequest
   -> normalize task / parse mode(填默认 auto / best_effort)
   -> validate image count and byte budgets(图数 + 字节上限)
   -> 等并发槽位(全局 + per-provider, 有界队列, 可 abort)
-  -> createScopedSignal(upstream abort + 超时合并)
+  -> createVisionRequestScope(upstream abort + 超时合并)
   -> build extraction prompt(按 task 拼 prompt)
   -> convert image inputs into provider content parts(bytes 转 base64 等)
   -> call provider endpoint(经 SDK, 带超时 + abort)
@@ -129,7 +128,7 @@ VisionRequest
 
 ## 失败策略
 
-Vision 把失败归一成稳定的错误码(`VisionErrorCode`), 由 `classifyVisionError(error, meta, timedOut)` 按 HTTP 状态 / 关键词 / 超时标记集中分类:
+Vision 把失败归一成稳定错误码，由 `classifyVisionError(error, context, timedOut)` 按 HTTP 状态、关键词和超时标记集中分类：
 
 ```text
 vision/not_configured        未配置 provider
@@ -147,7 +146,7 @@ vision/output_parse_failed   LLM 输出解析失败(strict 抛此, best_effort �
 vision/provider_failed       兜底(不重试)
 ```
 
-每个错误带 `meta.retryable`, 调用方可据此决定是否重试。超时 vs 用户取消靠 `createScopedSignal` 的 `didTimeout` 标记区分 -- 两者都触发 abort, 但 `timedOut()` 返回 true 映射 `vision/timeout`(可重试), 返回 false 映射 `vision/aborted`(不重试)。
+每个错误直接暴露 `retryable`、`providerId`、`model`、`task` 和 `status` 等已知字段，不再藏进 `meta`。超时与用户取消由 `VisionRequestScope` 区分。
 
 ## 解析模式
 
@@ -179,9 +178,9 @@ const result = await vision.extract({
 - `text`: 适合注入模型上下文
 - `blocks`: 保留结构, 供文档预览、分块、provenance、布局感知检索用
 
-`VisionRouter` 还提供:
+`VisionRuntime` 还提供：
 
-- `probe(providerId, model?)`: 健康探测(发最小 `{"text":"ok"}` 请求测活)
+- `probe(providerId, model)`: 使用明确模型健康探测，并只返回稳定错误码
 - `reload(configs)`: 热替换全部 provider 配置
 - `upsertConfig(config)` / `removeConfig(providerId)`: 单条增删
-- `getProtocol(providerId)` / `defaultModelFor(providerId)` / `firstProviderId()`: 查询
+- `getProtocol(providerId)`: 查询明确 Provider 配置使用的协议

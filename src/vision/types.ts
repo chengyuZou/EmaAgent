@@ -34,14 +34,14 @@ export interface VisionInvocationContext {
   traceId?:   string;
 }
 
-// ── Provider 配置 ─────────────────────────────────────────────────────────────
+// ── Provider 运行配置 ─────────────────────────────────────────────────────────
 
 export interface VisionProviderConfig {
-  id:            string;
-  protocol:      VisionProtocol;
-  apiKey:        string;
-  baseUrl?:      string;
-  defaultModel?: string;
+  /** `provider_configs.id`，不是静态 Provider Definition ID。 */
+  id: string;
+  protocol: VisionProtocol;
+  apiKey: string;
+  baseUrl?: string;
 }
 
 export type VisionImageMime =

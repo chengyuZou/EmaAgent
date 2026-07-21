@@ -1,9 +1,9 @@
 // 测试 Vision 的 Token、图片数、Turn 身份和结构化失败会写入统一用量账本。
 import { describe, expect, it } from 'vitest';
 import type { UsageRecord } from '@ema-agent/usage';
-import { VisionRouter } from '../src/router.js';
-import type { VisionAdapter } from '../src/adapters/base.js';
-import type { VisionProviderConfig } from '../src/types.js';
+import { VisionRuntime } from '../visionRuntime.js';
+import type { VisionAdapter } from '../adapters/base.js';
+import type { VisionProviderConfig } from '../types.js';
 
 const CONFIG: VisionProviderConfig = {
   id: 'vision-provider',
@@ -11,7 +11,7 @@ const CONFIG: VisionProviderConfig = {
   apiKey: 'secret',
 };
 
-describe('VisionRouter 用量记录', () => {
+describe('VisionRuntime 用量记录', () => {
   it('记录成功提取的 Token 和图片数', async () => {
     const records: UsageRecord[] = [];
     const adapter: VisionAdapter = {
@@ -27,7 +27,7 @@ describe('VisionRouter 用量记录', () => {
         };
       },
     };
-    const router = new VisionRouter({
+    const router = new VisionRuntime({
       configs: [CONFIG],
       adapterOverrides: new Map([['vision-provider', adapter]]),
       usageRecorder: { record: (record) => records.push(record) },
@@ -61,7 +61,7 @@ describe('VisionRouter 用量记录', () => {
         throw Object.assign(new Error('service unavailable'), { status: 503 });
       },
     };
-    const router = new VisionRouter({
+    const router = new VisionRuntime({
       configs: [CONFIG],
       adapterOverrides: new Map([['vision-provider', adapter]]),
       usageRecorder: { record: (record) => records.push(record) },
@@ -86,7 +86,7 @@ describe('VisionRouter 用量记录', () => {
     const adapter: VisionAdapter = {
       async extract() { throw new Error('不应调用'); },
     };
-    const router = new VisionRouter({
+    const router = new VisionRuntime({
       configs: [CONFIG],
       adapterOverrides: new Map([['vision-provider', adapter]]),
       limiter: {

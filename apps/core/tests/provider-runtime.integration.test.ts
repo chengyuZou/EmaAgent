@@ -5,7 +5,7 @@ import { EmbedRuntime } from '@ema-agent/embed';
 import { RerankRuntime } from '@ema-agent/rerank';
 import { TtsClient } from '@ema-agent/tts';
 import { SttClient } from '@ema-agent/stt';
-import { VisionRouter } from '@ema-agent/vision';
+import { VisionRuntime } from '@ema-agent/vision';
 import type { BridgeConfigurePayload, NarrativeClient } from '@ema-agent/narrative-client';
 import { ProviderRuntimeFacade } from '../src/wiring/provider-runtime.js';
 import type { AppBindings } from '../src/wiring/index.js';
@@ -31,7 +31,7 @@ describe('ProviderRuntimeFacade', () => {
   let rerank: RerankRuntime;
   let tts: TtsClient;
   let stt: SttClient;
-  let vision: VisionRouter;
+  let vision: VisionRuntime;
   let narrative: NarrativeClientSpy;
   let runtime: ProviderRuntimeFacade;
 
@@ -44,7 +44,7 @@ describe('ProviderRuntimeFacade', () => {
     rerank = new RerankRuntime();
     tts = new TtsClient([]);
     stt = new SttClient([]);
-    vision = new VisionRouter({ configs: [] });
+    vision = new VisionRuntime({ configs: [] });
     narrative = new NarrativeClientSpy();
     runtime = new ProviderRuntimeFacade({
       profileDb,
@@ -84,7 +84,7 @@ describe('ProviderRuntimeFacade', () => {
     expect(llm.getProtocol('multi-provider')).toBe('openai-llm');
     expect(embed.getProtocol('multi-provider')).toBe('openai-embed');
     expect(rerank.getProtocol('multi-provider')).toBe('cohere-rerank');
-    expect(vision.firstProviderId()).toBe('multi-provider');
+    expect(vision.getProtocol('multi-provider')).toBe('openai-vision');
     expect(tts.firstProviderId()).toBe('multi-provider');
     expect(stt.firstProviderId()).toBe('multi-provider');
 
@@ -100,7 +100,7 @@ describe('ProviderRuntimeFacade', () => {
     expect(llm.getProtocol('multi-provider')).toBe('openai-llm');
     expect(embed.getProtocol('multi-provider')).toBeUndefined();
     expect(rerank.getProtocol('multi-provider')).toBeUndefined();
-    expect(vision.firstProviderId()).toBeUndefined();
+    expect(vision.getProtocol('multi-provider')).toBeUndefined();
     expect(tts.firstProviderId()).toBeUndefined();
     expect(stt.firstProviderId()).toBeUndefined();
   });
@@ -119,7 +119,7 @@ describe('ProviderRuntimeFacade', () => {
     runtime.refreshProviders();
 
     expect(llm.getProtocol('provider-1')).toBeUndefined();
-    expect(vision.firstProviderId()).toBeUndefined();
+    expect(vision.getProtocol('provider-1')).toBeUndefined();
     expect(() => llm.stream({ providerId: 'provider-1', model: 'gpt', messages: [] }))
       .toThrow('provider/not_configured');
 

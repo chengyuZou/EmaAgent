@@ -1,6 +1,6 @@
 import type { Database, ProviderConfigRow } from '@ema-agent/storage';
 import { ProvidersRepo } from '@ema-agent/storage';
-import { VisionRouter, isVisionError } from '@ema-agent/vision';
+import { VisionRuntime, isVisionError } from '@ema-agent/vision';
 import type { VisionProviderConfig, VisionImageMime } from '@ema-agent/vision';
 import type { CredentialFacade } from '@ema-agent/credential';
 import { KbVisionAdapterError, type KbVisionAdapter } from '@ema-agent/knowledge-base';
@@ -90,33 +90,33 @@ function loadVisionConfigs(
   return out;
 }
 
-export function buildVisionRouter(
+export function buildVisionRuntime(
   profileDb: Database,
   credentials: CredentialFacade,
   usageRecorder?: UsageRecorder,
   onUsageRecordError?: (error: unknown, record: UsageRecord) => void,
-): VisionRouter {
-  return new VisionRouter({
+): VisionRuntime {
+  return new VisionRuntime({
     configs: loadVisionConfigs(profileDb, credentials),
     usageRecorder,
     onUsageRecordError,
   });
 }
 
-export function reloadVisionRouter(
-  router: VisionRouter,
+export function reloadVisionRuntime(
+  runtime: VisionRuntime,
   profileDb: Database,
   credentials: CredentialFacade,
 ): void {
-  router.reload(loadVisionConfigs(profileDb, credentials));
+  runtime.reload(loadVisionConfigs(profileDb, credentials));
 }
 
-/** Wraps VisionRouter as the KB-internal KbVisionAdapter interface. */
-export function asKbVisionAdapter(router: VisionRouter): KbVisionAdapter {
+/** 将 VisionRuntime 收窄为 Knowledge Base 内部所需的图片提取接口。 */
+export function asKbVisionAdapter(runtime: VisionRuntime): KbVisionAdapter {
   return {
     async extract({ providerId, model, task, inputs, signal }) {
       try {
-        const result = await router.extract({
+        const result = await runtime.extract({
           providerId,
           model,
           task,
@@ -133,7 +133,7 @@ export function asKbVisionAdapter(router: VisionRouter): KbVisionAdapter {
         };
       } catch (error) {
         if (isVisionError(error)) {
-          throw new KbVisionAdapterError(error.code, error.meta.retryable === true, { cause: error });
+          throw new KbVisionAdapterError(error.code, error.retryable, { cause: error });
         }
         throw error;
       }

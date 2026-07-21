@@ -1,11 +1,12 @@
+// 测试 Vision 运行时的请求校验、并发背压、取消和热刷新。
 import { describe, expect, it } from 'vitest';
 import {
-  VisionRouter,
-  type VisionAdapter,
-  type VisionAdapterCall,
+  VisionRuntime,
   type VisionExtractionResult,
   type VisionProviderConfig,
-} from '../src/index.js';
+} from '../index.js';
+import type { VisionAdapter, VisionAdapterCall } from '../adapters/base.js';
+import { GeminiVisionAdapter } from '../adapters/gemini.js';
 
 const CONFIG: VisionProviderConfig = {
   id: 'provider-1',
@@ -60,7 +61,7 @@ class BlockingAdapter implements VisionAdapter {
   }
 }
 
-describe('VisionRouter', () => {
+describe('VisionRuntime', () => {
   it('extracts structured vision output through the configured adapter', async () => {
     const adapter = new MockAdapter({
       providerId: 'provider-1',
@@ -71,7 +72,7 @@ describe('VisionRouter', () => {
       sources: [],
       usage: { inputTokens: 10, outputTokens: 5 },
     });
-    const vision = new VisionRouter({
+    const vision = new VisionRuntime({
       configs: [CONFIG],
       adapterOverrides: new Map([['provider-1', adapter]]),
     });
@@ -109,7 +110,7 @@ describe('VisionRouter', () => {
       blocks: [{ id: 'b1', kind: 'caption', text: 'caption' }],
       sources: [],
     });
-    const vision = new VisionRouter({
+    const vision = new VisionRuntime({
       configs: [CONFIG],
       adapterOverrides: new Map([['provider-1', adapter]]),
     });
@@ -135,7 +136,7 @@ describe('VisionRouter', () => {
       blocks: [],
       sources: [],
     });
-    const vision = new VisionRouter({
+    const vision = new VisionRuntime({
       configs: [CONFIG],
       adapterOverrides: new Map([['provider-1', adapter]]),
       limits: { maxBytesPerImage: 2 },
@@ -158,7 +159,7 @@ describe('VisionRouter', () => {
   });
 
   it('throws a typed error when the provider is not configured', async () => {
-    const vision = new VisionRouter({ configs: [CONFIG] });
+    const vision = new VisionRuntime({ configs: [CONFIG] });
 
     await expect(vision.extract({
       providerId: 'missing-provider',
@@ -176,7 +177,7 @@ describe('VisionRouter', () => {
 
   it('shares concurrency limits and applies backpressure instead of dropping work', async () => {
     const adapter = new BlockingAdapter();
-    const vision = new VisionRouter({
+    const vision = new VisionRuntime({
       configs: [CONFIG],
       adapterOverrides: new Map([['provider-1', adapter]]),
       limits: { maxConcurrentGlobal: 1, maxConcurrentPerProvider: 1 },
@@ -216,7 +217,7 @@ describe('VisionRouter', () => {
 
   it('queues the third KB-style OCR request when the provider limit is two', async () => {
     const adapter = new BlockingAdapter();
-    const vision = new VisionRouter({
+    const vision = new VisionRuntime({
       configs: [CONFIG],
       adapterOverrides: new Map([['provider-1', adapter]]),
       limits: { maxConcurrentGlobal: 4, maxConcurrentPerProvider: 2 },
@@ -239,7 +240,7 @@ describe('VisionRouter', () => {
 
   it('aborts a request while it is waiting for a concurrency slot', async () => {
     const adapter = new BlockingAdapter();
-    const vision = new VisionRouter({
+    const vision = new VisionRuntime({
       configs: [CONFIG],
       adapterOverrides: new Map([['provider-1', adapter]]),
       limits: { maxConcurrentGlobal: 1, maxConcurrentPerProvider: 1 },
@@ -265,7 +266,7 @@ describe('VisionRouter', () => {
 
   it('keeps the wait queue bounded', async () => {
     const adapter = new BlockingAdapter();
-    const vision = new VisionRouter({
+    const vision = new VisionRuntime({
       configs: [CONFIG],
       adapterOverrides: new Map([['provider-1', adapter]]),
       limits: {
@@ -285,6 +286,7 @@ describe('VisionRouter', () => {
 
     await expect(vision.extract(request)).rejects.toMatchObject({
       code: 'vision/concurrency_limited',
+      retryable: true,
     });
     adapter.release();
     await running;
@@ -292,7 +294,7 @@ describe('VisionRouter', () => {
 
   it('完整快照删除旧 Provider，但不会中断已经开始的识别', async () => {
     const adapter = new BlockingAdapter();
-    const vision = new VisionRouter({
+    const vision = new VisionRuntime({
       configs: [CONFIG],
       adapterOverrides: new Map([['provider-1', adapter]]),
     });
@@ -316,5 +318,45 @@ describe('VisionRouter', () => {
     });
     adapter.release();
     await expect(running).resolves.toMatchObject({ text: 'done' });
+  });
+
+  it('Probe 只返回稳定错误码，不向调用方泄露 Provider 原始错误', async () => {
+    const adapter: VisionAdapter = {
+      async extract() { throw new Error('不应调用'); },
+      async probe() { return { ok: false, error: 'secret provider response' }; },
+    };
+    const vision = new VisionRuntime({
+      configs: [CONFIG],
+      adapterOverrides: new Map([['provider-1', adapter]]),
+    });
+
+    await expect(vision.probe('provider-1', 'vision-model')).resolves.toEqual({
+      ok: false,
+      latencyMs: expect.any(Number),
+      error: 'vision/probe_failed',
+    });
+  });
+
+  it('Gemini 遇到不支持的 HTTP 图片时整次失败，不静默丢掉部分输入', async () => {
+    const adapter = new GeminiVisionAdapter({
+      id: 'gemini-provider',
+      protocol: 'gemini-vision',
+      apiKey: 'test-key',
+    });
+
+    await expect(adapter.extract({
+      providerId: 'gemini-provider',
+      model: 'gemini-model',
+      task: 'caption',
+      parseMode: 'best_effort',
+      inputs: [
+        { kind: 'base64', data: 'aGVsbG8=', mimeType: 'image/png' },
+        { kind: 'url', url: 'https://example.test/private.png' },
+      ],
+    })).rejects.toMatchObject({
+      code: 'vision/unsupported_input',
+      providerId: 'gemini-provider',
+      retryable: false,
+    });
   });
 });

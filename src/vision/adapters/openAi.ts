@@ -1,4 +1,4 @@
-// 这里把视觉提取请求转成 OpenAI Chat Completions 格式，用官方 SDK 调用，bytes 图片用 Buffer 转 base64 data URL。
+// 将视觉提取请求转换为 OpenAI Chat Completions 格式，并用 Buffer 编码 bytes 图片。
 
 import OpenAI from 'openai';
 import { buildVisionExtractionPrompt, defaultMaxTokensForVisionTask } from '../prompts.js';
@@ -65,7 +65,7 @@ export class OpenAiVisionAdapter implements VisionAdapter {
       providerId: request.providerId,
       model: request.model,
       task: request.task,
-      context: request.context,
+      invocationContext: request.context,
     };
     const prompt = buildVisionExtractionPrompt({
       task:              request.task,
@@ -134,7 +134,11 @@ export class OpenAiVisionAdapter implements VisionAdapter {
       );
       return { ok: true, latencyMs: Date.now() - startedAt };
     } catch (err) {
-      return { ok: false, latencyMs: Date.now() - startedAt, error: err instanceof Error ? err.message : String(err) };
+      return {
+        ok: false,
+        latencyMs: Date.now() - startedAt,
+        error: classifyVisionError(err, { providerId: this.config.id, model }).code,
+      };
     }
   }
 }

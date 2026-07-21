@@ -1,8 +1,8 @@
-// 这里把视觉提取请求转成 Anthropic Messages API 格式，用官方 SDK 调用。
+// 将视觉提取请求转换为 Anthropic Messages API 格式并调用官方 SDK。
 
 import Anthropic from '@anthropic-ai/sdk';
 import { buildVisionExtractionPrompt, defaultMaxTokensForVisionTask } from '../prompts.js';
-import { VisionError } from '../errors.js';
+import { classifyVisionError } from '../errors.js';
 import { parseVisionPayload } from '../parse.js';
 import type { VisionAdapter, VisionAdapterCall } from './base.js';
 import type {
@@ -91,10 +91,11 @@ export class AnthropicVisionAdapter implements VisionAdapter {
         { signal: request.signal },
       );
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      throw new VisionError('vision/provider_failed', `Anthropic vision error: ${msg}`, {
-        cause: err instanceof Error ? err : undefined,
-        meta: { providerId: request.providerId, model: request.model, task: request.task, context: request.context, retryable: false },
+      throw classifyVisionError(err, {
+        providerId: request.providerId,
+        model: request.model,
+        task: request.task,
+        invocationContext: request.context,
       });
     }
 
@@ -135,8 +136,11 @@ export class AnthropicVisionAdapter implements VisionAdapter {
       );
       return { ok: true, latencyMs: Date.now() - startedAt };
     } catch (err) {
-      return { ok: false, latencyMs: Date.now() - startedAt, error: err instanceof Error ? err.message : String(err) };
+      return {
+        ok: false,
+        latencyMs: Date.now() - startedAt,
+        error: classifyVisionError(err, { providerId: this.config.id, model }).code,
+      };
     }
   }
 }
-

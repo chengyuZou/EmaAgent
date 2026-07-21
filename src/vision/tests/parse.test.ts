@@ -1,5 +1,6 @@
+// 测试 Vision 结构化输出解析及 strict/best-effort 失败语义。
 import { describe, expect, it } from 'vitest';
-import { parseVisionPayload } from '../src/parse.js';
+import { parseVisionPayload } from '../parse.js';
 
 describe('parseVisionPayload', () => {
   it('parses direct JSON payloads', () => {

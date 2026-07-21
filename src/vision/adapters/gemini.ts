@@ -1,9 +1,9 @@
-// 这里把视觉提取请求转成 Gemini generateContent 格式，只接受 bytes/base64 或 gs:// URL。
+// 将视觉提取请求转换为 Gemini generateContent 格式，只接受 bytes/base64 或受支持的文件 URI。
 
 import { GoogleGenAI } from '@google/genai';
 import type { Part } from '@google/genai';
 import { buildVisionExtractionPrompt, defaultMaxTokensForVisionTask } from '../prompts.js';
-import { VisionError } from '../errors.js';
+import { VisionError, classifyVisionError } from '../errors.js';
 import { parseVisionPayload } from '../parse.js';
 import type { VisionAdapter, VisionAdapterCall } from './base.js';
 import type {
@@ -21,18 +21,30 @@ import type {
  * （gs://...）或 Files API 时才支持。普通 HTTP URL 走 inlineData 不接受，
  * 所以这里跳过并给警告。实际中 KB OCR 和附件视觉都是 bytes/base64。
  */
-function toGeminiPart(input: VisionImageInput): Part | null {
+function toGeminiPart(
+  input: VisionImageInput,
+  context: {
+    providerId: string;
+    model: string;
+    task: VisionAdapterCall['task'];
+    invocationContext?: VisionAdapterCall['context'];
+  },
+): Part {
   switch (input.kind) {
     case 'bytes':
       return { inlineData: { mimeType: input.mimeType, data: Buffer.from(input.bytes).toString('base64') } };
     case 'base64':
       return { inlineData: { mimeType: input.mimeType, data: input.data } };
     case 'url':
-      // 只有 gs:// / Files API URI 能用于 Gemini；跳过 HTTP URL。
+      // 只有 gs:// 或 Files API URI 能用于 Gemini；其他 URL 必须整体失败，不能静默漏图。
       if (input.url.startsWith('gs://') || input.url.includes('generativelanguage.googleapis.com')) {
         return { fileData: { mimeType: input.mimeType ?? 'image/jpeg', fileUri: input.url } };
       }
-      return null;
+      throw new VisionError(
+        'vision/unsupported_input',
+        'Gemini Vision only accepts bytes, base64, gs://, or Gemini Files API inputs',
+        { ...context, retryable: false, details: { source: input.source ?? { url: input.url } } },
+      );
   }
 }
 
@@ -66,15 +78,13 @@ export class GeminiVisionAdapter implements VisionAdapter {
       customInstruction: request.prompt,
     });
 
-    const imageParts: Part[] = request.inputs
-      .map(toGeminiPart)
-      .filter((p): p is Part => p !== null);
-
-    if (imageParts.length === 0) {
-      throw new VisionError('vision/invalid_request', 'No usable image parts after conversion (Gemini requires bytes/base64 or gs:// URLs)', {
-        meta: { providerId: request.providerId, model: request.model, task: request.task, context: request.context, retryable: false },
-      });
-    }
+    const errorContext = {
+      providerId: request.providerId,
+      model: request.model,
+      task: request.task,
+      invocationContext: request.context,
+    };
+    const imageParts = request.inputs.map((input) => toGeminiPart(input, errorContext));
 
     const parts: Part[] = [{ text: prompt }, ...imageParts];
 
@@ -90,10 +100,7 @@ export class GeminiVisionAdapter implements VisionAdapter {
         },
       });
     } catch (err) {
-      throw new VisionError('vision/provider_failed', `Gemini vision error: ${err instanceof Error ? err.message : String(err)}`, {
-        cause: err,
-        meta: { providerId: request.providerId, model: request.model, task: request.task, context: request.context, retryable: false },
-      });
+      throw classifyVisionError(err, errorContext);
     }
 
     const rawText = response.text ?? '';
@@ -131,8 +138,11 @@ export class GeminiVisionAdapter implements VisionAdapter {
       });
       return { ok: true, latencyMs: Date.now() - startedAt };
     } catch (err) {
-      return { ok: false, latencyMs: Date.now() - startedAt, error: err instanceof Error ? err.message : String(err) };
+      return {
+        ok: false,
+        latencyMs: Date.now() - startedAt,
+        error: classifyVisionError(err, { providerId: this.config.id, model }).code,
+      };
     }
   }
 }
-

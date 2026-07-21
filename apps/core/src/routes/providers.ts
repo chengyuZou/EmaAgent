@@ -367,7 +367,7 @@ export function providersRoute(bindings: AppBindings): Hono {
     const model = parsed.data.model
       ?? (ctx.def ? staticModelsFor(ctx.def, 'vision')[0] : undefined)
       ?? '';
-    const result = await bindings.vision.probe(id, model || undefined);
+    const result = await bindings.vision.probe(id, model, c.req.raw.signal);
     recordProbe(id, result);
     return c.json({ ok: result.ok, model, latencyMs: result.latencyMs ?? null, error: result.error });
   });

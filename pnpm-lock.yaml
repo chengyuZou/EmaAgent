@@ -138,7 +138,7 @@ importers:
         version: link:../../src/usage
       '@ema-agent/vision':
         specifier: workspace:*
-        version: link:../../packages/vision
+        version: link:../../src/vision
       '@hono/node-server':
         specifier: ^1.14.3
         version: 1.19.14(hono@4.12.18)
@@ -1320,37 +1320,6 @@ importers:
         specifier: ^2.0.0
         version: 2.1.9(@types/node@20.19.39)(jsdom@26.1.0(canvas@2.11.2))(msw@2.14.6(@types/node@20.19.39)(typescript@5.9.3))
 
-  packages/vision:
-    dependencies:
-      '@anthropic-ai/sdk':
-        specifier: ^0.39.0
-        version: 0.39.0
-      '@ema-agent/provider':
-        specifier: workspace:*
-        version: link:../../src/providers
-      '@ema-agent/usage':
-        specifier: workspace:*
-        version: link:../../src/usage
-      '@google/genai':
-        specifier: ^2.7.0
-        version: 2.7.0(@modelcontextprotocol/sdk@1.29.0(zod@3.25.76))
-      openai:
-        specifier: ^4.98.0
-        version: 4.104.0(ws@8.20.1)(zod@3.25.76)
-    devDependencies:
-      '@types/node':
-        specifier: ^20.0.0
-        version: 20.19.39
-      rimraf:
-        specifier: ^5.0.0
-        version: 5.0.10
-      typescript:
-        specifier: ^5.9.3
-        version: 5.9.3
-      vitest:
-        specifier: ^2.0.0
-        version: 2.1.9(@types/node@20.19.39)(jsdom@26.1.0(canvas@2.11.2))(msw@2.14.6(@types/node@20.19.39)(typescript@5.9.3))
-
   src/context:
     dependencies:
       '@ema-agent/contracts':
@@ -1483,6 +1452,37 @@ importers:
       typescript:
         specifier: ^5.9.3
         version: 5.9.3
+
+  src/vision:
+    dependencies:
+      '@anthropic-ai/sdk':
+        specifier: ^0.39.0
+        version: 0.39.0
+      '@ema-agent/provider':
+        specifier: workspace:*
+        version: link:../providers
+      '@ema-agent/usage':
+        specifier: workspace:*
+        version: link:../usage
+      '@google/genai':
+        specifier: ^2.7.0
+        version: 2.7.0(@modelcontextprotocol/sdk@1.29.0(zod@3.25.76))
+      openai:
+        specifier: ^4.98.0
+        version: 4.104.0(ws@8.20.1)(zod@3.25.76)
+    devDependencies:
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.39
+      rimraf:
+        specifier: ^5.0.0
+        version: 5.0.10
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: ^2.0.0
+        version: 2.1.9(@types/node@20.19.39)(jsdom@26.1.0(canvas@2.11.2))(msw@2.14.6(@types/node@20.19.39)(typescript@5.9.3))
 
 packages:
 

@@ -4,7 +4,7 @@ import type { EmbedRuntime } from '@ema-agent/embed';
 import type { RerankRuntime } from '@ema-agent/rerank';
 import type { TtsClient } from '@ema-agent/tts';
 import type { SttClient } from '@ema-agent/stt';
-import type { VisionRouter } from '@ema-agent/vision';
+import type { VisionRuntime } from '@ema-agent/vision';
 import type { NarrativeClient } from '@ema-agent/narrative-client';
 import type { CredentialFacade } from '@ema-agent/credential';
 import { loadLlmConfigs } from './providers/llm.js';
@@ -12,7 +12,7 @@ import { loadEmbedConfigs } from './providers/embed.js';
 import { loadRerankConfigs } from './providers/rerank.js';
 import { reloadTtsClient } from './providers/tts.js';
 import { reloadSttClient } from './providers/stt.js';
-import { reloadVisionRouter } from './providers/vision.js';
+import { reloadVisionRuntime } from './providers/vision.js';
 import { configureBridge } from './bridge.js';
 
 export interface ProviderRuntimeDependencies {
@@ -22,7 +22,7 @@ export interface ProviderRuntimeDependencies {
   rerank: RerankRuntime;
   tts: TtsClient;
   stt: SttClient;
-  vision: VisionRouter;
+  vision: VisionRuntime;
   narrative: NarrativeClient;
   credentials: CredentialFacade;
 }
@@ -53,7 +53,7 @@ export class ProviderRuntimeFacade {
     rerank.reload(rerankConfigs);
     reloadTtsClient(tts, profileDb, credentials);
     reloadSttClient(stt, profileDb, credentials);
-    reloadVisionRouter(vision, profileDb, credentials);
+    reloadVisionRuntime(vision, profileDb, credentials);
   }
 
   /**

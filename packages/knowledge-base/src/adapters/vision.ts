@@ -1,5 +1,5 @@
 // Vision adapter interface — decouples KB from the vision package.
-// The concrete implementation (wrapping VisionRouter) is injected at wiring time.
+// 具体实现由装配层注入，Knowledge Base 不穿透 Vision 运行时内部。
 
 export interface VisionExtractInput {
   bytes:    Uint8Array;
