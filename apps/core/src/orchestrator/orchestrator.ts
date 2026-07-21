@@ -30,7 +30,7 @@ import type { BindingModule } from '@ema-agent/storage';
 import { resolveVoice, ensureVoiceUri, VoiceUriCache } from '../wiring/providers/tts.js';
 import { ensureSessionLayout, scratchpadTurnDir } from '../storage-locations/index.js';
 import type { Turn }           from '@ema-agent/session';
-import type { TurnFailurePhase } from '@ema-agent/hook';
+import type { TurnFailurePhase } from '@ema-agent/hooks';
 import { prepareImagesForModel, replaceImageParts } from './media-compatibility.js';
 import { buildPromptSnapshot } from '@ema-agent/prompts';
 

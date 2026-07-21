@@ -28,7 +28,7 @@ import { splitToolResult, ToolInputError } from '@ema-agent/tools';
 import type { ToolExecutionContext, ICommandRunner, PreparedToolCall } from '@ema-agent/tools';
 import type { ToolManifestSnapshot } from '@ema-agent/tools';
 import type { PermissionEngine, PermissionContext } from '@ema-agent/permission';
-import type { HookBus, ToolFailurePhase } from '@ema-agent/hook';
+import type { HookBus, ToolFailurePhase } from '@ema-agent/hooks';
 import type { AgentToolResultStore } from '@ema-agent/agent-context';
 import type { AgentDeps, IToolExecutionJournal } from './types.js';
 

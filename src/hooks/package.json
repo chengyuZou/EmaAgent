@@ -1,5 +1,5 @@
 {
-  "name": "@ema-agent/hook",
+  "name": "@ema-agent/hooks",
   "version": "0.1.0",
   "private": true,
   "type": "module",

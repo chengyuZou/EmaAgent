@@ -1,8 +1,8 @@
-﻿import { describe, it, expect, vi } from 'vitest';
-import { HookBus } from '../src/bus.js';
-import { PRIORITY } from '../src/priority.js';
-import type { HookPayload } from '../src/events.js';
-import type { DeepReadonly } from '../src/types.js';
+import { describe, it, expect, vi } from 'vitest';
+import { HookBus } from '../bus.js';
+import { PRIORITY } from '../priority.js';
+import type { HookPayload } from '../events.js';
+import type { DeepReadonly } from '../types.js';
 import type {
   HookInvocationId,
   MessageId,

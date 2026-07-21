@@ -1,6 +1,6 @@
 // 这里测试父 Turn 收口时后台 Subagent 的取消、等待和 Todo 清理。
 import { describe, expect, it } from 'vitest';
-import { HookBus } from '@ema-agent/hook';
+import { HookBus } from '@ema-agent/hooks';
 import { TodoWriteTool, getTodos } from '@ema-agent/tool-builtin';
 import { ToolRegistry, type ToolExecutionContext } from '@ema-agent/tools';
 import { SubagentSpawner } from '../src/spawner.js';

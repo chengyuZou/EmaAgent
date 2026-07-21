@@ -27,7 +27,7 @@ import { MarketRegistry, MarketSourceStore }           from '@ema-agent/marketpl
 import * as nodePath from 'node:path';
 import { readFileSync } from 'node:fs';
 import * as os from 'node:os';
-import { HookBus }       from '@ema-agent/hook';
+import { HookBus }       from '@ema-agent/hooks';
 import { createTraceSink } from './diagnostic-sink.js';
 import {
   dataDbPathFor,

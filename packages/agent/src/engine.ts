@@ -5,7 +5,7 @@ import type { EmaStreamEvent } from '@ema-agent/turn';
 import type { MessageBlocks } from '@ema-agent/session';
 import type { ToolExecutionContext, ReadFileState } from '@ema-agent/tools';
 import type { PermissionContext } from '@ema-agent/permission';
-import type { TurnFailurePhase } from '@ema-agent/hook';
+import type { TurnFailurePhase } from '@ema-agent/hooks';
 import type { AgentDeps, AgentRunInput } from './types.js';
 import { AgentPolicy } from './policy.js';
 import { TurnToolExecutor } from './tool-executor.js';

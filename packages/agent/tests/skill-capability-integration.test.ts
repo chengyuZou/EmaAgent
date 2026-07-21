@@ -1,7 +1,7 @@
 // 这里测试同一轮模型响应中，Skill 收窄能力后已入队的后续工具也不能越权执行。
 import { describe, expect, it, vi } from 'vitest';
 import { createToolManifestSnapshot, type BuiltTool } from '@ema-agent/tools';
-import { HookBus } from '@ema-agent/hook';
+import { HookBus } from '@ema-agent/hooks';
 import { AgentPolicy } from '../src/policy.js';
 import { TurnToolExecutor } from '../src/tool-executor.js';
 

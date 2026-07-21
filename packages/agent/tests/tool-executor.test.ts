@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import type { SessionId, TurnId } from '@ema-agent/contracts';
 import type { EmaStreamEvent } from '@ema-agent/turn';
-import { HookBus } from '@ema-agent/hook';
+import { HookBus } from '@ema-agent/hooks';
 import { ToolInputError } from '@ema-agent/tools';
 import { TurnToolExecutor, type TurnToolExecutorOpts } from '../src/tool-executor.js';
 

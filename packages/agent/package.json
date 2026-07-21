@@ -24,7 +24,7 @@
     "@ema-agent/context": "workspace:*",
     "@ema-agent/contracts": "workspace:*",
     "@ema-agent/turn": "workspace:*",
-    "@ema-agent/hook": "workspace:*",
+    "@ema-agent/hooks": "workspace:*",
     "@ema-agent/llm": "workspace:*",
     "@ema-agent/permission": "workspace:*",
     "@ema-agent/provider": "workspace:*",

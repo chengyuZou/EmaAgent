@@ -70,9 +70,9 @@ importers:
       '@ema-agent/emotion':
         specifier: workspace:*
         version: link:../../src/emotion
-      '@ema-agent/hook':
+      '@ema-agent/hooks':
         specifier: workspace:*
-        version: link:../../packages/hook
+        version: link:../../src/hooks
       '@ema-agent/knowledge':
         specifier: workspace:*
         version: link:../../src/knowledge
@@ -388,9 +388,9 @@ importers:
       '@ema-agent/emotion':
         specifier: workspace:*
         version: link:../../src/emotion
-      '@ema-agent/hook':
+      '@ema-agent/hooks':
         specifier: workspace:*
-        version: link:../hook
+        version: link:../../src/hooks
       '@ema-agent/llm':
         specifier: workspace:*
         version: link:../../src/llm
@@ -502,9 +502,9 @@ importers:
       '@ema-agent/emotion':
         specifier: workspace:*
         version: link:../../src/emotion
-      '@ema-agent/hook':
+      '@ema-agent/hooks':
         specifier: workspace:*
-        version: link:../hook
+        version: link:../../src/hooks
       '@ema-agent/llm':
         specifier: workspace:*
         version: link:../../src/llm
@@ -541,31 +541,6 @@ importers:
         version: 2.1.9(@types/node@20.19.39)(jsdom@26.1.0(canvas@2.11.2))(msw@2.14.6(@types/node@20.19.39)(typescript@5.9.3))
 
   packages/credential:
-    devDependencies:
-      '@types/node':
-        specifier: ^20.0.0
-        version: 20.19.39
-      rimraf:
-        specifier: ^5.0.0
-        version: 5.0.10
-      typescript:
-        specifier: ^5.9.3
-        version: 5.9.3
-      vitest:
-        specifier: ^2.0.0
-        version: 2.1.9(@types/node@20.19.39)(jsdom@26.1.0(canvas@2.11.2))(msw@2.14.6(@types/node@20.19.39)(typescript@5.9.3))
-
-  packages/hook:
-    dependencies:
-      '@ema-agent/contracts':
-        specifier: workspace:*
-        version: link:../contracts
-      '@ema-agent/llm':
-        specifier: workspace:*
-        version: link:../../src/llm
-      '@ema-agent/turn':
-        specifier: workspace:*
-        version: link:../../src/turn
     devDependencies:
       '@types/node':
         specifier: ^20.0.0
@@ -922,9 +897,9 @@ importers:
       '@ema-agent/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
-      '@ema-agent/hook':
+      '@ema-agent/hooks':
         specifier: workspace:*
-        version: link:../../packages/hook
+        version: link:../hooks
       '@ema-agent/llm':
         specifier: workspace:*
         version: link:../llm
@@ -987,6 +962,31 @@ importers:
       '@ema-agent/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+    devDependencies:
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.39
+      rimraf:
+        specifier: ^5.0.0
+        version: 5.0.10
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: ^2.0.0
+        version: 2.1.9(@types/node@20.19.39)(jsdom@26.1.0(canvas@2.11.2))(msw@2.14.6(@types/node@20.19.39)(typescript@5.9.3))
+
+  src/hooks:
+    dependencies:
+      '@ema-agent/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
+      '@ema-agent/llm':
+        specifier: workspace:*
+        version: link:../llm
+      '@ema-agent/turn':
+        specifier: workspace:*
+        version: link:../turn
     devDependencies:
       '@types/node':
         specifier: ^20.0.0
@@ -1161,9 +1161,9 @@ importers:
       '@ema-agent/embed':
         specifier: workspace:*
         version: link:../embed
-      '@ema-agent/hook':
+      '@ema-agent/hooks':
         specifier: workspace:*
-        version: link:../../packages/hook
+        version: link:../hooks
       '@ema-agent/llm':
         specifier: workspace:*
         version: link:../llm

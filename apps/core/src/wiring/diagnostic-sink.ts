@@ -8,7 +8,7 @@
  * 发出。这里没有全局 SSE emitter，避免并发 Turn 的诊断串流。
  */
 
-import type { HookTraceEntry } from '@ema-agent/hook';
+import type { HookTraceEntry } from '@ema-agent/hooks';
 
 // ── Ring buffer ──────────────────────────────────────────────────────────────
 

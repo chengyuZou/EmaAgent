@@ -1,4 +1,4 @@
-import type { HookBus } from '@ema-agent/hook';
+import type { HookBus } from '@ema-agent/hooks';
 import type { SessionId, TurnId } from '@ema-agent/contracts';
 import type { SessionStore } from '@ema-agent/session';
 import type { MemoryPlanner } from './planner.js';

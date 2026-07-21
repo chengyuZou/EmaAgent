@@ -25,7 +25,7 @@
     "@ema-agent/turn": "workspace:*",
     "@ema-agent/llm": "workspace:*",
     "@ema-agent/session": "workspace:*",
-    "@ema-agent/hook": "workspace:*",
+    "@ema-agent/hooks": "workspace:*",
     "@ema-agent/emotion": "workspace:*",
     "@ema-agent/narrative": "workspace:*",
     "@ema-agent/provider": "workspace:*",

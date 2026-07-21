@@ -29,7 +29,7 @@
     "@ema-agent/credential": "workspace:*",
     "@ema-agent/storage": "workspace:*",
     "@ema-agent/token": "workspace:*",
-    "@ema-agent/hook": "workspace:*",
+    "@ema-agent/hooks": "workspace:*",
     "@ema-agent/llm": "workspace:*",
     "@ema-agent/usage": "workspace:*",
     "@ema-agent/prompts": "workspace:*",

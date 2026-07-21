@@ -16,7 +16,7 @@ import { describe, it, expect, beforeAll } from 'vitest';
 import path from 'node:path';
 
 import { LanguageModelRuntime } from '@ema-agent/llm';
-import { HookBus } from '@ema-agent/hook';
+import { HookBus } from '@ema-agent/hooks';
 import { EmotionEngine } from '@ema-agent/emotion';
 import { PermissionEngine } from '@ema-agent/permission';
 import { ToolRegistry } from '@ema-agent/tools';

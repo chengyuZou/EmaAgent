@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import type { MessageId, SessionId, TurnId } from '@ema-agent/contracts';
 import type { EmaStreamEvent } from '@ema-agent/turn';
 import type { Message, Turn } from '@ema-agent/session';
-import { HookBus } from '@ema-agent/hook';
+import { HookBus } from '@ema-agent/hooks';
 import { ToolRegistry } from '@ema-agent/tools';
 import { LlmToolArgumentsParseError } from '@ema-agent/llm';
 import { AgentEngine } from '../src/engine.js';

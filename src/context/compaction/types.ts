@@ -8,7 +8,7 @@ import type {
   EmaStreamEvent,
 } from '@ema-agent/turn';
 import type { LanguageModel, LlmToolDef, Message } from '@ema-agent/llm';
-import type { HookBus } from '@ema-agent/hook';
+import type { HookBus } from '@ema-agent/hooks';
 
 export interface ContextCompactionSettings {
   enabled: boolean;

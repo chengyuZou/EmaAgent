@@ -13,7 +13,7 @@ import type {
 } from '@ema-agent/llm';
 import type { MessageBlocks } from '@ema-agent/session';
 import { NarrativeClientError } from '@ema-agent/narrative';
-import type { HookBus, HookTriggerContext, HookTriggerResult, TurnFailurePhase } from '@ema-agent/hook';
+import type { HookBus, HookTriggerContext, HookTriggerResult, TurnFailurePhase } from '@ema-agent/hooks';
 import type { ConversationDeps, ConversationRunInput } from './types.js';
 import {
   buildModelMessages,

@@ -1,4 +1,4 @@
-# @ema-agent/hook
+# @ema-agent/hooks
 
 EmaAgent 的 Hook 事件总线。把角色卡注入 / 记忆召回 / TTS 触发 / 审计 / 指标等横切关注点挂到 engine 生命周期点,engine 主循环只 `trigger()`,不内置这些逻辑。
 

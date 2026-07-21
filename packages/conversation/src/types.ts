@@ -8,7 +8,7 @@ import type {
   ThinkingMode,
 } from '@ema-agent/llm';
 import type { SessionStore, Turn } from '@ema-agent/session';
-import type { HookBus } from '@ema-agent/hook';
+import type { HookBus } from '@ema-agent/hooks';
 import type { EmotionEngine } from '@ema-agent/emotion';
 import type { NarrativeClient } from '@ema-agent/narrative';
 import type { ModelCapabilityResolver } from '@ema-agent/provider';
