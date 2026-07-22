@@ -1,6 +1,7 @@
 // 读写 Session 行、稳定分页、搜索投影、Fork 和事务性偏好更新。
 import type { SqliteDb } from '../database.js';
 import type { SessionId, TurnId, BranchId, TurnStatus } from '@ema-agent/contracts';
+import type { ExecutionProfile, NarrativePolicy } from '@ema-agent/turn';
 import { buildFtsQuery } from '../zh-tokenizer.js';
 
 export interface SessionRow {
@@ -8,7 +9,7 @@ export interface SessionRow {
   title: string;
   workspace_root:     string | null;
   created_at: number;
-  /** 行元数据更新时间:title/group/pin/workspace/mode/meta 编辑。不用于UI中session侧栏排序。 */
+  /** 行元数据更新时间:title/group/pin/workspace/Profile 编辑。不用于 UI 中 Session 侧栏排序。 */
   updated_at: number;
   /** 对话活动时间:新 turn/message 开始时推进。用于UI中session侧栏排序。 */
   last_activity_at: number;
@@ -18,7 +19,8 @@ export interface SessionRow {
   group_label:   string | null;
   /** 整个session fork 使用 表示 fork 溯源 */
   parent_session_id: string | null;
-  last_mode:        string | null;
+  execution_profile: ExecutionProfile;
+  narrative_policy: NarrativePolicy;
   /** 用户希望该 Session 下一轮默认使用的供应商配置；null 表示使用系统默认选择。 */
   preferred_provider_config_id: string | null;
   /** 用户希望该 Session 下一轮默认使用的模型；null 表示使用系统默认选择。 */
@@ -48,7 +50,8 @@ export interface SessionInsert {
   title: string;
   workspaceRoot?:  string | null;
   parentSessionId?: string;
-  lastMode?:        string | null;
+  executionProfile?: ExecutionProfile;
+  narrativePolicy?: NarrativePolicy;
   preferredModel?: {
     providerConfigId: string;
     modelId: string;
@@ -73,14 +76,16 @@ export class SessionsRepo {
       .prepare(
         `INSERT INTO sessions
            (id, title, workspace_root,
-            parent_session_id, last_mode,
+            parent_session_id, execution_profile, narrative_policy,
             preferred_provider_config_id, preferred_model_id,
             created_at, updated_at, last_activity_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(s.id, s.title,
         s.workspaceRoot ?? null,
-        s.parentSessionId ?? null, s.lastMode ?? null,
+        s.parentSessionId ?? null,
+        s.executionProfile ?? 'chat',
+        s.narrativePolicy ?? 'auto',
         s.preferredModel?.providerConfigId ?? null,
         s.preferredModel?.modelId ?? null,
         s.createdAt, s.updatedAt,
@@ -421,25 +426,25 @@ export class SessionsRepo {
     if (!src) throw new Error(`Source session not found: ${srcId}`);
 
     this.db.transaction(() => {
-      // 1. 新 session 行复制 workspace、mode 和下一轮模型偏好。
+      // 1. 新 Session 行复制 Workspace、执行偏好和下一轮模型偏好。
       //    parent_session_id 指回来源 session，用于 fork 溯源，不表示 Branch 父节点。
       //    新 session 起始为扁平
       //    (无 branch,active_branch_id NULL)。
       this.db.prepare(
         `INSERT INTO sessions
            (id, title, workspace_root,
-            parent_session_id, last_mode,
+            parent_session_id, execution_profile, narrative_policy,
             preferred_provider_config_id, preferred_model_id,
             created_at, updated_at, last_activity_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       ).run(newId, title, src.workspace_root,
-        srcId, src.last_mode,
+        srcId, src.execution_profile, src.narrative_policy,
         src.preferred_provider_config_id, src.preferred_model_id,
         createdAt, createdAt, createdAt);
 
       // 2. 构建 old->new turn id 映射。Turn 被复制以使 fork 出的 session
-      //    保留 mode / status / usage / 时序--没有它们,前端会丢失
-      //    token 统计、mode 标签、TTS 重播按钮和 tool_result 分组。
+      //    保留触发来源、Profile、Narrative 策略、status、usage 与时序。
+      //    没有它们，前端会丢失执行标签、Token 统计、TTS 重播和 Tool Result 分组。
       //    branch_id 清空(新 session 扁平)。
       this.db.prepare('CREATE TEMP TABLE _turn_id_map (old_id TEXT PRIMARY KEY, new_id TEXT NOT NULL)').run();
 
@@ -475,11 +480,13 @@ export class SessionsRepo {
       // 3. 复制 turn(新 id,branch_id = NULL)
       this.db.prepare(
         `INSERT INTO turns
-           (id, session_id, mode, branch_id, status, user_input, started_at, completed_at,
-            error_code, error_message, iterations, usage_input_tokens, usage_output_tokens, meta_json)
-         SELECT m.new_id, ?, t.mode, NULL, t.status, t.user_input, t.started_at, t.completed_at,
+           (id, session_id, trigger_type, execution_profile, narrative_policy,
+            branch_id, status, user_input, started_at, completed_at,
+            error_code, error_message, iterations, usage_input_tokens, usage_output_tokens)
+         SELECT m.new_id, ?, t.trigger_type, t.execution_profile, t.narrative_policy,
+                NULL, t.status, t.user_input, t.started_at, t.completed_at,
                 t.error_code, t.error_message, t.iterations,
-                t.usage_input_tokens, t.usage_output_tokens, t.meta_json
+                t.usage_input_tokens, t.usage_output_tokens
          FROM turns t JOIN _turn_id_map m ON m.old_id = t.id
          ORDER BY t.started_at ASC`,
       ).run(newId);
@@ -609,7 +616,8 @@ export class SessionsRepo {
       pinned?:         boolean;
       groupLabel?:     string | null;
       workspaceRoot?:  string | null;
-      lastMode?:       string | null;
+      executionProfile?: ExecutionProfile;
+      narrativePolicy?: NarrativePolicy;
       preferredModel?: {
         providerConfigId: string;
         modelId: string;
@@ -638,9 +646,13 @@ export class SessionsRepo {
       setClauses.push('workspace_root = ?');
       values.push(patch.workspaceRoot);
     }
-    if (patch.lastMode !== undefined) {
-      setClauses.push('last_mode = ?');
-      values.push(patch.lastMode);
+    if (patch.executionProfile !== undefined) {
+      setClauses.push('execution_profile = ?');
+      values.push(patch.executionProfile);
+    }
+    if (patch.narrativePolicy !== undefined) {
+      setClauses.push('narrative_policy = ?');
+      values.push(patch.narrativePolicy);
     }
     if (patch.preferredModel !== undefined) {
       setClauses.push('preferred_provider_config_id = ?', 'preferred_model_id = ?');

@@ -51,6 +51,15 @@ const patchSessionSchema = z.object({
   }).strict().nullable().optional(),
 });
 
+function executionSettingsForLegacyMode(
+  mode: 'chat' | 'narrative' | 'agent' | null,
+): { executionProfile: 'chat' | 'work'; narrativePolicy: 'auto' | 'always' | 'off' } {
+  if (mode === 'agent') return { executionProfile: 'work', narrativePolicy: 'off' };
+  if (mode === 'narrative') return { executionProfile: 'chat', narrativePolicy: 'always' };
+  if (mode === 'chat') return { executionProfile: 'chat', narrativePolicy: 'off' };
+  return { executionProfile: 'chat', narrativePolicy: 'auto' };
+}
+
 const forkSchema = z.object({
   untilTurnId: z.string().optional(),
 });
@@ -175,12 +184,15 @@ export function sessionsRoute(bindings: AppBindings): Hono {
     }
 
     try {
+      const executionSettings = body.data.lastMode === undefined
+        ? {}
+        : executionSettingsForLegacyMode(body.data.lastMode);
       bindings.session.patchSession(sessionId, {
         title:          body.data.title,
         pinned:         body.data.pinned,
         groupLabel:     'groupLabel' in body.data ? body.data.groupLabel ?? null : undefined,
         workspaceRoot:  body.data.workspaceRoot,
-        lastMode:       body.data.lastMode,
+        ...executionSettings,
         preferredModel: body.data.preferredModel,
       });
       if (body.data.workspaceRoot !== undefined) {

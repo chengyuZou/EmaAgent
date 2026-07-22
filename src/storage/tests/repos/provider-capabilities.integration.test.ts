@@ -15,6 +15,16 @@ describe('Provider 能力级配置', () => {
 
   afterEach(() => database.close());
 
+  it('物理删除已经由能力表取代的 Provider 顶层列', () => {
+    const columns = database.sqlite.prepare('PRAGMA table_info(provider_configs)')
+      .all() as Array<{ name: string }>;
+    expect(columns.map((column) => column.name)).not.toEqual(expect.arrayContaining([
+      'base_url',
+      'config_json',
+      'capabilities_json',
+    ]));
+  });
+
   it('同一 Provider 的 LLM、Embed 和 TTS 保留各自协议与地址', () => {
     providers.upsert({
       id: 'openai-main',

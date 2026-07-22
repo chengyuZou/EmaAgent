@@ -1,3 +1,4 @@
+// 测试 Telemetry 的有界保留、清理顺序和迁移索引。
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { TelemetryRepo } from '../../repos/telemetry.js';
 import { createTestDatabase, type TestDatabase } from '../helpers/create-test-database.js';
@@ -52,7 +53,7 @@ describe('N-006 Telemetry 有界保留策略', () => {
 
     expect(sql.replaceAll(/\s+/g, ' '))
       .toContain('telemetry_events(created_at ASC, id ASC)');
-    expect(database.db.pragma('user_version', { simple: true })).toBe(14);
+    expect(database.db.pragma('user_version', { simple: true })).toBe(15);
   });
 
   function eventIds(): string[] {

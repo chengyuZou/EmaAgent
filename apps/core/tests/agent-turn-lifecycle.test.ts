@@ -31,7 +31,9 @@ describe('AgentTurnLifecycleFacade', () => {
     const owner = session.createSession();
     const { turn } = lifecycle.start({
       sessionId: owner.id,
-      mode: 'agent',
+      triggerType: 'userMessage',
+      executionProfile: 'work',
+      narrativePolicy: 'off',
       userInput: 'run',
     });
 
@@ -63,7 +65,9 @@ describe('AgentTurnLifecycleFacade', () => {
     const owner = session.createSession();
     const { turn } = lifecycle.start({
       sessionId: owner.id,
-      mode: 'agent',
+      triggerType: 'userMessage',
+      executionProfile: 'work',
+      narrativePolicy: 'off',
       userInput: 'run',
     });
     expect(tasks.cancel(turn.id, 'external_cancel').ok).toBe(true);
@@ -83,7 +87,9 @@ describe('AgentTurnLifecycleFacade', () => {
     const owner = session.createSession();
     const { turn } = lifecycle.start({
       sessionId: owner.id,
-      mode: 'agent',
+      triggerType: 'userMessage',
+      executionProfile: 'work',
+      narrativePolicy: 'off',
       userInput: 'run',
     });
     vi.spyOn(session, 'completeTurn').mockImplementation(() => {
@@ -105,7 +111,9 @@ describe('AgentTurnLifecycleFacade', () => {
     const failedOwner = session.createSession();
     const failed = lifecycle.start({
       sessionId: failedOwner.id,
-      mode: 'agent',
+      triggerType: 'userMessage',
+      executionProfile: 'work',
+      narrativePolicy: 'off',
       userInput: 'fail',
     });
     lifecycle.fail({
@@ -122,7 +130,9 @@ describe('AgentTurnLifecycleFacade', () => {
     const abortedOwner = session.createSession();
     const aborted = lifecycle.start({
       sessionId: abortedOwner.id,
-      mode: 'agent',
+      triggerType: 'userMessage',
+      executionProfile: 'work',
+      narrativePolicy: 'off',
       userInput: 'abort',
     });
     session.requestAbort(abortedOwner.id);

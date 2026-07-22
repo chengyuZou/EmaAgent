@@ -1154,6 +1154,9 @@ importers:
       '@ema-agent/storage':
         specifier: workspace:*
         version: link:../storage
+      '@ema-agent/turn':
+        specifier: workspace:*
+        version: link:../turn
     devDependencies:
       '@types/node':
         specifier: ^20.0.0
@@ -1213,6 +1216,9 @@ importers:
       '@ema-agent/provider':
         specifier: workspace:*
         version: link:../providers
+      '@ema-agent/turn':
+        specifier: workspace:*
+        version: link:../turn
       '@ema-agent/usage':
         specifier: workspace:*
         version: link:../usage

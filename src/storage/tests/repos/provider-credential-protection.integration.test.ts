@@ -1,3 +1,4 @@
+// 测试 Provider 凭据只以受保护信封落盘并可升级未保护值。
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { Database, ProvidersRepo } from '../../index.js';
 import { createTestCredentialFacade } from '../helpers/test-credential-facade.js';
@@ -35,9 +36,8 @@ describe('Provider 凭据落盘保护', () => {
     const now = Date.now();
     database.sqlite.prepare(
       `INSERT INTO provider_configs
-         (id, definition_id, display_name, credential_envelope, enabled,
-          config_json, capabilities_json, created_at, updated_at)
-       VALUES (?, ?, ?, ?, 1, '{}', '["llm"]', ?, ?)`,
+         (id, definition_id, display_name, credential_envelope, enabled, created_at, updated_at)
+       VALUES (?, ?, ?, ?, 1, ?, ?)`,
     ).run('legacy-provider', 'openai', 'Legacy', 'legacy-secret', now, now);
 
     expect(providers.protectLegacyCredentials()).toBe(1);

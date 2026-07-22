@@ -16,8 +16,9 @@ describe('UsageRecordsRepo', () => {
       VALUES ('session-a', 'Session A', 1, 1)
     `).run();
     database.db.prepare(`
-      INSERT INTO turns (id, session_id, mode, status, user_input, started_at)
-      VALUES ('turn-a', 'session-a', 'agent', 'completed', 'test', 1)
+      INSERT INTO turns
+        (id, session_id, trigger_type, execution_profile, narrative_policy, status, user_input, started_at)
+      VALUES ('turn-a', 'session-a', 'userMessage', 'work', 'off', 'completed', 'test', 1)
     `).run();
     database.db.prepare(`
       INSERT INTO sessions (id, title, created_at, updated_at)

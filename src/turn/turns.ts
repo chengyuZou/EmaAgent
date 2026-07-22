@@ -19,6 +19,7 @@ export interface UserMessageTurnTrigger {
 }
 
 export type TurnTrigger = UserMessageTurnTrigger;
+export type TurnTriggerType = TurnTrigger['type'];
 
 // ── POST /api/turns 的请求体 ──────────────────────────────────────────────────
 //

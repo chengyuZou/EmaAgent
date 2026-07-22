@@ -10,7 +10,9 @@
 
 R2 Prompt Slot 与 R3 ContextAssembler 主链接线已经完成：Prompt、Skill Catalog、Memory Recall、Narrative Recall、历史、当前 Turn、Scratchpad、Mailbox 与 Tool Manifest 由一次不可变 Context 快照统一装配。现有渐进 Compaction、Safe Cut、Restore、响应式压缩和 Tool Manifest Snapshot 都是基线，不重新实现。
 
-统一 Turn 主线的第一刀已经完成：公网请求使用 `trigger + executionProfile + narrativePolicy`，不再传递旧 `mode`；Agent 内部循环已改名为通用 `turnLoop`。旧 `chat/narrative/agent` 暂时只留在 Desktop 选择器、Session/Turn SQL 与旧 Engine 的兼容边界。
+统一 Turn 主线的前两刀已经完成：公网请求使用 `trigger + executionProfile + narrativePolicy`，不再传递旧 `mode`；Agent 内部循环已改名为通用 `turnLoop`；Session/Turn SQL 已改为显式保存触发来源、执行 Profile 与 Narrative 策略。旧 `chat/narrative/agent` 现在只留在 Desktop 选择器、旧 Engine 和事件展示的只读兼容投影。
+
+Provider 配置也已完成旧列清理：顶层 `base_url`、`config_json`、`capabilities_json` 被物理删除，地址、协议和能力开关只保存在 `provider_capability_configs`。Session/Turn 无业务读取的 `meta_json` 同步删除；Message、MCP、Artifact 等仍有明确用途的 JSON 未动。
 
 ## 迁移完成事实
 
@@ -26,10 +28,11 @@ R2 Prompt Slot 与 R3 ContextAssembler 主链接线已经完成：Prompt、Skill
 
 本轮已知未提交修改：
 
-- `EmaRefactor.md`、`EmaClaudeArchitectureReview.md`：补充 Turn、Realtime 与 V1/V1.5 边界；
-- `src/turn`、`apps/core`、`apps/desktop-ui`：接入新的 Turn 请求契约，并集中保留旧模式兼容映射；
-- `src/agent`：`AgentLoop/AgentPolicy` 收口为 `TurnLoop/TurnPolicy`，行为未重写；
-- `CLAUDE.md`：同步长期规则；该文件当前受 `.gitignore` 管理，不出现在普通 `git status`；
+- `src/storage`：Data v15、Profile v10、Session/Turn/Provider Repository、Fork、统计和恢复字段迁移；
+- `src/session`、`src/turn`：新的执行 Profile、Narrative 策略和触发来源领域字段；
+- `src/backup`：ZIP v1 内部开发格式同步为新 Session/Turn 字段；
+- `apps/core`：Turn 创建和旧 Session Mode API 的集中兼容映射；
+- `pnpm-lock.yaml`：Storage/Session 新增 `@ema-agent/turn` Workspace 类型依赖；
 - `EmaWorkState.md`：记录本轮事实与下一步。
 
 当前基线最近提交：`ab28f07 feat: add tests for ToolRegistry and tool execution context`。该提交号仅用于定位，不代表其他 Agent 不会继续提交。
@@ -66,11 +69,11 @@ Plan、Goal、Schedule、Workflow、Team 与 LLM 自动审批暂列 V1.5，不�
 
 ## 下一批建议顺序
 
-1. 给 Session/Turn Schema 增加明确的 `execution_profile`、`narrative_policy` 与触发来源字段，并迁移 Repository 类型；
-2. 将 Desktop 三模式选择器改为 Chat/Work 与 Narrative 二级策略，删除前端旧 Mode 映射；
+1. 将 Desktop 三模式选择器改为 Chat/Work 与 Narrative 二级策略，删除前端和 Session Route 的旧 Mode 映射；
+2. 把 `SessionWire`、`TurnWire`、附件与 Dashboard 等业务接口迁回各自模块，继续缩减 `src/contracts`；
 3. 让 Chat 作为受限 Profile 接入现有 TurnLoop，保留旧 ConversationEngine 为短期适配器；
-4. 接入 Work Profile 后删除重复循环、Core Engine 选择与旧 SQL Mode；
-5. 再做 Narrative Tool、AgentRun 语义和 contracts 收口。
+4. 接入 Work Profile 后删除重复循环、Core Engine 选择和 `TurnMode` 兼容投影；
+5. 再做 Narrative Tool、AgentRun 语义和剩余 contracts 收口。
 
 每批只改变一个主要业务边界。不要把 Turn 统一、数据库 Schema、全仓 ID 改名和前端切换塞进同一批。
 
@@ -84,6 +87,9 @@ Plan、Goal、Schedule、Workflow、Team 与 LLM 自动审批暂列 V1.5，不�
 - 新 Turn 契约完成后，`@ema-agent/turn` build 通过；Agent、Core、Desktop UI typecheck 通过。
 - Agent 测试 32/32 通过，4 个 Live Integration 测试按既有规则跳过。
 - Core 测试 88/88 通过；Desktop UI 测试 128/128 通过。
+- Data v15 与 Profile v10 迁移通过：Session/Turn 新字段已落盘，Provider 和 Session/Turn 遗留列已物理删除。
+- Storage 测试 118/118、Session 测试 39/39、Backup 测试 10/10 通过。
+- 本批 Core 测试 88/88、Desktop UI 测试 128/128 通过；Storage、Session、Backup、Core、Desktop UI typecheck 通过。
 - `git diff --check` 通过，仅有仓库既有的 Windows CRLF 提示。
 
 ## 工作规则

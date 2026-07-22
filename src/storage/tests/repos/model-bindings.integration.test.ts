@@ -1,3 +1,4 @@
+// 测试模型绑定的合法模块集合、确定查询和迁移结果。
 import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import BetterSqlite3 from 'better-sqlite3';
@@ -129,7 +130,7 @@ describe('profile v4 到当前版本迁移：model_bindings CHECK 收紧到 11',
       // 11 模块写入仍正常
       expect(() => insBinding.run('vision', 'v-model')).not.toThrow();
 
-      expect(sqlite.pragma('user_version', { simple: true })).toBe(9);
+      expect(sqlite.pragma('user_version', { simple: true })).toBe(10);
     } finally {
       sqlite.close();
     }

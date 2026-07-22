@@ -1,3 +1,4 @@
+// 测试 Data/Profile 事件在相同时间戳下仍保持确定顺序。
 import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import BetterSqlite3 from 'better-sqlite3';
@@ -110,7 +111,7 @@ describe('N-012 Data DB 确定性事件顺序', () => {
       .toContain('pending_fragments(session_id, at ASC, created_at ASC, id ASC)');
     expect(indexSql(database, 'idx_telemetry_kind').replaceAll(/\s+/g, ' '))
       .toContain('telemetry_events(kind, created_at DESC, id DESC)');
-    expect(database.currentVersion()).toBe(14);
+    expect(database.currentVersion()).toBe(15);
   });
 });
 
@@ -140,7 +141,7 @@ describe('N-012 Profile DB MemoryLazyUpdate 顺序', () => {
         .toEqual(['update-a', 'update-b', 'update-c']);
       expect(indexSql(database, 'idx_lazy_updates_node').replaceAll(/\s+/g, ' '))
         .toContain('memory_node_lazy_updates(node_id, created_at ASC, id ASC)');
-      expect(database.currentVersion()).toBe(9);
+      expect(database.currentVersion()).toBe(10);
     } finally {
       database.close();
     }
@@ -200,7 +201,7 @@ describe('data v8 到 v9 迁移', () => {
       expect(sqlite.prepare(`
         SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'turn_usage'
       `).get()).toBeUndefined();
-      expect(sqlite.pragma('user_version', { simple: true })).toBe(14);
+      expect(sqlite.pragma('user_version', { simple: true })).toBe(15);
     } finally {
       sqlite.close();
     }
@@ -214,8 +215,8 @@ function insertSessionAndTurn(database: Database): void {
   `).run();
   database.sqlite.prepare(`
     INSERT INTO turns
-      (id, session_id, mode, status, user_input, started_at)
-    VALUES ('turn-a', 'session-a', 'agent', 'completed', 'test', 1)
+      (id, session_id, trigger_type, execution_profile, narrative_policy, status, user_input, started_at)
+    VALUES ('turn-a', 'session-a', 'userMessage', 'work', 'off', 'completed', 'test', 1)
   `).run();
 }
 

@@ -158,7 +158,9 @@ export class Orchestrator {
     ensureSessionLayout(this.bindings.activeDataDir, sessionId as string);
     const startInput = {
       sessionId,
-      mode:      legacyMode,
+      triggerType: request.trigger.type,
+      executionProfile: request.executionProfile,
+      narrativePolicy: request.narrativePolicy,
       userInput: request.userInput,
     };
     const { turn, signal } = request.executionProfile === 'work'

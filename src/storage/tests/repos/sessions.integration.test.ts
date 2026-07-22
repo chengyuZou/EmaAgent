@@ -1,3 +1,4 @@
+// 测试 Session 查询、搜索、Fork 和新 Turn 执行字段的持久化行为。
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { SessionId, TurnId } from '@ema-agent/contracts';
 import { SessionsRepo, nextCursorFor, type SessionRow } from '../../repos/sessions.js';
@@ -52,8 +53,26 @@ describe('SessionsRepo integration', () => {
     const sessionColumns = database.db.prepare('PRAGMA table_info(sessions)')
       .all() as Array<{ name: string }>;
     expect(sessionColumns.map((column) => column.name)).toEqual(expect.arrayContaining([
+      'execution_profile',
+      'narrative_policy',
       'preferred_provider_config_id',
       'preferred_model_id',
+    ]));
+    expect(sessionColumns.map((column) => column.name)).not.toEqual(expect.arrayContaining([
+      'last_mode',
+      'meta_json',
+    ]));
+
+    const turnColumns = database.db.prepare('PRAGMA table_info(turns)')
+      .all() as Array<{ name: string }>;
+    expect(turnColumns.map((column) => column.name)).toEqual(expect.arrayContaining([
+      'trigger_type',
+      'execution_profile',
+      'narrative_policy',
+    ]));
+    expect(turnColumns.map((column) => column.name)).not.toEqual(expect.arrayContaining([
+      'mode',
+      'meta_json',
     ]));
 
     const indexes = database.db.prepare(`
@@ -404,8 +423,9 @@ describe('SessionsRepo integration', () => {
   function insertTurn(fixture: TurnFixture): void {
     database.db.prepare(`
       INSERT INTO turns
-        (id, session_id, mode, status, user_input, started_at, completed_at)
-      VALUES (?, ?, 'chat', ?, '', ?, ?)
+        (id, session_id, trigger_type, execution_profile, narrative_policy,
+         status, user_input, started_at, completed_at)
+      VALUES (?, ?, 'userMessage', 'chat', 'off', ?, '', ?, ?)
     `).run(
       fixture.id,
       fixture.sessionId,

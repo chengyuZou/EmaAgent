@@ -11,6 +11,11 @@ import type {
   AssistantBlock,
   UserBlock,
 } from '@ema-agent/contracts';
+import type {
+  ExecutionProfile,
+  NarrativePolicy,
+  TurnTriggerType,
+} from '@ema-agent/turn';
 
 // ── Domain objects (camelCase, parsed) ───────────────────────────────────────
 
@@ -36,7 +41,7 @@ export interface Session {
   title: string;
   workspaceRoot:  string | null;
   createdAt: number;
-  /** Row metadata update time: title/group/pin/workspace/mode/meta edits. */
+  /** 行属性更新时间：标题、分组、置顶、Workspace 或执行偏好发生变化。 */
   updatedAt: number;
   /** Conversation activity time used for "recent sessions" ordering. */
   lastActivityAt: number;
@@ -47,7 +52,10 @@ export interface Session {
   parentSessionId:  string   | null;
   activeBranchId:   BranchId | null;
   runningTurnCount: number;
-  lastMode:     TurnMode | null;
+  executionProfile: ExecutionProfile;
+  narrativePolicy: NarrativePolicy;
+  /** 旧前端退役前的只读显示投影，不再持久化。 */
+  lastMode: TurnMode;
   /** 用户希望该 Session 下一轮默认使用的供应商配置；null 表示使用系统默认选择。 */
   preferredProviderConfigId: string | null;
   /** 用户希望该 Session 下一轮默认使用的模型；null 表示使用系统默认选择。 */
@@ -61,7 +69,11 @@ export interface Turn {
   id:           TurnId;
   sessionId:    SessionId;
   branchId:     BranchId | null;
-  mode:         TurnMode;
+  triggerType: TurnTriggerType;
+  executionProfile: ExecutionProfile;
+  narrativePolicy: NarrativePolicy;
+  /** 旧事件与前端退役前的只读显示投影，不再持久化。 */
+  mode: TurnMode;
   status: TurnStatus;
   userInput: string;
   startedAt: number;
@@ -112,7 +124,9 @@ export interface CreateSessionInput {
 
 export interface StartTurnInput {
   sessionId: SessionId;
-  mode: TurnMode;
+  triggerType: TurnTriggerType;
+  executionProfile: ExecutionProfile;
+  narrativePolicy: NarrativePolicy;
   userInput: string;
 }
 

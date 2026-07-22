@@ -1,5 +1,6 @@
 // 汇总数据目录与 Session 统计，并执行完整 Session 备份恢复事务。
 import type { SqliteDb } from '../database.js';
+import type { ExecutionProfile, NarrativePolicy, TurnTriggerType } from '@ema-agent/turn';
 import type { AgentTaskMessageRow } from './agent-task-messages.js';
 import type { KbActivationRow }     from './kb-activations.js';
 import type { AgentTaskRow }        from './agent-tasks.js';
@@ -108,11 +109,13 @@ export interface MemoryStateRow {
 // ── 导入(恢复)payload 类型 ───────────────────────────────────────────────────
 
 export interface TurnRestoreRow {
-  id: string; sessionId: string; branchId: string | null; mode: string;
+  id: string; sessionId: string; branchId: string | null;
+  triggerType: TurnTriggerType;
+  executionProfile: ExecutionProfile;
+  narrativePolicy: NarrativePolicy;
   status: string; userInput: string; startedAt: number;
   completedAt: number | null; errorCode: string | null; errorMessage: string | null;
   iterations: number; usageInputTokens: number; usageOutputTokens: number;
-  metaJson?: string;
 }
 
 export interface MessageRestoreRow {
@@ -152,11 +155,12 @@ export interface SessionRestorePayload {
     lastActivityAt: number; archivedAt: number | null;
     pinned: boolean; pinnedAt: number | null;
     groupLabel: string | null; parentSessionId: string | null;
-    lastMode: string | null; activeBranchId: string | null;
+    executionProfile: ExecutionProfile;
+    narrativePolicy: NarrativePolicy;
+    activeBranchId: string | null;
     /** 旧 ZIP v1 没有这两个字段，导入时按 null 兼容。 */
     preferredProviderConfigId?: string | null;
     preferredModelId?: string | null;
-    metaJson?: string;
   };
   branches:          BranchRow[];
   turns:             TurnRestoreRow[];
@@ -188,6 +192,12 @@ export class SessionRestoreValidationError extends Error {
 function validateSessionRestorePayload(payload: SessionRestorePayload): void {
   const sessionId = payload.session.id;
   if (!sessionId) throw new SessionRestoreValidationError('Session id 不能为空');
+  if (!['chat', 'work'].includes(payload.session.executionProfile)) {
+    throw new SessionRestoreValidationError('Session executionProfile 非法');
+  }
+  if (!['auto', 'always', 'off'].includes(payload.session.narrativePolicy)) {
+    throw new SessionRestoreValidationError('Session narrativePolicy 非法');
+  }
   if (payload.session.parentSessionId === sessionId) {
     throw new SessionRestoreValidationError('Session 不能把自身设为 parentSessionId');
   }
@@ -212,6 +222,15 @@ function validateSessionRestorePayload(payload: SessionRestorePayload): void {
   for (const turn of payload.turns) {
     assertSessionOwnership('Turn', turn.id, turn.sessionId, sessionId);
     assertOptionalReference('Turn.branchId', turn.id, turn.branchId, branchIds);
+    if (turn.triggerType !== 'userMessage') {
+      throw new SessionRestoreValidationError(`Turn triggerType 非法: ${turn.id}`);
+    }
+    if (!['chat', 'work'].includes(turn.executionProfile)) {
+      throw new SessionRestoreValidationError(`Turn executionProfile 非法: ${turn.id}`);
+    }
+    if (!['auto', 'always', 'off'].includes(turn.narrativePolicy)) {
+      throw new SessionRestoreValidationError(`Turn narrativePolicy 非法: ${turn.id}`);
+    }
   }
   for (const branch of payload.branches) {
     assertSessionOwnership('Branch', branch.id, branch.session_id, sessionId);
@@ -335,9 +354,11 @@ export class SessionStatsRepo {
         (SELECT COUNT(*) FROM messages WHERE session_id = ?) AS message_count,
         (SELECT COALESCE(SUM(usage_input_tokens),  0) FROM turns WHERE session_id = ?) AS total_input_tokens,
         (SELECT COALESCE(SUM(usage_output_tokens), 0) FROM turns WHERE session_id = ?) AS total_output_tokens,
-        (SELECT COUNT(*) FROM turns WHERE session_id = ? AND mode = 'chat')      AS chat_turns,
-        (SELECT COUNT(*) FROM turns WHERE session_id = ? AND mode = 'narrative') AS narrative_turns,
-        (SELECT COUNT(*) FROM turns WHERE session_id = ? AND mode = 'agent')     AS agent_turns,
+        (SELECT COUNT(*) FROM turns
+          WHERE session_id = ? AND execution_profile = 'chat' AND narrative_policy <> 'always') AS chat_turns,
+        (SELECT COUNT(*) FROM turns
+          WHERE session_id = ? AND execution_profile = 'chat' AND narrative_policy = 'always') AS narrative_turns,
+        (SELECT COUNT(*) FROM turns WHERE session_id = ? AND execution_profile = 'work') AS agent_turns,
         (SELECT COUNT(*) FROM branches WHERE session_id = ?) AS branch_count,
         (SELECT COUNT(*) FROM artifacts WHERE session_id = ?) AS artifact_count,
         (SELECT COALESCE(SUM(LENGTH(COALESCE(content,''))), 0)
@@ -501,10 +522,10 @@ export class SessionStatsRepo {
         INSERT INTO sessions
           (id, title, workspace_root, created_at, updated_at,
            last_activity_at, archived_at, pinned, pinned_at, group_label,
-           parent_session_id, last_mode,
+           parent_session_id, execution_profile, narrative_policy,
            preferred_provider_config_id, preferred_model_id,
-           active_branch_id, meta_json)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)
+           active_branch_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
       `).run(
         p.session.id, p.session.title, p.session.workspaceRoot ?? null,
         p.session.createdAt, p.session.updatedAt,
@@ -512,27 +533,27 @@ export class SessionStatsRepo {
         p.session.archivedAt ?? null,
         p.session.pinned ? 1 : 0, p.session.pinnedAt ?? null,
         p.session.groupLabel ?? null, parentSessionId,
-        p.session.lastMode ?? null,
+        p.session.executionProfile,
+        p.session.narrativePolicy,
         p.session.preferredProviderConfigId ?? null,
         p.session.preferredModelId ?? null,
-        p.session.metaJson ?? '{}',
       );
 
       // 2. 先插入 Turn 节点，但暂不恢复 branch_id，打断 Turn -> Branch 的环。
       const stmtTurn = this.db.prepare(`
         INSERT INTO turns
-          (id, session_id, mode, branch_id, status, user_input,
+          (id, session_id, trigger_type, execution_profile, narrative_policy,
+           branch_id, status, user_input,
            started_at, completed_at, error_code, error_message,
-           iterations, usage_input_tokens, usage_output_tokens, meta_json)
-        VALUES (?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           iterations, usage_input_tokens, usage_output_tokens)
+        VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
       for (const t of p.turns) {
         stmtTurn.run(
-          t.id, p.session.id, t.mode,
+          t.id, p.session.id, t.triggerType, t.executionProfile, t.narrativePolicy,
           t.status, t.userInput, t.startedAt, t.completedAt ?? null,
           t.errorCode ?? null, t.errorMessage ?? null,
           t.iterations ?? 0, t.usageInputTokens ?? 0, t.usageOutputTokens ?? 0,
-          t.metaJson ?? '{}',
         );
       }
 

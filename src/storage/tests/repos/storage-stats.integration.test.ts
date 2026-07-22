@@ -1,3 +1,4 @@
+// 测试 Session 统计与备份恢复会完整保留归属、分支和执行字段。
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   SessionStatsRepo,
@@ -189,8 +190,9 @@ describe('SessionStatsRepo restore integration', () => {
       VALUES ('existing-session', 'Existing', 1, 1, 1)
     `).run();
     database.db.prepare(`
-      INSERT INTO turns (id, session_id, mode, status, user_input, started_at)
-      VALUES (?, 'existing-session', 'chat', 'completed', '', 1)
+      INSERT INTO turns
+        (id, session_id, trigger_type, execution_profile, narrative_policy, status, user_input, started_at)
+      VALUES (?, 'existing-session', 'userMessage', 'chat', 'off', 'completed', '', 1)
     `).run(turnId);
   }
 });
@@ -209,7 +211,8 @@ function branchedPayload(): SessionRestorePayload {
       pinnedAt: null,
       groupLabel: null,
       parentSessionId: null,
-      lastMode: 'chat',
+      executionProfile: 'chat',
+      narrativePolicy: 'off',
       activeBranchId: 'branch-child',
     },
     // 故意 child 在 root 前，证明恢复不依赖 payload 顺序。
@@ -234,7 +237,9 @@ function branchedPayload(): SessionRestorePayload {
         id: 'turn-root',
         sessionId: 'restored-session',
         branchId: 'branch-root',
-        mode: 'chat',
+        triggerType: 'userMessage',
+        executionProfile: 'chat',
+        narrativePolicy: 'off',
         status: 'completed',
         userInput: 'root',
         startedAt: 100,
@@ -249,7 +254,9 @@ function branchedPayload(): SessionRestorePayload {
         id: 'turn-child',
         sessionId: 'restored-session',
         branchId: 'branch-child',
-        mode: 'chat',
+        triggerType: 'userMessage',
+        executionProfile: 'chat',
+        narrativePolicy: 'off',
         status: 'completed',
         userInput: 'child',
         startedAt: 130,

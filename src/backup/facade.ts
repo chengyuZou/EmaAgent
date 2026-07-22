@@ -43,7 +43,9 @@ interface SessionExport {
   createdAt: number; updatedAt: number; lastActivityAt: number;
   archivedAt: number | null; pinned: boolean; pinnedAt: number | null;
   groupLabel: string | null; parentSessionId: string | null;
-  lastMode: string | null; activeBranchId: string | null;
+  executionProfile: 'chat' | 'work';
+  narrativePolicy: 'auto' | 'always' | 'off';
+  activeBranchId: string | null;
   preferredProviderConfigId?: string | null;
   preferredModelId?: string | null;
 }
@@ -257,7 +259,9 @@ export class SessionBackupFacade {
         archivedAt: session.archivedAt ?? null, pinned: session.pinned ?? false,
         pinnedAt: session.pinnedAt ?? null, groupLabel: session.groupLabel ?? null,
         parentSessionId: session.parentSessionId ?? null,
-        lastMode: session.lastMode ?? null, activeBranchId: session.activeBranchId ?? null,
+        executionProfile: session.executionProfile,
+        narrativePolicy: session.narrativePolicy,
+        activeBranchId: session.activeBranchId ?? null,
         preferredProviderConfigId: session.preferredProviderConfigId ?? null,
         preferredModelId: session.preferredModelId ?? null,
       },

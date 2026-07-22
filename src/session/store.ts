@@ -30,6 +30,7 @@ import {
   asBranchId,
 } from '@ema-agent/contracts';
 import type { Database } from '@ema-agent/storage';
+import type { ExecutionProfile, NarrativePolicy } from '@ema-agent/turn';
 import { RunRegistry } from './run-registry.js';
 import { BranchAncestorTable } from './branch-ancestor.js';
 import type {
@@ -53,6 +54,14 @@ import type {
 
 // ── Row → domain object converters (module-private) ──────────────────────────
 
+function legacyModeFor(
+  executionProfile: ExecutionProfile,
+  narrativePolicy: NarrativePolicy,
+): TurnMode {
+  if (executionProfile === 'work') return 'agent';
+  return narrativePolicy === 'always' ? 'narrative' : 'chat';
+}
+
 function toSession(row: SessionRow): Session {
   return {
     id: row.id as SessionId,
@@ -68,7 +77,9 @@ function toSession(row: SessionRow): Session {
     parentSessionId:  row.parent_session_id  as SessionId  | null,
     activeBranchId:   (row.active_branch_id ?? null) as BranchId | null,
     runningTurnCount: 0,    // populated by caller
-    lastMode:    (row.last_mode    ?? null) as TurnMode    | null,
+    executionProfile: row.execution_profile,
+    narrativePolicy: row.narrative_policy,
+    lastMode: legacyModeFor(row.execution_profile, row.narrative_policy),
     preferredProviderConfigId: row.preferred_provider_config_id ?? null,
     preferredModelId: row.preferred_model_id ?? null,
     lastViewedAt:   row.last_viewed_at ?? null,
@@ -96,7 +107,10 @@ function toTurn(row: TurnRow): Turn {
     id:           row.id        as TurnId,
     sessionId:    row.session_id as SessionId,
     branchId:     (row.branch_id ?? null) as BranchId | null,
-    mode:         row.mode,
+    triggerType: row.trigger_type,
+    executionProfile: row.execution_profile,
+    narrativePolicy: row.narrative_policy,
+    mode: legacyModeFor(row.execution_profile, row.narrative_policy),
     status: row.status,
     userInput: row.user_input,
     startedAt: row.started_at,
@@ -354,7 +368,8 @@ export class SessionStore implements SessionOwnershipFacade {
       pinned?:         boolean;
       groupLabel?:     string | null;
       workspaceRoot?:  string | null;
-      lastMode?:       TurnMode | null;
+      executionProfile?: ExecutionProfile;
+      narrativePolicy?: NarrativePolicy;
       preferredModel?: {
         providerConfigId: string;
         modelId: string;
@@ -377,7 +392,8 @@ export class SessionStore implements SessionOwnershipFacade {
     if (patch.workspaceRoot !== undefined) {
       cleaned.workspaceRoot = patch.workspaceRoot;
     }
-    if (patch.lastMode !== undefined) cleaned.lastMode = patch.lastMode;
+    if (patch.executionProfile !== undefined) cleaned.executionProfile = patch.executionProfile;
+    if (patch.narrativePolicy !== undefined) cleaned.narrativePolicy = patch.narrativePolicy;
     if (patch.preferredModel !== undefined) {
       cleaned.preferredModel = patch.preferredModel;
     }
@@ -455,7 +471,8 @@ export class SessionStore implements SessionOwnershipFacade {
       title,
       workspaceRoot:   src.workspaceRoot,
       parentSessionId: srcId,
-      lastMode:        src.lastMode,
+      executionProfile: src.executionProfile,
+      narrativePolicy: src.narrativePolicy,
       preferredModel: src.preferredProviderConfigId && src.preferredModelId
         ? {
             providerConfigId: src.preferredProviderConfigId,
@@ -675,7 +692,9 @@ export class SessionStore implements SessionOwnershipFacade {
     this.turnsRepo.insert({
       id:           turnId,
       sessionId:    input.sessionId,
-      mode:         input.mode,
+      triggerType: input.triggerType,
+      executionProfile: input.executionProfile,
+      narrativePolicy: input.narrativePolicy,
       branchId:     session.activeBranchId ?? undefined,
       userInput:    input.userInput,
       startedAt:    now,

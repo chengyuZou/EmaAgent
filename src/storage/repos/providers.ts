@@ -159,12 +159,10 @@ export class ProvidersRepo {
         : this.credentials.protect(data.id, data.apiKey);
 
     this.db.transaction(() => {
-      // 009 迁移后旧列仅为 schema 兼容占位；业务不再读取，待发布前重建基线时物理删除。
       this.db.prepare(
         `INSERT INTO provider_configs
-           (id, definition_id, display_name, credential_envelope, enabled,
-            config_json, capabilities_json, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, '{}', '[]', ?, ?)
+           (id, definition_id, display_name, credential_envelope, enabled, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(id) DO UPDATE SET
            definition_id       = excluded.definition_id,
            display_name        = excluded.display_name,

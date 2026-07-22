@@ -1,11 +1,14 @@
 // 管理 Turn 的创建、状态流转、分支查询、分页和运行指标。
 import type { SqliteDb } from '../database.js';
-import type { TurnId, SessionId, TurnMode, TurnStatus, BranchId } from '@ema-agent/contracts';
+import type { TurnId, SessionId, TurnStatus, BranchId } from '@ema-agent/contracts';
+import type { ExecutionProfile, NarrativePolicy, TurnTriggerType } from '@ema-agent/turn';
 
 export interface TurnRow {
   id: string;
   session_id: string;
-  mode: TurnMode;
+  trigger_type: TurnTriggerType;
+  execution_profile: ExecutionProfile;
+  narrative_policy: NarrativePolicy;
   status: TurnStatus;
   user_input: string;
   started_at: number;
@@ -16,13 +19,14 @@ export interface TurnRow {
   usage_input_tokens: number;
   usage_output_tokens: number;
   branch_id: string | null;
-  meta_json: string;
 }
 
 export interface TurnInsert {
   id: TurnId;
   sessionId: SessionId;
-  mode: TurnMode;
+  triggerType: TurnTriggerType;
+  executionProfile: ExecutionProfile;
+  narrativePolicy: NarrativePolicy;
   branchId?: BranchId;
   userInput: string;
   startedAt: number;
@@ -55,30 +59,42 @@ export class TurnsRepo {
     this.db
       .prepare(
         `INSERT INTO turns
-           (id, session_id, mode, branch_id, status, user_input, started_at)
-         VALUES (?, ?, ?, ?, 'pending', ?, ?)`,
+           (id, session_id, trigger_type, execution_profile, narrative_policy,
+            branch_id, status, user_input, started_at)
+         VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?)`,
       )
-      .run(t.id, t.sessionId, t.mode, t.branchId ?? null, t.userInput, t.startedAt);
+      .run(
+        t.id,
+        t.sessionId,
+        t.triggerType,
+        t.executionProfile,
+        t.narrativePolicy,
+        t.branchId ?? null,
+        t.userInput,
+        t.startedAt,
+      );
   }
 
   /**
    * 把一个已完成 turn 行复制到新 session(新 id)。用于 fork
    * (forkInto 和 branch 感知路径都用到),使 fork 出的 session 保留
-   * mode / status / usage / 时序。branch_id 总是清空--新 session 起始
+   * 触发来源、Profile、Narrative 策略、status、usage 与时序。branch_id 总是清空--新 session 起始
    * 扁平(无 branch)。
    */
   copyTurn(src: TurnRow, newSessionId: SessionId, newId: TurnId): void {
     this.db
       .prepare(
         `INSERT INTO turns
-           (id, session_id, mode, branch_id, status, user_input, started_at, completed_at,
-            error_code, error_message, iterations, usage_input_tokens, usage_output_tokens, meta_json)
-         VALUES (?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           (id, session_id, trigger_type, execution_profile, narrative_policy,
+            branch_id, status, user_input, started_at, completed_at,
+            error_code, error_message, iterations, usage_input_tokens, usage_output_tokens)
+         VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
-        newId, newSessionId, src.mode, src.status, src.user_input, src.started_at, src.completed_at,
+        newId, newSessionId, src.trigger_type, src.execution_profile, src.narrative_policy,
+        src.status, src.user_input, src.started_at, src.completed_at,
         src.error_code, src.error_message, src.iterations, src.usage_input_tokens,
-        src.usage_output_tokens, src.meta_json ?? '{}',
+        src.usage_output_tokens,
       );
   }
 

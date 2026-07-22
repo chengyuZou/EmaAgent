@@ -1,3 +1,4 @@
+// 测试 Session 复合归属约束拒绝跨会话引用并保持级联语义。
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { MigrationsRunner } from '../../migrations.js';
 import { createTestDatabase, type TestDatabase } from '../helpers/create-test-database.js';
@@ -54,8 +55,9 @@ describe('B-005 Session ownership 数据库约束', () => {
       {
         name: 'turn branch',
         sql: `INSERT INTO turns
-                (id, session_id, branch_id, mode, status, user_input, started_at)
-              VALUES (?, ?, ?, 'chat', 'pending', '', 10)`,
+                (id, session_id, branch_id, trigger_type, execution_profile, narrative_policy,
+                 status, user_input, started_at)
+              VALUES (?, ?, ?, 'userMessage', 'chat', 'off', 'pending', '', 10)`,
         params: ['cross-turn', 'session-a', 'branch-b'],
         error: 'ownership_violation: turns.branch_id',
       },
@@ -297,8 +299,9 @@ function seedOwnershipFixtures(database: TestDatabase): void {
 
   const insertTurn = db.prepare(`
     INSERT INTO turns
-      (id, session_id, branch_id, mode, status, user_input, started_at)
-    VALUES (?, ?, ?, 'chat', 'completed', '', 3)
+      (id, session_id, branch_id, trigger_type, execution_profile, narrative_policy,
+       status, user_input, started_at)
+    VALUES (?, ?, ?, 'userMessage', 'chat', 'off', 'completed', '', 3)
   `);
   insertTurn.run('turn-a', 'session-a', 'branch-a');
   insertTurn.run('turn-b', 'session-b', 'branch-b');
@@ -324,8 +327,9 @@ function insertDeletableTurnGraph(database: TestDatabase): void {
   const db = database.db;
   db.prepare(`
     INSERT INTO turns
-      (id, session_id, branch_id, mode, status, user_input, started_at)
-    VALUES ('turn-delete', 'session-a', 'branch-a', 'chat', 'completed', '', 20)
+      (id, session_id, branch_id, trigger_type, execution_profile, narrative_policy,
+       status, user_input, started_at)
+    VALUES ('turn-delete', 'session-a', 'branch-a', 'userMessage', 'chat', 'off', 'completed', '', 20)
   `).run();
   db.prepare(`
     INSERT INTO messages

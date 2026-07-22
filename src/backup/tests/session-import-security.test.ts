@@ -1,3 +1,4 @@
+// 测试 Session 备份导入的路径、体积、格式和事务回滚边界。
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -114,7 +115,8 @@ describe('SessionBackupFacade 演进契约', () => {
         id: 'session-1', title: 'Imported', workspaceRoot: null,
         createdAt: 1, updatedAt: 1, lastActivityAt: 1,
         archivedAt: null, pinned: false, pinnedAt: null,
-        groupLabel: null, parentSessionId: null, lastMode: null,
+        groupLabel: null, parentSessionId: null,
+        executionProfile: 'chat', narrativePolicy: 'auto',
         preferredProviderConfigId: 'provider-config-1', preferredModelId: 'model-1',
         activeBranchId: null,
       })),

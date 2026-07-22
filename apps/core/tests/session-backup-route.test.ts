@@ -1,3 +1,4 @@
+// 测试 Session ZIP 导入导出的 Core 路由、安全失败和结构化错误映射。
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -50,7 +51,8 @@ function sessionZip(sessionId: string, extra: Record<string, Uint8Array> = {}): 
       id: sessionId, title: 'Imported', workspaceRoot: null,
       createdAt: 1, updatedAt: 1, lastActivityAt: 1,
       archivedAt: null, pinned: false, pinnedAt: null,
-      groupLabel: null, parentSessionId: null, lastMode: null,
+      groupLabel: null, parentSessionId: null,
+      executionProfile: 'chat', narrativePolicy: 'auto',
       activeBranchId: null,
     })),
     ...extra,
