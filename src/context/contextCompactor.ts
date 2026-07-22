@@ -32,6 +32,8 @@ export class ContextCompactor {
     const rawPrefix = sanitizeCompactionMessages([...(args.prefixMessages ?? [])]);
     const rawHistory = sanitizeCompactionMessages(args.messages);
     const rawSuffix = sanitizeCompactionMessages([...(args.suffixMessages ?? [])]);
+    // system 消息是不可压缩指令,统一抽到 prefix 头部,不进摘要模型,也不参与 Tool 清理。
+    // 压缩只作用于 history 的非 system 部分。
     const systemPrefix: ContextCompactionResult['messages'] = [
       ...rawPrefix,
       ...rawHistory,
@@ -42,6 +44,7 @@ export class ContextCompactor {
     const history: ContextCompactionResult['messages'] = rawHistory
       .filter((message) => message.role !== 'system');
     const prefix = [...systemPrefix, ...fixedPrefix];
+    // assemble / estimate 闭包:后续每一步都能复用同一套拼装 + 估算逻辑,避免散落多份。
     const assemble = (
       candidate: ContextCompactionResult['messages'],
     ): ContextCompactionResult['messages'] => [
@@ -71,10 +74,13 @@ export class ContextCompactor {
     );
 
     // 活跃对话未接近阈值时保持历史字节稳定，避免无意义地破坏 KV Cache。
+    // force=true 时跳过该判断(如上下文已溢出,必须压缩)。
     if (!args.force && beforeTokens <= tokenLimit) {
       return unchanged('below_threshold', messages, beforeTokens);
     }
 
+    // 熔断:该 Session 连续压缩失败达上限,不再自动调压缩模型,避免反复浪费 LLM 调用。
+    // 成功一次即清零(见 compact 末尾 consecutiveFailures.delete)。
     if (this.failureCount(args.sessionId) >= this.settings.maximumConsecutiveFailures) {
       return skipped(
         'circuit_open',
@@ -84,7 +90,8 @@ export class ContextCompactor {
       );
     }
 
-    // System Prompt 是不可压缩指令，不得进入 Tool 清理或摘要模型。
+    // 第 1 级:Micro 压缩。只清理旧 Tool Result(保留最近 N 条),不调 LLM。
+    // 够小就返回,省一次 LLM 调用。
     const micro = microCompact(history, { keepRecent: this.settings.keepRecentToolResults });
     let working = micro.messages;
     let estimated = estimate(working);
@@ -97,6 +104,8 @@ export class ContextCompactor {
       };
     }
 
+    // 第 2 级:Macro 压缩(调 LLM 摘要)。保留尾部 25%(至少 8 条)原文不摘要,
+    // 因为最近消息最重要。head 才送摘要模型。
     const tailSize = Math.max(8, Math.ceil(working.length * 0.25));
     if (working.length <= tailSize) {
       return {
@@ -107,6 +116,8 @@ export class ContextCompactor {
       };
     }
 
+    // 安全切割点:不能切在 tool_use 和 tool_result 中间,否则模型会看到未配对工具调用报错。
+    // safeCut=0 表示找不到安全点,放弃压缩。
     const safeCut = findSafeCutPoint(working, working.length - tailSize);
     if (safeCut === 0) {
       return {
@@ -158,6 +169,8 @@ export class ContextCompactor {
       beforeTokens,
     });
 
+    // Macro 压缩(第 2 级):调 LLM 把 head 摘要成结构化文本。
+    // 失败走 fail() 熔断计数 +1;成功才继续。
     const macro = await runMacroCompaction({
       llm: this.deps.llm,
       providerId: args.providerId,
@@ -173,11 +186,14 @@ export class ContextCompactor {
         macroFailureReason(macro.attempts), startedAt);
     }
 
+    // 压缩后恢复最近状态(session note、最近文件),否则模型摘要后会失忆。
     const restore = buildPostCompactionRestore(this.deps.loadSessionNote, {
       sessionId: args.sessionId,
       mode: args.mode,
       recentFiles: args.recentFiles,
     });
+    // 预算适配:把 [prefix, summary, restore, tail, suffix] 塞进 tokenLimit。
+    // 摘要 + tail 仍超限时,fit 会进一步裁剪 tail;塞不下返回 null(失败)。
     const toolTokens = estimateLlmInputTokens([], { tools: args.tools }).totalTokens;
     const fitted = fitCompactionContext({
       summary: macro.summary,

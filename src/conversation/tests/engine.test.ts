@@ -3,8 +3,8 @@ import type { MessageId, SessionId, TurnId } from '@ema-agent/contracts';
 import type { EmaStreamEvent } from '@ema-agent/turn';
 import type { Turn } from '@ema-agent/session';
 import { HookBus } from '@ema-agent/hooks';
-import { ConversationEngine } from '../src/engine.js';
-import type { ConversationDeps } from '../src/types.js';
+import { ConversationEngine } from '../engine.js';
+import type { ConversationDeps } from '../types.js';
 import { LanguageModelRuntime } from '@ema-agent/llm';
 import type { LlmAdapter, LlmRequest } from '@ema-agent/llm';
 

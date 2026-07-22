@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import type { SessionId, TurnId } from '@ema-agent/contracts';
 import type { EmaStreamEvent } from '@ema-agent/turn';
 import { NarrativeRequestError } from '@ema-agent/narrative';
-import { prepareNarrativeContribution } from '../src/narrativeRecall.js';
+import { prepareNarrativeContribution } from '../narrativeRecall.js';
 
 const sessionId = 'session-narrative' as SessionId;
 const turnId = 'turn-narrative' as TurnId;
