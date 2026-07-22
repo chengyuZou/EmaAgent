@@ -7,6 +7,23 @@
 >
 > Claude Code 全量文档逐章 Diff、Ema 目标边界与迁移顺序见 `EmaClaudeArchitectureReview.md`。本 RFC 负责实施范围，评审文档负责参考依据；两者冲突时以本 RFC 后续明确决策和实际源码为准。
 
+## 0. 重构前的参考与核验流程
+
+本轮不是根据单篇文章或单个目录模仿 Claude Code。每个主要业务批次开始前，必须把 Ema 当前事实、目标设计、参考理由和真实源码放在一起核对：
+
+1. 完整阅读 `CLAUDE.md` 与 `EmaWorkState.md`，确认长期规则、当前施工阶段、工作区归属和最近验证；
+2. 阅读本 RFC 的对应章节，确认本批目标边界、明确延期项和不能混改的业务；
+3. 阅读 `EmaClaudeArchitectureReview.md` 的对应章节及其前后接口章节，确认设计理由和跨模块约束；
+4. 阅读 `D:\Github\how-claude-code-works\docs` 中与本批直接相关的文档，并检查 Agent Loop、Context、Tool、Hook、Permission、Task、Observability 等关联章节是否能首尾接通；不能只读一个章节便照搬局部实现；
+5. 对重要或存在疑问的结论，继续核对本地 `D:\Github\claude-code` 的真实源码。参考文档与源码不一致时，先记录差异，再以源码行为为事实依据；
+6. 最后完整阅读 Ema 对应调用链和测试，分别写清“Claude 事实、Ema 事实、差异判断、采用或不采用的理由”，再开始修改。
+
+`how-claude-code-works/docs` 的二十余篇文档是同一套 Agent 架构的不同切面，不是互相独立的功能清单。例如 Tool 重构除了第 04 章，还必须联动 Agent Loop、Context Engineering、Code Editing、Hooks、Permission、Skills、MCP、Task System、Observability 与后台执行；Turn Runtime 重构则必须回查 Tool、Context、Memory、Plan、Goal、Workflow 和多 Agent 的身份与终态边界。
+
+Claude Code 是重要工业参考，不是 Ema 的产品规范。Ema 是本地优先、单人使用、跨平台并包含角色表达、Memory、Knowledge Base 与 Narrative 的桌面 Agent。可以大胆修正已经证明错误的旧接口和目录，但不能复制 Claude 的企业、多用户、coding-only、Bun/Ink 或内部 Feature Flag 结构，也不能为了外观相似预建 V1.5 空能力。
+
+每批完成后只把当前进度、验证和下一步写入 `EmaWorkState.md`；长期目标变化更新本 RFC；新的设计依据和 Claude Diff 写入 `EmaClaudeArchitectureReview.md`，避免三个文档互相复制成长篇日志。
+
 ## 1. 为什么现在要重构
 
 Ema 当前已经具备 Turn、SSE、工具、权限、Sandbox、Memory、Narrative、Skill、MCP 和多模型能力，但这些能力仍被旧的三个 Mode 和大量细包切开：
@@ -61,9 +78,17 @@ Chat/Work 只描述一次 Turn 的执行能力和安全范围，不描述输入�
 
 `off` 只关闭剧情数据库检索，不移除 Character Prompt。UI 应提示：角色基础设定仍保留，但可能缺少剧情细节或混淆周目。
 
-### 2.2 统一引擎叫 TurnEngine
+### 2.2 统一执行核心是 TurnRuntime + TurnLoop
 
-统一执行器不再叫 `ConversationEngine` 或 `AgentEngine`，而叫 `TurnEngine`：
+统一执行核心不再由 `ConversationEngine` 与 `AgentEngine` 各自维护一套循环。`TurnRuntime` 管一次 Turn 的根生命周期，`TurnLoop` 只管 LLM、Tool 与 Result 的迭代：
+
+```text
+TurnRuntime
+  创建、取消、唯一终态、持久化、事件身份
+      ↓
+TurnLoop
+  Context → LLM → Tool Batch → Result → LLM
+```
 
 ```ts
 export interface TurnExecutionProfile {
@@ -146,7 +171,7 @@ Router 模型属于 Narrative 业务设置，不重新加入通用 `model_bindin
 
 ### 3.2 NarrativePolicy
 
-- `auto`：向 TurnEngine 暴露 NarrativeSearch，由主模型按需调用；
+- `auto`：向 TurnLoop 暴露 NarrativeSearch，由主模型按需调用；
 - `always`：正式回答前强制执行一次 Route + Recall；
 - `off`：不暴露 NarrativeSearch，也不执行强制召回。
 
@@ -349,7 +374,7 @@ DomainJob  KB/Vision/Embedding 等各领域后台任务
 ```text
 src/
 ├─ agent/
-│  ├─ turnEngine.ts             唯一模型循环入口
+│  ├─ turnLoop.ts               唯一模型与工具迭代入口
 │  ├─ loop/
 │  ├─ profiles/
 │  │  ├─ chatProfile.ts
@@ -358,6 +383,7 @@ src/
 │  └─ runs/                     子 Agent 的 AgentRun，不放后台 Job
 ├─ turn/
 │  ├─ ids.ts
+│  ├─ turnRuntime.ts            Turn 根生命周期与唯一终态
 │  ├─ protocol.ts               Turn 命令、响应和执行快照
 │  ├─ streamEvents.ts           组合各模块公开事件
 │  └─ errors.ts
@@ -420,14 +446,10 @@ apps/core/src/
 
 packages/
 ├─ public-http/
-├─ sandbox/
-├─ system/
-├─ credential/
-├─ ui/
-└─ live2d-react/
+└─ credential/
 ```
 
-这棵树按 Agent 的真实执行路径命名，而不是按传统 DDD 分层：开发者从 `agent/TurnEngine` 出发，沿 `context → prompts → tools → permissions → events` 就能读完一次 Turn；Narrative、Memory、Knowledge、Character 等产品能力直接是一等目录，不藏进 `capabilities`；Desktop、CLI、Web、QQ、微信只在 `channels` 提供输入输出适配，不能各自复制 Agent 编排。
+这棵树按 Agent 的真实执行路径命名，而不是按传统 DDD 分层：开发者从 `turn/turnRuntime` 进入，由 `agent/turnLoop` 沿 `context → llm → tools → permission/sandbox → result` 读完一次 Turn；Narrative、Memory、Knowledge、Character 等产品能力直接是一等目录，不藏进 `capabilities`；Desktop、CLI、Web、QQ、微信只在 `channels` 提供输入输出适配，不能各自复制 Agent 编排。
 
 根 `src` 放 Ema 产品主体；`apps/core` 只保留 Node Sidecar 入口、HTTP/SSE、认证与装配；`packages` 保留确有跨应用复用、平台隔离、独立发布或独立测试价值的技术底座。产品模块即使用独立 `package.json` 参与 TypeScript/Turbo 构建，也仍属于根 `src`，不因此成为公共库。
 
@@ -440,7 +462,72 @@ packages/
 5. 每个业务目录提供稳定公开边界，名称按职责使用 `LanguageModel`、Runtime、Client、Registry、Store、函数或确有协调职责的 Facade，不强制增加 `XxxFacade`；
 6. `channels` 只能把平台输入规范化为 Turn、消费 `EmaStreamEvent`，不能拥有独立聊天引擎。
 
-### 7.2 命名与文件规范
+### 7.2 Agent 执行体系的模块所有权
+
+本阶段按“Agent 执行体系”整体重构，不把它误解成只整理 `src/tools`。主链如下：
+
+```text
+apps/core
+  Route、认证、SSE 编码、启动恢复、依赖装配
+      ↓
+TurnRuntime
+  Turn 创建、取消、唯一终态、持久化、事件身份
+      ↓
+TurnLoop
+  LLM → Tool Batch → Result → LLM 的迭代和预算
+      ↓
+ToolExecutionRuntime
+  Prepare → Hook → Permission → Execute → Result
+      ↓
+Builtin / MCP / Skill Tool
+  只实现具体能力
+```
+
+支撑模块不成为第二套编排器：`ContextAssembler` 提供每次 LLM 调用看到的窗口；`LanguageModel` 执行无 Session 状态的模型请求；Permission 决定能否执行；Sandbox 决定如何隔离执行；Storage 实现持久化端口；Session 保存持久消息与稳定 Tool Result 预览；Turn 组合跨端事件并拥有根终态。
+
+一级主重构范围：
+
+- `src/tools`：拥有 `ToolDef/buildTool`、注册与来源、Manifest Snapshot、`PreparedToolCall`、单次 Tool 生命周期、Execution Journal 领域逻辑、Result 外置与预算、后台句柄及 Presentation 数据；
+- `src/builtinTools`：只实现 Ema 内置能力。MCP 与 Skill 可以接入同一 Tool 框架，但不属于 Builtin Tool；
+- `src/agent`：只拥有 `TurnLoop`、Profile/Policy/Budget、LLM 迭代、Tool Call 批次调度、Subagent/AgentRun 协调与循环熔断；
+- `src/turn`：拥有 Turn 输入、触发来源、身份、状态、取消、唯一终态与跨端事件关联，不执行 Tool、拼 Prompt 或访问 Session Repo；
+- `src/agentContext`：逐项迁出后删除。Tool Result 与 Cleanup 归 `tools/results`，文件状态归 `tools/workspace` 或 `tools/files`，Snapshot 归 `context/restore` 或确认无价值后删除；
+- `src/tasks`：只拥有用户或模型可见的 Task。AgentRun、ToolExecution 与领域 Job 不得继续复用 Task 身份或生命周期；
+- `src/conversation`：只作 Chat 到统一 Turn 主链的短期适配器，不再拥有独立 LLM/Tool 循环，行为一致后删除；
+- `apps/core`：退回 HTTP/SSE/Auth/Composition Root。Route 最终只解析请求并调用 `turnRuntime.run()`，现有 orchestrator 删除或缩为协议适配器。
+
+二级配套模块保持独立，但接口必须服从同一主链：
+
+- `src/permission` 接收不可变 `PreparedToolCall`，管理规则、Session Grant、Prompt FIFO、路径能力与 allow/ask/deny；批准不等于已经隔离；
+- `src/sandbox` 管跨平台隔离、进程树取消、网络、cwd、挂载和后台句柄，通过小型 Command Runner Port 为 Tools 提供执行能力；
+- `src/hooks` 观察 Prepared 调用。Hook 若修改参数，必须重新 Prepare、重新审批，不能直接执行 Tool；
+- `src/session` 保存消息、Tool Result 稳定预览与引用，并参与删除生命周期，不判断是否外置或如何授权；
+- `src/storage` 只实现 Repository、SQL、Migration、事务和 CAS；ToolExecution 状态机的业务定义归 Tools；
+- `src/context` 只消费已经处理过的 Tool Result，并配合稳定 Tool Manifest 与缓存诊断，不重写现有 ContextAssembler；
+- `src/llm` 只把 Tool Manifest 投影为各 Provider 协议，不注册 Tool，也不决定权限。
+
+`src/tools` 的目录按真实职责逐步形成，不为目录图预建空文件夹：
+
+```text
+src/tools/
+├─ definitions/       ToolDef、buildTool 与保守默认值
+├─ registry/          注册来源与 Manifest Snapshot
+├─ preparation/       Schema、语义校验与 PreparedToolCall
+├─ execution/         单次 Tool 调用生命周期
+├─ results/           外置、预算、预览与清理
+├─ journal/           prepared → running → terminal 审计
+├─ background/        后台句柄与取消
+├─ presentation/      跨端展示数据
+├─ types.ts
+├─ errors.ts
+└─ index.ts
+```
+
+每次审查 Builtin Tool，都必须结合 Claude 文档与真实源码逐项核对模型可见名称、输入 Schema、字段语义、输出、校验、只读性、并发、Permission、Sandbox、取消、超时、结果上限、流式行为、跨平台与 Presentation。Claude 的数值和字段不是默认答案；例如采用 30K 结果上限前，必须先确认双方返回内容和外置机制是否相同。
+
+建议按 `FileRead/FileWrite/FileEdit → Glob/Grep → Bash/PowerShell → WebFetch/WebSearch → AskUser → Skill/KB/Subagent → Scratchpad/Todo → Feature Gate Tool` 的顺序审查。
+
+### 7.3 命名与文件规范
 
 新增和迁移后的代码统一遵守以下规则；旧文件不为追求整齐而一次性全仓改名，随所属模块迁移时再处理：
 
@@ -457,7 +544,7 @@ packages/
 
 `Message` 等简短名称只允许在所有权明确的模块内部使用。跨模块转换文件必须通过 `SessionMessage`、`ModelMessage` 等本地别名消除歧义，不能为避免重名重新制造中央大类型。
 
-### 7.3 根 src 迁移的验证规则
+### 7.4 根 src 迁移的验证规则
 
 Provider 与 LLM 已证明产品模块可以位于根 `src`，同时保留内部 workspace 包名作为编译边界。后续迁移继续遵守：
 
@@ -466,11 +553,11 @@ Provider 与 LLM 已证明产品模块可以位于根 `src`，同时保留内部
 3. `apps/core/dist` 不得产生依赖仓库源码路径的越界相对 import；
 4. `pnpm deploy --prod` 必须收集根 `src` 模块及 native dependency；
 5. release runtime 必须在没有 Git 仓库、Node 和 Python 开发环境时启动；
-6. 不在同一批同时执行全仓路径移动、数据库 Schema 重构和 TurnEngine 语义切换。
+6. 不在同一批同时执行全仓路径移动、数据库 Schema 重构和 TurnRuntime/TurnLoop 语义切换。
 
-### 7.4 迁移并收口 src/contracts
+### 7.5 已完成的 contracts 拆除记录
 
-`packages/contracts` 先机械迁入 `src/contracts`，保留 `@ema-agent/contracts` 作为迁移期入口，避免在目录迁移时同时改写两百余处调用。它不能继续充当全仓类型杂物箱：业务类型逐步回到各自所有者，真正跨进程、跨前后端的稳定协议保留单一事实来源，再由 Turn 组合。
+中央 Contracts 已完成拆除；本节只保留历史迁移依据，不再是下一阶段计划。业务类型、ID、事件和错误已经回到各自所有者，禁止重新建立中央类型杂物箱。
 
 #### 类型所有权
 
@@ -579,7 +666,7 @@ interface TurnExecutionSnapshot {
 
 ### 9.2 本次统一 Runtime 直接覆盖
 
-- [ ] 删除 `ConversationEngine`，迁移为 TurnEngine + ChatProfile；
+- [ ] 删除 `ConversationEngine`，迁移为 TurnRuntime + TurnLoop + ChatProfile；
 - [ ] `TurnMode` 从 `chat/narrative/agent` 演进为 `executionProfile + narrativePolicy`；
 - [ ] Narrative Hook 改为 NarrativeSearchTool + NarrativeRecallFacade；
 - [ ] Prompt Mode block 改为显式 Slot；
@@ -613,15 +700,15 @@ interface TurnExecutionSnapshot {
 
 ## 10. 迁移批次
 
-### C0～C5：contracts 拆除线
+### C0～C5：已完成的 contracts 拆除线
 
-contracts 拆除与 Runtime 重构并行推进，但每批只迁一个明确所有权切片：
+中央 Contracts 已删除。以下内容只记录迁移过程和当时的验证事实，不再指导下一阶段施工；残余事件、Wire 或 Store 边界问题按各自业务模块处理。
 
 #### C0：冻结中央包
 
-1. `src/contracts` 从现在起只接收稳定跨进程或跨前后端契约，既有业务类型只减不增；
-2. 新 ID、事件、Wire、Usage 和错误直接由业务模块定义；
-3. 建立 `rg "@ema-agent/contracts"` 引用基线与模块归属清单。
+1. 冻结并最终删除中央 Contracts；
+2. ID、事件、Wire、Usage 和错误由业务模块定义；
+3. 生产代码中的 `@ema-agent/contracts` 引用已经清零。
 
 #### C1：Message + LLM + Context
 
@@ -684,12 +771,11 @@ contracts 拆除与 Runtime 重构并行推进，但每批只迁一个明确所�
 2. 拆除中央 IDs 与 ErrorCode；
 3. 关键 HTTP/SSE 输入补运行时 Schema。
 
-#### C5：收口中央入口
+#### C5：收口中央入口（已完成）
 
-1. 业务专属的 `@ema-agent/contracts` 引用迁回对应模块；
-2. 审计 `src/contracts`，只保留确实跨进程或跨前后端的稳定协议；
-3. 删除旧 `packages/contracts` 路径及其 Workspace、lockfile 残留；
-4. 运行全仓 build/typecheck/test、Core/Desktop 联调与 release smoke。
+1. 业务专属类型已经迁回对应模块；
+2. 中央 `src/contracts` 与旧 `packages/contracts` 路径已经删除；
+3. 后续不恢复兼容入口，跨端协议由真实业务所有者导出。
 
 ### R0：契约冻结与保护测试
 
@@ -730,9 +816,9 @@ contracts 拆除与 Runtime 重构并行推进，但每批只迁一个明确所�
 4. 实现 auto/always/off；
 5. route 模型改为 Narrative 自有配置。
 
-### R5：统一 TurnEngine
+### R5：统一 TurnRuntime + TurnLoop
 
-1. 抽取 AgentEngine 的循环为 TurnEngine；
+1. 由 TurnRuntime 收口根生命周期，并抽取 AgentEngine 的循环为 TurnLoop；
 2. ChatProfile 先迁入，最大迭代和 Tool allowlist 受限；
 3. WorkProfile 迁入完整工具、权限和子 Agent；
 4. 旧 ConversationEngine 变成短期适配器；
@@ -764,29 +850,48 @@ contracts 拆除与 Runtime 重构并行推进，但每批只迁一个明确所�
 5. 通用技术底座继续留在 packages，不为目录整齐强行搬迁；
 6. 最后再处理 B-091 的 Route 与业务编排边界。
 
+### R9：Agent 执行体系收口顺序
+
+目录迁移和 Contracts 拆除已经结束，接下来按一个主要业务边界一批推进：
+
+1. Tool Result 归位到 `src/tools/results`，建立单结果上限和单消息聚合预算，并保持持久预览可重放；
+2. ToolExecution Journal 从 Tasks/Agent 收回 Tools，Storage 只保留 Store 实现；
+3. 删除 `ToolRegistry.dispatch()` 的 prepare→execute 旁路，冻结唯一执行入口；
+4. 将现有 TurnToolExecutor 拆为 Agent Tool Scheduler 与 Tools `ToolExecutionRuntime`；
+5. 收窄 Tool Execution Context，把运行依赖改为构造时显式注入；
+6. Tool Manifest 增加来源与稳定分区，再实现 Anthropic Tool Cache 断点并重新分配四个断点；
+7. 按 7.2 的顺序逐组审查所有 Builtin Tool；
+8. 迁出 `agentContext` 剩余职责并删除该模块；
+9. 收口 Task、AgentRun、ToolExecution 三类身份与生命周期；
+10. Chat 接入统一 TurnLoop，删除 ConversationEngine；
+11. `apps/core` 退回 Route、SSE、认证、启动恢复和 Composition Root；
+12. 最后对 Permission、Sandbox 做针对性收口和 Windows/macOS/Linux 验证。
+
+这些步骤允许相邻批次共用已经稳定的端口，但不能把 Turn 统一、全仓 ID 改名、数据库 Schema 和前端 Profile 切换塞进同一批。
+
 ## 11. 下一阶段的实际边界
 
-下一阶段继续收口 C1，再进入 C2；不先全仓删除 contracts，也不继续向其中增加兼容类型：
+下一阶段从 Tool Result 归位与统一预算开始，只改变工具结果所有权和封顶链路：
 
-1. 保持 contracts 只减不增，并持续检查 LLM 生产代码零引用；
-2. 真实 Provider 冒烟测试必须由环境变量显式启用，禁止硬编码凭据和 `describe.only`；
-3. 保持所有模型能力只从 `src/usage` 读取跨模态 Usage 写入协议；
-4. 保持现有 SSE 与数据库行为，用测试证明迁移前后一致；
-5. C1 收口后进入 C2 事件拆分；
-6. 不在 C1 同时切换 Chat/Work、删除 ConversationEngine 或重做数据库 Message Schema。
+1. 迁移 `agentContext/toolResult` 与 Cleanup 到 `src/tools/results`，保持现有持久化行为；
+2. 用 Tool Definition 上的显式结果策略替代按工具名称猜测是否外置；
+3. 每个结果先执行单结果封顶，并在同批并行结果写入 Session 前执行单消息聚合预算；
+4. 保留 Session 删除清理、TTL、Session 配额与全局配额；外置失败不得静默丢失正文；
+5. 本批不同时实现 Shell 全量流式落盘、Permission 内部只读路径、Tool Manifest Cache、Journal 迁移或 TurnToolExecutor 拆分；
+6. 修改前逐个对照 Claude 的相关 Tool 输入、输出和截断语义，再决定 Ema 的默认值与覆盖值。
 
 ## 12. 完成标准
 
 - 前端只有 Chat/Work，Session 内可切换；
-- Chat/Work 都只通过 TurnEngine；
+- Chat/Work 都只通过 TurnRuntime + TurnLoop；
 - Narrative 是 Tool + Facade，保留多周目 Route 与专用 UI；
 - NarrativePolicy 三态可持久化且不会移除角色 Prompt；
 - Prompt Slot 顺序可测试，Tool Manifest 稳定且权限不因缓存妥协；
 - Memory 不再导出 Compaction；
 - `agent-context`、`conversation`、根 AgentTask 生产依赖清零后再删除；
 - Turn 是唯一根生命周期，AgentRun 只表示子 Agent；
-- Core Route 只做协议适配，业务进入对应模块的稳定公开入口或 TurnEngine；
-- 旧 `packages/contracts` 路径归零；`src/contracts` 不再包含可归属到单一业务模块的类型；
+- Core Route 只做协议适配，业务进入对应模块的稳定公开入口或 TurnRuntime；
+- 中央 Contracts 路径归零，业务类型由各自模块拥有；
 - Session Message、LLM Message、Provider SDK Message 三层可辨认且只在明确 mapper 中转换；
 - Windows/macOS/Linux 的正式 Sidecar 制品仍能独立启动；
 - 所有迁移都保留结构化 SSE，不向前端发送未解析日志字符串。

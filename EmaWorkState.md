@@ -52,11 +52,7 @@ Memory 与 Narrative 的旧分区也已经拆开：Memory 只按 `chat/work` 记
 
 本轮已知未提交修改：
 
-- Turn、Session、Conversation、Agent、Hook 与 Core：删除旧 `TurnMode`、`lastMode` 和 legacy 映射，直接传递 `ExecutionProfile + NarrativePolicy`；
-- Memory：删除 Narrative 分区语义，提取、任务和召回只使用 `ExecutionProfile`；
-- Storage：新增 Profile v11，将旧 Memory 标签归并为 Chat/Work 并把 `modes_json` 改名为 `profiles_json`；
-- Storage Stats 与 Desktop 设置页：统计口径改为 Chat、Work 和 Narrative Always；
-- `scripts/normalizeIdsMigration.mjs`：删除已经完成使命的临时迁移脚本。
+- `EmaRefactor.md`：补充重构前参考核验流程、Agent 执行体系模块所有权、分批顺序与下一批 Tool Result 边界；未修改生产代码。
 
 当前基线最近提交：`2a8f6b2 refactor: migrate from @ema-agent/contracts to @ema-agent/ids for type imports`。该提交号仅用于定位，不代表其他 Agent 不会继续提交。
 
@@ -92,8 +88,9 @@ Plan、Goal、Schedule、Workflow、Team 与 LLM 自动审批暂列 V1.5，不�
 
 ## 下一批建议顺序
 
-1. 继续唯一 `TurnRuntime + TurnLoop` 主线，先冻结输入、输出、终态和事件身份；
-2. Chat 作为受限 Profile 接入统一循环，短期保留 ConversationEngine 适配器。
+1. 先完成 Tool Result 归位与统一预算：`agentContext/toolResult + cleanup → tools/results`，保持现有持久化语义；
+2. 再按 RFC 的 Agent 执行体系顺序收回 ToolExecution Journal、删除 Registry 执行旁路，并拆分 Agent Scheduler 与 ToolExecutionRuntime；
+3. Chat 接入统一 TurnLoop 放在 Tool 单次执行边界稳定之后，短期保留 ConversationEngine 适配器。
 
 每批只改变一个主要业务边界。不要把 Turn 统一、数据库 Schema、全仓 ID 改名和前端切换塞进同一批。
 
@@ -102,7 +99,7 @@ Plan、Goal、Schedule、Workflow、Team 与 LLM 自动审批暂列 V1.5，不�
 - 根 `src` 与 Workspace 目录审计完成；`packages` 仅剩 `credential`、`public-http`。
 - `pnpm install --offline` 已刷新迁移后的 Workspace 链接。
 - 全仓 typecheck 最近结果：84/84 通过。
-- `src/contracts` build 通过。
+- 中央 Contracts 已删除，`@ema-agent/contracts` 生产与测试引用归零。
 - 旧产品 `packages/...` 路径审计为零。
 - 新 Turn 契约完成后，`@ema-agent/turn` build 通过；Agent、Core、Desktop UI typecheck 通过。
 - Agent 测试 32/32 通过，4 个 Live Integration 测试按既有规则跳过。
