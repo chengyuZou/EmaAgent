@@ -4,15 +4,19 @@ import * as fs   from 'node:fs';
 import * as path from 'node:path';
 import { randomUUID } from 'node:crypto';
 
-import type { ArtifactRepo } from '@ema-agent/storage';
 import {
   asSessionId,
-  type Artifact,
-  type ArtifactId,
   type SessionId,
 } from '@ema-agent/contracts';
-import { SessionOwnershipError, type SessionOwnershipFacade } from '@ema-agent/session';
-import type { IArtifactStore, ArtifactUpsertArgs } from '@ema-agent/tools';
+import { ArtifactOwnershipError } from './errors.js';
+import type {
+  Artifact,
+  ArtifactId,
+  ArtifactOwnership,
+  ArtifactPersistence,
+  ArtifactUpsertArgs,
+  IArtifactStore,
+} from './types.js';
 
 // ── 常量 ───────────────────────────────────────────────────────────────────────
 
@@ -38,14 +42,14 @@ const SESSION_WARN_THRESHOLD = 100;
  */
 export class ArtifactStore implements IArtifactStore {
   constructor(
-    private readonly repo: ArtifactRepo,
+    private readonly repo: ArtifactPersistence,
     /**
      * 按 Session 划分的目录树根（`{dataDir}/sessions`）。每个文件型产物落在
      * `{sessionsRoot}/{sessionId}/artifacts/{id}`，和该 Session 的 audio/scratchpad
      * 放一起，由 `removeSessionDir` 统一清理。
      */
     private readonly sessionsRoot: string,
-    private readonly ownership: Pick<SessionOwnershipFacade, 'assertTurnOwnership'>,
+    private readonly ownership: ArtifactOwnership,
   ) {
     // 按 Session 的子目录在 upsert() 里按需创建。
   }
@@ -59,8 +63,7 @@ export class ArtifactStore implements IArtifactStore {
 
     // 所有归属检查必须早于文件 I/O，失败时不能留下临时文件或错误目录。
     if (existing && existing.sessionId !== args.sessionId) {
-      throw new SessionOwnershipError(
-        'artifact',
+      throw new ArtifactOwnershipError(
         id,
         args.sessionId,
         asSessionId(existing.sessionId),

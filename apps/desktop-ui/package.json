@@ -37,6 +37,7 @@
     "react-dom": "^18.3.0"
   },
   "dependencies": {
+    "@ema-agent/artifact": "workspace:*",
     "@ema-agent/characters": "workspace:*",
     "@ema-agent/backup": "workspace:*",
     "@ema-agent/contracts": "workspace:*",

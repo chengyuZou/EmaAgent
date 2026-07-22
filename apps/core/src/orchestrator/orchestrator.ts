@@ -17,7 +17,7 @@ import type {
 import type { ThinkingMode } from '@ema-agent/llm';
 import type { LlmContentPart } from '@ema-agent/llm';
 import { llmProviderErrorCode } from '@ema-agent/llm';
-import type { AttachmentInput } from '@ema-agent/attachment';
+import type { Attachment, AttachmentInput } from '@ema-agent/attachment';
 import { asSessionId,
 } from '@ema-agent/contracts';
 import type {
@@ -31,7 +31,7 @@ import type { FinalizedAudio } from '@ema-agent/tts';
 import { SettingsRepo } from '@ema-agent/storage';
 import { resolveVoice, ensureVoiceUri, VoiceUriCache } from '../wiring/providers/tts.js';
 import { ensureSessionLayout, scratchpadTurnDir } from '../storage-locations/index.js';
-import type { Turn }           from '@ema-agent/session';
+import type { AttachmentReferenceBlock, MessageBlocks, Turn } from '@ema-agent/session';
 import type { TurnFailurePhase } from '@ema-agent/hooks';
 import { prepareImagesForModel, replaceImageParts } from './media-compatibility.js';
 import { buildPromptSnapshot } from '@ema-agent/prompts';
@@ -48,6 +48,8 @@ export interface TurnRequest {
   narrativePolicy:  NarrativePolicy;
   userInput:        string;
   contentParts?:    LlmContentPart[];
+  /** Core 内部落库投影，不属于 HTTP 请求字段。 */
+  persistedUserInput?: MessageBlocks;
   /** Per-turn file attachments from the frontend. Persisted and resolved before engine dispatch. */
   attachmentInputs?: AttachmentInput[];
   /** provider_configs.id — 和 model 成对使用，前端选择器选的是 (provider, model) 组合。 */
@@ -174,13 +176,14 @@ export class Orchestrator {
     // 其他文件由附件存储层整理为路径提示文本。
     let contentParts = request.contentParts;
     let userInput    = request.userInput;
+    let storedAttachments: Attachment[] = [];
     const requestDegradations: RequestDegradationNotice[] = [];
     // 附件准备包含数据库写入与 Vision 调用。此时 Turn 已注册，任何异常都必须
     // 释放运行锁，否则 Session 会一直停留在 session_busy，直至进程重启。
     try {
       if (request.attachmentInputs?.length) {
-        const stored   = this.bindings.attachmentStore.addAll(request.attachmentInputs, turnId, sessionId);
-        const resolved = this.bindings.attachmentStore.resolveForPrompt(stored);
+        storedAttachments = this.bindings.attachmentStore.addAll(request.attachmentInputs, turnId, sessionId);
+        const resolved = this.bindings.attachmentStore.resolveForPrompt(storedAttachments);
 
         if (resolved.imageParts.length > 0 || resolved.promptLines) {
           const parts: LlmContentPart[] = [...resolved.imageParts];
@@ -286,8 +289,12 @@ export class Orchestrator {
       const resolvedRequest = contentParts !== request.contentParts || userInput !== request.userInput
         ? { ...request, contentParts, userInput }
         : request;
+      const persistedUserInput = buildPersistedUserInput(
+        contentParts?.length ? contentParts : userInput,
+        storedAttachments,
+      );
       engineEvents = this.engineStreamFor(
-        resolvedRequest,
+        { ...resolvedRequest, persistedUserInput },
         legacyMode,
         turn,
         signal,
@@ -399,6 +406,7 @@ export class Orchestrator {
           }),
           workspaceRoot: sess.workspaceRoot,
           contentParts: request.contentParts,
+          persistedUserInput: request.persistedUserInput,
           providerId,
           model,
           thinking:     request.thinking,
@@ -465,6 +473,7 @@ export class Orchestrator {
             ].filter((contribution) => contribution !== null),
           }),
           userInput:      request.contentParts?.length ? request.contentParts : (request.userInput ?? ''),
+          persistedUserInput: request.persistedUserInput,
           workspaceRoot,
           scratchpadDir: scratchpadTurnDir(
             this.bindings.activeDataDir,
@@ -616,6 +625,45 @@ function armSignal(): { promise: Promise<void>; fire: () => void } {
   let fire!: () => void;
   const promise = new Promise<void>((r) => { fire = r; });
   return { promise, fire };
+}
+
+export function buildPersistedUserInput(
+  input: string | readonly LlmContentPart[],
+  attachments: readonly Attachment[],
+): MessageBlocks {
+  if (typeof input === 'string' && attachments.length === 0) return input;
+
+  const blocks: Array<LlmContentPart | AttachmentReferenceBlock> = [];
+  if (typeof input === 'string') {
+    if (input) blocks.push({ type: 'text', text: input });
+  } else {
+    for (const part of input) {
+      if (part.type === 'image_data' || part.type === 'audio_data' || part.type === 'file_data') {
+        blocks.push({
+          type: 'text',
+          text: `[本轮${mediaLabel(part.type)}正文未写入会话数据库]`,
+        });
+        continue;
+      }
+      blocks.push(part);
+    }
+  }
+
+  for (const attachment of attachments) {
+    blocks.push({
+      type: 'attachment_ref',
+      attachmentId: attachment.id,
+      name: attachment.name,
+      mimeType: attachment.mime,
+    });
+  }
+  return blocks;
+}
+
+function mediaLabel(type: 'image_data' | 'audio_data' | 'file_data'): string {
+  if (type === 'image_data') return '图片';
+  if (type === 'audio_data') return '音频';
+  return '文件';
 }
 
 // ── Merge helper ────────────────────────────────────────────────────────────

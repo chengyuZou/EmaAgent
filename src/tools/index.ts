@@ -7,8 +7,6 @@ export type {
   RunOptions,
   RunResult,
   ICommandRunner,
-  IArtifactStore,
-  ArtifactUpsertArgs,
   SubagentSpawnOpts,
   ISubagentSpawner,
   IMcpClientBridge,

@@ -3,9 +3,7 @@ import {
   z } from 'zod';
 import { buildTool } from '@ema-agent/tools';
 import type { ToolExecutionContext } from '@ema-agent/tools';
-import type { Artifact,
-  ArtifactId,
-} from '@ema-agent/contracts';
+import type { Artifact, ArtifactId } from '@ema-agent/artifact';
 import {
   } from '@ema-agent/turn';
 import { asSessionId,

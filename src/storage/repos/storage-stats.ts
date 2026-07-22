@@ -122,7 +122,6 @@ export interface MessageRestoreRow {
   id: string; sessionId: string; turnId: string | null;
   role: string; kind: string; blocksJson: string;
   interrupted: boolean; createdAt: number;
-  metaJson?: string;
 }
 
 export interface ArtifactRestoreRow {
@@ -609,14 +608,13 @@ export class SessionStatsRepo {
       // 7. Message
       const stmtMsg = this.db.prepare(`
         INSERT INTO messages
-          (id, session_id, turn_id, role, kind, blocks_json, interrupted, created_at, meta_json)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+          (id, session_id, turn_id, role, kind, blocks_json, interrupted, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       `);
       for (const m of p.messages) {
         stmtMsg.run(
           m.id, m.sessionId, m.turnId ?? null, m.role, m.kind ?? 'normal',
           m.blocksJson, m.interrupted ? 1 : 0, m.createdAt,
-          m.metaJson ?? '{}',
         );
       }
 

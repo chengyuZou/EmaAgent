@@ -19,6 +19,14 @@ export interface NarrativeContextBlocks {
   timelines: NarrativeTimelineRecall[];
 }
 
+/** 附件正文不进入 Message JSON；这里只保存可回查 turn_attachments 的稳定引用。 */
+export interface AttachmentReferenceBlock {
+  type: 'attachment_ref';
+  attachmentId: string;
+  name: string;
+  mimeType: string;
+}
+
 /** Session 比模型消息多保存耗时、错误码和客户端展示数据。 */
 export interface ToolResultBlock {
   type: 'tool_result';
@@ -30,7 +38,7 @@ export interface ToolResultBlock {
   presentation?: ToolPresentation;
 }
 
-export type UserBlock = MessageContentPart | ToolResultBlock;
+export type UserBlock = MessageContentPart | ToolResultBlock | AttachmentReferenceBlock;
 export type MessageBlocks = string | AssistantBlock[] | UserBlock[] | NarrativeContextBlocks;
 
 const INVALID_MESSAGE_PLACEHOLDER = '[消息内容无法读取]';
@@ -88,8 +96,16 @@ function isAssistantBlocks(value: unknown): value is AssistantBlock[] {
 
 function isUserBlocks(value: unknown): value is UserBlock[] {
   return Array.isArray(value) && value.every((block) => (
-    isTurnContentPart(block) || isToolResultBlock(block)
+    isTurnContentPart(block) || isToolResultBlock(block) || isAttachmentReferenceBlock(block)
   ));
+}
+
+function isAttachmentReferenceBlock(value: unknown): value is AttachmentReferenceBlock {
+  return isRecord(value)
+    && value.type === 'attachment_ref'
+    && typeof value.attachmentId === 'string'
+    && typeof value.name === 'string'
+    && typeof value.mimeType === 'string';
 }
 
 function isToolResultBlock(value: unknown): value is ToolResultBlock {

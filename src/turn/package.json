@@ -19,6 +19,7 @@
     "clean": "rimraf dist"
   },
   "dependencies": {
+    "@ema-agent/artifact": "workspace:*",
     "@ema-agent/contracts": "workspace:*",
     "@ema-agent/emotion": "workspace:*",
     "@ema-agent/permission": "workspace:*",

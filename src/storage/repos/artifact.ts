@@ -1,6 +1,6 @@
 import type { SqliteDb } from '../database.js';
-import type { ArtifactId, SessionId, TurnId, ArtifactType } from '@ema-agent/contracts';
-import type { Artifact } from '@ema-agent/contracts';
+import type { SessionId, TurnId } from '@ema-agent/contracts';
+import type { Artifact, ArtifactId, ArtifactType, ArtifactUpdate } from '@ema-agent/artifact';
 
 // ── DB row 原始结构 ───────────────────────────────────────────────────────────
 interface ArtifactRow {
@@ -79,17 +79,7 @@ export class ArtifactRepo {
     );
   }
 
-  update(id: ArtifactId, patch: {
-    content?:         string | null;
-    contentLocation?: 'inline' | 'file';
-    contentPath?:     string | undefined;
-    title?:           string;
-    type?:            ArtifactType;
-    meta?:            Record<string, unknown>;
-    appliedAt?:       number;
-    rejectedAt?:      number;
-    updatedAt?:       number;
-  }): void {
+  update(id: ArtifactId, patch: ArtifactUpdate): void {
     const cols:   string[] = [];
     const values: unknown[] = [];
 

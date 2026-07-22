@@ -513,10 +513,10 @@ export class SessionsRepo {
       this.db.prepare(
         untilTurnId
           ? `INSERT INTO messages
-               (id, session_id, turn_id, role, kind, blocks_json, interrupted, created_at, meta_json)
+               (id, session_id, turn_id, role, kind, blocks_json, interrupted, created_at)
              SELECT lower(hex(randomblob(16))), ?,
                     (SELECT m.new_id FROM _turn_id_map m WHERE m.old_id = messages.turn_id),
-                    role, kind, blocks_json, interrupted, created_at, meta_json
+                    role, kind, blocks_json, interrupted, created_at
              FROM messages
              WHERE session_id = ?
                AND (
@@ -535,10 +535,10 @@ export class SessionsRepo {
                )
              ORDER BY created_at ASC, id ASC`
           : `INSERT INTO messages
-               (id, session_id, turn_id, role, kind, blocks_json, interrupted, created_at, meta_json)
+               (id, session_id, turn_id, role, kind, blocks_json, interrupted, created_at)
              SELECT lower(hex(randomblob(16))), ?,
                     (SELECT m.new_id FROM _turn_id_map m WHERE m.old_id = messages.turn_id),
-                    role, kind, blocks_json, interrupted, created_at, meta_json
+                    role, kind, blocks_json, interrupted, created_at
              FROM messages
              WHERE session_id = ?
              ORDER BY created_at ASC, id ASC`,

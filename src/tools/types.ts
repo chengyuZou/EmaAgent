@@ -2,13 +2,11 @@
 import type {
   z } from 'zod';
 import type {
-  Artifact,
-  ArtifactId,
-  ArtifactType,
   SessionId,
   TurnId,
   ToolCallId,
 } from '@ema-agent/contracts';
+import type { IArtifactStore } from '@ema-agent/artifact';
 import type {
   AgentKind,
   AskUserQuestionSpec,
@@ -79,33 +77,6 @@ export interface IFileStateStore {
   record(path: string, entry: IFileStateStoreEntry): void;
   get(path: string): (IFileStateStoreEntry & { lastAccessMs: number }) | undefined;
   recentEntries(limit: number): ReadonlyArray<{ path: string; content: string; mtimeMs: number }>;
-}
-
-// ── IArtifactStore - 仅接口(由 @ema-agent/artifact 实现)──────────────────
-//
-// 薄接口,tools 可写 artifact 而无需直接 import artifact 包
-// (避免 tools -> artifact -> storage 循环)。
-
-export interface ArtifactUpsertArgs {
-  id?:       ArtifactId;
-  sessionId: SessionId;
-  turnId?:   TurnId;
-  type:      ArtifactType;
-  title:     string;
-  content:   string;
-  meta?:     Record<string, unknown>;
-}
-
-export interface IArtifactStore {
-  upsert(args: ArtifactUpsertArgs): Artifact;
-  get(id: ArtifactId): Artifact | null;
-  /** 仅元数据列表 - 为效率省略 content 字段。 */
-  list(sessionId: SessionId, opts?: { type?: string }): Omit<Artifact, 'content'>[];
-  apply(id: ArtifactId, targetPath: string): Artifact;
-  reject(id: ArtifactId): Artifact;
-  delete(id: ArtifactId): void;
-  /** session 有 >100 个 artifact 时返回 true - 工具应给出警告。 */
-  countWarning(sessionId: SessionId): boolean;
 }
 
 // ── ICommandRunner - 仅接口(由 @ema-agent/sandbox 实现)────────────────────

@@ -174,7 +174,7 @@ async function* runTurn(
       sessionId: input.sessionId,
       role: 'user',
       // LlmContentPart（= MessageContentPart）是 UserBlock 的子类型，安全转型
-      blocks: userBlocks as MessageBlocks,
+      blocks: input.persistedUserInput ?? userBlocks as MessageBlocks,
     });
 
     const currentTurn: ModelMessage[] = [

@@ -3,6 +3,15 @@ import { describe, expect, it } from 'vitest';
 import { parseMessageBlocksJson } from '../message.js';
 
 describe('parseMessageBlocksJson', () => {
+  it('接受不含附件正文的稳定引用', () => {
+    const reference = [{
+      type: 'attachment_ref',
+      attachmentId: 'attachment-1',
+      name: 'map.png',
+      mimeType: 'image/png',
+    }];
+    expect(parseMessageBlocksJson(JSON.stringify(reference), 'user', 'normal')).toEqual(reference);
+  });
   it('保留 Session 独有的工具展示字段', () => {
     const blocks = parseMessageBlocksJson(JSON.stringify([{
       type: 'tool_result',

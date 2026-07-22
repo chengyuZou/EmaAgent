@@ -141,6 +141,16 @@ function projectUserBlock(
         ...(typeof candidate.isError === 'boolean' ? { isError: candidate.isError } : {}),
       };
     }
+    if (candidate.type === 'attachment_ref') {
+      const reference = block as { name?: unknown; mimeType?: unknown };
+      if (typeof reference.name !== 'string' || typeof reference.mimeType !== 'string') {
+        return undefined;
+      }
+      return {
+        type: 'text',
+        text: `[历史附件：${reference.name}（${reference.mimeType}），正文未重复载入]`,
+      };
+    }
   }
   return projectContentPart(block);
 }

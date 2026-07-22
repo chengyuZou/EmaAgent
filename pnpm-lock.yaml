@@ -264,6 +264,9 @@ importers:
 
   apps/desktop-ui:
     dependencies:
+      '@ema-agent/artifact':
+        specifier: workspace:*
+        version: link:../../src/artifact
       '@ema-agent/backup':
         specifier: workspace:*
         version: link:../../src/backup
@@ -422,6 +425,9 @@ importers:
       '@ema-agent/agent-context':
         specifier: workspace:*
         version: link:../agentContext
+      '@ema-agent/artifact':
+        specifier: workspace:*
+        version: link:../artifact
       '@ema-agent/context':
         specifier: workspace:*
         version: link:../context
@@ -511,15 +517,6 @@ importers:
       '@ema-agent/contracts':
         specifier: workspace:*
         version: link:../contracts
-      '@ema-agent/session':
-        specifier: workspace:*
-        version: link:../session
-      '@ema-agent/storage':
-        specifier: workspace:*
-        version: link:../storage
-      '@ema-agent/tools':
-        specifier: workspace:*
-        version: link:../tools
     devDependencies:
       rimraf:
         specifier: ^5.0.0
@@ -583,6 +580,9 @@ importers:
 
   src/builtinTools:
     dependencies:
+      '@ema-agent/artifact':
+        specifier: workspace:*
+        version: link:../artifact
       '@ema-agent/contracts':
         specifier: workspace:*
         version: link:../contracts
@@ -1246,6 +1246,9 @@ importers:
 
   src/storage:
     dependencies:
+      '@ema-agent/artifact':
+        specifier: workspace:*
+        version: link:../artifact
       '@ema-agent/contracts':
         specifier: workspace:*
         version: link:../contracts
@@ -1367,6 +1370,9 @@ importers:
 
   src/tools:
     dependencies:
+      '@ema-agent/artifact':
+        specifier: workspace:*
+        version: link:../artifact
       '@ema-agent/contracts':
         specifier: workspace:*
         version: link:../contracts
@@ -1441,6 +1447,9 @@ importers:
 
   src/turn:
     dependencies:
+      '@ema-agent/artifact':
+        specifier: workspace:*
+        version: link:../artifact
       '@ema-agent/contracts':
         specifier: workspace:*
         version: link:../contracts

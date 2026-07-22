@@ -23,10 +23,11 @@ import type {
   ContextHistoryCompactor,
 } from '@ema-agent/context';
 import type { PromptSnapshot } from '@ema-agent/prompts';
-import type { SessionStore, Turn } from '@ema-agent/session';
+import type { MessageBlocks, SessionStore, Turn } from '@ema-agent/session';
 import type { HookBus } from '@ema-agent/hooks';
 import type { EmotionEngine } from '@ema-agent/emotion';
-import type { ICommandRunner, IArtifactStore, IMcpClientBridge, ISkillRunner, ToolRegistry } from '@ema-agent/tools';
+import type { ICommandRunner, IMcpClientBridge, ISkillRunner, ToolRegistry } from '@ema-agent/tools';
+import type { IArtifactStore } from '@ema-agent/artifact';
 import type { PermissionEngine, AskPermissionFn } from '@ema-agent/permission';
 import type { AgentFileStateStore, AgentToolResultStore } from '@ema-agent/agent-context';
 import type { ModelCapabilityResolver } from '@ema-agent/provider';
@@ -169,6 +170,8 @@ export interface AgentRunInput {
    * concept — the engine picks them apart via Array.isArray.
    */
   userInput:             string | LlmContentPart[];
+  /** 只用于 Message 落库，禁止携带图片、音频或文件 Base64。 */
+  persistedUserInput?:   MessageBlocks;
   /** Turn 开始时冻结的 Prompt Slot 快照，Agent 多轮共享同一 revision。 */
   prompt:                PromptSnapshot;
   /** Resolved provider_configs.id — orchestrator responsibility. */

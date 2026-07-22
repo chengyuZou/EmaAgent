@@ -194,7 +194,7 @@ async function* runTurn(
     activePhase = 'persistence';
     session.appendMessage({
       turnId, sessionId, role: 'user',
-      blocks: userInput as MessageBlocks,
+      blocks: input.persistedUserInput ?? userInput as MessageBlocks,
     });
 
     // messages is declared here so the spawner and executor factory can both

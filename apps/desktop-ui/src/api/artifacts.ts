@@ -7,7 +7,8 @@
  * DELETE /api/artifacts/:id                 delete
  */
 import { sidecarClient } from './sidecar-client.js';
-import type { Artifact, ArtifactId, SessionId } from '@ema-agent/contracts';
+import type { Artifact, ArtifactId } from '@ema-agent/artifact';
+import type { SessionId } from '@ema-agent/contracts';
 
 export interface ArtifactListResult {
   artifacts: Artifact[];

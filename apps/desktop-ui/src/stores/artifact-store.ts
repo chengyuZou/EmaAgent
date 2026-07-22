@@ -1,7 +1,8 @@
 // 管理按 Session 隔离的 Artifact 快照、SSE 更新、缓存代次与应用操作。
 import { create } from 'zustand';
 import { artifactsApi } from '../api/artifacts.js';
-import type { Artifact, ArtifactId, SessionId } from '@ema-agent/contracts';
+import type { Artifact, ArtifactId } from '@ema-agent/artifact';
+import type { SessionId } from '@ema-agent/contracts';
 
 export type ArtifactLoadState =
   | { status: 'idle'; generation: number; error: null }

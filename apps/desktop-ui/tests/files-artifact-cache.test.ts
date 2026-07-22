@@ -1,10 +1,9 @@
 // 测试文件浏览器作用域隔离，以及 Artifact 缓存的代次、失效和并发响应保护。
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-  asArtifactId,
   asSessionId,
-  type Artifact,
 } from '@ema-agent/contracts';
+import { asArtifactId, type Artifact } from '@ema-agent/artifact';
 import { artifactsApi } from '../src/api/artifacts.js';
 import {
   DirectoryRequestGate,

@@ -3,7 +3,7 @@ import { Badge, Button, Card, Dialog, Input, toast } from '@ema-agent/ui';
 import { useArtifactStore } from '../stores/artifact-store.js';
 import { useSessionStore } from '../stores/session-store.js';
 import { tauriBridge } from '../lib/tauri-bridge.js';
-import type { Artifact, ArtifactId } from '@ema-agent/contracts';
+import type { Artifact, ArtifactId } from '@ema-agent/artifact';
 
 // ── MIME → file extension ─────────────────────────────────────────────────────
 

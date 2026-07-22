@@ -51,6 +51,7 @@ export type {
 } from './types.js';
 
 export type {
+  AttachmentReferenceBlock,
   AssistantBlock,
   MessageBlocks,
   MessageContentPart,

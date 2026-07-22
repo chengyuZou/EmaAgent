@@ -20,7 +20,6 @@ export interface MessageRow {
   blocks_json: string;
   interrupted: number;
   created_at:  number;
-  meta_json:   string;
 }
 
 export interface MessageInsert {
@@ -33,7 +32,6 @@ export interface MessageInsert {
   blocksJson: string;
   interrupted?: boolean;
   createdAt:  number;
-  metaJson?:  string;
 }
 
 export class MessagesRepo {
@@ -43,8 +41,8 @@ export class MessagesRepo {
     this.db
       .prepare(
         `INSERT INTO messages
-           (id, session_id, turn_id, role, kind, blocks_json, interrupted, created_at, meta_json)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           (id, session_id, turn_id, role, kind, blocks_json, interrupted, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         m.id,
@@ -55,7 +53,6 @@ export class MessagesRepo {
         m.blocksJson,
         m.interrupted ? 1 : 0,
         m.createdAt,
-        m.metaJson ?? '{}',
       );
   }
 

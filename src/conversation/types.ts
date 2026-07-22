@@ -7,7 +7,7 @@ import type {
   LlmContentPart,
   ThinkingMode,
 } from '@ema-agent/llm';
-import type { SessionStore, Turn } from '@ema-agent/session';
+import type { MessageBlocks, SessionStore, Turn } from '@ema-agent/session';
 import type { HookBus } from '@ema-agent/hooks';
 import type { EmotionEngine } from '@ema-agent/emotion';
 import type { NarrativeClient } from '@ema-agent/narrative';
@@ -47,6 +47,8 @@ export interface ConversationRunInput {
   /** Turn 开始时冻结的完整 Prompt Slot 快照。 */
   prompt:        PromptSnapshot;
   contentParts?: LlmContentPart[];
+  /** 只用于 Message 落库；模型仍接收 contentParts 中的本轮临时媒体。 */
+  persistedUserInput?: MessageBlocks;
   /** provider_configs.id--由 orchestrator 从请求或旧绑定解析。 */
   providerId?:   string;
   /** 模型名--由 orchestrator 从请求或旧绑定解析。 */
