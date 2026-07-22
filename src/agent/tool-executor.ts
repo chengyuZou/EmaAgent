@@ -16,10 +16,11 @@
 import { asToolCallId } from '@ema-agent/ids';
 import type { SessionId, ToolCallId, TurnId } from '@ema-agent/ids';
 import type { ToolResultBlock } from '@ema-agent/session';
-import type { ToolExecutionStatus } from '@ema-agent/tools';
 import type {
-  EmaStreamEvent,
-} from '@ema-agent/turn';
+  ToolExecutionJournalPort,
+  ToolExecutionStatus,
+} from '@ema-agent/tools';
+import type { EmaStreamEvent } from '@ema-agent/turn';
 import { splitToolResult, ToolInputError } from '@ema-agent/tools';
 import type {
   ToolExecutionContext,
@@ -30,7 +31,7 @@ import type {
 import type { ToolManifestSnapshot } from '@ema-agent/tools';
 import type { PermissionEngine, PermissionContext } from '@ema-agent/permission';
 import type { HookBus, ToolFailurePhase } from '@ema-agent/hooks';
-import type { AgentDeps, IToolExecutionJournal } from './types.js';
+import type { AgentDeps } from './types.js';
 
 // ── Internal per-tool state ───────────────────────────────────────────────────
 
@@ -92,7 +93,7 @@ export interface TurnToolExecutorOpts {
    */
   toolResultStore?: ToolResultStore;
   /** 工具执行审计 Facade；生产环境必须注入，测试可省略。 */
-  toolExecutionJournal?: IToolExecutionJournal;
+  toolExecutionJournal?: ToolExecutionJournalPort;
 }
 
 // ── TurnToolExecutor ──────────────────────────────────────────────────────────

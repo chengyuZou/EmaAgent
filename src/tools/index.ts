@@ -16,8 +16,6 @@ export type {
   ToolCapabilitySnapshot,
   IToolCapabilityScope,
   ToolExecutionContext,
-  ToolExecutionRecord,
-  ToolExecutionStatus,
   ToolDescriptor,
   ToolManifestEntry,
   ToolManifestSnapshot,
@@ -51,6 +49,18 @@ export {
   DEFAULT_CLEANER_CONFIG,
   ToolResultCleaner,
 } from './results/index.js';
+export {
+  ToolExecutionJournal,
+  ToolExecutionJournalConflictError,
+} from './journal/toolExecutionJournal.js';
+export type {
+  ToolExecutionJournalPort,
+  ToolExecutionJournalStore,
+  ToolExecutionPrepareRecord,
+  ToolExecutionRecord,
+  ToolExecutionStatus,
+  ToolExecutionTerminalDetails,
+} from './journal/toolExecutionJournal.js';
 export type {
   AggregateResultCandidate,
   AggregateResultContents,

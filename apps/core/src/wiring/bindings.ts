@@ -77,7 +77,7 @@ import type { KbSearchResult } from '@ema-agent/knowledge';
 import type { ReleaseFeaturesWire } from '@ema-agent/system';
 import type { SandboxStatusWire } from '@ema-agent/sandbox';
 import type { UsageRecord } from '@ema-agent/usage';
-import { ToolRegistry }        from '@ema-agent/tools';
+import { ToolExecutionJournal, ToolRegistry } from '@ema-agent/tools';
 import {
   cleanupInterruptedFileWriteTemps,
   registerBuiltinTools,
@@ -88,7 +88,7 @@ import type { ICommandRunner, IMcpClientBridge, ISkillRunner } from '@ema-agent/
 import {
   AgentFileStateStore,
 } from '@ema-agent/agent-context';
-import { AgentTaskStore, ToolExecutionJournal } from '@ema-agent/agent-task';
+import { AgentTaskStore } from '@ema-agent/agent-task';
 import { MemoryPlanner } from '@ema-agent/memory';
 import { ContextCompactor } from '@ema-agent/context';
 import {

@@ -283,8 +283,9 @@ Ema 已经完成了这一批最重要的安全骨架：
 - MCP 动态 Tool 已改用统一 `buildTool()`：Server 原始 JSON Schema 通过 `inputJsonSchemaOverride` 覆盖模型描述，运行时参数仍由宽松 Zod `inputSchema` 保证对象边界；Ema 的结果预算和保守默认值不再因手工构造 `BuiltTool` 被绕过，MCP 协议层 1MB 安全阀继续独立存在。
 - `validateInput` 已形成 Schema 后、Permission 前的业务校验入口；`requiresUserInteraction` 已替代 Agent 按 AskUser 工具名猜测等待状态。
 - `ToolOrigin` 已把 Builtin 与 MCP 来源纳入 ToolDef、Manifest 和 Prepared 快照；MCP 分支强制携带原始 Server/Tool 名，Registry 会拒绝来源声明与注册所有者不一致的实现。
+- ToolExecution Journal 已归入 `src/tools/journal`：Tools 拥有状态、记录、CAS 状态机、崩溃恢复语义和 Store 端口；Storage 只实现原子 SQL 操作，Tasks 不再导出工具执行生命周期。
 
-当前缺口不是再发明 Tool 接口，而是边界仍然过宽：`ToolExecutionContext` 正逐渐成为依赖杂物箱；`packages/tools` 与 `packages/tool-builtin` 是 Ema 产品执行体系，却仍放在公共包目录；工具执行状态、结果外置、后台进程和 UI Presentation 还没有形成清晰的跨端协议。
+当前缺口不是再发明 Tool 接口，而是边界仍然过宽：`ToolExecutionContext` 正逐渐成为依赖杂物箱；Registry 仍有可能绕过统一 Prepare/Permission 链的执行入口；Agent 调度与单次 Tool 执行尚未拆开，后台进程和 UI Presentation 也还没有形成清晰的跨端协议。
 
 ### Diff 判断
 
@@ -305,7 +306,7 @@ Ema 已经完成了这一批最重要的安全骨架：
 15. **V1 已对齐：交互等待是工具能力，不是名称规则。** AskUser 系列显式声明 `requiresUserInteraction`；Agent Scheduler 只读取 Prepared 快照，不维护工具名白名单。
 16. **V1 已对齐：来源使用单一可判别字段。** Ema 不复制 Claude 可互相矛盾的 `isMcp + mcpInfo`，而使用 `ToolOrigin = builtin | mcp`；MCP 分支必须同时携带 `serverName/serverToolName`。来源跟随 Manifest 和 Prepared 快照，供 UI、审计和执行策略读取。V1 没有 LSP Tool，因此不预建 `isLsp` 空分支。
 17. **V1 已有等价机制：不重复增加同义字段。** `prompt()` 由直接进入 Provider Schema 的 `description` 承担；`isDestructive/isOpenWorld/checkPermissions` 由声明式 `permissionMeta` 与 Permission 规则承担；`isEnabled()` 由 Feature Gate、注册条件与每 Turn Manifest 选择承担；`isSearchOrReadCommand/backfillObservableInput` 属于跨端 `ToolPresentation`，不进入执行定义。
-18. **暂不加入：没有当前执行消费者的字段。** `outputSchema` 等结构化 Result 封套确定后再接；`interruptBehavior` 等 TurnRuntime 统一用户插话语义后再接；Provider `strict` 由支持该能力的 Adapter 决定，不能假装所有协议都支持；`aliases/inputsEquivalent` 等重命名或调用去重出现真实需求后再设计；ToolSearch 的 `searchHint/shouldDefer/alwaysLoad` 留到 V1.5。
+18. **暂不加入：没有当前执行消费者的字段。** `outputSchema` 等结构化 Result 封套确定后再接。Claude 的 `requiresUserInteraction` 与 `interruptBehavior = cancel | block` 是正交能力：前者表示工具主动等待用户并驱动 `waiting_user`，后者表示工具运行期间收到新消息时取消工具还是阻塞新消息；Ema 保留已经接线的前者，等 TurnRuntime 统一用户插话、排队与取消语义后再加入后者。Provider `strict` 由支持该能力的 Adapter 决定，不能假装所有协议都支持；`aliases/inputsEquivalent` 等重命名或调用去重出现真实需求后再设计；ToolSearch 的 `searchHint/shouldDefer/alwaysLoad` 留到 V1.5。
 
 ### 建议拆分与公共接口
 

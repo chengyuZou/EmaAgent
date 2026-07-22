@@ -1326,15 +1326,9 @@ importers:
 
   src/tasks:
     dependencies:
-      '@ema-agent/ids':
-        specifier: workspace:*
-        version: link:../ids
       '@ema-agent/storage':
         specifier: workspace:*
         version: link:../storage
-      '@ema-agent/tools':
-        specifier: workspace:*
-        version: link:../tools
     devDependencies:
       '@types/node':
         specifier: ^20.0.0
@@ -1382,9 +1376,6 @@ importers:
       '@ema-agent/permission':
         specifier: workspace:*
         version: link:../permission
-      '@ema-agent/storage':
-        specifier: workspace:*
-        version: link:../storage
       '@ema-agent/turn':
         specifier: workspace:*
         version: link:../turn
@@ -1395,6 +1386,9 @@ importers:
         specifier: ^3.23.0
         version: 3.25.2(zod@3.25.76)
     devDependencies:
+      '@ema-agent/storage':
+        specifier: workspace:*
+        version: link:../storage
       '@types/node':
         specifier: ^20.0.0
         version: 20.19.39

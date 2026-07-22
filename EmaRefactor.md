@@ -855,7 +855,7 @@ interface TurnExecutionSnapshot {
 目录迁移和 Contracts 拆除已经结束，接下来按一个主要业务边界一批推进：
 
 1. [x] Tool Result 归位到 `src/tools/results`，建立单结果上限和单消息聚合预算，并保持持久预览可重放；
-2. ToolExecution Journal 从 Tasks/Agent 收回 Tools，Storage 只保留 Store 实现；
+2. [x] ToolExecution Journal 从 Tasks/Agent 收回 Tools，Storage 只保留 Store 实现；
 3. 删除 `ToolRegistry.dispatch()` 的 prepare→execute 旁路，冻结唯一执行入口；
 4. 将现有 TurnToolExecutor 拆为 Agent Tool Scheduler 与 Tools `ToolExecutionRuntime`；
 5. 收窄 Tool Execution Context，把运行依赖改为构造时显式注入；
@@ -871,13 +871,13 @@ interface TurnExecutionSnapshot {
 
 ## 11. 下一阶段的实际边界
 
-Tool Result 归位与统一预算已经完成。下一阶段收回 ToolExecution Journal，只改变执行审计的业务所有权：
+Tool Result 归位、统一预算与 ToolExecution Journal 所有权迁移已经完成。下一阶段冻结 Registry 的唯一执行入口：
 
-1. 将 ToolExecution Journal 的领域接口、状态机与恢复语义迁入 `src/tools/journal`；
-2. `src/storage` 只保留 ToolExecution Repository/Store 实现，不拥有业务状态转换；
-3. `src/tasks` 不再导出或装配 ToolExecution Journal；Task、AgentRun 与 ToolExecution 身份继续分离；
-4. 保持现有 `prepared → authorized → running → terminal/outcome_unknown` 数据和 CAS 语义；
-5. 本批不同时删除 Registry 旁路、拆 TurnToolExecutor、修改数据库 Schema 或调整 Permission/Sandbox。
+1. 审计 `ToolRegistry.dispatch()` 及所有直接 `execute()` 调用，区分生产旁路与测试辅助；
+2. 删除能够绕过 `prepare → validate → permission` 的生产入口，执行必须接收当前 Registry 生成的 `PreparedToolCall`；
+3. MCP、Builtin、Skill 和 Core 不得用可信调用方名义绕过相同主链；
+4. 保持现有 Agent 调度、数据库 Schema、Permission 与 Sandbox 行为不变；
+5. 完成后再把 `TurnToolExecutor` 拆为 Agent Scheduler 与 Tools `ToolExecutionRuntime`。
 
 ## 12. 完成标准
 

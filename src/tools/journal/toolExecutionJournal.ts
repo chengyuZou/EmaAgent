@@ -1,11 +1,87 @@
-// 这里记录每次工具调用的执行状态推进（prepared->authorized->running->succeeded/failed），用 version CAS 防过期覆盖。
+// 工具执行日志以 CAS 推进副作用状态，并在进程重启后保守标记未完成调用。
 
 import { createHash } from 'node:crypto';
 import type { SessionId, ToolCallId, TurnId } from '@ema-agent/ids';
-import type { ToolExecutionRecord, ToolExecutionStatus } from '@ema-agent/tools';
-import type { ToolExecutionRow, ToolExecutionsRepo } from '@ema-agent/storage';
 
 const RESULT_PREVIEW_LIMIT = 4_096;
+
+export type ToolExecutionStatus =
+  | 'prepared'
+  | 'authorized'
+  | 'running'
+  | 'succeeded'
+  | 'failed'
+  | 'cancelled'
+  | 'outcome_unknown';
+
+/** 一次工具调用的持久化执行审计记录。 */
+export interface ToolExecutionRecord {
+  callId: ToolCallId;
+  sessionId: SessionId;
+  turnId: TurnId;
+  toolName: string;
+  inputJson: string;
+  inputDigest: string;
+  status: ToolExecutionStatus;
+  resultPreview?: string;
+  errorCode?: string;
+  errorMessage?: string;
+  startedAt?: number;
+  completedAt?: number;
+  version: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface ToolExecutionPrepareRecord {
+  callId: ToolCallId;
+  sessionId: SessionId;
+  turnId: TurnId;
+  toolName: string;
+  inputJson: string;
+  inputDigest: string;
+  createdAt: number;
+}
+
+export interface ToolExecutionTerminalDetails {
+  resultPreview?: string;
+  errorCode?: string;
+  errorMessage?: string;
+  completedAt: number;
+}
+
+/** Storage 实现原子读写，Tools 保留状态转换和恢复语义。 */
+export interface ToolExecutionJournalStore {
+  insertPrepared(value: ToolExecutionPrepareRecord): ToolExecutionRecord | undefined;
+  findByCallId(callId: ToolCallId): ToolExecutionRecord | undefined;
+  listForTurn(turnId: TurnId): ToolExecutionRecord[];
+  transition(
+    callId: ToolCallId,
+    expectedVersion: number,
+    from: readonly ToolExecutionStatus[],
+    to: ToolExecutionStatus,
+    at: number,
+    terminal?: ToolExecutionTerminalDetails,
+  ): ToolExecutionRecord | undefined;
+  recoverInterrupted(at: number): ToolExecutionRecord[];
+}
+
+/** Agent 只依赖该端口，不接触 SQL Repo 或 Journal 的具体实现。 */
+export interface ToolExecutionJournalPort {
+  prepare(args: {
+    callId: ToolCallId;
+    sessionId: SessionId;
+    turnId: TurnId;
+    toolName: string;
+    input: unknown;
+  }): ToolExecutionRecord;
+  authorize(callId: ToolCallId): ToolExecutionRecord;
+  start(callId: ToolCallId): ToolExecutionRecord;
+  succeed(callId: ToolCallId, output: unknown): ToolExecutionRecord;
+  fail(callId: ToolCallId, errorCode: string, errorMessage: string): ToolExecutionRecord;
+  cancel(callId: ToolCallId, reason: string): ToolExecutionRecord;
+  outcomeUnknown(callId: ToolCallId, reason: string): ToolExecutionRecord;
+}
 
 export class ToolExecutionJournalConflictError extends Error {
   constructor(
@@ -23,13 +99,13 @@ export class ToolExecutionJournalConflictError extends Error {
 }
 
 /**
- * 工具执行日志 Facade。
+ * 工具执行状态机。
  *
- * Agent 只能通过本 Facade 推进状态，不能直接操作 SQL。每一步使用 version CAS，
- * 防止终止流程、迟到的工具 Promise 和崩溃恢复互相覆盖。
+ * 执行器只能通过该入口推进状态；每一步使用 version CAS，防止取消流程、
+ * 迟到的工具 Promise 和崩溃恢复互相覆盖。
  */
-export class ToolExecutionJournal {
-  constructor(private readonly repo: ToolExecutionsRepo) {}
+export class ToolExecutionJournal implements ToolExecutionJournalPort {
+  constructor(private readonly store: ToolExecutionJournalStore) {}
 
   prepare(args: {
     callId: ToolCallId;
@@ -42,7 +118,7 @@ export class ToolExecutionJournal {
     const inputDigest = createHash('sha256').update(inputJson, 'utf8').digest('hex');
     const now = Date.now();
 
-    const inserted = this.repo.insertPrepared({
+    const inserted = this.store.insertPrepared({
       callId: args.callId,
       sessionId: args.sessionId,
       turnId: args.turnId,
@@ -51,15 +127,15 @@ export class ToolExecutionJournal {
       inputDigest,
       createdAt: now,
     });
-    if (inserted) return rowToRecord(inserted);
+    if (inserted) return inserted;
 
-    const existing = this.repo.findByCallId(args.callId);
+    const existing = this.store.findByCallId(args.callId);
     if (
       !existing
-      || existing.session_id !== args.sessionId
-      || existing.turn_id !== args.turnId
-      || existing.tool_name !== args.toolName
-      || existing.input_digest !== inputDigest
+      || existing.sessionId !== args.sessionId
+      || existing.turnId !== args.turnId
+      || existing.toolName !== args.toolName
+      || existing.inputDigest !== inputDigest
     ) {
       throw new ToolExecutionJournalConflictError(
         args.callId,
@@ -67,7 +143,7 @@ export class ToolExecutionJournal {
         existing?.status,
       );
     }
-    return rowToRecord(existing);
+    return existing;
   }
 
   authorize(callId: ToolCallId): ToolExecutionRecord {
@@ -106,62 +182,40 @@ export class ToolExecutionJournal {
   }
 
   get(callId: ToolCallId): ToolExecutionRecord | undefined {
-    const row = this.repo.findByCallId(callId);
-    return row ? rowToRecord(row) : undefined;
+    return this.store.findByCallId(callId);
   }
 
   listForTurn(turnId: TurnId): ToolExecutionRecord[] {
-    return this.repo.listForTurn(turnId).map(rowToRecord);
+    return this.store.listForTurn(turnId);
   }
 
   recoverInterrupted(): ToolExecutionRecord[] {
-    return this.repo.recoverInterrupted(Date.now()).map(rowToRecord);
+    return this.store.recoverInterrupted(Date.now());
   }
 
   private move(
     callId: ToolCallId,
     from: readonly ToolExecutionStatus[],
     to: ToolExecutionStatus,
-    details?: { resultPreview?: string; errorCode?: string; errorMessage?: string },
+    details?: Omit<ToolExecutionTerminalDetails, 'completedAt'>,
   ): ToolExecutionRecord {
-    const current = this.repo.findByCallId(callId);
+    const current = this.store.findByCallId(callId);
     if (!current) throw new ToolExecutionJournalConflictError(callId, from);
 
-    const updated = this.repo.transition(
+    const now = Date.now();
+    const updated = this.store.transition(
       callId,
       current.version,
       from,
       to,
-      Date.now(),
-      isTerminal(to)
-        ? { ...details, completedAt: Date.now() }
-        : undefined,
+      now,
+      isTerminal(to) ? { ...details, completedAt: now } : undefined,
     );
-    if (updated) return rowToRecord(updated);
+    if (updated) return updated;
 
-    const latest = this.repo.findByCallId(callId);
+    const latest = this.store.findByCallId(callId);
     throw new ToolExecutionJournalConflictError(callId, from, latest?.status);
   }
-}
-
-function rowToRecord(row: ToolExecutionRow): ToolExecutionRecord {
-  return {
-    callId: row.call_id,
-    sessionId: row.session_id,
-    turnId: row.turn_id,
-    toolName: row.tool_name,
-    inputJson: row.input_json,
-    inputDigest: row.input_digest,
-    status: row.status,
-    version: row.version,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
-    ...(row.result_preview !== null ? { resultPreview: row.result_preview } : {}),
-    ...(row.error_code !== null ? { errorCode: row.error_code } : {}),
-    ...(row.error_message !== null ? { errorMessage: row.error_message } : {}),
-    ...(row.started_at !== null ? { startedAt: row.started_at } : {}),
-    ...(row.completed_at !== null ? { completedAt: row.completed_at } : {}),
-  };
 }
 
 function isTerminal(status: ToolExecutionStatus): boolean {
@@ -189,9 +243,7 @@ function stableStringify(value: unknown): string {
     if (current === undefined || typeof current === 'function' || typeof current === 'symbol') {
       return inArray ? null : undefined;
     }
-    if (typeof current === 'bigint') {
-      throw new TypeError('工具输入不能包含 bigint');
-    }
+    if (typeof current === 'bigint') throw new TypeError('工具输入不能包含 bigint');
     if (typeof current !== 'object') return current;
     if (seen.has(current)) throw new TypeError('工具输入不能包含循环引用');
     seen.add(current);
@@ -209,6 +261,5 @@ function stableStringify(value: unknown): string {
     }
   };
 
-  const normalized = normalize(value, false);
-  return JSON.stringify(normalized ?? null);
+  return JSON.stringify(normalize(value, false) ?? null);
 }

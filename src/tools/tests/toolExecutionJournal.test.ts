@@ -1,10 +1,12 @@
+// 验证工具执行日志的 CAS 状态推进、幂等准备、崩溃恢复和跨 Session 所有权约束。
+
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { asSessionId, asToolCallId, asTurnId } from '@ema-agent/ids';
 import { Database, ToolExecutionsRepo } from '@ema-agent/storage';
 import {
   ToolExecutionJournal,
   ToolExecutionJournalConflictError,
-} from '../toolExecutionJournal.js';
+} from '../journal/toolExecutionJournal.js';
 
 describe('ToolExecutionJournal', () => {
   let database: Database;
@@ -19,8 +21,9 @@ describe('ToolExecutionJournal', () => {
     `).run();
     database.sqlite.prepare(`
       INSERT INTO turns (
-        id, session_id, mode, status, user_input, started_at
-      ) VALUES ('turn-a', 'session-a', 'agent', 'running', 'test', 1)
+        id, session_id, execution_profile, narrative_policy, trigger_type,
+        status, user_input, started_at
+      ) VALUES ('turn-a', 'session-a', 'work', 'auto', 'userMessage', 'running', 'test', 1)
     `).run();
     journal = new ToolExecutionJournal(new ToolExecutionsRepo(database.sqlite));
   });

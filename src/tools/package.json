@@ -24,12 +24,12 @@
     "@ema-agent/ids": "workspace:*",
     "@ema-agent/turn": "workspace:*",
     "@ema-agent/knowledge": "workspace:*",
-    "@ema-agent/storage": "workspace:*",
     "@ema-agent/permission": "workspace:*",
     "zod": "^3.23.0",
     "zod-to-json-schema": "^3.23.0"
   },
   "devDependencies": {
+    "@ema-agent/storage": "workspace:*",
     "@types/node": "^20.0.0",
     "rimraf": "^5.0.0",
     "typescript": "^5.9.3",

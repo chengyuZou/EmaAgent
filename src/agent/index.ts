@@ -11,7 +11,6 @@ export type {
   AgentRunInput,
   IAgentTaskStore,
   IAgentTurnLifecycle,
-  IToolExecutionJournal,
 } from './types.js';
 export type { TurnLoopEvent, ExecutorFactory, TurnLoopInput } from './loop.js';
 export type { LoopState, LoopPhase, LoopTransition } from './loop-state.js';

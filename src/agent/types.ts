@@ -26,6 +26,7 @@ import type {
   ICommandRunner,
   IMcpClientBridge,
   ISkillRunner,
+  ToolExecutionJournalPort,
   ToolRegistry,
   ToolResultStore,
 } from '@ema-agent/tools';
@@ -118,8 +119,8 @@ export interface AgentDeps {
    * Optional — omit in tests.
    */
   taskStore?: IAgentTaskStore;
-  /** 工具副作用的持久化状态机；生产环境由 agent-task Facade 注入。 */
-  toolExecutionJournal?: IToolExecutionJournal;
+  /** 工具副作用的持久化状态机；生产环境由 Tools Journal 注入。 */
+  toolExecutionJournal?: ToolExecutionJournalPort;
 }
 
 // ── IAgentTaskStore — minimal interface avoids hard dep on agent-task ─────────
@@ -202,22 +203,4 @@ export interface AgentRunInput {
   thinking?: ThinkingMode;
   /** Core 在 Engine 前完成的媒体降级。 */
   requestDegradations?: RequestDegradationNotice[];
-}
-
-// ── IToolExecutionJournal — Agent 只依赖 Facade 契约 ─────────────────────────
-
-export interface IToolExecutionJournal {
-  prepare(args: {
-    callId: ToolCallId;
-    sessionId: SessionId;
-    turnId: TurnId;
-    toolName: string;
-    input: unknown;
-  }): unknown;
-  authorize(callId: ToolCallId): unknown;
-  start(callId: ToolCallId): unknown;
-  succeed(callId: ToolCallId, output: unknown): unknown;
-  fail(callId: ToolCallId, errorCode: string, errorMessage: string): unknown;
-  cancel(callId: ToolCallId, reason: string): unknown;
-  outcomeUnknown(callId: ToolCallId, reason: string): unknown;
 }

@@ -8,7 +8,6 @@ import type {
   EmaStreamEvent,
 } from '@ema-agent/turn';
 import type { KbSearchResult } from '@ema-agent/knowledge';
-import type { ToolExecutionStatus } from '@ema-agent/storage';
 import type {
   AskUserRequiredEvent,
 } from '@ema-agent/turn';
@@ -16,27 +15,6 @@ import type { ToolPermissionMeta } from '@ema-agent/permission';
 
 // 重新导出,调用方可从任一包 import AgentKind。
 export type { AgentKind };
-
-export type { ToolExecutionStatus };
-
-/** 一次工具调用的持久化执行审计记录。 */
-export interface ToolExecutionRecord {
-  callId: ToolCallId;
-  sessionId: SessionId;
-  turnId: TurnId;
-  toolName: string;
-  inputJson: string;
-  inputDigest: string;
-  status: ToolExecutionStatus;
-  resultPreview?: string;
-  errorCode?: string;
-  errorMessage?: string;
-  startedAt?: number;
-  completedAt?: number;
-  version: number;
-  createdAt: number;
-  updatedAt: number;
-}
 
 // ── ReadFileState - turn 内跨工具调用共享的去重缓存 ──────────────────────────
 

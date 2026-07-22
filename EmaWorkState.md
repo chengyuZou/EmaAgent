@@ -1,7 +1,7 @@
 # EmaAgent 当前重构接力板
 
 > 状态：临时施工记录，架构完成后删除
-> 更新时间：2026-07-22
+> 更新时间：2026-07-23
 > 作用：只记录当前阶段、工作区归属、最近验证和下一步。长期规则以 `CLAUDE.md` 为准，目标设计以 `EmaRefactor.md` 为准，设计依据以 `EmaClaudeArchitectureReview.md` 为准。
 
 ## 当前阶段
@@ -38,7 +38,9 @@ Contracts 外壳已经删除：跨业务边界共享的 branded ID 收口为零�
 
 Memory 与 Narrative 的旧分区也已经拆开：Memory 只按 `chat/work` 记录提取与召回范围，旧 `agent` 标签迁为 `work`、旧 `narrative` 标签迁为 `chat`；Narrative 继续作为独立 LightRAG Contribution，不再进入 Memory 类型和任务载荷。Profile v11 将 `memory_items.modes_json` 迁为 `profiles_json`。
 
-Agent 执行体系第一批已经完成：Tool Result 外置与 Cleaner 从 `agentContext` 迁入 `tools/results`；`maxResultBytes` 和 200KB 聚合预算取代工具名白名单；MCP 动态工具通过统一 `buildTool()` 保留 Server JSON Schema 并继承 50KB 默认预算；`validateInput` 与 `requiresUserInteraction` 已进入真实执行链。`ToolOrigin` 进一步把 Builtin/MCP 来源及原始 MCP 身份带入 Manifest 和 Prepared 快照，Registry 会拒绝来源声明与注册所有者不一致的工具。
+Agent 执行体系第一批已经完成：Tool Result 外置与 Cleaner 从 `agentContext` 迁入 `tools/results`；`maxResultBytes` 和 200KB 聚合预算取代工具名白名单；MCP 动态工具通过统一 `buildTool()` 保留 Server JSON Schema 并继承 50KB 默认预算；`validateInput` 与 `requiresUserInteraction` 已进入真实执行链。`requiresUserInteraction` 只表达工具是否主动暂停 Turn 等待用户，不能被 Claude 的 `interruptBehavior = cancel | block` 替代；后者描述工具运行时收到新用户消息后的中断策略，等 TurnRuntime 统一插话和排队语义后再接。`ToolOrigin` 进一步把 Builtin/MCP 来源及原始 MCP 身份带入 Manifest 和 Prepared 快照，Registry 会拒绝来源声明与注册所有者不一致的工具。
+
+Agent 执行体系第二批已经完成：ToolExecution Journal 从 Tasks 收回 `src/tools/journal`，Tools 现在拥有状态、领域记录、Store 端口、CAS 状态机与崩溃恢复语义；Storage 只实现原子 SQL 操作并把数据库行投影为领域形状；Core 从 Tools 装配 Journal，Agent 只依赖 `ToolExecutionJournalPort`。原 `IToolExecutionJournal` 已删除，Tasks 不再依赖 Tools/IDs 或导出工具执行生命周期。
 
 ## 迁移完成事实
 
@@ -54,7 +56,7 @@ Agent 执行体系第一批已经完成：Tool Result 外置与 Cleaner 从 `age
 
 本轮已知未提交修改：
 
-- Tools、Agent、MCP、BuiltinTools 与 Core：Tool Result 所有权、结果预算、MCP 统一构建、业务校验和交互等待契约重构；未触碰 Permission/Sandbox 实现。
+- Tools、Agent、MCP、BuiltinTools、Storage、Tasks 与 Core：Tool Result 所有权、结果预算、MCP 统一构建、业务校验、交互等待契约和 ToolExecution Journal 所有权重构；未触碰 Permission/Sandbox 实现。
 - `CLAUDE.md`、`EmaRefactor.md`、`EmaClaudeArchitectureReview.md`：同步 Tool Result、MCP 双层限制和下一批 Journal 所有权口径。
 
 当前基线最近提交：`2a8f6b2 refactor: migrate from @ema-agent/contracts to @ema-agent/ids for type imports`。该提交号仅用于定位，不代表其他 Agent 不会继续提交。
@@ -91,9 +93,11 @@ Plan、Goal、Schedule、Workflow、Team 与 LLM 自动审批暂列 V1.5，不�
 
 ## 下一批建议顺序
 
-1. 收回 ToolExecution Journal 到 `src/tools/journal`，Storage 只实现持久化端口，Tasks 不再拥有 ToolExecution；
-2. 随后删除 Registry 执行旁路，再拆分 Agent Scheduler 与 ToolExecutionRuntime；
+1. 删除 Registry 的生产执行旁路，冻结 `PreparedToolCall` 唯一执行入口；
+2. 随后拆分 Agent Scheduler 与 Tools `ToolExecutionRuntime`，收窄 ToolExecutionContext；
 3. Chat 接入统一 TurnLoop 放在 Tool 单次执行边界稳定之后，短期保留 ConversationEngine 适配器。
+
+命名随业务批次清理：`IFileStateStoreEntry`、`IFileStateStore`、`IToolExecutionJournal` 等迁移期 `I*` 类型在其所有权迁移时改为职责名，不单独进行全仓机械重命名。
 
 每批只改变一个主要业务边界。不要把 Turn 统一、数据库 Schema、全仓 ID 改名和前端切换塞进同一批。
 
@@ -107,6 +111,7 @@ Plan、Goal、Schedule、Workflow、Team 与 LLM 自动审批暂列 V1.5，不�
 - 新 Turn 契约完成后，`@ema-agent/turn` build 通过；Agent、Core、Desktop UI typecheck 通过。
 - Agent 测试 32/32 通过，4 个 Live Integration 测试按既有规则跳过。
 - Tool Result 与来源契约批次：Tools 21/21、MCP 25/25、Agent 32/32、Context 23/23 通过；BuiltinTools 与 Core typecheck 通过；全仓 typecheck 最近结果 84/84 通过。
+- ToolExecution Journal 所有权批次：Tools 25/25、Tasks 3/3、Agent 32/32（4 个 Live Integration 按规则跳过）、Storage 119/119、Core 89/89 通过；全仓 typecheck 84/84 通过。
 - Core 测试 88/88 通过；Desktop UI 测试 128/128 通过。
 - Data v15 与 Profile v10 迁移通过：Session/Turn 新字段已落盘，Provider 和 Session/Turn 遗留列已物理删除。
 - Storage 测试 118/118、Session 测试 39/39、Backup 测试 10/10 通过。

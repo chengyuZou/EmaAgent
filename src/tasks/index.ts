@@ -1,4 +1,4 @@
-// 这是 AgentTask 包的统一出口，外部代码从这里使用 Agent 任务和工具执行日志功能。
+// AgentTask 的统一出口只暴露用户或模型可见任务，不拥有工具执行日志。
 
 export type {
   AgentTask,
@@ -7,7 +7,3 @@ export type {
   TaskTransitionResult,
 } from './types.js';
 export { AgentTaskStore } from './agentTaskStore.js';
-export {
-  ToolExecutionJournal,
-  ToolExecutionJournalConflictError,
-} from './toolExecutionJournal.js';

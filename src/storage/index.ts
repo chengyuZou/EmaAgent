@@ -150,12 +150,6 @@ export {
 export type { AgentTaskRow, AgentTaskInsert, AgentTaskStatus }           from './repos/agent-tasks.js';
 export type { AgentTaskMessageRow, AgentTaskMessageInsert, AgentTaskMessageRole } from './repos/agent-task-messages.js';
 export { ToolExecutionsRepo } from './repos/tool-executions.js';
-export type {
-  ToolExecutionInsert,
-  ToolExecutionRow,
-  ToolExecutionTerminalUpdate,
-  ToolExecutionStatus,
-} from './repos/tool-executions.js';
 
 // ── Knowledge-base repo ────────────────────────────────────────────────────────
 export { DocumentAssetRepo, DocumentAssetCursorError } from './repos/document-asset.js';

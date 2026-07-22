@@ -1,7 +1,7 @@
 import type { SessionId, ToolCallId, TurnId } from '@ema-agent/ids';
 import type { SqliteDb } from '../database.js';
 
-export type ToolExecutionStatus =
+type PersistedToolExecutionStatus =
   | 'prepared'
   | 'authorized'
   | 'running'
@@ -10,15 +10,15 @@ export type ToolExecutionStatus =
   | 'cancelled'
   | 'outcome_unknown';
 
-/** SQLite 行结构；只在 storage 包内部使用。 */
-export interface ToolExecutionRow {
+/** SQLite 行结构，只在 Storage 内部存在。 */
+interface ToolExecutionSqlRow {
   call_id: ToolCallId;
   session_id: SessionId;
   turn_id: TurnId;
   tool_name: string;
   input_json: string;
   input_digest: string;
-  status: ToolExecutionStatus;
+  status: PersistedToolExecutionStatus;
   result_preview: string | null;
   error_code: string | null;
   error_message: string | null;
@@ -29,7 +29,26 @@ export interface ToolExecutionRow {
   updated_at: number;
 }
 
-export interface ToolExecutionInsert {
+/** 提供给 Tool Journal Store 端口的领域形状，不泄露 SQL 列名和 null。 */
+interface StoredToolExecution {
+  callId: ToolCallId;
+  sessionId: SessionId;
+  turnId: TurnId;
+  toolName: string;
+  inputJson: string;
+  inputDigest: string;
+  status: PersistedToolExecutionStatus;
+  resultPreview?: string;
+  errorCode?: string;
+  errorMessage?: string;
+  startedAt?: number;
+  completedAt?: number;
+  version: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+interface ToolExecutionInsert {
   callId: ToolCallId;
   sessionId: SessionId;
   turnId: TurnId;
@@ -39,19 +58,19 @@ export interface ToolExecutionInsert {
   createdAt: number;
 }
 
-export interface ToolExecutionTerminalUpdate {
+interface ToolExecutionTerminalUpdate {
   resultPreview?: string;
   errorCode?: string;
   errorMessage?: string;
   completedAt: number;
 }
 
-/** 工具执行日志的原子数据库操作；业务状态机由 agent-task Facade 管理。 */
+/** 工具执行日志的原子数据库操作；合法状态转换与恢复语义由 Tools 管理。 */
 export class ToolExecutionsRepo {
   constructor(private readonly db: SqliteDb) {}
 
-  insertPrepared(value: ToolExecutionInsert): ToolExecutionRow | undefined {
-    return this.db.prepare(
+  insertPrepared(value: ToolExecutionInsert): StoredToolExecution | undefined {
+    const row = this.db.prepare(
       `INSERT OR IGNORE INTO tool_executions (
          call_id, session_id, turn_id, tool_name, input_json, input_digest,
          status, created_at, updated_at
@@ -66,34 +85,37 @@ export class ToolExecutionsRepo {
       value.inputDigest,
       value.createdAt,
       value.createdAt,
-    ) as ToolExecutionRow | undefined;
+    ) as ToolExecutionSqlRow | undefined;
+    return row ? fromSqlRow(row) : undefined;
   }
 
-  findByCallId(callId: ToolCallId): ToolExecutionRow | undefined {
-    return this.db.prepare(
+  findByCallId(callId: ToolCallId): StoredToolExecution | undefined {
+    const row = this.db.prepare(
       'SELECT * FROM tool_executions WHERE call_id = ?',
-    ).get(callId) as ToolExecutionRow | undefined;
+    ).get(callId) as ToolExecutionSqlRow | undefined;
+    return row ? fromSqlRow(row) : undefined;
   }
 
-  listForTurn(turnId: TurnId): ToolExecutionRow[] {
-    return this.db.prepare(
+  listForTurn(turnId: TurnId): StoredToolExecution[] {
+    const rows = this.db.prepare(
       `SELECT * FROM tool_executions
         WHERE turn_id = ?
         ORDER BY created_at ASC, call_id ASC`,
-    ).all(turnId) as ToolExecutionRow[];
+    ).all(turnId) as ToolExecutionSqlRow[];
+    return rows.map(fromSqlRow);
   }
 
   transition(
     callId: ToolCallId,
     expectedVersion: number,
-    from: readonly ToolExecutionStatus[],
-    to: ToolExecutionStatus,
+    from: readonly PersistedToolExecutionStatus[],
+    to: PersistedToolExecutionStatus,
     at: number,
     terminal?: ToolExecutionTerminalUpdate,
-  ): ToolExecutionRow | undefined {
+  ): StoredToolExecution | undefined {
     if (from.length === 0) return undefined;
     const placeholders = from.map(() => '?').join(', ');
-    return this.db.prepare(
+    const row = this.db.prepare(
       `UPDATE tool_executions
           SET status         = ?,
               result_preview = ?,
@@ -119,15 +141,16 @@ export class ToolExecutionsRepo {
       callId,
       expectedVersion,
       ...from,
-    ) as ToolExecutionRow | undefined;
+    ) as ToolExecutionSqlRow | undefined;
+    return row ? fromSqlRow(row) : undefined;
   }
 
   /**
    * 启动恢复：尚未执行的调用可以安全取消；已经 running 的调用副作用未知，
    * 必须标记 outcome_unknown，绝不能自动重放。
    */
-  recoverInterrupted(at: number): ToolExecutionRow[] {
-    return this.db.prepare(
+  recoverInterrupted(at: number): StoredToolExecution[] {
+    const rows = this.db.prepare(
       `UPDATE tool_executions
           SET status = CASE
                 WHEN status = 'running' THEN 'outcome_unknown'
@@ -143,6 +166,27 @@ export class ToolExecutionsRepo {
               updated_at = ?
         WHERE status IN ('prepared', 'authorized', 'running')
         RETURNING *`,
-    ).all(at, at) as ToolExecutionRow[];
+    ).all(at, at) as ToolExecutionSqlRow[];
+    return rows.map(fromSqlRow);
   }
+}
+
+function fromSqlRow(row: ToolExecutionSqlRow): StoredToolExecution {
+  return {
+    callId: row.call_id,
+    sessionId: row.session_id,
+    turnId: row.turn_id,
+    toolName: row.tool_name,
+    inputJson: row.input_json,
+    inputDigest: row.input_digest,
+    status: row.status,
+    version: row.version,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    ...(row.result_preview !== null ? { resultPreview: row.result_preview } : {}),
+    ...(row.error_code !== null ? { errorCode: row.error_code } : {}),
+    ...(row.error_message !== null ? { errorMessage: row.error_message } : {}),
+    ...(row.started_at !== null ? { startedAt: row.started_at } : {}),
+    ...(row.completed_at !== null ? { completedAt: row.completed_at } : {}),
+  };
 }
