@@ -18,7 +18,7 @@ Ema 当前已经具备 Turn、SSE、工具、权限、Sandbox、Memory、Narrati
 - Compaction 放在 Memory 包内，导致长期记忆与模型窗口治理互相污染；
 - `apps/core` 直接依赖二十多个内部包，`AppBindings` 已接近 Service Locator；
 - Prompt 没有稳定插槽与缓存边界，角色、Mode、MCP、Skill、工具变化容易破坏 KV Cache。
-- `packages/contracts` 已混入模型内部消息、数据库持久化结构、前端 Wire、各业务事件、ID、Usage 与错误码，失去明确所有者；
+- 中央 `contracts` 已混入模型内部消息、数据库持久化结构、前端 Wire、各业务事件、ID、Usage 与错误码，失去明确所有者；
 - 同一个“Message”同时表达 Session 记录、模型输入和前端 DTO，导致历史转换、媒体降级和持久化展示互相渗透。
 
 本轮目标不是换目录名字，而是先确定唯一运行语义，再做可验证迁移。
@@ -444,9 +444,9 @@ Provider 与 LLM 已证明产品模块可以位于根 `src`，同时保留内部
 5. release runtime 必须在没有 Git 仓库、Node 和 Python 开发环境时启动；
 6. 不在同一批同时执行全仓路径移动、数据库 Schema 重构和 TurnEngine 语义切换。
 
-### 7.4 删除 packages/contracts
+### 7.4 迁移并收口 src/contracts
 
-`packages/contracts` 不保留、不改名为新的中央 `protocol` 包。真正跨进程的协议仍必须有单一事实来源，但由业务所有者定义，再由 Turn 组合。
+`packages/contracts` 先机械迁入 `src/contracts`，保留 `@ema-agent/contracts` 作为迁移期入口，避免在目录迁移时同时改写两百余处调用。它不能继续充当全仓类型杂物箱：业务类型逐步回到各自所有者，真正跨进程、跨前后端的稳定协议保留单一事实来源，再由 Turn 组合。
 
 #### 类型所有权
 
@@ -595,7 +595,7 @@ contracts 拆除与 Runtime 重构并行推进，但每批只迁一个明确所�
 
 #### C0：冻结中央包
 
-1. `packages/contracts` 从现在起只减不增；
+1. `src/contracts` 从现在起只接收稳定跨进程或跨前后端契约，既有业务类型只减不增；
 2. 新 ID、事件、Wire、Usage 和错误直接由业务模块定义；
 3. 建立 `rg "@ema-agent/contracts"` 引用基线与模块归属清单。
 
@@ -660,11 +660,11 @@ contracts 拆除与 Runtime 重构并行推进，但每批只迁一个明确所�
 2. 拆除中央 IDs 与 ErrorCode；
 3. 关键 HTTP/SSE 输入补运行时 Schema。
 
-#### C5：删除包
+#### C5：收口中央入口
 
-1. 生产、测试与脚本中的 `@ema-agent/contracts` 引用归零；
-2. 删除 workspace dependency、tsconfig path 与 lockfile link；
-3. 删除 `packages/contracts`；
+1. 业务专属的 `@ema-agent/contracts` 引用迁回对应模块；
+2. 审计 `src/contracts`，只保留确实跨进程或跨前后端的稳定协议；
+3. 删除旧 `packages/contracts` 路径及其 Workspace、lockfile 残留；
 4. 运行全仓 build/typecheck/test、Core/Desktop 联调与 release smoke。
 
 ### R0：契约冻结与保护测试
@@ -762,7 +762,7 @@ contracts 拆除与 Runtime 重构并行推进，但每批只迁一个明确所�
 - `agent-context`、`conversation`、根 AgentTask 生产依赖清零后再删除；
 - Turn 是唯一根生命周期，AgentRun 只表示子 Agent；
 - Core Route 只做协议适配，业务进入对应模块的稳定公开入口或 TurnEngine；
-- `packages/contracts` 引用归零并删除，各模块 protocol 入口成为唯一事实来源；
+- 旧 `packages/contracts` 路径归零；`src/contracts` 不再包含可归属到单一业务模块的类型；
 - Session Message、LLM Message、Provider SDK Message 三层可辨认且只在明确 mapper 中转换；
 - Windows/macOS/Linux 的正式 Sidecar 制品仍能独立启动；
 - 所有迁移都保留结构化 SSE，不向前端发送未解析日志字符串。

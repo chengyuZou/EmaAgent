@@ -7,9 +7,9 @@ import { asToolCallId, asSessionId, asTurnId } from '@ema-agent/contracts';
 import type { ToolExecutionRecord } from '@ema-agent/contracts';
 import { splitToolResult } from '@ema-agent/tools';
 import type { IFileStateStore, ToolExecutionContext } from '@ema-agent/tools';
-import { FileWriteTool } from '../src/tools/FileWriteTool/FileWriteTool.js';
-import { atomicTempPrefix, atomicWriteUtf8 } from '../src/tools/FileWriteTool/atomicWrite.js';
-import { cleanupInterruptedFileWriteTemps } from '../src/tools/FileWriteTool/recovery.js';
+import { FileWriteTool } from '../tools/FileWriteTool/FileWriteTool.js';
+import { atomicTempPrefix, atomicWriteUtf8 } from '../tools/FileWriteTool/atomicWrite.js';
+import { cleanupInterruptedFileWriteTemps } from '../tools/FileWriteTool/recovery.js';
 
 const tempDirs: string[] = [];
 

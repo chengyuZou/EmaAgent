@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { asToolCallId } from '@ema-agent/contracts';
 import { splitToolResult } from '@ema-agent/tools';
 import type { ToolExecutionContext } from '@ema-agent/tools';
-import { FileEditTool } from '../src/tools/FileEditTool/FileEditTool.js';
+import { FileEditTool } from '../tools/FileEditTool/FileEditTool.js';
 
 const tempDirs: string[] = [];
 

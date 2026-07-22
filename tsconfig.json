@@ -23,7 +23,7 @@
       "@ema-agent/llm": ["./src/llm/index.ts"],
       "@ema-agent/context": ["./src/context/index.ts"],
       "@ema-agent/usage": ["./src/usage/index.ts"],
-      "@ema-agent/tools": ["./packages/tools/src/index.ts"],
+      "@ema-agent/tools": ["./src/tools/index.ts"],
       "@ema-agent/permission": ["./src/permission/index.ts"],
       "@ema-agent/sandbox": ["./src/sandbox/index.ts"],
       "@ema-agent/attachment": ["./src/attachment/index.ts"],

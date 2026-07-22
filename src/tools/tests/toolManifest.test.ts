@@ -2,8 +2,8 @@
 
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import { buildTool } from '../src/build-tool.js';
-import { ToolRegistry, ToolRegistryError } from '../src/registry.js';
+import { buildTool } from '../build-tool.js';
+import { ToolRegistry, ToolRegistryError } from '../registry.js';
 
 function makeTool(id: string, name: string) {
   return buildTool({

@@ -17,7 +17,7 @@
 
 ## 当前工作区
 
-Conversation 与 Agent 已迁入 `src/conversation`、`src/agent`。旧 `agent-context` 与 `agent-task` 已分别机械迁入 `src/agentContext`、`src/tasks`，暂时保留原内部包名和运行语义；`packages/tools` 按当前安排暂不迁移。恢复工作后必须先重新运行 `git status --short` 和 `git diff`，不能依据本记录覆盖其他 Agent 的新改动。
+Conversation、Agent、Contracts、Tool 控制层与内置工具已分别迁入 `src/conversation`、`src/agent`、`src/contracts`、`src/tools`、`src/builtinTools`。旧 `agent-context` 与 `agent-task` 已迁入 `src/agentContext`、`src/tasks`，暂时保留原内部包名和运行语义。恢复工作后必须先重新运行 `git status --short` 和 `git diff`，不能依据本记录覆盖其他 Agent 的新改动。
 
 当前基线最近提交：
 
@@ -145,6 +145,8 @@ R3 主实现已完成。下一步先做真实 Turn 联调和 Diff 复查，再�
 - Agent 的 4 项真实 API 集成测试按既有环境变量规则跳过，未计入通过数。
 - Hook、Prompt、Context、Memory、Skills、Conversation、Agent 已按依赖顺序 build；Core typecheck 通过。
 - `agent-context` 已迁入 `src/agentContext`：build/typecheck 通过，测试 4/4；`agent-task` 已迁入 `src/tasks`：build/typecheck 通过，测试 7/7；Agent 与 Core 直接消费 typecheck 通过。
+- `contracts` 已机械迁入 `src/contracts`，保留 `@ema-agent/contracts` 迁移期入口；与并行完成的 `src/tools`、`src/builtinTools` 一并刷新 Workspace 后，全仓 typecheck 84/84 通过。
+- `src/builtinTools/tests/tool-call.integration.test.ts` 仍有三处旧 `packages/tool-builtin` 路径，需由 Tool 迁移批次订正后再运行 Live 集成测试。
 - `git diff --check` 通过，仅有仓库既有的 Windows CRLF 提示。
 
 ## 恢复工作时使用的提示词

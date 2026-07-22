@@ -5,9 +5,9 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { ToolExecutionContext } from '@ema-agent/tools';
-import { GlobTool } from '../src/tools/GlobTool/GlobTool.js';
-import { GrepTool } from '../src/tools/GrepTool/GrepTool.js';
-import { runBoundedProcess } from '../src/tools/shared/BoundedProcess.js';
+import { GlobTool } from '../tools/GlobTool/GlobTool.js';
+import { GrepTool } from '../tools/GrepTool/GrepTool.js';
+import { runBoundedProcess } from '../tools/shared/BoundedProcess.js';
 
 const tempDirs: string[] = [];
 const hasRipgrep = spawnSync('rg', ['--version'], { windowsHide: true }).status === 0;

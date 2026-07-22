@@ -1,11 +1,11 @@
 // 这里测试 ToolRegistry 的名称所有权、稳定身份和 MCP 批量注册原子性。
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import { buildTool } from '../src/build-tool.js';
+import { buildTool } from '../build-tool.js';
 import {
   ToolRegistrationConflictError,
   ToolRegistry,
-} from '../src/registry.js';
+} from '../registry.js';
 
 function makeTool(name: string, result: string, id = name) {
   return buildTool({

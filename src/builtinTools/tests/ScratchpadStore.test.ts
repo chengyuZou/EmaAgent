@@ -7,7 +7,7 @@ import {
   listScratchpadEntries,
   readScratchpadEntry,
   writeScratchpadEntry,
-} from '../src/tools/ScratchpadTool/ScratchpadStore.js';
+} from '../tools/ScratchpadTool/ScratchpadStore.js';
 
 const tempDirs: string[] = [];
 

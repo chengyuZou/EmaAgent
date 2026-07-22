@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import { buildTool } from '../src/build-tool.js';
-import { ToolRegistry, ToolRegistryError } from '../src/registry.js';
-import type { BuiltTool, ToolExecutionContext } from '../src/types.js';
+import { buildTool } from '../build-tool.js';
+import { ToolRegistry, ToolRegistryError } from '../registry.js';
+import type { BuiltTool, ToolExecutionContext } from '../types.js';
 
 const context = {
   sessionId: 'session-test',

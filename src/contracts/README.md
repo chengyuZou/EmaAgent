@@ -24,7 +24,7 @@ contracts 不得重新导出这些类型，也不得增加兼容别名。
 | `wire.ts` | 对应业务模块的 `protocol` 入口 |
 | `kb.ts` | Knowledge Base |
 | `agents.ts` | Agent |
-| `session-ownership.ts` | Session |
+| `sessionOwnership.ts` | Session |
 | `errors.ts` | 各业务模块拥有错误码，Turn 组合客户端可见错误 |
 
 ## 迁移红线

@@ -57,7 +57,7 @@ importers:
         version: link:../../src/context
       '@ema-agent/contracts':
         specifier: workspace:*
-        version: link:../../packages/contracts
+        version: link:../../src/contracts
       '@ema-agent/conversation':
         specifier: workspace:*
         version: link:../../src/conversation
@@ -126,10 +126,10 @@ importers:
         version: link:../../src/token
       '@ema-agent/tool-builtin':
         specifier: workspace:*
-        version: link:../../packages/tool-builtin
+        version: link:../../src/builtinTools
       '@ema-agent/tools':
         specifier: workspace:*
-        version: link:../../packages/tools
+        version: link:../../src/tools
       '@ema-agent/tts':
         specifier: workspace:*
         version: link:../../src/tts
@@ -175,7 +175,7 @@ importers:
     dependencies:
       '@ema-agent/contracts':
         specifier: workspace:*
-        version: link:../../packages/contracts
+        version: link:../../src/contracts
       '@ema-agent/desktop-ui':
         specifier: workspace:*
         version: link:../desktop-ui
@@ -269,7 +269,7 @@ importers:
         version: link:../../src/characters
       '@ema-agent/contracts':
         specifier: workspace:*
-        version: link:../../packages/contracts
+        version: link:../../src/contracts
       '@ema-agent/emotion':
         specifier: workspace:*
         version: link:../../src/emotion
@@ -374,15 +374,6 @@ importers:
         specifier: ^2.0.0
         version: 2.1.9(@types/node@20.19.39)(jsdom@26.1.0(canvas@2.11.2))(msw@2.14.6(@types/node@20.19.39)(typescript@5.9.3))
 
-  packages/contracts:
-    devDependencies:
-      rimraf:
-        specifier: ^5.0.0
-        version: 5.0.10
-      typescript:
-        specifier: ^5.9.3
-        version: 5.9.3
-
   packages/credential:
     devDependencies:
       '@types/node':
@@ -417,83 +408,6 @@ importers:
         specifier: ^2.0.0
         version: 2.1.9(@types/node@20.19.39)(jsdom@26.1.0(canvas@2.11.2))(msw@2.14.6(@types/node@20.19.39)(typescript@5.9.3))
 
-  packages/tool-builtin:
-    dependencies:
-      '@ema-agent/contracts':
-        specifier: workspace:*
-        version: link:../contracts
-      '@ema-agent/llm':
-        specifier: workspace:*
-        version: link:../../src/llm
-      '@ema-agent/permission':
-        specifier: workspace:*
-        version: link:../../src/permission
-      '@ema-agent/public-http':
-        specifier: workspace:*
-        version: link:../public-http
-      '@ema-agent/token':
-        specifier: workspace:*
-        version: link:../../src/token
-      '@ema-agent/tools':
-        specifier: workspace:*
-        version: link:../tools
-      '@ema-agent/turn':
-        specifier: workspace:*
-        version: link:../../src/turn
-      diff:
-        specifier: ^9.0.0
-        version: 9.0.0
-      glob:
-        specifier: ^11.0.0
-        version: 11.1.0
-      zod:
-        specifier: ^3.23.0
-        version: 3.25.76
-    devDependencies:
-      '@types/node':
-        specifier: ^20.0.0
-        version: 20.19.39
-      rimraf:
-        specifier: ^5.0.0
-        version: 5.0.10
-      typescript:
-        specifier: ^5.9.3
-        version: 5.9.3
-      vitest:
-        specifier: ^2.0.0
-        version: 2.1.9(@types/node@20.19.39)(jsdom@26.1.0(canvas@2.11.2))(msw@2.14.6(@types/node@20.19.39)(typescript@5.9.3))
-
-  packages/tools:
-    dependencies:
-      '@ema-agent/contracts':
-        specifier: workspace:*
-        version: link:../contracts
-      '@ema-agent/permission':
-        specifier: workspace:*
-        version: link:../../src/permission
-      '@ema-agent/turn':
-        specifier: workspace:*
-        version: link:../../src/turn
-      zod:
-        specifier: ^3.23.0
-        version: 3.25.76
-      zod-to-json-schema:
-        specifier: ^3.23.0
-        version: 3.25.2(zod@3.25.76)
-    devDependencies:
-      '@types/node':
-        specifier: ^20.0.0
-        version: 20.19.39
-      rimraf:
-        specifier: ^5.0.0
-        version: 5.0.10
-      typescript:
-        specifier: ^5.9.3
-        version: 5.9.3
-      vitest:
-        specifier: ^2.0.0
-        version: 2.1.9(@types/node@20.19.39)(jsdom@26.1.0(canvas@2.11.2))(msw@2.14.6(@types/node@20.19.39)(typescript@5.9.3))
-
   src/agent:
     dependencies:
       '@ema-agent/agent-context':
@@ -504,7 +418,7 @@ importers:
         version: link:../context
       '@ema-agent/contracts':
         specifier: workspace:*
-        version: link:../../packages/contracts
+        version: link:../contracts
       '@ema-agent/emotion':
         specifier: workspace:*
         version: link:../emotion
@@ -537,10 +451,10 @@ importers:
         version: link:../token
       '@ema-agent/tool-builtin':
         specifier: workspace:*
-        version: link:../../packages/tool-builtin
+        version: link:../builtinTools
       '@ema-agent/tools':
         specifier: workspace:*
-        version: link:../../packages/tools
+        version: link:../tools
       '@ema-agent/turn':
         specifier: workspace:*
         version: link:../turn
@@ -562,10 +476,10 @@ importers:
     dependencies:
       '@ema-agent/contracts':
         specifier: workspace:*
-        version: link:../../packages/contracts
+        version: link:../contracts
       '@ema-agent/tools':
         specifier: workspace:*
-        version: link:../../packages/tools
+        version: link:../tools
     devDependencies:
       '@types/node':
         specifier: ^20.0.0
@@ -584,13 +498,13 @@ importers:
     dependencies:
       '@ema-agent/contracts':
         specifier: workspace:*
-        version: link:../../packages/contracts
+        version: link:../contracts
       '@ema-agent/storage':
         specifier: workspace:*
         version: link:../storage
       '@ema-agent/tools':
         specifier: workspace:*
-        version: link:../../packages/tools
+        version: link:../tools
     devDependencies:
       rimraf:
         specifier: ^5.0.0
@@ -603,7 +517,7 @@ importers:
     dependencies:
       '@ema-agent/contracts':
         specifier: workspace:*
-        version: link:../../packages/contracts
+        version: link:../contracts
       '@ema-agent/storage':
         specifier: workspace:*
         version: link:../storage
@@ -625,7 +539,7 @@ importers:
     dependencies:
       '@ema-agent/contracts':
         specifier: workspace:*
-        version: link:../../packages/contracts
+        version: link:../contracts
       '@ema-agent/storage':
         specifier: workspace:*
         version: link:../storage
@@ -646,11 +560,57 @@ importers:
         specifier: ^2.0.0
         version: 2.1.9(@types/node@20.19.39)(jsdom@26.1.0(canvas@2.11.2))(msw@2.14.6(@types/node@20.19.39)(typescript@5.9.3))
 
+  src/builtinTools:
+    dependencies:
+      '@ema-agent/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@ema-agent/llm':
+        specifier: workspace:*
+        version: link:../llm
+      '@ema-agent/permission':
+        specifier: workspace:*
+        version: link:../permission
+      '@ema-agent/public-http':
+        specifier: workspace:*
+        version: link:../../packages/public-http
+      '@ema-agent/token':
+        specifier: workspace:*
+        version: link:../token
+      '@ema-agent/tools':
+        specifier: workspace:*
+        version: link:../tools
+      '@ema-agent/turn':
+        specifier: workspace:*
+        version: link:../turn
+      diff:
+        specifier: ^9.0.0
+        version: 9.0.0
+      glob:
+        specifier: ^11.0.0
+        version: 11.1.0
+      zod:
+        specifier: ^3.23.0
+        version: 3.25.76
+    devDependencies:
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.39
+      rimraf:
+        specifier: ^5.0.0
+        version: 5.0.10
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: ^2.0.0
+        version: 2.1.9(@types/node@20.19.39)(jsdom@26.1.0(canvas@2.11.2))(msw@2.14.6(@types/node@20.19.39)(typescript@5.9.3))
+
   src/characters:
     dependencies:
       '@ema-agent/contracts':
         specifier: workspace:*
-        version: link:../../packages/contracts
+        version: link:../contracts
       '@ema-agent/storage':
         specifier: workspace:*
         version: link:../storage
@@ -672,7 +632,7 @@ importers:
     dependencies:
       '@ema-agent/contracts':
         specifier: workspace:*
-        version: link:../../packages/contracts
+        version: link:../contracts
       '@ema-agent/hooks':
         specifier: workspace:*
         version: link:../hooks
@@ -693,7 +653,7 @@ importers:
         version: link:../token
       '@ema-agent/tools':
         specifier: workspace:*
-        version: link:../../packages/tools
+        version: link:../tools
       '@ema-agent/turn':
         specifier: workspace:*
         version: link:../turn
@@ -711,6 +671,15 @@ importers:
         specifier: ^2.0.0
         version: 2.1.9(@types/node@20.19.39)(jsdom@26.1.0(canvas@2.11.2))(msw@2.14.6(@types/node@20.19.39)(typescript@5.9.3))
 
+  src/contracts:
+    devDependencies:
+      rimraf:
+        specifier: ^5.0.0
+        version: 5.0.10
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
   src/conversation:
     dependencies:
       '@ema-agent/context':
@@ -718,7 +687,7 @@ importers:
         version: link:../context
       '@ema-agent/contracts':
         specifier: workspace:*
-        version: link:../../packages/contracts
+        version: link:../contracts
       '@ema-agent/emotion':
         specifier: workspace:*
         version: link:../emotion
@@ -786,7 +755,7 @@ importers:
     dependencies:
       '@ema-agent/contracts':
         specifier: workspace:*
-        version: link:../../packages/contracts
+        version: link:../contracts
     devDependencies:
       '@types/node':
         specifier: ^20.0.0
@@ -805,7 +774,7 @@ importers:
     dependencies:
       '@ema-agent/contracts':
         specifier: workspace:*
-        version: link:../../packages/contracts
+        version: link:../contracts
       '@ema-agent/llm':
         specifier: workspace:*
         version: link:../llm
@@ -830,7 +799,7 @@ importers:
     dependencies:
       '@ema-agent/contracts':
         specifier: workspace:*
-        version: link:../../packages/contracts
+        version: link:../contracts
       '@ema-agent/embed':
         specifier: workspace:*
         version: link:../embed
@@ -951,7 +920,7 @@ importers:
     dependencies:
       '@ema-agent/contracts':
         specifier: workspace:*
-        version: link:../../packages/contracts
+        version: link:../contracts
       '@ema-agent/public-http':
         specifier: workspace:*
         version: link:../../packages/public-http
@@ -976,7 +945,7 @@ importers:
     dependencies:
       '@ema-agent/contracts':
         specifier: workspace:*
-        version: link:../../packages/contracts
+        version: link:../contracts
       '@ema-agent/marketplace':
         specifier: workspace:*
         version: link:../marketplace
@@ -988,7 +957,7 @@ importers:
         version: link:../storage
       '@ema-agent/tools':
         specifier: workspace:*
-        version: link:../../packages/tools
+        version: link:../tools
       '@modelcontextprotocol/sdk':
         specifier: ^1.29.0
         version: 1.29.0(zod@3.25.76)
@@ -1016,7 +985,7 @@ importers:
         version: link:../context
       '@ema-agent/contracts':
         specifier: workspace:*
-        version: link:../../packages/contracts
+        version: link:../contracts
       '@ema-agent/embed':
         specifier: workspace:*
         version: link:../embed
@@ -1081,7 +1050,7 @@ importers:
     dependencies:
       '@ema-agent/contracts':
         specifier: workspace:*
-        version: link:../../packages/contracts
+        version: link:../contracts
       ignore:
         specifier: ^5.3.2
         version: 5.3.2
@@ -1106,7 +1075,7 @@ importers:
         version: link:../characters
       '@ema-agent/contracts':
         specifier: workspace:*
-        version: link:../../packages/contracts
+        version: link:../contracts
     devDependencies:
       '@types/node':
         specifier: ^20.0.0
@@ -1162,7 +1131,7 @@ importers:
         version: link:../permission
       '@ema-agent/tools':
         specifier: workspace:*
-        version: link:../../packages/tools
+        version: link:../tools
     devDependencies:
       '@types/node':
         specifier: ^20.0.0
@@ -1181,7 +1150,7 @@ importers:
     dependencies:
       '@ema-agent/contracts':
         specifier: workspace:*
-        version: link:../../packages/contracts
+        version: link:../contracts
       '@ema-agent/storage':
         specifier: workspace:*
         version: link:../storage
@@ -1203,7 +1172,7 @@ importers:
     dependencies:
       '@ema-agent/contracts':
         specifier: workspace:*
-        version: link:../../packages/contracts
+        version: link:../contracts
       '@ema-agent/marketplace':
         specifier: workspace:*
         version: link:../marketplace
@@ -1237,7 +1206,7 @@ importers:
     dependencies:
       '@ema-agent/contracts':
         specifier: workspace:*
-        version: link:../../packages/contracts
+        version: link:../contracts
       '@ema-agent/credential':
         specifier: workspace:*
         version: link:../../packages/credential
@@ -1311,7 +1280,7 @@ importers:
     dependencies:
       '@ema-agent/contracts':
         specifier: workspace:*
-        version: link:../../packages/contracts
+        version: link:../contracts
       '@ema-agent/storage':
         specifier: workspace:*
         version: link:../storage
@@ -1348,11 +1317,42 @@ importers:
         specifier: ^2.0.0
         version: 2.1.9(@types/node@20.19.39)(jsdom@26.1.0(canvas@2.11.2))(msw@2.14.6(@types/node@20.19.39)(typescript@5.9.3))
 
+  src/tools:
+    dependencies:
+      '@ema-agent/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@ema-agent/permission':
+        specifier: workspace:*
+        version: link:../permission
+      '@ema-agent/turn':
+        specifier: workspace:*
+        version: link:../turn
+      zod:
+        specifier: ^3.23.0
+        version: 3.25.76
+      zod-to-json-schema:
+        specifier: ^3.23.0
+        version: 3.25.2(zod@3.25.76)
+    devDependencies:
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.39
+      rimraf:
+        specifier: ^5.0.0
+        version: 5.0.10
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: ^2.0.0
+        version: 2.1.9(@types/node@20.19.39)(jsdom@26.1.0(canvas@2.11.2))(msw@2.14.6(@types/node@20.19.39)(typescript@5.9.3))
+
   src/tts:
     dependencies:
       '@ema-agent/contracts':
         specifier: workspace:*
-        version: link:../../packages/contracts
+        version: link:../contracts
       '@ema-agent/provider':
         specifier: workspace:*
         version: link:../providers
@@ -1389,7 +1389,7 @@ importers:
     dependencies:
       '@ema-agent/contracts':
         specifier: workspace:*
-        version: link:../../packages/contracts
+        version: link:../contracts
       '@ema-agent/emotion':
         specifier: workspace:*
         version: link:../emotion

@@ -24,7 +24,7 @@ import { ToolRegistry } from '@ema-agent/tools';
 import type { ToolExecutionContext, ReadFileState } from '@ema-agent/tools';
 import { PermissionEngine } from '@ema-agent/permission';
 import type { PermissionContext } from '@ema-agent/permission';
-import { BuiltinTools, registerBuiltinTools } from '../src/index.js';
+import { BuiltinTools, registerBuiltinTools } from '../index.js';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -194,7 +194,7 @@ itLive('single-tool: LLM calls Glob to find TypeScript files', async () => {
   const messages: ModelMessage[] = [{
     role:    'user',
     content: `Use the Glob tool to find all TypeScript source files (*.ts) ` +
-             `in the workspace at path "packages/tool-builtin/src". ` +
+             `in the workspace at path "src/builtinTools". ` +
              `Then tell me how many files you found.`,
   }];
 
@@ -214,8 +214,8 @@ itLive('multi-tool: LLM calls Glob and Grep in the same turn', async () => {
   const messages: ModelMessage[] = [{
     role:    'user',
     content: `I need you to do two things at once using the available tools:\n` +
-             `1. Use Glob to list all .ts files in "packages/tool-builtin/src/tools"\n` +
-             `2. Use Grep to find the word "buildTool" in "packages/tool-builtin/src"\n` +
+             `1. Use Glob to list all .ts files in "src/builtinTools/tools"\n` +
+             `2. Use Grep to find the word "buildTool" in "src/builtinTools"\n` +
              `Then summarize what you found from both searches.`,
   }];
 
@@ -234,7 +234,7 @@ itLive('multi-tool: LLM calls Glob and Grep in the same turn', async () => {
 // ── 4. Full agent loop: Read a real file ──────────────────────────────────────
 
 itLive('agent-loop: LLM reads a file and answers a question about it', async () => {
-  const targetFile = path.join(WORKSPACE, 'packages/tool-builtin/src/tools/fs-read.ts');
+  const targetFile = path.join(WORKSPACE, 'src/builtinTools/tools/fs-read.ts');
   const messages: ModelMessage[] = [{
     role:    'user',
     content: `Read the file at "${targetFile}" using the Read tool. ` +

@@ -5,7 +5,7 @@ import type {
   ToolExecutionContext,
   ToolCapabilityRestriction,
 } from '@ema-agent/tools';
-import { SkillCallTool } from '../src/tools/SkillCallTool/SkillCallTool.js';
+import { SkillCallTool } from '../tools/SkillCallTool/SkillCallTool.js';
 
 describe('SkillCallTool', () => {
   it('应用 allowed-tools 并把实际可用工具返回给模型', async () => {

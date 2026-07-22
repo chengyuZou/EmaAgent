@@ -1,6 +1,6 @@
 // 这里测试固定搜索服务的 HTTP 响应会在声明长度、实际字节和取消边界处停止读取。
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { fetchBounded } from '../src/tools/shared/BoundedFetch.js';
+import { fetchBounded } from '../tools/shared/BoundedFetch.js';
 
 afterEach(() => {
   vi.unstubAllGlobals();

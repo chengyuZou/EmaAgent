@@ -1,7 +1,7 @@
 // 这里测试 V1 内置工具的注册门禁、稳定身份和模型可见名称。
 import { describe, expect, it } from 'vitest';
 import { ToolRegistry } from '@ema-agent/tools';
-import { BuiltinTools, registerBuiltinTools } from '../src/index.js';
+import { BuiltinTools, registerBuiltinTools } from '../index.js';
 
 describe('V1 内置工具注册边界', () => {
   it('未完成的 Plan Mode 工具不向模型暴露', () => {
