@@ -1,6 +1,7 @@
 // 统一编排 Context 的微压缩、全量摘要、恢复、持久化和失败熔断。
 import { randomUUID } from 'node:crypto';
-import { asCompactionId, type MessageBlocks, type SessionId } from '@ema-agent/contracts';
+import { asCompactionId, type SessionId } from '@ema-agent/contracts';
+import type { MessageBlocks } from '@ema-agent/session';
 import { estimateLlmInputTokens } from '@ema-agent/token';
 import { fitCompactionContext } from './compaction/budget.js';
 import { runMacroCompaction } from './compaction/macroCompaction.js';

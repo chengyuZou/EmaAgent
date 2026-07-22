@@ -25,6 +25,7 @@
     "@ema-agent/turn": "workspace:*",
     "@ema-agent/llm": "workspace:*",
     "@ema-agent/knowledge": "workspace:*",
+    "@ema-agent/session": "workspace:*",
     "@ema-agent/permission": "workspace:*",
     "@ema-agent/public-http": "workspace:*",
     "@ema-agent/tools": "workspace:*",

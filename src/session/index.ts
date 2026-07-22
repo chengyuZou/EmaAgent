@@ -4,6 +4,7 @@ export { RunRegistry } from './run-registry.js';
 export { BranchAncestorTable } from './branch-ancestor.js';
 export { EulerTourRMQLCA } from './euler-rmq-lca.js';
 export { SessionOwnershipError } from './errors.js';
+export { parseMessageBlocksJson } from './message.js';
 export type {
   SessionWire,
   SessionsListResult,
@@ -33,9 +34,6 @@ export type {
   Message,
   Branch,
   BranchSibling,
-  MessageBlocks,
-  AssistantBlock,
-  UserBlock,
   CreateSessionInput,
   StartTurnInput,
   CompleteTurnInput,
@@ -51,3 +49,14 @@ export type {
   SessionOwnershipFacade,
   SessionOwnedEntity,
 } from './types.js';
+
+export type {
+  AssistantBlock,
+  MessageBlocks,
+  MessageContentPart,
+  NarrativeContextBlocks,
+  NarrativeTimelineRecall,
+  ToolResultBlock,
+  UserBlock,
+} from './message.js';
+export type { MessageKind, MessageRole } from '@ema-agent/storage';

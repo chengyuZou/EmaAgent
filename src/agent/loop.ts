@@ -1,8 +1,7 @@
 // 执行通用 Turn 的多轮模型与工具循环，并维护每轮状态、预算和事件。
 import {
   randomUUID } from 'node:crypto';
-import type { ToolResultBlock,
-} from '@ema-agent/contracts';
+import type { ToolResultBlock } from '@ema-agent/session';
 import {
   EmaStreamEvent,
 } from '@ema-agent/turn';

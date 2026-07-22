@@ -5,17 +5,14 @@ import type {
   BranchId,
   TurnMode,
   TurnStatus,
-  MessageRole,
-  MessageKind,
-  MessageBlocks,
-  AssistantBlock,
-  UserBlock,
 } from '@ema-agent/contracts';
+import type { MessageKind, MessageRole } from '@ema-agent/storage';
 import type {
   ExecutionProfile,
   NarrativePolicy,
   TurnTriggerType,
 } from '@ema-agent/turn';
+import type { MessageBlocks } from './message.js';
 
 /** Session 聚合向其他模块提供的归属校验端口。 */
 export interface SessionOwnershipFacade {
@@ -192,6 +189,3 @@ export interface SessionSearchHit {
 export interface SearchSessionsOutput {
   results: SessionSearchHit[];
 }
-
-// Re-export for consumers who build block arrays
-export type { MessageBlocks, AssistantBlock, UserBlock };

@@ -16,7 +16,7 @@ import type {
 
 /**
  * Mirrors the backend's attachmentInputSchema；fileHandle 是桌面宿主签发的加密能力。
- * Stricter than contracts `TurnAttachment` (size/mtime required here) so the UI
+ * Stricter than Turn 的 `TurnAttachment` (size/mtime required here) so the UI
  * can rely on them; still assignable to TurnAttachment[], which is what
  * TurnRequest.attachments expects.
  */

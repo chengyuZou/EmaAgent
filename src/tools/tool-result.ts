@@ -1,5 +1,5 @@
 // 这里把给模型的简短工具结果和只给客户端展示的结构化内容分开。
-import type { ToolPresentation } from '@ema-agent/contracts';
+import type { ToolPresentation } from '@ema-agent/turn';
 
 const presentations = new WeakMap<object, ToolPresentation>();
 

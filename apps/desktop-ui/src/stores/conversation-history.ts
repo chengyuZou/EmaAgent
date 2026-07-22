@@ -6,20 +6,23 @@
  * the ChatHistoryItem[] that the conversation store renders.
  */
 import type {
-  AssistantBlock,
-  ToolResultBlock,
-  MessageBlocks,
-  MessageContentPart,
   MessageId,
   TurnId,
-  ToolPresentation,
 } from '@ema-agent/contracts';
 import type {
   ExecutionProfile,
   NarrativePolicy,
+  ToolPresentation,
   TurnStats,
 } from '@ema-agent/turn';
-import type { MessageWire, TurnWire } from '@ema-agent/session';
+import type {
+  AssistantBlock,
+  MessageBlocks,
+  MessageContentPart,
+  MessageWire,
+  ToolResultBlock,
+  TurnWire,
+} from '@ema-agent/session';
 import type { AttachmentInputWire } from '../api/turns.js';
 
 // ── Types (re-exported so conversation-store.ts stays as the public facade) ──

@@ -539,6 +539,9 @@ importers:
       '@ema-agent/storage':
         specifier: workspace:*
         version: link:../storage
+      '@ema-agent/turn':
+        specifier: workspace:*
+        version: link:../turn
     devDependencies:
       '@types/node':
         specifier: ^20.0.0
@@ -595,6 +598,9 @@ importers:
       '@ema-agent/public-http':
         specifier: workspace:*
         version: link:../../packages/public-http
+      '@ema-agent/session':
+        specifier: workspace:*
+        version: link:../session
       '@ema-agent/token':
         specifier: workspace:*
         version: link:../token
@@ -799,6 +805,9 @@ importers:
       '@ema-agent/llm':
         specifier: workspace:*
         version: link:../llm
+      '@ema-agent/session':
+        specifier: workspace:*
+        version: link:../session
       '@ema-agent/turn':
         specifier: workspace:*
         version: link:../turn
@@ -1175,6 +1184,9 @@ importers:
       '@ema-agent/contracts':
         specifier: workspace:*
         version: link:../contracts
+      '@ema-agent/llm':
+        specifier: workspace:*
+        version: link:../llm
       '@ema-agent/storage':
         specifier: workspace:*
         version: link:../storage

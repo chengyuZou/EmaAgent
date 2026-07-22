@@ -1,5 +1,14 @@
 import type { SqliteDb } from '../database.js';
-import type { MessageId, SessionId, TurnId, BranchId, MessageRole, MessageKind } from '@ema-agent/contracts';
+import type { MessageId, SessionId, TurnId, BranchId } from '@ema-agent/contracts';
+
+export type MessageRole = 'system' | 'user' | 'assistant';
+
+/** messages.kind 的数据库稳定枚举。 */
+export type MessageKind =
+  | 'normal'
+  | 'tool_results'
+  | 'summary'
+  | 'narrative_context';
 
 export interface MessageRow {
   id:          string;

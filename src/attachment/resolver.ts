@@ -2,7 +2,7 @@
 
 import * as fs   from 'node:fs';
 import * as path from 'node:path';
-import type { MessageContentPart } from '@ema-agent/contracts';
+import type { TurnContentPart } from '@ema-agent/turn';
 import type { Attachment, ResolvedPrompt } from './types.js';
 
 /** 超过这个大小的图片不内联，对大多数 Provider 来说太大了。 */
@@ -17,7 +17,7 @@ const IMAGE_INLINE_LIMIT = 5 * 1024 * 1024; // 5 MB
  * 不抛错：读文件失败时降级成一行警告，不让整个解析挂掉。
  */
 export function resolveForPrompt(attachments: Attachment[]): ResolvedPrompt {
-  const imageParts: MessageContentPart[] = [];
+  const imageParts: TurnContentPart[] = [];
   const fileLines:  string[]             = [];
 
   for (const att of attachments) {
@@ -38,7 +38,7 @@ export function resolveForPrompt(attachments: Attachment[]): ResolvedPrompt {
 
 // ── 辅助函数 ───────────────────────────────────────────────────────────────────
 
-function tryInlineImage(att: Attachment): MessageContentPart | null {
+function tryInlineImage(att: Attachment): TurnContentPart | null {
   // B-071:不信任客户端传入的 att.size(可伪造),用 fs.statSync 真实字节判断。
   // 否则声明 1KB、实际 2GB 的文件会绕过 inline 限制,readFileSync 把整个 2GB 读进内存。
   let realSize: number;

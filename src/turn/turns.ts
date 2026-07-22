@@ -1,10 +1,27 @@
 // 定义 Turn 的请求、创建响应、输入校验与终态统计。
 import type {
-  MessageContentPart,
   SessionId,
-  TurnAttachment,
   TurnId,
 } from '@ema-agent/contracts';
+
+/** Turn 输入边界允许携带的文本与媒体内容。 */
+export type TurnContentPart =
+  | { type: 'text'; text: string }
+  | { type: 'image_url'; url: string; name?: string; width?: number; height?: number }
+  | { type: 'image_data'; data: string; mimeType: string; name?: string; width?: number; height?: number }
+  | { type: 'audio_data'; data: string; mimeType: string; name?: string; durationMs?: number }
+  | { type: 'file_data'; data: string; mimeType: string; filename?: string; pageCount?: number }
+  | { type: 'file_url'; url: string; mimeType: string; filename?: string; pageCount?: number };
+
+/** 用户提交给 Turn 的附件能力与展示元数据。 */
+export interface TurnAttachment {
+  id: string;
+  name: string;
+  mimeType: string;
+  size?: number;
+  mtime?: number;
+  fileHandle?: string | null;
+}
 
 /** 当前 Turn 在某个知识库内允许检索的文档范围。 */
 export interface KbAssetScope {
@@ -45,7 +62,7 @@ export interface TurnRequest {
   executionProfile: ExecutionProfile;
   narrativePolicy:  NarrativePolicy;
   userInput?:    string;
-  contentParts?: MessageContentPart[];
+  contentParts?: TurnContentPart[];
   attachments?:  TurnAttachment[];
   /** provider_configs.id — 本次 turn 使用的供应商实例。和 model 成对使用。 */
   providerId?:   string;

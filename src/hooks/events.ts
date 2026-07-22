@@ -1,17 +1,17 @@
 import type {
-  AssistantBlock,
   CompactionId,
   ErrorCode,
   MessageId,
-  NarrativeTimelineRecall,
   ToolCallId,
   TurnMode,
 } from '@ema-agent/contracts';
 import type {
+  AssistantBlock,
   LlmCallId,
   LlmTokenUsage,
   Message as ModelMessage,
 } from '@ema-agent/llm';
+import type { NarrativeTimelineRecall } from '@ema-agent/session';
 
 /**
  * 所有 hook 事件都是 turn 级别的 engine 内部生命周期事件。

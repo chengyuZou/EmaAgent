@@ -19,7 +19,7 @@ import { describe, it, expect, beforeAll } from 'vitest';
 import path from 'node:path';
 import { LanguageModelRuntime } from '@ema-agent/llm';
 import type { AssistantBlock, LlmToolDef, Message as ModelMessage } from '@ema-agent/llm';
-import type { ToolResultBlock } from '@ema-agent/contracts';
+import type { ToolResultBlock } from '@ema-agent/session';
 import { ToolRegistry } from '@ema-agent/tools';
 import type { ToolExecutionContext, ReadFileState } from '@ema-agent/tools';
 import { PermissionEngine } from '@ema-agent/permission';

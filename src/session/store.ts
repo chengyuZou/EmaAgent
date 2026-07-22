@@ -21,7 +21,6 @@ import {
   type MessageId,
   type BranchId,
   type TurnMode,
-  type MessageBlocks,
   asSessionId,
   asTurnId,
   asMessageId,
@@ -29,6 +28,8 @@ import {
 } from '@ema-agent/contracts';
 import { SessionOwnershipError } from './errors.js';
 import type { SessionOwnershipFacade } from './types.js';
+import { parseMessageBlocksJson } from './message.js';
+import type { MessageBlocks } from './message.js';
 import type { Database } from '@ema-agent/storage';
 import type { ExecutionProfile, NarrativePolicy } from '@ema-agent/turn';
 import { RunRegistry } from './run-registry.js';
@@ -124,13 +125,7 @@ function toTurn(row: TurnRow): Turn {
 }
 
 function toMessage(row: MessageRow): Message {
-  let blocks: MessageBlocks;
-  try {
-    blocks = JSON.parse(row.blocks_json) as MessageBlocks;
-  } catch {
-    // Fallback: treat malformed JSON as a plain string (defensive)
-    blocks = row.blocks_json;
-  }
+  const blocks = parseMessageBlocksJson(row.blocks_json, row.role, row.kind);
   return {
     id:          row.id as MessageId,
     sessionId:   row.session_id as SessionId,

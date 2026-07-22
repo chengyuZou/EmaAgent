@@ -25,4 +25,3 @@ export function asHookInvocationId(s: string): HookInvocationId { return s as Ho
 
 export type TurnMode      = 'chat' | 'narrative' | 'agent';
 export type TurnStatus    = 'pending' | 'running' | 'completed' | 'failed' | 'aborted';
-export type MessageRole   = 'system' | 'user' | 'assistant';

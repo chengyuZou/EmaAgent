@@ -57,7 +57,7 @@ export { MemoryExtractionRunsRepo }   from './repos/memory-extraction-runs.js';
 export type { DatabaseOptions, SqliteDb } from './database.js';
 export type { SessionRow, SessionRowEnriched, SessionSearchRow, SessionInsert, SessionsGrouped } from './repos/sessions.js';
 export type { TurnRow, TurnInsert, TurnCompletion } from './repos/turns.js';
-export type { MessageRow, MessageInsert } from './repos/messages.js';
+export type { MessageRow, MessageInsert, MessageRole, MessageKind } from './repos/messages.js';
 export type { BranchRow, BranchInsert } from './repos/branches.js';
 export { CharacterCardUpdateContractError } from './repos/character-cards.js';
 export type {

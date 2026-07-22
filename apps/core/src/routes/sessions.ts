@@ -4,9 +4,6 @@ import { z } from 'zod';
 import { asSessionId, asTurnId, asBranchId } from '@ema-agent/contracts';
 import type {
   MessageBlocks,
-  TurnAttachment,
-} from '@ema-agent/contracts';
-import type {
   SessionAttachmentsResult,
   SessionWire,
   SessionMessagesResult,
@@ -15,6 +12,7 @@ import type {
   SessionsSearchResult,
   BranchTreeWire,
 } from '@ema-agent/session';
+import type { TurnAttachment } from '@ema-agent/turn';
 import { SessionOwnershipError } from '@ema-agent/session';
 import type { AppBindings } from '../wiring/index.js';
 import { removeTurnFiles } from '../storage-locations/index.js';

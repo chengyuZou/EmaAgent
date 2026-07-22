@@ -7,7 +7,6 @@ import type {
   ErrorCode,
   HookInvocationId,
   SessionId,
-  ToolPresentation,
   TurnId,
   TurnMode,
 } from '@ema-agent/contracts';
@@ -18,6 +17,20 @@ import type { ExecutionProfile, NarrativePolicy, TurnStats } from './turns.js';
 
 /** 子 Agent 获取初始上下文的方式。 */
 export type AgentKind = 'subagent' | 'fork';
+
+/** 文件工具提交成功后给客户端使用的有界真实变更。 */
+export interface FileChangePresentation {
+  kind: 'file_change';
+  operation: 'create' | 'update';
+  filePath: string;
+  unifiedDiff: string;
+  additions: number;
+  deletions: number;
+  truncated: boolean;
+  omittedReason?: string;
+}
+
+export type ToolPresentation = FileChangePresentation;
 
 // ── Shared sub-types ──────────────────────────────────────────────────────────
 

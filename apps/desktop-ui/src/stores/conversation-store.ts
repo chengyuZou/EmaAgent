@@ -24,8 +24,7 @@ import {
   turnsApi,
   type AttachmentInputWire,
   } from '../api/turns.js';
-import type { ToolPresentation } from '@ema-agent/contracts';
-import type { KbAssetScope } from '@ema-agent/turn';
+import type { KbAssetScope, ToolPresentation } from '@ema-agent/turn';
 import {
   handleTurnAborted,
   evictSessionPlayers,
@@ -55,10 +54,10 @@ import type {
   SessionId,
   TurnId,
   BranchId,
-  MessageContentPart,
 } from '@ema-agent/contracts';
 import {
   type ExecutionProfile,
+  type TurnContentPart as MessageContentPart,
   type NarrativePolicy,
   type TurnCreatedResponse,
 } from '@ema-agent/turn';

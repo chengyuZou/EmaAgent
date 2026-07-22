@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { Database } from '../../index.js';
 
-// B-067：锁定 turn_attachments 表字段集，与 contracts TurnAttachment 注释承诺对齐。
+// B-067：锁定 turn_attachments 表字段集，与 TurnAttachment 注释承诺对齐。
 // TurnAttachment（UI 元数据视图）的字段经 camelCase → snake_case 映射后必须都能从
 // turn_attachments 表投影：id→id, name→name, mimeType→mime, size→size,
 // mtime→mtime, localPath→local_path。注释曾错误声称存在 messages.attachments_json

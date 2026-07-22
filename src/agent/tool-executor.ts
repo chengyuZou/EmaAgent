@@ -15,11 +15,11 @@
 
 import { asToolCallId } from '@ema-agent/contracts';
 import type {
-  ToolResultBlock,
   SessionId,
   ToolCallId,
   TurnId,
 } from '@ema-agent/contracts';
+import type { ToolResultBlock } from '@ema-agent/session';
 import type { ToolExecutionStatus } from '@ema-agent/tools';
 import type {
   EmaStreamEvent,

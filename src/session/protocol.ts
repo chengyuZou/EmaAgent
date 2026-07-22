@@ -1,16 +1,15 @@
 // 定义 Session 模块跨 Core 与客户端传输的稳定 JSON 结构。
 import type {
-  MessageBlocks,
-  MessageKind,
-  MessageRole,
-  TurnAttachment,
   TurnStatus,
 } from '@ema-agent/contracts';
+import type { MessageKind, MessageRole } from '@ema-agent/storage';
 import type {
   ExecutionProfile,
   NarrativePolicy,
+  TurnAttachment,
   TurnTriggerType,
 } from '@ema-agent/turn';
+import type { MessageBlocks } from './message.js';
 
 export type SessionAttachmentFileStatus =
   | 'available'

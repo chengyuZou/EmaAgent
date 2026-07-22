@@ -1,6 +1,6 @@
 // 这里放 Attachment 模块用到的基础类型：附件记录、前端输入、解析给 LLM 的结果。
 
-import type { MessageContentPart, TurnAttachment } from '@ema-agent/contracts';
+import type { TurnAttachment, TurnContentPart } from '@ema-agent/turn';
 import type { SessionAttachmentFileStatus } from '@ema-agent/session';
 
 // ── 领域类型 ───────────────────────────────────────────────────────────────────
@@ -45,7 +45,7 @@ export interface AttachmentInput {
  *               没有时为空字符串。
  */
 export interface ResolvedPrompt {
-  imageParts:  MessageContentPart[];
+  imageParts:  TurnContentPart[];
   promptLines: string;
 }
 
