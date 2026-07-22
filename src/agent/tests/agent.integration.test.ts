@@ -201,7 +201,7 @@ describe.skipIf(!DS_KEY)('AgentEngine integration (DeepSeek)', () => {
     sessionStore.clear();
     const engine = new AgentEngine(deps);
 
-    const targetFile = path.join(WORKSPACE, 'packages/agent/package.json');
+    const targetFile = path.join(WORKSPACE, 'src/agent/package.json');
     const events = await collectEvents(engine, makeInput({
       turn:      makeTurn('turn-2'),
       userInput: `Use the Read tool to read the file at path "${targetFile}" and tell me the package name.`,

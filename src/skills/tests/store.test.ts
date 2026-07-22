@@ -32,11 +32,11 @@ describe('SkillStore', () => {
       '检查 $ARGUMENTS\n目录 ${SKILL_DIR}\n',
     );
 
-    const activation = await store.activate('review', 'packages/agent');
+    const activation = await store.activate('review', 'src/agent');
 
     expect(activation.name).toBe('review');
     expect(activation.allowedTools).toEqual(['Read', 'mcp__github__*']);
-    expect(activation.content).toContain('检查 packages/agent');
+    expect(activation.content).toContain('检查 src/agent');
     expect(activation.content).toContain(rootPath.replaceAll('\\', '/'));
   });
 
