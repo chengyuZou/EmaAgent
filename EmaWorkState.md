@@ -1,7 +1,7 @@
 # EmaAgent 当前重构接力板
 
 > 状态：临时施工记录；架构完成后删除
-> 更新时间：2026-07-21
+> 更新时间：2026-07-22
 > 作用：只记录当前阶段、工作区归属、最近验证和下一步。长期规则以 `CLAUDE.md` 为准，目标设计以 `EmaRefactor.md` 为准，设计依据以 `EmaClaudeArchitectureReview.md` 为准。
 
 ## 当前阶段
@@ -17,16 +17,16 @@
 
 ## 当前工作区
 
-工作区包含尚未提交的 R3 Context 主链接线：`src/context`、`src/prompts`、`src/memory`、`src/skills`、`packages/conversation`、`packages/agent`、`packages/tools`、`packages/hook` 与 `apps/core`。旧 Prompt/Conversation `beforeLlm` Hook 文件及过时 Prompt Hook 测试已删除，新增 `packages/conversation/src/narrativeRecall.ts`。恢复工作后必须先重新运行 `git status --short` 和 `git diff`，不能依据本记录覆盖其他 Agent 的新改动。
+Conversation 与 Agent 已迁入 `src/conversation`、`src/agent`。旧 `agent-context` 与 `agent-task` 已分别机械迁入 `src/agentContext`、`src/tasks`，暂时保留原内部包名和运行语义；`packages/tools` 按当前安排暂不迁移。恢复工作后必须先重新运行 `git status --short` 和 `git diff`，不能依据本记录覆盖其他 Agent 的新改动。
 
 当前基线最近提交：
 
 ```text
-8baa141 feat(memory): add concurrency tests for MemoryTaskRunner and task kind validation
-42b235c feat: add tests for reembedding functionality and semantic concurrency
+91dbfaf feat(sandbox): add sandbox module with platform detection and shell probing
+8bc9450 feat: add tools framework with registration, execution, and result handling
 ```
 
-本轮 R3 改动尚未提交；不要把 `8baa141` 误认为 Context 接线已经入库。
+当前迁移由并行工作流持续提交；开始下一批前必须重新确认 HEAD 与工作区，不能依据旧提交号推断文件归属。
 
 ## 已确定的 V1 架构口径
 
@@ -144,6 +144,7 @@ R3 主实现已完成。下一步先做真实 Turn 联调和 Diff 复查，再�
 - Prompt 16/16、Context 18/18、Memory 20/20、Skills 21/21、Tools 12/12、Conversation 7/7、Agent 32/32、Core 88/88 测试通过。
 - Agent 的 4 项真实 API 集成测试按既有环境变量规则跳过，未计入通过数。
 - Hook、Prompt、Context、Memory、Skills、Conversation、Agent 已按依赖顺序 build；Core typecheck 通过。
+- `agent-context` 已迁入 `src/agentContext`：build/typecheck 通过，测试 4/4；`agent-task` 已迁入 `src/tasks`：build/typecheck 通过，测试 7/7；Agent 与 Core 直接消费 typecheck 通过。
 - `git diff --check` 通过，仅有仓库既有的 Windows CRLF 提示。
 
 ## 恢复工作时使用的提示词

@@ -19,8 +19,8 @@ import solarIcons from '@iconify-json/solar/icons.json';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SCANNED_DIRS = [
   '../desktop-ui/src',
-  '../../packages/ui/src',
-  '../../packages/live2d-react/src',
+  '../../src/ui',
+  '../../src/live2d-react',
 ];
 for (const rel of SCANNED_DIRS) {
   if (!existsSync(resolve(__dirname, rel))) {
@@ -77,8 +77,8 @@ const config: UserConfig = {
     filesystem: [
       'src/**/*.{ts,tsx}',
       '../desktop-ui/src/**/*.{ts,tsx}',
-      '../../packages/ui/src/**/*.{ts,tsx}',
-      '../../packages/live2d-react/src/**/*.{ts,tsx}',
+      '../../src/ui/**/*.{ts,tsx}',
+      '../../src/live2d-react/**/*.{ts,tsx}',
     ],
   },
 };

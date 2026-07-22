@@ -53,8 +53,8 @@ export default defineConfig({
   resolve: {
     alias: {
       '@ema-agent/desktop-ui': resolve(__dirname, '../desktop-ui/src/index.ts'),
-      '@ema-agent/ui':         resolve(__dirname, '../../packages/ui/src'),
-      '@ema-agent/live2d-react': resolve(__dirname, '../../packages/live2d-react/src/index.ts'),
+      '@ema-agent/ui':         resolve(__dirname, '../../src/ui'),
+      '@ema-agent/live2d-react': resolve(__dirname, '../../src/live2d-react/index.ts'),
     },
   },
 
