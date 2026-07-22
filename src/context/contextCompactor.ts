@@ -6,7 +6,7 @@ import { fitCompactionContext } from './compaction/budget.js';
 import { runMacroCompaction } from './compaction/macroCompaction.js';
 import { microCompact } from './compaction/microCompaction.js';
 import { buildPostCompactionRestore } from './compaction/postCompactionRestore.js';
-import { findSafeCutPoint, macroFailureReason } from './compaction/safeCut.js';
+import { findSafeCutPoint, findTailSafeCutPoint, macroFailureReason } from './compaction/safeCut.js';
 import { sanitizeCompactionMessages } from './compaction/sanitize.js';
 import {
   DEFAULT_CONTEXT_COMPACTION_SETTINGS,
@@ -117,19 +117,18 @@ export class ContextCompactor {
     }
 
     // 安全切割点:不能切在 tool_use 和 tool_result 中间,否则模型会看到未配对工具调用报错。
-    // safeCut=0 表示找不到安全点,放弃压缩。
     const safeCut = findSafeCutPoint(working, working.length - tailSize);
-    if (safeCut === 0) {
-      return {
-        ...skipped('no_safe_cut', undefined, assemble(working), beforeTokens),
-        microCleared: micro.cleared,
-        afterTokens: estimated,
-        savedTokens: Math.max(0, beforeTokens - estimated),
-      };
-    }
-
-    const head = working.slice(0, safeCut);
-    const tail = working.slice(safeCut);
+    // safeCut===0(整段 tool_use/tool_result 交错,无纯文本切点)时走兜底降级:
+    // 旧逻辑直接 skipped 返回原文,force=true 时原文已溢出 -> 必 PTL,且 skipped 不经 fail()、不计熔断,下轮重复爆。
+    // 改为放宽切点继续压缩:允许切在 tool_use assistant 上(其 tool_result 紧跟在 tail 内,tail 侧配对完整),
+    // head 整段送 Macro 摘要(formatHistory 把结构化 tool 块拍成文本,不引入孤立 tool_use/tool_result),
+    // tail 原文保留;极端退化(全 tool_result,正常不可达)时 tail 为空、整段降级。
+    // 降级后 Macro 失败仍走 fail() 计熔断,补上原 no_safe_cut 路径不自保护的缺口。
+    const tailCut = safeCut === 0
+      ? findTailSafeCutPoint(working, working.length - tailSize)
+      : safeCut;
+    const head = tailCut > 0 ? working.slice(0, tailCut) : working;
+    const tail = tailCut > 0 ? working.slice(tailCut) : [];
     const compactionId = asCompactionId(randomUUID());
     const beforeHook = await this.deps.hookBus?.trigger('beforeCompact', {
       payload: { compactionId, messageCount: messages.length, tokenEstimate: estimated },

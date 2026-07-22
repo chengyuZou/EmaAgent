@@ -20,6 +20,24 @@ export function findSafeCutPoint(messages: ModelMessage[], desiredCut: number): 
   return 0;
 }
 
+/**
+ * 放宽版安全切点,仅用于 safeCut===0 的兜底降级。
+ * 与 findSafeCutPoint 的区别:允许切在 tool_use assistant 上--其 tool_result 紧跟在 tail 内,
+ * tail 侧配对完整;只跳过纯 tool_result 的 user(切在那里会让 tail 以孤立 result 开头,其 tool_use 落在 head)。
+ * head 侧配对无关紧要:head 整体送 Macro 摘要,formatHistory 会把结构化 tool 块拍成纯文本,
+ * 不再以 tool_use/tool_result block 形式回到主模型上下文。
+ */
+export function findTailSafeCutPoint(messages: ModelMessage[], desiredCut: number): number {
+  for (let i = desiredCut; i > 0; i--) {
+    const msg = messages[i]!;
+    if (msg.role === 'user' && Array.isArray(msg.content) && isAllToolResults(msg.content)) {
+      continue;
+    }
+    return i;
+  }
+  return 0;
+}
+
 export function isAllToolResults(blocks: unknown[]): boolean {
   return blocks.length > 0 &&
     blocks.every((b) => (b as { type?: string }).type === 'tool_result');

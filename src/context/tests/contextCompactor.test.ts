@@ -23,6 +23,26 @@ function oversizedHistory(): Message[] {
   }));
 }
 
+// 整段 tool_use/tool_result 交错的工具历史,没有任何纯文本消息 -> findSafeCutPoint 返回 0。
+function toolOnlyHistory(pairs = 10, repeat = 100): Message[] {
+  const msgs: Message[] = [];
+  for (let i = 0; i < pairs; i++) {
+    msgs.push({
+      role: 'assistant',
+      content: [{ type: 'tool_use', id: `call-${i}`, name: 'Read', args: { file_path: `file-${i}.ts` } }],
+    });
+    msgs.push({
+      role: 'user',
+      content: [{
+        type: 'tool_result',
+        toolUseId: `call-${i}`,
+        content: `result-${i} ${'long context '.repeat(repeat)}`,
+      }],
+    });
+  }
+  return msgs;
+}
+
 function args(messages: Message[]) {
   return {
     sessionId,
@@ -154,6 +174,61 @@ describe('ContextCompactor', () => {
     const second = await compactor.compact(args(oversizedHistory()));
     const third = await compactor.compact(args(oversizedHistory()));
 
+    expect(first.status).toBe('failed');
+    expect(second.status).toBe('failed');
+    expect(third).toEqual(expect.objectContaining({ status: 'skipped', reason: 'circuit_open' }));
+    expect(complete).toHaveBeenCalledTimes(2);
+  });
+
+  it('safeCut===0(整段工具调用)时降级送 Macro 摘要,而非返回原文爆掉', async () => {
+    const events: EmaStreamEvent[] = [];
+    const persistSummary = vi.fn();
+    const complete = vi.fn(async (request: LlmRequest) => ({
+      blocks: [{ type: 'text' as const, text: '压缩后的工具历史摘要' }],
+      stopReason: 'end_turn' as const,
+      usage: { inputTokens: 100, outputTokens: 10 },
+      request,
+    }));
+    const compactor = new ContextCompactor(
+      { llm: { complete } as never, persistSummary },
+      { bufferTokens: 2_000, defaultReservedOutputTokens: 0, maximumReservedOutputTokens: 0 },
+    );
+
+    // force=true 模拟 Provider 已报告超限:旧逻辑此时 safeCut===0 -> skipped 返回原文 -> 必 PTL。
+    const result = await compactor.compact({ ...args(toolOnlyHistory()), force: true, emit: event => events.push(event) });
+
+    expect(result.status).toBe('completed');
+    expect(complete).toHaveBeenCalledTimes(1);
+    expect(persistSummary).toHaveBeenCalledTimes(1);
+    expect(events.map(event => event.type)).toEqual([
+      'context_compaction_started',
+      'context_compaction_completed',
+    ]);
+    // 证明 head 确实送进了摘要模型(降级发生,而非 skipped 返回原文)。
+    const summaryInput = JSON.stringify(complete.mock.calls[0]?.[0]?.messages);
+    expect(summaryInput).toContain('tool_use');
+    expect(summaryInput).toContain('tool_result');
+  });
+
+  it('safeCut===0 降级后 Macro 失败计入熔断,达上限后打开 circuit', async () => {
+    const complete = vi.fn(async () => {
+      throw new Error('provider unavailable');
+    });
+    const compactor = new ContextCompactor(
+      { llm: { complete } as never, persistSummary: vi.fn() },
+      {
+        bufferTokens: 2_000,
+        defaultReservedOutputTokens: 0,
+        maximumReservedOutputTokens: 0,
+        maximumConsecutiveFailures: 2,
+      },
+    );
+
+    const first = await compactor.compact({ ...args(toolOnlyHistory()), force: true });
+    const second = await compactor.compact({ ...args(toolOnlyHistory()), force: true });
+    const third = await compactor.compact({ ...args(toolOnlyHistory()), force: true });
+
+    // 旧逻辑:safeCut===0 走 skipped('no_safe_cut'),不经 fail()、不计熔断 -> 永远不会 circuit_open。
     expect(first.status).toBe('failed');
     expect(second.status).toBe('failed');
     expect(third).toEqual(expect.objectContaining({ status: 'skipped', reason: 'circuit_open' }));
