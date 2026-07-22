@@ -12,7 +12,7 @@ import { useSessionStore }  from '../stores/session-store.js';
 import { storageApi }       from '../api/storage.js';
 import { tauriBridge }      from '../lib/tauri-bridge.js';
 import { showToast }        from '../lib/toast.js';
-import type { SessionId }   from '@ema-agent/contracts';
+import type { SessionId } from '@ema-agent/ids';
 import type { SessionWire } from '../api/sessions.js';
 import type {
   DataDirItem,

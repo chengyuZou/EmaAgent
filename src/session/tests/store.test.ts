@@ -2,7 +2,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { Database } from '@ema-agent/storage';
 import { SessionStore } from '../store.js';
-import type { SessionId, TurnId, MessageId } from '@ema-agent/contracts';
+import type { SessionId, TurnId, MessageId } from '@ema-agent/ids';
 
 function makeStore() {
   const db = new Database({ memory: true, kind: 'data' });

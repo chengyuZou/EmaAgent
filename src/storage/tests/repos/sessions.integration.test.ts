@@ -1,6 +1,6 @@
 // 测试 Session 查询、搜索、Fork 和新 Turn 执行字段的持久化行为。
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import type { SessionId, TurnId } from '@ema-agent/contracts';
+import type { SessionId, TurnId } from '@ema-agent/ids';
 import { SessionsRepo, nextCursorFor, type SessionRow } from '../../repos/sessions.js';
 import { createTestDatabase, type TestDatabase } from '../helpers/create-test-database.js';
 

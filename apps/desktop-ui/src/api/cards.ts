@@ -2,7 +2,7 @@
  * Cards API — character card CRUD + voice-refs sub-resource.
  */
 import { sidecarClient } from './sidecar-client.js';
-import type { CharacterCardId } from '@ema-agent/contracts';
+import type { CharacterCardId } from '@ema-agent/ids';
 import type { CharacterCard, CharacterCardInput, CharacterVoiceProfile } from '@ema-agent/characters';
 import type { Live2DModelRuntimeConfig } from '@ema-agent/live2d-react';
 

@@ -13,7 +13,7 @@
  *   - Click node   → switch to that turn's branch + scroll ChatHistory to it
  */
 import { useState, useEffect, useRef, useCallback, type JSX } from 'react';
-import type { BranchId } from '@ema-agent/contracts';
+import type { BranchId } from '@ema-agent/ids';
 import type { ExecutionProfile, NarrativePolicy } from '@ema-agent/turn';
 import { Button } from '@ema-agent/ui';
 import { sessionsApi, type BranchNodeWire, type TurnTreeNodeWire } from '../api/sessions.js';

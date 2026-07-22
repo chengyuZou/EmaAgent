@@ -1,6 +1,6 @@
 // 这里放角色卡的基础类型：角色卡、卡输入、语音档案。
 
-import type { CharacterCardId } from '@ema-agent/contracts';
+import type { CharacterCardId } from '@ema-agent/ids';
 
 // ── 语音档案 ───────────────────────────────────────────────────────────────────
 // 定义在这里（character-card 包）而不是 contracts，因为它是 character-card 的

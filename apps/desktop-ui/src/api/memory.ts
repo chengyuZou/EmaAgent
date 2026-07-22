@@ -3,7 +3,7 @@
  * Types imported from @ema-agent/memory and @ema-agent/storage where available.
  */
 import { sidecarClient } from './sidecar-client.js';
-import type { SessionId } from '@ema-agent/contracts';
+import type { SessionId } from '@ema-agent/ids';
 import type { MemoryStats, MemorySessionOverrides, MaintenanceReport } from '@ema-agent/memory';
 import type { MemoryNodeRow, MemoryItemRow, MemoryEdgeRow } from '@ema-agent/storage';
 

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { asCharacterCardId } from '@ema-agent/contracts';
+import { asCharacterCardId } from '@ema-agent/ids';
 import {
   CharacterCardsRepo,
   Database,

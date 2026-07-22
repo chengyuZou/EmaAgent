@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { asMessageId, asSessionId } from '@ema-agent/contracts';
+import { asMessageId, asSessionId } from '@ema-agent/ids';
 import type { MessageKind } from '../../index.js';
 import { MessagesRepo } from '../../repos/messages.js';
 import { createTestDatabase, type TestDatabase } from '../helpers/create-test-database.js';

@@ -3,11 +3,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 // session-store 间接引用 TTS 播放；该测试只验证 Session 状态，不加载 Pixi/Live2D。
 vi.mock('../src/lib/tts-playback.js', () => ({
-  handleTtsChunk: vi.fn(),
-  handleTtsSentenceComplete: vi.fn(),
-}));
+  handleTtsChunk: vi.fn(), handleTtsSentenceComplete: vi.fn(), }));
 
-import { asSessionId } from '@ema-agent/contracts';
+import { asSessionId } from '@ema-agent/ids';
 import type { SessionWire } from '@ema-agent/session';
 import { sessionsApi } from '../src/api/sessions.js';
 import { findEnabledModel } from '../src/stores/model-catalog-store.js';

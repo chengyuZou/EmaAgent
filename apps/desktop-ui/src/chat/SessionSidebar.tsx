@@ -7,7 +7,7 @@ import { useConversationStore } from '../stores/conversation-store.js';
 import { useSessionStore, type SessionsState } from '../stores/session-store.js';
 import { useDecisionStore } from '../stores/decision-store.js';
 import { runWithToast } from '../lib/toast.js';
-import type { SessionId } from '@ema-agent/contracts';
+import type { SessionId } from '@ema-agent/ids';
 import { WorkspacePicker } from './WorkspacePicker.js';
 
 interface ProjectGroup {

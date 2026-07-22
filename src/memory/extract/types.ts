@@ -1,5 +1,5 @@
 import type { MemoryNodeType, MemoryItemKind } from '@ema-agent/storage';
-import type { TurnId } from '@ema-agent/contracts';
+import type { TurnId } from '@ema-agent/ids';
 
 // ── Extraction LLM output ────────────────────────────────────────────────────
 

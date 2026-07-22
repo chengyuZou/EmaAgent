@@ -1,6 +1,6 @@
 // 测试 Memory 提取在 profile/data 双数据库间失败后的事务回滚与幂等恢复。
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { SessionId, TurnId } from '@ema-agent/contracts';
+import type { SessionId, TurnId } from '@ema-agent/ids';
 import {
   Database,
   MemoryEdgesRepo,

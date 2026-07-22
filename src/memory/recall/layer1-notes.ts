@@ -1,4 +1,4 @@
-import type { SessionId } from '@ema-agent/contracts';
+import type { SessionId } from '@ema-agent/ids';
 import type { MemoryDeps } from '../deps.js';
 import type { SessionNoteEntry } from '../extract/types.js';
 import { safeParseEntries } from '../extract/types.js';

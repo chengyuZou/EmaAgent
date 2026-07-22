@@ -3,12 +3,7 @@ import { HookBus } from '../bus.js';
 import { PRIORITY } from '../priority.js';
 import type { HookPayload } from '../events.js';
 import type { DeepReadonly } from '../types.js';
-import type {
-  HookInvocationId,
-  MessageId,
-  SessionId,
-  TurnId,
-} from '@ema-agent/contracts';
+import type { HookInvocationId, MessageId, SessionId, TurnId } from '@ema-agent/ids';
 import type {
   EmaStreamEvent,
 } from '@ema-agent/turn';

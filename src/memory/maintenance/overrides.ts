@@ -1,4 +1,4 @@
-import type { SessionId } from '@ema-agent/contracts';
+import type { SessionId } from '@ema-agent/ids';
 import type { MemorySessionStateRepo } from '@ema-agent/storage';
 
 // ── Per-session memory overrides ─────────────────────────────────────────────

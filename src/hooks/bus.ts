@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { asHookInvocationId } from '@ema-agent/contracts';
+import { asHookInvocationId } from '@ema-agent/ids';
 import type {
   ControlHookEvent,
   HookEvent,

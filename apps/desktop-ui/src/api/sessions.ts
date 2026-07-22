@@ -9,7 +9,7 @@ import type {
   SessionId,
   TurnId,
   BranchId,
-} from '@ema-agent/contracts';
+} from '@ema-agent/ids';
 import type {
   SessionAttachmentsResult,
   SessionWire,

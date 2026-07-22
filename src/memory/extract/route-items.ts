@@ -1,5 +1,6 @@
+import type { TurnMode } from '@ema-agent/turn';
 import crypto from 'node:crypto';
-import type { SessionId, TurnId, TurnMode } from '@ema-agent/contracts';
+import type { SessionId, TurnId } from '@ema-agent/ids';
 import type { EmbeddedText } from '../types.js';
 import type { ExtractionOutput } from './types.js';
 import { unpackEmbedding } from '../embed/similarity.js';

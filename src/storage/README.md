@@ -285,4 +285,4 @@ pnpm --filter @ema-agent/storage migrate:status  # 查看当前 user_version
 
 - `better-sqlite3`:同步 SQLite 驱动(快、简单、单线程)
 - `@node-rs/jieba`:中文分词(FTS5 用)
-- `@ema-agent/contracts`:公共类型契约(只类型,无运行时依赖)
+- `@ema-agent/ids`:跨业务边界共享的品牌 ID(只类型,无业务依赖)

@@ -3,7 +3,7 @@ import { Database } from '@ema-agent/storage';
 import { CharacterCardStore } from '../store.js';
 import { EMA_CARD_ID } from '../seed/index.js';
 import type { CharacterCardInput } from '../types.js';
-import type { CharacterCardId } from '@ema-agent/contracts';
+import type { CharacterCardId } from '@ema-agent/ids';
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 

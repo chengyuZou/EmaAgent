@@ -4,7 +4,7 @@ import { createInterface } from 'node:readline/promises';
 import { z } from 'zod';
 import { buildTool } from '@ema-agent/tools';
 import type { ToolExecutionContext } from '@ema-agent/tools';
-import type { SessionId, TurnId } from '@ema-agent/contracts';
+import type { SessionId, TurnId } from '@ema-agent/ids';
 import type { EmaStreamEvent } from '@ema-agent/turn';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 

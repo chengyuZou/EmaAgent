@@ -1,5 +1,5 @@
 // 启动时通过 Session Facade 全量读取存活 Turn，并清理数据库已删除但磁盘仍残留的文件。
-import type { SessionId } from '@ema-agent/contracts';
+import type { SessionId } from '@ema-agent/ids';
 import type { TurnIdPage, TurnIdPageCursor } from '@ema-agent/storage';
 import { sweepOrphanTurnFiles } from '../storage-locations/index.js';
 

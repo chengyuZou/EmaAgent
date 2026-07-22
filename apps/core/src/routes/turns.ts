@@ -13,15 +13,16 @@ import { encodeEvent,
 import type { AppBindings } from '../wiring/index.js';
 import type {
   TurnId,
-} from '@ema-agent/contracts';
+} from '@ema-agent/ids';
 import type {
   EmaStreamEvent,
 } from '@ema-agent/turn';
 import {
   } from '@ema-agent/turn';
-import { asTurnId,
+import {
+  asTurnId,
   asSessionId,
-} from '@ema-agent/contracts';
+} from '@ema-agent/ids';
 import {
   TurnRequest,
 } from '@ema-agent/turn';
@@ -92,7 +93,7 @@ const turnBodySchema = z.object({
 // ── Drift guard ───────────────────────────────────────────────────────────────
 // Forces a compile error when T is not `true` — used to assert that the Zod
 // schema above stays in sync with the canonical TurnRequest wire type in
-// @ema-agent/contracts. If editing either side, the error here tells you the
+// @ema-agent/ids. If editing either side, the error here tells you the
 // other side is out of date.
 type RequireTrue<T extends true> = T;
 type TurnBodySchemaMatchesContract = RequireTrue<

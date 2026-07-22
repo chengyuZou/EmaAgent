@@ -34,6 +34,8 @@ Artifact 类型所有权已回到 `src/artifact`：Artifact 数据结构、`Arti
 
 Contracts 错误所有权已经收口：中央 `ErrorCode` 改为 Turn 拥有的 `TurnFailureCode`，只描述当前确实可能通过 `turn_failed` 暴露的 11 个终态码；LLM、Vision、STT、Narrative、Knowledge 等继续保留各自领域错误。无生产者的旧 Auth、Tool、Memory、Narrative、Storage、TTS/STT 与 System 占位码已删除，`contracts/errors.ts` 不再存在。
 
+Contracts 外壳已经删除：跨业务边界共享的 branded ID 收口为零业务依赖的 `src/ids` 叶子模块，并通过准入规则禁止业务对象、状态、事件、错误和 DTO 进入。`TurnStatus` 已回到 Turn；旧 `TurnMode` 仅作为统一 TurnLoop 前的兼容投影暂存于 Turn，不再污染身份模块。
+
 ## 迁移完成事实
 
 - 所有 Ema 产品模块均位于根 `src`；旧产品目录不再留在 `packages`。
@@ -48,7 +50,7 @@ Contracts 错误所有权已经收口：中央 `ErrorCode` 改为 Turn 拥有的
 
 本轮已知未提交修改：
 
-- `src/contracts`：删除中央 `messages.ts`、`artifact.ts`、`errors.ts` 及 `MessageRole`，当前只剩 `ids.ts`；
+- `src/ids`：接管跨业务边界稳定共享的 branded ID；旧 `src/contracts` 已删除；
 - `src/turn`：接管 `TurnContentPart/TurnAttachment/ToolPresentation`；
 - `src/session`：新增持久化消息结构和 `parseMessageBlocksJson`，保留 Tool Result 的展示与审计字段；
 - `src/storage`：接管数据库 `MessageRole/MessageKind`，移除无生产者的 `context/persona_reminder`；
@@ -70,7 +72,7 @@ Contracts 错误所有权已经收口：中央 `ErrorCode` 改为 Turn 拥有的
 - Provider 是控制面；LLM、Embed、Rerank、Vision、STT、TTS 是无 Session 状态的执行面。
 - Tool 使用同一份不可变 PreparedToolCall 完成准备、审批和执行；Permission 与 Sandbox 物理分层。
 - Memory 只管理长期记忆；Compaction 属于 Context；Narrative、Knowledge Base、Memory 保持隔离。
-- `src/contracts` 从现在起只减不增。业务类型、ID、事件与错误回归各自所有者；Turn 只组合跨端事件。
+- branded ID 只允许进入零业务依赖的 `src/ids`；业务类型、状态、事件与错误仍归各自所有者，Turn 只组合跨端事件。
 - 已知字段使用明确 type/interface/SQL column，不用 `meta`、`metaJson` 或万能 JSON 让调用方猜。
 - Artifact 保留源码但由 V1 Feature Gate 禁用。
 
@@ -92,8 +94,8 @@ Plan、Goal、Schedule、Workflow、Team 与 LLM 自动审批暂列 V1.5，不�
 
 ## 下一批建议顺序
 
-1. 冻结 branded ID 的最小无环归属方案，判断 `contracts/ids.ts` 是否保留为唯一无环 ID 底座；
-2. 删除已无业务类型的 Contracts 外壳，随后继续唯一 `TurnRuntime + TurnLoop` 主线。
+1. 继续唯一 `TurnRuntime + TurnLoop` 主线，先冻结输入、输出、终态和事件身份；
+2. Chat 作为受限 Profile 接入统一循环，短期保留 ConversationEngine 适配器。
 
 每批只改变一个主要业务边界。不要把 Turn 统一、数据库 Schema、全仓 ID 改名和前端切换塞进同一批。
 
@@ -121,6 +123,7 @@ Plan、Goal、Schedule、Workflow、Team 与 LLM 自动审批暂列 V1.5，不�
 - Contracts 消息统一：Core/Desktop 依赖构建与全仓 typecheck 84/84 通过；Session 43/43、Context 23/23、Conversation 7/7、Agent 32/32、Core 88/88、Desktop UI 130/130 通过；4 个 Agent Live Integration 按规则跳过。
 - Contracts 待修收口：`pnpm install --offline` 与全仓 typecheck 84/84 通过；Storage 119/119、Session 44/44、Context 23/23、Core 89/89、Desktop UI 130/130 通过；`git diff --check` 仅有既有 CRLF 提示。
 - Contracts 错误回流：全仓 typecheck 84/84；Hooks 27/27、Conversation 7/7、Agent 32/32、Core 89/89 通过；4 个 Agent Live Integration 按既有规则跳过。
+- Contracts 外壳删除：Workspace 已刷新为 44 个类型检查模块；全仓 typecheck 84/84 通过，`@ema-agent/contracts` 生产与测试引用归零。
 
 ## 工作规则
 

@@ -1,4 +1,4 @@
-import type { BranchId } from '@ema-agent/contracts';
+import type { BranchId } from '@ema-agent/ids';
 
 interface BranchNode {
   id:              BranchId;

@@ -1,5 +1,6 @@
+import type { TurnMode } from '@ema-agent/turn';
 // 执行 Memory 提取的模型准备、跨库提交、恢复标记和全局索引更新流水线。
-import type { SessionId, TurnMode } from '@ema-agent/contracts';
+import type { SessionId } from '@ema-agent/ids';
 import type {
   MemoryNodeType,
   MemoryNodeRow,

@@ -1,5 +1,5 @@
 import type { Message, LlmToolDef } from '@ema-agent/llm';
-import type { SessionId, TurnId } from '@ema-agent/contracts';
+import type { SessionId, TurnId } from '@ema-agent/ids';
 import type {
   EmaStreamEvent,
   ExecutionProfile,

@@ -3,7 +3,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import BetterSqlite3 from 'better-sqlite3';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { asSessionId, asTurnId } from '@ema-agent/contracts';
+import { asSessionId, asTurnId } from '@ema-agent/ids';
 import {
   AgentTaskMessagesRepo,
   AgentTasksRepo,

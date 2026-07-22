@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { asSessionId } from '@ema-agent/contracts';
+import { asSessionId } from '@ema-agent/ids';
 import type { AppBindings } from '../wiring/index.js';
 
 // ── Schemas ──────────────────────────────────────────────────────────────────

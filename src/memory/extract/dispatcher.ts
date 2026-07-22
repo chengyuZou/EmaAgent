@@ -1,4 +1,5 @@
-import type { SessionId, TurnMode } from '@ema-agent/contracts';
+import type { TurnMode } from '@ema-agent/turn';
+import type { SessionId } from '@ema-agent/ids';
 import { bestEffort } from '../best-effort.js';
 import type { MemoryDeps } from '../deps.js';
 import type { MemorySettings } from '../types.js';

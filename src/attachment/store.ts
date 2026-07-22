@@ -3,7 +3,7 @@
 import { randomUUID } from 'node:crypto';
 import { stat } from 'node:fs/promises';
 import type { AttachmentRepo } from '@ema-agent/storage';
-import { asSessionId, asTurnId } from '@ema-agent/contracts';
+import { asSessionId, asTurnId } from '@ema-agent/ids';
 import type { SessionOwnershipFacade } from '@ema-agent/session';
 import type { Attachment, AttachmentInput, InspectedAttachment, ResolvedPrompt } from './types.js';
 import { AttachmentNotFoundError } from './errors.js';

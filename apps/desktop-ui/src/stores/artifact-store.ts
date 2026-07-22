@@ -2,7 +2,7 @@
 import { create } from 'zustand';
 import { artifactsApi } from '../api/artifacts.js';
 import type { Artifact, ArtifactId } from '@ema-agent/artifact';
-import type { SessionId } from '@ema-agent/contracts';
+import type { SessionId } from '@ema-agent/ids';
 
 export type ArtifactLoadState =
   | { status: 'idle'; generation: number; error: null }

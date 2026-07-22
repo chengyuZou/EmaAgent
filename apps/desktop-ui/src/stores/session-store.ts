@@ -3,7 +3,7 @@ import { create } from 'zustand';
 import { sessionsApi, type SessionWire } from '../api/sessions.js';
 import { useConversationStore } from './conversation-store.js';
 import { useDecisionStore } from './decision-store.js';
-import type { SessionId } from '@ema-agent/contracts';
+import type { SessionId } from '@ema-agent/ids';
 import type { ExecutionProfile, NarrativePolicy } from '@ema-agent/turn';
 
 // ── Types ─────────────────────────────────────────────────────────────────────

@@ -1,9 +1,5 @@
-import type {
-  CompactionId,
-  MessageId,
-  ToolCallId,
-  TurnMode,
-} from '@ema-agent/contracts';
+import type { TurnMode } from '@ema-agent/turn';
+import type { CompactionId, MessageId, ToolCallId } from '@ema-agent/ids';
 import type { TurnFailureCode } from '@ema-agent/turn';
 import type {
   AssistantBlock,

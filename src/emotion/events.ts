@@ -1,5 +1,5 @@
 // 定义角色情绪状态与舞台提示进入统一事件流时使用的协议。
-import type { SessionId, TurnId } from '@ema-agent/contracts';
+import type { SessionId, TurnId } from '@ema-agent/ids';
 
 export interface StageCue {
   motion?: string;

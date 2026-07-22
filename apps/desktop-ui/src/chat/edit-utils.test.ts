@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { findEditForkPoint } from './edit-utils.js';
 import type { ChatHistoryItem } from '../stores/conversation-store.js';
 import type { BranchTreeWire } from '../api/sessions.js';
-import type { TurnId } from '@ema-agent/contracts';
+import type { TurnId } from '@ema-agent/ids';
 
 function msg(turnId: string): ChatHistoryItem {
   return { role: 'user', content: 'x', createdAt: 1, turnId: turnId as TurnId };

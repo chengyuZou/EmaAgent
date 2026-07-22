@@ -1,6 +1,6 @@
 // 测试未实现的 Memory 任务无法入队，历史遗留任务也不会被谎报为完成。
 import { describe, expect, it, vi } from 'vitest';
-import { asSessionId } from '@ema-agent/contracts';
+import { asSessionId } from '@ema-agent/ids';
 import type { MemoryTaskRow } from '@ema-agent/storage';
 import {
   MemoryTaskRunner,

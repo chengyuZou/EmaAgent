@@ -1,4 +1,4 @@
-import type { SessionId } from '@ema-agent/contracts';
+import type { SessionId } from '@ema-agent/ids';
 import { estimateTextTokens } from '@ema-agent/token';
 import { bestEffort, bestEffortAsync } from '../best-effort.js';
 import type { MemoryDeps } from '../deps.js';

@@ -1,5 +1,5 @@
 ﻿import type { SqliteDb } from '../database.js';
-import type { CharacterCardId } from '@ema-agent/contracts';
+import type { CharacterCardId } from '@ema-agent/ids';
 import type { ProtectedDeleteResult } from './mutation-results.js';
 
 export interface CharacterCardRow {

@@ -27,7 +27,7 @@
   "dependencies": {
     "@ema-agent/artifact": "workspace:*",
     "@ema-agent/credential": "workspace:*",
-    "@ema-agent/contracts": "workspace:*",
+    "@ema-agent/ids": "workspace:*",
     "@ema-agent/provider": "workspace:*",
     "@ema-agent/turn": "workspace:*",
     "@ema-agent/usage": "workspace:*",

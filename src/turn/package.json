@@ -20,7 +20,7 @@
   },
   "dependencies": {
     "@ema-agent/artifact": "workspace:*",
-    "@ema-agent/contracts": "workspace:*",
+    "@ema-agent/ids": "workspace:*",
     "@ema-agent/emotion": "workspace:*",
     "@ema-agent/permission": "workspace:*",
     "@ema-agent/provider": "workspace:*"

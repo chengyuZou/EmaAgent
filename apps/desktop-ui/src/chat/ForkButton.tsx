@@ -10,7 +10,7 @@
  */
 import type { JSX } from 'react';
 import { IconButton } from '@ema-agent/ui';
-import type { TurnId } from '@ema-agent/contracts';
+import type { TurnId } from '@ema-agent/ids';
 import { useConversationStore } from '../stores/conversation-store.js';
 import { showToast } from '../lib/toast.js';
 

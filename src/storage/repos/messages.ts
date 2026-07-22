@@ -1,5 +1,5 @@
 import type { SqliteDb } from '../database.js';
-import type { MessageId, SessionId, TurnId, BranchId } from '@ema-agent/contracts';
+import type { MessageId, SessionId, TurnId, BranchId } from '@ema-agent/ids';
 
 export type MessageRole = 'system' | 'user' | 'assistant';
 

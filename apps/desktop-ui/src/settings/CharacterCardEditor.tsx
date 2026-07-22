@@ -7,7 +7,7 @@ import type { CharacterCard } from '../api/cards.js';
 import { IdentityTab } from './IdentityTab.js';
 import { BehaviorTab } from './BehaviorTab.js';
 import { VoiceTab } from './VoiceTab.js';
-import type { CharacterCardId } from '@ema-agent/contracts';
+import type { CharacterCardId } from '@ema-agent/ids';
 
 export interface CharacterCardEditorProps {
   card:        CharacterCard;

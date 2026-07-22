@@ -1,5 +1,5 @@
 // 定义权限等待与决策结果进入统一事件流时使用的稳定协议。
-import type { SessionId, ToolCallId, TurnId } from '@ema-agent/contracts';
+import type { SessionId, ToolCallId, TurnId } from '@ema-agent/ids';
 import type { AccessType, RiskLevel } from './types.js';
 
 export interface PermissionRequiredEvent {

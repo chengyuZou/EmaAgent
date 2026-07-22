@@ -1,4 +1,4 @@
-import type { SessionId, TurnId } from '@ema-agent/contracts';
+import type { SessionId, TurnId } from '@ema-agent/ids';
 
 declare const artifactIdBrand: unique symbol;
 export type ArtifactId = string & { readonly [artifactIdBrand]: 'ArtifactId' };

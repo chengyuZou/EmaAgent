@@ -1,6 +1,7 @@
+import type { TurnStatus } from '@ema-agent/turn';
 // 管理 Turn 的创建、状态流转、分支查询、分页和运行指标。
 import type { SqliteDb } from '../database.js';
-import type { TurnId, SessionId, TurnStatus, BranchId } from '@ema-agent/contracts';
+import type { TurnId, SessionId, BranchId } from '@ema-agent/ids';
 import type { ExecutionProfile, NarrativePolicy, TurnTriggerType } from '@ema-agent/turn';
 
 export interface TurnRow {

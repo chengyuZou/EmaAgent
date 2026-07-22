@@ -1,5 +1,5 @@
 // 原子加载当前角色的 Live2D 路径与运行配置，并丢弃已经过期的异步结果。
-import type { CharacterCardId } from '@ema-agent/contracts';
+import type { CharacterCardId } from '@ema-agent/ids';
 import type { Live2DModelRuntimeConfig } from '@ema-agent/live2d-react';
 
 export interface ActiveStageSnapshot {

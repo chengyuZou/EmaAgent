@@ -1,5 +1,5 @@
 import type { SqliteDb } from '../database.js';
-import type { BranchId, SessionId, TurnId } from '@ema-agent/contracts';
+import type { BranchId, SessionId, TurnId } from '@ema-agent/ids';
 
 export interface BranchRow {
   id:                string;

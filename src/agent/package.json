@@ -23,7 +23,7 @@
   "dependencies": {
     "@ema-agent/artifact": "workspace:*",
     "@ema-agent/context": "workspace:*",
-    "@ema-agent/contracts": "workspace:*",
+    "@ema-agent/ids": "workspace:*",
     "@ema-agent/turn": "workspace:*",
     "@ema-agent/hooks": "workspace:*",
     "@ema-agent/llm": "workspace:*",

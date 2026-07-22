@@ -1,12 +1,6 @@
+import type { TurnMode } from './turns.js';
 // 组合各业务域事件，形成 Turn 向客户端输出的统一结构化事件流。
-import type {
-  CharacterCardId,
-  CompactionId,
-  HookInvocationId,
-  SessionId,
-  TurnId,
-  TurnMode,
-} from '@ema-agent/contracts';
+import type { CharacterCardId, CompactionId, HookInvocationId, SessionId, TurnId } from '@ema-agent/ids';
 import type { Artifact, ArtifactId } from '@ema-agent/artifact';
 import type { TurnFailureCode } from './errors.js';
 import type { ProviderStreamEvent } from '@ema-agent/provider';

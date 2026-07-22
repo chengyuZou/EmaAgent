@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { MessageId, SessionId, TurnId } from '@ema-agent/contracts';
+import type { MessageId, SessionId, TurnId } from '@ema-agent/ids';
 import type { EmaStreamEvent } from '@ema-agent/turn';
 import type { Turn } from '@ema-agent/session';
 import { HookBus } from '@ema-agent/hooks';

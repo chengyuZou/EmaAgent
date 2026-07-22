@@ -5,20 +5,9 @@ import { SpeechBubble }          from './components/SpeechBubble.js';
 import { PermissionToastLayer }  from './components/PermissionToastLayer.js';
 import { defaultLive2DRuntime } from '@ema-agent/live2d-react';
 import {
-  FloatingDock,
-  ShellSetupDialog,
-  SidecarApiError,
-  cardsApi,
-  mountSystemEvents,
-  shellApi,
-  turnsApi,
-  useCardStore,
-  useSidecarStore,
-  useRuntimeSettingsSync,
-  useThemeSync,
-} from '@ema-agent/desktop-ui';
+  FloatingDock, ShellSetupDialog, SidecarApiError, cardsApi, mountSystemEvents, shellApi, turnsApi, useCardStore, useSidecarStore, useRuntimeSettingsSync, useThemeSync, } from '@ema-agent/desktop-ui';
 import type { ShellStatus, SidecarStatus } from '@ema-agent/desktop-ui';
-import type { CharacterCardId, TurnId } from '@ema-agent/contracts';
+import type { CharacterCardId, TurnId } from '@ema-agent/ids';
 import {
   StageSnapshotLoader,
   type ActiveStageSnapshot,

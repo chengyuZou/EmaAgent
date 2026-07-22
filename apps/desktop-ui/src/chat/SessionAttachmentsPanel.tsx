@@ -1,7 +1,7 @@
 // 展示当前 Session 的持久化附件、磁盘状态，并安全交给操作系统打开。
 import { useEffect, useState, type JSX } from 'react';
 import { Button, ScrollArea } from '@ema-agent/ui';
-import type { SessionId } from '@ema-agent/contracts';
+import type { SessionId } from '@ema-agent/ids';
 import type { SessionAttachmentFileStatus, SessionAttachmentWire } from '@ema-agent/session';
 import { tauriBridge } from '../lib/tauri-bridge.js';
 import { useSessionAttachmentStore } from '../stores/session-attachment-store.js';

@@ -4,10 +4,7 @@ import * as fs   from 'node:fs';
 import * as path from 'node:path';
 import { randomUUID } from 'node:crypto';
 
-import {
-  asSessionId,
-  type SessionId,
-} from '@ema-agent/contracts';
+import { asSessionId, type SessionId } from '@ema-agent/ids';
 import { ArtifactOwnershipError } from './errors.js';
 import type {
   Artifact,

@@ -1,5 +1,6 @@
+import type { TurnMode } from '@ema-agent/turn';
 // 组织通用记忆的检索、写入和上下文压缩，并通过 Memory Facade 暴露给编排层。
-import type { SessionId, TurnId, TurnMode } from '@ema-agent/contracts';
+import type { SessionId, TurnId } from '@ema-agent/ids';
 import type { ContextContributionRequest } from '@ema-agent/context';
 import { estimateTextTokens } from '@ema-agent/token';
 import type { MemoryDeps } from './deps.js';

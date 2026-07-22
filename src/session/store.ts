@@ -1,31 +1,8 @@
+import type { TurnMode } from '@ema-agent/turn';
 // 作为 Session 模块唯一 Facade，管理会话、Turn、消息、分支和恢复事务。
 import crypto from 'node:crypto';
-import {
-  SessionsRepo,
-  TurnsRepo,
-  MessagesRepo,
-  BranchesRepo,
-  AttachmentRepo,
-  nextCursorFor,
-  type SessionRow,
-  type SessionRowEnriched,
-  type SessionSearchRow,
-  type TurnRow,
-  type TurnIdPage,
-  type TurnIdPageCursor,
-  type MessageRow,
-} from '@ema-agent/storage';
-import {
-  type SessionId,
-  type TurnId,
-  type MessageId,
-  type BranchId,
-  type TurnMode,
-  asSessionId,
-  asTurnId,
-  asMessageId,
-  asBranchId,
-} from '@ema-agent/contracts';
+import { SessionsRepo, TurnsRepo, MessagesRepo, BranchesRepo, AttachmentRepo, nextCursorFor, type SessionRow, type SessionRowEnriched, type SessionSearchRow, type TurnRow, type TurnIdPage, type TurnIdPageCursor, type MessageRow, } from '@ema-agent/storage';
+import { type SessionId, type TurnId, type MessageId, type BranchId, asSessionId, asTurnId, asMessageId, asBranchId } from '@ema-agent/ids';
 import { SessionOwnershipError } from './errors.js';
 import type { SessionOwnershipFacade } from './types.js';
 import { parseMessageBlocksJson } from './message.js';

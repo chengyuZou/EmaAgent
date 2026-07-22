@@ -1,9 +1,6 @@
 // 协调单个 Turn 的文本切句、语音合成、前端事件与音频归档。
 
-import type {
-  TurnId,
-  SessionId,
-} from '@ema-agent/contracts';
+import type { TurnId, SessionId } from '@ema-agent/ids';
 import type {
   EmaStreamEvent,
 } from '@ema-agent/turn';

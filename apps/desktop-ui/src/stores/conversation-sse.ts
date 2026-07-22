@@ -33,7 +33,7 @@ import {
 import type {
   SessionId,
   TurnId,
-} from '@ema-agent/contracts';
+} from '@ema-agent/ids';
 import type { ToolPresentation } from '@ema-agent/turn';
 import {
   type ExecutionProfile,

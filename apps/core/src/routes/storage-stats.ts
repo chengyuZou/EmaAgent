@@ -15,7 +15,7 @@ import type {
   SessionNoteWire,
   SessionNoteEntryWire,
 } from '@ema-agent/session';
-import { asSessionId } from '@ema-agent/contracts';
+import { asSessionId } from '@ema-agent/ids';
 import {
   loadRegistry, addDir, removeDir, setActive,
   dataDbPathFor,

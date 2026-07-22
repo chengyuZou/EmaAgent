@@ -1,4 +1,5 @@
-import type { SessionId, TurnMode } from '@ema-agent/contracts';
+import type { TurnMode } from '@ema-agent/turn';
+import type { SessionId } from '@ema-agent/ids';
 import { estimateTextTokens } from '@ema-agent/token';
 import { buildNoteCompactionPrompt } from '@ema-agent/context';
 import { extractCompactionSummary } from '@ema-agent/context';

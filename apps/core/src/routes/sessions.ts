@@ -1,7 +1,7 @@
 // 提供 Session 创建、查询、偏好更新、分支与消息读取的 HTTP 边界。
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { asSessionId, asTurnId, asBranchId } from '@ema-agent/contracts';
+import { asSessionId, asTurnId, asBranchId } from '@ema-agent/ids';
 import type {
   MessageBlocks,
   SessionAttachmentsResult,

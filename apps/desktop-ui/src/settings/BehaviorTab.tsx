@@ -6,7 +6,7 @@ import { Button, IconButton, Input } from '@ema-agent/ui';
 import { useCardStore } from '../stores/card-store.js';
 import type { CharacterCard } from '../api/cards.js';
 import { showToast } from '../lib/toast.js';
-import type { CharacterCardId } from '@ema-agent/contracts';
+import type { CharacterCardId } from '@ema-agent/ids';
 
 function TagEditor({
   tags,

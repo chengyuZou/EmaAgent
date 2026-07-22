@@ -1,5 +1,5 @@
 import type { SqliteDb } from '../database.js';
-import type { SessionId, TurnId } from '@ema-agent/contracts';
+import type { SessionId, TurnId } from '@ema-agent/ids';
 
 // ── 类型─────────────────────────────────────────────────────────────────────
 

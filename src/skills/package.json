@@ -20,7 +20,7 @@
     "clean": "rimraf dist"
   },
   "dependencies": {
-    "@ema-agent/contracts": "workspace:*",
+    "@ema-agent/ids": "workspace:*",
     "@ema-agent/marketplace": "workspace:*",
     "@ema-agent/prompts": "workspace:*",
     "@ema-agent/storage": "workspace:*",

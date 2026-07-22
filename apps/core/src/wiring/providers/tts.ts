@@ -16,7 +16,7 @@ import {
 } from '@ema-agent/provider';
 import type {
   CharacterCardId,
-} from '@ema-agent/contracts';
+} from '@ema-agent/ids';
 import type { UsageRecord, UsageRecorder } from '@ema-agent/usage';
 import {
   capabilityConfigFor,

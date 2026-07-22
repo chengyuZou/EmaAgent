@@ -8,7 +8,7 @@
 import type {
   MessageId,
   TurnId,
-} from '@ema-agent/contracts';
+} from '@ema-agent/ids';
 import type {
   ExecutionProfile,
   NarrativePolicy,

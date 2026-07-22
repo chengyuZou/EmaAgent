@@ -4,9 +4,10 @@ import {
   describe,
   expect,
   it } from 'vitest';
-import { asSessionId,
+import {
+  asSessionId,
   asTurnId,
-} from '@ema-agent/contracts';
+} from '@ema-agent/ids';
 import {
   type EmaStreamEvent,
 } from '@ema-agent/turn';

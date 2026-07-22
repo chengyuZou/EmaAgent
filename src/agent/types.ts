@@ -1,10 +1,6 @@
 // 定义 Agent 运行时需要的输入、依赖和基础接口。
 
-import type {
-  SessionId,
-  ToolCallId,
-  TurnId,
-} from '@ema-agent/contracts';
+import type { SessionId, ToolCallId, TurnId } from '@ema-agent/ids';
 import type {
   KbAssetScope,
   EmaStreamEvent,

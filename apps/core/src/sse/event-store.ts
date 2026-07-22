@@ -1,6 +1,6 @@
 // 保存 Turn 的有界 SSE 重放日志，并为每条事件分配稳定游标。
 
-import type { TurnId } from '@ema-agent/contracts';
+import type { TurnId } from '@ema-agent/ids';
 import type { EmaStreamEvent } from '@ema-agent/turn';
 import type { PublishedTurnEvent } from './event-hub.js';
 

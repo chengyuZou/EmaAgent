@@ -1,6 +1,6 @@
 // 统一提交根 Agent Turn 与 AgentTask 的创建和终态，避免两张表出现分裂状态。
 
-import type { SessionId, TurnId } from '@ema-agent/contracts';
+import type { SessionId, TurnId } from '@ema-agent/ids';
 import type { TurnFailureCode } from '@ema-agent/turn';
 import type { IAgentTurnLifecycle } from '@ema-agent/agent';
 import type { AgentTaskStore, TaskTransitionResult } from '@ema-agent/agent-task';

@@ -1,4 +1,4 @@
-import type { SessionId } from '@ema-agent/contracts';
+import type { SessionId } from '@ema-agent/ids';
 import type { ArtifactId } from './types.js';
 
 export class ArtifactOwnershipError extends Error {

@@ -1,6 +1,6 @@
 // 把 Narrative 多时间线检索结果转换为 Context Contribution，并保留前端所需的逐线事件。
 
-import type { SessionId, TurnId } from '@ema-agent/contracts';
+import type { SessionId, TurnId } from '@ema-agent/ids';
 import type { NarrativeTimelineRecall } from '@ema-agent/session';
 import type { EmaStreamEvent } from '@ema-agent/turn';
 import type { ContextContribution } from '@ema-agent/context';

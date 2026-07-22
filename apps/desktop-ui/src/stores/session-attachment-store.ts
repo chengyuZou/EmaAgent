@@ -1,6 +1,6 @@
 // 管理按 Session 隔离的附件列表、刷新状态与异步响应竞态。
 import { create } from 'zustand';
-import type { SessionId } from '@ema-agent/contracts';
+import type { SessionId } from '@ema-agent/ids';
 import type { SessionAttachmentWire } from '@ema-agent/session';
 import { sessionsApi } from '../api/sessions.js';
 

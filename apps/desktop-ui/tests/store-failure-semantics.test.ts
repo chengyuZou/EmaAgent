@@ -1,6 +1,6 @@
 // 测试 Session、分支、Agent Task、Memory 与 KB 失败时不会伪造成功或丢失事实状态。
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { SessionId } from '@ema-agent/contracts';
+import type { SessionId } from '@ema-agent/ids';
 
 vi.mock('@ema-agent/live2d-react', () => ({
   useSpeechStore: {

@@ -1,5 +1,5 @@
 // 重建全量压缩后容易丢失的近期文件或 Chat 情绪状态。
-import type { SessionId } from '@ema-agent/contracts';
+import type { SessionId } from '@ema-agent/ids';
 import type { Message } from '@ema-agent/llm';
 import type { ExecutionProfile } from '@ema-agent/turn';
 

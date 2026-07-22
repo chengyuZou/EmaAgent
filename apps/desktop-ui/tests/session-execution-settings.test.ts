@@ -2,11 +2,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../src/lib/tts-playback.js', () => ({
-  handleTtsChunk: vi.fn(),
-  handleTtsSentenceComplete: vi.fn(),
-}));
+  handleTtsChunk: vi.fn(), handleTtsSentenceComplete: vi.fn(), }));
 
-import { asSessionId } from '@ema-agent/contracts';
+import { asSessionId } from '@ema-agent/ids';
 import type { SessionWire } from '@ema-agent/session';
 import { sessionsApi } from '../src/api/sessions.js';
 import { useSessionStore } from '../src/stores/session-store.js';

@@ -2,7 +2,7 @@
 
 import type { ChatHistoryItem } from '../stores/conversation-store.js';
 import type { BranchTreeWire } from '../api/sessions.js';
-import type { TurnId } from '@ema-agent/contracts';
+import type { TurnId } from '@ema-agent/ids';
 
 /**
  * 编辑 turn 的用户消息 = 从它前一个 turn 分叉, 再把编辑后的文本发成新分支的第一个 turn。

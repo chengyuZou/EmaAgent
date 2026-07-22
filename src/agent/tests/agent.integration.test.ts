@@ -22,7 +22,7 @@ import { PermissionEngine } from '@ema-agent/permission';
 import { ToolRegistry } from '@ema-agent/tools';
 import { registerBuiltinTools } from '@ema-agent/tool-builtin';
 import type { Message, Turn } from '@ema-agent/session';
-import type { SessionId, TurnId, MessageId } from '@ema-agent/contracts';
+import type { SessionId, TurnId, MessageId } from '@ema-agent/ids';
 
 import { AgentEngine } from '../engine.js';
 import type { AgentDeps } from '../types.js';

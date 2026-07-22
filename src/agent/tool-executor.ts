@@ -13,12 +13,8 @@
  *    signalled via signal() so the engine can yield them between LLM stream chunks.
  */
 
-import { asToolCallId } from '@ema-agent/contracts';
-import type {
-  SessionId,
-  ToolCallId,
-  TurnId,
-} from '@ema-agent/contracts';
+import { asToolCallId } from '@ema-agent/ids';
+import type { SessionId, ToolCallId, TurnId } from '@ema-agent/ids';
 import type { ToolResultBlock } from '@ema-agent/session';
 import type { ToolExecutionStatus } from '@ema-agent/tools';
 import type {

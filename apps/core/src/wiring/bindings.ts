@@ -68,7 +68,7 @@ import type {
   SessionId,
   ToolCallId,
   TurnId,
-} from '@ema-agent/contracts';
+} from '@ema-agent/ids';
 import type {
   EmaStreamEvent,
   KbAssetScope,

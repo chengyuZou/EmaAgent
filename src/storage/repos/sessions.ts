@@ -1,6 +1,7 @@
+import type { TurnStatus } from '@ema-agent/turn';
 // 读写 Session 行、稳定分页、搜索投影、Fork 和事务性偏好更新。
 import type { SqliteDb } from '../database.js';
-import type { SessionId, TurnId, BranchId, TurnStatus } from '@ema-agent/contracts';
+import type { SessionId, TurnId, BranchId } from '@ema-agent/ids';
 import type { ExecutionProfile, NarrativePolicy } from '@ema-agent/turn';
 import { buildFtsQuery } from '../zh-tokenizer.js';
 

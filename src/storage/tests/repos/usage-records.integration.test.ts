@@ -1,6 +1,6 @@
 // 测试调用级用量记录可在同一 Turn 下共存，并保持确定性查询顺序。
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { asSessionId, asTurnId } from '@ema-agent/contracts';
+import { asSessionId, asTurnId } from '@ema-agent/ids';
 import type { UsageRecord } from '@ema-agent/usage';
 import { UsageRecordsRepo } from '../../repos/usage-records.js';
 import { createTestDatabase, type TestDatabase } from '../helpers/create-test-database.js';

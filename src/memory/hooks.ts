@@ -1,5 +1,5 @@
 import type { HookBus } from '@ema-agent/hooks';
-import type { SessionId, TurnId } from '@ema-agent/contracts';
+import type { SessionId, TurnId } from '@ema-agent/ids';
 import type { SessionStore } from '@ema-agent/session';
 import type { MemoryPlanner } from './planner.js';
 import { bestEffortAsync } from './best-effort.js';

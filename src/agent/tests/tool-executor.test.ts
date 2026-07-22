@@ -1,6 +1,6 @@
 // 这里测试单个 Turn 内工具调用的准备、权限、执行、等待用户和终态收口。
 import { describe, expect, it } from 'vitest';
-import type { SessionId, TurnId } from '@ema-agent/contracts';
+import type { SessionId, TurnId } from '@ema-agent/ids';
 import type { EmaStreamEvent } from '@ema-agent/turn';
 import { HookBus } from '@ema-agent/hooks';
 import { ToolInputError } from '@ema-agent/tools';

@@ -15,7 +15,7 @@ vi.mock('../lib/tts-playback.js', () => ({
 
 import { useConversationStore } from './conversation-store.js';
 import { useSessionStore } from './session-store.js';
-import type { TurnId, SessionId } from '@ema-agent/contracts';
+import type { TurnId, SessionId } from '@ema-agent/ids';
 
 const S1 = 'sess_1' as SessionId;
 const S2 = 'sess_2' as SessionId;

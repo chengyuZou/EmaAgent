@@ -6,7 +6,7 @@ import { Button, Checkbox, EntityRow, FilePicker, Select, Textarea } from '@ema-
 import { useCardStore } from '../stores/card-store.js';
 import { cardsApi } from '../api/cards.js';
 import { showToast } from '../lib/toast.js';
-import type { CharacterCardId } from '@ema-agent/contracts';
+import type { CharacterCardId } from '@ema-agent/ids';
 import type { CharacterVoiceProfile, CharacterRefAudio } from '@ema-agent/characters';
 
 const LANG_OPTIONS = [

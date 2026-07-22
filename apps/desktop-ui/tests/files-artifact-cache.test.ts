@@ -2,7 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   asSessionId,
-} from '@ema-agent/contracts';
+} from '@ema-agent/ids';
 import { asArtifactId, type Artifact } from '@ema-agent/artifact';
 import { artifactsApi } from '../src/api/artifacts.js';
 import {

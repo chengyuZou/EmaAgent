@@ -5,7 +5,7 @@ import { useConversationStore } from '../stores/conversation-store.js';
 import { useSessionStore } from '../stores/session-store.js';
 import { runWithToast } from '../lib/toast.js';
 import type { SessionWire } from '../api/sessions.js';
-import type { SessionId } from '@ema-agent/contracts';
+import type { SessionId } from '@ema-agent/ids';
 import { WorkspacePicker } from './WorkspacePicker.js';
 
 export function SessionSwitcher(): JSX.Element {

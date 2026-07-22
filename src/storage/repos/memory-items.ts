@@ -1,7 +1,7 @@
 import type { SqliteDb } from '../database.js';
 import { createSqliteIdBatches } from '../sqlite-id-batches.js';
 import { escapeLikePattern } from '../like-utils.js';
-import type { SessionId, TurnId } from '@ema-agent/contracts';
+import type { SessionId, TurnId } from '@ema-agent/ids';
 import type { MemoryEmbeddingPageCursor } from './memory-embedding-page.js';
 
 // ── 类型 ─────────────────────────────────────────────────────────────────────

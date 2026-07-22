@@ -1,12 +1,12 @@
+import type { TurnMode } from '@ema-agent/turn';
 // 接收一次 Turn 请求，选择执行方式，并把执行过程整理成前端需要的事件流。
 
 import type {
   AppBindings } from '../wiring/index.js';
 import type {
-  TurnMode,
   TurnId,
   SessionId,
-} from '@ema-agent/contracts';
+} from '@ema-agent/ids';
 import type {
   ExecutionProfile,
   KbAssetScope,
@@ -17,8 +17,9 @@ import type { ThinkingMode } from '@ema-agent/llm';
 import type { LlmContentPart } from '@ema-agent/llm';
 import { llmProviderErrorCode } from '@ema-agent/llm';
 import type { Attachment, AttachmentInput } from '@ema-agent/attachment';
-import { asSessionId,
-} from '@ema-agent/contracts';
+import {
+  asSessionId,
+} from '@ema-agent/ids';
 import type {
   EmaStreamEvent,
   RequestDegradationNotice,

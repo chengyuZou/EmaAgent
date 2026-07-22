@@ -9,7 +9,7 @@
  */
 import { useState, type JSX } from 'react';
 import { ConfirmDialog, IconButton } from '@ema-agent/ui';
-import type { TurnId } from '@ema-agent/contracts';
+import type { TurnId } from '@ema-agent/ids';
 import { useConversationStore } from '../stores/conversation-store.js';
 import { sessionsApi } from '../api/sessions.js';
 import { SidecarApiError } from '../api/sidecar-client.js';

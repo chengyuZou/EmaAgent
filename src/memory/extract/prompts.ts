@@ -1,4 +1,5 @@
-import type { TurnMode } from '@ema-agent/contracts';
+import type { TurnMode } from '@ema-agent/turn';
+
 
 // ── Extraction LLM prompts (one template per mode) ───────────────────────────
 

@@ -1,4 +1,4 @@
-import type { SessionId, TurnId } from '@ema-agent/contracts';
+import type { SessionId, TurnId } from '@ema-agent/ids';
 import type { MessageBlocks } from '@ema-agent/session';
 import type {
   EmaStreamEvent,

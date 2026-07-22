@@ -1,7 +1,7 @@
 // 测试附件-only用户气泡的创建以及按 Turn 对账时不会重复或丢失。
 import { describe, expect, it } from 'vitest';
 
-import type { MessageId, TurnId } from '@ema-agent/contracts';
+import type { MessageId, TurnId } from '@ema-agent/ids';
 import {
   createOptimisticUserMessage,
   reconcileLoadedHistory,

@@ -11,7 +11,7 @@
  * 放不下胶囊；IconButton 无 children 放不下文字。样式全用 var(--ema-*) CSS 变量。
  */
 import type { JSX } from 'react';
-import type { BranchId } from '@ema-agent/contracts';
+import type { BranchId } from '@ema-agent/ids';
 import { useConversationStore } from '../stores/conversation-store.js';
 
 export function BranchSiblingNav({ turnId }: { turnId: string }): JSX.Element | null {

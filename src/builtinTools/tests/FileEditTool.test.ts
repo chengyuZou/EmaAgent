@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { asToolCallId } from '@ema-agent/contracts';
+import { asToolCallId } from '@ema-agent/ids';
 import { splitToolResult } from '@ema-agent/tools';
 import type { ToolExecutionContext } from '@ema-agent/tools';
 import { FileEditTool } from '../tools/FileEditTool/FileEditTool.js';

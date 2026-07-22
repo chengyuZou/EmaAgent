@@ -1,11 +1,6 @@
 // 这里集中定义工具注册、权限检查和执行时共用的基础类型。
-import type {
-  z } from 'zod';
-import type {
-  SessionId,
-  TurnId,
-  ToolCallId,
-} from '@ema-agent/contracts';
+import type { z } from 'zod';
+import type { SessionId, TurnId, ToolCallId } from '@ema-agent/ids';
 import type { IArtifactStore } from '@ema-agent/artifact';
 import type {
   AgentKind,

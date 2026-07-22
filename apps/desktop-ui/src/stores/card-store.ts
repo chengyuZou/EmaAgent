@@ -3,7 +3,7 @@
  */
 import { create } from 'zustand';
 import { cardsApi, type CharacterCard, type CharacterCardInput, type CharacterVoiceProfile } from '../api/cards.js';
-import type { CharacterCardId } from '@ema-agent/contracts';
+import type { CharacterCardId } from '@ema-agent/ids';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 

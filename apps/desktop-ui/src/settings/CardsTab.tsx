@@ -5,7 +5,7 @@ import { useCardStore } from '../stores/card-store.js';
 import type { CharacterCard } from '../api/cards.js';
 import { CharacterCardEditor } from './CharacterCardEditor.js';
 import { showToast } from '../lib/toast.js';
-import type { CharacterCardId } from '@ema-agent/contracts';
+import type { CharacterCardId } from '@ema-agent/ids';
 
 export function CardsTab(): JSX.Element {
   const cards        = useCardStore((s) => s.cards);

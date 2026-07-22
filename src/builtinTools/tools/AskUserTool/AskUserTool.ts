@@ -4,10 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { buildTool } from '@ema-agent/tools';
 import type { ToolExecutionContext } from '@ema-agent/tools';
-import type {
-  SessionId,
-  TurnId,
-} from '@ema-agent/contracts';
+import type { SessionId, TurnId } from '@ema-agent/ids';
 import type {
   AskUserQuestionSpec,
   EmaStreamEvent,

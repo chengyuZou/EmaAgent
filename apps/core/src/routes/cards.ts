@@ -5,7 +5,7 @@ import { randomUUID } from 'node:crypto';
 import { Hono } from 'hono';
 
 import type { AppBindings } from '../wiring/index.js';
-import { asCharacterCardId } from '@ema-agent/contracts';
+import { asCharacterCardId } from '@ema-agent/ids';
 import {
   emptyVoiceProfile,
   type CharacterRefAudio,

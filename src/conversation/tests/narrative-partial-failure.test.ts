@@ -1,7 +1,7 @@
 // 测试 Narrative 多时间线召回保留成功分区，并结构化报告失败分区。
 
 import { describe, expect, it } from 'vitest';
-import type { SessionId, TurnId } from '@ema-agent/contracts';
+import type { SessionId, TurnId } from '@ema-agent/ids';
 import type { EmaStreamEvent } from '@ema-agent/turn';
 import { NarrativeRequestError } from '@ema-agent/narrative';
 import { prepareNarrativeContribution } from '../narrativeRecall.js';

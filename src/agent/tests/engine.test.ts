@@ -1,7 +1,7 @@
 // 这里测试 AgentEngine 保存消息、调用 Hook 和处理 Turn 成功或失败的行为。
 
 import { describe, expect, it } from 'vitest';
-import type { MessageId, SessionId, TurnId } from '@ema-agent/contracts';
+import type { MessageId, SessionId, TurnId } from '@ema-agent/ids';
 import type { EmaStreamEvent } from '@ema-agent/turn';
 import type { Message, Turn } from '@ema-agent/session';
 import { HookBus } from '@ema-agent/hooks';

@@ -1,4 +1,4 @@
-import type { SessionId } from '@ema-agent/contracts';
+import type { SessionId } from '@ema-agent/ids';
 
 /**
  * Serialises async work within a single session. Different sessions run their

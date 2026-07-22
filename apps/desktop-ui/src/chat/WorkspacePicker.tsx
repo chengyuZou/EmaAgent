@@ -4,7 +4,7 @@ import { tauriBridge } from '../lib/tauri-bridge.js';
 import { showToast } from '../lib/toast.js';
 import { Button, IconButton, Input } from '@ema-agent/ui';
 import type { SessionWire } from '@ema-agent/session';
-import type { SessionId } from '@ema-agent/contracts';
+import type { SessionId } from '@ema-agent/ids';
 
 /**
  * Single-workspace-path editor. Replaces the old multi-root WorkspaceEditor.

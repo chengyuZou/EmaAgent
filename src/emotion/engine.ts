@@ -1,4 +1,4 @@
-import type { TurnId, SessionId } from '@ema-agent/contracts';
+import type { TurnId, SessionId } from '@ema-agent/ids';
 import type { EmotionState, EmotionStreamEvent } from './events.js';
 import { StreamingActScanner } from './parser.js';
 import type { ParsedActTag } from './types.js';

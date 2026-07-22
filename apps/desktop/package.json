@@ -19,7 +19,7 @@
     "tauri:build:release": "pnpm release:verify:versions && pnpm release:verify && tauri build --config src-tauri/tauri.release.conf.json"
   },
   "dependencies": {
-    "@ema-agent/contracts": "workspace:*",
+    "@ema-agent/ids": "workspace:*",
     "@ema-agent/desktop-ui": "workspace:*",
     "@ema-agent/live2d-react": "workspace:*",
     "@ema-agent/ui": "workspace:*",

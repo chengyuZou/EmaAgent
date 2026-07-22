@@ -1,6 +1,6 @@
 // 测试角色舞台快照的原子加载、可选配置和迟到请求隔离。
 import { describe, expect, it } from 'vitest';
-import type { CharacterCardId } from '@ema-agent/contracts';
+import type { CharacterCardId } from '@ema-agent/ids';
 import { StageSnapshotLoader } from '../src/stage-snapshot-loader.js';
 
 interface Deferred<T> {

@@ -22,7 +22,7 @@
   },
   "dependencies": {
     "@ema-agent/backup": "workspace:*",
-    "@ema-agent/contracts": "workspace:*",
+    "@ema-agent/ids": "workspace:*",
     "@ema-agent/turn": "workspace:*",
     "@ema-agent/context": "workspace:*",
     "@ema-agent/provider": "workspace:*",

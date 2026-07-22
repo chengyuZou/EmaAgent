@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { z }    from 'zod';
 import * as path from 'node:path';
-import { asSessionId } from '@ema-agent/contracts';
+import { asSessionId } from '@ema-agent/ids';
 import { asArtifactId } from '@ema-agent/artifact';
 import { pathInWorkingDir } from '@ema-agent/permission';
 import type { AppBindings } from '../wiring/index.js';

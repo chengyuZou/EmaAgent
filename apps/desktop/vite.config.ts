@@ -70,7 +70,7 @@ export default defineConfig({
     // 'oxc-parser' excluded so its optional wasm binding (absent on Windows)
     // never enters the pre-bundler. Vite's esbuildOptions type omits
     // `external`, so exclusion is the only supported lever here.
-    exclude: ['@ema-agent/desktop-ui', '@ema-agent/ui', '@ema-agent/contracts', '@ema-agent/live2d-react', 'oxc-parser'],
+    exclude: ['@ema-agent/desktop-ui', '@ema-agent/ui', '@ema-agent/ids', '@ema-agent/live2d-react', 'oxc-parser'],
   },
 
   // Prevent vite from clobbering Rust errors with the spinner UI.

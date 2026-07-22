@@ -1,6 +1,6 @@
 // 测试启动孤儿文件扫描会遍历全部 Turn 游标页，不会在固定数量上限处截断。
 import { describe, expect, it, vi } from 'vitest';
-import type { SessionId } from '@ema-agent/contracts';
+import type { SessionId } from '@ema-agent/ids';
 import type { StartupTurnReader } from '../src/wiring/startup-turn-files.js';
 import { collectLiveTurnIds } from '../src/wiring/startup-turn-files.js';
 

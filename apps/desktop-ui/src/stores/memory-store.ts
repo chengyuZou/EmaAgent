@@ -2,7 +2,7 @@
 import { create } from 'zustand';
 import { memoryApi, type MemoryStats, type MaintenanceReport, type MemoryMaintenanceInput, type MemorySessionOverrides } from '../api/memory.js';
 import type { MemoryTaskKind } from '@ema-agent/storage';
-import type { SessionId } from '@ema-agent/contracts';
+import type { SessionId } from '@ema-agent/ids';
 
 export type { MemorySessionOverrides };
 

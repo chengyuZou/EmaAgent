@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { storageApi } from '../api/storage.js';
 import type { DataDirItem, StorageStatsWire, SessionDashboardWire } from '../api/storage.js';
-import type { SessionId } from '@ema-agent/contracts';
+import type { SessionId } from '@ema-agent/ids';
 
 // ── State shape ───────────────────────────────────────────────────────────────
 

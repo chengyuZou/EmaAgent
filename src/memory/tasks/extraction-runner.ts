@@ -1,6 +1,7 @@
+import type { TurnMode } from '@ema-agent/turn';
 // 运行已持久化的 Memory 提取任务，并拒绝尚未实现的任务类型进入成功终态。
 import crypto from 'node:crypto';
-import type { SessionId, TurnMode } from '@ema-agent/contracts';
+import type { SessionId } from '@ema-agent/ids';
 import type {
   MemoryTaskKind, MemoryTaskRow,
 } from '@ema-agent/storage';

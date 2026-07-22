@@ -1,8 +1,5 @@
-import type {
-  SessionId,
-  TurnId,
-  TurnMode,
-} from '@ema-agent/contracts';
+import type { TurnMode } from '@ema-agent/turn';
+import type { SessionId, TurnId } from '@ema-agent/ids';
 import type {
   EmaStreamEvent,
 } from '@ema-agent/turn';

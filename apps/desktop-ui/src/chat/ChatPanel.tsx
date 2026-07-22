@@ -1,7 +1,7 @@
 // 组装会话侧栏、消息历史、输入区和检查器面板，并维护聊天窗口生命周期。
 import { useEffect, useState, useRef, useCallback, type JSX } from 'react';
 import { Button } from '@ema-agent/ui';
-import type { SessionId } from '@ema-agent/contracts';
+import type { SessionId } from '@ema-agent/ids';
 import { useConversationStore } from '../stores/conversation-store.js';
 import { useSessionStore } from '../stores/session-store.js';
 import { useSidecarStore } from '../stores/sidecar-store.js';

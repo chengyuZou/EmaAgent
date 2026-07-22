@@ -1,7 +1,7 @@
 // 测试 Ask User 只能由所属 Turn 回答或取消，避免串行请求关联错位。
 import { describe, expect, it } from 'vitest';
 import { AskUserRegistry } from '../src/ask-user/registry.js';
-import { asSessionId, asTurnId } from '@ema-agent/contracts';
+import { asSessionId, asTurnId } from '@ema-agent/ids';
 
 describe('AskUserRegistry Turn 归属', () => {
   it('拒绝其他 Turn 响应，并通过显式取消解除等待', async () => {

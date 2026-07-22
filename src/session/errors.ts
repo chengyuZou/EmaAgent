@@ -1,4 +1,4 @@
-import type { SessionId } from '@ema-agent/contracts';
+import type { SessionId } from '@ema-agent/ids';
 import type { SessionOwnedEntity } from './types.js';
 
 /** 业务层发现跨 Session 引用时抛出的稳定错误。 */

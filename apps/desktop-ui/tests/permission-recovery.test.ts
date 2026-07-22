@@ -1,7 +1,7 @@
 // 测试窗口重开后按 Session 恢复 Core 仍在等待的权限请求。
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { PendingPermissionPrompt } from '@ema-agent/permission';
-import { asSessionId, asTurnId } from '@ema-agent/contracts';
+import { asSessionId, asTurnId } from '@ema-agent/ids';
 import { useDecisionStore } from '../src/stores/decision-store.js';
 
 describe('permission prompt recovery', () => {

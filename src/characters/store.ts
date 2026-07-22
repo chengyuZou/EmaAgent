@@ -2,8 +2,8 @@
 
 import type { Database, CharacterCardsRepo } from '@ema-agent/storage';
 import { CharacterCardsRepo as Repo } from '@ema-agent/storage';
-import type { CharacterCardId } from '@ema-agent/contracts';
-import { asCharacterCardId } from '@ema-agent/contracts';
+import type { CharacterCardId } from '@ema-agent/ids';
+import { asCharacterCardId } from '@ema-agent/ids';
 import type { CharacterCard, CharacterCardInput } from './types.js';
 import { CharacterCardRepository } from './repository.js';
 import { EMA_CARD_ID, EMA_CARD_INPUT, BUILTIN_CARDS } from './seed/index.js';

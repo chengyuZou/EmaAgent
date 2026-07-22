@@ -8,7 +8,7 @@
 
 import { PermissionEngine } from '@ema-agent/permission';
 import type { AskPermissionFn } from '@ema-agent/permission';
-import type { SessionId, ToolCallId, TurnId } from '@ema-agent/contracts';
+import type { SessionId, ToolCallId, TurnId } from '@ema-agent/ids';
 import type { EmaStreamEvent } from '@ema-agent/turn';
 import { PermissionPromptRegistry } from '../permissions/registry.js';
 import { AskUserRegistry } from '../ask-user/registry.js';

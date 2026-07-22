@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { TurnId } from '@ema-agent/contracts';
+import type { TurnId } from '@ema-agent/ids';
 import type { EmaStreamEvent } from '@ema-agent/turn';
 import { useSpeechStore } from '@ema-agent/live2d-react';
 import type { SpeechAnimationState } from '@ema-agent/live2d-react';

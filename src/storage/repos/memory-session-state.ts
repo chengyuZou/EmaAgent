@@ -1,5 +1,5 @@
 import type { SqliteDb } from '../database.js';
-import type { SessionId } from '@ema-agent/contracts';
+import type { SessionId } from '@ema-agent/ids';
 
 interface StateRow {
   session_id:     string;

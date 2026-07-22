@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import type { SessionId } from '@ema-agent/contracts';
+import type { SessionId } from '@ema-agent/ids';
 import type { EmbeddedText } from '../types.js';
 import type { ExtractedNode, ExtractionOutput, PendingFragment } from './types.js';
 import { unpackEmbedding } from '../embed/similarity.js';

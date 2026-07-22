@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import type { SessionId, TurnId } from '@ema-agent/contracts';
+import type { SessionId, TurnId } from '@ema-agent/ids';
 import type { PendingFragmentsRepo } from '@ema-agent/storage';
 import { estimateTextTokens } from '@ema-agent/token';
 import type { PendingFragment } from './types.js';

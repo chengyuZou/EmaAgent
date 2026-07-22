@@ -40,7 +40,7 @@
     "@ema-agent/artifact": "workspace:*",
     "@ema-agent/characters": "workspace:*",
     "@ema-agent/backup": "workspace:*",
-    "@ema-agent/contracts": "workspace:*",
+    "@ema-agent/ids": "workspace:*",
     "@ema-agent/emotion": "workspace:*",
     "@ema-agent/turn": "workspace:*",
     "@ema-agent/live2d-react": "workspace:*",
