@@ -1,6 +1,7 @@
-// 重建全量压缩后容易丢失的近期文件、情绪与剧情状态上下文。
-import type { SessionId, TurnMode } from '@ema-agent/contracts';
+// 重建全量压缩后容易丢失的近期文件或 Chat 情绪状态。
+import type { SessionId } from '@ema-agent/contracts';
 import type { Message } from '@ema-agent/llm';
+import type { ExecutionProfile } from '@ema-agent/turn';
 
 const AGENT_MAX_FILES = 5;
 const AGENT_FILE_TOKEN_BUDGET = 5_000;
@@ -9,7 +10,7 @@ const CHAR_PER_TOKEN = 4;
 
 export interface PostCompactionRestoreContext {
   sessionId: SessionId;
-  mode: TurnMode;
+  executionProfile: ExecutionProfile;
   recentFiles?: ReadonlyArray<{ path: string; content: string; mtimeMs: number }>;
 }
 
@@ -17,13 +18,11 @@ export function buildPostCompactionRestore(
   loadSessionNote: ((sessionId: SessionId) => string | null) | undefined,
   context: PostCompactionRestoreContext,
 ): Message[] {
-  if (context.mode === 'agent') return restoreRecentFiles(context);
+  if (context.executionProfile === 'work') return restoreRecentFiles(context);
 
   const noteMarkdown = loadSessionNote?.(context.sessionId);
   if (!noteMarkdown) return [];
-  return context.mode === 'chat'
-    ? restoreSection(noteMarkdown, 'chat', ['Current Emotional State'])
-    : restoreSection(noteMarkdown, 'narrative', ['Current Scene', 'Active Timeline']);
+  return restoreSection(noteMarkdown, ['Current Emotional State']);
 }
 
 function restoreRecentFiles(context: PostCompactionRestoreContext): Message[] {
@@ -49,13 +48,12 @@ function restoreRecentFiles(context: PostCompactionRestoreContext): Message[] {
   if (sections.length === 0) return [];
   return [{
     role: 'user',
-    content: `<post-compact-restore mode="agent">\n以下是压缩前最近读取的文件快照。需要最新或完整内容时请重新调用 Read。\n\n${sections.join('\n\n')}\n</post-compact-restore>`,
+    content: `<post-compact-restore profile="work">\n以下是压缩前最近读取的文件快照。需要最新或完整内容时请重新调用 Read。\n\n${sections.join('\n\n')}\n</post-compact-restore>`,
   }];
 }
 
 function restoreSection(
   noteMarkdown: string,
-  mode: 'chat' | 'narrative',
   headings: readonly string[],
 ): Message[] {
   const section = headings
@@ -65,7 +63,7 @@ function restoreSection(
 
   return [{
     role: 'user',
-    content: `<post-compact-restore mode="${mode}">\n${section}\n</post-compact-restore>`,
+    content: `<post-compact-restore profile="chat">\n${section}\n</post-compact-restore>`,
   }];
 }
 

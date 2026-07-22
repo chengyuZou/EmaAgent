@@ -12,6 +12,7 @@ import {
 } from '@ema-agent/turn';
 import type { LlmRequest, Message } from '@ema-agent/llm';
 import { ContextCompactor } from '../contextCompactor.js';
+import { findSafeCutPoint } from '../compaction/safeCut.js';
 
 const sessionId = asSessionId('context-session');
 const turnId = asTurnId('context-turn');
@@ -47,7 +48,8 @@ function args(messages: Message[]) {
   return {
     sessionId,
     turnId,
-    mode: 'agent' as const,
+    executionProfile: 'work' as const,
+    narrativePolicy: 'auto' as const,
     messages,
     modelContextWindow: 4_000,
     modelMaxOutputTokens: 0,
@@ -57,6 +59,41 @@ function args(messages: Message[]) {
 }
 
 describe('ContextCompactor', () => {
+  it('允许从 tool_use 开始保留完整工具轮次，并跳过混有文本的 tool_result 边界', () => {
+    const messages: Message[] = [
+      { role: 'user', content: 'old work' },
+      {
+        role: 'assistant',
+        content: [{ type: 'tool_use', id: 'call-1', name: 'Read', args: { path: 'a.ts' } }],
+      },
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: 'system reminder' },
+          { type: 'tool_result', toolUseId: 'call-1', content: 'result' },
+        ],
+      },
+      { role: 'user', content: 'next instruction' },
+    ];
+
+    expect(findSafeCutPoint(messages, 2)).toBe(1);
+    expect(findSafeCutPoint(messages, 3)).toBe(3);
+
+    const interleaved: Message[] = [
+      { role: 'user', content: 'old work' },
+      {
+        role: 'assistant',
+        content: [{ type: 'tool_use', id: 'call-2', name: 'Read', args: { path: 'b.ts' } }],
+      },
+      { role: 'user', content: 'ephemeral attachment between tool messages' },
+      {
+        role: 'user',
+        content: [{ type: 'tool_result', toolUseId: 'call-2', content: 'result' }],
+      },
+    ];
+    expect(findSafeCutPoint(interleaved, 2)).toBe(1);
+  });
+
   it('低于阈值时不修改历史，也不调用压缩模型', async () => {
     const complete = vi.fn();
     const persistSummary = vi.fn();
@@ -96,6 +133,38 @@ describe('ContextCompactor', () => {
       'context_compaction_started',
       'context_compaction_completed',
     ]);
+  });
+
+  it('NarrativePolicy 不再选择第三套摘要模板，并丢弃 analysis 草稿', async () => {
+    const persistSummary = vi.fn();
+    const complete = vi.fn(async (request: LlmRequest) => ({
+      blocks: [{
+        type: 'text' as const,
+        text: '<analysis>内部分析草稿</analysis><summary>最终 Chat 摘要</summary>',
+      }],
+      stopReason: 'end_turn' as const,
+      usage: { inputTokens: 100, outputTokens: 10 },
+      request,
+    }));
+    const compactor = new ContextCompactor(
+      { llm: { complete } as never, persistSummary },
+      { bufferTokens: 2_000, defaultReservedOutputTokens: 0, maximumReservedOutputTokens: 0 },
+    );
+
+    const result = await compactor.compact({
+      ...args(oversizedHistory()),
+      executionProfile: 'chat',
+      narrativePolicy: 'always',
+    });
+
+    expect(result.status).toBe('completed');
+    const promptText = JSON.stringify(complete.mock.calls[0]?.[0]?.messages);
+    expect(promptText).toContain('Current Emotional State');
+    expect(promptText).not.toContain('Active Timeline');
+    expect(persistSummary).toHaveBeenCalledWith(expect.objectContaining({
+      blocks: '最终 Chat 摘要',
+    }));
+    expect(JSON.stringify(result.messages)).not.toContain('内部分析草稿');
   });
 
   it('响应式压缩始终原样保留 System Prompt，且不把它交给摘要模型', async () => {
@@ -180,7 +249,7 @@ describe('ContextCompactor', () => {
     expect(complete).toHaveBeenCalledTimes(2);
   });
 
-  it('safeCut===0(整段工具调用)时降级送 Macro 摘要,而非返回原文爆掉', async () => {
+  it('整段工具调用能在完整配对前安全切割并执行 Macro 摘要', async () => {
     const events: EmaStreamEvent[] = [];
     const persistSummary = vi.fn();
     const complete = vi.fn(async (request: LlmRequest) => ({
@@ -194,7 +263,7 @@ describe('ContextCompactor', () => {
       { bufferTokens: 2_000, defaultReservedOutputTokens: 0, maximumReservedOutputTokens: 0 },
     );
 
-    // force=true 模拟 Provider 已报告超限:旧逻辑此时 safeCut===0 -> skipped 返回原文 -> 必 PTL。
+    // force=true 模拟 Provider 已报告超限；工具历史仍必须保留完整的 tail 配对。
     const result = await compactor.compact({ ...args(toolOnlyHistory()), force: true, emit: event => events.push(event) });
 
     expect(result.status).toBe('completed');
@@ -204,13 +273,13 @@ describe('ContextCompactor', () => {
       'context_compaction_started',
       'context_compaction_completed',
     ]);
-    // 证明 head 确实送进了摘要模型(降级发生,而非 skipped 返回原文)。
+    // 证明 head 确实送进了摘要模型，而不是原样返回超限历史。
     const summaryInput = JSON.stringify(complete.mock.calls[0]?.[0]?.messages);
     expect(summaryInput).toContain('tool_use');
     expect(summaryInput).toContain('tool_result');
   });
 
-  it('safeCut===0 降级后 Macro 失败计入熔断,达上限后打开 circuit', async () => {
+  it('工具历史 Macro 失败计入熔断，达到上限后打开 circuit', async () => {
     const complete = vi.fn(async () => {
       throw new Error('provider unavailable');
     });
@@ -228,7 +297,6 @@ describe('ContextCompactor', () => {
     const second = await compactor.compact({ ...args(toolOnlyHistory()), force: true });
     const third = await compactor.compact({ ...args(toolOnlyHistory()), force: true });
 
-    // 旧逻辑:safeCut===0 走 skipped('no_safe_cut'),不经 fail()、不计熔断 -> 永远不会 circuit_open。
     expect(first.status).toBe('failed');
     expect(second.status).toBe('failed');
     expect(third).toEqual(expect.objectContaining({ status: 'skipped', reason: 'circuit_open' }));

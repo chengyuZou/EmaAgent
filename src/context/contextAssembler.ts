@@ -93,7 +93,9 @@ function buildSnapshot(
   history: readonly Message[],
   tools: readonly LlmToolDef[],
 ): ModelContextSnapshot {
-  const frozenMessages = Object.freeze(messages.map(cloneAndFreeze));
+  // 最终断点随单次请求尾部移动，使历史和已经完成的工具轮次进入增量缓存；
+  // 只标记请求投影，不能写回 Session 历史或压缩器的工作消息。
+  const frozenMessages = Object.freeze(markFinalCacheBreakpoint(messages));
   const frozenTools = Object.freeze(tools.map(cloneAndFreeze));
   return Object.freeze({
     promptRevision: input.prompt.revision,
@@ -113,6 +115,23 @@ function buildSnapshot(
       }),
     }),
   });
+}
+
+function markFinalCacheBreakpoint(messages: readonly Message[]): Message[] {
+  const projected = messages.map((message) => structuredClone(message));
+  for (let index = projected.length - 1; index >= 0; index -= 1) {
+    const message = projected[index];
+    if (!message || !canCarryCacheBreakpoint(message)) continue;
+    if (!message.cacheBreakpoint) {
+      projected[index] = { ...message, cacheBreakpoint: true } as Message;
+    }
+    break;
+  }
+  return projected.map(deepFreeze);
+}
+
+function canCarryCacheBreakpoint(message: Message): boolean {
+  return message.content.length > 0;
 }
 
 function messagesAt(

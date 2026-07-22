@@ -42,4 +42,42 @@ describe('Anthropic cache_control', () => {
       { type: 'text', text: 'turn profile' },
     ]);
   });
+
+  it('把稳定 Prompt、运行环境和请求尾部组成四层缓存链', () => {
+    const normalized = toAnthropicMessages([
+      { role: 'system', content: 'product', cacheBreakpoint: true },
+      { role: 'system', content: 'active character', cacheBreakpoint: true },
+      { role: 'system', content: 'turn profile' },
+      { role: 'user', content: 'runtime environment', cacheBreakpoint: true },
+      { role: 'user', content: 'history' },
+      { role: 'assistant', content: [{ type: 'text', text: 'tool round completed' }] },
+      { role: 'user', content: 'latest tool result', cacheBreakpoint: true },
+    ]);
+
+    expect(normalized.system).toEqual([
+      { type: 'text', text: 'product', cache_control: { type: 'ephemeral' } },
+      { type: 'text', text: 'active character', cache_control: { type: 'ephemeral' } },
+      { type: 'text', text: 'turn profile' },
+    ]);
+    expect(normalized.messages).toEqual([
+      {
+        role: 'user',
+        content: [{
+          type: 'text',
+          text: 'runtime environment',
+          cache_control: { type: 'ephemeral' },
+        }],
+      },
+      { role: 'user', content: 'history' },
+      { role: 'assistant', content: [{ type: 'text', text: 'tool round completed' }] },
+      {
+        role: 'user',
+        content: [{
+          type: 'text',
+          text: 'latest tool result',
+          cache_control: { type: 'ephemeral' },
+        }],
+      },
+    ]);
+  });
 });

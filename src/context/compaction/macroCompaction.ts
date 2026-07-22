@@ -1,7 +1,7 @@
 // 调用当前模型生成旧对话摘要，不负责持久化或最终上下文预算判定。
 import type { AssistantBlock, LanguageModel, Message as ModelMessage, UserBlock } from '@ema-agent/llm';
-import type { TurnMode } from '@ema-agent/contracts';
-import { buildCompactionPrompt } from './compactionPrompts.js';
+import type { ExecutionProfile } from '@ema-agent/turn';
+import { buildCompactionPrompt, extractCompactionSummary } from './compactionPrompts.js';
 import { estimateMessagesTokens } from '@ema-agent/token';
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -97,7 +97,7 @@ export interface MacroCompactArgs {
   providerId:    string;
   /** 当前 Turn 的模型。 */
   model:         string;
-  mode:          TurnMode;
+  executionProfile: ExecutionProfile;
   /** 待摘要的消息(较旧的部分)。 */
   toCompact:     ModelMessage[];
   /**
@@ -137,7 +137,7 @@ export async function runMacroCompaction(
 
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     const history = formatHistory(toCompact);
-    const prompt  = buildCompactionPrompt({ mode: args.mode, history });
+    const prompt  = buildCompactionPrompt({ executionProfile: args.executionProfile, history });
 
     // 发请求前的 token 预估。若 prompt 超过模型上下文窗口的 85%,
     // 截断后重试,而不是明知超限还发出去。
@@ -179,7 +179,7 @@ export async function runMacroCompaction(
         signal:      args.signal,
       });
 
-      const summary = collectText(completion.blocks).trim();
+      const summary = extractCompactionSummary(collectText(completion.blocks));
       if (!summary) {
         return {
           summary: '',

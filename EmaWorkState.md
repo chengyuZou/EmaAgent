@@ -14,7 +14,11 @@ Prompt 装配边界已经完成新语义收口：公共入口只接受全局 Act
 
 Prompt 缓存边界已进一步落到真实模型请求：稳定范围改为 `product / activeCharacter / turn`，全局激活角色不是 Session 绑定；产品规则与全局角色各自形成 System Block 和缓存断点，Chat/Work 与 NarrativePolicy 位于 Turn 动态尾部。Skill Catalog 作为普通 Context Message 投递并限制为 8000 字符总预算、250 字符单项描述，不能取得 System 权限。Context 会冻结日期、平台、工作区和模型身份，并输出分层 Prompt Revision、Tool Manifest Revision 与 Prefix Hash。Anthropic Adapter 已支持保留多层 System Block，不再由后一条覆盖前一条。
 
-统一 Turn 主线的前三刀已经完成：公网请求使用 `trigger + executionProfile + narrativePolicy`；Agent 内部循环已改名为通用 `turnLoop`；Session/Turn SQL 显式保存触发来源、执行 Profile 与 Narrative 策略；Desktop 顶层选择器只显示 Chat/Work，Narrative 改为 `auto/always/off` 二级策略。Session REST、发送队列、`turn_started` SSE 与历史展示均直接使用新契约，不再经过旧 Mode 映射。旧 `chat/narrative/agent` 只留在尚未统一的 Engine、Hook/Compaction 输入和少量内部兼容投影。
+Context 的缓存链已经补齐请求尾部断点：最终模型请求的最后一条非空消息会获得仅存在于只读投影中的动态 `cacheBreakpoint`，历史和已完成 Tool Round 因此能够进入下一次调用的缓存前缀；该标记不写回 Session、Turn 工作消息或压缩历史。
+
+Compaction 已迁出旧三 Mode：摘要结构只由 `ExecutionProfile = chat | work` 决定，`NarrativePolicy` 随事件保留但不选择第三套模板。Macro 使用可丢弃的 `<analysis>` 草稿提升摘要质量，只把 `<summary>` 写入上下文；Safe Cut 已合并为按 `toolUseId` 检查整段 tail 的单一算法，支持工具消息之间插入附件，同时阻止孤立 `tool_result`。
+
+统一 Turn 主线的前三刀已经完成：公网请求使用 `trigger + executionProfile + narrativePolicy`；Agent 内部循环已改名为通用 `turnLoop`；Session/Turn SQL 显式保存触发来源、执行 Profile 与 Narrative 策略；Desktop 顶层选择器只显示 Chat/Work，Narrative 改为 `auto/always/off` 二级策略。Session REST、发送队列、`turn_started` SSE 与历史展示均直接使用新契约，不再经过旧 Mode 映射。旧 `chat/narrative/agent` 只留在尚未统一的 Engine、Hook、Memory 输入和少量内部兼容投影。
 
 Provider 配置也已完成旧列清理：顶层 `base_url`、`config_json`、`capabilities_json` 被物理删除，地址、协议和能力开关只保存在 `provider_capability_configs`。Session/Turn 无业务读取的 `meta_json` 同步删除；Message、MCP、Artifact 等仍有明确用途的 JSON 未动。
 
@@ -73,7 +77,7 @@ Plan、Goal、Schedule、Workflow、Team 与 LLM 自动审批暂列 V1.5，不�
 
 ## 下一批建议顺序
 
-1. 让 Context、Compaction、Hook 与 Memory 输入迁出旧 `TurnMode`，使用 `ExecutionProfile`、`NarrativePolicy` 或明确领域事实；
+1. 让 Context Contribution、Hook 与 Memory 输入迁出旧 `TurnMode`，使用 `ExecutionProfile`、`NarrativePolicy` 或明确领域事实；
 2. 建立 Chat/Work 的不可变 Tool Manifest 与迭代策略，再实现 Narrative `always/auto/off`；
 3. 清理根 AgentTask 投影、AgentRun 身份和 Core 外围业务边界；
 4. 外围契约稳定后再组装唯一 `TurnRuntime + TurnLoop`，删除 ConversationEngine 与 AgentEngine 外壳。
@@ -96,6 +100,8 @@ Plan、Goal、Schedule、Workflow、Team 与 LLM 自动审批暂列 V1.5，不�
 - 本批 Core 测试 88/88、Desktop UI 测试 130/130、Session 测试 39/39、Agent 测试 32/32、Conversation 测试 7/7 通过；4 个 Agent Live Integration 测试按既有规则跳过。
 - Prompt 新边界：Prompt 测试 6/6、Skills 测试 21/21、Core 测试 88/88、全仓 typecheck 84/84 通过。
 - Prompt 分层请求：Prompt 6/6、Context 21/21、LLM 126/126、Skills 23/23、Agent 32/32、Conversation 7/7、Core 88/88 通过；Agent 4 个 Live Integration 按既有规则跳过。
+- Context 请求尾缓存断点：Context 21/21、LLM 127/127 通过，两个模块 typecheck 通过。
+- Compaction 新语义与 Safe Cut：Context 23/23、Memory 20/20 通过；Turn、Context、Memory、Core、Agent、Conversation typecheck 通过。
 - `git diff --check` 通过，仅有仓库既有的 Windows CRLF 提示。
 
 ## 工作规则

@@ -33,7 +33,10 @@ export type {
 } from './messageCompatibility.js';
 export { ContextCompactor } from './contextCompactor.js';
 export { microCompact } from './compaction/microCompaction.js';
-export { buildNoteCompactionPrompt } from './compaction/compactionPrompts.js';
+export {
+  buildNoteCompactionPrompt,
+  extractCompactionSummary,
+} from './compaction/compactionPrompts.js';
 export type {
   ContextCompactionArgs,
   ContextCompactionResult,

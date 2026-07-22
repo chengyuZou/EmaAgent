@@ -6,7 +6,7 @@ import { fitCompactionContext } from './compaction/budget.js';
 import { runMacroCompaction } from './compaction/macroCompaction.js';
 import { microCompact } from './compaction/microCompaction.js';
 import { buildPostCompactionRestore } from './compaction/postCompactionRestore.js';
-import { findSafeCutPoint, findTailSafeCutPoint, macroFailureReason } from './compaction/safeCut.js';
+import { findSafeCutPoint, macroFailureReason } from './compaction/safeCut.js';
 import { sanitizeCompactionMessages } from './compaction/sanitize.js';
 import {
   DEFAULT_CONTEXT_COMPACTION_SETTINGS,
@@ -116,19 +116,13 @@ export class ContextCompactor {
       };
     }
 
-    // 安全切割点:不能切在 tool_use 和 tool_result 中间,否则模型会看到未配对工具调用报错。
+    // 安全切割点允许 tail 从 assistant tool_use 开始，但不能从含 tool_result 的
+    // user 消息开始；后者会把对应调用留在摘要 head，形成孤立结果。
     const safeCut = findSafeCutPoint(working, working.length - tailSize);
-    // safeCut===0(整段 tool_use/tool_result 交错,无纯文本切点)时走兜底降级:
-    // 旧逻辑直接 skipped 返回原文,force=true 时原文已溢出 -> 必 PTL,且 skipped 不经 fail()、不计熔断,下轮重复爆。
-    // 改为放宽切点继续压缩:允许切在 tool_use assistant 上(其 tool_result 紧跟在 tail 内,tail 侧配对完整),
-    // head 整段送 Macro 摘要(formatHistory 把结构化 tool 块拍成文本,不引入孤立 tool_use/tool_result),
-    // tail 原文保留;极端退化(全 tool_result,正常不可达)时 tail 为空、整段降级。
-    // 降级后 Macro 失败仍走 fail() 计熔断,补上原 no_safe_cut 路径不自保护的缺口。
-    const tailCut = safeCut === 0
-      ? findTailSafeCutPoint(working, working.length - tailSize)
-      : safeCut;
-    const head = tailCut > 0 ? working.slice(0, tailCut) : working;
-    const tail = tailCut > 0 ? working.slice(tailCut) : [];
+    // 只有损坏历史（例如开头就是孤立 tool_result）才可能找不到切点。此时将整段
+    // 历史文本化后交给 Macro，避免 force 压缩原样返回并反复触发 PTL。
+    const head = safeCut > 0 ? working.slice(0, safeCut) : working;
+    const tail = safeCut > 0 ? working.slice(safeCut) : [];
     const compactionId = asCompactionId(randomUUID());
     const beforeHook = await this.deps.hookBus?.trigger('beforeCompact', {
       payload: { compactionId, messageCount: messages.length, tokenEstimate: estimated },
@@ -144,7 +138,8 @@ export class ContextCompactor {
         compactionId,
         sessionId: args.sessionId,
         turnId: args.turnId,
-        mode: args.mode,
+        executionProfile: args.executionProfile,
+        narrativePolicy: args.narrativePolicy,
         reason: 'hook_aborted',
         message: beforeHook.reason,
         beforeTokens,
@@ -164,7 +159,8 @@ export class ContextCompactor {
       compactionId,
       sessionId: args.sessionId,
       turnId: args.turnId,
-      mode: args.mode,
+      executionProfile: args.executionProfile,
+      narrativePolicy: args.narrativePolicy,
       beforeTokens,
     });
 
@@ -174,7 +170,7 @@ export class ContextCompactor {
       llm: this.deps.llm,
       providerId: args.providerId,
       model: args.model,
-      mode: args.mode,
+      executionProfile: args.executionProfile,
       toCompact: head,
       modelContextWindow: args.modelContextWindow,
       signal: args.signal,
@@ -188,7 +184,7 @@ export class ContextCompactor {
     // 压缩后恢复最近状态(session note、最近文件),否则模型摘要后会失忆。
     const restore = buildPostCompactionRestore(this.deps.loadSessionNote, {
       sessionId: args.sessionId,
-      mode: args.mode,
+      executionProfile: args.executionProfile,
       recentFiles: args.recentFiles,
     });
     // 预算适配:把 [prefix, summary, restore, tail, suffix] 塞进 tokenLimit。
@@ -200,7 +196,7 @@ export class ContextCompactor {
       suffix: fixedSuffix,
       restore,
       tail,
-      mode: args.mode,
+      executionProfile: args.executionProfile,
       tokenLimit,
       fixedTokens: toolTokens,
     });
@@ -233,7 +229,8 @@ export class ContextCompactor {
       compactionId,
       sessionId: args.sessionId,
       turnId: args.turnId,
-      mode: args.mode,
+      executionProfile: args.executionProfile,
+      narrativePolicy: args.narrativePolicy,
       beforeTokens,
       afterTokens,
       savedTokens: Math.max(0, beforeTokens - afterTokens),
@@ -278,7 +275,8 @@ export class ContextCompactor {
       compactionId,
       sessionId: args.sessionId,
       turnId: args.turnId,
-      mode: args.mode,
+      executionProfile: args.executionProfile,
+      narrativePolicy: args.narrativePolicy,
       error: detail,
       beforeTokens,
       afterTokens,

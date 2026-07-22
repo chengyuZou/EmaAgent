@@ -241,10 +241,10 @@ export type EmaStreamEvent =
 
   // Context compaction — turn-scoped. Emitted by ContextCompactor through the active Turn stream.
   // Has turnId — belongs on the per-turn SSE channel, NOT the system bus.
-  | { type: 'context_compaction_started';   compactionId: CompactionId; sessionId: SessionId; turnId: TurnId; mode: TurnMode; beforeTokens: number }
-  | { type: 'context_compaction_completed'; compactionId: CompactionId; sessionId: SessionId; turnId: TurnId; mode: TurnMode; beforeTokens: number; afterTokens: number; savedTokens: number; durationMs: number }
-  | { type: 'context_compaction_failed';    compactionId: CompactionId; sessionId: SessionId; turnId: TurnId; mode: TurnMode; error: string; beforeTokens: number; afterTokens: number; durationMs: number }
-  | { type: 'context_compaction_skipped';   compactionId: CompactionId; sessionId: SessionId; turnId: TurnId; mode: TurnMode; reason: 'hook_aborted'; message: string; beforeTokens: number; afterTokens: number; durationMs: number }
+  | { type: 'context_compaction_started';   compactionId: CompactionId; sessionId: SessionId; turnId: TurnId; executionProfile: ExecutionProfile; narrativePolicy: NarrativePolicy; beforeTokens: number }
+  | { type: 'context_compaction_completed'; compactionId: CompactionId; sessionId: SessionId; turnId: TurnId; executionProfile: ExecutionProfile; narrativePolicy: NarrativePolicy; beforeTokens: number; afterTokens: number; savedTokens: number; durationMs: number }
+  | { type: 'context_compaction_failed';    compactionId: CompactionId; sessionId: SessionId; turnId: TurnId; executionProfile: ExecutionProfile; narrativePolicy: NarrativePolicy; error: string; beforeTokens: number; afterTokens: number; durationMs: number }
+  | { type: 'context_compaction_skipped';   compactionId: CompactionId; sessionId: SessionId; turnId: TurnId; executionProfile: ExecutionProfile; narrativePolicy: NarrativePolicy; reason: 'hook_aborted'; message: string; beforeTokens: number; afterTokens: number; durationMs: number }
 
   // Memory pipeline telemetry — system-scoped (emitted by MemoryTaskRunner / MemoryPlanner.initialize).
   | { type: 'memory_extraction_started';    sessionId: SessionId; turnId?: TurnId; queueDepth: number }

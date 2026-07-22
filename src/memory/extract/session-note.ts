@@ -1,6 +1,7 @@
 import type { SessionId, TurnMode } from '@ema-agent/contracts';
 import { estimateTextTokens } from '@ema-agent/token';
 import { buildNoteCompactionPrompt } from '@ema-agent/context';
+import { extractCompactionSummary } from '@ema-agent/context';
 import type { SessionNoteEntry } from './types.js';
 import { safeParseEntries } from './types.js';
 import type { ExtractionPipelineDeps } from './pipeline.js';
@@ -68,7 +69,10 @@ export async function compactSessionNoteIfNeeded(
   if (!binding) return;
 
   const mergeText = toMerge.map(e => e.delta).join('\n\n');
-  const prompt = buildNoteCompactionPrompt({ mode, body: mergeText });
+  const prompt = buildNoteCompactionPrompt({
+    executionProfile: mode === 'agent' ? 'work' : 'chat',
+    body: mergeText,
+  });
   const completion = await deps.memory.llm.complete({
     providerId: binding.providerId,
     model: binding.model,
@@ -77,9 +81,10 @@ export async function compactSessionNoteIfNeeded(
     temperature: 0.2,
     signal,
   });
-  const merged = completion.blocks
+  const mergedOutput = completion.blocks
     .filter((b): b is typeof b & { type: 'text' } => b.type === 'text')
     .map(b => b.text).join('').trim();
+  const merged = extractCompactionSummary(mergedOutput);
 
   if (!merged) return;
 

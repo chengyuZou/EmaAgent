@@ -24,7 +24,11 @@ ContextCompactor
 - `compaction/`：保存纯函数预算、Tool 配对安全切点、摘要 Prompt 和压缩后恢复；
 - LLM Adapter 仍负责把 `cacheBreakpoint` 翻译成 Anthropic `cache_control` 等具体协议字段；
 
+ContextAssembler 会在最终请求投影的最后一条非空消息上补充增量缓存断点，使历史和已经完成的工具轮次进入下一次请求的缓存前缀。该断点不写回 Session Message、当前 Turn 工作消息或压缩结果；普通装配和压缩装配都会按各自最终顺序重新计算位置。
+
 V1 使用渐进式压缩：现有 ToolResultStore 先把超大结果落盘；只有上下文接近模型硬限制时才执行 Micro Compaction；仍超限才调用当前模型生成摘要。API 超限时由 Agent 触发一次 Reactive Compaction。Context Collapse、服务端 cache edits 和后台 Session Memory Agent 延后评估。
+
+Compaction 只按 `ExecutionProfile = chat | work` 选择摘要结构；`NarrativePolicy` 只控制剧情检索，不会创建第三套压缩语义。Macro 摘要要求模型先生成 `<analysis>` 草稿再输出 `<summary>`，解析器只保留最终摘要。Safe Cut 按 `toolUseId` 验证保留尾部的完整配对，允许从 assistant `tool_use` 开始，但不会让 tail 留下来自摘要 head 的孤立 `tool_result`。
 
 System Prompt 属于不可压缩前缀。即使响应式压缩接收到完整请求视图，也必须先将 system message 与历史分离；摘要模型只处理历史，压缩结果原样恢复 System Prompt。
 

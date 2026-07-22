@@ -410,7 +410,8 @@ export class Orchestrator {
           compactContext: providerId && model ? (view) => this.bindings.contextCompactor.compact({
             sessionId:          turn.sessionId,
             turnId:             turn.id,
-            mode:               legacyMode,
+            executionProfile:   request.executionProfile,
+            narrativePolicy:    request.narrativePolicy,
             messages:           [...view.historyMessages],
             prefixMessages:     view.prefixMessages,
             suffixMessages:     view.suffixMessages,
@@ -481,7 +482,8 @@ export class Orchestrator {
           compactContext: (view, options) => this.bindings.contextCompactor.compact({
             sessionId:          turn.sessionId,
             turnId:             turn.id,
-            mode:               'agent',
+            executionProfile:   request.executionProfile,
+            narrativePolicy:    request.narrativePolicy,
             messages:           [...view.historyMessages],
             prefixMessages:     view.prefixMessages,
             suffixMessages:     view.suffixMessages,

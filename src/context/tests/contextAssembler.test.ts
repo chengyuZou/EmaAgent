@@ -36,10 +36,12 @@ const manifest: ToolManifestSnapshot = {
 
 describe('ContextAssembler', () => {
   it('按固定边界装配最终模型请求', () => {
+    const history = [{ role: 'user' as const, content: 'old question' }];
+    const currentTurn = [{ role: 'user' as const, content: 'current question' }];
     const snapshot = new ContextAssembler().assemble({
       prompt,
-      history: [{ role: 'user', content: 'old question' }],
-      currentTurn: [{ role: 'user', content: 'current question' }],
+      history,
+      currentTurn,
       contributions: [
         {
           id: 'memory.recall',
@@ -55,7 +57,7 @@ describe('ContextAssembler', () => {
       { role: 'system', content: 'system rules', cacheBreakpoint: true },
       { role: 'user', content: 'old question' },
       { role: 'user', content: 'recalled facts' },
-      { role: 'user', content: 'current question' },
+      { role: 'user', content: 'current question', cacheBreakpoint: true },
     ]);
     expect(snapshot.promptRevision).toBe('prompt-v1');
     expect(snapshot.toolManifestRevision).toBe('tools-v3');
@@ -67,6 +69,8 @@ describe('ContextAssembler', () => {
     expect(Object.isFrozen(snapshot)).toBe(true);
     expect(Object.isFrozen(snapshot.messages)).toBe(true);
     expect(Object.isFrozen(snapshot.messages[0])).toBe(true);
+    expect(history[0]).not.toHaveProperty('cacheBreakpoint');
+    expect(currentTurn[0]).not.toHaveProperty('cacheBreakpoint');
     expect(snapshot.cache).toEqual(expect.objectContaining({
       productPromptRevision: 'product-v1',
       activeCharacterRevision: 'character-v1',
@@ -109,6 +113,7 @@ describe('ContextAssembler', () => {
     ]);
     expect(snapshot.messages[1]?.content).toBe('skill catalog');
     expect(snapshot.messages[2]?.content).toContain('当前工作区：D:\\workspace');
+    expect(snapshot.messages[4]?.cacheBreakpoint).toBe(true);
   });
 
   it('拒绝重复的临时贡献身份', () => {
@@ -165,6 +170,7 @@ describe('ContextAssembler', () => {
       'recalled facts',
       'current question',
     ]);
+    expect(snapshot.messages[3]?.cacheBreakpoint).toBe(true);
     expect(snapshot.history).toEqual([{ role: 'user', content: 'summary' }]);
   });
 });

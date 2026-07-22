@@ -1,7 +1,7 @@
 // 将摘要、恢复上下文和近期消息收敛到目标模型的硬 Token 预算内。
 
 import type { Message as ModelMessage } from '@ema-agent/llm';
-import type { TurnMode } from '@ema-agent/contracts';
+import type { ExecutionProfile } from '@ema-agent/turn';
 import { estimateMessagesTokens } from '@ema-agent/token';
 
 const TRUNCATED_MARKER = '\n\n[摘要已按当前模型上下文预算截断]';
@@ -22,7 +22,7 @@ export function fitCompactionContext(args: {
   suffix: ModelMessage[];
   restore: ModelMessage[];
   tail: ModelMessage[];
-  mode: TurnMode;
+  executionProfile: ExecutionProfile;
   tokenLimit: number;
   fixedTokens?: number;
 }): FittedCompactionContext | null {
@@ -40,7 +40,7 @@ export function fitCompactionContext(args: {
     args.restore,
     args.tail,
     args.suffix,
-    args.mode,
+    args.executionProfile,
   );
   const fullTokens = estimateTotal(full);
   if (fullTokens <= args.tokenLimit) {
@@ -59,7 +59,7 @@ export function fitCompactionContext(args: {
     [],
     args.tail,
     args.suffix,
-    args.mode,
+    args.executionProfile,
   );
   const withoutRestoreTokens = estimateTotal(withoutRestore);
   if (withoutRestoreTokens <= args.tokenLimit) {
@@ -85,7 +85,7 @@ export function fitCompactionContext(args: {
       [],
       args.tail,
       args.suffix,
-      args.mode,
+      args.executionProfile,
     );
     const afterTokens = estimateTotal(messages);
     if (afterTokens <= args.tokenLimit) {
@@ -110,13 +110,13 @@ function buildCandidate(
   restore: ModelMessage[],
   tail: ModelMessage[],
   suffix: ModelMessage[],
-  mode: TurnMode,
+  executionProfile: ExecutionProfile,
 ): ModelMessage[] {
   return [
     ...prefix,
     {
       role: 'user',
-      content: `<context-summary mode="${mode}">\n${summary}\n</context-summary>`,
+      content: `<context-summary profile="${executionProfile}">\n${summary}\n</context-summary>`,
     },
     ...restore,
     ...tail,

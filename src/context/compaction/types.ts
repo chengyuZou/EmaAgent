@@ -2,10 +2,11 @@ import type {
   MessageBlocks,
   SessionId,
   TurnId,
-  TurnMode,
 } from '@ema-agent/contracts';
 import type {
   EmaStreamEvent,
+  ExecutionProfile,
+  NarrativePolicy,
 } from '@ema-agent/turn';
 import type { LanguageModel, LlmToolDef, Message } from '@ema-agent/llm';
 import type { HookBus } from '@ema-agent/hooks';
@@ -45,7 +46,8 @@ export interface ContextCompactorDeps {
 export interface ContextCompactionArgs {
   sessionId: SessionId;
   turnId: TurnId;
-  mode: TurnMode;
+  executionProfile: ExecutionProfile;
+  narrativePolicy: NarrativePolicy;
   messages: Message[];
   /** Prompt 等固定前缀参与预算，但不得进入摘要模型。 */
   prefixMessages?: readonly Message[];
@@ -80,7 +82,7 @@ export type ContextCompactionResult =
   | (ContextCompactionResultBase & {
       status: 'skipped';
       macroRan: false;
-      reason: 'no_safe_cut' | 'hook_aborted' | 'circuit_open';
+      reason: 'hook_aborted' | 'circuit_open';
       detail?: string;
     })
   | (ContextCompactionResultBase & {

@@ -61,8 +61,8 @@ function createHarness(): Harness {
   dataDb.sqlite
     .prepare(
       `INSERT INTO turns
-         (id, session_id, mode, status, user_input, started_at)
-       VALUES (?, ?, 'chat', 'completed', 'hello', ?)`,
+         (id, session_id, trigger_type, execution_profile, narrative_policy, status, user_input, started_at)
+       VALUES (?, ?, 'userMessage', 'chat', 'auto', 'completed', 'hello', ?)`,
     )
     .run(turnId, sessionId, 1);
 
