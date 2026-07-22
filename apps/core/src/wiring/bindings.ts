@@ -83,9 +83,10 @@ import {
   registerBuiltinTools,
 } from '@ema-agent/tool-builtin';
 import { detectBackend, CommandRunner } from '@ema-agent/sandbox';
+import { ToolResultCleaner, ToolResultStore } from '@ema-agent/tools';
 import type { ICommandRunner, IMcpClientBridge, ISkillRunner } from '@ema-agent/tools';
 import {
-  AgentFileStateStore, AgentToolResultStore, ToolResultCleaner,
+  AgentFileStateStore,
 } from '@ema-agent/agent-context';
 import { AgentTaskStore, ToolExecutionJournal } from '@ema-agent/agent-task';
 import { MemoryPlanner } from '@ema-agent/memory';
@@ -194,7 +195,7 @@ export interface AppBindings {
   /** Per-session file-state + tool-result store — memoised on first call. */
   getContextStores: (sessionId: SessionId) => {
     fileStateStore:  AgentFileStateStore;
-    toolResultStore: AgentToolResultStore;
+    toolResultStore: ToolResultStore;
   };
   /** Sweeps offloaded tool-result files — called by background tick. */
   toolResultCleaner: ToolResultCleaner;
@@ -512,25 +513,31 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
     contextStoresCache.delete(sessionId);
   };
 
-  // ── Agent context stores ────────────────────────────────────────────────────
-  const sessionsDir = nodePath.join(activeDataDir, '.ema-agent', 'sessions');
+  // ── Session 文件状态与工具结果存储 ─────────────────────────────────────────
+  // 新结果与音频、Artifact 使用同一正式 Session 根，永久删除 Session 时可由
+  // removeSessionDir 一次清理；旧隐藏目录仅交给 Cleaner 做兼容回收。
+  const sessionsDir = nodePath.join(activeDataDir, 'sessions');
+  const legacyToolResultSessionsDir = nodePath.join(activeDataDir, '.ema-agent', 'sessions');
   const contextStoresCache = new Map<string, {
     fileStateStore:  AgentFileStateStore;
-    toolResultStore: AgentToolResultStore;
+    toolResultStore: ToolResultStore;
   }>();
   const getContextStores = (sessionId: SessionId) => {
     let stores = contextStoresCache.get(sessionId);
     if (stores) return stores;
     stores = {
       fileStateStore:  new AgentFileStateStore(),
-      toolResultStore: new AgentToolResultStore(
+      toolResultStore: new ToolResultStore(
         nodePath.join(sessionsDir, sessionId, 'tool-results'),
       ),
     };
     contextStoresCache.set(sessionId, stores);
     return stores;
   };
-  const toolResultCleaner    = new ToolResultCleaner(sessionsDir);
+  const toolResultCleaner = new ToolResultCleaner([
+    sessionsDir,
+    legacyToolResultSessionsDir,
+  ]);
   const agentTaskMessages    = new AgentTaskMessagesRepo(dataDb.sqlite);
   const taskStore            = new AgentTaskStore(new AgentTasksRepo(dataDb.sqlite));
   const agentTurnLifecycle   = new AgentTurnLifecycleFacade(

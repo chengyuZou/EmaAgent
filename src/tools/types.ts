@@ -220,7 +220,7 @@ export interface IToolCapabilityScope {
 }
 
 // ── ToolExecutionContext ───────────────────────────────────────────────────────
-
+// TODO 大改
 export interface ToolExecutionContext {
   sessionId: string;
   turnId: string;
@@ -318,10 +318,33 @@ export interface ToolDescriptor {
   inputJsonSchema: Record<string, unknown>;
 }
 
+/** 工具实现的可信来源
+ * 不使用 claude中 `isMcp()`的原因是
+ * 避免出现 `isMcp: true` 但 `mcpInfo` 为空的矛盾状态
+ */
+export type ToolOrigin =
+  | { readonly kind: 'builtin' }
+  | {
+      readonly kind: 'mcp';
+      readonly serverName: string;
+      readonly serverToolName: string;
+    };
+
+/** Schema 解析后的业务校验结果；失败会在权限询问前作为工具错误返回模型。 */
+export type ToolInputValidationResult =
+  | { readonly valid: true }
+  | {
+      readonly valid: false;
+      readonly message: string;
+      readonly code?: string;
+      readonly retryable?: boolean;
+    };
+
 /** 一次模型请求可见的单个工具定义，不包含可执行函数。 */
 export interface ToolManifestEntry {
   readonly id: string;
   readonly name: string;
+  readonly origin: ToolOrigin;
   readonly description: string;
   readonly inputJsonSchema: Readonly<Record<string, unknown>>;
 }
@@ -339,13 +362,30 @@ export interface ToolDef<TInput, TOutput> {
   /** 不随模型展示名称变化的内部身份；权限、日志和恢复逻辑使用它。 */
   id?: string;
   name: string;
+  /** 省略时按 Ema 内置工具处理；MCP 工具必须声明原始 Server/Tool 身份。 */
+  origin?: ToolOrigin;
   description: string;
   /** 根据本次规范化输入生成批准卡片摘要；与写给模型看的 description 分离。 */
   getToolUseSummary?: (input: TInput) => string | undefined;
   // ZodType<Output, Def, Input> - 我们把 input 侧放宽到 unknown,因为
   // ZodDefault 和 ZodOptional 在 input 侧产出 `T | undefined`,
   // 当 TInput 全部默认值应用时会导致可赋值性失败。
+  /** 运行时解析并校验模型提交的原始参数；所有工具都必须提供。 */
   inputSchema: z.ZodType<TInput, z.ZodTypeDef, unknown>;
+  /**
+   * 覆盖最终发送给模型的输入 JSON Schema。MCP 使用 Server 的原始 Schema；
+   * 省略时由 buildTool() 从 inputSchema 自动生成。
+   */
+  inputJsonSchemaOverride?: Record<string, unknown>;
+
+  /** 模型可见结果超过该 UTF-8 字节数时落盘；Infinity 表示工具自行封顶且禁止外置。 */
+  maxResultBytes?: number;
+
+  /** Schema 只检查结构；文件状态、工作区等业务语义在权限询问前由此检查。 */
+  validateInput?: (
+    input: TInput,
+    ctx: ToolExecutionContext,
+  ) => ToolInputValidationResult | Promise<ToolInputValidationResult>;
 
   /** true -> 只读,任何权限模式都可自动放行。 */
   isReadOnly: (input: TInput) => boolean;
@@ -354,6 +394,8 @@ export interface ToolDef<TInput, TOutput> {
    * 写共享状态(session store、文件系统)的工具设 false。
    */
   isConcurrencySafe: (input: TInput) => boolean;
+  /** 工具执行期间是否会暂停当前 Turn 等待用户输入。 */
+  requiresUserInteraction?: (input: TInput) => boolean;
 
   /** PermissionEngine.gate() 查询的权限元数据。 */
   permissionMeta: ToolPermissionMeta;
@@ -366,11 +408,21 @@ export interface ToolDef<TInput, TOutput> {
 export interface BuiltTool<TInput = unknown, TOutput = unknown> {
   readonly id: string;
   readonly name: string;
+  readonly origin: ToolOrigin;
   readonly description: string;
   readonly getToolUseSummary?: (input: TInput) => string | undefined;
+  /** 运行时解析与校验使用的 Zod Schema。 */
   readonly inputSchema: z.ZodType<TInput, z.ZodTypeDef, unknown>;
+  /** 构建时提供的模型 JSON Schema 覆盖值；最终 Schema 从 descriptor() 获取。 */
+  readonly inputJsonSchemaOverride?: Readonly<Record<string, unknown>>;
+  readonly maxResultBytes: number;
+  readonly validateInput?: (
+    input: TInput,
+    ctx: ToolExecutionContext,
+  ) => ToolInputValidationResult | Promise<ToolInputValidationResult>;
   readonly isReadOnly: (input: TInput) => boolean;
   readonly isConcurrencySafe: (input: TInput) => boolean;
+  readonly requiresUserInteraction: (input: TInput) => boolean;
   readonly permissionMeta: ToolPermissionMeta;
   readonly descriptor: () => ToolDescriptor;
   readonly execute: (input: TInput, ctx: ToolExecutionContext) => Promise<TOutput>;

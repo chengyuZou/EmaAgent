@@ -1,5 +1,6 @@
 // 这里定义一次工具调用完成解析和规范化后、进入权限检查前的不可变快照。
 import type { ToolPermissionMeta } from '@ema-agent/permission';
+import type { ToolOrigin } from './types.js';
 
 /** 递归只读视图；运行时由 prepareToolInput() 对应地深冻结。 */
 export type DeepReadonly<T> =
@@ -18,11 +19,14 @@ export type DeepReadonly<T> =
 export interface PreparedToolCall<TInput = unknown> {
   readonly id: string;
   readonly name: string;
+  readonly origin: ToolOrigin;
   readonly summary?: string;
   readonly input: DeepReadonly<TInput>;
   readonly permissionMeta: ToolPermissionMeta;
   readonly isReadOnly: boolean;
   readonly isConcurrencySafe: boolean;
+  readonly requiresUserInteraction: boolean;
+  readonly maxResultBytes: number;
 }
 
 /**

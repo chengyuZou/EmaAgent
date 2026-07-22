@@ -44,6 +44,7 @@ Prefer this over AskUser for a single choice question - the UI shows a cleaner s
   inputSchema,
   isReadOnly: () => false,
   isConcurrencySafe: () => false,
+  requiresUserInteraction: () => true,
 
   permissionMeta: {
     riskLevel: 'low',

@@ -21,20 +21,16 @@ import type {
   EmaStreamEvent,
 } from '@ema-agent/turn';
 import { splitToolResult, ToolInputError } from '@ema-agent/tools';
-import type { ToolExecutionContext, ICommandRunner, PreparedToolCall } from '@ema-agent/tools';
+import type {
+  ToolExecutionContext,
+  ICommandRunner,
+  PreparedToolCall,
+  ToolResultStore,
+} from '@ema-agent/tools';
 import type { ToolManifestSnapshot } from '@ema-agent/tools';
 import type { PermissionEngine, PermissionContext } from '@ema-agent/permission';
 import type { HookBus, ToolFailurePhase } from '@ema-agent/hooks';
-import type { AgentToolResultStore } from '@ema-agent/agent-context';
 import type { AgentDeps, IToolExecutionJournal } from './types.js';
-
-/** 会暂停当前工具执行、等待用户从界面回答的内置工具。 */
-const USER_INPUT_TOOL_NAMES: ReadonlySet<string> = new Set([
-  'AskUser',
-  'AskText',
-  'AskChoice',
-  'AskConfirm',
-]);
 
 // ── Internal per-tool state ───────────────────────────────────────────────────
 
@@ -94,7 +90,7 @@ export interface TurnToolExecutorOpts {
    * disk and the tool_result block receives a preview + file reference instead.
    * Absent in tests and non-agent callers — falls back to full inline content.
    */
-  toolResultStore?: AgentToolResultStore;
+  toolResultStore?: ToolResultStore;
   /** 工具执行审计 Facade；生产环境必须注入，测试可省略。 */
   toolExecutionJournal?: IToolExecutionJournal;
 }
@@ -263,15 +259,38 @@ export class TurnToolExecutor {
 
   /** 只要任一询问用户的工具尚未收到回答，就保持 waiting_user 状态。 */
   hasWaitingUserTool(): boolean {
-    return this.tracked.some(t => USER_INPUT_TOOL_NAMES.has(t.name) && !t.done);
+    return this.tracked.some(track => track.prepared?.requiresUserInteraction === true && !track.done);
   }
 
   /** Returns tool results sorted by blockIndex. Call after allDone(). */
   getResults(): ToolResultBlock[] {
-    return [...this.tracked]
-      .sort((a, b) => a.blockIndex - b.blockIndex)
-      .map(t => t.result!)
-      .filter(Boolean);
+    const sorted = [...this.tracked]
+      .filter(track => track.result !== undefined)
+      .sort((left, right) => left.blockIndex - right.blockIndex);
+    const store = this.opts.toolResultStore;
+    if (!store) return sorted.map(track => track.result!);
+
+    const contents = store.enforceAggregateBudget(
+      sorted.flatMap(track => (
+        track.prepared
+        && track.result
+        && typeof track.result.content === 'string'
+      )
+        ? [{
+            callId: track.id,
+            toolName: track.name,
+            content: track.result.content,
+            maxResultBytes: track.prepared.maxResultBytes,
+          }]
+        : []),
+    );
+    return sorted.map((track) => {
+      const result = track.result!;
+      const content = contents.get(track.id);
+      return content === undefined || content === result.content
+        ? result
+        : { ...result, content };
+    });
   }
 
   // ── Private execution ─────────────────────────────────────────────────────
@@ -335,6 +354,38 @@ export class TurnToolExecutor {
         return;
       }
 
+      const perToolCtx: ToolExecutionContext = {
+        ...toolCtx,
+        toolCallId: id,
+        signal: perToolCtrl.signal,
+      };
+
+      let validation;
+      try {
+        // 生产装配始终使用 ToolRegistry；旧测试和最小可信适配器在迁移期可省略
+        // 业务校验方法，但不能绕过 Registry 的 Schema Prepare 与执行身份检查。
+        validation = typeof tools.validate === 'function'
+          ? await tools.validate(prepared, perToolCtx)
+          : { valid: true as const };
+      } catch (error) {
+        await this.completeFailure(track, {
+          phase: 'validation',
+          code: 'tool/validation_error',
+          message: errorMessage(error),
+          retryable: true,
+        }, perToolCtrl.signal);
+        return;
+      }
+      if (!validation.valid) {
+        await this.completeFailure(track, {
+          phase: 'validation',
+          code: validation.code ?? 'tool/invalid_input',
+          message: validation.message,
+          retryable: validation.retryable ?? true,
+        }, perToolCtrl.signal);
+        return;
+      }
+
       // ── Permission gate ───────────────────────────────────────────────────
       // In production, buildAsk routes permission_required events through pushEv
       // into the engine's pending queue so the SSE stream delivers them immediately.
@@ -387,11 +438,6 @@ export class TurnToolExecutor {
       // ── Execute ───────────────────────────────────────────────────────────
       // Tools receive the per-tool signal so abortTool() can cancel just this
       // invocation. The turn-level signal is cascaded so both fire on turn abort.
-      const perToolCtx: ToolExecutionContext = {
-        ...toolCtx,
-        toolCallId: id,
-        signal: perToolCtrl.signal,
-      };
       let output: unknown;
       let presentation: ToolResultBlock['presentation'];
       let isError = false;
@@ -451,11 +497,16 @@ export class TurnToolExecutor {
         }
       }
 
-      const serialized = typeof output === 'string' ? output : JSON.stringify(output, null, 2);
+      const serialized = serializeToolOutput(output);
       const { toolResultStore } = this.opts;
       let content = serialized;
       if (toolResultStore) {
-        const norm = toolResultStore.maybeNormalize(id, name, serialized);
+        const norm = toolResultStore.normalize(
+          id,
+          name,
+          serialized,
+          prepared.maxResultBytes,
+        );
         if (norm.kind !== 'unchanged') content = norm.blockContent;
       }
       track.result = {
@@ -596,6 +647,12 @@ export class TurnToolExecutor {
       }
     }
   }
+}
+
+function serializeToolOutput(output: unknown): string {
+  if (typeof output === 'string') return output;
+  const serialized = JSON.stringify(output, null, 2);
+  return serialized ?? String(output);
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

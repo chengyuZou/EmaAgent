@@ -28,6 +28,7 @@ export function createToolManifestSnapshotFromEntries(
     .map((entry) => Object.freeze({
       id: entry.id,
       name: entry.name,
+      origin: freezeOrigin(entry.origin),
       description: entry.description,
       inputJsonSchema: freezePreparedInput(structuredClone(entry.inputJsonSchema)),
     }));
@@ -38,6 +39,7 @@ export function createToolManifestSnapshotFromEntries(
       entries: entries.map((entry) => ({
         id: entry.id,
         name: entry.name,
+        origin: entry.origin,
         description: entry.description,
         inputJsonSchema: canonicalize(entry.inputJsonSchema),
       })),
@@ -57,9 +59,20 @@ function toManifestEntry(tool: BuiltTool): ToolManifestEntry {
   return Object.freeze({
     id: tool.id,
     name: descriptor.name,
+    origin: freezeOrigin(tool.origin),
     description: descriptor.description,
     inputJsonSchema: freezePreparedInput(schema),
   });
+}
+
+function freezeOrigin(origin: ToolManifestEntry['origin']): ToolManifestEntry['origin'] {
+  return origin.kind === 'mcp'
+    ? Object.freeze({
+        kind: 'mcp',
+        serverName: origin.serverName,
+        serverToolName: origin.serverToolName,
+      })
+    : Object.freeze({ kind: 'builtin' });
 }
 
 function canonicalize(value: unknown): unknown {

@@ -4,7 +4,9 @@ import type {
   BuiltTool,
   ToolDescriptor,
   ToolExecutionContext,
+  ToolInputValidationResult,
   ToolManifestSnapshot,
+  ToolOrigin,
 } from './types.js';
 import { freezePreparedInput } from './prepared-call.js';
 import type { PreparedToolCall } from './prepared-call.js';
@@ -25,7 +27,7 @@ export interface McpToolRegistration {
   readonly owner: McpToolOwner;
 }
 
-type ToolOwner = { readonly kind: 'builtin' } | ({ readonly kind: 'mcp' } & McpToolOwner);
+type ToolOwner = ToolOrigin;
 
 export class ToolRegistryError extends Error {
   constructor(message: string) {
@@ -80,6 +82,9 @@ export class ToolRegistry {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   register(tool: BuiltTool<any, any>): void {
+    if (tool.origin.kind !== 'builtin') {
+      throw new ToolRegistryError(`MCP tool "${tool.name}" must use registerMcp()`);
+    }
     if (this.tools.has(tool.name)) {
       throw new ToolRegistryError(`Tool "${tool.name}" is already registered`);
     }
@@ -104,6 +109,11 @@ export class ToolRegistry {
 
     for (const registration of registrations) {
       const attemptedOwner = toMcpOwner(registration.owner);
+      if (!sameOwner(registration.tool.origin, attemptedOwner)) {
+        throw new ToolRegistryError(
+          `MCP tool "${registration.tool.name}" origin does not match its registration owner`,
+        );
+      }
       const duplicateInBatch = batchOwners.get(registration.tool.name);
       if (duplicateInBatch) {
         throw new ToolRegistrationConflictError(
@@ -235,15 +245,27 @@ export class ToolRegistry {
     const prepared = Object.freeze({
       id: tool.id,
       name,
+      origin: tool.origin,
       summary: tool.getToolUseSummary?.(input),
       input,
       permissionMeta,
       isReadOnly: tool.isReadOnly(input),
       isConcurrencySafe: tool.isConcurrencySafe(input),
+      requiresUserInteraction: tool.requiresUserInteraction(input),
+      maxResultBytes: tool.maxResultBytes,
     }) satisfies PreparedToolCall;
 
     this.preparedCalls.set(prepared, tool);
     return prepared;
+  }
+
+  /** 对已经冻结的输入执行 Schema 之后、权限之前的业务语义校验。 */
+  async validate(
+    prepared: PreparedToolCall,
+    ctx: ToolExecutionContext,
+  ): Promise<ToolInputValidationResult> {
+    const tool = this.preparedTool(prepared);
+    return await tool.validateInput?.(prepared.input, ctx) ?? { valid: true };
   }
 
   private toolFromManifest(manifest: ToolManifestSnapshot, name: string): AnyBuiltTool {
@@ -269,19 +291,7 @@ export class ToolRegistry {
     prepared: PreparedToolCall,
     ctx: ToolExecutionContext,
   ): Promise<unknown> {
-    const preparedObject = prepared as object;
-    const preparedTool = this.preparedCalls.get(preparedObject);
-    if (!preparedTool) {
-      throw new ToolRegistryError('Prepared tool call was not created by this registry');
-    }
-
-    const currentTool = this.tools.get(prepared.name);
-    if (currentTool !== preparedTool) {
-      this.preparedCalls.delete(preparedObject);
-      throw new ToolRegistryError(`Prepared tool call for "${prepared.name}" is stale`);
-    }
-
-    return preparedTool.unsafeExecute(prepared.input, ctx);
+    return this.preparedTool(prepared).unsafeExecute(prepared.input, ctx);
   }
 
   /**
@@ -294,6 +304,19 @@ export class ToolRegistry {
     ctx: ToolExecutionContext,
   ): Promise<unknown> {
     return this.execute(this.prepare(name, rawArgs), ctx);
+  }
+
+  private preparedTool(prepared: PreparedToolCall): AnyBuiltTool {
+    const preparedObject = prepared as object;
+    const tool = this.preparedCalls.get(preparedObject);
+    if (!tool) {
+      throw new ToolRegistryError('Prepared tool call was not created by this registry');
+    }
+    if (this.tools.get(prepared.name) !== tool) {
+      this.preparedCalls.delete(preparedObject);
+      throw new ToolRegistryError(`Prepared tool call for "${prepared.name}" is stale`);
+    }
+    return tool;
   }
 }
 

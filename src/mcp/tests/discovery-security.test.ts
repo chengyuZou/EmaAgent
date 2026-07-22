@@ -1,7 +1,8 @@
-// 这里测试 MCP Server 自报的安全 annotations 不能降低权限风险或开放并发执行。
+// 测试 MCP Server 的动态 Schema、结果预算和自报 annotations 都受 Ema Tool 契约约束。
 import { describe, expect, it, vi } from 'vitest';
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { PermissionEngine } from '@ema-agent/permission';
+import { DEFAULT_MAX_RESULT_BYTES } from '@ema-agent/tools';
 import type { McpToolInfo } from '../types.js';
 import { McpToolInfoListSchema } from '../types.js';
 import { buildMcpBuiltTool, discoverServerTools } from '../discovery.js';
@@ -68,6 +69,24 @@ describe('MCP 工具发现安全边界', () => {
       riskLevel: 'medium',
       accessType: 'execute',
     }));
+  });
+
+  it('通过统一 buildTool 保留真实 JSON Schema 并继承 Ema 结果预算', () => {
+    const inputSchema = {
+      type: 'object',
+      properties: { query: { type: 'string' } },
+      required: ['query'],
+    };
+    const tool = buildMcpBuiltTool(toolInfo({ inputSchema }), registryStub());
+
+    expect(tool.descriptor().inputJsonSchema).toEqual(inputSchema);
+    expect(tool.origin).toEqual({
+      kind: 'mcp',
+      serverName: 'test',
+      serverToolName: 'search',
+    });
+    expect(tool.maxResultBytes).toBe(DEFAULT_MAX_RESULT_BYTES);
+    expect(tool.requiresUserInteraction({})).toBe(false);
   });
 
   it('destructiveHint 只能单向提升到 high，和 readOnlyHint 冲突时仍按 high', () => {

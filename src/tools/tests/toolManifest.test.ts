@@ -5,10 +5,19 @@ import { z } from 'zod';
 import { buildTool } from '../build-tool.js';
 import { ToolRegistry, ToolRegistryError } from '../registry.js';
 
-function makeTool(id: string, name: string) {
+function makeTool(
+  id: string,
+  name: string,
+  origin: { kind: 'builtin' } | {
+    kind: 'mcp';
+    serverName: string;
+    serverToolName: string;
+  } = { kind: 'builtin' },
+) {
   return buildTool({
     id,
     name,
+    origin,
     description: `${name} description`,
     inputSchema: z.object({ query: z.string() }),
     isReadOnly: () => true,
@@ -31,13 +40,16 @@ describe('ToolManifestSnapshot', () => {
     expect(first.revision).toBe(second.revision);
     expect(Object.isFrozen(first)).toBe(true);
     expect(Object.isFrozen(first.entries)).toBe(true);
+    expect(first.entries.every((entry) => entry.origin.kind === 'builtin')).toBe(true);
+    expect(Object.isFrozen(first.entries[0]?.origin)).toBe(true);
     expect(Object.isFrozen(first.entries[0]?.inputJsonSchema)).toBe(true);
   });
 
   it('拒绝伪造 Manifest，并在同名 MCP 实现热更新后拒绝旧快照', () => {
     const registry = new ToolRegistry();
+    const origin = { kind: 'mcp' as const, serverName: 'demo', serverToolName: 'search' };
     registry.registerMcp({
-      tool: makeTool('mcp.demo.search', 'mcp__demo__search'),
+      tool: makeTool('mcp.demo.search', 'mcp__demo__search', origin),
       owner: { serverName: 'demo', serverToolName: 'search' },
     });
     const snapshot = registry.manifestSnapshot();
@@ -49,7 +61,7 @@ describe('ToolManifestSnapshot', () => {
     )).toThrow(ToolRegistryError);
 
     registry.registerMcp({
-      tool: makeTool('mcp.demo.search', 'mcp__demo__search'),
+      tool: makeTool('mcp.demo.search', 'mcp__demo__search', origin),
       owner: { serverName: 'demo', serverToolName: 'search' },
     });
 

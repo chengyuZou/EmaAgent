@@ -12,17 +12,30 @@ const context = {
   readFileState: new Map(),
 } satisfies ToolExecutionContext;
 
-function makeTool(name = 'dynamic_tool'): BuiltTool<{ path: string; parallel: boolean }, string> {
+function makeTool(
+  name = 'dynamic_tool',
+  origin: { kind: 'builtin' } | {
+    kind: 'mcp';
+    serverName: string;
+    serverToolName: string;
+  } = { kind: 'builtin' },
+): BuiltTool<{ path: string; parallel: boolean }, string> {
   return buildTool({
     name,
+    origin,
     description: '测试工具',
     getToolUseSummary: (input) => `处理 ${input.path}`,
     inputSchema: z.object({
       path: z.string(),
       parallel: z.boolean().default(false),
     }),
+    maxResultBytes: 4096,
+    validateInput: async input => input.path === 'blocked.txt'
+      ? { valid: false, message: '路径被业务规则拒绝', code: 'tool/path_blocked' }
+      : { valid: true },
     isReadOnly: (input) => input.path.endsWith('.txt'),
     isConcurrencySafe: (input) => input.parallel,
+    requiresUserInteraction: input => input.path === 'question.txt',
     permissionMeta: {
       riskLevel: 'medium',
       accessType: 'write',
@@ -43,12 +56,31 @@ describe('PreparedToolCall', () => {
     expect(prepared.input).toEqual(raw);
     expect(prepared.summary).toBe('处理 notes.txt');
     expect(prepared.input).not.toBe(raw);
+    expect(prepared.origin).toEqual({ kind: 'builtin' });
     expect(prepared.isReadOnly).toBe(true);
     expect(prepared.isConcurrencySafe).toBe(true);
+    expect(prepared.requiresUserInteraction).toBe(false);
+    expect(prepared.maxResultBytes).toBe(4096);
     expect(Object.isFrozen(prepared)).toBe(true);
     expect(Object.isFrozen(prepared.input)).toBe(true);
     expect(Object.isFrozen(prepared.permissionMeta)).toBe(true);
     await expect(registry.execute(prepared, context)).resolves.toBe('notes.txt:true');
+  });
+
+  it('在同一 Prepared 输入上执行权限前业务校验', async () => {
+    const registry = new ToolRegistry();
+    registry.register(makeTool());
+
+    const valid = registry.prepare('dynamic_tool', { path: 'question.txt', parallel: false });
+    expect(valid.requiresUserInteraction).toBe(true);
+    await expect(registry.validate(valid, context)).resolves.toEqual({ valid: true });
+
+    const invalid = registry.prepare('dynamic_tool', { path: 'blocked.txt', parallel: false });
+    await expect(registry.validate(invalid, context)).resolves.toEqual({
+      valid: false,
+      message: '路径被业务规则拒绝',
+      code: 'tool/path_blocked',
+    });
   });
 
   it('深冻结嵌套输入，审批后不能原地改参', () => {
@@ -75,8 +107,9 @@ describe('PreparedToolCall', () => {
   it('拒绝伪造、跨 Registry 和热更新前的旧快照', async () => {
     const first = new ToolRegistry();
     const second = new ToolRegistry();
+    const origin = { kind: 'mcp' as const, serverName: 'test', serverToolName: 'dynamic' };
     first.registerMcp({
-      tool: makeTool('mcp__test__dynamic'),
+      tool: makeTool('mcp__test__dynamic', origin),
       owner: { serverName: 'test', serverToolName: 'dynamic' },
     });
     second.register(makeTool('mcp__test__dynamic'));
@@ -85,16 +118,20 @@ describe('PreparedToolCall', () => {
     await expect(second.execute(prepared, context)).rejects.toBeInstanceOf(ToolRegistryError);
 
     first.registerMcp({
-      tool: makeTool('mcp__test__dynamic'),
+      tool: makeTool('mcp__test__dynamic', origin),
       owner: { serverName: 'test', serverToolName: 'dynamic' },
     });
     await expect(first.execute(prepared, context)).rejects.toThrow(/stale/);
 
     await expect(first.execute({
+      id: 'mcp__test__dynamic',
       name: 'mcp__test__dynamic',
+      origin,
       input: { path: 'a.txt', parallel: false },
       isReadOnly: true,
       isConcurrencySafe: false,
+      requiresUserInteraction: false,
+      maxResultBytes: 4096,
       permissionMeta: { riskLevel: 'low' },
     }, context)).rejects.toThrow(/not created by this registry/);
   });

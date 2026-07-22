@@ -19,10 +19,13 @@ describe('Skill capability 与工具执行器集成', () => {
       prepare: (name: string, input: unknown) => ({
         id: name === 'SkillCall' ? 'builtin.skill.call' : 'builtin.shell.bash',
         name,
+        origin: { kind: 'builtin' },
         input,
         permissionMeta: {},
         isReadOnly: false,
         isConcurrencySafe: name !== 'SkillCall',
+        requiresUserInteraction: false,
+        maxResultBytes: 1024,
       }),
       execute: async (prepared: { name: string }) => {
         dispatched.push(prepared.name);
@@ -77,6 +80,7 @@ function fakeTool(id: string, name: string): BuiltTool {
   return {
     id,
     name,
+    origin: { kind: 'builtin' },
     description: name,
     descriptor: () => ({ name, description: name, inputJsonSchema: {} }),
   } as BuiltTool;

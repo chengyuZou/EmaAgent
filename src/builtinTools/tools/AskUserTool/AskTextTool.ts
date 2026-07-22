@@ -31,6 +31,7 @@ Prefer this over AskUser for a single freeform question - the UI shows a focused
   inputSchema,
   isReadOnly: () => false,
   isConcurrencySafe: () => false,
+  requiresUserInteraction: () => true,
 
   permissionMeta: {
     riskLevel: 'low',

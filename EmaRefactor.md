@@ -854,7 +854,7 @@ interface TurnExecutionSnapshot {
 
 目录迁移和 Contracts 拆除已经结束，接下来按一个主要业务边界一批推进：
 
-1. Tool Result 归位到 `src/tools/results`，建立单结果上限和单消息聚合预算，并保持持久预览可重放；
+1. [x] Tool Result 归位到 `src/tools/results`，建立单结果上限和单消息聚合预算，并保持持久预览可重放；
 2. ToolExecution Journal 从 Tasks/Agent 收回 Tools，Storage 只保留 Store 实现；
 3. 删除 `ToolRegistry.dispatch()` 的 prepare→execute 旁路，冻结唯一执行入口；
 4. 将现有 TurnToolExecutor 拆为 Agent Tool Scheduler 与 Tools `ToolExecutionRuntime`；
@@ -871,14 +871,13 @@ interface TurnExecutionSnapshot {
 
 ## 11. 下一阶段的实际边界
 
-下一阶段从 Tool Result 归位与统一预算开始，只改变工具结果所有权和封顶链路：
+Tool Result 归位与统一预算已经完成。下一阶段收回 ToolExecution Journal，只改变执行审计的业务所有权：
 
-1. 迁移 `agentContext/toolResult` 与 Cleanup 到 `src/tools/results`，保持现有持久化行为；
-2. 用 Tool Definition 上的显式结果策略替代按工具名称猜测是否外置；
-3. 每个结果先执行单结果封顶，并在同批并行结果写入 Session 前执行单消息聚合预算；
-4. 保留 Session 删除清理、TTL、Session 配额与全局配额；外置失败不得静默丢失正文；
-5. 本批不同时实现 Shell 全量流式落盘、Permission 内部只读路径、Tool Manifest Cache、Journal 迁移或 TurnToolExecutor 拆分；
-6. 修改前逐个对照 Claude 的相关 Tool 输入、输出和截断语义，再决定 Ema 的默认值与覆盖值。
+1. 将 ToolExecution Journal 的领域接口、状态机与恢复语义迁入 `src/tools/journal`；
+2. `src/storage` 只保留 ToolExecution Repository/Store 实现，不拥有业务状态转换；
+3. `src/tasks` 不再导出或装配 ToolExecution Journal；Task、AgentRun 与 ToolExecution 身份继续分离；
+4. 保持现有 `prepared → authorized → running → terminal/outcome_unknown` 数据和 CAS 语义；
+5. 本批不同时删除 Registry 旁路、拆 TurnToolExecutor、修改数据库 Schema 或调整 Permission/Sandbox。
 
 ## 12. 完成标准
 

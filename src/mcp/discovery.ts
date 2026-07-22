@@ -1,7 +1,8 @@
 // 这里发现 MCP Server 暴露的工具，并把它们转换成 EmaAgent 的可注册工具。
 import type { Client }           from '@modelcontextprotocol/sdk/client/index.js';
 import { z }                     from 'zod';
-import type { BuiltTool, ToolDescriptor, ToolExecutionContext } from '@ema-agent/tools';
+import { buildTool } from '@ema-agent/tools';
+import type { BuiltTool } from '@ema-agent/tools';
 import type { ToolPermissionMeta } from '@ema-agent/permission';
 import type { McpToolInfo }      from './types.js';
 import { buildMcpToolName }      from './types.js';
@@ -41,14 +42,13 @@ export async function discoverServerTools(
 
 // ── MCP 工具的 BuiltTool 工厂 ──────────────────────────────────────────────────
 //
-// MCP 工具不能用标准 buildTool() 辅助,因其 input schema 来自服务器(JSON Schema,
-// 非 Zod schema)。我们直接构造 BuiltTool 对象,让 LLM 看到真实 JSON Schema,
-// 而 Zod 校验保持宽松(校验本就是服务器的事)。
+// MCP 使用宽松 Zod 保护对象边界，同时把 Server 的真实 JSON Schema 直接交给
+// buildTool；结果预算和其他保守默认值因此不会绕过统一 Tool 契约。
 
 export function buildMcpBuiltTool(
   info:     McpToolInfo,
   registry: McpRegistry,
-): BuiltTool {
+): BuiltTool<Record<string, unknown>, unknown> {
   // 用原始(未清洗)服务器名查连接。qualifiedName 的连字符/点已替换成下划线;
   // 连接 map 按原始名索引,故拆分 qualifiedName 会破坏名字含非字母数字的服务器。
   const serverName = info.originalServerName;
@@ -61,32 +61,26 @@ export function buildMcpBuiltTool(
     accessType: 'execute',
   });
 
-  const descriptor = (): ToolDescriptor => ({
-    name:           info.qualifiedName,
-    description:    `[MCP:${serverName}] ${info.description}`,
-    inputJsonSchema: info.inputSchema,         // ← 给 LLM 的真实 MCP schema
-  });
-
-  // execute 接 `unknown`,为与 BuiltTool<unknown, unknown> 的逆变兼容
-  const execute = async (
-    input: unknown,
-    ctx:   ToolExecutionContext,
-  ): Promise<unknown> => {
-    return registry.callTool(serverName, info.serverToolName, input as Record<string, unknown>, ctx.signal);
-  };
-
-  return Object.freeze({
+  return buildTool<Record<string, unknown>, unknown>({
     id:                mcpToolId(serverName, info.serverToolName),
     name:              info.qualifiedName,
+    origin: {
+      kind: 'mcp',
+      serverName,
+      serverToolName: info.serverToolName,
+    },
     description:       `[MCP:${serverName}] ${info.description}`,
     inputSchema:       inputZod,
-    isReadOnly:        (_input: unknown) => false,
-    isConcurrencySafe: (_input: unknown) => false,
+    inputJsonSchemaOverride: info.inputSchema,
+    isReadOnly:        () => false,
+    isConcurrencySafe: () => false,
     permissionMeta,
-    descriptor,
-    execute,
-    unsafeExecute:     (raw: unknown, ctx: ToolExecutionContext) => execute(inputZod.parse(raw), ctx),
-    parseInput:        (raw: unknown) => inputZod.parse(raw),
+    execute: (input, ctx) => registry.callTool(
+      serverName,
+      info.serverToolName,
+      input,
+      ctx.signal,
+    ),
   });
 }
 

@@ -30,6 +30,7 @@ Prefer this over AskUser when you only need a binary decision - the UI shows a f
   inputSchema,
   isReadOnly: () => false,
   isConcurrencySafe: () => false,
+  requiresUserInteraction: () => true,
 
   permissionMeta: {
     riskLevel: 'low',

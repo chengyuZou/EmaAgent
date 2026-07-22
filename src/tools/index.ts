@@ -21,6 +21,8 @@ export type {
   ToolDescriptor,
   ToolManifestEntry,
   ToolManifestSnapshot,
+  ToolOrigin,
+  ToolInputValidationResult,
   ToolDef,
   BuiltTool,
 } from './types.js';
@@ -28,7 +30,7 @@ export type { DeepReadonly, PreparedToolCall } from './prepared-call.js';
 export { presentToolResult, splitToolResult } from './tool-result.js';
 export type { SplitToolResult } from './tool-result.js';
 
-export { buildTool } from './build-tool.js';
+export { buildTool, DEFAULT_MAX_RESULT_BYTES } from './build-tool.js';
 export {
   createToolManifestSnapshot,
   createToolManifestSnapshotFromEntries,
@@ -41,3 +43,17 @@ export {
 } from './registry.js';
 export type { McpToolOwner, McpToolRegistration } from './registry.js';
 export { spawnProcess } from './process-spawn.js';
+export {
+  DEFAULT_AGGREGATE_RESULT_BYTES,
+  DEFAULT_RESULT_PREVIEW_BYTES,
+  ToolResultStore,
+  generatePreview,
+  DEFAULT_CLEANER_CONFIG,
+  ToolResultCleaner,
+} from './results/index.js';
+export type {
+  AggregateResultCandidate,
+  AggregateResultContents,
+  NormalizeResult,
+  CleanerConfig,
+} from './results/index.js';

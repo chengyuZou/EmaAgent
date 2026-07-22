@@ -22,10 +22,16 @@ import type { PromptSnapshot } from '@ema-agent/prompts';
 import type { MessageBlocks, SessionStore, Turn } from '@ema-agent/session';
 import type { HookBus } from '@ema-agent/hooks';
 import type { EmotionEngine } from '@ema-agent/emotion';
-import type { ICommandRunner, IMcpClientBridge, ISkillRunner, ToolRegistry } from '@ema-agent/tools';
+import type {
+  ICommandRunner,
+  IMcpClientBridge,
+  ISkillRunner,
+  ToolRegistry,
+  ToolResultStore,
+} from '@ema-agent/tools';
 import type { IArtifactStore } from '@ema-agent/artifact';
 import type { PermissionEngine, AskPermissionFn } from '@ema-agent/permission';
-import type { AgentFileStateStore, AgentToolResultStore } from '@ema-agent/agent-context';
+import type { AgentFileStateStore } from '@ema-agent/agent-context';
 import type { ModelCapabilityResolver } from '@ema-agent/provider';
 
 /** Minimal interface for the AskUser registry — avoids importing from core. */
@@ -105,7 +111,7 @@ export interface AgentDeps {
    */
   getContextStores?: (sessionId: SessionId) => {
     fileStateStore:  AgentFileStateStore;
-    toolResultStore: AgentToolResultStore;
+    toolResultStore: ToolResultStore;
   };
   /**
    * Task lifecycle store for crash recovery and cross-session task visibility.

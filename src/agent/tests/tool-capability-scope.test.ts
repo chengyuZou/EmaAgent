@@ -61,6 +61,9 @@ function fakeTool(id: string, name: string): ToolManifestEntry {
   return {
     id,
     name,
+    origin: name.startsWith('mcp__')
+      ? { kind: 'mcp', serverName: 'test', serverToolName: name }
+      : { kind: 'builtin' },
     description: name,
     inputJsonSchema: {},
   };

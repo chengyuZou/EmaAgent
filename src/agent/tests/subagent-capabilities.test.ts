@@ -48,5 +48,5 @@ describe('selectSubagentTools', () => {
 });
 
 function fakeTool(id: string, name: string): BuiltTool {
-  return { id, name } as BuiltTool;
+  return { id, name, origin: { kind: 'builtin' } } as BuiltTool;
 }

@@ -270,15 +270,19 @@ Claude 的 Tool 接口还直接包含 React 渲染能力，这是其 CLI/Ink 单
 
 Ema 已经完成了这一批最重要的安全骨架：
 
-- `packages/tools` 提供 `ToolDef`、`buildTool()`、`ToolRegistry` 与 `PreparedToolCall`；
+- `src/tools` 提供 `ToolDef`、`buildTool()`、`ToolRegistry` 与 `PreparedToolCall`；
 - `ToolRegistry.prepare()` 只解析一次模型参数，深冻结输入和权限元数据，并以 `WeakMap` 证明快照确实由当前 Registry 产生；
 - `ToolRegistry.execute()` 拒绝伪造快照，也拒绝 MCP 热更新后仍执行旧审批快照；
 - Agent 主链已经采用 `prepare -> PermissionEngine.gate -> execute`；
-- `packages/tool-builtin` 已按 `FileEditTool` 等业务名称整理复杂工具目录，并提供稳定内部 ID；
+- `src/builtinTools` 已按 `FileEditTool` 等业务名称整理复杂工具目录，并提供稳定内部 ID；
 - 内置与 MCP 工具拥有明确所有者，MCP 批量注册先验证后提交，不允许覆盖内置工具；
 - 无物理 Sandbox 时，Bash/PowerShell 从模型可见注册表移除；Artifact 和未接桥的 Skill/Subagent 工具同样不会伪装可用；
 - `ToolManifestSnapshot` 已在根 Agent 与 Subagent 主链接入：模型看到的 Schema、`prepare()` 查找和后续执行来自同一份 Registry 快照；伪造快照和同名 MCP 实现热更新后的旧快照都会被拒绝；
 - `ToolExecutionContext` 已携带 Session、Turn、ToolCall、AbortSignal、文件状态、Sandbox Runner、AskUser、Subagent、MCP、Skill 与 KB 桥。
+- Tool Result 外置已迁入 `src/tools/results`：`maxResultBytes` 默认 50KB，同批结果另受 200KB 聚合预算；持久化预览成为跨 Turn 和重启后的唯一重放事实。
+- MCP 动态 Tool 已改用统一 `buildTool()`：Server 原始 JSON Schema 通过 `inputJsonSchemaOverride` 覆盖模型描述，运行时参数仍由宽松 Zod `inputSchema` 保证对象边界；Ema 的结果预算和保守默认值不再因手工构造 `BuiltTool` 被绕过，MCP 协议层 1MB 安全阀继续独立存在。
+- `validateInput` 已形成 Schema 后、Permission 前的业务校验入口；`requiresUserInteraction` 已替代 Agent 按 AskUser 工具名猜测等待状态。
+- `ToolOrigin` 已把 Builtin 与 MCP 来源纳入 ToolDef、Manifest 和 Prepared 快照；MCP 分支强制携带原始 Server/Tool 名，Registry 会拒绝来源声明与注册所有者不一致的实现。
 
 当前缺口不是再发明 Tool 接口，而是边界仍然过宽：`ToolExecutionContext` 正逐渐成为依赖杂物箱；`packages/tools` 与 `packages/tool-builtin` 是 Ema 产品执行体系，却仍放在公共包目录；工具执行状态、结果外置、后台进程和 UI Presentation 还没有形成清晰的跨端协议。
 
@@ -296,6 +300,12 @@ Ema 已经完成了这一批最重要的安全骨架：
 10. **V1 必做：AskUser 只属于根 Turn 交互能力。** Subagent 默认工具集不包含 AskUser。若子 Agent 缺少信息，它结束或向父 Agent 发送 `needs_parent_input`，由根 Turn 决定是否询问用户。
 11. **V1.5 候选：ToolSearch 延迟加载。** 当 Skill/MCP 数量真正导致 Tool Schema 过大时再加入 Discovery Catalog；V1 先用明确工具快照和启用门禁，不制造半成品搜索工具。
 12. **不照搬：Bun 编译宏与每个 Tool 强制 UI 文件。** Ema 用 Tauri/NodeNext Feature Gate；文件拆分按复杂度，而不是为了长得像 Claude 产生几行小文件。
+13. **V1 已对齐：结果预算属于统一 Tool 契约。** Builtin 和 MCP 都生成必有 `maxResultBytes` 的 `BuiltTool/PreparedToolCall`；MCP Server 无权自行扩大 Ema 的模型与磁盘预算。`Infinity` 只允许真正具有强制字节上限的工具使用；当前 `FileRead` 的 `offset/limit` 仍可省略，因此继续服从默认结果预算，待 Builtin Tool 审查时再补真正的行数与字节双上限。
+14. **V1 已对齐：结构校验与业务校验分层。** Zod/JSON Schema 处理字段形状，`validateInput` 在权限询问前检查工作区和文件状态等语义；失败作为可修正 Tool Result 返回模型，不能让用户批准一个注定无法执行的操作。
+15. **V1 已对齐：交互等待是工具能力，不是名称规则。** AskUser 系列显式声明 `requiresUserInteraction`；Agent Scheduler 只读取 Prepared 快照，不维护工具名白名单。
+16. **V1 已对齐：来源使用单一可判别字段。** Ema 不复制 Claude 可互相矛盾的 `isMcp + mcpInfo`，而使用 `ToolOrigin = builtin | mcp`；MCP 分支必须同时携带 `serverName/serverToolName`。来源跟随 Manifest 和 Prepared 快照，供 UI、审计和执行策略读取。V1 没有 LSP Tool，因此不预建 `isLsp` 空分支。
+17. **V1 已有等价机制：不重复增加同义字段。** `prompt()` 由直接进入 Provider Schema 的 `description` 承担；`isDestructive/isOpenWorld/checkPermissions` 由声明式 `permissionMeta` 与 Permission 规则承担；`isEnabled()` 由 Feature Gate、注册条件与每 Turn Manifest 选择承担；`isSearchOrReadCommand/backfillObservableInput` 属于跨端 `ToolPresentation`，不进入执行定义。
+18. **暂不加入：没有当前执行消费者的字段。** `outputSchema` 等结构化 Result 封套确定后再接；`interruptBehavior` 等 TurnRuntime 统一用户插话语义后再接；Provider `strict` 由支持该能力的 Adapter 决定，不能假装所有协议都支持；`aliases/inputsEquivalent` 等重命名或调用去重出现真实需求后再设计；ToolSearch 的 `searchHint/shouldDefer/alwaysLoad` 留到 V1.5。
 
 ### 建议拆分与公共接口
 
@@ -306,10 +316,10 @@ src/tools/
 ├─ execution/                Hook -> Permission -> Sandbox -> Result
 ├─ results/                  结果封套、外置、截断、回收
 ├─ background/               后台进程句柄与取消（不是 Task）
-├─ presentation/             跨端工具摘要、风险、Diff 与进度数据
-└─ builtin/                  Ema 内置工具实现
+└─ presentation/             跨端工具摘要、风险、Diff 与进度数据
 
-src/sandbox/                 已决定搬迁
+src/builtinTools/            Ema 内置工具实现
+src/sandbox/                 Ema 跨平台执行隔离
 packages/public-http/        可独立复用的公网请求安全底座
 apps/desktop-ui/             ToolPresentation 的桌面渲染
 ```

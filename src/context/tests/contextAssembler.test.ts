@@ -29,6 +29,7 @@ const manifest: ToolManifestSnapshot = {
   entries: [{
     id: 'tool.read',
     name: 'FileReadTool',
+    origin: { kind: 'builtin' },
     description: '读取文件',
     inputJsonSchema: { type: 'object', properties: { path: { type: 'string' } } },
   }],
