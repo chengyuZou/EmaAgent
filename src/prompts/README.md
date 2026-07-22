@@ -1,43 +1,42 @@
-# @ema-agent/prompts
+# Prompts
 
-EmaAgent 的模型指令装配模块。它只校验、排序和版本化各业务模块提供的 `PromptSlot`，不读取数据库，也不拥有 Character、ACT、Memory、Narrative 或 Tool Schema 的业务规则。
-
-## 当前边界
+Prompt 模块只定义并装配模型应遵守的 System Prompt 指令。它不拥有 Session 历史、当前用户输入、Memory/Narrative/KB 召回、附件正文、Tool Result、Token 预算或压缩。
 
 ```text
-Character ── Identity / Presentation ──┐
-Product ─── 固定规则与工具原则 ────────┼─> PromptAssembler ─> PromptSnapshot
-Profile ─── Chat / Work 行为 ──────────┘
-
-Memory / Narrative / KB ─> ContextContribution
-ToolRegistry ────────────> ToolManifestSnapshot
+Product Rules       Global Active Character        Turn Profile
+     │                 │                              │
+     └─────────────────┴──────────────┬───────────────┘
+                                      ▼
+                               PromptBuilder
+                                      │
+                                      ▼
+                               PromptAssembler
+                                      │
+                     ┌────────────────┴────────────────┐
+                     ▼                                 ▼
+              System Prompt Blocks             Extension Context Blocks
+           product → activeCharacter → turn      Skill Catalog 等非可信目录
+                     └────────────────┬────────────────┘
+                                      ▼
+                               ContextAssembler
 ```
 
-- Character 负责角色身份和模型可见的 ACT 表达说明。
-- Emotion 负责解析模型输出中的 ACT 标签并生成逻辑 `StageCue`。
-- Live2D 负责把 `StageCue` 映射为具体模型资源。
-- ContextAssembler 负责把 Prompt、历史、召回、当前输入和 Tool Manifest 组成最终模型请求。
-- Hook 不承担新主链的 Prompt 装配；`registerPromptsHooks` 仅供旧 Engine 迁移期间兼容使用。
+## 文件职责
 
-## 文件结构
+- `promptBuilder.ts`：收集产品、角色、Chat/Work、NarrativePolicy 与扩展贡献。
+- `promptAssembler.ts`：校验 Slot、按 product/activeCharacter/turn 分层，冻结快照并计算分层 revision。
+- `productPrompt.ts`：Ema 固定行为与通用工具原则。
+- `executionProfilePrompt.ts`：Chat/Work 和 NarrativePolicy 的行为说明，不承担真实权限判断。
+- `types.ts`：Prompt Slot、Contribution、Snapshot 与 BuildRequest。
+- `errors.ts`：Prompt 装配错误。
 
-```text
-├─ types.ts                 PromptSlot、缓存范围、信任来源和快照
-├─ errors.ts                Prompt 装配错误
-├─ promptAssembler.ts       校验重复 ID、稳定排序并计算 revision
-├─ build.ts                 旧 Engine 的 System Prompt 兼容入口
-├─ mode-blocks.ts           尚待迁移的旧三模式指令
-├─ hooks.ts                 尚待 ContextAssembler 接管的兼容 Hook
-└─ tests/
-```
+## 边界
 
-## 约束
-
-- 业务模块只提交 `id`、`content` 和 `version`；Assembler 根据受控 Slot ID 决定 `kind`、`order`、`cacheScope` 和 `trust`，调用方不能把自身插到产品规则之前。
-- 输出 Slot 始终具有明确 `id`、`kind`、`order`、`content`、`version`、`cacheScope` 和 `trust`。
-- 重复 Slot ID、空内容、空版本或非法顺序会直接报错，不允许静默覆盖。
-- `PromptSnapshot.revision` 根据排序后的完整 Slot 身份计算，不依赖调用方插入顺序。
-- Tool Result、网页、附件、Memory、KB 和 Narrative 是上下文数据，不得作为可信 PromptSlot 注入。
-- Tool Schema 通过 `ToolManifestSnapshot` 发送，不复制进 System Prompt。
-
-当前 `buildSystemPrompt()` 仍接受旧 `TurnMode`，用于保持现有 Agent/Conversation Engine 可运行。Chat/Work 与 `NarrativePolicy` 接入后应删除这层兼容，而不是继续扩展旧三模式。
+- Character 模块拥有角色人设与 ACT 表达协议。全局同时只有一个激活角色，所有 Session 的新 Turn 读取同一角色；Turn 启动后使用冻结快照，不接受中途切卡改写。
+- `activeCharacter` 描述全局角色的变化周期，不是 Session 绑定，也不表示角色卡存进 Prompt。
+- 产品规则和全局角色分别形成缓存断点；Chat/Work 与 NarrativePolicy 位于 Turn 动态尾部，不再把全部 System Prompt 压成一条字符串。
+- Skill Catalog 等扩展目录使用普通 Context Message 投递，不能取得产品 System 指令权限。完整 Skill 仍通过 Tool 按需加载。
+- Agent Profile 和 Tool Manifest 决定模型实际能调用哪些工具；Prompt 文字不是权限边界。
+- ContextAssembler 把 PromptSnapshot、历史、当前 Turn、运行时 Contribution 和 Tool Manifest 组成单次模型请求。
+- 工作区路径等运行时事实不进入 Prompt；由 Context 使用明确来源注入。
+- Tool Schema 通过 LLM 请求的 `tools` 字段发送，不复制到 System Prompt。

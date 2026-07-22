@@ -4,36 +4,44 @@ import { createHash } from 'node:crypto';
 import { PromptAssemblyError } from './errors.js';
 import type {
   PromptSlot,
+  PromptBlock,
   PromptSlotContribution,
   PromptSlotId,
+  PromptStabilityScope,
   PromptSnapshot,
 } from './types.js';
 
 type PromptSlotSpec = Pick<
   PromptSlot,
-  'kind' | 'order' | 'cacheScope' | 'trust'
+  'kind' | 'order' | 'stabilityScope' | 'delivery' | 'trust'
 >;
 
 const SLOT_SPECS: Readonly<Record<PromptSlotId, PromptSlotSpec>> = Object.freeze({
   'product.rules': Object.freeze({
-    kind: 'rules', order: 10, cacheScope: 'global', trust: 'product',
+    kind: 'rules', order: 10, stabilityScope: 'product', delivery: 'system', trust: 'product',
   }),
   'product.toolGuidance': Object.freeze({
-    kind: 'guidance', order: 20, cacheScope: 'global', trust: 'product',
+    kind: 'guidance', order: 20, stabilityScope: 'product', delivery: 'system', trust: 'product',
   }),
   'extension.skillCatalog': Object.freeze({
-    kind: 'extension', order: 40, cacheScope: 'global', trust: 'extension',
+    kind: 'extension', order: 40, stabilityScope: 'turn', delivery: 'context', trust: 'extension',
   }),
   'character.identity': Object.freeze({
-    kind: 'identity', order: 60, cacheScope: 'session', trust: 'user-configured',
+    kind: 'identity', order: 60, stabilityScope: 'activeCharacter', delivery: 'system', trust: 'user-configured',
   }),
   'character.presentation': Object.freeze({
-    kind: 'presentation', order: 70, cacheScope: 'session', trust: 'user-configured',
+    kind: 'presentation', order: 70, stabilityScope: 'activeCharacter', delivery: 'system', trust: 'user-configured',
   }),
   'profile.execution': Object.freeze({
-    kind: 'execution', order: 80, cacheScope: 'turn', trust: 'product',
+    kind: 'execution', order: 80, stabilityScope: 'turn', delivery: 'system', trust: 'product',
   }),
 });
+
+const STABILITY_ORDER: readonly PromptStabilityScope[] = [
+  'product',
+  'activeCharacter',
+  'turn',
+];
 
 export class PromptAssembler {
   build(input: readonly PromptSlotContribution[]): PromptSnapshot {
@@ -44,15 +52,43 @@ export class PromptAssembler {
     const frozenSlots = Object.freeze(
       slots.map((slot) => Object.freeze(slot)),
     );
-    const systemText = frozenSlots.map((slot) => slot.content).join('\n\n');
-    const revision = computeRevision(frozenSlots);
+    const systemBlocks = buildBlocks(frozenSlots, 'system');
+    const contextBlocks = buildBlocks(frozenSlots, 'context');
+    const revisions = Object.freeze({
+      product: computeScopeRevision(frozenSlots, 'product'),
+      activeCharacter: computeScopeRevision(frozenSlots, 'activeCharacter'),
+      turn: computeScopeRevision(frozenSlots, 'turn'),
+      complete: computeRevision(frozenSlots),
+    });
 
     return Object.freeze({
       slots: frozenSlots,
-      revision,
-      systemText,
+      systemBlocks,
+      contextBlocks,
+      revisions,
+      revision: revisions.complete,
     });
   }
+}
+
+function buildBlocks(
+  slots: readonly PromptSlot[],
+  delivery: PromptSlot['delivery'],
+): readonly PromptBlock[] {
+  const blocks = STABILITY_ORDER.flatMap((stabilityScope) => {
+    const selected = slots.filter(
+      (slot) => slot.delivery === delivery && slot.stabilityScope === stabilityScope,
+    );
+    if (selected.length === 0) return [];
+    return [Object.freeze({
+      stabilityScope,
+      delivery,
+      content: selected.map((slot) => slot.content).join('\n\n'),
+      revision: computeRevision(selected),
+      cacheBreakpoint: stabilityScope !== 'turn',
+    })];
+  });
+  return Object.freeze(blocks);
 }
 
 function copyAndValidateSlot(contribution: PromptSlotContribution): PromptSlot {
@@ -99,17 +135,25 @@ function compareSlots(left: PromptSlot, right: PromptSlot): number {
 
 function computeRevision(slots: readonly PromptSlot[]): string {
   const serialized = JSON.stringify({
-    schemaVersion: 1,
+    schemaVersion: 2,
     slots: slots.map((slot) => ({
       id: slot.id,
       kind: slot.kind,
       order: slot.order,
       content: slot.content,
       version: slot.version,
-      cacheScope: slot.cacheScope,
+      stabilityScope: slot.stabilityScope,
+      delivery: slot.delivery,
       trust: slot.trust,
     })),
   });
 
   return createHash('sha256').update(serialized, 'utf8').digest('hex');
+}
+
+function computeScopeRevision(
+  slots: readonly PromptSlot[],
+  scope: PromptStabilityScope,
+): string {
+  return computeRevision(slots.filter((slot) => slot.stabilityScope === scope));
 }

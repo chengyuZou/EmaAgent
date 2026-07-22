@@ -163,8 +163,21 @@ function makeInput(overrides: Partial<Parameters<AgentEngine['run']>[0]> = {}) {
     userInput:     'Hello',
     prompt: {
       slots: [],
+      systemBlocks: [{
+        stabilityScope: 'product',
+        delivery: 'system',
+        content: 'You are EmaAgent.',
+        revision: 'integration-product-revision',
+        cacheBreakpoint: true,
+      }],
+      contextBlocks: [],
+      revisions: {
+        product: 'integration-product-revision',
+        activeCharacter: 'integration-character-revision',
+        turn: 'integration-turn-revision',
+        complete: 'integration-prompt-revision',
+      },
       revision: 'integration-prompt-revision',
-      systemText: 'You are EmaAgent.',
     },
     workspaceRoot: WORKSPACE,
     providerId:    PROVIDER_ID,

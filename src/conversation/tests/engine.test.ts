@@ -12,9 +12,22 @@ const sessionId = 'session-hook-sse' as SessionId;
 const turnId = 'turn-hook-sse' as TurnId;
 const prompt = {
   revision: 'test-prompt-v1',
-  systemText: 'You are a test assistant.',
   slots: [],
-};
+  systemBlocks: [{
+    stabilityScope: 'product',
+    delivery: 'system',
+    content: 'You are a test assistant.',
+    revision: 'test-product-v1',
+    cacheBreakpoint: true,
+  }],
+  contextBlocks: [],
+  revisions: {
+    product: 'test-product-v1',
+    activeCharacter: 'test-character-v1',
+    turn: 'test-turn-v1',
+    complete: 'test-prompt-v1',
+  },
+} as const;
 
 const modelCapabilities = {
   resolve: () => ({

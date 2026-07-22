@@ -8,6 +8,8 @@ import type {
   ContextContribution,
   ModelContextSnapshot,
 } from './types.js';
+import { computePromptPrefixHash } from './promptPrefix.js';
+import { renderRuntimeEnvironment } from './runtimeEnvironment.js';
 
 export class ContextAssembler {
   assemble(input: ContextAssemblyInput): ModelContextSnapshot {
@@ -49,11 +51,23 @@ function buildContextParts(input: ContextAssemblyInput): ContextParts {
     const contributions = input.contributions ?? [];
     assertUniqueContributionIds(contributions);
 
-    const systemMessage: Message = {
+    const systemMessages = input.prompt.systemBlocks.map((block): Message => ({
       role: 'system',
-      content: input.prompt.systemText,
-      cacheBreakpoint: true,
-    };
+      content: block.content,
+      ...(block.cacheBreakpoint ? { cacheBreakpoint: true as const } : {}),
+    }));
+    const promptContextMessages = input.prompt.contextBlocks.map((block): Message => ({
+      role: 'user',
+      content: block.content,
+      ...(block.cacheBreakpoint ? { cacheBreakpoint: true as const } : {}),
+    }));
+    const environmentMessages: Message[] = input.environment
+      ? [{
+          role: 'user',
+          content: renderRuntimeEnvironment(input.environment),
+          cacheBreakpoint: true,
+        }]
+      : [];
     const suffix = [
       ...messagesAt(contributions, 'beforeCurrentTurn'),
       ...input.currentTurn,
@@ -62,7 +76,11 @@ function buildContextParts(input: ContextAssemblyInput): ContextParts {
     const tools = (input.toolManifest?.entries ?? []).map(toLlmToolDef);
 
     return {
-      prefix: [cloneAndFreeze(systemMessage)],
+      prefix: [
+        ...systemMessages,
+        ...promptContextMessages,
+        ...environmentMessages,
+      ].map(cloneAndFreeze),
       history: input.history.map(cloneAndFreeze),
       suffix,
       tools,
@@ -75,12 +93,25 @@ function buildSnapshot(
   history: readonly Message[],
   tools: readonly LlmToolDef[],
 ): ModelContextSnapshot {
+  const frozenMessages = Object.freeze(messages.map(cloneAndFreeze));
+  const frozenTools = Object.freeze(tools.map(cloneAndFreeze));
   return Object.freeze({
     promptRevision: input.prompt.revision,
     toolManifestRevision: input.toolManifest?.revision ?? null,
-    messages: Object.freeze(messages.map(cloneAndFreeze)),
+    messages: frozenMessages,
     history: Object.freeze(history.map(cloneAndFreeze)),
-    tools: Object.freeze(tools.map(cloneAndFreeze)),
+    tools: frozenTools,
+    cache: Object.freeze({
+      productPromptRevision: input.prompt.revisions.product,
+      activeCharacterRevision: input.prompt.revisions.activeCharacter,
+      turnPromptRevision: input.prompt.revisions.turn,
+      completePromptRevision: input.prompt.revisions.complete,
+      toolManifestRevision: input.toolManifest?.revision ?? null,
+      prefixHash: computePromptPrefixHash({
+        messages: frozenMessages,
+        tools: frozenTools,
+      }),
+    }),
   });
 }
 

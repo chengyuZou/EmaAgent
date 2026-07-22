@@ -1,3 +1,6 @@
+import type { CharacterCard } from '@ema-agent/characters';
+import type { ExecutionProfile, NarrativePolicy } from '@ema-agent/turn';
+
 export type PromptSlotId =
   | 'product.rules'
   | 'product.toolGuidance'
@@ -14,11 +17,15 @@ export type PromptSlotKind =
   | 'presentation'
   | 'execution';
 
-export type PromptCacheScope = 'global' | 'session' | 'turn';
+/** 描述内容何时可能变化，不描述数据存放位置。 */
+export type PromptStabilityScope = 'product' | 'activeCharacter' | 'turn';
+
+/** 外部扩展目录作为模型上下文投递，不能获得产品 System 指令权限。 */
+export type PromptDelivery = 'system' | 'context';
 
 /**
  * product 由应用内置；user-configured 由用户选择的角色或设置提供；
- * extension 留给显式启用的 Skill/MCP 指令，不代表它可以绕过 Permission。
+ * extension 留给用户显式启用的扩展目录；它以 Context 投递，不能绕过 Permission。
  */
 export type PromptTrust = 'product' | 'user-configured' | 'extension';
 
@@ -35,12 +42,40 @@ export interface PromptSlot {
   readonly order: number;
   readonly content: string;
   readonly version: string;
-  readonly cacheScope: PromptCacheScope;
+  readonly stabilityScope: PromptStabilityScope;
+  readonly delivery: PromptDelivery;
   readonly trust: PromptTrust;
+}
+
+/** 同一稳定范围内的 Slot 合并为一块，协议层可以保留真实缓存断点。 */
+export interface PromptBlock {
+  readonly stabilityScope: PromptStabilityScope;
+  readonly delivery: PromptDelivery;
+  readonly content: string;
+  readonly revision: string;
+  readonly cacheBreakpoint: boolean;
+}
+
+export interface PromptRevisions {
+  readonly product: string;
+  readonly activeCharacter: string;
+  readonly turn: string;
+  readonly complete: string;
 }
 
 export interface PromptSnapshot {
   readonly slots: readonly PromptSlot[];
+  readonly systemBlocks: readonly PromptBlock[];
+  readonly contextBlocks: readonly PromptBlock[];
+  readonly revisions: PromptRevisions;
   readonly revision: string;
-  readonly systemText: string;
+}
+
+/** Prompt 只接收稳定行为输入；历史、召回、附件和工作区事实由 Context 处理。 */
+export interface PromptBuildRequest {
+  /** CharacterCardStore.current() 返回的全局激活角色；不是 Session 角色绑定。 */
+  readonly activeCharacter: CharacterCard;
+  readonly executionProfile: ExecutionProfile;
+  readonly narrativePolicy: NarrativePolicy;
+  readonly extensionContributions?: readonly PromptSlotContribution[];
 }

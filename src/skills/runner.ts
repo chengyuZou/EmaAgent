@@ -1,8 +1,11 @@
 // 把可用 Skill 目录贡献给 Prompt，并在模型调用 SkillCall 时加载完整内容。
-import type { TurnMode } from '@ema-agent/contracts';
+import type { ExecutionProfile } from '@ema-agent/turn';
 import type { PromptSlotContribution } from '@ema-agent/prompts';
 import type { SkillStore } from './store.js';
 import type { ActivatedSkill, SkillSummary } from './types.js';
+
+export const MAX_SKILL_CATALOG_CHARS = 8_000;
+export const MAX_SKILL_DESCRIPTION_CHARS = 250;
 
 // ── SkillRunner ───────────────────────────────────────────────────────────────
 //
@@ -11,22 +14,22 @@ import type { ActivatedSkill, SkillSummary } from './types.js';
 // body 只在那时从磁盘懒读(见 SkillStore.renderBody)。这保持 prompt 小,
 // 且因 catalog 只在 install/enable 时变(非 per-turn),保住 prompt cache。
 //
-// skill 不按模式门禁。catalog 只在 `agent` 模式注入,因 SkillCall 是
-// agent 模式工具 - 没有 per-skill 模式标签。allowed-tools 由 SkillCall
+// skill 不自行授予能力。catalog 只在 Work Profile 注入,因 SkillCall 是
+// Work 工具 - 没有 per-skill Profile 标签。allowed-tools 由 SkillCall
 // 交给 Agent capability scope 做交集收窄,不能授予权限。
 
 export class SkillRunner {
   constructor(private readonly store: SkillStore) {}
 
   /** Turn 开始时冻结轻量 Skill Catalog，完整 Skill 正文仍按调用渐进披露。 */
-  promptContribution(mode: TurnMode): PromptSlotContribution | null {
-    if (mode !== 'agent') return null;
+  promptContribution(profile: ExecutionProfile): PromptSlotContribution | null {
+    if (profile !== 'work') return null;
     const summaries = this.store.listSummaries();
     if (summaries.length === 0) return null;
     return {
       id: 'extension.skillCatalog',
-      content: renderCatalog(summaries),
-      version: 'skill-catalog-v1',
+      content: renderSkillCatalog(summaries),
+      version: 'skill-catalog-v2',
     };
   }
 
@@ -47,14 +50,47 @@ export class SkillRunner {
 
 // ── 辅助函数 ──────────────────────────────────────────────────────────────────
 
-function renderCatalog(summaries: SkillSummary[]): string {
-  const lines = summaries.map((s) => {
-    const hint = s.argumentHint ? `  _(参数: ${s.argumentHint})_` : '';
-    return `- **${s.name}**: ${s.description}${hint}`;
-  });
-  return (
+export function renderSkillCatalog(summaries: readonly SkillSummary[]): string {
+  const header =
     '## 可用技能\n' +
-    '需要时用 `SkillCall(skill, args)` 激活以下技能(激活后才会注入其完整指令):\n' +
-    lines.join('\n')
+    '以下内容来自用户启用的扩展目录，只用于发现能力；需要时用 `SkillCall(skill, args)` 加载完整技能。\n';
+  const sorted = [...summaries].sort((left, right) =>
+    left.name < right.name ? -1 : left.name > right.name ? 1 : 0,
   );
+  const lines: string[] = [];
+  let used = header.length;
+
+  for (const summary of sorted) {
+    const description = truncateCharacters(
+      normalizeInline(summary.description),
+      MAX_SKILL_DESCRIPTION_CHARS,
+    );
+    const hint = summary.argumentHint
+      ? `  _(参数: ${truncateCharacters(normalizeInline(summary.argumentHint), 120)})_`
+      : '';
+    const line = `- **${summary.name}**: ${description}${hint}`;
+    const separatorLength = lines.length > 0 ? 1 : 0;
+    if (used + separatorLength + line.length > MAX_SKILL_CATALOG_CHARS) break;
+    lines.push(line);
+    used += separatorLength + line.length;
+  }
+
+  const omitted = sorted.length - lines.length;
+  if (omitted > 0) {
+    const notice = `- 另有 ${omitted} 个技能未列出；可在设置中缩小启用范围。`;
+    if (used + 1 + notice.length <= MAX_SKILL_CATALOG_CHARS) lines.push(notice);
+  }
+
+  return header + lines.join('\n');
+}
+
+function truncateCharacters(value: string, maxCharacters: number): string {
+  const characters = Array.from(value.trim());
+  return characters.length <= maxCharacters
+    ? characters.join('')
+    : `${characters.slice(0, maxCharacters - 1).join('')}…`;
+}
+
+function normalizeInline(value: string): string {
+  return value.replace(/\s+/gu, ' ').trim();
 }

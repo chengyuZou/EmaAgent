@@ -17,6 +17,7 @@ import type { HookBus, HookTriggerContext, HookTriggerResult, TurnFailurePhase }
 import type { ConversationDeps, ConversationRunInput } from './types.js';
 import {
   buildModelMessages,
+  buildRuntimeEnvironmentSnapshot,
   computePromptPrefixHash,
   ContextAssembler,
   prepareHistoricalMessageView,
@@ -232,12 +233,22 @@ async function* runTurn(
     const contextSnapshot = input.compactContext
       ? await contextAssembler.assembleCompacted({
           prompt: input.prompt,
+          environment: buildRuntimeEnvironmentSnapshot({
+            providerId: input.providerId ?? 'unconfigured',
+            model: input.model ?? 'unconfigured',
+            workspaceRoot: input.workspaceRoot,
+          }),
           history: historyView.messages,
           currentTurn,
           contributions,
         }, input.compactContext)
       : contextAssembler.assemble({
           prompt: input.prompt,
+          environment: buildRuntimeEnvironmentSnapshot({
+            providerId: input.providerId ?? 'unconfigured',
+            model: input.model ?? 'unconfigured',
+            workspaceRoot: input.workspaceRoot,
+          }),
           history: historyView.messages,
           currentTurn,
           contributions,

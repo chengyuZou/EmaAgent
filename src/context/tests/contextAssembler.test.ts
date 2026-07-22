@@ -6,8 +6,21 @@ import { ContextAssembler } from '../contextAssembler.js';
 
 const prompt: PromptSnapshot = {
   revision: 'prompt-v1',
-  systemText: 'system rules',
   slots: [],
+  systemBlocks: [{
+    stabilityScope: 'product',
+    delivery: 'system',
+    content: 'system rules',
+    revision: 'product-v1',
+    cacheBreakpoint: true,
+  }],
+  contextBlocks: [],
+  revisions: {
+    product: 'product-v1',
+    activeCharacter: 'character-v1',
+    turn: 'turn-v1',
+    complete: 'prompt-v1',
+  },
 };
 
 const manifest: ToolManifestSnapshot = {
@@ -54,6 +67,48 @@ describe('ContextAssembler', () => {
     expect(Object.isFrozen(snapshot)).toBe(true);
     expect(Object.isFrozen(snapshot.messages)).toBe(true);
     expect(Object.isFrozen(snapshot.messages[0])).toBe(true);
+    expect(snapshot.cache).toEqual(expect.objectContaining({
+      productPromptRevision: 'product-v1',
+      activeCharacterRevision: 'character-v1',
+      turnPromptRevision: 'turn-v1',
+      toolManifestRevision: 'tools-v3',
+      prefixHash: expect.any(String),
+    }));
+  });
+
+  it('把扩展目录和运行环境放在历史之前且不提升为 System 指令', () => {
+    const snapshot = new ContextAssembler().assemble({
+      prompt: {
+        ...prompt,
+        contextBlocks: [{
+          stabilityScope: 'turn',
+          delivery: 'context',
+          content: 'skill catalog',
+          revision: 'skills-v1',
+          cacheBreakpoint: false,
+        }],
+      },
+      environment: {
+        currentDate: '2026-07-22',
+        platform: 'win32',
+        architecture: 'x64',
+        workspaceRoot: 'D:\\workspace',
+        providerId: 'provider-1',
+        model: 'model-1',
+      },
+      history: [{ role: 'user', content: 'old question' }],
+      currentTurn: [{ role: 'user', content: 'current question' }],
+    });
+
+    expect(snapshot.messages.map((message) => message.role)).toEqual([
+      'system',
+      'user',
+      'user',
+      'user',
+      'user',
+    ]);
+    expect(snapshot.messages[1]?.content).toBe('skill catalog');
+    expect(snapshot.messages[2]?.content).toContain('当前工作区：D:\\workspace');
   });
 
   it('拒绝重复的临时贡献身份', () => {

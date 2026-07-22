@@ -10,6 +10,10 @@
 
 R2 Prompt Slot 与 R3 ContextAssembler 主链接线已经完成：Prompt、Skill Catalog、Memory Recall、Narrative Recall、历史、当前 Turn、Scratchpad、Mailbox 与 Tool Manifest 由一次不可变 Context 快照统一装配。现有渐进 Compaction、Safe Cut、Restore、响应式压缩和 Tool Manifest Snapshot 都是基线，不重新实现。
 
+Prompt 装配边界已经完成新语义收口：公共入口只接受全局 Active Character、`ExecutionProfile`、`NarrativePolicy` 与显式扩展贡献；旧 `buildSystemPrompt`、`buildModeBlock`、`legacyExecutionProfile` 和工作区路径注入已删除。Prompt 源码不再依赖 `contracts`，Skill Catalog 只在 Work Profile 作为扩展 Context 提供。运行时历史、召回、附件和工作区事实继续由 Context 所有。
+
+Prompt 缓存边界已进一步落到真实模型请求：稳定范围改为 `product / activeCharacter / turn`，全局激活角色不是 Session 绑定；产品规则与全局角色各自形成 System Block 和缓存断点，Chat/Work 与 NarrativePolicy 位于 Turn 动态尾部。Skill Catalog 作为普通 Context Message 投递并限制为 8000 字符总预算、250 字符单项描述，不能取得 System 权限。Context 会冻结日期、平台、工作区和模型身份，并输出分层 Prompt Revision、Tool Manifest Revision 与 Prefix Hash。Anthropic Adapter 已支持保留多层 System Block，不再由后一条覆盖前一条。
+
 统一 Turn 主线的前三刀已经完成：公网请求使用 `trigger + executionProfile + narrativePolicy`；Agent 内部循环已改名为通用 `turnLoop`；Session/Turn SQL 显式保存触发来源、执行 Profile 与 Narrative 策略；Desktop 顶层选择器只显示 Chat/Work，Narrative 改为 `auto/always/off` 二级策略。Session REST、发送队列、`turn_started` SSE 与历史展示均直接使用新契约，不再经过旧 Mode 映射。旧 `chat/narrative/agent` 只留在尚未统一的 Engine、Hook/Compaction 输入和少量内部兼容投影。
 
 Provider 配置也已完成旧列清理：顶层 `base_url`、`config_json`、`capabilities_json` 被物理删除，地址、协议和能力开关只保存在 `provider_capability_configs`。Session/Turn 无业务读取的 `meta_json` 同步删除；Message、MCP、Artifact 等仍有明确用途的 JSON 未动。
@@ -28,13 +32,12 @@ Provider 配置也已完成旧列清理：顶层 `base_url`、`config_json`、`c
 
 本轮已知未提交修改：
 
-- `apps/desktop-ui`：Chat/Work 选择器、Narrative 二级策略、Session 执行偏好、历史/分支展示与 SSE 消费迁入新契约；
-- `apps/core`：Session Patch 和分支响应删除旧 Mode 映射，直接收发 Profile 与 Policy；
-- `src/session`：新增归属 Session 的 REST 协议，`SessionWire/TurnWire/MessageWire` 等不再由 contracts 持有；
-- `src/turn`、`src/agent`、`src/conversation`：`turn_started` 直接携带执行 Profile 与 Narrative 策略；
-- `src/contracts`：删除已经迁回 Session 所有者的业务 Wire；
-- `pnpm-lock.yaml`：Desktop UI 增加 `@ema-agent/session` Workspace 类型依赖；
-- `EmaWorkState.md`：记录本轮事实与下一步。
+- `src/prompts`：删除旧三 Mode 兼容入口，改为 `promptBuilder + promptAssembler + executionProfilePrompt`；
+- `src/skills`：Skill Catalog 改为按 Work Profile 提供 Prompt Contribution；
+- `apps/core`：Prompt 构建直接传入 Turn 的 Profile 与 NarrativePolicy，不再把工作区路径写进 System Prompt；
+- `pnpm-lock.yaml`：刷新 Prompt/Skills 的 Workspace 依赖；
+- `EmaClaudeArchitectureReview.md`：由其他 Agent 修改，本批未触碰；
+- `src/ui/vite.config.ts.timestamp-*.mjs`：无关未跟踪临时文件，本批未触碰。
 
 当前基线最近提交：`ab28f07 feat: add tests for ToolRegistry and tool execution context`。该提交号仅用于定位，不代表其他 Agent 不会继续提交。
 
@@ -70,10 +73,10 @@ Plan、Goal、Schedule、Workflow、Team 与 LLM 自动审批暂列 V1.5，不�
 
 ## 下一批建议顺序
 
-1. 让 Chat 作为受限 Profile 接入现有 TurnLoop，保留旧 ConversationEngine 为短期适配器；
-2. 接入 Work Profile 后删除重复循环、Core Engine 选择和 `TurnMode` 兼容投影；
-3. 把附件与 Dashboard 等剩余业务 Wire 迁回各自模块，继续缩减 `src/contracts`；
-4. 再做 Narrative Tool、AgentRun 语义和剩余 contracts 收口。
+1. 让 Context、Compaction、Hook 与 Memory 输入迁出旧 `TurnMode`，使用 `ExecutionProfile`、`NarrativePolicy` 或明确领域事实；
+2. 建立 Chat/Work 的不可变 Tool Manifest 与迭代策略，再实现 Narrative `always/auto/off`；
+3. 清理根 AgentTask 投影、AgentRun 身份和 Core 外围业务边界；
+4. 外围契约稳定后再组装唯一 `TurnRuntime + TurnLoop`，删除 ConversationEngine 与 AgentEngine 外壳。
 
 每批只改变一个主要业务边界。不要把 Turn 统一、数据库 Schema、全仓 ID 改名和前端切换塞进同一批。
 
@@ -91,6 +94,8 @@ Plan、Goal、Schedule、Workflow、Team 与 LLM 自动审批暂列 V1.5，不�
 - Storage 测试 118/118、Session 测试 39/39、Backup 测试 10/10 通过。
 - Chat/Work 前端切换批次：Turn、Session、Contracts build 通过；Agent、Conversation、Core、Desktop UI typecheck 通过。
 - 本批 Core 测试 88/88、Desktop UI 测试 130/130、Session 测试 39/39、Agent 测试 32/32、Conversation 测试 7/7 通过；4 个 Agent Live Integration 测试按既有规则跳过。
+- Prompt 新边界：Prompt 测试 6/6、Skills 测试 21/21、Core 测试 88/88、全仓 typecheck 84/84 通过。
+- Prompt 分层请求：Prompt 6/6、Context 21/21、LLM 126/126、Skills 23/23、Agent 32/32、Conversation 7/7、Core 88/88 通过；Agent 4 个 Live Integration 按既有规则跳过。
 - `git diff --check` 通过，仅有仓库既有的 Windows CRLF 提示。
 
 ## 工作规则

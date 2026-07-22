@@ -51,6 +51,8 @@ export interface ConversationRunInput {
   providerId?:   string;
   /** 模型名--由 orchestrator 从请求或旧绑定解析。 */
   model?:        string;
+  /** 全局角色不属于 Session；工作区只是本轮 Context 的运行时事实。 */
+  workspaceRoot?: string | null;
   /** Memory 等本轮临时数据生产端；返回结构化贡献，不改写消息数组。 */
   prepareContextContributions?: ContextContributionProvider;
   /** 按固定前缀、历史和固定尾部执行完整请求预算与压缩。 */

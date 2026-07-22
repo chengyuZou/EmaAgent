@@ -1076,9 +1076,9 @@ importers:
       '@ema-agent/characters':
         specifier: workspace:*
         version: link:../characters
-      '@ema-agent/contracts':
+      '@ema-agent/turn':
         specifier: workspace:*
-        version: link:../contracts
+        version: link:../turn
     devDependencies:
       '@types/node':
         specifier: ^20.0.0
@@ -1188,6 +1188,9 @@ importers:
       '@ema-agent/storage':
         specifier: workspace:*
         version: link:../storage
+      '@ema-agent/turn':
+        specifier: workspace:*
+        version: link:../turn
       gray-matter:
         specifier: ^4.0.3
         version: 4.0.3

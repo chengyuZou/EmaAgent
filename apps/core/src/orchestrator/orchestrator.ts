@@ -378,6 +378,7 @@ export class Orchestrator {
   ): AsyncIterable<EmaStreamEvent> {
     switch (request.executionProfile) {
       case 'chat': {
+        const sess = this.bindings.session.getSession(sessionId);
         const { providerId, model } = this.resolveLlmForTurn(request);
         const contextWindow = providerId && model
           ? this.bindings.providerLlmModels.contextWindowFor(providerId, model)
@@ -391,10 +392,12 @@ export class Orchestrator {
           turn, signal, sessionId,
           mode:         legacyMode as Exclude<TurnMode, 'agent'>,
           userInput:    request.userInput,
-          prompt:       buildPromptSnapshot(
-            this.bindings.card.current(),
-            legacyMode,
-          ),
+          prompt:       buildPromptSnapshot({
+            activeCharacter: this.bindings.card.current(),
+            executionProfile: request.executionProfile,
+            narrativePolicy: request.narrativePolicy,
+          }),
+          workspaceRoot: sess.workspaceRoot,
           contentParts: request.contentParts,
           providerId,
           model,
@@ -452,16 +455,14 @@ export class Orchestrator {
           turn, signal,
           providerId,
           model,
-          prompt: buildPromptSnapshot(
-            this.bindings.card.current(),
-            'agent',
-            {
-              workspaceRoot,
-              extensionContributions: [
-                this.bindings.skillRunner.promptContribution('agent'),
-              ].filter((contribution) => contribution !== null),
-            },
-          ),
+          prompt: buildPromptSnapshot({
+            activeCharacter: this.bindings.card.current(),
+            executionProfile: request.executionProfile,
+            narrativePolicy: request.narrativePolicy,
+            extensionContributions: [
+              this.bindings.skillRunner.promptContribution(request.executionProfile),
+            ].filter((contribution) => contribution !== null),
+          }),
           userInput:      request.contentParts?.length ? request.contentParts : (request.userInput ?? ''),
           workspaceRoot,
           scratchpadDir: scratchpadTurnDir(

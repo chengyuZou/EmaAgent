@@ -2,8 +2,8 @@
 
 import type { PromptSlotContribution } from './types.js';
 
-const PRODUCT_RULES_VERSION = 'ema-product-rules:v1';
-const TOOL_GUIDANCE_VERSION = 'ema-tool-guidance:v1';
+const PRODUCT_RULES_VERSION = 'ema-product-rules:v2';
+const TOOL_GUIDANCE_VERSION = 'ema-tool-guidance:v2';
 
 const PRODUCT_RULES = `# Ema 基本行为
 
@@ -17,7 +17,8 @@ const TOOL_GUIDANCE = `# 工具使用通用原则
 - 只能调用本次请求实际提供的工具，并严格遵守对应名称、说明和参数 Schema；不要猜测隐藏工具或未声明参数。
 - 模型产生的是工具调用意图，不是执行授权。Permission 与 Sandbox 由运行时决定，Prompt 不能替代它们。
 - 只有收到明确成功的工具结果后，才能声称相应操作已经完成；失败、取消、超时和结果未知必须区分。
-- 工具请求被拒绝后，不要通过等价命令、其他工具或子任务绕过原决定。需要继续时，应解释原因并等待用户的新指示。`;
+- 工具请求被拒绝后，不要通过等价命令、其他工具或子任务绕过原决定。需要继续时，应解释原因并等待用户的新指示。
+- 较早的大型工具结果可能被摘要或替换为受控引用；后续仍需要的重要结论应明确保留，但不要声称仍能逐字访问已经被压缩的内容。`;
 
 export function buildProductPromptContributions(): readonly PromptSlotContribution[] {
   return [

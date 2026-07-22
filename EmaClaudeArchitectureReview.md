@@ -309,7 +309,7 @@ src/tools/
 ├─ presentation/             跨端工具摘要、风险、Diff 与进度数据
 └─ builtin/                  Ema 内置工具实现
 
-packages/sandbox/            可独立复用的平台隔离执行底座
+src/sandbox/                 已决定搬迁
 packages/public-http/        可独立复用的公网请求安全底座
 apps/desktop-ui/             ToolPresentation 的桌面渲染
 ```

@@ -116,14 +116,18 @@ function mediaPartToAnthropicBlock(
  *    无需分组循环 - 归一化格式已匹配 Anthropic 要求。
  */
 export function toAnthropicMessages(msgs: Message[]): NormalizedMessages {
-  let system: Anthropic.MessageCreateParams['system'];
+  const systemBlocks: Anthropic.TextBlockParam[] = [];
   const messages: Anthropic.MessageParam[] = [];
 
   for (const msg of msgs) {
     if (msg.role === 'system') {
-      system = msg.cacheBreakpoint
-        ? [{ type: 'text', text: msg.content, cache_control: { type: 'ephemeral' } }]
-        : msg.content;
+      systemBlocks.push({
+        type: 'text',
+        text: msg.content,
+        ...(msg.cacheBreakpoint
+          ? { cache_control: { type: 'ephemeral' as const } }
+          : {}),
+      });
       continue;
     }
 
@@ -207,7 +211,10 @@ export function toAnthropicMessages(msgs: Message[]): NormalizedMessages {
     messages.push({ role: 'assistant', content });
   }
 
-  return { system, messages };
+  return {
+    system: systemBlocks.length > 0 ? systemBlocks : undefined,
+    messages,
+  };
 }
 
 function toAnthropicToolChoice(

@@ -27,10 +27,13 @@ describe('PromptAssembler', () => {
       'character.identity',
       'profile.execution',
     ]);
-    expect(first.systemText).toBe('You are Ema.\n\nWork carefully.');
+    expect(first.systemBlocks.map((block) => block.content)).toEqual([
+      'You are Ema.',
+      'Work carefully.',
+    ]);
     expect(first.slots[0]).toEqual(expect.objectContaining({
       order: 60,
-      cacheScope: 'session',
+      stabilityScope: 'activeCharacter',
       trust: 'user-configured',
     }));
     expect(first.revision).toBe(second.revision);

@@ -24,11 +24,31 @@ export interface ContextContribution {
 
 export interface ContextAssemblyInput {
   readonly prompt: PromptSnapshot;
+  readonly environment?: RuntimeEnvironmentSnapshot;
   readonly history: readonly Message[];
   /** 当前 Turn 可能已包含多轮 assistant/tool_result，因此不能假设只有一条 user message。 */
   readonly currentTurn: readonly Message[];
   readonly contributions?: readonly ContextContribution[];
   readonly toolManifest?: ToolManifestSnapshot;
+}
+
+/** 运行时事实由 Context 投递，不进入可由角色或扩展修改的 Prompt Slot。 */
+export interface RuntimeEnvironmentSnapshot {
+  readonly currentDate: string;
+  readonly platform: NodeJS.Platform;
+  readonly architecture: string;
+  readonly workspaceRoot: string | null;
+  readonly providerId: string;
+  readonly model: string;
+}
+
+export interface ContextCacheDiagnostics {
+  readonly productPromptRevision: string;
+  readonly activeCharacterRevision: string;
+  readonly turnPromptRevision: string;
+  readonly completePromptRevision: string;
+  readonly toolManifestRevision: string | null;
+  readonly prefixHash: string | null;
 }
 
 /** 一次模型调用看到的完整只读快照，也是缓存诊断使用的版本事实。 */
@@ -39,6 +59,7 @@ export interface ModelContextSnapshot {
   /** 压缩后的可持久循环历史；Agent 下一次迭代复用它，避免重复生成摘要。 */
   readonly history: readonly Message[];
   readonly tools: readonly LlmToolDef[];
+  readonly cache: ContextCacheDiagnostics;
 }
 
 export interface ContextCompactionView {

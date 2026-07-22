@@ -10,10 +10,17 @@ export type {
   ContextContributionRequest,
   ContextContributionPlacement,
   ContextContributionSource,
+  ContextCacheDiagnostics,
   ContextHistoryCompactor,
   ModelContextSnapshot,
+  RuntimeEnvironmentSnapshot,
 } from './types.js';
 export { computePromptPrefixHash, normalizeToolDefinitions } from './promptPrefix.js';
+export {
+  buildRuntimeEnvironmentSnapshot,
+  renderRuntimeEnvironment,
+} from './runtimeEnvironment.js';
+export type { RuntimeEnvironmentBuildRequest } from './runtimeEnvironment.js';
 export {
   prepareHistoricalMessageView,
   validateCurrentContent,

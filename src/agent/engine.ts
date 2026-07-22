@@ -13,6 +13,7 @@ import { turnLoop, type ExecutorFactory } from './loop.js';
 import { SubagentSpawner } from './spawner.js';
 import {
   buildModelMessages,
+  buildRuntimeEnvironmentSnapshot,
   ContextAssembler,
   prepareHistoricalMessageView,
   validateCurrentContent,
@@ -343,6 +344,11 @@ async function* runTurn(
         });
         const assemblyInput = {
           prompt: input.prompt,
+          environment: buildRuntimeEnvironmentSnapshot({
+            providerId,
+            model,
+            workspaceRoot,
+          }),
           history: compactableHistory,
           currentTurn,
           contributions,

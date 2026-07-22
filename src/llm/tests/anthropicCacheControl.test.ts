@@ -19,4 +19,27 @@ describe('Anthropic cache_control', () => {
     }]);
     expect(normalized.messages).toEqual([{ role: 'user', content: 'hello' }]);
   });
+
+  it('保留多层 system block 及各自缓存边界', () => {
+    const normalized = toAnthropicMessages([
+      { role: 'system', content: 'product', cacheBreakpoint: true },
+      { role: 'system', content: 'active character', cacheBreakpoint: true },
+      { role: 'system', content: 'turn profile' },
+      { role: 'user', content: 'hello' },
+    ]);
+
+    expect(normalized.system).toEqual([
+      {
+        type: 'text',
+        text: 'product',
+        cache_control: { type: 'ephemeral' },
+      },
+      {
+        type: 'text',
+        text: 'active character',
+        cache_control: { type: 'ephemeral' },
+      },
+      { type: 'text', text: 'turn profile' },
+    ]);
+  });
 });

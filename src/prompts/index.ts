@@ -1,20 +1,21 @@
-// 这是 Prompts 包的统一出口，外部代码从这里组装 system prompt 和注册它的 hook。
+// 统一导出 Prompt 快照组装、槽位类型和稳定产品指令。
 
-export { buildPromptSnapshot, buildSystemPrompt, buildSystemBlock } from './build.js';
-export { buildModeBlock } from './mode-blocks.js';
+export { buildPromptSnapshot } from './promptBuilder.js';
+export { buildExecutionProfileContribution } from './executionProfilePrompt.js';
 export { PromptAssembler } from './promptAssembler.js';
 export { PromptAssemblyError } from './errors.js';
 export { buildProductPromptContributions } from './productPrompt.js';
-export { buildLegacyExecutionProfileContribution } from './legacyExecutionProfile.js';
-export type { BuildSystemPromptOpts } from './build.js';
-export type { ModeBlockOpts } from './mode-blocks.js';
 export type {
-  PromptCacheScope,
+  PromptBuildRequest,
+  PromptBlock,
   PromptSlot,
   PromptSlotContribution,
+  PromptDelivery,
   PromptSlotId,
   PromptSlotKind,
+  PromptStabilityScope,
   PromptSnapshot,
+  PromptRevisions,
   PromptTrust,
 } from './types.js';
 export type { PromptAssemblyErrorCode } from './errors.js';

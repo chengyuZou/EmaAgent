@@ -29,8 +29,21 @@ const sessionId = 'session-agent-failure' as SessionId;
 const turnId = 'turn-agent-failure' as TurnId;
 const prompt = {
   slots: [],
+  systemBlocks: [{
+    stabilityScope: 'product',
+    delivery: 'system',
+    content: 'test system prompt',
+    revision: 'test-product-revision',
+    cacheBreakpoint: true,
+  }],
+  contextBlocks: [],
+  revisions: {
+    product: 'test-product-revision',
+    activeCharacter: 'test-character-revision',
+    turn: 'test-turn-revision',
+    complete: 'test-prompt-revision',
+  },
   revision: 'test-prompt-revision',
-  systemText: 'test system prompt',
 } as const;
 
 function turnLifecycle(overrides: Partial<AgentDeps['turnLifecycle']> = {}): AgentDeps['turnLifecycle'] {

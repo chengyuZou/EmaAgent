@@ -13,7 +13,7 @@
   "types": "./dist/index.d.ts",
   "files": ["dist"],
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "rimraf dist && tsc -p tsconfig.json",
     "dev": "tsc -p tsconfig.json --watch",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run --passWithNoTests",
@@ -21,7 +21,7 @@
   },
   "dependencies": {
     "@ema-agent/characters": "workspace:*",
-    "@ema-agent/contracts": "workspace:*"
+    "@ema-agent/turn": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
