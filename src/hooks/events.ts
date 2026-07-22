@@ -1,10 +1,10 @@
 import type {
   CompactionId,
-  ErrorCode,
   MessageId,
   ToolCallId,
   TurnMode,
 } from '@ema-agent/contracts';
+import type { TurnFailureCode } from '@ema-agent/turn';
 import type {
   AssistantBlock,
   LlmCallId,
@@ -68,7 +68,7 @@ export type TurnFailurePhase =
 
 export interface TurnFailurePayload {
   phase: TurnFailurePhase;
-  code: ErrorCode;
+  code: TurnFailureCode;
   message: string;
   durationMs: number;
 }

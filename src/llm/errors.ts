@@ -162,7 +162,7 @@ export function createLlmProviderResponseError(input: {
   return normalizeLlmProviderError(error);
 }
 
-/** 编排层只消费稳定 ErrorCode，不需要了解各 SDK 或领域异常的内部字段。 */
+/** 编排层只消费稳定 LLM 错误码，再由 Turn 边界决定最终失败终态。 */
 export function llmProviderErrorCode(error: unknown): LlmErrorCode {
   if (error instanceof ContextWindowExceededError) {
     return 'provider/context_too_long';

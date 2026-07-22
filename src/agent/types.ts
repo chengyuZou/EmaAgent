@@ -2,7 +2,6 @@
 
 import type {
   SessionId,
-  ErrorCode,
   ToolCallId,
   TurnId,
 } from '@ema-agent/contracts';
@@ -11,6 +10,7 @@ import type {
   EmaStreamEvent,
   RequestDegradationNotice,
   AskUserRequiredEvent,
+  TurnFailureCode,
 } from '@ema-agent/turn';
 import type { KbSearchResult } from '@ema-agent/knowledge';
 import type {
@@ -142,7 +142,7 @@ export interface IAgentTurnLifecycle {
   }): void;
   fail(input: {
     turnId: TurnId;
-    code: ErrorCode;
+    code: TurnFailureCode;
     message: string;
   }): void;
   abort(input: {

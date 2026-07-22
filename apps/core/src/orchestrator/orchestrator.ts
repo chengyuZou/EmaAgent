@@ -3,7 +3,6 @@
 import type {
   AppBindings } from '../wiring/index.js';
 import type {
-  ErrorCode,
   TurnMode,
   TurnId,
   SessionId,
@@ -23,6 +22,7 @@ import { asSessionId,
 import type {
   EmaStreamEvent,
   RequestDegradationNotice,
+  TurnFailureCode,
 } from '@ema-agent/turn';
 import { ConversationEngine } from '@ema-agent/conversation';
 import { AgentEngine }        from '@ema-agent/agent';
@@ -519,7 +519,7 @@ export class Orchestrator {
    */
   private async reportTurnFailure(
     turn: Turn,
-    code: ErrorCode,
+    code: TurnFailureCode,
     message: string,
     phase: TurnFailurePhase,
   ): Promise<EmaStreamEvent[]> {

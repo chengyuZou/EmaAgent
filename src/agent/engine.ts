@@ -1,7 +1,6 @@
 // 运行一次 Agent Turn，并协调模型、工具、权限、Hook 和结果保存。
 
-import type { ErrorCode } from '@ema-agent/contracts';
-import type { EmaStreamEvent } from '@ema-agent/turn';
+import type { EmaStreamEvent, TurnFailureCode } from '@ema-agent/turn';
 import type { MessageBlocks } from '@ema-agent/session';
 import type { ToolExecutionContext, ReadFileState } from '@ema-agent/tools';
 import type { PermissionContext } from '@ema-agent/permission';
@@ -119,7 +118,7 @@ async function* runTurn(
     await turnSpawner?.shutdown(reason);
   };
   const reportFailure = async (
-    code: ErrorCode,
+    code: TurnFailureCode,
     message: string,
     phase: TurnFailurePhase,
   ): Promise<void> => {
@@ -613,7 +612,7 @@ async function* runTurn(
       turnLifecycle.abort({ sessionId, turnId, reason: 'user_abort' });
       yield { type: 'turn_aborted', sessionId, turnId, reason: 'user_stop' };
     } else {
-      const code: ErrorCode = err instanceof AgentBudgetExceededError
+      const code: TurnFailureCode = err instanceof AgentBudgetExceededError
         ? err.code
         : activePhase === 'provider'
           ? llmProviderErrorCode(err)

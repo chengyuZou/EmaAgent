@@ -1,7 +1,7 @@
 // 运行一次 chat/narrative Turn，并串联 Hook、召回、LLM 流和持久化。
 
 import { randomUUID } from 'node:crypto';
-import type { ErrorCode } from '@ema-agent/contracts';
+import type { TurnFailureCode } from '@ema-agent/turn';
 import type { EmaStreamEvent } from '@ema-agent/turn';
 import { asLlmCallId, LlmModelCapabilityError, llmProviderErrorCode } from '@ema-agent/llm';
 import type {
@@ -69,7 +69,7 @@ async function* runTurn(
   let activePhase: TurnFailurePhase = 'setup';
   let failureReported = false;
   const reportFailure = async (
-    code: ErrorCode,
+    code: TurnFailureCode,
     message: string,
     phase: TurnFailurePhase,
   ): Promise<void> => {
@@ -470,7 +470,7 @@ async function* runTurn(
       session.abortTurn(input.sessionId, turnId);
       yield { type: 'turn_aborted', sessionId: input.sessionId, turnId, reason: 'user_stop' };
     } else {
-      const code: ErrorCode = activePhase === 'provider'
+      const code: TurnFailureCode = activePhase === 'provider'
         ? llmProviderErrorCode(err)
         : 'turn/execution_failed';
       await reportFailure(code, reason, activePhase);

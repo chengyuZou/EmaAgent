@@ -2,13 +2,13 @@
 import type {
   CharacterCardId,
   CompactionId,
-  ErrorCode,
   HookInvocationId,
   SessionId,
   TurnId,
   TurnMode,
 } from '@ema-agent/contracts';
 import type { Artifact, ArtifactId } from '@ema-agent/artifact';
+import type { TurnFailureCode } from './errors.js';
 import type { ProviderStreamEvent } from '@ema-agent/provider';
 import type { PermissionStreamEvent } from '@ema-agent/permission';
 import type { EmotionStreamEvent } from '@ema-agent/emotion';
@@ -157,7 +157,7 @@ export type EmaStreamEvent =
     }
   | { type: 'usage_update';   sessionId: SessionId; turnId: TurnId; inputTokens: number; outputTokens: number }
   | { type: 'turn_completed'; sessionId: SessionId; turnId: TurnId; stats: TurnStats }
-  | { type: 'turn_failed';    sessionId: SessionId; turnId: TurnId; code: ErrorCode; message: string }
+  | { type: 'turn_failed';    sessionId: SessionId; turnId: TurnId; code: TurnFailureCode; message: string }
   | { type: 'turn_aborted';   sessionId: SessionId; turnId: TurnId; reason: string }
   | {
       type: 'turn_projection_warning';

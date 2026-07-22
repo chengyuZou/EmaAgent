@@ -32,6 +32,8 @@ Contracts 消息契约也已收口：`contracts/messages.ts` 和 `ids.ts` 中的
 
 Artifact 类型所有权已回到 `src/artifact`：Artifact 数据结构、`ArtifactId/asArtifactId`、存储端口、工具注入接口和归属错误都由 Artifact 模块导出；Storage 只实现持久化端口，Tools/Turn/Core/Desktop 只依赖 Artifact 公共入口。`contracts/artifact.ts` 及中央 Artifact ID 已删除，V1 Feature Gate 继续保持禁用。
 
+Contracts 错误所有权已经收口：中央 `ErrorCode` 改为 Turn 拥有的 `TurnFailureCode`，只描述当前确实可能通过 `turn_failed` 暴露的 11 个终态码；LLM、Vision、STT、Narrative、Knowledge 等继续保留各自领域错误。无生产者的旧 Auth、Tool、Memory、Narrative、Storage、TTS/STT 与 System 占位码已删除，`contracts/errors.ts` 不再存在。
+
 ## 迁移完成事实
 
 - 所有 Ema 产品模块均位于根 `src`；旧产品目录不再留在 `packages`。
@@ -46,7 +48,7 @@ Artifact 类型所有权已回到 `src/artifact`：Artifact 数据结构、`Arti
 
 本轮已知未提交修改：
 
-- `src/contracts`：删除中央 `messages.ts`、`artifact.ts` 及 `MessageRole`，当前只剩 `ids/errors`；
+- `src/contracts`：删除中央 `messages.ts`、`artifact.ts`、`errors.ts` 及 `MessageRole`，当前只剩 `ids.ts`；
 - `src/turn`：接管 `TurnContentPart/TurnAttachment/ToolPresentation`；
 - `src/session`：新增持久化消息结构和 `parseMessageBlocksJson`，保留 Tool Result 的展示与审计字段；
 - `src/storage`：接管数据库 `MessageRole/MessageKind`，移除无生产者的 `context/persona_reminder`；
@@ -54,6 +56,7 @@ Artifact 类型所有权已回到 `src/artifact`：Artifact 数据结构、`Arti
 - Core/Session：模型本轮媒体与 Message 持久化投影分离，新增 `attachment_ref`；
 - `src/artifact`：接管 Artifact 类型、端口与错误，解除对 Storage/Tools 的反向依赖；
 - `src/storage`：Data v16 删除 `messages.meta_json`，相关 Repo、Fork 与恢复 SQL 已同步。
+- `src/turn`：接管客户端可见 `TurnFailureCode`；Hook、Agent、Conversation 与 Core 统一消费该终态契约。
 
 当前基线最近提交：`3a41d30 feat: 重构上下文模块，新增 contextSnapshot.ts 和 slots.ts，优化类型定义和导出结构`。该提交号仅用于定位，不代表其他 Agent 不会继续提交。
 
@@ -89,9 +92,8 @@ Plan、Goal、Schedule、Workflow、Team 与 LLM 自动审批暂列 V1.5，不�
 
 ## 下一批建议顺序
 
-1. 独立处理 `contracts/errors.ts`，按业务域回流错误码与错误类型；
-2. 冻结 branded ID 的最小无环归属方案，判断 `contracts/ids.ts` 是否保留为唯一无环 ID 底座；
-3. 删除已无业务类型的 Contracts 外壳，随后继续唯一 `TurnRuntime + TurnLoop` 主线。
+1. 冻结 branded ID 的最小无环归属方案，判断 `contracts/ids.ts` 是否保留为唯一无环 ID 底座；
+2. 删除已无业务类型的 Contracts 外壳，随后继续唯一 `TurnRuntime + TurnLoop` 主线。
 
 每批只改变一个主要业务边界。不要把 Turn 统一、数据库 Schema、全仓 ID 改名和前端切换塞进同一批。
 
@@ -118,6 +120,7 @@ Plan、Goal、Schedule、Workflow、Team 与 LLM 自动审批暂列 V1.5，不�
 - Contracts 第一批回流：Core 与 Desktop UI 依赖构建通过；全仓 typecheck 84/84；Core 88/88、Session 39/39、Backup 10/10、Desktop UI 130/130 通过；Builtin Tools 中本批相关 FileWriteTool 7/7 通过，仍有既存 WebFetchPolicy 1 项失败。
 - Contracts 消息统一：Core/Desktop 依赖构建与全仓 typecheck 84/84 通过；Session 43/43、Context 23/23、Conversation 7/7、Agent 32/32、Core 88/88、Desktop UI 130/130 通过；4 个 Agent Live Integration 按规则跳过。
 - Contracts 待修收口：`pnpm install --offline` 与全仓 typecheck 84/84 通过；Storage 119/119、Session 44/44、Context 23/23、Core 89/89、Desktop UI 130/130 通过；`git diff --check` 仅有既有 CRLF 提示。
+- Contracts 错误回流：全仓 typecheck 84/84；Hooks 27/27、Conversation 7/7、Agent 32/32、Core 89/89 通过；4 个 Agent Live Integration 按既有规则跳过。
 
 ## 工作规则
 

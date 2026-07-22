@@ -11,6 +11,9 @@
 | `UsageContext/UsageRecord/UsageRecorder` | `@ema-agent/usage` |
 | Session Message → Model Message | `@ema-agent/context` 的 `messageBuilder` |
 | Turn Request/Response/Stats、`EmaStreamEvent` 聚合协议 | `@ema-agent/turn` |
+| Turn 客户端可见失败码 | `@ema-agent/turn` 的 `TurnFailureCode` |
+| Artifact 类型与 ID | `@ema-agent/artifact` |
+| 其他业务类型、事件和错误 | 各自业务模块 |
 
 contracts 不得重新导出这些类型，也不得增加兼容别名。
 
@@ -18,14 +21,7 @@ contracts 不得重新导出这些类型，也不得增加兼容别名。
 
 | 当前文件 | 目标所有者 |
 |---|---|
-| `ids.ts` 中剩余 ID | Session、Turn、Tool、Hook、Artifact 等对应业务模块 |
-| `messages.ts` 中持久化 Block 与 Attachment 元数据 | Session、Tool、Attachment |
-| `artifact.ts` | Artifact，V1 继续禁用 |
-| `wire.ts` | 对应业务模块的 `protocol` 入口 |
-| `kb.ts` | Knowledge Base |
-| `agents.ts` | Agent |
-| `sessionOwnership.ts` | Session |
-| `errors.ts` | 各业务模块拥有错误码，Turn 组合客户端可见错误 |
+| `ids.ts` 中剩余 ID | Session、Turn、Message、Character、Tool、Hook 等对应业务模块 |
 
 ## 迁移红线
 
