@@ -1,7 +1,7 @@
 // 这里根据中断日志，只清理由对应 FileWriteTool 调用留下的临时文件。
 import fs from 'node:fs';
 import path from 'node:path';
-import type { ToolExecutionRecord } from '@ema-agent/contracts';
+import type { ToolExecutionRecord } from '@ema-agent/tools';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 import { atomicTempPrefix, resolveAtomicTargetPath } from './atomicWrite.js';
 

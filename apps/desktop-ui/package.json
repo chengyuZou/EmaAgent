@@ -38,6 +38,7 @@
   },
   "dependencies": {
     "@ema-agent/characters": "workspace:*",
+    "@ema-agent/backup": "workspace:*",
     "@ema-agent/contracts": "workspace:*",
     "@ema-agent/emotion": "workspace:*",
     "@ema-agent/turn": "workspace:*",
@@ -50,6 +51,7 @@
     "@ema-agent/skills": "workspace:*",
     "@ema-agent/storage": "workspace:*",
     "@ema-agent/stt": "workspace:*",
+    "@ema-agent/system": "workspace:*",
     "@ema-agent/token": "workspace:*",
     "@ema-agent/ui": "workspace:*",
     "@tauri-apps/api": "^2.4.0",

@@ -12,6 +12,81 @@ import type {
   TurnTriggerType,
 } from '@ema-agent/turn';
 
+export type SessionAttachmentFileStatus =
+  | 'available'
+  | 'modified'
+  | 'missing'
+  | 'inaccessible';
+
+export interface SessionAttachmentWire {
+  id: string;
+  turnId: string;
+  sessionId: string;
+  name: string;
+  mimeType: string;
+  size: number;
+  mtime: number;
+  fileHandle: string | null;
+  createdAt: number;
+  fileStatus: SessionAttachmentFileStatus;
+}
+
+export interface SessionAttachmentsResult {
+  attachments: SessionAttachmentWire[];
+}
+
+export interface ArtifactSummaryWire {
+  id: string;
+  type: string;
+  title: string;
+  contentLocation: 'inline' | 'file';
+  byteSize: number;
+  createdAt: number;
+  appliedAt: number | null;
+  rejectedAt: number | null;
+}
+
+export interface AudioEntryWire {
+  turnId: string;
+  mimeType: string;
+  byteSize: number;
+  durationMs: number | null;
+  segmentCount: number;
+  createdAt: number;
+}
+
+export interface SessionNoteEntryWire {
+  timestamp: string;
+  delta: string;
+}
+
+export interface SessionNoteWire {
+  sessionId: string;
+  entries: SessionNoteEntryWire[];
+  tokensAtLastUpdate: number;
+  updatedAt: number;
+}
+
+export interface SessionDashboardWire {
+  sessionId: string;
+  turnCount: number;
+  messageCount: number;
+  totalInputTokens: number;
+  totalOutputTokens: number;
+  modeCounts: { chat: number; narrative: number; agent: number };
+  branchCount: number;
+  artifactCount: number;
+  artifactTotalBytes: number;
+  artifacts: ArtifactSummaryWire[];
+  audioTurnCount: number;
+  audioTotalBytes: number;
+  audioTotalDurationMs: number;
+  audioEntries: AudioEntryWire[];
+  attachmentCount: number;
+  attachmentTotalBytes: number;
+  notes: SessionNoteWire | null;
+}
+
 export interface SessionWire {
   id: string;
   title: string;

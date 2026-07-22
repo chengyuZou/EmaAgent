@@ -1,11 +1,16 @@
 // 定义 Turn 的请求、创建响应、输入校验与终态统计。
 import type {
-  KbAssetScope,
   MessageContentPart,
   SessionId,
   TurnAttachment,
   TurnId,
 } from '@ema-agent/contracts';
+
+/** 当前 Turn 在某个知识库内允许检索的文档范围。 */
+export interface KbAssetScope {
+  kbId: string;
+  assetIds: string[];
+}
 
 /** 一次 Turn 的执行能力范围；输入渠道和连接协议不属于 Profile。 */
 export type ExecutionProfile = 'chat' | 'work';

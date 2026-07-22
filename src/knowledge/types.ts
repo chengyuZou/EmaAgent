@@ -1,5 +1,27 @@
 // ── Document block (reader output) ───────────────────────────────────────────
-import type { KbAssetScope } from '@ema-agent/contracts';
+import type { KbAssetScope } from '@ema-agent/turn';
+
+export interface DocumentSourceRef {
+  assetId: string;
+  fileName: string;
+  page?: number;
+  sectionPath: string[];
+  /** 匹配分块的短预览，供引用界面展示。 */
+  chunkPreview: string;
+}
+
+export interface KbSearchHit {
+  chunkId: string;
+  text: string;
+  markdown?: string;
+  score: number;
+  source: DocumentSourceRef;
+}
+
+export interface KbSearchResult {
+  query: string;
+  hits: KbSearchHit[];
+}
 
 export type DocumentBlockKind =
   | 'title'

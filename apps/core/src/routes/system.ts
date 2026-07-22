@@ -2,7 +2,7 @@
 
 import { Hono } from 'hono';
 import { getDisksInfo } from '@ema-agent/system';
-import type { AppCapabilitiesWire } from '@ema-agent/contracts';
+import type { AppCapabilitiesWire } from '@ema-agent/system';
 import type { AppBindings } from '../wiring/index.js';
 
 export function systemRoute(bindings: AppBindings): Hono {

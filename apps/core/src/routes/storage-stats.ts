@@ -14,7 +14,7 @@ import type {
   AudioEntryWire,
   SessionNoteWire,
   SessionNoteEntryWire,
-} from '@ema-agent/contracts';
+} from '@ema-agent/session';
 import { asSessionId } from '@ema-agent/contracts';
 import {
   loadRegistry, addDir, removeDir, setActive,

@@ -7,10 +7,10 @@ import type {
   TurnMode,
   TurnId,
   SessionId,
-  KbAssetScope,
 } from '@ema-agent/contracts';
 import type {
   ExecutionProfile,
+  KbAssetScope,
   NarrativePolicy,
   TurnTrigger,
 } from '@ema-agent/turn';

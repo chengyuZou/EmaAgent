@@ -1,5 +1,5 @@
 import { sidecarClient } from './sidecar-client.js';
-import type { AppCapabilitiesWire, ReleaseFeaturesWire } from '@ema-agent/contracts';
+import type { AppCapabilitiesWire, ReleaseFeaturesWire } from '@ema-agent/system';
 
 export interface DiskInfoWire {
   mount: string;

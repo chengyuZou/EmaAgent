@@ -18,6 +18,8 @@ export type {
   ToolCapabilitySnapshot,
   IToolCapabilityScope,
   ToolExecutionContext,
+  ToolExecutionRecord,
+  ToolExecutionStatus,
   ToolDescriptor,
   ToolManifestEntry,
   ToolManifestSnapshot,

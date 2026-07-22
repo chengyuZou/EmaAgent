@@ -2,7 +2,7 @@
 import { z } from 'zod';
 import { buildTool } from '@ema-agent/tools';
 import type { ToolExecutionContext } from '@ema-agent/tools';
-import type { KbSearchResult } from '@ema-agent/contracts';
+import type { KbSearchResult } from '@ema-agent/knowledge';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 
 // ── 输入 schema ──────────────────────────────────────────────────────────────

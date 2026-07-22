@@ -22,13 +22,13 @@ import {
   type BranchId,
   type TurnMode,
   type MessageBlocks,
-  type SessionOwnershipFacade,
-  SessionOwnershipError,
   asSessionId,
   asTurnId,
   asMessageId,
   asBranchId,
 } from '@ema-agent/contracts';
+import { SessionOwnershipError } from './errors.js';
+import type { SessionOwnershipFacade } from './types.js';
 import type { Database } from '@ema-agent/storage';
 import type { ExecutionProfile, NarrativePolicy } from '@ema-agent/turn';
 import { RunRegistry } from './run-registry.js';

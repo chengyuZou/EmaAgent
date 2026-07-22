@@ -48,3 +48,13 @@ export interface RunResult {
   timedOut:  boolean
   truncated: boolean
 }
+
+/** 当前机器对 Shell 与本地 MCP 进程实际提供的隔离能力。 */
+export interface SandboxStatusWire {
+  readonly backend: 'bubblewrap' | 'sandbox-exec' | 'app-layer';
+  readonly isolation: 'os' | 'application-only';
+  readonly shellExecution: 'isolated' | 'disabled' | 'unsafe-override';
+  readonly sandboxNetwork: 'none' | 'full';
+  readonly localMcpStdio: 'isolated' | 'disabled' | 'unsafe-override';
+  readonly warning?: string;
+}

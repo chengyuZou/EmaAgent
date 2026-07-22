@@ -1,6 +1,5 @@
 // 组合各业务域事件，形成 Turn 向客户端输出的统一结构化事件流。
 import type {
-  AgentKind,
   Artifact,
   ArtifactId,
   CharacterCardId,
@@ -16,6 +15,9 @@ import type { ProviderStreamEvent } from '@ema-agent/provider';
 import type { PermissionStreamEvent } from '@ema-agent/permission';
 import type { EmotionStreamEvent } from '@ema-agent/emotion';
 import type { ExecutionProfile, NarrativePolicy, TurnStats } from './turns.js';
+
+/** 子 Agent 获取初始上下文的方式。 */
+export type AgentKind = 'subagent' | 'fork';
 
 // ── Shared sub-types ──────────────────────────────────────────────────────────
 

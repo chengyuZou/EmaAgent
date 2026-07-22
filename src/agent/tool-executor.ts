@@ -18,9 +18,9 @@ import type {
   ToolResultBlock,
   SessionId,
   ToolCallId,
-  ToolExecutionStatus,
   TurnId,
 } from '@ema-agent/contracts';
+import type { ToolExecutionStatus } from '@ema-agent/tools';
 import type {
   EmaStreamEvent,
 } from '@ema-agent/turn';

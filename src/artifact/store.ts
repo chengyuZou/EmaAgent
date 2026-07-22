@@ -6,13 +6,12 @@ import { randomUUID } from 'node:crypto';
 
 import type { ArtifactRepo } from '@ema-agent/storage';
 import {
-  SessionOwnershipError,
   asSessionId,
   type Artifact,
   type ArtifactId,
   type SessionId,
-  type SessionOwnershipFacade,
 } from '@ema-agent/contracts';
+import { SessionOwnershipError, type SessionOwnershipFacade } from '@ema-agent/session';
 import type { IArtifactStore, ArtifactUpsertArgs } from '@ema-agent/tools';
 
 // ── 常量 ───────────────────────────────────────────────────────────────────────

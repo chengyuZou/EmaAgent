@@ -18,4 +18,5 @@ export type {
   SessionExportRequest,
   SessionExportResult,
   SessionExportSnapshot,
+  ImportWarningWire,
 } from './types.js';

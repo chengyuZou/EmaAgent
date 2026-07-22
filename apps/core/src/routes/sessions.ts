@@ -1,13 +1,13 @@
 // 提供 Session 创建、查询、偏好更新、分支与消息读取的 HTTP 边界。
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { asSessionId, asTurnId, asBranchId, SessionOwnershipError } from '@ema-agent/contracts';
+import { asSessionId, asTurnId, asBranchId } from '@ema-agent/contracts';
 import type {
-  SessionAttachmentsResult,
   MessageBlocks,
   TurnAttachment,
 } from '@ema-agent/contracts';
 import type {
+  SessionAttachmentsResult,
   SessionWire,
   SessionMessagesResult,
   SessionsListResult,
@@ -15,6 +15,7 @@ import type {
   SessionsSearchResult,
   BranchTreeWire,
 } from '@ema-agent/session';
+import { SessionOwnershipError } from '@ema-agent/session';
 import type { AppBindings } from '../wiring/index.js';
 import { removeTurnFiles } from '../storage-locations/index.js';
 

@@ -3,8 +3,8 @@
 import type {
   DocumentAsset, DocumentChunk, DocumentPreview,
   IngestOptions, IngestResult, SearchOptions, AssetListPage,
+  KbSearchResult, DocumentSourceRef,
 } from './types.js';
-import type { KbSearchResult, DocumentSourceRef } from '@ema-agent/contracts';
 import type { EmbedRuntime, EmbeddingSpace } from '@ema-agent/embed';
 import type { RerankRuntime } from '@ema-agent/rerank';
 import type { ChunkPage, AssetUsage } from '@ema-agent/storage';

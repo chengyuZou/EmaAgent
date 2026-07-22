@@ -17,6 +17,15 @@ import type {
   TurnTriggerType,
 } from '@ema-agent/turn';
 
+/** Session 聚合向其他模块提供的归属校验端口。 */
+export interface SessionOwnershipFacade {
+  assertTurnOwnership(sessionId: SessionId, turnId: TurnId): void;
+  assertMessageOwnership(sessionId: SessionId, messageId: MessageId): void;
+  assertBranchOwnership(sessionId: SessionId, branchId: BranchId): void;
+}
+
+export type SessionOwnedEntity = 'artifact' | 'branch' | 'message' | 'turn';
+
 // ── Domain objects (camelCase, parsed) ───────────────────────────────────────
 
 export interface Branch {

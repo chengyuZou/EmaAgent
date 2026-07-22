@@ -7,7 +7,7 @@
  */
 import { create } from 'zustand';
 import { systemApi, FEATURES_DISABLED } from '../api/system.js';
-import type { ReleaseFeaturesWire } from '@ema-agent/contracts';
+import type { ReleaseFeaturesWire } from '@ema-agent/system';
 
 export interface CapabilitiesStoreState {
   /** 当前生效的特性集。加载前为 FEATURES_DISABLED(fail-closed)。 */

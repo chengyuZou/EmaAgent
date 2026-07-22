@@ -1,6 +1,7 @@
 import { sidecarClient } from './sidecar-client.js';
 import type { SessionId } from '@ema-agent/contracts';
-import type { SessionDashboardWire, SessionNoteWire, ImportWarningWire } from '@ema-agent/contracts';
+import type { SessionDashboardWire, SessionNoteWire } from '@ema-agent/session';
+import type { ImportWarningWire } from '@ema-agent/backup';
 
 // ── DataDir wire types ────────────────────────────────────────────────────────
 

@@ -9,9 +9,9 @@ import type {
   SessionId,
   TurnId,
   BranchId,
-  SessionAttachmentsResult,
 } from '@ema-agent/contracts';
 import type {
+  SessionAttachmentsResult,
   SessionWire,
   MessageWire,
   TurnWire,

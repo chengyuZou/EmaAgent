@@ -154,6 +154,7 @@ export type {
   ToolExecutionInsert,
   ToolExecutionRow,
   ToolExecutionTerminalUpdate,
+  ToolExecutionStatus,
 } from './repos/tool-executions.js';
 
 // ── Knowledge-base repo ────────────────────────────────────────────────────────

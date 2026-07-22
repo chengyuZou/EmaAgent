@@ -3,6 +3,7 @@ export type { SessionStoreDeps } from './store.js';
 export { RunRegistry } from './run-registry.js';
 export { BranchAncestorTable } from './branch-ancestor.js';
 export { EulerTourRMQLCA } from './euler-rmq-lca.js';
+export { SessionOwnershipError } from './errors.js';
 export type {
   SessionWire,
   SessionsListResult,
@@ -16,6 +17,14 @@ export type {
   BranchNodeWire,
   TurnTreeNodeWire,
   BranchTreeWire,
+  SessionAttachmentFileStatus,
+  SessionAttachmentWire,
+  SessionAttachmentsResult,
+  ArtifactSummaryWire,
+  AudioEntryWire,
+  SessionNoteEntryWire,
+  SessionNoteWire,
+  SessionDashboardWire,
 } from './protocol.js';
 
 export type {
@@ -39,4 +48,6 @@ export type {
   SearchSessionsInput,
   SessionSearchHit,
   SearchSessionsOutput,
+  SessionOwnershipFacade,
+  SessionOwnedEntity,
 } from './types.js';

@@ -1,6 +1,7 @@
 // 测试 Session 附件缓存的会话隔离、强制刷新和过期响应保护。
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { asSessionId, type SessionAttachmentWire } from '@ema-agent/contracts';
+import { asSessionId } from '@ema-agent/contracts';
+import type { SessionAttachmentWire } from '@ema-agent/session';
 import { sessionsApi } from '../src/api/sessions.js';
 import { useSessionAttachmentStore } from '../src/stores/session-attachment-store.js';
 

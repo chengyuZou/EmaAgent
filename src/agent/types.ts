@@ -3,16 +3,16 @@
 import type {
   SessionId,
   ErrorCode,
-  KbSearchResult,
-  KbAssetScope,
   ToolCallId,
   TurnId,
 } from '@ema-agent/contracts';
 import type {
+  KbAssetScope,
   EmaStreamEvent,
   RequestDegradationNotice,
   AskUserRequiredEvent,
 } from '@ema-agent/turn';
+import type { KbSearchResult } from '@ema-agent/knowledge';
 import type {
   LanguageModel,
   LlmContentPart,

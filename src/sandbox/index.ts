@@ -23,4 +23,5 @@ export type {
   WrappedCommand,
   RunOptions,
   RunResult,
+  SandboxStatusWire,
 } from './types.js';

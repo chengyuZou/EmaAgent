@@ -28,6 +28,73 @@ ContextCompactor
 
 ContextAssembler 会在最终请求投影的最后一条非空消息上补充增量缓存断点，使历史和已经完成的工具轮次进入下一次请求的缓存前缀。该断点不写回 Session Message、当前 Turn 工作消息或压缩结果；普通装配和压缩装配都会按各自最终顺序重新计算位置。
 
+## 装配后的 Message 长什么样
+
+`ContextAssembler` 把输入拼成 `[prefix, history, suffix]` 三段，再在尾部补一个增量断点。下图是一次 Work Turn（已有几轮工具历史）实际产出的 `ModelContextSnapshot.messages`：
+
+```text
+messages[]                         来源                          cacheBreakpoint
+──────────────────────────────────────────────────────────────────────────────
+┌─ system  ──────────────────── PromptSnapshot.systemBlocks[0] ── ✅(product)─┐
+│ # Ema 基本行为 / # 工具使用通用原则                                         │
+├─ system  ──────────────────── PromptSnapshot.systemBlocks[1] ── ✅(char)──┤
+│ ## 角色身份 / ## 角色表达控制协议                                           │
+├─ system  ──────────────────── PromptSnapshot.systemBlocks[2] ── ❌(turn)──┤
+│ ## 当前执行方式：Work / ## 剧情资料策略：自动                              │
+├─ user    ──────────────────── PromptSnapshot.contextBlocks[0] ── ❌──────┤
+│ ## 可用技能（extension，非 system 指令）                                   │
+├─ user    ──────────────────── runtimeEnvironment ─────────────── ✅ ─────┤
+│ # 本轮运行环境（日期/平台/工作区/模型）                                    │
+└──────────────────────────────────────────────────────────────────────────┘
+   ↑ 以上是 prefix，不可压缩，进压缩器只算预算不进摘要模型
+
+┌─ user    ─── 历史第1轮问题 ───────────────────────────────────────────────┐
+├─ assistant ─ [tool_use Read] ────────────────────────────────────────────┤
+├─ user    ─── [tool_result] ──────────────────────────────────────────────┤
+├─ assistant ─ 文本回复 ───────────────────────────────────────────────────┤
+│   ... history（可压缩；Macro 摘要只动这一段） ...                         │
+└──────────────────────────────────────────────────────────────────────────┘
+   ↑ history 由 messageBuilder 从 Session Message 投影而来，
+     thinking 与 UI 字段已剥离，tool_use/tool_result 配对完整保留
+
+┌─ user    ─── Contribution(beforeCurrentTurn)：Memory/Narrative 召回 ─────┐
+├─ user    ─── currentTurn：本轮用户输入 ──────────────────────────────────┤
+├─ user    ─── Contribution(afterCurrentTurn)：Scratchpad/Mailbox ─────────┤
+│   ... suffix ...                                                          │
+├─ user    ─── 最后一条非空消息 ───────────────────────── ✅(尾断点,自动补)─┤
+└──────────────────────────────────────────────────────────────────────────┘
+   ↑ suffix 是本轮临时数据，不进摘要模型，但计入预算
+```
+
+要点：
+
+- **prefix 不可压缩**：systemBlocks + contextBlocks + environment。进压缩器只算 token 预算，不进摘要模型。product/character 块带断点，turn 块不带。
+- **history 可压缩**：Macro 摘要只替换这一段。`messageBuilder` 投影时已剥 thinking、保留 tool 配对。
+- **suffix 是本轮临时数据**：`ContextContribution`（memory/narrative/scratchpad/mailbox）按 `placement` 插在 currentTurn 前后，不能伪装成历史。
+- **尾断点自动补**：`markFinalCacheBreakpoint` 从尾部往前找第一条非空消息标 `cacheBreakpoint`，使 history 进缓存前缀。这个断点只在请求投影上，不写回 Session/压缩结果。
+- **`cache` 诊断块**：快照还带 `productPromptRevision/activeCharacterRevision/turnPromptRevision/toolManifestRevision/prefixHash`，任一变化即可定位缓存断裂来源。
+
+## 压缩后的 Message 长什么样
+
+Macro 压缩后，history 被摘要替换。prefix 和 suffix 原样保留，只有 history 段变成 `[summary, restore, tail]`：
+
+```text
+messages[]                         来源                          cacheBreakpoint
+──────────────────────────────────────────────────────────────────────────────
+  prefix（同上，原样保留）               ✅ product/char/env 断点
+──────────────────────────────────────────────────────────────────────────────
+┌─ user    ─── <context-summary profile="work"> ──────────────────────────┐
+│              ... Macro 摘要（<summary> 内容，analysis 已丢弃） ...       │
+├─ user    ─── <post-compact-restore profile="work"> ─────────────────────┤
+│              最近 5 个文件快照（work）/ 情绪状态（chat）                  │
+├─ ... tail（保留的最近 ~25% 原文，tool 配对完整）... ────────────────────┤
+└──────────────────────────────────────────────────────────────────────────┘
+  suffix（同上，原样保留）                 ✅ 尾断点自动补
+──────────────────────────────────────────────────────────────────────────────
+```
+
+Safe Cut 保证 tail 内每个 `tool_result` 的 `tool_use` 也在 tail 内（按 `toolUseId` 全表配对验证）。找不到安全切点（历史已损坏）时整段 history 文本化后交 Macro 摘要，失败计入 Session 熔断。
+
 V1 使用渐进式压缩：现有 ToolResultStore 先把超大结果落盘；只有上下文接近模型硬限制时才执行 Micro Compaction；仍超限才调用当前模型生成摘要。API 超限时由 Agent 触发一次 Reactive Compaction。Context Collapse、服务端 cache edits 和后台 Session Memory Agent 延后评估。
 
 Compaction 只按 `ExecutionProfile = chat | work` 选择摘要结构；`NarrativePolicy` 只控制剧情检索，不会创建第三套压缩语义。Macro 摘要要求模型先生成 `<analysis>` 草稿再输出 `<summary>`，解析器只保留最终摘要。Safe Cut 按 `toolUseId` 验证保留尾部的完整配对，允许从 assistant `tool_use` 开始，但不会让 tail 留下来自摘要 head 的孤立 `tool_result`。

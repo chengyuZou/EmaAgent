@@ -24,6 +24,8 @@ Prompt/Context 的 V1 目录边界已经规范化：`contextSnapshot.ts` 独立�
 
 Provider 配置也已完成旧列清理：顶层 `base_url`、`config_json`、`capabilities_json` 被物理删除，地址、协议和能力开关只保存在 `provider_capability_configs`。Session/Turn 无业务读取的 `meta_json` 同步删除；Message、MCP、Artifact 等仍有明确用途的 JSON 未动。
 
+Contracts 第一批所有权回流已经完成：`agents.ts`、`sessionOwnership.ts`、`kb.ts`、`capabilities.ts`、`wire.ts` 已删除。Agent 初始化种类归 Turn 事件边界，工具执行审计归 Tools/Storage，知识检索结构归 Knowledge，Session 归属校验与 REST DTO 归 Session，发布能力、沙箱状态和备份警告分别归 System、Sandbox、Backup。数据形状和运行语义未改变。
+
 ## 迁移完成事实
 
 - 所有 Ema 产品模块均位于根 `src`；旧产品目录不再留在 `packages`。
@@ -38,13 +40,12 @@ Provider 配置也已完成旧列清理：顶层 `base_url`、`config_json`、`c
 
 本轮已知未提交修改：
 
-- `src/context`：新增 `contextSnapshot.ts`，快照契约从 `types.ts` 独立；Context Contribution 请求移除旧 `TurnMode`；
-- `src/prompts`：新增 `slots.ts`，Slot 注册策略从装配算法独立；
-- `src/agent`、`src/conversation`：Contribution 调用直接传递 Turn 的 `ExecutionProfile + NarrativePolicy`；
-- `src/memory`：公开召回入口接收新 Context 请求，旧检索 Mode 映射暂时收回 Memory 内部；
-- `EmaRefactor.md` 与两个模块 README：同步最终 V1 目录边界，不建立空的 profiles/serializers/restore 目录。
+- `src/contracts`：删除 `agents/capabilities/kb/sessionOwnership/wire` 五个中央类型文件，只保留尚待独立收口的 `ids/errors/messages/artifact`；
+- `src/turn`、`src/tools`、`src/knowledge`、`src/session`、`src/system`、`src/sandbox`、`src/backup`：接管上述类型并更新消费者和 Workspace 依赖；
+- `apps/core`、`apps/desktop-ui` 及相关业务模块：改为从真实所有者导入，不再经过 contracts 转发；
+- `src/context/README.md`、`src/prompts/README.md` 是并行工作的未提交修改，本批未编辑。
 
-当前基线最近提交：`3fb24f9 feat: enhance context compaction with execution profiles and narrative policies`。该提交号仅用于定位，不代表其他 Agent 不会继续提交。
+当前基线最近提交：`3a41d30 feat: 重构上下文模块，新增 contextSnapshot.ts 和 slots.ts，优化类型定义和导出结构`。该提交号仅用于定位，不代表其他 Agent 不会继续提交。
 
 ## 已确定的 V1 口径
 
@@ -78,10 +79,10 @@ Plan、Goal、Schedule、Workflow、Team 与 LLM 自动审批暂列 V1.5，不�
 
 ## 下一批建议顺序
 
-1. 让 Context Contribution、Hook 与 Memory 输入迁出旧 `TurnMode`，使用 `ExecutionProfile`、`NarrativePolicy` 或明确领域事实；
-2. 建立 Chat/Work 的不可变 Tool Manifest 与迭代策略，再实现 Narrative `always/auto/off`；
-3. 清理根 AgentTask 投影、AgentRun 身份和 Core 外围业务边界；
-4. 外围契约稳定后再组装唯一 `TurnRuntime + TurnLoop`，删除 ConversationEngine 与 AgentEngine 外壳。
+1. 独立处理 `contracts/messages.ts` 与 `llm/message.ts` 的重复定义，先按持久化消息、模型消息、附件输入和工具展示拆清所有权，再删除中央消息契约；
+2. 独立处理 `contracts/errors.ts`，按业务域回流错误码与错误类型；
+3. 冻结 branded ID 的最小无环归属方案，最后删除 `contracts` 外壳；
+4. Contracts 外围稳定后继续唯一 `TurnRuntime + TurnLoop` 主线，删除 ConversationEngine 与 AgentEngine 外壳。
 
 每批只改变一个主要业务边界。不要把 Turn 统一、数据库 Schema、全仓 ID 改名和前端切换塞进同一批。
 
@@ -105,6 +106,7 @@ Plan、Goal、Schedule、Workflow、Team 与 LLM 自动审批暂列 V1.5，不�
 - Compaction 新语义与 Safe Cut：Context 23/23、Memory 20/20 通过；Turn、Context、Memory、Core、Agent、Conversation typecheck 通过。
 - Prompt/Context V1 目录规范：Prompt 6/6、Context 23/23、Memory 20/20 通过；Prompt、Context、Memory、Agent、Conversation、Core typecheck 通过。
 - `git diff --check` 通过，仅有仓库既有的 Windows CRLF 提示。
+- Contracts 第一批回流：Core 与 Desktop UI 依赖构建通过；全仓 typecheck 84/84；Core 88/88、Session 39/39、Backup 10/10、Desktop UI 130/130 通过；Builtin Tools 中本批相关 FileWriteTool 7/7 通过，仍有既存 WebFetchPolicy 1 项失败。
 
 ## 工作规则
 

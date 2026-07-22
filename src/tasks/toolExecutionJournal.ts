@@ -4,10 +4,9 @@ import { createHash } from 'node:crypto';
 import type {
   SessionId,
   ToolCallId,
-  ToolExecutionRecord,
-  ToolExecutionStatus,
   TurnId,
 } from '@ema-agent/contracts';
+import type { ToolExecutionRecord, ToolExecutionStatus } from '@ema-agent/tools';
 import type { ToolExecutionRow, ToolExecutionsRepo } from '@ema-agent/storage';
 
 const RESULT_PREVIEW_LIMIT = 4_096;

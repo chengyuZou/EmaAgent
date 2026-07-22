@@ -14,6 +14,9 @@ export type {
   DocumentPreview,
   IngestOptions, IngestResult,
   SearchOptions,
+  DocumentSourceRef,
+  KbSearchHit,
+  KbSearchResult,
 } from './types.js';
 
 // ── Events ─────────────────────────────────────────────────────────────────────

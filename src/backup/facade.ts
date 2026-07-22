@@ -1,7 +1,6 @@
 // 编排 Session 备份导入导出，并统一处理校验、文件落盘和事务恢复。
 import fs from 'node:fs';
 import path from 'node:path';
-import type { ImportWarningWire } from '@ema-agent/contracts';
 import {
   SessionRestoreValidationError,
   type ArtifactRestoreRow,
@@ -23,6 +22,7 @@ import type {
   SessionImportResult,
   SessionExportRequest,
   SessionExportResult,
+  ImportWarningWire,
 } from './types.js';
 import { exportSessionZipV1 } from './export/zip-v1.js';
 

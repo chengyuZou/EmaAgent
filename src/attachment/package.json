@@ -21,6 +21,7 @@
   },
   "dependencies": {
     "@ema-agent/contracts": "workspace:*",
+    "@ema-agent/session": "workspace:*",
     "@ema-agent/storage": "workspace:*"
   },
   "devDependencies": {

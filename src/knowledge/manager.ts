@@ -10,14 +10,13 @@ import {
 import type { KbRegistryRepo }   from '@ema-agent/storage';
 import type { EmbedRuntime }     from '@ema-agent/embed';
 import type { RerankRuntime }    from '@ema-agent/rerank';
-import type { KbSearchResult }   from '@ema-agent/contracts';
 import { KnowledgeClient }       from './client.js';
 import { KnowledgeStore }        from './store/index.js';
 import { IngestQueue }           from './ingest/queue.js';
 import { ReembedQueue }          from './reembed/queue.js';
 import { DocumentEventEmitter }  from './events/emitter.js';
 import type { KbVisionAdapter }  from './adapters/vision.js';
-import type { IngestOptions, SearchOptions } from './types.js';
+import type { IngestOptions, SearchOptions, KbSearchResult } from './types.js';
 
 // ── Entry ─────────────────────────────────────────────────────────────────────
 

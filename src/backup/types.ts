@@ -1,6 +1,12 @@
 // 定义 Session 备份 Facade 的输入输出、能力和文件端口。
-import type { ImportWarningWire } from '@ema-agent/contracts';
 import type { SessionRestorePayload } from '@ema-agent/storage';
+
+/** 导入备份时跳过尚未发布功能所产生的提示。 */
+export interface ImportWarningWire {
+  readonly code: 'unsupported_feature';
+  readonly feature: 'artifacts';
+  readonly message: string;
+}
 
 export type SessionBackupFormat = 'zip-v1';
 

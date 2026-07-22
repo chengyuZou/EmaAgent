@@ -1,7 +1,7 @@
 // 这里放 Attachment 模块用到的基础类型：附件记录、前端输入、解析给 LLM 的结果。
 
 import type { MessageContentPart, TurnAttachment } from '@ema-agent/contracts';
-import type { SessionAttachmentFileStatus } from '@ema-agent/contracts';
+import type { SessionAttachmentFileStatus } from '@ema-agent/session';
 
 // ── 领域类型 ───────────────────────────────────────────────────────────────────
 

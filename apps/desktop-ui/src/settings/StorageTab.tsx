@@ -23,7 +23,7 @@ import type {
   ArtifactSummaryWire,
   AudioEntryWire,
   SessionNoteEntryWire,
-} from '@ema-agent/contracts';
+} from '@ema-agent/session';
 
 // ── Animation helper ──────────────────────────────────────────────────────────
 // Keeps node mounted for `delay` ms after `visible` goes false so the exit

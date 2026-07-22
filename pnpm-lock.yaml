@@ -264,6 +264,9 @@ importers:
 
   apps/desktop-ui:
     dependencies:
+      '@ema-agent/backup':
+        specifier: workspace:*
+        version: link:../../src/backup
       '@ema-agent/characters':
         specifier: workspace:*
         version: link:../../src/characters
@@ -300,6 +303,9 @@ importers:
       '@ema-agent/stt':
         specifier: workspace:*
         version: link:../../src/stt
+      '@ema-agent/system':
+        specifier: workspace:*
+        version: link:../../src/system
       '@ema-agent/token':
         specifier: workspace:*
         version: link:../../src/token
@@ -428,6 +434,9 @@ importers:
       '@ema-agent/hooks':
         specifier: workspace:*
         version: link:../hooks
+      '@ema-agent/knowledge':
+        specifier: workspace:*
+        version: link:../knowledge
       '@ema-agent/llm':
         specifier: workspace:*
         version: link:../llm
@@ -502,6 +511,9 @@ importers:
       '@ema-agent/contracts':
         specifier: workspace:*
         version: link:../contracts
+      '@ema-agent/session':
+        specifier: workspace:*
+        version: link:../session
       '@ema-agent/storage':
         specifier: workspace:*
         version: link:../storage
@@ -521,6 +533,9 @@ importers:
       '@ema-agent/contracts':
         specifier: workspace:*
         version: link:../contracts
+      '@ema-agent/session':
+        specifier: workspace:*
+        version: link:../session
       '@ema-agent/storage':
         specifier: workspace:*
         version: link:../storage
@@ -568,6 +583,9 @@ importers:
       '@ema-agent/contracts':
         specifier: workspace:*
         version: link:../contracts
+      '@ema-agent/knowledge':
+        specifier: workspace:*
+        version: link:../knowledge
       '@ema-agent/llm':
         specifier: workspace:*
         version: link:../llm
@@ -815,6 +833,9 @@ importers:
       '@ema-agent/token':
         specifier: workspace:*
         version: link:../token
+      '@ema-agent/turn':
+        specifier: workspace:*
+        version: link:../turn
       cheerio:
         specifier: ^1.0.0
         version: 1.2.0
@@ -1296,6 +1317,9 @@ importers:
       '@ema-agent/storage':
         specifier: workspace:*
         version: link:../storage
+      '@ema-agent/tools':
+        specifier: workspace:*
+        version: link:../tools
     devDependencies:
       '@types/node':
         specifier: ^20.0.0
@@ -1334,9 +1358,15 @@ importers:
       '@ema-agent/contracts':
         specifier: workspace:*
         version: link:../contracts
+      '@ema-agent/knowledge':
+        specifier: workspace:*
+        version: link:../knowledge
       '@ema-agent/permission':
         specifier: workspace:*
         version: link:../permission
+      '@ema-agent/storage':
+        specifier: workspace:*
+        version: link:../storage
       '@ema-agent/turn':
         specifier: workspace:*
         version: link:../turn

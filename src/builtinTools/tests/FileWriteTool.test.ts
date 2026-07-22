@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { asToolCallId, asSessionId, asTurnId } from '@ema-agent/contracts';
-import type { ToolExecutionRecord } from '@ema-agent/contracts';
+import type { ToolExecutionRecord } from '@ema-agent/tools';
 import { splitToolResult } from '@ema-agent/tools';
 import type { IFileStateStore, ToolExecutionContext } from '@ema-agent/tools';
 import { FileWriteTool } from '../tools/FileWriteTool/FileWriteTool.js';

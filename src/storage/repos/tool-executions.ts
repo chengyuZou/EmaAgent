@@ -1,10 +1,18 @@
 import type {
   SessionId,
   ToolCallId,
-  ToolExecutionStatus,
   TurnId,
 } from '@ema-agent/contracts';
 import type { SqliteDb } from '../database.js';
+
+export type ToolExecutionStatus =
+  | 'prepared'
+  | 'authorized'
+  | 'running'
+  | 'succeeded'
+  | 'failed'
+  | 'cancelled'
+  | 'outcome_unknown';
 
 /** SQLite 行结构；只在 storage 包内部使用。 */
 export interface ToolExecutionRow {

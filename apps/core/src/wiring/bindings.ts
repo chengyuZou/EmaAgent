@@ -65,17 +65,17 @@ import type { AskPermissionFn } from '@ema-agent/permission';
 import { PermissionPromptRegistry } from '../permissions/registry.js';
 import { AskUserRegistry }          from '../ask-user/registry.js';
 import type {
-  KbAssetScope,
   SessionId,
   ToolCallId,
   TurnId,
-  KbSearchResult,
-  ReleaseFeaturesWire,
-  SandboxStatusWire,
 } from '@ema-agent/contracts';
 import type {
   EmaStreamEvent,
+  KbAssetScope,
 } from '@ema-agent/turn';
+import type { KbSearchResult } from '@ema-agent/knowledge';
+import type { ReleaseFeaturesWire } from '@ema-agent/system';
+import type { SandboxStatusWire } from '@ema-agent/sandbox';
 import type { UsageRecord } from '@ema-agent/usage';
 import { ToolRegistry }        from '@ema-agent/tools';
 import {
