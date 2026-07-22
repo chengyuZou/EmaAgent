@@ -141,7 +141,10 @@ async function* runTurn(
     activePhase = 'hook';
     const startResult = await hooks.trigger('onTurnStart', {
       turnId, sessionId,
-      payload: { mode: 'agent' },
+      payload: {
+        executionProfile: turn.executionProfile,
+        narrativePolicy: turn.narrativePolicy,
+      },
       signal,
       emit: emitHookEvent,
     });
@@ -370,7 +373,8 @@ async function* runTurn(
             iteration,
             llmCallId,
             messages: callMessages,
-            mode: 'agent',
+            executionProfile: turn.executionProfile,
+            narrativePolicy: turn.narrativePolicy,
             userInput: readableUserInput(userInput),
             providerId,
             model,

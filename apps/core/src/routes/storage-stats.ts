@@ -214,7 +214,11 @@ export function storageStatsRoute(bindings: AppBindings): Hono {
       messageCount:         stats.messageCount,
       totalInputTokens:     stats.totalInputTokens,
       totalOutputTokens:    stats.totalOutputTokens,
-      modeCounts:           { chat: stats.chatTurns, narrative: stats.narrativeTurns, agent: stats.agentTurns },
+      turnCounts: {
+        chat: stats.chatTurns,
+        work: stats.workTurns,
+        narrativeAlways: stats.narrativeAlwaysTurns,
+      },
       branchCount:          stats.branchCount,
       artifactCount:        stats.artifactCount,
       artifactTotalBytes:   stats.artifactInlineBytes,

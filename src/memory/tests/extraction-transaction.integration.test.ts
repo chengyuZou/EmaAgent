@@ -157,7 +157,7 @@ describe('B-015 Memory extraction 事务与跨库恢复', () => {
         indexSpaceId: null,
         commitCoordinator: new MemoryCommitCoordinator(),
       },
-      { sessionId, mode: 'chat', runId: 'run-rollback', skipConsolidation: true },
+      { sessionId, executionProfile: 'chat', runId: 'run-rollback', skipConsolidation: true },
     )).rejects.toThrow('injected item failure');
 
     expect(count(h.profileDb, 'memory_nodes')).toBe(0);
@@ -186,7 +186,7 @@ describe('B-015 Memory extraction 事务与跨库恢复', () => {
     };
     const args = {
       sessionId,
-      mode: 'chat' as const,
+      executionProfile: 'chat' as const,
       runId: 'run-recovery',
       skipConsolidation: true,
     };

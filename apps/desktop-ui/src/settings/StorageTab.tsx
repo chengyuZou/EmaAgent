@@ -476,7 +476,7 @@ function SessionRow({
 function OverviewTab({ d }: { d: SessionDashboardWire }): JSX.Element {
   const cards: Array<{ label: string; value: string; sub?: string }> = [
     { label: '轮次',     value: String(d.turnCount),
-      sub: `聊 ${d.modeCounts.chat} · 叙 ${d.modeCounts.narrative} · Agent ${d.modeCounts.agent}` },
+      sub: `Chat ${d.turnCounts.chat} · Work ${d.turnCounts.work} · Narrative Always ${d.turnCounts.narrativeAlways}` },
     { label: 'Branch',   value: String(d.branchCount) },
     { label: '消息',     value: String(d.messageCount) },
     { label: 'Token',    value: fmtTokens(d.totalInputTokens + d.totalOutputTokens),

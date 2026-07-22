@@ -23,7 +23,7 @@ describe('N-005 MemoryTask 租约与原子状态转换', () => {
       id,
       kind: 'extraction',
       sessionId: 'session-a',
-      payload: { sessionId: 'session-a', mode: 'chat' },
+      payload: { sessionId: 'session-a', executionProfile: 'chat' },
       createdAt,
     });
   }
@@ -88,7 +88,7 @@ describe('N-005 MemoryTask 租约与原子状态转换', () => {
       id: 'session-b-first',
       kind: 'extraction',
       sessionId: 'session-b',
-      payload: { sessionId: 'session-b', mode: 'chat' },
+      payload: { sessionId: 'session-b', executionProfile: 'chat' },
       createdAt: 3,
     });
 

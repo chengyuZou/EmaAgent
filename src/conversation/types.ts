@@ -1,4 +1,3 @@
-import type { TurnMode } from '@ema-agent/turn';
 // 这里放 ConversationEngine 的依赖接口和单次运行的输入类型。
 
 import type { SessionId } from '@ema-agent/ids';
@@ -42,8 +41,6 @@ export interface ConversationRunInput {
   /** 从 session.startTurn 接来的 abort signal，用户点 Stop 时触发。 */
   signal:        AbortSignal;
   sessionId:     SessionId;
-  /** 'chat' 或 'narrative'；agent 由 AgentEngine 处理。 */
-  mode:          Exclude<TurnMode, 'agent'>;
   userInput:     string;
   /** Turn 开始时冻结的完整 Prompt Slot 快照。 */
   prompt:        PromptSnapshot;

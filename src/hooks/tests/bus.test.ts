@@ -24,7 +24,8 @@ function beforeLlmPayload(
     iteration: 1,
     llmCallId,
     messages: [{ role: 'system', content: 'base' }],
-    mode: 'chat',
+    executionProfile: 'chat',
+    narrativePolicy: 'off',
     userInput: 'hello',
     providerId: 'provider-1',
     model: 'model-1',
@@ -99,13 +100,13 @@ describe('HookBus', () => {
 
     const result = await bus.trigger('onTurnStart', {
       ...baseCtx(),
-      payload: { mode: 'chat' },
+      payload: { executionProfile: 'chat', narrativePolicy: 'off' },
     });
 
     expect(order).toEqual([1, 2, 3]);
     expect(result).toEqual({
       kind: 'continue',
-      payload: { mode: 'chat' },
+      payload: { executionProfile: 'chat', narrativePolicy: 'off' },
       warnings: [],
     });
   });
@@ -142,13 +143,13 @@ describe('HookBus', () => {
 
     const result = await bus.trigger('onTurnStart', {
       ...baseCtx(),
-      payload: { mode: 'chat' },
+      payload: { executionProfile: 'chat', narrativePolicy: 'off' },
     });
 
     expect(result).toEqual({
       kind: 'abort',
       reason: 'test',
-      payload: { mode: 'chat' },
+      payload: { executionProfile: 'chat', narrativePolicy: 'off' },
       warnings: [],
     });
 
@@ -164,13 +165,13 @@ describe('HookBus', () => {
 
     const result = await bus.trigger('onTurnStart', {
       ...baseCtx(),
-      payload: { mode: 'chat' },
+      payload: { executionProfile: 'chat', narrativePolicy: 'off' },
     });
 
     expect(result).toEqual({
       kind: 'abort',
       reason: 'boom',
-      payload: { mode: 'chat' },
+      payload: { executionProfile: 'chat', narrativePolicy: 'off' },
       warnings: [],
     });
   });
@@ -370,7 +371,7 @@ describe('HookBus', () => {
 
     await bus.trigger('onTurnStart', {
       ...baseCtx(),
-      payload: { mode: 'chat' },
+      payload: { executionProfile: 'chat', narrativePolicy: 'off' },
     });
 
     expect(seen).toBeInstanceOf(AbortSignal);
@@ -928,7 +929,7 @@ describe('HookBus', () => {
 
     const result = await bus.trigger('onTurnStart', {
       ...baseCtx(),
-      payload: { mode: 'chat' },
+      payload: { executionProfile: 'chat', narrativePolicy: 'off' },
       emit: (event) => emitted.push(event),
     });
 
@@ -975,14 +976,14 @@ describe('HookBus', () => {
     setTimeout(() => parent.abort(new Error('stop')), 5);
     const result = await bus.trigger('onTurnStart', {
       ...baseCtx(parent.signal),
-      payload: { mode: 'chat' },
+      payload: { executionProfile: 'chat', narrativePolicy: 'off' },
       emit: (event) => emitted.push(event),
     });
 
     expect(result).toEqual({
       kind: 'abort',
       reason: 'Hook execution cancelled by parent task: stop',
-      payload: { mode: 'chat' },
+      payload: { executionProfile: 'chat', narrativePolicy: 'off' },
       warnings: [],
     });
     expect(reached).not.toHaveBeenCalled();
@@ -997,7 +998,7 @@ describe('HookBus', () => {
 
       await bus.trigger('onTurnStart', {
         ...baseCtx(),
-        payload: { mode: 'chat' },
+        payload: { executionProfile: 'chat', narrativePolicy: 'off' },
       });
 
       expect(vi.getTimerCount()).toBe(0);

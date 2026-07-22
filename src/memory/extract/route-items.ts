@@ -1,4 +1,4 @@
-import type { TurnMode } from '@ema-agent/turn';
+import type { ExecutionProfile } from '@ema-agent/turn';
 import crypto from 'node:crypto';
 import type { SessionId, TurnId } from '@ema-agent/ids';
 import type { EmbeddedText } from '../types.js';
@@ -10,7 +10,7 @@ import type { PendingIndexMutation } from './index-mutations.js';
 export function processItems(
   deps: ExtractionPipelineDeps,
   sessionId: SessionId,
-  mode: TurnMode,
+  executionProfile: ExecutionProfile,
   output: ExtractionOutput,
   stats: PipelineResult,
   precomputedEmbeddings: EmbeddedText[] | null,
@@ -19,7 +19,7 @@ export function processItems(
 ): void {
   if (output.memory_items.length === 0) return;
 
-  const modes = inferModesForMode(mode);
+  const profiles = profilesForMemoryItem(executionProfile);
   for (let i = 0; i < output.memory_items.length; i++) {
     const item = output.memory_items[i]!;
     const e    = precomputedEmbeddings?.[i] ?? null;
@@ -67,7 +67,7 @@ export function processItems(
       kind:                item.kind,
       title:               item.title,
       body:                item.body,
-      modes,
+      profiles,
       embedding:           e?.embedding,
       embeddingProviderId: e?.providerId,
       embeddingModel:      e?.model,
@@ -89,8 +89,6 @@ export function processItems(
   }
 }
 
-export function inferModesForMode(mode: TurnMode): string[] {
-  if (mode === 'narrative') return ['narrative'];
-  if (mode === 'agent')     return ['agent', 'chat'];
-  return ['chat', 'agent'];
+export function profilesForMemoryItem(executionProfile: ExecutionProfile): ExecutionProfile[] {
+  return executionProfile === 'work' ? ['work', 'chat'] : ['chat'];
 }

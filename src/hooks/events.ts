@@ -1,6 +1,5 @@
-import type { TurnMode } from '@ema-agent/turn';
 import type { CompactionId, MessageId, ToolCallId } from '@ema-agent/ids';
-import type { TurnFailureCode } from '@ema-agent/turn';
+import type { ExecutionProfile, NarrativePolicy, TurnFailureCode } from '@ema-agent/turn';
 import type {
   AssistantBlock,
   LlmCallId,
@@ -79,8 +78,10 @@ export interface HookPayload {
     llmCallId: LlmCallId;
     /** LLM 请求的唯一消息事实来源；system prompt 必须是其中的 system message。 */
     messages: ModelMessage[];
-    /** 当前 Turn 的业务模式。 */
-    mode: TurnMode;
+    /** 当前 Turn 的执行能力范围。 */
+    executionProfile: ExecutionProfile;
+    /** 当前 Turn 的 Narrative 检索策略。 */
+    narrativePolicy: NarrativePolicy;
     /** 当前用户输入的可读文本；多模态输入只提取 text part。 */
     userInput: string;
     /** 本次调用已经解析完成的 Provider 实例 ID。 */
@@ -153,7 +154,8 @@ export interface HookPayload {
     method: string;
   };
   onTurnStart: {
-    mode: TurnMode;
+    executionProfile: ExecutionProfile;
+    narrativePolicy: NarrativePolicy;
   };
   onTurnEnd: {
     durationMs: number;

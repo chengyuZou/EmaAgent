@@ -1,4 +1,4 @@
-import type { TurnMode } from '@ema-agent/turn';
+import type { ExecutionProfile } from '@ema-agent/turn';
 // 运行已持久化的 Memory 提取任务，并拒绝尚未实现的任务类型进入成功终态。
 import crypto from 'node:crypto';
 import type { SessionId } from '@ema-agent/ids';
@@ -226,10 +226,13 @@ export class MemoryTaskRunner {
   private async handleExtraction(row: MemoryTaskRow): Promise<void> {
     const payload = JSON.parse(row.payload_json) as {
       sessionId?: string;
-      mode?:      TurnMode;
+      executionProfile?: ExecutionProfile;
     };
-    if (!payload.sessionId || !payload.mode) throw new Error('Invalid task payload: missing sessionId or mode');
+    if (!payload.sessionId || !payload.executionProfile) {
+      throw new Error('Invalid task payload: missing sessionId or executionProfile');
+    }
     const sid = payload.sessionId as SessionId;
+    const executionProfile = payload.executionProfile;
 
     // Honour per-session override: consolidation can be skipped without
     // breaking extraction — lazy_updates simply stay buffered.
@@ -259,7 +262,7 @@ export class MemoryTaskRunner {
           },
           {
             sessionId: sid,
-            mode: payload.mode!,
+            executionProfile,
             runId: row.id,
             skipConsolidation,
           },

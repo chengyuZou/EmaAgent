@@ -3,6 +3,7 @@ import { createSqliteIdBatches } from '../sqlite-id-batches.js';
 import { escapeLikePattern } from '../like-utils.js';
 import type { SessionId, TurnId } from '@ema-agent/ids';
 import type { MemoryEmbeddingPageCursor } from './memory-embedding-page.js';
+import type { ExecutionProfile } from '@ema-agent/turn';
 
 // ── 类型 ─────────────────────────────────────────────────────────────────────
 
@@ -21,7 +22,7 @@ export interface MemoryItemRow {
   expires_at:             number | null;
   importance:             number;
   meta_json:              string;
-  modes_json:             string;
+  profiles_json:          string;
   last_referenced_at:     number;
   embedding_provider_id:  string | null;
   embedding_model:        string | null;
@@ -36,7 +37,7 @@ export interface MemoryItemInsert {
   kind:                MemoryItemKind;
   title:               string;
   body:                string;
-  modes:               string[];                  // 序列化到 modes_json
+  profiles:           ExecutionProfile[];
   embedding?:          Buffer;
   embeddingProviderId?: string;
   embeddingModel?:     string;
@@ -86,7 +87,7 @@ export interface MemoryItemStatsRow {
 export interface MemoryItemsBrowseOptions {
   limit?: number;
   kind?: MemoryItemKind;
-  mode?: string;
+  executionProfile?: ExecutionProfile;
   minImportance?: number;
   orderBy?: 'lastRef' | 'importance' | 'created';
   search?: string;
@@ -97,12 +98,8 @@ export interface MemoryItemsBrowseOptions {
 /**
  * Layer-2 情景记忆 + Agent 长期记忆（4 种 kind）。
  *
- * `modes` 控制哪些对话 mode 会召回此 item：
- *   ["chat"]              - 仅在 chat mode 出现
- *   ["agent"]             - 仅在 agent mode 出现
- *   ["chat","agent"]      - 两者都出现（从跨 mode 事实提取的 item 默认值）
- * Mode 过滤在 planner 中是软加权-repo 只存标签，
- * 并为低成本路径暴露 listByMode。
+ * `profiles` 控制 Chat/Work 中召回 item 的权重。Narrative 是独立 RAG，
+ * 不参与这里的分类。Repo 只保存标签，软加权由 Memory Planner 决定。
  */
 export class MemoryItemsRepo {
   constructor(private readonly db: SqliteDb) {}
@@ -117,7 +114,7 @@ export class MemoryItemsRepo {
             source_session_id, source_turn_id,
             created_at, updated_at, expires_at,
             importance, meta_json,
-            modes_json, last_referenced_at,
+            profiles_json, last_referenced_at,
             embedding_provider_id, embedding_model, embedding_dim,
             embedding_normalization, embedding_revision, embedding_space_id)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '{}', ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -128,7 +125,7 @@ export class MemoryItemsRepo {
         m.sourceSessionId ?? null, m.sourceTurnId ?? null,
         m.createdAt, m.createdAt, m.expiresAt ?? null,
         m.importance ?? 50,
-        JSON.stringify(m.modes),
+        JSON.stringify(m.profiles),
         m.createdAt,
         m.embeddingProviderId ?? null,
         m.embeddingModel       ?? null,
@@ -171,21 +168,21 @@ export class MemoryItemsRepo {
   }
 
   /**
-   * 列出 modes_json 数组中包含给定 mode 标签的 item。
+   * 列出 profiles_json 数组中包含给定执行 Profile 的 item。
    * 使用 JSON1-我们打包的每个 SQLite 构建都有（better-sqlite3 默认）。
    */
-  listByMode(mode: string, limit = 500): MemoryItemRow[] {
+  listByProfile(executionProfile: ExecutionProfile, limit = 500): MemoryItemRow[] {
     return this.db
       .prepare(
         `SELECT * FROM memory_items
           WHERE EXISTS (
-            SELECT 1 FROM json_each(memory_items.modes_json)
+            SELECT 1 FROM json_each(memory_items.profiles_json)
              WHERE json_each.value = ?
           ) AND (expires_at IS NULL OR expires_at > ?)
           ORDER BY importance DESC, updated_at DESC, id DESC
           LIMIT ?`,
       )
-      .all(mode, Date.now(), limit) as MemoryItemRow[];
+      .all(executionProfile, Date.now(), limit) as MemoryItemRow[];
   }
 
   /** 只读取指定向量空间的非过期 item；旧版 NULL 空间不会参与召回。 */
@@ -244,9 +241,9 @@ export class MemoryItemsRepo {
       const pattern = '%' + escapeLikePattern(opts.search) + '%';
       params.push(pattern, pattern);
     }
-    if (opts.mode) {
-      where.push('EXISTS (SELECT 1 FROM json_each(modes_json) WHERE json_each.value = ?)');
-      params.push(opts.mode);
+    if (opts.executionProfile) {
+      where.push('EXISTS (SELECT 1 FROM json_each(profiles_json) WHERE json_each.value = ?)');
+      params.push(opts.executionProfile);
     }
 
     const orderBy = opts.orderBy === 'importance' ? 'importance DESC, id DESC'

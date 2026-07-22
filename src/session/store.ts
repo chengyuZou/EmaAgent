@@ -1,4 +1,3 @@
-import type { TurnMode } from '@ema-agent/turn';
 // 作为 Session 模块唯一 Facade，管理会话、Turn、消息、分支和恢复事务。
 import crypto from 'node:crypto';
 import { SessionsRepo, TurnsRepo, MessagesRepo, BranchesRepo, AttachmentRepo, nextCursorFor, type SessionRow, type SessionRowEnriched, type SessionSearchRow, type TurnRow, type TurnIdPage, type TurnIdPageCursor, type MessageRow, } from '@ema-agent/storage';
@@ -32,14 +31,6 @@ import type {
 
 // ── Row → domain object converters (module-private) ──────────────────────────
 
-function legacyModeFor(
-  executionProfile: ExecutionProfile,
-  narrativePolicy: NarrativePolicy,
-): TurnMode {
-  if (executionProfile === 'work') return 'agent';
-  return narrativePolicy === 'always' ? 'narrative' : 'chat';
-}
-
 function toSession(row: SessionRow): Session {
   return {
     id: row.id as SessionId,
@@ -57,7 +48,6 @@ function toSession(row: SessionRow): Session {
     runningTurnCount: 0,    // populated by caller
     executionProfile: row.execution_profile,
     narrativePolicy: row.narrative_policy,
-    lastMode: legacyModeFor(row.execution_profile, row.narrative_policy),
     preferredProviderConfigId: row.preferred_provider_config_id ?? null,
     preferredModelId: row.preferred_model_id ?? null,
     lastViewedAt:   row.last_viewed_at ?? null,
@@ -88,7 +78,6 @@ function toTurn(row: TurnRow): Turn {
     triggerType: row.trigger_type,
     executionProfile: row.execution_profile,
     narrativePolicy: row.narrative_policy,
-    mode: legacyModeFor(row.execution_profile, row.narrative_policy),
     status: row.status,
     userInput: row.user_input,
     startedAt: row.started_at,

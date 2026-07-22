@@ -12,12 +12,12 @@ function makeStore() {
 
 function startTurn(
   store: SessionStore,
-  input: { sessionId: SessionId; mode: 'chat' | 'agent'; userInput: string },
+  input: { sessionId: SessionId; executionProfile: 'chat' | 'work'; userInput: string },
 ) {
   return store.startTurn({
     sessionId: input.sessionId,
     triggerType: 'userMessage',
-    executionProfile: input.mode === 'agent' ? 'work' : 'chat',
+    executionProfile: input.executionProfile,
     narrativePolicy: 'off',
     userInput: input.userInput,
   });
@@ -108,7 +108,7 @@ describe('SessionStore — session', () => {
     });
     const { turn } = startTurn(store, {
       sessionId: session.id,
-      mode: 'chat',
+      executionProfile: 'chat',
       userInput: 'root',
     });
     store.completeTurn(turn.id);
@@ -130,7 +130,7 @@ describe('SessionStore — Turn ID 游标遍历', () => {
     for (let index = 0; index < 5; index++) {
       const { turn } = startTurn(store, {
         sessionId: session.id,
-        mode: 'chat',
+        executionProfile: 'chat',
         userInput: `turn-${index}`,
       });
       expected.add(turn.id as string);
@@ -159,7 +159,7 @@ describe('SessionStore — turn concurrency', () => {
 
     const { turn, signal } = startTurn(store, {
       sessionId: s.id,
-      mode: 'chat',
+      executionProfile: 'chat',
       userInput: 'Hello',
     });
 
@@ -173,10 +173,10 @@ describe('SessionStore — turn concurrency', () => {
     const store = makeStore();
     const s = store.createSession();
 
-    startTurn(store, { sessionId: s.id, mode: 'chat', userInput: 'First' });
+    startTurn(store, { sessionId: s.id, executionProfile: 'chat', userInput: 'First' });
 
     expect(() =>
-      startTurn(store, { sessionId: s.id, mode: 'chat', userInput: 'Second' })
+      startTurn(store, { sessionId: s.id, executionProfile: 'chat', userInput: 'Second' })
     ).toThrow('session_busy');
   });
 
@@ -186,8 +186,8 @@ describe('SessionStore — turn concurrency', () => {
     const s2 = store.createSession();
 
     expect(() => {
-      startTurn(store, { sessionId: s1.id, mode: 'chat', userInput: 'A' });
-      startTurn(store, { sessionId: s2.id, mode: 'chat', userInput: 'B' });
+      startTurn(store, { sessionId: s1.id, executionProfile: 'chat', userInput: 'A' });
+      startTurn(store, { sessionId: s2.id, executionProfile: 'chat', userInput: 'B' });
     }).not.toThrow();
   });
 
@@ -195,7 +195,7 @@ describe('SessionStore — turn concurrency', () => {
     const store = makeStore();
     const s = store.createSession();
 
-    const { turn } = startTurn(store, { sessionId: s.id, mode: 'chat', userInput: 'First' });
+    const { turn } = startTurn(store, { sessionId: s.id, executionProfile: 'chat', userInput: 'First' });
     store.completeTurn(turn.id, { usageInputTokens: 10, usageOutputTokens: 20 });
 
     const completed = store.getTurn(turn.id)!;
@@ -204,7 +204,7 @@ describe('SessionStore — turn concurrency', () => {
 
     // Should be able to start a new turn now
     expect(() =>
-      startTurn(store, { sessionId: s.id, mode: 'chat', userInput: 'Second' })
+      startTurn(store, { sessionId: s.id, executionProfile: 'chat', userInput: 'Second' })
     ).not.toThrow();
   });
 
@@ -212,7 +212,7 @@ describe('SessionStore — turn concurrency', () => {
     const store = makeStore();
     const s = store.createSession();
 
-    const { turn, signal } = startTurn(store, { sessionId: s.id, mode: 'chat', userInput: 'X' });
+    const { turn, signal } = startTurn(store, { sessionId: s.id, executionProfile: 'chat', userInput: 'X' });
     store.abortTurn(s.id, turn.id);
 
     expect(signal.aborted).toBe(true);
@@ -224,7 +224,7 @@ describe('SessionStore — turn concurrency', () => {
     const s = store.createSession();
     const { turn, signal } = startTurn(store, {
       sessionId: s.id,
-      mode: 'agent',
+      executionProfile: 'work',
       userInput: 'Stop me safely',
     });
 
@@ -238,7 +238,7 @@ describe('SessionStore — turn concurrency', () => {
     const store = makeStore();
     const s = store.createSession();
 
-    const { turn } = startTurn(store, { sessionId: s.id, mode: 'chat', userInput: 'X' });
+    const { turn } = startTurn(store, { sessionId: s.id, executionProfile: 'chat', userInput: 'X' });
     store.failTurn(turn.id, 'provider/timeout', 'LLM timed out');
 
     const failed = store.getTurn(turn.id)!;
@@ -256,7 +256,7 @@ describe('SessionStore — turn concurrency', () => {
   it('getActiveTurn returns the running turn', () => {
     const store = makeStore();
     const s = store.createSession();
-    const { turn } = startTurn(store, { sessionId: s.id, mode: 'chat', userInput: 'X' });
+    const { turn } = startTurn(store, { sessionId: s.id, executionProfile: 'chat', userInput: 'X' });
 
     expect(store.getActiveTurn(s.id)!.id).toBe(turn.id);
   });
@@ -268,7 +268,7 @@ describe('SessionStore — message', () => {
   it('appendMessage stores and returns a message', () => {
     const store = makeStore();
     const s = store.createSession();
-    const { turn } = startTurn(store, { sessionId: s.id, mode: 'chat', userInput: 'Hi' });
+    const { turn } = startTurn(store, { sessionId: s.id, executionProfile: 'chat', userInput: 'Hi' });
 
     const msg = store.appendMessage({
       sessionId: s.id,
@@ -285,7 +285,7 @@ describe('SessionStore — message', () => {
   it('appendMessage serialises tool_use blocks correctly', () => {
     const store = makeStore();
     const s = store.createSession();
-    const { turn } = startTurn(store, { sessionId: s.id, mode: 'agent', userInput: 'Run' });
+    const { turn } = startTurn(store, { sessionId: s.id, executionProfile: 'work', userInput: 'Run' });
 
     const blocks = [
       { type: 'text' as const, text: '' },
@@ -304,7 +304,7 @@ describe('SessionStore — message', () => {
   it('loadHistory returns messages in chronological order', () => {
     const store = makeStore();
     const s = store.createSession();
-    const { turn } = startTurn(store, { sessionId: s.id, mode: 'chat', userInput: 'A' });
+    const { turn } = startTurn(store, { sessionId: s.id, executionProfile: 'chat', userInput: 'A' });
 
     store.appendMessage({ sessionId: s.id, turnId: turn.id, role: 'user',      blocks: 'first'  });
     store.appendMessage({ sessionId: s.id, turnId: turn.id, role: 'assistant', blocks: [{ type: 'text', text: 'second' }] });
@@ -319,7 +319,7 @@ describe('SessionStore — message', () => {
   it('loadHistory limit 返回最新消息而不是最早消息', () => {
     const store = makeStore();
     const s = store.createSession();
-    const { turn } = startTurn(store, { sessionId: s.id, mode: 'chat', userInput: 'A' });
+    const { turn } = startTurn(store, { sessionId: s.id, executionProfile: 'chat', userInput: 'A' });
 
     for (const text of ['first', 'second', 'third', 'fourth']) {
       store.appendMessage({ sessionId: s.id, turnId: turn.id, role: 'user', blocks: text });
@@ -332,7 +332,7 @@ describe('SessionStore — message', () => {
   it('loadHistory 保留 summary，并从其后选择最新消息', () => {
     const store = makeStore();
     const s = store.createSession();
-    const { turn } = startTurn(store, { sessionId: s.id, mode: 'chat', userInput: 'A' });
+    const { turn } = startTurn(store, { sessionId: s.id, executionProfile: 'chat', userInput: 'A' });
 
     store.appendMessage({ sessionId: s.id, turnId: turn.id, role: 'user', blocks: 'before' });
     store.appendMessage({ sessionId: s.id, turnId: turn.id, role: 'user', kind: 'summary', blocks: 'summary' });
@@ -347,12 +347,12 @@ describe('SessionStore — message', () => {
   it('分支历史使用与普通历史相同的 summary 和 limit 规则', () => {
     const store = makeStore();
     const s = store.createSession();
-    const { turn: rootTurn } = startTurn(store, { sessionId: s.id, mode: 'chat', userInput: 'root' });
+    const { turn: rootTurn } = startTurn(store, { sessionId: s.id, executionProfile: 'chat', userInput: 'root' });
     store.appendMessage({ sessionId: s.id, turnId: rootTurn.id, role: 'user', blocks: 'root-message' });
     store.completeTurn(rootTurn.id);
 
     store.forkMessage({ sessionId: s.id, fromTurnId: rootTurn.id });
-    const { turn: branchTurn } = startTurn(store, { sessionId: s.id, mode: 'chat', userInput: 'branch' });
+    const { turn: branchTurn } = startTurn(store, { sessionId: s.id, executionProfile: 'chat', userInput: 'branch' });
     store.appendMessage({ sessionId: s.id, turnId: branchTurn.id, role: 'user', kind: 'summary', blocks: 'branch-summary' });
     store.appendMessage({ sessionId: s.id, turnId: branchTurn.id, role: 'user', blocks: 'branch-old' });
     store.appendMessage({ sessionId: s.id, turnId: branchTurn.id, role: 'user', blocks: 'branch-new-a' });
@@ -365,7 +365,7 @@ describe('SessionStore — message', () => {
   it('连续 fork 会清掉上一个空 active 分支, 不再堆积空分支(F-052)', () => {
     const store = makeStore();
     const s = store.createSession();
-    const { turn: rootTurn } = startTurn(store, { sessionId: s.id, mode: 'chat', userInput: 'root' });
+    const { turn: rootTurn } = startTurn(store, { sessionId: s.id, executionProfile: 'chat', userInput: 'root' });
     store.completeTurn(rootTurn.id);
 
     const first = store.forkMessage({ sessionId: s.id, fromTurnId: rootTurn.id });
@@ -380,12 +380,12 @@ describe('SessionStore — message', () => {
   it('有消息的分支再 fork 时不会被误清(F-052)', () => {
     const store = makeStore();
     const s = store.createSession();
-    const { turn: rootTurn } = startTurn(store, { sessionId: s.id, mode: 'chat', userInput: 'root' });
+    const { turn: rootTurn } = startTurn(store, { sessionId: s.id, executionProfile: 'chat', userInput: 'root' });
     store.completeTurn(rootTurn.id);
 
     const first = store.forkMessage({ sessionId: s.id, fromTurnId: rootTurn.id });
     // 在第一个分支上产生 turn 后再 fork: 第一个分支有内容, 必须保留。
-    const { turn: branchTurn } = startTurn(store, { sessionId: s.id, mode: 'chat', userInput: 'on-first-branch' });
+    const { turn: branchTurn } = startTurn(store, { sessionId: s.id, executionProfile: 'chat', userInput: 'on-first-branch' });
     store.completeTurn(branchTurn.id);
     store.forkMessage({ sessionId: s.id, fromTurnId: rootTurn.id });
 
@@ -397,24 +397,24 @@ describe('SessionStore — message', () => {
 
   /** 构造三层树: root(T1,T2,T3) → B1(U1,U2, fork 自 T2) → B2(V1, fork 自 U1)。 */
   function makeBranchTree(store: ReturnType<typeof makeStore>, sessionId: SessionId) {
-    const { turn: t1 } = startTurn(store, { sessionId, mode: 'chat', userInput: 'T1' });
+    const { turn: t1 } = startTurn(store, { sessionId, executionProfile: 'chat', userInput: 'T1' });
     store.appendMessage({ sessionId, turnId: t1.id, role: 'user', blocks: 'T1-user' });
     store.completeTurn(t1.id);
-    const { turn: t2 } = startTurn(store, { sessionId, mode: 'chat', userInput: 'T2' });
+    const { turn: t2 } = startTurn(store, { sessionId, executionProfile: 'chat', userInput: 'T2' });
     store.appendMessage({ sessionId, turnId: t2.id, role: 'user', blocks: 'T2-user' });
     store.completeTurn(t2.id);
-    const { turn: t3 } = startTurn(store, { sessionId, mode: 'chat', userInput: 'T3' });
+    const { turn: t3 } = startTurn(store, { sessionId, executionProfile: 'chat', userInput: 'T3' });
     store.completeTurn(t3.id);
 
     const b1 = store.forkMessage({ sessionId, fromTurnId: t2.id });
-    const { turn: u1 } = startTurn(store, { sessionId, mode: 'chat', userInput: 'U1' });
+    const { turn: u1 } = startTurn(store, { sessionId, executionProfile: 'chat', userInput: 'U1' });
     store.appendMessage({ sessionId, turnId: u1.id, role: 'user', blocks: 'U1-user' });
     store.completeTurn(u1.id);
-    const { turn: u2 } = startTurn(store, { sessionId, mode: 'chat', userInput: 'U2' });
+    const { turn: u2 } = startTurn(store, { sessionId, executionProfile: 'chat', userInput: 'U2' });
     store.completeTurn(u2.id);
 
     const b2 = store.forkMessage({ sessionId, fromTurnId: u1.id });
-    const { turn: v1 } = startTurn(store, { sessionId, mode: 'chat', userInput: 'V1' });
+    const { turn: v1 } = startTurn(store, { sessionId, executionProfile: 'chat', userInput: 'V1' });
     store.appendMessage({ sessionId, turnId: v1.id, role: 'user', blocks: 'V1-user' });
     store.completeTurn(v1.id);
 
@@ -462,7 +462,7 @@ describe('SessionStore — message', () => {
   it('运行中的 turn 拒绝删除(turn_running)', () => {
     const store = makeStore();
     const s = store.createSession();
-    const { turn: running } = startTurn(store, { sessionId: s.id, mode: 'chat', userInput: 'running' });
+    const { turn: running } = startTurn(store, { sessionId: s.id, executionProfile: 'chat', userInput: 'running' });
     // root 无分支时先 fork 出分支再删? 不需要——root 首次 fork 后 turn 在 root 分支上。
     const first = store.forkMessage({ sessionId: s.id, fromTurnId: running.id });
 
@@ -474,13 +474,13 @@ describe('SessionStore — message', () => {
   it('从未 fork 的会话: 删除隐式主干上的 turn 及其后继', () => {
     const store = makeStore();
     const s = store.createSession();
-    const { turn: t1 } = startTurn(store, { sessionId: s.id, mode: 'chat', userInput: 'T1' });
+    const { turn: t1 } = startTurn(store, { sessionId: s.id, executionProfile: 'chat', userInput: 'T1' });
     store.appendMessage({ sessionId: s.id, turnId: t1.id, role: 'user', blocks: 'T1-user' });
     store.completeTurn(t1.id);
-    const { turn: t2 } = startTurn(store, { sessionId: s.id, mode: 'chat', userInput: 'T2' });
+    const { turn: t2 } = startTurn(store, { sessionId: s.id, executionProfile: 'chat', userInput: 'T2' });
     store.appendMessage({ sessionId: s.id, turnId: t2.id, role: 'user', blocks: 'T2-user' });
     store.completeTurn(t2.id);
-    const { turn: t3 } = startTurn(store, { sessionId: s.id, mode: 'chat', userInput: 'T3' });
+    const { turn: t3 } = startTurn(store, { sessionId: s.id, executionProfile: 'chat', userInput: 'T3' });
     store.completeTurn(t3.id);
 
     const result = store.deleteTurnCascade(s.id, t2.id);
@@ -504,7 +504,7 @@ describe('SessionStore — message', () => {
   it('listMessages (cursor) returns newest-first on first page', () => {
     const store = makeStore();
     const s = store.createSession();
-    const { turn } = startTurn(store, { sessionId: s.id, mode: 'chat', userInput: 'A' });
+    const { turn } = startTurn(store, { sessionId: s.id, executionProfile: 'chat', userInput: 'A' });
 
     store.appendMessage({ sessionId: s.id, turnId: turn.id, role: 'user',      blocks: 'old'    });
     store.appendMessage({ sessionId: s.id, turnId: turn.id, role: 'assistant', blocks: [{ type: 'text', text: 'newest' }] });
@@ -516,7 +516,7 @@ describe('SessionStore — message', () => {
   it('listMessages (cursor) loads older messages with before param', () => {
     const store = makeStore();
     const s = store.createSession();
-    const { turn } = startTurn(store, { sessionId: s.id, mode: 'chat', userInput: 'A' });
+    const { turn } = startTurn(store, { sessionId: s.id, executionProfile: 'chat', userInput: 'A' });
 
     store.appendMessage({ sessionId: s.id, turnId: turn.id, role: 'user', blocks: 'old' });
     store.appendMessage({ sessionId: s.id, turnId: turn.id, role: 'assistant', blocks: [{ type: 'text', text: 'new' }] });
@@ -533,7 +533,7 @@ describe('SessionStore — message', () => {
   it('markMessageInterrupted sets interrupted flag', () => {
     const store = makeStore();
     const s = store.createSession();
-    const { turn } = startTurn(store, { sessionId: s.id, mode: 'chat', userInput: 'X' });
+    const { turn } = startTurn(store, { sessionId: s.id, executionProfile: 'chat', userInput: 'X' });
 
     const msg = store.appendMessage({ sessionId: s.id, turnId: turn.id, role: 'assistant', blocks: [{ type: 'text', text: 'partial' }] });
     store.markMessageInterrupted(msg.id);
@@ -548,7 +548,7 @@ describe('SessionStore — message', () => {
     const foreign = store.createSession({ title: 'foreign' });
     const { turn } = startTurn(store, {
       sessionId: owner.id,
-      mode: 'chat',
+      executionProfile: 'chat',
       userInput: 'owner turn',
     });
 

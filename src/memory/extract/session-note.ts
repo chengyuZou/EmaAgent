@@ -1,4 +1,4 @@
-import type { TurnMode } from '@ema-agent/turn';
+import type { ExecutionProfile } from '@ema-agent/turn';
 import type { SessionId } from '@ema-agent/ids';
 import { estimateTextTokens } from '@ema-agent/token';
 import { buildNoteCompactionPrompt } from '@ema-agent/context';
@@ -32,7 +32,7 @@ export function appendSessionNote(
 export async function compactSessionNoteIfNeeded(
   deps: ExtractionPipelineDeps,
   sessionId: SessionId,
-  mode: TurnMode,
+  executionProfile: ExecutionProfile,
   signal?: AbortSignal,
 ): Promise<void> {
   const row = deps.memory.sessionNotes.findBySession(sessionId);
@@ -71,7 +71,7 @@ export async function compactSessionNoteIfNeeded(
 
   const mergeText = toMerge.map(e => e.delta).join('\n\n');
   const prompt = buildNoteCompactionPrompt({
-    executionProfile: mode === 'agent' ? 'work' : 'chat',
+    executionProfile,
     body: mergeText,
   });
   const completion = await deps.memory.llm.complete({

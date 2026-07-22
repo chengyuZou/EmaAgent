@@ -34,7 +34,9 @@ Artifact 类型所有权已回到 `src/artifact`：Artifact 数据结构、`Arti
 
 Contracts 错误所有权已经收口：中央 `ErrorCode` 改为 Turn 拥有的 `TurnFailureCode`，只描述当前确实可能通过 `turn_failed` 暴露的 11 个终态码；LLM、Vision、STT、Narrative、Knowledge 等继续保留各自领域错误。无生产者的旧 Auth、Tool、Memory、Narrative、Storage、TTS/STT 与 System 占位码已删除，`contracts/errors.ts` 不再存在。
 
-Contracts 外壳已经删除：跨业务边界共享的 branded ID 收口为零业务依赖的 `src/ids` 叶子模块，并通过准入规则禁止业务对象、状态、事件、错误和 DTO 进入。`TurnStatus` 已回到 Turn；旧 `TurnMode` 仅作为统一 TurnLoop 前的兼容投影暂存于 Turn，不再污染身份模块。
+Contracts 外壳已经删除：跨业务边界共享的 branded ID 收口为零业务依赖的 `src/ids` 叶子模块，并通过准入规则禁止业务对象、状态、事件、错误和 DTO 进入。`TurnStatus` 已回到 Turn；旧 `TurnMode` 及 Session/Conversation/Hook/Core 的兼容投影已经删除，运行链直接使用 `ExecutionProfile + NarrativePolicy`。
+
+Memory 与 Narrative 的旧分区也已经拆开：Memory 只按 `chat/work` 记录提取与召回范围，旧 `agent` 标签迁为 `work`、旧 `narrative` 标签迁为 `chat`；Narrative 继续作为独立 LightRAG Contribution，不再进入 Memory 类型和任务载荷。Profile v11 将 `memory_items.modes_json` 迁为 `profiles_json`。
 
 ## 迁移完成事实
 
@@ -50,17 +52,13 @@ Contracts 外壳已经删除：跨业务边界共享的 branded ID 收口为零�
 
 本轮已知未提交修改：
 
-- `src/ids`：接管跨业务边界稳定共享的 branded ID；旧 `src/contracts` 已删除；
-- `src/turn`：接管 `TurnContentPart/TurnAttachment/ToolPresentation`；
-- `src/session`：新增持久化消息结构和 `parseMessageBlocksJson`，保留 Tool Result 的展示与审计字段；
-- `src/storage`：接管数据库 `MessageRole/MessageKind`，移除无生产者的 `context/persona_reminder`；
-- Agent、Context、Conversation、Hook、Attachment、Core、Desktop：改为从真实所有者导入消息类型。
-- Core/Session：模型本轮媒体与 Message 持久化投影分离，新增 `attachment_ref`；
-- `src/artifact`：接管 Artifact 类型、端口与错误，解除对 Storage/Tools 的反向依赖；
-- `src/storage`：Data v16 删除 `messages.meta_json`，相关 Repo、Fork 与恢复 SQL 已同步。
-- `src/turn`：接管客户端可见 `TurnFailureCode`；Hook、Agent、Conversation 与 Core 统一消费该终态契约。
+- Turn、Session、Conversation、Agent、Hook 与 Core：删除旧 `TurnMode`、`lastMode` 和 legacy 映射，直接传递 `ExecutionProfile + NarrativePolicy`；
+- Memory：删除 Narrative 分区语义，提取、任务和召回只使用 `ExecutionProfile`；
+- Storage：新增 Profile v11，将旧 Memory 标签归并为 Chat/Work 并把 `modes_json` 改名为 `profiles_json`；
+- Storage Stats 与 Desktop 设置页：统计口径改为 Chat、Work 和 Narrative Always；
+- `scripts/normalizeIdsMigration.mjs`：删除已经完成使命的临时迁移脚本。
 
-当前基线最近提交：`3a41d30 feat: 重构上下文模块，新增 contextSnapshot.ts 和 slots.ts，优化类型定义和导出结构`。该提交号仅用于定位，不代表其他 Agent 不会继续提交。
+当前基线最近提交：`2a8f6b2 refactor: migrate from @ema-agent/contracts to @ema-agent/ids for type imports`。该提交号仅用于定位，不代表其他 Agent 不会继续提交。
 
 ## 已确定的 V1 口径
 
@@ -124,6 +122,7 @@ Plan、Goal、Schedule、Workflow、Team 与 LLM 自动审批暂列 V1.5，不�
 - Contracts 待修收口：`pnpm install --offline` 与全仓 typecheck 84/84 通过；Storage 119/119、Session 44/44、Context 23/23、Core 89/89、Desktop UI 130/130 通过；`git diff --check` 仅有既有 CRLF 提示。
 - Contracts 错误回流：全仓 typecheck 84/84；Hooks 27/27、Conversation 7/7、Agent 32/32、Core 89/89 通过；4 个 Agent Live Integration 按既有规则跳过。
 - Contracts 外壳删除：Workspace 已刷新为 44 个类型检查模块；全仓 typecheck 84/84 通过，`@ema-agent/contracts` 生产与测试引用归零。
+- 旧 Mode 与 Memory/Narrative 分区清理：全仓 typecheck 84/84；Hooks 27/27、Memory 20/20、Session 44/44、Conversation 7/7、Agent 32/32、Core 89/89 通过，4 个 Agent Live Integration 按规则跳过；Storage 118/119 后唯一偶发失败的 KB lease 测试单独重跑 3/3 通过；旧 `TurnMode/legacyMode/lastMode/modeCounts` 源码引用归零。
 
 ## 工作规则
 

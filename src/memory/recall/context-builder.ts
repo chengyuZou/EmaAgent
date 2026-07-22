@@ -84,7 +84,7 @@ export function emitRecallLayer(
     type: 'memory_recall_evidence',
     sessionId: ctx.sessionId,
     turnId: ctx.turnId,
-    mode: ctx.mode,
+    executionProfile: ctx.executionProfile,
     layer,
     report,
   });

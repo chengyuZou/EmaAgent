@@ -179,8 +179,7 @@ export async function planRecall(
       return;
     }
     try {
-      const mode = ctx.mode === 'narrative' ? 'narrative' : ctx.mode;
-      layer2 = await recallEpisodic(deps, { query: ctx.userInput, queryVec, queryEmbed, index: compatibleItemsIndex, mode, alreadySurfaced: new Set(prior.items), settings });
+      layer2 = await recallEpisodic(deps, { query: ctx.userInput, queryVec, queryEmbed, index: compatibleItemsIndex, executionProfile: ctx.executionProfile, alreadySurfaced: new Set(prior.items), settings });
       if (settings.recall.useReranker && (layer2.currentMode.length + layer2.otherModes.length) > 1) {
         layer2 = await rerankEpisodic(embed, ctx.userInput, layer2, ctx.signal);
       }

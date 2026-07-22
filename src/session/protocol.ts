@@ -71,7 +71,7 @@ export interface SessionDashboardWire {
   messageCount: number;
   totalInputTokens: number;
   totalOutputTokens: number;
-  modeCounts: { chat: number; narrative: number; agent: number };
+  turnCounts: { chat: number; work: number; narrativeAlways: number };
   branchCount: number;
   artifactCount: number;
   artifactTotalBytes: number;

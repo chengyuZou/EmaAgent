@@ -1,4 +1,3 @@
-import type { TurnMode } from '@ema-agent/turn';
 // 组织通用记忆的检索、写入和上下文压缩，并通过 Memory Facade 暴露给编排层。
 import type { SessionId, TurnId } from '@ema-agent/ids';
 import type { ContextContributionRequest } from '@ema-agent/context';
@@ -123,7 +122,7 @@ export class MemoryPlanner {
     const bundle = await this.plan({
       sessionId: args.sessionId,
       turnId:    args.turnId,
-      mode:      legacyRecallMode(args.executionProfile, args.narrativePolicy),
+      executionProfile: args.executionProfile,
       userInput: args.userInput,
       signal:    args.signal,
       emit:      args.emit,
@@ -206,15 +205,15 @@ export class MemoryPlanner {
   async afterTurn(ctx: {
     sessionId:     SessionId;
     turnId:        string;
-    mode:          TurnMode;
+    executionProfile: ContextContributionRequest['executionProfile'];
     userText:      string;
     assistantText: string;
   }): Promise<void> {
     return handleAfterTurn(this.deps, this.settings, this.runner, (sid) => this.getSessionOverrides(sid), ctx);
   }
 
-  async forceExtract(sessionId: SessionId, mode: TurnMode): Promise<void> {
-    return handleForceExtract(this.runner, sessionId, mode);
+  async forceExtract(sessionId: SessionId, executionProfile: ContextContributionRequest['executionProfile']): Promise<void> {
+    return handleForceExtract(this.runner, sessionId, executionProfile);
   }
 
   async tick():  Promise<void> { await this.runner.tick(); }
@@ -222,13 +221,4 @@ export class MemoryPlanner {
 
   runStartupRecovery(): RecoveryReport { return doStartupRecovery(this.deps, this.embed); }
 
-}
-
-/** Memory 内部完成新 Profile 到旧检索分区的兼容投影，调用方不再传递 TurnMode。 */
-function legacyRecallMode(
-  executionProfile: ContextContributionRequest['executionProfile'],
-  narrativePolicy: ContextContributionRequest['narrativePolicy'],
-): TurnMode {
-  if (executionProfile === 'work') return 'agent';
-  return narrativePolicy === 'always' ? 'narrative' : 'chat';
 }

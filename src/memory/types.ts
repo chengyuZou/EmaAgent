@@ -1,7 +1,7 @@
-import type { TurnMode } from '@ema-agent/turn';
 import type { SessionId, TurnId } from '@ema-agent/ids';
 import type {
   EmaStreamEvent,
+  ExecutionProfile,
 } from '@ema-agent/turn';
 import type { MemoryNodeType, MemoryItemKind } from '@ema-agent/storage';
 import type { EmbeddingSpace } from '@ema-agent/embed';
@@ -13,7 +13,7 @@ import type { ContextContribution } from '@ema-agent/context';
 export interface PlanContext {
   sessionId:    SessionId;
   turnId:       TurnId;
-  mode:         TurnMode;
+  executionProfile: ExecutionProfile;
   /** Plain-text excerpt of the current user message used as the recall query. */
   userInput:    string;
   /** Optional abort signal — long recall paths (narrative) honour it. */

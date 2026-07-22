@@ -257,7 +257,7 @@ CREATE TABLE memory_items (
   source_session_id     TEXT,
   source_turn_id        TEXT,
   importance            INTEGER NOT NULL DEFAULT 50,
-  modes_json            TEXT NOT NULL DEFAULT '["chat","agent","narrative"]',
+  modes_json            TEXT NOT NULL DEFAULT '["chat","work"]',
   meta_json             TEXT NOT NULL DEFAULT '{}',
   last_referenced_at    INTEGER NOT NULL DEFAULT 0,
   expires_at            INTEGER,

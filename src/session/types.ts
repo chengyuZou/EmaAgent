@@ -1,4 +1,3 @@
-import type { TurnMode } from '@ema-agent/turn';
 import type { TurnStatus } from '@ema-agent/turn';
 import type { SessionId, TurnId, MessageId, BranchId } from '@ema-agent/ids';
 import type { MessageKind, MessageRole } from '@ema-agent/storage';
@@ -55,8 +54,6 @@ export interface Session {
   runningTurnCount: number;
   executionProfile: ExecutionProfile;
   narrativePolicy: NarrativePolicy;
-  /** 旧前端退役前的只读显示投影，不再持久化。 */
-  lastMode: TurnMode;
   /** 用户希望该 Session 下一轮默认使用的供应商配置；null 表示使用系统默认选择。 */
   preferredProviderConfigId: string | null;
   /** 用户希望该 Session 下一轮默认使用的模型；null 表示使用系统默认选择。 */
@@ -73,8 +70,6 @@ export interface Turn {
   triggerType: TurnTriggerType;
   executionProfile: ExecutionProfile;
   narrativePolicy: NarrativePolicy;
-  /** 旧事件与前端退役前的只读显示投影，不再持久化。 */
-  mode: TurnMode;
   status: TurnStatus;
   userInput: string;
   startedAt: number;

@@ -43,7 +43,7 @@ function createHarness(taskIds: Array<{ id: string; sessionId: string }>) {
     id: task.id,
     kind: 'extraction',
     sessionId: task.sessionId,
-    payload: { sessionId: task.sessionId, mode: 'chat' },
+    payload: { sessionId: task.sessionId, executionProfile: 'chat' },
     createdAt: now + index,
   }));
 

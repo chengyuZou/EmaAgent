@@ -92,7 +92,7 @@ describe('N-010 SQLite ID 安全分批', () => {
         kind: 'reference',
         title: id,
         body: id,
-        modes: ['chat'],
+        profiles: ['chat'],
         createdAt: 1,
       });
     }

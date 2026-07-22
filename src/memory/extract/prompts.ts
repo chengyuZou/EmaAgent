@@ -1,17 +1,15 @@
-import type { TurnMode } from '@ema-agent/turn';
+import type { ExecutionProfile } from '@ema-agent/turn';
 
 
-// ── Extraction LLM prompts (one template per mode) ───────────────────────────
+// ── Extraction LLM prompts (one template per execution profile) ─────────────
 
 /**
- * Each mode's extraction prompt asks the LLM to scan the pending conversation
+ * Each profile's extraction prompt asks the LLM to scan the pending conversation
  * fragments and emit a single JSON object with four arrays:
  *   new_nodes / new_edges / memory_items / session_note_delta
  *
- * The mode only changes the *focus* of extraction — every prompt can emit any
- * combination of outputs. Chat focuses on relational/emotional facts; agent
- * focuses on project/preference/feedback; narrative focuses on player choices
- * and reactions (story content itself lives in LightRAG, NOT here).
+ * Profile only changes the extraction focus. Narrative is an independent RAG
+ * capability and never creates a third Memory profile.
  */
 
 const SHARED_FOOTER = `
@@ -71,23 +69,8 @@ Focus areas:
                         discussed / how the user felt / open threads.
 `;
 
-const NARRATIVE_HEADER = `
-You are EmaAgent's narrative-mode memory extractor. The user is interacting
-with Ema through a story (three timeline loops). The actual story content is
-stored in LightRAG and is NOT your concern — DO NOT extract story plot.
-
-Focus narrowly on:
-  - preference     : the user's reactions to story events ("用户喜欢 A 路线")
-  - emotion        : how the story makes the user feel
-  - relationship   : how the user perceives Ema as a character
-  - session_note_delta: brief notes on which scenes / choices the user reacted
-                        to in this conversation
-Skip new_edges and memory_items unless you find something durable about
-the user (not the story). When in doubt, emit empty arrays.
-`;
-
-const AGENT_HEADER = `
-You are EmaAgent's agent-mode memory extractor. The user is using Ema as a
+const WORK_HEADER = `
+You are EmaAgent's work-profile memory extractor. The user is using Ema as a
 coding / desktop assistant. Capture durable facts that help future agent
 sessions work better with this person.
 
@@ -101,7 +84,7 @@ Focus areas:
                                      languages, skill level, role)
   - memory_items.kind="reference"  : pointers to external systems
                                      ("issues live in Linear project FOO")
-  - new_nodes (user_fact/preference): cross-mode user identity facts —
+  - new_nodes (user_fact/preference): cross-profile user identity facts —
                                       surfaces in chat mode too
   - session_note_delta             : current task, files touched, decisions
                                       pending — replaces what was there
@@ -111,15 +94,11 @@ re-derivable from the workspace.
 `;
 
 export function buildExtractionPrompt(args: {
-  mode: TurnMode;
+  executionProfile: ExecutionProfile;
   fragments: Array<{ role: string; content: string }>;
   existingNodeLabels: string[];
 }): string {
-  const header = (
-    args.mode === 'chat'      ? CHAT_HEADER      :
-    args.mode === 'narrative' ? NARRATIVE_HEADER :
-                                 AGENT_HEADER
-  );
+  const header = args.executionProfile === 'chat' ? CHAT_HEADER : WORK_HEADER;
 
   const conversation = args.fragments
     .map(f => `[${f.role}] ${f.content}`)

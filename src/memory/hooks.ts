@@ -56,7 +56,7 @@ async function runOnTurnEnd(
   await planner.afterTurn({
     sessionId,
     turnId,
-    mode:          turn.mode,
+    executionProfile: turn.executionProfile,
     userText,
     assistantText,
   });

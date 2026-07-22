@@ -65,8 +65,8 @@ export interface SessionStats {
   totalInputTokens:     number;
   totalOutputTokens:    number;
   chatTurns:            number;
-  narrativeTurns:       number;
-  agentTurns:           number;
+  workTurns:            number;
+  narrativeAlwaysTurns: number;
   branchCount:          number;
   artifactCount:        number;
   artifactInlineBytes:  number;
@@ -354,10 +354,10 @@ export class SessionStatsRepo {
         (SELECT COALESCE(SUM(usage_input_tokens),  0) FROM turns WHERE session_id = ?) AS total_input_tokens,
         (SELECT COALESCE(SUM(usage_output_tokens), 0) FROM turns WHERE session_id = ?) AS total_output_tokens,
         (SELECT COUNT(*) FROM turns
-          WHERE session_id = ? AND execution_profile = 'chat' AND narrative_policy <> 'always') AS chat_turns,
+          WHERE session_id = ? AND execution_profile = 'chat') AS chat_turns,
         (SELECT COUNT(*) FROM turns
-          WHERE session_id = ? AND execution_profile = 'chat' AND narrative_policy = 'always') AS narrative_turns,
-        (SELECT COUNT(*) FROM turns WHERE session_id = ? AND execution_profile = 'work') AS agent_turns,
+          WHERE session_id = ? AND narrative_policy = 'always') AS narrative_always_turns,
+        (SELECT COUNT(*) FROM turns WHERE session_id = ? AND execution_profile = 'work') AS work_turns,
         (SELECT COUNT(*) FROM branches WHERE session_id = ?) AS branch_count,
         (SELECT COUNT(*) FROM artifacts WHERE session_id = ?) AS artifact_count,
         (SELECT COALESCE(SUM(LENGTH(COALESCE(content,''))), 0)
@@ -376,7 +376,7 @@ export class SessionStatsRepo {
     ) as {
       turn_count: number; message_count: number;
       total_input_tokens: number; total_output_tokens: number;
-      chat_turns: number; narrative_turns: number; agent_turns: number;
+      chat_turns: number; work_turns: number; narrative_always_turns: number;
       branch_count: number;
       artifact_count: number; artifact_inline_bytes: number;
       audio_turn_count: number; audio_total_bytes: number; audio_total_duration_ms: number;
@@ -389,8 +389,8 @@ export class SessionStatsRepo {
       totalInputTokens:     row.total_input_tokens,
       totalOutputTokens:    row.total_output_tokens,
       chatTurns:            row.chat_turns,
-      narrativeTurns:       row.narrative_turns,
-      agentTurns:           row.agent_turns,
+      workTurns:            row.work_turns,
+      narrativeAlwaysTurns: row.narrative_always_turns,
       branchCount:          row.branch_count,
       artifactCount:        row.artifact_count,
       artifactInlineBytes:  row.artifact_inline_bytes,

@@ -54,7 +54,7 @@ describe('Memory embedding 复合游标分页', () => {
         kind: 'user',
         title: id,
         body: id,
-        modes: ['chat'],
+        profiles: ['chat'],
         embedding: EMBEDDING,
         embeddingProviderId: 'provider-test',
         embeddingModel: MODEL,

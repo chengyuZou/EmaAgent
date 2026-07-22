@@ -57,7 +57,6 @@ async function* runTurn(
   const startedAt = Date.now();
   const { turn, signal } = input;
   const turnId = turn.id;
-  const mode = turn.mode;
 
   // Bug #2：记录 LLM 流是否正常结束，用来区分真正的用户中途 abort
   // 和流结束后的错误（那时 signal.aborted 可能恰好为 true）。
@@ -92,7 +91,10 @@ async function* runTurn(
     const startResult = await hooks.trigger('onTurnStart', {
       turnId,
       sessionId: input.sessionId,
-      payload: { mode },
+      payload: {
+        executionProfile: turn.executionProfile,
+        narrativePolicy: turn.narrativePolicy,
+      },
       signal,
       emit: emitHookEvent,
     });
@@ -192,7 +194,7 @@ async function* runTurn(
     const contributions: ContextContribution[] = [];
     let narrativeRecall: Awaited<ReturnType<typeof prepareNarrativeContribution>> = null;
 
-    if (mode === 'narrative' && input.userInput) {
+    if (turn.narrativePolicy === 'always' && input.userInput) {
       activePhase = 'provider';
       try {
         narrativeRecall = yield* streamingOperation((emit) =>
@@ -266,7 +268,8 @@ async function* runTurn(
         iteration,
         llmCallId,
         messages,
-        mode,
+        executionProfile: turn.executionProfile,
+        narrativePolicy: turn.narrativePolicy,
         userInput: input.userInput,
         providerId,
         model: resolvedModel,

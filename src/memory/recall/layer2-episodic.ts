@@ -1,5 +1,6 @@
 import type { MemoryItemRow } from '@ema-agent/storage';
 import type { MemoryDeps } from '../deps.js';
+import type { ExecutionProfile } from '@ema-agent/turn';
 import type {
   EpisodicRecallResult, RecalledItem, MemorySettings, EmbeddedText,
 } from '../types.js';
@@ -13,7 +14,7 @@ interface RecallLayer2Args {
   queryVec:        Float32Array | null;
   queryEmbed:      EmbeddedText | null;
   index:           VectorIndex | null;
-  mode:            'chat' | 'agent' | 'narrative';
+  executionProfile: ExecutionProfile;
   alreadySurfaced: Set<string>;
   settings:        MemorySettings;
 }
@@ -36,19 +37,17 @@ export async function recallEpisodic(
   deps: MemoryDeps,
   args: RecallLayer2Args,
 ): Promise<EpisodicRecallResult> {
-  const { mode, queryVec, queryEmbed, index, alreadySurfaced, settings } = args;
-  const K       = mode === 'narrative' ? Math.max(1, Math.ceil(settings.recall.layer2TopK / 2)) : settings.recall.layer2TopK;
+  const { executionProfile, queryVec, queryEmbed, index, alreadySurfaced, settings } = args;
+  const K       = settings.recall.layer2TopK;
   const w       = settings.recall.currentModeWeight;
   // Reserve at least 1 slot for cross-mode recall when K allows, so a high
   // currentModeWeight (e.g. 0.9) doesn't fully starve otherModes at small K
   // (previously: K=5, w=0.9 → curSlot=5, othSlot=0, cross-mode shut off).
   const curSlot = K > 1 ? Math.min(Math.max(1, Math.ceil(K * w)), K - 1) : 1;
   const othSlot = Math.max(0, K - curSlot);
-  // Cross-mode recall pulls from ALL other modes, not just one — a single
-  // hardcoded otherMode meant the third mode's memories never surfaced
-  // (e.g. narrative mode only recalled chat, never agent).
-  const otherModeNames: ReadonlyArray<'chat' | 'agent' | 'narrative'> =
-    (['chat', 'agent', 'narrative'] as const).filter(m => m !== mode);
+  // 给另一种执行 Profile 保留少量配额，避免 Chat 与 Work 的长期事实互相隔绝。
+  const otherProfiles: readonly ExecutionProfile[] =
+    (['chat', 'work'] as const).filter(candidate => candidate !== executionProfile);
 
   // ── Vector path ──────────────────────────────────────────────────────────
   if (queryVec && queryEmbed) {
@@ -57,14 +56,14 @@ export async function recallEpisodic(
     );
 
     const currentMode = ranked
-      .filter(r => parseModes(r.modes_json).includes(mode))
+      .filter(r => parseProfiles(r.profiles_json).includes(executionProfile))
       .slice(0, curSlot)
       .map(toRecalledItem);
 
     const otherModes = ranked
       .filter(r => {
         if (currentMode.some(c => c.id === r.id)) return false;
-        return parseModes(r.modes_json).some(m => m !== mode);
+        return parseProfiles(r.profiles_json).some(candidate => candidate !== executionProfile);
       })
       .slice(0, othSlot)
       .map(toRecalledItem);
@@ -73,8 +72,8 @@ export async function recallEpisodic(
   }
 
   // ── Heuristic fallback ───────────────────────────────────────────────────
-  const currentPool = deps.items.listByMode(mode, 500);
-  const otherPool   = otherModeNames.flatMap(m => deps.items.listByMode(m, 500));
+  const currentPool = deps.items.listByProfile(executionProfile, 500);
+  const otherPool   = otherProfiles.flatMap(candidate => deps.items.listByProfile(candidate, 500));
   const currentRanked = rankByHeuristic(currentPool, alreadySurfaced);
   const otherRanked   = rankByHeuristic(otherPool,   alreadySurfaced);
 
@@ -141,7 +140,7 @@ function rankByHeuristic(
 
 // ── Conversions ──────────────────────────────────────────────────────────────
 
-function parseModes(json: string): string[] {
+function parseProfiles(json: string): string[] {
   try { return JSON.parse(json) as string[]; }
   catch { return []; }
 }

@@ -1,4 +1,4 @@
-import type { TurnMode } from '@ema-agent/turn';
+import type { ExecutionProfile } from '@ema-agent/turn';
 import type { SessionId } from '@ema-agent/ids';
 import { bestEffort } from '../best-effort.js';
 import type { MemoryDeps } from '../deps.js';
@@ -15,7 +15,7 @@ export async function handleAfterTurn(
   ctx: {
     sessionId:     SessionId;
     turnId:        string;
-    mode:          TurnMode;
+    executionProfile: ExecutionProfile;
     userText:      string;
     assistantText: string;
   },
@@ -47,16 +47,19 @@ export async function handleAfterTurn(
   })) return;
 
   bestEffort('enqueue extraction', () => {
-    runner.enqueue('extraction', ctx.sessionId, { sessionId: ctx.sessionId, mode: ctx.mode });
+    runner.enqueue('extraction', ctx.sessionId, {
+      sessionId: ctx.sessionId,
+      executionProfile: ctx.executionProfile,
+    });
   }, undefined);
 }
 
 export async function handleForceExtract(
   runner:    MemoryTaskRunner,
   sessionId: SessionId,
-  mode:      TurnMode,
+  executionProfile: ExecutionProfile,
 ): Promise<void> {
   bestEffort('forceExtract enqueue', () => {
-    runner.enqueue('extraction', sessionId, { sessionId, mode });
+    runner.enqueue('extraction', sessionId, { sessionId, executionProfile });
   }, undefined);
 }

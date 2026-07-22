@@ -1,4 +1,3 @@
-import type { TurnMode } from '@ema-agent/turn';
 // 接收一次 Turn 请求，选择执行方式，并把执行过程整理成前端需要的事件流。
 
 import type {
@@ -155,7 +154,6 @@ export class Orchestrator {
 
   async run(request: TurnRequest): Promise<TurnResult> {
     const sessionId = asSessionId(request.sessionId);
-    const legacyMode = this.legacyModeFor(request);
     // Ensure the per-session directory tree exists before any audio/artifact
     // writes land in it. Cheap (mkdirSync recursive) and idempotent.
     ensureSessionLayout(this.bindings.activeDataDir, sessionId as string);
@@ -296,7 +294,6 @@ export class Orchestrator {
       );
       engineEvents = this.engineStreamFor(
         { ...resolvedRequest, persistedUserInput },
-        legacyMode,
         turn,
         signal,
         sessionId,
@@ -378,7 +375,6 @@ export class Orchestrator {
 
   private engineStreamFor(
     request:   TurnRequest,
-    legacyMode: TurnMode,
     turn:      Turn,
     signal:    AbortSignal,
     sessionId: ReturnType<typeof asSessionId>,
@@ -398,7 +394,6 @@ export class Orchestrator {
           : undefined;
         return this.conversation.run({
           turn, signal, sessionId,
-          mode:         legacyMode as Exclude<TurnMode, 'agent'>,
           userInput:    request.userInput,
           prompt:       buildPromptSnapshot({
             activeCharacter: this.bindings.card.current(),
@@ -524,7 +519,7 @@ export class Orchestrator {
     message: string,
     phase: TurnFailurePhase,
   ): Promise<EmaStreamEvent[]> {
-    if (turn.mode === 'agent') {
+    if (turn.executionProfile === 'work') {
       this.bindings.agentTurnLifecycle.fail({ turnId: turn.id, code, message });
     } else {
       this.bindings.session.failTurn(turn.id, code, message);
@@ -554,12 +549,6 @@ export class Orchestrator {
 
     // Turn 的模型来自显式选择，不能用注册顺序或旧 Binding 猜测。
     return { providerId: undefined, model: undefined };
-  }
-
-  /** 旧 Engine/SQL 尚未退役前的唯一语义映射；TurnLoop 接线完成后删除。 */
-  private legacyModeFor(request: TurnRequest): TurnMode {
-    if (request.executionProfile === 'work') return 'agent';
-    return request.narrativePolicy === 'always' ? 'narrative' : 'chat';
   }
 
   private async maybeBuildCoordinator(

@@ -1,4 +1,4 @@
-import type { TurnMode } from '@ema-agent/turn';
+import type { ExecutionProfile } from '@ema-agent/turn';
 // 执行 Memory 提取的模型准备、跨库提交、恢复标记和全局索引更新流水线。
 import type { SessionId } from '@ema-agent/ids';
 import type {
@@ -64,7 +64,7 @@ export async function runExtractionPipeline(
   deps: ExtractionPipelineDeps,
   args: {
     sessionId:           SessionId;
-    mode:                TurnMode;
+    executionProfile:    ExecutionProfile;
     /** memory_tasks.id；同一任务重试时保持不变，用作跨数据库恢复键。 */
     runId:               string;
     signal?:             AbortSignal;
@@ -123,7 +123,7 @@ export async function runExtractionPipeline(
     const existingNodes = deps.memory.nodes.listAll(500);
     const existingLabels = existingNodes.map(n => `${n.label} [${n.node_type}]`);
     const prompt = buildExtractionPrompt({
-      mode: args.mode,
+      executionProfile: args.executionProfile,
       fragments,
       existingNodeLabels: existingLabels,
     });
@@ -184,7 +184,7 @@ export async function runExtractionPipeline(
         processItems(
           deps,
           args.sessionId,
-          args.mode,
+          args.executionProfile,
           output,
           stats,
           itemEmbeddings,
@@ -225,7 +225,7 @@ export async function runExtractionPipeline(
   // ── 5. Compact L1 note if it has grown over budget ────────────────────────
   // Non-fatal — note stays verbose, next run may compact. Logged for visibility.
   await bestEffortAsync('compactSessionNoteIfNeeded',
-    () => compactSessionNoteIfNeeded(deps, args.sessionId, args.mode, args.signal), undefined);
+    () => compactSessionNoteIfNeeded(deps, args.sessionId, args.executionProfile, args.signal), undefined);
 
   // ── 6. Consolidate any nodes with lazy_updates ───────────────────────────
   // 不吞异常：失败后由 task runner 重试。data.db 已在 step 4 消费 pending，

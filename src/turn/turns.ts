@@ -35,9 +35,6 @@ export type NarrativePolicy = 'auto' | 'always' | 'off';
 /** Turn 的持久化生命周期状态；终态由 TurnRuntime 统一写入。 */
 export type TurnStatus = 'pending' | 'running' | 'completed' | 'failed' | 'aborted';
 
-/** 旧 Engine 尚未收口时使用的内部兼容投影，统一 TurnLoop 完成后删除。 */
-export type TurnMode = 'chat' | 'narrative' | 'agent';
-
 /** V1 唯一启用的 Turn 触发源；未来来源必须以新的判别分支显式加入。 */
 export interface UserMessageTurnTrigger {
   readonly type: 'userMessage';
