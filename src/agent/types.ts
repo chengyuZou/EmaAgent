@@ -186,7 +186,7 @@ export interface AgentRunInput {
    *  KBs without a matching scope are searched unfiltered. */
   kbAssetScopes?: KbAssetScope[];
   /**
-   * Per-iteration compaction callback. Called at the top of every agentLoop
+   * Per-iteration compaction callback. Called at the top of every turnLoop
    * iteration before the LLM call so multi-step agent turns don't overflow
    * the context window mid-turn. Orchestrator wires this to ContextCompactor.compact().
    * Omit in tests and sub-agent spawns (ephemeral context).

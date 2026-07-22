@@ -27,6 +27,22 @@ Ema 当前已经具备 Turn、SSE、工具、权限、Sandbox、Memory、Narrati
 
 ## 2. 已确定的产品语义
 
+### 2.0 Turn 是有界执行，不只是一条用户消息
+
+`Turn` 表示一次具有明确触发原因、开始时间和唯一终态的 Agent 决策与行动。V1 的触发源只有用户消息，但领域定义不能把 Turn 永久绑定为 HTTP `/chat` 请求；未来屏幕观察、外部渠道消息、Realtime handoff、主动策略或 Schedule 都可以在通过各自信任与唤醒策略后创建新的 Turn。
+
+长期音频、屏幕观察和直播不能建模成一个持续数小时的 Turn。它们属于附着于 Session 的 `RealtimeSession` 或活动会话，负责媒体连接、转写、感知和表现；只有出现需要模型决策的语义输入时才创建一个有界 Turn。一个直播活动可以包含多个独立 Turn。
+
+```text
+Session
+├─ RealtimeSession / future LiveSession
+│  └─ 音频、画面、WebSocket/WebRTC、TTS 与舞台输出
+└─ Turn
+   └─ TurnLoop：一次有界 LLM/Tool 决策循环
+```
+
+Vision 是感知能力，主动说话是唤醒策略，WebSocket 是传输协议，直播是长生命周期活动；它们都不是新的 `ExecutionProfile`。V1 只实现用户消息触发，不建立未来触发器、Realtime 或直播空包，但 Turn 启动契约应保留明确的 trigger/origin 扩展位置，且任何非用户来源都不能构成危险 Tool 的用户授权。
+
 ### 2.1 用户只看到 Chat 与 Work
 
 ```ts
@@ -40,6 +56,8 @@ export type NarrativePolicy = 'auto' | 'always' | 'off';
 - Session 保存下一轮默认 Profile；
 - `narrative` 不再是顶层 Mode，而是可供 Chat/Work 使用的剧情检索能力；
 - Chat 的二级菜单提供“剧情资料：自动 / 始终 / 关闭”，默认 `auto`。
+
+Chat/Work 只描述一次 Turn 的执行能力和安全范围，不描述输入设备、连接协议或角色是否正在直播。
 
 `off` 只关闭剧情数据库检索，不移除 Character Prompt。UI 应提示：角色基础设定仍保留，但可能缺少剧情细节或混淆周目。
 

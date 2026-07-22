@@ -5,8 +5,20 @@ import type {
   SessionId,
   TurnAttachment,
   TurnId,
-  TurnMode,
 } from '@ema-agent/contracts';
+
+/** 一次 Turn 的执行能力范围；输入渠道和连接协议不属于 Profile。 */
+export type ExecutionProfile = 'chat' | 'work';
+
+/** Narrative 只控制剧情检索策略，不改变角色身份或创建第三套 Engine。 */
+export type NarrativePolicy = 'auto' | 'always' | 'off';
+
+/** V1 唯一启用的 Turn 触发源；未来来源必须以新的判别分支显式加入。 */
+export interface UserMessageTurnTrigger {
+  readonly type: 'userMessage';
+}
+
+export type TurnTrigger = UserMessageTurnTrigger;
 
 // ── POST /api/turns 的请求体 ──────────────────────────────────────────────────
 //
@@ -23,7 +35,9 @@ import type {
  */
 export interface TurnRequest {
   sessionId?:    string;             // 省略 → 自动创建新 session
-  mode:          TurnMode;
+  trigger:        TurnTrigger;
+  executionProfile: ExecutionProfile;
+  narrativePolicy:  NarrativePolicy;
   userInput?:    string;
   contentParts?: MessageContentPart[];
   attachments?:  TurnAttachment[];

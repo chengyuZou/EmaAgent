@@ -43,7 +43,9 @@ export const turnsApi = {
   /** POST /api/turns — start a new turn. */
   async create(req: TurnRequest): Promise<TurnCreatedResponse> {
     // Local validation
-    if (!req.mode) throw new Error('mode is required');
+    if (req.trigger.type !== 'userMessage') throw new Error('unsupported turn trigger');
+    if (!req.executionProfile) throw new Error('executionProfile is required');
+    if (!req.narrativePolicy) throw new Error('narrativePolicy is required');
     if (!hasTurnRequestInput(req)) {
       throw new Error('either userInput, contentParts, or attachments is required');
     }

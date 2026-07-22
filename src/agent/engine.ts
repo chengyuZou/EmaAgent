@@ -7,9 +7,9 @@ import type { ToolExecutionContext, ReadFileState } from '@ema-agent/tools';
 import type { PermissionContext } from '@ema-agent/permission';
 import type { TurnFailurePhase } from '@ema-agent/hooks';
 import type { AgentDeps, AgentRunInput } from './types.js';
-import { AgentPolicy } from './policy.js';
+import { TurnPolicy } from './policy.js';
 import { TurnToolExecutor } from './tool-executor.js';
-import { agentLoop, type ExecutorFactory } from './loop.js';
+import { turnLoop, type ExecutorFactory } from './loop.js';
 import { SubagentSpawner } from './spawner.js';
 import {
   buildModelMessages,
@@ -29,7 +29,7 @@ import { awaitAgentAnswer } from './ask-user-lifecycle.js';
 // ── AgentEngine ───────────────────────────────────────────────────────────────
 
 /**
- * Thin wrapper around agentLoop().  Handles session lifecycle, hooks, emotion
+ * Thin wrapper around turnLoop().  Handles session lifecycle, hooks, emotion
  * post-processing, session DB persistence, and SSE event translation.
  *
  * The pure think→act loop lives in loop.ts; spawner.ts handles sub-agents.
@@ -74,7 +74,7 @@ async function* runTurn(
   const turnId    = turn.id;
   const startedAt = Date.now();
 
-  const policy        = new AgentPolicy(tools.manifestSnapshot());
+  const policy        = new TurnPolicy(tools.manifestSnapshot());
   const budget        = new TurnBudget();
   const readFileState = new Map() as ReadFileState;
   const contextStores = deps.getContextStores?.(sessionId);
@@ -217,7 +217,7 @@ async function* runTurn(
     // 产生的完整请求视图，并在 spawn() 时按 fork 语义创建快照。
     //
     // emitRef lets the spawner forward subagent_progress to the parent SSE stream.
-    // The ref is filled in by buildExecutor (called by agentLoop before any tools
+    // The ref is filled in by buildExecutor (called by turnLoop before any tools
     // run), so spawn() always sees a populated emitter.
     // (emitRef is declared before try{} so finally can clear it on turn end.)
 
@@ -298,9 +298,9 @@ async function* runTurn(
       return executor;
     };
 
-    // ── Main loop — translate AgentLoopEvent → EmaStreamEvent ────────────────
+    // ── Main loop — translate TurnLoopEvent → EmaStreamEvent ─────────────────
     activePhase = 'provider';
-    for await (const ev of agentLoop({
+    for await (const ev of turnLoop({
       messages, policy, buildExecutor, llm,
       historyMessageCount: historyView.messages.length,
       providerId, model, signal,

@@ -3,15 +3,15 @@ import { describe, expect, it, vi } from 'vitest';
 import { ContextWindowExceededError } from '@ema-agent/llm';
 import type { LlmCallId, Message as ModelMessage } from '@ema-agent/llm';
 import type { ModelContextSnapshot } from '@ema-agent/context';
-import type { AgentPolicy } from '../policy.js';
+import type { TurnPolicy } from '../policy.js';
 import type { TurnToolExecutor } from '../tool-executor.js';
-import { agentLoop } from '../loop.js';
+import { turnLoop } from '../loop.js';
 import { TurnBudget } from '../turn-budget.js';
 
-function makePolicy(): AgentPolicy {
+function makePolicy(): TurnPolicy {
   return {
     toolDefs: () => [],
-  } as unknown as AgentPolicy;
+  } as unknown as TurnPolicy;
 }
 
 function makeExecutor(): TurnToolExecutor {
@@ -24,7 +24,7 @@ function makeExecutor(): TurnToolExecutor {
   } as unknown as TurnToolExecutor;
 }
 
-describe('agentLoop LLM 生命周期', () => {
+describe('turnLoop LLM 生命周期', () => {
   it('累计 Usage 快照只按差值计入 Turn，不重复计算输入 Token', async () => {
     const stream = vi.fn(() => (async function* () {
       yield { type: 'usage' as const, inputTokens: 100, outputTokens: 0 };
@@ -35,7 +35,7 @@ describe('agentLoop LLM 生命周期', () => {
     const usageSnapshots: Array<{ inputTokens: number; outputTokens: number }> = [];
     let finalUsage: { inputTokens: number; outputTokens: number } | undefined;
 
-    for await (const event of agentLoop({
+    for await (const event of turnLoop({
       messages: [{ role: 'user', content: 'hello' }],
       policy: makePolicy(),
       buildExecutor: () => makeExecutor(),
@@ -93,9 +93,9 @@ describe('agentLoop LLM 生命周期', () => {
       yield { type: 'done' as const, stopReason: 'end_turn' as const };
     })());
 
-    for await (const event of agentLoop({
+    for await (const event of turnLoop({
       messages: [{ role: 'user', content: 'read it' }],
-      policy: { toolDefs: () => tools } as unknown as AgentPolicy,
+      policy: { toolDefs: () => tools } as unknown as TurnPolicy,
       buildExecutor: () => makeExecutor(),
       llm: { stream } as never,
       providerId: 'provider-1',
@@ -146,7 +146,7 @@ describe('agentLoop LLM 生命周期', () => {
     } as unknown as TurnToolExecutor;
     const events = [];
 
-    for await (const event of agentLoop({
+    for await (const event of turnLoop({
       messages: [{ role: 'user', content: 'publish it' }],
       policy: makePolicy(),
       buildExecutor: () => executor,
@@ -198,7 +198,7 @@ describe('agentLoop LLM 生命周期', () => {
     }> = [];
     const eventTypes: string[] = [];
 
-    for await (const event of agentLoop({
+    for await (const event of turnLoop({
       messages: [{ role: 'user', content: 'hello' }],
       policy: makePolicy(),
       buildExecutor: () => makeExecutor(),
@@ -267,7 +267,7 @@ describe('agentLoop LLM 生命周期', () => {
       contextRevision: forceCompaction ? 'forced-revision' : 'initial-revision',
     }));
 
-    for await (const _event of agentLoop({
+    for await (const _event of turnLoop({
       messages: [{ role: 'user', content: 'hello' }],
       historyMessageCount: 0,
       policy: makePolicy(),

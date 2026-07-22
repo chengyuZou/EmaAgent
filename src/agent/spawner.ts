@@ -13,9 +13,9 @@ import type { Message as ModelMessage } from '@ema-agent/llm';
 import type { ISubagentSpawner, SubagentSpawnOpts, ToolExecutionContext } from '@ema-agent/tools';
 import { clearTodos } from '@ema-agent/tool-builtin';
 import type { AgentDeps } from './types.js';
-import { AgentPolicy } from './policy.js';
+import { TurnPolicy } from './policy.js';
 import { TurnToolExecutor } from './tool-executor.js';
-import { agentLoop, type ExecutorFactory } from './loop.js';
+import { turnLoop, type ExecutorFactory } from './loop.js';
 import { selectSubagentTools } from './subagent-capabilities.js';
 import { TurnBudget } from './turn-budget.js';
 
@@ -134,7 +134,7 @@ export class SubagentSpawner implements ISubagentSpawner {
       knowledgeBase: this.kbSearch !== undefined,
       skills: this.deps.skillRunner !== undefined,
     });
-    const policy = new AgentPolicy(tools.manifestSnapshot(selectedTools));
+    const policy = new TurnPolicy(tools.manifestSnapshot(selectedTools));
     const subagentId    = opts.subagentId ?? randomUUID();
     const sessionId     = this.parentSessionId as SessionId;
     const parentTurnId  = this.parentTurnId   as TurnId;
@@ -261,7 +261,7 @@ export class SubagentSpawner implements ISubagentSpawner {
     let usage    = { inputTokens: 0, outputTokens: 0 };
 
     try {
-      for await (const ev of agentLoop({
+      for await (const ev of turnLoop({
         messages, policy, buildExecutor, llm,
         providerId:           this.parentProviderId,
         model:                resolvedModel,
@@ -397,7 +397,7 @@ export class SubagentSpawner implements ISubagentSpawner {
         }
       }
 
-      // agentLoop 在 AbortSignal 触发时会以 loop_done 正常收束；这里必须重新映射
+      // turnLoop 在 AbortSignal 触发时会以 loop_done 正常收束；这里必须重新映射
       // 为子任务取消，不能把用户取消误报成 subagent_completed。
       if (childCtrl.signal.aborted) {
         throw new Error(signal.aborted ? 'Parent turn aborted' : 'Sub-agent aborted by user');

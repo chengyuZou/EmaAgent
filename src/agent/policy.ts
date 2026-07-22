@@ -1,4 +1,4 @@
-// 把 Agent 的工具能力作用域转换成模型工具定义和执行准入判断。
+// 把一次 Turn 的工具能力作用域转换成模型工具定义和执行准入判断。
 import type {
   IToolCapabilityScope,
   ToolManifestSnapshot,
@@ -7,9 +7,9 @@ import { createToolManifestSnapshotFromEntries } from '@ema-agent/tools';
 import type { LlmToolDef } from '@ema-agent/llm';
 import { AgentToolCapabilityScope } from './tool-capability-scope.js';
 
-// ── AgentPolicy ───────────────────────────────────────────────────────────────
+// ── TurnPolicy ────────────────────────────────────────────────────────────────
 
-export class AgentPolicy {
+export class TurnPolicy {
   private readonly scope: AgentToolCapabilityScope;
 
   constructor(

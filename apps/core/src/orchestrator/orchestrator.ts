@@ -1,4 +1,4 @@
-// 这里接收一次 Turn 请求，选择执行方式，并把执行过程整理成前端需要的事件流。
+// 接收一次 Turn 请求，选择执行方式，并把执行过程整理成前端需要的事件流。
 
 import type {
   AppBindings } from '../wiring/index.js';
@@ -10,7 +10,10 @@ import type {
   KbAssetScope,
 } from '@ema-agent/contracts';
 import type {
-  } from '@ema-agent/turn';
+  ExecutionProfile,
+  NarrativePolicy,
+  TurnTrigger,
+} from '@ema-agent/turn';
 import type { ThinkingMode } from '@ema-agent/llm';
 import type { LlmContentPart } from '@ema-agent/llm';
 import { llmProviderErrorCode } from '@ema-agent/llm';
@@ -26,7 +29,6 @@ import { AgentEngine }        from '@ema-agent/agent';
 import { TtsCoordinator }     from '@ema-agent/tts';
 import type { FinalizedAudio } from '@ema-agent/tts';
 import { SettingsRepo } from '@ema-agent/storage';
-import type { BindingModule } from '@ema-agent/storage';
 import { resolveVoice, ensureVoiceUri, VoiceUriCache } from '../wiring/providers/tts.js';
 import { ensureSessionLayout, scratchpadTurnDir } from '../storage-locations/index.js';
 import type { Turn }           from '@ema-agent/session';
@@ -41,7 +43,9 @@ export interface TurnResult {
 
 export interface TurnRequest {
   sessionId:        string;
-  mode:             TurnMode;
+  trigger:          TurnTrigger;
+  executionProfile: ExecutionProfile;
+  narrativePolicy:  NarrativePolicy;
   userInput:        string;
   contentParts?:    LlmContentPart[];
   /** Per-turn file attachments from the frontend. Persisted and resolved before engine dispatch. */
@@ -148,15 +152,16 @@ export class Orchestrator {
 
   async run(request: TurnRequest): Promise<TurnResult> {
     const sessionId = asSessionId(request.sessionId);
+    const legacyMode = this.legacyModeFor(request);
     // Ensure the per-session directory tree exists before any audio/artifact
     // writes land in it. Cheap (mkdirSync recursive) and idempotent.
     ensureSessionLayout(this.bindings.activeDataDir, sessionId as string);
     const startInput = {
       sessionId,
-      mode:      request.mode,
+      mode:      legacyMode,
       userInput: request.userInput,
     };
-    const { turn, signal } = request.mode === 'agent'
+    const { turn, signal } = request.executionProfile === 'work'
       ? this.bindings.agentTurnLifecycle.start(startInput)
       : this.bindings.session.startTurn(startInput);
     const turnId = turn.id;
@@ -281,6 +286,7 @@ export class Orchestrator {
         : request;
       engineEvents = this.engineStreamFor(
         resolvedRequest,
+        legacyMode,
         turn,
         signal,
         sessionId,
@@ -362,14 +368,14 @@ export class Orchestrator {
 
   private engineStreamFor(
     request:   TurnRequest,
+    legacyMode: TurnMode,
     turn:      Turn,
     signal:    AbortSignal,
     sessionId: ReturnType<typeof asSessionId>,
     requestDegradations: RequestDegradationNotice[],
   ): AsyncIterable<EmaStreamEvent> {
-    switch (request.mode) {
-      case 'chat':
-      case 'narrative': {
+    switch (request.executionProfile) {
+      case 'chat': {
         const { providerId, model } = this.resolveLlmForTurn(request);
         const contextWindow = providerId && model
           ? this.bindings.providerLlmModels.contextWindowFor(providerId, model)
@@ -381,11 +387,11 @@ export class Orchestrator {
           : undefined;
         return this.conversation.run({
           turn, signal, sessionId,
-          mode:         request.mode,
+          mode:         legacyMode as Exclude<TurnMode, 'agent'>,
           userInput:    request.userInput,
           prompt:       buildPromptSnapshot(
             this.bindings.card.current(),
-            request.mode,
+            legacyMode,
           ),
           contentParts: request.contentParts,
           providerId,
@@ -399,7 +405,7 @@ export class Orchestrator {
           compactContext: providerId && model ? (view) => this.bindings.contextCompactor.compact({
             sessionId:          turn.sessionId,
             turnId:             turn.id,
-            mode:               request.mode,
+            mode:               legacyMode,
             messages:           [...view.historyMessages],
             prefixMessages:     view.prefixMessages,
             suffixMessages:     view.suffixMessages,
@@ -415,14 +421,14 @@ export class Orchestrator {
         });
       }
 
-      case 'agent': {
+      case 'work': {
         const sess          = this.bindings.session.getSession(sessionId);
         const workspaceRoot = sess.workspaceRoot ?? process.cwd();
 
         const { providerId, model } = this.resolveLlmForTurn(request);
         if (!providerId || !model) {
           const self = this;
-          const message = 'No LLM provider configured for agent mode';
+          const message = 'No LLM provider configured for work profile';
           return (async function* () {
             const diagnostics = await self.reportTurnFailure(
               turn,
@@ -531,14 +537,14 @@ export class Orchestrator {
         : { providerId: undefined, model: undefined };
     }
 
-    // Chat、Narrative 与 Agent 的模型来自前端选择，不能用注册顺序或旧 Binding 猜测。
-    const isTurnMode = request.mode === 'chat' || request.mode === 'narrative' || request.mode === 'agent';
-    if (isTurnMode) return { providerId: undefined, model: undefined };
+    // Turn 的模型来自显式选择，不能用注册顺序或旧 Binding 猜测。
+    return { providerId: undefined, model: undefined };
+  }
 
-    const binding = this.bindings.modelBindings.get(request.mode as BindingModule);
-    return binding
-      ? { providerId: binding.providerConfigId, model: binding.model }
-      : { providerId: undefined, model: undefined };
+  /** 旧 Engine/SQL 尚未退役前的唯一语义映射；TurnLoop 接线完成后删除。 */
+  private legacyModeFor(request: TurnRequest): TurnMode {
+    if (request.executionProfile === 'work') return 'agent';
+    return request.narrativePolicy === 'always' ? 'narrative' : 'chat';
   }
 
   private async maybeBuildCoordinator(

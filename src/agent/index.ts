@@ -1,6 +1,6 @@
 // 统一导出 Agent 运行时、策略、循环状态和依赖接口。
 export { AgentEngine } from './engine.js';
-export { AgentPolicy } from './policy.js';
+export { TurnPolicy } from './policy.js';
 export {
   AgentToolCapabilityScope,
   ToolCapabilityRestrictionError,
@@ -13,7 +13,7 @@ export type {
   IAgentTurnLifecycle,
   IToolExecutionJournal,
 } from './types.js';
-export type { AgentLoopEvent, ExecutorFactory, AgentLoopInput } from './loop.js';
+export type { TurnLoopEvent, ExecutorFactory, TurnLoopInput } from './loop.js';
 export type { LoopState, LoopPhase, LoopTransition } from './loop-state.js';
 export {
   AgentBudgetExceededError,

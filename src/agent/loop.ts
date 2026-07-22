@@ -1,4 +1,4 @@
-// 执行 Agent 的多轮模型与工具循环，并维护每轮状态、预算和事件。
+// 执行通用 Turn 的多轮模型与工具循环，并维护每轮状态、预算和事件。
 import {
   randomUUID } from 'node:crypto';
 import type { ToolResultBlock,
@@ -23,7 +23,7 @@ import {
 } from '@ema-agent/llm';
 import { computePromptPrefixHash, normalizeToolDefinitions } from '@ema-agent/context';
 import type { ModelContextSnapshot } from '@ema-agent/context';
-import type { AgentPolicy } from './policy.js';
+import type { TurnPolicy } from './policy.js';
 import type { TurnToolExecutor } from './tool-executor.js';
 import { advanceState, addUsage, createLoopState } from './loop-state.js';
 import type { LoopState } from './loop-state.js';
@@ -32,7 +32,7 @@ import type { TurnBudget } from './turn-budget.js';
 const MAX_CONSECUTIVE_PERMISSION_DENIALS = 3;
 const MAX_TOTAL_PERMISSION_DENIALS = 20;
 
-// ── AgentLoopEvent — internal, not EmaStreamEvent ────────────────────────────
+// ── TurnLoopEvent — internal, not EmaStreamEvent ─────────────────────────────
 //
 // Loop yields only the events it generates itself.  Tool events (tool_result,
 // permission_required, ask_user_required, …) come through two paths:
@@ -46,7 +46,7 @@ const MAX_TOTAL_PERMISSION_DENIALS = 20;
 // engine.ts intercepts loop_text_delta and runs emotion.processChunk() before
 // yielding output_text_delta to SSE.
 
-export type AgentLoopEvent =
+export type TurnLoopEvent =
   | { type: 'loop_iteration';     n: number; state: LoopState }
   | { type: 'loop_text_delta';    delta: string; blockIndex: number }
   | { type: 'loop_thinking_delta';delta: string; blockIndex: number }
@@ -73,7 +73,7 @@ export type AgentLoopEvent =
   | { type: 'loop_breaker';       reason: string }
   | { type: 'loop_done';          fullText: string; state: LoopState };
 
-// ── AgentLoopInput ────────────────────────────────────────────────────────────
+// ── TurnLoopInput ─────────────────────────────────────────────────────────────
 
 /**
  * Factory called by the loop to build its TurnToolExecutor.
@@ -105,12 +105,12 @@ export type PrepareLlmCallResult =
   | { kind: 'continue'; messages: ModelMessage[] }
   | { kind: 'abort'; reason: string };
 
-export interface AgentLoopInput {
+export interface TurnLoopInput {
   /** 初始持久化历史与当前用户消息；启用 assembleContext 后 Loop 会建立独立工作副本。 */
   messages:       ModelMessage[];
   /** messages 中属于已持久化 Session 历史的前缀长度。 */
   historyMessageCount?: number;
-  policy:         AgentPolicy;
+  policy:         TurnPolicy;
   /** Called once at loop construction. Provides the loop's internal relay callbacks. */
   buildExecutor:  ExecutorFactory;
   llm:            LanguageModel;
@@ -149,7 +149,7 @@ export interface AgentLoopInput {
   thinking?: ThinkingMode;
 }
 
-// ── agentLoop ─────────────────────────────────────────────────────────────────
+// ── turnLoop ──────────────────────────────────────────────────────────────────
 
 /**
  * Pure think→act loop. No session store, no hook bus, no EmaStreamEvent yield
@@ -164,7 +164,7 @@ export interface AgentLoopInput {
  * The TOCTOU-safe park pattern prevents the drain-wait from blocking forever
  * if the last tool finishes between the allDone() check and await.
  */
-export async function* agentLoop(input: AgentLoopInput): AsyncIterable<AgentLoopEvent> {
+export async function* turnLoop(input: TurnLoopInput): AsyncIterable<TurnLoopEvent> {
   const {
     messages, policy, llm, providerId, model, signal, maxIterations, budget,
     sessionId, turnId, getScratchpadContext, getMailboxMessages,

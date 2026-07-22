@@ -95,6 +95,14 @@ apps/core/                HTTP/SSE/认证/装配
 - 第 12 章前端只能消费事件和发送命令；
 - 第 15、21 章的 Task、AgentRun、Job 和后台 Session 不能重新混进 Turn 根生命周期。
 
+### Codex Realtime 复核与 Ema 的长期边界
+
+Codex App Server 同样使用 `Thread -> Turn -> Item/Event`，并把实时语音另建为 thread-scoped Realtime Session。实时连接可以通过 WebSocket/WebRTC 持续追加音频、文本和可朗读输出，也可以把语义结果 handoff 给普通 Agent Turn；它没有把整段实时连接伪装成一个永不结束的 Turn。
+
+Ema 采用相同的生命周期分离，但保持自己的产品语言：现有 Session 对应长期会话容器，Turn 对应一次有界决策，未来 RealtimeSession/LiveSession 对应长连接媒体活动。屏幕感知、摄像头、微信消息、主动发言和直播都通过明确来源产生观察或触发，只有需要模型决策时才创建 Turn。Chat/Work 仍是执行 Profile，不因新增输入渠道而继续膨胀 Mode。
+
+V1 只实现 `userMessage` 触发；未来来源只写入设计，不创建空 Runtime。非用户输入一律视为无授权数据，即使它来自另一个 Agent、网页、屏幕文字或外部聊天渠道，也不能批准文件写入、Shell、发送消息或凭据访问。
+
 ---
 
 ## 02 Agent Loop：会话外壳与循环内核

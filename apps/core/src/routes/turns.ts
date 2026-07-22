@@ -68,7 +68,9 @@ const contentPartSchema = z.discriminatedUnion('type', [
 
 const turnBodySchema = z.object({
   sessionId: z.string().optional(),
-  mode: z.enum(['chat', 'narrative', 'agent']).default('chat'),
+  trigger: z.object({ type: z.literal('userMessage') }),
+  executionProfile: z.enum(['chat', 'work']),
+  narrativePolicy: z.enum(['auto', 'always', 'off']),
   userInput: z.string().max(REQUEST_VALUE_LIMITS.maxTurnTextChars).optional(),
   contentParts: z.array(contentPartSchema).max(REQUEST_VALUE_LIMITS.maxTurnContentParts).optional(),
   attachments:  z.array(attachmentInputSchema).max(REQUEST_VALUE_LIMITS.maxTurnAttachments).optional(),
@@ -169,7 +171,21 @@ export function turnsRoute(bindings: AppBindings): Hono {
       return c.json({ error: 'invalid_request', details: parsed.error.flatten() }, 400);
     }
 
-    const { sessionId, mode, userInput, contentParts, attachments, providerId, model, ttsEnabled, thinkingEnabled, kbIds, kbAssetScopes } = parsed.data;
+    const {
+      sessionId,
+      trigger,
+      executionProfile,
+      narrativePolicy,
+      userInput,
+      contentParts,
+      attachments,
+      providerId,
+      model,
+      ttsEnabled,
+      thinkingEnabled,
+      kbIds,
+      kbAssetScopes,
+    } = parsed.data;
 
     // WebView 只提交加密能力句柄；路径和文件元数据必须由 Attachment Facade
     // 解密并重新读取，禁止前端把任意绝对路径伪装成附件。
@@ -199,7 +215,9 @@ export function turnsRoute(bindings: AppBindings): Hono {
     try {
       ({ turnId, events } = await orchestrator.run({
         sessionId:        effectiveSessionId,
-        mode,
+        trigger,
+        executionProfile,
+        narrativePolicy,
         userInput:        userInput ?? '',
         contentParts,
         attachmentInputs,

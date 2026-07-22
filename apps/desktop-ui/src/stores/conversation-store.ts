@@ -62,6 +62,8 @@ import type {
   MessageContentPart,
 } from '@ema-agent/contracts';
 import {
+  type ExecutionProfile,
+  type NarrativePolicy,
   type TurnCreatedResponse,
 } from '@ema-agent/turn';
 import {
@@ -110,6 +112,21 @@ interface QueuedSendInput extends SendInput {
   acceptance: TurnAcceptance<TurnCreatedResponse>;
 }
 
+/** 旧 Mode 选择器退役前的唯一前端映射；发送协议只使用 Profile 与 Policy。 */
+function executionSettingsForLegacyMode(mode: TurnMode): {
+  executionProfile: ExecutionProfile;
+  narrativePolicy: NarrativePolicy;
+} {
+  switch (mode) {
+    case 'chat':
+      return { executionProfile: 'chat', narrativePolicy: 'off' };
+    case 'narrative':
+      return { executionProfile: 'chat', narrativePolicy: 'always' };
+    case 'agent':
+      return { executionProfile: 'work', narrativePolicy: 'off' };
+  }
+}
+
 // ── Module-level per-session resources ────────────────────────────────────────
 
 const sseHandles         = new Map<string, { stop(): void }>();
@@ -123,9 +140,11 @@ function getOrCreateQueue(sessionId: SessionId): SendQueue<QueuedSendInput> {
 
   const queue = createSendQueue<QueuedSendInput>({
     async handler(input) {
+      const executionSettings = executionSettingsForLegacyMode(input.mode);
       const { turnId, sessionId: actualSessionId } = await turnsApi.create({
         sessionId:    input.sessionId as string,
-        mode:         input.mode,
+        trigger:      { type: 'userMessage' },
+        ...executionSettings,
         userInput:    input.text,
         contentParts: input.contentParts,
         attachments:  input.attachments,

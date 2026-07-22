@@ -10,6 +10,8 @@
 
 R2 Prompt Slot 与 R3 ContextAssembler 主链接线已经完成：Prompt、Skill Catalog、Memory Recall、Narrative Recall、历史、当前 Turn、Scratchpad、Mailbox 与 Tool Manifest 由一次不可变 Context 快照统一装配。现有渐进 Compaction、Safe Cut、Restore、响应式压缩和 Tool Manifest Snapshot 都是基线，不重新实现。
 
+统一 Turn 主线的第一刀已经完成：公网请求使用 `trigger + executionProfile + narrativePolicy`，不再传递旧 `mode`；Agent 内部循环已改名为通用 `turnLoop`。旧 `chat/narrative/agent` 暂时只留在 Desktop 选择器、Session/Turn SQL 与旧 Engine 的兼容边界。
+
 ## 迁移完成事实
 
 - 所有 Ema 产品模块均位于根 `src`；旧产品目录不再留在 `packages`。
@@ -24,18 +26,19 @@ R2 Prompt Slot 与 R3 ContextAssembler 主链接线已经完成：Prompt、Skill
 
 本轮已知未提交修改：
 
-- `src/agent/tests/agent.integration.test.ts`：测试包路径改为 `src/agent/package.json`；
-- `src/skills/tests/store.test.ts`：Skill fixture 中的旧 `packages/agent` 路径改为 `src/agent`；
-- `CLAUDE.md`：迁移完成后的长期规则；
-- `EmaWorkState.md`：本接力板压缩更新。
-- `EmaAgentCustomPrompt.md`：供用户粘贴后删除的临时 Codex 自定义 Prompt。
+- `EmaRefactor.md`、`EmaClaudeArchitectureReview.md`：补充 Turn、Realtime 与 V1/V1.5 边界；
+- `src/turn`、`apps/core`、`apps/desktop-ui`：接入新的 Turn 请求契约，并集中保留旧模式兼容映射；
+- `src/agent`：`AgentLoop/AgentPolicy` 收口为 `TurnLoop/TurnPolicy`，行为未重写；
+- `CLAUDE.md`：同步长期规则；该文件当前受 `.gitignore` 管理，不出现在普通 `git status`；
+- `EmaWorkState.md`：记录本轮事实与下一步。
 
 当前基线最近提交：`ab28f07 feat: add tests for ToolRegistry and tool execution context`。该提交号仅用于定位，不代表其他 Agent 不会继续提交。
 
 ## 已确定的 V1 口径
 
 - 用户顶层模式只有 `Chat/Work`；`NarrativePolicy = auto | always | off`。
-- Turn 是用户交互与唯一根终态；TurnRuntime 管生命周期，TurnLoop 管 LLM/Tool 迭代。
+- Turn 是一次有明确触发原因与唯一终态的有界 Agent 执行；V1 只接用户消息触发。TurnRuntime 管生命周期，TurnLoop 管 LLM/Tool 迭代。
+- 未来 Realtime/读屏/主动说话/直播属于长生命周期媒体或唤醒能力，不是新 Mode，也不能成为一个永不结束的 Turn；V1 暂不实现。
 - Narrative 是保留多周目 Query Route 和专用前端 Block 的独立 RAG 能力，不是第三个 Engine。
 - ContextAssembler 是模型窗口唯一组装入口；PromptAssembler 只产出显式、有序、可版本化的 PromptSlot。
 - Provider 是控制面；LLM、Embed、Rerank、Vision、STT、TTS 是无 Session 状态的执行面。
@@ -48,7 +51,7 @@ R2 Prompt Slot 与 R3 ContextAssembler 主链接线已经完成：Prompt、Skill
 ## 概念边界
 
 ```text
-Turn       用户发起的一轮根交互
+Turn       一次由明确来源触发、具有唯一终态的有界 Agent 执行
 Task       用户/模型可见的结构化工作清单项
 AgentRun   一次 Agent 或 Subagent 实际执行
 Job        KB、Vision、Embedding、Memory 等领域后台工作
@@ -63,11 +66,11 @@ Plan、Goal、Schedule、Workflow、Team 与 LLM 自动审批暂列 V1.5，不�
 
 ## 下一批建议顺序
 
-1. 先复查 R2/R3 现有 Diff 与真实 Turn 数据流，确认迁移后没有旧路径或重复装配；
-2. 冻结统一 TurnRuntime/TurnLoop 的输入、输出、终态与事件身份；
-3. 让 Chat 先作为受限 Profile 接入同一循环，保留旧 ConversationEngine 为短期适配器；
-4. 接入 Work Profile 后删除重复循环与 Core 业务选择；
-5. 再做 Narrative Tool、AgentRun 语义、contracts 收口和前端 Chat/Work 切换。
+1. 给 Session/Turn Schema 增加明确的 `execution_profile`、`narrative_policy` 与触发来源字段，并迁移 Repository 类型；
+2. 将 Desktop 三模式选择器改为 Chat/Work 与 Narrative 二级策略，删除前端旧 Mode 映射；
+3. 让 Chat 作为受限 Profile 接入现有 TurnLoop，保留旧 ConversationEngine 为短期适配器；
+4. 接入 Work Profile 后删除重复循环、Core Engine 选择与旧 SQL Mode；
+5. 再做 Narrative Tool、AgentRun 语义和 contracts 收口。
 
 每批只改变一个主要业务边界。不要把 Turn 统一、数据库 Schema、全仓 ID 改名和前端切换塞进同一批。
 
@@ -78,8 +81,10 @@ Plan、Goal、Schedule、Workflow、Team 与 LLM 自动审批暂列 V1.5，不�
 - 全仓 typecheck 最近结果：84/84 通过。
 - `src/contracts` build 通过。
 - 旧产品 `packages/...` 路径审计为零。
+- 新 Turn 契约完成后，`@ema-agent/turn` build 通过；Agent、Core、Desktop UI typecheck 通过。
+- Agent 测试 32/32 通过，4 个 Live Integration 测试按既有规则跳过。
+- Core 测试 88/88 通过；Desktop UI 测试 128/128 通过。
 - `git diff --check` 通过，仅有仓库既有的 Windows CRLF 提示。
-- 本次文档收口没有重复运行全量测试；用户已允许依赖迁移批次的既有绿色验证。
 
 ## 工作规则
 
