@@ -157,25 +157,61 @@ export function ruleMatches(
 
 // ── Rule lookup helpers ───────────────────────────────────────────────────────
 
+/**
+ * Scope 优先级：global > project > session。
+ * 持久全局规则最权威，项目配置次之，Session 临时规则最低。
+ * 同一 action 的多条规则都匹配同一调用时，按此优先级返回确定的那条，
+ * 使审计能准确指出放行/拒绝来自哪一层，而不是依赖 rules 数组注入顺序。
+ */
+const SCOPE_PRIORITY: Record<RuleScope, number> = {
+  global:  0,
+  project: 1,
+  session: 2,
+};
+
+function compareScopePriority(left: PermissionRule, right: PermissionRule): number {
+  return SCOPE_PRIORITY[left.scope] - SCOPE_PRIORITY[right.scope];
+}
+
+/**
+ * 在同一 action 的规则里查找匹配项，按 scope 优先级返回最权威的那条。
+ * deny/ask/allow 各自的 Step 顺序仍由 PermissionEngine.gate() 保证，
+ * 这里只决定同 action 内多规则匹配时返回哪一条用于审计与决策归因。
+ */
+function findRuleByAction(
+  rules:       PermissionRule[],
+  action:      PermissionRule['action'],
+  toolName:    string,
+  targetPath:  string | undefined,
+  context:     Pick<PermissionContext, 'workspaceRoot' | 'sessionId'>,
+): PermissionRule | undefined {
+  const matched = rules.filter(
+    r => r.action === action && ruleMatches(r, toolName, targetPath, context),
+  );
+  if (matched.length === 0) return undefined;
+  matched.sort(compareScopePriority);
+  return matched[0];
+}
+
 export function findDenyRule(
   rules: PermissionRule[], toolName: string, targetPath: string | undefined,
   context: Pick<PermissionContext, 'workspaceRoot' | 'sessionId'>,
 ): PermissionRule | undefined {
-  return rules.find(r => r.action === 'deny' && ruleMatches(r, toolName, targetPath, context));
+  return findRuleByAction(rules, 'deny', toolName, targetPath, context);
 }
 
 export function findAskRule(
   rules: PermissionRule[], toolName: string, targetPath: string | undefined,
   context: Pick<PermissionContext, 'workspaceRoot' | 'sessionId'>,
 ): PermissionRule | undefined {
-  return rules.find(r => r.action === 'ask' && ruleMatches(r, toolName, targetPath, context));
+  return findRuleByAction(rules, 'ask', toolName, targetPath, context);
 }
 
 export function findAllowRule(
   rules: PermissionRule[], toolName: string, targetPath: string | undefined,
   context: Pick<PermissionContext, 'workspaceRoot' | 'sessionId'>,
 ): PermissionRule | undefined {
-  return rules.find(r => r.action === 'allow' && ruleMatches(r, toolName, targetPath, context));
+  return findRuleByAction(rules, 'allow', toolName, targetPath, context);
 }
 
 // ── Rule persistence helper ───────────────────────────────────────────────────
