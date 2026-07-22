@@ -18,6 +18,8 @@ Context 的缓存链已经补齐请求尾部断点：最终模型请求的最后
 
 Compaction 已迁出旧三 Mode：摘要结构只由 `ExecutionProfile = chat | work` 决定，`NarrativePolicy` 随事件保留但不选择第三套模板。Macro 使用可丢弃的 `<analysis>` 草稿提升摘要质量，只把 `<summary>` 写入上下文；Safe Cut 已合并为按 `toolUseId` 检查整段 tail 的单一算法，支持工具消息之间插入附件，同时阻止孤立 `tool_result`。
 
+Prompt/Context 的 V1 目录边界已经规范化：`contextSnapshot.ts` 独立拥有单次模型调用的不可变输入、输出与缓存诊断，`types.ts` 只保留 Contribution 和压缩协作契约；`slots.ts` 独立拥有 Slot 身份、顺序、稳定范围、投递方式与信任级别。Context Contribution 公共请求已移除 `TurnMode`，直接使用 `ExecutionProfile + NarrativePolicy`；Memory 公开召回入口接收新契约，旧检索分区的临时映射收回 Memory 内部。
+
 统一 Turn 主线的前三刀已经完成：公网请求使用 `trigger + executionProfile + narrativePolicy`；Agent 内部循环已改名为通用 `turnLoop`；Session/Turn SQL 显式保存触发来源、执行 Profile 与 Narrative 策略；Desktop 顶层选择器只显示 Chat/Work，Narrative 改为 `auto/always/off` 二级策略。Session REST、发送队列、`turn_started` SSE 与历史展示均直接使用新契约，不再经过旧 Mode 映射。旧 `chat/narrative/agent` 只留在尚未统一的 Engine、Hook、Memory 输入和少量内部兼容投影。
 
 Provider 配置也已完成旧列清理：顶层 `base_url`、`config_json`、`capabilities_json` 被物理删除，地址、协议和能力开关只保存在 `provider_capability_configs`。Session/Turn 无业务读取的 `meta_json` 同步删除；Message、MCP、Artifact 等仍有明确用途的 JSON 未动。
@@ -36,14 +38,13 @@ Provider 配置也已完成旧列清理：顶层 `base_url`、`config_json`、`c
 
 本轮已知未提交修改：
 
-- `src/prompts`：删除旧三 Mode 兼容入口，改为 `promptBuilder + promptAssembler + executionProfilePrompt`；
-- `src/skills`：Skill Catalog 改为按 Work Profile 提供 Prompt Contribution；
-- `apps/core`：Prompt 构建直接传入 Turn 的 Profile 与 NarrativePolicy，不再把工作区路径写进 System Prompt；
-- `pnpm-lock.yaml`：刷新 Prompt/Skills 的 Workspace 依赖；
-- `EmaClaudeArchitectureReview.md`：由其他 Agent 修改，本批未触碰；
-- `src/ui/vite.config.ts.timestamp-*.mjs`：无关未跟踪临时文件，本批未触碰。
+- `src/context`：新增 `contextSnapshot.ts`，快照契约从 `types.ts` 独立；Context Contribution 请求移除旧 `TurnMode`；
+- `src/prompts`：新增 `slots.ts`，Slot 注册策略从装配算法独立；
+- `src/agent`、`src/conversation`：Contribution 调用直接传递 Turn 的 `ExecutionProfile + NarrativePolicy`；
+- `src/memory`：公开召回入口接收新 Context 请求，旧检索 Mode 映射暂时收回 Memory 内部；
+- `EmaRefactor.md` 与两个模块 README：同步最终 V1 目录边界，不建立空的 profiles/serializers/restore 目录。
 
-当前基线最近提交：`ab28f07 feat: add tests for ToolRegistry and tool execution context`。该提交号仅用于定位，不代表其他 Agent 不会继续提交。
+当前基线最近提交：`3fb24f9 feat: enhance context compaction with execution profiles and narrative policies`。该提交号仅用于定位，不代表其他 Agent 不会继续提交。
 
 ## 已确定的 V1 口径
 
@@ -102,6 +103,7 @@ Plan、Goal、Schedule、Workflow、Team 与 LLM 自动审批暂列 V1.5，不�
 - Prompt 分层请求：Prompt 6/6、Context 21/21、LLM 126/126、Skills 23/23、Agent 32/32、Conversation 7/7、Core 88/88 通过；Agent 4 个 Live Integration 按既有规则跳过。
 - Context 请求尾缓存断点：Context 21/21、LLM 127/127 通过，两个模块 typecheck 通过。
 - Compaction 新语义与 Safe Cut：Context 23/23、Memory 20/20 通过；Turn、Context、Memory、Core、Agent、Conversation typecheck 通过。
+- Prompt/Context V1 目录规范：Prompt 6/6、Context 23/23、Memory 20/20 通过；Prompt、Context、Memory、Agent、Conversation、Core typecheck 通过。
 - `git diff --check` 通过，仅有仓库既有的 Windows CRLF 提示。
 
 ## 工作规则

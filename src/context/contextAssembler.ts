@@ -4,10 +4,9 @@ import type { ToolManifestEntry } from '@ema-agent/tools';
 import { ContextAssemblyError } from './errors.js';
 import type {
   ContextAssemblyInput,
-  ContextHistoryCompactor,
-  ContextContribution,
   ModelContextSnapshot,
-} from './types.js';
+} from './contextSnapshot.js';
+import type { ContextContribution, ContextHistoryCompactor } from './types.js';
 import { computePromptPrefixHash } from './promptPrefix.js';
 import { renderRuntimeEnvironment } from './runtimeEnvironment.js';
 

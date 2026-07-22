@@ -2,6 +2,8 @@
 
 Context 负责把持久化历史、当前输入、Prompt 与 Tool Manifest 组织成模型可见上下文。它决定哪些内容进入请求、历史媒体怎样降级以及缓存前缀在哪里结束，但不调用 Provider API，也不保存通用记忆。
 
+`contextSnapshot.ts` 集中定义单次模型调用的不可变输入、输出和缓存诊断；`types.ts` 保留 Context Contribution 与压缩协作契约，避免快照身份继续散落在通用类型文件中。
+
 ```text
 Session Message
     ↓ messageBuilder

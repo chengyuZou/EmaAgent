@@ -221,7 +221,8 @@ async function* runTurn(
         input.prepareContextContributions!({
           sessionId: input.sessionId,
           turnId,
-          mode,
+          executionProfile: turn.executionProfile,
+          narrativePolicy: turn.narrativePolicy,
           userInput: input.userInput,
           signal,
           emit,

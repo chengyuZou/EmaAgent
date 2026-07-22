@@ -209,7 +209,8 @@ async function* runTurn(
       const prepared = await input.prepareContextContributions({
         sessionId,
         turnId,
-        mode: 'agent',
+        executionProfile: turn.executionProfile,
+        narrativePolicy: turn.narrativePolicy,
         userInput: readableUserInput(userInput),
         signal,
         emit: emitHookEvent,

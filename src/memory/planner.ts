@@ -1,5 +1,6 @@
 // 组织通用记忆的检索、写入和上下文压缩，并通过 Memory Facade 暴露给编排层。
 import type { SessionId, TurnId, TurnMode } from '@ema-agent/contracts';
+import type { ContextContributionRequest } from '@ema-agent/context';
 import { estimateTextTokens } from '@ema-agent/token';
 import type { MemoryDeps } from './deps.js';
 import type {
@@ -109,7 +110,7 @@ export class MemoryPlanner {
   // ── LLM recall view ─────────────────────────────────────────────────────────
 
   /** 检索并渲染当前 Turn 的临时记忆贡献，不读取或改写模型消息数组。 */
-  async prepareRecallContribution(args: PlanContext): Promise<MemoryRecallView> {
+  async prepareRecallContribution(args: ContextContributionRequest): Promise<MemoryRecallView> {
     if (!this.settings.enabled) {
       return {
         contribution: null,
@@ -121,7 +122,7 @@ export class MemoryPlanner {
     const bundle = await this.plan({
       sessionId: args.sessionId,
       turnId:    args.turnId,
-      mode:      args.mode,
+      mode:      legacyRecallMode(args.executionProfile, args.narrativePolicy),
       userInput: args.userInput,
       signal:    args.signal,
       emit:      args.emit,
@@ -220,4 +221,13 @@ export class MemoryPlanner {
 
   runStartupRecovery(): RecoveryReport { return doStartupRecovery(this.deps, this.embed); }
 
+}
+
+/** Memory 内部完成新 Profile 到旧检索分区的兼容投影，调用方不再传递 TurnMode。 */
+function legacyRecallMode(
+  executionProfile: ContextContributionRequest['executionProfile'],
+  narrativePolicy: ContextContributionRequest['narrativePolicy'],
+): TurnMode {
+  if (executionProfile === 'work') return 'agent';
+  return narrativePolicy === 'always' ? 'narrative' : 'chat';
 }

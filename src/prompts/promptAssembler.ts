@@ -6,42 +6,10 @@ import type {
   PromptSlot,
   PromptBlock,
   PromptSlotContribution,
-  PromptSlotId,
   PromptStabilityScope,
   PromptSnapshot,
 } from './types.js';
-
-type PromptSlotSpec = Pick<
-  PromptSlot,
-  'kind' | 'order' | 'stabilityScope' | 'delivery' | 'trust'
->;
-
-const SLOT_SPECS: Readonly<Record<PromptSlotId, PromptSlotSpec>> = Object.freeze({
-  'product.rules': Object.freeze({
-    kind: 'rules', order: 10, stabilityScope: 'product', delivery: 'system', trust: 'product',
-  }),
-  'product.toolGuidance': Object.freeze({
-    kind: 'guidance', order: 20, stabilityScope: 'product', delivery: 'system', trust: 'product',
-  }),
-  'extension.skillCatalog': Object.freeze({
-    kind: 'extension', order: 40, stabilityScope: 'turn', delivery: 'context', trust: 'extension',
-  }),
-  'character.identity': Object.freeze({
-    kind: 'identity', order: 60, stabilityScope: 'activeCharacter', delivery: 'system', trust: 'user-configured',
-  }),
-  'character.presentation': Object.freeze({
-    kind: 'presentation', order: 70, stabilityScope: 'activeCharacter', delivery: 'system', trust: 'user-configured',
-  }),
-  'profile.execution': Object.freeze({
-    kind: 'execution', order: 80, stabilityScope: 'turn', delivery: 'system', trust: 'product',
-  }),
-});
-
-const STABILITY_ORDER: readonly PromptStabilityScope[] = [
-  'product',
-  'activeCharacter',
-  'turn',
-];
+import { PROMPT_SLOT_SPECS, PROMPT_STABILITY_ORDER } from './slots.js';
 
 export class PromptAssembler {
   build(input: readonly PromptSlotContribution[]): PromptSnapshot {
@@ -75,7 +43,7 @@ function buildBlocks(
   slots: readonly PromptSlot[],
   delivery: PromptSlot['delivery'],
 ): readonly PromptBlock[] {
-  const blocks = STABILITY_ORDER.flatMap((stabilityScope) => {
+  const blocks = PROMPT_STABILITY_ORDER.flatMap((stabilityScope) => {
     const selected = slots.filter(
       (slot) => slot.delivery === delivery && slot.stabilityScope === stabilityScope,
     );
@@ -92,7 +60,7 @@ function buildBlocks(
 }
 
 function copyAndValidateSlot(contribution: PromptSlotContribution): PromptSlot {
-  const spec = SLOT_SPECS[contribution.id];
+  const spec = PROMPT_SLOT_SPECS[contribution.id];
   if (!spec) {
     throw new PromptAssemblyError(
       'prompt/invalid-slot',

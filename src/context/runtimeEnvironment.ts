@@ -1,6 +1,6 @@
 // 把本轮模型可见的工作区、平台、日期和模型身份冻结为运行时环境快照。
 
-import type { RuntimeEnvironmentSnapshot } from './types.js';
+import type { RuntimeEnvironmentSnapshot } from './contextSnapshot.js';
 
 export interface RuntimeEnvironmentBuildRequest {
   readonly providerId: string;

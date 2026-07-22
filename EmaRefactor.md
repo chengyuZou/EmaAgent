@@ -265,16 +265,22 @@ Profile 与运行环境
 context/
 ├─ contextAssembler.ts       Prompt Slot + messages + tool results 的唯一组装入口
 ├─ contextSnapshot.ts        本次组装输入、版本身份与可回放快照
-├─ normalization.ts          Tool call/result 配对、多模态兼容
-├─ tokenBudget.ts            预算与可信 usage
-├─ toolResultPolicy.ts       截断、外置和摘要
+├─ messageBuilder.ts         Session Message 到模型消息的安全投影
+├─ messageCompatibility.ts   历史媒体降级与本轮能力校验
+├─ runtimeEnvironment.ts     日期、平台、工作区与模型身份快照
+├─ promptPrefix.ts           稳定前缀与缓存诊断
+├─ types.ts                  Context Contribution 与压缩协作契约
 └─ compaction/
-   ├─ service.ts
-   ├─ strategy.ts
-   ├─ prompt.ts
+   ├─ budget.ts
+   ├─ safeCut.ts
    ├─ sanitize.ts
-   └─ restore.ts
+   ├─ microCompaction.ts
+   ├─ macroCompaction.ts
+   ├─ compactionPrompts.ts
+   └─ postCompactionRestore.ts
 ```
+
+V1 不为单一实现预建 `profiles/`、`serializers/` 或 `restore/` 空目录。Prompt 的协议序列化属于 LLM Adapter；只有同一职责出现多个独立实现时才升级为子目录。
 
 ### 5.2 Compaction 从 Memory 移出
 

@@ -4,16 +4,18 @@ export { ContextAssemblyError } from './errors.js';
 export type { ContextAssemblyErrorCode } from './errors.js';
 export type {
   ContextAssemblyInput,
+  ContextCacheDiagnostics,
+  ModelContextSnapshot,
+  RuntimeEnvironmentSnapshot,
+} from './contextSnapshot.js';
+export type {
   ContextCompactionView,
   ContextContribution,
   ContextContributionProvider,
   ContextContributionRequest,
   ContextContributionPlacement,
   ContextContributionSource,
-  ContextCacheDiagnostics,
   ContextHistoryCompactor,
-  ModelContextSnapshot,
-  RuntimeEnvironmentSnapshot,
 } from './types.js';
 export { computePromptPrefixHash, normalizeToolDefinitions } from './promptPrefix.js';
 export {

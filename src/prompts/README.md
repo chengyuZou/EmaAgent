@@ -25,6 +25,7 @@ Product Rules       Global Active Character        Turn Profile
 
 - `promptBuilder.ts`：收集产品、角色、Chat/Work、NarrativePolicy 与扩展贡献。
 - `promptAssembler.ts`：校验 Slot、按 product/activeCharacter/turn 分层，冻结快照并计算分层 revision。
+- `slots.ts`：集中声明 Slot 身份、顺序、稳定范围、投递方式和信任级别。
 - `productPrompt.ts`：Ema 固定行为与通用工具原则。
 - `executionProfilePrompt.ts`：Chat/Work 和 NarrativePolicy 的行为说明，不承担真实权限判断。
 - `types.ts`：Prompt Slot、Contribution、Snapshot 与 BuildRequest。
