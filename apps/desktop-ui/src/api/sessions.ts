@@ -1,19 +1,17 @@
 /**
  * Sessions API — session CRUD + message loading.
  *
- * Wire types live in @ema-agent/contracts (single source of truth shared with
- * apps/core routes). Re-exported here so existing consumers keep working.
- *
- * BranchWire is local to this layer (not in contracts) — it's only consumed by
- * the desktop-ui BranchPanel and has no cross-package users.
+ * Wire types由 @ema-agent/session 统一定义，Core 与 Desktop 不各自复制。
+ * 本模块继续转出类型，保持 Desktop 内部调用入口稳定。
  */
 import { sidecarClient } from './sidecar-client.js';
 import type {
   SessionId,
   TurnId,
   BranchId,
-  TurnMode,
-  TurnStatus,
+  SessionAttachmentsResult,
+} from '@ema-agent/contracts';
+import type {
   SessionWire,
   MessageWire,
   TurnWire,
@@ -23,40 +21,16 @@ import type {
   SessionsSearchResult,
   SessionSearchItem,
   ForkResult,
-  SessionAttachmentsResult,
-} from '@ema-agent/contracts';
-
-// ── Branch wire types (session-layer only, not in contracts) ─────────────────
-
-export interface BranchNodeWire {
-  branchId:       BranchId;
-  parentBranchId: BranchId | null;
-  forkFromTurnId: TurnId   | null;
-  /** First ≤30 chars of the user query at the fork point. */
-  forkUserInput:  string;
-  forkTurnMode:   TurnMode | null;
-  isActive:       boolean;
-  createdAt:      number;
-}
-
-export interface TurnTreeNodeWire {
-  id:        TurnId;
-  branchId:  BranchId | null;
-  startedAt: number;
-  mode:      TurnMode;
-  userInput: string;
-  status:    TurnStatus;
-}
-
-export interface BranchTreeWire {
-  sessionActiveBranchId: BranchId | null;
-  branches:              BranchNodeWire[];
-  turns:                 TurnTreeNodeWire[];
-}
+  BranchNodeWire,
+  TurnTreeNodeWire,
+  BranchTreeWire,
+} from '@ema-agent/session';
+import type { ExecutionProfile, NarrativePolicy } from '@ema-agent/turn';
 
 export type {
   SessionWire, MessageWire, TurnWire, SessionMessagesResult,
   SessionsListResult, SessionsGroupedResult, SessionsSearchResult, SessionSearchItem, ForkResult,
+  BranchNodeWire, TurnTreeNodeWire, BranchTreeWire,
 };
 
 // ── API object ────────────────────────────────────────────────────────────────
@@ -100,7 +74,8 @@ export const sessionsApi = {
       pinned?: boolean;
       groupLabel?: string | null;
       workspaceRoot?: string | null;
-      lastMode?: TurnMode | null;
+      executionProfile?: ExecutionProfile;
+      narrativePolicy?: NarrativePolicy;
       /** 用户希望该 Session 下一轮使用的模型；null 表示恢复系统默认选择。 */
       preferredModel?: {
         providerConfigId: string;

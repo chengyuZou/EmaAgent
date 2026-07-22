@@ -21,9 +21,6 @@ export function ChatHistory(): JSX.Element {
   const stopReason = useConversationStore((s) =>
     viewedId ? s.stopReasonMap.get(viewedId as string) ?? null : null,
   );
-  const streamingMode = useConversationStore((s) =>
-    viewedId ? s.streamingMap.get(viewedId as string)?.mode : undefined,
-  );
 
   useEffect(() => {
     if (!viewedId) return;
@@ -78,7 +75,14 @@ export function ChatHistory(): JSX.Element {
 
           {streaming && (
             <AssistantBubble
-              message={{ content: streaming.content, slices: streaming.slices, createdAt: streaming.startedAt, turnId: streaming.turnId, mode: streamingMode }}
+              message={{
+                content: streaming.content,
+                slices: streaming.slices,
+                createdAt: streaming.startedAt,
+                turnId: streaming.turnId,
+                executionProfile: streaming.executionProfile,
+                narrativePolicy: streaming.narrativePolicy,
+              }}
               isStreaming
             />
           )}

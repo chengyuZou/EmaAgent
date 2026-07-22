@@ -62,7 +62,7 @@ async function collectSse(frames: string[]): Promise<{
 describe('createSseConsumer', () => {
   it('解析跨 chunk 的多个事件并返回 EOF', async () => {
     const result = await collectSse([
-      'data: {"type":"turn_started","turnId":"t1","mode":"chat"}',
+      'data: {"type":"turn_started","turnId":"t1","executionProfile":"chat","narrativePolicy":"auto"}',
       'data: {"type":"output_text_delta","blockIndex":0,"delta":"Hello"}',
       'data: {"type":"turn_completed","turnId":"t1","usage":{"inputTokens":10,"outputTokens":5,"durationMs":100}}',
     ]);
@@ -87,7 +87,7 @@ describe('createSseConsumer', () => {
   it('心跳只刷新连接，不进入业务事件', async () => {
     const result = await collectSse([
       'event: heartbeat\ndata: {}',
-      'data: {"type":"turn_started","turnId":"t1","mode":"chat"}',
+      'data: {"type":"turn_started","turnId":"t1","executionProfile":"chat","narrativePolicy":"auto"}',
       'event: heartbeat\ndata: {}',
     ]);
 
@@ -98,7 +98,7 @@ describe('createSseConsumer', () => {
   it('协议帧缺少 type 时立即终止连接', async () => {
     const result = await collectSse([
       'data: {"noType":true}',
-      'data: {"type":"turn_started","turnId":"t1","mode":"chat"}',
+      'data: {"type":"turn_started","turnId":"t1","executionProfile":"chat","narrativePolicy":"auto"}',
     ]);
 
     expect(result.events).toHaveLength(0);
@@ -109,7 +109,7 @@ describe('createSseConsumer', () => {
     const handle = createSseConsumer().start({
       requireEventId: true,
       openResponse: async () => mockSseResponse([
-        'data: {"type":"turn_started","turnId":"t1","mode":"chat"}',
+        'data: {"type":"turn_started","turnId":"t1","executionProfile":"chat","narrativePolicy":"auto"}',
       ]),
       onEvent() {},
     });
@@ -160,7 +160,7 @@ describe('createSseConsumer', () => {
   it('业务事件处理异常会关闭旧连接', async () => {
     const handle = createSseConsumer().start({
       openResponse: async () => mockSseResponse([
-        'data: {"type":"turn_started","turnId":"t1","mode":"chat"}',
+        'data: {"type":"turn_started","turnId":"t1","executionProfile":"chat","narrativePolicy":"auto"}',
       ]),
       onEvent() {
         throw new Error('store rejected event');

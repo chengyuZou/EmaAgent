@@ -3,7 +3,8 @@ import { create } from 'zustand';
 import { sessionsApi, type SessionWire } from '../api/sessions.js';
 import { useConversationStore } from './conversation-store.js';
 import { useDecisionStore } from './decision-store.js';
-import type { SessionId, TurnMode } from '@ema-agent/contracts';
+import type { SessionId } from '@ema-agent/contracts';
+import type { ExecutionProfile, NarrativePolicy } from '@ema-agent/turn';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -17,7 +18,6 @@ export interface SessionsState {
 
 export interface SessionStoreState {
   sessions:     SessionsState;
-  sessionModes: Map<string, { mode: TurnMode }>;
   loading:      boolean;
   error:        string | null;
 
@@ -27,7 +27,13 @@ export interface SessionStoreState {
   pinSession(id: SessionId, pinned: boolean):                        Promise<void>;
   setSessionGroup(id: SessionId, label: string | null):              Promise<void>;
   setWorkspaceRoot(id: SessionId, path: string | null):              Promise<void>;
-  setSessionMode(id: SessionId, mode: TurnMode): Promise<void>;
+  setExecutionSettings(
+    id: SessionId,
+    patch: {
+      executionProfile?: ExecutionProfile;
+      narrativePolicy?: NarrativePolicy;
+    },
+  ): Promise<void>;
   /** 保存用户希望该 Session 下一轮使用的供应商配置和模型。 */
   setPreferredModel(
     id: SessionId,
@@ -77,12 +83,13 @@ function replaceSession(
 // 同一 Session 的偏好写入必须按用户点击顺序落库，旧响应也不能覆盖新选择。
 const preferredModelWriteChains = new Map<string, Promise<void>>();
 const preferredModelGenerations = new Map<string, number>();
+const executionSettingsWriteChains = new Map<string, Promise<void>>();
+const executionSettingsGenerations = new Map<string, number>();
 
 // ── Store ─────────────────────────────────────────────────────────────────────
 
 export const useSessionStore = create<SessionStoreState>((set, get) => ({
   sessions:     emptySessions(),
-  sessionModes: new Map(),
   loading:      false,
   error:        null,
 
@@ -157,22 +164,65 @@ export const useSessionStore = create<SessionStoreState>((set, get) => ({
     }
   },
 
-  async setSessionMode(id, mode) {
-    set((s) => ({
-      sessionModes: new Map(s.sessionModes).set(id as string, { mode }),
+  async setExecutionSettings(id, patch) {
+    const key = id as string;
+    const previous = get().sessions.byId.get(key);
+    if (!previous) throw new Error(`Session not loaded: ${key}`);
+
+    const generation = (executionSettingsGenerations.get(key) ?? 0) + 1;
+    executionSettingsGenerations.set(key, generation);
+    const optimistic: SessionWire = {
+      ...previous,
+      executionProfile: patch.executionProfile ?? previous.executionProfile,
+      narrativePolicy: patch.narrativePolicy ?? previous.narrativePolicy,
+    };
+    set((state) => ({
+      sessions: replaceSession(state.sessions, key, optimistic),
+      error: null,
     }));
-    try {
-      await sessionsApi.patch(id, { lastMode: mode });
-      set((s) => {
-        const existing = s.sessions.byId.get(id as string);
-        if (!existing) return {};
-        const byId = new Map(s.sessions.byId);
-        byId.set(id as string, { ...existing, lastMode: mode });
-        return { sessions: { ...s.sessions, byId } };
+
+    const previousWrite = executionSettingsWriteChains.get(key) ?? Promise.resolve();
+    let currentWrite!: Promise<void>;
+    currentWrite = previousWrite
+      .catch(() => {})
+      .then(async () => {
+        const updated = await sessionsApi.patch(id, patch);
+        if (executionSettingsGenerations.get(key) !== generation) return;
+        set((state) => {
+          const current = state.sessions.byId.get(key);
+          if (!current) return {};
+          return {
+            sessions: replaceSession(state.sessions, key, {
+              ...current,
+              executionProfile: updated.executionProfile,
+              narrativePolicy: updated.narrativePolicy,
+            }),
+          };
+        });
+      })
+      .catch((error: unknown) => {
+        if (executionSettingsGenerations.get(key) !== generation) return;
+        set((state) => {
+          const current = state.sessions.byId.get(key);
+          if (!current) return {};
+          return {
+            sessions: replaceSession(state.sessions, key, {
+              ...current,
+              executionProfile: previous.executionProfile,
+              narrativePolicy: previous.narrativePolicy,
+            }),
+            error: error instanceof Error ? error.message : '保存执行设置失败',
+          };
+        });
+        throw error;
+      })
+      .finally(() => {
+        if (executionSettingsWriteChains.get(key) === currentWrite) {
+          executionSettingsWriteChains.delete(key);
+        }
       });
-    } catch {
-      // mode preference is not critical — silent failure is fine
-    }
+    executionSettingsWriteChains.set(key, currentWrite);
+    return currentWrite;
   },
 
   async setPreferredModel(id, preferredModel) {
@@ -199,17 +249,33 @@ export const useSessionStore = create<SessionStoreState>((set, get) => ({
       .then(async () => {
         const updated = await sessionsApi.patch(id, { preferredModel });
         if (preferredModelGenerations.get(key) !== generation) return;
-        set((state) => ({
-          sessions: replaceSession(state.sessions, key, updated),
-        }));
+        set((state) => {
+          const current = state.sessions.byId.get(key);
+          if (!current) return {};
+          return {
+            sessions: replaceSession(state.sessions, key, {
+              ...current,
+              preferredProviderConfigId: updated.preferredProviderConfigId,
+              preferredModelId: updated.preferredModelId,
+            }),
+          };
+        });
       })
       .catch((error: unknown) => {
         // 已有更新选择时，旧请求失败不能回滚或向当前 UI 报错。
         if (preferredModelGenerations.get(key) !== generation) return;
-        set((state) => ({
-          sessions: replaceSession(state.sessions, key, previous),
-          error: error instanceof Error ? error.message : '保存 Session 模型失败',
-        }));
+        set((state) => {
+          const current = state.sessions.byId.get(key);
+          if (!current) return {};
+          return {
+            sessions: replaceSession(state.sessions, key, {
+              ...current,
+              preferredProviderConfigId: previous.preferredProviderConfigId,
+              preferredModelId: previous.preferredModelId,
+            }),
+            error: error instanceof Error ? error.message : '保存 Session 模型失败',
+          };
+        });
         throw error;
       })
       .finally(() => {
@@ -260,6 +326,8 @@ export const useSessionStore = create<SessionStoreState>((set, get) => ({
       useDecisionStore.getState().clearSession(id);
       preferredModelWriteChains.delete(id as string);
       preferredModelGenerations.delete(id as string);
+      executionSettingsWriteChains.delete(id as string);
+      executionSettingsGenerations.delete(id as string);
       await get().loadSessions();
     } catch (err: unknown) {
       set({ error: err instanceof Error ? err.message : 'Failed to delete session' });

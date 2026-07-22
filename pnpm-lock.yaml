@@ -288,6 +288,9 @@ importers:
       '@ema-agent/provider':
         specifier: workspace:*
         version: link:../../src/providers
+      '@ema-agent/session':
+        specifier: workspace:*
+        version: link:../../src/session
       '@ema-agent/skills':
         specifier: workspace:*
         version: link:../../src/skills

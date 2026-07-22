@@ -19,7 +19,6 @@ function tree(activeForkFromTurnId: string | null): BranchTreeWire {
       parentBranchId: null,
       forkFromTurnId: activeForkFromTurnId as TurnId | null,
       forkUserInput: '',
-      forkTurnMode: null,
       isActive: true,
       createdAt: 1,
     }],

@@ -153,4 +153,4 @@ export interface TurnAttachment {
 
 // ── HTTP API 响应格式 ─────────────────────────────────────────────────────────
 
-// MessageWire 已移至 wire.ts —— 所有 REST wire 类型统一放在那里。
+// Message 的 REST 投影由 Session 模块定义，避免 contracts 持有业务协议。

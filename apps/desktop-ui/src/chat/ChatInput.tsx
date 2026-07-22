@@ -6,7 +6,7 @@ import { useConversationStore } from '../stores/conversation-store.js';
 import { useSessionStore } from '../stores/session-store.js';
 import { useUiStore } from '../stores/ui-store.js';
 import { useSidecarStore } from '../stores/sidecar-store.js';
-import { ModeSelector } from './ModeSelector.js';
+import { ExecutionProfileSelector } from './ExecutionProfileSelector.js';
 import { DecisionLayer } from '../decision/DecisionLayer.js';
 import { ModelPicker, type ModelSelection } from './ModelPicker.js';
 import { findEnabledModel, useModelCatalogStore } from '../stores/model-catalog-store.js';
@@ -14,7 +14,6 @@ import { AttachmentChip } from './AttachmentChip.js';
 import { showToast } from '../lib/toast.js';
 import { tauriBridge, type AuthorizedFile } from '../lib/tauri-bridge.js';
 import type { AttachmentInputWire } from '../api/turns.js';
-import type { TurnMode } from '@ema-agent/contracts';
 import { WorkspacePicker } from './WorkspacePicker.js';
 
 // ── Attachment helpers ────────────────────────────────────────────────────────
@@ -132,10 +131,8 @@ export function ChatInput(): JSX.Element {
     el.style.height = `${Math.min(el.scrollHeight, TEXTAREA_MAX_H)}px`;
   }, [text]);
 
-  const sessionMode = useSessionStore((s) =>
-    viewedId ? s.sessionModes.get(viewedId as string) : undefined,
-  );
-  const mode = sessionMode?.mode ?? 'chat';
+  const executionProfile = viewedSession?.executionProfile ?? 'chat';
+  const narrativePolicy = viewedSession?.narrativePolicy ?? 'auto';
 
   const hasAnyStreaming  = useConversationStore((s) => s.streamingMap.size > 0);
   const isStreamingHere = useConversationStore((s) =>
@@ -204,16 +201,17 @@ export function ChatInput(): JSX.Element {
 
     try {
       await useConversationStore.getState().sendMessage(viewedId, {
-        mode,
+        executionProfile,
+        narrativePolicy,
         text: submittedText.trim(),
         attachments: submittedAttachments.length > 0 ? submittedAttachments : undefined,
         providerId:      selectedModel?.providerId,
         model:           selectedModel?.model,
         ttsEnabled,
         thinkingEnabled: thinkingEnabled || undefined,
-        // KB scope applies to agent mode only. Selection persists across sends.
+        // KB scope applies to Work only. Selection persists across sends.
         ...(() => {
-          if (mode !== 'agent' || selectedScopes.size === 0) return {};
+          if (executionProfile !== 'work' || selectedScopes.size === 0) return {};
           const scopes = [...selectedScopes.entries()]
             .filter(([, ids]) => ids.length > 0)
             .map(([kbId, assetIds]) => ({ kbId, assetIds }));
@@ -245,7 +243,8 @@ export function ChatInput(): JSX.Element {
     }
   }, [
     canSend,
-    mode,
+    executionProfile,
+    narrativePolicy,
     text,
     pendingAttachments,
     selectedModel,
@@ -379,7 +378,7 @@ export function ChatInput(): JSX.Element {
             </div>
 
             <KbButton
-              visible={mode === 'agent'}
+              visible={executionProfile === 'work'}
               selectedScopes={selectedScopes}
               onScopesChange={setSelectedScopes}
             />
@@ -436,10 +435,30 @@ export function ChatInput(): JSX.Element {
               </div>
             )}
 
-            <ModeSelector
-              mode={mode}
-              onModeChange={(m) => {
-                if (viewedId) void useSessionStore.getState().setSessionMode(viewedId, m as TurnMode);
+            <ExecutionProfileSelector
+              executionProfile={executionProfile}
+              narrativePolicy={narrativePolicy}
+              onExecutionProfileChange={(profile) => {
+                if (!viewedId) return;
+                void useSessionStore.getState()
+                  .setExecutionSettings(viewedId, { executionProfile: profile })
+                  .catch((error: unknown) => {
+                    showToast(
+                      error instanceof Error ? `保存模式失败: ${error.message}` : '保存模式失败',
+                      { variant: 'danger' },
+                    );
+                  });
+              }}
+              onNarrativePolicyChange={(policy) => {
+                if (!viewedId) return;
+                void useSessionStore.getState()
+                  .setExecutionSettings(viewedId, { narrativePolicy: policy })
+                  .catch((error: unknown) => {
+                    showToast(
+                      error instanceof Error ? `保存剧情策略失败: ${error.message}` : '保存剧情策略失败',
+                      { variant: 'danger' },
+                    );
+                  });
               }}
             />
           </div>
@@ -457,8 +476,8 @@ export function ChatInput(): JSX.Element {
 }
 
 // ── KbButton ──────────────────────────────────────────────────────────────────
-// Agent-mode knowledge-base picker: select uploaded documents to scope kb_search.
-// Appears/disappears with the agent mode toggle (ema-scale-in / ema-fade-out,
+// Work Profile knowledge-base picker: select uploaded documents to scope kb_search.
+// Appears/disappears with the Work toggle (ema-scale-in / ema-fade-out,
 // delayed unmount so the exit keyframe plays). The panel is a Radix Popover
 // (ema-anim-scale → both enter and exit animate, from style.css).
 

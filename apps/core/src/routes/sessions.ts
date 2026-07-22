@@ -3,15 +3,18 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { asSessionId, asTurnId, asBranchId, SessionOwnershipError } from '@ema-agent/contracts';
 import type {
-  SessionWire,
-  SessionMessagesResult,
   SessionAttachmentsResult,
-  SessionsListResult,
-  SessionsGroupedResult,
-  SessionsSearchResult,
   MessageBlocks,
   TurnAttachment,
 } from '@ema-agent/contracts';
+import type {
+  SessionWire,
+  SessionMessagesResult,
+  SessionsListResult,
+  SessionsGroupedResult,
+  SessionsSearchResult,
+  BranchTreeWire,
+} from '@ema-agent/session';
 import type { AppBindings } from '../wiring/index.js';
 import { removeTurnFiles } from '../storage-locations/index.js';
 
@@ -43,22 +46,14 @@ const patchSessionSchema = z.object({
   pinned:         z.boolean().optional(),
   groupLabel:     z.string().max(100).nullable().optional(),
   workspaceRoot: z.string().max(500).nullable().optional(),
-  lastMode:       z.enum(['chat', 'narrative', 'agent']).nullable().optional(),
+  executionProfile: z.enum(['chat', 'work']).optional(),
+  narrativePolicy: z.enum(['auto', 'always', 'off']).optional(),
   /** 用户希望该 Session 下一轮使用的模型；null 表示恢复系统默认选择。 */
   preferredModel: z.object({
     providerConfigId: z.string().min(1).max(200),
     modelId: z.string().min(1).max(500),
   }).strict().nullable().optional(),
 });
-
-function executionSettingsForLegacyMode(
-  mode: 'chat' | 'narrative' | 'agent' | null,
-): { executionProfile: 'chat' | 'work'; narrativePolicy: 'auto' | 'always' | 'off' } {
-  if (mode === 'agent') return { executionProfile: 'work', narrativePolicy: 'off' };
-  if (mode === 'narrative') return { executionProfile: 'chat', narrativePolicy: 'always' };
-  if (mode === 'chat') return { executionProfile: 'chat', narrativePolicy: 'off' };
-  return { executionProfile: 'chat', narrativePolicy: 'auto' };
-}
 
 const forkSchema = z.object({
   untilTurnId: z.string().optional(),
@@ -184,15 +179,13 @@ export function sessionsRoute(bindings: AppBindings): Hono {
     }
 
     try {
-      const executionSettings = body.data.lastMode === undefined
-        ? {}
-        : executionSettingsForLegacyMode(body.data.lastMode);
       bindings.session.patchSession(sessionId, {
         title:          body.data.title,
         pinned:         body.data.pinned,
         groupLabel:     'groupLabel' in body.data ? body.data.groupLabel ?? null : undefined,
         workspaceRoot:  body.data.workspaceRoot,
-        ...executionSettings,
+        executionProfile: body.data.executionProfile,
+        narrativePolicy: body.data.narrativePolicy,
         preferredModel: body.data.preferredModel,
       });
       if (body.data.workspaceRoot !== undefined) {
@@ -380,12 +373,10 @@ export function sessionsRoute(bindings: AppBindings): Hono {
 
       const nodes = branches.map((b) => {
         let forkUserInput = '';
-        let forkTurnMode: string | null = null;
         if (b.forkFromTurnId) {
           const turn = bindings.session.getTurn(b.forkFromTurnId);
           if (turn) {
             forkUserInput = turn.userInput.slice(0, 30);
-            forkTurnMode  = turn.mode;
           }
         }
         return {
@@ -393,7 +384,6 @@ export function sessionsRoute(bindings: AppBindings): Hono {
           parentBranchId: b.parentBranchId,
           forkFromTurnId: b.forkFromTurnId,
           forkUserInput,
-          forkTurnMode,
           isActive: b.id === session.activeBranchId,
           createdAt: b.createdAt,
         };
@@ -405,12 +395,17 @@ export function sessionsRoute(bindings: AppBindings): Hono {
         id:        t.id,
         branchId:  t.branchId,
         startedAt: t.startedAt,
-        mode:      t.mode,
+        executionProfile: t.executionProfile,
+        narrativePolicy: t.narrativePolicy,
         userInput: t.userInput,
         status:    t.status,
       }));
 
-      return c.json({ sessionActiveBranchId: session.activeBranchId, branches: nodes, turns });
+      return c.json({
+        sessionActiveBranchId: session.activeBranchId,
+        branches: nodes,
+        turns,
+      } satisfies BranchTreeWire);
     } catch (err) {
       if (isNotFound(err)) return c.json({ error: 'session_not_found' }, 404);
       throw err;

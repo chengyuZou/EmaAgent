@@ -58,7 +58,6 @@ import type {
   SessionId,
   TurnId,
   BranchId,
-  TurnMode,
   MessageContentPart,
 } from '@ema-agent/contracts';
 import {
@@ -96,7 +95,8 @@ export type {
 
 interface SendInput {
   sessionId:     SessionId;
-  mode:          TurnMode;
+  executionProfile: ExecutionProfile;
+  narrativePolicy: NarrativePolicy;
   text?:         string;
   contentParts?: MessageContentPart[];
   attachments?:  AttachmentInputWire[];
@@ -112,21 +112,6 @@ interface QueuedSendInput extends SendInput {
   acceptance: TurnAcceptance<TurnCreatedResponse>;
 }
 
-/** 旧 Mode 选择器退役前的唯一前端映射；发送协议只使用 Profile 与 Policy。 */
-function executionSettingsForLegacyMode(mode: TurnMode): {
-  executionProfile: ExecutionProfile;
-  narrativePolicy: NarrativePolicy;
-} {
-  switch (mode) {
-    case 'chat':
-      return { executionProfile: 'chat', narrativePolicy: 'off' };
-    case 'narrative':
-      return { executionProfile: 'chat', narrativePolicy: 'always' };
-    case 'agent':
-      return { executionProfile: 'work', narrativePolicy: 'off' };
-  }
-}
-
 // ── Module-level per-session resources ────────────────────────────────────────
 
 const sseHandles         = new Map<string, { stop(): void }>();
@@ -140,11 +125,11 @@ function getOrCreateQueue(sessionId: SessionId): SendQueue<QueuedSendInput> {
 
   const queue = createSendQueue<QueuedSendInput>({
     async handler(input) {
-      const executionSettings = executionSettingsForLegacyMode(input.mode);
       const { turnId, sessionId: actualSessionId } = await turnsApi.create({
         sessionId:    input.sessionId as string,
         trigger:      { type: 'userMessage' },
-        ...executionSettings,
+        executionProfile: input.executionProfile,
+        narrativePolicy: input.narrativePolicy,
         userInput:    input.text,
         contentParts: input.contentParts,
         attachments:  input.attachments,
@@ -163,7 +148,9 @@ function getOrCreateQueue(sessionId: SessionId): SendQueue<QueuedSendInput> {
       }
 
       const callbacks: StreamCallbacks = {
-        beginStream: (sid, tid, mode) => useConversationStore.getState().beginStream(sid, tid, mode),
+        beginStream: (sid, tid, executionProfile, narrativePolicy) => useConversationStore
+          .getState()
+          .beginStream(sid, tid, executionProfile, narrativePolicy),
         appendDelta: (sid, slice, delta) => useConversationStore.getState().appendDelta(sid, slice, delta),
         finalizeStream: (sid, stats) => useConversationStore.getState().finalizeStream(sid, stats),
         abortStream: (sid, reason) => useConversationStore.getState().abortStream(sid, reason),
@@ -243,7 +230,12 @@ export interface ConversationStoreState {
   loadMessages(id: SessionId):                                               Promise<void>;
   evictSession(id: SessionId):                                               void;
 
-  beginStream(sessionId: SessionId, turnId: TurnId, mode?: TurnMode):        void;
+  beginStream(
+    sessionId: SessionId,
+    turnId: TurnId,
+    executionProfile?: ExecutionProfile,
+    narrativePolicy?: NarrativePolicy,
+  ): void;
   appendDelta(sessionId: SessionId, slice: DeltaSlice, delta: DeltaPayload): void;
   finalizeStream(sessionId: SessionId, stats: TurnStats | null):             void;
   abortStream(sessionId: SessionId, reason: string):                         void;
@@ -338,13 +330,6 @@ export const useConversationStore = create<ConversationStoreState>((set, get) =>
     void sessionsApi.markViewed(id)
       .then(() => useSessionStore.getState().loadSessions())
       .catch(() => {});
-
-    const session = useSessionStore.getState().sessions.byId.get(id as string);
-    if (session?.lastMode) {
-      useSessionStore.setState((s) => ({
-        sessionModes: new Map(s.sessionModes).set(id as string, { mode: session.lastMode! }),
-      }));
-    }
 
     await get().loadMessages(id);
     // 分支树属于辅助数据；失败状态已写入 Store，导航主流程仍可展示消息。
@@ -553,11 +538,12 @@ export const useConversationStore = create<ConversationStoreState>((set, get) =>
 
   // ── Stream lifecycle ─────────────────────────────────────────────────────
 
-  beginStream(sessionId, turnId, mode) {
+  beginStream(sessionId, turnId, executionProfile = 'chat', narrativePolicy = 'auto') {
     set((s) => {
       const streaming = new Map(s.streamingMap);
       streaming.set(sessionId as string, {
-        role: 'assistant', content: '', slices: [], startedAt: Date.now(), turnId, mode,
+        role: 'assistant', content: '', slices: [], startedAt: Date.now(), turnId,
+        executionProfile, narrativePolicy,
       });
       const stops    = new Map(s.stopReasonMap); stops.delete(sessionId as string);
       const iters    = new Map(s.iterationCountMap); iters.delete(sessionId as string);
@@ -631,7 +617,9 @@ export const useConversationStore = create<ConversationStoreState>((set, get) =>
 
       const historyItem = {
         role: 'assistant' as const, content: sm.content, slices: sm.slices,
-        createdAt: Date.now(), stats: stats ?? undefined, turnId: sm.turnId, mode: sm.mode,
+        createdAt: Date.now(), stats: stats ?? undefined, turnId: sm.turnId,
+        executionProfile: sm.executionProfile,
+        narrativePolicy: sm.narrativePolicy,
       };
       const msgs     = new Map(s.messages);
       const existing = msgs.get(sessionId as string) ?? [];
@@ -664,7 +652,9 @@ export const useConversationStore = create<ConversationStoreState>((set, get) =>
       if (sm && (sm.content.trim() || sm.slices.length > 0)) {
         const partial = {
           role: 'assistant' as const, content: sm.content, slices: sm.slices,
-          createdAt: sm.startedAt, turnId: sm.turnId, mode: sm.mode,
+          createdAt: sm.startedAt, turnId: sm.turnId,
+          executionProfile: sm.executionProfile,
+          narrativePolicy: sm.narrativePolicy,
         };
         const msgs     = new Map(s.messages);
         const existing = msgs.get(sessionId as string) ?? [];

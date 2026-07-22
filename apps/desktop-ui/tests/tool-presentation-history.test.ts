@@ -1,6 +1,6 @@
 // 这里测试刷新 Session 后，数据库里的真实文件 diff 仍会还原到对应的工具调用块。
 import { describe, expect, it } from 'vitest';
-import type { MessageWire } from '@ema-agent/contracts';
+import type { MessageWire } from '@ema-agent/session';
 import { assembleHistory } from '../src/stores/conversation-history.js';
 
 describe('tool presentation history', () => {

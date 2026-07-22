@@ -27,7 +27,12 @@ describe('startTurnSseLifecycle', () => {
         connection += 1;
         if (connection === 1) {
           queueMicrotask(() => options.onEvent(
-            { type: 'turn_started', turnId: 't1', mode: 'chat' } as EmaStreamEvent,
+            {
+              type: 'turn_started',
+              turnId: 't1',
+              executionProfile: 'chat',
+              narrativePolicy: 'auto',
+            } as EmaStreamEvent,
             7,
           ));
           return completedHandle({ kind: 'eof', lastEventId: 7 });

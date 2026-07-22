@@ -197,7 +197,7 @@ export { UserBubble }              from './chat/UserBubble.js';
 export { AssistantBubble }         from './chat/AssistantBubble.js';
 export { ToolCallBlock }           from './chat/ToolCallBlock.js';
 export { ChatInput }               from './chat/ChatInput.js';
-export { ModeSelector }            from './chat/ModeSelector.js';
+export { ExecutionProfileSelector } from './chat/ExecutionProfileSelector.js';
 export { useChatHistoryScroll }    from './chat/use-chat-history-scroll.js';
 
 // Task panel

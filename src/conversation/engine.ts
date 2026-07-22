@@ -103,7 +103,13 @@ async function* runTurn(
       return;
     }
 
-    yield { type: 'turn_started', sessionId: input.sessionId, turnId, mode };
+    yield {
+      type: 'turn_started',
+      sessionId: input.sessionId,
+      turnId,
+      executionProfile: turn.executionProfile,
+      narrativePolicy: turn.narrativePolicy,
+    };
 
     // ── Provider 解析 ──────────────────────────────────────────────────────────
     // Provider 与 Model 已由上层按本次 Turn 解析；缺少任一项都不能猜测注册表顺序。

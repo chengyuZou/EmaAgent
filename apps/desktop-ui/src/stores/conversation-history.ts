@@ -7,9 +7,6 @@
  */
 import type {
   AssistantBlock,
-  MessageWire,
-  TurnWire,
-  TurnMode,
   ToolResultBlock,
   MessageBlocks,
   MessageContentPart,
@@ -18,8 +15,11 @@ import type {
   ToolPresentation,
 } from '@ema-agent/contracts';
 import type {
+  ExecutionProfile,
+  NarrativePolicy,
   TurnStats,
 } from '@ema-agent/turn';
+import type { MessageWire, TurnWire } from '@ema-agent/session';
 import type { AttachmentInputWire } from '../api/turns.js';
 
 // ── Types (re-exported so conversation-store.ts stays as the public facade) ──
@@ -62,7 +62,8 @@ export interface StreamingAssistantMessage {
   slices:    AnyAssistantSlice[];
   startedAt: number;
   turnId:    TurnId;
-  mode?:     TurnMode;
+  executionProfile: ExecutionProfile;
+  narrativePolicy: NarrativePolicy;
 }
 
 export interface ChatHistoryItem {
@@ -73,7 +74,8 @@ export interface ChatHistoryItem {
   messageId?:   MessageId;
   turnId?:      TurnId;
   stats?:       TurnStats;
-  mode?:        TurnMode;
+  executionProfile?: ExecutionProfile;
+  narrativePolicy?: NarrativePolicy;
   attachments?: AttachmentInputWire[];
   /** narrative_context 检索块标记(前端渲染成 NarrativeStatusBlock 气泡) */
   kind?:        'narrative_context';
@@ -158,7 +160,8 @@ export function assembleHistory(messages: MessageWire[], turns: TurnWire[]): Cha
         outputTokens: turn.usageOutputTokens,
         durationMs:   turn.completedAt !== null ? turn.completedAt - turn.startedAt : 0,
       };
-      currentGroup.mode = turn.mode;
+      currentGroup.executionProfile = turn.executionProfile;
+      currentGroup.narrativePolicy = turn.narrativePolicy;
     }
     out.push(currentGroup);
     currentGroup = null;

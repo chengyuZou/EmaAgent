@@ -3,6 +3,20 @@ export type { SessionStoreDeps } from './store.js';
 export { RunRegistry } from './run-registry.js';
 export { BranchAncestorTable } from './branch-ancestor.js';
 export { EulerTourRMQLCA } from './euler-rmq-lca.js';
+export type {
+  SessionWire,
+  SessionsListResult,
+  SessionsGroupedResult,
+  SessionSearchItem,
+  SessionsSearchResult,
+  ForkResult,
+  TurnWire,
+  MessageWire,
+  SessionMessagesResult,
+  BranchNodeWire,
+  TurnTreeNodeWire,
+  BranchTreeWire,
+} from './protocol.js';
 
 export type {
   Session,

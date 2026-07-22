@@ -50,10 +50,14 @@ export function UserBubble({ message }: UserBubbleProps): JSX.Element {
     try {
       // 复用"标记-发送"(F-052): armFork 后 sendMessage 会先 forkBranch 再发送,
       // 编辑后的文本成为新分支的第一个 turn; 原消息留在旧分支不动。
-      const mode = useSessionStore.getState().sessionModes.get(viewedId as string)?.mode ?? 'chat';
+      const session = useSessionStore.getState().sessions.byId.get(viewedId as string);
       useConversationStore.getState().armFork(forkPoint);
       setEditing(false);
-      await useConversationStore.getState().sendMessage(viewedId, { text, mode });
+      await useConversationStore.getState().sendMessage(viewedId, {
+        text,
+        executionProfile: session?.executionProfile ?? 'chat',
+        narrativePolicy: session?.narrativePolicy ?? 'auto',
+      });
     } finally {
       setSending(false);
     }

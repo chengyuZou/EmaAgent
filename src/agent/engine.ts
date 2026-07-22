@@ -153,7 +153,13 @@ async function* runTurn(
       return;
     }
 
-    yield { type: 'turn_started', sessionId, turnId, mode: 'agent' };
+    yield {
+      type: 'turn_started',
+      sessionId,
+      turnId,
+      executionProfile: turn.executionProfile,
+      narrativePolicy: turn.narrativePolicy,
+    };
 
     for (const degradation of input.requestDegradations ?? []) {
       yield { type: 'request_degraded', sessionId, turnId, ...degradation };

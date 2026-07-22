@@ -13,7 +13,8 @@
  *   - Click node   → switch to that turn's branch + scroll ChatHistory to it
  */
 import { useState, useEffect, useRef, useCallback, type JSX } from 'react';
-import type { BranchId, TurnMode } from '@ema-agent/contracts';
+import type { BranchId } from '@ema-agent/contracts';
+import type { ExecutionProfile, NarrativePolicy } from '@ema-agent/turn';
 import { Button } from '@ema-agent/ui';
 import { sessionsApi, type BranchNodeWire, type TurnTreeNodeWire } from '../api/sessions.js';
 import { useConversationStore } from '../stores/conversation-store.js';
@@ -107,20 +108,22 @@ function buildTurnLayout(
   return pos;
 }
 
-// ── Mode icon + color ─────────────────────────────────────────────────────────
+// ── Profile icon + color ──────────────────────────────────────────────────────
 
-function ModeIcon({ mode }: { mode: TurnMode | null }): JSX.Element {
-  const icon =
-    mode === 'agent'     ? 'i-lucide:bot' :
-    mode === 'narrative' ? 'i-lucide:book-open' :
-                           'i-lucide:message-circle';
+function ProfileIcon({ profile }: { profile: ExecutionProfile }): JSX.Element {
+  const icon = profile === 'work'
+    ? 'i-lucide:briefcase-business'
+    : 'i-lucide:message-circle';
   return <span className={`${icon} text-sm`} aria-hidden />;
 }
 
-function modeColor(mode: TurnMode | null): string {
-  if (mode === 'agent')     return 'var(--ema-info)';
-  if (mode === 'narrative') return 'var(--ema-warning)';
-  return                           'var(--ema-primary)';
+function profileColor(
+  profile: ExecutionProfile,
+  narrativePolicy: NarrativePolicy,
+): string {
+  if (profile === 'work') return 'var(--ema-info)';
+  if (narrativePolicy === 'always') return 'var(--ema-warning)';
+  return 'var(--ema-primary)';
 }
 
 // ── BranchPanel ───────────────────────────────────────────────────────────────
@@ -376,7 +379,7 @@ export function BranchPanel(): JSX.Element {
             const p = positions.get(turn.id as string);
             if (!p) return null;
             const onLineage = isOnLineage(turn);
-            const color = modeColor(turn.mode);
+            const color = profileColor(turn.executionProfile, turn.narrativePolicy);
 
             return (
               <div
@@ -402,7 +405,7 @@ export function BranchPanel(): JSX.Element {
                     boxShadow:  onLineage ? `0 0 12px color-mix(in srgb, ${color} 33%, transparent)` : 'none',
                   }}
                 >
-                  <ModeIcon mode={turn.mode} />
+                  <ProfileIcon profile={turn.executionProfile} />
                 </div>
 
                 {/* Label */}

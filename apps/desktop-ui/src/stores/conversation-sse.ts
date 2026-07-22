@@ -33,10 +33,11 @@ import {
 import type {
   SessionId,
   TurnId,
-  TurnMode,
   ToolPresentation,
 } from '@ema-agent/contracts';
 import {
+  type ExecutionProfile,
+  type NarrativePolicy,
   TurnStats,
   EmaStreamEvent,
   MemoryRecallLayer,
@@ -52,7 +53,12 @@ export type DeltaPayload =
   | { callId: string; output?: unknown; presentation?: ToolPresentation; error?: { code: string; message: string }; durationMs?: number };
 
 export interface StreamCallbacks {
-  beginStream(sessionId: SessionId, turnId: TurnId, mode?: TurnMode): void;
+  beginStream(
+    sessionId: SessionId,
+    turnId: TurnId,
+    executionProfile: ExecutionProfile,
+    narrativePolicy: NarrativePolicy,
+  ): void;
   appendDelta(sessionId: SessionId, slice: DeltaSlice, delta: DeltaPayload): void;
   finalizeStream(sessionId: SessionId, stats: TurnStats | null): void;
   abortStream(sessionId: SessionId, reason: string): void;
@@ -76,7 +82,12 @@ export function dispatchSseEvent(
     // ── Turn lifecycle ─────────────────────────────────────────────────────
 
     case 'turn_started': {
-      cb.beginStream(sessionId, event.turnId, event.mode);
+      cb.beginStream(
+        sessionId,
+        event.turnId,
+        event.executionProfile,
+        event.narrativePolicy,
+      );
       useConversationStore.setState((s) => {
         const u = new Map(s.liveUsageMap);    u.delete(event.turnId as string);
         const t = new Map(s.thinkingActiveMap); t.delete(event.turnId as string);

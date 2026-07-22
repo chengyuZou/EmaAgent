@@ -7,7 +7,8 @@ vi.mock('../src/lib/tts-playback.js', () => ({
   handleTtsSentenceComplete: vi.fn(),
 }));
 
-import { asSessionId, type SessionWire } from '@ema-agent/contracts';
+import { asSessionId } from '@ema-agent/contracts';
+import type { SessionWire } from '@ema-agent/session';
 import { sessionsApi } from '../src/api/sessions.js';
 import { findEnabledModel } from '../src/stores/model-catalog-store.js';
 import { useSessionStore } from '../src/stores/session-store.js';
@@ -26,7 +27,8 @@ function session(id: string): SessionWire {
     groupLabel: null,
     parentSessionId: null,
     runningTurnCount: 0,
-    lastMode: null,
+    executionProfile: 'chat',
+    narrativePolicy: 'auto',
     preferredProviderConfigId: null,
     preferredModelId: null,
     lastViewedAt: null,
@@ -44,7 +46,6 @@ function seedSessions(...items: SessionWire[]): void {
       archived: [],
       byId: new Map(items.map((item) => [item.id, item])),
     },
-    sessionModes: new Map(),
     loading: false,
     error: null,
   });

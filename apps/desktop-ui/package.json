@@ -46,6 +46,7 @@
     "@ema-agent/memory": "workspace:*",
     "@ema-agent/permission": "workspace:*",
     "@ema-agent/provider": "workspace:*",
+    "@ema-agent/session": "workspace:*",
     "@ema-agent/skills": "workspace:*",
     "@ema-agent/storage": "workspace:*",
     "@ema-agent/stt": "workspace:*",

@@ -3,7 +3,7 @@ import { useSessionStore } from '../stores/session-store.js';
 import { tauriBridge } from '../lib/tauri-bridge.js';
 import { showToast } from '../lib/toast.js';
 import { Button, IconButton, Input } from '@ema-agent/ui';
-import type { SessionWire } from '@ema-agent/contracts';
+import type { SessionWire } from '@ema-agent/session';
 import type { SessionId } from '@ema-agent/contracts';
 
 /**

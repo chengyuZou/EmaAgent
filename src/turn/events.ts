@@ -15,7 +15,7 @@ import type {
 import type { ProviderStreamEvent } from '@ema-agent/provider';
 import type { PermissionStreamEvent } from '@ema-agent/permission';
 import type { EmotionStreamEvent } from '@ema-agent/emotion';
-import type { TurnStats } from './turns.js';
+import type { ExecutionProfile, NarrativePolicy, TurnStats } from './turns.js';
 
 // ── Shared sub-types ──────────────────────────────────────────────────────────
 
@@ -134,7 +134,13 @@ export interface RequestDegradationNotice {
 
 export type EmaStreamEvent =
   // Turn lifecycle
-  | { type: 'turn_started';   sessionId: SessionId; turnId: TurnId; mode: TurnMode }
+  | {
+      type: 'turn_started';
+      sessionId: SessionId;
+      turnId: TurnId;
+      executionProfile: ExecutionProfile;
+      narrativePolicy: NarrativePolicy;
+    }
   | { type: 'usage_update';   sessionId: SessionId; turnId: TurnId; inputTokens: number; outputTokens: number }
   | { type: 'turn_completed'; sessionId: SessionId; turnId: TurnId; stats: TurnStats }
   | { type: 'turn_failed';    sessionId: SessionId; turnId: TurnId; code: ErrorCode; message: string }

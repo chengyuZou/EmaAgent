@@ -10,7 +10,16 @@ import { showToast } from '../lib/toast.js';
 import { useConversationStore, type ChatHistoryItem, type AssistantSlice } from '../stores/conversation-store.js';
 
 export interface AssistantBubbleProps {
-  message:         Pick<ChatHistoryItem, 'content' | 'slices' | 'createdAt' | 'stats' | 'turnId' | 'mode'>;
+  message: Pick<
+    ChatHistoryItem,
+    | 'content'
+    | 'slices'
+    | 'createdAt'
+    | 'stats'
+    | 'turnId'
+    | 'executionProfile'
+    | 'narrativePolicy'
+  >;
   label?:       string;
   isStreaming?: boolean;
 }
@@ -98,13 +107,14 @@ export function AssistantBubble({ message, isStreaming }: AssistantBubbleProps):
         )}
 
         <div className="mt-1.5 flex items-center gap-2 text-[11px] text-[var(--ema-text-tertiary)]">
-          {/* Mode chip */}
-          {message.mode && (
+          {/* Turn 执行快照；Narrative 是检索策略，不再显示成第三种模式。 */}
+          {message.executionProfile && (
             <span className={`px-1.5 py-0.5 rounded-md font-medium
-              ${message.mode === 'agent'     ? 'bg-[var(--ema-info-muted)] text-[var(--ema-info)]'
-              : message.mode === 'narrative' ? 'bg-[var(--ema-warning-muted)] text-[var(--ema-warning)]'
-              :                                'bg-[var(--ema-surface-3)] text-[var(--ema-text-tertiary)]'}`}>
-              {message.mode === 'agent' ? 'Agent' : message.mode === 'narrative' ? '叙事' : 'Chat'}
+              ${message.executionProfile === 'work'
+                ? 'bg-[var(--ema-info-muted)] text-[var(--ema-info)]'
+                : 'bg-[var(--ema-surface-3)] text-[var(--ema-text-tertiary)]'}`}>
+              {message.executionProfile === 'work' ? 'Work' : 'Chat'}
+              {message.narrativePolicy === 'always' ? ' · 剧情常开' : ''}
             </span>
           )}
 
