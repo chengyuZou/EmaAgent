@@ -1,4 +1,4 @@
-import type { AgentFileStateStore } from './file-state.js';
+import type { AgentFileStateStore } from './fileState.js';
 
 // ── AgentContextSnapshot ──────────────────────────────────────────────────────
 //

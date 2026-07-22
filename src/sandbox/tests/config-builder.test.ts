@@ -2,7 +2,7 @@
 
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { buildSandboxConfig } from '../src/config-builder.js';
+import { buildSandboxConfig } from '../config-builder.js';
 
 describe('buildSandboxConfig 私有路径', () => {
   it('同时禁止读取和修改 Core 传入的每一个路径', () => {

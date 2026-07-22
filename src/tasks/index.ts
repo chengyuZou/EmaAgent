@@ -6,8 +6,8 @@ export type {
   TaskTransitionAction,
   TaskTransitionResult,
 } from './types.js';
-export { AgentTaskStore } from './store.js';
+export { AgentTaskStore } from './agentTaskStore.js';
 export {
   ToolExecutionJournal,
   ToolExecutionJournalConflictError,
-} from './tool-execution-journal.js';
+} from './toolExecutionJournal.js';

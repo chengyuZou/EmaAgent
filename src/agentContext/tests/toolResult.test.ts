@@ -1,6 +1,6 @@
 // 测试工具结果预览严格遵守 UTF-8 字节上限，并且不会切断中文或 emoji。
 import { describe, expect, it } from 'vitest';
-import { generatePreview } from '../src/tool-result.js';
+import { generatePreview } from '../toolResult.js';
 
 describe('工具结果 UTF-8 预览', () => {
   it('按真实字节截断中文，不把字节上限误当字符数量', () => {

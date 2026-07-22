@@ -8,7 +8,7 @@ import { Database, ToolExecutionsRepo } from '@ema-agent/storage';
 import {
   ToolExecutionJournal,
   ToolExecutionJournalConflictError,
-} from '../src/tool-execution-journal.js';
+} from '../toolExecutionJournal.js';
 
 describe('ToolExecutionJournal', () => {
   let database: Database;

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { Database, AgentTasksRepo } from '@ema-agent/storage';
-import { AgentTaskStore } from '../src/store.js';
+import { AgentTaskStore } from '../agentTaskStore.js';
 
 describe('AgentTaskStore CAS Facade', () => {
   let database: Database;

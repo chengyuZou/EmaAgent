@@ -36,10 +36,10 @@ importers:
         version: link:../../src/agent
       '@ema-agent/agent-context':
         specifier: workspace:*
-        version: link:../../packages/agent-context
+        version: link:../../src/agentContext
       '@ema-agent/agent-task':
         specifier: workspace:*
-        version: link:../../packages/agent-task
+        version: link:../../src/tasks
       '@ema-agent/artifact':
         specifier: workspace:*
         version: link:../../src/artifact
@@ -105,7 +105,7 @@ importers:
         version: link:../../src/rerank
       '@ema-agent/sandbox':
         specifier: workspace:*
-        version: link:../../packages/sandbox
+        version: link:../../src/sandbox
       '@ema-agent/session':
         specifier: workspace:*
         version: link:../../src/session
@@ -374,50 +374,6 @@ importers:
         specifier: ^2.0.0
         version: 2.1.9(@types/node@20.19.39)(jsdom@26.1.0(canvas@2.11.2))(msw@2.14.6(@types/node@20.19.39)(typescript@5.9.3))
 
-  packages/agent-context:
-    dependencies:
-      '@ema-agent/contracts':
-        specifier: workspace:*
-        version: link:../contracts
-      '@ema-agent/tools':
-        specifier: workspace:*
-        version: link:../tools
-    devDependencies:
-      '@types/node':
-        specifier: ^20.0.0
-        version: 20.19.39
-      rimraf:
-        specifier: ^5.0.0
-        version: 5.0.10
-      typescript:
-        specifier: ^5.9.3
-        version: 5.9.3
-      vitest:
-        specifier: ^2.0.0
-        version: 2.1.9(@types/node@20.19.39)(jsdom@26.1.0(canvas@2.11.2))(msw@2.14.6(@types/node@20.19.39)(typescript@5.9.3))
-
-  packages/agent-task:
-    dependencies:
-      '@ema-agent/contracts':
-        specifier: workspace:*
-        version: link:../contracts
-      '@ema-agent/storage':
-        specifier: workspace:*
-        version: link:../../src/storage
-    devDependencies:
-      '@types/node':
-        specifier: ^20.0.0
-        version: 20.19.39
-      rimraf:
-        specifier: ^5.0.0
-        version: 5.0.10
-      typescript:
-        specifier: ^5.9.3
-        version: 5.9.3
-      vitest:
-        specifier: ^2.0.0
-        version: 2.1.9(@types/node@20.19.39)(jsdom@26.1.0(canvas@2.11.2))(msw@2.14.6(@types/node@20.19.39)(typescript@5.9.3))
-
   packages/contracts:
     devDependencies:
       rimraf:
@@ -481,28 +437,6 @@ importers:
       ipaddr.js:
         specifier: ^2.4.0
         version: 2.4.0
-    devDependencies:
-      '@types/node':
-        specifier: ^20.0.0
-        version: 20.19.39
-      rimraf:
-        specifier: ^5.0.0
-        version: 5.0.10
-      typescript:
-        specifier: ^5.9.3
-        version: 5.9.3
-      vitest:
-        specifier: ^2.0.0
-        version: 2.1.9(@types/node@20.19.39)(jsdom@26.1.0(canvas@2.11.2))(msw@2.14.6(@types/node@20.19.39)(typescript@5.9.3))
-
-  packages/sandbox:
-    dependencies:
-      '@ema-agent/permission':
-        specifier: workspace:*
-        version: link:../../src/permission
-      '@ema-agent/tools':
-        specifier: workspace:*
-        version: link:../tools
     devDependencies:
       '@types/node':
         specifier: ^20.0.0
@@ -695,7 +629,7 @@ importers:
     dependencies:
       '@ema-agent/agent-context':
         specifier: workspace:*
-        version: link:../../packages/agent-context
+        version: link:../agentContext
       '@ema-agent/context':
         specifier: workspace:*
         version: link:../context
@@ -722,7 +656,7 @@ importers:
         version: link:../providers
       '@ema-agent/sandbox':
         specifier: workspace:*
-        version: link:../../packages/sandbox
+        version: link:../sandbox
       '@ema-agent/session':
         specifier: workspace:*
         version: link:../session
@@ -741,6 +675,28 @@ importers:
       '@ema-agent/turn':
         specifier: workspace:*
         version: link:../turn
+    devDependencies:
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.39
+      rimraf:
+        specifier: ^5.0.0
+        version: 5.0.10
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: ^2.0.0
+        version: 2.1.9(@types/node@20.19.39)(jsdom@26.1.0(canvas@2.11.2))(msw@2.14.6(@types/node@20.19.39)(typescript@5.9.3))
+
+  src/agentContext:
+    dependencies:
+      '@ema-agent/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
+      '@ema-agent/tools':
+        specifier: workspace:*
+        version: link:../../packages/tools
     devDependencies:
       '@types/node':
         specifier: ^20.0.0
@@ -1296,6 +1252,28 @@ importers:
         specifier: ^2.0.0
         version: 2.1.9(@types/node@20.19.39)(jsdom@26.1.0(canvas@2.11.2))(msw@2.14.6(@types/node@20.19.39)(typescript@5.9.3))
 
+  src/sandbox:
+    dependencies:
+      '@ema-agent/permission':
+        specifier: workspace:*
+        version: link:../permission
+      '@ema-agent/tools':
+        specifier: workspace:*
+        version: link:../../packages/tools
+    devDependencies:
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.39
+      rimraf:
+        specifier: ^5.0.0
+        version: 5.0.10
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: ^2.0.0
+        version: 2.1.9(@types/node@20.19.39)(jsdom@26.1.0(canvas@2.11.2))(msw@2.14.6(@types/node@20.19.39)(typescript@5.9.3))
+
   src/session:
     dependencies:
       '@ema-agent/contracts':
@@ -1425,6 +1403,28 @@ importers:
       typescript:
         specifier: ^5.9.3
         version: 5.9.3
+
+  src/tasks:
+    dependencies:
+      '@ema-agent/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
+      '@ema-agent/storage':
+        specifier: workspace:*
+        version: link:../storage
+    devDependencies:
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.39
+      rimraf:
+        specifier: ^5.0.0
+        version: 5.0.10
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: ^2.0.0
+        version: 2.1.9(@types/node@20.19.39)(jsdom@26.1.0(canvas@2.11.2))(msw@2.14.6(@types/node@20.19.39)(typescript@5.9.3))
 
   src/token:
     dependencies:

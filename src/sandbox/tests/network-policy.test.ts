@@ -1,9 +1,9 @@
 // 这里测试 Linux、WSL 和 macOS 沙箱是否严格执行 none/full 两档网络策略。
 
 import { describe, expect, it } from 'vitest';
-import { BubblewrapBackend } from '../src/backends/bubblewrap.js';
-import { SandboxExecBackend } from '../src/backends/sandbox-exec.js';
-import type { SandboxConfig } from '../src/types.js';
+import { BubblewrapBackend } from '../backends/bubblewrap.js';
+import { SandboxExecBackend } from '../backends/sandbox-exec.js';
+import type { SandboxConfig } from '../types.js';
 
 function config(access: 'none' | 'full'): SandboxConfig {
   return {
