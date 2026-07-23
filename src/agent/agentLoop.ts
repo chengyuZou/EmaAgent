@@ -1,10 +1,6 @@
-// 执行通用 Turn 的多轮模型与工具循环，并维护每轮状态、预算和事件。
-import {
-  randomUUID } from 'node:crypto';
+// 执行一次 AgentRun 内的模型与工具迭代，并返回唯一循环结果。
+import { randomUUID } from 'node:crypto';
 import type { ToolResultBlock } from '@ema-agent/session';
-import {
-  EmaStreamEvent,
-} from '@ema-agent/turn';
 import { asLlmCallId } from '@ema-agent/llm';
 import type {
   AssistantBlock,
@@ -24,29 +20,21 @@ import { computePromptPrefixHash, normalizeToolDefinitions } from '@ema-agent/co
 import type { ModelContextSnapshot } from '@ema-agent/context';
 import type { TurnPolicy } from './policy.js';
 import type { TurnToolExecutor } from './tool-executor.js';
-import { advanceState, addUsage, createLoopState } from './loop-state.js';
-import type { LoopState } from './loop-state.js';
+import {
+  advanceAgentLoopState,
+  addUsage,
+  createAgentLoopState,
+} from './agentLoopState.js';
+import type { AgentLoopState } from './agentLoopState.js';
 import type { TurnBudget } from './turn-budget.js';
 
 const MAX_CONSECUTIVE_PERMISSION_DENIALS = 3;
 const MAX_TOTAL_PERMISSION_DENIALS = 20;
 
-// ── TurnLoopEvent — internal, not EmaStreamEvent ─────────────────────────────
-//
-// Loop yields only the events it generates itself.  Tool events (tool_result,
-// permission_required, ask_user_required, …) come through two paths:
-//
-//   loop_relay        — executor event forwarded verbatim; engine yields as-is.
-//   loop_llm_complete — LLM stream ended; engine should flush emotion + fire
-//                       afterLlmComplete hook.
-//   loop_tool_results — all tools finished; engine persists to session DB.
-//
-// Emotion processing (ACT tag stripping) is intentionally NOT in the loop.
-// engine.ts intercepts loop_text_delta and runs emotion.processChunk() before
-// yielding output_text_delta to SSE.
+// AgentLoop 只产生自身事件；执行器事件使用泛型原样上送，由外层决定协议映射。
 
-export type TurnLoopEvent =
-  | { type: 'loop_iteration';     n: number; state: LoopState }
+export type AgentLoopEvent<TExecutorEvent> =
+  | { type: 'loop_iteration';     n: number; state: AgentLoopState }
   | { type: 'loop_text_delta';    delta: string; blockIndex: number }
   | { type: 'loop_thinking_delta';delta: string; blockIndex: number }
   | { type: 'loop_tool_partial';  callId: string; name: string; argsDelta: string; blockIndex: number }
@@ -58,7 +46,7 @@ export type TurnLoopEvent =
       removed: Array<'image' | 'audio' | 'file' | 'parameter'>;
       replacements: Array<'description' | 'placeholder' | 'parameter_omitted'>;
     }
-  | { type: 'loop_relay';         ev: EmaStreamEvent }
+  | { type: 'loop_relay';         ev: TExecutorEvent }
   | { type: 'loop_usage';         usage: LlmTokenUsage }
   | {
       type: 'loop_llm_complete';
@@ -69,20 +57,22 @@ export type TurnLoopEvent =
     }
   | { type: 'loop_hook_abort'; reason: string }
   | { type: 'loop_tool_results';  results: ToolResultBlock[]; fullText: string }
-  | { type: 'loop_breaker';       reason: string }
-  | { type: 'loop_done';          fullText: string; state: LoopState };
+  | { type: 'loop_breaker';       reason: string };
 
-// ── TurnLoopInput ─────────────────────────────────────────────────────────────
+export interface AgentLoopOutcome {
+  fullText: string;
+  state: AgentLoopState;
+}
+
+// ── AgentLoop 输入 ────────────────────────────────────────────────────────────
 
 /**
- * Factory called by the loop to build its TurnToolExecutor.
- * The loop provides the internal wakeUp/relay callbacks; the caller bakes in
- * all the session/permission/hook deps it knows about.
+ * AgentLoop 提供唤醒和事件回调，外层注入本次执行所需的工具依赖。
  */
-export type ExecutorFactory = (internals: {
-  /** Called by executor for every event it generates (tool_result, permission_required, …). */
-  pushEv:  (ev: EmaStreamEvent) => void;
-  /** Called by executor when a tool finishes, so the loop's drain-wait unparks. */
+export type ExecutorFactory<TExecutorEvent> = (internals: {
+  /** 接收执行器产生的领域事件。 */
+  pushEv:  (ev: TExecutorEvent) => void;
+  /** 工具完成时唤醒等待队列。 */
   signal:  () => void;
 }) => TurnToolExecutor;
 
@@ -104,14 +94,14 @@ export type PrepareLlmCallResult =
   | { kind: 'continue'; messages: ModelMessage[] }
   | { kind: 'abort'; reason: string };
 
-export interface TurnLoopInput {
-  /** 初始持久化历史与当前用户消息；启用 assembleContext 后 Loop 会建立独立工作副本。 */
+export interface AgentLoopInput<TExecutorEvent> {
+  /** 初始持久化历史与当前用户消息；启用上下文装配后会建立独立工作副本。 */
   messages:       ModelMessage[];
   /** messages 中属于已持久化 Session 历史的前缀长度。 */
   historyMessageCount?: number;
   policy:         TurnPolicy;
-  /** Called once at loop construction. Provides the loop's internal relay callbacks. */
-  buildExecutor:  ExecutorFactory;
+  /** 循环建立时创建本次工具执行器。 */
+  buildExecutor:  ExecutorFactory<TExecutorEvent>;
   llm:            LanguageModel;
   providerId:     string;
   model:          string;
@@ -121,49 +111,26 @@ export interface TurnLoopInput {
   budget:         TurnBudget;
   sessionId:      string;
   turnId?:        string;
-  /**
-   * Called before each LLM call. When it returns a non-empty string, the loop
-   * prepends an ephemeral user message containing that string to the messages
-   * sent to the LLM — without mutating the persistent messages[].
-   * Used to inject current scratchpad state so agents see what sub-agents wrote.
-   */
+  /** 每次模型调用前读取当前 Scratchpad，并作为不持久化的临时消息注入。 */
   getScratchpadContext?: () => string | undefined;
-  /**
-   * Called before each LLM call. Returns any messages queued via
-   * subagent_send_message since the last iteration, then atomically clears
-   * the queue. Each string is injected as a separate ephemeral user message
-   * so the agent sees mid-execution coordinator instructions.
-   * Only populated for background sub-agents; always undefined for the main agent.
-   */
+  /** 原子取出子 Agent 邮箱消息；每条消息只在下一次模型调用中出现一次。 */
   getMailboxMessages?: () => string[];
   /** 每轮 LLM 调用前生成不可变请求快照；Provider 报上下文超限时以 forceCompaction 再生成一次。 */
   assembleContext?: (
     input: AssembleAgentContextInput,
   ) => Promise<ModelContextSnapshot>;
   /**
-   * 每个逻辑 LLM 调用前执行的窄 Facade。Loop 不依赖 HookBus；主 Engine
+   * 每个逻辑 LLM 调用前执行的窄回调。AgentLoop 不依赖 HookBus；外层 Runtime
    * 用它触发 beforeLlm，并返回只属于本次请求的消息视图。
    */
   prepareLlmCall?: (input: PrepareLlmCallInput) => Promise<PrepareLlmCallResult>;
   thinking?: ThinkingMode;
 }
 
-// ── turnLoop ──────────────────────────────────────────────────────────────────
-
-/**
- * Pure think→act loop. No session store, no hook bus, no EmaStreamEvent yield
- * (except as loop_relay wrappers).
- *
- * Callers:
- *   engine.ts   — wraps with session lifecycle + beforeLlm hook + emotion + SSE
- *   spawner.ts  — ephemeral context, collects fullText + usage from loop_done
- *
- * Tool events (executor pushEv) are collected in pendingRelayEvents and yielded
- * as loop_relay between every LLM chunk and during the drain-wait.
- * The TOCTOU-safe park pattern prevents the drain-wait from blocking forever
- * if the last tool finishes between the allDone() check and await.
- */
-export async function* turnLoop(input: TurnLoopInput): AsyncIterable<TurnLoopEvent> {
+/** 运行纯粹的思考与行动循环，不拥有 Session 生命周期、HookBus 或传输协议。 */
+export async function* runAgentLoop<TExecutorEvent>(
+  input: AgentLoopInput<TExecutorEvent>,
+): AsyncGenerator<AgentLoopEvent<TExecutorEvent>, AgentLoopOutcome> {
   const {
     messages, policy, llm, providerId, model, signal, maxIterations, budget,
     sessionId, turnId, getScratchpadContext, getMailboxMessages,
@@ -171,16 +138,16 @@ export async function* turnLoop(input: TurnLoopInput): AsyncIterable<TurnLoopEve
     prepareLlmCall, thinking,
   } = input;
 
-  const pendingRelayEvents: EmaStreamEvent[] = [];
+  const pendingRelayEvents: TExecutorEvent[] = [];
   let wakeUp: (() => void) | null = null;
   const signalWake = (): void => { wakeUp?.(); wakeUp = null; };
 
   const executor = input.buildExecutor({
-    pushEv: (ev: EmaStreamEvent) => { pendingRelayEvents.push(ev); signalWake(); },
+    pushEv: (ev: TExecutorEvent) => { pendingRelayEvents.push(ev); signalWake(); },
     signal: signalWake,
   });
 
-  let state = createLoopState();
+  let state = createAgentLoopState();
   let historyMessages = assembleContext
     ? messages.slice(0, input.historyMessageCount ?? 0)
     : [];
@@ -193,16 +160,15 @@ export async function* turnLoop(input: TurnLoopInput): AsyncIterable<TurnLoopEve
   while (true) {
     budget.assertWithinLimits();
     if (signal.aborted) {
-      state = advanceState(state, { phase: 'aborted', transition: 'user_abort' });
-      yield { type: 'loop_done', fullText: '', state };
-      return;
+      state = advanceAgentLoopState(state, { phase: 'aborted', transition: 'user_abort' });
+      return { fullText: '', state };
     }
 
-    state = advanceState(state, {
+    state = advanceAgentLoopState(state, {
       phase:      'thinking',
       transition: state.iteration === 0 ? 'initial' : 'next_turn',
       iteration:  state.iteration + 1,
-      // Reset per-iteration recovery flags on every new iteration.
+      // 新迭代必须重置只对单轮有效的恢复标记。
       maxOutputTokensRecoveryCount:
         state.transition === 'max_output_tokens_recovery'
           ? state.maxOutputTokensRecoveryCount
@@ -213,7 +179,7 @@ export async function* turnLoop(input: TurnLoopInput): AsyncIterable<TurnLoopEve
 
     executor.reset();
 
-    // ── THINK: stream one LLM response ──────────────────────────────────────
+    // ── 思考阶段：读取一次模型流 ─────────────────────────────────────────────
     const textByIndex     = new Map<number, string>();
     const thinkingByIndex = new Map<number, string>();
     const toolUseByIndex  = new Map<number, AssistantBlock & { type: 'tool_use' }>();
@@ -222,9 +188,7 @@ export async function* turnLoop(input: TurnLoopInput): AsyncIterable<TurnLoopEve
     // 工具定义虽然不在消息数组中，压缩时仍必须预留其序列化后的 Token 成本。
     let tools = normalizeToolDefinitions(policy.toolDefs());
 
-    // Inject scratchpad context and mailbox messages as ephemeral user messages
-    // before each LLM call — not persisted into messages[].
-    // Mailbox messages are drained atomically so each is only seen once.
+    // Scratchpad 和邮箱只进入本次请求视图，不写回持久消息。
     const scratchpadCtx  = getScratchpadContext?.();
     const mailboxMsgs    = getMailboxMessages?.() ?? [];
 
@@ -257,10 +221,9 @@ export async function* turnLoop(input: TurnLoopInput): AsyncIterable<TurnLoopEve
         messages: requestMessages,
       });
       if (prepared.kind === 'abort') {
-        state = advanceState(state, { phase: 'aborted', transition: 'hook_abort' });
+        state = advanceAgentLoopState(state, { phase: 'aborted', transition: 'hook_abort' });
         yield { type: 'loop_hook_abort', reason: prepared.reason };
-        yield { type: 'loop_done', fullText: '', state };
-        return;
+        return { fullText: '', state };
       }
       requestMessages = prepared.messages;
     }
@@ -269,7 +232,7 @@ export async function* turnLoop(input: TurnLoopInput): AsyncIterable<TurnLoopEve
     let callUsage: LlmTokenUsage = { inputTokens: 0, outputTokens: 0 };
     let promptPrefixHash: string | null = null;
 
-    // ── Inner retry loop: handles reactive compact on ContextWindowExceededError ──
+    // 内层只处理一次上下文超限后的响应式压缩重试。
     let streamRetry = false;
     do {
       streamRetry = false;
@@ -297,7 +260,7 @@ export async function* turnLoop(input: TurnLoopInput): AsyncIterable<TurnLoopEve
       try {
         for await (const chunk of stream) {
           budget.assertWithinLimits();
-          // Drain relay events between LLM chunks — tools may have fired concurrently.
+          // 工具可能并发完成，因此每个模型分片之间都排空执行器事件。
           while (pendingRelayEvents.length > 0) {
             yield { type: 'loop_relay', ev: pendingRelayEvents.shift()! };
           }
@@ -332,7 +295,7 @@ export async function* turnLoop(input: TurnLoopInput): AsyncIterable<TurnLoopEve
                 type: 'tool_use', id: chunk.callId, name: chunk.name, args: chunk.args,
               });
               yield { type: 'loop_tool_complete', callId: chunk.callId, name: chunk.name, args: chunk.args, blockIndex: chunk.blockIndex };
-              // Start executing immediately — concurrent-safe tools run in parallel.
+              // 工具调用完整后立即派发；执行器自行决定哪些调用可以并行。
               executor.addTool(chunk.blockIndex, chunk.callId, chunk.name, chunk.args);
               break;
 
@@ -368,7 +331,7 @@ export async function* turnLoop(input: TurnLoopInput): AsyncIterable<TurnLoopEve
           }
         }
       } catch (err) {
-        // ── Reactive compact: prompt too long → compact once and retry ────────
+        // 上下文超限时强制压缩一次，并用同一逻辑调用身份重试。
         if (
           err instanceof ContextWindowExceededError &&
           assembleContext &&
@@ -393,14 +356,13 @@ export async function* turnLoop(input: TurnLoopInput): AsyncIterable<TurnLoopEve
               messages: requestMessages,
             });
             if (prepared.kind === 'abort') {
-              state = advanceState(state, { phase: 'aborted', transition: 'hook_abort' });
+              state = advanceAgentLoopState(state, { phase: 'aborted', transition: 'hook_abort' });
               yield { type: 'loop_hook_abort', reason: prepared.reason };
-              yield { type: 'loop_done', fullText: '', state };
-              return;
+              return { fullText: '', state };
             }
             requestMessages = prepared.messages;
           }
-          state = advanceState(state, {
+          state = advanceAgentLoopState(state, {
             phase:                       state.phase,
             hasAttemptedReactiveCompact: true,
             transition:                  'reactive_compact',
@@ -417,7 +379,7 @@ export async function* turnLoop(input: TurnLoopInput): AsyncIterable<TurnLoopEve
       .map(([, t]) => t)
       .join('');
 
-    // Signal LLM stream end — engine flushes emotion + fires afterLlmComplete.
+    // 通知外层模型流已结束，以便刷新情绪解析并触发完成 Hook。
     yield {
       type: 'loop_llm_complete',
       iteration: state.iteration,
@@ -426,7 +388,7 @@ export async function* turnLoop(input: TurnLoopInput): AsyncIterable<TurnLoopEve
       promptPrefixHash,
     };
 
-    // ── max_output_tokens recovery ────────────────────────────────────────────
+    // ── 输出 Token 达上限后的单次续写 ─────────────────────────────────────────
     // Provider 到达本次调用的有效输出预算时，允许自动续写一次。
     // 有效预算由上层决定，并由 LLM 请求准备器按模型最大输出上限裁剪。
     if (lastStopReason === 'max_tokens' && toolUseByIndex.size === 0) {
@@ -436,33 +398,31 @@ export async function* turnLoop(input: TurnLoopInput): AsyncIterable<TurnLoopEve
           turnMessages.push({ role: 'assistant', content: partialBlocks });
         }
         turnMessages.push({ role: 'user', content: '[系统] 你的输出被截断，请从中断处继续输出剩余内容，不要重复已输出的部分。' });
-        state = advanceState(state, {
+        state = advanceAgentLoopState(state, {
           phase: 'thinking',
           transition: 'max_output_tokens_recovery',
           maxOutputTokensRecoveryCount: 1,
         });
         continue;
       } else {
-        // Continuation attempt also truncated — give up.
-        state = advanceState(state, { phase: 'done', transition: 'max_output_tokens_recovery' });
+        // 续写仍被截断时结束，避免无限补写。
+        state = advanceAgentLoopState(state, { phase: 'done', transition: 'max_output_tokens_recovery' });
         yield { type: 'loop_breaker', reason: 'max_output_tokens recovery failed' };
-        yield { type: 'loop_done', fullText, state };
-        return;
+        return { fullText, state };
       }
     }
 
-    // ── End condition: no tool calls → done ──────────────────────────────────
+    // 没有工具调用表示本次 AgentRun 已得到最终回答。
     if (toolUseByIndex.size === 0) {
       const blockMap = buildBlockMap(textByIndex, thinkingByIndex, new Map());
       turnMessages.push({ role: 'assistant', content: blockMap });
 
-      state = advanceState(state, { phase: 'done', transition: 'no_tool_calls' });
-      yield { type: 'loop_done', fullText, state };
-      return;
+      state = advanceAgentLoopState(state, { phase: 'done', transition: 'no_tool_calls' });
+      return { fullText, state };
     }
 
-    // ── ACT: wait for all tools, draining relay events as they arrive ────────
-    state = advanceState(state, { phase: 'acting', transition: 'next_turn' });
+    // ── 行动阶段：等待全部工具并持续排空事件 ─────────────────────────────────
+    state = advanceAgentLoopState(state, { phase: 'acting', transition: 'next_turn' });
 
     while (!executor.allDone() || pendingRelayEvents.length > 0) {
       while (pendingRelayEvents.length > 0) {
@@ -470,20 +430,19 @@ export async function* turnLoop(input: TurnLoopInput): AsyncIterable<TurnLoopEve
       }
       if (executor.allDone()) break;
 
-      // Track waiting_user phase when ask_user tool is pending.
+      // AskUser 未返回期间显式进入等待用户状态。
       if (executor.hasWaitingUserTool() && state.phase !== 'waiting_user') {
-        state = advanceState(state, { phase: 'waiting_user', transition: 'waiting_user' });
+        state = advanceAgentLoopState(state, { phase: 'waiting_user', transition: 'waiting_user' });
       } else if (!executor.hasWaitingUserTool() && state.phase === 'waiting_user') {
-        state = advanceState(state, { phase: 'acting', transition: 'user_answered' });
+        state = advanceAgentLoopState(state, { phase: 'acting', transition: 'user_answered' });
       }
 
-      // Install resolver BEFORE re-checking — avoids TOCTOU deadlock where the
-      // last tool finishes between allDone() and the await assignment.
+      // 必须先安装唤醒回调再复查完成状态，避免最后一个工具恰好在两步之间结束。
       const parked = new Promise<void>(r => { wakeUp = r; });
       if (executor.allDone() || pendingRelayEvents.length > 0) { wakeUp = null; continue; }
       await parked;
     }
-    // Final relay drain after drain-wait exits.
+    // 等待结束后再排空一次，不能遗漏最后一个工具的终态事件。
     while (pendingRelayEvents.length > 0) {
       yield { type: 'loop_relay', ev: pendingRelayEvents.shift()! };
     }
@@ -499,13 +458,13 @@ export async function* turnLoop(input: TurnLoopInput): AsyncIterable<TurnLoopEve
         ? consecutivePermissionDenials + permissionDenials
         : 0;
 
-    // Persist round: assistant (tool_use) + user (tool_result) into messages[].
+    // 把当前工具轮次追加到循环工作消息；thinking 不跨 Provider 重放。
     const allBlocks    = buildBlockMap(textByIndex, thinkingByIndex, toolUseByIndex);
     const replayBlocks = allBlocks.filter(b => b.type !== 'thinking');
     turnMessages.push({ role: 'assistant', content: replayBlocks });
     turnMessages.push({ role: 'user', content: resultBlocks as UserBlock[] });
 
-    // Signal engine to persist tool results to session DB.
+    // 外层 Runtime 收到后负责持久化 Tool Use 与 Tool Result。
     yield { type: 'loop_tool_results', results: resultBlocks, fullText };
 
     if (
@@ -515,24 +474,22 @@ export async function* turnLoop(input: TurnLoopInput): AsyncIterable<TurnLoopEve
       const reason = totalPermissionDenials >= MAX_TOTAL_PERMISSION_DENIALS
         ? `permission denied ${totalPermissionDenials} times in this turn`
         : `permission denied ${consecutivePermissionDenials} consecutive times`;
-      state = advanceState(state, { phase: 'done', transition: 'permission_denial_loop' });
+      state = advanceAgentLoopState(state, { phase: 'done', transition: 'permission_denial_loop' });
       yield { type: 'loop_breaker', reason };
-      yield { type: 'loop_done', fullText, state };
-      return;
+      return { fullText, state };
     }
 
-    // ── Circuit breaker ──────────────────────────────────────────────────────
+    // ── 最大迭代熔断 ─────────────────────────────────────────────────────────
     if (state.iteration >= maxIterations) {
       const reason = `max iterations (${maxIterations}) reached`;
-      state = advanceState(state, { phase: 'done', transition: 'max_iterations' });
+      state = advanceAgentLoopState(state, { phase: 'done', transition: 'max_iterations' });
       yield { type: 'loop_breaker', reason };
-      yield { type: 'loop_done', fullText, state };
-      return;
+      return { fullText, state };
     }
   }
 }
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
+// ── 内部辅助 ─────────────────────────────────────────────────────────────────
 
 function buildBlockMap(
   textByIndex:    Map<number, string>,
@@ -546,6 +503,6 @@ function buildBlockMap(
   return [...blockMap.entries()].sort(([a], [b]) => a - b).map(([, b]) => b);
 }
 
-// ── Re-export types needed by callers ────────────────────────────────────────
+// ── 调用方需要的状态类型 ─────────────────────────────────────────────────────
 
-export type { LoopState };
+export type { AgentLoopState };

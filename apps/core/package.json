@@ -53,7 +53,6 @@
     "@ema-agent/vision": "workspace:*",
     "@ema-agent/artifact": "workspace:*",
     "@ema-agent/attachment": "workspace:*",
-    "@ema-agent/agent-context": "workspace:*",
     "@ema-agent/skills":    "workspace:*",
     "@ema-agent/mcp": "workspace:*",
     "@ema-agent/marketplace": "workspace:*",

@@ -1,4 +1,13 @@
-﻿import { spawnSync, spawn } from 'node:child_process';
+﻿// TODO 本文件实际只探测 bash（不是泛指 shell），名实不符。
+//  - 文件名 shell-probe.ts -> bash-probe.ts；probeShell -> probeBash；ShellProbeResult -> BashProbeResult。
+//  - installGitViaWinget 留在本文件（装 Git 就是为了拿 bash，强相关）。
+//  - 改名会触发 import 涓漪（bindings.ts / routes/shell.ts / ShellSetupDialog），
+//    等 C1 sandbox 批次一起改，不单独动。
+//
+// TODO 缺测试：gitBashFromGitExecutable 的逐级上溯反推逻辑值得单测，
+//  但该函数强依赖 Windows 环境（spawnSync where），跨平台难测。
+//  可把“从 git.exe 路径反推 bash.exe”的纯逻辑抽成独立函数再测。
+import { spawnSync, spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { getPlatform } from './platform.js';
@@ -20,22 +29,20 @@ function gitBashFromGitExecutable(): string | null {
   // 但用户可能选了“只加 git 到 PATH”而不加 bash。此时 git 在 PATH、bash 不在。
   // git.exe 通常在 <GitRoot>\cmd\git.exe 或 <GitRoot>\bin\git.exe，
   // bash.exe 固定在 <GitRoot>\usr\bin\bash.exe。
-  let whereGit: { status: number | null; stdout: string };
-  try {
-    whereGit = spawnSync('where', ['git'], {
-      encoding: 'utf8',
-      timeout: 3_000,
-      windowsHide: true,
-    });
-  } catch {
-    return null;
-  }
-  if (whereGit.status !== 0 || !whereGit.stdout.trim()) return null;
+  const whereGit = spawnSync('where', ['git'], {
+    encoding: 'utf8',
+    timeout: 3_000,
+    windowsHide: true,
+  });
+  
+  if (whereGit.status !== 0 || !whereGit.stdout.trim() || whereGit.error) return null;
 
   for (const rawLine of whereGit.stdout.trim().split(/\r?\n/)) {
     const gitExe = rawLine.trim();
     if (!gitExe) continue;
     // 逐级上溯找到 Git 根目录（含 usr\bin 的那一层）。
+    // 4 层足够：git.exe 最深在 <GitRoot>\mingw64\bin\git.exe（3 层到根），
+    // cmd\git.exe 和 bin\git.exe 都在 2 层内。portablegit 解压目录同理。
     let dir = gitExe;
     for (let i = 0; i < 4; i += 1) {
       const parent = dirname(dir);
@@ -72,16 +79,20 @@ function gitBashFromRegistry(): string | null {
  * 确认 WSL 有可用的 bash：已安装发行版且能在其中运行 `bash`。
  * `wsl --status` 返回 0 只代表 wsl.exe 存在（可能没装发行版），
  * 所以要实际调用 bash。在超时内退出码 0 即视为可用。
+ * WSL2 首次启动可能冷启动慢(wsl boot 几秒) 所以多加几秒
  */
 function probeWslBash(): boolean {
   const r = spawnSync('wsl.exe', ['bash', '-c', 'echo ok'], {
     encoding:    'utf8',
-    timeout:     8_000,
+    timeout:     16_000,
     windowsHide: true,
   });
   return r.status === 0;
 }
 
+// TODO 缓存是模块级全局变量，installGitViaWinget 跨函数直接改它（隐式耦合）。
+//  工业上该封装成 BashProbe 对象（持有 cached + 探测 + 安装），避免跨函数操作全局状态。
+//  当前函数式可用，C1 sandbox 批次重构时考虑对象化。
 let cached: ShellProbeResult | undefined;
 
 /**

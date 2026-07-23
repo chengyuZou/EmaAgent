@@ -1,18 +1,20 @@
-// 这里为 macOS sandbox-exec 生成文件和网络隔离规则。
+﻿// 为 macOS sandbox-exec 生成文件和网络隔离规则。
 
 import type { SandboxBackend, SandboxConfig, WrappedCommand } from '../types.js';
 
+// TODO isAvailable() 只查 process.platform，真实检测在 detect.ts。且应统一用 getPlatform()
+//  而非 process.platform。SandboxBackend 接口的 isAvailable 冗余，待 sandbox 批次简化。
+
 /**
- * macOS sandbox-exec backend.
+ * macOS sandbox-exec 后端。
  *
- * Uses Apple's Sandbox Profile Language (SBPL) passed inline via `-p`.
- * sandbox-exec is deprecated as of macOS 12 but still functional.
+ * 用 Apple 的 Sandbox Profile Language（SBPL）经 `-p` 内联传入。
+ * sandbox-exec 自 macOS 12 起标记 deprecated，但仍可用。
  *
- * Profile strategy:
- *   - Allow all reads by default (matches bwrap behaviour)
- *   - Deny writes globally, then allow specific writable paths
- *   - Network: deny all if no allowed domains, otherwise allow specific domains
- *   - Always allow localhost and Unix domain sockets (needed by many tools)
+ * Profile 策略：
+ *   - 默认允许所有读取（对齐 bwrap 行为）
+ *   - 全局拒绝写入，再允许特定可写路径
+ *   - 网络：无允许域名则全拒
  */
 export class SandboxExecBackend implements SandboxBackend {
   readonly name = 'sandbox-exec';
@@ -34,35 +36,44 @@ export class SandboxExecBackend implements SandboxBackend {
 
 // ── SBPL profile builder ──────────────────────────────────────────────────────
 
+/**
+ * 转义路径中的 SBPL 特殊字符（" 和 )），防止路径破坏 profile 语法或注入规则。
+ * 路径来源虽相对可信（Core/permission），但纵深防御该转义。
+ */
+function escapeSbplPath(p: string): string {
+  // SBPL 字符串用双引号包裹，转义双引号和反斜杠。
+  return p.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+}
+
 function buildProfile(config: SandboxConfig): string {
   const rules: string[] = [
     '(version 1)',
     '(deny default)',
 
-    // Process control — needed for every command
+    // 进程控制 - 每条命令都需要
     '(allow process-exec)',
     '(allow process-fork)',
     '(allow signal (target self))',
     '(allow sysctl-read)',
     '(allow mach*)',
 
-    // Read everything (mirrors bwrap's --ro-bind / /)
+    // 全局可读（对齐 bwrap 的 --ro-bind / /）
     '(allow file-read*)',
   ];
 
-  // Explicit read denials
+  // 显式拒绝读取
   for (const p of config.filesystem.denyRead) {
-    rules.push(`(deny file-read* (subpath "${p}"))`);
+    rules.push(`(deny file-read* (subpath "${escapeSbplPath(p)}"))`);
   }
 
-  // Writable paths
+  // 可写路径
   for (const p of config.filesystem.allowWrite) {
-    rules.push(`(allow file-write* (subpath "${p}"))`);
+    rules.push(`(allow file-write* (subpath "${escapeSbplPath(p)}"))`);
   }
 
-  // Explicit write denials (override allowWrite parents)
+  // 显式拒绝写入（覆盖 allowWrite 父目录）
   for (const p of config.filesystem.denyWrite) {
-    rules.push(`(deny file-write* (subpath "${p}"))`);
+    rules.push(`(deny file-write* (subpath "${escapeSbplPath(p)}"))`);
   }
 
   // V1 不生成域名字符串规则：none 完全断网，full 不添加网络限制。

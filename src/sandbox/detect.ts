@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { getPlatform } from './platform.js';
+import { getPlatform, type SandboxPlatform } from './platform.js';
 
 // ── Detection result ──────────────────────────────────────────────────────────
 
@@ -8,9 +8,8 @@ export type BackendKind = 'bubblewrap' | 'sandbox-exec' | 'app-layer';
 export interface DetectResult {
   backend: BackendKind
   /**
-   * Human-readable reason when falling back to app-layer even though the user
-   * is on a platform where OS sandboxing should be available. Shown via
-   * getSandboxUnavailableReason() at session startup.
+   * 当本该有 OS 级沙箱的平台却降级到 app-layer 时，给出人类可读的原因。
+   * 在 Session 启动时通过 getSandboxUnavailableReason() 暴露给用户。
    */
   degradeReason?: string
 }
@@ -18,8 +17,8 @@ export interface DetectResult {
 let cached: DetectResult | undefined;
 
 /**
- * Detects which sandbox backend is available on this machine.
- * Result is cached for the process lifetime (shared across sessions).
+ * 探测当前机器可用的沙箱后端。
+ * 结果在进程生命周期内缓存(跨 Session 共享)。
  */
 export function detectBackend(): DetectResult {
   if (cached) return cached;
@@ -27,63 +26,100 @@ export function detectBackend(): DetectResult {
   return cached;
 }
 
-/** Clear detection cache — only for tests. */
+/** 清空探测缓存，仅供测试使用。 */
 export function resetDetectCache(): void {
   cached = undefined;
+}
+
+// ── 平台 -> 后端的纯映射（不触碰进程，可单测）────────────────────────────────
+
+/**
+ * 根据平台决定后端选择策略。纯函数，不执行任何 spawn，便于单测覆盖所有平台分支。
+ * 返回值告诉 runDetect 该走哪条探测路径，以及失败时的降级原因。
+ * 导出仅供测试；生产代码用 detectBackend()。
+ */
+export function selectBackendForPlatform(platform: SandboxPlatform):
+  | { kind: 'sandbox-exec' }
+  | { kind: 'bwrap-direct'; degradeReason: string }
+  | { kind: 'bwrap-via-wsl'; degradeReason: string }
+  | { kind: 'app-layer'; degradeReason: string } {
+
+  switch (platform) {
+    case 'macos':
+      // sandbox-exec 是 macOS 系统内置（12+ 标记 deprecated 但仍可用）。
+      return { kind: 'sandbox-exec' };
+
+    case 'linux':
+    case 'wsl2':
+      // 原生 Linux 或 WSL2 都支持 Linux namespace，可直接调 bwrap。
+      return {
+        kind: 'bwrap-direct',
+        degradeReason: 'bwrap not found; install bubblewrap (e.g. apt install bubblewrap) for OS-level sandboxing',
+      };
+
+    case 'wsl1':
+      // WSL1 没有 Linux namespace，bwrap 无法运行，只能降级。
+      return {
+        kind: 'app-layer',
+        degradeReason: 'WSL1 does not support Linux namespaces required by bubblewrap; upgrade to WSL2 for OS-level sandboxing',
+      };
+
+    case 'windows':
+      // Windows 本身没有 bwrap，需探测 WSL2 + bwrap 组合，交给 detectWindowsBackend。
+      return {
+        kind: 'bwrap-via-wsl',
+        degradeReason: 'WSL found but bubblewrap not installed; run `wsl -- apt install bubblewrap` for OS-level sandboxing',
+      };
+  }
 }
 
 // ── Detection logic ───────────────────────────────────────────────────────────
 
 function runDetect(): DetectResult {
   const platform = getPlatform();
+  const strategy = selectBackendForPlatform(platform);
 
-  if (platform === 'macos') {
-    // sandbox-exec is a macOS system builtin, always present (though deprecated 12+)
-    return { backend: 'sandbox-exec' };
+  switch (strategy.kind) {
+    case 'sandbox-exec':
+      return { backend: 'sandbox-exec' };
+
+    case 'bwrap-direct':
+      return probeBwrapDirect(strategy.degradeReason);
+
+    case 'bwrap-via-wsl':
+      return detectWindowsBackend(strategy.degradeReason);
+
+    case 'app-layer':
+      return { backend: 'app-layer', degradeReason: strategy.degradeReason };
   }
-
-  if (platform === 'linux' || platform === 'wsl2') {
-    return detectBwrap(
-      'bwrap',
-      undefined,
-      'bwrap not found; install bubblewrap (e.g. apt install bubblewrap) for OS-level sandboxing',
-    );
-  }
-
-  if (platform === 'wsl1') {
-    return {
-      backend: 'app-layer',
-      degradeReason: 'WSL1 does not support Linux namespaces required by bubblewrap; upgrade to WSL2 for OS-level sandboxing',
-    };
-  }
-
-  if (platform === 'windows') {
-    return detectWindowsBackend();
-  }
-
-  return { backend: 'app-layer' };
 }
 
-function detectBwrap(
-  executable: string,
-  extraArgs: string[] | undefined,
-  degradeReason: string,
-): DetectResult {
-  const probe = extraArgs
-    ? spawnSync(executable, [...extraArgs, 'bwrap', '--version'], { encoding: 'utf8', timeout: 8_000 })
-    : spawnSync(executable, ['--version'], { encoding: 'utf8', timeout: 5_000 });
-
-  if (probe.status === 0) return { backend: 'bubblewrap' };
-  return { backend: 'app-layer', degradeReason };
+/**
+ * 直接探测 bwrap（原生 Linux / WSL2）。
+ * 超时 5s：bwrap --version 是本地进程，无需启动开销。
+ */
+function probeBwrapDirect(degradeReason: string): DetectResult {
+  const probe = spawnSync('bwrap', ['--version'], {
+    encoding: 'utf8',
+    timeout: 5_000,
+  });
+  return probe.status === 0
+    ? { backend: 'bubblewrap' }
+    : { backend: 'app-layer', degradeReason };
 }
 
-
-function detectWindowsBackend(): DetectResult {
-  // Use --list instead of --status: --list is supported on every wsl.exe since
-  // the first public WSL release, whereas --status was added later and silently
-  // returns non-zero on some older builds even when WSL is functional.
-  // Distinguish "binary not found" (ENOENT) from "binary present but errored".
-  const wslList = spawnSync('wsl.exe', ['--list'], { encoding: 'utf8', timeout: 5_000 });
+/**
+ * Windows 后端探测：先确认 wsl.exe 存在，再在 WSL 内探测 bwrap。
+ * @param wslBwrapMissingReason - WSL 存在但 bwrap 缺失时的降级原因
+ */
+function detectWindowsBackend(wslBwrapMissingReason: string): DetectResult {
+  // 用 --list 而非 --status：--list 从首个公开 WSL 版本起就支持，
+  // --status 是后加的，在部分旧构建上即使 WSL 可用也静默返回非 0。
+  // 区分"二进制不存在"(ENOENT) 和"二进制存在但报错"。
+  const wslList = spawnSync('wsl.exe', ['--list'], {
+    encoding: 'utf8',
+    timeout: 5_000,
+  });
   const notFound = (wslList.error as NodeJS.ErrnoException | undefined)?.code === 'ENOENT';
 
   if (notFound) {
@@ -93,11 +129,21 @@ function detectWindowsBackend(): DetectResult {
     };
   }
 
-  // wsl.exe is present (even if --list returned non-zero — e.g. no distros yet).
-  // Probe for bwrap inside WSL to determine final backend.
-  return detectBwrap(
-    'wsl.exe',
-    ['bash', '-c'],
-    'WSL found but bubblewrap not installed; run `wsl -- apt install bubblewrap` for OS-level sandboxing',
-  );
+  // wsl.exe 存在（即使 --list 返回非 0，比如还没装发行版）。
+  // 继续在 WSL 内探测 bwrap，决定最终后端。
+  return probeBwrapViaWsl(wslBwrapMissingReason);
+}
+
+/**
+ * 通过 wsl.exe bash -c 间接探测 WSL 内的 bwrap。
+ * 超时 8s：比直接调用多 3s，覆盖 WSL2 冷启动 + bash 启动开销。
+ */
+function probeBwrapViaWsl(degradeReason: string): DetectResult {
+  const probe = spawnSync('wsl.exe', ['bash', '-c', 'bwrap --version'], {
+    encoding: 'utf8',
+    timeout: 8_000,
+  });
+  return probe.status === 0
+    ? { backend: 'bubblewrap' }
+    : { backend: 'app-layer', degradeReason };
 }

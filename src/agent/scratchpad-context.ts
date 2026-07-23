@@ -7,7 +7,7 @@ import { readScratchpadEntries } from './scratchpad-reader.js';
 //   scratchpad-reader  — raw filesystem I/O (read entries, read meta)
 //   scratchpad-context — formats entries into an LLM-injectable string
 //
-// Called before each llm.stream() in turnLoop via getScratchpadContext callback.
+// AgentLoop 在每次模型调用前读取，保证子 Agent 写入能在下一轮被看到。
 // Both the main agent and each sub-agent use the same callback, so they always
 // see the current scratchpad state at the start of every iteration.
 

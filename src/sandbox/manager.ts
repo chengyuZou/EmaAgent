@@ -1,4 +1,20 @@
-// 这里运行经过沙箱包装的命令，并管理每个 Session 的沙箱配置和清理工作。
+﻿// 这里运行经过沙箱包装的命令，并管理每个 Session 的沙箱配置和清理工作。
+
+// TODO 文件名 manager.ts 不符 CLAUDE.md §14（Manager 不作兜底名）。主类是 CommandRunner，
+//  文件该叫 commandRunner.ts。和 shell-probe 改名一起，等 C1 sandbox 批次统一改（import 涟漪）。
+//
+// TODO run() 的 background 分支 detached + unref + 立刻返回 exitCode:0，是假成功：
+//  进程引用丢失、输出全丢、终态未知。这是评审 L803 点名的真实缺口，C1 批次修
+//  （见 docs/sandbox-review.md）。修法：持有进程 + 写输出文件 + 返回 processId + exit 事件追踪。
+//
+// TODO run() 的 cwd 在 workspaceRoot 为空时回退 process.cwd()。子 Agent 传 workspaceRoot:''
+//  时，若没传 cwd，会用 sidecar 的 process.cwd()，可能越出预期范围。待 C1 审查。
+//
+// TODO run() 的 background spawn 不处理 error 事件；若 executable 路径错会变 unhandled。
+//  前台 spawnProcess 是否处理需确认 tools 包。待 C1 审查。
+//
+// TODO CommandRunner 持有 PermissionEngine 引用（refreshConfig 调 getRules）。方向对
+//  （sandbox 服从 permission），但持有引用而非事件驱动，耦合偏紧。见 permission review。
 
 import { existsSync, rmSync } from 'node:fs';
 import { spawn }               from 'node:child_process';
@@ -27,23 +43,21 @@ export interface CommandRunnerOptions {
   protectedPaths: readonly string[];
   /** V1 只有完全断网和全网访问两档。 */
   networkAccess: 'none' | 'full';
-  /** Live permission engine — rules are re-read on every refreshConfig(). */
+  /** 活的 PermissionEngine 实例；refreshConfig() 每次重读其规则。 */
   permission:     PermissionEngine;
 }
 
 /**
- * Per-session shell execution engine with OS-level sandboxing.
+ * 每 Session 一个的 shell 执行引擎，带 OS 级沙箱。
  *
- * Lifecycle (matches software session):
- *   new CommandRunner(opts) → initialize state
- *   .run(cmd)               → wrap in sandbox, spawn, return result
- *   .cleanup()              → scrub bare-repo attack files (call after EVERY tool)
- *   .refreshConfig()        → re-read permission rules after user adds an allow/deny
- *   .destroy()              → (future) teardown persistent sandbox resources
+ * 生命周期（与软件 Session 一致）：
+ *   new CommandRunner(opts) -> 初始化状态
+ *   .run(cmd)               -> 包进沙箱、spawn、返回结果
+ *   .cleanup()              -> 清除 bare-repo 攻击文件（每次工具执行后都调）
+ *   .refreshConfig()        -> 用户增删 allow/deny 规则后重读 permission 规则
  *
- * Per-session isolation: do NOT share a CommandRunner across sessions. Detection
- * results (which backend is available) are module-level cached; everything else
- * is scoped to this instance.
+ * Per-session 隔离：不要跨 Session 共享 CommandRunner。检测结果（哪个 backend
+ * 可用）是模块级缓存；其余状态都在本实例内。
  */
 export class CommandRunner {
   private readonly backend:    SandboxBackend;
@@ -64,8 +78,8 @@ export class CommandRunner {
   // ── Public API ──────────────────────────────────────────────────────────────
 
   /**
-   * Execute a shell command inside the sandbox.
-   * Falls back to bare spawn if the backend is AppLayerBackend (no OS wrapping).
+   * 在沙箱内执行 shell 命令。
+   * backend 为 AppLayerBackend 时无 OS 包装，直接 spawn。
    */
   async run(command: string, opts: RunOptions = {}): Promise<RunResult> {
     const shell     = getShell();
@@ -74,6 +88,7 @@ export class CommandRunner {
 
     const { executable, args } = this.backend.wrap(command, shell, this.config);
 
+    // TODO background 假成功，见文件顶部说明。C1 批次修。
     if (opts.background) {
       spawn(executable, args, { cwd, stdio: 'ignore', detached: true }).unref();
       return { stdout: '', stderr: '', exitCode: 0, timedOut: false, truncated: false };
@@ -83,20 +98,30 @@ export class CommandRunner {
   }
 
   /**
-   * Remove any bare-repo files planted by the previous sandboxed command.
-   * Must be called after EVERY tool execution — not just bash — because any
-   * tool might indirectly spawn a shell.
+   * 删除上一次沙箱命令可能植入的 bare-repo 攻击文件。
+   * 必须在每次工具执行后调用--不只是 bash--因为任何工具都可能间接 spawn shell。
    */
   cleanup(): void {
     for (const p of this.scrubPaths) {
       if (!existsSync(p)) continue;
-      try { rmSync(p, { recursive: true }); } catch { /* ENOENT or permission error — already cleaned */ }
+      try {
+        rmSync(p, { recursive: true });
+      } catch (err) {
+        // ENOENT：已被其他路径清理，无害。
+        // permission error：可能意味着植入文件权限异常，记录但不中断清理流程。
+        // 其他错误：记录，便于排查为何 bare-repo 防护失效。
+        const code = (err as NodeJS.ErrnoException)?.code;
+        if (code !== 'ENOENT') {
+          // TODO 目前只记录到 stderr，C1 批次接结构化日志后改 emit 事件。
+          console.warn(`[sandbox] cleanup 失败 (${code ?? 'unknown'}): ${p}`);
+        }
+      }
     }
   }
 
   /**
-   * Re-derive SandboxConfig from the current permission rules.
-   * Call this immediately after PermissionEngine.addRule() / onRulePersisted.
+   * 从当前 permission 规则重新推导 SandboxConfig。
+   * 在 PermissionEngine.addRule() / onRulePersisted 之后立即调用。
    */
   refreshConfig(): void {
     const built     = buildSandboxConfig(this.opts.permission.getRules(), this.configCtx());
@@ -105,15 +130,14 @@ export class CommandRunner {
   }
 
   /**
-   * If sandboxing degraded to app-layer on a platform where OS sandboxing
-   * should be available, returns a human-readable explanation.
-   * Call once at session start to surface the reason to the user.
+   * 当沙箱降级到 app-layer、但本平台本应有 OS 沙箱时，返回人类可读原因。
+   * 在 Session 启动时调一次，把原因暴露给用户。
    */
   getSandboxUnavailableReason(): string | undefined {
     return this.degradeReason;
   }
 
-  /** Name of the active backend — useful for diagnostics and tests. */
+  /** 当前激活的 backend 名，诊断和测试用。 */
   get backendName(): string {
     return this.backend.name;
   }

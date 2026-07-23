@@ -1,4 +1,4 @@
-// 这里把 Core 传入的真实路径和权限规则整理成各系统沙箱使用的配置。
+﻿// 把 Core 传入的真实路径和权限规则整理成各系统沙箱使用的配置。
 
 import { statSync } from 'node:fs';
 import os   from 'node:os';
@@ -10,9 +10,8 @@ import { getPlatform } from './platform.js';
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 /**
- * Files that, if created together in the workspace root, would trick git into
- * treating the directory as a bare repository and executing core.fsmonitor.
- * See: anthropics/claude-code#29316 — "bare-repo escape" attack.
+ * 这些文件若同时出现在工作区根目录，会让 git 把目录当成 bare 仓库并执行
+ * core.fsmonitor。参考：anthropics/claude-code#29316 - "bare-repo escape" 攻击。
  */
 const BARE_REPO_FILES = ['HEAD', 'objects', 'refs', 'hooks', 'config'] as const;
 
@@ -32,12 +31,19 @@ export interface ConfigContext {
 export interface BuildResult {
   config:     SandboxConfig;
   /**
-   * Paths that did NOT exist at config-build time but are inside the workspace.
-   * `cleanup()` deletes any of these that appear after a sandboxed command runs,
-   * preventing a planted bare-repo escape from surviving into the next git call.
+   * 构建配置时还不存在、但位于工作区内的路径。
+   * cleanup() 会在沙箱命令跑完后删除这些路径，防止植入的 bare-repo 逃逸
+   * 残留到下一次 git 调用。
    */
   scrubPaths: string[];
 }
+
+// TODO 死代码：下方 buildSandboxConfig 里 :89-103 的规则推导用 'fs-edit'/'fs-write'/'fs-read'
+//  作为 rule.tool 匹配值，但 permission 规则实际用 BuiltinTools.*.id（如 'builtin.file.read'）。
+//  这些值永不匹配，整段 for 循环是死代码，permission 的路径规则不会传导到沙箱配置。
+//  更深的问题：permission 管"能否调工具"，sandbox 管"进程能碰什么文件"，是两个维度，
+//  从 permission 规则推 sandbox allowWrite 本身语义错位。沙箱配置该有独立来源
+//  （Core 注入可写路径），不该从 permission 规则猜。设计问题，待 sandbox 批次重做。
 
 // ── Main builder ──────────────────────────────────────────────────────────────
 
@@ -45,9 +51,9 @@ export function buildSandboxConfig(
   rules:   ReadonlyArray<PermissionRule>,
   ctx:     ConfigContext,
 ): BuildResult {
-  // macOS: os.tmpdir() returns /var/folders/… but tools often write to /tmp → /private/tmp.
-  // Include both so sandbox doesn't block legitimate temp file usage.
-  const macOsTmpExtras = process.platform === 'darwin' ? ['/tmp', '/private/tmp'] : [];
+  // macOS 的 os.tmpdir() 返回 /var/folders/...，而工具常写 /tmp -> /private/tmp。
+  // 两都纳入，避免沙箱误拦合法的临时文件操作。
+  const macOsTmpExtras = getPlatform() === 'macos' ? ['/tmp', '/private/tmp'] : [];
 
   const allowWrite: string[] = [
     ...(ctx.workspaceRoot ? [path.resolve(ctx.workspaceRoot)] : []),
@@ -65,27 +71,27 @@ export function buildSandboxConfig(
     if (!denyRead.includes(absolutePath)) denyRead.push(absolutePath);
   }
 
-  // Bare-repo attack prevention ───────────────────────────────────────────────
-  // A sandboxed command could plant HEAD/objects/refs/hooks/config in the
-  // workspace root to trigger the bare-repo escape on the next git call.
+  // bare-repo 攻击防护 ────────────────────────────────────────────────────────
+  // 沙箱命令可能在工作区根目录植入 HEAD/objects/refs/hooks/config，
+  // 触发下一次 git 调用的 bare-repo 逃逸。
   //
-  // For files that already exist: add to denyWrite so sandbox mounts them ro.
-  // For files that don't exist: record in scrubPaths so cleanup() can delete
-  // anything planted during a sandboxed command.
+  // 已存在的文件：加进 denyWrite，沙箱内挂只读。
+  // 不存在的文件：记进 scrubPaths，cleanup() 删掉命令跑完后出现的植入文件。
   const scrubPaths: string[] = [];
   if (ctx.workspaceRoot) {
     for (const file of BARE_REPO_FILES) {
       const p = path.resolve(ctx.workspaceRoot, file);
       try {
-        statSync(p);            // throws ENOENT if absent
-        denyWrite.push(p);      // exists → make it read-only inside sandbox
+        statSync(p);            // 不存在则抛 ENOENT
+        denyWrite.push(p);      // 存在 -> 沙箱内只读
       } catch {
-        scrubPaths.push(p);     // absent → delete if it appears after command
+        scrubPaths.push(p);     // 不存在 -> 命令跑完后若出现则删除
       }
     }
   }
 
-  // Permission rules → sandbox filesystem paths ─────────────────────────────
+  // Permission rules -> sandbox filesystem paths ─────────────────────────────
+  // TODO 死代码：见文件顶部说明。rule.tool 永不等于 'fs-edit'/'fs-write'/'fs-read'。
   for (const rule of rules) {
     if (!rule.pathGlob) continue;
 
@@ -114,26 +120,26 @@ export function buildSandboxConfig(
 // ── Path resolution ───────────────────────────────────────────────────────────
 
 /**
- * Extract the base directory from a pathGlob so bubblewrap/sandbox-exec can
- * bind-mount it. Strips trailing /** and resolves prefix conventions.
+ * 从 pathGlob 提取基础目录，供 bubblewrap/sandbox-exec bind-mount。
+ * 剥离尾部 /** 并解析前缀约定。
  *
- * Convention (mirrors permission/rules.ts resolvePatternRoot):
- *   //abs/path/**  → /abs/path   (filesystem root anchored)
- *   ~/rel/**       → ~/rel       (home-dir anchored)
- *   /rel/**        → workspaceRoot/rel
- *   rel/**         → workspaceRoot/rel
+ * 约定（对齐 permission/rules.ts 的 resolvePatternRoot）：
+ *   //abs/path/**  -> /abs/path   （锚定文件系统根）
+ *   ~/rel/**       -> ~/rel       （锚定 home 目录）
+ *   /rel/**        -> workspaceRoot/rel
+ *   rel/**         -> workspaceRoot/rel
  */
 function resolveGlobBase(glob: string, workspaceRoot: string): string {
   const stripped = glob.endsWith('/**') ? glob.slice(0, -3) : glob;
 
   if (stripped.startsWith('//')) {
-    // Filesystem-root-anchored — mirrors resolvePatternRoot() in permission/rules.ts.
-    // On Windows the drive letter comes from the workspace root (same convention).
+    // 锚定文件系统根 - 对齐 permission/rules.ts 的 resolvePatternRoot()。
+    // Windows 上盘符取自 workspaceRoot（同约定）。
     if (getPlatform() === 'windows') {
       const drive = workspaceRoot.slice(0, 3) || (process.env['SystemDrive'] ?? 'C:') + '\\';
       return path.join(drive, stripped.slice(2).replace(/\//g, path.sep));
     }
-    return stripped.slice(1);   // //abs/path → /abs/path on Linux/macOS
+    return stripped.slice(1);   // //abs/path -> /abs/path（Linux/macOS）
   }
 
   if (stripped.startsWith('~/')) return path.join(os.homedir(), stripped.slice(2));

@@ -21,8 +21,18 @@ export type {
   AgentRunTransitionAction,
   AgentRunTransitionResult,
 } from './runs/types.js';
-export type { TurnLoopEvent, ExecutorFactory, TurnLoopInput } from './loop.js';
-export type { LoopState, LoopPhase, LoopTransition } from './loop-state.js';
+export { runAgentLoop } from './agentLoop.js';
+export type {
+  AgentLoopEvent,
+  AgentLoopInput,
+  AgentLoopOutcome,
+  ExecutorFactory,
+} from './agentLoop.js';
+export type {
+  AgentLoopPhase,
+  AgentLoopState,
+  AgentLoopTransition,
+} from './agentLoopState.js';
 export {
   AgentBudgetExceededError,
   DEFAULT_TURN_BUDGET_LIMITS,

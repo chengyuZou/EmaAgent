@@ -40,12 +40,8 @@ export interface ReadFileEntry {
 /** 以绝对规范化路径为键。 */
 export type ReadFileState = Map<string, ReadFileEntry>;
 
-// ── IFileStateStore - 仅接口(由 @ema-agent/agent-context 实现)──────────────
-//
-// 定义在此，Read/Edit/Write 可调用而无需 import agent-context 包
-// (避免 tools -> agent-context -> … 循环)。
-
-export interface IFileStateStoreEntry {
+// 文件状态由 Tool 模块拥有，读取与编辑工具共享它来阻止陈旧写入。
+export interface FileStateStoreEntry {
   content:       string;
   mtimeMs:       number;
   offset?:       number;
@@ -53,9 +49,9 @@ export interface IFileStateStoreEntry {
   isPartialView: boolean;
 }
 
-export interface IFileStateStore {
-  record(path: string, entry: IFileStateStoreEntry): void;
-  get(path: string): (IFileStateStoreEntry & { lastAccessMs: number }) | undefined;
+export interface FileStateStore {
+  record(path: string, entry: FileStateStoreEntry): void;
+  get(path: string): (FileStateStoreEntry & { lastAccessMs: number }) | undefined;
   recentEntries(limit: number): ReadonlyArray<{ path: string; content: string; mtimeMs: number }>;
 }
 
@@ -224,11 +220,11 @@ export interface ToolExecutionContext {
    */
   readFileState: ReadFileState;
   /**
-   * per-session 持久文件状态存储(AgentFileStateStore)。
+   * 按 Session 保存的文件读取状态。
    * 跨 turn 存活 - 用于跨 turn 的陈旧编辑检测和压缩后恢复。
    * 测试和非 agent 调用方缺失。
    */
-  fileStateStore?: IFileStateStore;
+  fileStateStore?: FileStateStore;
   /**
    * 执行中 emit 一个结构化 SSE 事件(如子步骤的 tool_result)。
    * 可选:并非所有调用方都提供流式通道。

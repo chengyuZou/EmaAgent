@@ -5,7 +5,11 @@ import type { LlmCallId, Message as ModelMessage } from '@ema-agent/llm';
 import type { ModelContextSnapshot } from '@ema-agent/context';
 import type { TurnPolicy } from '../policy.js';
 import type { TurnToolExecutor } from '../tool-executor.js';
-import { turnLoop } from '../loop.js';
+import {
+  runAgentLoop,
+  type AgentLoopEvent,
+  type AgentLoopOutcome,
+} from '../agentLoop.js';
 import { TurnBudget } from '../turn-budget.js';
 
 function makePolicy(): TurnPolicy {
@@ -24,7 +28,19 @@ function makeExecutor(): TurnToolExecutor {
   } as unknown as TurnToolExecutor;
 }
 
-describe('turnLoop LLM 生命周期', () => {
+async function collectAgentLoop(
+  loop: AsyncGenerator<AgentLoopEvent<never>, AgentLoopOutcome>,
+): Promise<{ events: Array<AgentLoopEvent<never>>; outcome: AgentLoopOutcome }> {
+  const events: Array<AgentLoopEvent<never>> = [];
+  let step = await loop.next();
+  while (!step.done) {
+    events.push(step.value);
+    step = await loop.next();
+  }
+  return { events, outcome: step.value };
+}
+
+describe('AgentLoop LLM 生命周期', () => {
   it('累计 Usage 快照只按差值计入 Turn，不重复计算输入 Token', async () => {
     const stream = vi.fn(() => (async function* () {
       yield { type: 'usage' as const, inputTokens: 100, outputTokens: 0 };
@@ -33,9 +49,7 @@ describe('turnLoop LLM 生命周期', () => {
       yield { type: 'done' as const, stopReason: 'end_turn' as const };
     })());
     const usageSnapshots: Array<{ inputTokens: number; outputTokens: number }> = [];
-    let finalUsage: { inputTokens: number; outputTokens: number } | undefined;
-
-    for await (const event of turnLoop({
+    const result = await collectAgentLoop(runAgentLoop<never>({
       messages: [{ role: 'user', content: 'hello' }],
       policy: makePolicy(),
       buildExecutor: () => makeExecutor(),
@@ -53,16 +67,16 @@ describe('turnLoop LLM 生命周期', () => {
         maxConcurrentSubagents: 1,
       }),
       sessionId: 'session-1',
-    })) {
+    }));
+    for (const event of result.events) {
       if (event.type === 'loop_usage') usageSnapshots.push(event.usage);
-      if (event.type === 'loop_done') finalUsage = event.state.usage;
     }
 
     expect(usageSnapshots).toEqual([
       { inputTokens: 100, outputTokens: 0 },
       { inputTokens: 100, outputTokens: 20 },
     ]);
-    expect(finalUsage).toEqual({ inputTokens: 100, outputTokens: 20 });
+    expect(result.outcome.state.usage).toEqual({ inputTokens: 100, outputTokens: 20 });
   });
 
   it('把本轮工具定义同时交给上下文压缩和 LLM 请求', async () => {
@@ -93,7 +107,7 @@ describe('turnLoop LLM 生命周期', () => {
       yield { type: 'done' as const, stopReason: 'end_turn' as const };
     })());
 
-    for await (const event of turnLoop({
+    const result = await collectAgentLoop(runAgentLoop<never>({
       messages: [{ role: 'user', content: 'read it' }],
       policy: { toolDefs: () => tools } as unknown as TurnPolicy,
       buildExecutor: () => makeExecutor(),
@@ -106,7 +120,8 @@ describe('turnLoop LLM 生命周期', () => {
       sessionId: 'session-1',
       historyMessageCount: 0,
       assembleContext,
-    })) {
+    }));
+    for (const event of result.events) {
       expect(event.type).toBeDefined();
     }
 
@@ -144,9 +159,7 @@ describe('turnLoop LLM 生命周期', () => {
         errorCode: 'permission/denied',
       }],
     } as unknown as TurnToolExecutor;
-    const events = [];
-
-    for await (const event of turnLoop({
+    const result = await collectAgentLoop(runAgentLoop<never>({
       messages: [{ role: 'user', content: 'publish it' }],
       policy: makePolicy(),
       buildExecutor: () => executor,
@@ -157,19 +170,14 @@ describe('turnLoop LLM 生命周期', () => {
       maxIterations: 10,
       budget: new TurnBudget(),
       sessionId: 'session-1',
-    })) {
-      events.push(event);
-    }
+    }));
 
     expect(stream).toHaveBeenCalledTimes(3);
-    expect(events).toContainEqual({
+    expect(result.events).toContainEqual({
       type: 'loop_breaker',
       reason: 'permission denied 3 consecutive times',
     });
-    expect(events.at(-1)).toEqual(expect.objectContaining({
-      type: 'loop_done',
-      state: expect.objectContaining({ transition: 'permission_denial_loop' }),
-    }));
+    expect(result.outcome.state.transition).toBe('permission_denial_loop');
   });
 
   it('每个逻辑轮次配对 iteration + llmCallId，并限制 max_tokens 恢复次数', async () => {
@@ -198,7 +206,7 @@ describe('turnLoop LLM 生命周期', () => {
     }> = [];
     const eventTypes: string[] = [];
 
-    for await (const event of turnLoop({
+    const result = await collectAgentLoop(runAgentLoop<never>({
       messages: [{ role: 'user', content: 'hello' }],
       policy: makePolicy(),
       buildExecutor: () => makeExecutor(),
@@ -223,7 +231,8 @@ describe('turnLoop LLM 生命周期', () => {
           ],
         };
       },
-    })) {
+    }));
+    for (const event of result.events) {
       eventTypes.push(event.type);
       if (event.type === 'loop_llm_complete') {
         completed.push({
@@ -247,7 +256,7 @@ describe('turnLoop LLM 生命周期', () => {
     expect(new Set(before.map((call) => call.llmCallId)).size).toBe(2);
     expect(before[1]?.messages.some((message) => message.role === 'system')).toBe(false);
     expect(eventTypes).toContain('loop_breaker');
-    expect(eventTypes.at(-1)).toBe('loop_done');
+    expect(result.outcome.state.transition).toBe('max_output_tokens_recovery');
   });
 
   it('响应式压缩生成新快照后重新应用最终请求 Hook，并保持同一 llmCallId', async () => {
@@ -267,7 +276,7 @@ describe('turnLoop LLM 生命周期', () => {
       contextRevision: forceCompaction ? 'forced-revision' : 'initial-revision',
     }));
 
-    for await (const _event of turnLoop({
+    await collectAgentLoop(runAgentLoop<never>({
       messages: [{ role: 'user', content: 'hello' }],
       historyMessageCount: 0,
       policy: makePolicy(),
@@ -287,9 +296,7 @@ describe('turnLoop LLM 生命周期', () => {
           messages: [{ role: 'system', content: 'hooked' }, ...call.messages],
         };
       },
-    })) {
-      // 排空循环事件。
-    }
+    }));
 
     expect(assembleContext).toHaveBeenLastCalledWith(expect.objectContaining({
       forceCompaction: true,

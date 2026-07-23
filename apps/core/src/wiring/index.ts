@@ -135,10 +135,10 @@ export function startBackgroundWork(bindings: AppBindings): BackgroundHandle {
         try {
           const { deleted, freedBytes } = bindings.toolResultCleaner.sweep();
           if (deleted > 0) {
-            console.log(`[agent-context] cleaner: removed ${deleted} file(s), freed ${(freedBytes / 1024).toFixed(0)} KB`);
+            console.log(`[tool-results] cleaner: removed ${deleted} file(s), freed ${(freedBytes / 1024).toFixed(0)} KB`);
           }
         } catch (err) {
-          console.warn('[agent-context] cleaner sweep failed:', err);
+          console.warn('[tool-results] cleaner sweep failed:', err);
         }
       }
       if (tickCount % BRIDGE_HEARTBEAT_EVERY === 0) {

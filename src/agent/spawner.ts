@@ -16,7 +16,7 @@ import type {
 import type { AgentDeps } from './types.js';
 import { TurnPolicy } from './policy.js';
 import { TurnToolExecutor } from './tool-executor.js';
-import { turnLoop, type ExecutorFactory } from './loop.js';
+import { runAgentLoop, type ExecutorFactory } from './agentLoop.js';
 import { selectSubagentTools } from './subagent-capabilities.js';
 import { TurnBudget } from './turn-budget.js';
 
@@ -207,7 +207,7 @@ export class SubagentSpawner implements ISubagentSpawner {
     }
 
     let subagentExecutor: TurnToolExecutor | undefined;
-    const buildExecutor: ExecutorFactory = ({ pushEv, signal: wakeSignal }) => {
+    const buildExecutor: ExecutorFactory<EmaStreamEvent> = ({ pushEv, signal: wakeSignal }) => {
       // 子 ToolContext 故意不注入 subagentSpawner，以此把递归深度限制为一层。
       // 多层嵌套需要资源预算、邮箱死锁与级联取消设计，V1 不开放。
       const toolCtx: ToolExecutionContext = {
@@ -245,7 +245,7 @@ export class SubagentSpawner implements ISubagentSpawner {
     let usage    = { inputTokens: 0, outputTokens: 0 };
 
     try {
-      for await (const ev of turnLoop({
+      const agentLoop = runAgentLoop<EmaStreamEvent>({
         messages, policy, buildExecutor, llm,
         providerId:           this.parentProviderId,
         model:                resolvedModel,
@@ -263,7 +263,10 @@ export class SubagentSpawner implements ISubagentSpawner {
           queue.length = 0;
           return msgs;
         },
-      })) {
+      });
+      let loopStep = await agentLoop.next();
+      while (!loopStep.done) {
+        const ev = loopStep.value;
         const elapsedMs = Date.now() - startedAtMs;
 
         switch (ev.type) {
@@ -369,19 +372,18 @@ export class SubagentSpawner implements ISubagentSpawner {
             break;
           }
 
-          // ── 循环完成：收集最终文本与用量 ───────────────────────────────
-          case 'loop_done':
-            fullText = ev.fullText;
-            usage    = {
-              inputTokens:  ev.state.usage.inputTokens,
-              outputTokens: ev.state.usage.outputTokens,
-            };
-            break;
         }
+        loopStep = await agentLoop.next();
       }
 
-      // turnLoop 在 AbortSignal 触发时会以 loop_done 正常收束；这里必须重新映射
-      // 为子任务取消，不能把用户取消误报成 subagent_completed。
+      const loopOutcome = loopStep.value;
+      fullText = loopOutcome.fullText;
+      usage = {
+        inputTokens: loopOutcome.state.usage.inputTokens,
+        outputTokens: loopOutcome.state.usage.outputTokens,
+      };
+
+      // AgentLoop 以 aborted 结果正常收束；Spawner 必须映射成子执行取消。
       if (childCtrl.signal.aborted) {
         throw new Error(signal.aborted ? 'Parent turn aborted' : 'Sub-agent aborted by user');
       }

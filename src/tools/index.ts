@@ -2,8 +2,8 @@
 export type {
   ReadFileEntry,
   ReadFileState,
-  IFileStateStoreEntry,
-  IFileStateStore,
+  FileStateStoreEntry,
+  FileStateStore,
   RunOptions,
   RunResult,
   ICommandRunner,
@@ -25,6 +25,8 @@ export type {
   ToolDef,
   BuiltTool,
 } from './types.js';
+export { SessionFileStateStore } from './sessionFileStateStore.js';
+export type { SessionFileStateEntry } from './sessionFileStateStore.js';
 export type { DeepReadonly, PreparedToolCall } from './prepared-call.js';
 export { presentToolResult, splitToolResult } from './tool-result.js';
 export type { SplitToolResult } from './tool-result.js';

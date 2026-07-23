@@ -129,7 +129,7 @@ export class Orchestrator {
       mcpClient:         bindings.mcpBridge,
       skillRunner:       bindings.skillBridge,
       kbSearch:          bindings.kbSearch,
-      getContextStores:  bindings.getContextStores,
+      getSessionToolStores: bindings.getSessionToolStores,
       agentRunStore:     bindings.agentRunStore,
       taskStore:         bindings.taskStore,
       toolExecutionJournal: bindings.toolExecutionJournal,
@@ -510,7 +510,7 @@ export class Orchestrator {
             modelMaxOutputTokens,
             providerId,
             model,
-            recentFiles:        this.bindings.getContextStores(turn.sessionId)
+            recentFiles:        this.bindings.getSessionToolStores(turn.sessionId)
               .fileStateStore.recentEntries(20),
             emit:               this.bindings.systemBus
               ? (ev) => this.bindings.systemBus.emit(ev)

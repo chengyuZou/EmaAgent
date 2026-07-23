@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { asToolCallId, asSessionId, asTurnId } from '@ema-agent/ids';
 import type { ToolExecutionRecord } from '@ema-agent/tools';
 import { splitToolResult } from '@ema-agent/tools';
-import type { IFileStateStore, ToolExecutionContext } from '@ema-agent/tools';
+import type { FileStateStore, ToolExecutionContext } from '@ema-agent/tools';
 import { FileWriteTool } from '../tools/FileWriteTool/FileWriteTool.js';
 import { atomicTempPrefix, atomicWriteUtf8 } from '../tools/FileWriteTool/atomicWrite.js';
 import { cleanupInterruptedFileWriteTemps } from '../tools/FileWriteTool/recovery.js';
@@ -24,7 +24,7 @@ describe('FileWriteTool', () => {
   it('原子写入后同时更新 turn 缓存和 session 文件状态', async () => {
     const directory = makeTempDir();
     const target = path.join(directory, 'nested', 'answer.txt');
-    const record = vi.fn<IFileStateStore['record']>();
+    const record = vi.fn<FileStateStore['record']>();
     const ctx = makeContext({ fileStateStore: { record, get: vi.fn(), recentEntries: vi.fn() } });
 
     const result = await FileWriteTool.unsafeExecute(

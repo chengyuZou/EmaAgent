@@ -32,7 +32,7 @@ import type {
 } from '@ema-agent/tools';
 import type { IArtifactStore } from '@ema-agent/artifact';
 import type { PermissionEngine, AskPermissionFn } from '@ema-agent/permission';
-import type { AgentFileStateStore } from '@ema-agent/agent-context';
+import type { SessionFileStateStore } from '@ema-agent/tools';
 import type { ModelCapabilityResolver } from '@ema-agent/provider';
 import type { AgentRunStorePort } from './runs/types.js';
 import type { TaskStorePort } from '@ema-agent/tasks';
@@ -107,8 +107,8 @@ export interface AgentDeps {
    * 按 Session 获取文件状态和工具结果存储，首次调用时创建并缓存。
    * 测试与非 Agent 调用方可以省略。
    */
-  getContextStores?: (sessionId: SessionId) => {
-    fileStateStore:  AgentFileStateStore;
+  getSessionToolStores?: (sessionId: SessionId) => {
+    fileStateStore:  SessionFileStateStore;
     toolResultStore: ToolResultStore;
   };
   /**
@@ -155,7 +155,7 @@ export interface TurnExecutionInput {
   /** 聊天选择器提供的逐 KB 文档范围；没有对应范围的 KB 不额外过滤。 */
   kbAssetScopes?: KbAssetScope[];
   /**
-   * 每轮压缩回调，在 TurnLoop 调用模型前执行，防止多步骤 Agent Turn
+   * 每轮压缩回调，在 AgentLoop 调用模型前执行，防止多步骤 Agent Turn
    * 在中途超过上下文窗口。Orchestrator 将其接到 ContextCompactor.compact()；
    * 测试和临时子 Agent 上下文可以省略。
    */

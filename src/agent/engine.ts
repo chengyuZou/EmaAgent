@@ -9,7 +9,7 @@ import type { TurnFailurePhase } from '@ema-agent/hooks';
 import type { AgentDeps, TurnExecutionInput } from './types.js';
 import { TurnPolicy } from './policy.js';
 import { TurnToolExecutor } from './tool-executor.js';
-import { turnLoop, type ExecutorFactory } from './loop.js';
+import { runAgentLoop, type ExecutorFactory } from './agentLoop.js';
 import { SubagentSpawner } from './spawner.js';
 import {
   buildModelMessages,
@@ -29,8 +29,8 @@ import { awaitAgentAnswer } from './ask-user-lifecycle.js';
 // ── AgentEngine ───────────────────────────────────────────────────────────────
 
 /**
- * TurnLoop 外层运行入口，负责 Hook、情绪处理、Session 持久化和 SSE 转换。
- * 思考与行动循环位于 loop.ts，子 Agent 执行位于 spawner.ts。
+ * TurnRuntime 的迁移基座，负责 Turn 生命周期、持久化、Hook 和协议事件。
+ * Agent 的思考与行动迭代由 AgentLoop 完成。
  */
 export class AgentEngine {
   // 路由按 turnId 定位 Spawner，以便只取消某个子 Agent。
@@ -72,7 +72,7 @@ async function* runTurn(
   const policy        = new TurnPolicy(tools.manifestSnapshot());
   const budget        = new TurnBudget();
   const readFileState = new Map() as ReadFileState;
-  const contextStores = deps.getContextStores?.(sessionId);
+  const sessionToolStores = deps.getSessionToolStores?.(sessionId);
   const resolvedRunner = deps.getCommandRunner?.(sessionId);
 
   // Core 生成根目录，Agent 只消费并把它转换成显式权限能力。
@@ -218,7 +218,7 @@ async function* runTurn(
     // 产生的完整请求视图，并在 spawn() 时按 fork 语义创建快照。
     //
     // emitRef 让 Spawner 把子 Agent 进度转发到父 SSE 流。
-    // TurnLoop 会在执行工具前调用 buildExecutor，因此 spawn 时发送函数已经就绪；
+    // AgentLoop 会在执行工具前调用 buildExecutor，因此 spawn 时发送函数已经就绪；
     // Turn 结束后由 finally 清空引用。
 
     // beforeLlm 返回的是每次请求的临时视图，不能写回原始历史，否则下一轮
@@ -252,12 +252,12 @@ async function* runTurn(
     turnSpawner = spawner;
     activeSpawners.set(turnId, spawner);
 
-    const buildExecutor: ExecutorFactory = ({ pushEv, signal: wakeSignal }) => {
+    const buildExecutor: ExecutorFactory<EmaStreamEvent> = ({ pushEv, signal: wakeSignal }) => {
       emitRef.fn = pushEv;   // 循环启动后接入父 SSE 发送函数
       const toolCtx: ToolExecutionContext = {
         sessionId, turnId, workspaceRoot, signal, readFileState,
         taskStore:       deps.taskStore,
-        fileStateStore:  contextStores?.fileStateStore,
+        fileStateStore:  sessionToolStores?.fileStateStore,
         emit:            pushEv,
         commandRunner:   resolvedRunner,
         artifactStore:   deps.artifactStore,
@@ -291,7 +291,7 @@ async function* runTurn(
         runner:          resolvedRunner,
         pushEv,
         signal:          wakeSignal,
-        toolResultStore: contextStores?.toolResultStore,
+        toolResultStore: sessionToolStores?.toolResultStore,
         toolExecutionJournal: deps.toolExecutionJournal,
       });
       turnExecutor = executor;
@@ -299,9 +299,9 @@ async function* runTurn(
       return executor;
     };
 
-    // ── 主循环：把 TurnLoopEvent 转换为 EmaStreamEvent ────────────────────────
+    // AgentLoop 不认识 SSE；本层把循环事件翻译为现有传输协议。
     activePhase = 'provider';
-    for await (const ev of turnLoop({
+    const agentLoop = runAgentLoop<EmaStreamEvent>({
       messages, policy, buildExecutor, llm,
       historyMessageCount: historyView.messages.length,
       providerId, model, signal,
@@ -388,8 +388,11 @@ async function* runTurn(
         );
         return { kind: 'continue', messages: finalMessages };
       },
-      thinking:        input.thinking,
-    })) {
+      thinking: input.thinking,
+    });
+    let loopStep = await agentLoop.next();
+    while (!loopStep.done) {
+      const ev = loopStep.value;
       // prepareLlmCall 在 Loop 内运行，Hook 发出的诊断事件会先进入本地队列。
       // 在处理随后的 LLM/终态事件前排空，保证 SSE 生命周期顺序稳定。
       while (pendingHookEvents.length > 0) yield pendingHookEvents.shift()!;
@@ -526,32 +529,42 @@ async function* runTurn(
           yield { type: 'agent_breaker_tripped', sessionId, reason: ev.reason };
           break;
 
-        case 'loop_done': {
-          totalInput  = ev.state.usage.inputTokens;
-          totalOutput = ev.state.usage.outputTokens;
-
-          if (ev.state.transition === 'no_tool_calls') {
-          // 最后一轮没有工具调用，直接持久化助手消息并触发 Hook。
-            const blockMap = new Map<number, AssistantBlock>();
-            for (const [idx, text]     of iterTextByIndex)     blockMap.set(idx, { type: 'text', text });
-            for (const [idx, thinking] of iterThinkingByIndex) blockMap.set(idx, { type: 'thinking', thinking });
-            const allBlocks = [...blockMap.entries()].sort(([a], [b]) => a - b).map(([, b]) => b);
-
-            activePhase = 'persistence';
-            const msg = session.appendMessage({ turnId, sessionId, role: 'assistant', blocks: allBlocks as MessageBlocks });
-            activePhase = 'hook';
-            await hooks.trigger('afterAssistantMessage', {
-              turnId, sessionId,
-              payload: { messageId: msg.id, blocks: allBlocks },
-              signal,
-              emit: emitHookEvent,
-            });
-            while (pendingHookEvents.length > 0) yield pendingHookEvents.shift()!;
-            activePhase = 'provider';
-          }
-          break;
-        }
       }
+      loopStep = await agentLoop.next();
+    }
+
+    const loopOutcome = loopStep.value;
+    totalInput = loopOutcome.state.usage.inputTokens;
+    totalOutput = loopOutcome.state.usage.outputTokens;
+
+    if (loopOutcome.state.transition === 'no_tool_calls') {
+      // 最后一轮没有工具调用，直接持久化助手消息并触发 Hook。
+      const blockMap = new Map<number, AssistantBlock>();
+      for (const [idx, text] of iterTextByIndex) blockMap.set(idx, { type: 'text', text });
+      for (const [idx, thinking] of iterThinkingByIndex) {
+        blockMap.set(idx, { type: 'thinking', thinking });
+      }
+      const allBlocks = [...blockMap.entries()]
+        .sort(([left], [right]) => left - right)
+        .map(([, block]) => block);
+
+      activePhase = 'persistence';
+      const message = session.appendMessage({
+        turnId,
+        sessionId,
+        role: 'assistant',
+        blocks: allBlocks as MessageBlocks,
+      });
+      activePhase = 'hook';
+      await hooks.trigger('afterAssistantMessage', {
+        turnId,
+        sessionId,
+        payload: { messageId: message.id, blocks: allBlocks },
+        signal,
+        emit: emitHookEvent,
+      });
+      while (pendingHookEvents.length > 0) yield pendingHookEvents.shift()!;
+      activePhase = 'provider';
     }
 
     // ── Turn 收尾 ─────────────────────────────────────────────────────────────

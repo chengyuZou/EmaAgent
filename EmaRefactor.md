@@ -55,7 +55,7 @@ Session
 ├─ RealtimeSession / future LiveSession
 │  └─ 音频、画面、WebSocket/WebRTC、TTS 与舞台输出
 └─ Turn
-   └─ TurnLoop：一次有界 LLM/Tool 决策循环
+   └─ AgentLoop：在该 Turn 内重复执行 LLM → Tool → Result
 ```
 
 Vision 是感知能力，主动说话是唤醒策略，WebSocket 是传输协议，直播是长生命周期活动；它们都不是新的 `ExecutionProfile`。V1 只实现用户消息触发，不建立未来触发器、Realtime 或直播空包，但 Turn 启动契约应保留明确的 trigger/origin 扩展位置，且任何非用户来源都不能构成危险 Tool 的用户授权。
@@ -91,17 +91,19 @@ V1 不保留同一个 Session 内的 Branch 树。Branch 会让 Message、Turn�
 
 旧 Branch 的 Binary Lifting、Euler Tour + RMQ、恢复顺序与前端树形布局已原样保存在工作区外的 `D:\Github\EmaAgentBranchArchive`，未来若恢复该能力必须先重新定义跨领域副作用和 Task/AgentRun 的分叉语义。
 
-### 2.2 统一执行核心是 TurnRuntime + TurnLoop
+### 2.2 统一执行核心是 TurnRuntime + AgentLoop
 
-统一执行核心不再由 `ConversationEngine` 与 `AgentEngine` 各自维护一套循环。`TurnRuntime` 管一次 Turn 的根生命周期，`TurnLoop` 只管 LLM、Tool 与 Result 的迭代：
+统一执行核心不再由 `ConversationEngine` 与 `AgentEngine` 各自维护一套循环。`TurnRuntime` 管一次 Turn 的根生命周期，`AgentLoop` 只管一个 Turn 内可重复的 LLM、Tool 与 Result 迭代。现有 `AgentEngine` 已经承担大部分 Turn 开始、持久化、事件转换与终态处理，应迁入并演化为 `TurnRuntime`，不能再在它上面增加第三层包装：
 
 ```text
 TurnRuntime
-  创建、取消、唯一终态、持久化、事件身份
+  创建、取消、唯一终态、持久化、事件身份、TurnHandle
       ↓
-TurnLoop
+AgentLoop
   Context → LLM → Tool Batch → Result → LLM
 ```
+
+`TurnRuntime.start(command)` 返回立即可用的 `TurnHandle`：稳定的 `sessionId/turnId`、`AsyncIterable<TurnEvent>`、唯一完成的 `Promise<TurnOutcome>` 与取消入口。`AgentLoop` 返回循环内部事件和 `AgentLoopOutcome`，不创建或结束根 Turn，不直接写 Session Repo，也不直接面向 HTTP/SSE。
 
 ```ts
 export interface TurnExecutionProfile {
@@ -184,7 +186,7 @@ Router 模型属于 Narrative 业务设置，不重新加入通用 `model_bindin
 
 ### 3.2 NarrativePolicy
 
-- `auto`：向 TurnLoop 暴露 NarrativeSearch，由主模型按需调用；
+- `auto`：向 AgentLoop 暴露 NarrativeSearch，由主模型按需调用；
 - `always`：正式回答前强制执行一次 Route + Recall；
 - `off`：不暴露 NarrativeSearch，也不执行强制召回。
 
@@ -287,14 +289,14 @@ Profile 与运行环境
 
 ### 5.1 删除 agent-context 包，不删除 Context 概念
 
-`agent-context` 当前包含文件状态、工具结果等能力，名字和职责都不准确。目标是拆分后删除该包：
+`agent-context` 曾混合文件状态、工具结果等能力，名字和职责都不准确，现已拆分并删除：
 
 ```text
 原 agent-context
-├─ FileStateStore      → tools/files 或 session-files
+├─ FileStateStore      → tools/sessionFileStateStore.ts
 ├─ ToolResultStore     → tools/results
 ├─ ToolResultCleaner   → tools/results 生命周期
-└─ AgentContextSnapshot→ 新 ContextAssembler 的明确输入
+└─ AgentContextSnapshot→ 无生产消费者，删除
 ```
 
 新的 `context` 只表达“即将送进模型的上下文窗口”：
@@ -393,7 +395,8 @@ V1 不把普通 Subagent 当成 Claude Team teammate。`TaskCreate/Get/List/Upda
 ```text
 src/
 ├─ agent/
-│  ├─ turnLoop.ts               唯一模型与工具迭代入口
+│  ├─ agentLoop.ts              唯一模型与工具迭代入口
+│  ├─ events.ts                 AgentLoopEvent 与 AgentRunEvent
 │  ├─ loop/
 │  ├─ profiles/
 │  │  ├─ chatProfile.ts
@@ -406,10 +409,9 @@ src/
 │  ├─ taskContext.ts            动态 Context 提醒
 │  └─ types.ts
 ├─ turn/
-│  ├─ ids.ts
 │  ├─ turnRuntime.ts            Turn 根生命周期与唯一终态
-│  ├─ protocol.ts               Turn 命令、响应和执行快照
-│  ├─ streamEvents.ts           组合各模块公开事件
+│  ├─ protocol.ts               TurnCommand、TurnHandle、TurnOutcome 与执行快照
+│  ├─ events.ts                 只组合单个根 Turn 的实时事件
 │  └─ errors.ts
 ├─ llm/
 │  ├─ languageModel.ts
@@ -442,9 +444,9 @@ src/
 ├─ sandbox/                     受限命令启动与平台隔离
 ├─ hook/
 ├─ session/
-│  ├─ ids.ts
 │  ├─ message.ts                 持久化 Session Message
 │  ├─ protocol.ts               前端 Session/Message Wire
+│  ├─ events.ts                 Task、来源等跨 Turn 的 SessionEvent
 │  └─ ownership.ts
 ├─ narrative/
 ├─ memory/
@@ -454,6 +456,9 @@ src/
 ├─ skill/
 ├─ mcp/
 ├─ providers/
+├─ system/
+│  ├─ events.ts                 组合角色、Provider、Memory/Knowledge 后台 AppEvent
+│  └─ eventBus.ts               只接受 AppEvent 的全局通知总线
 ├─ usage/                        跨模型能力的调用记录与写入端口
 ├─ channels/
 │  ├─ desktop/
@@ -475,7 +480,7 @@ packages/
 └─ credential/
 ```
 
-这棵树按 Agent 的真实执行路径命名，而不是按传统 DDD 分层：开发者从 `turn/turnRuntime` 进入，由 `agent/turnLoop` 沿 `context → llm → tools → permission/sandbox → result` 读完一次 Turn；Narrative、Memory、Knowledge、Character 等产品能力直接是一等目录，不藏进 `capabilities`；Desktop、CLI、Web、QQ、微信只在 `channels` 提供输入输出适配，不能各自复制 Agent 编排。
+这棵树按 Agent 的真实执行路径命名，而不是按传统 DDD 分层：开发者从 `turn/turnRuntime` 进入，由 `agent/agentLoop` 沿 `context → llm → tools → permission/sandbox → result` 读完一次 Turn；Narrative、Memory、Knowledge、Character 等产品能力直接是一等目录，不藏进 `capabilities`；Desktop、CLI、Web、QQ、微信只在 `channels` 提供输入输出适配，不能各自复制 Agent 编排。
 
 根 `src` 放 Ema 产品主体；`apps/core` 只保留 Node Sidecar 入口、HTTP/SSE、认证与装配；`packages` 保留确有跨应用复用、平台隔离、独立发布或独立测试价值的技术底座。产品模块即使用独立 `package.json` 参与 TypeScript/Turbo 构建，也仍属于根 `src`，不因此成为公共库。
 
@@ -486,7 +491,7 @@ packages/
 3. `context` 只指模型上下文，不指 React Context、文件缓存或任意“上下文对象”；
 4. `agent/runs` 只保存子 Agent Run，KB/Vision/Memory 后台工作仍使用本领域 Job；
 5. 每个业务目录提供稳定公开边界，名称按职责使用 `LanguageModel`、Runtime、Client、Registry、Store、函数或确有协调职责的 Facade，不强制增加 `XxxFacade`；
-6. `channels` 只能把平台输入规范化为 Turn、消费 `EmaStreamEvent`，不能拥有独立聊天引擎。
+6. `channels` 只能把平台输入规范化为 Turn，并按作用域消费 `TurnEvent/SessionEvent/AppEvent`，不能拥有独立聊天引擎。
 
 ### 7.2 Agent 执行体系的模块所有权
 
@@ -497,9 +502,9 @@ apps/core
   Route、认证、SSE 编码、启动恢复、依赖装配
       ↓
 TurnRuntime
-  Turn 创建、取消、唯一终态、持久化、事件身份
+  Turn 创建、取消、唯一终态、持久化、事件身份与 TurnHandle
       ↓
-TurnLoop
+AgentLoop
   LLM → Tool Batch → Result → LLM 的迭代和预算
       ↓
 ToolExecutionRuntime
@@ -509,18 +514,18 @@ Builtin / MCP / Skill Tool
   只实现具体能力
 ```
 
-支撑模块不成为第二套编排器：`ContextAssembler` 提供每次 LLM 调用看到的窗口；`LanguageModel` 执行无 Session 状态的模型请求；Permission 决定能否执行；Sandbox 决定如何隔离执行；Storage 实现持久化端口；Session 保存持久消息与稳定 Tool Result 预览；Turn 组合跨端事件并拥有根终态。
+支撑模块不成为第二套编排器：`ContextAssembler` 提供每次 LLM 调用看到的窗口；`LanguageModel` 执行无 Session 状态的模型请求；Permission 决定能否执行；Sandbox 决定如何隔离执行；Storage 实现持久化端口；Session 保存持久消息与稳定 Tool Result 预览；Turn 只组合本次根 Turn 的跨端事件并拥有根终态。
 
 一级主重构范围：
 
 - `src/tools`：拥有 `ToolDef/buildTool`、注册与来源、Manifest Snapshot、`PreparedToolCall`、单次 Tool 生命周期、Execution Journal 领域逻辑、Result 外置与预算、后台句柄及 Presentation 数据；
 - `src/builtinTools`：只实现 Ema 内置能力。MCP 与 Skill 可以接入同一 Tool 框架，但不属于 Builtin Tool；
-- `src/agent`：只拥有 `TurnLoop`、Profile/Policy/Budget、LLM 迭代、Tool Call 批次调度、Subagent/AgentRun 协调与循环熔断；
-- `src/turn`：拥有 Turn 输入、触发来源、身份、状态、取消、唯一终态与跨端事件关联，不执行 Tool、拼 Prompt 或访问 Session Repo；
+- `src/agent`：拥有 `AgentLoop`、Profile/Policy/Budget、LLM 迭代、Tool Call 批次调度、Subagent/AgentRun 协调与循环熔断；AgentLoop 不写根 Turn 终态；
+- `src/turn`：拥有 Turn 输入、触发来源、身份、状态、取消、唯一终态、持久化协调与 `TurnEvent`；它通过公共端口使用 Session Store，不直接访问 Storage Repo，也不实现 Tool 或 Prompt 细节；
 - `src/agentContext`：逐项迁出后删除。Tool Result 与 Cleanup 归 `tools/results`，文件状态归 `tools/workspace` 或 `tools/files`，Snapshot 归 `context/restore` 或确认无价值后删除；
 - `src/tasks`：只拥有用户或根 Agent 可见的完整 Task 系统，包括状态、依赖、活动 Run 投影、事务/CAS、查询快照与事件；四个模型 Tool 的具体定义仍在 `src/builtinTools`，并且 V1 只向根 Turn 注册。AgentRun、ToolExecution、BackgroundProcess 与领域 Job 不得继续复用 Task 身份或生命周期；
 - `src/conversation`：只作 Chat 到统一 Turn 主链的短期适配器，不再拥有独立 LLM/Tool 循环，行为一致后删除；
-- `apps/core`：退回 HTTP/SSE/Auth/Composition Root。Route 最终只解析请求并调用 `turnRuntime.run()`，现有 orchestrator 删除或缩为协议适配器。
+- `apps/core`：退回 HTTP/SSE/Auth/Composition Root。Route 最终只解析请求并调用 `turnRuntime.start()`，再编码 `TurnHandle.events`；现有 orchestrator 删除或缩为协议适配器。
 
 二级配套模块保持独立，但接口必须服从同一主链：
 
@@ -579,7 +584,7 @@ Provider 与 LLM 已证明产品模块可以位于根 `src`，同时保留内部
 3. `apps/core/dist` 不得产生依赖仓库源码路径的越界相对 import；
 4. `pnpm deploy --prod` 必须收集根 `src` 模块及 native dependency；
 5. release runtime 必须在没有 Git 仓库、Node 和 Python 开发环境时启动；
-6. 不在同一批同时执行全仓路径移动、数据库 Schema 重构和 TurnRuntime/TurnLoop 语义切换。
+6. 不在同一批同时执行全仓路径移动、数据库 Schema 重构和 TurnRuntime/AgentLoop 语义切换。
 
 ### 7.5 已完成的 contracts 拆除记录
 
@@ -608,7 +613,7 @@ Provider 与 LLM 已证明产品模块可以位于根 `src`，同时保留内部
 | `SessionOwnershipFacade/Error` | Session |
 | Release、Sandbox、Import Warning | Release/System、Sandbox、Backup |
 
-每个 ID 由对应模块声明品牌和转换函数，不新建全局 `ids` 包。每个模块在自己的 `errors.ts` 导出稳定错误码；Turn 只组合一次 Turn 可能暴露给客户端的错误联合。
+跨业务稳定 ID 统一由零业务依赖的 `src/ids` 声明品牌和转换函数，但该模块不得容纳业务对象、状态、事件或错误。每个业务模块在自己的 `errors.ts` 导出稳定错误码；Turn 只组合一次 Turn 可能暴露给客户端的错误联合。
 
 #### 三种 Message 必须分离
 
@@ -629,24 +634,51 @@ Session 与 LLM 模块内部都可以使用简洁的 `Message`。只有同时接
 
 #### 事件组合
 
-各业务模块定义自己的公开事件，`turn/streamEvents.ts` 只组合：
+事件类型由真实业务域定义，再按生命周期范围组合；不能再由 Turn 包把整个应用拼成一个万能联合：
 
 ```ts
-export type EmaStreamEvent =
-  | TurnEvent
-  | LlmEvent
-  | ToolEvent
-  | PermissionEvent
-  | NarrativeEvent
-  | MemoryEvent
-  | KnowledgeBaseEvent
-  | AgentEvent
-  | TtsEvent
-  | EmotionEvent
-  | HookEvent
-  | ProviderEvent
-  | SystemEvent;
+// src/agent/events.ts：只在模型/工具循环内部流动，不直接进入 SSE。
+export type AgentLoopEvent =
+  | AgentIterationEvent
+  | AgentOutputEvent
+  | AgentToolEvent
+  | AgentUsageEvent
+  | AgentBreakerEvent;
+
+// src/turn/events.ts：单个根 Turn 的实时投影。
+export type TurnEvent =
+  | TurnLifecycleEvent
+  | TurnOutputEvent
+  | TurnToolEvent
+  | TurnInteractionEvent
+  | TurnContextEvent
+  | TurnDiagnosticEvent;
+
+// src/agent/events.ts：一次子 Agent 执行，可独立订阅高频详情。
+export type AgentRunEvent =
+  | AgentRunLifecycleEvent
+  | AgentRunProgressEvent
+  | AgentRunStreamEvent;
+
+// src/session/events.ts：Task、来源与其他跨 Turn 的 Session 状态。
+export type SessionEvent =
+  | TaskEvent
+  | SessionSourceEvent
+  | SessionMetadataEvent
+  | AgentRunSummaryEvent;
+
+// src/system/events.ts：角色、Provider 与后台领域工作的全局应用事件。
+export type AppEvent =
+  | CharacterEvent
+  | ProviderHealthEvent
+  | MemoryBackgroundEvent
+  | KnowledgeJobEvent
+  | SystemWarningEvent;
 ```
+
+所有 `TurnEvent` 必须携带 `sessionId + turnId`；涉及具体调用时继续携带真实 `llmCallId/toolCallId/promptId/agentRunId`。Task 等事件可以显式使用 `causedByTurnId` 表达因果来源，但不能因此伪装成 Turn 事件。SSE cursor、重放序号和连接状态属于传输层，不写进业务事件。
+
+传输通道同样使用窄类型：`TurnEventStore` 只接受 `TurnEvent`；Session 事件通道只接受 `SessionEvent`；`AppEventBus` 只接受 `AppEvent`。AgentRun 的低频摘要可以投影到父 Turn 或 Session，高频 transcript 按 `agentRunId` 独立订阅。迁移期 `EmaStreamEvent` 只能作为带弃用标记的旧消费者兼容别名，任何新接口不得继续扩大它，完成消费者迁移后删除。
 
 Desktop、CLI、Web 与集成渠道只从业务模块的 `protocol` 入口导入纯数据类型或运行时 Schema，不导入 Adapter、Repo、Node SDK 和业务实现。跨 HTTP/SSE 边界的关键输入最终需要 TypeBox/Zod 等运行时验证；只有 TypeScript interface 不能证明外部数据安全。
 
@@ -692,12 +724,12 @@ interface TurnExecutionSnapshot {
 
 ### 9.2 本次统一 Runtime 直接覆盖
 
-- [ ] 删除 `ConversationEngine`，迁移为 TurnRuntime + TurnLoop + ChatProfile；
+- [ ] 删除 `ConversationEngine`，迁移为 TurnRuntime + AgentLoop + ChatProfile；
 - [ ] `TurnMode` 从 `chat/narrative/agent` 演进为 `executionProfile + narrativePolicy`；
 - [ ] Narrative Hook 改为 NarrativeSearchTool + NarrativeRecallFacade；
 - [ ] Prompt Mode block 改为显式 Slot；
 - [x] Compaction 从 Memory 移入 Context；
-- [ ] `agent-context` 拆分并删除；
+- [x] `agent-context` 拆分并删除；
 - [x] 根 AgentTask 投影删除，子 Agent 迁移为 AgentRun；
 - [ ] B-065：Card/Session 等用户动作在各业务 Facade 上统一 ActionResult，不新建传统 application 层；
 - [ ] B-066：TurnRequest 等重复 DTO 收敛到业务所有者的 `protocol` 入口 + mapper，不再进入 contracts；
@@ -745,7 +777,7 @@ interface TurnExecutionSnapshot {
 5. LLM 完成统一 `prepare()`、媒体能力门禁与轻量调用快照；
 6. LLM 不再依赖 contracts 的 Message、Block、Usage 和 ID。
 
-当前进度（2026-07-21）：
+当前进度（2026-07-23）：
 
 - [x] `src/llm/message.ts` 成为模型 Message 与模型可见 Block 的所有者；
 - [x] `src/llm/ids.ts` 拥有 `LlmCallId`，`src/llm/usage.ts` 拥有 `LlmTokenUsage`；
@@ -771,18 +803,19 @@ interface TurnExecutionSnapshot {
 #### C2：Turn + SSE Event
 
 1. 各业务模块迁出自己的事件；
-2. Turn 组合 `EmaStreamEvent`，不重新声明业务字段；
+2. 事件按 AgentLoop、Turn、AgentRun、Session 与 App 五个生命周期范围组合，不重新声明业务字段；
 3. Turn Request/Response/Stats 与执行快照迁入 Turn；
 4. Core SSE 与 Desktop UI 切换到业务 `protocol` 入口。
 
 当前进度（2026-07-21）：
 
-- [x] 新建 `src/turn` 与 `@ema-agent/turn` 公共入口，承接 Turn Request/Response/Stats、输入校验和 `EmaStreamEvent`；
+- [x] 新建 `src/turn` 与 `@ema-agent/turn` 公共入口，承接 Turn Request/Response/Stats、输入校验和迁移期 `EmaStreamEvent`；
 - [x] Core、Desktop UI、Agent、Conversation、Tool、Context、Memory、TTS 等消费者不再从 `contracts` 读取 Turn/SSE 类型；
 - [x] `contracts` 删除 `turns.ts`、`events.ts` 导出，并移除已无用途的 Provider 依赖；
-- [x] Provider、Permission 与 Emotion 拥有各自的客户端事件类型，Turn 只组合 `ProviderStreamEvent`、`PermissionStreamEvent` 与 `EmotionStreamEvent`；
+- [x] Provider、Permission 与 Emotion 已拥有各自的客户端事件类型；现有 Turn 聚合仅是迁移期状态，不再作为目标架构；
 - [ ] Knowledge Base 与 Character 事件迁移前先解除 `Knowledge/Character → Storage → Turn` 循环；Storage 不应为了持久化 AskUser JSON 反向依赖整个 Turn 协议；
-- [ ] 将当前聚合事件按 Tool、Context、Memory、Knowledge、TTS、Agent 等真实业务所有者继续拆分，再由 Turn 组合联合类型；
+- [ ] 将当前聚合事件按 Tool、Context、Memory、Knowledge、TTS、Agent 等真实业务所有者继续拆分，再分别组合为 `AgentLoopEvent/TurnEvent/AgentRunEvent/SessionEvent/AppEvent`；
+- [ ] 将 `TurnEventStore`、Session 事件通道和 `AppEventBus` 改为窄类型，迁移消费者后删除 `EmaStreamEvent`；
 - [ ] 把 Turn 执行快照迁入 Turn，并为关键 HTTP/SSE 输入补运行时 Schema。
 
 #### C3：Session + Wire
@@ -842,9 +875,9 @@ interface TurnExecutionSnapshot {
 4. 实现 auto/always/off；
 5. route 模型改为 Narrative 自有配置。
 
-### R5：统一 TurnRuntime + TurnLoop
+### R5：统一 TurnRuntime + AgentLoop
 
-1. 由 TurnRuntime 收口根生命周期，并抽取 AgentEngine 的循环为 TurnLoop；
+1. 以现有 AgentEngine 为迁移基础收口 TurnRuntime，不新增第三层包装；现有 `turnLoop` 已收口并改名为 AgentLoop；
 2. ChatProfile 先迁入，最大迭代和 Tool allowlist 受限；
 3. WorkProfile 迁入完整工具、权限和子 Agent；
 4. 旧 ConversationEngine 变成短期适配器；
@@ -889,9 +922,9 @@ interface TurnExecutionSnapshot {
 5. 收窄 Tool Execution Context，把运行依赖改为构造时显式注入；
 6. Tool Manifest 增加来源与稳定分区，再实现 Anthropic Tool Cache 断点并重新分配四个断点；
 7. 按 7.2 的顺序逐组审查所有 Builtin Tool；
-8. 迁出 `agentContext` 剩余职责并删除该模块；
+8. [已完成] 迁出 `agentContext` 剩余职责并删除该模块；
 9. 收口 Task、AgentRun、ToolExecution、BackgroundProcess 四类身份与生命周期，并完成 V1 Task 全闭环；
-10. Chat 接入统一 TurnLoop，删除 ConversationEngine；
+10. Chat 接入统一 AgentLoop，删除 ConversationEngine；
 11. `apps/core` 退回 Route、SSE、认证、启动恢复和 Composition Root；
 12. 最后对 Permission、Sandbox 做针对性收口和 Windows/macOS/Linux 验证。
 
@@ -910,7 +943,7 @@ Tool Result 归位、统一预算与 ToolExecution Journal 所有权迁移已经
 ## 12. 完成标准
 
 - 前端只有 Chat/Work，Session 内可切换；
-- Chat/Work 都只通过 TurnRuntime + TurnLoop；
+- Chat/Work 都只通过 TurnRuntime + AgentLoop；
 - Narrative 是 Tool + Facade，保留多周目 Route 与专用 UI；
 - NarrativePolicy 三态可持久化且不会移除角色 Prompt；
 - Prompt Slot 顺序可测试，Tool Manifest 稳定且权限不因缓存妥协；

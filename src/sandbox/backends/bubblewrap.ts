@@ -1,27 +1,29 @@
-// 这里用 Bubblewrap 在 Linux 或 WSL2 中隔离命令的文件和网络访问。
+﻿// 用 Bubblewrap 在 Linux 或 WSL2 中隔离命令的文件和网络访问。
 
 import path from 'node:path';
 import type { SandboxBackend, SandboxConfig, WrappedCommand } from '../types.js';
 import { getPlatform } from '../platform.js';
 
+// TODO isAvailable() 永远返回 true，真实检测在 detect.ts。SandboxBackend 接口的
+//  isAvailable 字段冗余，待 sandbox 批次简化接口时移除。
+
 /**
- * Bubblewrap backend for Linux and WSL2 (including Windows-via-WSL2).
+ * Linux 和 WSL2（含 Windows 经 WSL2）的 Bubblewrap 后端。
  *
- * Strategy:
- *   1. `--ro-bind / /` — entire filesystem is read-only inside sandbox
- *   2. `--bind <allowWrite> <allowWrite>` — override specific dirs as writable
- *   3. `--ro-bind-try <denyWrite> <denyWrite>` — re-enforce read-only on specific paths
- *      (catches cases where allowWrite is a parent of a denyWrite)
- *   4. `--unshare-net` — network isolation (domain filtering is PermissionEngine's job in V1)
+ * 策略：
+ *   1. `--ro-bind / /` - 沙箱内整个文件系统只读
+ *   2. `--bind <allowWrite> <allowWrite>` - 覆盖特定目录为可写
+ *   3. `--ro-bind-try <denyWrite> <denyWrite>` - 对特定路径重新强制只读
+ *      （捕获 allowWrite 是 denyWrite 父目录的情况）
+ *   4. `--unshare-net` - 网络隔离（V1 域名过滤是 PermissionEngine 的职责）
  *
- * On Windows the wrapper routes through wsl.exe and translates Win32 paths to
- * WSL /mnt/<drive>/... paths before building bwrap args.
+ * Windows 上经 wsl.exe 路由，并把 Win32 路径翻译成 WSL /mnt/<drive>/... 后再构建 bwrap 参数。
  */
 export class BubblewrapBackend implements SandboxBackend {
   readonly name = 'bubblewrap';
 
   isAvailable(): boolean {
-    return true;  // Availability is confirmed by detect.ts before this is instantiated
+    return true;  // 可用性由 detect.ts 在实例化前确认
   }
 
   wrap(command: string, shell: string, config: SandboxConfig): WrappedCommand {
@@ -45,32 +47,32 @@ export class BubblewrapBackend implements SandboxBackend {
 
 function buildBwrapArgs(config: SandboxConfig): string[] {
   const args: string[] = [
-    '--ro-bind', qp('/'), qp('/'),   // Entire FS read-only
-    '--dev',     qp('/dev'),         // Devices (needed by many tools)
-    '--proc',    qp('/proc'),        // /proc (needed by ps, etc.)
-    '--die-with-parent',             // Kill sandboxed process if parent dies
+    '--ro-bind', qp('/'), qp('/'),   // 整个文件系统只读
+    '--dev',     qp('/dev'),         // 设备（很多工具需要）
+    '--proc',    qp('/proc'),        // /proc（ps 等需要）
+    '--die-with-parent',             // 父进程退出时杀掉沙箱进程
   ];
 
-  // Writable directories (override the ro root bind)
+  // 可写目录（覆盖只读根绑定）
   for (const p of config.filesystem.allowWrite) {
     const r = qp(path.resolve(p));
     args.push('--bind-try', r, r);
   }
 
-  // Explicitly read-only paths (sandwich on top of any allowWrite parent)
+  // 显式只读路径（叠在任意 allowWrite 父目录之上）
   for (const p of config.filesystem.denyWrite) {
     const r = qp(path.resolve(p));
     args.push('--ro-bind-try', r, r);
   }
 
-  // Hidden paths (mount /dev/null over them)
+  // 隐藏路径（挂载 /dev/null 覆盖）
   for (const p of config.filesystem.denyRead) {
     args.push('--bind-try', qp('/dev/null'), qp(path.resolve(p)));
   }
 
-  // Network isolation
-  // V1: binary choice — no allowed domains = isolate; any allowed domain = pass through.
-  // Domain-level filtering inside the sandbox requires a local HTTP proxy (V2 work).
+  // 网络隔离
+  // V1：二选一 - 没有允许的域名 = 断网；有任何允许的域名 = 放行。
+  // 沙箱内域名级过滤需要本地 HTTP 代理（V2 工作）。
   if (config.network.access === 'none') {
     args.push('--unshare-net');
   }
@@ -81,7 +83,7 @@ function buildBwrapArgs(config: SandboxConfig): string[] {
 // ── Windows / WSL path translation ───────────────────────────────────────────
 
 function wrapViaWsl(command: string, shell: string, config: SandboxConfig): WrappedCommand {
-  // Translate Win32 paths to /mnt/<drive>/... for bwrap running inside WSL
+  // 把 Win32 路径翻译成 /mnt/<drive>/...，供 WSL 内的 bwrap 使用
   const translatedConfig: SandboxConfig = {
     filesystem: {
       allowWrite: config.filesystem.allowWrite.map(toWslPath),
@@ -94,7 +96,7 @@ function wrapViaWsl(command: string, shell: string, config: SandboxConfig): Wrap
 
   const bwrapArgs = buildBwrapArgs(translatedConfig);
   const escaped   = escapeForShell(command);
-  // shell inside WSL is always bash; path args already quoted by buildBwrapArgs via qp()
+  // WSL 内的 shell 固定为 bash；路径参数已由 buildBwrapArgs 的 qp() 转义
   const wslShell  = 'bash';
 
   return {
@@ -104,12 +106,12 @@ function wrapViaWsl(command: string, shell: string, config: SandboxConfig): Wrap
 }
 
 /**
- * Translate a Win32 path to its WSL /mnt/<drive> equivalent.
- * UNC paths (\\server\share) are returned unchanged — bwrap inside WSL
- * cannot bind-mount them, so they fall through to app-layer enforcement.
+ * 把 Win32 路径翻译成 WSL /mnt/<drive> 等价路径。
+ * UNC 路径（\\server\share）原样返回 - WSL 内的 bwrap 无法 bind-mount 它们，
+ * 会落到 app-layer 执行。
  */
 function toWslPath(winPath: string): string {
-  // UNC paths — cannot translate
+  // UNC 路径 - 无法翻译
   if (winPath.startsWith('\\\\')) return winPath;
 
   const match = winPath.match(/^([A-Za-z]):[/\\](.*)$/);
@@ -122,15 +124,15 @@ function toWslPath(winPath: string): string {
 
 // ── Shell escaping ────────────────────────────────────────────────────────────
 
-/** Wrap command in single quotes, escaping any embedded single quotes. */
+/** 用单引号包裹命令，转义内嵌单引号。 */
 function escapeForShell(command: string): string {
   return `'${command.replace(/'/g, "'\\''")}'`;
 }
 
 /**
- * Quote a filesystem path for embedding inside a shell -c string.
- * Prevents spaces or special characters in paths (e.g. workspace at
- * "/home/user/My Projects/foo") from being mis-tokenised by the outer shell.
+ * 为嵌入 shell -c 字符串的文件系统路径加引号。
+ * 防止路径中的空格或特殊字符（如工作区在 "/home/user/My Projects/foo"）
+ * 被外层 shell 误分词。
  */
 function qp(p: string): string {
   return `'${p.replace(/'/g, "'\\''")}'`;

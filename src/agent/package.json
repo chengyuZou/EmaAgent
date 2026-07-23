@@ -37,7 +37,6 @@
     "@ema-agent/storage": "workspace:*",
     "@ema-agent/tasks": "workspace:*",
     "@ema-agent/sandbox": "workspace:*",
-    "@ema-agent/agent-context": "workspace:*",
     "@ema-agent/token": "workspace:*",
     "@ema-agent/tool-builtin": "workspace:*"
   },
