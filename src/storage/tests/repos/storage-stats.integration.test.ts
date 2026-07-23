@@ -96,6 +96,44 @@ describe('SessionStatsRepo restore integration', () => {
 
   it('restores dependent rows and preserves AgentRun state', () => {
     const payload = branchedPayload();
+    payload.tasks.push(
+      {
+        id: 'task-1',
+        session_id: payload.session.id,
+        display_number: 1,
+        subject: 'Prepare',
+        description: 'Prepare the input',
+        active_form: null,
+        status: 'completed',
+        created_by_turn_id: 'turn-root',
+        completed_by_turn_id: 'turn-root',
+        version: 1,
+        created_at: 100,
+        updated_at: 110,
+        completed_at: 110,
+      },
+      {
+        id: 'task-2',
+        session_id: payload.session.id,
+        display_number: 2,
+        subject: 'Execute',
+        description: 'Execute the work',
+        active_form: 'Executing',
+        status: 'pending',
+        created_by_turn_id: 'turn-child',
+        completed_by_turn_id: null,
+        version: 0,
+        created_at: 140,
+        updated_at: 140,
+        completed_at: null,
+      },
+    );
+    payload.taskDependencies.push({
+      session_id: payload.session.id,
+      blocker_task_id: 'task-1',
+      blocked_task_id: 'task-2',
+      created_at: 145,
+    });
     payload.artifacts.push({
       id: 'artifact-1', sessionId: payload.session.id, turnId: 'turn-child',
       type: 'text', title: 'Artifact', contentLocation: 'inline', content: 'body',
@@ -114,7 +152,7 @@ describe('SessionStatsRepo restore integration', () => {
       session_id: payload.session.id,
       parent_turn_id: 'turn-child',
       parent_agent_run_id: null,
-      task_id: null,
+      task_id: 'task-2',
       kind: 'subagent',
       purpose: 'test',
       provider_config_id: null,
@@ -167,8 +205,19 @@ describe('SessionStatsRepo restore integration', () => {
     expect(repo.listAgentRuns(payload.session.id)).toEqual([
       expect.objectContaining({
         id: 'run-1',
+        task_id: 'task-2',
         status: 'completed',
         version: 7,
+      }),
+    ]);
+    expect(repo.listTasks(payload.session.id)).toEqual([
+      expect.objectContaining({ id: 'task-1', status: 'completed' }),
+      expect.objectContaining({ id: 'task-2', status: 'pending' }),
+    ]);
+    expect(repo.listTaskDependencies(payload.session.id)).toEqual([
+      expect.objectContaining({
+        blocker_task_id: 'task-1',
+        blocked_task_id: 'task-2',
       }),
     ]);
     expect(database.db.prepare(`
@@ -309,6 +358,8 @@ function branchedPayload(): SessionRestorePayload {
     artifacts: [],
     audio: [],
     attachments: [],
+    tasks: [],
+    taskDependencies: [],
     agentRuns: [],
     agentRunMessages: [],
     memoryState: null,

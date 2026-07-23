@@ -6,8 +6,16 @@ import type { KbActivationRow }     from './kb-activations.js';
 import type { AgentRunRow }         from './agent-runs.js';
 import type { UsageRecordRow }      from './usage-records.js';
 import type { BranchRow }           from './branches.js';
+import type { TaskDependencyRow, TaskRow } from './tasks.js';
 
-export type { AgentRunMessageRow, KbActivationRow, AgentRunRow, UsageRecordRow, BranchRow };
+export type {
+  AgentRunMessageRow,
+  KbActivationRow,
+  AgentRunRow,
+  UsageRecordRow,
+  BranchRow,
+  TaskDependencyRow,
+};
 
 // ════════════════════════════════════════════════════════════════════════════
 // DataDir 级聚合统计
@@ -147,6 +155,8 @@ export interface NotesRestoreData {
   body: string; tokensAtLastUpdate: number; updatedAt: number;
 }
 
+export type TaskRestoreRow = Omit<TaskRow, 'active_agent_run_id'>;
+
 export interface SessionRestorePayload {
   session: {
     id: string; title: string;
@@ -167,6 +177,8 @@ export interface SessionRestorePayload {
   artifacts:         ArtifactRestoreRow[];
   audio:             AudioRestoreRow[];
   attachments:       AttachmentRestoreRow[];
+  tasks:             TaskRestoreRow[];
+  taskDependencies: TaskDependencyRow[];
   agentRuns:         AgentRunRow[];
   agentRunMessages:  AgentRunMessageRestoreRow[];
   memoryState:       MemoryStateRow | null;
@@ -211,6 +223,7 @@ function validateSessionRestorePayload(payload: SessionRestorePayload): void {
 
   const turnIds = uniqueIds(payload.turns, 'Turn');
   const branchIds = uniqueIds(payload.branches, 'Branch');
+  const taskIds = uniqueIds(payload.tasks, 'Task');
   const agentRunIds = uniqueIds(payload.agentRuns, 'AgentRun');
   uniqueIds(payload.messages, 'Message');
   uniqueIds(payload.artifacts, 'Artifact');
@@ -254,6 +267,37 @@ function validateSessionRestorePayload(payload: SessionRestorePayload): void {
   for (const attachment of payload.attachments) {
     assertReference('Attachment.turnId', attachment.id, attachment.turnId, turnIds);
   }
+  for (const task of payload.tasks) {
+    assertSessionOwnership('Task', task.id, task.session_id, sessionId);
+    assertReference('Task.createdByTurnId', task.id, task.created_by_turn_id, turnIds);
+    assertOptionalReference(
+      'Task.completedByTurnId',
+      task.id,
+      task.completed_by_turn_id,
+      turnIds,
+    );
+  }
+  for (const dependency of payload.taskDependencies) {
+    assertSessionOwnership(
+      'TaskDependency',
+      `${dependency.blocker_task_id}->${dependency.blocked_task_id}`,
+      dependency.session_id,
+      sessionId,
+    );
+    assertReference(
+      'TaskDependency.blockerTaskId',
+      dependency.blocked_task_id,
+      dependency.blocker_task_id,
+      taskIds,
+    );
+    assertReference(
+      'TaskDependency.blockedTaskId',
+      dependency.blocker_task_id,
+      dependency.blocked_task_id,
+      taskIds,
+    );
+  }
+  assertTaskDependencyGraph(payload.taskDependencies);
   for (const run of payload.agentRuns) {
     assertSessionOwnership('AgentRun', run.id, run.session_id, sessionId);
     assertReference('AgentRun.parentTurnId', run.id, run.parent_turn_id, turnIds);
@@ -263,6 +307,7 @@ function validateSessionRestorePayload(payload: SessionRestorePayload): void {
       run.parent_agent_run_id,
       agentRunIds,
     );
+    assertOptionalReference('AgentRun.taskId', run.id, run.task_id, taskIds);
   }
   for (const message of payload.agentRunMessages) {
     assertReference(
@@ -347,6 +392,31 @@ function assertBranchParentGraph(branches: readonly BranchRow[]): void {
     }
     for (const id of path) complete.add(id);
   }
+}
+
+function assertTaskDependencyGraph(
+  dependencies: readonly TaskDependencyRow[],
+): void {
+  const downstream = new Map<string, string[]>();
+  for (const dependency of dependencies) {
+    const next = downstream.get(dependency.blocker_task_id) ?? [];
+    next.push(dependency.blocked_task_id);
+    downstream.set(dependency.blocker_task_id, next);
+  }
+
+  const complete = new Set<string>();
+  const visit = (taskId: string, path: Set<string>): void => {
+    if (complete.has(taskId)) return;
+    if (path.has(taskId)) {
+      throw new SessionRestoreValidationError(`Task dependency graph 存在循环: ${taskId}`);
+    }
+    const nextPath = new Set(path);
+    nextPath.add(taskId);
+    for (const childId of downstream.get(taskId) ?? []) visit(childId, nextPath);
+    complete.add(taskId);
+  };
+
+  for (const taskId of downstream.keys()) visit(taskId, new Set());
 }
 
 // ── Repo ──────────────────────────────────────────────────────────────────────
@@ -485,6 +555,26 @@ export class SessionStatsRepo {
       WHERE r.session_id = ?
       ORDER BY r.created_at ASC, r.id ASC, m.sequence ASC
     `).all(sessionId) as AgentRunMessageRow[];
+  }
+
+  listTasks(sessionId: string): TaskRestoreRow[] {
+    return this.db.prepare(`
+      SELECT id, session_id, display_number, subject, description, active_form,
+             status, created_by_turn_id, completed_by_turn_id, version,
+             created_at, updated_at, completed_at
+      FROM tasks
+      WHERE session_id = ?
+      ORDER BY display_number ASC, id ASC
+    `).all(sessionId) as TaskRestoreRow[];
+  }
+
+  listTaskDependencies(sessionId: string): TaskDependencyRow[] {
+    return this.db.prepare(`
+      SELECT session_id, blocker_task_id, blocked_task_id, created_at
+      FROM task_dependencies
+      WHERE session_id = ?
+      ORDER BY blocker_task_id ASC, blocked_task_id ASC
+    `).all(sessionId) as TaskDependencyRow[];
   }
 
   getMemoryState(sessionId: string): MemoryStateRow | undefined {
@@ -673,7 +763,47 @@ export class SessionStatsRepo {
         );
       }
 
-      // 11. 子 Agent 执行
+      // 11. Task 与依赖先于 AgentRun 恢复，保证可选 task_id 绑定通过数据库约束。
+      const stmtTask = this.db.prepare(`
+        INSERT INTO tasks (
+          id, session_id, display_number, subject, description, active_form,
+          status, created_by_turn_id, completed_by_turn_id, version,
+          created_at, updated_at, completed_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+      for (const task of p.tasks) {
+        stmtTask.run(
+          task.id,
+          p.session.id,
+          task.display_number,
+          task.subject,
+          task.description,
+          task.active_form,
+          task.status,
+          task.created_by_turn_id,
+          task.completed_by_turn_id,
+          task.version,
+          task.created_at,
+          task.updated_at,
+          task.completed_at,
+        );
+      }
+
+      const stmtTaskDependency = this.db.prepare(`
+        INSERT INTO task_dependencies (
+          session_id, blocker_task_id, blocked_task_id, created_at
+        ) VALUES (?, ?, ?, ?)
+      `);
+      for (const dependency of p.taskDependencies) {
+        stmtTaskDependency.run(
+          p.session.id,
+          dependency.blocker_task_id,
+          dependency.blocked_task_id,
+          dependency.created_at,
+        );
+      }
+
+      // 12. 子 Agent 执行
       const stmtAgentRun = this.db.prepare(`
         INSERT INTO agent_runs
           (id, session_id, parent_turn_id, parent_agent_run_id, task_id,
@@ -707,7 +837,7 @@ export class SessionStatsRepo {
         );
       }
 
-      // 12. 子 Agent transcript
+      // 13. 子 Agent transcript
       const stmtAgentRunMessage = this.db.prepare(`
         INSERT INTO agent_run_messages
           (id, agent_run_id, role, content_json, sequence, created_at)
@@ -737,7 +867,7 @@ export class SessionStatsRepo {
         );
       }
 
-      // 13. Memory session 状态
+      // 14. Memory session 状态
       if (p.memoryState) {
         this.db.prepare(`
           INSERT INTO memory_session_state (session_id, surfaced_json, overrides_json)
@@ -745,7 +875,7 @@ export class SessionStatsRepo {
         `).run(p.session.id, p.memoryState.surfaced_json, p.memoryState.overrides_json);
       }
 
-      // 14. KB activation
+      // 15. KB activation
       const stmtKb = this.db.prepare(`
         INSERT INTO kb_activations
           (id, call_id, kb_id, asset_id, session_id, turn_id, created_at)
@@ -755,7 +885,7 @@ export class SessionStatsRepo {
         stmtKb.run(k.id, k.call_id, k.kb_id, k.asset_id, p.session.id, k.turn_id ?? null, k.created_at);
       }
 
-      // 15. 各类模型调用的用量记录
+      // 16. 各类模型调用的用量记录
       const stmtUsageRecord = this.db.prepare(`
         INSERT INTO usage_records (
           id, session_id, turn_id, provider_id, model_id, capability, status,
@@ -771,7 +901,7 @@ export class SessionStatsRepo {
         );
       }
 
-      // 16. Session notes
+      // 17. Session notes
       if (p.notes) {
         this.db.prepare(`
           INSERT INTO session_notes
@@ -783,7 +913,7 @@ export class SessionStatsRepo {
         );
       }
 
-      // 17. 提交前执行数据库级完整性检查，并核对核心恢复数量。
+      // 18. 提交前执行数据库级完整性检查，并核对核心恢复数量。
       const foreignKeyErrors = this.db.pragma('foreign_key_check') as Array<{
         table: string;
         rowid: number | null;
@@ -799,10 +929,15 @@ export class SessionStatsRepo {
       this.assertRestoreCount('turns', p.session.id, p.turns.length);
       this.assertRestoreCount('branches', p.session.id, p.branches.length);
       this.assertRestoreCount('messages', p.session.id, p.messages.length);
+      this.assertRestoreCount('tasks', p.session.id, p.tasks.length);
     })();
   }
 
-  private assertRestoreCount(table: 'turns' | 'branches' | 'messages', sessionId: string, expected: number): void {
+  private assertRestoreCount(
+    table: 'turns' | 'branches' | 'messages' | 'tasks',
+    sessionId: string,
+    expected: number,
+  ): void {
     const actual = this.db.prepare(
       `SELECT COUNT(*) FROM ${table} WHERE session_id = ?`,
     ).pluck().get(sessionId) as number;

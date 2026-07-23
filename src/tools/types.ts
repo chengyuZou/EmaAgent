@@ -18,6 +18,7 @@ import type {
   AskUserRequiredEvent,
 } from '@ema-agent/turn';
 import type { ToolPermissionMeta } from '@ema-agent/permission';
+import type { TaskStorePort } from '@ema-agent/tasks';
 
 // 重新导出,调用方可从任一包 import AgentKind。
 export type { AgentKind };
@@ -209,6 +210,8 @@ export interface ToolExecutionContext {
   turnId: string;
   /** 子 Agent 工具调用保留父 turnId，并通过独立身份关联实际执行。 */
   agentRunId?: AgentRunId;
+  /** 根 Turn 注入的持久 Task 入口；普通子 Agent 不获得该能力。 */
+  taskStore?: TaskStorePort;
   /** 当前这一次工具调用的唯一编号；直接调用工具的测试或适配器可以不传。 */
   toolCallId?: ToolCallId;
   /** 工作区根。空串 = 无工作区(subagent)。shell 工具用此作 cwd。 */

@@ -13,7 +13,7 @@ import {
   ProviderRerankModelsRepo, ProviderTtsModelsRepo, ProviderSttModelsRepo, ProviderVisionModelsRepo,
   McpServersRepo, SkillsRepo,
   MarketSourcesRepo,
-  AgentRunsRepo, AgentRunMessagesRepo, ToolExecutionsRepo,
+  AgentRunsRepo, AgentRunMessagesRepo, TasksRepo, ToolExecutionsRepo,
   SessionStatsRepo, DataDirStatsRepo, UsageRecordsRepo,
 } from '@ema-agent/storage';
 import { AttachmentStore, type FileAccessFacade } from '@ema-agent/attachment';
@@ -89,6 +89,7 @@ import {
   AgentFileStateStore,
 } from '@ema-agent/agent-context';
 import { AgentRunStore } from '@ema-agent/agent';
+import { TaskStore } from '@ema-agent/tasks';
 import { MemoryPlanner } from '@ema-agent/memory';
 import { ContextCompactor } from '@ema-agent/context';
 import {
@@ -200,6 +201,8 @@ export interface AppBindings {
   toolResultCleaner: ToolResultCleaner;
   /** 子 Agent 实际执行的持久化入口；根 Turn 不会写入该存储。 */
   agentRunStore: AgentRunStore;
+  /** 根 Turn 可见的持久工作清单；普通 Subagent 不继承该入口。 */
+  taskStore: TaskStore;
   /** 工具副作用执行日志的唯一业务入口。 */
   toolExecutionJournal: ToolExecutionJournal;
   /** SSE 转录投影写入子 Agent 消息的存储入口。 */
@@ -476,6 +479,7 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
     hasSubagentBridge: true,   // SubagentSpawner wired inside AgentEngine per turn
     hasMcpBridge:      true,   // mcpBridge adapter injected into toolCtx
     hasSkillBridge:    true,   // skillBridge adapter injected into toolCtx
+    hasTaskStore:      true,
   });
 
   // Per-session command runner — memoised to avoid rebuilding SandboxConfig
@@ -537,6 +541,7 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
   ]);
   const agentRunMessages = new AgentRunMessagesRepo(dataDb.sqlite);
   const agentRunStore = new AgentRunStore(new AgentRunsRepo(dataDb.sqlite));
+  const taskStore = new TaskStore(new TasksRepo(dataDb.sqlite));
   const toolExecutionJournal = new ToolExecutionJournal(
     new ToolExecutionsRepo(dataDb.sqlite),
   );
@@ -643,6 +648,8 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
           updatedAt: noteRow.updated_at,
         } : null,
         branches: sessionStats.listBranches(sessionId),
+        tasks: sessionStats.listTasks(sessionId),
+        taskDependencies: sessionStats.listTaskDependencies(sessionId),
         agentRuns: sessionStats.listAgentRuns(sessionId),
         agentRunMessages: sessionStats.listAgentRunMessages(sessionId),
         memoryState: sessionStats.getMemoryState(sessionId) ?? null,
@@ -863,7 +870,8 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
     tts, audioArchive, stt, vision, providerRuntime,
     permission, permissionPrompts, askUserRegistry, tools, buildAskForTurn, getCommandRunner,
     invalidateSessionRuntime, removeSessionRuntime,
-    getContextStores, toolResultCleaner, agentRunStore, toolExecutionJournal, agentRunMessages,
+    getContextStores, toolResultCleaner, agentRunStore, taskStore,
+    toolExecutionJournal, agentRunMessages,
     memory, contextCompactor,
     systemBus,
     providers, settings: settingsRepo,

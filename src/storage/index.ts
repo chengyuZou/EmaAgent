@@ -31,6 +31,7 @@ export type {
   TurnRestoreRow, MessageRestoreRow, ArtifactRestoreRow,
   AudioRestoreRow, AttachmentRestoreRow, NotesRestoreData,
   SessionRestorePayload,
+  TaskRestoreRow,
   AgentRunMessageRestoreRow,
   DataDirStats,
 } from './repos/storage-stats.js';
@@ -147,6 +148,19 @@ export {
   AgentRunMessagesRepo,
   AgentRunMessageSerializationError,
 } from './repos/agent-run-messages.js';
+
+export {
+  TasksRepo,
+  type TaskCreateRow,
+  type TaskDeleteResult,
+  type TaskDependencyRow,
+  type TaskMutation,
+  type TaskMutationFailure,
+  type TaskMutationResult,
+  type TaskRow,
+  type TaskRowPatch,
+  type TaskRowStatus,
+} from './repos/tasks.js';
 export type {
   AgentRunCompletion,
   AgentRunInsert,

@@ -10,7 +10,8 @@ export type ContextContributionSource =
   | 'memory'
   | 'narrative'
   | 'scratchpad'
-  | 'mailbox';
+  | 'mailbox'
+  | 'tasks';
 
 export type ContextContributionPlacement =
   | 'beforeCurrentTurn'

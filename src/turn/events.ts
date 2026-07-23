@@ -36,6 +36,26 @@ export type ToolPresentation = FileChangePresentation;
 
 export type { TurnStats };
 
+/** Task 的跨进程稳定快照；领域对象由 src/tasks 统一映射到该结构。 */
+export interface TaskSnapshot {
+  id: TaskId;
+  sessionId: SessionId;
+  displayNumber: number;
+  subject: string;
+  description: string;
+  activeForm?: string;
+  status: 'pending' | 'in_progress' | 'completed' | 'cancelled';
+  blocks: TaskId[];
+  blockedBy: TaskId[];
+  activeAgentRunId?: AgentRunId;
+  createdByTurnId: TurnId;
+  completedByTurnId?: TurnId;
+  version: number;
+  createdAt: number;
+  updatedAt: number;
+  completedAt?: number;
+}
+
 export interface ToolError {
   code: string;
   message: string;
@@ -281,6 +301,11 @@ export type EmaStreamEvent =
   // Agent 事件
   | { type: 'agent_iteration';     sessionId: SessionId; n: number }
   | { type: 'agent_breaker_tripped'; sessionId: SessionId; reason: string }
+
+  // 用户与模型共享的工作项事件；AgentRun 事件仍使用下方独立协议。
+  | { type: 'task_created'; sessionId: SessionId; turnId: TurnId; task: TaskSnapshot }
+  | { type: 'task_updated'; sessionId: SessionId; turnId: TurnId; task: TaskSnapshot }
+  | { type: 'task_deleted'; sessionId: SessionId; turnId: TurnId; taskId: TaskId }
 
   // ── 子 Agent 面板事件 ───────────────────────────────────────────────────────
   // 统一由 SubagentSpawner 发出，因此事件能携带模型、耗时和用量。

@@ -1,7 +1,7 @@
 // 后台启动子 Agent、发送协调消息并等待最终结果。
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
-import { asAgentRunId } from '@ema-agent/ids';
+import { asAgentRunId, asTaskId } from '@ema-agent/ids';
 import { buildTool } from '@ema-agent/tools';
 import type { ToolExecutionContext } from '@ema-agent/tools';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
@@ -25,6 +25,9 @@ const spawnBgSchema = z.object({
     'Context strategy. Defaults to "subagent" (fresh context, no parent history) - appropriate ' +
       'for independent background workers. Use "fork" only when the worker explicitly needs ' +
       'the parent conversation history.',
+  ),
+  taskId: z.string().uuid().optional().describe(
+    'Optional existing Task UUID to associate with this AgentRun. The Task must be available and unblocked.',
   ),
 });
 
@@ -61,6 +64,7 @@ The sub-agent MUST be awaited before the parent turn ends.`,
         description: input.description,
         kind: input.kind ?? 'subagent',
         agentRunId,
+        taskId: input.taskId ? asTaskId(input.taskId) : undefined,
       },
       ctx.signal,
     );

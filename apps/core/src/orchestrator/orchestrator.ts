@@ -35,6 +35,7 @@ import type { AttachmentReferenceBlock, MessageBlocks, Turn } from '@ema-agent/s
 import type { TurnFailurePhase } from '@ema-agent/hooks';
 import { prepareImagesForModel, replaceImageParts } from './media-compatibility.js';
 import { buildPromptSnapshot } from '@ema-agent/prompts';
+import { formatTaskContextReminder } from '@ema-agent/tasks';
 
 export interface TurnResult {
   turnId: TurnId;
@@ -130,6 +131,7 @@ export class Orchestrator {
       kbSearch:          bindings.kbSearch,
       getContextStores:  bindings.getContextStores,
       agentRunStore:     bindings.agentRunStore,
+      taskStore:         bindings.taskStore,
       toolExecutionJournal: bindings.toolExecutionJournal,
     });
   }
@@ -479,7 +481,20 @@ export class Orchestrator {
           requestDegradations,
           prepareContextContributions: async (contextRequest) => {
             const recalled = await this.bindings.memory.prepareRecallContribution(contextRequest);
-            return recalled.contribution ? [recalled.contribution] : [];
+            const contributions = recalled.contribution ? [recalled.contribution] : [];
+            const tasks = this.bindings.taskStore.takeContextReminder(contextRequest.sessionId);
+            if (tasks.length > 0) {
+              contributions.push({
+                id: `tasks.reminder.${Math.max(...tasks.map((task) => task.version))}`,
+                source: 'tasks',
+                placement: 'beforeCurrentTurn',
+                message: {
+                  role: 'user',
+                  content: formatTaskContextReminder(tasks),
+                },
+              });
+            }
+            return contributions;
           },
           compactContext: (view, options) => this.bindings.contextCompactor.compact({
             sessionId:          turn.sessionId,

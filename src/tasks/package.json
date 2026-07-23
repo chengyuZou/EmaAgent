@@ -1,5 +1,5 @@
 {
-  "name": "@ema-agent/tools",
+  "name": "@ema-agent/tasks",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -16,21 +16,15 @@
     "build": "tsc -p tsconfig.json",
     "dev": "tsc -p tsconfig.json --watch",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "vitest run --passWithNoTests",
+    "test": "vitest run",
     "clean": "rimraf dist"
   },
   "dependencies": {
-    "@ema-agent/artifact": "workspace:*",
     "@ema-agent/ids": "workspace:*",
-    "@ema-agent/turn": "workspace:*",
-    "@ema-agent/knowledge": "workspace:*",
-    "@ema-agent/permission": "workspace:*",
-    "@ema-agent/tasks": "workspace:*",
-    "zod": "^3.23.0",
-    "zod-to-json-schema": "^3.23.0"
+    "@ema-agent/storage": "workspace:*",
+    "@ema-agent/turn": "workspace:*"
   },
   "devDependencies": {
-    "@ema-agent/storage": "workspace:*",
     "@types/node": "^20.0.0",
     "rimraf": "^5.0.0",
     "typescript": "^5.9.3",

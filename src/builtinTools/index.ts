@@ -1,4 +1,4 @@
-// 这里统一导出并注册 EmaAgent 自带的工具，也提供这些工具启动恢复所需的入口。
+// 统一导出并注册 EmaAgent 自带的工具，也提供这些工具启动恢复所需的入口。
 import { FileReadTool } from './tools/FileReadTool/FileReadTool.js';
 import { FileWriteTool } from './tools/FileWriteTool/FileWriteTool.js';
 import { cleanupInterruptedFileWriteTemps } from './tools/FileWriteTool/recovery.js';
@@ -9,7 +9,10 @@ import { BashTool } from './tools/BashTool/BashTool.js';
 import { PowerShellTool } from './tools/PowerShellTool/PowerShellTool.js';
 import { WebFetchTool } from './tools/WebFetchTool/WebFetchTool.js';
 import { WebSearchTool } from './tools/WebSearchTool/WebSearchTool.js';
-import { TodoWriteTool, getTodos, clearTodos } from './tools/TodoWriteTool/TodoWriteTool.js';
+import { TaskCreateTool } from './tools/TaskCreateTool/TaskCreateTool.js';
+import { TaskGetTool } from './tools/TaskGetTool/TaskGetTool.js';
+import { TaskListTool } from './tools/TaskListTool/TaskListTool.js';
+import { TaskUpdateTool } from './tools/TaskUpdateTool/TaskUpdateTool.js';
 import { AskUserTool } from './tools/AskUserTool/AskUserTool.js';
 import { AskConfirmTool } from './tools/AskUserTool/AskConfirmTool.js';
 import { AskTextTool } from './tools/AskUserTool/AskTextTool.js';
@@ -47,9 +50,10 @@ export {
   PowerShellTool,
   WebFetchTool,
   WebSearchTool,
-  TodoWriteTool,
-  getTodos,
-  clearTodos,
+  TaskCreateTool,
+  TaskGetTool,
+  TaskListTool,
+  TaskUpdateTool,
   AskUserTool,
   AskConfirmTool,
   AskTextTool,
@@ -77,7 +81,13 @@ export type { GrepResult } from './tools/GrepTool/GrepTool.js';
 export type { BashResult } from './tools/BashTool/BashTool.js';
 export type { WebFetchResult } from './tools/WebFetchTool/WebFetchTool.js';
 export type { WebSearchResult, SearchResult } from './tools/WebSearchTool/WebSearchTool.js';
-export type { Todo, TodoWriteResult } from './tools/TodoWriteTool/TodoWriteTool.js';
+export type { TaskCreateResult } from './tools/TaskCreateTool/TaskCreateTool.js';
+export type { TaskGetResult } from './tools/TaskGetTool/TaskGetTool.js';
+export type {
+  TaskListItem,
+  TaskListResult,
+} from './tools/TaskListTool/TaskListTool.js';
+export type { TaskUpdateResult } from './tools/TaskUpdateTool/TaskUpdateTool.js';
 export type { AskUserResult } from './tools/AskUserTool/AskUserTool.js';
 export type { AskConfirmResult } from './tools/AskUserTool/AskConfirmTool.js';
 export type { AskTextResult } from './tools/AskUserTool/AskTextTool.js';
@@ -104,7 +114,10 @@ const ALL_BUILTIN_TOOLS: BuiltTool<any, any>[] = [
   PowerShellTool,
   WebFetchTool,
   WebSearchTool,
-  TodoWriteTool,
+  TaskCreateTool,
+  TaskGetTool,
+  TaskListTool,
+  TaskUpdateTool,
   AskUserTool,
   AskConfirmTool,
   AskTextTool,
@@ -152,6 +165,10 @@ const BRIDGE_GATED: ReadonlyMap<string, keyof RegisterOptions> = new Map([
   [BuiltinTools.SubagentSpawnBackground.id,    'hasSubagentBridge'],
   [BuiltinTools.SubagentSendMessage.id,        'hasSubagentBridge'],
   [BuiltinTools.SubagentAwait.id,              'hasSubagentBridge'],
+  [BuiltinTools.TaskCreate.id,                 'hasTaskStore'],
+  [BuiltinTools.TaskGet.id,                    'hasTaskStore'],
+  [BuiltinTools.TaskList.id,                   'hasTaskStore'],
+  [BuiltinTools.TaskUpdate.id,                 'hasTaskStore'],
 ]);
 
 export interface RegisterOptions {
@@ -175,6 +192,8 @@ export interface RegisterOptions {
   hasMcpBridge?:      boolean;
   hasSkillBridge?:    boolean;
   hasSubagentBridge?: boolean;
+  /** 根 Work Turn 已装配持久 TaskStore 时才暴露 Task 工具族。 */
+  hasTaskStore?:      boolean;
   /**
    * Artifact 工具族是否注册。
    * V1 默认 false(Artifact 属于 V1.5 预留,完成 B-003/B-068/B-069 前不得启用)。

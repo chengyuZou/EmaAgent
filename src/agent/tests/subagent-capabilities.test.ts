@@ -12,7 +12,7 @@ describe('selectSubagentTools', () => {
     fakeTool(BuiltinTools.AskUser.id, BuiltinTools.AskUser.name),
     fakeTool(BuiltinTools.Subagent.id, BuiltinTools.Subagent.name),
     fakeTool(BuiltinTools.WebFetch.id, BuiltinTools.WebFetch.name),
-    fakeTool(BuiltinTools.TodoWrite.id, BuiltinTools.TodoWrite.name),
+    fakeTool(BuiltinTools.TaskList.id, BuiltinTools.TaskList.name),
     fakeTool(BuiltinTools.ScratchpadRead.id, BuiltinTools.ScratchpadRead.name),
     fakeTool(BuiltinTools.KnowledgeBaseSearch.id, BuiltinTools.KnowledgeBaseSearch.name),
     fakeTool(BuiltinTools.SkillCall.id, BuiltinTools.SkillCall.name),

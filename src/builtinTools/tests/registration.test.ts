@@ -42,6 +42,23 @@ describe('V1 内置工具注册边界', () => {
     expect(names).toContain(BuiltinTools.ArtifactList.name);
   });
 
+  it('只有根 Turn 装配 TaskStore 后才注册 Task 工具', () => {
+    const withoutStore = new ToolRegistry();
+    registerBuiltinTools(withoutStore);
+    expect(withoutStore.descriptors().map((tool) => tool.name))
+      .not.toContain(BuiltinTools.TaskList.name);
+
+    const withStore = new ToolRegistry();
+    registerBuiltinTools(withStore, { hasTaskStore: true });
+    const names = withStore.descriptors().map((tool) => tool.name);
+    expect(names).toEqual(expect.arrayContaining([
+      BuiltinTools.TaskCreate.name,
+      BuiltinTools.TaskGet.name,
+      BuiltinTools.TaskList.name,
+      BuiltinTools.TaskUpdate.name,
+    ]));
+  });
+
   it('每个已注册工具都有唯一稳定 id 和 PascalCase 模型名称', () => {
     const registry = new ToolRegistry();
     registerBuiltinTools(registry, {

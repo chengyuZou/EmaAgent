@@ -19,7 +19,6 @@ import {
   validateCurrentContent,
 } from '@ema-agent/context';
 import type { ContextContribution } from '@ema-agent/context';
-import { clearTodos } from '@ema-agent/tool-builtin';
 import { buildScratchpadContext } from './scratchpad-context.js';
 import { LlmModelCapabilityError, llmProviderErrorCode } from '@ema-agent/llm';
 import type { AssistantBlock, Message as ModelMessage, UserBlock } from '@ema-agent/llm';
@@ -130,8 +129,6 @@ async function* runTurn(
 
   try {
     emotion.beginTurn(sessionId);
-    clearTodos(turnId);
-
     // ── Turn 启动 Hook ────────────────────────────────────────────────────────
     activePhase = 'hook';
     const startResult = await hooks.trigger('onTurnStart', {
@@ -259,6 +256,7 @@ async function* runTurn(
       emitRef.fn = pushEv;   // 循环启动后接入父 SSE 发送函数
       const toolCtx: ToolExecutionContext = {
         sessionId, turnId, workspaceRoot, signal, readFileState,
+        taskStore:       deps.taskStore,
         fileStateStore:  contextStores?.fileStateStore,
         emit:            pushEv,
         commandRunner:   resolvedRunner,
@@ -625,7 +623,6 @@ async function* runTurn(
     await stopSpawner('parent_turn_finished');
     activeSpawners.delete(turnId);
     activeExecutors.delete(turnId);
-    clearTodos(turnId);
     if (scratchpadDir) {
       try { fs.rmSync(scratchpadDir, { recursive: true, force: true }); } catch { /* 清理失败不改变 Turn 终态 */ }
     }

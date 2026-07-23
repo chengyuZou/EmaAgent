@@ -844,9 +844,9 @@ interface TurnExecutionSnapshot {
 3. AskUser 与 Prompt Registry 脱离根 AgentTask（已完成）；
 4. Tool journal 保留（已完成）；
 5. 前端 TaskPanel 迁移 AgentRunsPanel；迁移完成前仅允许 HTTP/SSE 边界保留旧字段兼容；
-6. 新建真正的 `src/tasks`，实现 TaskStore、依赖关系、活动 AgentRun 绑定与 Task 事件，BuiltinTools 为根 Turn 注册 TaskCreate/Get/List/Update；
-7. 前端新增独立 TaskList，Context 接入低频 Task Snapshot，随后停止注册并删除 TodoWrite；
-8. Data v17 已删除旧 AgentTask 表并迁移真实子执行；Task 新表不得复用旧表名或旧生命周期。
+6. 真正的 `src/tasks`、TaskStore、依赖、活动 AgentRun 投影、Task 事件和根 Turn 四个 Task Tools 已完成；
+7. 低频 Task Context、重启快照和备份恢复已完成；前端仍需新增独立 TaskList；
+8. Data v17 已删除旧 AgentTask 表并迁移真实子执行，Data v18 建立独立 Task 表；两者不复用生命周期。
 
 ### R7：前端切换
 

@@ -98,6 +98,8 @@ export function exportSessionZipV1(
   putJson('turns.json', snapshot.turns);
   putJson('messages.json', snapshot.messages);
   putJson('branches.json', snapshot.branches);
+  putJson('tasks.json', snapshot.tasks);
+  putJson('task_dependencies.json', snapshot.taskDependencies);
   putJson('agent_runs.json', snapshot.agentRuns);
   putJson('agent_run_messages.json', snapshot.agentRunMessages);
   if (snapshot.memoryState) putJson('memory_state.json', snapshot.memoryState);

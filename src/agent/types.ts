@@ -35,6 +35,7 @@ import type { PermissionEngine, AskPermissionFn } from '@ema-agent/permission';
 import type { AgentFileStateStore } from '@ema-agent/agent-context';
 import type { ModelCapabilityResolver } from '@ema-agent/provider';
 import type { AgentRunStorePort } from './runs/types.js';
+import type { TaskStorePort } from '@ema-agent/tasks';
 
 /** AskUser 注册表的最小接口，避免 Agent 反向依赖 Core。 */
 export interface AskUserRegistryLike {
@@ -115,6 +116,8 @@ export interface AgentDeps {
    * 聚焦循环测试可以省略。
    */
   agentRunStore?: AgentRunStorePort;
+  /** 根 Turn 的持久工作清单；子 Agent ToolContext 不继承该入口。 */
+  taskStore?: TaskStorePort;
   /** 工具副作用的持久化状态机；生产环境由 Tools Journal 注入。 */
   toolExecutionJournal?: ToolExecutionJournalPort;
 }

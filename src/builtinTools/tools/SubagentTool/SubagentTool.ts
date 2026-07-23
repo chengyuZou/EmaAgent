@@ -1,7 +1,7 @@
 // 同步启动子 Agent，并等待执行完成后返回结果。
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
-import { asAgentRunId } from '@ema-agent/ids';
+import { asAgentRunId, asTaskId } from '@ema-agent/ids';
 import { buildTool } from '@ema-agent/tools';
 import type {
   ISubagentSpawner,
@@ -37,6 +37,13 @@ const inputSchema = z.object({
       'Context strategy. "fork" (default) inherits the parent conversation history - use when ' +
         'the sub-agent needs prior context. "subagent" starts fresh with only the task prompt - ' +
         'use for independent parallel workers to save tokens and avoid context bleed.',
+    ),
+  taskId: z
+    .string()
+    .uuid()
+    .optional()
+    .describe(
+      'Optional existing Task UUID to associate with this AgentRun. The Task must be in the current Session, non-terminal, and unblocked.',
     ),
 });
 
@@ -80,7 +87,13 @@ The sub-agent:
 
     return spawner.spawn(
       input.prompt,
-      { model: input.model, description: input.description, kind: input.kind, agentRunId },
+      {
+        model: input.model,
+        description: input.description,
+        kind: input.kind,
+        agentRunId,
+        taskId: input.taskId ? asTaskId(input.taskId) : undefined,
+      },
       ctx.signal,
     );
   },

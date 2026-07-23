@@ -1087,24 +1087,25 @@ Claude 的 Task 是模型和用户都能看见的结构化工作清单：`subjec
 
 - 旧 `src/tasks`、根 Turn 的 AgentTask 投影和 `AgentTurnLifecycleFacade` 已删除；Data v17 只把真实子执行迁入 `agent_runs/agent_run_messages`；
 - AgentRun 已拥有独立 branded ID、CAS 终态、崩溃恢复、可选 TaskId、执行统计与 transcript；Tool Journal 同时记录父 Turn 和可选 AgentRun，不再拿 Run ID 冒充 Turn ID；
-- `TodoWriteTool` 又维护一份按 turnId 存在内存里的完整替换列表，重启即丢失，也没有依赖和 CAS；
+- 旧内存 `TodoWriteTool` 已停止注册并删除，根 Work Turn 只暴露持久 TaskCreate/Get/List/Update；
 - 前端 `TaskPanel` 仍展示 AgentRun transcript，旧 `/api/agent-tasks` 与 SSE `subagentId` 仅是迁移期兼容，名称仍容易让人误解为待办清单；
 - KB ingest、Memory extraction、Vision、Embedding 等另有自己的任务表和 lease/recovery，它们是领域 Job，不是用户工作项；
-- 普通 Subagent 已不再获得 TodoWrite；真正的持久 Task、四个 Task Tools、Context 提醒和独立 TaskList 尚未实现。
+- Data v18、TaskStore、依赖/CAS、AgentRun 可选绑定、结构化事件、低频 Context 提醒、REST 重启快照和备份恢复已经完成；普通 Subagent 不获得四个 Task Tools；
+- 独立前端 TaskList 尚未实现，现有 TaskPanel 仍是 AgentRun transcript 的迁移期旧名。
 
 ### Diff 判断
 
 1. **V1 已完成：后端 AgentRun 语义拆分。** 表、Repo、Store、Spawner、Tool Journal、备份和 Core 新 API 已使用 AgentRun；根 Turn 不再复制运行记录。前端面板、旧 API 路径与 SSE 字段名仍是明确的下一批迁移边界。
-2. **V1 必做：`src/tasks` 实现完整结构化工作项。** Task 使用显式列/类型：稳定 `taskId`、Session 内 `displayNumber`、`sessionId`、`subject`、`description`、`activeForm`、`status`、`version` 与时间字段；依赖使用明确关系表，不用 metadata JSON。V1 不保存 `ownerAgentRunId`，因为根 Agent 可以直接执行工作，而一次性 Run 不是长期 owner。
-3. **V1 必做：TaskCreate/Get/List/Update 替换 TodoWrite。** 四个 Tool、TaskStore、事件、Context 提醒和前端 TaskList 接线后，旧内存 TodoWrite 必须停止注册并删除；迁移期可以 Feature Gate 二选一，但不能让模型同时面对两套工作清单。
-4. **V1 必做：AgentRun 可绑定 Task，但两者生命周期独立。** 一个 Task 可以被不同 AgentRun 先后重试，一个 AgentRun 也可能执行没有 Task 的临时研究。活动绑定通过 `agent_runs.task_id` 投影并限制同一 Task 同时最多一个活动 Run；AgentRun 成功不能自动把关联 Task 标完成，必须由根循环显式提交。
+2. **V1 已完成：`src/tasks` 实现完整结构化工作项。** Task 使用显式列/类型：稳定 `taskId`、Session 内 `displayNumber`、`sessionId`、`subject`、`description`、`activeForm`、`status`、`version` 与时间字段；依赖使用明确关系表，不用 metadata JSON。V1 不保存 `ownerAgentRunId`，因为根 Agent 可以直接执行工作，而一次性 Run 不是长期 owner。
+3. **V1 后端已完成：TaskCreate/Get/List/Update 替换 TodoWrite。** 四个 Tool、TaskStore、事件、Context 提醒和恢复快照已接线，旧内存 TodoWrite 已删除；剩余工作是独立前端 TaskList。
+4. **V1 已完成：AgentRun 可绑定 Task，但两者生命周期独立。** 一个 Task 可以被不同 AgentRun 先后重试，一个 AgentRun 也可能执行没有 Task 的临时研究。活动绑定通过 `agent_runs.task_id` 投影并限制同一 Task 同时最多一个活动 Run；AgentRun 成功不能自动把关联 Task 标完成，必须由根循环显式提交。
 5. **V1 必做：Job 不继承 Task。** KB Job 可调用 Vision/Embedding 子步骤，Vision Job 也可独立运行；它们各自维护 lease、checkpoint、幂等和恢复，只在确需向用户展示工作目标时关联可选 TaskId。
-6. **V1 收口：并发写使用 SQLite 事务 + CAS。** Ema 已有数据库，不照搬“一任务一 JSON 文件 + fs.watch”；创建、活动 Run 绑定、依赖更新和完成必须事务化，`version` 防陈旧写。多进程 SQLite 模式仍需 busy timeout 和失败分类。
-7. **V1 收口：前端事件驱动，重启后以 DB 重建。** 不采用文件 watch + 5 秒轮询三层方案；Turn/Task 事件实时更新，SSE 断线后从 Task API/DB 快照恢复。Task 面板与 AgentRun transcript 面板分开。
-8. **V1 收口：Task 提醒作为动态 Context Contribution。** 只在清单存在且长时间未更新时低频注入，不写入固定 System Prompt；提醒携带真实 Task snapshot version，避免缓存失效和陈旧状态。
+6. **V1 已完成：并发写使用 SQLite 事务 + CAS。** Ema 不照搬“一任务一 JSON 文件 + fs.watch”；创建、依赖更新和完成使用事务，`version` 防陈旧写，活动 Run 绑定由数据库约束保证。
+7. **V1 部分完成：前端事件驱动，重启后以 DB 重建。** Task 结构化事件和 `/api/tasks` 快照已经提供；独立 TaskList 尚未消费它们。Task 面板与 AgentRun transcript 面板必须分开。
+8. **V1 已完成：Task 提醒作为动态 Context Contribution。** 只在 Work 清单存在且长时间未更新时低频注入，不写入固定 System Prompt；提醒携带真实 Task version，避免缓存失效和陈旧状态。
 9. **V1 收口：AskUser/Permission 不属于 Task 状态。** 等待用户时 AgentRun 进入 waiting，Prompt 独立持久化；Task 保持 `in_progress`，是否被阻塞由依赖关系投影，不增加 `waiting_user` 或 `blocked` 持久状态，也不存 pendingPromptId。
-10. **V1 必做：依赖与 AgentRun 活动绑定进入 Task 闭环。** `blockedBy/blocks` 由关系表和事务维护；启动 AgentRun 时事务化验证同 Session、未终态、依赖已完成且无其他活动 Run。Run 终态后 Task 成为“无活动执行者”的待处理项，根 Agent决定重试、继续、取消或完成。Team owner、跨设备领取、复杂忙碌调度与实验性验证 nudge 仍属 V1.5。
-11. **V1 必做：四个 Task Tools 不下放给普通 Subagent。** 根 Turn 负责拆分、依赖、状态与最终验收；子 Agent 只执行启动时给定的自包含任务，并通过 AgentRun 结果/邮箱汇报。未来 Team 成立后，才允许可寻址 teammate 自主 `TaskList/TaskUpdate`。
+10. **V1 已完成：依赖与 AgentRun 活动绑定进入 Task 闭环。** `blockedBy/blocks` 由关系表和事务维护；启动 AgentRun 时验证同 Session、未终态、依赖已完成且无其他活动 Run。Run 终态后 Task 成为“无活动执行者”的待处理项，根 Agent 决定重试、继续、取消或完成。Team owner、跨设备领取、复杂忙碌调度与实验性验证 nudge 仍属 V1.5。
+11. **V1 已完成：四个 Task Tools 不下放给普通 Subagent。** 根 Turn 负责拆分、依赖、状态与最终验收；子 Agent 只执行启动时给定的自包含任务，并通过 AgentRun 结果汇报。未来 Team 成立后，才允许可寻址 teammate 自主 `TaskList/TaskUpdate`。
 12. **不照搬：Claude 的递增短 ID、文件锁、高水位与团队目录。** Ema 内部保持全局稳定 UUID；UI 可以额外显示 session 内短序号，但短序号不能成为外键。
 
 ### V1 数据与 Tool 契约

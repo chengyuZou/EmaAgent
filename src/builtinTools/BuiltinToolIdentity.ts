@@ -1,4 +1,4 @@
-// 这里集中声明内置工具稳定身份和模型可见名称，避免权限、恢复与展示继续共用一个字符串。
+// 集中声明内置工具稳定身份和模型可见名称，避免权限、恢复与展示继续共用一个字符串。
 export interface BuiltinToolIdentity {
   readonly id: string;
   readonly name: string;
@@ -18,7 +18,10 @@ export const BuiltinTools = Object.freeze({
   AskText:    Object.freeze({ id: 'builtin.user.ask_text',    name: 'AskText' }),
   AskChoice:  Object.freeze({ id: 'builtin.user.ask_choice',  name: 'AskChoice' }),
   AskConfirm: Object.freeze({ id: 'builtin.user.ask_confirm', name: 'AskConfirm' }),
-  TodoWrite:  Object.freeze({ id: 'builtin.todo.write',       name: 'TodoWrite' }),
+  TaskCreate: Object.freeze({ id: 'builtin.task.create', name: 'TaskCreate' }),
+  TaskGet:    Object.freeze({ id: 'builtin.task.get',    name: 'TaskGet' }),
+  TaskList:   Object.freeze({ id: 'builtin.task.list',   name: 'TaskList' }),
+  TaskUpdate: Object.freeze({ id: 'builtin.task.update', name: 'TaskUpdate' }),
   KnowledgeBaseSearch: Object.freeze({
     id: 'builtin.knowledge_base.search',
     name: 'KnowledgeBaseSearch',

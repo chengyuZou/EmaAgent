@@ -35,6 +35,7 @@
     "@ema-agent/emotion": "workspace:*",
     "@ema-agent/tools": "workspace:*",
     "@ema-agent/storage": "workspace:*",
+    "@ema-agent/tasks": "workspace:*",
     "@ema-agent/sandbox": "workspace:*",
     "@ema-agent/agent-context": "workspace:*",
     "@ema-agent/token": "workspace:*",

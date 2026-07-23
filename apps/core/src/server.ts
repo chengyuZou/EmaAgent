@@ -24,6 +24,7 @@ import {
   agentRunsRoute,
   legacyAgentTasksRoute,
 } from './routes/agentRuns.js';
+import { tasksRoute }             from './routes/tasks.js';
 import { storageStatsRoute }     from './routes/storage-stats.js';
 import { systemRoute }           from './routes/system.js';
 import { requestBudgetMiddleware } from './http/request-budget.js';
@@ -87,6 +88,7 @@ export function buildServer(bindings: AppBindings, sharedSecret: string): Hono {
   app.route('/api/kb',             kbRoute(bindings));
   app.route('/api/agent-runs',     agentRunsRoute(bindings));
   app.route('/api/agent-tasks',    legacyAgentTasksRoute(bindings));
+  app.route('/api/tasks',           tasksRoute(bindings));
 
   // 404 兜底
   app.notFound((c) => c.json({ error: 'not_found' }, 404));
