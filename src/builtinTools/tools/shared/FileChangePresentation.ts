@@ -1,7 +1,7 @@
 // 这里负责把文件工具已经落盘的真实前后内容转换成有界的界面 diff。
 import path from 'node:path';
 import { createTwoFilesPatch } from 'diff';
-import type { FileChangePresentation } from '@ema-agent/turn';
+import type { FileChangePresentation } from '@ema-agent/tools';
 
 const MAX_DIFF_INPUT_BYTES = 2 * 1024 * 1024;
 const MAX_DIFF_OUTPUT_CHARS = 200_000;

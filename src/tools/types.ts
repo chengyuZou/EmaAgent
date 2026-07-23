@@ -9,19 +9,16 @@ import type {
 } from '@ema-agent/ids';
 import type { IArtifactStore } from '@ema-agent/artifact';
 import type {
-  AgentKind,
   AskUserQuestionSpec,
-  EmaStreamEvent,
-} from '@ema-agent/turn';
-import type { KbSearchResult } from '@ema-agent/knowledge';
-import type {
   AskUserRequiredEvent,
-} from '@ema-agent/turn';
+  ToolExecutionEvent,
+} from './events.js';
+import type { KbSearchResult } from '@ema-agent/knowledge';
 import type { ToolPermissionMeta } from '@ema-agent/permission';
 import type { TaskStorePort } from '@ema-agent/tasks';
 
-// 重新导出,调用方可从任一包 import AgentKind。
-export type { AgentKind };
+/** 子 Agent 启动时如何取得父执行上下文。 */
+export type SubagentContextMode = 'subagent' | 'fork';
 
 // ── ReadFileState - turn 内跨工具调用共享的去重缓存 ──────────────────────────
 
@@ -104,7 +101,7 @@ export interface SubagentSpawnOpts {
    * worker 不需要父对话历史、应从干净状态开始时用 'subagent'
    * (省 token,避免上下文串)。
    */
-  kind?:        AgentKind;
+  kind?:        SubagentContextMode;
   /** 调用方预分配执行 ID，确保启动事件与持久记录使用同一身份。 */
   agentRunId?: AgentRunId;
   /** 可选关联既有 Task；Spawner 不负责创建或完成 Task。 */
@@ -229,7 +226,7 @@ export interface ToolExecutionContext {
    * 执行中 emit 一个结构化 SSE 事件(如子步骤的 tool_result)。
    * 可选:并非所有调用方都提供流式通道。
    */
-  emit?: (event: EmaStreamEvent) => void;
+  emit?: (event: ToolExecutionEvent) => void;
   /**
    * sandbox 支撑的 shell runner。存在时,bash 工具把执行委托到这里
    * 而非直接 spawn - 免费获得 OS 级沙箱。

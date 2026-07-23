@@ -46,3 +46,4 @@ export type {
   ContextCompactorDeps,
 } from './compaction/types.js';
 export { DEFAULT_CONTEXT_COMPACTION_SETTINGS } from './compaction/types.js';
+export type { ContextEvent, ContextRuntimeEvent } from './events.js';

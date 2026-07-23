@@ -1,5 +1,5 @@
 // 管理全应用唯一的系统 SSE 连接，并把事件按顺序广播给各个窗口。
-import type { EmaStreamEvent } from '@ema-agent/turn';
+import type { EmaStreamEvent } from '@ema-agent/events';
 import { sidecarClient } from '../api/sidecar-client.js';
 import { dispatchSystemEvent } from './system-event-dispatcher.js';
 import {

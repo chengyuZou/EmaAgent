@@ -1,5 +1,5 @@
 // 解析一条 SSE 响应，并返回唯一且结构化的连接终态。
-import type { EmaStreamEvent } from '@ema-agent/turn';
+import type { EmaStreamEvent } from '@ema-agent/events';
 
 export const SSE_IDLE_TIMEOUT_MS = 45_000;
 

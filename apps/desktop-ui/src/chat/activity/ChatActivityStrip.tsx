@@ -1,7 +1,7 @@
 // 在输入框上方以中心轴对称排列 Task 与 Diff，并负责原位展开 TaskList。
 import { useEffect, useMemo, useState, type JSX } from 'react';
 import { Button } from '@ema-agent/ui';
-import type { TaskSnapshot } from '@ema-agent/turn';
+import type { TaskSnapshot } from '@ema-agent/tasks';
 import { useConversationStore } from '../../stores/conversation-store.js';
 import { useTaskStore } from '../../stores/taskStore.js';
 import { useLatestTurnDiffs } from '../review/reviewDiffs.js';

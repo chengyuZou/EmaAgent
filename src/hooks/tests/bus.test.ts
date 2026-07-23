@@ -4,9 +4,7 @@ import { PRIORITY } from '../priority.js';
 import type { HookPayload } from '../events.js';
 import type { DeepReadonly } from '../types.js';
 import type { HookInvocationId, MessageId, SessionId, TurnId } from '@ema-agent/ids';
-import type {
-  EmaStreamEvent,
-} from '@ema-agent/turn';
+import type { HookWarningEvent as EmaStreamEvent } from '../streamEvents.js';
 import type { LlmCallId } from '@ema-agent/llm';
 
 const turnId = 'turn-1' as TurnId;

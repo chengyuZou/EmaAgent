@@ -22,7 +22,6 @@
   "dependencies": {
     "@ema-agent/artifact": "workspace:*",
     "@ema-agent/ids": "workspace:*",
-    "@ema-agent/turn": "workspace:*",
     "@ema-agent/knowledge": "workspace:*",
     "@ema-agent/permission": "workspace:*",
     "@ema-agent/tasks": "workspace:*",

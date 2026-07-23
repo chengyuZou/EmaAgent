@@ -667,7 +667,7 @@ export type SessionEvent =
   | SessionMetadataEvent
   | AgentRunSummaryEvent;
 
-// src/system/events.ts：角色、Provider 与后台领域工作的全局应用事件。
+// src/events/index.ts：只组合各业务包已经定义的应用级事件。
 export type AppEvent =
   | CharacterEvent
   | ProviderHealthEvent
@@ -675,6 +675,10 @@ export type AppEvent =
   | KnowledgeJobEvent
   | SystemWarningEvent;
 ```
+
+`src/events` 与 `src/ids` 一样是严格叶面规则下的基础边界，但职责相反：
+`ids` 只声明跨域稳定身份，`events` 只组合跨端通道可解码的事件联合。任何事件字段、
+状态、错误码和业务对象都禁止在 `src/events` 定义，必须回到生产该事件的业务包。
 
 所有 `TurnEvent` 必须携带 `sessionId + turnId`；涉及具体调用时继续携带真实 `llmCallId/toolCallId/promptId/agentRunId`。Task 等事件可以显式使用 `causedByTurnId` 表达因果来源，但不能因此伪装成 Turn 事件。SSE cursor、重放序号和连接状态属于传输层，不写进业务事件。
 

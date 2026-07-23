@@ -28,3 +28,7 @@ export type {
   HookWarning,
   RegisteredHook,
 } from './types.js';
+export type {
+  HookWarningEvent,
+  HookWarningFailureKind,
+} from './streamEvents.js';

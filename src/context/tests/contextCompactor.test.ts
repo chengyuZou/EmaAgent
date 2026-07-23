@@ -1,9 +1,7 @@
 // 测试 Context 压缩的阈值、摘要持久化与连续失败熔断。
 import { describe, expect, it, vi } from 'vitest';
 import { asSessionId, asTurnId } from '@ema-agent/ids';
-import {
-  type EmaStreamEvent,
-} from '@ema-agent/turn';
+import type { ContextRuntimeEvent as EmaStreamEvent } from '../events.js';
 import type { LlmRequest, Message } from '@ema-agent/llm';
 import { ContextCompactor } from '../contextCompactor.js';
 import { findSafeCutPoint } from '../compaction/safeCut.js';

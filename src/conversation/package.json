@@ -21,6 +21,7 @@
   },
   "dependencies": {
     "@ema-agent/context": "workspace:*",
+    "@ema-agent/events": "workspace:*",
     "@ema-agent/ids": "workspace:*",
     "@ema-agent/turn": "workspace:*",
     "@ema-agent/llm": "workspace:*",

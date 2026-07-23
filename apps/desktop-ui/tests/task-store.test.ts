@@ -1,7 +1,7 @@
 // 验证持久 Task 快照加载、事件更新，以及加载期间事件不会被旧快照覆盖。
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SessionId, TaskId, TurnId } from '@ema-agent/ids';
-import type { TaskSnapshot } from '@ema-agent/turn';
+import type { TaskSnapshot } from '@ema-agent/tasks';
 import { tasksApi } from '../src/api/tasks.js';
 import { useTaskStore } from '../src/stores/taskStore.js';
 

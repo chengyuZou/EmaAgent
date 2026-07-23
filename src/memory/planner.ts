@@ -3,6 +3,7 @@ import type { SessionId, TurnId } from '@ema-agent/ids';
 import type { ContextContributionRequest } from '@ema-agent/context';
 import { estimateTextTokens } from '@ema-agent/token';
 import type { MemoryDeps } from './deps.js';
+import type { MemoryEvent } from './events.js';
 import type {
   MemoryRecallView,
   PlanContext,
@@ -110,7 +111,9 @@ export class MemoryPlanner {
   // ── LLM recall view ─────────────────────────────────────────────────────────
 
   /** 检索并渲染当前 Turn 的临时记忆贡献，不读取或改写模型消息数组。 */
-  async prepareRecallContribution(args: ContextContributionRequest): Promise<MemoryRecallView> {
+  async prepareRecallContribution(
+    args: ContextContributionRequest<MemoryEvent>,
+  ): Promise<MemoryRecallView> {
     if (!this.settings.enabled) {
       return {
         contribution: null,

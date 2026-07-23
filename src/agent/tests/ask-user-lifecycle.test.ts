@@ -2,7 +2,7 @@
 
 import { describe, expect, it, vi } from 'vitest';
 import { awaitAgentAnswer } from '../ask-user-lifecycle.js';
-import type { AskUserRequiredEvent } from '@ema-agent/turn';
+import type { AskUserRequiredEvent } from '@ema-agent/tools';
 import type { AskUserRegistryLike } from '../types.js';
 
 const request: AskUserRequiredEvent = {

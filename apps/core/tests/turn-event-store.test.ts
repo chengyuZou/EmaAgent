@@ -8,9 +8,7 @@ import {
   asSessionId,
   asTurnId,
 } from '@ema-agent/ids';
-import {
-  type EmaStreamEvent,
-} from '@ema-agent/turn';
+import type { EmaStreamEvent } from '@ema-agent/events';
 import { TurnEventStore } from '../src/sse/event-store.js';
 import { encodeEvent } from '../src/sse/writer.js';
 

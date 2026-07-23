@@ -1,9 +1,7 @@
 // 协调单个 Turn 的文本切句、语音合成、前端事件与音频归档。
 
 import type { TurnId, SessionId } from '@ema-agent/ids';
-import type {
-  EmaStreamEvent,
-} from '@ema-agent/turn';
+import type { TtsEvent } from './events.js';
 
 import { TtsRuntime } from './ttsRuntime.js';
 import type { TtsVoiceRef } from './types.js';
@@ -40,8 +38,8 @@ export interface TtsCoordinatorArgs {
   /** 该 provider 的模型名(如 "tts-1"、"cosyvoice-v1")。 */
   model:         string;
   ttsClient:     TtsRuntime;
-  /** 把一个 EmaStreamEvent 推入合并的 turn SSE 队列。 */
-  emit:          (event: EmaStreamEvent) => void;
+  /** 把一个 TTS 事件推入合并的 Turn SSE 队列。 */
+  emit:          (event: TtsEvent) => void;
   /** 若设置,分段 + 合并文件经此归档持久化。 */
   archive?:      AudioArchive;
   /**
@@ -71,7 +69,7 @@ export class TtsCoordinator {
   private readonly providerId:  string;
   private readonly model:       string;
   private readonly ttsClient:   TtsRuntime;
-  private readonly emit:        (event: EmaStreamEvent) => void;
+  private readonly emit:        (event: TtsEvent) => void;
   private readonly archive:     AudioArchive | undefined;
   private readonly format:      'mp3' | 'pcm' | 'wav' | 'opus';
   private readonly abortController = new AbortController();
@@ -211,7 +209,7 @@ export class TtsCoordinator {
 
   /**
    * 在进行中的合成后串一句新句。并发 = 1,音频块按句序产出。
-   * 单句错误被捕获并以 `system_warning` 事件上报 - 不打断链。
+   * 单句错误被捕获并以 `tts_warning` 事件上报 - 不打断链。
    */
   private enqueue(index: number, text: string): void {
     this.chain = this.chain.then(() => this.synthesizeOne(index, text)).catch((err) => {
@@ -220,8 +218,11 @@ export class TtsCoordinator {
       this.abortController.abort('failed');
       this.archive?.discardTurn(this.sessionId as string, this.turnId as string);
       this.emit({
-        type:    'system_warning',
-        level:   'warn',
+        type:    'tts_warning',
+        sessionId: this.sessionId,
+        turnId: this.turnId,
+        code: 'tts/coordinator',
+        severity: 'warn',
         message: `tts/coordinator: ${(err as Error).message}`,
       });
     });

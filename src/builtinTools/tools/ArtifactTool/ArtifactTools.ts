@@ -3,12 +3,8 @@ import { z } from 'zod';
 import { buildTool } from '@ema-agent/tools';
 import type { ToolExecutionContext } from '@ema-agent/tools';
 import type { Artifact, ArtifactId } from '@ema-agent/artifact';
-import {
-  } from '@ema-agent/turn';
 import { asSessionId, asTurnId } from '@ema-agent/ids';
-import {
-  EmaStreamEvent,
-} from '@ema-agent/turn';
+import type { ArtifactEvent } from '@ema-agent/artifact';
 import { randomUUID } from 'node:crypto';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 
@@ -84,14 +80,14 @@ After writing, an artifact_upserted event opens WorkspacePane automatically.`,
         meta:      input.meta,
       });
 
-      ctx.emit?.({ type: 'artifact_upserted', sessionId: asSessionId(ctx.sessionId), artifact } satisfies EmaStreamEvent);
+      ctx.emit?.({ type: 'artifact_upserted', sessionId: asSessionId(ctx.sessionId), artifact } satisfies ArtifactEvent);
 
       if (ctx.artifactStore.countWarning(asSessionId(ctx.sessionId))) {
         ctx.emit?.({
-          type:    'system_warning',
-          level:   'warn',
+          type:    'artifact_count_warning',
+          sessionId: asSessionId(ctx.sessionId),
           message: 'This session has more than 100 artifacts. Consider deleting unused ones.',
-        } satisfies EmaStreamEvent);
+        } satisfies ArtifactEvent);
       }
 
       return artifact;
@@ -121,7 +117,7 @@ After writing, an artifact_upserted event opens WorkspacePane automatically.`,
       artifacts.push(artifact);
     }
 
-    ctx.emit?.({ type: 'artifact_upserted', sessionId: asSessionId(ctx.sessionId), artifact } satisfies EmaStreamEvent);
+    ctx.emit?.({ type: 'artifact_upserted', sessionId: asSessionId(ctx.sessionId), artifact } satisfies ArtifactEvent);
     return artifact;
   },
 });

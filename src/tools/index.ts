@@ -9,6 +9,7 @@ export type {
   ICommandRunner,
   SubagentRunResult,
   SubagentSpawnOpts,
+  SubagentContextMode,
   ISubagentSpawner,
   IMcpClientBridge,
   ISkillRunner,
@@ -25,6 +26,16 @@ export type {
   ToolDef,
   BuiltTool,
 } from './types.js';
+export type {
+  AskUserQuestionSpec,
+  AskUserRequiredEvent,
+  FileChangePresentation,
+  PendingAskUserPrompt,
+  ToolError,
+  ToolPresentation,
+  ToolStreamEvent,
+  ToolExecutionEvent,
+} from './events.js';
 export { SessionFileStateStore } from './sessionFileStateStore.js';
 export type { SessionFileStateEntry } from './sessionFileStateStore.js';
 export type { DeepReadonly, PreparedToolCall } from './prepared-call.js';

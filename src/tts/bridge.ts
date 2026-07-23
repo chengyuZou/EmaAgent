@@ -1,7 +1,7 @@
 // 将 TTS 内部音频事件转换成前端 SSE 事件，是字节编码和句子编号的唯一出口。
 
 import type { TurnId, SessionId } from '@ema-agent/ids';
-import type { EmaStreamEvent } from '@ema-agent/turn';
+import type { TtsEvent } from './events.js';
 import type { TtsStreamEvent } from './types.js';
 
 // ── TtsStreamEvent -> EmaStreamEvent 桥接 ────────────────────────────────────
@@ -33,7 +33,7 @@ export function ttsEventToEma(
   ev:                    TtsStreamEvent,
   ctx:                   BridgeContext,
   currentSentenceIndex:  number,
-): EmaStreamEvent | null {
+): TtsEvent | null {
   switch (ev.type) {
     case 'audio_chunk':
       return {
@@ -54,8 +54,11 @@ export function ttsEventToEma(
 
     case 'error':
       return {
-        type:    'system_warning',
-        level:   ev.code.startsWith('permanent_') ? 'error' : 'warn',
+        type:    'tts_warning',
+        sessionId: ctx.sessionId,
+        turnId: ctx.turnId,
+        code: ev.code,
+        severity: ev.code.startsWith('permanent_') ? 'error' : 'warn',
         message: `tts/${ev.code}: ${ev.message}`,
       };
 

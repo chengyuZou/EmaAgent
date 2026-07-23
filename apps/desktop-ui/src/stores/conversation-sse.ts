@@ -21,15 +21,17 @@ import type {
   SessionId,
   TurnId,
 } from '@ema-agent/ids';
-import type { ToolPresentation } from '@ema-agent/turn';
+import type { ToolPresentation } from '@ema-agent/tools';
 import {
   type ExecutionProfile,
   type NarrativePolicy,
   TurnStats,
-  EmaStreamEvent,
+} from '@ema-agent/turn';
+import type { EmaStreamEvent } from '@ema-agent/events';
+import type {
   MemoryRecallLayer,
   MemoryRecallLayerReport,
-} from '@ema-agent/turn';
+} from '@ema-agent/memory';
 
 // ── StreamCallbacks ───────────────────────────────────────────────────────────
 

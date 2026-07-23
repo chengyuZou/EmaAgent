@@ -14,3 +14,4 @@ export type {
 export { emptyVoiceProfile } from './types.js';
 export { buildCharacterPromptSections } from './characterPrompt.js';
 export type { CharacterPromptSections } from './characterPrompt.js';
+export type { CharacterCardSwitchedEvent, CharacterEvent } from './events.js';

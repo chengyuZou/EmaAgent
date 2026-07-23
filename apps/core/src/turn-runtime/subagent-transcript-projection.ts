@@ -2,7 +2,7 @@
 
 import { asAgentRunId } from '@ema-agent/ids';
 import type { AgentRunMessageInsert } from '@ema-agent/storage';
-import type { EmaStreamEvent } from '@ema-agent/turn';
+import type { EmaStreamEvent } from '@ema-agent/events';
 
 export interface AgentRunMessageWriter {
   insert(message: AgentRunMessageInsert): void;

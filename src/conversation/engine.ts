@@ -2,7 +2,7 @@
 
 import { randomUUID } from 'node:crypto';
 import type { TurnFailureCode } from '@ema-agent/turn';
-import type { EmaStreamEvent } from '@ema-agent/turn';
+import type { EmaStreamEvent } from '@ema-agent/events';
 import { asLlmCallId, LlmModelCapabilityError, llmProviderErrorCode } from '@ema-agent/llm';
 import type {
   AssistantBlock,

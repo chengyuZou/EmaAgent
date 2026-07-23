@@ -1,6 +1,6 @@
 // 把根 Turn 的 AskUser Promise 等待接入取消信号。
 
-import type { AskUserRequiredEvent } from '@ema-agent/turn';
+import type { AskUserRequiredEvent } from '@ema-agent/tools';
 import type { AskUserRegistryLike } from './types.js';
 
 export interface AwaitAgentAnswerInput {

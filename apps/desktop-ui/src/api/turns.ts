@@ -7,10 +7,10 @@ import type {
   TurnId,
 } from '@ema-agent/ids';
 import type {
-  PendingAskUserPrompt,
   TurnCreatedResponse,
   TurnRequest,
 } from '@ema-agent/turn';
+import type { PendingAskUserPrompt } from '@ema-agent/tools';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 

@@ -1,0 +1,43 @@
+{
+  "name": "@ema-agent/events",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsc -p tsconfig.json --watch",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "clean": "rimraf dist"
+  },
+  "dependencies": {
+    "@ema-agent/agent": "workspace:*",
+    "@ema-agent/artifact": "workspace:*",
+    "@ema-agent/characters": "workspace:*",
+    "@ema-agent/context": "workspace:*",
+    "@ema-agent/emotion": "workspace:*",
+    "@ema-agent/hooks": "workspace:*",
+    "@ema-agent/knowledge": "workspace:*",
+    "@ema-agent/memory": "workspace:*",
+    "@ema-agent/narrative": "workspace:*",
+    "@ema-agent/permission": "workspace:*",
+    "@ema-agent/provider": "workspace:*",
+    "@ema-agent/system": "workspace:*",
+    "@ema-agent/tasks": "workspace:*",
+    "@ema-agent/tools": "workspace:*",
+    "@ema-agent/tts": "workspace:*",
+    "@ema-agent/turn": "workspace:*"
+  },
+  "devDependencies": {
+    "rimraf": "^5.0.0",
+    "typescript": "^5.9.3"
+  }
+}

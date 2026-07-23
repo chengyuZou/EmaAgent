@@ -19,6 +19,14 @@ export type {
   AlreadySurfaced,
 } from './types.js';
 export { DEFAULT_MEMORY_SETTINGS } from './types.js';
+export type {
+  MemoryEvent,
+  MemoryBackgroundEvent,
+  MemoryRecallEvent,
+  MemoryRecallLayer,
+  MemoryRecallLayerReport,
+  MemoryRecallLayerStatus,
+} from './events.js';
 
 // ── Sub-utilities (exported for testing / advanced wiring) ───────────────────
 export { EmbedService } from './embed/service.js';

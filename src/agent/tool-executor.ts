@@ -18,7 +18,6 @@ import type {
   ToolExecutionJournalPort,
   ToolExecutionStatus,
 } from '@ema-agent/tools';
-import type { EmaStreamEvent } from '@ema-agent/turn';
 import { splitToolResult, ToolInputError } from '@ema-agent/tools';
 import type {
   ToolExecutionContext,
@@ -30,6 +29,7 @@ import type { ToolManifestSnapshot } from '@ema-agent/tools';
 import type { PermissionEngine, PermissionContext } from '@ema-agent/permission';
 import type { HookBus, ToolFailurePhase } from '@ema-agent/hooks';
 import type { AgentDeps } from './types.js';
+import type { AgentToolEvent } from './events.js';
 
 // ── 单个工具的内部状态 ────────────────────────────────────────────────────────
 
@@ -76,7 +76,7 @@ export interface TurnToolExecutorOpts {
    * 把事件写入 Engine 的待发送队列，例如 tool_result 或 permission_required。
    * 实现方还应调用 signal() 唤醒排空循环。
    */
-  pushEv:      (ev: EmaStreamEvent) => void;
+  pushEv:      (ev: AgentToolEvent) => void;
   /**
    * 唤醒 Engine 的排空循环。track.done 变为 true 时会独立于 pushEv 调用，
    * 确保没有新事件时循环也能重新检查 allDone()。
@@ -598,7 +598,7 @@ export class TurnToolExecutor {
     };
   }
 
-  private emit(track: TrackedTool, event: EmaStreamEvent): void {
+  private emit(track: TrackedTool, event: AgentToolEvent): void {
     if (!track.suppressEvents) this.opts.pushEv(event);
   }
 

@@ -1,4 +1,4 @@
-import type { EmaStreamEvent } from '@ema-agent/turn';
+import type { EmaStreamEvent } from '@ema-agent/events';
 
 // ── SystemEventBus ───────────────────────────────────────────────────────────
 

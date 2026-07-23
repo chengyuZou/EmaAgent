@@ -12,8 +12,8 @@ import type { NarrativeTimelineRecall } from '@ema-agent/session';
  * 所有 hook 事件都是 turn 级别的 engine 内部生命周期事件。
  *
  * CLAUDE.md 规范中的两个事件在此刻意省略:
- *   - onCharacterCardSwitch  -> 直接作为 `character_card_switched` EmaStreamEvent 发出
- *   - onEmotionChange        -> 直接作为 `emotion_changed` EmaStreamEvent 发出
+ *   - onCharacterCardSwitch  -> 由 Characters 模块发布角色事件
+ *   - onEmotionChange        -> 由 Emotion 模块发布情绪事件
  * 这两个是 app 级通知,无需 hook 拦截或优先级排序,因此完全绕过 HookBus。
  */
 export type HookEvent =

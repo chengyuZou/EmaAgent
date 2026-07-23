@@ -1,8 +1,6 @@
 import type { SessionId, TurnId } from '@ema-agent/ids';
-import type {
-  EmaStreamEvent,
-  ExecutionProfile,
-} from '@ema-agent/turn';
+import type { ExecutionProfile } from '@ema-agent/turn';
+import type { MemoryEvent } from './events.js';
 import type { MemoryNodeType, MemoryItemKind } from '@ema-agent/storage';
 import type { EmbeddingSpace } from '@ema-agent/embed';
 import type { ContextContribution } from '@ema-agent/context';
@@ -18,7 +16,7 @@ export interface PlanContext {
   userInput:    string;
   /** Optional abort signal — long recall paths (narrative) honour it. */
   signal?:      AbortSignal;
-  emit?:        (event: EmaStreamEvent) => void;
+  emit?:        (event: MemoryEvent) => void;
 }
 
 // ── Recall results ────────────────────────────────────────────────────────────

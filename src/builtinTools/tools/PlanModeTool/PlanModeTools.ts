@@ -14,7 +14,6 @@ import { z } from 'zod';
 import { buildTool } from '@ema-agent/tools';
 import type { ToolExecutionContext } from '@ema-agent/tools';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
-import type { EmaStreamEvent } from '@ema-agent/turn';
 
 // ── 共享输出类型 ──────────────────────────────────────────────────────────────
 
@@ -53,11 +52,7 @@ Use this when the task is non-trivial and the user has not explicitly said "just
   },
 
   async execute(input: PlanEnterInput, ctx: ToolExecutionContext): Promise<PlanModeResult> {
-    ctx.emit?.({
-      type: 'system_warning',
-      level: 'info',
-      message: `PLAN:\n${input.plan}`,
-    } satisfies EmaStreamEvent);
+    void ctx;
     return { active: true };
   },
 });
@@ -88,13 +83,8 @@ export const PlanExitTool = buildTool<PlanExitInput, PlanModeResult>({
   },
 
   async execute(input: PlanExitInput, ctx: ToolExecutionContext): Promise<PlanModeResult> {
-    if (input.result) {
-      ctx.emit?.({
-        type: 'system_warning',
-        level: 'info',
-        message: `Plan completed: ${input.result}`,
-      } satisfies EmaStreamEvent);
-    }
+    void input;
+    void ctx;
     return { active: false };
   },
 });

@@ -7,8 +7,8 @@ import type { ToolExecutionContext } from '@ema-agent/tools';
 import type { SessionId, TurnId } from '@ema-agent/ids';
 import type {
   AskUserQuestionSpec,
-  EmaStreamEvent,
-} from '@ema-agent/turn';
+  ToolExecutionEvent as EmaStreamEvent,
+} from '@ema-agent/tools';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 
 // ── 输入 schema ──────────────────────────────────────────────────────────────

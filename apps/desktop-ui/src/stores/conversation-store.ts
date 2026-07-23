@@ -11,7 +11,8 @@ import {
   turnsApi,
   type AttachmentInputWire,
   } from '../api/turns.js';
-import type { KbAssetScope, ToolPresentation } from '@ema-agent/turn';
+import type { KbAssetScope } from '@ema-agent/turn';
+import type { ToolPresentation } from '@ema-agent/tools';
 import {
   handleTurnAborted,
   evictSessionPlayers,
@@ -49,11 +50,13 @@ import {
   type NarrativePolicy,
   type TurnCreatedResponse,
 } from '@ema-agent/turn';
-import {
+import type {
   TurnStats,
+} from '@ema-agent/turn';
+import type {
   MemoryRecallLayer,
   MemoryRecallLayerReport,
-} from '@ema-agent/turn';
+} from '@ema-agent/memory';
 import type { EmotionState } from '@ema-agent/emotion';
 
 export type { AttachmentInputWire };

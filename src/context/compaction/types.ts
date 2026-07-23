@@ -1,10 +1,7 @@
 import type { SessionId, TurnId } from '@ema-agent/ids';
 import type { MessageBlocks } from '@ema-agent/session';
-import type {
-  EmaStreamEvent,
-  ExecutionProfile,
-  NarrativePolicy,
-} from '@ema-agent/turn';
+import type { ExecutionProfile, NarrativePolicy } from '@ema-agent/turn';
+import type { ContextRuntimeEvent } from '../events.js';
 import type { LanguageModel, LlmToolDef, Message } from '@ema-agent/llm';
 import type { HookBus } from '@ema-agent/hooks';
 
@@ -59,7 +56,7 @@ export interface ContextCompactionArgs {
   model: string;
   recentFiles?: ReadonlyArray<{ path: string; content: string; mtimeMs: number }>;
   signal?: AbortSignal;
-  emit?: (event: EmaStreamEvent) => void;
+  emit?: (event: ContextRuntimeEvent) => void;
 }
 
 interface ContextCompactionResultBase {

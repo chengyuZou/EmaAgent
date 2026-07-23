@@ -6,9 +6,9 @@ import type {
 import type {
   ExecutionProfile,
   NarrativePolicy,
-  ToolPresentation,
   TurnStats,
 } from '@ema-agent/turn';
+import type { ToolPresentation } from '@ema-agent/tools';
 import type {
   AssistantBlock,
   MessageBlocks,

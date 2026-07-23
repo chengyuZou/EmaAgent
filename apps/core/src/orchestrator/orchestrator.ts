@@ -20,10 +20,10 @@ import {
   asSessionId,
 } from '@ema-agent/ids';
 import type {
-  EmaStreamEvent,
   RequestDegradationNotice,
   TurnFailureCode,
 } from '@ema-agent/turn';
+import type { EmaStreamEvent } from '@ema-agent/events';
 import { ConversationEngine } from '@ema-agent/conversation';
 import { AgentEngine }        from '@ema-agent/agent';
 import { TtsCoordinator }     from '@ema-agent/tts';
@@ -93,7 +93,7 @@ export interface OrchestratorCallbacks {
  * Per-turn it builds an event-merging generator that yields:
  *   - Events from the engine (output_text_delta, tool_call_*, permission_*…)
  *   - Events from the TtsCoordinator (tts_chunk, tts_sentence_complete,
- *     system_warning on TTS failure)
+ *     tts_warning on TTS failure)
  *
  * Engine and coordinator run concurrently — engine drives the LLM stream
  * and yields output_text_delta events, the coordinator receives a copy of
@@ -274,8 +274,11 @@ export class Orchestrator {
       coordinator = await this.maybeBuildCoordinator(request, turnId, sessionId, signal, pushTts);
     } catch (err) {
       pushTts({
-        type:    'system_warning',
-        level:   'warn',
+        type:      'tts_warning',
+        sessionId,
+        turnId,
+        code:      'tts/setup_failed',
+        severity:  'warn',
         message: `TTS 初始化失败，本轮无语音：${err instanceof Error ? err.message : String(err)}`,
       });
     }
@@ -407,7 +410,14 @@ export class Orchestrator {
           thinking:     request.thinking,
           requestDegradations,
           prepareContextContributions: async (contextRequest) => {
-            const recalled = await this.bindings.memory.prepareRecallContribution(contextRequest);
+            const recalled = await this.bindings.memory.prepareRecallContribution({
+              sessionId: contextRequest.sessionId,
+              turnId: contextRequest.turnId,
+              executionProfile: contextRequest.executionProfile,
+              narrativePolicy: contextRequest.narrativePolicy,
+              userInput: contextRequest.userInput,
+              signal: contextRequest.signal,
+            });
             return recalled.contribution ? [recalled.contribution] : [];
           },
           compactContext: providerId && model ? (view) => this.bindings.contextCompactor.compact({
@@ -480,7 +490,14 @@ export class Orchestrator {
           thinking:       request.thinking,
           requestDegradations,
           prepareContextContributions: async (contextRequest) => {
-            const recalled = await this.bindings.memory.prepareRecallContribution(contextRequest);
+            const recalled = await this.bindings.memory.prepareRecallContribution({
+              sessionId: contextRequest.sessionId,
+              turnId: contextRequest.turnId,
+              executionProfile: contextRequest.executionProfile,
+              narrativePolicy: contextRequest.narrativePolicy,
+              userInput: contextRequest.userInput,
+              signal: contextRequest.signal,
+            });
             const contributions = recalled.contribution ? [recalled.contribution] : [];
             const tasks = this.bindings.taskStore.takeContextReminder(contextRequest.sessionId);
             if (tasks.length > 0) {

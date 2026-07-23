@@ -2,7 +2,7 @@
 
 import type { SessionId, TurnId } from '@ema-agent/ids';
 import type { NarrativeTimelineRecall } from '@ema-agent/session';
-import type { EmaStreamEvent } from '@ema-agent/turn';
+import type { EmaStreamEvent } from '@ema-agent/events';
 import type { ContextContribution } from '@ema-agent/context';
 import { NarrativeClientError } from '@ema-agent/narrative';
 import type { ConversationDeps } from './types.js';

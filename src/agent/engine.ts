@@ -1,6 +1,6 @@
 // 运行一次 Agent Turn，并协调模型、工具、权限、Hook 和结果保存。
 
-import type { EmaStreamEvent, TurnFailureCode } from '@ema-agent/turn';
+import type { TurnFailureCode } from '@ema-agent/turn';
 import { asAgentRunId } from '@ema-agent/ids';
 import type { MessageBlocks } from '@ema-agent/session';
 import type { ToolExecutionContext, ReadFileState } from '@ema-agent/tools';
@@ -25,6 +25,7 @@ import type { AssistantBlock, Message as ModelMessage, UserBlock } from '@ema-ag
 import * as fs   from 'node:fs';
 import { AgentBudgetExceededError, TurnBudget } from './turn-budget.js';
 import { awaitAgentAnswer } from './ask-user-lifecycle.js';
+import type { AgentRuntimeEvent } from './events.js';
 
 // ── AgentEngine ───────────────────────────────────────────────────────────────
 
@@ -40,7 +41,7 @@ export class AgentEngine {
 
   constructor(private readonly deps: AgentDeps) {}
 
-  run(input: TurnExecutionInput): AsyncIterable<EmaStreamEvent> {
+  run(input: TurnExecutionInput): AsyncIterable<AgentRuntimeEvent> {
     return runTurn(this.deps, input, this.activeSpawners, this.activeExecutors);
   }
 
@@ -62,7 +63,7 @@ async function* runTurn(
   input:           TurnExecutionInput,
   activeSpawners:  Map<string, SubagentSpawner>,
   activeExecutors: Map<string, TurnToolExecutor>,
-): AsyncIterable<EmaStreamEvent> {
+): AsyncIterable<AgentRuntimeEvent> {
   const { session, hooks, llm, emotion, tools, permission, askUserRegistry } = deps;
   const { turn, signal, userInput, workspaceRoot, providerId, model } = input;
   const sessionId = turn.sessionId;
@@ -95,9 +96,9 @@ async function* runTurn(
 
   // 在 try 外声明，确保 finally 能在释放 Spawner 前切断事件队列引用。
   // buildExecutor 会在循环启动后填入实际发送函数。
-  const emitRef: { fn?: (ev: EmaStreamEvent) => void } = {};
-  const pendingHookEvents: EmaStreamEvent[] = [];
-  const emitHookEvent = (event: EmaStreamEvent): void => {
+  const emitRef: { fn?: (ev: AgentRuntimeEvent) => void } = {};
+  const pendingHookEvents: AgentRuntimeEvent[] = [];
+  const emitHookEvent = (event: AgentRuntimeEvent): void => {
     pendingHookEvents.push(event);
   };
   let activePhase: TurnFailurePhase = 'setup';
@@ -252,7 +253,7 @@ async function* runTurn(
     turnSpawner = spawner;
     activeSpawners.set(turnId, spawner);
 
-    const buildExecutor: ExecutorFactory<EmaStreamEvent> = ({ pushEv, signal: wakeSignal }) => {
+    const buildExecutor: ExecutorFactory<AgentRuntimeEvent> = ({ pushEv, signal: wakeSignal }) => {
       emitRef.fn = pushEv;   // 循环启动后接入父 SSE 发送函数
       const toolCtx: ToolExecutionContext = {
         sessionId, turnId, workspaceRoot, signal, readFileState,
@@ -301,7 +302,7 @@ async function* runTurn(
 
     // AgentLoop 不认识 SSE；本层把循环事件翻译为现有传输协议。
     activePhase = 'provider';
-    const agentLoop = runAgentLoop<EmaStreamEvent>({
+    const agentLoop = runAgentLoop<AgentRuntimeEvent>({
       messages, policy, buildExecutor, llm,
       historyMessageCount: historyView.messages.length,
       providerId, model, signal,

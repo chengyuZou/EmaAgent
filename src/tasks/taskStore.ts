@@ -9,7 +9,7 @@ import type {
   TaskRow,
   TasksRepo,
 } from '@ema-agent/storage';
-import type { TaskSnapshot } from '@ema-agent/turn';
+import type { TaskSnapshot } from './events.js';
 import type {
   Task,
   TaskCreateInput,

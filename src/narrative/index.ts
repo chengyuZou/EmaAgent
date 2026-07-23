@@ -18,3 +18,4 @@ export type {
   NarrativeQueryRequest,
   NarrativeQueryResponse,
 } from './types.js';
+export type { NarrativeEvent, NarrativeTimelineFailureCode } from './events.js';

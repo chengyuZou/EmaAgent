@@ -7,7 +7,8 @@ import {
   asTurnId,
 } from '@ema-agent/ids';
 import type { Task, TaskStorePort } from '@ema-agent/tasks';
-import type { EmaStreamEvent, TaskSnapshot } from '@ema-agent/turn';
+import type { ToolExecutionEvent as EmaStreamEvent } from '@ema-agent/tools';
+import type { TaskSnapshot } from '@ema-agent/tasks';
 import type { ToolExecutionContext } from '@ema-agent/tools';
 import { TaskCreateTool } from '../tools/TaskCreateTool/TaskCreateTool.js';
 import { TaskUpdateTool } from '../tools/TaskUpdateTool/TaskUpdateTool.js';

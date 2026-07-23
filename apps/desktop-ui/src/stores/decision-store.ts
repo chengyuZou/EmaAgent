@@ -28,7 +28,7 @@ import type {
 import type {
   AskUserQuestionSpec,
   PendingAskUserPrompt,
-} from '@ema-agent/turn';
+} from '@ema-agent/tools';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 

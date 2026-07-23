@@ -34,3 +34,4 @@ export {
   ttsEventToEma, makeSentenceId, parseSentenceId,
 } from './bridge.js';
 export type { BridgeContext } from './bridge.js';
+export type { LipSyncFrame, TtsEvent } from './events.js';

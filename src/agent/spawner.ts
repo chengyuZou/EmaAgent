@@ -2,10 +2,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { asAgentRunId, type AgentRunId, type SessionId, type TurnId } from '@ema-agent/ids';
-import {
-  EmaStreamEvent,
-  ToolError,
-} from '@ema-agent/turn';
+import type { ToolError } from '@ema-agent/tools';
 import type { Message as ModelMessage } from '@ema-agent/llm';
 import type {
   ISubagentSpawner,
@@ -19,6 +16,7 @@ import { TurnToolExecutor } from './tool-executor.js';
 import { runAgentLoop, type ExecutorFactory } from './agentLoop.js';
 import { selectSubagentTools } from './subagent-capabilities.js';
 import { TurnBudget } from './turn-budget.js';
+import type { AgentRuntimeEvent } from './events.js';
 
 // ── 子 Agent 调度入口 ─────────────────────────────────────────────────────────
 // 负责全部子 Agent 面板事件：
@@ -54,7 +52,7 @@ export class SubagentSpawner implements ISubagentSpawner {
     private readonly parentMessages:        ModelMessage[],
     private readonly scratchpadDir?:        string,
     private readonly getScratchpadContext?: () => string | undefined,
-    private readonly parentEmit?:           (ev: EmaStreamEvent) => void,
+    private readonly parentEmit?:           (ev: AgentRuntimeEvent) => void,
     private readonly kbSearch?:             ToolExecutionContext['kbSearch'],
     private readonly budget:                TurnBudget = new TurnBudget(),
   ) {}
@@ -147,7 +145,7 @@ export class SubagentSpawner implements ISubagentSpawner {
     const startedAtMs = Date.now();
     const taskId      = opts.taskId;
     const kind        = opts.kind ?? 'fork';
-    const emit = (ev: EmaStreamEvent) => this.parentEmit?.(ev);
+    const emit = (ev: AgentRuntimeEvent) => this.parentEmit?.(ev);
 
     // 子控制器继承父取消信号，也允许只取消当前 AgentRun。
     const childCtrl     = new AbortController();
@@ -207,7 +205,7 @@ export class SubagentSpawner implements ISubagentSpawner {
     }
 
     let subagentExecutor: TurnToolExecutor | undefined;
-    const buildExecutor: ExecutorFactory<EmaStreamEvent> = ({ pushEv, signal: wakeSignal }) => {
+    const buildExecutor: ExecutorFactory<AgentRuntimeEvent> = ({ pushEv, signal: wakeSignal }) => {
       // 子 ToolContext 故意不注入 subagentSpawner，以此把递归深度限制为一层。
       // 多层嵌套需要资源预算、邮箱死锁与级联取消设计，V1 不开放。
       const toolCtx: ToolExecutionContext = {
@@ -245,7 +243,7 @@ export class SubagentSpawner implements ISubagentSpawner {
     let usage    = { inputTokens: 0, outputTokens: 0 };
 
     try {
-      const agentLoop = runAgentLoop<EmaStreamEvent>({
+      const agentLoop = runAgentLoop<AgentRuntimeEvent>({
         messages, policy, buildExecutor, llm,
         providerId:           this.parentProviderId,
         model:                resolvedModel,

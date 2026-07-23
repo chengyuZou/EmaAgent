@@ -22,6 +22,7 @@ export type {
 // ── Events ─────────────────────────────────────────────────────────────────────
 export { DocumentEventEmitter }                         from './events/index.js';
 export type { DocumentProgressEvent, DocumentProgressKind } from './events/index.js';
+export type { KnowledgeEvent } from './events.js';
 
 // ── Adapters ───────────────────────────────────────────────────────────────────
 export { KbVisionAdapterError, isKbVisionAdapterError } from './adapters/vision.js';

@@ -14,11 +14,7 @@ import type { AppBindings } from '../wiring/index.js';
 import type {
   TurnId,
 } from '@ema-agent/ids';
-import type {
-  EmaStreamEvent,
-} from '@ema-agent/turn';
-import {
-  } from '@ema-agent/turn';
+import type { EmaStreamEvent } from '@ema-agent/events';
 import {
   asTurnId,
   asSessionId,

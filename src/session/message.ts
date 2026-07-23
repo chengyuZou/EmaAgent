@@ -4,7 +4,8 @@ import type {
   ToolResultContentPart,
 } from '@ema-agent/llm';
 import type { MessageKind, MessageRole } from '@ema-agent/storage';
-import type { ToolPresentation, TurnContentPart } from '@ema-agent/turn';
+import type { TurnContentPart } from '@ema-agent/turn';
+import type { ToolPresentation } from '@ema-agent/tools';
 
 export type AssistantBlock = LlmAssistantBlock;
 export type MessageContentPart = TurnContentPart;

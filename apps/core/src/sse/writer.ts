@@ -1,6 +1,6 @@
 // 把结构化事件和服务端游标编码成标准 SSE 帧。
 
-import type { EmaStreamEvent } from '@ema-agent/turn';
+import type { EmaStreamEvent } from '@ema-agent/events';
 
 /** 编码一条业务事件；Turn SSE 传 cursor，系统 SSE 可以省略。 */
 export function encodeEvent(event: EmaStreamEvent, cursor?: number): string {

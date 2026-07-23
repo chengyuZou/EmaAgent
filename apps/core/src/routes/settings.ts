@@ -1,8 +1,8 @@
-﻿// 提供通用设置的读取、校验和持久化路由。
+// 提供通用设置的读取、校验和持久化路由。
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { SettingsRepo } from '@ema-agent/storage';
-import type { EmaStreamEvent } from '@ema-agent/turn';
+import type { EmaStreamEvent } from '@ema-agent/events';
 import type { AppBindings } from '../wiring/index.js';
 
 // ── Settings keys (typed) ────────────────────────────────────────────────────

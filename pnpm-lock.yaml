@@ -61,6 +61,9 @@ importers:
       '@ema-agent/emotion':
         specifier: workspace:*
         version: link:../../src/emotion
+      '@ema-agent/events':
+        specifier: workspace:*
+        version: link:../../src/events
       '@ema-agent/hooks':
         specifier: workspace:*
         version: link:../../src/hooks
@@ -273,6 +276,9 @@ importers:
       '@ema-agent/emotion':
         specifier: workspace:*
         version: link:../../src/emotion
+      '@ema-agent/events':
+        specifier: workspace:*
+        version: link:../../src/events
       '@ema-agent/ids':
         specifier: workspace:*
         version: link:../../src/ids
@@ -306,9 +312,15 @@ importers:
       '@ema-agent/system':
         specifier: workspace:*
         version: link:../../src/system
+      '@ema-agent/tasks':
+        specifier: workspace:*
+        version: link:../../src/tasks
       '@ema-agent/token':
         specifier: workspace:*
         version: link:../../src/token
+      '@ema-agent/tools':
+        specifier: workspace:*
+        version: link:../../src/tools
       '@ema-agent/turn':
         specifier: workspace:*
         version: link:../../src/turn
@@ -684,6 +696,9 @@ importers:
       '@ema-agent/emotion':
         specifier: workspace:*
         version: link:../emotion
+      '@ema-agent/events':
+        specifier: workspace:*
+        version: link:../events
       '@ema-agent/hooks':
         specifier: workspace:*
         version: link:../hooks
@@ -765,6 +780,64 @@ importers:
       vitest:
         specifier: ^2.0.0
         version: 2.1.9(@types/node@20.19.39)(jsdom@26.1.0(canvas@2.11.2))(msw@2.14.6(@types/node@20.19.39)(typescript@5.9.3))
+
+  src/events:
+    dependencies:
+      '@ema-agent/agent':
+        specifier: workspace:*
+        version: link:../agent
+      '@ema-agent/artifact':
+        specifier: workspace:*
+        version: link:../artifact
+      '@ema-agent/characters':
+        specifier: workspace:*
+        version: link:../characters
+      '@ema-agent/context':
+        specifier: workspace:*
+        version: link:../context
+      '@ema-agent/emotion':
+        specifier: workspace:*
+        version: link:../emotion
+      '@ema-agent/hooks':
+        specifier: workspace:*
+        version: link:../hooks
+      '@ema-agent/knowledge':
+        specifier: workspace:*
+        version: link:../knowledge
+      '@ema-agent/memory':
+        specifier: workspace:*
+        version: link:../memory
+      '@ema-agent/narrative':
+        specifier: workspace:*
+        version: link:../narrative
+      '@ema-agent/permission':
+        specifier: workspace:*
+        version: link:../permission
+      '@ema-agent/provider':
+        specifier: workspace:*
+        version: link:../providers
+      '@ema-agent/system':
+        specifier: workspace:*
+        version: link:../system
+      '@ema-agent/tasks':
+        specifier: workspace:*
+        version: link:../tasks
+      '@ema-agent/tools':
+        specifier: workspace:*
+        version: link:../tools
+      '@ema-agent/tts':
+        specifier: workspace:*
+        version: link:../tts
+      '@ema-agent/turn':
+        specifier: workspace:*
+        version: link:../turn
+    devDependencies:
+      rimraf:
+        specifier: ^5.0.0
+        version: 5.0.10
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
 
   src/hooks:
     dependencies:
@@ -1043,6 +1116,10 @@ importers:
         version: 2.1.9(@types/node@20.19.39)(jsdom@26.1.0(canvas@2.11.2))(msw@2.14.6(@types/node@20.19.39)(typescript@5.9.3))
 
   src/narrative:
+    dependencies:
+      '@ema-agent/ids':
+        specifier: workspace:*
+        version: link:../ids
     devDependencies:
       '@types/node':
         specifier: ^20.0.0
@@ -1168,6 +1245,9 @@ importers:
       '@ema-agent/storage':
         specifier: workspace:*
         version: link:../storage
+      '@ema-agent/tools':
+        specifier: workspace:*
+        version: link:../tools
       '@ema-agent/turn':
         specifier: workspace:*
         version: link:../turn
@@ -1363,9 +1443,6 @@ importers:
       '@ema-agent/tasks':
         specifier: workspace:*
         version: link:../tasks
-      '@ema-agent/turn':
-        specifier: workspace:*
-        version: link:../turn
       zod:
         specifier: ^3.23.0
         version: 3.25.76
@@ -1428,21 +1505,9 @@ importers:
 
   src/turn:
     dependencies:
-      '@ema-agent/artifact':
-        specifier: workspace:*
-        version: link:../artifact
-      '@ema-agent/emotion':
-        specifier: workspace:*
-        version: link:../emotion
       '@ema-agent/ids':
         specifier: workspace:*
         version: link:../ids
-      '@ema-agent/permission':
-        specifier: workspace:*
-        version: link:../permission
-      '@ema-agent/provider':
-        specifier: workspace:*
-        version: link:../providers
     devDependencies:
       rimraf:
         specifier: ^5.0.0

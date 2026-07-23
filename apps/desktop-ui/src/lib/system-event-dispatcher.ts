@@ -1,5 +1,5 @@
 // 把跨窗口收到的系统事件写入当前窗口自己的前端 Store。
-import type { EmaStreamEvent } from '@ema-agent/turn';
+import type { EmaStreamEvent } from '@ema-agent/events';
 import type { MemoryTaskKind } from '@ema-agent/storage';
 import { useCardStore } from '../stores/card-store.js';
 import { useKbStore } from '../stores/kb-store.js';

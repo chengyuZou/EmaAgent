@@ -23,6 +23,7 @@
   "dependencies": {
     "@ema-agent/backup": "workspace:*",
     "@ema-agent/ids": "workspace:*",
+    "@ema-agent/events": "workspace:*",
     "@ema-agent/turn": "workspace:*",
     "@ema-agent/context": "workspace:*",
     "@ema-agent/provider": "workspace:*",

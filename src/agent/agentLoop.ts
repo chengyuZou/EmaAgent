@@ -1,6 +1,5 @@
 // 执行一次 AgentRun 内的模型与工具迭代，并返回唯一循环结果。
 import { randomUUID } from 'node:crypto';
-import type { ToolResultBlock } from '@ema-agent/session';
 import { asLlmCallId } from '@ema-agent/llm';
 import type {
   AssistantBlock,
@@ -12,6 +11,7 @@ import type {
   ThinkingMode,
   UserBlock,
 } from '@ema-agent/llm';
+import type { ToolResultBlock } from '@ema-agent/session';
 import {
   advanceLlmUsageSnapshot,
   ContextWindowExceededError,
@@ -26,38 +26,11 @@ import {
   createAgentLoopState,
 } from './agentLoopState.js';
 import type { AgentLoopState } from './agentLoopState.js';
+import type { AgentLoopEvent } from './events.js';
 import type { TurnBudget } from './turn-budget.js';
 
 const MAX_CONSECUTIVE_PERMISSION_DENIALS = 3;
 const MAX_TOTAL_PERMISSION_DENIALS = 20;
-
-// AgentLoop 只产生自身事件；执行器事件使用泛型原样上送，由外层决定协议映射。
-
-export type AgentLoopEvent<TExecutorEvent> =
-  | { type: 'loop_iteration';     n: number; state: AgentLoopState }
-  | { type: 'loop_text_delta';    delta: string; blockIndex: number }
-  | { type: 'loop_thinking_delta';delta: string; blockIndex: number }
-  | { type: 'loop_tool_partial';  callId: string; name: string; argsDelta: string; blockIndex: number }
-  | { type: 'loop_tool_complete'; callId: string; name: string; args: unknown; blockIndex: number }
-  | {
-      type: 'loop_request_degraded';
-      attempt: number;
-      reason: string;
-      removed: Array<'image' | 'audio' | 'file' | 'parameter'>;
-      replacements: Array<'description' | 'placeholder' | 'parameter_omitted'>;
-    }
-  | { type: 'loop_relay';         ev: TExecutorEvent }
-  | { type: 'loop_usage';         usage: LlmTokenUsage }
-  | {
-      type: 'loop_llm_complete';
-      iteration: number;
-      llmCallId: LlmCallId;
-      usage: LlmTokenUsage;
-      promptPrefixHash: string | null;
-    }
-  | { type: 'loop_hook_abort'; reason: string }
-  | { type: 'loop_tool_results';  results: ToolResultBlock[]; fullText: string }
-  | { type: 'loop_breaker';       reason: string };
 
 export interface AgentLoopOutcome {
   fullText: string;

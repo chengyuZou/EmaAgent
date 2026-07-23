@@ -23,11 +23,19 @@ export type {
 } from './runs/types.js';
 export { runAgentLoop } from './agentLoop.js';
 export type {
-  AgentLoopEvent,
   AgentLoopInput,
   AgentLoopOutcome,
   ExecutorFactory,
 } from './agentLoop.js';
+export type {
+  AgentKind,
+  AgentLoopEvent,
+  AgentRunEvent,
+  AgentRuntimeEvent,
+  AgentToolEvent,
+  AgentTurnEvent,
+  SubagentInnerEvent,
+} from './events.js';
 export type {
   AgentLoopPhase,
   AgentLoopState,

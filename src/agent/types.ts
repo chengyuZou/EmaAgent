@@ -3,11 +3,11 @@
 import type { SessionId, ToolCallId, TurnId } from '@ema-agent/ids';
 import type {
   KbAssetScope,
-  EmaStreamEvent,
   RequestDegradationNotice,
-  AskUserRequiredEvent,
   TurnFailureCode,
 } from '@ema-agent/turn';
+import type { AskUserRequiredEvent } from '@ema-agent/tools';
+import type { AgentRuntimeEvent } from './events.js';
 import type { KbSearchResult } from '@ema-agent/knowledge';
 import type {
   LanguageModel,
@@ -31,7 +31,11 @@ import type {
   ToolResultStore,
 } from '@ema-agent/tools';
 import type { IArtifactStore } from '@ema-agent/artifact';
-import type { PermissionEngine, AskPermissionFn } from '@ema-agent/permission';
+import type {
+  PermissionEngine,
+  AskPermissionFn,
+  PermissionStreamEvent,
+} from '@ema-agent/permission';
 import type { SessionFileStateStore } from '@ema-agent/tools';
 import type { ModelCapabilityResolver } from '@ema-agent/provider';
 import type { AgentRunStorePort } from './runs/types.js';
@@ -83,7 +87,7 @@ export interface AgentDeps {
     sessionId: SessionId;
     turnId:    TurnId;
     toolCallId: ToolCallId;
-    emit:      (ev: EmaStreamEvent) => void;
+    emit:      (ev: PermissionStreamEvent) => void;
   }) => AskPermissionFn;
   /**
    * 保存待回答 ask_user 请求的注册表。Engine 把解析函数注入 toolCtx，

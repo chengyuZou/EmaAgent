@@ -14,3 +14,4 @@ export type {
   IArtifactStore,
 } from './types.js';
 export { asArtifactId } from './types.js';
+export type { ArtifactEvent } from './events.js';

@@ -1,6 +1,6 @@
 // 在输入框上方展示当前 Session 的持久 Task、依赖与活动 AgentRun。
 import type { JSX } from 'react';
-import type { TaskSnapshot } from '@ema-agent/turn';
+import type { TaskSnapshot } from '@ema-agent/tasks';
 
 export function TaskList({ tasks }: { tasks: readonly TaskSnapshot[] }): JSX.Element {
   const ordered = [...tasks].sort((left, right) => {

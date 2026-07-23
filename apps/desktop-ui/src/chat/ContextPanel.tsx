@@ -7,7 +7,7 @@ import { useConversationStore } from '../stores/conversation-store.js';
 import type {
   MemoryRecallLayer,
   MemoryRecallLayerReport,
-} from '@ema-agent/turn';
+} from '@ema-agent/memory';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 

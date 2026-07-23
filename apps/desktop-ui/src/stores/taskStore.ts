@@ -1,7 +1,7 @@
 // 保存各 Session 的持久 Task 快照，并合并根 Turn 发来的 Task 事件。
 import { create } from 'zustand';
 import type { SessionId, TaskId } from '@ema-agent/ids';
-import type { TaskSnapshot } from '@ema-agent/turn';
+import type { TaskSnapshot } from '@ema-agent/tasks';
 import { tasksApi } from '../api/tasks.js';
 
 interface TaskStoreState {

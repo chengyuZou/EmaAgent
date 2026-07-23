@@ -1,14 +1,14 @@
 # EmaAgent 当前重构接力板
 
 > 状态：临时施工记录，架构完成后删除
-> 更新时间：2026-07-23
+> 更新时间：2026-07-24
 > 作用：只记录当前阶段、工作区归属、最近验证和下一步。长期规则以 `CLAUDE.md` 为准，目标设计以 `EmaRefactor.md` 为准，设计依据以 `EmaClaudeArchitectureReview.md` 为准。
 
 ## 当前阶段
 
 根目录迁移已经结束，项目进入语义大重构阶段。现在不再继续机械搬包，也不建立第三套 Engine；下一条主线是把现有 `ConversationEngine + AgentEngine + Core Orchestrator` 收敛为唯一的 `TurnRuntime + AgentLoop`。内层 `AgentLoop` 已完成真实改名与结果边界收口；现有 `AgentEngine` 是 Turn 根生命周期的迁移基础，下一批直接迁成 `TurnRuntime`，不在其上新增包装层。
 
-事件边界已经重新冻结：各领域拥有自己的事件定义，运行链按生命周期范围组合为五类。`AgentLoopEvent` 仅在进程内流动；`TurnEvent` 只进入单个 Turn 的可重放 SSE；`AgentRunEvent` 描述一次子 Agent 执行；`SessionEvent` 描述 Task、来源等跨 Turn 状态；`AppEvent` 描述角色切换、Provider 健康和后台 Memory/Knowledge 等全局状态。现有 `EmaStreamEvent` 是迁移期万能联合，后续拆除；任何新 Store、Bus 或生产者不得继续扩大它。
+事件所有权第一批已经落到源码：Agent、Artifact、Characters、Context、Hooks、Knowledge、Memory、Narrative、System、Tasks、Tools 与 TTS 各自拥有 `events.ts`；Turn 只保留根生命周期、输出、Usage 与请求降级事件。`src/events` 像 `src/ids` 一样执行严格准入，但只负责组合 `TurnStreamEvent/SessionEvent/AppEvent`，禁止定义业务字段。`EmaStreamEvent` 已标记为迁移期兼容名，新生产者必须使用领域事件或窄通道事件。
 
 R2 Prompt Slot 与 R3 ContextAssembler 主链接线已经完成：Prompt、Skill Catalog、Memory Recall、Narrative Recall、历史、当前 Turn、Scratchpad、Mailbox 与 Tool Manifest 由一次不可变 Context 快照统一装配。现有渐进 Compaction、Safe Cut、Restore、响应式压缩和 Tool Manifest Snapshot 都是基线，不重新实现。
 
@@ -72,7 +72,7 @@ Task 与 AgentRun 前端已经分面：Desktop 使用正式 `/api/tasks` 快照�
 
 开始任何新批次前必须重新运行 `git status --short` 与 `git diff`，保留用户和其他 Agent 的修改。
 
-当前工作区的本批改动收口 `AgentLoop` 与旧 `agentContext`：`loop.ts/loop-state.ts` 已迁为 `agentLoop.ts/agentLoopState.ts`，根 Agent 和 Subagent 读取生成器返回的 `AgentLoopOutcome`；文件状态归 Tools，旧模块及 workspace 依赖删除。`src/sandbox/**` 的未提交修改来自并行工作，不属于本批，禁止覆盖。
+当前工作区包含连续两批未提交重构：前一批收口 `AgentLoop` 与旧 `agentContext`；本批把中央 Turn 事件联合拆回各业务模块，并新增只做协议组合的 `src/events`。`src/sandbox/**` 与 `src/system/shell-probe.ts` 的未提交修改来自用户或并行工作，不属于本批，禁止覆盖。
 
 当前基线最近提交：`673c52f7 refactor: migrate from AgentTask to AgentRun`。该提交号仅用于定位，不代表其他 Agent 不会继续提交。
 
@@ -115,10 +115,10 @@ Chat 工作区、Turn 导航轨、Task/AgentRun 分面、双 Dock、置顶摘要
 
 1. TurnIndex/MessageWindow 与前端历史 Store/TurnRail 已完成，不创建 Dock 半成品；
 2. TaskList、AgentRunPanel、原生 AgentRun API 与真实 Review 入口已经完成，旧 `/api/agent-tasks` 兼容已删除；
-3. 下一批实现 Workspace Dock，把当前临时 Review Inspector 迁入唯一、可移动的 `review` 标签；
+3. Workspace Dock 暂缓；下一批先继续冻结 TurnRuntime 输入、Handle、Outcome 与唯一终态；
 4. Workspace Dock 稳定后，再单独评估跨端 SSE 的 `subagentId` 改名，避免与 TurnRuntime/事件范围重构混做；
 5. 后台进程按 `BackgroundProcess + ProcessOutput/ProcessStop` 分批实现 C 档，不修改 Agent Loop 来实现自动后台化；
-6. 下一批直接把现有 AgentEngine 收口为 TurnRuntime，冻结 Turn 输入、Handle、Outcome 与唯一终态；随后让 Chat 通过短期 ConversationEngine 适配器接入同一 AgentLoop，再删除重复循环并拆分 Turn、Session、AgentRun 与 App 事件通道。
+6. 事件所有权第一批已完成；后续在 TurnRuntime 接线时逐步把传输层 `EmaStreamEvent` 消费者改为窄通道，不单独做全仓机械改名。
 
 命名随业务批次清理：`IFileStateStoreEntry/IFileStateStore/IToolExecutionJournal` 已在所有权迁移时改为职责名；其余迁移期 `I*` 类型继续随业务边界处理，不单独进行全仓机械重命名。
 
@@ -126,6 +126,7 @@ Chat 工作区、Turn 导航轨、Task/AgentRun 分面、双 Dock、置顶摘要
 
 ## 最近验证
 
+- 事件所有权第一批：业务事件已从 Turn 回到各自模块，`src/events` 只组合生命周期通道；TTS 与 Artifact 警告不再伪装成 System 事件。离线刷新 Workspace 后全仓 typecheck 84/84；Agent 32/32、Context 23/23、Hooks 27/27、TTS 61/61、Core 92/92、Desktop UI 132/132 通过，4 个 Agent Live Integration 按既有规则跳过。
 - AgentLoop 与 agentContext 收口：Tools build 通过，Tools/Agent/Core typecheck 通过；Agent 32/32 通过，4 个 Live Integration 按既有规则跳过；FileWriteTool 7/7 通过。Workspace lockfile 已离线刷新为 44 个项目，`@ema-agent/agent-context`、`turnLoop`、`loop_done`、`IFileStateStore*` 源码引用归零。
 - TurnRuntime/AgentLoop 与事件范围文档更正：`CLAUDE.md`、`EmaWorkState.md`、`EmaRefactor.md`、`EmaClaudeArchitectureReview.md` 已统一口径；核心文档中的旧循环命名残留扫描为零，事件目标统一为 `AgentLoopEvent/TurnEvent/AgentRunEvent/SessionEvent/AppEvent`。该批只改文档，未运行代码测试；`git diff --check` 唯一报错来自其他 Agent 的 `src/sandbox/shell-probe.ts` 既存尾随空格。
 - AgentRun 前端命名与协议收口：Desktop UI 31 个测试文件、132 项测试全部通过，Core 30 个测试文件、92 项测试全部通过；Desktop UI 与 Core typecheck 通过；新增 AgentRun Store 2 项测试覆盖原生快照和加载/SSE 竞态，Core 2 项路由测试覆盖原生身份与 transcript 字段。

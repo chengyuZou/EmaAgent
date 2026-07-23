@@ -1,7 +1,7 @@
 import { useState, type CSSProperties } from 'react';
 import { Button, Card, CardButton, Textarea } from '@ema-agent/ui';
 import { DecisionSubmissionFeedback, HumanDescriptionPanel } from './HumanDescriptionPanel.js';
-import type { AskUserQuestionSpec } from '@ema-agent/turn';
+import type { AskUserQuestionSpec } from '@ema-agent/tools';
 
 export interface AskUserBatchPromptProps {
   questions:         AskUserQuestionSpec[];

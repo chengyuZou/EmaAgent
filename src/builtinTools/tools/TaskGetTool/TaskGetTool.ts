@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { asSessionId, asTaskId } from '@ema-agent/ids';
 import { buildTool } from '@ema-agent/tools';
 import type { ToolExecutionContext } from '@ema-agent/tools';
-import type { TaskSnapshot } from '@ema-agent/turn';
+import type { TaskSnapshot } from '@ema-agent/tasks';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 
 const inputSchema = z.object({

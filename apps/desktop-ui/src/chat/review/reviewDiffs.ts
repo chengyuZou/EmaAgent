@@ -1,7 +1,7 @@
 // 从当前 Session 的工具结果中提取可恢复的真实文件变更。
 import { useMemo } from 'react';
 import type { TurnId } from '@ema-agent/ids';
-import type { FileChangePresentation } from '@ema-agent/turn';
+import type { FileChangePresentation } from '@ema-agent/tools';
 import { useConversationStore } from '../../stores/conversation-store.js';
 
 export interface SessionDiff {

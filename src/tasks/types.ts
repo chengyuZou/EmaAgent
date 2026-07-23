@@ -1,5 +1,5 @@
 import type { AgentRunId, SessionId, TaskId, TurnId } from '@ema-agent/ids';
-import type { TaskSnapshot } from '@ema-agent/turn';
+import type { TaskSnapshot } from './events.js';
 
 export type TaskStatus = 'pending' | 'in_progress' | 'completed' | 'cancelled';
 

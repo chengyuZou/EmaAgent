@@ -1,6 +1,6 @@
 // 测试系统 SSE 停止、重连和旧连接隔离，不允许卸载后的连接自行复活。
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { EmaStreamEvent } from '@ema-agent/turn';
+import type { EmaStreamEvent } from '@ema-agent/events';
 import {
   createSystemSseController,
   mountSystemEvents,

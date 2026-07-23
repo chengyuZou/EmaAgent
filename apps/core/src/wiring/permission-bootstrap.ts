@@ -9,7 +9,7 @@
 import { PermissionEngine } from '@ema-agent/permission';
 import type { AskPermissionFn } from '@ema-agent/permission';
 import type { SessionId, ToolCallId, TurnId } from '@ema-agent/ids';
-import type { EmaStreamEvent } from '@ema-agent/turn';
+import type { PermissionStreamEvent } from '@ema-agent/permission';
 import { PermissionPromptRegistry } from '../permissions/registry.js';
 import { AskUserRegistry } from '../ask-user/registry.js';
 import type { SettingsRepo } from '@ema-agent/storage';
@@ -25,7 +25,7 @@ export interface PermissionBootstrapResult {
     sessionId: string;
     turnId:    TurnId;
     toolCallId: ToolCallId;
-    emit:      (ev: EmaStreamEvent) => void;
+    emit:      (ev: PermissionStreamEvent) => void;
   }) => AskPermissionFn;
 }
 
@@ -68,7 +68,7 @@ export function buildPermissionSubsystem(settingsRepo: SettingsRepo): Permission
     sessionId: string;
     turnId:    TurnId;
     toolCallId: ToolCallId;
-    emit:      (ev: EmaStreamEvent) => void;
+    emit:      (ev: PermissionStreamEvent) => void;
   }): AskPermissionFn => {
     return async (prompt) => {
       const { promptId, promise } = permissionPrompts.create({

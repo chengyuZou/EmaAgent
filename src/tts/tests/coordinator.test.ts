@@ -1,7 +1,7 @@
 // 测试 TTS Coordinator 的并发完成、取消和归档终态。
 import { describe, expect, it } from 'vitest';
 import type { SessionId, TurnId } from '@ema-agent/ids';
-import type { EmaStreamEvent } from '@ema-agent/turn';
+import type { TtsEvent as EmaStreamEvent } from '../events.js';
 import { TtsCoordinator } from '../coordinator.js';
 import { TtsRuntime } from '../ttsRuntime.js';
 import type { AudioArchive, FinalizedAudio, SegmentWriter } from '../archive.js';

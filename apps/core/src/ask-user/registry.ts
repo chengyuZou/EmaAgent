@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import type { AskUserRequiredEvent, PendingAskUserPrompt } from '@ema-agent/turn';
+import type { AskUserRequiredEvent, PendingAskUserPrompt } from '@ema-agent/tools';
 
 /**
  * In-memory registry for ask_user tool prompts awaiting user answers.

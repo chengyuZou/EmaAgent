@@ -62,7 +62,7 @@ import { buildPermissionSubsystem } from './permission-bootstrap.js';
 import { SessionStore }  from '@ema-agent/session';
 import { EmotionEngine } from '@ema-agent/emotion';
 import { PermissionEngine } from '@ema-agent/permission';
-import type { AskPermissionFn } from '@ema-agent/permission';
+import type { AskPermissionFn, PermissionStreamEvent } from '@ema-agent/permission';
 import { PermissionPromptRegistry } from '../permissions/registry.js';
 import { AskUserRegistry }          from '../ask-user/registry.js';
 import type {
@@ -71,9 +71,9 @@ import type {
   TurnId,
 } from '@ema-agent/ids';
 import type {
-  EmaStreamEvent,
   KbAssetScope,
 } from '@ema-agent/turn';
+import type { EmaStreamEvent } from '@ema-agent/events';
 import type { KbSearchResult } from '@ema-agent/knowledge';
 import type { ReleaseFeaturesWire } from '@ema-agent/system';
 import type { SandboxStatusWire } from '@ema-agent/sandbox';
@@ -172,7 +172,7 @@ export interface AppBindings {
     sessionId: string;
     turnId:    TurnId;
     toolCallId: ToolCallId;
-    emit:      (ev: EmaStreamEvent) => void;
+    emit:      (ev: PermissionStreamEvent) => void;
   }) => AskPermissionFn;
   /** Per-session sandbox runner — memoised on first call per sessionId. */
   getCommandRunner: (sessionId: SessionId) => ICommandRunner;

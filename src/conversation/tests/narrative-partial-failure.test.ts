@@ -2,7 +2,7 @@
 
 import { describe, expect, it } from 'vitest';
 import type { SessionId, TurnId } from '@ema-agent/ids';
-import type { EmaStreamEvent } from '@ema-agent/turn';
+import type { EmaStreamEvent } from '@ema-agent/events';
 import { NarrativeRequestError } from '@ema-agent/narrative';
 import { prepareNarrativeContribution } from '../narrativeRecall.js';
 

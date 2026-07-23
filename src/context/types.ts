@@ -1,10 +1,6 @@
 import type { Message, LlmToolDef } from '@ema-agent/llm';
 import type { SessionId, TurnId } from '@ema-agent/ids';
-import type {
-  EmaStreamEvent,
-  ExecutionProfile,
-  NarrativePolicy,
-} from '@ema-agent/turn';
+import type { ExecutionProfile, NarrativePolicy } from '@ema-agent/turn';
 
 export type ContextContributionSource =
   | 'memory'
@@ -37,16 +33,17 @@ export type ContextHistoryCompactor = (
   options?: { readonly force?: boolean },
 ) => Promise<readonly Message[]>;
 
-export interface ContextContributionRequest {
+export interface ContextContributionRequest<TEvent = never> {
   readonly sessionId: SessionId;
   readonly turnId: TurnId;
   readonly executionProfile: ExecutionProfile;
   readonly narrativePolicy: NarrativePolicy;
   readonly userInput: string;
   readonly signal?: AbortSignal;
-  readonly emit?: (event: EmaStreamEvent) => void;
+  /** Contribution 业务域可选的观察事件；Context 不拥有其联合类型。 */
+  readonly emit?: (event: TEvent) => void;
 }
 
-export type ContextContributionProvider = (
-  request: ContextContributionRequest,
+export type ContextContributionProvider<TEvent = never> = (
+  request: ContextContributionRequest<TEvent>,
 ) => Promise<readonly ContextContribution[]>;

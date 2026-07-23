@@ -1,7 +1,5 @@
 import type { HookInvocationId, SessionId, TurnId } from '@ema-agent/ids';
-import type {
-  EmaStreamEvent,
-} from '@ema-agent/turn';
+import type { HookWarningEvent } from './streamEvents.js';
 import type {
   AbortOnlyHookEvent,
   ControlHookEvent,
@@ -35,7 +33,7 @@ export interface HookContext<E extends HookEvent> {
   readonly sessionId: SessionId;
   /** 父任务取消或 handler 超时时都会触发。 */
   readonly signal: AbortSignal;
-  readonly emit?: (event: EmaStreamEvent) => void;
+  readonly emit?: (event: HookWarningEvent) => void;
 }
 
 /** 调用 HookBus.trigger() 时提供的上下文。 */
