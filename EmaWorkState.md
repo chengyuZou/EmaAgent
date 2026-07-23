@@ -52,6 +52,8 @@ Session 历史语义已经收口：Data v19 删除 `branches`、`sessions.active
 
 Chat 长历史读取契约已经完成：`GET /api/sessions/:id/turn-index` 使用不透明复合游标返回不含消息正文的轻量 Turn 索引；`GET /api/sessions/:id/messages/window` 按锚点 Turn 读取有界前后窗口，并返回旧到新的 Turn 与消息。查询复用现有 `idx_turns_session_latest`，无需新增迁移；最近热区仍沿用现有消息入口，前端可以只常驻近期正文与远期索引。
 
+Chat 长历史前端主链已经完成：每个 Session 独立维护热尾/归档模式、轻量 Turn 索引和最多三个历史窗口；TurnRail 只渲染当前可视索引窗口，滚轮按需读取更早索引，点击冷 Turn 才加载有界消息正文。轨道容器保持透明，刻度按悬停距离形成双向声波式过渡并复用 UI Tooltip；查看旧窗口期间 SSE 热尾继续运行，以“新回复 · 回到最新”显式返回。
+
 ## 迁移完成事实
 
 - 所有 Ema 产品模块均位于根 `src`；旧产品目录不再留在 `packages`。
@@ -64,9 +66,9 @@ Chat 长历史读取契约已经完成：`GET /api/sessions/:id/turn-index` 使�
 
 开始任何新批次前必须重新运行 `git status --short` 与 `git diff`，保留用户和其他 Agent 的修改。
 
-当前工作区只包含本批 Chat 长历史后端读取链：Storage Turn 索引/锚点窗口、Session 领域契约、Core 只读路由、针对性测试，以及 `session/store.ts` 注释整理；未暂存、未提交。
+当前工作区只包含本批 Chat 长历史前端读取链：Session API Client、按 Session 的历史 Store、TurnRail、热尾/归档切换、聊天可视 Turn 追踪、样式变量与针对性测试；未暂存、未提交。
 
-当前基线最近提交：`696e5c2 feat: 添加 EmaAgent Chat 工作区与历史导航实施计划文档`。该提交号仅用于定位，不代表其他 Agent 不会继续提交。
+当前基线最近提交：`21426f66 feat: add turn index and message window endpoints to session routes`。该提交号仅用于定位，不代表其他 Agent 不会继续提交。
 
 ## 已确定的 V1 口径
 
@@ -105,9 +107,9 @@ Plan、Goal、Schedule、Workflow、Team 与 LLM 自动审批暂列 V1.5，不�
 
 Chat 工作区、Turn 导航轨、Task/AgentRun 分面、双 Dock、置顶摘要和桌面打开方式的完整实施草案已写入 `EmaChatWorkspacePlan.md`。该文档只冻结交互、数据契约、文件边界和分批方式，尚未创建空 Terminal/Browser/Review UI。
 
-1. TurnIndex/MessageWindow 后端契约已经冻结；下一批可实现前端历史数据 Store 与 TurnRail，不同时创建 Dock 半成品；
-2. 随后完成输入框上方 TaskList，并把旧 AgentRun 面板迁到新的执行视图；
-3. Workspace Dock 与置顶摘要在历史导航和 TaskList 稳定后再实现；
+1. TurnIndex/MessageWindow 与前端历史 Store/TurnRail 已完成，不创建 Dock 半成品；
+2. 下一批完成输入框上方 TaskList，并把旧 AgentRun 面板迁到新的执行视图；
+3. Workspace Dock 与置顶摘要在 TaskList 稳定后再实现；
 4. 前端迁到 AgentRun/Task 新协议后，删除 `/api/agent-tasks` 与 `subagentId` 旧命名兼容；
 5. 后台进程按 `BackgroundProcess + ProcessOutput/ProcessStop` 分批实现 C 档，不修改 Agent Loop 来实现自动后台化；
 6. Chat 接入统一 TurnLoop 放在 Tool 单次执行边界稳定之后，短期保留 ConversationEngine 适配器。
@@ -118,6 +120,7 @@ Chat 工作区、Turn 导航轨、Task/AgentRun 分面、双 Dock、置顶摘要
 
 ## 最近验证
 
+- Chat 长历史前端：Desktop UI 29 个测试文件、128 项测试全部通过；Desktop UI typecheck 通过；TurnRail 新增 4 项纯模型测试覆盖容量、时间顺序、邻域对称衰减和当前 Turn 高亮。
 - Chat 长历史读取链：Storage 新增测试 3/3、Session 32/32、Core 新增路由测试 3/3 通过；Storage、Session、Core typecheck 通过。`EXPLAIN QUERY PLAN` 已确认 Turn 复合游标命中 `idx_turns_session_latest`；`git diff --check` 通过，仅有既有 CRLF 提示。
 - Session Branch 删除批次：Session 34/34、Storage 116/116、Desktop UI 124/124 通过；Session/Storage/IDs/Backup 构建通过，Core 与 Desktop UI typecheck 通过。Data v19 验证 Branch 表及列已删除，Session/Turn 身份不可变触发器仍生效；`git diff --check` 通过，仅有既有 CRLF 提示。
 - V1 Task 后端批次：Data v18、TaskStore/依赖/CAS、AgentRun 可选绑定、TaskCreate/Get/List/Update、结构化事件、Work Context 提醒、`/api/tasks` 快照及 ZIP 备份恢复完成；聚焦测试 Storage 22/22、Tasks 1/1、BuiltinTools 8/8、Agent 2/2、Backup 10/10、Core 2/2 通过，全仓 typecheck 84/84 通过。

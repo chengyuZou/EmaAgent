@@ -192,13 +192,13 @@ export { KnowledgeBaseTab }        from './settings/KnowledgeBaseTab.js';
 export { ChatPanel }               from './chat/ChatPanel.js';
 export { SessionSwitcher }         from './chat/SessionSwitcher.js';
 export { SessionSidebar }          from './chat/SessionSidebar.js';
-export { ChatHistory }             from './chat/ChatHistory.js';
+export { ChatHistory }             from './chat/history/ChatHistory.js';
 export { UserBubble }              from './chat/UserBubble.js';
 export { AssistantBubble }         from './chat/AssistantBubble.js';
 export { ToolCallBlock }           from './chat/ToolCallBlock.js';
 export { ChatInput }               from './chat/ChatInput.js';
 export { ExecutionProfileSelector } from './chat/ExecutionProfileSelector.js';
-export { useChatHistoryScroll }    from './chat/use-chat-history-scroll.js';
+export { useChatHistoryScroll }    from './chat/history/useChatHistoryScroll.js';
 
 // Task panel
 export { TaskPanel }               from './chat/TaskPanel.js';

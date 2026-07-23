@@ -45,3 +45,35 @@
               fill             var(--ema-duration-base) var(--ema-ease),
               box-shadow       var(--ema-duration-base) var(--ema-ease) !important;
 }
+
+/* TurnRail 只响应指针邻域状态，不持续播放装饰动画。移动与离开会沿同一曲线双向回落。 */
+.ema-turn-rail-mark {
+  background-color: var(--ema-turn-rail-idle);
+  opacity: var(--ema-turn-rail-opacity, 0.44);
+  transform: scaleX(var(--ema-turn-rail-scale, 0.24));
+  transform-origin: left center;
+  transition:
+    transform var(--ema-duration-base) var(--ema-ease),
+    opacity var(--ema-duration-base) var(--ema-ease),
+    background-color var(--ema-duration-base) var(--ema-ease),
+    box-shadow var(--ema-duration-base) var(--ema-ease);
+}
+
+.ema-turn-rail-mark[data-emphasis='nearby'] {
+  background-color: var(--ema-turn-rail-nearby);
+}
+
+.ema-turn-rail-mark[data-emphasis='hovered'] {
+  background-color: var(--ema-turn-rail-active);
+  box-shadow: 0 0 8px var(--ema-primary-muted);
+}
+
+.ema-turn-rail-mark[data-emphasis='current'] {
+  background-color: var(--ema-turn-rail-current);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ema-turn-rail-mark {
+    transition-duration: 0ms;
+  }
+}

@@ -1,9 +1,4 @@
-/**
- * Sessions API — session CRUD + message loading.
- *
- * Wire types由 @ema-agent/session 统一定义，Core 与 Desktop 不各自复制。
- * 本模块继续转出类型，保持 Desktop 内部调用入口稳定。
- */
+// 提供 Desktop 使用的 Session、消息历史与附件 HTTP 入口。
 import { sidecarClient } from './sidecar-client.js';
 import type { SessionId, TurnId } from '@ema-agent/ids';
 import type {
@@ -17,18 +12,19 @@ import type {
   SessionsSearchResult,
   SessionSearchItem,
   ForkResult,
+  SessionMessageWindowWire,
+  TurnIndexPageWire,
 } from '@ema-agent/session';
 import type { ExecutionProfile, NarrativePolicy } from '@ema-agent/turn';
 
 export type {
   SessionWire, MessageWire, TurnWire, SessionMessagesResult,
   SessionsListResult, SessionsGroupedResult, SessionsSearchResult, SessionSearchItem, ForkResult,
+  SessionMessageWindowWire, TurnIndexPageWire,
 };
 
-// ── API object ────────────────────────────────────────────────────────────────
-
 export const sessionsApi = {
-  /** POST /api/sessions — create a new empty session. */
+  /** 创建空 Session。 */
   async create(opts?: { title?: string }): Promise<SessionWire> {
     return sidecarClient.request<SessionWire>('/api/sessions', {
       method: 'POST',
@@ -36,7 +32,7 @@ export const sessionsApi = {
     });
   },
 
-  /** GET /api/sessions — cursor-paginated flat list. */
+  /** 使用游标读取 Session 平铺列表。 */
   async list(opts?: { limit?: number; cursor?: string }): Promise<SessionsListResult> {
     const params = new URLSearchParams();
     if (opts?.limit) params.set('limit', String(opts.limit));
@@ -45,12 +41,12 @@ export const sessionsApi = {
     return sidecarClient.request<SessionsListResult>(`/api/sessions${qs ? `?${qs}` : ''}`);
   },
 
-  /** GET /api/sessions/grouped — sidebar-ready grouped listing. */
+  /** 读取侧栏使用的分组 Session 列表。 */
   async listGrouped(): Promise<SessionsGroupedResult> {
     return sidecarClient.request<SessionsGroupedResult>('/api/sessions/grouped');
   },
 
-  /** GET /api/sessions/search?q=... — search titles + message text. */
+  /** 搜索标题与消息正文。 */
   async search(opts: { q: string; limit?: number }): Promise<SessionsSearchResult> {
     const params = new URLSearchParams();
     params.set('q', opts.q);
@@ -58,7 +54,7 @@ export const sessionsApi = {
     return sidecarClient.request<SessionsSearchResult>(`/api/sessions/search?${params.toString()}`);
   },
 
-  /** PUT /api/sessions/:id — partial update. Returns updated session. */
+  /** 局部更新 Session，并返回最新快照。 */
   async patch(
     id: SessionId,
     patch: {
@@ -81,11 +77,7 @@ export const sessionsApi = {
     });
   },
 
-  /**
-   * GET /api/sessions/:id/messages — load messages + their turns.
-   * Turns ride along so the store can group messages by turnId and attach
-   * per-turn usage / duration / replayable audio (see SessionMessagesResult).
-   */
+  /** 同时读取消息与 Turn，使前端可恢复每轮统计和聚合气泡。 */
   async listMessages(
     id: SessionId,
     opts?: { before?: number; limit?: number },
@@ -95,6 +87,38 @@ export const sessionsApi = {
     if (opts?.limit) params.set('limit', String(opts.limit ?? 100));
     const qs = params.toString();
     return sidecarClient.request<SessionMessagesResult>(`/api/sessions/${id}/messages${qs ? `?${qs}` : ''}`);
+  },
+
+  /** 读取不含消息正文的轻量 Turn 导航索引。 */
+  async listTurnIndex(
+    id: SessionId,
+    opts?: { cursor?: string; limit?: number },
+  ): Promise<TurnIndexPageWire> {
+    const params = new URLSearchParams();
+    if (opts?.cursor) params.set('cursor', opts.cursor);
+    if (opts?.limit) params.set('limit', String(opts.limit));
+    const query = params.toString();
+    return sidecarClient.request<TurnIndexPageWire>(
+      `/api/sessions/${encodeURIComponent(id as string)}/turn-index${query ? `?${query}` : ''}`,
+    );
+  },
+
+  /** 按锚点 Turn 读取有界历史窗口，不影响当前 SSE 热尾。 */
+  async listMessageWindow(
+    id: SessionId,
+    opts: { anchorTurnId: TurnId; beforeTurns?: number; afterTurns?: number },
+  ): Promise<SessionMessageWindowWire> {
+    const params = new URLSearchParams();
+    params.set('anchorTurnId', opts.anchorTurnId as string);
+    if (opts.beforeTurns !== undefined) {
+      params.set('beforeTurns', String(opts.beforeTurns));
+    }
+    if (opts.afterTurns !== undefined) {
+      params.set('afterTurns', String(opts.afterTurns));
+    }
+    return sidecarClient.request<SessionMessageWindowWire>(
+      `/api/sessions/${encodeURIComponent(id as string)}/messages/window?${params.toString()}`,
+    );
   },
 
   /** GET /api/sessions/:id/attachments — 当前会话的全部附件与本地文件状态。 */
@@ -120,7 +144,7 @@ export const sessionsApi = {
     );
   },
 
-  /** POST /api/sessions/:id/viewed — reset hasUnread for this session. Fire-and-forget. */
+  /** 标记 Session 已查看并清除未读状态。 */
   async markViewed(id: SessionId): Promise<void> {
     await sidecarClient.request(`/api/sessions/${id}/viewed`, { method: 'POST' });
   },
@@ -140,11 +164,7 @@ export const sessionsApi = {
     await sidecarClient.request(`/api/sessions/${id}`, { method: 'DELETE' });
   },
 
-  /**
-   * POST /api/sessions/:id/title — generate a title for the session using the
-   * 'title' LLM binding (falls back to truncating the first user message).
-   * Fire-and-forget from the caller's perspective.
-   */
+  /** 使用标题模型生成会话标题，失败时由后端降级处理。 */
   async generateTitle(id: SessionId): Promise<{ title: string } | null> {
     try {
       return await sidecarClient.request<{ title: string }>(`/api/sessions/${id}/title`, {

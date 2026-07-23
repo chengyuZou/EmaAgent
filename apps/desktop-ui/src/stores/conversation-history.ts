@@ -1,10 +1,4 @@
 // 把数据库消息还原成前端会话历史和工具展示切片。
-/**
- * conversation-history.ts — pure history assembly helpers.
- *
- * No store imports, no side effects. Takes raw DB rows and turns them into
- * the ChatHistoryItem[] that the conversation store renders.
- */
 import type {
   MessageId,
   TurnId,
@@ -24,8 +18,6 @@ import type {
   TurnWire,
 } from '@ema-agent/session';
 import type { AttachmentInputWire } from '../api/turns.js';
-
-// ── Types (re-exported so conversation-store.ts stays as the public facade) ──
 
 export interface AssistantSlice {
   type: 'text';             text: string;
@@ -118,8 +110,6 @@ export function reconcileLoadedHistory(
   return [...loaded, ...pendingUsers].sort((left, right) => left.createdAt - right.createdAt);
 }
 
-// ── Streaming slice helpers ────────────────────────────────────────────────────
-
 export function appendTextSlice(slices: AnyAssistantSlice[], delta: string): AnyAssistantSlice[] {
   const last = slices[slices.length - 1];
   if (last?.type === 'text') {
@@ -136,20 +126,19 @@ export function appendThinkingSlice(slices: AnyAssistantSlice[], delta: string):
   return [...slices, { type: 'thinking', thinking: delta }];
 }
 
-// ── Full history assembly ─────────────────────────────────────────────────────
-
 /**
- * Rebuild chronological chat history from raw DB messages + their turns.
- *
- * Grouping invariant: a "group" only ever holds ASSISTANT content. Agent turns
- * persist as multiple assistant messages (think→act→think) plus tool_results
- * user-messages — we fold them back into ONE bubble so reload looks identical
- * to streaming. User messages share the same turnId as their reply, so they
- * must NEVER open a group (or the reply would merge into the user bubble).
+ * 一个聚合气泡只容纳 assistant 内容。Agent Turn 会把思考、动作和结果分多条持久化，
+ * 恢复时按 Turn 合并，才能与流式阶段保持一致；同 Turn 的用户消息不能开启该聚合组。
  */
-export function assembleHistory(messages: MessageWire[], turns: TurnWire[]): ChatHistoryItem[] {
+export function assembleHistory(
+  messages: MessageWire[],
+  turns: TurnWire[],
+  order: 'newestFirst' | 'oldestFirst' = 'newestFirst',
+): ChatHistoryItem[] {
   const turnById = new Map(turns.map((t) => [t.id, t]));
-  const chronological = [...messages].reverse();   // listMessages is newest-first
+  const chronological = order === 'newestFirst'
+    ? [...messages].reverse()
+    : messages;
 
   const out: ChatHistoryItem[] = [];
   let currentGroup: ChatHistoryItem | null = null;
@@ -280,8 +269,6 @@ export function assembleHistory(messages: MessageWire[], turns: TurnWire[]): Cha
   flush();
   return out;
 }
-
-// ── Private helper ────────────────────────────────────────────────────────────
 
 function blocksToHistoryFields(
   role:   string,

@@ -13,7 +13,7 @@ import { useRuntimeSettingsSync } from '../stores/runtime-settings-sync.js';
 import { mountSystemEvents } from '../lib/system-sse.js';
 import { ErrorBoundary } from '../lib/error-boundary.js';
 import { SessionSidebar } from './SessionSidebar.js';
-import { ChatHistory } from './ChatHistory.js';
+import { ChatHistory } from './history/ChatHistory.js';
 import { ChatInput } from './ChatInput.js';
 import { ContextPanel } from './ContextPanel.js';
 import { TaskPanel } from './TaskPanel.js';

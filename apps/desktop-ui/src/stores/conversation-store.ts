@@ -1,16 +1,4 @@
 // 管理各 Session 的会话状态、发送队列和 SSE 生命周期。
-/**
- * conversation-store.ts — Zustand store for conversation state + SSE queue.
- *
- * Responsibilities here (by design, kept minimal):
- *   - Per-session SSE connection lifecycle (sseHandles, sendQueues)
- *   - Zustand state + simple CRUD actions (beginStream, appendDelta, …)
- *   - sendMessage / stopStreaming (the public API for UI components)
- *
- * Heavy logic lives in sibling files:
- *   - conversation-history.ts: pure data helpers (assembleHistory, helpers)
- *   - conversation-sse.ts:     SSE event dispatch + Tauri relay
- */
 import {
   create }          from 'zustand';
 import { createSendQueue,
@@ -32,6 +20,7 @@ import { useSessionStore }     from './session-store.js';
 import { useArtifactStore }    from './artifact-store.js';
 import { useAgentTaskStore }   from './agent-task-store.js';
 import { useSessionAttachmentStore } from './session-attachment-store.js';
+import { useSessionHistoryStore } from '../chat/history/sessionHistoryStore.js';
 import {
   dispatchSseEvent,
   breakerReasons,
@@ -318,6 +307,7 @@ export const useConversationStore = create<ConversationStoreState>((set, get) =>
       void useSessionStore.getState().loadSessions();
       set({ viewedSessionId: targetId });
     }
+    useSessionHistoryStore.getState().showTail(targetId);
 
     const acceptance = createTurnAcceptance<TurnCreatedResponse>();
     const completion = getOrCreateQueue(targetId).enqueue({
@@ -370,13 +360,11 @@ export const useConversationStore = create<ConversationStoreState>((set, get) =>
       if (createdNewSession) loaded.add(key);
       return { messages: msgs, loadedMessageSessions: loaded };
     });
+    useSessionHistoryStore.getState().invalidateTurnIndex(acceptedSessionId);
   },
 
   stopStreaming(sessionId) {
-    // Tell the backend to abort the turn too — disconnecting SSE alone leaves
-    // the LLM stream + tools running server-side (burning tokens, executing
-    // commands) after the UI already shows "stopped". Fire-and-forget: the UI
-    // must react instantly, the abort signal reaches the backend in parallel.
+    // 只断开 SSE 不会停止后端 LLM 与工具；界面立即收口，同时并行发送中止信号。
     const turnId = get().streamingMap.get(sessionId as string)?.turnId;
     if (turnId) void turnsApi.abortTurn(turnId as string).catch(() => {});
     sseHandles.get(sessionId as string)?.stop();
@@ -403,6 +391,7 @@ export const useConversationStore = create<ConversationStoreState>((set, get) =>
     useArtifactStore.getState().evictSession(id);
     useAgentTaskStore.getState().evictSession(id as string);
     useSessionAttachmentStore.getState().evictSession(id);
+    useSessionHistoryStore.getState().evictSession(id);
 
     set((s) => {
       const msgs      = new Map(s.messages);       msgs.delete(id as string);
@@ -521,6 +510,8 @@ export const useConversationStore = create<ConversationStoreState>((set, get) =>
 
     // Turn 结束后重新读取权威列表，兜住丢失或乱序的 Artifact SSE 事件。
     useArtifactStore.getState().invalidateSession(sessionId);
+    useSessionHistoryStore.getState().noteTailUpdate(sessionId);
+    useSessionHistoryStore.getState().invalidateTurnIndex(sessionId);
 
     if (pendingTitleSessions.has(sessionId as string)) {
       pendingTitleSessions.delete(sessionId as string);
@@ -533,6 +524,10 @@ export const useConversationStore = create<ConversationStoreState>((set, get) =>
   },
 
   abortStream(sessionId, reason) {
+    const partialWasVisible = (() => {
+      const stream = get().streamingMap.get(sessionId as string);
+      return Boolean(stream && (stream.content.trim() || stream.slices.length > 0));
+    })();
     set((s) => {
       const sm        = s.streamingMap.get(sessionId as string);
       const streaming = new Map(s.streamingMap);
@@ -558,6 +553,8 @@ export const useConversationStore = create<ConversationStoreState>((set, get) =>
 
     // 中止前工具仍可能已经落盘 Artifact，不能沿用本轮开始前的缓存。
     useArtifactStore.getState().invalidateSession(sessionId);
+    if (partialWasVisible) useSessionHistoryStore.getState().noteTailUpdate(sessionId);
+    useSessionHistoryStore.getState().invalidateTurnIndex(sessionId);
 
     setTimeout(() => {
       set((s) => {

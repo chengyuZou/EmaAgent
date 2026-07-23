@@ -1,14 +1,6 @@
+// 管理聊天历史的自动跟随、用户上滚状态和回到底部。
 import { useRef, useState, useCallback, useEffect } from 'react';
 
-/**
- * Tracks scroll position for a chat history container.
- *
- * - Auto-scrolls to bottom whenever `scrollDeps` change, unless the user has
- *   manually scrolled up (userScrolled = true).
- * - Resets scroll state (forces bottom) whenever `resetDeps` change (e.g. session switch).
- * - Returns `userScrolled` to show/hide the "scroll to bottom" button, and
- *   `resetUserScrolled` to jump back to bottom on button click.
- */
 export function useChatHistoryScroll(
   containerRef: React.RefObject<HTMLElement | null>,
   scrollDeps: readonly unknown[],
@@ -22,7 +14,7 @@ export function useChatHistoryScroll(
     if (el) el.scrollTop = el.scrollHeight;
   }
 
-  // Force bottom + clear flag on session switch
+  // 切换 Session 时必须回到热尾，不能继承前一个会话的滚动位置。
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     userScrolledRef.current = false;
@@ -30,13 +22,13 @@ export function useChatHistoryScroll(
     scrollToBottom();
   }, resetDeps);
 
-  // Auto-scroll when messages or streaming state changes
+  // 用户主动查看旧消息时停止抢夺滚动位置。
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!userScrolledRef.current) scrollToBottom();
   }, scrollDeps);
 
-  // Detect manual upward scroll
+  // 距离底部超过 50px 才视为主动上滚，避免小数像素抖动。
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
@@ -50,7 +42,7 @@ export function useChatHistoryScroll(
 
     el.addEventListener('scroll', onScroll, { passive: true });
     return () => el.removeEventListener('scroll', onScroll);
-  }, []); // container element is stable after mount
+  }, []);
 
   const resetUserScrolled = useCallback(() => {
     userScrolledRef.current = false;

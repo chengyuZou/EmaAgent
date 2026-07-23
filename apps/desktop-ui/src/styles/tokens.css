@@ -106,6 +106,12 @@
   --ema-text-inverse:   oklch(0.10 0.01 280);
   --ema-text-code:      oklch(0.85 0.04 280);
 
+  /* Turn 快速导航沿用主题语义色，亮暗主题无需维护第二套组件常量。 */
+  --ema-turn-rail-idle:   var(--ema-text-tertiary);
+  --ema-turn-rail-nearby: var(--ema-text-secondary);
+  --ema-turn-rail-active: var(--ema-primary);
+  --ema-turn-rail-current: var(--ema-primary-hover);
+
   /* ── Border(暗色:浅描边,加浓 0.12 抄 AIRI 暗底 border 要更明显)── */
   --ema-border:         rgba(255, 255, 255, 0.12);
   --ema-border-hover:   rgba(255, 255, 255, 0.14);

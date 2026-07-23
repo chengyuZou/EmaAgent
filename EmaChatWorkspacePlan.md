@@ -1,6 +1,6 @@
 # EmaAgent Chat 工作区与历史导航实施计划
 
-> 状态：设计草案，尚未开始实现  
+> 状态：批次 B 已完成，TaskList、AgentRun 迁移与 Workspace Dock 尚未实现
 > 日期：2026-07-23  
 > 范围：Desktop Chat 主布局、Turn 快速导航、Task/AgentRun/来源展示、右侧与底部工作区、桌面打开方式  
 > 不包含：恢复 Session Branch、Artifact V1 导航、尚无运行能力的空 Terminal/Browser/Review 面板
@@ -627,12 +627,17 @@ apps/desktop-ui/src/chat/
 
 ### 批次 B：TurnRail 与历史窗口
 
+状态：已完成。
+
 范围：
 
 - 后端 TurnIndex 与 MessageWindow；
 - 前端 sessionHistoryStore；
 - TurnRail、悬停动态、滚轮索引窗口；
 - archive/tail 切换和“回到最新”。
+
+TurnRail 的最外层是透明轨道容器，只承担定位、滚轮与指针命中；刻度按钮同样无底色。
+可见反馈只来自刻度长度、语义色与邻域过渡，Turn 预览使用独立半透明 Tooltip。
 
 不碰：Task 语义和 Dock。
 
