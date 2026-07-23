@@ -1,7 +1,7 @@
 // 工具执行日志以 CAS 推进副作用状态，并在进程重启后保守标记未完成调用。
 
 import { createHash } from 'node:crypto';
-import type { SessionId, ToolCallId, TurnId } from '@ema-agent/ids';
+import type { AgentRunId, SessionId, ToolCallId, TurnId } from '@ema-agent/ids';
 
 const RESULT_PREVIEW_LIMIT = 4_096;
 
@@ -19,6 +19,7 @@ export interface ToolExecutionRecord {
   callId: ToolCallId;
   sessionId: SessionId;
   turnId: TurnId;
+  agentRunId?: AgentRunId;
   toolName: string;
   inputJson: string;
   inputDigest: string;
@@ -37,6 +38,7 @@ export interface ToolExecutionPrepareRecord {
   callId: ToolCallId;
   sessionId: SessionId;
   turnId: TurnId;
+  agentRunId?: AgentRunId;
   toolName: string;
   inputJson: string;
   inputDigest: string;
@@ -72,6 +74,7 @@ export interface ToolExecutionJournalPort {
     callId: ToolCallId;
     sessionId: SessionId;
     turnId: TurnId;
+    agentRunId?: AgentRunId;
     toolName: string;
     input: unknown;
   }): ToolExecutionRecord;
@@ -111,6 +114,7 @@ export class ToolExecutionJournal implements ToolExecutionJournalPort {
     callId: ToolCallId;
     sessionId: SessionId;
     turnId: TurnId;
+    agentRunId?: AgentRunId;
     toolName: string;
     input: unknown;
   }): ToolExecutionRecord {
@@ -122,6 +126,7 @@ export class ToolExecutionJournal implements ToolExecutionJournalPort {
       callId: args.callId,
       sessionId: args.sessionId,
       turnId: args.turnId,
+      agentRunId: args.agentRunId,
       toolName: args.toolName,
       inputJson,
       inputDigest,
@@ -134,6 +139,7 @@ export class ToolExecutionJournal implements ToolExecutionJournalPort {
       !existing
       || existing.sessionId !== args.sessionId
       || existing.turnId !== args.turnId
+      || existing.agentRunId !== args.agentRunId
       || existing.toolName !== args.toolName
       || existing.inputDigest !== inputDigest
     ) {

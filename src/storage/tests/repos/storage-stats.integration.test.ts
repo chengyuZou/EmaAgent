@@ -94,7 +94,7 @@ describe('SessionStatsRepo restore integration', () => {
     ).pluck().get(payload.session.id)).toBe(0);
   });
 
-  it('restores dependent rows and preserves agent task state', () => {
+  it('restores dependent rows and preserves AgentRun state', () => {
     const payload = branchedPayload();
     payload.artifacts.push({
       id: 'artifact-1', sessionId: payload.session.id, turnId: 'turn-child',
@@ -109,14 +109,30 @@ describe('SessionStatsRepo restore integration', () => {
       id: 'attachment-1', turnId: 'turn-child', name: 'note.txt', mime: 'text/plain',
       size: 4, mtime: 1, localPath: 'attachments/note.txt', createdAt: 150,
     });
-    payload.agentTasks.push({
-      id: 'task-1', session_id: payload.session.id, turn_id: 'turn-child', parent_id: null,
+    payload.agentRuns.push({
+      id: 'run-1',
+      session_id: payload.session.id,
+      parent_turn_id: 'turn-child',
+      parent_agent_run_id: null,
+      task_id: null,
+      kind: 'subagent',
+      purpose: 'test',
+      provider_config_id: null,
+      model_id: null,
       status: 'completed',
-      error: null, iterations: 2, input_tokens: 30, output_tokens: 40,
-      version: 7, created_at: 150, updated_at: 160,
+      error: null,
+      iterations: 2,
+      tool_call_count: 1,
+      input_tokens: 30,
+      output_tokens: 40,
+      output_excerpt: 'done',
+      version: 7,
+      created_at: 150,
+      updated_at: 160,
+      completed_at: 160,
     });
-    payload.agentTaskMessages.push({
-      id: 'task-message-1', task_id: 'task-1', role: 'assistant',
+    payload.agentRunMessages.push({
+      id: 'run-message-1', agent_run_id: 'run-1', role: 'assistant',
       content_json: JSON.stringify({ text: '等待用户' }), created_at: 155,
     });
     payload.memoryState = {
@@ -137,30 +153,30 @@ describe('SessionStatsRepo restore integration', () => {
 
     repo.restoreRows(payload);
 
-    const task = database.db.prepare(`
+    const run = database.db.prepare(`
       SELECT status, version
-      FROM agent_tasks WHERE id = 'task-1'
+      FROM agent_runs WHERE id = 'run-1'
     `).get() as {
       status: string;
       version: number;
     };
-    expect(task).toEqual({
+    expect(run).toEqual({
       status: 'completed',
       version: 7,
     });
-    expect(repo.listAgentTasks(payload.session.id)).toEqual([
+    expect(repo.listAgentRuns(payload.session.id)).toEqual([
       expect.objectContaining({
-        id: 'task-1',
+        id: 'run-1',
         status: 'completed',
         version: 7,
       }),
     ]);
     expect(database.db.prepare(`
-      SELECT sequence FROM agent_task_messages WHERE id = 'task-message-1'
+      SELECT sequence FROM agent_run_messages WHERE id = 'run-message-1'
     `).pluck().get()).toBe(1);
 
     for (const table of [
-      'artifacts', 'turn_audio_merged', 'turn_attachments', 'agent_task_messages',
+      'artifacts', 'turn_audio_merged', 'turn_attachments', 'agent_run_messages',
       'memory_session_state', 'kb_activations', 'usage_records', 'session_notes',
     ]) {
       expect(database.db.prepare(`SELECT COUNT(*) FROM ${table}`).pluck().get(), table).toBe(1);
@@ -293,8 +309,8 @@ function branchedPayload(): SessionRestorePayload {
     artifacts: [],
     audio: [],
     attachments: [],
-    agentTasks: [],
-    agentTaskMessages: [],
+    agentRuns: [],
+    agentRunMessages: [],
     memoryState: null,
     kbActivations: [],
     usageRecords: [],

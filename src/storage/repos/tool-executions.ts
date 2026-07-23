@@ -1,4 +1,5 @@
-import type { SessionId, ToolCallId, TurnId } from '@ema-agent/ids';
+// 持久化工具执行状态，并同时保留父 Turn 与可选 AgentRun 的审计身份。
+import type { AgentRunId, SessionId, ToolCallId, TurnId } from '@ema-agent/ids';
 import type { SqliteDb } from '../database.js';
 
 type PersistedToolExecutionStatus =
@@ -15,6 +16,7 @@ interface ToolExecutionSqlRow {
   call_id: ToolCallId;
   session_id: SessionId;
   turn_id: TurnId;
+  agent_run_id: AgentRunId | null;
   tool_name: string;
   input_json: string;
   input_digest: string;
@@ -34,6 +36,7 @@ interface StoredToolExecution {
   callId: ToolCallId;
   sessionId: SessionId;
   turnId: TurnId;
+  agentRunId?: AgentRunId;
   toolName: string;
   inputJson: string;
   inputDigest: string;
@@ -52,6 +55,7 @@ interface ToolExecutionInsert {
   callId: ToolCallId;
   sessionId: SessionId;
   turnId: TurnId;
+  agentRunId?: AgentRunId;
   toolName: string;
   inputJson: string;
   inputDigest: string;
@@ -72,14 +76,15 @@ export class ToolExecutionsRepo {
   insertPrepared(value: ToolExecutionInsert): StoredToolExecution | undefined {
     const row = this.db.prepare(
       `INSERT OR IGNORE INTO tool_executions (
-         call_id, session_id, turn_id, tool_name, input_json, input_digest,
+         call_id, session_id, turn_id, agent_run_id, tool_name, input_json, input_digest,
          status, created_at, updated_at
-       ) VALUES (?, ?, ?, ?, ?, ?, 'prepared', ?, ?)
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, 'prepared', ?, ?)
        RETURNING *`,
     ).get(
       value.callId,
       value.sessionId,
       value.turnId,
+      value.agentRunId ?? null,
       value.toolName,
       value.inputJson,
       value.inputDigest,
@@ -176,6 +181,7 @@ function fromSqlRow(row: ToolExecutionSqlRow): StoredToolExecution {
     callId: row.call_id,
     sessionId: row.session_id,
     turnId: row.turn_id,
+    ...(row.agent_run_id !== null ? { agentRunId: row.agent_run_id } : {}),
     toolName: row.tool_name,
     inputJson: row.input_json,
     inputDigest: row.input_digest,

@@ -13,7 +13,7 @@ import {
   ProviderRerankModelsRepo, ProviderTtsModelsRepo, ProviderSttModelsRepo, ProviderVisionModelsRepo,
   McpServersRepo, SkillsRepo,
   MarketSourcesRepo,
-  AgentTasksRepo, AgentTaskMessagesRepo, ToolExecutionsRepo,
+  AgentRunsRepo, AgentRunMessagesRepo, ToolExecutionsRepo,
   SessionStatsRepo, DataDirStatsRepo, UsageRecordsRepo,
 } from '@ema-agent/storage';
 import { AttachmentStore, type FileAccessFacade } from '@ema-agent/attachment';
@@ -88,7 +88,7 @@ import type { ICommandRunner, IMcpClientBridge, ISkillRunner } from '@ema-agent/
 import {
   AgentFileStateStore,
 } from '@ema-agent/agent-context';
-import { AgentTaskStore } from '@ema-agent/agent-task';
+import { AgentRunStore } from '@ema-agent/agent';
 import { MemoryPlanner } from '@ema-agent/memory';
 import { ContextCompactor } from '@ema-agent/context';
 import {
@@ -103,7 +103,6 @@ import { SystemEventBus }  from '../sse/system-bus.js';
 import { ProviderRuntimeFacade } from './provider-runtime.js';
 import { SessionBackupFacade } from '@ema-agent/backup';
 import type { CredentialFacade } from '@ema-agent/credential';
-import { AgentTurnLifecycleFacade } from '../turn-runtime/agent-turn-lifecycle.js';
 
 // ── App-wide bindings (Facade set passed everywhere) ─────────────────────────
 
@@ -199,14 +198,12 @@ export interface AppBindings {
   };
   /** Sweeps offloaded tool-result files — called by background tick. */
   toolResultCleaner: ToolResultCleaner;
-  /** Cross-session agent task registry — used for crash recovery and task visibility. */
-  taskStore:          AgentTaskStore;
-  /** 根 Agent Turn 与 AgentTask 的原子创建和终态入口。 */
-  agentTurnLifecycle: AgentTurnLifecycleFacade;
+  /** 子 Agent 实际执行的持久化入口；根 Turn 不会写入该存储。 */
+  agentRunStore: AgentRunStore;
   /** 工具副作用执行日志的唯一业务入口。 */
   toolExecutionJournal: ToolExecutionJournal;
-  /** Direct repo access for the SSE fan-out to write subagent transcript messages. */
-  agentTaskMessages:  AgentTaskMessagesRepo;
+  /** SSE 转录投影写入子 Agent 消息的存储入口。 */
+  agentRunMessages: AgentRunMessagesRepo;
 
   // Memory subsystem
   memory: MemoryPlanner;
@@ -538,13 +535,8 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
     sessionsDir,
     legacyToolResultSessionsDir,
   ]);
-  const agentTaskMessages    = new AgentTaskMessagesRepo(dataDb.sqlite);
-  const taskStore            = new AgentTaskStore(new AgentTasksRepo(dataDb.sqlite));
-  const agentTurnLifecycle   = new AgentTurnLifecycleFacade(
-    session,
-    taskStore,
-    <T>(work: () => T): T => dataDb.sqlite.transaction(work)(),
-  );
+  const agentRunMessages = new AgentRunMessagesRepo(dataDb.sqlite);
+  const agentRunStore = new AgentRunStore(new AgentRunsRepo(dataDb.sqlite));
   const toolExecutionJournal = new ToolExecutionJournal(
     new ToolExecutionsRepo(dataDb.sqlite),
   );
@@ -651,8 +643,8 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
           updatedAt: noteRow.updated_at,
         } : null,
         branches: sessionStats.listBranches(sessionId),
-        agentTasks: sessionStats.listAgentTasks(sessionId),
-        agentTaskMessages: sessionStats.listAgentTaskMessages(sessionId),
+        agentRuns: sessionStats.listAgentRuns(sessionId),
+        agentRunMessages: sessionStats.listAgentRunMessages(sessionId),
         memoryState: sessionStats.getMemoryState(sessionId) ?? null,
         kbActivations: sessionStats.listKbActivations(sessionId),
         usageRecords: sessionStats.listUsageRecords(sessionId),
@@ -871,7 +863,7 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
     tts, audioArchive, stt, vision, providerRuntime,
     permission, permissionPrompts, askUserRegistry, tools, buildAskForTurn, getCommandRunner,
     invalidateSessionRuntime, removeSessionRuntime,
-    getContextStores, toolResultCleaner, taskStore, agentTurnLifecycle, toolExecutionJournal, agentTaskMessages,
+    getContextStores, toolResultCleaner, agentRunStore, toolExecutionJournal, agentRunMessages,
     memory, contextCompactor,
     systemBus,
     providers, settings: settingsRepo,

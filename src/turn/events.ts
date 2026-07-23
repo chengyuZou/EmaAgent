@@ -1,5 +1,13 @@
 // 组合各业务域事件，形成 Turn 向客户端输出的统一结构化事件流。
-import type { CharacterCardId, CompactionId, HookInvocationId, SessionId, TurnId } from '@ema-agent/ids';
+import type {
+  AgentRunId,
+  CharacterCardId,
+  CompactionId,
+  HookInvocationId,
+  SessionId,
+  TaskId,
+  TurnId,
+} from '@ema-agent/ids';
 import type { Artifact, ArtifactId } from '@ema-agent/artifact';
 import type { TurnFailureCode } from './errors.js';
 import type { ProviderStreamEvent } from '@ema-agent/provider';
@@ -24,7 +32,7 @@ export interface FileChangePresentation {
 
 export type ToolPresentation = FileChangePresentation;
 
-// ── Shared sub-types ──────────────────────────────────────────────────────────
+// ── 共用子类型 ────────────────────────────────────────────────────────────────
 
 export type { TurnStats };
 
@@ -47,44 +55,31 @@ export type NarrativeTimelineFailureCode =
   | 'narrative/unknown';
 
 /**
- * High-frequency detail stream inside the subagent_stream envelope.
- * Mirrors the main agent's event taxonomy — the frontend can render a
- * mini agent view per sub-agent identical to the main chat panel.
+ * `subagent_stream` 内的高频明细事件。
  *
- * Card view  → subscribes only to subagent_started/progress/completed/failed/aborted
- * Detail view → subscribes to subagent_stream filtered by subagentId
- *
- * Every member carries the full identity triple (sessionId / subagentId / taskId)
- * so that events remain self-sufficient when stored, filtered, or replayed
- * independently of the outer subagent_stream envelope. Multiple sessions can
- * produce concurrent sub-agent streams on one SSE channel and each event is
- * unambiguously addressable.
- *
- *   sessionId  — which user session this belongs to
- *   subagentId — the sub-agent's identity (also its internal turnId)
- *   taskId     — AgentTaskStore task ID; absent until sub-agents are wired into
- *                the task journal (V1.5); optional so the type is forward-compatible
+ * `subagentId` 暂时保留为客户端协议字段名，但值的真实类型是 AgentRunId；
+ * 它绝不是 TurnId。taskId 仅在本次执行关联了用户可见工作项时出现。
  */
 export type SubagentInnerEvent =
-  /** New LLM iteration starting — heartbeat with timing and cumulative state. */
+  /** 新一轮 LLM 迭代及累计耗时。 */
   | { type: 'iteration';
-      sessionId: SessionId; subagentId: string; taskId?: string;
+      sessionId: SessionId; subagentId: AgentRunId; taskId?: TaskId;
       n: number; elapsedMs: number }
-  /** Streaming assistant text chunk. */
+  /** 流式助手文本。 */
   | { type: 'text_delta';
-      sessionId: SessionId; subagentId: string; taskId?: string;
+      sessionId: SessionId; subagentId: AgentRunId; taskId?: TaskId;
       delta: string }
-  /** Streaming reasoning/thinking chunk (DeepSeek-R1, extended thinking). */
+  /** 流式推理文本，仅用于展示和审计。 */
   | { type: 'reasoning_delta';
-      sessionId: SessionId; subagentId: string; taskId?: string;
+      sessionId: SessionId; subagentId: AgentRunId; taskId?: TaskId;
       delta: string }
-  /** Tool call dispatched — args may be large; truncate before rendering. */
+  /** 已派发工具调用；渲染前仍需限制参数体积。 */
   | { type: 'tool_call';
-      sessionId: SessionId; subagentId: string; taskId?: string;
+      sessionId: SessionId; subagentId: AgentRunId; taskId?: TaskId;
       callId: string; name: string; args: unknown; iteration: number }
-  /** Tool call resolved — excerpt capped at ~500 chars; bytes = original size. */
+  /** 工具调用完成；excerpt 是有界预览，bytes 是原结果体积。 */
   | { type: 'tool_result';
-      sessionId: SessionId; subagentId: string; taskId?: string;
+      sessionId: SessionId; subagentId: AgentRunId; taskId?: TaskId;
       callId: string; name: string; excerpt: string; bytes: number;
       isError: boolean; error?: ToolError; durationMs: number }
 
@@ -94,26 +89,25 @@ export interface LipSyncFrame {
 }
 
 /**
- * One question inside an `ask_user_required` batch. Mirrors the shape the
- * built-in `ask_user` tool accepts as input, with an added stable `id` so the
- * orchestrator can correlate answers back to the question.
+ * ask_user_required 批次中的一个问题。结构与内置 ask_user 工具输入一致，
+ * 额外提供稳定 id，供 Orchestrator 把回答关联回原问题。
  */
 export interface AskUserQuestionSpec {
-  /** Stable per-batch question id (e.g. `q0`, `q1`). Used as the key in `answers`. */
+  /** 批次内稳定的问题 ID，例如 q0、q1，同时作为 answers 的键。 */
   id: string;
-  /** The question shown to the user. */
+  /** 展示给用户的问题正文。 */
   question: string;
-  /** Very short label (≤12 chars) shown as a chip/tag in the UI. */
+  /** UI 中显示为标签的短标题，最多 12 个字符。 */
   header: string;
   /**
-   * Multiple-choice options. Omit for freeform text answer.
-   * When present, `multiSelect` decides whether the UI allows multiple picks.
+   * 选择题选项；自由文本问题省略。
+   * 提供选项时，multiSelect 决定 UI 是否允许多选。
    */
   options?: Array<{ label: string; description?: string }>;
   multiSelect?: boolean;
-  /** When true, the UI shows an "Other (custom)" free-text fallback alongside options. */
+  /** 为 true 时，UI 在选项旁提供“其他（自定义）”文本输入。 */
   allowCustom?: boolean;
-  /** Placeholder shown in the text input (text questions only). */
+  /** 文本问题输入框中的占位提示。 */
   placeholder?: string;
 }
 
@@ -137,10 +131,10 @@ export interface RequestDegradationNotice {
   replacements: Array<'description' | 'placeholder' | 'parameter_omitted'>;
 }
 
-// ── EmaStreamEvent union ──────────────────────────────────────────────────────
+// ── EmaStreamEvent 联合类型 ───────────────────────────────────────────────────
 
 export type EmaStreamEvent =
-  // Turn lifecycle
+  // Turn 生命周期
   | {
       type: 'turn_started';
       sessionId: SessionId;
@@ -167,24 +161,22 @@ export type EmaStreamEvent =
       turnId: TurnId;
     } & RequestDegradationNotice
 
-  // Text streaming — blockIndex tracks position within the assistant's block array
+  // 文本流；blockIndex 表示内容在助手块数组中的位置
   | { type: 'output_text_delta';    sessionId: SessionId; blockIndex: number; delta: string }
 
-  // Reasoning / thinking blocks (DeepSeek-R1, Claude extended thinking)
+  // 推理块，包括 DeepSeek-R1 与 Claude 扩展思考
   | { type: 'reasoning_delta';    sessionId: SessionId; blockIndex: number; delta: string }
   | { type: 'reasoning_complete'; sessionId: SessionId; blockIndex: number }
 
-  // Tool calls — blockIndex lets the frontend know where in the block list this tool sits
+  // 工具调用；blockIndex 告诉前端该工具在内容块列表中的位置
   | { type: 'tool_call_partial';  sessionId: SessionId; blockIndex: number; callId: string; name: string; argsDelta: string }
   | { type: 'tool_call_complete'; sessionId: SessionId; blockIndex: number; callId: string; name: string; args: unknown }
   | { type: 'tool_result';        sessionId: SessionId; callId: string; name: string; output?: unknown; presentation?: ToolPresentation; error?: ToolError; durationMs: number }
 
   | PermissionStreamEvent
 
-  // Ask-user — emitted by the built-in `ask_user` tool when it runs under a
-  // streaming context (Tauri / SSE). One event carries the full question
-  // batch (1-4 questions); the orchestrator awaits the matching POST
-  // /api/turns/:turnId/ask-user/:promptId/respond before the tool resolves.
+  // 内置 ask_user 工具在 Tauri/SSE 流式环境中发出该事件。
+  // 一个事件携带完整问题批次，Orchestrator 等待对应响应接口后才结束工具调用。
   | {
       type: 'ask_user_required';
       sessionId: SessionId;
@@ -197,13 +189,12 @@ export type EmaStreamEvent =
       type: 'ask_user_resolved';
       sessionId: SessionId;
       promptId: string;
-      /** Keyed by question.id; the value is the user's free-text or joined option labels. */
+      /** 以 question.id 为键，值为用户文本或拼接后的选项标签。 */
       answers: Record<string, string>;
     }
 
-  // Single-purpose ask variants — simpler API surface than ask_user for common patterns.
-  // All share the same POST /api/turns/:id/ask-user/:promptId/respond endpoint;
-  // answer keys are standardised per type (see tool implementations for details).
+  // 常见询问场景使用单用途事件，接口比通用 ask_user 更简单。
+  // 所有变体共用同一响应端点，回答键由具体工具实现统一定义。
   | { type: 'ask_confirm_required'; sessionId: SessionId; turnId: TurnId; promptId: string; question: string; humanDescription?: string }
   | { type: 'ask_confirm_resolved'; sessionId: SessionId; promptId: string; confirmed: boolean }
   | { type: 'ask_text_required';    sessionId: SessionId; turnId: TurnId; promptId: string; question: string; humanDescription?: string; placeholder?: string }
@@ -221,22 +212,22 @@ export type EmaStreamEvent =
     }
   | { type: 'ask_choice_resolved'; sessionId: SessionId; promptId: string; selected: string[]; customText?: string }
 
-  // Artifact
+  // Artifact 事件
   | { type: 'artifact_upserted'; sessionId: SessionId; artifact: Artifact }
   | { type: 'artifact_applied';  sessionId: SessionId; id: ArtifactId }
 
   | EmotionStreamEvent
 
-  // TTS — audio is base64-encoded string over SSE
+  // TTS 音频通过 SSE 传输 Base64 字符串
   | { type: 'tts_chunk';             sessionId: SessionId; turnId: TurnId; audio: string; lipsync?: LipSyncFrame[]; sentenceId: string }
   | { type: 'tts_sentence_complete'; sessionId: SessionId; turnId: TurnId; sentenceId: string }
 
-  // Narrative
+  // Narrative 事件
   | { type: 'narrative_route_resolved';    sessionId: SessionId; turnId: TurnId; timelines: string[] }
   | { type: 'narrative_timeline_complete'; sessionId: SessionId; turnId: TurnId; timeline: string; charCount: number; snippet: string }
   | { type: 'narrative_timeline_failed'; sessionId: SessionId; turnId: TurnId; timeline: string; code: NarrativeTimelineFailureCode; message: string; retryable: boolean }
 
-  // Memory — turn-scoped. One event per recall layer; emitted as soon as that layer settles.
+  // Turn 范围的 Memory 召回事件；每层完成后立即发送一条
   | {
       type: 'memory_recall_evidence';
       sessionId: SessionId;
@@ -246,19 +237,19 @@ export type EmaStreamEvent =
       report: MemoryRecallLayerReport;
     }
 
-  // Context compaction — turn-scoped. Emitted by ContextCompactor through the active Turn stream.
-  // Has turnId — belongs on the per-turn SSE channel, NOT the system bus.
+  // Turn 范围的 Context 压缩事件，由 ContextCompactor 写入当前 Turn 流。
+  // 事件带 turnId，只能进入该 Turn 的 SSE 通道，不能进入系统事件总线。
   | { type: 'context_compaction_started';   compactionId: CompactionId; sessionId: SessionId; turnId: TurnId; executionProfile: ExecutionProfile; narrativePolicy: NarrativePolicy; beforeTokens: number }
   | { type: 'context_compaction_completed'; compactionId: CompactionId; sessionId: SessionId; turnId: TurnId; executionProfile: ExecutionProfile; narrativePolicy: NarrativePolicy; beforeTokens: number; afterTokens: number; savedTokens: number; durationMs: number }
   | { type: 'context_compaction_failed';    compactionId: CompactionId; sessionId: SessionId; turnId: TurnId; executionProfile: ExecutionProfile; narrativePolicy: NarrativePolicy; error: string; beforeTokens: number; afterTokens: number; durationMs: number }
   | { type: 'context_compaction_skipped';   compactionId: CompactionId; sessionId: SessionId; turnId: TurnId; executionProfile: ExecutionProfile; narrativePolicy: NarrativePolicy; reason: 'hook_aborted'; message: string; beforeTokens: number; afterTokens: number; durationMs: number }
 
-  // Memory pipeline telemetry — system-scoped (emitted by MemoryTaskRunner / MemoryPlanner.initialize).
+  // 系统范围的 Memory 流水线遥测，由 MemoryTaskRunner 或 MemoryPlanner.initialize 发出
   | { type: 'memory_extraction_started';    sessionId: SessionId; turnId?: TurnId; queueDepth: number }
   | { type: 'memory_extraction_completed';  sessionId: SessionId; nodes: number; edges: number; items: number; lazyQueued: number; durationMs: number }
   | { type: 'memory_extraction_failed';     sessionId: SessionId; error: string }
   | { type: 'memory_index_rebuilt';         backend: string; nodes: number; items: number; durationMs: number }
-  // Reserved — not yet emitted (Round 4.5):
+  // 预留事件，当前尚未发出
   | { type: 'memory_consolidation_started';   nodeCount: number }
   | { type: 'memory_consolidation_completed'; consolidated: number; durationMs: number }
   | { type: 'memory_consolidation_failed';    error: string }
@@ -266,20 +257,20 @@ export type EmaStreamEvent =
   | { type: 'memory_maintenance_failed';    error: string }
   | { type: 'memory_node_merged';           nodeId: string; label: string; fragmentCount: number }
 
-  // Background tasks — system-scoped (memory queue worker telemetry)
+  // 系统范围的 Memory 后台队列遥测
   | { type: 'memory_task_started';   taskId: string; kind: string; sessionId?: SessionId }
   | { type: 'memory_task_completed'; taskId: string; kind: string; durationMs: number }
   | { type: 'memory_task_failed';    taskId: string; kind: string; error: string }
 
-  // Knowledge-base ingest progress — system-scoped (background document indexing).
-  // sessionId is optional: absent for global settings-page uploads; set later for
-  // chat-dropped scope:session ingests. progress is a 0–1 fraction for the bar.
+  // 系统范围的知识库导入进度，用于后台文档索引。
+  // 设置页全局上传不带 sessionId；聊天拖入的 Session 范围导入后续会补上。
+  // progress 是 0 到 1 的进度条比例。
   | { type: 'kb_ingest_progress';  kbId: string; taskId?: string; assetId: string; stage: 'validate' | 'parse' | 'chunk' | 'embed'; progress: number; totalItems?: number; completedItems?: number; failedItems?: number; sessionId?: SessionId }
   | { type: 'kb_ingest_completed'; kbId: string; taskId?: string; assetId: string; sessionId?: SessionId }
   | { type: 'kb_ingest_partial_failed'; kbId: string; taskId?: string; assetId: string; error: string; totalItems: number; completedItems: number; failedItems: number; sessionId?: SessionId }
   | { type: 'kb_ingest_failed';    kbId: string; taskId?: string; assetId: string; error: string; sessionId?: SessionId }
 
-  // Knowledge-base re-embed progress — system-scoped (background index rebuild).
+  // 系统范围的知识库重新嵌入进度，用于后台重建索引。
   // 与 ingest 同型; assetId 为 '' 表示终态来自全库扫描而非单个文档。
   | { type: 'kb_reembed_progress';  kbId: string; taskId?: string; assetId: string; progress: number; totalItems?: number; completedItems?: number; failedItems?: number }
   | { type: 'kb_reembed_completed'; kbId: string; taskId?: string; assetId: string; totalItems: number; completedItems: number; failedItems: number }
@@ -287,70 +278,65 @@ export type EmaStreamEvent =
   | { type: 'kb_reembed_cancelled'; kbId: string; taskId?: string; assetId: string }
   | { type: 'kb_reembed_failed';    kbId: string; taskId?: string; assetId: string; error: string }
 
-  // Agent
+  // Agent 事件
   | { type: 'agent_iteration';     sessionId: SessionId; n: number }
   | { type: 'agent_breaker_tripped'; sessionId: SessionId; reason: string }
 
-  // ── Sub-agent dashboard events ────────────────────────────────────────────────
-  //
-  // All emitted by SubagentSpawner (not by the tool) so model/timing/usage are
-  // available. subagentId doubles as the internal turnId for the sub-agent run.
-  //
-  // Card-view events — low frequency, one per lifecycle transition:
+  // ── 子 Agent 面板事件 ───────────────────────────────────────────────────────
+  // 统一由 SubagentSpawner 发出，因此事件能携带模型、耗时和用量。
+  // 客户端字段 subagentId 的实际值是 AgentRunId，不再兼作 TurnId。
   | {
       type:           'subagent_started';
       sessionId:      SessionId;
-      subagentId:     string;    // = internal turnId of the sub-agent
+      subagentId:     AgentRunId;
       parentTurnId:   TurnId;
       description?:   string;
-      model:          string;    // resolved model (parent model or override)
-      kind:           AgentKind; // 'fork' inherits parent history; 'subagent' starts fresh
-      promptExcerpt:  string;    // first 200 chars
-      startedAtMs:    number;    // epoch ms — client uses for elapsed timer
+      model:          string;
+      kind:           AgentKind;
+      promptExcerpt:  string;
+      startedAtMs:    number;
     }
   | {
       type:          'subagent_progress';
       sessionId:     SessionId;
-      subagentId:    string;
+      subagentId:    AgentRunId;
       iteration:     number;
-      elapsedMs:     number;     // ms since subagent_started
-      toolCallCount: number;     // total tool calls fired so far
+      elapsedMs:     number;
+      toolCallCount: number;
     }
   | {
       type:           'subagent_completed';
       sessionId:      SessionId;
-      subagentId:     string;
-      outputExcerpt:  string;    // first 200 chars of final text
+      subagentId:     AgentRunId;
+      outputExcerpt:  string;
       iterationCount: number;
       toolCallCount:  number;
-      stats:          TurnStats; // inputTokens, outputTokens, costUsd, durationMs
+      stats:          TurnStats;
     }
   | {
       type:        'subagent_failed';
       sessionId:   SessionId;
-      subagentId:  string;
+      subagentId:  AgentRunId;
       error:       string;
-      atIteration: number;       // which iteration the error occurred in
+      atIteration: number;
       elapsedMs:   number;
     }
   | {
       type:       'subagent_aborted';
       sessionId:  SessionId;
-      subagentId: string;
+      subagentId: AgentRunId;
       reason:     string;
       elapsedMs:  number;
     }
-  //
-  // Detail-stream envelope — high frequency, subscribe only when panel is open.
-  // subagentId routes the inner event to the correct detail panel.
-  | { type: 'subagent_stream'; sessionId: SessionId; subagentId: string; ev: SubagentInnerEvent }
+  // 高频明细仅在详情面板打开时订阅，并按 subagentId 路由到对应 AgentRun。
+  | { type: 'subagent_stream'; sessionId: SessionId; subagentId: AgentRunId; ev: SubagentInnerEvent }
 
   | ProviderStreamEvent
 
-  // Character card
+  // 角色卡事件
   | { type: 'character_card_switched'; cardId: CharacterCardId; name: string }
 
-  // System
+  // 系统事件
   | {
       type: 'hook_warning';
       sessionId: SessionId;

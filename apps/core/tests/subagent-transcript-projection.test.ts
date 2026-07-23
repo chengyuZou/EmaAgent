@@ -1,13 +1,13 @@
 // 测试 Subagent transcript 辅助投影失败隔离、缓冲与后续重试。
 
 import { describe, expect, it } from 'vitest';
-import type { AgentTaskMessageInsert } from '@ema-agent/storage';
+import type { AgentRunMessageInsert } from '@ema-agent/storage';
 import type { EmaStreamEvent } from '@ema-agent/turn';
 import { SubagentTranscriptProjection } from '../src/turn-runtime/subagent-transcript-projection.js';
 
 describe('SubagentTranscriptProjection', () => {
   it('落库失败返回结构化 warning，下一条事件继续重试且不丢正文', () => {
-    const written: AgentTaskMessageInsert[] = [];
+    const written: AgentRunMessageInsert[] = [];
     let failNext = true;
     const projection = new SubagentTranscriptProjection({
       insert(message) {
@@ -23,7 +23,7 @@ describe('SubagentTranscriptProjection', () => {
     const warning = projection.apply(subagentIteration());
     expect(warning).toMatchObject({
       projection: 'subagent_transcript',
-      code: 'storage/agent_task_message_projection_failed',
+      code: 'storage/agent_run_message_projection_failed',
       retryable: true,
     });
 
@@ -33,7 +33,7 @@ describe('SubagentTranscriptProjection', () => {
       message: 'retry tick',
     })).toBeUndefined();
     expect(written).toMatchObject([{
-      taskId: 'subagent-1',
+      agentRunId: 'subagent-1',
       role: 'assistant',
       content: { text: 'hello' },
     }]);

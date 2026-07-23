@@ -115,7 +115,6 @@ export class Orchestrator {
     this.conversation = new ConversationEngine(bindings);
     this.agent = new AgentEngine({
       session:           bindings.session,
-      turnLifecycle:     bindings.agentTurnLifecycle,
       hooks:             bindings.hooks,
       llm:               bindings.llm,
       modelCapabilities: bindings.modelCapabilities,
@@ -130,7 +129,7 @@ export class Orchestrator {
       skillRunner:       bindings.skillBridge,
       kbSearch:          bindings.kbSearch,
       getContextStores:  bindings.getContextStores,
-      taskStore:         bindings.taskStore,
+      agentRunStore:     bindings.agentRunStore,
       toolExecutionJournal: bindings.toolExecutionJournal,
     });
   }
@@ -164,9 +163,7 @@ export class Orchestrator {
       narrativePolicy: request.narrativePolicy,
       userInput: request.userInput,
     };
-    const { turn, signal } = request.executionProfile === 'work'
-      ? this.bindings.agentTurnLifecycle.start(startInput)
-      : this.bindings.session.startTurn(startInput);
+    const { turn, signal } = this.bindings.session.startTurn(startInput);
     const turnId = turn.id;
     this.activeTurns.set(turnId as string, sessionId);
 
@@ -519,11 +516,7 @@ export class Orchestrator {
     message: string,
     phase: TurnFailurePhase,
   ): Promise<EmaStreamEvent[]> {
-    if (turn.executionProfile === 'work') {
-      this.bindings.agentTurnLifecycle.fail({ turnId: turn.id, code, message });
-    } else {
-      this.bindings.session.failTurn(turn.id, code, message);
-    }
+    this.bindings.session.failTurn(turn.id, code, message);
     const emitted: EmaStreamEvent[] = [];
     await this.bindings.hooks.trigger('onTurnFailure', {
       turnId: turn.id,

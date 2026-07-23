@@ -12,7 +12,6 @@ export interface SubagentToolAvailability {
 const ALWAYS_AVAILABLE_IDS: ReadonlySet<string> = new Set([
   BuiltinTools.WebFetch.id,
   BuiltinTools.WebSearch.id,
-  BuiltinTools.TodoWrite.id,
 ]);
 
 const SCRATCHPAD_IDS: ReadonlySet<string> = new Set([

@@ -26,7 +26,6 @@ describe('selectSubagentTools', () => {
       skills: false,
     }).map(tool => tool.name)).toEqual([
       BuiltinTools.WebFetch.name,
-      BuiltinTools.TodoWrite.name,
       'server__lookup',
     ]);
   });
@@ -38,7 +37,6 @@ describe('selectSubagentTools', () => {
       skills: true,
     }).map(tool => tool.name)).toEqual([
       BuiltinTools.WebFetch.name,
-      BuiltinTools.TodoWrite.name,
       BuiltinTools.ScratchpadRead.name,
       BuiltinTools.KnowledgeBaseSearch.name,
       BuiltinTools.SkillCall.name,

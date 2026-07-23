@@ -1,6 +1,7 @@
-// 这些工具负责后台启动子 Agent、发送协调消息并等待最终结果。
+// 后台启动子 Agent、发送协调消息并等待最终结果。
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
+import { asAgentRunId } from '@ema-agent/ids';
 import { buildTool } from '@ema-agent/tools';
 import type { ToolExecutionContext } from '@ema-agent/tools';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
@@ -29,7 +30,7 @@ const spawnBgSchema = z.object({
 
 export const SubagentSpawnBackgroundTool = buildTool<
   z.infer<typeof spawnBgSchema>,
-  { subagentId: string }
+  { agentRunId: string }
 >({
   id: BuiltinTools.SubagentSpawnBackground.id,
   name: BuiltinTools.SubagentSpawnBackground.name,
@@ -52,13 +53,18 @@ The sub-agent MUST be awaited before the parent turn ends.`,
         'Restructure the task so the top-level agent spawns all background workers directly.',
       );
     }
-    const subagentId = randomUUID();
+    const agentRunId = asAgentRunId(randomUUID());
     ctx.subagentSpawner.spawnBackground(
       input.prompt,
-      { model: input.model, description: input.description, kind: input.kind ?? 'subagent', subagentId },
+      {
+        model: input.model,
+        description: input.description,
+        kind: input.kind ?? 'subagent',
+        agentRunId,
+      },
       ctx.signal,
     );
-    return { subagentId };
+    return { agentRunId };
   },
 });
 
@@ -68,7 +74,7 @@ The sub-agent MUST be awaited before the parent turn ends.`,
 // 消息在其下一次 LLM 迭代开始时送达。
 
 const sendMsgSchema = z.object({
-  subagentId: z.string().uuid().describe('ID returned by SubagentSpawnBackground.'),
+  agentRunId: z.string().uuid().describe('AgentRun ID returned by SubagentSpawnBackground.'),
   message:    z.string().min(1).describe(
     'Instruction or update to deliver to the sub-agent at its next iteration boundary.',
   ),
@@ -97,7 +103,7 @@ Returns queued:false if the sub-agent has already finished or was never started.
         'Sub-agents cannot send messages to other sub-agents.',
       );
     }
-    const queued = ctx.subagentSpawner.queueMessage(input.subagentId, input.message);
+    const queued = ctx.subagentSpawner.queueMessage(asAgentRunId(input.agentRunId), input.message);
     return { queued };
   },
 });
@@ -107,7 +113,7 @@ Returns queued:false if the sub-agent has already finished or was never started.
 // 阻塞直到后台 sub-agent 完成,返回其输出。
 
 const awaitSchema = z.object({
-  subagentId: z.string().uuid().describe('ID returned by SubagentSpawnBackground.'),
+  agentRunId: z.string().uuid().describe('AgentRun ID returned by SubagentSpawnBackground.'),
 });
 
 export const SubagentAwaitTool = buildTool<
@@ -117,7 +123,7 @@ export const SubagentAwaitTool = buildTool<
   id: BuiltinTools.SubagentAwait.id,
   name: BuiltinTools.SubagentAwait.name,
   description: `Wait for a background sub-agent to finish and return its final output.
-Must be called before the parent turn ends. Returns output:null if the subagentId is unknown.`,
+Must be called before the parent turn ends. Returns output:null if the agentRunId is unknown.`,
 
   inputSchema:       awaitSchema,
   isReadOnly:        () => false,
@@ -132,7 +138,7 @@ Must be called before the parent turn ends. Returns output:null if the subagentI
         'Sub-agents cannot await other sub-agents.',
       );
     }
-    const result = await ctx.subagentSpawner.awaitBackground(input.subagentId);
+    const result = await ctx.subagentSpawner.awaitBackground(asAgentRunId(input.agentRunId));
     if (!result) return { output: null };
     return result;
   },

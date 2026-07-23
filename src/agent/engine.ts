@@ -1,11 +1,12 @@
 // 运行一次 Agent Turn，并协调模型、工具、权限、Hook 和结果保存。
 
 import type { EmaStreamEvent, TurnFailureCode } from '@ema-agent/turn';
+import { asAgentRunId } from '@ema-agent/ids';
 import type { MessageBlocks } from '@ema-agent/session';
 import type { ToolExecutionContext, ReadFileState } from '@ema-agent/tools';
 import type { PermissionContext } from '@ema-agent/permission';
 import type { TurnFailurePhase } from '@ema-agent/hooks';
-import type { AgentDeps, AgentRunInput } from './types.js';
+import type { AgentDeps, TurnExecutionInput } from './types.js';
 import { TurnPolicy } from './policy.js';
 import { TurnToolExecutor } from './tool-executor.js';
 import { turnLoop, type ExecutorFactory } from './loop.js';
@@ -29,46 +30,41 @@ import { awaitAgentAnswer } from './ask-user-lifecycle.js';
 // ── AgentEngine ───────────────────────────────────────────────────────────────
 
 /**
- * Thin wrapper around turnLoop().  Handles session lifecycle, hooks, emotion
- * post-processing, session DB persistence, and SSE event translation.
- *
- * The pure think→act loop lives in loop.ts; spawner.ts handles sub-agents.
- * This class owns: hook triggers, emotion.processChunk / flush, session
- * DB persistence through the unified Turn lifecycle Facade, and the ExecutorFactory that wires
- * the loop's internal relay callbacks to TurnToolExecutor.
+ * TurnLoop 外层运行入口，负责 Hook、情绪处理、Session 持久化和 SSE 转换。
+ * 思考与行动循环位于 loop.ts，子 Agent 执行位于 spawner.ts。
  */
 export class AgentEngine {
-  // turnId → spawner, for per-subagent cancellation from the route layer.
+  // 路由按 turnId 定位 Spawner，以便只取消某个子 Agent。
   private readonly activeSpawners  = new Map<string, SubagentSpawner>();
-  // turnId → executor, for per-tool cancellation from the route layer.
+  // 路由按 turnId 定位 Executor，以便只取消某个工具调用。
   private readonly activeExecutors = new Map<string, TurnToolExecutor>();
 
   constructor(private readonly deps: AgentDeps) {}
 
-  run(input: AgentRunInput): AsyncIterable<EmaStreamEvent> {
+  run(input: TurnExecutionInput): AsyncIterable<EmaStreamEvent> {
     return runTurn(this.deps, input, this.activeSpawners, this.activeExecutors);
   }
 
-  /** Cancel a single sub-agent without aborting the parent turn. */
+  /** 只取消指定子 Agent，不中止父 Turn。 */
   abortSubagent(turnId: string, subagentId: string): void {
-    this.activeSpawners.get(turnId)?.abortSubagent(subagentId);
+    this.activeSpawners.get(turnId)?.abortSubagent(asAgentRunId(subagentId));
   }
 
-  /** Cancel a single in-flight tool without aborting the parent turn. Returns false if not found. */
+  /** 只取消指定工具调用；找不到时返回 false。 */
   abortTool(turnId: string, callId: string): boolean {
     return this.activeExecutors.get(turnId)?.abortTool(callId) ?? false;
   }
 }
 
-// ── Core turn runner ──────────────────────────────────────────────────────────
+// ── Turn 核心运行入口 ─────────────────────────────────────────────────────────
 
 async function* runTurn(
   deps:            AgentDeps,
-  input:           AgentRunInput,
+  input:           TurnExecutionInput,
   activeSpawners:  Map<string, SubagentSpawner>,
   activeExecutors: Map<string, TurnToolExecutor>,
 ): AsyncIterable<EmaStreamEvent> {
-  const { session, turnLifecycle, hooks, llm, emotion, tools, permission, askUserRegistry } = deps;
+  const { session, hooks, llm, emotion, tools, permission, askUserRegistry } = deps;
   const { turn, signal, userInput, workspaceRoot, providerId, model } = input;
   const sessionId = turn.sessionId;
   const turnId    = turn.id;
@@ -90,7 +86,7 @@ async function* runTurn(
     internalPaths: scratchpadDir ? { turnScratchpad: scratchpadDir } : undefined,
   };
 
-  // Per-iteration accumulators — reset on each loop_iteration event.
+  // 每次收到 loop_iteration 都重置本轮累计内容。
   let iterTextByIndex     = new Map<number, string>();
   let iterThinkingByIndex = new Map<number, string>();
   let iterToolCalls       = new Map<number, AssistantBlock & { type: 'tool_use' }>();
@@ -98,9 +94,8 @@ async function* runTurn(
   let totalOutput = 0;
   let iterations  = 0;
 
-  // Declared before try so finally can clear it. emitRef is filled in by
-  // buildExecutor (inside the loop) and cleared in finally to cut the reference
-  // chain to pendingRelayEvents before the spawner is released.
+  // 在 try 外声明，确保 finally 能在释放 Spawner 前切断事件队列引用。
+  // buildExecutor 会在循环启动后填入实际发送函数。
   const emitRef: { fn?: (ev: EmaStreamEvent) => void } = {};
   const pendingHookEvents: EmaStreamEvent[] = [];
   const emitHookEvent = (event: EmaStreamEvent): void => {
@@ -124,7 +119,7 @@ async function* runTurn(
   ): Promise<void> => {
     if (failureReported) return;
     failureReported = true;
-    turnLifecycle.fail({ turnId, code, message });
+    session.failTurn(turnId, code, message);
     await hooks.trigger('onTurnFailure', {
       turnId,
       sessionId,
@@ -137,7 +132,7 @@ async function* runTurn(
     emotion.beginTurn(sessionId);
     clearTodos(turnId);
 
-    // ── onTurnStart ───────────────────────────────────────────────────────────
+    // ── Turn 启动 Hook ────────────────────────────────────────────────────────
     activePhase = 'hook';
     const startResult = await hooks.trigger('onTurnStart', {
       turnId, sessionId,
@@ -168,7 +163,7 @@ async function* runTurn(
       yield { type: 'request_degraded', sessionId, turnId, ...degradation };
     }
 
-    // ── Build initial message history ─────────────────────────────────────────
+    // ── 构建初始消息历史 ──────────────────────────────────────────────────────
     activePhase = 'provider';
     const history = session.loadHistory(sessionId);
     const capabilities = deps.modelCapabilities.resolve({ providerId, model });
@@ -199,8 +194,7 @@ async function* runTurn(
       blocks: input.persistedUserInput ?? userInput as MessageBlocks,
     });
 
-    // messages is declared here so the spawner and executor factory can both
-    // close over the same reference. The loop appends to this array each round.
+    // Spawner 与 Executor 工厂共享同一数组引用，循环会在每轮向其中追加消息。
     const messages: ModelMessage[] = [
       ...historyView.messages,
       { role: 'user', content: userInput as string | UserBlock[] },
@@ -222,14 +216,13 @@ async function* runTurn(
     }
     const contextAssembler = new ContextAssembler();
 
-    // ── Spawner + ExecutorFactory ─────────────────────────────────────────────
-    // Executor closes over Turn 运行时依赖；Spawner 持有最新一次 beforeLlm
+    // ── 子 Agent 调度器与工具执行器工厂 ───────────────────────────────────────
+    // 工具执行器闭包捕获 Turn 运行时依赖；Spawner 持有最新一次 beforeLlm
     // 产生的完整请求视图，并在 spawn() 时按 fork 语义创建快照。
     //
-    // emitRef lets the spawner forward subagent_progress to the parent SSE stream.
-    // The ref is filled in by buildExecutor (called by turnLoop before any tools
-    // run), so spawn() always sees a populated emitter.
-    // (emitRef is declared before try{} so finally can clear it on turn end.)
+    // emitRef 让 Spawner 把子 Agent 进度转发到父 SSE 流。
+    // TurnLoop 会在执行工具前调用 buildExecutor，因此 spawn 时发送函数已经就绪；
+    // Turn 结束后由 finally 清空引用。
 
     // beforeLlm 返回的是每次请求的临时视图，不能写回原始历史，否则下一轮
     // 会重复注入 Memory/Skill 等上下文。Spawner 需要继承完整视图，因此维护
@@ -263,7 +256,7 @@ async function* runTurn(
     activeSpawners.set(turnId, spawner);
 
     const buildExecutor: ExecutorFactory = ({ pushEv, signal: wakeSignal }) => {
-      emitRef.fn = pushEv;   // wire parent SSE emitter now that the loop has started
+      emitRef.fn = pushEv;   // 循环启动后接入父 SSE 发送函数
       const toolCtx: ToolExecutionContext = {
         sessionId, turnId, workspaceRoot, signal, readFileState,
         fileStateStore:  contextStores?.fileStateStore,
@@ -308,7 +301,7 @@ async function* runTurn(
       return executor;
     };
 
-    // ── Main loop — translate TurnLoopEvent → EmaStreamEvent ─────────────────
+    // ── 主循环：把 TurnLoopEvent 转换为 EmaStreamEvent ────────────────────────
     activePhase = 'provider';
     for await (const ev of turnLoop({
       messages, policy, buildExecutor, llm,
@@ -458,7 +451,7 @@ async function* runTurn(
           break;
 
         case 'loop_llm_complete': {
-          // Flush emotion scanner tail (handles partial ACT tags at stream end).
+          // 刷出情绪扫描器尾部，处理流结束时尚未闭合的 ACT 标签。
           const { cleaned: tail } = emotion.flush(turnId, sessionId);
           if (tail) {
             const textIdx = iterTextByIndex.size > 0 ? Math.min(...iterTextByIndex.keys()) : 0;
@@ -517,7 +510,7 @@ async function* runTurn(
           return;
 
         case 'loop_tool_results': {
-          // Persist mid-loop assistant message (with tool_use blocks) + tool results.
+          // 循环中途持久化包含 tool_use 的助手消息及对应工具结果。
           activePhase = 'persistence';
           const blockMap = new Map<number, AssistantBlock>();
           for (const [idx, text]     of iterTextByIndex)     blockMap.set(idx, { type: 'text', text });
@@ -540,7 +533,7 @@ async function* runTurn(
           totalOutput = ev.state.usage.outputTokens;
 
           if (ev.state.transition === 'no_tool_calls') {
-            // Final iteration had no tool calls — persist assistant message + hook.
+          // 最后一轮没有工具调用，直接持久化助手消息并触发 Hook。
             const blockMap = new Map<number, AssistantBlock>();
             for (const [idx, text]     of iterTextByIndex)     blockMap.set(idx, { type: 'text', text });
             for (const [idx, thinking] of iterThinkingByIndex) blockMap.set(idx, { type: 'thinking', thinking });
@@ -563,7 +556,7 @@ async function* runTurn(
       }
     }
 
-    // ── Turn teardown ─────────────────────────────────────────────────────────
+    // ── Turn 收尾 ─────────────────────────────────────────────────────────────
     if (signal.aborted) {
       await turnExecutor?.shutdown('user_abort');
       await stopSpawner('parent_turn_aborted');
@@ -573,7 +566,7 @@ async function* runTurn(
         emit: emitHookEvent,
       });
       while (pendingHookEvents.length > 0) yield pendingHookEvents.shift()!;
-      turnLifecycle.abort({ sessionId, turnId, reason: 'user_abort' });
+      session.abortTurn(sessionId, turnId);
       yield { type: 'turn_aborted', sessionId, turnId, reason: 'user_stop' };
       return;
     }
@@ -590,11 +583,10 @@ async function* runTurn(
     while (pendingHookEvents.length > 0) yield pendingHookEvents.shift()!;
 
     activePhase = 'persistence';
-    turnLifecycle.complete({
-      turnId,
+    session.completeTurn(turnId, {
       iterations,
-      inputTokens: totalInput,
-      outputTokens: totalOutput,
+      usageInputTokens: totalInput,
+      usageOutputTokens: totalOutput,
     });
     yield {
       type: 'turn_completed', sessionId, turnId,
@@ -613,7 +605,7 @@ async function* runTurn(
         emit: emitHookEvent,
       });
       while (pendingHookEvents.length > 0) yield pendingHookEvents.shift()!;
-      turnLifecycle.abort({ sessionId, turnId, reason: 'user_abort' });
+      session.abortTurn(sessionId, turnId);
       yield { type: 'turn_aborted', sessionId, turnId, reason: 'user_stop' };
     } else {
       const code: TurnFailureCode = err instanceof AgentBudgetExceededError
@@ -626,22 +618,21 @@ async function* runTurn(
       yield { type: 'turn_failed', sessionId, turnId, code, message: reason };
     }
   } finally {
-    // Cut the emitRef → pushEv → pendingRelayEvents reference chain before the
-    // spawner is released. Background sub-agents that outlive their parent turn
-    // (LLM forgot to call subagent_await) will call emit() which is now a no-op
-    // instead of pushing into a GC'd array, preventing a silent memory leak.
+    // 释放 Spawner 前切断 emitRef → pushEv → pendingRelayEvents 引用链。
+    // 即使后台子 Agent 因模型未调用 subagent_await 而晚于父 Turn 结束，
+    // 后续 emit 也只会空操作，不会继续向失去消费者的数组写入并造成内存泄漏。
     emitRef.fn = undefined;
     await stopSpawner('parent_turn_finished');
     activeSpawners.delete(turnId);
     activeExecutors.delete(turnId);
     clearTodos(turnId);
     if (scratchpadDir) {
-      try { fs.rmSync(scratchpadDir, { recursive: true, force: true }); } catch { /* non-fatal */ }
+      try { fs.rmSync(scratchpadDir, { recursive: true, force: true }); } catch { /* 清理失败不改变 Turn 终态 */ }
     }
   }
 }
 
-function readableUserInput(input: AgentRunInput['userInput']): string {
+function readableUserInput(input: TurnExecutionInput['userInput']): string {
   if (typeof input === 'string') return input;
   return input
     .filter((part): part is Extract<(typeof input)[number], { type: 'text' }> => part.type === 'text')

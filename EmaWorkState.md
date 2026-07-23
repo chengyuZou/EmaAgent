@@ -42,13 +42,19 @@ Agent 执行体系第一批已经完成：Tool Result 外置与 Cleaner 从 `age
 
 Agent 执行体系第二批已经完成：ToolExecution Journal 从 Tasks 收回 `src/tools/journal`，Tools 现在拥有状态、领域记录、Store 端口、CAS 状态机与崩溃恢复语义；Storage 只实现原子 SQL 操作并把数据库行投影为领域形状；Core 从 Tools 装配 Journal，Agent 只依赖 `ToolExecutionJournalPort`。原 `IToolExecutionJournal` 已删除，Tasks 不再依赖 Tools/IDs 或导出工具执行生命周期。
 
-V1 Task 产品决策已经锁定：不再把完整 Task 延后。`src/tasks` 将只保存跨 Turn 的用户/模型可见工作项，包含 SQLite 事务/CAS、Session 内短序号、依赖、AgentRun 认领、TaskCreate/Get/List/Update、结构化事件、重启快照、动态 Context 提醒和独立 TaskList。旧内存 TodoWrite 在新主链完成后停止注册并删除。旧 `agent_tasks` 的根投影删除，子 Agent 数据迁为 `agent_runs/agent_run_messages`；后台 Shell 独立使用 BackgroundProcess/ProcessOutput/ProcessStop。
+V1 Task 产品决策已经锁定：不再把完整 Task 延后。`src/tasks` 将只保存跨 Turn 的用户/模型可见工作项，包含 SQLite 事务/CAS、Session 内短序号、依赖、AgentRun 可选绑定、TaskCreate/Get/List/Update、结构化事件、重启快照、动态 Context 提醒和独立 TaskList。旧内存 TodoWrite 在新主链完成后停止注册并删除。旧 `agent_tasks` 的根投影删除，子 Agent 数据迁为 `agent_runs/agent_run_messages`；后台 Shell 独立使用 BackgroundProcess/ProcessOutput/ProcessStop。
+
+Task 与子 Agent 的 V1 边界已经进一步冻结：四个 Task Tools 只向根 Turn 注册；普通 Subagent 不读取或修改共享 Task List。根 Agent 可用可选 `taskId` 启动一次 AgentRun，绑定前必须验证同 Session、未终态、无未完成依赖且没有其他活动 Run；不带 `taskId` 的临时调查合法。AgentRun 成功、失败或取消只结束执行并释放活动绑定，不自动完成、取消或删除 Task；父 Turn 验证结果后再显式 `TaskUpdate`。Claude 的 Task `owner` 属于 Team Member 语义，Ema V1 不用临时 `AgentRunId` 冒充长期 owner。
+
+AgentRun 语义收口已经完成：旧 `src/tasks` 运行记录、根 Turn 的 AgentTask 投影及 `AgentTurnLifecycleFacade` 已删除；Data v17 只把真实子执行迁入 `agent_runs/agent_run_messages`。Subagent 内部和模型工具返回值统一使用 `agentRunId`，Tool Journal 同时保存父 `turnId` 与可选 `agentRunId`，不再互相冒充；普通 Subagent 已移除 TodoWrite。客户端 SSE 暂时保留 `subagentId` 字段名，旧 `/api/agent-tasks` 暂时作为前端兼容适配，不代表后端仍存在 AgentTask 领域。
+
+完整 V1 Task 尚未实现。当前没有 `src/tasks` 空壳、Task 表或 Task Tools；下一批应建立真正的用户/根 Agent 可见工作项，并在 Task 主链成立后迁移前端 TaskPanel、删除 HTTP/SSE 旧命名兼容和根 Agent 的内存 TodoWrite。
 
 ## 迁移完成事实
 
 - 所有 Ema 产品模块均位于根 `src`；旧产品目录不再留在 `packages`。
 - `packages` 目前只保留 `credential` 与 `public-http` 两个可复用技术底座。
-- `conversation`、`agent`、`contracts`、`tools`、`builtinTools`、`agentContext`、`tasks`、`storage`、`sandbox`、`system`、`ui`、`live2d-react` 等均已迁入 `src`。
+- `conversation`、`agent`、`tools`、`builtinTools`、`agentContext`、`storage`、`sandbox`、`system`、`ui`、`live2d-react` 等产品模块均位于 `src`；旧 `contracts` 已收口删除，旧 `tasks` 运行记录也已删除，真正 Task 模块下一批按产品语义新建。
 - 模块内部仍可保留 `@ema-agent/*` Workspace 包名；它们是编译边界，不表示公共 npm 包。
 - 旧产品 `packages/...` 源码路径审计为零。测试中最后两处硬编码迁移路径已改为 `src/agent`。
 
@@ -56,7 +62,7 @@ V1 Task 产品决策已经锁定：不再把完整 Task 延后。`src/tasks` 将
 
 开始任何新批次前必须重新运行 `git status --short` 与 `git diff`，保留用户和其他 Agent 的修改。
 
-本轮开始时工作区干净；当前仅修改架构与评审文档，用于统一 V1 Task、AgentRun 与 BackgroundProcess 口径，不改生产代码。
+当前工作区包含用户先前的架构文档修改，以及本批 AgentRun 生产代码、Data v17、备份格式、测试和兼容路由改动；未暂存、未提交。
 
 当前基线最近提交：`1bd2299 refactor: migrate ToolExecution Journal to dedicated module and update related interfaces`。该提交号仅用于定位，不代表其他 Agent 不会继续提交。
 
@@ -69,7 +75,7 @@ V1 Task 产品决策已经锁定：不再把完整 Task 延后。`src/tasks` 将
 - ContextAssembler 是模型窗口唯一组装入口；PromptAssembler 只产出显式、有序、可版本化的 PromptSlot。
 - Provider 是控制面；LLM、Embed、Rerank、Vision、STT、TTS 是无 Session 状态的执行面。
 - Tool 使用同一份不可变 PreparedToolCall 完成准备、审批和执行；Permission 与 Sandbox 物理分层。
-- V1 完整实现持久 Task：TaskCreate/Get/List/Update、依赖、AgentRun 认领、事务/CAS、事件、Context 提醒、恢复快照与独立前端 TaskList；TodoWrite 完成迁移后删除。
+- V1 完整实现持久 Task：TaskCreate/Get/List/Update、依赖、AgentRun 可选绑定、事务/CAS、事件、Context 提醒、恢复快照与独立前端 TaskList；Task Tools 只属于根 Turn，TodoWrite 完成迁移后删除。
 - 后台 Shell 是 BackgroundProcess，使用 ProcessOutput/ProcessStop；不复用 TaskId、AgentRunId 或领域 Job 生命周期。
 - Memory 只管理长期记忆；Compaction 属于 Context；Narrative、Knowledge Base、Memory 保持隔离。
 - branded ID 只允许进入零业务依赖的 `src/ids`；业务类型、状态、事件与错误仍归各自所有者，Turn 只组合跨端事件。
@@ -80,7 +86,7 @@ V1 Task 产品决策已经锁定：不再把完整 Task 延后。`src/tasks` 将
 
 ```text
 Turn       一次由明确来源触发、具有唯一终态的有界 Agent 执行
-Task       跨 Turn 持久、用户/模型可见并支持依赖与认领的结构化工作项
+Task       跨 Turn 持久、用户/根 Agent 可见并支持依赖与可选 AgentRun 绑定的结构化工作项
 AgentRun   V1 中一次子 Agent 实际执行
 Process    一次可查询、可停止的后台 Shell 进程
 Job        KB、Vision、Embedding、Memory 等领域后台工作
@@ -95,9 +101,9 @@ Plan、Goal、Schedule、Workflow、Team 与 LLM 自动审批暂列 V1.5，不�
 
 ## 下一批建议顺序
 
-1. 删除 Registry 的生产执行旁路，冻结 `PreparedToolCall` 唯一执行入口；
-2. 随后拆分 Agent Scheduler 与 Tools `ToolExecutionRuntime`，收窄 ToolExecutionContext；
-3. 再拆旧 AgentTask：删除根投影、迁移 AgentRun，并完成 V1 TaskStore/Task Tools/Context/UI 闭环；
+1. 建立真正的 V1 TaskStore、依赖关系、TaskCreate/Get/List/Update 与根 Turn 工具注册；
+2. 接入 Task Context 提醒、结构化事件和独立前端 TaskList，并删除内存 TodoWrite；
+3. 前端迁到 AgentRun/Task 新协议后，删除 `/api/agent-tasks` 与 `subagentId` 旧命名兼容；
 4. 后台进程按 `BackgroundProcess + ProcessOutput/ProcessStop` 分批实现 C 档，不修改 Agent Loop 来实现自动后台化；
 5. Chat 接入统一 TurnLoop 放在 Tool 单次执行边界稳定之后，短期保留 ConversationEngine 适配器。
 
@@ -107,6 +113,8 @@ Plan、Goal、Schedule、Workflow、Team 与 LLM 自动审批暂列 V1.5，不�
 
 ## 最近验证
 
+- AgentRun 语义批次：全仓 typecheck 82/82 通过；Storage 116/116、Agent 32/32、Tools 25/25、Backup 10/10、Core 85/85 通过。BuiltinTools 51/52，唯一失败仍是既存 WebFetchPolicy 的 `example.com -> www.example.com` 重定向口径，与本批无关；本批新增与改写的说明注释已统一为 UTF-8 中文。
+- Multi-Agent 与 Task 边界已按 Claude 源码复核：普通 Subagent 不共享 Task Tools，只有 Team teammate 才有 owner/自主领取语义。Ema V1 已冻结为根 Turn 管理 Task、AgentRun 可选关联既有 Task、Run 终态不自动改变 Task 终态；本批只改文档，未运行代码测试。
 - V1 Task 文档口径审计完成：核心架构文档、CLAUDE、Sandbox 评审、Bug 总表、Storage README 与 Batch 历史入口均已区分 Task/AgentRun/BackgroundProcess/Job；旧待定措辞和错误的后台进程工具命名残留扫描为零。该批只改文档，未运行代码测试；`git diff --check` 通过。
 - 根 `src` 与 Workspace 目录审计完成；`packages` 仅剩 `credential`、`public-http`。
 - `pnpm install --offline` 已刷新迁移后的 Workspace 链接。

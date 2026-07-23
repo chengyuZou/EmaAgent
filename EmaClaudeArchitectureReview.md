@@ -488,11 +488,13 @@ src/settings/hooks/           用户设置读写，不塞进 Memory
 
 Claude 区分三种多 Agent 形态：父 Agent 派生一次性 Subagent；Coordinator 将工作拆给多个 Worker；更复杂的 Swarm/Team 共享任务清单并通信。子 Agent 可以继承父上下文，也可以从干净上下文启动；有独立 Agent 身份、工具白名单、权限上下文、模型、取消信号和 Usage，结果再返回父 Agent。
 
+Claude 源码还有一条容易被名称掩盖的边界：普通同步/异步 Agent 会被过滤掉 TaskOutput、TaskStop、AskUser 和 Agent 等元工具，也不会获得 `TaskCreate/Get/List/Update`。只有启用 Swarm 后的 in-process teammate 才额外得到四个 Task Tools 和 SendMessage，并使用稳定 teammate name 作为 Task owner。AgentTool 自身没有“结构化工作项 taskId”输入；源码里大量 `taskId` 只是后台 Agent/Shell 执行句柄。这正说明工作项 Task、子 Agent Run 和后台进程必须按语义重新命名，不能照抄 Claude 的历史命名。
+
 多 Agent 的难点不是 `Promise.all`，而是能力隔离、上下文继承、预算、父子取消、后台完成通知、结果去重和终态收口。Claude 还将 Plan 两阶段流程与多 Agent 配合，但这不意味着每个 Subagent 都是一个 Task 或 Plan。
 
 ### Ema 当前事实
 
-`packages/agent/src/spawner.ts` 已有一个可工作的 V1 Subagent Runtime：
+`src/agent/spawner.ts` 已有一个可工作的 V1 Subagent Runtime：
 
 - 支持同步 spawn 与后台 spawn/await/send-message/abort；
 - 父 Turn AbortSignal 向子 Agent 级联，单个子 Agent 也能独立取消；
@@ -503,7 +505,7 @@ Claude 区分三种多 Agent 形态：父 Agent 派生一次性 Subagent；Coord
 - Scratchpad 在主 Agent 与子 Agent 间共享，Mailbox 在每次 LLM 迭代边界一次性排空；
 - 子 Agent 的 started/progress/stream/completed/failed/aborted 都进入父 Session SSE。
 
-但身份与持久化仍混乱：`subagentId` 被强制转换成 `TurnId` 传给 Tool Context，Tool Journal 又使用父 `turnId`；`AgentTaskStore` 保存的是 running/completed/failed/cancelled 的执行记录，而不是第 15 章的结构化工作项；`taskId` 字段同时暗示未来 Task 绑定。当前后台 Agent 也要求父 Turn 结束前 await，本质仍是 Turn 内并发，不是真正跨 Turn 后台运行。
+但身份与持久化仍混乱：`subagentId` 被强制转换成 `TurnId` 传给 Tool Context，Tool Journal 又使用父 `turnId`；`AgentTaskStore` 保存的是 running/completed/failed/cancelled 的执行记录，而不是第 15 章的结构化工作项；`SubagentSpawnOpts.taskId` 已存在却被注释为 V1.5 且没有 Tool 输入接线，`SubagentResult` 和后台控制仍只暴露 `subagentId`。当前子 Agent 工具集还包含旧 `TodoWrite`，会在独立内存清单中写出与根 Turn 不一致的待办。当前后台 Agent 也要求父 Turn 结束前 await，本质仍是 Turn 内并发，不是真正跨 Turn 后台运行。
 
 ### Diff 判断
 
@@ -518,6 +520,9 @@ Claude 区分三种多 Agent 形态：父 Agent 派生一次性 Subagent；Coord
 9. **V1.5 候选：真正跨 Turn 的后台 AgentRun。** 只有在持久 Lease、心跳、恢复、通知和用户管理 UI 完成后，才能允许父 Turn 结束后继续运行。
 10. **V1.5 候选：Coordinator/Team。** 先复用 AgentRun + TaskList + Mailbox 三个清晰对象，再增加协调策略；不创建一个同时代表 Task、Worker、Job 和 Goal 的万能 Runtime。
 11. **不照搬：Claude coding 专属 Agent 类型与 Worktree 组合。** Ema 的 Agent 类型应围绕通用研究、KB/Narrative、角色工作流定义；代码隔离需要时使用已有 Sandbox/Workspace 能力。
+12. **V1 必做：Task Tools 只属于根 Turn。** Ema V1 没有稳定 teammate 身份，普通 Subagent 不得到 `TaskCreate/Get/List/Update`，也不靠共享清单自行抢活。其工作说明必须在启动时成为自包含、不可变输入；缺少信息时通过 AgentRun Mailbox 或最终结果交还父 Turn。
+13. **V1 必做：Subagent 与 Task 只做可选关联。** Subagent Tool 可接受已有 `taskId`，但不得隐式创建 Task。启动事务验证 Task 与父 Turn 同 Session、未终态、依赖已满足且没有其他活动 AgentRun；成功后创建独立 `agentRunId`。不带 Task 的探索 Run 继续合法。
+14. **V1 必做：Run 终态不驱动 Task 终态。** AgentRun 成功、失败或取消只结束本次尝试并释放活动绑定；Task 保持原业务状态，由根 Agent 校验结果后显式调用 `TaskUpdate`。`SubagentAwait/SendMessage/Abort` 一律寻址 `agentRunId`，Task UI 只展示关联，不承担运行控制。
 
 ### 建议拆分与公共接口
 
@@ -1076,29 +1081,31 @@ ContextAssembler
 
 ### Claude 的业务与架构
 
-Claude 的 Task 是模型和用户都能看见的结构化工作清单：`subject/description/activeForm/status/owner/blocks/blockedBy`。它通过 TaskCreate/Get/List/Update 管理工作分解，通过细粒度锁和原子认领支持多 Agent，通过工具结果与低频提醒让模型保持任务意识。Task 完成不等于某个进程退出；Agent 只是 Task 的可选 owner。
+Claude 的 Task 是模型和用户都能看见的结构化工作清单：`subject/description/activeForm/status/owner/blocks/blockedBy`。它通过 TaskCreate/Get/List/Update 管理工作分解，通过细粒度锁和原子认领支持 Team/Swarm，通过工具结果与低频提醒让模型保持任务意识。这里的 owner 是稳定、可寻址的 teammate name，不是一次普通 Subagent Run；普通 AgentTool 子级并不获得四个 Task Tools。Task 完成也不等于某个进程退出。
 
 ### Ema 当前事实
 
-- 当前 `src/tasks`、`agent_tasks` 表、transcript、parentId、pending prompt 和运行终态描述的是一次根/子 Agent 执行，语义其实是 AgentRun；
+- 旧 `src/tasks`、根 Turn 的 AgentTask 投影和 `AgentTurnLifecycleFacade` 已删除；Data v17 只把真实子执行迁入 `agent_runs/agent_run_messages`；
+- AgentRun 已拥有独立 branded ID、CAS 终态、崩溃恢复、可选 TaskId、执行统计与 transcript；Tool Journal 同时记录父 Turn 和可选 AgentRun，不再拿 Run ID 冒充 Turn ID；
 - `TodoWriteTool` 又维护一份按 turnId 存在内存里的完整替换列表，重启即丢失，也没有依赖和 CAS；
-- 前端 `TaskPanel` 展示 AgentTask transcript，名称却让人以为是待办清单；
+- 前端 `TaskPanel` 仍展示 AgentRun transcript，旧 `/api/agent-tasks` 与 SSE `subagentId` 仅是迁移期兼容，名称仍容易让人误解为待办清单；
 - KB ingest、Memory extraction、Vision、Embedding 等另有自己的任务表和 lease/recovery，它们是领域 Job，不是用户工作项；
-- 当前 AgentTask 已有 version/CAS、运行恢复和 Turn 终态联动，这些能力应随 AgentRun 保留，不能为了改名丢掉。
+- 普通 Subagent 已不再获得 TodoWrite；真正的持久 Task、四个 Task Tools、Context 提醒和独立 TaskList 尚未实现。
 
 ### Diff 判断
 
-1. **V1 必做：先做语义拆分，再谈文件迁移。** 旧 AgentTask 全链路重命名为 AgentRun：表、Repo、Store、事件、API 和前端面板表达执行实例；`taskId` 改为 `agentRunId`，不继续用同一 ID 兼容两个概念。
-2. **V1 必做：`src/tasks` 实现完整结构化工作项。** Task 使用显式列/类型：稳定 `taskId`、Session 内 `displayNumber`、`sessionId`、`subject`、`description`、`activeForm`、`status`、可选 `ownerAgentRunId`、`version` 与时间字段；依赖使用明确关系表，不用 metadata JSON。
+1. **V1 已完成：后端 AgentRun 语义拆分。** 表、Repo、Store、Spawner、Tool Journal、备份和 Core 新 API 已使用 AgentRun；根 Turn 不再复制运行记录。前端面板、旧 API 路径与 SSE 字段名仍是明确的下一批迁移边界。
+2. **V1 必做：`src/tasks` 实现完整结构化工作项。** Task 使用显式列/类型：稳定 `taskId`、Session 内 `displayNumber`、`sessionId`、`subject`、`description`、`activeForm`、`status`、`version` 与时间字段；依赖使用明确关系表，不用 metadata JSON。V1 不保存 `ownerAgentRunId`，因为根 Agent 可以直接执行工作，而一次性 Run 不是长期 owner。
 3. **V1 必做：TaskCreate/Get/List/Update 替换 TodoWrite。** 四个 Tool、TaskStore、事件、Context 提醒和前端 TaskList 接线后，旧内存 TodoWrite 必须停止注册并删除；迁移期可以 Feature Gate 二选一，但不能让模型同时面对两套工作清单。
-4. **V1 必做：AgentRun 可认领 Task，但两者生命周期独立。** 一个 Task 可以被不同 AgentRun 重试或接手；一个 AgentRun 也可能执行没有 Task 的临时研究。AgentRun 成功不能自动把所有关联 Task 标完成，必须由主循环或明确规则提交。
+4. **V1 必做：AgentRun 可绑定 Task，但两者生命周期独立。** 一个 Task 可以被不同 AgentRun 先后重试，一个 AgentRun 也可能执行没有 Task 的临时研究。活动绑定通过 `agent_runs.task_id` 投影并限制同一 Task 同时最多一个活动 Run；AgentRun 成功不能自动把关联 Task 标完成，必须由根循环显式提交。
 5. **V1 必做：Job 不继承 Task。** KB Job 可调用 Vision/Embedding 子步骤，Vision Job 也可独立运行；它们各自维护 lease、checkpoint、幂等和恢复，只在确需向用户展示工作目标时关联可选 TaskId。
-6. **V1 收口：并发写使用 SQLite 事务 + CAS。** Ema 已有数据库，不照搬“一任务一 JSON 文件 + fs.watch”；创建、认领、依赖更新和完成必须事务化，`version` 防陈旧写。多进程 SQLite 模式仍需 busy timeout 和失败分类。
+6. **V1 收口：并发写使用 SQLite 事务 + CAS。** Ema 已有数据库，不照搬“一任务一 JSON 文件 + fs.watch”；创建、活动 Run 绑定、依赖更新和完成必须事务化，`version` 防陈旧写。多进程 SQLite 模式仍需 busy timeout 和失败分类。
 7. **V1 收口：前端事件驱动，重启后以 DB 重建。** 不采用文件 watch + 5 秒轮询三层方案；Turn/Task 事件实时更新，SSE 断线后从 Task API/DB 快照恢复。Task 面板与 AgentRun transcript 面板分开。
 8. **V1 收口：Task 提醒作为动态 Context Contribution。** 只在清单存在且长时间未更新时低频注入，不写入固定 System Prompt；提醒携带真实 Task snapshot version，避免缓存失效和陈旧状态。
 9. **V1 收口：AskUser/Permission 不属于 Task 状态。** 等待用户时 AgentRun 进入 waiting，Prompt 独立持久化；Task 保持 `in_progress`，是否被阻塞由依赖关系投影，不增加 `waiting_user` 或 `blocked` 持久状态，也不存 pendingPromptId。
-10. **V1 必做：依赖与 AgentRun 认领进入 Task 闭环。** `blockedBy/blocks` 由关系表和事务维护；AgentRun 通过稳定 ID 认领或释放 Task，崩溃后未完成 Task 可回到可领取状态。Team、跨设备 owner、复杂忙碌调度与实验性验证 nudge 仍属 V1.5。
-11. **不照搬：Claude 的递增短 ID、文件锁、高水位与团队目录。** Ema 内部保持全局稳定 UUID；UI 可以额外显示 session 内短序号，但短序号不能成为外键。
+10. **V1 必做：依赖与 AgentRun 活动绑定进入 Task 闭环。** `blockedBy/blocks` 由关系表和事务维护；启动 AgentRun 时事务化验证同 Session、未终态、依赖已完成且无其他活动 Run。Run 终态后 Task 成为“无活动执行者”的待处理项，根 Agent决定重试、继续、取消或完成。Team owner、跨设备领取、复杂忙碌调度与实验性验证 nudge 仍属 V1.5。
+11. **V1 必做：四个 Task Tools 不下放给普通 Subagent。** 根 Turn 负责拆分、依赖、状态与最终验收；子 Agent 只执行启动时给定的自包含任务，并通过 AgentRun 结果/邮箱汇报。未来 Team 成立后，才允许可寻址 teammate 自主 `TaskList/TaskUpdate`。
+12. **不照搬：Claude 的递增短 ID、文件锁、高水位与团队目录。** Ema 内部保持全局稳定 UUID；UI 可以额外显示 session 内短序号，但短序号不能成为外键。
 
 ### V1 数据与 Tool 契约
 
@@ -1113,7 +1120,6 @@ interface Task {
   description: string;
   activeForm?: string;
   status: TaskStatus;
-  ownerAgentRunId?: AgentRunId;
   createdByTurnId: TurnId;
   completedByTurnId?: TurnId;
   version: number;
@@ -1123,15 +1129,17 @@ interface Task {
 }
 ```
 
-`task_dependencies(blocker_task_id, blocked_task_id)` 维护依赖，两个外键必须属于同一 Session，添加依赖时拒绝自环和已经可证明的环。`ownerAgentRunId` 只表示当前认领者；一次 Task 的历史尝试由 `agent_runs.task_id` 保留，不能把历史 Run 数组塞回 Task 行。
+`task_dependencies(blocker_task_id, blocked_task_id)` 维护依赖，两个外键必须属于同一 Session，添加依赖时拒绝自环和已经可证明的环。一次 Task 的历史尝试由 `agent_runs.task_id` 保留；对活动状态建立唯一约束，避免同一 Task 被两个子 Agent 同时执行。Task 快照可以投影 `activeAgentRunId`，但它不是 Task 的持久 owner 字段。
 
-四个模型 Tool 使用稳定职责：`TaskCreate(subject, description, activeForm?)`、`TaskGet(taskId)`、`TaskList()`、`TaskUpdate(taskId, fields/action)`。`TaskUpdate` 的删除/取消必须是显式 action；Get/List 只读，Create/Update 通过事务与 version 拒绝陈旧写。Tool 结果、Task 事件和 REST 快照共享同一个 Task mapper，不能形成三套字段。
+四个模型 Tool 使用稳定职责：`TaskCreate(subject, description, activeForm?)`、`TaskGet(taskId)`、`TaskList()`、`TaskUpdate(taskId, fields/action)`。它们只向根 Turn 注册；`TaskUpdate` 的删除/取消必须是显式 action；Get/List 只读，Create/Update 通过事务与 version 拒绝陈旧写。Tool 结果、Task 事件和 REST 快照共享同一个 Task mapper，不能形成三套字段。
+
+Subagent Tool 使用另一套契约：输入可带既有 `taskId`，输出和后续控制使用新建的 `agentRunId`。Spawner 不创建 Task，也不把 Run 终态映射成 Task 终态。根循环收到 Run 结果后，再根据是否真正完成、验证是否通过和依赖是否解除决定调用 `TaskUpdate`。
 
 ### 建议所有权
 
 ```text
 src/tasks/                    用户/模型可见工作清单
-├─ taskStore.ts               SQLite 事务、CAS、认领与依赖
+├─ taskStore.ts               SQLite 事务、CAS、依赖与活动 Run 校验
 ├─ protocol.ts                API/SSE 快照与事件
 ├─ taskContext.ts             低频动态 Context Contribution
 └─ types.ts
@@ -1142,10 +1150,13 @@ src/builtinTools/tools/
 ├─ TaskListTool/
 └─ TaskUpdateTool/
 
-src/agent/runs/               Agent 实际执行
-├─ agentRunStore.ts           原 packages/agent-task 运行状态
-├─ transcriptStore.ts         原 agent_task_messages
-└─ recovery.ts
+src/agent/runs/               Agent 实际执行领域与状态机
+├─ agentRunStore.ts           CAS 终态、查询与恢复
+└─ types.ts                   AgentRun 领域契约
+
+src/storage/repos/
+├─ agent-runs.ts              AgentRun 原子 SQL
+└─ agent-run-messages.ts      transcript 顺序写入
 
 src/knowledge/jobs/           KB 领域 Job
 src/vision/jobs/              Vision 领域 Job
@@ -1315,7 +1326,7 @@ Ema V1 是单用户、单角色呈现，但未来可能多角色、多 Agent 和
 
 1. **V1 不实现 Team/Peer 网络。** 先把 AgentRun、Task 与 transcript 做对；不建立共享 Memory、跨机 bridge 或 Artifact 协作。
 2. **现在就固定消息来源类型。** `MessageOrigin` 至少区分 `user`、`agentRun`、`hook`、`tool`、`externalChannel`；来源不是 user 的内容永远不能构成危险操作授权。
-3. **未来 teammate 复用 TaskStore 与 AgentRun。** Team 只提供成员/寻址/消息，不新建 TeamTask；Task owner 使用 AgentRun/Member 明确身份。
+3. **未来 teammate 复用 TaskStore 与 AgentRun。** Team 只提供成员、寻址和消息，不新建 TeamTask；Task owner 使用稳定 `TeamMemberId`，实际执行仍以独立 AgentRun 关联，不能把一次 Run 当成员身份。
 4. **多角色不等于多 Agent。** Character 是表现与 Prompt 身份；AgentMember 是执行主体。一个角色可由一个 Agent 呈现，也可只改变同一 TurnRuntime 的 Character Slot，不能用 characterId 当 agentRunId。
 5. **QQ/微信/Web 等外部消息默认 untrusted input。** 它可以创建待用户处理的 Turn，但不能继承桌面用户的本地文件、push、发送或凭据授权；高后果动作回到可信 UI 确认。
 6. **禁止跨 Agent 权限洗白。** A 被拒后把请求发给 B，B 仍按原动作重新检查，且 peer 请求不能作为 user approval。
@@ -1431,7 +1442,7 @@ packages/
 2. **Prompt Slot 与 ContextAssembler。** 收敛 Hook/角色/Memory/Narrative 注入，保留现有 Compaction 行为。
 3. **统一 TurnRuntime/TurnLoop。** Chat/Work 共用主链，Narrative 变独立能力，旧 ConversationEngine 退役。
 4. **Tool/Permission/Sandbox 主链复核。** Tool Manifest snapshot、Prepared Call hash、Session FIFO、跨平台 runner。
-5. **AgentTask 语义拆分并完成 V1 Task。** 根投影删除，子执行迁 AgentRun；`src/tasks` 建立持久 Task、依赖、认领、事件、Context 与 UI 全闭环，Task Tools 替换并删除 TodoWrite。
+5. **AgentTask 语义拆分并完成 V1 Task。** 根投影删除，子执行迁 AgentRun；`src/tasks` 建立持久 Task、依赖、可选活动 Run 绑定、事件、Context 与 UI 全闭环，根 Turn 的 Task Tools 替换并删除 TodoWrite。
 6. **事实与恢复收口。** Usage、Permission audit、AgentRun/Job recovery、单实例与 Desktop supervisor。
 7. **前端投影切换。** Chat/Work、NarrativePolicy、Decision Card、AgentRun/Task 分面和多 Session 并行。
 8. **逐模块迁根 `src`。** 每次先行为保持迁移、验证直接消费者，再做业务重构；不一次全仓搬目录。
@@ -1453,7 +1464,7 @@ packages/
 | 概念 | Ema 唯一含义 | 当前目标所有者 |
 |---|---|---|
 | Turn | 用户发起的一轮交互和唯一根终态 | `src/turn` + `src/agent/turnRuntime` |
-| Task | 用户/模型可见、可持久化、可依赖和认领的结构化工作项 | `src/tasks`（V1 必做） |
+| Task | 用户/根 Agent 可见、可持久化、可建立依赖并可选关联 AgentRun 的结构化工作项 | `src/tasks`（V1 必做） |
 | Plan | 只读探索后供用户审批的实施方案 | V1.5 候选，暂不建包 |
 | AgentRun | V1 中一次子 Agent 实际执行 | `src/agent/runs`（待从旧 agent-task 拆出） |
 | BackgroundProcess | 一次可查询、可停止的后台 Shell 进程 | `src/tools/background`（V1 必做） |

@@ -83,11 +83,11 @@ export type { AskConfirmResult } from './tools/AskUserTool/AskConfirmTool.js';
 export type { AskTextResult } from './tools/AskUserTool/AskTextTool.js';
 export type { AskChoiceResult } from './tools/AskUserTool/AskChoiceTool.js';
 export type { SkillCallResult } from './tools/SkillCallTool/SkillCallTool.js';
-export type { SubagentResult } from './tools/SubagentTool/SubagentTool.js';
 export type {
   IMcpClientBridge,
   ISkillRunner,
   ISubagentSpawner,
+  SubagentRunResult,
   SubagentSpawnOpts,
 } from '@ema-agent/tools';
 

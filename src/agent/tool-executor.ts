@@ -1,16 +1,14 @@
 // 这里负责把模型产生的工具调用依次完成权限检查、执行、记日志和结果回传。
 /**
- * TurnToolExecutor — streaming tool execution with concurrency control.
+ * TurnToolExecutor 负责带并发控制的流式工具执行。
  *
- * Mirrors Claude Code's StreamingToolExecutor design:
- *  - addTool() is called immediately on each tool_use_complete event, starting
- *    permission check + execution without waiting for the full LLM stream to end.
- *  - Concurrent-safe tools (PreparedToolCall.isConcurrencySafe === true) run in parallel with
- *    each other, but still wait for any in-flight non-concurrent tool to finish.
- *  - Non-concurrent tools run exclusively: they wait for the serial fence AND all
- *    currently-queued concurrent-safe tools.
- *  - Events (permission dialogs, progress, results) are pushed via pushEv() and
- *    signalled via signal() so the engine can yield them between LLM stream chunks.
+ * 执行方式参考 Claude Code 的 StreamingToolExecutor：
+ *  - 每次收到 tool_use_complete 就立即调用 addTool()，无需等待模型流结束，
+ *    权限检查和工具执行可以提前开始。
+ *  - 标记为并发安全的工具可以彼此并行，但仍需等待正在执行的非并发工具结束。
+ *  - 非并发工具独占执行，必须同时等待串行栅栏和此前排队的并发安全工具。
+ *  - 权限弹窗、进度和结果通过 pushEv() 入队，再由 signal() 唤醒 Engine，
+ *    使事件能穿插在模型流分块之间发送。
  */
 
 import { asToolCallId } from '@ema-agent/ids';
@@ -33,7 +31,7 @@ import type { PermissionEngine, PermissionContext } from '@ema-agent/permission'
 import type { HookBus, ToolFailurePhase } from '@ema-agent/hooks';
 import type { AgentDeps } from './types.js';
 
-// ── Internal per-tool state ───────────────────────────────────────────────────
+// ── 单个工具的内部状态 ────────────────────────────────────────────────────────
 
 interface TrackedTool {
   blockIndex:        number;
@@ -58,13 +56,11 @@ interface ToolFailure {
   retryable: boolean;
 }
 
-// ── Public options ────────────────────────────────────────────────────────────
+// ── 公开配置 ──────────────────────────────────────────────────────────────────
 
 export interface TurnToolExecutorOpts {
   sessionId:   SessionId;
   turnId:      TurnId;
-  /** 子 Agent 共享父 Turn 的数据库 ownership；主 Agent 省略时等于 turnId。 */
-  journalTurnId?: TurnId;
   /** 同步策略检查；不在当前 Agent capability 集合中的工具直接拒绝。 */
   allows:      (name: string) => boolean;
   /** 模型看见的同一份不可变工具清单；旧测试适配器可以暂时省略。 */
@@ -77,47 +73,44 @@ export interface TurnToolExecutorOpts {
   buildAsk?:   AgentDeps['buildAsk'];
   runner?:     ICommandRunner;
   /**
-   * Push an event into the engine's pending queue (e.g. tool_result, permission_required).
-   * Implementations should also call signal() so the drain loop wakes up.
+   * 把事件写入 Engine 的待发送队列，例如 tool_result 或 permission_required。
+   * 实现方还应调用 signal() 唤醒排空循环。
    */
   pushEv:      (ev: EmaStreamEvent) => void;
   /**
-   * Wake up the engine's drain loop. Called independently from pushEv when
-   * track.done flips to true (so the loop can check allDone() even without a new event).
+   * 唤醒 Engine 的排空循环。track.done 变为 true 时会独立于 pushEv 调用，
+   * 确保没有新事件时循环也能重新检查 allDone()。
    */
   signal:      () => void;
   /**
-   * Per-session tool-result store. When present, large outputs are offloaded to
-   * disk and the tool_result block receives a preview + file reference instead.
-   * Absent in tests and non-agent callers — falls back to full inline content.
+   * Session 范围的工具结果存储。存在时，大结果会落盘，tool_result 只保存预览和文件引用。
+   * 测试与非 Agent 调用方可省略，此时结果完整内联。
    */
   toolResultStore?: ToolResultStore;
   /** 工具执行审计 Facade；生产环境必须注入，测试可省略。 */
   toolExecutionJournal?: ToolExecutionJournalPort;
 }
 
-// ── TurnToolExecutor ──────────────────────────────────────────────────────────
+// ── Turn 工具执行器 ───────────────────────────────────────────────────────────
 
 export class TurnToolExecutor {
   private tracked:    TrackedTool[] = [];
   /**
-   * Serial fence: resolves once all in-progress non-concurrent tools have finished.
-   * Concurrent-safe tools wait on this before starting (so they don't race a
-   * non-concurrent tool that's still in progress).
-   * Non-concurrent tools update this fence when they're queued.
+   * 串行栅栏会在全部非并发工具结束后完成。
+   * 并发安全工具启动前也要等待该栅栏，避免与尚未完成的独占工具竞争；
+   * 新的非并发工具入队时会推进栅栏。
    */
   private serialTail: Promise<void> = Promise.resolve();
   /**
-   * Per-tool AbortControllers keyed by callId.
-   * Each controller is cascaded from the turn-level signal so a turn abort fires all of them.
-   * abortTool(callId) fires only one without touching the parent turn.
+   * 每个工具拥有按 callId 索引的 AbortController。
+   * Turn 取消信号会级联触发全部控制器，abortTool(callId) 只取消指定工具。
    */
   private readonly toolAborts = new Map<string, AbortController>();
   private stoppingReason?: string;
 
   constructor(private readonly opts: TurnToolExecutorOpts) {}
 
-  /** Cancel a single in-flight tool without aborting the parent turn. Returns false if not found. */
+  /** 取消单个执行中的工具，不中止父 Turn；找不到时返回 false。 */
   abortTool(callId: string): boolean {
     const ctrl = this.toolAborts.get(callId);
     if (!ctrl) return false;
@@ -160,7 +153,7 @@ export class TurnToolExecutor {
     }
   }
 
-  /** Reset between LLM iterations. */
+  /** 在两次 LLM 迭代之间重置状态。 */
   reset(): void {
     this.tracked    = [];
     this.serialTail = Promise.resolve();
@@ -168,9 +161,9 @@ export class TurnToolExecutor {
   }
 
   /**
-   * Register a tool call and start executing it immediately.
-   * Policy-denied and unknown tools get a synthetic error result without executing.
-   * May be called while the LLM stream is still in progress.
+   * 注册工具调用并立即开始执行。
+   * 策略拒绝或未知工具只生成错误结果，不会真正执行。
+   * 模型仍在流式输出时也可以调用。
    */
   addTool(blockIndex: number, id: string, name: string, args: unknown): void {
     const { allows, tools } = this.opts;
@@ -222,15 +215,15 @@ export class TurnToolExecutor {
       this.opts.toolExecutionJournal.prepare({
         callId,
         sessionId: this.opts.sessionId,
-        turnId: this.opts.journalTurnId ?? this.opts.turnId,
+        turnId: this.opts.turnId,
+        agentRunId: this.opts.toolCtx.agentRunId,
         toolName: prepared?.id ?? name,
         input: prepared?.input ?? args,
       });
       track.journalStatus = 'prepared';
     }
 
-    // Snapshot the promises of all tools added before this one.
-    // Used by non-concurrent tools to wait for currently-running concurrent-safe ones.
+    // 快照当前工具之前已经加入的 Promise，供非并发工具等待正在执行的并发安全工具。
     const priorPromises = this.tracked
       .map(t => t.promise)
       .filter((p): p is Promise<void> => p !== undefined);
@@ -238,22 +231,21 @@ export class TurnToolExecutor {
     this.tracked.push(track);
 
     if (isConcurrencySafe) {
-      // Run as soon as the serial fence clears (i.e. no non-concurrent tool is active).
-      // Multiple concurrent-safe tools run in parallel with each other.
+      // 串行栅栏清空后立即执行；多个并发安全工具可以彼此并行。
       track.promise = this.serialTail
         .then(() => this.executeOne(track))
-        .catch(() => { /* executeOne handles errors internally */ });
+      .catch(() => { /* executeOne 已在内部处理错误 */ });
     } else {
-      // Non-concurrent: wait for the serial fence AND every prior concurrent-safe tool.
+      // 非并发工具必须同时等待串行栅栏和此前全部并发安全工具。
       const fence = Promise.allSettled([this.serialTail, ...priorPromises]);
       const p     = fence.then(() => this.executeOne(track)).catch(() => {});
-      // Advance the fence so future non-concurrent tools wait for us.
+      // 推进栅栏，让后续非并发工具等待当前调用。
       this.serialTail = p;
       track.promise   = p;
     }
   }
 
-  /** Returns true once every registered tool has produced a result. */
+  /** 全部已注册工具都产生结果后返回 true。 */
   allDone(): boolean {
     return this.tracked.every(t => t.done);
   }
@@ -263,7 +255,7 @@ export class TurnToolExecutor {
     return this.tracked.some(track => track.prepared?.requiresUserInteraction === true && !track.done);
   }
 
-  /** Returns tool results sorted by blockIndex. Call after allDone(). */
+  /** 按 blockIndex 返回工具结果，应在 allDone() 后调用。 */
   getResults(): ToolResultBlock[] {
     const sorted = [...this.tracked]
       .filter(track => track.result !== undefined)
@@ -294,7 +286,7 @@ export class TurnToolExecutor {
     });
   }
 
-  // ── Private execution ─────────────────────────────────────────────────────
+  // ── 内部执行流程 ──────────────────────────────────────────────────────────
 
   private async executeOne(track: TrackedTool): Promise<void> {
     const {
@@ -309,18 +301,17 @@ export class TurnToolExecutor {
       return;
     }
 
-    // ── Per-tool AbortController ──────────────────────────────────────────────
-    // Cascades from the turn signal so turn-level abort fires all tool aborts.
-    // abortTool(callId) fires only this controller, leaving the turn running.
+    // ── 单工具 AbortController ────────────────────────────────────────────────
+    // Turn 信号会级联取消全部工具，abortTool(callId) 只触发当前控制器并保留 Turn。
     const perToolCtrl    = new AbortController();
     const onTurnAbort    = (): void => perToolCtrl.abort();
     toolCtx.signal.addEventListener('abort', onTurnAbort, { once: true });
     this.toolAborts.set(id, perToolCtrl);
 
     try {
-      // ── Tool observer hook ────────────────────────────────────────────────
-      // Tool lifecycle hooks are UI/audit observers only. PermissionEngine is
-      // the execution gate, and the sandbox runner is the isolation boundary.
+      // ── 工具观察 Hook ─────────────────────────────────────────────────────
+      // 工具生命周期 Hook 只负责 UI 与审计观察。PermissionEngine 是执行门禁，
+      // Sandbox Runner 才是隔离边界。
       await hooks.trigger('beforeToolUse', {
         turnId, sessionId,
         payload: { callId: id, name, args: prepared?.input ?? args },
@@ -387,10 +378,9 @@ export class TurnToolExecutor {
         return;
       }
 
-      // ── Permission gate ───────────────────────────────────────────────────
-      // In production, buildAsk routes permission_required events through pushEv
-      // into the engine's pending queue so the SSE stream delivers them immediately.
-      // Tests/minimal hosts that omit buildAsk fall back to the engine-level config.ask.
+      // ── 权限门禁 ──────────────────────────────────────────────────────────
+      // 生产环境中，buildAsk 通过 pushEv 把 permission_required 写入 Engine 队列，
+      // 让 SSE 立即送达；测试和最小宿主省略时使用 Engine 级 config.ask。
       const permCtxWithAsk: PermissionContext = buildAsk
         ? { ...permCtx, sessionId, turnId, toolCallId: id, ask: buildAsk({
             sessionId,
@@ -436,9 +426,9 @@ export class TurnToolExecutor {
       this.opts.toolExecutionJournal?.authorize(id);
       if (this.opts.toolExecutionJournal) track.journalStatus = 'authorized';
 
-      // ── Execute ───────────────────────────────────────────────────────────
-      // Tools receive the per-tool signal so abortTool() can cancel just this
-      // invocation. The turn-level signal is cascaded so both fire on turn abort.
+      // ── 执行工具 ──────────────────────────────────────────────────────────
+      // 工具接收单调用信号，因此 abortTool() 只取消当前调用；
+      // Turn 级信号会级联触发，确保整个 Turn 中止时两者都生效。
       let output: unknown;
       let presentation: ToolResultBlock['presentation'];
       let isError = false;
@@ -451,7 +441,7 @@ export class TurnToolExecutor {
         output = executed.modelOutput;
         presentation = executed.presentation;
 
-        // If aborted mid-run but the turn is still alive, annotate the partial output.
+      // 工具中途被单独取消而 Turn 仍存活时，在部分输出后追加取消说明。
         if (perToolCtrl.signal.aborted && !toolCtx.signal.aborted) {
           output = annotateAborted(output);
         }
@@ -482,7 +472,7 @@ export class TurnToolExecutor {
           emit: event => this.emit(track, event),
         });
       } catch (err) {
-        // Per-tool abort (user cancelled this tool) — not an error from the LLM's perspective.
+      // 用户只取消了当前工具；从模型视角这是可观察结果，不是 LLM 错误。
         if (perToolCtrl.signal.aborted && !toolCtx.signal.aborted) {
           output  = '[用户中途终止]';
           isError = false;
@@ -532,8 +522,7 @@ export class TurnToolExecutor {
       toolCtx.signal.removeEventListener('abort', onTurnAbort);
       this.toolAborts.delete(id);
 
-      // Always mark done and signal the drain loop — even if an unexpected error
-      // escaped from hooks or the gate. Prevents the drain loop from deadlocking.
+      // 即使 Hook 或门禁抛出意外错误，也必须标记完成并唤醒排空循环，避免死锁。
       if (!track.done) {
         if (!track.result) {
           const msg = 'Tool execution failed unexpectedly';
@@ -543,9 +532,8 @@ export class TurnToolExecutor {
       }
       track.done = true;
       runner?.cleanup();
-      // Signal the drain loop that allDone() may now be true.
-      // (pushEv already signalled for the result event, but hooks run after pushEv,
-      // so we need a second signal here to wake the loop after done is set.)
+      // done 写入后再次唤醒排空循环，使其重新检查 allDone()。
+      // pushEv 只在结果事件入队时唤醒，而后续 Hook 可能延迟 done 的写入。
       signal();
     }
   }
@@ -656,13 +644,12 @@ function serializeToolOutput(output: unknown): string {
   return serialized ?? String(output);
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// ── 辅助函数 ──────────────────────────────────────────────────────────────────
 
 /**
- * Append an abort notice to a tool's partial output.
- * For bash-like results (objects with a `stdout` string field), the notice is
- * appended to stdout so the LLM sees what was printed before cancellation.
- * All other types are serialised and the notice appended as a trailing line.
+ * 在工具部分输出后追加取消说明。
+ * Bash 类结果包含 stdout 字符串时直接追加到 stdout，使模型仍能看到取消前的输出；
+ * 其他结果先序列化，再把说明作为末尾一行。
  */
 function annotateAborted(output: unknown): unknown {
   const notice = '\n[用户中途终止]';

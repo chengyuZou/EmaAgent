@@ -240,7 +240,7 @@ export function turnsRoute(bindings: AppBindings): Hono {
     }
 
     // Transcript 是旁路投影；它可以失败，但不能停止 Engine 事件消费。
-    const transcriptProjection = new SubagentTranscriptProjection(bindings.agentTaskMessages);
+    const transcriptProjection = new SubagentTranscriptProjection(bindings.agentRunMessages);
 
     const publishEvent = (event: EmaStreamEvent): boolean => {
       const result = eventStore.push(turnId, event);

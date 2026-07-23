@@ -1,4 +1,4 @@
-// 这里统一导出工具框架的注册、执行、结果展示和基础类型接口。
+// 统一导出工具框架的注册、执行、结果展示和基础类型接口。
 export type {
   ReadFileEntry,
   ReadFileState,
@@ -7,6 +7,7 @@ export type {
   RunOptions,
   RunResult,
   ICommandRunner,
+  SubagentRunResult,
   SubagentSpawnOpts,
   ISubagentSpawner,
   IMcpClientBridge,

@@ -1,14 +1,18 @@
 // 创建和管理子 Agent，并处理共享临时数据、取消、能力门禁和事件上报。
 
 import { randomUUID } from 'node:crypto';
-import type { SessionId, TurnId } from '@ema-agent/ids';
+import { asAgentRunId, type AgentRunId, type SessionId, type TurnId } from '@ema-agent/ids';
 import {
   EmaStreamEvent,
   ToolError,
 } from '@ema-agent/turn';
 import type { Message as ModelMessage } from '@ema-agent/llm';
-import type { ISubagentSpawner, SubagentSpawnOpts, ToolExecutionContext } from '@ema-agent/tools';
-import { clearTodos } from '@ema-agent/tool-builtin';
+import type {
+  ISubagentSpawner,
+  SubagentRunResult,
+  SubagentSpawnOpts,
+  ToolExecutionContext,
+} from '@ema-agent/tools';
 import type { AgentDeps } from './types.js';
 import { TurnPolicy } from './policy.js';
 import { TurnToolExecutor } from './tool-executor.js';
@@ -16,40 +20,35 @@ import { turnLoop, type ExecutorFactory } from './loop.js';
 import { selectSubagentTools } from './subagent-capabilities.js';
 import { TurnBudget } from './turn-budget.js';
 
-// ── SubagentSpawner ───────────────────────────────────────────────────────────
-//
-// Implements ISubagentSpawner. Responsible for ALL sub-agent dashboard events:
+// ── 子 Agent 调度入口 ─────────────────────────────────────────────────────────
+// 负责全部子 Agent 面板事件：
 //   subagent_started / subagent_progress / subagent_stream / subagent_completed
 //   subagent_failed / subagent_aborted
 //
-// The subagent tool only pre-allocates a subagentId and calls spawn().
-// Everything else — model resolution, timing, usage, event emission — lives here.
+// 子 Agent 工具只预分配 agentRunId 并调用 spawn；模型选择、计时、用量和事件均在此处理。
 //
-// AbortController model:
-//   Each spawn() creates a child AbortController linked to the parent signal.
-//   Parent abort → cascades to all active sub-agents automatically.
-//   abortSubagent(id) → cancels one sub-agent without touching the parent turn.
+// 每次 spawn 都创建关联父信号的 AbortController；父 Turn 中止会级联取消全部子执行，
+// abortSubagent(id) 则只取消指定子 Agent。
 //
-// taskStore integration:
-//   claim() before the loop; complete/fail/cancel on exit.
-//   turnId is null for sub-agents (no DB turn record); parentId = parentTurnId.
+// AgentRun 在循环开始前写入，退出时推进 complete/fail/cancel。
+// 每个子执行都归属一个父 Turn，但绝不冒充该 Turn。
 
-const RESULT_EXCERPT_MAX = 500;   // chars for tool_result excerpt in detail stream
-const OUTPUT_EXCERPT_MAX = 200;   // chars for subagent_completed.outputExcerpt
+const RESULT_EXCERPT_MAX = 500;   // 工具结果明细预览字符数
+const OUTPUT_EXCERPT_MAX = 200;   // 子 Agent 完成摘要字符数
 
 export class SubagentSpawner implements ISubagentSpawner {
-  // Keyed by subagentId — used by abortSubagent().
-  private readonly activeSubagents   = new Map<string, AbortController>();
-  // Background spawns: subagentId → result Promise (for awaitBackground).
-  private readonly backgroundSpawns  = new Map<string, Promise<{ output: string; usage: { inputTokens: number; outputTokens: number } }>>();
-  // Mailbox queues: subagentId → pending coordinator messages.
-  private readonly pendingMessages   = new Map<string, string[]>();
+  // 活跃执行按 agentRunId 索引，供单独取消。
+  private readonly activeSubagents   = new Map<AgentRunId, AbortController>();
+  // 后台执行按 agentRunId 保存结果 Promise，供后续等待。
+  private readonly backgroundSpawns  = new Map<AgentRunId, Promise<SubagentRunResult>>();
+  // 邮箱按 agentRunId 保存尚未投递的协调消息。
+  private readonly pendingMessages   = new Map<AgentRunId, string[]>();
   private stoppingReason: string | undefined;
 
   constructor(
     private readonly deps:                  AgentDeps,
     private readonly parentSessionId:       string,
-    private readonly parentTurnId:          string,   // the main agent's turn — NOT the sub-agent's id
+    private readonly parentTurnId:          string,   // 父 Agent 的 Turn，不是子执行 ID
     private readonly parentProviderId:      string,
     private readonly parentModel:           string,
     private readonly parentMessages:        ModelMessage[],
@@ -60,50 +59,48 @@ export class SubagentSpawner implements ISubagentSpawner {
     private readonly budget:                TurnBudget = new TurnBudget(),
   ) {}
 
-  // ── Background spawn ──────────────────────────────────────────────────────
+  // ── 后台执行 ─────────────────────────────────────────────────────────────
 
-  spawnBackground(prompt: string, opts: SubagentSpawnOpts, signal: AbortSignal): string {
-    const subagentId = opts.subagentId ?? randomUUID();
-    const optsWithId: SubagentSpawnOpts = { ...opts, subagentId };
-    // Initialise an empty mailbox queue so queueMessage() works immediately.
-    this.pendingMessages.set(subagentId, []);
+  spawnBackground(prompt: string, opts: SubagentSpawnOpts, signal: AbortSignal): AgentRunId {
+    const agentRunId = opts.agentRunId ?? asAgentRunId(randomUUID());
+    const optsWithId: SubagentSpawnOpts = { ...opts, agentRunId };
+    // 先建立空邮箱，确保调用方拿到 ID 后可以立即投递消息。
+    this.pendingMessages.set(agentRunId, []);
     const p = this.spawn(prompt, optsWithId, signal).finally(() => {
-      this.pendingMessages.delete(subagentId);
+      this.pendingMessages.delete(agentRunId);
     });
-    // Suppress unhandled rejection: if awaitBackground() is never called and the
-    // sub-agent fails, the stored Promise would produce an UnhandledPromiseRejection
-    // when GC drops the Map entry. The error is already surfaced via subagent_failed
-    // SSE event; awaitBackground()'s own `await p` still re-throws correctly.
+    // 即使父循环未调用 awaitBackground，也不能产生未处理 Promise 拒绝。
+    // 失败已通过 SSE 上报；真正 await 原 Promise 时仍会按原错误抛出。
     p.catch(() => {});
-    this.backgroundSpawns.set(subagentId, p);
-    return subagentId;
+    this.backgroundSpawns.set(agentRunId, p);
+    return agentRunId;
   }
 
   async awaitBackground(
-    subagentId: string,
-  ): Promise<{ output: string; usage: { inputTokens: number; outputTokens: number } } | null> {
-    const p = this.backgroundSpawns.get(subagentId);
+    agentRunId: AgentRunId,
+  ): Promise<SubagentRunResult | null> {
+    const p = this.backgroundSpawns.get(agentRunId);
     if (!p) return null;
     try {
       return await p;
     } finally {
-      this.backgroundSpawns.delete(subagentId);
+      this.backgroundSpawns.delete(agentRunId);
     }
   }
 
-  // ── Mailbox ───────────────────────────────────────────────────────────────
+  // ── 邮箱 ─────────────────────────────────────────────────────────────────
 
-  queueMessage(subagentId: string, message: string): boolean {
-    const queue = this.pendingMessages.get(subagentId);
-    if (!queue) return false;   // sub-agent not active or already finished
+  queueMessage(agentRunId: AgentRunId, message: string): boolean {
+    const queue = this.pendingMessages.get(agentRunId);
+    if (!queue) return false;   // 子 Agent 不存在或已经结束
     queue.push(message);
     return true;
   }
 
-  // ── Per-subagent cancellation ─────────────────────────────────────────────
+  // ── 单个子 Agent 取消 ─────────────────────────────────────────────────────
 
-  abortSubagent(subagentId: string): void {
-    this.activeSubagents.get(subagentId)?.abort();
+  abortSubagent(agentRunId: AgentRunId): void {
+    this.activeSubagents.get(agentRunId)?.abort();
   }
 
   /** 父 Turn 收口时取消并等待所有未显式 await 的后台子 Agent。 */
@@ -117,13 +114,13 @@ export class SubagentSpawner implements ISubagentSpawner {
     this.pendingMessages.clear();
   }
 
-  // ── Spawn ─────────────────────────────────────────────────────────────────
+  // ── 执行 ─────────────────────────────────────────────────────────────────
 
   async spawn(
     prompt:  string,
     opts:    SubagentSpawnOpts,
     signal:  AbortSignal,
-  ): Promise<{ output: string; usage: { inputTokens: number; outputTokens: number } }> {
+  ): Promise<SubagentRunResult> {
     const releaseBudget = this.budget.enterSubagent();
     const { tools, llm, permission, hooks } = this.deps;
     const selectedTools = selectSubagentTools(tools.list(), {
@@ -132,56 +129,51 @@ export class SubagentSpawner implements ISubagentSpawner {
       skills: this.deps.skillRunner !== undefined,
     });
     const policy = new TurnPolicy(tools.manifestSnapshot(selectedTools));
-    const subagentId    = opts.subagentId ?? randomUUID();
+    const agentRunId    = opts.agentRunId ?? asAgentRunId(randomUUID());
     const sessionId     = this.parentSessionId as SessionId;
     const parentTurnId  = this.parentTurnId   as TurnId;
     const resolvedModel = opts.model ?? this.parentModel;
-    clearTodos(subagentId);
-    // Subagents get no workspace: workspaceRoot='' means "no workspace" —
-    // pathInAnyWorkingDir short-circuits to false and resolvePatternRoot
-    // returns no-match for session-scoped relative patterns, so a subagent
-    // cannot touch the parent's workspace files unless an explicit global/
-    // home-anchored (~/) allow rule permits it. Do NOT pass process.cwd().
+    // 普通子 Agent 不继承父工作区。空 workspaceRoot 会让相对路径规则拒绝匹配；
+    // 只有显式全局规则或用户主目录规则才能授权，禁止改成 process.cwd()。
     const permCtx       = {
       workspaceRoot: '',
       sessionId: this.parentSessionId,
-      turnId: subagentId,
+      turnId: parentTurnId,
       internalPaths: this.scratchpadDir
         ? { turnScratchpad: this.scratchpadDir }
         : undefined,
     };
 
     const startedAtMs = Date.now();
-    const taskId      = opts.taskId;   // undefined until V1.5 task-store wiring
+    const taskId      = opts.taskId;
     const kind        = opts.kind ?? 'fork';
     const emit = (ev: EmaStreamEvent) => this.parentEmit?.(ev);
 
-    // Child AbortController: cascades from parent signal, but can also be aborted
-    // independently via abortSubagent(subagentId) without killing the parent turn.
+    // 子控制器继承父取消信号，也允许只取消当前 AgentRun。
     const childCtrl     = new AbortController();
     const onParentAbort = () => childCtrl.abort();
     signal.addEventListener('abort', onParentAbort, { once: true });
-    this.activeSubagents.set(subagentId, childCtrl);
+    this.activeSubagents.set(agentRunId, childCtrl);
 
-    // claim + subagent_started emit can throw (DB write / subscriber error).
-    // If they do, release the listener + map entry registered above so they
-    // don't leak — the main loop's try/finally below only covers the loop body.
+    // 持久化或启动事件订阅者都可能抛错；循环开始前失败时也必须释放监听和索引。
     try {
-      // ── taskStore: register this sub-agent ──────────────────────────────
-      if (this.deps.taskStore) {
-        this.deps.taskStore.claim({
-          taskId:    subagentId,
-          sessionId: this.parentSessionId,
-          turnId:    null,
-          parentId:  this.parentTurnId,
-        });
-      }
+      // ── 先持久化子执行，再发送启动事件 ──────────────────────────────────
+      this.deps.agentRunStore?.start({
+        agentRunId,
+        sessionId,
+        parentTurnId,
+        taskId,
+        kind,
+        purpose: opts.description,
+        providerConfigId: this.parentProviderId,
+        modelId: resolvedModel,
+      });
 
-      // ── subagent_started ────────────────────────────────────────────────
+      // ── 子 Agent 启动事件 ──────────────────────────────────────────────
       emit({
         type: 'subagent_started',
         sessionId,
-        subagentId,
+        subagentId: agentRunId,
         parentTurnId,
         description:   opts.description,
         model:         resolvedModel,
@@ -191,22 +183,19 @@ export class SubagentSpawner implements ISubagentSpawner {
       });
     } catch (err) {
       signal.removeEventListener('abort', onParentAbort);
-      this.activeSubagents.delete(subagentId);
+      this.activeSubagents.delete(agentRunId);
       releaseBudget();
       throw err;
     }
 
-    // Tracking state for dashboard metrics
+    // 面板累计指标。
     let currentIteration = 0;
     let toolCallCount    = 0;
-    const callStartMs    = new Map<string, number>();  // callId → start epoch ms
-    const callIdToName   = new Map<string, string>();  // callId → tool name
+    const callStartMs    = new Map<string, number>();  // callId → 开始时间
+    const callIdToName   = new Map<string, string>();  // callId → 工具名
 
-    // Build initial context based on AgentKind:
-    //   'fork'     — inherit parent history with a cache breakpoint on the last message
-    //                so parallel sub-agents sharing the same prefix only pay for it once.
-    //   'subagent' — fresh slate; only the task prompt, no parent history (saves tokens,
-    //                avoids context bleed for independent workers).
+    // fork 继承父历史并在尾部设置缓存断点；subagent 只接收自包含任务文本，
+    // 用于减少独立工作者的 Token 消耗和上下文串扰。
     let messages: ModelMessage[];
     if (kind === 'subagent') {
       messages = [{ role: 'user', content: prompt }];
@@ -219,14 +208,13 @@ export class SubagentSpawner implements ISubagentSpawner {
 
     let subagentExecutor: TurnToolExecutor | undefined;
     const buildExecutor: ExecutorFactory = ({ pushEv, signal: wakeSignal }) => {
-      // Intentionally omitting `subagentSpawner` from the sub-agent's toolCtx.
-      // This enforces depth=1: sub-agents cannot recursively spawn further sub-agents.
-      // Nested spawning would require unbounded resource accounting, deadlock analysis
-      // for mailbox cycles, and cascading abort propagation — all deferred to V2.
+      // 子 ToolContext 故意不注入 subagentSpawner，以此把递归深度限制为一层。
+      // 多层嵌套需要资源预算、邮箱死锁与级联取消设计，V1 不开放。
       const toolCtx: ToolExecutionContext = {
         sessionId,
-        turnId:           subagentId as TurnId,
-        workspaceRoot:    '',  // no workspace — see permCtx note above
+        turnId:           parentTurnId,
+        agentRunId,
+        workspaceRoot:    '',  // 不提供工作区，权限原因见上方说明
         signal:           childCtrl.signal,
         readFileState:    new Map(),
         emit:             pushEv,
@@ -235,13 +223,12 @@ export class SubagentSpawner implements ISubagentSpawner {
         kbSearch:         this.kbSearch,
         toolCapabilities: policy.capabilities(),
         scratchpadDir:    this.scratchpadDir,
-        scratchpadAuthor: `subagent:${subagentId.slice(0, 8)}`,
+        scratchpadAuthor: `subagent:${agentRunId.slice(0, 8)}`,
       };
 
       const executor = new TurnToolExecutor({
         sessionId,
-        turnId:     subagentId as TurnId,
-        journalTurnId: this.parentTurnId as TurnId,
+        turnId:     parentTurnId,
         allows:     name => policy.allows(name),
         toolManifest: policy.manifestSnapshot(),
         tools, permission, permCtx, hooks, toolCtx,
@@ -268,10 +255,9 @@ export class SubagentSpawner implements ISubagentSpawner {
         sessionId:            this.parentSessionId,
         turnId:               this.parentTurnId,
         getScratchpadContext: this.getScratchpadContext,
-        // Drain mailbox queue atomically before each LLM call so coordinator
-        // messages arrive exactly once at the next iteration boundary.
+        // 每次 LLM 调用前原子清空邮箱，确保协调消息只在下一轮边界投递一次。
         getMailboxMessages: () => {
-          const queue = this.pendingMessages.get(subagentId);
+          const queue = this.pendingMessages.get(agentRunId);
           if (!queue || queue.length === 0) return [];
           const msgs = [...queue];
           queue.length = 0;
@@ -282,38 +268,38 @@ export class SubagentSpawner implements ISubagentSpawner {
 
         switch (ev.type) {
 
-          // ── New iteration — card progress + detail heartbeat ─────────────
+          // ── 新迭代：卡片进度与详情心跳 ─────────────────────────────────
           case 'loop_iteration':
             currentIteration = ev.n;
             emit({
               type: 'subagent_progress',
-              sessionId, subagentId,
+              sessionId, subagentId: agentRunId,
               iteration:     currentIteration,
               elapsedMs,
               toolCallCount,
             });
             emit({
               type: 'subagent_stream',
-              sessionId, subagentId,
-              ev: { type: 'iteration', sessionId, subagentId, taskId, n: currentIteration, elapsedMs },
+              sessionId, subagentId: agentRunId,
+              ev: { type: 'iteration', sessionId, subagentId: agentRunId, taskId, n: currentIteration, elapsedMs },
             });
             break;
 
-          // ── Text streaming ───────────────────────────────────────────────
+          // ── 文本流 ─────────────────────────────────────────────────────
           case 'loop_text_delta':
             emit({
               type: 'subagent_stream',
-              sessionId, subagentId,
-              ev: { type: 'text_delta', sessionId, subagentId, taskId, delta: ev.delta },
+              sessionId, subagentId: agentRunId,
+              ev: { type: 'text_delta', sessionId, subagentId: agentRunId, taskId, delta: ev.delta },
             });
             break;
 
-          // ── Reasoning / thinking ─────────────────────────────────────────
+          // ── 推理流 ─────────────────────────────────────────────────────
           case 'loop_thinking_delta':
             emit({
               type: 'subagent_stream',
-              sessionId, subagentId,
-              ev: { type: 'reasoning_delta', sessionId, subagentId, taskId, delta: ev.delta },
+              sessionId, subagentId: agentRunId,
+              ev: { type: 'reasoning_delta', sessionId, subagentId: agentRunId, taskId, delta: ev.delta },
             });
             break;
 
@@ -324,28 +310,28 @@ export class SubagentSpawner implements ISubagentSpawner {
               sessionId,
               turnId: parentTurnId,
               attempt: ev.attempt,
-              reason: `子 Agent ${subagentId}：${ev.reason}`,
+              reason: `子 Agent ${agentRunId}：${ev.reason}`,
               removed: ev.removed,
               replacements: ev.replacements,
             });
             break;
 
-          // ── Tool call dispatched ─────────────────────────────────────────
+          // ── 工具调用已派发 ─────────────────────────────────────────────
           case 'loop_tool_complete':
             toolCallCount++;
             callStartMs.set(ev.callId, Date.now());
             callIdToName.set(ev.callId, ev.name);
             emit({
               type: 'subagent_stream',
-              sessionId, subagentId,
+              sessionId, subagentId: agentRunId,
               ev: {
-                type: 'tool_call', sessionId, subagentId, taskId,
+                type: 'tool_call', sessionId, subagentId: agentRunId, taskId,
                 callId: ev.callId, name: ev.name, args: ev.args, iteration: currentIteration,
               },
             });
             break;
 
-          // ── Tool result from executor relay ──────────────────────────────
+          // ── 工具执行器转发的结果 ────────────────────────────────────────
           case 'loop_relay': {
             const inner = ev.ev;
             if (inner.type === 'tool_result') {
@@ -366,10 +352,10 @@ export class SubagentSpawner implements ISubagentSpawner {
 
               emit({
                 type: 'subagent_stream',
-                sessionId, subagentId,
+                sessionId, subagentId: agentRunId,
                 ev: {
                   type: 'tool_result',
-                  sessionId, subagentId, taskId,
+                  sessionId, subagentId: agentRunId, taskId,
                   callId: inner.callId,
                   name,
                   excerpt,
@@ -383,7 +369,7 @@ export class SubagentSpawner implements ISubagentSpawner {
             break;
           }
 
-          // ── Turn complete — collect final text + usage ───────────────────
+          // ── 循环完成：收集最终文本与用量 ───────────────────────────────
           case 'loop_done':
             fullText = ev.fullText;
             usage    = {
@@ -400,29 +386,30 @@ export class SubagentSpawner implements ISubagentSpawner {
         throw new Error(signal.aborted ? 'Parent turn aborted' : 'Sub-agent aborted by user');
       }
 
-      // ── subagent_completed ──────────────────────────────────────────────
+      // ── 子 Agent 完成事件 ──────────────────────────────────────────────
       const durationMs = Date.now() - startedAtMs;
       emit({
         type: 'subagent_completed',
-        sessionId, subagentId,
+        sessionId, subagentId: agentRunId,
         outputExcerpt:  fullText.slice(0, OUTPUT_EXCERPT_MAX),
         iterationCount: currentIteration,
         toolCallCount,
         stats: { inputTokens: usage.inputTokens, outputTokens: usage.outputTokens, durationMs },
       });
 
-      this.deps.taskStore?.complete(subagentId, {
+      this.deps.agentRunStore?.complete(agentRunId, {
         iterations:   currentIteration,
+        toolCallCount,
         inputTokens:  usage.inputTokens,
         outputTokens: usage.outputTokens,
+        outputExcerpt: fullText.slice(0, OUTPUT_EXCERPT_MAX),
       });
 
-      return { output: fullText, usage };
+      return { agentRunId, output: fullText, usage };
 
     } catch (err) {
       const elapsedMs = Date.now() - startedAtMs;
-      // childCtrl.signal covers both parent cascade and per-agent abort.
-      // Distinguish reason by checking the parent signal separately.
+      // 子信号同时覆盖父级联取消与单独取消，需再检查父信号区分原因。
       const isAbort = childCtrl.signal.aborted;
       const message = err instanceof Error ? err.message : String(err);
 
@@ -433,20 +420,26 @@ export class SubagentSpawner implements ISubagentSpawner {
         const reason = signal.aborted
           ? 'parent_aborted'
           : this.stoppingReason ?? 'user_aborted';
-        emit({ type: 'subagent_aborted', sessionId, subagentId, reason, elapsedMs });
-        this.deps.taskStore?.cancel(subagentId, reason);
+        emit({ type: 'subagent_aborted', sessionId, subagentId: agentRunId, reason, elapsedMs });
+        this.deps.agentRunStore?.cancel(agentRunId, reason);
       } else {
-        emit({ type: 'subagent_failed', sessionId, subagentId, error: message, atIteration: currentIteration, elapsedMs });
-        this.deps.taskStore?.fail(subagentId, message);
+        emit({
+          type: 'subagent_failed',
+          sessionId,
+          subagentId: agentRunId,
+          error: message,
+          atIteration: currentIteration,
+          elapsedMs,
+        });
+        this.deps.agentRunStore?.fail(agentRunId, message);
       }
 
       throw err;
 
     } finally {
       signal.removeEventListener('abort', onParentAbort);
-      this.activeSubagents.delete(subagentId);
+      this.activeSubagents.delete(agentRunId);
       releaseBudget();
-      clearTodos(subagentId);
     }
   }
 }

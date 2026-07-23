@@ -1,9 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { asCharacterCardId } from '@ema-agent/ids';
 import {
-  AgentTaskMessageSerializationError,
-  AgentTaskMessagesRepo,
-  AgentTasksRepo,
+  asAgentRunId,
+  asCharacterCardId,
+  asSessionId,
+  asTurnId,
+} from '@ema-agent/ids';
+import {
+  AgentRunMessageSerializationError,
+  AgentRunMessagesRepo,
+  AgentRunsRepo,
   CharacterCardsRepo,
   CharacterCardUpdateContractError,
   Database,
@@ -163,44 +168,44 @@ describe('N-007 DocumentPreview MIME 契约', () => {
   });
 });
 
-describe('N-011 AgentTaskMessage 序列化防御', () => {
+describe('AgentRunMessage 序列化防御', () => {
   it('合法内容正常写入并保持 JSON', () => {
     withDatabase('data', (database) => {
-      insertAgentTask(database, 'task-a');
-      const repo = new AgentTaskMessagesRepo(database.sqlite);
+      insertAgentRun(database, 'run-a');
+      const repo = new AgentRunMessagesRepo(database.sqlite);
       repo.insert({
-        taskId: 'task-a',
+        agentRunId: asAgentRunId('run-a'),
         role: 'assistant',
         content: { text: 'hello' },
         createdAt: 2,
       });
 
-      expect(repo.listForTask('task-a')).toHaveLength(1);
-      expect(JSON.parse(repo.listForTask('task-a')[0]!.content_json))
+      expect(repo.listForRun(asAgentRunId('run-a'))).toHaveLength(1);
+      expect(JSON.parse(repo.listForRun(asAgentRunId('run-a'))[0]!.content_json))
         .toEqual({ text: 'hello' });
     });
   });
 
   it('undefined 和循环引用在进入 SQLite 前被明确拒绝', () => {
     withDatabase('data', (database) => {
-      insertAgentTask(database, 'task-a');
-      const repo = new AgentTaskMessagesRepo(database.sqlite);
+      insertAgentRun(database, 'run-a');
+      const repo = new AgentRunMessagesRepo(database.sqlite);
       const circular: Record<string, unknown> = {};
       circular['self'] = circular;
 
       expect(() => repo.insert({
-        taskId: 'task-a',
+        agentRunId: asAgentRunId('run-a'),
         role: 'assistant',
         content: undefined,
         createdAt: 2,
-      })).toThrow(AgentTaskMessageSerializationError);
+      })).toThrow(AgentRunMessageSerializationError);
       expect(() => repo.insert({
-        taskId: 'task-a',
+        agentRunId: asAgentRunId('run-a'),
         role: 'tool_result',
         content: circular,
         createdAt: 3,
-      })).toThrow(AgentTaskMessageSerializationError);
-      expect(repo.listForTask('task-a')).toEqual([]);
+      })).toThrow(AgentRunMessageSerializationError);
+      expect(repo.listForRun(asAgentRunId('run-a'))).toEqual([]);
     });
   });
 });
@@ -218,16 +223,22 @@ function insertAsset(database: Database, id: string): void {
   });
 }
 
-function insertAgentTask(database: Database, id: string): void {
+function insertAgentRun(database: Database, id: string): void {
   database.sqlite.prepare(`
     INSERT INTO sessions (id, title, created_at, updated_at)
     VALUES ('session-a', 'Session A', 1, 1)
   `).run();
-  new AgentTasksRepo(database.sqlite).insert({
-    id,
-    sessionId: 'session-a',
-    turnId: null,
-    parentId: null,
+  database.sqlite.prepare(`
+    INSERT INTO turns (
+      id, session_id, trigger_type, execution_profile, narrative_policy,
+      status, user_input, started_at
+    ) VALUES ('turn-a', 'session-a', 'userMessage', 'work', 'auto', 'running', 'test', 1)
+  `).run();
+  new AgentRunsRepo(database.sqlite).insert({
+    id: asAgentRunId(id),
+    sessionId: asSessionId('session-a'),
+    parentTurnId: asTurnId('turn-a'),
+    kind: 'subagent',
     createdAt: 1,
   });
 }

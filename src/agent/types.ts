@@ -34,11 +34,12 @@ import type { IArtifactStore } from '@ema-agent/artifact';
 import type { PermissionEngine, AskPermissionFn } from '@ema-agent/permission';
 import type { AgentFileStateStore } from '@ema-agent/agent-context';
 import type { ModelCapabilityResolver } from '@ema-agent/provider';
+import type { AgentRunStorePort } from './runs/types.js';
 
-/** Minimal interface for the AskUser registry — avoids importing from core. */
+/** AskUser 注册表的最小接口，避免 Agent 反向依赖 Core。 */
 export interface AskUserRegistryLike {
   create(timeoutMs?: number): { promptId: string; promise: Promise<Record<string, string>> };
-  /** Keyed variant: registry uses the caller-supplied promptId, not a new UUID. */
+  /** 使用调用方提供的 promptId，不在注册表中另建 UUID。 */
   createWithId(
     promptId: string,
     timeoutMs?: number,
@@ -49,20 +50,17 @@ export interface AskUserRegistryLike {
   cancel(promptId: string): boolean;
 }
 
-// ── Dependency surface ────────────────────────────────────────────────────────
+// ── 运行依赖 ──────────────────────────────────────────────────────────────────
 
 /**
- * Everything AgentEngine needs — a strict subset of AppBindings.
- * No imports from ConversationEngine; the two engines share nothing but types.
+ * AgentEngine 所需依赖，是 AppBindings 的严格子集。
+ * 不导入 ConversationEngine，两套过渡期引擎只共享基础类型。
  *
- * Deliberately excludes model_bindings: provider + model resolution is the
- * orchestrator's job, not the engine's. The engine receives a resolved
- * providerId + model via AgentRunInput.
+ * 不包含 model_bindings：Provider 与模型解析属于 Orchestrator，
+ * Engine 只通过 TurnExecutionInput 接收已经确定的 providerId 和 model。
  */
 export interface AgentDeps {
   session:    SessionStore;
-  /** 根 Agent Turn 与其 AgentTask 投影的统一终态入口。 */
-  turnLifecycle: IAgentTurnLifecycle;
   hooks:      HookBus;
   llm:        LanguageModel;
   modelCapabilities: ModelCapabilityResolver;
@@ -70,16 +68,15 @@ export interface AgentDeps {
   tools:      ToolRegistry;
   permission: PermissionEngine;
   /**
-   * Per-session sandbox runner factory. Returning undefined disables sandboxing
-   * (bash will spawn directly). The orchestrator caches one CommandRunner per
-   * sessionId — workspaceRoot differs across sessions so a singleton won't work.
-   * Optional so tests can omit it entirely.
+   * 按 Session 创建沙箱 Runner。返回 undefined 时 Bash 会直接启动进程。
+   * 每个 Session 的 workspaceRoot 不同，因此 Orchestrator 按 sessionId 缓存，
+   * 不能使用全局单例；聚焦测试可以省略。
    */
   getCommandRunner?: (sessionId: SessionId) => ICommandRunner | undefined;
   /**
-   * Factory that builds a per-turn askPermission callback wired to the turn's
-   * SSE event stream. Tests can omit it (PermissionEngine then falls back to
-   * its constructor `ask` config — typically a deny-all stub).
+   * 为每个 Turn 创建连接到 SSE 事件流的 askPermission 回调。
+   * 测试可省略，此时 PermissionEngine 使用构造参数中的 ask 配置，
+   * 通常是默认拒绝的替身实现。
    */
   buildAsk?: (args: {
     sessionId: SessionId;
@@ -88,118 +85,80 @@ export interface AgentDeps {
     emit:      (ev: EmaStreamEvent) => void;
   }) => AskPermissionFn;
   /**
-   * Registry for pending ask_user prompts. The engine injects a resolver into
-   * toolCtx that the ask_user tool awaits.
+   * 保存待回答 ask_user 请求的注册表。Engine 把解析函数注入 toolCtx，
+   * ask_user 工具会等待该函数返回。
    */
   askUserRegistry?: AskUserRegistryLike;
-  /** Persistent artifact store — injected so artifact_write/read/list persist across turns. */
+  /** 持久 Artifact 存储，使 artifact_write/read/list 可以跨 Turn 使用。 */
   artifactStore?: IArtifactStore;
-  /** MCP client bridge — injected so mcp_call tool can dispatch to connected MCP servers. */
+  /** MCP 客户端桥接，使 mcp_call 可以调用已经连接的 MCP Server。 */
   mcpClient?: IMcpClientBridge;
-  /** Skill runner bridge — injected so skill_call tool can invoke registered skills. */
+  /** Skill 运行桥接，使 skill_call 可以调用已注册 Skill。 */
   skillRunner?: ISkillRunner;
   /**
-   * Knowledge-base search — injected so the kb_search tool can run AgenticRAG.
-   * kbIds: which KBs to search ([] / undefined → active KB). Supplied by the LLM tool call.
-   * assetScopes: per-KB doc filters from the chat picker (user selection, not LLM).
-   * Engine closure passes assetScopes only when the tool does NOT supply kbIds.
+   * 知识库搜索能力，供 kb_search 工具执行 Agentic RAG。
+   * kbIds 由模型工具调用提供；空数组或 undefined 表示使用当前激活知识库。
+   * assetScopes 来自用户在聊天选择器中的文档范围，不由模型决定。
+   * 只有工具未显式提供 kbIds 时，Engine 才会传入 assetScopes。
    */
   kbSearch?: (query: string, topK?: number, kbIds?: string[], assetScopes?: KbAssetScope[], sessionId?: string, turnId?: string) => Promise<KbSearchResult>;
   /**
-   * Per-session context store factory. Returns the file-state and tool-result
-   * stores for a given session, creating them on first call and caching.
-   * Optional so tests and non-agent callers can omit it.
+   * 按 Session 获取文件状态和工具结果存储，首次调用时创建并缓存。
+   * 测试与非 Agent 调用方可以省略。
    */
   getContextStores?: (sessionId: SessionId) => {
     fileStateStore:  AgentFileStateStore;
     toolResultStore: ToolResultStore;
   };
   /**
-   * Task lifecycle store for crash recovery and cross-session task visibility.
-   * Optional — omit in tests.
+   * 子 Agent 执行记录；根 Turn 不建立重复 AgentRun 投影。
+   * 聚焦循环测试可以省略。
    */
-  taskStore?: IAgentTaskStore;
+  agentRunStore?: AgentRunStorePort;
   /** 工具副作用的持久化状态机；生产环境由 Tools Journal 注入。 */
   toolExecutionJournal?: ToolExecutionJournalPort;
 }
 
-// ── IAgentTaskStore — minimal interface avoids hard dep on agent-task ─────────
-
-export interface IAgentTaskStore {
-  claim(args: { taskId: string; sessionId: string; turnId: string | null; parentId: string | null }): unknown;
-  complete(taskId: string, stats: { iterations: number; inputTokens: number; outputTokens: number }): void;
-  fail(taskId: string, reason: string): void;
-  cancel(taskId: string, reason: string): void;
-}
+// ── Turn 执行输入 ─────────────────────────────────────────────────────────────
 
 /**
- * 根 Agent Turn 的终态 Facade。生产实现必须把 Turn 与根 AgentTask 放在
- * 同一个数据事务中推进；Agent 不得分别写两个 Store。
+ * 单次 Turn 的调用参数。Provider 与模型等路由决策必须在调用 engine.run()
+ * 前由 Orchestrator 完成，Engine 只负责执行。
  */
-export interface IAgentTurnLifecycle {
-  complete(input: {
-    turnId: TurnId;
-    iterations: number;
-    inputTokens: number;
-    outputTokens: number;
-  }): void;
-  fail(input: {
-    turnId: TurnId;
-    code: TurnFailureCode;
-    message: string;
-  }): void;
-  abort(input: {
-    sessionId: SessionId;
-    turnId: TurnId;
-    reason: string;
-  }): void;
-}
-
-// ── Run input ─────────────────────────────────────────────────────────────────
-
-/**
- * Per-turn call arguments. All routing decisions (which provider, which model)
- * must be resolved by the orchestrator before calling engine.run() — the engine
- * is a pure executor.
- */
-export interface AgentRunInput {
-  /** Already-started turn (caller is responsible for session.startTurn). */
+export interface TurnExecutionInput {
+  /** 已经启动的 Turn；调用方负责先执行 session.startTurn。 */
   turn:                  Turn;
-  /** Abort signal wired from session.startTurn — fires on user Stop. */
+  /** session.startTurn 返回的取消信号，用户停止时触发。 */
   signal:                AbortSignal;
   /**
-   * User message content. Plain string for text-only turns; LlmContentPart[]
-   * for multimodal (image, audio, file). These are two shapes of the same
-   * concept — the engine picks them apart via Array.isArray.
+   * 用户消息内容。纯文本 Turn 使用字符串，多模态图片、音频和文件使用
+   * LlmContentPart[]；Engine 通过 Array.isArray 区分两种表示。
    */
   userInput:             string | LlmContentPart[];
   /** 只用于 Message 落库，禁止携带图片、音频或文件 Base64。 */
   persistedUserInput?:   MessageBlocks;
   /** Turn 开始时冻结的 Prompt Slot 快照，Agent 多轮共享同一 revision。 */
   prompt:                PromptSnapshot;
-  /** Resolved provider_configs.id — orchestrator responsibility. */
+  /** 已解析的 provider_configs.id，由 Orchestrator 负责提供。 */
   providerId:            string;
-  /** Resolved model name — orchestrator responsibility. */
+  /** 已解析的模型名，由 Orchestrator 负责提供。 */
   model:                 string;
-  /** The workspace root. Empty string = no workspace (subagent). */
+  /** 工作区根目录；空字符串表示不提供工作区。 */
   workspaceRoot: string;
   /** Core RuntimePaths 为当前 Turn 生成的临时目录；Agent 不负责拼接数据目录。 */
   scratchpadDir?: string;
-  /** KB ids the user selected in the chat picker. kbSearch searches across all of them.
-   *  [] / omit → falls back to the active KB. */
+  /** 用户在聊天选择器中选中的 KB ID；空数组或省略时使用当前激活知识库。 */
   kbIds?:         string[];
-  /** Per-KB doc scopes from the chat picker — narrows search within each KB.
-   *  KBs without a matching scope are searched unfiltered. */
+  /** 聊天选择器提供的逐 KB 文档范围；没有对应范围的 KB 不额外过滤。 */
   kbAssetScopes?: KbAssetScope[];
   /**
-   * Per-iteration compaction callback. Called at the top of every turnLoop
-   * iteration before the LLM call so multi-step agent turns don't overflow
-   * the context window mid-turn. Orchestrator wires this to ContextCompactor.compact().
-   * Omit in tests and sub-agent spawns (ephemeral context).
+   * 每轮压缩回调，在 TurnLoop 调用模型前执行，防止多步骤 Agent Turn
+   * 在中途超过上下文窗口。Orchestrator 将其接到 ContextCompactor.compact()；
+   * 测试和临时子 Agent 上下文可以省略。
    */
   prepareContextContributions?: ContextContributionProvider;
   compactContext?: ContextHistoryCompactor;
-  /** User-requested thinking mode — forwarded to every LlmRequest in the agent loop. */
+  /** 用户选择的思考模式，会传给 Agent 循环中的每次 LlmRequest。 */
   thinking?: ThinkingMode;
   /** Core 在 Engine 前完成的媒体降级。 */
   requestDegradations?: RequestDegradationNotice[];

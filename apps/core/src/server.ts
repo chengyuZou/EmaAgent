@@ -20,7 +20,10 @@ import { createMarketRouter }    from './routes/market.js';
 import { shellRoute }            from './routes/shell.js';
 import { workspaceRoute }        from './routes/workspace.js';
 import { kbRoute }               from './routes/knowledge-base.js';
-import { agentTasksRoute }       from './routes/agent-tasks.js';
+import {
+  agentRunsRoute,
+  legacyAgentTasksRoute,
+} from './routes/agentRuns.js';
 import { storageStatsRoute }     from './routes/storage-stats.js';
 import { systemRoute }           from './routes/system.js';
 import { requestBudgetMiddleware } from './http/request-budget.js';
@@ -82,7 +85,8 @@ export function buildServer(bindings: AppBindings, sharedSecret: string): Hono {
   app.route('/api/mcp',            createMcpRouter(bindings));
   app.route('/api/market',         createMarketRouter(bindings));
   app.route('/api/kb',             kbRoute(bindings));
-  app.route('/api/agent-tasks',    agentTasksRoute(bindings));
+  app.route('/api/agent-runs',     agentRunsRoute(bindings));
+  app.route('/api/agent-tasks',    legacyAgentTasksRoute(bindings));
 
   // 404 兜底
   app.notFound((c) => c.json({ error: 'not_found' }, 404));

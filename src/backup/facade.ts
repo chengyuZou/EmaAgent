@@ -235,8 +235,14 @@ export class SessionBackupFacade {
     const turns = readArray<TurnRestoreRow>(extracted, 'turns.json');
     const messages = readArray<MessageRestoreRow>(extracted, 'messages.json');
     const branches = readArray<BranchExport>(extracted, 'branches.json');
-    const agentTasks = readArray<SessionRestorePayload['agentTasks'][number]>(extracted, 'agent_tasks.json');
-    const agentTaskMessages = readArray<SessionRestorePayload['agentTaskMessages'][number]>(extracted, 'agent_task_messages.json');
+    const agentRuns = readArray<SessionRestorePayload['agentRuns'][number]>(
+      extracted,
+      'agent_runs.json',
+    );
+    const agentRunMessages = readArray<SessionRestorePayload['agentRunMessages'][number]>(
+      extracted,
+      'agent_run_messages.json',
+    );
     const kbActivations = readArray<SessionRestorePayload['kbActivations'][number]>(extracted, 'kb_activations.json');
     const usageRecords = extracted.has('usage_records.json')
       ? readArray<SessionRestorePayload['usageRecords'][number]>(extracted, 'usage_records.json')
@@ -274,8 +280,8 @@ export class SessionBackupFacade {
       artifacts: files.artifacts,
       audio: files.audio,
       attachments: files.attachments,
-      agentTasks,
-      agentTaskMessages,
+      agentRuns,
+      agentRunMessages,
       memoryState,
       kbActivations,
       usageRecords,

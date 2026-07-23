@@ -1,23 +1,19 @@
 // 测试 Data/Profile 事件在相同时间戳下仍保持确定顺序。
-import { readFileSync, readdirSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import BetterSqlite3 from 'better-sqlite3';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { asSessionId, asTurnId } from '@ema-agent/ids';
 import {
-  AgentTaskMessagesRepo,
-  AgentTasksRepo,
+  asAgentRunId,
+  asSessionId,
+  asTurnId,
+} from '@ema-agent/ids';
+import {
+  AgentRunMessagesRepo,
+  AgentRunsRepo,
   Database,
   MemoryLazyUpdatesRepo,
   MemoryNodesRepo,
-  MigrationsRunner,
   PendingFragmentsRepo,
   TelemetryRepo,
 } from '../../index.js';
-import {
-  extractMessageSearchText,
-  tokenizeMessageSearchText,
-} from '../../message-search.js';
 
 describe('N-012 Data DB 确定性事件顺序', () => {
   let database: Database;
@@ -30,30 +26,30 @@ describe('N-012 Data DB 确定性事件顺序', () => {
 
   afterEach(() => database.close());
 
-  it('AgentTask transcript 使用 task 内 sequence 保留真实写入顺序', () => {
-    const tasks = new AgentTasksRepo(database.sqlite);
-    tasks.insert({
-      id: 'task-a',
-      sessionId: 'session-a',
-      turnId: 'turn-a',
-      parentId: null,
+  it('AgentRun transcript 使用 run 内 sequence 保留真实写入顺序', () => {
+    const runs = new AgentRunsRepo(database.sqlite);
+    runs.insert({
+      id: asAgentRunId('run-a'),
+      sessionId: asSessionId('session-a'),
+      parentTurnId: asTurnId('turn-a'),
+      kind: 'subagent',
       createdAt: 1,
     });
-    const messages = new AgentTaskMessagesRepo(database.sqlite);
+    const messages = new AgentRunMessagesRepo(database.sqlite);
     for (const [role, text] of [
       ['tool_call', 'call'],
       ['tool_result', 'result'],
       ['assistant', 'answer'],
     ] as const) {
       messages.insert({
-        taskId: 'task-a',
+        agentRunId: asAgentRunId('run-a'),
         role,
         content: { text },
         createdAt: 1_000,
       });
     }
 
-    const rows = messages.listForTask('task-a');
+    const rows = messages.listForRun(asAgentRunId('run-a'));
     expect(rows.map((row) => row.sequence)).toEqual([1, 2, 3]);
     expect(rows.map((row) => JSON.parse(row.content_json).text))
       .toEqual(['call', 'result', 'answer']);
@@ -98,20 +94,20 @@ describe('N-012 Data DB 确定性事件顺序', () => {
       .toEqual(['event-c', 'event-b']);
   });
 
-  it('data v9 安装顺序列和对应复合索引', () => {
+  it('当前 Schema 安装 AgentRun 顺序列和对应复合索引', () => {
     const messageColumns = database.sqlite
-      .prepare('PRAGMA table_info(agent_task_messages)')
+      .prepare('PRAGMA table_info(agent_run_messages)')
       .all() as Array<{ name: string; notnull: number }>;
     const sequence = messageColumns.find((column) => column.name === 'sequence');
     expect(sequence).toMatchObject({ notnull: 1 });
 
-    expect(indexSql(database, 'idx_atm_task_sequence'))
-      .toContain('agent_task_messages(task_id, sequence ASC)');
+    expect(indexSql(database, 'idx_agent_run_messages_sequence'))
+      .toContain('agent_run_messages(agent_run_id, sequence ASC)');
     expect(indexSql(database, 'idx_pending_fragments_session').replaceAll(/\s+/g, ' '))
       .toContain('pending_fragments(session_id, at ASC, created_at ASC, id ASC)');
     expect(indexSql(database, 'idx_telemetry_kind').replaceAll(/\s+/g, ' '))
       .toContain('telemetry_events(kind, created_at DESC, id DESC)');
-    expect(database.currentVersion()).toBe(16);
+    expect(database.currentVersion()).toBe(17);
   });
 });
 
@@ -148,66 +144,6 @@ describe('N-012 Profile DB MemoryLazyUpdate 顺序', () => {
   });
 });
 
-describe('data v8 到 v9 迁移', () => {
-  it('保留旧 transcript 并为每个 task 确定性回填 sequence', () => {
-    const sqlite = new BetterSqlite3(':memory:');
-    try {
-      sqlite.pragma('foreign_keys = ON');
-      applyDataMigrationsThroughV8(sqlite);
-      sqlite.prepare(`
-        INSERT INTO sessions (id, title, created_at, updated_at)
-        VALUES ('session-a', 'Session A', 1, 1)
-      `).run();
-      sqlite.prepare(`
-        INSERT INTO agent_tasks
-          (id, session_id, status, created_at, updated_at)
-        VALUES ('task-a', 'session-a', 'running', 1, 1)
-      `).run();
-      sqlite.prepare(`
-        INSERT INTO turns
-          (id, session_id, mode, status, user_input, started_at)
-        VALUES ('turn-a', 'session-a', 'agent', 'completed', 'test', 1)
-      `).run();
-      sqlite.prepare(`
-        INSERT INTO turn_usage
-          (turn_id, llm_provider, model_id, input_tokens, output_tokens, cost_usd, duration_ms, created_at)
-        VALUES ('turn-a', 'openai-llm', 'model-a', 10, 20, 0.01, 500, 2)
-      `).run();
-      const insert = sqlite.prepare(`
-        INSERT INTO agent_task_messages
-          (id, task_id, role, content_json, created_at)
-        VALUES (?, 'task-a', 'assistant', '{}', 1000)
-      `);
-      for (const id of ['message-z', 'message-a', 'message-m']) insert.run(id);
-
-      new MigrationsRunner(sqlite, 'data').run();
-
-      const rows = sqlite.prepare(`
-        SELECT id, sequence FROM agent_task_messages
-        ORDER BY sequence ASC
-      `).all() as Array<{ id: string; sequence: number }>;
-      expect(rows).toEqual([
-        { id: 'message-a', sequence: 1 },
-        { id: 'message-m', sequence: 2 },
-        { id: 'message-z', sequence: 3 },
-      ]);
-      expect(sqlite.prepare(`
-        SELECT id, turn_id, provider_id, model_id, duration_ms
-        FROM usage_records WHERE turn_id = 'turn-a'
-      `).get()).toEqual({
-        id: 'legacy:turn-a', turn_id: 'turn-a', provider_id: 'legacy-protocol:openai-llm',
-        model_id: 'model-a', duration_ms: 500,
-      });
-      expect(sqlite.prepare(`
-        SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'turn_usage'
-      `).get()).toBeUndefined();
-      expect(sqlite.pragma('user_version', { simple: true })).toBe(16);
-    } finally {
-      sqlite.close();
-    }
-  });
-});
-
 function insertSessionAndTurn(database: Database): void {
   database.sqlite.prepare(`
     INSERT INTO sessions (id, title, created_at, updated_at)
@@ -224,17 +160,4 @@ function indexSql(database: Database, name: string): string {
   return database.sqlite.prepare(`
     SELECT sql FROM sqlite_master WHERE type = 'index' AND name = ?
   `).pluck().get(name) as string;
-}
-
-function applyDataMigrationsThroughV8(sqlite: BetterSqlite3.Database): void {
-  sqlite.function('ema_message_search_text', { deterministic: true }, extractMessageSearchText);
-  sqlite.function('ema_segment_fts', { deterministic: true }, tokenizeMessageSearchText);
-  const directory = fileURLToPath(new URL('../../migrations/data/', import.meta.url));
-  const files = readdirSync(directory)
-    .filter((file) => /^00[1-8]_.*\.sql$/.test(file))
-    .sort();
-  for (const file of files) {
-    sqlite.exec(readFileSync(new URL(`../../migrations/data/${file}`, import.meta.url), 'utf8'));
-  }
-  sqlite.pragma('user_version = 8');
 }

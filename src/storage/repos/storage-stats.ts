@@ -1,13 +1,13 @@
 // 汇总数据目录与 Session 统计，并执行完整 Session 备份恢复事务。
 import type { SqliteDb } from '../database.js';
 import type { ExecutionProfile, NarrativePolicy, TurnTriggerType } from '@ema-agent/turn';
-import type { AgentTaskMessageRow } from './agent-task-messages.js';
+import type { AgentRunMessageRow } from './agent-run-messages.js';
 import type { KbActivationRow }     from './kb-activations.js';
-import type { AgentTaskRow }        from './agent-tasks.js';
+import type { AgentRunRow }         from './agent-runs.js';
 import type { UsageRecordRow }      from './usage-records.js';
 import type { BranchRow }           from './branches.js';
 
-export type { AgentTaskMessageRow, KbActivationRow, AgentTaskRow, UsageRecordRow, BranchRow };
+export type { AgentRunMessageRow, KbActivationRow, AgentRunRow, UsageRecordRow, BranchRow };
 
 // ════════════════════════════════════════════════════════════════════════════
 // DataDir 级聚合统计
@@ -18,7 +18,7 @@ export interface DataDirStats {
   turnCount:       number;
   messageCount:    number;
   artifactCount:   number;
-  agentTaskCount:  number;
+  agentRunCount:   number;
   audioCount:      number;
   audioDurationMs: number;
 }
@@ -33,12 +33,12 @@ export class DataDirStatsRepo {
         (SELECT COUNT(*) FROM turns)       AS turn_count,
         (SELECT COUNT(*) FROM messages)    AS message_count,
         (SELECT COUNT(*) FROM artifacts)   AS artifact_count,
-        (SELECT COUNT(*) FROM agent_tasks) AS agent_task_count,
+        (SELECT COUNT(*) FROM agent_runs) AS agent_run_count,
         (SELECT COUNT(*)                      FROM turn_audio_merged) AS audio_count,
         (SELECT COALESCE(SUM(duration_ms), 0) FROM turn_audio_merged) AS audio_duration_ms
     `).get() as {
       session_count: number; turn_count: number; message_count: number;
-      artifact_count: number; agent_task_count: number;
+      artifact_count: number; agent_run_count: number;
       audio_count: number; audio_duration_ms: number;
     };
     return {
@@ -46,7 +46,7 @@ export class DataDirStatsRepo {
       turnCount:       row.turn_count,
       messageCount:    row.message_count,
       artifactCount:   row.artifact_count,
-      agentTaskCount:  row.agent_task_count,
+      agentRunCount:   row.agent_run_count,
       audioCount:      row.audio_count,
       audioDurationMs: row.audio_duration_ms,
     };
@@ -167,8 +167,8 @@ export interface SessionRestorePayload {
   artifacts:         ArtifactRestoreRow[];
   audio:             AudioRestoreRow[];
   attachments:       AttachmentRestoreRow[];
-  agentTasks:        AgentTaskRow[];
-  agentTaskMessages: AgentTaskMessageRestoreRow[];
+  agentRuns:         AgentRunRow[];
+  agentRunMessages:  AgentRunMessageRestoreRow[];
   memoryState:       MemoryStateRow | null;
   kbActivations:     KbActivationRow[];
   usageRecords:      UsageRecordRow[];
@@ -176,8 +176,8 @@ export interface SessionRestorePayload {
 }
 
 /** sequence 可选以兼容 data v9 之前导出的 Session 备份。 */
-export type AgentTaskMessageRestoreRow =
-  Omit<AgentTaskMessageRow, 'sequence'> & { sequence?: number };
+export type AgentRunMessageRestoreRow =
+  Omit<AgentRunMessageRow, 'sequence'> & { sequence?: number };
 
 export class SessionRestoreValidationError extends Error {
   readonly code = 'storage/session-restore-invalid';
@@ -211,11 +211,11 @@ function validateSessionRestorePayload(payload: SessionRestorePayload): void {
 
   const turnIds = uniqueIds(payload.turns, 'Turn');
   const branchIds = uniqueIds(payload.branches, 'Branch');
-  const taskIds = uniqueIds(payload.agentTasks, 'AgentTask');
+  const agentRunIds = uniqueIds(payload.agentRuns, 'AgentRun');
   uniqueIds(payload.messages, 'Message');
   uniqueIds(payload.artifacts, 'Artifact');
   uniqueIds(payload.attachments, 'Attachment');
-  uniqueIds(payload.agentTaskMessages, 'AgentTaskMessage');
+  uniqueIds(payload.agentRunMessages, 'AgentRunMessage');
   uniqueIds(payload.kbActivations, 'KbActivation');
 
   for (const turn of payload.turns) {
@@ -254,13 +254,23 @@ function validateSessionRestorePayload(payload: SessionRestorePayload): void {
   for (const attachment of payload.attachments) {
     assertReference('Attachment.turnId', attachment.id, attachment.turnId, turnIds);
   }
-  for (const task of payload.agentTasks) {
-    assertSessionOwnership('AgentTask', task.id, task.session_id, sessionId);
-    assertOptionalReference('AgentTask.turnId', task.id, task.turn_id, turnIds);
-    assertOptionalReference('AgentTask.parentId', task.id, task.parent_id, taskIds);
+  for (const run of payload.agentRuns) {
+    assertSessionOwnership('AgentRun', run.id, run.session_id, sessionId);
+    assertReference('AgentRun.parentTurnId', run.id, run.parent_turn_id, turnIds);
+    assertOptionalReference(
+      'AgentRun.parentAgentRunId',
+      run.id,
+      run.parent_agent_run_id,
+      agentRunIds,
+    );
   }
-  for (const message of payload.agentTaskMessages) {
-    assertReference('AgentTaskMessage.taskId', message.id, message.task_id, taskIds);
+  for (const message of payload.agentRunMessages) {
+    assertReference(
+      'AgentRunMessage.agentRunId',
+      message.id,
+      message.agent_run_id,
+      agentRunIds,
+    );
   }
   if (payload.memoryState) {
     assertSessionOwnership('MemoryState', sessionId, payload.memoryState.session_id, sessionId);
@@ -459,23 +469,22 @@ export class SessionStatsRepo {
     `).all(sessionId) as BranchRow[];
   }
 
-  listAgentTasks(sessionId: string): AgentTaskRow[] {
+  listAgentRuns(sessionId: string): AgentRunRow[] {
     return this.db.prepare(`
-      SELECT id, session_id, turn_id, parent_id, status, error,
-             version, iterations, input_tokens, output_tokens, created_at, updated_at
-      FROM agent_tasks WHERE session_id = ?
-      ORDER BY created_at ASC
-    `).all(sessionId) as AgentTaskRow[];
+      SELECT *
+      FROM agent_runs WHERE session_id = ?
+      ORDER BY created_at ASC, id ASC
+    `).all(sessionId) as AgentRunRow[];
   }
 
-  listAgentTaskMessages(sessionId: string): AgentTaskMessageRow[] {
+  listAgentRunMessages(sessionId: string): AgentRunMessageRow[] {
     return this.db.prepare(`
-      SELECT m.id, m.task_id, m.role, m.content_json, m.sequence, m.created_at
-      FROM agent_task_messages m
-      JOIN agent_tasks t ON t.id = m.task_id
-      WHERE t.session_id = ?
-      ORDER BY t.created_at ASC, t.id ASC, m.sequence ASC
-    `).all(sessionId) as AgentTaskMessageRow[];
+      SELECT m.id, m.agent_run_id, m.role, m.content_json, m.sequence, m.created_at
+      FROM agent_run_messages m
+      JOIN agent_runs r ON r.id = m.agent_run_id
+      WHERE r.session_id = ?
+      ORDER BY r.created_at ASC, r.id ASC, m.sequence ASC
+    `).all(sessionId) as AgentRunMessageRow[];
   }
 
   getMemoryState(sessionId: string): MemoryStateRow | undefined {
@@ -664,48 +673,68 @@ export class SessionStatsRepo {
         );
       }
 
-      // 11. Agent task
-      const stmtTask = this.db.prepare(`
-        INSERT INTO agent_tasks
-          (id, session_id, turn_id, parent_id, status,
-           version, error, iterations, input_tokens, output_tokens, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      // 11. 子 Agent 执行
+      const stmtAgentRun = this.db.prepare(`
+        INSERT INTO agent_runs
+          (id, session_id, parent_turn_id, parent_agent_run_id, task_id,
+           kind, purpose, provider_config_id, model_id, status, error,
+           iterations, tool_call_count, input_tokens, output_tokens, output_excerpt,
+           version, created_at, updated_at, completed_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
-      for (const t of p.agentTasks) {
-        stmtTask.run(
-          t.id, p.session.id, t.turn_id ?? null, t.parent_id ?? null,
-          t.status, t.version ?? 0,
-          t.error ?? null, t.iterations ?? null,
-          t.input_tokens ?? null, t.output_tokens ?? null,
-          t.created_at, t.updated_at,
+      for (const run of p.agentRuns) {
+        stmtAgentRun.run(
+          run.id,
+          p.session.id,
+          run.parent_turn_id,
+          run.parent_agent_run_id,
+          run.task_id,
+          run.kind,
+          run.purpose,
+          run.provider_config_id,
+          run.model_id,
+          run.status,
+          run.error,
+          run.iterations,
+          run.tool_call_count,
+          run.input_tokens,
+          run.output_tokens,
+          run.output_excerpt,
+          run.version,
+          run.created_at,
+          run.updated_at,
+          run.completed_at,
         );
       }
 
-      // 12. Agent task message
-      const stmtTaskMsg = this.db.prepare(`
-        INSERT INTO agent_task_messages
-          (id, task_id, role, content_json, sequence, created_at)
+      // 12. 子 Agent transcript
+      const stmtAgentRunMessage = this.db.prepare(`
+        INSERT INTO agent_run_messages
+          (id, agent_run_id, role, content_json, sequence, created_at)
         VALUES (?, ?, ?, ?, ?, ?)
       `);
-      const nextTaskMessageSequence = new Map<string, number>();
-      for (const m of p.agentTaskMessages) {
-        const nextSequence = nextTaskMessageSequence.get(m.task_id) ?? 1;
+      const nextAgentRunMessageSequence = new Map<string, number>();
+      for (const message of p.agentRunMessages) {
+        const nextSequence = nextAgentRunMessageSequence.get(message.agent_run_id) ?? 1;
         // 兼容迁移前导出的旧备份；旧 payload 在运行时没有 sequence 字段。
-        const storedSequence = m.sequence;
+        const storedSequence = message.sequence;
         const sequence = storedSequence !== undefined
           && Number.isInteger(storedSequence)
           && storedSequence > 0
           ? storedSequence
           : nextSequence;
-        stmtTaskMsg.run(
-          m.id,
-          m.task_id,
-          m.role,
-          m.content_json,
+        stmtAgentRunMessage.run(
+          message.id,
+          message.agent_run_id,
+          message.role,
+          message.content_json,
           sequence,
-          m.created_at,
+          message.created_at,
         );
-        nextTaskMessageSequence.set(m.task_id, Math.max(nextSequence, sequence + 1));
+        nextAgentRunMessageSequence.set(
+          message.agent_run_id,
+          Math.max(nextSequence, sequence + 1),
+        );
       }
 
       // 13. Memory session 状态

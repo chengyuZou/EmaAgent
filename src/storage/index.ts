@@ -31,7 +31,7 @@ export type {
   TurnRestoreRow, MessageRestoreRow, ArtifactRestoreRow,
   AudioRestoreRow, AttachmentRestoreRow, NotesRestoreData,
   SessionRestorePayload,
-  AgentTaskMessageRestoreRow,
+  AgentRunMessageRestoreRow,
   DataDirStats,
 } from './repos/storage-stats.js';
 export { McpServersRepo }  from './repos/mcp-servers.js';
@@ -141,14 +141,24 @@ export type { ProviderSttModelRow, ProviderSttModelInsert } from './repos/provid
 export { ProviderVisionModelsRepo } from './repos/provider-vision-models.js';
 export type { ProviderVisionModelRow, ProviderVisionModelInsert } from './repos/provider-vision-models.js';
 
-// ── Agent task repo ───────────────────────────────────────────────────────────
-export { AgentTasksRepo }        from './repos/agent-tasks.js';
+// ── AgentRun 存储 ─────────────────────────────────────────────────────────────
+export { AgentRunsRepo } from './repos/agent-runs.js';
 export {
-  AgentTaskMessagesRepo,
-  AgentTaskMessageSerializationError,
-} from './repos/agent-task-messages.js';
-export type { AgentTaskRow, AgentTaskInsert, AgentTaskStatus }           from './repos/agent-tasks.js';
-export type { AgentTaskMessageRow, AgentTaskMessageInsert, AgentTaskMessageRole } from './repos/agent-task-messages.js';
+  AgentRunMessagesRepo,
+  AgentRunMessageSerializationError,
+} from './repos/agent-run-messages.js';
+export type {
+  AgentRunCompletion,
+  AgentRunInsert,
+  AgentRunKind,
+  AgentRunRow,
+  AgentRunStatus,
+} from './repos/agent-runs.js';
+export type {
+  AgentRunMessageInsert,
+  AgentRunMessageRole,
+  AgentRunMessageRow,
+} from './repos/agent-run-messages.js';
 export { ToolExecutionsRepo } from './repos/tool-executions.js';
 
 // ── Knowledge-base repo ────────────────────────────────────────────────────────

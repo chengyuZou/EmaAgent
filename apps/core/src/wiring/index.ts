@@ -97,15 +97,14 @@ export function startBackgroundWork(bindings: AppBindings): BackgroundHandle {
     console.warn('[session] startup orphan turn file sweep skipped:', err);
   }
 
-  // 2c) Agent task crash recovery — any task still running at
-  //     startup was orphaned by a process kill; mark them failed.
+  // 2c) 子 Agent 执行恢复：启动时仍为 running 的记录来自上次异常退出，统一标记失败。
   try {
-    const recovered = bindings.taskStore.recoverInterrupted();
+    const recovered = bindings.agentRunStore.recoverInterrupted();
     if (recovered.length > 0) {
-      console.log(`[agent-task] startup: marked ${recovered.length} interrupted task(s) as failed`);
+      console.log(`[agent-run] startup: marked ${recovered.length} interrupted run(s) as failed`);
     }
   } catch (err) {
-    console.warn('[agent-task] startup recovery skipped:', err);
+    console.warn('[agent-run] startup recovery skipped:', err);
   }
 
   // 3) MCP — prime tools from cache synchronously (instant visibility, no connect),

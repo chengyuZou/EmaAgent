@@ -367,7 +367,9 @@ Process    后台 Shell 进程
 - 后台 Shell 使用 `BackgroundProcessId`，不使用 TaskId 或 AgentRunId；
 - V1 完整实现结构化 TaskStore，并用 `TaskCreate/Get/List/Update` 替换当前内存 `TodoWrite`。迁移完成后 TodoWrite 停止注册并删除，不保留双轨。
 
-V1 Task 闭环包括：SQLite 持久化、事务与 CAS、Session 内短序号、显式状态、依赖关系、AgentRun 认领、结构化事件、重启快照、动态 Context 提醒和独立 TaskList UI。Team、跨设备共享与实验性验证 Agent 不在 V1，但不能以此为理由把 Task 降级成 Turn 内 Todo。
+V1 Task 闭环包括：SQLite 持久化、事务与 CAS、Session 内短序号、显式状态、依赖关系、AgentRun 可选绑定、结构化事件、重启快照、动态 Context 提醒和独立 TaskList UI。Team、跨设备共享与实验性验证 Agent 不在 V1，但不能以此为理由把 Task 降级成 Turn 内 Todo。
+
+V1 不把普通 Subagent 当成 Claude Team teammate。`TaskCreate/Get/List/Update` 只注册给根 Turn；子 Agent 只获得自包含指令和可选 `taskId`，不读取整张 Task List，也不直接改变 Task 状态。根 Agent 可以直接处理 Task，因此 Task 不保存 `ownerAgentRunId`。一次活动 AgentRun 可通过 `agent_runs.task_id` 独占绑定一个既有 Task；历史重试继续保留多条 Run。Run 终态只释放活动绑定，Task 是否完成由父 Turn 验证后显式提交。
 
 在迁移前必须保留现有 CAS、恢复和 transcript 测试，避免“删了包但把断电恢复也删了”。
 
@@ -386,7 +388,7 @@ src/
 │  ├─ recovery/
 │  └─ runs/                     子 Agent 的 AgentRun，不放后台 Job
 ├─ tasks/
-│  ├─ taskStore.ts              V1 持久工作项、CAS、依赖与认领
+│  ├─ taskStore.ts              V1 持久工作项、CAS、依赖与活动 Run 校验
 │  ├─ protocol.ts               Task 快照与结构化事件
 │  ├─ taskContext.ts            动态 Context 提醒
 │  └─ types.ts
@@ -503,7 +505,7 @@ Builtin / MCP / Skill Tool
 - `src/agent`：只拥有 `TurnLoop`、Profile/Policy/Budget、LLM 迭代、Tool Call 批次调度、Subagent/AgentRun 协调与循环熔断；
 - `src/turn`：拥有 Turn 输入、触发来源、身份、状态、取消、唯一终态与跨端事件关联，不执行 Tool、拼 Prompt 或访问 Session Repo；
 - `src/agentContext`：逐项迁出后删除。Tool Result 与 Cleanup 归 `tools/results`，文件状态归 `tools/workspace` 或 `tools/files`，Snapshot 归 `context/restore` 或确认无价值后删除；
-- `src/tasks`：只拥有用户或模型可见的完整 Task 系统，包括状态、依赖、认领、事务/CAS、查询快照与事件；四个模型 Tool 的具体定义仍在 `src/builtinTools`。AgentRun、ToolExecution、BackgroundProcess 与领域 Job 不得继续复用 Task 身份或生命周期；
+- `src/tasks`：只拥有用户或根 Agent 可见的完整 Task 系统，包括状态、依赖、活动 Run 投影、事务/CAS、查询快照与事件；四个模型 Tool 的具体定义仍在 `src/builtinTools`，并且 V1 只向根 Turn 注册。AgentRun、ToolExecution、BackgroundProcess 与领域 Job 不得继续复用 Task 身份或生命周期；
 - `src/conversation`：只作 Chat 到统一 Turn 主链的短期适配器，不再拥有独立 LLM/Tool 循环，行为一致后删除；
 - `apps/core`：退回 HTTP/SSE/Auth/Composition Root。Route 最终只解析请求并调用 `turnRuntime.run()`，现有 orchestrator 删除或缩为协议适配器。
 
@@ -837,14 +839,14 @@ interface TurnExecutionSnapshot {
 
 ### R6：AgentTask/AgentContext 退役与 Task 建立
 
-1. Turn 成为唯一根生命周期；
-2. 子 Agent 迁移 AgentRun；
-3. AskUser 与 Prompt Registry 脱离根 AgentTask；
-4. Tool journal 保留；
-5. 前端 TaskPanel 迁移 AgentRunsPanel；
-6. `src/tasks` 建立 TaskStore、依赖关系、认领与 Task 事件，BuiltinTools 注册 TaskCreate/Get/List/Update；
+1. Turn 成为唯一根生命周期（已完成）；
+2. 子 Agent 迁移 AgentRun，Tool Journal 同时记录父 Turn 与可选 AgentRun（已完成）；
+3. AskUser 与 Prompt Registry 脱离根 AgentTask（已完成）；
+4. Tool journal 保留（已完成）；
+5. 前端 TaskPanel 迁移 AgentRunsPanel；迁移完成前仅允许 HTTP/SSE 边界保留旧字段兼容；
+6. 新建真正的 `src/tasks`，实现 TaskStore、依赖关系、活动 AgentRun 绑定与 Task 事件，BuiltinTools 为根 Turn 注册 TaskCreate/Get/List/Update；
 7. 前端新增独立 TaskList，Context 接入低频 Task Snapshot，随后停止注册并删除 TodoWrite；
-8. 删除旧包前用 `rg` 保证生产引用为零，再删除数据库旧结构或写兼容迁移。
+8. Data v17 已删除旧 AgentTask 表并迁移真实子执行；Task 新表不得复用旧表名或旧生命周期。
 
 ### R7：前端切换
 

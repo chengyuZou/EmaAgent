@@ -208,9 +208,10 @@ Context window 200K
 |---|---|
 | 文件 | Read（多格式：text/image/PDF/notebook，按 mtime+offset/limit 去重）/ Edit（原子读改写，引号归一化）/ Write（永远 LF 换行）/ Glob / Grep（ripgrep，默认 head_limit 250 ≈ 12-25K tokens）/ NotebookEdit |
 | Shell | Bash（tree-sitter AST，4 命令集划分 search/read/list/semantic-neutral，默认超时 120s 最大 600s，15s 后自动后台）/ PowerShell |
-| Agent | AgentTool / SendMessage / AskUserQuestion / TaskCreate-Update-List-Get-Output-Stop |
+| Agent | AgentTool / SendMessage / AskUserQuestion / TaskCreate-Update-List-Get（结构化工作项） |
+| 后台进程 | Claude TaskOutput/TaskStop；Ema 使用 ProcessOutput/ProcessStop，避免与 Task 工作项混名 |
 | Web | WebFetch（Turndown 转 Markdown，100K cap，黑名单，pre-approved 跳过 Haiku 总结）/ WebSearch（adapter：API/Bing/Brave） |
-| 规划 | EnterPlanMode / ExitPlanModeV2（带 `allowedPrompts`）/ TodoWrite / Worktree / ToolSearch |
+| 规划 | EnterPlanMode / ExitPlanModeV2（带 `allowedPrompts`）/ Worktree / ToolSearch；TodoWrite 是被 V1 Task Tools 替换的旧 TodoV1 |
 | 调度 | CronCreate/Delete/List |
 | 扩展 | SkillTool / MCPTool / McpAuthTool |
 
@@ -502,7 +503,9 @@ V2 引入 Skills 时可以采纳：声明式 frontmatter / inline vs fork 执行
 
 ### Coordinator 模式（星型，集中式）
 
-Coordinator 在中心，workers 在边缘。Coordinator 只有 `Agent` / `SendMessage` / `TaskStop` / `subscribe_pr_activity` — 不读、不写、不执行，只编排。
+Coordinator 在中心，workers 在边缘。Claude 的 Coordinator 使用 `Agent` / `SendMessage` / `TaskStop` / `subscribe_pr_activity`；其中 `TaskStop` 停止的是后台执行，不是 Task 工作项。Ema 对应能力命名为 `ProcessStop`，避免概念混淆。
+
+普通 AgentTool 子级与 Team teammate 也必须区分：Claude 只给 in-process teammate 追加 `TaskCreate/Get/List/Update`，普通同步/异步 Subagent 不共享 Task List。Ema V1 尚无 Team，因此 Task Tools 只属于根 Turn；子 Agent 用 `agentRunId` 接收、汇报和被控制，最多通过可选 `taskId` 关联一个既有工作项，不能自行创建或完成 Task。
 
 **严格设计约束**（写在 system prompt 里）：「Coordinator 必须先理解再委派」。「Based on your findings, fix X」是显式反模式，正确做法是「Fix the null pointer in src/auth/validate.ts:42 [具体上下文]」。
 

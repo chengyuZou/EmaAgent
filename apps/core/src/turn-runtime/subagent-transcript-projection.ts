@@ -1,10 +1,11 @@
 // 把 Subagent SSE 投影为持久 transcript，并隔离辅助落库故障。
 
-import type { AgentTaskMessageInsert } from '@ema-agent/storage';
+import { asAgentRunId } from '@ema-agent/ids';
+import type { AgentRunMessageInsert } from '@ema-agent/storage';
 import type { EmaStreamEvent } from '@ema-agent/turn';
 
-export interface AgentTaskMessageWriter {
-  insert(message: AgentTaskMessageInsert): void;
+export interface AgentRunMessageWriter {
+  insert(message: AgentRunMessageInsert): void;
 }
 
 export interface TurnProjectionWarning {
@@ -21,10 +22,10 @@ export interface TurnProjectionWarning {
 export class SubagentTranscriptProjection {
   private readonly textBySubagent = new Map<string, string>();
   private readonly reasoningBySubagent = new Map<string, string>();
-  private readonly pending: AgentTaskMessageInsert[] = [];
+  private readonly pending: AgentRunMessageInsert[] = [];
   private failureReported = false;
 
-  constructor(private readonly writer: AgentTaskMessageWriter) {}
+  constructor(private readonly writer: AgentRunMessageWriter) {}
 
   apply(event: EmaStreamEvent): TurnProjectionWarning | undefined {
     this.collect(event);
@@ -55,7 +56,7 @@ export class SubagentTranscriptProjection {
       if (inner.type === 'tool_call') {
         this.queueBufferedText(subagentId);
         this.pending.push({
-          taskId: subagentId,
+          agentRunId: asAgentRunId(subagentId),
           role: 'tool_call',
           content: {
             callId: inner.callId,
@@ -69,7 +70,7 @@ export class SubagentTranscriptProjection {
       }
       if (inner.type === 'tool_result') {
         this.pending.push({
-          taskId: subagentId,
+          agentRunId: asAgentRunId(subagentId),
           role: 'tool_result',
           content: {
             callId: inner.callId,
@@ -100,7 +101,7 @@ export class SubagentTranscriptProjection {
     const reasoning = this.reasoningBySubagent.get(subagentId);
     if (reasoning) {
       this.pending.push({
-        taskId: subagentId,
+        agentRunId: asAgentRunId(subagentId),
         role: 'reasoning',
         content: { text: reasoning },
         createdAt: Date.now(),
@@ -111,7 +112,7 @@ export class SubagentTranscriptProjection {
     const text = this.textBySubagent.get(subagentId);
     if (text) {
       this.pending.push({
-        taskId: subagentId,
+        agentRunId: asAgentRunId(subagentId),
         role: 'assistant',
         content: { text },
         createdAt: Date.now(),
@@ -132,7 +133,7 @@ export class SubagentTranscriptProjection {
         this.failureReported = true;
         return {
           projection: 'subagent_transcript',
-          code: 'storage/agent_task_message_projection_failed',
+          code: 'storage/agent_run_message_projection_failed',
           message: error instanceof Error ? error.message : String(error),
           retryable: true,
         };

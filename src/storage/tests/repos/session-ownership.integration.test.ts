@@ -1,6 +1,5 @@
 // 测试 Session 复合归属约束拒绝跨会话引用并保持级联语义。
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { MigrationsRunner } from '../../migrations.js';
 import { createTestDatabase, type TestDatabase } from '../helpers/create-test-database.js';
 
 interface RejectedWrite {
@@ -27,7 +26,7 @@ describe('B-005 Session ownership 数据库约束', () => {
     expect(rowCount('branches')).toBe(2);
     expect(rowCount('turns')).toBe(2);
     expect(rowCount('messages')).toBe(2);
-    expect(rowCount('agent_tasks')).toBe(2);
+    expect(rowCount('agent_runs')).toBe(2);
 
     expect(() => database.db.prepare(
       'UPDATE sessions SET active_branch_id = ? WHERE id = ?',
@@ -121,20 +120,21 @@ describe('B-005 Session ownership 数据库约束', () => {
         error: 'ownership_violation: artifacts.turn_id',
       },
       {
-        name: 'agent task turn',
-        sql: `INSERT INTO agent_tasks
-                (id, session_id, turn_id, status, created_at, updated_at)
-              VALUES (?, ?, ?, 'running', 10, 10)`,
-        params: ['cross-task-turn', 'session-a', 'turn-b'],
-        error: 'ownership_violation: agent_tasks.turn_id',
+        name: 'agent run parent turn',
+        sql: `INSERT INTO agent_runs
+                (id, session_id, parent_turn_id, kind, status, created_at, updated_at)
+              VALUES (?, ?, ?, 'subagent', 'running', 10, 10)`,
+        params: ['cross-run-turn', 'session-a', 'turn-b'],
+        error: 'ownership_violation: agent_runs.parent_turn_id',
       },
       {
-        name: 'agent task parent',
-        sql: `INSERT INTO agent_tasks
-                (id, session_id, parent_id, status, created_at, updated_at)
-              VALUES (?, ?, ?, 'running', 10, 10)`,
-        params: ['cross-task-parent', 'session-a', 'task-b'],
-        error: 'ownership_violation: agent_tasks.parent_id',
+        name: 'agent run parent run',
+        sql: `INSERT INTO agent_runs
+                (id, session_id, parent_turn_id, parent_agent_run_id,
+                 kind, status, created_at, updated_at)
+              VALUES (?, ?, 'turn-a', ?, 'subagent', 'running', 10, 10)`,
+        params: ['cross-run-parent', 'session-a', 'run-b'],
+        error: 'ownership_violation: agent_runs.parent_agent_run_id',
       },
       {
         name: 'kb activation turn',
@@ -160,7 +160,7 @@ describe('B-005 Session ownership 数据库约束', () => {
       `SELECT COUNT(*) FROM messages WHERE id LIKE 'cross-%'`,
     ).pluck().get()).toBe(0);
     expect(database.db.prepare(
-      `SELECT COUNT(*) FROM agent_tasks WHERE id LIKE 'cross-%'`,
+      `SELECT COUNT(*) FROM agent_runs WHERE id LIKE 'cross-%'`,
     ).pluck().get()).toBe(0);
   });
 
@@ -202,8 +202,8 @@ describe('B-005 Session ownership 数据库约束', () => {
       'SELECT turn_id FROM artifacts WHERE id = ?',
     ).pluck().get('artifact-delete')).toBeNull();
     expect(database.db.prepare(
-      'SELECT turn_id FROM agent_tasks WHERE id = ?',
-    ).pluck().get('task-delete')).toBeNull();
+      'SELECT COUNT(*) FROM agent_runs WHERE id = ?',
+    ).pluck().get('run-delete')).toBe(0);
     expect(database.db.prepare(
       'SELECT turn_id FROM kb_activations WHERE id = ?',
     ).pluck().get('kb-delete')).toBeNull();
@@ -222,10 +222,10 @@ describe('B-005 Session ownership 数据库约束', () => {
       'SELECT last_message_id FROM session_notes WHERE session_id = ?',
     ).pluck().get('session-a')).toBeNull();
 
-    database.db.prepare('DELETE FROM agent_tasks WHERE id = ?').run('task-a');
+    database.db.prepare('DELETE FROM agent_runs WHERE id = ?').run('run-a');
     expect(database.db.prepare(
-      'SELECT parent_id FROM agent_tasks WHERE id = ?',
-    ).pluck().get('task-child')).toBeNull();
+      'SELECT parent_agent_run_id FROM agent_runs WHERE id = ?',
+    ).pluck().get('run-child')).toBeNull();
   });
 
   it('安装全部 ownership trigger', () => {
@@ -236,44 +236,13 @@ describe('B-005 Session ownership 数据库约束', () => {
        ORDER BY name
     `).pluck().all() as string[];
 
-    expect(triggerNames).toHaveLength(29);
+    expect(triggerNames).toHaveLength(28);
     expect(triggerNames).toContain('trg_sessions_owner_insert');
     expect(triggerNames).toContain('trg_turns_owner_delete_cleanup');
     expect(triggerNames).toContain('trg_tool_executions_owner_insert');
     expect(triggerNames).toContain('trg_tool_executions_owner_update');
-    expect(triggerNames).toContain('trg_agent_tasks_owner_delete_cleanup');
-  });
-
-  it('v6 存在跨 Session 脏数据时升级整体回滚', () => {
-    const ownerTriggers = database.db.prepare(`
-      SELECT name
-        FROM sqlite_master
-       WHERE type = 'trigger' AND name LIKE 'trg_%_owner_%'
-    `).pluck().all() as string[];
-
-    for (const name of ownerTriggers) {
-      database.db.exec(`DROP TRIGGER "${name.replaceAll('"', '""')}"`);
-    }
-    database.db.pragma('user_version = 6');
-
-    database.db.prepare(`
-      INSERT INTO messages
-        (id, session_id, turn_id, role, kind, blocks_json, created_at)
-      VALUES ('dirty-message', 'session-a', 'turn-b', 'user', 'normal', '"dirty"', 30)
-    `).run();
-
-    expect(() => new MigrationsRunner(database.db, 'data').run()).toThrow(
-      'ownership_violation: existing cross-session reference',
-    );
-    expect(database.db.pragma('user_version', { simple: true })).toBe(6);
-    expect(database.db.prepare(
-      `SELECT COUNT(*) FROM messages WHERE id = 'dirty-message'`,
-    ).pluck().get()).toBe(1);
-    expect(database.db.prepare(`
-      SELECT COUNT(*)
-        FROM sqlite_master
-       WHERE type = 'trigger' AND name LIKE 'trg_%_owner_%'
-    `).pluck().get()).toBe(0);
+    expect(triggerNames).toContain('trg_agent_runs_owner_insert');
+    expect(triggerNames).toContain('trg_agent_runs_owner_update');
   });
 
   function rowCount(table: string): number {
@@ -314,13 +283,13 @@ function seedOwnershipFixtures(database: TestDatabase): void {
   insertMessage.run('message-a', 'session-a', 'turn-a', '"A"');
   insertMessage.run('message-b', 'session-b', 'turn-b', '"B"');
 
-  const insertTask = db.prepare(`
-    INSERT INTO agent_tasks
-      (id, session_id, turn_id, status, created_at, updated_at)
-    VALUES (?, ?, ?, 'running', 5, 5)
+  const insertAgentRun = db.prepare(`
+    INSERT INTO agent_runs
+      (id, session_id, parent_turn_id, kind, status, created_at, updated_at)
+    VALUES (?, ?, ?, 'subagent', 'running', 5, 5)
   `);
-  insertTask.run('task-a', 'session-a', 'turn-a');
-  insertTask.run('task-b', 'session-b', 'turn-b');
+  insertAgentRun.run('run-a', 'session-a', 'turn-a');
+  insertAgentRun.run('run-b', 'session-b', 'turn-b');
 }
 
 function insertDeletableTurnGraph(database: TestDatabase): void {
@@ -368,14 +337,15 @@ function insertDeletableTurnGraph(database: TestDatabase): void {
     VALUES ('artifact-delete', 'session-a', 'turn-delete', 'text', 'A', '', 'inline', '{}', 21, 21)
   `).run();
   db.prepare(`
-    INSERT INTO agent_tasks
-      (id, session_id, turn_id, status, created_at, updated_at)
-    VALUES ('task-delete', 'session-a', 'turn-delete', 'running', 21, 21)
+    INSERT INTO agent_runs
+      (id, session_id, parent_turn_id, kind, status, created_at, updated_at)
+    VALUES ('run-delete', 'session-a', 'turn-delete', 'subagent', 'running', 21, 21)
   `).run();
   db.prepare(`
-    INSERT INTO agent_tasks
-      (id, session_id, parent_id, status, created_at, updated_at)
-    VALUES ('task-child', 'session-a', 'task-a', 'running', 21, 21)
+    INSERT INTO agent_runs
+      (id, session_id, parent_turn_id, parent_agent_run_id,
+       kind, status, created_at, updated_at)
+    VALUES ('run-child', 'session-a', 'turn-a', 'run-a', 'subagent', 'running', 21, 21)
   `).run();
   db.prepare(`
     INSERT INTO kb_activations

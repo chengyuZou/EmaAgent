@@ -1,6 +1,12 @@
 // 这里集中定义工具注册、权限检查和执行时共用的基础类型。
 import type { z } from 'zod';
-import type { SessionId, TurnId, ToolCallId } from '@ema-agent/ids';
+import type {
+  AgentRunId,
+  SessionId,
+  TaskId,
+  TurnId,
+  ToolCallId,
+} from '@ema-agent/ids';
 import type { IArtifactStore } from '@ema-agent/artifact';
 import type {
   AgentKind,
@@ -102,17 +108,16 @@ export interface SubagentSpawnOpts {
    * (省 token,避免上下文串)。
    */
   kind?:        AgentKind;
-  /** sub-agent 的预分配 ID - 调用方生成,以便在 spawn 开始前
-   *  就能 emit `subagent_started`。 */
-  subagentId?:  string;
-  /**
-   * 本 sub-agent 的 AgentTaskStore task ID。
-   * V1 缺失(sub-agent 尚未接入 task journal)。
-   * V1.5 由 SubagentSpawner 在 spawn 前调 taskStore.claim() 填入。
-   * 贯穿所有 SubagentInnerEvent 成员,以便前端把 detail-stream 事件
-   * 关联到其 AgentTask 条目。
-   */
-  taskId?:      string;
+  /** 调用方预分配执行 ID，确保启动事件与持久记录使用同一身份。 */
+  agentRunId?: AgentRunId;
+  /** 可选关联既有 Task；Spawner 不负责创建或完成 Task。 */
+  taskId?: TaskId;
+}
+
+export interface SubagentRunResult {
+  agentRunId: AgentRunId;
+  output: string;
+  usage: { inputTokens: number; outputTokens: number };
 }
 
 export interface ISubagentSpawner {
@@ -121,10 +126,10 @@ export interface ISubagentSpawner {
     prompt:  string,
     opts:    SubagentSpawnOpts,
     signal:  AbortSignal,
-  ): Promise<{ output: string; usage: { inputTokens: number; outputTokens: number } }>;
+  ): Promise<SubagentRunResult>;
 
   /**
-   * 后台 spawn - 异步拉起 sub-agent,立即返回其 subagentId。父循环继续;
+   * spawnBackground 异步拉起子 Agent，立即返回 agentRunId，父循环继续；
    * 之后调 awaitBackground() 取结果。
    * sub-agent 必须在父 turn 完成前被 await,避免父 SSE 流关闭后
    * 出现孤儿事件。
@@ -133,28 +138,28 @@ export interface ISubagentSpawner {
     prompt:  string,
     opts:    SubagentSpawnOpts,
     signal:  AbortSignal,
-  ): string;
+  ): AgentRunId;
 
   /**
    * 阻塞直到后台 sub-agent 完成并返回其输出。
-   * sub-agent 失败则抛错。已完成或 subagentId 从未注册时空操作(返回 null)。
+   * 子 Agent 失败时抛错；已经完成或 agentRunId 从未注册时返回 null。
    */
   awaitBackground?(
-    subagentId: string,
-  ): Promise<{ output: string; usage: { inputTokens: number; outputTokens: number } } | null>;
+    agentRunId: AgentRunId,
+  ): Promise<SubagentRunResult | null>;
 
   /**
    * 向运行中的后台 sub-agent 入队一条 coordinator 消息。
    * 消息在 sub-agent 下一次 LLM 迭代开始时注入。
    * sub-agent 仍活跃返 true;已完成返 false。
    */
-  queueMessage?(subagentId: string, message: string): boolean;
+  queueMessage?(agentRunId: AgentRunId, message: string): boolean;
 
   /**
    * 取消单个运行中的 sub-agent,不中止父 turn。
-   * subagentId 当前非活跃时空操作。
+   * agentRunId 当前未处于活动状态时不执行操作。
    */
-  abortSubagent?(subagentId: string): void;
+  abortSubagent?(agentRunId: AgentRunId): void;
 }
 
 export interface IMcpClientBridge {
@@ -202,6 +207,8 @@ export interface IToolCapabilityScope {
 export interface ToolExecutionContext {
   sessionId: string;
   turnId: string;
+  /** 子 Agent 工具调用保留父 turnId，并通过独立身份关联实际执行。 */
+  agentRunId?: AgentRunId;
   /** 当前这一次工具调用的唯一编号；直接调用工具的测试或适配器可以不传。 */
   toolCallId?: ToolCallId;
   /** 工作区根。空串 = 无工作区(subagent)。shell 工具用此作 cwd。 */
