@@ -10,7 +10,7 @@ import {
   } from '../lib/tts-playback.js';
 import { useDecisionStore }        from './decision-store.js';
 import { useArtifactStore }        from './artifact-store.js';
-import { useAgentTaskStore }       from './agent-task-store.js';
+import { useAgentRunStore }        from './agentRunStore.js';
 import { useTaskStore }            from './taskStore.js';
 import { useConversationStore }    from './conversation-store.js';
 import {
@@ -384,18 +384,23 @@ export function dispatchSseEvent(
     // ── Subagent lifecycle ─────────────────────────────────────────────────
 
     case 'subagent_started':
-      useAgentTaskStore.getState().upsert({
-        id: event.subagentId, sessionId: event.sessionId as string, turnId: null,
-        parentId: event.parentTurnId as string, status: 'running',
+      useAgentRunStore.getState().upsert({
+        id: event.subagentId,
+        sessionId: event.sessionId as string,
+        parentTurnId: event.parentTurnId as string,
+        kind: event.kind,
+        purpose: event.description ?? event.promptExcerpt,
+        modelId: event.model,
+        status: 'running',
+        version: 0,
         createdAt: event.startedAtMs, updatedAt: event.startedAtMs,
-        parentTurnId: event.parentTurnId as string, description: event.promptExcerpt,
         live: {
           startedAtMs: event.startedAtMs, promptExcerpt: event.promptExcerpt,
           model: event.model, iteration: 0, toolCallCount: 0, elapsedMs: 0,
         },
       });
-      // Pre-initialize live transcript so TaskTranscript shows streaming immediately.
-      useAgentTaskStore.setState((s) => {
+      // 先建立空记录，让详情面板无需等待持久快照即可展示流式内容。
+      useAgentRunStore.setState((s) => {
         if (s.transcripts.has(event.subagentId)) return {};
         const trans = new Map(s.transcripts);
         trans.set(event.subagentId, []);
@@ -404,8 +409,8 @@ export function dispatchSseEvent(
       break;
 
     case 'subagent_progress': {
-      const existing = useAgentTaskStore.getState().tasks.get(event.subagentId);
-      useAgentTaskStore.getState().upsert({
+      const existing = useAgentRunStore.getState().runs.get(event.subagentId);
+      useAgentRunStore.getState().upsert({
         id: event.subagentId, status: 'running',
         live: {
           startedAtMs:   existing?.live?.startedAtMs   ?? Date.now(),
@@ -420,41 +425,46 @@ export function dispatchSseEvent(
     }
 
     case 'subagent_completed':
-      useAgentTaskStore.getState().upsert({
+      useAgentRunStore.getState().upsert({
         id: event.subagentId, status: 'completed', updatedAt: Date.now(),
         iterations: event.iterationCount,
+        toolCallCount: event.toolCallCount,
         inputTokens: event.stats.inputTokens, outputTokens: event.stats.outputTokens,
+        outputExcerpt: event.outputExcerpt,
+        completedAt: Date.now(),
         live: undefined,
       });
       break;
 
     case 'subagent_failed':
-      useAgentTaskStore.getState().upsert({
-        id: event.subagentId, status: 'failed', error: event.error, updatedAt: Date.now(), live: undefined,
+      useAgentRunStore.getState().upsert({
+        id: event.subagentId, status: 'failed', error: event.error,
+        updatedAt: Date.now(), completedAt: Date.now(), live: undefined,
       });
       break;
 
     case 'subagent_aborted':
-      useAgentTaskStore.getState().upsert({
-        id: event.subagentId, status: 'cancelled', error: event.reason, updatedAt: Date.now(), live: undefined,
+      useAgentRunStore.getState().upsert({
+        id: event.subagentId, status: 'cancelled', error: event.reason,
+        updatedAt: Date.now(), completedAt: Date.now(), live: undefined,
       });
       break;
 
     case 'subagent_stream': {
       const { ev: inner, subagentId } = event;
-      const taskStore = useAgentTaskStore.getState();
+      const agentRunStore = useAgentRunStore.getState();
 
       if (inner.type === 'text_delta') {
-        taskStore.appendLiveTranscript(subagentId, 'assistant', { text: inner.delta });
+        agentRunStore.appendLiveTranscript(subagentId, 'assistant', { text: inner.delta });
       } else if (inner.type === 'reasoning_delta') {
-        taskStore.appendLiveTranscript(subagentId, 'reasoning', { text: inner.delta });
+        agentRunStore.appendLiveTranscript(subagentId, 'reasoning', { text: inner.delta });
       } else if (inner.type === 'tool_call') {
-        taskStore.appendLiveTranscript(subagentId, 'tool_call', {
+        agentRunStore.appendLiveTranscript(subagentId, 'tool_call', {
           callId: inner.callId, name: inner.name, args: inner.args,
           iteration: inner.iteration,
         });
       } else if (inner.type === 'tool_result') {
-        taskStore.appendLiveTranscript(subagentId, 'tool_result', {
+        agentRunStore.appendLiveTranscript(subagentId, 'tool_result', {
           callId: inner.callId, name: inner.name, excerpt: inner.excerpt,
           isError: inner.isError, error: inner.error?.message, durationMs: inner.durationMs,
         });

@@ -131,8 +131,6 @@ export function storageStatsRoute(bindings: AppBindings): Hono {
     return c.json({
       path: activeDir,
       ...stats,
-      // 前端统计卡迁到 AgentRun 命名之前保留旧字段，数值只统计真实子 Agent 执行。
-      agentTaskCount: stats.agentRunCount,
       dataDbBytes,
       audioBytes,
       sessionsBytes,

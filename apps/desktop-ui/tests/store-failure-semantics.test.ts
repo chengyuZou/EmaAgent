@@ -1,4 +1,4 @@
-// 测试 Session、Agent Task、Memory 与 KB 失败时不会伪造成功或丢失事实状态。
+// 测试 Session、AgentRun、Memory 与 KB 失败时不会伪造成功或丢失事实状态。
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { SessionId } from '@ema-agent/ids';
 
@@ -13,14 +13,14 @@ vi.mock('@ema-agent/live2d-react', () => ({
 }));
 
 import { sessionsApi } from '../src/api/sessions.js';
-import { agentTasksApi } from '../src/api/agent-tasks.js';
+import { agentRunsApi } from '../src/api/agentRuns.js';
 import { turnsApi } from '../src/api/turns.js';
 import { kbApi } from '../src/api/knowledge-base.js';
 import { useSessionStore } from '../src/stores/session-store.js';
 import {
-  useAgentTaskStore,
-  type AgentTaskState,
-} from '../src/stores/agent-task-store.js';
+  useAgentRunStore,
+  type AgentRunState,
+} from '../src/stores/agentRunStore.js';
 import { useMemoryStore } from '../src/stores/memory-store.js';
 import { useKbStore, type IngestJob } from '../src/stores/kb-store.js';
 
@@ -41,24 +41,24 @@ describe('Store 失败语义', () => {
     expect(useSessionStore.getState().error).toBe('database unavailable');
   });
 
-  it('运行中 Agent Task 取消失败时不删除持久化记录或 UI 记录', async () => {
-    const task = {
-      id: 'task-running',
+  it('运行中 AgentRun 取消失败时不删除持久化记录或 UI 记录', async () => {
+    const run = {
+      id: 'agent-run-running',
       sessionId: SESSION_ID as string,
       status: 'running',
       parentTurnId: 'turn-parent',
-    } as AgentTaskState;
-    useAgentTaskStore.setState({ tasks: new Map([[task.id, task]]), error: null });
+    } as AgentRunState;
+    useAgentRunStore.setState({ runs: new Map([[run.id, run]]), error: null });
     vi.spyOn(turnsApi, 'abortSubagent').mockRejectedValueOnce(new Error('runtime unreachable'));
-    const deleteRequest = vi.spyOn(agentTasksApi, 'delete');
+    const deleteRequest = vi.spyOn(agentRunsApi, 'delete');
 
     await expect(
-      useAgentTaskStore.getState().deleteTask(task.id, task.parentTurnId),
+      useAgentRunStore.getState().deleteRun(run.id, run.parentTurnId),
     ).rejects.toThrow('runtime unreachable');
 
     expect(deleteRequest).not.toHaveBeenCalled();
-    expect(useAgentTaskStore.getState().tasks.get(task.id)).toBe(task);
-    expect(useAgentTaskStore.getState().error).toBe('runtime unreachable');
+    expect(useAgentRunStore.getState().runs.get(run.id)).toBe(run);
+    expect(useAgentRunStore.getState().error).toBe('runtime unreachable');
   });
 
   it('Memory 后台任务失败后保留错误、任务类型和 Session', () => {

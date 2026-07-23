@@ -1,22 +1,20 @@
-// 展示当前 Session 的 Agent Task 状态、取消入口与子 Agent 对话记录。
+// 展示当前 Session 的子智能体 AgentRun、取消入口与完整执行记录。
 import { useState, useEffect, useCallback, useMemo, useRef, type JSX, type CSSProperties } from 'react';
 import { Badge, Button, IconButton, Input, Spinner, type BadgeVariant } from '@ema-agent/ui';
-import { useAgentTaskStore, type AgentTaskState, type AgentTaskMessageWire } from '../stores/agent-task-store.js';
-import { useConversationStore } from '../stores/conversation-store.js';
-import type { ToolCallMessageContent, AssistantMessageContent, ReasoningMessageContent, ToolResultMessageContent } from '../api/agent-tasks.js';
-import { showToast } from '../lib/toast.js';
+import { useAgentRunStore, type AgentRunState, type AgentRunMessageWire } from '../../stores/agentRunStore.js';
+import { useConversationStore } from '../../stores/conversation-store.js';
+import type { ToolCallMessageContent, AssistantMessageContent, ReasoningMessageContent, ToolResultMessageContent } from '../../api/agentRuns.js';
+import { showToast } from '../../lib/toast.js';
 
-// ── TaskPanel ─────────────────────────────────────────────────────────────────
-
-export interface TaskPanelProps {
+export interface AgentRunPanelProps {
   className?: string;
 }
 
-export function TaskPanel({ className = '' }: TaskPanelProps): JSX.Element {
+export function AgentRunPanel({ className = '' }: AgentRunPanelProps): JSX.Element {
   const sessionId      = useConversationStore((s) => s.viewedSessionId);
-  const tasks          = useAgentTaskStore((s) => s.tasks);
-  const loadForSession = useAgentTaskStore((s) => s.loadForSession);
-  const clearTerminal  = useAgentTaskStore((s) => s.clearTerminal);
+  const runs           = useAgentRunStore((s) => s.runs);
+  const loadForSession = useAgentRunStore((s) => s.loadForSession);
+  const clearTerminal  = useAgentRunStore((s) => s.clearTerminal);
 
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [search,     setSearch]     = useState('');
@@ -25,24 +23,24 @@ export function TaskPanel({ className = '' }: TaskPanelProps): JSX.Element {
     if (sessionId) void loadForSession(sessionId as string);
   }, [sessionId, loadForSession]);
 
-  const sessionTasks = useMemo(() => {
+  const sessionRuns = useMemo(() => {
     const all = sessionId
-      ? [...tasks.values()].filter((t) => t.sessionId === sessionId as string)
+      ? [...runs.values()].filter((run) => run.sessionId === sessionId as string)
       : [];
     const kw = search.trim().toLowerCase();
     return kw
-      ? all.filter((t) =>
-          t.id.toLowerCase().includes(kw) ||
-          (t.description ?? t.live?.promptExcerpt ?? '').toLowerCase().includes(kw)
+      ? all.filter((run) =>
+          run.id.toLowerCase().includes(kw) ||
+          (run.purpose ?? run.live?.promptExcerpt ?? '').toLowerCase().includes(kw)
         )
       : all;
-  }, [tasks, sessionId, search]);
+  }, [runs, sessionId, search]);
 
-  const running  = sessionTasks.filter((t) => t.status === 'running');
-  const terminal = sessionTasks.filter((t) => t.status === 'completed' || t.status === 'failed' || t.status === 'cancelled');
+  const running  = sessionRuns.filter((run) => run.status === 'running');
+  const terminal = sessionRuns.filter((run) => run.status !== 'running');
 
   const allForSession = sessionId
-    ? [...tasks.values()].filter((t) => t.sessionId === sessionId as string)
+    ? [...runs.values()].filter((run) => run.sessionId === sessionId as string)
     : [];
   const stats = {
     total:     allForSession.length,
@@ -63,7 +61,7 @@ export function TaskPanel({ className = '' }: TaskPanelProps): JSX.Element {
 
   return (
     <div className={`flex flex-col gap-1 ${className}`}>
-      {/* Stats row */}
+      {/* 状态统计 */}
       {stats.total > 0 && (
         <div className="flex gap-4 px-3 py-2 rounded-lg mx-1 mb-0.5 bg-[var(--ema-bg)]"
              style={{ border: '1px solid var(--ema-border)' }}>
@@ -81,12 +79,12 @@ export function TaskPanel({ className = '' }: TaskPanelProps): JSX.Element {
         </div>
       )}
 
-      {/* Search + clear */}
+      {/* 搜索与终态清理 */}
       <div className="flex items-center gap-1.5 px-1 mb-0.5">
         <Input
           inputSize="sm"
           className="flex-1"
-          placeholder="搜索任务…"
+          placeholder="搜索子智能体执行…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
@@ -97,22 +95,22 @@ export function TaskPanel({ className = '' }: TaskPanelProps): JSX.Element {
         )}
       </div>
 
-      {/* Empty state */}
-      {sessionTasks.length === 0 && (
+      {/* 空状态 */}
+      {sessionRuns.length === 0 && (
         <div className="flex flex-col items-center justify-center gap-2 py-10 text-xs text-[var(--ema-text-tertiary)]">
           <span className="i-lucide:bot text-2xl opacity-40" />
-          <span>{search ? '无匹配任务' : '暂无 Agent 任务'}</span>
+          <span>{search ? '无匹配执行' : '暂无子智能体执行'}</span>
         </div>
       )}
 
-      {/* Running tasks */}
+      {/* 正在运行的子智能体 */}
       {running.length > 0 && (
         <div className="flex flex-col gap-1">
           <SectionLabel>运行中</SectionLabel>
           {running.map((t, i) => (
-            <TaskCard
+            <AgentRunCard
               key={t.id}
-              task={t}
+              run={t}
               staggerIndex={i}
               expanded={expandedId === t.id}
               onToggle={() => setExpandedId((id) => id === t.id ? null : t.id)}
@@ -121,14 +119,14 @@ export function TaskPanel({ className = '' }: TaskPanelProps): JSX.Element {
         </div>
       )}
 
-      {/* Terminal tasks */}
+      {/* 已结束的执行记录 */}
       {terminal.length > 0 && (
         <div className="flex flex-col gap-1 mt-2">
-          <SectionLabel>历史任务</SectionLabel>
+          <SectionLabel>历史执行</SectionLabel>
           {terminal.map((t, i) => (
-            <TaskCard
+            <AgentRunCard
               key={t.id}
-              task={t}
+              run={t}
               staggerIndex={running.length + i}
               expanded={expandedId === t.id}
               onToggle={() => setExpandedId((id) => id === t.id ? null : t.id)}
@@ -140,8 +138,6 @@ export function TaskPanel({ className = '' }: TaskPanelProps): JSX.Element {
   );
 }
 
-// ── Section label ─────────────────────────────────────────────────────────────
-
 function SectionLabel({ children }: { children: string }): JSX.Element {
   return (
     <div className="px-2 pt-0.5 pb-0.5 text-xs font-medium tracking-wider uppercase text-[var(--ema-text-tertiary)]">
@@ -150,42 +146,40 @@ function SectionLabel({ children }: { children: string }): JSX.Element {
   );
 }
 
-// ── TaskCard ──────────────────────────────────────────────────────────────────
-
-interface TaskCardProps {
-  task:         AgentTaskState;
+interface AgentRunCardProps {
+  run:          AgentRunState;
   expanded:     boolean;
   onToggle:     () => void;
   staggerIndex?: number;
 }
 
-function TaskCard({ task, expanded, onToggle, staggerIndex = 0 }: TaskCardProps): JSX.Element {
-  const deleteTask = useAgentTaskStore((s) => s.deleteTask);
-  const { icon, color } = statusMeta(task.status);
-  const isRunning = task.status === 'running';
+function AgentRunCard({ run, expanded, onToggle, staggerIndex = 0 }: AgentRunCardProps): JSX.Element {
+  const deleteRun = useAgentRunStore((s) => s.deleteRun);
+  const { icon, color } = statusMeta(run.status);
+  const isRunning = run.status === 'running';
 
-  const excerpt = task.live?.promptExcerpt
-    ?? task.description
+  const excerpt = run.live?.promptExcerpt
+    ?? run.purpose
     ?? undefined;
 
   const handleDelete = useCallback(async (e: React.MouseEvent) => {
     e.stopPropagation();
     try {
-      await deleteTask(task.id, task.parentTurnId);
+      await deleteRun(run.id, run.parentTurnId);
     } catch (error: unknown) {
       showToast(
         error instanceof Error ? `取消或删除失败：${error.message}` : '取消或删除失败',
         { variant: 'danger' },
       );
     }
-  }, [deleteTask, task.id, task.parentTurnId]);
+  }, [deleteRun, run.id, run.parentTurnId]);
 
   const barColor = {
     running:      'var(--ema-primary)',
     completed:    'var(--ema-success)',
     failed:       'var(--ema-danger)',
     cancelled:    'var(--ema-text-tertiary)',
-  }[task.status];
+  }[run.status];
 
   return (
     <div
@@ -196,26 +190,26 @@ function TaskCard({ task, expanded, onToggle, staggerIndex = 0 }: TaskCardProps)
       } as CSSProperties}
       onClick={onToggle}
     >
-      {/* Left status bar (Apix style) */}
+      {/* 左侧状态条沿用现有卡片视觉语言 */}
       <div className="w-1 shrink-0 my-1 ml-0.5 mr-1 rounded-full"
            style={{ background: barColor, opacity: isRunning ? undefined : 0.7 }} />
 
-      {/* Running pulse bar (top) */}
+      {/* 运行中的顶部脉冲 */}
       {isRunning && <div className="ema-running-bar" />}
 
-      {/* Card header */}
+      {/* 执行摘要 */}
       <div className="flex items-start gap-2 px-2 py-2 flex-1 min-w-0">
-        {/* Status icon */}
+        {/* 状态图标 */}
         <span className={`mt-0.5 text-base flex-shrink-0 ${icon}`} style={{ color }} />
 
-        {/* Body */}
+        {/* 模型、目的与统计 */}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1.5">
             <span className="text-xs truncate text-[var(--ema-text-secondary)]">
-              {task.live?.model ?? 'subagent'}
+              {run.live?.model ?? run.modelId ?? 'subagent'}
             </span>
-            <Badge variant={STATUS_BADGE_VARIANT[task.status]} dot={isRunning}>
-              {STATUS_LABEL[task.status]}
+            <Badge variant={STATUS_BADGE_VARIANT[run.status]} dot={isRunning}>
+              {STATUS_LABEL[run.status]}
             </Badge>
           </div>
           {excerpt && (
@@ -223,27 +217,28 @@ function TaskCard({ task, expanded, onToggle, staggerIndex = 0 }: TaskCardProps)
               {excerpt}
             </p>
           )}
-          {task.error && (
+          {run.error && (
             <p className="text-xs mt-0.5 truncate text-[var(--ema-danger-text)]">
-              {task.error}
+              {run.error}
             </p>
           )}
 
-          {/* Live progress row */}
-          {task.live && (
+          {/* 当前进度 */}
+          {run.live && (
             <div className="flex items-center gap-3 mt-1 text-xs text-[var(--ema-text-tertiary)]">
-              <span>轮次 {task.live.iteration}</span>
-              <span>工具 {task.live.toolCallCount}</span>
-              <span>{formatElapsed(task.live.elapsedMs)}</span>
+              <span>轮次 {run.live.iteration}</span>
+              <span>工具 {run.live.toolCallCount}</span>
+              <span>{formatElapsed(run.live.elapsedMs)}</span>
             </div>
           )}
 
-          {/* Terminal stats */}
-          {!task.live && task.iterations != null && (
+          {/* 终态统计 */}
+          {!run.live && run.iterations != null && (
             <div className="flex items-center gap-3 mt-1 text-xs text-[var(--ema-text-tertiary)]">
-              <span>{task.iterations} 轮次</span>
-              {task.inputTokens != null && (
-                <span>{((task.inputTokens + (task.outputTokens ?? 0)) / 1000).toFixed(1)}k tokens</span>
+              <span>{run.iterations} 轮次</span>
+              {run.toolCallCount != null && <span>{run.toolCallCount} 个工具</span>}
+              {run.inputTokens != null && (
+                <span>{((run.inputTokens + (run.outputTokens ?? 0)) / 1000).toFixed(1)}k tokens</span>
               )}
             </div>
           )}
@@ -258,21 +253,19 @@ function TaskCard({ task, expanded, onToggle, staggerIndex = 0 }: TaskCardProps)
         />
       </div>
 
-      {/* Transcript (lazy loaded) */}
-      {expanded && <TaskTranscript taskId={task.id} />}
+      {/* 展开后再读取执行记录 */}
+      {expanded && <AgentRunTranscript agentRunId={run.id} />}
     </div>
   );
 }
 
-// ── TaskTranscript ────────────────────────────────────────────────────────────
-
-function TaskTranscript({ taskId }: { taskId: string }): JSX.Element {
-  const loadTranscript = useAgentTaskStore((s) => s.loadTranscript);
-  const messages       = useAgentTaskStore((s) => s.transcripts.get(taskId));
+function AgentRunTranscript({ agentRunId }: { agentRunId: string }): JSX.Element {
+  const loadTranscript = useAgentRunStore((s) => s.loadTranscript);
+  const messages       = useAgentRunStore((s) => s.transcripts.get(agentRunId));
 
   useEffect(() => {
-    void loadTranscript(taskId);
-  }, [taskId, loadTranscript]);
+    void loadTranscript(agentRunId);
+  }, [agentRunId, loadTranscript]);
 
   const divider = (
     <div className="bg-[var(--ema-border)]" style={{ height: 1, margin: '0 12px' }} />
@@ -316,8 +309,6 @@ function TaskTranscript({ taskId }: { taskId: string }): JSX.Element {
     </>
   );
 }
-
-// ── TranscriptRow ─────────────────────────────────────────────────────────────
 
 function ReasoningBlock({ text }: { text: string }): JSX.Element {
   const [open, setOpen] = useState(false);
@@ -372,7 +363,7 @@ function ReasoningBlock({ text }: { text: string }): JSX.Element {
   );
 }
 
-function TranscriptRow({ msg }: { msg: AgentTaskMessageWire }): JSX.Element {
+function TranscriptRow({ msg }: { msg: AgentRunMessageWire }): JSX.Element {
   if (msg.role === 'reasoning') {
     const c = msg.content as ReasoningMessageContent;
     return <ReasoningBlock text={c.text} />;
@@ -420,16 +411,14 @@ function TranscriptRow({ msg }: { msg: AgentTaskMessageWire }): JSX.Element {
   return <></>;
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-const STATUS_LABEL: Record<AgentTaskState['status'], string> = {
+const STATUS_LABEL: Record<AgentRunState['status'], string> = {
   running:      '运行中',
   completed:    '已完成',
   failed:       '失败',
   cancelled:    '已取消',
 };
 
-const STATUS_BADGE_VARIANT: Record<AgentTaskState['status'], BadgeVariant> = {
+const STATUS_BADGE_VARIANT: Record<AgentRunState['status'], BadgeVariant> = {
   running:      'primary',
   completed:    'success',
   failed:       'danger',
@@ -438,7 +427,7 @@ const STATUS_BADGE_VARIANT: Record<AgentTaskState['status'], BadgeVariant> = {
 
 type StatusMeta = { icon: string; color: string };
 
-function statusMeta(status: AgentTaskState['status']): StatusMeta {
+function statusMeta(status: AgentRunState['status']): StatusMeta {
   switch (status) {
     case 'running':      return { icon: 'i-lucide:loader-circle animate-spin', color: 'var(--ema-primary)' };
     case 'completed':    return { icon: 'i-lucide:circle-check', color: 'var(--ema-success)' };

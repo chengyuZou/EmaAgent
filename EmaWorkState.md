@@ -42,11 +42,11 @@ Agent 执行体系第一批已经完成：Tool Result 外置与 Cleaner 从 `age
 
 Agent 执行体系第二批已经完成：ToolExecution Journal 从 Tasks 收回 `src/tools/journal`，Tools 现在拥有状态、领域记录、Store 端口、CAS 状态机与崩溃恢复语义；Storage 只实现原子 SQL 操作并把数据库行投影为领域形状；Core 从 Tools 装配 Journal，Agent 只依赖 `ToolExecutionJournalPort`。原 `IToolExecutionJournal` 已删除，Tasks 不再依赖 Tools/IDs 或导出工具执行生命周期。
 
-V1 Task 后端主链已经完成：`src/tasks` 只保存跨 Turn 的用户/模型可见工作项，Data v18 使用显式 Task 列、Session 内短序号、依赖关系和 CAS；根 Work Turn 注册 TaskCreate/Get/List/Update，旧内存 TodoWrite 已删除。Task 事件、低频动态 Context 提醒、`/api/tasks` 重启快照和 Session ZIP 备份恢复已经接线；独立前端 TaskList 仍是下一批。
+V1 Task 主链已经完成：`src/tasks` 只保存跨 Turn 的用户/模型可见工作项，Data v18 使用显式 Task 列、Session 内短序号、依赖关系和 CAS；根 Work Turn 注册 TaskCreate/Get/List/Update，旧内存 TodoWrite 已删除。Task 事件、低频动态 Context 提醒、`/api/tasks` 重启快照、Session ZIP 备份恢复与独立前端 TaskList 已接线。
 
 Task 与子 Agent 的 V1 边界已经进一步冻结：四个 Task Tools 只向根 Turn 注册；普通 Subagent 不读取或修改共享 Task List。根 Agent 可用可选 `taskId` 启动一次 AgentRun，绑定前必须验证同 Session、未终态、无未完成依赖且没有其他活动 Run；不带 `taskId` 的临时调查合法。AgentRun 成功、失败或取消只结束执行并释放活动绑定，不自动完成、取消或删除 Task；父 Turn 验证结果后再显式 `TaskUpdate`。Claude 的 Task `owner` 属于 Team Member 语义，Ema V1 不用临时 `AgentRunId` 冒充长期 owner。
 
-AgentRun 语义收口已经完成：旧 `src/tasks` 运行记录、根 Turn 的 AgentTask 投影及 `AgentTurnLifecycleFacade` 已删除；Data v17 只把真实子执行迁入 `agent_runs/agent_run_messages`。Subagent 内部和模型工具返回值统一使用 `agentRunId`，Tool Journal 同时保存父 `turnId` 与可选 `agentRunId`，不再互相冒充；普通 Subagent 已移除 TodoWrite。客户端 SSE 暂时保留 `subagentId` 字段名，旧 `/api/agent-tasks` 暂时作为前端兼容适配，不代表后端仍存在 AgentTask 领域。
+AgentRun 语义收口已经完成：旧 `src/tasks` 运行记录、根 Turn 的 AgentTask 投影及 `AgentTurnLifecycleFacade` 已删除；Data v17 只把真实子执行迁入 `agent_runs/agent_run_messages`。Subagent 内部、模型工具、Core HTTP 与 Desktop Store/Panel 统一使用 `agentRunId` 和 `/api/agent-runs`，Tool Journal 同时保存父 `turnId` 与可选 `agentRunId`，不再互相冒充；旧 `/api/agent-tasks`、`TaskPanel` 与 `agent-task-store` 已删除。客户端 SSE 暂时只在跨端事件字段保留 `subagentId`，值仍是 AgentRunId。
 
 Session 历史语义已经收口：Data v19 删除 `branches`、`sessions.active_branch_id`、`turns.branch_id` 与对应 Repo/协议/UI。侧栏 Fork 完整复制 Session；已完成回复下的 Fork 按 `untilTurnId` 复制到该轮（含）为止并切换到独立 Session。用户气泡只允许回滚最后一个非运行 Turn 后重发；任意 Turn 删除、BranchPanel、`<N/M>` 导航和延迟分叉状态机均已删除。旧 Binary Lifting、Euler Tour + RMQ、恢复算法与前端布局已原样保存在 `D:\Github\EmaAgentBranchArchive`，36 个源码文件的 SHA-256 已与删除前版本逐一校验。
 
@@ -54,7 +54,7 @@ Chat 长历史读取契约已经完成：`GET /api/sessions/:id/turn-index` 使�
 
 Chat 长历史前端主链已经完成：每个 Session 独立维护热尾/归档模式、轻量 Turn 索引和最多三个历史窗口；TurnRail 只渲染当前可视索引窗口，滚轮按需读取更早索引，点击冷 Turn 才加载有界消息正文。轨道容器保持透明，刻度按悬停距离形成双向声波式过渡并复用 UI Tooltip；查看旧窗口期间 SSE 热尾继续运行，以“新回复 · 回到最新”显式返回。
 
-Task 前端读取与聊天区入口已经接线：Desktop 使用正式 `/api/tasks` 快照并消费 `task_created/task_updated/task_deleted`，加载期间若收到事件会丢弃旧响应并重新读取，避免回退 Task 版本。输入框上方 Task/Diff 使用不可见中心轴：单入口居中、双入口分居左右并双向过渡；Task 在原位展开持久 TaskList，Diff 使用真实 ToolPresentation 打开右侧 `review` 槽。旧 AgentRun 前端仍使用 `agent-task-store` 与兼容 API，只把用户可见标签改成“子智能体”，命名迁移不与本批混做。
+Task 与 AgentRun 前端已经分面：Desktop 使用正式 `/api/tasks` 快照维护跨 Turn 工作项，使用 `/api/agent-runs` 快照与 `AgentRunPanel` 展示子智能体执行和 transcript。两类 Store 在 HTTP 加载期间收到实时事件都会丢弃旧响应并重读，避免版本或运行态回退。输入框上方 Task/Diff 使用不可见中心轴；Task 原位展开 TaskList，Diff 使用真实 ToolPresentation 打开右侧 `review` 槽。
 
 ## 迁移完成事实
 
@@ -68,9 +68,9 @@ Task 前端读取与聊天区入口已经接线：Desktop 使用正式 `/api/tas
 
 开始任何新批次前必须重新运行 `git status --short` 与 `git diff`，保留用户和其他 Agent 的修改。
 
-当前工作区只包含 Task/Diff 输入框状态条：Task API/Store/SSE、TaskList、真实 Diff 聚合与 Review 面板、双槽布局动画及针对性测试；未暂存、未提交。
+当前工作区的本批改动是 AgentRun 前端与 HTTP 协议收口：旧 AgentTask API/Store/Panel 改为原生 AgentRun 命名，删除 Core 兼容路由，并同步 Storage 统计字段与针对性测试；未暂存、未提交。`src/sandbox/shell-probe.ts` 是本批开始后出现的其他 Agent 改动，不属于本批。
 
-当前基线最近提交：`8ac95240 feat: implement ChatHistory and TurnRail components for session navigation`。该提交号仅用于定位，不代表其他 Agent 不会继续提交。
+当前基线最近提交：`5c7a13ca feat: implement Task management features in desktop UI`。该提交号仅用于定位，不代表其他 Agent 不会继续提交。
 
 ## 已确定的 V1 口径
 
@@ -110,9 +110,9 @@ Plan、Goal、Schedule、Workflow、Team 与 LLM 自动审批暂列 V1.5，不�
 Chat 工作区、Turn 导航轨、Task/AgentRun 分面、双 Dock、置顶摘要和桌面打开方式的完整实施草案已写入 `EmaChatWorkspacePlan.md`。该文档只冻结交互、数据契约、文件边界和分批方式，尚未创建空 Terminal/Browser/Review UI。
 
 1. TurnIndex/MessageWindow 与前端历史 Store/TurnRail 已完成，不创建 Dock 半成品；
-2. TaskList 与真实 Review 入口已经完成；下一小批把旧 AgentRun API/Store/Panel 迁到正式命名；
-3. 随后实现 Workspace Dock，把当前临时 Review Inspector 迁入唯一、可移动的 `review` 标签；
-4. 前端迁到 AgentRun/Task 新协议后，删除 `/api/agent-tasks` 与 `subagentId` 旧命名兼容；
+2. TaskList、AgentRunPanel、原生 AgentRun API 与真实 Review 入口已经完成，旧 `/api/agent-tasks` 兼容已删除；
+3. 下一批实现 Workspace Dock，把当前临时 Review Inspector 迁入唯一、可移动的 `review` 标签；
+4. Workspace Dock 稳定后，再单独评估跨端 SSE 的 `subagentId` 改名，避免与 TurnRuntime 事件重构混做；
 5. 后台进程按 `BackgroundProcess + ProcessOutput/ProcessStop` 分批实现 C 档，不修改 Agent Loop 来实现自动后台化；
 6. Chat 接入统一 TurnLoop 放在 Tool 单次执行边界稳定之后，短期保留 ConversationEngine 适配器。
 
@@ -122,6 +122,7 @@ Chat 工作区、Turn 导航轨、Task/AgentRun 分面、双 Dock、置顶摘要
 
 ## 最近验证
 
+- AgentRun 前端命名与协议收口：Desktop UI 31 个测试文件、132 项测试全部通过，Core 30 个测试文件、92 项测试全部通过；Desktop UI 与 Core typecheck 通过；新增 AgentRun Store 2 项测试覆盖原生快照和加载/SSE 竞态，Core 2 项路由测试覆盖原生身份与 transcript 字段。
 - Task/Diff 输入框状态条：Desktop UI 30 个测试文件、130 项测试全部通过；Desktop UI typecheck 通过；新增 Task Store 2 项测试覆盖快照/事件合并与并发旧响应重读。
 - Chat 长历史前端：Desktop UI 29 个测试文件、128 项测试全部通过；Desktop UI typecheck 通过；TurnRail 新增 4 项纯模型测试覆盖容量、时间顺序、邻域对称衰减和当前 Turn 高亮。
 - Chat 长历史读取链：Storage 新增测试 3/3、Session 32/32、Core 新增路由测试 3/3 通过；Storage、Session、Core typecheck 通过。`EXPLAIN QUERY PLAN` 已确认 Turn 复合游标命中 `idx_turns_session_latest`；`git diff --check` 通过，仅有既有 CRLF 提示。

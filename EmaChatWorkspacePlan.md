@@ -607,7 +607,7 @@ apps/desktop-ui/src/chat/
 | Files/File | 已有浏览与文件预览接口 | 可首批迁入 Dock |
 | Sources | 已有 Session 附件接口 | 可首批实现附件来源 |
 | TaskList | 后端 Task 快照与事件已完成 | 必须新增独立 UI |
-| AgentRun | 新 API 已存在，前端仍走旧 AgentTask 命名 | 迁移并删除兼容层 |
+| AgentRun | 原生 API、Store 与独立 Panel 已完成 | 后续迁入 Workspace Dock |
 | TurnRail | 最近消息与部分 Turn 已有 | 增加冷索引和窗口接口 |
 | Review | 尚需确定真实变更聚合来源 | 不先画空面板 |
 | Terminal | 后台进程不等于交互式 PTY | 先建立真实 Terminal Runtime |
@@ -618,7 +618,7 @@ apps/desktop-ui/src/chat/
 
 ### 批次 A：Task 与 AgentRun 前端语义收口
 
-状态：Task API/store/TaskStrip/TaskList 与真实 Review 入口已完成；AgentRun API/Store 命名迁移待下一小批。
+状态：已完成。Task 与 AgentRun 已拥有独立 API、Store 和 UI；旧 `/api/agent-tasks`、`agent-task-store` 与 `TaskPanel` 已删除。
 
 范围：
 

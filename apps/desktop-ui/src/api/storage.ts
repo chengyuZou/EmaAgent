@@ -24,7 +24,7 @@ export interface StorageStatsWire {
   turnCount:       number;
   messageCount:    number;
   artifactCount:   number;
-  agentTaskCount:  number;
+  agentRunCount:   number;
   audioCount:      number;
   audioDurationMs: number;
   dataDbBytes:     number;

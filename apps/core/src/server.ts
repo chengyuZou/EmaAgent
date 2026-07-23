@@ -20,10 +20,7 @@ import { createMarketRouter }    from './routes/market.js';
 import { shellRoute }            from './routes/shell.js';
 import { workspaceRoute }        from './routes/workspace.js';
 import { kbRoute }               from './routes/knowledge-base.js';
-import {
-  agentRunsRoute,
-  legacyAgentTasksRoute,
-} from './routes/agentRuns.js';
+import { agentRunsRoute }            from './routes/agentRuns.js';
 import { tasksRoute }             from './routes/tasks.js';
 import { storageStatsRoute }     from './routes/storage-stats.js';
 import { systemRoute }           from './routes/system.js';
@@ -87,7 +84,6 @@ export function buildServer(bindings: AppBindings, sharedSecret: string): Hono {
   app.route('/api/market',         createMarketRouter(bindings));
   app.route('/api/kb',             kbRoute(bindings));
   app.route('/api/agent-runs',     agentRunsRoute(bindings));
-  app.route('/api/agent-tasks',    legacyAgentTasksRoute(bindings));
   app.route('/api/tasks',           tasksRoute(bindings));
 
   // 404 兜底

@@ -18,7 +18,7 @@ import {
   } from '../lib/tts-playback.js';
 import { useSessionStore }     from './session-store.js';
 import { useArtifactStore }    from './artifact-store.js';
-import { useAgentTaskStore }   from './agent-task-store.js';
+import { useAgentRunStore }    from './agentRunStore.js';
 import { useSessionAttachmentStore } from './session-attachment-store.js';
 import { useSessionHistoryStore } from '../chat/history/sessionHistoryStore.js';
 import { useTaskStore } from './taskStore.js';
@@ -390,7 +390,7 @@ export const useConversationStore = create<ConversationStoreState>((set, get) =>
     breakerReasons.delete(id as string);
     evictSessionPlayers(id as string);
     useArtifactStore.getState().evictSession(id);
-    useAgentTaskStore.getState().evictSession(id as string);
+    useAgentRunStore.getState().evictSession(id as string);
     useSessionAttachmentStore.getState().evictSession(id);
     useSessionHistoryStore.getState().evictSession(id);
     useTaskStore.getState().evictSession(id);

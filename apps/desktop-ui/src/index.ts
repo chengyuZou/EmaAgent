@@ -47,16 +47,16 @@ export { useModelCatalogStore, findEnabledModel } from './stores/model-catalog-s
 export type { ModelCatalogStoreState, ModelCatalogStatus } from './stores/model-catalog-store.js';
 export type { ThemeStoreState, ThemeMode } from './stores/theme-store.js';
 
-export { useAgentTaskStore }           from './stores/agent-task-store.js';
+export { useAgentRunStore }            from './stores/agentRunStore.js';
 export { useTaskStore }                from './stores/taskStore.js';
 export type {
-  AgentTaskStoreState,
-  AgentTaskState,
-  AgentTaskWire,
-  AgentTaskMessageWire,
-  LiveTaskInfo,
-  TaskStatus,
-} from './stores/agent-task-store.js';
+  AgentRunStoreState,
+  AgentRunState,
+  AgentRunWire,
+  AgentRunMessageWire,
+  LiveAgentRunInfo,
+  AgentRunStatus,
+} from './stores/agentRunStore.js';
 export type {
   DecisionStoreState,
   DecisionPrompt,
@@ -151,7 +151,7 @@ export type {
 
 export type { AttachmentInputWire } from './api/turns.js';
 
-export { agentTasksApi }             from './api/agent-tasks.js';
+export { agentRunsApi }              from './api/agentRuns.js';
 export { tasksApi }                  from './api/tasks.js';
 
 // ── Markdown ──────────────────────────────────────────────────────────────────
@@ -202,9 +202,9 @@ export { ChatInput }               from './chat/ChatInput.js';
 export { ExecutionProfileSelector } from './chat/ExecutionProfileSelector.js';
 export { useChatHistoryScroll }    from './chat/history/useChatHistoryScroll.js';
 
-// Task panel
-export { TaskPanel }               from './chat/TaskPanel.js';
-export type { TaskPanelProps }     from './chat/TaskPanel.js';
+// AgentRun panel
+export { AgentRunPanel }           from './chat/agentRuns/AgentRunPanel.js';
+export type { AgentRunPanelProps } from './chat/agentRuns/AgentRunPanel.js';
 
 // Floating dock
 export { FloatingDock }            from './floating-dock/FloatingDock.js';

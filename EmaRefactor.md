@@ -356,7 +356,7 @@ Codex 的 Context 管理与 compact、AstrBot 的 `agent/context/manager + compr
 
 ## 6. AgentTask 拆为 AgentRun 与完整 Task
 
-当前 `agent-task` 尚未删除，Storage、Core、Agent、Desktop UI 仍有真实引用。不能直接删目录。
+本节迁移已经完成：根 AgentTask 投影已删除，子执行统一为 AgentRun，跨 Turn 工作项由独立 Task 承载。
 
 目标语义：
 
@@ -373,7 +373,7 @@ Process    后台 Shell 进程
 
 - `AgentTurnLifecycleFacade` 退役，Turn 成为唯一根终态；
 - `agent_tasks` 中的根投影迁移或删除；
-- 子 Agent 数据迁移为 `agent_runs/agent_run_messages`，前端 `TaskPanel` 改成 `AgentRunsPanel`；
+- 子 Agent 数据迁移为 `agent_runs/agent_run_messages`，前端使用独立 `AgentRunPanel`；
 - AskUser 等待状态归 Turn + Prompt Registry，不依赖根 AgentTask CAS；
 - Tool 副作用恢复继续由 `tool_executions` journal 承担；
 - KB、Vision、Memory 不继承 AgentRun，也不强行塞进一个通用 Task 表；
@@ -698,7 +698,7 @@ interface TurnExecutionSnapshot {
 - [ ] Prompt Mode block 改为显式 Slot；
 - [x] Compaction 从 Memory 移入 Context；
 - [ ] `agent-context` 拆分并删除；
-- [ ] 根 AgentTask 投影删除，子 Agent 迁移为 AgentRun；
+- [x] 根 AgentTask 投影删除，子 Agent 迁移为 AgentRun；
 - [ ] B-065：Card/Session 等用户动作在各业务 Facade 上统一 ActionResult，不新建传统 application 层；
 - [ ] B-066：TurnRequest 等重复 DTO 收敛到业务所有者的 `protocol` 入口 + mapper，不再进入 contracts；
 - [ ] B-073：Semantic chunking 重复 embedding 作为独立性能项，不与 Runtime 重构混改；
@@ -856,9 +856,9 @@ interface TurnExecutionSnapshot {
 2. 子 Agent 迁移 AgentRun，Tool Journal 同时记录父 Turn 与可选 AgentRun（已完成）；
 3. AskUser 与 Prompt Registry 脱离根 AgentTask（已完成）；
 4. Tool journal 保留（已完成）；
-5. 前端 TaskPanel 迁移 AgentRunsPanel；迁移完成前仅允许 HTTP/SSE 边界保留旧字段兼容；
+5. 前端 `TaskPanel` 已迁移为 `AgentRunPanel`，旧 HTTP 兼容入口已删除；SSE 暂时只保留 `subagentId` 跨端字段名；
 6. 真正的 `src/tasks`、TaskStore、依赖、活动 AgentRun 投影、Task 事件和根 Turn 四个 Task Tools 已完成；
-7. 低频 Task Context、重启快照和备份恢复已完成；前端仍需新增独立 TaskList；
+7. 低频 Task Context、重启快照、备份恢复与独立前端 TaskList 已完成；
 8. Data v17 已删除旧 AgentTask 表并迁移真实子执行，Data v18 建立独立 Task 表；两者不复用生命周期。
 
 ### R7：前端切换

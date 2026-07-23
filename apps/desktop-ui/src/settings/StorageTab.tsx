@@ -401,7 +401,7 @@ function StatsPanel({ stats, statsLoading }: {
         <StatCard index={2} icon="i-solar:letter-bold-duotone"          label="消息"     value={String(stats.messageCount)} />
         <StatCard index={3} icon="i-solar:document-bold-duotone"        label="Artifact" value={String(stats.artifactCount)} />
         <StatCard index={4} icon="i-solar:soundwave-bold-duotone"       label="音频轮次" value={String(stats.audioCount)}    sub={fmtDuration(stats.audioDurationMs)} />
-        <StatCard index={5} icon="i-solar:magic-stick-3-bold-duotone"   label="Agent 任务" value={String(stats.agentTaskCount)} />
+        <StatCard index={5} icon="i-solar:magic-stick-3-bold-duotone"   label="子智能体执行" value={String(stats.agentRunCount)} />
       </div>
 
       <div className="ema-stagger-in ema-glass-weak ema-card-decorate ema-card-decorate--storage bg-[var(--ema-surface-1)] rounded-xl border-2 border-solid border-[var(--ema-border)] hover:border-[var(--ema-primary)]/30 hover:bg-[var(--ema-surface-2)] hover:shadow-[var(--ema-shadow-soft)] p-4 shadow-[var(--ema-shadow-1)]"

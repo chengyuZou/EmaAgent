@@ -5,7 +5,7 @@ import type { SessionId } from '@ema-agent/ids';
 import { useConversationStore } from '../stores/conversation-store.js';
 import { useSessionStore } from '../stores/session-store.js';
 import { useSidecarStore } from '../stores/sidecar-store.js';
-import { useAgentTaskStore } from '../stores/agent-task-store.js';
+import { useAgentRunStore } from '../stores/agentRunStore.js';
 import { findEnabledModel, useModelCatalogStore } from '../stores/model-catalog-store.js';
 import { useCapabilitiesStore } from '../stores/capabilities-store.js';
 import { useThemeSync } from '../stores/theme-store.js';
@@ -16,7 +16,7 @@ import { SessionSidebar } from './SessionSidebar.js';
 import { ChatHistory } from './history/ChatHistory.js';
 import { ChatInput } from './ChatInput.js';
 import { ContextPanel } from './ContextPanel.js';
-import { TaskPanel } from './TaskPanel.js';
+import { AgentRunPanel } from './agentRuns/AgentRunPanel.js';
 import { ArtifactsPanel } from './ArtifactsPanel.js';
 import { FilesPanel } from './FilesPanel.js';
 import { SessionAttachmentsPanel } from './SessionAttachmentsPanel.js';
@@ -77,11 +77,11 @@ export function ChatPanel(): JSX.Element {
   );
 
   // Running task count badge on the ⋮ button
-  const runningAgentRunCount = useAgentTaskStore((s) => {
+  const runningAgentRunCount = useAgentRunStore((s) => {
     if (!viewedSessionId) return 0;
-    return [...s.tasks.values()].filter(
-      (t) => t.sessionId === viewedSessionId as string &&
-             t.status === 'running',
+    return [...s.runs.values()].filter(
+      (run) => run.sessionId === viewedSessionId as string &&
+               run.status === 'running',
     ).length;
   });
 
@@ -465,7 +465,7 @@ function InspectorPanelBody({ id, sessionId }: { id: InspectorPanelId; sessionId
   const wrap = (child: JSX.Element): JSX.Element => (
     <div key={id} className="ema-panel-in h-full">{child}</div>
   );
-  if (id === 'agentRuns') return wrap(<TaskPanel className="p-2" />);
+  if (id === 'agentRuns') return wrap(<AgentRunPanel className="p-2" />);
   if (id === 'artifacts') return wrap(<ArtifactsPanel />);
   if (id === 'attachments') return wrap(<SessionAttachmentsPanel sessionId={sessionId} />);
   if (id === 'files')     return wrap(<FilesPanel />);

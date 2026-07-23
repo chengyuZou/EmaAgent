@@ -208,7 +208,7 @@ SQLite 封装。构造时:
 ### data.db Repo
 `SessionsRepo` / `TurnsRepo` / `MessagesRepo` / `ArtifactRepo` / `AttachmentRepo` / `SessionStatsRepo` + `DataDirStatsRepo`(`storage-stats.ts`)/ `TasksRepo` / `AgentRunsRepo` / `AgentRunMessagesRepo` / `PendingFragmentsRepo` / `SessionNotesRepo` / `MemoryTasksRepo`(data 侧)/ `MemorySessionStateRepo`
 
-`AgentTasksRepo/AgentTaskMessagesRepo` 是尚未迁移的历史命名，当前数据实际表示子 Agent 执行与 transcript，目标为 `AgentRunsRepo/AgentRunMessagesRepo`。V1 结构化 Task 将使用独立表与 Repo，不复用这些表。
+旧 `AgentTasksRepo/AgentTaskMessagesRepo` 已迁为 `AgentRunsRepo/AgentRunMessagesRepo`；V1 结构化 Task 使用独立表与 Repo，不复用执行记录生命周期。
 
 ### profile.db Repo
 `ProvidersRepo` / `ModelBindingsRepo` / `CharacterCardsRepo` / `SettingsRepo` / `Live2DModelsRepo` / `McpServersRepo` / `SkillsRepo` / `MarketSourcesRepo` / `MemoryNodesRepo` / `MemoryEdgesRepo` / `MemoryLazyUpdatesRepo` / `MemoryItemsRepo` / `MemoryTasksRepo`(profile 侧)/ `KbRegistryRepo` / 6 张 `Provider*ModelsRepo`

@@ -1,5 +1,6 @@
-import { spawnSync, spawn } from 'node:child_process';
+﻿import { spawnSync, spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { getPlatform } from './platform.js';
 import { WSL_BASH_SENTINEL } from './types.js';
 
@@ -12,16 +13,42 @@ export interface GitInstallResult {
   log: string;
 }
 
-// Known default bash.exe locations after a standard Git for Windows install.
-// Used to re-detect immediately after winget install, before the child-process
-// PATH cache (inherited from the parent Node process at startup) is refreshed.
-const GIT_BASH_CANDIDATE_PATHS = [
-  'C:\\Program Files\\Git\\usr\\bin\\bash.exe',
-  'C:\\Program Files (x86)\\Git\\usr\\bin\\bash.exe',
-  `${process.env['LOCALAPPDATA'] ?? 'C:\\Users\\Default\\AppData\\Local'}\\Programs\\Git\\usr\\bin\\bash.exe`,
-];
 
-/** Read Git install path from registry (HKLM or HKCU). Returns bash.exe path or null. */
+/** 从 git.exe 所在路径反推同安装根下的 bash.exe。 */
+function gitBashFromGitExecutable(): string | null {
+  // `where git` 比 `where bash` 更可能命中：Git 安装器默认把 git.exe 加进 PATH，
+  // 但用户可能选了“只加 git 到 PATH”而不加 bash。此时 git 在 PATH、bash 不在。
+  // git.exe 通常在 <GitRoot>\cmd\git.exe 或 <GitRoot>\bin\git.exe，
+  // bash.exe 固定在 <GitRoot>\usr\bin\bash.exe。
+  let whereGit: { status: number | null; stdout: string };
+  try {
+    whereGit = spawnSync('where', ['git'], {
+      encoding: 'utf8',
+      timeout: 3_000,
+      windowsHide: true,
+    });
+  } catch {
+    return null;
+  }
+  if (whereGit.status !== 0 || !whereGit.stdout.trim()) return null;
+
+  for (const rawLine of whereGit.stdout.trim().split(/\r?\n/)) {
+    const gitExe = rawLine.trim();
+    if (!gitExe) continue;
+    // 逐级上溯找到 Git 根目录（含 usr\bin 的那一层）。
+    let dir = gitExe;
+    for (let i = 0; i < 4; i += 1) {
+      const parent = dirname(dir);
+      if (parent === dir) break;
+      dir = parent;
+      const candidate = join(dir, 'usr', 'bin', 'bash.exe');
+      if (existsSync(candidate)) return candidate;
+    }
+  }
+  return null;
+}
+
+/** 从注册表读取 Git 安装路径（HKLM 或 HKCU），返回 bash.exe 路径或 null。 */
 function gitBashFromRegistry(): string | null {
   for (const hive of ['HKLM', 'HKCU']) {
     try {
@@ -36,16 +63,15 @@ function gitBashFromRegistry(): string | null {
           if (existsSync(candidate)) return candidate;
         }
       }
-    } catch { /* ignore */ }
+    } catch { /* 注册表查询失败时忽略，继续尝试下一个 hive */ }
   }
   return null;
 }
 
 /**
- * Verify that WSL has a usable bash — i.e. a distro is installed and `bash`
- * runs inside it. `wsl --status` returning 0 only means wsl.exe is present
- * (could be no distro), so we actually invoke bash. Returns true iff the
- * probe exits 0 within the timeout.
+ * 确认 WSL 有可用的 bash：已安装发行版且能在其中运行 `bash`。
+ * `wsl --status` 返回 0 只代表 wsl.exe 存在（可能没装发行版），
+ * 所以要实际调用 bash。在超时内退出码 0 即视为可用。
  */
 function probeWslBash(): boolean {
   const r = spawnSync('wsl.exe', ['bash', '-c', 'echo ok'], {
@@ -59,10 +85,11 @@ function probeWslBash(): boolean {
 let cached: ShellProbeResult | undefined;
 
 /**
- * Detect bash availability on the current platform.
- * On Linux / macOS: always `{ available: true, path: '/bin/bash' }`.
- * On Windows: checks PATH via `where bash`; returns install options if missing.
- * Result is cached for the process lifetime. Pass `{ fresh: true }` to bypass.
+ * 探测当前平台的 bash 可用性。
+ * Linux / macOS 恒为 `{ available: true, path: '/bin/bash' }`。
+ * Windows 按 PATH(`where bash`) -> git 反推 -> 注册表 -> WSL 顺序探测；
+ * 全部失败时返回 winget/wsl 可用性，供前端引导安装。
+ * 结果在进程生命周期内缓存；传 `{ fresh: true }` 可强制重探。
  */
 export function probeShell(opts?: { fresh?: boolean }): ShellProbeResult {
   if (!opts?.fresh && cached !== undefined) return cached;
@@ -83,18 +110,17 @@ export function probeShell(opts?: { fresh?: boolean }): ShellProbeResult {
     return (cached = { available: true, path: firstLine });
   }
 
-  // `where bash` uses the process-inherited PATH, which won't include a freshly
-  // installed Git for Windows until the process restarts. Fall back to a direct
-  // file-system check: well-known install locations, then registry lookup.
-  const knownPath = GIT_BASH_CANDIDATE_PATHS.find(existsSync) ?? gitBashFromRegistry();
-  if (knownPath) {
-    return (cached = { available: true, path: knownPath });
+  // `where bash` 走的是进程继承的 PATH，刚装完 Git for Windows 但未重启进程时
+  // 它仍会失败。改用不依赖 PATH 缓存的探测：从 `where git` 反推、再查注册表。
+  // 这能覆盖非默认盘符（如 D:\Git）和绿色版安装，不再硬编码 Program Files 路径。
+  const fallback = gitBashFromGitExecutable() ?? gitBashFromRegistry();
+  if (fallback) {
+    return (cached = { available: true, path: fallback });
   }
 
-  // No native bash.exe — but WSL2 with a distro installed gives a usable bash.
-  // `wsl --status` returning 0 only proves wsl.exe exists (not that a distro is
-  // installed), so actually invoke bash inside WSL to verify. Backends route
-  // commands through `wsl.exe bash -c …` when they see the sentinel.
+  // 没有 native bash.exe，但装了 WSL2 + 发行版也能用 bash。
+  // `wsl --status` 返回 0 只证明 wsl.exe 存在（不代表装了发行版），
+  // 所以要实际在 WSL 里调用 bash 验证。后端看到哨兵值时会走 `wsl.exe bash -c …`。
   if (probeWslBash()) {
     return (cached = { available: true, path: WSL_BASH_SENTINEL });
   }
@@ -119,9 +145,9 @@ export function probeShell(opts?: { fresh?: boolean }): ShellProbeResult {
 }
 
 /**
- * Install Git for Windows via winget (silent, no UAC required for per-user scope).
- * On success, invalidates the probe cache so the next `probeShell()` re-detects.
- * May take 1-3 minutes depending on download speed.
+ * 通过 winget 安装 Git for Windows（静默，per-user 无需 UAC）。
+ * 成功后清空探测缓存，使下一次 `probeShell()` 重新探测。
+ * 视下载速度约需 1-3 分钟。
  */
 export function installGitViaWinget(): Promise<GitInstallResult> {
   return new Promise((resolve) => {
@@ -151,13 +177,13 @@ export function installGitViaWinget(): Promise<GitInstallResult> {
       clearTimeout(timer);
       const ok = code === 0;
       if (ok) {
-        // winget succeeded — try to find the new bash via known paths + registry.
-        // The parent Node process's PATH won't include the new install yet,
-        // so `where bash` via spawnSync would still fail. Direct file check works.
-        const found = GIT_BASH_CANDIDATE_PATHS.find(existsSync) ?? gitBashFromRegistry();
+        // winget 装完后，父进程的 PATH 缓存还没更新，`where bash` 仍会失败。
+        // 改用不依赖 PATH 的探测：从 `where git` 反推、再查注册表。
+        // 注册表是 winget/标准安装都会写的权威源，比硬编码路径可靠。
+        const found = gitBashFromGitExecutable() ?? gitBashFromRegistry();
         cached = found
           ? { available: true, path: found }
-          : undefined; // fall back to re-probe on next probeShell() call
+          : undefined; // 没找到就清缓存，下次 probeShell() 重新全链路探测
       }
       resolve({ ok, log: chunks.join('').trim() });
     });
