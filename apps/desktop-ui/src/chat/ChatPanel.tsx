@@ -20,10 +20,12 @@ import { TaskPanel } from './TaskPanel.js';
 import { ArtifactsPanel } from './ArtifactsPanel.js';
 import { FilesPanel } from './FilesPanel.js';
 import { SessionAttachmentsPanel } from './SessionAttachmentsPanel.js';
+import { ChatActivityStrip } from './activity/ChatActivityStrip.js';
+import { ReviewPanel } from './review/ReviewPanel.js';
 
 // ── Inspector panel types ─────────────────────────────────────────────────────
 
-type InspectorPanelId = 'artifacts' | 'attachments' | 'files' | 'tasks';
+type InspectorPanelId = 'artifacts' | 'attachments' | 'files' | 'agentRuns' | 'review';
 
 // ── ChatPanel ─────────────────────────────────────────────────────────────────
 
@@ -75,7 +77,7 @@ export function ChatPanel(): JSX.Element {
   );
 
   // Running task count badge on the ⋮ button
-  const runningTaskCount = useAgentTaskStore((s) => {
+  const runningAgentRunCount = useAgentTaskStore((s) => {
     if (!viewedSessionId) return 0;
     return [...s.tasks.values()].filter(
       (t) => t.sessionId === viewedSessionId as string &&
@@ -135,6 +137,13 @@ export function ChatPanel(): JSX.Element {
       if (next.has(id)) next.delete(id);
       else next.add(id);
       return next;
+    });
+  }
+
+  function openReview(): void {
+    setActivePanels((current) => {
+      if (current.has('review')) return current;
+      return new Set([...current, 'review']);
     });
   }
 
@@ -202,9 +211,9 @@ export function ChatPanel(): JSX.Element {
                   title="更多面板"
                 >
                   <span className="i-solar:menu-dots-bold-duotone text-base shrink-0" aria-hidden />
-                  {runningTaskCount > 0 && (
+                  {runningAgentRunCount > 0 && (
                     <span className="absolute -top-0.5 -right-0.5 min-w-[14px] h-3.5 flex items-center justify-center rounded-full text-[9px] font-bold px-0.5 pointer-events-none bg-[var(--ema-primary)] text-[var(--ema-text-primary)]">
-                      {runningTaskCount}
+                      {runningAgentRunCount}
                     </span>
                   )}
                 </Button>
@@ -225,10 +234,10 @@ export function ChatPanel(): JSX.Element {
                     />
                     <OverflowItem
                       icon="i-solar:cpu-bold-duotone"
-                      label="后台任务"
-                      active={activePanels.has('tasks')}
-                      badge={runningTaskCount}
-                      onClick={() => { togglePanel('tasks'); setOverflowOpen(false); }}
+                      label="子智能体"
+                      active={activePanels.has('agentRuns')}
+                      badge={runningAgentRunCount}
+                      onClick={() => { togglePanel('agentRuns'); setOverflowOpen(false); }}
                     />
                   </div>
                 )}
@@ -248,6 +257,7 @@ export function ChatPanel(): JSX.Element {
           )}
 
           <ChatHistory />
+          <ChatActivityStrip onOpenReview={openReview} />
           <ChatInput />
 
           {/* Status bar */}
@@ -287,7 +297,13 @@ export function ChatPanel(): JSX.Element {
               aria-hidden
             />
           )}
-          {hasInspector && <InspectorContent activePanels={activePanels} sessionId={viewedSessionId as string | null} />}
+          {hasInspector && (
+            <InspectorContent
+              activePanels={activePanels}
+              sessionId={viewedSessionId as string | null}
+              onClose={togglePanel}
+            />
+          )}
         </div>
       </div>
     </ErrorBoundary>
@@ -357,10 +373,11 @@ function OverflowItem({
 //   5 panels → [A][B] / [C][D] / [E  ]
 
 function InspectorContent({
-  activePanels, sessionId,
+  activePanels, sessionId, onClose,
 }: {
   activePanels: Set<InspectorPanelId>;
   sessionId:    string | null;
+  onClose(id: InspectorPanelId): void;
 }): JSX.Element {
   const panels = [...activePanels]; // Set preserves insertion order
   const count  = panels.length;
@@ -371,7 +388,7 @@ function InspectorContent({
     const id = panels[0]!;
     return (
       <div className="flex flex-col flex-1 min-h-0">
-        <InspectorPanelHeader id={id} />
+        <InspectorPanelHeader id={id} onClose={() => onClose(id)} />
         <div className="flex-1 overflow-hidden">
           <InspectorPanelBody id={id} sessionId={sessionId} />
         </div>
@@ -396,7 +413,7 @@ function InspectorContent({
             key={id}
             className={`flex flex-col min-h-0 overflow-hidden border-r border-b border-[var(--ema-border)] ${colSpan ? 'col-span-2' : ''}`}
           >
-            <InspectorPanelHeader id={id} compact />
+            <InspectorPanelHeader id={id} compact onClose={() => onClose(id)} />
             <div className="flex-1 overflow-hidden">
               <InspectorPanelBody id={id} sessionId={sessionId} />
             </div>
@@ -411,10 +428,19 @@ const PANEL_META: Record<InspectorPanelId, { label: string; icon: string }> = {
   artifacts: { label: '产物',     icon: 'i-solar:layers-bold-duotone' },
   attachments: { label: '会话附件', icon: 'i-lucide:paperclip' },
   files:     { label: '文件',     icon: 'i-solar:folder-bold-duotone' },
-  tasks:     { label: '后台任务', icon: 'i-solar:cpu-bold-duotone' },
+  agentRuns: { label: '子智能体', icon: 'i-solar:cpu-bold-duotone' },
+  review:    { label: '审阅',     icon: 'i-lucide:file-diff' },
 };
 
-function InspectorPanelHeader({ id, compact }: { id: InspectorPanelId; compact?: boolean }): JSX.Element {
+function InspectorPanelHeader({
+  id,
+  compact,
+  onClose,
+}: {
+  id: InspectorPanelId;
+  compact?: boolean;
+  onClose(): void;
+}): JSX.Element {
   const meta = PANEL_META[id];
   return (
     <div className={`flex items-center gap-1.5 px-3 shrink-0 border-b border-[var(--ema-border)] ${compact ? 'py-1.5' : 'py-2'}`}>
@@ -422,6 +448,14 @@ function InspectorPanelHeader({ id, compact }: { id: InspectorPanelId; compact?:
       <span className={`font-medium ${compact ? 'text-xs' : 'text-sm'} text-[var(--ema-text-secondary)]`}>
         {meta.label}
       </span>
+      <Button
+        variant="ghost"
+        className="ml-auto flex size-6 items-center justify-center rounded-md p-0 text-[var(--ema-text-tertiary)] hover:bg-[var(--ema-surface-2)]"
+        onClick={onClose}
+        aria-label={`关闭${meta.label}`}
+      >
+        <span className="i-lucide:x text-xs" aria-hidden />
+      </Button>
     </div>
   );
 }
@@ -431,10 +465,11 @@ function InspectorPanelBody({ id, sessionId }: { id: InspectorPanelId; sessionId
   const wrap = (child: JSX.Element): JSX.Element => (
     <div key={id} className="ema-panel-in h-full">{child}</div>
   );
-  if (id === 'tasks')     return wrap(<TaskPanel className="p-2" />);
+  if (id === 'agentRuns') return wrap(<TaskPanel className="p-2" />);
   if (id === 'artifacts') return wrap(<ArtifactsPanel />);
   if (id === 'attachments') return wrap(<SessionAttachmentsPanel sessionId={sessionId} />);
   if (id === 'files')     return wrap(<FilesPanel />);
+  if (id === 'review')    return wrap(<ReviewPanel sessionId={sessionId} />);
   return <></>;
 }
 

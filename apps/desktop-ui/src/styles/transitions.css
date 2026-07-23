@@ -77,3 +77,40 @@
     transition-duration: 0ms;
   }
 }
+
+/* 输入框上方两槽共享不可见中心轴；单槽移到中心，双槽分别回到左右半区。 */
+.ema-activity-strip-track {
+  position: relative;
+  height: 2rem;
+}
+
+.ema-activity-strip-slot {
+  position: absolute;
+  top: 0;
+  width: calc(50% - 0.25rem);
+  transition:
+    transform var(--ema-duration-panel) var(--ema-ease),
+    opacity var(--ema-duration-base) var(--ema-ease);
+}
+
+.ema-activity-strip-slot--task { left: 0; }
+.ema-activity-strip-slot--diff { right: 0; }
+
+.ema-activity-strip-slot[data-visible='false'] {
+  pointer-events: none;
+  opacity: 0;
+}
+
+.ema-activity-strip-track[data-layout='task-only'] .ema-activity-strip-slot--task {
+  transform: translateX(calc(50% + 0.25rem));
+}
+
+.ema-activity-strip-track[data-layout='diff-only'] .ema-activity-strip-slot--diff {
+  transform: translateX(calc(-50% - 0.25rem));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ema-activity-strip-slot {
+    transition-duration: 0ms;
+  }
+}

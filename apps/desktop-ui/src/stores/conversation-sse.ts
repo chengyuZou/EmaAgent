@@ -1,18 +1,4 @@
-// 把 Turn 的结构化 SSE 事件分发给会话状态和各业务回调。
-/**
- * conversation-sse.ts — SSE event dispatcher for per-turn streams.
- *
- * Owns the `dispatchSseEvent` function (the big switch) and its supporting
- * types. Kept separate from the Zustand store to keep responsibilities clear:
- *   - conversation-history.ts: pure data helpers (no imports from this repo)
- *   - conversation-sse.ts:     event routing + side effects (this file)
- *   - conversation-store.ts:   Zustand state + queue management
- *
- * Note: this module and conversation-store.ts are in a deliberate circular
- * relationship (store imports getOrCreateQueue; this file imports
- * useConversationStore). ES module live bindings make this safe as long as
- * neither module uses the other's exports at the top-level init phase.
- */
+// 把 Turn 的结构化 SSE 事件分发给会话状态和各业务 Store。
 import {
   tauriBridge }             from '../lib/tauri-bridge.js';
 import { presentConfiguredEvent } from '../lib/event-notifications.js';
@@ -25,6 +11,7 @@ import {
 import { useDecisionStore }        from './decision-store.js';
 import { useArtifactStore }        from './artifact-store.js';
 import { useAgentTaskStore }       from './agent-task-store.js';
+import { useTaskStore }            from './taskStore.js';
 import { useConversationStore }    from './conversation-store.js';
 import {
   appendTextSlice,
@@ -367,6 +354,17 @@ export function dispatchSseEvent(
 
     case 'artifact_applied':
       useArtifactStore.getState().markAppliedFromEvent(event.id);
+      break;
+
+    // ── 持久 Task ─────────────────────────────────────────────────────────
+
+    case 'task_created':
+    case 'task_updated':
+      useTaskStore.getState().upsert(event.task);
+      break;
+
+    case 'task_deleted':
+      useTaskStore.getState().remove(event.sessionId, event.taskId);
       break;
 
     // ── Agent events ───────────────────────────────────────────────────────

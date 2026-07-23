@@ -54,6 +54,8 @@ Chat 长历史读取契约已经完成：`GET /api/sessions/:id/turn-index` 使�
 
 Chat 长历史前端主链已经完成：每个 Session 独立维护热尾/归档模式、轻量 Turn 索引和最多三个历史窗口；TurnRail 只渲染当前可视索引窗口，滚轮按需读取更早索引，点击冷 Turn 才加载有界消息正文。轨道容器保持透明，刻度按悬停距离形成双向声波式过渡并复用 UI Tooltip；查看旧窗口期间 SSE 热尾继续运行，以“新回复 · 回到最新”显式返回。
 
+Task 前端读取与聊天区入口已经接线：Desktop 使用正式 `/api/tasks` 快照并消费 `task_created/task_updated/task_deleted`，加载期间若收到事件会丢弃旧响应并重新读取，避免回退 Task 版本。输入框上方 Task/Diff 使用不可见中心轴：单入口居中、双入口分居左右并双向过渡；Task 在原位展开持久 TaskList，Diff 使用真实 ToolPresentation 打开右侧 `review` 槽。旧 AgentRun 前端仍使用 `agent-task-store` 与兼容 API，只把用户可见标签改成“子智能体”，命名迁移不与本批混做。
+
 ## 迁移完成事实
 
 - 所有 Ema 产品模块均位于根 `src`；旧产品目录不再留在 `packages`。
@@ -66,9 +68,9 @@ Chat 长历史前端主链已经完成：每个 Session 独立维护热尾/归�
 
 开始任何新批次前必须重新运行 `git status --short` 与 `git diff`，保留用户和其他 Agent 的修改。
 
-当前工作区只包含本批 Chat 长历史前端读取链：Session API Client、按 Session 的历史 Store、TurnRail、热尾/归档切换、聊天可视 Turn 追踪、样式变量与针对性测试；未暂存、未提交。
+当前工作区只包含 Task/Diff 输入框状态条：Task API/Store/SSE、TaskList、真实 Diff 聚合与 Review 面板、双槽布局动画及针对性测试；未暂存、未提交。
 
-当前基线最近提交：`21426f66 feat: add turn index and message window endpoints to session routes`。该提交号仅用于定位，不代表其他 Agent 不会继续提交。
+当前基线最近提交：`8ac95240 feat: implement ChatHistory and TurnRail components for session navigation`。该提交号仅用于定位，不代表其他 Agent 不会继续提交。
 
 ## 已确定的 V1 口径
 
@@ -108,8 +110,8 @@ Plan、Goal、Schedule、Workflow、Team 与 LLM 自动审批暂列 V1.5，不�
 Chat 工作区、Turn 导航轨、Task/AgentRun 分面、双 Dock、置顶摘要和桌面打开方式的完整实施草案已写入 `EmaChatWorkspacePlan.md`。该文档只冻结交互、数据契约、文件边界和分批方式，尚未创建空 Terminal/Browser/Review UI。
 
 1. TurnIndex/MessageWindow 与前端历史 Store/TurnRail 已完成，不创建 Dock 半成品；
-2. 下一批完成输入框上方 TaskList，并把旧 AgentRun 面板迁到新的执行视图；
-3. Workspace Dock 与置顶摘要在 TaskList 稳定后再实现；
+2. TaskList 与真实 Review 入口已经完成；下一小批把旧 AgentRun API/Store/Panel 迁到正式命名；
+3. 随后实现 Workspace Dock，把当前临时 Review Inspector 迁入唯一、可移动的 `review` 标签；
 4. 前端迁到 AgentRun/Task 新协议后，删除 `/api/agent-tasks` 与 `subagentId` 旧命名兼容；
 5. 后台进程按 `BackgroundProcess + ProcessOutput/ProcessStop` 分批实现 C 档，不修改 Agent Loop 来实现自动后台化；
 6. Chat 接入统一 TurnLoop 放在 Tool 单次执行边界稳定之后，短期保留 ConversationEngine 适配器。
@@ -120,6 +122,7 @@ Chat 工作区、Turn 导航轨、Task/AgentRun 分面、双 Dock、置顶摘要
 
 ## 最近验证
 
+- Task/Diff 输入框状态条：Desktop UI 30 个测试文件、130 项测试全部通过；Desktop UI typecheck 通过；新增 Task Store 2 项测试覆盖快照/事件合并与并发旧响应重读。
 - Chat 长历史前端：Desktop UI 29 个测试文件、128 项测试全部通过；Desktop UI typecheck 通过；TurnRail 新增 4 项纯模型测试覆盖容量、时间顺序、邻域对称衰减和当前 Turn 高亮。
 - Chat 长历史读取链：Storage 新增测试 3/3、Session 32/32、Core 新增路由测试 3/3 通过；Storage、Session、Core typecheck 通过。`EXPLAIN QUERY PLAN` 已确认 Turn 复合游标命中 `idx_turns_session_latest`；`git diff --check` 通过，仅有既有 CRLF 提示。
 - Session Branch 删除批次：Session 34/34、Storage 116/116、Desktop UI 124/124 通过；Session/Storage/IDs/Backup 构建通过，Core 与 Desktop UI typecheck 通过。Data v19 验证 Branch 表及列已删除，Session/Turn 身份不可变触发器仍生效；`git diff --check` 通过，仅有既有 CRLF 提示。

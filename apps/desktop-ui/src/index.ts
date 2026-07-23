@@ -48,6 +48,7 @@ export type { ModelCatalogStoreState, ModelCatalogStatus } from './stores/model-
 export type { ThemeStoreState, ThemeMode } from './stores/theme-store.js';
 
 export { useAgentTaskStore }           from './stores/agent-task-store.js';
+export { useTaskStore }                from './stores/taskStore.js';
 export type {
   AgentTaskStoreState,
   AgentTaskState,
@@ -151,6 +152,7 @@ export type {
 export type { AttachmentInputWire } from './api/turns.js';
 
 export { agentTasksApi }             from './api/agent-tasks.js';
+export { tasksApi }                  from './api/tasks.js';
 
 // ── Markdown ──────────────────────────────────────────────────────────────────
 

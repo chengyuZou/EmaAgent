@@ -21,6 +21,7 @@ import { useArtifactStore }    from './artifact-store.js';
 import { useAgentTaskStore }   from './agent-task-store.js';
 import { useSessionAttachmentStore } from './session-attachment-store.js';
 import { useSessionHistoryStore } from '../chat/history/sessionHistoryStore.js';
+import { useTaskStore } from './taskStore.js';
 import {
   dispatchSseEvent,
   breakerReasons,
@@ -392,6 +393,7 @@ export const useConversationStore = create<ConversationStoreState>((set, get) =>
     useAgentTaskStore.getState().evictSession(id as string);
     useSessionAttachmentStore.getState().evictSession(id);
     useSessionHistoryStore.getState().evictSession(id);
+    useTaskStore.getState().evictSession(id);
 
     set((s) => {
       const msgs      = new Map(s.messages);       msgs.delete(id as string);
