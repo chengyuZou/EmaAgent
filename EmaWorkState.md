@@ -101,11 +101,14 @@ Plan、Goal、Schedule、Workflow、Team 与 LLM 自动审批暂列 V1.5，不�
 
 ## 下一批建议顺序
 
-1. 前端新增独立 TaskList，消费 Task 结构化事件并在窗口重开时读取 `/api/tasks` 快照；
-2. 按已冻结的四按钮/动态工作标签设计重构 Chat 右侧与底部工作区，不恢复旧 Branch 面板；
-3. 前端迁到 AgentRun/Task 新协议后，删除 `/api/agent-tasks` 与 `subagentId` 旧命名兼容；
-4. 后台进程按 `BackgroundProcess + ProcessOutput/ProcessStop` 分批实现 C 档，不修改 Agent Loop 来实现自动后台化；
-5. Chat 接入统一 TurnLoop 放在 Tool 单次执行边界稳定之后，短期保留 ConversationEngine 适配器。
+Chat 工作区、Turn 导航轨、Task/AgentRun 分面、双 Dock、置顶摘要和桌面打开方式的完整实施草案已写入 `EmaChatWorkspacePlan.md`。该文档只冻结交互、数据契约、文件边界和分批方式，尚未创建空 Terminal/Browser/Review UI。
+
+1. 决定先推进前端批次 A/B，还是先继续统一 TurnRuntime/TurnLoop；
+2. 若先走前端，先完成 Task/AgentRun 协议收口以及 TurnIndex/MessageWindow 后端契约；
+3. 契约冻结后再实现或委派 TurnRail、TaskList、Workspace Dock 与置顶摘要视觉；
+4. 前端迁到 AgentRun/Task 新协议后，删除 `/api/agent-tasks` 与 `subagentId` 旧命名兼容；
+5. 后台进程按 `BackgroundProcess + ProcessOutput/ProcessStop` 分批实现 C 档，不修改 Agent Loop 来实现自动后台化；
+6. Chat 接入统一 TurnLoop 放在 Tool 单次执行边界稳定之后，短期保留 ConversationEngine 适配器。
 
 命名随业务批次清理：`IFileStateStoreEntry`、`IFileStateStore`、`IToolExecutionJournal` 等迁移期 `I*` 类型在其所有权迁移时改为职责名，不单独进行全仓机械重命名。
 
