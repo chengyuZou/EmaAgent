@@ -72,7 +72,6 @@ export interface SessionDashboardWire {
   totalInputTokens: number;
   totalOutputTokens: number;
   turnCounts: { chat: number; work: number; narrativeAlways: number };
-  branchCount: number;
   artifactCount: number;
   artifactTotalBytes: number;
   artifacts: ArtifactSummaryWire[];
@@ -136,8 +135,6 @@ export interface SessionsSearchResult {
 export interface ForkResult {
   sessionId: string;
   messageCount: number;
-  /** Fork 时来源 Session 的 active branch，平会话为 null。 */
-  sourceBranchId: string | null;
 }
 
 export interface TurnWire {
@@ -172,29 +169,4 @@ export interface MessageWire {
 export interface SessionMessagesResult {
   messages: MessageWire[];
   turns: TurnWire[];
-}
-
-export interface BranchNodeWire {
-  branchId: string;
-  parentBranchId: string | null;
-  forkFromTurnId: string | null;
-  forkUserInput: string;
-  isActive: boolean;
-  createdAt: number;
-}
-
-export interface TurnTreeNodeWire {
-  id: string;
-  branchId: string | null;
-  startedAt: number;
-  executionProfile: ExecutionProfile;
-  narrativePolicy: NarrativePolicy;
-  userInput: string;
-  status: TurnStatus;
-}
-
-export interface BranchTreeWire {
-  sessionActiveBranchId: string | null;
-  branches: BranchNodeWire[];
-  turns: TurnTreeNodeWire[];
 }

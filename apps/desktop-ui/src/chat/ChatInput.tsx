@@ -45,7 +45,6 @@ function authorizedFileToAttachment(file: AuthorizedFile): AttachmentInputWire {
 
 export function ChatInput(): JSX.Element {
   const viewedId   = useConversationStore((s) => s.viewedSessionId);
-  const pendingForkFromTurnId = useConversationStore((s) => s.pendingForkFromTurnId);
   const ttsEnabled = useUiStore((s) => s.ttsEnabled);
   const sidecarReady = useSidecarStore((s) => s.status.kind === 'ok');
 
@@ -285,21 +284,6 @@ export function ChatInput(): JSX.Element {
     <div className="shrink-0 px-4 py-3" style={{ borderTop: '1px solid var(--ema-border)' }}>
       <div className="max-w-2xl mx-auto">
         <DecisionLayer />
-
-        {/* 分叉点提示(F-052): 已标记分叉点, 发送消息即创建新分支 */}
-        {pendingForkFromTurnId && (
-          <div className="flex items-center gap-2 mb-2 px-3 py-1.5 rounded-xl text-xs ema-fade-in bg-[var(--ema-surface-2)] text-[var(--ema-text-secondary)]">
-            <span className="i-lucide:git-fork text-sm text-[var(--ema-primary)]" aria-hidden />
-            <span className="flex-1">发送消息将从此处分叉新分支</span>
-            <IconButton
-              variant="default"
-              size="sm"
-              icon="i-lucide:x"
-              label="取消分叉"
-              onClick={() => useConversationStore.getState().clearPendingFork()}
-            />
-          </div>
-        )}
 
         {/* ── Unified input box ── */}
         <div

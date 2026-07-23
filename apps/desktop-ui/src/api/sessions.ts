@@ -5,11 +5,7 @@
  * 本模块继续转出类型，保持 Desktop 内部调用入口稳定。
  */
 import { sidecarClient } from './sidecar-client.js';
-import type {
-  SessionId,
-  TurnId,
-  BranchId,
-} from '@ema-agent/ids';
+import type { SessionId, TurnId } from '@ema-agent/ids';
 import type {
   SessionAttachmentsResult,
   SessionWire,
@@ -21,16 +17,12 @@ import type {
   SessionsSearchResult,
   SessionSearchItem,
   ForkResult,
-  BranchNodeWire,
-  TurnTreeNodeWire,
-  BranchTreeWire,
 } from '@ema-agent/session';
 import type { ExecutionProfile, NarrativePolicy } from '@ema-agent/turn';
 
 export type {
   SessionWire, MessageWire, TurnWire, SessionMessagesResult,
   SessionsListResult, SessionsGroupedResult, SessionsSearchResult, SessionSearchItem, ForkResult,
-  BranchNodeWire, TurnTreeNodeWire, BranchTreeWire,
 };
 
 // ── API object ────────────────────────────────────────────────────────────────
@@ -112,9 +104,20 @@ export const sessionsApi = {
     );
   },
 
-  /** POST /api/sessions/:id/fork — fork a session. */
-  async fork(id: SessionId): Promise<ForkResult> {
-    return sidecarClient.request<ForkResult>(`/api/sessions/${id}/fork`, { method: 'POST' });
+  /** 复制完整 Session，或只复制到指定 Turn（含）为止。 */
+  async fork(id: SessionId, untilTurnId?: TurnId): Promise<ForkResult> {
+    return sidecarClient.request<ForkResult>(`/api/sessions/${id}/fork`, {
+      method: 'POST',
+      json: untilTurnId ? { untilTurnId } : {},
+    });
+  },
+
+  /** 仅回滚最后一轮，供最后一条用户消息重新编辑。 */
+  async rewindLastTurn(id: SessionId, turnId: TurnId): Promise<{ turnId: TurnId }> {
+    return sidecarClient.request<{ turnId: TurnId }>(
+      `/api/sessions/${id}/turns/${turnId}/rewind`,
+      { method: 'POST' },
+    );
   },
 
   /** POST /api/sessions/:id/viewed — reset hasUnread for this session. Fire-and-forget. */
@@ -152,49 +155,4 @@ export const sessionsApi = {
     }
   },
 
-  // ── Branch operations ────────────────────────────────────────────────────
-
-  /** GET /api/sessions/:id/branches — all branches with fork-point metadata. */
-  async listBranches(id: SessionId): Promise<BranchTreeWire> {
-    return sidecarClient.request<BranchTreeWire>(`/api/sessions/${id}/branches`);
-  },
-
-  /**
-   * POST /api/sessions/:id/branches — fork the session at a specific turn.
-   * Creates a new empty branch starting after `fromTurnId` and sets it active.
-   */
-  async forkBranch(id: SessionId, fromTurnId: TurnId): Promise<{ branchId: BranchId }> {
-    return sidecarClient.request<{ branchId: BranchId }>(`/api/sessions/${id}/branches`, {
-      method: 'POST',
-      json: { fromTurnId },
-    });
-  },
-
-  /**
-   * PUT /api/sessions/:id/branches/active — switch to a different branch.
-   * Pass null to reset to the root (only valid before any fork).
-   */
-  async switchBranch(id: SessionId, branchId: BranchId | null): Promise<void> {
-    await sidecarClient.request(`/api/sessions/${id}/branches/active`, {
-      method: 'PUT',
-      json: { branchId },
-    });
-  },
-
-  /** DELETE /api/sessions/:id/turns/:turnId — 删除该 turn 及其全部下游(级联)。 */
-  async deleteTurn(id: SessionId, turnId: TurnId): Promise<DeleteTurnCascadeResult> {
-    return sidecarClient.request<DeleteTurnCascadeResult>(
-      `/api/sessions/${id}/turns/${turnId}`,
-      { method: 'DELETE' },
-    );
-  },
 };
-
-/** DELETE /api/sessions/:id/turns/:turnId 的级联删除清单。 */
-export interface DeleteTurnCascadeResult {
-  /** 被删除的 turn(目标及全部下游)。 */
-  deletedTurnIds:   string[];
-  /** 被整支删除的分支(按深度从深到浅)。 */
-  deletedBranchIds: string[];
-}
-

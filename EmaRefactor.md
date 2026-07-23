@@ -78,6 +78,19 @@ Chat/Work 只描述一次 Turn 的执行能力和安全范围，不描述输入�
 
 `off` 只关闭剧情数据库检索，不移除 Character Prompt。UI 应提示：角色基础设定仍保留，但可能缺少剧情细节或混淆周目。
 
+### 2.1.1 Session 历史保持线性，Fork 创建独立 Session
+
+V1 不保留同一个 Session 内的 Branch 树。Branch 会让 Message、Turn、附件、Task、AgentRun、Permission 与外部副作用同时面对“当前分支”语义，删除中间节点也无法诚实撤销已经执行的文件和网络操作。
+
+- Session 侧栏的 Fork 完整复制当前 Session，不需要 TurnId；
+- 已完成助手回复下的 Fork 复制到该回复所属 Turn（含）为止，并立即进入新的独立 Session；
+- 用户消息不提供 Fork；只有最后一条用户消息可以回滚最后一个非运行 Turn 后重新发送；
+- V1 不提供任意历史 Turn 删除。整个 Session 仍可归档或删除；
+- Fork 复制 Session、Turn、Message 与附件身份，不复制活动 Task、AgentRun、Permission 请求或外部副作用；
+- `parentSessionId` 只用于说明副本来源，不代表两个 Session 继续共享可切换的历史树。
+
+旧 Branch 的 Binary Lifting、Euler Tour + RMQ、恢复顺序与前端树形布局已原样保存在工作区外的 `D:\Github\EmaAgentBranchArchive`，未来若恢复该能力必须先重新定义跨领域副作用和 Task/AgentRun 的分叉语义。
+
 ### 2.2 统一执行核心是 TurnRuntime + TurnLoop
 
 统一执行核心不再由 `ConversationEngine` 与 `AgentEngine` 各自维护一套循环。`TurnRuntime` 管一次 Turn 的根生命周期，`TurnLoop` 只管 LLM、Tool 与 Result 的迭代：
@@ -577,7 +590,7 @@ Provider 与 LLM 已证明产品模块可以位于根 `src`，同时保留内部
 | 当前 contracts 内容 | 目标所有者 |
 |---|---|
 | `LlmMessage`、模型输入 Part、模型输出 Block、`LlmTokenUsage`、`LlmCallId` | LLM |
-| Session `Message`、`MessageKind`、持久化 Blocks、`SessionId/MessageId/BranchId` | Session |
+| Session `Message`、`MessageKind`、持久化 Blocks、`SessionId/MessageId` | Session |
 | `TurnRequest/Response/Stats`、`TurnId/TurnStatus/ExecutionProfile` | Turn |
 | `ToolCallId`、Tool Result、Tool Presentation、执行日志 | Tools |
 | Permission 风险、访问类型和确认事件 | Permission |

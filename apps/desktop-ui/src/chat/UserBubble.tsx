@@ -1,42 +1,40 @@
-/** UserBubble — right-aligned user message. Layout from AIRI user-item.vue, colors original. */
-import { useState, type ChangeEvent, type JSX } from 'react';
+// 渲染用户消息，并允许用户只重写当前 Session 的最后一轮。
+import { useRef, useState, type ChangeEvent, type JSX } from 'react';
 import { Button, IconButton, Textarea } from '@ema-agent/ui';
+import type { SessionId, TurnId } from '@ema-agent/ids';
 import { Markdown } from '../markdown/renderer.js';
+import { sessionsApi } from '../api/sessions.js';
+import { showToast } from '../lib/toast.js';
 import type { ChatHistoryItem } from '../stores/conversation-store.js';
 import { useConversationStore } from '../stores/conversation-store.js';
 import { useSessionStore } from '../stores/session-store.js';
 import { AttachmentChip } from './AttachmentChip.js';
-import { ForkButton } from './ForkButton.js';
-import { DeleteTurnButton } from './DeleteTurnButton.js';
-import { findEditForkPoint } from './edit-utils.js';
-// 9.D: <N/M> 分支兄弟导航先注释掉——siblings<2 不显示 + branchData 刷新时序问题,
-// 底层未修前用户切分支走 Branch 面板。组件代码保留,修好 9.D 再恢复。
-// import { BranchSiblingNav } from './BranchSiblingNav.js';
+
+function editErrorMessage(error: unknown): string {
+  if (!(error instanceof Error)) return '重新发送失败';
+  if (error.message === 'turn_has_persistent_task') {
+    return '该轮已经创建持久任务，不能原地重写；请从上一条回复创建新会话';
+  }
+  if (error.message === 'turn_not_latest') return '只能重新编辑当前会话的最后一轮';
+  if (error.message === 'turn_running') return '该轮仍在运行，请先停止后再编辑';
+  return error.message;
+}
 
 export interface UserBubbleProps {
   message: ChatHistoryItem;
-  label?:  string;
+  canEdit?: boolean;
 }
 
-export function UserBubble({ message }: UserBubbleProps): JSX.Element {
+export function UserBubble({ message, canEdit = false }: UserBubbleProps): JSX.Element {
   const attachments = message.attachments ?? [];
   const hasTurnId = !!message.turnId;
   const viewedId  = useConversationStore((s) => s.viewedSessionId);
 
-  // ── 行内编辑分叉(DeepSeek 式): 铅笔 → 行内编辑框 → 发送时从前驱 turn 分叉出新分支 ──
   const [editing, setEditing] = useState(false);
   const [draft,   setDraft]   = useState('');
   const [sending, setSending] = useState(false);
-
-  // fork 点在点击时取快照即可, 不用订阅; 整个会话首个 turn 没有可分叉点, 隐藏铅笔。
-  const forkPoint = hasTurnId && viewedId
-    ? findEditForkPoint(
-        useConversationStore.getState().messages.get(viewedId as string) ?? [],
-        message.turnId as string,
-        useConversationStore.getState().branchDataBySession.get(viewedId as string),
-      )
-    : null;
-  const canEdit = hasTurnId && forkPoint !== null && !editing && message.content.trim().length > 0;
+  const rewoundRef = useRef(false);
+  const showEdit = canEdit && hasTurnId && !editing && message.content.trim().length > 0;
 
   const startEdit = (): void => {
     setDraft(message.content);
@@ -45,19 +43,35 @@ export function UserBubble({ message }: UserBubbleProps): JSX.Element {
 
   const handleSendEdit = async (): Promise<void> => {
     const text = draft.trim();
-    if (!text || !viewedId || !forkPoint) return;
+    if (!text || !viewedId || !message.turnId) return;
     setSending(true);
     try {
-      // 复用"标记-发送"(F-052): armFork 后 sendMessage 会先 forkBranch 再发送,
-      // 编辑后的文本成为新分支的第一个 turn; 原消息留在旧分支不动。
+      if (!rewoundRef.current) {
+        await sessionsApi.rewindLastTurn(viewedId, message.turnId as TurnId);
+        rewoundRef.current = true;
+      }
       const session = useSessionStore.getState().sessions.byId.get(viewedId as string);
-      useConversationStore.getState().armFork(forkPoint);
-      setEditing(false);
       await useConversationStore.getState().sendMessage(viewedId, {
         text,
         executionProfile: session?.executionProfile ?? 'chat',
         narrativePolicy: session?.narrativePolicy ?? 'auto',
       });
+      setEditing(false);
+
+      // 新 Turn 已被接受后再刷新，避免回滚成功但重发失败时丢失编辑框。
+      useConversationStore.setState((state) => {
+        const messages = new Map(state.messages);
+        messages.delete(viewedId as string);
+        const loaded = new Set(state.loadedMessageSessions);
+        loaded.delete(viewedId as string);
+        return { messages, loadedMessageSessions: loaded };
+      });
+      await useConversationStore.getState().loadMessages(viewedId as SessionId);
+    } catch (error) {
+      showToast(
+        editErrorMessage(error),
+        { variant: 'danger' },
+      );
     } finally {
       setSending(false);
     }
@@ -85,6 +99,9 @@ export function UserBubble({ message }: UserBubbleProps): JSX.Element {
               value={draft}
               onChange={(e: ChangeEvent<HTMLTextAreaElement>) => setDraft(e.target.value)}
             />
+            <p className="mt-1 text-[11px] text-[var(--ema-text-tertiary)]">
+              重新发送会替换本轮聊天记录，但不会撤销已经执行的文件、网络或记忆操作。
+            </p>
             <div className="flex justify-end gap-2 mt-2">
               <Button variant="ghost" size="sm" onClick={() => setEditing(false)}>
                 取消
@@ -105,28 +122,22 @@ export function UserBubble({ message }: UserBubbleProps): JSX.Element {
           </div>
         ) : null}
 
-        {/* ── 折叠 footer：fork / 编辑分叉 / 删除 + 分支兄弟导航 ──
-            ema-collapsible 双向折叠（grid-rows 0fr↔1fr + opacity），DOM 常驻不 unmount。
-            有 turnId 展开（分支操作是完成态），无 turnId 折叠。 */}
+        {/* 只有最新一条用户消息可回滚重发，历史消息不提供破坏性删除。 */}
         <div
           className="ema-collapsible"
-          style={{ gridTemplateRows: hasTurnId && !editing ? '1fr' : '0fr', opacity: hasTurnId && !editing ? 1 : 0 }}
+          style={{ gridTemplateRows: showEdit ? '1fr' : '0fr', opacity: showEdit ? 1 : 0 }}
         >
           <div className="flex items-center justify-end gap-1 text-[11px] overflow-hidden text-[var(--ema-text-tertiary)]">
-            {message.turnId && <ForkButton turnId={message.turnId} />}
-            {canEdit && (
+            {showEdit && (
               <IconButton
                 variant="default"
                 size="sm"
                 icon="i-lucide:pencil"
-                label="编辑并分叉"
+                label="重写最后一轮（不撤销已执行操作）"
                 className="opacity-30 hover:opacity-80"
                 onClick={startEdit}
               />
             )}
-            {message.turnId && <DeleteTurnButton turnId={message.turnId} />}
-            {/* 9.D: <N/M> 导航注释掉,切分支走 Branch 面板。修好 9.D 再恢复。 */}
-            {/* {message.turnId && <BranchSiblingNav turnId={message.turnId} />} */}
           </div>
         </div>
       </div>

@@ -118,7 +118,6 @@ describe('SessionBackupFacade 演进契约', () => {
         groupLabel: null, parentSessionId: null,
         executionProfile: 'chat', narrativePolicy: 'auto',
         preferredProviderConfigId: 'provider-config-1', preferredModelId: 'model-1',
-        activeBranchId: null,
       })),
     });
     const split = Math.floor(zip.byteLength / 2);
@@ -174,7 +173,7 @@ describe('SessionBackupFacade 演进契约', () => {
           preferredModelId: 'model-1',
         },
         turns: [{ id: 'turn-1' }], messages: [], artifacts: [], attachments: [],
-        audio: [], notes: null, branches: [], tasks: [], taskDependencies: [],
+        audio: [], notes: null, tasks: [], taskDependencies: [],
         agentRuns: [],
         agentRunMessages: [], memoryState: null, kbActivations: [],
         usageRecords: [],
@@ -205,7 +204,7 @@ describe('SessionBackupFacade 演进契约', () => {
         id: 'attachment-1', name: 'large.bin', mime: 'application/octet-stream',
         size: 32, turnId: 'turn-1', mtime: 0, createdAt: 1, localPath: largeFile,
       }],
-      audio: [], notes: null, branches: [], tasks: [], taskDependencies: [],
+      audio: [], notes: null, tasks: [], taskDependencies: [],
       agentRuns: [], agentRunMessages: [],
       memoryState: null, kbActivations: [], usageRecords: [],
     };

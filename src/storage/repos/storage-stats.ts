@@ -5,7 +5,6 @@ import type { AgentRunMessageRow } from './agent-run-messages.js';
 import type { KbActivationRow }     from './kb-activations.js';
 import type { AgentRunRow }         from './agent-runs.js';
 import type { UsageRecordRow }      from './usage-records.js';
-import type { BranchRow }           from './branches.js';
 import type { TaskDependencyRow, TaskRow } from './tasks.js';
 
 export type {
@@ -13,7 +12,6 @@ export type {
   KbActivationRow,
   AgentRunRow,
   UsageRecordRow,
-  BranchRow,
   TaskDependencyRow,
 };
 
@@ -75,7 +73,6 @@ export interface SessionStats {
   chatTurns:            number;
   workTurns:            number;
   narrativeAlwaysTurns: number;
-  branchCount:          number;
   artifactCount:        number;
   artifactInlineBytes:  number;
   audioTurnCount:       number;
@@ -117,7 +114,7 @@ export interface MemoryStateRow {
 // ── 导入(恢复)payload 类型 ───────────────────────────────────────────────────
 
 export interface TurnRestoreRow {
-  id: string; sessionId: string; branchId: string | null;
+  id: string; sessionId: string;
   triggerType: TurnTriggerType;
   executionProfile: ExecutionProfile;
   narrativePolicy: NarrativePolicy;
@@ -166,12 +163,10 @@ export interface SessionRestorePayload {
     groupLabel: string | null; parentSessionId: string | null;
     executionProfile: ExecutionProfile;
     narrativePolicy: NarrativePolicy;
-    activeBranchId: string | null;
     /** 旧 ZIP v1 没有这两个字段，导入时按 null 兼容。 */
     preferredProviderConfigId?: string | null;
     preferredModelId?: string | null;
   };
-  branches:          BranchRow[];
   turns:             TurnRestoreRow[];
   messages:          MessageRestoreRow[];
   artifacts:         ArtifactRestoreRow[];
@@ -222,7 +217,6 @@ function validateSessionRestorePayload(payload: SessionRestorePayload): void {
   }
 
   const turnIds = uniqueIds(payload.turns, 'Turn');
-  const branchIds = uniqueIds(payload.branches, 'Branch');
   const taskIds = uniqueIds(payload.tasks, 'Task');
   const agentRunIds = uniqueIds(payload.agentRuns, 'AgentRun');
   uniqueIds(payload.messages, 'Message');
@@ -233,7 +227,6 @@ function validateSessionRestorePayload(payload: SessionRestorePayload): void {
 
   for (const turn of payload.turns) {
     assertSessionOwnership('Turn', turn.id, turn.sessionId, sessionId);
-    assertOptionalReference('Turn.branchId', turn.id, turn.branchId, branchIds);
     if (turn.triggerType !== 'userMessage') {
       throw new SessionRestoreValidationError(`Turn triggerType 非法: ${turn.id}`);
     }
@@ -244,14 +237,6 @@ function validateSessionRestorePayload(payload: SessionRestorePayload): void {
       throw new SessionRestoreValidationError(`Turn narrativePolicy 非法: ${turn.id}`);
     }
   }
-  for (const branch of payload.branches) {
-    assertSessionOwnership('Branch', branch.id, branch.session_id, sessionId);
-    assertOptionalReference('Branch.parentBranchId', branch.id, branch.parent_branch_id, branchIds);
-    assertOptionalReference('Branch.forkFromTurnId', branch.id, branch.fork_from_turn_id, turnIds);
-  }
-  assertOptionalReference('Session.activeBranchId', sessionId, payload.session.activeBranchId, branchIds);
-  assertBranchParentGraph(payload.branches);
-
   for (const message of payload.messages) {
     assertSessionOwnership('Message', message.id, message.sessionId, sessionId);
     assertOptionalReference('Message.turnId', message.id, message.turnId, turnIds);
@@ -375,25 +360,6 @@ function assertOptionalReference(
   if (referencedId !== null) assertReference(label, ownerId, referencedId, availableIds);
 }
 
-function assertBranchParentGraph(branches: readonly BranchRow[]): void {
-  const parents = new Map(branches.map(branch => [branch.id, branch.parent_branch_id]));
-  const complete = new Set<string>();
-
-  for (const branch of branches) {
-    if (complete.has(branch.id)) continue;
-    const path = new Set<string>();
-    let current: string | null = branch.id;
-    while (current !== null && !complete.has(current)) {
-      if (path.has(current)) {
-        throw new SessionRestoreValidationError(`Branch parent graph 存在循环: ${current}`);
-      }
-      path.add(current);
-      current = parents.get(current) ?? null;
-    }
-    for (const id of path) complete.add(id);
-  }
-}
-
 function assertTaskDependencyGraph(
   dependencies: readonly TaskDependencyRow[],
 ): void {
@@ -438,7 +404,6 @@ export class SessionStatsRepo {
         (SELECT COUNT(*) FROM turns
           WHERE session_id = ? AND narrative_policy = 'always') AS narrative_always_turns,
         (SELECT COUNT(*) FROM turns WHERE session_id = ? AND execution_profile = 'work') AS work_turns,
-        (SELECT COUNT(*) FROM branches WHERE session_id = ?) AS branch_count,
         (SELECT COUNT(*) FROM artifacts WHERE session_id = ?) AS artifact_count,
         (SELECT COALESCE(SUM(LENGTH(COALESCE(content,''))), 0)
            FROM artifacts WHERE session_id = ? AND content_location = 'inline') AS artifact_inline_bytes,
@@ -449,7 +414,7 @@ export class SessionStatsRepo {
         (SELECT COALESCE(SUM(size),0) FROM turn_attachments WHERE session_id = ?) AS attachment_total_bytes
     `).get(
       sessionId, sessionId, sessionId, sessionId,
-      sessionId, sessionId, sessionId, sessionId,
+      sessionId, sessionId, sessionId,
       sessionId, sessionId,
       sessionId, sessionId, sessionId,
       sessionId, sessionId,
@@ -457,7 +422,6 @@ export class SessionStatsRepo {
       turn_count: number; message_count: number;
       total_input_tokens: number; total_output_tokens: number;
       chat_turns: number; work_turns: number; narrative_always_turns: number;
-      branch_count: number;
       artifact_count: number; artifact_inline_bytes: number;
       audio_turn_count: number; audio_total_bytes: number; audio_total_duration_ms: number;
       attachment_count: number; attachment_total_bytes: number;
@@ -471,7 +435,6 @@ export class SessionStatsRepo {
       chatTurns:            row.chat_turns,
       workTurns:            row.work_turns,
       narrativeAlwaysTurns: row.narrative_always_turns,
-      branchCount:          row.branch_count,
       artifactCount:        row.artifact_count,
       artifactInlineBytes:  row.artifact_inline_bytes,
       audioTurnCount:       row.audio_turn_count,
@@ -529,14 +492,6 @@ export class SessionStatsRepo {
       WHERE session_id = ?
       ORDER BY created_at ASC
     `).all(sessionId) as ArtifactSummaryRow[];
-  }
-
-  listBranches(sessionId: string): BranchRow[] {
-    return this.db.prepare(`
-      SELECT id, parent_branch_id, fork_from_turn_id, created_at
-      FROM branches WHERE session_id = ?
-      ORDER BY created_at ASC
-    `).all(sessionId) as BranchRow[];
   }
 
   listAgentRuns(sessionId: string): AgentRunRow[] {
@@ -615,15 +570,14 @@ export class SessionStatsRepo {
         ? p.session.parentSessionId
         : null;
 
-      // 1. Session--active_branch_id 先置 NULL(循环 FK:session->branch, branch->session)
+      // 1. 恢复 Session 基础行。
       this.db.prepare(`
         INSERT INTO sessions
           (id, title, workspace_root, created_at, updated_at,
            last_activity_at, archived_at, pinned, pinned_at, group_label,
            parent_session_id, execution_profile, narrative_policy,
-           preferred_provider_config_id, preferred_model_id,
-           active_branch_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
+           preferred_provider_config_id, preferred_model_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         p.session.id, p.session.title, p.session.workspaceRoot ?? null,
         p.session.createdAt, p.session.updatedAt,
@@ -637,14 +591,14 @@ export class SessionStatsRepo {
         p.session.preferredModelId ?? null,
       );
 
-      // 2. 先插入 Turn 节点，但暂不恢复 branch_id，打断 Turn -> Branch 的环。
+      // 2. 恢复线性 Turn。
       const stmtTurn = this.db.prepare(`
         INSERT INTO turns
           (id, session_id, trigger_type, execution_profile, narrative_policy,
-           branch_id, status, user_input,
+           status, user_input,
            started_at, completed_at, error_code, error_message,
            iterations, usage_input_tokens, usage_output_tokens)
-        VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
       for (const t of p.turns) {
         stmtTurn.run(
@@ -655,56 +609,7 @@ export class SessionStatsRepo {
         );
       }
 
-      // 3. 再插入 Branch 节点，parent/fork 暂置 NULL，消除数组顺序依赖。
-      const stmtBranch = this.db.prepare(`
-        INSERT INTO branches (id, session_id, parent_branch_id, fork_from_turn_id, created_at)
-        VALUES (?, ?, NULL, NULL, ?)
-      `);
-      for (const b of p.branches) {
-        stmtBranch.run(b.id, p.session.id, b.created_at);
-      }
-
-      // 4. 所有节点已存在，恢复 Branch 的父节点与 fork Turn 引用。
-      const stmtBranchRefs = this.db.prepare(`
-        UPDATE branches
-        SET parent_branch_id = ?, fork_from_turn_id = ?
-        WHERE id = ? AND session_id = ?
-      `);
-      for (const b of p.branches) {
-        const info = stmtBranchRefs.run(
-          b.parent_branch_id ?? null,
-          b.fork_from_turn_id ?? null,
-          b.id,
-          p.session.id,
-        );
-        if (info.changes !== 1) {
-          throw new SessionRestoreValidationError(`恢复 Branch 引用失败: ${b.id}`);
-        }
-      }
-
-      // 5. 恢复 Turn -> Branch 引用。
-      const stmtTurnBranch = this.db.prepare(`
-        UPDATE turns SET branch_id = ? WHERE id = ? AND session_id = ?
-      `);
-      for (const t of p.turns) {
-        if (t.branchId === null) continue;
-        const info = stmtTurnBranch.run(t.branchId, t.id, p.session.id);
-        if (info.changes !== 1) {
-          throw new SessionRestoreValidationError(`恢复 Turn branch 引用失败: ${t.id}`);
-        }
-      }
-
-      // 6. 最后恢复 Session -> active Branch 引用。
-      if (p.session.activeBranchId) {
-        const info = this.db.prepare(
-          'UPDATE sessions SET active_branch_id = ? WHERE id = ?',
-        ).run(p.session.activeBranchId, p.session.id);
-        if (info.changes !== 1) {
-          throw new SessionRestoreValidationError(`恢复 active Branch 失败: ${p.session.activeBranchId}`);
-        }
-      }
-
-      // 7. Message
+      // 3. 恢复 Message。
       const stmtMsg = this.db.prepare(`
         INSERT INTO messages
           (id, session_id, turn_id, role, kind, blocks_json, interrupted, created_at)
@@ -927,14 +832,13 @@ export class SessionStatsRepo {
       }
 
       this.assertRestoreCount('turns', p.session.id, p.turns.length);
-      this.assertRestoreCount('branches', p.session.id, p.branches.length);
       this.assertRestoreCount('messages', p.session.id, p.messages.length);
       this.assertRestoreCount('tasks', p.session.id, p.tasks.length);
     })();
   }
 
   private assertRestoreCount(
-    table: 'turns' | 'branches' | 'messages' | 'tasks',
+    table: 'turns' | 'messages' | 'tasks',
     sessionId: string,
     expected: number,
   ): void {

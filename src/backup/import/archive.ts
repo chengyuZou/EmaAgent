@@ -29,7 +29,7 @@ export const SESSION_IMPORT_LIMITS: Readonly<SessionImportLimits> = {
 };
 
 const ROOT_JSON_ENTRIES = new Set([
-  'manifest.json', 'session.json', 'turns.json', 'messages.json', 'branches.json',
+  'manifest.json', 'session.json', 'turns.json', 'messages.json',
   'tasks.json', 'task_dependencies.json',
   'agent_runs.json', 'agent_run_messages.json', 'memory_state.json',
   'kb_activations.json', 'usage_records.json', 'llm_turn_metrics.json', 'usage.json', 'notes.json',

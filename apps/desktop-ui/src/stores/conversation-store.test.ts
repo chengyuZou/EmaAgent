@@ -273,19 +273,4 @@ describe('conversation-store', () => {
     });
   });
 
-  describe('pendingFork (F-052)', () => {
-    it('armFork 记录分叉点, clearPendingFork 清除', () => {
-      useConversationStore.getState().armFork(T1);
-      expect(useConversationStore.getState().pendingForkFromTurnId).toBe(T1);
-      useConversationStore.getState().clearPendingFork();
-      expect(useConversationStore.getState().pendingForkFromTurnId).toBeNull();
-    });
-
-    it('切换到另一个会话时分叉点被清除', async () => {
-      useConversationStore.setState({ viewedSessionId: S1 });
-      useConversationStore.getState().armFork(T1);
-      await useConversationStore.getState().viewSession(S2);
-      expect(useConversationStore.getState().pendingForkFromTurnId).toBeNull();
-    });
-  });
 });

@@ -1,26 +1,25 @@
-/**
- * ForkButton — 消息气泡底部的"从此处分叉新分支"入口。
- *
- * F-052: 点击只标记分叉点(armFork), 不立即创建空分支;
- * 发送下一条消息时才真正 fork 并把新 turn 落到新分支上。
- *
- * 视觉：默认隐入（opacity-30），hover 显出（opacity-80），与 AssistantBubble 的 replay 按钮风格一致。
- * 用 @ema-agent/ui 的 IconButton（禁 raw <button>）。
- * streaming 气泡不显示（分支是完成态操作）；无 viewedId 返回 null。
- */
+// 从一条已完成回复复制出独立 Session，并立即切换到新会话。
 import type { JSX } from 'react';
 import { IconButton } from '@ema-agent/ui';
 import type { TurnId } from '@ema-agent/ids';
 import { useConversationStore } from '../stores/conversation-store.js';
+import { useSessionStore } from '../stores/session-store.js';
 import { showToast } from '../lib/toast.js';
 
 export function ForkButton({ turnId }: { turnId: string }): JSX.Element | null {
   const viewedId = useConversationStore((s) => s.viewedSessionId);
   if (!viewedId) return null;
 
-  const handleFork = (): void => {
-    useConversationStore.getState().armFork(turnId as TurnId);
-    showToast('已标记分叉点，发送消息即创建新分支');
+  const handleFork = async (): Promise<void> => {
+    try {
+      const newId = await useSessionStore
+        .getState()
+        .forkSession(viewedId, turnId as TurnId);
+      await useConversationStore.getState().viewSession(newId);
+      showToast('已从该回复创建新会话');
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : '创建新会话失败', { variant: 'danger' });
+    }
   };
 
   return (
@@ -28,9 +27,9 @@ export function ForkButton({ turnId }: { turnId: string }): JSX.Element | null {
       variant="default"
       size="sm"
       icon="i-lucide:git-fork"
-      label="从此处分叉新分支"
+      label="从该回复创建新会话"
       className="opacity-30 hover:opacity-80 -ml-0.5"
-      onClick={handleFork}
+      onClick={() => void handleFork()}
     />
   );
 }

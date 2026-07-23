@@ -1,8 +1,7 @@
-// 测试 Session 统计与备份恢复会完整保留归属、分支和执行字段。
+// 测试 Session 统计与备份恢复会完整保留归属和执行字段。
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   SessionStatsRepo,
-  SessionRestoreValidationError,
   type SessionRestorePayload,
 } from '../../repos/storage-stats.js';
 import { createTestDatabase, type TestDatabase } from '../helpers/create-test-database.js';
@@ -20,33 +19,17 @@ describe('SessionStatsRepo restore integration', () => {
     database.close();
   });
 
-  it('restores a multi-level branch graph independent of payload order', () => {
-    const payload = branchedPayload();
+  it('restores turns and messages while preserving ownership', () => {
+    const payload = restorePayload();
 
     repo.restoreRows(payload);
 
-    const session = database.db.prepare(
-      'SELECT active_branch_id FROM sessions WHERE id = ?',
-    ).get(payload.session.id) as { active_branch_id: string | null };
-    expect(session.active_branch_id).toBe('branch-child');
-
-    const branches = database.db.prepare(`
-      SELECT id, parent_branch_id, fork_from_turn_id
-      FROM branches
-      WHERE session_id = ?
-      ORDER BY id
-    `).all(payload.session.id);
-    expect(branches).toEqual([
-      { id: 'branch-child', parent_branch_id: 'branch-root', fork_from_turn_id: 'turn-root' },
-      { id: 'branch-root', parent_branch_id: null, fork_from_turn_id: null },
-    ]);
-
     const turns = database.db.prepare(`
-      SELECT id, branch_id FROM turns WHERE session_id = ? ORDER BY id
+      SELECT id FROM turns WHERE session_id = ? ORDER BY id
     `).all(payload.session.id);
     expect(turns).toEqual([
-      { id: 'turn-child', branch_id: 'branch-child' },
-      { id: 'turn-root', branch_id: 'branch-root' },
+      { id: 'turn-child' },
+      { id: 'turn-root' },
     ]);
 
     expect(database.db.pragma('foreign_key_check')).toEqual([]);
@@ -55,47 +38,28 @@ describe('SessionStatsRepo restore integration', () => {
     ).pluck().get(payload.session.id)).toBe(2);
   });
 
-  it('rejects a missing fork Turn before writing any rows', () => {
-    const payload = branchedPayload();
-    payload.branches[0]!.fork_from_turn_id = 'missing-turn';
-
-    expect(() => repo.restoreRows(payload)).toThrow(SessionRestoreValidationError);
-    expect(sessionCount(payload.session.id)).toBe(0);
-  });
-
   it('rejects cross-session ownership before writing any rows', () => {
-    const payload = branchedPayload();
+    const payload = restorePayload();
     payload.turns[0]!.sessionId = 'another-session';
 
     expect(() => repo.restoreRows(payload)).toThrow(/属于 Session another-session/);
     expect(sessionCount(payload.session.id)).toBe(0);
   });
 
-  it('rejects a cyclic branch parent graph before writing any rows', () => {
-    const payload = branchedPayload();
-    payload.branches[1]!.parent_branch_id = 'branch-child';
-
-    expect(() => repo.restoreRows(payload)).toThrow(/存在循环/);
-    expect(sessionCount(payload.session.id)).toBe(0);
-  });
-
   it('rolls back the whole restore when a global child id conflicts', () => {
     insertExistingTurn('turn-root');
-    const payload = branchedPayload();
+    const payload = restorePayload();
 
     expect(() => repo.restoreRows(payload)).toThrow();
 
     expect(sessionCount(payload.session.id)).toBe(0);
-    expect(database.db.prepare(
-      'SELECT COUNT(*) FROM branches WHERE session_id = ?',
-    ).pluck().get(payload.session.id)).toBe(0);
     expect(database.db.prepare(
       'SELECT COUNT(*) FROM messages WHERE session_id = ?',
     ).pluck().get(payload.session.id)).toBe(0);
   });
 
   it('restores dependent rows and preserves AgentRun state', () => {
-    const payload = branchedPayload();
+    const payload = restorePayload();
     payload.tasks.push(
       {
         id: 'task-1',
@@ -233,7 +197,7 @@ describe('SessionStatsRepo restore integration', () => {
   });
 
   it('restores a forked Session without requiring its source Session backup', () => {
-    const payload = branchedPayload();
+    const payload = restorePayload();
     payload.session.parentSessionId = 'source-session-not-in-backup';
 
     repo.restoreRows(payload);
@@ -262,7 +226,7 @@ describe('SessionStatsRepo restore integration', () => {
   }
 });
 
-function branchedPayload(): SessionRestorePayload {
+function restorePayload(): SessionRestorePayload {
   return {
     session: {
       id: 'restored-session',
@@ -278,30 +242,11 @@ function branchedPayload(): SessionRestorePayload {
       parentSessionId: null,
       executionProfile: 'chat',
       narrativePolicy: 'off',
-      activeBranchId: 'branch-child',
     },
-    // 故意 child 在 root 前，证明恢复不依赖 payload 顺序。
-    branches: [
-      {
-        id: 'branch-child',
-        session_id: 'restored-session',
-        parent_branch_id: 'branch-root',
-        fork_from_turn_id: 'turn-root',
-        created_at: 120,
-      },
-      {
-        id: 'branch-root',
-        session_id: 'restored-session',
-        parent_branch_id: null,
-        fork_from_turn_id: null,
-        created_at: 100,
-      },
-    ],
     turns: [
       {
         id: 'turn-root',
         sessionId: 'restored-session',
-        branchId: 'branch-root',
         triggerType: 'userMessage',
         executionProfile: 'chat',
         narrativePolicy: 'off',
@@ -318,7 +263,6 @@ function branchedPayload(): SessionRestorePayload {
       {
         id: 'turn-child',
         sessionId: 'restored-session',
-        branchId: 'branch-child',
         triggerType: 'userMessage',
         executionProfile: 'chat',
         narrativePolicy: 'off',

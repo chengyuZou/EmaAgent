@@ -5,6 +5,7 @@ import { estimateTextTokens } from '@ema-agent/token';
 import { Markdown } from '../markdown/renderer.js';
 import { ToolCallBlock } from './ToolCallBlock.js';
 import { NarrativeStatusBlock } from './NarrativeStatusBlock.js';
+import { ForkButton } from './ForkButton.js';
 import { replayTurn, stopPlayback, usePlaybackStore } from '../lib/tts-playback.js';
 import { showToast } from '../lib/toast.js';
 import { useConversationStore, type ChatHistoryItem, type AssistantSlice } from '../stores/conversation-store.js';
@@ -22,12 +23,13 @@ export interface AssistantBubbleProps {
   >;
   label?:       string;
   isStreaming?: boolean;
+  canFork?:     boolean;
 }
 
 /** Ignore clicks landing within this window after the previous one (rage-click guard). */
 const AUDIO_CLICK_THROTTLE_MS = 600;
 
-export function AssistantBubble({ message, isStreaming }: AssistantBubbleProps): JSX.Element {
+export function AssistantBubble({ message, isStreaming, canFork = false }: AssistantBubbleProps): JSX.Element {
   const slices = resolveSlices(message);
   const isEmpty = slices.length === 0;
 
@@ -162,6 +164,8 @@ export function AssistantBubble({ message, isStreaming }: AssistantBubbleProps):
               onClick={handleAudioClick}
             />
           )}
+
+          {!isStreaming && canFork && message.turnId && <ForkButton turnId={message.turnId} />}
 
         </div>
       </div>

@@ -30,7 +30,7 @@ EmaAgent 用 **3 个独立 SQLite 数据库**,各自独立 `user_version`(版本
 | db | 文件路径 | 生命周期 | 内容 |
 |---|---|---|---|
 | `profile` | `~/.ema-agent/profile.db` | 全局,跟**用户**走,跨所有工作区共享 | Provider 配置 / 模型绑定 / 角色卡 / 设置 / skills 索引 / 全局记忆(节点图+条目)/ KB 注册表 |
-| `data` | `{activeDataDir}/data.db` | 每个工作区一个,用户切换数据目录时整体换 | sessions / turns / messages / branches / 音频 / artifacts / 附件 / agent tasks / per-session 记忆 / kb_activations |
+| `data` | `{activeDataDir}/data.db` | 每个工作区一个,用户切换数据目录时整体换 | sessions / turns / messages / 音频 / artifacts / 附件 / tasks / agent runs / per-session 记忆 / kb_activations |
 | `kb` | `{kbPath}/kb.db` | 每个命名知识库独立一个 | document_assets / document_chunks / FTS5 索引 / kb_ingest_tasks |
 
 **为什么分三个**:
@@ -74,9 +74,8 @@ SQLite 封装。构造时:
 **会话核心**
 | 表 | 职责 |
 |---|---|
-| `sessions` | 会话主表:标题 / 角色卡 / 工作区 / 置顶 / 归档 / 分组 / 分支指针 / 最后活动时间 |
-| `branches` | 会话内分支树:`parent_branch_id` 自引用成树,`fork_from_turn_id` 标记从哪轮分叉 |
-| `turns` | 一轮对话:模式(chat/narrative/agent)/ 状态 / 用户输入 / token 用量 / 所属分支 |
+| `sessions` | 会话主表:标题 / 角色卡 / 工作区 / 置顶 / 归档 / 分组 / 父 Session / 最后活动时间 |
+| `turns` | 一轮有界执行:触发来源 / Chat 或 Work / Narrative 策略 / 状态 / 用户输入 / token 用量 |
 | `messages` | 单条消息:user/assistant/system,`kind` 区分 normal/context/tool_results/summary/narrative_context,正文存 `blocks_json` |
 | `pending_fragments` | 流式生成中的碎片暂存(还没拼成完整 message 前的增量) |
 
@@ -207,7 +206,7 @@ SQLite 封装。构造时:
 按 db 分组,导出在 `src/index.ts`:
 
 ### data.db Repo
-`SessionsRepo` / `TurnsRepo` / `MessagesRepo` / `BranchesRepo` / `ArtifactRepo` / `AttachmentRepo` / `SessionStatsRepo` + `DataDirStatsRepo`(`storage-stats.ts`)/ `AgentTasksRepo` / `AgentTaskMessagesRepo` / `PendingFragmentsRepo` / `SessionNotesRepo` / `MemoryTasksRepo`(data 侧)/ `MemorySessionStateRepo`
+`SessionsRepo` / `TurnsRepo` / `MessagesRepo` / `ArtifactRepo` / `AttachmentRepo` / `SessionStatsRepo` + `DataDirStatsRepo`(`storage-stats.ts`)/ `TasksRepo` / `AgentRunsRepo` / `AgentRunMessagesRepo` / `PendingFragmentsRepo` / `SessionNotesRepo` / `MemoryTasksRepo`(data 侧)/ `MemorySessionStateRepo`
 
 `AgentTasksRepo/AgentTaskMessagesRepo` 是尚未迁移的历史命名，当前数据实际表示子 Agent 执行与 transcript，目标为 `AgentRunsRepo/AgentRunMessagesRepo`。V1 结构化 Task 将使用独立表与 Repo，不复用这些表。
 
@@ -226,12 +225,12 @@ SQLite 封装。构造时:
 详见 `D:\Github\Batch\Batch-1-storage.md`。关键:
 
 ### P0(数据损坏/丢失)
-- **B-001** `restoreRows` 循环 FK:`branches.fork_from_turn_id` <-> `turns.branch_id` 互相引用,恢复顺序不对致 fork branch 导入必失败
+- ~~**B-001** Branch/Turn 循环 FK 导致恢复顺序脆弱~~：Data v19 已删除同 Session Branch；历史 Fork 统一复制为独立 Session。
 - **B-004** `listForSessionFromSummary` 正序 `LIMIT 500` 截最早 500,丢最新上下文
 - ~~**B-059** migration squash 老 `user_version` 静默跳过~~ ✅ 已修复(latest 从文件名解析 + compatibility gate + 跳号检测)
 
 ### P1(一致性/性能)
-- **B-005** 跨 session 关系无复合 FK(turn.session_id 与 turn.branch_id 可能分属不同 session)
+- ~~**B-005** Turn 与 Branch 可能跨 Session 错绑~~：Data v19 已删除 Branch 外键，并保留 Session/Turn 身份不可变约束。
 - **B-056** `agent_tasks` 缺 version 列,CAS 做不了(旧 worker 覆盖新状态)
 - **B-058** `model-bindings` TS union 与 SQL CHECK 不一致 + `get()` 无 ORDER BY
 - **B-060** 游标缺 ID tie-breaker / listGrouped N+1 / search JSON LIKE 全表扫

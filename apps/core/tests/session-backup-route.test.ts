@@ -53,7 +53,6 @@ function sessionZip(sessionId: string, extra: Record<string, Uint8Array> = {}): 
       archivedAt: null, pinned: false, pinnedAt: null,
       groupLabel: null, parentSessionId: null,
       executionProfile: 'chat', narrativePolicy: 'auto',
-      activeBranchId: null,
     })),
     ...extra,
   });

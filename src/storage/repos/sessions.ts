@@ -1,7 +1,7 @@
 import type { TurnStatus } from '@ema-agent/turn';
 // 读写 Session 行、稳定分页、搜索投影、Fork 和事务性偏好更新。
 import type { SqliteDb } from '../database.js';
-import type { SessionId, TurnId, BranchId } from '@ema-agent/ids';
+import type { SessionId, TurnId } from '@ema-agent/ids';
 import type { ExecutionProfile, NarrativePolicy } from '@ema-agent/turn';
 import { buildFtsQuery } from '../zh-tokenizer.js';
 
@@ -27,8 +27,6 @@ export interface SessionRow {
   /** 用户希望该 Session 下一轮默认使用的模型；null 表示使用系统默认选择。 */
   preferred_model_id: string | null;
   last_viewed_at:   number | null;
-  /** 当前 session 的 active branch,用于在UI的Branch界面中使用 */
-  active_branch_id: string | null;
 }
 
 /** SessionRow 带 JOIN 查询派生的 turn 字段。 */
@@ -406,13 +404,11 @@ export class SessionsRepo {
   // ── Fork ──────────────────────────────────────────────────────────────────────
 
   /**
-   * 把一个 session 的 message 克隆到新 session 行。
+   * 把一个 Session 的 Turn、Message 和 Attachment 克隆为独立 Session。
    *
-   * 每条复制的 message 获得新的随机 ID,避免主键冲突。turn_id 置 NULL,
-   * 因为 turn 属于源 session,跨 session 的 turn 引用是悬空引用。
-   *
-   * `untilTurnId` --提供时,只复制 created_at ≤ 该 turn 最新 message
-   * 的 message(branch-at-point 语义)。
+   * 所有实体重新生成 ID，Message 与 Attachment 通过临时映射表指向新 Turn。
+   * `untilTurnId` 提供时只复制到该 Turn（含）为止，不能把同毫秒的后续
+   * Turn 或无归属消息误带进新 Session。
    *
    * 返回复制的 message 数量。
    */
@@ -428,9 +424,7 @@ export class SessionsRepo {
 
     this.db.transaction(() => {
       // 1. 新 Session 行复制 Workspace、执行偏好和下一轮模型偏好。
-      //    parent_session_id 指回来源 session，用于 fork 溯源，不表示 Branch 父节点。
-      //    新 session 起始为扁平
-      //    (无 branch,active_branch_id NULL)。
+      //    parent_session_id 指回来源 session，用于 Fork 溯源。
       this.db.prepare(
         `INSERT INTO sessions
            (id, title, workspace_root,
@@ -446,7 +440,6 @@ export class SessionsRepo {
       // 2. 构建 old->new turn id 映射。Turn 被复制以使 fork 出的 session
       //    保留触发来源、Profile、Narrative 策略、status、usage 与时序。
       //    没有它们，前端会丢失执行标签、Token 统计、TTS 重播和 Tool Result 分组。
-      //    branch_id 清空(新 session 扁平)。
       this.db.prepare('CREATE TEMP TABLE _turn_id_map (old_id TEXT PRIMARY KEY, new_id TEXT NOT NULL)').run();
 
       const cutoffTurn = untilTurnId
@@ -478,14 +471,14 @@ export class SessionsRepo {
         ? [cutoffTurn.started_at, cutoffTurn.started_at, cutoffTurn.id]
         : []));
 
-      // 3. 复制 turn(新 id,branch_id = NULL)
+      // 3. 复制 Turn，并重新生成 ID。
       this.db.prepare(
         `INSERT INTO turns
            (id, session_id, trigger_type, execution_profile, narrative_policy,
-            branch_id, status, user_input, started_at, completed_at,
+            status, user_input, started_at, completed_at,
             error_code, error_message, iterations, usage_input_tokens, usage_output_tokens)
          SELECT m.new_id, ?, t.trigger_type, t.execution_profile, t.narrative_policy,
-                NULL, t.status, t.user_input, t.started_at, t.completed_at,
+                t.status, t.user_input, t.started_at, t.completed_at,
                 t.error_code, t.error_message, t.iterations,
                 t.usage_input_tokens, t.usage_output_tokens
          FROM turns t JOIN _turn_id_map m ON m.old_id = t.id
@@ -571,14 +564,6 @@ export class SessionsRepo {
       .prepare('SELECT COUNT(*) as cnt FROM messages WHERE session_id = ?')
       .get(newId) as { cnt: number };
     return count.cnt;
-  }
-
-  // ── Branch ────────────────────────────────────────────────────────────────────
-
-  setActiveBranch(id: SessionId, branchId: BranchId | null): void {
-    this.db
-      .prepare('UPDATE sessions SET active_branch_id = ?, updated_at = ? WHERE id = ?')
-      .run(branchId, Date.now(), id);
   }
 
   // ── 运行中 turn 计数 ───────────────────────────────────────────────────────────

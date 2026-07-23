@@ -3,7 +3,7 @@ import { create } from 'zustand';
 import { sessionsApi, type SessionWire } from '../api/sessions.js';
 import { useConversationStore } from './conversation-store.js';
 import { useDecisionStore } from './decision-store.js';
-import type { SessionId } from '@ema-agent/ids';
+import type { SessionId, TurnId } from '@ema-agent/ids';
 import type { ExecutionProfile, NarrativePolicy } from '@ema-agent/turn';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -39,7 +39,7 @@ export interface SessionStoreState {
     id: SessionId,
     preferredModel: { providerConfigId: string; modelId: string } | null,
   ): Promise<void>;
-  forkSession(id: SessionId):                                        Promise<SessionId>;
+  forkSession(id: SessionId, untilTurnId?: TurnId):                   Promise<SessionId>;
   archiveSession(id: SessionId):                                     Promise<void>;
   unarchiveSession(id: SessionId):                                   Promise<void>;
   deleteSession(id: SessionId):                                      Promise<void>;
@@ -287,9 +287,9 @@ export const useSessionStore = create<SessionStoreState>((set, get) => ({
     return currentWrite;
   },
 
-  async forkSession(id) {
+  async forkSession(id, untilTurnId) {
     try {
-      const result = await sessionsApi.fork(id);
+      const result = await sessionsApi.fork(id, untilTurnId);
       await get().loadSessions();
       return result.sessionId as SessionId;
     } catch (err: unknown) {

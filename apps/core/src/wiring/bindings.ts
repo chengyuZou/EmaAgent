@@ -33,6 +33,7 @@ import {
   dataDbPathFor,
   profileDbPath,
   removeSessionDir,
+  removeTurnFiles,
   sqliteFileSet,
 } from '../storage-locations/index.js';
 import { LanguageModelRuntime } from '@ema-agent/llm';
@@ -300,6 +301,7 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
     // Remove the session's on-disk directory tree (audio/artifacts/scratchpad)
     // when the session is deleted. DB rows cascade via FK; files need this.
     onSessionRemoved: (sid) => removeSessionDir(activeDataDir, sid),
+    onTurnRemoved: (sid, tid) => removeTurnFiles(activeDataDir, sid, tid),
   });
 
   // ── Per-provider model pools (profileDb) ────────────────────────────────────
@@ -647,7 +649,6 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
           tokensAtLastUpdate: noteRow.tokens_at_last_update,
           updatedAt: noteRow.updated_at,
         } : null,
-        branches: sessionStats.listBranches(sessionId),
         tasks: sessionStats.listTasks(sessionId),
         taskDependencies: sessionStats.listTaskDependencies(sessionId),
         agentRuns: sessionStats.listAgentRuns(sessionId),

@@ -221,7 +221,6 @@ export function storageStatsRoute(bindings: AppBindings): Hono {
         work: stats.workTurns,
         narrativeAlways: stats.narrativeAlwaysTurns,
       },
-      branchCount:          stats.branchCount,
       artifactCount:        stats.artifactCount,
       artifactTotalBytes:   stats.artifactInlineBytes,
       artifacts,

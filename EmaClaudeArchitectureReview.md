@@ -881,6 +881,7 @@ Ema Desktop 已经具备不少对应组件：
 7. **V1 收口：Tool 与 AgentRun 状态使用结构化 Reducer。** 事件可以重复或乱序到达时依赖 callId/runId/version 幂等合并；不能靠数组最后一项或工具名称判断当前状态。
 8. **V1 必做：旧 TaskPanel 按领域拆 UI。** AgentRuns 面板展示子 Agent 执行；V1 TaskList 展示工作项；两者不继续共用“任务”卡片造成运行状态与工作项状态混淆。
 9. **V1 收口：流式 Markdown 只重算不稳定尾部。** 长会话需要虚拟列表/稳定块 memo，用户自定义正文字体走 Theme/Settings Token；代码字体与角色聊天正文字体分开。
+10. **V1 已收口：会话历史保持线性。** Ema 不继续维护同 Session Branch 树。侧栏 Fork 完整复制 Session；回复下 Fork 按 Turn 截止复制为独立 Session；用户消息只允许回滚最后一轮后重发。任意历史删除与 `<N/M>` 兄弟导航已移除，因为 Tool、Task、AgentRun 和外部副作用无法随一棵消息树可靠回滚。Codex 的 Worktree Fork 属于代码工作区隔离，不等同于 Ema 的会话内 Branch。
 10. **V1 收口：Live2D/Emotion/TTS 是消费事件的表现层。** 动画、语音或模型资源失败不能阻塞 Turn 文本主链；窗口隐藏/失焦时暂停无意义动画，并尊重 reduced motion。
 11. **V1 收口：所有样式复用 styles 与 `@ema-agent/ui`。** CSS Variable、动画、Button/Dialog 不在业务组件中另起体系；展开和收起都有统一动画。
 12. **V1.5 候选：跨端 Presentation Adapter。** Desktop、未来 CLI/Web/移动端消费相同 Turn/Tool/Decision 协议，各自渲染；不把 ReactNode 放进后端 Tool 接口。

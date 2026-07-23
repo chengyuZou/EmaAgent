@@ -56,7 +56,6 @@ export interface SessionExportSnapshot {
   attachments: readonly BackupAttachmentExportEntry[];
   audio: readonly BackupAudioExportEntry[];
   notes: unknown | null;
-  branches: readonly unknown[];
   tasks: readonly unknown[];
   taskDependencies: readonly unknown[];
   agentRuns: readonly unknown[];

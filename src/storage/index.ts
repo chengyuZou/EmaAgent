@@ -13,7 +13,6 @@ export { SessionsRepo, nextCursorFor } from './repos/sessions.js';
 export { TurnsRepo } from './repos/turns.js';
 export type { TurnIdPage, TurnIdPageCursor } from './repos/turns.js';
 export { MessagesRepo } from './repos/messages.js';
-export { BranchesRepo } from './repos/branches.js';
 export { CharacterCardsRepo } from './repos/character-cards.js';
 export { SettingsRepo } from './repos/settings.js';
 export { TelemetryRepo } from './repos/telemetry.js';
@@ -59,7 +58,6 @@ export type { DatabaseOptions, SqliteDb } from './database.js';
 export type { SessionRow, SessionRowEnriched, SessionSearchRow, SessionInsert, SessionsGrouped } from './repos/sessions.js';
 export type { TurnRow, TurnInsert, TurnCompletion } from './repos/turns.js';
 export type { MessageRow, MessageInsert, MessageRole, MessageKind } from './repos/messages.js';
-export type { BranchRow, BranchInsert } from './repos/branches.js';
 export { CharacterCardUpdateContractError } from './repos/character-cards.js';
 export type {
   CharacterCardRow,

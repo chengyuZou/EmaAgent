@@ -1,7 +1,7 @@
-// 提供 Session 创建、查询、偏好更新、分支与消息读取的 HTTP 边界。
+// 提供 Session 创建、查询、偏好更新、独立 Fork 与消息读取的 HTTP 边界。
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { asSessionId, asTurnId, asBranchId } from '@ema-agent/ids';
+import { asSessionId, asTurnId } from '@ema-agent/ids';
 import type {
   MessageBlocks,
   SessionAttachmentsResult,
@@ -10,12 +10,9 @@ import type {
   SessionsListResult,
   SessionsGroupedResult,
   SessionsSearchResult,
-  BranchTreeWire,
 } from '@ema-agent/session';
 import type { TurnAttachment } from '@ema-agent/turn';
-import { SessionOwnershipError } from '@ema-agent/session';
 import type { AppBindings } from '../wiring/index.js';
-import { removeTurnFiles } from '../storage-locations/index.js';
 
 const TITLE_PROMPT = `Generate a very short title (3–6 words, no quotes) that captures the topic of the following message. Reply with only the title.\n\nMessage: `;
 const TITLE_MAX_CHARS = 60;
@@ -62,6 +59,10 @@ const forkSchema = z.object({
 
 function isNotFound(err: unknown): boolean {
   return err instanceof Error && err.message.startsWith('session_not_found');
+}
+
+function errorStartsWith(err: unknown, prefix: string): boolean {
+  return err instanceof Error && err.message.startsWith(prefix);
 }
 
 function extractText(blocks: MessageBlocks): string {
@@ -269,6 +270,24 @@ export function sessionsRoute(bindings: AppBindings): Hono {
     }
   });
 
+  // ── POST /api/sessions/:id/turns/:turnId/rewind ────────────────────────────
+  // 只服务“编辑最后一条用户消息”；不开放任意历史删除。
+  app.post('/:id/turns/:turnId/rewind', (c) => {
+    const sessionId = asSessionId(c.req.param('id'));
+    const turnId = asTurnId(c.req.param('turnId'));
+    try {
+      return c.json(bindings.session.rewindLastTurn(sessionId, turnId));
+    } catch (err) {
+      if (errorStartsWith(err, 'turn_not_found')) return c.json({ error: 'turn_not_found' }, 404);
+      if (errorStartsWith(err, 'turn_not_latest')) return c.json({ error: 'turn_not_latest' }, 409);
+      if (errorStartsWith(err, 'turn_running')) return c.json({ error: 'turn_running' }, 409);
+      if (err instanceof Error && err.message.includes('FOREIGN KEY constraint failed')) {
+        return c.json({ error: 'turn_has_persistent_task' }, 409);
+      }
+      throw err;
+    }
+  });
+
   // ── POST /api/sessions/:id/viewed — mark session as seen by user ───────────
   // Updates last_viewed_at so hasUnread resets for this session.
   app.post('/:id/viewed', (c) => {
@@ -329,115 +348,6 @@ export function sessionsRoute(bindings: AppBindings): Hono {
     bindings.removeSessionRuntime(sessionId);
     bindings.session.deleteSession(sessionId);
     return c.body(null, 204);
-  });
-
-  // ── DELETE /api/sessions/:id/turns/:turnId — 删除该 turn 及其全部下游(级联) ──
-  // 同分支尾部 + 所有锚定在删除集合上的分支(递归), 单事务按 FK 顺序删除;
-  // 返回删除清单, 物理文件(音频/scratchpad)按清单 best-effort 清理。
-  app.delete('/:id/turns/:turnId', (c) => {
-    const sessionId = asSessionId(c.req.param('id'));
-    const turnId    = asTurnId(c.req.param('turnId'));
-    try {
-      const result = bindings.session.deleteTurnCascade(sessionId, turnId);
-      for (const tid of result.deletedTurnIds) {
-        try {
-          removeTurnFiles(bindings.activeDataDir, sessionId as string, tid);
-        } catch (err) {
-          console.warn(`[sessions] 清理已删 turn 文件失败 ${tid}:`, err);
-        }
-      }
-      return c.json(result);
-    } catch (err) {
-      if (err instanceof SessionOwnershipError) {
-        return c.json({ error: 'forbidden', message: err.message }, 403);
-      }
-      const msg = err instanceof Error ? err.message : String(err);
-      if (msg.startsWith('turn_running')) {
-        return c.json({ error: 'turn_running', message: msg }, 409);
-      }
-      if (msg.startsWith('turn_not_found')) return c.json({ error: 'turn_not_found' }, 404);
-      if (msg.startsWith('session_not_found')) return c.json({ error: 'session_not_found' }, 404);
-      throw err;
-    }
-  });
-
-  // ── GET /api/sessions/:id/branches ────────────────────────────────────────
-  // Returns all branches with their fork-point turn's userInput and mode so
-  // the frontend can label each node with the user's query text.
-  app.get('/:id/branches', (c) => {
-    const sessionId = asSessionId(c.req.param('id'));
-    try {
-      const session  = bindings.session.getSession(sessionId);
-      const branches = bindings.session.listBranches(sessionId);
-
-      const nodes = branches.map((b) => {
-        let forkUserInput = '';
-        if (b.forkFromTurnId) {
-          const turn = bindings.session.getTurn(b.forkFromTurnId);
-          if (turn) {
-            forkUserInput = turn.userInput.slice(0, 30);
-          }
-        }
-        return {
-          branchId:       b.id,
-          parentBranchId: b.parentBranchId,
-          forkFromTurnId: b.forkFromTurnId,
-          forkUserInput,
-          isActive: b.id === session.activeBranchId,
-          createdAt: b.createdAt,
-        };
-      });
-
-      // Turns (all branches) so the frontend can render a turn-level branch
-      // tree — each turn is a node, forks diverge at forkFromTurnId.
-      const turns = bindings.session.listTurns(sessionId).map((t) => ({
-        id:        t.id,
-        branchId:  t.branchId,
-        startedAt: t.startedAt,
-        executionProfile: t.executionProfile,
-        narrativePolicy: t.narrativePolicy,
-        userInput: t.userInput,
-        status:    t.status,
-      }));
-
-      return c.json({
-        sessionActiveBranchId: session.activeBranchId,
-        branches: nodes,
-        turns,
-      } satisfies BranchTreeWire);
-    } catch (err) {
-      if (isNotFound(err)) return c.json({ error: 'session_not_found' }, 404);
-      throw err;
-    }
-  });
-
-  // ── POST /api/sessions/:id/branches — fork at a turn ─────────────────────
-  app.post('/:id/branches', async (c) => {
-    const sessionId  = asSessionId(c.req.param('id'));
-    const body       = await c.req.json().catch(() => ({})) as Record<string, unknown>;
-    const fromTurnId = typeof body.fromTurnId === 'string' ? asTurnId(body.fromTurnId) : null;
-    if (!fromTurnId) return c.json({ error: 'fromTurnId required' }, 400);
-    try {
-      const result = bindings.session.forkMessage({ sessionId, fromTurnId });
-      return c.json(result, 201);
-    } catch (err) {
-      if (isNotFound(err)) return c.json({ error: 'session_not_found' }, 404);
-      throw err;
-    }
-  });
-
-  // ── PUT /api/sessions/:id/branches/active — switch active branch ──────────
-  app.put('/:id/branches/active', async (c) => {
-    const sessionId = asSessionId(c.req.param('id'));
-    const body      = await c.req.json().catch(() => ({})) as Record<string, unknown>;
-    const branchId  = typeof body.branchId === 'string' ? asBranchId(body.branchId) : null;
-    try {
-      bindings.session.switchBranch({ sessionId, branchId });
-      return c.body(null, 204);
-    } catch (err) {
-      if (isNotFound(err)) return c.json({ error: 'branch_not_found' }, 404);
-      throw err;
-    }
   });
 
   return app;

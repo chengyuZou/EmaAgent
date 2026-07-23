@@ -1,5 +1,5 @@
 import type { SqliteDb } from '../database.js';
-import type { MessageId, SessionId, TurnId, BranchId } from '@ema-agent/ids';
+import type { MessageId, SessionId, TurnId } from '@ema-agent/ids';
 
 export type MessageRole = 'system' | 'user' | 'assistant';
 
@@ -99,64 +99,6 @@ export class MessagesRepo {
       .prepare('SELECT COUNT(*) as n FROM messages WHERE session_id = ?')
       .get(sessionId) as { n: number };
     return row.n;
-  }
-
-  // ── Branch 段查询 ────────────────────────────────────────────────
-
-  /**
-   * 根 Branch 段：session 中 turn 属于 rootBranchId 的所有 message，
-   * 加上无 turn_id 的 message（早于分支的 system/context 行）。
-   * 可选地截止到 `beforeTurnStartedAt` 之前开始的 turn
-   * （当该分支有子分支时设为 fork 点的 started_at）。
-   */
-  listForRootSegment(
-    sessionId:           SessionId,
-    rootBranchId:        BranchId,
-    beforeTurnStartedAt?: number,
-  ): MessageRow[] {
-    return this.db
-      .prepare(
-        `SELECT m.* FROM messages m
-         WHERE m.session_id = ?
-           AND (
-             m.turn_id IS NULL
-             OR m.turn_id IN (
-               SELECT t.id FROM turns t
-               WHERE t.branch_id = ?
-                 AND (? IS NULL OR t.started_at <= ?)
-             )
-           )
-         ORDER BY m.created_at ASC, m.id ASC`,
-      )
-      .all(
-        sessionId,
-        rootBranchId,
-        beforeTurnStartedAt ?? null,
-        beforeTurnStartedAt ?? null,
-      ) as MessageRow[];
-  }
-
-  /**
-   * 非根 Branch 段：仅 turn 的 branch_id = branchId 的 message，
-   * 可选地截止到 fork 点。不包含无 turn 的 message
-   * （那些已在根段中）。
-   */
-  listForChildSegment(branchId: BranchId, beforeTurnStartedAt?: number): MessageRow[] {
-    return this.db
-      .prepare(
-        `SELECT m.* FROM messages m
-         WHERE m.turn_id IN (
-           SELECT t.id FROM turns t
-           WHERE t.branch_id = ?
-             AND (? IS NULL OR t.started_at <= ?)
-         )
-         ORDER BY m.created_at ASC, m.id ASC`,
-      )
-      .all(
-        branchId,
-        beforeTurnStartedAt ?? null,
-        beforeTurnStartedAt ?? null,
-      ) as MessageRow[];
   }
 
   // ── Summary / compaction 边界辅助 ──────────────────────────────────

@@ -45,7 +45,6 @@ interface SessionExport {
   groupLabel: string | null; parentSessionId: string | null;
   executionProfile: 'chat' | 'work';
   narrativePolicy: 'auto' | 'always' | 'off';
-  activeBranchId: string | null;
   preferredProviderConfigId?: string | null;
   preferredModelId?: string | null;
 }
@@ -61,10 +60,6 @@ interface ArtifactMeta {
   id: string; type: string; title: string; contentLocation: string;
   turnId: string | null; createdAt: number; appliedAt: number | null;
   rejectedAt: number | null;
-}
-interface BranchExport {
-  id: string; parent_branch_id: string | null;
-  fork_from_turn_id: string | null; created_at: number;
 }
 interface NotesExport { body: string; tokensAtLastUpdate: number; updatedAt: number; }
 
@@ -234,7 +229,6 @@ export class SessionBackupFacade {
   ): SessionRestorePayload {
     const turns = readArray<TurnRestoreRow>(extracted, 'turns.json');
     const messages = readArray<MessageRestoreRow>(extracted, 'messages.json');
-    const branches = readArray<BranchExport>(extracted, 'branches.json');
     const tasks = readArray<SessionRestorePayload['tasks'][number]>(extracted, 'tasks.json');
     const taskDependencies = readArray<SessionRestorePayload['taskDependencies'][number]>(
       extracted,
@@ -272,11 +266,9 @@ export class SessionBackupFacade {
         parentSessionId: session.parentSessionId ?? null,
         executionProfile: session.executionProfile,
         narrativePolicy: session.narrativePolicy,
-        activeBranchId: session.activeBranchId ?? null,
         preferredProviderConfigId: session.preferredProviderConfigId ?? null,
         preferredModelId: session.preferredModelId ?? null,
       },
-      branches: branches.map((branch) => ({ ...branch, session_id: session.id })),
       turns,
       messages: messages.map((message: MessageRestoreRow & { blocks?: unknown }) => ({
         ...message,

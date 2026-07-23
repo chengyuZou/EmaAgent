@@ -1,4 +1,4 @@
-// 测试 Session、分支、Agent Task、Memory 与 KB 失败时不会伪造成功或丢失事实状态。
+// 测试 Session、Agent Task、Memory 与 KB 失败时不会伪造成功或丢失事实状态。
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { SessionId } from '@ema-agent/ids';
 
@@ -17,10 +17,6 @@ import { agentTasksApi } from '../src/api/agent-tasks.js';
 import { turnsApi } from '../src/api/turns.js';
 import { kbApi } from '../src/api/knowledge-base.js';
 import { useSessionStore } from '../src/stores/session-store.js';
-import {
-  useConversationStore,
-  type BranchLoadState,
-} from '../src/stores/conversation-store.js';
 import {
   useAgentTaskStore,
   type AgentTaskState,
@@ -43,24 +39,6 @@ describe('Store 失败语义', () => {
 
     await expect(useSessionStore.getState().createSession()).rejects.toBe(failure);
     expect(useSessionStore.getState().error).toBe('database unavailable');
-  });
-
-  it('分支刷新失败时保留旧树并标记 stale', async () => {
-    const existing = {
-      branches: [],
-      turns: [],
-      sessionActiveBranchId: null,
-    };
-    useConversationStore.setState({
-      branchDataBySession: new Map([[SESSION_ID as string, existing]]),
-      branchLoadStateBySession: new Map<string, BranchLoadState>(),
-    });
-    vi.spyOn(sessionsApi, 'listBranches').mockRejectedValueOnce(new Error('branch timeout'));
-
-    await expect(useConversationStore.getState().loadBranches(SESSION_ID)).rejects.toThrow('branch timeout');
-    expect(useConversationStore.getState().branchDataBySession.get(SESSION_ID as string)).toBe(existing);
-    expect(useConversationStore.getState().branchLoadStateBySession.get(SESSION_ID as string))
-      .toMatchObject({ status: 'stale', error: 'branch timeout' });
   });
 
   it('运行中 Agent Task 取消失败时不删除持久化记录或 UI 记录', async () => {

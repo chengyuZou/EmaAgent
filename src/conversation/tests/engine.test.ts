@@ -129,7 +129,6 @@ describe('ConversationEngine Hook 诊断事件', () => {
     const turn: Turn = {
       id: turnId,
       sessionId,
-      branchId: null,
       triggerType: 'userMessage',
       executionProfile: 'chat',
       narrativePolicy: 'off',
@@ -231,7 +230,6 @@ describe('ConversationEngine Hook 诊断事件', () => {
     const turn: Turn = {
       id: turnId,
       sessionId,
-      branchId: null,
       triggerType: 'userMessage',
       executionProfile: 'chat',
       narrativePolicy: 'off',
@@ -315,7 +313,6 @@ describe('ConversationEngine Hook 诊断事件', () => {
     const turn: Turn = {
       id: turnId,
       sessionId,
-      branchId: null,
       triggerType: 'userMessage',
       executionProfile: 'chat',
       narrativePolicy: 'off',
@@ -419,7 +416,6 @@ describe('ConversationEngine 多模态历史兼容视图', () => {
     const turn: Turn = {
       id: turnId,
       sessionId,
-      branchId: null,
       triggerType: 'userMessage',
       executionProfile: 'chat',
       narrativePolicy: 'off',

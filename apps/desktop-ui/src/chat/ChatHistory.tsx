@@ -45,6 +45,17 @@ export function ChatHistory(): JSX.Element {
     [messages, streaming],
     [viewedId],
   );
+  let lastUserIndex = -1;
+  const lastAssistantIndexByTurn = new Map<string, number>();
+  for (let index = messages.length - 1; index >= 0; index--) {
+    const message = messages[index];
+    if (message?.role === 'assistant' && message.turnId && !lastAssistantIndexByTurn.has(message.turnId)) {
+      lastAssistantIndexByTurn.set(message.turnId, index);
+    }
+    if (lastUserIndex < 0 && message?.role === 'user') {
+      lastUserIndex = index;
+    }
+  }
 
   if (!viewedId) {
     return (
@@ -66,9 +77,17 @@ export function ChatHistory(): JSX.Element {
         <div className="flex flex-col gap-2 max-w-2xl mx-auto">
           {messages.map((msg, i) => {
             const key = getKey(msg, i);
+            const isLastUserMessage = msg.role === 'user' && i === lastUserIndex;
+            const isFinalAssistantForTurn = msg.role === 'assistant'
+              && !!msg.turnId
+              && lastAssistantIndexByTurn.get(msg.turnId) === i;
             return (
               <div key={key} id={`msg-${key}`}>
-                <BubbleRouter message={msg} />
+                <BubbleRouter
+                  message={msg}
+                  canEditUser={isLastUserMessage && !streaming}
+                  canForkAssistant={isFinalAssistantForTurn}
+                />
               </div>
             );
           })}
@@ -113,7 +132,15 @@ export function ChatHistory(): JSX.Element {
 
 // ── Internal ──────────────────────────────────────────────────────────────────
 
-function BubbleRouter({ message }: { message: ChatHistoryItem }): JSX.Element {
+function BubbleRouter({
+  message,
+  canEditUser = false,
+  canForkAssistant = false,
+}: {
+  message: ChatHistoryItem;
+  canEditUser?: boolean;
+  canForkAssistant?: boolean;
+}): JSX.Element {
   // narrative_context:检索结果独立气泡(NarrativeStatusBlock),不走 UserBubble
   if (message.kind === 'narrative_context') {
     const slice = message.slices?.find((s) => s.type === 'narrative_status');
@@ -128,8 +155,8 @@ function BubbleRouter({ message }: { message: ChatHistoryItem }): JSX.Element {
     }
   }
   switch (message.role) {
-    case 'user':      return <UserBubble message={message} />;
-    case 'assistant': return <AssistantBubble message={message} />;
+    case 'user':      return <UserBubble message={message} canEdit={canEditUser} />;
+    case 'assistant': return <AssistantBubble message={message} canFork={canForkAssistant} />;
     case 'system':
       return (
         <div className="flex items-center justify-center gap-3 py-2">

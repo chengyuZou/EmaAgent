@@ -121,7 +121,6 @@ describe('AgentEngine 生命周期', () => {
     const turn: Turn = {
       id: turnId,
       sessionId,
-      branchId: null,
       triggerType: 'userMessage',
       executionProfile: 'work',
       narrativePolicy: 'off',
@@ -241,7 +240,6 @@ describe('AgentEngine 生命周期', () => {
     const turn: Turn = {
       id: turnId,
       sessionId,
-      branchId: null,
       triggerType: 'userMessage',
       executionProfile: 'work',
       narrativePolicy: 'off',
@@ -338,7 +336,6 @@ describe('AgentEngine 生命周期', () => {
     const turn: Turn = {
       id: turnId,
       sessionId,
-      branchId: null,
       triggerType: 'userMessage',
       executionProfile: 'work',
       narrativePolicy: 'off',
@@ -441,7 +438,6 @@ describe('AgentEngine 生命周期', () => {
     const turn: Turn = {
       id: turnId,
       sessionId,
-      branchId: null,
       triggerType: 'userMessage',
       executionProfile: 'work',
       narrativePolicy: 'off',

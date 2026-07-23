@@ -17,14 +17,13 @@ import { ChatHistory } from './ChatHistory.js';
 import { ChatInput } from './ChatInput.js';
 import { ContextPanel } from './ContextPanel.js';
 import { TaskPanel } from './TaskPanel.js';
-import { BranchPanel } from './BranchPanel.js';
 import { ArtifactsPanel } from './ArtifactsPanel.js';
 import { FilesPanel } from './FilesPanel.js';
 import { SessionAttachmentsPanel } from './SessionAttachmentsPanel.js';
 
 // ── Inspector panel types ─────────────────────────────────────────────────────
 
-type InspectorPanelId = 'branches' | 'artifacts' | 'attachments' | 'files' | 'tasks';
+type InspectorPanelId = 'artifacts' | 'attachments' | 'files' | 'tasks';
 
 // ── ChatPanel ─────────────────────────────────────────────────────────────────
 
@@ -176,19 +175,12 @@ export function ChatPanel(): JSX.Element {
                 {session?.title ?? (viewedSessionId ? '加载中…' : '无会话')}
               </span>
               {session?.parentSessionId && (
-                <span className="text-xs text-[var(--ema-text-tertiary)]">· 分支</span>
+                <span className="text-xs text-[var(--ema-text-tertiary)]">· 会话副本</span>
               )}
             </div>
 
             {/* Inspector dock */}
             <div className="flex items-center gap-0.5 shrink-0">
-              {/* ⑂ Branches */}
-              <InspectorDockBtn
-                icon="i-solar:branching-paths-down-bold-duotone"
-                label="会话分支"
-                active={activePanels.has('branches')}
-                onClick={() => togglePanel('branches')}
-              />
               {/* ▣ Artifacts — V1 发布特性门禁,artifacts=false 时不渲染入口 */}
               {artifactsEnabled && (
                 <InspectorDockBtn
@@ -416,7 +408,6 @@ function InspectorContent({
 }
 
 const PANEL_META: Record<InspectorPanelId, { label: string; icon: string }> = {
-  branches:  { label: '会话分支', icon: 'i-solar:branching-paths-down-bold-duotone' },
   artifacts: { label: '产物',     icon: 'i-solar:layers-bold-duotone' },
   attachments: { label: '会话附件', icon: 'i-lucide:paperclip' },
   files:     { label: '文件',     icon: 'i-solar:folder-bold-duotone' },
@@ -441,7 +432,6 @@ function InspectorPanelBody({ id, sessionId }: { id: InspectorPanelId; sessionId
     <div key={id} className="ema-panel-in h-full">{child}</div>
   );
   if (id === 'tasks')     return wrap(<TaskPanel className="p-2" />);
-  if (id === 'branches')  return wrap(<BranchPanel />);
   if (id === 'artifacts') return wrap(<ArtifactsPanel />);
   if (id === 'attachments') return wrap(<SessionAttachmentsPanel sessionId={sessionId} />);
   if (id === 'files')     return wrap(<FilesPanel />);

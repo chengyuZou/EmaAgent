@@ -1,8 +1,6 @@
 export { SessionStore } from './store.js';
 export type { SessionStoreDeps } from './store.js';
 export { RunRegistry } from './run-registry.js';
-export { BranchAncestorTable } from './branch-ancestor.js';
-export { EulerTourRMQLCA } from './euler-rmq-lca.js';
 export { SessionOwnershipError } from './errors.js';
 export { parseMessageBlocksJson } from './message.js';
 export type {
@@ -15,9 +13,6 @@ export type {
   TurnWire,
   MessageWire,
   SessionMessagesResult,
-  BranchNodeWire,
-  TurnTreeNodeWire,
-  BranchTreeWire,
   SessionAttachmentFileStatus,
   SessionAttachmentWire,
   SessionAttachmentsResult,
@@ -32,14 +27,10 @@ export type {
   Session,
   Turn,
   Message,
-  Branch,
-  BranchSibling,
   CreateSessionInput,
   StartTurnInput,
   CompleteTurnInput,
   AppendMessageInput,
-  ForkMessageInput,
-  SwitchBranchInput,
   ListSessionsInput,
   ListSessionsOutput,
   ListMessagesInput,

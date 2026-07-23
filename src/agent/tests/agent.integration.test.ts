@@ -80,7 +80,6 @@ function makeTurn(id = 'turn-1'): Turn {
   return {
     id:                id as TurnId,
     sessionId:         'session-1' as SessionId,
-    branchId:          null,
     triggerType:       'userMessage',
     executionProfile:  'work',
     narrativePolicy:   'off',

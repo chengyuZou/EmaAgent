@@ -18,8 +18,7 @@ import { createSendQueue,
 import { createTurnAcceptance,
   type TurnAcceptance } from '../lib/turn-acceptance.js';
 import { startTurnSseLifecycle } from '../lib/turn-sse-lifecycle.js';
-import { sessionsApi,
-  type BranchTreeWire } from '../api/sessions.js';
+import { sessionsApi } from '../api/sessions.js';
 import {
   turnsApi,
   type AttachmentInputWire,
@@ -53,7 +52,6 @@ import {
 import type {
   SessionId,
   TurnId,
-  BranchId,
 } from '@ema-agent/ids';
 import {
   type ExecutionProfile,
@@ -69,13 +67,6 @@ import {
 import type { EmotionState } from '@ema-agent/emotion';
 
 export type { AttachmentInputWire };
-
-export type BranchLoadState =
-  | { status: 'idle'; error: null }
-  | { status: 'loading'; error: null }
-  | { status: 'ready'; error: null; updatedAt: number }
-  | { status: 'stale'; error: string; updatedAt: number }
-  | { status: 'error'; error: string };
 
 // ── Re-export types that consumers import from this module ────────────────────
 
@@ -205,20 +196,11 @@ export interface ConversationStoreState {
   loading:            { messages: Set<string> };
   error:              string | null;
   scrollToTurnId:     string | null;
-  branchDataBySession: Map<string, BranchTreeWire>;
-  branchLoadStateBySession: Map<string, BranchLoadState>;
-  /** 已标记的分叉点: 点击 ForkButton 只记录, 发送消息时才真正创建分支(F-052)。 */
-  pendingForkFromTurnId: TurnId | null;
 
   viewSession(id: SessionId):                                                Promise<void>;
   /** 新建会话前先复用空会话(F-051): viewed 会话还没有任何 turn 时直接复用, 不重复创建。 */
   createFreshSession():                                                      Promise<SessionId | null>;
-  armFork(turnId: TurnId):                                                   void;
-  clearPendingFork():                                                        void;
   scrollToTurn(turnId: string):                                              void;
-  loadBranches(id: SessionId):                                               Promise<void>;
-  /** 切换分支并重载 —— BranchPanel 节点点击 + BranchSiblingNav 切换统一走这里，保证双向联动。 */
-  switchBranchAndLoad(sessionId: SessionId, branchId: BranchId | null):      Promise<void>;
   /** Turn 创建成功后 resolve；后续 SSE 生命周期由会话状态独立管理。 */
   sendMessage(sessionId: SessionId | null, input: Omit<SendInput, 'sessionId'>): Promise<void>;
   stopStreaming(sessionId: SessionId):                                        void;
@@ -255,64 +237,8 @@ export const useConversationStore = create<ConversationStoreState>((set, get) =>
   loading:             { messages: new Set() },
   error:               null,
   scrollToTurnId:      null,
-  branchDataBySession: new Map(),
-  branchLoadStateBySession: new Map(),
-  pendingForkFromTurnId: null,
 
   scrollToTurn(turnId) { set({ scrollToTurnId: turnId }); },
-  armFork(turnId)      { set({ pendingForkFromTurnId: turnId }); },
-  clearPendingFork()   { set({ pendingForkFromTurnId: null }); },
-
-  async loadBranches(id) {
-    const key = id as string;
-    set((state) => {
-      const states = new Map(state.branchLoadStateBySession);
-      states.set(key, { status: 'loading', error: null });
-      return { branchLoadStateBySession: states };
-    });
-    try {
-      const data = await sessionsApi.listBranches(id);
-      set((s) => {
-        const m = new Map(s.branchDataBySession);
-        m.set(key, data);
-        const states = new Map(s.branchLoadStateBySession);
-        states.set(key, { status: 'ready', error: null, updatedAt: Date.now() });
-        return { branchDataBySession: m, branchLoadStateBySession: states };
-      });
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : '加载分支失败';
-      set((state) => {
-        const states = new Map(state.branchLoadStateBySession);
-        const previous = states.get(key);
-        states.set(key, state.branchDataBySession.has(key)
-          ? {
-              status: 'stale',
-              error: message,
-              updatedAt: previous && 'updatedAt' in previous ? previous.updatedAt : Date.now(),
-            }
-          : { status: 'error', error: message });
-        return { branchLoadStateBySession: states };
-      });
-      throw error;
-    }
-  },
-
-  // 统一分支切换动作：BranchPanel 节点点击 + BranchSiblingNav ‹› 都走这里。
-  // 调 loadBranches 更新 branchDataBySession（两边都订阅，双向联动）+ 清 messages 重载。
-  async switchBranchAndLoad(sessionId, branchId) {
-    await sessionsApi.switchBranch(sessionId, branchId);
-    await get().loadBranches(sessionId);
-    await useSessionStore.getState().loadSessions();
-    // Evict + reload messages so the switched branch history appears.
-    set((s) => {
-      const m = new Map(s.messages);
-      m.delete(sessionId as string);
-      const loaded = new Set(s.loadedMessageSessions);
-      loaded.delete(sessionId as string);
-      return { messages: m, loadedMessageSessions: loaded };
-    });
-    await get().loadMessages(sessionId);
-  },
 
   // ── Navigation ───────────────────────────────────────────────────────────
 
@@ -321,15 +247,13 @@ export const useConversationStore = create<ConversationStoreState>((set, get) =>
       await get().loadMessages(id);
       return;
     }
-    set({ viewedSessionId: id, pendingForkFromTurnId: null });
+    set({ viewedSessionId: id });
 
     void sessionsApi.markViewed(id)
       .then(() => useSessionStore.getState().loadSessions())
       .catch(() => {});
 
     await get().loadMessages(id);
-    // 分支树属于辅助数据；失败状态已写入 Store，导航主流程仍可展示消息。
-    void get().loadBranches(id).catch(() => {});
   },
 
   async createFreshSession() {
@@ -393,30 +317,6 @@ export const useConversationStore = create<ConversationStoreState>((set, get) =>
       createdNewSession = true;
       void useSessionStore.getState().loadSessions();
       set({ viewedSessionId: targetId });
-    }
-
-    // F-052: 分叉延迟创建——点击只标记分叉点, 发送时才真正创建分支并切换;
-    // 创建失败则中止发送, 不把消息落到旧分支上。
-    const pendingFork = get().pendingForkFromTurnId;
-    if (pendingFork) {
-      set({ pendingForkFromTurnId: null });
-      try {
-        await sessionsApi.forkBranch(targetId, pendingFork);
-        await get().loadBranches(targetId);
-        useConversationStore.setState((s) => {
-          const m = new Map(s.messages);
-          m.delete(targetId as string);
-          const loaded = new Set(s.loadedMessageSessions);
-          loaded.delete(targetId as string);
-          return { messages: m, loadedMessageSessions: loaded };
-        });
-        await get().loadMessages(targetId);
-      } catch (err) {
-        throw new Error(
-          err instanceof Error ? `分叉失败: ${err.message}` : '分叉失败',
-          { cause: err },
-        );
-      }
     }
 
     const acceptance = createTurnAcceptance<TurnCreatedResponse>();
@@ -513,9 +413,6 @@ export const useConversationStore = create<ConversationStoreState>((set, get) =>
       const emotions  = new Map(s.emotionStateMap); emotions.delete(id as string);
       const iters     = new Map(s.iterationCountMap); iters.delete(id as string);
       const recalls   = new Map(s.recallEvidenceMap); recalls.delete(id as string);
-      const branchData = new Map(s.branchDataBySession); branchData.delete(id as string);
-      const branchStates = new Map(s.branchLoadStateBySession); branchStates.delete(id as string);
-
       const lastTurnId = s.streamingMap.get(id as string)?.turnId as string | undefined;
       const usageMap   = new Map(s.liveUsageMap);
       const thinking   = new Map(s.thinkingActiveMap);
@@ -526,8 +423,6 @@ export const useConversationStore = create<ConversationStoreState>((set, get) =>
         streamingMap: streaming, stopReasonMap: stops, draftMap: drafts,
         emotionStateMap: emotions, iterationCountMap: iters, recallEvidenceMap: recalls,
         liveUsageMap: usageMap, thinkingActiveMap: thinking,
-        branchDataBySession: branchData,
-        branchLoadStateBySession: branchStates,
       };
     });
   },

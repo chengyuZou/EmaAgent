@@ -205,13 +205,11 @@ describe('SessionsRepo integration', () => {
 
     const fork = repo.findById(asSessionId('fork'));
     expect(fork?.parent_session_id).toBe('source');
-    expect(fork?.active_branch_id).toBeNull();
 
     const turns = database.db
-      .prepare('SELECT id, branch_id FROM turns WHERE session_id = ? ORDER BY started_at, id')
-      .all('fork') as Array<{ id: string; branch_id: string | null }>;
+      .prepare('SELECT id FROM turns WHERE session_id = ? ORDER BY started_at, id')
+      .all('fork') as Array<{ id: string }>;
     expect(turns).toHaveLength(2);
-    expect(turns.every((turn) => turn.branch_id === null)).toBe(true);
     expect(turns.map((turn) => turn.id)).not.toContain('turn-1');
     expect(turns.map((turn) => turn.id)).not.toContain('turn-2');
 

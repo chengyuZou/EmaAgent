@@ -477,7 +477,6 @@ function OverviewTab({ d }: { d: SessionDashboardWire }): JSX.Element {
   const cards: Array<{ label: string; value: string; sub?: string }> = [
     { label: '轮次',     value: String(d.turnCount),
       sub: `Chat ${d.turnCounts.chat} · Work ${d.turnCounts.work} · Narrative Always ${d.turnCounts.narrativeAlways}` },
-    { label: 'Branch',   value: String(d.branchCount) },
     { label: '消息',     value: String(d.messageCount) },
     { label: 'Token',    value: fmtTokens(d.totalInputTokens + d.totalOutputTokens),
       sub: `↑ ${fmtTokens(d.totalInputTokens)}  ↓ ${fmtTokens(d.totalOutputTokens)}` },
@@ -667,7 +666,7 @@ function SessionDashboard({ session }: { session: SessionWire }): JSX.Element {
           </p>
           {dashboard && (
             <p className="ema-slide-up text-xs text-[var(--ema-text-tertiary)]">
-              {dashboard.turnCount} 轮 · {dashboard.branchCount} Branch ·{' '}
+              {dashboard.turnCount} 轮 ·{' '}
               {fmtTokens(dashboard.totalInputTokens + dashboard.totalOutputTokens)} tokens ·{' '}
               {dashboard.artifactCount} Artifact · {dashboard.audioTurnCount} 音频
             </p>

@@ -1,7 +1,7 @@
 import type { TurnStatus } from '@ema-agent/turn';
-// 管理 Turn 的创建、状态流转、分支查询、分页和运行指标。
+// 管理 Turn 的创建、状态流转、分页和运行指标。
 import type { SqliteDb } from '../database.js';
-import type { TurnId, SessionId, BranchId } from '@ema-agent/ids';
+import type { TurnId, SessionId } from '@ema-agent/ids';
 import type { ExecutionProfile, NarrativePolicy, TurnTriggerType } from '@ema-agent/turn';
 
 export interface TurnRow {
@@ -19,7 +19,6 @@ export interface TurnRow {
   iterations: number;
   usage_input_tokens: number;
   usage_output_tokens: number;
-  branch_id: string | null;
 }
 
 export interface TurnInsert {
@@ -28,7 +27,6 @@ export interface TurnInsert {
   triggerType: TurnTriggerType;
   executionProfile: ExecutionProfile;
   narrativePolicy: NarrativePolicy;
-  branchId?: BranchId;
   userInput: string;
   startedAt: number;
 }
@@ -61,8 +59,8 @@ export class TurnsRepo {
       .prepare(
         `INSERT INTO turns
            (id, session_id, trigger_type, execution_profile, narrative_policy,
-            branch_id, status, user_input, started_at)
-         VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?)`,
+            status, user_input, started_at)
+         VALUES (?, ?, ?, ?, ?, 'pending', ?, ?)`,
       )
       .run(
         t.id,
@@ -70,7 +68,6 @@ export class TurnsRepo {
         t.triggerType,
         t.executionProfile,
         t.narrativePolicy,
-        t.branchId ?? null,
         t.userInput,
         t.startedAt,
       );
@@ -78,18 +75,17 @@ export class TurnsRepo {
 
   /**
    * 把一个已完成 turn 行复制到新 session(新 id)。用于 fork
-   * (forkInto 和 branch 感知路径都用到),使 fork 出的 session 保留
-   * 触发来源、Profile、Narrative 策略、status、usage 与时序。branch_id 总是清空--新 session 起始
-   * 扁平(无 branch)。
+   * 使 fork 出的 session 保留触发来源、Profile、Narrative 策略、
+   * status、usage 与时序。
    */
   copyTurn(src: TurnRow, newSessionId: SessionId, newId: TurnId): void {
     this.db
       .prepare(
         `INSERT INTO turns
            (id, session_id, trigger_type, execution_profile, narrative_policy,
-            branch_id, status, user_input, started_at, completed_at,
+            status, user_input, started_at, completed_at,
             error_code, error_message, iterations, usage_input_tokens, usage_output_tokens)
-         VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         newId, newSessionId, src.trigger_type, src.execution_profile, src.narrative_policy,
@@ -127,6 +123,10 @@ export class TurnsRepo {
 
   findById(id: TurnId): TurnRow | undefined {
     return this.db.prepare('SELECT * FROM turns WHERE id = ?').get(id) as TurnRow | undefined;
+  }
+
+  delete(id: TurnId): void {
+    this.db.prepare('DELETE FROM turns WHERE id = ?').run(id);
   }
 
   listForSession(sessionId: SessionId, limit = 100): TurnRow[] {
@@ -193,68 +193,4 @@ export class TurnsRepo {
     return result.changes;
   }
 
-  /**
-   * 某个 branch 上的 turn,可选 started_at 截断点。
-   * 用于重建 fork branch 的线性消息历史:
-   * 每个祖先 branch 只贡献到其 fork 点为止的 turn。
-   */
-  listForBranch(branchId: BranchId, beforeStartedAt?: number): TurnRow[] {
-    if (beforeStartedAt === undefined) {
-      return this.db
-        .prepare('SELECT * FROM turns WHERE branch_id = ? ORDER BY started_at ASC')
-        .all(branchId) as TurnRow[];
-    }
-    return this.db
-      .prepare(
-        'SELECT * FROM turns WHERE branch_id = ? AND started_at <= ? ORDER BY started_at ASC',
-      )
-      .all(branchId, beforeStartedAt) as TurnRow[];
-  }
-
-  /**
-   * 某个 branch 上按 (started_at, id) 排序位于目标 turn 及其之后的全部 turn。
-   * 同毫秒 tie 用 id 决胜: 只含目标在分支自身排序中的位置及后继, 不误伤前驱。
-   */
-  listForBranchAfter(branchId: BranchId, fromTurnId: TurnId): TurnRow[] {
-    return this.db
-      .prepare(
-        `SELECT * FROM turns WHERE branch_id = ?
-           AND (started_at, id) >= (SELECT started_at, id FROM turns WHERE id = ?)
-         ORDER BY started_at ASC, id ASC`,
-      )
-      .all(branchId, fromTurnId) as TurnRow[];
-  }
-
-  /** 删除单个 turn 行; 调用方负责先行清理引用它的分支与消息(FK 约束)。 */
-  delete(id: TurnId): void {
-    this.db.prepare('DELETE FROM turns WHERE id = ?').run(id);
-  }
-
-  /**
-   * 整个 session 内按 (started_at, id) 排序位于目标 turn 及其之后的全部 turn。
-   * 删除级联用: 从未 fork 的会话(无分支)里, 目标 turn 及其全部后继。
-   */
-  listForSessionAfter(sessionId: SessionId, fromTurnId: TurnId): TurnRow[] {
-    return this.db
-      .prepare(
-        `SELECT * FROM turns WHERE session_id = ?
-           AND (started_at, id) >= (SELECT started_at, id FROM turns WHERE id = ?)
-         ORDER BY started_at ASC, id ASC`,
-      )
-      .all(sessionId, fromTurnId) as TurnRow[];
-  }
-
-  /**
-   * 把所有 fork 前的 turn(branch_id IS NULL)回填到给定 branch。
-   * 在 session 中首次 fork 时调用一次,使 root branch 拥有所有既有 turn。
-   * 返回更新的行数。
-   */
-  assignBranch(sessionId: SessionId, branchId: BranchId): number {
-    const result = this.db
-      .prepare(
-        'UPDATE turns SET branch_id = ? WHERE session_id = ? AND branch_id IS NULL',
-      )
-      .run(branchId, sessionId);
-    return result.changes;
-  }
 }
