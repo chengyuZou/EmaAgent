@@ -50,6 +50,8 @@ AgentRun 语义收口已经完成：旧 `src/tasks` 运行记录、根 Turn 的 
 
 Session 历史语义已经收口：Data v19 删除 `branches`、`sessions.active_branch_id`、`turns.branch_id` 与对应 Repo/协议/UI。侧栏 Fork 完整复制 Session；已完成回复下的 Fork 按 `untilTurnId` 复制到该轮（含）为止并切换到独立 Session。用户气泡只允许回滚最后一个非运行 Turn 后重发；任意 Turn 删除、BranchPanel、`<N/M>` 导航和延迟分叉状态机均已删除。旧 Binary Lifting、Euler Tour + RMQ、恢复算法与前端布局已原样保存在 `D:\Github\EmaAgentBranchArchive`，36 个源码文件的 SHA-256 已与删除前版本逐一校验。
 
+Chat 长历史读取契约已经完成：`GET /api/sessions/:id/turn-index` 使用不透明复合游标返回不含消息正文的轻量 Turn 索引；`GET /api/sessions/:id/messages/window` 按锚点 Turn 读取有界前后窗口，并返回旧到新的 Turn 与消息。查询复用现有 `idx_turns_session_latest`，无需新增迁移；最近热区仍沿用现有消息入口，前端可以只常驻近期正文与远期索引。
+
 ## 迁移完成事实
 
 - 所有 Ema 产品模块均位于根 `src`；旧产品目录不再留在 `packages`。
@@ -62,9 +64,9 @@ Session 历史语义已经收口：Data v19 删除 `branches`、`sessions.active
 
 开始任何新批次前必须重新运行 `git status --short` 与 `git diff`，保留用户和其他 Agent 的修改。
 
-当前工作区包含既有 V1 Task/AgentRun 改动，以及本批 Session Branch 删除、Data v19、独立 Session Fork、最后一轮回滚、Desktop 投影和架构文档更新；未暂存、未提交。
+当前工作区只包含本批 Chat 长历史后端读取链：Storage Turn 索引/锚点窗口、Session 领域契约、Core 只读路由、针对性测试，以及 `session/store.ts` 注释整理；未暂存、未提交。
 
-当前基线最近提交：`592c78b refactor: remove AgentTaskStore and related files; update telemetry retention test user_version to 17`。该提交号仅用于定位，不代表其他 Agent 不会继续提交。
+当前基线最近提交：`696e5c2 feat: 添加 EmaAgent Chat 工作区与历史导航实施计划文档`。该提交号仅用于定位，不代表其他 Agent 不会继续提交。
 
 ## 已确定的 V1 口径
 
@@ -103,9 +105,9 @@ Plan、Goal、Schedule、Workflow、Team 与 LLM 自动审批暂列 V1.5，不�
 
 Chat 工作区、Turn 导航轨、Task/AgentRun 分面、双 Dock、置顶摘要和桌面打开方式的完整实施草案已写入 `EmaChatWorkspacePlan.md`。该文档只冻结交互、数据契约、文件边界和分批方式，尚未创建空 Terminal/Browser/Review UI。
 
-1. 决定先推进前端批次 A/B，还是先继续统一 TurnRuntime/TurnLoop；
-2. 若先走前端，先完成 Task/AgentRun 协议收口以及 TurnIndex/MessageWindow 后端契约；
-3. 契约冻结后再实现或委派 TurnRail、TaskList、Workspace Dock 与置顶摘要视觉；
+1. TurnIndex/MessageWindow 后端契约已经冻结；下一批可实现前端历史数据 Store 与 TurnRail，不同时创建 Dock 半成品；
+2. 随后完成输入框上方 TaskList，并把旧 AgentRun 面板迁到新的执行视图；
+3. Workspace Dock 与置顶摘要在历史导航和 TaskList 稳定后再实现；
 4. 前端迁到 AgentRun/Task 新协议后，删除 `/api/agent-tasks` 与 `subagentId` 旧命名兼容；
 5. 后台进程按 `BackgroundProcess + ProcessOutput/ProcessStop` 分批实现 C 档，不修改 Agent Loop 来实现自动后台化；
 6. Chat 接入统一 TurnLoop 放在 Tool 单次执行边界稳定之后，短期保留 ConversationEngine 适配器。
@@ -116,6 +118,7 @@ Chat 工作区、Turn 导航轨、Task/AgentRun 分面、双 Dock、置顶摘要
 
 ## 最近验证
 
+- Chat 长历史读取链：Storage 新增测试 3/3、Session 32/32、Core 新增路由测试 3/3 通过；Storage、Session、Core typecheck 通过。`EXPLAIN QUERY PLAN` 已确认 Turn 复合游标命中 `idx_turns_session_latest`；`git diff --check` 通过，仅有既有 CRLF 提示。
 - Session Branch 删除批次：Session 34/34、Storage 116/116、Desktop UI 124/124 通过；Session/Storage/IDs/Backup 构建通过，Core 与 Desktop UI typecheck 通过。Data v19 验证 Branch 表及列已删除，Session/Turn 身份不可变触发器仍生效；`git diff --check` 通过，仅有既有 CRLF 提示。
 - V1 Task 后端批次：Data v18、TaskStore/依赖/CAS、AgentRun 可选绑定、TaskCreate/Get/List/Update、结构化事件、Work Context 提醒、`/api/tasks` 快照及 ZIP 备份恢复完成；聚焦测试 Storage 22/22、Tasks 1/1、BuiltinTools 8/8、Agent 2/2、Backup 10/10、Core 2/2 通过，全仓 typecheck 84/84 通过。
 - AgentRun 语义批次：全仓 typecheck 82/82 通过；Storage 116/116、Agent 32/32、Tools 25/25、Backup 10/10、Core 85/85 通过。BuiltinTools 51/52，唯一失败仍是既存 WebFetchPolicy 的 `example.com -> www.example.com` 重定向口径，与本批无关；本批新增与改写的说明注释已统一为 UTF-8 中文。

@@ -170,3 +170,26 @@ export interface SessionMessagesResult {
   messages: MessageWire[];
   turns: TurnWire[];
 }
+
+export interface TurnIndexItemWire {
+  turnId: string;
+  startedAt: number;
+  completedAt: number | null;
+  status: TurnStatus;
+  triggerType: TurnTriggerType;
+  executionProfile: ExecutionProfile;
+  preview: string;
+}
+
+export interface TurnIndexPageWire {
+  items: TurnIndexItemWire[];
+  nextCursor?: string;
+}
+
+export interface SessionMessageWindowWire {
+  anchorTurnId: string;
+  turns: TurnWire[];
+  messages: MessageWire[];
+  hasOlder: boolean;
+  hasNewer: boolean;
+}

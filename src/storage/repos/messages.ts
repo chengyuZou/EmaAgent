@@ -1,7 +1,9 @@
+// 持久化 Session 消息，并提供 Turn 归属读取与压缩边界查询。
 import type { SqliteDb } from '../database.js';
 import type { MessageId, SessionId, TurnId } from '@ema-agent/ids';
 
 export type MessageRole = 'system' | 'user' | 'assistant';
+const MESSAGE_TURN_READ_LIMIT = 50;
 
 /** messages.kind 的数据库稳定枚举。 */
 export type MessageKind =
@@ -72,6 +74,22 @@ export class MessagesRepo {
     return this.db
       .prepare('SELECT * FROM messages WHERE turn_id = ? ORDER BY created_at ASC, id ASC')
       .all(turnId) as MessageRow[];
+  }
+
+  /** 读取一组已限定 Turn 的消息，供历史窗口按时间正序展示。 */
+  listForTurns(sessionId: SessionId, turnIds: readonly TurnId[]): MessageRow[] {
+    if (turnIds.length === 0) return [];
+    if (turnIds.length > MESSAGE_TURN_READ_LIMIT) {
+      throw new RangeError(`message_turn_read_limit: ${turnIds.length}`);
+    }
+    const placeholders = turnIds.map(() => '?').join(', ');
+    return this.db
+      .prepare(
+        `SELECT * FROM messages
+         WHERE session_id = ? AND turn_id IN (${placeholders})
+         ORDER BY created_at ASC, id ASC`,
+      )
+      .all(sessionId, ...turnIds) as MessageRow[];
   }
 
   markInterrupted(id: MessageId): void {

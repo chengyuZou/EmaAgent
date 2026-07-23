@@ -11,7 +11,13 @@ export type { SqliteIdBatchOptions } from './sqlite-id-batches.js';
 
 export { SessionsRepo, nextCursorFor } from './repos/sessions.js';
 export { TurnsRepo } from './repos/turns.js';
-export type { TurnIdPage, TurnIdPageCursor } from './repos/turns.js';
+export type {
+  TurnIdPage,
+  TurnIdPageCursor,
+  TurnIndexRow,
+  TurnPage,
+  TurnWindow,
+} from './repos/turns.js';
 export { MessagesRepo } from './repos/messages.js';
 export { CharacterCardsRepo } from './repos/character-cards.js';
 export { SettingsRepo } from './repos/settings.js';

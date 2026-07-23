@@ -1,4 +1,4 @@
-// 作为 Session 模块唯一 Facade，管理会话、Turn、消息和独立 Session Fork。
+// 集中管理 Session、Turn、消息与独立 Session Fork 的领域读写。
 import crypto from 'node:crypto';
 import { SessionsRepo, TurnsRepo, MessagesRepo, nextCursorFor, type SessionRow, type SessionRowEnriched, type SessionSearchRow, type TurnRow, type TurnIdPage, type TurnIdPageCursor, type MessageRow, } from '@ema-agent/storage';
 import { type SessionId, type TurnId, type MessageId, asSessionId, asTurnId, asMessageId } from '@ema-agent/ids';
@@ -20,11 +20,15 @@ import type {
   ListSessionsInput,
   ListSessionsOutput,
   ListMessagesInput,
+  ListTurnIndexInput,
+  TurnIndexPage,
+  ListMessageWindowInput,
+  MessageWindow,
   SearchSessionsInput,
   SearchSessionsOutput,
 } from './types.js';
 
-// ── Row → domain object converters (module-private) ──────────────────────────
+// ── 数据库行转换 ─────────────────────────────────────────────────────────────
 
 function toSession(row: SessionRow): Session {
   return {
@@ -140,29 +144,25 @@ function toSearchHit(row: SessionSearchRow): SearchSessionsOutput['results'][num
 }
 
 const DEFAULT_HISTORY_LIMIT = 500;
+const TURN_INDEX_DEFAULT_LIMIT = 200;
+const TURN_INDEX_MAX_LIMIT = 500;
+const TURN_INDEX_PREVIEW_LENGTH = 180;
+const MESSAGE_WINDOW_DEFAULT_BEFORE = 8;
+const MESSAGE_WINDOW_DEFAULT_AFTER = 12;
+const MESSAGE_WINDOW_MAX_SIDE = 25;
+const MESSAGE_WINDOW_MAX_TOTAL = 40;
 
-// ── SessionStore ──────────────────────────────────────────────────────────────
+// ── Session 聚合 ─────────────────────────────────────────────────────────────
 
 export interface SessionStoreDeps {
   db: Database;
-  /**
-   * Called after a session is deleted from the DB. The wiring layer injects
-   * `removeSessionDir(dataDir, sessionId)` so the session's audio/artifact/
-   * scratchpad files are cleaned alongside the DB rows.
-   */
+  /** Session 删除后清理数据库外的音频、附件和工具结果文件。 */
   onSessionRemoved?: (sessionId: string) => void;
   /** 最后一轮重发成功回滚后，清理该 Turn 派生的音频和临时文件。 */
   onTurnRemoved?: (sessionId: string, turnId: string) => void;
 }
 
-/**
- * SessionStore — single Facade for all session/turn/message state.
- *
- * Concurrency contract:
- *   One session allows at most ONE running turn at a time.
- *   startTurn() enforces this via RunRegistry (in-memory) + DB heal on startup.
- *   Multiple sessions can have concurrent running turns independently.
- */
+/** 管理 Session 聚合；当前同一 Session 只允许一个根 Turn 运行。 */
 export class SessionStore implements SessionOwnershipFacade {
   private readonly sessionsRepo: SessionsRepo;
   private readonly turnsRepo:    TurnsRepo;
@@ -171,7 +171,7 @@ export class SessionStore implements SessionOwnershipFacade {
   private readonly db:           Database;
   private readonly onSessionRemoved?: (sessionId: string) => void;
   private readonly onTurnRemoved?: (sessionId: string, turnId: string) => void;
-  /** Monotonically increasing clock — ensures created_at is unique even for sub-ms bursts. */
+  /** 单调时间戳避免同毫秒写入破坏游标边界。 */
   private lastTs = 0;
 
   constructor({ db, onSessionRemoved, onTurnRemoved }: SessionStoreDeps) {
@@ -184,13 +184,9 @@ export class SessionStore implements SessionOwnershipFacade {
     this.onTurnRemoved = onTurnRemoved;
   }
 
-  // ── Helpers ─────────────────────────────────────────────────────────────────
+  // ── 内部时间 ────────────────────────────────────────────────────────────────
 
-  /**
-   * Returns a timestamp that is guaranteed to be strictly greater than the
-   * last one returned from this instance. Prevents cursor-pagination breakage
-   * when multiple records are inserted in the same millisecond.
-   */
+  /** 返回严格递增的进程内时间戳。 */
   private nextTs(): number {
     const now = Date.now();
     this.lastTs = now > this.lastTs ? now : this.lastTs + 1;
@@ -219,15 +215,14 @@ export class SessionStore implements SessionOwnershipFacade {
     return this.requireSession(id);
   }
 
-  /** Non-throwing existence check. Used to guard turn creation against stale
-   *  client session ids (e.g. a viewedSessionId left over from a wiped DB). */
+  /** 无异常检查，供调用方识别删库后残留的客户端 Session ID。 */
   sessionExists(id: SessionId): boolean {
     return this.sessionsRepo.findById(id) !== undefined;
   }
 
   listSessions(input: ListSessionsInput = {}): ListSessionsOutput {
     const limit = input.limit ?? 50;
-    // Fetch one extra row to know if there's a next page
+    // 多取一行判断是否仍有下一页。
     const rows = this.sessionsRepo.listActive(limit + 1, input.cursor);
     const hasMore = rows.length > limit;
     const visible = hasMore ? rows.slice(0, limit) : rows;
@@ -238,7 +233,7 @@ export class SessionStore implements SessionOwnershipFacade {
     return { sessions, nextCursor };
   }
 
-  /** Grouped listing for sidebar UI. */
+  /** 返回左侧 Session 栏需要的分组投影。 */
   listSessionsGrouped(): {
     pinned:   Session[];
     byGroup:  Array<{ label: string; sessions: Session[] }>;
@@ -272,22 +267,13 @@ export class SessionStore implements SessionOwnershipFacade {
 
   updateTitle(id: SessionId, title: string): void {
     const trimmed = title.trim();
-    if (!trimmed) return;   // empty → no-op, keep current title
+    if (!trimmed) return;
     this.sessionsRepo.updateTitle(id, trimmed, Date.now());
   }
 
   /**
-   * Apply a partial session update atomically. All listed fields move in one
-   * SQLite transaction — if any sub-update would fail the whole patch rolls
-   * back, leaving the row untouched.
-   *
-   * Use this from `PUT /api/sessions/:id` instead of calling
-   * `updateTitle` + `pinSession` + `setSessionGroup` separately (those are
-   * three independent transactions and can leave half-applied state).
-   *
-   * `groupLabel === null` is the explicit "move out of group" signal.
-   * `groupLabel === undefined` leaves the existing group untouched.
-   * Empty-string title is silently dropped (no rename).
+   * 在一个事务内更新 Session 偏好。
+   * `groupLabel` 的 null 表示移出分组，undefined 表示保持不变。
    */
   patchSession(
     id: SessionId,
@@ -331,7 +317,7 @@ export class SessionStore implements SessionOwnershipFacade {
     this.sessionsRepo.patch(id, cleaned, Date.now());
   }
 
-  // ── Pin / Unpin ───────────────────────────────────────────────────────────
+  // ── 置顶 ───────────────────────────────────────────────────────────────────
 
   pinSession(id: SessionId): void {
     this.sessionsRepo.pin(id, Date.now());
@@ -341,15 +327,14 @@ export class SessionStore implements SessionOwnershipFacade {
     this.sessionsRepo.unpin(id);
   }
 
-  // ── Group ──────────────────────────────────────────────────────────────────
+  // ── 分组 ───────────────────────────────────────────────────────────────────
 
   setSessionGroup(id: SessionId, label: string | null): void {
-    // Normalise empty string → null (no group)
     const normalised = label?.trim() || null;
     this.sessionsRepo.setGroup(id, normalised);
   }
 
-  // ── Archive / Unarchive ────────────────────────────────────────────────────
+  // ── 归档 ───────────────────────────────────────────────────────────────────
 
   archiveSession(id: SessionId): void {
     this.sessionsRepo.archive(id, Date.now());
@@ -359,12 +344,10 @@ export class SessionStore implements SessionOwnershipFacade {
     this.sessionsRepo.unarchive(id);
   }
 
-  // ── Fork ───────────────────────────────────────────────────────────────────
+  // ── 独立 Session Fork ──────────────────────────────────────────────────────
 
   /**
-   * Fork a session into a new independent session.
-   *
-   * `untilTurnId` 为空时完整复制；提供时只复制到该 Turn（含）为止。
+   * 创建独立 Session 副本；`untilTurnId` 为空时完整复制，否则复制到该 Turn（含）。
    * 新 Session 重新生成 Turn、Message 与 Attachment ID，不继承 Task、
    * AgentRun 或正在运行的外部副作用。
    */
@@ -380,37 +363,27 @@ export class SessionStore implements SessionOwnershipFacade {
     return { sessionId: newId, messageCount };
   }
 
-  // ── Delete ─────────────────────────────────────────────────────────────────
+  // ── 删除 ───────────────────────────────────────────────────────────────────
 
   deleteSession(id: SessionId): void {
     this.registry.clear(id);
-    this.sessionsRepo.delete(id);  // cascades to turns + messages via FK
-    // Clean the per-session directory tree (audio/artifacts/scratchpad).
-    // DB rows cascade-cleaned; this catches the file side that has no FK.
+    this.sessionsRepo.delete(id);
+    // 数据库行由外键级联；文件目录需要显式清理。
     this.onSessionRemoved?.(id as string);
   }
 
   // ── Turn ────────────────────────────────────────────────────────────────────
 
-  /**
-   * Create and immediately start a new turn for the session.
-   *
-   * Returns the Turn record AND an AbortSignal — pass the signal to
-   * llm.stream() so Stop propagates without extra wiring.
-   *
-   * Throws 'session_busy' if a turn is already running for this session.
-   */
+  /** 创建根 Turn，并返回贯穿 LLM 与工具执行的取消信号。 */
   startTurn(input: StartTurnInput): { turn: Turn; signal: AbortSignal } {
     if (this.registry.isRunning(input.sessionId)) {
       throw new Error('session_busy: a turn is already running for this session');
     }
 
-    // 与消息/分支同一单调时钟: turn 的 started_at 在进程内严格递增,
-    // 同毫秒 tie 不再发生, 排序/游标/删除级联的"之后"语义才有唯一解。
+    // started_at 严格递增，保证分页和“之后”的语义唯一。
     const now = this.nextTs();
 
-    // Heal stale 'running' rows left by a previous process crash.
-    // better-sqlite3 is sync, so this + insert below are effectively atomic.
+    // 新 Turn 开始前收口同 Session 的崩溃残留状态。
     this.turnsRepo.abortStale(input.sessionId, now);
 
     this.requireSession(input.sessionId);
@@ -454,12 +427,9 @@ export class SessionStore implements SessionOwnershipFacade {
     this.registry.clear(turn.sessionId);
   }
 
-  /**
-   * Abort a running turn — fires the AbortSignal so the LLM stream stops,
-   * then marks the turn as aborted in the DB.
-   */
+  /** 触发取消信号并提交 Turn 的 aborted 终态。 */
   abortTurn(sessionId: SessionId, turnId: TurnId): void {
-    this.registry.abort(sessionId);   // signals AbortController → stream stops
+    this.registry.abort(sessionId);
     this.turnsRepo.complete(turnId, {
       status:      'aborted',
       completedAt: Date.now(),
@@ -475,26 +445,12 @@ export class SessionStore implements SessionOwnershipFacade {
     this.registry.abort(sessionId);
   }
 
-  /**
-   * Idempotent: release the in-memory running-turn lock for a session.
-   *
-   * Safe to call regardless of whether completeTurn/failTurn/abortTurn already
-   * cleared it. Covers the leak where a terminal method throws before reaching
-   * its own `registry.clear()` (e.g. `requireTurn` on a missing row, or a DB
-   * write error): without this, the orchestrator's end-of-turn finally has no
-   * way to release the lock, and the session stays `session_busy` until the
-   * process restarts. Intended to be called unconditionally from the
-   * orchestrator's turn finally/catch blocks.
-   */
+  /** 幂等释放内存运行锁，供 Turn 执行链的 finally 无条件调用。 */
   clearRunning(sessionId: SessionId): void {
     this.registry.clear(sessionId);
   }
 
-  /**
-   * Process-crash startup recovery: any turn still in 'running'/'pending' state
-   * across ALL sessions was orphaned by a crash — mark it aborted so future
-   * startTurn() calls aren't blocked. Called once at process start.
-   */
+  /** 启动时将崩溃遗留的 pending/running Turn 收口为 aborted。 */
   recoverStuckTurns(): { healed: number } {
     const healed = this.turnsRepo.abortAllStale(Date.now());
     return { healed };
@@ -513,6 +469,83 @@ export class SessionStore implements SessionOwnershipFacade {
 
   listTurns(sessionId: SessionId, limit = 50): Turn[] {
     return this.turnsRepo.listForSession(sessionId, limit).map(toTurn);
+  }
+
+  /** 为长 Session 提供不含消息正文的轻量 Turn 导航索引。 */
+  listTurnIndex(
+    sessionId: SessionId,
+    input: ListTurnIndexInput = {},
+  ): TurnIndexPage {
+    this.requireSession(sessionId);
+    const limit = normaliseIntegerLimit(
+      input.limit,
+      TURN_INDEX_DEFAULT_LIMIT,
+      TURN_INDEX_MAX_LIMIT,
+      'turn_index_limit',
+    );
+    const cursor = input.cursor
+      ? decodeTurnIndexCursor(input.cursor)
+      : undefined;
+    const page = this.turnsRepo.listForSessionPage(sessionId, cursor, limit);
+
+    return {
+      items: page.rows.map((row) => ({
+        turnId: row.id as TurnId,
+        startedAt: row.started_at,
+        completedAt: row.completed_at,
+        status: row.status,
+        triggerType: row.trigger_type,
+        executionProfile: row.execution_profile,
+        preview: formatTurnPreview(row.user_input_preview),
+      })),
+      nextCursor: page.nextCursor
+        ? encodeTurnIndexCursor(page.nextCursor)
+        : undefined,
+    };
+  }
+
+  /** 按 Turn 边界读取旧消息窗口，避免把整个 Session 的正文一次载入内存。 */
+  listMessageWindow(
+    sessionId: SessionId,
+    input: ListMessageWindowInput,
+  ): MessageWindow {
+    this.requireSession(sessionId);
+    this.assertTurnOwnership(sessionId, input.anchorTurnId);
+
+    const beforeTurns = normaliseIntegerLimit(
+      input.beforeTurns,
+      MESSAGE_WINDOW_DEFAULT_BEFORE,
+      MESSAGE_WINDOW_MAX_SIDE,
+      'message_window_before',
+      true,
+    );
+    const afterTurns = normaliseIntegerLimit(
+      input.afterTurns,
+      MESSAGE_WINDOW_DEFAULT_AFTER,
+      MESSAGE_WINDOW_MAX_SIDE,
+      'message_window_after',
+      true,
+    );
+    if (beforeTurns + afterTurns > MESSAGE_WINDOW_MAX_TOTAL) {
+      throw new Error('message_window_too_large');
+    }
+
+    const window = this.turnsRepo.listWindowAround(
+      sessionId,
+      input.anchorTurnId,
+      beforeTurns,
+      afterTurns,
+    );
+    if (!window) throw new Error(`turn_not_found: ${input.anchorTurnId}`);
+
+    const turnIds = window.rows.map((row) => row.id as TurnId);
+    return {
+      anchorTurnId: input.anchorTurnId,
+      turns: window.rows.map(toTurn),
+      messages: this.messagesRepo.listForTurns(sessionId, turnIds).map(toMessage),
+      hasOlder: window.hasOlder,
+      hasNewer: window.hasNewer,
+    };
   }
 
   /**
@@ -598,30 +631,18 @@ export class SessionStore implements SessionOwnershipFacade {
     this.messagesRepo.markInterrupted(id);
   }
 
-  /**
-   * Load message history for LLM context — chronological order, last N messages.
-   *
-   * Summary-aware: when a kind='summary' message exists, the list begins at
-   * that summary (inclusive).
-   *
-   * For UI rendering, use listMessages() instead — it ignores summary slicing.
-   */
+  /** 加载 LLM 可见历史；从最近 Summary 开始并保持时间正序。 */
   loadHistory(sessionId: SessionId, limit = DEFAULT_HISTORY_LIMIT): Message[] {
     this.requireSession(sessionId);
     return this.messagesRepo.listForSessionFromSummary(sessionId, limit).map(toMessage);
   }
 
-  /** All messages belonging to one turn — used by post-turn extraction. */
+  /** 加载一个 Turn 的全部消息，供 Turn 后处理使用。 */
   loadMessagesForTurn(turnId: TurnId): Message[] {
     return this.messagesRepo.listForTurn(turnId).map(toMessage);
   }
 
-  /**
-   * Cursor-based list for the frontend chat UI.
-   * Both first page and older pages return messages **newest-first**.
-   * Pass the last returned message's `createdAt` as `before` to load
-   * the next (older) page (scroll-up pagination).
-   */
+  /** 兼容现有聊天页的时间游标读取，结果保持最新优先。 */
   listMessages(sessionId: SessionId, input: ListMessagesInput = {}): Message[] {
     const limit   = input.limit ?? 50;
     this.requireSession(sessionId);
@@ -631,7 +652,7 @@ export class SessionStore implements SessionOwnershipFacade {
     return this.messagesRepo.listBefore(sessionId, input.before, limit).map(toMessage);
   }
 
-  // ── Private ─────────────────────────────────────────────────────────────────
+  // ── 归属读取 ────────────────────────────────────────────────────────────────
 
   private requireSession(id: SessionId): Session {
     const row = this.sessionsRepo.findById(id);
@@ -649,5 +670,56 @@ export class SessionStore implements SessionOwnershipFacade {
     const row = this.messagesRepo.findById(id);
     if (!row) throw new Error(`message_not_found: ${id}`);
     return toMessage(row);
+  }
+}
+
+function normaliseIntegerLimit(
+  value: number | undefined,
+  fallback: number,
+  maximum: number,
+  errorCode: string,
+  allowZero = false,
+): number {
+  const resolved = value ?? fallback;
+  const minimum = allowZero ? 0 : 1;
+  if (!Number.isSafeInteger(resolved) || resolved < minimum || resolved > maximum) {
+    throw new Error(errorCode);
+  }
+  return resolved;
+}
+
+function formatTurnPreview(userInput: string): string {
+  const preview = userInput.replace(/\s+/g, ' ').trim();
+  if (preview.length <= TURN_INDEX_PREVIEW_LENGTH) return preview;
+  return `${preview.slice(0, TURN_INDEX_PREVIEW_LENGTH - 1)}…`;
+}
+
+function encodeTurnIndexCursor(cursor: TurnIdPageCursor): string {
+  return Buffer.from(JSON.stringify({
+    version: 1,
+    startedAt: cursor.startedAt,
+    id: cursor.id,
+  }), 'utf8').toString('base64url');
+}
+
+function decodeTurnIndexCursor(value: string): TurnIdPageCursor {
+  try {
+    const parsed = JSON.parse(
+      Buffer.from(value, 'base64url').toString('utf8'),
+    ) as { version?: unknown; startedAt?: unknown; id?: unknown };
+    if (
+      parsed.version !== 1
+      || !Number.isSafeInteger(parsed.startedAt)
+      || typeof parsed.id !== 'string'
+      || parsed.id.length === 0
+    ) {
+      throw new Error('invalid');
+    }
+    return {
+      startedAt: parsed.startedAt as number,
+      id: parsed.id,
+    };
+  } catch {
+    throw new Error('Invalid turn index cursor');
   }
 }

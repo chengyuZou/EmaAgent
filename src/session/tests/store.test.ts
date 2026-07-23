@@ -149,6 +149,85 @@ describe('SessionStore — Turn ID 游标遍历', () => {
   });
 });
 
+describe('SessionStore — 聊天历史导航', () => {
+  it('Turn 索引使用不透明游标分页，并只返回有界预览', () => {
+    const store = makeStore();
+    const session = store.createSession();
+    for (let index = 0; index < 3; index++) {
+      const { turn } = startTurn(store, {
+        sessionId: session.id,
+        executionProfile: 'chat',
+        userInput: index === 0 ? 'a'.repeat(300) : `turn ${index}`,
+      });
+      store.completeTurn(turn.id);
+    }
+
+    const first = store.listTurnIndex(session.id, { limit: 2 });
+    const second = store.listTurnIndex(session.id, {
+      limit: 2,
+      cursor: first.nextCursor,
+    });
+
+    expect(first.items).toHaveLength(2);
+    expect(first.nextCursor).toBeTypeOf('string');
+    expect(second.items).toHaveLength(1);
+    expect(second.nextCursor).toBeUndefined();
+    expect(second.items[0]!.preview).toHaveLength(180);
+    expect(second.items[0]!.preview.endsWith('…')).toBe(true);
+  });
+
+  it('围绕锚点读取前后 Turn，并按时间正序返回消息', () => {
+    const store = makeStore();
+    const session = store.createSession();
+    const turns: TurnId[] = [];
+    for (let index = 0; index < 5; index++) {
+      const { turn } = startTurn(store, {
+        sessionId: session.id,
+        executionProfile: 'chat',
+        userInput: `turn ${index}`,
+      });
+      turns.push(turn.id);
+      store.appendMessage({
+        sessionId: session.id,
+        turnId: turn.id,
+        role: 'user',
+        blocks: `message ${index}`,
+      });
+      store.completeTurn(turn.id);
+    }
+
+    const window = store.listMessageWindow(session.id, {
+      anchorTurnId: turns[2]!,
+      beforeTurns: 1,
+      afterTurns: 1,
+    });
+
+    expect(window.turns.map((turn) => turn.id)).toEqual(turns.slice(1, 4));
+    expect(window.messages.map((message) => message.blocks)).toEqual([
+      'message 1',
+      'message 2',
+      'message 3',
+    ]);
+    expect(window.hasOlder).toBe(true);
+    expect(window.hasNewer).toBe(true);
+  });
+
+  it('消息窗口拒绝其他 Session 的锚点 Turn', () => {
+    const store = makeStore();
+    const owner = store.createSession();
+    const other = store.createSession();
+    const { turn } = startTurn(store, {
+      sessionId: owner.id,
+      executionProfile: 'chat',
+      userInput: 'owner',
+    });
+
+    expect(() => store.listMessageWindow(other.id, {
+      anchorTurnId: turn.id,
+    })).toThrow('session_ownership_violation');
+  });
+});
+
 // ── Turn concurrency ──────────────────────────────────────────────────────────
 
 describe('SessionStore — turn concurrency', () => {

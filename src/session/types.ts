@@ -131,6 +131,43 @@ export interface ListMessagesInput {
   limit?: number;
 }
 
+export interface ListTurnIndexInput {
+  /** 上一页返回的不透明游标，只能原样回传。 */
+  cursor?: string;
+  limit?: number;
+}
+
+export interface TurnIndexItem {
+  turnId: TurnId;
+  startedAt: number;
+  completedAt: number | null;
+  status: TurnStatus;
+  triggerType: TurnTriggerType;
+  executionProfile: ExecutionProfile;
+  preview: string;
+}
+
+export interface TurnIndexPage {
+  items: TurnIndexItem[];
+  nextCursor?: string;
+}
+
+export interface ListMessageWindowInput {
+  anchorTurnId: TurnId;
+  /** 锚点之前需要读取的较旧 Turn 数量。 */
+  beforeTurns?: number;
+  /** 锚点之后需要读取的较新 Turn 数量。 */
+  afterTurns?: number;
+}
+
+export interface MessageWindow {
+  anchorTurnId: TurnId;
+  turns: Turn[];
+  messages: Message[];
+  hasOlder: boolean;
+  hasNewer: boolean;
+}
+
 export interface SearchSessionsInput {
   query: string;
   limit?: number;

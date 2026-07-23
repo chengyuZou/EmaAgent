@@ -7,9 +7,11 @@ import type {
   SessionAttachmentsResult,
   SessionWire,
   SessionMessagesResult,
+  SessionMessageWindowWire,
   SessionsListResult,
   SessionsGroupedResult,
   SessionsSearchResult,
+  TurnIndexPageWire,
 } from '@ema-agent/session';
 import type { TurnAttachment } from '@ema-agent/turn';
 import type { AppBindings } from '../wiring/index.js';
@@ -31,6 +33,20 @@ const listMessagesSchema = z.object({
   before: z.coerce.number().int().optional(),
   limit:  z.coerce.number().int().min(1).max(200).default(100),
 });
+
+const listTurnIndexSchema = z.object({
+  cursor: z.string().min(1).max(512).optional(),
+  limit: z.coerce.number().int().min(1).max(500).default(200),
+});
+
+const messageWindowSchema = z.object({
+  anchorTurnId: z.string().min(1).max(200),
+  beforeTurns: z.coerce.number().int().min(0).max(25).default(8),
+  afterTurns: z.coerce.number().int().min(0).max(25).default(12),
+}).refine(
+  (value) => value.beforeTurns + value.afterTurns <= 40,
+  { message: 'message_window_too_large' },
+);
 
 const searchSessionsSchema = z.object({
   q:     z.string().trim().min(1).max(100),
@@ -137,6 +153,56 @@ export function sessionsRoute(bindings: AppBindings): Hono {
     return c.json(result satisfies SessionsSearchResult);
   });
 
+  // ── GET /api/sessions/:id/turn-index ───────────────────────────────────────
+  app.get('/:id/turn-index', (c) => {
+    const query = listTurnIndexSchema.safeParse(c.req.query());
+    if (!query.success) {
+      return c.json({ error: 'invalid_request', details: query.error.flatten() }, 400);
+    }
+
+    const sessionId = asSessionId(c.req.param('id'));
+    try {
+      const result = bindings.session.listTurnIndex(sessionId, query.data);
+      return c.json(result satisfies TurnIndexPageWire);
+    } catch (error) {
+      if (isNotFound(error)) return c.json({ error: 'session_not_found' }, 404);
+      if (error instanceof Error && error.message === 'Invalid turn index cursor') {
+        return c.json({ error: 'invalid_cursor' }, 400);
+      }
+      throw error;
+    }
+  });
+
+  // ── GET /api/sessions/:id/messages/window ──────────────────────────────────
+  app.get('/:id/messages/window', (c) => {
+    const query = messageWindowSchema.safeParse(c.req.query());
+    if (!query.success) {
+      return c.json({ error: 'invalid_request', details: query.error.flatten() }, 400);
+    }
+
+    const sessionId = asSessionId(c.req.param('id'));
+    try {
+      const window = bindings.session.listMessageWindow(sessionId, {
+        anchorTurnId: asTurnId(query.data.anchorTurnId),
+        beforeTurns: query.data.beforeTurns,
+        afterTurns: query.data.afterTurns,
+      });
+      return c.json({
+        ...window,
+        messages: enrichStoredAttachments(bindings, window.messages),
+      } satisfies SessionMessageWindowWire);
+    } catch (error) {
+      if (isNotFound(error)) return c.json({ error: 'session_not_found' }, 404);
+      if (
+        errorStartsWith(error, 'turn_not_found')
+        || errorStartsWith(error, 'session_ownership_violation')
+      ) {
+        return c.json({ error: 'turn_not_found' }, 404);
+      }
+      throw error;
+    }
+  });
+
   // ── GET /api/sessions/:id/messages ─────────────────────────────────────────
   app.get('/:id/messages', (c) => {
     const query = listMessagesSchema.safeParse(c.req.query());
@@ -146,26 +212,8 @@ export function sessionsRoute(bindings: AppBindings): Hono {
 
     const sessionId = asSessionId(c.req.param('id'));
     const messages = bindings.session.listMessages(sessionId, query.data);
-    // Turns ride along so the frontend can group messages by turnId and attach
-    // per-turn usage / duration / replayable audio without a second request.
     const turns = bindings.session.listTurns(sessionId);
-
-    // Enrich user messages with their stored file attachments so the
-    // UserBubble can show them on every page load, not only during the session.
-    const enriched = messages.map((m) => {
-      if (m.role !== 'user' || !m.turnId) return m;
-      const rows = bindings.attachmentStore.listByTurn(m.turnId as string);
-      if (rows.length === 0) return m;
-      const attachments: TurnAttachment[] = rows.map((a) => ({
-        id:        a.id,
-        name:      a.name,
-        mimeType:  a.mime,
-        size:      a.size,
-        mtime:     a.mtime,
-        fileHandle: issueStoredFileHandle(bindings, a.localPath),
-      }));
-      return { ...m, attachments };
-    });
+    const enriched = enrichStoredAttachments(bindings, messages);
 
     return c.json({ messages: enriched, turns } satisfies SessionMessagesResult);
   });
@@ -360,4 +408,26 @@ function issueStoredFileHandle(bindings: AppBindings, localPath: string): string
     console.warn('[attachments] 无法为历史路径签发文件能力:', error);
     return null;
   }
+}
+
+function enrichStoredAttachments<T extends {
+  role: string;
+  turnId: string | null;
+}>(bindings: AppBindings, messages: readonly T[]): Array<T & {
+  attachments?: TurnAttachment[];
+}> {
+  return messages.map((message) => {
+    if (message.role !== 'user' || !message.turnId) return message;
+    const rows = bindings.attachmentStore.listByTurn(message.turnId);
+    if (rows.length === 0) return message;
+    const attachments: TurnAttachment[] = rows.map((attachment) => ({
+      id: attachment.id,
+      name: attachment.name,
+      mimeType: attachment.mime,
+      size: attachment.size,
+      mtime: attachment.mtime,
+      fileHandle: issueStoredFileHandle(bindings, attachment.localPath),
+    }));
+    return { ...message, attachments };
+  });
 }
