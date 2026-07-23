@@ -42,6 +42,8 @@ Agent 执行体系第一批已经完成：Tool Result 外置与 Cleaner 从 `age
 
 Agent 执行体系第二批已经完成：ToolExecution Journal 从 Tasks 收回 `src/tools/journal`，Tools 现在拥有状态、领域记录、Store 端口、CAS 状态机与崩溃恢复语义；Storage 只实现原子 SQL 操作并把数据库行投影为领域形状；Core 从 Tools 装配 Journal，Agent 只依赖 `ToolExecutionJournalPort`。原 `IToolExecutionJournal` 已删除，Tasks 不再依赖 Tools/IDs 或导出工具执行生命周期。
 
+V1 Task 产品决策已经锁定：不再把完整 Task 延后。`src/tasks` 将只保存跨 Turn 的用户/模型可见工作项，包含 SQLite 事务/CAS、Session 内短序号、依赖、AgentRun 认领、TaskCreate/Get/List/Update、结构化事件、重启快照、动态 Context 提醒和独立 TaskList。旧内存 TodoWrite 在新主链完成后停止注册并删除。旧 `agent_tasks` 的根投影删除，子 Agent 数据迁为 `agent_runs/agent_run_messages`；后台 Shell 独立使用 BackgroundProcess/ProcessOutput/ProcessStop。
+
 ## 迁移完成事实
 
 - 所有 Ema 产品模块均位于根 `src`；旧产品目录不再留在 `packages`。
@@ -54,12 +56,9 @@ Agent 执行体系第二批已经完成：ToolExecution Journal 从 Tasks 收回
 
 开始任何新批次前必须重新运行 `git status --short` 与 `git diff`，保留用户和其他 Agent 的修改。
 
-本轮已知未提交修改：
+本轮开始时工作区干净；当前仅修改架构与评审文档，用于统一 V1 Task、AgentRun 与 BackgroundProcess 口径，不改生产代码。
 
-- Tools、Agent、MCP、BuiltinTools、Storage、Tasks 与 Core：Tool Result 所有权、结果预算、MCP 统一构建、业务校验、交互等待契约和 ToolExecution Journal 所有权重构；未触碰 Permission/Sandbox 实现。
-- `CLAUDE.md`、`EmaRefactor.md`、`EmaClaudeArchitectureReview.md`：同步 Tool Result、MCP 双层限制和下一批 Journal 所有权口径。
-
-当前基线最近提交：`2a8f6b2 refactor: migrate from @ema-agent/contracts to @ema-agent/ids for type imports`。该提交号仅用于定位，不代表其他 Agent 不会继续提交。
+当前基线最近提交：`1bd2299 refactor: migrate ToolExecution Journal to dedicated module and update related interfaces`。该提交号仅用于定位，不代表其他 Agent 不会继续提交。
 
 ## 已确定的 V1 口径
 
@@ -70,6 +69,8 @@ Agent 执行体系第二批已经完成：ToolExecution Journal 从 Tasks 收回
 - ContextAssembler 是模型窗口唯一组装入口；PromptAssembler 只产出显式、有序、可版本化的 PromptSlot。
 - Provider 是控制面；LLM、Embed、Rerank、Vision、STT、TTS 是无 Session 状态的执行面。
 - Tool 使用同一份不可变 PreparedToolCall 完成准备、审批和执行；Permission 与 Sandbox 物理分层。
+- V1 完整实现持久 Task：TaskCreate/Get/List/Update、依赖、AgentRun 认领、事务/CAS、事件、Context 提醒、恢复快照与独立前端 TaskList；TodoWrite 完成迁移后删除。
+- 后台 Shell 是 BackgroundProcess，使用 ProcessOutput/ProcessStop；不复用 TaskId、AgentRunId 或领域 Job 生命周期。
 - Memory 只管理长期记忆；Compaction 属于 Context；Narrative、Knowledge Base、Memory 保持隔离。
 - branded ID 只允许进入零业务依赖的 `src/ids`；业务类型、状态、事件与错误仍归各自所有者，Turn 只组合跨端事件。
 - 已知字段使用明确 type/interface/SQL column，不用 `meta`、`metaJson` 或万能 JSON 让调用方猜。
@@ -79,8 +80,9 @@ Agent 执行体系第二批已经完成：ToolExecution Journal 从 Tasks 收回
 
 ```text
 Turn       一次由明确来源触发、具有唯一终态的有界 Agent 执行
-Task       用户/模型可见的结构化工作清单项
-AgentRun   一次 Agent 或 Subagent 实际执行
+Task       跨 Turn 持久、用户/模型可见并支持依赖与认领的结构化工作项
+AgentRun   V1 中一次子 Agent 实际执行
+Process    一次可查询、可停止的后台 Shell 进程
 Job        KB、Vision、Embedding、Memory 等领域后台工作
 Plan       只读探索后供用户批准的方案
 Goal       跨 Turn 的完成条件
@@ -95,7 +97,9 @@ Plan、Goal、Schedule、Workflow、Team 与 LLM 自动审批暂列 V1.5，不�
 
 1. 删除 Registry 的生产执行旁路，冻结 `PreparedToolCall` 唯一执行入口；
 2. 随后拆分 Agent Scheduler 与 Tools `ToolExecutionRuntime`，收窄 ToolExecutionContext；
-3. Chat 接入统一 TurnLoop 放在 Tool 单次执行边界稳定之后，短期保留 ConversationEngine 适配器。
+3. 再拆旧 AgentTask：删除根投影、迁移 AgentRun，并完成 V1 TaskStore/Task Tools/Context/UI 闭环；
+4. 后台进程按 `BackgroundProcess + ProcessOutput/ProcessStop` 分批实现 C 档，不修改 Agent Loop 来实现自动后台化；
+5. Chat 接入统一 TurnLoop 放在 Tool 单次执行边界稳定之后，短期保留 ConversationEngine 适配器。
 
 命名随业务批次清理：`IFileStateStoreEntry`、`IFileStateStore`、`IToolExecutionJournal` 等迁移期 `I*` 类型在其所有权迁移时改为职责名，不单独进行全仓机械重命名。
 
@@ -103,6 +107,7 @@ Plan、Goal、Schedule、Workflow、Team 与 LLM 自动审批暂列 V1.5，不�
 
 ## 最近验证
 
+- V1 Task 文档口径审计完成：核心架构文档、CLAUDE、Sandbox 评审、Bug 总表、Storage README 与 Batch 历史入口均已区分 Task/AgentRun/BackgroundProcess/Job；旧待定措辞和错误的后台进程工具命名残留扫描为零。该批只改文档，未运行代码测试；`git diff --check` 通过。
 - 根 `src` 与 Workspace 目录审计完成；`packages` 仅剩 `credential`、`public-http`。
 - `pnpm install --offline` 已刷新迁移后的 Workspace 链接。
 - 全仓 typecheck 最近结果：84/84 通过。

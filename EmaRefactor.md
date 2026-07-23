@@ -341,7 +341,7 @@ export interface MemoryFacade {
 
 Codex 的 Context 管理与 compact、AstrBot 的 `agent/context/manager + compressor` 都支持“窗口组装与长期 Memory 分离”这一边界；Ema 按自身职责命名为 `ContextAssembler`，不照搬 Manager 后缀。
 
-## 6. AgentTask 的去留与命名
+## 6. AgentTask 拆为 AgentRun 与完整 Task
 
 当前 `agent-task` 尚未删除，Storage、Core、Agent、Desktop UI 仍有真实引用。不能直接删目录。
 
@@ -353,6 +353,7 @@ ToolCall   一次工具执行
 Task       用户/模型可见的结构化工作清单项
 AgentRun   Work 模式创建的子 Agent 运行
 DomainJob  KB/Vision/Embedding 等各领域后台任务
+Process    后台 Shell 进程
 ```
 
 根 AgentTask 不再复制 Turn 的 running/completed/failed/cancelled 状态。迁移完成后：
@@ -362,8 +363,11 @@ DomainJob  KB/Vision/Embedding 等各领域后台任务
 - 子 Agent 数据迁移为 `agent_runs/agent_run_messages`，前端 `TaskPanel` 改成 `AgentRunsPanel`；
 - AskUser 等待状态归 Turn + Prompt Registry，不依赖根 AgentTask CAS；
 - Tool 副作用恢复继续由 `tool_executions` journal 承担；
-- KB、Vision、Memory 不继承 AgentRun，也不强行塞进一个通用 Task 表。
-- 当前内存 `TodoWrite` 不与未来结构化 TaskStore 长期双轨；Task 是否完整进入 V1 单独决策。
+- KB、Vision、Memory 不继承 AgentRun，也不强行塞进一个通用 Task 表；
+- 后台 Shell 使用 `BackgroundProcessId`，不使用 TaskId 或 AgentRunId；
+- V1 完整实现结构化 TaskStore，并用 `TaskCreate/Get/List/Update` 替换当前内存 `TodoWrite`。迁移完成后 TodoWrite 停止注册并删除，不保留双轨。
+
+V1 Task 闭环包括：SQLite 持久化、事务与 CAS、Session 内短序号、显式状态、依赖关系、AgentRun 认领、结构化事件、重启快照、动态 Context 提醒和独立 TaskList UI。Team、跨设备共享与实验性验证 Agent 不在 V1，但不能以此为理由把 Task 降级成 Turn 内 Todo。
 
 在迁移前必须保留现有 CAS、恢复和 transcript 测试，避免“删了包但把断电恢复也删了”。
 
@@ -381,6 +385,11 @@ src/
 │  │  └─ workProfile.ts
 │  ├─ recovery/
 │  └─ runs/                     子 Agent 的 AgentRun，不放后台 Job
+├─ tasks/
+│  ├─ taskStore.ts              V1 持久工作项、CAS、依赖与认领
+│  ├─ protocol.ts               Task 快照与结构化事件
+│  ├─ taskContext.ts            动态 Context 提醒
+│  └─ types.ts
 ├─ turn/
 │  ├─ ids.ts
 │  ├─ turnRuntime.ts            Turn 根生命周期与唯一终态
@@ -411,9 +420,11 @@ src/
 │  ├─ preparation/
 │  ├─ execution/
 │  ├─ results/
+│  ├─ background/               BackgroundProcess 句柄、输出与取消
 │  ├─ events.ts
 │  └─ protocol.ts
 ├─ permission/
+├─ sandbox/                     受限命令启动与平台隔离
 ├─ hook/
 ├─ session/
 │  ├─ ids.ts
@@ -492,14 +503,14 @@ Builtin / MCP / Skill Tool
 - `src/agent`：只拥有 `TurnLoop`、Profile/Policy/Budget、LLM 迭代、Tool Call 批次调度、Subagent/AgentRun 协调与循环熔断；
 - `src/turn`：拥有 Turn 输入、触发来源、身份、状态、取消、唯一终态与跨端事件关联，不执行 Tool、拼 Prompt 或访问 Session Repo；
 - `src/agentContext`：逐项迁出后删除。Tool Result 与 Cleanup 归 `tools/results`，文件状态归 `tools/workspace` 或 `tools/files`，Snapshot 归 `context/restore` 或确认无价值后删除；
-- `src/tasks`：只拥有用户或模型可见的 Task。AgentRun、ToolExecution 与领域 Job 不得继续复用 Task 身份或生命周期；
+- `src/tasks`：只拥有用户或模型可见的完整 Task 系统，包括状态、依赖、认领、事务/CAS、查询快照与事件；四个模型 Tool 的具体定义仍在 `src/builtinTools`。AgentRun、ToolExecution、BackgroundProcess 与领域 Job 不得继续复用 Task 身份或生命周期；
 - `src/conversation`：只作 Chat 到统一 Turn 主链的短期适配器，不再拥有独立 LLM/Tool 循环，行为一致后删除；
 - `apps/core`：退回 HTTP/SSE/Auth/Composition Root。Route 最终只解析请求并调用 `turnRuntime.run()`，现有 orchestrator 删除或缩为协议适配器。
 
 二级配套模块保持独立，但接口必须服从同一主链：
 
 - `src/permission` 接收不可变 `PreparedToolCall`，管理规则、Session Grant、Prompt FIFO、路径能力与 allow/ask/deny；批准不等于已经隔离；
-- `src/sandbox` 管跨平台隔离、进程树取消、网络、cwd、挂载和后台句柄，通过小型 Command Runner Port 为 Tools 提供执行能力；
+- `src/sandbox` 管跨平台隔离、进程树信号、网络、cwd 与挂载，通过小型 Command Runner Port 为 Tools 提供受限启动能力；后台句柄、输出、终态、LRU 与取消归 `src/tools/background`；
 - `src/hooks` 观察 Prepared 调用。Hook 若修改参数，必须重新 Prepare、重新审批，不能直接执行 Tool；
 - `src/session` 保存消息、Tool Result 稳定预览与引用，并参与删除生命周期，不判断是否外置或如何授权；
 - `src/storage` 只实现 Repository、SQL、Migration、事务和 CAS；ToolExecution 状态机的业务定义归 Tools；
@@ -525,7 +536,7 @@ src/tools/
 
 每次审查 Builtin Tool，都必须结合 Claude 文档与真实源码逐项核对模型可见名称、输入 Schema、字段语义、输出、校验、只读性、并发、Permission、Sandbox、取消、超时、结果上限、流式行为、跨平台与 Presentation。Claude 的数值和字段不是默认答案；例如采用 30K 结果上限前，必须先确认双方返回内容和外置机制是否相同。
 
-建议按 `FileRead/FileWrite/FileEdit → Glob/Grep → Bash/PowerShell → WebFetch/WebSearch → AskUser → Skill/KB/Subagent → Scratchpad/Todo → Feature Gate Tool` 的顺序审查。
+建议按 `FileRead/FileWrite/FileEdit → Glob/Grep → Bash/PowerShell → WebFetch/WebSearch → AskUser → Skill/KB/Subagent → Scratchpad → TaskCreate/Get/List/Update → Feature Gate Tool` 的顺序审查。TodoWrite 只作为迁移期旧实现，不是最终审查目标。
 
 ### 7.3 命名与文件规范
 
@@ -824,14 +835,16 @@ interface TurnExecutionSnapshot {
 4. 旧 ConversationEngine 变成短期适配器；
 5. 金标准测试一致后删除 ConversationEngine 包。
 
-### R6：AgentTask/AgentContext 退役
+### R6：AgentTask/AgentContext 退役与 Task 建立
 
 1. Turn 成为唯一根生命周期；
 2. 子 Agent 迁移 AgentRun；
 3. AskUser 与 Prompt Registry 脱离根 AgentTask；
 4. Tool journal 保留；
 5. 前端 TaskPanel 迁移 AgentRunsPanel；
-6. 删除包前用 `rg` 保证生产引用为零，再删除数据库旧结构或写兼容迁移。
+6. `src/tasks` 建立 TaskStore、依赖关系、认领与 Task 事件，BuiltinTools 注册 TaskCreate/Get/List/Update；
+7. 前端新增独立 TaskList，Context 接入低频 Task Snapshot，随后停止注册并删除 TodoWrite；
+8. 删除旧包前用 `rg` 保证生产引用为零，再删除数据库旧结构或写兼容迁移。
 
 ### R7：前端切换
 
@@ -862,7 +875,7 @@ interface TurnExecutionSnapshot {
 6. Tool Manifest 增加来源与稳定分区，再实现 Anthropic Tool Cache 断点并重新分配四个断点；
 7. 按 7.2 的顺序逐组审查所有 Builtin Tool；
 8. 迁出 `agentContext` 剩余职责并删除该模块；
-9. 收口 Task、AgentRun、ToolExecution 三类身份与生命周期；
+9. 收口 Task、AgentRun、ToolExecution、BackgroundProcess 四类身份与生命周期，并完成 V1 Task 全闭环；
 10. Chat 接入统一 TurnLoop，删除 ConversationEngine；
 11. `apps/core` 退回 Route、SSE、认证、启动恢复和 Composition Root；
 12. 最后对 Permission、Sandbox 做针对性收口和 Windows/macOS/Linux 验证。
@@ -889,6 +902,8 @@ Tool Result 归位、统一预算与 ToolExecution Journal 所有权迁移已经
 - Memory 不再导出 Compaction；
 - `agent-context`、`conversation`、根 AgentTask 生产依赖清零后再删除；
 - Turn 是唯一根生命周期，AgentRun 只表示子 Agent；
+- V1 Task 使用独立 UUID/短序号、显式字段、SQLite 事务/CAS 和依赖关系，并由 TaskCreate/Get/List/Update、动态 Context 提醒及独立 TaskList 构成完整闭环；
+- TodoWrite 不再注册，Task、AgentRun、BackgroundProcess、ToolExecution 与领域 Job 不共享 ID 或状态机；
 - Core Route 只做协议适配，业务进入对应模块的稳定公开入口或 TurnRuntime；
 - 中央 Contracts 路径归零，业务类型由各自模块拥有；
 - Session Message、LLM Message、Provider SDK Message 三层可辨认且只在明确 mapper 中转换；
