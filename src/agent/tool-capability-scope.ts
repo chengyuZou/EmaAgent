@@ -31,9 +31,9 @@ export class AgentToolCapabilityScope implements ToolCapabilityScope {
   private readonly restrictionSources: string[] = [];
 
   constructor(allTools: readonly ToolManifestEntry[]) {
-    this.tools = Object.freeze(
-      [...allTools].sort((left, right) => compareToolNames(left.name, right.name)),
-    );
+    // Manifest 已经拥有最终 Provider 顺序。Skill 只能做集合交集，不能重新排序并
+    // 打散 Builtin/MCP 的稳定分区。
+    this.tools = Object.freeze([...allTools]);
     this.toolsByName = new Map(this.tools.map(tool => [tool.name, tool]));
     this.allowedIds = new Set(this.tools.map(tool => tool.id));
   }
@@ -103,8 +103,4 @@ function matchesToolPattern(pattern: string, candidate: string): boolean {
 
 function escapeRegularExpression(character: string): string {
   return /[\\^$.*+?()[\]{}|]/u.test(character) ? `\\${character}` : character;
-}
-
-function compareToolNames(left: string, right: string): number {
-  return left < right ? -1 : left > right ? 1 : 0;
 }

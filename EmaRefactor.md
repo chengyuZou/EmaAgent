@@ -272,12 +272,14 @@ Profile 与运行环境
 
 ### 4.4 Tool Manifest 稳定性
 
-- 内置通用 Tool 按稳定 ID 排序；
+- Tool Manifest 是模型工具数组顺序的唯一所有者：Builtin 按稳定内部 ID 排成连续前缀，MCP 按原始 `serverName + serverToolName` 排成连续后缀，不能在 Agent、Context 或 Adapter 再次平铺排序；
+- `registryVersion` 只负责判断运行时注册表世代与旧执行快照，不能进入内容 `revision`；等价 MCP 重连不破坏缓存，描述、Schema、来源或可见集合变化才产生新 revision；
+- Skill 与 Profile 只对既有 Manifest 做集合收窄并保留原顺序，不伪装成新的 Tool 来源；角色专属 Narrative 使用稳定 Builtin Tool Schema，角色和数据集差异留在 Prompt/执行配置；
 - Chat/Work 各维护一个 Profile Tool Snapshot，切换后使用对应缓存前缀；
 - MCP 连接变化不能在正在执行的 Turn 中途改写工具表；
 - Session 可冻结 MCP/Skill manifest generation，用户刷新后下一 Turn 生效；
 - 不为追求一个缓存前缀而向 Chat 暴露 Work 写工具；
-- 后续可引入 ToolSearch/Deferred Tool，缩短常驻 Schema，但不作为统一引擎第一批前置条件。
+- ToolSearch、Deferred Tool 与插件贡献等到真实工具规模和正式版扩展需求出现后再设计，不为内测预建空来源类型或半成品注册层。
 
 ### 4.5 参考项目结论
 

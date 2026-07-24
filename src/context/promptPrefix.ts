@@ -8,19 +8,18 @@ interface PromptPrefixInput {
 }
 
 /**
- * 统一工具顺序和 JSON Schema key 顺序，防止注册时序或对象构造顺序破坏 Provider KV Cache。
- * 数组顺序保留，因为数组在 JSON Schema 与提示词中可能具有业务语义。
+ * 规范化 JSON Schema key，但保留 Tool Manifest 已冻结的工具顺序。
+ * 工具数组本身参与 Provider 缓存键；在 Context 再次平铺排序会打散 Builtin/MCP 分区，
+ * 也会让诊断 Hash 掩盖真实请求顺序变化。
  */
 export function normalizeToolDefinitions(
   tools: readonly LlmToolDef[],
 ): LlmToolDef[] {
-  return [...tools]
-    .sort((left, right) => compareCodeUnits(left.name, right.name))
-    .map((tool) => ({
-      name: tool.name,
-      description: tool.description,
-      parameters: canonicalize(tool.parameters) as Record<string, unknown>,
-    }));
+  return tools.map((tool) => ({
+    name: tool.name,
+    description: tool.description,
+    parameters: canonicalize(tool.parameters) as Record<string, unknown>,
+  }));
 }
 
 /**

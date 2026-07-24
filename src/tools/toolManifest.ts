@@ -24,7 +24,7 @@ export function createToolManifestSnapshotFromEntries(
   registryVersion: number,
 ): ToolManifestSnapshot {
   const entries = [...sourceEntries]
-    .sort((left, right) => compareCodeUnits(left.name, right.name))
+    .sort(compareManifestEntries)
     .map((entry) => Object.freeze({
       id: entry.id,
       name: entry.name,
@@ -34,8 +34,7 @@ export function createToolManifestSnapshotFromEntries(
     }));
   const revision = createHash('sha256')
     .update(JSON.stringify({
-      schemaVersion: 1,
-      registryVersion,
+      schemaVersion: 2,
       entries: entries.map((entry) => ({
         id: entry.id,
         name: entry.name,
@@ -51,6 +50,27 @@ export function createToolManifestSnapshotFromEntries(
     revision,
     entries: Object.freeze(entries),
   });
+}
+
+/**
+ * Builtin 保持连续稳定前缀，避免 MCP 连接变化把内置工具的 Provider 缓存段打散。
+ * Builtin 使用内部稳定 ID；MCP 使用未经清洗的 Server/Tool 身份，展示名只作兜底。
+ */
+function compareManifestEntries(
+  left: ToolManifestEntry,
+  right: ToolManifestEntry,
+): number {
+  if (left.origin.kind !== right.origin.kind) {
+    return left.origin.kind === 'builtin' ? -1 : 1;
+  }
+  if (left.origin.kind === 'builtin' || right.origin.kind === 'builtin') {
+    return compareCodeUnits(left.id, right.id)
+      || compareCodeUnits(left.name, right.name);
+  }
+  return compareCodeUnits(left.origin.serverName, right.origin.serverName)
+    || compareCodeUnits(left.origin.serverToolName, right.origin.serverToolName)
+    || compareCodeUnits(left.name, right.name)
+    || compareCodeUnits(left.id, right.id);
 }
 
 function toManifestEntry(tool: BuiltTool): ToolManifestEntry {

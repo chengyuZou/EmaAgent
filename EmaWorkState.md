@@ -6,7 +6,7 @@
 
 ## 当前阶段
 
-根目录迁移已经结束，项目进入语义大重构阶段。现在不再继续机械搬包，也不建立第三套 Engine；长期主线仍是把现有 `AgentEngine + Core Orchestrator` 收敛为唯一的 `TurnRuntime + AgentLoop`。内层 `AgentLoop`、Tools 主执行链和 Tool 调用边界都已完成收口；当前先完成 Tool Manifest 缓存稳定性（2C）与 Builtin Tool 审查（2D），随后直接把现有 `AgentEngine` 迁成 `TurnRuntime`，不在其上新增包装层。
+根目录迁移已经结束，项目进入语义大重构阶段。现在不再继续机械搬包，也不建立第三套 Engine；长期主线仍是把现有 `AgentEngine + Core Orchestrator` 收敛为唯一的 `TurnRuntime + AgentLoop`。内层 `AgentLoop`、Tools 主执行链、Tool 调用边界与 Tool Manifest 缓存稳定性（2C）都已完成收口；当前进入 Builtin Tool 审查（2D），随后直接把现有 `AgentEngine` 迁成 `TurnRuntime`，不在其上新增包装层。
 
 事件所有权第一批已经落到源码：Agent、Artifact、Characters、Context、Hooks、Knowledge、Memory、Narrative、System、Tasks、Tools 与 TTS 各自拥有 `events.ts`；Turn 只保留根生命周期、输出、Usage 与请求降级事件。`src/events` 像 `src/ids` 一样执行严格准入，但只负责组合 `TurnStreamEvent/SessionEvent/AppEvent`，禁止定义业务字段。`EmaStreamEvent` 已标记为迁移期兼容名，新生产者必须使用领域事件或窄通道事件。
 
@@ -52,6 +52,8 @@ Tool 调用边界已经收窄：旧万能 `ToolExecutionContext/ToolExecutionSco
 
 Tool Port 所有权已经归位：Knowledge 与 Skills 分别公开 `KnowledgeSearchPort` 和 `SkillRunnerPort`，`SkillRunner` 直接实现后者，Core 不再维护重复的 `skillBridge` 适配对象；Sandbox、Tasks、Artifact 与 Tools 文件状态继续拥有自身端口。Subagent 与 AskUser 的 Port 是 Builtin Tool 对宿主的消费契约，保留在 `builtinTools`，由 Agent/未来 TurnRuntime 结构化实现，从而避免 `agent ↔ builtinTools` 或 `turn ↔ tools` 包环。通用 `tools/types.ts` 不再定义 Knowledge、Skill 或 Subagent 业务 Port。
 
+Tool Manifest 缓存稳定性已经收口：Manifest 是模型工具数组顺序的唯一所有者，Builtin 按稳定内部 ID 形成连续前缀，MCP 按原始 Server/Tool 身份形成连续后缀；Agent 的 Skill 能力收窄只做集合交集，Context 只规范化 Schema key，二者都不再平铺重排工具。`registryVersion` 继续保护运行时快照世代，但不再进入内容 revision，因此等价 MCP 重连不会无故打断缓存，旧执行快照仍会明确失效。Skill/Profile 不是 Tool 来源，V1 不为插件或 Deferred Tool 预建类型。
+
 旧 `src/agentContext` 已完整删除：Tool Result 生命周期此前已归 `src/tools/results`；本轮把按 Session 的文件读取状态迁为 `src/tools/sessionFileStateStore.ts`，同步删除无人消费的 `AgentContextSnapshot`。`IFileStateStoreEntry/IFileStateStore` 已按所有权改为 `FileStateStoreEntry/FileStateStore`，Core 与 Agent 不再依赖 `@ema-agent/agent-context`。
 
 V1 Task 主链已经完成：`src/tasks` 只保存跨 Turn 的用户/模型可见工作项，Data v18 使用显式 Task 列、Session 内短序号、依赖关系和 CAS；根 Work Turn 注册 TaskCreate/Get/List/Update，旧内存 TodoWrite 已删除。Task 事件、低频动态 Context 提醒、`/api/tasks` 重启快照、Session ZIP 备份恢复与独立前端 TaskList 已接线。
@@ -80,9 +82,9 @@ Task 与 AgentRun 前端已经分面：Desktop 使用正式 `/api/tasks` 快照�
 
 开始任何新批次前必须重新运行 `git status --short` 与 `git diff`，保留用户和其他 Agent 的修改。
 
-当前工作区只包含 Tool Context 收口及紧随其后的 Port 所有权归位：MCP 契约、Builtin ToolPool、Agent 根/子执行接线、Sandbox 命令后清理、Knowledge/Skills/BuiltinTools Port、对应测试和文档。开始第一批时工作区干净，没有覆盖用户或其他 Agent 的未提交修改。
+当前工作区只包含 Tool Manifest 缓存稳定性（2C）：Manifest 分区排序与内容 revision、Skill 能力收窄顺序、Context Prefix 诊断、对应测试和文档。开始本批时工作区干净，没有覆盖用户或其他 Agent 的未提交修改。
 
-当前基线最近提交：`f8035470 Refactor tool context handling and validation across Task and Web tools`。该提交号仅用于定位，不代表其他 Agent 不会继续提交。
+当前基线最近提交：`e89bb3ad refactor: consolidate tool context handling and ownership across components`。该提交号仅用于定位，不代表其他 Agent 不会继续提交。
 
 ## 已确定的 V1 口径
 
@@ -124,8 +126,8 @@ Chat 工作区、Turn 导航轨、Task/AgentRun 分面、双 Dock、置顶摘要
 1. TurnIndex/MessageWindow 与前端历史 Store/TurnRail 已完成，不创建 Dock 半成品；
 2. TaskList、AgentRunPanel、原生 AgentRun API 与真实 Review 入口已经完成，旧 `/api/agent-tasks` 兼容已删除；
 3. Sandbox 依赖反转、Tools 主执行链归位、单一 `BuiltinToolContext + validateContext` 窄投影与真实 ToolPool 接线均已完成；
-4. 下一批完成 Tool Manifest 的 Builtin/MCP 稳定分区、Prefix Revision 与缓存稳定测试（2C）；
-5. 随后逐组审查 Builtin Tool 的环境净化、工作目录、输入输出上限与结构化 Presentation（2D）；
+4. Tool Manifest 的 Builtin/MCP 稳定分区、内容 Revision 与缓存稳定测试（2C）已经完成；
+5. 下一批逐组审查 Builtin Tool 的环境净化、工作目录、输入输出上限与结构化 Presentation（2D）；
 6. Tool 批次完成后建立 TurnRuntime，再清理 Agent 并让 Core Route 退回协议层；
 7. 后台进程按 `BackgroundProcess + ProcessOutput/ProcessStop` 单独实现 C 档，不修改 AgentLoop，也不恢复假 `run_in_background`。
 
@@ -135,6 +137,7 @@ Chat 工作区、Turn 导航轨、Task/AgentRun 分面、双 Dock、置顶摘要
 
 ## 最近验证
 
+- Tool Manifest 缓存稳定性（2C）：Tools 27/27、Context 24/24、Agent 29/29 通过，4 个 Agent Live Integration 按规则跳过；全仓 typecheck 84/84 通过。测试覆盖 Builtin/MCP 分区、选择顺序无关、等价 MCP 重连 revision 稳定、模型可见集合/Schema 变更 revision 更新、旧执行快照失效、Skill 收窄保序及 Prefix Hash 对真实工具顺序敏感；`git diff --check` 通过，仅有既有 CRLF 提示。
 - Tool Context、真实 ToolPool 与 Port 所有权收口：Tools、Skills、Knowledge、BuiltinTools、Agent、Core 定向 typecheck 44/44 通过；Tools 26/26、Skills 24/24、Knowledge 42/42、Agent 29/29 通过，4 个 Agent Live Integration 按规则跳过；BuiltinTools 48/49，唯一失败仍是既存 WebFetchPolicy 对 `example.com -> www.example.com` 重定向口径，与本批无关。旧 Context、Bridge 注册标志、子 Agent 手写工具白名单及 Tools 内 Knowledge/Skill/Subagent Port 引用归零；`git diff --check` 通过，仅有既有 CRLF 提示。
 - Tools 主执行链归位：全仓 typecheck 84/84 通过；Tools 26/26、Hooks 27/27、Agent 31/31 通过，4 个 Agent Live Integration 按规则跳过；BuiltinTools 本批相关测试与修改后的 Tool Call Integration 通过，全量仍只有既存 WebFetchPolicy 对 `example.com -> www.example.com` 重定向口径的 1 项失败。Tools 对 Agent/Session/Hooks、旧 `TurnToolExecutor/tool-executor` 与代码侧 `dispatch()` 引用扫描归零。
 - Sandbox 依赖反转：全仓 typecheck 84/84 通过；Sandbox 5 个测试文件 19/19 通过；Bash 边界与注册测试 8/8 通过。BuiltinTools 全量测试中本批相关测试均通过，唯一失败仍是既存 `WebFetchPolicy` 对 `example.com -> www.example.com` 重定向口径不一致，与命令执行改动无关。

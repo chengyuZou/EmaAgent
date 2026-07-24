@@ -32,7 +32,7 @@ describe('Prompt 前缀稳定性', () => {
     expect(changedSystem).not.toBe(first);
   });
 
-  it('Tool 注册顺序和 Schema key 构造顺序被整理成同一 Manifest', () => {
+  it('保留 Manifest 工具顺序，同时规范化 Schema key 构造顺序', () => {
     const alpha: LlmToolDef = {
       name: 'alpha',
       description: 'alpha tool',
@@ -58,12 +58,36 @@ describe('Prompt 前缀稳定性', () => {
     };
 
     const firstTools = normalizeToolDefinitions([beta, alpha]);
-    const secondTools = normalizeToolDefinitions([alphaDifferentKeyOrder, beta]);
+    const secondTools = normalizeToolDefinitions([beta, alphaDifferentKeyOrder]);
     const first = computePromptPrefixHash({ messages: [stableSystem], tools: firstTools });
     const second = computePromptPrefixHash({ messages: [stableSystem], tools: secondTools });
 
     expect(first).toBe(second);
-    expect(firstTools.map((tool) => tool.name)).toEqual(['alpha', 'beta']);
+    expect(firstTools.map((tool) => tool.name)).toEqual(['beta', 'alpha']);
+  });
+
+  it('实际工具数组顺序变化会改变诊断 Hash', () => {
+    const alpha: LlmToolDef = {
+      name: 'alpha',
+      description: 'alpha tool',
+      parameters: { type: 'object', properties: {} },
+    };
+    const beta: LlmToolDef = {
+      name: 'beta',
+      description: 'beta tool',
+      parameters: { type: 'object', properties: {} },
+    };
+
+    const first = computePromptPrefixHash({
+      messages: [stableSystem],
+      tools: [alpha, beta],
+    });
+    const second = computePromptPrefixHash({
+      messages: [stableSystem],
+      tools: [beta, alpha],
+    });
+
+    expect(first).not.toBe(second);
   });
 
   it('没有显式 cacheBreakpoint 时不伪造前缀 Hash', () => {

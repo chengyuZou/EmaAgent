@@ -7,16 +7,16 @@ import {
 } from '../tool-capability-scope.js';
 
 describe('AgentToolCapabilityScope', () => {
-  it('按固定顺序返回工具，并支持名称和稳定 ID glob', () => {
+  it('保留 Manifest 固定顺序，并支持名称和稳定 ID glob', () => {
     const scope = new AgentToolCapabilityScope([
-      fakeTool('builtin.shell.bash', 'Bash'),
       fakeTool('builtin.file.read', 'Read'),
+      fakeTool('builtin.shell.bash', 'Bash'),
       fakeTool('mcp.github.search', 'mcp__github__search'),
     ]);
 
     expect(scope.snapshot().allowedToolNames).toEqual([
-      'Bash',
       'Read',
+      'Bash',
       'mcp__github__search',
     ]);
 

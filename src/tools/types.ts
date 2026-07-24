@@ -102,7 +102,12 @@ export interface ToolManifestEntry {
   readonly inputJsonSchema: Readonly<Record<string, unknown>>;
 }
 
-/** ToolRegistry 在 Turn 开始时生成的不可变能力快照。 */
+/**
+ * ToolRegistry 为一次 Agent 执行生成的不可变能力快照。
+ *
+ * entries 是最终发送给模型的规范顺序：Builtin 是连续前缀，MCP 是连续后缀。
+ * registryVersion 只标识注册表运行时世代；revision 只由模型可见内容决定。
+ */
 export interface ToolManifestSnapshot {
   readonly registryVersion: number;
   readonly revision: string;
