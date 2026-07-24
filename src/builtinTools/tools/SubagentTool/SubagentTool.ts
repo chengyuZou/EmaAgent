@@ -4,9 +4,10 @@ import { z } from 'zod';
 import { asAgentRunId, asTaskId } from '@ema-agent/ids';
 import { buildTool } from '@ema-agent/tools';
 import type {
-  ISubagentSpawner,
+  SubagentSpawnerPort,
   SubagentRunResult,
-  ToolExecutionContext,
+  ToolExecutionScope,
+  ToolInvocationContext,
 } from '@ema-agent/tools';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 
@@ -71,8 +72,12 @@ The sub-agent:
     accessType: 'execute',
   },
 
-  async execute(input: SubagentInput, ctx: ToolExecutionContext): Promise<SubagentRunResult> {
-    const spawner: ISubagentSpawner | undefined = ctx.subagentSpawner;
+  async execute(
+    input: SubagentInput,
+    ctx: ToolInvocationContext,
+    scope: ToolExecutionScope,
+  ): Promise<SubagentRunResult> {
+    const spawner: SubagentSpawnerPort | undefined = scope.subagentSpawner;
     if (!spawner) {
       throw new Error(
         'Sub-agents cannot spawn further sub-agents (depth limit: 1). ' +

@@ -1,7 +1,10 @@
-// 这个工具负责加载指定 Skill 的指令，并通过 Skill Runner 注入当前 Agent。
+// 加载指定 Skill 的指令，并通过 Skill Runner 注入当前 Agent。
 import { z } from 'zod';
 import { buildTool } from '@ema-agent/tools';
-import type { ToolExecutionContext, ISkillRunner } from '@ema-agent/tools';
+import type {
+  SkillRunnerPort,
+  ToolExecutionScope,
+} from '@ema-agent/tools';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 
 // ── 输入 schema ──────────────────────────────────────────────────────────────
@@ -40,26 +43,26 @@ Skills are pre-defined prompt templates or automation sequences registered in se
     accessType: 'execute',
   },
 
-  async execute(input: SkillCallInput, ctx: ToolExecutionContext): Promise<SkillCallResult> {
-    const skillRunner: ISkillRunner | undefined = ctx.skillRunner;
+  async execute(input: SkillCallInput, _ctx, scope: ToolExecutionScope): Promise<SkillCallResult> {
+    const skillRunner: SkillRunnerPort | undefined = scope.skillRunner;
     if (!skillRunner) {
       throw new Error(
         'Skill runner is not configured. Ensure skills are loaded before using SkillCall.',
       );
     }
 
-    const activation = await skillRunner.run(input.skill, input.args, ctx);
+    const activation = await skillRunner.run(input.skill, input.args);
     if (activation.allowedToolPatterns.length === 0) {
       return { skill: input.skill, output: activation.content };
     }
 
-    if (!ctx.toolCapabilities) {
+    if (!scope.toolCapabilities) {
       throw new Error(
         `Skill "${input.skill}" declares allowed-tools, but the Agent capability scope is unavailable.`,
       );
     }
 
-    const snapshot = ctx.toolCapabilities.restrict({
+    const snapshot = scope.toolCapabilities.restrict({
       source: `skill:${input.skill}`,
       allowedToolPatterns: activation.allowedToolPatterns,
     });

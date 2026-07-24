@@ -1,9 +1,12 @@
-// 这个工具负责向用户请求一段自由文本，并等待输入后继续 Agent。
+// 向用户请求一段自由文本，并等待输入后继续 Agent。
 import { randomUUID } from 'node:crypto';
 import { createInterface } from 'node:readline/promises';
 import { z } from 'zod';
 import { buildTool } from '@ema-agent/tools';
-import type { ToolExecutionContext } from '@ema-agent/tools';
+import type {
+  ToolExecutionScope,
+  ToolInvocationContext,
+} from '@ema-agent/tools';
 import type { SessionId, TurnId } from '@ema-agent/ids';
 import type { ToolExecutionEvent as EmaStreamEvent } from '@ema-agent/tools';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
@@ -38,8 +41,12 @@ Prefer this over AskUser for a single freeform question - the UI shows a focused
     accessType: 'write',
   },
 
-  async execute(input: AskTextInput, ctx: ToolExecutionContext): Promise<AskTextResult> {
-    if (ctx.emit && ctx.askUser) {
+  async execute(
+    input: AskTextInput,
+    ctx: ToolInvocationContext,
+    scope: ToolExecutionScope,
+  ): Promise<AskTextResult> {
+    if (scope.emit && scope.askUser) {
       const promptId = randomUUID();
       const request = {
         type:             'ask_text_required',
@@ -50,12 +57,12 @@ Prefer this over AskUser for a single freeform question - the UI shows a focused
         humanDescription: input.humanDescription,
         placeholder:      input.placeholder,
       } satisfies EmaStreamEvent;
-      ctx.emit(request);
+      scope.emit(request);
 
-      const { answers } = await ctx.askUser(promptId, [], request);
+      const { answers } = await scope.askUser(promptId, [], request);
       const text = answers['text'] ?? '';
 
-      ctx.emit({
+      scope.emit({
         type:      'ask_text_resolved',
         sessionId: ctx.sessionId as SessionId,
         promptId,

@@ -3,7 +3,10 @@ import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { asAgentRunId, asTaskId } from '@ema-agent/ids';
 import { buildTool } from '@ema-agent/tools';
-import type { ToolExecutionContext } from '@ema-agent/tools';
+import type {
+  ToolExecutionScope,
+  ToolInvocationContext,
+} from '@ema-agent/tools';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 
 // ── SubagentSpawnBackground ───────────────────────────────────────────────────
@@ -49,15 +52,15 @@ The sub-agent MUST be awaited before the parent turn ends.`,
 
   permissionMeta: { riskLevel: 'high', accessType: 'execute' },
 
-  async execute(input, ctx: ToolExecutionContext) {
-    if (!ctx.subagentSpawner?.spawnBackground) {
+  async execute(input, ctx: ToolInvocationContext, scope: ToolExecutionScope) {
+    if (!scope.subagentSpawner?.spawnBackground) {
       throw new Error(
         'Sub-agents cannot spawn further sub-agents (depth limit: 1). ' +
         'Restructure the task so the top-level agent spawns all background workers directly.',
       );
     }
     const agentRunId = asAgentRunId(randomUUID());
-    ctx.subagentSpawner.spawnBackground(
+    scope.subagentSpawner.spawnBackground(
       input.prompt,
       {
         model: input.model,
@@ -100,14 +103,14 @@ Returns queued:false if the sub-agent has already finished or was never started.
 
   permissionMeta: { riskLevel: 'low', accessType: 'write' },
 
-  async execute(input, ctx: ToolExecutionContext) {
-    if (!ctx.subagentSpawner?.queueMessage) {
+  async execute(input, _ctx: ToolInvocationContext, scope: ToolExecutionScope) {
+    if (!scope.subagentSpawner?.queueMessage) {
       throw new Error(
         'SubagentSendMessage is only available to the top-level agent. ' +
         'Sub-agents cannot send messages to other sub-agents.',
       );
     }
-    const queued = ctx.subagentSpawner.queueMessage(asAgentRunId(input.agentRunId), input.message);
+    const queued = scope.subagentSpawner.queueMessage(asAgentRunId(input.agentRunId), input.message);
     return { queued };
   },
 });
@@ -135,14 +138,14 @@ Must be called before the parent turn ends. Returns output:null if the agentRunI
 
   permissionMeta: { riskLevel: 'low', accessType: 'read' },
 
-  async execute(input, ctx: ToolExecutionContext) {
-    if (!ctx.subagentSpawner?.awaitBackground) {
+  async execute(input, _ctx: ToolInvocationContext, scope: ToolExecutionScope) {
+    if (!scope.subagentSpawner?.awaitBackground) {
       throw new Error(
         'SubagentAwait is only available to the top-level agent. ' +
         'Sub-agents cannot await other sub-agents.',
       );
     }
-    const result = await ctx.subagentSpawner.awaitBackground(asAgentRunId(input.agentRunId));
+    const result = await scope.subagentSpawner.awaitBackground(asAgentRunId(input.agentRunId));
     if (!result) return { output: null };
     return result;
   },

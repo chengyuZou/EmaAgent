@@ -1,7 +1,7 @@
-// 这个工具负责通过已配置的搜索服务返回有界的网页搜索结果。
+// 通过已配置的搜索服务返回有界的网页搜索结果。
 import { z } from 'zod';
 import { buildTool } from '@ema-agent/tools';
-import type { ToolExecutionContext } from '@ema-agent/tools';
+import type { ToolInvocationContext } from '@ema-agent/tools';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 import { fetchBounded } from '../shared/BoundedFetch.js';
 
@@ -78,7 +78,7 @@ Adapter priority (uses the first configured one):
     accessType: 'read',
   },
 
-  async execute(input: WebSearchInput, ctx: ToolExecutionContext): Promise<WebSearchResult> {
+  async execute(input: WebSearchInput, ctx: ToolInvocationContext): Promise<WebSearchResult> {
     const { query, num_results } = input;
     const results = await search(query, num_results, ctx.signal);
     return { query, results };

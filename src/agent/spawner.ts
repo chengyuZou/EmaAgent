@@ -5,10 +5,12 @@ import { asAgentRunId, type AgentRunId, type SessionId, type TurnId } from '@ema
 import type { ToolError } from '@ema-agent/tools';
 import type { Message as ModelMessage } from '@ema-agent/llm';
 import type {
-  ISubagentSpawner,
+  KnowledgeSearchPort,
+  SubagentSpawnerPort,
   SubagentRunResult,
   SubagentSpawnOpts,
-  ToolExecutionContext,
+  ToolExecutionScope,
+  ToolInvocationContext,
 } from '@ema-agent/tools';
 import { ToolExecutionRuntime } from '@ema-agent/tools';
 import type { AgentDeps } from './types.js';
@@ -35,7 +37,7 @@ import type { AgentRuntimeEvent } from './events.js';
 const RESULT_EXCERPT_MAX = 500;   // 工具结果明细预览字符数
 const OUTPUT_EXCERPT_MAX = 200;   // 子 Agent 完成摘要字符数
 
-export class SubagentSpawner implements ISubagentSpawner {
+export class SubagentSpawner implements SubagentSpawnerPort {
   // 活跃执行按 agentRunId 索引，供单独取消。
   private readonly activeSubagents   = new Map<AgentRunId, AbortController>();
   // 后台执行按 agentRunId 保存结果 Promise，供后续等待。
@@ -54,7 +56,7 @@ export class SubagentSpawner implements ISubagentSpawner {
     private readonly scratchpadDir?:        string,
     private readonly getScratchpadContext?: () => string | undefined,
     private readonly parentEmit?:           (ev: AgentRuntimeEvent) => void,
-    private readonly kbSearch?:             ToolExecutionContext['kbSearch'],
+    private readonly kbSearch?:             KnowledgeSearchPort,
     private readonly budget:                TurnBudget = new TurnBudget(),
   ) {}
 
@@ -209,12 +211,14 @@ export class SubagentSpawner implements ISubagentSpawner {
     const buildExecutor: ExecutorFactory<AgentRuntimeEvent> = ({ pushEv, signal: wakeSignal }) => {
       // 子 ToolContext 故意不注入 subagentSpawner，以此把递归深度限制为一层。
       // 多层嵌套需要资源预算、邮箱死锁与级联取消设计，V1 不开放。
-      const toolCtx: ToolExecutionContext = {
+      const toolContext: Omit<ToolInvocationContext, 'toolCallId'> = {
         sessionId,
         turnId:           parentTurnId,
         agentRunId,
         workspaceRoot:    '',  // 不提供工作区，权限原因见上方说明
         signal:           childCtrl.signal,
+      };
+      const toolScope: ToolExecutionScope = {
         readFileState:    new Map(),
         emit:             pushEv,
         artifactStore:    this.deps.artifactStore,
@@ -230,7 +234,7 @@ export class SubagentSpawner implements ISubagentSpawner {
         turnId:     parentTurnId,
         allows:     name => policy.allows(name),
         toolManifest: policy.manifestSnapshot(),
-        tools, permission, permCtx, toolCtx,
+        tools, permission, permCtx, toolContext, toolScope,
         lifecycle: createToolLifecycleHooks(hooks, pushEv),
         buildAsk:   this.deps.buildAsk,
         pushEv,

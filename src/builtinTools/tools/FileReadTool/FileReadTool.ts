@@ -1,9 +1,12 @@
-// 这个工具负责按行读取文本文件，并维护后续编辑需要的文件状态。
+// 按行读取文本文件，并维护后续编辑需要的文件状态。
 import fs from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
 import { buildTool } from '@ema-agent/tools';
-import type { ToolExecutionContext } from '@ema-agent/tools';
+import type {
+  ToolExecutionScope,
+  ToolInvocationContext,
+} from '@ema-agent/tools';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 
 // ── 常量 ─────────────────────────────────────────────────────────────────────
@@ -119,7 +122,11 @@ export const FileReadTool = buildTool<FileReadInput, FileReadResult>({
     },
   },
 
-  async execute(input: FileReadInput, ctx: ToolExecutionContext): Promise<FileReadResult> {
+  async execute(
+    input: FileReadInput,
+    ctx: ToolInvocationContext,
+    scope: ToolExecutionScope,
+  ): Promise<FileReadResult> {
     const { file_path, offset, limit } = input;
     const fullPath = path.resolve(file_path);
 
@@ -162,7 +169,7 @@ export const FileReadTool = buildTool<FileReadInput, FileReadResult>({
     const mtimeMs = stat.mtimeMs;
 
     // ── 去重检查 ───────────────────────────────────────────────────────────────
-    const existing = ctx.readFileState.get(fullPath);
+    const existing = scope.readFileState.get(fullPath);
     if (
       existing &&
       !existing.isPartialView &&
@@ -184,14 +191,14 @@ export const FileReadTool = buildTool<FileReadInput, FileReadResult>({
     const content = formatWithLineNumbers(slicedLines, startLine);
 
     // ── 更新去重缓存 ───────────────────────────────────────────────────────────
-    ctx.readFileState.set(fullPath, {
+    scope.readFileState.set(fullPath, {
       content: raw,
       timestamp: mtimeMs,
       offset,
       limit,
       isPartialView,
     });
-    ctx.fileStateStore?.record(fullPath, { content: raw, mtimeMs, offset, limit, isPartialView });
+    scope.fileStateStore?.record(fullPath, { content: raw, mtimeMs, offset, limit, isPartialView });
 
     return {
       type: 'file_content',

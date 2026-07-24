@@ -1,4 +1,4 @@
-// 这里管理 Artifact 产物：存（小内容进 DB、大内容落文件）、取、应用到工作区、拒绝、删除。
+// 管理 Artifact 产物的存取、工作区应用、拒绝和删除。
 
 import * as fs   from 'node:fs';
 import * as path from 'node:path';
@@ -34,7 +34,7 @@ const SESSION_WARN_THRESHOLD = 100;
  * 仓储层不感知文件——它只存收到的内容。inline 还是 file 的决策和文件 I/O
  * 只在本类里发生。
  *
- * 实现 IArtifactStore，这样能注入到 ToolExecutionContext，而不用让
+ * 实现 IArtifactStore，这样能注入 ToolExecutionScope，而不用让
  * @ema-agent/tools 反向依赖本包。
  */
 export class ArtifactStore implements IArtifactStore {

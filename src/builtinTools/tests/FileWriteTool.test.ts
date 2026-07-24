@@ -1,4 +1,4 @@
-// 这里测试 FileWriteTool 的原子替换、覆盖前读取守卫、真实 diff 和崩溃临时文件清理。
+// 测试 FileWriteTool 的原子替换、覆盖前读取守卫、真实 diff 和崩溃临时文件清理。
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -6,7 +6,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { asToolCallId, asSessionId, asTurnId } from '@ema-agent/ids';
 import type { ToolExecutionRecord } from '@ema-agent/tools';
 import { splitToolResult } from '@ema-agent/tools';
-import type { FileStateStore, ToolExecutionContext } from '@ema-agent/tools';
+import type {
+  FileStateStore,
+  ToolExecutionScope,
+  ToolInvocationContext,
+} from '@ema-agent/tools';
 import { FileWriteTool } from '../tools/FileWriteTool/FileWriteTool.js';
 import { atomicTempPrefix, atomicWriteUtf8 } from '../tools/FileWriteTool/atomicWrite.js';
 import { cleanupInterruptedFileWriteTemps } from '../tools/FileWriteTool/recovery.js';
@@ -25,11 +29,13 @@ describe('FileWriteTool', () => {
     const directory = makeTempDir();
     const target = path.join(directory, 'nested', 'answer.txt');
     const record = vi.fn<FileStateStore['record']>();
-    const ctx = makeContext({ fileStateStore: { record, get: vi.fn(), recentEntries: vi.fn() } });
+    const execution = makeContext({
+      fileStateStore: { record, get: vi.fn(), recentEntries: vi.fn() },
+    });
 
     const result = await FileWriteTool.unsafeExecute(
       { file_path: target, content: '完整内容' },
-      ctx,
+      ...execution,
     );
 
     const canonical = fs.realpathSync.native(target);
@@ -41,7 +47,7 @@ describe('FileWriteTool', () => {
       additions: 1,
     });
     expect(fs.readFileSync(target, 'utf8')).toBe('完整内容');
-    expect(ctx.readFileState.get(canonical)?.content).toBe('完整内容');
+    expect(execution[1].readFileState.get(canonical)?.content).toBe('完整内容');
     expect(record).toHaveBeenCalledWith(canonical, expect.objectContaining({ content: '完整内容' }));
     expect(listWriteTemps(path.dirname(target))).toEqual([]);
   });
@@ -53,7 +59,7 @@ describe('FileWriteTool', () => {
 
     await expect(FileWriteTool.unsafeExecute(
       { file_path: target, content: '新内容' },
-      makeContext(),
+      ...makeContext(),
     )).rejects.toThrow('read in full first');
 
     expect(fs.readFileSync(target, 'utf8')).toBe('旧内容');
@@ -65,8 +71,8 @@ describe('FileWriteTool', () => {
     const target = path.join(directory, 'existing.txt');
     fs.writeFileSync(target, '第一行\n旧内容\n', 'utf8');
     const stat = fs.statSync(target);
-    const ctx = makeContext();
-    ctx.readFileState.set(path.resolve(target), {
+    const execution = makeContext();
+    execution[1].readFileState.set(path.resolve(target), {
       content: '第一行\n旧内容\n',
       timestamp: stat.mtimeMs,
       isPartialView: false,
@@ -74,7 +80,7 @@ describe('FileWriteTool', () => {
 
     const result = await FileWriteTool.unsafeExecute(
       { file_path: target, content: '第一行\n新内容\n' },
-      ctx,
+      ...execution,
     );
     const split = splitToolResult(result);
 
@@ -148,16 +154,19 @@ describe('FileWriteTool', () => {
   });
 });
 
-function makeContext(overrides: Partial<ToolExecutionContext> = {}): ToolExecutionContext {
-  return {
-    sessionId: 'session-test',
-    turnId: 'turn-test',
+function makeContext(
+  scopeOverrides: Partial<ToolExecutionScope> = {},
+): [ToolInvocationContext, ToolExecutionScope] {
+  return [{
+    sessionId: asSessionId('session-test'),
+    turnId: asTurnId('turn-test'),
     toolCallId: asToolCallId('call-write'),
     workspaceRoot: '',
     signal: new AbortController().signal,
+  }, {
     readFileState: new Map(),
-    ...overrides,
-  };
+    ...scopeOverrides,
+  }];
 }
 
 function makeTempDir(): string {

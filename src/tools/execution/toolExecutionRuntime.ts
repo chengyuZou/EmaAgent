@@ -13,7 +13,11 @@
 
 import { asToolCallId } from '@ema-agent/ids';
 import type { SessionId, ToolCallId, TurnId } from '@ema-agent/ids';
-import type { ToolExecutionContext, ToolManifestSnapshot } from '../types.js';
+import type {
+  ToolExecutionScope,
+  ToolInvocationContext,
+  ToolManifestSnapshot,
+} from '../types.js';
 import type { PreparedToolCall } from '../prepared-call.js';
 import type {
   ToolExecutionJournalPort,
@@ -23,7 +27,6 @@ import type { ToolResultStore } from '../results/toolResultStore.js';
 import { splitToolResult } from '../tool-result.js';
 import { ToolInputError } from '../registry.js';
 import type { ToolRegistry } from '../registry.js';
-import type { CommandRunnerPort } from '@ema-agent/sandbox';
 import type {
   AskPermissionFn,
   PermissionContext,
@@ -74,14 +77,16 @@ export interface ToolExecutionRuntimeOptions {
   permission:  PermissionEngine;
   permCtx:     PermissionContext;
   lifecycle?:  ToolLifecycleObserver;
-  toolCtx:     ToolExecutionContext;
+  /** 不含 callId 和单工具信号的 Turn 级调用身份。 */
+  toolContext: Omit<ToolInvocationContext, 'toolCallId'>;
+  /** Turn 显式授予本执行器的能力端口。 */
+  toolScope:   ToolExecutionScope;
   buildAsk?:   (args: {
     sessionId: SessionId;
     turnId: TurnId;
     toolCallId: ToolCallId;
     emit: (event: PermissionStreamEvent) => void;
   }) => AskPermissionFn;
-  runner?: CommandRunnerPort;
   /**
    * 把事件写入 Engine 的待发送队列，例如 tool_result 或 permission_required。
    * 实现方还应调用 signal() 唤醒排空循环。
@@ -226,7 +231,7 @@ export class ToolExecutionRuntime {
         callId,
         sessionId: this.opts.sessionId,
         turnId: this.opts.turnId,
-        agentRunId: this.opts.toolCtx.agentRunId,
+        agentRunId: this.opts.toolContext.agentRunId,
         toolName: prepared?.id ?? name,
         input: prepared?.input ?? args,
       });
@@ -300,7 +305,8 @@ export class ToolExecutionRuntime {
 
   private async executeOne(track: TrackedTool): Promise<void> {
     const {
-      sessionId, turnId, permission, permCtx, lifecycle, toolCtx, tools, buildAsk, runner, signal,
+      sessionId, turnId, permission, permCtx, lifecycle,
+      toolContext, toolScope, tools, buildAsk, signal,
     } = this.opts;
     const { id, name, args, prepared } = track;
 
@@ -315,7 +321,7 @@ export class ToolExecutionRuntime {
     // Turn 信号会级联取消全部工具，abortTool(callId) 只触发当前控制器并保留 Turn。
     const perToolCtrl    = new AbortController();
     const onTurnAbort    = (): void => perToolCtrl.abort();
-    toolCtx.signal.addEventListener('abort', onTurnAbort, { once: true });
+    toolContext.signal.addEventListener('abort', onTurnAbort, { once: true });
     this.toolAborts.set(id, perToolCtrl);
 
     try {
@@ -354,8 +360,8 @@ export class ToolExecutionRuntime {
         return;
       }
 
-      const perToolCtx: ToolExecutionContext = {
-        ...toolCtx,
+      const perToolCtx: ToolInvocationContext = {
+        ...toolContext,
         toolCallId: id,
         signal: perToolCtrl.signal,
       };
@@ -365,7 +371,7 @@ export class ToolExecutionRuntime {
         // 生产装配始终使用 ToolRegistry；旧测试和最小可信适配器在迁移期可省略
         // 业务校验方法，但不能绕过 Registry 的 Schema Prepare 与执行身份检查。
         validation = typeof tools.validate === 'function'
-          ? await tools.validate(prepared, perToolCtx)
+          ? await tools.validate(prepared, perToolCtx, toolScope)
           : { valid: true as const };
       } catch (error) {
         await this.completeFailure(track, {
@@ -408,7 +414,7 @@ export class ToolExecutionRuntime {
           permCtxWithAsk,
         );
       } catch (err) {
-        if (isCancelled(perToolCtrl.signal, toolCtx.signal)) {
+        if (isCancelled(perToolCtrl.signal, toolContext.signal)) {
           this.completeCancellation(track, this.stoppingReason ?? 'user_abort');
           return;
         }
@@ -445,12 +451,14 @@ export class ToolExecutionRuntime {
         // running 是副作用边界：只有该状态成功落库后才能真正执行工具。
         this.opts.toolExecutionJournal?.start(id);
         if (this.opts.toolExecutionJournal) track.journalStatus = 'running';
-        const executed = splitToolResult(await tools.execute(prepared, perToolCtx));
+        const executed = splitToolResult(
+          await tools.execute(prepared, perToolCtx, toolScope),
+        );
         output = executed.modelOutput;
         presentation = executed.presentation;
 
       // 工具中途被单独取消而 Turn 仍存活时，在部分输出后追加取消说明。
-        if (perToolCtrl.signal.aborted && !toolCtx.signal.aborted) {
+        if (perToolCtrl.signal.aborted && !toolContext.signal.aborted) {
           output = annotateAborted(output);
         }
 
@@ -479,12 +487,12 @@ export class ToolExecutionRuntime {
         );
       } catch (err) {
       // 用户只取消了当前工具；从模型视角这是可观察结果，不是 LLM 错误。
-        if (perToolCtrl.signal.aborted && !toolCtx.signal.aborted) {
+        if (perToolCtrl.signal.aborted && !toolContext.signal.aborted) {
           output  = '[用户中途终止]';
           isError = false;
           this.completeCancellation(track, 'user_abort');
           this.emit(track, { type: 'tool_result', sessionId: this.opts.sessionId, callId: id, name, output, durationMs: Date.now() - track.startMs });
-        } else if (toolCtx.signal.aborted) {
+        } else if (toolContext.signal.aborted) {
           this.completeCancellation(track, 'turn_abort');
           return;
         } else {
@@ -514,7 +522,7 @@ export class ToolExecutionRuntime {
       };
 
     } catch (err) {
-      if (isCancelled(perToolCtrl.signal, toolCtx.signal)) {
+      if (isCancelled(perToolCtrl.signal, toolContext.signal)) {
         this.completeCancellation(track, this.stoppingReason ?? 'user_abort');
       } else if (!track.result) {
         await this.completeFailure(track, {
@@ -525,7 +533,7 @@ export class ToolExecutionRuntime {
         }, perToolCtrl.signal);
       }
     } finally {
-      toolCtx.signal.removeEventListener('abort', onTurnAbort);
+      toolContext.signal.removeEventListener('abort', onTurnAbort);
       this.toolAborts.delete(id);
 
       // 即使 Hook 或门禁抛出意外错误，也必须标记完成并唤醒排空循环，避免死锁。
@@ -537,7 +545,7 @@ export class ToolExecutionRuntime {
         }
       }
       track.done = true;
-      runner?.cleanup();
+      toolScope.commandRunner?.cleanup();
       // done 写入后再次唤醒排空循环，使其重新检查 allDone()。
       // pushEv 只在结果事件入队时唤醒，而后续 Hook 可能延迟 done 的写入。
       signal();

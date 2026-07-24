@@ -1,4 +1,4 @@
-// 这里保留 V1.5 PlanMode 状态机的工具接口草稿，V1 禁止注册。
+// 保留 V1.5 PlanMode 状态机的工具接口草稿，V1 禁止注册。
 /**
  * ⚠ 暂未完成，等待 V1.5 更新。
  *
@@ -12,7 +12,7 @@
 
 import { z } from 'zod';
 import { buildTool } from '@ema-agent/tools';
-import type { ToolExecutionContext } from '@ema-agent/tools';
+import type { ToolInvocationContext } from '@ema-agent/tools';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 
 // ── 共享输出类型 ──────────────────────────────────────────────────────────────
@@ -51,7 +51,7 @@ Use this when the task is non-trivial and the user has not explicitly said "just
     accessType: 'read',
   },
 
-  async execute(input: PlanEnterInput, ctx: ToolExecutionContext): Promise<PlanModeResult> {
+  async execute(input: PlanEnterInput, ctx: ToolInvocationContext): Promise<PlanModeResult> {
     void ctx;
     return { active: true };
   },
@@ -82,7 +82,7 @@ export const PlanExitTool = buildTool<PlanExitInput, PlanModeResult>({
     accessType: 'read',
   },
 
-  async execute(input: PlanExitInput, ctx: ToolExecutionContext): Promise<PlanModeResult> {
+  async execute(input: PlanExitInput, ctx: ToolInvocationContext): Promise<PlanModeResult> {
     void input;
     void ctx;
     return { active: false };

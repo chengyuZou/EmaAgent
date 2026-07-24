@@ -92,9 +92,8 @@ export type { AskTextResult } from './tools/AskUserTool/AskTextTool.js';
 export type { AskChoiceResult } from './tools/AskUserTool/AskChoiceTool.js';
 export type { SkillCallResult } from './tools/SkillCallTool/SkillCallTool.js';
 export type {
-  IMcpClientBridge,
-  ISkillRunner,
-  ISubagentSpawner,
+  SkillRunnerPort,
+  SubagentSpawnerPort,
   SubagentRunResult,
   SubagentSpawnOpts,
 } from '@ema-agent/tools';
@@ -182,10 +181,8 @@ export interface RegisterOptions {
    * SkillCall - SkillRunner 桥
    * Subagent 工具族 - subagent spawner 桥
    *
-   * hasMcpBridge 保留(apps/core 仍设它)但不再门禁任何工具:
-   * MCP 工具由 McpRegistry 自动展开,不经 mcp_call 暴露。
+   * MCP 工具由 McpRegistry 自动展开，不经通用 mcp_call 工具暴露。
    */
-  hasMcpBridge?:      boolean;
   hasSkillBridge?:    boolean;
   hasSubagentBridge?: boolean;
   /** 根 Work Turn 已装配持久 TaskStore 时才暴露 Task 工具族。 */

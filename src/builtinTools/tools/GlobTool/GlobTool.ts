@@ -1,10 +1,10 @@
-// 这个工具负责在明确的目录和结果预算内按文件名模式查找文件。
+// 在明确的目录和结果预算内按文件名模式查找文件。
 import fs from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
 import { globIterate } from 'glob';
 import { buildTool } from '@ema-agent/tools';
-import type { ToolExecutionContext } from '@ema-agent/tools';
+import type { ToolInvocationContext } from '@ema-agent/tools';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 import { runBoundedProcess } from '../shared/BoundedProcess.js';
 
@@ -61,7 +61,7 @@ export const GlobTool = buildTool<GlobInput, GlobResult>({
     extractPath: (input) => (input as { path?: string }).path,
   },
 
-  async execute(input: GlobInput, ctx: ToolExecutionContext): Promise<GlobResult> {
+  async execute(input: GlobInput, ctx: ToolInvocationContext): Promise<GlobResult> {
     const workspaceRoot = ctx.workspaceRoot || process.cwd();
     const searchDir = input.path
       ? path.resolve(workspaceRoot, input.path)

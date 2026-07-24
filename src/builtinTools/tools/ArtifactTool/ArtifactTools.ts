@@ -1,7 +1,10 @@
-// 这些工具负责管理需要用户审阅后再应用的持久化 Artifact 草稿。
+// 管理需要用户审阅后再应用的持久化 Artifact 草稿。
 import { z } from 'zod';
 import { buildTool } from '@ema-agent/tools';
-import type { ToolExecutionContext } from '@ema-agent/tools';
+import type {
+  ToolExecutionScope,
+  ToolInvocationContext,
+} from '@ema-agent/tools';
 import type { Artifact, ArtifactId } from '@ema-agent/artifact';
 import { asSessionId, asTurnId } from '@ema-agent/ids';
 import type { ArtifactEvent } from '@ema-agent/artifact';
@@ -67,10 +70,14 @@ After writing, an artifact_upserted event opens WorkspacePane automatically.`,
   isConcurrencySafe: () => false,
   permissionMeta: { riskLevel: 'low', accessType: 'write' },
 
-  async execute(input: ArtifactWriteInput, ctx: ToolExecutionContext): Promise<Artifact> {
+  async execute(
+    input: ArtifactWriteInput,
+    ctx: ToolInvocationContext,
+    scope: ToolExecutionScope,
+  ): Promise<Artifact> {
     // ── 持久存储路径 ──────────────────────────────────────────────────────────
-    if (ctx.artifactStore) {
-      const artifact = ctx.artifactStore.upsert({
+    if (scope.artifactStore) {
+      const artifact = scope.artifactStore.upsert({
         id:        input.id as ArtifactId | undefined,
         sessionId: asSessionId(ctx.sessionId),
         turnId:    asTurnId(ctx.turnId),
@@ -80,10 +87,10 @@ After writing, an artifact_upserted event opens WorkspacePane automatically.`,
         meta:      input.meta,
       });
 
-      ctx.emit?.({ type: 'artifact_upserted', sessionId: asSessionId(ctx.sessionId), artifact } satisfies ArtifactEvent);
+      scope.emit?.({ type: 'artifact_upserted', sessionId: ctx.sessionId, artifact } satisfies ArtifactEvent);
 
-      if (ctx.artifactStore.countWarning(asSessionId(ctx.sessionId))) {
-        ctx.emit?.({
+      if (scope.artifactStore.countWarning(ctx.sessionId)) {
+        scope.emit?.({
           type:    'artifact_count_warning',
           sessionId: asSessionId(ctx.sessionId),
           message: 'This session has more than 100 artifacts. Consider deleting unused ones.',
@@ -117,7 +124,7 @@ After writing, an artifact_upserted event opens WorkspacePane automatically.`,
       artifacts.push(artifact);
     }
 
-    ctx.emit?.({ type: 'artifact_upserted', sessionId: asSessionId(ctx.sessionId), artifact } satisfies ArtifactEvent);
+    scope.emit?.({ type: 'artifact_upserted', sessionId: ctx.sessionId, artifact } satisfies ArtifactEvent);
     return artifact;
   },
 });
@@ -138,9 +145,9 @@ export const ArtifactReadTool = buildTool<z.infer<typeof readSchema>, Artifact>(
   isConcurrencySafe: () => true,
   permissionMeta: { riskLevel: 'low', accessType: 'read' },
 
-  async execute(input, ctx): Promise<Artifact> {
-    if (ctx.artifactStore) {
-      const artifact = ctx.artifactStore.get(input.id as ArtifactId);
+  async execute(input, ctx, scope): Promise<Artifact> {
+    if (scope.artifactStore) {
+      const artifact = scope.artifactStore.get(input.id as ArtifactId);
       if (!artifact) throw new Error(`Artifact not found: ${input.id}`);
       return artifact;
     }
@@ -167,9 +174,9 @@ export const ArtifactListTool = buildTool<z.infer<typeof listSchema>, Omit<Artif
   isConcurrencySafe: () => true,
   permissionMeta: { riskLevel: 'low', accessType: 'read' },
 
-  async execute(input, ctx): Promise<Omit<Artifact, 'content'>[]> {
-    if (ctx.artifactStore) {
-      return ctx.artifactStore.list(asSessionId(ctx.sessionId), { type: input.type });
+  async execute(input, ctx, scope): Promise<Omit<Artifact, 'content'>[]> {
+    if (scope.artifactStore) {
+      return scope.artifactStore.list(ctx.sessionId, { type: input.type });
     }
     const artifacts = sessionArtifacts(ctx.sessionId);
     const filtered  = input.type ? artifacts.filter((a) => a.type === input.type) : [...artifacts];

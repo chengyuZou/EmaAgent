@@ -1,6 +1,7 @@
 // 测试 Bash 只通过受控 CommandRunner 执行，并且不再向模型声明假后台能力。
 
 import { describe, expect, it } from 'vitest';
+import { asSessionId, asToolCallId, asTurnId } from '@ema-agent/ids';
 import { BashTool } from '../tools/BashTool/BashTool.js';
 
 describe('BashTool 执行边界', () => {
@@ -16,12 +17,13 @@ describe('BashTool 执行边界', () => {
     await expect(BashTool.execute(
       { command: 'echo should-not-run' },
       {
-        sessionId: 'session-test',
-        turnId: 'turn-test',
+        sessionId: asSessionId('session-test'),
+        turnId: asTurnId('turn-test'),
+        toolCallId: asToolCallId('bash-test-call'),
         workspaceRoot: 'D:/workspace',
         signal: new AbortController().signal,
-        readFileState: new Map(),
       },
+      { readFileState: new Map() },
     )).rejects.toThrow('没有可用的受控命令执行器');
   });
 });

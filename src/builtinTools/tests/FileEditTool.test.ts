@@ -1,11 +1,14 @@
-// 这里测试 FileEditTool 的先读守卫、真实 diff 和跨 Session 并发防覆盖。
+// 测试 FileEditTool 的先读守卫、真实 diff 和跨 Session 并发防覆盖。
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { asToolCallId } from '@ema-agent/ids';
+import { asSessionId, asToolCallId, asTurnId } from '@ema-agent/ids';
 import { splitToolResult } from '@ema-agent/tools';
-import type { ToolExecutionContext } from '@ema-agent/tools';
+import type {
+  ToolExecutionScope,
+  ToolInvocationContext,
+} from '@ema-agent/tools';
 import { FileEditTool } from '../tools/FileEditTool/FileEditTool.js';
 
 const tempDirs: string[] = [];
@@ -31,7 +34,7 @@ describe('FileEditTool', () => {
 
     await expect(FileEditTool.unsafeExecute(
       { file_path: target, old_string: '旧', new_string: '新', replace_all: false },
-      makeContext('call-no-read'),
+      ...makeContext('call-no-read'),
     )).rejects.toThrow('read first');
 
     expect(fs.readFileSync(target, 'utf8')).toBe('旧内容');
@@ -43,7 +46,7 @@ describe('FileEditTool', () => {
 
     const result = await FileEditTool.unsafeExecute(
       { file_path: target, old_string: '旧内容', new_string: '新内容', replace_all: false },
-      ctx,
+      ...ctx,
     );
     const split = splitToolResult(result);
 
@@ -63,11 +66,11 @@ describe('FileEditTool', () => {
     const settled = await Promise.allSettled([
       FileEditTool.unsafeExecute(
         { file_path: target, old_string: '共同旧版本', new_string: '版本 A', replace_all: false },
-        firstContext,
+        ...firstContext,
       ),
       FileEditTool.unsafeExecute(
         { file_path: target, old_string: '共同旧版本', new_string: '版本 B', replace_all: false },
-        secondContext,
+        ...secondContext,
       ),
     ]);
 
@@ -77,26 +80,32 @@ describe('FileEditTool', () => {
   });
 });
 
-function makeContext(callId: string): ToolExecutionContext {
-  return {
-    sessionId: 'session-test',
-    turnId: 'turn-test',
+function makeContext(
+  callId: string,
+): [ToolInvocationContext, ToolExecutionScope] {
+  return [{
+    sessionId: asSessionId('session-test'),
+    turnId: asTurnId('turn-test'),
     toolCallId: asToolCallId(callId),
     workspaceRoot: '',
     signal: new AbortController().signal,
+  }, {
     readFileState: new Map(),
-  };
+  }];
 }
 
-function makeReadContext(target: string, callId: string): ToolExecutionContext {
-  const context = makeContext(callId);
+function makeReadContext(
+  target: string,
+  callId: string,
+): [ToolInvocationContext, ToolExecutionScope] {
+  const execution = makeContext(callId);
   const content = fs.readFileSync(target, 'utf8');
-  context.readFileState.set(path.resolve(target), {
+  execution[1].readFileState.set(path.resolve(target), {
     content,
     timestamp: fs.statSync(target).mtimeMs,
     isPartialView: false,
   });
-  return context;
+  return execution;
 }
 
 function makeFile(name: string, content: string): string {

@@ -1,9 +1,11 @@
-// 这个工具负责在已读取的文件中执行受保护的精确文本替换。
-import { randomUUID } from 'node:crypto';
+// 在已读取的文件中执行受保护的精确文本替换。
 import path from 'node:path';
 import { z } from 'zod';
 import { buildTool, presentToolResult } from '@ema-agent/tools';
-import type { ToolExecutionContext } from '@ema-agent/tools';
+import type {
+  ToolExecutionScope,
+  ToolInvocationContext,
+} from '@ema-agent/tools';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 import { buildFileChangePresentation } from '../shared/FileChangePresentation.js';
 import { atomicTransformUtf8 } from '../FileWriteTool/atomicWrite.js';
@@ -97,12 +99,16 @@ Rules:
     },
   },
 
-  async execute(input: FileEditInput, ctx: ToolExecutionContext): Promise<FileEditResult> {
+  async execute(
+    input: FileEditInput,
+    ctx: ToolInvocationContext,
+    scope: ToolExecutionScope,
+  ): Promise<FileEditResult> {
     const { file_path, old_string, new_string, replace_all } = input;
     const fullPath = path.resolve(file_path);
 
     // ── 必须先读守卫 ─────────────────────────────────────────────────────────
-    const cached = ctx.readFileState.get(fullPath);
+    const cached = scope.readFileState.get(fullPath);
     if (!cached) {
       throw new Error(
         `Edit requires the file to be read first. Call Read("${file_path}") before editing.`,
@@ -116,7 +122,7 @@ Rules:
     }
 
     let replacements = 0;
-    const operationId = ctx.toolCallId ?? randomUUID();
+    const operationId = ctx.toolCallId;
     const written = await atomicTransformUtf8(
       file_path,
       operationId,
@@ -159,14 +165,14 @@ Rules:
     );
 
     // 用编辑后内容更新缓存
-    ctx.readFileState.set(fullPath, {
+    scope.readFileState.set(fullPath, {
       content: written.content,
       timestamp: written.mtimeMs,
       offset: undefined,
       limit: undefined,
       isPartialView: false,
     });
-    ctx.fileStateStore?.record(fullPath, { content: written.content, mtimeMs: written.mtimeMs, offset: undefined, limit: undefined, isPartialView: false });
+    scope.fileStateStore?.record(fullPath, { content: written.content, mtimeMs: written.mtimeMs, offset: undefined, limit: undefined, isPartialView: false });
 
     return presentToolResult({
       filePath: file_path,

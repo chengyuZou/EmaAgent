@@ -527,7 +527,7 @@ Builtin / MCP / Skill Tool
 **施工顺序**（五批，每批只改一个主要边界）：
 
 1. **Sandbox 依赖反转**：`spawnProcess` 收回 Sandbox；合并重复 `RunOptions/RunResult`；`CommandRunner` 不再持有 `PermissionEngine`；禁用 `process.cwd()` 回退；暂时禁用 detached 假后台。不先打断 Sandbox -> Tools，后面把 ToolExecutionRuntime 迁入 Tools 会立刻形成循环依赖。
-2. **Tools 主链收口**：删除 `ToolRegistry.dispatch()` 旁路；执行运行时迁入 `tools/execution`；AgentLoop 只决定何时启动和消费 Tool Batch；收窄 `ToolExecutionContext`。不重写已正确的 PreparedToolCall/Manifest Snapshot/Result Budget/Journal。
+2. **Tools 主链收口**：删除 `ToolRegistry.dispatch()` 旁路；执行运行时迁入 `tools/execution`；AgentLoop 只决定何时启动和消费 Tool Batch；把单调用事实与 Turn 能力域拆为 `ToolInvocationContext + ToolExecutionScope`。不重写已正确的 PreparedToolCall/Manifest Snapshot/Result Budget/Journal。
 3. **建立 TurnRuntime**：`AgentEngine` 的 Turn 创建/持久化/终态/取消迁入 `src/turn`；返回 `TurnHandle`（turnId + events + completion + abort）；修复缺 turnId 的 Turn 流事件。Turn 不吸收 KB/Character/Tool/后台进程领域事件。
 4. **清理 Agent**：`src/agent` 只保留 `agentLoop/agentLoopState/policy/budget/runs/spawner/events/errors`。
 5. **Core 退回协议层**：Route 解析并验证请求；调用 `turnRuntime.start()`；把 TurnEvent 编码成 SSE。不再组装 Context、创建 Tool Executor 或决定业务终态。
@@ -940,7 +940,7 @@ interface TurnExecutionSnapshot {
 3. [x] 解除 Sandbox 的错误依赖：把 `spawnProcess` 从 Tools 收回 Sandbox；合并重复的 `RunOptions/RunResult`；`CommandRunner` 不再持有 `PermissionEngine`，只接收已冻结的 Sandbox Policy；禁止无工作区时回退 `process.cwd()`；暂时禁用 detached 假后台；
 4. [x] 删除 `ToolRegistry.dispatch()` 的 prepare->execute 旁路，冻结唯一执行入口；
 5. [x] 将工具执行运行时迁入 `src/tools/execution` 为 `ToolExecutionRuntime`；Agent 通过窄生命周期端口接入 Hook，不让 Tools 反向依赖 Agent、Session 或 Hooks；
-6. 收窄 Tool Execution Context，把运行依赖改为构造时显式注入；
+6. [x] 删除万能 `ToolExecutionContext`，拆为不可变单调用事实 `ToolInvocationContext` 与构造时显式注入的 `ToolExecutionScope`；`toolCallId` 成为真实执行必填身份，MCP 不再通过无人消费的 per-Turn Bridge 重复注入；
 7. Tool Manifest 增加来源与稳定分区，再实现 Anthropic Tool Cache 断点并重新分配四个断点；
 8. 按 7.2 的顺序逐组审查所有 Builtin Tool；
 9. [已完成] 迁出 `agentContext` 剩余职责并删除该模块；
@@ -954,13 +954,14 @@ interface TurnExecutionSnapshot {
 
 ## 11. 下一阶段的实际边界
 
-Tool Result、统一预算、ToolExecution Journal 与执行运行时所有权迁移已经完成。Registry 不再提供组合执行捷径：
+Tool Result、统一预算、ToolExecution Journal、执行运行时所有权迁移和 Tool Context 收窄已经完成。Registry 不再提供组合执行捷径：
 
 1. [x] 删除 `ToolRegistry.dispatch()`，可信测试调用也显式使用 `prepare()` 与 `execute()`；
 2. [x] 执行必须接收当前 Registry 生成的不可变 `PreparedToolCall`；
 3. [x] `ToolExecutionRuntime` 统一承担并发栅栏、Hook 观察、Permission、Journal、结果预算和取消收口；
 4. [x] AgentLoop 只启动执行批次、等待结果并决定是否继续下一轮，不建立第二个 Scheduler；
-5. 下一步只收窄 `ToolExecutionContext`，把宿主能力按职责拆为显式端口，不改数据库 Schema 或 Turn 终态。
+5. [x] 工具定义的 `validateInput/execute` 分别接收 `ToolInvocationContext` 与 `ToolExecutionScope`；前者只含 Session/Turn/AgentRun/ToolCall 身份、工作区和取消信号，后者只承载 Turn 明确授予的文件状态、交互、Task、Artifact、Skill、KB、Subagent、Scratchpad 与命令执行端口；
+6. 下一步建立 `TurnRuntime + TurnHandle`，迁走现有 AgentEngine 中的根生命周期、Context 根事实、持久化与唯一终态，不同时修改数据库 Schema 或前端协议。
 
 ## 12. 完成标准
 

@@ -1,6 +1,6 @@
 // 把一次 Turn 的工具能力作用域转换成模型工具定义和执行准入判断。
 import type {
-  IToolCapabilityScope,
+  ToolCapabilityScope,
   ToolManifestSnapshot,
 } from '@ema-agent/tools';
 import { createToolManifestSnapshotFromEntries } from '@ema-agent/tools';
@@ -35,8 +35,8 @@ export class TurnPolicy {
     return this.scope.allows(toolName);
   }
 
-  /** 交给 ToolExecutionContext，使 Skill 和未来运行模式只能收窄能力。 */
-  capabilities(): IToolCapabilityScope {
+  /** 交给 ToolExecutionScope，使 Skill 和未来运行模式只能收窄能力。 */
+  capabilities(): ToolCapabilityScope {
     return this.scope;
   }
 

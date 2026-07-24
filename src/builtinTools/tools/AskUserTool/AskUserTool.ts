@@ -1,9 +1,12 @@
-// 这个工具负责一次向用户提出一个或多个结构化问题，并等待统一回答。
+// 一次向用户提出一个或多个结构化问题，并等待统一回答。
 import * as readline from 'node:readline/promises';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { buildTool } from '@ema-agent/tools';
-import type { ToolExecutionContext } from '@ema-agent/tools';
+import type {
+  ToolExecutionScope,
+  ToolInvocationContext,
+} from '@ema-agent/tools';
 import type { SessionId, TurnId } from '@ema-agent/ids';
 import type {
   AskUserQuestionSpec,
@@ -73,14 +76,18 @@ export const AskUserTool = buildTool<AskUserInput, AskUserResult>({
     accessType: 'write',
   },
 
-  async execute(input: AskUserInput, ctx: ToolExecutionContext): Promise<AskUserResult> {
+  async execute(
+    input: AskUserInput,
+    ctx: ToolInvocationContext,
+    scope: ToolExecutionScope,
+  ): Promise<AskUserResult> {
     const { questions } = input;
 
-    if (ctx.emit) {
+    if (scope.emit) {
       // Desktop / SSE 路径 - emit 结构化事件,等答案经 side-channel promise
       // 回来(由 orchestrator resolve)。orchestrator 为此向 ctx 注入 `askUser` resolver。
-      if (ctx.askUser) {
-        const askFn = ctx.askUser;
+      if (scope.askUser) {
+        const askFn = scope.askUser;
         const promptId = randomUUID();
         const specs: AskUserQuestionSpec[] = questions.map((q, i) => ({
           id:          `q${i}`,
@@ -96,14 +103,14 @@ export const AskUserTool = buildTool<AskUserInput, AskUserResult>({
           promptId,
           questions: specs,
         } as const;
-        ctx.emit(request);
+        scope.emit(request);
         try {
           const result = await askFn(promptId, specs, request);
-          ctx.emit({ type: 'ask_user_resolved', sessionId: ctx.sessionId as SessionId, promptId, answers: result.answers });
+          scope.emit({ type: 'ask_user_resolved', sessionId: ctx.sessionId, promptId, answers: result.answers });
           return result;
         } catch (err: unknown) {
           // 即使中止也 emit resolved 事件,让前端能清 modal。
-          ctx.emit({ type: 'ask_user_resolved', sessionId: ctx.sessionId as SessionId, promptId, answers: {} });
+          scope.emit({ type: 'ask_user_resolved', sessionId: ctx.sessionId, promptId, answers: {} });
           throw err;
         }
       }

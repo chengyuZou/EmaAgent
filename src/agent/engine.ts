@@ -5,7 +5,9 @@ import { asAgentRunId } from '@ema-agent/ids';
 import type { MessageBlocks } from '@ema-agent/session';
 import {
   ToolExecutionRuntime,
-  type ToolExecutionContext,
+  type KnowledgeSearchPort,
+  type ToolExecutionScope,
+  type ToolInvocationContext,
   type ReadFileState,
 } from '@ema-agent/tools';
 import type { PermissionContext } from '@ema-agent/permission';
@@ -230,7 +232,7 @@ async function* runTurn(
     // 会重复注入 Memory/Skill 等上下文。Spawner 需要继承完整视图，因此维护
     // 一个稳定数组引用，每次 prepare 完成后原地刷新。
     const subagentContextMessages: ModelMessage[] = [];
-    const scopedKbSearch: ToolExecutionContext['kbSearch'] | undefined = deps.kbSearch
+    const scopedKbSearch: KnowledgeSearchPort | undefined = deps.kbSearch
       ? (query, topK, kbIds) => {
           // Tool 指定 kbIds 时是显式覆盖；否则继承父 Turn 的用户选择范围。
           const effectiveKbIds = kbIds ?? (input.kbIds?.length ? input.kbIds : []);
@@ -259,14 +261,19 @@ async function* runTurn(
 
     const buildExecutor: ExecutorFactory<AgentRuntimeEvent> = ({ pushEv, signal: wakeSignal }) => {
       emitRef.fn = pushEv;   // 循环启动后接入父 SSE 发送函数
-      const toolCtx: ToolExecutionContext = {
-        sessionId, turnId, workspaceRoot, signal, readFileState,
+      const toolContext: Omit<ToolInvocationContext, 'toolCallId'> = {
+        sessionId,
+        turnId,
+        workspaceRoot,
+        signal,
+      };
+      const toolScope: ToolExecutionScope = {
+        readFileState,
         taskStore:       deps.taskStore,
         fileStateStore:  sessionToolStores?.fileStateStore,
         emit:            pushEv,
         commandRunner:   resolvedRunner,
         artifactStore:   deps.artifactStore,
-        mcpClient:       deps.mcpClient,
         skillRunner:     deps.skillRunner,
         toolCapabilities: policy.capabilities(),
         kbSearch:        scopedKbSearch,
@@ -291,10 +298,9 @@ async function* runTurn(
         sessionId, turnId,
         allows:          name => policy.allows(name),
         toolManifest:    policy.manifestSnapshot(),
-        tools, permission, permCtx, toolCtx,
+        tools, permission, permCtx, toolContext, toolScope,
         lifecycle: createToolLifecycleHooks(hooks, pushEv),
         buildAsk:        deps.buildAsk,
-        runner:          resolvedRunner,
         pushEv,
         signal:          wakeSignal,
         toolResultStore: sessionToolStores?.toolResultStore,

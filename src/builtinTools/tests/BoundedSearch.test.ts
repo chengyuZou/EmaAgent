@@ -1,10 +1,14 @@
-// 这里测试搜索子进程与 Glob/Grep 会在记录数、字节数和时间预算处停止生产。
+// 测试搜索子进程与 Glob/Grep 会在记录数、字节数和时间预算处停止生产。
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { afterEach, describe, expect, it } from 'vitest';
-import type { ToolExecutionContext } from '@ema-agent/tools';
+import { asSessionId, asToolCallId, asTurnId } from '@ema-agent/ids';
+import type {
+  ToolExecutionScope,
+  ToolInvocationContext,
+} from '@ema-agent/tools';
 import { GlobTool } from '../tools/GlobTool/GlobTool.js';
 import { GrepTool } from '../tools/GrepTool/GrepTool.js';
 import { runBoundedProcess } from '../tools/shared/BoundedProcess.js';
@@ -61,7 +65,7 @@ describe('bounded search', () => {
 
     const result = await GlobTool.unsafeExecute(
       { pattern: '*.txt' },
-      makeContext(directory),
+      ...makeContext(directory),
     ) as { files: string[]; truncated: boolean; notice?: string };
 
     expect(result.files).toHaveLength(100);
@@ -84,7 +88,7 @@ describe('bounded search', () => {
         case_insensitive: false,
         head_limit: 10,
       },
-      makeContext(directory),
+      ...makeContext(directory),
     ) as { output: string; truncated: boolean; stopReason?: string };
 
     expect(result.truncated).toBe(true);
@@ -103,7 +107,7 @@ describe('bounded search', () => {
         case_insensitive: false,
         head_limit: 10,
       },
-      makeContext(directory),
+      ...makeContext(directory),
     ) as { output: string; truncated: boolean };
 
     expect(result.output).toContain('--files');
@@ -117,12 +121,16 @@ function makeTempDir(): string {
   return directory;
 }
 
-function makeContext(workspaceRoot: string): ToolExecutionContext {
-  return {
-    sessionId: 'session-test',
-    turnId: 'turn-test',
+function makeContext(
+  workspaceRoot: string,
+): [ToolInvocationContext, ToolExecutionScope] {
+  return [{
+    sessionId: asSessionId('session-test'),
+    turnId: asTurnId('turn-test'),
+    toolCallId: asToolCallId('search-call'),
     workspaceRoot,
     signal: new AbortController().signal,
+  }, {
     readFileState: new Map(),
-  };
+  }];
 }

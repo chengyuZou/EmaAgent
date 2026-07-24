@@ -1,9 +1,12 @@
-// 这个工具负责向用户展示一组明确选项，并等待用户选择后继续 Agent。
+// 向用户展示一组明确选项，并等待用户选择后继续 Agent。
 import { randomUUID } from 'node:crypto';
 import { createInterface } from 'node:readline/promises';
 import { z } from 'zod';
 import { buildTool } from '@ema-agent/tools';
-import type { ToolExecutionContext } from '@ema-agent/tools';
+import type {
+  ToolExecutionScope,
+  ToolInvocationContext,
+} from '@ema-agent/tools';
 import type { SessionId, TurnId } from '@ema-agent/ids';
 import type { ToolExecutionEvent as EmaStreamEvent } from '@ema-agent/tools';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
@@ -51,8 +54,12 @@ Prefer this over AskUser for a single choice question - the UI shows a cleaner s
     accessType: 'write',
   },
 
-  async execute(input: AskChoiceInput, ctx: ToolExecutionContext): Promise<AskChoiceResult> {
-    if (ctx.emit && ctx.askUser) {
+  async execute(
+    input: AskChoiceInput,
+    ctx: ToolInvocationContext,
+    scope: ToolExecutionScope,
+  ): Promise<AskChoiceResult> {
+    if (scope.emit && scope.askUser) {
       const promptId = randomUUID();
       const request = {
         type:             'ask_choice_required',
@@ -65,15 +72,15 @@ Prefer this over AskUser for a single choice question - the UI shows a cleaner s
         multiSelect:      input.multiSelect,
         allowCustom:      input.allowCustom,
       } satisfies EmaStreamEvent;
-      ctx.emit(request);
+      scope.emit(request);
 
-      const { answers } = await ctx.askUser(promptId, [], request);
+      const { answers } = await scope.askUser(promptId, [], request);
       // 前端提交:{ selected: 'label1,label2', custom?: 'text' }
       const raw      = answers['selected'] ?? '';
       const selected = raw.split(',').map((s) => s.trim()).filter(Boolean);
       const customText = answers['custom'] || undefined;
 
-      ctx.emit({
+      scope.emit({
         type:      'ask_choice_resolved',
         sessionId: ctx.sessionId as SessionId,
         promptId,

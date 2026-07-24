@@ -1,7 +1,10 @@
-// 这个工具负责把 Bash 命令交给独立 Sandbox Runner 执行，并返回有界输出。
+// 把 Bash 命令交给独立 Sandbox Runner 执行，并返回有界输出。
 import { z } from 'zod';
 import { buildTool } from '@ema-agent/tools';
-import type { ToolExecutionContext } from '@ema-agent/tools';
+import type {
+  ToolExecutionScope,
+  ToolInvocationContext,
+} from '@ema-agent/tools';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 
 // ── 常量 ─────────────────────────────────────────────────────────────────────
@@ -91,7 +94,11 @@ Safety rules:
     },
   },
 
-  async execute(input: BashInput, ctx: ToolExecutionContext): Promise<BashResult> {
+  async execute(
+    input: BashInput,
+    ctx: ToolInvocationContext,
+    scope: ToolExecutionScope,
+  ): Promise<BashResult> {
     const { command, timeout } = input;
 
     // 安全检查在此重复,以便直接分发时也触发
@@ -104,11 +111,11 @@ Safety rules:
     const timeoutMs = Math.min(timeout ?? DEFAULT_TIMEOUT_MS, MAX_TIMEOUT_MS);
     const startMs = Date.now();
 
-    if (!ctx.commandRunner) {
+    if (!scope.commandRunner) {
       throw new Error('当前 Session 没有可用的受控命令执行器。请先选择工作区并检查 Sandbox 状态。');
     }
 
-    const result = await ctx.commandRunner.run(command, {
+    const result = await scope.commandRunner.run(command, {
       cwd: ctx.workspaceRoot,
       timeoutMs,
       signal: ctx.signal,

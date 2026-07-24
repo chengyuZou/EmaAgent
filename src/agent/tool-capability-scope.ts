@@ -1,6 +1,6 @@
-// 这里维护单个 Agent 在当前 Turn 内能看到和执行的工具集合。
+// 维护单个 Agent 在当前 Turn 内能看到和执行的工具集合。
 import type {
-  IToolCapabilityScope,
+  ToolCapabilityScope,
   ToolCapabilityRestriction,
   ToolCapabilitySnapshot,
   ToolManifestEntry,
@@ -24,7 +24,7 @@ export class ToolCapabilityRestrictionError extends Error {
  * 能力作用域只允许做集合交集。它不负责权限审批，也不会在限制移除后自动扩权。
  * Manifest 中的模式在应用时解析成稳定工具 ID，后续判断不依赖展示名称变化。
  */
-export class AgentToolCapabilityScope implements IToolCapabilityScope {
+export class AgentToolCapabilityScope implements ToolCapabilityScope {
   private readonly tools: readonly ToolManifestEntry[];
   private readonly toolsByName: ReadonlyMap<string, ToolManifestEntry>;
   private allowedIds: Set<string>;

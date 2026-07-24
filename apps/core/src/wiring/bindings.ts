@@ -85,7 +85,7 @@ import {
 } from '@ema-agent/tool-builtin';
 import { detectBackend, CommandRunner } from '@ema-agent/sandbox';
 import { ToolResultCleaner, ToolResultStore } from '@ema-agent/tools';
-import type { IMcpClientBridge, ISkillRunner } from '@ema-agent/tools';
+import type { SkillRunnerPort } from '@ema-agent/tools';
 import { AgentRunStore } from '@ema-agent/agent';
 import { TaskStore } from '@ema-agent/tasks';
 import { MemoryPlanner } from '@ema-agent/memory';
@@ -231,13 +231,11 @@ export interface AppBindings {
   storageStats:     DataDirStatsRepo;
   sessionNotes:     SessionNotesRepo;
   mcpRegistry:      McpRegistry;
-  /** Thin adapter satisfying IMcpClientBridge — delegates to mcpRegistry.callTool(). */
-  mcpBridge:        IMcpClientBridge;
   /** 市场源注册表 + 通用 store(MCP/Skill 共用,kind 不约束)。 */
   marketRegistry:     MarketRegistry;
   marketSourceStore:  MarketSourceStore;
-  /** Thin adapter satisfying ISkillRunner — looks up skill body from skillStore. */
-  skillBridge:      ISkillRunner;
+  /** Skill 工具调用端口，按需读取 Skill 正文。 */
+  skillBridge:      SkillRunnerPort;
   skillStore:     SkillStore;
   skillRunner:    SkillRunner;
   skillInstaller: SkillInstaller;
@@ -476,7 +474,6 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
     disableExecuteTools,
     enableArtifacts:   releaseFeatures.artifacts,
     hasSubagentBridge: true,   // SubagentSpawner wired inside AgentEngine per turn
-    hasMcpBridge:      true,   // mcpBridge adapter injected into toolCtx
     hasSkillBridge:    true,   // skillBridge adapter injected into toolCtx
     hasTaskStore:      true,
   });
@@ -687,11 +684,6 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
     mcpStdioGate,
     localMcpStdioEnabled,
   );
-  // Adapter: expose McpRegistry as IMcpClientBridge for mcp_call tool injection.
-  const mcpBridge: IMcpClientBridge = {
-    call: (server, tool, args) => mcpRegistry.callTool(server, tool, args),
-  };
-
   // ── Marketplace(多源聚合底座,MCP/Skill 共用)──────────────────────────────
   // 纯底座:adapter 注册表 + 通用源 store。各业务包(MCP/Skill)实现自己的 adapter
   // + seed,wiring 时注册。kind 不约束,未来 integration(QQ/微信/邮箱)零改底座接入。
@@ -718,9 +710,8 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
   void skillStore.scanAndReconcile().catch((err) => console.warn('[skill] reconcile failed:', err));
   const skillRunner    = new SkillRunner(skillStore);
   const skillInstaller = new SkillInstaller(skillStore);
-  // Adapter: expose the SkillRunner as ISkillRunner for the skill_call tool.
   // 懒读正文并返回能力限制；Agent 负责应用限制，Skill 包不能直接修改权限。
-  const skillBridge: ISkillRunner = {
+  const skillBridge: SkillRunnerPort = {
     run: async (skillName, args) => {
       const activation = await skillRunner.activate(skillName, args);
       return {
@@ -879,7 +870,7 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
     modelBindings, providerLlmModels, providerEmbedModels,
     providerRerankModels, providerTtsModels, providerSttModels, providerVisionModels,
     artifactStore, attachmentStore, sessionStats, storageStats, sessionNotes,
-    mcpRegistry, mcpBridge,
+    mcpRegistry,
     marketRegistry, marketSourceStore,
     skillStore, skillRunner, skillInstaller, skillBridge,
     kb, kbSearch,

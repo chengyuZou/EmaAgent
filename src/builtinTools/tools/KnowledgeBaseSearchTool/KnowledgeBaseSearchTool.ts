@@ -1,7 +1,7 @@
-// 这个工具负责从当前 Session 已激活的知识库中检索相关内容。
+// 从当前 Session 已激活的知识库中检索相关内容。
 import { z } from 'zod';
 import { buildTool } from '@ema-agent/tools';
-import type { ToolExecutionContext } from '@ema-agent/tools';
+import type { ToolExecutionScope } from '@ema-agent/tools';
 import type { KbSearchResult } from '@ema-agent/knowledge';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 
@@ -52,13 +52,13 @@ If the user has multiple knowledge bases, you may specify kb_ids to target one o
     accessType: 'read',
   },
 
-  async execute(input: KbSearchInput, ctx: ToolExecutionContext): Promise<KbSearchResult> {
-    if (!ctx.kbSearch) {
+  async execute(input: KbSearchInput, _ctx, scope: ToolExecutionScope): Promise<KbSearchResult> {
+    if (!scope.kbSearch) {
       throw new Error(
         'Knowledge-base search is not available. No KB documents are selected for this turn.',
       );
     }
 
-    return ctx.kbSearch(input.query, input.top_k, input.kb_ids);
+    return scope.kbSearch(input.query, input.top_k, input.kb_ids);
   },
 });

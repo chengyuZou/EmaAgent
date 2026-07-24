@@ -1,4 +1,4 @@
-// 这里集中定义工具注册、权限检查和执行时共用的基础类型。
+// 集中定义工具注册、权限检查和执行时共用的基础类型。
 import type { z } from 'zod';
 import type {
   AgentRunId,
@@ -53,7 +53,7 @@ export interface FileStateStore {
   recentEntries(limit: number): ReadonlyArray<{ path: string; content: string; mtimeMs: number }>;
 }
 
-// ── 扩展接口(由 host 注入 ToolExecutionContext)─────────────────────────────
+// ── 宿主注入的工具能力端口 ───────────────────────────────────────────────────
 
 export interface SubagentSpawnOpts {
   model?:       string;
@@ -76,7 +76,7 @@ export interface SubagentRunResult {
   usage: { inputTokens: number; outputTokens: number };
 }
 
-export interface ISubagentSpawner {
+export interface SubagentSpawnerPort {
   /** 同步 spawn - 阻塞父工具槽位直到 sub-agent 完成。 */
   spawn(
     prompt:  string,
@@ -118,10 +118,6 @@ export interface ISubagentSpawner {
   abortSubagent?(agentRunId: AgentRunId): void;
 }
 
-export interface IMcpClientBridge {
-  call(server: string, tool: string, args: Record<string, unknown>): Promise<unknown>;
-}
-
 /** Skill Facade 返回给调用工具的结构化激活结果。 */
 export interface SkillRunResult {
   /** 替换完参数、准备注入模型上下文的 Skill 正文。 */
@@ -130,11 +126,10 @@ export interface SkillRunResult {
   allowedToolPatterns: readonly string[];
 }
 
-export interface ISkillRunner {
+export interface SkillRunnerPort {
   run(
     skill: string,
     args: string | undefined,
-    ctx: ToolExecutionContext,
   ): Promise<SkillRunResult>;
 }
 
@@ -153,26 +148,38 @@ export interface ToolCapabilitySnapshot {
 }
 
 /** Agent 注入工具上下文的能力边界；Skill、运行模式等只能调用 restrict。 */
-export interface IToolCapabilityScope {
+export interface ToolCapabilityScope {
   restrict(restriction: ToolCapabilityRestriction): ToolCapabilitySnapshot;
   snapshot(): ToolCapabilitySnapshot;
 }
 
-// ── ToolExecutionContext ───────────────────────────────────────────────────────
-// TODO 大改
-export interface ToolExecutionContext {
-  sessionId: string;
-  turnId: string;
+/** Tool 侧只关心检索输入输出，KB 绑定与使用计数由宿主完成。 */
+export type KnowledgeSearchPort = (
+  query: string,
+  topK?: number,
+  kbIds?: string[],
+) => Promise<KbSearchResult>;
+
+// ── 工具调用身份与宿主能力 ───────────────────────────────────────────────────
+
+/** 一次工具调用不可变的运行事实，不承载宿主业务依赖。 */
+export interface ToolInvocationContext {
+  sessionId: SessionId;
+  turnId: TurnId;
   /** 子 Agent 工具调用保留父 turnId，并通过独立身份关联实际执行。 */
   agentRunId?: AgentRunId;
-  /** 根 Turn 注入的持久 Task 入口；普通子 Agent 不获得该能力。 */
-  taskStore?: TaskStorePort;
-  /** 当前这一次工具调用的唯一编号；直接调用工具的测试或适配器可以不传。 */
-  toolCallId?: ToolCallId;
+  /** 当前工具调用的唯一编号；权限、审计、取消和文件写入共用该身份。 */
+  toolCallId: ToolCallId;
   /** 工作区根。空串 = 无工作区(subagent)。shell 工具用此作 cwd。 */
   workspaceRoot: string;
-  /** per-turn 取消信号 - 工具对长操作必须尊重此信号。 */
+  /** 单工具取消信号；Turn 取消会由执行器级联到该信号。 */
   signal: AbortSignal;
+}
+
+/** 当前 Turn 显式授予工具的能力集合；子 Agent 通过缺省端口收窄能力。 */
+export interface ToolExecutionScope {
+  /** 根 Turn 注入的持久 Task 入口；普通子 Agent 不获得该能力。 */
+  taskStore?: TaskStorePort;
   /**
    * 当前 turn 内文件读/编辑的共享 mtime 去重缓存。
    * 跨工具调用持久，以便 Edit/Write 校验文件已被完整读取。
@@ -212,29 +219,24 @@ export interface ToolExecutionContext {
    * sub-agent spawner。AgentEngine 接好 sub-agent 支持时注入。
    * 测试和非 agent 嵌入方缺失。
    */
-  subagentSpawner?: ISubagentSpawner;
-  /**
-   * MCP client 桥。至少一个 MCP server 连上时注入。
-   * 未配置 MCP server 时缺失。
-   */
-  mcpClient?: IMcpClientBridge;
+  subagentSpawner?: SubagentSpawnerPort;
   /**
    * Skill runner。skill registry 接好时注入。
    * 测试和最小嵌入方缺失。
    */
-  skillRunner?: ISkillRunner;
+  skillRunner?: SkillRunnerPort;
   /**
    * 当前 Agent 的工具能力作用域。限制只能做交集收窄；Permission Engine 仍负责
    * 审批每一次具体调用。非 Agent 嵌入方和简单单元测试可以不提供。
    */
-  toolCapabilities?: IToolCapabilityScope;
+  toolCapabilities?: ToolCapabilityScope;
   /**
    * 知识库检索(AgenticRAG)。host adapter 解析绑定的 embedding/rerank 模型,
    * 并把检索限定在 turn 选中的 KB 文档(每个选中文档记一次使用计数)。
    * kbIds:指定 KB([] / 省略 -> 用户选的 KB 或 active KB)。
    * 工具提供 query + topK;LLM 需指定 KB 时可选 kbIds。turn 未配置 KB 时缺失。
    */
-  kbSearch?: (query: string, topK?: number, kbIds?: string[]) => Promise<KbSearchResult>;
+  kbSearch?: KnowledgeSearchPort;
   /**
    * per-turn scratchpad 目录的绝对路径。
    * 每个 key 存为一个文件;turn 结束时目录删除。
@@ -326,7 +328,8 @@ export interface ToolDef<TInput, TOutput> {
   /** Schema 只检查结构；文件状态、工作区等业务语义在权限询问前由此检查。 */
   validateInput?: (
     input: TInput,
-    ctx: ToolExecutionContext,
+    ctx: ToolInvocationContext,
+    scope: ToolExecutionScope,
   ) => ToolInputValidationResult | Promise<ToolInputValidationResult>;
 
   /** true -> 只读,任何权限模式都可自动放行。 */
@@ -342,7 +345,11 @@ export interface ToolDef<TInput, TOutput> {
   /** PermissionEngine.gate() 查询的权限元数据。 */
   permissionMeta: ToolPermissionMeta;
 
-  execute(input: TInput, ctx: ToolExecutionContext): Promise<TOutput>;
+  execute(
+    input: TInput,
+    ctx: ToolInvocationContext,
+    scope: ToolExecutionScope,
+  ): Promise<TOutput>;
 }
 
 // ── BuiltTool - 封闭的、注册表就绪形态 ───────────────────────────────────────
@@ -360,18 +367,27 @@ export interface BuiltTool<TInput = unknown, TOutput = unknown> {
   readonly maxResultBytes: number;
   readonly validateInput?: (
     input: TInput,
-    ctx: ToolExecutionContext,
+    ctx: ToolInvocationContext,
+    scope: ToolExecutionScope,
   ) => ToolInputValidationResult | Promise<ToolInputValidationResult>;
   readonly isReadOnly: (input: TInput) => boolean;
   readonly isConcurrencySafe: (input: TInput) => boolean;
   readonly requiresUserInteraction: (input: TInput) => boolean;
   readonly permissionMeta: ToolPermissionMeta;
   readonly descriptor: () => ToolDescriptor;
-  readonly execute: (input: TInput, ctx: ToolExecutionContext) => Promise<TOutput>;
+  readonly execute: (
+    input: TInput,
+    ctx: ToolInvocationContext,
+    scope: ToolExecutionScope,
+  ) => Promise<TOutput>;
   /**
    * 类型擦除的 execute,供注册表分发 - 调用前 input 必须经 parseInput() 预校验。
    */
-  readonly unsafeExecute: (input: unknown, ctx: ToolExecutionContext) => Promise<unknown>;
+  readonly unsafeExecute: (
+    input: unknown,
+    ctx: ToolInvocationContext,
+    scope: ToolExecutionScope,
+  ) => Promise<unknown>;
   /** 解析 + 校验原始 LLM 参数(失败抛 ZodError)。 */
   readonly parseInput: (raw: unknown) => TInput;
 }

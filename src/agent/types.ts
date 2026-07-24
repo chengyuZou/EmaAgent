@@ -23,8 +23,7 @@ import type { MessageBlocks, SessionStore, Turn } from '@ema-agent/session';
 import type { HookBus } from '@ema-agent/hooks';
 import type { EmotionEngine } from '@ema-agent/emotion';
 import type {
-  IMcpClientBridge,
-  ISkillRunner,
+  SkillRunnerPort,
   ToolExecutionJournalPort,
   ToolRegistry,
   ToolResultStore,
@@ -97,10 +96,8 @@ export interface AgentDeps {
   askUserRegistry?: AskUserRegistryLike;
   /** 持久 Artifact 存储，使 artifact_write/read/list 可以跨 Turn 使用。 */
   artifactStore?: IArtifactStore;
-  /** MCP 客户端桥接，使 mcp_call 可以调用已经连接的 MCP Server。 */
-  mcpClient?: IMcpClientBridge;
   /** Skill 运行桥接，使 skill_call 可以调用已注册 Skill。 */
-  skillRunner?: ISkillRunner;
+  skillRunner?: SkillRunnerPort;
   /**
    * 知识库搜索能力，供 kb_search 工具执行 Agentic RAG。
    * kbIds 由模型工具调用提供；空数组或 undefined 表示使用当前激活知识库。

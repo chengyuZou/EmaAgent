@@ -43,13 +43,13 @@ describe('tool presentation flow', () => {
       } as never,
       permission: { gate: async () => ({ granted: true }) } as never,
       permCtx: { workspaceRoot: '', sessionId } as never,
-      toolCtx: {
+      toolContext: {
         sessionId,
         turnId,
         workspaceRoot: '',
         signal: new AbortController().signal,
-        readFileState: new Map(),
       },
+      toolScope: { readFileState: new Map() },
       pushEv: event => emitted.push(event),
       signal: () => undefined,
       toolExecutionJournal: {

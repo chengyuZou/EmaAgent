@@ -1,9 +1,11 @@
-// 这个内置工具负责把完整文本安全地写入文件，并同步后续编辑所需的文件状态。
-import { randomUUID } from 'node:crypto';
+// 把完整文本安全地写入文件，并同步后续编辑所需的文件状态。
 import path from 'node:path';
 import { z } from 'zod';
 import { buildTool, presentToolResult } from '@ema-agent/tools';
-import type { ToolExecutionContext } from '@ema-agent/tools';
+import type {
+  ToolExecutionScope,
+  ToolInvocationContext,
+} from '@ema-agent/tools';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 import { buildFileChangePresentation } from '../shared/FileChangePresentation.js';
 import { atomicTransformUtf8 } from './atomicWrite.js';
@@ -51,9 +53,13 @@ export const FileWriteTool = buildTool<FileWriteInput, FileWriteResult>({
     },
   },
 
-  async execute(input: FileWriteInput, ctx: ToolExecutionContext): Promise<FileWriteResult> {
+  async execute(
+    input: FileWriteInput,
+    ctx: ToolInvocationContext,
+    scope: ToolExecutionScope,
+  ): Promise<FileWriteResult> {
     const { file_path, content } = input;
-    const operationId = ctx.toolCallId ?? randomUUID();
+    const operationId = ctx.toolCallId;
     const readStatePath = path.resolve(file_path);
     const written = await atomicTransformUtf8(
       file_path,
@@ -61,7 +67,7 @@ export const FileWriteTool = buildTool<FileWriteInput, FileWriteResult>({
       ctx.signal,
       current => {
         if (!current.existed) return content;
-        const cached = ctx.readFileState.get(readStatePath);
+        const cached = scope.readFileState.get(readStatePath);
         if (!cached || cached.isPartialView) {
           throw new Error(
             `Write requires an existing file to be read in full first. ` +
@@ -81,14 +87,14 @@ export const FileWriteTool = buildTool<FileWriteInput, FileWriteResult>({
     const mtimeMs = written.mtimeMs;
 
     // 更新 read-state 缓存，使后续 Edit 无需重新读取即可工作。
-    ctx.readFileState.set(fullPath, {
+    scope.readFileState.set(fullPath, {
       content,
       timestamp: mtimeMs,
       offset: undefined,
       limit: undefined,
       isPartialView: false,
     });
-    ctx.fileStateStore?.record(fullPath, {
+    scope.fileStateStore?.record(fullPath, {
       content,
       mtimeMs,
       offset: undefined,

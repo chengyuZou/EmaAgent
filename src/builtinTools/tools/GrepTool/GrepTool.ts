@@ -1,8 +1,8 @@
-// 这个工具负责通过 ripgrep 在时间、输出和结果数量预算内搜索文件内容。
+// 通过 ripgrep 在时间、输出和结果数量预算内搜索文件内容。
 import path from 'node:path';
 import { z } from 'zod';
 import { buildTool } from '@ema-agent/tools';
-import type { ToolExecutionContext } from '@ema-agent/tools';
+import type { ToolInvocationContext } from '@ema-agent/tools';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 import { runBoundedProcess } from '../shared/BoundedProcess.js';
 
@@ -85,7 +85,7 @@ Results are capped at \`head_limit\` lines (default 250).`,
     extractPath: (input) => (input as { path?: string }).path,
   },
 
-  async execute(input: GrepInput, ctx: ToolExecutionContext): Promise<GrepResult> {
+  async execute(input: GrepInput, ctx: ToolInvocationContext): Promise<GrepResult> {
     const {
       pattern,
       path: inputPath,

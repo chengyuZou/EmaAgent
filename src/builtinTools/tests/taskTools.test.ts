@@ -9,7 +9,11 @@ import {
 import type { Task, TaskStorePort } from '@ema-agent/tasks';
 import type { ToolExecutionEvent as EmaStreamEvent } from '@ema-agent/tools';
 import type { TaskSnapshot } from '@ema-agent/tasks';
-import type { ToolExecutionContext } from '@ema-agent/tools';
+import { asToolCallId } from '@ema-agent/ids';
+import type {
+  ToolExecutionScope,
+  ToolInvocationContext,
+} from '@ema-agent/tools';
 import { TaskCreateTool } from '../tools/TaskCreateTool/TaskCreateTool.js';
 import { TaskUpdateTool } from '../tools/TaskUpdateTool/TaskUpdateTool.js';
 
@@ -27,7 +31,7 @@ describe('Task 工具', () => {
       subject: 'Run tests',
       description: 'Run the relevant integration tests',
       activeForm: 'Running tests',
-    }, makeContext(store, events));
+    }, ...makeContext(store, events));
 
     expect(store.create).toHaveBeenCalledWith(expect.objectContaining({
       sessionId,
@@ -60,7 +64,7 @@ describe('Task 工具', () => {
       taskId,
       expectedVersion: 1,
       status: 'completed',
-    }, makeContext(store, events));
+    }, ...makeContext(store, events));
 
     expect(store.update).toHaveBeenCalledWith(expect.objectContaining({
       taskId,
@@ -116,14 +120,16 @@ function makeStore(task: Task): TaskStorePort {
 function makeContext(
   taskStore: TaskStorePort,
   events: EmaStreamEvent[],
-): ToolExecutionContext {
-  return {
+): [ToolInvocationContext, ToolExecutionScope] {
+  return [{
     sessionId,
     turnId,
+    toolCallId: asToolCallId('task-tool-call'),
     workspaceRoot: '',
     signal: new AbortController().signal,
+  }, {
     readFileState: new Map(),
     taskStore,
     emit: (event) => events.push(event),
-  };
+  }];
 }

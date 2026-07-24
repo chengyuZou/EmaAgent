@@ -35,7 +35,7 @@ export class SkillRunner {
 
   /**
    * 激活一个 skill:从磁盘读其 body 并替换参数。
-   * 经 apps/core 的 ISkillRunner adapter 接到 `SkillCall` 工具。
+   * 经 apps/core 的 SkillRunnerPort 适配器接到 `SkillCall` 工具。
    */
   async activate(name: string, args: string | undefined): Promise<ActivatedSkill> {
     return this.store.activate(name, args);

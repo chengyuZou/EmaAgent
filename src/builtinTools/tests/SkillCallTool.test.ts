@@ -1,8 +1,10 @@
-// 这里测试 SkillCall 会把结构化 Skill 正文返回给模型，并立即收窄 Agent 工具能力。
+// 测试 SkillCall 会把结构化 Skill 正文返回给模型，并立即收窄 Agent 工具能力。
 import { describe, expect, it, vi } from 'vitest';
+import { asSessionId, asToolCallId, asTurnId } from '@ema-agent/ids';
 import type {
-  IToolCapabilityScope,
-  ToolExecutionContext,
+  ToolCapabilityScope,
+  ToolExecutionScope,
+  ToolInvocationContext,
   ToolCapabilityRestriction,
 } from '@ema-agent/tools';
 import { SkillCallTool } from '../tools/SkillCallTool/SkillCallTool.js';
@@ -23,10 +25,13 @@ describe('SkillCallTool', () => {
       toolCapabilities: {
         restrict,
         snapshot: () => ({ allowedToolNames: [], restrictionSources: [] }),
-      } satisfies IToolCapabilityScope,
+      } satisfies ToolCapabilityScope,
     });
 
-    const result = await SkillCallTool.execute({ skill: 'review', args: undefined }, context);
+    const result = await SkillCallTool.execute(
+      { skill: 'review', args: undefined },
+      ...context,
+    );
 
     expect(restrict).toHaveBeenCalledWith({
       source: 'skill:review',
@@ -47,7 +52,7 @@ describe('SkillCallTool', () => {
     });
 
     await expect(
-      SkillCallTool.execute({ skill: 'review', args: undefined }, context),
+      SkillCallTool.execute({ skill: 'review', args: undefined }, ...context),
     ).rejects.toThrow('capability scope is unavailable');
   });
 
@@ -64,19 +69,23 @@ describe('SkillCallTool', () => {
     });
 
     await expect(
-      SkillCallTool.execute({ skill: 'plain', args: undefined }, context),
+      SkillCallTool.execute({ skill: 'plain', args: undefined }, ...context),
     ).resolves.toEqual({ skill: 'plain', output: 'body' });
     expect(restrict).not.toHaveBeenCalled();
   });
 });
 
-function makeContext(overrides: Partial<ToolExecutionContext>): ToolExecutionContext {
-  return {
-    sessionId: 'session-skill',
-    turnId: 'turn-skill',
+function makeContext(
+  overrides: Partial<ToolExecutionScope>,
+): [ToolInvocationContext, ToolExecutionScope] {
+  return [{
+    sessionId: asSessionId('session-skill'),
+    turnId: asTurnId('turn-skill'),
+    toolCallId: asToolCallId('skill-tool-call'),
     workspaceRoot: '',
     signal: new AbortController().signal,
+  }, {
     readFileState: new Map(),
     ...overrides,
-  };
+  }];
 }

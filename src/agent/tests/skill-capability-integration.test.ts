@@ -1,4 +1,4 @@
-// 这里测试同一轮模型响应中，Skill 收窄能力后已入队的后续工具也不能越权执行。
+// 测试同一轮模型响应中，Skill 收窄能力后已入队的后续工具也不能越权执行。
 import { describe, expect, it, vi } from 'vitest';
 import {
   createToolManifestSnapshot,
@@ -48,11 +48,13 @@ describe('Skill capability 与工具执行器集成', () => {
       tools: tools as never,
       permission: { gate: permissionGate } as never,
       permCtx: { workspaceRoot: null } as never,
-      toolCtx: {
+      toolContext: {
         sessionId: 'session-skill',
         turnId: 'turn-skill',
         workspaceRoot: '',
         signal: new AbortController().signal,
+      },
+      toolScope: {
         readFileState: new Map(),
         toolCapabilities: policy.capabilities(),
       },

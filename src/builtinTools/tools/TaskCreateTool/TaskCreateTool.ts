@@ -3,7 +3,7 @@
 import { z } from 'zod';
 import { asSessionId, asTurnId } from '@ema-agent/ids';
 import { buildTool } from '@ema-agent/tools';
-import type { ToolExecutionContext } from '@ema-agent/tools';
+import type { ToolExecutionScope } from '@ema-agent/tools';
 import type { TaskSnapshot } from '@ema-agent/tasks';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 
@@ -59,8 +59,8 @@ New tasks always start as pending. Mark a task in_progress before beginning it a
     accessType: 'write',
   },
 
-  async execute(input, ctx): Promise<TaskCreateResult> {
-    const store = requireTaskStore(ctx);
+  async execute(input, ctx, scope): Promise<TaskCreateResult> {
+    const store = requireTaskStore(scope);
     const task = store.create({
       sessionId: asSessionId(ctx.sessionId),
       turnId: asTurnId(ctx.turnId),
@@ -69,7 +69,7 @@ New tasks always start as pending. Mark a task in_progress before beginning it a
       activeForm: input.activeForm,
     });
     const snapshot = store.toSnapshot(task);
-    ctx.emit?.({
+    scope.emit?.({
       type: 'task_created',
       sessionId: snapshot.sessionId,
       turnId: asTurnId(ctx.turnId),
@@ -82,9 +82,9 @@ New tasks always start as pending. Mark a task in_progress before beginning it a
   },
 });
 
-function requireTaskStore(ctx: ToolExecutionContext) {
-  if (!ctx.taskStore) {
+function requireTaskStore(scope: ToolExecutionScope) {
+  if (!scope.taskStore) {
     throw new Error('Task tools are available only in the root Work Turn.');
   }
-  return ctx.taskStore;
+  return scope.taskStore;
 }

@@ -3,7 +3,7 @@
 import { z } from 'zod';
 import { asSessionId } from '@ema-agent/ids';
 import { buildTool } from '@ema-agent/tools';
-import type { ToolExecutionContext } from '@ema-agent/tools';
+import type { ToolExecutionScope } from '@ema-agent/tools';
 import type { AgentRunId, TaskId } from '@ema-agent/ids';
 import type { TaskStatus } from '@ema-agent/tasks';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
@@ -44,8 +44,8 @@ Prefer lower display numbers when several tasks are available because earlier ta
     accessType: 'read',
   },
 
-  async execute(_input, ctx): Promise<TaskListResult> {
-    const store = requireTaskStore(ctx);
+  async execute(_input, ctx, scope): Promise<TaskListResult> {
+    const store = requireTaskStore(scope);
     const tasks = store.list(asSessionId(ctx.sessionId));
     const completed = new Set(
       tasks.filter((task) => task.status === 'completed').map((task) => task.id),
@@ -70,9 +70,9 @@ Prefer lower display numbers when several tasks are available because earlier ta
   },
 });
 
-function requireTaskStore(ctx: ToolExecutionContext) {
-  if (!ctx.taskStore) {
+function requireTaskStore(scope: ToolExecutionScope) {
+  if (!scope.taskStore) {
     throw new Error('Task tools are available only in the root Work Turn.');
   }
-  return ctx.taskStore;
+  return scope.taskStore;
 }

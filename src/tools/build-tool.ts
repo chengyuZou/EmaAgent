@@ -1,10 +1,11 @@
-// 这里把工具作者提供的定义封装成注册表可以安全使用的不可变工具。
+// 把工具作者提供的定义封装成注册表可以安全使用的不可变工具。
 import { zodToJsonSchema } from 'zod-to-json-schema';
 import type {
   ToolDef,
   BuiltTool,
   ToolDescriptor,
-  ToolExecutionContext,
+  ToolExecutionScope,
+  ToolInvocationContext,
   ToolOrigin,
 } from './types.js';
 
@@ -53,8 +54,11 @@ export function buildTool<TInput, TOutput>(
   const parseInput = (raw: unknown): TInput => def.inputSchema.parse(raw);
 
   const execute = def.execute.bind(def);
-  const unsafeExecute = (input: unknown, ctx: ToolExecutionContext): Promise<unknown> =>
-    execute(input as TInput, ctx);
+  const unsafeExecute = (
+    input: unknown,
+    ctx: ToolInvocationContext,
+    scope: ToolExecutionScope,
+  ): Promise<unknown> => execute(input as TInput, ctx, scope);
 
   return Object.freeze({
     id: def.id ?? def.name,

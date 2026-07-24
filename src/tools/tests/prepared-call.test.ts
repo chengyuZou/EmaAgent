@@ -1,16 +1,24 @@
+// 测试 PreparedToolCall 的输入冻结、归属校验和执行一致性。
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { buildTool } from '../build-tool.js';
 import { ToolRegistry, ToolRegistryError } from '../registry.js';
-import type { BuiltTool, ToolExecutionContext } from '../types.js';
+import type {
+  BuiltTool,
+  ToolExecutionScope,
+  ToolInvocationContext,
+} from '../types.js';
 
 const context = {
   sessionId: 'session-test',
   turnId: 'turn-test',
+  toolCallId: 'tool-call-test',
   workspaceRoot: 'D:/workspace',
   signal: new AbortController().signal,
+} as ToolInvocationContext;
+const scope = {
   readFileState: new Map(),
-} satisfies ToolExecutionContext;
+} satisfies ToolExecutionScope;
 
 function makeTool(
   name = 'dynamic_tool',
@@ -64,7 +72,7 @@ describe('PreparedToolCall', () => {
     expect(Object.isFrozen(prepared)).toBe(true);
     expect(Object.isFrozen(prepared.input)).toBe(true);
     expect(Object.isFrozen(prepared.permissionMeta)).toBe(true);
-    await expect(registry.execute(prepared, context)).resolves.toBe('notes.txt:true');
+    await expect(registry.execute(prepared, context, scope)).resolves.toBe('notes.txt:true');
   });
 
   it('在同一 Prepared 输入上执行权限前业务校验', async () => {
@@ -73,10 +81,10 @@ describe('PreparedToolCall', () => {
 
     const valid = registry.prepare('dynamic_tool', { path: 'question.txt', parallel: false });
     expect(valid.requiresUserInteraction).toBe(true);
-    await expect(registry.validate(valid, context)).resolves.toEqual({ valid: true });
+    await expect(registry.validate(valid, context, scope)).resolves.toEqual({ valid: true });
 
     const invalid = registry.prepare('dynamic_tool', { path: 'blocked.txt', parallel: false });
-    await expect(registry.validate(invalid, context)).resolves.toEqual({
+    await expect(registry.validate(invalid, context, scope)).resolves.toEqual({
       valid: false,
       message: '路径被业务规则拒绝',
       code: 'tool/path_blocked',
@@ -115,13 +123,13 @@ describe('PreparedToolCall', () => {
     second.register(makeTool('mcp__test__dynamic'));
 
     const prepared = first.prepare('mcp__test__dynamic', { path: 'a.txt' });
-    await expect(second.execute(prepared, context)).rejects.toBeInstanceOf(ToolRegistryError);
+    await expect(second.execute(prepared, context, scope)).rejects.toBeInstanceOf(ToolRegistryError);
 
     first.registerMcp({
       tool: makeTool('mcp__test__dynamic', origin),
       owner: { serverName: 'test', serverToolName: 'dynamic' },
     });
-    await expect(first.execute(prepared, context)).rejects.toThrow(/stale/);
+    await expect(first.execute(prepared, context, scope)).rejects.toThrow(/stale/);
 
     await expect(first.execute({
       id: 'mcp__test__dynamic',
@@ -133,6 +141,6 @@ describe('PreparedToolCall', () => {
       requiresUserInteraction: false,
       maxResultBytes: 4096,
       permissionMeta: { riskLevel: 'low' },
-    }, context)).rejects.toThrow(/not created by this registry/);
+    }, context, scope)).rejects.toThrow(/not created by this registry/);
   });
 });

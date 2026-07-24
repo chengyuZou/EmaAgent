@@ -45,12 +45,13 @@ describe('ToolExecutionRuntime Hook 与权限边界', () => {
       permission: {} as never,
       permCtx: { workspaceRoot: null } as never,
       lifecycle: createToolLifecycleHooks(hooks, () => undefined),
-      toolCtx: {
+      toolContext: {
         sessionId,
         turnId,
         workspaceRoot: null,
         signal: new AbortController().signal,
       } as never,
+      toolScope: { readFileState: new Map() },
       pushEv: () => undefined,
       signal: () => undefined,
     });
@@ -93,12 +94,13 @@ describe('ToolExecutionRuntime Hook 与权限边界', () => {
       } as never,
       permCtx: { workspaceRoot: null } as never,
       lifecycle: createToolLifecycleHooks(hooks, () => undefined),
-      toolCtx: {
+      toolContext: {
         sessionId,
         turnId,
         workspaceRoot: null,
         signal: new AbortController().signal,
       } as never,
+      toolScope: { readFileState: new Map() },
       buildAsk: (identity) => {
         askIdentity = identity;
         return async () => ({ action: 'allow' });
@@ -175,12 +177,13 @@ describe('ToolExecutionRuntime Hook 与权限边界', () => {
       permission: permission as never,
       permCtx: { workspaceRoot: null, sessionId } as never,
       lifecycle: createToolLifecycleHooks(hooks, (event) => emitted.push(event)),
-      toolCtx: {
+      toolContext: {
         sessionId,
         turnId,
         workspaceRoot: null,
         signal: turnAbort.signal,
       } as never,
+      toolScope: { readFileState: new Map() },
       pushEv: (event) => emitted.push(event),
       signal: () => undefined,
       toolExecutionJournal,
@@ -306,12 +309,13 @@ describe('ToolExecutionRuntime Hook 与权限边界', () => {
         permission: permission as never,
         permCtx: { workspaceRoot: null, sessionId } as never,
         lifecycle: createToolLifecycleHooks(hooks, (event) => emitted.push(event)),
-        toolCtx: {
+        toolContext: {
           sessionId,
           turnId,
           workspaceRoot: null,
           signal: turnAbort.signal,
         } as never,
+        toolScope: { readFileState: new Map() },
         pushEv: (event) => emitted.push(event),
         signal: () => undefined,
       });
@@ -363,12 +367,13 @@ describe('ToolExecutionRuntime Hook 与权限边界', () => {
       permission: { gate: async () => ({ granted: true }) } as never,
       permCtx: { workspaceRoot: null, sessionId } as never,
       lifecycle: createToolLifecycleHooks(hooks, (event) => emitted.push(event)),
-      toolCtx: {
+      toolContext: {
         sessionId,
         turnId,
         workspaceRoot: null,
         signal: turnAbort.signal,
       } as never,
+      toolScope: { readFileState: new Map() },
       pushEv: (event) => emitted.push(event),
       signal: () => undefined,
     });
@@ -420,12 +425,13 @@ describe('ToolExecutionRuntime Hook 与权限边界', () => {
       permission: { gate: async () => ({ granted: true }) } as never,
       permCtx: { workspaceRoot: null, sessionId } as never,
       lifecycle: createToolLifecycleHooks(hooks, () => undefined),
-      toolCtx: {
+      toolContext: {
         sessionId,
         turnId,
         workspaceRoot: null,
         signal: turnAbort.signal,
       } as never,
+      toolScope: { readFileState: new Map() },
       pushEv: () => undefined,
       signal: () => undefined,
       toolExecutionJournal: {

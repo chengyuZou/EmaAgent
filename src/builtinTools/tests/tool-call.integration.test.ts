@@ -1,4 +1,4 @@
-// 这里用真实模型测试工具注册、调用循环和权限判断能否贯通。
+// 用真实模型测试工具注册、调用循环和权限判断能否贯通。
 /**
  * Integration test: LanguageModelRuntime + ToolRegistry + PermissionEngine
  *
@@ -21,7 +21,12 @@ import { LanguageModelRuntime } from '@ema-agent/llm';
 import type { AssistantBlock, LlmToolDef, Message as ModelMessage } from '@ema-agent/llm';
 import type { ToolResultBlock } from '@ema-agent/session';
 import { ToolRegistry } from '@ema-agent/tools';
-import type { ToolExecutionContext, ReadFileState } from '@ema-agent/tools';
+import { asSessionId, asToolCallId, asTurnId } from '@ema-agent/ids';
+import type {
+  ReadFileState,
+  ToolExecutionScope,
+  ToolInvocationContext,
+} from '@ema-agent/tools';
 import { PermissionEngine } from '@ema-agent/permission';
 import type { PermissionContext } from '@ema-agent/permission';
 import { BuiltinTools, registerBuiltinTools } from '../index.js';
@@ -42,16 +47,17 @@ const TEST_TIMEOUT  = 60_000;
 let router:   LanguageModelRuntime;
 let registry: ToolRegistry;
 
-function makeCtx(overrides: Partial<ToolExecutionContext> = {}): ToolExecutionContext {
-  return {
-    sessionId:     'test-session',
-    turnId:        'test-turn',
+function makeCtx(): [ToolInvocationContext, ToolExecutionScope] {
+  return [{
+    sessionId:     asSessionId('test-session'),
+    turnId:        asTurnId('test-turn'),
+    toolCallId:    asToolCallId('live-tool-call'),
     workspaceRoot: WORKSPACE,
     signal:        AbortSignal.timeout(30_000),
+  }, {
     readFileState: new Map() as ReadFileState,
     emit:          (ev) => { /* noop for tests */ },
-    ...overrides,
-  };
+  }];
 }
 
 function makePermCtx(): PermissionContext {
@@ -94,7 +100,7 @@ interface AgentResult {
 async function agentLoop(
   messages: ModelMessage[],
   toolNames: string[],
-  ctx:      ToolExecutionContext,
+  execution: [ToolInvocationContext, ToolExecutionScope],
   maxIter = 5,
 ): Promise<AgentResult> {
   const toolDefs = toToolDefs(registry, toolNames);
@@ -135,7 +141,7 @@ async function agentLoop(
       let isError = false;
       try {
         const prepared = registry.prepare(block.name, block.args);
-        result = await registry.execute(prepared, ctx);
+        result = await registry.execute(prepared, ...execution);
       } catch (err) {
         result = (err as Error).message;
         isError = true;

@@ -3,7 +3,7 @@
 import { z } from 'zod';
 import { asSessionId, asTaskId } from '@ema-agent/ids';
 import { buildTool } from '@ema-agent/tools';
-import type { ToolExecutionContext } from '@ema-agent/tools';
+import type { ToolExecutionScope } from '@ema-agent/tools';
 import type { TaskSnapshot } from '@ema-agent/tasks';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 
@@ -35,8 +35,8 @@ Use this before updating a task so you have its latest version, full description
     accessType: 'read',
   },
 
-  async execute(input, ctx): Promise<TaskGetResult> {
-    const store = requireTaskStore(ctx);
+  async execute(input, ctx, scope): Promise<TaskGetResult> {
+    const store = requireTaskStore(scope);
     const task = store.get(asSessionId(ctx.sessionId), asTaskId(input.taskId));
     return task
       ? {
@@ -47,9 +47,9 @@ Use this before updating a task so you have its latest version, full description
   },
 });
 
-function requireTaskStore(ctx: ToolExecutionContext) {
-  if (!ctx.taskStore) {
+function requireTaskStore(scope: ToolExecutionScope) {
+  if (!scope.taskStore) {
     throw new Error('Task tools are available only in the root Work Turn.');
   }
-  return ctx.taskStore;
+  return scope.taskStore;
 }

@@ -3,7 +3,7 @@
 import { z } from 'zod';
 import { asSessionId, asTaskId, asTurnId } from '@ema-agent/ids';
 import { buildTool } from '@ema-agent/tools';
-import type { ToolExecutionContext } from '@ema-agent/tools';
+import type { ToolExecutionScope } from '@ema-agent/tools';
 import type { TaskSnapshot } from '@ema-agent/tasks';
 import type { TaskMutationFailure } from '@ema-agent/tasks';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
@@ -102,8 +102,8 @@ Use action="cancel" when work is intentionally abandoned but history should rema
     accessType: 'write',
   },
 
-  async execute(input, ctx): Promise<TaskUpdateResult> {
-    const store = requireTaskStore(ctx);
+  async execute(input, ctx, scope): Promise<TaskUpdateResult> {
+    const store = requireTaskStore(scope);
     const sessionId = asSessionId(ctx.sessionId);
     const turnId = asTurnId(ctx.turnId);
     const taskId = asTaskId(input.taskId);
@@ -136,7 +136,7 @@ Use action="cancel" when work is intentionally abandoned but history should rema
     }
 
     if (result.deleted) {
-      ctx.emit?.({ type: 'task_deleted', sessionId, turnId, taskId });
+      scope.emit?.({ type: 'task_deleted', sessionId, turnId, taskId });
       return {
         success: true,
         message: `Task ${input.taskId} deleted.`,
@@ -148,7 +148,7 @@ Use action="cancel" when work is intentionally abandoned but history should rema
 
     const snapshot = store.toSnapshot(result.task);
     if (result.changed) {
-      ctx.emit?.({ type: 'task_updated', sessionId, turnId, task: snapshot });
+      scope.emit?.({ type: 'task_updated', sessionId, turnId, task: snapshot });
     }
     return {
       success: true,
@@ -163,11 +163,11 @@ Use action="cancel" when work is intentionally abandoned but history should rema
   },
 });
 
-function requireTaskStore(ctx: ToolExecutionContext) {
-  if (!ctx.taskStore) {
+function requireTaskStore(scope: ToolExecutionScope) {
+  if (!scope.taskStore) {
     throw new Error('Task tools are available only in the root Work Turn.');
   }
-  return ctx.taskStore;
+  return scope.taskStore;
 }
 
 function failureMessage(reason: TaskMutationFailure, relatedTaskId?: string): string {

@@ -1,9 +1,12 @@
-// 这个工具负责向用户提出是非确认，并把确认结果交还给 Agent。
+// 向用户提出是非确认，并把确认结果交还给 Agent。
 import { randomUUID } from 'node:crypto';
 import { createInterface } from 'node:readline/promises';
 import { z } from 'zod';
 import { buildTool } from '@ema-agent/tools';
-import type { ToolExecutionContext } from '@ema-agent/tools';
+import type {
+  ToolExecutionScope,
+  ToolInvocationContext,
+} from '@ema-agent/tools';
 import type { SessionId, TurnId } from '@ema-agent/ids';
 import type { ToolExecutionEvent as EmaStreamEvent } from '@ema-agent/tools';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
@@ -37,8 +40,12 @@ Prefer this over AskUser when you only need a binary decision - the UI shows a f
     accessType: 'write',
   },
 
-  async execute(input: AskConfirmInput, ctx: ToolExecutionContext): Promise<AskConfirmResult> {
-    if (ctx.emit && ctx.askUser) {
+  async execute(
+    input: AskConfirmInput,
+    ctx: ToolInvocationContext,
+    scope: ToolExecutionScope,
+  ): Promise<AskConfirmResult> {
+    if (scope.emit && scope.askUser) {
       const promptId = randomUUID();
       const request = {
         type:             'ask_confirm_required',
@@ -48,12 +55,12 @@ Prefer this over AskUser when you only need a binary decision - the UI shows a f
         question:         input.question,
         humanDescription: input.humanDescription,
       } satisfies EmaStreamEvent;
-      ctx.emit(request);
+      scope.emit(request);
 
-      const { answers } = await ctx.askUser(promptId, [], request);
+      const { answers } = await scope.askUser(promptId, [], request);
       const confirmed = answers['confirmed'] === 'true';
 
-      ctx.emit({
+      scope.emit({
         type:      'ask_confirm_resolved',
         sessionId: ctx.sessionId as SessionId,
         promptId,

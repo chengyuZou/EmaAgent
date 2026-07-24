@@ -3,8 +3,9 @@ import { ZodError } from 'zod';
 import type {
   BuiltTool,
   ToolDescriptor,
-  ToolExecutionContext,
+  ToolExecutionScope,
   ToolInputValidationResult,
+  ToolInvocationContext,
   ToolManifestSnapshot,
   ToolOrigin,
 } from './types.js';
@@ -262,10 +263,11 @@ export class ToolRegistry {
   /** 对已经冻结的输入执行 Schema 之后、权限之前的业务语义校验。 */
   async validate(
     prepared: PreparedToolCall,
-    ctx: ToolExecutionContext,
+    ctx: ToolInvocationContext,
+    scope: ToolExecutionScope,
   ): Promise<ToolInputValidationResult> {
     const tool = this.preparedTool(prepared);
-    return await tool.validateInput?.(prepared.input, ctx) ?? { valid: true };
+    return await tool.validateInput?.(prepared.input, ctx, scope) ?? { valid: true };
   }
 
   private toolFromManifest(manifest: ToolManifestSnapshot, name: string): AnyBuiltTool {
@@ -289,9 +291,10 @@ export class ToolRegistry {
    */
   async execute(
     prepared: PreparedToolCall,
-    ctx: ToolExecutionContext,
+    ctx: ToolInvocationContext,
+    scope: ToolExecutionScope,
   ): Promise<unknown> {
-    return this.preparedTool(prepared).unsafeExecute(prepared.input, ctx);
+    return this.preparedTool(prepared).unsafeExecute(prepared.input, ctx, scope);
   }
 
   private preparedTool(prepared: PreparedToolCall): AnyBuiltTool {
