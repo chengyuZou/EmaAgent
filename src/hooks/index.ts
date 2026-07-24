@@ -6,7 +6,6 @@ export type {
   ControlHookEvent,
   HookEvent,
   HookPayload,
-  ToolFailurePhase,
   TurnFailurePayload,
   TurnFailurePhase,
   ObserverHookEvent,

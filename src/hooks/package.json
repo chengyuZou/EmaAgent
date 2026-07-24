@@ -23,7 +23,8 @@
     "@ema-agent/ids": "workspace:*",
     "@ema-agent/turn": "workspace:*",
     "@ema-agent/llm": "workspace:*",
-    "@ema-agent/session": "workspace:*"
+    "@ema-agent/session": "workspace:*",
+    "@ema-agent/tools": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

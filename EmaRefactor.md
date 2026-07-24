@@ -527,7 +527,7 @@ Builtin / MCP / Skill Tool
 **施工顺序**（五批，每批只改一个主要边界）：
 
 1. **Sandbox 依赖反转**：`spawnProcess` 收回 Sandbox；合并重复 `RunOptions/RunResult`；`CommandRunner` 不再持有 `PermissionEngine`；禁用 `process.cwd()` 回退；暂时禁用 detached 假后台。不先打断 Sandbox -> Tools，后面把 ToolExecutionRuntime 迁入 Tools 会立刻形成循环依赖。
-2. **Tools 主链收口**：删除 `ToolRegistry.dispatch()` 旁路；`TurnToolExecutor` 迁入 `tools/execution`；Agent 只保留 Tool Batch 调度；收窄 `ToolExecutionContext`。不重写已正确的 PreparedToolCall/Manifest Snapshot/Result Budget/Journal。
+2. **Tools 主链收口**：删除 `ToolRegistry.dispatch()` 旁路；执行运行时迁入 `tools/execution`；AgentLoop 只决定何时启动和消费 Tool Batch；收窄 `ToolExecutionContext`。不重写已正确的 PreparedToolCall/Manifest Snapshot/Result Budget/Journal。
 3. **建立 TurnRuntime**：`AgentEngine` 的 Turn 创建/持久化/终态/取消迁入 `src/turn`；返回 `TurnHandle`（turnId + events + completion + abort）；修复缺 turnId 的 Turn 流事件。Turn 不吸收 KB/Character/Tool/后台进程领域事件。
 4. **清理 Agent**：`src/agent` 只保留 `agentLoop/agentLoopState/policy/budget/runs/spawner/events/errors`。
 5. **Core 退回协议层**：Route 解析并验证请求；调用 `turnRuntime.start()`；把 TurnEvent 编码成 SSE。不再组装 Context、创建 Tool Executor 或决定业务终态。
@@ -937,9 +937,9 @@ interface TurnExecutionSnapshot {
 
 1. [x] Tool Result 归位到 `src/tools/results`，建立单结果上限和单消息聚合预算，并保持持久预览可重放；
 2. [x] ToolExecution Journal 从 Tasks/Agent 收回 Tools，Storage 只保留 Store 实现；
-3. 先解除 Sandbox 的错误依赖：把 `spawnProcess` 从 Tools 收回 Sandbox；合并重复的 `RunOptions/RunResult`；`CommandRunner` 不再持有 `PermissionEngine`，只接收已冻结的 Sandbox Policy；禁止无工作区时回退 `process.cwd()`；暂时禁用 detached 假后台；
-4. 删除 `ToolRegistry.dispatch()` 的 prepare->execute 旁路，冻结唯一执行入口；
-5. 将现有 `TurnToolExecutor` 迁入 `src/tools/execution` 为 `ToolExecutionRuntime`（不需要独立的 Agent Tool Scheduler，AgentLoop 直接调 ToolExecutionRuntime）；
+3. [x] 解除 Sandbox 的错误依赖：把 `spawnProcess` 从 Tools 收回 Sandbox；合并重复的 `RunOptions/RunResult`；`CommandRunner` 不再持有 `PermissionEngine`，只接收已冻结的 Sandbox Policy；禁止无工作区时回退 `process.cwd()`；暂时禁用 detached 假后台；
+4. [x] 删除 `ToolRegistry.dispatch()` 的 prepare->execute 旁路，冻结唯一执行入口；
+5. [x] 将工具执行运行时迁入 `src/tools/execution` 为 `ToolExecutionRuntime`；Agent 通过窄生命周期端口接入 Hook，不让 Tools 反向依赖 Agent、Session 或 Hooks；
 6. 收窄 Tool Execution Context，把运行依赖改为构造时显式注入；
 7. Tool Manifest 增加来源与稳定分区，再实现 Anthropic Tool Cache 断点并重新分配四个断点；
 8. 按 7.2 的顺序逐组审查所有 Builtin Tool；
@@ -954,13 +954,13 @@ interface TurnExecutionSnapshot {
 
 ## 11. 下一阶段的实际边界
 
-Tool Result 归位、统一预算与 ToolExecution Journal 所有权迁移已经完成。下一阶段冻结 Registry 的唯一执行入口：
+Tool Result、统一预算、ToolExecution Journal 与执行运行时所有权迁移已经完成。Registry 不再提供组合执行捷径：
 
-1. 审计 `ToolRegistry.dispatch()` 及所有直接 `execute()` 调用，区分生产旁路与测试辅助；
-2. 删除能够绕过 `prepare → validate → permission` 的生产入口，执行必须接收当前 Registry 生成的 `PreparedToolCall`；
-3. MCP、Builtin、Skill 和 Core 不得用可信调用方名义绕过相同主链；
-4. 保持现有 Agent 调度、数据库 Schema、Permission 与 Sandbox 行为不变；
-5. 完成后再把 `TurnToolExecutor` 拆为 Agent Scheduler 与 Tools `ToolExecutionRuntime`。
+1. [x] 删除 `ToolRegistry.dispatch()`，可信测试调用也显式使用 `prepare()` 与 `execute()`；
+2. [x] 执行必须接收当前 Registry 生成的不可变 `PreparedToolCall`；
+3. [x] `ToolExecutionRuntime` 统一承担并发栅栏、Hook 观察、Permission、Journal、结果预算和取消收口；
+4. [x] AgentLoop 只启动执行批次、等待结果并决定是否继续下一轮，不建立第二个 Scheduler；
+5. 下一步只收窄 `ToolExecutionContext`，把宿主能力按职责拆为显式端口，不改数据库 Schema 或 Turn 终态。
 
 ## 12. 完成标准
 

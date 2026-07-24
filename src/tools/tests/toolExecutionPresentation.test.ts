@@ -1,19 +1,20 @@
-// 这里测试工具的客户端展示数据会进入 SSE 和消息块，但不会混进模型看到的工具结果。
+// 测试工具的客户端展示数据会进入执行事件和结果块，但不会混进模型看到的正文。
 import { describe, expect, it } from 'vitest';
 import type { SessionId, TurnId } from '@ema-agent/ids';
-import type { AgentRuntimeEvent as EmaStreamEvent } from '../events.js';
-import { HookBus } from '@ema-agent/hooks';
-import { presentToolResult } from '@ema-agent/tools';
-import { TurnToolExecutor } from '../tool-executor.js';
+import {
+  presentToolResult,
+  ToolExecutionRuntime,
+  type ToolExecutionRuntimeEvent,
+} from '../index.js';
 
 const sessionId = 'session-presentation' as SessionId;
 const turnId = 'turn-presentation' as TurnId;
 
 describe('tool presentation flow', () => {
   it('把真实 diff 发给客户端并保持模型结果简短', async () => {
-    const emitted: EmaStreamEvent[] = [];
+    const emitted: ToolExecutionRuntimeEvent[] = [];
     let journalOutput: unknown;
-    const executor = new TurnToolExecutor({
+    const executor = new ToolExecutionRuntime({
       sessionId,
       turnId,
       allows: () => true,
@@ -42,7 +43,6 @@ describe('tool presentation flow', () => {
       } as never,
       permission: { gate: async () => ({ granted: true }) } as never,
       permCtx: { workspaceRoot: '', sessionId } as never,
-      hooks: new HookBus(),
       toolCtx: {
         sessionId,
         turnId,
@@ -79,7 +79,7 @@ describe('tool presentation flow', () => {
   });
 });
 
-async function waitUntilDone(executor: TurnToolExecutor): Promise<void> {
+async function waitUntilDone(executor: ToolExecutionRuntime): Promise<void> {
   while (!executor.allDone()) {
     await new Promise<void>(resolve => setTimeout(resolve, 0));
   }

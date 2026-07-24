@@ -1,23 +1,28 @@
-// 这里测试单个 Turn 内工具调用的准备、权限、执行、等待用户和终态收口。
+// 测试单个 Turn 内工具调用的准备、权限、执行、等待用户和终态收口。
 import { describe, expect, it } from 'vitest';
 import type { SessionId, TurnId } from '@ema-agent/ids';
 import type { AgentRuntimeEvent as EmaStreamEvent } from '../events.js';
 import { HookBus } from '@ema-agent/hooks';
-import { ToolInputError } from '@ema-agent/tools';
-import { TurnToolExecutor, type TurnToolExecutorOpts } from '../tool-executor.js';
+import {
+  ToolExecutionRuntime,
+  ToolInputError,
+  type ToolExecutionRuntimeOptions,
+} from '@ema-agent/tools';
+import { createToolLifecycleHooks } from '../toolLifecycleHooks.js';
 
 const sessionId = 'session-order' as SessionId;
 const turnId = 'turn-order' as TurnId;
 
-async function waitUntilDone(executor: TurnToolExecutor): Promise<void> {
+async function waitUntilDone(executor: ToolExecutionRuntime): Promise<void> {
   while (!executor.allDone()) {
     await new Promise<void>((resolve) => setTimeout(resolve, 0));
   }
 }
 
-describe('TurnToolExecutor Hook 与权限边界', () => {
+describe('ToolExecutionRuntime Hook 与权限边界', () => {
   it('四种询问用户工具都会让 Turn 保持 waiting_user', () => {
-    const makeExecutor = (): TurnToolExecutor => new TurnToolExecutor({
+    const hooks = new HookBus();
+    const makeExecutor = (): ToolExecutionRuntime => new ToolExecutionRuntime({
       sessionId,
       turnId,
       allows: () => true,
@@ -39,7 +44,7 @@ describe('TurnToolExecutor Hook 与权限边界', () => {
       } as never,
       permission: {} as never,
       permCtx: { workspaceRoot: null } as never,
-      hooks: new HookBus(),
+      lifecycle: createToolLifecycleHooks(hooks, () => undefined),
       toolCtx: {
         sessionId,
         turnId,
@@ -65,7 +70,7 @@ describe('TurnToolExecutor Hook 与权限边界', () => {
     const hooks = new HookBus();
     let gateContext: unknown;
     let askIdentity: unknown;
-    const executor = new TurnToolExecutor({
+    const executor = new ToolExecutionRuntime({
       sessionId,
       turnId,
       allows: () => true,
@@ -87,7 +92,7 @@ describe('TurnToolExecutor Hook 与权限边界', () => {
         },
       } as never,
       permCtx: { workspaceRoot: null } as never,
-      hooks,
+      lifecycle: createToolLifecycleHooks(hooks, () => undefined),
       toolCtx: {
         sessionId,
         turnId,
@@ -162,14 +167,14 @@ describe('TurnToolExecutor Hook 与权限边界', () => {
     };
     const turnAbort = new AbortController();
 
-    const opts: TurnToolExecutorOpts = {
+    const opts: ToolExecutionRuntimeOptions = {
       sessionId,
       turnId,
       allows: () => true,
       tools: tools as never,
       permission: permission as never,
       permCtx: { workspaceRoot: null, sessionId } as never,
-      hooks,
+      lifecycle: createToolLifecycleHooks(hooks, (event) => emitted.push(event)),
       toolCtx: {
         sessionId,
         turnId,
@@ -181,7 +186,7 @@ describe('TurnToolExecutor Hook 与权限边界', () => {
       toolExecutionJournal,
     };
 
-    const executor = new TurnToolExecutor(opts);
+    const executor = new ToolExecutionRuntime(opts);
     executor.addTool(0, 'call-1', 'Read', { path: 'README.md' });
     await waitUntilDone(executor);
 
@@ -293,14 +298,14 @@ describe('TurnToolExecutor Hook 与权限边界', () => {
           : { granted: true },
       };
       const turnAbort = new AbortController();
-      const executor = new TurnToolExecutor({
+      const executor = new ToolExecutionRuntime({
         sessionId,
         turnId,
         allows: () => failureCase.allows,
         tools: tools as never,
         permission: permission as never,
         permCtx: { workspaceRoot: null, sessionId } as never,
-        hooks,
+        lifecycle: createToolLifecycleHooks(hooks, (event) => emitted.push(event)),
         toolCtx: {
           sessionId,
           turnId,
@@ -337,7 +342,7 @@ describe('TurnToolExecutor Hook 与权限边界', () => {
     });
 
     const turnAbort = new AbortController();
-    const executor = new TurnToolExecutor({
+    const executor = new ToolExecutionRuntime({
       sessionId,
       turnId,
       allows: () => true,
@@ -357,7 +362,7 @@ describe('TurnToolExecutor Hook 与权限边界', () => {
       } as never,
       permission: { gate: async () => ({ granted: true }) } as never,
       permCtx: { workspaceRoot: null, sessionId } as never,
-      hooks,
+      lifecycle: createToolLifecycleHooks(hooks, (event) => emitted.push(event)),
       toolCtx: {
         sessionId,
         turnId,
@@ -392,7 +397,7 @@ describe('TurnToolExecutor Hook 与权限边界', () => {
     let notifyStarted!: () => void;
     const started = new Promise<void>((resolve) => { notifyStarted = resolve; });
     const turnAbort = new AbortController();
-    const executor = new TurnToolExecutor({
+    const executor = new ToolExecutionRuntime({
       sessionId,
       turnId,
       allows: () => true,
@@ -414,7 +419,7 @@ describe('TurnToolExecutor Hook 与权限边界', () => {
       } as never,
       permission: { gate: async () => ({ granted: true }) } as never,
       permCtx: { workspaceRoot: null, sessionId } as never,
-      hooks,
+      lifecycle: createToolLifecycleHooks(hooks, () => undefined),
       toolCtx: {
         sessionId,
         turnId,

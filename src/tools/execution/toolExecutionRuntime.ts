@@ -1,6 +1,6 @@
-// 这里负责把模型产生的工具调用依次完成权限检查、执行、记日志和结果回传。
+// 把模型产生的工具调用依次完成准备、权限检查、执行、审计和结果回传。
 /**
- * TurnToolExecutor 负责带并发控制的流式工具执行。
+ * ToolExecutionRuntime 负责带并发控制的流式工具执行。
  *
  * 执行方式参考 Claude Code 的 StreamingToolExecutor：
  *  - 每次收到 tool_use_complete 就立即调用 addTool()，无需等待模型流结束，
@@ -13,23 +13,26 @@
 
 import { asToolCallId } from '@ema-agent/ids';
 import type { SessionId, ToolCallId, TurnId } from '@ema-agent/ids';
-import type { ToolResultBlock } from '@ema-agent/session';
+import type { ToolExecutionContext, ToolManifestSnapshot } from '../types.js';
+import type { PreparedToolCall } from '../prepared-call.js';
 import type {
   ToolExecutionJournalPort,
   ToolExecutionStatus,
-} from '@ema-agent/tools';
-import { splitToolResult, ToolInputError } from '@ema-agent/tools';
-import type {
-  ToolExecutionContext,
-  PreparedToolCall,
-  ToolResultStore,
-} from '@ema-agent/tools';
+} from '../journal/toolExecutionJournal.js';
+import type { ToolResultStore } from '../results/toolResultStore.js';
+import { splitToolResult } from '../tool-result.js';
+import { ToolInputError } from '../registry.js';
+import type { ToolRegistry } from '../registry.js';
 import type { CommandRunnerPort } from '@ema-agent/sandbox';
-import type { ToolManifestSnapshot } from '@ema-agent/tools';
-import type { PermissionEngine, PermissionContext } from '@ema-agent/permission';
-import type { HookBus, ToolFailurePhase } from '@ema-agent/hooks';
-import type { AgentDeps } from './types.js';
-import type { AgentToolEvent } from './events.js';
+import type {
+  AskPermissionFn,
+  PermissionContext,
+  PermissionEngine,
+  PermissionStreamEvent,
+} from '@ema-agent/permission';
+import type { ToolExecutionEvent, ToolFailurePhase } from '../events.js';
+import type { ToolExecutionResult } from './toolExecutionResult.js';
+import type { ToolLifecycleObserver } from './toolLifecycleObserver.js';
 
 // ── 单个工具的内部状态 ────────────────────────────────────────────────────────
 
@@ -42,7 +45,7 @@ interface TrackedTool {
   isConcurrencySafe: boolean;
   startMs:           number;
   done:              boolean;
-  result?:           ToolResultBlock;
+  result?:           ToolExecutionResult;
   promise?:          Promise<void>;
   preflightFailure?: ToolFailure;
   journalStatus?:    ToolExecutionStatus;
@@ -58,25 +61,32 @@ interface ToolFailure {
 
 // ── 公开配置 ──────────────────────────────────────────────────────────────────
 
-export interface TurnToolExecutorOpts {
+export type ToolExecutionRuntimeEvent = ToolExecutionEvent | PermissionStreamEvent;
+
+export interface ToolExecutionRuntimeOptions {
   sessionId:   SessionId;
   turnId:      TurnId;
   /** 同步策略检查；不在当前 Agent capability 集合中的工具直接拒绝。 */
   allows:      (name: string) => boolean;
   /** 模型看见的同一份不可变工具清单；旧测试适配器可以暂时省略。 */
   toolManifest?: ToolManifestSnapshot;
-  tools:       AgentDeps['tools'];
+  tools:       ToolRegistry;
   permission:  PermissionEngine;
   permCtx:     PermissionContext;
-  hooks:       HookBus;
+  lifecycle?:  ToolLifecycleObserver;
   toolCtx:     ToolExecutionContext;
-  buildAsk?:   AgentDeps['buildAsk'];
+  buildAsk?:   (args: {
+    sessionId: SessionId;
+    turnId: TurnId;
+    toolCallId: ToolCallId;
+    emit: (event: PermissionStreamEvent) => void;
+  }) => AskPermissionFn;
   runner?: CommandRunnerPort;
   /**
    * 把事件写入 Engine 的待发送队列，例如 tool_result 或 permission_required。
    * 实现方还应调用 signal() 唤醒排空循环。
    */
-  pushEv:      (ev: AgentToolEvent) => void;
+  pushEv:      (ev: ToolExecutionRuntimeEvent) => void;
   /**
    * 唤醒 Engine 的排空循环。track.done 变为 true 时会独立于 pushEv 调用，
    * 确保没有新事件时循环也能重新检查 allDone()。
@@ -93,7 +103,7 @@ export interface TurnToolExecutorOpts {
 
 // ── Turn 工具执行器 ───────────────────────────────────────────────────────────
 
-export class TurnToolExecutor {
+export class ToolExecutionRuntime {
   private tracked:    TrackedTool[] = [];
   /**
    * 串行栅栏会在全部非并发工具结束后完成。
@@ -108,7 +118,7 @@ export class TurnToolExecutor {
   private readonly toolAborts = new Map<string, AbortController>();
   private stoppingReason?: string;
 
-  constructor(private readonly opts: TurnToolExecutorOpts) {}
+  constructor(private readonly opts: ToolExecutionRuntimeOptions) {}
 
   /** 取消单个执行中的工具，不中止父 Turn；找不到时返回 false。 */
   abortTool(callId: string): boolean {
@@ -256,7 +266,7 @@ export class TurnToolExecutor {
   }
 
   /** 按 blockIndex 返回工具结果，应在 allDone() 后调用。 */
-  getResults(): ToolResultBlock[] {
+  getResults(): ToolExecutionResult[] {
     const sorted = [...this.tracked]
       .filter(track => track.result !== undefined)
       .sort((left, right) => left.blockIndex - right.blockIndex);
@@ -290,7 +300,7 @@ export class TurnToolExecutor {
 
   private async executeOne(track: TrackedTool): Promise<void> {
     const {
-      sessionId, turnId, permission, permCtx, hooks, toolCtx, tools, buildAsk, runner, signal,
+      sessionId, turnId, permission, permCtx, lifecycle, toolCtx, tools, buildAsk, runner, signal,
     } = this.opts;
     const { id, name, args, prepared } = track;
 
@@ -312,12 +322,10 @@ export class TurnToolExecutor {
       // ── 工具观察 Hook ─────────────────────────────────────────────────────
       // 工具生命周期 Hook 只负责 UI 与审计观察。PermissionEngine 是执行门禁，
       // Sandbox Runner 才是隔离边界。
-      await hooks.trigger('beforeToolUse', {
-        turnId, sessionId,
-        payload: { callId: id, name, args: prepared?.input ?? args },
-        signal: perToolCtrl.signal,
-        emit: event => this.emit(track, event),
-      });
+      await lifecycle?.beforeToolUse(
+        { callId: id, name, args: prepared?.input ?? args },
+        { turnId, sessionId, signal: perToolCtrl.signal },
+      );
 
       // 工具入队后，SkillCall 或未来运行模式可能已经收窄能力。这里在权限审批和
       // 副作用之前重新检查，封住同一轮多个工具调用的策略变更竞态。
@@ -430,11 +438,11 @@ export class TurnToolExecutor {
       // 工具接收单调用信号，因此 abortTool() 只取消当前调用；
       // Turn 级信号会级联触发，确保整个 Turn 中止时两者都生效。
       let output: unknown;
-      let presentation: ToolResultBlock['presentation'];
+      let presentation: ToolExecutionResult['presentation'];
       let isError = false;
 
       try {
-        // running 是副作用边界：只有该状态成功落库后才能真正 dispatch。
+        // running 是副作用边界：只有该状态成功落库后才能真正执行工具。
         this.opts.toolExecutionJournal?.start(id);
         if (this.opts.toolExecutionJournal) track.journalStatus = 'running';
         const executed = splitToolResult(await tools.execute(prepared, perToolCtx));
@@ -465,12 +473,10 @@ export class TurnToolExecutor {
           ...(presentation ? { presentation } : {}),
           durationMs: Date.now() - track.startMs,
         });
-        await hooks.trigger('afterToolUse', {
-          turnId, sessionId,
-          payload: { callId: id, name, output },
-          signal: perToolCtrl.signal,
-          emit: event => this.emit(track, event),
-        });
+        await lifecycle?.afterToolUse(
+          { callId: id, name, output },
+          { turnId, sessionId, signal: perToolCtrl.signal },
+        );
       } catch (err) {
       // 用户只取消了当前工具；从模型视角这是可观察结果，不是 LLM 错误。
         if (perToolCtrl.signal.aborted && !toolCtx.signal.aborted) {
@@ -482,7 +488,7 @@ export class TurnToolExecutor {
           this.completeCancellation(track, 'turn_abort');
           return;
         } else {
-          const failure = classifyDispatchFailure(err);
+          const failure = classifyExecutionFailure(err);
           await this.completeFailure(track, failure, perToolCtrl.signal);
           return;
         }
@@ -562,10 +568,8 @@ export class TurnToolExecutor {
       error: { code: failure.code, message: failure.message },
       durationMs,
     });
-    await this.opts.hooks.trigger('onToolFailure', {
-      turnId: this.opts.turnId,
-      sessionId: this.opts.sessionId,
-      payload: {
+    await this.opts.lifecycle?.onToolFailure(
+      {
         callId: track.id,
         name: track.name,
         phase: failure.phase,
@@ -573,9 +577,12 @@ export class TurnToolExecutor {
         message: failure.message,
         retryable: failure.retryable,
       },
-      signal: hookSignal,
-      emit: event => this.emit(track, event),
-    });
+      {
+        turnId: this.opts.turnId,
+        sessionId: this.opts.sessionId,
+        signal: hookSignal,
+      },
+    );
   }
 
   private completeCancellation(track: TrackedTool, reason = 'user_abort'): void {
@@ -598,7 +605,7 @@ export class TurnToolExecutor {
     };
   }
 
-  private emit(track: TrackedTool, event: AgentToolEvent): void {
+  private emit(track: TrackedTool, event: ToolExecutionRuntimeEvent): void {
     if (!track.suppressEvents) this.opts.pushEv(event);
   }
 
@@ -678,7 +685,7 @@ function classifyPreparationFailure(err: unknown): ToolFailure {
   };
 }
 
-function classifyDispatchFailure(err: unknown): ToolFailure {
+function classifyExecutionFailure(err: unknown): ToolFailure {
   return {
     phase: 'execution',
     code: 'tool/error',

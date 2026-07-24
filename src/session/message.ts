@@ -5,7 +5,7 @@ import type {
 } from '@ema-agent/llm';
 import type { MessageKind, MessageRole } from '@ema-agent/storage';
 import type { TurnContentPart } from '@ema-agent/turn';
-import type { ToolPresentation } from '@ema-agent/tools';
+import type { ToolExecutionResult } from '@ema-agent/tools';
 
 export type AssistantBlock = LlmAssistantBlock;
 export type MessageContentPart = TurnContentPart;
@@ -29,14 +29,8 @@ export interface AttachmentReferenceBlock {
 }
 
 /** Session 比模型消息多保存耗时、错误码和客户端展示数据。 */
-export interface ToolResultBlock {
-  type: 'tool_result';
-  toolUseId: string;
+export interface ToolResultBlock extends Omit<ToolExecutionResult, 'content'> {
   content: string | ToolResultContentPart[];
-  isError?: boolean;
-  durationMs?: number;
-  errorCode?: string;
-  presentation?: ToolPresentation;
 }
 
 export type UserBlock = MessageContentPart | ToolResultBlock | AttachmentReferenceBlock;
@@ -173,7 +167,7 @@ function isTurnContentPart(value: unknown): value is TurnContentPart {
   }
 }
 
-function isToolPresentation(value: unknown): value is ToolPresentation {
+function isToolPresentation(value: unknown): value is NonNullable<ToolExecutionResult['presentation']> {
   return isRecord(value)
     && value.kind === 'file_change'
     && (value.operation === 'create' || value.operation === 'update')

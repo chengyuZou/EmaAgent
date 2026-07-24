@@ -32,7 +32,6 @@ export type {
   AgentLoopEvent,
   AgentRunEvent,
   AgentRuntimeEvent,
-  AgentToolEvent,
   AgentTurnEvent,
   SubagentInnerEvent,
 } from './events.js';

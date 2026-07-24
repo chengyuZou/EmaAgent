@@ -29,6 +29,7 @@ export type {
   FileChangePresentation,
   PendingAskUserPrompt,
   ToolError,
+  ToolFailurePhase,
   ToolPresentation,
   ToolStreamEvent,
   ToolExecutionEvent,
@@ -36,6 +37,18 @@ export type {
 export { SessionFileStateStore } from './sessionFileStateStore.js';
 export type { SessionFileStateEntry } from './sessionFileStateStore.js';
 export type { DeepReadonly, PreparedToolCall } from './prepared-call.js';
+export type { ToolExecutionResult } from './execution/toolExecutionResult.js';
+export type {
+  ToolLifecycleContext,
+  ToolLifecycleObserver,
+} from './execution/toolLifecycleObserver.js';
+export {
+  ToolExecutionRuntime,
+} from './execution/toolExecutionRuntime.js';
+export type {
+  ToolExecutionRuntimeEvent,
+  ToolExecutionRuntimeOptions,
+} from './execution/toolExecutionRuntime.js';
 export { presentToolResult, splitToolResult } from './tool-result.js';
 export type { SplitToolResult } from './tool-result.js';
 

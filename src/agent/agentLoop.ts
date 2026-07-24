@@ -11,7 +11,10 @@ import type {
   ThinkingMode,
   UserBlock,
 } from '@ema-agent/llm';
-import type { ToolResultBlock } from '@ema-agent/session';
+import type {
+  ToolExecutionResult,
+  ToolExecutionRuntime,
+} from '@ema-agent/tools';
 import {
   advanceLlmUsageSnapshot,
   ContextWindowExceededError,
@@ -19,7 +22,6 @@ import {
 import { computePromptPrefixHash, normalizeToolDefinitions } from '@ema-agent/context';
 import type { ModelContextSnapshot } from '@ema-agent/context';
 import type { TurnPolicy } from './policy.js';
-import type { TurnToolExecutor } from './tool-executor.js';
 import {
   advanceAgentLoopState,
   addUsage,
@@ -47,7 +49,7 @@ export type ExecutorFactory<TExecutorEvent> = (internals: {
   pushEv:  (ev: TExecutorEvent) => void;
   /** 工具完成时唤醒等待队列。 */
   signal:  () => void;
-}) => TurnToolExecutor;
+}) => ToolExecutionRuntime;
 
 export interface PrepareLlmCallInput {
   iteration: number;
@@ -420,7 +422,7 @@ export async function* runAgentLoop<TExecutorEvent>(
       yield { type: 'loop_relay', ev: pendingRelayEvents.shift()! };
     }
 
-    const resultBlocks: ToolResultBlock[] = executor.getResults();
+    const resultBlocks: ToolExecutionResult[] = executor.getResults();
 
     const permissionDenials = resultBlocks.filter(
       result => result.isError && result.errorCode === 'permission/denied',

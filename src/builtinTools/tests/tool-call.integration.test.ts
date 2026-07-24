@@ -134,7 +134,8 @@ async function agentLoop(
       let result: unknown;
       let isError = false;
       try {
-        result = await registry.dispatch(block.name, block.args, ctx);
+        const prepared = registry.prepare(block.name, block.args);
+        result = await registry.execute(prepared, ctx);
       } catch (err) {
         result = (err as Error).message;
         isError = true;

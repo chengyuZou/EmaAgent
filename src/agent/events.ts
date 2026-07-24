@@ -1,9 +1,12 @@
 // 定义 AgentLoop 内部事件与 AgentRun 对外执行事件。
 import type { AgentRunId, SessionId, TaskId, TurnId } from '@ema-agent/ids';
 import type { LlmCallId, LlmTokenUsage } from '@ema-agent/llm';
-import type { ToolResultBlock } from '@ema-agent/session';
-import type { SubagentContextMode, ToolError } from '@ema-agent/tools';
-import type { ToolExecutionEvent } from '@ema-agent/tools';
+import type {
+  SubagentContextMode,
+  ToolError,
+  ToolExecutionEvent,
+  ToolExecutionResult,
+} from '@ema-agent/tools';
 import type { TurnStats } from '@ema-agent/turn';
 import type { TurnEvent } from '@ema-agent/turn';
 import type { PermissionStreamEvent } from '@ema-agent/permission';
@@ -37,7 +40,7 @@ export type AgentLoopEvent<TExecutorEvent> =
       promptPrefixHash: string | null;
     }
   | { type: 'loop_hook_abort'; reason: string }
-  | { type: 'loop_tool_results'; results: ToolResultBlock[]; fullText: string }
+  | { type: 'loop_tool_results'; results: ToolExecutionResult[]; fullText: string }
   | { type: 'loop_breaker'; reason: string };
 
 export type SubagentInnerEvent =
@@ -78,10 +81,4 @@ export type AgentRuntimeEvent =
   | PermissionStreamEvent
   | EmotionStreamEvent
   | ContextEvent
-  | HookWarningEvent;
-
-/** 工具执行流水线可以送回 AgentLoop 的事件。 */
-export type AgentToolEvent =
-  | ToolExecutionEvent
-  | PermissionStreamEvent
   | HookWarningEvent;

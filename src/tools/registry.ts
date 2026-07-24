@@ -294,18 +294,6 @@ export class ToolRegistry {
     return this.preparedTool(prepared).unsafeExecute(prepared.input, ctx);
   }
 
-  /**
-   * 兼容无需外部审批的可信调用方。Agent 主链必须显式使用 prepare() →
-   * PermissionEngine.gate() → execute()，不能通过此方法跨过审批快照边界。
-   */
-  async dispatch(
-    name: string,
-    rawArgs: unknown,
-    ctx: ToolExecutionContext,
-  ): Promise<unknown> {
-    return this.execute(this.prepare(name, rawArgs), ctx);
-  }
-
   private preparedTool(prepared: PreparedToolCall): AnyBuiltTool {
     const preparedObject = prepared as object;
     const tool = this.preparedCalls.get(preparedObject);

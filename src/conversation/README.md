@@ -188,7 +188,7 @@ narrative:recall (beforeLlm, priority 5)
 |---|---|---|
 | 模式 | chat / narrative | agent (full / plan / debug) |
 | LLM 调用 | 单次 stream | 多轮 think→act loop |
-| 工具执行 | 无 | TurnToolExecutor 并发执行 |
+| 工具执行 | 无 | ToolExecutionRuntime 并发执行 |
 | 迭代上限 | 1 次 | 10 / 15 / 30 次 |
 | blockIndex | 跟随 provider chunk；支持 text/thinking 交错，但不执行工具 | 多 block（text + thinking + tool_use 交错） |
 | 共享的事件 | beforeLlm, afterLlmComplete, afterMessage, onTurnStart, onTurnEnd, onTurnAbort | 同左 |

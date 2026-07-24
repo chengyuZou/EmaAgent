@@ -10,7 +10,7 @@ Permission 只回答一个问题：**一次工具调用能不能执行**。它�
 
 ## 主入口
 
-`PermissionEngine.gate(tool, input, meta, context)` 是唯一裁决入口。Agent 主链固定调用 `ToolRegistry.prepare() -> PermissionEngine.gate() -> ToolRegistry.execute()`，禁止通过 `ToolRegistry.dispatch()` 绕过审批快照边界。
+`PermissionEngine.gate(tool, input, meta, context)` 是唯一裁决入口。Agent 主链固定调用 `ToolRegistry.prepare() -> PermissionEngine.gate() -> ToolRegistry.execute()`，Registry 不提供跳过审批快照的组合执行捷径。
 
 ## 12 步流水线
 
@@ -158,7 +158,7 @@ rel/**          同上，相对 scope 根
 ## 已知缺口（不本批修）
 
 - **DecisionReason 不落盘审计**：结构完整（8 种类型），但无 Repository 写入。需 storage 协作。
-- **`ToolRegistry.dispatch()` 后门**：prepare->execute 旁路，EmaRefactor §859 已列删除，归 Tool 重构批次。
+- **`ToolRegistry.dispatch()` 后门已删除**：可信调用方也必须显式建立 `PreparedToolCall`，Agent 主链继续在同一快照上完成审批与执行。
 - **Bash 命令路径未进 permission 检查**：BashTool 未实现 `extractPath`，命令字符串里的路径（`cat /etc/passwd`）不经 path-safety。归 BashTool/sandbox 批次。
 
 ## 不做

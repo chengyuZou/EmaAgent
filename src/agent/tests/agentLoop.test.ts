@@ -3,8 +3,8 @@ import { describe, expect, it, vi } from 'vitest';
 import { ContextWindowExceededError } from '@ema-agent/llm';
 import type { LlmCallId, Message as ModelMessage } from '@ema-agent/llm';
 import type { ModelContextSnapshot } from '@ema-agent/context';
+import type { ToolExecutionRuntime } from '@ema-agent/tools';
 import type { TurnPolicy } from '../policy.js';
-import type { TurnToolExecutor } from '../tool-executor.js';
 import {
   runAgentLoop,
   type AgentLoopEvent,
@@ -18,14 +18,14 @@ function makePolicy(): TurnPolicy {
   } as unknown as TurnPolicy;
 }
 
-function makeExecutor(): TurnToolExecutor {
+function makeExecutor(): ToolExecutionRuntime {
   return {
     reset: () => undefined,
     addTool: () => undefined,
     allDone: () => true,
     hasWaitingUserTool: () => false,
     getResults: () => [],
-  } as unknown as TurnToolExecutor;
+  } as unknown as ToolExecutionRuntime;
 }
 
 async function collectAgentLoop(
@@ -158,7 +158,7 @@ describe('AgentLoop LLM 生命周期', () => {
         isError: true,
         errorCode: 'permission/denied',
       }],
-    } as unknown as TurnToolExecutor;
+    } as unknown as ToolExecutionRuntime;
     const result = await collectAgentLoop(runAgentLoop<never>({
       messages: [{ role: 'user', content: 'publish it' }],
       policy: makePolicy(),

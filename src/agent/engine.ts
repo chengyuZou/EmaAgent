@@ -3,12 +3,16 @@
 import type { TurnFailureCode } from '@ema-agent/turn';
 import { asAgentRunId } from '@ema-agent/ids';
 import type { MessageBlocks } from '@ema-agent/session';
-import type { ToolExecutionContext, ReadFileState } from '@ema-agent/tools';
+import {
+  ToolExecutionRuntime,
+  type ToolExecutionContext,
+  type ReadFileState,
+} from '@ema-agent/tools';
 import type { PermissionContext } from '@ema-agent/permission';
 import type { TurnFailurePhase } from '@ema-agent/hooks';
 import type { AgentDeps, TurnExecutionInput } from './types.js';
 import { TurnPolicy } from './policy.js';
-import { TurnToolExecutor } from './tool-executor.js';
+import { createToolLifecycleHooks } from './toolLifecycleHooks.js';
 import { runAgentLoop, type ExecutorFactory } from './agentLoop.js';
 import { SubagentSpawner } from './spawner.js';
 import {
@@ -37,7 +41,7 @@ export class AgentEngine {
   // 路由按 turnId 定位 Spawner，以便只取消某个子 Agent。
   private readonly activeSpawners  = new Map<string, SubagentSpawner>();
   // 路由按 turnId 定位 Executor，以便只取消某个工具调用。
-  private readonly activeExecutors = new Map<string, TurnToolExecutor>();
+  private readonly activeExecutors = new Map<string, ToolExecutionRuntime>();
 
   constructor(private readonly deps: AgentDeps) {}
 
@@ -62,7 +66,7 @@ async function* runTurn(
   deps:            AgentDeps,
   input:           TurnExecutionInput,
   activeSpawners:  Map<string, SubagentSpawner>,
-  activeExecutors: Map<string, TurnToolExecutor>,
+  activeExecutors: Map<string, ToolExecutionRuntime>,
 ): AsyncIterable<AgentRuntimeEvent> {
   const { session, hooks, llm, emotion, tools, permission, askUserRegistry } = deps;
   const { turn, signal, userInput, workspaceRoot, providerId, model } = input;
@@ -103,7 +107,7 @@ async function* runTurn(
   };
   let activePhase: TurnFailurePhase = 'setup';
   let failureReported = false;
-  let turnExecutor: TurnToolExecutor | undefined;
+  let turnExecutor: ToolExecutionRuntime | undefined;
   let turnSpawner: SubagentSpawner | undefined;
   let spawnerStopped = false;
   const stopSpawner = async (reason: string): Promise<void> => {
@@ -283,11 +287,12 @@ async function* runTurn(
           : undefined,
       };
 
-      const executor = new TurnToolExecutor({
+      const executor = new ToolExecutionRuntime({
         sessionId, turnId,
         allows:          name => policy.allows(name),
         toolManifest:    policy.manifestSnapshot(),
-        tools, permission, permCtx, hooks, toolCtx,
+        tools, permission, permCtx, toolCtx,
+        lifecycle: createToolLifecycleHooks(hooks, pushEv),
         buildAsk:        deps.buildAsk,
         runner:          resolvedRunner,
         pushEv,

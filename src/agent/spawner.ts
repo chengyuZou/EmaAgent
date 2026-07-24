@@ -10,9 +10,10 @@ import type {
   SubagentSpawnOpts,
   ToolExecutionContext,
 } from '@ema-agent/tools';
+import { ToolExecutionRuntime } from '@ema-agent/tools';
 import type { AgentDeps } from './types.js';
 import { TurnPolicy } from './policy.js';
-import { TurnToolExecutor } from './tool-executor.js';
+import { createToolLifecycleHooks } from './toolLifecycleHooks.js';
 import { runAgentLoop, type ExecutorFactory } from './agentLoop.js';
 import { selectSubagentTools } from './subagent-capabilities.js';
 import { TurnBudget } from './turn-budget.js';
@@ -204,7 +205,7 @@ export class SubagentSpawner implements ISubagentSpawner {
       messages = [...sharedPrefix, { role: 'user', content: prompt }];
     }
 
-    let subagentExecutor: TurnToolExecutor | undefined;
+    let subagentExecutor: ToolExecutionRuntime | undefined;
     const buildExecutor: ExecutorFactory<AgentRuntimeEvent> = ({ pushEv, signal: wakeSignal }) => {
       // 子 ToolContext 故意不注入 subagentSpawner，以此把递归深度限制为一层。
       // 多层嵌套需要资源预算、邮箱死锁与级联取消设计，V1 不开放。
@@ -224,12 +225,13 @@ export class SubagentSpawner implements ISubagentSpawner {
         scratchpadAuthor: `subagent:${agentRunId.slice(0, 8)}`,
       };
 
-      const executor = new TurnToolExecutor({
+      const executor = new ToolExecutionRuntime({
         sessionId,
         turnId:     parentTurnId,
         allows:     name => policy.allows(name),
         toolManifest: policy.manifestSnapshot(),
-        tools, permission, permCtx, hooks, toolCtx,
+        tools, permission, permCtx, toolCtx,
+        lifecycle: createToolLifecycleHooks(hooks, pushEv),
         buildAsk:   this.deps.buildAsk,
         pushEv,
         signal:     wakeSignal,

@@ -850,6 +850,9 @@ importers:
       '@ema-agent/session':
         specifier: workspace:*
         version: link:../session
+      '@ema-agent/tools':
+        specifier: workspace:*
+        version: link:../tools
       '@ema-agent/turn':
         specifier: workspace:*
         version: link:../turn

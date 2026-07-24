@@ -1,9 +1,11 @@
 // 这里测试同一轮模型响应中，Skill 收窄能力后已入队的后续工具也不能越权执行。
 import { describe, expect, it, vi } from 'vitest';
-import { createToolManifestSnapshot, type BuiltTool } from '@ema-agent/tools';
-import { HookBus } from '@ema-agent/hooks';
+import {
+  createToolManifestSnapshot,
+  ToolExecutionRuntime,
+  type BuiltTool,
+} from '@ema-agent/tools';
 import { TurnPolicy } from '../policy.js';
-import { TurnToolExecutor } from '../tool-executor.js';
 
 describe('Skill capability 与工具执行器集成', () => {
   it('在 Permission Engine 前重新检查 Skill 更新后的能力作用域', async () => {
@@ -39,14 +41,13 @@ describe('Skill capability 与工具执行器集成', () => {
       },
     };
 
-    const executor = new TurnToolExecutor({
+    const executor = new ToolExecutionRuntime({
       sessionId: 'session-skill' as never,
       turnId: 'turn-skill' as never,
       allows: name => policy.allows(name),
       tools: tools as never,
       permission: { gate: permissionGate } as never,
       permCtx: { workspaceRoot: null } as never,
-      hooks: new HookBus(),
       toolCtx: {
         sessionId: 'session-skill',
         turnId: 'turn-skill',
