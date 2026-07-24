@@ -29,6 +29,7 @@ describe('Skill capability 与工具执行器集成', () => {
         requiresUserInteraction: false,
         maxResultBytes: 1024,
       }),
+      validateContext: () => ({ valid: true, context: {} }),
       execute: async (prepared: { name: string }) => {
         dispatched.push(prepared.name);
         if (prepared.name === 'SkillCall') {

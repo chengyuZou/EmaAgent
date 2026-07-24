@@ -1,11 +1,21 @@
 // 创建持久 Task，并把同一份结构化快照返回模型、发送给前端。
 
 import { z } from 'zod';
-import { asSessionId, asTurnId } from '@ema-agent/ids';
+import type { SessionId, TurnId } from '@ema-agent/ids';
 import { buildTool } from '@ema-agent/tools';
-import type { ToolExecutionScope } from '@ema-agent/tools';
-import type { TaskSnapshot } from '@ema-agent/tasks';
+import type { ToolExecutionEvent } from '@ema-agent/tools';
+import type { TaskSnapshot, TaskStorePort } from '@ema-agent/tasks';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
+import type { BuiltinToolContext } from '../../builtinToolContext.js';
+import { contextFail, contextOk } from '../../contextValidation.js';
+
+/** Task 写入工具的窄 Context：持久存储 + 可选事件输出 + 调用身份。 */
+interface TaskCreateToolContext {
+  taskStore: TaskStorePort;
+  emit?: (event: ToolExecutionEvent) => void;
+  sessionId: SessionId;
+  turnId: TurnId;
+}
 
 const inputSchema = z.object({
   subject: z
@@ -36,7 +46,7 @@ export interface TaskCreateResult {
   task: TaskSnapshot;
 }
 
-export const TaskCreateTool = buildTool<TaskCreateInput, TaskCreateResult>({
+export const TaskCreateTool = buildTool<TaskCreateInput, TaskCreateResult, BuiltinToolContext, TaskCreateToolContext>({
   id: BuiltinTools.TaskCreate.id,
   name: BuiltinTools.TaskCreate.name,
   description: `Create a persistent task in the current Session's structured task list.
@@ -59,20 +69,33 @@ New tasks always start as pending. Mark a task in_progress before beginning it a
     accessType: 'write',
   },
 
-  async execute(input, ctx, scope): Promise<TaskCreateResult> {
-    const store = requireTaskStore(scope);
-    const task = store.create({
-      sessionId: asSessionId(ctx.sessionId),
-      turnId: asTurnId(ctx.turnId),
+  requires: ['taskStore'],
+
+  validateContext(ctx) {
+    if (!ctx.taskStore) {
+      return contextFail('Task tools are available only in the root Work Turn.');
+    }
+    return contextOk({
+      taskStore: ctx.taskStore,
+      ...(ctx.emit ? { emit: ctx.emit } : {}),
+      sessionId: ctx.sessionId,
+      turnId: ctx.turnId,
+    });
+  },
+
+  async execute(input, context): Promise<TaskCreateResult> {
+    const task = context.taskStore.create({
+      sessionId: context.sessionId,
+      turnId: context.turnId,
       subject: input.subject,
       description: input.description,
       activeForm: input.activeForm,
     });
-    const snapshot = store.toSnapshot(task);
-    scope.emit?.({
+    const snapshot = context.taskStore.toSnapshot(task);
+    context.emit?.({
       type: 'task_created',
       sessionId: snapshot.sessionId,
-      turnId: asTurnId(ctx.turnId),
+      turnId: context.turnId,
       task: snapshot,
     });
     return {
@@ -81,10 +104,3 @@ New tasks always start as pending. Mark a task in_progress before beginning it a
     };
   },
 });
-
-function requireTaskStore(scope: ToolExecutionScope) {
-  if (!scope.taskStore) {
-    throw new Error('Task tools are available only in the root Work Turn.');
-  }
-  return scope.taskStore;
-}

@@ -1,9 +1,15 @@
 // 通过已配置的搜索服务返回有界的网页搜索结果。
 import { z } from 'zod';
 import { buildTool } from '@ema-agent/tools';
-import type { ToolInvocationContext } from '@ema-agent/tools';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
+import type { BuiltinToolContext } from '../../builtinToolContext.js';
+import { contextOk } from '../../contextValidation.js';
 import { fetchBounded } from '../shared/BoundedFetch.js';
+
+/** WebSearch 工具的窄 Context：per-call 取消信号。 */
+interface WebSearchToolContext {
+  signal: AbortSignal;
+}
 
 const SEARCH_TIMEOUT_MS = 20_000;
 const API_RESPONSE_LIMIT = 5 * 1024 * 1024;
@@ -59,7 +65,7 @@ export interface WebSearchResult {
 
 // ── 工具定义 ───────────────────────────────────────────────────────────────────
 
-export const WebSearchTool = buildTool<WebSearchInput, WebSearchResult>({
+export const WebSearchTool = buildTool<WebSearchInput, WebSearchResult, BuiltinToolContext, WebSearchToolContext>({
   id: BuiltinTools.WebSearch.id,
   name: BuiltinTools.WebSearch.name,
   description: `Search the web and return a list of relevant results (title, URL, snippet).
@@ -78,9 +84,13 @@ Adapter priority (uses the first configured one):
     accessType: 'read',
   },
 
-  async execute(input: WebSearchInput, ctx: ToolInvocationContext): Promise<WebSearchResult> {
+  validateContext(ctx) {
+    return contextOk({ signal: ctx.signal });
+  },
+
+  async execute(input: WebSearchInput, context: WebSearchToolContext): Promise<WebSearchResult> {
     const { query, num_results } = input;
-    const results = await search(query, num_results, ctx.signal);
+    const results = await search(query, num_results, context.signal);
     return { query, results };
   },
 });

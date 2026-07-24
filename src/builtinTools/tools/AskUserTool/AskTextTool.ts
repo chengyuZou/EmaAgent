@@ -3,13 +3,20 @@ import { randomUUID } from 'node:crypto';
 import { createInterface } from 'node:readline/promises';
 import { z } from 'zod';
 import { buildTool } from '@ema-agent/tools';
-import type {
-  ToolExecutionScope,
-  ToolInvocationContext,
-} from '@ema-agent/tools';
 import type { SessionId, TurnId } from '@ema-agent/ids';
 import type { ToolExecutionEvent as EmaStreamEvent } from '@ema-agent/tools';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
+import type { AskUserPort, BuiltinToolContext } from '../../builtinToolContext.js';
+import { contextOk } from '../../contextValidation.js';
+
+/** AskText 工具的窄 Context：可选 SSE 输出 + 可选问询解析器 + 调用身份。 */
+interface AskTextToolContext {
+  emit?: (event: EmaStreamEvent) => void;
+  askUser?: AskUserPort;
+  sessionId: SessionId;
+  turnId: TurnId;
+  signal: AbortSignal;
+}
 
 const inputSchema = z.object({
   question:         z.string().min(1).describe('The question to ask the user.'),
@@ -23,7 +30,7 @@ export interface AskTextResult {
   text: string;
 }
 
-export const AskTextTool = buildTool<AskTextInput, AskTextResult>({
+export const AskTextTool = buildTool<AskTextInput, AskTextResult, BuiltinToolContext, AskTextToolContext>({
   id: BuiltinTools.AskText.id,
   name: BuiltinTools.AskText.name,
   description: `Ask the user a single open-ended question and wait for a free-text answer.
@@ -41,30 +48,40 @@ Prefer this over AskUser for a single freeform question - the UI shows a focused
     accessType: 'write',
   },
 
+  // 总是可用：有 emit+askUser 走 SSE，否则 CLI 兜底。
+  validateContext(ctx) {
+    return contextOk({
+      ...(ctx.emit ? { emit: ctx.emit } : {}),
+      ...(ctx.askUser ? { askUser: ctx.askUser } : {}),
+      sessionId: ctx.sessionId,
+      turnId: ctx.turnId,
+      signal: ctx.signal,
+    });
+  },
+
   async execute(
     input: AskTextInput,
-    ctx: ToolInvocationContext,
-    scope: ToolExecutionScope,
+    context: AskTextToolContext,
   ): Promise<AskTextResult> {
-    if (scope.emit && scope.askUser) {
+    if (context.emit && context.askUser) {
       const promptId = randomUUID();
       const request = {
         type:             'ask_text_required',
-        sessionId:        ctx.sessionId as SessionId,
-        turnId:           ctx.turnId as TurnId,
+        sessionId:        context.sessionId,
+        turnId:           context.turnId,
         promptId,
         question:         input.question,
         humanDescription: input.humanDescription,
         placeholder:      input.placeholder,
       } satisfies EmaStreamEvent;
-      scope.emit(request);
+      context.emit(request);
 
-      const { answers } = await scope.askUser(promptId, [], request);
+      const { answers } = await context.askUser(promptId, [], request);
       const text = answers['text'] ?? '';
 
-      scope.emit({
+      context.emit({
         type:      'ask_text_resolved',
-        sessionId: ctx.sessionId as SessionId,
+        sessionId: context.sessionId,
         promptId,
         text,
       } satisfies EmaStreamEvent);
@@ -74,7 +91,7 @@ Prefer this over AskUser for a single freeform question - the UI shows a focused
 
     // CLI 兜底
     const rl = createInterface({ input: process.stdin, output: process.stdout });
-    ctx.signal.addEventListener('abort', () => rl.close(), { once: true });
+    context.signal.addEventListener('abort', () => rl.close(), { once: true });
     const text = await rl.question(`\n${input.question}\nAnswer: `);
     rl.close();
     return { text: text.trim() };

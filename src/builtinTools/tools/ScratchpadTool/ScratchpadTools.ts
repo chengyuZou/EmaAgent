@@ -2,9 +2,10 @@
 
 import { z } from 'zod';
 import { buildTool } from '@ema-agent/tools';
-import type { ToolExecutionScope } from '@ema-agent/tools';
 import { estimateTextTokens } from '@ema-agent/token';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
+import type { BuiltinToolContext, ScratchpadPort } from '../../builtinToolContext.js';
+import { contextFail, contextOk } from '../../contextValidation.js';
 import {
   SCRATCHPAD_KEY_RE,
   writeScratchpadEntry,
@@ -20,18 +21,24 @@ import {
 export const KEY_RE = SCRATCHPAD_KEY_RE;
 const KEY_SCHEMA = z.string().regex(KEY_RE, 'Key must be 1–64 characters: letters, digits, _ or -');
 
-// ── 辅助函数 ───────────────────────────────────────────────────────────────────
+// ── 窄 Context ─────────────────────────────────────────────────────────────────
 
-function requireDir(scope: ToolExecutionScope): string {
-  if (!scope.scratchpadDir) {
-    throw new Error(
-      'Scratchpad is not available in this context. ' +
-      'It is only enabled during agent-mode turns with a configured data directory.',
-    );
-  }
-  return scope.scratchpadDir;
+/** Scratchpad 工具族的窄 Context：Turn 级临时存储位置 + per-call 取消信号。 */
+interface ScratchpadToolContext {
+  scratchpad: ScratchpadPort;
+  signal: AbortSignal;
 }
 
+/** validateContext 共用：scratchpad 必须装配，否则工具不可用。 */
+function validateScratchpad(ctx: BuiltinToolContext) {
+  if (!ctx.scratchpad) {
+    return contextFail('Scratchpad 未装配（需要配置数据目录）。');
+  }
+  return contextOk<ScratchpadToolContext>({
+    scratchpad: ctx.scratchpad,
+    signal: ctx.signal,
+  });
+}
 
 // ── ScratchpadWrite ───────────────────────────────────────────────────────────
 
@@ -49,7 +56,9 @@ const writeSchema = z.object({
 
 export const ScratchpadWriteTool = buildTool<
   z.infer<typeof writeSchema>,
-  { key: string; bytes: number; estimatedTokens: number }
+  { key: string; bytes: number; estimatedTokens: number },
+  BuiltinToolContext,
+  ScratchpadToolContext
 >({
   id: BuiltinTools.ScratchpadWrite.id,
   name: BuiltinTools.ScratchpadWrite.name,
@@ -73,14 +82,17 @@ The scratchpad is automatically deleted when the turn ends.`,
     internalPathCapability: 'turnScratchpad',
   },
 
-  async execute(input, ctx, scope) {
+  requires: ['scratchpad'],
+  validateContext: validateScratchpad,
+
+  async execute(input, context: ScratchpadToolContext) {
     const { value, bytes } = await writeScratchpadEntry({
-      dir: requireDir(scope),
+      dir: context.scratchpad.dir,
       key: input.key,
       value: input.value,
       append: input.append ?? false,
-      author: scope.scratchpadAuthor ?? 'main',
-      signal: ctx.signal,
+      author: context.scratchpad.author,
+      signal: context.signal,
     });
     const estimatedTokens = estimateTextTokens(value);
     return { key: input.key, bytes, estimatedTokens };
@@ -95,7 +107,9 @@ const readSchema = z.object({
 
 export const ScratchpadReadTool = buildTool<
   z.infer<typeof readSchema>,
-  { value: string; bytes: number; estimatedTokens: number } | { value: null }
+  { value: string; bytes: number; estimatedTokens: number } | { value: null },
+  BuiltinToolContext,
+  ScratchpadToolContext
 >({
   id: BuiltinTools.ScratchpadRead.id,
   name: BuiltinTools.ScratchpadRead.name,
@@ -113,8 +127,11 @@ export const ScratchpadReadTool = buildTool<
     internalPathCapability: 'turnScratchpad',
   },
 
-  async execute(input, _ctx, scope) {
-    const value = await readScratchpadEntry(requireDir(scope), input.key);
+  requires: ['scratchpad'],
+  validateContext: validateScratchpad,
+
+  async execute(input, context: ScratchpadToolContext) {
+    const value = await readScratchpadEntry(context.scratchpad.dir, input.key);
     if (value === null) return { value: null };
     return {
       value,
@@ -128,7 +145,9 @@ export const ScratchpadReadTool = buildTool<
 
 export const ScratchpadListTool = buildTool<
   Record<never, never>,
-  { keys: Array<{ key: string; bytes: number; estimatedTokens: number; author: string }>; totalBytes: number }
+  { keys: Array<{ key: string; bytes: number; estimatedTokens: number; author: string }>; totalBytes: number },
+  BuiltinToolContext,
+  ScratchpadToolContext
 >({
   id: BuiltinTools.ScratchpadList.id,
   name: BuiltinTools.ScratchpadList.name,
@@ -147,8 +166,11 @@ export const ScratchpadListTool = buildTool<
     internalPathCapability: 'turnScratchpad',
   },
 
-  async execute(_input, _ctx, scope) {
-    const entries = await listScratchpadEntries(requireDir(scope));
+  requires: ['scratchpad'],
+  validateContext: validateScratchpad,
+
+  async execute(_input, context: ScratchpadToolContext) {
+    const entries = await listScratchpadEntries(context.scratchpad.dir);
     const keys = entries.map(({ key, bytes, author }) => ({
       key,
       bytes,
@@ -168,7 +190,7 @@ const deleteSchema = z.object({
   key: KEY_SCHEMA.describe('Key to delete. No-op if the key does not exist.'),
 });
 
-export const ScratchpadDeleteTool = buildTool<z.infer<typeof deleteSchema>, { deleted: boolean }>({
+export const ScratchpadDeleteTool = buildTool<z.infer<typeof deleteSchema>, { deleted: boolean }, BuiltinToolContext, ScratchpadToolContext>({
   id: BuiltinTools.ScratchpadDelete.id,
   name: BuiltinTools.ScratchpadDelete.name,
   description:
@@ -185,14 +207,17 @@ export const ScratchpadDeleteTool = buildTool<z.infer<typeof deleteSchema>, { de
     internalPathCapability: 'turnScratchpad',
   },
 
-  async execute(input, _ctx, scope) {
-    return { deleted: await deleteScratchpadEntry(requireDir(scope), input.key) };
+  requires: ['scratchpad'],
+  validateContext: validateScratchpad,
+
+  async execute(input, context: ScratchpadToolContext) {
+    return { deleted: await deleteScratchpadEntry(context.scratchpad.dir, input.key) };
   },
 });
 
 // ── ScratchpadClear ───────────────────────────────────────────────────────────
 
-export const ScratchpadClearTool = buildTool<Record<never, never>, { cleared: number }>({
+export const ScratchpadClearTool = buildTool<Record<never, never>, { cleared: number }, BuiltinToolContext, ScratchpadToolContext>({
   id: BuiltinTools.ScratchpadClear.id,
   name: BuiltinTools.ScratchpadClear.name,
   description:
@@ -210,7 +235,10 @@ export const ScratchpadClearTool = buildTool<Record<never, never>, { cleared: nu
     internalPathCapability: 'turnScratchpad',
   },
 
-  async execute(_input, _ctx, scope) {
-    return { cleared: await clearScratchpad(requireDir(scope)) };
+  requires: ['scratchpad'],
+  validateContext: validateScratchpad,
+
+  async execute(_input, context: ScratchpadToolContext) {
+    return { cleared: await clearScratchpad(context.scratchpad.dir) };
   },
 });

@@ -2,10 +2,16 @@
 import { z } from 'zod';
 import { isObviouslyUnsafePublicUrl } from '@ema-agent/public-http';
 import { buildTool } from '@ema-agent/tools';
-import type { ToolInvocationContext } from '@ema-agent/tools';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
+import type { BuiltinToolContext } from '../../builtinToolContext.js';
+import { contextOk } from '../../contextValidation.js';
 import { fetchPublicPage } from './httpClient.js';
 import { htmlToMarkdown } from './htmlToMarkdown.js';
+
+/** WebFetch 工具的窄 Context：per-call 取消信号。 */
+interface WebFetchToolContext {
+  signal: AbortSignal;
+}
 
 // ── 常量 ─────────────────────────────────────────────────────────────────────
 
@@ -48,7 +54,7 @@ export interface WebFetchResult {
 
 // ── 工具定义 ───────────────────────────────────────────────────────────────────
 
-export const WebFetchTool = buildTool<WebFetchInput, WebFetchResult>({
+export const WebFetchTool = buildTool<WebFetchInput, WebFetchResult, BuiltinToolContext, WebFetchToolContext>({
   id: BuiltinTools.WebFetch.id,
   name: BuiltinTools.WebFetch.name,
   description: `Fetch a URL and return its content as Markdown (or raw HTML if raw: true).
@@ -73,11 +79,15 @@ export const WebFetchTool = buildTool<WebFetchInput, WebFetchResult>({
     },
   },
 
-  async execute(input: WebFetchInput, ctx: ToolInvocationContext): Promise<WebFetchResult> {
+  validateContext(ctx) {
+    return contextOk({ signal: ctx.signal });
+  },
+
+  async execute(input: WebFetchInput, context: WebFetchToolContext): Promise<WebFetchResult> {
     const { url, max_length, start_index, raw } = input;
 
     const startMs  = Date.now();
-    const response = await fetchPublicPage(url, ctx.signal);
+    const response = await fetchPublicPage(url, context.signal);
     let content = raw ? response.body : htmlToMarkdown(response.body);
 
     const totalLength = content.length;

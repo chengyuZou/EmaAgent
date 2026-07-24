@@ -1,11 +1,19 @@
 // 读取单个 Task 的完整字段、依赖与当前活动 AgentRun。
 
 import { z } from 'zod';
-import { asSessionId, asTaskId } from '@ema-agent/ids';
+import { asTaskId } from '@ema-agent/ids';
+import type { SessionId } from '@ema-agent/ids';
 import { buildTool } from '@ema-agent/tools';
-import type { ToolExecutionScope } from '@ema-agent/tools';
-import type { TaskSnapshot } from '@ema-agent/tasks';
+import type { TaskSnapshot, TaskStorePort } from '@ema-agent/tasks';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
+import type { BuiltinToolContext } from '../../builtinToolContext.js';
+import { contextFail, contextOk } from '../../contextValidation.js';
+
+/** Task 读取工具的窄 Context：持久存储 + 调用身份。 */
+interface TaskGetToolContext {
+  taskStore: TaskStorePort;
+  sessionId: SessionId;
+}
 
 const inputSchema = z.object({
   taskId: z.string().uuid().describe('The stable UUID of the task to retrieve.'),
@@ -18,7 +26,7 @@ export interface TaskGetResult {
   task: TaskSnapshot | null;
 }
 
-export const TaskGetTool = buildTool<TaskGetInput, TaskGetResult>({
+export const TaskGetTool = buildTool<TaskGetInput, TaskGetResult, BuiltinToolContext, TaskGetToolContext>({
   id: BuiltinTools.TaskGet.id,
   name: BuiltinTools.TaskGet.name,
   description: `Retrieve one task from the current Session by its stable taskId.
@@ -35,21 +43,25 @@ Use this before updating a task so you have its latest version, full description
     accessType: 'read',
   },
 
-  async execute(input, ctx, scope): Promise<TaskGetResult> {
-    const store = requireTaskStore(scope);
-    const task = store.get(asSessionId(ctx.sessionId), asTaskId(input.taskId));
+  requires: ['taskStore'],
+
+  validateContext(ctx) {
+    if (!ctx.taskStore) {
+      return contextFail('Task tools are available only in the root Work Turn.');
+    }
+    return contextOk({
+      taskStore: ctx.taskStore,
+      sessionId: ctx.sessionId,
+    });
+  },
+
+  async execute(input, context): Promise<TaskGetResult> {
+    const task = context.taskStore.get(context.sessionId, asTaskId(input.taskId));
     return task
       ? {
           message: `Task #${task.displayNumber}: ${task.subject}`,
-          task: store.toSnapshot(task),
+          task: context.taskStore.toSnapshot(task),
         }
       : { message: 'Task not found in the current Session.', task: null };
   },
 });
-
-function requireTaskStore(scope: ToolExecutionScope) {
-  if (!scope.taskStore) {
-    throw new Error('Task tools are available only in the root Work Turn.');
-  }
-  return scope.taskStore;
-}

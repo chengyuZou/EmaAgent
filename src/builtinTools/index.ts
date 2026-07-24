@@ -35,6 +35,11 @@ import {
 import { BuiltinTools } from './BuiltinToolIdentity.js';
 import type { ToolRegistry, BuiltTool } from '@ema-agent/tools';
 
+// ── 宿主 Context 与装配 ──────────────────────────────────────────────────────
+export type { BuiltinToolContext, ScratchpadPort, AskUserPort } from './builtinToolContext.js';
+export { assembleToolPool } from './assembleToolPool.js';
+export { contextOk, contextFail } from './contextValidation.js';
+
 // ── 单个工具导出 ──────────────────────────────────────────────────────────────
 
 export {
@@ -101,7 +106,7 @@ export type {
 // ── 注册 ──────────────────────────────────────────────────────────────────────
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const ALL_BUILTIN_TOOLS: BuiltTool<any, any>[] = [
+const ALL_BUILTIN_TOOLS: BuiltTool<any, any, any>[] = [
   FileReadTool,
   FileWriteTool,
   FileEditTool,

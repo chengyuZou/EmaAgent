@@ -3,9 +3,17 @@ import { z } from 'zod';
 import { buildTool } from '@ema-agent/tools';
 import type {
   SkillRunnerPort,
-  ToolExecutionScope,
+  ToolCapabilityScope,
 } from '@ema-agent/tools';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
+import type { BuiltinToolContext } from '../../builtinToolContext.js';
+import { contextFail, contextOk } from '../../contextValidation.js';
+
+/** SkillCall 工具的窄 Context：Skill 运行器 + 工具能力边界。 */
+interface SkillCallToolContext {
+  skillRunner: SkillRunnerPort;
+  toolCapabilities: ToolCapabilityScope;
+}
 
 // ── 输入 schema ──────────────────────────────────────────────────────────────
 
@@ -27,7 +35,7 @@ export interface SkillCallResult {
 
 // ── 工具定义 ───────────────────────────────────────────────────────────────────
 
-export const SkillCallTool = buildTool<SkillCallInput, SkillCallResult>({
+export const SkillCallTool = buildTool<SkillCallInput, SkillCallResult, BuiltinToolContext, SkillCallToolContext>({
   id: BuiltinTools.SkillCall.id,
   name: BuiltinTools.SkillCall.name,
   description: `Invoke a named Skill (slash command) and return its output.
@@ -43,26 +51,25 @@ Skills are pre-defined prompt templates or automation sequences registered in se
     accessType: 'execute',
   },
 
-  async execute(input: SkillCallInput, _ctx, scope: ToolExecutionScope): Promise<SkillCallResult> {
-    const skillRunner: SkillRunnerPort | undefined = scope.skillRunner;
-    if (!skillRunner) {
-      throw new Error(
-        'Skill runner is not configured. Ensure skills are loaded before using SkillCall.',
-      );
-    }
+  requires: ['skillRunner', 'toolCapabilities'],
 
-    const activation = await skillRunner.run(input.skill, input.args);
+  validateContext(ctx) {
+    if (!ctx.skillRunner || !ctx.toolCapabilities) {
+      return contextFail('当前没有 Skill 执行能力。');
+    }
+    return contextOk({
+      skillRunner: ctx.skillRunner,
+      toolCapabilities: ctx.toolCapabilities,
+    });
+  },
+
+  async execute(input: SkillCallInput, context: SkillCallToolContext): Promise<SkillCallResult> {
+    const activation = await context.skillRunner.run(input.skill, input.args);
     if (activation.allowedToolPatterns.length === 0) {
       return { skill: input.skill, output: activation.content };
     }
 
-    if (!scope.toolCapabilities) {
-      throw new Error(
-        `Skill "${input.skill}" declares allowed-tools, but the Agent capability scope is unavailable.`,
-      );
-    }
-
-    const snapshot = scope.toolCapabilities.restrict({
+    const snapshot = context.toolCapabilities.restrict({
       source: `skill:${input.skill}`,
       allowedToolPatterns: activation.allowedToolPatterns,
     });

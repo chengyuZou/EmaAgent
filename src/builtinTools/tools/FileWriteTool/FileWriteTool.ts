@@ -2,13 +2,21 @@
 import path from 'node:path';
 import { z } from 'zod';
 import { buildTool, presentToolResult } from '@ema-agent/tools';
-import type {
-  ToolExecutionScope,
-  ToolInvocationContext,
-} from '@ema-agent/tools';
+import type { FileStateStore, ReadFileState } from '@ema-agent/tools';
+import type { ToolCallId } from '@ema-agent/ids';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
+import type { PerCallToolContext } from '../../builtinToolContext.js';
+import { contextFail, contextOk } from '../../contextValidation.js';
 import { buildFileChangePresentation } from '../shared/FileChangePresentation.js';
 import { atomicTransformUtf8 } from './atomicWrite.js';
+
+/** File 写入工具的窄 Context：去重缓存 + 可选持久状态 + per-call 身份。 */
+interface FileWriteToolContext {
+  readFileState: ReadFileState;
+  fileStateStore?: FileStateStore;
+  signal: AbortSignal;
+  toolCallId: ToolCallId;
+}
 
 // ── 输入 schema ──────────────────────────────────────────────────────────────
 
@@ -29,7 +37,7 @@ export interface FileWriteResult {
 
 // ── 工具定义 ───────────────────────────────────────────────────────────────────
 
-export const FileWriteTool = buildTool<FileWriteInput, FileWriteResult>({
+export const FileWriteTool = buildTool<FileWriteInput, FileWriteResult, PerCallToolContext, FileWriteToolContext>({
   id: BuiltinTools.FileWrite.id,
   name: BuiltinTools.FileWrite.name,
   description: `Write full content to a file, creating it if it does not exist.
@@ -44,6 +52,20 @@ export const FileWriteTool = buildTool<FileWriteInput, FileWriteResult>({
   isReadOnly: () => false,
   isConcurrencySafe: () => false,
 
+  requires: ['readFileState'],
+
+  validateContext(ctx) {
+    if (!ctx.readFileState) {
+      return contextFail('File 工具未装配（缺少 readFileState 能力）。');
+    }
+    return contextOk({
+      readFileState: ctx.readFileState,
+      ...(ctx.fileStateStore ? { fileStateStore: ctx.fileStateStore } : {}),
+      signal: ctx.signal,
+      toolCallId: ctx.toolCallId,
+    });
+  },
+
   permissionMeta: {
     riskLevel: 'medium',
     accessType: 'write',
@@ -55,19 +77,18 @@ export const FileWriteTool = buildTool<FileWriteInput, FileWriteResult>({
 
   async execute(
     input: FileWriteInput,
-    ctx: ToolInvocationContext,
-    scope: ToolExecutionScope,
+    context: FileWriteToolContext,
   ): Promise<FileWriteResult> {
     const { file_path, content } = input;
-    const operationId = ctx.toolCallId;
+    const operationId = context.toolCallId;
     const readStatePath = path.resolve(file_path);
     const written = await atomicTransformUtf8(
       file_path,
       operationId,
-      ctx.signal,
+      context.signal,
       current => {
         if (!current.existed) return content;
-        const cached = scope.readFileState.get(readStatePath);
+        const cached = context.readFileState.get(readStatePath);
         if (!cached || cached.isPartialView) {
           throw new Error(
             `Write requires an existing file to be read in full first. ` +
@@ -87,14 +108,14 @@ export const FileWriteTool = buildTool<FileWriteInput, FileWriteResult>({
     const mtimeMs = written.mtimeMs;
 
     // 更新 read-state 缓存，使后续 Edit 无需重新读取即可工作。
-    scope.readFileState.set(fullPath, {
+    context.readFileState.set(fullPath, {
       content,
       timestamp: mtimeMs,
       offset: undefined,
       limit: undefined,
       isPartialView: false,
     });
-    scope.fileStateStore?.record(fullPath, {
+    context.fileStateStore?.record(fullPath, {
       content,
       mtimeMs,
       offset: undefined,

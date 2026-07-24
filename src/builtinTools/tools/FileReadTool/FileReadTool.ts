@@ -3,11 +3,16 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
 import { buildTool } from '@ema-agent/tools';
-import type {
-  ToolExecutionScope,
-  ToolInvocationContext,
-} from '@ema-agent/tools';
+import type { FileStateStore, ReadFileState } from '@ema-agent/tools';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
+import type { BuiltinToolContext } from '../../builtinToolContext.js';
+import { contextFail, contextOk } from '../../contextValidation.js';
+
+/** File 工具族的窄 Context：跨调用去重缓存 + 可选持久文件状态。 */
+interface FileReadToolContext {
+  readFileState: ReadFileState;
+  fileStateStore?: FileStateStore;
+}
 
 // ── 常量 ─────────────────────────────────────────────────────────────────────
 
@@ -99,7 +104,7 @@ function getMtimeMs(filePath: string): number {
 
 // ── 工具定义 ───────────────────────────────────────────────────────────────────
 
-export const FileReadTool = buildTool<FileReadInput, FileReadResult>({
+export const FileReadTool = buildTool<FileReadInput, FileReadResult, BuiltinToolContext, FileReadToolContext>({
   id: BuiltinTools.FileRead.id,
   name: BuiltinTools.FileRead.name,
   description: `Read a file from the local filesystem.
@@ -113,6 +118,18 @@ export const FileReadTool = buildTool<FileReadInput, FileReadResult>({
   isReadOnly: () => true,
   isConcurrencySafe: () => true,
 
+  requires: ['readFileState'],
+
+  validateContext(ctx) {
+    if (!ctx.readFileState) {
+      return contextFail('File 工具未装配（缺少 readFileState 能力）。');
+    }
+    return contextOk({
+      readFileState: ctx.readFileState,
+      ...(ctx.fileStateStore ? { fileStateStore: ctx.fileStateStore } : {}),
+    });
+  },
+
   permissionMeta: {
     riskLevel: 'low',
     accessType: 'read',
@@ -124,8 +141,7 @@ export const FileReadTool = buildTool<FileReadInput, FileReadResult>({
 
   async execute(
     input: FileReadInput,
-    ctx: ToolInvocationContext,
-    scope: ToolExecutionScope,
+    context: FileReadToolContext,
   ): Promise<FileReadResult> {
     const { file_path, offset, limit } = input;
     const fullPath = path.resolve(file_path);
@@ -169,7 +185,7 @@ export const FileReadTool = buildTool<FileReadInput, FileReadResult>({
     const mtimeMs = stat.mtimeMs;
 
     // ── 去重检查 ───────────────────────────────────────────────────────────────
-    const existing = scope.readFileState.get(fullPath);
+    const existing = context.readFileState.get(fullPath);
     if (
       existing &&
       !existing.isPartialView &&
@@ -191,14 +207,14 @@ export const FileReadTool = buildTool<FileReadInput, FileReadResult>({
     const content = formatWithLineNumbers(slicedLines, startLine);
 
     // ── 更新去重缓存 ───────────────────────────────────────────────────────────
-    scope.readFileState.set(fullPath, {
+    context.readFileState.set(fullPath, {
       content: raw,
       timestamp: mtimeMs,
       offset,
       limit,
       isPartialView,
     });
-    scope.fileStateStore?.record(fullPath, { content: raw, mtimeMs, offset, limit, isPartialView });
+    context.fileStateStore?.record(fullPath, { content: raw, mtimeMs, offset, limit, isPartialView });
 
     return {
       type: 'file_content',

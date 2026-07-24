@@ -12,8 +12,9 @@
 
 import { z } from 'zod';
 import { buildTool } from '@ema-agent/tools';
-import type { ToolInvocationContext } from '@ema-agent/tools';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
+import type { BuiltinToolContext } from '../../builtinToolContext.js';
+import { contextOk } from '../../contextValidation.js';
 
 // ── 共享输出类型 ──────────────────────────────────────────────────────────────
 
@@ -35,7 +36,7 @@ const enterSchema = z.object({
 
 type PlanEnterInput = z.infer<typeof enterSchema>;
 
-export const PlanEnterTool = buildTool<PlanEnterInput, PlanModeResult>({
+export const PlanEnterTool = buildTool<PlanEnterInput, PlanModeResult, BuiltinToolContext, void>({
   id: BuiltinTools.PlanEnter.id,
   name: BuiltinTools.PlanEnter.name,
   description: `Switch the agent into Plan Mode - present the proposed plan to the user and await their approval before executing any actions.
@@ -51,8 +52,12 @@ Use this when the task is non-trivial and the user has not explicitly said "just
     accessType: 'read',
   },
 
-  async execute(input: PlanEnterInput, ctx: ToolInvocationContext): Promise<PlanModeResult> {
-    void ctx;
+  validateContext() {
+    return contextOk(undefined);
+  },
+
+  async execute(input: PlanEnterInput, _context): Promise<PlanModeResult> {
+    void input;
     return { active: true };
   },
 });
@@ -68,7 +73,7 @@ const exitSchema = z.object({
 
 type PlanExitInput = z.infer<typeof exitSchema>;
 
-export const PlanExitTool = buildTool<PlanExitInput, PlanModeResult>({
+export const PlanExitTool = buildTool<PlanExitInput, PlanModeResult, BuiltinToolContext, void>({
   id: BuiltinTools.PlanExit.id,
   name: BuiltinTools.PlanExit.name,
   description: `Exit Plan Mode after the plan has been approved and execution is complete (or the user cancelled).`,
@@ -82,9 +87,12 @@ export const PlanExitTool = buildTool<PlanExitInput, PlanModeResult>({
     accessType: 'read',
   },
 
-  async execute(input: PlanExitInput, ctx: ToolInvocationContext): Promise<PlanModeResult> {
+  validateContext() {
+    return contextOk(undefined);
+  },
+
+  async execute(input: PlanExitInput, _context): Promise<PlanModeResult> {
     void input;
-    void ctx;
     return { active: false };
   },
 });

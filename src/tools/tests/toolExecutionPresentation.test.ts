@@ -28,6 +28,7 @@ describe('tool presentation flow', () => {
           isConcurrencySafe: false,
           permissionMeta: {},
         }),
+        validateContext: () => ({ valid: true, context: {} }),
         execute: async () => presentToolResult(
           { filePath: 'demo.txt', replacements: 1 },
           {

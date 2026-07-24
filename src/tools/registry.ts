@@ -1,11 +1,10 @@
-// 注册、查找和准备内置及 MCP 工具，并阻止名称或身份冲突。
+﻿// 注册、查找和准备内置及 MCP 工具，并阻止名称或身份冲突。
 import { ZodError } from 'zod';
 import type {
   BuiltTool,
+  ToolContextValidation,
   ToolDescriptor,
-  ToolExecutionScope,
   ToolInputValidationResult,
-  ToolInvocationContext,
   ToolManifestSnapshot,
   ToolOrigin,
 } from './types.js';
@@ -15,7 +14,7 @@ import { createToolManifestSnapshot } from './toolManifest.js';
 
 // Registry 是泛型擦除边界；输入在 prepare() 中通过各工具自己的 Schema 恢复类型。
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-type AnyBuiltTool = BuiltTool<any, any>;
+type AnyBuiltTool = BuiltTool<any, any, any>;
 
 /** MCP 注册所有者使用原始名称，不能使用经过清洗的 LLM 可见名称。 */
 export interface McpToolOwner {
@@ -70,19 +69,19 @@ export class ToolInputError extends Error {
  */
 export class ToolRegistry {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private readonly tools    = new Map<string, BuiltTool<any, any>>();
+  private readonly tools    = new Map<string, BuiltTool<any, any, any>>();
   /** 内部稳定身份不能被另一个工具重复占用。 */
-  private readonly toolsById = new Map<string, BuiltTool<any, any>>();
+  private readonly toolsById = new Map<string, BuiltTool<any, any, any>>();
   /** 与 tools 同键，保存注册来源，确保热更新和注销只能操作自己的工具。 */
   private readonly owners   = new Map<string, ToolOwner>();
   /** 运行时能力表：防止调用方伪造 PreparedToolCall 或跨 Registry 执行。 */
-  private readonly preparedCalls = new WeakMap<object, BuiltTool<any, any>>();
+  private readonly preparedCalls = new WeakMap<object, BuiltTool<any, any, any>>();
   /** Manifest provenance 只保存在 Registry 内，外部复制相同字段也不能用于执行。 */
   private readonly manifestTools = new WeakMap<object, ReadonlyMap<string, AnyBuiltTool>>();
   private manifestVersion = 0;
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  register(tool: BuiltTool<any, any>): void {
+  register(tool: BuiltTool<any, any, any>): void {
     if (tool.origin.kind !== 'builtin') {
       throw new ToolRegistryError(`MCP tool "${tool.name}" must use registerMcp()`);
     }
@@ -180,7 +179,7 @@ export class ToolRegistry {
 
   /** 工具未注册时抛 ToolRegistryError。 */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  get(name: string): BuiltTool<any, any> {
+  get(name: string): BuiltTool<any, any, any> {
     const tool = this.tools.get(name);
     if (!tool) throw new ToolRegistryError(`Tool "${name}" is not registered`);
     return tool;
@@ -191,7 +190,7 @@ export class ToolRegistry {
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  list(): BuiltTool<any, any>[] {
+  list(): BuiltTool<any, any, any>[] {
     return [...this.tools.values()];
   }
 
@@ -260,14 +259,27 @@ export class ToolRegistry {
     return prepared;
   }
 
+  /**
+   * 把宿主 Context 投影成工具自己的窄 Context。
+   * 执行器在 prepare 之后、execute 之前调用;返回 valid:false 时该次调用
+   * 作为工具错误返回模型(不执行 execute)。
+   */
+  validateContext(
+    prepared: PreparedToolCall,
+    hostContext: unknown,
+  ): ToolContextValidation<unknown> {
+    return this.preparedTool(prepared).unsafeValidateContext(hostContext);
+  }
+
   /** 对已经冻结的输入执行 Schema 之后、权限之前的业务语义校验。 */
   async validate(
     prepared: PreparedToolCall,
-    ctx: ToolInvocationContext,
-    scope: ToolExecutionScope,
+    narrowedContext: unknown,
   ): Promise<ToolInputValidationResult> {
     const tool = this.preparedTool(prepared);
-    return await tool.validateInput?.(prepared.input, ctx, scope) ?? { valid: true };
+    // 注册表是类型擦除边界;窄 Context 由 validateContext 投影后以 unknown 传入。
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return await tool.validateInput?.(prepared.input, narrowedContext as any) ?? { valid: true };
   }
 
   private toolFromManifest(manifest: ToolManifestSnapshot, name: string): AnyBuiltTool {
@@ -291,10 +303,9 @@ export class ToolRegistry {
    */
   async execute(
     prepared: PreparedToolCall,
-    ctx: ToolInvocationContext,
-    scope: ToolExecutionScope,
+    narrowedContext: unknown,
   ): Promise<unknown> {
-    return this.preparedTool(prepared).unsafeExecute(prepared.input, ctx, scope);
+    return this.preparedTool(prepared).unsafeExecute(prepared.input, narrowedContext);
   }
 
   private preparedTool(prepared: PreparedToolCall): AnyBuiltTool {

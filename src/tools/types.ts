@@ -1,4 +1,4 @@
-// 集中定义工具注册、权限检查和执行时共用的基础类型。
+﻿// 集中定义工具注册、权限检查和执行时共用的基础类型。
 import type { z } from 'zod';
 import type {
   AgentRunId,
@@ -8,11 +8,6 @@ import type {
   ToolCallId,
 } from '@ema-agent/ids';
 import type { IArtifactStore } from '@ema-agent/artifact';
-import type {
-  AskUserQuestionSpec,
-  AskUserRequiredEvent,
-  ToolExecutionEvent,
-} from './events.js';
 import type { KbSearchResult } from '@ema-agent/knowledge';
 import type { ToolPermissionMeta } from '@ema-agent/permission';
 import type { TaskStorePort } from '@ema-agent/tasks';
@@ -175,84 +170,6 @@ export interface ToolInvocationContext {
   /** 单工具取消信号；Turn 取消会由执行器级联到该信号。 */
   signal: AbortSignal;
 }
-
-/** 当前 Turn 显式授予工具的能力集合；子 Agent 通过缺省端口收窄能力。 */
-export interface ToolExecutionScope {
-  /** 根 Turn 注入的持久 Task 入口；普通子 Agent 不获得该能力。 */
-  taskStore?: TaskStorePort;
-  /**
-   * 当前 turn 内文件读/编辑的共享 mtime 去重缓存。
-   * 跨工具调用持久，以便 Edit/Write 校验文件已被完整读取。
-   */
-  readFileState: ReadFileState;
-  /**
-   * 按 Session 保存的文件读取状态。
-   * 跨 turn 存活 - 用于跨 turn 的陈旧编辑检测和压缩后恢复。
-   * 测试和非 agent 调用方缺失。
-   */
-  fileStateStore?: FileStateStore;
-  /**
-   * 执行中 emit 一个结构化 SSE 事件(如子步骤的 tool_result)。
-   * 可选:并非所有调用方都提供流式通道。
-   */
-  emit?: (event: ToolExecutionEvent) => void;
-  /**
-   * Sandbox 提供的唯一 Shell 执行入口；缺失时 Bash 必须拒绝执行。
-   */
-  commandRunner?: CommandRunnerPort;
-  /**
-   * 工具执行中向用户问一组问题并等答案。
-   * 引擎接好 AskUserRegistry 时提供;测试和不支持交互 prompt 的最小嵌入方缺失。
-   * `promptId` 必须与已在 `ask_user_required` 广播的 id 一致。
-   */
-  askUser?: (
-    promptId: string,
-    questions: AskUserQuestionSpec[],
-    request: AskUserRequiredEvent,
-  ) => Promise<{ answers: Record<string, string> }>;
-  /**
-   * 持久 artifact 存储。存在时,artifact_write/read/list 委托到这里
-   * 而非进程内内存兜底。
-   */
-  artifactStore?: IArtifactStore;
-  /**
-   * sub-agent spawner。AgentEngine 接好 sub-agent 支持时注入。
-   * 测试和非 agent 嵌入方缺失。
-   */
-  subagentSpawner?: SubagentSpawnerPort;
-  /**
-   * Skill runner。skill registry 接好时注入。
-   * 测试和最小嵌入方缺失。
-   */
-  skillRunner?: SkillRunnerPort;
-  /**
-   * 当前 Agent 的工具能力作用域。限制只能做交集收窄；Permission Engine 仍负责
-   * 审批每一次具体调用。非 Agent 嵌入方和简单单元测试可以不提供。
-   */
-  toolCapabilities?: ToolCapabilityScope;
-  /**
-   * 知识库检索(AgenticRAG)。host adapter 解析绑定的 embedding/rerank 模型,
-   * 并把检索限定在 turn 选中的 KB 文档(每个选中文档记一次使用计数)。
-   * kbIds:指定 KB([] / 省略 -> 用户选的 KB 或 active KB)。
-   * 工具提供 query + topK;LLM 需指定 KB 时可选 kbIds。turn 未配置 KB 时缺失。
-   */
-  kbSearch?: KnowledgeSearchPort;
-  /**
-   * per-turn scratchpad 目录的绝对路径。
-   * 每个 key 存为一个文件;turn 结束时目录删除。
-   * 经 spawner 闭包在主 agent 与其所有 sub-agent 间共享。
-   * 测试和非 agent 调用方缺失。
-   */
-  scratchpadDir?: string;
-  /**
-   * 每次 write 写入 scratchpad 元数据的逻辑作者标签。
-   * 主 agent 为 "main";spawn 的 sub-agent 为 "subagent:{shortId}"。
-   * 在 scratchpad 上下文注入中展示,以便主 agent 知道每个 key 是谁产的。
-   * agent-mode turn 之外缺失。
-   */
-  scratchpadAuthor?: string;
-}
-
 // ── ToolDescriptor - LLM 看到的 ──────────────────────────────────────────────
 
 export interface ToolDescriptor {
@@ -273,6 +190,11 @@ export type ToolOrigin =
       readonly serverName: string;
       readonly serverToolName: string;
     };
+
+/** validateContext 的校验+投影结果：成功时携带收窄后的工具专属 Context。 */
+export type ToolContextValidation<TContext> =
+  | { readonly valid: true; readonly context: TContext }
+  | { readonly valid: false; readonly reason: string };
 
 /** Schema 解析后的业务校验结果；失败会在权限询问前作为工具错误返回模型。 */
 export type ToolInputValidationResult =
@@ -302,7 +224,7 @@ export interface ToolManifestSnapshot {
 
 // ── ToolDef - 作者写的原始定义 ────────────────────────────────────────────────
 
-export interface ToolDef<TInput, TOutput> {
+export interface ToolDef<TInput, TOutput, THostContext, TToolContext> {
   /** 不随模型展示名称变化的内部身份；权限、日志和恢复逻辑使用它。 */
   id?: string;
   name: string;
@@ -325,11 +247,24 @@ export interface ToolDef<TInput, TOutput> {
   /** 模型可见结果超过该 UTF-8 字节数时落盘；Infinity 表示工具自行封顶且禁止外置。 */
   maxResultBytes?: number;
 
+  /**
+   * 装配可见性：声明依赖的宿主能力键，缺一则该工具不进入 ToolPool（模型看不到）。
+   * 无状态工具省略。这是"无能力不进 Pool"的静态声明；
+   * 运行时的 Context 投影由 validateContext 完成。
+   */
+  requires?: readonly (keyof THostContext)[];
+
+  /**
+   * 执行前把宿主 Context 投影成工具自己的窄 Context。
+   * 返回 valid:false 时该次调用作为工具错误返回模型（不执行 execute）。
+   * 在 prepare 之后、execute 之前调用，因此可拿到 per-tool signal。
+   */
+  validateContext(context: THostContext): ToolContextValidation<TToolContext>;
+
   /** Schema 只检查结构；文件状态、工作区等业务语义在权限询问前由此检查。 */
   validateInput?: (
     input: TInput,
-    ctx: ToolInvocationContext,
-    scope: ToolExecutionScope,
+    context: TToolContext,
   ) => ToolInputValidationResult | Promise<ToolInputValidationResult>;
 
   /** true -> 只读,任何权限模式都可自动放行。 */
@@ -347,14 +282,13 @@ export interface ToolDef<TInput, TOutput> {
 
   execute(
     input: TInput,
-    ctx: ToolInvocationContext,
-    scope: ToolExecutionScope,
+    context: TToolContext,
   ): Promise<TOutput>;
 }
 
 // ── BuiltTool - 封闭的、注册表就绪形态 ───────────────────────────────────────
 
-export interface BuiltTool<TInput = unknown, TOutput = unknown> {
+export interface BuiltTool<TInput = unknown, TOutput = unknown, TToolContext = unknown> {
   readonly id: string;
   readonly name: string;
   readonly origin: ToolOrigin;
@@ -365,10 +299,11 @@ export interface BuiltTool<TInput = unknown, TOutput = unknown> {
   /** 构建时提供的模型 JSON Schema 覆盖值；最终 Schema 从 descriptor() 获取。 */
   readonly inputJsonSchemaOverride?: Readonly<Record<string, unknown>>;
   readonly maxResultBytes: number;
+  /** 装配可见性声明（宿主能力键名）；见 ToolDef.requires。类型擦除后为 string[]。 */
+  readonly requires?: readonly string[];
   readonly validateInput?: (
     input: TInput,
-    ctx: ToolInvocationContext,
-    scope: ToolExecutionScope,
+    context: TToolContext,
   ) => ToolInputValidationResult | Promise<ToolInputValidationResult>;
   readonly isReadOnly: (input: TInput) => boolean;
   readonly isConcurrencySafe: (input: TInput) => boolean;
@@ -377,17 +312,21 @@ export interface BuiltTool<TInput = unknown, TOutput = unknown> {
   readonly descriptor: () => ToolDescriptor;
   readonly execute: (
     input: TInput,
-    ctx: ToolInvocationContext,
-    scope: ToolExecutionScope,
+    context: TToolContext,
   ) => Promise<TOutput>;
   /**
-   * 类型擦除的 execute,供注册表分发 - 调用前 input 必须经 parseInput() 预校验。
+   * 类型擦除的 execute,供注册表分发 - 调用前 input 必须经 parseInput() 预校验,
+   * context 必须经 unsafeValidateContext() 投影为工具自己的窄 Context。
    */
   readonly unsafeExecute: (
     input: unknown,
-    ctx: ToolInvocationContext,
-    scope: ToolExecutionScope,
+    context: unknown,
   ) => Promise<unknown>;
+  /**
+   * 类型擦除的 validateContext,供注册表/执行器在类型擦除边界投影宿主 Context。
+   * 内部把 unknown 断言为工具定义的 THostContext 后调用作者写的 validateContext。
+   */
+  readonly unsafeValidateContext: (context: unknown) => ToolContextValidation<TToolContext>;
   /** 解析 + 校验原始 LLM 参数(失败抛 ZodError)。 */
   readonly parseInput: (raw: unknown) => TInput;
 }

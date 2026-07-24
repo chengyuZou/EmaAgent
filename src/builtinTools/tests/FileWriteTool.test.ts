@@ -4,13 +4,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { asToolCallId, asSessionId, asTurnId } from '@ema-agent/ids';
-import type { ToolExecutionRecord } from '@ema-agent/tools';
+import type { FileStateStore, ToolExecutionRecord } from '@ema-agent/tools';
 import { splitToolResult } from '@ema-agent/tools';
-import type {
-  FileStateStore,
-  ToolExecutionScope,
-  ToolInvocationContext,
-} from '@ema-agent/tools';
 import { FileWriteTool } from '../tools/FileWriteTool/FileWriteTool.js';
 import { atomicTempPrefix, atomicWriteUtf8 } from '../tools/FileWriteTool/atomicWrite.js';
 import { cleanupInterruptedFileWriteTemps } from '../tools/FileWriteTool/recovery.js';
@@ -35,7 +30,7 @@ describe('FileWriteTool', () => {
 
     const result = await FileWriteTool.unsafeExecute(
       { file_path: target, content: '完整内容' },
-      ...execution,
+      execution,
     );
 
     const canonical = fs.realpathSync.native(target);
@@ -47,7 +42,7 @@ describe('FileWriteTool', () => {
       additions: 1,
     });
     expect(fs.readFileSync(target, 'utf8')).toBe('完整内容');
-    expect(execution[1].readFileState.get(canonical)?.content).toBe('完整内容');
+    expect(execution.readFileState.get(canonical)?.content).toBe('完整内容');
     expect(record).toHaveBeenCalledWith(canonical, expect.objectContaining({ content: '完整内容' }));
     expect(listWriteTemps(path.dirname(target))).toEqual([]);
   });
@@ -59,7 +54,7 @@ describe('FileWriteTool', () => {
 
     await expect(FileWriteTool.unsafeExecute(
       { file_path: target, content: '新内容' },
-      ...makeContext(),
+      makeContext(),
     )).rejects.toThrow('read in full first');
 
     expect(fs.readFileSync(target, 'utf8')).toBe('旧内容');
@@ -72,7 +67,7 @@ describe('FileWriteTool', () => {
     fs.writeFileSync(target, '第一行\n旧内容\n', 'utf8');
     const stat = fs.statSync(target);
     const execution = makeContext();
-    execution[1].readFileState.set(path.resolve(target), {
+    execution.readFileState.set(path.resolve(target), {
       content: '第一行\n旧内容\n',
       timestamp: stat.mtimeMs,
       isPartialView: false,
@@ -80,7 +75,7 @@ describe('FileWriteTool', () => {
 
     const result = await FileWriteTool.unsafeExecute(
       { file_path: target, content: '第一行\n新内容\n' },
-      ...execution,
+      execution,
     );
     const split = splitToolResult(result);
 
@@ -154,19 +149,14 @@ describe('FileWriteTool', () => {
   });
 });
 
-function makeContext(
-  scopeOverrides: Partial<ToolExecutionScope> = {},
-): [ToolInvocationContext, ToolExecutionScope] {
-  return [{
-    sessionId: asSessionId('session-test'),
-    turnId: asTurnId('turn-test'),
-    toolCallId: asToolCallId('call-write'),
-    workspaceRoot: '',
-    signal: new AbortController().signal,
-  }, {
+// 构造 FileWriteTool 的窄 Context：去重缓存 + 可选持久状态 + per-call 身份。
+function makeContext(overrides: { fileStateStore?: FileStateStore } = {}) {
+  return {
     readFileState: new Map(),
-    ...scopeOverrides,
-  }];
+    signal: new AbortController().signal,
+    toolCallId: asToolCallId('call-write'),
+    ...overrides,
+  };
 }
 
 function makeTempDir(): string {

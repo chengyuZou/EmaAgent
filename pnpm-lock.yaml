@@ -585,6 +585,9 @@ importers:
       '@ema-agent/public-http':
         specifier: workspace:*
         version: link:../../packages/public-http
+      '@ema-agent/sandbox':
+        specifier: workspace:*
+        version: link:../sandbox
       '@ema-agent/session':
         specifier: workspace:*
         version: link:../session

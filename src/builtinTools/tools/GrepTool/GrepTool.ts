@@ -2,9 +2,16 @@
 import path from 'node:path';
 import { z } from 'zod';
 import { buildTool } from '@ema-agent/tools';
-import type { ToolInvocationContext } from '@ema-agent/tools';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
+import type { BuiltinToolContext } from '../../builtinToolContext.js';
+import { contextOk } from '../../contextValidation.js';
 import { runBoundedProcess } from '../shared/BoundedProcess.js';
+
+/** Grep 工具的窄 Context：工作区根 + per-call 取消信号。 */
+interface GrepToolContext {
+  workspaceRoot: string;
+  signal: AbortSignal;
+}
 
 // ── 输入 schema ──────────────────────────────────────────────────────────────
 
@@ -60,7 +67,7 @@ const SEARCH_TIMEOUT_MS = 15_000;
 
 // ── 工具定义 ───────────────────────────────────────────────────────────────────
 
-export const GrepTool = buildTool<GrepInput, GrepResult>({
+export const GrepTool = buildTool<GrepInput, GrepResult, BuiltinToolContext, GrepToolContext>({
   id: BuiltinTools.Grep.id,
   name: BuiltinTools.Grep.name,
   description: `Regex content search powered by ripgrep.
@@ -85,7 +92,14 @@ Results are capped at \`head_limit\` lines (default 250).`,
     extractPath: (input) => (input as { path?: string }).path,
   },
 
-  async execute(input: GrepInput, ctx: ToolInvocationContext): Promise<GrepResult> {
+  validateContext(ctx) {
+    return contextOk({
+      workspaceRoot: ctx.workspaceRoot,
+      signal: ctx.signal,
+    });
+  },
+
+  async execute(input: GrepInput, context: GrepToolContext): Promise<GrepResult> {
     const {
       pattern,
       path: inputPath,
@@ -96,7 +110,7 @@ Results are capped at \`head_limit\` lines (default 250).`,
       head_limit,
     } = input;
 
-    const workspaceRoot = ctx.workspaceRoot || process.cwd();
+    const workspaceRoot = context.workspaceRoot || process.cwd();
     const searchTargets = inputPath
       ? [path.resolve(workspaceRoot, inputPath)]
       : [workspaceRoot];
@@ -124,7 +138,7 @@ Results are capped at \`head_limit\` lines (default 250).`,
     let result;
     try {
       result = await runBoundedProcess('rg', args, {
-        signal: ctx.signal,
+        signal: context.signal,
         delimiter: '\n',
         maxRecords: head_limit,
         maxBytes: MAX_OUTPUT_BYTES,

@@ -16,6 +16,7 @@ function makeTool(name: string, result: string, id = name) {
     isReadOnly: () => true,
     isConcurrencySafe: () => true,
     permissionMeta: { riskLevel: 'low', accessType: 'read' },
+    validateContext: () => ({ valid: true, context: {} }),
     execute: async () => result,
   });
 }
@@ -35,6 +36,7 @@ function makeMcpTool(
     isReadOnly: () => true,
     isConcurrencySafe: () => true,
     permissionMeta: { riskLevel: 'low', accessType: 'read' },
+    validateContext: () => ({ valid: true, context: {} }),
     execute: async () => result,
   });
 }

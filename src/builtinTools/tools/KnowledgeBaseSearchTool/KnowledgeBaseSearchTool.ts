@@ -1,9 +1,16 @@
 // 从当前 Session 已激活的知识库中检索相关内容。
 import { z } from 'zod';
 import { buildTool } from '@ema-agent/tools';
-import type { ToolExecutionScope } from '@ema-agent/tools';
+import type { KnowledgeSearchPort } from '@ema-agent/tools';
 import type { KbSearchResult } from '@ema-agent/knowledge';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
+import type { BuiltinToolContext } from '../../builtinToolContext.js';
+import { contextFail, contextOk } from '../../contextValidation.js';
+
+/** 知识库检索工具的窄 Context：KB 搜索入口。 */
+interface KnowledgeBaseSearchToolContext {
+  knowledgeSearch: KnowledgeSearchPort;
+}
 
 // ── 输入 schema ──────────────────────────────────────────────────────────────
 
@@ -34,7 +41,7 @@ export type { KbSearchResult };
 
 // ── 工具定义 ───────────────────────────────────────────────────────────────────
 
-export const KnowledgeBaseSearchTool = buildTool<KbSearchInput, KbSearchResult>({
+export const KnowledgeBaseSearchTool = buildTool<KbSearchInput, KbSearchResult, BuiltinToolContext, KnowledgeBaseSearchToolContext>({
   id: BuiltinTools.KnowledgeBaseSearch.id,
   name: BuiltinTools.KnowledgeBaseSearch.name,
   description: `Search the user's knowledge-base documents and return the most relevant passages with source attribution (file name, page, section).
@@ -52,13 +59,16 @@ If the user has multiple knowledge bases, you may specify kb_ids to target one o
     accessType: 'read',
   },
 
-  async execute(input: KbSearchInput, _ctx, scope: ToolExecutionScope): Promise<KbSearchResult> {
-    if (!scope.kbSearch) {
-      throw new Error(
-        'Knowledge-base search is not available. No KB documents are selected for this turn.',
-      );
-    }
+  requires: ['knowledgeSearch'],
 
-    return scope.kbSearch(input.query, input.top_k, input.kb_ids);
+  validateContext(ctx) {
+    if (!ctx.knowledgeSearch) {
+      return contextFail('当前没有知识库检索能力。');
+    }
+    return contextOk({ knowledgeSearch: ctx.knowledgeSearch });
+  },
+
+  async execute(input: KbSearchInput, context: KnowledgeBaseSearchToolContext): Promise<KbSearchResult> {
+    return context.knowledgeSearch(input.query, input.top_k, input.kb_ids);
   },
 });

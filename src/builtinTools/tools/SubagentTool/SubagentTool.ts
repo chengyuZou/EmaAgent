@@ -6,10 +6,16 @@ import { buildTool } from '@ema-agent/tools';
 import type {
   SubagentSpawnerPort,
   SubagentRunResult,
-  ToolExecutionScope,
-  ToolInvocationContext,
 } from '@ema-agent/tools';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
+import type { BuiltinToolContext } from '../../builtinToolContext.js';
+import { contextFail, contextOk } from '../../contextValidation.js';
+
+/** Subagent 工具的窄 Context：子 Agent 启动器 + per-call 取消信号。 */
+interface SubagentToolContext {
+  spawner: SubagentSpawnerPort;
+  signal: AbortSignal;
+}
 
 // ── 输入 schema ──────────────────────────────────────────────────────────────
 
@@ -52,7 +58,7 @@ type SubagentInput = z.infer<typeof inputSchema>;
 
 // ── 工具定义 ───────────────────────────────────────────────────────────────────
 
-export const SubagentTool = buildTool<SubagentInput, SubagentRunResult>({
+export const SubagentTool = buildTool<SubagentInput, SubagentRunResult, BuiltinToolContext, SubagentToolContext>({
   id: BuiltinTools.Subagent.id,
   name: BuiltinTools.Subagent.name,
   description: `Spawn a fresh sub-agent to handle a self-contained sub-task and return its final output.
@@ -72,25 +78,28 @@ The sub-agent:
     accessType: 'execute',
   },
 
+  requires: ['subagentSpawner'],
+
+  validateContext(ctx) {
+    if (!ctx.subagentSpawner) {
+      return contextFail('子 Agent 不能再启动子 Agent（深度限制: 1）。');
+    }
+    return contextOk({
+      spawner: ctx.subagentSpawner,
+      signal: ctx.signal,
+    });
+  },
+
   async execute(
     input: SubagentInput,
-    ctx: ToolInvocationContext,
-    scope: ToolExecutionScope,
+    context: SubagentToolContext,
   ): Promise<SubagentRunResult> {
-    const spawner: SubagentSpawnerPort | undefined = scope.subagentSpawner;
-    if (!spawner) {
-      throw new Error(
-        'Sub-agents cannot spawn further sub-agents (depth limit: 1). ' +
-        'If you need nested parallelism, restructure the task so the top-level agent spawns all workers directly.',
-      );
-    }
-
     // 预分配 ID,以便 spawner 在阻塞前 emit subagent_started。
     // 所有 dashboard 事件(started/progress/stream/completed/failed/aborted)由
     // spawner emit - 它有 model/timing/usage 信息,工具没有。
     const agentRunId = asAgentRunId(randomUUID());
 
-    return spawner.spawn(
+    return context.spawner.spawn(
       input.prompt,
       {
         model: input.model,
@@ -99,7 +108,7 @@ The sub-agent:
         agentRunId,
         taskId: input.taskId ? asTaskId(input.taskId) : undefined,
       },
-      ctx.signal,
+      context.signal,
     );
   },
 });

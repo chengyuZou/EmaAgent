@@ -1,12 +1,22 @@
 // 使用 expectedVersion 原子更新 Task 字段、状态和依赖，拒绝陈旧写与依赖环。
 
 import { z } from 'zod';
-import { asSessionId, asTaskId, asTurnId } from '@ema-agent/ids';
+import { asTaskId } from '@ema-agent/ids';
+import type { SessionId, TurnId } from '@ema-agent/ids';
 import { buildTool } from '@ema-agent/tools';
-import type { ToolExecutionScope } from '@ema-agent/tools';
-import type { TaskSnapshot } from '@ema-agent/tasks';
-import type { TaskMutationFailure } from '@ema-agent/tasks';
+import type { ToolExecutionEvent } from '@ema-agent/tools';
+import type { TaskSnapshot, TaskStorePort, TaskMutationFailure } from '@ema-agent/tasks';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
+import type { BuiltinToolContext } from '../../builtinToolContext.js';
+import { contextFail, contextOk } from '../../contextValidation.js';
+
+/** Task 更新工具的窄 Context：持久存储 + 可选事件输出 + 调用身份。 */
+interface TaskUpdateToolContext {
+  taskStore: TaskStorePort;
+  emit?: (event: ToolExecutionEvent) => void;
+  sessionId: SessionId;
+  turnId: TurnId;
+}
 
 const taskIdList = z.array(z.string().uuid()).max(100);
 
@@ -76,7 +86,7 @@ export interface TaskUpdateResult {
   reason?: TaskMutationFailure;
 }
 
-export const TaskUpdateTool = buildTool<TaskUpdateInput, TaskUpdateResult>({
+export const TaskUpdateTool = buildTool<TaskUpdateInput, TaskUpdateResult, BuiltinToolContext, TaskUpdateToolContext>({
   id: BuiltinTools.TaskUpdate.id,
   name: BuiltinTools.TaskUpdate.name,
   description: `Update a persistent task in the current Session.
@@ -102,12 +112,25 @@ Use action="cancel" when work is intentionally abandoned but history should rema
     accessType: 'write',
   },
 
-  async execute(input, ctx, scope): Promise<TaskUpdateResult> {
-    const store = requireTaskStore(scope);
-    const sessionId = asSessionId(ctx.sessionId);
-    const turnId = asTurnId(ctx.turnId);
+  requires: ['taskStore'],
+
+  validateContext(ctx) {
+    if (!ctx.taskStore) {
+      return contextFail('Task tools are available only in the root Work Turn.');
+    }
+    return contextOk({
+      taskStore: ctx.taskStore,
+      ...(ctx.emit ? { emit: ctx.emit } : {}),
+      sessionId: ctx.sessionId,
+      turnId: ctx.turnId,
+    });
+  },
+
+  async execute(input, context): Promise<TaskUpdateResult> {
+    const sessionId = context.sessionId;
+    const turnId = context.turnId;
     const taskId = asTaskId(input.taskId);
-    const result = store.update({
+    const result = context.taskStore.update({
       sessionId,
       turnId,
       taskId,
@@ -131,12 +154,12 @@ Use action="cancel" when work is intentionally abandoned but history should rema
         deleted: false,
         taskId,
         reason: result.reason,
-        ...(result.current ? { current: store.toSnapshot(result.current) } : {}),
+        ...(result.current ? { current: context.taskStore.toSnapshot(result.current) } : {}),
       };
     }
 
     if (result.deleted) {
-      scope.emit?.({ type: 'task_deleted', sessionId, turnId, taskId });
+      context.emit?.({ type: 'task_deleted', sessionId, turnId, taskId });
       return {
         success: true,
         message: `Task ${input.taskId} deleted.`,
@@ -146,9 +169,9 @@ Use action="cancel" when work is intentionally abandoned but history should rema
       };
     }
 
-    const snapshot = store.toSnapshot(result.task);
+    const snapshot = context.taskStore.toSnapshot(result.task);
     if (result.changed) {
-      scope.emit?.({ type: 'task_updated', sessionId, turnId, task: snapshot });
+      context.emit?.({ type: 'task_updated', sessionId, turnId, task: snapshot });
     }
     return {
       success: true,
@@ -162,13 +185,6 @@ Use action="cancel" when work is intentionally abandoned but history should rema
     };
   },
 });
-
-function requireTaskStore(scope: ToolExecutionScope) {
-  if (!scope.taskStore) {
-    throw new Error('Task tools are available only in the root Work Turn.');
-  }
-  return scope.taskStore;
-}
 
 function failureMessage(reason: TaskMutationFailure, relatedTaskId?: string): string {
   switch (reason) {

@@ -1,25 +1,21 @@
 // 管理需要用户审阅后再应用的持久化 Artifact 草稿。
 import { z } from 'zod';
 import { buildTool } from '@ema-agent/tools';
-import type {
-  ToolExecutionScope,
-  ToolInvocationContext,
-} from '@ema-agent/tools';
-import type { Artifact, ArtifactId } from '@ema-agent/artifact';
-import { asSessionId, asTurnId } from '@ema-agent/ids';
+import type { ToolExecutionEvent } from '@ema-agent/tools';
+import type { Artifact, ArtifactId, IArtifactStore } from '@ema-agent/artifact';
 import type { ArtifactEvent } from '@ema-agent/artifact';
-import { randomUUID } from 'node:crypto';
+import { asSessionId, asTurnId } from '@ema-agent/ids';
+import type { SessionId, TurnId } from '@ema-agent/ids';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
+import type { BuiltinToolContext } from '../../builtinToolContext.js';
+import { contextFail, contextOk } from '../../contextValidation.js';
 
-// ── 内存兜底(未注入 ArtifactStore)──────────────────────────────────────────
-// 用于测试和未接完整 store 的最小嵌入方。
-
-const memoryStore = new Map<string, Artifact[]>();
-
-function sessionArtifacts(sessionId: string): Artifact[] {
-  let list = memoryStore.get(sessionId);
-  if (!list) { list = []; memoryStore.set(sessionId, list); }
-  return list;
+/** Artifact 工具族的窄 Context：持久存储 + 可选事件输出 + 调用身份。 */
+interface ArtifactToolContext {
+  artifactStore: IArtifactStore;
+  emit?: (event: ToolExecutionEvent) => void;
+  sessionId: SessionId;
+  turnId: TurnId;
 }
 
 // ── ArtifactWrite ─────────────────────────────────────────────────────────────
@@ -43,7 +39,7 @@ const writeSchema = z.object({
 
 type ArtifactWriteInput = z.infer<typeof writeSchema>;
 
-export const ArtifactWriteTool = buildTool<ArtifactWriteInput, Artifact>({
+export const ArtifactWriteTool = buildTool<ArtifactWriteInput, Artifact, BuiltinToolContext, ArtifactToolContext>({
   id: BuiltinTools.ArtifactWrite.id,
   name: BuiltinTools.ArtifactWrite.name,
   description: `Create or update a named artifact rendered in the WorkspacePane.
@@ -70,61 +66,44 @@ After writing, an artifact_upserted event opens WorkspacePane automatically.`,
   isConcurrencySafe: () => false,
   permissionMeta: { riskLevel: 'low', accessType: 'write' },
 
+  requires: ['artifactStore'],
+
+  validateContext(ctx) {
+    if (!ctx.artifactStore) {
+      return contextFail('Artifact 能力未装配。');
+    }
+    return contextOk({
+      artifactStore: ctx.artifactStore,
+      ...(ctx.emit ? { emit: ctx.emit } : {}),
+      sessionId: ctx.sessionId,
+      turnId: ctx.turnId,
+    });
+  },
+
   async execute(
     input: ArtifactWriteInput,
-    ctx: ToolInvocationContext,
-    scope: ToolExecutionScope,
+    context: ArtifactToolContext,
   ): Promise<Artifact> {
-    // ── 持久存储路径 ──────────────────────────────────────────────────────────
-    if (scope.artifactStore) {
-      const artifact = scope.artifactStore.upsert({
-        id:        input.id as ArtifactId | undefined,
-        sessionId: asSessionId(ctx.sessionId),
-        turnId:    asTurnId(ctx.turnId),
-        type:      input.type as Artifact['type'],
-        title:     input.title,
-        content:   input.content,
-        meta:      input.meta,
-      });
+    const artifact = context.artifactStore.upsert({
+      id:        input.id as ArtifactId | undefined,
+      sessionId: asSessionId(context.sessionId),
+      turnId:    asTurnId(context.turnId),
+      type:      input.type as Artifact['type'],
+      title:     input.title,
+      content:   input.content,
+      meta:      input.meta,
+    });
 
-      scope.emit?.({ type: 'artifact_upserted', sessionId: ctx.sessionId, artifact } satisfies ArtifactEvent);
+    context.emit?.({ type: 'artifact_upserted', sessionId: context.sessionId, artifact } satisfies ArtifactEvent);
 
-      if (scope.artifactStore.countWarning(ctx.sessionId)) {
-        scope.emit?.({
-          type:    'artifact_count_warning',
-          sessionId: asSessionId(ctx.sessionId),
-          message: 'This session has more than 100 artifacts. Consider deleting unused ones.',
-        } satisfies ArtifactEvent);
-      }
-
-      return artifact;
+    if (context.artifactStore.countWarning(context.sessionId)) {
+      context.emit?.({
+        type:    'artifact_count_warning',
+        sessionId: asSessionId(context.sessionId),
+        message: 'This session has more than 100 artifacts. Consider deleting unused ones.',
+      } satisfies ArtifactEvent);
     }
 
-    // ── 内存兜底 ────────────────────────────────────────────────────────────
-    const now       = Date.now();
-    const artifacts = sessionArtifacts(ctx.sessionId);
-    const idx       = input.id ? artifacts.findIndex((a) => a.id === input.id) : -1;
-
-    const artifact: Artifact = {
-      id:              (input.id ?? randomUUID()) as ArtifactId,
-      sessionId:       asSessionId(ctx.sessionId),
-      turnId:          asTurnId(ctx.turnId),
-      type:            input.type as Artifact['type'],
-      title:           input.title,
-      content:         input.content,
-      contentLocation: 'inline',
-      meta:            input.meta,
-      createdAt:       idx >= 0 ? artifacts[idx]!.createdAt : now,
-      updatedAt:       now,
-    };
-
-    if (idx >= 0) {
-      artifacts[idx] = artifact;
-    } else {
-      artifacts.push(artifact);
-    }
-
-    scope.emit?.({ type: 'artifact_upserted', sessionId: ctx.sessionId, artifact } satisfies ArtifactEvent);
     return artifact;
   },
 });
@@ -135,7 +114,7 @@ const readSchema = z.object({
   id: z.string().min(1).describe('Artifact ID to read.'),
 });
 
-export const ArtifactReadTool = buildTool<z.infer<typeof readSchema>, Artifact>({
+export const ArtifactReadTool = buildTool<z.infer<typeof readSchema>, Artifact, BuiltinToolContext, ArtifactToolContext>({
   id: BuiltinTools.ArtifactRead.id,
   name: BuiltinTools.ArtifactRead.name,
   description: 'Read the current content of an artifact by ID.',
@@ -145,15 +124,24 @@ export const ArtifactReadTool = buildTool<z.infer<typeof readSchema>, Artifact>(
   isConcurrencySafe: () => true,
   permissionMeta: { riskLevel: 'low', accessType: 'read' },
 
-  async execute(input, ctx, scope): Promise<Artifact> {
-    if (scope.artifactStore) {
-      const artifact = scope.artifactStore.get(input.id as ArtifactId);
-      if (!artifact) throw new Error(`Artifact not found: ${input.id}`);
-      return artifact;
+  requires: ['artifactStore'],
+
+  validateContext(ctx) {
+    if (!ctx.artifactStore) {
+      return contextFail('Artifact 能力未装配。');
     }
-    const found = sessionArtifacts(ctx.sessionId).find((a) => a.id === input.id);
-    if (!found) throw new Error(`Artifact not found: ${input.id}`);
-    return found;
+    return contextOk({
+      artifactStore: ctx.artifactStore,
+      ...(ctx.emit ? { emit: ctx.emit } : {}),
+      sessionId: ctx.sessionId,
+      turnId: ctx.turnId,
+    });
+  },
+
+  async execute(input, context): Promise<Artifact> {
+    const artifact = context.artifactStore.get(input.id as ArtifactId);
+    if (!artifact) throw new Error(`Artifact not found: ${input.id}`);
+    return artifact;
   },
 });
 
@@ -164,7 +152,7 @@ const listSchema = z.object({
     .describe('Filter by type, e.g. "text/markdown". Omit to list all.'),
 });
 
-export const ArtifactListTool = buildTool<z.infer<typeof listSchema>, Omit<Artifact, 'content'>[]>({
+export const ArtifactListTool = buildTool<z.infer<typeof listSchema>, Omit<Artifact, 'content'>[], BuiltinToolContext, ArtifactToolContext>({
   id: BuiltinTools.ArtifactList.id,
   name: BuiltinTools.ArtifactList.name,
   description: 'List artifacts in the current session (metadata only, no content). Filter by type optionally.',
@@ -174,13 +162,21 @@ export const ArtifactListTool = buildTool<z.infer<typeof listSchema>, Omit<Artif
   isConcurrencySafe: () => true,
   permissionMeta: { riskLevel: 'low', accessType: 'read' },
 
-  async execute(input, ctx, scope): Promise<Omit<Artifact, 'content'>[]> {
-    if (scope.artifactStore) {
-      return scope.artifactStore.list(ctx.sessionId, { type: input.type });
+  requires: ['artifactStore'],
+
+  validateContext(ctx) {
+    if (!ctx.artifactStore) {
+      return contextFail('Artifact 能力未装配。');
     }
-    const artifacts = sessionArtifacts(ctx.sessionId);
-    const filtered  = input.type ? artifacts.filter((a) => a.type === input.type) : [...artifacts];
-    // 剥离 content,与存储路径一致
-    return filtered.map(({ content: _, ...rest }) => rest);
+    return contextOk({
+      artifactStore: ctx.artifactStore,
+      ...(ctx.emit ? { emit: ctx.emit } : {}),
+      sessionId: ctx.sessionId,
+      turnId: ctx.turnId,
+    });
+  },
+
+  async execute(input, context): Promise<Omit<Artifact, 'content'>[]> {
+    return context.artifactStore.list(context.sessionId, { type: input.type });
   },
 });

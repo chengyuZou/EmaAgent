@@ -1,12 +1,19 @@
 // 列出当前 Session 的 Task 摘要，并隐藏已完成的阻塞关系。
 
 import { z } from 'zod';
-import { asSessionId } from '@ema-agent/ids';
-import { buildTool } from '@ema-agent/tools';
-import type { ToolExecutionScope } from '@ema-agent/tools';
+import type { SessionId } from '@ema-agent/ids';
 import type { AgentRunId, TaskId } from '@ema-agent/ids';
-import type { TaskStatus } from '@ema-agent/tasks';
+import { buildTool } from '@ema-agent/tools';
+import type { TaskStatus, TaskStorePort } from '@ema-agent/tasks';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
+import type { BuiltinToolContext } from '../../builtinToolContext.js';
+import { contextFail, contextOk } from '../../contextValidation.js';
+
+/** Task 列表工具的窄 Context：持久存储 + 调用身份。 */
+interface TaskListToolContext {
+  taskStore: TaskStorePort;
+  sessionId: SessionId;
+}
 
 const inputSchema = z.object({}).strict();
 type TaskListInput = z.infer<typeof inputSchema>;
@@ -26,7 +33,7 @@ export interface TaskListItem {
   version: number;
 }
 
-export const TaskListTool = buildTool<TaskListInput, TaskListResult>({
+export const TaskListTool = buildTool<TaskListInput, TaskListResult, BuiltinToolContext, TaskListToolContext>({
   id: BuiltinTools.TaskList.id,
   name: BuiltinTools.TaskList.name,
   description: `List all persistent tasks in the current Session.
@@ -44,9 +51,20 @@ Prefer lower display numbers when several tasks are available because earlier ta
     accessType: 'read',
   },
 
-  async execute(_input, ctx, scope): Promise<TaskListResult> {
-    const store = requireTaskStore(scope);
-    const tasks = store.list(asSessionId(ctx.sessionId));
+  requires: ['taskStore'],
+
+  validateContext(ctx) {
+    if (!ctx.taskStore) {
+      return contextFail('Task tools are available only in the root Work Turn.');
+    }
+    return contextOk({
+      taskStore: ctx.taskStore,
+      sessionId: ctx.sessionId,
+    });
+  },
+
+  async execute(_input, context): Promise<TaskListResult> {
+    const tasks = context.taskStore.list(context.sessionId);
     const completed = new Set(
       tasks.filter((task) => task.status === 'completed').map((task) => task.id),
     );
@@ -69,10 +87,3 @@ Prefer lower display numbers when several tasks are available because earlier ta
     };
   },
 });
-
-function requireTaskStore(scope: ToolExecutionScope) {
-  if (!scope.taskStore) {
-    throw new Error('Task tools are available only in the root Work Turn.');
-  }
-  return scope.taskStore;
-}

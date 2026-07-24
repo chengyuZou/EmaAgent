@@ -3,11 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { buildTool } from '../build-tool.js';
 import { ToolRegistry, ToolRegistryError } from '../registry.js';
-import type {
-  BuiltTool,
-  ToolExecutionScope,
-  ToolInvocationContext,
-} from '../types.js';
+import type { BuiltTool, ToolInvocationContext } from '../types.js';
 
 const context = {
   sessionId: 'session-test',
@@ -16,9 +12,6 @@ const context = {
   workspaceRoot: 'D:/workspace',
   signal: new AbortController().signal,
 } as ToolInvocationContext;
-const scope = {
-  readFileState: new Map(),
-} satisfies ToolExecutionScope;
 
 function makeTool(
   name = 'dynamic_tool',
@@ -38,6 +31,7 @@ function makeTool(
       parallel: z.boolean().default(false),
     }),
     maxResultBytes: 4096,
+    validateContext: () => ({ valid: true, context: {} }),
     validateInput: async input => input.path === 'blocked.txt'
       ? { valid: false, message: '路径被业务规则拒绝', code: 'tool/path_blocked' }
       : { valid: true },
@@ -72,7 +66,7 @@ describe('PreparedToolCall', () => {
     expect(Object.isFrozen(prepared)).toBe(true);
     expect(Object.isFrozen(prepared.input)).toBe(true);
     expect(Object.isFrozen(prepared.permissionMeta)).toBe(true);
-    await expect(registry.execute(prepared, context, scope)).resolves.toBe('notes.txt:true');
+    await expect(registry.execute(prepared, context)).resolves.toBe('notes.txt:true');
   });
 
   it('在同一 Prepared 输入上执行权限前业务校验', async () => {
@@ -81,10 +75,10 @@ describe('PreparedToolCall', () => {
 
     const valid = registry.prepare('dynamic_tool', { path: 'question.txt', parallel: false });
     expect(valid.requiresUserInteraction).toBe(true);
-    await expect(registry.validate(valid, context, scope)).resolves.toEqual({ valid: true });
+    await expect(registry.validate(valid, context)).resolves.toEqual({ valid: true });
 
     const invalid = registry.prepare('dynamic_tool', { path: 'blocked.txt', parallel: false });
-    await expect(registry.validate(invalid, context, scope)).resolves.toEqual({
+    await expect(registry.validate(invalid, context)).resolves.toEqual({
       valid: false,
       message: '路径被业务规则拒绝',
       code: 'tool/path_blocked',
@@ -100,6 +94,7 @@ describe('PreparedToolCall', () => {
       isReadOnly: () => true,
       isConcurrencySafe: () => true,
       permissionMeta: { riskLevel: 'low', accessType: 'read' },
+      validateContext: () => ({ valid: true, context: {} }),
       execute: async () => 'ok',
     });
     registry.register(nestedTool);
@@ -123,13 +118,13 @@ describe('PreparedToolCall', () => {
     second.register(makeTool('mcp__test__dynamic'));
 
     const prepared = first.prepare('mcp__test__dynamic', { path: 'a.txt' });
-    await expect(second.execute(prepared, context, scope)).rejects.toBeInstanceOf(ToolRegistryError);
+    await expect(second.execute(prepared, context)).rejects.toBeInstanceOf(ToolRegistryError);
 
     first.registerMcp({
       tool: makeTool('mcp__test__dynamic', origin),
       owner: { serverName: 'test', serverToolName: 'dynamic' },
     });
-    await expect(first.execute(prepared, context, scope)).rejects.toThrow(/stale/);
+    await expect(first.execute(prepared, context)).rejects.toThrow(/stale/);
 
     await expect(first.execute({
       id: 'mcp__test__dynamic',
@@ -141,6 +136,6 @@ describe('PreparedToolCall', () => {
       requiresUserInteraction: false,
       maxResultBytes: 4096,
       permissionMeta: { riskLevel: 'low' },
-    }, context, scope)).rejects.toThrow(/not created by this registry/);
+    }, context)).rejects.toThrow(/not created by this registry/);
   });
 });

@@ -23,6 +23,7 @@ function makeTool(
     isReadOnly: () => true,
     isConcurrencySafe: () => true,
     permissionMeta: { riskLevel: 'low', accessType: 'read' },
+    validateContext: () => ({ valid: true, context: {} }),
     execute: async () => 'ok',
   });
 }

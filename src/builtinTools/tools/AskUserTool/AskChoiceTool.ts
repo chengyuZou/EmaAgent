@@ -3,13 +3,20 @@ import { randomUUID } from 'node:crypto';
 import { createInterface } from 'node:readline/promises';
 import { z } from 'zod';
 import { buildTool } from '@ema-agent/tools';
-import type {
-  ToolExecutionScope,
-  ToolInvocationContext,
-} from '@ema-agent/tools';
 import type { SessionId, TurnId } from '@ema-agent/ids';
 import type { ToolExecutionEvent as EmaStreamEvent } from '@ema-agent/tools';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
+import type { AskUserPort, BuiltinToolContext } from '../../builtinToolContext.js';
+import { contextOk } from '../../contextValidation.js';
+
+/** AskChoice 工具的窄 Context：可选 SSE 输出 + 可选问询解析器 + 调用身份。 */
+interface AskChoiceToolContext {
+  emit?: (event: EmaStreamEvent) => void;
+  askUser?: AskUserPort;
+  sessionId: SessionId;
+  turnId: TurnId;
+  signal: AbortSignal;
+}
 
 const inputSchema = z.object({
   question: z.string().min(1).describe('The question to ask the user.'),
@@ -35,7 +42,7 @@ export interface AskChoiceResult {
   customText?: string;
 }
 
-export const AskChoiceTool = buildTool<AskChoiceInput, AskChoiceResult>({
+export const AskChoiceTool = buildTool<AskChoiceInput, AskChoiceResult, BuiltinToolContext, AskChoiceToolContext>({
   id: BuiltinTools.AskChoice.id,
   name: BuiltinTools.AskChoice.name,
   description: `Present the user with a list of options and wait for their selection.
@@ -54,17 +61,27 @@ Prefer this over AskUser for a single choice question - the UI shows a cleaner s
     accessType: 'write',
   },
 
+  // 总是可用：有 emit+askUser 走 SSE，否则 CLI 兜底。
+  validateContext(ctx) {
+    return contextOk({
+      ...(ctx.emit ? { emit: ctx.emit } : {}),
+      ...(ctx.askUser ? { askUser: ctx.askUser } : {}),
+      sessionId: ctx.sessionId,
+      turnId: ctx.turnId,
+      signal: ctx.signal,
+    });
+  },
+
   async execute(
     input: AskChoiceInput,
-    ctx: ToolInvocationContext,
-    scope: ToolExecutionScope,
+    context: AskChoiceToolContext,
   ): Promise<AskChoiceResult> {
-    if (scope.emit && scope.askUser) {
+    if (context.emit && context.askUser) {
       const promptId = randomUUID();
       const request = {
         type:             'ask_choice_required',
-        sessionId:        ctx.sessionId as SessionId,
-        turnId:           ctx.turnId as TurnId,
+        sessionId:        context.sessionId,
+        turnId:           context.turnId,
         promptId,
         question:         input.question,
         humanDescription: input.humanDescription,
@@ -72,17 +89,17 @@ Prefer this over AskUser for a single choice question - the UI shows a cleaner s
         multiSelect:      input.multiSelect,
         allowCustom:      input.allowCustom,
       } satisfies EmaStreamEvent;
-      scope.emit(request);
+      context.emit(request);
 
-      const { answers } = await scope.askUser(promptId, [], request);
+      const { answers } = await context.askUser(promptId, [], request);
       // 前端提交:{ selected: 'label1,label2', custom?: 'text' }
       const raw      = answers['selected'] ?? '';
       const selected = raw.split(',').map((s) => s.trim()).filter(Boolean);
       const customText = answers['custom'] || undefined;
 
-      scope.emit({
+      context.emit({
         type:      'ask_choice_resolved',
-        sessionId: ctx.sessionId as SessionId,
+        sessionId: context.sessionId,
         promptId,
         selected,
         customText,
@@ -93,7 +110,7 @@ Prefer this over AskUser for a single choice question - the UI shows a cleaner s
 
     // CLI 兜底
     const rl = createInterface({ input: process.stdin, output: process.stdout });
-    ctx.signal.addEventListener('abort', () => rl.close(), { once: true });
+    context.signal.addEventListener('abort', () => rl.close(), { once: true });
     const list = input.options.map((o, i) => `  ${i + 1}. ${o.label}`).join('\n');
     const answer = await rl.question(`\n${input.question}\n${list}\nSelect (number${input.multiSelect ? 's, comma-separated' : ''}): `);
     rl.close();

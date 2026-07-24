@@ -2,13 +2,21 @@
 import path from 'node:path';
 import { z } from 'zod';
 import { buildTool, presentToolResult } from '@ema-agent/tools';
-import type {
-  ToolExecutionScope,
-  ToolInvocationContext,
-} from '@ema-agent/tools';
+import type { FileStateStore, ReadFileState } from '@ema-agent/tools';
+import type { ToolCallId } from '@ema-agent/ids';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
+import type { PerCallToolContext } from '../../builtinToolContext.js';
+import { contextFail, contextOk } from '../../contextValidation.js';
 import { buildFileChangePresentation } from '../shared/FileChangePresentation.js';
 import { atomicTransformUtf8 } from '../FileWriteTool/atomicWrite.js';
+
+/** File 编辑工具的窄 Context：去重缓存 + 可选持久状态 + per-call 身份。 */
+interface FileEditToolContext {
+  readFileState: ReadFileState;
+  fileStateStore?: FileStateStore;
+  signal: AbortSignal;
+  toolCallId: ToolCallId;
+}
 
 // ── 输入 schema ──────────────────────────────────────────────────────────────
 
@@ -75,7 +83,7 @@ function countOccurrences(haystack: string, needle: string): number {
 
 // ── 工具定义 ───────────────────────────────────────────────────────────────────
 
-export const FileEditTool = buildTool<FileEditInput, FileEditResult>({
+export const FileEditTool = buildTool<FileEditInput, FileEditResult, PerCallToolContext, FileEditToolContext>({
   id: BuiltinTools.FileEdit.id,
   name: BuiltinTools.FileEdit.name,
   description: `Replace an exact string in a file (str_replace semantics).
@@ -90,6 +98,20 @@ Rules:
   isReadOnly: () => false,
   isConcurrencySafe: () => false,
 
+  requires: ['readFileState'],
+
+  validateContext(ctx) {
+    if (!ctx.readFileState) {
+      return contextFail('File 工具未装配（缺少 readFileState 能力）。');
+    }
+    return contextOk({
+      readFileState: ctx.readFileState,
+      ...(ctx.fileStateStore ? { fileStateStore: ctx.fileStateStore } : {}),
+      signal: ctx.signal,
+      toolCallId: ctx.toolCallId,
+    });
+  },
+
   permissionMeta: {
     riskLevel: 'medium',
     accessType: 'write',
@@ -101,14 +123,13 @@ Rules:
 
   async execute(
     input: FileEditInput,
-    ctx: ToolInvocationContext,
-    scope: ToolExecutionScope,
+    context: FileEditToolContext,
   ): Promise<FileEditResult> {
     const { file_path, old_string, new_string, replace_all } = input;
     const fullPath = path.resolve(file_path);
 
     // ── 必须先读守卫 ─────────────────────────────────────────────────────────
-    const cached = scope.readFileState.get(fullPath);
+    const cached = context.readFileState.get(fullPath);
     if (!cached) {
       throw new Error(
         `Edit requires the file to be read first. Call Read("${file_path}") before editing.`,
@@ -122,11 +143,11 @@ Rules:
     }
 
     let replacements = 0;
-    const operationId = ctx.toolCallId;
+    const operationId = context.toolCallId;
     const written = await atomicTransformUtf8(
       file_path,
       operationId,
-      ctx.signal,
+      context.signal,
       current => {
         if (!current.existed || current.content === null || current.mtimeMs === null) {
           throw new Error(`File no longer exists: ${file_path}`);
@@ -165,14 +186,14 @@ Rules:
     );
 
     // 用编辑后内容更新缓存
-    scope.readFileState.set(fullPath, {
+    context.readFileState.set(fullPath, {
       content: written.content,
       timestamp: written.mtimeMs,
       offset: undefined,
       limit: undefined,
       isPartialView: false,
     });
-    scope.fileStateStore?.record(fullPath, { content: written.content, mtimeMs: written.mtimeMs, offset: undefined, limit: undefined, isPartialView: false });
+    context.fileStateStore?.record(fullPath, { content: written.content, mtimeMs: written.mtimeMs, offset: undefined, limit: undefined, isPartialView: false });
 
     return presentToolResult({
       filePath: file_path,

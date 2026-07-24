@@ -3,12 +3,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { asSessionId, asToolCallId, asTurnId } from '@ema-agent/ids';
+import { asToolCallId } from '@ema-agent/ids';
 import { splitToolResult } from '@ema-agent/tools';
-import type {
-  ToolExecutionScope,
-  ToolInvocationContext,
-} from '@ema-agent/tools';
 import { FileEditTool } from '../tools/FileEditTool/FileEditTool.js';
 
 const tempDirs: string[] = [];
@@ -34,7 +30,7 @@ describe('FileEditTool', () => {
 
     await expect(FileEditTool.unsafeExecute(
       { file_path: target, old_string: '旧', new_string: '新', replace_all: false },
-      ...makeContext('call-no-read'),
+      makeContext('call-no-read'),
     )).rejects.toThrow('read first');
 
     expect(fs.readFileSync(target, 'utf8')).toBe('旧内容');
@@ -46,7 +42,7 @@ describe('FileEditTool', () => {
 
     const result = await FileEditTool.unsafeExecute(
       { file_path: target, old_string: '旧内容', new_string: '新内容', replace_all: false },
-      ...ctx,
+      ctx,
     );
     const split = splitToolResult(result);
 
@@ -66,11 +62,11 @@ describe('FileEditTool', () => {
     const settled = await Promise.allSettled([
       FileEditTool.unsafeExecute(
         { file_path: target, old_string: '共同旧版本', new_string: '版本 A', replace_all: false },
-        ...firstContext,
+        firstContext,
       ),
       FileEditTool.unsafeExecute(
         { file_path: target, old_string: '共同旧版本', new_string: '版本 B', replace_all: false },
-        ...secondContext,
+        secondContext,
       ),
     ]);
 
@@ -80,32 +76,24 @@ describe('FileEditTool', () => {
   });
 });
 
-function makeContext(
-  callId: string,
-): [ToolInvocationContext, ToolExecutionScope] {
-  return [{
-    sessionId: asSessionId('session-test'),
-    turnId: asTurnId('turn-test'),
-    toolCallId: asToolCallId(callId),
-    workspaceRoot: '',
-    signal: new AbortController().signal,
-  }, {
+// 构造 FileEditTool 的窄 Context：去重缓存 + per-call 身份 + 取消信号。
+function makeContext(callId: string) {
+  return {
     readFileState: new Map(),
-  }];
+    signal: new AbortController().signal,
+    toolCallId: asToolCallId(callId),
+  };
 }
 
-function makeReadContext(
-  target: string,
-  callId: string,
-): [ToolInvocationContext, ToolExecutionScope] {
-  const execution = makeContext(callId);
+function makeReadContext(target: string, callId: string) {
+  const context = makeContext(callId);
   const content = fs.readFileSync(target, 'utf8');
-  execution[1].readFileState.set(path.resolve(target), {
+  context.readFileState.set(path.resolve(target), {
     content,
     timestamp: fs.statSync(target).mtimeMs,
     isPartialView: false,
   });
-  return execution;
+  return context;
 }
 
 function makeFile(name: string, content: string): string {

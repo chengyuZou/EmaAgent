@@ -3,16 +3,23 @@ import * as readline from 'node:readline/promises';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { buildTool } from '@ema-agent/tools';
-import type {
-  ToolExecutionScope,
-  ToolInvocationContext,
-} from '@ema-agent/tools';
 import type { SessionId, TurnId } from '@ema-agent/ids';
 import type {
   AskUserQuestionSpec,
   ToolExecutionEvent as EmaStreamEvent,
 } from '@ema-agent/tools';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
+import type { AskUserPort, BuiltinToolContext } from '../../builtinToolContext.js';
+import { contextOk } from '../../contextValidation.js';
+
+/** AskUser 工具的窄 Context：可选 SSE 输出 + 可选问询解析器 + 调用身份。 */
+interface AskUserToolContext {
+  emit?: (event: EmaStreamEvent) => void;
+  askUser?: AskUserPort;
+  sessionId: SessionId;
+  turnId: TurnId;
+  signal: AbortSignal;
+}
 
 // ── 输入 schema ──────────────────────────────────────────────────────────────
 
@@ -57,7 +64,7 @@ export interface AskUserResult {
 
 // ── 工具定义 ───────────────────────────────────────────────────────────────────
 
-export const AskUserTool = buildTool<AskUserInput, AskUserResult>({
+export const AskUserTool = buildTool<AskUserInput, AskUserResult, BuiltinToolContext, AskUserToolContext>({
   id: BuiltinTools.AskUser.id,
   name: BuiltinTools.AskUser.name,
   description: `Ask the user one or more questions and wait for their responses.
@@ -76,18 +83,28 @@ export const AskUserTool = buildTool<AskUserInput, AskUserResult>({
     accessType: 'write',
   },
 
+  // 总是可用：有 emit+askUser 走 SSE，否则 CLI 兜底。
+  validateContext(ctx) {
+    return contextOk({
+      ...(ctx.emit ? { emit: ctx.emit } : {}),
+      ...(ctx.askUser ? { askUser: ctx.askUser } : {}),
+      sessionId: ctx.sessionId,
+      turnId: ctx.turnId,
+      signal: ctx.signal,
+    });
+  },
+
   async execute(
     input: AskUserInput,
-    ctx: ToolInvocationContext,
-    scope: ToolExecutionScope,
+    context: AskUserToolContext,
   ): Promise<AskUserResult> {
     const { questions } = input;
 
-    if (scope.emit) {
+    if (context.emit) {
       // Desktop / SSE 路径 - emit 结构化事件,等答案经 side-channel promise
       // 回来(由 orchestrator resolve)。orchestrator 为此向 ctx 注入 `askUser` resolver。
-      if (scope.askUser) {
-        const askFn = scope.askUser;
+      if (context.askUser) {
+        const askFn = context.askUser;
         const promptId = randomUUID();
         const specs: AskUserQuestionSpec[] = questions.map((q, i) => ({
           id:          `q${i}`,
@@ -98,26 +115,26 @@ export const AskUserTool = buildTool<AskUserInput, AskUserResult>({
         }));
         const request = {
           type: 'ask_user_required',
-          sessionId: ctx.sessionId as SessionId,
-          turnId: ctx.turnId as TurnId,
+          sessionId: context.sessionId,
+          turnId: context.turnId,
           promptId,
           questions: specs,
         } as const;
-        scope.emit(request);
+        context.emit(request);
         try {
           const result = await askFn(promptId, specs, request);
-          scope.emit({ type: 'ask_user_resolved', sessionId: ctx.sessionId, promptId, answers: result.answers });
+          context.emit({ type: 'ask_user_resolved', sessionId: context.sessionId, promptId, answers: result.answers });
           return result;
         } catch (err: unknown) {
           // 即使中止也 emit resolved 事件,让前端能清 modal。
-          scope.emit({ type: 'ask_user_resolved', sessionId: ctx.sessionId, promptId, answers: {} });
+          context.emit({ type: 'ask_user_resolved', sessionId: context.sessionId, promptId, answers: {} });
           throw err;
         }
       }
     }
 
     // CLI 兜底 - 从 stdin 逐行读答案
-    return cliAsk(questions, ctx.signal);
+    return cliAsk(questions, context.signal);
   },
 });
 

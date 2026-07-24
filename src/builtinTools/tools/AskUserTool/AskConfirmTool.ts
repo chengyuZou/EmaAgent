@@ -3,13 +3,20 @@ import { randomUUID } from 'node:crypto';
 import { createInterface } from 'node:readline/promises';
 import { z } from 'zod';
 import { buildTool } from '@ema-agent/tools';
-import type {
-  ToolExecutionScope,
-  ToolInvocationContext,
-} from '@ema-agent/tools';
 import type { SessionId, TurnId } from '@ema-agent/ids';
 import type { ToolExecutionEvent as EmaStreamEvent } from '@ema-agent/tools';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
+import type { AskUserPort, BuiltinToolContext } from '../../builtinToolContext.js';
+import { contextOk } from '../../contextValidation.js';
+
+/** AskConfirm 工具的窄 Context：可选 SSE 输出 + 可选问询解析器 + 调用身份。 */
+interface AskConfirmToolContext {
+  emit?: (event: EmaStreamEvent) => void;
+  askUser?: AskUserPort;
+  sessionId: SessionId;
+  turnId: TurnId;
+  signal: AbortSignal;
+}
 
 const inputSchema = z.object({
   question: z.string().min(1).describe('The yes/no question to present to the user.'),
@@ -22,7 +29,7 @@ export interface AskConfirmResult {
   confirmed: boolean;
 }
 
-export const AskConfirmTool = buildTool<AskConfirmInput, AskConfirmResult>({
+export const AskConfirmTool = buildTool<AskConfirmInput, AskConfirmResult, BuiltinToolContext, AskConfirmToolContext>({
   id: BuiltinTools.AskConfirm.id,
   name: BuiltinTools.AskConfirm.name,
   description: `Ask the user a single yes/no confirmation question and wait for their response.
@@ -40,29 +47,39 @@ Prefer this over AskUser when you only need a binary decision - the UI shows a f
     accessType: 'write',
   },
 
+  // 总是可用：有 emit+askUser 走 SSE，否则 CLI 兜底。
+  validateContext(ctx) {
+    return contextOk({
+      ...(ctx.emit ? { emit: ctx.emit } : {}),
+      ...(ctx.askUser ? { askUser: ctx.askUser } : {}),
+      sessionId: ctx.sessionId,
+      turnId: ctx.turnId,
+      signal: ctx.signal,
+    });
+  },
+
   async execute(
     input: AskConfirmInput,
-    ctx: ToolInvocationContext,
-    scope: ToolExecutionScope,
+    context: AskConfirmToolContext,
   ): Promise<AskConfirmResult> {
-    if (scope.emit && scope.askUser) {
+    if (context.emit && context.askUser) {
       const promptId = randomUUID();
       const request = {
         type:             'ask_confirm_required',
-        sessionId:        ctx.sessionId as SessionId,
-        turnId:           ctx.turnId as TurnId,
+        sessionId:        context.sessionId,
+        turnId:           context.turnId,
         promptId,
         question:         input.question,
         humanDescription: input.humanDescription,
       } satisfies EmaStreamEvent;
-      scope.emit(request);
+      context.emit(request);
 
-      const { answers } = await scope.askUser(promptId, [], request);
+      const { answers } = await context.askUser(promptId, [], request);
       const confirmed = answers['confirmed'] === 'true';
 
-      scope.emit({
+      context.emit({
         type:      'ask_confirm_resolved',
-        sessionId: ctx.sessionId as SessionId,
+        sessionId: context.sessionId,
         promptId,
         confirmed,
       } satisfies EmaStreamEvent);
@@ -72,7 +89,7 @@ Prefer this over AskUser when you only need a binary decision - the UI shows a f
 
     // CLI 兜底
     const rl = createInterface({ input: process.stdin, output: process.stdout });
-    ctx.signal.addEventListener('abort', () => rl.close(), { once: true });
+    context.signal.addEventListener('abort', () => rl.close(), { once: true });
     const answer = await rl.question(`\n${input.question} (y/n): `);
     rl.close();
     return { confirmed: answer.trim().toLowerCase() === 'y' };

@@ -1,11 +1,10 @@
 // 把工具作者提供的定义封装成注册表可以安全使用的不可变工具。
 import { zodToJsonSchema } from 'zod-to-json-schema';
 import type {
-  ToolDef,
   BuiltTool,
+  ToolContextValidation,
+  ToolDef,
   ToolDescriptor,
-  ToolExecutionScope,
-  ToolInvocationContext,
   ToolOrigin,
 } from './types.js';
 
@@ -16,10 +15,14 @@ export const DEFAULT_MAX_RESULT_BYTES = 50 * 1024;
  *
  * 懒计算 JSON Schema descriptor(首次调用时一次),以便只在 build 时
  * import ToolDef 类型的包不付 schema 序列化代价。
+ *
+ * THostContext 仅在此处校验作者写的 validateContext 签名;返回的 BuiltTool 在
+ * 类型擦除边界通过 unsafeValidateContext/unsafeExecute 收 unknown,
+ * 让注册表和执行器不必知道具体宿主 Context 类型。
  */
-export function buildTool<TInput, TOutput>(
-  def: ToolDef<TInput, TOutput>,
-): BuiltTool<TInput, TOutput> {
+export function buildTool<TInput, TOutput, THostContext, TToolContext>(
+  def: ToolDef<TInput, TOutput, THostContext, TToolContext>,
+): BuiltTool<TInput, TOutput, TToolContext> {
   const maxResultBytes = def.maxResultBytes ?? DEFAULT_MAX_RESULT_BYTES;
   if (
     maxResultBytes !== Number.POSITIVE_INFINITY
@@ -34,9 +37,7 @@ export function buildTool<TInput, TOutput>(
         serverToolName: def.origin.serverToolName,
       })
     : Object.freeze({ kind: 'builtin' });
-
   let cachedDescriptor: ToolDescriptor | undefined;
-
   const descriptor = (): ToolDescriptor => {
     if (!cachedDescriptor) {
       cachedDescriptor = {
@@ -50,16 +51,16 @@ export function buildTool<TInput, TOutput>(
     }
     return cachedDescriptor;
   };
-
   const parseInput = (raw: unknown): TInput => def.inputSchema.parse(raw);
-
   const execute = def.execute.bind(def);
+  const validateContext = def.validateContext.bind(def);
+  // 类型擦除边界:注册表/执行器持 unknown,在此断言回工具定义的 THostContext。
+  const unsafeValidateContext = (context: unknown): ToolContextValidation<TToolContext> =>
+    validateContext(context as THostContext);
   const unsafeExecute = (
     input: unknown,
-    ctx: ToolInvocationContext,
-    scope: ToolExecutionScope,
-  ): Promise<unknown> => execute(input as TInput, ctx, scope);
-
+    context: unknown,
+  ): Promise<unknown> => execute(input as TInput, context as TToolContext);
   return Object.freeze({
     id: def.id ?? def.name,
     name: def.name,
@@ -71,6 +72,7 @@ export function buildTool<TInput, TOutput>(
       ? Object.freeze({ ...def.inputJsonSchemaOverride })
       : undefined,
     maxResultBytes,
+    requires: def.requires ? [...def.requires] as string[] : undefined,
     validateInput: def.validateInput,
     isReadOnly: def.isReadOnly,
     isConcurrencySafe: def.isConcurrencySafe,
@@ -79,6 +81,7 @@ export function buildTool<TInput, TOutput>(
     descriptor,
     execute,
     unsafeExecute,
+    unsafeValidateContext,
     parseInput,
   });
 }

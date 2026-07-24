@@ -30,6 +30,7 @@
     "@ema-agent/tasks": "workspace:*",
     "@ema-agent/permission": "workspace:*",
     "@ema-agent/public-http": "workspace:*",
+    "@ema-agent/sandbox": "workspace:*",
     "@ema-agent/tools": "workspace:*",
     "@ema-agent/token": "workspace:*",
     "diff": "^9.0.0",

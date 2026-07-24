@@ -5,11 +5,11 @@ import { asAgentRunId } from '@ema-agent/ids';
 import type { MessageBlocks } from '@ema-agent/session';
 import {
   ToolExecutionRuntime,
+  type AskUserRequiredEvent,
   type KnowledgeSearchPort,
-  type ToolExecutionScope,
-  type ToolInvocationContext,
   type ReadFileState,
 } from '@ema-agent/tools';
+import type { BuiltinToolContext } from '@ema-agent/tool-builtin';
 import type { PermissionContext } from '@ema-agent/permission';
 import type { TurnFailurePhase } from '@ema-agent/hooks';
 import type { AgentDeps, TurnExecutionInput } from './types.js';
@@ -261,31 +261,29 @@ async function* runTurn(
 
     const buildExecutor: ExecutorFactory<AgentRuntimeEvent> = ({ pushEv, signal: wakeSignal }) => {
       emitRef.fn = pushEv;   // 循环启动后接入父 SSE 发送函数
-      const toolContext: Omit<ToolInvocationContext, 'toolCallId'> = {
+      // 完整宿主 Context：调用身份 + 各业务能力。emit 由 ToolExecutionRuntime
+      // 按 per-call 绑定 track 后填充，不在此设置（避免与 per-tool 事件抑制冲突）。
+      const toolContext: BuiltinToolContext = {
         sessionId,
         turnId,
         workspaceRoot,
         signal,
-      };
-      const toolScope: ToolExecutionScope = {
         readFileState,
-        taskStore:       deps.taskStore,
-        fileStateStore:  sessionToolStores?.fileStateStore,
-        emit:            pushEv,
-        commandRunner:   resolvedRunner,
-        artifactStore:   deps.artifactStore,
-        skillRunner:     deps.skillRunner,
-        toolCapabilities: policy.capabilities(),
-        kbSearch:        scopedKbSearch,
-        subagentSpawner: spawner,
-        scratchpadDir,
-        scratchpadAuthor: 'main',
+        taskStore:         deps.taskStore,
+        fileStateStore:    sessionToolStores?.fileStateStore,
+        commandRunner:     resolvedRunner,
+        artifactStore:     deps.artifactStore,
+        skillRunner:       deps.skillRunner,
+        toolCapabilities:  policy.capabilities(),
+        knowledgeSearch:   scopedKbSearch,
+        subagentSpawner:   spawner,
+        scratchpad:        scratchpadDir ? { dir: scratchpadDir, author: 'main' } : undefined,
         askUser: askUserRegistry
           ? async (promptId, questions, request) => {
               void questions;
               return awaitAgentAnswer({
                 promptId,
-                request,
+                request: request as AskUserRequiredEvent,
                 turnId: turnId as string,
                 signal,
                 registry: askUserRegistry,
@@ -298,7 +296,7 @@ async function* runTurn(
         sessionId, turnId,
         allows:          name => policy.allows(name),
         toolManifest:    policy.manifestSnapshot(),
-        tools, permission, permCtx, toolContext, toolScope,
+        tools, permission, permCtx, toolContext,
         lifecycle: createToolLifecycleHooks(hooks, pushEv),
         buildAsk:        deps.buildAsk,
         pushEv,

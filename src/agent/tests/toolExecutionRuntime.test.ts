@@ -40,6 +40,7 @@ describe('ToolExecutionRuntime Hook 与权限边界', () => {
           permissionMeta: {},
         }),
         validate: async () => ({ valid: true }),
+        validateContext: () => ({ valid: true, context: {} }),
         execute: async () => 'ok',
       } as never,
       permission: {} as never,
@@ -84,6 +85,7 @@ describe('ToolExecutionRuntime Hook 与权限边界', () => {
           isConcurrencySafe: true,
           permissionMeta: {},
         }),
+        validateContext: () => ({ valid: true, context: {} }),
         execute: async () => 'ok',
       } as never,
       permission: {
@@ -145,6 +147,7 @@ describe('ToolExecutionRuntime Hook 与权限边界', () => {
         isConcurrencySafe: true,
         permissionMeta: {},
       }),
+      validateContext: () => ({ valid: true, context: {} }),
       execute: async (prepared: { input: unknown }) => {
         expect(prepared.input).toBe(approvedInput);
         order.push('dispatch');
@@ -290,6 +293,7 @@ describe('ToolExecutionRuntime Hook 与权限边界', () => {
             permissionMeta: {},
           };
         },
+        validateContext: () => ({ valid: true, context: {} }),
         execute: async () => {
           if ('dispatchError' in failureCase) throw failureCase.dispatchError;
           return 'ok';
@@ -359,6 +363,7 @@ describe('ToolExecutionRuntime Hook 与权限边界', () => {
           isConcurrencySafe: true,
           permissionMeta: {},
         }),
+        validateContext: (_p: unknown, ctx: { signal: AbortSignal }) => ({ valid: true, context: { signal: ctx.signal } }),
         execute: async (_prepared: unknown, ctx: { signal: AbortSignal }) =>
           await new Promise((_resolve, reject) => {
             ctx.signal.addEventListener('abort', () => reject(new Error('aborted')), { once: true });
@@ -415,6 +420,7 @@ describe('ToolExecutionRuntime Hook 与权限边界', () => {
           isConcurrencySafe: true,
           permissionMeta: {},
         }),
+        validateContext: (_p: unknown, ctx: { signal: AbortSignal }) => ({ valid: true, context: { signal: ctx.signal } }),
         execute: async (_prepared: unknown, ctx: { signal: AbortSignal }) => {
           notifyStarted();
           return await new Promise((_resolve, reject) => {

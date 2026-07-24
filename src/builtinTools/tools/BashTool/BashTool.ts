@@ -1,11 +1,17 @@
 // 把 Bash 命令交给独立 Sandbox Runner 执行，并返回有界输出。
 import { z } from 'zod';
 import { buildTool } from '@ema-agent/tools';
-import type {
-  ToolExecutionScope,
-  ToolInvocationContext,
-} from '@ema-agent/tools';
+import type { CommandRunnerPort } from '@ema-agent/sandbox';
+import type { BuiltinToolContext } from '../../builtinToolContext.js';
+import { contextFail, contextOk } from '../../contextValidation.js';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
+
+/** Bash 工具的窄 Context：只需命令执行器 + 执行身份。 */
+interface BashToolContext {
+  runner: CommandRunnerPort;
+  signal: AbortSignal;
+  workspaceRoot: string;
+}
 
 // ── 常量 ─────────────────────────────────────────────────────────────────────
 
@@ -62,7 +68,7 @@ export interface BashResult {
 
 // ── 工具定义 ───────────────────────────────────────────────────────────────────
 
-export const BashTool = buildTool<BashInput, BashResult>({
+export const BashTool = buildTool<BashInput, BashResult, BuiltinToolContext, BashToolContext>({
   id: BuiltinTools.Bash.id,
   name: BuiltinTools.Bash.name,
   description: `Execute a bash/sh shell command and return stdout, stderr, and exit code.
@@ -78,6 +84,19 @@ Safety rules:
   inputSchema,
   isReadOnly: () => false,
   isConcurrencySafe: () => false,
+
+  requires: ['commandRunner'],
+
+  validateContext(ctx) {
+    if (!ctx.commandRunner) {
+      return contextFail('当前执行环境没有 Shell 能力，请先选择工作区并检查 Sandbox 状态。');
+    }
+    return contextOk({
+      runner: ctx.commandRunner,
+      signal: ctx.signal,
+      workspaceRoot: ctx.workspaceRoot,
+    });
+  },
 
   permissionMeta: {
     riskLevel: 'high',
@@ -96,8 +115,7 @@ Safety rules:
 
   async execute(
     input: BashInput,
-    ctx: ToolInvocationContext,
-    scope: ToolExecutionScope,
+    context: BashToolContext,
   ): Promise<BashResult> {
     const { command, timeout } = input;
 
@@ -111,14 +129,10 @@ Safety rules:
     const timeoutMs = Math.min(timeout ?? DEFAULT_TIMEOUT_MS, MAX_TIMEOUT_MS);
     const startMs = Date.now();
 
-    if (!scope.commandRunner) {
-      throw new Error('当前 Session 没有可用的受控命令执行器。请先选择工作区并检查 Sandbox 状态。');
-    }
-
-    const result = await scope.commandRunner.run(command, {
-      cwd: ctx.workspaceRoot,
+    const result = await context.runner.run(command, {
+      cwd: context.workspaceRoot,
       timeoutMs,
-      signal: ctx.signal,
+      signal: context.signal,
     });
     return { ...result, durationMs: Date.now() - startMs };
   },

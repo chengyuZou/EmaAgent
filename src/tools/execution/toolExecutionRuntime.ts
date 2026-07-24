@@ -1,4 +1,4 @@
-// 把模型产生的工具调用依次完成准备、权限检查、执行、审计和结果回传。
+﻿// 把模型产生的工具调用依次完成准备、权限检查、执行、审计和结果回传。
 /**
  * ToolExecutionRuntime 负责带并发控制的流式工具执行。
  *
@@ -14,7 +14,7 @@
 import { asToolCallId } from '@ema-agent/ids';
 import type { SessionId, ToolCallId, TurnId } from '@ema-agent/ids';
 import type {
-  ToolExecutionScope,
+
   ToolInvocationContext,
   ToolManifestSnapshot,
 } from '../types.js';
@@ -79,8 +79,8 @@ export interface ToolExecutionRuntimeOptions {
   lifecycle?:  ToolLifecycleObserver;
   /** 不含 callId 和单工具信号的 Turn 级调用身份。 */
   toolContext: Omit<ToolInvocationContext, 'toolCallId'>;
-  /** Turn 显式授予本执行器的能力端口。 */
-  toolScope:   ToolExecutionScope;
+
+
   buildAsk?:   (args: {
     sessionId: SessionId;
     turnId: TurnId;
@@ -306,7 +306,7 @@ export class ToolExecutionRuntime {
   private async executeOne(track: TrackedTool): Promise<void> {
     const {
       sessionId, turnId, permission, permCtx, lifecycle,
-      toolContext, toolScope, tools, buildAsk, signal,
+      toolContext, tools, buildAsk, signal,
     } = this.opts;
     const { id, name, args, prepared } = track;
 
@@ -360,18 +360,34 @@ export class ToolExecutionRuntime {
         return;
       }
 
-      const perToolCtx: ToolInvocationContext = {
+      const perToolCtx: ToolInvocationContext & { emit?: (event: ToolExecutionEvent) => void } = {
         ...toolContext,
         toolCallId: id,
         signal: perToolCtrl.signal,
+        emit: (event: ToolExecutionEvent) => this.emit(track, event),
       };
+
+      // 把完整宿主 Context 投影成工具自己的窄 Context。
+      // 无对应能力(如子 Agent 调 Bash、无 TaskStore 的 Turn 调 Task)时作为
+      // 工具错误返回模型,不执行 execute。
+      const contextProjection = tools.validateContext(prepared, perToolCtx);
+      if (!contextProjection.valid) {
+        await this.completeFailure(track, {
+          phase: 'validation',
+          code: 'tool/context_unavailable',
+          message: contextProjection.reason,
+          retryable: false,
+        }, perToolCtrl.signal);
+        return;
+      }
+      const narrowedContext = contextProjection.context;
 
       let validation;
       try {
         // 生产装配始终使用 ToolRegistry；旧测试和最小可信适配器在迁移期可省略
         // 业务校验方法，但不能绕过 Registry 的 Schema Prepare 与执行身份检查。
         validation = typeof tools.validate === 'function'
-          ? await tools.validate(prepared, perToolCtx, toolScope)
+          ? await tools.validate(prepared, narrowedContext)
           : { valid: true as const };
       } catch (error) {
         await this.completeFailure(track, {
@@ -452,7 +468,7 @@ export class ToolExecutionRuntime {
         this.opts.toolExecutionJournal?.start(id);
         if (this.opts.toolExecutionJournal) track.journalStatus = 'running';
         const executed = splitToolResult(
-          await tools.execute(prepared, perToolCtx, toolScope),
+          await tools.execute(prepared, narrowedContext),
         );
         output = executed.modelOutput;
         presentation = executed.presentation;
@@ -545,7 +561,7 @@ export class ToolExecutionRuntime {
         }
       }
       track.done = true;
-      toolScope.commandRunner?.cleanup();
+      // TODO commandRunner.cleanup() 移到 Turn 结束时由 Agent 调用，不通过 scope
       // done 写入后再次唤醒排空循环，使其重新检查 allDone()。
       // pushEv 只在结果事件入队时唤醒，而后续 Hook 可能延迟 done 的写入。
       signal();

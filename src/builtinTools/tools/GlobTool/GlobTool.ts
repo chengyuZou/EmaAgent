@@ -4,9 +4,16 @@ import path from 'node:path';
 import { z } from 'zod';
 import { globIterate } from 'glob';
 import { buildTool } from '@ema-agent/tools';
-import type { ToolInvocationContext } from '@ema-agent/tools';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
+import type { BuiltinToolContext } from '../../builtinToolContext.js';
+import { contextOk } from '../../contextValidation.js';
 import { runBoundedProcess } from '../shared/BoundedProcess.js';
+
+/** Glob 工具的窄 Context：工作区根 + per-call 取消信号。 */
+interface GlobToolContext {
+  workspaceRoot: string;
+  signal: AbortSignal;
+}
 
 // ── 输入 schema ──────────────────────────────────────────────────────────────
 
@@ -39,7 +46,7 @@ const SEARCH_TIMEOUT_MS = 10_000;
 
 // ── 工具定义 ───────────────────────────────────────────────────────────────────
 
-export const GlobTool = buildTool<GlobInput, GlobResult>({
+export const GlobTool = buildTool<GlobInput, GlobResult, BuiltinToolContext, GlobToolContext>({
   id: BuiltinTools.Glob.id,
   name: BuiltinTools.Glob.name,
   description: `Fast file pattern matching using ripgrep's --files mode.
@@ -61,8 +68,15 @@ export const GlobTool = buildTool<GlobInput, GlobResult>({
     extractPath: (input) => (input as { path?: string }).path,
   },
 
-  async execute(input: GlobInput, ctx: ToolInvocationContext): Promise<GlobResult> {
-    const workspaceRoot = ctx.workspaceRoot || process.cwd();
+  validateContext(ctx) {
+    return contextOk({
+      workspaceRoot: ctx.workspaceRoot,
+      signal: ctx.signal,
+    });
+  },
+
+  async execute(input: GlobInput, context: GlobToolContext): Promise<GlobResult> {
+    const workspaceRoot = context.workspaceRoot || process.cwd();
     const searchDir = input.path
       ? path.resolve(workspaceRoot, input.path)
       : workspaceRoot;
@@ -70,10 +84,10 @@ export const GlobTool = buildTool<GlobInput, GlobResult>({
     // 优先 rg;Node glob 兜底。
     let found: { paths: string[]; truncated: boolean; reason?: string };
     try {
-      found = await rgGlob(input.pattern, searchDir, ctx.signal);
+      found = await rgGlob(input.pattern, searchDir, context.signal);
     } catch (error) {
-      if (ctx.signal.aborted) throw error;
-      found = await nodeGlob(input.pattern, searchDir, ctx.signal);
+      if (context.signal.aborted) throw error;
+      found = await nodeGlob(input.pattern, searchDir, context.signal);
     }
 
     // 按 mtime 降序排

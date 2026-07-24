@@ -3,11 +3,16 @@ import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { asAgentRunId, asTaskId } from '@ema-agent/ids';
 import { buildTool } from '@ema-agent/tools';
-import type {
-  ToolExecutionScope,
-  ToolInvocationContext,
-} from '@ema-agent/tools';
+import type { SubagentSpawnerPort } from '@ema-agent/tools';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
+import type { BuiltinToolContext } from '../../builtinToolContext.js';
+import { contextFail, contextOk } from '../../contextValidation.js';
+
+/** 后台子 Agent 工具族的窄 Context：启动器 + per-call 取消信号（SpawnBackground 用）。 */
+interface BackgroundSubagentToolContext {
+  spawner: SubagentSpawnerPort;
+  signal: AbortSignal;
+}
 
 // ── SubagentSpawnBackground ───────────────────────────────────────────────────
 //
@@ -36,7 +41,9 @@ const spawnBgSchema = z.object({
 
 export const SubagentSpawnBackgroundTool = buildTool<
   z.infer<typeof spawnBgSchema>,
-  { agentRunId: string }
+  { agentRunId: string },
+  BuiltinToolContext,
+  BackgroundSubagentToolContext
 >({
   id: BuiltinTools.SubagentSpawnBackground.id,
   name: BuiltinTools.SubagentSpawnBackground.name,
@@ -52,15 +59,27 @@ The sub-agent MUST be awaited before the parent turn ends.`,
 
   permissionMeta: { riskLevel: 'high', accessType: 'execute' },
 
-  async execute(input, ctx: ToolInvocationContext, scope: ToolExecutionScope) {
-    if (!scope.subagentSpawner?.spawnBackground) {
+  requires: ['subagentSpawner'],
+
+  validateContext(ctx) {
+    if (!ctx.subagentSpawner) {
+      return contextFail('子 Agent 启动器未装配。');
+    }
+    return contextOk({
+      spawner: ctx.subagentSpawner,
+      signal: ctx.signal,
+    });
+  },
+
+  async execute(input, context: BackgroundSubagentToolContext) {
+    if (!context.spawner.spawnBackground) {
       throw new Error(
         'Sub-agents cannot spawn further sub-agents (depth limit: 1). ' +
         'Restructure the task so the top-level agent spawns all background workers directly.',
       );
     }
     const agentRunId = asAgentRunId(randomUUID());
-    scope.subagentSpawner.spawnBackground(
+    context.spawner.spawnBackground(
       input.prompt,
       {
         model: input.model,
@@ -69,7 +88,7 @@ The sub-agent MUST be awaited before the parent turn ends.`,
         agentRunId,
         taskId: input.taskId ? asTaskId(input.taskId) : undefined,
       },
-      ctx.signal,
+      context.signal,
     );
     return { agentRunId };
   },
@@ -89,7 +108,9 @@ const sendMsgSchema = z.object({
 
 export const SubagentSendMessageTool = buildTool<
   z.infer<typeof sendMsgSchema>,
-  { queued: boolean }
+  { queued: boolean },
+  BuiltinToolContext,
+  BackgroundSubagentToolContext
 >({
   id: BuiltinTools.SubagentSendMessage.id,
   name: BuiltinTools.SubagentSendMessage.name,
@@ -103,14 +124,26 @@ Returns queued:false if the sub-agent has already finished or was never started.
 
   permissionMeta: { riskLevel: 'low', accessType: 'write' },
 
-  async execute(input, _ctx: ToolInvocationContext, scope: ToolExecutionScope) {
-    if (!scope.subagentSpawner?.queueMessage) {
+  requires: ['subagentSpawner'],
+
+  validateContext(ctx) {
+    if (!ctx.subagentSpawner) {
+      return contextFail('子 Agent 启动器未装配。');
+    }
+    return contextOk({
+      spawner: ctx.subagentSpawner,
+      signal: ctx.signal,
+    });
+  },
+
+  async execute(input, context: BackgroundSubagentToolContext) {
+    if (!context.spawner.queueMessage) {
       throw new Error(
         'SubagentSendMessage is only available to the top-level agent. ' +
         'Sub-agents cannot send messages to other sub-agents.',
       );
     }
-    const queued = scope.subagentSpawner.queueMessage(asAgentRunId(input.agentRunId), input.message);
+    const queued = context.spawner.queueMessage(asAgentRunId(input.agentRunId), input.message);
     return { queued };
   },
 });
@@ -125,7 +158,9 @@ const awaitSchema = z.object({
 
 export const SubagentAwaitTool = buildTool<
   z.infer<typeof awaitSchema>,
-  { output: string; usage: { inputTokens: number; outputTokens: number } } | { output: null }
+  { output: string; usage: { inputTokens: number; outputTokens: number } } | { output: null },
+  BuiltinToolContext,
+  BackgroundSubagentToolContext
 >({
   id: BuiltinTools.SubagentAwait.id,
   name: BuiltinTools.SubagentAwait.name,
@@ -138,14 +173,26 @@ Must be called before the parent turn ends. Returns output:null if the agentRunI
 
   permissionMeta: { riskLevel: 'low', accessType: 'read' },
 
-  async execute(input, _ctx: ToolInvocationContext, scope: ToolExecutionScope) {
-    if (!scope.subagentSpawner?.awaitBackground) {
+  requires: ['subagentSpawner'],
+
+  validateContext(ctx) {
+    if (!ctx.subagentSpawner) {
+      return contextFail('子 Agent 启动器未装配。');
+    }
+    return contextOk({
+      spawner: ctx.subagentSpawner,
+      signal: ctx.signal,
+    });
+  },
+
+  async execute(input, context: BackgroundSubagentToolContext) {
+    if (!context.spawner.awaitBackground) {
       throw new Error(
         'SubagentAwait is only available to the top-level agent. ' +
         'Sub-agents cannot await other sub-agents.',
       );
     }
-    const result = await scope.subagentSpawner.awaitBackground(asAgentRunId(input.agentRunId));
+    const result = await context.spawner.awaitBackground(asAgentRunId(input.agentRunId));
     if (!result) return { output: null };
     return result;
   },

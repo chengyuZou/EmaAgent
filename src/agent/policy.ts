@@ -35,7 +35,7 @@ export class TurnPolicy {
     return this.scope.allows(toolName);
   }
 
-  /** 交给 ToolExecutionScope，使 Skill 和未来运行模式只能收窄能力。 */
+  /** 交给 BuiltinToolContext.toolCapabilities，使 Skill 和未来运行模式只能收窄能力。 */
   capabilities(): ToolCapabilityScope {
     return this.scope;
   }

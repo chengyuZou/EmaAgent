@@ -9,10 +9,9 @@ import type {
   SubagentSpawnerPort,
   SubagentRunResult,
   SubagentSpawnOpts,
-  ToolExecutionScope,
-  ToolInvocationContext,
 } from '@ema-agent/tools';
 import { ToolExecutionRuntime } from '@ema-agent/tools';
+import type { BuiltinToolContext } from '@ema-agent/tool-builtin';
 import type { AgentDeps } from './types.js';
 import { TurnPolicy } from './policy.js';
 import { createToolLifecycleHooks } from './toolLifecycleHooks.js';
@@ -211,22 +210,21 @@ export class SubagentSpawner implements SubagentSpawnerPort {
     const buildExecutor: ExecutorFactory<AgentRuntimeEvent> = ({ pushEv, signal: wakeSignal }) => {
       // 子 ToolContext 故意不注入 subagentSpawner，以此把递归深度限制为一层。
       // 多层嵌套需要资源预算、邮箱死锁与级联取消设计，V1 不开放。
-      const toolContext: Omit<ToolInvocationContext, 'toolCallId'> = {
+      // emit 由 ToolExecutionRuntime 按 per-call 绑定 track 后填充。
+      const toolContext: BuiltinToolContext = {
         sessionId,
         turnId:           parentTurnId,
         agentRunId,
         workspaceRoot:    '',  // 不提供工作区，权限原因见上方说明
         signal:           childCtrl.signal,
-      };
-      const toolScope: ToolExecutionScope = {
         readFileState:    new Map(),
-        emit:             pushEv,
         artifactStore:    this.deps.artifactStore,
         skillRunner:      this.deps.skillRunner,
-        kbSearch:         this.kbSearch,
+        knowledgeSearch:  this.kbSearch,
         toolCapabilities: policy.capabilities(),
-        scratchpadDir:    this.scratchpadDir,
-        scratchpadAuthor: `subagent:${agentRunId.slice(0, 8)}`,
+        scratchpad:       this.scratchpadDir
+          ? { dir: this.scratchpadDir, author: `subagent:${agentRunId.slice(0, 8)}` }
+          : undefined,
       };
 
       const executor = new ToolExecutionRuntime({
@@ -234,7 +232,7 @@ export class SubagentSpawner implements SubagentSpawnerPort {
         turnId:     parentTurnId,
         allows:     name => policy.allows(name),
         toolManifest: policy.manifestSnapshot(),
-        tools, permission, permCtx, toolContext, toolScope,
+        tools, permission, permCtx, toolContext,
         lifecycle: createToolLifecycleHooks(hooks, pushEv),
         buildAsk:   this.deps.buildAsk,
         pushEv,
