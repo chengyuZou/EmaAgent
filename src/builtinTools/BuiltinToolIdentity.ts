@@ -13,7 +13,6 @@ export const BuiltinTools = Object.freeze({
   WebFetch:  Object.freeze({ id: 'builtin.web.fetch',  name: 'WebFetch' }),
   WebSearch: Object.freeze({ id: 'builtin.web.search', name: 'WebSearch' }),
   Bash:       Object.freeze({ id: 'builtin.shell.bash',       name: 'Bash' }),
-  PowerShell: Object.freeze({ id: 'builtin.shell.powershell', name: 'PowerShell' }),
   AskUser:    Object.freeze({ id: 'builtin.user.ask',         name: 'AskUser' }),
   AskText:    Object.freeze({ id: 'builtin.user.ask_text',    name: 'AskText' }),
   AskChoice:  Object.freeze({ id: 'builtin.user.ask_choice',  name: 'AskChoice' }),

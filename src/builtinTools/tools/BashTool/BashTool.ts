@@ -1,7 +1,6 @@
 // 这个工具负责把 Bash 命令交给独立 Sandbox Runner 执行，并返回有界输出。
-import { spawn } from 'node:child_process';
 import { z } from 'zod';
-import { buildTool, spawnProcess } from '@ema-agent/tools';
+import { buildTool } from '@ema-agent/tools';
 import type { ToolExecutionContext } from '@ema-agent/tools';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 
@@ -41,10 +40,6 @@ const inputSchema = z.object({
     .max(MAX_TIMEOUT_MS)
     .optional()
     .describe(`Timeout in milliseconds. Defaults to ${DEFAULT_TIMEOUT_MS}. Max ${MAX_TIMEOUT_MS}.`),
-  run_in_background: z
-    .boolean()
-    .default(false)
-    .describe('Fire-and-forget. Returns immediately; stdout/stderr are not captured.'),
 });
 
 type BashInput = z.infer<typeof inputSchema>;
@@ -59,7 +54,7 @@ export interface BashResult {
   truncated:  boolean;
   durationMs: number;
   /** 进程被 per-tool abort 杀掉(非超时或 turn abort)时为 true。 */
-  aborted?:   boolean;
+  aborted: boolean;
 }
 
 // ── 工具定义 ───────────────────────────────────────────────────────────────────
@@ -73,7 +68,7 @@ Safety rules:
 - Avoid interactive commands that read from stdin (they will hang).
 - Destructive patterns (recursive force-delete, mkfs, fork bombs, etc.) are blocked regardless of permission mode.
 - Commands are executed inside the workspace root as the working directory.
-- Timeout defaults to 2 minutes; use \`run_in_background: true\` for long-running daemons.`,
+- Timeout defaults to 2 minutes. Background processes are not supported in V1.`,
 
   getToolUseSummary: (input) => input.description,
 
@@ -97,7 +92,7 @@ Safety rules:
   },
 
   async execute(input: BashInput, ctx: ToolExecutionContext): Promise<BashResult> {
-    const { command, timeout, run_in_background } = input;
+    const { command, timeout } = input;
 
     // 安全检查在此重复,以便直接分发时也触发
     for (const re of BANNED_COMMAND_PATTERNS) {
@@ -106,48 +101,18 @@ Safety rules:
       }
     }
 
-    const shell = process.platform === 'win32' ? 'bash' : '/bin/bash';
-    const cwd = ctx.workspaceRoot || process.cwd();
     const timeoutMs = Math.min(timeout ?? DEFAULT_TIMEOUT_MS, MAX_TIMEOUT_MS);
     const startMs = Date.now();
 
-    // 有 sandbox CommandRunner 时委托 - 获得 OS 级沙箱。
-    // run_in_background 也走 CommandRunner,以尊重 sandbox 规则并产出
-    // 可追踪任务,而非 detached 孤儿进程。
-    if (ctx.commandRunner) {
-      const result = await ctx.commandRunner.run(command, {
-        cwd,
-        timeout: run_in_background ? 0 : timeoutMs,
-        signal: ctx.signal,
-        background: run_in_background,
-      });
-      return { ...result, durationMs: Date.now() - startMs };
+    if (!ctx.commandRunner) {
+      throw new Error('当前 Session 没有可用的受控命令执行器。请先选择工作区并检查 Sandbox 状态。');
     }
 
-    if (run_in_background) {
-      // 无 CommandRunner - 回退 detached spawn,但仅作最后手段。
-      spawn(shell, ['-c', command], { cwd, stdio: 'ignore', detached: true }).unref();
-      return { stdout: '', stderr: '', exitCode: 0, timedOut: false, truncated: false, durationMs: 0 };
-    }
-
-    return runShell(shell, ['-c', command], cwd, timeoutMs, ctx.signal);
+    const result = await ctx.commandRunner.run(command, {
+      cwd: ctx.workspaceRoot,
+      timeoutMs,
+      signal: ctx.signal,
+    });
+    return { ...result, durationMs: Date.now() - startMs };
   },
 });
-
-// ── runShell ─────────────────────────────────────────────────────────────────
-
-/**
- * BashTool 与 PowerShellTool 共用的进程执行薄封装。
- * 真实实现在 @ema-agent/tool spawnProcess。
- */
-export async function runShell(
-  shell: string,
-  args: string[],
-  cwd: string,
-  timeoutMs: number,
-  signal: AbortSignal,
-): Promise<BashResult> {
-  const startMs = Date.now();
-  const result  = await spawnProcess(shell, args, cwd, timeoutMs, signal);
-  return { ...result, durationMs: Date.now() - startMs };
-}

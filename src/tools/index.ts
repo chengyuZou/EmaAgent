@@ -4,9 +4,6 @@ export type {
   ReadFileState,
   FileStateStoreEntry,
   FileStateStore,
-  RunOptions,
-  RunResult,
-  ICommandRunner,
   SubagentRunResult,
   SubagentSpawnOpts,
   SubagentContextMode,
@@ -54,7 +51,6 @@ export {
   ToolRegistrationConflictError,
 } from './registry.js';
 export type { McpToolOwner, McpToolRegistration } from './registry.js';
-export { spawnProcess } from './process-spawn.js';
 export {
   DEFAULT_AGGREGATE_RESULT_BYTES,
   DEFAULT_RESULT_PREVIEW_BYTES,

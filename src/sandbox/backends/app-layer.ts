@@ -1,31 +1,16 @@
-﻿// 无 OS 沙箱的降级后端：命令原样交给 shell，边界完全靠 PermissionEngine（应用层）。
+// 无 OS 沙箱时原样包装命令，仅供 Core 显式启用不安全覆盖模式。
 
-import { WSL_BASH_SENTINEL } from '../types.js';
-import type { SandboxBackend, SandboxConfig, WrappedCommand } from '../types.js';
-
-// TODO isAvailable() 永远返回 true，作为最终降级兜底。SandboxBackend 接口的
-//  isAvailable 冗余，待 sandbox 批次简化接口时移除。
+import { WSL_BASH_SENTINEL } from '../shell-probe.js';
+import type { SandboxBackend, WrappedCommand } from '../types.js';
 
 /**
- * 应用层后端 - 无 OS 级沙箱。
- *
- * 命令原样交给 shell 执行，边界完全由 PermissionEngine（应用层）强制。用于：
- *   - 无 WSL 的 Windows
- *   - WSL1（无 Linux namespace）
- *   - 任何首选后端不可用的平台
- *   - 有 WSL2 但没装 bubblewrap 的 Windows（经 wsl.exe 路由，仍是 app-layer -
- *     无 OS 沙箱，但 bash 可用，Agent 模式可达）
+ * 命令原样交给 Shell 执行，不提供物理隔离。Core 默认隐藏执行类工具；
+ * 只有用户显式开启不安全覆盖时才会使用。
  */
 export class AppLayerBackend implements SandboxBackend {
   readonly name = 'app-layer';
 
-  isAvailable(): boolean {
-    return true;  // 作为最终降级，始终可用
-  }
-
-  wrap(command: string, shell: string, config: SandboxConfig): WrappedCommand {
-    // Windows + WSL：没有 native bash.exe，但 WSL bash 可用。
-    // 经 wsl.exe 路由，让 Agent 模式在没装 Git for Windows 时也能工作。
+  wrap(command: string, shell: string): WrappedCommand {
     if (shell === WSL_BASH_SENTINEL) {
       return { executable: 'wsl.exe', args: ['bash', '-c', command] };
     }

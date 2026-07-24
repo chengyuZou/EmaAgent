@@ -76,7 +76,7 @@ import type {
 import type { EmaStreamEvent } from '@ema-agent/events';
 import type { KbSearchResult } from '@ema-agent/knowledge';
 import type { ReleaseFeaturesWire } from '@ema-agent/system';
-import type { SandboxStatusWire } from '@ema-agent/sandbox';
+import type { CommandRunnerPort, SandboxStatusWire } from '@ema-agent/sandbox';
 import type { UsageRecord } from '@ema-agent/usage';
 import { SessionFileStateStore, ToolExecutionJournal, ToolRegistry } from '@ema-agent/tools';
 import {
@@ -85,7 +85,7 @@ import {
 } from '@ema-agent/tool-builtin';
 import { detectBackend, CommandRunner } from '@ema-agent/sandbox';
 import { ToolResultCleaner, ToolResultStore } from '@ema-agent/tools';
-import type { ICommandRunner, IMcpClientBridge, ISkillRunner } from '@ema-agent/tools';
+import type { IMcpClientBridge, ISkillRunner } from '@ema-agent/tools';
 import { AgentRunStore } from '@ema-agent/agent';
 import { TaskStore } from '@ema-agent/tasks';
 import { MemoryPlanner } from '@ema-agent/memory';
@@ -175,7 +175,7 @@ export interface AppBindings {
     emit:      (ev: PermissionStreamEvent) => void;
   }) => AskPermissionFn;
   /** Per-session sandbox runner — memoised on first call per sessionId. */
-  getCommandRunner: (sessionId: SessionId) => ICommandRunner;
+  getCommandRunner: (sessionId: SessionId) => CommandRunnerPort | undefined;
   /**
    * Drop a session's cached CommandRunner so the next getCommandRunner()
    * rebuilds it from current state. MUST be called whenever workspaceRoot
@@ -483,17 +483,20 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
 
   // Per-session command runner — memoised to avoid rebuilding SandboxConfig
   // on every turn (detectBackend + stat on bare-repo files is wasteful).
-  const runnerCache = new Map<string, ICommandRunner>();
-  const getCommandRunner = (sessionId: SessionId): ICommandRunner => {
+  const runnerCache = new Map<string, CommandRunnerPort>();
+  const getCommandRunner = (sessionId: SessionId): CommandRunnerPort | undefined => {
     let runner = runnerCache.get(sessionId);
     if (runner) return runner;
     const s = session.getSession(sessionId);
+    if (!s.workspaceRoot) return undefined;
+    const temporaryWritePaths = process.platform === 'darwin'
+      ? [os.tmpdir(), '/tmp', '/private/tmp']
+      : [os.tmpdir()];
     runner = new CommandRunner({
-      workspaceRoot: s.workspaceRoot || process.cwd(),
-      sessionId,
-      permission,
+      workspaceRoot: s.workspaceRoot,
+      writablePaths: [s.workspaceRoot, ...temporaryWritePaths],
       protectedPaths: protectedSandboxPaths,
-      networkAccess:  sandboxNetworkAccess,
+      networkAccess: sandboxNetworkAccess,
     });
     runnerCache.set(sessionId, runner);
     return runner;

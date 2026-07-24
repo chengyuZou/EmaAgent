@@ -1213,13 +1213,6 @@ importers:
         version: 2.1.9(@types/node@20.19.39)(jsdom@26.1.0(canvas@2.11.2))(msw@2.14.6(@types/node@20.19.39)(typescript@5.9.3))
 
   src/sandbox:
-    dependencies:
-      '@ema-agent/permission':
-        specifier: workspace:*
-        version: link:../permission
-      '@ema-agent/tools':
-        specifier: workspace:*
-        version: link:../tools
     devDependencies:
       '@types/node':
         specifier: ^20.0.0
@@ -1440,6 +1433,9 @@ importers:
       '@ema-agent/permission':
         specifier: workspace:*
         version: link:../permission
+      '@ema-agent/sandbox':
+        specifier: workspace:*
+        version: link:../sandbox
       '@ema-agent/tasks':
         specifier: workspace:*
         version: link:../tasks

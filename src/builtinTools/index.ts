@@ -6,7 +6,6 @@ import { FileEditTool } from './tools/FileEditTool/FileEditTool.js';
 import { GlobTool } from './tools/GlobTool/GlobTool.js';
 import { GrepTool } from './tools/GrepTool/GrepTool.js';
 import { BashTool } from './tools/BashTool/BashTool.js';
-import { PowerShellTool } from './tools/PowerShellTool/PowerShellTool.js';
 import { WebFetchTool } from './tools/WebFetchTool/WebFetchTool.js';
 import { WebSearchTool } from './tools/WebSearchTool/WebSearchTool.js';
 import { TaskCreateTool } from './tools/TaskCreateTool/TaskCreateTool.js';
@@ -47,7 +46,6 @@ export {
   GlobTool,
   GrepTool,
   BashTool,
-  PowerShellTool,
   WebFetchTool,
   WebSearchTool,
   TaskCreateTool,
@@ -111,7 +109,6 @@ const ALL_BUILTIN_TOOLS: BuiltTool<any, any>[] = [
   GlobTool,
   GrepTool,
   BashTool,
-  PowerShellTool,
   WebFetchTool,
   WebSearchTool,
   TaskCreateTool,
@@ -141,7 +138,6 @@ const ALL_BUILTIN_TOOLS: BuiltTool<any, any>[] = [
 /** 需要物理 OS 级沙箱才能安全暴露的工具。 */
 const EXECUTE_TOOL_IDS: ReadonlySet<string> = new Set([
   BuiltinTools.Bash.id,
-  BuiltinTools.PowerShell.id,
 ]);
 
 /**
@@ -173,7 +169,7 @@ const BRIDGE_GATED: ReadonlyMap<string, keyof RegisterOptions> = new Map([
 
 export interface RegisterOptions {
   /**
-   * true 时，Shell 执行工具 Bash、PowerShell 从注册表省略。
+   * true 时，Shell 执行工具 Bash 从注册表省略。
    * `CommandRunner.backendName === 'app-layer'`(即无物理沙箱)时设此。
    * 开发时可设 AGEN_UNSAFE_SHELL=1 重新启用。
    */

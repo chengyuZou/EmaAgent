@@ -23,13 +23,13 @@ import type { MessageBlocks, SessionStore, Turn } from '@ema-agent/session';
 import type { HookBus } from '@ema-agent/hooks';
 import type { EmotionEngine } from '@ema-agent/emotion';
 import type {
-  ICommandRunner,
   IMcpClientBridge,
   ISkillRunner,
   ToolExecutionJournalPort,
   ToolRegistry,
   ToolResultStore,
 } from '@ema-agent/tools';
+import type { CommandRunnerPort } from '@ema-agent/sandbox';
 import type { IArtifactStore } from '@ema-agent/artifact';
 import type {
   PermissionEngine,
@@ -73,11 +73,12 @@ export interface AgentDeps {
   tools:      ToolRegistry;
   permission: PermissionEngine;
   /**
-   * 按 Session 创建沙箱 Runner。返回 undefined 时 Bash 会直接启动进程。
+   * 按 Session 创建沙箱 Runner。无工作区或无执行能力时返回 undefined，
+   * Bash 必须明确拒绝，不能回退到裸进程。
    * 每个 Session 的 workspaceRoot 不同，因此 Orchestrator 按 sessionId 缓存，
    * 不能使用全局单例；聚焦测试可以省略。
    */
-  getCommandRunner?: (sessionId: SessionId) => ICommandRunner | undefined;
+  getCommandRunner?: (sessionId: SessionId) => CommandRunnerPort | undefined;
   /**
    * 为每个 Turn 创建连接到 SSE 事件流的 askPermission 回调。
    * 测试可省略，此时 PermissionEngine 使用构造参数中的 ask 配置，

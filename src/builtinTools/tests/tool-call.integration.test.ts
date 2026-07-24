@@ -263,7 +263,7 @@ describe('permission tests', () => {
     });
 
     const bashMeta = registry.get('Bash').permissionMeta;
-    const input    = { command: ':(){:|:&};:', description: 'fork bomb', timeout: 5000, run_in_background: false };
+    const input = { command: ':(){:|:&};:', description: 'fork bomb', timeout: 5000 };
 
     const outcome = await permEngine.gate('Bash', input, bashMeta, makePermCtx());
 
@@ -279,7 +279,7 @@ describe('permission tests', () => {
     });
 
     const bashMeta = registry.get('Bash').permissionMeta;
-    const input    = { command: 'echo hello', description: 'echo test', timeout: 5000, run_in_background: false };
+    const input = { command: 'echo hello', description: 'echo test', timeout: 5000 };
 
     const outcome = await permEngine.gate('Bash', input, bashMeta, makePermCtx());
 

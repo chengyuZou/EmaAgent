@@ -1,11 +1,8 @@
-﻿// 用 Bubblewrap 在 Linux 或 WSL2 中隔离命令的文件和网络访问。
+// 用 Bubblewrap 在 Linux 或 WSL2 中隔离命令的文件和网络访问。
 
 import path from 'node:path';
 import type { SandboxBackend, SandboxConfig, WrappedCommand } from '../types.js';
 import { getPlatform } from '../platform.js';
-
-// TODO isAvailable() 永远返回 true，真实检测在 detect.ts。SandboxBackend 接口的
-//  isAvailable 字段冗余，待 sandbox 批次简化接口时移除。
 
 /**
  * Linux 和 WSL2（含 Windows 经 WSL2）的 Bubblewrap 后端。
@@ -15,16 +12,12 @@ import { getPlatform } from '../platform.js';
  *   2. `--bind <allowWrite> <allowWrite>` - 覆盖特定目录为可写
  *   3. `--ro-bind-try <denyWrite> <denyWrite>` - 对特定路径重新强制只读
  *      （捕获 allowWrite 是 denyWrite 父目录的情况）
- *   4. `--unshare-net` - 网络隔离（V1 域名过滤是 PermissionEngine 的职责）
+ *   4. `--unshare-net` - 网络隔离
  *
  * Windows 上经 wsl.exe 路由，并把 Win32 路径翻译成 WSL /mnt/<drive>/... 后再构建 bwrap 参数。
  */
 export class BubblewrapBackend implements SandboxBackend {
   readonly name = 'bubblewrap';
-
-  isAvailable(): boolean {
-    return true;  // 可用性由 detect.ts 在实例化前确认
-  }
 
   wrap(command: string, shell: string, config: SandboxConfig): WrappedCommand {
     const platform = getPlatform();
@@ -71,8 +64,7 @@ function buildBwrapArgs(config: SandboxConfig): string[] {
   }
 
   // 网络隔离
-  // V1：二选一 - 没有允许的域名 = 断网；有任何允许的域名 = 放行。
-  // 沙箱内域名级过滤需要本地 HTTP 代理（V2 工作）。
+  // V1 只支持完全断网或全网访问；域名级过滤需要独立网络代理。
   if (config.network.access === 'none') {
     args.push('--unshare-net');
   }

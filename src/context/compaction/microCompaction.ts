@@ -21,7 +21,6 @@ const COMPACTABLE_TOOLS = new Set<string>([
   'Glob',
   'Grep',
   'Bash',
-  'PowerShell',
   'WebFetch',
   'WebSearch',
 ]);

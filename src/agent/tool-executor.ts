@@ -21,10 +21,10 @@ import type {
 import { splitToolResult, ToolInputError } from '@ema-agent/tools';
 import type {
   ToolExecutionContext,
-  ICommandRunner,
   PreparedToolCall,
   ToolResultStore,
 } from '@ema-agent/tools';
+import type { CommandRunnerPort } from '@ema-agent/sandbox';
 import type { ToolManifestSnapshot } from '@ema-agent/tools';
 import type { PermissionEngine, PermissionContext } from '@ema-agent/permission';
 import type { HookBus, ToolFailurePhase } from '@ema-agent/hooks';
@@ -71,7 +71,7 @@ export interface TurnToolExecutorOpts {
   hooks:       HookBus;
   toolCtx:     ToolExecutionContext;
   buildAsk?:   AgentDeps['buildAsk'];
-  runner?:     ICommandRunner;
+  runner?: CommandRunnerPort;
   /**
    * 把事件写入 Engine 的待发送队列，例如 tool_result 或 permission_required。
    * 实现方还应调用 signal() 唤醒排空循环。

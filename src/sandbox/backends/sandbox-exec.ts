@@ -1,9 +1,6 @@
-﻿// 为 macOS sandbox-exec 生成文件和网络隔离规则。
+// 为 macOS sandbox-exec 生成文件和网络隔离规则。
 
 import type { SandboxBackend, SandboxConfig, WrappedCommand } from '../types.js';
-
-// TODO isAvailable() 只查 process.platform，真实检测在 detect.ts。且应统一用 getPlatform()
-//  而非 process.platform。SandboxBackend 接口的 isAvailable 冗余，待 sandbox 批次简化。
 
 /**
  * macOS sandbox-exec 后端。
@@ -18,10 +15,6 @@ import type { SandboxBackend, SandboxConfig, WrappedCommand } from '../types.js'
  */
 export class SandboxExecBackend implements SandboxBackend {
   readonly name = 'sandbox-exec';
-
-  isAvailable(): boolean {
-    return process.platform === 'darwin';
-  }
 
   wrap(command: string, shell: string, config: SandboxConfig): WrappedCommand {
     const profile = buildProfile(config);

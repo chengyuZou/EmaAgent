@@ -16,6 +16,7 @@ import type {
 import type { KbSearchResult } from '@ema-agent/knowledge';
 import type { ToolPermissionMeta } from '@ema-agent/permission';
 import type { TaskStorePort } from '@ema-agent/tasks';
+import type { CommandRunnerPort } from '@ema-agent/sandbox';
 
 /** 子 Agent 启动时如何取得父执行上下文。 */
 export type SubagentContextMode = 'subagent' | 'fork';
@@ -50,45 +51,6 @@ export interface FileStateStore {
   record(path: string, entry: FileStateStoreEntry): void;
   get(path: string): (FileStateStoreEntry & { lastAccessMs: number }) | undefined;
   recentEntries(limit: number): ReadonlyArray<{ path: string; content: string; mtimeMs: number }>;
-}
-
-// ── ICommandRunner - 仅接口(由 @ema-agent/sandbox 实现)────────────────────
-
-/**
- * 薄接口,tools 可调 sandbox runner 而无需直接 import sandbox 包
- * (避免循环依赖:tools ↛ sandbox ↛ permission)。
- */
-export interface RunOptions {
-  cwd?:        string;
-  timeout?:    number;
-  signal?:     AbortSignal;
-  /** 即发即弃:detached 拉起,立即返回空结果。 */
-  background?: boolean;
-}
-
-export interface RunResult {
-  stdout:    string;
-  stderr:    string;
-  exitCode:  number;
-  timedOut:  boolean;
-  truncated: boolean;
-  /** 进程被 per-tool AbortSignal 杀掉(非超时)时为 true。 */
-  aborted?:  boolean;
-}
-
-export interface ICommandRunner {
-  run(command: string, opts?: RunOptions): Promise<RunResult>;
-  /** 移除上一条命令植入的 bare-repo 攻击文件。 */
-  cleanup(): void;
-  /** 权限规则变更后重新推导 sandbox 配置。 */
-  refreshConfig(): void;
-  /** OS 沙箱降级为应用层时的人类可读原因。 */
-  getSandboxUnavailableReason(): string | undefined;
-  /**
-   * 拆除任何持久 sandbox 资源(如长生命周期 bwrap namespace)。
-   * V1 空操作(每命令一进程模型)。预留给 V2 持久 sandbox。
-   */
-  destroy?(): void;
 }
 
 // ── 扩展接口(由 host 注入 ToolExecutionContext)─────────────────────────────
@@ -228,10 +190,9 @@ export interface ToolExecutionContext {
    */
   emit?: (event: ToolExecutionEvent) => void;
   /**
-   * sandbox 支撑的 shell runner。存在时,bash 工具把执行委托到这里
-   * 而非直接 spawn - 免费获得 OS 级沙箱。
+   * Sandbox 提供的唯一 Shell 执行入口；缺失时 Bash 必须拒绝执行。
    */
-  commandRunner?: ICommandRunner;
+  commandRunner?: CommandRunnerPort;
   /**
    * 工具执行中向用户问一组问题并等答案。
    * 引擎接好 AskUserRegistry 时提供;测试和不支持交互 prompt 的最小嵌入方缺失。

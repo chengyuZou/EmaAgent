@@ -1,4 +1,4 @@
-# EmaAgent 统一 Turn Runtime 与契约拆分 RFC
+﻿# EmaAgent 统一 Turn Runtime 与契约拆分 RFC
 
 > 状态：设计中，不代表当前源码已经完成迁移  
 > 日期：2026-07-21  
@@ -516,6 +516,22 @@ Builtin / MCP / Skill Tool
 
 支撑模块不成为第二套编排器：`ContextAssembler` 提供每次 LLM 调用看到的窗口；`LanguageModel` 执行无 Session 状态的模型请求；Permission 决定能否执行；Sandbox 决定如何隔离执行；Storage 实现持久化端口；Session 保存持久消息与稳定 Tool Result 预览；Turn 只组合本次根 Turn 的跨端事件并拥有根终态。
 
+**Context 装配时序**：不是 TurnRuntime 开始时只组装一次。Claude 明确规定每次 API 调用前都重新组装模型请求（消息和工具结果每轮增长）。因此 Ema 的准确边界是：TurnRuntime 提供组装所需的根事实（Session/Profile/Tool Manifest），AgentLoop 决定何时组装（每轮 LLM 调用前），ContextAssembler 决定怎样组装（基于最新历史/Tool Result/Recall/压缩状态）。**不能让 TurnRuntime 自己拼消息。**
+
+**不需要独立的 Agent Tool Scheduler**：AgentLoop 发现 Tool Calls、调用 ToolExecutionRuntime、消费结果、决定是否继续下一轮。ToolExecutionRuntime 负责并发分批/顺序/Hook/Permission/Sandbox/Journal/Result。Agent 只决定"是否继续下一轮"，Tools 决定"这一批调用怎样安全执行"。
+
+**根 Turn 不额外产生 AgentRun**：V1 根执行由 Turn 表达，不创建重复的根 AgentRun。子 Agent/Fork Agent 才创建 AgentRun。根 Turn + 根 AgentRun 会产生两个必须保持一致的根终态（Turn.status / AgentRun.status），V1 避免。
+
+**Sandbox 依赖方向**：Sandbox 不认识 PermissionEngine、ToolRegistry、Session/Turn 业务和 AgentLoop。正确方向是 Tools 执行流水线使用 Permission 和 Sandbox，Sandbox 本身不反向依赖 Tools（当前 `spawnProcess` 从 Tools 导入是错误依赖，待反转）。
+
+**施工顺序**（五批，每批只改一个主要边界）：
+
+1. **Sandbox 依赖反转**：`spawnProcess` 收回 Sandbox；合并重复 `RunOptions/RunResult`；`CommandRunner` 不再持有 `PermissionEngine`；禁用 `process.cwd()` 回退；暂时禁用 detached 假后台。不先打断 Sandbox -> Tools，后面把 ToolExecutionRuntime 迁入 Tools 会立刻形成循环依赖。
+2. **Tools 主链收口**：删除 `ToolRegistry.dispatch()` 旁路；`TurnToolExecutor` 迁入 `tools/execution`；Agent 只保留 Tool Batch 调度；收窄 `ToolExecutionContext`。不重写已正确的 PreparedToolCall/Manifest Snapshot/Result Budget/Journal。
+3. **建立 TurnRuntime**：`AgentEngine` 的 Turn 创建/持久化/终态/取消迁入 `src/turn`；返回 `TurnHandle`（turnId + events + completion + abort）；修复缺 turnId 的 Turn 流事件。Turn 不吸收 KB/Character/Tool/后台进程领域事件。
+4. **清理 Agent**：`src/agent` 只保留 `agentLoop/agentLoopState/policy/budget/runs/spawner/events/errors`。
+5. **Core 退回协议层**：Route 解析并验证请求；调用 `turnRuntime.start()`；把 TurnEvent 编码成 SSE。不再组装 Context、创建 Tool Executor 或决定业务终态。
+
 一级主重构范围：
 
 - `src/tools`：拥有 `ToolDef/buildTool`、注册与来源、Manifest Snapshot、`PreparedToolCall`、单次 Tool 生命周期、Execution Journal 领域逻辑、Result 外置与预算、后台句柄及 Presentation 数据；
@@ -921,16 +937,18 @@ interface TurnExecutionSnapshot {
 
 1. [x] Tool Result 归位到 `src/tools/results`，建立单结果上限和单消息聚合预算，并保持持久预览可重放；
 2. [x] ToolExecution Journal 从 Tasks/Agent 收回 Tools，Storage 只保留 Store 实现；
-3. 删除 `ToolRegistry.dispatch()` 的 prepare→execute 旁路，冻结唯一执行入口；
-4. 将现有 TurnToolExecutor 拆为 Agent Tool Scheduler 与 Tools `ToolExecutionRuntime`；
-5. 收窄 Tool Execution Context，把运行依赖改为构造时显式注入；
-6. Tool Manifest 增加来源与稳定分区，再实现 Anthropic Tool Cache 断点并重新分配四个断点；
-7. 按 7.2 的顺序逐组审查所有 Builtin Tool；
-8. [已完成] 迁出 `agentContext` 剩余职责并删除该模块；
-9. 收口 Task、AgentRun、ToolExecution、BackgroundProcess 四类身份与生命周期，并完成 V1 Task 全闭环；
-10. Chat 接入统一 AgentLoop，删除 ConversationEngine；
-11. `apps/core` 退回 Route、SSE、认证、启动恢复和 Composition Root；
-12. 最后对 Permission、Sandbox 做针对性收口和 Windows/macOS/Linux 验证。
+3. 先解除 Sandbox 的错误依赖：把 `spawnProcess` 从 Tools 收回 Sandbox；合并重复的 `RunOptions/RunResult`；`CommandRunner` 不再持有 `PermissionEngine`，只接收已冻结的 Sandbox Policy；禁止无工作区时回退 `process.cwd()`；暂时禁用 detached 假后台；
+4. 删除 `ToolRegistry.dispatch()` 的 prepare->execute 旁路，冻结唯一执行入口；
+5. 将现有 `TurnToolExecutor` 迁入 `src/tools/execution` 为 `ToolExecutionRuntime`（不需要独立的 Agent Tool Scheduler，AgentLoop 直接调 ToolExecutionRuntime）；
+6. 收窄 Tool Execution Context，把运行依赖改为构造时显式注入；
+7. Tool Manifest 增加来源与稳定分区，再实现 Anthropic Tool Cache 断点并重新分配四个断点；
+8. 按 7.2 的顺序逐组审查所有 Builtin Tool；
+9. [已完成] 迁出 `agentContext` 剩余职责并删除该模块；
+10. 收口 Task、AgentRun、ToolExecution、BackgroundProcess 四类身份与生命周期，并完成 V1 Task 全闭环；
+11. [已完成] Chat 接入统一 AgentLoop，删除 ConversationEngine；
+12. 把 `AgentEngine` 的 Turn 创建、持久化、终态和取消迁入 `src/turn`，建立 `TurnRuntime` + `TurnHandle`；
+13. `apps/core` 退回 Route、SSE、认证、启动恢复和 Composition Root；
+14. 最后对 Permission、Sandbox 做针对性收口和 Windows/macOS/Linux 验证。
 
 这些步骤允许相邻批次共用已经稳定的端口，但不能把 Turn 统一、全仓 ID 改名、数据库 Schema 和前端 Profile 切换塞进同一批。
 
