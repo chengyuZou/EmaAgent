@@ -2,11 +2,11 @@
 import type { AgentRunId, SessionId, TaskId, TurnId } from '@ema-agent/ids';
 import type { LlmCallId, LlmTokenUsage } from '@ema-agent/llm';
 import type {
-  SubagentContextMode,
   ToolError,
   ToolExecutionEvent,
   ToolExecutionResult,
 } from '@ema-agent/tools';
+import type { SubagentContextMode } from '@ema-agent/tool-builtin';
 import type { TurnStats } from '@ema-agent/turn';
 import type { TurnEvent } from '@ema-agent/turn';
 import type { PermissionStreamEvent } from '@ema-agent/permission';

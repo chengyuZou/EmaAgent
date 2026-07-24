@@ -126,7 +126,7 @@ export class Orchestrator {
       buildAsk:          bindings.buildAskForTurn,
       askUserRegistry:   bindings.askUserRegistry,
       artifactStore:     bindings.artifactStore,
-      skillRunner:       bindings.skillBridge,
+      skillRunner:       bindings.skillRunner,
       kbSearch:          bindings.kbSearch,
       getSessionToolStores: bindings.getSessionToolStores,
       agentRunStore:     bindings.agentRunStore,

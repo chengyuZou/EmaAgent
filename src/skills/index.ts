@@ -19,6 +19,8 @@ export type {
   SkillRoot,
   SkillSource,
   SkillFrontmatter,
+  SkillRunnerPort,
+  SkillRunResult,
   MarketSkillEntry,
   GithubSkillCoords,
 }                                        from './types.js';

@@ -23,11 +23,11 @@ import type { MessageBlocks, SessionStore, Turn } from '@ema-agent/session';
 import type { HookBus } from '@ema-agent/hooks';
 import type { EmotionEngine } from '@ema-agent/emotion';
 import type {
-  SkillRunnerPort,
   ToolExecutionJournalPort,
   ToolRegistry,
   ToolResultStore,
 } from '@ema-agent/tools';
+import type { SkillRunnerPort } from '@ema-agent/skills';
 import type { CommandRunnerPort } from '@ema-agent/sandbox';
 import type { IArtifactStore } from '@ema-agent/artifact';
 import type {

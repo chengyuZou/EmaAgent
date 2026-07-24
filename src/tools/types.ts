@@ -1,17 +1,9 @@
 ﻿// 集中定义工具注册、权限检查和执行时共用的基础类型。
 import type { z } from 'zod';
-import type {
-  AgentRunId,
-  TaskId,
-} from '@ema-agent/ids';
 import type { IArtifactStore } from '@ema-agent/artifact';
-import type { KbSearchResult } from '@ema-agent/knowledge';
 import type { ToolPermissionMeta } from '@ema-agent/permission';
 import type { TaskStorePort } from '@ema-agent/tasks';
 import type { CommandRunnerPort } from '@ema-agent/sandbox';
-
-/** 子 Agent 启动时如何取得父执行上下文。 */
-export type SubagentContextMode = 'subagent' | 'fork';
 
 // ── ReadFileState - turn 内跨工具调用共享的去重缓存 ──────────────────────────
 
@@ -45,86 +37,6 @@ export interface FileStateStore {
   recentEntries(limit: number): ReadonlyArray<{ path: string; content: string; mtimeMs: number }>;
 }
 
-// ── 宿主注入的工具能力端口 ───────────────────────────────────────────────────
-
-export interface SubagentSpawnOpts {
-  model?:       string;
-  description?: string;
-  /**
-   * 上下文构造策略。默认 'fork'。
-   * worker 不需要父对话历史、应从干净状态开始时用 'subagent'
-   * (省 token,避免上下文串)。
-   */
-  kind?:        SubagentContextMode;
-  /** 调用方预分配执行 ID，确保启动事件与持久记录使用同一身份。 */
-  agentRunId?: AgentRunId;
-  /** 可选关联既有 Task；Spawner 不负责创建或完成 Task。 */
-  taskId?: TaskId;
-}
-
-export interface SubagentRunResult {
-  agentRunId: AgentRunId;
-  output: string;
-  usage: { inputTokens: number; outputTokens: number };
-}
-
-export interface SubagentSpawnerPort {
-  /** 同步 spawn - 阻塞父工具槽位直到 sub-agent 完成。 */
-  spawn(
-    prompt:  string,
-    opts:    SubagentSpawnOpts,
-    signal:  AbortSignal,
-  ): Promise<SubagentRunResult>;
-
-  /**
-   * spawnBackground 异步拉起子 Agent，立即返回 agentRunId，父循环继续；
-   * 之后调 awaitBackground() 取结果。
-   * sub-agent 必须在父 turn 完成前被 await,避免父 SSE 流关闭后
-   * 出现孤儿事件。
-   */
-  spawnBackground?(
-    prompt:  string,
-    opts:    SubagentSpawnOpts,
-    signal:  AbortSignal,
-  ): AgentRunId;
-
-  /**
-   * 阻塞直到后台 sub-agent 完成并返回其输出。
-   * 子 Agent 失败时抛错；已经完成或 agentRunId 从未注册时返回 null。
-   */
-  awaitBackground?(
-    agentRunId: AgentRunId,
-  ): Promise<SubagentRunResult | null>;
-
-  /**
-   * 向运行中的后台 sub-agent 入队一条 coordinator 消息。
-   * 消息在 sub-agent 下一次 LLM 迭代开始时注入。
-   * sub-agent 仍活跃返 true;已完成返 false。
-   */
-  queueMessage?(agentRunId: AgentRunId, message: string): boolean;
-
-  /**
-   * 取消单个运行中的 sub-agent,不中止父 turn。
-   * agentRunId 当前未处于活动状态时不执行操作。
-   */
-  abortSubagent?(agentRunId: AgentRunId): void;
-}
-
-/** Skill Facade 返回给调用工具的结构化激活结果。 */
-export interface SkillRunResult {
-  /** 替换完参数、准备注入模型上下文的 Skill 正文。 */
-  content: string;
-  /** Skill 声明的工具名称或稳定工具 ID glob；空数组表示不额外收窄。 */
-  allowedToolPatterns: readonly string[];
-}
-
-export interface SkillRunnerPort {
-  run(
-    skill: string,
-    args: string | undefined,
-  ): Promise<SkillRunResult>;
-}
-
 /** 一项只能收窄、不能扩大当前 Agent 工具能力的限制。 */
 export interface ToolCapabilityRestriction {
   /** 便于审计和报错的来源，例如 skill:pdf。 */
@@ -144,13 +56,6 @@ export interface ToolCapabilityScope {
   restrict(restriction: ToolCapabilityRestriction): ToolCapabilitySnapshot;
   snapshot(): ToolCapabilitySnapshot;
 }
-
-/** Tool 侧只关心检索输入输出，KB 绑定与使用计数由宿主完成。 */
-export type KnowledgeSearchPort = (
-  query: string,
-  topK?: number,
-  kbIds?: string[],
-) => Promise<KbSearchResult>;
 
 // ── ToolDescriptor - LLM 看到的 ──────────────────────────────────────────────
 

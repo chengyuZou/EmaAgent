@@ -6,9 +6,9 @@ import type { MessageBlocks } from '@ema-agent/session';
 import {
   ToolExecutionRuntime,
   type AskUserRequiredEvent,
-  type KnowledgeSearchPort,
   type ReadFileState,
 } from '@ema-agent/tools';
+import type { KnowledgeSearchPort } from '@ema-agent/knowledge';
 import {
   assembleToolPool,
   type BuiltinToolContext,

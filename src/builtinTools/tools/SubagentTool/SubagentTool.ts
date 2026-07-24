@@ -6,7 +6,7 @@ import { buildTool } from '@ema-agent/tools';
 import type {
   SubagentSpawnerPort,
   SubagentRunResult,
-} from '@ema-agent/tools';
+} from '../../subagentToolPort.js';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 import type { BuiltinToolContext } from '../../builtinToolContext.js';
 import { contextFail, contextOk } from '../../contextValidation.js';

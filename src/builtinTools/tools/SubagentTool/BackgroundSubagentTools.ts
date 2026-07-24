@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { asAgentRunId, asTaskId } from '@ema-agent/ids';
 import { buildTool } from '@ema-agent/tools';
-import type { SubagentSpawnerPort } from '@ema-agent/tools';
+import type { SubagentSpawnerPort } from '../../subagentToolPort.js';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 import type { BuiltinToolContext } from '../../builtinToolContext.js';
 import { contextFail, contextOk } from '../../contextValidation.js';

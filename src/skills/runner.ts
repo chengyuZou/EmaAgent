@@ -2,7 +2,12 @@
 import type { ExecutionProfile } from '@ema-agent/turn';
 import type { PromptSlotContribution } from '@ema-agent/prompts';
 import type { SkillStore } from './store.js';
-import type { ActivatedSkill, SkillSummary } from './types.js';
+import type {
+  ActivatedSkill,
+  SkillRunnerPort,
+  SkillRunResult,
+  SkillSummary,
+} from './types.js';
 
 export const MAX_SKILL_CATALOG_CHARS = 8_000;
 export const MAX_SKILL_DESCRIPTION_CHARS = 250;
@@ -18,7 +23,7 @@ export const MAX_SKILL_DESCRIPTION_CHARS = 250;
 // Work 工具 - 没有 per-skill Profile 标签。allowed-tools 由 SkillCall
 // 交给 Agent capability scope 做交集收窄,不能授予权限。
 
-export class SkillRunner {
+export class SkillRunner implements SkillRunnerPort {
   constructor(private readonly store: SkillStore) {}
 
   /** Turn 开始时冻结轻量 Skill Catalog，完整 Skill 正文仍按调用渐进披露。 */
@@ -35,10 +40,19 @@ export class SkillRunner {
 
   /**
    * 激活一个 skill:从磁盘读其 body 并替换参数。
-   * 经 apps/core 的 SkillRunnerPort 适配器接到 `SkillCall` 工具。
+   * 管理端和 SkillRunnerPort 共用同一个经过校验的激活入口。
    */
   async activate(name: string, args: string | undefined): Promise<ActivatedSkill> {
     return this.store.activate(name, args);
+  }
+
+  /** 把 Skill 领域结果投影成 Tool 执行所需的稳定端口结果。 */
+  async run(name: string, args: string | undefined): Promise<SkillRunResult> {
+    const activation = await this.activate(name, args);
+    return {
+      content: activation.content,
+      allowedToolPatterns: activation.allowedTools,
+    };
   }
 
   /** 兼容管理端只渲染正文的调用。 */

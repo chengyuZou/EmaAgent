@@ -467,6 +467,9 @@ importers:
       '@ema-agent/session':
         specifier: workspace:*
         version: link:../session
+      '@ema-agent/skills':
+        specifier: workspace:*
+        version: link:../skills
       '@ema-agent/storage':
         specifier: workspace:*
         version: link:../storage
@@ -591,6 +594,9 @@ importers:
       '@ema-agent/session':
         specifier: workspace:*
         version: link:../session
+      '@ema-agent/skills':
+        specifier: workspace:*
+        version: link:../skills
       '@ema-agent/tasks':
         specifier: workspace:*
         version: link:../tasks
@@ -1433,9 +1439,6 @@ importers:
       '@ema-agent/ids':
         specifier: workspace:*
         version: link:../ids
-      '@ema-agent/knowledge':
-        specifier: workspace:*
-        version: link:../knowledge
       '@ema-agent/permission':
         specifier: workspace:*
         version: link:../permission

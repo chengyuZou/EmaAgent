@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import {
   MAX_SKILL_CATALOG_CHARS,
   MAX_SKILL_DESCRIPTION_CHARS,
+  SkillRunner,
   renderSkillCatalog,
 } from '../runner.js';
 
@@ -28,5 +29,22 @@ describe('renderSkillCatalog', () => {
 
     expect(catalog.length).toBeLessThanOrEqual(MAX_SKILL_CATALOG_CHARS);
     expect(catalog).toContain('个技能未列出');
+  });
+});
+
+describe('SkillRunner Port', () => {
+  it('把领域 allowedTools 投影为 Tool 使用的 allowedToolPatterns', async () => {
+    const runner = new SkillRunner({
+      activate: async () => ({
+        name: 'pdf',
+        content: '读取 PDF',
+        allowedTools: ['FileRead', 'Grep'],
+      }),
+    } as never);
+
+    await expect(runner.run('pdf', undefined)).resolves.toEqual({
+      content: '读取 PDF',
+      allowedToolPatterns: ['FileRead', 'Grep'],
+    });
   });
 });

@@ -85,7 +85,6 @@ import {
 } from '@ema-agent/tool-builtin';
 import { detectBackend, CommandRunner } from '@ema-agent/sandbox';
 import { ToolResultCleaner, ToolResultStore } from '@ema-agent/tools';
-import type { SkillRunnerPort } from '@ema-agent/tools';
 import { AgentRunStore } from '@ema-agent/agent';
 import { TaskStore } from '@ema-agent/tasks';
 import { MemoryPlanner } from '@ema-agent/memory';
@@ -234,8 +233,6 @@ export interface AppBindings {
   /** 市场源注册表 + 通用 store(MCP/Skill 共用,kind 不约束)。 */
   marketRegistry:     MarketRegistry;
   marketSourceStore:  MarketSourceStore;
-  /** Skill 工具调用端口，按需读取 Skill 正文。 */
-  skillBridge:      SkillRunnerPort;
   skillStore:     SkillStore;
   skillRunner:    SkillRunner;
   skillInstaller: SkillInstaller;
@@ -707,17 +704,6 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
   void skillStore.scanAndReconcile().catch((err) => console.warn('[skill] reconcile failed:', err));
   const skillRunner    = new SkillRunner(skillStore);
   const skillInstaller = new SkillInstaller(skillStore);
-  // 懒读正文并返回能力限制；Agent 负责应用限制，Skill 包不能直接修改权限。
-  const skillBridge: SkillRunnerPort = {
-    run: async (skillName, args) => {
-      const activation = await skillRunner.activate(skillName, args);
-      return {
-        content: activation.content,
-        allowedToolPatterns: activation.allowedTools,
-      };
-    },
-  };
-
   // ── Knowledge base ───────────────────────────────────────────────────────────
   const resolveIngestModels = (): Partial<IngestOptions> => {
     const kbModels = (settingsRepo.get('kb.models') as
@@ -869,7 +855,7 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
     artifactStore, attachmentStore, sessionStats, storageStats, sessionNotes,
     mcpRegistry,
     marketRegistry, marketSourceStore,
-    skillStore, skillRunner, skillInstaller, skillBridge,
+    skillStore, skillRunner, skillInstaller,
     kb, kbSearch,
     releaseFeatures,
   };

@@ -2,9 +2,9 @@
 import { z } from 'zod';
 import { buildTool } from '@ema-agent/tools';
 import type {
-  SkillRunnerPort,
   ToolCapabilityScope,
 } from '@ema-agent/tools';
+import type { SkillRunnerPort } from '@ema-agent/skills';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 import type { BuiltinToolContext } from '../../builtinToolContext.js';
 import { contextFail, contextOk } from '../../contextValidation.js';

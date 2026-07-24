@@ -10,16 +10,16 @@ import type {
 import type { CommandRunnerPort } from '@ema-agent/sandbox';
 import type { TaskStorePort } from '@ema-agent/tasks';
 import type { IArtifactStore } from '@ema-agent/artifact';
+import type { KnowledgeSearchPort } from '@ema-agent/knowledge';
+import type { SkillRunnerPort } from '@ema-agent/skills';
 import type {
   AskUserQuestionSpec,
   FileStateStore,
-  KnowledgeSearchPort,
   ReadFileState,
-  SkillRunnerPort,
-  SubagentSpawnerPort,
   ToolCapabilityScope,
   ToolExecutionEvent,
 } from '@ema-agent/tools';
+import type { SubagentSpawnerPort } from './subagentToolPort.js';
 
 /**
  * AskUser 工具向宿主提出的问询解析器：发出结构化问询请求并等待答案。

@@ -50,6 +50,8 @@ Tools 主执行链归位已经完成：`ToolRegistry.dispatch()` 组合捷径已
 
 Tool 调用边界已经收窄：旧万能 `ToolExecutionContext/ToolExecutionScope/ToolInvocationContext` 已删除。Ema 内置工具只在集成层共享一次执行的 `BuiltinToolContext`；每个 Tool 必须先用 `validateContext()` 校验并投影自己的窄 Context，`execute()` 看不到其他业务能力。ToolExecutionRuntime 只按调用覆盖 `toolCallId/signal/emit`，MCP 动态工具也使用同一四泛型契约。根 Agent 与子 Agent 先按实际 Context 装配 Manifest，再从同一 Manifest 建立 Policy；旧 Bridge 注册标志和子 Agent 手写白名单已删除。
 
+Tool Port 所有权已经归位：Knowledge 与 Skills 分别公开 `KnowledgeSearchPort` 和 `SkillRunnerPort`，`SkillRunner` 直接实现后者，Core 不再维护重复的 `skillBridge` 适配对象；Sandbox、Tasks、Artifact 与 Tools 文件状态继续拥有自身端口。Subagent 与 AskUser 的 Port 是 Builtin Tool 对宿主的消费契约，保留在 `builtinTools`，由 Agent/未来 TurnRuntime 结构化实现，从而避免 `agent ↔ builtinTools` 或 `turn ↔ tools` 包环。通用 `tools/types.ts` 不再定义 Knowledge、Skill 或 Subagent 业务 Port。
+
 旧 `src/agentContext` 已完整删除：Tool Result 生命周期此前已归 `src/tools/results`；本轮把按 Session 的文件读取状态迁为 `src/tools/sessionFileStateStore.ts`，同步删除无人消费的 `AgentContextSnapshot`。`IFileStateStoreEntry/IFileStateStore` 已按所有权改为 `FileStateStoreEntry/FileStateStore`，Core 与 Agent 不再依赖 `@ema-agent/agent-context`。
 
 V1 Task 主链已经完成：`src/tasks` 只保存跨 Turn 的用户/模型可见工作项，Data v18 使用显式 Task 列、Session 内短序号、依赖关系和 CAS；根 Work Turn 注册 TaskCreate/Get/List/Update，旧内存 TodoWrite 已删除。Task 事件、低频动态 Context 提醒、`/api/tasks` 重启快照、Session ZIP 备份恢复与独立前端 TaskList 已接线。
@@ -78,7 +80,7 @@ Task 与 AgentRun 前端已经分面：Desktop 使用正式 `/api/tasks` 快照�
 
 开始任何新批次前必须重新运行 `git status --short` 与 `git diff`，保留用户和其他 Agent 的修改。
 
-当前工作区只包含本批 Tool Context 收口修改：MCP 契约、Builtin ToolPool、Agent 根/子执行接线、Sandbox 命令后清理、对应测试和文档。开始本批时工作区干净，没有覆盖用户或其他 Agent 的未提交修改。
+当前工作区只包含 Tool Context 收口及紧随其后的 Port 所有权归位：MCP 契约、Builtin ToolPool、Agent 根/子执行接线、Sandbox 命令后清理、Knowledge/Skills/BuiltinTools Port、对应测试和文档。开始第一批时工作区干净，没有覆盖用户或其他 Agent 的未提交修改。
 
 当前基线最近提交：`f8035470 Refactor tool context handling and validation across Task and Web tools`。该提交号仅用于定位，不代表其他 Agent 不会继续提交。
 
@@ -133,7 +135,7 @@ Chat 工作区、Turn 导航轨、Task/AgentRun 分面、双 Dock、置顶摘要
 
 ## 最近验证
 
-- Tool Context 与真实 ToolPool 收口：Tools、BuiltinTools、MCP、Agent、Core 定向 typecheck 43/43 通过；Tools 26/26、MCP 25/25、Sandbox 19/19、Agent 29/29 通过，4 个 Agent Live Integration 按规则跳过；BuiltinTools 48/49，唯一失败仍是既存 WebFetchPolicy 对 `example.com -> www.example.com` 重定向口径，与本批无关。旧 `ToolExecutionContext/ToolExecutionScope/ToolInvocationContext`、Bridge 注册标志和子 Agent 手写工具白名单的源码引用归零；`git diff --check` 通过，仅有既有 CRLF 提示。
+- Tool Context、真实 ToolPool 与 Port 所有权收口：Tools、Skills、Knowledge、BuiltinTools、Agent、Core 定向 typecheck 44/44 通过；Tools 26/26、Skills 24/24、Knowledge 42/42、Agent 29/29 通过，4 个 Agent Live Integration 按规则跳过；BuiltinTools 48/49，唯一失败仍是既存 WebFetchPolicy 对 `example.com -> www.example.com` 重定向口径，与本批无关。旧 Context、Bridge 注册标志、子 Agent 手写工具白名单及 Tools 内 Knowledge/Skill/Subagent Port 引用归零；`git diff --check` 通过，仅有既有 CRLF 提示。
 - Tools 主执行链归位：全仓 typecheck 84/84 通过；Tools 26/26、Hooks 27/27、Agent 31/31 通过，4 个 Agent Live Integration 按规则跳过；BuiltinTools 本批相关测试与修改后的 Tool Call Integration 通过，全量仍只有既存 WebFetchPolicy 对 `example.com -> www.example.com` 重定向口径的 1 项失败。Tools 对 Agent/Session/Hooks、旧 `TurnToolExecutor/tool-executor` 与代码侧 `dispatch()` 引用扫描归零。
 - Sandbox 依赖反转：全仓 typecheck 84/84 通过；Sandbox 5 个测试文件 19/19 通过；Bash 边界与注册测试 8/8 通过。BuiltinTools 全量测试中本批相关测试均通过，唯一失败仍是既存 `WebFetchPolicy` 对 `example.com -> www.example.com` 重定向口径不一致，与命令执行改动无关。
 - 事件所有权第一批：业务事件已从 Turn 回到各自模块，`src/events` 只组合生命周期通道；TTS 与 Artifact 警告不再伪装成 System 事件。离线刷新 Workspace 后全仓 typecheck 84/84；Agent 32/32、Context 23/23、Hooks 27/27、TTS 61/61、Core 92/92、Desktop UI 132/132 通过，4 个 Agent Live Integration 按既有规则跳过。

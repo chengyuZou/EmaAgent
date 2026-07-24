@@ -1,7 +1,7 @@
 // 从当前 Session 已激活的知识库中检索相关内容。
 import { z } from 'zod';
 import { buildTool } from '@ema-agent/tools';
-import type { KnowledgeSearchPort } from '@ema-agent/tools';
+import type { KnowledgeSearchPort } from '@ema-agent/knowledge';
 import type { KbSearchResult } from '@ema-agent/knowledge';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 import type { BuiltinToolContext } from '../../builtinToolContext.js';

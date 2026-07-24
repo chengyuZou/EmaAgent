@@ -62,6 +62,20 @@ export interface ActivatedSkill {
   allowedTools: readonly string[];
 }
 
+/** SkillCall Tool 激活 Skill 后需要的结构化结果。 */
+export interface SkillRunResult {
+  content: string;
+  allowedToolPatterns: readonly string[];
+}
+
+/** 外部执行层调用 Skill 激活能力时使用的稳定入口。 */
+export interface SkillRunnerPort {
+  run(
+    skill: string,
+    args: string | undefined,
+  ): Promise<SkillRunResult>;
+}
+
 // ── 索引记录(磁盘上一个 SKILL.md 的 SQL 索引一行)──────────────────────────
 
 export interface SkillRecord {

@@ -23,6 +23,13 @@ export interface KbSearchResult {
   hits: KbSearchHit[];
 }
 
+/** Tool 等外部消费者调用 Knowledge 检索时使用的稳定执行入口。 */
+export type KnowledgeSearchPort = (
+  query: string,
+  topK?: number,
+  kbIds?: string[],
+) => Promise<KbSearchResult>;
+
 export type DocumentBlockKind =
   | 'title'
   | 'paragraph'

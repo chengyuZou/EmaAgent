@@ -4,12 +4,12 @@ import { randomUUID } from 'node:crypto';
 import { asAgentRunId, type AgentRunId, type SessionId, type TurnId } from '@ema-agent/ids';
 import type { ToolError } from '@ema-agent/tools';
 import type { Message as ModelMessage } from '@ema-agent/llm';
+import type { KnowledgeSearchPort } from '@ema-agent/knowledge';
 import type {
-  KnowledgeSearchPort,
-  SubagentSpawnerPort,
   SubagentRunResult,
-  SubagentSpawnOpts,
-} from '@ema-agent/tools';
+  SubagentSpawnOptions,
+  SubagentSpawnerPort,
+} from '@ema-agent/tool-builtin';
 import { ToolExecutionRuntime } from '@ema-agent/tools';
 import {
   assembleToolPool,
@@ -63,9 +63,9 @@ export class SubagentSpawner implements SubagentSpawnerPort {
 
   // ── 后台执行 ─────────────────────────────────────────────────────────────
 
-  spawnBackground(prompt: string, opts: SubagentSpawnOpts, signal: AbortSignal): AgentRunId {
+  spawnBackground(prompt: string, opts: SubagentSpawnOptions, signal: AbortSignal): AgentRunId {
     const agentRunId = opts.agentRunId ?? asAgentRunId(randomUUID());
-    const optsWithId: SubagentSpawnOpts = { ...opts, agentRunId };
+    const optsWithId: SubagentSpawnOptions = { ...opts, agentRunId };
     // 先建立空邮箱，确保调用方拿到 ID 后可以立即投递消息。
     this.pendingMessages.set(agentRunId, []);
     const p = this.spawn(prompt, optsWithId, signal).finally(() => {
@@ -120,7 +120,7 @@ export class SubagentSpawner implements SubagentSpawnerPort {
 
   async spawn(
     prompt:  string,
-    opts:    SubagentSpawnOpts,
+    opts:    SubagentSpawnOptions,
     signal:  AbortSignal,
   ): Promise<SubagentRunResult> {
     const releaseBudget = this.budget.enterSubagent();

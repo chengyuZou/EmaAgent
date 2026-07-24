@@ -37,6 +37,12 @@ import type { ToolRegistry, BuiltTool } from '@ema-agent/tools';
 
 // ── 宿主 Context 与装配 ──────────────────────────────────────────────────────
 export type { BuiltinToolContext, ScratchpadPort, AskUserPort } from './builtinToolContext.js';
+export type {
+  SubagentContextMode,
+  SubagentRunResult,
+  SubagentSpawnOptions,
+  SubagentSpawnerPort,
+} from './subagentToolPort.js';
 export { assembleToolPool } from './assembleToolPool.js';
 export { contextOk, contextFail } from './contextValidation.js';
 
@@ -96,13 +102,6 @@ export type { AskConfirmResult } from './tools/AskUserTool/AskConfirmTool.js';
 export type { AskTextResult } from './tools/AskUserTool/AskTextTool.js';
 export type { AskChoiceResult } from './tools/AskUserTool/AskChoiceTool.js';
 export type { SkillCallResult } from './tools/SkillCallTool/SkillCallTool.js';
-export type {
-  SkillRunnerPort,
-  SubagentSpawnerPort,
-  SubagentRunResult,
-  SubagentSpawnOpts,
-} from '@ema-agent/tools';
-
 // ── 注册 ──────────────────────────────────────────────────────────────────────
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

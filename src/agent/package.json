@@ -32,6 +32,7 @@
     "@ema-agent/provider": "workspace:*",
     "@ema-agent/prompts": "workspace:*",
     "@ema-agent/session": "workspace:*",
+    "@ema-agent/skills": "workspace:*",
     "@ema-agent/emotion": "workspace:*",
     "@ema-agent/tools": "workspace:*",
     "@ema-agent/storage": "workspace:*",

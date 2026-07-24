@@ -17,6 +17,7 @@ export type {
   DocumentSourceRef,
   KbSearchHit,
   KbSearchResult,
+  KnowledgeSearchPort,
 } from './types.js';
 
 // ── Events ─────────────────────────────────────────────────────────────────────
