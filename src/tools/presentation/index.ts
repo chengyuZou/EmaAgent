@@ -27,3 +27,8 @@ export type {
   SearchPresentation,
 } from './searchPresentation.js';
 export type { ToolPresentation } from './toolPresentation.js';
+export {
+  presentToolResult,
+  splitToolResult,
+} from './presentToolResult.js';
+export type { SplitToolResult } from './presentToolResult.js';

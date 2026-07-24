@@ -128,7 +128,7 @@ export class Orchestrator {
       artifactStore:     bindings.artifactStore,
       skillRunner:       bindings.skillRunner,
       kbSearch:          bindings.kbSearch,
-      getSessionToolStores: bindings.getSessionToolStores,
+      getSessionToolResultStore: bindings.getSessionToolResultStore,
       agentRunStore:     bindings.agentRunStore,
       taskStore:         bindings.taskStore,
       toolExecutionJournal: bindings.toolExecutionJournal,
@@ -526,8 +526,6 @@ export class Orchestrator {
             modelMaxOutputTokens,
             providerId,
             model,
-            recentFiles:        this.bindings.getSessionToolStores(turn.sessionId)
-              .fileStateStore.recentEntries(20),
             emit:               this.bindings.systemBus
               ? (ev) => this.bindings.systemBus.emit(ev)
               : undefined,

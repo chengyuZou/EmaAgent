@@ -7,15 +7,14 @@ import {
   createFileReadPresentation,
   presentToolResult,
 } from '@ema-agent/tools';
-import type { FileStateStore, ReadFileState } from '@ema-agent/tools';
+import type { ReadFileState } from '@ema-agent/tools';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 import type { BuiltinToolContext } from '../../builtinToolContext.js';
 import { contextFail, contextOk } from '../../contextValidation.js';
 
-/** File 工具族的窄 Context：跨调用去重缓存 + 可选持久文件状态。 */
+/** File 读取工具只取得当前 Turn 的读取状态。 */
 interface FileReadToolContext {
   readFileState: ReadFileState;
-  fileStateStore?: FileStateStore;
 }
 
 // ── 常量 ─────────────────────────────────────────────────────────────────────
@@ -130,7 +129,6 @@ export const FileReadTool = buildTool<FileReadInput, FileReadResult, BuiltinTool
     }
     return contextOk({
       readFileState: ctx.readFileState,
-      ...(ctx.fileStateStore ? { fileStateStore: ctx.fileStateStore } : {}),
     });
   },
 
@@ -235,8 +233,6 @@ export const FileReadTool = buildTool<FileReadInput, FileReadResult, BuiltinTool
       limit,
       isPartialView,
     });
-    context.fileStateStore?.record(fullPath, { content: raw, mtimeMs, offset, limit, isPartialView });
-
     return presentToolResult(
       {
         type: 'file_content',

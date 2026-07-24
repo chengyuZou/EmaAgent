@@ -35,7 +35,6 @@ import type {
   AskPermissionFn,
   PermissionStreamEvent,
 } from '@ema-agent/permission';
-import type { SessionFileStateStore } from '@ema-agent/tools';
 import type { ModelCapabilityResolver } from '@ema-agent/provider';
 import type { AgentRunStorePort } from './runs/types.js';
 import type { TaskStorePort } from '@ema-agent/tasks';
@@ -105,14 +104,8 @@ export interface AgentDeps {
    * 只有工具未显式提供 kbIds 时，Engine 才会传入 assetScopes。
    */
   kbSearch?: (query: string, topK?: number, kbIds?: string[], assetScopes?: KbAssetScope[], sessionId?: string, turnId?: string) => Promise<KbSearchResult>;
-  /**
-   * 按 Session 获取文件状态和工具结果存储，首次调用时创建并缓存。
-   * 测试与非 Agent 调用方可以省略。
-   */
-  getSessionToolStores?: (sessionId: SessionId) => {
-    fileStateStore:  SessionFileStateStore;
-    toolResultStore: ToolResultStore;
-  };
+  /** 按 Session 获取大结果外置存储；测试与非 Agent 调用方可以省略。 */
+  getSessionToolResultStore?: (sessionId: SessionId) => ToolResultStore;
   /**
    * 子 Agent 执行记录；根 Turn 不建立重复 AgentRun 投影。
    * 聚焦循环测试可以省略。

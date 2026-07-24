@@ -1,9 +1,6 @@
 ﻿// 集中定义工具注册、权限检查和执行时共用的基础类型。
 import type { z } from 'zod';
-import type { IArtifactStore } from '@ema-agent/artifact';
 import type { ToolPermissionMeta } from '@ema-agent/permission';
-import type { TaskStorePort } from '@ema-agent/tasks';
-import type { CommandRunnerPort } from '@ema-agent/sandbox';
 
 // ── ReadFileState - turn 内跨工具调用共享的去重缓存 ──────────────────────────
 
@@ -21,21 +18,6 @@ export interface ReadFileEntry {
 
 /** 以绝对规范化路径为键。 */
 export type ReadFileState = Map<string, ReadFileEntry>;
-
-// 文件状态由 Tool 模块拥有，读取与编辑工具共享它来阻止陈旧写入。
-export interface FileStateStoreEntry {
-  content:       string;
-  mtimeMs:       number;
-  offset?:       number;
-  limit?:       number;
-  isPartialView: boolean;
-}
-
-export interface FileStateStore {
-  record(path: string, entry: FileStateStoreEntry): void;
-  get(path: string): (FileStateStoreEntry & { lastAccessMs: number }) | undefined;
-  recentEntries(limit: number): ReadonlyArray<{ path: string; content: string; mtimeMs: number }>;
-}
 
 /** 一项只能收窄、不能扩大当前 Agent 工具能力的限制。 */
 export interface ToolCapabilityRestriction {

@@ -69,7 +69,10 @@ interface ToolExecutionTerminalUpdate {
   completedAt: number;
 }
 
-/** 工具执行日志的原子数据库操作；合法状态转换与恢复语义由 Tools 管理。 */
+/**
+ * 工具执行日志的原子数据库操作；合法状态转换与恢复语义由 Tools 管理。
+ * 记录随 Session/Turn 外键级联删除，不建立另一套独立日志保留周期。
+ */
 export class ToolExecutionsRepo {
   constructor(private readonly db: SqliteDb) {}
 

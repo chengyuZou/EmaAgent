@@ -295,7 +295,7 @@ Profile 与运行环境
 
 ```text
 原 agent-context
-├─ FileStateStore      → tools/sessionFileStateStore.ts
+├─ ReadFileState       → tools/types.ts（仅当前 Turn 的编辑安全状态）
 ├─ ToolResultStore     → tools/results
 ├─ ToolResultCleaner   → tools/results 生命周期
 └─ AgentContextSnapshot→ 无生产消费者，删除

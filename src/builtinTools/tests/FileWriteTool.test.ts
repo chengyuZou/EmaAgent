@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { asToolCallId, asSessionId, asTurnId } from '@ema-agent/ids';
-import type { FileStateStore, ToolExecutionRecord } from '@ema-agent/tools';
+import type { ToolExecutionRecord } from '@ema-agent/tools';
 import { splitToolResult } from '@ema-agent/tools';
 import { FileWriteTool } from '../tools/FileWriteTool/FileWriteTool.js';
 import { atomicTempPrefix, atomicWriteUtf8 } from '../tools/FileWriteTool/atomicWrite.js';
@@ -20,13 +20,10 @@ afterEach(() => {
 });
 
 describe('FileWriteTool', () => {
-  it('原子写入后同时更新 turn 缓存和 session 文件状态', async () => {
+  it('原子写入后更新当前 Turn 的读取状态', async () => {
     const directory = makeTempDir();
     const target = path.join(directory, 'nested', 'answer.txt');
-    const record = vi.fn<FileStateStore['record']>();
-    const execution = makeContext({
-      fileStateStore: { record, get: vi.fn(), recentEntries: vi.fn() },
-    });
+    const execution = makeContext();
 
     const result = await FileWriteTool.unsafeExecute(
       { file_path: target, content: '完整内容' },
@@ -43,7 +40,6 @@ describe('FileWriteTool', () => {
     });
     expect(fs.readFileSync(target, 'utf8')).toBe('完整内容');
     expect(execution.readFileState.get(canonical)?.content).toBe('完整内容');
-    expect(record).toHaveBeenCalledWith(canonical, expect.objectContaining({ content: '完整内容' }));
     expect(listWriteTemps(path.dirname(target))).toEqual([]);
   });
 
@@ -149,13 +145,12 @@ describe('FileWriteTool', () => {
   });
 });
 
-// 构造 FileWriteTool 的窄 Context：去重缓存 + 可选持久状态 + per-call 身份。
-function makeContext(overrides: { fileStateStore?: FileStateStore } = {}) {
+// 构造 FileWriteTool 的窄 Context：写入保护状态 + 单次调用身份。
+function makeContext() {
   return {
     readFileState: new Map(),
     signal: new AbortController().signal,
     toolCallId: asToolCallId('call-write'),
-    ...overrides,
   };
 }
 

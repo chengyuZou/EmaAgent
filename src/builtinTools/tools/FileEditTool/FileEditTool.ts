@@ -6,17 +6,16 @@ import {
   createFileChangePresentation,
   presentToolResult,
 } from '@ema-agent/tools';
-import type { FileStateStore, ReadFileState } from '@ema-agent/tools';
+import type { ReadFileState } from '@ema-agent/tools';
 import type { ToolCallId } from '@ema-agent/ids';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 import type { BuiltinToolContext } from '../../builtinToolContext.js';
 import { contextFail, contextOk } from '../../contextValidation.js';
 import { atomicTransformUtf8 } from '../FileWriteTool/atomicWrite.js';
 
-/** File 编辑工具的窄 Context：去重缓存 + 可选持久状态 + per-call 身份。 */
+/** File 编辑工具只取得当前 Turn 的写入保护状态和单次调用身份。 */
 interface FileEditToolContext {
   readFileState: ReadFileState;
-  fileStateStore?: FileStateStore;
   signal: AbortSignal;
   toolCallId: ToolCallId;
 }
@@ -109,7 +108,6 @@ Rules:
     }
     return contextOk({
       readFileState: ctx.readFileState,
-      ...(ctx.fileStateStore ? { fileStateStore: ctx.fileStateStore } : {}),
       signal: ctx.signal,
       toolCallId: ctx.toolCallId,
     });
@@ -196,8 +194,6 @@ Rules:
       limit: undefined,
       isPartialView: false,
     });
-    context.fileStateStore?.record(fullPath, { content: written.content, mtimeMs: written.mtimeMs, offset: undefined, limit: undefined, isPartialView: false });
-
     return presentToolResult({
       filePath: file_path,
       replacements,

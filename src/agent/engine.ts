@@ -81,7 +81,7 @@ async function* runTurn(
 
   const budget        = new TurnBudget();
   const readFileState = new Map() as ReadFileState;
-  const sessionToolStores = deps.getSessionToolStores?.(sessionId);
+  const toolResultStore = deps.getSessionToolResultStore?.(sessionId);
   const resolvedRunner = deps.getCommandRunner?.(sessionId);
 
   // Core 生成根目录，Agent 只消费并把它转换成显式权限能力。
@@ -270,7 +270,6 @@ async function* runTurn(
       signal,
       readFileState,
       taskStore:         deps.taskStore,
-      fileStateStore:    sessionToolStores?.fileStateStore,
       commandRunner:     resolvedRunner,
       artifactStore:     deps.artifactStore,
       skillRunner:       deps.skillRunner,
@@ -310,7 +309,7 @@ async function* runTurn(
         buildAsk:        deps.buildAsk,
         pushEv,
         signal:          wakeSignal,
-        toolResultStore: sessionToolStores?.toolResultStore,
+        toolResultStore,
         toolExecutionJournal: deps.toolExecutionJournal,
       });
       turnExecutor = executor;

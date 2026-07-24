@@ -1439,15 +1439,9 @@ importers:
       '@ema-agent/permission':
         specifier: workspace:*
         version: link:../permission
-      '@ema-agent/sandbox':
-        specifier: workspace:*
-        version: link:../sandbox
       '@ema-agent/tasks':
         specifier: workspace:*
         version: link:../tasks
-      diff:
-        specifier: ^9.0.0
-        version: 9.0.0
       zod:
         specifier: ^3.23.0
         version: 3.25.76

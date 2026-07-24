@@ -192,7 +192,7 @@ Claude 还使用 `<system-reminder>` 把系统注入内容放入消息流，并�
 - `safeCut.ts`：避免从未配对的 Tool 交互中间切断；
 - `postCompactionRestore.ts`：压缩后恢复 Session Note 与最近文件状态；
 - `src/agent/agentLoop.ts`：每次模型调用前主动压缩，PTL 时最多执行一次反应式压缩；重放时明确移除 thinking；循环以 `AgentLoopOutcome` 返回唯一结果；
-- 旧 `src/agentContext` 已删除：Tool Result 归 `src/tools/results`，文件读取状态归 `src/tools/sessionFileStateStore.ts`，无人消费的 Snapshot 已删除。
+- 旧 `src/agentContext` 已删除：Tool Result 归 `src/tools/results`；Session 级近期文件快照也已删除，Work 压缩后按需重新调用 FileRead。
 
 `src/prompts` 目前只把 Character Prompt 和旧 `TurnMode` 文本拼成一个字符串。Memory Recall 由 orchestrator 作为额外 user message 注入，Narrative Recall 则由 `packages/conversation` 的 `beforeLlm` Hook 改写消息。也就是说，Ema 已经有压缩算法，却还没有一个拥有明确 Slot 的统一 `ContextAssembler`。
 

@@ -1,55 +1,22 @@
-// 重建全量压缩后容易丢失的近期文件或 Chat 情绪状态。
+// 全量压缩后恢复 Chat 角色连续性所需的情绪状态。
 import type { SessionId } from '@ema-agent/ids';
 import type { Message } from '@ema-agent/llm';
 import type { ExecutionProfile } from '@ema-agent/turn';
 
-const AGENT_MAX_FILES = 5;
-const AGENT_FILE_TOKEN_BUDGET = 5_000;
-const AGENT_TOTAL_TOKEN_BUDGET = 25_000;
-const CHAR_PER_TOKEN = 4;
-
 export interface PostCompactionRestoreContext {
   sessionId: SessionId;
   executionProfile: ExecutionProfile;
-  recentFiles?: ReadonlyArray<{ path: string; content: string; mtimeMs: number }>;
 }
 
 export function buildPostCompactionRestore(
   loadSessionNote: ((sessionId: SessionId) => string | null) | undefined,
   context: PostCompactionRestoreContext,
 ): Message[] {
-  if (context.executionProfile === 'work') return restoreRecentFiles(context);
+  if (context.executionProfile === 'work') return [];
 
   const noteMarkdown = loadSessionNote?.(context.sessionId);
   if (!noteMarkdown) return [];
   return restoreSection(noteMarkdown, ['Current Emotional State']);
-}
-
-function restoreRecentFiles(context: PostCompactionRestoreContext): Message[] {
-  const files = [...(context.recentFiles ?? [])].sort((left, right) => right.mtimeMs - left.mtimeMs);
-  const sections: string[] = [];
-  let totalTokens = 0;
-
-  for (const file of files.slice(0, AGENT_MAX_FILES)) {
-    if (totalTokens >= AGENT_TOTAL_TOKEN_BUDGET) break;
-    const tokenCap = Math.min(
-      AGENT_FILE_TOKEN_BUDGET,
-      AGENT_TOTAL_TOKEN_BUDGET - totalTokens,
-    );
-    const charCap = tokenCap * CHAR_PER_TOKEN;
-    const content = file.content.length > charCap
-      ? `${file.content.slice(0, charCap)}\n\n[内容已截断，请用 Read 重新读取完整文件]`
-      : file.content;
-
-    sections.push(`### \`${file.path}\`\n\n\`\`\`\n${content}\n\`\`\``);
-    totalTokens += Math.ceil(content.length / CHAR_PER_TOKEN);
-  }
-
-  if (sections.length === 0) return [];
-  return [{
-    role: 'user',
-    content: `<post-compact-restore profile="work">\n以下是压缩前最近读取的文件快照。需要最新或完整内容时请重新调用 Read。\n\n${sections.join('\n\n')}\n</post-compact-restore>`,
-  }];
 }
 
 function restoreSection(

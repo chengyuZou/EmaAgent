@@ -3,7 +3,7 @@
 import { createHash } from 'node:crypto';
 import type { AgentRunId, SessionId, ToolCallId, TurnId } from '@ema-agent/ids';
 
-const RESULT_PREVIEW_LIMIT = 4_096;
+const RESULT_PREVIEW_CHAR_LIMIT = 4_096;
 
 export type ToolExecutionStatus =
   | 'prepared'
@@ -21,9 +21,12 @@ export interface ToolExecutionRecord {
   turnId: TurnId;
   agentRunId?: AgentRunId;
   toolName: string;
+  /** 规范化后的完整 Prepared 输入；崩溃恢复和审计使用，不是 Tool Result 副本。 */
   inputJson: string;
+  /** 用于拒绝同一 ToolCallId 被另一份输入复用。 */
   inputDigest: string;
   status: ToolExecutionStatus;
+  /** 成功结果只保存最多 4096 个字符的预览，完整大结果由 results 模块管理。 */
   resultPreview?: string;
   errorCode?: string;
   errorMessage?: string;
@@ -233,9 +236,9 @@ function isTerminal(status: ToolExecutionStatus): boolean {
 
 function preview(value: unknown): string {
   const serialized = typeof value === 'string' ? value : stableStringify(value);
-  return serialized.length <= RESULT_PREVIEW_LIMIT
+  return serialized.length <= RESULT_PREVIEW_CHAR_LIMIT
     ? serialized
-    : `${serialized.slice(0, RESULT_PREVIEW_LIMIT)}\n[结果预览已截断]`;
+    : `${serialized.slice(0, RESULT_PREVIEW_CHAR_LIMIT)}\n[结果预览已截断]`;
 }
 
 /** 对 JSON 对象键排序，确保同一输入在不同运行中产生相同摘要。 */

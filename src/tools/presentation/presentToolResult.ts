@@ -1,5 +1,5 @@
-// 把给模型的简短工具结果和只给客户端展示的结构化内容分开。
-import type { ToolPresentation } from './presentation/index.js';
+// 将模型结果与只供客户端展示的结构化 Presentation 关联，并在执行边界拆开。
+import type { ToolPresentation } from './toolPresentation.js';
 
 const presentations = new WeakMap<object, ToolPresentation>();
 

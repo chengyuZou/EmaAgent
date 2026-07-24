@@ -14,7 +14,6 @@ import type { KnowledgeSearchPort } from '@ema-agent/knowledge';
 import type { SkillRunnerPort } from '@ema-agent/skills';
 import type {
   AskUserQuestionSpec,
-  FileStateStore,
   ReadFileState,
   ToolCapabilityScope,
   ToolExecutionEvent,
@@ -76,10 +75,8 @@ export interface BuiltinToolContext {
   readonly artifactStore?: IArtifactStore;
   /** Scratchpad 工具的 Turn 级临时存储位置。 */
   readonly scratchpad?: ScratchpadPort;
-  /** File 工具的跨调用去重缓存。 */
+  /** File 工具在当前 Turn 内共享的读取状态，用于去重和写入前校验。 */
   readonly readFileState?: ReadFileState;
-  /** File 工具的持久文件状态记录。 */
-  readonly fileStateStore?: FileStateStore;
   /** SkillCall 收窄当前 Agent 工具能力的能力边界。 */
   readonly toolCapabilities?: ToolCapabilityScope;
   /** AskUser 工具的问询解析器。 */

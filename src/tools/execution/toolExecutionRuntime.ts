@@ -27,7 +27,7 @@ import type {
   ToolExecutionStatus,
 } from '../journal/toolExecutionJournal.js';
 import type { ToolResultStore } from '../results/toolResultStore.js';
-import { splitToolResult } from '../tool-result.js';
+import { splitToolResult } from '../presentation/presentToolResult.js';
 import { ToolInputError } from '../registry.js';
 import type { ToolRegistry } from '../registry.js';
 import type {
@@ -112,7 +112,7 @@ export interface ToolExecutionRuntimeOptions<
    * 测试与非 Agent 调用方可省略，此时结果完整内联。
    */
   toolResultStore?: ToolResultStore;
-  /** 工具执行审计 Facade；生产环境必须注入，测试可省略。 */
+  /** 工具执行审计端口；生产环境必须注入，测试可省略。 */
   toolExecutionJournal?: ToolExecutionJournalPort;
 }
 

@@ -78,7 +78,7 @@ import type { KbSearchResult } from '@ema-agent/knowledge';
 import type { ReleaseFeaturesWire } from '@ema-agent/system';
 import type { CommandRunnerPort, SandboxStatusWire } from '@ema-agent/sandbox';
 import type { UsageRecord } from '@ema-agent/usage';
-import { SessionFileStateStore, ToolExecutionJournal, ToolRegistry } from '@ema-agent/tools';
+import { ToolExecutionJournal, ToolRegistry } from '@ema-agent/tools';
 import {
   cleanupInterruptedFileWriteTemps,
   registerBuiltinTools,
@@ -184,16 +184,11 @@ export interface AppBindings {
    */
   invalidateSessionRuntime: (sessionId: SessionId) => void;
   /**
-   * 会话删除专用(B-026): 清掉该会话的 runner 缓存和 context stores。
-   * 与 invalidateSessionRuntime(workspace 变更, 文件状态历史仍有用)不同,
-   * 会话已删除时这些历史永久驻留即内存泄漏。
+   * 会话删除专用(B-026)：清掉该会话的 Runner 与 Tool Result Store 引用。
    */
   removeSessionRuntime: (sessionId: SessionId) => void;
-  /** Per-session file-state + tool-result store — memoised on first call. */
-  getSessionToolStores: (sessionId: SessionId) => {
-    fileStateStore:  SessionFileStateStore;
-    toolResultStore: ToolResultStore;
-  };
+  /** 按 Session 缓存外置 Tool Result 存储。 */
+  getSessionToolResultStore: (sessionId: SessionId) => ToolResultStore;
   /** Sweeps offloaded tool-result files — called by background tick. */
   toolResultCleaner: ToolResultCleaner;
   /** 子 Agent 实际执行的持久化入口；根 Turn 不会写入该存储。 */
@@ -500,33 +495,25 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
   };
 
   const removeSessionRuntime = (sessionId: SessionId): void => {
-    // 会话删除专用: runner + context stores 全清(B-026)。
-    // 与 invalidateSessionRuntime 不同——那个是 workspace 变更,
-    // 文件状态历史还有用; 会话已删除时这些历史就是垃圾。
+    // 会话删除后释放 Runner 与 Tool Result Store，避免进程内缓存永久持有 Session。
     runnerCache.delete(sessionId);
-    sessionToolStoresCache.delete(sessionId);
+    sessionToolResultStores.delete(sessionId);
   };
 
-  // ── Session 文件状态与工具结果存储 ─────────────────────────────────────────
+  // ── Session 工具结果存储 ───────────────────────────────────────────────────
   // 新结果与音频、Artifact 使用同一正式 Session 根，永久删除 Session 时可由
   // removeSessionDir 一次清理；旧隐藏目录仅交给 Cleaner 做兼容回收。
   const sessionsDir = nodePath.join(activeDataDir, 'sessions');
   const legacyToolResultSessionsDir = nodePath.join(activeDataDir, '.ema-agent', 'sessions');
-  const sessionToolStoresCache = new Map<string, {
-    fileStateStore:  SessionFileStateStore;
-    toolResultStore: ToolResultStore;
-  }>();
-  const getSessionToolStores = (sessionId: SessionId) => {
-    let stores = sessionToolStoresCache.get(sessionId);
-    if (stores) return stores;
-    stores = {
-      fileStateStore:  new SessionFileStateStore(),
-      toolResultStore: new ToolResultStore(
-        nodePath.join(sessionsDir, sessionId, 'tool-results'),
-      ),
-    };
-    sessionToolStoresCache.set(sessionId, stores);
-    return stores;
+  const sessionToolResultStores = new Map<string, ToolResultStore>();
+  const getSessionToolResultStore = (sessionId: SessionId): ToolResultStore => {
+    let store = sessionToolResultStores.get(sessionId);
+    if (store) return store;
+    store = new ToolResultStore(
+      nodePath.join(sessionsDir, sessionId, 'tool-results'),
+    );
+    sessionToolResultStores.set(sessionId, store);
+    return store;
   };
   const toolResultCleaner = new ToolResultCleaner([
     sessionsDir,
@@ -845,7 +832,7 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
     tts, audioArchive, stt, vision, providerRuntime,
     permission, permissionPrompts, askUserRegistry, tools, buildAskForTurn, getCommandRunner,
     invalidateSessionRuntime, removeSessionRuntime,
-    getSessionToolStores, toolResultCleaner, agentRunStore, taskStore,
+    getSessionToolResultStore, toolResultCleaner, agentRunStore, taskStore,
     toolExecutionJournal, agentRunMessages,
     memory, contextCompactor,
     systemBus,

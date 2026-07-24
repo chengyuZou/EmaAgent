@@ -54,7 +54,6 @@ export interface ContextCompactionArgs {
   tools?: readonly LlmToolDef[];
   providerId: string;
   model: string;
-  recentFiles?: ReadonlyArray<{ path: string; content: string; mtimeMs: number }>;
   signal?: AbortSignal;
   emit?: (event: ContextRuntimeEvent) => void;
 }

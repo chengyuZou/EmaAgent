@@ -2,8 +2,6 @@
 export type {
   ReadFileEntry,
   ReadFileState,
-  FileStateStoreEntry,
-  FileStateStore,
   ToolCapabilityRestriction,
   ToolCapabilitySnapshot,
   ToolCapabilityScope,
@@ -42,8 +40,6 @@ export type {
   SearchPresentation,
   ToolPresentation,
 } from './presentation/index.js';
-export { SessionFileStateStore } from './sessionFileStateStore.js';
-export type { SessionFileStateEntry } from './sessionFileStateStore.js';
 export type { DeepReadonly, PreparedToolCall } from './prepared-call.js';
 export type { ToolExecutionResult } from './execution/toolExecutionResult.js';
 export type {
@@ -57,8 +53,8 @@ export type {
   ToolExecutionRuntimeEvent,
   ToolExecutionRuntimeOptions,
 } from './execution/toolExecutionRuntime.js';
-export { presentToolResult, splitToolResult } from './tool-result.js';
-export type { SplitToolResult } from './tool-result.js';
+export { presentToolResult, splitToolResult } from './presentation/index.js';
+export type { SplitToolResult } from './presentation/index.js';
 
 export { buildTool, DEFAULT_MAX_RESULT_BYTES } from './build-tool.js';
 export {
