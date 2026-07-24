@@ -1,7 +1,12 @@
 // 通过 ripgrep 在时间、输出和结果数量预算内搜索文件内容。
 import path from 'node:path';
 import { z } from 'zod';
-import { buildTool } from '@ema-agent/tools';
+import {
+  buildTool,
+  createSearchPresentation,
+  presentToolResult,
+} from '@ema-agent/tools';
+import type { SearchLimitReason } from '@ema-agent/tools';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 import type { BuiltinToolContext } from '../../builtinToolContext.js';
 import { contextFail, contextOk } from '../../contextValidation.js';
@@ -159,10 +164,28 @@ Results are capped at \`head_limit\` lines (default 250).`,
       ? `${trimmed}${trimmed ? '\n' : ''}[Search stopped at the ${result.stopReason ?? 'output'} limit. Use a narrower pattern, path, or glob filter.]`
       : trimmed;
 
-    return {
-      output,
-      truncated: result.truncated,
-      ...(result.stopReason ? { stopReason: result.stopReason } : {}),
-    };
+    return presentToolResult(
+      {
+        output,
+        truncated: result.truncated,
+        ...(result.stopReason ? { stopReason: result.stopReason } : {}),
+      },
+      createSearchPresentation({
+        operation: 'content_search',
+        pattern,
+        searchPath: searchTargets[0] ?? workspaceRoot,
+        resultCount: result.records.length,
+        truncated: result.truncated,
+        ...(result.stopReason
+          ? { limitReason: normalizeSearchLimitReason(result.stopReason) }
+          : {}),
+      }),
+    );
   },
 });
+
+function normalizeSearchLimitReason(
+  reason: 'records' | 'bytes' | 'timeout',
+): SearchLimitReason {
+  return reason === 'records' ? 'results' : reason;
+}

@@ -2,7 +2,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
-import { buildTool } from '@ema-agent/tools';
+import {
+  buildTool,
+  createFileReadPresentation,
+  presentToolResult,
+} from '@ema-agent/tools';
 import type { FileStateStore, ReadFileState } from '@ema-agent/tools';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 import type { BuiltinToolContext } from '../../builtinToolContext.js';
@@ -193,7 +197,24 @@ export const FileReadTool = buildTool<FileReadInput, FileReadResult, BuiltinTool
       existing.limit === limit &&
       existing.timestamp === mtimeMs
     ) {
-      return { type: 'file_unchanged', filePath: file_path };
+      const existingLines = existing.content.split('\n');
+      const startLine = offset ?? 1;
+      const selectedLines = existingLines.slice(
+        startLine - 1,
+        limit === undefined ? undefined : startLine + limit - 1,
+      );
+      return presentToolResult(
+        { type: 'file_unchanged', filePath: file_path },
+        createFileReadPresentation({
+          filePath: file_path,
+          status: 'unchanged',
+          startLine,
+          endLine: startLine + selectedLines.length - 1,
+          totalLines: existingLines.length,
+          partial: isPartialView,
+          truncated: false,
+        }),
+      );
     }
 
     // ── 读文件 ─────────────────────────────────────────────────────────────────
@@ -216,13 +237,24 @@ export const FileReadTool = buildTool<FileReadInput, FileReadResult, BuiltinTool
     });
     context.fileStateStore?.record(fullPath, { content: raw, mtimeMs, offset, limit, isPartialView });
 
-    return {
-      type: 'file_content',
-      filePath: file_path,
-      content,
-      totalLines,
-      isPartialView,
-    };
+    return presentToolResult(
+      {
+        type: 'file_content',
+        filePath: file_path,
+        content,
+        totalLines,
+        isPartialView,
+      },
+      createFileReadPresentation({
+        filePath: file_path,
+        status: 'content',
+        startLine,
+        endLine: startLine + slicedLines.length - 1,
+        totalLines,
+        partial: isPartialView,
+        truncated: false,
+      }),
+    );
   },
 });
 

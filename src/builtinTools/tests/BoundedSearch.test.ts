@@ -5,6 +5,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { BuiltTool } from '@ema-agent/tools';
+import { splitToolResult } from '@ema-agent/tools';
 import type { BuiltinToolContext } from '../builtinToolContext.js';
 import { GlobTool } from '../tools/GlobTool/GlobTool.js';
 import { GrepTool } from '../tools/GrepTool/GrepTool.js';
@@ -69,6 +70,14 @@ describe('bounded search', () => {
     expect(result.files).toHaveLength(100);
     expect(result.truncated).toBe(true);
     expect(result.notice).toContain('Search stopped');
+    expect(splitToolResult(result).presentation).toMatchObject({
+      kind: 'search',
+      operation: 'file_search',
+      pattern: '*.txt',
+      resultCount: 100,
+      truncated: true,
+      limitReason: 'results',
+    });
   });
 
   it.skipIf(!hasRipgrep)('Grep 按 head_limit 截断并提示模型缩小范围', async () => {
@@ -93,6 +102,14 @@ describe('bounded search', () => {
     expect(result.truncated).toBe(true);
     expect(result.stopReason).toBe('records');
     expect(result.output).toContain('Use a narrower pattern');
+    expect(splitToolResult(result).presentation).toMatchObject({
+      kind: 'search',
+      operation: 'content_search',
+      pattern: 'match-',
+      resultCount: 10,
+      truncated: true,
+      limitReason: 'results',
+    });
   });
 
   it.skipIf(!hasRipgrep)('Grep 把以短横线开头的 pattern 当作内容而不是 rg 参数', async () => {

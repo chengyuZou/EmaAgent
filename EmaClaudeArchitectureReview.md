@@ -288,20 +288,22 @@ Ema 已经完成了这一批最重要的安全骨架：
 - `validateInput` 已形成 Schema 后、Permission 前的业务校验入口；`requiresUserInteraction` 已替代 Agent 按 AskUser 工具名猜测等待状态。
 - `ToolOrigin` 已把 Builtin 与 MCP 来源纳入 ToolDef、Manifest 和 Prepared 快照；MCP 分支强制携带原始 Server/Tool 名，Registry 会拒绝来源声明与注册所有者不一致的实现。
 - ToolExecution Journal 已归入 `src/tools/journal`：Tools 拥有状态、记录、CAS 状态机、崩溃恢复语义和 Store 端口；Storage 只实现原子 SQL 操作，Tasks 不再导出工具执行生命周期。
+- 跨端展示协议已归入 `src/tools/presentation`：FileWrite/FileEdit 根据真实落盘前后内容生成有界 Diff，FileRead、Glob/Grep 与 Bash 分别生成读取、搜索和命令事实；具体工具实现不包含 React，事件层只引用 `ToolPresentation` 联合。
+- Bash 的模型 `description` 继续只作为 Prepared Call 的调用前摘要；执行后的 `CommandPresentation` 来自实际命令、工作目录和 Runner 终态，两者都不参与 Permission 或 Sandbox 裁决。
 
-当前缺口不是再发明 Tool 接口，而是边界仍然过宽：`ToolExecutionContext` 正逐渐成为依赖杂物箱；Registry 仍有可能绕过统一 Prepare/Permission 链的执行入口；Agent 调度与单次 Tool 执行尚未拆开，后台进程和 UI Presentation 也还没有形成清晰的跨端协议。
+上述旧缺口中的万能 Context、Registry 执行旁路和跨端 Presentation 已经完成收口。当前 Tool 主线剩余的是逐个 Builtin Tool 核对环境净化、工作目录、输入输出上限和平台语义；完成后直接建立 TurnRuntime，不再发明第二套 Tool 抽象。
 
 ### Diff 判断
 
 1. **V1 已对齐：PreparedToolCall 必须保留。** 它解决的不是类型优雅，而是“模型提交 A、用户批准 A、实际执行时不能换成 B”的 TOCTOU 安全问题。后续 Hook、自动审批和 UI 都只能查看这份不可变快照。
 2. **V1 必做：Tool 生命周期只能有一条主链。** 内置、MCP、Skill 激活后获得的工具都进入相同的 Prepare、Permission、Sandbox、Execute、Result 流程；禁止可信桥或 route 使用 `dispatch()` 绕过审批。
 3. **V1 必做：运行时安全默认关闭。** 新工具默认 `isConcurrencySafe=false`、非只读、不可自动批准。工具作者需要显式证明更宽松的语义。
-4. **V1 收口：将 ToolContext 改为组合能力，而不是继续加可选字段。** 保留 `identity`、`workspace`、`signal`、`events` 和少量 Capability Port；Artifact、KB、Subagent、AskUser 等由对应工具在注册/构造时注入专用依赖，避免每个工具看到整个产品运行时。
+4. **V1 已对齐：Tool Context 使用执行时窄投影。** Ema 集成层只装配一次 `BuiltinToolContext`，每个 Tool 必须通过 `requires + validateContext()` 验证并投影自己的最小 Context；`execute()` 看不到其他业务能力。通用 Tools 不拥有 Knowledge、Skill 或 Subagent Port，也不再存在 `ToolExecutionContext/Scope/InvocationContext` 万能参数袋。
 5. **V1 必做：模型可见名与内部稳定 ID 分离。** Permission、审计、恢复和 Feature Gate 使用稳定 ID；Provider Tool Schema 使用名称。重命名展示名不能意外继承或绕过旧权限。
 6. **V1 必做：Tool Result 形成结构化结果封套。** 结果要区分成功、失败、取消、超时、输出截断、外置引用和 outcome unknown；不能只返回 stdout 字符串，也不能把日志文本当 SSE 事件。
-7. **V1 收口：工具 UI 不进入执行包。** Claude 的 React renderer 适合单体 CLI，Ema 有 Desktop、未来 CLI/Web/移动端，应由 `ToolPresentation` 跨端数据协议描述摘要、风险、文件 diff 和进度，Desktop UI 自己渲染。
+7. **V1 已对齐：工具 UI 不进入执行包。** Claude 的 React renderer 适合单体 CLI，Ema 有 Desktop、未来 CLI/Web/移动端；`src/tools/presentation` 已用可判别联合承载读取、搜索、命令和文件 Diff 事实，Desktop UI 自己渲染。
 8. **V1 已对齐：工具池使用不可变 Session/Turn 快照。** Skill 和 Profile 只能收窄工具能力；MCP 连接变化生成下一次 Snapshot，已开始的 Turn 仍持有原快照，但被移除或同名替换的实现会在 prepare 阶段明确失败，不会偷换成新实现。
-9. **V1 收口：Tool 顺序与第 03 章缓存策略衔接。** 内置工具形成稳定前缀，Skill/MCP/角色专属工具按稳定分区追加；不能因为连接顺序或 Map 插入顺序破坏 KV Cache。
+9. **V1 已对齐：Tool 顺序与第 03 章缓存策略衔接。** 内置工具形成稳定前缀，MCP 形成稳定后缀；Skill/Profile 只按原顺序收窄既有 Manifest。等价 MCP 重连不改变内容 Revision，连接顺序或 Map 插入顺序不再破坏 KV Cache。
 10. **V1 必做：AskUser 只属于根 Turn 交互能力。** Subagent 默认工具集不包含 AskUser。若子 Agent 缺少信息，它结束或向父 Agent 发送 `needs_parent_input`，由根 Turn 决定是否询问用户。
 11. **V1.5 候选：ToolSearch 延迟加载。** 当 Skill/MCP 数量真正导致 Tool Schema 过大时再加入 Discovery Catalog；V1 先用明确工具快照和启用门禁，不制造半成品搜索工具。
 12. **不照搬：Bun 编译宏与每个 Tool 强制 UI 文件。** Ema 用 Tauri/NodeNext Feature Gate；文件拆分按复杂度，而不是为了长得像 Claude 产生几行小文件。

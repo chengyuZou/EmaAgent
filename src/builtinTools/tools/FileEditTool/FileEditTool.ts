@@ -1,13 +1,16 @@
 // 在已读取的文件中执行受保护的精确文本替换。
 import path from 'node:path';
 import { z } from 'zod';
-import { buildTool, presentToolResult } from '@ema-agent/tools';
+import {
+  buildTool,
+  createFileChangePresentation,
+  presentToolResult,
+} from '@ema-agent/tools';
 import type { FileStateStore, ReadFileState } from '@ema-agent/tools';
 import type { ToolCallId } from '@ema-agent/ids';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 import type { BuiltinToolContext } from '../../builtinToolContext.js';
 import { contextFail, contextOk } from '../../contextValidation.js';
-import { buildFileChangePresentation } from '../shared/FileChangePresentation.js';
 import { atomicTransformUtf8 } from '../FileWriteTool/atomicWrite.js';
 
 /** File 编辑工具的窄 Context：去重缓存 + 可选持久状态 + per-call 身份。 */
@@ -198,6 +201,6 @@ Rules:
     return presentToolResult({
       filePath: file_path,
       replacements,
-    }, buildFileChangePresentation(file_path, written.previousContent, written.content));
+    }, createFileChangePresentation(file_path, written.previousContent, written.content));
   },
 });

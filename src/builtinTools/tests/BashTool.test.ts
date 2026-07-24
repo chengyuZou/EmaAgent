@@ -1,7 +1,8 @@
 // 测试 Bash 只通过受控 CommandRunner 执行，并且不再向模型声明假后台能力。
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { asSessionId, asTurnId } from '@ema-agent/ids';
+import { splitToolResult } from '@ema-agent/tools';
 import { BashTool } from '../tools/BashTool/BashTool.js';
 
 describe('BashTool 执行边界', () => {
@@ -23,5 +24,41 @@ describe('BashTool 执行边界', () => {
       // commandRunner 刻意不提供，验证工具不会回退到裸进程
     });
     expect(projection.valid).toBe(false);
+  });
+
+  it('使用实际执行参数生成命令展示数据', async () => {
+    const run = vi.fn().mockResolvedValue({
+      stdout: 'ok',
+      stderr: '',
+      exitCode: 0,
+      timedOut: false,
+      truncated: false,
+      aborted: false,
+    });
+    const projection = BashTool.unsafeValidateContext({
+      sessionId: asSessionId('session-presentation'),
+      turnId: asTurnId('turn-presentation'),
+      workspaceRoot: 'D:/workspace',
+      signal: new AbortController().signal,
+      commandRunner: { run, cleanup: vi.fn() },
+    });
+    if (!projection.valid) throw new Error(projection.reason);
+
+    const result = await BashTool.unsafeExecute(
+      { command: 'git status', description: '查看工作区状态' },
+      projection.context,
+    );
+    const split = splitToolResult(result);
+
+    expect(split.modelOutput).toMatchObject({ stdout: 'ok', exitCode: 0 });
+    expect(split.presentation).toEqual({
+      kind: 'command',
+      command: 'git status',
+      workingDirectory: 'D:/workspace',
+      exitCode: 0,
+      timedOut: false,
+      aborted: false,
+      truncated: false,
+    });
   });
 });

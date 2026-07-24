@@ -3,7 +3,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
 import { globIterate } from 'glob';
-import { buildTool } from '@ema-agent/tools';
+import {
+  buildTool,
+  createSearchPresentation,
+  presentToolResult,
+} from '@ema-agent/tools';
+import type { SearchLimitReason } from '@ema-agent/tools';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 import type { BuiltinToolContext } from '../../builtinToolContext.js';
 import { contextFail, contextOk } from '../../contextValidation.js';
@@ -112,9 +117,25 @@ export const GlobTool = buildTool<GlobInput, GlobResult, BuiltinToolContext, Glo
       ? `[Search stopped at the ${found.reason ?? 'result'} limit; ${files.length} files shown. Narrow the pattern or path to continue.]`
       : undefined;
 
-    return { files, truncated, notice };
+    return presentToolResult(
+      { files, truncated, notice },
+      createSearchPresentation({
+        operation: 'file_search',
+        pattern: input.pattern,
+        searchPath: searchDir,
+        resultCount: files.length,
+        truncated,
+        ...(found.reason ? { limitReason: normalizeSearchLimitReason(found.reason) } : {}),
+      }),
+    );
   },
 });
+
+function normalizeSearchLimitReason(reason: string): SearchLimitReason {
+  if (reason === 'bytes') return 'bytes';
+  if (reason.includes('time')) return 'timeout';
+  return 'results';
+}
 
 // ── 后端 ──────────────────────────────────────────────────────────────────────
 

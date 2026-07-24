@@ -574,6 +574,22 @@ src/tools/
 └─ index.ts
 ```
 
+`presentation/` 是明确的跨端数据协议，不是 React 渲染目录，也不是把所有工具输出复制一遍：
+
+```text
+src/tools/presentation/
+├─ toolPresentation.ts        只汇总可判别联合
+├─ fileChangePresentation.ts  根据真实 before/after 生成有界 diff
+├─ fileReadPresentation.ts    路径、实际行区间与裁剪状态
+├─ commandPresentation.ts     实际命令、cwd、退出与终止状态
+├─ searchPresentation.ts      搜索范围、结果数量与停止原因
+└─ index.ts                   公共导出
+```
+
+- 模型在 Tool Input 中提供的 `description` 是调用前的人话意图，进入 `PreparedToolCall.summary` 和 Permission 卡；它不可信，只能辅助用户理解，不能决定风险、路径或是否放行。
+- `ToolPresentation` 是执行后根据 Prepared Input 和真实 Result 生成的可信界面事实；`ToolExecutionRuntime` 只传输它，Desktop、CLI、Web 各自渲染，不能反向影响 Tool Result、Permission 或 Sandbox。
+- 只有需要专门展示的工具生成具体 Presentation。未知 MCP Tool 在 V1 使用通用参数/结果回退，不允许 Server 注入任意 Presentation JSON，也不为插件系统预建空分支。
+
 每次审查 Builtin Tool，都必须结合 Claude 文档与真实源码逐项核对模型可见名称、输入 Schema、字段语义、输出、校验、只读性、并发、Permission、Sandbox、取消、超时、结果上限、流式行为、跨平台与 Presentation。Claude 的数值和字段不是默认答案；例如采用 30K 结果上限前，必须先确认双方返回内容和外置机制是否相同。
 
 建议按 `FileRead/FileWrite/FileEdit → Glob/Grep → Bash/PowerShell → WebFetch/WebSearch → AskUser → Skill/KB/Subagent → Scratchpad → TaskCreate/Get/List/Update → Feature Gate Tool` 的顺序审查。TodoWrite 只作为迁移期旧实现，不是最终审查目标。

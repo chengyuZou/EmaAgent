@@ -2,19 +2,7 @@
 import type { SessionId, TurnId } from '@ema-agent/ids';
 import type { ArtifactEvent } from '@ema-agent/artifact';
 import type { TaskEvent } from '@ema-agent/tasks';
-
-export interface FileChangePresentation {
-  kind: 'file_change';
-  operation: 'create' | 'update';
-  filePath: string;
-  unifiedDiff: string;
-  additions: number;
-  deletions: number;
-  truncated: boolean;
-  omittedReason?: string;
-}
-
-export type ToolPresentation = FileChangePresentation;
+import type { ToolPresentation } from './presentation/index.js';
 
 export interface ToolError {
   code: string;

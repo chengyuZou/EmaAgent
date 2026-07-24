@@ -19,14 +19,29 @@ export type {
 export type {
   AskUserQuestionSpec,
   AskUserRequiredEvent,
-  FileChangePresentation,
   PendingAskUserPrompt,
   ToolError,
   ToolFailurePhase,
-  ToolPresentation,
   ToolStreamEvent,
   ToolExecutionEvent,
 } from './events.js';
+export {
+  createCommandPresentation,
+  createFileChangePresentation,
+  createFileReadPresentation,
+  createSearchPresentation,
+} from './presentation/index.js';
+export type {
+  CommandPresentation,
+  CreateCommandPresentationInput,
+  CreateFileReadPresentationInput,
+  CreateSearchPresentationInput,
+  FileChangePresentation,
+  FileReadPresentation,
+  SearchLimitReason,
+  SearchPresentation,
+  ToolPresentation,
+} from './presentation/index.js';
 export { SessionFileStateStore } from './sessionFileStateStore.js';
 export type { SessionFileStateEntry } from './sessionFileStateStore.js';
 export type { DeepReadonly, PreparedToolCall } from './prepared-call.js';
