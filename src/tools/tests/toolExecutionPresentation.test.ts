@@ -50,7 +50,6 @@ describe('tool presentation flow', () => {
         workspaceRoot: '',
         signal: new AbortController().signal,
       },
-      toolScope: { readFileState: new Map() },
       pushEv: event => emitted.push(event),
       signal: () => undefined,
       toolExecutionJournal: {

@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { buildTool } from '@ema-agent/tools';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 import type { BuiltinToolContext } from '../../builtinToolContext.js';
-import { contextOk } from '../../contextValidation.js';
+import { contextFail, contextOk } from '../../contextValidation.js';
 import { runBoundedProcess } from '../shared/BoundedProcess.js';
 
 /** Grep 工具的窄 Context：工作区根 + per-call 取消信号。 */
@@ -92,7 +92,12 @@ Results are capped at \`head_limit\` lines (default 250).`,
     extractPath: (input) => (input as { path?: string }).path,
   },
 
+  requires: ['workspaceRoot'],
+
   validateContext(ctx) {
+    if (!ctx.workspaceRoot) {
+      return contextFail('Grep 工具需要明确的工作区，禁止回退到 Sidecar 进程目录。');
+    }
     return contextOk({
       workspaceRoot: ctx.workspaceRoot,
       signal: ctx.signal,
@@ -110,7 +115,7 @@ Results are capped at \`head_limit\` lines (default 250).`,
       head_limit,
     } = input;
 
-    const workspaceRoot = context.workspaceRoot || process.cwd();
+    const workspaceRoot = context.workspaceRoot;
     const searchTargets = inputPath
       ? [path.resolve(workspaceRoot, inputPath)]
       : [workspaceRoot];

@@ -1,7 +1,12 @@
 // Ema 内置工具的完整宿主 Context：调用身份 + 各业务能力 Port。
 // 只有 builtinTools 集成层需要同时知道所有 Port；src/tools 通用框架不引用它，
 // 避免 tools 反向依赖 sandbox/knowledge/tasks/agent 等业务包。
-import type { AgentRunId, SessionId, TurnId } from '@ema-agent/ids';
+import type {
+  AgentRunId,
+  SessionId,
+  ToolCallId,
+  TurnId,
+} from '@ema-agent/ids';
 import type { CommandRunnerPort } from '@ema-agent/sandbox';
 import type { TaskStorePort } from '@ema-agent/tasks';
 import type { IArtifactStore } from '@ema-agent/artifact';
@@ -14,7 +19,6 @@ import type {
   SubagentSpawnerPort,
   ToolCapabilityScope,
   ToolExecutionEvent,
-  ToolInvocationContext,
 } from '@ema-agent/tools';
 
 /**
@@ -39,51 +43,51 @@ export interface ScratchpadPort {
 /**
  * Ema 内置工具完整宿主 Context。
  *
- * 身份字段继承自 ToolInvocationContext（不含 per-call toolCallId，由执行器补充）；
- * 能力字段全部可选，工具通过自己的 validateContext 投影出所需窄 Context。
+ * 身份和能力位于同一个对象；工具通过自己的 validateContext 投影出所需窄 Context。
  * 总字段较多没有关系——任何具体 Tool 只能拿到它 validateContext 返回的部分。
  *
- * emit 是 per-call 输出能力（发结构化事件到 SSE 流），由 ToolExecutionRuntime
- * 在构造 per-call Context 时填充，不放入 ToolInvocationContext 的调用身份。
+ * toolCallId、单工具 signal 和 emit 由 ToolExecutionRuntime 在每次调用前覆盖；
+ * 装配 Manifest 时 toolCallId 尚不存在，因此它是可选字段。
  */
-export interface BuiltinToolContext extends Omit<ToolInvocationContext, 'toolCallId'> {
+export interface BuiltinToolContext {
+  readonly sessionId: SessionId;
+  readonly turnId: TurnId;
+  /** 子 Agent 保留父 turnId，并用 agentRunId 关联实际子执行。 */
+  readonly agentRunId?: AgentRunId;
+  /** 执行器在单次调用前补入，权限、审计和文件写入共用该身份。 */
+  readonly toolCallId?: ToolCallId;
+  /** 空串表示本次执行没有工作区；文件与 Shell 工具不会进入 Manifest。 */
+  readonly workspaceRoot: string;
+  /** 装配时是父执行信号，调用工具时由执行器替换成单工具信号。 */
+  readonly signal: AbortSignal;
+
   // ── 装配时绑定的执行能力 ──────────────────────────────────────────────────
   /** Bash 工具的受控命令执行器（per-session 缓存）。 */
-  commandRunner?: CommandRunnerPort;
+  readonly commandRunner?: CommandRunnerPort;
   /** KB 检索工具的搜索入口。 */
-  knowledgeSearch?: KnowledgeSearchPort;
+  readonly knowledgeSearch?: KnowledgeSearchPort;
   /** Task 工具族的持久存储。 */
-  taskStore?: TaskStorePort;
+  readonly taskStore?: TaskStorePort;
   /** Subagent 工具的子 Agent 启动器。 */
-  subagentSpawner?: SubagentSpawnerPort;
+  readonly subagentSpawner?: SubagentSpawnerPort;
   /** SkillCall 工具的 Skill 运行器。 */
-  skillRunner?: SkillRunnerPort;
+  readonly skillRunner?: SkillRunnerPort;
   /** Artifact 工具族（V1.5 预留，默认不注册）。 */
-  artifactStore?: IArtifactStore;
+  readonly artifactStore?: IArtifactStore;
   /** Scratchpad 工具的 Turn 级临时存储位置。 */
-  scratchpad?: ScratchpadPort;
+  readonly scratchpad?: ScratchpadPort;
   /** File 工具的跨调用去重缓存。 */
-  readFileState?: ReadFileState;
+  readonly readFileState?: ReadFileState;
   /** File 工具的持久文件状态记录。 */
-  fileStateStore?: FileStateStore;
+  readonly fileStateStore?: FileStateStore;
   /** SkillCall 收窄当前 Agent 工具能力的能力边界。 */
-  toolCapabilities?: ToolCapabilityScope;
+  readonly toolCapabilities?: ToolCapabilityScope;
   /** AskUser 工具的问询解析器。 */
-  askUser?: AskUserPort;
+  readonly askUser?: AskUserPort;
 
   // ── per-call 输出能力（执行器填充） ────────────────────────────────────────
   /** 发结构化事件到当前 Turn 的 SSE 流；AskUser/Task/Artifact 等用。 */
-  emit?: (event: ToolExecutionEvent) => void;
-}
-
-/**
- * per-call 宿主 Context：BuiltinToolContext 补充 toolCallId、覆盖为 per-tool signal、
- * 填充 emit。ToolExecutionRuntime 在 executeOne 中构造，传给 validateContext 投影。
- */
-export interface PerCallToolContext extends BuiltinToolContext {
-  toolCallId: ToolInvocationContext['toolCallId'];
-  signal: AbortSignal;
-  emit?: (event: ToolExecutionEvent) => void;
+  readonly emit?: (event: ToolExecutionEvent) => void;
 }
 
 export type { AgentRunId, SessionId, TurnId };

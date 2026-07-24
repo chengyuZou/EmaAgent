@@ -54,8 +54,6 @@ describe('Skill capability 与工具执行器集成', () => {
         turnId: 'turn-skill',
         workspaceRoot: '',
         signal: new AbortController().signal,
-      },
-      toolScope: {
         readFileState: new Map(),
         toolCapabilities: policy.capabilities(),
       },

@@ -53,13 +53,19 @@ export class CommandRunner implements CommandRunnerPort {
     const shell = resolveShell();
     const wrapped = this.backend.wrap(command, shell, this.config);
 
-    return runProcess(
-      wrapped.executable,
-      wrapped.args,
-      cwd,
-      timeoutMs,
-      options.signal,
-    );
+    try {
+      return await runProcess(
+        wrapped.executable,
+        wrapped.args,
+        cwd,
+        timeoutMs,
+        options.signal,
+      );
+    } finally {
+      // 缺失的 bare-repo 敏感路径在每条命令后立即清理，不能等到 Turn 结束；
+      // 否则同一 Turn 的下一次 Git 调用可能加载上一条命令植入的配置或 Hook。
+      this.cleanup();
+    }
   }
 
   cleanup(): void {

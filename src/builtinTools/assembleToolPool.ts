@@ -23,7 +23,8 @@ export function assembleToolPool(
     const required = tool.requires;
     if (!required || required.length === 0) return true;
     for (const key of required) {
-      if (hostContext[key as keyof BuiltinToolContext] == null) return false;
+      const capability = hostContext[key as keyof BuiltinToolContext];
+      if (capability == null || capability === '') return false;
     }
     return true;
   });

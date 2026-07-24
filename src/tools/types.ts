@@ -2,10 +2,7 @@
 import type { z } from 'zod';
 import type {
   AgentRunId,
-  SessionId,
   TaskId,
-  TurnId,
-  ToolCallId,
 } from '@ema-agent/ids';
 import type { IArtifactStore } from '@ema-agent/artifact';
 import type { KbSearchResult } from '@ema-agent/knowledge';
@@ -155,21 +152,6 @@ export type KnowledgeSearchPort = (
   kbIds?: string[],
 ) => Promise<KbSearchResult>;
 
-// ── 工具调用身份与宿主能力 ───────────────────────────────────────────────────
-
-/** 一次工具调用不可变的运行事实，不承载宿主业务依赖。 */
-export interface ToolInvocationContext {
-  sessionId: SessionId;
-  turnId: TurnId;
-  /** 子 Agent 工具调用保留父 turnId，并通过独立身份关联实际执行。 */
-  agentRunId?: AgentRunId;
-  /** 当前工具调用的唯一编号；权限、审计、取消和文件写入共用该身份。 */
-  toolCallId: ToolCallId;
-  /** 工作区根。空串 = 无工作区(subagent)。shell 工具用此作 cwd。 */
-  workspaceRoot: string;
-  /** 单工具取消信号；Turn 取消会由执行器级联到该信号。 */
-  signal: AbortSignal;
-}
 // ── ToolDescriptor - LLM 看到的 ──────────────────────────────────────────────
 
 export interface ToolDescriptor {

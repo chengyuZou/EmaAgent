@@ -34,8 +34,8 @@ const SESSION_WARN_THRESHOLD = 100;
  * 仓储层不感知文件——它只存收到的内容。inline 还是 file 的决策和文件 I/O
  * 只在本类里发生。
  *
- * 实现 IArtifactStore，这样能注入 ToolExecutionScope，而不用让
- * @ema-agent/tools 反向依赖本包。
+ * 实现 IArtifactStore，使 BuiltinToolContext 只注入 Artifact 的窄存储端口，
+ * 工具实现不需要穿透 Artifact 边界访问内部仓储。
  */
 export class ArtifactStore implements IArtifactStore {
   constructor(

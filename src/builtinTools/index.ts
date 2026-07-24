@@ -155,22 +155,6 @@ const ARTIFACT_TOOL_IDS: ReadonlySet<string> = new Set([
   BuiltinTools.ArtifactList.id,
 ]);
 
-/**
- * 受运行时桥可用性门禁的工具。
- * key = 稳定工具 id，value = 哪个 RegisterOptions 标志启用它。
- */
-const BRIDGE_GATED: ReadonlyMap<string, keyof RegisterOptions> = new Map([
-  [BuiltinTools.SkillCall.id,                  'hasSkillBridge'],
-  [BuiltinTools.Subagent.id,                   'hasSubagentBridge'],
-  [BuiltinTools.SubagentSpawnBackground.id,    'hasSubagentBridge'],
-  [BuiltinTools.SubagentSendMessage.id,        'hasSubagentBridge'],
-  [BuiltinTools.SubagentAwait.id,              'hasSubagentBridge'],
-  [BuiltinTools.TaskCreate.id,                 'hasTaskStore'],
-  [BuiltinTools.TaskGet.id,                    'hasTaskStore'],
-  [BuiltinTools.TaskList.id,                   'hasTaskStore'],
-  [BuiltinTools.TaskUpdate.id,                 'hasTaskStore'],
-]);
-
 export interface RegisterOptions {
   /**
    * true 时，Shell 执行工具 Bash 从注册表省略。
@@ -179,19 +163,6 @@ export interface RegisterOptions {
    */
   disableExecuteTools?: boolean;
 
-  /**
-   * 运行时桥可用性标志。桥缺失的工具从注册表省略,LLM 看不到它无法调用的工具。
-   * 全部默认 false(工具隐藏)- 仅在 apps/core 接好桥时设 true。
-   *
-   * SkillCall - SkillRunner 桥
-   * Subagent 工具族 - subagent spawner 桥
-   *
-   * MCP 工具由 McpRegistry 自动展开，不经通用 mcp_call 工具暴露。
-   */
-  hasSkillBridge?:    boolean;
-  hasSubagentBridge?: boolean;
-  /** 根 Work Turn 已装配持久 TaskStore 时才暴露 Task 工具族。 */
-  hasTaskStore?:      boolean;
   /**
    * Artifact 工具族是否注册。
    * V1 默认 false(Artifact 属于 V1.5 预留,完成 B-003/B-068/B-069 前不得启用)。
@@ -215,11 +186,6 @@ export function registerBuiltinTools(registry: ToolRegistry, opts: RegisterOptio
     // Artifact 属于 V1.5 预留能力,V1 默认不注册。
     // 完成状态机 B-003/B-068/B-069 前不得启用。
     if (!opts.enableArtifacts && ARTIFACT_TOOL_IDS.has(tool.id)) continue;
-
-    // 运行时桥未接时跳过桥门禁工具。
-    // 防止 LLM 看到它实际无法使用的工具。
-    const bridgeFlag = BRIDGE_GATED.get(tool.id);
-    if (bridgeFlag !== undefined && !opts[bridgeFlag]) continue;
 
     registry.register(tool);
   }

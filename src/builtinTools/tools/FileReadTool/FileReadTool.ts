@@ -118,11 +118,11 @@ export const FileReadTool = buildTool<FileReadInput, FileReadResult, BuiltinTool
   isReadOnly: () => true,
   isConcurrencySafe: () => true,
 
-  requires: ['readFileState'],
+  requires: ['workspaceRoot', 'readFileState'],
 
   validateContext(ctx) {
-    if (!ctx.readFileState) {
-      return contextFail('File 工具未装配（缺少 readFileState 能力）。');
+    if (!ctx.workspaceRoot || !ctx.readFileState) {
+      return contextFail('File 读取工具未装配完整的工作区或读取状态。');
     }
     return contextOk({
       readFileState: ctx.readFileState,

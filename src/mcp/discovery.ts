@@ -1,4 +1,4 @@
-// 这里发现 MCP Server 暴露的工具，并把它们转换成 EmaAgent 的可注册工具。
+// 发现 MCP Server 暴露的工具，并把它们转换成 EmaAgent 的可注册工具。
 import type { Client }           from '@modelcontextprotocol/sdk/client/index.js';
 import { z }                     from 'zod';
 import { buildTool } from '@ema-agent/tools';
@@ -9,6 +9,14 @@ import { buildMcpToolName }      from './types.js';
 import type { McpRegistry }      from './registry.js';
 
 const MAX_DESCRIPTION_LEN = 2048;
+
+interface McpToolHostContext {
+  readonly signal: AbortSignal;
+}
+
+interface McpToolContext {
+  readonly signal: AbortSignal;
+}
 
 // ── 工具发现 ────────────────────────────────────────────────────────────────────
 
@@ -48,7 +56,7 @@ export async function discoverServerTools(
 export function buildMcpBuiltTool(
   info:     McpToolInfo,
   registry: McpRegistry,
-): BuiltTool<Record<string, unknown>, unknown> {
+): BuiltTool<Record<string, unknown>, unknown, McpToolContext> {
   // 用原始(未清洗)服务器名查连接。qualifiedName 的连字符/点已替换成下划线;
   // 连接 map 按原始名索引,故拆分 qualifiedName 会破坏名字含非字母数字的服务器。
   const serverName = info.originalServerName;
@@ -61,7 +69,12 @@ export function buildMcpBuiltTool(
     accessType: 'execute',
   });
 
-  return buildTool<Record<string, unknown>, unknown>({
+  return buildTool<
+    Record<string, unknown>,
+    unknown,
+    McpToolHostContext,
+    McpToolContext
+  >({
     id:                mcpToolId(serverName, info.serverToolName),
     name:              info.qualifiedName,
     origin: {
@@ -75,11 +88,15 @@ export function buildMcpBuiltTool(
     isReadOnly:        () => false,
     isConcurrencySafe: () => false,
     permissionMeta,
-    execute: (input, ctx) => registry.callTool(
+    validateContext: (context) => ({
+      valid: true,
+      context: { signal: context.signal },
+    }),
+    execute: (input, context) => registry.callTool(
       serverName,
       info.serverToolName,
       input,
-      ctx.signal,
+      context.signal,
     ),
   });
 }

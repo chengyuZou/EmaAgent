@@ -4,11 +4,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { afterEach, describe, expect, it } from 'vitest';
-import { asSessionId, asToolCallId, asTurnId } from '@ema-agent/ids';
-import type {
-  ToolExecutionScope,
-  ToolInvocationContext,
-} from '@ema-agent/tools';
+import type { BuiltTool } from '@ema-agent/tools';
+import type { BuiltinToolContext } from '../builtinToolContext.js';
 import { GlobTool } from '../tools/GlobTool/GlobTool.js';
 import { GrepTool } from '../tools/GrepTool/GrepTool.js';
 import { runBoundedProcess } from '../tools/shared/BoundedProcess.js';
@@ -63,9 +60,10 @@ describe('bounded search', () => {
       fs.writeFileSync(path.join(directory, `file-${index}.txt`), String(index), 'utf8');
     }
 
-    const result = await GlobTool.unsafeExecute(
+    const result = await executeWithContext(
+      GlobTool,
       { pattern: '*.txt' },
-      ...makeContext(directory),
+      makeContext(directory),
     ) as { files: string[]; truncated: boolean; notice?: string };
 
     expect(result.files).toHaveLength(100);
@@ -81,14 +79,15 @@ describe('bounded search', () => {
       'utf8',
     );
 
-    const result = await GrepTool.unsafeExecute(
+    const result = await executeWithContext(
+      GrepTool,
       {
         pattern: 'match-',
         output_mode: 'content',
         case_insensitive: false,
         head_limit: 10,
       },
-      ...makeContext(directory),
+      makeContext(directory),
     ) as { output: string; truncated: boolean; stopReason?: string };
 
     expect(result.truncated).toBe(true);
@@ -100,14 +99,15 @@ describe('bounded search', () => {
     const directory = makeTempDir();
     fs.writeFileSync(path.join(directory, 'literal.txt'), '--files\nordinary', 'utf8');
 
-    const result = await GrepTool.unsafeExecute(
+    const result = await executeWithContext(
+      GrepTool,
       {
         pattern: '--files',
         output_mode: 'content',
         case_insensitive: false,
         head_limit: 10,
       },
-      ...makeContext(directory),
+      makeContext(directory),
     ) as { output: string; truncated: boolean };
 
     expect(result.output).toContain('--files');
@@ -123,14 +123,21 @@ function makeTempDir(): string {
 
 function makeContext(
   workspaceRoot: string,
-): [ToolInvocationContext, ToolExecutionScope] {
-  return [{
-    sessionId: asSessionId('session-test'),
-    turnId: asTurnId('turn-test'),
-    toolCallId: asToolCallId('search-call'),
+): BuiltinToolContext {
+  return {
+    sessionId: 'session-test' as BuiltinToolContext['sessionId'],
+    turnId: 'turn-test' as BuiltinToolContext['turnId'],
     workspaceRoot,
     signal: new AbortController().signal,
-  }, {
-    readFileState: new Map(),
-  }];
+  };
+}
+
+async function executeWithContext(
+  tool: BuiltTool,
+  input: unknown,
+  context: BuiltinToolContext,
+): Promise<unknown> {
+  const projection = tool.unsafeValidateContext(context);
+  if (!projection.valid) throw new Error(projection.reason);
+  return tool.unsafeExecute(input, projection.context);
 }

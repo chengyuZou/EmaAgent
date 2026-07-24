@@ -9,7 +9,10 @@ import {
   type KnowledgeSearchPort,
   type ReadFileState,
 } from '@ema-agent/tools';
-import type { BuiltinToolContext } from '@ema-agent/tool-builtin';
+import {
+  assembleToolPool,
+  type BuiltinToolContext,
+} from '@ema-agent/tool-builtin';
 import type { PermissionContext } from '@ema-agent/permission';
 import type { TurnFailurePhase } from '@ema-agent/hooks';
 import type { AgentDeps, TurnExecutionInput } from './types.js';
@@ -76,7 +79,6 @@ async function* runTurn(
   const turnId    = turn.id;
   const startedAt = Date.now();
 
-  const policy        = new TurnPolicy(tools.manifestSnapshot());
   const budget        = new TurnBudget();
   const readFileState = new Map() as ReadFileState;
   const sessionToolStores = deps.getSessionToolStores?.(sessionId);
@@ -259,38 +261,45 @@ async function* runTurn(
     turnSpawner = spawner;
     activeSpawners.set(turnId, spawner);
 
+    // 先按本次根 Turn 真正拥有的能力装配模型可见工具，再从同一 Manifest
+    // 建立执行策略。Tool 不可见与不可执行因此不会由两套手写门控分别决定。
+    const capabilityContext: BuiltinToolContext = {
+      sessionId,
+      turnId,
+      workspaceRoot,
+      signal,
+      readFileState,
+      taskStore:         deps.taskStore,
+      fileStateStore:    sessionToolStores?.fileStateStore,
+      commandRunner:     resolvedRunner,
+      artifactStore:     deps.artifactStore,
+      skillRunner:       deps.skillRunner,
+      knowledgeSearch:   scopedKbSearch,
+      subagentSpawner:   spawner,
+      scratchpad:        scratchpadDir ? { dir: scratchpadDir, author: 'main' } : undefined,
+      askUser: askUserRegistry
+        ? async (promptId, questions, request) => {
+            void questions;
+            return awaitAgentAnswer({
+              promptId,
+              request: request as AskUserRequiredEvent,
+              turnId: turnId as string,
+              signal,
+              registry: askUserRegistry,
+            });
+          }
+        : undefined,
+    };
+    const policy = new TurnPolicy(
+      tools.manifestSnapshot(assembleToolPool(tools, capabilityContext)),
+    );
+    const toolContext: BuiltinToolContext = Object.freeze({
+      ...capabilityContext,
+      toolCapabilities: policy.capabilities(),
+    });
+
     const buildExecutor: ExecutorFactory<AgentRuntimeEvent> = ({ pushEv, signal: wakeSignal }) => {
       emitRef.fn = pushEv;   // 循环启动后接入父 SSE 发送函数
-      // 完整宿主 Context：调用身份 + 各业务能力。emit 由 ToolExecutionRuntime
-      // 按 per-call 绑定 track 后填充，不在此设置（避免与 per-tool 事件抑制冲突）。
-      const toolContext: BuiltinToolContext = {
-        sessionId,
-        turnId,
-        workspaceRoot,
-        signal,
-        readFileState,
-        taskStore:         deps.taskStore,
-        fileStateStore:    sessionToolStores?.fileStateStore,
-        commandRunner:     resolvedRunner,
-        artifactStore:     deps.artifactStore,
-        skillRunner:       deps.skillRunner,
-        toolCapabilities:  policy.capabilities(),
-        knowledgeSearch:   scopedKbSearch,
-        subagentSpawner:   spawner,
-        scratchpad:        scratchpadDir ? { dir: scratchpadDir, author: 'main' } : undefined,
-        askUser: askUserRegistry
-          ? async (promptId, questions, request) => {
-              void questions;
-              return awaitAgentAnswer({
-                promptId,
-                request: request as AskUserRequiredEvent,
-                turnId: turnId as string,
-                signal,
-                registry: askUserRegistry,
-              });
-            }
-          : undefined,
-      };
 
       const executor = new ToolExecutionRuntime({
         sessionId, turnId,
@@ -659,4 +668,3 @@ function readableUserInput(input: TurnExecutionInput['userInput']): string {
     .map((part) => part.text)
     .join('\n');
 }
-

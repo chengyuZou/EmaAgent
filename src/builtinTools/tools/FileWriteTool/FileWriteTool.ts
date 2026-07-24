@@ -5,7 +5,7 @@ import { buildTool, presentToolResult } from '@ema-agent/tools';
 import type { FileStateStore, ReadFileState } from '@ema-agent/tools';
 import type { ToolCallId } from '@ema-agent/ids';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
-import type { PerCallToolContext } from '../../builtinToolContext.js';
+import type { BuiltinToolContext } from '../../builtinToolContext.js';
 import { contextFail, contextOk } from '../../contextValidation.js';
 import { buildFileChangePresentation } from '../shared/FileChangePresentation.js';
 import { atomicTransformUtf8 } from './atomicWrite.js';
@@ -37,7 +37,7 @@ export interface FileWriteResult {
 
 // ── 工具定义 ───────────────────────────────────────────────────────────────────
 
-export const FileWriteTool = buildTool<FileWriteInput, FileWriteResult, PerCallToolContext, FileWriteToolContext>({
+export const FileWriteTool = buildTool<FileWriteInput, FileWriteResult, BuiltinToolContext, FileWriteToolContext>({
   id: BuiltinTools.FileWrite.id,
   name: BuiltinTools.FileWrite.name,
   description: `Write full content to a file, creating it if it does not exist.
@@ -52,11 +52,11 @@ export const FileWriteTool = buildTool<FileWriteInput, FileWriteResult, PerCallT
   isReadOnly: () => false,
   isConcurrencySafe: () => false,
 
-  requires: ['readFileState'],
+  requires: ['workspaceRoot', 'readFileState'],
 
   validateContext(ctx) {
-    if (!ctx.readFileState) {
-      return contextFail('File 工具未装配（缺少 readFileState 能力）。');
+    if (!ctx.workspaceRoot || !ctx.readFileState || !ctx.toolCallId) {
+      return contextFail('File 写入工具未装配完整的工作区、读取状态或调用身份。');
     }
     return contextOk({
       readFileState: ctx.readFileState,

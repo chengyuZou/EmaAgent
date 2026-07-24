@@ -1,4 +1,4 @@
-// 这里测试 V1 内置工具的注册门禁、稳定身份和模型可见名称。
+// 测试 V1 内置工具的物理注册门禁、稳定身份和模型可见名称。
 import { describe, expect, it } from 'vitest';
 import { ToolRegistry } from '@ema-agent/tools';
 import { BuiltinTools, registerBuiltinTools } from '../index.js';
@@ -42,15 +42,10 @@ describe('V1 内置工具注册边界', () => {
     expect(names).toContain(BuiltinTools.ArtifactList.name);
   });
 
-  it('只有根 Turn 装配 TaskStore 后才注册 Task 工具', () => {
-    const withoutStore = new ToolRegistry();
-    registerBuiltinTools(withoutStore);
-    expect(withoutStore.descriptors().map((tool) => tool.name))
-      .not.toContain(BuiltinTools.TaskList.name);
-
-    const withStore = new ToolRegistry();
-    registerBuiltinTools(withStore, { hasTaskStore: true });
-    const names = withStore.descriptors().map((tool) => tool.name);
+  it('业务能力工具统一注册，由每次执行的 ToolPool 决定是否可见', () => {
+    const registry = new ToolRegistry();
+    registerBuiltinTools(registry);
+    const names = registry.descriptors().map((tool) => tool.name);
     expect(names).toEqual(expect.arrayContaining([
       BuiltinTools.TaskCreate.name,
       BuiltinTools.TaskGet.name,
@@ -63,8 +58,6 @@ describe('V1 内置工具注册边界', () => {
     const registry = new ToolRegistry();
     registerBuiltinTools(registry, {
       enableArtifacts: true,
-      hasSkillBridge: true,
-      hasSubagentBridge: true,
     });
 
     const tools = registry.list();

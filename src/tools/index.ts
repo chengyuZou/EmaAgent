@@ -14,7 +14,6 @@ export type {
   ToolCapabilitySnapshot,
   ToolCapabilityScope,
   KnowledgeSearchPort,
-  ToolInvocationContext,
   ToolDescriptor,
   ToolManifestEntry,
   ToolManifestSnapshot,

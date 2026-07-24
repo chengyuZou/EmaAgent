@@ -6,7 +6,7 @@ import { globIterate } from 'glob';
 import { buildTool } from '@ema-agent/tools';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 import type { BuiltinToolContext } from '../../builtinToolContext.js';
-import { contextOk } from '../../contextValidation.js';
+import { contextFail, contextOk } from '../../contextValidation.js';
 import { runBoundedProcess } from '../shared/BoundedProcess.js';
 
 /** Glob 工具的窄 Context：工作区根 + per-call 取消信号。 */
@@ -68,7 +68,12 @@ export const GlobTool = buildTool<GlobInput, GlobResult, BuiltinToolContext, Glo
     extractPath: (input) => (input as { path?: string }).path,
   },
 
+  requires: ['workspaceRoot'],
+
   validateContext(ctx) {
+    if (!ctx.workspaceRoot) {
+      return contextFail('Glob 工具需要明确的工作区，禁止回退到 Sidecar 进程目录。');
+    }
     return contextOk({
       workspaceRoot: ctx.workspaceRoot,
       signal: ctx.signal,
@@ -76,7 +81,7 @@ export const GlobTool = buildTool<GlobInput, GlobResult, BuiltinToolContext, Glo
   },
 
   async execute(input: GlobInput, context: GlobToolContext): Promise<GlobResult> {
-    const workspaceRoot = context.workspaceRoot || process.cwd();
+    const workspaceRoot = context.workspaceRoot;
     const searchDir = input.path
       ? path.resolve(workspaceRoot, input.path)
       : workspaceRoot;

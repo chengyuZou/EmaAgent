@@ -41,6 +41,7 @@ Prefer this over AskUser when you only need a binary decision - the UI shows a f
   isReadOnly: () => false,
   isConcurrencySafe: () => false,
   requiresUserInteraction: () => true,
+  requires: ['askUser'],
 
   permissionMeta: {
     riskLevel: 'low',

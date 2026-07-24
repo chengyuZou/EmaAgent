@@ -472,10 +472,7 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
   const tools = new ToolRegistry();
   registerBuiltinTools(tools, {
     disableExecuteTools,
-    enableArtifacts:   releaseFeatures.artifacts,
-    hasSubagentBridge: true,   // SubagentSpawner wired inside AgentEngine per turn
-    hasSkillBridge:    true,   // skillBridge adapter injected into toolCtx
-    hasTaskStore:      true,
+    enableArtifacts: releaseFeatures.artifacts,
   });
 
   // Per-session command runner — memoised to avoid rebuilding SandboxConfig

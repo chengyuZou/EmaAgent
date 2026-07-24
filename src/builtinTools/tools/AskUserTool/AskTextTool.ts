@@ -42,6 +42,7 @@ Prefer this over AskUser for a single freeform question - the UI shows a focused
   isReadOnly: () => false,
   isConcurrencySafe: () => false,
   requiresUserInteraction: () => true,
+  requires: ['askUser'],
 
   permissionMeta: {
     riskLevel: 'low',

@@ -6,7 +6,7 @@
 
 ## 当前阶段
 
-根目录迁移已经结束，项目进入语义大重构阶段。现在不再继续机械搬包，也不建立第三套 Engine；下一条主线是把现有 `AgentEngine + Core Orchestrator` 收敛为唯一的 `TurnRuntime + AgentLoop`。内层 `AgentLoop`、Tools 主执行链和 Tool 调用边界都已完成收口；现有 `AgentEngine` 是 Turn 根生命周期的迁移基础，下一批直接迁成 `TurnRuntime`，不在其上新增包装层。
+根目录迁移已经结束，项目进入语义大重构阶段。现在不再继续机械搬包，也不建立第三套 Engine；长期主线仍是把现有 `AgentEngine + Core Orchestrator` 收敛为唯一的 `TurnRuntime + AgentLoop`。内层 `AgentLoop`、Tools 主执行链和 Tool 调用边界都已完成收口；当前先完成 Tool Manifest 缓存稳定性（2C）与 Builtin Tool 审查（2D），随后直接把现有 `AgentEngine` 迁成 `TurnRuntime`，不在其上新增包装层。
 
 事件所有权第一批已经落到源码：Agent、Artifact、Characters、Context、Hooks、Knowledge、Memory、Narrative、System、Tasks、Tools 与 TTS 各自拥有 `events.ts`；Turn 只保留根生命周期、输出、Usage 与请求降级事件。`src/events` 像 `src/ids` 一样执行严格准入，但只负责组合 `TurnStreamEvent/SessionEvent/AppEvent`，禁止定义业务字段。`EmaStreamEvent` 已标记为迁移期兼容名，新生产者必须使用领域事件或窄通道事件。
 
@@ -48,7 +48,7 @@ Sandbox 依赖反转已经完成：进程启动、超时、取消和有界输出
 
 Tools 主执行链归位已经完成：`ToolRegistry.dispatch()` 组合捷径已删除，可信测试调用同样显式使用 `prepare()` 与 `execute()`；原 Agent 内执行器迁为 `src/tools/execution/toolExecutionRuntime.ts`，统一承担并发栅栏、PreparedToolCall 校验、Permission、Journal、取消、结果预算和执行事件。Tools 通过窄 `ToolLifecycleObserver` 接受观察能力，不反向依赖 Agent、Session 或 Hooks；Agent 只负责把现有 HookBus 适配进来，并消费 `ToolExecutionResult` 决定下一轮。`ToolFailurePhase` 同步回到 Tools，Session 只扩展持久消息允许的媒体结果结构。
 
-Tool 调用边界已经收窄：旧万能 `ToolExecutionContext` 已删除。`ToolInvocationContext` 只保存一次调用的 Session/Turn/AgentRun/ToolCall 身份、工作区与单工具取消信号；`ToolExecutionScope` 只保存当前 Turn 显式授予的文件状态、交互、Task、Artifact、Skill、KB、Subagent、Scratchpad 与命令执行端口。`validateInput/execute` 同时接收两者，测试和直接调用不能再省略 `toolCallId`。MCP 动态工具继续在发现时捕获 `McpRegistry`，无人消费的 `mcpBridge/McpClientPort/hasMcpBridge` 已删除。
+Tool 调用边界已经收窄：旧万能 `ToolExecutionContext/ToolExecutionScope/ToolInvocationContext` 已删除。Ema 内置工具只在集成层共享一次执行的 `BuiltinToolContext`；每个 Tool 必须先用 `validateContext()` 校验并投影自己的窄 Context，`execute()` 看不到其他业务能力。ToolExecutionRuntime 只按调用覆盖 `toolCallId/signal/emit`，MCP 动态工具也使用同一四泛型契约。根 Agent 与子 Agent 先按实际 Context 装配 Manifest，再从同一 Manifest 建立 Policy；旧 Bridge 注册标志和子 Agent 手写白名单已删除。
 
 旧 `src/agentContext` 已完整删除：Tool Result 生命周期此前已归 `src/tools/results`；本轮把按 Session 的文件读取状态迁为 `src/tools/sessionFileStateStore.ts`，同步删除无人消费的 `AgentContextSnapshot`。`IFileStateStoreEntry/IFileStateStore` 已按所有权改为 `FileStateStoreEntry/FileStateStore`，Core 与 Agent 不再依赖 `@ema-agent/agent-context`。
 
@@ -78,9 +78,9 @@ Task 与 AgentRun 前端已经分面：Desktop 使用正式 `/api/tasks` 快照�
 
 开始任何新批次前必须重新运行 `git status --short` 与 `git diff`，保留用户和其他 Agent 的修改。
 
-当前工作区只包含本批 Tool 调用边界收窄修改：`ToolInvocationContext + ToolExecutionScope`、Builtin/MCP/Agent/Core 调用方、对应测试和接力文档。开始本批时工作区干净，没有覆盖用户或其他 Agent 的未提交修改。
+当前工作区只包含本批 Tool Context 收口修改：MCP 契约、Builtin ToolPool、Agent 根/子执行接线、Sandbox 命令后清理、对应测试和文档。开始本批时工作区干净，没有覆盖用户或其他 Agent 的未提交修改。
 
-当前基线最近提交：`789ecb36 feat: Implement Tool Lifecycle Hooks and Execution Runtime`。该提交号仅用于定位，不代表其他 Agent 不会继续提交。
+当前基线最近提交：`f8035470 Refactor tool context handling and validation across Task and Web tools`。该提交号仅用于定位，不代表其他 Agent 不会继续提交。
 
 ## 已确定的 V1 口径
 
@@ -121,10 +121,11 @@ Chat 工作区、Turn 导航轨、Task/AgentRun 分面、双 Dock、置顶摘要
 
 1. TurnIndex/MessageWindow 与前端历史 Store/TurnRail 已完成，不创建 Dock 半成品；
 2. TaskList、AgentRunPanel、原生 AgentRun API 与真实 Review 入口已经完成，旧 `/api/agent-tasks` 兼容已删除；
-3. Sandbox 依赖反转、Tools 主执行链归位和 `ToolInvocationContext + ToolExecutionScope` 收窄均已完成；
-4. 下一批建立 TurnRuntime，迁走现有 AgentEngine 中的根生命周期、Context 根事实、持久化与唯一终态；
-5. 随后清理 Agent，只保留 AgentLoop、状态、策略、预算、AgentRun/Spawner 和领域事件，最后让 Core Route 退回协议层；
-6. 后台进程按 `BackgroundProcess + ProcessOutput/ProcessStop` 单独实现 C 档，不修改 AgentLoop，也不恢复假 `run_in_background`。
+3. Sandbox 依赖反转、Tools 主执行链归位、单一 `BuiltinToolContext + validateContext` 窄投影与真实 ToolPool 接线均已完成；
+4. 下一批完成 Tool Manifest 的 Builtin/MCP 稳定分区、Prefix Revision 与缓存稳定测试（2C）；
+5. 随后逐组审查 Builtin Tool 的环境净化、工作目录、输入输出上限与结构化 Presentation（2D）；
+6. Tool 批次完成后建立 TurnRuntime，再清理 Agent 并让 Core Route 退回协议层；
+7. 后台进程按 `BackgroundProcess + ProcessOutput/ProcessStop` 单独实现 C 档，不修改 AgentLoop，也不恢复假 `run_in_background`。
 
 命名随业务批次清理：`IFileStateStoreEntry/IFileStateStore/IToolExecutionJournal` 已在所有权迁移时改为职责名；其余迁移期 `I*` 类型继续随业务边界处理，不单独进行全仓机械重命名。
 
@@ -132,7 +133,7 @@ Chat 工作区、Turn 导航轨、Task/AgentRun 分面、双 Dock、置顶摘要
 
 ## 最近验证
 
-- Tool 调用边界收窄：Tools、BuiltinTools、Agent、Core 局部 typecheck 通过；Tools 26/26、Agent 31/31 通过，4 个 Agent Live Integration 按规则跳过；BuiltinTools 52/53 个非 Live 测试通过，唯一失败仍是既存 WebFetchPolicy 对 `example.com -> www.example.com` 重定向口径。旧 `ToolExecutionContext/I*` 工具端口、`mcpBridge/McpClientPort/hasMcpBridge` 与 Runtime `toolCtx` 引用扫描归零。
+- Tool Context 与真实 ToolPool 收口：Tools、BuiltinTools、MCP、Agent、Core 定向 typecheck 43/43 通过；Tools 26/26、MCP 25/25、Sandbox 19/19、Agent 29/29 通过，4 个 Agent Live Integration 按规则跳过；BuiltinTools 48/49，唯一失败仍是既存 WebFetchPolicy 对 `example.com -> www.example.com` 重定向口径，与本批无关。旧 `ToolExecutionContext/ToolExecutionScope/ToolInvocationContext`、Bridge 注册标志和子 Agent 手写工具白名单的源码引用归零；`git diff --check` 通过，仅有既有 CRLF 提示。
 - Tools 主执行链归位：全仓 typecheck 84/84 通过；Tools 26/26、Hooks 27/27、Agent 31/31 通过，4 个 Agent Live Integration 按规则跳过；BuiltinTools 本批相关测试与修改后的 Tool Call Integration 通过，全量仍只有既存 WebFetchPolicy 对 `example.com -> www.example.com` 重定向口径的 1 项失败。Tools 对 Agent/Session/Hooks、旧 `TurnToolExecutor/tool-executor` 与代码侧 `dispatch()` 引用扫描归零。
 - Sandbox 依赖反转：全仓 typecheck 84/84 通过；Sandbox 5 个测试文件 19/19 通过；Bash 边界与注册测试 8/8 通过。BuiltinTools 全量测试中本批相关测试均通过，唯一失败仍是既存 `WebFetchPolicy` 对 `example.com -> www.example.com` 重定向口径不一致，与命令执行改动无关。
 - 事件所有权第一批：业务事件已从 Turn 回到各自模块，`src/events` 只组合生命周期通道；TTS 与 Artifact 警告不再伪装成 System 事件。离线刷新 Workspace 后全仓 typecheck 84/84；Agent 32/32、Context 23/23、Hooks 27/27、TTS 61/61、Core 92/92、Desktop UI 132/132 通过，4 个 Agent Live Integration 按既有规则跳过。
@@ -140,7 +141,6 @@ Chat 工作区、Turn 导航轨、Task/AgentRun 分面、双 Dock、置顶摘要
 - TurnRuntime/AgentLoop 与事件范围文档更正：`CLAUDE.md`、`EmaWorkState.md`、`EmaRefactor.md`、`EmaClaudeArchitectureReview.md` 已统一口径；核心文档中的旧循环命名残留扫描为零，事件目标统一为 `AgentLoopEvent/TurnEvent/AgentRunEvent/SessionEvent/AppEvent`。该批只改文档，未运行代码测试；`git diff --check` 唯一报错来自其他 Agent 的 `src/sandbox/shell-probe.ts` 既存尾随空格。
 - AgentRun 前端命名与协议收口：Desktop UI 31 个测试文件、132 项测试全部通过，Core 30 个测试文件、92 项测试全部通过；Desktop UI 与 Core typecheck 通过；新增 AgentRun Store 2 项测试覆盖原生快照和加载/SSE 竞态，Core 2 项路由测试覆盖原生身份与 transcript 字段。
 - Task/Diff 输入框状态条：Desktop UI 30 个测试文件、130 项测试全部通过；Desktop UI typecheck 通过；新增 Task Store 2 项测试覆盖快照/事件合并与并发旧响应重读。
-- Tool 调用边界收窄：全仓 typecheck 84/84 通过；Tools 26/26、Agent 31/31 通过，4 个 Agent Live Integration 按既有规则跳过；BashTool 针对性测试 2/2 通过。Builtin Tool 全量仍有一条迁移前已存在的 `WebFetchPolicy` 断言差异：安全策略拒绝 `example.com -> www.example.com` 重定向，而测试仍把它视为同站；该问题不属于本批，未借重构之机放宽公网访问策略。
 - Chat 长历史前端：Desktop UI 29 个测试文件、128 项测试全部通过；Desktop UI typecheck 通过；TurnRail 新增 4 项纯模型测试覆盖容量、时间顺序、邻域对称衰减和当前 Turn 高亮。
 - Chat 长历史读取链：Storage 新增测试 3/3、Session 32/32、Core 新增路由测试 3/3 通过；Storage、Session、Core typecheck 通过。`EXPLAIN QUERY PLAN` 已确认 Turn 复合游标命中 `idx_turns_session_latest`；`git diff --check` 通过，仅有既有 CRLF 提示。
 - Session Branch 删除批次：Session 34/34、Storage 116/116、Desktop UI 124/124 通过；Session/Storage/IDs/Backup 构建通过，Core 与 Desktop UI typecheck 通过。Data v19 验证 Branch 表及列已删除，Session/Turn 身份不可变触发器仍生效；`git diff --check` 通过，仅有既有 CRLF 提示。

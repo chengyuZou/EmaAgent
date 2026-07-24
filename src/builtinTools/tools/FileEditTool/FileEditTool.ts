@@ -5,7 +5,7 @@ import { buildTool, presentToolResult } from '@ema-agent/tools';
 import type { FileStateStore, ReadFileState } from '@ema-agent/tools';
 import type { ToolCallId } from '@ema-agent/ids';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
-import type { PerCallToolContext } from '../../builtinToolContext.js';
+import type { BuiltinToolContext } from '../../builtinToolContext.js';
 import { contextFail, contextOk } from '../../contextValidation.js';
 import { buildFileChangePresentation } from '../shared/FileChangePresentation.js';
 import { atomicTransformUtf8 } from '../FileWriteTool/atomicWrite.js';
@@ -83,7 +83,7 @@ function countOccurrences(haystack: string, needle: string): number {
 
 // ── 工具定义 ───────────────────────────────────────────────────────────────────
 
-export const FileEditTool = buildTool<FileEditInput, FileEditResult, PerCallToolContext, FileEditToolContext>({
+export const FileEditTool = buildTool<FileEditInput, FileEditResult, BuiltinToolContext, FileEditToolContext>({
   id: BuiltinTools.FileEdit.id,
   name: BuiltinTools.FileEdit.name,
   description: `Replace an exact string in a file (str_replace semantics).
@@ -98,11 +98,11 @@ Rules:
   isReadOnly: () => false,
   isConcurrencySafe: () => false,
 
-  requires: ['readFileState'],
+  requires: ['workspaceRoot', 'readFileState'],
 
   validateContext(ctx) {
-    if (!ctx.readFileState) {
-      return contextFail('File 工具未装配（缺少 readFileState 能力）。');
+    if (!ctx.workspaceRoot || !ctx.readFileState || !ctx.toolCallId) {
+      return contextFail('File 编辑工具未装配完整的工作区、读取状态或调用身份。');
     }
     return contextOk({
       readFileState: ctx.readFileState,

@@ -11,12 +11,14 @@ import type {
   SubagentSpawnOpts,
 } from '@ema-agent/tools';
 import { ToolExecutionRuntime } from '@ema-agent/tools';
-import type { BuiltinToolContext } from '@ema-agent/tool-builtin';
+import {
+  assembleToolPool,
+  type BuiltinToolContext,
+} from '@ema-agent/tool-builtin';
 import type { AgentDeps } from './types.js';
 import { TurnPolicy } from './policy.js';
 import { createToolLifecycleHooks } from './toolLifecycleHooks.js';
 import { runAgentLoop, type ExecutorFactory } from './agentLoop.js';
-import { selectSubagentTools } from './subagent-capabilities.js';
 import { TurnBudget } from './turn-budget.js';
 import type { AgentRuntimeEvent } from './events.js';
 
@@ -123,12 +125,6 @@ export class SubagentSpawner implements SubagentSpawnerPort {
   ): Promise<SubagentRunResult> {
     const releaseBudget = this.budget.enterSubagent();
     const { tools, llm, permission, hooks } = this.deps;
-    const selectedTools = selectSubagentTools(tools.list(), {
-      scratchpad: this.scratchpadDir !== undefined,
-      knowledgeBase: this.kbSearch !== undefined,
-      skills: this.deps.skillRunner !== undefined,
-    });
-    const policy = new TurnPolicy(tools.manifestSnapshot(selectedTools));
     const agentRunId    = opts.agentRunId ?? asAgentRunId(randomUUID());
     const sessionId     = this.parentSessionId as SessionId;
     const parentTurnId  = this.parentTurnId   as TurnId;
@@ -154,6 +150,29 @@ export class SubagentSpawner implements SubagentSpawnerPort {
     const onParentAbort = () => childCtrl.abort();
     signal.addEventListener('abort', onParentAbort, { once: true });
     this.activeSubagents.set(agentRunId, childCtrl);
+
+    // 子 Agent 不注入工作区、Task、AskUser 或新的 SubagentSpawner，因此这些工具
+    // 会由同一能力装配器从 Manifest 隐藏，而不是再维护一份手写工具白名单。
+    const capabilityContext: BuiltinToolContext = {
+      sessionId,
+      turnId:           parentTurnId,
+      agentRunId,
+      workspaceRoot:    '',
+      signal:           childCtrl.signal,
+      artifactStore:    this.deps.artifactStore,
+      skillRunner:      this.deps.skillRunner,
+      knowledgeSearch:  this.kbSearch,
+      scratchpad:       this.scratchpadDir
+        ? { dir: this.scratchpadDir, author: `subagent:${agentRunId.slice(0, 8)}` }
+        : undefined,
+    };
+    const policy = new TurnPolicy(
+      tools.manifestSnapshot(assembleToolPool(tools, capabilityContext)),
+    );
+    const toolContext: BuiltinToolContext = Object.freeze({
+      ...capabilityContext,
+      toolCapabilities: policy.capabilities(),
+    });
 
     // 持久化或启动事件订阅者都可能抛错；循环开始前失败时也必须释放监听和索引。
     try {
@@ -208,25 +227,6 @@ export class SubagentSpawner implements SubagentSpawnerPort {
 
     let subagentExecutor: ToolExecutionRuntime | undefined;
     const buildExecutor: ExecutorFactory<AgentRuntimeEvent> = ({ pushEv, signal: wakeSignal }) => {
-      // 子 ToolContext 故意不注入 subagentSpawner，以此把递归深度限制为一层。
-      // 多层嵌套需要资源预算、邮箱死锁与级联取消设计，V1 不开放。
-      // emit 由 ToolExecutionRuntime 按 per-call 绑定 track 后填充。
-      const toolContext: BuiltinToolContext = {
-        sessionId,
-        turnId:           parentTurnId,
-        agentRunId,
-        workspaceRoot:    '',  // 不提供工作区，权限原因见上方说明
-        signal:           childCtrl.signal,
-        readFileState:    new Map(),
-        artifactStore:    this.deps.artifactStore,
-        skillRunner:      this.deps.skillRunner,
-        knowledgeSearch:  this.kbSearch,
-        toolCapabilities: policy.capabilities(),
-        scratchpad:       this.scratchpadDir
-          ? { dir: this.scratchpadDir, author: `subagent:${agentRunId.slice(0, 8)}` }
-          : undefined,
-      };
-
       const executor = new ToolExecutionRuntime({
         sessionId,
         turnId:     parentTurnId,

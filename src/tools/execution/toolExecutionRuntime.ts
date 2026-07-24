@@ -12,10 +12,13 @@
  */
 
 import { asToolCallId } from '@ema-agent/ids';
-import type { SessionId, ToolCallId, TurnId } from '@ema-agent/ids';
 import type {
-
-  ToolInvocationContext,
+  AgentRunId,
+  SessionId,
+  ToolCallId,
+  TurnId,
+} from '@ema-agent/ids';
+import type {
   ToolManifestSnapshot,
 } from '../types.js';
 import type { PreparedToolCall } from '../prepared-call.js';
@@ -66,7 +69,15 @@ interface ToolFailure {
 
 export type ToolExecutionRuntimeEvent = ToolExecutionEvent | PermissionStreamEvent;
 
-export interface ToolExecutionRuntimeOptions {
+export interface ToolExecutionRuntimeOptions<
+  THostContext extends {
+    readonly signal: AbortSignal;
+    readonly agentRunId?: AgentRunId;
+  } = {
+    readonly signal: AbortSignal;
+    readonly agentRunId?: AgentRunId;
+  },
+> {
   sessionId:   SessionId;
   turnId:      TurnId;
   /** 同步策略检查；不在当前 Agent capability 集合中的工具直接拒绝。 */
@@ -77,9 +88,8 @@ export interface ToolExecutionRuntimeOptions {
   permission:  PermissionEngine;
   permCtx:     PermissionContext;
   lifecycle?:  ToolLifecycleObserver;
-  /** 不含 callId 和单工具信号的 Turn 级调用身份。 */
-  toolContext: Omit<ToolInvocationContext, 'toolCallId'>;
-
+  /** 当前执行拥有的完整宿主 Context；执行器只覆盖单调用身份、信号和事件出口。 */
+  toolContext: THostContext;
 
   buildAsk?:   (args: {
     sessionId: SessionId;
@@ -108,7 +118,15 @@ export interface ToolExecutionRuntimeOptions {
 
 // ── Turn 工具执行器 ───────────────────────────────────────────────────────────
 
-export class ToolExecutionRuntime {
+export class ToolExecutionRuntime<
+  THostContext extends {
+    readonly signal: AbortSignal;
+    readonly agentRunId?: AgentRunId;
+  } = {
+    readonly signal: AbortSignal;
+    readonly agentRunId?: AgentRunId;
+  },
+> {
   private tracked:    TrackedTool[] = [];
   /**
    * 串行栅栏会在全部非并发工具结束后完成。
@@ -123,7 +141,7 @@ export class ToolExecutionRuntime {
   private readonly toolAborts = new Map<string, AbortController>();
   private stoppingReason?: string;
 
-  constructor(private readonly opts: ToolExecutionRuntimeOptions) {}
+  constructor(private readonly opts: ToolExecutionRuntimeOptions<THostContext>) {}
 
   /** 取消单个执行中的工具，不中止父 Turn；找不到时返回 false。 */
   abortTool(callId: string): boolean {
@@ -360,7 +378,7 @@ export class ToolExecutionRuntime {
         return;
       }
 
-      const perToolCtx: ToolInvocationContext & { emit?: (event: ToolExecutionEvent) => void } = {
+      const perToolCtx = {
         ...toolContext,
         toolCallId: id,
         signal: perToolCtrl.signal,
@@ -561,7 +579,6 @@ export class ToolExecutionRuntime {
         }
       }
       track.done = true;
-      // TODO commandRunner.cleanup() 移到 Turn 结束时由 Agent 调用，不通过 scope
       // done 写入后再次唤醒排空循环，使其重新检查 allDone()。
       // pushEv 只在结果事件入队时唤醒，而后续 Hook 可能延迟 done 的写入。
       signal();

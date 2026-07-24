@@ -55,6 +55,7 @@ Prefer this over AskUser for a single choice question - the UI shows a cleaner s
   isReadOnly: () => false,
   isConcurrencySafe: () => false,
   requiresUserInteraction: () => true,
+  requires: ['askUser'],
 
   permissionMeta: {
     riskLevel: 'low',

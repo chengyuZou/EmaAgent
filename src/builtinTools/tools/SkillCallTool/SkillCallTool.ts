@@ -51,7 +51,8 @@ Skills are pre-defined prompt templates or automation sequences registered in se
     accessType: 'execute',
   },
 
-  requires: ['skillRunner', 'toolCapabilities'],
+  // toolCapabilities 由本轮 Manifest 派生，外部装配只需证明 SkillRunner 存在。
+  requires: ['skillRunner'],
 
   validateContext(ctx) {
     if (!ctx.skillRunner || !ctx.toolCapabilities) {

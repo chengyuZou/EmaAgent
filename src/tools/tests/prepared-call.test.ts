@@ -3,15 +3,11 @@ import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { buildTool } from '../build-tool.js';
 import { ToolRegistry, ToolRegistryError } from '../registry.js';
-import type { BuiltTool, ToolInvocationContext } from '../types.js';
+import type { BuiltTool } from '../types.js';
 
 const context = {
-  sessionId: 'session-test',
-  turnId: 'turn-test',
-  toolCallId: 'tool-call-test',
-  workspaceRoot: 'D:/workspace',
   signal: new AbortController().signal,
-} as ToolInvocationContext;
+};
 
 function makeTool(
   name = 'dynamic_tool',

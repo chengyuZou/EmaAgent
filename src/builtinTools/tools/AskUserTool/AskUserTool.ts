@@ -77,6 +77,7 @@ export const AskUserTool = buildTool<AskUserInput, AskUserResult, BuiltinToolCon
   isReadOnly: () => false,
   isConcurrencySafe: () => false,
   requiresUserInteraction: () => true,
+  requires: ['askUser'],
 
   permissionMeta: {
     riskLevel: 'low',

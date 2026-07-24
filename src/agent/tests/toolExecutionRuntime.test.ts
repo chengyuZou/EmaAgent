@@ -52,7 +52,6 @@ describe('ToolExecutionRuntime Hook 与权限边界', () => {
         workspaceRoot: null,
         signal: new AbortController().signal,
       } as never,
-      toolScope: { readFileState: new Map() },
       pushEv: () => undefined,
       signal: () => undefined,
     });
@@ -102,7 +101,6 @@ describe('ToolExecutionRuntime Hook 与权限边界', () => {
         workspaceRoot: null,
         signal: new AbortController().signal,
       } as never,
-      toolScope: { readFileState: new Map() },
       buildAsk: (identity) => {
         askIdentity = identity;
         return async () => ({ action: 'allow' });
@@ -186,7 +184,6 @@ describe('ToolExecutionRuntime Hook 与权限边界', () => {
         workspaceRoot: null,
         signal: turnAbort.signal,
       } as never,
-      toolScope: { readFileState: new Map() },
       pushEv: (event) => emitted.push(event),
       signal: () => undefined,
       toolExecutionJournal,
@@ -319,7 +316,6 @@ describe('ToolExecutionRuntime Hook 与权限边界', () => {
           workspaceRoot: null,
           signal: turnAbort.signal,
         } as never,
-        toolScope: { readFileState: new Map() },
         pushEv: (event) => emitted.push(event),
         signal: () => undefined,
       });
@@ -378,7 +374,6 @@ describe('ToolExecutionRuntime Hook 与权限边界', () => {
         workspaceRoot: null,
         signal: turnAbort.signal,
       } as never,
-      toolScope: { readFileState: new Map() },
       pushEv: (event) => emitted.push(event),
       signal: () => undefined,
     });
@@ -437,7 +432,6 @@ describe('ToolExecutionRuntime Hook 与权限边界', () => {
         workspaceRoot: null,
         signal: turnAbort.signal,
       } as never,
-      toolScope: { readFileState: new Map() },
       pushEv: () => undefined,
       signal: () => undefined,
       toolExecutionJournal: {
