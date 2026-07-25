@@ -105,6 +105,8 @@ AgentLoop
 
 `TurnRuntime.start(command)` 返回立即可用的 `TurnHandle`：稳定的 `sessionId/turnId`、`AsyncIterable<TurnEvent>`、唯一完成的 `Promise<TurnOutcome>` 与取消入口。`AgentLoop` 返回循环内部事件和 `AgentLoopOutcome`，不创建或结束根 Turn，不直接写 Session Repo，也不直接面向 HTTP/SSE。
 
+`src/conversation` 只是迁移期边界，不是目标模块。建立 `TurnRuntime` 时必须沿真实调用链拆分其职责：根 Turn 的请求、Profile 与生命周期进入 `src/turn`，模型可见窗口贡献进入 `src/context`，Narrative 检索与路由回到 `src/narrative`，Hook 观察能力继续由 `src/hooks` 所有，LLM/Tool 迭代只留在 `src/agent`。迁移完成后删除 `src/conversation` 的源码、测试、Workspace 配置与所有 import；不能把整个包复制或改名成新的 Engine、Service、Facade。
+
 ```ts
 export interface TurnExecutionProfile {
   id: ExecutionProfile;
@@ -991,7 +993,7 @@ Tool Result、统一预算、ToolExecution Journal、执行运行时所有权迁
 - NarrativePolicy 三态可持久化且不会移除角色 Prompt；
 - Prompt Slot 顺序可测试，Tool Manifest 稳定且权限不因缓存妥协；
 - Memory 不再导出 Compaction；
-- `agent-context`、`conversation`、根 AgentTask 生产依赖清零后再删除；
+- `agent-context` 与根 AgentTask 旧语义已经删除；`conversation` 必须在 TurnRuntime 迁移中按职责拆散，生产依赖、Workspace 配置和源码目录全部清零后删除；
 - Turn 是唯一根生命周期，AgentRun 只表示子 Agent；
 - V1 Task 使用独立 UUID/短序号、显式字段、SQLite 事务/CAS 和依赖关系，并由 TaskCreate/Get/List/Update、动态 Context 提醒及独立 TaskList 构成完整闭环；
 - TodoWrite 不再注册，Task、AgentRun、BackgroundProcess、ToolExecution 与领域 Job 不共享 ID 或状态机；

@@ -4,16 +4,31 @@ import type { ToolPermissionMeta } from '@ema-agent/permission';
 
 // ── ReadFileState - turn 内跨工具调用共享的去重缓存 ──────────────────────────
 
-export interface ReadFileEntry {
-  /** 读取时的完整文件内容,供编辑防覆盖检查。 */
+export type ReadFileEntry =
+  | ReadFileFullEntry
+  | ReadFilePartialEntry;
+
+/** 整读视图: 完整原文供 FileEdit 防覆盖精确比对。 */
+export interface ReadFileFullEntry {
   content: string;
   /** 读取时的 mtime(毫秒)。 */
   timestamp: number;
-  /** 读完整文件(无分页)时为 undefined。 */
+  offset?: undefined;
+  limit?: undefined;
+  isPartialView: false;
+}
+
+/** 分页视图: 选中切片仅供去重回放; totalLines/truncated 为必备, 不允许非法组合。 */
+export interface ReadFilePartialEntry {
+  content: string;
+  timestamp: number;
   offset?: number;
   limit?: number;
-  /** 指定了 offset/limit 时为 true - 编辑必须拒绝基于局部视图的读。 */
-  isPartialView: boolean;
+  isPartialView: true;
+  /** 分页视图所在文件的总行数(回放给 Presentation 报总数)。 */
+  totalLines: number;
+  /** 读取时已按字节预算截断, 回放必须原样保留这个事实。 */
+  truncated: boolean;
 }
 
 /** 以绝对规范化路径为键。 */

@@ -6,7 +6,9 @@
 
 ## 当前阶段
 
-根目录迁移已经结束，项目进入语义大重构阶段。现在不再继续机械搬包，也不建立第三套 Engine；长期主线仍是把现有 `AgentEngine + Core Orchestrator` 收敛为唯一的 `TurnRuntime + AgentLoop`。内层 `AgentLoop`、Tools 主执行链、Tool 调用边界、Tool Manifest 缓存稳定性（2C）与结构化 Presentation 公共协议都已完成收口；当前继续逐个审查 Builtin Tool（2D）的环境、工作目录和输入输出上限，随后直接把现有 `AgentEngine` 迁成 `TurnRuntime`，不在其上新增包装层。
+根目录迁移已经结束，项目进入语义大重构阶段。现在不再继续机械搬包，也不建立第三套 Engine；长期主线仍是把现有 `AgentEngine + Core Orchestrator` 收敛为唯一的 `TurnRuntime + AgentLoop`。内层 `AgentLoop`、Tools 主执行链、Tool 调用边界、Tool Manifest 缓存稳定性（2C）与结构化 Presentation 公共协议都已完成收口；FileRead 的 Builtin Tool 2D 审查已交给 Kimi，主线随后直接把现有 `AgentEngine` 迁成 `TurnRuntime`，不在其上新增包装层。
+
+旧 `ConversationEngine` 的双循环语义已经退役，但 `src/conversation` 迁移期包仍然存在。TurnRuntime 批次必须沿真实调用链把根生命周期、Context 贡献、Narrative 检索与 Hook 观察分别归还给所属模块，并最终删除整个 `src/conversation` 包、Workspace 配置和全部 import；禁止仅把它改名为新的 Engine、Service 或 Facade。
 
 事件所有权第一批已经落到源码：Agent、Artifact、Characters、Context、Hooks、Knowledge、Memory、Narrative、System、Tasks、Tools 与 TTS 各自拥有 `events.ts`；Turn 只保留根生命周期、输出、Usage 与请求降级事件。`src/events` 像 `src/ids` 一样执行严格准入，但只负责组合 `TurnStreamEvent/SessionEvent/AppEvent`，禁止定义业务字段。`EmaStreamEvent` 已标记为迁移期兼容名，新生产者必须使用领域事件或窄通道事件。
 
@@ -88,9 +90,9 @@ Task 与 AgentRun 前端已经分面：Desktop 使用正式 `/api/tasks` 快照�
 
 开始任何新批次前必须重新运行 `git status --short` 与 `git diff`，保留用户和其他 Agent 的修改。
 
-当前工作区包含 Permission V1 最后一批收口：永久规则已经通过 Core CRUD 接到通用设置，Permission 响应和取消使用 `turnId + promptId` 核对陈旧卡片；只有可信 Builtin Tool 可以声明 `approval=not_required`，MCP 在构建与执行两层都无法伪造免审批。旧 Core Permission/AskUser Registry 已删除，统一队列位于 Turn；四种 Ask 工具免重复权限审批，取消/超时和队首响应均使用明确终态。后续修改前仍须逐文件检查 Diff。
+当前工作区只包含本轮文档口径更新：FileRead 的 Builtin Tool 2D 审查由 Kimi 负责；主线下一批建立 TurnRuntime，并同步拆除迁移期 `src/conversation`，不要重复施工或在旧包继续新增业务。后续修改前仍须逐文件检查 Diff。
 
-当前基线最近提交：`e23fbb92 feat(permission): refactor permission handling with new rule storage system`。该提交号仅用于定位，不代表其他 Agent 不会继续提交。
+当前基线最近提交：`f96f57fd feat(permission): implement Permission V1 with CRUD for persistent rules and enhanced response handling`。该提交号仅用于定位，不代表其他 Agent 不会继续提交。
 
 ## 已确定的 V1 口径
 
@@ -133,9 +135,9 @@ Chat 工作区、Turn 导航轨、Task/AgentRun 分面、双 Dock、置顶摘要
 2. TaskList、AgentRunPanel、原生 AgentRun API 与真实 Review 入口已经完成，旧 `/api/agent-tasks` 兼容已删除；
 3. Sandbox 依赖反转、Tools 主执行链归位、单一 `BuiltinToolContext + validateContext` 窄投影与真实 ToolPool 接线均已完成；
 4. Tool Manifest 的 Builtin/MCP 稳定分区、内容 Revision 与缓存稳定测试（2C）已经完成；
-5. 继续逐组审查 Builtin Tool（2D）：优先补 Sandbox 命令环境 allowlist、FileRead 行数/字节双上限和工作目录边界；结构化 Presentation 公共协议与首批接线已完成；
+5. Builtin Tool 2D 的 Sandbox 命令环境 allowlist 与工作目录边界已经完成；FileRead 行数/字节双上限已交给 Kimi，结构化 Presentation 公共协议与首批接线已完成；
 6. Permission V1 已完成：统一 Session FIFO、明确终态、Turn 身份核对、SQLite 永久规则 CRUD 与设置页管理、Builtin-only 免审批边界均已接通；迁移期 `AskUserRegistryLike` 命名随 TurnRuntime 装配边界清理，不新增第二套队列；
-7. Tool 批次完成后建立 TurnRuntime，再清理 Agent 并让 Core Route 退回协议层；
+7. 建立 TurnRuntime，把 `src/conversation` 中仍有价值的职责归还给 Turn、Context、Narrative 与 Hooks，删除整个迁移期包；随后清理 Agent，并让 Core Route 退回协议层；
 8. 后台进程按 `BackgroundProcess + ProcessOutput/ProcessStop` 单独实现 C 档，不修改 AgentLoop，也不恢复假 `run_in_background`。
 
 命名随业务批次清理：旧 `IFileStateStoreEntry/IFileStateStore` 及后续过渡接口已经删除，`IToolExecutionJournal` 已改为职责名；其余迁移期 `I*` 类型继续随业务边界处理，不单独进行全仓机械重命名。

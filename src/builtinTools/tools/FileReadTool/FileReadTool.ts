@@ -11,10 +11,12 @@ import type { ReadFileState } from '@ema-agent/tools';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 import type { BuiltinToolContext } from '../../builtinToolContext.js';
 import { contextFail, contextOk } from '../../contextValidation.js';
+import { readTextInRange } from './readTextInRange.js';
 
-/** File 读取工具只取得当前 Turn 的读取状态。 */
+/** File 读取工具只取得当前 Turn 的读取状态与取消信号。 */
 interface FileReadToolContext {
   readFileState: ReadFileState;
+  signal: AbortSignal;
 }
 
 // ── 常量 ─────────────────────────────────────────────────────────────────────
@@ -41,7 +43,9 @@ const BINARY_EXTENSIONS = new Set([
   '.a', '.pdb', '.class', '.pyc', '.pyo', '.wasm', '.node',
 ]);
 
-const TEXT_SIZE_LIMIT = 10 * 1024 * 1024; // 10 MiB - 超此拒绝读取
+const TEXT_SIZE_LIMIT = 10 * 1024 * 1024; // 10 MiB - 超此整读拒绝, 分页走流式
+/** 单次分页最多行数: 防止 limit=天文数字制造巨量输出。 */
+const MAX_READ_LINES = 2000;
 
 // ── 输入 schema ──────────────────────────────────────────────────────────────
 
@@ -57,8 +61,9 @@ const inputSchema = z.object({
     .number()
     .int()
     .min(1)
+    .max(MAX_READ_LINES)
     .optional()
-    .describe('Maximum number of lines to read.'),
+    .describe(`Maximum number of lines to read (capped at ${MAX_READ_LINES}).`),
 });
 
 type FileReadInput = z.infer<typeof inputSchema>;
@@ -73,6 +78,13 @@ export interface FileReadResult {
   totalLines?: number;
   /** 应用了 offset/limit 时为 true。 */
   isPartialView?: boolean;
+  /** 选中内容超过字节预算被截断(模型可见, 不只是前端)。 */
+  truncated?: boolean;
+  truncationReason?: 'bytes';
+  /** 截断后继续读取的起始行号。 */
+  nextOffset?: number;
+  /** 给模型的可读说明(英文)。 */
+  notice?: string;
 }
 
 // ── 辅助函数 ───────────────────────────────────────────────────────────────────
@@ -94,15 +106,37 @@ function isUncPath(p: string): boolean {
   return p.startsWith('\\\\');
 }
 
+/**
+ * 内容级二进制探测: 读前 8KB, 含 NUL 字节或超过 30% 不可打印控制字符
+ * (允许 \t \n \r)即判二进制。UTF-8 多字节字符不受影响。
+ */
+function isBinaryContent(filePath: string): boolean {
+  let fd: number;
+  try {
+    fd = fs.openSync(filePath, 'r');
+  } catch {
+    return false; // 打不开交给后续读取统一报错
+  }
+  try {
+    const buffer = Buffer.alloc(8192);
+    const bytesRead = fs.readSync(fd, buffer, 0, 8192, 0);
+    let suspicious = 0;
+    for (let i = 0; i < bytesRead; i++) {
+      const b = buffer[i]!;
+      if (b === 0) return true;
+      if (b < 8 || (b > 13 && b < 32)) suspicious++;
+    }
+    return bytesRead > 0 && suspicious / bytesRead > 0.3;
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+
 /** 把内容格式化为 cat -n 输出(1 起行号)。 */
 function formatWithLineNumbers(lines: string[], startLine: number): string {
   return lines
     .map((line, i) => `${String(startLine + i).padStart(6)}\t${line}`)
     .join('\n');
-}
-
-function getMtimeMs(filePath: string): number {
-  return fs.statSync(filePath).mtimeMs;
 }
 
 // ── 工具定义 ───────────────────────────────────────────────────────────────────
@@ -113,8 +147,8 @@ export const FileReadTool = buildTool<FileReadInput, FileReadResult, BuiltinTool
   description: `Read a file from the local filesystem.
 
 - Returns content with 1-based line numbers (cat -n format).
-- Use \`offset\` and \`limit\` to paginate large files; omit both to read the entire file.
-- Binary files, device files, and files over 10 MiB are refused.
+- Use \`offset\` and \`limit\` to paginate large files (limit up to ${MAX_READ_LINES} lines); omit both to read the entire file. Pagination streams the file — reading a slice of a huge file does not load it into memory.
+- Binary files, device files, and files over 10 MiB (without pagination) are refused.
 - If the same file+range is read twice without the file changing, returns \`file_unchanged\` to save tokens.`,
 
   inputSchema,
@@ -129,6 +163,7 @@ export const FileReadTool = buildTool<FileReadInput, FileReadResult, BuiltinTool
     }
     return contextOk({
       readFileState: ctx.readFileState,
+      signal: ctx.signal,
     });
   },
 
@@ -175,6 +210,11 @@ export const FileReadTool = buildTool<FileReadInput, FileReadResult, BuiltinTool
     if (!stat.isFile()) {
       throw new Error(`Path is not a regular file: ${fullPath}`);
     }
+    // 内容级二进制探测: 扩展名伪装(.exe 改名 .txt)在前 8KB 的 NUL/不可打印
+    // 字符面前无效, 与 Claude 同款判定。
+    if (isBinaryContent(fullPath)) {
+      throw new Error(`File appears to be binary (NUL or non-printable content): ${fullPath}`);
+    }
     const isPartialView = offset !== undefined || limit !== undefined;
 
     if (stat.size > TEXT_SIZE_LIMIT && !isPartialView) {
@@ -185,70 +225,91 @@ export const FileReadTool = buildTool<FileReadInput, FileReadResult, BuiltinTool
     }
 
     const mtimeMs = stat.mtimeMs;
+    const startLine = offset ?? 1;
 
-    // ── 去重检查 ───────────────────────────────────────────────────────────────
+    // ── 去重检查: 同文件同范围同 mtime 直接回放 ───────────────────────────────
     const existing = context.readFileState.get(fullPath);
     if (
       existing &&
-      !existing.isPartialView &&
+      existing.timestamp === mtimeMs &&
       existing.offset === offset &&
-      existing.limit === limit &&
-      existing.timestamp === mtimeMs
+      existing.limit === limit
     ) {
-      const existingLines = existing.content.split('\n');
-      const startLine = offset ?? 1;
-      const selectedLines = existingLines.slice(
-        startLine - 1,
-        limit === undefined ? undefined : startLine + limit - 1,
-      );
+      const cachedLines = existing.content.split('\n');
+      // 判别联合: 分页分支必有 totalLines/truncated, 回放原样保留截断事实。
+      const totalLines = existing.isPartialView ? existing.totalLines : cachedLines.length;
+      const truncated = existing.isPartialView ? existing.truncated : false;
       return presentToolResult(
         { type: 'file_unchanged', filePath: file_path },
         createFileReadPresentation({
           filePath: file_path,
           status: 'unchanged',
           startLine,
-          endLine: startLine + selectedLines.length - 1,
-          totalLines: existingLines.length,
+          endLine: startLine + cachedLines.length - 1,
+          totalLines,
           partial: isPartialView,
-          truncated: false,
+          truncated,
         }),
       );
     }
 
-    // ── 读文件 ─────────────────────────────────────────────────────────────────
-    const raw = fs.readFileSync(fullPath, 'utf8');
-    const allLines = raw.split('\n');
-    const totalLines = allLines.length;
+    // ── 读文件(小文件快路径整读, 大文件流式只留选中行) ─────────────────────────
+    const result = await readTextInRange(fullPath, stat, startLine, limit, context.signal);
 
-    const startLine = offset ?? 1;
-    const endLine = limit !== undefined ? startLine + limit - 1 : totalLines;
-    const slicedLines = allLines.slice(startLine - 1, endLine);
-    const content = formatWithLineNumbers(slicedLines, startLine);
+    if (result.totalLines === 0 || startLine > result.totalLines) {
+      throw new Error(
+        `Offset ${startLine} is beyond the end of ${fullPath} (${result.totalLines} lines).`,
+      );
+    }
 
-    // ── 更新去重缓存 ───────────────────────────────────────────────────────────
-    context.readFileState.set(fullPath, {
-      content: raw,
-      timestamp: mtimeMs,
-      offset,
-      limit,
-      isPartialView,
-    });
+    const content = formatWithLineNumbers(result.lines, startLine);
+
+    // ── 更新去重缓存 ──────────────────────────────────────────────────────────
+    // 整读存完整原文(FileEdit 防覆盖需要逐字节精确比对);
+    // 分页只存选中切片(Edit 拒绝局部视图, 缓存仅供去重回放), 不再整文件占内存。
+    if (isPartialView) {
+      context.readFileState.set(fullPath, {
+        content: result.lines.join('\n'),
+        timestamp: mtimeMs,
+        offset,
+        limit,
+        isPartialView: true,
+        totalLines: result.totalLines,
+        truncated: result.truncated,
+      });
+    } else {
+      context.readFileState.set(fullPath, {
+        content: result.raw ?? result.lines.join('\n'),
+        timestamp: mtimeMs,
+        isPartialView: false,
+      });
+    }
+    const nextOffset = startLine + result.lines.length;
     return presentToolResult(
       {
         type: 'file_content',
         filePath: file_path,
         content,
-        totalLines,
+        totalLines: result.totalLines,
         isPartialView,
+        // 截断必须模型可见: 只告诉前端的话, 模型会对着不完整内容继续推理(P1)。
+        ...(result.truncated
+          ? {
+              truncated: true as const,
+              truncationReason: 'bytes' as const,
+              nextOffset,
+              notice: `Output truncated at 256 KB. Use offset=${nextOffset} to continue reading.`,
+            }
+          : {}),
       },
       createFileReadPresentation({
         filePath: file_path,
         status: 'content',
         startLine,
-        endLine: startLine + slicedLines.length - 1,
-        totalLines,
+        endLine: startLine + result.lines.length - 1,
+        totalLines: result.totalLines,
         partial: isPartialView,
-        truncated: false,
+        truncated: result.truncated,
       }),
     );
   },
