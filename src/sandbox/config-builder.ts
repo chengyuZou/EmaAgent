@@ -6,20 +6,15 @@ import type { SandboxCapability, SandboxConfig } from './types.js';
 
 const BARE_REPO_FILES = ['HEAD', 'objects', 'refs', 'hooks', 'config'] as const;
 
-export interface BuildResult {
-  config: SandboxConfig;
-  /**
-   * 命令执行前还不存在的 bare-repo 攻击路径。
-   * 命令结束后统一清理，防止下一次 Git 调用加载攻击者植入的配置。
-   */
-  scrubPaths: string[];
-}
-
-export function buildSandboxConfig(capability: SandboxCapability): BuildResult {
+/**
+ * 构造期已存在于工作区根的 bare-repo 敏感文件被叠为只读;
+ * 构造后才"长出来"的 bare 签名由 CommandRunner.cleanup 精确处理,
+ * 不在此处按文件名预杀(普通项目的 config/hooks 是无辜的)。
+ */
+export function buildSandboxConfig(capability: SandboxCapability): SandboxConfig {
   const allowWrite = uniqueResolved(capability.writablePaths);
   const denyWrite: string[] = [];
   const denyRead: string[] = [];
-  const allowRead: string[] = [];
 
   for (const protectedPath of capability.protectedPaths) {
     const absolutePath = path.resolve(protectedPath);
@@ -27,23 +22,19 @@ export function buildSandboxConfig(capability: SandboxCapability): BuildResult {
     if (!denyRead.includes(absolutePath)) denyRead.push(absolutePath);
   }
 
-  const scrubPaths: string[] = [];
   for (const fileName of BARE_REPO_FILES) {
     const targetPath = path.resolve(capability.workspaceRoot, fileName);
     try {
       statSync(targetPath);
       if (!denyWrite.includes(targetPath)) denyWrite.push(targetPath);
     } catch {
-      scrubPaths.push(targetPath);
+      // 不存在: 不预设只读, 也不预登记删除, 由 cleanup 按完整签名判定。
     }
   }
 
   return {
-    config: {
-      filesystem: { allowWrite, denyWrite, denyRead, allowRead },
-      network: { access: capability.networkAccess },
-    },
-    scrubPaths,
+    filesystem: { allowWrite, denyWrite, denyRead },
+    network: { access: capability.networkAccess },
   };
 }
 

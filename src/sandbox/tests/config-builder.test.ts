@@ -15,7 +15,7 @@ describe('buildSandboxConfig 私有路径', () => {
       networkAccess: 'none',
     });
 
-    expect(result.config.filesystem.allowWrite).toEqual([
+    expect(result.filesystem.allowWrite).toEqual([
       workspaceRoot,
       explicitCache,
     ]);
@@ -32,13 +32,13 @@ describe('buildSandboxConfig 私有路径', () => {
       networkAccess: 'none',
     });
 
-    expect(result.config.filesystem.denyRead).toEqual([
+    expect(result.filesystem.denyRead).toEqual([
       profileDir,
       dataDb,
       `${dataDb}-wal`,
       `${dataDb}-shm`,
     ]);
-    expect(result.config.filesystem.denyWrite).toEqual(expect.arrayContaining([
+    expect(result.filesystem.denyWrite).toEqual(expect.arrayContaining([
       profileDir,
       dataDb,
       `${dataDb}-wal`,
@@ -55,8 +55,8 @@ describe('buildSandboxConfig 私有路径', () => {
       networkAccess: 'none',
     });
 
-    expect(result.config.filesystem.denyRead).toEqual([]);
-    expect(result.config.filesystem.denyWrite).toEqual([]);
+    expect(result.filesystem.denyRead).toEqual([]);
+    expect(result.filesystem.denyWrite).toEqual([]);
   });
 
   it('网络只保留 none 和 full 两档，不再生成域名白名单', () => {
@@ -74,7 +74,7 @@ describe('buildSandboxConfig 私有路径', () => {
       networkAccess: 'full',
     });
 
-    expect(denied.config.network).toEqual({ access: 'none' });
-    expect(full.config.network).toEqual({ access: 'full' });
+    expect(denied.network).toEqual({ access: 'none' });
+    expect(full.network).toEqual({ access: 'full' });
   });
 });

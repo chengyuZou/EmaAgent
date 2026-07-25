@@ -1,9 +1,12 @@
 import { spawnSync } from 'node:child_process';
 import { getPlatform, type SandboxPlatform } from './platform.js';
+import type { BackendKind, SandboxConfig } from './types.js';
+import { buildBubblewrapCommand } from './backends/bubblewrap.js';
+import { SandboxExecBackend } from './backends/sandbox-exec.js';
+
+export type { BackendKind };
 
 // ── Detection result ──────────────────────────────────────────────────────────
-
-export type BackendKind = 'bubblewrap' | 'sandbox-exec' | 'app-layer';
 
 export interface DetectResult {
   backend: BackendKind
@@ -75,16 +78,26 @@ export function selectBackendForPlatform(platform: SandboxPlatform):
 
 // ── Detection logic ───────────────────────────────────────────────────────────
 
+const SMOKE_MARKER = 'ema-sandbox-ok';
+
+/** 冒烟配置: 贴近真实使用(断网 + 最小可写), 同时验证 namespace 与网络隔离生效。 */
+function smokeConfig(): SandboxConfig {
+  return {
+    filesystem: { allowWrite: [], denyWrite: [], denyRead: [] },
+    network: { access: 'none' },
+  };
+}
+
 function runDetect(): DetectResult {
   const platform = getPlatform();
   const strategy = selectBackendForPlatform(platform);
 
   switch (strategy.kind) {
     case 'sandbox-exec':
-      return { backend: 'sandbox-exec' };
+      return smokeSandboxExec();
 
     case 'bwrap-direct':
-      return probeBwrapDirect(strategy.degradeReason);
+      return smokeBwrap(platform, strategy.degradeReason);
 
     case 'bwrap-via-wsl':
       return detectWindowsBackend(strategy.degradeReason);
@@ -95,15 +108,32 @@ function runDetect(): DetectResult {
 }
 
 /**
- * 直接探测 bwrap（原生 Linux / WSL2）。
- * 超时 5s：bwrap --version 是本地进程，无需启动开销。
+ * 真实启动自检: 二进制存在 ≠ namespace/系统策略允许隔离运行。
+ * 走与生产一致的 wrap() 路径执行一条 echo, 输出不符即降级,
+ * 避免向前端谎报 isolated 后第一条命令才失败。
  */
-function probeBwrapDirect(degradeReason: string): DetectResult {
-  const probe = spawnSync('bwrap', ['--version'], {
+function smokeSandboxExec(): DetectResult {
+  const wrapped = new SandboxExecBackend().wrap(`echo ${SMOKE_MARKER}`, '/bin/bash', smokeConfig());
+  const probe = spawnSync(wrapped.executable, wrapped.args, {
     encoding: 'utf8',
-    timeout: 5_000,
+    timeout: 8_000,
   });
-  return probe.status === 0
+  return probe.status === 0 && String(probe.stdout).includes(SMOKE_MARKER)
+    ? { backend: 'sandbox-exec' }
+    : {
+        backend: 'app-layer',
+        degradeReason:
+          'sandbox-exec 无法实际执行隔离命令(系统策略拒绝或已移除), 已降级为应用层隔离',
+      };
+}
+
+function smokeBwrap(platform: SandboxPlatform, degradeReason: string): DetectResult {
+  const wrapped = buildBubblewrapCommand(`echo ${SMOKE_MARKER}`, '/bin/bash', smokeConfig(), platform);
+  const probe = spawnSync(wrapped.executable, wrapped.args, {
+    encoding: 'utf8',
+    timeout: 8_000,
+  });
+  return probe.status === 0 && String(probe.stdout).includes(SMOKE_MARKER)
     ? { backend: 'bubblewrap' }
     : { backend: 'app-layer', degradeReason };
 }
@@ -130,20 +160,6 @@ function detectWindowsBackend(wslBwrapMissingReason: string): DetectResult {
   }
 
   // wsl.exe 存在（即使 --list 返回非 0，比如还没装发行版）。
-  // 继续在 WSL 内探测 bwrap，决定最终后端。
-  return probeBwrapViaWsl(wslBwrapMissingReason);
-}
-
-/**
- * 通过 wsl.exe bash -c 间接探测 WSL 内的 bwrap。
- * 超时 8s：比直接调用多 3s，覆盖 WSL2 冷启动 + bash 启动开销。
- */
-function probeBwrapViaWsl(degradeReason: string): DetectResult {
-  const probe = spawnSync('wsl.exe', ['bash', '-c', 'bwrap --version'], {
-    encoding: 'utf8',
-    timeout: 8_000,
-  });
-  return probe.status === 0
-    ? { backend: 'bubblewrap' }
-    : { backend: 'app-layer', degradeReason };
+  // 继续在 WSL 内做真实 bwrap 冒烟，决定最终后端。
+  return smokeBwrap('windows', wslBwrapMissingReason);
 }

@@ -1,8 +1,9 @@
 // 用 Bubblewrap 在 Linux 或 WSL2 中隔离命令的文件和网络访问。
 
 import path from 'node:path';
+import { statSync } from 'node:fs';
 import type { SandboxBackend, SandboxConfig, WrappedCommand } from '../types.js';
-import { getPlatform } from '../platform.js';
+import { getPlatform, type SandboxPlatform } from '../platform.js';
 
 /**
  * Linux 和 WSL2（含 Windows 经 WSL2）的 Bubblewrap 后端。
@@ -14,53 +15,72 @@ import { getPlatform } from '../platform.js';
  *      （捕获 allowWrite 是 denyWrite 父目录的情况）
  *   4. `--unshare-net` - 网络隔离
  *
- * Windows 上经 wsl.exe 路由，并把 Win32 路径翻译成 WSL /mnt/<drive>/... 后再构建 bwrap 参数。
+ * 原生 Linux 直接以 argv 启动 bwrap（不经外层 Shell 拼串）；
+ * Windows 经 wsl.exe 路由，路径翻译成 /mnt/<drive>/...，参数仍需引号
+ * （wsl.exe 把 argv 拼成单行命令传给 Linux 进程）。
  */
 export class BubblewrapBackend implements SandboxBackend {
   readonly name = 'bubblewrap';
 
   wrap(command: string, shell: string, config: SandboxConfig): WrappedCommand {
-    const platform = getPlatform();
-
-    if (platform === 'windows') {
-      return wrapViaWsl(command, shell, config);
-    }
-
-    const bwrapArgs = buildBwrapArgs(config);
-    const escaped   = escapeForShell(command);
-
-    return {
-      executable: shell,
-      args: ['-c', `bwrap ${bwrapArgs.join(' ')} -- ${shell} -c ${escaped}`],
-    };
+    return buildBubblewrapCommand(command, shell, config, getPlatform());
   }
+}
+
+/** 平台相关的 bwrap 启动形态（导出供单测覆盖直启与 WSL 两条路径）。 */
+export function buildBubblewrapCommand(
+  command: string,
+  shell: string,
+  config: SandboxConfig,
+  platform: SandboxPlatform,
+): WrappedCommand {
+  if (platform === 'windows') {
+    return wrapViaWsl(command, shell, config);
+  }
+
+  // 原生 Linux / WSL2: 结构化 argv 直启 bwrap, 路径无需任何引号转义。
+  return {
+    executable: 'bwrap',
+    args: [...buildBwrapArgs(config), '--', shell, '-c', command],
+  };
 }
 
 // ── bwrap argument builder ────────────────────────────────────────────────────
 
-function buildBwrapArgs(config: SandboxConfig): string[] {
+/**
+ * 生成 bwrap 隔离参数。resolvePaths=true 时把配置路径解析为绝对路径
+ * (直启路径); WSL 路径已翻译为 POSIX 形式, 不能再经宿主 path.resolve。
+ */
+function buildBwrapArgs(config: SandboxConfig, opts: { resolvePaths?: boolean } = {}): string[] {
+  const resolvePath = (p: string): string => (opts.resolvePaths === false ? p : path.resolve(p));
   const args: string[] = [
-    '--ro-bind', qp('/'), qp('/'),   // 整个文件系统只读
-    '--dev',     qp('/dev'),         // 设备（很多工具需要）
-    '--proc',    qp('/proc'),        // /proc（ps 等需要）
-    '--die-with-parent',             // 父进程退出时杀掉沙箱进程
+    '--ro-bind', '/', '/',        // 整个文件系统只读
+    '--dev',     '/dev',          // 设备（很多工具需要）
+    '--proc',    '/proc',         // /proc（ps 等需要）
+    '--die-with-parent',          // 父进程退出时杀掉沙箱进程
   ];
 
   // 可写目录（覆盖只读根绑定）
   for (const p of config.filesystem.allowWrite) {
-    const r = qp(path.resolve(p));
+    const r = resolvePath(p);
     args.push('--bind-try', r, r);
   }
 
   // 显式只读路径（叠在任意 allowWrite 父目录之上）
   for (const p of config.filesystem.denyWrite) {
-    const r = qp(path.resolve(p));
+    const r = resolvePath(p);
     args.push('--ro-bind-try', r, r);
   }
 
-  // 隐藏路径（挂载 /dev/null 覆盖）
+  // 隐藏路径: 文件挂 /dev/null 覆盖; 目录挂空 tmpfs 遮蔽内容
+  // (/dev/null 是文件, 盖不住目录)。
   for (const p of config.filesystem.denyRead) {
-    args.push('--bind-try', qp('/dev/null'), qp(path.resolve(p)));
+    const r = resolvePath(p);
+    if (isDirectory(r)) {
+      args.push('--tmpfs', r);
+    } else {
+      args.push('--bind-try', '/dev/null', r);
+    }
   }
 
   // 网络隔离
@@ -76,24 +96,23 @@ function buildBwrapArgs(config: SandboxConfig): string[] {
 
 function wrapViaWsl(command: string, shell: string, config: SandboxConfig): WrappedCommand {
   // 把 Win32 路径翻译成 /mnt/<drive>/...，供 WSL 内的 bwrap 使用
-  const translatedConfig: SandboxConfig = {
+    const translatedConfig: SandboxConfig = {
     filesystem: {
       allowWrite: config.filesystem.allowWrite.map(toWslPath),
       denyWrite:  config.filesystem.denyWrite.map(toWslPath),
       denyRead:   config.filesystem.denyRead.map(toWslPath),
-      allowRead:  config.filesystem.allowRead.map(toWslPath),
     },
     network: config.network,
   };
 
-  const bwrapArgs = buildBwrapArgs(translatedConfig);
-  const escaped   = escapeForShell(command);
-  // WSL 内的 shell 固定为 bash；路径参数已由 buildBwrapArgs 的 qp() 转义
-  const wslShell  = 'bash';
+  // wsl.exe 会把 argv 拼成单行命令交给 Linux 进程, 路径与命令必须引号保护。
+  const quotedArgs = buildBwrapArgs(translatedConfig, { resolvePaths: false }).map(qp);
+  const escaped    = escapeForShell(command);
+  const wslShell   = 'bash';
 
   return {
     executable: 'wsl.exe',
-    args: ['bash', '-c', `bwrap ${bwrapArgs.join(' ')} -- ${wslShell} -c ${escaped}`],
+    args: ['bash', '-c', `bwrap ${quotedArgs.join(' ')} -- ${wslShell} -c ${escaped}`],
   };
 }
 
@@ -121,11 +140,16 @@ function escapeForShell(command: string): string {
   return `'${command.replace(/'/g, "'\\''")}'`;
 }
 
-/**
- * 为嵌入 shell -c 字符串的文件系统路径加引号。
- * 防止路径中的空格或特殊字符（如工作区在 "/home/user/My Projects/foo"）
- * 被外层 shell 误分词。
- */
+/** 为嵌入 shell -c 字符串的参数加引号（仅 WSL 拼串路径使用）。 */
 function qp(p: string): string {
   return `'${p.replace(/'/g, "'\\''")}'`;
+}
+
+/** 路径是否为目录(不存在时按文件处理, 走 /dev/null 覆盖)。 */
+function isDirectory(p: string): boolean {
+  try {
+    return statSync(p).isDirectory();
+  } catch {
+    return false;
+  }
 }

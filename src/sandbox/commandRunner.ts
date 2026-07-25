@@ -1,12 +1,15 @@
 // 使用一份冻结的 Sandbox 能力快照包装并执行当前 Session 的 Shell 命令。
 
-import { existsSync, rmSync } from 'node:fs';
+import { existsSync, rmSync, statSync } from 'node:fs';
+import path from 'node:path';
 import { buildSandboxConfig } from './config-builder.js';
 import { detectBackend } from './detect.js';
 import { AppLayerBackend } from './backends/app-layer.js';
 import { BubblewrapBackend } from './backends/bubblewrap.js';
 import { SandboxExecBackend } from './backends/sandbox-exec.js';
 import { runProcess } from './processRunner.js';
+import { buildProcessEnvironment } from './processEnvironment.js';
+import { resolveCommandCwd } from './resolveCommandCwd.js';
 import { probeShell } from './shell-probe.js';
 import type {
   CommandRunOptions,
@@ -20,11 +23,16 @@ import type {
 const DEFAULT_TIMEOUT_MS = 120_000;
 const MAX_TIMEOUT_MS = 600_000;
 
+/** bare-repo 完整签名: 三者同时存在才构成"工作区变成了 Git 仓库"。 */
+const BARE_SIGNATURE = ['HEAD', 'objects', 'refs'] as const;
+/** 攻击真正利用的两个落点: Git 会读取并执行/采信它们。 */
+const BARE_EXPLOIT_FILES = ['hooks', 'config'] as const;
+
 export class CommandRunner implements CommandRunnerPort {
   private readonly capability: SandboxCapability;
   private readonly backend: SandboxBackend;
   private readonly config: SandboxConfig;
-  private readonly scrubPaths: readonly string[];
+  private readonly bareRepoExistedAtStart: boolean;
   private readonly degradeReason: string | undefined;
 
   constructor(capability: SandboxCapability) {
@@ -42,42 +50,50 @@ export class CommandRunner implements CommandRunnerPort {
     this.backend = selectBackend(detection.backend);
     this.degradeReason = detection.degradeReason;
 
-    const built = buildSandboxConfig(this.capability);
-    this.config = built.config;
-    this.scrubPaths = built.scrubPaths;
+    this.config = buildSandboxConfig(this.capability);
+    this.bareRepoExistedAtStart = hasBareRepoSignature(capability.workspaceRoot);
   }
 
   async run(command: string, options: CommandRunOptions = {}): Promise<CommandRunResult> {
-    const cwd = options.cwd ?? this.capability.workspaceRoot;
+    const cwd = resolveCommandCwd(options.cwd, this.capability);
     const timeoutMs = Math.min(options.timeoutMs ?? DEFAULT_TIMEOUT_MS, MAX_TIMEOUT_MS);
     const shell = resolveShell();
     const wrapped = this.backend.wrap(command, shell, this.config);
 
     try {
       return await runProcess(
-        wrapped.executable,
-        wrapped.args,
-        cwd,
+        {
+          backend: this.backend.name,
+          executable: wrapped.executable,
+          args: wrapped.args,
+          cwd,
+          environment: buildProcessEnvironment(),
+        },
         timeoutMs,
         options.signal,
       );
     } finally {
-      // 缺失的 bare-repo 敏感路径在每条命令后立即清理，不能等到 Turn 结束；
-      // 否则同一 Turn 的下一次 Git 调用可能加载上一条命令植入的配置或 Hook。
       this.cleanup();
     }
   }
 
+  /**
+   * bare-repo 防御: 只有当"构造时不存在、命令执行后出现了完整 bare 签名"
+   * 才拆除 hooks/config 两个真实攻击落点。普通项目新建的 config 文件、
+   * hooks 目录不会被误伤; 本就位于仓库根的工作区不受影响。
+   */
   cleanup(): void {
-    for (const targetPath of this.scrubPaths) {
-      if (!existsSync(targetPath)) continue;
+    if (this.bareRepoExistedAtStart) return;
+    const root = this.capability.workspaceRoot;
+    if (!hasBareRepoSignature(root)) return;
+    for (const fileName of BARE_EXPLOIT_FILES) {
+      const target = path.join(root, fileName);
+      if (!existsSync(target)) continue;
       try {
-        rmSync(targetPath, { recursive: true });
+        rmSync(target, { recursive: true, force: true });
+        console.warn(`[sandbox] 已拆除可疑 bare-repo 落点: ${target}`);
       } catch (error) {
-        const code = (error as NodeJS.ErrnoException)?.code;
-        if (code !== 'ENOENT') {
-          console.warn(`[sandbox] cleanup 失败 (${code ?? 'unknown'}): ${targetPath}`);
-        }
+        console.warn(`[sandbox] bare-repo 落点清理失败: ${target}`, error);
       }
     }
   }
@@ -89,6 +105,18 @@ export class CommandRunner implements CommandRunnerPort {
   get backendName(): string {
     return this.backend.name;
   }
+}
+
+/** 工作区根是否同时存在 HEAD + objects + refs(bare-repo 签名)。 */
+function hasBareRepoSignature(root: string): boolean {
+  return BARE_SIGNATURE.every((fileName) => {
+    try {
+      statSync(path.join(root, fileName));
+      return true;
+    } catch {
+      return false;
+    }
+  });
 }
 
 function selectBackend(kind: ReturnType<typeof detectBackend>['backend']): SandboxBackend {

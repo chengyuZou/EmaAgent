@@ -1,24 +1,34 @@
 // 启动沙箱包装后的子进程，并统一处理输出上限、超时和取消。
+// 只执行 SandboxCommand: 不读取 process.env, 不理解 Sandbox Policy。
 
-import { spawn } from 'node:child_process';
-import type { CommandRunResult } from './types.js';
+import { spawn, spawnSync } from 'node:child_process';
+import type { CommandRunResult, SandboxCommand } from './types.js';
 
 const MAX_OUTPUT_CHARS = 200_000;
 const MAX_STREAM_CHARS = MAX_OUTPUT_CHARS / 2;
 const FORCE_KILL_DELAY_MS = 3_000;
 
 export function runProcess(
-  executable: string,
-  args: readonly string[],
-  cwd: string,
+  command: SandboxCommand,
   timeoutMs: number,
   signal?: AbortSignal,
 ): Promise<CommandRunResult> {
   return new Promise((resolve, reject) => {
-    const child = spawn(executable, [...args], {
-      cwd,
+    // 已取消的 signal 不启动进程, 诚实返回取消结果而不是"先启动再杀"。
+    if (signal?.aborted) {
+      resolve({
+        stdout: '', stderr: '', exitCode: -1,
+        timedOut: false, truncated: false, aborted: true,
+      });
+      return;
+    }
+
+    const child = spawn(command.executable, [...command.args], {
+      cwd: command.cwd,
       stdio: ['ignore', 'pipe', 'pipe'],
-      env: { ...process.env, TERM: 'dumb' },
+      env: { ...command.environment },
+      // POSIX: 独立进程组, 终止时整组(SIGTERM→SIGKILL)而不是只杀包装进程。
+      detached: process.platform !== 'win32',
     });
 
     let stdout = '';
@@ -28,16 +38,30 @@ export function runProcess(
     let timedOut = false;
     let settled = false;
 
-    const forceKill = (): void => {
+    /**
+     * 终止整棵进程树。Windows 无 POSIX 进程组: taskkill /T /F 是唯一真实的
+     * 树终止(立即, 不伪装宽限期); WSL 经 wsl.exe 转发, 尽力而为。
+     * POSIX: 负 pid 打整个进程组, TERM 宽限后 KILL。
+     */
+    const terminateTree = (force: boolean): void => {
+      if (process.platform === 'win32') {
+        if (child.pid === undefined) return;
+        try {
+          spawnSync('taskkill', ['/pid', String(child.pid), '/T', '/F'], { stdio: 'ignore' });
+        } catch {
+          // 进程可能已经退出。
+        }
+        return;
+      }
       try {
-        child.kill('SIGKILL');
+        process.kill(-child.pid!, force ? 'SIGKILL' : 'SIGTERM');
       } catch {
-        // 进程可能已经退出。
+        // 进程组已经退出。
       }
     };
     const terminate = (): void => {
-      child.kill('SIGTERM');
-      const forceKillTimer = setTimeout(forceKill, FORCE_KILL_DELAY_MS);
+      terminateTree(false);
+      const forceKillTimer = setTimeout(() => terminateTree(true), FORCE_KILL_DELAY_MS);
       forceKillTimer.unref?.();
     };
     const timeout = setTimeout(() => {

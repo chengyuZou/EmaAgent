@@ -11,7 +11,6 @@ function config(access: 'none' | 'full'): SandboxConfig {
       allowWrite: [],
       denyWrite: [],
       denyRead: [],
-      allowRead: [],
     },
     network: { access },
   };

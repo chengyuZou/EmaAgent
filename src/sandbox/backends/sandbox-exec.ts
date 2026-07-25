@@ -18,11 +18,12 @@ export class SandboxExecBackend implements SandboxBackend {
 
   wrap(command: string, shell: string, config: SandboxConfig): WrappedCommand {
     const profile = buildProfile(config);
-    const escaped = command.replace(/'/g, "'\\''");
 
+    // spawn 直接传 argv, 不经过外层 Shell——命令不能再包一层引号,
+    // 否则引号会成为 bash -c 输入的一部分, 整条命令被解释成一个"命令名"。
     return {
       executable: 'sandbox-exec',
-      args: ['-p', profile, shell, '-c', `'${escaped}'`],
+      args: ['-p', profile, shell, '-c', command],
     };
   }
 }

@@ -12,7 +12,8 @@ export { getPlatform, resetPlatformCache } from './platform.js';
 export type { SandboxPlatform }            from './platform.js';
 
 export { buildSandboxConfig }              from './config-builder.js';
-export type { BuildResult } from './config-builder.js';
+
+export { buildProcessEnvironment }          from './processEnvironment.js';
 
 export type {
   SandboxConfig,
@@ -21,6 +22,7 @@ export type {
   SandboxNetworkConfig,
   SandboxBackend,
   WrappedCommand,
+  SandboxCommand,
   CommandRunOptions,
   CommandRunResult,
   CommandRunnerPort,

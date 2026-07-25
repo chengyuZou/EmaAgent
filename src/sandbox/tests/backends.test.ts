@@ -1,0 +1,76 @@
+// 后端启动形态测试: macOS 不多加引号; bwrap 直启 argv 不拼串; WSL 路径翻译。
+import path from 'node:path';
+import { describe, expect, it } from 'vitest';
+import { SandboxExecBackend } from '../backends/sandbox-exec.js';
+import { buildBubblewrapCommand } from '../backends/bubblewrap.js';
+import type { SandboxConfig } from '../types.js';
+
+const config: SandboxConfig = {
+  filesystem: {
+    allowWrite: ['/home/u/proj'],
+    denyWrite:  ['/home/u/proj/.git'],
+    denyRead:   ['/home/u/.ema-agent/profile.db'],
+  },
+  network: { access: 'none' },
+};
+
+describe('SandboxExecBackend', () => {
+  it('spawn 直传 argv, 命令不再包一层引号', () => {
+    const backend = new SandboxExecBackend();
+    const wrapped = backend.wrap('ls -la "My Documents"', '/bin/bash', config);
+
+    expect(wrapped.executable).toBe('sandbox-exec');
+    expect(wrapped.args[0]).toBe('-p');
+    expect(wrapped.args[2]).toBe('/bin/bash');
+    expect(wrapped.args[3]).toBe('-c');
+    // 关键回归: 原实现把命令包成 '...' 导致 bash -c 收到带引号的"命令名"
+    expect(wrapped.args[4]).toBe('ls -la "My Documents"');
+  });
+
+  it('profile 拒绝 denyRead 子路径且断网', () => {
+    const backend = new SandboxExecBackend();
+    const wrapped = backend.wrap('ls', '/bin/bash', config);
+    const profile = wrapped.args[1]!;
+
+    expect(profile).toContain('(deny file-read* (subpath "/home/u/.ema-agent/profile.db"))');
+    expect(profile).toContain('(deny network-outbound)');
+    expect(profile).toContain('(allow file-write* (subpath "/home/u/proj"))');
+  });
+});
+
+describe('buildBubblewrapCommand', () => {
+  it('原生 Linux: 直接 argv 启动 bwrap, 路径不带引号', () => {
+    const wrapped = buildBubblewrapCommand('echo "hi there"', '/bin/bash', config, 'linux');
+
+    expect(wrapped.executable).toBe('bwrap');
+    expect(wrapped.args).toContain('--unshare-net');
+    expect(wrapped.args).toContain('--die-with-parent');
+    // denyRead 用 /dev/null 覆盖(path.resolve 结果随宿主平台)
+    const nullIdx = wrapped.args.indexOf('/dev/null');
+    expect(nullIdx).toBeGreaterThan(-1);
+    expect(wrapped.args[nullIdx + 1]).toBe(path.resolve('/home/u/.ema-agent/profile.db'));
+    // 直接 argv: 命令与路径都不包引号
+    const sep = wrapped.args.indexOf('--');
+    expect(wrapped.args.slice(sep + 1)).toEqual(['/bin/bash', '-c', 'echo "hi there"']);
+    expect(wrapped.args).toContain(path.resolve('/home/u/proj'));
+  });
+
+  it('Windows: 经 wsl.exe 路由并把盘符翻译成 /mnt/<drive>', () => {
+    const winConfig: SandboxConfig = {
+      filesystem: {
+        allowWrite: ['D:\\workspace'],
+        denyWrite:  [],
+        denyRead:   [],
+      },
+      network: { access: 'full' },
+    };
+    const wrapped = buildBubblewrapCommand('echo ok', 'bash', winConfig, 'windows');
+
+    expect(wrapped.executable).toBe('wsl.exe');
+    expect(wrapped.args[0]).toBe('bash');
+    const line = wrapped.args[2]!;
+    expect(line).toContain('bwrap');
+    expect(line).toContain('/mnt/d/workspace');
+    expect(line).not.toContain('--unshare-net');
+  });
+});

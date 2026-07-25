@@ -3,7 +3,6 @@ export interface SandboxFilesystemConfig {
   allowWrite: string[];
   denyWrite: string[];
   denyRead: string[];
-  allowRead: string[];
 }
 
 /** 沙箱内进程的网络访问策略。 */
@@ -17,14 +16,29 @@ export interface SandboxConfig {
   network: SandboxNetworkConfig;
 }
 
+export type BackendKind = 'bubblewrap' | 'sandbox-exec' | 'app-layer';
+
 /** 后端包装命令后真正要启动的程序和参数。 */
 export interface WrappedCommand {
   executable: string;
   args: string[];
 }
 
+/**
+ * Sandbox 最终决定的启动形态: 平台后端 + 结构化 argv + 工作目录 + 净化环境。
+ * Backend 产出 WrappedCommand, CommandRunner 补齐 backend/cwd/environment,
+ * ProcessRunner 只执行, 不再读取 process.env 或理解 Sandbox Policy。
+ */
+export interface SandboxCommand {
+  readonly backend: BackendKind;
+  readonly executable: string;
+  readonly args: readonly string[];
+  readonly cwd: string;
+  readonly environment: Readonly<Record<string, string>>;
+}
+
 export interface SandboxBackend {
-  readonly name: string;
+  readonly name: BackendKind;
   wrap(command: string, shell: string, config: SandboxConfig): WrappedCommand;
 }
 
