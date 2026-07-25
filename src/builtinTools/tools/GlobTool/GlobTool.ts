@@ -8,7 +8,6 @@ import {
   createSearchPresentation,
   presentToolResult,
 } from '@ema-agent/tools';
-import type { SearchLimitReason } from '@ema-agent/tools';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 import type { BuiltinToolContext } from '../../builtinToolContext.js';
 import { contextFail, contextOk } from '../../contextValidation.js';
@@ -92,7 +91,7 @@ export const GlobTool = buildTool<GlobInput, GlobResult, BuiltinToolContext, Glo
       : workspaceRoot;
 
     // 优先 rg;Node glob 兜底。
-    let found: { paths: string[]; truncated: boolean; reason?: string };
+    let found: { paths: string[]; enumTruncated: boolean };
     try {
       found = await rgGlob(input.pattern, searchDir, context.signal);
     } catch (error) {
@@ -100,21 +99,11 @@ export const GlobTool = buildTool<GlobInput, GlobResult, BuiltinToolContext, Glo
       found = await nodeGlob(input.pattern, searchDir, context.signal);
     }
 
-    // 按 mtime 降序排
-    const withMtime = found.paths.map((p) => {
-      try {
-        const { mtimeMs } = fs.statSync(p);
-        return { p, mtime: mtimeMs };
-      } catch {
-        return { p, mtime: 0 };
-      }
-    });
-    withMtime.sort((a, b) => b.mtime - a.mtime);
-
-    const truncated = found.truncated;
-    const files = withMtime.map((x) => x.p);
+    // 枚举后才排序截取: "最近修改的 100 个"必须先枚举再按 mtime 降序,
+    // 不能取遍历序前 100 再排序(大目录下不是真正的新文件)。
+    const { files, truncated } = newestFirst(found.paths);
     const notice = truncated
-      ? `[Search stopped at the ${found.reason ?? 'result'} limit; ${files.length} files shown. Narrow the pattern or path to continue.]`
+      ? `[Showing the ${MAX_RESULTS} most recently modified of ${found.paths.length}${found.enumTruncated ? '+' : ''} matches. Narrow the pattern or path to continue.]`
       : undefined;
 
     return presentToolResult(
@@ -125,25 +114,49 @@ export const GlobTool = buildTool<GlobInput, GlobResult, BuiltinToolContext, Glo
         searchPath: searchDir,
         resultCount: files.length,
         truncated,
-        ...(found.reason ? { limitReason: normalizeSearchLimitReason(found.reason) } : {}),
+        ...(truncated ? { limitReason: 'results' as const } : {}),
       }),
     );
   },
 });
 
-function normalizeSearchLimitReason(reason: string): SearchLimitReason {
-  if (reason === 'bytes') return 'bytes';
-  if (reason.includes('time')) return 'timeout';
-  return 'results';
+// ── 后端 ──────────────────────────────────────────────────────────────────────
+
+/**
+ * 枚举上限: "最近修改的 100 个"必须先枚举再按 mtime 排序,
+ * 不能只取遍历序前 100(大目录下会漏掉真正的新文件)。
+ * 超过上限照样报截断, 提示用户缩小范围。
+ */
+const MAX_ENUMERATION = 20_000;
+
+/** 按 mtime 降序(相同 mtime 按路径字典序决胜); stat 失败的按 mtime 0 排尾。 */
+export function sortByMtimeDesc(paths: string[]): string[] {
+  const withMtime = paths.map((p) => {
+    try {
+      const { mtimeMs } = fs.statSync(p);
+      return { p, mtime: mtimeMs };
+    } catch {
+      return { p, mtime: 0 };
+    }
+  });
+  withMtime.sort((a, b) => b.mtime - a.mtime || a.p.localeCompare(b.p));
+  return withMtime.map((x) => x.p);
 }
 
-// ── 后端 ──────────────────────────────────────────────────────────────────────
+/** 枚举 → mtime 降序 → 取前 MAX_RESULTS。两条后端共用同一收口。 */
+function newestFirst(paths: string[]): { files: string[]; truncated: boolean } {
+  const sorted = sortByMtimeDesc(paths);
+  return {
+    files: sorted.slice(0, MAX_RESULTS),
+    truncated: sorted.length > MAX_RESULTS,
+  };
+}
 
 async function rgGlob(
   pattern: string,
   searchDir: string,
   signal: AbortSignal,
-): Promise<{ paths: string[]; truncated: boolean; reason?: string }> {
+): Promise<{ paths: string[]; enumTruncated: boolean }> {
   const result = await runBoundedProcess(
     'rg',
     ['--files', '--glob', pattern, '--null', '.'],
@@ -151,15 +164,14 @@ async function rgGlob(
       cwd: searchDir,
       signal,
       delimiter: '\0',
-      maxRecords: MAX_RESULTS,
+      maxRecords: MAX_ENUMERATION,
       maxBytes: MAX_OUTPUT_BYTES,
       timeoutMs: SEARCH_TIMEOUT_MS,
     },
   );
   return {
     paths: result.records.map(item => path.resolve(searchDir, item)),
-    truncated: result.truncated,
-    ...(result.stopReason ? { reason: result.stopReason } : {}),
+    enumTruncated: result.truncated,
   };
 }
 
@@ -167,21 +179,21 @@ async function nodeGlob(
   pattern: string,
   searchDir: string,
   signal: AbortSignal,
-): Promise<{ paths: string[]; truncated: boolean; reason?: string }> {
+): Promise<{ paths: string[]; enumTruncated: boolean }> {
   const paths: string[] = [];
   const startedAt = Date.now();
-  let truncated = false;
+  let enumTruncated = false;
   for await (const item of globIterate(pattern, {
     cwd: searchDir,
     absolute: true,
     nodir: true,
     signal,
   })) {
-    if (paths.length >= MAX_RESULTS || Date.now() - startedAt >= SEARCH_TIMEOUT_MS) {
-      truncated = true;
+    if (paths.length >= MAX_ENUMERATION || Date.now() - startedAt >= SEARCH_TIMEOUT_MS) {
+      enumTruncated = true;
       break;
     }
     paths.push(String(item));
   }
-  return { paths, truncated, ...(truncated ? { reason: 'result/time' } : {}) };
+  return { paths, enumTruncated };
 }
