@@ -413,7 +413,7 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
   // ── Permission subsystem ────────────────────────────────────────────────────
   const settingsRepo = new SettingsRepo(profileDb.sqlite);
   const { permission, permissionPrompts, askUserRegistry, buildAskForTurn } =
-    buildPermissionSubsystem(settingsRepo);
+    buildPermissionSubsystem(settingsRepo, profileDb.sqlite);
 
   // ── Tools + sandbox ─────────────────────────────────────────────────────────
   // On Windows without WSL2+bubblewrap the backend is 'app-layer' (no OS

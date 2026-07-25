@@ -9,6 +9,9 @@ export {
   DANGEROUS_FILES, DANGEROUS_DIRS,
 }                                                      from './paths/pathSafety.js';
 export { ruleMatches, findAllowRule, findDenyRule, findAskRule, upsertRule, clearIgnoreCache } from './policy/permissionRules.js';
+export { InMemoryPermissionRuleStore }                from './policy/permissionRuleStore.js';
+export type { PermissionRuleStore }                    from './policy/permissionRuleStore.js';
+export { SqlPermissionRuleStore }                      from './policy/sqlPermissionRuleStore.js';
 export { pathInWorkingDir, pathInAnyWorkingDir }      from './paths/workspaceBoundary.js';
 export {
   checkEditableInternalPath, checkReadableInternalPath,
@@ -19,6 +22,7 @@ export type {
   PermissionMode,
   PermissionConfig,
   PermissionRule,
+  PersistedPermissionRule,
   PermissionOutcome,
   PermissionPrompt,
   PendingPermissionPrompt,

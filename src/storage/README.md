@@ -97,7 +97,6 @@ SQLite 封装。构造时:
 **权限 / 遥测 / 用量 / agent**
 | 表 | 职责 |
 |---|---|
-| `permission_grants` | 权限授予(allow/ask/forbidden,session/persistent) |
 | `telemetry_events` | 遥测事件 |
 | `turn_usage` | per-turn 用量(provider/model/token/cost) |
 | `agent_tasks` | agent 运行实例状态机(running/completed/failed/cancelled) |

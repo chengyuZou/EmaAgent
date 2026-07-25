@@ -2,6 +2,7 @@
 
 import { describe, expect, it, vi } from 'vitest';
 import { PermissionEngine } from '../permissionEngine.js';
+import { InMemoryPermissionRuleStore } from '../policy/permissionRuleStore.js';
 import type { AskPermissionFn, PermissionContext, ToolPermissionMeta } from '../types.js';
 
 const meta: ToolPermissionMeta = {
@@ -22,7 +23,7 @@ function context(sessionId: string, ask: AskPermissionFn): PermissionContext {
 describe('PermissionEngine Session Grant', () => {
   it('只在同一 Session 复用完全相同的规范化操作', async () => {
     const ask = vi.fn<AskPermissionFn>(async () => ({ action: 'allow_session' }));
-    const engine = new PermissionEngine({ mode: 'ask', rules: [], ask });
+    const engine = new PermissionEngine({ mode: 'ask', ask }, new InMemoryPermissionRuleStore());
 
     const first = await engine.gate(
       'shell_command',
@@ -62,18 +63,18 @@ describe('PermissionEngine Session Grant', () => {
 
   it('Session 清理后撤销临时授权，且新增 deny 规则始终优先', async () => {
     const ask = vi.fn<AskPermissionFn>(async () => ({ action: 'allow_session' }));
-    const engine = new PermissionEngine({ mode: 'ask', rules: [], ask });
+    const engine = new PermissionEngine({ mode: 'ask', ask }, new InMemoryPermissionRuleStore());
     const input = { command: 'npm test' };
     const ctx = context('session-a', ask);
 
     await engine.gate('shell_command', input, meta, ctx);
-    engine.addRule({ action: 'deny', tool: 'shell_command', scope: 'global' });
+    const denyRule = engine.addRule({ action: 'deny', tool: 'shell_command', scope: 'global' });
     const denied = await engine.gate('shell_command', input, meta, ctx);
 
     expect(denied.granted).toBe(false);
     expect(ask).toHaveBeenCalledTimes(1);
 
-    engine.removeRule('shell_command', undefined, 'global');
+    engine.removeRule(denyRule.id);
     engine.clearSession('session-a');
     await engine.gate('shell_command', input, meta, ctx);
     expect(ask).toHaveBeenCalledTimes(2);
@@ -81,7 +82,7 @@ describe('PermissionEngine Session Grant', () => {
 
   it('缺少 sessionId 时不会把 allow_session 降级成全局授权', async () => {
     const ask = vi.fn<AskPermissionFn>(async () => ({ action: 'allow_session' }));
-    const engine = new PermissionEngine({ mode: 'ask', rules: [], ask });
+    const engine = new PermissionEngine({ mode: 'ask', ask }, new InMemoryPermissionRuleStore());
 
     const outcome = await engine.gate('shell_command', { command: 'npm test' }, meta, {
       workspaceRoot: 'D:\\workspace',
@@ -94,25 +95,6 @@ describe('PermissionEngine Session Grant', () => {
     }));
   });
 
-  it('缺少 owner 的旧 session 规则永不匹配其他 Session', async () => {
-    const ask = vi.fn<AskPermissionFn>(async () => ({ action: 'deny' }));
-    const engine = new PermissionEngine({
-      mode: 'ask',
-      rules: [{ action: 'allow', tool: 'shell_command', scope: 'session' }],
-      ask,
-    });
-
-    const outcome = await engine.gate(
-      'shell_command',
-      { command: 'npm publish' },
-      meta,
-      context('session-b', ask),
-    );
-
-    expect(outcome.granted).toBe(false);
-    expect(ask).toHaveBeenCalledTimes(1);
-  });
-
   it('审批等待期间解析目标变化时拒绝执行和缓存授权', async () => {
     const ask = vi.fn<AskPermissionFn>(async () => ({ action: 'allow_session' }));
     let extraction = 0;
@@ -123,7 +105,7 @@ describe('PermissionEngine Session Grant', () => {
         ? 'D:\\workspace-a\\first.txt'
         : 'D:\\workspace-b\\second.txt',
     };
-    const engine = new PermissionEngine({ mode: 'ask', rules: [], ask });
+    const engine = new PermissionEngine({ mode: 'ask', ask }, new InMemoryPermissionRuleStore());
 
     const outcome = await engine.gate(
       { id: 'builtin.file.write', name: 'Write' },
@@ -138,3 +120,4 @@ describe('PermissionEngine Session Grant', () => {
     }));
   });
 });
+

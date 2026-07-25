@@ -9,39 +9,42 @@ import {
 } from '../policy/permissionRules.js';
 import type { PermissionContext, PermissionRule } from '../types.js';
 
-const ctx: Pick<PermissionContext, 'workspaceRoot' | 'sessionId'> = {
-  workspaceRoot: '/home/user/project',
-  sessionId: 'session-a',
+const workspaceRoot = '/home/user/project';
+const ctx: Pick<PermissionContext, 'workspaceRoot'> = {
+  workspaceRoot,
 };
 
 const denyGlobal: PermissionRule = { action: 'deny', tool: 'shell', scope: 'global' };
-const denyProject: PermissionRule = { action: 'deny', tool: 'shell', scope: 'project' };
+const denyWorkspace: PermissionRule = {
+  action: 'deny', tool: 'shell', scope: 'workspace', workspaceRoot,
+};
 const allowGlobal: PermissionRule = { action: 'allow', tool: 'shell', scope: 'global' };
-const allowProject: PermissionRule = { action: 'allow', tool: 'shell', scope: 'project' };
-const allowSession: PermissionRule = {
-  action: 'allow', tool: 'shell', scope: 'session', sessionId: 'session-a',
+const allowWorkspace: PermissionRule = {
+  action: 'allow', tool: 'shell', scope: 'workspace', workspaceRoot,
 };
 const askGlobal: PermissionRule = { action: 'ask', tool: 'shell', scope: 'global' };
-const askProject: PermissionRule = { action: 'ask', tool: 'shell', scope: 'project' };
+const askWorkspace: PermissionRule = {
+  action: 'ask', tool: 'shell', scope: 'workspace', workspaceRoot,
+};
 
 describe('rule lookup scope priority', () => {
   it('多条 deny 匹配时返回 global（最高优先级），与数组顺序无关', () => {
-    expect(findDenyRule([denyProject, denyGlobal], 'shell', undefined, ctx)).toBe(denyGlobal);
-    expect(findDenyRule([denyGlobal, denyProject], 'shell', undefined, ctx)).toBe(denyGlobal);
+    expect(findDenyRule([denyWorkspace, denyGlobal], 'shell', undefined, ctx)).toBe(denyGlobal);
+    expect(findDenyRule([denyGlobal, denyWorkspace], 'shell', undefined, ctx)).toBe(denyGlobal);
   });
 
   it('多条 allow 匹配时返回 global，使审计归因确定', () => {
-    expect(findAllowRule([allowProject, allowGlobal, allowSession], 'shell', undefined, ctx)).toBe(allowGlobal);
-    expect(findAllowRule([allowSession, allowProject, allowGlobal], 'shell', undefined, ctx)).toBe(allowGlobal);
+    expect(findAllowRule([allowWorkspace, allowGlobal], 'shell', undefined, ctx)).toBe(allowGlobal);
+    expect(findAllowRule([allowGlobal, allowWorkspace], 'shell', undefined, ctx)).toBe(allowGlobal);
   });
 
   it('多条 ask 匹配时返回 global', () => {
-    expect(findAskRule([askProject, askGlobal], 'shell', undefined, ctx)).toBe(askGlobal);
-    expect(findAskRule([askGlobal, askProject], 'shell', undefined, ctx)).toBe(askGlobal);
+    expect(findAskRule([askWorkspace, askGlobal], 'shell', undefined, ctx)).toBe(askGlobal);
+    expect(findAskRule([askGlobal, askWorkspace], 'shell', undefined, ctx)).toBe(askGlobal);
   });
 
-  it('只有 session 规则时返回 session 规则', () => {
-    expect(findAllowRule([allowSession], 'shell', undefined, ctx)).toBe(allowSession);
+  it('只有 workspace 规则时返回 workspace 规则', () => {
+    expect(findAllowRule([allowWorkspace], 'shell', undefined, ctx)).toBe(allowWorkspace);
   });
 
   it('无匹配时返回 undefined', () => {
@@ -49,11 +52,16 @@ describe('rule lookup scope priority', () => {
     expect(findAllowRule([denyGlobal], 'shell', undefined, ctx)).toBeUndefined();
   });
 
-  it('ruleMatches 仍按 sessionId 隔离 session 规则', () => {
-    const otherSession: PermissionRule = {
-      action: 'allow', tool: 'shell', scope: 'session', sessionId: 'session-b',
+  it('ruleMatches 按 workspaceRoot 隔离 workspace 规则', () => {
+    const otherWorkspace: PermissionRule = {
+      action: 'allow', tool: 'shell', scope: 'workspace', workspaceRoot: '/other/workspace',
     };
-    expect(ruleMatches(otherSession, 'shell', undefined, ctx)).toBe(false);
-    expect(ruleMatches(allowSession, 'shell', undefined, ctx)).toBe(true);
+    expect(ruleMatches(otherWorkspace, 'shell', undefined, ctx)).toBe(false);
+    expect(ruleMatches(allowWorkspace, 'shell', undefined, ctx)).toBe(true);
+  });
+
+  it('workspace 规则在无 workspaceRoot 的 context 中不匹配', () => {
+    const emptyCtx: Pick<PermissionContext, 'workspaceRoot'> = { workspaceRoot: '' };
+    expect(ruleMatches(allowWorkspace, 'shell', undefined, emptyCtx)).toBe(false);
   });
 });

@@ -3,6 +3,7 @@
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { PermissionEngine } from '../permissionEngine.js';
+import { InMemoryPermissionRuleStore } from '../policy/permissionRuleStore.js';
 import {
   checkEditableInternalPath,
   checkReadableInternalPath,
@@ -35,7 +36,7 @@ describe('内部目录能力', () => {
   });
 
   it('封装型 scratchpad 工具必须持有对应能力才能静默放行', async () => {
-    const engine = new PermissionEngine({ mode: 'ask', rules: [] });
+    const engine = new PermissionEngine({ mode: 'ask' }, new InMemoryPermissionRuleStore());
     const meta: ToolPermissionMeta = {
       riskLevel: 'low',
       accessType: 'write',

@@ -1,7 +1,7 @@
 // 测试 MCP Server 的动态 Schema、结果预算和自报 annotations 都受 Ema Tool 契约约束。
 import { describe, expect, it, vi } from 'vitest';
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { PermissionEngine } from '@ema-agent/permission';
+import { PermissionEngine, InMemoryPermissionRuleStore } from '@ema-agent/permission';
 import { DEFAULT_MAX_RESULT_BYTES } from '@ema-agent/tools';
 import type { McpToolInfo } from '../types.js';
 import { McpToolInfoListSchema } from '../types.js';
@@ -49,7 +49,7 @@ describe('MCP 工具发现安全边界', () => {
   it('readOnlyHint 不能生成 low/read 权限，也不能开放并发', async () => {
     const tool = buildMcpBuiltTool(toolInfo({ reportedReadOnly: true }), registryStub());
     const ask = vi.fn(async () => ({ action: 'deny' as const }));
-    const permission = new PermissionEngine({ mode: 'auto', rules: [], ask });
+    const permission = new PermissionEngine({ mode: 'auto', ask }, new InMemoryPermissionRuleStore());
 
     expect(tool.permissionMeta).toEqual({ riskLevel: 'medium', accessType: 'execute' });
     expect(tool.isReadOnly({})).toBe(false);

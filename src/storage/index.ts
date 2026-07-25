@@ -46,6 +46,8 @@ export { SkillsRepo }      from './repos/skills.js';
 export type { SkillRow }   from './repos/skills.js';
 export { MarketSourcesRepo } from './repos/market-sources.js';
 export type { MarketSourceRow } from './repos/market-sources.js';
+export { PermissionRulesRepo } from './repos/permissionRules.js';
+export type { PermissionRuleRow } from './repos/permissionRules.js';
 export type { ProtectedDeleteResult } from './repos/mutation-results.js';
 
 // ── Memory 子系统 ──────────────────────────────────────────────────────────────

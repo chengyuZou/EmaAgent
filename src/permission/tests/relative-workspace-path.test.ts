@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { PermissionEngine } from '../permissionEngine.js';
+import { InMemoryPermissionRuleStore } from '../policy/permissionRuleStore.js';
 
 const tempDirs: string[] = [];
 
@@ -19,9 +20,8 @@ describe('relative workspace path', () => {
     fs.mkdirSync(path.join(workspaceRoot, 'src'));
     const engine = new PermissionEngine({
       mode: 'auto',
-      rules: [],
       ask: async () => ({ action: 'deny' }),
-    });
+    }, new InMemoryPermissionRuleStore());
 
     const outcome = await engine.gate(
       { id: 'builtin.search.glob', name: 'Glob' },
@@ -39,9 +39,8 @@ describe('relative workspace path', () => {
     fs.mkdirSync(workspaceRoot);
     const engine = new PermissionEngine({
       mode: 'auto',
-      rules: [],
       ask: async () => ({ action: 'deny', reason: '测试拒绝越界' }),
-    });
+    }, new InMemoryPermissionRuleStore());
 
     const outcome = await engine.gate(
       { id: 'builtin.search.glob', name: 'Glob' },
@@ -62,9 +61,8 @@ describe('relative workspace path', () => {
     fs.symlinkSync(outside, path.join(workspaceRoot, 'escape'), process.platform === 'win32' ? 'junction' : 'dir');
     const engine = new PermissionEngine({
       mode: 'auto',
-      rules: [],
       ask: async () => ({ action: 'deny', reason: '测试拒绝链接越界' }),
-    });
+    }, new InMemoryPermissionRuleStore());
 
     const outcome = await engine.gate(
       { id: 'builtin.file.write', name: 'Write' },

@@ -18,7 +18,7 @@ import path from 'node:path';
 import { LanguageModelRuntime } from '@ema-agent/llm';
 import { HookBus } from '@ema-agent/hooks';
 import { EmotionEngine } from '@ema-agent/emotion';
-import { PermissionEngine } from '@ema-agent/permission';
+import { PermissionEngine, InMemoryPermissionRuleStore } from '@ema-agent/permission';
 import { ToolRegistry } from '@ema-agent/tools';
 import { registerBuiltinTools } from '@ema-agent/tool-builtin';
 import type { Message, Turn } from '@ema-agent/session';
@@ -113,9 +113,8 @@ beforeAll(() => {
 
   const permission = new PermissionEngine({
     mode:  'bypass',
-    rules: [],
-    ask:   async () => ({ action: 'allow', remember: false }),
-  });
+    ask:   async () => ({ action: 'allow' }),
+  }, new InMemoryPermissionRuleStore());
 
   const tools = new ToolRegistry();
   registerBuiltinTools(tools);

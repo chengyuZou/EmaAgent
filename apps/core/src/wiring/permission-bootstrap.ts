@@ -6,13 +6,13 @@
  * Pattern matches tts.ts / stt.ts / llm-providers.ts.
  */
 
-import { PermissionEngine } from '@ema-agent/permission';
+import { PermissionEngine, SqlPermissionRuleStore } from '@ema-agent/permission';
 import type { AskPermissionFn } from '@ema-agent/permission';
 import type { SessionId, ToolCallId, TurnId } from '@ema-agent/ids';
 import type { PermissionStreamEvent } from '@ema-agent/permission';
 import { PermissionPromptRegistry } from '../permissions/registry.js';
 import { AskUserRegistry } from '../ask-user/registry.js';
-import type { SettingsRepo } from '@ema-agent/storage';
+import type { SettingsRepo, SqliteDb } from '@ema-agent/storage';
 
 // ── Result type ───────────────────────────────────────────────────────────────
 
@@ -36,8 +36,15 @@ export interface PermissionBootstrapResult {
  * PermissionEngine 默认 'ask' 模式——每次写/执行工具都弹确认。
  * AGEN_PERMISSION_BYPASS=1 仅在非生产构建(NODE_ENV !== production)生效,
  * 用于自动化测试或开发者 CLI;生产构建物理拒绝该环境变量。
+ *
+ * 永久规则存 profile.db.permission_rules,通过 SqlPermissionRuleStore 适配;
+ * 启动时 Engine 从 Store 加载已启用规则参与匹配,addRule/removeRule/setRuleEnabled
+ * 会立即写库并刷新内存快照。内置规则由代码提供,不进数据库。
  */
-export function buildPermissionSubsystem(settingsRepo: SettingsRepo): PermissionBootstrapResult {
+export function buildPermissionSubsystem(
+  settingsRepo: SettingsRepo,
+  profileDb:    SqliteDb,
+): PermissionBootstrapResult {
   // Timeout from persistent settings; falls back to 120 s.
   const storedTimeout = settingsRepo.get('permission.askTimeoutMs');
   const permissionPrompts = new PermissionPromptRegistry(
@@ -54,15 +61,16 @@ export function buildPermissionSubsystem(settingsRepo: SettingsRepo): Permission
   const permissionMode = bypassAllowed && process.env['AGEN_PERMISSION_BYPASS'] === '1'
     ? 'bypass'
     : 'ask';
+
+  // 永久规则 Store:profile.db.permission_rules。
+  // 不为 FileRead/Glob/Grep 注入无路径限制的全局 allow:工作区内读取由
+  // PermissionEngine 的 workingDir 规则自动放行,工作区外读取落到 ask,
+  // 避免越界读取借 allow 规则提前通过。
+  const ruleStore = new SqlPermissionRuleStore(profileDb);
   const permission = new PermissionEngine({
     mode: permissionMode,
-    // 不为 FileRead/Glob/Grep 注入无路径限制的全局 allow:工作区内读取由
-    // PermissionEngine 的 workingDir 规则自动放行,工作区外读取落到 ask,
-    // 避免越界读取借 allow 规则提前通过。
-    rules: [],
-    // Placeholder — replaced per-turn by buildAskForTurn below.
-    ask: async () => ({ action: 'deny', reason: 'no per-turn ask wired' }),
-  });
+    ask:  async () => ({ action: 'deny', reason: 'no per-turn ask wired' }),
+  }, ruleStore);
 
   const buildAskForTurn = (args: {
     sessionId: string;

@@ -15,8 +15,8 @@ export type PermissionMode = 'ask' | 'auto' | 'bypass'
 
 // ── Rule Scopes ───────────────────────────────────────────────────────────────
 
-/** session → in-memory only | project → .ema-agent/settings.json | global → ~/.ema-agent/settings.json */
-export type RuleScope = 'session' | 'project' | 'global'
+/** global → 全局规则(~/.ema-agent) | workspace → 工作区规则(绑定 workspaceRoot)。session 级临时授权由 SessionGrantStore 内存管理,不进此类型。 */
+export type RuleScope = 'global' | 'workspace'
 
 // ── Risk & Access ─────────────────────────────────────────────────────────────
 
@@ -48,8 +48,16 @@ export interface PermissionRule {
   /** Gitignore-style path pattern. Absent = match all paths for this tool. */
   pathGlob?: string
   scope:     RuleScope
-  /** scope=session 时必须提供；缺失时规则按 fail-closed 原则永不匹配。 */
-  sessionId?: string
+  /** scope=workspace 时必填(规范化工作区根);scope=global 时 undefined。 */
+  workspaceRoot?: string
+}
+
+/** 持久化规则:PermissionRule + 存储/管理字段。Store 返回;Engine 匹配时只用 PermissionRule 字段。 */
+export interface PersistedPermissionRule extends PermissionRule {
+  id:        string
+  enabled:   boolean
+  createdAt: number
+  updatedAt: number
 }
 
 /** 权限使用稳定 id 匹配规则，同时保留模型名称给用户界面展示。 */
@@ -159,7 +167,7 @@ export interface ToolPermissionMeta {
 
 export interface PermissionConfig {
   mode:             PermissionMode
-  rules:            PermissionRule[]
+  /** 代码提供的内置规则(不持久化,如危险命令 deny);用户规则由 PermissionRuleStore 提供。 */
+  builtinRules?:    readonly PermissionRule[]
   ask?:             AskPermissionFn
-  onRulePersisted?: (rule: PermissionRule) => void | Promise<void>
 }

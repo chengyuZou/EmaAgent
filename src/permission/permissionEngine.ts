@@ -2,7 +2,8 @@
 
 import path from 'node:path';
 import { checkPathSafety, getDangerousPathReason, getPathsForPermissionCheck, normalizeCaseForComparison } from './paths/pathSafety.js';
-import { findDenyRule, findAskRule, findAllowRule, upsertRule } from './policy/permissionRules.js';
+import { findDenyRule, findAskRule, findAllowRule } from './policy/permissionRules.js';
+import type { PermissionRuleStore } from './policy/permissionRuleStore.js';
 import { pathInAnyWorkingDir } from './paths/workspaceBoundary.js';
 import { checkEditableInternalPath, checkReadableInternalPath } from './paths/internalPaths.js';
 import { SessionGrantStore } from './policy/sessionGrants.js';
@@ -12,35 +13,48 @@ import type {
   PermissionMode,
   PermissionOutcome,
   PermissionRule,
+  PersistedPermissionRule,
   PermissionPrompt,
   ToolPermissionMeta,
   DecisionReason,
-  RuleScope,
   PermissionToolIdentity,
 } from './types.js';
 
 // ── PermissionEngine ──────────────────────────────────────────────────────────
 
 /**
- * Central permission Facade.
+ * Permission 裁决的唯一公共入口。
  *
- * Instantiate once in the application composition root and inject:
- *   - mode: 'ask' | 'auto' | 'bypass'
- *   - rules: loaded from global + project + session settings
- *   - ask: UI/CLI callback for interactive permission prompts
- *   - onRulePersisted: saves "always allow/deny" rules to settings files
+ * 在应用装配根构造一次,注入:
+ *   - mode:'ask' | 'auto' | 'bypass'
+ *   - ruleStore:持久化规则(永久 allow/deny/ask,存 profile.db.permission_rules)
+ *   - ask:UI/CLI 交互回调,用于需要用户确认时弹窗
  *
- * Then call engine.gate(toolName, input, meta, context) before every tool execution.
+ * builtinRules 由代码提供(如危险命令 deny),不进数据库;用户规则由 Store 管理,
+ * addRule/removeRule/setRuleEnabled 立即写库并刷新内存匹配快照。Session 级临时
+ * 授权由内存 SessionGrantStore 管理,不进 Store。
+ *
+ * 每次 Tool 执行前调用 engine.gate(tool, input, meta, context)。
  */
 export class PermissionEngine {
+  private builtinRules: readonly PermissionRule[];
   private rules: PermissionRule[];
   /** 全局默认模式。 */
   private mode: PermissionMode;
   private readonly sessionGrants = new SessionGrantStore();
 
-  constructor(private readonly config: PermissionConfig) {
-    this.rules = [...config.rules];
+  constructor(
+    private readonly config: PermissionConfig,
+    private readonly ruleStore: PermissionRuleStore,
+  ) {
+    this.builtinRules = config.builtinRules ?? [];
     this.mode  = config.mode;
+    this.rules = this.reloadRules();
+  }
+
+  /** 从内置规则 + Store 启用规则重新加载匹配用规则集。 */
+  private reloadRules(): PermissionRule[] {
+    return [...this.builtinRules, ...this.ruleStore.listEnabled()];
   }
 
   /**
@@ -261,33 +275,29 @@ export class PermissionEngine {
     return this.promptUser(toolId, toolName, toolDescription, input, meta, undefined, allPaths, context);
   }
 
-  getRules(): ReadonlyArray<PermissionRule> {
-    return this.rules;
+  /** 列出全部持久化规则(含禁用),供 UI 展示与管理。 */
+  getRules(): ReadonlyArray<PersistedPermissionRule> {
+    return this.ruleStore.list();
   }
 
-  addRule(rule: PermissionRule): void {
-    this.rules = upsertRule(this.rules, rule);
+  /** 新增或按 (tool, pathGlob, scope, workspaceRoot) 去重更新;返回持久化结果。 */
+  addRule(input: PermissionRule): PersistedPermissionRule {
+    const persisted = this.ruleStore.upsert(input);
+    this.rules = this.reloadRules();
+    return persisted;
   }
 
-  /**
-   * Remove a rule by its unique (tool, pathGlob, scope) key.
-   * Used when the user deletes a persisted rule from the settings UI.
-   * No-op if the rule does not exist.
-   */
-  removeRule(
-    tool: string,
-    pathGlob: string | undefined,
-    scope: RuleScope,
-    sessionId?: string,
-  ): void {
-    this.rules = this.rules.filter(
-      r => !(
-        normalizeCaseForComparison(r.tool)     === normalizeCaseForComparison(tool) &&
-        r.pathGlob === pathGlob &&
-        r.scope    === scope &&
-        r.sessionId === sessionId
-      ),
-    );
+  /** 启停一条规则。 */
+  setRuleEnabled(id: string, enabled: boolean): void {
+    this.ruleStore.setEnabled(id, enabled);
+    this.rules = this.reloadRules();
+  }
+
+  /** 按 id 删除持久化规则;不存在返回 false。内置规则不可删。 */
+  removeRule(id: string): boolean {
+    const deleted = this.ruleStore.delete(id);
+    if (deleted) this.rules = this.reloadRules();
+    return deleted;
   }
 
   // ── Private helpers ───────────────────────────────────────────────────────

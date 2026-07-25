@@ -142,10 +142,11 @@ export function ruleMatches(
   rule:       PermissionRule,
   toolName:   string,
   targetPath: string | undefined,
-  context:    Pick<PermissionContext, 'workspaceRoot' | 'sessionId'>,
+  context:    Pick<PermissionContext, 'workspaceRoot'>,
 ): boolean {
-  if (rule.scope === 'session' && (!rule.sessionId || rule.sessionId !== context.sessionId)) {
-    return false;
+  if (rule.scope === 'workspace') {
+    if (!rule.workspaceRoot || !context.workspaceRoot) return false;
+    if (normalizeCaseForComparison(rule.workspaceRoot) !== normalizeCaseForComparison(context.workspaceRoot)) return false;
   }
   if (rule.tool !== '*' && normalizeCaseForComparison(rule.tool) !== normalizeCaseForComparison(toolName)) {
     return false;
@@ -158,15 +159,13 @@ export function ruleMatches(
 // ── Rule lookup helpers ───────────────────────────────────────────────────────
 
 /**
- * Scope 优先级：global > project > session。
- * 持久全局规则最权威，项目配置次之，Session 临时规则最低。
- * 同一 action 的多条规则都匹配同一调用时，按此优先级返回确定的那条，
- * 使审计能准确指出放行/拒绝来自哪一层，而不是依赖 rules 数组注入顺序。
+ * Scope 优先级：global > workspace。
+ * 全局规则最权威，工作区规则次之。同一 action 的多条规则都匹配同一调用时，
+ * 按此优先级返回确定的那条，使审计能准确指出放行/拒绝来自哪一层。
  */
 const SCOPE_PRIORITY: Record<RuleScope, number> = {
-  global:  0,
-  project: 1,
-  session: 2,
+  global:    0,
+  workspace: 1,
 };
 
 function compareScopePriority(left: PermissionRule, right: PermissionRule): number {
@@ -222,7 +221,7 @@ export function upsertRule(rules: PermissionRule[], incoming: PermissionRule): P
       normalizeCaseForComparison(r.tool) === normalizeCaseForComparison(incoming.tool) &&
       r.pathGlob === incoming.pathGlob &&
       r.scope    === incoming.scope &&
-      r.sessionId === incoming.sessionId
+      r.workspaceRoot === incoming.workspaceRoot
     ),
   );
   return [...filtered, incoming];
