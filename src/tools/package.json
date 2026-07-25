@@ -24,6 +24,7 @@
     "@ema-agent/ids": "workspace:*",
     "@ema-agent/permission": "workspace:*",
     "@ema-agent/tasks": "workspace:*",
+    "diff": "^9.0.0",
     "zod": "^3.23.0",
     "zod-to-json-schema": "^3.23.0"
   },

@@ -1,5 +1,5 @@
 // 测试单个 Turn 内工具调用的准备、权限、执行、等待用户和终态收口。
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { SessionId, TurnId } from '@ema-agent/ids';
 import type { AgentRuntimeEvent as EmaStreamEvent } from '../events.js';
 import { HookBus } from '@ema-agent/hooks';
@@ -208,6 +208,53 @@ describe('ToolExecutionRuntime Hook 与权限边界', () => {
       name: 'Read',
       output: 'ok',
     }));
+  });
+
+  it('显式 not_required 的可信工具跳过普通审批但仍执行完整工具主链', async () => {
+    const gate = vi.fn(async () => ({ granted: false }));
+    const execute = vi.fn(async () => 'answered');
+    const executor = new ToolExecutionRuntime({
+      sessionId,
+      turnId,
+      allows: () => true,
+      tools: {
+        has: () => true,
+        prepare: (name: string, input: unknown) => ({
+          id: name,
+          name,
+          origin: { kind: 'builtin' },
+          input,
+          isReadOnly: false,
+          isConcurrencySafe: false,
+          requiresUserInteraction: true,
+          maxResultBytes: 1024,
+          permissionMeta: {
+            approval: 'not_required',
+            riskLevel: 'low',
+          },
+        }),
+        validate: async () => ({ valid: true }),
+        validateContext: () => ({ valid: true, context: {} }),
+        execute,
+      } as never,
+      permission: { gate } as never,
+      permCtx: { workspaceRoot: null } as never,
+      lifecycle: createToolLifecycleHooks(new HookBus(), () => undefined),
+      toolContext: {
+        sessionId,
+        turnId,
+        workspaceRoot: null,
+        signal: new AbortController().signal,
+      } as never,
+      pushEv: () => undefined,
+      signal: () => undefined,
+    });
+
+    executor.addTool(0, 'call-ask', 'AskText', { question: '继续吗？' });
+    await waitUntilDone(executor);
+
+    expect(gate).not.toHaveBeenCalled();
+    expect(execute).toHaveBeenCalledTimes(1);
   });
 
   const failureCases = [

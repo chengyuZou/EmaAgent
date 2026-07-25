@@ -4,6 +4,6 @@
     "rootDir": ".",
     "outDir": "dist"
   },
-  "include": ["*.ts"],
+  "include": ["*.ts", "interaction/**/*.ts"],
   "exclude": ["dist", "node_modules"]
 }

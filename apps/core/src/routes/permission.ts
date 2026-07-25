@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import type { PermissionResponse } from '@ema-agent/permission';
+import { filterPermissionPending } from '@ema-agent/turn';
 import type { AppBindings } from '../wiring/index.js';
 
 // ── Schemas ──────────────────────────────────────────────────────────────────
@@ -40,7 +41,7 @@ export function permissionRoute(bindings: AppBindings): Hono {
     }
 
     const response = parsed.data as PermissionResponse;
-    const ok = bindings.permissionPrompts.respond(promptId, response);
+    const ok = bindings.interactionQueue.respondPermission(promptId, response);
     if (!ok) {
       return c.json({ error: 'not_found_or_expired', promptId }, 404);
     }
@@ -49,7 +50,7 @@ export function permissionRoute(bindings: AppBindings): Hono {
 
   app.post('/:promptId/cancel', (c) => {
     const promptId = c.req.param('promptId');
-    const ok = bindings.permissionPrompts.cancel(promptId, 'cancelled by user');
+    const ok = bindings.interactionQueue.cancelActive(promptId, 'cancelled by user');
     if (!ok) {
       return c.json({ error: 'not_found_or_expired', promptId }, 404);
     }
@@ -57,7 +58,8 @@ export function permissionRoute(bindings: AppBindings): Hono {
   });
 
   app.get('/pending', (c) => {
-    const prompts = bindings.permissionPrompts.listPending();
+    // 统一队列混合快照按 kind 过滤出 Permission 部分。
+    const prompts = filterPermissionPending(bindings.interactionQueue.listPending());
     return c.json({ count: prompts.length, prompts });
   });
 

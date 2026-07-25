@@ -44,8 +44,8 @@ Prefer this over AskUser when you only need a binary decision - the UI shows a f
   requires: ['askUser'],
 
   permissionMeta: {
+    approval: 'not_required',
     riskLevel: 'low',
-    accessType: 'write',
   },
 
   // 总是可用：有 emit+askUser 走 SSE，否则 CLI 兜底。
@@ -75,17 +75,28 @@ Prefer this over AskUser when you only need a binary decision - the UI shows a f
       } satisfies EmaStreamEvent;
       context.emit(request);
 
-      const { answers } = await context.askUser(promptId, [], request);
-      const confirmed = answers['confirmed'] === 'true';
+      try {
+        const { answers } = await context.askUser(promptId, [], request);
+        const confirmed = answers['confirmed'] === 'true';
 
-      context.emit({
-        type:      'ask_confirm_resolved',
-        sessionId: context.sessionId,
-        promptId,
-        confirmed,
-      } satisfies EmaStreamEvent);
+        context.emit({
+          type:      'ask_confirm_resolved',
+          sessionId: context.sessionId,
+          promptId,
+          confirmed,
+        } satisfies EmaStreamEvent);
 
-      return { confirmed };
+        return { confirmed };
+      } catch (error) {
+        // resolved 只负责清理前端卡片；异常继续抛出，不能伪装成用户选择了否。
+        context.emit({
+          type:      'ask_confirm_resolved',
+          sessionId: context.sessionId,
+          promptId,
+          confirmed: false,
+        } satisfies EmaStreamEvent);
+        throw error;
+      }
     }
 
     // CLI 兜底

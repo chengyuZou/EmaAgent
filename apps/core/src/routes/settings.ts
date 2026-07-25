@@ -220,7 +220,7 @@ export function settingsRoute(bindings: AppBindings): Hono {
       return c.json({ error: 'invalid_request', details: parsed.error.flatten() }, 400);
     }
     repo.set(SETTINGS_KEY_PERMISSION_TIMEOUT, parsed.data.timeoutMs);
-    bindings.permissionPrompts.setDefaultTimeout(parsed.data.timeoutMs);
+    bindings.interactionQueue.setDefaultTimeout(parsed.data.timeoutMs);
     return c.json({ ok: true });
   });
 

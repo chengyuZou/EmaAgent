@@ -63,4 +63,18 @@ describe('Builtin ToolPool 能力装配', () => {
     expect(names).not.toContain(BuiltinTools.Bash.name);
     expect(names).not.toContain(BuiltinTools.SkillCall.name);
   });
+
+  it('四种纯问询工具显式免普通权限审批', () => {
+    const registry = new ToolRegistry();
+    registerBuiltinTools(registry);
+
+    for (const tool of [
+      BuiltinTools.AskUser,
+      BuiltinTools.AskText,
+      BuiltinTools.AskChoice,
+      BuiltinTools.AskConfirm,
+    ]) {
+      expect(registry.get(tool.name)?.permissionMeta.approval).toBe('not_required');
+    }
+  });
 });

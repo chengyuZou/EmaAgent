@@ -2,3 +2,15 @@
 export * from './turns.js';
 export * from './events.js';
 export type { TurnFailureCode } from './errors.js';
+export {
+  SessionInteractionQueue,
+  filterPermissionPending,
+  filterAskUserPending,
+} from './interaction/sessionInteractionQueue.js';
+export type {
+  SessionInteraction,
+  PermissionInteraction,
+  AskUserInteraction,
+  AskUserInteractionOutcome,
+  PendingInteraction,
+} from './interaction/sessionInteractionQueue.js';

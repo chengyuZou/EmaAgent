@@ -80,8 +80,8 @@ export const AskUserTool = buildTool<AskUserInput, AskUserResult, BuiltinToolCon
   requires: ['askUser'],
 
   permissionMeta: {
+    approval: 'not_required',
     riskLevel: 'low',
-    accessType: 'write',
   },
 
   // 总是可用：有 emit+askUser 走 SSE，否则 CLI 兜底。

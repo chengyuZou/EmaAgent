@@ -11,7 +11,7 @@ function createApp(stored: Record<string, unknown> = {}) {
       get: (key: string) => stored[key],
       set,
     },
-    permissionPrompts: { setDefaultTimeout },
+    interactionQueue: { setDefaultTimeout },
   } as unknown as AppBindings);
   return { app, set, setDefaultTimeout };
 }

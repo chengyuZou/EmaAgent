@@ -77,7 +77,11 @@ export function buildTool<TInput, TOutput, THostContext, TToolContext>(
     isReadOnly: def.isReadOnly,
     isConcurrencySafe: def.isConcurrencySafe,
     requiresUserInteraction: def.requiresUserInteraction ?? (() => false),
-    permissionMeta: Object.freeze({ ...def.permissionMeta }),
+    // 审批策略默认关闭失败：旧工具未声明时仍必须经过 PermissionEngine。
+    permissionMeta: Object.freeze({
+      approval: 'required',
+      ...def.permissionMeta,
+    }),
     descriptor,
     execute,
     unsafeExecute,

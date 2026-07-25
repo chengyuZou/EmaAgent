@@ -36,8 +36,11 @@ export async function awaitAgentAnswer(
   input.signal.addEventListener('abort', onAbort, { once: true });
 
   try {
-    const answers = await Promise.race([promise, aborted]);
-    return { answers };
+    const outcome = await Promise.race([promise, aborted]);
+    if (outcome.status === 'answered') {
+      return { answers: { ...outcome.answers } };
+    }
+    throw new Error(`AskUser ${outcome.status}: ${outcome.reason}`);
   } finally {
     input.signal.removeEventListener('abort', onAbort);
   }

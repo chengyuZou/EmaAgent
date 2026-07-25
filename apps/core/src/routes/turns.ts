@@ -21,6 +21,7 @@ import {
 } from '@ema-agent/ids';
 import {
   TurnRequest,
+  filterAskUserPending,
 } from '@ema-agent/turn';
 import { hasTurnRequestInput } from '@ema-agent/turn';
 import { REQUEST_VALUE_LIMITS } from '../http/request-budget.js';
@@ -157,7 +158,8 @@ export function turnsRoute(bindings: AppBindings): Hono {
 
   // 窗口重开时恢复仍在等待回答的 Ask User 卡片；请求本身已包含 Session/Turn 身份。
   app.get('/pending/ask-user', (c) => {
-    const prompts = bindings.askUserRegistry.listPending();
+    // 统一队列混合快照按 kind 过滤出 AskUser 部分。
+    const prompts = filterAskUserPending(bindings.interactionQueue.listPending());
     return c.json({ count: prompts.length, prompts });
   });
 
@@ -266,14 +268,11 @@ export function turnsRoute(bindings: AppBindings): Hono {
         }
         publishEvent(enriched);
 
-        // Auto-cancel any in-flight permission prompts when the turn ends.
-        // Otherwise an aborted turn leaves the prompt hanging in the
-        // registry — and on the frontend — until the 120 s timeout fires.
+        // Auto-cancel any in-flight interaction prompts when the turn ends.
+        // 统一队列一次取消该 Turn 全部 Permission 与 AskUser 待交互,避免悬挂。
         if (isTerminalTurnEvent(enriched)) {
-          const n = bindings.permissionPrompts.cancelForTurn(turnId, `turn ${enriched.type}`);
-          if (n > 0) console.log(`[permission] cancelled ${n} prompt(s) on ${enriched.type}`);
-          const m = bindings.askUserRegistry.cancelForTurn(turnId as string);
-          if (m > 0) console.log(`[ask_user] cancelled ${m} prompt(s) on ${enriched.type}`);
+          const n = bindings.interactionQueue.cancelForTurn(turnId, `turn ${enriched.type}`);
+          if (n > 0) console.log(`[interaction] cancelled ${n} prompt(s) on ${enriched.type}`);
         }
       }
     })().catch((err) => {
@@ -444,25 +443,28 @@ export function turnsRoute(bindings: AppBindings): Hono {
 
   // ── POST /api/turns/:turnId/ask-user/:promptId/respond ─────────────────────
   //
-  // Resolves a pending ask_user prompt. The tool awaits a Promise stored in
-  // AskUserRegistry; this POST resolves it with the user's answers map.
+  // promptId 定位交互，turnId 防止陈旧卡片或跨 Session UI 状态误答另一个 Turn。
   app.post('/:turnId/ask-user/:promptId/respond', async (c) => {
-    const turnId = c.req.param('turnId');
+    const turnId = asTurnId(c.req.param('turnId'));
     const promptId = c.req.param('promptId');
     const body = await c.req.json().catch(() => null) as { answers?: Record<string, string> } | null;
     if (!body || typeof body.answers !== 'object') {
       return c.json({ error: 'invalid_request' }, 400);
     }
-    const ok = bindings.askUserRegistry.respond(promptId, body.answers, turnId);
+    const ok = bindings.interactionQueue.respondAskUser(promptId, body.answers, turnId);
     if (!ok) return c.json({ error: 'not_found_or_expired', promptId }, 404);
     return c.json({ ok: true });
   });
 
   // 取消不是“提交空答案”：单独的路由让前端意图和后端状态机保持一致。
   app.post('/:turnId/ask-user/:promptId/cancel', (c) => {
-    const turnId = c.req.param('turnId');
+    const turnId = asTurnId(c.req.param('turnId'));
     const promptId = c.req.param('promptId');
-    const ok = bindings.askUserRegistry.cancel(promptId, turnId);
+    const ok = bindings.interactionQueue.cancelActive(
+      promptId,
+      'cancelled by user',
+      turnId,
+    );
     if (!ok) return c.json({ error: 'not_found_or_expired', promptId }, 404);
     return c.json({ ok: true });
   });

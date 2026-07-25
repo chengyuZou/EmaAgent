@@ -2,6 +2,7 @@
 
 import type { SessionId, ToolCallId, TurnId } from '@ema-agent/ids';
 import type {
+  AskUserInteractionOutcome,
   KbAssetScope,
   RequestDegradationNotice,
   TurnFailureCode,
@@ -41,15 +42,13 @@ import type { TaskStorePort } from '@ema-agent/tasks';
 
 /** AskUser 注册表的最小接口，避免 Agent 反向依赖 Core。 */
 export interface AskUserRegistryLike {
-  create(timeoutMs?: number): { promptId: string; promise: Promise<Record<string, string>> };
   /** 使用调用方提供的 promptId，不在注册表中另建 UUID。 */
   createWithId(
     promptId: string,
     timeoutMs?: number,
     turnId?: string,
     request?: AskUserRequiredEvent,
-  ): { promise: Promise<Record<string, string>> };
-  respond(promptId: string, answers: Record<string, string>): boolean;
+  ): { promise: Promise<AskUserInteractionOutcome> };
   cancel(promptId: string): boolean;
 }
 

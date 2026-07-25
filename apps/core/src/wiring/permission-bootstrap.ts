@@ -1,25 +1,35 @@
-// 这里根据运行模式创建权限引擎，并装入内置工具的默认权限规则。
-/**
- * permission-bootstrap.ts — PermissionEngine construction + per-turn ask factory.
- *
- * Extracted from bindings.ts to keep the DI assembly file focused.
- * Pattern matches tts.ts / stt.ts / llm-providers.ts.
- */
+// 根据运行模式创建权限引擎，并让 Permission 与 AskUser 共享 Session 交互队列。
 
 import { PermissionEngine, SqlPermissionRuleStore } from '@ema-agent/permission';
-import type { AskPermissionFn } from '@ema-agent/permission';
+import type {
+  AskPermissionFn,
+  PermissionPrompt,
+  PermissionResponse,
+} from '@ema-agent/permission';
 import type { SessionId, ToolCallId, TurnId } from '@ema-agent/ids';
 import type { PermissionStreamEvent } from '@ema-agent/permission';
-import { PermissionPromptRegistry } from '../permissions/registry.js';
-import { AskUserRegistry } from '../ask-user/registry.js';
+import type { AskUserRequiredEvent } from '@ema-agent/tools';
+import {
+  SessionInteractionQueue,
+} from '@ema-agent/turn';
+import type { AskUserInteractionOutcome } from '@ema-agent/turn';
+import type { AskUserRegistryLike } from '@ema-agent/agent';
 import type { SettingsRepo, SqliteDb } from '@ema-agent/storage';
 
-// ── Result type ───────────────────────────────────────────────────────────────
+// ── 返回契约 ─────────────────────────────────────────────────────────────────
+
+export type AppInteractionQueue = SessionInteractionQueue<
+  PermissionPrompt,
+  PermissionResponse,
+  AskUserRequiredEvent
+>;
 
 export interface PermissionBootstrapResult {
   permission:        PermissionEngine;
-  permissionPrompts: PermissionPromptRegistry;
-  askUserRegistry:   AskUserRegistry;
+  /** Permission 与 AskUser 共享的 per-Session FIFO 交互队列。 */
+  interactionQueue:  AppInteractionQueue;
+  /** 适配 engine.ts askUser 回调的 AskUserRegistryLike;内部委托统一队列。 */
+  askUserRegistry:   AskUserRegistryLike;
   buildAskForTurn: (args: {
     sessionId: string;
     turnId:    TurnId;
@@ -28,7 +38,48 @@ export interface PermissionBootstrapResult {
   }) => AskPermissionFn;
 }
 
-// ── Builder ───────────────────────────────────────────────────────────────────
+// ── AskUserRegistryLike 适配器 ───────────────────────────────────────────────
+
+/**
+ * 把 engine.ts 的 askUser 回调接到统一交互队列。
+ *
+ * engine.ts 调用 createWithId(promptId, timeoutMs, turnId, request);request 携带
+ * sessionId(见 tools/events.ts 的 ask_*_required 事件),适配器据此把问询推入
+ * 对应 Session 的 FIFO,与 Permission 共同排队。
+ */
+class InteractionQueueAskUserAdapter implements AskUserRegistryLike {
+  constructor(private readonly queue: AppInteractionQueue) {}
+
+  createWithId(
+    promptId: string,
+    timeoutMs?: number,
+    turnId?: string,
+    request?: AskUserRequiredEvent,
+  ): { promise: Promise<AskUserInteractionOutcome> } {
+    if (!turnId) {
+      throw new Error('AskUser createWithId requires turnId');
+    }
+    if (!request) {
+      throw new Error('AskUser createWithId requires request');
+    }
+    // ask_*_required 事件均携带 sessionId(tools/events.ts);统一队列按 Session FIFO。
+    const sessionId = request.sessionId as string;
+    const { promise } = this.queue.enqueueAskUser({
+      promptId,
+      sessionId,
+      turnId,
+      request,
+      timeoutMs,
+    });
+    return { promise };
+  }
+
+  cancel(promptId: string): boolean {
+    return this.queue.cancel(promptId, 'ask-user cancelled');
+  }
+}
+
+// ── 子系统装配 ───────────────────────────────────────────────────────────────
 
 /**
  * 构造权限子系统。
@@ -45,15 +96,18 @@ export function buildPermissionSubsystem(
   settingsRepo: SettingsRepo,
   profileDb:    SqliteDb,
 ): PermissionBootstrapResult {
-  // Timeout from persistent settings; falls back to 120 s.
+  // 用户设置只影响新入队的交互，已经开始等待的条目保持原超时。
   const storedTimeout = settingsRepo.get('permission.askTimeoutMs');
-  const permissionPrompts = new PermissionPromptRegistry(
+  const interactionQueue = new SessionInteractionQueue<
+    PermissionPrompt,
+    PermissionResponse,
+    AskUserRequiredEvent
+  >(
     typeof storedTimeout === 'number' ? storedTimeout : 120_000,
+    reason => ({ action: 'deny', reason }),
   );
 
-  // Dev mode: 5 s timeout so a missing frontend doesn't stall the turn for 2 min.
-  const askUserTimeoutMs = process.env['NODE_ENV'] === 'development' ? 5_000 : 120_000;
-  const askUserRegistry  = new AskUserRegistry(askUserTimeoutMs);
+  const askUserRegistry = new InteractionQueueAskUserAdapter(interactionQueue);
 
   // 正式构建(NODE_ENV=production)物理拒绝 bypass,防止用户用环境变量绕过权限。
   // 仅开发/测试构建允许 AGEN_PERMISSION_BYPASS=1。
@@ -79,7 +133,7 @@ export function buildPermissionSubsystem(
     emit:      (ev: PermissionStreamEvent) => void;
   }): AskPermissionFn => {
     return async (prompt) => {
-      const { promptId, promise } = permissionPrompts.create({
+      const { promptId, promise } = interactionQueue.enqueuePermission({
         sessionId: args.sessionId,
         turnId:    args.turnId,
         toolCallId: args.toolCallId,
@@ -114,5 +168,5 @@ export function buildPermissionSubsystem(
     };
   };
 
-  return { permission, permissionPrompts, askUserRegistry, buildAskForTurn };
+  return { permission, interactionQueue, askUserRegistry, buildAskForTurn };
 }

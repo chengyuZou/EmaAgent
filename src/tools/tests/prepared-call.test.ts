@@ -59,6 +59,7 @@ describe('PreparedToolCall', () => {
     expect(prepared.isConcurrencySafe).toBe(true);
     expect(prepared.requiresUserInteraction).toBe(false);
     expect(prepared.maxResultBytes).toBe(4096);
+    expect(prepared.permissionMeta.approval).toBe('required');
     expect(Object.isFrozen(prepared)).toBe(true);
     expect(Object.isFrozen(prepared.input)).toBe(true);
     expect(Object.isFrozen(prepared.permissionMeta)).toBe(true);

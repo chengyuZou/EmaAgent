@@ -48,6 +48,8 @@ Sandbox 依赖反转已经完成：进程启动、超时、取消和有界输出
 
 Tools 主执行链归位已经完成：`ToolRegistry.dispatch()` 组合捷径已删除，可信测试调用同样显式使用 `prepare()` 与 `execute()`；原 Agent 内执行器迁为 `src/tools/execution/toolExecutionRuntime.ts`，统一承担并发栅栏、PreparedToolCall 校验、Permission、Journal、取消、结果预算和执行事件。Tools 通过窄 `ToolLifecycleObserver` 接受观察能力，不反向依赖 Agent、Session 或 Hooks；Agent 只负责把现有 HookBus 适配进来，并消费 `ToolExecutionResult` 决定下一轮。`ToolFailurePhase` 同步回到 Tools，Session 只扩展持久消息允许的媒体结果结构。
 
+Permission 与 AskUser 的阻塞交互已经统一：`SessionInteractionQueue` 按 Session 串行 Permission/AskUser，跨 Session 并行，只有队首计时并允许用户响应；AskUser 回答、取消和超时使用明确终态，不再把取消伪装成空答案。四种纯问询工具通过随 `PreparedToolCall` 冻结的 `permissionMeta.approval = not_required` 跳过普通权限卡片，其余工具省略字段时默认 `required`。AskUser HTTP 响应同时校验 `promptId + turnId`，Turn/Session 中止仍可清理包括非队首在内的全部等待项。
+
 Tool 调用边界已经收窄：旧万能 `ToolExecutionContext/ToolExecutionScope/ToolInvocationContext` 已删除。Ema 内置工具只在集成层共享一次执行的 `BuiltinToolContext`；每个 Tool 必须先用 `validateContext()` 校验并投影自己的窄 Context，`execute()` 看不到其他业务能力。ToolExecutionRuntime 只按调用覆盖 `toolCallId/signal/emit`，MCP 动态工具也使用同一四泛型契约。根 Agent 与子 Agent 先按实际 Context 装配 Manifest，再从同一 Manifest 建立 Policy；旧 Bridge 注册标志和子 Agent 手写白名单已删除。
 
 Tool Port 所有权已经归位：Knowledge 与 Skills 分别公开 `KnowledgeSearchPort` 和 `SkillRunnerPort`，`SkillRunner` 直接实现后者，Core 不再维护重复的 `skillBridge` 适配对象；Sandbox、Tasks、Artifact 与 Tools 文件状态继续拥有自身端口。Subagent 与 AskUser 的 Port 是 Builtin Tool 对宿主的消费契约，保留在 `builtinTools`，由 Agent/未来 TurnRuntime 结构化实现，从而避免 `agent ↔ builtinTools` 或 `turn ↔ tools` 包环。通用 `tools/types.ts` 不再定义 Knowledge、Skill 或 Subagent 业务 Port。
@@ -86,9 +88,9 @@ Task 与 AgentRun 前端已经分面：Desktop 使用正式 `/api/tasks` 快照�
 
 开始任何新批次前必须重新运行 `git status --short` 与 `git diff`，保留用户和其他 Agent 的修改。
 
-当前工作区只包含 Tools 残余边界清理：根目录 `tool-result.ts` 已并入 `presentation/`；Session 文件缓存及其 Context/Core/Agent/Builtin 接线已完整删除，Turn 内 `ReadFileState` 独立负责编辑防覆盖。Tools 的无用 import 与 `sandbox/diff` 残留依赖已删除。`ToolExecutionJournal` 经真实 SQL、恢复与 FileWrite 调用链复查后保留。
+当前工作区包含 Permission/AskUser 统一交互队列及本轮收口：旧 Core Permission/AskUser Registry 已删除，队列迁入 Turn；四种 Ask 工具免重复权限审批，取消/超时、队首响应和 Turn 身份校验已修复。Tools Presentation 已引用的 `diff` 依赖补入 Tools 自身 package，避免依赖 Desktop UI 的偶然安装结果。工作区还包含其他 Agent 已完成的 Sandbox 与 Tools 改动，后续修改前仍须逐文件检查 Diff。
 
-当前基线最近提交：`e89bb3ad refactor: consolidate tool context handling and ownership across components`。该提交号仅用于定位，不代表其他 Agent 不会继续提交。
+当前基线最近提交：`e23fbb92 feat(permission): refactor permission handling with new rule storage system`。该提交号仅用于定位，不代表其他 Agent 不会继续提交。
 
 ## 已确定的 V1 口径
 
@@ -132,8 +134,9 @@ Chat 工作区、Turn 导航轨、Task/AgentRun 分面、双 Dock、置顶摘要
 3. Sandbox 依赖反转、Tools 主执行链归位、单一 `BuiltinToolContext + validateContext` 窄投影与真实 ToolPool 接线均已完成；
 4. Tool Manifest 的 Builtin/MCP 稳定分区、内容 Revision 与缓存稳定测试（2C）已经完成；
 5. 继续逐组审查 Builtin Tool（2D）：优先补 Sandbox 命令环境 allowlist、FileRead 行数/字节双上限和工作目录边界；结构化 Presentation 公共协议与首批接线已完成；
-6. Tool 批次完成后建立 TurnRuntime，再清理 Agent 并让 Core Route 退回协议层；
-7. 后台进程按 `BackgroundProcess + ProcessOutput/ProcessStop` 单独实现 C 档，不修改 AgentLoop，也不恢复假 `run_in_background`。
+6. Permission/AskUser 的统一 Session FIFO 与明确终态已经完成；共享超时设置和迁移期 `AskUserRegistryLike` 命名随 TurnRuntime 装配边界清理，不新增第二套队列；
+7. Tool 批次完成后建立 TurnRuntime，再清理 Agent 并让 Core Route 退回协议层；
+8. 后台进程按 `BackgroundProcess + ProcessOutput/ProcessStop` 单独实现 C 档，不修改 AgentLoop，也不恢复假 `run_in_background`。
 
 命名随业务批次清理：旧 `IFileStateStoreEntry/IFileStateStore` 及后续过渡接口已经删除，`IToolExecutionJournal` 已改为职责名；其余迁移期 `I*` 类型继续随业务边界处理，不单独进行全仓机械重命名。
 
@@ -141,6 +144,7 @@ Chat 工作区、Turn 导航轨、Task/AgentRun 分面、双 Dock、置顶摘要
 
 ## 最近验证
 
+- Permission/AskUser 统一交互收口：Turn 队列已泛型化，生产源码与 package 声明不再形成 `permission → storage → turn → permission` 依赖环；Permission、Tools、Turn、Agent build 通过，BuiltinTools 与 Core typecheck 通过；Tools 27/27、Turn 19/19、Agent 32/32、Core 90/90、Builtin Ask ToolPool 3/3 通过。此前 BuiltinTools 全量 72/73，唯一失败仍是既存 WebFetchPolicy 对 `example.com -> www.example.com` 的跨站重定向口径，与本批无关；Tools 缺失的 `diff` 运行依赖已离线补齐。
 - Tools 残余清理：Session 级文件快照及跨层接线已删除；Tools/Context/BuiltinTools/Agent build 与 Core typecheck 通过，Journal/Presentation/Compaction/File Tools 定向 26/26 通过。此前全量 Tools 27/27、Context 24/24、BuiltinTools 71/72；唯一失败仍是既存 WebFetchPolicy 的 `example.com -> www.example.com` 重定向口径，与本批无关。pnpm lockfile 已离线刷新。
 - Tool Presentation 与 Bash 首批审查（2D）：Tools typecheck、build 与 27/27 测试通过；BuiltinTools typecheck 通过，Presentation/Bash 定向 41/41 通过；BuiltinTools 全量 71/72，唯一失败仍是既存 WebFetchPolicy 对 `example.com -> www.example.com` 重定向口径，与本批无关；Core 与 Desktop UI typecheck 通过。`git diff --check` 通过，仅有既有 CRLF 提示。
 - Tool Manifest 缓存稳定性（2C）：Tools 27/27、Context 24/24、Agent 29/29 通过，4 个 Agent Live Integration 按规则跳过；全仓 typecheck 84/84 通过。测试覆盖 Builtin/MCP 分区、选择顺序无关、等价 MCP 重连 revision 稳定、模型可见集合/Schema 变更 revision 更新、旧执行快照失效、Skill 收窄保序及 Prefix Hash 对真实工具顺序敏感；`git diff --check` 通过，仅有既有 CRLF 提示。

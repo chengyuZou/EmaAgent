@@ -58,8 +58,8 @@ Prefer this over AskUser for a single choice question - the UI shows a cleaner s
   requires: ['askUser'],
 
   permissionMeta: {
+    approval: 'not_required',
     riskLevel: 'low',
-    accessType: 'write',
   },
 
   // 总是可用：有 emit+askUser 走 SSE，否则 CLI 兜底。
@@ -92,21 +92,32 @@ Prefer this over AskUser for a single choice question - the UI shows a cleaner s
       } satisfies EmaStreamEvent;
       context.emit(request);
 
-      const { answers } = await context.askUser(promptId, [], request);
-      // 前端提交:{ selected: 'label1,label2', custom?: 'text' }
-      const raw      = answers['selected'] ?? '';
-      const selected = raw.split(',').map((s) => s.trim()).filter(Boolean);
-      const customText = answers['custom'] || undefined;
+      try {
+        const { answers } = await context.askUser(promptId, [], request);
+        // 前端提交:{ selected: 'label1,label2', custom?: 'text' }
+        const raw      = answers['selected'] ?? '';
+        const selected = raw.split(',').map((s) => s.trim()).filter(Boolean);
+        const customText = answers['custom'] || undefined;
 
-      context.emit({
-        type:      'ask_choice_resolved',
-        sessionId: context.sessionId,
-        promptId,
-        selected,
-        customText,
-      } satisfies EmaStreamEvent);
+        context.emit({
+          type:      'ask_choice_resolved',
+          sessionId: context.sessionId,
+          promptId,
+          selected,
+          customText,
+        } satisfies EmaStreamEvent);
 
-      return { selected, customText };
+        return { selected, customText };
+      } catch (error) {
+        // resolved 只负责清理前端卡片；异常继续抛出，不能成为成功的空选择。
+        context.emit({
+          type:      'ask_choice_resolved',
+          sessionId: context.sessionId,
+          promptId,
+          selected:  [],
+        } satisfies EmaStreamEvent);
+        throw error;
+      }
     }
 
     // CLI 兜底

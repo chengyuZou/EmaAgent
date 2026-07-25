@@ -45,8 +45,8 @@ Prefer this over AskUser for a single freeform question - the UI shows a focused
   requires: ['askUser'],
 
   permissionMeta: {
+    approval: 'not_required',
     riskLevel: 'low',
-    accessType: 'write',
   },
 
   // 总是可用：有 emit+askUser 走 SSE，否则 CLI 兜底。
@@ -77,17 +77,28 @@ Prefer this over AskUser for a single freeform question - the UI shows a focused
       } satisfies EmaStreamEvent;
       context.emit(request);
 
-      const { answers } = await context.askUser(promptId, [], request);
-      const text = answers['text'] ?? '';
+      try {
+        const { answers } = await context.askUser(promptId, [], request);
+        const text = answers['text'] ?? '';
 
-      context.emit({
-        type:      'ask_text_resolved',
-        sessionId: context.sessionId,
-        promptId,
-        text,
-      } satisfies EmaStreamEvent);
+        context.emit({
+          type:      'ask_text_resolved',
+          sessionId: context.sessionId,
+          promptId,
+          text,
+        } satisfies EmaStreamEvent);
 
-      return { text };
+        return { text };
+      } catch (error) {
+        // resolved 只负责清理前端卡片；异常继续抛出，不能成为成功的空文本。
+        context.emit({
+          type:      'ask_text_resolved',
+          sessionId: context.sessionId,
+          promptId,
+          text:      '',
+        } satisfies EmaStreamEvent);
+        throw error;
+      }
     }
 
     // CLI 兜底

@@ -9,6 +9,7 @@ export { SubagentSpawner } from './spawner.js';
 export { AgentRunStore } from './runs/agentRunStore.js';
 export type {
   AgentDeps,
+  AskUserRegistryLike,
   TurnExecutionInput,
 } from './types.js';
 export type {

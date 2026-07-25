@@ -3,6 +3,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { awaitAgentAnswer } from '../ask-user-lifecycle.js';
 import type { AskUserRequiredEvent } from '@ema-agent/tools';
+import type { AskUserInteractionOutcome } from '@ema-agent/turn';
 import type { AskUserRegistryLike } from '../types.js';
 
 const request: AskUserRequiredEvent = {
@@ -15,7 +16,7 @@ const request: AskUserRequiredEvent = {
 
 describe('awaitAgentAnswer', () => {
   it('Registry 回答会恢复根 Turn', async () => {
-    let resolve!: (answers: Record<string, string>) => void;
+    let resolve!: (outcome: AskUserInteractionOutcome) => void;
     const registry = registryWith(new Promise((done) => { resolve = done; }));
 
     const resultPromise = awaitAgentAnswer({
@@ -25,7 +26,7 @@ describe('awaitAgentAnswer', () => {
       signal: new AbortController().signal,
       registry,
     });
-    resolve({ q0: 'yes' });
+    resolve({ status: 'answered', answers: { q0: 'yes' } });
 
     await expect(resultPromise).resolves.toEqual({ answers: { q0: 'yes' } });
     expect(registry.createWithId).toHaveBeenCalledWith(
@@ -52,13 +53,26 @@ describe('awaitAgentAnswer', () => {
     await expect(resultPromise).rejects.toThrow('user stop');
     expect(registry.cancel).toHaveBeenCalledWith('prompt-1');
   });
+
+  it.each([
+    { status: 'cancelled' as const, reason: 'user cancelled' },
+    { status: 'timed_out' as const, reason: 'timed out after 1000ms' },
+  ])('AskUser $status 不会伪装成正常空答案', async (outcome) => {
+    const registry = registryWith(Promise.resolve(outcome));
+
+    await expect(awaitAgentAnswer({
+      promptId: 'prompt-1',
+      request,
+      turnId: 'turn-1',
+      signal: new AbortController().signal,
+      registry,
+    })).rejects.toThrow(outcome.reason);
+  });
 });
 
-function registryWith(promise: Promise<Record<string, string>>): AskUserRegistryLike {
+function registryWith(promise: Promise<AskUserInteractionOutcome>): AskUserRegistryLike {
   return {
-    create: vi.fn(() => ({ promptId: 'generated', promise })),
     createWithId: vi.fn(() => ({ promise })),
-    respond: vi.fn(() => true),
     cancel: vi.fn(() => true),
   };
 }

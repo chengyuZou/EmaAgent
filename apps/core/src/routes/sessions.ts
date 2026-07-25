@@ -391,7 +391,8 @@ export function sessionsRoute(bindings: AppBindings): Hono {
   // ── DELETE /api/sessions/:id ───────────────────────────────────────────────
   app.delete('/:id', (c) => {
     const sessionId = asSessionId(c.req.param('id'));
-    bindings.permissionPrompts.cancelForSession(sessionId, 'session deleted');
+    // 统一队列取消该 Session 全部 Permission 与 AskUser 待交互。
+    bindings.interactionQueue.cancelForSession(sessionId, 'session deleted');
     bindings.permission.clearSession(sessionId);
     bindings.removeSessionRuntime(sessionId);
     bindings.session.deleteSession(sessionId);

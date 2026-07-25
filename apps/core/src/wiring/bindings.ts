@@ -59,12 +59,12 @@ import { loadLlmConfigs }   from './providers/llm.js';
 import { loadEmbedConfigs }  from './providers/embed.js';
 import { loadRerankConfigs } from './providers/rerank.js';
 import { buildPermissionSubsystem } from './permission-bootstrap.js';
+import type { AppInteractionQueue } from './permission-bootstrap.js';
 import { SessionStore }  from '@ema-agent/session';
 import { EmotionEngine } from '@ema-agent/emotion';
 import { PermissionEngine } from '@ema-agent/permission';
 import type { AskPermissionFn, PermissionStreamEvent } from '@ema-agent/permission';
-import { PermissionPromptRegistry } from '../permissions/registry.js';
-import { AskUserRegistry }          from '../ask-user/registry.js';
+import type { AskUserRegistryLike } from '@ema-agent/agent';
 import type {
   SessionId,
   ToolCallId,
@@ -162,9 +162,10 @@ export interface AppBindings {
 
   // Agent stack
   permission:        PermissionEngine;
-  permissionPrompts: PermissionPromptRegistry;
-  /** In-memory registry for pending ask_user prompts. */
-  askUserRegistry:   AskUserRegistry;
+  /** Permission 与 AskUser 共享的 per-Session FIFO 交互队列。 */
+  interactionQueue:  AppInteractionQueue;
+  /** 适配 engine.ts askUser 回调的 AskUserRegistryLike;内部委托统一队列。 */
+  askUserRegistry:   AskUserRegistryLike;
   tools:             ToolRegistry;
   /** Per-turn factory that yields an askPermission callback wired to SSE emit. */
   buildAskForTurn: (args: {
@@ -412,7 +413,7 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
 
   // ── Permission subsystem ────────────────────────────────────────────────────
   const settingsRepo = new SettingsRepo(profileDb.sqlite);
-  const { permission, permissionPrompts, askUserRegistry, buildAskForTurn } =
+  const { permission, interactionQueue, askUserRegistry, buildAskForTurn } =
     buildPermissionSubsystem(settingsRepo, profileDb.sqlite);
 
   // ── Tools + sandbox ─────────────────────────────────────────────────────────
@@ -830,7 +831,7 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
     llm, embed, rerank, narrative, modelCatalog, modelCapabilities,
     card, emotion,
     tts, audioArchive, stt, vision, providerRuntime,
-    permission, permissionPrompts, askUserRegistry, tools, buildAskForTurn, getCommandRunner,
+    permission, interactionQueue, askUserRegistry, tools, buildAskForTurn, getCommandRunner,
     invalidateSessionRuntime, removeSessionRuntime,
     getSessionToolResultStore, toolResultCleaner, agentRunStore, taskStore,
     toolExecutionJournal, agentRunMessages,

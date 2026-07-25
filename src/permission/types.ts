@@ -149,6 +149,11 @@ export type AskPermissionFn = (prompt: PermissionPrompt) => Promise<PermissionRe
 // ── Per-tool metadata ─────────────────────────────────────────────────────────
 
 export interface ToolPermissionMeta {
+  /**
+   * 是否需要进入普通工具审批门禁。
+   * 省略时按 required 处理；只有可信内置工具可以声明 not_required。
+   */
+  approval?:      'required' | 'not_required'
   riskLevel:     RiskLevel
   accessType?:   AccessType
   /**

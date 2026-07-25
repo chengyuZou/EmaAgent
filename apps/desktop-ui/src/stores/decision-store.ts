@@ -1,19 +1,12 @@
 /**
- * Decision store — per-session permission / ask-user prompt queues.
+ * 按 Session 保存 Permission 与 AskUser 等待交互卡片。
  *
- * Each session owns an independent FIFO queue. The active session's queue
- * head is what the chat-window DecisionLayer renders; non-active sessions
- * surface pending counts via the sidebar. The pet window never mounts
- * DecisionLayer (it has no viewedSessionId), so it never shows a blocking
- * modal — only non-blocking toasts via PermissionToastLayer.
+ * 每个 Session 拥有独立 FIFO。聊天窗口只渲染当前 Session 的队首，其他
+ * Session 在侧栏显示待处理数量；桌宠窗口不挂载阻塞式决策层，只显示非阻塞提示。
  *
- * Prompts arrive from:
- *   - system SSE (/api/system/events) — permission_required
- *   - turn SSE — ask_* tool events (routed through conversation-sse)
- *
- * Routing is by `promptId` (globally unique UUID) on the backend
- * (AskUserRegistry.respond only looks up promptId, never turnId/sessionId).
- * This store mirrors that: dismiss(promptId) scans all session queues.
+ * Permission 从系统 SSE 到达，AskUser 从 Turn SSE 到达。promptId 是全局唯一
+ * 定位键，AskUser 提交时后端还会核对 URL 中的 turnId，拒绝陈旧卡片误答。
+ * dismiss(promptId) 仍会扫描所有 Session 队列，以便终态事件清理对应卡片。
  */
 import { create } from 'zustand';
 import type {

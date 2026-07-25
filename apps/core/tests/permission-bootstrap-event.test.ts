@@ -48,7 +48,7 @@ describe('permission_required SSE', () => {
         throw new Error('permission_required event was not emitted');
       }
 
-      subsystem.permissionPrompts.respond(required.promptId, { action: 'allow' });
+      subsystem.interactionQueue.respondPermission(required.promptId, { action: 'allow' });
       await expect(responsePromise).resolves.toEqual({ action: 'allow' });
       expect(events[1]).toEqual(expect.objectContaining({
         type: 'permission_resolved',

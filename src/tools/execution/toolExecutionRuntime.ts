@@ -427,48 +427,52 @@ export class ToolExecutionRuntime<
       }
 
       // ── 权限门禁 ──────────────────────────────────────────────────────────
-      // 生产环境中，buildAsk 通过 pushEv 把 permission_required 写入 Engine 队列，
-      // 让 SSE 立即送达；测试和最小宿主省略时使用 Engine 级 config.ask。
-      const permCtxWithAsk: PermissionContext = buildAsk
-        ? { ...permCtx, sessionId, turnId, toolCallId: id, ask: buildAsk({
-            sessionId,
-            turnId,
-            toolCallId: id,
-            emit: event => this.emit(track, event),
-          }) }
-        : { ...permCtx, sessionId, turnId, toolCallId: id };
+      // AskUser 一类纯交互工具可由可信定义显式免普通审批；输入校验、审计和执行
+      // 仍走完整主链。其余工具未声明时默认 required，保持关闭失败。
+      if (prepared.permissionMeta.approval !== 'not_required') {
+        // 生产环境中，buildAsk 通过 pushEv 把 permission_required 写入 Engine 队列，
+        // 让 SSE 立即送达；测试和最小宿主省略时使用 Engine 级 config.ask。
+        const permCtxWithAsk: PermissionContext = buildAsk
+          ? { ...permCtx, sessionId, turnId, toolCallId: id, ask: buildAsk({
+              sessionId,
+              turnId,
+              toolCallId: id,
+              emit: event => this.emit(track, event),
+            }) }
+          : { ...permCtx, sessionId, turnId, toolCallId: id };
 
-      let outcome;
-      try {
-        // 权限审批和工具执行共享同一个深冻结 PreparedToolCall 输入。
-        outcome = await permission.gate(
-          { id: prepared.id, name, description: prepared.summary },
-          prepared.input,
-          prepared.permissionMeta,
-          permCtxWithAsk,
-        );
-      } catch (err) {
-        if (isCancelled(perToolCtrl.signal, toolContext.signal)) {
-          this.completeCancellation(track, this.stoppingReason ?? 'user_abort');
+        let outcome;
+        try {
+          // 权限审批和工具执行共享同一个深冻结 PreparedToolCall 输入。
+          outcome = await permission.gate(
+            { id: prepared.id, name, description: prepared.summary },
+            prepared.input,
+            prepared.permissionMeta,
+            permCtxWithAsk,
+          );
+        } catch (err) {
+          if (isCancelled(perToolCtrl.signal, toolContext.signal)) {
+            this.completeCancellation(track, this.stoppingReason ?? 'user_abort');
+            return;
+          }
+          await this.completeFailure(track, {
+            phase: 'permission',
+            code: 'permission/error',
+            message: errorMessage(err),
+            retryable: true,
+          }, perToolCtrl.signal);
           return;
         }
-        await this.completeFailure(track, {
-          phase: 'permission',
-          code: 'permission/error',
-          message: errorMessage(err),
-          retryable: true,
-        }, perToolCtrl.signal);
-        return;
-      }
 
-      if (!outcome.granted) {
-        await this.completeFailure(track, {
-          phase: 'permission',
-          code: 'permission/denied',
-          message: `Permission denied: ${outcome.reason}`,
-          retryable: false,
-        }, perToolCtrl.signal);
-        return;
+        if (!outcome.granted) {
+          await this.completeFailure(track, {
+            phase: 'permission',
+            code: 'permission/denied',
+            message: `Permission denied: ${outcome.reason}`,
+            retryable: false,
+          }, perToolCtrl.signal);
+          return;
+        }
       }
 
       this.opts.toolExecutionJournal?.authorize(id);
