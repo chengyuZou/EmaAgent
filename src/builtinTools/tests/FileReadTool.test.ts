@@ -9,8 +9,8 @@ import { FileReadTool } from '../tools/FileReadTool/FileReadTool.js';
 import { splitToolResult } from '@ema-agent/tools';
 import type { ReadFileState } from '@ema-agent/tools';
 
-function makeCtx(): { readFileState: ReadFileState; signal: AbortSignal } {
-  return { readFileState: new Map(), signal: new AbortController().signal };
+function makeCtx(workspaceRoot = ''): { readFileState: ReadFileState; signal: AbortSignal; workspaceRoot: string } {
+  return { readFileState: new Map(), signal: new AbortController().signal, workspaceRoot };
 }
 
 // 临时目录统一登记, 每个用例结束清理——大文件用例单次跑会在 %TEMP% 留几十 MB。

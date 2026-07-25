@@ -1,4 +1,5 @@
 // 在已读取的文件中执行受保护的精确文本替换。
+import fs from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
 import {
@@ -60,16 +61,12 @@ function normalizeQuotes(s: string): string {
 function findActualString(fileContent: string, search: string): string | null {
   if (fileContent.includes(search)) return search;
 
+  // 精确匹配失败时归一化弯引号后定位;返回文件实际子串,替换用文件自己的引号风格。
   const normalizedSearch = normalizeQuotes(search);
   const normalizedFile = normalizeQuotes(fileContent);
-
-  let idx = 0;
-  while (idx < normalizedFile.length) {
-    const found = normalizedFile.indexOf(normalizedSearch, idx);
-    if (found === -1) return null;
-    return fileContent.substring(found, found + search.length);
-  }
-  return null;
+  const found = normalizedFile.indexOf(normalizedSearch);
+  if (found === -1) return null;
+  return fileContent.substring(found, found + search.length);
 }
 
 /** 数 `haystack` 中 `needle` 的非重叠出现次数。 */
@@ -81,6 +78,35 @@ function countOccurrences(haystack: string, needle: string): number {
     pos += needle.length;
   }
   return count;
+}
+
+/** 编辑文件大小上限,防 V8 字符串长度限制(~2^30)导致 OOM。 */
+const MAX_EDIT_FILE_SIZE = 1024 * 1024 * 1024; // 1 GiB
+
+/** 每行去尾部空白(空格/tab);Markdown 除外(行尾两空格是硬换行,裁剪改语义)。 */
+function stripTrailingWhitespace(s: string): string {
+  return s.replace(/[ \t]+$/gm, '');
+}
+
+/**
+ * 文件 old_string 含弯引号时,把 new_string 的直引号转回弯引号,保持文件排版风格。
+ * 启发式:行首或前是空白/开括号→左引号,前是字母→右引号(撇号,如 don't),否则右引号。
+ */
+function preserveQuoteStyle(actualOld: string, newString: string): string {
+  if (!/[‘’“”]/.test(actualOld)) return newString; // 文件用直引号,无需转
+  let result = '';
+  for (let i = 0; i < newString.length; i++) {
+    const ch = newString[i]!;
+    const prev = i > 0 ? newString[i - 1]! : '';
+    if (ch === "'") {
+      result += prev === '' || /[\s([{\[]/.test(prev) ? '‘' : '’';
+    } else if (ch === '"') {
+      result += prev === '' || /[\s([{\[]/.test(prev) ? '“' : '”';
+    } else {
+      result += ch;
+    }
+  }
+  return result;
 }
 
 // ── 工具定义 ───────────────────────────────────────────────────────────────────
@@ -113,6 +139,19 @@ Rules:
     });
   },
 
+  validateInput(input) {
+    // 空操作 edit 在准备阶段直接拒绝,避免产生假 FileChangePresentation。
+    if (input.old_string === input.new_string) {
+      return {
+        valid: false,
+        message: 'old_string 与 new_string 相同;空编辑不允许。若要查看文件用 Read,若要改请给出不同的 new_string。',
+        code: 'edit/empty',
+        retryable: true,
+      };
+    }
+    return { valid: true };
+  },
+
   permissionMeta: {
     riskLevel: 'medium',
     accessType: 'write',
@@ -126,8 +165,21 @@ Rules:
     input: FileEditInput,
     context: FileEditToolContext,
   ): Promise<FileEditResult> {
-    const { file_path, old_string, new_string, replace_all } = input;
+    const { file_path, old_string, replace_all } = input;
     const fullPath = path.resolve(file_path);
+
+    // ── 文件大小上限(防 V8 字符串长度 OOM)─────────────────────────────────
+    let stat: fs.Stats;
+    try {
+      stat = fs.statSync(fullPath);
+    } catch {
+      throw new Error(`File no longer exists: ${file_path}`);
+    }
+    if (stat.size > MAX_EDIT_FILE_SIZE) {
+      throw new Error(
+        `File is too large to edit (${(stat.size / 1024 / 1024).toFixed(1)} MiB > ${MAX_EDIT_FILE_SIZE / 1024 / 1024} MiB).`,
+      );
+    }
 
     // ── 必须先读守卫 ─────────────────────────────────────────────────────────
     const cached = context.readFileState.get(fullPath);
@@ -142,6 +194,10 @@ Rules:
           `(offset/limit was used). Call Read("${file_path}") without offset/limit first.`,
       );
     }
+
+    // ── new_string 预处理:尾部空白裁剪(Markdown 保留硬换行)─────────────────
+    const isMarkdown = /\.(md|mdx)$/i.test(file_path);
+    const newString = isMarkdown ? input.new_string : stripTrailingWhitespace(input.new_string);
 
     let replacements = 0;
     const operationId = context.toolCallId;
@@ -179,9 +235,15 @@ Rules:
           );
         }
         replacements = replace_all ? occurrences : 1;
+        // 文件用弯引号时把 newString 直引号转回弯引号,保持排版风格
+        const styledNew = preserveQuoteStyle(actual, newString);
+        // 删除场景:连同紧跟换行一起删,避免留空行
+        if (styledNew === '' && !actual.endsWith('\n') && current.content.includes(actual + '\n')) {
+          return current.content.split(actual + '\n').join('');
+        }
         return replace_all
-          ? current.content.split(actual).join(new_string)
-          : current.content.replace(actual, new_string);
+          ? current.content.split(actual).join(styledNew)
+          : current.content.replace(actual, styledNew);
       },
       false,
     );

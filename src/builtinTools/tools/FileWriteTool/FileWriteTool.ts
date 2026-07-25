@@ -1,4 +1,5 @@
 // 把完整文本安全地写入文件，并同步后续编辑所需的文件状态。
+import fs from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
 import {
@@ -12,12 +13,14 @@ import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 import type { BuiltinToolContext } from '../../builtinToolContext.js';
 import { contextFail, contextOk } from '../../contextValidation.js';
 import { atomicTransformUtf8 } from './atomicWrite.js';
+import { isBlockedDevice } from '../FileReadTool/FileReadTool.js';
 
 /** File 写入工具只取得当前 Turn 的写入保护状态和单次调用身份。 */
 interface FileWriteToolContext {
   readFileState: ReadFileState;
   signal: AbortSignal;
   toolCallId: ToolCallId;
+  workspaceRoot: string;
 }
 
 // ── 输入 schema ──────────────────────────────────────────────────────────────
@@ -47,6 +50,7 @@ export const FileWriteTool = buildTool<FileWriteInput, FileWriteResult, BuiltinT
 - Replaces the entire file - for targeted in-place edits use \`Edit\` instead.
 - An existing file MUST have been read in full with \`Read\` before it can be overwritten.
 - Parent directories are created automatically.
+- Paths are resolved against the session workspace (absolute paths are used as-is).
 - Line endings in \`content\` are written as-is (LF preserved, no rewriting).
 - After writing, the file is added to the read-state cache so subsequent \`Edit\` calls work without a separate read.`,
 
@@ -64,6 +68,7 @@ export const FileWriteTool = buildTool<FileWriteInput, FileWriteResult, BuiltinT
       readFileState: ctx.readFileState,
       signal: ctx.signal,
       toolCallId: ctx.toolCallId,
+      workspaceRoot: ctx.workspaceRoot,
     });
   },
 
@@ -82,14 +87,28 @@ export const FileWriteTool = buildTool<FileWriteInput, FileWriteResult, BuiltinT
   ): Promise<FileWriteResult> {
     const { file_path, content } = input;
     const operationId = context.toolCallId;
-    const readStatePath = path.resolve(file_path);
+    // 与 Permission/Read 同一基准: 相对路径按工作区解析, 不借 Core 进程 cwd——
+    // 否则审批查的是工作区路径, 实际写的却是 Core 启动目录(P1 路径分裂)。
+    const fullPath = path.resolve(context.workspaceRoot, file_path);
+
+    // ── I/O 前守卫(与 Read 对称, 写比读更危险) ────────────────────────────────
+    if (fullPath.startsWith('\\\\')) {
+      throw new Error(`UNC paths are not supported: ${fullPath}`);
+    }
+    if (isBlockedDevice(fullPath)) {
+      throw new Error(`Writing to device file is not allowed: ${fullPath}`);
+    }
+    if (fs.existsSync(fullPath) && fs.statSync(fullPath).isDirectory()) {
+      throw new Error(`Path is a directory, not a file: ${fullPath}`);
+    }
+
     const written = await atomicTransformUtf8(
-      file_path,
+      fullPath,
       operationId,
       context.signal,
       current => {
         if (!current.existed) return content;
-        const cached = context.readFileState.get(readStatePath);
+        const cached = context.readFileState.get(fullPath);
         if (!cached || cached.isPartialView) {
           throw new Error(
             `Write requires an existing file to be read in full first. ` +
@@ -105,7 +124,6 @@ export const FileWriteTool = buildTool<FileWriteInput, FileWriteResult, BuiltinT
         return content;
       },
     );
-    const fullPath = readStatePath;
     const mtimeMs = written.mtimeMs;
 
     // 更新 read-state 缓存，使后续 Edit 无需重新读取即可工作。

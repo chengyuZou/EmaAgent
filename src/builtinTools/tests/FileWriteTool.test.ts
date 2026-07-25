@@ -146,12 +146,13 @@ describe('FileWriteTool', () => {
   });
 });
 
-// 构造 FileWriteTool 的窄 Context：写入保护状态 + 单次调用身份。
-function makeContext() {
+// 构造 FileWriteTool 的窄 Context：写入保护状态 + 单次调用身份 + 工作区。
+function makeContext(workspaceRoot = '') {
   return {
     readFileState: new Map(),
     signal: new AbortController().signal,
     toolCallId: asToolCallId('call-write'),
+    workspaceRoot,
   };
 }
 
@@ -183,3 +184,52 @@ function executionRecord(
     updatedAt: 1,
   };
 }
+
+describe('FileWriteTool — 路径与守卫(2D)', () => {
+  it('相对路径按工作区解析, 不借 Core 进程 cwd', async () => {
+    const workspace = makeTempDir();
+    const execution = makeContext(workspace);
+
+    const result = await FileWriteTool.unsafeExecute(
+      { file_path: 'nested/rel.txt', content: '相对写入' },
+      execution,
+    );
+
+    const expected = path.join(workspace, 'nested', 'rel.txt');
+    expect(result.type).toBe('created');
+    expect(fs.readFileSync(expected, 'utf8')).toBe('相对写入');
+    expect(execution.readFileState.get(path.resolve(workspace, 'nested/rel.txt'))?.content)
+      .toBe('相对写入');
+  });
+
+  it('UNC 写路径拒绝(Windows SMB 凭据泄露防御)', async () => {
+    if (process.platform !== 'win32') return;
+    const workspace = makeTempDir();
+    // 用 charCode 构造, 避免转义层把 UNC 双反斜杠吃掉。
+    const uncPath = String.fromCharCode(92, 92) + 'server\\share\\leak.txt';
+
+    await expect(FileWriteTool.unsafeExecute(
+      { file_path: uncPath, content: 'x' },
+      makeContext(workspace),
+    )).rejects.toThrow('UNC');
+  });
+
+  it('目标是目录时给明确错误, 不等到 rename 失败', async () => {
+    const workspace = makeTempDir();
+    const dirTarget = path.join(workspace, 'a-directory');
+    fs.mkdirSync(dirTarget);
+
+    await expect(FileWriteTool.unsafeExecute(
+      { file_path: dirTarget, content: 'x' },
+      makeContext(workspace),
+    )).rejects.toThrow('directory');
+  });
+
+  it('设备路径黑名单与 Read 同源', async () => {
+    const { isBlockedDevice } = await import('../tools/FileReadTool/FileReadTool.js');
+    expect(isBlockedDevice('/dev/null')).toBe(true);
+    expect(isBlockedDevice('/dev/zero')).toBe(true);
+    expect(isBlockedDevice('/dev/tty')).toBe(true);
+    expect(isBlockedDevice('/tmp/normal.txt')).toBe(false);
+  });
+});

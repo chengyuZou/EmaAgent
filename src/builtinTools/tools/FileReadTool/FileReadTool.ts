@@ -17,6 +17,7 @@ import { readTextInRange, SELECTED_BYTES_LIMIT } from './readTextInRange.js';
 interface FileReadToolContext {
   readFileState: ReadFileState;
   signal: AbortSignal;
+  workspaceRoot: string;
 }
 
 /** 工具级结果预算: 50KB 正文预算 + cat -n 行号开销余量, 与 reader 截断口径严格一致。 */
@@ -93,12 +94,15 @@ export interface FileReadResult {
 // ── 辅助函数 ───────────────────────────────────────────────────────────────────
 
 function isBlockedDevice(p: string): boolean {
-  const normalized = path.normalize(p);
+  // 统一分隔符再比较: Windows 的 path.normalize 会把 / 转成 \, 字符串判据不能跟着歪。
+  const normalized = path.normalize(p).replace(/\\/g, '/');
   for (const blocked of BLOCKED_DEVICE_PATHS) {
     if (normalized === blocked || normalized.startsWith(blocked + '/')) return true;
   }
   return false;
 }
+
+export { isBlockedDevice };
 
 function isBinaryExtension(p: string): boolean {
   return BINARY_EXTENSIONS.has(path.extname(p).toLowerCase());
@@ -169,6 +173,7 @@ export const FileReadTool = buildTool<FileReadInput, FileReadResult, BuiltinTool
     return contextOk({
       readFileState: ctx.readFileState,
       signal: ctx.signal,
+      workspaceRoot: ctx.workspaceRoot,
     });
   },
 
@@ -186,7 +191,8 @@ export const FileReadTool = buildTool<FileReadInput, FileReadResult, BuiltinTool
     context: FileReadToolContext,
   ): Promise<FileReadResult> {
     const { file_path, offset, limit } = input;
-    const fullPath = path.resolve(file_path);
+    // 与 Permission/Write 同一基准: 相对路径按工作区解析, 不借 Core 进程 cwd。
+    const fullPath = path.resolve(context.workspaceRoot, file_path);
 
     // ── I/O 前校验 ────────────────────────────────────────────────────────────
     if (isUncPath(fullPath)) {
