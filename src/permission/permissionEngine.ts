@@ -1,11 +1,11 @@
 // 这里根据权限规则和用户选择，决定一次工具调用能不能执行。
 
 import path from 'node:path';
-import { checkPathSafety, getDangerousPathReason, getPathsForPermissionCheck, normalizeCaseForComparison } from './path-safety.js';
-import { findDenyRule, findAskRule, findAllowRule, upsertRule } from './rules.js';
-import { pathInAnyWorkingDir } from './workspace.js';
-import { checkEditableInternalPath, checkReadableInternalPath } from './internal-paths.js';
-import { SessionGrantStore } from './session-grants.js';
+import { checkPathSafety, getDangerousPathReason, getPathsForPermissionCheck, normalizeCaseForComparison } from './paths/pathSafety.js';
+import { findDenyRule, findAskRule, findAllowRule, upsertRule } from './policy/permissionRules.js';
+import { pathInAnyWorkingDir } from './paths/workspaceBoundary.js';
+import { checkEditableInternalPath, checkReadableInternalPath } from './paths/internalPaths.js';
+import { SessionGrantStore } from './policy/sessionGrants.js';
 import type {
   PermissionConfig,
   PermissionContext,
@@ -34,13 +34,8 @@ import type {
  */
 export class PermissionEngine {
   private rules: PermissionRule[];
-  /** Global default mode (used when no session-specific override applies). */
+  /** 全局默认模式。 */
   private mode: PermissionMode;
-  /**
-   * Per-session mode overrides. This is an explicit host setting and is not
-   * changed by a single `allow_session` response.
-   */
-  private readonly sessionModes = new Map<string, PermissionMode>();
   private readonly sessionGrants = new SessionGrantStore();
 
   constructor(private readonly config: PermissionConfig) {
@@ -49,25 +44,14 @@ export class PermissionEngine {
   }
 
   /**
-   * Override the global default mode (affects sessions with no per-session override).
-   * Prefer setSessionMode() for session-scoped escalation.
+   * 覆盖全局默认模式。allow_session 不改模式,只写精确 Session Grant。
    */
   setMode(mode: PermissionMode): void {
     this.mode = mode;
   }
 
-  /**
-   * Override the permission mode for a single session.
-   * Used by `allow_session` so that approving in session A does not bypass
-   * permission checks in session B.
-   */
-  setSessionMode(sessionId: string, mode: PermissionMode): void {
-    this.sessionModes.set(sessionId, mode);
-  }
-
-  /** 清理只属于一个 Session 的模式和临时授权。 */
+  /** 清理只属于一个 Session 的临时授权。 */
   clearSession(sessionId: string): void {
-    this.sessionModes.delete(sessionId);
     this.sessionGrants.clear(sessionId);
   }
 
@@ -153,10 +137,7 @@ export class PermissionEngine {
     }
 
     // ── Step 4: bypass mode ────────────────────────────────────────────────
-    // Use session-specific mode when available; fall back to global default.
-    const effectiveMode = context.sessionId
-      ? (this.sessionModes.get(context.sessionId) ?? this.mode)
-      : this.mode;
+    const effectiveMode = this.mode;
 
     if (effectiveMode === 'bypass') {
       return { granted: true, decisionReason: { type: 'mode', mode: 'bypass' } };

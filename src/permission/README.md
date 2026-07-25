@@ -108,7 +108,7 @@ rel/**          同上，相对 scope 根
 ### 跨平台
 
 - `getPlatform()` 区分 windows/wsl/linux/macos。WSL1/WSL2 都识别为 wsl，**WSL 上也跑 Windows 路径检查**（DrvFs 挂载走 Windows 内核，ADS 仍生效）。
-- `normalizeCaseForComparison` 全平台转小写，防 `.cLauDe` 大小写绕过。
+- `normalizeCaseForComparison` 按平台：windows/macOS 转小写（文件系统大小写不敏感，防 `.cLauDe` 绕过）；Linux/WSL 保留原样（大小写敏感，避免 `/Home` 与 `/home` 被误判为同一目录）。
 - macOS `/private/tmp` <-> `/tmp` 双向规范化。
 - Windows 路径分隔符 `\` -> `/` 统一比较。
 - 空 workspaceRoot（subagent）短路 false，防 `resolve('')=process.cwd()` 泄漏 sidecar cwd。

@@ -5,13 +5,13 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 import type { AppBindings } from '../src/wiring/index.js';
 import type { GitInstallResult } from '@ema-agent/sandbox';
 
-const { mockProbeShell, mockInstallGit } = vi.hoisted(() => ({
-  mockProbeShell: vi.fn(() => ({ available: true as const, path: '/bin/bash' })),
+const { mockProbeBash, mockInstallGit } = vi.hoisted(() => ({
+  mockProbeBash: vi.fn(() => ({ available: true as const, path: '/bin/bash' })),
   mockInstallGit: vi.fn(),
 }));
 
 vi.mock('@ema-agent/sandbox', () => ({
-  probeShell: mockProbeShell,
+  probeBash: mockProbeBash,
   installGitViaWinget: mockInstallGit,
 }));
 

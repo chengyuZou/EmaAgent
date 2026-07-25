@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { probeShell, installGitViaWinget } from '@ema-agent/sandbox';
+import { probeBash, installGitViaWinget } from '@ema-agent/sandbox';
 import type { GitInstallResult } from '@ema-agent/sandbox';
 import type { AppBindings } from '../wiring/index.js';
 
@@ -15,7 +15,7 @@ export function shellRoute(bindings: AppBindings): Hono {
    */
   app.get('/', (c) => {
     const fresh = c.req.query('fresh') === '1';
-    return c.json(probeShell({ fresh }));
+    return c.json(probeBash({ fresh }));
   });
 
   /**

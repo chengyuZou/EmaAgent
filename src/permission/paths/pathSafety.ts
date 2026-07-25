@@ -2,17 +2,17 @@
 import fs   from 'node:fs';
 import os   from 'node:os';
 import path from 'node:path';
-import { getPlatform } from './platform.js';
+import { getPlatform } from './platformPaths.js';
 
 // ── Case normalization ────────────────────────────────────────────────────────
 
 /**
- * Normalise a path for case-insensitive comparison.
- * Always lowercase regardless of platform — consistent security, no filesystem
- * queries needed. Mirrors Claude Code's normalizeCaseForComparison().
+ * 规范化路径用于比较:windows/macOS 文件系统大小写不敏感,统一转小写;
+ * Linux/WSL 原生文件系统大小写敏感,保留原样,避免 /Home 与 /home 被误判为同一目录。
  */
 export function normalizeCaseForComparison(p: string): string {
-  return p.toLowerCase();
+  const platform = getPlatform();
+  return (platform === 'windows' || platform === 'macos') ? p.toLowerCase() : p;
 }
 
 // ── macOS symlink aliases ─────────────────────────────────────────────────────

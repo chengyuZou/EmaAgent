@@ -3,9 +3,9 @@ import os        from 'node:os';
 import path      from 'node:path';
 import { posix } from 'node:path';
 import type { Ignore } from 'ignore';
-import type { PermissionRule, RuleScope, PermissionContext } from './types.js';
-import { normalizeCaseForComparison } from './path-safety.js';
-import { getPlatform } from './platform.js';
+import type { PermissionRule, RuleScope, PermissionContext } from '../types.js';
+import { normalizeCaseForComparison } from '../paths/pathSafety.js';
+import { getPlatform } from '../paths/platformPaths.js';
 
 // CJS interop: `ignore` uses `export =` which NodeNext ESM cannot import as default.
 const _req = createRequire(import.meta.url);

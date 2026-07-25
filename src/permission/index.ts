@@ -1,18 +1,18 @@
 // 这是 Permission 包的统一出口，外部代码从这里使用它的功能和类型。
 
-export { PermissionEngine }                           from './checker.js';
-export { getPlatform, resetPlatformCache }            from './platform.js';
+export { PermissionEngine }                           from './permissionEngine.js';
+export { getPlatform, resetPlatformCache }            from './paths/platformPaths.js';
 export {
   checkPathSafety, getDangerousPathReason, isDangerousRemovalPath,
   hasSuspiciousWindowsPath, hasShellExpansion,
   getPathsForPermissionCheck, normalizeCaseForComparison, normalizeMacOsSymlinks,
   DANGEROUS_FILES, DANGEROUS_DIRS,
-}                                                      from './path-safety.js';
-export { ruleMatches, findAllowRule, findDenyRule, findAskRule, upsertRule, clearIgnoreCache } from './rules.js';
-export { pathInWorkingDir, pathInAnyWorkingDir }      from './workspace.js';
+}                                                      from './paths/pathSafety.js';
+export { ruleMatches, findAllowRule, findDenyRule, findAskRule, upsertRule, clearIgnoreCache } from './policy/permissionRules.js';
+export { pathInWorkingDir, pathInAnyWorkingDir }      from './paths/workspaceBoundary.js';
 export {
   checkEditableInternalPath, checkReadableInternalPath,
-}                                                      from './internal-paths.js';
+}                                                      from './paths/internalPaths.js';
 
 export type {
   Platform,

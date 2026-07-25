@@ -6,7 +6,7 @@ import {
   findAskRule,
   findDenyRule,
   ruleMatches,
-} from '../rules.js';
+} from '../policy/permissionRules.js';
 import type { PermissionContext, PermissionRule } from '../types.js';
 
 const ctx: Pick<PermissionContext, 'workspaceRoot' | 'sessionId'> = {

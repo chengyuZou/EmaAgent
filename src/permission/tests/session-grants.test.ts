@@ -1,7 +1,7 @@
 // 这里测试同一 Session 的临时授权能否正确复用、隔离和清理。
 
 import { describe, expect, it, vi } from 'vitest';
-import { PermissionEngine } from '../checker.js';
+import { PermissionEngine } from '../permissionEngine.js';
 import type { AskPermissionFn, PermissionContext, ToolPermissionMeta } from '../types.js';
 
 const meta: ToolPermissionMeta = {

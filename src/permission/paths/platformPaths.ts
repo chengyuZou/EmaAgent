@@ -1,5 +1,5 @@
 import fs from 'node:fs';
-import type { Platform } from './types.js';
+import type { Platform } from '../types.js';
 
 let _platform: Platform | undefined;
 

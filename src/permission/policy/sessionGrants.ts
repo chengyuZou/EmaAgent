@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import path from 'node:path';
-import type { PermissionContext, ToolPermissionMeta } from './types.js';
+import type { PermissionContext, ToolPermissionMeta } from '../types.js';
 
 /**
  * “本会话允许”的精确授权描述。

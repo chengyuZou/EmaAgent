@@ -1,7 +1,7 @@
 import path, { posix } from 'node:path';
-import { normalizeCaseForComparison, normalizeMacOsSymlinks, getPathsForPermissionCheck } from './path-safety.js';
-import { getPlatform } from './platform.js';
-import type { PermissionContext } from './types.js';
+import { normalizeCaseForComparison, normalizeMacOsSymlinks, getPathsForPermissionCheck } from './pathSafety.js';
+import { getPlatform } from './platformPaths.js';
+import type { PermissionContext } from '../types.js';
 
 // ── POSIX conversion ──────────────────────────────────────────────────────────
 

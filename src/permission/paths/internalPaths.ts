@@ -1,8 +1,8 @@
 // 这里检查一个路径是否位于 Core 传进来的内部工作目录中。
 
 import path from 'node:path';
-import { normalizeCaseForComparison } from './path-safety.js';
-import type { PermissionContext } from './types.js';
+import { normalizeCaseForComparison } from './pathSafety.js';
+import type { PermissionContext } from '../types.js';
 
 function normalize(candidate: string): string {
   return path.normalize(candidate);

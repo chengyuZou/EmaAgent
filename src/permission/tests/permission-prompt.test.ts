@@ -1,6 +1,6 @@
 // 测试 Permission Engine 询问用户时完整保留工具说明和可信风险字段。
 import { describe, expect, it, vi } from 'vitest';
-import { PermissionEngine } from '../checker.js';
+import { PermissionEngine } from '../permissionEngine.js';
 import type { AskPermissionFn } from '../types.js';
 
 describe('PermissionPrompt 展示字段', () => {

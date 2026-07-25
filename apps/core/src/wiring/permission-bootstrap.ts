@@ -13,7 +13,6 @@ import type { PermissionStreamEvent } from '@ema-agent/permission';
 import { PermissionPromptRegistry } from '../permissions/registry.js';
 import { AskUserRegistry } from '../ask-user/registry.js';
 import type { SettingsRepo } from '@ema-agent/storage';
-import { BuiltinTools } from '@ema-agent/tool-builtin';
 
 // ── Result type ───────────────────────────────────────────────────────────────
 
@@ -32,13 +31,11 @@ export interface PermissionBootstrapResult {
 // ── Builder ───────────────────────────────────────────────────────────────────
 
 /**
- * Construct the permission subsystem.
+ * 构造权限子系统。
  *
- * PermissionEngine operates in 'ask' mode by default — every write/execute
- * tool surfaces a confirmation dialog. Set AGEN_PERMISSION_BYPASS=1 to skip
- * all prompts (automated tests / power-user CLI use only).
- *
- * Read、Glob、Grep 使用稳定内部 id 预授权，模型展示名称以后变化也不会丢规则。
+ * PermissionEngine 默认 'ask' 模式——每次写/执行工具都弹确认。
+ * AGEN_PERMISSION_BYPASS=1 仅在非生产构建(NODE_ENV !== production)生效,
+ * 用于自动化测试或开发者 CLI;生产构建物理拒绝该环境变量。
  */
 export function buildPermissionSubsystem(settingsRepo: SettingsRepo): PermissionBootstrapResult {
   // Timeout from persistent settings; falls back to 120 s.
@@ -51,15 +48,18 @@ export function buildPermissionSubsystem(settingsRepo: SettingsRepo): Permission
   const askUserTimeoutMs = process.env['NODE_ENV'] === 'development' ? 5_000 : 120_000;
   const askUserRegistry  = new AskUserRegistry(askUserTimeoutMs);
 
-  const permissionMode = process.env['AGEN_PERMISSION_BYPASS'] === '1' ? 'bypass' : 'ask';
+  // 正式构建(NODE_ENV=production)物理拒绝 bypass,防止用户用环境变量绕过权限。
+  // 仅开发/测试构建允许 AGEN_PERMISSION_BYPASS=1。
+  const bypassAllowed = process.env['NODE_ENV'] !== 'production';
+  const permissionMode = bypassAllowed && process.env['AGEN_PERMISSION_BYPASS'] === '1'
+    ? 'bypass'
+    : 'ask';
   const permission = new PermissionEngine({
     mode: permissionMode,
-    rules: [
-      // Read-only tools: no side effects, no prompt fatigue.
-      { tool: BuiltinTools.FileRead.id, action: 'allow', scope: 'global' },
-      { tool: BuiltinTools.Glob.id,     action: 'allow', scope: 'global' },
-      { tool: BuiltinTools.Grep.id,     action: 'allow', scope: 'global' },
-    ],
+    // 不为 FileRead/Glob/Grep 注入无路径限制的全局 allow:工作区内读取由
+    // PermissionEngine 的 workingDir 规则自动放行,工作区外读取落到 ask,
+    // 避免越界读取借 allow 规则提前通过。
+    rules: [],
     // Placeholder — replaced per-turn by buildAskForTurn below.
     ask: async () => ({ action: 'deny', reason: 'no per-turn ask wired' }),
   });
