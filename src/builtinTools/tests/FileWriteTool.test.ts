@@ -67,6 +67,7 @@ describe('FileWriteTool', () => {
       content: '第一行\n旧内容\n',
       timestamp: stat.mtimeMs,
       isPartialView: false,
+      truncated: false,
     });
 
     const result = await FileWriteTool.unsafeExecute(

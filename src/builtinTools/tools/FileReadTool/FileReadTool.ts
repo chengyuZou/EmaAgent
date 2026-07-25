@@ -11,13 +11,16 @@ import type { ReadFileState } from '@ema-agent/tools';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 import type { BuiltinToolContext } from '../../builtinToolContext.js';
 import { contextFail, contextOk } from '../../contextValidation.js';
-import { readTextInRange } from './readTextInRange.js';
+import { readTextInRange, SELECTED_BYTES_LIMIT } from './readTextInRange.js';
 
 /** File 读取工具只取得当前 Turn 的读取状态与取消信号。 */
 interface FileReadToolContext {
   readFileState: ReadFileState;
   signal: AbortSignal;
 }
+
+/** 工具级结果预算: 50KB 正文预算 + cat -n 行号开销余量, 与 reader 截断口径严格一致。 */
+const MAX_RESULT_BYTES = SELECTED_BYTES_LIMIT + 16 * 1024;
 
 // ── 常量 ─────────────────────────────────────────────────────────────────────
 
@@ -148,12 +151,14 @@ export const FileReadTool = buildTool<FileReadInput, FileReadResult, BuiltinTool
 
 - Returns content with 1-based line numbers (cat -n format).
 - Use \`offset\` and \`limit\` to paginate large files (limit up to ${MAX_READ_LINES} lines); omit both to read the entire file. Pagination streams the file — reading a slice of a huge file does not load it into memory.
+- Each read returns at most ${SELECTED_BYTES_LIMIT / 1024} KB of content; larger selections are truncated with a \`nextOffset\` to continue from.
 - Binary files, device files, and files over 10 MiB (without pagination) are refused.
 - If the same file+range is read twice without the file changing, returns \`file_unchanged\` to save tokens.`,
 
   inputSchema,
   isReadOnly: () => true,
   isConcurrencySafe: () => true,
+  maxResultBytes: MAX_RESULT_BYTES,
 
   requires: ['workspaceRoot', 'readFileState'],
 
@@ -236,9 +241,9 @@ export const FileReadTool = buildTool<FileReadInput, FileReadResult, BuiltinTool
       existing.limit === limit
     ) {
       const cachedLines = existing.content.split('\n');
-      // 判别联合: 分页分支必有 totalLines/truncated, 回放原样保留截断事实。
+      // 判别联合: 两个分支都带截断事实, 回放原样保留(分页分支另有 totalLines)。
       const totalLines = existing.isPartialView ? existing.totalLines : cachedLines.length;
-      const truncated = existing.isPartialView ? existing.truncated : false;
+      const truncated = existing.truncated;
       return presentToolResult(
         { type: 'file_unchanged', filePath: file_path },
         createFileReadPresentation({
@@ -282,6 +287,7 @@ export const FileReadTool = buildTool<FileReadInput, FileReadResult, BuiltinTool
         content: result.raw ?? result.lines.join('\n'),
         timestamp: mtimeMs,
         isPartialView: false,
+        truncated: result.truncated,
       });
     }
     const nextOffset = startLine + result.lines.length;
@@ -298,7 +304,7 @@ export const FileReadTool = buildTool<FileReadInput, FileReadResult, BuiltinTool
               truncated: true as const,
               truncationReason: 'bytes' as const,
               nextOffset,
-              notice: `Output truncated at 256 KB. Use offset=${nextOffset} to continue reading.`,
+              notice: `Output truncated at ${SELECTED_BYTES_LIMIT / 1024} KB. Use offset=${nextOffset} to continue reading.`,
             }
           : {}),
       },

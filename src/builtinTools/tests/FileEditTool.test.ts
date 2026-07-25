@@ -92,6 +92,7 @@ function makeReadContext(target: string, callId: string) {
     content,
     timestamp: fs.statSync(target).mtimeMs,
     isPartialView: false,
+    truncated: false,
   });
   return context;
 }

@@ -184,7 +184,7 @@ describe('FileReadTool — 边界与防御', () => {
 });
 
 describe('FileReadTool — 截断模型可见与回放保留', () => {
-  it('单行超 256KB: 模型收到空内容但知道原因(truncated/notice/nextOffset)', async () => {
+  it('单行超 50KB 预算: 模型收到空内容但知道原因(truncated/notice/nextOffset)', async () => {
     const dir = makeDir();
     const file = path.join(dir, 'giant-line.txt');
     fs.writeFileSync(file, 'y'.repeat(300 * 1024) + '\n');
@@ -194,7 +194,21 @@ describe('FileReadTool — 截断模型可见与回放保留', () => {
     expect(result.truncated).toBe(true);
     expect(result.truncationReason).toBe('bytes');
     expect(result.nextOffset).toBe(1);
-    expect(result.notice).toContain('truncated');
+    expect(result.notice).toContain('50 KB');
+  });
+
+  it('多行跨 50KB 边界: 装得下的行保留, 越界即截断并给出续读点', async () => {
+    const dir = makeDir();
+    const file = path.join(dir, 'boundary.txt');
+    const line = 'x'.repeat(40 * 1024);
+    fs.writeFileSync(file, `${line}\n${line}\n${line}\n`);
+
+    const { result } = await read(file, { offset: 1, limit: 3 });
+
+    expect(result.truncated).toBe(true);
+    // 第一行 40KB 装得下, 第二行累计 80KB 超 50KB 预算
+    expect(result.content).not.toBe('');
+    expect(result.nextOffset).toBe(2);
   });
 
   it('截断的去重回放保留 truncated(不再伪装未截断)', async () => {

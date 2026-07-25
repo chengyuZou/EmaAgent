@@ -115,6 +115,7 @@ export const FileWriteTool = buildTool<FileWriteInput, FileWriteResult, BuiltinT
       offset: undefined,
       limit: undefined,
       isPartialView: false,
+      truncated: false,
     });
     return presentToolResult({
       type: written.existed ? 'updated' : 'created',

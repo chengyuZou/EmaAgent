@@ -16,6 +16,8 @@ export interface ReadFileFullEntry {
   offset?: undefined;
   limit?: undefined;
   isPartialView: false;
+  /** 整读内容同样可能按 50KB 正文预算截断, 回放必须保留这个事实。 */
+  truncated: boolean;
 }
 
 /** 分页视图: 选中切片仅供去重回放; totalLines/truncated 为必备, 不允许非法组合。 */

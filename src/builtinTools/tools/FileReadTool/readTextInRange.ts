@@ -3,8 +3,12 @@
 import fs from 'node:fs';
 
 const FAST_PATH_MAX_SIZE = 10 * 1024 * 1024; // 10 MiB, 与 FileReadTool 整文件上限一致
-/** 选中内容累计的字节预算: 超出即截断, 防单行巨行/大范围选择把内存打满。 */
-const MAX_SELECTED_BYTES = 256 * 1024;
+/**
+ * 单次读取给模型的正文字节预算: 与 FileReadTool 声明的 maxResultBytes 对齐
+ * (后者另含 cat -n 行号开销)。超出的部分标 truncated + nextOffset 翻页,
+ * 不再暗中交给结果外置换成预览。
+ */
+export const SELECTED_BYTES_LIMIT = 50 * 1024;
 
 export interface TextRangeResult {
   /** 选中行(已剥 BOM 与行尾 \r)。 */
@@ -53,7 +57,7 @@ async function readFast(
   let truncated = false;
   for (const line of selected) {
     const next = bytes + (lines.length > 0 ? 1 : 0) + Buffer.byteLength(line);
-    if (next > MAX_SELECTED_BYTES) { truncated = true; break; }
+    if (next > SELECTED_BYTES_LIMIT) { truncated = true; break; }
     bytes = next;
     lines.push(line);
   }
@@ -87,7 +91,7 @@ function readStreaming(
     const pushSelected = (line: string): void => {
       if (truncated) return;
       const next = selectedBytes + (lines.length > 0 ? 1 : 0) + Buffer.byteLength(line);
-      if (next > MAX_SELECTED_BYTES) {
+      if (next > SELECTED_BYTES_LIMIT) {
         truncated = true;
         return;
       }
@@ -116,7 +120,7 @@ function readStreaming(
       // 未完成的行尾碎片: 只有落在选中范围才值得留。
       if (startPos < data.length && lineIndex >= offset - 1 && lineIndex < endLine) {
         const fragment = data.slice(startPos);
-        if (selectedBytes + Buffer.byteLength(fragment) <= MAX_SELECTED_BYTES) {
+        if (selectedBytes + Buffer.byteLength(fragment) <= SELECTED_BYTES_LIMIT) {
           partial = fragment;
         } else {
           // 巨行碎片: 截断并收缩选中范围, 防止无换行大文件把 partial 撑爆。

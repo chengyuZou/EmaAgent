@@ -193,6 +193,7 @@ Rules:
       offset: undefined,
       limit: undefined,
       isPartialView: false,
+      truncated: false,
     });
     return presentToolResult({
       filePath: file_path,
