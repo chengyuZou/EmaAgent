@@ -109,8 +109,9 @@ function runDetect(): DetectResult {
 
 /**
  * 真实启动自检: 二进制存在 ≠ namespace/系统策略允许隔离运行。
- * 走与生产一致的 wrap() 路径执行一条 echo, 输出不符即降级,
- * 避免向前端谎报 isolated 后第一条命令才失败。
+ * 走与生产一致的 wrap() 路径执行一条 echo, 只验证"后端可启动且
+ * 基本 namespace 可用"; 不宣称验证了网络/denyRead/denyWrite 的完整隔离。
+ * 输出不符即降级, 避免向前端谎报 isolated 后第一条命令才失败。
  */
 function smokeSandboxExec(): DetectResult {
   const wrapped = new SandboxExecBackend().wrap(`echo ${SMOKE_MARKER}`, '/bin/bash', smokeConfig());

@@ -2,8 +2,8 @@
 
 export { CommandRunner } from './commandRunner.js';
 
-export { probeShell, installGitViaWinget } from './shell-probe.js';
-export type { ShellProbeResult, GitInstallResult } from './shell-probe.js';
+export { probeBash, installGitViaWinget, resetBashProbeCache } from './bashProbe.js';
+export type { BashProbeResult, GitInstallResult } from './bashProbe.js';
 
 export { detectBackend, resetDetectCache } from './detect.js';
 export type { DetectResult, BackendKind }  from './detect.js';

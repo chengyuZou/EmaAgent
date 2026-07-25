@@ -1,20 +1,13 @@
-﻿// TODO 本文件实际只探测 bash（不是泛指 shell），名实不符。
-//  - 文件名 shell-probe.ts -> bash-probe.ts；probeShell -> probeBash；ShellProbeResult -> BashProbeResult。
-//  - installGitViaWinget 留在本文件（装 Git 就是为了拿 bash，强相关）。
-//  - 改名会触发 import 涓漪（bindings.ts / routes/shell.ts / ShellSetupDialog），
-//    等 C1 sandbox 批次一起改，不单独动。
-//
-// TODO 缺测试：gitBashFromGitExecutable 的逐级上溯反推逻辑值得单测，
-//  但该函数强依赖 Windows 环境（spawnSync where），跨平台难测。
-//  可把“从 git.exe 路径反推 bash.exe”的纯逻辑抽成独立函数再测。
+// 探测当前平台的 bash 可用性(本模块只探测 bash, 不是泛指 shell), 并通过 winget 安装 Git。
 import { spawnSync, spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { getPlatform } from './platform.js';
+
 /** Windows 没有原生 Bash，但可以调用 WSL Bash 时使用的内部标记。 */
 export const WSL_BASH_SENTINEL = 'wsl:bash';
 
-export type ShellProbeResult =
+export type BashProbeResult =
   | { available: true;  path: string }
   | { available: false; wingetAvailable: boolean; wslAvailable: boolean };
 
@@ -22,7 +15,6 @@ export interface GitInstallResult {
   ok:  boolean;
   log: string;
 }
-
 
 /** 从 git.exe 所在路径反推同安装根下的 bash.exe。 */
 function gitBashFromGitExecutable(): string | null {
@@ -35,7 +27,7 @@ function gitBashFromGitExecutable(): string | null {
     timeout: 3_000,
     windowsHide: true,
   });
-  
+
   if (whereGit.status !== 0 || !whereGit.stdout.trim() || whereGit.error) return null;
 
   for (const rawLine of whereGit.stdout.trim().split(/\r?\n/)) {
@@ -91,10 +83,21 @@ function probeWslBash(): boolean {
   return r.status === 0;
 }
 
-// TODO 缓存是模块级全局变量，installGitViaWinget 跨函数直接改它（隐式耦合）。
-//  工业上该封装成 BashProbe 对象（持有 cached + 探测 + 安装），避免跨函数操作全局状态。
-//  当前函数式可用，C1 sandbox 批次重构时考虑对象化。
-let cached: ShellProbeResult | undefined;
+/**
+ * 探测缓存: 显式对象方法, 不再是 installGitViaWinget 隐式改写的裸全局变量。
+ * 所有读写都经 get/set/clear 三个具名入口, 跨函数耦合点可检索。
+ */
+const probeCache = {
+  value: undefined as BashProbeResult | undefined,
+  get(): BashProbeResult | undefined { return this.value; },
+  set(result: BashProbeResult): void { this.value = result; },
+  clear(): void { this.value = undefined; },
+};
+
+/** 清空探测缓存，仅供测试使用。 */
+export function resetBashProbeCache(): void {
+  probeCache.clear();
+}
 
 /**
  * 探测当前平台的 bash 可用性。
@@ -103,12 +106,15 @@ let cached: ShellProbeResult | undefined;
  * 全部失败时返回 winget/wsl 可用性，供前端引导安装。
  * 结果在进程生命周期内缓存；传 `{ fresh: true }` 可强制重探。
  */
-export function probeShell(opts?: { fresh?: boolean }): ShellProbeResult {
+export function probeBash(opts?: { fresh?: boolean }): BashProbeResult {
+  const cached = probeCache.get();
   if (!opts?.fresh && cached !== undefined) return cached;
 
   const platform = getPlatform();
   if (platform !== 'windows') {
-    return (cached = { available: true, path: '/bin/bash' });
+    const result: BashProbeResult = { available: true, path: '/bin/bash' };
+    probeCache.set(result);
+    return result;
   }
 
   const whereResult = spawnSync('where', ['bash'], {
@@ -119,7 +125,9 @@ export function probeShell(opts?: { fresh?: boolean }): ShellProbeResult {
 
   if (whereResult.status === 0 && whereResult.stdout.trim()) {
     const firstLine = whereResult.stdout.trim().split(/\r?\n/)[0]!.trim();
-    return (cached = { available: true, path: firstLine });
+    const result: BashProbeResult = { available: true, path: firstLine };
+    probeCache.set(result);
+    return result;
   }
 
   // `where bash` 走的是进程继承的 PATH，刚装完 Git for Windows 但未重启进程时
@@ -127,14 +135,18 @@ export function probeShell(opts?: { fresh?: boolean }): ShellProbeResult {
   // 这能覆盖非默认盘符（如 D:\Git）和绿色版安装，不再硬编码 Program Files 路径。
   const fallback = gitBashFromGitExecutable() ?? gitBashFromRegistry();
   if (fallback) {
-    return (cached = { available: true, path: fallback });
+    const result: BashProbeResult = { available: true, path: fallback };
+    probeCache.set(result);
+    return result;
   }
 
   // 没有 native bash.exe，但装了 WSL2 + 发行版也能用 bash。
   // `wsl --status` 返回 0 只证明 wsl.exe 存在（不代表装了发行版），
   // 所以要实际在 WSL 里调用 bash 验证。后端看到哨兵值时会走 `wsl.exe bash -c …`。
   if (probeWslBash()) {
-    return (cached = { available: true, path: WSL_BASH_SENTINEL });
+    const result: BashProbeResult = { available: true, path: WSL_BASH_SENTINEL };
+    probeCache.set(result);
+    return result;
   }
 
   const wingetResult = spawnSync('winget', ['--version'], {
@@ -149,16 +161,19 @@ export function probeShell(opts?: { fresh?: boolean }): ShellProbeResult {
     windowsHide: true,
   });
 
-  return (cached = {
+  const result: BashProbeResult = {
     available:       false,
     wingetAvailable: wingetResult.status === 0,
     wslAvailable:    wslResult.status === 0,
-  });
+  };
+  probeCache.set(result);
+  return result;
 }
 
 /**
  * 通过 winget 安装 Git for Windows（静默，per-user 无需 UAC）。
- * 成功后清空探测缓存，使下一次 `probeShell()` 重新探测。
+ * 成功后写入探测缓存，使下一次 `probeBash()` 直接命中；
+ * 找不到则清缓存, 下次重新全链路探测。
  * 视下载速度约需 1-3 分钟。
  */
 export function installGitViaWinget(): Promise<GitInstallResult> {
@@ -193,9 +208,11 @@ export function installGitViaWinget(): Promise<GitInstallResult> {
         // 改用不依赖 PATH 的探测：从 `where git` 反推、再查注册表。
         // 注册表是 winget/标准安装都会写的权威源，比硬编码路径可靠。
         const found = gitBashFromGitExecutable() ?? gitBashFromRegistry();
-        cached = found
-          ? { available: true, path: found }
-          : undefined; // 没找到就清缓存，下次 probeShell() 重新全链路探测
+        if (found) {
+          probeCache.set({ available: true, path: found });
+        } else {
+          probeCache.clear();
+        }
       }
       resolve({ ok, log: chunks.join('').trim() });
     });

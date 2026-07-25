@@ -1,6 +1,6 @@
 // 使用一份冻结的 Sandbox 能力快照包装并执行当前 Session 的 Shell 命令。
 
-import { existsSync, rmSync, statSync } from 'node:fs';
+import { existsSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { buildSandboxConfig } from './config-builder.js';
 import { detectBackend } from './detect.js';
@@ -10,7 +10,7 @@ import { SandboxExecBackend } from './backends/sandbox-exec.js';
 import { runProcess } from './processRunner.js';
 import { buildProcessEnvironment } from './processEnvironment.js';
 import { resolveCommandCwd } from './resolveCommandCwd.js';
-import { probeShell } from './shell-probe.js';
+import { probeBash } from './bashProbe.js';
 import type {
   CommandRunOptions,
   CommandRunResult,
@@ -33,6 +33,8 @@ export class CommandRunner implements CommandRunnerPort {
   private readonly backend: SandboxBackend;
   private readonly config: SandboxConfig;
   private readonly bareRepoExistedAtStart: boolean;
+  /** 构造时已存在的 hooks/config 路径: 归属用户, 永不警告永不触碰。 */
+  private readonly exploitPathsExistedAtStart: ReadonlySet<string>;
   private readonly degradeReason: string | undefined;
 
   constructor(capability: SandboxCapability) {
@@ -52,6 +54,11 @@ export class CommandRunner implements CommandRunnerPort {
 
     this.config = buildSandboxConfig(this.capability);
     this.bareRepoExistedAtStart = hasBareRepoSignature(capability.workspaceRoot);
+    this.exploitPathsExistedAtStart = new Set(
+      BARE_EXPLOIT_FILES.filter((fileName) =>
+        existsSync(path.join(capability.workspaceRoot, fileName)),
+      ),
+    );
   }
 
   async run(command: string, options: CommandRunOptions = {}): Promise<CommandRunResult> {
@@ -78,24 +85,25 @@ export class CommandRunner implements CommandRunnerPort {
   }
 
   /**
-   * bare-repo 防御: 只有当"构造时不存在、命令执行后出现了完整 bare 签名"
-   * 才拆除 hooks/config 两个真实攻击落点。普通项目新建的 config 文件、
-   * hooks 目录不会被误伤; 本就位于仓库根的工作区不受影响。
+   * bare-repo 防御: V1 不删除任何路径。
+   * git init/git clone --bare 与 bare 攻击创建的文件形态完全相同,
+   * 仅凭"执行后出现"无法区分, 误删用户数据的代价比残留更糟(P1 评审)。
+   * 这里只做归属记录与警告; 真正的隔离留给后续受控 Git 环境
+   * (core.hooksPath / GIT_CONFIG 隔离), 不靠删除。
    */
   cleanup(): void {
     if (this.bareRepoExistedAtStart) return;
     const root = this.capability.workspaceRoot;
     if (!hasBareRepoSignature(root)) return;
-    for (const fileName of BARE_EXPLOIT_FILES) {
-      const target = path.join(root, fileName);
-      if (!existsSync(target)) continue;
-      try {
-        rmSync(target, { recursive: true, force: true });
-        console.warn(`[sandbox] 已拆除可疑 bare-repo 落点: ${target}`);
-      } catch (error) {
-        console.warn(`[sandbox] bare-repo 落点清理失败: ${target}`, error);
-      }
-    }
+    const newExploits = BARE_EXPLOIT_FILES.filter(
+      (fileName) =>
+        !this.exploitPathsExistedAtStart.has(fileName) && existsSync(path.join(root, fileName)),
+    );
+    if (newExploits.length === 0) return;
+    console.warn(
+      `[sandbox] 命令执行后工作区出现 bare-repo 签名, `
+      + `${newExploits.join(' 与 ')} 会被后续 git 命令信任, 请人工确认来源: ${root}`,
+    );
   }
 
   getSandboxUnavailableReason(): string | undefined {
@@ -131,7 +139,7 @@ function selectBackend(kind: ReturnType<typeof detectBackend>['backend']): Sandb
 }
 
 function resolveShell(): string {
-  const result = probeShell();
+  const result = probeBash();
   if (!result.available) {
     throw new Error(
       '[sandbox] Bash 未找到，无法执行 Shell 命令。'

@@ -59,9 +59,22 @@ export function runProcess(
         // 进程组已经退出。
       }
     };
+
+    // 终止流程只进一次; 延迟强杀定时器在 close/error 时统一清除——
+    // 进程提前退出后 PGID 可能被系统复用, 迟到的 SIGKILL 会误杀无关进程。
+    let terminating = false;
+    let forceKillTimer: ReturnType<typeof setTimeout> | undefined;
+    const clearForceKillTimer = (): void => {
+      if (forceKillTimer !== undefined) {
+        clearTimeout(forceKillTimer);
+        forceKillTimer = undefined;
+      }
+    };
     const terminate = (): void => {
+      if (terminating) return;
+      terminating = true;
       terminateTree(false);
-      const forceKillTimer = setTimeout(() => terminateTree(true), FORCE_KILL_DELAY_MS);
+      forceKillTimer = setTimeout(() => terminateTree(true), FORCE_KILL_DELAY_MS);
       forceKillTimer.unref?.();
     };
     const timeout = setTimeout(() => {
@@ -91,6 +104,7 @@ export function runProcess(
       if (settled) return;
       settled = true;
       clearTimeout(timeout);
+      clearForceKillTimer();
       signal?.removeEventListener('abort', onAbort);
       reject(error);
     });
@@ -99,6 +113,7 @@ export function runProcess(
       if (settled) return;
       settled = true;
       clearTimeout(timeout);
+      clearForceKillTimer();
       signal?.removeEventListener('abort', onAbort);
 
       const aborted = !timedOut && (signal?.aborted ?? false);

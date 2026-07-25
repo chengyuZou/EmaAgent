@@ -1,6 +1,6 @@
 // 无 OS 沙箱时原样包装命令，仅供 Core 显式启用不安全覆盖模式。
 
-import { WSL_BASH_SENTINEL } from '../shell-probe.js';
+import { WSL_BASH_SENTINEL } from '../bashProbe.js';
 import type { SandboxBackend, WrappedCommand } from '../types.js';
 
 /**

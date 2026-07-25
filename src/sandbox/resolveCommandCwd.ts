@@ -22,6 +22,7 @@ function realpathIfExists(p: string): string {
 
 /**
  * 解析并校验命令工作目录。requested 省略时使用 workspaceRoot;
+ * 相对路径以 workspaceRoot 为基准(不是 Core 进程 cwd);
  * 结果必须位于 workspaceRoot 或 writablePaths 之一(按真实路径比较,
  * 防符号链接/junction 逃逸), 否则拒绝而不是悄悄执行。
  */
@@ -29,7 +30,7 @@ export function resolveCommandCwd(
   requested: string | undefined,
   capability: SandboxCapability,
 ): string {
-  const resolved = path.resolve(requested ?? capability.workspaceRoot);
+  const resolved = path.resolve(capability.workspaceRoot, requested ?? '.');
   const real = realpathIfExists(resolved);
 
   const roots = [capability.workspaceRoot, ...capability.writablePaths]

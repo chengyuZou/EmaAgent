@@ -50,9 +50,15 @@ export function buildBubblewrapCommand(
 /**
  * 生成 bwrap 隔离参数。resolvePaths=true 时把配置路径解析为绝对路径
  * (直启路径); WSL 路径已翻译为 POSIX 形式, 不能再经宿主 path.resolve。
+ * isDirectory 分类器可覆盖默认 statSync 判定——WSL 下 Linux 路径在
+ * Windows 宿主上 statSync 必然失真, 必须在翻译前判定后传入。
  */
-function buildBwrapArgs(config: SandboxConfig, opts: { resolvePaths?: boolean } = {}): string[] {
+function buildBwrapArgs(
+  config: SandboxConfig,
+  opts: { resolvePaths?: boolean; isDirectory?: (p: string) => boolean } = {},
+): string[] {
   const resolvePath = (p: string): string => (opts.resolvePaths === false ? p : path.resolve(p));
+  const isDir = opts.isDirectory ?? isDirectory;
   const args: string[] = [
     '--ro-bind', '/', '/',        // 整个文件系统只读
     '--dev',     '/dev',          // 设备（很多工具需要）
@@ -76,7 +82,7 @@ function buildBwrapArgs(config: SandboxConfig, opts: { resolvePaths?: boolean } 
   // (/dev/null 是文件, 盖不住目录)。
   for (const p of config.filesystem.denyRead) {
     const r = resolvePath(p);
-    if (isDirectory(r)) {
+    if (isDir(r)) {
       args.push('--tmpfs', r);
     } else {
       args.push('--bind-try', '/dev/null', r);
@@ -105,8 +111,17 @@ function wrapViaWsl(command: string, shell: string, config: SandboxConfig): Wrap
     network: config.network,
   };
 
+  // 目录判定必须在翻译前做: Windows 宿主 statSync 不了 /mnt/<drive> 路径。
+  const dirByTranslated = new Map<string, boolean>();
+  for (const p of config.filesystem.denyRead) {
+    dirByTranslated.set(toWslPath(p), isDirectory(p));
+  }
+
   // wsl.exe 会把 argv 拼成单行命令交给 Linux 进程, 路径与命令必须引号保护。
-  const quotedArgs = buildBwrapArgs(translatedConfig, { resolvePaths: false }).map(qp);
+  const quotedArgs = buildBwrapArgs(translatedConfig, {
+    resolvePaths: false,
+    isDirectory: (p) => dirByTranslated.get(p) ?? false,
+  }).map(qp);
   const escaped    = escapeForShell(command);
   const wslShell   = 'bash';
 

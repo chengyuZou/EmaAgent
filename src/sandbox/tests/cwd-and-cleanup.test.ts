@@ -2,7 +2,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { resolveCommandCwd } from '../resolveCommandCwd.js';
 import { CommandRunner } from '../commandRunner.js';
 import type { SandboxCapability } from '../types.js';
@@ -38,6 +38,16 @@ describe('resolveCommandCwd', () => {
     );
   });
 
+  it('相对路径以 workspaceRoot 为基准解析, 不借 Core 进程 cwd', () => {
+    const root = makeWorkspace();
+    const sub = path.join(root, 'sub');
+    fs.mkdirSync(sub);
+    expect(resolveCommandCwd('sub', makeCapability(root))).toBe(fs.realpathSync.native(sub));
+    expect(resolveCommandCwd('.', makeCapability(root))).toBe(fs.realpathSync.native(root));
+    // 相对路径越界( ../ )同样拒绝
+    expect(() => resolveCommandCwd('..', makeCapability(root))).toThrow('越出 Sandbox 能力范围');
+  });
+
   it('越出能力范围直接拒绝', () => {
     const root = makeWorkspace();
     expect(() => resolveCommandCwd(os.tmpdir(), makeCapability(root))).toThrow('越出 Sandbox 能力范围');
@@ -53,7 +63,7 @@ describe('resolveCommandCwd', () => {
   });
 });
 
-describe('CommandRunner.cleanup — bare-repo 精确防御', () => {
+describe('CommandRunner.cleanup — bare-repo 防御(永不删除)', () => {
   function plantBareRepo(root: string, withExploit = true): void {
     fs.writeFileSync(path.join(root, 'HEAD'), 'ref: refs/heads/main\n');
     fs.mkdirSync(path.join(root, 'objects'));
@@ -65,28 +75,38 @@ describe('CommandRunner.cleanup — bare-repo 精确防御', () => {
     }
   }
 
-  it('构造后长出的完整 bare 签名: 只拆 hooks/config, 不删仓库本体', () => {
+  it('构造后长出的完整 bare 签名: 只警告, 不删任何路径', () => {
     const root = makeWorkspace();
-    const runner = new CommandRunner(makeCapability(root));
-    plantBareRepo(root);
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const runner = new CommandRunner(makeCapability(root));
+      plantBareRepo(root);
 
-    runner.cleanup();
+      runner.cleanup();
 
-    expect(fs.existsSync(path.join(root, 'hooks'))).toBe(false);
-    expect(fs.existsSync(path.join(root, 'config'))).toBe(false);
-    // 修复前会连 HEAD/objects/refs 一起误删, 现在保留
-    expect(fs.existsSync(path.join(root, 'HEAD'))).toBe(true);
-    expect(fs.existsSync(path.join(root, 'objects'))).toBe(true);
-    expect(fs.existsSync(path.join(root, 'refs'))).toBe(true);
-    fs.rmSync(root, { recursive: true, force: true });
+      // 不删除: git init 与 bare 攻击形态相同, 删除可能误伤用户数据(P1)
+      expect(fs.existsSync(path.join(root, 'hooks', 'pre-commit'))).toBe(true);
+      expect(fs.existsSync(path.join(root, 'config'))).toBe(true);
+      expect(fs.existsSync(path.join(root, 'HEAD'))).toBe(true);
+      // 但必须有响亮警告, 提示人工确认来源
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('bare-repo'));
+    } finally {
+      warn.mockRestore();
+      fs.rmSync(root, { recursive: true, force: true });
+    }
   });
 
-  it('普通项目的 config 文件与 hooks 目录(无 bare 签名)不被误伤', () => {
+  it('业务原有 config/hooks + 后续 bare 初始化: 原有数据绝不删除', () => {
     const root = makeWorkspace();
     const runner = new CommandRunner(makeCapability(root));
+    // 用户业务文件先于 bare 签名存在
     fs.writeFileSync(path.join(root, 'config'), '{"name":"my-project"}');
     fs.mkdirSync(path.join(root, 'hooks'));
     fs.writeFileSync(path.join(root, 'hooks', 'pre-commit'), '#!/bin/sh\necho legit\n');
+    // 之后执行了 git init --bare .(或攻击)长出签名
+    fs.writeFileSync(path.join(root, 'HEAD'), 'ref: refs/heads/main\n');
+    fs.mkdirSync(path.join(root, 'objects'));
+    fs.mkdirSync(path.join(root, 'refs'));
 
     runner.cleanup();
 
@@ -95,15 +115,21 @@ describe('CommandRunner.cleanup — bare-repo 精确防御', () => {
     fs.rmSync(root, { recursive: true, force: true });
   });
 
-  it('构造时已是 bare repo 的工作区不被触碰', () => {
+  it('构造时已是 bare repo 的工作区不警告不触碰', () => {
     const root = makeWorkspace();
     plantBareRepo(root);
-    const runner = new CommandRunner(makeCapability(root));
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const runner = new CommandRunner(makeCapability(root));
 
-    runner.cleanup();
+      runner.cleanup();
 
-    expect(fs.existsSync(path.join(root, 'hooks', 'pre-commit'))).toBe(true);
-    expect(fs.existsSync(path.join(root, 'config'))).toBe(true);
-    fs.rmSync(root, { recursive: true, force: true });
+      expect(fs.existsSync(path.join(root, 'hooks', 'pre-commit'))).toBe(true);
+      expect(fs.existsSync(path.join(root, 'config'))).toBe(true);
+      expect(warn).not.toHaveBeenCalledWith(expect.stringContaining('bare-repo'));
+    } finally {
+      warn.mockRestore();
+      fs.rmSync(root, { recursive: true, force: true });
+    }
   });
 });

@@ -70,10 +70,14 @@ function buildProfile(config: SandboxConfig): string {
     rules.push(`(deny file-write* (subpath "${escapeSbplPath(p)}"))`);
   }
 
-  // V1 不生成域名字符串规则：none 完全断网，full 不添加网络限制。
+  // V1 不生成域名字符串规则。none 完全断网; full 必须显式开放——
+  // profile 以 (deny default) 起手, 不写 allow 等于 full 也断网(P1 回归)。
   if (config.network.access === 'none') {
     rules.push('(deny network-outbound)');
     rules.push('(deny network-inbound)');
+  } else {
+    rules.push('(allow network-outbound)');
+    rules.push('(allow network-inbound)');
   }
 
   return rules.join('\n');

@@ -1,4 +1,6 @@
 // 后端启动形态测试: macOS 不多加引号; bwrap 直启 argv 不拼串; WSL 路径翻译。
+import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { SandboxExecBackend } from '../backends/sandbox-exec.js';
@@ -36,6 +38,16 @@ describe('SandboxExecBackend', () => {
     expect(profile).toContain('(deny network-outbound)');
     expect(profile).toContain('(allow file-write* (subpath "/home/u/proj"))');
   });
+
+  it('full 网络模式显式开放(deny default 起手, 不写 allow 等于断网)', () => {
+    const backend = new SandboxExecBackend();
+    const fullConfig: SandboxConfig = { ...config, network: { access: 'full' } };
+    const profile = backend.wrap('ls', '/bin/bash', fullConfig).args[1]!;
+
+    expect(profile).toContain('(allow network-outbound)');
+    expect(profile).toContain('(allow network-inbound)');
+    expect(profile).not.toContain('(deny network-outbound)');
+  });
 });
 
 describe('buildBubblewrapCommand', () => {
@@ -72,5 +84,21 @@ describe('buildBubblewrapCommand', () => {
     expect(line).toContain('bwrap');
     expect(line).toContain('/mnt/d/workspace');
     expect(line).not.toContain('--unshare-net');
+  });
+
+  it('WSL: denyRead 目录在翻译前判定, 挂 --tmpfs 而不是 /dev/null', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ema-bwrap-deny-'));
+    const file = path.join(dir, 'secret.txt');
+    fs.writeFileSync(file, 'x');
+    const winConfig: SandboxConfig = {
+      filesystem: { allowWrite: [], denyWrite: [], denyRead: [dir, file] },
+      network: { access: 'none' },
+    };
+    const line = buildBubblewrapCommand('echo ok', 'bash', winConfig, 'windows').args[2]!;
+
+    // 目录 → --tmpfs 遮蔽; 文件 → /dev/null 覆盖(翻译前判定, 不受宿主 statSync 失真影响)
+    expect(line).toContain('--tmpfs');
+    expect(line).toContain('/dev/null');
+    fs.rmSync(dir, { recursive: true, force: true });
   });
 });

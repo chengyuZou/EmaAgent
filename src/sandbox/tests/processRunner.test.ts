@@ -5,7 +5,7 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { runProcess } from '../processRunner.js';
 import { buildProcessEnvironment } from '../processEnvironment.js';
-import { probeShell } from '../shell-probe.js';
+import { probeBash } from '../bashProbe.js';
 import type { SandboxCommand } from '../types.js';
 
 function makeCommand(executable: string, args: string[], cwd: string): SandboxCommand {
@@ -42,7 +42,7 @@ describe('runProcess 进程树终止', () => {
   });
 
   it('取消会终止整棵进程树, 不留孙进程', async () => {
-    const shell = probeShell();
+    const shell = probeBash();
     if (!shell.available || shell.path === 'wsl:bash') {
       // 无 bash 的环境跳过(wsl 间接路径的终止语义另测)。
       return;

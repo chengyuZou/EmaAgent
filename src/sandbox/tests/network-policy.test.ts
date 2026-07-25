@@ -26,7 +26,7 @@ describe('Sandbox V1 网络策略', () => {
     expect(full).not.toContain('--unshare-net');
   });
 
-  it('macOS 在 none 时禁止全部网络，在 full 时不伪造域名规则', () => {
+  it('macOS 在 none 时禁止全部网络，在 full 时显式开放且不伪造域名规则', () => {
     const backend = new SandboxExecBackend();
     const deniedProfile = backend.wrap('echo ok', '/bin/bash', config('none')).args[1];
     const fullProfile = backend.wrap('echo ok', '/bin/bash', config('full')).args[1];
@@ -34,7 +34,10 @@ describe('Sandbox V1 网络策略', () => {
     expect(deniedProfile).toContain('(deny network-outbound)');
     expect(deniedProfile).toContain('(deny network-inbound)');
     expect(deniedProfile).not.toContain('localhost');
-    expect(fullProfile).not.toContain('network-outbound');
+    // full: deny default 起手, 必须显式 allow 才是真的开放(P1 回归)
+    expect(fullProfile).toContain('(allow network-outbound)');
+    expect(fullProfile).toContain('(allow network-inbound)');
+    expect(fullProfile).not.toContain('(deny network-outbound)');
     expect(fullProfile).not.toContain('remote tcp');
   });
 });
