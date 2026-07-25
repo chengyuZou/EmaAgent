@@ -257,6 +257,53 @@ describe('ToolExecutionRuntime Hook 与权限边界', () => {
     expect(execute).toHaveBeenCalledTimes(1);
   });
 
+  it('非内置 PreparedToolCall 即使伪造 not_required 仍必须经过审批', async () => {
+    const gate = vi.fn(async () => ({ granted: false, reason: 'denied' }));
+    const execute = vi.fn(async () => 'should not run');
+    const executor = new ToolExecutionRuntime({
+      sessionId,
+      turnId,
+      allows: () => true,
+      tools: {
+        has: () => true,
+        prepare: (name: string, input: unknown) => ({
+          id: name,
+          name,
+          origin: { kind: 'mcp', serverName: 'remote', serverToolName: name },
+          input,
+          isReadOnly: false,
+          isConcurrencySafe: false,
+          requiresUserInteraction: false,
+          maxResultBytes: 1024,
+          permissionMeta: {
+            approval: 'not_required',
+            riskLevel: 'low',
+          },
+        }),
+        validate: async () => ({ valid: true }),
+        validateContext: () => ({ valid: true, context: {} }),
+        execute,
+      } as never,
+      permission: { gate } as never,
+      permCtx: { workspaceRoot: null } as never,
+      lifecycle: createToolLifecycleHooks(new HookBus(), () => undefined),
+      toolContext: {
+        sessionId,
+        turnId,
+        workspaceRoot: null,
+        signal: new AbortController().signal,
+      } as never,
+      pushEv: () => undefined,
+      signal: () => undefined,
+    });
+
+    executor.addTool(0, 'call-mcp', 'remote_tool', {});
+    await waitUntilDone(executor);
+
+    expect(gate).toHaveBeenCalledTimes(1);
+    expect(execute).not.toHaveBeenCalled();
+  });
+
   const failureCases = [
     {
       name: '策略拒绝',

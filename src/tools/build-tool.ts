@@ -37,6 +37,9 @@ export function buildTool<TInput, TOutput, THostContext, TToolContext>(
         serverToolName: def.origin.serverToolName,
       })
     : Object.freeze({ kind: 'builtin' });
+  if (origin.kind !== 'builtin' && def.permissionMeta.approval === 'not_required') {
+    throw new Error('Only trusted builtin tools may declare approval=not_required');
+  }
   let cachedDescriptor: ToolDescriptor | undefined;
   const descriptor = (): ToolDescriptor => {
     if (!cachedDescriptor) {

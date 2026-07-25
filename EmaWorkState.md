@@ -88,7 +88,7 @@ Task 与 AgentRun 前端已经分面：Desktop 使用正式 `/api/tasks` 快照�
 
 开始任何新批次前必须重新运行 `git status --short` 与 `git diff`，保留用户和其他 Agent 的修改。
 
-当前工作区包含 Permission/AskUser 统一交互队列及本轮收口：旧 Core Permission/AskUser Registry 已删除，队列迁入 Turn；四种 Ask 工具免重复权限审批，取消/超时、队首响应和 Turn 身份校验已修复。Tools Presentation 已引用的 `diff` 依赖补入 Tools 自身 package，避免依赖 Desktop UI 的偶然安装结果。工作区还包含其他 Agent 已完成的 Sandbox 与 Tools 改动，后续修改前仍须逐文件检查 Diff。
+当前工作区包含 Permission V1 最后一批收口：永久规则已经通过 Core CRUD 接到通用设置，Permission 响应和取消使用 `turnId + promptId` 核对陈旧卡片；只有可信 Builtin Tool 可以声明 `approval=not_required`，MCP 在构建与执行两层都无法伪造免审批。旧 Core Permission/AskUser Registry 已删除，统一队列位于 Turn；四种 Ask 工具免重复权限审批，取消/超时和队首响应均使用明确终态。后续修改前仍须逐文件检查 Diff。
 
 当前基线最近提交：`e23fbb92 feat(permission): refactor permission handling with new rule storage system`。该提交号仅用于定位，不代表其他 Agent 不会继续提交。
 
@@ -134,7 +134,7 @@ Chat 工作区、Turn 导航轨、Task/AgentRun 分面、双 Dock、置顶摘要
 3. Sandbox 依赖反转、Tools 主执行链归位、单一 `BuiltinToolContext + validateContext` 窄投影与真实 ToolPool 接线均已完成；
 4. Tool Manifest 的 Builtin/MCP 稳定分区、内容 Revision 与缓存稳定测试（2C）已经完成；
 5. 继续逐组审查 Builtin Tool（2D）：优先补 Sandbox 命令环境 allowlist、FileRead 行数/字节双上限和工作目录边界；结构化 Presentation 公共协议与首批接线已完成；
-6. Permission/AskUser 的统一 Session FIFO 与明确终态已经完成；共享超时设置和迁移期 `AskUserRegistryLike` 命名随 TurnRuntime 装配边界清理，不新增第二套队列；
+6. Permission V1 已完成：统一 Session FIFO、明确终态、Turn 身份核对、SQLite 永久规则 CRUD 与设置页管理、Builtin-only 免审批边界均已接通；迁移期 `AskUserRegistryLike` 命名随 TurnRuntime 装配边界清理，不新增第二套队列；
 7. Tool 批次完成后建立 TurnRuntime，再清理 Agent 并让 Core Route 退回协议层；
 8. 后台进程按 `BackgroundProcess + ProcessOutput/ProcessStop` 单独实现 C 档，不修改 AgentLoop，也不恢复假 `run_in_background`。
 
@@ -144,6 +144,7 @@ Chat 工作区、Turn 导航轨、Task/AgentRun 分面、双 Dock、置顶摘要
 
 ## 最近验证
 
+- Permission V1 最终收口：Permission、Turn、Tools、Agent、Core、Desktop UI typecheck 通过；Permission 18/18、Turn 20/20、Tools Prepared Call 5/5、Agent ToolExecutionRuntime 12/12、Core Permission Route/事件 4/4、Desktop Permission 恢复与提交 5/5 通过。测试覆盖永久规则 CRUD、工作区绝对路径校验、`turnId + promptId` 陈旧响应拒绝，以及 MCP 伪造 `not_required` 的构建期与运行时双重防线；`git diff --check` 通过，仅有既有 CRLF 提示。
 - Permission/AskUser 统一交互收口：Turn 队列已泛型化，生产源码与 package 声明不再形成 `permission → storage → turn → permission` 依赖环；Permission、Tools、Turn、Agent build 通过，BuiltinTools 与 Core typecheck 通过；Tools 27/27、Turn 19/19、Agent 32/32、Core 90/90、Builtin Ask ToolPool 3/3 通过。此前 BuiltinTools 全量 72/73，唯一失败仍是既存 WebFetchPolicy 对 `example.com -> www.example.com` 的跨站重定向口径，与本批无关；Tools 缺失的 `diff` 运行依赖已离线补齐。
 - Tools 残余清理：Session 级文件快照及跨层接线已删除；Tools/Context/BuiltinTools/Agent build 与 Core typecheck 通过，Journal/Presentation/Compaction/File Tools 定向 26/26 通过。此前全量 Tools 27/27、Context 24/24、BuiltinTools 71/72；唯一失败仍是既存 WebFetchPolicy 的 `example.com -> www.example.com` 重定向口径，与本批无关。pnpm lockfile 已离线刷新。
 - Tool Presentation 与 Bash 首批审查（2D）：Tools typecheck、build 与 27/27 测试通过；BuiltinTools typecheck 通过，Presentation/Bash 定向 41/41 通过；BuiltinTools 全量 71/72，唯一失败仍是既存 WebFetchPolicy 对 `example.com -> www.example.com` 重定向口径，与本批无关；Core 与 Desktop UI typecheck 通过。`git diff --check` 通过，仅有既有 CRLF 提示。

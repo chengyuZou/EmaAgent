@@ -5,7 +5,7 @@
  * Session 在侧栏显示待处理数量；桌宠窗口不挂载阻塞式决策层，只显示非阻塞提示。
  *
  * Permission 从系统 SSE 到达，AskUser 从 Turn SSE 到达。promptId 是全局唯一
- * 定位键，AskUser 提交时后端还会核对 URL 中的 turnId，拒绝陈旧卡片误答。
+ * 定位键，两类交互提交时后端都会核对 URL 中的 turnId，拒绝陈旧卡片误答。
  * dismiss(promptId) 仍会扫描所有 Session 队列，以便终态事件清理对应卡片。
  */
 import { create } from 'zustand';
@@ -29,6 +29,7 @@ export type DecisionPrompt =
   | {
       kind: 'permission';
       promptId: string;
+      turnId: TurnId;
       sessionId?: SessionId;
       toolId: string;
       toolName: string;
@@ -189,10 +190,11 @@ export const useDecisionStore = create<DecisionStoreState>((set, get) => ({
   restorePermissions(prompts) {
     for (const snapshot of prompts) {
       const prompt = snapshot.prompt;
-      if (!prompt.sessionId) continue;
+      if (!prompt.sessionId || !prompt.turnId) continue;
       get().push({
         kind: 'permission',
         promptId: snapshot.promptId,
+        turnId: prompt.turnId as TurnId,
         sessionId: prompt.sessionId as SessionId,
         toolId: prompt.toolId,
         toolName: prompt.toolName,

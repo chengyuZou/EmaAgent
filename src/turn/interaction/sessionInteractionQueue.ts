@@ -157,11 +157,16 @@ export class SessionInteractionQueue<TPermissionPrompt, TPermissionResponse, TAs
     return { createdAt, promise };
   }
 
-  /** 用用户响应解决一条 Permission 待审批;promptId 未知或已解决时返回 false。 */
-  respondPermission(promptId: string, response: TPermissionResponse): boolean {
+  /** 用用户响应解决一条 Permission 待审批;同时核对 Turn,防止陈旧卡片误答。 */
+  respondPermission(
+    promptId: string,
+    response: TPermissionResponse,
+    expectedTurnId?: string,
+  ): boolean {
     const record = this.index.get(promptId);
     if (!record || record.entry.kind !== 'permission') return false;
     if (record.fifo.entries[0] !== record.entry) return false;
+    if (expectedTurnId !== undefined && record.entry.turnId !== expectedTurnId) return false;
     return this.evict(promptId, response);
   }
 

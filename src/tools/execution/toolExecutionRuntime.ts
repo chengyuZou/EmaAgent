@@ -429,7 +429,9 @@ export class ToolExecutionRuntime<
       // ── 权限门禁 ──────────────────────────────────────────────────────────
       // AskUser 一类纯交互工具可由可信定义显式免普通审批；输入校验、审计和执行
       // 仍走完整主链。其余工具未声明时默认 required，保持关闭失败。
-      if (prepared.permissionMeta.approval !== 'not_required') {
+      const skipsOrdinaryApproval = prepared.origin?.kind === 'builtin'
+        && prepared.permissionMeta.approval === 'not_required';
+      if (!skipsOrdinaryApproval) {
         // 生产环境中，buildAsk 通过 pushEv 把 permission_required 写入 Engine 队列，
         // 让 SSE 立即送达；测试和最小宿主省略时使用 Engine 级 config.ask。
         const permCtxWithAsk: PermissionContext = buildAsk

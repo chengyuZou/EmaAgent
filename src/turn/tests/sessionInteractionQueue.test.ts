@@ -87,6 +87,19 @@ describe('SessionInteractionQueue Permission FIFO', () => {
     expect(q.respondPermission(a.promptId, { action: 'allow' })).toBe(false);
   });
 
+  it('Permission 响应必须属于 URL 指定的 Turn', () => {
+    const q = makeQueue();
+    const pending = q.enqueuePermission({
+      sessionId: 'session-a',
+      turnId: 'turn-a',
+      toolCallId: 'call-a',
+      prompt: makePermissionPrompt('bash'),
+    });
+
+    expect(q.respondPermission(pending.promptId, { action: 'allow' }, 'turn-stale')).toBe(false);
+    expect(q.respondPermission(pending.promptId, { action: 'allow' }, 'turn-a')).toBe(true);
+  });
+
   it('respondAskUser 不能解决 Permission 条目(类型互斥)', () => {
     const q = makeQueue();
     const a = q.enqueuePermission({ sessionId: 's1', turnId: 't1', toolCallId: 'c1', prompt: makePermissionPrompt('a') });

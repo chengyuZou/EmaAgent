@@ -4,6 +4,7 @@ import { Button, Callout, Input } from '@ema-agent/ui';
 import { useSettingsStore } from '../stores/settings-store.js';
 import { showToast } from '../lib/toast.js';
 import { EventDisplaySettings } from './EventDisplaySettings.js';
+import { PermissionRulesSettings } from './PermissionRulesSettings.js';
 
 export function GeneralTab(): JSX.Element {
   const savedTimeoutMs = useSettingsStore((state) => state.permissionTimeoutMs);
@@ -82,6 +83,9 @@ export function GeneralTab(): JSX.Element {
           <Callout variant="danger">请输入 5 到 600 之间的整数秒数。</Callout>
         )}
       </section>
+
+      <div className="h-px bg-[var(--ema-border)]" />
+      <PermissionRulesSettings />
 
       <div className="h-px bg-[var(--ema-border)]" />
       <EventDisplaySettings />

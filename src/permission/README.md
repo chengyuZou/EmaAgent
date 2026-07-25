@@ -20,7 +20,7 @@ Permission 只回答一个问题：**一次工具调用能不能执行**。它�
 ─── bypass-immune（任何模式都跑）─────────────────────────────
  1. meta.safetyCheck          仅 bypassImmune 工具，deny 即拒
  2. checkPathSafety           所有解析路径，查注入/ADS/UNC/symlink
- 3. deny 规则                 跨 scope，global > project > session
+ 3. deny 规则                 永久 global/workspace 规则
   ↓
 ─── early carve-outs ────────────────────────────────────────
  4. bypass 模式               非 immune 直接放行（dev/test only）
@@ -42,7 +42,8 @@ Permission 只回答一个问题：**一次工具调用能不能执行**。它�
 12. ask 用户                  兜底
 ```
 
-deny > ask > allow 由 Step 顺序保证。同 action 内多规则匹配时，按 `global > project > session` 优先级返回确定的那条用于审计归因，不依赖 rules 数组注入顺序。
+deny > ask > allow 由 Step 顺序保证。永久规则存入 `profile.db.permission_rules`；
+Session 临时授权是精确操作指纹，不伪装成第三种持久规则作用域。
 
 ## 权限模式
 
@@ -63,8 +64,8 @@ interface PermissionRule {
   action:    'allow' | 'deny' | 'ask'
   tool:      string         // '*' 匹配所有工具
   pathGlob?: string         // gitignore 语法，缺省匹配该工具所有路径
-  scope:     'session' | 'project' | 'global'
-  sessionId?: string        // scope=session 时必须提供
+  scope:     'global' | 'workspace'
+  workspaceRoot?: string    // scope=workspace 时必须提供绝对路径
 }
 ```
 
@@ -73,15 +74,15 @@ pathGlob 用 `ignore` 库的 gitignore 语义：
 ```
 //abs/path/**   锚定文件系统根
 ~/rel/**        锚定 home
-/rel/**         锚定 scope 根（session/project=workspaceRoot，global=home）
+ /rel/**         锚定 scope 根（workspace=workspaceRoot，global=home）
 rel/**          同上，相对 scope 根
 ```
 
-- **session**：内存，Session 结束清理，不落盘。
-- **project**：`.ema-agent/settings.json`，提交到仓库。
-- **global**：`~/.ema-agent/settings.json`，用户全局，最权威。
+- **workspace**：绑定规范化工作区绝对路径，存 `profile.db`。
+- **global**：全部工作区生效，存 `profile.db`。
+- **Session Grant**：内存中保存用户选择“本会话允许此操作”的精确调用指纹，Session 结束清理，不属于 `PermissionRule`。
 
-三层 scope 不含企业 managed policy--本地单人应用不需要 MDM。需要时按评审 L815 再增。
+V1 不读取仓库内权限配置，因此仓库内容不能自行提升权限；本地单人应用也不实现企业 managed policy。
 
 ## 路径安全（bypass-immune）
 
@@ -119,10 +120,9 @@ rel/**          同上，相对 scope 根
 
 ## Session 粒度隔离
 
-- `sessionModes`：per-session 模式覆盖。Session A 提权不影响 Session B。
 - `sessionGrants`：per-session 临时授权，精确到**规范化 input 快照**（非 pattern）。同一 Session 内相同操作复用，跨 Session 隔离。
-- `clearSession`：Session 结束清理模式和授权。
-- 审批按 Session 独立 FIFO，跨 Session 互不阻塞；响应按全局 `promptId` 定位，不按工具名猜。
+- `clearSession`：Session 结束清理临时授权。
+- 审批按 Session 独立 FIFO，跨 Session 互不阻塞；响应使用 `turnId + promptId` 核对，不按当前页面或工具名猜。
 
 ## Headless 模式
 
@@ -130,13 +130,12 @@ rel/**          同上，相对 scope 根
 
 ## 文件职责
 
-- `checker.ts`：`PermissionEngine`，12 步 gate 流水线 + promptUser + 规则/模式/Session 管理。
-- `path-safety.ts`：路径安全纯函数（注入/ADS/UNC/symlink/危险名/删除）+ 跨平台常量。
-- `rules.ts`：规则匹配 + scope 优先级 + gitignore glob 解析 + 持久化 helper。
-- `session-grants.ts`：Session 临时授权 store（精确 input 快照）。
-- `workspace.ts`：工作区边界判断（符号链接 + 大小写 + macOS 别名）。
-- `internal-paths.ts`：Core 授予的内部目录能力判断。
-- `platform.ts`：平台检测（含 WSL1/2）。
+- `permissionEngine.ts`：12 步 gate 流水线、用户确认、规则快照和 Session Grant 管理。
+- `paths/`：路径安全、工作区边界、内部路径能力和平台检测。
+- `policy/permissionRules.ts`：规则匹配与 gitignore glob 解析。
+- `policy/permissionRuleStore.ts`：永久规则窄存储接口与内存测试实现。
+- `policy/sqlPermissionRuleStore.ts`：`profile.db.permission_rules` 适配。
+- `policy/sessionGrants.ts`：Session 临时授权（精确调用指纹）。
 - `types.ts`：PermissionEngine 类型与接口。
 - `events.ts`：Permission SSE 事件类型。
 
@@ -145,7 +144,7 @@ rel/**          同上，相对 scope 根
 | 维度 | Claude | EmaAgent | 原因 |
 |---|---|---|---|
 | 模式 | default/acceptEdits/plan/bypass/dontAsk + auto/bubble | ask/auto/bypass | 不照搬命名（评审 L807） |
-| 规则来源 | 8（含企业 policy/MDM） | 3（session/project/global） | 本地单人无需 MDM（L815） |
+| 规则来源 | 8（含企业 policy/MDM） | profile 全局/工作区 + Session Grant | 本地单人无需 MDM，也不信任仓库内配置 |
 | ask 规则 bypass-immune | 是 | 否 | bypass 仅 dev/test，不进生产 |
 | Hook 覆盖权限 | Hook 可 allow/deny | Hook 只观察 | Hook 不当第二套 Permission（评审 L435） |
 | LLM 分类器 | 竞速自动审批 | 无 | V1 不做（评审 L1212），auto 是静态规则 |
@@ -155,9 +154,9 @@ rel/**          同上，相对 scope 根
 | Bash 命令路径提取 | 36 类命令专用提取器 | 无（BashTool 未实现 extractPath） | BashTool 缺口，不归 permission |
 | 审计落盘 | toolDecisions Map + 遥测 | DecisionReason 仅内存 | 待补（评审 L1139） |
 
-## 已知缺口（不本批修）
+## 跨模块后续项
 
-- **DecisionReason 不落盘审计**：结构完整（8 种类型），但无 Repository 写入。需 storage 协作。
+- **DecisionReason 不落盘审计**：结构完整（8 种类型），但无 Repository 写入；归 Observability/审计账批次，不影响 V1 执行门禁。
 - **`ToolRegistry.dispatch()` 后门已删除**：可信调用方也必须显式建立 `PreparedToolCall`，Agent 主链继续在同一快照上完成审批与执行。
 - **Bash 命令路径未进 permission 检查**：BashTool 未实现 `extractPath`，命令字符串里的路径（`cat /etc/passwd`）不经 path-safety。归 BashTool/sandbox 批次。
 

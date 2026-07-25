@@ -31,6 +31,7 @@ describe('permission prompt recovery', () => {
     expect(queue?.[0]).toEqual(expect.objectContaining({
       kind: 'permission',
       promptId: 'prompt-1',
+      turnId: 'turn-1',
       toolDescription: '编辑 README 文件',
       riskLevel: 'medium',
     }));

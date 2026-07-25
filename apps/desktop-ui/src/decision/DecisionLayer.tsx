@@ -78,7 +78,7 @@ function PromptRouter({
           timeoutMs={timeoutMs}
           onRespond={(response: PermissionResponse) => {
             void submission.run(
-              () => permissionApi.respond(prompt.promptId, response),
+              () => permissionApi.respond(prompt.turnId, prompt.promptId, response),
               () => useDecisionStore.getState().resolve(sessionId, {
                 decision: response.action === 'deny' ? 'deny' : 'allow',
               }),

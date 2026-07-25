@@ -136,3 +136,25 @@ describe('PreparedToolCall', () => {
     }, context)).rejects.toThrow(/not created by this registry/);
   });
 });
+
+describe('工具审批声明', () => {
+  it('拒绝 MCP 工具声明 not_required', () => {
+    expect(() => buildTool({
+      id: 'remote_tool',
+      name: 'remote_tool',
+      description: '远端工具',
+      origin: {
+        kind: 'mcp',
+        serverName: 'remote',
+        serverToolName: 'remote_tool',
+      },
+      inputSchema: z.object({}),
+      permissionMeta: {
+        approval: 'not_required',
+        riskLevel: 'low',
+      },
+      validateContext: () => ({ valid: true, context: {} }),
+      execute: async () => 'ok',
+    })).toThrow('Only trusted builtin tools');
+  });
+});

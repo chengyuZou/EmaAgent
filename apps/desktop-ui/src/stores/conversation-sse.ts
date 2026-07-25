@@ -269,6 +269,7 @@ export function dispatchSseEvent(
     case 'permission_required': {
       const p = {
         kind: 'permission' as const, promptId: event.promptId, sessionId,
+        turnId: event.turnId,
         toolId: event.toolId, toolName: event.tool, toolDescription: event.toolDescription,
         args: event.args, hint: event.hint, riskLevel: event.riskLevel,
         accessType: event.accessType, gateReason: event.gateReason,

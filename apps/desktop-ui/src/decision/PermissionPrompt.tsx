@@ -94,7 +94,7 @@ export function PermissionPrompt({
             disabled={submitting}
             onClick={() => onRespond({ action: 'allow_session' })}
           >
-            此会话允许
+            本会话允许此操作
           </Button>
           <Button
             variant="primary"
